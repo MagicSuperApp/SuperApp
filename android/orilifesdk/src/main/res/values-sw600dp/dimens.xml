@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Tablets and large screens -->
+    <dimen name="top_safe_margin">64dp</dimen>
+    <dimen name="bottom_safe_margin">40dp</dimen>
+    <dimen name="horizontal_margin">32dp</dimen>
+    <dimen name="card_padding_horizontal">28dp</dimen>
+    <dimen name="card_padding_vertical">18dp</dimen>
+    <dimen name="list_bottom_padding">140dp</dimen>
+</resources>

@@ -1,0 +1,13 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M12,2L12,22 M2,12L22,12" /> 
+    <!-- Placeholder generic tree shape -->
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M12,2C7.5,2 4,6.5 4,11C4,15.5 12,22 12,22C12,22 20,15.5 20,11C20,6.5 16.5,2 12,2Z" />
+</vector>

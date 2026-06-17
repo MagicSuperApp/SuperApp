@@ -1,0 +1,67 @@
+{
+  "project_info": {
+    "project_number": "1058384938826",
+    "project_id": "aladin-95731",
+    "storage_bucket": "aladin-95731.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1058384938826:android:7415692b3039963dc2e3b3",
+        "android_client_info": {
+          "package_name": "com.aladin"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCgkk9J1uQ1wvV_HoA3QkJ2l9gK96pKCkk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1058384938826:android:fb3256a37371f997c2e3b3",
+        "android_client_info": {
+          "package_name": "com.aladin_mobile_fe"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCgkk9J1uQ1wvV_HoA3QkJ2l9gK96pKCkk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1058384938826:android:f1d7ea88058aabf2c2e3b3",
+        "android_client_info": {
+          "package_name": "com.aladincontract.company"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCgkk9J1uQ1wvV_HoA3QkJ2l9gK96pKCkk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,69 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://magiclamp.network/schema/trace.config.json",
+  "title": "Trace Module Config",
+  "description": "Tham số admin (non-dev) tuỳ biến khi lắp app, theo INTEGRATION-STANDARD §4.1. DECLARATIVE thuần (INV-SEC / QĐ-1): chỉ tác động experience layer (INV-2), KHÔNG chạm data layer, KHÔNG biểu thức/template/ref-code. additionalProperties:false ở MỌI cấp; whitelist kiểu string/number/boolean/enum/array literal có min/max/maxLength/pattern. Logic mới = phải đặt MODULE mới qua Registry, KHÔNG lẻn vào config.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "enableAnimalId": {
+      "type": "boolean",
+      "default": false,
+      "description": "Bật định danh vật nuôi (ngoài định danh cây). Tắt cho app chỉ trồng trọt."
+    },
+    "captureAngles": {
+      "type": "integer",
+      "enum": [8, 15],
+      "default": 8,
+      "description": "Số góc chụp khi định danh cây/vật. 8 = nhẹ (máy yếu/3G); 15 = đầy đủ (chính xác cao)."
+    },
+    "maxFarmsPerUser": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 500,
+      "default": 20,
+      "description": "Trần số trang trại mỗi người dùng tạo. Ngưỡng experience, KHÔNG phải quota data layer."
+    },
+    "maxTreesPerFarm": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100000,
+      "default": 5000,
+      "description": "Trần số cây hiển thị/quản lý mỗi trang trại trong UI."
+    },
+    "defaultProfile": {
+      "type": "string",
+      "enum": ["lowEnd", "rich"],
+      "default": "lowEnd",
+      "description": "Cực adaptive mặc định (§7.2). Auto-detect vẫn override được; đây chỉ là giá trị khởi tạo."
+    },
+    "requireResidueTest": {
+      "type": "boolean",
+      "default": false,
+      "description": "Bắt buộc có kết quả kiểm dư lượng (residue.test) trước khi đánh dấu lô đạt chuẩn."
+    },
+    "harvestUnit": {
+      "type": "string",
+      "enum": ["kg", "tan", "tia", "thung"],
+      "default": "kg",
+      "description": "Đơn vị thu hoạch hiển thị. Enum đóng — KHÔNG cho admin nhập tự do."
+    },
+    "farmLabel": {
+      "type": "string",
+      "maxLength": 40,
+      "pattern": "^[\\p{L}\\p{N} ]+$",
+      "description": "Nhãn gọi 'trang trại' tuỳ biến theo vùng (vd 'Vườn', 'Rẫy'). Chỉ chữ/số/khoảng trắng, chống inject."
+    },
+    "enabledActivityTypes": {
+      "type": "array",
+      "uniqueItems": true,
+      "maxItems": 16,
+      "items": {
+        "type": "string",
+        "enum": ["planting", "watering", "fertilizing", "spraying", "pruning", "harvesting", "inspection"]
+      },
+      "default": ["planting", "watering", "harvesting"],
+      "description": "Danh sách loại hoạt động bật trong sổ nhật ký. Array of enum literal — KHÔNG free-form."
+    }
+  }
+}

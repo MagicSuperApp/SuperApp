@@ -1,0 +1,30 @@
+{
+  "$schema": "../manifest.schema.json",
+  "schemaVersion": "1.0",
+  "moduleId": "magiclamp.trace",
+  "version": "1.0.0",
+  "displayName": { "vi": "Truy xuất", "en": "Trace" },
+  "integrationKind": "feature",
+
+  "entrypoint": "Farms",
+  "route": "Farms",
+  "icon": { "name": "sprout", "colorToken": "brand.trace.primary" },
+  "navSlot": "tab",
+  "routes": ["Farms", "Dashboard", "FarmDetail", "TreeDetail", "Activity"],
+
+  "capabilities": {
+    "data": ["read:profile", "read:trace.record", "write:trace.record"],
+    "device": ["camera", "storage", "location"],
+    "network": ["fabric.api"]
+  },
+
+  "mergePolicy": "per-field-crdt",
+  "mergePolicyNote": "Bản ghi truy xuất (trang trại/cây/hoạt động) ghi offline ngoài đồng (3G/mất sóng) từ nhiều thiết bị; per-field-crdt cho phép trộn từng trường không mất dữ liệu (INV-1), commitment cuối neo on-chain qua fabric.",
+
+  "configSchemaRef": "./config.schema.json",
+  "billingHooks": ["tree.identify", "residue.test"],
+  "billingHooksRef": "./billing.hooks.json",
+
+  "trustTier": 0,
+  "stakeBondLamp": "0"
+}

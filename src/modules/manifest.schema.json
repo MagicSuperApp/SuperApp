@@ -1,0 +1,179 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://magiclamp.network/schema/module.manifest.json",
+  "title": "MagicLamp Module Manifest",
+  "description": "JSON-Schema validate module.manifest.json theo INTEGRATION-STANDARD §1. Declarative thuần: additionalProperties:false ở mọi cấp, whitelist kiểu (string/number/boolean/enum/array), CẤM trường tự do chứa code/template/eval (INV-SEC / QĐ-1).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "moduleId", "version", "integrationKind", "mergePolicy"],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "enum": ["1.0"],
+      "description": "Phiên bản contract manifest."
+    },
+    "moduleId": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(\\.[a-z0-9]+)+$",
+      "maxLength": 64,
+      "description": "reverse-DNS, duy nhất toàn ecosystem."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "description": "semver, dùng cho SG6 upgrade."
+    },
+    "displayName": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "vi": { "type": "string", "maxLength": 40 },
+        "en": { "type": "string", "maxLength": 40 }
+      }
+    },
+    "integrationKind": {
+      "type": "string",
+      "enum": ["silent", "feature"],
+      "description": "silent = không chiếm UI; feature = tab/màn trong vỏ (§1.3)."
+    },
+    "entrypoint": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9]*$",
+      "maxLength": 64,
+      "description": "Tên screen ĐÃ compile-sẵn trong binary. KHÔNG phải đường dẫn tải động."
+    },
+    "route": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9]*$",
+      "maxLength": 64,
+      "description": "Route gốc trong navigation grammar (§7.1)."
+    },
+    "routes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z][A-Za-z0-9]*$",
+        "maxLength": 64
+      },
+      "uniqueItems": true,
+      "maxItems": 32,
+      "description": "Danh sách route name của module — khớp navigation hiện tại."
+    },
+    "icon": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "colorToken"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z0-9-]+$",
+          "maxLength": 48,
+          "description": "Tên icon MaterialCommunityIcons (compile-sẵn)."
+        },
+        "colorToken": {
+          "type": "string",
+          "pattern": "^[a-z][a-zA-Z0-9.]*$",
+          "maxLength": 64,
+          "description": "Tham chiếu design token màu — CẤM hex/rgb (§2.1)."
+        }
+      },
+      "description": "Icon = tên + tham chiếu token màu. CẤM nhúng asset thô / màu cứng."
+    },
+    "navSlot": {
+      "type": "string",
+      "enum": ["tab", "hub", "primary", "secondary", "contextual"],
+      "description": "Gợi ý vị trí: tab (primary) | hub (secondary/more)."
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Khai TỐI THIỂU, default-deny. Registry từ chối '*' (§1.2, QĐ-4).",
+      "properties": {
+        "data": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^(read|write):[a-z][a-z0-9.]*$", "maxLength": 64 },
+          "uniqueItems": true,
+          "maxItems": 32
+        },
+        "wallet": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^(read|write):[a-z][a-z0-9.]*$", "maxLength": 64 },
+          "uniqueItems": true,
+          "maxItems": 16
+        },
+        "biometric": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^(read|write):[a-z][a-z0-9.]*$", "maxLength": 64 },
+          "uniqueItems": true,
+          "maxItems": 8
+        },
+        "device": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["camera", "storage", "location", "microphone", "notifications"] },
+          "uniqueItems": true,
+          "maxItems": 8
+        },
+        "network": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["fabric.api"] },
+          "uniqueItems": true,
+          "maxItems": 4,
+          "description": "Chỉ fabric API — CẤM free-form egress (§5.3)."
+        },
+        "host": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 48 },
+          "uniqueItems": true,
+          "maxItems": 8
+        }
+      }
+    },
+    "mergePolicy": {
+      "type": "string",
+      "enum": ["lww", "per-field-crdt", "on-chain-total-order", "server-authoritative"],
+      "description": "Chiến lược merge offline (§1.1). BẮT BUỘC."
+    },
+    "mergePolicyNote": {
+      "type": "string",
+      "maxLength": 240,
+      "description": "Ghi chú lý do chọn mergePolicy — văn bản mô tả, KHÔNG code."
+    },
+    "configSchemaRef": {
+      "type": "string",
+      "pattern": "^\\./[A-Za-z0-9_.-]+\\.json$",
+      "maxLength": 128,
+      "description": "Đường dẫn tương đối tới config.schema.json (declarative)."
+    },
+    "billingHooks": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9.]*$", "maxLength": 64 },
+      "uniqueItems": true,
+      "maxItems": 32,
+      "description": "Điểm đo phí (tên event) — công thức đóng do platform định nghĩa (§4.2). Rỗng = module miễn phí. Khai chi tiết { event, unit, valueBased } ở billingHooksRef; tên ở đây PHẢI khớp 1-1 với event trong file đó."
+    },
+    "billingHooksRef": {
+      "type": "string",
+      "pattern": "^\\./[A-Za-z0-9_.-]+\\.json$",
+      "maxLength": 128,
+      "description": "Đường dẫn tương đối tới billing.hooks.json (declarative, validate bằng billing.hooks.schema.json §4.2). event[] trong file PHẢI khớp billingHooks."
+    },
+    "trustTier": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 3,
+      "description": "0 = mới đăng ký (sandbox tối đa); nâng qua hậu kiểm."
+    },
+    "stakeBondLamp": {
+      "type": "string",
+      "pattern": "^[0-9]+$",
+      "maxLength": 24,
+      "description": "LAMP bond (chuỗi số nguyên) cho quyền nhạy cảm (§6)."
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "integrationKind": { "const": "feature" } } },
+      "then": { "required": ["entrypoint", "route", "icon", "navSlot"] }
+    }
+  ]
+}

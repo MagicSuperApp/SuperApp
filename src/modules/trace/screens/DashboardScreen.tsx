@@ -375,21 +375,7 @@ const DashboardScreen: React.FC = () => {
             onPress={() => navigation.navigate('Account' as never)} />
         </View>
 
-        {/* ── Thu dữ-liệu test (dời từ Tài khoản — thuộc nghiệp-vụ truy-xuất) ── */}
-        <TouchableOpacity
-          style={styles.captureCta}
-          activeOpacity={0.85}
-          onPress={() => navigation.navigate('SurfaceTestCapture' as never)}
-        >
-          <View style={styles.captureCtaIcon}>
-            <Icon name="leaf-circle-outline" size={22} color={COLORS.accent} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.captureCtaTitle}>Chụp định-danh bề-mặt</Text>
-            <Text style={styles.captureCtaSub}>Thu dữ-liệu test cây/quả (xoài, mai, sứ, mít, ổi)</Text>
-          </View>
-          <Icon name="chevron-right" size={20} color={COLORS.textMuted} />
-        </TouchableOpacity>
+        {/* SurfaceTestCapture ẩn — chỉ dùng nội bộ thu dữ liệu test, không hiện với user */}
 
         {/* ── Filter tabs ── */}
         <View style={[styles.sectionRow, { marginTop: 24 }]}>

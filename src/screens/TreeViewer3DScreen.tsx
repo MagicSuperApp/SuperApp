@@ -28,6 +28,10 @@ import { COLORS } from '../constants';
 const BASE_URL: string =
   (ORILIFE_API_BASE_URL as string | undefined) ?? 'https://test.orilife.io';
 
+// Origin tin-cậy duy nhất = backend field-reid. originWhitelist=['*'] cho tải mọi domain
+// → rủi ro thực thi mã độc qua WebView bridge (Thư báo 2026-06-17).
+const ALLOWED_ORIGIN: string = BASE_URL.replace(/\/+$/, '');
+
 type TreeViewer3DParams = { code: string; treeName?: string };
 type TreeViewer3DRoute = RouteProp<{ TreeViewer3D: TreeViewer3DParams }, 'TreeViewer3D'>;
 
@@ -51,6 +55,13 @@ const TreeViewer3DScreen: React.FC = () => {
     setLoading(true);
     webRef.current?.reload();
   }, []);
+
+  // Chặn mọi điều hướng ra ngoài origin tin-cậy — chống redirect sang trang lạ.
+  const onShouldStartLoadWithRequest = useCallback(
+    (req: { url: string }) =>
+      req.url === 'about:blank' || req.url.startsWith(`${ALLOWED_ORIGIN}/`),
+    [],
+  );
 
   if (!code) {
     return (
@@ -85,7 +96,9 @@ const TreeViewer3DScreen: React.FC = () => {
           <WebView
             ref={webRef}
             source={{ uri: url }}
-            originWhitelist={['*']}
+            originWhitelist={[ALLOWED_ORIGIN]}
+            onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
+            setSupportMultipleWindows={false}
             javaScriptEnabled
             domStorageEnabled
             onLoadStart={() => setLoading(true)}

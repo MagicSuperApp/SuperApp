@@ -834,7 +834,7 @@ const HomeScreen: React.FC = () => {
 
           <TouchableOpacity
             style={[styles.quickActionBtn]}
-            onPress={openQuickTreeSheet}
+            onPress={handleQuickAddTree}
             disabled={quickActionBusy !== null}
             activeOpacity={0.85}
           >

@@ -142,11 +142,9 @@ dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
 
-    if (hermesEnabled.toBoolean()) {
-        implementation("com.facebook.react:hermes-android")
-    } else {
-        implementation jscFlavor
-    }
+    // Hermes is the default JS engine since RN 0.71. hermesEnabled property
+    // was removed in RN 0.71+ — the React Native Gradle Plugin handles it.
+    implementation("com.facebook.react:hermes-android")
 
     // MapLibre native dependency
     implementation 'org.maplibre.gl:android-sdk-opengl:11.12.1'

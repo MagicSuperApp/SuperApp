@@ -21,7 +21,8 @@
   "mergePolicyNote": "Tin tuyển dụng / hồ sơ thợ là dữ liệu thị trường dùng chung, cần một sự thật nhất quán (chống trùng/giả tin); server-authoritative cho backend validate + chuẩn hoá là điểm hội tụ (INV-1). Escrow/dòng tiền (nếu có sau) tách sang module SG5, KHÔNG khai ở đây.",
 
   "configSchemaRef": "./config.schema.json",
-  "billingHooks": ["work.postjob"],
+  "billingHooks": ["task.post", "task.complete", "drone.spray"],
+  "billingHooksRef": "./billing.hooks.json",
 
   "trustTier": 0,
   "stakeBondLamp": "0"

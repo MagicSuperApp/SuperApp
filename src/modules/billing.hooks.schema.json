@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://magiclamp.network/schema/billing.hooks.json",
+  "title": "MagicLamp Billing Hooks",
+  "description": "JSON-Schema validate billing.hooks.json theo INTEGRATION-STANDARD §4.2. Mỗi hook = KHAI điểm đo phí (metering point): { event, unit, valueBased }. DECLARATIVE thuần (INV-SEC / QĐ-1): CẤM công thức/giá/biểu thức — giá do PriceFn bên LAMP + mức DAO-bound quyết định. additionalProperties:false MỌI cấp. Mảng hooks rỗng = hợp lệ (module miễn phí, vd ProofChat).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["moduleId", "hooks"],
+  "properties": {
+    "$schema": { "type": "string", "maxLength": 128 },
+    "moduleId": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(\\.[a-z0-9]+)+$",
+      "maxLength": 64,
+      "description": "reverse-DNS, khớp module.manifest.json.moduleId."
+    },
+    "_note": {
+      "type": "string",
+      "maxLength": 600,
+      "description": "Ghi chú văn bản — KHÔNG code/biểu thức."
+    },
+    "hooks": {
+      "type": "array",
+      "uniqueItems": true,
+      "maxItems": 32,
+      "description": "Danh sách điểm đo phí. RỖNG = module miễn phí (hợp lệ).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["event", "unit", "valueBased"],
+        "properties": {
+          "event": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9.]*$",
+            "maxLength": 64,
+            "description": "Tên event đo phí — khớp manifest.billingHooks + tên §7B (LAMP PlatformKit)."
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "per_tree",
+              "per_test",
+              "per_post",
+              "per_deal",
+              "per_session",
+              "per_message",
+              "per_call",
+              "per_item"
+            ],
+            "description": "Đơn vị đo. Enum đóng — KHÔNG cho khai đơn vị tự do (whitelist kiểu)."
+          },
+          "valueBased": {
+            "type": "boolean",
+            "description": "true = phí có cấu phần theo giá trị khai (bps); false = phí phẳng. CHỈ khai cờ — công thức ở PriceFn bên LAMP."
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 240,
+            "description": "Mô tả văn bản điểm đo — KHÔNG code."
+          }
+        }
+      }
+    }
+  }
+}

@@ -22,6 +22,7 @@
 
   "configSchemaRef": "./config.schema.json",
   "billingHooks": [],
+  "billingHooksRef": "./billing.hooks.json",
 
   "trustTier": 0,
   "stakeBondLamp": "0"

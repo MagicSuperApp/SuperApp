@@ -1,0 +1,6 @@
+{
+  "$schema": "../billing.hooks.schema.json",
+  "moduleId": "magiclamp.proofchat",
+  "_note": "ProofChat MIỄN PHÍ — nhắn tin không thu phí (anh Aladin chốt; khớp manifest billingHooks:[]). KHÔNG điểm đo phí. Mảng hooks RỖNG có chủ đích, KHÔNG phải thiếu sót. Ví/escrow nếu có sau = module SG5 riêng.",
+  "hooks": []
+}

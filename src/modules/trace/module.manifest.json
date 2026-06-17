@@ -22,7 +22,8 @@
   "mergePolicyNote": "Bản ghi truy xuất (trang trại/cây/hoạt động) ghi offline ngoài đồng (3G/mất sóng) từ nhiều thiết bị; per-field-crdt cho phép trộn từng trường không mất dữ liệu (INV-1), commitment cuối neo on-chain qua fabric.",
 
   "configSchemaRef": "./config.schema.json",
-  "billingHooks": ["trace.verify", "trace.export"],
+  "billingHooks": ["tree.identify", "residue.test"],
+  "billingHooksRef": "./billing.hooks.json",
 
   "trustTier": 0,
   "stakeBondLamp": "0"

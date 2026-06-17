@@ -149,7 +149,13 @@
       "items": { "type": "string", "pattern": "^[a-z][a-z0-9.]*$", "maxLength": 64 },
       "uniqueItems": true,
       "maxItems": 32,
-      "description": "Điểm đo phí — công thức đóng do platform định nghĩa (§4.2)."
+      "description": "Điểm đo phí (tên event) — công thức đóng do platform định nghĩa (§4.2). Rỗng = module miễn phí. Khai chi tiết { event, unit, valueBased } ở billingHooksRef; tên ở đây PHẢI khớp 1-1 với event trong file đó."
+    },
+    "billingHooksRef": {
+      "type": "string",
+      "pattern": "^\\./[A-Za-z0-9_.-]+\\.json$",
+      "maxLength": 128,
+      "description": "Đường dẫn tương đối tới billing.hooks.json (declarative, validate bằng billing.hooks.schema.json §4.2). event[] trong file PHẢI khớp billingHooks."
     },
     "trustTier": {
       "type": "integer",

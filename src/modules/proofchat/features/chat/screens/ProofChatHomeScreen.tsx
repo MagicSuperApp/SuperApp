@@ -24,6 +24,7 @@ import JoinConversationModal, {
   type JoinConversationPayload,
 } from '../components/JoinConversationModal';
 import InvitationsModal from '../components/InvitationsModal';
+import StateView from '../../../../../components/state/StateView';
 import {
   acceptInvitation,
   createConversation,
@@ -257,7 +258,15 @@ const ProofChatHomeScreen: React.FC = () => {
           />
         )}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
-        ListEmptyComponent={<EmptyState query={query} filter={filter} />}
+        ListEmptyComponent={
+          // Offline + chưa có phòng nào → trạng thái offline thân thiện (vẫn xem
+          // được phòng đã tải; thao tác mới vào outbox — INV-1). Còn lại: empty.
+          !sync.online && rooms.length === 0 ? (
+            <StateView status="offline" onRetry={handleRefresh} />
+          ) : (
+            <EmptyState query={query} filter={filter} />
+          )
+        }
         contentContainerStyle={
           filtered.length === 0 ? { flexGrow: 1 } : { paddingBottom: 24 }
         }

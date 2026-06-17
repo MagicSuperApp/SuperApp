@@ -19,6 +19,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import { COLORS } from '../../../constants';
 import { WORK_THEME, WORK_ACCENT, WORK_ACCENT_DEEP, WORK_BG_SOFT } from '../theme/colors';
+import StateView from '../../../components/state/StateView';
 import {
   CATEGORIES,
   FEATURED_JOBS,
@@ -241,10 +242,10 @@ const WorkHomeScreen: React.FC = () => {
             </View>
 
             {filteredJobs.length === 0 ? (
-              <EmptyView
-                icon="briefcase-search-outline"
+              <StateView
+                status="empty"
                 title="Không có việc phù hợp"
-                subtitle="Thử bỏ lọc hoặc tìm từ khóa khác"
+                message="Thử bỏ lọc hoặc tìm từ khóa khác."
               />
             ) : (
               filteredJobs.map((j, i) => (
@@ -421,18 +422,6 @@ const JobCard: React.FC<{
     </Animated.View>
   );
 };
-
-const EmptyView: React.FC<{ icon: string; title: string; subtitle: string }> = ({
-  icon, title, subtitle,
-}) => (
-  <View style={styles.emptyView}>
-    <View style={styles.emptyIconWrap}>
-      <Icon name={icon} size={36} color={WORK_THEME.primaryLight} />
-    </View>
-    <Text style={styles.emptyTitle}>{title}</Text>
-    <Text style={styles.emptySubtitle}>{subtitle}</Text>
-  </View>
-);
 
 // ─── Styles ─────────────────────────────────────────────────────────────────
 

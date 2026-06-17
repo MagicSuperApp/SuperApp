@@ -15,6 +15,8 @@
 
 import type { ThemeConfig } from '../theme/theme.config';
 import { DEFAULT_THEME_CONFIG } from '../theme/theme.config';
+import type { AdaptiveConfig } from '../theme/adaptive';
+import { DEFAULT_ADAPTIVE_CONFIG } from '../theme/adaptive';
 import type { ModuleId } from '../navigation/registry';
 
 // ---------------------------------------------------------------------------
@@ -47,6 +49,11 @@ export interface InstanceConfig {
 
   // Brand theme cho instance — wire qua setActiveThemeConfig() lúc bootstrap.
   themeConfig: ThemeConfig;
+
+  // Adaptive 2 cực (§7.2) — override cấp ADMIN của instance. 'auto' = để app
+  // tự dò tier (thiết bị/mạng) + user vẫn được override. Wire qua
+  // setActiveAdaptiveConfig() lúc bootstrap. Declarative thuần (QĐ-1).
+  adaptive: AdaptiveConfig;
 }
 
 // ===========================================================================
@@ -67,6 +74,7 @@ export const ALADIN_INSTANCE: InstanceConfig = {
   ],
   initialTabRoute: 'Home',
   themeConfig: DEFAULT_THEME_CONFIG,
+  adaptive: DEFAULT_ADAPTIVE_CONFIG,
 };
 
 // ---------------------------------------------------------------------------

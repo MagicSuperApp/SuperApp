@@ -15,6 +15,10 @@
 // đối). White-label: đổi DEFAULT_INSTANCE.themeConfig trong instance.config.ts.
 
 import { setActiveThemeConfig } from '../theme';
+import { setActiveAdaptiveConfig } from '../theme/adaptive';
 import { DEFAULT_INSTANCE } from './instance.config';
 
 setActiveThemeConfig(DEFAULT_INSTANCE.themeConfig);
+// Adaptive 2 cực — set override cấp admin theo instance (cùng lúc, cùng lý do
+// thứ-tự với theme: token hành vi phải sẵn trước khi cây import chạm tới).
+setActiveAdaptiveConfig(DEFAULT_INSTANCE.adaptive);

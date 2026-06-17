@@ -18,6 +18,7 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { COLORS } from '../../../constants';
 import { WORK_THEME } from '../theme/colors';
 import { getJobById, formatVND } from '../data/mockData';
+import StateView from '../../../components/state/StateView';
 
 type RouteParams = { JobDetail: { jobId: string } };
 
@@ -37,11 +38,14 @@ const JobDetailScreen: React.FC = () => {
 
   if (!job) {
     return (
-      <View style={[styles.root, { justifyContent: 'center', alignItems: 'center' }]}>
-        <Text style={{ color: COLORS.textMuted }}>Không tìm thấy tin tuyển dụng.</Text>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: 16 }}>
-          <Text style={{ color: WORK_THEME.primary, fontWeight: '700' }}>Quay lại</Text>
-        </TouchableOpacity>
+      <View style={styles.root}>
+        <StateView
+          status="empty"
+          title="Không tìm thấy tin tuyển dụng"
+          message="Tin này có thể đã bị gỡ hoặc không còn tồn tại."
+          actionLabel="Quay lại"
+          onAction={() => navigation.goBack()}
+        />
       </View>
     );
   }

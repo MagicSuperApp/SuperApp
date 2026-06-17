@@ -9,7 +9,6 @@ import {
   TouchableOpacity,
   Animated,
   StatusBar,
-  Dimensions,
   Platform,
   TextInput,
 } from 'react-native';
@@ -22,8 +21,8 @@ import { loadFarms } from '../store/farmSlice';
 import { selectChainWallet } from '../../../store/userSlice';
 import { COLORS } from '../../../constants';
 import PaginationControls from '../components/PaginationControls';
-
-const { width, height } = Dimensions.get('window');
+import StateView from '../../../components/state/StateView';
+import { useOffline } from '../../../hooks/useOffline';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -56,39 +55,6 @@ const MagicCreditBadge = ({ credits }: { credits: number }) => {
       <Text style={styles.creditValue}>{credits?.toLocaleString() ?? '0'}</Text>
       <Text style={styles.creditLabel}>MAGIC</Text>
     </Animated.View>
-  );
-};
-
-// ── Empty State ───────────────────────────────────────────────────────────────
-const EmptyState = ({ onAdd }: { onAdd: () => void }) => {
-  const floatAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(floatAnim, { toValue: -8, duration: 2000, useNativeDriver: true }),
-        Animated.timing(floatAnim, { toValue:  0, duration: 2000, useNativeDriver: true }),
-      ])
-    ).start();
-  }, []);
-
-  return (
-    <View style={styles.emptyWrap}>
-      <Animated.View style={{ transform: [{ translateY: floatAnim }] }}>
-        <View style={styles.emptyIconWrap}>
-          <Icon name="sprout-outline" size={48} color={COLORS.accentLight} />
-          <View style={styles.emptyIconRing} />
-        </View>
-      </Animated.View>
-      <Text style={styles.emptyTitle}>Chưa có trang trại nào</Text>
-      <Text style={styles.emptyBody}>
-        Hãy thêm nông trại đầu tiên để bắt đầu{'\n'}ghi nhận và truy xuất sầu riêng của bạn.
-      </Text>
-      <TouchableOpacity style={styles.emptyBtn} onPress={onAdd} activeOpacity={0.85}>
-        <Icon name="plus" size={16} color={COLORS.white} />
-        <Text style={styles.emptyBtnText}>Thêm trang trại</Text>
-      </TouchableOpacity>
-    </View>
   );
 };
 
@@ -228,7 +194,10 @@ const FarmListScreen = () => {
   const insets     = useSafeAreaInsets();
   const dispatch   = useDispatch<any>();
   const farms      = useSelector((state: RootState) => state.farm.farms);
+  const isLoading  = useSelector((state: RootState) => state.farm.isLoading);
+  const loadError  = useSelector((state: RootState) => state.farm.error);
   const user       = useSelector((state: RootState) => state.user.currentUser);
+  const offline    = useOffline();
   // Số dư MAGIC THẬT từ chuỗi (nhất quán với Account/Activity/Dashboard).
   const wallet     = useSelector(selectChainWallet);
 
@@ -293,6 +262,44 @@ const FarmListScreen = () => {
 
   const goToAddFarm = () =>
     navigation.navigate('FarmDetail', { farm_id: null });
+
+  const reloadFarms = () => {
+    if (user) dispatch(loadFarms(user.id));
+  };
+
+  // Trạng thái cho ListEmptyComponent (loading/offline/error/empty) — chỉ hiển
+  // thị khi CHƯA có dữ liệu nào (đã có dữ liệu cũ thì giữ hiển thị, offline vẫn
+  // xem được — INV-1). Phân biệt mạng ⟂ server (§7.3).
+  const renderEmpty = () => {
+    if (filteredFarms.length > 0) return null;
+    if (isLoading && farms.length === 0) {
+      return <StateView status="loading" loadingLines={4} />;
+    }
+    if (farms.length === 0 && offline) {
+      return <StateView status="offline" onRetry={reloadFarms} />;
+    }
+    if (farms.length === 0 && loadError) {
+      return <StateView status="error" onRetry={reloadFarms} />;
+    }
+    if (farms.length === 0) {
+      return (
+        <StateView
+          status="empty"
+          title="Chưa có trang trại nào"
+          message={'Hãy thêm nông trại đầu tiên để bắt đầu ghi nhận và truy xuất sầu riêng của bạn.'}
+          actionLabel="Thêm trang trại"
+          onAction={goToAddFarm}
+        />
+      );
+    }
+    // Có trại nhưng lọc rỗng → no-search-results (giữ riêng).
+    return (
+      <View style={styles.noSearchResults}>
+        <Icon name="magnify-close" size={48} color={COLORS.textMuted} />
+        <Text style={styles.noSearchResultsText}>Không tìm thấy nông trại</Text>
+      </View>
+    );
+  };
 
   return (
     <View style={styles.root}>
@@ -360,18 +367,7 @@ const FarmListScreen = () => {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
-          filteredFarms.length === 0 ? (
-            farms.length === 0 ? (
-              <EmptyState onAdd={goToAddFarm} />
-            ) : (
-              <View style={styles.noSearchResults}>
-                <Icon name="magnify-close" size={48} color={COLORS.textMuted} />
-                <Text style={styles.noSearchResultsText}>Không tìm thấy nông trại</Text>
-              </View>
-            )
-          ) : null
-        }
+        ListEmptyComponent={renderEmpty()}
         ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
         renderItem={({ item, index }) => (
           <FarmCard
@@ -613,67 +609,6 @@ const styles = StyleSheet.create({
   cardChevron: {
     paddingRight: 14,
     paddingLeft: 4,
-  },
-
-  // ── Empty State
-  emptyWrap: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: height * 0.1,
-    paddingHorizontal: 36,
-  },
-  emptyIconWrap: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    backgroundColor: COLORS.accentGlow,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 24,
-    position: 'relative',
-  },
-  emptyIconRing: {
-    position: 'absolute',
-    top: -6, left: -6, right: -6, bottom: -6,
-    borderRadius: 54,
-    borderWidth: 1.5,
-    borderColor: COLORS.accentLight,
-    opacity: 0.3,
-  },
-  emptyTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: COLORS.text,
-    marginBottom: 10,
-    letterSpacing: -0.3,
-  },
-  emptyBody: {
-    fontSize: 14,
-    color: COLORS.textMuted,
-    textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 28,
-  },
-  emptyBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: COLORS.accent,
-    paddingVertical: 14,
-    paddingHorizontal: 28,
-    borderRadius: 14,
-    shadowColor: COLORS.accent,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 5,
-  },
-  emptyBtnText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: COLORS.white,
-    letterSpacing: 0.2,
   },
 
   // ── Search

@@ -29,6 +29,7 @@ import { saveFruit, loadFruits } from '../store/farmSlice';
 import { syncService } from '../../../services/syncService';
 import { COLORS } from '../../../constants';
 import { useAppDispatch } from '../../../store/hooks';
+import StateView from '../../../components/state/StateView';
 import TreeMetadataTab from './TreeMetadataTab';
 import { formatTreeName, shortTreeCode } from '../../../utils/treeNameFormatter';
 import { useSelector } from 'react-redux';
@@ -585,20 +586,13 @@ const TreeDetailScreen = () => {
         </TouchableOpacity>
       </View>
     ) : (
-      <View style={styles.emptyWrap}>
-        <View style={styles.emptyIconWrap}>
-          <Icon name="food-apple-outline" size={36} color={COLORS.accentLight} />
-          <View style={styles.emptyIconRing} />
-        </View>
-        <Text style={styles.emptyTitle}>Chưa có quả nào</Text>
-        <Text style={styles.emptyBody}>
-          Hướng camera vào chùm quả và bấm "Thêm quả".
-        </Text>
-        <TouchableOpacity style={styles.emptyAddBtn} onPress={handleAddFruit}>
-          <Icon name="plus" size={15} color={COLORS.white} />
-          <Text style={styles.emptyAddBtnText}>Thêm quả đầu tiên</Text>
-        </TouchableOpacity>
-      </View>
+      <StateView
+        status="empty"
+        title="Chưa có quả nào"
+        message={'Hướng camera vào chùm quả và bấm "Thêm quả".'}
+        actionLabel="Thêm quả đầu tiên"
+        onAction={handleAddFruit}
+      />
     );
 
   const overviewBody = (

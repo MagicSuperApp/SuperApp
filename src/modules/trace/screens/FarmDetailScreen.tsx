@@ -35,6 +35,7 @@ let MapLibreGL: any = null;
 
 import PaginationControls from '../components/PaginationControls';
 import CommonPopup from '../components/CommonPopup';
+import StateView from '../../../components/state/StateView';
 import { useAppDispatch } from '../../../store/hooks';
 import { formatTreeName, shortTreeCode } from '../../../utils/treeNameFormatter';
 import {
@@ -1156,13 +1157,13 @@ const FarmDetailMode = ({
         ListEmptyComponent={
           filteredTrees.length === 0 ? (
             trees.length === 0 ? (
-              <View style={styles.treeEmpty}>
-                <Icon name="tree-outline" size={36} color={COLORS.accentLight} />
-                <Text style={styles.treeEmptyText}>Chưa có cây nào trong vườn</Text>
-                <TouchableOpacity style={styles.treeEmptyBtn} onPress={onAddTree}>
-                  <Text style={styles.treeEmptyBtnText}>Thêm cây đầu tiên</Text>
-                </TouchableOpacity>
-              </View>
+              <StateView
+                status="empty"
+                title="Chưa có cây nào trong vườn"
+                message="Thêm cây đầu tiên để bắt đầu ghi nhận và truy xuất."
+                actionLabel="Thêm cây đầu tiên"
+                onAction={onAddTree}
+              />
             ) : (
               <View style={styles.noSearchResults}>
                 <Icon name="magnify-close" size={48} color={COLORS.textMuted} />

@@ -18,6 +18,7 @@ import MessageBubble from '../components/MessageBubble';
 import ChatInput from '../components/ChatInput';
 import SyncStatusPill from '../components/SyncStatusPill';
 import EscrowStatusCard from '../../escrow/components/EscrowStatusCard';
+import StateView from '../../../../../components/state/StateView';
 import {
   sendMessage,
   setMessageStage,
@@ -213,8 +214,17 @@ const ChatScreen: React.FC = () => {
             />
           );
         }}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={
+          sections.length === 0 ? styles.listEmpty : styles.listContent
+        }
         showsVerticalScrollIndicator={false}
+        ListEmptyComponent={
+          <StateView
+            status="empty"
+            title="Chưa có tin nhắn"
+            message="Hãy gửi tin nhắn đầu tiên để bắt đầu trao đổi."
+          />
+        }
         onContentSizeChange={() =>
           listRef.current?.scrollToEnd({ animated: false })
         }
@@ -298,6 +308,7 @@ const styles = StyleSheet.create({
   },
 
   listContent: { paddingVertical: 12 },
+  listEmpty: { flexGrow: 1 },
   dateSep: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     marginVertical: 12, paddingHorizontal: 24,

@@ -8,7 +8,6 @@ import {
   ScrollView,
   TouchableOpacity,
   StatusBar,
-  ActivityIndicator,
   RefreshControl,
   Animated,
   Dimensions,
@@ -26,6 +25,8 @@ import { COLORS } from '../../../constants';
 import PaginationControls from '../components/PaginationControls';
 import { showError, showInfo } from '../../../utils/alert';
 import { useAppDispatch } from '../../../store/hooks';
+import StateView from '../../../components/state/StateView';
+import { useOffline } from '../../../hooks/useOffline';
 import { formatTreeName, shortTreeCode } from '../../../utils/treeNameFormatter';
 
 const { width } = Dimensions.get('window');
@@ -166,6 +167,8 @@ const DashboardScreen: React.FC = () => {
   const fruits = useSelector((state: RootState) => state.farm.fruits);
   const activities = useSelector((state: RootState) => state.farm.activities);
   const isLoading = useSelector((state: RootState) => state.farm.isLoading);
+  const loadError = useSelector((state: RootState) => state.farm.error);
+  const offline = useOffline();
 
   const [filter, setFilter] = useState<FilterType>('all');
   const [isSyncing, setIsSyncing] = useState(false);
@@ -241,14 +244,31 @@ const DashboardScreen: React.FC = () => {
   const initials = (user?.name ?? 'U')
     .split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase();
 
-  if (isLoading) {
+  const hasData = farms.length > 0;
+
+  // 4 trạng thái khi chưa có dữ liệu (đã có dữ liệu cũ thì vẫn render, kể cả
+  // offline — INV-1). Phân biệt mạng ⟂ server (§7.3).
+  if (isLoading && !hasData) {
     return (
-      <View style={[styles.root, styles.loadingWrap]}>
-        <View style={styles.loadingCard}>
-          <Icon name="leaf-circle-outline" size={40} color={COLORS.accent} />
-          <ActivityIndicator size="large" color={COLORS.accent} style={{ marginTop: 16 }} />
-          <Text style={styles.loadingText}>Đang tải dữ liệu...</Text>
-        </View>
+      <View style={styles.root}>
+        <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
+        <StateView status="loading" loadingLines={5} />
+      </View>
+    );
+  }
+  if (!hasData && offline) {
+    return (
+      <View style={styles.root}>
+        <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
+        <StateView status="offline" onRetry={loadDashboard} />
+      </View>
+    );
+  }
+  if (!hasData && loadError) {
+    return (
+      <View style={styles.root}>
+        <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
+        <StateView status="error" onRetry={loadDashboard} />
       </View>
     );
   }
@@ -519,7 +539,6 @@ const styles = StyleSheet.create({
   },
 
   // Loading
-  loadingWrap: { justifyContent: 'center', alignItems: 'center' },
   loadingCard: {
     backgroundColor: COLORS.card,
     borderRadius: 20, padding: 36,

@@ -24,6 +24,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RootState } from '../store';
 import { useAppDispatch } from '../store/hooks';
 import { COLORS } from '../constants';
+import StateView from '../components/state/StateView';
 import { showInfo } from '../utils/alert';
 import { useNavigation } from '@react-navigation/native';
 import { showWarning } from '../utils/alert';
@@ -363,9 +364,12 @@ const AccountScreen = () => {
         : '—';
 
     if (!user) {
+        // Trước đây trả màn TRỐNG (vi phạm §7.3). Khi chưa có user (đang hydrate
+        // sau đăng nhập), hiển thị skeleton thân thiện thay vì khoảng trắng.
         return (
             <View style={styles.root}>
                 <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
+                <StateView status="loading" loadingLines={5} />
             </View>
         );
     }

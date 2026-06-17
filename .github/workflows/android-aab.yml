@@ -41,13 +41,25 @@ jobs:
       - name: Install npm dependencies
         run: npm install --legacy-peer-deps
 
+      - name: Create android/gradle.properties
+        run: |
+          cat > android/gradle.properties << 'EOF'
+          org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m
+          android.useAndroidX=true
+          reactNativeArchitectures=armeabi-v7a,arm64-v8a,x86,x86_64
+          newArchEnabled=true
+          hermesEnabled=true
+          edgeToEdgeEnabled=false
+          EOF
+          echo "gradle.properties created (JVM heap: 4096m)"
+
       - name: Verify Android secrets.properties
         run: |
           if [ ! -f android/app/secrets.properties ]; then
             echo "::error::android/app/secrets.properties missing"
             exit 1
           fi
-          echo "✅ secrets.properties found"
+          echo "secrets.properties found"
           grep -E "BASE_API_URL|API_KEY|REGION_CODE" android/app/secrets.properties || true
 
       - name: Restore keystore from secret
@@ -61,31 +73,33 @@ jobs:
           fi
           echo "$ORILIFE_UPLOAD_STORE_FILE_B64" | base64 -d > android/app/keySigning.bin
           ls -lh android/app/keySigning.bin
-          echo "✅ Keystore restored ($(stat -c%s android/app/keySigning.bin) bytes)"
+          echo "Keystore restored ($(stat -c%s android/app/keySigning.bin) bytes)"
 
-      - name: Verify gradle.properties signing config
+      - name: Patch react-native-sqlite-storage (remove legacy buildscript + jcenter)
         run: |
-          grep -E "ORILIFE_UPLOAD_STORE_FILE|ORILIFE_UPLOAD_KEY_ALIAS" android/gradle.properties || {
-            echo "::error::gradle.properties missing signing config"
-            exit 1
-          }
-          echo "✅ gradle.properties signing config present"
-
-      - name: Patch react-native-sqlite-storage build.gradle (remove jcenter)
-        run: |
-          # react-native-sqlite-storage uses legacy jcenter() which was removed
-          # in Gradle 9+. Replace with mavenCentral() to fix BUILD FAILED.
           SQLITE_GRADLE="node_modules/react-native-sqlite-storage/platforms/android/build.gradle"
           if [ -f "$SQLITE_GRADLE" ]; then
-            echo "Before patch:"
-            grep -n "jcenter\|mavenCentral\|google" "$SQLITE_GRADLE" | head -5
-            sed -i 's/jcenter()/mavenCentral()/g' "$SQLITE_GRADLE"
-            echo ""
-            echo "After patch:"
-            grep -n "jcenter\|mavenCentral\|google" "$SQLITE_GRADLE" | head -5
-            echo "✅ Patched react-native-sqlite-storage build.gradle"
+            python3 -c "
+          path = 'node_modules/react-native-sqlite-storage/platforms/android/build.gradle'
+          with open(path) as f:
+              lines = f.readlines()
+          result, depth, skip = [], 0, False
+          for line in lines:
+              if not skip and line.strip().startswith('buildscript'):
+                  skip = True
+              if skip:
+                  depth += line.count('{') - line.count('}')
+                  if depth <= 0:
+                      skip = False
+                  continue
+              result.append(line)
+          with open(path, 'w') as f:
+              f.writelines(result)
+          print('Removed legacy buildscript block (gradle:3.1.4 → no OOM)')
+          "
+            echo "Patched react-native-sqlite-storage build.gradle"
           else
-            echo "::warning::react-native-sqlite-storage gradle not found at $SQLITE_GRADLE (may have been removed in newer RN versions, skipping patch)"
+            echo "::warning::react-native-sqlite-storage gradle not found at $SQLITE_GRADLE, skipping"
           fi
 
       - name: Build signed AAB

@@ -48,6 +48,7 @@ local.properties
 .kotlin/
 android/app/keySigning.bin
 android/app/*.keystore
+!android/app/debug.keystore
 android/app/*.jks
 android/app/*.p12
 android/gradle.properties

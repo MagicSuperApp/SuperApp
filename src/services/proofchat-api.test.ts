@@ -1,0 +1,323 @@
+// Unit test proofchat-api + proofchatAuthBridge (TRỤC 3 v2.0 — cầu nối auth).
+//
+// Mock axios.create để tránh client thật + mạng; mock AsyncStorage in-memory;
+// mock @env để bật/tắt feature flag. Không gọi BE thật.
+
+// ── In-memory AsyncStorage ───────────────────────────────────────────
+const store: Record<string, string> = {};
+jest.mock('@react-native-async-storage/async-storage', () => ({
+  __esModule: true,
+  default: {
+    getItem: jest.fn(async (k: string) => (k in store ? store[k] : null)),
+    setItem: jest.fn(async (k: string, v: string) => {
+      store[k] = v;
+    }),
+    multiSet: jest.fn(async (pairs: [string, string][]) => {
+      pairs.forEach(([k, v]) => (store[k] = v));
+    }),
+    multiRemove: jest.fn(async (keys: string[]) => {
+      keys.forEach((k) => delete store[k]);
+    }),
+    removeItem: jest.fn(async (k: string) => {
+      delete store[k];
+    }),
+  },
+}));
+
+// ── Mock axios client ────────────────────────────────────────────────
+const mockPost = jest.fn();
+const mockGet = jest.fn();
+const mockRequest = jest.fn();
+const requestInterceptors: Array<(c: any) => any> = [];
+const responseOkHandlers: Array<(r: any) => any> = [];
+const responseErrHandlers: Array<(e: any) => any> = [];
+jest.mock('axios', () => ({
+  __esModule: true,
+  default: {
+    create: () => ({
+      post: (...a: any[]) => mockPost(...a),
+      get: (...a: any[]) => mockGet(...a),
+      request: (...a: any[]) => mockRequest(...a),
+      interceptors: {
+        request: { use: (fn: any) => requestInterceptors.push(fn) },
+        response: {
+          use: (ok: any, err: any) => {
+            responseOkHandlers.push(ok);
+            responseErrHandlers.push(err);
+          },
+        },
+      },
+    }),
+  },
+}));
+
+// @env bị babel react-native-dotenv inline thành rỗng trong jest → không mock
+// được bằng jest.mock('@env'). Vì thế isProofChatBackendEnabled() luôn false
+// theo mặc định jest. Ta override nó qua requireActual để test logic bridge.
+jest.mock('./proofchat-api', () => {
+  const actual = jest.requireActual('./proofchat-api');
+  return { ...actual, isProofChatBackendEnabled: jest.fn(() => true) };
+});
+
+// ── Mock PhoenixKey session token ────────────────────────────────────
+const mockGetPhoenixSession = jest.fn<Promise<string | null>, []>();
+jest.mock('./phoenixKey-api', () => ({
+  __esModule: true,
+  getSessionToken: () => mockGetPhoenixSession(),
+}));
+
+import {
+  proofChatApi,
+  isProofChatBackendEnabled,
+  getAccessToken,
+  getRefreshToken,
+  clearTokens,
+  ProofChatApiError,
+} from './proofchat-api';
+import { connectProofChat } from './proofchatAuthBridge';
+
+const mockedFlag = isProofChatBackendEnabled as jest.Mock;
+
+beforeEach(() => {
+  for (const k of Object.keys(store)) delete store[k];
+  mockPost.mockReset();
+  mockGet.mockReset();
+  mockRequest.mockReset();
+  mockGetPhoenixSession.mockReset();
+});
+
+describe('feature flag', () => {
+  it('bật khi cờ true + có URL', () => {
+    expect(isProofChatBackendEnabled()).toBe(true);
+  });
+});
+
+describe('auth.phoenixKeyLogin', () => {
+  it('bóc envelope {data} + lưu access/refresh token', async () => {
+    mockPost.mockResolvedValueOnce({
+      data: {
+        data: { accessToken: 'acc-1', refreshToken: 'ref-1' },
+        message: 'ok',
+        statusCode: 201,
+      },
+    });
+
+    const tokens = await proofChatApi.auth.phoenixKeyLogin('phx-session-xyz');
+
+    expect(mockPost).toHaveBeenCalledWith('/auth/phoenixkey/login', {
+      sessionToken: 'phx-session-xyz',
+    });
+    expect(tokens).toEqual({ accessToken: 'acc-1', refreshToken: 'ref-1' });
+    expect(await getAccessToken()).toBe('acc-1');
+    expect(await getRefreshToken()).toBe('ref-1');
+  });
+
+  it('chấp nhận body không bọc envelope (fallback)', async () => {
+    mockPost.mockResolvedValueOnce({
+      data: { accessToken: 'acc-2', refreshToken: 'ref-2' },
+    });
+    const tokens = await proofChatApi.auth.phoenixKeyLogin('s');
+    expect(tokens.accessToken).toBe('acc-2');
+  });
+
+  it('lỗi HTTP → ProofChatApiError với status + message', async () => {
+    mockPost.mockRejectedValueOnce({
+      response: { status: 401, data: { message: 'Invalid session' } },
+      message: 'Request failed with status code 401',
+    });
+    await expect(proofChatApi.auth.phoenixKeyLogin('bad')).rejects.toMatchObject({
+      name: 'ProofChatApiError',
+      httpStatus: 401,
+      message: 'Invalid session',
+    });
+  });
+
+  it('lỗi mạng (không response) → ProofChatApiError status 0', async () => {
+    mockPost.mockRejectedValueOnce({ message: 'Network Error' });
+    await expect(proofChatApi.auth.phoenixKeyLogin('x')).rejects.toMatchObject({
+      httpStatus: 0,
+    });
+  });
+});
+
+describe('auth.refresh', () => {
+  it('không có refresh token → lỗi rõ ràng', async () => {
+    await expect(proofChatApi.auth.refresh()).rejects.toBeInstanceOf(
+      ProofChatApiError,
+    );
+  });
+
+  it('có refresh token → gọi /auth/refresh + cập nhật token', async () => {
+    store['proofchat_refresh_token'] = 'r0';
+    mockPost.mockResolvedValueOnce({
+      data: { data: { accessToken: 'a1', refreshToken: 'r1' }, statusCode: 200 },
+    });
+    const t = await proofChatApi.auth.refresh();
+    expect(mockPost).toHaveBeenLastCalledWith('/auth/refresh', {
+      refreshToken: 'r0',
+    });
+    expect(t.accessToken).toBe('a1');
+    expect(await getAccessToken()).toBe('a1');
+    expect(await getRefreshToken()).toBe('r1');
+  });
+
+  it('single-flight: nhiều refresh song song chỉ gọi BE 1 lần', async () => {
+    store['proofchat_refresh_token'] = 'r0';
+    let resolve!: (v: any) => void;
+    mockPost.mockReturnValueOnce(
+      new Promise((r) => {
+        resolve = r;
+      }),
+    );
+    const p1 = proofChatApi.auth.refresh();
+    const p2 = proofChatApi.auth.refresh();
+    resolve({ data: { data: { accessToken: 'a1', refreshToken: 'r1' }, statusCode: 200 } });
+    const [t1, t2] = await Promise.all([p1, p2]);
+    expect(mockPost).toHaveBeenCalledTimes(1);
+    expect(t1.accessToken).toBe('a1');
+    expect(t2.accessToken).toBe('a1');
+  });
+});
+
+describe('conversations.list', () => {
+  it('gắn needsAuth + bóc envelope mảng', async () => {
+    mockGet.mockResolvedValueOnce({
+      data: { data: [{ id: 'c1', title: 'Phòng 1' }], message: 'ok', statusCode: 200 },
+    });
+    const list = await proofChatApi.conversations.list({ take: 10 });
+    expect(list).toEqual([{ id: 'c1', title: 'Phòng 1' }]);
+    const [path, cfg] = mockGet.mock.calls[0];
+    expect(path).toBe('/conversations');
+    expect(cfg.needsAuth).toBe(true);
+    expect(cfg.params).toMatchObject({ take: 10 });
+  });
+
+  it('envelope data=[] → trả mảng rỗng (KHÔNG trả nhầm object envelope)', async () => {
+    mockGet.mockResolvedValueOnce({
+      data: { data: [], message: 'ok', statusCode: 200 },
+    });
+    const list = await proofChatApi.conversations.list();
+    expect(Array.isArray(list)).toBe(true);
+    expect(list).toEqual([]);
+  });
+
+  it('envelope data=null → trả null (giữ nguyên, không nuốt)', async () => {
+    mockGet.mockResolvedValueOnce({
+      data: { data: null, message: 'ok', statusCode: 200 },
+    });
+    const list = await proofChatApi.conversations.list();
+    expect(list).toBeNull();
+  });
+
+  it('body thiếu hẳn data + không có statusCode → coi như raw body', async () => {
+    // handler void: NestJS JSON bỏ field undefined → client nhận {message,...}
+    mockGet.mockResolvedValueOnce({ data: { message: 'no data' } });
+    const list = await proofChatApi.conversations.list();
+    expect(list).toEqual({ message: 'no data' });
+  });
+});
+
+describe('response interceptor — auto-refresh 401 (single-flight)', () => {
+  it('401 ở endpoint cần auth → refresh rồi retry request gốc', async () => {
+    store['proofchat_refresh_token'] = 'r-old';
+    // refresh trả token mới
+    mockPost.mockResolvedValueOnce({
+      data: { data: { accessToken: 'a-new', refreshToken: 'r-new' }, statusCode: 200 },
+    });
+    mockRequest.mockResolvedValueOnce({ data: { data: [], statusCode: 200 } });
+
+    const errHandler = responseErrHandlers.find(Boolean)!;
+    const result = await errHandler({
+      response: { status: 401 },
+      config: { url: '/conversations', needsAuth: true },
+    });
+
+    expect(mockPost).toHaveBeenCalledWith('/auth/refresh', { refreshToken: 'r-old' });
+    expect(mockRequest).toHaveBeenCalledTimes(1); // retry 1 lần
+    expect(await getAccessToken()).toBe('a-new');
+    expect(result).toEqual({ data: { data: [], statusCode: 200 } });
+  });
+
+  it('401 ở chính /auth/* → KHÔNG refresh (tránh vòng lặp), reject', async () => {
+    const errHandler = responseErrHandlers.find(Boolean)!;
+    await expect(
+      errHandler({
+        response: { status: 401 },
+        config: { url: '/auth/phoenixkey/login', needsAuth: false },
+      }),
+    ).rejects.toBeDefined();
+    expect(mockPost).not.toHaveBeenCalled();
+  });
+
+  it('401 nhưng đã _retried → không retry nữa, reject', async () => {
+    const errHandler = responseErrHandlers.find(Boolean)!;
+    await expect(
+      errHandler({
+        response: { status: 401 },
+        config: { url: '/conversations', needsAuth: true, _retried: true },
+      }),
+    ).rejects.toBeDefined();
+    expect(mockRequest).not.toHaveBeenCalled();
+  });
+});
+
+describe('request interceptor — bearer', () => {
+  it('gắn Authorization khi needsAuth + có access token', async () => {
+    store['proofchat_access_token'] = 'ACCESS123';
+    const fn = requestInterceptors[0];
+    expect(fn).toBeDefined();
+    const cfg = await fn({ needsAuth: true, headers: {} });
+    expect(cfg.headers.Authorization).toBe('Bearer ACCESS123');
+  });
+
+  it('KHÔNG gắn khi không needsAuth', async () => {
+    store['proofchat_access_token'] = 'ACCESS123';
+    const fn = requestInterceptors[0];
+    const cfg = await fn({ headers: {} });
+    expect(cfg.headers.Authorization).toBeUndefined();
+  });
+});
+
+describe('connectProofChat — bridge', () => {
+  it('chưa có session PhoenixKey → no-phoenix-session (không throw)', async () => {
+    mockGetPhoenixSession.mockResolvedValueOnce(null);
+    const r = await connectProofChat();
+    expect(r.status).toBe('no-phoenix-session');
+  });
+
+  it('có session PhoenixKey → đổi lấy phiên ProofChat → connected', async () => {
+    mockGetPhoenixSession.mockResolvedValueOnce('phx-abc');
+    mockPost.mockResolvedValueOnce({
+      data: { data: { accessToken: 'AA', refreshToken: 'RR' }, statusCode: 201 },
+    });
+    const r = await connectProofChat();
+    expect(r).toEqual({ status: 'connected', alreadyHadSession: false });
+    expect(await getAccessToken()).toBe('AA');
+  });
+
+  it('đã có access token → connected, không gọi login lại', async () => {
+    store['proofchat_access_token'] = 'EXIST';
+    const r = await connectProofChat();
+    expect(r).toEqual({ status: 'connected', alreadyHadSession: true });
+    expect(mockPost).not.toHaveBeenCalled();
+  });
+
+  it('login lỗi → trạng thái error (không throw)', async () => {
+    await clearTokens();
+    mockGetPhoenixSession.mockResolvedValueOnce('phx-abc');
+    mockPost.mockRejectedValueOnce({
+      response: { status: 503, data: { message: 'PhoenixKey disabled' } },
+    });
+    const r = await connectProofChat();
+    expect(r.status).toBe('error');
+    if (r.status === 'error') expect(r.message).toBe('PhoenixKey disabled');
+  });
+
+  it('feature flag OFF → disabled, không gọi PhoenixKey/BE', async () => {
+    mockedFlag.mockReturnValueOnce(false);
+    const r = await connectProofChat();
+    expect(r).toEqual({ status: 'disabled' });
+    expect(mockGetPhoenixSession).not.toHaveBeenCalled();
+    expect(mockPost).not.toHaveBeenCalled();
+  });
+});

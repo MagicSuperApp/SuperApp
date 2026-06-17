@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Safe area margins for different screen types -->
+    <dimen name="top_safe_margin">48dp</dimen>
+    <dimen name="bottom_safe_margin">24dp</dimen>
+    <dimen name="horizontal_margin">16dp</dimen>
+    
+    <!-- Card padding -->
+    <dimen name="card_padding_horizontal">20dp</dimen>
+    <dimen name="card_padding_vertical">14dp</dimen>
+    
+    <!-- List padding -->
+    <dimen name="list_bottom_padding">100dp</dimen>
+    
+    <!-- Button sizes -->
+    <dimen name="button_height">48dp</dimen>
+    <dimen name="button_corner_radius">12dp</dimen>
+    
+    <!-- Text sizes -->
+    <dimen name="text_size_large">18sp</dimen>
+    <dimen name="text_size_medium">15sp</dimen>
+    <dimen name="text_size_small">12sp</dimen>
+</resources>

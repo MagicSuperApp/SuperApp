@@ -1,0 +1,40 @@
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <!-- ic_launcher_background defined in values/ic_launcher_background.xml — bumped to #1F5C1F for build 52 icon update. -->
+    <!-- DO NOT redefine here to avoid Gradle duplicate resource error. -->
+
+
+    <!-- App Theme Colors (Light Theme) -->
+    <color name="app_background">#FFFFFF</color>
+    <color name="app_surface">#F5F5F5</color>
+    <color name="app_primary">#4CD964</color>
+    <color name="app_primary_dark">#2E7D32</color>
+    <color name="app_on_primary">#FFFFFF</color>
+
+    <!-- Text Colors -->
+    <color name="text_primary">#121212</color>
+    <color name="text_secondary">#757575</color>
+    <color name="text_hint">#9E9E9E</color>
+    <color name="text_dark">#121212</color>
+
+    <!-- UI Elements -->
+    <color name="color_divider">#2A4230</color>
+    <color name="color_scan_overlay">#80000000</color>
+    <color name="color_card_white">#FFFFFF</color>
+
+    <!-- Legacy Mappings for Compatibility -->
+    <color name="colorPrimary">@color/app_primary</color>
+    <color name="colorSecondary">@color/app_surface</color>
+    <color name="colorPrimaryDark">@color/app_primary_dark</color>
+    <color name="colorAccent">@color/app_primary</color>
+    <color name="colorForestGreen">@color/app_background</color>
+    <color name="colorMint">@color/app_surface</color>
+    <color name="colorAmber">#FFC107</color>
+    <color name="colorEmerald">@color/app_primary_dark</color>
+    <color name="md_theme_primary">@color/app_primary</color>
+    <color name="md_theme_onPrimary">@color/app_on_primary</color>
+    <color name="md_theme_secondary">@color/text_secondary</color>
+    <color name="md_theme_background">@color/app_background</color>
+    <color name="md_theme_surface">@color/app_surface</color>
+</resources>

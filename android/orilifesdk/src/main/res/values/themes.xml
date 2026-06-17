@@ -1,0 +1,20 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Base application theme. -->
+    <style name="Theme.OriLife" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <!-- Primary brand color. -->
+        <item name="colorPrimary">@color/app_primary</item>
+        <item name="colorPrimaryVariant">@color/app_primary_dark</item>
+        <item name="colorOnPrimary">@color/app_on_primary</item>
+        <!-- Secondary brand color. -->
+        <item name="colorSecondary">@color/app_surface</item>
+        <item name="colorSecondaryVariant">@color/app_primary</item>
+        <item name="colorOnSecondary">@color/app_primary</item>
+        <!-- Status bar color. -->
+        <item name="android:statusBarColor">@color/app_background</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowBackground">@color/app_background</item>
+        <!-- Customize your theme here. -->
+        <item name="android:windowTranslucentStatus">false</item>
+        <item name="android:textColorPrimary">@color/text_primary</item>
+    </style>
+</resources>

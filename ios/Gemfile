@@ -1,0 +1,10 @@
+# Fastlane Gemfile — specify versions for CI reproducibility
+source "https://rubygems.org"
+
+gem "fastlane", "~> 2.220"
+gem "cocoapods", "~> 1.15"
+gem "pilot", "~> 2.120"
+gem "firebase_app_distribution", "~> 0.10"
+gem "credentials_manager", "~> 0.16"
+gem "slack-notifier", "~> 2.4"
+gem "xcpretty", "~> 0.3"

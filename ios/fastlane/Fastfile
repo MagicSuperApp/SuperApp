@@ -1,0 +1,205 @@
+# ============================================================
+# Fastlane — iOS Build & Sign for OriLife
+# ============================================================
+# Usage:
+#   cd ios && fastlane beta          # Build Ad Hoc IPA
+#   cd ios && fastlane testflight   # Build + upload TestFlight
+#   cd ios && fastlane simulator     # Build for Simulator
+# ============================================================
+
+platform :ios do
+
+  # ── Lane: Debug Simulator ────────────────────────────────────
+  desc "Build iOS app for Simulator (no code signing)"
+  lane :simulator do
+    setup_ci
+
+    # Create secrets.plist from environment
+    create_secrets_plist
+
+    # Ensure pods are installed
+    cocoapods(repo_update: true)
+
+    # Build for simulator
+    xcodebuild(
+      workspace: "aladin_mobile_fe.xcworkspace",
+      scheme: "aladin_mobile_fe",
+      configuration: "Debug",
+      destination: "generic/platform=iOS Simulator",
+      build_settings: {
+        "CODE_SIGNING_ALLOWED" => "NO",
+        "CODE_SIGNING_REQUIRED" => "NO"
+      },
+      buildlog_path: "../build_logs"
+    ) do |result|
+      if result[:result] == "SUCCESS"
+        puts "✅ Simulator build SUCCESS"
+        # Export to .app bundle
+        xcodebuild(
+          workspace: "aladin_mobile_fe.xcworkspace",
+          scheme: "aladin_mobile_fe",
+          configuration: "Debug",
+          destination: "generic/platform=iOS Simulator",
+          archive_path: "../build/ios-simulator/Build/Products",
+          archive: true
+        )
+      else
+        raise "❌ Simulator build FAILED"
+      end
+    end
+  end
+
+  # ── Lane: Beta (Ad Hoc / Enterprise) ────────────────────────
+  desc "Build Ad Hoc IPA for internal testing"
+  lane :beta do
+    setup_ci
+    setup_fastlane
+
+    create_secrets_plist
+
+    # Import certificates
+    import_certificate(
+      certificate_path: "../certs/distribution.p12",
+      certificate_password: ENV["CERTIFICATE_PASSWORD"],
+      keychain_path: KEYCHAIN_PATH,
+      keychain_password: KEYCHAIN_PASSWORD
+    )
+
+    # Install provisioning profile
+    install_provisioning_profile(path: "../profiles/#{ENV['PROFILE_NAME']}.mobileprovision")
+
+    cocoapods(repo_update: true)
+
+    # Build
+    xcodebuild(
+      workspace: "aladin_mobile_fe.xcworkspace",
+      scheme: "aladin_mobile_fe",
+      configuration: "Release",
+      export_method: "ad-hoc",
+      export_options: {
+        provisioningProfiles: {
+          ENV["BUNDLE_ID"] => ENV["PROFILE_NAME"]
+        }
+      },
+      output_path: "../build/ios",
+      buildlog_path: "../build_logs"
+    )
+
+    # Verify .ipa exists
+    ipa_path = "../build/ios/aladin_mobile_fe.ipa"
+    if File.exist?(ipa_path)
+      puts "✅ IPA created: #{ipa_path}"
+      sh("ls -lh #{ipa_path}")
+    else
+      raise "❌ IPA not found at #{ipa_path}"
+    end
+  end
+
+  # ── Lane: TestFlight ─────────────────────────────────────────
+  desc "Build and upload to TestFlight"
+  lane :testflight do
+    setup_ci
+    setup_fastlane
+
+    create_secrets_plist
+
+    import_certificate(
+      certificate_path: "../certs/distribution.p12",
+      certificate_password: ENV["CERTIFICATE_PASSWORD"],
+      keychain_path: KEYCHAIN_PATH,
+      keychain_password: KEYCHAIN_PASSWORD
+    )
+
+    install_provisioning_profile(path: "../profiles/#{ENV['PROFILE_NAME']}.mobileprovision")
+
+    cocoapods(repo_update: true)
+
+    # Build for App Store distribution
+    xcodebuild(
+      workspace: "aladin_mobile_fe.xcworkspace",
+      scheme: "aladin_mobile_fe",
+      configuration: "Release",
+      export_method: "app-store",
+      export_options: {
+        provisioningProfiles: {
+          ENV["BUNDLE_ID"] => ENV["PROFILE_NAME"]
+        }
+      },
+      output_path: "../build/ios",
+      buildlog_path: "../build_logs"
+    )
+
+    # Upload to TestFlight
+    pilot(
+      app_identifier: ENV["BUNDLE_ID"],
+      ipa: "../build/ios/aladin_mobile_fe.ipa",
+      skip_waiting_for_build_processing: false,
+      skip_submission: false
+    )
+  end
+
+  # ── Lane: Firebase Distribution ─────────────────────────────
+  desc "Build and upload to Firebase App Distribution"
+  lane :firebase do
+    setup_ci
+
+    create_secrets_plist
+
+    import_certificate(
+      certificate_path: "../certs/distribution.p12",
+      certificate_password: ENV["CERTIFICATE_PASSWORD"],
+      keychain_path: KEYCHAIN_PATH,
+      keychain_password: KEYCHAIN_PASSWORD
+    )
+
+    install_provisioning_profile(path: "../profiles/#{ENV['PROFILE_NAME']}.mobileprovision")
+
+    cocoapods(repo_update: true)
+
+    xcodebuild(
+      workspace: "aladin_mobile_fe.xcworkspace",
+      scheme: "aladin_mobile_fe",
+      configuration: "Release",
+      export_method: "ad-hoc",
+      export_options: {
+        provisioningProfiles: {
+          ENV["BUNDLE_ID"] => ENV["PROFILE_NAME"]
+        }
+      },
+      output_path: "../build/ios",
+      buildlog_path: "../build_logs"
+    )
+
+    firebase_app_distribution(
+      app: ENV["FIREBASE_APP_ID"],
+      ipa: "../build/ios/aladin_mobile_fe.ipa",
+      groups: ENV["FIREBASE_TESTER_GROUPS"] || "",
+      release_notes: ENV["RELEASE_NOTES"] || "Auto-build from CI"
+    )
+  end
+
+  # ── Internal: Create secrets.plist ───────────────────────────
+  private_lane :create_secrets_plist do
+    secrets_dir = "LocalPods/ScannerModule/Resources"
+    secrets_path = "#{secrets_dir}/secrets.plist"
+
+    plist_content = <<~PLIST
+      <?xml version="1.0" encoding="UTF-8"?>
+      <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+      <plist version="1.0">
+      <dict>
+          <key>TREE_DETECTION_API</key>
+          <string>#{ENV['TREE_DETECTION_API'] || 'https://test-string-url'}</string>
+          <key>API_KEY</key>
+          <string>#{ENV['API_KEY'] || ''}</string>
+          <key>AUTH_TOKEN</key>
+          <string>#{ENV['AUTH_TOKEN'] || ''}</string>
+      </dict>
+      </plist>
+    PLIST
+
+    File.write(secrets_path, plist_content)
+    puts "✅ Created: #{secrets_path}"
+  end
+
+end

@@ -1,0 +1,91 @@
+# === NỘI BỘ — KHÔNG PUSH ===
+# Bộ não trợ lý: trí nhớ, ràng buộc, nhiệm vụ, ghi chép.
+BRAIN/
+# Draft tin nhắn gửi team (chưa duyệt/chưa gửi).
+_team-messages/
+
+# === Token / secrets ===
+.env
+.env.*
+!.env.example
+!.env.*.example
+secrets.plist
+**/secrets.plist
+android/app/secrets.properties
+ios/**/APISecrets.swift
+
+# === OSX ===
+.DS_Store
+
+# === Xcode ===
+build/
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata
+*.xccheckout
+*.moved-aside
+DerivedData
+*.hmap
+*.ipa
+*.xcuserstate
+**/.xcode.env.local
+
+# === Android / IntelliJ ===
+.idea
+.gradle
+local.properties
+*.iml
+*.hprof
+.cxx/
+*.keystore
+!debug.keystore
+.kotlin/
+android/app/keySigning.bin
+android/app/*.keystore
+android/app/*.jks
+android/app/*.p12
+android/gradle.properties
+
+# === node.js ===
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# === CocoaPods / Ruby ===
+**/Pods/
+/vendor/bundle/
+
+# === Metro ===
+.metro-health-check*
+
+# === Testing ===
+/coverage
+
+# === Bundle artifacts ===
+*.jsbundle
+
+# === Logs / tmp ===
+*.log
+replay_pid*
+
+# === Yarn ===
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+
+# === Misc tooling ===
+.serena
+.mcp.json
+.claude/settings.local.json
+
+# Tạm loại CI workflow tới khi có token scope workflow (sửa CI cho SuperApp sau)
+.github/workflows/

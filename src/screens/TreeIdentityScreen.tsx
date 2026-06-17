@@ -34,7 +34,7 @@ import {
   requireNativeComponent,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import Geolocation from 'react-native-geolocation-service';
 
 import { COLORS } from '../constants';
@@ -115,9 +115,20 @@ const GUIDANCE = {
 // Screen
 // ---------------------------------------------------------------------------
 
+type TreeIdentityRouteParams = {
+  TreeIdentity: {
+    /** Vườn hiện-hành — truyền tiếp xuống TreeEnroll để gắn cây vào vườn. */
+    farmId?: string;
+  };
+};
+
 const TreeIdentityScreen: React.FC = () => {
   const navigation = useNavigation<any>();
+  const route = useRoute<RouteProp<TreeIdentityRouteParams, 'TreeIdentity'>>();
   const dispatch = useAppDispatch();
+
+  // Vườn hiện-hành (nếu mở từ ngữ-cảnh farm) — truyền tiếp xuống TreeEnroll.
+  const farmId = route.params?.farmId;
 
   // ── Redux state ───────────────────────────────────────────────────────────
   const capturesRedux = useAppSelector(selectCaptures);
@@ -433,6 +444,7 @@ const TreeIdentityScreen: React.FC = () => {
     if (id === 'new') {
       navigation.navigate('TreeEnroll', {
         androidImagePaths: Platform.OS === 'android' ? androidImageUris : undefined,
+        farmId,
       });
       return;
     }
@@ -460,6 +472,7 @@ const TreeIdentityScreen: React.FC = () => {
   const handleRegisterNew = () => {
     navigation.navigate('TreeEnroll', {
       androidImagePaths: Platform.OS === 'android' ? androidImageUris : undefined,
+      farmId,
     });
   };
 

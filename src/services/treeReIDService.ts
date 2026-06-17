@@ -86,6 +86,11 @@ export interface TreeInfo {
   n_views: number;
   has3d: boolean;
   anchor: string | null;
+  /** Mã cây công khai (PROV.code) — field-reid trả kèm ở /api/trees. */
+  code?: string | null;
+  /** [lat, lon] hoặc null — field-reid GAL.list_trees. */
+  gps?: [number, number] | null;
+  species?: string | null;
 }
 
 export interface TreeListResponse {
@@ -264,11 +269,16 @@ export async function enrollTree(
   name: string,
   imagePaths: string[],
   options: IdentifyOptions = {},
+  farmId?: string,
 ): Promise<{ ok: boolean; data?: EnrollResponse; error?: APIError }> {
   const form = new FormData();
 
   form.append('name', name);
   form.append('source', 'phone');
+
+  // Gắn cây vào vườn hiện-hành — nếu thiếu, backend gán farm_id=null và
+  // /api/trees?farm_id=X sẽ lọc bỏ cây (cây không hiện trong vườn nào).
+  if (farmId) form.append('farm_id', farmId);
 
   for (let i = 0; i < imagePaths.length; i++) {
     (form as any).append('files', { uri: imagePaths[i], type: 'image/jpeg', name: `img_${i}.jpg` });
@@ -302,12 +312,47 @@ export async function verifyAddTree(
 
 export async function getTrees(
   baseUrl: string,
+  farmId?: string,
 ): Promise<{ ok: boolean; trees?: TreeInfo[]; error?: APIError }> {
-  const result = await _apiCall<TreeListResponse>(`${baseUrl}/api/trees`, 'GET');
+  // Lọc theo vườn khi có farm_id (contract field-reid: GET /api/trees?farm_id=X).
+  const qs = farmId ? `?farm_id=${encodeURIComponent(farmId)}` : '';
+  const result = await _apiCall<TreeListResponse>(`${baseUrl}/api/trees${qs}`, 'GET');
   if (result.ok && result.data) {
     return { ok: true, trees: result.data.trees };
   }
   return { ok: false, error: result.error };
+}
+
+/**
+ * Map TreeInfo (field-reid) → shape mà UI/Redux farmSlice kỳ-vọng (Tree-like).
+ *
+ * Vì cây giờ đến TỪ field-reid, cờ 3D phải vào ĐÚNG field UI đọc.
+ * TreeCard (FarmDetailScreen) gate chip "Xem 3D" theo:
+ *   item.has_3d ?? item.has3DModel ?? item.latest_mesh_cid ?? item.meshCid
+ * → ta đặt `has_3d` = field-reid `has3d`. Sửa lỗi cũ "chip 3D không bao giờ
+ *   hiện vì cây đến từ Lợi" (Lợi không trả cờ 3D).
+ *
+ * gps field-reid là [lat, lon] → tách ra latitude/longitude cho dedup GPS + map.
+ */
+export function mapTreeInfoToUI(t: TreeInfo, farmId: string): any {
+  const gps = Array.isArray(t.gps) && t.gps.length >= 2 ? t.gps : null;
+  return {
+    id: t.tree_id,
+    farmId,
+    code: t.code ?? t.tree_id,
+    name: t.name,
+    farmer_name: t.name,
+    species: t.species ?? undefined,
+    latitude: gps ? gps[0] : undefined,
+    longitude: gps ? gps[1] : undefined,
+    images: [],
+    estimatedFruits: 0,
+    fruitCount: 0,
+    // Cờ 3D field-reid → field UI đang đọc (làm sáng chip "Xem 3D").
+    has_3d: !!t.has3d,
+    anchor: t.anchor ?? null,
+    n_views: t.n_views,
+  };
 }
 
 export async function deleteTree(

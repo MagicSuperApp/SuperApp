@@ -156,6 +156,8 @@ export const submitEnroll = createAsyncThunk(
       lon?: number;
       heading?: number;
       pitch?: number;
+      /** Vườn hiện-hành — gắn cây vào vườn (form farm_id) khi có. */
+      farmId?: string;
     },
     { rejectWithValue }
   ) => {
@@ -164,7 +166,7 @@ export const submitEnroll = createAsyncThunk(
       lon: params.lon,
       heading: params.heading,
       pitch: params.pitch,
-    });
+    }, params.farmId);
 
     if (!result.ok) {
       return rejectWithValue(result.error?.detail ?? 'Enrollment failed');

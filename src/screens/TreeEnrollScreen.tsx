@@ -77,6 +77,11 @@ type RouteParams = {
      * luồng native camera nên cần truyền trực tiếp.
      */
     androidImagePaths?: string[];
+    /**
+     * Vườn hiện-hành — gắn cây enroll vào vườn này (form farm_id).
+     * Thiếu farmId → cây không thuộc vườn nào, bị /api/trees?farm_id lọc bỏ.
+     */
+    farmId?: string;
   };
 };
 
@@ -125,6 +130,9 @@ const TreeEnrollScreen: React.FC = () => {
   // ── Derived values ────────────────────────────────────────────────────────
   const round1Captures = captures.filter(c => c.round === 1);
   const round2Captures = captures.filter(c => c.round === 2);
+
+  // Vườn hiện-hành (nếu mở từ ngữ-cảnh farm) — gắn cây enroll vào vườn.
+  const farmId = route.params?.farmId;
 
   // Android không dispatch vào Redux captures — lấy paths từ route params.
   // iOS dùng Redux captures như bình thường.
@@ -212,7 +220,7 @@ const TreeEnrollScreen: React.FC = () => {
         lon: gps?.lng,
         acc: gps?.accuracy,
         force: true,
-      });
+      }, farmId);
 
       if (res.ok && res.data) {
         setEnrollResult(res.data);
@@ -223,7 +231,7 @@ const TreeEnrollScreen: React.FC = () => {
     } finally {
       setIsEnrolling(false);
     }
-  }, [name, imagePaths, gps, handleSuccess]);
+  }, [name, imagePaths, gps, handleSuccess, farmId]);
 
   // ── Main enroll ───────────────────────────────────────────────────────────
   const handleEnroll = async () => {
@@ -246,7 +254,7 @@ const TreeEnrollScreen: React.FC = () => {
         lat: gps?.lat,
         lon: gps?.lng,
         acc: gps?.accuracy,
-      });
+      }, farmId);
 
       if (res.ok && res.data) {
         setEnrollResult(res.data);

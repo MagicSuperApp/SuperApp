@@ -190,8 +190,12 @@ export const RETRY_POLICY = {
 // ===== Feature Flags =====
 export const FEATURES = {
   ENABLE_OFFLINE_MODE: true,
-  ENABLE_MOCK_VERIFICATION: true, // Development only
+  ENABLE_MOCK_VERIFICATION: false, // chỉ bật khi dev — production KHÔNG mock xác minh
   ENABLE_DEBUG_OVERLAY: false,
   ENABLE_QUALITY_THRESHOLD: true,
   ENABLE_STABILITY_CHECK: true,
+  // Launch production = CHỈ lõi traceability (cây/quả/động-vật/care/3D — đều thật).
+  // Super-app (Trò chuyện/Việc làm) còn dùng mock-data, backend chưa dựng → ẩn.
+  // Bật lại = đổi cờ này thành true khi backend ProofChat/Work sẵn sàng.
+  ENABLE_SUPERAPP: false,
 } as const;

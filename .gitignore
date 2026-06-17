@@ -87,5 +87,3 @@ replay_pid*
 .mcp.json
 .claude/settings.local.json
 
-# Tạm loại CI workflow tới khi có token scope workflow (sửa CI cho SuperApp sau)
-.github/workflows/

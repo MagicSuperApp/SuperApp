@@ -1,0 +1,152 @@
+name: Android Signed AAB (SuperApp — Play Store)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'android/**'
+      - 'src/**'
+      - 'package.json'
+      - '.github/workflows/android-aab.yml'
+  workflow_dispatch:  # Manual trigger button
+
+jobs:
+  build-aab:
+    name: Build signed AAB for Play Store
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.11.0'
+          cache: 'npm'
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0 ndk;26.1.10909125'
+
+      - name: Install npm dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Verify Android secrets.properties
+        run: |
+          if [ ! -f android/app/secrets.properties ]; then
+            echo "::error::android/app/secrets.properties missing"
+            exit 1
+          fi
+          echo "✅ secrets.properties found"
+          grep -E "BASE_API_URL|API_KEY|REGION_CODE" android/app/secrets.properties || true
+
+      - name: Restore keystore from secret
+        env:
+          ORILIFE_UPLOAD_STORE_FILE_B64: ${{ secrets.ORILIFE_UPLOAD_STORE_FILE_B64 }}
+        run: |
+          if [ -z "$ORILIFE_UPLOAD_STORE_FILE_B64" ]; then
+            echo "::error::ORILIFE_UPLOAD_STORE_FILE_B64 secret not set"
+            echo "Setup: gh secret set ORILIFE_UPLOAD_STORE_FILE_B64 < /tmp/keysigning_base64.txt"
+            exit 1
+          fi
+          echo "$ORILIFE_UPLOAD_STORE_FILE_B64" | base64 -d > android/app/keySigning.bin
+          ls -lh android/app/keySigning.bin
+          echo "✅ Keystore restored ($(stat -c%s android/app/keySigning.bin) bytes)"
+
+      - name: Verify gradle.properties signing config
+        run: |
+          grep -E "ORILIFE_UPLOAD_STORE_FILE|ORILIFE_UPLOAD_KEY_ALIAS" android/gradle.properties || {
+            echo "::error::gradle.properties missing signing config"
+            exit 1
+          }
+          echo "✅ gradle.properties signing config present"
+
+      - name: Patch react-native-sqlite-storage build.gradle (remove jcenter)
+        run: |
+          # react-native-sqlite-storage uses legacy jcenter() which was removed
+          # in Gradle 9+. Replace with mavenCentral() to fix BUILD FAILED.
+          SQLITE_GRADLE="node_modules/react-native-sqlite-storage/platforms/android/build.gradle"
+          if [ -f "$SQLITE_GRADLE" ]; then
+            echo "Before patch:"
+            grep -n "jcenter\|mavenCentral\|google" "$SQLITE_GRADLE" | head -5
+            sed -i 's/jcenter()/mavenCentral()/g' "$SQLITE_GRADLE"
+            echo ""
+            echo "After patch:"
+            grep -n "jcenter\|mavenCentral\|google" "$SQLITE_GRADLE" | head -5
+            echo "✅ Patched react-native-sqlite-storage build.gradle"
+          else
+            echo "::warning::react-native-sqlite-storage gradle not found at $SQLITE_GRADLE (may have been removed in newer RN versions, skipping patch)"
+          fi
+
+      - name: Build signed AAB
+        env:
+          ORILIFE_UPLOAD_KEY_ALIAS: ${{ secrets.ORILIFE_UPLOAD_KEY_ALIAS }}
+          ORILIFE_UPLOAD_STORE_PASSWORD: ${{ secrets.ORILIFE_UPLOAD_STORE_PASSWORD }}
+          ORILIFE_UPLOAD_KEY_PASSWORD: ${{ secrets.ORILIFE_UPLOAD_KEY_PASSWORD }}
+        run: |
+          set -eo pipefail   # fail fast if gradle exit != 0 (don't let tee mask it)
+          cd android
+          chmod +x gradlew
+          ./gradlew bundleRelease \
+            -PORILIFE_UPLOAD_STORE_FILE=keySigning.bin \
+            -PORILIFE_UPLOAD_KEY_ALIAS="$ORILIFE_UPLOAD_KEY_ALIAS" \
+            -PORILIFE_UPLOAD_STORE_PASSWORD="$ORILIFE_UPLOAD_STORE_PASSWORD" \
+            -PORILIFE_UPLOAD_KEY_PASSWORD="$ORILIFE_UPLOAD_KEY_PASSWORD" \
+            --no-daemon \
+            --stacktrace \
+            2>&1 | tee android-release.log
+
+      - name: Locate AAB + Generate SHA256
+        id: aab-info
+        run: |
+          AAB_FILE=$(find android/app/build/outputs/bundle/release -name "*.aab" | head -1)
+          if [ -z "$AAB_FILE" ]; then
+            echo "::error::AAB not found in expected directory"
+            find android/app/build/outputs -type f | head -20
+            exit 1
+          fi
+          echo "✅ AAB: $AAB_FILE"
+          ls -lh "$AAB_FILE"
+
+          mkdir -p dist
+          cp "$AAB_FILE" dist/superapp-release.aab
+          shasum -a 256 dist/superapp-release.aab > dist/superapp-release.aab.sha256
+          cat dist/superapp-release.aab.sha256
+
+          # Output for downstream steps
+          echo "aab_path=dist/superapp-release.aab" >> $GITHUB_OUTPUT
+          echo "aab_size=$(stat -c%s dist/superapp-release.aab)" >> $GITHUB_OUTPUT
+
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: superapp-release-aab
+          path: |
+            dist/superapp-release.aab
+            dist/superapp-release.aab.sha256
+            android-release.log
+          retention-days: 30
+
+      - name: Build summary
+        run: |
+          echo "## Android AAB (SuperApp) — Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **File:** \`superapp-release.aab\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Size:** $(($(stat -c%s dist/superapp-release.aab) / 1024 / 1024)) MB" >> $GITHUB_STEP_SUMMARY
+          echo "- **SHA256:** $(cat dist/superapp-release.aab.sha256 | cut -d' ' -f1)" >> $GITHUB_STEP_SUMMARY
+          echo "- **versionCode:** $(grep versionCode android/app/build.gradle | grep -oE '[0-9]+')" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Next steps" >> $GITHUB_STEP_SUMMARY
+          echo "1. Download artifact \`superapp-release-aab\` (button at top right of this page)" >> $GITHUB_STEP_SUMMARY
+          echo "2. Upload \`.aab\` to Play Console → Production track → Create new release" >> $GITHUB_STEP_SUMMARY
+          echo "3. Click 'Send for Review' → Google review 1-7 days" >> $GITHUB_STEP_SUMMARY

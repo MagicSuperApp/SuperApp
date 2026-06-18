@@ -1,0 +1,122 @@
+name: Android Debug APK (SuperApp — sideload test)
+
+# APK debug để tải về cài thẳng máy thật mà test — KHÔNG cần Play Store,
+# KHÔNG cần keystore ký (dùng debug.keystore gradle tự sinh). Khác android-aab.yml (AAB ký).
+
+on:
+  push:
+    branches:
+      - dev
+      - feat/**
+    paths:
+      - 'android/**'
+      - 'src/**'
+      - 'package.json'
+      - '.github/workflows/debug-apk.yml'
+  workflow_dispatch:   # nút bấm build tay
+
+jobs:
+  build-debug-apk:
+    name: Build debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.11.0'
+          cache: 'npm'
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0 ndk;26.1.10909125'
+
+      - name: Install npm dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Create android/gradle.properties
+        run: |
+          cat > android/gradle.properties << 'EOF'
+          org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m
+          android.useAndroidX=true
+          reactNativeArchitectures=armeabi-v7a,arm64-v8a,x86,x86_64
+          newArchEnabled=true
+          hermesEnabled=true
+          edgeToEdgeEnabled=false
+          EOF
+          echo "gradle.properties created (JVM heap: 4096m)"
+
+      - name: Patch react-native-sqlite-storage (remove legacy buildscript + jcenter)
+        run: |
+          SQLITE_GRADLE="node_modules/react-native-sqlite-storage/platforms/android/build.gradle"
+          if [ -f "$SQLITE_GRADLE" ]; then
+            python3 -c "
+          path = 'node_modules/react-native-sqlite-storage/platforms/android/build.gradle'
+          with open(path) as f:
+              lines = f.readlines()
+          result, depth, skip = [], 0, False
+          for line in lines:
+              if not skip and line.strip().startswith('buildscript'):
+                  skip = True
+              if skip:
+                  depth += line.count('{') - line.count('}')
+                  if depth <= 0:
+                      skip = False
+                  continue
+              result.append(line)
+          with open(path, 'w') as f:
+              f.writelines(result)
+          print('Removed legacy buildscript block (gradle:3.1.4 → no OOM)')
+          "
+            echo "Patched react-native-sqlite-storage build.gradle"
+          else
+            echo "::warning::sqlite-storage gradle not found at $SQLITE_GRADLE, skipping"
+          fi
+
+      - name: Build debug APK
+        run: |
+          set -eo pipefail
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee android-debug.log
+
+      - name: Locate APK
+        id: apk-info
+        run: |
+          APK_FILE=$(find android/app/build/outputs/apk/debug -name "*.apk" | head -1)
+          if [ -z "$APK_FILE" ]; then
+            echo "::error::APK not found"
+            find android/app/build/outputs -type f | head -20
+            exit 1
+          fi
+          echo "✅ APK: $APK_FILE ($(stat -c%s "$APK_FILE") bytes)"
+          mkdir -p dist
+          cp "$APK_FILE" dist/superapp-debug.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: superapp-debug-apk
+          path: |
+            dist/superapp-debug.apk
+            android-debug.log
+          retention-days: 30
+
+      - name: Build summary
+        run: |
+          echo "## SuperApp Debug APK — tải về cài test" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "1. Tải artifact **superapp-debug-apk** (nút góc phải trên trang này)." >> $GITHUB_STEP_SUMMARY
+          echo "2. Giải nén, copy \`superapp-debug.apk\` sang điện thoại Android." >> $GITHUB_STEP_SUMMARY
+          echo "3. Bật 'Cài từ nguồn không xác định' → mở file APK để cài." >> $GITHUB_STEP_SUMMARY

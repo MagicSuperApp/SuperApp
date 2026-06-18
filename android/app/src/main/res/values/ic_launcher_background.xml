@@ -1,0 +1,4 @@
+<resources>
+  <!-- Build 52 (2026-05-18): dark forest green, matches iOS icon BG. -->
+  <color name="ic_launcher_background">#1F5C1F</color>
+</resources>

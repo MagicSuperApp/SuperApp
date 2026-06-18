@@ -1,0 +1,19 @@
+{
+  "$schema": "../billing.hooks.schema.json",
+  "moduleId": "magiclamp.trace",
+  "_note": "KHAI điểm đo phí (metering point) theo INTEGRATION-STANDARD §4.2 — chỉ { event, unit, valueBased }. KHÔNG công thức, KHÔNG giá, KHÔNG payment logic. Giá = PriceFn bên LAMP (estimateFeeUsd) + mức trong khoảng DAO-bound; cut→Treasury (KHÔNG burn). MAGIC network burn là tầng RIÊNG. Tên event khớp §7B / LAMP PlatformKit examples (orilife.ts + aladinwork.ts).",
+  "hooks": [
+    {
+      "event": "tree.identify",
+      "unit": "per_tree",
+      "valueBased": false,
+      "description": "ORL-04 định danh cây — phí phẳng mỗi cây. Tương ứng infra OriLife identify."
+    },
+    {
+      "event": "residue.test",
+      "unit": "per_test",
+      "valueBased": false,
+      "description": "ORL-05 kiểm dư lượng (lab) — phí phẳng mỗi lần test (đối chiếu MRL + neo)."
+    }
+  ]
+}

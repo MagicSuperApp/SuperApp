@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://magiclamp.network/schema/work.config.json",
+  "title": "Work Module Config",
+  "description": "Tham số admin (non-dev) tuỳ biến marketplace đặt việc, theo INTEGRATION-STANDARD §4.1. DECLARATIVE thuần (INV-SEC / QĐ-1): chỉ experience layer (INV-2), KHÔNG chạm data layer, KHÔNG biểu thức/template/ref-code. additionalProperties:false MỌI cấp; whitelist kiểu có min/max/maxLength/pattern. Escrow/dòng tiền = module SG5 riêng, KHÔNG khai ở config này.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "defaultRadiusKm": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 200,
+      "default": 20,
+      "description": "Bán kính (km) mặc định tìm việc/thợ quanh người dùng."
+    },
+    "requireJem": {
+      "type": "boolean",
+      "default": false,
+      "description": "Bắt buộc thợ có điểm uy tín Jem tối thiểu mới nhận việc. Tắt = mở cho thợ mới."
+    },
+    "minJemScore": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000,
+      "default": 0,
+      "description": "Ngưỡng Jem tối thiểu (chỉ áp dụng khi requireJem=true). Ngưỡng experience, KHÔNG ghi data."
+    },
+    "maxOpenJobsPerUser": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 200,
+      "default": 10,
+      "description": "Trần số tin tuyển dụng đang mở mỗi người dùng — chống spam listing."
+    },
+    "enabledJobCategories": {
+      "type": "array",
+      "uniqueItems": true,
+      "maxItems": 24,
+      "items": {
+        "type": "string",
+        "enum": ["farming", "harvest", "spraying", "construction", "logistics", "household", "skilled", "other"]
+      },
+      "default": ["farming", "harvest", "household", "other"],
+      "description": "Nhóm ngành nghề bật trong app. Array of enum literal — KHÔNG free-form."
+    },
+    "defaultProfile": {
+      "type": "string",
+      "enum": ["lowEnd", "rich"],
+      "default": "lowEnd",
+      "description": "Cực adaptive mặc định (§7.2). Auto-detect override được."
+    },
+    "showWorkerRatings": {
+      "type": "boolean",
+      "default": true,
+      "description": "Hiện điểm đánh giá thợ trên thẻ hồ sơ."
+    },
+    "jobBoardLabel": {
+      "type": "string",
+      "maxLength": 40,
+      "pattern": "^[\\p{L}\\p{N} ]+$",
+      "description": "Nhãn gọi 'bảng việc' tuỳ biến theo app. Chỉ chữ/số/khoảng trắng, chống inject."
+    }
+  }
+}

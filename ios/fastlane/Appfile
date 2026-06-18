@@ -1,0 +1,34 @@
+# ============================================================
+# Fastlane Appfile — iOS Configuration
+# ============================================================
+# Required environment variables:
+#   TREE_DETECTION_API   — API endpoint URL
+#   BUNDLE_ID            — App bundle identifier (com.aladin.orilife)
+#   APPLE_ID             — Your Apple Developer account email
+#   PROFILE_NAME         — Provisioning profile name
+#   CERTIFICATE_PASSWORD — .p12 certificate password
+# ============================================================
+
+# --- Credentials ---
+apple_id ENV["APPLE_ID"] || "dev@orilife.app"
+
+# --- Bundle & App ---
+bundle_identifier ENV["BUNDLE_ID"] || "com.aladin.orilife"
+
+# --- Code Signing ---
+# For manual signing (recommended for CI)
+import_certificate(
+  certificate_path: "./certs/distribution.p12",
+  certificate_password: ENV["CERTIFICATE_PASSWORD"]
+)
+
+# --- App Store Connect ---
+itc_team_id ENV["ITC_TEAM_ID"]   # App Store Connect Team ID
+team_id ENV["TEAM_ID"]           # Developer Portal Team ID
+
+# --- Pilot (TestFlight) ---
+app_identifier ENV["BUNDLE_ID"] || "com.aladin.orilife"
+
+# --- Keychain (for CI) ---
+keychain KEYCHAIN_PATH || "~/Library/Keychains/login.keychain-db"
+keychain_password ENV["KEYCHAIN_PASSWORD"] || ""

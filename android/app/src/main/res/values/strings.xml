@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Aladin</string>
+    <string name="scanner_title">Camera Scanner</string>
+    <string name="close">Close</string>
+    <string name="processing">Đang xử lý...</string>
+    <string name="please_wait">Vui lòng chờ</string>
+</resources>

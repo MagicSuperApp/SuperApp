@@ -250,6 +250,8 @@ const AccountScreen = () => {
     const chainWallet = useSelector(selectChainWallet);
     const network = useSelector((state: RootState) => state.user.network);
     const phoenixKey = useSelector((state: RootState) => state.user.phoenixKey);
+    // Địa-chỉ-2: khoá điều-khiển DID (quản-trị, KHÔNG giữ tài sản). null = chưa lấy được.
+    const controllerPkh = useSelector((state: RootState) => state.user.controllerPkh);
     const chatbotEnabled = useSelector((state: RootState) => state.chatbot.enabled);
     const dispatch = useAppDispatch();
 
@@ -502,6 +504,15 @@ const AccountScreen = () => {
                             value={did}
                             copyable mono
                         />
+                        {/* Địa-chỉ-2: khoá ĐIỀU-KHIỂN DID (quản-trị, KHÔNG giữ tài sản). Chỉ hiện khi backend trả về. */}
+                        {!!controllerPkh && (
+                            <InfoRow
+                                icon="key-outline"
+                                label="Khoá điều-khiển (quản-trị DID)"
+                                value={controllerPkh}
+                                copyable mono
+                            />
+                        )}
                         <InfoRow
                             icon="shield-key-outline"
                             label="Chuẩn khoá"

@@ -36,6 +36,9 @@ export interface IdentifyFactors {
 import type { FeeQuote } from '../types/fee';
 export type { FeeQuote };
 
+/** Băng tin-cậy THÔ (không lộ điểm số) — PoC-Tree §4 M2. */
+export type ConfidenceBand = 'cao' | 'vừa' | 'thấp';
+
 export interface IdentifyResponse {
   ok: boolean;
   decision: TreeDecision;
@@ -49,6 +52,13 @@ export interface IdentifyResponse {
   candidates: TreeCandidate[];
   moved_distance_m?: number;
   fee_quote?: FeeQuote;
+  /**
+   * ADDITIVE (Lợi PR #46): mã truy-vấn hex — GIỮ để gửi verdict.
+   * Không có khi backend cũ → verdict UI ẩn.
+   */
+  query_id?: string;
+  /** ADDITIVE (Lợi PR #46): băng tin-cậy thô (cao/vừa/thấp) — KHÔNG hiện điểm số. */
+  confidence?: ConfidenceBand;
 }
 
 export interface EnrollResponse {
@@ -186,10 +196,10 @@ async function _apiCall<T>(
       };
     }
 
-    if (resp.status === 422) {
+    if (resp.status === 400 || resp.status === 422) {
       let detail = 'Dữ liệu không hợp lệ';
       try { detail = (await resp.json()).detail ?? detail; } catch { /* bỏ qua */ }
-      return { ok: false, error: { type: 'validation_error', detail, http_status: 422 } };
+      return { ok: false, error: { type: 'validation_error', detail, http_status: resp.status } };
     }
 
     if (resp.status >= 500) {
@@ -229,6 +239,9 @@ async function _apiCall<T>(
 // Identify options
 // ---------------------------------------------------------------------------
 
+/** Matcher vỏ-thân (PoC-Tree §4 M4) — override ENV backend, CHỈ cho tester. */
+export type ShellMatcher = 'sift' | 'xfeat' | 'loftr';
+
 export interface IdentifyOptions {
   lat?: number;
   lon?: number;
@@ -237,6 +250,19 @@ export interface IdentifyOptions {
   pitch?: number;
   /** Khi true: bỏ qua kiểm tra trùng lặp, tạo cây mới bất kể. Dùng cho handleForceEnroll. */
   force?: boolean;
+  /**
+   * ADDITIVE (PoC-Tree §4 M4): ép matcher vỏ-thân (sift|xfeat|loftr) qua
+   * ?matcher=. Mặc-định KHÔNG gửi → backend dùng đường ENV. Chỉ tester bật.
+   */
+  matcher?: ShellMatcher;
+}
+
+export type IdentifyVerdict = 'correct' | 'wrong' | 'other';
+
+export interface IdentifyVerdictResponse {
+  ok: boolean;
+  query_id: string;
+  verdict: IdentifyVerdict;
 }
 
 // ---------------------------------------------------------------------------
@@ -261,7 +287,28 @@ export async function identifyTree(
   if (options.pitch !== undefined) form.append('pitch', String(options.pitch));
   form.append('source', 'phone');
 
-  return _apiCall<IdentifyResponse>(`${baseUrl}/api/identify`, 'POST', form);
+  // M4: chỉ nối ?matcher= khi tester ép — mặc-định để backend dùng ENV.
+  const qs = options.matcher ? `?matcher=${encodeURIComponent(options.matcher)}` : '';
+  return _apiCall<IdentifyResponse>(`${baseUrl}/api/identify${qs}`, 'POST', form);
+}
+
+/**
+ * submitIdentifyVerdict — gửi phán-quyết người dùng cho 1 lần identify (PoC-Tree §4 M3).
+ *
+ * POST /api/identify_verdict (form): query_id (bắt-buộc), verdict (bắt-buộc),
+ * correct_tid? (khi verdict='other', mã cây đúng lấy từ /api/trees).
+ * Auth Bearer (qua _apiCall). Trả { ok, query_id, verdict }; 400 nếu thiếu/sai.
+ */
+export async function submitIdentifyVerdict(
+  baseUrl: string,
+  params: { queryId: string; verdict: IdentifyVerdict; correctTid?: string },
+): Promise<{ ok: boolean; data?: IdentifyVerdictResponse; error?: APIError }> {
+  const form = new FormData();
+  form.append('query_id', params.queryId);
+  form.append('verdict', params.verdict);
+  if (params.correctTid) form.append('correct_tid', params.correctTid);
+
+  return _apiCall<IdentifyVerdictResponse>(`${baseUrl}/api/identify_verdict`, 'POST', form);
 }
 
 export async function enrollTree(

@@ -16,7 +16,7 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Provider, useSelector, useDispatch } from 'react-redux';
 import { store, RootState } from '../store';
-import { refreshWallet, resolveNetwork } from '../store/userSlice';
+import { refreshWallet, resolveNetwork, refreshControllerPkh } from '../store/userSlice';
 import Toast from 'react-native-toast-message';
 import NetInfo from '@react-native-community/netinfo';
 import { handleNavigationStateChange } from '../services/analytics';
@@ -230,6 +230,7 @@ const ProtectedMain = () => {
     if (did) {
       dispatch(refreshWallet(did));
       dispatch(resolveNetwork(did));
+      dispatch(refreshControllerPkh(did));
     }
   }, [dispatch, user]);
 

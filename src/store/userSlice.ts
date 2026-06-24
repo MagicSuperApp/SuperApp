@@ -36,6 +36,9 @@ interface UserState {
   phoenixKey: PhoenixKey | null;
   // Mạng Cardano THẬT theo danh tính (resolveNetwork). null = chưa rõ → UI dùng nhãn env.
   network: string | null;
+  // Khoá ĐIỀU-KHIỂN DID (controller pkh) = địa-chỉ-2, khoá QUẢN-TRỊ danh-tính, KHÔNG giữ tài sản
+  // (khác ví-seed giữ tiền ở `wallet.address`). null = chưa lấy được (refreshControllerPkh).
+  controllerPkh: string | null;
   isLoading: boolean;
   error: string | null;
 }
@@ -45,6 +48,7 @@ const initialState: UserState = {
   wallet: null,
   phoenixKey: null,
   network: null,
+  controllerPkh: null,
   isLoading: false,
   error: null,
 };
@@ -176,6 +180,23 @@ export const resolveNetwork = createAsyncThunk(
   }
 );
 
+/**
+ * Lấy KHOÁ ĐIỀU-KHIỂN DID (controller pkh) = ĐỊA-CHỈ-2: khoá QUẢN-TRỊ danh tính,
+ * KHÔNG giữ tài sản (khác ví-seed giữ tiền ở refreshWallet). Nguồn: /identity/{did}/status.
+ * Lỗi/offline → null (UI giữ "—", KHÔNG bịa) — cùng nguyên tắc refreshWallet/resolveNetwork.
+ */
+export const refreshControllerPkh = createAsyncThunk(
+  'user/refreshControllerPkh',
+  async (did: string) => {
+    try {
+      const status = await phoenixKeyApi.identity.getStatus(did);
+      return status.currentControllerPkh ?? null;
+    } catch {
+      return null;
+    }
+  }
+);
+
 export const loadPhoenixKey = createAsyncThunk(
   'user/loadPhoenixKey',
   async (userId: string) => {
@@ -207,6 +228,7 @@ const userSlice = createSlice({
       state.wallet = null;
       state.phoenixKey = null;
       state.network = null;
+      state.controllerPkh = null;   // audit #3: tránh rò khoá quản-trị sang tài-khoản kế
       state.error = null;
     },
     setLoading: (state, action: PayloadAction<boolean>) => {
@@ -240,6 +262,7 @@ const userSlice = createSlice({
         state.currentUser = action.payload.user;
         state.wallet = action.payload.wallet;
         state.phoenixKey = action.payload.phoenixKey;
+        state.controllerPkh = null;   // audit #3: xoá khoá quản-trị user cũ tới khi refreshControllerPkh(user mới) chạy
         state.isLoading = false;
         state.error = null;
       })
@@ -256,6 +279,7 @@ const userSlice = createSlice({
         state.wallet = null;
         state.phoenixKey = null;
         state.network = null;
+        state.controllerPkh = null;   // audit #3: tránh rò khoá quản-trị sang tài-khoản kế
         state.isLoading = false;
         state.error = null;
       })
@@ -285,6 +309,10 @@ const userSlice = createSlice({
       // Mạng theo danh tính thật — chỉ set khi resolve được, null thì giữ nguyên
       .addCase(resolveNetwork.fulfilled, (state, action) => {
         if (action.payload) state.network = action.payload;
+      })
+      // Khoá điều-khiển DID (địa-chỉ-2) — chỉ set khi lấy được, null thì giữ nguyên
+      .addCase(refreshControllerPkh.fulfilled, (state, action) => {
+        if (action.payload) state.controllerPkh = action.payload;
       });
   },
 });

@@ -7,6 +7,7 @@ import proofchatReducer from '../modules/proofchat/store/proofchatSlice';
 import syncReducer from './syncSlice';
 import chatbotReducer from './chatbotSlice';
 import treeReIDReducer from './treeReIDSlice';
+import phoenixWalletReducer from './phoenixWalletSlice';
 
 export const store = configureStore({
   reducer: {
@@ -16,6 +17,7 @@ export const store = configureStore({
     sync: syncReducer,
     chatbot: chatbotReducer,
     treeReID: treeReIDReducer,
+    phoenixWallet: phoenixWalletReducer,
   },
 });
 

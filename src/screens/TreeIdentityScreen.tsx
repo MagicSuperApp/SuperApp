@@ -176,6 +176,11 @@ const TreeIdentityScreen: React.FC = () => {
   // Android: captures tự quản lý cục bộ bằng mảng uri ảnh
   const [androidImageUris, setAndroidImageUris] = useState<string[]>([]);
 
+  // iOS: đếm capture từ native event (capturesRedux chỉ được điền SAU stop).
+  const [iosCaptureCount, setIosCaptureCount] = useState(0);
+  // Snapshot tổng-số-capture tại thời điểm advance sang lượt 2 → tính per-round.
+  const [iosRound1Snapshot, setIosRound1Snapshot] = useState(0);
+
   const geoWatchRef = useRef<number | null>(null);
 
   // ── GPS ───────────────────────────────────────────────────────────────────
@@ -255,8 +260,12 @@ const TreeIdentityScreen: React.FC = () => {
       setShouldCapture(e.shouldCapture);
     });
 
-    const unsubCapture = subscribeCaptureTriggered((_e: CaptureTriggered) => {
-      // capture event — native side đã lưu file
+    const unsubCapture = subscribeCaptureTriggered((e: CaptureTriggered) => {
+      // Native gửi 2 lần: lần đầu (trước save) totalCaptures=N-1, lần sau (sau save) totalCaptures=N.
+      // Lấy max để counter chỉ tăng, không lùi.
+      if (e.totalCaptures > 0) {
+        setIosCaptureCount(prev => Math.max(prev, e.totalCaptures));
+      }
     });
 
     const unsubRound = subscribeRoundComplete((e: RoundComplete) => {
@@ -286,10 +295,17 @@ const TreeIdentityScreen: React.FC = () => {
   }, []);
 
   // ── Derive local capture counts ───────────────────────────────────────────
-  const round1Count = capturesRedux.filter(c => c.round === 1).length;
-  const round2Count = capturesRedux.filter(c => c.round === 2).length;
+  // iOS: capturesRedux chỉ điền SAU stop session → dùng iosCaptureCount real-time.
+  //   round1Count  = iosCaptureCount khi đang lượt 1; khi sang lượt 2 = snapshot lúc advance.
+  //   round2Count  = iosCaptureCount - iosRound1Snapshot khi đang lượt 2.
+  const round1Count = Platform.OS === 'ios' && isCaptureActive
+    ? (currentRoundLocal === 1 ? iosCaptureCount : iosRound1Snapshot)
+    : capturesRedux.filter(c => c.round === 1).length;
+  const round2Count = Platform.OS === 'ios' && isCaptureActive
+    ? (currentRoundLocal === 2 ? iosCaptureCount - iosRound1Snapshot : 0)
+    : capturesRedux.filter(c => c.round === 2).length;
   const totalCaptures =
-    Platform.OS === 'ios' ? capturesRedux.length : androidImageUris.length;
+    Platform.OS === 'ios' ? iosCaptureCount : androidImageUris.length;
 
   // ── Guidance text ─────────────────────────────────────────────────────────
   const getGuidance = (): string => {
@@ -316,6 +332,8 @@ const TreeIdentityScreen: React.FC = () => {
     try {
       setIsLoading(true);
       dispatch(clearAll());
+      setIosCaptureCount(0);
+      setIosRound1Snapshot(0);
       const result = await TreeReIDBridge.startCaptureSession();
       setIsCaptureActive(true);
       setCurrentRoundLocal(result.round as 1 | 2);
@@ -332,6 +350,7 @@ const TreeIdentityScreen: React.FC = () => {
   // ── iOS: Advance to round 2 ───────────────────────────────────────────────
   const handleAdvanceToRound2 = async () => {
     try {
+      setIosRound1Snapshot(iosCaptureCount);  // snapshot round1 count trước khi advance
       const result = await TreeReIDBridge.advanceToRound2();
       const nextRound = (result.round as 1 | 2) ?? 2;
       setCurrentRoundLocal(nextRound);
@@ -513,6 +532,8 @@ const TreeIdentityScreen: React.FC = () => {
     setIdentResult(null);
     setShowFactors(false);
     setAndroidImageUris([]);
+    setIosCaptureCount(0);
+    setIosRound1Snapshot(0);
     setCurrentRoundLocal(1);
     setIsCaptureActive(false);
     setQueryId(null);

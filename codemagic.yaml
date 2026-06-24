@@ -1,0 +1,820 @@
+# ============================================================
+# Codemagic CI/CD — OriLife iOS & Android Build
+# ============================================================
+#
+# Stack:
+#   - React Native 0.84.1 (Metro bundle)
+#   - Swift 5.9 (ScannerModule: AVFoundation, YOLO TFLite, SQLite)
+#   - CocoaPods (TensorFlowLiteSwift ~2.17.0, SQLite.swift ~0.15.0)
+#   - Local pod: ios/LocalPods/ScannerModule
+#   - secrets.plist keys READ by native (ScannerConfig.swift):
+#       TREE_DETECTION_API  — base URL cho scanner module API calls
+#       API_KEY             — X-API-Key header
+#       REGION_CODE         — vùng xử lý
+#
+# Codemagic env groups cần có:
+#   scanner_secrets:
+#     TREE_DETECTION_API, BASE_API_URL, API_KEY, REGION_CODE
+#     FIREBASE_API_KEY, FIREBASE_PROJECT_ID, FIREBASE_MESSAGING_SENDER_ID,
+#     FIREBASE_APP_ID, FIREBASE_AUTH_DOMAIN
+#     PHOENIXKEY_API_URL, ORILIFE_API_BASE_URL, PHOENIX_WALLET_ENABLED
+#   android_signing (chỉ android-appstore-aab):
+#     ORILIFE_UPLOAD_STORE_FILE_B64, ORILIFE_UPLOAD_STORE_PASSWORD,
+#     ORILIFE_UPLOAD_KEY_ALIAS, ORILIFE_UPLOAD_KEY_PASSWORD
+#
+# iOS Code Signing (ios-appstore):
+#   Certificate : aladin-ios-cert  (production, upload Codemagic UI)
+#   Profile     : aladin_appstore_profile  (app_store, upload Codemagic UI)
+#   Bundle ID   : vn.aladinapp
+#   Team        : ALADIN CONTRACT COMPANY LIMITED (3666KPJX5R)
+# ============================================================
+
+workflows:
+
+  # ============================================================
+  # Workflow 1: iOS unsigned IPA — AltStore / Sideloadly
+  # ============================================================
+  ios-adhoc-ipa:
+    name: iOS IPA Build (Unsigned — AltStore/Sideloadly)
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+
+    environment:
+      node: 22.11.0
+      xcode: latest
+      cocoapods: default
+      groups:
+        - scanner_secrets
+      vars:
+        BUNDLE_ID: vn.aladinapp
+        XCODE_WORKSPACE: ios/aladin_mobile_fe.xcworkspace
+        XCODE_SCHEME: aladin_mobile_fe
+        ARCHIVE_PATH: $CM_BUILD_DIR/build/ios/OriLife.xcarchive
+        IPA_OUTPUT_DIR: $CM_BUILD_DIR/build/ios/ipa
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+        - pattern: 'feat/foundation'
+          include: true
+        - pattern: 'feat/*'
+          include: true
+      cancel_previous_builds: true
+
+    scripts:
+
+      - name: Verify GoogleService-Info.plist
+        script: |
+          GS_PLIST="ios/GoogleService-Info.plist"
+          echo "=== Checking GoogleService-Info.plist ==="
+          if [ ! -f "$GS_PLIST" ]; then
+            echo "❌ GoogleService-Info.plist NOT FOUND at ios/GoogleService-Info.plist"
+            exit 1
+          fi
+          if grep -q "API_KEY" "$GS_PLIST" && grep -q "PROJECT_ID" "$GS_PLIST"; then
+            echo "✅ Plist valid"
+            echo "--- PROJECT_ID: $(grep -A1 '<key>PROJECT_ID</key>' "$GS_PLIST" | grep '<string>' | head -1)"
+          else
+            echo "❌ Plist invalid or missing required keys"
+            cat "$GS_PLIST"
+            exit 1
+          fi
+
+      - name: Create firebase.json
+        script: |
+          PROJECT_ID=$(grep -A1 '<key>PROJECT_ID</key>' ios/GoogleService-Info.plist \
+            | grep -oP '(?<=<string>)[^<]+' | head -1)
+          printf '{"react-native":{"project_id":"%s"}}' "$PROJECT_ID" > ios/firebase.json
+          printf '{"react-native":{"project_id":"%s"}}' "$PROJECT_ID" > firebase.json
+          echo "✅ firebase.json: $PROJECT_ID"
+
+      # secrets.plist — chỉ 3 key mà ScannerConfig.swift thực sự đọc.
+      # Không thêm key thừa: LAMPNET_*, CAPTURES_3D_URL dùng .env phía RN.
+      - name: Create secrets.plist
+        script: |
+          SECRETS_DIR="ios/LocalPods/ScannerModule/Resources"
+          mkdir -p "$SECRETS_DIR"
+          cat > "$SECRETS_DIR/secrets.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <!-- ScannerConfig.swift: ScannerConfig.treeDetectionAPI / baseApiUrl -->
+              <key>TREE_DETECTION_API</key>
+              <string>${TREE_DETECTION_API:-https://staging-api.orilife.io}</string>
+
+              <!-- ScannerConfig.swift: ScannerConfig.apiKey (X-API-Key header) -->
+              <key>API_KEY</key>
+              <string>${API_KEY:-mock-local-api-key}</string>
+
+              <!-- ScannerConfig.swift: ScannerConfig.regionCode -->
+              <key>REGION_CODE</key>
+              <string>${REGION_CODE:-vn-south-01}</string>
+          </dict>
+          </plist>
+          EOF
+          echo "✅ secrets.plist created (3 keys: TREE_DETECTION_API, API_KEY, REGION_CODE)"
+          echo "   TREE_DETECTION_API=${TREE_DETECTION_API:-[USING STAGING FALLBACK]}"
+
+      # .env — tất cả vars mà React Native (react-native-dotenv) cần.
+      # Khớp với .env.example. ANALYTICS_API_URL dùng production endpoint (không có localhost).
+      - name: Create .env for React Native
+        script: |
+          cat > .env <<EOF
+          # Firebase
+          FIREBASE_API_KEY=${FIREBASE_API_KEY}
+          FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}
+          FIREBASE_MESSAGING_SENDER_ID=${FIREBASE_MESSAGING_SENDER_ID}
+          FIREBASE_APP_ID=${FIREBASE_APP_ID}
+          FIREBASE_AUTH_DOMAIN=${FIREBASE_AUTH_DOMAIN}
+
+          # Environment
+          ENV=production
+
+          # OriLife / Aladin backend
+          ALADIN_API_URL=${BASE_API_URL:-https://staging-api.orilife.io}
+          ALADIN_API_KEY=${API_KEY:-mock-local-api-key}
+          ALADIN_REGION_CODE=${REGION_CODE:-vn-south-01}
+
+          # PhoenixKey + Ví Phượng hoàng
+          PHOENIXKEY_API_URL=${PHOENIXKEY_API_URL:-https://api.phoenixkey.me/api/v1}
+          # false = backend Phase-2 chưa deploy, nút ký disable. Set true SAU khi backend sẵn sàng.
+          PHOENIX_WALLET_ENABLED=${PHOENIX_WALLET_ENABLED:-false}
+
+          # TreeReID / identify cây (RN layer)
+          ORILIFE_API_BASE_URL=${ORILIFE_API_BASE_URL:-https://test.orilife.io}
+          ORILIFE_TREEID_URL=${ORILIFE_TREEID_URL:-https://test.orilife.io/TreeIdentity}
+          ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://test.orilife.io}
+
+          # LampNet 3D
+          MESHAPI_USE_MOCK=false
+          LAMPNET_BASE_URL=${LAMPNET_BASE_URL:-https://lampnet.cloud}
+          LAMPNET_UPLOAD_URL=${LAMPNET_UPLOAD_URL:-https://lampnet.cloud/mirage/put?mode=symmetric}
+          CAPTURES_3D_URL=${CAPTURES_3D_URL:-https://staging-api.orilife.io/captures/3d}
+
+          # Analytics (production — không dùng localhost)
+          ANALYTICS_API_URL=${ANALYTICS_API_URL:-https://analytics.orilife.io}
+          ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-prod-analytics-key}
+          EOF
+          echo "✅ .env created"
+          echo "--- ALADIN_API_URL  : $(grep ALADIN_API_URL .env | head -1)"
+          echo "--- ORILIFE_API_BASE: $(grep ORILIFE_API_BASE_URL .env | head -1)"
+          echo "--- PHOENIX_WALLET  : $(grep PHOENIX_WALLET_ENABLED .env)"
+
+      - name: Verify .env file
+        script: |
+          echo "=== Verifying .env ==="
+          if [ ! -f .env ]; then
+            echo "❌ .env NOT FOUND"; exit 1
+          fi
+          # Chặn giá trị nguy hiểm
+          if grep -q "localhost" .env; then
+            echo "❌ .env chứa localhost — không dùng được trên device!"
+            grep "localhost" .env
+            exit 1
+          fi
+          # Kiểm tra URL hợp lệ: orilife.io hoặc lampnet.cloud
+          if grep -qE "(orilife\.io|lampnet\.cloud|phoenixkey\.me)" .env; then
+            echo "✅ .env chứa URL hợp lệ (orilife.io / lampnet.cloud / phoenixkey.me)"
+          else
+            echo "⚠️  Không tìm thấy URL orilife.io — kiểm tra biến môi trường Codemagic"
+          fi
+          # Kiểm tra Firebase
+          if grep -q "FIREBASE_API_KEY=" .env && ! grep -q "FIREBASE_API_KEY=$" .env; then
+            echo "✅ FIREBASE_API_KEY set"
+          else
+            echo "❌ FIREBASE_API_KEY trống — cần set trong group scanner_secrets"; exit 1
+          fi
+          echo "--- Content (API keys ẩn):"
+          grep -v "API_KEY\|PASSWORD\|TOKEN\|SECRET" .env
+
+      - name: Install npm dependencies
+        script: |
+          node --version && npm --version
+          npm install --legacy-peer-deps
+          echo "✅ npm install done"
+
+      - name: CocoaPods install
+        script: |
+          set -e
+          cd ios
+          rm -rf ~/Library/Caches/CocoaPods Pods Podfile.lock
+          pod install --repo-update
+          cd ..
+          echo "=== Workspace check ==="
+          FOUND_WS=$(find ios -maxdepth 2 -name "*.xcworkspace" -type d 2>/dev/null | head -1)
+          echo "workspace: ${FOUND_WS:-NOT FOUND}"
+          if [ -z "$FOUND_WS" ]; then
+            echo "❌ No xcworkspace!"; ls -la ios/; exit 1
+          fi
+
+      - name: Clean DerivedData & SPM
+        script: |
+          rm -rf ~/Library/Developer/Xcode/DerivedData
+          rm -rf ~/Library/Caches/org.swift.swiftpm
+          rm -rf ~/Library/Caches/com.apple.dt.Xcode/SwiftPM
+          rm -rf ios/aladin_mobile_fe.xcworkspace/xcshareddata/swiftpm/checkouts 2>/dev/null || true
+          echo "✅ DerivedData + SPM cleaned"
+
+      - name: Set NODE_BINARY
+        script: |
+          echo "export NODE_BINARY=$(which node)" > ios/.xcode.env.local
+          echo "NODE_BINARY=$(which node)"
+
+      - name: Build iOS Archive (unsigned)
+        script: |
+          mkdir -p "$(dirname "$ARCHIVE_PATH")"
+          rm -rf "$ARCHIVE_PATH"
+          mkdir -p "$IPA_OUTPUT_DIR"
+          WORKSPACE=$(find ios -maxdepth 2 -name "*.xcworkspace" -type d 2>/dev/null | head -1)
+          if [ -z "$WORKSPACE" ]; then
+            echo "❌ No xcworkspace"; exit 1
+          fi
+          echo "WORKSPACE : $WORKSPACE"
+          echo "SCHEME    : $XCODE_SCHEME"
+          echo "ARCHIVE   : $ARCHIVE_PATH"
+          LOG_FILE="$CM_BUILD_DIR/xcodebuild.log"
+
+          xcodebuild \
+            -workspace "$WORKSPACE" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$ARCHIVE_PATH" \
+            archive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_ENTITLEMENTS="" \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES \
+            ENABLE_SIGNATURE_AGGREGATION=NO \
+            SWIFT_VERSION=5.9 \
+            CLANG_SCAN_DEPS_ENABLE=NO \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            OTHER_CODE_SIGN_FLAGS="--ignore-non-resolved-imports" \
+            'OTHER_LDFLAGS=$(inherited) -ObjC -lc++' \
+            2>&1 | tee "$LOG_FILE"
+
+          BUILD_EXIT=${PIPESTATUS[0]}
+          if [ $BUILD_EXIT -ne 0 ]; then
+            echo "❌ xcodebuild FAILED (exit $BUILD_EXIT). Last 80 lines:"
+            tail -80 "$LOG_FILE"
+            exit $BUILD_EXIT
+          fi
+          echo "✅ Archive:"
+          ls -lhd "$ARCHIVE_PATH"
+
+      - name: Verify YOLO tflite model in app bundle
+        script: |
+          APP_PATH=$(find "$ARCHIVE_PATH/Products/Applications" -name "*.app" | head -1)
+          if find "$APP_PATH" -name "yolov26seg.tflite" 2>/dev/null | grep -q .; then
+            echo "✅ yolov26seg.tflite in bundle"
+            find "$APP_PATH" -name "yolov26seg.tflite" -exec ls -lh {} \;
+          else
+            echo "⚠️  yolov26seg.tflite NOT found — app có thể crash khi scan!"
+            find "$ARCHIVE_PATH" -name "*.tflite" -exec ls -lh {} \; 2>/dev/null || true
+          fi
+
+      - name: Verify GoogleService-Info.plist in app bundle
+        script: |
+          APP_PATH=$(find "$ARCHIVE_PATH/Products/Applications" -name "*.app" | head -1)
+          if [ -z "$APP_PATH" ]; then echo "❌ No .app!"; exit 1; fi
+          if [ -f "$APP_PATH/GoogleService-Info.plist" ]; then
+            echo "✅ GoogleService-Info.plist in bundle (autolink)"
+          else
+            echo "⚠️  Copying manually..."
+            cp "ios/GoogleService-Info.plist" "$APP_PATH/GoogleService-Info.plist"
+            echo "✅ Manual copy OK"
+          fi
+          grep -q "API_KEY" "$APP_PATH/GoogleService-Info.plist" \
+            && echo "✅ Plist valid" \
+            || { echo "❌ Plist invalid"; exit 1; }
+
+      - name: Package unsigned IPA
+        script: |
+          APP_PATH=$(find "$ARCHIVE_PATH/Products/Applications" -name "*.app" | head -1)
+          if [ -z "$APP_PATH" ]; then echo "❌ No .app!"; exit 1; fi
+
+          PAYLOAD_DIR="$IPA_OUTPUT_DIR/Payload"
+          rm -rf "$PAYLOAD_DIR"
+          mkdir -p "$PAYLOAD_DIR"
+          cp -r "$APP_PATH" "$PAYLOAD_DIR/"
+          IPA_NAME="OriLife-unsigned.ipa"
+          cd "$IPA_OUTPUT_DIR"
+          zip -r "$IPA_NAME" Payload/
+          rm -rf Payload/
+
+          echo "✅ IPA:"
+          ls -lh "$IPA_OUTPUT_DIR/$IPA_NAME"
+          zipinfo "$IPA_NAME" | grep -q "GoogleService-Info.plist" \
+            && echo "✅ IPA chứa GoogleService-Info.plist" \
+            || { echo "❌ IPA thiếu GoogleService-Info.plist"; exit 1; }
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - build/ios/OriLife.xcarchive/dSYMs/*.dSYM
+
+  # ============================================================
+  # Workflow 2: iOS App Store (Signed)
+  # ============================================================
+  ios-appstore:
+    name: iOS App Store Build (Signed)
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+
+    environment:
+      node: 22.11.0
+      xcode: latest
+      cocoapods: default
+      groups:
+        - scanner_secrets
+      vars:
+        BUNDLE_ID: vn.aladinapp
+        XCODE_SCHEME: aladin_mobile_fe
+        ARCHIVE_PATH: build/ios/OriLife.xcarchive
+        IPA_OUTPUT_DIR: build/ios/ipa
+        APPLE_TEAM_ID: 3666KPJX5R
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: vn.aladinapp
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+      cancel_previous_builds: true
+
+    scripts:
+
+      - name: Set up code signing
+        script: |
+          keychain initialize
+          keychain add-certificates
+          echo "=== Certificates ==="
+          security find-identity -v -p codesigning 2>/dev/null | head -10 || true
+          echo "✅ Keychain + cert OK"
+
+      - name: Verify GoogleService-Info.plist
+        script: |
+          GS_PLIST="ios/GoogleService-Info.plist"
+          [ ! -f "$GS_PLIST" ] && { echo "❌ GoogleService-Info.plist NOT FOUND"; exit 1; }
+          grep -q "API_KEY" "$GS_PLIST" && grep -q "PROJECT_ID" "$GS_PLIST" \
+            && echo "✅ Plist valid" \
+            || { echo "❌ Plist invalid"; exit 1; }
+
+      - name: Create firebase.json
+        script: |
+          PROJECT_ID=$(grep -A1 '<key>PROJECT_ID</key>' ios/GoogleService-Info.plist \
+            | grep -oP '(?<=<string>)[^<]+' | head -1)
+          printf '{"react-native":{"project_id":"%s"}}' "$PROJECT_ID" > ios/firebase.json
+          printf '{"react-native":{"project_id":"%s"}}' "$PROJECT_ID" > firebase.json
+          echo "✅ firebase.json: $PROJECT_ID"
+
+      - name: Create secrets.plist
+        script: |
+          SECRETS_DIR="ios/LocalPods/ScannerModule/Resources"
+          mkdir -p "$SECRETS_DIR"
+          cat > "$SECRETS_DIR/secrets.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>TREE_DETECTION_API</key>
+              <string>${TREE_DETECTION_API:-https://staging-api.orilife.io}</string>
+              <key>API_KEY</key>
+              <string>${API_KEY:-mock-local-api-key}</string>
+              <key>REGION_CODE</key>
+              <string>${REGION_CODE:-vn-south-01}</string>
+          </dict>
+          </plist>
+          EOF
+          echo "✅ secrets.plist (prod)"
+
+      - name: Create .env for React Native
+        script: |
+          cat > .env <<EOF
+          FIREBASE_API_KEY=${FIREBASE_API_KEY}
+          FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}
+          FIREBASE_MESSAGING_SENDER_ID=${FIREBASE_MESSAGING_SENDER_ID}
+          FIREBASE_APP_ID=${FIREBASE_APP_ID}
+          FIREBASE_AUTH_DOMAIN=${FIREBASE_AUTH_DOMAIN}
+          ENV=production
+          ALADIN_API_URL=${BASE_API_URL:-https://staging-api.orilife.io}
+          ALADIN_API_KEY=${API_KEY:-mock-local-api-key}
+          ALADIN_REGION_CODE=${REGION_CODE:-vn-south-01}
+          PHOENIXKEY_API_URL=${PHOENIXKEY_API_URL:-https://api.phoenixkey.me/api/v1}
+          PHOENIX_WALLET_ENABLED=${PHOENIX_WALLET_ENABLED:-false}
+          ORILIFE_API_BASE_URL=${ORILIFE_API_BASE_URL:-https://test.orilife.io}
+          ORILIFE_TREEID_URL=${ORILIFE_TREEID_URL:-https://test.orilife.io/TreeIdentity}
+          ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://test.orilife.io}
+          MESHAPI_USE_MOCK=false
+          LAMPNET_BASE_URL=${LAMPNET_BASE_URL:-https://lampnet.cloud}
+          LAMPNET_UPLOAD_URL=${LAMPNET_UPLOAD_URL:-https://lampnet.cloud/mirage/put?mode=symmetric}
+          CAPTURES_3D_URL=${CAPTURES_3D_URL:-https://staging-api.orilife.io/captures/3d}
+          ANALYTICS_API_URL=${ANALYTICS_API_URL:-https://analytics.orilife.io}
+          ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-prod-analytics-key}
+          EOF
+          echo "✅ .env (prod)"
+
+      - name: Disable NSAllowsArbitraryLoads (production)
+        script: |
+          /usr/libexec/PlistBuddy \
+            -c "Set :NSAppTransportSecurity:NSAllowsArbitraryLoads false" \
+            ios/aladin_mobile_fe/Info.plist || true
+          echo "✅ NSAllowsArbitraryLoads = false"
+
+      - name: Install npm dependencies
+        script: |
+          npm install --legacy-peer-deps
+
+      - name: CocoaPods install
+        script: |
+          set -e
+          cd ios
+          rm -rf ~/Library/Caches/CocoaPods Pods Podfile.lock
+          pod install --repo-update
+          cd ..
+
+      - name: Disable code signing for Pods targets
+        script: |
+          find ios/Pods -name '*.xcconfig' | xargs grep -l 'CODE_SIGN' | while read f; do
+            sed -i '' '/^CODE_SIGN_IDENTITY/d; /^CODE_SIGNING_REQUIRED/d; /^CODE_SIGNING_ALLOWED/d' "$f"
+          done
+          PODS_CONFIG_DIR="ios/Pods/Target Support Files"
+          find "$PODS_CONFIG_DIR" -name '*.xcconfig' | while read f; do
+            printf '\nCODE_SIGNING_ALLOWED=NO\nCODE_SIGNING_REQUIRED=NO\nCODE_SIGN_IDENTITY=\n' >> "$f"
+          done
+          echo "✅ Pods code signing disabled"
+
+      - name: Clean DerivedData & SPM
+        script: |
+          rm -rf ~/Library/Developer/Xcode/DerivedData
+          rm -rf ~/Library/Caches/org.swift.swiftpm
+          rm -rf ~/Library/Caches/com.apple.dt.Xcode
+          rm -rf ios/aladin_mobile_fe.xcworkspace/xcshareddata/swiftpm/checkouts 2>/dev/null || true
+          rm -rf ios/aladin_mobile_fe.xcworkspace/xcuserdata 2>/dev/null || true
+          echo "✅ DerivedData + SPM cleaned"
+
+      - name: Set NODE_BINARY
+        script: |
+          echo "export NODE_BINARY=$(which node)" > ios/.xcode.env.local
+
+      - name: Apply provisioning profiles
+        script: |
+          xcode-project use-profiles
+          echo "✅ Profiles applied"
+          ls ~/Library/MobileDevice/Provisioning\ Profiles/ 2>/dev/null | head -5 || true
+
+      - name: Patch Xcode Project — fix MapLibre signature conflict
+        script: |
+          cat > fix_signature.rb <<'RUBY'
+          require 'xcodeproj'
+          project = Xcodeproj::Project.open('ios/aladin_mobile_fe.xcodeproj')
+          target = project.targets.find { |t| t.name == 'aladin_mobile_fe' }
+          phase_name = 'Fix MapLibre Signature Bug'
+          unless target.shell_script_build_phases.find { |p| p.name == phase_name }
+            phase = project.new(Xcodeproj::Project::Object::PBXShellScriptBuildPhase)
+            phase.name = phase_name
+            phase.shell_script = 'find "$BUILD_DIR/${CONFIGURATION}-iphoneos" -name "*.signature" -delete 2>/dev/null || true'
+            target.build_phases << phase
+            project.save
+            puts "✅ Added '#{phase_name}'"
+          else
+            puts "✅ '#{phase_name}' already exists"
+          end
+          RUBY
+          ruby fix_signature.rb
+
+      # Tạo ExportOptions.plist nếu chưa tồn tại.
+      # File này cần thiết cho `xcodebuild -exportArchive`.
+      - name: Create ExportOptions.plist
+        script: |
+          mkdir -p ios
+          cat > ios/ExportOptions.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>destination</key>
+              <string>export</string>
+              <key>method</key>
+              <string>app-store</string>
+              <key>teamID</key>
+              <string>${APPLE_TEAM_ID}</string>
+              <key>uploadBitcode</key>
+              <false/>
+              <key>uploadSymbols</key>
+              <true/>
+              <key>signingStyle</key>
+              <string>manual</string>
+              <key>provisioningProfiles</key>
+              <dict>
+                  <key>vn.aladinapp</key>
+                  <string>aladin_appstore_profile</string>
+              </dict>
+          </dict>
+          </plist>
+          EOF
+          echo "✅ ExportOptions.plist created"
+          cat ios/ExportOptions.plist
+
+      - name: Build iOS Archive (signed)
+        script: |
+          mkdir -p "$(dirname "$ARCHIVE_PATH")"
+          rm -rf "$ARCHIVE_PATH"
+          mkdir -p "$IPA_OUTPUT_DIR"
+          WORKSPACE=$(find ios -maxdepth 2 -name "*.xcworkspace" -type d 2>/dev/null | head -1)
+          if [ -z "$WORKSPACE" ]; then
+            echo "❌ No xcworkspace"; ls -la ios/; exit 1
+          fi
+          LOG_FILE="$CM_BUILD_DIR/xcodebuild.log"
+
+          find ios/Pods -name "*.signature" -delete 2>/dev/null || true
+          find "$CM_BUILD_DIR/DerivedData" -name "*.signature" -delete 2>/dev/null || true
+
+          xcodebuild \
+            -workspace "$WORKSPACE" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$ARCHIVE_PATH" \
+            -derivedDataPath "$CM_BUILD_DIR/DerivedData" \
+            -clonedSourcePackagesDirPath "$CM_BUILD_DIR/SourcePackages" \
+            -skipPackagePluginValidation \
+            archive \
+            -allowProvisioningUpdates \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="iPhone Distribution" \
+            SWIFT_VERSION=5.9 \
+            CLANG_SCAN_DEPS_ENABLE=NO \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            'OTHER_LDFLAGS=$(inherited) -ObjC -lc++' \
+            2>&1 | tee "$LOG_FILE"
+
+          BUILD_EXIT=${PIPESTATUS[0]}
+          if [ $BUILD_EXIT -ne 0 ]; then
+            echo "❌ xcodebuild FAILED. Last 80 lines:"
+            tail -80 "$LOG_FILE"
+            exit $BUILD_EXIT
+          fi
+          echo "✅ Archive:"
+          ls -lhd "$ARCHIVE_PATH"
+
+      - name: Verify YOLO tflite in bundle
+        script: |
+          APP_PATH=$(find "$ARCHIVE_PATH/Products/Applications" -name "*.app" | head -1)
+          find "$APP_PATH" -name "yolov26seg.tflite" 2>/dev/null | grep -q . \
+            && echo "✅ yolov26seg.tflite OK" \
+            || echo "⚠️  yolov26seg.tflite NOT found — có thể crash khi scan!"
+
+      - name: Verify GoogleService-Info.plist in bundle
+        script: |
+          APP_PATH=$(find "$ARCHIVE_PATH/Products/Applications" -name "*.app" | head -1)
+          [ -z "$APP_PATH" ] && { echo "❌ No .app!"; exit 1; }
+          [ -f "$APP_PATH/GoogleService-Info.plist" ] \
+            || cp "ios/GoogleService-Info.plist" "$APP_PATH/GoogleService-Info.plist"
+          grep -q "API_KEY" "$APP_PATH/GoogleService-Info.plist" \
+            && echo "✅ Plist valid in bundle" \
+            || { echo "❌ Plist invalid"; exit 1; }
+
+      - name: Export signed IPA
+        script: |
+          xcodebuild \
+            -exportArchive \
+            -archivePath "$ARCHIVE_PATH" \
+            -exportPath "$IPA_OUTPUT_DIR" \
+            -exportOptionsPlist ios/ExportOptions.plist \
+            2>&1 | tee "$CM_BUILD_DIR/export.log"
+
+          EXPORT_EXIT=${PIPESTATUS[0]}
+          if [ $EXPORT_EXIT -eq 0 ]; then
+            echo "✅ IPA exported:"
+            ls -lh "$IPA_OUTPUT_DIR"/*.ipa
+          else
+            echo "❌ Export failed — last 40 lines:"
+            tail -40 "$CM_BUILD_DIR/export.log"
+            exit $EXPORT_EXIT
+          fi
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - build/ios/OriLife.xcarchive/dSYMs/*.dSYM
+
+    publishing:
+      app_store_connect:
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        key_id: 5JA4K7A7JD
+        issuer_id: e56d98f1-e6f0-4e46-9ca8-29b30c2a9a7b
+        submit_to_testflight: false
+        submit_to_app_store: true
+
+  # ============================================================
+  # Workflow 3: Android Debug APK — Demo / Direct Install
+  # ============================================================
+  android-debug-apk:
+    name: Android Debug APK (Demo + Direct Install)
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+
+    environment:
+      node: 22.11.0
+      java: 17
+      groups:
+        - scanner_secrets
+      vars:
+        APK_OUTPUT: $CM_BUILD_DIR/android/app/build/outputs/apk/debug
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+        - pattern: 'feat/foundation'
+          include: true
+        - pattern: 'feat/*'
+          include: true
+      cancel_previous_builds: true
+
+    scripts:
+      - name: Create .env for React Native
+        script: |
+          cat > .env <<EOF
+          FIREBASE_API_KEY=${FIREBASE_API_KEY}
+          FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}
+          FIREBASE_MESSAGING_SENDER_ID=${FIREBASE_MESSAGING_SENDER_ID}
+          FIREBASE_APP_ID=${FIREBASE_APP_ID}
+          FIREBASE_AUTH_DOMAIN=${FIREBASE_AUTH_DOMAIN}
+          ENV=production
+          ALADIN_API_URL=${BASE_API_URL:-https://staging-api.orilife.io}
+          ALADIN_API_KEY=${API_KEY:-mock-local-api-key}
+          ALADIN_REGION_CODE=${REGION_CODE:-vn-south-01}
+          PHOENIXKEY_API_URL=${PHOENIXKEY_API_URL:-https://api.phoenixkey.me/api/v1}
+          PHOENIX_WALLET_ENABLED=${PHOENIX_WALLET_ENABLED:-false}
+          ORILIFE_API_BASE_URL=${ORILIFE_API_BASE_URL:-https://test.orilife.io}
+          ORILIFE_TREEID_URL=${ORILIFE_TREEID_URL:-https://test.orilife.io/TreeIdentity}
+          ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://test.orilife.io}
+          MESHAPI_USE_MOCK=false
+          LAMPNET_BASE_URL=${LAMPNET_BASE_URL:-https://lampnet.cloud}
+          LAMPNET_UPLOAD_URL=${LAMPNET_UPLOAD_URL:-https://lampnet.cloud/mirage/put?mode=symmetric}
+          CAPTURES_3D_URL=${CAPTURES_3D_URL:-https://staging-api.orilife.io/captures/3d}
+          ANALYTICS_API_URL=${ANALYTICS_API_URL:-https://analytics.orilife.io}
+          ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-prod-analytics-key}
+          EOF
+          echo "✅ .env created"
+
+      - name: Install dependencies
+        script: |
+          npm install --legacy-peer-deps
+
+      - name: Verify Android secrets.properties
+        script: |
+          if [ ! -f android/app/secrets.properties ]; then
+            echo "❌ android/app/secrets.properties missing"
+            exit 1
+          fi
+          echo "✅ secrets.properties found"
+          grep -E "BASE_API_URL|API_KEY|REGION_CODE" android/app/secrets.properties
+
+      - name: Build debug APK
+        script: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon 2>&1 | tee "$CM_BUILD_DIR/android-debug.log"
+          BUILD_EXIT=${PIPESTATUS[0]}
+          if [ $BUILD_EXIT -ne 0 ]; then
+            echo "❌ Debug APK failed — last 60 lines:"
+            tail -60 "$CM_BUILD_DIR/android-debug.log"
+            exit $BUILD_EXIT
+          fi
+
+      - name: Locate + rename APK
+        script: |
+          APK_FILE=$(find android/app/build/outputs/apk -name "*.apk" | head -1)
+          if [ -z "$APK_FILE" ]; then
+            echo "❌ APK not found"
+            find android/app/build/outputs -type f
+            exit 1
+          fi
+          echo "✅ APK: $APK_FILE"
+          ls -lh "$APK_FILE"
+          mkdir -p $CM_BUILD_DIR/dist
+          cp "$APK_FILE" $CM_BUILD_DIR/dist/aladin-debug.apk
+          shasum -a 256 $CM_BUILD_DIR/dist/aladin-debug.apk
+
+    artifacts:
+      - dist/aladin-debug.apk
+      - android-debug.log
+
+
+  # ============================================================
+  # Workflow 4: Android Signed AAB — Play Store Internal Testing
+  # ============================================================
+  android-appstore-aab:
+    name: Android Signed AAB (Play Store Internal Testing)
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+
+    environment:
+      node: 22.11.0
+      java: 17
+      groups:
+        - scanner_secrets
+        - android_signing  # ORILIFE_UPLOAD_STORE_FILE_B64, passwords
+      vars:
+        AAB_OUTPUT: $CM_BUILD_DIR/android/app/build/outputs/bundle/release
+
+    triggering:
+      events: []  # Manual only — tránh build signed ngoài ý muốn
+
+    scripts:
+      - name: Create .env for React Native
+        script: |
+          cat > .env <<EOF
+          FIREBASE_API_KEY=${FIREBASE_API_KEY}
+          FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}
+          FIREBASE_MESSAGING_SENDER_ID=${FIREBASE_MESSAGING_SENDER_ID}
+          FIREBASE_APP_ID=${FIREBASE_APP_ID}
+          FIREBASE_AUTH_DOMAIN=${FIREBASE_AUTH_DOMAIN}
+          ENV=production
+          ALADIN_API_URL=${BASE_API_URL:-https://staging-api.orilife.io}
+          ALADIN_API_KEY=${API_KEY:-mock-local-api-key}
+          ALADIN_REGION_CODE=${REGION_CODE:-vn-south-01}
+          PHOENIXKEY_API_URL=${PHOENIXKEY_API_URL:-https://api.phoenixkey.me/api/v1}
+          PHOENIX_WALLET_ENABLED=${PHOENIX_WALLET_ENABLED:-false}
+          ORILIFE_API_BASE_URL=${ORILIFE_API_BASE_URL:-https://test.orilife.io}
+          ORILIFE_TREEID_URL=${ORILIFE_TREEID_URL:-https://test.orilife.io/TreeIdentity}
+          ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://test.orilife.io}
+          MESHAPI_USE_MOCK=false
+          LAMPNET_BASE_URL=${LAMPNET_BASE_URL:-https://lampnet.cloud}
+          LAMPNET_UPLOAD_URL=${LAMPNET_UPLOAD_URL:-https://lampnet.cloud/mirage/put?mode=symmetric}
+          CAPTURES_3D_URL=${CAPTURES_3D_URL:-https://staging-api.orilife.io/captures/3d}
+          ANALYTICS_API_URL=${ANALYTICS_API_URL:-https://analytics.orilife.io}
+          ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-prod-analytics-key}
+          EOF
+          echo "✅ .env (release)"
+
+      - name: Install dependencies
+        script: |
+          npm install --legacy-peer-deps
+
+      - name: Restore keystore from encrypted env
+        script: |
+          if [ -z "$ORILIFE_UPLOAD_STORE_FILE_B64" ]; then
+            echo "❌ ORILIFE_UPLOAD_STORE_FILE_B64 chưa set trong group android_signing"
+            echo "   base64 -i keySigning.bin | pbcopy → paste vào Codemagic"
+            exit 1
+          fi
+          echo "$ORILIFE_UPLOAD_STORE_FILE_B64" | base64 -d > android/app/keySigning.bin
+          ls -lh android/app/keySigning.bin
+          echo "✅ Keystore restored"
+
+      - name: Verify gradle.properties signing config
+        script: |
+          grep -E "ORILIFE_UPLOAD_STORE_FILE|ORILIFE_UPLOAD_KEY_ALIAS" android/gradle.properties \
+            || { echo "❌ gradle.properties thiếu signing config"; exit 1; }
+          echo "✅ gradle.properties signing OK"
+
+      - name: Build signed AAB
+        script: |
+          cd android
+          chmod +x gradlew
+          ./gradlew bundleRelease --no-daemon 2>&1 | tee "$CM_BUILD_DIR/android-release.log"
+          BUILD_EXIT=${PIPESTATUS[0]}
+          if [ $BUILD_EXIT -ne 0 ]; then
+            echo "❌ AAB failed — last 60 lines:"
+            tail -60 "$CM_BUILD_DIR/android-release.log"
+            exit $BUILD_EXIT
+          fi
+
+      - name: Locate + verify AAB
+        script: |
+          AAB_FILE=$(find android/app/build/outputs/bundle/release -name "*.aab" | head -1)
+          if [ -z "$AAB_FILE" ]; then
+            echo "❌ AAB not found"
+            find android/app/build/outputs -type f
+            exit 1
+          fi
+          echo "✅ AAB: $AAB_FILE"
+          ls -lh "$AAB_FILE"
+          mkdir -p $CM_BUILD_DIR/dist
+          cp "$AAB_FILE" $CM_BUILD_DIR/dist/aladin-release.aab
+          shasum -a 256 $CM_BUILD_DIR/dist/aladin-release.aab
+
+    artifacts:
+      - dist/aladin-release.aab
+      - android-release.log
+
+    publishing:
+      google_play:
+        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+        track: internal
+        submit_as_draft: true

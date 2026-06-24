@@ -454,6 +454,29 @@ const TreeIdentityScreen: React.FC = () => {
     setQueryId(null);
     setVerdictSent(null);
     rLog.treeIdentity.apiStart(imagePaths.length, gpsRedux?.lat, gpsRedux?.lng);
+
+    // ── DIAGNOSTIC: phân biệt "host unreachable" vs "file không đọc được" ──
+    // Cả hai đều ném "TypeError: Network request failed" nên cần probe tách bạch.
+    // 1) Kiểm tra từng file ảnh có đọc được không (RN đọc file để build multipart).
+    await Promise.all(
+      imagePaths.map(async (uri, i) => {
+        try {
+          const r = await fetch(uri);
+          const blob = await r.blob();
+          rLog.treeIdentity.fileCheck(i, uri, true, blob.size);
+        } catch (fe: any) {
+          rLog.treeIdentity.fileCheck(i, uri, false, 0, fe?.message ?? String(fe));
+        }
+      }),
+    );
+    // 2) Probe reachability của backend (GET base url, không cần auth).
+    try {
+      const probe = await fetch(BASE_URL, { method: 'GET' });
+      rLog.treeIdentity.reachProbe(BASE_URL, true, probe.status);
+    } catch (pe: any) {
+      rLog.treeIdentity.reachProbe(BASE_URL, false, 0, pe?.message ?? String(pe));
+    }
+
     try {
       const result = await identifyTree(BASE_URL, imagePaths, {
         lat: gpsRedux?.lat,

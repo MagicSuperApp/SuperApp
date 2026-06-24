@@ -118,6 +118,33 @@ const rLog = {
       });
     },
 
+    /**
+     * Probe reachability của backend identify TRƯỚC khi upload multipart.
+     * Phân biệt "device không tới host" vs "RN không đọc được file ảnh"
+     * (cả hai đều ném cùng message "Network request failed").
+     *  - ok=true  → host tới được → nếu identify vẫn fail thì do file/upload.
+     *  - ok=false → host KHÔNG tới được → lỗi mạng/tunnel/DNS phía device.
+     */
+    reachProbe(baseUrl: string, ok: boolean, status: number, err?: string): void {
+      send('tree_identity_reach_probe', {
+        baseUrl,
+        ok,
+        status,
+        err: err ?? null,
+      }, ok ? 'info' : 'error');
+    },
+
+    /** Log từng file ảnh sẽ upload (uri + đọc được hay không + size). */
+    fileCheck(index: number, uri: string, exists: boolean, size: number, err?: string): void {
+      send('tree_identity_file_check', {
+        index,
+        uri,
+        exists,
+        size,
+        err: err ?? null,
+      }, exists ? 'info' : 'error');
+    },
+
     apiResult(
       status: string,
       confidence: string | null,

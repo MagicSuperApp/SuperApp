@@ -77,6 +77,24 @@ enum ScannerConfig {
         APISecrets.apiKey
     }
 
+    // MARK: - API Client Factories
+
+    static func createVerifyAPI() -> VerifyAPI {
+        VerifyAPI(baseUrl: treeDetectionAPI, apiKey: apiKey)
+    }
+
+    static func createEvidenceAPI() -> EvidenceAPI {
+        EvidenceAPI(baseUrl: treeDetectionAPI, apiKey: apiKey)
+    }
+
+    static func createTreeAPI() -> TreeAPI {
+        TreeAPI(baseUrl: treeDetectionAPI, apiKey: apiKey)
+    }
+
+    static func createFarmAPI() -> FarmAPI {
+        FarmAPI(baseUrl: treeDetectionAPI, apiKey: apiKey)
+    }
+
     // MARK: - Confidence Thresholds
     static let yoloConfidenceThreshold: Float = 0.25  // Keep original for other flows
     static let arOverlayConfidenceThreshold: Float = 0.60  // Increased from 0.55 for more stable overlay

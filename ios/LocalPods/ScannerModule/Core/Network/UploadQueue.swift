@@ -435,7 +435,7 @@ final class UploadQueue {
         var usedExistingTree = false
         var createdNewTree = false
         do {
-            let verifyAPI = APISecrets.createVerifyAPI()
+            let verifyAPI = ScannerConfig.createVerifyAPI()
 
             print("[UploadQueue] 🔍 VERIFY_START: id=\(item.id), treeId=\(item.treeId)")
             let verifyResponse = try await verifyAPI.verify(
@@ -558,7 +558,7 @@ final class UploadQueue {
 
         // ── STEP 3: INGEST with correct tree_id ────────────────────────────
         do {
-            let evidenceAPI = APISecrets.createEvidenceAPI()
+            let evidenceAPI = ScannerConfig.createEvidenceAPI()
 
             let response = try await evidenceAPI.ingest(
                 treeId: finalTreeId,  // ⭐️ Use verified tree_id
@@ -612,10 +612,10 @@ final class UploadQueue {
     // Kept for reference only - not called anymore
 
     private func createTreeIfNeeded(treeId: String, farmId: String, latitude: Double, longitude: Double) async throws {
-        let treeAPI = APISecrets.createTreeAPI()
+        let treeAPI = ScannerConfig.createTreeAPI()
         let request = TreeCreateRequest(
             id: treeId,
-            regionCode: APISecrets.regionCode,
+            regionCode: ScannerConfig.regionCode,
             farmId: farmId.isEmpty ? "unknown" : farmId,
             geohash7: calculateGeohash(latitude: latitude, longitude: longitude),
             latitude: latitude,

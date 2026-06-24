@@ -1719,7 +1719,7 @@ final class DetectionCoordinator: NSObject {
     private func verifyAndCreateTree(verifyImage: UIImage, deviceId: String) async -> Bool {
         do {
             // Build verify request
-            let verifyAPI = APISecrets.createVerifyAPI()
+            let verifyAPI = ScannerConfig.createVerifyAPI()
             let snapshot = motionManager.getSnapshot()
 
             let timeSeries = TimeSeriesData(
@@ -1953,10 +1953,10 @@ final class DetectionCoordinator: NSObject {
         print("[DetectionCoordinator] 🌳 Creating session tree on server: \(currentSessionTreeId)")
         ScannerRemoteLog.breadcrumb(phase: "create_session_tree_start", detail: ["treeId": currentSessionTreeId])
 
-        let treeAPI = APISecrets.createTreeAPI()
+        let treeAPI = ScannerConfig.createTreeAPI()
         let treeRequest = TreeCreateRequest(
             id: currentSessionTreeId,
-            regionCode: APISecrets.regionCode,
+            regionCode: ScannerConfig.regionCode,
             farmId: farmId,
             geohash7: calculateGeohash(latitude: latestLocation?.coordinate.latitude, longitude: latestLocation?.coordinate.longitude),
             latitude: latestLocation?.coordinate.latitude,

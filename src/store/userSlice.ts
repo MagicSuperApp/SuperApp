@@ -228,6 +228,7 @@ const userSlice = createSlice({
       state.wallet = null;
       state.phoenixKey = null;
       state.network = null;
+      state.controllerPkh = null;   // audit #3: tránh rò khoá quản-trị sang tài-khoản kế
       state.error = null;
     },
     setLoading: (state, action: PayloadAction<boolean>) => {
@@ -261,6 +262,7 @@ const userSlice = createSlice({
         state.currentUser = action.payload.user;
         state.wallet = action.payload.wallet;
         state.phoenixKey = action.payload.phoenixKey;
+        state.controllerPkh = null;   // audit #3: xoá khoá quản-trị user cũ tới khi refreshControllerPkh(user mới) chạy
         state.isLoading = false;
         state.error = null;
       })
@@ -277,6 +279,7 @@ const userSlice = createSlice({
         state.wallet = null;
         state.phoenixKey = null;
         state.network = null;
+        state.controllerPkh = null;   // audit #3: tránh rò khoá quản-trị sang tài-khoản kế
         state.isLoading = false;
         state.error = null;
       })

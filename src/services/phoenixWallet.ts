@@ -122,11 +122,12 @@ const resolveSignNetwork = (
   did: string | null,
   fromBuild: string | undefined,
 ): string => {
-  const fromDid = parseDidNetwork(did);
-  if (fromDid) return fromDid;
-  if (fromBuild) return fromBuild;
+  const raw = parseDidNetwork(did) ?? fromBuild;
   // Không xác định được mạng → KHÔNG ký (an-toàn hơn đoán).
-  throw new NetworkNotAllowedError('unknown');
+  if (!raw) throw new NetworkNotAllowedError('unknown');
+  // audit #5: chuẩn-hoá hoa/thường (backend có thể khai "Preprod"/"MAINNET") → guard so
+  // khớp set + thông-điệp lỗi mainnet đúng. Vẫn fail-closed nếu mạng lạ.
+  return raw.trim().toLowerCase();
 };
 
 /**

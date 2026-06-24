@@ -123,6 +123,10 @@ workflows:
           ANALYTICS_API_URL=${ANALYTICS_API_URL:-https://analytics.orilife.io}
           ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-prod-analytics-key}
           EOF
+          # Dọn whitespace lạc (tab/space) mà biến môi trường Codemagic có thể dính
+          # vào value khi paste — nếu không, URL như "\thttps://..." sẽ làm fetch ném
+          # "Network request failed" trên device. Cắt khoảng trắng sau '=' và cuối dòng.
+          perl -i -pe 's/^(\w+)=[ \t]+/$1=/; s/[ \t]+$//' .env
           echo "✅ .env created"
           echo "--- ALADIN_API_URL  : $(grep ALADIN_API_URL .env | head -1)"
           echo "--- ORILIFE_API_BASE: $(grep ORILIFE_API_BASE_URL .env | head -1)"
@@ -138,6 +142,12 @@ workflows:
           if grep -v "^#" .env | grep -q "localhost"; then
             echo "❌ .env chứa localhost — không dùng được trên device!"
             grep -v "^#" .env | grep "localhost"
+            exit 1
+          fi
+          # Chặn whitespace lạc trong value (vd "KEY=\thttps://...") — sẽ làm
+          # fetch ném "Network request failed" trên device. Đáng lẽ đã được perl dọn.
+          if grep -nE '^[A-Za-z_][A-Za-z0-9_]*=[[:space:]]' .env; then
+            echo "❌ .env còn whitespace ngay sau '=' — kiểm tra biến môi trường Codemagic"
             exit 1
           fi
           # Kiểm tra URL hợp lệ: orilife.io hoặc lampnet.cloud
@@ -355,6 +365,8 @@ workflows:
           ANALYTICS_API_URL=${ANALYTICS_API_URL:-https://analytics.orilife.io}
           ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-prod-analytics-key}
           EOF
+          # Dọn whitespace lạc (tab/space) trong value biến môi trường Codemagic.
+          perl -i -pe 's/^(\w+)=[ \t]+/$1=/; s/[ \t]+$//' .env
           echo "✅ .env (prod)"
 
       - name: Disable NSAllowsArbitraryLoads (production)
@@ -590,6 +602,8 @@ workflows:
           ANALYTICS_API_URL=${ANALYTICS_API_URL:-https://analytics.orilife.io}
           ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-prod-analytics-key}
           EOF
+          # Dọn whitespace lạc (tab/space) trong value biến môi trường Codemagic.
+          perl -i -pe 's/^(\w+)=[ \t]+/$1=/; s/[ \t]+$//' .env
           echo "✅ .env created"
 
       - name: Install dependencies
@@ -677,6 +691,8 @@ workflows:
           ANALYTICS_API_URL=${ANALYTICS_API_URL:-https://analytics.orilife.io}
           ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-prod-analytics-key}
           EOF
+          # Dọn whitespace lạc (tab/space) trong value biến môi trường Codemagic.
+          perl -i -pe 's/^(\w+)=[ \t]+/$1=/; s/[ \t]+$//' .env
           echo "✅ .env (release)"
 
       - name: Install dependencies

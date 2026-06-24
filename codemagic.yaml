@@ -155,7 +155,6 @@ workflows:
           LAMPNET_UPLOAD_URL=${LAMPNET_UPLOAD_URL:-https://lampnet.cloud/mirage/put?mode=symmetric}
           CAPTURES_3D_URL=${CAPTURES_3D_URL:-https://staging-api.orilife.io/captures/3d}
 
-          # Analytics (production — không dùng localhost)
           ANALYTICS_API_URL=${ANALYTICS_API_URL:-https://analytics.orilife.io}
           ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-prod-analytics-key}
           EOF
@@ -170,10 +169,10 @@ workflows:
           if [ ! -f .env ]; then
             echo "❌ .env NOT FOUND"; exit 1
           fi
-          # Chặn giá trị nguy hiểm
-          if grep -q "localhost" .env; then
+          # Chặn giá trị nguy hiểm (bỏ qua comment lines)
+          if grep -v "^#" .env | grep -q "localhost"; then
             echo "❌ .env chứa localhost — không dùng được trên device!"
-            grep "localhost" .env
+            grep -v "^#" .env | grep "localhost"
             exit 1
           fi
           # Kiểm tra URL hợp lệ: orilife.io hoặc lampnet.cloud

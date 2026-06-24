@@ -212,7 +212,11 @@ final class CameraSessionManager: NSObject {
         } else {
             photo.isHighResolutionCaptureEnabled = true
         }
-        // maxPhotoQualityPrioritization deprecated in iOS 17 — omit to use system default
+        // CRITICAL: must raise maxPhotoQualityPrioritization to .quality BEFORE any
+        // capture requests .quality. The default is .balanced; requesting a higher
+        // priority in AVCapturePhotoSettings than this max throws NSInvalidArgumentException
+        // synchronously inside capturePhoto(with:delegate:) → hard crash.
+        photo.maxPhotoQualityPrioritization = .quality
 
         if captureSession.canAddOutput(photo) {
             captureSession.addOutput(photo)

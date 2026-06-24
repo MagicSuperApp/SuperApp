@@ -153,7 +153,12 @@ workflows:
         script: |
           set -e
           node --version && npm --version
-          npm install --legacy-peer-deps
+          # --ignore-scripts: bỏ qua postinstall-postinstall (nó gọi `yarn run postinstall`
+          # nhưng Codemagic có Yarn Berry → fail vì project không phải Yarn Berry workspace)
+          npm install --legacy-peer-deps --ignore-scripts
+          npx patch-package --error-on-fail || echo "⚠️  patch-package: no patches or already applied" --ignore-scripts
+          # Chạy patch-package thủ công thay cho postinstall script
+          npx patch-package --error-on-fail || echo "⚠️  patch-package: no patches or already applied"
           # Verify react-native installed — CocoaPods dùng file này để load Podfile
           if [ ! -f "node_modules/react-native/scripts/react_native_pods.rb" ]; then
             echo "❌ react-native/scripts/react_native_pods.rb NOT FOUND sau npm install"
@@ -361,7 +366,8 @@ workflows:
 
       - name: Install npm dependencies
         script: |
-          npm install --legacy-peer-deps
+          npm install --legacy-peer-deps --ignore-scripts
+          npx patch-package --error-on-fail || echo "⚠️  patch-package: no patches or already applied"
 
       - name: CocoaPods install
         script: |
@@ -588,7 +594,8 @@ workflows:
 
       - name: Install dependencies
         script: |
-          npm install --legacy-peer-deps
+          npm install --legacy-peer-deps --ignore-scripts
+          npx patch-package --error-on-fail || echo "⚠️  patch-package: no patches or already applied"
 
       - name: Verify Android secrets.properties
         script: |
@@ -674,7 +681,8 @@ workflows:
 
       - name: Install dependencies
         script: |
-          npm install --legacy-peer-deps
+          npm install --legacy-peer-deps --ignore-scripts
+          npx patch-package --error-on-fail || echo "⚠️  patch-package: no patches or already applied"
 
       - name: Restore keystore from encrypted env
         script: |

@@ -15,8 +15,6 @@
 # Codemagic env groups cần có:
 #   scanner_secrets:
 #     TREE_DETECTION_API, BASE_API_URL, API_KEY, REGION_CODE
-#     FIREBASE_API_KEY, FIREBASE_PROJECT_ID, FIREBASE_MESSAGING_SENDER_ID,
-#     FIREBASE_APP_ID, FIREBASE_AUTH_DOMAIN
 #     PHOENIXKEY_API_URL, ORILIFE_API_BASE_URL, PHOENIX_WALLET_ENABLED
 #   android_signing (chỉ android-appstore-aab):
 #     ORILIFE_UPLOAD_STORE_FILE_B64, ORILIFE_UPLOAD_STORE_PASSWORD,
@@ -66,31 +64,6 @@ workflows:
 
     scripts:
 
-      - name: Verify GoogleService-Info.plist
-        script: |
-          GS_PLIST="ios/GoogleService-Info.plist"
-          echo "=== Checking GoogleService-Info.plist ==="
-          if [ ! -f "$GS_PLIST" ]; then
-            echo "❌ GoogleService-Info.plist NOT FOUND at ios/GoogleService-Info.plist"
-            exit 1
-          fi
-          if grep -q "API_KEY" "$GS_PLIST" && grep -q "PROJECT_ID" "$GS_PLIST"; then
-            echo "✅ Plist valid"
-            echo "--- PROJECT_ID: $(grep -A1 '<key>PROJECT_ID</key>' "$GS_PLIST" | grep '<string>' | head -1)"
-          else
-            echo "❌ Plist invalid or missing required keys"
-            cat "$GS_PLIST"
-            exit 1
-          fi
-
-      - name: Create firebase.json
-        script: |
-          PROJECT_ID=$(grep -A1 '<key>PROJECT_ID</key>' ios/GoogleService-Info.plist \
-            | grep -oP '(?<=<string>)[^<]+' | head -1)
-          printf '{"react-native":{"project_id":"%s"}}' "$PROJECT_ID" > ios/firebase.json
-          printf '{"react-native":{"project_id":"%s"}}' "$PROJECT_ID" > firebase.json
-          echo "✅ firebase.json: $PROJECT_ID"
-
       # secrets.plist — chỉ 3 key mà ScannerConfig.swift thực sự đọc.
       # Không thêm key thừa: LAMPNET_*, CAPTURES_3D_URL dùng .env phía RN.
       - name: Create secrets.plist
@@ -124,14 +97,6 @@ workflows:
       - name: Create .env for React Native
         script: |
           cat > .env <<EOF
-          # Firebase
-          FIREBASE_API_KEY=${FIREBASE_API_KEY}
-          FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}
-          FIREBASE_MESSAGING_SENDER_ID=${FIREBASE_MESSAGING_SENDER_ID}
-          FIREBASE_APP_ID=${FIREBASE_APP_ID}
-          FIREBASE_AUTH_DOMAIN=${FIREBASE_AUTH_DOMAIN}
-
-          # Environment
           ENV=production
 
           # OriLife / Aladin backend
@@ -180,12 +145,6 @@ workflows:
             echo "✅ .env chứa URL hợp lệ (orilife.io / lampnet.cloud / phoenixkey.me)"
           else
             echo "⚠️  Không tìm thấy URL orilife.io — kiểm tra biến môi trường Codemagic"
-          fi
-          # Kiểm tra Firebase
-          if grep -q "FIREBASE_API_KEY=" .env && ! grep -q "FIREBASE_API_KEY=$" .env; then
-            echo "✅ FIREBASE_API_KEY set"
-          else
-            echo "❌ FIREBASE_API_KEY trống — cần set trong group scanner_secrets"; exit 1
           fi
           echo "--- Content (API keys ẩn):"
           grep -v "API_KEY\|PASSWORD\|TOKEN\|SECRET" .env
@@ -278,21 +237,6 @@ workflows:
             find "$ARCHIVE_PATH" -name "*.tflite" -exec ls -lh {} \; 2>/dev/null || true
           fi
 
-      - name: Verify GoogleService-Info.plist in app bundle
-        script: |
-          APP_PATH=$(find "$ARCHIVE_PATH/Products/Applications" -name "*.app" | head -1)
-          if [ -z "$APP_PATH" ]; then echo "❌ No .app!"; exit 1; fi
-          if [ -f "$APP_PATH/GoogleService-Info.plist" ]; then
-            echo "✅ GoogleService-Info.plist in bundle (autolink)"
-          else
-            echo "⚠️  Copying manually..."
-            cp "ios/GoogleService-Info.plist" "$APP_PATH/GoogleService-Info.plist"
-            echo "✅ Manual copy OK"
-          fi
-          grep -q "API_KEY" "$APP_PATH/GoogleService-Info.plist" \
-            && echo "✅ Plist valid" \
-            || { echo "❌ Plist invalid"; exit 1; }
-
       - name: Package unsigned IPA
         script: |
           APP_PATH=$(find "$ARCHIVE_PATH/Products/Applications" -name "*.app" | head -1)
@@ -309,9 +253,7 @@ workflows:
 
           echo "✅ IPA:"
           ls -lh "$IPA_OUTPUT_DIR/$IPA_NAME"
-          zipinfo "$IPA_NAME" | grep -q "GoogleService-Info.plist" \
-            && echo "✅ IPA chứa GoogleService-Info.plist" \
-            || { echo "❌ IPA thiếu GoogleService-Info.plist"; exit 1; }
+          echo "✅ IPA packaged"
 
     artifacts:
       - build/ios/ipa/*.ipa
@@ -359,22 +301,6 @@ workflows:
           security find-identity -v -p codesigning 2>/dev/null | head -10 || true
           echo "✅ Keychain + cert OK"
 
-      - name: Verify GoogleService-Info.plist
-        script: |
-          GS_PLIST="ios/GoogleService-Info.plist"
-          [ ! -f "$GS_PLIST" ] && { echo "❌ GoogleService-Info.plist NOT FOUND"; exit 1; }
-          grep -q "API_KEY" "$GS_PLIST" && grep -q "PROJECT_ID" "$GS_PLIST" \
-            && echo "✅ Plist valid" \
-            || { echo "❌ Plist invalid"; exit 1; }
-
-      - name: Create firebase.json
-        script: |
-          PROJECT_ID=$(grep -A1 '<key>PROJECT_ID</key>' ios/GoogleService-Info.plist \
-            | grep -oP '(?<=<string>)[^<]+' | head -1)
-          printf '{"react-native":{"project_id":"%s"}}' "$PROJECT_ID" > ios/firebase.json
-          printf '{"react-native":{"project_id":"%s"}}' "$PROJECT_ID" > firebase.json
-          echo "✅ firebase.json: $PROJECT_ID"
-
       - name: Create secrets.plist
         script: |
           SECRETS_DIR="ios/LocalPods/ScannerModule/Resources"
@@ -398,11 +324,6 @@ workflows:
       - name: Create .env for React Native
         script: |
           cat > .env <<EOF
-          FIREBASE_API_KEY=${FIREBASE_API_KEY}
-          FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}
-          FIREBASE_MESSAGING_SENDER_ID=${FIREBASE_MESSAGING_SENDER_ID}
-          FIREBASE_APP_ID=${FIREBASE_APP_ID}
-          FIREBASE_AUTH_DOMAIN=${FIREBASE_AUTH_DOMAIN}
           ENV=production
           ALADIN_API_URL=${BASE_API_URL:-https://staging-api.orilife.io}
           ALADIN_API_KEY=${API_KEY:-mock-local-api-key}
@@ -574,16 +495,6 @@ workflows:
             && echo "✅ yolov26seg.tflite OK" \
             || echo "⚠️  yolov26seg.tflite NOT found — có thể crash khi scan!"
 
-      - name: Verify GoogleService-Info.plist in bundle
-        script: |
-          APP_PATH=$(find "$ARCHIVE_PATH/Products/Applications" -name "*.app" | head -1)
-          [ -z "$APP_PATH" ] && { echo "❌ No .app!"; exit 1; }
-          [ -f "$APP_PATH/GoogleService-Info.plist" ] \
-            || cp "ios/GoogleService-Info.plist" "$APP_PATH/GoogleService-Info.plist"
-          grep -q "API_KEY" "$APP_PATH/GoogleService-Info.plist" \
-            && echo "✅ Plist valid in bundle" \
-            || { echo "❌ Plist invalid"; exit 1; }
-
       - name: Export signed IPA
         script: |
           xcodebuild \
@@ -647,11 +558,6 @@ workflows:
       - name: Create .env for React Native
         script: |
           cat > .env <<EOF
-          FIREBASE_API_KEY=${FIREBASE_API_KEY}
-          FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}
-          FIREBASE_MESSAGING_SENDER_ID=${FIREBASE_MESSAGING_SENDER_ID}
-          FIREBASE_APP_ID=${FIREBASE_APP_ID}
-          FIREBASE_AUTH_DOMAIN=${FIREBASE_AUTH_DOMAIN}
           ENV=production
           ALADIN_API_URL=${BASE_API_URL:-https://staging-api.orilife.io}
           ALADIN_API_KEY=${API_KEY:-mock-local-api-key}
@@ -738,11 +644,6 @@ workflows:
       - name: Create .env for React Native
         script: |
           cat > .env <<EOF
-          FIREBASE_API_KEY=${FIREBASE_API_KEY}
-          FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}
-          FIREBASE_MESSAGING_SENDER_ID=${FIREBASE_MESSAGING_SENDER_ID}
-          FIREBASE_APP_ID=${FIREBASE_APP_ID}
-          FIREBASE_AUTH_DOMAIN=${FIREBASE_AUTH_DOMAIN}
           ENV=production
           ALADIN_API_URL=${BASE_API_URL:-https://staging-api.orilife.io}
           ALADIN_API_KEY=${API_KEY:-mock-local-api-key}

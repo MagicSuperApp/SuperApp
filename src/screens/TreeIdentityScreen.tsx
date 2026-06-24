@@ -66,6 +66,7 @@ import ResultBadge from '../components/reid/ResultBadge';
 import FactorBreakdown, { type FactorScores } from '../components/reid/FactorBreakdown';
 import ReidConfirmDialog, { type ReidCandidate } from '../components/reid/ReidConfirmDialog';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
+import rLog from '../services/remoteLogger';
 import {
   addCapture,
   setCapturing,
@@ -137,6 +138,11 @@ const TreeIdentityScreen: React.FC = () => {
 
   // Vườn hiện-hành (nếu mở từ ngữ-cảnh farm) — truyền tiếp xuống TreeEnroll.
   const farmId = route.params?.farmId;
+
+  useEffect(() => {
+    rLog.treeIdentity.screenMount({ farmId });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Redux state ───────────────────────────────────────────────────────────
   const capturesRedux = useAppSelector(selectCaptures);
@@ -264,12 +270,17 @@ const TreeIdentityScreen: React.FC = () => {
       // Native gửi 2 lần: lần đầu (trước save) totalCaptures=N-1, lần sau (sau save) totalCaptures=N.
       // Lấy max để counter chỉ tăng, không lùi.
       if (e.totalCaptures > 0) {
-        setIosCaptureCount(prev => Math.max(prev, e.totalCaptures));
+        setIosCaptureCount(prev => {
+          const next = Math.max(prev, e.totalCaptures);
+          rLog.treeIdentity.captureTriggered(next, currentRoundLocal);
+          return next;
+        });
       }
     });
 
     const unsubRound = subscribeRoundComplete((e: RoundComplete) => {
       const nextRound = (e.nextRound as 1 | 2) ?? 2;
+      rLog.nativeBridge.roundComplete(nextRound, iosCaptureCount);
       setCurrentRoundLocal(nextRound);
       dispatch(setCurrentRound(nextRound));
     });
@@ -331,6 +342,7 @@ const TreeIdentityScreen: React.FC = () => {
 
     try {
       setIsLoading(true);
+      rLog.treeIdentity.startCapture();
       dispatch(clearAll());
       setIosCaptureCount(0);
       setIosRound1Snapshot(0);
@@ -340,7 +352,8 @@ const TreeIdentityScreen: React.FC = () => {
       dispatch(setCapturing(true));
       dispatch(setCurrentRound(result.round as 1 | 2));
       setIdentResult(null);
-    } catch {
+    } catch (e: any) {
+      rLog.nativeBridge.bridgeError('startCaptureSession', e?.message ?? String(e));
       Alert.alert('Lỗi', 'Không thể bắt đầu chụp. Vui lòng thử lại.');
     } finally {
       setIsLoading(false);
@@ -350,13 +363,14 @@ const TreeIdentityScreen: React.FC = () => {
   // ── iOS: Advance to round 2 ───────────────────────────────────────────────
   const handleAdvanceToRound2 = async () => {
     try {
+      rLog.treeIdentity.advanceRound2(iosCaptureCount);
       setIosRound1Snapshot(iosCaptureCount);  // snapshot round1 count trước khi advance
       const result = await TreeReIDBridge.advanceToRound2();
       const nextRound = (result.round as 1 | 2) ?? 2;
       setCurrentRoundLocal(nextRound);
       dispatch(setCurrentRound(nextRound));
-    } catch {
-      // Không block user nếu lỗi advance
+    } catch (e: any) {
+      rLog.nativeBridge.bridgeError('advanceToRound2', e?.message ?? String(e));
     }
   };
 
@@ -364,14 +378,18 @@ const TreeIdentityScreen: React.FC = () => {
   const handleStopAndIdentify = async () => {
     try {
       setIsLoading(true);
+      rLog.treeIdentity.stopAndIdentifyStart(iosCaptureCount);
       const stopResult = await TreeReIDBridge.stopCaptureSession();
       setIsCaptureActive(false);
       dispatch(setCapturing(false));
 
-      if (!stopResult || stopResult.captures.length < MIN_ROUND1) {
+      const captureCount = stopResult?.captures.length ?? 0;
+      rLog.treeIdentity.stopSessionResult(captureCount >= MIN_ROUND1, captureCount);
+
+      if (!stopResult || captureCount < MIN_ROUND1) {
         Alert.alert(
           'Chưa đủ góc',
-          `Cần ít nhất ${MIN_ROUND1} góc chụp. Hiện có ${stopResult?.captures.length ?? 0} góc.`,
+          `Cần ít nhất ${MIN_ROUND1} góc chụp. Hiện có ${captureCount} góc.`,
         );
         return;
       }
@@ -382,7 +400,8 @@ const TreeIdentityScreen: React.FC = () => {
       }
 
       await runIdentify(stopResult.captures.map(c => `file://${c.fileURL}`));
-    } catch {
+    } catch (e: any) {
+      rLog.nativeBridge.bridgeError('stopCaptureSession', e?.message ?? String(e));
       Alert.alert('Lỗi', 'Không thể dừng chụp. Vui lòng thử lại.');
     } finally {
       setIsLoading(false);
@@ -434,6 +453,7 @@ const TreeIdentityScreen: React.FC = () => {
     // Mỗi lần identify mới → xoá phán-quyết cũ.
     setQueryId(null);
     setVerdictSent(null);
+    rLog.treeIdentity.apiStart(imagePaths.length, gpsRedux?.lat, gpsRedux?.lng);
     try {
       const result = await identifyTree(BASE_URL, imagePaths, {
         lat: gpsRedux?.lat,
@@ -446,6 +466,13 @@ const TreeIdentityScreen: React.FC = () => {
 
       if (result.ok && result.data) {
         const data = result.data;
+        rLog.treeIdentity.apiResult(
+          data.decision,
+          data.confidence ?? null,
+          data.tree_id ?? null,
+          data.query_id ?? null,
+          data.similarity ?? null,
+        );
         setIdentResult(data);
         dispatch(setIdentificationResult(data));
         // M2/M3: giữ query_id để gửi verdict (chỉ khi backend mới trả).
@@ -456,8 +483,12 @@ const TreeIdentityScreen: React.FC = () => {
         }
         // Các decision khác xử lý ở render / handleDecisionAction
       } else {
+        rLog.treeIdentity.apiError(result.error?.detail ?? 'unknown', imagePaths.length);
         Alert.alert('Lỗi nhận diện', result.error?.detail ?? 'Nhận diện thất bại. Thử lại.');
       }
+    } catch (e: any) {
+      rLog.treeIdentity.apiError(e?.message ?? String(e), imagePaths.length);
+      Alert.alert('Lỗi nhận diện', 'Lỗi kết nối. Thử lại.');
     } finally {
       setIsIdentifyingLocal(false);
     }
@@ -529,6 +560,7 @@ const TreeIdentityScreen: React.FC = () => {
 
   // ── Reset về trạng thái ban đầu ───────────────────────────────────────────
   const handleReset = () => {
+    rLog.treeIdentity.reset();
     setIdentResult(null);
     setShowFactors(false);
     setAndroidImageUris([]);
@@ -546,6 +578,7 @@ const TreeIdentityScreen: React.FC = () => {
   const sendVerdict = async (verdict: IdentifyVerdict, correctTid?: string) => {
     if (!queryId || verdictSent || isSendingVerdict) return;
     setIsSendingVerdict(true);
+    rLog.treeIdentity.verdictSend(verdict, queryId, correctTid);
     try {
       const res = await submitIdentifyVerdict(BASE_URL, {
         queryId,
@@ -553,8 +586,10 @@ const TreeIdentityScreen: React.FC = () => {
         correctTid,
       });
       if (res.ok) {
+        rLog.treeIdentity.verdictResult(true);
         setVerdictSent(verdict);
       } else {
+        rLog.treeIdentity.verdictResult(false, res.error?.detail ?? 'unknown');
         Alert.alert('Lỗi', res.error?.detail ?? 'Không gửi được phản hồi. Thử lại.');
       }
     } finally {

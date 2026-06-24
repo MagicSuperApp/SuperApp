@@ -151,17 +151,32 @@ workflows:
 
       - name: Install npm dependencies
         script: |
+          set -e
           node --version && npm --version
           npm install --legacy-peer-deps
-          echo "✅ npm install done"
+          # Verify react-native installed — CocoaPods dùng file này để load Podfile
+          if [ ! -f "node_modules/react-native/scripts/react_native_pods.rb" ]; then
+            echo "❌ react-native/scripts/react_native_pods.rb NOT FOUND sau npm install"
+            ls node_modules/react-native/ 2>/dev/null || echo "react-native chưa install"
+            exit 1
+          fi
+          echo "✅ npm install done — react_native_pods.rb OK"
 
       - name: CocoaPods install
         script: |
           set -e
+          # Đặt NODE_BINARY để pod install dùng đúng node của Codemagic
+          # (không dùng /usr/local/bin/node là system node cũ)
+          export NODE_BINARY=$(which node)
+          echo "NODE_BINARY=$NODE_BINARY ($(node --version))"
+          # Ghi vào .xcode.env.local để cả Xcode lẫn pod đều dùng đúng node
+          echo "export NODE_BINARY=$NODE_BINARY" > ios/.xcode.env.local
+
           cd ios
-          rm -rf ~/Library/Caches/CocoaPods Pods Podfile.lock
+          rm -rf Pods Podfile.lock
           pod install --repo-update
           cd ..
+
           echo "=== Workspace check ==="
           FOUND_WS=$(find ios -maxdepth 2 -name "*.xcworkspace" -type d 2>/dev/null | head -1)
           echo "workspace: ${FOUND_WS:-NOT FOUND}"
@@ -176,11 +191,6 @@ workflows:
           rm -rf ~/Library/Caches/com.apple.dt.Xcode/SwiftPM
           rm -rf ios/aladin_mobile_fe.xcworkspace/xcshareddata/swiftpm/checkouts 2>/dev/null || true
           echo "✅ DerivedData + SPM cleaned"
-
-      - name: Set NODE_BINARY
-        script: |
-          echo "export NODE_BINARY=$(which node)" > ios/.xcode.env.local
-          echo "NODE_BINARY=$(which node)"
 
       - name: Build iOS Archive (unsigned)
         script: |

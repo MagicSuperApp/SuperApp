@@ -10,7 +10,7 @@ export { COLORS };
 export type ColorsType = AppTokens;
 
 // Build 51 (2026-05-17) — flip from mock to staging Cloudflare tunnel.
-export const API_BASE_URL = 'https://staging-api.orilife.io';
+export const API_BASE_URL = 'https://api.orilife.io';
 
 export const CREDITS_PER_IMAGE = 1; // 1 MAGIC per image
 

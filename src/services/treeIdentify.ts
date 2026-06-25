@@ -191,7 +191,7 @@ export interface IdentifyInput {
 }
 
 export interface IdentifyClientConfig {
-  base_url: string;          // e.g. https://staging-api.orilife.io
+  base_url: string;          // e.g. https://api.orilife.io
   api_key: string;
   enqueue_on_503?: boolean;  // default true (INV-03)
 }

@@ -63,7 +63,7 @@ enum TreeReIDConfig {
     static var baseURL: String {
         // TODO: Load from environment/config
         return ProcessInfo.processInfo.environment["ORILIFE_TREEID_BASE_URL"]
-            ?? "https://test.orilife.io"
+            ?? "https://api.orilife.io"
     }
 
     /// API timeout (seconds)

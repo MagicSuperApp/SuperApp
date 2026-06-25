@@ -21,7 +21,7 @@ import Toast from 'react-native-toast-message';
 import NetInfo from '@react-native-community/netinfo';
 import { handleNavigationStateChange } from '../services/analytics';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { COLORS, NAV } from '../theme';
+import { COLORS } from '../theme';
 import { syncService } from '../services/syncService';
 
 // --- Host shell screens (KHÔNG thuộc module — vỏ giữ tĩnh) ------------------
@@ -58,7 +58,16 @@ import ProofChatEscrowScreen from '../modules/proofchat/features/escrow/screens/
 import FarmDetailScreen from '../modules/trace/screens/FarmDetailScreen';
 
 import { shouldShowOnboarding } from '../utils/onboardingStorage';
-import { ActivityIndicator, View } from 'react-native';
+import {
+  ActivityIndicator,
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  useWindowDimensions,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import AssistantBubble from '../components/AssistantBubble';
 import { AppRegistry } from 'react-native';
 
@@ -173,36 +182,174 @@ function buildTabs(): BuiltTab[] {
 
 const INSTANCE_TABS = buildTabs();
 
+// ── Custom curved tab bar (thuần React Native, KHÔNG dùng native module) ──────
+// Navbar màu xanh đậm (như HeroBar), góc trên bo mềm, KHUYẾT TRÒN TRONG SUỐT ở
+// giữa. Khuyết được tạo bằng một hình tròn nền trong suốt + boxShadow spread:
+// bóng (màu xanh) lấp đầy toàn thanh, riêng vùng hình tròn để trống → nhìn xuyên
+// thấy nội dung phía sau. Overflow hidden cắt nửa trên hình tròn thành khuyết ở
+// mép thanh. Nút Home tròn nổi bật, tách rời, không viền.
+//
+// Thanh là position:absolute (nổi trên nội dung) — màn hình dùng nó PHẢI chừa
+// padding dưới = TAB_BAR_HEIGHT + insets.bottom + FLOAT để không bị che (xem
+// HomeScreen). Đây là cách xử iOS "navbar che nội dung dưới".
+const NAV_BG = COLORS.accentDeep;            // #264E7E — xanh đậm như herobar
+const TAB_BAR_HEIGHT = 64;                   // chiều cao phần thanh điều hướng
+const HOME_BTN_SIZE = 66;                    // đường kính nút Home
+const NOTCH_D = HOME_BTN_SIZE + 20;          // đường kính khuyết (rộng hơn nút → có khe trong suốt bao quanh)
+const FLOAT = NOTCH_D / 2;                   // phần nhô lên trên mép thanh
+const CORNER_R = 26;                         // bo góc trên navbar
+
+// Icon cho từng tab (filled khi active, outline khi inactive) + nhãn hiển thị.
+const TAB_META: Record<string, { icon: string; iconActive: string; label: string }> = {
+  ProofChatHome: { icon: 'chat-processing-outline', iconActive: 'chat-processing', label: 'Tin nhắn' },
+  Farms: { icon: 'sprout-outline', iconActive: 'sprout', label: 'Trang trại' },
+  WorkHome: { icon: 'briefcase-outline', iconActive: 'briefcase', label: 'Việc làm' },
+  Account: { icon: 'account-circle-outline', iconActive: 'account-circle', label: 'Tài khoản' },
+};
+
+const CurvedTabBar = ({ state, navigation }: BottomTabBarProps) => {
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const cx = width / 2;
+  const barHeight = TAB_BAR_HEIGHT + insets.bottom;
+  const containerHeight = barHeight + FLOAT;
+
+  const homeIndex = state.routes.findIndex((r) => r.name === 'Home');
+
+  const handlePress = (routeName: string, routeKey: string, isFocused: boolean) => {
+    const event = navigation.emit({ type: 'tabPress', target: routeKey, canPreventDefault: true });
+    if (!isFocused && !event.defaultPrevented) {
+      navigation.navigate(routeName);
+    }
+  };
+
+  return (
+    <View style={[curvedStyles.tabBarContainer, { height: containerHeight }]} pointerEvents="box-none">
+      {/* Lớp thanh: overflow hidden để bo góc trên + cắt khuyết tròn ở mép trên */}
+      <View
+        pointerEvents="none"
+        style={[curvedStyles.barClip, { top: FLOAT, height: barHeight }]}
+      >
+        {/* Hình tròn trong suốt; boxShadow spread màu xanh lấp đầy quanh nó →
+            vùng tròn còn lại trong suốt = khuyết nhìn xuyên thấy phía sau */}
+        <View style={[curvedStyles.notchHole, { left: cx - NOTCH_D / 2 }]} />
+      </View>
+
+      {/* Hàng tab — Home là ô trống ở giữa để giữ cân đối 2 bên */}
+      <View style={curvedStyles.tabRow}>
+        {state.routes.map((route, index) => {
+          if (route.name === 'Home') {
+            return <View key={route.key} style={curvedStyles.homeSlot} />;
+          }
+          const meta = TAB_META[route.name];
+          if (!meta) return null;
+          const isFocused = state.index === index;
+          const tint = isFocused ? '#FFFFFF' : 'rgba(255,255,255,0.55)';
+          return (
+            <TouchableOpacity
+              key={route.key}
+              style={curvedStyles.tabItem}
+              activeOpacity={0.7}
+              onPress={() => handlePress(route.name, route.key, isFocused)}
+            >
+              <Icon name={isFocused ? meta.iconActive : meta.icon} size={24} color={tint} />
+              <Text
+                style={[curvedStyles.tabLabel, { color: tint, fontWeight: isFocused ? '700' : '500' }]}
+                numberOfLines={1}
+              >
+                {meta.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {/* Nút Home tròn nổi bật, tách rời, nằm lọt vào khuyết giữa (không viền) */}
+      {homeIndex >= 0 && (
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => handlePress('Home', state.routes[homeIndex].key, state.index === homeIndex)}
+          style={[curvedStyles.homeButton, { left: cx - HOME_BTN_SIZE / 2 }]}
+        >
+          <Icon name="home" size={30} color="#FFFFFF" />
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+};
+
+const curvedStyles = StyleSheet.create({
+  tabBarContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'transparent',
+  },
+  barClip: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    overflow: 'hidden',
+    borderTopLeftRadius: CORNER_R,
+    borderTopRightRadius: CORNER_R,
+  },
+  notchHole: {
+    position: 'absolute',
+    top: -NOTCH_D / 2,
+    width: NOTCH_D,
+    height: NOTCH_D,
+    borderRadius: NOTCH_D / 2,
+    backgroundColor: 'transparent',
+    // Bóng lan rộng (spread) phủ kín cả thanh bằng màu xanh, chừa lại vùng tròn
+    boxShadow: `0px 0px 0px 2000px ${NAV_BG}`,
+  },
+  tabRow: {
+    position: 'absolute',
+    top: FLOAT,
+    left: 0,
+    right: 0,
+    height: TAB_BAR_HEIGHT,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  tabItem: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+  },
+  homeSlot: {
+    flex: 1,
+  },
+  tabLabel: {
+    fontSize: 11,
+    letterSpacing: -0.2,
+  },
+  homeButton: {
+    position: 'absolute',
+    top: FLOAT - HOME_BTN_SIZE / 2,
+    width: HOME_BTN_SIZE,
+    height: HOME_BTN_SIZE,
+    borderRadius: HOME_BTN_SIZE / 2,
+    borderWidth: 3,
+    borderColor: COLORS.accentLight,
+    backgroundColor: COLORS.info,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: COLORS.accentDeep,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 14,
+  },
+});
+
 const MainTabs = () => (
   <Tab.Navigator
     initialRouteName={DEFAULT_INSTANCE.initialTabRoute}
-    screenOptions={({ route }) => ({
-      headerShown: false,
-      tabBarActiveTintColor: COLORS.accent,
-      tabBarInactiveTintColor: COLORS.textSub,
-      tabBarStyle: {
-        backgroundColor: NAV.tabBarBg,
-        borderWidth: 1,
-        borderColor: NAV.tabBarBorder,
-        height: 64,
-        paddingBottom: 6,
-        borderRadius: 22,
-        left: 8,
-        right: 8,
-        bottom: 8,
-        marginRight: 8,
-        marginLeft: 8,
-        shadowColor: NAV.tabBarShadow,
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.18,
-        shadowRadius: 18,
-        elevation: 8,
-      },
-      tabBarIcon: ({ color, size }) => {
-        const name = TAB_ICONS[route.name] ?? 'view-dashboard-outline';
-        return <Icon name={name} size={size} color={color} />;
-      },
-    })}
+    screenOptions={{ headerShown: false }}
+    tabBar={(props) => <CurvedTabBar {...props} />}
   >
     {INSTANCE_TABS.map((t) => (
       <Tab.Screen

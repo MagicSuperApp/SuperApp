@@ -389,7 +389,8 @@ const AccountScreen = () => {
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={[
                     styles.scrollContent,
-                    { paddingBottom: Math.max(insets.bottom, 12) + 20 },
+                    // iOS-fix: chừa khoảng dưới cho CurvedTabBar (navbar nổi) khỏi che nội dung.
+                    { paddingBottom: Math.max(insets.bottom, 12) + 120 },
                 ]}
             >
                 {/* ── Profile hero ── */}

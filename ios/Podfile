@@ -34,6 +34,10 @@ target 'aladin_mobile_fe' do
   # inside ScannerModule.podspec — do NOT duplicate here to avoid
   # "linked library 'sqlite3' not found" when USE_FRAMEWORKS=static.
 
+  # PhoenixKey Rust core (Master_KEK / BIP39). .a + header sinh trên CI bởi
+  # rust/taad_enclave_core/build_ios.sh TRƯỚC pod install (xem codemagic.yaml).
+  pod 'taad_enclave_core', :path => '../rust/taad_enclave_core/ios'
+
   # Local ScannerModule — full native iOS scanner SDK
   pod 'ScannerModule', :path => './LocalPods/ScannerModule'
 

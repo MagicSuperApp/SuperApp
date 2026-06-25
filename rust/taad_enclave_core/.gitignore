@@ -1,0 +1,15 @@
+# Rust build artifacts
+/target
+/target-ios
+/target-android
+Cargo.lock
+
+# iOS build outputs (sinh trên CI bởi build_ios.sh) — GIỮ podspec
+/ios/*.a
+/ios/taad_enclave_core.h
+
+# Android build outputs (sinh trên CI bởi build_android.sh)
+/android/libs
+
+# cbindgen tạm
+/cbindgen.toml

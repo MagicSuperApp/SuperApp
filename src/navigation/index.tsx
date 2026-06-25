@@ -48,6 +48,8 @@ import AnimalManagementScreen from '../screens/AnimalManagementScreen';
 import AnimalDetailScreen from '../screens/AnimalDetailScreen';
 import TreeViewer3DScreen from '../screens/TreeViewer3DScreen';
 import CareScanScreen from '../screens/CareScanScreen';
+import SeedExportScreen from '../screens/SeedExportScreen';
+import RestoreIdentityScreen from '../screens/RestoreIdentityScreen';
 // ProofChat wallet/escrow: hiện vẫn đăng ký ở host stack (chưa khai trong manifest
 // proofchat — anh Aladin chốt chat KHÔNG ví/escrow; giữ route để không vỡ màn cũ).
 import ProofChatWalletScreen from '../modules/proofchat/features/wallet/screens/WalletScreen';
@@ -278,6 +280,9 @@ const HOST_STACK_SCREENS: Array<{
   { name: 'AnimalDetail', component: AnimalDetailScreen, options: { headerShown: false } },
   { name: 'TreeViewer3D', component: TreeViewer3DScreen, options: { headerShown: false } },
   { name: 'CareScan', component: CareScanScreen, options: { headerShown: false } },
+  // PhoenixKey Enclave — sao lưu/khôi phục bằng cụm 24 từ (BIP39 / Master_KEK).
+  { name: 'SeedExport', component: SeedExportScreen, options: { headerShown: false } },
+  { name: 'RestoreIdentity', component: RestoreIdentityScreen, options: { headerShown: false } },
 ];
 
 // --- Module stack screens (config-driven) ----------------------------------

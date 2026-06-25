@@ -177,6 +177,32 @@ workflows:
           fi
           echo "✅ npm install done — react_native_pods.rb OK"
 
+      - name: Build Rust core (iOS)
+        script: |
+          set -e
+          # PhoenixKey Enclave Rust core (rust/taad_enclave_core) → static lib +
+          # cbindgen header cho pod `taad_enclave_core`. PHẢI chạy TRƯỚC pod install
+          # vì podspec tham chiếu libtaad_enclave_core.a + taad_enclave_core.h.
+          if ! command -v rustc &> /dev/null; then
+            echo "🦀 Cài Rust toolchain..."
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          fi
+          source "$HOME/.cargo/env"
+          rustup target add aarch64-apple-ios
+          command -v cbindgen &> /dev/null || cargo install cbindgen --version "^0.27"
+
+          # Device-only (adhoc IPA chạy trên iPhone thật — không cần simulator slice)
+          ( cd rust/taad_enclave_core && ./build_ios.sh device )
+
+          echo "=== Rust iOS outputs ==="
+          ls -lh rust/taad_enclave_core/ios/
+          if [ ! -f rust/taad_enclave_core/ios/libtaad_enclave_core.a ]; then
+            echo "❌ libtaad_enclave_core.a NOT built"; exit 1
+          fi
+          if [ ! -f rust/taad_enclave_core/ios/taad_enclave_core.h ]; then
+            echo "❌ taad_enclave_core.h (cbindgen) NOT generated"; exit 1
+          fi
+
       - name: CocoaPods install
         script: |
           set -e
@@ -619,6 +645,38 @@ workflows:
           fi
           echo "✅ secrets.properties found"
           grep -E "BASE_API_URL|API_KEY|REGION_CODE" android/app/secrets.properties
+
+      - name: Build Rust core (Android)
+        script: |
+          set -e
+          # PhoenixKey Enclave Rust core → libtaad_enclave_core.so per-ABI vào
+          # android/app/src/main/jniLibs. PHẢI chạy TRƯỚC gradle (TaadEnclaveModule.kt
+          # System.loadLibrary("taad_enclave_core")).
+          if ! command -v rustc &> /dev/null; then
+            echo "🦀 Cài Rust toolchain..."
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          fi
+          source "$HOME/.cargo/env"
+          rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+          command -v cargo-ndk &> /dev/null || cargo install cargo-ndk
+
+          # NDK: Codemagic đặt SDK ở ANDROID_SDK_ROOT; chọn NDK mới nhất.
+          export ANDROID_NDK_HOME=$(ls -d "$ANDROID_SDK_ROOT"/ndk/*/ 2>/dev/null | sort | tail -1)
+          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME"
+          if [ -z "$ANDROID_NDK_HOME" ]; then
+            echo "❌ NDK không tìm thấy trong $ANDROID_SDK_ROOT/ndk"; exit 1
+          fi
+
+          ( cd rust/taad_enclave_core && cargo ndk \
+              -t arm64-v8a -t armeabi-v7a -t x86_64 \
+              -o ../../android/app/src/main/jniLibs \
+              build --release --lib )
+
+          echo "=== Rust Android outputs (jniLibs) ==="
+          ls -lh android/app/src/main/jniLibs/*/ 2>/dev/null
+          if [ ! -f android/app/src/main/jniLibs/arm64-v8a/libtaad_enclave_core.so ]; then
+            echo "❌ libtaad_enclave_core.so (arm64-v8a) NOT built"; exit 1
+          fi
 
       - name: Build debug APK
         script: |

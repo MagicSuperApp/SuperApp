@@ -23,7 +23,9 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { currentUserDid, ownerPublicKey, signRaw } from '../sdk/phoenixKey';
+import { currentUserDid, ownerPublicKey, signRaw, isKeypairEnrolled } from '../sdk/phoenixKey';
+import { isAvailable as phoenixKeyIsAvailable } from './phoenixKey-native';
+import rLog from './remoteLogger';
 
 const AUTH_TOKEN_KEY = 'auth_token';
 
@@ -80,47 +82,86 @@ export interface DidLoginResult {
 export async function loginOrilifeWithDid(baseUrl: string): Promise<DidLoginResult> {
   const base = (baseUrl || '').trim().replace(/\/+$/, '');
   try {
+    rLog.info('did_login_start', { base });
+
     const did = await currentUserDid();
+    const keyEnrolled = await isKeypairEnrolled().catch(() => false);
+    rLog.info('did_login_identity', {
+      hasDid: !!did,
+      didPrefix: did ? did.slice(0, 24) : null,
+      keyEnrolled,
+      signerAvailable: phoenixKeyIsAvailable(),
+    });
     if (!did) {
+      rLog.error('did_login_no_did', { keyEnrolled, signerAvailable: phoenixKeyIsAvailable() });
       return { ok: false, error: 'Chưa có danh tính PhoenixKey (DID) trên thiết bị.' };
     }
 
     // 1) Lấy challenge (single-use, TTL 5 phút) — không cần auth.
-    const chRes = await fetch(`${base}/api/auth/did/challenge`, {
-      method: 'GET',
-      headers: { Accept: 'application/json' },
-    });
+    let chRes: Response;
+    try {
+      chRes = await fetch(`${base}/api/auth/did/challenge`, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+      });
+    } catch (ne: any) {
+      rLog.error('did_login_challenge_neterr', { err: ne?.message ?? String(ne) });
+      return { ok: false, error: `Challenge network: ${ne?.message ?? ne}` };
+    }
     if (!chRes.ok) {
+      rLog.error('did_login_challenge_http', { status: chRes.status });
       return { ok: false, error: `Challenge HTTP ${chRes.status}` };
     }
     const chBody = await chRes.json();
     const challenge: string | undefined = chBody?.challenge;
+    rLog.info('did_login_challenge_ok', { hasChallenge: !!challenge });
     if (!challenge) {
       return { ok: false, error: 'Server không trả challenge.' };
     }
 
     // 2) Ký challenge bằng khoá phần-cứng (ECDSA P-256 SHA-256 → HEX của DER).
-    const signatureHex = await signRaw(
-      asciiToHex(challenge),
-      'Đăng nhập OriLife',
-      'Ký bằng khoá PhoenixKey để nhận diện cây',
-    );
+    let signatureHex: string;
+    let pubkeyHex: string;
+    try {
+      signatureHex = await signRaw(
+        asciiToHex(challenge),
+        'Đăng nhập OriLife',
+        'Ký bằng khoá PhoenixKey để nhận diện cây',
+      );
+      pubkeyHex = await ownerPublicKey();
+      rLog.info('did_login_signed', {
+        sigHexLen: signatureHex?.length ?? 0,
+        pubkeyLen: pubkeyHex?.length ?? 0,
+      });
+    } catch (se: any) {
+      rLog.error('did_login_sign_failed', { err: se?.message ?? String(se), code: se?.code });
+      return { ok: false, error: `Ký thất bại: ${se?.message ?? se}` };
+    }
     const signatureB64 = hexToBase64(signatureHex);
-    const pubkeyHex = await ownerPublicKey();
 
     // 3) Verify → nhận token field-reid.
-    const vRes = await fetch(`${base}/api/auth/did/verify`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({
-        did,
-        challenge,
-        signature: signatureB64,
-        pubkey_hex: pubkeyHex,
-      }),
-    });
+    let vRes: Response;
+    try {
+      vRes = await fetch(`${base}/api/auth/did/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          did,
+          challenge,
+          signature: signatureB64,
+          pubkey_hex: pubkeyHex,
+        }),
+      });
+    } catch (ne: any) {
+      rLog.error('did_login_verify_neterr', { err: ne?.message ?? String(ne) });
+      return { ok: false, error: `Verify network: ${ne?.message ?? ne}` };
+    }
     const vBody = await vRes.json().catch(() => ({}));
     if (!vRes.ok || !vBody?.ok || !vBody?.token) {
+      rLog.error('did_login_verify_rejected', {
+        status: vRes.status,
+        detail: vBody?.detail ?? vBody?.error ?? null,
+      });
       return {
         ok: false,
         error: vBody?.detail || vBody?.error || `Verify HTTP ${vRes.status}`,
@@ -129,6 +170,7 @@ export async function loginOrilifeWithDid(baseUrl: string): Promise<DidLoginResu
 
     // 4) Lưu token → mọi service ReID tự gắn Bearer.
     await AsyncStorage.setItem(AUTH_TOKEN_KEY, vBody.token);
+    rLog.info('did_login_success', { owner: vBody.owner ?? null, username: vBody.username ?? null });
 
     return {
       ok: true,
@@ -137,6 +179,7 @@ export async function loginOrilifeWithDid(baseUrl: string): Promise<DidLoginResu
       username: vBody.username,
     };
   } catch (err: any) {
+    rLog.error('did_login_exception', { err: err?.message ?? String(err) });
     return { ok: false, error: err?.message ?? String(err) };
   }
 }

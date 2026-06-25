@@ -581,9 +581,16 @@ const AccountScreen = () => {
                             onPress={handleRotate}
                         />
                         <MenuItem
-                            icon="qrcode"
-                            label="Xuất mã khôi phục"
-                            sublabel="Lưu trữ an toàn bên ngoài thiết bị"
+                            icon="key-outline"
+                            label="Xuất cụm 24 từ khôi phục"
+                            sublabel="Sao lưu gốc-tin-cậy (BIP39) — ghi ra giấy, cất an toàn"
+                            onPress={() => navigation.navigate('SeedExport')}
+                        />
+                        <MenuItem
+                            icon="backup-restore"
+                            label="Khôi phục bằng cụm 24 từ"
+                            sublabel="Nhập cụm từ để khôi phục danh tính trên máy này"
+                            onPress={() => navigation.navigate('RestoreIdentity')}
                         />
                         <MenuItem
                             icon="account-multiple-outline"

@@ -29,5 +29,8 @@ Pod::Spec.new do |s|
   s.dependency 'SQLite.swift', '~> 0.15.0'
   s.dependency 'Firebase/Analytics'
 
+  # PhoenixKey Rust core (Master_KEK / BIP39) — TaadEnclaveModule.swift imports it.
+  s.dependency 'taad_enclave_core'
+
   s.dependency 'React-Core'
 end

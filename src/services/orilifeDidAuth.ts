@@ -1,5 +1,5 @@
 /**
- * OriLife field-reid — Đăng nhập test.orilife.io bằng khoá PhoenixKey (DID auth).
+ * OriLife field-reid — Đăng nhập api.orilife.io bằng khoá PhoenixKey (DID auth).
  *
  * Vì sao có file này:
  *   Backend field-reid (MassTreeIdentify/core/did_auth.py) THÊM một đường đăng nhập
@@ -74,9 +74,9 @@ export interface DidLoginResult {
 }
 
 /**
- * Đăng nhập test.orilife.io bằng DID PhoenixKey → lưu `auth_token`.
+ * Đăng nhập api.orilife.io bằng DID PhoenixKey → lưu `auth_token`.
  *
- * baseUrl: BASE_URL field-reid (vd https://test.orilife.io). Tự .trim() phòng whitespace.
+ * baseUrl: BASE_URL field-reid (vd https://api.orilife.io). Tự .trim() phòng whitespace.
  * Trả { ok:true, token } khi thành công; { ok:false, error } khi thất bại (KHÔNG ném).
  */
 export async function loginOrilifeWithDid(baseUrl: string): Promise<DidLoginResult> {

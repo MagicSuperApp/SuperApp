@@ -47,7 +47,7 @@ import {
 // ---------------------------------------------------------------------------
 
 const BASE_URL: string =
-  (ORILIFE_API_BASE_URL as string | undefined) ?? 'https://test.orilife.io';
+  (ORILIFE_API_BASE_URL as string | undefined) ?? 'https://api.orilife.io';
 
 const MIN_PHOTOS = 3;
 const MAX_PHOTOS = 10;

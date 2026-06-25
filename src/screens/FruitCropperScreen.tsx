@@ -10,7 +10,7 @@
  *  zoom/pan = PanResponder + Animated (built-in RN, KHÔNG cần native-link).
  *  Toán map-ngược (screen px → original px) port nguyên từ web ccRegionToOrig (giữ công thức elip xoay).
  *
- * Backend = field-reid (ORILIFE_API_BASE_URL = test.orilife.io). Cùng client fruitReIDService.
+ * Backend = field-reid (ORILIFE_API_BASE_URL = api.orilife.io). Cùng client fruitReIDService.
  *
  * Route params (RouteParams): treeId, treeName?, imageUri, imageW, imageH, zone? (đoán sẵn), fruitId?
  *   - fruitId có → THÊM GÓC cho quả đó (add_view); không có → luồng candidates → enroll/add_view.
@@ -31,7 +31,7 @@ import {
   type FruitShape, type FruitCandidate, type FruitRegion, type Bbox, type TreeZone,
 } from '../services/fruitReIDService';
 
-const BASE_URL = (ORILIFE_API_BASE_URL as string | undefined) ?? 'https://test.orilife.io';
+const BASE_URL = (ORILIFE_API_BASE_URL as string | undefined) ?? 'https://api.orilife.io';
 
 const ROT_STEP = 0.2618; // 15° mỗi nhịp xoay (khớp web ccRotate(±0.2618))
 const ZOOM_MIN = 0.4;

@@ -22,6 +22,7 @@ import {
 } from '../services/treeReIDService';
 import { TreeReIDBridge, type CapturedImage } from '../services/treeReIDNativeBridge';
 import { logout, logoutUser } from './userSlice';
+import { ORILIFE_API_BASE_URL } from '@env';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -84,7 +85,8 @@ const initialState: TreeReIDState = {
 // Config (from env)
 // ---------------------------------------------------------------------------
 
-const TREE_REID_BASE_URL = 'https://test.orilife.io';
+const TREE_REID_BASE_URL =
+  (ORILIFE_API_BASE_URL as string | undefined) ?? 'https://api.orilife.io';
 
 // ---------------------------------------------------------------------------
 // Async Thunks

@@ -10,7 +10,7 @@
  *    băng/thân/chấm = View + borderRadius + position:absolute + transform.
  *    Toán bố-trí (zone→băng, pos_x/pos_h→toạ-độ chấm, tvLocalH, tvDotColor) port nguyên từ web.
  *
- *  Backend = field-reid (ORILIFE_API_BASE_URL = test.orilife.io). Cùng client fruitReIDService.
+ *  Backend = field-reid (ORILIFE_API_BASE_URL = api.orilife.io). Cùng client fruitReIDService.
  *  Route params (RouteParams): treeId, treeName?
  */
 
@@ -30,7 +30,7 @@ import {
   type FruitView, type TreeZone,
 } from '../services/fruitReIDService';
 
-const BASE_URL = (ORILIFE_API_BASE_URL as string | undefined) ?? 'https://test.orilife.io';
+const BASE_URL = (ORILIFE_API_BASE_URL as string | undefined) ?? 'https://api.orilife.io';
 
 interface RouteParams { treeId: string; treeName?: string }
 

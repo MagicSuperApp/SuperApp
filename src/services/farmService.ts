@@ -26,7 +26,7 @@ import type { APIError } from './treeReIDService';
 // ---------------------------------------------------------------------------
 
 export const FARM_BASE_URL: string =
-  (ORILIFE_API_BASE_URL as string | undefined) ?? 'https://test.orilife.io';
+  (ORILIFE_API_BASE_URL as string | undefined) ?? 'https://api.orilife.io';
 
 // ---------------------------------------------------------------------------
 // Types — khớp ĐÚNG shape field-reid Farm

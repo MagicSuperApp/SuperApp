@@ -110,9 +110,9 @@ workflows:
           PHOENIX_WALLET_ENABLED=${PHOENIX_WALLET_ENABLED:-false}
 
           # TreeReID / identify cây (RN layer)
-          ORILIFE_API_BASE_URL=${ORILIFE_API_BASE_URL:-https://test.orilife.io}
-          ORILIFE_TREEID_URL=${ORILIFE_TREEID_URL:-https://test.orilife.io/TreeIdentity}
-          ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://test.orilife.io}
+          ORILIFE_API_BASE_URL=${ORILIFE_API_BASE_URL:-https://api.orilife.io}
+          ORILIFE_TREEID_URL=${ORILIFE_TREEID_URL:-https://api.orilife.io/TreeIdentity}
+          ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://api.orilife.io}
 
           # LampNet 3D
           MESHAPI_USE_MOCK=false
@@ -382,9 +382,9 @@ workflows:
           ALADIN_REGION_CODE=${REGION_CODE:-vn-south-01}
           PHOENIXKEY_API_URL=${PHOENIXKEY_API_URL:-https://api.phoenixkey.me/api/v1}
           PHOENIX_WALLET_ENABLED=${PHOENIX_WALLET_ENABLED:-false}
-          ORILIFE_API_BASE_URL=${ORILIFE_API_BASE_URL:-https://test.orilife.io}
-          ORILIFE_TREEID_URL=${ORILIFE_TREEID_URL:-https://test.orilife.io/TreeIdentity}
-          ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://test.orilife.io}
+          ORILIFE_API_BASE_URL=${ORILIFE_API_BASE_URL:-https://api.orilife.io}
+          ORILIFE_TREEID_URL=${ORILIFE_TREEID_URL:-https://api.orilife.io/TreeIdentity}
+          ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://api.orilife.io}
           MESHAPI_USE_MOCK=false
           LAMPNET_BASE_URL=${LAMPNET_BASE_URL:-https://lampnet.cloud}
           LAMPNET_UPLOAD_URL=${LAMPNET_UPLOAD_URL:-https://lampnet.cloud/mirage/put?mode=symmetric}
@@ -619,9 +619,9 @@ workflows:
           ALADIN_REGION_CODE=${REGION_CODE:-vn-south-01}
           PHOENIXKEY_API_URL=${PHOENIXKEY_API_URL:-https://api.phoenixkey.me/api/v1}
           PHOENIX_WALLET_ENABLED=${PHOENIX_WALLET_ENABLED:-false}
-          ORILIFE_API_BASE_URL=${ORILIFE_API_BASE_URL:-https://test.orilife.io}
-          ORILIFE_TREEID_URL=${ORILIFE_TREEID_URL:-https://test.orilife.io/TreeIdentity}
-          ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://test.orilife.io}
+          ORILIFE_API_BASE_URL=${ORILIFE_API_BASE_URL:-https://api.orilife.io}
+          ORILIFE_TREEID_URL=${ORILIFE_TREEID_URL:-https://api.orilife.io/TreeIdentity}
+          ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://api.orilife.io}
           MESHAPI_USE_MOCK=false
           LAMPNET_BASE_URL=${LAMPNET_BASE_URL:-https://lampnet.cloud}
           LAMPNET_UPLOAD_URL=${LAMPNET_UPLOAD_URL:-https://lampnet.cloud/mirage/put?mode=symmetric}
@@ -638,13 +638,23 @@ workflows:
           npm install --legacy-peer-deps --ignore-scripts
           npx patch-package --error-on-fail || echo "⚠️  patch-package: no patches or already applied"
 
-      - name: Verify Android secrets.properties
+      - name: Create + verify Android secrets.properties
         script: |
+          # secrets.properties bị gitignore → tạo từ env group scanner_secrets
+          # (soi gương iOS secrets.plist). orilifesdk/build.gradle đọc 4 key này.
+          # Default an-toàn để build không gãy khi env chưa set, nhưng nên set ở Codemagic.
+          cat > android/app/secrets.properties <<EOF
+          TREE_DETECTION_API=${TREE_DETECTION_API:-https://api.orilife.io}
+          BASE_API_URL=${BASE_API_URL:-https://api.orilife.io}
+          API_KEY=${API_KEY:-mock-local-api-key}
+          REGION_CODE=${REGION_CODE:-vn-south-01}
+          EOF
+          perl -i -pe 's/^(\w+)=[ \t]+/$1=/; s/[ \t]+$//' android/app/secrets.properties
           if [ ! -f android/app/secrets.properties ]; then
             echo "❌ android/app/secrets.properties missing"
             exit 1
           fi
-          echo "✅ secrets.properties found"
+          echo "✅ secrets.properties created"
           grep -E "BASE_API_URL|API_KEY|REGION_CODE" android/app/secrets.properties
 
       - name: Build Rust core (Android)
@@ -740,9 +750,9 @@ workflows:
           ALADIN_REGION_CODE=${REGION_CODE:-vn-south-01}
           PHOENIXKEY_API_URL=${PHOENIXKEY_API_URL:-https://api.phoenixkey.me/api/v1}
           PHOENIX_WALLET_ENABLED=${PHOENIX_WALLET_ENABLED:-false}
-          ORILIFE_API_BASE_URL=${ORILIFE_API_BASE_URL:-https://test.orilife.io}
-          ORILIFE_TREEID_URL=${ORILIFE_TREEID_URL:-https://test.orilife.io/TreeIdentity}
-          ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://test.orilife.io}
+          ORILIFE_API_BASE_URL=${ORILIFE_API_BASE_URL:-https://api.orilife.io}
+          ORILIFE_TREEID_URL=${ORILIFE_TREEID_URL:-https://api.orilife.io/TreeIdentity}
+          ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://api.orilife.io}
           MESHAPI_USE_MOCK=false
           LAMPNET_BASE_URL=${LAMPNET_BASE_URL:-https://lampnet.cloud}
           LAMPNET_UPLOAD_URL=${LAMPNET_UPLOAD_URL:-https://lampnet.cloud/mirage/put?mode=symmetric}
@@ -758,6 +768,19 @@ workflows:
         script: |
           npm install --legacy-peer-deps --ignore-scripts
           npx patch-package --error-on-fail || echo "⚠️  patch-package: no patches or already applied"
+
+      - name: Create Android secrets.properties
+        script: |
+          # secrets.properties bị gitignore → tạo từ env group scanner_secrets.
+          # orilifesdk/build.gradle đọc 4 key này cho BuildConfig (BASE_API_URL...).
+          cat > android/app/secrets.properties <<EOF
+          TREE_DETECTION_API=${TREE_DETECTION_API:-https://api.orilife.io}
+          BASE_API_URL=${BASE_API_URL:-https://api.orilife.io}
+          API_KEY=${API_KEY:-mock-local-api-key}
+          REGION_CODE=${REGION_CODE:-vn-south-01}
+          EOF
+          perl -i -pe 's/^(\w+)=[ \t]+/$1=/; s/[ \t]+$//' android/app/secrets.properties
+          echo "✅ secrets.properties created (release)"
 
       - name: Restore keystore from encrypted env
         script: |

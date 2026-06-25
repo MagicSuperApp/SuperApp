@@ -54,7 +54,7 @@ import {
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
-const BASE_URL: string = ORILIFE_API_BASE_URL ?? 'https://test.orilife.io';
+const BASE_URL: string = ORILIFE_API_BASE_URL ?? 'https://api.orilife.io';
 
 // Nhãn tiếng Việt theo loài
 const SPECIES_LABELS: Record<string, string> = {

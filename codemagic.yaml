@@ -191,8 +191,9 @@ workflows:
           rustup target add aarch64-apple-ios
           command -v cbindgen &> /dev/null || cargo install cbindgen --version "^0.27"
 
-          # Device-only (adhoc IPA chạy trên iPhone thật — không cần simulator slice)
-          ( cd rust/taad_enclave_core && ./build_ios.sh device )
+          # Device-only (adhoc IPA chạy trên iPhone thật — không cần simulator slice).
+          # Gọi qua `bash` vì file commit từ Windows không giữ exec bit (chmod +x cũng được).
+          ( cd rust/taad_enclave_core && bash build_ios.sh device )
 
           echo "=== Rust iOS outputs ==="
           ls -lh rust/taad_enclave_core/ios/

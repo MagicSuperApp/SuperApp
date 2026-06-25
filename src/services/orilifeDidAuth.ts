@@ -88,7 +88,10 @@ export async function loginOrilifeWithDid(baseUrl: string): Promise<DidLoginResu
     const keyEnrolled = await isKeypairEnrolled().catch(() => false);
     rLog.info('did_login_identity', {
       hasDid: !!did,
-      didPrefix: did ? did.slice(0, 24) : null,
+      // DID là định danh CÔNG KHAI → log đầy đủ để chẩn đoán (canonical phải
+      // ≥78 ký tự: did:phoenix:<slot>:<64hex>). didLen < 78 = malformed/cụt.
+      did: did ?? null,
+      didLen: did ? did.length : 0,
       keyEnrolled,
       signerAvailable: phoenixKeyIsAvailable(),
     });

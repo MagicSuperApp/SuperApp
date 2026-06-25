@@ -116,7 +116,7 @@ def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
         // (1-tap Cây/Quả/Vườn), implicit farm 22m × 22m, biometric login,
         // walk-away auto-stop, drag-to-edit polygon. Field test target Đắk Lắk.
         // Keep Android versionCode in lockstep with iOS CFBundleVersion.
-        versionCode 62
+        versionCode 70
         versionName "2.0"
 
         // ✅ Support 16KB page size (required by Google Play Store 2024)

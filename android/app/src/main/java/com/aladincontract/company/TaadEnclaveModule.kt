@@ -31,6 +31,7 @@ class TaadEnclaveModule(reactContext: ReactApplicationContext) :
 
     @ReactMethod
     fun generateMasterKek(promise: Promise) {
+        if (!libLoaded) { promise.reject("E_NATIVE_UNAVAILABLE", "Rust core .so chưa nạp được (ABI này thiếu lib)"); return }
         try {
             val kek = nativeGenerateMasterKek()
             if (kek.isNullOrEmpty()) {
@@ -45,6 +46,7 @@ class TaadEnclaveModule(reactContext: ReactApplicationContext) :
 
     @ReactMethod
     fun masterKekToMnemonic(kekHex: String, promise: Promise) {
+        if (!libLoaded) { promise.reject("E_NATIVE_UNAVAILABLE", "Rust core .so chưa nạp được (ABI này thiếu lib)"); return }
         try {
             val phrase = nativeMasterKekToMnemonic(kekHex)
             if (phrase.isNullOrEmpty()) {
@@ -59,6 +61,7 @@ class TaadEnclaveModule(reactContext: ReactApplicationContext) :
 
     @ReactMethod
     fun mnemonicToMasterKek(words: String, promise: Promise) {
+        if (!libLoaded) { promise.reject("E_NATIVE_UNAVAILABLE", "Rust core .so chưa nạp được (ABI này thiếu lib)"); return }
         try {
             val kek = nativeMnemonicToMasterKek(words)
             if (kek.isNullOrEmpty()) {
@@ -72,8 +75,16 @@ class TaadEnclaveModule(reactContext: ReactApplicationContext) :
     }
 
     companion object {
+        // Phòng thủ: AAB có thể gồm ABI mà .so chưa build (vd x86). Nếu loadLibrary
+        // ném thì giữ libLoaded=false → các method reject thay vì crash app lúc mở.
+        private var libLoaded = false
         init {
-            System.loadLibrary("taad_enclave_core")
+            try {
+                System.loadLibrary("taad_enclave_core")
+                libLoaded = true
+            } catch (e: Throwable) {
+                // .so vắng cho ABI hiện tại — module báo không khả dụng, KHÔNG sập app.
+            }
         }
     }
 }

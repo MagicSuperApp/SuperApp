@@ -32,6 +32,10 @@ import SignUpBiometricScreen from '../features/auth/screens/SignUpBiometricScree
 import SignUpCompleteScreen from '../features/auth/screens/SignUpCompleteScreen';
 import AccountScreen from '../screens/AccountScreen';
 import BiometricSettings from '../screens/BiometricSettings';
+import IdentityExportScreen from '../screens/IdentityExportScreen';
+import LampWalletScreen from '../screens/LampWalletScreen';
+import JoinScreen from '../screens/JoinScreen';
+import SetUsernameScreen from '../screens/SetUsernameScreen';
 import SurfaceTestCaptureScreen from '../screens/SurfaceTestCaptureScreen';
 import OnboardingWizard from '../screens/OnboardingWizard';
 // Host-level capture/identity screens (dùng chung nhiều luồng, chưa thuộc module nào)
@@ -405,6 +409,10 @@ const HOST_STACK_SCREENS: Array<{
   { name: 'Login', component: LoginScreen, options: { headerShown: false } },
   { name: 'Activation', component: ActivationScreen },
   { name: 'BiometricSettings', component: BiometricSettings },
+  { name: 'IdentityExport', component: IdentityExportScreen, options: { headerShown: false } },
+  { name: 'LampWallet', component: LampWalletScreen, options: { headerShown: false } },
+  { name: 'Join', component: JoinScreen, options: { headerShown: false } },
+  { name: 'SetUsername', component: SetUsernameScreen, options: { headerShown: false } },
   { name: 'SurfaceTestCapture', component: SurfaceTestCaptureScreen, options: { headerShown: false } },
   { name: 'Main', component: ProtectedMain, options: { headerShown: false } },
   // ProofChat ví/escrow — chưa khai manifest, giữ ở host stack.

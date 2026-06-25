@@ -10,7 +10,7 @@
 // (đã sửa lệch 'TraceDashboard' → 'Dashboard' ở YC-3).
 
 import type { ImageSourcePropType } from 'react-native';
-import { TRACE_THEME, PROOFCHAT_THEME, WORK_THEME } from '../theme';
+import { TRACE_THEME, PROOFCHAT_THEME, WORK_THEME, LAMPNET_THEME } from '../theme';
 import type { ModuleTheme } from '../theme/tokens';
 
 export interface ModuleEntry {
@@ -55,6 +55,16 @@ export const MODULES: ModuleEntry[] = [
     routeName: 'WorkHome',
     available: true,
   },
+  {
+    theme: LAMPNET_THEME,
+    title: 'Kết đèn',
+    description: 'Lưu trữ phi tập trung trên mạng LampNet',
+    icon: 'lightning-bolt',
+    image: require('../../assets/images/modules/scan-fi.png'),
+    bgDark: '#C47F0D',
+    routeName: 'Join',
+    available: true,
+  },
 ];
 
-export { TRACE_THEME, PROOFCHAT_THEME, WORK_THEME };
+export { TRACE_THEME, PROOFCHAT_THEME, WORK_THEME, LAMPNET_THEME };

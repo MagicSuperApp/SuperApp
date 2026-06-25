@@ -530,6 +530,20 @@ const AccountScreen = () => {
                                 <Text style={styles.walletNoteStrong}>Địa chỉ ví</Text> giữ toàn bộ tài sản của bạn — gửi và nhận MAGIC, LAMP, ADA đều dùng địa chỉ này.
                             </Text>
                         </View>
+                        <MenuItem
+                            icon="account-edit-outline"
+                            label="Đặt / đổi username"
+                            sublabel="Username đăng nhập mọi app PhoenixKey"
+                            onPress={() => navigation.navigate('SetUsername')}
+                        />
+                        {/* Lối vào màn "Xuất danh tính": DID + Standard + Phoenix, mỗi mục có Copy + QR. */}
+                        <MenuItem
+                            icon="qrcode-scan"
+                            label="Xuất danh tính"
+                            sublabel="DID, địa chỉ ví & Phoenix — kèm mã QR"
+                            onPress={() => navigation.navigate('IdentityExport')}
+                            last
+                        />
                     </Section>
                 </Animated.View>
 
@@ -538,7 +552,14 @@ const AccountScreen = () => {
                     <Section title="LAMPNET">
                         {/* Bỏ "Mảnh dữ liệu"/"Thiết bị lưu trữ": field shardCount/deviceCount KHÔNG
                             tồn tại trên User → luôn '—' (số ma). Nối lại khi có nguồn LampNet thật. */}
-                        <InfoRow icon="lock-outline" label="Mã hoá" value="AES-256 đầu cuối" last />
+                        <InfoRow icon="lock-outline" label="Mã hoá" value="AES-256 đầu cuối" />
+                        <MenuItem
+                            icon="lightning-bolt"
+                            label="Kết đèn"
+                            sublabel="Xem trạng thái mạng LampNet"
+                            onPress={() => navigation.navigate('Join')}
+                            last
+                        />
                     </Section>
                 </Animated.View>
 

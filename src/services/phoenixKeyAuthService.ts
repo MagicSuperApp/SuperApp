@@ -296,3 +296,74 @@ const migrateLegacyDidStores = async (
     /* non-fatal */
   }
 };
+
+// ---------------------------------------------------------------------------
+// Session token self-mint — port từ PhoenixKey-Core AuthService.ensureSessionToken()
+// (Dart: Enclave/lib/services/auth_service.dart).
+// Flow: POST /auth/session/init → ký challenge:domain:timestamp → POST approve → poll status.
+// ---------------------------------------------------------------------------
+const PHOENIXKEY_AUTH_DOMAIN = 'phoenixkey.me';
+const SESSION_POLL_ATTEMPTS = 8;
+const SESSION_POLL_DELAY_MS = 800;
+
+/**
+ * Đảm bảo có session_token (JWT 24h) trong AsyncStorage.
+ * Nếu đã có và force=false → trả ngay, không trigger biometric.
+ * Nếu chưa → chạy flow init→sign→approve→poll_status (kích hoạt sinh trắc học).
+ */
+export const ensurePhoenixKeySession = async (
+  opts: { force?: boolean } = {},
+): Promise<string> => {
+  if (!opts.force) {
+    const existing = await phoenixKeyApi.getSessionToken();
+    if (existing) return existing;
+  }
+
+  const did = await currentUserDid();
+  if (!did) throw new Error('Chưa có DID trên thiết bị.');
+
+  // 1. init
+  const init = await phoenixKeyApi.session.init();
+  const { sessionId, challenge, tempToken } = init;
+  if (!tempToken) {
+    throw new Error('Backend không trả temp_token — cần nâng cấp PhoenixKey server.');
+  }
+
+  // 2. ký challenge:domain:timestamp (theo Dart _mint, khớp backend verify)
+  const timestamp = Math.floor(Date.now() / 1000);
+  const message = `${challenge}:${PHOENIXKEY_AUTH_DOMAIN}:${timestamp}`;
+  const signatureHex = await signRaw(
+    utf8ToHex(message),
+    'Đăng nhập PhoenixKey',
+    'Ký để lấy phiên làm việc an toàn',
+  );
+  const pubkeyHex = await ownerPublicKey();
+
+  // 3. approve
+  await phoenixKeyApi.session.approve(sessionId, {
+    userDid: did,
+    publicKeyHex: pubkeyHex,
+    signature: signatureHex,
+    domain: PHOENIXKEY_AUTH_DOMAIN,
+    timestamp,
+  });
+
+  // 4. poll status với Bearer tempToken
+  let sessionToken: string | null = null;
+  for (let i = 0; i < SESSION_POLL_ATTEMPTS; i++) {
+    const status = await phoenixKeyApi.session.getStatus(sessionId, tempToken);
+    if (status.status === 'approved' && status.sessionToken) {
+      sessionToken = status.sessionToken;
+      break;
+    }
+    if (status.status === 'rejected' || status.status === 'expired') {
+      throw new Error(`Phiên bị ${status.status} trước khi lấy được token.`);
+    }
+    await new Promise<void>(res => { setTimeout(res, SESSION_POLL_DELAY_MS); });
+  }
+  if (!sessionToken) throw new Error('Không lấy được session_token sau khi approve.');
+
+  // 5. lưu
+  await phoenixKeyApi.setSessionToken(sessionToken);
+  return sessionToken;
+};

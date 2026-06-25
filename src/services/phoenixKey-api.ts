@@ -37,6 +37,13 @@ export interface ApproveSessionRequest {
   timestamp: number;
 }
 
+export interface SessionInitResponse {
+  sessionId: string;
+  challenge: string;
+  tempToken: string;
+  expiresAt?: number;
+}
+
 export interface SessionStatusResponse {
   sessionId: string;
   status: 'pending' | 'approved' | 'rejected' | 'expired';
@@ -264,15 +271,24 @@ export const identity = {
 };
 
 export const session = {
+  init: () =>
+    unwrap<SessionInitResponse>(
+      client.post('/auth/session/init', {}),
+    ),
+
   approve: (sessionId: string, body: ApproveSessionRequest) =>
     unwrap<{ status: string; linkedDeviceToken?: string }>(
       client.post(`/auth/session/${encodeURIComponent(sessionId)}/approve`, body),
     ),
 
-  getStatus: (sessionId: string) =>
-    unwrap<SessionStatusResponse>(
-      client.get(`/auth/session/${encodeURIComponent(sessionId)}/status`),
-    ),
+  getStatus: (sessionId: string, tempToken?: string) => {
+    const cfg = tempToken
+      ? { headers: { Authorization: `Bearer ${tempToken}` } } as AxiosRequestConfig
+      : undefined;
+    return unwrap<SessionStatusResponse>(
+      client.get(`/auth/session/${encodeURIComponent(sessionId)}/status`, cfg),
+    );
+  },
 };
 
 export const signRequest = {

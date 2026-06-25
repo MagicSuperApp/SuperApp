@@ -17,8 +17,10 @@ Pod::Spec.new do |s|
   s.source           = { :path => '.' }
   s.platform         = :ios, '13.0'
 
-  # cbindgen-generated header — public so Swift `import taad_enclave_core` sees the C decls.
-  s.source_files        = 'taad_enclave_core.h'
+  # cbindgen-generated header (public, để Swift `import taad_enclave_core` thấy C decls)
+  # + module_shim.c (committed) — buộc CocoaPods build framework/module dưới
+  # use_frameworks! :static (pod chỉ-header sẽ KHÔNG sinh module → "no such module").
+  s.source_files        = 'taad_enclave_core.h', 'module_shim.c'
   s.public_header_files = 'taad_enclave_core.h'
 
   # Rust staticlib — CocoaPods tự link qua vendored_libraries (symbol được Swift

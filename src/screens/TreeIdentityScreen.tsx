@@ -66,6 +66,7 @@ import ResultBadge from '../components/reid/ResultBadge';
 import FactorBreakdown, { type FactorScores } from '../components/reid/FactorBreakdown';
 import ReidConfirmDialog, { type ReidCandidate } from '../components/reid/ReidConfirmDialog';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
+import { ensureOrilifeToken } from '../services/orilifeDidAuth';
 import rLog from '../services/remoteLogger';
 import {
   addCapture,
@@ -455,30 +456,22 @@ const TreeIdentityScreen: React.FC = () => {
     setVerdictSent(null);
     rLog.treeIdentity.apiStart(imagePaths.length, gpsRedux?.lat, gpsRedux?.lng);
 
-    // ── DIAGNOSTIC: phân biệt "host unreachable" vs "file không đọc được" ──
-    // Cả hai đều ném "TypeError: Network request failed" nên cần probe tách bạch.
-    // 1) Kiểm tra từng file ảnh có đọc được không (RN đọc file để build multipart).
-    await Promise.all(
-      imagePaths.map(async (uri, i) => {
-        try {
-          const r = await fetch(uri);
-          const blob = await r.blob();
-          rLog.treeIdentity.fileCheck(i, uri, true, blob.size);
-        } catch (fe: any) {
-          rLog.treeIdentity.fileCheck(i, uri, false, 0, fe?.message ?? String(fe));
-        }
-      }),
-    );
-    // 2) Probe reachability của backend (GET base url, không cần auth).
-    try {
-      const probe = await fetch(BASE_URL, { method: 'GET' });
-      rLog.treeIdentity.reachProbe(BASE_URL, true, probe.status);
-    } catch (pe: any) {
-      rLog.treeIdentity.reachProbe(BASE_URL, false, 0, pe?.message ?? String(pe));
+    // Đảm bảo có token field-reid. Chưa có → đăng nhập DID bằng khoá PhoenixKey
+    // (ký challenge bằng Secure Enclave/Keystore → server cấp token). Token TTL 12h
+    // nên thường chỉ phải ký 1 lần/phiên.
+    const tokenOk = await ensureOrilifeToken(BASE_URL);
+    if (!tokenOk) {
+      rLog.treeIdentity.apiError('did_login_failed', imagePaths.length);
+      Alert.alert(
+        'Lỗi đăng nhập',
+        'Không đăng nhập được dịch vụ nhận diện (PhoenixKey). Kiểm tra danh tính/mạng rồi thử lại.',
+      );
+      setIsIdentifyingLocal(false);
+      return;
     }
 
-    try {
-      const result = await identifyTree(BASE_URL, imagePaths, {
+    const callIdentify = () =>
+      identifyTree(BASE_URL, imagePaths, {
         lat: gpsRedux?.lat,
         lon: gpsRedux?.lng,
         heading: heading ?? undefined,
@@ -486,6 +479,15 @@ const TreeIdentityScreen: React.FC = () => {
         // M4: chỉ gửi khi tester đã bật toggle.
         matcher: matcher ?? undefined,
       });
+
+    try {
+      let result = await callIdentify();
+
+      // Token hết hạn/không hợp lệ (401) → DID login lại 1 lần rồi thử lại.
+      if (!result.ok && result.error?.type === 'auth_error') {
+        const relog = await ensureOrilifeToken(BASE_URL, { force: true });
+        if (relog) result = await callIdentify();
+      }
 
       if (result.ok && result.data) {
         const data = result.data;

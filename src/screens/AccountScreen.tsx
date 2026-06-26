@@ -14,8 +14,9 @@ import {
     Alert,
     Modal,
     Linking,
-    Clipboard,
 } from 'react-native';
+// RN 0.84 đã gỡ Clipboard khỏi core → dùng package cộng đồng (API setString giữ nguyên).
+import Clipboard from '@react-native-clipboard/clipboard';
 import { logoutUser, selectChainWallet } from '../store/userSlice';
 import { setChatbotEnabled } from '../store/chatbotSlice';
 import { useSelector } from 'react-redux';

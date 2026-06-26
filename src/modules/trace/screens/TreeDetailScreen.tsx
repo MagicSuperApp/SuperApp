@@ -4,7 +4,7 @@
 //   - "Tổng quan": existing hero + fruit-list activity preserved.
 //   - "Lịch sử":   list of capture history (local fruits).
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -45,7 +45,7 @@ const TAB_DEFS: { key: TabKey; label: string; icon: string }[] = [
   { key: 'info',     label: 'Thông tin', icon: 'clipboard-text-outline' },
 ];
 
-interface RouteParams { tree: any; initialTab?: TabKey; farmId?: string }
+interface RouteParams { tree?: any; treeId?: string; initialTab?: TabKey; farmId?: string }
 
 // ── Status config ─────────────────────────────────────────────────────────────
 // Build 51 (2026-05-17): farmer-friendly Vietnamese status labels.
@@ -217,7 +217,17 @@ const TreeDetailScreen = () => {
   const insets     = useSafeAreaInsets();
   const route      = useRoute();
   const params = route.params as RouteParams | undefined;
-  const tree = params?.tree;
+  const treesInStore = useSelector((state: RootState) => state.farm.trees);
+  // Chấp nhận cả {tree} (object) lẫn {treeId} (string). Caller cũ TreeEnroll /
+  // TreeManagement chỉ truyền treeId → tra cây từ store theo id hoặc tree_id.
+  // Chỉ dùng cây TÌM THẤY (đúng shape) nên không rủi ro sai ID; không thấy →
+  // rơi về màn not-found sẵn có bên dưới.
+  const tree = useMemo(() => {
+    if (params?.tree) return params.tree;
+    const id = params?.treeId;
+    if (!id) return undefined;
+    return treesInStore.find((t: any) => t?.id === id || t?.tree_id === id);
+  }, [params?.tree, params?.treeId, treesInStore]);
   const initialTab = params?.initialTab;
 
   // Safety check: if no tree data, go back

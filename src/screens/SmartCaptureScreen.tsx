@@ -108,6 +108,11 @@ const SmartCaptureScreen: React.FC = () => {
 
   // ── Launch Native Scanner ────────────────────────────────────────────────
 
+  // Giữ cleanup của lần quét đang chạy để: (a) gỡ listener cũ TRƯỚC khi quét lại
+  // (tránh chồng listener mỗi lần "Quét lại"/"Thử lại"); (b) gỡ chắc chắn khi
+  // unmount, kể cả khi unmount xảy ra TRƯỚC lúc launchNativeScanner resolve.
+  const scannerCleanupRef = useRef<(() => void) | undefined>(undefined);
+
   const launchNativeScanner = useCallback(async () => {
     setScanStatus('launching');
 
@@ -204,13 +209,18 @@ const SmartCaptureScreen: React.FC = () => {
       useNativeDriver: true,
     }).start();
 
-    let cleanup: (() => void) | undefined;
+    let cancelled = false;
     launchNativeScanner().then((fn) => {
-      cleanup = fn;
+      // Unmount xảy ra trước khi scanner resolve → gỡ listener ngay, tránh
+      // setState-sau-unmount và leak listener trên máy yếu.
+      if (cancelled) { fn?.(); return; }
+      scannerCleanupRef.current = fn;
     });
 
     return () => {
-      cleanup?.();
+      cancelled = true;
+      scannerCleanupRef.current?.();
+      scannerCleanupRef.current = undefined;
     };
   }, []);
 
@@ -219,11 +229,13 @@ const SmartCaptureScreen: React.FC = () => {
   // Dùng cho nút "Quét lại" sau khi quét xong thành công — luôn cho phép,
   // không tính vào giới hạn thử-lại-khi-lỗi.
   const handleScanAgain = async () => {
+    scannerCleanupRef.current?.();        // gỡ listener lần quét trước
+    scannerCleanupRef.current = undefined;
     setScanStatus('launching');
     setTreeIds([]);
     setErrorMessage(null);
     setRetryCount(0);
-    await launchNativeScanner();
+    scannerCleanupRef.current = await launchNativeScanner();
   };
 
   // Dùng cho nút "Thử lại" khi gặp lỗi tạm thời. Giới hạn MAX_RETRY lần để
@@ -235,11 +247,13 @@ const SmartCaptureScreen: React.FC = () => {
       setErrorMessage(null);
       return;
     }
+    scannerCleanupRef.current?.();        // gỡ listener lần thử trước
+    scannerCleanupRef.current = undefined;
     setRetryCount((c) => c + 1);
     setScanStatus('launching');
     setTreeIds([]);
     setErrorMessage(null);
-    await launchNativeScanner();
+    scannerCleanupRef.current = await launchNativeScanner();
   };
 
   const handleClose = () => {

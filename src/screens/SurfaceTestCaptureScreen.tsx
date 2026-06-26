@@ -9,7 +9,7 @@
  * Ranh-giới: ảnh được native scanner chụp + đẩy lên qua hàng-đợi offline sẵn có. Việc backend
  * tách theo prefix `surftest|...` là của Lợi (xem docs/surface-id/SPEC-DATA-COLLECTION-APP.md).
  */
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -145,6 +145,18 @@ const SurfaceTestCaptureScreen: React.FC = () => {
   }, [species, indivId, round, loadProgress]);
 
   // ── bắt đầu chụp 1 cá-thể ────────────────────────────────────────────────────
+  // Giữ 3 listener của lần chụp đang chạy để gỡ TRỌN VẸN — trước đây `upSub`
+  // (UPLOAD_PROGRESS) không được gỡ ở path thành công + không có cleanup unmount
+  // → mỗi lần "Bắt đầu chụp" cộng dồn listener, setState sau unmount (nóng/treo
+  // máy yếu của nông dân).
+  const captureSubsRef = useRef<Array<{ remove: () => void }>>([]);
+  const clearCaptureSubs = useCallback(() => {
+    captureSubsRef.current.forEach(s => s.remove());
+    captureSubsRef.current = [];
+  }, []);
+  // Gỡ listener khi rời màn.
+  useEffect(() => () => clearCaptureSubs(), [clearCaptureSubs]);
+
   const startCapture = useCallback(async () => {
     if (!indivId.trim()) {
       Alert.alert('Thiếu mã', 'Nhập mã cá-thể (vd XO-001) trước khi chụp.');
@@ -156,20 +168,23 @@ const SurfaceTestCaptureScreen: React.FC = () => {
       return;
     }
 
+    clearCaptureSubs();   // gỡ listener lần chụp trước (nếu còn) trước khi tạo mới
+
     const completeSub = ScannerSDK.addListener(EVENTS.SCAN_COMPLETE, (_d: ScanCompleteData) => {
       setStatus('complete');
       markDone();
-      completeSub.remove();
+      clearCaptureSubs();   // gỡ CẢ 3 listener (gồm upSub) ở path thành công
     });
     const errSub = ScannerSDK.addListener(EVENTS.SCAN_ERROR, (d: ScanErrorData) => {
       setStatus('error');
       setErrorMsg(d.error || 'Lỗi scanner.');
-      errSub.remove();
+      clearCaptureSubs();
     });
     const upSub = ScannerSDK.addListener(EVENTS.UPLOAD_PROGRESS, (d: UploadProgressData) => {
       setUpload({ progress: d.progress, total: d.total });
       setStatus('uploading');
     });
+    captureSubsRef.current = [completeSub, errSub, upSub];
 
     setStatus('scanning');
     setErrorMsg(null);
@@ -185,11 +200,9 @@ const SurfaceTestCaptureScreen: React.FC = () => {
     } catch (err: any) {
       setStatus('error');
       setErrorMsg(`Không mở được scanner: ${err?.message || err}`);
-      completeSub.remove();
-      errSub.remove();
-      upSub.remove();
+      clearCaptureSubs();
     }
-  }, [indivId, species, surface, round, markDone]);
+  }, [indivId, species, surface, round, markDone, clearCaptureSubs]);
 
   const nextIndividual = () => {
     setStatus('idle');

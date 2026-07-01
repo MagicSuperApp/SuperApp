@@ -103,6 +103,20 @@ target 'aladin_mobile_fe' do
 
         # Disable CLANG Module Validation globally để tránh cached lỗi trên CI
         config.build_settings['CLANG_MODULES_VALIDATE_SYSTEM_HEADERS'] = 'NO'
+
+        # @react-native-firebase/messaging: TẮT clang modules riêng cho target này.
+        # Lỗi build "declaration of 'RCTPromiseRejectBlock' must be imported from
+        # module 'RNFBApp.RNFBAppModule' before it is required":
+        #   RNFBApp build thành clang module đã "nuốt" các type React (RCTPromiseRejectBlock,
+        #   RCTConvert) vào module của nó. Khi RNFBMessaging `@import RNFBApp` rồi lại dùng
+        #   type đó qua textual `#import <React/..>` trong header → clang xung đột.
+        # Tắt modules cho RNFBMessaging → mọi import thành textual đồng nhất, hết xung đột.
+        # RNFBMessaging thuần ObjC (0 file Swift) nên tắt modules an toàn.
+        # $RNFirebaseAsStaticFramework=true ở đầu Podfile là điều kiện cần nhưng chưa đủ
+        # cho RN 0.84 New Arch — cần thêm bước này.
+        if target.name == 'RNFBMessaging'
+          config.build_settings['CLANG_ENABLE_MODULES'] = 'NO'
+        end
       end
     end
 

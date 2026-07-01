@@ -47,6 +47,11 @@ const CAROUSEL_H = 140;
 const MODULE_GAP = 12;
 const MODULE_CARD_W = (width - H_PADDING * 2 - MODULE_GAP) / 2;
 
+// Khoảng chừa dưới cho CurvedTabBar (navbar khuyết-tròn) — thanh cao 64 + nút
+// Home nhô lên 43 + cushion. Cộng thêm insets.bottom tại nơi dùng. Giữ đồng bộ
+// với TAB_BAR_HEIGHT/FLOAT trong navigation/index.tsx.
+const BOTTOM_NAV_CLEARANCE = 120;
+
 type QuickActionSheetOption = {
   key: string;
   icon: string;
@@ -559,6 +564,7 @@ const HomeScreen: React.FC = () => {
         Alert.alert('Cần quyền vị trí', 'Bật GPS trong Cài đặt → Aladin.');
         return;
       }
+      // GPS + tạo vườn/cây ngầm trên bản đồ — GIỮ NGUYÊN.
       const gps = await getCurrentGPS();
       const farm = await getOrCreateImplicitFarm({
         userDid: user.id,
@@ -566,22 +572,16 @@ const HomeScreen: React.FC = () => {
         gps,
         accuracyMeters: gps.accuracy,
       });
-      const tree = await getOrCreateImplicitTree({
+      await getOrCreateImplicitTree({
         farmId: farm.farmId,
         userDid: user.id,
         gps,
         accuracyMeters: gps.accuracy,
       });
 
-      // Import ScannerSDK
-      const { ScannerSDK } = await import('../scansdk/ScannerSDK');
-
-      // Start scanner with fruit mode
-      await ScannerSDK.initialize();
-      await ScannerSDK.startScanner({
-        farm_id: farm.farmId,
-        scanMode: 'fruit',
-      });
+      // Sau khi thêm GPS/vườn-cây trên bản đồ xong → sang màn Nhận diện (TreeIdentity),
+      // thay cho scanner cũ (giống nút quick "Nhận diện").
+      (navigation as any).navigate('TreeIdentity', { farmId: farm.farmId });
     } catch (err: any) {
       console.error('[HomeScreen] handleQuickScanFruit failed:', err);
       Alert.alert('Lỗi', 'Không thể nhận diện quả. Bạn thử lại sau nhé.');
@@ -798,7 +798,10 @@ const HomeScreen: React.FC = () => {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[
           styles.scroll,
-          { paddingBottom: Math.max(insets.bottom, 12) + 32 },
+          // iOS-fix: CurvedTabBar (navbar) là position:absolute nổi trên nội dung.
+          // Chừa đủ khoảng dưới = chiều cao thanh (64) + phần nhô nút Home (43) +
+          // safe-area dưới, để item cuối KHÔNG bị navbar che. (BOTTOM_NAV_CLEARANCE)
+          { paddingBottom: insets.bottom + BOTTOM_NAV_CLEARANCE },
         ]}
         refreshControl={
           <RefreshControl
@@ -818,20 +821,9 @@ const HomeScreen: React.FC = () => {
             Independent Feature Operation principle. Order per CPO Đức:
               🌳 Cây · Tree → 🍎 Quả · Fruit → 🗺️ Vườn · Farm */}
         <View style={styles.quickActionsRow}>
-          {/* Tree Identity - Native implementation */}
-          <TouchableOpacity
-            style={[styles.quickActionBtn]}
-            onPress={() => (navigation as any).navigate('TreeIdentity')}
-            disabled={quickActionBusy !== null}
-            activeOpacity={0.85}
-          >
-            <View style={styles.quickActionIconWrap}>
-              <Icon name="leaf" size={32} color="#1b5e20" />
-            </View>
-            <Text style={[styles.quickActionLabel, { color: '#1b5e20' }]}>Nhận diện</Text>
-            <Text style={styles.quickActionLabelEn}>AI Tree</Text>
-          </TouchableOpacity>
-
+          {/* Tree Identity - Native implementation.
+              Quét cây ĐỘC LẬP: vào thẳng TreeIdentity, KHÔNG ép chọn/tạo vườn.
+              Cây enroll qua đây có farm_id=null — gắn vườn sau (tuỳ chọn). */}
           <TouchableOpacity
             style={[styles.quickActionBtn]}
             onPress={handleQuickAddTree}
@@ -842,10 +834,14 @@ const HomeScreen: React.FC = () => {
               {quickActionBusy === 'tree' ? (
                 <ActivityIndicator color={COLORS.accent} size="small" />
               ) : (
-                <Icon name="pine-tree" size={32} color={COLORS.accent} />
+                <Image
+                  source={require('../../assets/images/modules/tree.png')}
+                  style={styles.quickActionImg}
+                  resizeMode="contain"
+                />
               )}
             </View>
-            <Text style={styles.quickActionLabel}>Cây</Text>
+            <Text style={styles.quickActionLabel}>Quét cây</Text>
             <Text style={styles.quickActionLabelEn}>Tree</Text>
           </TouchableOpacity>
 
@@ -859,7 +855,11 @@ const HomeScreen: React.FC = () => {
               {quickActionBusy === 'fruit' ? (
                 <ActivityIndicator color={COLORS.accent} size="small" />
               ) : (
-                <Icon name="fruit-cherries" size={32} color={COLORS.accent} />
+                <Image
+                  source={require('../../assets/images/modules/vegetable.png')}
+                  style={styles.quickActionImg}
+                  resizeMode="contain"
+                />
               )}
             </View>
             <Text style={styles.quickActionLabel}>Quả</Text>
@@ -889,7 +889,11 @@ const HomeScreen: React.FC = () => {
               {quickActionBusy === 'farm' ? (
                 <ActivityIndicator color={COLORS.accent} size="small" />
               ) : (
-                <Icon name="sprout" size={32} color={COLORS.accent} />
+                <Image
+                  source={require('../../assets/images/modules/add-growth.png')}
+                  style={styles.quickActionImg}
+                  resizeMode="contain"
+                />
               )}
             </View>
             <Text style={styles.quickActionLabel}>Thêm Vườn</Text>
@@ -1421,6 +1425,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 8,
+  },
+  quickActionImg: {
+    width: 34,
+    height: 34,
   },
   quickActionLabel: {
     color: COLORS.accentDeep,

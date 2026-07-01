@@ -32,6 +32,8 @@ import {
   ActivityIndicator,
   ScrollView,
   requireNativeComponent,
+  Modal,
+  FlatList,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
@@ -52,12 +54,20 @@ import {
 import {
   identifyTree,
   verifyAddTree,
+  submitIdentifyVerdict,
+  getTrees,
   type IdentifyResponse,
+  type ConfidenceBand,
+  type IdentifyVerdict,
+  type ShellMatcher,
+  type TreeInfo,
 } from '../services/treeReIDService';
 import ResultBadge from '../components/reid/ResultBadge';
 import FactorBreakdown, { type FactorScores } from '../components/reid/FactorBreakdown';
 import ReidConfirmDialog, { type ReidCandidate } from '../components/reid/ReidConfirmDialog';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
+import { ensureOrilifeToken } from '../services/orilifeDidAuth';
+import rLog from '../services/remoteLogger';
 import {
   addCapture,
   setCapturing,
@@ -85,10 +95,12 @@ const BASE_URL: string =
 // Native component (iOS only)
 // ---------------------------------------------------------------------------
 
-// BẮTT BUỘC guard: NativeCameraPreview chỉ tồn tại trên iOS
+// NativeCameraPreview tồn tại trên cả iOS lẫn Android (ViewManager cùng tên
+// "TreeReIDCameraPreview"). Máy Android chưa cập nhật (thiếu view) sẽ không render
+// — nhưng guard isCaptureActive + isAvailable() ở dưới đảm bảo chỉ dùng khi có native.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const NativeCameraPreview =
-  Platform.OS === 'ios'
+  Platform.OS === 'ios' || Platform.OS === 'android'
     ? (requireNativeComponent('TreeReIDCameraPreview') as React.ComponentType<{
         style?: object;
       }>)
@@ -130,6 +142,11 @@ const TreeIdentityScreen: React.FC = () => {
   // Vườn hiện-hành (nếu mở từ ngữ-cảnh farm) — truyền tiếp xuống TreeEnroll.
   const farmId = route.params?.farmId;
 
+  useEffect(() => {
+    rLog.treeIdentity.screenMount({ farmId });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ── Redux state ───────────────────────────────────────────────────────────
   const capturesRedux = useAppSelector(selectCaptures);
   const identResultRedux = useAppSelector(selectIdentificationResult);
@@ -148,8 +165,30 @@ const TreeIdentityScreen: React.FC = () => {
   const [showConfirm, setShowConfirm] = useState(false);
   const [showFactors, setShowFactors] = useState(false);
 
+  // ── PoC-Tree §4: verdict + matcher (ADDITIVE, ẩn nội-tạng) ────────────────
+  // query_id của lần identify hiện-tại (Lợi PR #46) — GIỮ để gửi verdict.
+  const [queryId, setQueryId] = useState<string | null>(null);
+  // Phán-quyết đã gửi (null = chưa gửi) → khoá nút sau 1 chạm.
+  const [verdictSent, setVerdictSent] = useState<IdentifyVerdict | null>(null);
+  const [isSendingVerdict, setIsSendingVerdict] = useState(false);
+  // Bộ chọn "cây khác" (verdict='other' cần correct_tid từ /api/trees).
+  const [showTreePicker, setShowTreePicker] = useState(false);
+  const [pickerTrees, setPickerTrees] = useState<TreeInfo[]>([]);
+  const [isLoadingPicker, setIsLoadingPicker] = useState(false);
+  const [pickerError, setPickerError] = useState<string | null>(null);
+
+  // ── M4: matcher toggle ẩn (tester) — long-press tiêu-đề mở chọn ───────────
+  // null = mặc-định (không gửi ?matcher=, backend dùng ENV).
+  const [matcher, setMatcher] = useState<ShellMatcher | null>(null);
+  const [showMatcherPicker, setShowMatcherPicker] = useState(false);
+
   // Android: captures tự quản lý cục bộ bằng mảng uri ảnh
   const [androidImageUris, setAndroidImageUris] = useState<string[]>([]);
+
+  // iOS: đếm capture từ native event (capturesRedux chỉ được điền SAU stop).
+  const [iosCaptureCount, setIosCaptureCount] = useState(0);
+  // Snapshot tổng-số-capture tại thời điểm advance sang lượt 2 → tính per-round.
+  const [iosRound1Snapshot, setIosRound1Snapshot] = useState(0);
 
   const geoWatchRef = useRef<number | null>(null);
 
@@ -220,9 +259,9 @@ const TreeIdentityScreen: React.FC = () => {
     return true;
   };
 
-  // ── Native event subscriptions (iOS only) ────────────────────────────────
+  // ── Native event subscriptions (iOS + Android khi có native) ─────────────
   useEffect(() => {
-    if (Platform.OS !== 'ios') return;
+    if (!TreeReIDBridge.isAvailable()) return;
 
     const unsubHeading = subscribeHeadingUpdate((e: HeadingUpdate) => {
       setHeading(e.heading);
@@ -230,12 +269,21 @@ const TreeIdentityScreen: React.FC = () => {
       setShouldCapture(e.shouldCapture);
     });
 
-    const unsubCapture = subscribeCaptureTriggered((_e: CaptureTriggered) => {
-      // capture event — native side đã lưu file
+    const unsubCapture = subscribeCaptureTriggered((e: CaptureTriggered) => {
+      // Native gửi 2 lần: lần đầu (trước save) totalCaptures=N-1, lần sau (sau save) totalCaptures=N.
+      // Lấy max để counter chỉ tăng, không lùi.
+      if (e.totalCaptures > 0) {
+        setIosCaptureCount(prev => {
+          const next = Math.max(prev, e.totalCaptures);
+          rLog.treeIdentity.captureTriggered(next, currentRoundLocal);
+          return next;
+        });
+      }
     });
 
     const unsubRound = subscribeRoundComplete((e: RoundComplete) => {
       const nextRound = (e.nextRound as 1 | 2) ?? 2;
+      rLog.nativeBridge.roundComplete(nextRound, iosCaptureCount);
       setCurrentRoundLocal(nextRound);
       dispatch(setCurrentRound(nextRound));
     });
@@ -261,15 +309,24 @@ const TreeIdentityScreen: React.FC = () => {
   }, []);
 
   // ── Derive local capture counts ───────────────────────────────────────────
-  const round1Count = capturesRedux.filter(c => c.round === 1).length;
-  const round2Count = capturesRedux.filter(c => c.round === 2).length;
+  // iOS: capturesRedux chỉ điền SAU stop session → dùng iosCaptureCount real-time.
+  //   round1Count  = iosCaptureCount khi đang lượt 1; khi sang lượt 2 = snapshot lúc advance.
+  //   round2Count  = iosCaptureCount - iosRound1Snapshot khi đang lượt 2.
+  // Native (iOS + Android): dùng counter real-time iosCaptureCount; fallback picker dùng redux/URIs.
+  const round1Count = TreeReIDBridge.isAvailable() && isCaptureActive
+    ? (currentRoundLocal === 1 ? iosCaptureCount : iosRound1Snapshot)
+    : capturesRedux.filter(c => c.round === 1).length;
+  const round2Count = TreeReIDBridge.isAvailable() && isCaptureActive
+    ? (currentRoundLocal === 2 ? iosCaptureCount - iosRound1Snapshot : 0)
+    : capturesRedux.filter(c => c.round === 2).length;
   const totalCaptures =
-    Platform.OS === 'ios' ? capturesRedux.length : androidImageUris.length;
+    TreeReIDBridge.isAvailable() ? iosCaptureCount : androidImageUris.length;
 
   // ── Guidance text ─────────────────────────────────────────────────────────
   const getGuidance = (): string => {
     if (identResult) return '';
-    if (Platform.OS === 'android') return GUIDANCE.android;
+    // Android KHÔNG có native → guidance chụp tay; có native thì dùng guidance theo round như iOS.
+    if (Platform.OS === 'android' && !TreeReIDBridge.isAvailable()) return GUIDANCE.android;
     if (!isCaptureActive) return GUIDANCE.idle;
     if (totalCaptures === 0)
       return currentRoundLocal === 2 ? GUIDANCE.round2 : GUIDANCE.round1;
@@ -279,25 +336,32 @@ const TreeIdentityScreen: React.FC = () => {
     return GUIDANCE.captured;
   };
 
-  // ── iOS: Start capture session ────────────────────────────────────────────
+  // ── Start capture session (iOS + Android native) ──────────────────────────
   const handleStartCapture = async () => {
-    if (Platform.OS !== 'ios') return;
-
     if (!TreeReIDBridge.isAvailable()) {
       Alert.alert('Lỗi', 'Native module chưa sẵn sàng. Vui lòng cập nhật app.');
       return;
     }
+    // Android: xin quyền Camera trước (iOS module tự xin trong startCaptureSession).
+    if (Platform.OS === 'android') {
+      const ok = await requestCameraPermission();
+      if (!ok) return;
+    }
 
     try {
       setIsLoading(true);
+      rLog.treeIdentity.startCapture();
       dispatch(clearAll());
+      setIosCaptureCount(0);
+      setIosRound1Snapshot(0);
       const result = await TreeReIDBridge.startCaptureSession();
       setIsCaptureActive(true);
       setCurrentRoundLocal(result.round as 1 | 2);
       dispatch(setCapturing(true));
       dispatch(setCurrentRound(result.round as 1 | 2));
       setIdentResult(null);
-    } catch {
+    } catch (e: any) {
+      rLog.nativeBridge.bridgeError('startCaptureSession', e?.message ?? String(e));
       Alert.alert('Lỗi', 'Không thể bắt đầu chụp. Vui lòng thử lại.');
     } finally {
       setIsLoading(false);
@@ -307,12 +371,14 @@ const TreeIdentityScreen: React.FC = () => {
   // ── iOS: Advance to round 2 ───────────────────────────────────────────────
   const handleAdvanceToRound2 = async () => {
     try {
+      rLog.treeIdentity.advanceRound2(iosCaptureCount);
+      setIosRound1Snapshot(iosCaptureCount);  // snapshot round1 count trước khi advance
       const result = await TreeReIDBridge.advanceToRound2();
       const nextRound = (result.round as 1 | 2) ?? 2;
       setCurrentRoundLocal(nextRound);
       dispatch(setCurrentRound(nextRound));
-    } catch {
-      // Không block user nếu lỗi advance
+    } catch (e: any) {
+      rLog.nativeBridge.bridgeError('advanceToRound2', e?.message ?? String(e));
     }
   };
 
@@ -320,14 +386,18 @@ const TreeIdentityScreen: React.FC = () => {
   const handleStopAndIdentify = async () => {
     try {
       setIsLoading(true);
+      rLog.treeIdentity.stopAndIdentifyStart(iosCaptureCount);
       const stopResult = await TreeReIDBridge.stopCaptureSession();
       setIsCaptureActive(false);
       dispatch(setCapturing(false));
 
-      if (!stopResult || stopResult.captures.length < MIN_ROUND1) {
+      const captureCount = stopResult?.captures.length ?? 0;
+      rLog.treeIdentity.stopSessionResult(captureCount >= MIN_ROUND1, captureCount);
+
+      if (!stopResult || captureCount < MIN_ROUND1) {
         Alert.alert(
           'Chưa đủ góc',
-          `Cần ít nhất ${MIN_ROUND1} góc chụp. Hiện có ${stopResult?.captures.length ?? 0} góc.`,
+          `Cần ít nhất ${MIN_ROUND1} góc chụp. Hiện có ${captureCount} góc.`,
         );
         return;
       }
@@ -338,7 +408,8 @@ const TreeIdentityScreen: React.FC = () => {
       }
 
       await runIdentify(stopResult.captures.map(c => `file://${c.fileURL}`));
-    } catch {
+    } catch (e: any) {
+      rLog.nativeBridge.bridgeError('stopCaptureSession', e?.message ?? String(e));
       Alert.alert('Lỗi', 'Không thể dừng chụp. Vui lòng thử lại.');
     } finally {
       setIsLoading(false);
@@ -387,26 +458,69 @@ const TreeIdentityScreen: React.FC = () => {
   // ── Core: Gọi API identify ────────────────────────────────────────────────
   const runIdentify = async (imagePaths: string[]) => {
     setIsIdentifyingLocal(true);
-    try {
-      const result = await identifyTree(BASE_URL, imagePaths, {
+    // Mỗi lần identify mới → xoá phán-quyết cũ.
+    setQueryId(null);
+    setVerdictSent(null);
+    rLog.treeIdentity.apiStart(imagePaths.length, gpsRedux?.lat, gpsRedux?.lng);
+
+    // Đảm bảo có token field-reid. Chưa có → đăng nhập DID bằng khoá PhoenixKey
+    // (ký challenge bằng Secure Enclave/Keystore → server cấp token). Token TTL 12h
+    // nên thường chỉ phải ký 1 lần/phiên.
+    const tokenOk = await ensureOrilifeToken(BASE_URL);
+    if (!tokenOk) {
+      rLog.treeIdentity.apiError('did_login_failed', imagePaths.length);
+      Alert.alert(
+        'Lỗi đăng nhập',
+        'Không đăng nhập được dịch vụ nhận diện (PhoenixKey). Kiểm tra danh tính/mạng rồi thử lại.',
+      );
+      setIsIdentifyingLocal(false);
+      return;
+    }
+
+    const callIdentify = () =>
+      identifyTree(BASE_URL, imagePaths, {
         lat: gpsRedux?.lat,
         lon: gpsRedux?.lng,
         heading: heading ?? undefined,
         pitch: pitch ?? undefined,
+        // M4: chỉ gửi khi tester đã bật toggle.
+        matcher: matcher ?? undefined,
       });
+
+    try {
+      let result = await callIdentify();
+
+      // Token hết hạn/không hợp lệ (401) → DID login lại 1 lần rồi thử lại.
+      if (!result.ok && result.error?.type === 'auth_error') {
+        const relog = await ensureOrilifeToken(BASE_URL, { force: true });
+        if (relog) result = await callIdentify();
+      }
 
       if (result.ok && result.data) {
         const data = result.data;
+        rLog.treeIdentity.apiResult(
+          data.decision,
+          data.confidence ?? null,
+          data.tree_id ?? null,
+          data.query_id ?? null,
+          data.similarity ?? null,
+        );
         setIdentResult(data);
         dispatch(setIdentificationResult(data));
+        // M2/M3: giữ query_id để gửi verdict (chỉ khi backend mới trả).
+        setQueryId(data.query_id ?? null);
 
         if (data.decision === 'UNCERTAIN') {
           setShowConfirm(true);
         }
         // Các decision khác xử lý ở render / handleDecisionAction
       } else {
+        rLog.treeIdentity.apiError(result.error?.detail ?? 'unknown', imagePaths.length);
         Alert.alert('Lỗi nhận diện', result.error?.detail ?? 'Nhận diện thất bại. Thử lại.');
       }
+    } catch (e: any) {
+      rLog.treeIdentity.apiError(e?.message ?? String(e), imagePaths.length);
+      Alert.alert('Lỗi nhận diện', 'Lỗi kết nối. Thử lại.');
     } finally {
       setIsIdentifyingLocal(false);
     }
@@ -422,7 +536,7 @@ const TreeIdentityScreen: React.FC = () => {
       setIsLoading(true);
       // Gọi verify_add với ảnh hiện tại — server tự cập nhật GPS mới
       const imgs =
-        Platform.OS === 'ios'
+        TreeReIDBridge.isAvailable()
           ? capturesRedux.map(c => `file://${c.fileURL}`)
           : androidImageUris;
 
@@ -443,7 +557,8 @@ const TreeIdentityScreen: React.FC = () => {
     setShowConfirm(false);
     if (id === 'new') {
       navigation.navigate('TreeEnroll', {
-        androidImagePaths: Platform.OS === 'android' ? androidImageUris : undefined,
+        androidImagePaths:
+          Platform.OS === 'android' && !TreeReIDBridge.isAvailable() ? androidImageUris : undefined,
         farmId,
       });
       return;
@@ -452,7 +567,7 @@ const TreeIdentityScreen: React.FC = () => {
     try {
       setIsLoading(true);
       const imgs =
-        Platform.OS === 'ios'
+        TreeReIDBridge.isAvailable()
           ? capturesRedux.map(c => `file://${c.fileURL}`)
           : androidImageUris;
 
@@ -478,18 +593,72 @@ const TreeIdentityScreen: React.FC = () => {
 
   // ── Reset về trạng thái ban đầu ───────────────────────────────────────────
   const handleReset = () => {
+    rLog.treeIdentity.reset();
     setIdentResult(null);
     setShowFactors(false);
     setAndroidImageUris([]);
+    setIosCaptureCount(0);
+    setIosRound1Snapshot(0);
     setCurrentRoundLocal(1);
     setIsCaptureActive(false);
+    setQueryId(null);
+    setVerdictSent(null);
+    setShowTreePicker(false);
     dispatch(clearAll());
+  };
+
+  // ── M3: gửi phán-quyết (Đúng / Sai / Là-cây-khác) ─────────────────────────
+  const sendVerdict = async (verdict: IdentifyVerdict, correctTid?: string) => {
+    if (!queryId || verdictSent || isSendingVerdict) return;
+    setIsSendingVerdict(true);
+    rLog.treeIdentity.verdictSend(verdict, queryId, correctTid);
+    try {
+      const res = await submitIdentifyVerdict(BASE_URL, {
+        queryId,
+        verdict,
+        correctTid,
+      });
+      if (res.ok) {
+        rLog.treeIdentity.verdictResult(true);
+        setVerdictSent(verdict);
+      } else {
+        rLog.treeIdentity.verdictResult(false, res.error?.detail ?? 'unknown');
+        Alert.alert('Lỗi', res.error?.detail ?? 'Không gửi được phản hồi. Thử lại.');
+      }
+    } finally {
+      setIsSendingVerdict(false);
+    }
+  };
+
+  // ── M3: "Là cây khác" → nạp /api/trees rồi chọn correct_tid ───────────────
+  const handleOpenTreePicker = async () => {
+    if (verdictSent || isSendingVerdict) return;
+    setShowTreePicker(true);
+    setIsLoadingPicker(true);
+    setPickerError(null);
+    try {
+      const res = await getTrees(BASE_URL, farmId);
+      if (res.ok && res.trees) {
+        setPickerTrees(res.trees);
+      } else {
+        setPickerError(res.error?.detail ?? 'Không tải được danh sách cây.');
+      }
+    } catch {
+      setPickerError('Không tải được danh sách cây.');
+    } finally {
+      setIsLoadingPicker(false);
+    }
+  };
+
+  const handlePickCorrectTree = async (treeId: string) => {
+    setShowTreePicker(false);
+    await sendVerdict('other', treeId);
   };
 
   // ── Render result panel ───────────────────────────────────────────────────
   const renderResultPanel = () => {
     if (!identResult) return null;
-    const { decision, name, code, similarity, margin, factors, moved_distance_m } =
+    const { decision, name, code, similarity, margin, factors, moved_distance_m, confidence } =
       identResult as IdentifyResponse & {
         similarity?: number;
         margin?: number;
@@ -514,6 +683,68 @@ const TreeIdentityScreen: React.FC = () => {
               : undefined
           }
         />
+
+        {/* M2: băng tin-cậy THÔ (cao/vừa/thấp) — KHÔNG hiện điểm số */}
+        {confidence && <ConfidenceBandView band={confidence} />}
+
+        {/* M3: phán-quyết người dùng — chỉ hiện khi backend trả query_id */}
+        {queryId && (
+          <View style={styles.verdictBox}>
+            <Text style={styles.verdictTitle}>Kết quả này có đúng không?</Text>
+            {verdictSent ? (
+              <View style={styles.verdictDone}>
+                <Icon name="check-circle" size={18} color="#1b5e20" />
+                <Text style={styles.verdictDoneText}>
+                  Đã ghi nhận phản hồi. Cảm ơn bạn.
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.verdictRow}>
+                <TouchableOpacity
+                  style={[styles.verdictBtn, styles.verdictCorrect]}
+                  onPress={() => sendVerdict('correct')}
+                  disabled={isSendingVerdict}
+                  activeOpacity={0.8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Kết quả đúng"
+                >
+                  <Icon name="thumb-up" size={16} color="#1b5e20" />
+                  <Text style={[styles.verdictBtnText, { color: '#1b5e20' }]}>Đúng</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.verdictBtn, styles.verdictWrong]}
+                  onPress={() => sendVerdict('wrong')}
+                  disabled={isSendingVerdict}
+                  activeOpacity={0.8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Kết quả sai"
+                >
+                  <Icon name="thumb-down" size={16} color="#c62828" />
+                  <Text style={[styles.verdictBtnText, { color: '#c62828' }]}>Sai</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.verdictBtn, styles.verdictOther]}
+                  onPress={handleOpenTreePicker}
+                  disabled={isSendingVerdict}
+                  activeOpacity={0.8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Là cây khác"
+                >
+                  <Icon name="swap-horizontal" size={16} color="#5c6bc0" />
+                  <Text style={[styles.verdictBtnText, { color: '#5c6bc0' }]}>Cây khác</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            {isSendingVerdict && (
+              <View style={styles.verdictSending}>
+                <ActivityIndicator size="small" color={NEUTRAL.textSub} />
+                <Text style={styles.verdictSendingText}>Đang gửi...</Text>
+              </View>
+            )}
+          </View>
+        )}
 
         {/* MATCH: chi tiết */}
         {decision === 'MATCH' && (
@@ -630,7 +861,9 @@ const TreeIdentityScreen: React.FC = () => {
   const renderControls = () => {
     if (identResult) return null;
 
-    if (Platform.OS === 'android') {
+    // Android KHÔNG có native → controls chụp tay (picker). Có native → dùng chung controls
+    // guided với iOS bên dưới (Bắt đầu / Lượt 2 / Nhận diện).
+    if (Platform.OS === 'android' && !TreeReIDBridge.isAvailable()) {
       return (
         <View style={styles.controls}>
           <TouchableOpacity
@@ -742,22 +975,34 @@ const TreeIdentityScreen: React.FC = () => {
         >
           <Icon name="arrow-left" size={24} color={NEUTRAL.white} />
         </TouchableOpacity>
-        <View style={styles.headerCenter}>
+        <TouchableOpacity
+          style={styles.headerCenter}
+          activeOpacity={1}
+          // M4 (ẩn): giữ tiêu-đề ~1s để mở chọn matcher vỏ-thân (tester).
+          onLongPress={() => setShowMatcherPicker(true)}
+          delayLongPress={900}
+        >
           <Icon name="leaf" size={19} color={NEUTRAL.white} />
           <Text style={styles.headerTitle}>Nhận diện cây</Text>
+        </TouchableOpacity>
+        <View style={styles.headerRight}>
+          {matcher && (
+            <View style={styles.matcherChip} accessibilityLabel={`Matcher ${matcher}`}>
+              <Text style={styles.matcherChipText}>{matcher}</Text>
+            </View>
+          )}
         </View>
-        <View style={styles.headerRight} />
       </View>
 
-      {/* Camera preview (iOS) or placeholder */}
+      {/* Camera preview (native iOS+Android) or placeholder */}
       <View style={styles.preview}>
-        {Platform.OS === 'ios' && isCaptureActive && NativeCameraPreview ? (
+        {TreeReIDBridge.isAvailable() && isCaptureActive && NativeCameraPreview ? (
           <NativeCameraPreview style={styles.previewNative} />
         ) : (
           <View style={styles.previewPlaceholder}>
             <Icon
               name={
-                Platform.OS === 'android'
+                Platform.OS === 'android' && !TreeReIDBridge.isAvailable()
                   ? 'camera-outline'
                   : 'camera-enhance-outline'
               }
@@ -765,7 +1010,7 @@ const TreeIdentityScreen: React.FC = () => {
               color={NEUTRAL.textMuted}
             />
             <Text style={styles.previewPlaceholderText}>
-              {Platform.OS === 'android'
+              {Platform.OS === 'android' && !TreeReIDBridge.isAvailable()
                 ? 'Bấm "Chụp ảnh" bên dưới'
                 : 'Bấm "Bắt đầu" để mở camera'}
             </Text>
@@ -774,7 +1019,7 @@ const TreeIdentityScreen: React.FC = () => {
       </View>
 
       {/* Sensor bar (iOS only, khi đang chụp) */}
-      {Platform.OS === 'ios' && isCaptureActive && !identResult && (
+      {TreeReIDBridge.isAvailable() && isCaptureActive && !identResult && (
         <View style={styles.sensorBar}>
           <View style={styles.sensorItem}>
             <Icon name="compass" size={17} color={COLORS.accent} />
@@ -799,7 +1044,7 @@ const TreeIdentityScreen: React.FC = () => {
       )}
 
       {/* Round indicator (iOS, khi đang chụp) */}
-      {Platform.OS === 'ios' && isCaptureActive && !identResult && (
+      {TreeReIDBridge.isAvailable() && isCaptureActive && !identResult && (
         <View style={styles.roundBar}>
           <View
             style={[
@@ -815,7 +1060,12 @@ const TreeIdentityScreen: React.FC = () => {
             >
               Lượt 1: Thân
             </Text>
-            <Text style={styles.roundChipCount}>
+            <Text
+              style={[
+                styles.roundChipCount,
+                currentRoundLocal === 1 && styles.roundChipCountActive,
+              ]}
+            >
               {round1Count}/{MIN_ROUND1}
             </Text>
           </View>
@@ -833,7 +1083,12 @@ const TreeIdentityScreen: React.FC = () => {
             >
               Lượt 2: Gốc
             </Text>
-            <Text style={styles.roundChipCount}>
+            <Text
+              style={[
+                styles.roundChipCount,
+                currentRoundLocal === 2 && styles.roundChipCountActive,
+              ]}
+            >
               {round2Count}/{MIN_ROUND2}
             </Text>
           </View>
@@ -843,6 +1098,7 @@ const TreeIdentityScreen: React.FC = () => {
       {/* Guidance */}
       {!identResult && (
         <View style={styles.guidanceBox}>
+          <Icon name="information-outline" size={16} color={HEADER_BG} />
           <Text style={styles.guidanceText}>{getGuidance()}</Text>
         </View>
       )}
@@ -881,6 +1137,170 @@ const TreeIdentityScreen: React.FC = () => {
         onSelect={handleSelectCandidate}
         onDismiss={() => setShowConfirm(false)}
       />
+
+      {/* M3: bộ chọn "cây khác" (correct_tid từ /api/trees) */}
+      <Modal
+        visible={showTreePicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowTreePicker(false)}
+        statusBarTranslucent
+      >
+        <View style={styles.pickerOverlay}>
+          <View style={styles.pickerSheet}>
+            <View style={styles.pickerHeader}>
+              <Text style={styles.pickerTitle}>Chọn cây đúng</Text>
+              <TouchableOpacity
+                onPress={() => setShowTreePicker(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityLabel="Đóng"
+                accessibilityRole="button"
+              >
+                <Icon name="close" size={20} color={NEUTRAL.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            {isLoadingPicker ? (
+              <View style={styles.pickerCenter}>
+                <ActivityIndicator color={COLORS.accent} />
+                <Text style={styles.pickerHint}>Đang tải danh sách cây...</Text>
+              </View>
+            ) : pickerError ? (
+              <View style={styles.pickerCenter}>
+                <Icon name="alert-circle-outline" size={36} color={NEUTRAL.textMuted} />
+                <Text style={styles.pickerHint}>{pickerError}</Text>
+                <TouchableOpacity
+                  style={styles.pickerRetry}
+                  onPress={handleOpenTreePicker}
+                  activeOpacity={0.7}
+                >
+                  <Icon name="refresh" size={15} color={COLORS.accent} />
+                  <Text style={styles.pickerRetryText}>Thử lại</Text>
+                </TouchableOpacity>
+              </View>
+            ) : pickerTrees.length === 0 ? (
+              <View style={styles.pickerCenter}>
+                <Icon name="tree-outline" size={36} color={NEUTRAL.textMuted} />
+                <Text style={styles.pickerHint}>Chưa có cây nào trong vườn.</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={pickerTrees}
+                keyExtractor={t => t.tree_id}
+                style={styles.pickerList}
+                keyboardShouldPersistTaps="handled"
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={styles.pickerRow}
+                    onPress={() => handlePickCorrectTree(item.tree_id)}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Chọn cây ${item.name || 'Không tên'}`}
+                  >
+                    <Icon name="tree" size={20} color="#1b5e20" />
+                    <View style={styles.pickerRowBody}>
+                      <Text style={styles.pickerRowName} numberOfLines={1}>
+                        {item.name || 'Không tên'}
+                      </Text>
+                      {(item.code ?? null) && (
+                        <Text style={styles.pickerRowSub} numberOfLines={1}>
+                          Mã: {item.code}
+                        </Text>
+                      )}
+                    </View>
+                    <Icon name="chevron-right" size={20} color={NEUTRAL.textMuted} />
+                  </TouchableOpacity>
+                )}
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* M4 (ẩn): chọn matcher vỏ-thân — tester */}
+      <Modal
+        visible={showMatcherPicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowMatcherPicker(false)}
+        statusBarTranslucent
+      >
+        <TouchableOpacity
+          style={styles.matcherOverlay}
+          activeOpacity={1}
+          onPress={() => setShowMatcherPicker(false)}
+        >
+          <View style={styles.matcherSheet}>
+            <Text style={styles.matcherTitle}>Matcher vỏ-thân (tester)</Text>
+            <Text style={styles.matcherSub}>
+              Ép thuật-toán khớp cho lần nhận diện sau. Mặc-định dùng cấu-hình máy chủ.
+            </Text>
+            {(['sift', 'xfeat', 'loftr'] as ShellMatcher[]).map(m => (
+              <TouchableOpacity
+                key={m}
+                style={[styles.matcherOption, matcher === m && styles.matcherOptionActive]}
+                onPress={() => {
+                  setMatcher(m);
+                  setShowMatcherPicker(false);
+                }}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.matcherOptionText,
+                    matcher === m && styles.matcherOptionTextActive,
+                  ]}
+                >
+                  {m}
+                </Text>
+                {matcher === m && <Icon name="check" size={16} color={COLORS.accent} />}
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity
+              style={[styles.matcherOption, matcher === null && styles.matcherOptionActive]}
+              onPress={() => {
+                setMatcher(null);
+                setShowMatcherPicker(false);
+              }}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.matcherOptionText,
+                  matcher === null && styles.matcherOptionTextActive,
+                ]}
+              >
+                Mặc-định (máy chủ)
+              </Text>
+              {matcher === null && <Icon name="check" size={16} color={COLORS.accent} />}
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    </View>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// ConfidenceBandView — băng tin-cậy THÔ (M2): cao/vừa/thấp, KHÔNG điểm số
+// ---------------------------------------------------------------------------
+
+const BAND_META: Record<ConfidenceBand, { label: string; color: string; bg: string; icon: string }> = {
+  cao:  { label: 'Tin cậy cao',  color: '#1b5e20', bg: '#e8f5e9', icon: 'shield-check' },
+  'vừa': { label: 'Tin cậy vừa', color: '#e65100', bg: '#fff3e0', icon: 'shield-half-full' },
+  'thấp': { label: 'Tin cậy thấp', color: '#c62828', bg: '#ffebee', icon: 'shield-alert' },
+};
+
+const ConfidenceBandView: React.FC<{ band: ConfidenceBand }> = ({ band }) => {
+  const m = BAND_META[band];
+  return (
+    <View
+      style={[styles.bandBox, { backgroundColor: m.bg }]}
+      accessible
+      accessibilityLabel={m.label}
+    >
+      <Icon name={m.icon} size={18} color={m.color} />
+      <Text style={[styles.bandText, { color: m.color }]}>{m.label}</Text>
     </View>
   );
 };
@@ -889,43 +1309,58 @@ const TreeIdentityScreen: React.FC = () => {
 // Styles
 // ---------------------------------------------------------------------------
 
-const HEADER_BG = '#1b5e20';
+const HEADER_BG = '#1b5e20';   // brand xanh module cây (đồng bộ ResultBadge MATCH)
+const GREEN_TINT = '#e8f5e9';  // nền mềm cho badge/guidance
+
+// Đổ bóng nhẹ — chiều sâu hiện đại, đồng bộ token shadow.
+const cardShadow = {
+  shadowColor: '#0F1614',
+  shadowOpacity: 0.06,
+  shadowRadius: 8,
+  shadowOffset: { width: 0, height: 2 },
+  elevation: 2,
+} as const;
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: NEUTRAL.bg },
+  container: { flex: 1, backgroundColor: NEUTRAL.bgSoft },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: HEADER_BG,
     paddingTop: Platform.OS === 'ios' ? 52 : 38,
-    paddingBottom: 12,
+    paddingBottom: 14,
     paddingHorizontal: 16,
   },
   backBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.15)',
   },
-  headerCenter: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  headerCenter: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   headerTitle: {
     color: NEUTRAL.white,
     fontSize: 17,
     fontWeight: '700',
   },
-  headerRight: { width: 38 },
+  headerRight: { width: 40, alignItems: 'flex-end' },
 
   preview: {
-    height: 220,
-    backgroundColor: '#0a0a0a',
+    height: 240,
+    marginHorizontal: 12,
+    marginTop: 12,
+    borderRadius: 18,
+    overflow: 'hidden',
+    backgroundColor: '#0b0f0d',
     alignItems: 'center',
     justifyContent: 'center',
+    ...cardShadow,
   },
   previewNative: { flex: 1, width: '100%' },
-  previewPlaceholder: { alignItems: 'center', gap: 10 },
+  previewPlaceholder: { alignItems: 'center', gap: 12, paddingHorizontal: 24 },
   previewPlaceholderText: {
     color: NEUTRAL.textMuted,
     fontSize: 13,
@@ -934,33 +1369,39 @@ const styles = StyleSheet.create({
 
   sensorBar: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    backgroundColor: NEUTRAL.card,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: NEUTRAL.border,
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingTop: 12,
   },
-  sensorItem: { alignItems: 'center', gap: 2 },
+  sensorItem: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 3,
+    paddingVertical: 10,
+    backgroundColor: NEUTRAL.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: NEUTRAL.border,
+  },
   sensorLabel: { fontSize: 11, color: NEUTRAL.textMuted },
   sensorVal: { fontSize: 16, fontWeight: '700', color: NEUTRAL.text },
 
   roundBar: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 12,
-    paddingVertical: 10,
-    backgroundColor: NEUTRAL.bgSoft,
-    borderBottomWidth: 1,
-    borderBottomColor: NEUTRAL.border,
+    gap: 10,
+    paddingVertical: 12,
   },
   roundChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 20,
+    paddingVertical: 8,
+    borderRadius: 22,
     backgroundColor: NEUTRAL.card,
     borderWidth: 1,
     borderColor: NEUTRAL.border,
-    alignItems: 'center',
   },
   roundChipActive: {
     backgroundColor: HEADER_BG,
@@ -968,17 +1409,20 @@ const styles = StyleSheet.create({
   },
   roundChipText: { fontSize: 12, color: NEUTRAL.textSub, fontWeight: '600' },
   roundChipTextActive: { color: NEUTRAL.white },
-  roundChipCount: { fontSize: 10, color: NEUTRAL.textMuted, marginTop: 1 },
+  roundChipCount: { fontSize: 11, color: NEUTRAL.textMuted, fontWeight: '700' },
+  roundChipCountActive: { color: 'rgba(255,255,255,0.85)' },
 
   guidanceBox: {
-    margin: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 12,
+    marginTop: 12,
     padding: 12,
-    backgroundColor: '#e8f5e9',
-    borderRadius: 10,
-    borderLeftWidth: 4,
-    borderLeftColor: HEADER_BG,
+    backgroundColor: GREEN_TINT,
+    borderRadius: 12,
   },
-  guidanceText: { fontSize: 13, color: '#1b5e20', lineHeight: 18 },
+  guidanceText: { flex: 1, fontSize: 13, color: '#1b5e20', lineHeight: 18 },
 
   // Result panel
   resultPanel: {
@@ -990,11 +1434,12 @@ const styles = StyleSheet.create({
   },
   matchDetail: {
     backgroundColor: NEUTRAL.card,
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 14,
     borderWidth: 1,
     borderColor: NEUTRAL.border,
     gap: 8,
+    ...cardShadow,
   },
   matchRow: {
     flexDirection: 'row',
@@ -1075,6 +1520,11 @@ const styles = StyleSheet.create({
     backgroundColor: NEUTRAL.card,
     borderTopWidth: 1,
     borderTopColor: NEUTRAL.border,
+    shadowColor: '#0F1614',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: -3 },
+    elevation: 8,
   },
   ctrlBtn: {
     flex: 1,
@@ -1108,6 +1558,217 @@ const styles = StyleSheet.create({
     color: NEUTRAL.white,
     fontSize: 15,
     fontWeight: '500',
+  },
+
+  // ── M4 matcher chip (header) ──────────────────────────────────────────────
+  matcherChip: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+  },
+  matcherChipText: {
+    color: NEUTRAL.white,
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+
+  // ── M2 confidence band ────────────────────────────────────────────────────
+  bandBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  bandText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+
+  // ── M3 verdict ────────────────────────────────────────────────────────────
+  verdictBox: {
+    backgroundColor: NEUTRAL.card,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: NEUTRAL.border,
+    gap: 10,
+    ...cardShadow,
+  },
+  verdictTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: NEUTRAL.text,
+  },
+  verdictRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  verdictBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1.5,
+  },
+  verdictCorrect: { borderColor: '#1b5e20', backgroundColor: '#e8f5e9' },
+  verdictWrong:   { borderColor: '#c62828', backgroundColor: '#ffebee' },
+  verdictOther:   { borderColor: '#5c6bc0', backgroundColor: '#e8eaf6' },
+  verdictBtnText: { fontSize: 13, fontWeight: '700' },
+  verdictDone: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  verdictDoneText: {
+    fontSize: 13,
+    color: '#1b5e20',
+    fontWeight: '600',
+    flex: 1,
+  },
+  verdictSending: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  verdictSendingText: {
+    fontSize: 12,
+    color: NEUTRAL.textSub,
+  },
+
+  // ── M3 tree picker (correct_tid) ──────────────────────────────────────────
+  pickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  pickerSheet: {
+    backgroundColor: NEUTRAL.bg,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    maxHeight: '70%',
+    paddingBottom: Platform.OS === 'ios' ? 28 : 16,
+  },
+  pickerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: NEUTRAL.border,
+  },
+  pickerTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: NEUTRAL.text,
+  },
+  pickerCenter: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 24,
+    gap: 12,
+  },
+  pickerHint: {
+    fontSize: 14,
+    color: NEUTRAL.textMuted,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  pickerRetry: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+  },
+  pickerRetryText: {
+    fontSize: 14,
+    color: COLORS.accent,
+    fontWeight: '600',
+  },
+  pickerList: {
+    paddingHorizontal: 12,
+    paddingTop: 8,
+  },
+  pickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: NEUTRAL.border,
+  },
+  pickerRowBody: { flex: 1 },
+  pickerRowName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: NEUTRAL.text,
+  },
+  pickerRowSub: {
+    fontSize: 11,
+    color: NEUTRAL.textMuted,
+    marginTop: 1,
+  },
+
+  // ── M4 matcher picker ─────────────────────────────────────────────────────
+  matcherOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 28,
+  },
+  matcherSheet: {
+    width: '100%',
+    backgroundColor: NEUTRAL.bg,
+    borderRadius: 16,
+    padding: 18,
+    gap: 4,
+  },
+  matcherTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: NEUTRAL.text,
+  },
+  matcherSub: {
+    fontSize: 12,
+    color: NEUTRAL.textMuted,
+    lineHeight: 17,
+    marginBottom: 8,
+  },
+  matcherOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 13,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: NEUTRAL.border,
+    marginTop: 6,
+  },
+  matcherOptionActive: {
+    borderColor: COLORS.accent,
+    backgroundColor: 'rgba(59,110,168,0.08)',
+  },
+  matcherOptionText: {
+    fontSize: 15,
+    color: NEUTRAL.text,
+    fontWeight: '600',
+  },
+  matcherOptionTextActive: {
+    color: COLORS.accent,
   },
 });
 

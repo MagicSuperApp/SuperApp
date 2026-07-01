@@ -11,6 +11,13 @@ source 'https://cdn.cocoapods.org/'
 platform :ios, min_ios_version_supported
 prepare_react_native_project!
 
+# @react-native-firebase: BẮT BUỘC dưới use_frameworks! :static.
+# Sửa lỗi build "declaration of 'RCTPromiseRejectBlock' must be imported from
+# module 'RNFBApp.RNFBAppModule' before it is required" (RNFBMessaging+AppDelegate.h).
+# Biến GLOBAL phải set TRƯỚC use_native_modules!/use_react_native! để RNFB podspec
+# đọc được lúc resolve (build các RNFB pod thành static framework, module map đúng).
+$RNFirebaseAsStaticFramework = true
+
 # Force static linkage for all Pods to support Firebase Swift dependencies
 # This correctly solves the "Swift pods cannot yet be integrated as static libraries" error
 # without triggering the messy Clang module errors caused by global use_modular_headers!
@@ -33,6 +40,10 @@ target 'aladin_mobile_fe' do
   # TensorFlowLiteSwift and SQLite.swift are already declared as dependencies
   # inside ScannerModule.podspec — do NOT duplicate here to avoid
   # "linked library 'sqlite3' not found" when USE_FRAMEWORKS=static.
+
+  # PhoenixKey Rust core (Master_KEK / BIP39). .a + header sinh trên CI bởi
+  # rust/taad_enclave_core/build_ios.sh TRƯỚC pod install (xem codemagic.yaml).
+  pod 'taad_enclave_core', :path => '../rust/taad_enclave_core/ios'
 
   # Local ScannerModule — full native iOS scanner SDK
   pod 'ScannerModule', :path => './LocalPods/ScannerModule'
@@ -92,6 +103,20 @@ target 'aladin_mobile_fe' do
 
         # Disable CLANG Module Validation globally để tránh cached lỗi trên CI
         config.build_settings['CLANG_MODULES_VALIDATE_SYSTEM_HEADERS'] = 'NO'
+
+        # @react-native-firebase/messaging: TẮT clang modules riêng cho target này.
+        # Lỗi build "declaration of 'RCTPromiseRejectBlock' must be imported from
+        # module 'RNFBApp.RNFBAppModule' before it is required":
+        #   RNFBApp build thành clang module đã "nuốt" các type React (RCTPromiseRejectBlock,
+        #   RCTConvert) vào module của nó. Khi RNFBMessaging `@import RNFBApp` rồi lại dùng
+        #   type đó qua textual `#import <React/..>` trong header → clang xung đột.
+        # Tắt modules cho RNFBMessaging → mọi import thành textual đồng nhất, hết xung đột.
+        # RNFBMessaging thuần ObjC (0 file Swift) nên tắt modules an toàn.
+        # $RNFirebaseAsStaticFramework=true ở đầu Podfile là điều kiện cần nhưng chưa đủ
+        # cho RN 0.84 New Arch — cần thêm bước này.
+        if target.name == 'RNFBMessaging'
+          config.build_settings['CLANG_ENABLE_MODULES'] = 'NO'
+        end
       end
     end
 

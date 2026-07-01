@@ -365,7 +365,8 @@ const FarmListScreen = () => {
       <FlatList
         data={paginatedFarms}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
+        // iOS-fix: chừa khoảng dưới cho CurvedTabBar (navbar nổi) khỏi che item cuối.
+        contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 120 }]}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={renderEmpty()}
         ItemSeparatorComponent={() => <View style={{ height: 12 }} />}

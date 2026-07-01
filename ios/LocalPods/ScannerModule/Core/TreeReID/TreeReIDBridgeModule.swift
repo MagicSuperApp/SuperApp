@@ -407,8 +407,9 @@ final class TreeReIDBridgeModule: RCTEventEmitter {
             return
         }
 
-        // Stop sensors
+        // Stop sensors and camera
         headingManager.stop()
+        cameraManager.stop()
 
         // Build result
         let captures = currentSession.captures.map { capture -> [String: Any] in

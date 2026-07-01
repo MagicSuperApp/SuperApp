@@ -58,17 +58,19 @@ export interface InstanceConfig {
 
 // ===========================================================================
 // DEFAULT = ALADIN (parity tuyệt đối với nav hard-import cũ).
-// 5 tab, đúng thứ tự cũ: Home (host) · ProofChatHome (proofchat) ·
-// Farms (trace) · WorkHome (work) · Account (host). initialRouteName='Home'.
+// 5 tab. Thứ tự đặt Home (host) Ở GIỮA để khớp navbar khuyết-tròn (CurvedTabBar):
+// nút Home tròn nổi nằm lọt vào khuyết giữa thanh, 2 tab mỗi bên cân đối:
+// ProofChatHome (proofchat) · Farms (trace) · Home (host) · WorkHome (work) ·
+// Account (host). initialRouteName='Home'.
 // ===========================================================================
 export const ALADIN_INSTANCE: InstanceConfig = {
   instanceId: 'aladin',
   displayName: 'Aladin',
   enabledModules: ['trace', 'proofchat', 'work'],
   tabs: [
-    { kind: 'host', route: 'Home' },
     { kind: 'module', moduleId: 'proofchat' },
     { kind: 'module', moduleId: 'trace' },
+    { kind: 'host', route: 'Home' },
     { kind: 'module', moduleId: 'work' },
     { kind: 'host', route: 'Account' },
   ],

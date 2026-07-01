@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- Larger phones (360dp+) -->
-    <dimen name="top_safe_margin">56dp</dimen>
-    <dimen name="bottom_safe_margin">32dp</dimen>
-    <dimen name="horizontal_margin">20dp</dimen>
-    <dimen name="card_padding_horizontal">24dp</dimen>
-    <dimen name="list_bottom_padding">120dp</dimen>
-</resources>

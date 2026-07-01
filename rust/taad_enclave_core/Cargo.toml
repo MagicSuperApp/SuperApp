@@ -1,0 +1,102 @@
+[package]
+name    = "taad_enclave_core"
+version = "0.2.0"
+edition = "2021"
+
+# Build shared library (.so / .dylib / .dll) for FFI
+[lib]
+name      = "taad_enclave_core"
+crate-type = ["staticlib", "cdylib"]
+
+[dependencies]
+# P-256 ECDSA — iOS Secure Enclave HW_Key verification
+p256 = { version = "0.13", features = ["ecdsa"] }
+
+# Ed25519 — TAAD_Key (derived from Master_KEK, Cardano native)
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+
+# HKDF-SHA256 — Master_KEK → TAAD_Key derivation (spec §3.2)
+hkdf = "0.12"
+hmac = "0.12"
+
+# SHA-256
+sha2 = "0.10"
+
+# BLAKE2b-256 — DID identifier construction per did:phoenix method spec §2
+# hash = BLAKE2b-256(type_byte || creator?:"root" || slot_be || rand_256)
+# Cùng family với BLAKE2b-224 (Cardano script_hash) nhưng output 32 bytes.
+blake2 = "0.10"
+
+# Base32 NO-PAD (RFC 4648 lowercase) — encode 8-byte big-endian slot vào DID
+# Match đúng publisher (derive-demo/src/bin/publish_did.rs) đã chạy preprod 3 tx.
+# Resolver Java (ResolverServiceImpl.decodeBase32SlotBigEndian) đã round-trip
+# với crate này — đổi sang crate khác = mất tương thích.
+data-encoding = "2"
+
+# JSON serialization — DID Document body + caller-provided UTxO list payload
+serde       = { version = "1", features = ["derive"] }
+serde_json  = "1"
+
+# AES-256-GCM — encrypt Master_KEK with PIN-derived key
+aes-gcm = "0.10"
+
+# PBKDF2 — derive AES key from PIN
+pbkdf2 = { version = "0.12", features = ["hmac"] }
+
+# Hex encode/decode
+hex = "0.4"
+
+# BIP39 — Mode B recovery (spec §6.1, §9.2). Master_KEK random 32 byte IS the
+# BIP39 entropy, so the 24-word phrase is a lossless backup of the root of
+# trust. Same crate/version as PhoenixKey-PoC (send_ada.rs, publish_did.rs) so
+# entropy↔phrase round-trips identically with what already ran on preprod.
+# NOTE: no "rand" feature here — we never GENERATE a mnemonic from randomness;
+# the entropy always comes from an existing Master_KEK (Mode A or Mode B).
+bip39 = "2.0"
+
+# Zeroize — scrub Master_KEK / wallet seed / Device_KEK from RAM on drop (D9).
+# `Zeroizing<T>` wrapper zeroes the heap buffer when it goes out of scope, so a
+# memory dump / cold-boot attack cannot recover secret key material that has
+# already been used.
+zeroize = "1"
+
+# Base58btc — encode pubkey for `publicKeyMultibase` field in DID Document.
+# Format: "z" + base58btc(multicodec_varint(0xed) || ed25519_pubkey_32)
+# Match đúng derive-demo/src/bin/publish_did.rs (đã chạy preprod 3 tx).
+bs58 = "0.5"
+
+# [V11] Cardano Shelley address derivation (CIP-1852 BIP44 path)
+# Used by cardano.rs to derive addr_test1.../addr1... from 32-byte wallet seed.
+cardano-serialization-lib = "13.2.0"
+
+# X25519 ECDH — LampNet §7 ECIES key-wrap for EncSeed (client-side encrypt;
+# LampNet stores only ciphertext). Ephemeral-static ECDH + HKDF-SHA256 →
+# AES-256-GCM. Pairs with curve25519-dalek 4.x already in the tree. The
+# `static_secrets` feature exposes StaticSecret::to_bytes so the recovery side
+# can re-derive the same recipient X25519 secret deterministically.
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+
+# Random number generation — Master_KEK + IV
+rand = "0.8"
+rand_core = { version = "0.6", features = ["getrandom"] }
+getrandom = { version = "0.2", features = ["js"] }
+
+# Android-only: JNI shim (src/android_jni.rs) bọc crypto thành export JNI cho
+# Kotlin TaadEnclaveModule. iOS không cần (gọi C ABI trực tiếp qua cbindgen).
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"
+
+[profile.release]
+opt-level = 3
+lto       = true
+codegen-units = 1
+strip     = true
+
+[profile.dev]
+opt-level = 0
+debug     = true
+
+[workspace]
+
+[build-dependencies]
+cbindgen = "0.27"

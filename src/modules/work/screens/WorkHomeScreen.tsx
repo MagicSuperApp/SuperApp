@@ -476,7 +476,8 @@ const styles = StyleSheet.create({
     flex: 1, color: COLORS.text, fontSize: 13, padding: 0,
   },
 
-  scrollContent: { paddingTop: 14 },
+  // paddingBottom chừa khoảng cho CurvedTabBar (navbar nổi) khỏi che nội dung (iOS-fix).
+  scrollContent: { paddingTop: 14, paddingBottom: 130 },
 
   // ── Hero section ────────────────────────────────────
   heroSection: { paddingHorizontal: 16, marginBottom: 8 },

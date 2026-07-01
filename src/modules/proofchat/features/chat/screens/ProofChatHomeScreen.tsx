@@ -268,7 +268,8 @@ const ProofChatHomeScreen: React.FC = () => {
           )
         }
         contentContainerStyle={
-          filtered.length === 0 ? { flexGrow: 1 } : { paddingBottom: 24 }
+          // iOS-fix: chừa khoảng dưới cho CurvedTabBar (navbar nổi) khỏi che phòng cuối.
+          filtered.length === 0 ? { flexGrow: 1 } : { paddingBottom: 130 }
         }
         showsVerticalScrollIndicator={false}
         refreshControl={

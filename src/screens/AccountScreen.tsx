@@ -250,6 +250,8 @@ const AccountScreen = () => {
     const chainWallet = useSelector(selectChainWallet);
     const network = useSelector((state: RootState) => state.user.network);
     const phoenixKey = useSelector((state: RootState) => state.user.phoenixKey);
+    // Địa-chỉ-2: khoá điều-khiển DID (quản-trị, KHÔNG giữ tài sản). null = chưa lấy được.
+    const controllerPkh = useSelector((state: RootState) => state.user.controllerPkh);
     const chatbotEnabled = useSelector((state: RootState) => state.chatbot.enabled);
     const dispatch = useAppDispatch();
 
@@ -387,7 +389,8 @@ const AccountScreen = () => {
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={[
                     styles.scrollContent,
-                    { paddingBottom: Math.max(insets.bottom, 12) + 20 },
+                    // iOS-fix: chừa khoảng dưới cho CurvedTabBar (navbar nổi) khỏi che nội dung.
+                    { paddingBottom: Math.max(insets.bottom, 12) + 120 },
                 ]}
             >
                 {/* ── Profile hero ── */}
@@ -502,6 +505,15 @@ const AccountScreen = () => {
                             value={did}
                             copyable mono
                         />
+                        {/* Địa-chỉ-2: khoá ĐIỀU-KHIỂN DID (quản-trị, KHÔNG giữ tài sản). Chỉ hiện khi backend trả về. */}
+                        {!!controllerPkh && (
+                            <InfoRow
+                                icon="key-outline"
+                                label="Khoá điều-khiển (quản-trị DID)"
+                                value={controllerPkh}
+                                copyable mono
+                            />
+                        )}
                         <InfoRow
                             icon="shield-key-outline"
                             label="Chuẩn khoá"
@@ -554,6 +566,31 @@ const AccountScreen = () => {
                     </Section>
                 </Animated.View>
 
+                {/* ── Ví ── */}
+                <Animated.View style={{ opacity: fadeAnim }}>
+                    <Section title="VÍ">
+                        <MenuItem
+                            icon="wallet-outline"
+                            label="Ví PhoenixKey"
+                            sublabel="Số dư ADA/LAMP/MAGIC + địa chỉ Cardano (từ cụm 24 từ)"
+                            onPress={() => navigation.navigate('PhoenixWallet')}
+                        />
+                        <MenuItem
+                            icon="card-account-details-outline"
+                            label="Xuất danh tính"
+                            sublabel="Xem/copy DID, khoá công khai, địa chỉ ví"
+                            onPress={() => navigation.navigate('ExportIdentity')}
+                        />
+                        <MenuItem
+                            icon="at"
+                            label="Username"
+                            sublabel="Đặt tên tra cứu để người khác tìm bạn"
+                            onPress={() => navigation.navigate('Username')}
+                            last
+                        />
+                    </Section>
+                </Animated.View>
+
                 {/* ── Bảo mật ── */}
                 <Animated.View style={{ opacity: fadeAnim }}>
                     <Section title="BẢO MẬT & KHÔI PHỤC">
@@ -570,9 +607,22 @@ const AccountScreen = () => {
                             onPress={handleRotate}
                         />
                         <MenuItem
-                            icon="qrcode"
-                            label="Xuất mã khôi phục"
-                            sublabel="Lưu trữ an toàn bên ngoài thiết bị"
+                            icon="qrcode-scan"
+                            label="Đăng nhập web (quét QR)"
+                            sublabel="Duyệt đăng nhập phoenixkey.me bằng khoá trên máy"
+                            onPress={() => navigation.navigate('WebLoginScan')}
+                        />
+                        <MenuItem
+                            icon="key-outline"
+                            label="Xuất cụm 24 từ khôi phục"
+                            sublabel="Sao lưu gốc-tin-cậy (BIP39) — ghi ra giấy, cất an toàn"
+                            onPress={() => navigation.navigate('SeedExport')}
+                        />
+                        <MenuItem
+                            icon="backup-restore"
+                            label="Khôi phục bằng cụm 24 từ"
+                            sublabel="Nhập cụm từ để khôi phục danh tính trên máy này"
+                            onPress={() => navigation.navigate('RestoreIdentity')}
                         />
                         <MenuItem
                             icon="account-multiple-outline"

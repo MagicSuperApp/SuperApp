@@ -20,6 +20,9 @@ mod registry_mint;
 mod lampnet;
 mod staking;
 
+// Hàm derive bậc cao cho mobile (composed) — dùng bởi cả C-ABI (iOS) lẫn JNI (Android).
+mod mobile_kek;
+
 // Android JNI shim — chỉ build cho target Android (xem android_jni.rs).
 // iOS dùng C ABI trực tiếp; Android cần symbol JNI Java_<pkg>_<Class>_<method>.
 #[cfg(target_os = "android")]
@@ -91,6 +94,42 @@ pub unsafe extern "C" fn taad_mnemonic_to_master_kek(
 ) -> *mut c_char {
     let words = match c_str_to_string(words) { Some(s) => s, None => return std::ptr::null_mut() };
     let result = crypto::mnemonic_to_master_kek(words);
+    if result.is_empty() { std::ptr::null_mut() } else { string_to_c(result) }
+}
+
+// ─── Mobile composed derive (khớp Enclave) ────────────────────────
+// Bậc-cao cho mobile: 1 lời gọi = cả chuỗi derive. Xem src/mobile_kek.rs.
+
+/// TAAD_Key (Ed25519) pubkey hex từ Master_KEK (64-hex). null nếu KEK sai.
+#[no_mangle]
+pub unsafe extern "C" fn taad_kek_derive_taad_pubkey(
+    master_kek_hex: *const c_char,
+) -> *mut c_char {
+    let kek = match c_str_to_string(master_kek_hex) { Some(s) => s, None => return std::ptr::null_mut() };
+    let result = mobile_kek::derive_taad_pubkey(kek);
+    if result.is_empty() { std::ptr::null_mut() } else { string_to_c(result) }
+}
+
+/// Wallet seed (32-byte hex) từ Master_KEK. null nếu KEK sai.
+#[no_mangle]
+pub unsafe extern "C" fn taad_kek_derive_wallet_seed(
+    master_kek_hex: *const c_char,
+) -> *mut c_char {
+    let kek = match c_str_to_string(master_kek_hex) { Some(s) => s, None => return std::ptr::null_mut() };
+    let result = mobile_kek::derive_wallet_seed(kek);
+    if result.is_empty() { std::ptr::null_mut() } else { string_to_c(result) }
+}
+
+/// Địa chỉ Cardano Shelley (Bech32) cho account index từ Master_KEK.
+/// network: 0 = preprod, 1 = mainnet. null nếu KEK/derive sai.
+#[no_mangle]
+pub unsafe extern "C" fn taad_kek_derive_wallet_address(
+    master_kek_hex: *const c_char,
+    account: u32,
+    network: u8,
+) -> *mut c_char {
+    let kek = match c_str_to_string(master_kek_hex) { Some(s) => s, None => return std::ptr::null_mut() };
+    let result = mobile_kek::derive_wallet_address(kek, account, network);
     if result.is_empty() { std::ptr::null_mut() } else { string_to_c(result) }
 }
 

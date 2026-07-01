@@ -122,7 +122,9 @@ function ensureNative(): TreeReIDNativeModule {
 
 export const TreeReIDBridge = {
   isAvailable(): boolean {
-    return Boolean(NativeBridge) && Platform.OS === 'ios';
+    // Android đã có native TreeReIDBridge (CameraX guided capture) → bật cả 2 nền.
+    // Máy chưa cập nhật (thiếu module) → NativeBridge undefined → tự fallback picker.
+    return Boolean(NativeBridge) && (Platform.OS === 'ios' || Platform.OS === 'android');
   },
 
   async startCaptureSession(options?: Record<string, unknown>): Promise<SessionStartResult> {

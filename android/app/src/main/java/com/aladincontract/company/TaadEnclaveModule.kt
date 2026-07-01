@@ -1,9 +1,18 @@
 package com.aladincontract.company
 
+import android.content.Context
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import android.util.Base64
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
+import java.security.KeyStore
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
 
 /**
  * RN bridge cho Rust core `taad_enclave_core` (PhoenixKey Enclave) — Android.
@@ -26,8 +35,26 @@ class TaadEnclaveModule(reactContext: ReactApplicationContext) :
     private external fun nativeGenerateMasterKek(): String?
     private external fun nativeMasterKekToMnemonic(kekHex: String): String?
     private external fun nativeMnemonicToMasterKek(words: String): String?
+    private external fun nativeDeriveTaadPubkey(kekHex: String): String?
+    private external fun nativeDeriveWalletSeed(kekHex: String): String?
+    private external fun nativeDeriveWalletAddress(kekHex: String, account: Int, network: Int): String?
+    private external fun nativeGenerateSalt(): String?
+    private external fun nativePbkdf2Derive(pin: String, saltHex: String): String?
+    private external fun nativeAesGcmEncrypt(keyHex: String, plaintextHex: String): String?
+    private external fun nativeAesGcmDecrypt(keyHex: String, encryptedJson: String): String?
 
     // ── RN methods ──────────────────────────────────────────────────────────
+
+    /** Gói chung: chạy native fn, reject nếu null/rỗng hoặc throw. */
+    private inline fun run(promise: Promise, code: String, errMsg: String, block: () -> String?) {
+        if (!libLoaded) { promise.reject("E_NATIVE_UNAVAILABLE", "Rust core .so chưa nạp được (ABI này thiếu lib)"); return }
+        try {
+            val out = block()
+            if (out.isNullOrEmpty()) promise.reject(code, errMsg) else promise.resolve(out)
+        } catch (e: Throwable) {
+            promise.reject(code, e.message ?: errMsg, e)
+        }
+    }
 
     @ReactMethod
     fun generateMasterKek(promise: Promise) {
@@ -74,7 +101,112 @@ class TaadEnclaveModule(reactContext: ReactApplicationContext) :
         }
     }
 
+    // ── Derive (composed) + wrapping primitives ──────────────────────────────
+
+    @ReactMethod
+    fun deriveTaadPubkey(kekHex: String, promise: Promise) =
+        run(promise, "E_DERIVE_TAAD", "Master_KEK không hợp lệ") { nativeDeriveTaadPubkey(kekHex) }
+
+    @ReactMethod
+    fun deriveWalletSeed(kekHex: String, promise: Promise) =
+        run(promise, "E_DERIVE_SEED", "Master_KEK không hợp lệ") { nativeDeriveWalletSeed(kekHex) }
+
+    @ReactMethod
+    fun deriveWalletAddress(kekHex: String, account: Int, network: Int, promise: Promise) =
+        run(promise, "E_DERIVE_ADDR", "Không derive được địa chỉ Cardano") {
+            nativeDeriveWalletAddress(kekHex, account, network)
+        }
+
+    @ReactMethod
+    fun generateSalt(promise: Promise) =
+        run(promise, "E_SALT", "Không sinh được salt") { nativeGenerateSalt() }
+
+    @ReactMethod
+    fun pbkdf2Derive(pin: String, saltHex: String, promise: Promise) =
+        run(promise, "E_PBKDF2", "PBKDF2 thất bại") { nativePbkdf2Derive(pin, saltHex) }
+
+    @ReactMethod
+    fun aesGcmEncrypt(keyHex: String, plaintextHex: String, promise: Promise) =
+        run(promise, "E_AES_ENC", "Mã hoá AES-GCM thất bại") { nativeAesGcmEncrypt(keyHex, plaintextHex) }
+
+    @ReactMethod
+    fun aesGcmDecrypt(keyHex: String, encryptedJson: String, promise: Promise) =
+        run(promise, "E_AES_DEC", "Giải mã AES-GCM thất bại (sai khoá?)") {
+            nativeAesGcmDecrypt(keyHex, encryptedJson)
+        }
+
+    // ── Secure storage (Keystore AES-GCM + SharedPreferences) ────────────────
+    // Khoá AES nằm trong Android Keystore (non-exportable, device-bound); giá-trị
+    // mã-hoá lưu SharedPreferences. Dùng để cất Wrapped_KEK / Master_KEK an toàn.
+
+    private fun prefs() =
+        reactApplicationContext.getSharedPreferences(SECURE_PREFS, Context.MODE_PRIVATE)
+
+    private fun secureAesKey(): SecretKey {
+        val ks = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+        (ks.getEntry(SECURE_KEY_ALIAS, null) as? KeyStore.SecretKeyEntry)?.let { return it.secretKey }
+        val kg = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
+        kg.init(
+            KeyGenParameterSpec.Builder(
+                SECURE_KEY_ALIAS,
+                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
+            )
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(256)
+                .build(),
+        )
+        return kg.generateKey()
+    }
+
+    @ReactMethod
+    fun secureStore(key: String, value: String, promise: Promise) {
+        try {
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.ENCRYPT_MODE, secureAesKey())
+            val iv = cipher.iv
+            val ct = cipher.doFinal(value.toByteArray(Charsets.UTF_8))
+            val blob = Base64.encodeToString(iv, Base64.NO_WRAP) + ":" +
+                Base64.encodeToString(ct, Base64.NO_WRAP)
+            prefs().edit().putString(key, blob).apply()
+            promise.resolve(true)
+        } catch (e: Throwable) {
+            promise.reject("E_SECURE_STORE", e.message ?: "Lưu an toàn thất bại", e)
+        }
+    }
+
+    @ReactMethod
+    fun secureLoad(key: String, promise: Promise) {
+        try {
+            val blob = prefs().getString(key, null)
+            if (blob == null) { promise.resolve(null); return }
+            val parts = blob.split(":")
+            if (parts.size != 2) { promise.resolve(null); return }
+            val iv = Base64.decode(parts[0], Base64.NO_WRAP)
+            val ct = Base64.decode(parts[1], Base64.NO_WRAP)
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, secureAesKey(), GCMParameterSpec(128, iv))
+            promise.resolve(String(cipher.doFinal(ct), Charsets.UTF_8))
+        } catch (e: Throwable) {
+            promise.reject("E_SECURE_LOAD", e.message ?: "Đọc an toàn thất bại", e)
+        }
+    }
+
+    @ReactMethod
+    fun secureDelete(key: String, promise: Promise) {
+        try {
+            prefs().edit().remove(key).apply()
+            promise.resolve(true)
+        } catch (e: Throwable) {
+            promise.reject("E_SECURE_DELETE", e.message ?: "Xoá an toàn thất bại", e)
+        }
+    }
+
     companion object {
+        private const val ANDROID_KEYSTORE = "AndroidKeyStore"
+        private const val SECURE_KEY_ALIAS = "taad_secure_aes"
+        private const val SECURE_PREFS = "taad_secure_store"
+
         // Phòng thủ: AAB có thể gồm ABI mà .so chưa build (vd x86). Nếu loadLibrary
         // ném thì giữ libLoaded=false → các method reject thay vì crash app lúc mở.
         private var libLoaded = false

@@ -17,6 +17,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Provider, useSelector, useDispatch } from 'react-redux';
 import { store, RootState } from '../store';
 import { refreshWallet, resolveNetwork, refreshControllerPkh } from '../store/userSlice';
+import { initPush } from '../services/pushHandler';
 import Toast from 'react-native-toast-message';
 import NetInfo from '@react-native-community/netinfo';
 import { handleNavigationStateChange } from '../services/analytics';
@@ -32,7 +33,6 @@ import SignUpBiometricScreen from '../features/auth/screens/SignUpBiometricScree
 import SignUpCompleteScreen from '../features/auth/screens/SignUpCompleteScreen';
 import AccountScreen from '../screens/AccountScreen';
 import BiometricSettings from '../screens/BiometricSettings';
-import SurfaceTestCaptureScreen from '../screens/SurfaceTestCaptureScreen';
 import OnboardingWizard from '../screens/OnboardingWizard';
 // Host-level capture/identity screens (dùng chung nhiều luồng, chưa thuộc module nào)
 import FruitListScreen from '../screens/FruitListScreen';
@@ -50,6 +50,10 @@ import TreeViewer3DScreen from '../screens/TreeViewer3DScreen';
 import CareScanScreen from '../screens/CareScanScreen';
 import SeedExportScreen from '../screens/SeedExportScreen';
 import RestoreIdentityScreen from '../screens/RestoreIdentityScreen';
+import PhoenixWalletScreen from '../screens/PhoenixWalletScreen';
+import WebLoginScanScreen from '../screens/WebLoginScanScreen';
+import ExportIdentityScreen from '../screens/ExportIdentityScreen';
+import UsernameScreen from '../screens/UsernameScreen';
 // ProofChat wallet/escrow: hiện vẫn đăng ký ở host stack (chưa khai trong manifest
 // proofchat — anh Aladin chốt chat KHÔNG ví/escrow; giữ route để không vỡ màn cũ).
 import ProofChatWalletScreen from '../modules/proofchat/features/wallet/screens/WalletScreen';
@@ -380,6 +384,9 @@ const ProtectedMain = () => {
       dispatch(refreshWallet(did));
       dispatch(resolveNetwork(did));
       dispatch(refreshControllerPkh(did));
+      // Push FCM/APNs: đăng ký token với backend (devices.register cần Bearer →
+      // gọi SAU đăng nhập). An toàn nếu build chưa có messaging (no-op).
+      initPush();
     }
   }, [dispatch, user]);
 
@@ -405,7 +412,6 @@ const HOST_STACK_SCREENS: Array<{
   { name: 'Login', component: LoginScreen, options: { headerShown: false } },
   { name: 'Activation', component: ActivationScreen },
   { name: 'BiometricSettings', component: BiometricSettings },
-  { name: 'SurfaceTestCapture', component: SurfaceTestCaptureScreen, options: { headerShown: false } },
   { name: 'Main', component: ProtectedMain, options: { headerShown: false } },
   // ProofChat ví/escrow — chưa khai manifest, giữ ở host stack.
   { name: 'ProofChatWallet', component: ProofChatWalletScreen, options: { headerShown: false } },
@@ -430,6 +436,10 @@ const HOST_STACK_SCREENS: Array<{
   // PhoenixKey Enclave — sao lưu/khôi phục bằng cụm 24 từ (BIP39 / Master_KEK).
   { name: 'SeedExport', component: SeedExportScreen, options: { headerShown: false } },
   { name: 'RestoreIdentity', component: RestoreIdentityScreen, options: { headerShown: false } },
+  { name: 'PhoenixWallet', component: PhoenixWalletScreen, options: { headerShown: false } },
+  { name: 'WebLoginScan', component: WebLoginScanScreen, options: { headerShown: false } },
+  { name: 'ExportIdentity', component: ExportIdentityScreen, options: { headerShown: false } },
+  { name: 'Username', component: UsernameScreen, options: { headerShown: false } },
 ];
 
 // --- Module stack screens (config-driven) ----------------------------------

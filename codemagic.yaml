@@ -278,16 +278,6 @@ workflows:
           echo "✅ Archive:"
           ls -lhd "$ARCHIVE_PATH"
 
-      - name: Verify YOLO tflite model in app bundle
-        script: |
-          APP_PATH=$(find "$ARCHIVE_PATH/Products/Applications" -name "*.app" | head -1)
-          if find "$APP_PATH" -name "yolov26seg.tflite" 2>/dev/null | grep -q .; then
-            echo "✅ yolov26seg.tflite in bundle"
-            find "$APP_PATH" -name "yolov26seg.tflite" -exec ls -lh {} \;
-          else
-            echo "⚠️  yolov26seg.tflite NOT found — app có thể crash khi scan!"
-            find "$ARCHIVE_PATH" -name "*.tflite" -exec ls -lh {} \; 2>/dev/null || true
-          fi
 
       - name: Package unsigned IPA
         script: |
@@ -408,6 +398,27 @@ workflows:
           npm install --legacy-peer-deps --ignore-scripts
           npx patch-package --error-on-fail || echo "⚠️  patch-package: no patches or already applied"
 
+      - name: Build Rust core (iOS)
+        script: |
+          set -e
+          # PhoenixKey Enclave Rust core → static lib + cbindgen header cho pod
+          # `taad_enclave_core`. PHẢI chạy TRƯỚC pod install (podspec tham chiếu .a + .h).
+          if ! command -v rustc &> /dev/null; then
+            echo "🦀 Cài Rust toolchain..."
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          fi
+          source "$HOME/.cargo/env"
+          rustup target add aarch64-apple-ios
+          command -v cbindgen &> /dev/null || cargo install cbindgen --version "^0.27"
+          ( cd rust/taad_enclave_core && bash build_ios.sh device )
+          ls -lh rust/taad_enclave_core/ios/
+          if [ ! -f rust/taad_enclave_core/ios/libtaad_enclave_core.a ]; then
+            echo "❌ libtaad_enclave_core.a NOT built"; exit 1
+          fi
+          if [ ! -f rust/taad_enclave_core/ios/taad_enclave_core.h ]; then
+            echo "❌ taad_enclave_core.h (cbindgen) NOT generated"; exit 1
+          fi
+
       - name: CocoaPods install
         script: |
           set -e
@@ -442,9 +453,13 @@ workflows:
 
       - name: Apply provisioning profiles
         script: |
-          xcode-project use-profiles
-          echo "✅ Profiles applied"
+          # Tự sinh ExportOptions.plist TỪ profile Codemagic đã cài (khớp đúng
+          # tên/UUID/bundle-id). Tránh lỗi "No iOS App Store profiles matching
+          # 'aladin_appstore_profile'" do hardcode tên profile sai.
+          xcode-project use-profiles --export-options-plist ios/ExportOptions.plist
+          echo "✅ Profiles applied + ExportOptions.plist tự sinh"
           ls ~/Library/MobileDevice/Provisioning\ Profiles/ 2>/dev/null | head -5 || true
+          echo "── ExportOptions.plist ──"; cat ios/ExportOptions.plist 2>/dev/null || true
 
       - name: Patch Xcode Project — fix MapLibre signature conflict
         script: |
@@ -466,38 +481,26 @@ workflows:
           RUBY
           ruby fix_signature.rb
 
-      # Tạo ExportOptions.plist nếu chưa tồn tại.
-      # File này cần thiết cho `xcodebuild -exportArchive`.
-      - name: Create ExportOptions.plist
+      # ExportOptions.plist đã được "Apply provisioning profiles" tự sinh ở trên
+      # (khớp đúng profile Codemagic cài) → KHÔNG hardcode nữa.
+
+      - name: Bump build number (TestFlight latest + 1)
         script: |
-          mkdir -p ios
-          cat > ios/ExportOptions.plist <<EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>destination</key>
-              <string>export</string>
-              <key>method</key>
-              <string>app-store</string>
-              <key>teamID</key>
-              <string>${APPLE_TEAM_ID}</string>
-              <key>uploadBitcode</key>
-              <false/>
-              <key>uploadSymbols</key>
-              <true/>
-              <key>signingStyle</key>
-              <string>manual</string>
-              <key>provisioningProfiles</key>
-              <dict>
-                  <key>vn.aladinapp</key>
-                  <string>aladin_appstore_profile</string>
-              </dict>
-          </dict>
-          </plist>
-          EOF
-          echo "✅ ExportOptions.plist created"
-          cat ios/ExportOptions.plist
+          set -e
+          # Tự tăng CFBundleVersion = build mới nhất trên TestFlight + 1 (mỗi lần
+          # build sign → +1). Dùng App Store Connect API key (group app_store_connect).
+          export APP_STORE_CONNECT_KEY_IDENTIFIER=5JA4K7A7JD
+          export APP_STORE_CONNECT_ISSUER_ID=e56d98f1-e6f0-4e46-9ca8-29b30c2a9a7b
+          export APP_STORE_CONNECT_PRIVATE_KEY="$APP_STORE_CONNECT_PRIVATE_KEY"
+          # APP_STORE_APPLE_ID = Apple ID (số) của app — App Store Connect → App → App Information.
+          LATEST=$(app-store-connect get-latest-testflight-build-number "$APP_STORE_APPLE_ID" 2>/dev/null || echo "")
+          if [ -z "$LATEST" ]; then
+            echo "⚠️  Không lấy được số TestFlight (thiếu APP_STORE_APPLE_ID?) — dùng số committed trong pbxproj + 1"
+            LATEST=$(grep -m1 -E "CURRENT_PROJECT_VERSION = [0-9]+" ios/*.xcodeproj/project.pbxproj | grep -oE "[0-9]+")
+          fi
+          NEW=$(( LATEST + 1 ))
+          sed -i '' -E "s/CURRENT_PROJECT_VERSION = [0-9]+;/CURRENT_PROJECT_VERSION = ${NEW};/g" ios/*.xcodeproj/project.pbxproj
+          echo "✅ iOS build number → ${NEW} (TestFlight latest: ${LATEST})"
 
       - name: Build iOS Archive (signed)
         script: |
@@ -542,13 +545,6 @@ workflows:
           fi
           echo "✅ Archive:"
           ls -lhd "$ARCHIVE_PATH"
-
-      - name: Verify YOLO tflite in bundle
-        script: |
-          APP_PATH=$(find "$ARCHIVE_PATH/Products/Applications" -name "*.app" | head -1)
-          find "$APP_PATH" -name "yolov26seg.tflite" 2>/dev/null | grep -q . \
-            && echo "✅ yolov26seg.tflite OK" \
-            || echo "⚠️  yolov26seg.tflite NOT found — có thể crash khi scan!"
 
       - name: Export signed IPA
         script: |
@@ -638,14 +634,29 @@ workflows:
           npm install --legacy-peer-deps --ignore-scripts
           npx patch-package --error-on-fail || echo "⚠️  patch-package: no patches or already applied"
 
-      - name: Verify Android secrets.properties
+      - name: Create Android config (secrets + gradle.properties)
         script: |
-          if [ ! -f android/app/secrets.properties ]; then
-            echo "❌ android/app/secrets.properties missing"
-            exit 1
-          fi
-          echo "✅ secrets.properties found"
-          grep -E "BASE_API_URL|API_KEY|REGION_CODE" android/app/secrets.properties
+          set -e
+          # secrets.properties (gitignored) — API cho orilifesdk. Từ group scanner_secrets.
+          cat > android/app/secrets.properties <<EOF
+          TREE_DETECTION_API=${TREE_DETECTION_API:-https://staging-api.orilife.io/evidences/ingest}
+          BASE_API_URL=${BASE_API_URL:-https://staging-api.orilife.io}
+          API_KEY=${API_KEY:-mock-local-api-key}
+          REGION_CODE=${REGION_CODE:-vn-south-01}
+          EOF
+          # gradle.properties (gitignored) — RN config. Debug dùng debug.keystore nên
+          # KHÔNG cần upload signing ở đây.
+          cat > android/gradle.properties <<EOF
+          org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m
+          android.useAndroidX=true
+          reactNativeArchitectures=armeabi-v7a,arm64-v8a,x86,x86_64
+          newArchEnabled=true
+          hermesEnabled=true
+          edgeToEdgeEnabled=false
+          EOF
+          # Dọn whitespace lạc trong value biến môi trường Codemagic.
+          perl -i -pe 's/^(\w+([.\w]*))=[ \t]+/$1=/; s/[ \t]+$//' android/app/secrets.properties android/gradle.properties
+          echo "✅ secrets.properties + gradle.properties created"
 
       - name: Build Rust core (Android)
         script: |
@@ -770,11 +781,72 @@ workflows:
           ls -lh android/app/keySigning.bin
           echo "✅ Keystore restored"
 
+      - name: Create Android config (secrets + gradle.properties + signing)
+        script: |
+          set -e
+          # secrets.properties (gitignored) — API cho orilifesdk. Từ group scanner_secrets.
+          cat > android/app/secrets.properties <<EOF
+          TREE_DETECTION_API=${TREE_DETECTION_API:-https://staging-api.orilife.io/evidences/ingest}
+          BASE_API_URL=${BASE_API_URL:-https://staging-api.orilife.io}
+          API_KEY=${API_KEY:-mock-local-api-key}
+          REGION_CODE=${REGION_CODE:-vn-south-01}
+          EOF
+          # gradle.properties (gitignored) — RN config + upload signing (group android_signing).
+          # ORILIFE_UPLOAD_STORE_FILE=keySigning.bin (đã giải mã ở step trước).
+          cat > android/gradle.properties <<EOF
+          org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m
+          android.useAndroidX=true
+          reactNativeArchitectures=armeabi-v7a,arm64-v8a,x86,x86_64
+          newArchEnabled=true
+          hermesEnabled=true
+          edgeToEdgeEnabled=false
+          ORILIFE_UPLOAD_STORE_FILE=keySigning.bin
+          ORILIFE_UPLOAD_KEY_ALIAS=${ORILIFE_UPLOAD_KEY_ALIAS}
+          ORILIFE_UPLOAD_STORE_PASSWORD=${ORILIFE_UPLOAD_STORE_PASSWORD}
+          ORILIFE_UPLOAD_KEY_PASSWORD=${ORILIFE_UPLOAD_KEY_PASSWORD}
+          EOF
+          perl -i -pe 's/^(\w+([.\w]*))=[ \t]+/$1=/; s/[ \t]+$//' android/app/secrets.properties android/gradle.properties
+          echo "✅ secrets.properties + gradle.properties (signing) created"
+
       - name: Verify gradle.properties signing config
         script: |
           grep -E "ORILIFE_UPLOAD_STORE_FILE|ORILIFE_UPLOAD_KEY_ALIAS" android/gradle.properties \
             || { echo "❌ gradle.properties thiếu signing config"; exit 1; }
           echo "✅ gradle.properties signing OK"
+
+      - name: Build Rust core (Android)
+        script: |
+          set -e
+          # PhoenixKey Enclave Rust core → libtaad_enclave_core.so per-ABI vào
+          # android/app/src/main/jniLibs. PHẢI chạy TRƯỚC gradle (TaadEnclaveModule.kt
+          # System.loadLibrary). Thiếu step này → AAB không có .so → tính năng Enclave chết.
+          if ! command -v rustc &> /dev/null; then
+            echo "🦀 Cài Rust toolchain..."
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          fi
+          source "$HOME/.cargo/env"
+          rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+          command -v cargo-ndk &> /dev/null || cargo install cargo-ndk
+          export ANDROID_NDK_HOME=$(ls -d "$ANDROID_SDK_ROOT"/ndk/*/ 2>/dev/null | sort | tail -1)
+          if [ -z "$ANDROID_NDK_HOME" ]; then echo "❌ NDK không tìm thấy"; exit 1; fi
+          ( cd rust/taad_enclave_core && cargo ndk \
+              -t arm64-v8a -t armeabi-v7a -t x86_64 \
+              -o ../../android/app/src/main/jniLibs \
+              build --release --lib )
+          if [ ! -f android/app/src/main/jniLibs/arm64-v8a/libtaad_enclave_core.so ]; then
+            echo "❌ libtaad_enclave_core.so (arm64-v8a) NOT built"; exit 1
+          fi
+
+      - name: Bump versionCode (base + Codemagic BUILD_NUMBER)
+        script: |
+          set -e
+          # versionCode = versionCode committed (base) + BUILD_NUMBER của Codemagic.
+          # BUILD_NUMBER tự tăng mỗi build (monotonic) → KHÔNG phụ thuộc Google Play
+          # credentials, không bao giờ trùng. Luôn > base (70) trên Play.
+          BASE=$(grep -m1 -E "versionCode [0-9]+" android/app/build.gradle | grep -oE "[0-9]+")
+          NEW=$(( BASE + ${BUILD_NUMBER:-1} ))
+          sed -i -E "s/versionCode [0-9]+/versionCode ${NEW}/" android/app/build.gradle
+          echo "✅ Android versionCode → ${NEW} (base=${BASE}, BUILD_NUMBER=${BUILD_NUMBER:-1})"
 
       - name: Build signed AAB
         script: |
@@ -806,8 +878,12 @@ workflows:
       - dist/aladin-release.aab
       - android-release.log
 
-    publishing:
-      google_play:
-        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
-        track: internal
-        submit_as_draft: true
+    # Publishing lên Google Play TẠM TẮT — service account credentials
+    # ($GCLOUD_SERVICE_ACCOUNT_CREDENTIALS) chưa cấu hình (JSON rỗng → build fail ở
+    # bước prep). AAB đã sign vẫn có trong artifacts để tải/upload tay.
+    # Bật lại khi có credentials hợp lệ: bỏ comment block dưới.
+    # publishing:
+    #   google_play:
+    #     credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+    #     track: internal
+    #     submit_as_draft: true

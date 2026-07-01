@@ -413,6 +413,29 @@ const LoginScreen = () => {
           <Icon name="arrow-right" size={18} color={BLUE.primary} />
         </TouchableOpacity>
 
+        {/* Restore wallet CTA — khôi phục ví bằng cụm 24 từ (máy mới / cài lại) */}
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => {
+            trackPress('restore_cta', { action: 'open_restore' });
+            navigation.navigate('RestoreIdentity' as never);
+          }}
+          style={styles.signUpCard}
+        >
+          <View style={styles.signUpIcon}>
+            <Icon name="backup-restore" size={20} color={BLUE.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.signUpTitle} allowFontScaling={false}>
+              Đã có cụm 24 từ?
+            </Text>
+            <Text style={styles.signUpSub} allowFontScaling={false}>
+              Khôi phục ví trên thiết bị này
+            </Text>
+          </View>
+          <Icon name="arrow-right" size={18} color={BLUE.primary} />
+        </TouchableOpacity>
+
         {/* Events */}
         <View style={styles.eventsHeader}>
           <View style={styles.eventsTitleRow}>

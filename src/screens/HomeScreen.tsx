@@ -564,6 +564,7 @@ const HomeScreen: React.FC = () => {
         Alert.alert('Cần quyền vị trí', 'Bật GPS trong Cài đặt → Aladin.');
         return;
       }
+      // GPS + tạo vườn/cây ngầm trên bản đồ — GIỮ NGUYÊN.
       const gps = await getCurrentGPS();
       const farm = await getOrCreateImplicitFarm({
         userDid: user.id,
@@ -571,22 +572,16 @@ const HomeScreen: React.FC = () => {
         gps,
         accuracyMeters: gps.accuracy,
       });
-      const tree = await getOrCreateImplicitTree({
+      await getOrCreateImplicitTree({
         farmId: farm.farmId,
         userDid: user.id,
         gps,
         accuracyMeters: gps.accuracy,
       });
 
-      // Import ScannerSDK
-      const { ScannerSDK } = await import('../scansdk/ScannerSDK');
-
-      // Start scanner with fruit mode
-      await ScannerSDK.initialize();
-      await ScannerSDK.startScanner({
-        farm_id: farm.farmId,
-        scanMode: 'fruit',
-      });
+      // Sau khi thêm GPS/vườn-cây trên bản đồ xong → sang màn Nhận diện (TreeIdentity),
+      // thay cho scanner cũ (giống nút quick "Nhận diện").
+      (navigation as any).navigate('TreeIdentity', { farmId: farm.farmId });
     } catch (err: any) {
       console.error('[HomeScreen] handleQuickScanFruit failed:', err);
       Alert.alert('Lỗi', 'Không thể nhận diện quả. Bạn thử lại sau nhé.');

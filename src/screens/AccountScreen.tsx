@@ -566,6 +566,31 @@ const AccountScreen = () => {
                     </Section>
                 </Animated.View>
 
+                {/* ── Ví ── */}
+                <Animated.View style={{ opacity: fadeAnim }}>
+                    <Section title="VÍ">
+                        <MenuItem
+                            icon="wallet-outline"
+                            label="Ví PhoenixKey"
+                            sublabel="Số dư ADA/LAMP/MAGIC + địa chỉ Cardano (từ cụm 24 từ)"
+                            onPress={() => navigation.navigate('PhoenixWallet')}
+                        />
+                        <MenuItem
+                            icon="card-account-details-outline"
+                            label="Xuất danh tính"
+                            sublabel="Xem/copy DID, khoá công khai, địa chỉ ví"
+                            onPress={() => navigation.navigate('ExportIdentity')}
+                        />
+                        <MenuItem
+                            icon="at"
+                            label="Username"
+                            sublabel="Đặt tên tra cứu để người khác tìm bạn"
+                            onPress={() => navigation.navigate('Username')}
+                            last
+                        />
+                    </Section>
+                </Animated.View>
+
                 {/* ── Bảo mật ── */}
                 <Animated.View style={{ opacity: fadeAnim }}>
                     <Section title="BẢO MẬT & KHÔI PHỤC">
@@ -580,6 +605,12 @@ const AccountScreen = () => {
                             label="Xoay khoá"
                             sublabel="Thay bộ khoá khi nghi bị lộ (vẫn giữ thiết bị)"
                             onPress={handleRotate}
+                        />
+                        <MenuItem
+                            icon="qrcode-scan"
+                            label="Đăng nhập web (quét QR)"
+                            sublabel="Duyệt đăng nhập phoenixkey.me bằng khoá trên máy"
+                            onPress={() => navigation.navigate('WebLoginScan')}
                         />
                         <MenuItem
                             icon="key-outline"

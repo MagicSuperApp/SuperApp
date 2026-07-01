@@ -15,7 +15,7 @@
 #![cfg(target_os = "android")]
 
 use jni::objects::{JClass, JString};
-use jni::sys::jstring;
+use jni::sys::{jint, jstring};
 use jni::JNIEnv;
 
 /// Trả jstring rỗng/null an toàn khi lỗi.
@@ -73,4 +73,99 @@ pub extern "system" fn Java_com_aladincontract_company_TaadEnclaveModule_nativeM
         Ok(s) => s.into_raw(),
         Err(_) => null_jstring(),
     }
+}
+
+// ─── Mobile derive (composed) + wrapping primitives ──────────────────────────
+// Cùng pattern: lấy chuỗi UTF-8 từ JString, gọi crate, trả jstring (null nếu rỗng).
+
+#[inline]
+fn jstr<'l>(env: &mut JNIEnv<'l>, s: &JString<'l>) -> Option<String> {
+    env.get_string(s).ok().map(|v| v.into())
+}
+
+#[inline]
+fn ret<'l>(env: &JNIEnv<'l>, out: String) -> jstring {
+    if out.is_empty() {
+        return null_jstring();
+    }
+    match env.new_string(out) {
+        Ok(s) => s.into_raw(),
+        Err(_) => null_jstring(),
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_aladincontract_company_TaadEnclaveModule_nativeDeriveTaadPubkey<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    kek_hex: JString<'local>,
+) -> jstring {
+    let kek = match jstr(&mut env, &kek_hex) { Some(s) => s, None => return null_jstring() };
+    ret(&env, crate::mobile_kek::derive_taad_pubkey(kek))
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_aladincontract_company_TaadEnclaveModule_nativeDeriveWalletSeed<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    kek_hex: JString<'local>,
+) -> jstring {
+    let kek = match jstr(&mut env, &kek_hex) { Some(s) => s, None => return null_jstring() };
+    ret(&env, crate::mobile_kek::derive_wallet_seed(kek))
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_aladincontract_company_TaadEnclaveModule_nativeDeriveWalletAddress<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    kek_hex: JString<'local>,
+    account: jint,
+    network: jint,
+) -> jstring {
+    let kek = match jstr(&mut env, &kek_hex) { Some(s) => s, None => return null_jstring() };
+    ret(&env, crate::mobile_kek::derive_wallet_address(kek, account as u32, network as u8))
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_aladincontract_company_TaadEnclaveModule_nativeGenerateSalt<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+) -> jstring {
+    ret(&env, crate::crypto::generate_salt())
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_aladincontract_company_TaadEnclaveModule_nativePbkdf2Derive<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    pin: JString<'local>,
+    salt_hex: JString<'local>,
+) -> jstring {
+    let pin = match jstr(&mut env, &pin) { Some(s) => s, None => return null_jstring() };
+    let salt = match jstr(&mut env, &salt_hex) { Some(s) => s, None => return null_jstring() };
+    ret(&env, crate::crypto::pbkdf2_derive(pin, salt))
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_aladincontract_company_TaadEnclaveModule_nativeAesGcmEncrypt<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    key_hex: JString<'local>,
+    plaintext_hex: JString<'local>,
+) -> jstring {
+    let key = match jstr(&mut env, &key_hex) { Some(s) => s, None => return null_jstring() };
+    let pt = match jstr(&mut env, &plaintext_hex) { Some(s) => s, None => return null_jstring() };
+    ret(&env, crate::crypto::aes_gcm_encrypt(key, pt))
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_aladincontract_company_TaadEnclaveModule_nativeAesGcmDecrypt<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    key_hex: JString<'local>,
+    encrypted_json: JString<'local>,
+) -> jstring {
+    let key = match jstr(&mut env, &key_hex) { Some(s) => s, None => return null_jstring() };
+    let json = match jstr(&mut env, &encrypted_json) { Some(s) => s, None => return null_jstring() };
+    ret(&env, crate::crypto::aes_gcm_decrypt(key, json))
 }

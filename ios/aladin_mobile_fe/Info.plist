@@ -66,6 +66,11 @@
 	<string>Ứng dụng cần truy cập thư viện ảnh để chọn ảnh nông trại.</string>
 	<key>RCTNewArchEnabled</key>
 	<true/>
+	<!-- Push FCM/APNs: nhận message data-only khi nền (PhoenixKey sign-request/activation) -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 	<key>UIAppFonts</key>
 	<array>
 		<string>MaterialCommunityIcons.ttf</string>

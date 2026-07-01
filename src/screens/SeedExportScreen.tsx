@@ -22,6 +22,7 @@ import { useNavigation } from '@react-navigation/native';
 import { COLORS } from '../constants';
 import { showWarning, showInfo } from '../utils/alert';
 import taadEnclave from '../sdk/taadEnclave';
+import { getOrCreateMasterKek } from '../services/masterKekStore';
 
 const SeedExportScreen = () => {
   const insets = useSafeAreaInsets();
@@ -43,7 +44,9 @@ const SeedExportScreen = () => {
     }
     try {
       setLoading(true);
-      const kek = await taadEnclave.generateMasterKek();
+      // KEK BỀN VỮNG: lấy KEK ví đã lưu, hoặc sinh + lưu lần đầu → 24 từ ỔN ĐỊNH
+      // (cùng cụm mỗi lần mở, đúng nghĩa backup). KHÔNG sinh KEK mới mỗi lần.
+      const kek = await getOrCreateMasterKek();
       const phrase = await taadEnclave.masterKekToMnemonic(kek);
       const list = phrase.split(/\s+/).filter(Boolean);
       if (list.length !== 24) {
@@ -129,7 +132,7 @@ const SeedExportScreen = () => {
               ) : (
                 <>
                   <Icon name="key-plus" size={18} color="#fff" />
-                  <Text style={styles.primaryBtnText}>Tạo & hiện cụm 24 từ</Text>
+                  <Text style={styles.primaryBtnText}>Hiện cụm 24 từ</Text>
                 </>
               )}
             </TouchableOpacity>

@@ -21,6 +21,14 @@ export interface RegisterRequest {
   keyOrigin: 'SECURE_ENCLAVE' | 'IMPORTED_BIP39' | 'DERIVED_CHILD';
   keyRole: 'owner' | 'manager' | 'viewer';
   addedBySignature: string;
+  // ── PhoenixKey Enclave (ADDITIVE, optional) — gắn ví Master_KEK vào DID. ──
+  // Interceptor axios tự đổi camelCase → snake_case (taad_public_key_hex,
+  // wallet_address, entity_type) đúng hợp đồng backend Java (khớp Enclave
+  // PhoenixApi.registerIdentity). HW_Key (publicKeyHex) VẪN là DID owner +
+  // genesis signature — KHÔNG đổi → did_auth không bị ảnh hưởng.
+  taadPublicKeyHex?: string; // TAAD_Key Ed25519 derive từ Master_KEK
+  walletAddress?: string;    // địa chỉ Cardano account-0 (cố định) derive từ KEK
+  entityType?: 'person' | 'org';
 }
 
 export interface RegisterResponse {

@@ -11,6 +11,11 @@ source 'https://cdn.cocoapods.org/'
 platform :ios, min_ios_version_supported
 prepare_react_native_project!
 
+# BẮT BUỘC khi @react-native-firebase dùng use_frameworks! :static — không có cờ
+# này thì Firebase Messaging build lỗi "transitive dependencies that include
+# statically linked binaries". Áp cho MỌI module RNFirebase (app + messaging).
+$RNFirebaseAsStaticFramework = true
+
 # Force static linkage for all Pods to support Firebase Swift dependencies
 # This correctly solves the "Swift pods cannot yet be integrated as static libraries" error
 # without triggering the messy Clang module errors caused by global use_modular_headers!

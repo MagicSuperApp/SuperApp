@@ -22,6 +22,19 @@ interface TaadEnclaveNativeBridge {
   generateMasterKek(): Promise<string>;
   masterKekToMnemonic(kekHex: string): Promise<string>;
   mnemonicToMasterKek(words: string): Promise<string>;
+  // Derive (composed, khớp Enclave)
+  deriveTaadPubkey(kekHex: string): Promise<string>;
+  deriveWalletSeed(kekHex: string): Promise<string>;
+  deriveWalletAddress(kekHex: string, account: number, network: number): Promise<string>;
+  // Wrapping primitives
+  generateSalt(): Promise<string>;
+  pbkdf2Derive(pin: string, saltHex: string): Promise<string>;
+  aesGcmEncrypt(keyHex: string, plaintextHex: string): Promise<string>;
+  aesGcmDecrypt(keyHex: string, encryptedJson: string): Promise<string>;
+  // Secure storage (Keychain iOS / Keystore-AES Android)
+  secureStore(key: string, value: string): Promise<boolean>;
+  secureLoad(key: string): Promise<string | null>;
+  secureDelete(key: string): Promise<boolean>;
 }
 
 const moduleNotAvailable = (): TaadEnclaveNativeBridge => {
@@ -36,6 +49,16 @@ const moduleNotAvailable = (): TaadEnclaveNativeBridge => {
     generateMasterKek: () => reject('generateMasterKek') as never,
     masterKekToMnemonic: () => reject('masterKekToMnemonic') as never,
     mnemonicToMasterKek: () => reject('mnemonicToMasterKek') as never,
+    deriveTaadPubkey: () => reject('deriveTaadPubkey') as never,
+    deriveWalletSeed: () => reject('deriveWalletSeed') as never,
+    deriveWalletAddress: () => reject('deriveWalletAddress') as never,
+    generateSalt: () => reject('generateSalt') as never,
+    pbkdf2Derive: () => reject('pbkdf2Derive') as never,
+    aesGcmEncrypt: () => reject('aesGcmEncrypt') as never,
+    aesGcmDecrypt: () => reject('aesGcmDecrypt') as never,
+    secureStore: () => reject('secureStore') as never,
+    secureLoad: () => reject('secureLoad') as never,
+    secureDelete: () => reject('secureDelete') as never,
   };
 };
 
@@ -58,9 +81,67 @@ export const masterKekToMnemonic = (kekHex: string): Promise<string> =>
 export const mnemonicToMasterKek = (words: string): Promise<string> =>
   bridge.mnemonicToMasterKek(words.trim().replace(/\s+/g, ' ').toLowerCase());
 
+// ── Derive (composed, khớp Enclave) ───────────────────────────────────────────
+
+/** TAAD_Key (Ed25519) pubkey hex từ Master_KEK. */
+export const deriveTaadPubkey = (kekHex: string): Promise<string> =>
+  bridge.deriveTaadPubkey(kekHex);
+
+/** Wallet seed (32-byte hex) từ Master_KEK. */
+export const deriveWalletSeed = (kekHex: string): Promise<string> =>
+  bridge.deriveWalletSeed(kekHex);
+
+/** Địa chỉ Cardano Shelley (Bech32). network: 0=preprod, 1=mainnet. account: 0=cố định, ≥1=hoạt động. */
+export const deriveWalletAddress = (
+  kekHex: string,
+  account = 0,
+  network = 0,
+): Promise<string> => bridge.deriveWalletAddress(kekHex, account, network);
+
+// ── Wrapping primitives (dùng để wrap/unwrap Master_KEK khi persist) ──────────
+
+/** Sinh salt ngẫu nhiên (hex). */
+export const generateSalt = (): Promise<string> => bridge.generateSalt();
+
+/** Device_KEK 32-byte hex = PBKDF2-HMAC-SHA256(pin, salt). */
+export const pbkdf2Derive = (pin: string, saltHex: string): Promise<string> =>
+  bridge.pbkdf2Derive(pin, saltHex);
+
+/** AES-256-GCM encrypt → JSON {"ciphertext","iv"}. */
+export const aesGcmEncrypt = (keyHex: string, plaintextHex: string): Promise<string> =>
+  bridge.aesGcmEncrypt(keyHex, plaintextHex);
+
+/** AES-256-GCM decrypt (encryptedJson) → plaintext hex. Reject nếu sai khoá. */
+export const aesGcmDecrypt = (keyHex: string, encryptedJson: string): Promise<string> =>
+  bridge.aesGcmDecrypt(keyHex, encryptedJson);
+
+// ── Secure storage (Keychain iOS / Keystore-AES Android) ──────────────────────
+
+/** Lưu chuỗi an toàn (hardware-backed, device-bound). Ghi đè nếu key đã có. */
+export const secureStore = (key: string, value: string): Promise<boolean> =>
+  bridge.secureStore(key, value);
+
+/** Đọc chuỗi đã lưu; null nếu chưa có. */
+export const secureLoad = (key: string): Promise<string | null> =>
+  bridge.secureLoad(key);
+
+/** Xoá key khỏi secure storage. */
+export const secureDelete = (key: string): Promise<boolean> =>
+  bridge.secureDelete(key);
+
 export default {
   isAvailable,
   generateMasterKek,
   masterKekToMnemonic,
   mnemonicToMasterKek,
+  deriveTaadPubkey,
+  deriveWalletSeed,
+  deriveWalletAddress,
+  generateSalt,
+  pbkdf2Derive,
+  aesGcmEncrypt,
+  aesGcmDecrypt,
+  secureStore,
+  secureLoad,
+  secureDelete,
 };

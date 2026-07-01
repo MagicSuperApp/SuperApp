@@ -20,6 +20,7 @@ import { useNavigation } from '@react-navigation/native';
 import { COLORS } from '../constants';
 import { showWarning, showSuccess } from '../utils/alert';
 import taadEnclave from '../sdk/taadEnclave';
+import { restoreMasterKekFromMnemonic } from '../services/masterKekStore';
 
 const RestoreIdentityScreen = () => {
   const insets = useSafeAreaInsets();
@@ -49,17 +50,17 @@ const RestoreIdentityScreen = () => {
     }
     try {
       setLoading(true);
-      // taadEnclave tự normalise (trim/lower/space) trước khi gọi native.
-      const kek = await taadEnclave.mnemonicToMasterKek(phrase);
+      // Validate cụm từ → Master_KEK → LƯU vào secure storage (ghi đè KEK ví hiện
+      // có). Sau bước này SeedExport sẽ hiện đúng cụm này + ví derive nhất quán.
+      const kek = await restoreMasterKekFromMnemonic(phrase);
       if (!kek || kek.length !== 64) {
         throw new Error('Master_KEK trả về không hợp lệ');
       }
-      // TODO(phase sau): derive DID + ví từ kek, wrap bằng Secure Enclave/Keystore,
-      // đăng ký thiết bị, lưu danh tính → điều hướng vào Main.
+      // TODO(Part 3): derive TAAD_Key + địa chỉ Cardano từ kek, register gắn
+      // taad_public_key_hex + walletAddress (giữ HW_Key P-256 làm DID owner).
       showSuccess(
-        'Cụm từ hợp lệ',
-        'Đã khôi phục được gốc-tin-cậy (Master_KEK). Bước tạo lại danh tính/ví ' +
-          'trên máy này sẽ được nối ở bản kế tiếp.',
+        'Đã khôi phục ví',
+        'Cụm từ hợp lệ — gốc-tin-cậy ví (Master_KEK) đã được lưu an toàn trên máy này.',
         { onConfirm: () => navigation.goBack() },
       );
     } catch (e: any) {

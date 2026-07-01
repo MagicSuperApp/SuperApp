@@ -1,0 +1,46 @@
+// mobile_kek.rs — Hàm DERIVE bậc cao cho mobile (SuperApp RN).
+//
+// Gói gọn chuỗi derive của Enclave (enclave_bridge.dart deriveTaadPublicKey /
+// deriveWalletSeed / deriveCardanoAddressAccount) thành 1 lời gọi để 3 nền-tảng
+// (iOS C-ABI, Android JNI, JS) chỉ truyền chuỗi — KHÔNG lặp lại hằng-số derive ở
+// mỗi nơi (tránh lệch → khoá/địa-chỉ khác Enclave). Hằng-số LẤY ĐÚNG từ Dart:
+//   - TAAD_Key (Ed25519): ed25519( HKDF(KEK, "taad-controller-v1", SHA256("genesis"), 32) )
+//   - wallet seed:        HKDF(KEK, "wallet-v1", 00*32, 32)
+//   - địa chỉ:            derive_address_account(wallet_seed, account, network)
+//
+// Tái-dùng crate::crypto + crate::cardano (KHÔNG tự cài lại crypto).
+
+/// TAAD_Key (Ed25519) public key hex từ Master_KEK (64-hex). '' nếu KEK sai.
+pub fn derive_taad_pubkey(master_kek_hex: String) -> String {
+    let salt = crate::crypto::sha256_hex("genesis".to_string());
+    let seed = crate::crypto::hkdf_derive(
+        master_kek_hex,
+        "taad-controller-v1".to_string(),
+        salt,
+        32,
+    );
+    if seed.is_empty() {
+        return String::new();
+    }
+    crate::crypto::derive_ed25519_public_key(seed)
+}
+
+/// Wallet seed (32-byte hex) từ Master_KEK = HKDF(KEK, "wallet-v1", 00*32, 32).
+pub fn derive_wallet_seed(master_kek_hex: String) -> String {
+    crate::crypto::hkdf_derive(
+        master_kek_hex,
+        "wallet-v1".to_string(),
+        "00".repeat(32),
+        32,
+    )
+}
+
+/// Địa chỉ Cardano Shelley (Bech32) cho `account` index từ Master_KEK.
+/// network: 0 = preprod, 1 = mainnet. '' nếu KEK/derive sai.
+pub fn derive_wallet_address(master_kek_hex: String, account: u32, network: u8) -> String {
+    let seed = derive_wallet_seed(master_kek_hex);
+    if seed.is_empty() {
+        return String::new();
+    }
+    crate::cardano::derive_address_account(seed, account, network)
+}

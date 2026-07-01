@@ -408,6 +408,27 @@ workflows:
           npm install --legacy-peer-deps --ignore-scripts
           npx patch-package --error-on-fail || echo "⚠️  patch-package: no patches or already applied"
 
+      - name: Build Rust core (iOS)
+        script: |
+          set -e
+          # PhoenixKey Enclave Rust core → static lib + cbindgen header cho pod
+          # `taad_enclave_core`. PHẢI chạy TRƯỚC pod install (podspec tham chiếu .a + .h).
+          if ! command -v rustc &> /dev/null; then
+            echo "🦀 Cài Rust toolchain..."
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          fi
+          source "$HOME/.cargo/env"
+          rustup target add aarch64-apple-ios
+          command -v cbindgen &> /dev/null || cargo install cbindgen --version "^0.27"
+          ( cd rust/taad_enclave_core && bash build_ios.sh device )
+          ls -lh rust/taad_enclave_core/ios/
+          if [ ! -f rust/taad_enclave_core/ios/libtaad_enclave_core.a ]; then
+            echo "❌ libtaad_enclave_core.a NOT built"; exit 1
+          fi
+          if [ ! -f rust/taad_enclave_core/ios/taad_enclave_core.h ]; then
+            echo "❌ taad_enclave_core.h (cbindgen) NOT generated"; exit 1
+          fi
+
       - name: CocoaPods install
         script: |
           set -e
@@ -498,6 +519,24 @@ workflows:
           EOF
           echo "✅ ExportOptions.plist created"
           cat ios/ExportOptions.plist
+
+      - name: Bump build number (TestFlight latest + 1)
+        script: |
+          set -e
+          # Tự tăng CFBundleVersion = build mới nhất trên TestFlight + 1 (mỗi lần
+          # build sign → +1). Dùng App Store Connect API key (group app_store_connect).
+          export APP_STORE_CONNECT_KEY_IDENTIFIER=5JA4K7A7JD
+          export APP_STORE_CONNECT_ISSUER_ID=e56d98f1-e6f0-4e46-9ca8-29b30c2a9a7b
+          export APP_STORE_CONNECT_PRIVATE_KEY="$APP_STORE_CONNECT_PRIVATE_KEY"
+          # APP_STORE_APPLE_ID = Apple ID (số) của app — App Store Connect → App → App Information.
+          LATEST=$(app-store-connect get-latest-testflight-build-number "$APP_STORE_APPLE_ID" 2>/dev/null || echo "")
+          if [ -z "$LATEST" ]; then
+            echo "⚠️  Không lấy được số TestFlight (thiếu APP_STORE_APPLE_ID?) — dùng số committed trong pbxproj + 1"
+            LATEST=$(grep -m1 -E "CURRENT_PROJECT_VERSION = [0-9]+" ios/*.xcodeproj/project.pbxproj | grep -oE "[0-9]+")
+          fi
+          NEW=$(( LATEST + 1 ))
+          sed -i '' -E "s/CURRENT_PROJECT_VERSION = [0-9]+;/CURRENT_PROJECT_VERSION = ${NEW};/g" ios/*.xcodeproj/project.pbxproj
+          echo "✅ iOS build number → ${NEW} (TestFlight latest: ${LATEST})"
 
       - name: Build iOS Archive (signed)
         script: |
@@ -638,14 +677,29 @@ workflows:
           npm install --legacy-peer-deps --ignore-scripts
           npx patch-package --error-on-fail || echo "⚠️  patch-package: no patches or already applied"
 
-      - name: Verify Android secrets.properties
+      - name: Create Android config (secrets + gradle.properties)
         script: |
-          if [ ! -f android/app/secrets.properties ]; then
-            echo "❌ android/app/secrets.properties missing"
-            exit 1
-          fi
-          echo "✅ secrets.properties found"
-          grep -E "BASE_API_URL|API_KEY|REGION_CODE" android/app/secrets.properties
+          set -e
+          # secrets.properties (gitignored) — API cho orilifesdk. Từ group scanner_secrets.
+          cat > android/app/secrets.properties <<EOF
+          TREE_DETECTION_API=${TREE_DETECTION_API:-https://staging-api.orilife.io/evidences/ingest}
+          BASE_API_URL=${BASE_API_URL:-https://staging-api.orilife.io}
+          API_KEY=${API_KEY:-mock-local-api-key}
+          REGION_CODE=${REGION_CODE:-vn-south-01}
+          EOF
+          # gradle.properties (gitignored) — RN config. Debug dùng debug.keystore nên
+          # KHÔNG cần upload signing ở đây.
+          cat > android/gradle.properties <<EOF
+          org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m
+          android.useAndroidX=true
+          reactNativeArchitectures=armeabi-v7a,arm64-v8a,x86,x86_64
+          newArchEnabled=true
+          hermesEnabled=true
+          edgeToEdgeEnabled=false
+          EOF
+          # Dọn whitespace lạc trong value biến môi trường Codemagic.
+          perl -i -pe 's/^(\w+([.\w]*))=[ \t]+/$1=/; s/[ \t]+$//' android/app/secrets.properties android/gradle.properties
+          echo "✅ secrets.properties + gradle.properties created"
 
       - name: Build Rust core (Android)
         script: |
@@ -770,11 +824,76 @@ workflows:
           ls -lh android/app/keySigning.bin
           echo "✅ Keystore restored"
 
+      - name: Create Android config (secrets + gradle.properties + signing)
+        script: |
+          set -e
+          # secrets.properties (gitignored) — API cho orilifesdk. Từ group scanner_secrets.
+          cat > android/app/secrets.properties <<EOF
+          TREE_DETECTION_API=${TREE_DETECTION_API:-https://staging-api.orilife.io/evidences/ingest}
+          BASE_API_URL=${BASE_API_URL:-https://staging-api.orilife.io}
+          API_KEY=${API_KEY:-mock-local-api-key}
+          REGION_CODE=${REGION_CODE:-vn-south-01}
+          EOF
+          # gradle.properties (gitignored) — RN config + upload signing (group android_signing).
+          # ORILIFE_UPLOAD_STORE_FILE=keySigning.bin (đã giải mã ở step trước).
+          cat > android/gradle.properties <<EOF
+          org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m
+          android.useAndroidX=true
+          reactNativeArchitectures=armeabi-v7a,arm64-v8a,x86,x86_64
+          newArchEnabled=true
+          hermesEnabled=true
+          edgeToEdgeEnabled=false
+          ORILIFE_UPLOAD_STORE_FILE=keySigning.bin
+          ORILIFE_UPLOAD_KEY_ALIAS=${ORILIFE_UPLOAD_KEY_ALIAS}
+          ORILIFE_UPLOAD_STORE_PASSWORD=${ORILIFE_UPLOAD_STORE_PASSWORD}
+          ORILIFE_UPLOAD_KEY_PASSWORD=${ORILIFE_UPLOAD_KEY_PASSWORD}
+          EOF
+          perl -i -pe 's/^(\w+([.\w]*))=[ \t]+/$1=/; s/[ \t]+$//' android/app/secrets.properties android/gradle.properties
+          echo "✅ secrets.properties + gradle.properties (signing) created"
+
       - name: Verify gradle.properties signing config
         script: |
           grep -E "ORILIFE_UPLOAD_STORE_FILE|ORILIFE_UPLOAD_KEY_ALIAS" android/gradle.properties \
             || { echo "❌ gradle.properties thiếu signing config"; exit 1; }
           echo "✅ gradle.properties signing OK"
+
+      - name: Build Rust core (Android)
+        script: |
+          set -e
+          # PhoenixKey Enclave Rust core → libtaad_enclave_core.so per-ABI vào
+          # android/app/src/main/jniLibs. PHẢI chạy TRƯỚC gradle (TaadEnclaveModule.kt
+          # System.loadLibrary). Thiếu step này → AAB không có .so → tính năng Enclave chết.
+          if ! command -v rustc &> /dev/null; then
+            echo "🦀 Cài Rust toolchain..."
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          fi
+          source "$HOME/.cargo/env"
+          rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+          command -v cargo-ndk &> /dev/null || cargo install cargo-ndk
+          export ANDROID_NDK_HOME=$(ls -d "$ANDROID_SDK_ROOT"/ndk/*/ 2>/dev/null | sort | tail -1)
+          if [ -z "$ANDROID_NDK_HOME" ]; then echo "❌ NDK không tìm thấy"; exit 1; fi
+          ( cd rust/taad_enclave_core && cargo ndk \
+              -t arm64-v8a -t armeabi-v7a -t x86_64 \
+              -o ../../android/app/src/main/jniLibs \
+              build --release --lib )
+          if [ ! -f android/app/src/main/jniLibs/arm64-v8a/libtaad_enclave_core.so ]; then
+            echo "❌ libtaad_enclave_core.so (arm64-v8a) NOT built"; exit 1
+          fi
+
+      - name: Bump versionCode (Play latest + 1)
+        script: |
+          set -e
+          # Tự tăng versionCode = build mới nhất trên Google Play + 1 (mỗi lần build
+          # sign → +1). Dùng service account $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS.
+          LATEST=$(google-play get-latest-build-number \
+                    --package-name "com.aladincontract.company" 2>/dev/null || echo "")
+          if [ -z "$LATEST" ]; then
+            echo "⚠️  Không lấy được số Play — dùng versionCode committed + 1"
+            LATEST=$(grep -m1 -E "versionCode [0-9]+" android/app/build.gradle | grep -oE "[0-9]+")
+          fi
+          NEW=$(( LATEST + 1 ))
+          sed -i -E "s/versionCode [0-9]+/versionCode ${NEW}/" android/app/build.gradle
+          echo "✅ Android versionCode → ${NEW} (Play latest: ${LATEST})"
 
       - name: Build signed AAB
         script: |

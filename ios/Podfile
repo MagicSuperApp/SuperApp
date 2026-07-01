@@ -11,9 +11,11 @@ source 'https://cdn.cocoapods.org/'
 platform :ios, min_ios_version_supported
 prepare_react_native_project!
 
-# BẮT BUỘC khi @react-native-firebase dùng use_frameworks! :static — không có cờ
-# này thì Firebase Messaging build lỗi "transitive dependencies that include
-# statically linked binaries". Áp cho MỌI module RNFirebase (app + messaging).
+# @react-native-firebase: BẮT BUỘC dưới use_frameworks! :static.
+# Sửa lỗi build "declaration of 'RCTPromiseRejectBlock' must be imported from
+# module 'RNFBApp.RNFBAppModule' before it is required" (RNFBMessaging+AppDelegate.h).
+# Biến GLOBAL phải set TRƯỚC use_native_modules!/use_react_native! để RNFB podspec
+# đọc được lúc resolve (build các RNFB pod thành static framework, module map đúng).
 $RNFirebaseAsStaticFramework = true
 
 # Force static linkage for all Pods to support Firebase Swift dependencies

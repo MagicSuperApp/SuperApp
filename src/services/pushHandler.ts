@@ -1,19 +1,3 @@
-/**
- * pushHandler — Firebase Cloud Messaging (FCM/APNs) cho PhoenixKey.
- *
- * Tương đương Enclave/lib/services/push_handler.dart. Nhiệm vụ:
- *   1. Xin quyền push, lấy token (iOS: APNs; Android: FCM).
- *   2. Đăng ký token với backend qua devices.register → backend gửi push được.
- *   3. Route data-only push → màn tương ứng (sign-request / activation).
- *
- * AN TOÀN: mọi lỗi (chưa build native module, chưa đăng nhập, mạng) → log + bỏ
- * qua, KHÔNG sập app. Đăng ký token cần Bearer (devices.register needsAuth) nên
- * gọi initPush SAU khi đăng nhập.
- *
- * Lưu ý: màn 'SignRequest'/'Activation' sẽ được nối khi làm Đợt 4 — hiện route là
- * no-op an toàn (chỉ điều hướng nếu route tồn tại).
- */
-
 import { Platform } from 'react-native';
 import { phoenixKeyApi } from './phoenixKey-api';
 
@@ -22,14 +6,19 @@ type Navigate = (screen: string, params?: Record<string, unknown>) => void;
 let navigateRef: Navigate | null = null;
 export const setPushNavigator = (nav: Navigate): void => { navigateRef = nav; };
 
-// Import động để app không cần native module lúc chạy nếu build chưa có messaging.
-const getMessaging = async () => {
+// Dynamic import: chỉ nạp module khi thực sự dùng (an toàn nếu build thiếu pod).
+// Trả về hàm messaging() default export, hoặc null nếu module không có.
+let _messaging: any | undefined;
+const getMessaging = async (): Promise<any> => {
+  if (_messaging !== undefined) return _messaging;
   try {
-    const mod = await import('@react-native-firebase/messaging');
-    return mod.default;
-  } catch {
-    return null;
+    const mod: any = await import('@react-native-firebase/messaging');
+    _messaging = mod?.default ?? mod ?? null;
+  } catch (e) {
+    console.warn('[Push] messaging module chưa sẵn sàng:', e);
+    _messaging = null;
   }
+  return _messaging;
 };
 
 const registerToken = async (): Promise<void> => {

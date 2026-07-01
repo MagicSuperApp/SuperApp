@@ -278,16 +278,6 @@ workflows:
           echo "✅ Archive:"
           ls -lhd "$ARCHIVE_PATH"
 
-      - name: Verify YOLO tflite model in app bundle
-        script: |
-          APP_PATH=$(find "$ARCHIVE_PATH/Products/Applications" -name "*.app" | head -1)
-          if find "$APP_PATH" -name "yolov26seg.tflite" 2>/dev/null | grep -q .; then
-            echo "✅ yolov26seg.tflite in bundle"
-            find "$APP_PATH" -name "yolov26seg.tflite" -exec ls -lh {} \;
-          else
-            echo "⚠️  yolov26seg.tflite NOT found — app có thể crash khi scan!"
-            find "$ARCHIVE_PATH" -name "*.tflite" -exec ls -lh {} \; 2>/dev/null || true
-          fi
 
       - name: Package unsigned IPA
         script: |
@@ -581,13 +571,6 @@ workflows:
           fi
           echo "✅ Archive:"
           ls -lhd "$ARCHIVE_PATH"
-
-      - name: Verify YOLO tflite in bundle
-        script: |
-          APP_PATH=$(find "$ARCHIVE_PATH/Products/Applications" -name "*.app" | head -1)
-          find "$APP_PATH" -name "yolov26seg.tflite" 2>/dev/null | grep -q . \
-            && echo "✅ yolov26seg.tflite OK" \
-            || echo "⚠️  yolov26seg.tflite NOT found — có thể crash khi scan!"
 
       - name: Export signed IPA
         script: |

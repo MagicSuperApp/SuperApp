@@ -46,13 +46,6 @@
         </intent-filter>
       </activity>
 
-      <!-- OriLife SDK Scanner Activity (from orilifesdk) -->
-      <activity
-        android:name="com.mvp.orilife.MainActivity"
-        android:label="@string/scanner_title"
-        android:theme="@style/Theme.AppCompat.Light.NoActionBar"
-        android:screenOrientation="portrait"
-        android:exported="false" />
       <activity
         android:name=".FarmDetailActivity"
         android:label="@string/app_name"

@@ -28,5 +28,4 @@ dependencyResolutionManagement {
 
 rootProject.name = 'aladincontract'
 include ':app'
-include ':orilifesdk'
 includeBuild('../node_modules/@react-native/gradle-plugin')

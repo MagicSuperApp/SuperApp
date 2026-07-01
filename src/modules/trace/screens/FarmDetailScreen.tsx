@@ -25,7 +25,6 @@ import { RootState } from '../../../store';
 import { addFarm, setTrees, addTree, saveFarm, loadTrees, saveTree, loadFarm, syncTreesFromBackend } from '../store/farmSlice';
 import { database } from '../../../utils/database';
 import Geolocation from 'react-native-geolocation-service';
-import { ScannerSDK, EVENTS, ScanCompleteData } from '../../../scansdk';
 import { COLORS } from '../../../constants';
 import aladinAPI from '../../../services/aladin-api';
 // We dynamically load MapLibre so the app can still run if the native module is missing
@@ -1817,29 +1816,9 @@ const FarmDetailScreen = () => {
   };
 
   const handleAddTree = async () => {
-    // Launch native scanner via OriLife SDK with farm data
-    try {
-      // Initialize scanner first (iOS requires this, Android is idempotent)
-      console.log('[FarmDetailScreen] Initializing scanner...');
-      await ScannerSDK.initialize();
-      console.log('[FarmDetailScreen] Scanner initialized');
-
-      // Then start scanner
-      console.log('[FarmDetailScreen] Starting scanner...');
-      await ScannerSDK.startScanner({
-        mode: 'single',
-        farm_id: farm_id
-      });
-      console.log('[FarmDetailScreen] Scanner started');
-    } catch (err) {
-      console.error('[FarmDetailScreen] Failed to start scanner:', err);
-      // Show error to user
-      Alert.alert(
-        'Lỗi',
-        'Không thể mở scanner. Vui lòng thử lại.',
-        [{ text: 'OK' }]
-      );
-    }
+    // Thay scanner cũ bằng màn Nhận diện (TreeIdentity) — giống nút quick "Nhận diện".
+    // GPS/ranh giới vườn trên bản đồ vẫn giữ nguyên (recording coordinates ở dưới).
+    (navigation as any).navigate('TreeIdentity', { farmId: farm_id });
   };
 
   // Build 54 V5 — Quick Action "Cây" from HomeScreen passes autoStartScanner=true.
@@ -1858,193 +1837,6 @@ const FarmDetailScreen = () => {
     return () => clearTimeout(t);
   }, [params.autoStartScanner, farm_id, farm]);
 
-  // Subscribe to scan complete event from OriLife SDK.
-  // Android: emits 'onScanComplete' → { treeIds, count }
-  // iOS capture done: 'onCaptureComplete' → { treeId, capturedCount }   (fast, before upload)
-  // iOS upload done: 'onUploadComplete'   → { success, count, treeId, latitude, longitude }
-  useEffect(() => {
-    if (!farm_id) return;
-
-    // ── Android handler ──────────────────────────────────────────────────
-    const handleAndroidScanComplete = async (data: any) => {
-      console.log('[FarmDetailScreen] [Android] Scan complete:', JSON.stringify(data));
-      const treeIds = data.treeIds || [];
-      const rawId = treeIds[0];
-      if (!rawId) return;
-
-      // Register on backend first
-      try {
-        await aladinAPI.createTree({
-          id: rawId,
-          farm_id,
-          region_code: 'vn-south-01',
-          geohash_7: 'w3gvk9q',
-          latitude: data.latitude ?? null,
-          longitude: data.longitude ?? null,
-        });
-        console.log('[FarmDetailScreen] [Android] ✅ Tree registered on backend:', rawId);
-      } catch (e: any) {
-        if (e?.response?.status !== 409) {
-          console.warn('[FarmDetailScreen] [Android] Backend tree create failed (non-fatal):', e?.message);
-        }
-      }
-
-      const code = `TREE-${rawId.slice(0, 8).toUpperCase()}`;
-      const newTree: any = {
-        id: rawId,
-        farmId: farm_id,
-        code,
-        latitude: data.latitude ?? 0,
-        longitude: data.longitude ?? 0,
-        species: 'Durian',
-        plantedYear: new Date().getFullYear(),
-        images: [],
-        estimatedFruits: 0,
-        fruitCount: 0,
-        scanData: { treeIds, count: data.count || treeIds.length },
-      };
-
-      try {
-        await dispatch(saveTree(newTree));
-        await dispatch(loadTrees(farm_id));
-        setCurrentPage(1);
-        setTreeIdentificationResult(null);
-      } catch (e) {
-        console.error('[FarmDetailScreen] [Android] saveTree failed:', e);
-      }
-    };
-
-    // ── iOS: capture done — wait for upload/verify before saving locally ────
-    const handleIOSCaptureComplete = async (data: any) => {
-      console.log('[FarmDetailScreen] [iOS] onCaptureComplete:', JSON.stringify(data));
-      const treeId = data.treeId;
-      if (!treeId) return;
-      setTreeIdentificationResult(null);
-    };
-
-    // ── iOS: upload done — register on backend with real GPS ─────────────
-    const handleIOSUploadComplete = async (data: any) => {
-      console.log('[FarmDetailScreen] [iOS] onUploadComplete:', JSON.stringify(data));
-      if (!data.success) {
-        console.warn('[FarmDetailScreen] [iOS] Upload/verify not successful, skip local tree save');
-        return;
-      }
-
-      const finalTreeId: string = data.finalTreeId || data.treeId;
-      const originalTreeId: string | undefined = data.originalTreeId;
-      const matchedTreeId: string | null = data.matchedTreeId || null;
-      const usedExistingTree = Boolean(data.usedExistingTree && matchedTreeId);
-      const createdNewTree = Boolean(data.createdNewTree || !usedExistingTree);
-      const treeId: string = finalTreeId;
-      const lat: number = data.latitude ?? 0;
-      const lng: number = data.longitude ?? 0;
-      if (!treeId) return;
-
-      if (usedExistingTree && matchedTreeId) {
-        try {
-          const remoteTree = await aladinAPI.getTreeById(matchedTreeId);
-          if (remoteTree.farmId === farm_id) {
-            await dispatch(saveTree({
-              ...remoteTree,
-              scanData: {
-                ...(remoteTree.scanData ?? {}),
-                treeIds: [matchedTreeId],
-                count: data.count || 1,
-                matchedTreeId,
-                originalTreeId,
-              },
-            } as any));
-            await dispatch(loadTrees(farm_id));
-            setCurrentPage(1);
-          } else {
-            Toast.show({
-              type: 'info',
-              text1: 'Đã thêm ảnh vào cây cũ',
-              text2: `Cây ${matchedTreeId} thuộc vườn khác`,
-              visibilityTime: 4000,
-            });
-          }
-          setTreeIdentificationResult(null);
-          return;
-        } catch (e: any) {
-          console.warn('[FarmDetailScreen] [iOS] Fetch matched tree failed:', e?.message);
-          Toast.show({
-            type: 'info',
-            text1: 'Đã thêm ảnh vào cây cũ',
-            text2: matchedTreeId,
-            visibilityTime: 4000,
-          });
-          setTreeIdentificationResult(null);
-          return;
-        }
-      }
-
-      if (!createdNewTree) return;
-
-      // Register tree on backend with real GPS coordinates from iOS
-      // Note: iOS native (EnhancedUploadQueue) already called POST /trees with correct
-      // geohash. This is a RN-side safety net — 409 Conflict means the tree already exists.
-      try {
-        await aladinAPI.createTree({
-          id: treeId,
-          farm_id,
-          region_code: 'vn-south-01',
-          geohash_7: 'w3gvk9q',  // Fallback; iOS native already created with real geohash
-          latitude: lat ?? undefined,
-          longitude: lng ?? undefined,
-        });
-        console.log('[FarmDetailScreen] [iOS] ✅ Tree registered on backend:', treeId, `lat=${lat}, lng=${lng}`);
-
-      } catch (e: any) {
-        if (e?.response?.status !== 409) {
-          console.warn('[FarmDetailScreen] [iOS] Backend tree create failed (non-fatal):', e?.message);
-        }
-      }
-
-      // Update local record with confirmed GPS
-      const code = `TREE-${treeId.slice(0, 8).toUpperCase()}`;
-      const confirmedTree: any = {
-        id: treeId,
-        farmId: farm_id,
-        code,
-        latitude: lat,
-        longitude: lng,
-        species: 'Durian',
-        plantedYear: new Date().getFullYear(),
-        images: [],
-        estimatedFruits: 0,
-        fruitCount: 0,
-        scanData: { treeIds: [treeId], count: data.count || 1, originalTreeId },
-      };
-
-      try {
-        await dispatch(saveTree(confirmedTree));
-        await dispatch(loadTrees(farm_id));
-        setCurrentPage(1);
-        setTreeIdentificationResult(null);
-        console.log('[FarmDetailScreen] [iOS] ✅ Tree confirmed locally with GPS');
-      } catch (e) {
-        console.error('[FarmDetailScreen] [iOS] confirmed saveTree failed:', e);
-      }
-    };
-
-    // ── Subscribe ────────────────────────────────────────────────────────
-    const subs: any[] = [];
-
-    if (Platform.OS === 'ios') {
-      console.log('[FarmDetailScreen] Setting up iOS listeners');
-      subs.push(ScannerSDK.addListener(EVENTS.CAPTURE_COMPLETE, handleIOSCaptureComplete));
-      subs.push(ScannerSDK.addListener(EVENTS.UPLOAD_COMPLETE, handleIOSUploadComplete));
-    } else {
-      console.log('[FarmDetailScreen] Setting up Android listener: onScanComplete');
-      subs.push(ScannerSDK.addListener(EVENTS.SCAN_COMPLETE, handleAndroidScanComplete));
-    }
-
-    return () => {
-      console.log('[FarmDetailScreen] Cleaning up scan listeners');
-      subs.forEach(sub => sub.remove());
-    };
-  }, [farm_id, dispatch]);
 
 
 

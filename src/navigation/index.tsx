@@ -33,7 +33,6 @@ import SignUpBiometricScreen from '../features/auth/screens/SignUpBiometricScree
 import SignUpCompleteScreen from '../features/auth/screens/SignUpCompleteScreen';
 import AccountScreen from '../screens/AccountScreen';
 import BiometricSettings from '../screens/BiometricSettings';
-import SurfaceTestCaptureScreen from '../screens/SurfaceTestCaptureScreen';
 import OnboardingWizard from '../screens/OnboardingWizard';
 // Host-level capture/identity screens (dùng chung nhiều luồng, chưa thuộc module nào)
 import FruitListScreen from '../screens/FruitListScreen';
@@ -413,7 +412,6 @@ const HOST_STACK_SCREENS: Array<{
   { name: 'Login', component: LoginScreen, options: { headerShown: false } },
   { name: 'Activation', component: ActivationScreen },
   { name: 'BiometricSettings', component: BiometricSettings },
-  { name: 'SurfaceTestCapture', component: SurfaceTestCaptureScreen, options: { headerShown: false } },
   { name: 'Main', component: ProtectedMain, options: { headerShown: false } },
   // ProofChat ví/escrow — chưa khai manifest, giữ ở host stack.
   { name: 'ProofChatWallet', component: ProofChatWalletScreen, options: { headerShown: false } },

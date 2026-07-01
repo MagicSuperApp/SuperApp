@@ -95,10 +95,12 @@ const BASE_URL: string =
 // Native component (iOS only)
 // ---------------------------------------------------------------------------
 
-// BẮTT BUỘC guard: NativeCameraPreview chỉ tồn tại trên iOS
+// NativeCameraPreview tồn tại trên cả iOS lẫn Android (ViewManager cùng tên
+// "TreeReIDCameraPreview"). Máy Android chưa cập nhật (thiếu view) sẽ không render
+// — nhưng guard isCaptureActive + isAvailable() ở dưới đảm bảo chỉ dùng khi có native.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const NativeCameraPreview =
-  Platform.OS === 'ios'
+  Platform.OS === 'ios' || Platform.OS === 'android'
     ? (requireNativeComponent('TreeReIDCameraPreview') as React.ComponentType<{
         style?: object;
       }>)
@@ -257,9 +259,9 @@ const TreeIdentityScreen: React.FC = () => {
     return true;
   };
 
-  // ── Native event subscriptions (iOS only) ────────────────────────────────
+  // ── Native event subscriptions (iOS + Android khi có native) ─────────────
   useEffect(() => {
-    if (Platform.OS !== 'ios') return;
+    if (!TreeReIDBridge.isAvailable()) return;
 
     const unsubHeading = subscribeHeadingUpdate((e: HeadingUpdate) => {
       setHeading(e.heading);
@@ -310,19 +312,21 @@ const TreeIdentityScreen: React.FC = () => {
   // iOS: capturesRedux chỉ điền SAU stop session → dùng iosCaptureCount real-time.
   //   round1Count  = iosCaptureCount khi đang lượt 1; khi sang lượt 2 = snapshot lúc advance.
   //   round2Count  = iosCaptureCount - iosRound1Snapshot khi đang lượt 2.
-  const round1Count = Platform.OS === 'ios' && isCaptureActive
+  // Native (iOS + Android): dùng counter real-time iosCaptureCount; fallback picker dùng redux/URIs.
+  const round1Count = TreeReIDBridge.isAvailable() && isCaptureActive
     ? (currentRoundLocal === 1 ? iosCaptureCount : iosRound1Snapshot)
     : capturesRedux.filter(c => c.round === 1).length;
-  const round2Count = Platform.OS === 'ios' && isCaptureActive
+  const round2Count = TreeReIDBridge.isAvailable() && isCaptureActive
     ? (currentRoundLocal === 2 ? iosCaptureCount - iosRound1Snapshot : 0)
     : capturesRedux.filter(c => c.round === 2).length;
   const totalCaptures =
-    Platform.OS === 'ios' ? iosCaptureCount : androidImageUris.length;
+    TreeReIDBridge.isAvailable() ? iosCaptureCount : androidImageUris.length;
 
   // ── Guidance text ─────────────────────────────────────────────────────────
   const getGuidance = (): string => {
     if (identResult) return '';
-    if (Platform.OS === 'android') return GUIDANCE.android;
+    // Android KHÔNG có native → guidance chụp tay; có native thì dùng guidance theo round như iOS.
+    if (Platform.OS === 'android' && !TreeReIDBridge.isAvailable()) return GUIDANCE.android;
     if (!isCaptureActive) return GUIDANCE.idle;
     if (totalCaptures === 0)
       return currentRoundLocal === 2 ? GUIDANCE.round2 : GUIDANCE.round1;
@@ -332,13 +336,16 @@ const TreeIdentityScreen: React.FC = () => {
     return GUIDANCE.captured;
   };
 
-  // ── iOS: Start capture session ────────────────────────────────────────────
+  // ── Start capture session (iOS + Android native) ──────────────────────────
   const handleStartCapture = async () => {
-    if (Platform.OS !== 'ios') return;
-
     if (!TreeReIDBridge.isAvailable()) {
       Alert.alert('Lỗi', 'Native module chưa sẵn sàng. Vui lòng cập nhật app.');
       return;
+    }
+    // Android: xin quyền Camera trước (iOS module tự xin trong startCaptureSession).
+    if (Platform.OS === 'android') {
+      const ok = await requestCameraPermission();
+      if (!ok) return;
     }
 
     try {
@@ -529,7 +536,7 @@ const TreeIdentityScreen: React.FC = () => {
       setIsLoading(true);
       // Gọi verify_add với ảnh hiện tại — server tự cập nhật GPS mới
       const imgs =
-        Platform.OS === 'ios'
+        TreeReIDBridge.isAvailable()
           ? capturesRedux.map(c => `file://${c.fileURL}`)
           : androidImageUris;
 
@@ -550,7 +557,8 @@ const TreeIdentityScreen: React.FC = () => {
     setShowConfirm(false);
     if (id === 'new') {
       navigation.navigate('TreeEnroll', {
-        androidImagePaths: Platform.OS === 'android' ? androidImageUris : undefined,
+        androidImagePaths:
+          Platform.OS === 'android' && !TreeReIDBridge.isAvailable() ? androidImageUris : undefined,
         farmId,
       });
       return;
@@ -559,7 +567,7 @@ const TreeIdentityScreen: React.FC = () => {
     try {
       setIsLoading(true);
       const imgs =
-        Platform.OS === 'ios'
+        TreeReIDBridge.isAvailable()
           ? capturesRedux.map(c => `file://${c.fileURL}`)
           : androidImageUris;
 
@@ -853,7 +861,9 @@ const TreeIdentityScreen: React.FC = () => {
   const renderControls = () => {
     if (identResult) return null;
 
-    if (Platform.OS === 'android') {
+    // Android KHÔNG có native → controls chụp tay (picker). Có native → dùng chung controls
+    // guided với iOS bên dưới (Bắt đầu / Lượt 2 / Nhận diện).
+    if (Platform.OS === 'android' && !TreeReIDBridge.isAvailable()) {
       return (
         <View style={styles.controls}>
           <TouchableOpacity
@@ -984,15 +994,15 @@ const TreeIdentityScreen: React.FC = () => {
         </View>
       </View>
 
-      {/* Camera preview (iOS) or placeholder */}
+      {/* Camera preview (native iOS+Android) or placeholder */}
       <View style={styles.preview}>
-        {Platform.OS === 'ios' && isCaptureActive && NativeCameraPreview ? (
+        {TreeReIDBridge.isAvailable() && isCaptureActive && NativeCameraPreview ? (
           <NativeCameraPreview style={styles.previewNative} />
         ) : (
           <View style={styles.previewPlaceholder}>
             <Icon
               name={
-                Platform.OS === 'android'
+                Platform.OS === 'android' && !TreeReIDBridge.isAvailable()
                   ? 'camera-outline'
                   : 'camera-enhance-outline'
               }
@@ -1000,7 +1010,7 @@ const TreeIdentityScreen: React.FC = () => {
               color={NEUTRAL.textMuted}
             />
             <Text style={styles.previewPlaceholderText}>
-              {Platform.OS === 'android'
+              {Platform.OS === 'android' && !TreeReIDBridge.isAvailable()
                 ? 'Bấm "Chụp ảnh" bên dưới'
                 : 'Bấm "Bắt đầu" để mở camera'}
             </Text>
@@ -1009,7 +1019,7 @@ const TreeIdentityScreen: React.FC = () => {
       </View>
 
       {/* Sensor bar (iOS only, khi đang chụp) */}
-      {Platform.OS === 'ios' && isCaptureActive && !identResult && (
+      {TreeReIDBridge.isAvailable() && isCaptureActive && !identResult && (
         <View style={styles.sensorBar}>
           <View style={styles.sensorItem}>
             <Icon name="compass" size={17} color={COLORS.accent} />
@@ -1034,7 +1044,7 @@ const TreeIdentityScreen: React.FC = () => {
       )}
 
       {/* Round indicator (iOS, khi đang chụp) */}
-      {Platform.OS === 'ios' && isCaptureActive && !identResult && (
+      {TreeReIDBridge.isAvailable() && isCaptureActive && !identResult && (
         <View style={styles.roundBar}>
           <View
             style={[

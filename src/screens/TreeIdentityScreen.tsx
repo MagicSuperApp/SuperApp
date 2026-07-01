@@ -1050,7 +1050,12 @@ const TreeIdentityScreen: React.FC = () => {
             >
               Lượt 1: Thân
             </Text>
-            <Text style={styles.roundChipCount}>
+            <Text
+              style={[
+                styles.roundChipCount,
+                currentRoundLocal === 1 && styles.roundChipCountActive,
+              ]}
+            >
               {round1Count}/{MIN_ROUND1}
             </Text>
           </View>
@@ -1068,7 +1073,12 @@ const TreeIdentityScreen: React.FC = () => {
             >
               Lượt 2: Gốc
             </Text>
-            <Text style={styles.roundChipCount}>
+            <Text
+              style={[
+                styles.roundChipCount,
+                currentRoundLocal === 2 && styles.roundChipCountActive,
+              ]}
+            >
               {round2Count}/{MIN_ROUND2}
             </Text>
           </View>
@@ -1078,6 +1088,7 @@ const TreeIdentityScreen: React.FC = () => {
       {/* Guidance */}
       {!identResult && (
         <View style={styles.guidanceBox}>
+          <Icon name="information-outline" size={16} color={HEADER_BG} />
           <Text style={styles.guidanceText}>{getGuidance()}</Text>
         </View>
       )}
@@ -1288,43 +1299,58 @@ const ConfidenceBandView: React.FC<{ band: ConfidenceBand }> = ({ band }) => {
 // Styles
 // ---------------------------------------------------------------------------
 
-const HEADER_BG = '#1b5e20';
+const HEADER_BG = '#1b5e20';   // brand xanh module cây (đồng bộ ResultBadge MATCH)
+const GREEN_TINT = '#e8f5e9';  // nền mềm cho badge/guidance
+
+// Đổ bóng nhẹ — chiều sâu hiện đại, đồng bộ token shadow.
+const cardShadow = {
+  shadowColor: '#0F1614',
+  shadowOpacity: 0.06,
+  shadowRadius: 8,
+  shadowOffset: { width: 0, height: 2 },
+  elevation: 2,
+} as const;
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: NEUTRAL.bg },
+  container: { flex: 1, backgroundColor: NEUTRAL.bgSoft },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: HEADER_BG,
     paddingTop: Platform.OS === 'ios' ? 52 : 38,
-    paddingBottom: 12,
+    paddingBottom: 14,
     paddingHorizontal: 16,
   },
   backBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.15)',
   },
-  headerCenter: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  headerCenter: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   headerTitle: {
     color: NEUTRAL.white,
     fontSize: 17,
     fontWeight: '700',
   },
-  headerRight: { width: 38 },
+  headerRight: { width: 40, alignItems: 'flex-end' },
 
   preview: {
-    height: 220,
-    backgroundColor: '#0a0a0a',
+    height: 240,
+    marginHorizontal: 12,
+    marginTop: 12,
+    borderRadius: 18,
+    overflow: 'hidden',
+    backgroundColor: '#0b0f0d',
     alignItems: 'center',
     justifyContent: 'center',
+    ...cardShadow,
   },
   previewNative: { flex: 1, width: '100%' },
-  previewPlaceholder: { alignItems: 'center', gap: 10 },
+  previewPlaceholder: { alignItems: 'center', gap: 12, paddingHorizontal: 24 },
   previewPlaceholderText: {
     color: NEUTRAL.textMuted,
     fontSize: 13,
@@ -1333,33 +1359,39 @@ const styles = StyleSheet.create({
 
   sensorBar: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    backgroundColor: NEUTRAL.card,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: NEUTRAL.border,
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingTop: 12,
   },
-  sensorItem: { alignItems: 'center', gap: 2 },
+  sensorItem: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 3,
+    paddingVertical: 10,
+    backgroundColor: NEUTRAL.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: NEUTRAL.border,
+  },
   sensorLabel: { fontSize: 11, color: NEUTRAL.textMuted },
   sensorVal: { fontSize: 16, fontWeight: '700', color: NEUTRAL.text },
 
   roundBar: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 12,
-    paddingVertical: 10,
-    backgroundColor: NEUTRAL.bgSoft,
-    borderBottomWidth: 1,
-    borderBottomColor: NEUTRAL.border,
+    gap: 10,
+    paddingVertical: 12,
   },
   roundChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 20,
+    paddingVertical: 8,
+    borderRadius: 22,
     backgroundColor: NEUTRAL.card,
     borderWidth: 1,
     borderColor: NEUTRAL.border,
-    alignItems: 'center',
   },
   roundChipActive: {
     backgroundColor: HEADER_BG,
@@ -1367,17 +1399,20 @@ const styles = StyleSheet.create({
   },
   roundChipText: { fontSize: 12, color: NEUTRAL.textSub, fontWeight: '600' },
   roundChipTextActive: { color: NEUTRAL.white },
-  roundChipCount: { fontSize: 10, color: NEUTRAL.textMuted, marginTop: 1 },
+  roundChipCount: { fontSize: 11, color: NEUTRAL.textMuted, fontWeight: '700' },
+  roundChipCountActive: { color: 'rgba(255,255,255,0.85)' },
 
   guidanceBox: {
-    margin: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 12,
+    marginTop: 12,
     padding: 12,
-    backgroundColor: '#e8f5e9',
-    borderRadius: 10,
-    borderLeftWidth: 4,
-    borderLeftColor: HEADER_BG,
+    backgroundColor: GREEN_TINT,
+    borderRadius: 12,
   },
-  guidanceText: { fontSize: 13, color: '#1b5e20', lineHeight: 18 },
+  guidanceText: { flex: 1, fontSize: 13, color: '#1b5e20', lineHeight: 18 },
 
   // Result panel
   resultPanel: {
@@ -1389,11 +1424,12 @@ const styles = StyleSheet.create({
   },
   matchDetail: {
     backgroundColor: NEUTRAL.card,
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 14,
     borderWidth: 1,
     borderColor: NEUTRAL.border,
     gap: 8,
+    ...cardShadow,
   },
   matchRow: {
     flexDirection: 'row',
@@ -1474,6 +1510,11 @@ const styles = StyleSheet.create({
     backgroundColor: NEUTRAL.card,
     borderTopWidth: 1,
     borderTopColor: NEUTRAL.border,
+    shadowColor: '#0F1614',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: -3 },
+    elevation: 8,
   },
   ctrlBtn: {
     flex: 1,
@@ -1540,11 +1581,12 @@ const styles = StyleSheet.create({
   // ── M3 verdict ────────────────────────────────────────────────────────────
   verdictBox: {
     backgroundColor: NEUTRAL.card,
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 14,
     borderWidth: 1,
     borderColor: NEUTRAL.border,
     gap: 10,
+    ...cardShadow,
   },
   verdictTitle: {
     fontSize: 14,

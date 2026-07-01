@@ -453,9 +453,13 @@ workflows:
 
       - name: Apply provisioning profiles
         script: |
-          xcode-project use-profiles
-          echo "✅ Profiles applied"
+          # Tự sinh ExportOptions.plist TỪ profile Codemagic đã cài (khớp đúng
+          # tên/UUID/bundle-id). Tránh lỗi "No iOS App Store profiles matching
+          # 'aladin_appstore_profile'" do hardcode tên profile sai.
+          xcode-project use-profiles --export-options-plist ios/ExportOptions.plist
+          echo "✅ Profiles applied + ExportOptions.plist tự sinh"
           ls ~/Library/MobileDevice/Provisioning\ Profiles/ 2>/dev/null | head -5 || true
+          echo "── ExportOptions.plist ──"; cat ios/ExportOptions.plist 2>/dev/null || true
 
       - name: Patch Xcode Project — fix MapLibre signature conflict
         script: |
@@ -477,38 +481,8 @@ workflows:
           RUBY
           ruby fix_signature.rb
 
-      # Tạo ExportOptions.plist nếu chưa tồn tại.
-      # File này cần thiết cho `xcodebuild -exportArchive`.
-      - name: Create ExportOptions.plist
-        script: |
-          mkdir -p ios
-          cat > ios/ExportOptions.plist <<EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>destination</key>
-              <string>export</string>
-              <key>method</key>
-              <string>app-store</string>
-              <key>teamID</key>
-              <string>${APPLE_TEAM_ID}</string>
-              <key>uploadBitcode</key>
-              <false/>
-              <key>uploadSymbols</key>
-              <true/>
-              <key>signingStyle</key>
-              <string>manual</string>
-              <key>provisioningProfiles</key>
-              <dict>
-                  <key>vn.aladinapp</key>
-                  <string>aladin_appstore_profile</string>
-              </dict>
-          </dict>
-          </plist>
-          EOF
-          echo "✅ ExportOptions.plist created"
-          cat ios/ExportOptions.plist
+      # ExportOptions.plist đã được "Apply provisioning profiles" tự sinh ở trên
+      # (khớp đúng profile Codemagic cài) → KHÔNG hardcode nữa.
 
       - name: Bump build number (TestFlight latest + 1)
         script: |
@@ -863,20 +837,16 @@ workflows:
             echo "❌ libtaad_enclave_core.so (arm64-v8a) NOT built"; exit 1
           fi
 
-      - name: Bump versionCode (Play latest + 1)
+      - name: Bump versionCode (base + Codemagic BUILD_NUMBER)
         script: |
           set -e
-          # Tự tăng versionCode = build mới nhất trên Google Play + 1 (mỗi lần build
-          # sign → +1). Dùng service account $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS.
-          LATEST=$(google-play get-latest-build-number \
-                    --package-name "com.aladincontract.company" 2>/dev/null || echo "")
-          if [ -z "$LATEST" ]; then
-            echo "⚠️  Không lấy được số Play — dùng versionCode committed + 1"
-            LATEST=$(grep -m1 -E "versionCode [0-9]+" android/app/build.gradle | grep -oE "[0-9]+")
-          fi
-          NEW=$(( LATEST + 1 ))
+          # versionCode = versionCode committed (base) + BUILD_NUMBER của Codemagic.
+          # BUILD_NUMBER tự tăng mỗi build (monotonic) → KHÔNG phụ thuộc Google Play
+          # credentials, không bao giờ trùng. Luôn > base (70) trên Play.
+          BASE=$(grep -m1 -E "versionCode [0-9]+" android/app/build.gradle | grep -oE "[0-9]+")
+          NEW=$(( BASE + ${BUILD_NUMBER:-1} ))
           sed -i -E "s/versionCode [0-9]+/versionCode ${NEW}/" android/app/build.gradle
-          echo "✅ Android versionCode → ${NEW} (Play latest: ${LATEST})"
+          echo "✅ Android versionCode → ${NEW} (base=${BASE}, BUILD_NUMBER=${BUILD_NUMBER:-1})"
 
       - name: Build signed AAB
         script: |
@@ -908,8 +878,12 @@ workflows:
       - dist/aladin-release.aab
       - android-release.log
 
-    publishing:
-      google_play:
-        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
-        track: internal
-        submit_as_draft: true
+    # Publishing lên Google Play TẠM TẮT — service account credentials
+    # ($GCLOUD_SERVICE_ACCOUNT_CREDENTIALS) chưa cấu hình (JSON rỗng → build fail ở
+    # bước prep). AAB đã sign vẫn có trong artifacts để tải/upload tay.
+    # Bật lại khi có credentials hợp lệ: bỏ comment block dưới.
+    # publishing:
+    #   google_play:
+    #     credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+    #     track: internal
+    #     submit_as_draft: true

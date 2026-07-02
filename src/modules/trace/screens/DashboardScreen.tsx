@@ -340,7 +340,9 @@ const DashboardScreen: React.FC = () => {
           <View style={styles.tokenRow}>
             <TokenChip index={0} icon="star-four-points-outline" label="MAGIC" value={wallet?.magicBalance ?? '—'} color="#B07D2F" />
             <TokenChip index={1} icon="lightning-bolt" label="LAMP" value={wallet?.lampBalance ?? '—'} color={COLORS.accent} />
-            <TokenChip index={2} icon="hexagon-outline" label="ADA" value={wallet?.adaBalance ?? '—'} color="#0033AD" />
+            {/* CARP — token hệ sinh thái thứ 3. TODO brand tạm; số dư chờ API Phoenix. */}
+            <TokenChip index={2} icon="fish" label="CARP" value={wallet?.carpBalance ?? '—'} color="#2F8F8F" />
+            <TokenChip index={3} icon="hexagon-outline" label="ADA" value={wallet?.adaBalance ?? '—'} color="#0033AD" />
           </View>
         </Animated.View>
 

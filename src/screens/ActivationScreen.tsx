@@ -309,9 +309,11 @@ const ActivationScreen = () => {
 
               {/* Token balances */}
               <View style={styles.tokenRow}>
-                <TokenBadge icon="hexagon-outline" value={wallet?.adaBalance ?? '—'}  label="ADA"  color="#0033AD" />
-                <TokenBadge icon="lightning-bolt"  value={wallet?.lampBalance ?? '—'} label="LAMP" color={COLORS.accent} />
+                {/* Thứ tự chuẩn hệ sinh thái: MAGIC · LAMP · CARP (ADA về sau). CARP: brand tạm, số dư chờ API Phoenix. */}
                 <TokenBadge icon="star-four-points-outline" value={wallet?.magicBalance ?? '—'} label="MAGIC" color="#B07D2F" />
+                <TokenBadge icon="lightning-bolt"  value={wallet?.lampBalance ?? '—'} label="LAMP" color={COLORS.accent} />
+                <TokenBadge icon="fish" value={wallet?.carpBalance ?? '—'} label="CARP" color="#2F8F8F" />
+                <TokenBadge icon="hexagon-outline" value={wallet?.adaBalance ?? '—'}  label="ADA"  color="#0033AD" />
               </View>
 
               {/* Info note */}

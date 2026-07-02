@@ -1312,8 +1312,8 @@ const ConfidenceBandView: React.FC<{ band: ConfidenceBand }> = ({ band }) => {
 // ---------------------------------------------------------------------------
 
 // Palette CHỤP ẢNH: CAM / ĐEN / TRẮNG — tương phản cao, gọn gàng.
-const CAM = '#FF7A00';                       // cam nhấn (điểm nhìn chính)
-const CAM_DIM = 'rgba(255,122,0,0.5)';
+const CAM = "#3cbc46";                       // cam nhấn (điểm nhìn chính)
+const CAM_DIM = 'rgba(0, 255, 85, 0.5)';
 const HUD_BORDER = 'rgba(255,255,255,0.16)'; // viền trắng mờ, gọn
 const PANEL_BG = '#0B0D0C';                  // nền 3 VÙNG đen (đồng đều)
 

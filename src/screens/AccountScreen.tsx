@@ -362,9 +362,13 @@ const AccountScreen = () => {
         .join('')
         .toUpperCase();
 
-    const shortWallet = user?.walletAddress
-        ? `${user.walletAddress.slice(0, 8)}...${user.walletAddress.slice(-6)}`
-        : '—';
+    // Guard độ dài: chỉ rút gọn khi địa chỉ đủ dài (>= 14 ký tự). Địa chỉ ngắn
+    // (edge testnet) hiển thị nguyên vẹn — tránh lộ ký tự sai do slice chồng lấn.
+    const shortWallet = (() => {
+        const addr = user?.walletAddress;
+        if (!addr) return '—';
+        return addr.length >= 14 ? `${addr.slice(0, 8)}...${addr.slice(-6)}` : addr;
+    })();
 
     if (!user) {
         // Trước đây trả màn TRỐNG (vi phạm §7.3). Khi chưa có user (đang hydrate

@@ -174,6 +174,11 @@ const DashboardScreen: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  // Cờ đã-chạy-tải-lần-đầu: isLoading của store chỉ true SAU khi thunk pending
+  // dispatch. Giữa lúc mount và pending, isLoading=false + chưa có data → danh
+  // sách rỗng chớp thoáng qua. Cờ này giữ skeleton loading tới khi lần tải đầu
+  // xong (không chặn refresh về sau vì chỉ set 1 lần).
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
   const headerFade = useRef(new Animated.Value(0)).current;
   const headerSlide = useRef(new Animated.Value(-16)).current;
@@ -197,6 +202,8 @@ const DashboardScreen: React.FC = () => {
       }
     } catch (_) {
       showError('Lỗi', 'Không thể tải dữ liệu');
+    } finally {
+      setHasLoadedOnce(true);
     }
   }, [user, farms, dispatch]);
 
@@ -248,7 +255,9 @@ const DashboardScreen: React.FC = () => {
 
   // 4 trạng thái khi chưa có dữ liệu (đã có dữ liệu cũ thì vẫn render, kể cả
   // offline — INV-1). Phân biệt mạng ⟂ server (§7.3).
-  if (isLoading && !hasData) {
+  // Hiện skeleton loading toàn màn khi ĐANG tải HOẶC chưa chạy xong lần tải đầu,
+  // và chưa có dữ liệu cũ để hiển thị. Bao khe hở mount→pending (lỗi hiển thị 3).
+  if ((isLoading || !hasLoadedOnce) && !hasData && !offline && !loadError) {
     return (
       <View style={styles.root}>
         <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />

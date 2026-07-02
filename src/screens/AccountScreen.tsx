@@ -457,7 +457,17 @@ const AccountScreen = () => {
                             color={COLORS.accent}
                             desc="Sinh MAGIC mỗi 5 ngày"
                         />
-                        {/* Ô-3: gom ADA + token khác + hợp đồng còn hạn — bấm để xem. */}
+                        {/* CARP — token hệ sinh thái thứ 3. TODO brand: icon/màu tạm; số dư chờ API Phoenix. */}
+                        <TokenCard
+                            index={2}
+                            icon="fish"
+                            label="CARP"
+                            value={chainWallet?.carpBalance}
+                            unit="CARP"
+                            color="#2F8F8F"
+                            desc="Token hệ sinh thái"
+                        />
+                        {/* Ô cuối: gom ADA + token khác + hợp đồng còn hạn — bấm để xem. */}
                         <TouchableOpacity style={styles.assetMoreCard} activeOpacity={0.85} onPress={() => setAssetsOpen(true)}>
                             <View style={[styles.tokenIconWrap, { backgroundColor: 'rgba(55,71,79,0.10)' }]}>
                                 <Icon name="wallet-bifold-outline" size={20} color="#37474f" />

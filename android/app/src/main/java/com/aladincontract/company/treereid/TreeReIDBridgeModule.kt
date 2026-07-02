@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
@@ -78,10 +79,6 @@ class TreeReIDBridgeModule(private val reactContext: ReactApplicationContext) :
 
     @ReactMethod
     fun startCaptureSession(options: ReadableMap?, promise: Promise) {
-        if (isRunning.get()) {
-            promise.reject("E_BUSY", "Session đang chạy")
-            return
-        }
         val hasCamera = ContextCompat.checkSelfPermission(
             reactContext, Manifest.permission.CAMERA,
         ) == PackageManager.PERMISSION_GRANTED
@@ -89,15 +86,18 @@ class TreeReIDBridgeModule(private val reactContext: ReactApplicationContext) :
             promise.reject("E_PERMISSION", "Chưa cấp quyền Camera")
             return
         }
-        val activity = reactContext.currentActivity
-        val owner = activity as? LifecycleOwner
-        if (activity == null || owner == null) {
-            promise.reject("E_FAILED", "Không lấy được Activity/LifecycleOwner")
-            return
-        }
-
         UiThreadUtil.runOnUiThread {
             try {
+                // Self-heal: session cũ chưa dừng (user thoát màn không bấm "Nhận diện")
+                // → dọn trước thay vì từ chối E_BUSY.
+                if (isRunning.getAndSet(false)) {
+                    try { sensorReader?.stop() } catch (_: Exception) {}
+                    try { TreeReIDCamera.release() } catch (_: Exception) {}
+                }
+                // Bridgeless New Arch: currentActivity hay null → fallback ProcessLifecycleOwner
+                // (lifecycle cấp app). Không còn phụ thuộc Activity để tránh E_FAILED.
+                val owner: LifecycleOwner =
+                    (reactContext.currentActivity as? LifecycleOwner) ?: ProcessLifecycleOwner.get()
                 TreeReIDCamera.ensureController(reactContext)
                 TreeReIDCamera.bind(owner)
 
@@ -120,9 +120,10 @@ class TreeReIDBridgeModule(private val reactContext: ReactApplicationContext) :
                     putString("guidance", GUIDANCE_ROUND1)
                 }
                 promise.resolve(res)
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 isRunning.set(false)
-                promise.reject("E_FAILED", e.message, e)
+                try { sensorReader?.stop() } catch (_: Exception) {}
+                promise.reject("E_FAILED", "startCaptureSession: ${e.javaClass.simpleName}: ${e.message}", e)
             }
         }
     }

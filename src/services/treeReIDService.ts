@@ -123,7 +123,14 @@ export interface APIError {
 // ---------------------------------------------------------------------------
 
 const AUTH_TOKEN_KEY = 'auth_token';
+// Timeout mặc-định cho request nhẹ (trees / verdict / delete).
 const REQUEST_TIMEOUT_MS = 45_000;
+
+// Timeout cho tác-vụ NẶNG ẢNH (identify / enroll / verify_add): upload 20–30+ ảnh
+// rồi backend chạy match vỏ-thân (sift/xfeat/loftr) thường >45s → 45s bị AbortError.
+// Nâng lên 120s để không tự huỷ giữa chừng. (Xem log: tree_identity_api_error =
+// "AbortError: Aborted" đúng ~45s mỗi lần.)
+const IMAGE_REQUEST_TIMEOUT_MS = 120_000;
 
 // ---------------------------------------------------------------------------
 // Shared internal helper
@@ -142,6 +149,7 @@ async function _apiCall<T>(
   url: string,
   method: 'GET' | 'POST' | 'DELETE',
   body?: FormData,
+  timeoutMs: number = REQUEST_TIMEOUT_MS,
   attempt = 0,
 ): Promise<{ ok: boolean; data?: T; error?: APIError }> {
   const authHeader = await _getAuthHeader();
@@ -149,7 +157,7 @@ async function _apiCall<T>(
   if (authHeader) headers['Authorization'] = authHeader;
 
   const controller = new AbortController();
-  const timeoutHandle = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const resp = await fetch(url, {
@@ -225,7 +233,7 @@ async function _apiCall<T>(
     const isConnErr = err instanceof TypeError && !isTimeoutErr;
 
     if (isConnErr && attempt === 0) {
-      return _apiCall<T>(url, method, body, 1);
+      return _apiCall<T>(url, method, body, timeoutMs, 1);
     }
 
     return {
@@ -289,7 +297,7 @@ export async function identifyTree(
 
   // M4: chỉ nối ?matcher= khi tester ép — mặc-định để backend dùng ENV.
   const qs = options.matcher ? `?matcher=${encodeURIComponent(options.matcher)}` : '';
-  return _apiCall<IdentifyResponse>(`${baseUrl}/api/identify${qs}`, 'POST', form);
+  return _apiCall<IdentifyResponse>(`${baseUrl}/api/identify${qs}`, 'POST', form, IMAGE_REQUEST_TIMEOUT_MS);
 }
 
 /**
@@ -338,7 +346,7 @@ export async function enrollTree(
   if (options.pitch !== undefined) form.append('pitch', String(options.pitch));
   if (options.force) form.append('force', 'true');
 
-  return _apiCall<EnrollResponse>(`${baseUrl}/api/enroll`, 'POST', form);
+  return _apiCall<EnrollResponse>(`${baseUrl}/api/enroll`, 'POST', form, IMAGE_REQUEST_TIMEOUT_MS);
 }
 
 export async function verifyAddTree(
@@ -354,7 +362,7 @@ export async function verifyAddTree(
     (form as any).append('files', { uri: imagePaths[i], type: 'image/jpeg', name: `img_${i}.jpg` });
   }
 
-  return _apiCall<VerifyAddResponse>(`${baseUrl}/api/verify_add`, 'POST', form);
+  return _apiCall<VerifyAddResponse>(`${baseUrl}/api/verify_add`, 'POST', form, IMAGE_REQUEST_TIMEOUT_MS);
 }
 
 export async function getTrees(

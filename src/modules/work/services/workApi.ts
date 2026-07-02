@@ -122,8 +122,8 @@ export const authChallenge = (did: string): Promise<ChallengeResult> =>
   call(client().post('/auth/challenge', { did }));
 
 /**
- * Nộp challenge + signature (Thư ký secp256k1) → nhận session Bearer.
- * Lớp gọi này KHÔNG tự ký; caller truyền signature + timestamp (GIÂY epoch).
+ * Nộp challenge + signature (Thư ký P-256 / secp256r1, DER hex) → nhận session
+ * Bearer. Lớp gọi này KHÔNG tự ký; caller truyền signature + timestamp (GIÂY epoch).
  */
 export const authVerify = (body: VerifyBody): Promise<VerifyResult> =>
   call(client().post('/auth/verify', body));

@@ -203,7 +203,7 @@ const PostJobScreen: React.FC = () => {
             <Text style={styles.contractTitle}>Hợp đồng smart contract</Text>
           </View>
           <Text style={styles.contractText}>
-            Khi bạn đăng tin, một hợp đồng smart contract sẽ được tạo trên Cardano. Tiền cọc sẽ được giữ qua escrow và chỉ giải ngân khi hai bên xác nhận hoàn thành. Bạn ký số bằng PhoenixKey ở bước cuối.
+            Khi bạn đăng tin, một hợp đồng sẽ được tạo. Pledge định giá bằng MAGIC nhưng khóa/hoàn thật bằng CARP, chỉ giải ngân khi hai bên xác nhận hoàn thành. Bạn ký số bằng PhoenixKey (P-256) ở bước cuối.
           </Text>
         </View>
 

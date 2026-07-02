@@ -210,7 +210,7 @@ const JobDetailScreen: React.FC = () => {
           <View style={styles.trustItem}>
             <Icon name="bank-outline" size={12} color={COLORS.textSub} />
             <Text style={styles.trustItemText}>
-              Tiền cọc giữ qua escrow trên Cardano, chỉ giải ngân khi hai bên xác nhận
+              Pledge định giá bằng MAGIC, khóa/hoàn bằng CARP — chỉ giải ngân khi hai bên xác nhận
             </Text>
           </View>
           <View style={styles.trustItem}>

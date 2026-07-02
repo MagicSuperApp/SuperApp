@@ -14,8 +14,9 @@ import {
     Alert,
     Modal,
     Linking,
-    Clipboard,
 } from 'react-native';
+// RN 0.84 đã gỡ Clipboard khỏi core → dùng package cộng đồng (API setString giữ nguyên).
+import Clipboard from '@react-native-clipboard/clipboard';
 import { logoutUser, selectChainWallet } from '../store/userSlice';
 import { setChatbotEnabled } from '../store/chatbotSlice';
 import { useSelector } from 'react-redux';
@@ -371,9 +372,13 @@ const AccountScreen = () => {
         .join('')
         .toUpperCase();
 
-    const shortWallet = user?.walletAddress
-        ? `${user.walletAddress.slice(0, 8)}...${user.walletAddress.slice(-6)}`
-        : '—';
+    // Guard độ dài: chỉ rút gọn khi địa chỉ đủ dài (>= 14 ký tự). Địa chỉ ngắn
+    // (edge testnet) hiển thị nguyên vẹn — tránh lộ ký tự sai do slice chồng lấn.
+    const shortWallet = (() => {
+        const addr = user?.walletAddress;
+        if (!addr) return '—';
+        return addr.length >= 14 ? `${addr.slice(0, 8)}...${addr.slice(-6)}` : addr;
+    })();
 
     if (!user) {
         // Trước đây trả màn TRỐNG (vi phạm §7.3). Khi chưa có user (đang hydrate
@@ -466,7 +471,17 @@ const AccountScreen = () => {
                             color={COLORS.accent}
                             desc="Sinh MAGIC mỗi 5 ngày"
                         />
-                        {/* Ô-3: gom ADA + token khác + hợp đồng còn hạn — bấm để xem. */}
+                        {/* CARP — token hệ sinh thái thứ 3. TODO brand: icon/màu tạm; số dư chờ API Phoenix. */}
+                        <TokenCard
+                            index={2}
+                            icon="fish"
+                            label="CARP"
+                            value={chainWallet?.carpBalance}
+                            unit="CARP"
+                            color="#2F8F8F"
+                            desc="Token hệ sinh thái"
+                        />
+                        {/* Ô cuối: gom ADA + token khác + hợp đồng còn hạn — bấm để xem. */}
                         <TouchableOpacity style={styles.assetMoreCard} activeOpacity={0.85} onPress={() => setAssetsOpen(true)}>
                             <View style={[styles.tokenIconWrap, { backgroundColor: 'rgba(55,71,79,0.10)' }]}>
                                 <Icon name="wallet-bifold-outline" size={20} color="#37474f" />

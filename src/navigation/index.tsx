@@ -107,6 +107,7 @@ const TAB_TITLES: Record<string, string> = {
   ProofChatHome: 'Tin nhắn',
   Farms: 'Trang trại',
   WorkHome: 'Việc làm',
+  JoinHome: 'Kết đèn',
   Account: 'Tài khoản',
 };
 
@@ -116,6 +117,7 @@ const TAB_ICONS: Record<string, string> = {
   ProofChatHome: 'chat-processing',
   Farms: 'sprout',
   WorkHome: 'briefcase',
+  JoinHome: 'lightning-bolt',
   Account: 'account-circle',
 };
 
@@ -208,17 +210,23 @@ const TAB_META: Record<string, { icon: string; iconActive: string; label: string
   ProofChatHome: { icon: 'chat-processing-outline', iconActive: 'chat-processing', label: 'Tin nhắn' },
   Farms: { icon: 'sprout-outline', iconActive: 'sprout', label: 'Trang trại' },
   WorkHome: { icon: 'briefcase-outline', iconActive: 'briefcase', label: 'Việc làm' },
+  JoinHome: { icon: 'lightning-bolt-outline', iconActive: 'lightning-bolt', label: 'Kết đèn' },
   Account: { icon: 'account-circle-outline', iconActive: 'account-circle', label: 'Tài khoản' },
 };
 
 const CurvedTabBar = ({ state, navigation }: BottomTabBarProps) => {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const cx = width / 2;
   const barHeight = TAB_BAR_HEIGHT + insets.bottom;
   const containerHeight = barHeight + FLOAT;
 
   const homeIndex = state.routes.findIndex((r) => r.name === 'Home');
+  // Notch + nút Home nổi đúng trên Ô Home (theo vị trí thực trong hàng tab),
+  // KHÔNG cố định giữa màn — nhờ vậy đúng với mọi số tab (5, 6…): hết lệch khi thêm Kết đèn.
+  const cx =
+    homeIndex >= 0 && state.routes.length > 0
+      ? ((homeIndex + 0.5) / state.routes.length) * width
+      : width / 2;
 
   const handlePress = (routeName: string, routeKey: string, isFocused: boolean) => {
     const event = navigation.emit({ type: 'tabPress', target: routeKey, canPreventDefault: true });

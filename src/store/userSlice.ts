@@ -12,6 +12,9 @@ interface Wallet {
   userId: string;
   magicBalance: number;
   lampBalance: number;
+  // CARP — token hệ sinh thái thứ 3. Backend PhoenixKey CHƯA trả số dư → optional, hiện '—'
+  // tới khi có API thật (xem message hỏi Phoenix Agent). Thứ tự chuẩn: MAGIC · LAMP · CARP.
+  carpBalance?: number;
   adaBalance: number;
   lastSynced: string;
   pendingCredits: number;

@@ -31,7 +31,9 @@ const HEADER_BG = '#5d4037';
 const AnimalDetailScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<AnimalDetailRouteParams, 'AnimalDetail'>>();
-  const { animalDid } = route.params;
+  // Guard: route.params có thể undefined (deeplink / caller quên truyền) →
+  // tránh crash "undefined is not an object". Thiếu animalDid → hiển thị fallback.
+  const { animalDid } = route.params ?? ({} as AnimalDetailRouteParams['AnimalDetail']);
 
   return (
     <View style={styles.container}>
@@ -56,7 +58,7 @@ const AnimalDetailScreen: React.FC = () => {
           <Icon name="identifier" size={32} color={HEADER_BG} style={styles.cardIcon} />
           <Text style={styles.cardLabel}>Animal DID</Text>
           <Text style={styles.cardDid} numberOfLines={3} selectable>
-            {animalDid}
+            {animalDid ?? 'Không có dữ liệu cá thể'}
           </Text>
           <Text style={styles.cardNote}>
             Màn hình này đang được phát triển.{'\n'}

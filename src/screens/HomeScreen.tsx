@@ -45,7 +45,13 @@ const H_PADDING = 20;
 const CAROUSEL_W = width - H_PADDING * 2;
 const CAROUSEL_H = 140;
 const MODULE_GAP = 12;
-const MODULE_CARD_W = (width - H_PADDING * 2 - MODULE_GAP) / 2;
+// Card 2 cột. Trên máy nhỏ / landscape hẹp, nửa màn hình quá nhỏ khiến chữ tràn.
+// Đặt sàn tối thiểu (MODULE_CARD_MIN) — nếu 1 nửa màn hình < sàn thì cho card
+// chiếm gần trọn bề ngang (wrap xuống 1 cột) thay vì ép 2 cột chật.
+const MODULE_CARD_MIN = 150;
+const MODULE_HALF_W = (width - H_PADDING * 2 - MODULE_GAP) / 2;
+const MODULE_CARD_W =
+  MODULE_HALF_W >= MODULE_CARD_MIN ? MODULE_HALF_W : width - H_PADDING * 2;
 
 // Khoảng chừa dưới cho CurvedTabBar (navbar khuyết-tròn) — thanh cao 64 + nút
 // Home nhô lên 43 + cushion. Cộng thêm insets.bottom tại nơi dùng. Giữ đồng bộ
@@ -183,8 +189,19 @@ const BannerCarousel = ({ fade }: { fade: Animated.Value }) => {
             <View style={styles.bannerOrb} />
             <View style={styles.bannerOrb2} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.bannerTitle}>{item.title}</Text>
-              <Text style={styles.bannerSub}>{item.sub}</Text>
+              {/* Tiêu đề có \n cứng — giới hạn 2 dòng + co chữ khi người dùng bật
+                  font-scale lớn, tránh bị cắt cụt trong banner cao cố định. */}
+              <Text
+                style={styles.bannerTitle}
+                numberOfLines={2}
+                adjustsFontSizeToFit
+                minimumFontScale={0.8}
+              >
+                {item.title}
+              </Text>
+              <Text style={styles.bannerSub} numberOfLines={2}>
+                {item.sub}
+              </Text>
             </View>
             <View style={styles.bannerIconWrap}>
               <Icon name={item.icon} size={56} color="rgba(255,255,255,0.85)" />
@@ -801,7 +818,9 @@ const HomeScreen: React.FC = () => {
           // iOS-fix: CurvedTabBar (navbar) là position:absolute nổi trên nội dung.
           // Chừa đủ khoảng dưới = chiều cao thanh (64) + phần nhô nút Home (43) +
           // safe-area dưới, để item cuối KHÔNG bị navbar che. (BOTTOM_NAV_CLEARANCE)
-          { paddingBottom: insets.bottom + BOTTOM_NAV_CLEARANCE },
+          // Math.max: đảm bảo sàn tối thiểu ngay cả khi insets.bottom = 0 (Android
+          // không có home-indicator) — tránh navbar nổi che nội dung cuối.
+          { paddingBottom: Math.max(BOTTOM_NAV_CLEARANCE, insets.bottom + BOTTOM_NAV_CLEARANCE) },
         ]}
         refreshControl={
           <RefreshControl

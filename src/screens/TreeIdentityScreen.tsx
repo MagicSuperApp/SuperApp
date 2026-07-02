@@ -1356,7 +1356,12 @@ const styles = StyleSheet.create({
   headerRight: { width: 40, alignItems: 'flex-end' },
 
   preview: {
-    height: 240,
+    // GỐC bug "1/3 màn": trước đây height:240 CỐ-ĐỊNH → thẻ ống-kính ghim 240px, trên máy cao
+    // chỉ chiếm ~1/4-1/3 (camera là 1 HÀNG trong cột dọc header+preview+bar+nút). flex:1 → thẻ
+    // GIÃN lấp không-gian còn lại (camera chiếm phần lớn màn), GIỮ bo-góc/margin/shadow.
+    // FULL edge-to-edge (camera nền + control overlay) = việc Thư (xem PR body), cần verify device.
+    flex: 1,
+    minHeight: 240,
     marginHorizontal: 12,
     marginTop: 12,
     borderRadius: 18,

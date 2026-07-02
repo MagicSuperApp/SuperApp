@@ -87,9 +87,12 @@ object TreeReIDCamera {
 
     fun mainExecutor(context: Context): Executor = ContextCompat.getMainExecutor(context)
 
-    /** Gỡ preview + unbind camera (main thread). */
+    /** Gỡ preview + unbind camera + RESET controller (main thread).
+     *  Reset để session sau tạo controller MỚI — tránh lỗi bind lại controller cũ. */
     fun release() {
         previewRef?.get()?.controller = null
         controller?.unbind()
+        controller = null
+        previewRef = null
     }
 }

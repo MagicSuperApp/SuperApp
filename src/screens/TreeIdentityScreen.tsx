@@ -304,7 +304,12 @@ const TreeIdentityScreen: React.FC = () => {
   // ── Cleanup on unmount ────────────────────────────────────────────────────
   useEffect(() => {
     return () => {
-      // Không clearAll vì TreeEnrollScreen cần dùng captures từ redux
+      // Không clearAll vì TreeEnrollScreen cần dùng captures từ redux.
+      // Dừng session native để giải phóng camera nếu user rời màn giữa chừng
+      // (không bấm "Nhận diện"). Best-effort — không có session thì native resolve null.
+      if (TreeReIDBridge.isAvailable()) {
+        TreeReIDBridge.stopCaptureSession().catch(() => {});
+      }
     };
   }, []);
 

@@ -56,6 +56,7 @@ import {
   verifyAddTree,
   submitIdentifyVerdict,
   getTrees,
+  fieldErrorMessage,
   type IdentifyResponse,
   type ConfidenceBand,
   type IdentifyVerdict,
@@ -521,7 +522,8 @@ const TreeIdentityScreen: React.FC = () => {
         // Các decision khác xử lý ở render / handleDecisionAction
       } else {
         rLog.treeIdentity.apiError(result.error?.detail ?? 'unknown', imagePaths.length);
-        Alert.alert('Lỗi nhận diện', result.error?.detail ?? 'Nhận diện thất bại. Thử lại.');
+        // Hiện câu gợi ý rõ ràng (flat/heterogeneous/need_gps...) thay vì "lỗi" chung (Lỗi field #3).
+        Alert.alert('Chưa tạo được cây', fieldErrorMessage(result.error));
       }
     } catch (e: any) {
       rLog.treeIdentity.apiError(e?.message ?? String(e), imagePaths.length);
@@ -550,7 +552,7 @@ const TreeIdentityScreen: React.FC = () => {
       if (res.ok) {
         Alert.alert('Đã cập nhật', 'Vị trí mới của cây đã được lưu.');
       } else {
-        Alert.alert('Lỗi', res.error?.detail ?? 'Cập nhật thất bại.');
+        Alert.alert('Chưa cập nhật được', fieldErrorMessage(res.error));
       }
     } finally {
       setIsLoading(false);
@@ -581,7 +583,7 @@ const TreeIdentityScreen: React.FC = () => {
       if (res.ok) {
         Alert.alert('Đã xác nhận', `Góc nhìn mới đã thêm vào cây.\nĐã thêm: ${res.data?.n_added ?? 0} góc.`);
       } else {
-        Alert.alert('Lỗi', res.error?.detail ?? 'Xác nhận thất bại.');
+        Alert.alert('Chưa thêm được góc', fieldErrorMessage(res.error));
       }
     } finally {
       setIsLoading(false);

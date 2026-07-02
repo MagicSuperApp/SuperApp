@@ -233,7 +233,134 @@ export const conversations = {
     unwrap<string[]>(
       client.get('/conversations/ids', { needsAuth: true } as AuthableConfig),
     ),
+
+  /** Tạo hội thoại. BE: POST /conversations (Bearer). */
+  create: (p: {
+    type: 'DIRECT' | 'GROUP' | 'JOB_NEGOTIATION';
+    participantIds: string[];
+    title?: string;
+    proposalId?: string;
+  }): Promise<RemoteConversation> =>
+    unwrap<RemoteConversation>(
+      client.post('/conversations', p, { needsAuth: true } as AuthableConfig),
+    ),
 };
 
-export const proofChatApi = { auth, conversations };
+// ── Tin nhắn (lịch sử — realtime đi qua WS) ──────────────────────────
+// Tin trả về là envelope MLS: giải mã nội dung ở tầng native (chatMls), không phải ở đây.
+export interface RemoteMessage {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  createdAt?: number | string;
+  epoch?: number;
+  /** Envelope MLS (opkId:'mls', type:2, body base64...). Giải mã ở chatMls. */
+  encryptedContent?: Record<string, unknown>;
+  variants?: Array<Record<string, unknown>>;
+  merkleLeaf?: Record<string, unknown>;
+}
+
+export const messages = {
+  /** Lịch sử tin của hội thoại. BE: GET /conversations/:id/messages?deviceId&limit&offset (Bearer). */
+  history: (
+    conversationId: string,
+    deviceId: string,
+    limit = 30,
+    offset = 0,
+  ): Promise<RemoteMessage[]> =>
+    unwrap<RemoteMessage[]>(
+      client.get(`/conversations/${conversationId}/messages`, {
+        needsAuth: true,
+        params: { deviceId, limit, offset },
+      } as AuthableConfig),
+    ),
+};
+
+// ── MLS key management + epoch-sync ──────────────────────────────────
+
+export interface KeyPackageResponse {
+  stakeAddress: string;
+  deviceId: string;
+  keyPackage: string; // base64 wire
+  ciphersuite: string;
+  expiresAt?: number | string;
+  createdAt?: number | string;
+}
+
+export interface EpochSyncRecord {
+  conversationId: string;
+  id: string;
+  epoch: number;
+  mlsMessageType: 'application' | 'epoch_sync' | 'welcome';
+  commitMessage: string; // base64
+  welcomeMessage: string; // base64
+  ratchetTree?: string; // base64
+  createdAt?: number;
+  createdBy: string; // stakeAddress admin
+}
+
+export const mls = {
+  /** Publish KeyPackage của thiết bị. BE: POST /mls/keypackage (Bearer). */
+  publishKeyPackage: (p: {
+    deviceId: string;
+    keyPackage: string;
+    ciphersuite: string;
+    expiresAt?: number;
+  }): Promise<{ success?: boolean }> =>
+    unwrap<{ success?: boolean }>(
+      client.post('/mls/keypackage', p, { needsAuth: true } as AuthableConfig),
+    ),
+
+  /** KeyPackage của mọi thành viên trong phòng (để add vào nhóm). */
+  roomKeyPackages: (conversationId: string, deviceId?: string): Promise<KeyPackageResponse[]> =>
+    unwrap<KeyPackageResponse[]>(
+      client.get(`/mls/keypackages/room/${conversationId}`, {
+        needsAuth: true,
+        params: { deviceId },
+      } as AuthableConfig),
+    ),
+
+  /** KeyPackage theo danh sách stakeAddress. BE: POST /mls/keypackages/batch. */
+  batchKeyPackages: (stakeAddresses: string[]): Promise<KeyPackageResponse[]> =>
+    unwrap<KeyPackageResponse[]>(
+      client.post('/mls/keypackages/batch', { stakeAddresses }, { needsAuth: true } as AuthableConfig),
+    ),
+
+  /** Trạng thái KeyPackage của mình trên server (đã publish chưa). */
+  keyPackageStatus: (): Promise<{ exists?: boolean }> =>
+    unwrap<{ exists?: boolean }>(
+      client.get('/mls/keypackage/status', { needsAuth: true } as AuthableConfig),
+    ),
+
+  /** Epoch hiện tại của nhóm. BE: GET /mls/epoch-sync/:conversationId/current. */
+  epochCurrent: (
+    conversationId: string,
+  ): Promise<{ conversationId: string; currentEpoch?: number; epoch?: number; lastUpdated?: number }> =>
+    unwrap(
+      client.get(`/mls/epoch-sync/${conversationId}/current`, { needsAuth: true } as AuthableConfig),
+    ),
+
+  /** Bản ghi epoch-sync trong khoảng [fromEpoch, toEpoch]. */
+  epochRange: (conversationId: string, fromEpoch = 0, toEpoch = 999999): Promise<EpochSyncRecord[]> =>
+    unwrap<EpochSyncRecord[]>(
+      client.get(`/mls/epoch-sync/${conversationId}`, {
+        needsAuth: true,
+        params: { fromEpoch, toEpoch },
+      } as AuthableConfig),
+    ),
+
+  /** Ghi bản epoch-sync (ADMIN — khi tạo nhóm/thêm thành viên). */
+  createEpochSync: (rec: {
+    conversationId: string;
+    epoch: number;
+    commitMessage: string;
+    welcomeMessage: string;
+    ratchetTree?: string;
+  }): Promise<EpochSyncRecord> =>
+    unwrap<EpochSyncRecord>(
+      client.post('/mls/epoch-sync', rec, { needsAuth: true } as AuthableConfig),
+    ),
+};
+
+export const proofChatApi = { auth, conversations, messages, mls };
 export default proofChatApi;

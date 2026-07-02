@@ -1,0 +1,4 @@
+node-harness/node_modules/
+node-harness/package-lock.json
+rust-spike/target/
+*.log

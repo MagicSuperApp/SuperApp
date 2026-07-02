@@ -28,6 +28,16 @@ import StateView from '../components/state/StateView';
 import { showInfo } from '../utils/alert';
 import { useNavigation } from '@react-navigation/native';
 import { showWarning } from '../utils/alert';
+import { getVersion, getBuildNumber } from 'react-native-device-info';
+import { API_BASE_URL } from '../services/aladin-api';
+
+// Version THẬT đọc từ bundle (CFBundleShortVersionString / versionName + build number).
+// Thay chuỗi hard-code "Aladin v1.0.0" (Lỗi field #4) — để field biết đúng build đang chạy.
+const APP_VERSION_LABEL = `Aladin v${getVersion()} (${getBuildNumber()})`;
+
+// Chi tiết debug (tap version 5 lần): version + server API đang trỏ → field tự soi
+// máy có chạy đúng build + đúng server không (chẩn đoán 404 farm — Lỗi field #5).
+const APP_DEBUG_INFO = `${APP_VERSION_LABEL}\n\nMáy chủ: ${API_BASE_URL}\nNền: ${Platform.OS}`;
 import { Switch } from 'react-native';
 const { width } = Dimensions.get('window');
 
@@ -291,7 +301,7 @@ const AccountScreen = () => {
         }, 1500);
         if (versionTapCount.current >= 5) {
             versionTapCount.current = 0;
-            showInfo('Aladin', 'Aladin v1.0.0');
+            showInfo('Aladin', APP_DEBUG_INFO);
         }
     };
 
@@ -644,7 +654,7 @@ const AccountScreen = () => {
                         <MenuItem
                             icon="information-outline"
                             label="Phiên bản ứng dụng"
-                            sublabel="Aladin v1.0.0"
+                            sublabel={APP_VERSION_LABEL}
                             showArrow={false}
                             onPress={handleVersionTap}
                             last

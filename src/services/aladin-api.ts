@@ -50,11 +50,16 @@ interface TreeCreateRequest {
   metadata?: Record<string, any>;
 }
 
+// Base URL THẬT mà client farm/aladin đang dùng (đã bake lúc build từ ALADIN_API_URL).
+// Export để màn debug hiện ra → field soi máy đang trỏ server nào (chẩn đoán 404 farm
+// do build cũ/lệch env — Lỗi field #5).
+export const API_BASE_URL = ALADIN_API_URL || 'http://localhost:8001';
+
 class AladinAPIClient {
   private client: AxiosInstance;
 
   constructor() {
-    const baseURL = ALADIN_API_URL || 'http://localhost:8001';
+    const baseURL = API_BASE_URL;
     const apiKey = ALADIN_API_KEY || 'mock-local-api-key';
 
     this.client = axios.create({

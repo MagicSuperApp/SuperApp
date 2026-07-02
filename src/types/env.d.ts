@@ -4,6 +4,7 @@ declare module '@env' {
   export const ALADIN_REGION_CODE: string;
   export const PHOENIXKEY_API_URL: string;
   export const PHOENIX_WALLET_ENABLED: string;
+  export const ORG_MINT_ENABLED: string;
   export const MESHAPI_USE_MOCK: string;
   export const ORILIFE_API_BASE_URL: string;
   export const LAMPNET_BASE_URL: string;

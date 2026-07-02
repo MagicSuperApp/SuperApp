@@ -1349,7 +1349,11 @@ const styles = StyleSheet.create({
   headerRight: { width: 40, alignItems: 'flex-end' },
 
   preview: {
-    height: 240,
+    // Trước: height:240 CỐ-ĐỊNH → trên máy cao ống-kính chỉ chiếm ~1/3 trên (team field báo "1/3 màn").
+    // flex:1 → thẻ ống-kính GIÃN lấp không-gian còn lại (GIỮ nguyên bo-góc/margin/shadow = thiết-kế thẻ).
+    // minHeight giữ sàn khi màn thấp. Full-screen thật (camera nền + control overlay) là bước sau.
+    flex: 1,
+    minHeight: 240,
     marginHorizontal: 12,
     marginTop: 12,
     borderRadius: 18,

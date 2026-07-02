@@ -34,6 +34,8 @@ import {
   requireNativeComponent,
   Modal,
   FlatList,
+  Animated,
+  Easing,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
@@ -102,8 +104,8 @@ const BASE_URL: string =
 const NativeCameraPreview =
   Platform.OS === 'ios' || Platform.OS === 'android'
     ? (requireNativeComponent('TreeReIDCameraPreview') as React.ComponentType<{
-        style?: object;
-      }>)
+      style?: object;
+    }>)
     : null;
 
 // ---------------------------------------------------------------------------
@@ -114,13 +116,13 @@ const MIN_ROUND1 = 4;
 const MIN_ROUND2 = 2;
 
 const GUIDANCE = {
-  idle:      'Bấm "Bắt đầu" để nhận diện cây.',
-  round1:    'Đi vòng quanh cây, lia chậm để lấy đủ góc.',
-  round2:    'Đứng SÁT GỐC, chĩa ống kính LÊN — lấy rõ vỏ gốc, sẹo, chạc cây.',
-  needMore:  'Xoay thêm một chút nữa để lấy góc mới.',
-  captured:  'Đã lấy một góc — tiếp tục lia.',
-  sufficient:'Đủ để nhận rồi. Bấm "Lượt 2: Cận gốc" để tăng độ chính xác.',
-  android:   'Bấm "Chụp ảnh" để thêm góc nhìn (tối thiểu 4 ảnh).',
+  idle: 'Bấm "Bắt đầu" để nhận diện cây.',
+  round1: 'Đi vòng quanh cây, lia chậm để lấy đủ góc.',
+  round2: 'Đứng SÁT GỐC, chĩa ống kính LÊN — lấy rõ vỏ gốc, sẹo, chạc cây.',
+  needMore: 'Xoay thêm một chút nữa để lấy góc mới.',
+  captured: 'Đã lấy một góc — tiếp tục lia.',
+  sufficient: 'Đủ để nhận rồi. Bấm "Lượt 2: Cận gốc" để tăng độ chính xác.',
+  android: 'Bấm "Chụp ảnh" để thêm góc nhìn (tối thiểu 4 ảnh).',
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -144,7 +146,7 @@ const TreeIdentityScreen: React.FC = () => {
 
   useEffect(() => {
     rLog.treeIdentity.screenMount({ farmId });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Redux state ───────────────────────────────────────────────────────────
@@ -158,6 +160,7 @@ const TreeIdentityScreen: React.FC = () => {
   const [currentRoundLocal, setCurrentRoundLocal] = useState<1 | 2>(1);
   const [heading, setHeading] = useState<number | null>(null);
   const [pitch, setPitch] = useState<number | null>(null);
+  const [roll, setRoll] = useState<number | null>(null);
   const [shouldCapture, setShouldCapture] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isIdentifyingLocal, setIsIdentifyingLocal] = useState(false);
@@ -266,6 +269,7 @@ const TreeIdentityScreen: React.FC = () => {
     const unsubHeading = subscribeHeadingUpdate((e: HeadingUpdate) => {
       setHeading(e.heading);
       setPitch(e.pitch);
+      setRoll(e.roll);
       setShouldCapture(e.shouldCapture);
     });
 
@@ -308,7 +312,7 @@ const TreeIdentityScreen: React.FC = () => {
       // Dừng session native để giải phóng camera nếu user rời màn giữa chừng
       // (không bấm "Nhận diện"). Best-effort — không có session thì native resolve null.
       if (TreeReIDBridge.isAvailable()) {
-        TreeReIDBridge.stopCaptureSession().catch(() => {});
+        TreeReIDBridge.stopCaptureSession().catch(() => { });
       }
     };
   }, []);
@@ -676,6 +680,7 @@ const TreeIdentityScreen: React.FC = () => {
         contentContainerStyle={styles.resultPanelContent}
         showsVerticalScrollIndicator={false}
       >
+
         {/* Badge */}
         <ResultBadge
           decision={decision}
@@ -684,8 +689,8 @@ const TreeIdentityScreen: React.FC = () => {
             decision === 'MATCH'
               ? `${name ?? 'Không tên'} · ${code ?? 'N/A'}`
               : decision === 'MOVED'
-              ? `Di chuyển ~${moved_distance_m?.toFixed(0) ?? '?'} m`
-              : undefined
+                ? `Di chuyển ~${moved_distance_m?.toFixed(0) ?? '?'} m`
+                : undefined
           }
         />
 
@@ -876,7 +881,7 @@ const TreeIdentityScreen: React.FC = () => {
             onPress={handleAndroidAddPhoto}
             activeOpacity={0.8}
           >
-            <Icon name="camera-plus" size={22} color="#1b5e20" />
+            <Icon name="camera-plus" size={22} color={CAM} />
             <Text style={styles.ctrlBtnSecText}>
               Chụp ảnh ({androidImageUris.length})
             </Text>
@@ -887,17 +892,17 @@ const TreeIdentityScreen: React.FC = () => {
               styles.ctrlBtn,
               styles.ctrlBtnPrimary,
               (isIdentifyingLocal || androidImageUris.length < MIN_ROUND1) &&
-                styles.ctrlBtnDisabled,
+              styles.ctrlBtnDisabled,
             ]}
             onPress={handleAndroidIdentify}
             disabled={isIdentifyingLocal || androidImageUris.length < MIN_ROUND1}
             activeOpacity={0.8}
           >
             {isIdentifyingLocal ? (
-              <ActivityIndicator color={NEUTRAL.white} />
+              <ActivityIndicator color="#000000" />
             ) : (
               <>
-                <Icon name="magnify" size={22} color={NEUTRAL.white} />
+                <Icon name="magnify" size={22} color="#000000" />
                 <Text style={styles.ctrlBtnText}>Nhận diện</Text>
               </>
             )}
@@ -917,10 +922,10 @@ const TreeIdentityScreen: React.FC = () => {
             activeOpacity={0.8}
           >
             {isLoading ? (
-              <ActivityIndicator color={NEUTRAL.white} />
+              <ActivityIndicator color="#000000" />
             ) : (
               <>
-                <Icon name="camera-enhance" size={22} color={NEUTRAL.white} />
+                <Icon name="camera-enhance" size={22} color="#000000" />
                 <Text style={styles.ctrlBtnText}>Bắt đầu</Text>
               </>
             )}
@@ -937,7 +942,7 @@ const TreeIdentityScreen: React.FC = () => {
             onPress={handleAdvanceToRound2}
             activeOpacity={0.8}
           >
-            <Icon name="arrow-right-bold" size={22} color="#1b5e20" />
+            <Icon name="arrow-right-bold" size={22} color={CAM} />
             <Text style={styles.ctrlBtnSecText}>Lượt 2: Cận gốc</Text>
           </TouchableOpacity>
         )}
@@ -947,17 +952,17 @@ const TreeIdentityScreen: React.FC = () => {
             styles.ctrlBtn,
             styles.ctrlBtnPrimary,
             (isLoading || isIdentifyingLocal || totalCaptures < MIN_ROUND1) &&
-              styles.ctrlBtnDisabled,
+            styles.ctrlBtnDisabled,
           ]}
           onPress={handleStopAndIdentify}
           disabled={isLoading || isIdentifyingLocal || totalCaptures < MIN_ROUND1}
           activeOpacity={0.8}
         >
           {isLoading || isIdentifyingLocal ? (
-            <ActivityIndicator color={NEUTRAL.white} />
+            <ActivityIndicator color="#000000" />
           ) : (
             <>
-              <Icon name="check-circle" size={22} color={NEUTRAL.white} />
+              <Icon name="check-circle" size={22} color="#000000" />
               <Text style={styles.ctrlBtnText}>
                 Nhận diện ({totalCaptures} góc)
               </Text>
@@ -969,9 +974,11 @@ const TreeIdentityScreen: React.FC = () => {
   };
 
   // ── Main render ───────────────────────────────────────────────────────────
+  const nativeHudActive = TreeReIDBridge.isAvailable() && isCaptureActive && !identResult;
+
   return (
     <View style={styles.container}>
-      {/* Header */}
+      {/* Header (vùng đen) */}
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backBtn}
@@ -987,7 +994,6 @@ const TreeIdentityScreen: React.FC = () => {
           onLongPress={() => setShowMatcherPicker(true)}
           delayLongPress={900}
         >
-          <Icon name="leaf" size={19} color={NEUTRAL.white} />
           <Text style={styles.headerTitle}>Nhận diện cây</Text>
         </TouchableOpacity>
         <View style={styles.headerRight}>
@@ -999,120 +1005,111 @@ const TreeIdentityScreen: React.FC = () => {
         </View>
       </View>
 
-      {/* Camera preview (native iOS+Android) or placeholder */}
-      <View style={styles.preview}>
-        {TreeReIDBridge.isAvailable() && isCaptureActive && NativeCameraPreview ? (
-          <NativeCameraPreview style={styles.previewNative} />
-        ) : (
-          <View style={styles.previewPlaceholder}>
-            <Icon
-              name={
-                Platform.OS === 'android' && !TreeReIDBridge.isAvailable()
-                  ? 'camera-outline'
-                  : 'camera-enhance-outline'
-              }
-              size={56}
-              color={NEUTRAL.textMuted}
-            />
-            <Text style={styles.previewPlaceholderText}>
-              {Platform.OS === 'android' && !TreeReIDBridge.isAvailable()
-                ? 'Bấm "Chụp ảnh" bên dưới'
-                : 'Bấm "Bắt đầu" để mở camera'}
-            </Text>
+      {identResult ? (
+        /* Result panel (nền đục, đọc rõ) */
+        renderResultPanel()
+      ) : (
+        <>
+          {/* ══ VÙNG GIỮA: CAMERA ══ */}
+          <View style={styles.cameraZone}>
+            {TreeReIDBridge.isAvailable() && isCaptureActive && NativeCameraPreview ? (
+              <NativeCameraPreview style={StyleSheet.absoluteFill} />
+            ) : (
+              <View style={styles.previewPlaceholder}>
+                <Icon
+                  name={
+                    Platform.OS === 'android' && !TreeReIDBridge.isAvailable()
+                      ? 'camera-outline'
+                      : 'camera-enhance-outline'
+                  }
+                  size={64}
+                  color="rgba(255,255,255,0.35)"
+                />
+                <Text style={styles.previewPlaceholderText}>
+                  {Platform.OS === 'android' && !TreeReIDBridge.isAvailable()
+                    ? 'Bấm "Chụp ảnh" bên dưới'
+                    : 'Bấm "Bắt đầu" để mở camera'}
+                </Text>
+              </View>
+            )}
+            {/* Nháy "chụp" dịu — chỉ trong khung camera */}
+            {nativeHudActive && <CaptureFlash count={totalCaptures} />}
           </View>
-        )}
-      </View>
+          {nativeHudActive && (
+            <View style={styles.topZone}>
+              <CompassHologram heading={heading} />
+              <View style={styles.zoneDivider} />
+              <TiltZone pitch={pitch} roll={roll} yaw={heading} />
+            </View>
+          )}
+          {/* ══ VÙNG DƯỚI (đen): LƯỢT + SỐ ẢNH + hướng dẫn ══ */}
+          <View style={styles.bottomZone}>
+            {nativeHudActive && (
+              <View style={styles.bottomRow}>
+                <View style={styles.roundGroup}>
+                  <View
+                    style={[
+                      styles.roundChip,
+                      currentRoundLocal === 1 && styles.roundChipActive,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.roundChipText,
+                        currentRoundLocal === 1 && styles.roundChipTextActive,
+                      ]}
+                    >
+                      Lượt 1: Thân
+                    </Text>
+                    <Text
+                      style={[
+                        styles.roundChipCount,
+                        currentRoundLocal === 1 && styles.roundChipCountActive,
+                      ]}
+                    >
+                      {round1Count}/{MIN_ROUND1}
+                    </Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.roundChip,
+                      currentRoundLocal === 2 && styles.roundChipActive,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.roundChipText,
+                        currentRoundLocal === 2 && styles.roundChipTextActive,
+                      ]}
+                    >
+                      Lượt 2: Gốc
+                    </Text>
+                    <Text
+                      style={[
+                        styles.roundChipCount,
+                        currentRoundLocal === 2 && styles.roundChipCountActive,
+                      ]}
+                    >
+                      {round2Count}/{MIN_ROUND2}
+                    </Text>
+                  </View>
+                </View>
 
-      {/* Sensor bar (iOS only, khi đang chụp) */}
-      {TreeReIDBridge.isAvailable() && isCaptureActive && !identResult && (
-        <View style={styles.sensorBar}>
-          <View style={styles.sensorItem}>
-            <Icon name="compass" size={17} color={COLORS.accent} />
-            <Text style={styles.sensorLabel}>Hướng</Text>
-            <Text style={styles.sensorVal}>
-              {heading !== null ? `${Math.round(heading)}°` : '--'}
-            </Text>
+                <PhotoCount count={totalCaptures} shouldCapture={shouldCapture} />
+              </View>
+            )}
+
+            {/* Hướng dẫn */}
+            <View style={styles.guidanceRow}>
+              <Icon name="information-outline" size={16} color={CAM} />
+              <Text style={styles.guidanceText}>{getGuidance()}</Text>
+            </View>
           </View>
-          <View style={styles.sensorItem}>
-            <Icon name="phone-rotate-portrait" size={17} color={COLORS.accent} />
-            <Text style={styles.sensorLabel}>Nghiêng</Text>
-            <Text style={styles.sensorVal}>
-              {pitch !== null ? `${Math.round(pitch)}°` : '--'}
-            </Text>
-          </View>
-          <View style={styles.sensorItem}>
-            <Icon name="image-multiple" size={17} color={COLORS.accent} />
-            <Text style={styles.sensorLabel}>Góc</Text>
-            <Text style={styles.sensorVal}>{totalCaptures}</Text>
-          </View>
-        </View>
+
+          {/* Controls */}
+          {renderControls()}
+        </>
       )}
-
-      {/* Round indicator (iOS, khi đang chụp) */}
-      {TreeReIDBridge.isAvailable() && isCaptureActive && !identResult && (
-        <View style={styles.roundBar}>
-          <View
-            style={[
-              styles.roundChip,
-              currentRoundLocal === 1 && styles.roundChipActive,
-            ]}
-          >
-            <Text
-              style={[
-                styles.roundChipText,
-                currentRoundLocal === 1 && styles.roundChipTextActive,
-              ]}
-            >
-              Lượt 1: Thân
-            </Text>
-            <Text
-              style={[
-                styles.roundChipCount,
-                currentRoundLocal === 1 && styles.roundChipCountActive,
-              ]}
-            >
-              {round1Count}/{MIN_ROUND1}
-            </Text>
-          </View>
-          <View
-            style={[
-              styles.roundChip,
-              currentRoundLocal === 2 && styles.roundChipActive,
-            ]}
-          >
-            <Text
-              style={[
-                styles.roundChipText,
-                currentRoundLocal === 2 && styles.roundChipTextActive,
-              ]}
-            >
-              Lượt 2: Gốc
-            </Text>
-            <Text
-              style={[
-                styles.roundChipCount,
-                currentRoundLocal === 2 && styles.roundChipCountActive,
-              ]}
-            >
-              {round2Count}/{MIN_ROUND2}
-            </Text>
-          </View>
-        </View>
-      )}
-
-      {/* Guidance */}
-      {!identResult && (
-        <View style={styles.guidanceBox}>
-          <Icon name="information-outline" size={16} color={HEADER_BG} />
-          <Text style={styles.guidanceText}>{getGuidance()}</Text>
-        </View>
-      )}
-
-      {/* Result panel */}
-      {renderResultPanel()}
-
-      {/* Controls */}
-      {renderControls()}
 
       {/* Loading overlay khi đang identify */}
       {(isIdentifyingLocal || isIdentifyingRedux) && (
@@ -1291,7 +1288,7 @@ const TreeIdentityScreen: React.FC = () => {
 // ---------------------------------------------------------------------------
 
 const BAND_META: Record<ConfidenceBand, { label: string; color: string; bg: string; icon: string }> = {
-  cao:  { label: 'Tin cậy cao',  color: '#1b5e20', bg: '#e8f5e9', icon: 'shield-check' },
+  cao: { label: 'Tin cậy cao', color: '#1b5e20', bg: '#e8f5e9', icon: 'shield-check' },
   'vừa': { label: 'Tin cậy vừa', color: '#e65100', bg: '#fff3e0', icon: 'shield-half-full' },
   'thấp': { label: 'Tin cậy thấp', color: '#c62828', bg: '#ffebee', icon: 'shield-alert' },
 };
@@ -1311,11 +1308,265 @@ const ConfidenceBandView: React.FC<{ band: ConfidenceBand }> = ({ band }) => {
 };
 
 // ---------------------------------------------------------------------------
+// HUD — hologram tokens dùng chung cho compass / tilt / capture
+// ---------------------------------------------------------------------------
+
+// Palette CHỤP ẢNH: CAM / ĐEN / TRẮNG — tương phản cao, gọn gàng.
+const CAM = '#FF7A00';                       // cam nhấn (điểm nhìn chính)
+const CAM_DIM = 'rgba(255,122,0,0.5)';
+const HUD_BORDER = 'rgba(255,255,255,0.16)'; // viền trắng mờ, gọn
+const PANEL_BG = '#0B0D0C';                  // nền 3 VÙNG đen (đồng đều)
+
+const CARDINALS_FULL = [
+  'Bắc', 'Đông Bắc', 'Đông', 'Đông Nam', 'Nam', 'Tây Nam', 'Tây', 'Tây Bắc',
+] as const;
+
+// La bàn (kiểu iPhone): mặt phẳng, bán kính nhỏ (đường kính = chiều cao zone góc).
+// Vạch chia 6°/vạch, BỎ vạch ở 4 điểm B/Đ/N/T (chỉ ghi chữ để không đè). Mũi trỏ
+// cam cố định ở đỉnh.
+const DIAL_SIZE = 95;
+const DIAL_C = DIAL_SIZE / 2;
+const DIAL_TICKS = Array.from({ length: 60 }, (_, i) => i * 6).filter(a => a % 90 !== 0);
+const WIND_R = 35; // bán kính đặt chữ hướng
+const WIND_DEFS = [
+  { t: 'B', a: 0 }, { t: 'Đ', a: 90 }, { t: 'N', a: 180 }, { t: 'T', a: 270 },
+];
+const WINDS = WIND_DEFS.map(w => {
+  const rad = (w.a * Math.PI) / 180;
+  return {
+    ...w,
+    x: DIAL_C + WIND_R * Math.sin(rad) - 9, // box rộng 18 → lệch nửa
+    y: DIAL_C - WIND_R * Math.cos(rad) - 8, // box cao 16 → lệch nửa
+  };
+});
+
+// ---------------------------------------------------------------------------
+// CompassHologram — la bàn kiểu iPhone: mặt đĩa phẳng nhiều lớp (có chiều sâu),
+// VÀNH XOAY ngược theo heading + mũi trỏ đỏ cố định ở đỉnh; thông số hướng gom
+// vào 1 zone (giống zone độ nghiêng). Thuần Animated + transform.
+// ---------------------------------------------------------------------------
+
+const CompassHologram: React.FC<{ heading: number | null }> = ({ heading }) => {
+  const rot = useRef(new Animated.Value(0)).current;   // góc vành liên-tục (unwrap)
+  const contRef = useRef(0);
+  const prevRef = useRef<number | null>(null);
+
+  // Vành xoay NGƯỢC heading (−heading) để hướng thực nằm dưới mũi trỏ đỉnh.
+  // Đi theo đường ngắn nhất để không giật khi qua mốc 0°/360°.
+  useEffect(() => {
+    if (heading == null) return;
+    const target = (((-heading % 360) + 360) % 360);
+    const prev = prevRef.current;
+    if (prev == null) {
+      contRef.current = target;
+      rot.setValue(target);
+      prevRef.current = target;
+      return;
+    }
+    let d = target - prev;
+    if (d > 180) d -= 360;
+    if (d < -180) d += 360;
+    contRef.current += d;
+    prevRef.current = target;
+    Animated.timing(rot, {
+      toValue: contRef.current,
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [heading, rot]);
+
+  const dialSpin = rot.interpolate({
+    inputRange: [0, 360],
+    outputRange: ['0deg', '360deg'],
+  });
+
+  const deg = heading == null ? null : (((Math.round(heading) % 360) + 360) % 360);
+  const idx = deg == null ? 0 : Math.round(deg / 45) % 8;
+  const fullName = deg == null ? '--' : CARDINALS_FULL[idx];
+
+  return (
+    <View style={styles.compassBlock} pointerEvents="none">
+      {/* ── Đĩa la bàn ── */}
+      <View style={styles.dial}>
+        {/* Lớp nền tạo chiều sâu */}
+        <View style={styles.dialFace} />
+        <View style={styles.dialRingOuter} />
+
+        {/* Vành xoay: vạch chia (bỏ ở B/Đ/N/T) + chữ hướng */}
+        <Animated.View style={[styles.dialRotor, { transform: [{ rotate: dialSpin }] }]}>
+          {DIAL_TICKS.map(a => (
+            <View
+              key={a}
+              style={[styles.dTickSlot, { transform: [{ rotate: `${a}deg` }] }]}
+            >
+              <View style={[styles.dTick, a % 30 === 0 && styles.dTickMajor]} />
+            </View>
+          ))}
+          {WINDS.map(w => (
+            <Text
+              key={w.t}
+              style={[styles.windLabel, { left: w.x, top: w.y }, w.a === 0 && styles.windLabelN]}
+            >
+              {w.t}
+            </Text>
+          ))}
+        </Animated.View>
+
+        {/* Mũi trỏ cam cố định ở đỉnh */}
+        <View style={styles.dialPointer} />
+
+        {/* Số độ ở tâm (cố định, không xoay) */}
+        <View style={styles.dialCenter}>
+          <Text style={styles.dialDeg}>{deg == null ? '--' : `${deg}°`}</Text>
+        </View>
+      </View>
+
+      <Text style={styles.compassCaption} numberOfLines={1}>{fullName}</Text>
+    </View>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// TiltZone — đo độ nghiêng kiểu iPhone: bọt nước (Roll↔X, Pitch↕Y) + 3 chỉ số
+// Pitch (ngửa/cúi) · Roll (nghiêng T/P) · Yaw (xoay trục đứng ≈ heading).
+// ---------------------------------------------------------------------------
+
+const LEVEL_EPS = 3;         // ngưỡng coi như "cân bằng" (±3°)
+const BUBBLE_TRAVEL = 34;    // px bọt di chuyển tối đa
+
+const tiltHint = (v: number | null, pos: string, neg: string): string => {
+  if (v == null) return '';
+  if (Math.abs(v) < LEVEL_EPS) return 'Cân';
+  return v > 0 ? pos : neg;
+};
+
+const TiltRow: React.FC<{
+  label: string;
+  value: number | null;
+  hint: string;
+}> = ({ label, value, hint }) => (
+  <View style={styles.tiltRow}>
+    <Text style={styles.tiltRowLabel}>{label}</Text>
+    <Text style={styles.tiltRowVal}>{value == null ? '--' : `${Math.round(value)}°`}</Text>
+    {!!hint && <Text style={styles.tiltRowHint}>{hint}</Text>}
+  </View>
+);
+
+const TiltZone: React.FC<{
+  pitch: number | null;
+  roll: number | null;
+  yaw: number | null;
+}> = ({ pitch, roll, yaw }) => {
+  const tx = useRef(new Animated.Value(0)).current;
+  const ty = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const clamp = (v: number) => Math.max(-BUBBLE_TRAVEL, Math.min(BUBBLE_TRAVEL, v));
+    const nx = roll == null ? 0 : clamp((roll / 45) * BUBBLE_TRAVEL);
+    const ny = pitch == null ? 0 : clamp((pitch / 45) * BUBBLE_TRAVEL);
+    Animated.spring(tx, { toValue: nx, useNativeDriver: true, friction: 6, tension: 55 }).start();
+    Animated.spring(ty, { toValue: ny, useNativeDriver: true, friction: 6, tension: 55 }).start();
+  }, [pitch, roll, tx, ty]);
+
+  const level =
+    pitch != null &&
+    roll != null &&
+    Math.abs(pitch) < LEVEL_EPS &&
+    Math.abs(roll) < LEVEL_EPS;
+
+  return (
+    <View style={styles.tiltWrap} pointerEvents="none">
+      <View style={[styles.tiltCircle, level && styles.tiltCircleLevel]}>
+        <View style={styles.crossH} />
+        <View style={styles.crossV} />
+        <View style={[styles.tiltTarget, level && styles.tiltTargetLevel]} />
+        <Animated.View
+          style={[
+            styles.bubble,
+            level && styles.bubbleLevel,
+            { transform: [{ translateX: tx }, { translateY: ty }] },
+          ]}
+        />
+      </View>
+      <View style={styles.tiltReadouts}>
+        <TiltRow label="Pitch" value={pitch} hint={tiltHint(pitch, 'Cúi', 'Ngửa')} />
+        <TiltRow label="Roll" value={roll} hint={tiltHint(roll, 'Phải', 'Trái')} />
+        <TiltRow label="Yaw" value={yaw} hint="" />
+      </View>
+    </View>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// CaptureFlash — nháy màn "chụp" dịu, chỉ phủ trong khung camera (auto-capture)
+// ---------------------------------------------------------------------------
+
+const CaptureFlash: React.FC<{ count: number }> = ({ count }) => {
+  const flash = useRef(new Animated.Value(0)).current;
+  const prevCount = useRef(count);
+
+  useEffect(() => {
+    if (count > prevCount.current) {
+      Animated.sequence([
+        Animated.timing(flash, { toValue: 0.26, duration: 90, useNativeDriver: true }),
+        Animated.timing(flash, {
+          toValue: 0,
+          duration: 420,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+    prevCount.current = count;
+  }, [count, flash]);
+
+  return (
+    <Animated.View pointerEvents="none" style={[styles.captureFlash, { opacity: flash }]} />
+  );
+};
+
+// ---------------------------------------------------------------------------
+// PhotoCount — bộ đếm số ảnh (nảy nhẹ mỗi lần chụp), đặt ở vùng dưới
+// ---------------------------------------------------------------------------
+
+const PhotoCount: React.FC<{ count: number; shouldCapture: boolean }> = ({
+  count,
+  shouldCapture,
+}) => {
+  const pop = useRef(new Animated.Value(1)).current;
+  const prevCount = useRef(count);
+
+  useEffect(() => {
+    if (count > prevCount.current) {
+      Animated.sequence([
+        Animated.spring(pop, { toValue: 1.28, useNativeDriver: true, friction: 4, tension: 140 }),
+        Animated.spring(pop, { toValue: 1, useNativeDriver: true, friction: 5, tension: 140 }),
+      ]).start();
+    }
+    prevCount.current = count;
+  }, [count, pop]);
+
+  return (
+    <Animated.View
+      style={[
+        styles.counterPill,
+        shouldCapture && styles.counterPillHot,
+        { transform: [{ scale: pop }] },
+      ]}
+    >
+      <Icon name="camera-iris" size={18} color={CAM} />
+      <Text style={styles.counterNum}>{count}</Text>
+      <Text style={styles.counterLabel}>ảnh</Text>
+    </Animated.View>
+  );
+};
+
+// ---------------------------------------------------------------------------
 // Styles
 // ---------------------------------------------------------------------------
 
-const HEADER_BG = '#1b5e20';   // brand xanh module cây (đồng bộ ResultBadge MATCH)
-const GREEN_TINT = '#e8f5e9';  // nền mềm cho badge/guidance
+const HEADER_BG = '#1b5e20';   // brand xanh module cây (đồng bộ ResultBadge MATCH — panel kết quả)
 
 // Đổ bóng nhẹ — chiều sâu hiện đại, đồng bộ token shadow.
 const cardShadow = {
@@ -1327,12 +1578,57 @@ const cardShadow = {
 } as const;
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: NEUTRAL.bgSoft },
+  container: { flex: 1, backgroundColor: PANEL_BG },
+
+  // ── 3 VÙNG chính (đồng đều): trên đen · camera · dưới đen ──────────────────
+  topZone: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: PANEL_BG,
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 12,
+  },
+  zoneDivider: {
+    width: StyleSheet.hairlineWidth,
+    alignSelf: 'stretch',
+    marginVertical: 10,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  cameraZone: {
+    flex: 1,
+    backgroundColor: '#000000',
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bottomZone: {
+    backgroundColor: PANEL_BG,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 8,
+    gap: 10,
+  },
+  bottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  roundGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexShrink: 1,
+  },
+
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: HEADER_BG,
+    backgroundColor: PANEL_BG,
     paddingTop: Platform.OS === 'ios' ? 52 : 38,
     paddingBottom: 14,
     paddingHorizontal: 16,
@@ -1343,7 +1639,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: 'rgba(255,255,255,0.18)',
   },
   headerCenter: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   headerTitle: {
@@ -1353,90 +1649,44 @@ const styles = StyleSheet.create({
   },
   headerRight: { width: 40, alignItems: 'flex-end' },
 
-  preview: {
-    // GỐC bug "1/3 màn": trước đây height:240 CỐ-ĐỊNH → thẻ ống-kính ghim 240px, trên máy cao
-    // chỉ chiếm ~1/4-1/3 (camera là 1 HÀNG trong cột dọc header+preview+bar+nút). flex:1 → thẻ
-    // GIÃN lấp không-gian còn lại (camera chiếm phần lớn màn), GIỮ bo-góc/margin/shadow.
-    // FULL edge-to-edge (camera nền + control overlay) = việc Thư (xem PR body), cần verify device.
-    flex: 1,
-    minHeight: 240,
-    marginHorizontal: 12,
-    marginTop: 12,
-    borderRadius: 18,
-    overflow: 'hidden',
-    backgroundColor: '#0b0f0d',
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...cardShadow,
-  },
-  previewNative: { flex: 1, width: '100%' },
   previewPlaceholder: { alignItems: 'center', gap: 12, paddingHorizontal: 24 },
   previewPlaceholderText: {
-    color: NEUTRAL.textMuted,
+    color: 'rgba(255,255,255,0.55)',
     fontSize: 13,
     textAlign: 'center',
   },
 
-  sensorBar: {
-    flexDirection: 'row',
-    gap: 10,
-    paddingHorizontal: 12,
-    paddingTop: 12,
-  },
-  sensorItem: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 3,
-    paddingVertical: 10,
-    backgroundColor: NEUTRAL.card,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: NEUTRAL.border,
-  },
-  sensorLabel: { fontSize: 11, color: NEUTRAL.textMuted },
-  sensorVal: { fontSize: 16, fontWeight: '700', color: NEUTRAL.text },
-
-  roundBar: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 10,
-    paddingVertical: 12,
-  },
   roundChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 22,
-    backgroundColor: NEUTRAL.card,
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.06)',
     borderWidth: 1,
-    borderColor: NEUTRAL.border,
+    borderColor: 'rgba(255,255,255,0.16)',
   },
   roundChipActive: {
-    backgroundColor: HEADER_BG,
-    borderColor: HEADER_BG,
+    backgroundColor: CAM,
+    borderColor: CAM,
   },
-  roundChipText: { fontSize: 12, color: NEUTRAL.textSub, fontWeight: '600' },
-  roundChipTextActive: { color: NEUTRAL.white },
-  roundChipCount: { fontSize: 11, color: NEUTRAL.textMuted, fontWeight: '700' },
-  roundChipCountActive: { color: 'rgba(255,255,255,0.85)' },
+  roundChipText: { fontSize: 12, color: 'rgba(255,255,255,0.8)', fontWeight: '600' },
+  roundChipTextActive: { color: '#000000', fontWeight: '700' },
+  roundChipCount: { fontSize: 11, color: 'rgba(255,255,255,0.55)', fontWeight: '700' },
+  roundChipCountActive: { color: '#000000' },
 
-  guidanceBox: {
+  guidanceRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginHorizontal: 12,
-    marginTop: 12,
-    padding: 12,
-    backgroundColor: GREEN_TINT,
-    borderRadius: 12,
   },
-  guidanceText: { flex: 1, fontSize: 13, color: '#1b5e20', lineHeight: 18 },
+  guidanceText: { flex: 1, fontSize: 13, color: 'rgba(255,255,255,0.9)', lineHeight: 18 },
 
-  // Result panel
+  // Result panel — nền đục để đọc rõ trên nền camera tối
   resultPanel: {
     flex: 1,
+    backgroundColor: NEUTRAL.bgSoft,
   },
   resultPanelContent: {
     padding: 16,
@@ -1502,7 +1752,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   btnGreen: { backgroundColor: HEADER_BG },
-  btnBlue:  { backgroundColor: '#1565c0' },
+  btnBlue: { backgroundColor: '#1565c0' },
   decisionBtnText: {
     color: NEUTRAL.white,
     fontSize: 15,
@@ -1521,20 +1771,15 @@ const styles = StyleSheet.create({
     color: NEUTRAL.textSub,
   },
 
-  // Controls
+  // Controls — thanh dưới đen mờ, nút chính CAM, nút phụ viền CAM (đồng bộ chụp)
   controls: {
     flexDirection: 'row',
     gap: 10,
     padding: 14,
     paddingBottom: Platform.OS === 'ios' ? 28 : 14,
-    backgroundColor: NEUTRAL.card,
+    backgroundColor: PANEL_BG,
     borderTopWidth: 1,
-    borderTopColor: NEUTRAL.border,
-    shadowColor: '#0F1614',
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: -3 },
-    elevation: 8,
+    borderTopColor: 'rgba(255,255,255,0.10)',
   },
   ctrlBtn: {
     flex: 1,
@@ -1545,15 +1790,15 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 12,
   },
-  ctrlBtnPrimary: { backgroundColor: HEADER_BG },
+  ctrlBtnPrimary: { backgroundColor: CAM },
   ctrlBtnSecondary: {
-    backgroundColor: NEUTRAL.card,
+    backgroundColor: 'rgba(255,255,255,0.08)',
     borderWidth: 1.5,
-    borderColor: HEADER_BG,
+    borderColor: CAM,
   },
-  ctrlBtnDisabled: { opacity: 0.45 },
-  ctrlBtnText: { color: NEUTRAL.white, fontSize: 15, fontWeight: '600' },
-  ctrlBtnSecText: { color: HEADER_BG, fontSize: 15, fontWeight: '600' },
+  ctrlBtnDisabled: { opacity: 0.4 },
+  ctrlBtnText: { color: '#000000', fontSize: 15, fontWeight: '700' },
+  ctrlBtnSecText: { color: CAM, fontSize: 15, fontWeight: '700' },
 
   // Overlay
   overlay: {
@@ -1628,8 +1873,8 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
   },
   verdictCorrect: { borderColor: '#1b5e20', backgroundColor: '#e8f5e9' },
-  verdictWrong:   { borderColor: '#c62828', backgroundColor: '#ffebee' },
-  verdictOther:   { borderColor: '#5c6bc0', backgroundColor: '#e8eaf6' },
+  verdictWrong: { borderColor: '#c62828', backgroundColor: '#ffebee' },
+  verdictOther: { borderColor: '#5c6bc0', backgroundColor: '#e8eaf6' },
   verdictBtnText: { fontSize: 13, fontWeight: '700' },
   verdictDone: {
     flexDirection: 'row',
@@ -1779,6 +2024,236 @@ const styles = StyleSheet.create({
   },
   matcherOptionTextActive: {
     color: COLORS.accent,
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Compass (kiểu iPhone) — đĩa phẳng nhiều lớp, đặt trong VÙNG TRÊN
+  // ═══════════════════════════════════════════════════════════════════════════
+  compassBlock: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  dial: {
+    width: DIAL_SIZE,
+    height: DIAL_SIZE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Lớp nền tối tạo cảm giác "lõm sâu" của mặt la bàn.
+  dialFace: {
+    position: 'absolute',
+    width: DIAL_SIZE,
+    height: DIAL_SIZE,
+    borderRadius: DIAL_C,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    shadowColor: '#000',
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  dialRingOuter: {
+    position: 'absolute',
+    width: DIAL_SIZE,
+    height: DIAL_SIZE,
+    borderRadius: DIAL_C,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.28)',
+  },
+  dialRotor: {
+    position: 'absolute',
+    width: DIAL_SIZE,
+    height: DIAL_SIZE,
+  },
+  dTickSlot: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: DIAL_SIZE,
+    height: DIAL_SIZE,
+    alignItems: 'center',
+  },
+  dTick: {
+    width: StyleSheet.hairlineWidth,
+    height: 3.5,
+    marginTop: 4,
+    backgroundColor: 'rgba(255,255,255,0.35)',
+  },
+  dTickMajor: {
+    width: 1,
+    height: 6,
+    backgroundColor: 'rgba(255,255,255,0.7)',
+  },
+  windLabel: {
+    position: 'absolute',
+    width: 18,
+    textAlign: 'center',
+    fontSize: 11,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.85)',
+  },
+  windLabelN: {
+    color: CAM,
+    fontWeight: '700',
+  },
+  // Số độ ở tâm (cố định, không xoay)
+  dialCenter: {
+    position: 'absolute',
+    top: DIAL_C - 11,
+    left: DIAL_C - 22,
+    width: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dialDeg: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    fontVariant: ['tabular-nums'],
+  },
+  // Mũi trỏ cam cố định ở đỉnh (tam giác trỏ xuống)
+  dialPointer: {
+    position: 'absolute',
+    top: -1,
+    left: DIAL_C - 5,
+    width: 0,
+    height: 0,
+    borderLeftWidth: 5,
+    borderRightWidth: 5,
+    borderTopWidth: 8,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderTopColor: CAM,
+  },
+  compassCaption: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.85)',
+    maxWidth: DIAL_SIZE + 20,
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Capture: nháy trong khung camera + bộ đếm số ảnh (vùng dưới)
+  // ═══════════════════════════════════════════════════════════════════════════
+  captureFlash: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#FFFFFF',
+  },
+  counterPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: HUD_BORDER,
+  },
+  counterPillHot: {
+    borderColor: CAM_DIM,
+    backgroundColor: 'rgba(255,122,0,0.12)',
+  },
+  counterNum: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    fontVariant: ['tabular-nums'],
+  },
+  counterLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.6)',
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Tilt (iPhone-level) — bọt nước + Pitch/Roll/Yaw, đặt trong VÙNG TRÊN
+  // ═══════════════════════════════════════════════════════════════════════════
+  tiltWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  tiltCircle: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.5)',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  tiltCircleLevel: {
+    borderColor: CAM,
+    shadowColor: CAM,
+    shadowOpacity: 0.7,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 0 },
+  },
+  crossH: {
+    position: 'absolute',
+    width: 76,
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  crossV: {
+    position: 'absolute',
+    width: 1,
+    height: 76,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  tiltTarget: {
+    position: 'absolute',
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.32)',
+  },
+  tiltTargetLevel: {
+    borderColor: CAM,
+  },
+  bubble: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    shadowColor: 'rgba(255,255,255,0.6)',
+    shadowOpacity: 0.9,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 0 },
+  },
+  bubbleLevel: {
+    backgroundColor: CAM,
+    shadowColor: CAM,
+  },
+  tiltReadouts: {
+    gap: 3,
+  },
+  tiltRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 6,
+    minWidth: 104,
+  },
+  tiltRowLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: CAM,
+    width: 34,
+  },
+  tiltRowVal: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    fontVariant: ['tabular-nums'],
+    minWidth: 36,
+  },
+  tiltRowHint: {
+    fontSize: 10.5,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.7)',
   },
 });
 

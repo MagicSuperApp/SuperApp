@@ -107,6 +107,7 @@ const TAB_TITLES: Record<string, string> = {
   ProofChatHome: 'Tin nhắn',
   Farms: 'Trang trại',
   WorkHome: 'Việc làm',
+  JoinHome: 'Kết đèn',
   Account: 'Tài khoản',
 };
 
@@ -116,6 +117,7 @@ const TAB_ICONS: Record<string, string> = {
   ProofChatHome: 'chat-processing',
   Farms: 'sprout',
   WorkHome: 'briefcase',
+  JoinHome: 'lightning-bolt',
   Account: 'account-circle',
 };
 
@@ -208,6 +210,7 @@ const TAB_META: Record<string, { icon: string; iconActive: string; label: string
   ProofChatHome: { icon: 'chat-processing-outline', iconActive: 'chat-processing', label: 'Tin nhắn' },
   Farms: { icon: 'sprout-outline', iconActive: 'sprout', label: 'Trang trại' },
   WorkHome: { icon: 'briefcase-outline', iconActive: 'briefcase', label: 'Việc làm' },
+  JoinHome: { icon: 'lightning-bolt-outline', iconActive: 'lightning-bolt', label: 'Kết đèn' },
   Account: { icon: 'account-circle-outline', iconActive: 'account-circle', label: 'Tài khoản' },
 };
 

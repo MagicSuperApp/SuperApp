@@ -1,0 +1,28 @@
+{
+  "$schema": "../manifest.schema.json",
+  "schemaVersion": "1.0",
+  "moduleId": "magiclamp.join",
+  "version": "0.1.0",
+  "displayName": { "vi": "Kết đèn", "en": "Join LampNet" },
+  "integrationKind": "feature",
+
+  "entrypoint": "JoinHome",
+  "route": "JoinHome",
+  "icon": { "name": "lightning-bolt", "colorToken": "brand.lampnet.primary" },
+  "navSlot": "tab",
+  "routes": ["JoinHome", "Contributing"],
+
+  "capabilities": {
+    "data": ["read:profile"],
+    "wallet": ["read:wallet.address"],
+    "network": ["fabric.api"]
+  },
+
+  "mergePolicy": "server-authoritative",
+  "mergePolicyNote": "Trạng thái node / lease / reward epoch do daemon LampNet sở hữu (recompute-verify chống tự khai). App CHỈ tiêu thụ — server là sự thật duy nhất (INV-1). Seed/khoá thiết bị KHÔNG merge (INV-3, ở Keystore native).",
+
+  "billingHooks": [],
+
+  "trustTier": 0,
+  "stakeBondLamp": "0"
+}

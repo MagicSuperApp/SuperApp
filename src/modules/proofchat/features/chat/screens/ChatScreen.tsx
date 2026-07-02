@@ -19,11 +19,14 @@ import ChatInput from '../components/ChatInput';
 import SyncStatusPill from '../components/SyncStatusPill';
 import EscrowStatusCard from '../../escrow/components/EscrowStatusCard';
 import StateView from '../../../../../components/state/StateView';
+import type { AppDispatch } from '../../../../../store';
 import {
   sendMessage,
   setMessageStage,
   decryptMessage,
   markRoomRead,
+  loadRoomMessages,
+  receiveWsMessage,
 } from '../../../store/proofchatSlice';
 import {
   OUTGOING_PIPELINE,
@@ -31,11 +34,13 @@ import {
   finalStatusFor,
 } from '../../proof/lifecycle';
 import type { Message } from '../types';
+import { isProofChatBackendEnabled } from '../../../../../services/proofchat-api';
+import { createProofChatWs } from '../../../../../services/proofchatWs';
 
 const ChatScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
-  const dispatch = useDispatch();
+  const dispatch = useDispatch<AppDispatch>();
   const store = useStore<RootState>();
 
   const roomId: string = route.params?.roomId;
@@ -47,12 +52,37 @@ const ChatScreen: React.FC = () => {
   );
   const sync = useSelector((s: RootState) => s.proofchat.sync);
   const identity = useSelector((s: RootState) => s.proofchat.identity);
+  const meId = useSelector((s: RootState) => s.proofchat.meId);
 
   const listRef = useRef<FlatList>(null);
 
   useEffect(() => {
     if (room && room.unreadCount > 0) dispatch(markRoomRead(roomId));
   }, [roomId]);
+
+  // ── Wiring dữ liệu THẬT (chỉ khi feature flag ON) ─────────────────────────
+  // 1. Tải tin nhắn (ciphertext E2EE) qua REST GET /conversations/:id/messages.
+  // 2. Mở WebSocket wss://ws.proofchat.app: connect (auth.token=accessToken —
+  //    KHÔNG trong URL), join room (conversationId), nhận contract:message.send.
+  // Flag OFF → giữ mock + pipeline giả lập (dưới); WS/REST không chạy.
+  const backendEnabled = isProofChatBackendEnabled();
+  useEffect(() => {
+    if (!backendEnabled || !roomId) return;
+
+    dispatch(loadRoomMessages({ roomId, meId }));
+
+    const ws = createProofChatWs({
+      onMessage: (msg) => {
+        // Chỉ nhận tin của đúng phòng đang mở (envelope E2EE — server không thấy
+        // plaintext; giải mã ở crypto stack v2.1).
+        if (msg.conversationId === roomId) dispatch(receiveWsMessage(msg));
+      },
+    });
+    // connect() tự nuốt lỗi (degrade mềm) — không cần await; báo lỗi im lặng.
+    ws.connect(roomId).catch(() => undefined);
+
+    return () => ws.disconnect();
+  }, [backendEnabled, roomId, meId, dispatch]);
 
   const sections = useMemo(() => groupByDate(messages), [messages]);
 

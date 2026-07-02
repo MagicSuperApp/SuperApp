@@ -45,6 +45,22 @@ export interface ListConversationsOptions {
   take?: number;
 }
 
+/**
+ * Tin nhắn thô từ BE — envelope E2EE. Server KHÔNG thấy plaintext (spec §4/§6):
+ * chỉ trả ciphertext (variants[].encryptedContent). Giải mã do crypto stack (MLS)
+ * đảm nhiệm ở v2.1; tầng này chỉ vận chuyển.
+ */
+export interface RemoteMessage {
+  id: string;
+  conversationId: string;
+  senderId?: string; // PhoenixKey DID người gửi (KHÔNG dùng stakeAddress — spec §6)
+  senderDid?: string;
+  /** Nội dung đã mã hoá. Có thể ở variants[].encryptedContent hoặc field phẳng. */
+  ciphertext?: string;
+  encryptedContent?: string;
+  createdAt?: number | string; // do client tạo, KHÔNG override (ký MerkleLeaf)
+}
+
 export class ProofChatApiError extends Error {
   constructor(
     public readonly httpStatus: number,
@@ -63,8 +79,15 @@ export const isProofChatBackendEnabled = (): boolean =>
 
 // ── Lưu token ────────────────────────────────────────────────────────
 
+// LƯU Ý TOKEN AN TOÀN (spec §4): production PHẢI lưu token ở Keychain (iOS) /
+// Keystore (Android) — KHÔNG localStorage. AsyncStorage KHÔNG phải localStorage
+// (không đi qua WebView JS bridge công khai) nhưng cũng CHƯA mã hoá cứng bằng
+// Keychain. Nâng cấp sang react-native-keychain là việc còn treo — xem BLOCKER
+// trong PR (cần thư viện Keychain + review bảo mật). Interface get/set giữ nguyên
+// nên đổi backend lưu trữ KHÔNG phá caller.
 const ACCESS_TOKEN_KEY = 'proofchat_access_token';
 const REFRESH_TOKEN_KEY = 'proofchat_refresh_token';
+const DEVICE_ID_KEY = 'proofchat_device_id';
 
 export const setTokens = async (t: AuthTokens): Promise<void> => {
   await AsyncStorage.multiSet([
@@ -81,6 +104,34 @@ export const getRefreshToken = (): Promise<string | null> =>
 
 export const clearTokens = (): Promise<void> =>
   AsyncStorage.multiRemove([ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY]).then(() => undefined);
+
+// ── deviceId (1 UUID / thiết bị, persistent) ─────────────────────────
+// Spec §6: deviceId cần khi lấy tin nhắn + build variants + đăng KeyPackage MLS.
+// Tạo 1 lần khi cài (lần gọi đầu), lưu persistent. UUID v4 tự sinh — KHÔNG thêm
+// dependency `uuid` (chưa có trong package.json). Math.random đủ cho định danh
+// thiết bị (KHÔNG dùng cho khoá mật mã — khoá MLS do crypto stack sinh riêng).
+const genUuidV4 = (): string =>
+  'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+
+let deviceIdCache: string | null = null;
+
+/** Lấy (hoặc tạo lần đầu) deviceId persistent của thiết bị. */
+export const getDeviceId = async (): Promise<string> => {
+  if (deviceIdCache) return deviceIdCache;
+  const existing = await AsyncStorage.getItem(DEVICE_ID_KEY);
+  if (existing) {
+    deviceIdCache = existing;
+    return existing;
+  }
+  const fresh = genUuidV4();
+  await AsyncStorage.setItem(DEVICE_ID_KEY, fresh);
+  deviceIdCache = fresh;
+  return fresh;
+};
 
 // ── Axios setup ──────────────────────────────────────────────────────
 
@@ -232,6 +283,33 @@ export const conversations = {
   listIds: (): Promise<string[]> =>
     unwrap<string[]>(
       client.get('/conversations/ids', { needsAuth: true } as AuthableConfig),
+    ),
+
+  /** Chi tiết 1 hội thoại. BE: GET /conversations/:id (Bearer). */
+  get: (id: string): Promise<RemoteConversation> =>
+    unwrap<RemoteConversation>(
+      client.get(`/conversations/${encodeURIComponent(id)}`, {
+        needsAuth: true,
+      } as AuthableConfig),
+    ),
+
+  /**
+   * Tin nhắn (ciphertext E2EE) của 1 hội thoại cho thiết bị hiện tại.
+   * BE: GET /conversations/:id/messages?deviceId=... (Bearer).
+   * deviceId đi trong QUERY (theo API BE) — KHÔNG phải token; token vẫn CHỈ ở
+   * header Bearer (spec §6: cấm token trong query, deviceId thì được phép).
+   * Server chỉ trả ciphertext, KHÔNG plaintext.
+   */
+  getMessages: (
+    id: string,
+    deviceId: string,
+    opts: { skip?: number; take?: number } = {},
+  ): Promise<RemoteMessage[]> =>
+    unwrap<RemoteMessage[]>(
+      client.get(`/conversations/${encodeURIComponent(id)}/messages`, {
+        needsAuth: true,
+        params: { deviceId, skip: opts.skip, take: opts.take },
+      } as AuthableConfig),
     ),
 };
 

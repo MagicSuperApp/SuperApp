@@ -25,12 +25,15 @@ import JoinConversationModal, {
 } from '../components/JoinConversationModal';
 import InvitationsModal from '../components/InvitationsModal';
 import StateView from '../../../../../components/state/StateView';
+import type { AppDispatch } from '../../../../../store';
 import {
   acceptInvitation,
   createConversation,
   joinConversation,
+  loadConversations,
   rejectInvitation,
 } from '../../../store/proofchatSlice';
+import { isProofChatBackendEnabled } from '../../../../../services/proofchat-api';
 
 type FilterKey = 'all' | 'unread' | 'escrow';
 
@@ -42,7 +45,7 @@ const FILTERS: { key: FilterKey; label: string }[] = [
 
 const ProofChatHomeScreen: React.FC = () => {
   const navigation = useNavigation<any>();
-  const dispatch = useDispatch();
+  const dispatch = useDispatch<AppDispatch>();
   const rooms = useSelector((s: RootState) => s.proofchat.rooms);
   const sync = useSelector((s: RootState) => s.proofchat.sync);
   const wallet = useSelector((s: RootState) => s.proofchat.wallet);
@@ -51,6 +54,16 @@ const ProofChatHomeScreen: React.FC = () => {
   const publicConversationIds = useSelector(
     (s: RootState) => s.proofchat.publicConversationIds,
   );
+  const roomsStatus = useSelector((s: RootState) => s.proofchat.roomsStatus);
+
+  // Feature flag: chỉ tải dữ liệu THẬT khi BE ProofChat được bật. Flag OFF →
+  // giữ mock (fallback, UI không vỡ). Tải 1 lần khi mở màn hình.
+  const backendEnabled = isProofChatBackendEnabled();
+  useEffect(() => {
+    if (backendEnabled) {
+      dispatch(loadConversations());
+    }
+  }, [backendEnabled, dispatch]);
 
   const [filter, setFilter] = useState<FilterKey>('all');
   const [query, setQuery] = useState('');
@@ -139,7 +152,13 @@ const ProofChatHomeScreen: React.FC = () => {
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await new Promise<void>(r => setTimeout(() => r(), 700));
+    if (backendEnabled) {
+      // Flag ON → tải lại thật từ BE.
+      await dispatch(loadConversations());
+    } else {
+      // Flag OFF → giữ trải nghiệm mock (giả lập độ trễ mạng).
+      await new Promise<void>(r => setTimeout(() => r(), 700));
+    }
     setRefreshing(false);
   };
 
@@ -259,17 +278,27 @@ const ProofChatHomeScreen: React.FC = () => {
         )}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
         ListEmptyComponent={
-          // Offline + chưa có phòng nào → trạng thái offline thân thiện (vẫn xem
-          // được phòng đã tải; thao tác mới vào outbox — INV-1). Còn lại: empty.
-          !sync.online && rooms.length === 0 ? (
+          // Thứ tự trạng thái khi CHƯA có phòng nào:
+          //  1. Backend ON + đang tải lần đầu → loading skeleton.
+          //  2. Backend ON + tải lỗi → error (kéo/nhấn thử lại).
+          //  3. Offline → trạng thái offline thân thiện (INV-1: vẫn xem phòng đã tải).
+          //  4. Còn lại → empty thường (không tìm thấy / chưa có trò chuyện).
+          backendEnabled && roomsStatus === 'loading' ? (
+            <StateView status="loading" loadingLines={5} />
+          ) : backendEnabled && roomsStatus === 'error' ? (
+            <StateView status="error" onRetry={handleRefresh} />
+          ) : !sync.online && rooms.length === 0 ? (
             <StateView status="offline" onRetry={handleRefresh} />
           ) : (
             <EmptyState query={query} filter={filter} />
           )
         }
         contentContainerStyle={
-          // iOS-fix: chừa khoảng dưới cho CurvedTabBar (navbar nổi) khỏi che phòng cuối.
-          filtered.length === 0 ? { flexGrow: 1 } : { paddingBottom: 130 }
+          // Empty/loading/error: chiếm hết chiều cao + căn giữa dọc (tránh lệch trên
+          // cùng). Có phòng: chừa khoảng dưới cho CurvedTabBar (navbar nổi iOS).
+          filtered.length === 0
+            ? { flexGrow: 1, justifyContent: 'center' }
+            : { paddingBottom: 130 }
         }
         showsVerticalScrollIndicator={false}
         refreshControl={

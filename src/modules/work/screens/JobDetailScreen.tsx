@@ -17,7 +17,8 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { COLORS } from '../../../constants';
 import { WORK_THEME } from '../theme/colors';
-import { getJobById, formatVND } from '../data/mockData';
+import { formatVND } from '../data/mockData';
+import { useJobDetail } from '../hooks/useJobs';
 import StateView from '../../../components/state/StateView';
 
 type RouteParams = { JobDetail: { jobId: string } };
@@ -26,7 +27,8 @@ const JobDetailScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<RouteParams, 'JobDetail'>>();
   const { jobId } = route.params;
-  const job = getJobById(jobId);
+  // Nguồn chi tiết: flag ON → GET /jobs/:id; OFF → mock (useJobDetail xử lý).
+  const { job, loading, errorKind, reload } = useJobDetail(jobId);
 
   const [applied, setApplied] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -35,6 +37,30 @@ const JobDetailScreen: React.FC = () => {
   useEffect(() => {
     Animated.timing(fade, { toValue: 1, duration: 400, useNativeDriver: true }).start();
   }, [fade]);
+
+  if (loading) {
+    return (
+      <View style={styles.root}>
+        <StateView status="loading" loadingLines={5} />
+      </View>
+    );
+  }
+
+  if (errorKind === 'network') {
+    return (
+      <View style={styles.root}>
+        <StateView status="offline" onRetry={reload} />
+      </View>
+    );
+  }
+
+  if (errorKind && errorKind !== 'client') {
+    return (
+      <View style={styles.root}>
+        <StateView status="error" onRetry={reload} />
+      </View>
+    );
+  }
 
   if (!job) {
     return (

@@ -22,13 +22,13 @@ import { WORK_THEME, WORK_ACCENT, WORK_ACCENT_DEEP, WORK_BG_SOFT } from '../them
 import StateView from '../../../components/state/StateView';
 import {
   CATEGORIES,
-  FEATURED_JOBS,
   FEATURED_WORKERS,
   formatVND,
   type Job,
   type Worker,
   type JobCategory,
 } from '../data/mockData';
+import { useJobs } from '../hooks/useJobs';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -38,6 +38,9 @@ const WorkHomeScreen: React.FC = () => {
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Nguồn tin: flag ON → API thật (chỉ tin mở); OFF → mock (useJobs xử lý).
+  const { jobs, loading, errorKind, reload } = useJobs(true);
+
   const fadeAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -46,16 +49,17 @@ const WorkHomeScreen: React.FC = () => {
   }, [fadeAnim]);
 
   const filteredJobs = useMemo(() => {
-    return FEATURED_JOBS.filter(j => {
+    return jobs.filter(j => {
       if (activeCategory && j.categoryId !== activeCategory) return false;
       if (query && !j.title.toLowerCase().includes(query.toLowerCase())) return false;
       return true;
     });
-  }, [query, activeCategory]);
+  }, [jobs, query, activeCategory]);
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 800);
+    await reload();
+    setRefreshing(false);
   };
 
   return (
@@ -129,8 +133,8 @@ const WorkHomeScreen: React.FC = () => {
                 <View style={styles.guideTag}>
                   <Text style={styles.guideTagText}>GUIDE TOUR</Text>
                 </View>
-                <Text style={styles.guideTitle}>
-                  Hướng dẫn{'\n'}đăng việc trên{'\n'}Aladin
+                <Text style={styles.guideTitle} numberOfLines={3}>
+                  Hướng dẫn đăng việc trên Aladin
                 </Text>
                 <View style={styles.guideIllustration}>
                   <View style={styles.guideClipboard}>
@@ -241,7 +245,20 @@ const WorkHomeScreen: React.FC = () => {
               <Text style={styles.sectionCount}>{filteredJobs.length} tin</Text>
             </View>
 
-            {filteredJobs.length === 0 ? (
+            {loading ? (
+              <StateView status="loading" loadingLines={3} />
+            ) : errorKind === 'network' ? (
+              <StateView status="offline" onRetry={reload} />
+            ) : errorKind === 'auth' ? (
+              <StateView
+                status="error"
+                title="Cần đăng nhập lại"
+                message="Phiên làm việc đã hết hạn. Vui lòng đăng nhập PhoenixKey lại."
+                onRetry={reload}
+              />
+            ) : errorKind ? (
+              <StateView status="error" onRetry={reload} />
+            ) : filteredJobs.length === 0 ? (
               <StateView
                 status="empty"
                 title="Không có việc phù hợp"
@@ -384,7 +401,8 @@ const JobCard: React.FC<{
           <Text style={styles.jobBudget}>{formatVND(job.budget)}</Text>
         </View>
 
-        <Text style={styles.jobTitle} numberOfLines={2}>{job.title}</Text>
+        {/* 3 dòng: tiêu đề tiếng Việt dài (địa điểm + nghề) đỡ bị cắt cụt trên thẻ. */}
+        <Text style={styles.jobTitle} numberOfLines={3}>{job.title}</Text>
 
         <View style={styles.jobMetaRow}>
           <View style={styles.jobMetaItem}>
@@ -498,7 +516,8 @@ const styles = StyleSheet.create({
     backgroundColor: WORK_THEME.primary,
     borderRadius: 16,
     padding: 14,
-    height: 200,
+    // minHeight thay height cứng: máy nhỏ / cỡ chữ lớn không bị tràn nội dung.
+    minHeight: 200,
     overflow: 'hidden',
     position: 'relative',
   },
@@ -543,7 +562,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 16,
     padding: 14,
-    height: 200,
+    // minHeight thay height cứng: cân chiều cao 2 cột nhưng cho phép giãn.
+    minHeight: 200,
     borderWidth: 1.5,
     borderColor: WORK_ACCENT,
     borderStyle: 'dashed',

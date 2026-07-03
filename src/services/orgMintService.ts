@@ -83,8 +83,12 @@ export interface MintSubmitResult {
  * trả về CBOR tx ĐÃ ký (hex). Với m-of-n: native/luồng gom đủ m chữ ký trước khi
  * trả (single = 1 chữ ký). Service KHÔNG biết chi tiết ký — chỉ chuyển tiếp CBOR.
  *
- * TODO(Thư): ráp hàm này với module Enclave. Chữ ký ECDSA-secp256r1 trên digest do
- * builder sinh (xem phoenixKey-native.sign). KHÔNG viết ký ở tầng JS.
+ * TODO(Thư): ráp hàm này với module Enclave. Witness Cardano cho tx mint LAMP
+ * ON-CHAIN phải ký **Ed25519** (từ ví seed / khoá on-chain), KHÔNG dùng P-256.
+ * ⚠️ ĐỪNG để P-256 chạm validator: `phoenixKey-native.sign` (P-256/secp256r1, HW key
+ * Secure Enclave) CHỈ để verify OFF-CHAIN ở backend (challenge/verify đăng nhập, duyệt
+ * intent sinh trắc) — KHÔNG dùng để ký witness tx on-chain. (k1 chỉ khi cần ECDSA on-chain.)
+ * KHÔNG viết ký ở tầng JS.
  */
 export type BuildAndSignMintTx = (args: {
   orgDid: string;

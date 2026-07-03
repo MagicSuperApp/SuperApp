@@ -226,6 +226,30 @@ const PhoenixWalletScreen = () => {
           </View>
         </View>
 
+        {/* Ví tổ chức — tạo OrgDID + mint LAMP bằng OrgDID (điểm vào) */}
+        <View style={styles.sectionWrap}>
+          <View style={styles.sectionHeaderRow}>
+            <View style={styles.sectionDot} />
+            <Text style={styles.sectionTitle}>VÍ TỔ CHỨC</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.orgEntryCard}
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate('OrgDid')}
+          >
+            <View style={styles.orgEntryIcon}>
+              <Icon name="office-building-outline" size={20} color={COLORS.accent} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.orgEntryTitle}>Tổ chức &amp; Mint LAMP</Text>
+              <Text style={styles.orgEntryDesc}>
+                Tạo OrgDID và mint LAMP vào kho Distribution.
+              </Text>
+            </View>
+            <Icon name="chevron-right" size={22} color={COLORS.textMuted} />
+          </TouchableOpacity>
+        </View>
+
         <Text style={styles.note}>
           Ví derive từ cụm 24 từ — khôi phục được trên máy khác. Kéo xuống để cập nhật số dư.
         </Text>
@@ -298,6 +322,17 @@ const styles = StyleSheet.create({
   },
   primaryBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   note: { fontSize: 12, color: COLORS.textMuted, textAlign: 'center', marginTop: 8, lineHeight: 17 },
+  orgEntryCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: COLORS.card, borderRadius: 16,
+    borderWidth: 1, borderColor: COLORS.border, padding: 14,
+  },
+  orgEntryIcon: {
+    width: 40, height: 40, borderRadius: 12,
+    backgroundColor: `${COLORS.accent}12`, alignItems: 'center', justifyContent: 'center',
+  },
+  orgEntryTitle: { fontSize: 15, fontWeight: '700', color: COLORS.text },
+  orgEntryDesc: { fontSize: 12, color: COLORS.textMuted, marginTop: 2, lineHeight: 16 },
 });
 
 export default PhoenixWalletScreen;

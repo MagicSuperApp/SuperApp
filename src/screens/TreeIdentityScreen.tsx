@@ -1490,9 +1490,9 @@ const TiltZone: React.FC<{
         />
       </View>
       <View style={styles.tiltReadouts}>
-        <TiltRow label="Pitch" value={pitch} hint={tiltHint(pitch, 'Cúi', 'Ngửa')} />
-        <TiltRow label="Roll" value={roll} hint={tiltHint(roll, 'Phải', 'Trái')} />
-        <TiltRow label="Yaw" value={yaw} hint="" />
+        <TiltRow label="Ngẩng" value={pitch} hint={tiltHint(pitch, 'Cúi', 'Ngửa')} />
+        <TiltRow label="Nghiêng" value={roll} hint={tiltHint(roll, 'Phải', 'Trái')} />
+        <TiltRow label="Xoay" value={yaw} hint="" />
       </View>
     </View>
   );

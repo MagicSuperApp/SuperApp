@@ -80,6 +80,7 @@ export const NAV = activeTheme.nav;
 export const TRACE_THEME = activeTheme.brand.trace;
 export const PROOFCHAT_THEME = activeTheme.brand.proofchat;
 export const WORK_THEME = activeTheme.brand.work;
+export const LAMPNET_THEME = activeTheme.brand.lampnet;
 
 // Token phụ của module work (cam accent + nền nhạt) — giữ nguyên giá trị cũ.
 export const WORK_ACCENT = '#E08C3A';

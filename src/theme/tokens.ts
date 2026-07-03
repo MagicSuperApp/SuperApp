@@ -129,6 +129,17 @@ export const BRAND_TOKENS = {
     onPrimary:    '#FFFFFF',
     gradient:     ['#2B7A39', '#1F5C2A'] as const,
   },
+  lampnet: {
+    key: 'lampnet',
+    name: 'Kết đèn',
+    // Vàng-hổ-phách (đèn) trên nền app chủ — brand LampNet (spec SG8·F8.4 §4.1).
+    primary:      '#D9A227',
+    primaryDeep:  '#A87A16',
+    primaryLight: '#F1DCA6',
+    primaryGlow:  'rgba(217, 162, 39, 0.10)',
+    onPrimary:    '#FFFFFF',
+    gradient:     ['#E8B347', '#A87A16'] as const,
+  },
 } as const;
 
 // ── Token nav (tab-bar) — gộp hex thô từ navigation/index.tsx ───────────────
@@ -158,7 +169,7 @@ export type NavTokens = typeof NAV_TOKENS;
 export type BrandKey = keyof typeof BRAND_TOKENS;
 
 export interface ModuleTheme {
-  key: 'trace' | 'proofchat' | 'work' | 'phoenixkey';
+  key: 'trace' | 'proofchat' | 'work' | 'lampnet' | 'phoenixkey';
   name: string;
   primary: string;
   primaryDeep: string;

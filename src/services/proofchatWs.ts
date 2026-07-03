@@ -18,14 +18,14 @@
  * ném lỗi làm sập chat tab. UI tiếp tục dựa REST (list/messages) + mock fallback.
  */
 import { getAccessToken } from './proofchat-api';
-// PROOFCHAT_WS_URL chưa khai báo trong src/types/env.d.ts (file ngoài ranh giới
-// module này — do agent khác/owner sở hữu). Import qua alias có ép kiểu mềm để
-// không phải sửa env.d.ts; thiếu biến → fallback hằng số spec §6.
-import * as Env from '@env';
+// react-native-dotenv CHỈ hỗ trợ named import (wildcard `import * as` bị chặn ở
+// babel-plugin). PROOFCHAT_API_URL có thể được export trong @env; nếu không có
+// giá trị runtime thì fallback hằng số spec §6.
+import { PROOFCHAT_API_URL } from '@env';
 
-// WS URL: ưu tiên biến env PROOFCHAT_WS_URL nếu có, mặc định theo spec §6.
+// WS URL: ưu tiên biến env nếu có, mặc định theo spec §6.
 const resolveWsUrl = (): string => {
-  const url = (Env as Record<string, string | undefined>).PROOFCHAT_WS_URL;
+  const url = PROOFCHAT_API_URL as string | undefined;
   return url || 'wss://ws.proofchat.app';
 };
 

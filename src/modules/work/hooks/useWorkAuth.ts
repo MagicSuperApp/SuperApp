@@ -3,11 +3,16 @@
 // Cầu nối đăng nhập AladinWork (SPEC §2): challenge → KÝ → verify → lưu session.
 //
 // ══════════════════════════════════════════════════════════════════════════
-// PHẦN KÝ secp256k1 = VIỆC CỦA THƯ / lớp native PhoenixKey.
+// PHẦN KÝ P-256 (secp256r1) = VIỆC CỦA THƯ / lớp native PhoenixKey.
+//   Chữ ký challenge dùng ĐƯỜNG CONG P-256 (secp256r1 / prime256v1) ECDSA,
+//   hash sha256, DER hex — KHÔNG phải secp256k1. Lý do: HW_Key PhoenixKey sinh
+//   trong Secure Enclave (iOS) / StrongBox (Android) CHỈ đẻ được P-256; verifier
+//   server dùng @noble/curves/p256, skew ±60s, KHÔNG ép lowS (SPEC §2).
 // Hook này CHỈ:
-//   1. gọi authChallenge(did) → nhận { challenge, domain, messageTemplate }
+//   1. validate DID (did:phoenix regex) rồi gọi authChallenge(did)
+//      → nhận { challenge, domain, messageTemplate }
 //   2. [TODO THƯ] ký message = `${challenge}:${domain}:${timestamp}` (timestamp
-//      = GIÂY epoch) bằng khóa riêng DID → signature hex
+//      = GIÂY epoch) bằng khóa riêng P-256 của DID → signature DER hex
 //   3. gọi authVerify({ did, challenge, signature, timestamp }) → session Bearer
 //   4. saveWorkSession(...)
 // signChallenge được TRUYỀN VÀO từ ngoài (do Thư cấp) — hook không tự ký.
@@ -15,12 +20,13 @@
 
 import { useState, useCallback } from 'react';
 import { authChallenge, authVerify, WorkApiError, type WorkErrorKind } from '../services/workApi';
+import { isValidPhoenixDid } from '../services/types';
 import { saveWorkSession, getValidWorkSession, clearWorkSession, type WorkSession } from '../services/session';
 
 /**
  * Hàm ký do Thư cấp: nhận message chuẩn (challenge:domain:timestamp) + trả
- * signature hex. Timestamp (giây) đã dựng sẵn để đảm bảo khớp giữa message ký
- * và body verify.
+ * signature DER hex. Ký bằng P-256 (secp256r1) ECDSA / sha256 — KHÔNG secp256k1.
+ * Timestamp (giây) đã dựng sẵn để đảm bảo khớp giữa message ký và body verify.
  */
 export type SignChallengeFn = (args: {
   did: string;
@@ -51,11 +57,16 @@ export const useWorkAuth = () => {
   }, []);
 
   /**
-   * Đăng nhập đầy đủ. signChallenge do Thư cấp (ký secp256k1).
-   * TODO THƯ: nối signChallenge vào SDK/relay PhoenixKey thật.
+   * Đăng nhập đầy đủ. signChallenge do Thư cấp (ký P-256 / secp256r1).
+   * TODO THƯ: nối signChallenge vào SDK/relay PhoenixKey thật (Secure Enclave/StrongBox).
    */
   const login = useCallback(async (did: string, signChallenge: SignChallengeFn): Promise<boolean> => {
     setState(prev => ({ ...prev, loading: true, errorKind: null, errorCode: null }));
+    // DID người dùng LUÔN là did:phoenix — chặn sớm để không tốn 1 vòng /challenge.
+    if (!isValidPhoenixDid(did)) {
+      setState(prev => ({ ...prev, loading: false, errorKind: 'client', errorCode: 'BAD_DID' }));
+      return false;
+    }
     try {
       const ch = await authChallenge(did);
       // timestamp = GIÂY epoch (SPEC §8: khác availability = ms).

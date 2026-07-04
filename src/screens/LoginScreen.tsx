@@ -22,6 +22,7 @@ import {
   Dimensions,
   ScrollView,
   Easing,
+  Image,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useDispatch } from 'react-redux';
@@ -301,7 +302,7 @@ const LoginScreen = () => {
         >
           <View style={styles.logoOuter}>
             <View style={styles.logoInner}>
-              <Icon name="shield-key" size={32} color={BLUE.white} />
+              <Image source={require('../../assets/images/logo.png')} style={{ width: 50, height: 50, borderRadius: 9 }} />
             </View>
           </View>
           <Text allowFontScaling={false} style={styles.eyebrow}>ALADIN · PHOENIXKEY DID</Text>
@@ -677,9 +678,10 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
   logoInner: {
-    width: 48, height: 48, borderRadius: 14,
+    borderRadius: 14,
     backgroundColor: 'rgba(255,255,255,0.18)',
     alignItems: 'center', justifyContent: 'center',
+    padding: 3,
   },
   eyebrow: {
     fontSize: 10, fontWeight: '800',

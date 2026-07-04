@@ -9,6 +9,8 @@ import {
   NEUTRAL_TOKENS,
   BRAND_TOKENS,
   NAV_TOKENS,
+  ACTION_TOKENS,
+  HEADER_TOKENS,
   withAlpha,
 } from './tokens';
 import type { ModuleTheme, BrandKey } from './tokens';
@@ -80,8 +82,15 @@ export const NAV = activeTheme.nav;
 export const TRACE_THEME = activeTheme.brand.trace;
 export const PROOFCHAT_THEME = activeTheme.brand.proofchat;
 export const WORK_THEME = activeTheme.brand.work;
+export const LAMPNET_THEME = activeTheme.brand.lampnet;
 
 // Token phụ của module work (cam accent + nền nhạt) — giữ nguyên giá trị cũ.
 export const WORK_ACCENT = '#E08C3A';
 export const WORK_ACCENT_DEEP = '#B07026';
 export const WORK_BG_SOFT = '#E9F4ED';
+
+// Token menu hành động thích ứng (SG4) + Header toàn cục. Không thuộc lớp
+// white-label override (giá trị ổn định toàn phiên) — export trực tiếp để
+// navigation/index.tsx + AppHeader tiêu thụ THAY cho hex hardcode.
+export const ACTION_COLORS = ACTION_TOKENS;
+export const HEADER_COLORS = HEADER_TOKENS;

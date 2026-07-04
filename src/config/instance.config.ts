@@ -67,13 +67,12 @@ export const ALADIN_INSTANCE: InstanceConfig = {
   instanceId: 'aladin',
   displayName: 'Aladin',
   enabledModules: ['trace', 'proofchat', 'work', 'join'],
-  // 6 tab (thêm 'join' — Kết đèn). Home (host) giữ Ở GIỮA cho navbar khuyết-tròn.
-  // LƯU Ý navbar: CurvedTabBar đặt nút Home tròn tại cx = width/2 (giữa màn), còn
-  // homeSlot là ô flex trong hàng. Với 6 tab (2 module mỗi bên Home + Account phải)
-  // ô Home không rơi đúng width/2 → nút tròn lệch nhẹ. Việc căn lại notch theo số
-  // tab lẻ/chẵn nằm ở CurvedTabBar (navigation/index.tsx) — NGOÀI ranh giới file
-  // của khung này; Tùng/thiết kế tinh chỉnh sau. Bố trí dưới đây tối ưu cân đối
-  // nhất có thể mà KHÔNG đụng thuật toán notch: proofchat·trace | Home | work·join·Account.
+  // Navbar hiển thị 5 NÚT — Home (host) Ở GIỮA cho khuyết-tròn, 2 nút mỗi bên:
+  // proofchat·trace | Home | work·join. Riêng "Account" VẪN là tab (để navbar
+  // hiện cả ở TRANG TÀI KHOẢN + dùng chung thanh dưới) nhưng KHÔNG vẽ nút trên
+  // navbar (CurvedTabBar bỏ Account khỏi TAB_META). Vào Tài khoản (+ bật/tắt trợ
+  // lý, đăng xuất) qua toolbox cung tròn khi KÉO nút Home. cx của notch tính theo
+  // số NÚT HIỂN THỊ (bỏ tab ẩn) nên Home vẫn rơi đúng giữa.
   tabs: [
     { kind: 'module', moduleId: 'proofchat' },
     { kind: 'module', moduleId: 'trace' },

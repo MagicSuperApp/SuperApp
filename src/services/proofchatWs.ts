@@ -23,7 +23,7 @@ import { getAccessToken } from './proofchat-api';
 // .env → undefined → fallback hằng số spec §6 (allowUndefined ok, không crash bundle).
 import { PROOFCHAT_WS_URL } from '@env';
 
-// WS URL: ưu tiên biến env PROOFCHAT_WS_URL nếu có, mặc định theo spec §6.
+// WS URL: ưu tiên biến env nếu có, mặc định theo spec §6.
 const resolveWsUrl = (): string => {
   const url = PROOFCHAT_WS_URL as string | undefined;
   return url || 'wss://ws.proofchat.app';

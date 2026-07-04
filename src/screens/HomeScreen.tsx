@@ -32,6 +32,7 @@ import { MODULES, type ModuleEntry } from '../modules';
 import { COLORS } from '../constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import CreateFarmPromptModal from '../components/CreateFarmPromptModal';
+import { useCollapsibleHeader } from '../components/AppHeader';
 import Geolocation from 'react-native-geolocation-service';
 import { PermissionsAndroid, Alert, ActivityIndicator } from 'react-native';
 import {
@@ -97,55 +98,10 @@ const BANNERS = [
   },
 ];
 
-// ── Hero bar ────────────────────────────────────────────────────────────────
-const HeroBar = ({
-  name,
-  initials,
-  unreadCount,
-  fade,
-  slide,
-  topInset,
-  onPressBell,
-  onPressAvatar,
-}: {
-  name: string;
-  initials: string;
-  unreadCount: number;
-  fade: Animated.Value;
-  slide: Animated.Value;
-  topInset: number;
-  onPressBell: () => void;
-  onPressAvatar: () => void;
-}) => (
-  <Animated.View
-    style={[
-      styles.hero,
-      { paddingTop: (Platform.OS === 'ios' ? 36 : 20) + 4 + topInset },
-      { opacity: fade, transform: [{ translateY: slide }] },
-    ]}
-  >
-    <TouchableOpacity onPress={onPressAvatar} activeOpacity={0.7} style={styles.heroLeft}>
-      <View style={styles.avatar}>
-        <Text style={styles.avatarText}>{initials}</Text>
-      </View>
-      <View>
-        <Text style={styles.heroEyebrow}>Xin chào 👋</Text>
-        <Text style={styles.heroName} numberOfLines={1}>
-          {name}
-        </Text>
-      </View>
-    </TouchableOpacity>
-
-    <TouchableOpacity style={styles.bellWrap} onPress={onPressBell} activeOpacity={0.7}>
-      <Icon name="bell" size={28} color={NEUTRAL.white} />
-      {unreadCount > 0 && (
-        <View style={styles.bellBadge}>
-          <Text style={styles.bellBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
-        </View>
-      )}
-    </TouchableOpacity>
-  </Animated.View>
-);
+// HeroBar (thanh chào + chuông + avatar) ĐÃ DỜI lên AppHeader toàn cục
+// (components/AppHeader.tsx) — thu/thả theo cuộn, hiển thị ở MỌI màn, nút Tài
+// khoản + Thông báo nằm ở đó thay vì trong từng màn. Xoá khỏi Home để tránh 2
+// thanh trên chồng nhau.
 
 // ── Carousel ────────────────────────────────────────────────────────────────
 const BannerCarousel = ({ fade }: { fade: Animated.Value }) => {
@@ -484,6 +440,9 @@ const SectionHeader = ({
 const HomeScreen: React.FC = () => {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+  // Cuộn → thu/thả header toàn cục (Facebook-style). Header sống ở tầng nav; ở
+  // đây chỉ nối onScroll của ScrollView vào.
+  const { onScroll: onHeaderScroll, scrollEventThrottle: headerThrottle } = useCollapsibleHeader();
   const user = useSelector((s: RootState) => s.user.currentUser);
   const farms = useSelector((s: RootState) => s.farm.farms);
   const trees = useSelector((s: RootState) => s.farm.trees);
@@ -492,7 +451,6 @@ const HomeScreen: React.FC = () => {
   // Mock badges cho ProofChat / Work cho tới khi có module thật
   const proofChatUnread = 0;
   const workMatches = 5;
-  const totalUnread = proofChatUnread;
 
   const headerFade = useRef(new Animated.Value(0)).current;
   const headerSlide = useRef(new Animated.Value(-12)).current;
@@ -705,13 +663,6 @@ const HomeScreen: React.FC = () => {
     ]).start();
   }, []);
 
-  const initials = (user?.name ?? 'U')
-    .split(' ')
-    .map((w: string) => w[0])
-    .slice(0, 2)
-    .join('')
-    .toUpperCase();
-
   const moduleBadges: Record<string, number | undefined> = {
     trace: undefined,
     proofchat: proofChatUnread,
@@ -798,23 +749,17 @@ const HomeScreen: React.FC = () => {
         </TouchableOpacity>
       </Modal>
 
-      <HeroBar
-        name={user?.name ?? 'Người dùng'}
-        initials={initials}
-        unreadCount={totalUnread}
-        fade={headerFade}
-        slide={headerSlide}
-        topInset={insets.top}
-        onPressBell={() => {
-          navigation.navigate('Activity' as never);
-        }}
-        onPressAvatar={() => navigation.navigate('Account' as never)}
-      />
+      {/* HeroBar cũ ĐÃ BỎ: nút Tài khoản + Thông báo (chuông) nay nằm trong
+          AppHeader toàn cục (thu/thả theo cuộn) ở tầng nav — tránh 2 thanh trên
+          chồng nhau. Xem components/AppHeader.tsx. */}
 
       <ScrollView
         showsVerticalScrollIndicator={false}
+        onScroll={onHeaderScroll}
+        scrollEventThrottle={headerThrottle}
         contentContainerStyle={[
           styles.scroll,
+          { paddingTop: 8 },
           // iOS-fix: CurvedTabBar (navbar) là position:absolute nổi trên nội dung.
           // Chừa đủ khoảng dưới = chiều cao thanh (64) + phần nhô nút Home (43) +
           // safe-area dưới, để item cuối KHÔNG bị navbar che. (BOTTOM_NAV_CLEARANCE)

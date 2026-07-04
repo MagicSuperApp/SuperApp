@@ -27,6 +27,10 @@ import {
 } from './orgMint-api';
 import { isOrgMintEnabled } from '../config/orgMint';
 
+// Re-export type để tầng UI (OrgMintScreen) import từ service, không thò tay vào -api.
+// Cùng lối như BuildAndSignMintTx export ở dưới; trước đây sót nên OrgMintScreen fail tsc.
+export type { WaitSignedHandle } from './orgMint-api';
+
 // ── Lỗi tường-minh cho UI ─────────────────────────────────────────────────────
 
 export class OrgMintDisabledError extends Error {

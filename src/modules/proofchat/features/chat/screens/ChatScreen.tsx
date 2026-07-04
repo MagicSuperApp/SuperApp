@@ -26,7 +26,6 @@ import {
   decryptMessage,
   markRoomRead,
   loadRoomMessages,
-  receiveWsMessage,
 } from '../../../store/proofchatSlice';
 import {
   OUTGOING_PIPELINE,
@@ -35,7 +34,6 @@ import {
 } from '../../proof/lifecycle';
 import type { Message } from '../types';
 import { isProofChatBackendEnabled } from '../../../../../services/proofchat-api';
-import { createProofChatWs } from '../../../../../services/proofchatWs';
 
 const ChatScreen: React.FC = () => {
   const navigation = useNavigation<any>();
@@ -61,27 +59,15 @@ const ChatScreen: React.FC = () => {
   }, [roomId]);
 
   // ── Wiring dữ liệu THẬT (chỉ khi feature flag ON) ─────────────────────────
-  // 1. Tải tin nhắn (ciphertext E2EE) qua REST GET /conversations/:id/messages.
-  // 2. Mở WebSocket wss://ws.proofchat.app: connect (auth.token=accessToken —
-  //    KHÔNG trong URL), join room (conversationId), nhận contract:message.send.
-  // Flag OFF → giữ mock + pipeline giả lập (dưới); WS/REST không chạy.
+  // Tải tin nhắn (ciphertext E2EE) qua REST GET /conversations/:id/messages.
+  // Realtime nhận tin đi qua socket.io (chatSocket.ts → proofchatService, E2EE 3
+  // tầng của Thư). Màn này CHƯA nối trực tiếp vào proofchatService — sẽ nối UI ↔
+  // service trong bước sau (chờ staging creds + interop danh tính did:phoenix↔web).
+  // Raw WS cũ (proofchatWs.ts, host ws.proofchat.app đã chết) đã gỡ theo chỉ dẫn ProofChat.
   const backendEnabled = isProofChatBackendEnabled();
   useEffect(() => {
     if (!backendEnabled || !roomId) return;
-
     dispatch(loadRoomMessages({ roomId, meId }));
-
-    const ws = createProofChatWs({
-      onMessage: (msg) => {
-        // Chỉ nhận tin của đúng phòng đang mở (envelope E2EE — server không thấy
-        // plaintext; giải mã ở crypto stack v2.1).
-        if (msg.conversationId === roomId) dispatch(receiveWsMessage(msg));
-      },
-    });
-    // connect() tự nuốt lỗi (degrade mềm) — không cần await; báo lỗi im lặng.
-    ws.connect(roomId).catch(() => undefined);
-
-    return () => ws.disconnect();
   }, [backendEnabled, roomId, meId, dispatch]);
 
   const sections = useMemo(() => groupByDate(messages), [messages]);

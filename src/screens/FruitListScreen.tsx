@@ -4,7 +4,7 @@
  *  - GET /api/tree/{id}/layout → loài + thống-kê (tổng/định-danh/thu-hoạch) + danh-sách quả
  *  - GET /api/species/catalog → bộ chọn loài (gán cho cây cũ chưa rõ loài)
  *  - POST /api/tree/set_species → đặt loài → nạp lại (ẩn/hiện theo loài có-quả)
- *  Backend = field-reid (ORILIFE_API_BASE_URL = test.orilife.io). Chưa có cropper/3D (phase sau).
+ *  Backend = field-reid (ORILIFE_API_BASE_URL = api.orilife.io). Chưa có cropper/3D (phase sau).
  */
 
 import React, { useState, useCallback, useRef } from 'react';
@@ -16,7 +16,7 @@ import {
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import { launchCamera, launchImageLibrary, type CameraOptions } from 'react-native-image-picker';
-import { ORILIFE_API_BASE_URL } from '@env';
+import { ORILIFE_BASE } from '../services/orilifeBase';
 
 import { COLORS } from '../constants';
 import {
@@ -25,7 +25,7 @@ import {
   type FruitStatus, type TreeZone,
 } from '../services/fruitReIDService';
 
-const BASE_URL = (ORILIFE_API_BASE_URL as string | undefined) ?? 'https://test.orilife.io';
+const BASE_URL = ORILIFE_BASE;
 
 const STATUS_VI: Record<FruitStatus, string> = { on_tree: 'Trên cây', harvested: 'Đã thu', lost: 'Mất' };
 const STATUS_COLOR: Record<FruitStatus, string> = { on_tree: COLORS.success, harvested: COLORS.warning, lost: COLORS.textMuted };

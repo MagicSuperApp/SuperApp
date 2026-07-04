@@ -1,7 +1,7 @@
 // services/syncDispatch.ts
 //
 // Phân loại + map mỗi sync item (loại + payload) → lời gọi API THẬT tới
-// backend OriLife (staging-api.orilife.io). Tách riêng khỏi syncService để
+// backend OriLife (api.orilife.io). Tách riêng khỏi syncService để
 // test thuần (không phụ thuộc store/database/SQLite).
 //
 // Contract backend (verify từ Tiger 2026-05-18, nguồn:

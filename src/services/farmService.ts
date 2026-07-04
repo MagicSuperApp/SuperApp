@@ -17,7 +17,7 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ORILIFE_API_BASE_URL } from '@env';
+import { ORILIFE_BASE } from './orilifeBase';
 import type { Farm } from '../modules/trace/types';
 import type { APIError } from './treeReIDService';
 
@@ -26,7 +26,7 @@ import type { APIError } from './treeReIDService';
 // ---------------------------------------------------------------------------
 
 export const FARM_BASE_URL: string =
-  (ORILIFE_API_BASE_URL as string | undefined) ?? 'https://test.orilife.io';
+  ORILIFE_BASE;
 
 // ---------------------------------------------------------------------------
 // Types — khớp ĐÚNG shape field-reid Farm

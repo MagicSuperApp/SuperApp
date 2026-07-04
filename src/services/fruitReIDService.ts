@@ -1,7 +1,7 @@
 /**
  * fruitReIDService — client cho luồng QUẢ + SPECIES + SƠ-ĐỒ 3D (field-reid)
  *
- * Backend = field-reid (ORILIFE_API_BASE_URL, mặc định https://test.orilife.io) —
+ * Backend = field-reid (ORILIFE_API_BASE_URL, mặc định https://api.orilife.io) —
  * cùng máy chủ với treeReIDService. Tách file riêng để KHÔNG đụng treeReIDService
  * (file Thư đang build). Cùng pattern: Bearer token AsyncStorage, timeout 45s, retry 1 lần.
  *

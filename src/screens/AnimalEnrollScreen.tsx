@@ -34,7 +34,7 @@ import {
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
-import { ORILIFE_API_BASE_URL } from '@env';
+import { ORILIFE_BASE } from '../services/orilifeBase';
 import { NEUTRAL } from '../shared/theme';
 import { COLORS } from '../constants';
 import {
@@ -47,7 +47,7 @@ import {
 // ---------------------------------------------------------------------------
 
 const BASE_URL: string =
-  (ORILIFE_API_BASE_URL as string | undefined) ?? 'https://test.orilife.io';
+  ORILIFE_BASE;
 
 const MIN_PHOTOS = 3;
 const MAX_PHOTOS = 10;

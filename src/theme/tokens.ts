@@ -150,6 +150,37 @@ export const NAV_TOKENS = {
   tabBarShadow:  '#0B1B2A',
 } as const;
 
+// ── Token menu hành động thích ứng (SG4) — nút chính + nhóm hành động ───────
+// KHÔNG hardcode hex trong navigation/index.tsx nữa. Reviewer §4/§6:
+//   - Nút chính: một màu ẤM tương phản cao (coral) nổi trên navbar xanh đậm.
+//   - 4 NHÓM hành động, mỗi nhóm 1 màu ngữ nghĩa NHẤT QUÁN xuyên domain:
+//       quét = xanh lá · dinh dưỡng = hổ phách · sức khoẻ = đỏ · tạo = lam.
+// Tương phản đạt WCAG AA cho chữ/icon trắng trên các nền màu này (nông dân
+// ngoài nắng). Đây là design token — Action Registry chỉ tham chiếu theo TÊN
+// nhóm ('scan'|'nutrition'|'health'|'create'), KHÔNG nhúng hex.
+export const ACTION_TOKENS = {
+  // Nút chính (hero) — coral ấm, nổi trên navbar xanh đậm.
+  heroMain:       '#E5674E',
+  heroMainBorder: '#F4A895',
+  onHero:         '#FFFFFF',
+  // Màu theo NHÓM hành động (nhất quán mọi loại canh tác).
+  scan:      '#2B7A39', // quét — xanh lá
+  nutrition: '#B07D2F', // dinh dưỡng (bón phân, cho ăn…) — hổ phách
+  health:    '#C0392B', // sức khoẻ (tiêm thuốc, tỉa quả…) — đỏ
+  create:    '#3B6EA8', // tạo (thêm vườn/đàn) — lam
+  onAction:  '#FFFFFF',
+} as const;
+
+// ── Token Header toàn cục (SG-Header — thanh trên kiểu Facebook, thu/thả) ────
+// Header xanh đậm đồng bộ navbar; icon/chữ trắng (WCAG AA trên nền đậm).
+export const HEADER_TOKENS = {
+  bg:      '#264E7E', // xanh đậm như navbar (accentDeep)
+  onBg:    '#FFFFFF',
+  onBgSub: 'rgba(255,255,255,0.72)',
+  badge:   '#E5533C',
+  onBadge: '#FFFFFF',
+} as const;
+
 // ---------------------------------------------------------------------------
 // Bộ token nền hợp nhất — đây là default ThemeConfig sẽ phủ lên.
 // ---------------------------------------------------------------------------
@@ -158,6 +189,8 @@ export const BASE_TOKENS = {
   neutral: NEUTRAL_TOKENS,
   brand:   BRAND_TOKENS,
   nav:     NAV_TOKENS,
+  action:  ACTION_TOKENS,
+  header:  HEADER_TOKENS,
 } as const;
 
 // ---------------------------------------------------------------------------

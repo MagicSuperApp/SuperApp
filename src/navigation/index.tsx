@@ -22,8 +22,11 @@ import Toast from 'react-native-toast-message';
 import NetInfo from '@react-native-community/netinfo';
 import { handleNavigationStateChange } from '../services/analytics';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { COLORS } from '../theme';
+import { COLORS, ACTION_COLORS } from '../theme';
 import { syncService } from '../services/syncService';
+import { resolveActions, ACTION_GROUP_COLOR } from './actionRegistry';
+import type { ActionDef } from './actionRegistry';
+import AppHeader, { AppHeaderProvider } from '../components/AppHeader';
 
 // --- Host shell screens (KHÔNG thuộc module — vỏ giữ tĩnh) ------------------
 import LoginScreen from '../screens/LoginScreen';
@@ -34,6 +37,7 @@ import SignUpCompleteScreen from '../features/auth/screens/SignUpCompleteScreen'
 import AccountScreen from '../screens/AccountScreen';
 import BiometricSettings from '../screens/BiometricSettings';
 import OnboardingWizard from '../screens/OnboardingWizard';
+import NotificationScreen from '../screens/NotificationScreen';
 // Host-level capture/identity screens (dùng chung nhiều luồng, chưa thuộc module nào)
 import FruitListScreen from '../screens/FruitListScreen';
 import FruitCropperScreen from '../screens/FruitCropperScreen';
@@ -73,12 +77,9 @@ import {
   StyleSheet,
   useWindowDimensions,
   PanResponder,
-  Alert,
   Animated,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { setChatbotEnabled } from '../store/chatbotSlice';
-import { logoutUser } from '../store/userSlice';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import AssistantBubble from '../components/AssistantBubble';
@@ -244,15 +245,14 @@ const RADIAL_HITBOX = 60;      // đường kính vùng chạm mỗi mục (ch�
 const RADIAL_SPREAD = 156;     // tổng góc mở của cung (độ)
 const OPEN_DRAG = 14;          // kéo quá ngưỡng này (px) thì mở toolbox
 const DWELL_MS = 1000;         // giữ trên 1 mục bao lâu thì đặt làm mặc định
-const TAP_WINDOW = 300;        // cửa sổ gom nhiều lần chạm (phân biệt 1 vs 3 tap)
+const LONGPRESS_MS = 300;      // giữ (không kéo) bao lâu thì xoè menu dính
 const CONNECTOR_H = 3;         // độ dày đường nối trắng
 const CONNECTOR_DOT = 14;      // đường kính chấm tròn 2 đầu đường nối
 const DEFAULT_STORAGE_KEY = 'home_hub_default_v1';
 
-const RADIAL_KEYS = [
-  'tree', 'fruit', 'animal', 'farm', 'home', 'account', 'assistant', 'logout',
-] as const;
-type RadialKey = (typeof RADIAL_KEYS)[number];
+// Khoá mục = ActionDef.key (chuỗi ĐỘNG từ Action Registry SG4). KHÔNG cố định
+// danh sách — menu suy hành động theo loại canh tác của user (reviewer §6).
+type RadialKey = string;
 
 // Điểm trên cực (góc đo từ trục ĐỨNG, dương = sang phải; màn hình y hướng xuống).
 const polarPt = (cx: number, cy: number, r: number, deg: number) => {
@@ -297,13 +297,13 @@ const RadialMenuProvider = ({ children }: { children: React.ReactNode }) => {
   const [ripple, setRipple] = React.useState<RippleState | null>(null);
   const actionRef = React.useRef<(key: RadialKey) => void>(() => {});
 
-  // Khôi phục lựa chọn mặc định giữa các phiên.
+  // Khôi phục lựa chọn mặc định giữa các phiên. Khoá là ActionDef.key động —
+  // chấp nhận mọi chuỗi; nếu không khớp hành động hiện tại, CurvedTabBar sẽ coi
+  // như chưa đặt mặc định (mainIcon fallback về Trang chủ).
   React.useEffect(() => {
     AsyncStorage.getItem(DEFAULT_STORAGE_KEY)
       .then((v) => {
-        if (v && (RADIAL_KEYS as readonly string[]).includes(v)) {
-          setDefaultKeyState(v as RadialKey);
-        }
+        if (v) setDefaultKeyState(v);
       })
       .catch(() => {});
   }, []);
@@ -323,9 +323,16 @@ const RadialMenuProvider = ({ children }: { children: React.ReactNode }) => {
 const CurvedTabBar = ({ state, navigation }: BottomTabBarProps) => {
   const insets = useSafeAreaInsets();
   const { width, height: windowHeight } = useWindowDimensions();
-  const dispatch = useDispatch<any>();
-  const chatbotEnabled = useSelector((s: RootState) => s.chatbot.enabled);
   const radial = React.useContext(RadialMenuContext);
+  // Hành động THÍCH ỨNG (SG4): menu nhanh suy theo LOẠI CANH TÁC của user, không
+  // cố định 4 nút. Chỉ tính lại khi "chữ ký domain" đổi (số cây/quả/vườn + loài
+  // chủ đạo) — tránh re-render navbar mỗi lần store thay đổi bất kỳ.
+  const domainSig = useSelector((s: RootState) =>
+    `${s.farm.trees.length}|${s.farm.fruits.length}|${s.farm.farms.length}|` +
+    `${s.farm.trees[0]?.species ?? ''}|${s.farm.trees[0]?.metadata?.variety ?? ''}`,
+  );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const actions = React.useMemo<ActionDef[]>(() => resolveActions(store.getState()), [domainSig]);
   const barHeight = TAB_BAR_HEIGHT + insets.bottom;
   const containerHeight = barHeight + FLOAT;
   // Tên route đang mở — dùng để ẩn navbar ở màn Kết đèn (JoinHome).
@@ -355,32 +362,19 @@ const CurvedTabBar = ({ state, navigation }: BottomTabBarProps) => {
   const homeCenterY = windowHeight - containerHeight + FLOAT; // tâm nút chính (Y màn hình)
   const defaultKey = radial?.defaultKey ?? null;
 
-  // Metadata từng công cụ (icon/nhãn/màu). Assistant đổi theo trạng thái bật/tắt.
-  // 4 mục quickaction (Cây/Quả/Con vật/Vườn) chuyển từ HomeScreen vào đây.
-  const itemMeta = React.useMemo(
-    () =>
-      ({
-        tree: { icon: 'pine-tree', label: 'Quét cây', tint: '#2B7A39' },
-        fruit: { icon: 'food-apple', label: 'Quả', tint: '#C0392B' },
-        animal: { icon: 'paw', label: 'Con vật', tint: '#7D3C98' },
-        farm: { icon: 'barn', label: 'Thêm vườn', tint: '#B07D2F' },
-        home: { icon: 'home-variant', label: 'Trang chủ', tint: COLORS.info },
-        account: { icon: 'account-circle', label: 'Tài khoản', tint: COLORS.info },
-        assistant: {
-          icon: chatbotEnabled ? 'robot' : 'robot-off-outline',
-          label: chatbotEnabled ? 'Tắt trợ lý' : 'Bật trợ lý',
-          tint: COLORS.accent,
-        },
-        logout: { icon: 'logout', label: 'Đăng xuất', tint: '#E5533C' },
-      }) as Record<RadialKey, { icon: string; label: string; tint: string }>,
-    [chatbotEnabled],
-  );
+  // Metadata từng mục = từ Action Registry (icon/nhãn động theo loài + màu theo
+  // NHÓM hành động). KHÔNG hardcode — tint lấy từ ACTION_GROUP_COLOR (token).
+  const itemMeta = React.useMemo(() => {
+    const m: Record<string, { icon: string; label: string; tint: string }> = {};
+    actions.forEach((a) => {
+      m[a.key] = { icon: a.icon, label: a.label, tint: ACTION_GROUP_COLOR[a.group] };
+    });
+    return m;
+  }, [actions]);
 
-  // 8 mục xếp ĐỀU & SÁT NHAU trên cung hướng LÊN (tâm = nút chính). Góc đo từ
-  // trục đứng; thứ tự: quickaction bên trái → hệ thống bên phải.
-  const ORDER: RadialKey[] = [
-    'tree', 'fruit', 'animal', 'farm', 'home', 'account', 'assistant', 'logout',
-  ];
+  // Thứ tự mục = thứ tự ưu tiên trong gói hành động domain (3–4 mục). Xếp đều &
+  // sát nhau trên cung hướng LÊN (tâm = nút chính).
+  const ORDER = React.useMemo<RadialKey[]>(() => actions.map((a) => a.key), [actions]);
   const radialItems = React.useMemo<RadialItem[]>(() => {
     const n = ORDER.length;
     const segW = RADIAL_SPREAD / n; // độ rộng mỗi đoạn
@@ -395,14 +389,18 @@ const CurvedTabBar = ({ state, navigation }: BottomTabBarProps) => {
         y: homeCenterY - RADIAL_R * Math.cos(a),
       };
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cx, homeCenterY, itemMeta]);
+  }, [cx, homeCenterY, itemMeta, ORDER]);
+
+  // Mặc định HỢP LỆ: chỉ tính là "đã đặt" khi khoá còn khớp hành động hiện tại
+  // (domain có thể đã đổi → khoá cũ mồ côi). Mồ côi → coi như CHƯA đặt (tap =
+  // Trang chủ).
+  const effectiveDefaultKey = defaultKey && itemMeta[defaultKey] ? defaultKey : null;
 
   // Refs cho callback PanResponder (tạo 1 lần) đọc trạng thái mới nhất.
   const stateRef = React.useRef<any>({});
   stateRef.current = {
     items: radialItems, cx, homeCenterY, homeKey, homeIsFocused,
-    navigation, dispatch, chatbotEnabled, defaultKey,
+    navigation, defaultKey: effectiveDefaultKey, actions,
     setMenu: radial?.setMenu, setDefaultKey: radial?.setDefaultKey, setRipple: radial?.setRipple,
     handlePress, menuOpen: !!radial?.menu,
   };
@@ -410,26 +408,10 @@ const CurvedTabBar = ({ state, navigation }: BottomTabBarProps) => {
   const runActionRef = React.useRef<(key: RadialKey) => void>(() => {});
   runActionRef.current = (key) => {
     const s = stateRef.current;
-    if (key === 'home') {
-      s.handlePress('Home', s.homeKey, s.homeIsFocused);
-    } else if (key === 'account') {
-      s.navigation.navigate('Account');
-    } else if (key === 'assistant') {
-      s.dispatch(setChatbotEnabled(!s.chatbotEnabled));
-    } else if (key === 'logout') {
-      Alert.alert('Đăng xuất', 'Đăng xuất khỏi tài khoản này?', [
-        { text: 'Huỷ', style: 'cancel' },
-        { text: 'Đăng xuất', style: 'destructive', onPress: () => s.dispatch(logoutUser()) },
-      ]);
-    } else if (key === 'tree') {
-      s.navigation.navigate('TreeIdentity');
-    } else if (key === 'fruit') {
-      s.navigation.navigate('FruitList');
-    } else if (key === 'animal') {
-      s.navigation.navigate('AnimalManagement', { farmId: 'default' });
-    } else if (key === 'farm') {
-      s.navigation.navigate('FarmDetail');
-    }
+    const action: ActionDef | undefined = s.actions.find((a: ActionDef) => a.key === key);
+    if (!action) return;
+    // Điều hướng tới đích của hành động (route + params đã khai trong registry).
+    s.navigation.navigate(action.route as never, action.params as never);
   };
   // Cho overlay (chế độ dính) gọi hành động khi CHẠM mục.
   if (radial?.actionRef) radial.actionRef.current = (k: RadialKey) => runActionRef.current(k);
@@ -451,12 +433,17 @@ const CurvedTabBar = ({ state, navigation }: BottomTabBarProps) => {
   const activeRef = React.useRef(-1);
   const assignedRef = React.useRef(false);
   const dwellTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const tapCountRef = React.useRef(0);
-  const tapTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  // GIỮ (không kéo) → xoè menu dính. stickyOpenedRef đánh dấu lần THẢ ngay sau đó
+  // là no-op (menu ở lại để chạm chọn), không tính là 1 cú tap.
+  const longPressTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stickyOpenedRef = React.useRef(false);
   const panRef = React.useRef<any>(null);
   if (!panRef.current) {
     const clearDwell = () => {
       if (dwellTimerRef.current) { clearTimeout(dwellTimerRef.current); dwellTimerRef.current = null; }
+    };
+    const clearLongPress = () => {
+      if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; }
     };
     const openMenu = () => {
       const s = stateRef.current;
@@ -523,72 +510,78 @@ const CurvedTabBar = ({ state, navigation }: BottomTabBarProps) => {
         openRef.current = false;
         activeRef.current = -1;
         assignedRef.current = false;
+        stickyOpenedRef.current = false;
+        // GIỮ (không kéo) ~300ms → xoè menu dính (cho người không quen thao tác kéo).
+        clearLongPress();
+        longPressTimerRef.current = setTimeout(() => {
+          if (!openRef.current) {
+            stickyOpenedRef.current = true;
+            openMenuSticky();
+          }
+        }, LONGPRESS_MS);
       },
       onPanResponderMove: (_evt, g) => {
+        if (stickyOpenedRef.current) return; // đã mở dính bằng giữ → bỏ qua kéo
         if (!openRef.current) {
-          if (Math.hypot(g.dx, g.dy) > OPEN_DRAG) openMenu();
+          if (Math.hypot(g.dx, g.dy) > OPEN_DRAG) { clearLongPress(); openMenu(); }
           else return;
         }
         updateActive(g.moveX, g.moveY);
       },
       onPanResponderRelease: () => {
         clearDwell();
+        clearLongPress();
         const s = stateRef.current;
         if (openRef.current) {
+          // KÉO: thả trúng mục nào chạy mục đó (trừ khi vừa GIỮ 1s để đặt mặc định).
           const a = activeRef.current;
           const wasAssigned = assignedRef.current;
           openRef.current = false;
           activeRef.current = -1;
           assignedRef.current = false;
           s.setMenu?.(null);
-          // Nếu vừa đặt mặc định (giữ 1s) thì KHÔNG chạy luôn; ngược lại thả trúng
-          // mục nào chạy mục đó.
           if (!wasAssigned && a >= 0) {
             const item = s.items[a];
             if (item) runActionRef.current(item.key);
           }
+        } else if (stickyOpenedRef.current) {
+          // Vừa GIỮ để mở menu dính → thả tay là no-op (menu ở lại để chạm chọn).
         } else {
-          // TAP (không kéo).
-          const dk = s.defaultKey;
-          if (!dk) {
-            // NÚT MENU (chưa đặt mặc định): tap để MỞ/ĐÓNG toolbar dính — không cần kéo.
-            if (s.menuOpen) s.setMenu?.(null);
-            else openMenuSticky();
+          // TAP nhanh (không kéo, không giữ). Reviewer §1:
+          //   - Đã đặt mặc định → chạy mặc định.
+          //   - Chưa đặt → về TRANG CHỦ (giữ pattern "nút giữa = màn chính").
+          //   - Nếu menu dính đang mở (từ lần trước) → chạm nút chính để đóng.
+          if (s.menuOpen) {
+            s.setMenu?.(null);
+          } else if (s.defaultKey) {
+            runActionRef.current(s.defaultKey);
           } else {
-            // Có mặc định: gom tap — 1 tap CHẠY mặc định, 3 tap GỠ mặc định (về nút menu).
-            tapCountRef.current += 1;
-            if (tapTimerRef.current) clearTimeout(tapTimerRef.current);
-            if (tapCountRef.current >= 3) {
-              tapCountRef.current = 0;
-              s.setDefaultKey?.(null); // về nút menu
-              rippleNonceRef.current += 1;
-              s.setRipple?.({ x: s.cx, y: s.homeCenterY, nonce: rippleNonceRef.current });
-            } else {
-              tapTimerRef.current = setTimeout(() => {
-                const cnt = tapCountRef.current;
-                tapCountRef.current = 0;
-                if (cnt >= 1) runActionRef.current(dk);
-              }, TAP_WINDOW);
-            }
+            s.handlePress('Home', s.homeKey, s.homeIsFocused);
           }
         }
       },
       onPanResponderTerminate: () => {
         clearDwell();
+        clearLongPress();
         openRef.current = false;
         activeRef.current = -1;
         assignedRef.current = false;
+        stickyOpenedRef.current = false;
         stateRef.current.setMenu?.(null);
       },
     });
   }
   React.useEffect(() => () => {
     if (dwellTimerRef.current) clearTimeout(dwellTimerRef.current);
-    if (tapTimerRef.current) clearTimeout(tapTimerRef.current);
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
   }, []);
 
-  // Icon nút chính = công cụ mặc định (nếu đã đặt); chưa đặt = NÚT MENU (tap để mở).
-  const mainIcon = defaultKey ? itemMeta[defaultKey].icon : 'dots-grid';
+  // Icon nút chính = hành động mặc định (nếu đã đặt & còn hợp lệ); chưa đặt =
+  // TRANG CHỦ (tap về màn chính · giữ/kéo để xoè menu).
+  const mainIcon =
+    effectiveDefaultKey && itemMeta[effectiveDefaultKey]
+      ? itemMeta[effectiveDefaultKey].icon
+      : 'home-variant';
 
   // Ẩn HẲN navbar ở màn Kết đèn (JoinHome) — tránh navbar nổi đè nội dung.
   // (Đặt SAU mọi hook để không vi phạm rules-of-hooks.)
@@ -705,8 +698,10 @@ const curvedStyles = StyleSheet.create({
     height: HOME_BTN_SIZE,
     borderRadius: HOME_BTN_SIZE / 2,
     borderWidth: 3,
-    borderColor: COLORS.accentLight,
-    backgroundColor: COLORS.info,
+    // Nút chính HERO: màu ẤM tương phản cao (coral, token) nổi trên navbar xanh
+    // đậm — bắt mắt, WCAG AA cho icon trắng. KHÔNG hardcode hex.
+    borderColor: ACTION_COLORS.heroMainBorder,
+    backgroundColor: ACTION_COLORS.heroMain,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: COLORS.accentDeep,
@@ -805,8 +800,25 @@ const HomeRadialOverlay = () => {
           <Text style={radialStyles.guideSub}>
             {sticky
               ? 'Chạm ra ngoài để đóng · nhấn giữ 1 giây (khi kéo) để đặt mặc định'
-              : 'Giữ 1 giây trên công cụ để đặt mặc định · sau đó nhấn 1 lần để dùng nhanh · Chạm 3 lần vào nút chính để gỡ mặc định'}
+              : 'Giữ 1 giây trên công cụ để đặt mặc định · sau đó nhấn 1 lần để dùng nhanh'}
           </Text>
+        </View>
+      )}
+
+      {/* Nút GỠ MẶC ĐỊNH — thay cho cử chỉ "chạm 3 lần" (reviewer §1). Chỉ hiện ở
+          chế độ dính khi đang có mặc định. Nhấn → về nút Trang chủ. */}
+      {menu && sticky && !!radial?.defaultKey && (
+        <View pointerEvents="box-none" style={[radialStyles.removeWrap, { top: height * 0.3 - 64 }]}>
+          <Pressable
+            style={radialStyles.removeBtn}
+            onPress={() => {
+              radial?.setDefaultKey(null);
+              radial?.setMenu(null);
+            }}
+          >
+            <Icon name="close-circle-outline" size={16} color="#FFFFFF" />
+            <Text style={radialStyles.removeText}>Gỡ mặc định</Text>
+          </Pressable>
         </View>
       )}
 
@@ -1001,6 +1013,17 @@ const radialStyles = StyleSheet.create({
     borderColor: '#FFFFFF',
     backgroundColor: 'rgba(0, 0, 0, 0.36)',
   },
+  removeWrap: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
+  removeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(229, 83, 60, 0.92)',
+  },
+  removeText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
   itemWrap: { position: 'absolute', width: 112, alignItems: 'center' },
   itemLabel: {
     marginTop: 10,
@@ -1062,7 +1085,17 @@ const ProtectedMain = () => {
     );
   }
 
-  return <MainTabs />;
+  // Header toàn cục Ở TRÊN khối tab (layout-flow): header co/giãn chiều cao khi
+  // thu/thả nên KHÔNG cần chừa padding-top riêng cho từng tab. Nút Tài khoản +
+  // Thông báo nằm trong header (KHÔNG trên navbar).
+  return (
+    <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
+      <AppHeader />
+      <View style={{ flex: 1 }}>
+        <MainTabs />
+      </View>
+    </View>
+  );
 };
 
 // --- Host-level stack screens (KHÔNG thuộc module) -------------------------
@@ -1077,8 +1110,12 @@ const HOST_STACK_SCREENS: Array<{
   { name: 'Activation', component: ActivationScreen },
   { name: 'BiometricSettings', component: BiometricSettings },
   { name: 'Main', component: ProtectedMain, options: { headerShown: false } },
-  // Tài khoản LÀ TAB ẩn-nút (xem instance.config + TAB_META) để navbar hiện ở
-  // trang này; toolbox cung tròn mở nó qua navigate('Account') → chuyển tab.
+  // Màn Thông báo — đích của nút chuông trên AppHeader (host-level).
+  { name: 'Notifications', component: NotificationScreen, options: { headerShown: false } },
+  // Tài khoản LÀ TAB ẩn-nút (xem instance.config + TAB_META) để navbar + AppHeader
+  // hiện ở trang này. KHÔNG đăng ký Account như MÀN ROOT-STACK: màn root-stack sẽ
+  // phủ TRÙM lên Main → che mất AppHeader (header sống ở ProtectedMain, TRÊN các
+  // tab). Header (nút Tài khoản) mở qua navigate('Main', { screen: 'Account' }).
   // ProofChat ví/escrow — chưa khai manifest, giữ ở host stack.
   { name: 'ProofChatWallet', component: ProofChatWalletScreen, options: { headerShown: false } },
   { name: 'ProofChatEscrow', component: ProofChatEscrowScreen, options: { headerShown: false } },
@@ -1190,6 +1227,7 @@ const AppNavigator = () => {
   return (
     <Provider store={store}>
       <RadialMenuProvider>
+      <AppHeaderProvider>
       <NavigationContainer linking={buildLinking()} onStateChange={handleNavigationStateChange}>
         <Stack.Navigator
           initialRouteName={initialRoute}
@@ -1223,6 +1261,7 @@ const AppNavigator = () => {
         <HomeRadialOverlay />
         <Toast />
       </NavigationContainer>
+      </AppHeaderProvider>
       </RadialMenuProvider>
     </Provider>
   );

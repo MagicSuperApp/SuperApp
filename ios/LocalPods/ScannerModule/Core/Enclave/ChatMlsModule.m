@@ -49,6 +49,29 @@ RCT_EXTERN_METHOD(decrypt:(NSString *)conversationId
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(createMerkleLeaf:(NSString *)conversationId
+                  senderId:(NSString *)senderId
+                  timestampMs:(NSString *)timestampMs
+                  plaintext:(NSString *)plaintext
+                  saltHex:(NSString *)saltHex
+                  sessionSeedHex:(NSString *)sessionSeedHex
+                  delegationCert:(NSString *)delegationCert
+                  walletCoseKey:(NSString *)walletCoseKey
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(verifyMerkleLeaf:(NSString *)leafJson
+                  conversationId:(NSString *)conversationId
+                  senderId:(NSString *)senderId
+                  timestampMs:(NSString *)timestampMs
+                  plaintext:(NSString *)plaintext
+                  saltHex:(NSString *)saltHex
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(newSessionEd25519:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
 + (BOOL)requiresMainQueueSetup {
   return NO;
 }

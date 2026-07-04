@@ -56,6 +56,8 @@ workflows:
       branch_patterns:
         - pattern: main
           include: true
+        - pattern: develop
+          include: true
         - pattern: 'feat/foundation'
           include: true
         - pattern: 'feat/*'
@@ -630,6 +632,8 @@ workflows:
         - push
       branch_patterns:
         - pattern: main
+          include: true
+        - pattern: develop
           include: true
         - pattern: 'feat/foundation'
           include: true

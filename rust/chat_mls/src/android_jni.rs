@@ -178,3 +178,59 @@ pub extern "system" fn Java_com_aladincontract_company_ChatMlsModule_nativeDecry
     let json = match unsafe { ident(handle) } { Some(id) => ffi::core_decrypt(id, &conv, &body), None => err_json() };
     out(&env, json)
 }
+
+// ─── Merkle (stateless — không handle) ────────────────────────────
+
+#[no_mangle]
+pub extern "system" fn Java_com_aladincontract_company_ChatMlsModule_nativeCreateMerkleLeaf<'l>(
+    mut env: JNIEnv<'l>,
+    _c: JClass<'l>,
+    conv: JString<'l>,
+    sender_id: JString<'l>,
+    timestamp_ms: JString<'l>,
+    plaintext: JString<'l>,
+    salt_hex: JString<'l>,
+    session_seed_hex: JString<'l>,
+    delegation_cert: JString<'l>,
+    wallet_cose_key: JString<'l>,
+) -> jstring {
+    let conv = jstr(&mut env, &conv);
+    let sender = jstr(&mut env, &sender_id);
+    let ts = jstr(&mut env, &timestamp_ms);
+    let pt = jstr(&mut env, &plaintext);
+    let salt = jstr(&mut env, &salt_hex);
+    let seed = jstr(&mut env, &session_seed_hex);
+    let cert = jstr(&mut env, &delegation_cert);
+    let cose = jstr(&mut env, &wallet_cose_key);
+    let json = ffi::core_create_merkle_leaf(&conv, &sender, &ts, &pt, &salt, &seed, &cert, &cose);
+    out(&env, json)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_aladincontract_company_ChatMlsModule_nativeVerifyMerkleLeaf<'l>(
+    mut env: JNIEnv<'l>,
+    _c: JClass<'l>,
+    leaf_json: JString<'l>,
+    conv: JString<'l>,
+    sender_id: JString<'l>,
+    timestamp_ms: JString<'l>,
+    plaintext: JString<'l>,
+    salt_hex: JString<'l>,
+) -> jstring {
+    let leaf = jstr(&mut env, &leaf_json);
+    let conv = jstr(&mut env, &conv);
+    let sender = jstr(&mut env, &sender_id);
+    let ts = jstr(&mut env, &timestamp_ms);
+    let pt = jstr(&mut env, &plaintext);
+    let salt = jstr(&mut env, &salt_hex);
+    let json = ffi::core_verify_merkle_leaf(&leaf, &conv, &sender, &ts, &pt, &salt);
+    out(&env, json)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_aladincontract_company_ChatMlsModule_nativeNewSessionEd25519<'l>(
+    env: JNIEnv<'l>,
+    _c: JClass<'l>,
+) -> jstring {
+    out(&env, ffi::core_new_session_ed25519())
+}

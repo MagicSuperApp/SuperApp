@@ -35,6 +35,16 @@ class ChatMlsModule(reactContext: ReactApplicationContext) :
     private external fun nativeProcessCommit(handle: Long, conv: String, commitB64: String): String
     private external fun nativeEncrypt(handle: Long, conv: String, plaintext: String): String
     private external fun nativeDecrypt(handle: Long, conv: String, bodyB64: String): String
+    // Merkle tầng 3 — stateless (không cần handle).
+    private external fun nativeCreateMerkleLeaf(
+        conv: String, senderId: String, timestampMs: String, plaintext: String,
+        saltHex: String, sessionSeedHex: String, delegationCert: String, walletCoseKey: String,
+    ): String
+    private external fun nativeVerifyMerkleLeaf(
+        leafJson: String, conv: String, senderId: String, timestampMs: String,
+        plaintext: String, saltHex: String,
+    ): String
+    private external fun nativeNewSessionEd25519(): String
 
     /** Con trỏ MlsIdentity hiện hành (0 = chưa có). */
     @Volatile private var handle: Long = 0
@@ -118,6 +128,37 @@ class ChatMlsModule(reactContext: ReactApplicationContext) :
     @ReactMethod
     fun decrypt(conversationId: String, bodyB64: String, promise: Promise) =
         withHandle(promise) { nativeDecrypt(it, conversationId, bodyB64) }
+
+    // ── Merkle tầng 3 (stateless — không cần handle) ─────────────────────────
+
+    private inline fun stateless(promise: Promise, block: () -> String) {
+        if (!libLoaded) { promise.reject("E_NATIVE_UNAVAILABLE", "libchat_mls.so chưa nạp được"); return }
+        try { promise.resolve(block()) } catch (e: Throwable) {
+            promise.reject("E_CHAT_MLS", e.message ?: "Lỗi native", e)
+        }
+    }
+
+    @ReactMethod
+    fun createMerkleLeaf(
+        conversationId: String, senderId: String, timestampMs: String, plaintext: String,
+        saltHex: String, sessionSeedHex: String, delegationCert: String, walletCoseKey: String,
+        promise: Promise,
+    ) = stateless(promise) {
+        nativeCreateMerkleLeaf(conversationId, senderId, timestampMs, plaintext, saltHex, sessionSeedHex, delegationCert, walletCoseKey)
+    }
+
+    @ReactMethod
+    fun verifyMerkleLeaf(
+        leafJson: String, conversationId: String, senderId: String, timestampMs: String,
+        plaintext: String, saltHex: String, promise: Promise,
+    ) = stateless(promise) {
+        nativeVerifyMerkleLeaf(leafJson, conversationId, senderId, timestampMs, plaintext, saltHex)
+    }
+
+    @ReactMethod
+    fun newSessionEd25519(promise: Promise) = stateless(promise) {
+        nativeNewSessionEd25519()
+    }
 
     companion object {
         // Phòng thủ giống TaadEnclaveModule: AAB có thể gồm ABI thiếu .so → không sập app.

@@ -18,9 +18,12 @@
  */
 import chatMls from '../sdk/chatMls';
 import * as taad from '../sdk/taadEnclave';
-import chatSocket, { EncryptedContent, EpochSyncWire, MessagePayload } from './chatSocket';
+import chatSocket, { EpochSyncWire, MessagePayload } from './chatSocket';
 import { proofChatApi, isProofChatBackendEnabled } from './proofchat-api';
 import { connectProofChat } from './proofchatAuthBridge';
+import { assembleOutgoing, processIncoming, needsMerkleVerification } from './proofchatMessage';
+import { getDid, getMerkleSession } from './proofchatIdentity';
+import type { ConversationType } from '../modules/proofchat/features/chat/types';
 
 const CIPHERSUITE = 'MLS_128_DHKEMP256_AES128GCM_SHA256_P256';
 const DEVICE_ID = '1'; // MVP 1 thiết bị/tài khoản (như web MLSContext deviceId='1')
@@ -35,6 +38,8 @@ export interface DecryptedMessage {
   timestamp: number;
   plaintext: string;
   epoch: number;
+  /** Merkle tier-3: true/false nếu tin có leaf; null nếu không kèm (GROUP/thiếu session). */
+  merkleVerified: boolean | null;
 }
 
 export interface InitResult {
@@ -44,7 +49,7 @@ export interface InitResult {
 
 type MessageHandler = (m: DecryptedMessage) => void;
 
-let currentStakeAddress: string | null = null;
+let currentIdentity: string | null = null;
 let messageHandler: MessageHandler | null = null;
 const unsub: Array<() => void> = [];
 
@@ -93,10 +98,17 @@ async function ensureIdentity(stakeAddress: string): Promise<void> {
   }
 }
 
-/** Khởi tạo phiên chat đầy đủ. Không throw — trả InitResult để UI hiển thị. */
-export async function init(stakeAddress: string): Promise<InitResult> {
+/**
+ * Khởi tạo phiên chat đầy đủ. Không throw — trả InitResult để UI hiển thị.
+ * Danh tính MLS = **did:phoenix** (mobile dẫn đầu). Truyền `identityOverride` chỉ
+ * để test; mặc định lấy `getDid()`.
+ */
+export async function init(identityOverride?: string): Promise<InitResult> {
   if (!isProofChatBackendEnabled()) return { status: 'disabled' };
   if (!chatMls.isAvailable()) return { status: 'error', message: 'Native chat_mls chưa sẵn sàng' };
+
+  const identity = identityOverride ?? (await getDid());
+  if (!identity) return { status: 'no-phoenix-session' };
 
   const authRes = await connectProofChat();
   if (authRes.status === 'disabled') return { status: 'disabled' };
@@ -104,8 +116,8 @@ export async function init(stakeAddress: string): Promise<InitResult> {
   if (authRes.status === 'error') return { status: 'error', message: authRes.message };
 
   try {
-    currentStakeAddress = stakeAddress;
-    await ensureIdentity(stakeAddress);
+    currentIdentity = identity;
+    await ensureIdentity(identity);
     await chatSocket.connect();
     wireSocketHandlers();
     return { status: 'ready' };
@@ -119,38 +131,43 @@ export async function shutdown(): Promise<void> {
   unsub.length = 0;
   chatSocket.disconnect();
   await chatMls.freeIdentity().catch(() => undefined);
-  currentStakeAddress = null;
+  currentIdentity = null;
 }
 
 // ── Gửi tin ──────────────────────────────────────────────────────────
 
-/** Mã hoá + gửi 1 tin văn bản. Trả messageId khi ack thành công. */
-export async function sendText(conversationId: string, text: string): Promise<{ ok: boolean; messageId?: string; error?: string }> {
-  if (!currentStakeAddress) return { ok: false, error: 'chưa init' };
+/**
+ * Mã hoá + gửi 1 tin văn bản. Trả messageId khi ack thành công.
+ * `conversationType` quyết định có đính Merkle tier-3 không (DIRECT/JOB_NEGOTIATION);
+ * bỏ trống ⇒ không Merkle (an toàn cho GROUP/THREAD).
+ */
+export async function sendText(
+  conversationId: string,
+  text: string,
+  conversationType?: ConversationType,
+): Promise<{ ok: boolean; messageId?: string; error?: string }> {
+  if (!currentIdentity) return { ok: false, error: 'chưa init' };
   try {
-    const enc = await chatMls.encrypt(conversationId, text);
-    const encryptedContent: EncryptedContent = {
-      opkId: 'mls',
-      type: 2,
-      body: enc.body,
-      mlsMessageType: 'application',
-      mlsEpoch: enc.epoch,
-    };
-    const payload: MessagePayload = {
-      id: enc.messageId,
-      senderId: currentStakeAddress,
-      conversationId,
-      timestamp: Date.now(),
-      messageType: 'text',
-      senderDeviceId: DEVICE_ID,
-      encryptedContent,
-      variants: [{ senderDeviceId: DEVICE_ID, targetDeviceId: '*', encryptedContent }],
-      // TODO(Merkle tầng 3): với hội thoại DIRECT/JOB_NEGOTIATION, gắn merkleLeaf =
-      // chatMls.createMerkleLeaf(...) (cần expose FFI + session delegation COSE từ ví).
-    };
+    // Uỷ nhiệm session cho Merkle chỉ khi hội thoại cần (tránh bật sinh trắc học thừa).
+    const session =
+      conversationType && needsMerkleVerification(conversationType)
+        ? await getMerkleSession()
+        : undefined;
+
+    const { payload } = await assembleOutgoing(
+      {
+        conversationId,
+        conversationType: conversationType ?? 'GROUP',
+        senderId: currentIdentity,
+        deviceId: DEVICE_ID,
+        session,
+      },
+      text,
+    );
+
     const ack = await chatSocket.sendMessage(payload);
     if (!ack?.success) return { ok: false, error: ack?.error ?? 'gửi thất bại' };
-    return { ok: true, messageId: ack.messageId ?? enc.messageId };
+    return { ok: true, messageId: ack.messageId ?? payload.id };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'lỗi gửi' };
   }
@@ -162,17 +179,17 @@ function wireSocketHandlers(): void {
   unsub.push(
     chatSocket.onMessage(async (m: MessagePayload) => {
       try {
-        const body = m.encryptedContent?.body;
-        if (!body) return;
-        const dec = await chatMls.decrypt(m.conversationId, body);
+        // Giải mã tầng 2 + (nếu có) verify Merkle tầng 3.
+        const res = await processIncoming(m);
         messageHandler?.({
-          id: m.id,
-          conversationId: m.conversationId,
-          senderId: m.senderId,
-          isMine: m.senderId === currentStakeAddress,
-          timestamp: typeof m.timestamp === 'number' ? m.timestamp : Date.now(),
-          plaintext: dec.plaintext,
-          epoch: dec.epoch,
+          id: res.messageId,
+          conversationId: res.conversationId,
+          senderId: res.senderId,
+          isMine: res.senderId === currentIdentity,
+          timestamp: res.timestamp,
+          plaintext: res.plaintext,
+          epoch: res.epoch,
+          merkleVerified: res.merkleVerified,
         });
       } catch {
         /* tin không giải mã được (trước khi join / thiếu epoch_secret) — bỏ qua */
@@ -204,7 +221,7 @@ function wireSocketHandlers(): void {
  * để đối phương join. Trả conversationId.
  */
 export async function createDirectConversation(peerStakeAddress: string): Promise<{ ok: boolean; conversationId?: string; error?: string }> {
-  if (!currentStakeAddress) return { ok: false, error: 'chưa init' };
+  if (!currentIdentity) return { ok: false, error: 'chưa init' };
   try {
     const conv = await proofChatApi.conversations.create({
       type: 'DIRECT',
@@ -214,7 +231,7 @@ export async function createDirectConversation(peerStakeAddress: string): Promis
 
     // Lấy KeyPackage các thành viên phòng (trừ mình) rồi tạo nhóm + Welcome.
     const kps = await proofChatApi.mls.roomKeyPackages(conversationId, DEVICE_ID);
-    const memberKps = kps.filter((k) => k.stakeAddress !== currentStakeAddress).map((k) => k.keyPackage);
+    const memberKps = kps.filter((k) => k.stakeAddress !== currentIdentity).map((k) => k.keyPackage);
     const group = await chatMls.createGroup(conversationId, memberKps);
 
     // Đẩy Welcome/Commit lên server để đối phương đồng bộ epoch (nếu có thành viên).

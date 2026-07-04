@@ -57,6 +57,15 @@ interface ChatMlsNativeBridge {
   processCommit(conversationId: string, commitB64: string): Promise<string>;
   encrypt(conversationId: string, plaintext: string): Promise<string>;
   decrypt(conversationId: string, bodyB64: string): Promise<string>;
+  createMerkleLeaf(
+    conversationId: string, senderId: string, timestampMs: string, plaintext: string,
+    saltHex: string, sessionSeedHex: string, delegationCert: string, walletCoseKey: string,
+  ): Promise<string>;
+  verifyMerkleLeaf(
+    leafJson: string, conversationId: string, senderId: string, timestampMs: string,
+    plaintext: string, saltHex: string,
+  ): Promise<string>;
+  newSessionEd25519(): Promise<string>;
 }
 
 const moduleNotAvailable = (): ChatMlsNativeBridge => {
@@ -79,6 +88,9 @@ const moduleNotAvailable = (): ChatMlsNativeBridge => {
     processCommit: () => reject('processCommit') as never,
     encrypt: () => reject('encrypt') as never,
     decrypt: () => reject('decrypt') as never,
+    createMerkleLeaf: () => reject('createMerkleLeaf') as never,
+    verifyMerkleLeaf: () => reject('verifyMerkleLeaf') as never,
+    newSessionEd25519: () => reject('newSessionEd25519') as never,
   };
 };
 
@@ -165,6 +177,74 @@ export const decrypt = async (
 ): Promise<DecryptResult> =>
   parse<DecryptResult>(await bridge.decrypt(conversationId, bodyB64));
 
+// ── Merkle tầng 3 (chỉ hội thoại DIRECT / JOB_NEGOTIATION) ─────────────────────
+
+/** MerkleLeaf khớp web (hash hex, cert base64). */
+export interface MerkleLeaf {
+  v: number;
+  delegationCert: string;
+  walletCoseKey: string;
+  leafHash: string;
+  ptCommit: string;
+  algorithm: string;
+  signature: string;
+  signerPublicKey: string;
+}
+
+/**
+ * Tạo Merkle leaf cho 1 tin (bằng chứng toàn vẹn + định danh session).
+ * `sessionSeedHex` = 32-byte Ed25519 seed của session key; `delegationCert` +
+ * `walletCoseKey` (base64) là COSE từ ví (CIP-30). `salt` dùng CHUNG với tầng 2 (encrypt).
+ */
+export const createMerkleLeaf = async (args: {
+  conversationId: string;
+  senderId: string;
+  timestampMs: number | string;
+  plaintext: string;
+  saltHex: string;
+  sessionSeedHex: string;
+  delegationCert: string;
+  walletCoseKey: string;
+}): Promise<MerkleLeaf> =>
+  parse<{ merkleLeaf: MerkleLeaf }>(
+    await bridge.createMerkleLeaf(
+      args.conversationId, args.senderId, String(args.timestampMs), args.plaintext,
+      args.saltHex, args.sessionSeedHex, args.delegationCert, args.walletCoseKey,
+    ),
+  ).merkleLeaf;
+
+/** Verify Merkle leaf nhận được (toàn vẹn nội dung + chữ ký session). Trả true/false. */
+export const verifyMerkleLeaf = async (args: {
+  leaf: MerkleLeaf;
+  conversationId: string;
+  senderId: string;
+  timestampMs: number | string;
+  plaintext: string;
+  saltHex: string;
+}): Promise<boolean> =>
+  parse<{ valid: boolean }>(
+    await bridge.verifyMerkleLeaf(
+      JSON.stringify(args.leaf), args.conversationId, args.senderId,
+      String(args.timestampMs), args.plaintext, args.saltHex,
+    ),
+  ).valid;
+
+/** Cặp khoá Ed25519 session (uỷ nhiệm Merkle tier-3). */
+export interface SessionKeyPair {
+  /** 32-byte seed (hex) — đưa `createMerkleLeaf.sessionSeedHex` để ký leaf. */
+  seedHex: string;
+  /** 32-byte public key (hex) — khoá DID ký uỷ nhiệm lên khoá này. */
+  publicKeyHex: string;
+}
+
+/** Sinh cặp khoá Ed25519 session mới (dùng cho uỷ nhiệm Merkle). */
+export const newSessionEd25519 = async (): Promise<SessionKeyPair> => {
+  const r = parse<{ seedHex: string; publicKeyHex: string }>(
+    await bridge.newSessionEd25519(),
+  );
+  return { seedHex: r.seedHex, publicKeyHex: r.publicKeyHex };
+};
+
 export default {
   isAvailable,
   newIdentity,
@@ -178,4 +258,7 @@ export default {
   processCommit,
   encrypt,
   decrypt,
+  createMerkleLeaf,
+  verifyMerkleLeaf,
+  newSessionEd25519,
 };

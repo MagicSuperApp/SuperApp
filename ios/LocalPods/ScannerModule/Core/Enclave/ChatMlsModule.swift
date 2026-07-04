@@ -142,4 +142,68 @@ final class ChatMlsModule: NSObject {
         }
         resolveJson(out, resolve, reject)
     }
+
+    // MARK: - Merkle tầng 3 (stateless — không cần handle)
+
+    @objc(createMerkleLeaf:senderId:timestampMs:plaintext:saltHex:sessionSeedHex:delegationCert:walletCoseKey:resolver:rejecter:)
+    func createMerkleLeaf(_ conversationId: String,
+                          senderId: String,
+                          timestampMs: String,
+                          plaintext: String,
+                          saltHex: String,
+                          sessionSeedHex: String,
+                          delegationCert: String,
+                          walletCoseKey: String,
+                          resolver resolve: @escaping RCTPromiseResolveBlock,
+                          rejecter reject: @escaping RCTPromiseRejectBlock) {
+        let out = conversationId.withCString { c in
+            senderId.withCString { s in
+                timestampMs.withCString { t in
+                    plaintext.withCString { p in
+                        saltHex.withCString { sa in
+                            sessionSeedHex.withCString { se in
+                                delegationCert.withCString { ce in
+                                    walletCoseKey.withCString { co in
+                                        chat_mls_create_merkle_leaf(c, s, t, p, sa, se, ce, co)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        resolveJson(out, resolve, reject)
+    }
+
+    @objc(verifyMerkleLeaf:conversationId:senderId:timestampMs:plaintext:saltHex:resolver:rejecter:)
+    func verifyMerkleLeaf(_ leafJson: String,
+                          conversationId: String,
+                          senderId: String,
+                          timestampMs: String,
+                          plaintext: String,
+                          saltHex: String,
+                          resolver resolve: @escaping RCTPromiseResolveBlock,
+                          rejecter reject: @escaping RCTPromiseRejectBlock) {
+        let out = leafJson.withCString { l in
+            conversationId.withCString { c in
+                senderId.withCString { s in
+                    timestampMs.withCString { t in
+                        plaintext.withCString { p in
+                            saltHex.withCString { sa in
+                                chat_mls_verify_merkle_leaf(l, c, s, t, p, sa)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        resolveJson(out, resolve, reject)
+    }
+
+    @objc(newSessionEd25519:rejecter:)
+    func newSessionEd25519(_ resolve: @escaping RCTPromiseResolveBlock,
+                           rejecter reject: @escaping RCTPromiseRejectBlock) {
+        resolveJson(chat_mls_new_session_ed25519(), resolve, reject)
+    }
 }

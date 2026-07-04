@@ -196,6 +196,21 @@ const JobDetailScreen: React.FC = () => {
           </View>
         </View>
 
+        <TouchableOpacity
+          style={styles.matchRow}
+          activeOpacity={0.85}
+          onPress={() => navigation.navigate('WorkMatch', { jobId: job.id })}
+        >
+          <View style={styles.infoIconWrap}>
+            <Icon name="account-search-outline" size={16} color={WORK_THEME.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.matchTitle}>Xem ứng viên phù hợp</Text>
+            <Text style={styles.matchSub}>Khớp theo năng lực & lịch rảnh (Jem-Math)</Text>
+          </View>
+          <Icon name="chevron-right" size={20} color={COLORS.textMuted} />
+        </TouchableOpacity>
+
         <View style={[styles.section, styles.trustSection]}>
           <View style={styles.trustHeader}>
             <Icon name="shield-check" size={16} color={WORK_THEME.primary} />
@@ -379,6 +394,15 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: WORK_THEME.primaryLight,
   },
   viewProfileText: { fontSize: 11, fontWeight: '700', color: WORK_THEME.primary },
+
+  matchRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: COLORS.card,
+    marginHorizontal: 12, marginBottom: 8, padding: 14,
+    borderRadius: 14, borderWidth: 1, borderColor: COLORS.border,
+  },
+  matchTitle: { fontSize: 13, fontWeight: '800', color: COLORS.text },
+  matchSub: { fontSize: 11, color: COLORS.textSub, marginTop: 2 },
 
   trustSection: {
     backgroundColor: WORK_THEME.primaryGlow,

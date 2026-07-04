@@ -40,6 +40,10 @@ import WorkHomeScreen from '../modules/work/screens/WorkHomeScreen';
 import JobDetailScreen from '../modules/work/screens/JobDetailScreen';
 import PostJobScreen from '../modules/work/screens/PostJobScreen';
 import WorkerProfileScreen from '../modules/work/screens/WorkerProfileScreen';
+import ContractsScreen from '../modules/work/screens/ContractsScreen';
+import ContractDetailScreen from '../modules/work/screens/ContractDetailScreen';
+import MatchScreen from '../modules/work/screens/MatchScreen';
+import AvailabilityScreen from '../modules/work/screens/AvailabilityScreen';
 
 // --- Join (Kết đèn) screens -----------------------------------------------
 import JoinHomeScreen from '../modules/join/screens/JoinHomeScreen';
@@ -94,11 +98,16 @@ export const MODULE_REGISTRY: Record<ModuleId, RegistryEntry> = {
   work: {
     manifest: workManifest as ModuleManifest,
     screens: {
-      // manifest.routes: ["WorkHome","JobDetail","PostJob","WorkerProfile"]
+      // manifest.routes: ["WorkHome","JobDetail","PostJob","WorkerProfile",
+      //                   "Contracts","ContractDetail","WorkMatch","WorkAvailability"]
       WorkHome: WorkHomeScreen,
       JobDetail: JobDetailScreen,
       PostJob: PostJobScreen,
       WorkerProfile: WorkerProfileScreen,
+      Contracts: ContractsScreen,
+      ContractDetail: ContractDetailScreen,
+      WorkMatch: MatchScreen,
+      WorkAvailability: AvailabilityScreen,
     },
   },
   join: {

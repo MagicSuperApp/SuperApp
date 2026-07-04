@@ -284,7 +284,7 @@ const WorkHomeScreen: React.FC = () => {
             <View style={{ flex: 1 }}>
               <Text style={styles.trustTitle}>Bảo vệ bởi smart contract</Text>
               <Text style={styles.trustSub}>
-                Mọi giao dịch trên Aladin đều có hợp đồng số ký bằng PhoenixKey, tiền cọc giữ qua escrow trên blockchain — bạn không lo bị quỵt.
+                Mọi giao dịch trên Aladin đều có hợp đồng số ký bằng PhoenixKey (P-256), Pledge định giá MAGIC nhưng khóa/hoàn bằng CARP — bạn không lo bị quỵt.
               </Text>
             </View>
           </View>

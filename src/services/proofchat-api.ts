@@ -285,7 +285,7 @@ export const conversations = {
       client.get('/conversations/ids', { needsAuth: true } as AuthableConfig),
     ),
 
-  /** Chi tiết 1 hội thoại. BE: GET /conversations/:id (Bearer). */
+  /** 1 hội thoại theo ID. BE: GET /conversations/:id (Bearer). */
   get: (id: string): Promise<RemoteConversation> =>
     unwrap<RemoteConversation>(
       client.get(`/conversations/${encodeURIComponent(id)}`, {
@@ -293,25 +293,134 @@ export const conversations = {
       } as AuthableConfig),
     ),
 
+  /** Tạo hội thoại. BE: POST /conversations { type, participantIds, title?, proposalId? }. */
+  create: (body: {
+    type: string;
+    participantIds: string[];
+    title?: string;
+    proposalId?: string;
+  }): Promise<RemoteConversation> =>
+    unwrap<RemoteConversation>(
+      client.post('/conversations', body, { needsAuth: true } as AuthableConfig),
+    ),
+
   /**
-   * Tin nhắn (ciphertext E2EE) của 1 hội thoại cho thiết bị hiện tại.
-   * BE: GET /conversations/:id/messages?deviceId=... (Bearer).
-   * deviceId đi trong QUERY (theo API BE) — KHÔNG phải token; token vẫn CHỈ ở
-   * header Bearer (spec §6: cấm token trong query, deviceId thì được phép).
-   * Server chỉ trả ciphertext, KHÔNG plaintext.
+   * Tin nhắn (ciphertext E2EE) của 1 hội thoại. BE: GET /conversations/:id/messages
+   * (Bearer) — query `deviceId` (chọn variant), `limit`/`offset` (phân trang).
    */
   getMessages: (
-    id: string,
+    conversationId: string,
     deviceId: string,
-    opts: { skip?: number; take?: number } = {},
+    opts: { take?: number; offset?: number } = {},
   ): Promise<RemoteMessage[]> =>
     unwrap<RemoteMessage[]>(
-      client.get(`/conversations/${encodeURIComponent(id)}/messages`, {
+      client.get(`/conversations/${encodeURIComponent(conversationId)}/messages`, {
         needsAuth: true,
-        params: { deviceId, skip: opts.skip, take: opts.take },
+        params: { deviceId, limit: opts.take, offset: opts.offset },
       } as AuthableConfig),
     ),
 };
 
-export const proofChatApi = { auth, conversations };
+// ── MLS (bootstrap: KeyPackage + epoch-sync) ─────────────────────────
+// Khớp D:\BE modules/mls (controller `mls`) + modules/mls/epoch-sync. Dùng cho
+// proofchatService (lập nhóm, publish KeyPackage, đồng bộ epoch). Prefix baseURL
+// đã gồm `/api` như các route hiện có.
+
+/** 1 KeyPackage thành viên (BE KeyPackageResponse). */
+export interface RemoteKeyPackage {
+  stakeAddress: string;
+  deviceId: string;
+  keyPackage: string;
+  ciphersuite: string;
+  expiresAt: number | null;
+  createdAt: number;
+}
+
+/** Trạng thái KeyPackage của tôi (BE KeyPackageStatusResponse). */
+export interface KeyPackageStatus {
+  exists: boolean;
+  devices: Array<{ deviceId: string; expiresAt: number | null }>;
+}
+
+/** 1 bản ghi epoch-sync (BE MlsEpochSyncRecordDto). `mlsMessageType` không có ở BE
+ * hiện tại — để optional; phân biệt welcome/commit theo trường tương ứng khác rỗng. */
+export interface RemoteEpochRecord {
+  id?: string;
+  conversationId: string;
+  epoch: number;
+  commitMessage: string;
+  welcomeMessage: string;
+  ratchetTree: string | null;
+  createdAt: number;
+  createdBy: string;
+  mlsMessageType?: 'application' | 'epoch_sync' | 'welcome';
+}
+
+export const mls = {
+  /** Trạng thái KeyPackage của tôi. BE: GET /mls/keypackage/status (Bearer). */
+  keyPackageStatus: (): Promise<KeyPackageStatus> =>
+    unwrap<KeyPackageStatus>(
+      client.get('/mls/keypackage/status', { needsAuth: true } as AuthableConfig),
+    ),
+
+  /** Publish KeyPackage của thiết bị. BE: POST /mls/keypackage. */
+  publishKeyPackage: (body: {
+    deviceId: string;
+    keyPackage: string;
+    ciphersuite: string;
+  }): Promise<{ success: boolean; message: string }> =>
+    unwrap<{ success: boolean; message: string }>(
+      client.post('/mls/keypackage', body, { needsAuth: true } as AuthableConfig),
+    ),
+
+  /** KeyPackage các thành viên 1 phòng. BE: GET /mls/keypackages/room/:conversationId. */
+  roomKeyPackages: (
+    conversationId: string,
+    deviceId: string,
+  ): Promise<RemoteKeyPackage[]> =>
+    unwrap<RemoteKeyPackage[]>(
+      client.get(`/mls/keypackages/room/${encodeURIComponent(conversationId)}`, {
+        needsAuth: true,
+        params: { deviceId },
+      } as AuthableConfig),
+    ),
+
+  /** Tạo bản ghi epoch-sync (ADMIN). BE: POST /mls/epoch-sync. */
+  createEpochSync: (body: {
+    conversationId: string;
+    epoch: number;
+    commitMessage: string;
+    welcomeMessage: string;
+    ratchetTree?: string;
+  }): Promise<unknown> =>
+    unwrap<unknown>(
+      client.post('/mls/epoch-sync', body, { needsAuth: true } as AuthableConfig),
+    ),
+
+  /** Epoch hiện tại của phòng. BE: GET /mls/epoch-sync/:conversationId/current. */
+  epochCurrent: (
+    conversationId: string,
+  ): Promise<{ conversationId: string; currentEpoch: number; epoch?: number }> =>
+    unwrap<{ conversationId: string; currentEpoch: number; epoch?: number }>(
+      client.get(
+        `/mls/epoch-sync/${encodeURIComponent(conversationId)}/current`,
+        { needsAuth: true } as AuthableConfig,
+      ),
+    ),
+
+  /** Các bản ghi epoch trong khoảng [from,to]. BE: GET /mls/epoch-sync/:conversationId. */
+  epochRange: (
+    conversationId: string,
+    fromEpoch: number,
+    toEpoch: number,
+  ): Promise<RemoteEpochRecord[]> =>
+    unwrap<RemoteEpochRecord[]>(
+      client.get(`/mls/epoch-sync/${encodeURIComponent(conversationId)}`, {
+        needsAuth: true,
+        params: { fromEpoch, toEpoch },
+      } as AuthableConfig),
+    ),
+};
+
+export const proofChatApi = { auth, conversations, mls };
 export default proofChatApi;

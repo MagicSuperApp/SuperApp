@@ -1,0 +1,70 @@
+[package]
+name    = "chat_mls"
+version = "0.1.0"
+edition = "2021"
+
+# Lõi chat E2EE cho ProofChat mobile. Port 3 tầng giao thức của web (ts-mls) sang
+# Rust để interop với client web đang chạy (xem spikes/chat-mls-interop/PHA0-FINDINGS.md):
+#   Tầng 1  MLS RFC 9420 (OpenMLS fork, expose epoch_secret)  — ciphersuite P-256
+#   Tầng 2  message-layer: HKDF-SHA256(epoch_secret) -> AES-256-GCM
+#   Tầng 3  Merkle: Poseidon BN254 + Ed25519 session signature
+# Bridge sang RN (cbindgen C-ABI cho iOS + JNI shim cho Android) thêm ở pha sau,
+# theo đúng pattern taad_enclave_core.
+
+[lib]
+name = "chat_mls"
+# rlib: cho test/consumer Rust. staticlib: iOS. cdylib: Android (.so).
+crate-type = ["rlib", "staticlib", "cdylib"]
+
+[dependencies]
+# ---- Tầng 2: message-layer ----
+hkdf    = "0.12"
+sha2    = "0.10"
+aes-gcm = "0.10"
+
+# ---- Tầng 3: Merkle ----
+blake2         = "0.10"                    # blake2b-256 cho strToField
+ed25519-dalek  = "2"                       # session signature (tương thích tweetnacl web)
+light-poseidon = "0.2"                     # Poseidon BN254 — khớp circomlibjs 0.1.7
+ark-bn254      = "0.4"
+ark-ff         = "0.4"
+
+# ---- Tầng 1: MLS (OpenMLS fork đã patch expose epoch_secret) ----
+openmls                  = "0.8"
+openmls_rust_crypto      = "0.5"
+openmls_basic_credential = "0.5"
+openmls_traits           = "0.5"           # trait StorageProvider (signer.store)
+tls_codec                = "0.4"
+
+# ---- Tiện ích ----
+hex        = "0.4"
+base64     = "0.22"
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror  = "1"
+zeroize    = "1"                           # scrub epoch_secret / message key khỏi RAM
+rand       = "0.8"
+
+# Android-only: JNI shim (src/android_jni.rs) cho Kotlin ChatMlsModule.
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"
+
+[build-dependencies]
+cbindgen = "0.27"
+
+[dev-dependencies]
+# vectors.json do harness sinh (spikes/chat-mls-interop/node-harness) dùng trong test.
+
+[profile.dev]
+opt-level = 2   # arkworks (Poseidon) quá chậm ở opt-level 0
+
+[workspace]
+
+# Trỏ toàn bộ họ crate openmls về bản fork vendored (rust/vendor/openmls) đã patch
+# expose raw epoch_secret. Patch cả 4 để mọi thứ resolve từ CÙNG 1 workspace (tránh
+# mismatch kiểu giữa trait crates.io và trait của fork). Xem PHA0-FINDINGS.md.
+[patch.crates-io]
+openmls                  = { path = "../vendor/openmls/openmls" }
+openmls_rust_crypto      = { path = "../vendor/openmls/openmls_rust_crypto" }
+openmls_basic_credential = { path = "../vendor/openmls/basic_credential" }
+openmls_traits           = { path = "../vendor/openmls/traits" }

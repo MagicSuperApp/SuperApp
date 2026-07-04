@@ -10,6 +10,7 @@ class PhoenixKeyPackage : ReactPackage {
         listOf(
             PhoenixKeyModule(reactContext),
             TaadEnclaveModule(reactContext),
+            ChatMlsModule(reactContext),
         )
 
     override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> =

@@ -16,6 +16,13 @@ class HeadingCaptureManager {
     companion object {
         const val MIN_HEADING_DELTA = 25.0
         const val MIN_PITCH_DELTA = 18.0
+
+        // Stillness (Lỗi field #2): tốc-độ xoay tức-thời tối-đa (độ/frame) coi là "đứng yên",
+        // và số frame đứng-yên liên-tiếp cần có. Khớp iOS TreeReIDConfig.steady*.
+        // ⚠️ CẦN CALIBRATE máy thật: 1.5 = an-toàn (chỉ chặn lia nhanh); GIẢM dần (0.8) nếu
+        // muốn siết ảnh trùng. Đặt quá thấp → khó chụp.
+        const val STEADY_RATE_THRESHOLD = 1.5
+        const val STEADY_FRAMES_REQUIRED = 3
     }
 
     data class SensorUpdate(
@@ -30,6 +37,11 @@ class HeadingCaptureManager {
 
     private var lastCapturedHeading: Double? = null
     private var lastCapturedPitch: Double? = null
+
+    // Stillness (Lỗi field #2): mẫu frame trước + đếm frame đứng-yên liên-tiếp.
+    private var prevSampleHeading: Double? = null
+    private var prevSamplePitch: Double? = null
+    private var steadyFrames = 0
     var lastEmittedHeading: Double? = null
         private set
     var lastEmittedRoll: Double = 0.0
@@ -48,9 +60,25 @@ class HeadingCaptureManager {
         val deltaHeading = lastCapturedHeading?.let { normalizeAngle(heading - it) }
         val deltaPitch = lastCapturedPitch?.let { pitch - it }
 
-        val shouldCapture =
+        // Stillness: tốc-độ xoay tức-thời (frame-to-frame) → đếm frame đứng-yên liên-tiếp.
+        val instRate = if (prevSamplePitch != null) {
+            abs(pitch - prevSamplePitch!!) +
+                (prevSampleHeading?.let { abs(normalizeAngle(heading - it)) } ?: 0.0)
+        } else {
+            Double.MAX_VALUE
+        }
+        steadyFrames = if (instRate <= STEADY_RATE_THRESHOLD) steadyFrames + 1 else 0
+        val isSteady = steadyFrames >= STEADY_FRAMES_REQUIRED
+        prevSampleHeading = heading
+        prevSamplePitch = pitch
+
+        // Đủ GÓC?
+        val angleMet =
             (deltaHeading != null && abs(deltaHeading) >= MIN_HEADING_DELTA) ||
                 (deltaPitch != null && abs(deltaPitch) >= MIN_PITCH_DELTA)
+
+        // Đủ góc VÀ đang đứng yên → chụp; đủ góc nhưng đang lia → hoãn (chống nhoè/trùng #2).
+        val shouldCapture = angleMet && isSteady
 
         lastEmittedHeading = heading
         lastEmittedPitch = pitch
@@ -68,6 +96,9 @@ class HeadingCaptureManager {
     fun reset() {
         lastCapturedHeading = null
         lastCapturedPitch = null
+        prevSampleHeading = null
+        prevSamplePitch = null
+        steadyFrames = 0
     }
 
     /** Chuẩn hoá góc về [-180, 180]. */

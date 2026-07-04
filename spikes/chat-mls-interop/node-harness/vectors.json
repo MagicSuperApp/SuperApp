@@ -1,0 +1,40 @@
+{
+  "ciphersuite": "MLS_128_DHKEMP256_AES128GCM_SHA256_P256",
+  "generatedBy": "ts-mls@1.5.1 / circomlibjs@0.1.7 / blakejs@1.2.1 / tweetnacl@1.0.3",
+  "tier2_message": {
+    "_desc": "HKDF-SHA256(salt=empty, info=\"mls-msg:\"+id, L=32) → AES-256-GCM(iv=12B, tag=128b, no AAD). plaintext = utf8(JSON.stringify({salt,nonce,plaintext}))",
+    "input": {
+      "epochSecret_hex": "00112233445566778899aabbccddeeff102132435465768798a9bacbdcedfe0f",
+      "messageId": "b3f1c0de-0000-4000-8000-000000000001",
+      "iv_hex": "a0a1a2a3a4a5a6a7a8a9aaab",
+      "plainContentJson": "{\"salt\":\"abababababababababababababababababababababababababababababababab\",\"nonce\":\"\",\"plaintext\":\"xin chào 🌱\"}"
+    },
+    "expect": {
+      "messageKey_hex": "23986dee6f35d00ca14b388d9330e8c1731f2f862ab0cd4451cce211098eef68",
+      "ciphertext_b64": "cikq6FestzhqQpffOuQOxZ5IK2GUf93/mgYD+CNsrHGXqhxDHCKbiHQWTvjdKnRUaHYAC5U5cao7peRWo0Q2YTk4tr/HRLnGhBDFxy3TDQpmBGCtBY5iGRwKQ+WKCecnDmX2IjKGBj7g9Vf3ozimSZ1nig==",
+      "tag_b64": "eAIPf5HxeAhMwNmhbudJhQ==",
+      "body_b64": "eyJlcG9jaCI6MywibWVzc2FnZUlkIjoiYjNmMWMwZGUtMDAwMC00MDAwLTgwMDAtMDAwMDAwMDAwMDAxIiwiaXYiOiJvS0dpbzZTbHBxZW9xYXFyIiwiY2lwaGVydGV4dCI6ImNpa3E2RmVzdHpocVFwZmZPdVFPeFo1SUsyR1VmOTMvbWdZRCtDTnNySEdYcWh4REhDS2JpSFFXVHZqZEtuUlVhSFlBQzVVNWNhbzdwZVJXbzBRMllUazR0ci9IUkxuR2hCREZ4eTNURFFwbUJHQ3RCWTVpR1J3S1ErV0tDZWNuRG1YMklqS0dCajdnOVZmM296aW1TWjFuaWc9PSIsInRhZyI6ImVBSVBmNUh4ZUFoTXdObWhidWRKaFE9PSJ9"
+    }
+  },
+  "tier3_merkle": {
+    "_desc": "Poseidon BN254 (circomlibjs). ptCommit=Poseidon(strToField(plaintext), first31(salt)). leafHash=Poseidon(strToField(convId), strToField(senderId), timestamp, ptCommit). strToField=first31bytes(blake2b256(utf8)). sig=Ed25519(leafHashHex bytes).",
+    "field_modulus_dec": "21888242871839275222246405745257275088548364400416034343698204186575808495617",
+    "input": {
+      "plaintext": "xin chào 🌱",
+      "saltHex": "abababababababababababababababababababababababababababababababab",
+      "conversationId": "conv-direct-0001",
+      "senderId": "stake1uxyztestsenderaddress",
+      "timestamp": "1700000000000"
+    },
+    "expect": {
+      "contentField_dec": "238290492108434438342325334475039954280572078666640178684184662671766580639",
+      "saltField_dec": "303315674932308048673876201539301964505348764978929786316593855167787150251",
+      "ptCommit_hex": "1bb179f17c9f93deec26dd15e8284ee0708b9e02ba5d76842b0447fceadefffa",
+      "leafHash_hex": "0a9ebfe2278cef528e5423024cdaa7225a9831b193ade0346d12b8595a8c8007",
+      "ed25519_seed_hex": "1111111111111111111111111111111111111111111111111111111111111111",
+      "ed25519_pub_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "signature_hex": "b2daf749c7cfa9ce7444dabdec461690a7959bf68817bdc1b2ea44841f62a539d0a6c04c516379eed406587da6e1c923f4b6da7f6ef00390bbf6fb1b35997705",
+      "selfVerify": true
+    }
+  }
+}

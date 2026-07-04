@@ -230,7 +230,9 @@ describe('conversations.getMessages — deviceId trong query, token ở header',
     const [path, cfg] = mockGet.mock.calls[0];
     expect(path).toBe('/conversations/c1/messages');
     expect(cfg.needsAuth).toBe(true);
-    expect(cfg.params).toMatchObject({ deviceId: 'dev-uuid', take: 50 });
+    // BE messages endpoint phân trang bằng `limit`/`offset` (D:\BE conversations
+    // controller @Query('limit')). Client nhận `take` cho tiện rồi map → `limit`.
+    expect(cfg.params).toMatchObject({ deviceId: 'dev-uuid', limit: 50 });
     // Bất biến an toàn: KHÔNG có token trong path/query.
     expect(path).not.toMatch(/token/i);
   });

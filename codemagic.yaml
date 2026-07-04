@@ -56,6 +56,8 @@ workflows:
       branch_patterns:
         - pattern: main
           include: true
+        - pattern: develop
+          include: true
         - pattern: 'feat/foundation'
           include: true
         - pattern: 'feat/*'
@@ -202,6 +204,22 @@ workflows:
           fi
           if [ ! -f rust/taad_enclave_core/ios/taad_enclave_core.h ]; then
             echo "❌ taad_enclave_core.h (cbindgen) NOT generated"; exit 1
+          fi
+
+      - name: Build Rust chat_mls (iOS)
+        script: |
+          set -e
+          # ProofChat E2EE Rust core (rust/chat_mls) → libchat_mls.a + chat_mls.h (build.rs)
+          # cho pod `chat_mls`. PHẢI chạy TRƯỚC pod install. Rust/cbindgen đã cài ở step taad.
+          source "$HOME/.cargo/env"
+          rustup target add aarch64-apple-ios
+          ( cd rust/chat_mls && bash build_ios.sh device )
+          ls -lh rust/chat_mls/ios/
+          if [ ! -f rust/chat_mls/ios/libchat_mls.a ]; then
+            echo "❌ libchat_mls.a NOT built"; exit 1
+          fi
+          if [ ! -f rust/chat_mls/ios/chat_mls.h ]; then
+            echo "❌ chat_mls.h (cbindgen) NOT generated"; exit 1
           fi
 
       - name: CocoaPods install
@@ -419,6 +437,22 @@ workflows:
             echo "❌ taad_enclave_core.h (cbindgen) NOT generated"; exit 1
           fi
 
+      - name: Build Rust chat_mls (iOS)
+        script: |
+          set -e
+          # ProofChat E2EE Rust core (rust/chat_mls) → libchat_mls.a + chat_mls.h (build.rs)
+          # cho pod `chat_mls`. PHẢI chạy TRƯỚC pod install. Rust/cbindgen đã cài ở step taad.
+          source "$HOME/.cargo/env"
+          rustup target add aarch64-apple-ios
+          ( cd rust/chat_mls && bash build_ios.sh device )
+          ls -lh rust/chat_mls/ios/
+          if [ ! -f rust/chat_mls/ios/libchat_mls.a ]; then
+            echo "❌ libchat_mls.a NOT built"; exit 1
+          fi
+          if [ ! -f rust/chat_mls/ios/chat_mls.h ]; then
+            echo "❌ chat_mls.h (cbindgen) NOT generated"; exit 1
+          fi
+
       - name: CocoaPods install
         script: |
           set -e
@@ -599,6 +633,8 @@ workflows:
       branch_patterns:
         - pattern: main
           include: true
+        - pattern: develop
+          include: true
         - pattern: 'feat/foundation'
           include: true
         - pattern: 'feat/*'
@@ -688,6 +724,22 @@ workflows:
           ls -lh android/app/src/main/jniLibs/*/ 2>/dev/null
           if [ ! -f android/app/src/main/jniLibs/arm64-v8a/libtaad_enclave_core.so ]; then
             echo "❌ libtaad_enclave_core.so (arm64-v8a) NOT built"; exit 1
+          fi
+
+      - name: Build Rust chat_mls (Android)
+        script: |
+          set -e
+          # ProofChat E2EE Rust core → libchat_mls.so per-ABI vào jniLibs. TRƯỚC gradle
+          # (ChatMlsModule.kt System.loadLibrary("chat_mls")). Rust/cargo-ndk đã cài ở step taad.
+          source "$HOME/.cargo/env"
+          rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+          export ANDROID_NDK_HOME=$(ls -d "$ANDROID_SDK_ROOT"/ndk/*/ 2>/dev/null | sort | tail -1)
+          ( cd rust/chat_mls && cargo ndk \
+              -t arm64-v8a -t armeabi-v7a -t x86_64 \
+              -o ../../android/app/src/main/jniLibs \
+              build --release --lib )
+          if [ ! -f android/app/src/main/jniLibs/arm64-v8a/libchat_mls.so ]; then
+            echo "❌ libchat_mls.so (arm64-v8a) NOT built"; exit 1
           fi
 
       - name: Build debug APK
@@ -835,6 +887,22 @@ workflows:
               build --release --lib )
           if [ ! -f android/app/src/main/jniLibs/arm64-v8a/libtaad_enclave_core.so ]; then
             echo "❌ libtaad_enclave_core.so (arm64-v8a) NOT built"; exit 1
+          fi
+
+      - name: Build Rust chat_mls (Android)
+        script: |
+          set -e
+          # ProofChat E2EE Rust core → libchat_mls.so per-ABI vào jniLibs. TRƯỚC gradle
+          # (ChatMlsModule.kt System.loadLibrary("chat_mls")). Rust/cargo-ndk đã cài ở step taad.
+          source "$HOME/.cargo/env"
+          rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+          export ANDROID_NDK_HOME=$(ls -d "$ANDROID_SDK_ROOT"/ndk/*/ 2>/dev/null | sort | tail -1)
+          ( cd rust/chat_mls && cargo ndk \
+              -t arm64-v8a -t armeabi-v7a -t x86_64 \
+              -o ../../android/app/src/main/jniLibs \
+              build --release --lib )
+          if [ ! -f android/app/src/main/jniLibs/arm64-v8a/libchat_mls.so ]; then
+            echo "❌ libchat_mls.so (arm64-v8a) NOT built"; exit 1
           fi
 
       - name: Bump versionCode (base + Codemagic BUILD_NUMBER)

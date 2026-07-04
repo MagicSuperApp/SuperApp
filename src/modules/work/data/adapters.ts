@@ -1,13 +1,18 @@
 // modules/work/data/adapters.ts
 //
-// Chuyển đổi schema BACKEND AladinWork (services/types.ts, SPEC §5) ⟶ schema
-// UI hiện dùng (data/mockData.ts). Giữ nguyên UI: screen vẫn nhận kiểu Job/
-// Worker cũ, chỉ nguồn dữ liệu đổi từ mock sang API.
+// Chuyển đổi schema BACKEND AladinWork (services/types.ts, SPEC §5 v0.2.0) ⟶
+// schema UI hiện dùng (data/mockData.ts). Giữ nguyên UI: screen vẫn nhận kiểu
+// Job/Worker cũ, chỉ nguồn dữ liệu đổi từ mock sang API.
 //
 // LƯU Ý chênh lệch schema (đánh dấu để không tưởng nhầm là dữ liệu thật):
 //   - Backend KHÔNG có district/location/postedAt tách riêng, rating người
 //     đăng, applicantCount. Map default an toàn + suy ra từ trường có sẵn.
 //   - budget = priceVND (off-chain, VND). deadline suy từ deadlineDays.
+//   - DID người dùng LUÔN did:phoenix → `verified: true` (mọi account qua
+//     PhoenixKey DID). KHÔNG để did:cardano rò vào UI (did:cardano chỉ cho
+//     tài sản VeData, không cho danh tính người).
+//   - 3 token: giá/Pledge/phí ĐỊNH GIÁ bằng MAGIC nhưng GIỮ/CHUYỂN bằng CARP;
+//     số dư khả dụng để trả = walletCARP (xem toUiWallet).
 
 import type { WorkJob, WorkAccount, JobType } from '../services/types';
 import type { Job, Worker, JobCategory } from './mockData';
@@ -102,3 +107,31 @@ export const toUiCategory = (t: JobType): JobCategory => ({
   count: 0,
   color: '#3D7A5E',
 });
+
+// ── Ví 3 token (SPEC §5 v0.2.0) ──────────────────────────────────────
+// Phơi 3 ví cho UI hồ sơ / hợp đồng. Quy tắc vàng: giá/Pledge/phí ĐỊNH GIÁ bằng
+// MAGIC nhưng GIỮ/CHUYỂN bằng CARP. Số dư KHẢ DỤNG để trả (Pledge/phí) = CARP;
+// thiếu CARP → backend trả 402 NO_FUNDS. MAGIC chỉ là đơn vị kế toán (không rời
+// vault); LAMP là backing ẩn.
+export interface UiWallet {
+  /** Số dư khả dụng để trả Pledge/phí (đồng thanh toán thật). */
+  carp: number;
+  /** Đơn vị kế toán/định giá — phi-chuyển-nhượng, decay. Chỉ hiển thị định giá. */
+  magic: number;
+  /** Backing ẩn. */
+  lamp: number;
+}
+
+/** WorkAccount (backend) → 3 ví UI. Dùng cho màn hồ sơ / hợp đồng / Pledge. */
+export const toUiWallet = (a: WorkAccount): UiWallet => ({
+  carp: a.walletCARP ?? 0,
+  magic: a.walletMAGIC ?? 0,
+  lamp: a.walletLAMP ?? 0,
+});
+
+/**
+ * Nhãn tiền cho UI Pledge/phí: định giá bằng MAGIC, khóa/hoàn thật bằng CARP.
+ * `magicAmount` là số ĐỊNH GIÁ (đơn vị kế toán MAGIC) lấy từ contract/job.
+ */
+export const pledgeLabel = (magicAmount: number): string =>
+  `${magicAmount} MAGIC (định giá) · khóa/hoàn bằng CARP`;

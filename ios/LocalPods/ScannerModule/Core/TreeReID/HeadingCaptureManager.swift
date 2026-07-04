@@ -38,6 +38,17 @@ final class HeadingCaptureManager: NSObject {
     private var lastEmittedHeading: Double?
     private var lastEmittedPitch: Double?
 
+    // Chỉ true khi la-bàn đã cho hướng THẬT (didUpdateHeading). Trước đó KHÔNG tính
+    // Δheading để tránh seed hướng tạm = 0 → khi hướng thật (vd 210°) nhảy vào bị coi
+    // là "đã xoay 210°" và chụp oan ngay lúc bấm Bắt đầu (Lỗi field #1).
+    private var hasRealHeading = false
+
+    // Stillness (Lỗi field #2): mẫu frame trước để tính tốc-độ xoay tức-thời + đếm số
+    // frame đứng-yên liên-tiếp. Chỉ cho chụp khi ĐỦ GÓC và đang đứng yên (tay đã dừng).
+    private var prevSampleHeading: Double?
+    private var prevSamplePitch: Double?
+    private var steadyFrames = 0
+
     private(set) var isRunning = false
 
     // MARK: - Public API
@@ -78,6 +89,10 @@ final class HeadingCaptureManager: NSObject {
         lastCapturedPitch = nil
         lastEmittedHeading = nil
         lastEmittedPitch = nil
+        hasRealHeading = false
+        prevSampleHeading = nil
+        prevSamplePitch = nil
+        steadyFrames = 0
         print("[HeadingCaptureManager] 🔄 Reset capture state")
     }
 
@@ -104,8 +119,8 @@ final class HeadingCaptureManager: NSObject {
             let pitch = motion.attitude.pitch * 180.0 / .pi
             let roll = motion.attitude.roll * 180.0 / .pi
 
-            // Use current heading (may be nil if location not ready)
-            let heading = self.lastEmittedHeading ?? 0
+            // Chỉ truyền heading khi ĐÃ có số la-bàn thật; chưa có thì nil (không seed 0 giả).
+            let heading: Double? = self.hasRealHeading ? self.lastEmittedHeading : nil
 
             self.processSensorUpdate(heading: heading, pitch: pitch, roll: roll)
         }
@@ -122,31 +137,52 @@ final class HeadingCaptureManager: NSObject {
 
     // MARK: - Private: Sensor Processing
 
-    private func processSensorUpdate(heading: Double, pitch: Double, roll: Double) {
+    private func processSensorUpdate(heading: Double?, pitch: Double, roll: Double) {
         let timestamp = Date().timeIntervalSince1970
 
         // Calculate delta from last captured position
         var deltaHeading: Double? = nil
         var deltaPitch: Double? = nil
 
-        if let lastH = lastCapturedHeading {
-            deltaHeading = normalizeAngle(heading - lastH)
+        // Δheading chỉ tính khi CẢ mốc lẫn hướng hiện tại đều là số thật.
+        if let lastH = lastCapturedHeading, let h = heading {
+            deltaHeading = normalizeAngle(h - lastH)
         }
         if let lastP = lastCapturedPitch {
             deltaPitch = pitch - lastP
         }
 
-        // Check if should capture
+        // Stillness (Lỗi field #2): tốc-độ xoay tức-thời (frame-to-frame). Đếm số frame
+        // đứng-yên liên-tiếp — chỉ cho chụp khi tay đã DỪNG (ảnh nét, không trùng).
+        var instRate = Double.greatestFiniteMagnitude
+        if let pPitch = prevSamplePitch {
+            var rate = abs(pitch - pPitch)
+            if let h = heading, let pHeading = prevSampleHeading {
+                rate += abs(normalizeAngle(h - pHeading))
+            }
+            instRate = rate
+        }
+        if instRate <= TreeReIDConfig.steadyRateThreshold {
+            steadyFrames += 1
+        } else {
+            steadyFrames = 0
+        }
+        let isSteady = steadyFrames >= TreeReIDConfig.steadyFramesRequired
+        prevSamplePitch = pitch
+        if let h = heading { prevSampleHeading = h }
+
+        // Check if should capture (phải đủ GÓC và đang ĐỨNG YÊN)
         let shouldCapture = checkCaptureTrigger(
             deltaHeading: deltaHeading,
             deltaPitch: deltaPitch,
             currentHeading: heading,
-            currentPitch: pitch
+            currentPitch: pitch,
+            isSteady: isSteady
         )
 
-        // Emit update
+        // Emit update (heading hiển thị: dùng số thật gần nhất nếu chưa có)
         let update = SensorUpdate(
-            heading: heading,
+            heading: heading ?? lastEmittedHeading ?? 0,
             pitch: pitch,
             roll: roll,
             deltaHeading: deltaHeading,
@@ -157,14 +193,13 @@ final class HeadingCaptureManager: NSObject {
 
         onSensorUpdate?(update)
 
-        // Update last emitted values
-        lastEmittedHeading = heading
+        // lastEmittedHeading do didUpdateHeading (la-bàn thật) sở hữu — KHÔNG ghi đè ở đây.
         lastEmittedPitch = pitch
 
         // If should capture, trigger and update last captured
         if shouldCapture {
             ScannerRemoteLog.breadcrumb(phase: "heading_capture_triggered", detail: [
-                "heading": heading,
+                "heading": heading as Any,
                 "pitch": pitch,
                 "deltaHeading": deltaHeading as Any,
                 "deltaPitch": deltaPitch as Any
@@ -176,39 +211,44 @@ final class HeadingCaptureManager: NSObject {
     private func checkCaptureTrigger(
         deltaHeading: Double?,
         deltaPitch: Double?,
-        currentHeading: Double,
-        currentPitch: Double
+        currentHeading: Double?,
+        currentPitch: Double,
+        isSteady: Bool
     ) -> Bool {
-        // Initialize on first valid reading (from both sensors)
-        if lastCapturedHeading == nil {
-            lastCapturedHeading = currentHeading
+        // Chỉ seed mốc heading khi CÓ hướng la-bàn thật (đừng seed 0 giả → tránh chụp oan).
+        if lastCapturedHeading == nil, let h = currentHeading {
+            lastCapturedHeading = h
         }
         if lastCapturedPitch == nil {
             lastCapturedPitch = currentPitch
         }
 
-        // Check heading delta (|Δheading| >= 25°)
-        if let deltaH = deltaHeading, abs(deltaH) >= TreeReIDConfig.minHeadingDelta {
-            return true
+        // Đủ GÓC? (|Δheading| >= 25° HOẶC |Δpitch| >= 18°)
+        let angleMet =
+            (deltaHeading.map { abs($0) >= TreeReIDConfig.minHeadingDelta } ?? false) ||
+            (deltaPitch.map { abs($0) >= TreeReIDConfig.minPitchDelta } ?? false)
+
+        // Đủ góc nhưng đang lia máy → HOÃN chụp tới khi đứng yên (chống ảnh nhoè/trùng #2).
+        if angleMet && !isSteady {
+            ScannerRemoteLog.breadcrumb(phase: "capture_deferred_moving", detail: [
+                "steadyFrames": steadyFrames
+            ])
+            return false
         }
 
-        // Check pitch delta (|Δpitch| >= 18°)
-        if let deltaP = deltaPitch, abs(deltaP) >= TreeReIDConfig.minPitchDelta {
-            return true
-        }
-
-        return false
+        return angleMet && isSteady
     }
 
-    private func triggerCapture(heading: Double, pitch: Double) {
-        print("[HeadingCaptureManager] 📸 Capture triggered — heading: \(Int(heading))°, pitch: \(Int(pitch))°")
+    private func triggerCapture(heading: Double?, pitch: Double) {
+        let headingForCb = heading ?? lastEmittedHeading ?? 0
+        print("[HeadingCaptureManager] 📸 Capture triggered — heading: \(Int(headingForCb))°, pitch: \(Int(pitch))°")
 
-        // Update last captured position
-        lastCapturedHeading = heading
+        // Cập nhật mốc: heading chỉ cập nhật khi là số thật (giữ nil nếu chưa có la-bàn).
+        if let h = heading { lastCapturedHeading = h }
         lastCapturedPitch = pitch
 
         // Notify via callback
-        onCaptureTriggered?(heading, pitch)
+        onCaptureTriggered?(headingForCb, pitch)
     }
 
     /// Normalize angle to range [-180, 180]
@@ -228,8 +268,17 @@ final class HeadingCaptureManager: NSObject {
 extension HeadingCaptureManager: CLLocationManagerDelegate {
 
     func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
+        // Bỏ reading không đáng tin (accuracy < 0) — KHÔNG coi là có hướng thật.
+        guard newHeading.headingAccuracy >= 0 else {
+            print("[HeadingCaptureManager] ⚠️ Heading accuracy negative: \(newHeading.headingAccuracy)")
+            return
+        }
+
         // Prefer true heading, fall back to magnetic
         let heading = newHeading.trueHeading >= 0 ? newHeading.trueHeading : newHeading.magneticHeading
+
+        // Từ đây đã có hướng la-bàn THẬT → cho phép tính Δheading (Lỗi field #1).
+        hasRealHeading = true
 
         // Only emit if we have a significant change or first reading
         let shouldEmit = lastEmittedHeading == nil || abs(heading - (lastEmittedHeading ?? 0)) >= 1.0
@@ -245,10 +294,6 @@ extension HeadingCaptureManager: CLLocationManagerDelegate {
                 let roll: Double = 0
                 processSensorUpdate(heading: heading, pitch: pitch, roll: roll)
             }
-        }
-
-        if newHeading.headingAccuracy < 0 {
-            print("[HeadingCaptureManager] ⚠️ Heading accuracy negative: \(newHeading.headingAccuracy)")
         }
     }
 

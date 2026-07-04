@@ -4,8 +4,8 @@
 // AladinWork tự cấp session HMAC (TTL 12h), KHÔNG có refresh-token → hết hạn
 // thì đăng nhập lại (challenge → ký → verify).
 //
-// PHẦN KÝ secp256k1 (challenge → signature) là việc của Thư / lớp native
-// PhoenixKey. Ở đây chỉ:
+// PHẦN KÝ P-256 (secp256r1) (challenge → signature) là việc của Thư / lớp native
+// PhoenixKey (Secure Enclave/StrongBox — KHÔNG secp256k1). Ở đây chỉ:
 //   - gọi /auth/challenge (lấy challenge)
 //   - gọi /auth/verify (nộp signature Thư ký → nhận session)
 //   - lưu / đọc / xoá session token an toàn.

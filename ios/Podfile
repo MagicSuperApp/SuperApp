@@ -45,6 +45,10 @@ target 'aladin_mobile_fe' do
   # rust/taad_enclave_core/build_ios.sh TRƯỚC pod install (xem codemagic.yaml).
   pod 'taad_enclave_core', :path => '../rust/taad_enclave_core/ios'
 
+  # ProofChat E2EE Rust core (chat_mls). .a + header sinh trên CI bởi
+  # rust/chat_mls/build_ios.sh TRƯỚC pod install (xem codemagic.yaml).
+  pod 'chat_mls', :path => '../rust/chat_mls/ios'
+
   # Local ScannerModule — full native iOS scanner SDK
   pod 'ScannerModule', :path => './LocalPods/ScannerModule'
 

@@ -136,6 +136,15 @@ final class TaadEnclaveModule: NSObject {
         resolvePtr(out, resolve, reject, "E_AES_DEC", "Giải mã AES-GCM thất bại (sai khoá?)")
     }
 
+    @objc(signEd25519:message:resolver:rejecter:)
+    func signEd25519(_ masterKekHex: String,
+                     message: String,
+                     resolver resolve: @escaping RCTPromiseResolveBlock,
+                     rejecter reject: @escaping RCTPromiseRejectBlock) {
+        let out = masterKekHex.withCString { k in message.withCString { m in taad_sign_ed25519(k, m) } }
+        resolvePtr(out, resolve, reject, "E_SIGN_ED25519", "Ký Ed25519 thất bại")
+    }
+
     // MARK: - Secure storage (Keychain, WhenUnlockedThisDeviceOnly)
 
     private let secureService = "com.orilife.taad.secure"

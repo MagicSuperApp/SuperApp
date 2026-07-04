@@ -48,6 +48,11 @@ RCT_EXTERN_METHOD(aesGcmDecrypt:(NSString *)keyHex
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(signEd25519:(NSString *)masterKekHex
+                  message:(NSString *)message
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
 RCT_EXTERN_METHOD(secureStore:(NSString *)key
                   value:(NSString *)value
                   resolver:(RCTPromiseResolveBlock)resolve

@@ -611,6 +611,18 @@ const AccountScreen = () => {
                             label="Username"
                             sublabel="Đặt tên tra cứu để người khác tìm bạn"
                             onPress={() => navigation.navigate('Username')}
+                        />
+                        <MenuItem
+                            icon="account-supervisor-outline"
+                            label="Người bảo hộ"
+                            sublabel="Thêm guardian để khôi phục khi mất thiết bị"
+                            onPress={() => navigation.navigate('Guardian')}
+                        />
+                        <MenuItem
+                            icon="history"
+                            label="Nhật ký hoạt động"
+                            sublabel="Lịch sử ký, xoay khoá, khôi phục"
+                            onPress={() => navigation.navigate('ActivityLog')}
                             last
                         />
                     </Section>

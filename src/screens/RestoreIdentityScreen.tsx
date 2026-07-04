@@ -21,12 +21,22 @@ import { COLORS } from '../constants';
 import { showWarning, showSuccess } from '../utils/alert';
 import taadEnclave from '../sdk/taadEnclave';
 import { restoreMasterKekFromMnemonic } from '../services/masterKekStore';
+import { phoenixKeyApi } from '../services/phoenixKey-api';
+import { enrollKeypair, ownerPublicKey, saveUserDid } from '../sdk/phoenixKey';
+
+const DID_RE = /^did:phoenix:[a-z2-7]{13}:[0-9a-f]{64}$/;
+const genNonce = (): string => {
+  let s = '';
+  for (let i = 0; i < 32; i++) s += ((Math.random() * 16) | 0).toString(16);
+  return s;
+};
 
 const RestoreIdentityScreen = () => {
   const insets = useSafeAreaInsets();
   const navigation: any = useNavigation();
 
   const [phrase, setPhrase] = useState('');
+  const [did, setDid] = useState('');
   const [loading, setLoading] = useState(false);
 
   // Đếm số từ realtime để hướng dẫn người dùng (cần đúng 24).
@@ -56,8 +66,42 @@ const RestoreIdentityScreen = () => {
       if (!kek || kek.length !== 64) {
         throw new Error('Master_KEK trả về không hợp lệ');
       }
-      // TODO(Part 3): derive TAAD_Key + địa chỉ Cardano từ kek, register gắn
-      // taad_public_key_hex + walletAddress (giữ HW_Key P-256 làm DID owner).
+
+      // Gắn thiết bị này vào DID (nếu người dùng nhập DID) — hoàn tất recover-device
+      // (Mode B): TAAD_Key khôi phục ký challenge (Ed25519) → POST /identity/recover-device.
+      const cleanDid = did.trim();
+      if (cleanDid) {
+        if (!DID_RE.test(cleanDid)) {
+          throw new Error('DID chưa đúng định dạng did:phoenix.');
+        }
+        const taadPub = await taadEnclave.deriveTaadPubkey(kek);
+        let newHwPub: string;
+        try {
+          newHwPub = (await enrollKeypair()).publicKeyHex;
+        } catch {
+          // Thiết bị đã có khoá HW → dùng lại khoá hiện có.
+          newHwPub = await ownerPublicKey();
+        }
+        const nonce = genNonce();
+        const challenge = `PHOENIXKEY_RECOVER:${cleanDid}:${newHwPub}:${nonce}`;
+        const signature = await taadEnclave.signEd25519(kek, challenge);
+        if (!signature) throw new Error('Ký bằng TAAD_Key thất bại');
+        await phoenixKeyApi.identity.recoverDevice({
+          userDid: cleanDid,
+          newHwPublicKeyHex: newHwPub,
+          taadPublicKeyHex: taadPub,
+          signature,
+          nonce,
+        });
+        await saveUserDid(cleanDid);
+        showSuccess(
+          'Đã khôi phục & gắn thiết bị',
+          'Cụm từ hợp lệ và thiết bị này đã được gắn vào danh tính của bạn.',
+          { onConfirm: () => navigation.navigate('Main') },
+        );
+        return;
+      }
+
       showSuccess(
         'Đã khôi phục ví',
         'Cụm từ hợp lệ — gốc-tin-cậy ví (Master_KEK) đã được lưu an toàn trên máy này.',
@@ -121,6 +165,21 @@ const RestoreIdentityScreen = () => {
           </Text>
         </View>
 
+        {/* DID (tuỳ chọn) — điền để GẮN thiết bị này vào danh tính (recover-device). */}
+        <Text style={styles.didLabel}>Gắn vào DID (tuỳ chọn)</Text>
+        <View style={styles.didWrap}>
+          <TextInput
+            style={styles.didInput}
+            value={did}
+            onChangeText={setDid}
+            placeholder="did:phoenix:…  (để trống nếu chỉ khôi phục ví)"
+            placeholderTextColor={COLORS.textMuted}
+            autoCapitalize="none"
+            autoCorrect={false}
+            spellCheck={false}
+          />
+        </View>
+
         <TouchableOpacity
           style={[styles.primaryBtn, (!countOk || loading) && { opacity: 0.5 }]}
           onPress={handleRestore}
@@ -180,6 +239,13 @@ const styles = StyleSheet.create({
     marginTop: 10, marginBottom: 18, paddingHorizontal: 4,
   },
   countText: { fontSize: 13, color: COLORS.textMuted, fontWeight: '600' },
+
+  didLabel: { fontSize: 12, fontWeight: '700', color: COLORS.textMuted, marginBottom: 8 },
+  didWrap: {
+    backgroundColor: COLORS.inputBg, borderRadius: 12,
+    borderWidth: 1.5, borderColor: COLORS.border, marginBottom: 18,
+  },
+  didInput: { fontSize: 14, color: COLORS.text, paddingHorizontal: 12, paddingVertical: 12 },
 
   primaryBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,

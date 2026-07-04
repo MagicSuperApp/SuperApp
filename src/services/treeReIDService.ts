@@ -114,8 +114,46 @@ export interface APIError {
   retry_after_seconds?: number;
   /** Mã lỗi máy chủ trả về (vd: 'duplicate_tree' | 'heterogeneous' | 'flat'). Ưu tiên dùng trường này thay vì phân tích chuỗi detail. */
   error_code?: string;
+  /** Câu gợi ý hành-động từ backend (vd "hãy đi vòng quanh cây, chụp góc khác"). */
+  reason?: string;
   /** tree_id của cây trùng — backend trả khi 409 duplicate_tree */
   existing_tree_id?: string;
+}
+
+/**
+ * Đổi lỗi API (field-reid) thành câu tiếng Việt DỄ HIỂU cho nông dân — hiện thay vì
+ * "lỗi" chung chung (Lỗi field #3). Ưu tiên `reason` (server đã trả câu gợi ý), rồi map
+ * theo `error_code`, cuối cùng fallback `detail`.
+ */
+export function fieldErrorMessage(err?: APIError): string {
+  if (!err) return 'Có lỗi xảy ra. Bạn thử lại nhé.';
+  if (err.reason && err.reason.trim()) return err.reason;
+
+  switch (err.error_code) {
+    case 'flat':
+      return 'Các góc chụp gần như giống nhau. Hãy ĐI VÒNG QUANH cây thật và chụp các góc khác nhau (đừng đứng yên một chỗ).';
+    case 'heterogeneous':
+      return 'Ảnh lẫn nhiều vật khác nhau — hãy chụp tập trung vào MỘT cây, cùng một thân.';
+    case 'need_gps':
+      return 'Cần bật định vị (GPS) để tạo/nhận diện cây. Hãy bật Vị trí rồi thử lại.';
+    case 'duplicate_tree':
+      return 'Cây này có thể đã được tạo trước đó.';
+    default:
+      break;
+  }
+
+  switch (err.type) {
+    case 'network_error':
+      return 'Mất kết nối mạng. Kiểm tra sóng/Wi-Fi rồi thử lại.';
+    case 'auth_error':
+      return 'Phiên đăng nhập hết hạn. Hãy đăng nhập lại.';
+    case 'rate_limited':
+      return 'Thao tác quá nhanh. Chờ một chút rồi thử lại.';
+    case 'server_error':
+      return 'Máy chủ đang bận. Thử lại sau ít phút.';
+    default:
+      return err.detail || 'Có lỗi xảy ra. Bạn thử lại nhé.';
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -206,8 +244,19 @@ async function _apiCall<T>(
 
     if (resp.status === 400 || resp.status === 422) {
       let detail = 'Dữ liệu không hợp lệ';
-      try { detail = (await resp.json()).detail ?? detail; } catch { /* bỏ qua */ }
-      return { ok: false, error: { type: 'validation_error', detail, http_status: resp.status } };
+      let errorCode: string | undefined;
+      let reason: string | undefined;
+      try {
+        const body = await resp.json();
+        detail = body.detail ?? detail;
+        // Backend field-reid trả mã lỗi chất-lượng ảnh ở code/error_code + câu gợi ý ở reason.
+        errorCode = body.code ?? body.error_code ?? undefined;
+        reason = body.reason ?? undefined;
+      } catch { /* bỏ qua */ }
+      return {
+        ok: false,
+        error: { type: 'validation_error', detail, http_status: resp.status, error_code: errorCode, reason },
+      };
     }
 
     if (resp.status >= 500) {

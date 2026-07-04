@@ -284,33 +284,6 @@ export const conversations = {
     unwrap<string[]>(
       client.get('/conversations/ids', { needsAuth: true } as AuthableConfig),
     ),
-
-  /** Chi tiết 1 hội thoại. BE: GET /conversations/:id (Bearer). */
-  get: (id: string): Promise<RemoteConversation> =>
-    unwrap<RemoteConversation>(
-      client.get(`/conversations/${encodeURIComponent(id)}`, {
-        needsAuth: true,
-      } as AuthableConfig),
-    ),
-
-  /**
-   * Tin nhắn (ciphertext E2EE) của 1 hội thoại cho thiết bị hiện tại.
-   * BE: GET /conversations/:id/messages?deviceId=... (Bearer).
-   * deviceId đi trong QUERY (theo API BE) — KHÔNG phải token; token vẫn CHỈ ở
-   * header Bearer (spec §6: cấm token trong query, deviceId thì được phép).
-   * Server chỉ trả ciphertext, KHÔNG plaintext.
-   */
-  getMessages: (
-    id: string,
-    deviceId: string,
-    opts: { skip?: number; take?: number } = {},
-  ): Promise<RemoteMessage[]> =>
-    unwrap<RemoteMessage[]>(
-      client.get(`/conversations/${encodeURIComponent(id)}/messages`, {
-        needsAuth: true,
-        params: { deviceId, skip: opts.skip, take: opts.take },
-      } as AuthableConfig),
-    ),
 };
 
 export const proofChatApi = { auth, conversations };

@@ -1,0 +1,41 @@
+[package]
+name = "openmls_spike"
+version = "0.0.0"
+edition = "2021"
+
+# Milestone A — interop wire-format giữa OpenMLS (Rust) và ts-mls (TypeScript).
+# Chứng minh: KeyPackage P-256 do OpenMLS sinh ra → ts-mls (alice) add vào nhóm →
+# xuất Welcome → OpenMLS join lại thành công. Join OK = khớp wire hoàn toàn.
+#
+# Milestone B — interop KEY-SCHEDULE: fork OpenMLS (../openmls-fork) lộ raw
+# epoch_secret ra public API `MlsGroup::epoch_secret()`, so khớp byte-for-byte
+# với aliceEpochSecret_hex mà ts-mls tính cho cùng 1 nhóm.
+# KHÔNG phải code production.
+
+[[bin]]
+name = "interop_a"
+path = "src/interop_a.rs"
+
+[[bin]]
+name = "interop_b"
+path = "src/interop_b.rs"
+
+[dependencies]
+openmls = "0.8"
+openmls_rust_crypto = "0.5"
+openmls_basic_credential = "0.5"
+openmls_traits = "0.5"          # cho trait StorageProvider (signer.store)
+tls_codec = "0.4"
+
+base64 = "0.22"
+serde_json = "1"
+
+# Milestone B — trỏ toàn bộ họ crate openmls về fork cục bộ (../openmls-fork)
+# đã patch để lộ raw epoch_secret. Patch cả 4 crate để mọi thứ resolve từ CÙNG
+# 1 workspace (nếu chỉ patch mỗi `openmls`, các sibling như openmls_traits sẽ đến
+# từ crates.io và gây mismatch kiểu giữa 2 phiên bản trait khác nhau).
+[patch.crates-io]
+openmls = { path = "../openmls-fork/openmls" }
+openmls_rust_crypto = { path = "../openmls-fork/openmls_rust_crypto" }
+openmls_basic_credential = { path = "../openmls-fork/basic_credential" }
+openmls_traits = { path = "../openmls-fork/traits" }

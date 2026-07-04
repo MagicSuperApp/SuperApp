@@ -18,6 +18,24 @@ enum TreeReIDConfig {
     /// Heading filter threshold for CLLocationManager (degrees)
     static let headingFilterDegrees: Double = 1.0
 
+    // MARK: - Stillness (chống chụp khi đang lia/di chuyển → ảnh nhoè/trùng — Lỗi field #2)
+
+    /// Tốc-độ xoay tức-thời tối-đa (độ/frame @50Hz) để coi là "đứng yên". Trên ngưỡng =
+    /// đang lia máy → CHƯA chụp (chờ tay dừng).
+    /// ⚠️ CẦN CALIBRATE TRÊN MÁY THẬT: xem log breadcrumb `capture_deferred_moving` +
+    /// `heading_capture_triggered` (steadyFrames). Máy đứng yên nhiễu ~<0.5°/frame; lia
+    /// chậm ~0.6°/frame; lia nhanh >1.5. Default 1.5 = an-toàn (không chặn máy đang giữ,
+    /// chỉ chặn lia nhanh). Muốn siết ảnh trùng thì GIẢM dần (vd 0.8) tới khi vừa.
+    static let steadyRateThreshold: Double = 1.5
+
+    /// Số frame ổn-định LIÊN TIẾP cần có trước khi cho phép chụp (≈ steadyFramesRequired/50Hz giây).
+    static let steadyFramesRequired: Int = 3
+
+    // MARK: - Blur (kiểm độ-nét ảnh — loại ảnh mờ)
+
+    /// Ngưỡng Laplacian variance; DƯỚI ngưỡng = ảnh mờ (khớp main ScannerConfig.blurVarianceThreshold).
+    static let blurVarianceThreshold: Double = 100.0
+
     // MARK: - Image Processing
 
     /// Maximum image dimension (pixels) - resize if larger

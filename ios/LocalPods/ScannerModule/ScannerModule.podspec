@@ -33,5 +33,9 @@ Pod::Spec.new do |s|
   # PhoenixKey Rust core (Master_KEK / BIP39) — TaadEnclaveModule.swift imports it.
   s.dependency 'taad_enclave_core'
 
+  # ProofChat E2EE Rust core — ChatMlsModule.swift (Core/Enclave) imports `chat_mls`.
+  # THIẾU dep này → "no such module 'chat_mls'" khi build archive (như taad ở trên).
+  s.dependency 'chat_mls'
+
   s.dependency 'React-Core'
 end

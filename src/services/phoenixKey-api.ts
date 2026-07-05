@@ -28,7 +28,8 @@ export interface RegisterRequest {
   // genesis signature — KHÔNG đổi → did_auth không bị ảnh hưởng.
   taadPublicKeyHex?: string; // TAAD_Key Ed25519 derive từ Master_KEK
   walletAddress?: string;    // địa chỉ Cardano account-0 (cố định) derive từ KEK
-  entityType?: 'person' | 'org';
+  // Backend DidType enum CHỮ HOA: PERSON/ORG/... (gửi 'person' → 400 malformed).
+  entityType?: 'PERSON' | 'ORG';
 }
 
 export interface RegisterResponse {

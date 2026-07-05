@@ -55,7 +55,7 @@ const WALLET_NETWORK = 0;
 const deriveWalletRegisterFields = async (): Promise<{
   taadPublicKeyHex?: string;
   walletAddress?: string;
-  entityType?: 'person';
+  entityType?: 'PERSON';
 }> => {
   if (!taad.isAvailable()) return {};
   try {
@@ -63,7 +63,9 @@ const deriveWalletRegisterFields = async (): Promise<{
     const taadPublicKeyHex = await taad.deriveTaadPubkey(kek);
     const walletAddress = await taad.deriveWalletAddress(kek, 0, WALLET_NETWORK);
     if (!taadPublicKeyHex || !walletAddress) return {};
-    return { taadPublicKeyHex, walletAddress, entityType: 'person' };
+    // Backend DidType enum là CHỮ HOA (PERSON/ORG/...). Gửi 'person' → 400 malformed
+    // (Cannot deserialize entity_type). PHẢI 'PERSON'.
+    return { taadPublicKeyHex, walletAddress, entityType: 'PERSON' };
   } catch (e) {
     console.warn('[PhoenixKey] derive ví từ KEK lỗi (bỏ qua, register chỉ HW_Key):', e);
     return {};

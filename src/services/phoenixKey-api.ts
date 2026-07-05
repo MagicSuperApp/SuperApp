@@ -269,6 +269,27 @@ export const identity = {
     unwrap<{ userDid: string; username: string }>(
       client.get(`/identity/by-username/${encodeURIComponent(username)}`),
     ),
+
+  /**
+   * Khôi-phục mất-máy (Mode B): gắn HW_Key MỚI (thiết bị này) vào DID đã có, sau khi
+   * user khôi phục Master_KEK từ 24 từ. `signature` = Ed25519 của TAAD_Key khôi phục
+   * ký lên challenge (bind userDid+newHwPublicKeyHex+nonce). Backend verify với
+   * controller pubkey on-chain (không đổi khi restore) rồi chèn HW_Key mới.
+   * BE: POST /identity/recover-device (body snake_case — interceptor tự đổi).
+   */
+  recoverDevice: (body: {
+    userDid: string;
+    newHwPublicKeyHex: string;
+    taadPublicKeyHex: string;
+    signature: string;
+    nonce: string;
+  }) =>
+    unwrap<{ userDid: string; txHash?: string }>(
+      client.post('/identity/recover-device', {
+        ...body,
+        keyOrigin: 'SECURE_ENCLAVE',
+      }),
+    ),
 };
 
 export const session = {
@@ -351,6 +372,77 @@ export const keys = {
    */
   rotate: (body: KeyRotateRequest) =>
     unwrap<KeyRotationResponse>(client.post('/keys/rotate', body)),
+
+  /**
+   * Khoá/vô-hiệu-hoá 1 khoá của DID (mất trộm/nghi lộ). Backend đã có (anh xác nhận).
+   * ⚠️ Shape body CHƯA đối-chiếu client Dart — chờ anh chốt (userDid/keyId/publicKeyHex
+   * + nonce + chữ ký khoá owner). Giữ generic để không chặn UI; sửa khi có contract.
+   */
+  revoke: (body: {
+    userDid: string;
+    targetPublicKeyHex: string;
+    nonce: string;
+    ownerSignature: string;
+  }) =>
+    unwrap<{ txHash: string }>(client.post('/keys/revoke', body)),
+};
+
+// ── Activation (mua gói → LAMP + ADA vào ví; app KHÔNG tự mint) ───────
+// Contract khớp client Dart tham chiếu (Enclave/lib/bridge/phoenix_api.dart).
+export const activation = {
+  /** Chi tiết + trạng thái 1 lượt activation. BE: GET /activation/:id/status (Bearer). */
+  getStatus: (activationId: string) =>
+    unwrap<Record<string, unknown>>(
+      client.get(`/activation/${encodeURIComponent(activationId)}/status`, {
+        needsAuth: true,
+      } as AxiosRequestConfig),
+    ),
+
+  /** Nộp tx đã ký (CBOR hex) cho lượt activation. BE: POST /activation/:id/submit-tx. */
+  submitTx: (activationId: string, signedTxCbor: string) =>
+    unwrap<{ cardanoTxHash: string }>(
+      client.post(
+        `/activation/${encodeURIComponent(activationId)}/submit-tx`,
+        { signedTxCbor },
+        { needsAuth: true } as AxiosRequestConfig,
+      ),
+    ),
+};
+
+// ── Guardian (khôi-phục xã-hội) ──────────────────────────────────────
+export const guardians = {
+  /** Thêm guardian. BE: POST /user/guardian (Bearer) — khớp client Dart. */
+  add: (body: { guardianDid: string; guardianName: string }) =>
+    unwrap<void>(
+      client.post('/user/guardian', body, { needsAuth: true } as AxiosRequestConfig),
+    ),
+
+  /**
+   * Bớt guardian. ⚠️ Route CHƯA có trong client Dart tham chiếu — suy-luận RESTful
+   * DELETE /user/guardian/:did; chờ anh xác nhận trước khi dùng thật.
+   */
+  remove: (guardianDid: string) =>
+    unwrap<void>(
+      client.delete(`/user/guardian/${encodeURIComponent(guardianDid)}`, {
+        needsAuth: true,
+      } as AxiosRequestConfig),
+    ),
+};
+
+// ── Nhật-ký hoạt-động (ký/xoay khoá/export) ──────────────────────────
+export const activityLogs = {
+  /**
+   * Lịch-sử hoạt-động của tài-khoản. Backend đã có (anh xác nhận).
+   * ⚠️ Shape query/response CHƯA đối-chiếu — giả-định GET /activity-logs (Bearer)
+   * trả mảng; chờ anh chốt phân-trang + field.
+   */
+  list: (params?: { skip?: number; take?: number }) =>
+    unwrap<Array<Record<string, unknown>>>(
+      client.get('/activity-logs', {
+        needsAuth: true,
+        params,
+      } as AxiosRequestConfig),
+    ),
 };
 
 export const phoenixKeyApi = {
@@ -361,6 +453,9 @@ export const phoenixKeyApi = {
   seed,
   wallet,
   keys,
+  activation,
+  guardians,
+  activityLogs,
   setSessionToken,
   clearSessionToken,
   getSessionToken,

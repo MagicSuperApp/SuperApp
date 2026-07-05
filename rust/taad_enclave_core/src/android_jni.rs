@@ -104,6 +104,20 @@ pub extern "system" fn Java_com_aladincontract_company_TaadEnclaveModule_nativeD
     ret(&env, crate::mobile_kek::derive_taad_pubkey(kek))
 }
 
+// Ký Ed25519 bằng TAAD_Key (từ Master_KEK) — cho recover-device (ký challenge).
+// iOS đã có C-ABI taad_sign_ed25519; đây là mắt xích JNI còn thiếu cho Android.
+#[no_mangle]
+pub extern "system" fn Java_com_aladincontract_company_TaadEnclaveModule_nativeSignEd25519<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    master_kek_hex: JString<'local>,
+    message: JString<'local>,
+) -> jstring {
+    let kek = match jstr(&mut env, &master_kek_hex) { Some(s) => s, None => return null_jstring() };
+    let msg = match jstr(&mut env, &message) { Some(s) => s, None => return null_jstring() };
+    ret(&env, crate::sign::sign_ed25519(kek, msg))
+}
+
 #[no_mangle]
 pub extern "system" fn Java_com_aladincontract_company_TaadEnclaveModule_nativeDeriveWalletSeed<'local>(
     mut env: JNIEnv<'local>,

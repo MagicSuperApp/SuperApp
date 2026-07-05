@@ -42,6 +42,7 @@ class TaadEnclaveModule(reactContext: ReactApplicationContext) :
     private external fun nativePbkdf2Derive(pin: String, saltHex: String): String?
     private external fun nativeAesGcmEncrypt(keyHex: String, plaintextHex: String): String?
     private external fun nativeAesGcmDecrypt(keyHex: String, encryptedJson: String): String?
+    private external fun nativeSignEd25519(masterKekHex: String, message: String): String?
 
     // ── RN methods ──────────────────────────────────────────────────────────
 
@@ -133,6 +134,12 @@ class TaadEnclaveModule(reactContext: ReactApplicationContext) :
     fun aesGcmDecrypt(keyHex: String, encryptedJson: String, promise: Promise) =
         run(promise, "E_AES_DEC", "Giải mã AES-GCM thất bại (sai khoá?)") {
             nativeAesGcmDecrypt(keyHex, encryptedJson)
+        }
+
+    @ReactMethod
+    fun signEd25519(masterKekHex: String, message: String, promise: Promise) =
+        run(promise, "E_SIGN_ED25519", "Ký Ed25519 thất bại") {
+            nativeSignEd25519(masterKekHex, message)
         }
 
     // ── Secure storage (Keystore AES-GCM + SharedPreferences) ────────────────

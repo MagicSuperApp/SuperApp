@@ -39,7 +39,7 @@ const imagePicker = (() => {
   try { return require('react-native-image-picker'); } catch { return null; }
 })();
 
-import { ORILIFE_API_BASE_URL } from '@env';
+import { ORILIFE_BASE } from '../services/orilifeBase';
 import { NEUTRAL } from '../shared/theme';
 import { COLORS } from '../constants';
 import ResultBadge from '../components/reid/ResultBadge';
@@ -54,7 +54,7 @@ import {
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
-const BASE_URL: string = ORILIFE_API_BASE_URL ?? 'https://test.orilife.io';
+const BASE_URL: string = ORILIFE_BASE;
 
 // Nhãn tiếng Việt theo loài
 const SPECIES_LABELS: Record<string, string> = {

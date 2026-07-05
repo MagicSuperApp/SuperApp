@@ -10,7 +10,7 @@
   "route": "WorkHome",
   "icon": { "name": "briefcase", "colorToken": "brand.work.primary" },
   "navSlot": "tab",
-  "routes": ["WorkHome", "JobDetail", "PostJob", "WorkerProfile"],
+  "routes": ["WorkHome", "JobDetail", "PostJob", "WorkerProfile", "Contracts", "ContractDetail", "WorkMatch", "WorkAvailability"],
 
   "capabilities": {
     "data": ["read:profile", "read:work.job", "write:work.job"],

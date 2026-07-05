@@ -40,9 +40,9 @@ import {
 // Config
 // ---------------------------------------------------------------------------
 
-import { ORILIFE_API_BASE_URL } from '@env';
+import { ORILIFE_BASE } from '../services/orilifeBase';
 const BASE_URL: string =
-  (ORILIFE_API_BASE_URL as string | undefined) ?? 'https://test.orilife.io';
+  ORILIFE_BASE;
 
 // ---------------------------------------------------------------------------
 // Types

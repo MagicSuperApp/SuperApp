@@ -22,11 +22,11 @@ import {
 import { WebView } from 'react-native-webview';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { ORILIFE_API_BASE_URL } from '@env';
+import { ORILIFE_BASE } from '../services/orilifeBase';
 import { COLORS } from '../constants';
 
 const BASE_URL: string =
-  (ORILIFE_API_BASE_URL as string | undefined) ?? 'https://test.orilife.io';
+  ORILIFE_BASE;
 
 // Origin tin-cậy duy nhất = backend field-reid. originWhitelist=['*'] cho tải mọi domain
 // → rủi ro thực thi mã độc qua WebView bridge (Thư báo 2026-06-17).

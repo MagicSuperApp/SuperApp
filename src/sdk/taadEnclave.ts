@@ -31,6 +31,8 @@ interface TaadEnclaveNativeBridge {
   pbkdf2Derive(pin: string, saltHex: string): Promise<string>;
   aesGcmEncrypt(keyHex: string, plaintextHex: string): Promise<string>;
   aesGcmDecrypt(keyHex: string, encryptedJson: string): Promise<string>;
+  // Ký Ed25519 bằng TAAD_Key (từ Master_KEK) — recover-device, on-chain challenge.
+  signEd25519(masterKekHex: string, message: string): Promise<string>;
   // Secure storage (Keychain iOS / Keystore-AES Android)
   secureStore(key: string, value: string): Promise<boolean>;
   secureLoad(key: string): Promise<string | null>;
@@ -56,6 +58,7 @@ const moduleNotAvailable = (): TaadEnclaveNativeBridge => {
     pbkdf2Derive: () => reject('pbkdf2Derive') as never,
     aesGcmEncrypt: () => reject('aesGcmEncrypt') as never,
     aesGcmDecrypt: () => reject('aesGcmDecrypt') as never,
+    signEd25519: () => reject('signEd25519') as never,
     secureStore: () => reject('secureStore') as never,
     secureLoad: () => reject('secureLoad') as never,
     secureDelete: () => reject('secureDelete') as never,
@@ -115,6 +118,14 @@ export const aesGcmEncrypt = (keyHex: string, plaintextHex: string): Promise<str
 export const aesGcmDecrypt = (keyHex: string, encryptedJson: string): Promise<string> =>
   bridge.aesGcmDecrypt(keyHex, encryptedJson);
 
+/**
+ * Ký Ed25519 bằng TAAD_Key phái sinh từ Master_KEK. Trả chữ-ký (hex).
+ * Dùng cho recover-device (ký challenge khôi phục) + các thao-tác on-chain cần
+ * chữ-ký khoá controller. `message` là chuỗi cần ký (UTF-8), khớp hợp-đồng backend.
+ */
+export const signEd25519 = (masterKekHex: string, message: string): Promise<string> =>
+  bridge.signEd25519(masterKekHex, message);
+
 // ── Secure storage (Keychain iOS / Keystore-AES Android) ──────────────────────
 
 /** Lưu chuỗi an toàn (hardware-backed, device-bound). Ghi đè nếu key đã có. */
@@ -141,6 +152,7 @@ export default {
   pbkdf2Derive,
   aesGcmEncrypt,
   aesGcmDecrypt,
+  signEd25519,
   secureStore,
   secureLoad,
   secureDelete,

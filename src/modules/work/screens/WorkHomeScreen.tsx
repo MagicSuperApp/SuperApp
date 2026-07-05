@@ -76,6 +76,12 @@ const WorkHomeScreen: React.FC = () => {
             <Text style={styles.headerTitle}>Aladin Work</Text>
             <Text style={styles.headerSubtitle}>Tìm thợ · Đặt việc · Ký hợp đồng số</Text>
           </View>
+          <TouchableOpacity hitSlop={8} style={styles.iconBtnHeader} onPress={() => navigation.navigate('WorkAvailability')}>
+            <Icon name="calendar-check-outline" size={20} color="#fff" />
+          </TouchableOpacity>
+          <TouchableOpacity hitSlop={8} style={styles.iconBtnHeader} onPress={() => navigation.navigate('Contracts')}>
+            <Icon name="file-document-outline" size={20} color="#fff" />
+          </TouchableOpacity>
           <TouchableOpacity hitSlop={8} style={styles.iconBtnHeader}>
             <Icon name="bell-outline" size={20} color="#fff" />
             <View style={styles.bellBadge} />

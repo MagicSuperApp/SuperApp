@@ -17,6 +17,8 @@ import {
   PermissionsAndroid,
   Alert,
   BackHandler,
+  Animated,
+  PanResponder,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -46,6 +48,7 @@ import {
   initWalkAwayState,
   decidePointAccept,
   areaSquareMeters,
+  perimeterMeters,
   decideTapInsert,
   MIN_POINTS_TO_DEFINE,
   MIN_FARM_AREA_SQM,
@@ -260,6 +263,123 @@ const RecordingPulse = () => {
   );
 };
 
+// ── ADD FARM MODE (Build 55 — full-screen map redesign) ─────────────────────
+//
+//  Bản đồ chiếm TOÀN màn hình. Điều khiển nổi quanh mép, không che bản đồ:
+//    - Trên-trái : quay lại
+//    - Trên-giữa : chu vi · diện tích · số điểm (thời gian thực)
+//    - Trên-phải : đổi bản đồ thường ⇄ vệ tinh (mặc định: thường)
+//    - Phải-giữa : zoom+, zoom−, về vị trí của tôi
+//    - Dưới      : chuyển chế độ [Tự động ghi | Tự vẽ điểm], tên vườn, hành động
+//  Điểm ranh giới: kéo-thả để chỉnh; nhấn để mở popup chi tiết + nút Xoá.
+// Đỉnh ranh giới CÓ SỐ THỨ TỰ — dùng MarkerView (view thật của RN nên số luôn
+// hiển thị; khác PointAnnotation bị render ra bitmap trên Android làm mất số/điểm).
+// Kéo-thả bằng PanResponder + đổi toạ-độ-màn ⇄ GPS qua ref của MapView.
+const DraggableVertex = ({
+  Marker,
+  index,
+  coord,
+  isSelected,
+  mapRef,
+  onDragStart,
+  onDragMove,
+  onDragEnd,
+  onDragCancel,
+  onPress,
+}: {
+  Marker: any;
+  index: number;
+  coord: { lat: number; lng: number };
+  isSelected: boolean;
+  mapRef: React.MutableRefObject<any>;
+  onDragStart: () => void;
+  onDragMove: (index: number, lat: number, lng: number) => void;
+  onDragEnd: (index: number, lat: number, lng: number) => void;
+  onDragCancel: () => void;
+  onPress: (index: number) => void;
+}) => {
+  const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const baseRef = useRef<[number, number] | null>(null);
+  const convertingRef = useRef(false);
+
+  // PanResponder tạo 1 lần → dùng ref để luôn đọc index/coord/handler mới nhất.
+  const stateRef = useRef({ index, coord, onDragStart, onDragMove, onDragEnd, onDragCancel, onPress });
+  stateRef.current = { index, coord, onDragStart, onDragMove, onDragEnd, onDragCancel, onPress };
+
+  const responder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dx) > 2 || Math.abs(g.dy) > 2,
+      onPanResponderGrant: () => {
+        const s = stateRef.current;
+        s.onDragStart();
+        baseRef.current = null;
+        // Vị trí màn của đỉnh (px) tại thời điểm bắt đầu kéo.
+        mapRef.current?.getPointInView([s.coord.lng, s.coord.lat])
+          .then((p: [number, number]) => { baseRef.current = p; })
+          .catch(() => { baseRef.current = null; });
+      },
+      onPanResponderMove: (_e, g) => {
+        pan.setValue({ x: g.dx, y: g.dy }); // di chuyển view mượt theo tay
+        const base = baseRef.current;
+        if (!base || convertingRef.current || !mapRef.current) return;
+        // Chuyển vị-trí-màn hiện tại → GPS để đường bao/diện tích cập nhật theo.
+        convertingRef.current = true;
+        mapRef.current.getCoordinateFromView([base[0] + g.dx, base[1] + g.dy])
+          .then((pos: [number, number]) => {
+            const s = stateRef.current;
+            if (pos) s.onDragMove(s.index, pos[1], pos[0]);
+          })
+          .catch(() => {})
+          .finally(() => { convertingRef.current = false; });
+      },
+      onPanResponderRelease: (_e, g) => {
+        const s = stateRef.current;
+        const moved = Math.abs(g.dx) > 4 || Math.abs(g.dy) > 4;
+        const base = baseRef.current;
+        if (!moved) {
+          // Chạm (không kéo) → mở popup chi tiết điểm.
+          pan.setValue({ x: 0, y: 0 });
+          s.onDragCancel();
+          s.onPress(s.index);
+          return;
+        }
+        if (!base || !mapRef.current) {
+          pan.setValue({ x: 0, y: 0 });
+          s.onDragCancel();
+          return;
+        }
+        mapRef.current.getCoordinateFromView([base[0] + g.dx, base[1] + g.dy])
+          .then((pos: [number, number]) => {
+            if (pos) s.onDragEnd(s.index, pos[1], pos[0]);
+            else s.onDragCancel();
+          })
+          .catch(() => s.onDragCancel())
+          .finally(() => { pan.setValue({ x: 0, y: 0 }); });
+      },
+      onPanResponderTerminate: () => {
+        pan.setValue({ x: 0, y: 0 });
+        stateRef.current.onDragCancel();
+      },
+    }),
+  ).current;
+
+  return (
+    <Marker coordinate={[coord.lng, coord.lat]} allowOverlap anchor={{ x: 0.5, y: 0.5 }}>
+      <Animated.View
+        {...responder.panHandlers}
+        style={[styles.vertexTouch, { transform: pan.getTranslateTransform() }]}
+      >
+        <View style={[styles.vertexDot, isSelected && styles.vertexDotSelected]}>
+          <Text style={styles.vertexDotText}>{index + 1}</Text>
+        </View>
+      </Animated.View>
+    </Marker>
+  );
+};
+
+const DEFAULT_CENTER: [number, number] = [106.660172, 10.762622];
+
 const AddFarmMode = ({
   coordinates,
   setCoordinates,
@@ -274,85 +394,78 @@ const AddFarmMode = ({
   farmName,
   onFarmNameChange,
   onVertexDragEnd,
-  onVertexLongPress,
-  onMapTapInsert,
+  onManualTapAppend,
+  onDeleteVertex,
   onUndo,
   onResetFromScratch,
-  onResumeRecording,
 }: {
   coordinates: { lat: number; lng: number }[];
   setCoordinates: React.Dispatch<React.SetStateAction<{ lat: number; lng: number }[]>>;
-  /** Build 54 — macro state: 'recording' (active GPS polling) vs 'edit-ready' (manual edit). */
+  /** 'recording' = auto GPS polling · 'edit-ready' = walk-away đã dừng. */
   editMode: 'recording' | 'edit-ready';
   setEditMode: React.Dispatch<React.SetStateAction<'recording' | 'edit-ready'>>;
-  /** Build 54 — length of undo history; used to disable undo button. */
   editHistoryLength: number;
-  /**
-   * Auto-tracking callback: gọi mỗi khi watchPosition emit position trong khi
-   * auto-recording bật. Parent quyết định có thêm vào polygon hay không
-   * (dựa accuracy + khoảng cách từ điểm trước).
-   */
   onPointCandidate: (lat: number, lng: number, accuracy: number | null) => void;
-  /**
-   * One-shot capture ngay lập tức (khi user tap "Bắt đầu đi vòng" — capture điểm 1
-   * không cần đợi watchPosition fire).
-   */
   onCaptureNow: () => Promise<void>;
   onFinish: () => void;
   onBack: () => void;
-  /** Build 51: lý do reject point gần nhất để hiện UI feedback (toast 2.5s). */
   rejectReason?: string | null;
-  /** Build 54: user-typed farm name (parent owns state for handleAddFarm). */
   farmName: string;
   onFarmNameChange: (next: string) => void;
-  /** Build 54 — edit-mode handlers (parent owns state for undo history coordination). */
   onVertexDragEnd: (index: number, lat: number, lng: number) => void;
-  onVertexLongPress: (index: number) => void;
-  onMapTapInsert: (lat: number, lng: number) => void;
+  /** Chế độ tự vẽ: nhấn bản đồ → thêm điểm vào cuối polygon. */
+  onManualTapAppend: (lat: number, lng: number) => void;
+  /** Xoá điểm theo index (từ popup chi tiết điểm). */
+  onDeleteVertex: (index: number) => void;
   onUndo: () => void;
   onResetFromScratch: () => void;
-  onResumeRecording: () => void;
 }) => {
   const insets = useSafeAreaInsets();
+
+  // Chế độ vẽ ranh giới:
+  //   'auto'   — đi vòng quanh vườn, GPS tự ghi điểm (watchPosition).
+  //   'manual' — nhấn lên bản đồ để thêm điểm; kéo để chỉnh; nhấn điểm để xoá.
+  const [drawMode, setDrawMode] = useState<'auto' | 'manual'>('auto');
   const [isAutoRecording, setIsAutoRecording] = useState(false);
   const [lastAccuracy, setLastAccuracy] = useState<number | null>(null);
+  // Loại bản đồ: 'normal' (OSM đường phố) mặc định · 'satellite' (ảnh vệ tinh Esri).
+  const [mapType, setMapType] = useState<'normal' | 'satellite'>('normal');
+  // Popup chi tiết điểm (index) khi user nhấn vào một marker.
+  const [selectedVertex, setSelectedVertex] = useState<number | null>(null);
+  // Vị trí preview khi đang kéo 1 điểm — để đường bao/chấm di chuyển mượt theo tay.
+  const [dragPreview, setDragPreview] = useState<{ i: number; lat: number; lng: number } | null>(null);
+  // Khi đang kéo 1 đỉnh → tắt pan bản đồ để không xê dịch nền.
+  const [draggingActive, setDraggingActive] = useState(false);
+  const mapViewRef = useRef<any>(null);
 
-  // Build 54 audit fix A1: when parent moves us to 'edit-ready' (manual stop OR
-  // walk-away auto-stop), force isAutoRecording off so the in-flight
-  // watchPosition callback won't re-enter handleAutoPoint.
+  // Khi parent chuyển 'edit-ready' (walk-away auto-stop) → tắt auto-record + pulse.
   useEffect(() => {
-    if (editMode === 'edit-ready' && isAutoRecording) {
-      setIsAutoRecording(false);
-    }
+    if (editMode === 'edit-ready' && isAutoRecording) setIsAutoRecording(false);
   }, [editMode, isAutoRecording]);
-  // Build 51 (2026-05-17): rejectReason comes from parent FarmDetailScreen
-  // (where handleAutoPoint lives). Stay null khi không có reject gần đây.
+
   const lastRejectReason = rejectReason ?? null;
-  // Visual pulse: khi đang auto OR đã có điểm
-  const isRecording = isAutoRecording || coordinates.length > 0;
 
   const [mapModule, setMapModule] = useState<any | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
   const [permissionGranted, setPermissionGranted] = useState(false);
   const [currentLocation, setCurrentLocation] = useState({ lat: 0, lng: 0 });
-  const [mapReady, setMapReady] = useState(false);
   const [showMarker, setShowMarker] = useState(false);
 
-  // Ref để callback luôn dùng giá trị mới nhất (tránh stale closure trong watchPosition)
+  // Camera (zoom / recenter) — MapLibre v10 CameraRef.zoomTo / flyTo / setCamera.
+  const cameraRef = useRef<any>(null);
+  const zoomRef = useRef(17);
+  const didAutoCenterRef = useRef(false);
+
+  // Refs để watchPosition callback luôn đọc giá trị mới nhất (tránh stale closure).
   const isAutoRecordingRef = useRef(false);
   useEffect(() => { isAutoRecordingRef.current = isAutoRecording; }, [isAutoRecording]);
   const onPointCandidateRef = useRef(onPointCandidate);
   useEffect(() => { onPointCandidateRef.current = onPointCandidate; }, [onPointCandidate]);
 
-  // Xác nhận thoát: khi user nhấn nút back (header) hoặc nút back cứng Android,
-  // nếu đã có điểm GPS hoặc đã nhập tên vườn thì hỏi xác nhận để tránh mất dữ liệu.
-  // Nếu màn hình còn trống thì thoát luôn, không làm phiền.
+  // Xác nhận thoát nếu đã có điểm / tên vườn (tránh mất dữ liệu GPS).
   const confirmExit = () => {
     const hasUnsaved = coordinates.length > 0 || farmName.trim().length > 0;
-    if (!hasUnsaved) {
-      onBack();
-      return;
-    }
+    if (!hasUnsaved) { onBack(); return; }
     Alert.alert(
       'Thoát màn thêm vườn?',
       'Bạn sẽ mất các điểm GPS và thông tin đã nhập. Bạn có chắc muốn thoát?',
@@ -363,45 +476,29 @@ const AddFarmMode = ({
       { cancelable: true },
     );
   };
-  // Ref để listener back cứng luôn gọi confirmExit mới nhất (tránh stale closure),
-  // chỉ cần subscribe một lần.
   const confirmExitRef = useRef(confirmExit);
   confirmExitRef.current = confirmExit;
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       confirmExitRef.current();
-      return true; // chặn hành vi back mặc định, để alert xử lý
+      return true;
     });
     return () => sub.remove();
   }, []);
-
-  const [minimalMap, setMinimalMap] = useState(true); // Start with minimal map to debug
-  const [featuresEnabled, setFeaturesEnabled] = useState({
-    raster: true,
-    userLocation: true,
-    markers: true,
-    polygon: true,
-  });
 
   const MapLib = mapModule?.default ? mapModule.default : mapModule;
   const mapSupported = Boolean(MapLib?.MapView);
   const canRenderMap = permissionGranted && mapSupported;
 
-
+  // watchPosition — cập nhật vị trí hiện tại + gửi candidate khi đang auto-record.
   useEffect(() => {
-    // Cleanup-safe pattern: dùng cờ + check sau mỗi await để tránh race
-    // (watchId có thể assign sau khi cleanup chạy nếu async permission request chậm)
     let cancelled = false;
     let watchId: number | null = null;
 
     const startWatchingLocation = async () => {
       const hasPermission = await requestLocationPermission();
       if (cancelled) return;
-      if (!hasPermission) {
-        setPermissionGranted(false);
-        console.log('[AddFarmMode] Location permission denied');
-        return;
-      }
+      if (!hasPermission) { setPermissionGranted(false); return; }
       setPermissionGranted(true);
 
       const id = Geolocation.watchPosition(
@@ -410,62 +507,37 @@ const AddFarmMode = ({
           const { latitude, longitude, accuracy } = pos.coords;
           setCurrentLocation({ lat: latitude, lng: longitude });
           setLastAccuracy(accuracy ?? null);
-
-          // Auto-tracking: nếu user đang đi vòng → gửi candidate lên parent
-          // (parent filter theo accuracy + khoảng cách trước khi push vào polygon)
+          // Chỉ auto-tracking khi user đang "đi vòng" ở chế độ tự động.
           if (isAutoRecordingRef.current) {
             onPointCandidateRef.current(latitude, longitude, accuracy ?? null);
           }
         },
         (err) => console.log('[AddFarmMode] watchPosition error:', err),
-        {
-          enableHighAccuracy: true,
-          // Build 51 (2026-05-17) — Thư field "0 điểm" bug:
-          // Sync với native LocationHelper.swift distanceFilter=3.0 để loại bỏ
-          // mismatch race condition (JS lọc 2m, native chỉ fire 3m).
-          // Native .fitness activityType + sensor fusion đã sufficient cho density.
-          distanceFilter: 3,
-        }
+        // distanceFilter=3 đồng bộ với native LocationHelper (Build 51).
+        { enableHighAccuracy: true, distanceFilter: 3 },
       );
 
-      // Nếu cleanup đã chạy trong khi await → clearWatch ngay
-      if (cancelled) {
-        Geolocation.clearWatch(id);
-        return;
-      }
+      if (cancelled) { Geolocation.clearWatch(id); return; }
       watchId = id;
     };
 
     startWatchingLocation();
-
     return () => {
       cancelled = true;
-      if (watchId !== null) {
-        Geolocation.clearWatch(watchId);
-      }
+      if (watchId !== null) Geolocation.clearWatch(watchId);
     };
   }, []);
+
   const loadMap = async () => {
     try {
-      console.log('[FarmDetailScreen] Starting to load MapLibre module...');
       const mod = await import('@maplibre/maplibre-react-native');
-      console.log('[FarmDetailScreen] MapLibre module loaded successfully:', !!mod);
-
-      // Some versions require an access token set before mounting.
       if (mod?.setAccessToken) {
-        try {
-          console.log('[FarmDetailScreen] Setting access token...');
-          mod.setAccessToken(null);
-          console.log('[FarmDetailScreen] Access token set');
-        } catch (tokenErr: any) {
+        try { mod.setAccessToken(null); } catch (tokenErr: any) {
           console.warn('[FarmDetailScreen] Failed to set access token:', tokenErr);
         }
       }
-
-      console.log('[FarmDetailScreen] Setting map module state...');
       setMapError(null);
       setMapModule(mod);
-      console.log('[FarmDetailScreen] Map module state set successfully');
     } catch (err: any) {
       console.error('[FarmDetailScreen] Failed to load MapLibreGL:', err);
       setMapError(err?.message ?? String(err));
@@ -473,505 +545,407 @@ const AddFarmMode = ({
   };
 
   useEffect(() => {
-    console.log('[FarmDetailScreen] AddFarmMode useEffect starting...');
-
-    // Add global error handlers to catch silent crashes
-    const originalConsoleError = console.error;
-    console.error = (...args) => {
-      originalConsoleError('[GLOBAL ERROR]', ...args);
-    };
-
     loadMap();
-    requestLocationPermission().then(granted => {
-      console.log('[FarmDetailScreen] Location permission result:', granted);
-      setPermissionGranted(granted);
-    });
-
-    console.log('[FarmDetailScreen] AddFarmMode useEffect completed');
-
-    // Cleanup
-    return () => {
-      console.error = originalConsoleError;
-    };
+    requestLocationPermission().then(setPermissionGranted);
   }, []);
 
-  const region = coordinates.length > 0 ? {
-    latitude: coordinates[coordinates.length - 1].lat,
-    longitude: coordinates[coordinates.length - 1].lng,
-  } : undefined;
+  // Auto-center một lần khi có định vị GPS đầu tiên (sau đó user tự pan/zoom).
+  useEffect(() => {
+    if (didAutoCenterRef.current) return;
+    if (currentLocation.lat === 0 && currentLocation.lng === 0) return;
+    didAutoCenterRef.current = true;
+    try {
+      cameraRef.current?.setCamera({
+        centerCoordinate: [currentLocation.lng, currentLocation.lat],
+        zoomLevel: 17,
+        animationDuration: 600,
+      });
+    } catch {}
+  }, [currentLocation]);
+
+  // Đóng popup nếu điểm đang chọn đã bị xoá khỏi mảng.
+  useEffect(() => {
+    if (selectedVertex != null && selectedVertex >= coordinates.length) {
+      setSelectedVertex(null);
+    }
+  }, [coordinates.length, selectedVertex]);
+
+  const zoomBy = (d: number) => {
+    const z = Math.max(3, Math.min(20, zoomRef.current + d));
+    zoomRef.current = z;
+    try { cameraRef.current?.zoomTo(z, 200); } catch {}
+  };
+  const recenter = () => {
+    if (currentLocation.lat === 0 && currentLocation.lng === 0) return;
+    try { cameraRef.current?.flyTo([currentLocation.lng, currentLocation.lat], 500); } catch {}
+  };
+
+  // Khi đang kéo, hiển thị điểm i ở vị trí preview (chưa commit vào state gốc).
+  const renderCoords = dragPreview
+    ? coordinates.map((c, idx) => (idx === dragPreview.i ? { lat: dragPreview.lat, lng: dragPreview.lng } : c))
+    : coordinates;
+  const area = areaSquareMeters(renderCoords);
+  const perim = perimeterMeters(renderCoords);
+  const canSave = coordinates.length >= MIN_POINTS_TO_DEFINE && areaSquareMeters(coordinates) >= MIN_FARM_AREA_SQM;
+
+  const hintText = lastRejectReason
+    ? `⚠ ${lastRejectReason}`
+    : drawMode === 'manual'
+      ? (coordinates.length < MIN_POINTS_TO_DEFINE
+          ? `Nhấn lên bản đồ để thêm điểm (cần ≥ ${MIN_POINTS_TO_DEFINE} điểm)`
+          : 'Nhấn thêm điểm · kéo để chỉnh · nhấn vào điểm để xoá')
+      : isAutoRecording
+        ? `Đang ghi… đi vòng quanh vườn${lastAccuracy != null ? ` · GPS ~${Math.round(lastAccuracy)}m` : ''}`
+        : coordinates.length === 0
+          ? 'Bấm ▶ để bắt đầu đi vòng — hệ thống tự ghi điểm'
+          : `Đã ghi ${coordinates.length} điểm · bấm ▶ để đi tiếp`;
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       style={{ flex: 1 }}
     >
-    <View style={styles.root}>
-      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+      <View style={[styles.root, { justifyContent: 'flex-end' }]}>
+        <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
 
-      {/* Bản đồ nửa trên */}
-      <View style={styles.addFarmMapPane}>
-        <MapErrorBoundary>
-
-          {canRenderMap ? (
-            <>
-
+        {/* ── BẢN ĐỒ TOÀN MÀN HÌNH ── */}
+        <View style={StyleSheet.absoluteFill}>
+          <MapErrorBoundary>
+            {canRenderMap ? (
               <MapLib.MapView
+                ref={mapViewRef}
                 style={StyleSheet.absoluteFillObject}
                 logoEnabled={false}
                 attributionEnabled={false}
-                // Build 54 — tap-to-insert new vertex during edit-ready mode.
-                // decideTapInsert filters out taps near existing vertices (user
-                // probably meant to drag) and taps far from the polygon.
+                rotateEnabled={false}
+                pitchEnabled={false}
+                scrollEnabled={!draggingActive}
                 onPress={(e: any) => {
-                  if (editMode !== 'edit-ready') return;
-                  const coords = e?.geometry?.coordinates ?? e?.payload?.geometry?.coordinates;
-                  if (!coords) return;
-                  const [lng, lat] = coords;
-                  onMapTapInsert(lat, lng);
+                  if (drawMode !== 'manual') return;
+                  const c = e?.geometry?.coordinates ?? e?.payload?.geometry?.coordinates;
+                  if (!c) return;
+                  const [lng, lat] = c;
+                  setSelectedVertex(null);
+                  onManualTapAppend(lat, lng);
                 }}
-                onDidFinishLoadingMap={() => {
-                  setMapReady(true);
-                  setTimeout(() => setShowMarker(true), 500);
-                  console.log('[FarmDetailScreen] Map finished loading');
-                  // After map loads successfully, try enabling full features
-                  if (minimalMap) {
-                    console.log('[FarmDetailScreen] Switching to full map features...');
-                    setMinimalMap(false);
-                  }
-                }}
-                onDidFailLoadingMap={(_error: any) => console.error('[FarmDetailScreen] Map failed to load:', _error)}
+                onDidFinishLoadingMap={() => setShowMarker(true)}
               >
-
                 <MapLib.Camera
-                  zoomLevel={17}
-                  centerCoordinate={
-                    currentLocation
-                      ? [currentLocation.lng, currentLocation.lat]
-                      : [106.660172, 10.762622]
-                  }
+                  ref={cameraRef}
+                  defaultSettings={{ zoomLevel: 17, centerCoordinate: DEFAULT_CENTER }}
+                  minZoomLevel={3}
+                  maxZoomLevel={20}
                 />
 
-                {!minimalMap && (
-                  <>
-                    {/* Test each feature individually with error handling */}
-                    {(() => {
-                      try {
-                        console.log('[FarmDetailScreen] Testing RasterSource...');
-                        return featuresEnabled.raster ? (
-                          <MapLib.RasterSource
-                            id="osm-tiles"
-                            tileUrlTemplates={[
-                              'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                              'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                              'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                            ]}
-                            tileSize={256}
-                          >
-                            <MapLib.RasterLayer id="osm-tiles-layer" sourceID="osm-tiles" />
-                          </MapLib.RasterSource>
-                        ) : null;
-                      } catch (error) {
-                        console.error('[FarmDetailScreen] RasterSource failed:', error);
-                        setFeaturesEnabled(prev => ({ ...prev, raster: false }));
-                        return null;
-                      }
-                    })()}
-
-                    {(() => {
-                      try {
-                        console.log('[FarmDetailScreen] Testing UserLocation...');
-                        // return featuresEnabled.userLocation && permissionGranted ? (
-                        //   <MapLib.UserLocation visible={true} showsUserHeadingIndicator={true} />
-                        // ) : null;
-                      } catch (error) {
-                        console.error('[FarmDetailScreen] UserLocation failed:', error);
-                        setFeaturesEnabled(prev => ({ ...prev, userLocation: false }));
-                        return null;
-                      }
-                    })()}
-
-                    {(() => {
-                      try {
-                        console.log('[FarmDetailScreen] Testing markers...');
-                        return featuresEnabled.markers ? coordinates.map((c, i) => (
-                          <MapLib.PointAnnotation
-                            key={`marker-${i}`}
-                            id={`marker-${i}`}
-                            coordinate={[c.lng, c.lat]}
-                            // Build 54 — vertices draggable in edit-ready mode.
-                            // Long-press is wired through onSelected (MapLibre fires
-                            // it on tap; long-press is approximated by the user holding
-                            // before dragging — accepted limitation of MapLibre RN API).
-                            draggable={editMode === 'edit-ready'}
-                            onDragEnd={(e: any) => {
-                              if (editMode !== 'edit-ready') return;
-                              const coords = e?.geometry?.coordinates ?? e?.payload?.geometry?.coordinates;
-                              if (!coords) return;
-                              const [lng, lat] = coords;
-                              onVertexDragEnd(i, lat, lng);
-                            }}
-                            onSelected={() => {
-                              if (editMode === 'edit-ready') onVertexLongPress(i);
-                            }}
-                          >
-                            <View style={{
-                              width: editMode === 'edit-ready' ? 28 : 24,
-                              height: editMode === 'edit-ready' ? 28 : 24,
-                              borderRadius: 14,
-                              backgroundColor: editMode === 'edit-ready' ? '#3498DB' : COLORS.accent,
-                              borderWidth: 2,
-                              borderColor: COLORS.white,
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              shadowColor: '#000',
-                              shadowOffset: { width: 0, height: 2 },
-                              shadowOpacity: 0.3,
-                              elevation: 4,
-                            }}>
-                              <Text style={{ color: COLORS.white, fontSize: 10, fontWeight: 'bold' }}>{i + 1}</Text>
-                            </View>
-                          </MapLib.PointAnnotation>
-                        )) : null;
-                      } catch (error) {
-                        console.error('[FarmDetailScreen] Markers failed:', error);
-                        // setFeaturesEnabled(prev => ({ ...prev, markers: false }));
-                        return null;
-                      }
-                    })()}
-
-                    {(() => {
-                      try {
-                        console.log('[FarmDetailScreen] Testing polygon...');
-                        return featuresEnabled.polygon && coordinates.length >= 3 ? (
-                          <MapLib.ShapeSource
-                            id="farm-polygon-source"
-                            shape={{
-                              type: 'Feature',
-                              geometry: {
-                                type: 'Polygon',
-                                coordinates: [[...coordinates.map(c => [c.lng, c.lat]), [coordinates[0].lng, coordinates[0].lat]]]
-                              },
-                              properties: {}
-                            }}
-                          >
-                            <MapLib.FillLayer
-                              id="farm-polygon-fill"
-                              style={{ fillColor: 'rgba(46, 204, 113, 0.3)' }}
-                            />
-                            <MapLib.LineLayer
-                              id="farm-polygon-line"
-                              style={{ lineColor: COLORS.accent, lineWidth: 2 }}
-                            />
-                          </MapLib.ShapeSource>
-                        ) : null;
-                      } catch (error) {
-                        console.error('[FarmDetailScreen] Polygon failed:', error);
-                        setFeaturesEnabled(prev => ({ ...prev, polygon: false }));
-                        return null;
-                      }
-                    })()}
-                  </>
-                )}
-                <MapLib.MarkerView
-                  coordinate={[currentLocation.lng, currentLocation.lat]}
+                {/* Nền bản đồ: LUÔN mount cả hai nguồn, đổi bằng rasterOpacity.
+                    (Không unmount có điều kiện: maplibre-rn hay giữ lại layer cũ nên
+                    bấm "Vệ tinh" không ăn — vẫn thấy bản đồ thường.)
+                    Lớp vệ tinh khai báo SAU nên nằm TRÊN; opacity=1 sẽ che lớp thường.
+                    Ở mức zoom Esri thiếu tile, lớp thường bên dưới lộ ra làm nền dự phòng. */}
+                <MapLib.RasterSource
+                  id="osm-tiles"
+                  tileUrlTemplates={[
+                    'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  ]}
+                  tileSize={256}
                 >
-                  <View style={{
-                    width: 20,
-                    height: 20,
-                    borderRadius: 10,
-                    backgroundColor: 'blue',
-                    borderWidth: 3,
-                    borderColor: 'white'
-                  }} />
-                </MapLib.MarkerView>
-                {showMarker && currentLocation && (
-                  <MapLib.PointAnnotation
-                    id="user-location"
-                    coordinate={[currentLocation.lng, currentLocation.lat]}
+                  <MapLib.RasterLayer id="osm-tiles-layer" sourceID="osm-tiles" />
+                </MapLib.RasterSource>
+
+                <MapLib.RasterSource
+                  id="sat-tiles"
+                  tileUrlTemplates={['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}']}
+                  tileSize={256}
+                >
+                  <MapLib.RasterLayer
+                    id="sat-tiles-layer"
+                    sourceID="sat-tiles"
+                    style={{ rasterOpacity: mapType === 'satellite' ? 1 : 0 }}
+                  />
+                </MapLib.RasterSource>
+
+                {renderCoords.length >= 3 && (
+                  <MapLib.ShapeSource
+                    id="farm-polygon-source"
+                    shape={{
+                      type: 'Feature',
+                      properties: {},
+                      geometry: {
+                        type: 'Polygon',
+                        coordinates: [[...renderCoords.map(c => [c.lng, c.lat]), [renderCoords[0].lng, renderCoords[0].lat]]],
+                      },
+                    }}
                   >
-                    <View style={{
-                      width: 20,
-                      height: 20,
-                      borderRadius: 10,
-                      backgroundColor: '#007AFF',
-                      borderWidth: 3,
-                      borderColor: 'white'
-                    }} />
-                  </MapLib.PointAnnotation>
+                    <MapLib.FillLayer id="farm-polygon-fill" style={{ fillColor: 'rgba(46, 204, 113, 0.28)' }} />
+                    <MapLib.LineLayer id="farm-polygon-line" style={{ lineColor: COLORS.accent, lineWidth: 2.5 }} />
+                  </MapLib.ShapeSource>
+                )}
+
+                {renderCoords.length === 2 && (
+                  <MapLib.ShapeSource
+                    id="farm-line-source"
+                    shape={{
+                      type: 'Feature',
+                      properties: {},
+                      geometry: { type: 'LineString', coordinates: renderCoords.map(c => [c.lng, c.lat]) },
+                    }}
+                  >
+                    <MapLib.LineLayer id="farm-line-line" style={{ lineColor: COLORS.accent, lineWidth: 2.5 }} />
+                  </MapLib.ShapeSource>
+                )}
+
+                {/* Đỉnh có số thứ tự (MarkerView) — số luôn hiển thị + kéo-thả mượt. */}
+                {coordinates.map((c, i) => (
+                  <DraggableVertex
+                    key={`v-${i}`}
+                    Marker={MapLib.MarkerView}
+                    index={i}
+                    coord={c}
+                    isSelected={selectedVertex === i}
+                    mapRef={mapViewRef}
+                    onDragStart={() => setDraggingActive(true)}
+                    onDragMove={(idx, lat, lng) => setDragPreview({ i: idx, lat, lng })}
+                    onDragEnd={(idx, lat, lng) => {
+                      setDraggingActive(false);
+                      setDragPreview(null);
+                      onVertexDragEnd(idx, lat, lng);
+                    }}
+                    onDragCancel={() => { setDraggingActive(false); setDragPreview(null); }}
+                    onPress={(idx) => setSelectedVertex(idx)}
+                  />
+                ))}
+
+                {showMarker && (currentLocation.lat !== 0 || currentLocation.lng !== 0) && (
+                  <MapLib.MarkerView id="me-loc" coordinate={[currentLocation.lng, currentLocation.lat]}>
+                    <View style={styles.meDotOuter}><View style={styles.meDot} /></View>
+                  </MapLib.MarkerView>
                 )}
               </MapLib.MapView>
-            </>
-          ) : (
-            <View style={[styles.mapFallback, { backgroundColor: '#e8f5e9' }]}>
-              <Icon name="map-outline" size={32} color={COLORS.accentLight} />
-              <Text style={[styles.mapFallbackText, { marginTop: 8 }]}>
-                {minimalMap ? 'Đang khởi tạo bản đồ cơ bản...' : 'Bản đồ đầy đủ đã tải'}
-              </Text>
-              {!minimalMap && (
-                <View style={{ marginTop: 8 }}>
-                  <Text style={[styles.mapFallbackText, { fontSize: 12 }]}>Tính năng:</Text>
-                  <Text style={[styles.mapFallbackText, { fontSize: 12 }]}>
-                    • Bản đồ: {featuresEnabled.raster ? '✅' : '❌'}
-                  </Text>
-                  <Text style={[styles.mapFallbackText, { fontSize: 12 }]}>
-                    • Vị trí: {featuresEnabled.userLocation ? '✅' : '❌'}
-                  </Text>
-                  <Text style={[styles.mapFallbackText, { fontSize: 12 }]}>
-                    • Điểm đánh dấu: {featuresEnabled.markers ? '✅' : '❌'}
-                  </Text>
-                  <Text style={[styles.mapFallbackText, { fontSize: 12 }]}>
-                    • Đa giác: {featuresEnabled.polygon ? '✅' : '❌'}
-                  </Text>
-                </View>
-              )}
-              {mapError && (
-                <>
-                  <Text style={[styles.mapFallbackText, { marginTop: 8 }]}>Lỗi: {mapError}</Text>
+            ) : (
+              <View style={[styles.mapFallback, { backgroundColor: '#e8f5e9' }]}>
+                <Icon name="map-outline" size={32} color={COLORS.accentLight} />
+                <Text style={[styles.mapFallbackText, { marginTop: 8 }]}>
+                  {mapError
+                    ? `Lỗi bản đồ: ${mapError}`
+                    : !mapSupported
+                      ? 'Bản đồ không khả dụng trên thiết bị này.'
+                      : !permissionGranted
+                        ? 'Cần quyền vị trí để hiển thị bản đồ.'
+                        : 'Đang tải bản đồ…'}
+                </Text>
+                {mapError && (
                   <TouchableOpacity
                     style={[styles.recordBtn, { marginTop: 12, paddingVertical: 10, paddingHorizontal: 16 }]}
-                    onPress={() => {
-                      console.log('[FarmDetailScreen] Retrying map load...');
-                      loadMap();
-                    }}
+                    onPress={loadMap}
                     activeOpacity={0.8}
                   >
                     <Text style={[styles.recordBtnText, { color: COLORS.white }]}>Thử lại</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.recordBtn, { marginTop: 8, paddingVertical: 8, paddingHorizontal: 12, backgroundColor: COLORS.textMuted }]}
-                    onPress={() => {
-                      console.log('[FarmDetailScreen] Resetting features...');
-                      setFeaturesEnabled({
-                        raster: true,
-                        userLocation: true,
-                        markers: true,
-                        polygon: true,
-                      });
-                      setMinimalMap(true);
-                    }}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={[styles.recordBtnText, { color: COLORS.white }]}>
-                      Reset tính năng
-                    </Text>
-                  </TouchableOpacity>
-                </>
-              )}
-              {!mapSupported && !mapError && (
-                <Text style={[styles.mapFallbackText, { marginTop: 8 }]}>Bản đồ không khả dụng trên thiết bị này.</Text>
-              )}
-            </View>
-          )}
-        </MapErrorBoundary>
+                )}
+              </View>
+            )}
+          </MapErrorBoundary>
+        </View>
 
-        <View style={[styles.header, { position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: 'transparent', zIndex: 10 }]}>
-          <TouchableOpacity style={styles.backBtn} onPress={confirmExit}>
-            <Icon name="arrow-left" size={20} color={COLORS.textSub} />
+        {/* ── TRÊN-TRÁI: quay lại ── */}
+        <View style={[styles.floatTopLeft, { top: insets.top + 8 }]}>
+          <TouchableOpacity style={styles.circleBtn} onPress={confirmExit} activeOpacity={0.85}>
+            <Icon name="arrow-left" size={22} color={COLORS.text} />
           </TouchableOpacity>
         </View>
-      </View>
 
-      {/* Build 54 V4 — Language-independent UI:
-            All primary actions are icon + color + size + motion. Vietnamese
-            text is a small supplementary label ("Action · ActionEN") so that
-            future i18n only requires translating one short string per button.
-
-          Layout:
-            - ScrollView with safe-area-inset bottom so "Save" button is never
-              clipped on iPhone 16 Pro (Build 53 field test bug).
-            - editMode === 'recording' shows: Stop (when ready) + Play/Pause
-            - editMode === 'edit-ready' shows: Save + Drag/Undo row + Resume + Reset */}
-      <ScrollView
-        style={styles.addFarmFormPane}
-        contentContainerStyle={[
-          styles.addFarmContent,
-          { paddingTop: 16, paddingBottom: Math.max(insets.bottom, 16) + 24 },
-        ]}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-
-        {/* Status card — pulse motion when recording, blue when in edit mode */}
-        <View style={[styles.gpsStatusCard, { marginBottom: 12 }]}>
-          <View style={styles.gpsStatusLeft}>
-            {editMode === 'recording' && isRecording ? <RecordingPulse /> : (
-              <View style={[styles.pulseDot, {
-                backgroundColor: editMode === 'edit-ready' ? '#3498DB' : COLORS.textMuted,
-              }]} />
-            )}
-            <View style={{ marginLeft: 12, flex: 1, paddingRight: 8 }}>
-              <Text style={styles.gpsStatusTitle} numberOfLines={1} ellipsizeMode="tail">
-                {editMode === 'edit-ready'
-                  ? `${coordinates.length} điểm · ${formatArea(areaSquareMeters(coordinates))}`
-                  : coordinates.length === 0
-                    ? 'Chưa ghi điểm nào'
-                    : isAutoRecording
-                      ? `Đang ghi · ${coordinates.length} điểm`
-                      : `Đã ghi ${coordinates.length} điểm`}
-              </Text>
-              <Text style={styles.gpsStatusSub} allowFontScaling={true} numberOfLines={2}>
-                {lastRejectReason
-                  ? `⚠ ${lastRejectReason}`
-                  : lastAccuracy != null
-                    ? `GPS sai số ~${Math.round(lastAccuracy)}m`
-                    : 'Đang chờ GPS…'}
-              </Text>
+        {/* ── TRÊN-GIỮA: chu vi · diện tích · điểm ── */}
+        <View style={[styles.floatTopCenter, { top: insets.top + 10 }]} pointerEvents="none">
+          <View style={styles.infoPill}>
+            <View style={styles.infoItem}>
+              <Text style={styles.infoVal}>{formatDistance(perim)}</Text>
+              <Text style={styles.infoLbl}>chu vi</Text>
             </View>
-          </View>
-
-          <View style={styles.coordCountWrap}>
-            <Text style={styles.coordCountNum}>{coordinates.length}</Text>
-            <Text style={styles.coordCountLabel} allowFontScaling={false}>điểm</Text>
+            <View style={styles.infoDivider} />
+            <View style={styles.infoItem}>
+              <Text style={styles.infoVal}>{formatArea(area)}</Text>
+              <Text style={styles.infoLbl}>diện tích</Text>
+            </View>
+            <View style={styles.infoDivider} />
+            <View style={styles.infoItem}>
+              <Text style={styles.infoVal}>{coordinates.length}</Text>
+              <Text style={styles.infoLbl}>điểm</Text>
+            </View>
           </View>
         </View>
 
-        {/* Farm name input — always available (both modes) */}
-        <View style={{ marginBottom: 12 }}>
+        {/* ── TRÊN-PHẢI: đổi loại bản đồ ── */}
+        <View style={[styles.floatTopRight, { top: insets.top + 8 }]}>
+          <TouchableOpacity
+            style={styles.circleBtn}
+            onPress={() => setMapType(m => (m === 'normal' ? 'satellite' : 'normal'))}
+            activeOpacity={0.85}
+          >
+            <Icon name={mapType === 'normal' ? 'satellite-variant' : 'map-outline'} size={20} color={COLORS.text} />
+          </TouchableOpacity>
+          <Text style={styles.circleBtnLabel}>{mapType === 'normal' ? 'Vệ tinh' : 'Bản đồ'}</Text>
+        </View>
+
+        {/* ── PHẢI-GIỮA: zoom + recenter ── */}
+        <View style={styles.floatRightMid} pointerEvents="box-none">
+          <TouchableOpacity style={styles.circleBtn} onPress={() => zoomBy(1)} activeOpacity={0.85}>
+            <Icon name="plus" size={22} color={COLORS.text} />
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.circleBtn, { marginTop: 10 }]} onPress={() => zoomBy(-1)} activeOpacity={0.85}>
+            <Icon name="minus" size={22} color={COLORS.text} />
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.circleBtn, { marginTop: 10 }]} onPress={recenter} activeOpacity={0.85}>
+            <Icon name="crosshairs-gps" size={20} color={COLORS.accent} />
+          </TouchableOpacity>
+        </View>
+
+        {/* ── THẺ DƯỚI: chế độ + tên vườn + hành động ── */}
+        <View style={[styles.bottomCard, { paddingBottom: Math.max(insets.bottom, 12) + 6 }]}>
+          {/* Dòng gợi ý trạng thái */}
+          <View style={styles.hintLine}>
+            {isAutoRecording && drawMode === 'auto' ? <RecordingPulse /> : (
+              <View style={[styles.pulseDot, { backgroundColor: lastRejectReason ? '#E67E22' : COLORS.textMuted }]} />
+            )}
+            <Text style={styles.hintText} numberOfLines={2}>{hintText}</Text>
+          </View>
+
+          {/* Chuyển chế độ vẽ */}
+          <View style={styles.segment}>
+            <TouchableOpacity
+              style={[styles.segmentBtn, drawMode === 'auto' && styles.segmentBtnActive]}
+              onPress={() => setDrawMode('auto')}
+              activeOpacity={0.85}
+            >
+              <Icon name="walk" size={17} color={drawMode === 'auto' ? COLORS.white : COLORS.textSub} />
+              <Text style={[styles.segmentText, drawMode === 'auto' && styles.segmentTextActive]}>Tự động ghi</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.segmentBtn, drawMode === 'manual' && styles.segmentBtnActive]}
+              onPress={() => { setIsAutoRecording(false); setDrawMode('manual'); }}
+              activeOpacity={0.85}
+            >
+              <Icon name="gesture-tap" size={17} color={drawMode === 'manual' ? COLORS.white : COLORS.textSub} />
+              <Text style={[styles.segmentText, drawMode === 'manual' && styles.segmentTextActive]}>Tự vẽ điểm</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Tên vườn */}
           <TextInput
             value={farmName}
             onChangeText={onFarmNameChange}
-            placeholder="Tên vườn · Farm name (tuỳ chọn · optional)"
+            placeholder="Tên vườn (tuỳ chọn)"
             placeholderTextColor={COLORS.textMuted}
-            style={{
-              borderWidth: 1,
-              borderColor: COLORS.border ?? '#D9D9D9',
-              borderRadius: 10,
-              paddingHorizontal: 14,
-              paddingVertical: Platform.OS === 'ios' ? 12 : 8,
-              fontSize: 15,
-              color: COLORS.text,
-              backgroundColor: COLORS.white ?? '#FFFFFF',
-            }}
+            style={styles.nameInput}
             maxLength={60}
             returnKeyType="done"
           />
-        </View>
 
-        {/* ── ACTION BUTTONS — language-independent (icon + color + size + motion) ── */}
-
-        {editMode === 'recording' && (
-          <>
-            {/* Stop button — only enabled when polygon "looks complete":
-                ≥3 points AND area > MIN_FARM_AREA_SQM. Orange icon, contrasts
-                with green/red recording controls below. */}
-            {coordinates.length >= MIN_POINTS_TO_DEFINE && areaSquareMeters(coordinates) >= MIN_FARM_AREA_SQM && (
-              <TouchableOpacity
-                style={[styles.iconActionBtn, { backgroundColor: '#F39C12', marginBottom: 10 }]}
-                onPress={() => setEditMode('edit-ready')}
-                activeOpacity={0.85}
-              >
-                <Icon name="stop-circle-outline" size={28} color={COLORS.white} />
-                <Text style={styles.iconActionLabel}>Dừng · Stop</Text>
-              </TouchableOpacity>
-            )}
-
-            {/* Start / Pause — primary action, large icon, green (idle) / red (recording) */}
-            <TouchableOpacity
-              style={[
-                styles.iconActionBtn,
-                styles.primaryWalkBtn,
-                !permissionGranted && styles.primaryWalkBtnDisabled,
-              ]}
-              onPress={async () => {
-                if (!permissionGranted) {
-                  Alert.alert(
-                    'Cần quyền vị trí · Location required',
-                    'Cấp quyền GPS trong Cài đặt → Aladin · Grant in Settings → Aladin',
-                  );
-                  return;
-                }
-                const willStart = !isAutoRecording;
-                setIsAutoRecording(willStart);
-                if (willStart) {
-                  await onCaptureNow();
-                }
-              }}
-              disabled={!permissionGranted}
-              activeOpacity={0.9}
-            >
-              <Icon
-                name={isAutoRecording ? 'pause-circle' : 'play-circle'}
-                size={34}
-                color={COLORS.white}
-              />
-              <Text style={styles.primaryWalkBtnText}>
-                {isAutoRecording
-                  ? 'Tạm dừng đi vòng'
-                  : coordinates.length === 0
-                    ? 'Bắt đầu đi vòng quanh vườn'
-                    : 'Tiếp tục đi vòng quanh vườn'}
-              </Text>
-            </TouchableOpacity>
-          </>
-        )}
-
-        {editMode === 'edit-ready' && (
-          <>
-            {/* Save — primary, large green */}
-            <TouchableOpacity
-              style={[styles.iconActionBtn, { backgroundColor: '#2ECC71', marginBottom: 10 }]}
-              onPress={onFinish}
-              activeOpacity={0.85}
-            >
-              <Icon name="content-save-check" size={32} color={COLORS.white} />
-              <Text style={styles.iconActionLabel}>Lưu nông trại · Save</Text>
-            </TouchableOpacity>
-
-            {/* Edit hint (info) + Undo (action) — row of two */}
-            <View style={{ flexDirection: 'row', marginBottom: 10, gap: 10 }}>
-              <View style={[styles.iconActionBtnSm, { backgroundColor: '#3498DB', flex: 1 }]}>
-                <Icon name="vector-polyline-edit" size={22} color={COLORS.white} />
-                <Text style={[styles.iconActionLabel, { fontSize: 11 }]}>Kéo điểm · Drag</Text>
-              </View>
+          {/* Hàng hành động chính */}
+          <View style={styles.primaryRow}>
+            {drawMode === 'auto' ? (
               <TouchableOpacity
                 style={[
-                  styles.iconActionBtnSm,
-                  { backgroundColor: '#95A5A6', flex: 1, opacity: editHistoryLength === 0 ? 0.4 : 1 },
+                  styles.primaryBtn,
+                  isAutoRecording ? styles.primaryBtnRec : styles.primaryBtnGo,
+                  !permissionGranted && styles.btnDisabled,
                 ]}
+                disabled={!permissionGranted}
+                onPress={async () => {
+                  if (!permissionGranted) {
+                    Alert.alert('Cần quyền vị trí', 'Cấp quyền GPS trong Cài đặt → Aladin.');
+                    return;
+                  }
+                  const willStart = !isAutoRecording;
+                  setIsAutoRecording(willStart);
+                  if (willStart) { setEditMode('recording'); await onCaptureNow(); }
+                }}
+                activeOpacity={0.9}
+              >
+                <Icon name={isAutoRecording ? 'pause-circle' : 'play-circle'} size={24} color={COLORS.white} />
+                <Text style={styles.primaryBtnText}>
+                  {isAutoRecording ? 'Tạm dừng' : coordinates.length === 0 ? 'Bắt đầu đi vòng' : 'Tiếp tục đi vòng'}
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={[styles.smallBtn, styles.smallBtnFlex, editHistoryLength === 0 && styles.btnDisabled]}
                 onPress={onUndo}
                 disabled={editHistoryLength === 0}
                 activeOpacity={0.85}
               >
-                <Icon name="undo-variant" size={22} color={COLORS.white} />
-                <Text style={[styles.iconActionLabel, { fontSize: 11 }]}>Hoàn tác · Undo</Text>
+                <Icon name="undo-variant" size={20} color={COLORS.textSub} />
+                <Text style={styles.smallBtnText}>Hoàn tác điểm</Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              style={[styles.saveBtn, !canSave && styles.btnDisabled]}
+              onPress={onFinish}
+              disabled={!canSave}
+              activeOpacity={0.9}
+            >
+              <Icon name="content-save-check" size={20} color={COLORS.white} />
+              <Text style={styles.saveBtnText}>Lưu vườn</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Hàng phụ: hoàn tác (chế độ auto) + vẽ lại */}
+          <View style={styles.secondaryRow}>
+            {drawMode === 'auto' && (
+              <TouchableOpacity
+                style={[styles.linkBtn, editHistoryLength === 0 && styles.btnDisabled]}
+                onPress={onUndo}
+                disabled={editHistoryLength === 0}
+                activeOpacity={0.7}
+              >
+                <Icon name="undo-variant" size={16} color={COLORS.textSub} />
+                <Text style={styles.linkBtnText}>Hoàn tác</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={[styles.linkBtn, coordinates.length === 0 && styles.btnDisabled]}
+              onPress={onResetFromScratch}
+              disabled={coordinates.length === 0}
+              activeOpacity={0.7}
+            >
+              <Icon name="restart" size={16} color="#E74C3C" />
+              <Text style={[styles.linkBtnText, { color: '#E74C3C' }]}>Vẽ lại từ đầu</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* ── POPUP CHI TIẾT ĐIỂM ── */}
+        {selectedVertex != null && coordinates[selectedVertex] && (
+          <View style={styles.popupOverlay} pointerEvents="box-none">
+            <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setSelectedVertex(null)} />
+            <View style={styles.vertexPopup}>
+              <View style={styles.vertexPopupHeader}>
+                <View style={styles.vertexPopupBadge}>
+                  <Text style={styles.vertexPopupBadgeText}>{selectedVertex + 1}</Text>
+                </View>
+                <Text style={styles.vertexPopupTitle}>Điểm số {selectedVertex + 1}</Text>
+                <TouchableOpacity onPress={() => setSelectedVertex(null)} hitSlop={8}>
+                  <Icon name="close" size={20} color={COLORS.textMuted} />
+                </TouchableOpacity>
+              </View>
+              <View style={styles.vertexPopupBody}>
+                <Text style={styles.vertexPopupCoord}>Vĩ độ: {coordinates[selectedVertex].lat.toFixed(6)}</Text>
+                <Text style={styles.vertexPopupCoord}>Kinh độ: {coordinates[selectedVertex].lng.toFixed(6)}</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.vertexDeleteBtn}
+                onPress={() => { const idx = selectedVertex; setSelectedVertex(null); onDeleteVertex(idx); }}
+                activeOpacity={0.85}
+              >
+                <Icon name="trash-can-outline" size={18} color={COLORS.white} />
+                <Text style={styles.vertexDeleteText}>Xoá điểm này</Text>
               </TouchableOpacity>
             </View>
-
-            {/* Resume recording */}
-            <TouchableOpacity
-              style={[styles.iconActionBtn, { backgroundColor: '#3498DB', marginBottom: 10 }]}
-              onPress={onResumeRecording}
-              activeOpacity={0.85}
-            >
-              <Icon name="play-circle-outline" size={26} color={COLORS.white} />
-              <Text style={styles.iconActionLabel}>Tiếp tục ghi · Resume</Text>
-            </TouchableOpacity>
-
-            {/* Reset (danger, outline only) */}
-            <TouchableOpacity
-              style={[styles.iconActionBtnOutline, { borderColor: '#E74C3C' }]}
-              onPress={onResetFromScratch}
-              activeOpacity={0.85}
-            >
-              <Icon name="restart" size={22} color="#E74C3C" />
-              <Text style={[styles.iconActionLabel, { color: '#E74C3C' }]}>Vẽ lại · Reset</Text>
-            </TouchableOpacity>
-          </>
+          </View>
         )}
-
-        {/* Helper text — only in recording mode + no points yet (onboarding-style hint) */}
-        {editMode === 'recording' && coordinates.length === 0 && (
-          <Text style={[styles.minPointsNote, { marginTop: 12, backgroundColor: 'transparent' }]}>
-            Bấm ▶ để bắt đầu ghi · Tap ▶ to start. Đi vòng quanh ruộng — hệ thống tự ghi điểm.
-          </Text>
-        )}
-        {editMode === 'recording' && coordinates.length > 0 && coordinates.length < MIN_POINTS_TO_DEFINE && (
-          <Text style={[styles.minPointsNote, { marginTop: 12, backgroundColor: 'transparent' }]}>
-            Cần {MIN_POINTS_TO_DEFINE - coordinates.length} điểm nữa · {MIN_POINTS_TO_DEFINE - coordinates.length} more points needed
-          </Text>
-        )}
-      </ScrollView>
-    </View>
+      </View>
     </KeyboardAvoidingView>
   );
 };
@@ -1815,6 +1789,30 @@ const FarmDetailScreen = () => {
     setEditMode('recording');
   };
 
+  // Build 55 — chế độ "Tự vẽ điểm": nhấn lên bản đồ → thêm điểm vào cuối polygon.
+  // Khác handleMapTapInsert (chèn vào cạnh gần nhất): ở đây user vẽ tuần tự từng
+  // đỉnh nên append đúng trực giác. Có undo history + chặn vượt trần MAX_VERTICES.
+  const handleManualTapAppend = (lat: number, lng: number) => {
+    if (coordinatesRef.current.length >= MAX_VERTICES) {
+      Toast.show({
+        type: 'info',
+        text1: `Tối đa ${MAX_VERTICES} điểm · Maximum ${MAX_VERTICES}`,
+        visibilityTime: 1500,
+      });
+      return;
+    }
+    pushEditHistory(coordinatesRef.current);
+    setCoordinates(prev => [...prev, { lat, lng }]);
+  };
+
+  // Build 55 — xoá 1 điểm từ popup chi tiết. Không chặn tối thiểu (user đang
+  // dựng polygon); validatePolygon lúc lưu mới bắt buộc ≥3 điểm.
+  const handleDeleteVertex = (index: number) => {
+    if (index < 0 || index >= coordinatesRef.current.length) return;
+    pushEditHistory(coordinatesRef.current);
+    setCoordinates(prev => prev.filter((_, i) => i !== index));
+  };
+
   const handleAddTree = async () => {
     // Thay scanner cũ bằng màn Nhận diện (TreeIdentity) — giống nút quick "Nhận diện".
     // GPS/ranh giới vườn trên bản đồ vẫn giữ nguyên (recording coordinates ở dưới).
@@ -1920,11 +1918,10 @@ const FarmDetailScreen = () => {
         farmName={farmNameInput}
         onFarmNameChange={setFarmNameInput}
         onVertexDragEnd={handleVertexDragEnd}
-        onVertexLongPress={handleVertexLongPress}
-        onMapTapInsert={handleMapTapInsert}
+        onManualTapAppend={handleManualTapAppend}
+        onDeleteVertex={handleDeleteVertex}
         onUndo={handleUndo}
         onResetFromScratch={handleResetFromScratch}
-        onResumeRecording={handleResumeRecording}
       />
     );
   }
@@ -2729,6 +2726,166 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: 0.2,
   },
+
+  // ── Build 55 — Full-screen add-farm map controls ──────────────────────────
+  circleBtn: {
+    width: 46, height: 46, borderRadius: 23,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18, shadowRadius: 5, elevation: 4,
+  },
+  circleBtnLabel: {
+    marginTop: 4, fontSize: 10, fontWeight: '700', color: COLORS.text,
+    backgroundColor: 'rgba(255,255,255,0.9)', paddingHorizontal: 6,
+    paddingVertical: 1, borderRadius: 6, overflow: 'hidden',
+  },
+  floatTopLeft: { position: 'absolute', left: 12 },
+  floatTopRight: { position: 'absolute', right: 12, alignItems: 'center' },
+  floatTopCenter: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
+  floatRightMid: {
+    position: 'absolute', right: 12, top: 0, bottom: 0,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  infoPill: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderRadius: 14, paddingVertical: 7, paddingHorizontal: 14,
+    maxWidth: width - 132,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15, shadowRadius: 5, elevation: 4,
+  },
+  infoItem: { alignItems: 'center', minWidth: 50 },
+  infoVal: { fontSize: 14, fontWeight: '800', color: COLORS.text, letterSpacing: -0.3 },
+  infoLbl: { fontSize: 9, fontWeight: '600', color: COLORS.textMuted, marginTop: 1 },
+  infoDivider: { width: 1, height: 24, backgroundColor: COLORS.border, marginHorizontal: 10 },
+
+  // KHÔNG dùng shadow/elevation: PointAnnotation trên Android render child ra
+  // bitmap; shadow/elevation làm bitmap trắng → mất điểm. Giữ phẳng như coordMarker.
+  // Vùng chạm rộng hơn để dễ kéo; chấm nằm giữa (khớp tâm với toạ độ đỉnh).
+  vertexTouch: {
+    width: 44, height: 44, alignItems: 'center', justifyContent: 'center',
+  },
+  vertexDot: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: COLORS.accent, borderWidth: 2, borderColor: COLORS.white,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  vertexDotSelected: { backgroundColor: '#E67E22', width: 32, height: 32, borderRadius: 16 },
+  vertexDotText: { color: COLORS.white, fontSize: 12, fontWeight: '800' },
+  meDotOuter: {
+    width: 22, height: 22, borderRadius: 11,
+    backgroundColor: 'rgba(0,122,255,0.25)', alignItems: 'center', justifyContent: 'center',
+  },
+  meDot: {
+    width: 12, height: 12, borderRadius: 6,
+    backgroundColor: '#007AFF', borderWidth: 2, borderColor: COLORS.white,
+  },
+
+  bottomCard: {
+    backgroundColor: 'rgba(255,255,255,0.98)',
+    borderTopLeftRadius: 22, borderTopRightRadius: 22,
+    paddingHorizontal: 16, paddingTop: 12,
+    shadowColor: '#000', shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.12, shadowRadius: 12, elevation: 12,
+  },
+  hintLine: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10,
+    paddingHorizontal: 2,
+  },
+  hintText: { flex: 1, fontSize: 12, color: COLORS.textSub, lineHeight: 16 },
+
+  segment: {
+    flexDirection: 'row', backgroundColor: COLORS.bgWarm,
+    borderRadius: 12, padding: 4, marginBottom: 10,
+    borderWidth: 1, borderColor: COLORS.border,
+  },
+  segmentBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingVertical: 9, borderRadius: 9,
+  },
+  segmentBtnActive: {
+    backgroundColor: COLORS.accent,
+    shadowColor: COLORS.accent, shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3, shadowRadius: 5, elevation: 3,
+  },
+  segmentText: { fontSize: 13, fontWeight: '700', color: COLORS.textSub },
+  segmentTextActive: { color: COLORS.white },
+
+  nameInput: {
+    borderWidth: 1, borderColor: COLORS.border, borderRadius: 10,
+    paddingHorizontal: 14, paddingVertical: Platform.OS === 'ios' ? 11 : 8,
+    fontSize: 15, color: COLORS.text, backgroundColor: COLORS.white, marginBottom: 10,
+  },
+
+  primaryRow: { flexDirection: 'row', gap: 10, marginBottom: 8 },
+  primaryBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, paddingVertical: 14, borderRadius: 14,
+  },
+  primaryBtnGo: {
+    backgroundColor: '#3B6EA8',
+    shadowColor: '#3B6EA8', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3, shadowRadius: 8, elevation: 4,
+  },
+  primaryBtnRec: {
+    backgroundColor: '#C0533A',
+    shadowColor: '#C0533A', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3, shadowRadius: 8, elevation: 4,
+  },
+  primaryBtnText: { color: COLORS.white, fontSize: 15, fontWeight: '800', letterSpacing: -0.2 },
+
+  smallBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingVertical: 14, paddingHorizontal: 16, borderRadius: 14,
+    backgroundColor: COLORS.bgWarm, borderWidth: 1, borderColor: COLORS.border,
+  },
+  smallBtnFlex: { flex: 1 },
+  smallBtnText: { fontSize: 14, fontWeight: '700', color: COLORS.textSub },
+
+  saveBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, paddingVertical: 14, borderRadius: 14, backgroundColor: '#2ECC71',
+    shadowColor: '#2ECC71', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.32, shadowRadius: 8, elevation: 4,
+  },
+  saveBtnText: { color: COLORS.white, fontSize: 15, fontWeight: '800', letterSpacing: -0.2 },
+
+  secondaryRow: {
+    flexDirection: 'row', justifyContent: 'center', gap: 20, marginTop: 2,
+  },
+  linkBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 6 },
+  linkBtnText: { fontSize: 13, fontWeight: '600', color: COLORS.textSub },
+
+  btnDisabled: { opacity: 0.4 },
+
+  popupOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center', justifyContent: 'center', padding: 32,
+  },
+  vertexPopup: {
+    width: '100%', maxWidth: 320, backgroundColor: COLORS.white,
+    borderRadius: 18, padding: 18,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25, shadowRadius: 20, elevation: 12,
+  },
+  vertexPopupHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
+  vertexPopupBadge: {
+    width: 30, height: 30, borderRadius: 15, backgroundColor: COLORS.accent,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  vertexPopupBadgeText: { color: COLORS.white, fontSize: 13, fontWeight: '800' },
+  vertexPopupTitle: { flex: 1, fontSize: 16, fontWeight: '800', color: COLORS.text },
+  vertexPopupBody: {
+    backgroundColor: COLORS.bgWarm, borderRadius: 10, padding: 12, marginBottom: 14, gap: 4,
+  },
+  vertexPopupCoord: { fontSize: 13, color: COLORS.textSub, fontVariant: ['tabular-nums'] },
+  vertexDeleteBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    paddingVertical: 13, borderRadius: 12, backgroundColor: '#E74C3C',
+  },
+  vertexDeleteText: { color: COLORS.white, fontSize: 15, fontWeight: '700' },
 });
 
 export default FarmDetailScreen;

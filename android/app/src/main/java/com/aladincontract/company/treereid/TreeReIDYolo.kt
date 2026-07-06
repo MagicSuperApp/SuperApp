@@ -40,6 +40,14 @@ object TreeReIDYolo {
     /** Ngưỡng coi là "có cây trong khung". Chỉnh theo thực địa (0..1). */
     const val CONF_THRESHOLD = 0.35f
 
+    /** 1 box đã phát hiện — toạ độ chuẩn-hoá [0,1] theo frame (đã xoay về portrait). */
+    data class Box(val x: Float, val y: Float, val w: Float, val h: Float, val conf: Float)
+
+    /** Box gần nhất (cho overlay). Rỗng khi không có/không sẵn. */
+    @Volatile
+    var latestBoxes: List<Box> = emptyList()
+        private set
+
     @Volatile
     private var interpreter: Interpreter? = null
 
@@ -87,16 +95,27 @@ object TreeReIDYolo {
                 arrayOf(input),
                 mapOf(0 to outBoxes, 1 to outProto),
             )
+            // Output[0] = [x1,y1,x2,y2 (norm 640=norm frame), conf, cls, +32 mask].
             var max = 0f
+            val boxes = ArrayList<Box>(8)
             for (d in outBoxes[0]) {
                 val c = d[CONF_IDX]
                 if (c > max) max = c
+                if (c >= CONF_THRESHOLD) {
+                    val x1 = d[0].coerceIn(0f, 1f)
+                    val y1 = d[1].coerceIn(0f, 1f)
+                    val x2 = d[2].coerceIn(0f, 1f)
+                    val y2 = d[3].coerceIn(0f, 1f)
+                    if (x2 > x1 && y2 > y1) boxes.add(Box(x1, y1, x2 - x1, y2 - y1, c))
+                }
             }
+            latestBoxes = boxes
             max
         } catch (e: Throwable) {
             // Sai shape/model → tắt gate để không chặn oan (log để chỉnh).
             Log.w(TAG, "detect lỗi (tắt gate): ${e.message}")
             available = false
+            latestBoxes = emptyList()
             -1f
         }
     }

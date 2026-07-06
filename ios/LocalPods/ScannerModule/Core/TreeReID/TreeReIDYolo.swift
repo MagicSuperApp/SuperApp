@@ -28,6 +28,9 @@ final class TreeReIDYolo {
     /// Ngưỡng coi là "có cây trong khung". Chỉnh theo thực địa (0..1).
     static let confThreshold: Float = 0.35
 
+    /// 1 box — toạ-độ chuẩn-hoá [0,1] theo frame (portrait, như CVPixelBuffer nhận vào).
+    struct Box { let x: Float; let y: Float; let w: Float; let h: Float; let conf: Float }
+
     // MARK: - State
     private var interpreter: Interpreter?
     private let ciContext = CIContext(options: [.useSoftwareRenderer: false])
@@ -37,6 +40,14 @@ final class TreeReIDYolo {
     private var lastConf: Float = -1
     private var lastConfAtMs: Double = 0
     private var lastInferAtMs: Double = 0
+    private var boxes: [Box] = []
+    private var frameAspect: Float = 0   // frameW/frameH (portrait → < 1)
+
+    /// Box gần nhất + tỉ-lệ frame (cho overlay). Thread-safe.
+    func currentBoxes() -> ([Box], Float) {
+        lock.lock(); defer { lock.unlock() }
+        return (boxes, frameAspect)
+    }
 
     private static func nowMs() -> Double { Date().timeIntervalSince1970 * 1000 }
 
@@ -90,11 +101,15 @@ final class TreeReIDYolo {
         lock.unlock()
         guard go else { return }
 
+        let fw = Float(CVPixelBufferGetWidth(pixelBuffer))
+        let fh = Float(CVPixelBufferGetHeight(pixelBuffer))
         guard let cg = cgImage(from: pixelBuffer), let input = preprocess(cg) else { return }
-        let conf = infer(input)
+        let (conf, dets) = infer(input)
         lock.lock()
         lastConf = conf
         lastConfAtMs = now
+        boxes = dets
+        frameAspect = fh > 0 ? fw / fh : 0
         lock.unlock()
     }
 
@@ -154,26 +169,38 @@ final class TreeReIDYolo {
         return buf
     }
 
-    private func infer(_ input: Data) -> Float {
+    private func infer(_ input: Data) -> (Float, [Box]) {
         lock.lock(); let itp = interpreter; lock.unlock()
-        guard let itp = itp else { return -1 }
+        guard let itp = itp else { return (-1, []) }
         do {
             try itp.copy(input, toInputAt: 0)
             try itp.invoke()
             let out = try itp.output(at: 0).data      // [1,300,38] FLOAT32
             var maxConf: Float = 0
+            var dets: [Box] = []
             out.withUnsafeBytes { raw in
                 let f = raw.bindMemory(to: Float.self)
                 let n = min(numDet, f.count / totalValues)
                 for i in 0..<n {
-                    let c = f[i * totalValues + confIndex]
+                    let base = i * totalValues
+                    let c = f[base + confIndex]
                     if c > maxConf { maxConf = c }
+                    if c >= Self.confThreshold {
+                        // Output = [x1,y1,x2,y2 (norm 640=norm frame), conf, cls, +mask].
+                        let x1 = min(max(f[base + 0], 0), 1)
+                        let y1 = min(max(f[base + 1], 0), 1)
+                        let x2 = min(max(f[base + 2], 0), 1)
+                        let y2 = min(max(f[base + 3], 0), 1)
+                        if x2 > x1 && y2 > y1 {
+                            dets.append(Box(x: x1, y: y1, w: x2 - x1, h: y2 - y1, conf: c))
+                        }
+                    }
                 }
             }
-            return maxConf
+            return (maxConf, dets)
         } catch {
             print("[TreeReIDYolo] infer lỗi (bỏ qua): \(error)")
-            return -1
+            return (-1, [])
         }
     }
 }

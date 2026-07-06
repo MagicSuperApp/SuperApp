@@ -38,6 +38,9 @@ object TreeReIDCamera {
     @Volatile private var lastConfAtMs = 0L
     private var lastInferMs = 0L
 
+    /** Callback box realtime cho overlay: (boxes chuẩn-hoá theo portrait, tỉ-lệ frame w/h). */
+    @Volatile var onBoxes: ((List<TreeReIDYolo.Box>, Float) -> Unit)? = null
+
     /** (confidence gần nhất, tuổi ms). confidence < 0 = detector chưa sẵn sàng. */
     fun latestTargetConfidence(): Pair<Float, Long> =
         Pair(lastConf, System.currentTimeMillis() - lastConfAtMs)
@@ -47,9 +50,14 @@ object TreeReIDCamera {
             val now = System.currentTimeMillis()
             if (now - lastInferMs >= INFER_INTERVAL_MS && TreeReIDYolo.available) {
                 lastInferMs = now
-                val bmp = image.toBitmap()
+                // Xoay bitmap về đúng hướng hiển thị (portrait) trước khi detect → box
+                // chuẩn-hoá theo frame portrait, khớp preview (FILL_CENTER).
+                val raw = image.toBitmap()
+                val rot = image.imageInfo.rotationDegrees
+                val bmp = if (rot != 0) rotate(raw, rot).also { raw.recycle() } else raw
                 lastConf = TreeReIDYolo.detect(bmp)
                 lastConfAtMs = now
+                onBoxes?.invoke(TreeReIDYolo.latestBoxes, bmp.width.toFloat() / bmp.height.toFloat())
                 bmp.recycle()
             }
         } catch (_: Throwable) {
@@ -57,6 +65,11 @@ object TreeReIDCamera {
         } finally {
             image.close()
         }
+    }
+
+    private fun rotate(src: Bitmap, degrees: Int): Bitmap {
+        val m = android.graphics.Matrix().apply { postRotate(degrees.toFloat()) }
+        return Bitmap.createBitmap(src, 0, 0, src.width, src.height, m, true)
     }
 
     /** ImageProxy (RGBA_8888) → Bitmap. Giữ padding cột (resize 640 ở detector lo). */

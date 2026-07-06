@@ -59,6 +59,11 @@ final class TreeReIDBridgeModule: RCTEventEmitter {
         return sharedInstance?.cameraManager.session ?? AVCaptureSession()
     }
 
+    /// Box YOLO gần nhất + tỉ-lệ frame (w/h) — cho overlay vẽ khung trên preview.
+    func currentYoloBoxes() -> ([TreeReIDYolo.Box], Float) {
+        return yolo.currentBoxes()
+    }
+
     override static func moduleName() -> String! {
         return "TreeReIDBridge"
     }

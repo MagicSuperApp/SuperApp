@@ -183,7 +183,7 @@ const TreeEnrollScreen: React.FC = () => {
     async (treeId: string) => {
       setIsEnrolling(true);
       try {
-        const res = await verifyAddTree(BASE_URL, treeId, imagePaths);
+        const res = await verifyAddTree(BASE_URL, treeId, imagePaths, { farmId });
 
         if (res.ok && res.data) {
           Alert.alert(
@@ -207,7 +207,7 @@ const TreeEnrollScreen: React.FC = () => {
         setDuplicateTreeId(null);
       }
     },
-    [imagePaths, gps, dispatch, navigation],
+    [imagePaths, gps, dispatch, navigation, farmId],
   );
 
   // ── Force enroll (tạo cây mới bất kể trùng) ──────────────────────────────

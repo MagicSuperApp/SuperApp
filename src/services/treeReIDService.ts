@@ -59,6 +59,13 @@ export interface IdentifyResponse {
   query_id?: string;
   /** ADDITIVE (Lợi PR #46): băng tin-cậy thô (cao/vừa/thấp) — KHÔNG hiện điểm số. */
   confidence?: ConfidenceBand;
+  /**
+   * ADDITIVE (handoff #3, nhánh `claude/field-openset-measure` — chờ deploy):
+   * backend cho phép chủ tạo cây MỚI (durian cùng-vườn giống chéo 0.90+ → luôn ra
+   * MATCH cây gần nhất, cần chủ xác-nhận). Field VẮNG ở backend cũ → coi như true
+   * (luôn mở đường tạo mới), chỉ false khi backend chủ-động chặn (vd MOVED).
+   */
+  allow_enroll_new?: boolean;
 }
 
 export interface EnrollResponse {
@@ -299,6 +306,35 @@ async function _apiCall<T>(
 /** Matcher vỏ-thân (PoC-Tree §4 M4) — override ENV backend, CHỈ cho tester. */
 export type ShellMatcher = 'sift' | 'xfeat' | 'loftr';
 
+export type RegionShape = 'rect' | 'ellipse' | 'poly';
+
+/**
+ * KHOANH-CÂY (handoff #6): vùng do người-dùng khoanh/chạm để tách 1 cây khi 2 cây
+ * sát nhau. Toạ-độ theo **pixel ẢNH GỐC** (KHÔNG phải toạ-độ màn-hình đã scale —
+ * quy-đổi tỉ-lệ trước khi truyền). Backend CROP về vùng này rồi mới embed; không
+ * gửi → embed cả khung (như cũ). Gửi nhất-quán cho identify/enroll/verify_add.
+ */
+export interface RegionSelection {
+  /** JSON hoá thành Form `points` = `[[x,y],...]` pixel ảnh gốc. */
+  points: Array<[number, number]>;
+  shape: RegionShape;
+  /** Bao đóng (bbox) pixel ảnh gốc — tuỳ chọn kèm points cho backend crop nhanh. */
+  bbox?: { x: number; y: number; w: number; h: number };
+}
+
+/** Gắn vùng khoanh cây vào Form theo contract (points JSON + shape + bbox_*). */
+function appendRegion(form: FormData, region?: RegionSelection): void {
+  if (!region || region.points.length === 0) return;
+  form.append('points', JSON.stringify(region.points));
+  form.append('shape', region.shape);
+  if (region.bbox) {
+    form.append('bbox_x', String(region.bbox.x));
+    form.append('bbox_y', String(region.bbox.y));
+    form.append('bbox_w', String(region.bbox.w));
+    form.append('bbox_h', String(region.bbox.h));
+  }
+}
+
 export interface IdentifyOptions {
   lat?: number;
   lon?: number;
@@ -312,6 +348,8 @@ export interface IdentifyOptions {
    * ?matcher=. Mặc-định KHÔNG gửi → backend dùng đường ENV. Chỉ tester bật.
    */
   matcher?: ShellMatcher;
+  /** KHOANH-CÂY (handoff #6): vùng cây đã khoanh — pixel ảnh gốc. */
+  region?: RegionSelection;
 }
 
 export type IdentifyVerdict = 'correct' | 'wrong' | 'other';
@@ -343,6 +381,9 @@ export async function identifyTree(
   if (options.heading !== undefined) form.append('heading', String(options.heading));
   if (options.pitch !== undefined) form.append('pitch', String(options.pitch));
   form.append('source', 'phone');
+
+  // KHOANH-CÂY #6: gửi vùng đã khoanh (pixel ảnh gốc) để tách cây khi 2 cây sát nhau.
+  appendRegion(form, options.region);
 
   // M4: chỉ nối ?matcher= khi tester ép — mặc-định để backend dùng ENV.
   const qs = options.matcher ? `?matcher=${encodeURIComponent(options.matcher)}` : '';
@@ -395,6 +436,9 @@ export async function enrollTree(
   if (options.pitch !== undefined) form.append('pitch', String(options.pitch));
   if (options.force) form.append('force', 'true');
 
+  // KHOANH-CÂY #6: crop về cây đã khoanh RỒI mới embed (nhất-quán với identify).
+  appendRegion(form, options.region);
+
   return _apiCall<EnrollResponse>(`${baseUrl}/api/enroll`, 'POST', form, IMAGE_REQUEST_TIMEOUT_MS);
 }
 
@@ -402,14 +446,22 @@ export async function verifyAddTree(
   baseUrl: string,
   treeId: string,
   imagePaths: string[],
+  opts: { farmId?: string; region?: RegionSelection } = {},
 ): Promise<{ ok: boolean; data?: VerifyAddResponse; error?: APIError }> {
   const form = new FormData();
 
   form.append('tree_id', treeId);
+  form.append('source', 'phone');
+
+  // #2: gửi farm_id nhất-quán khi thêm view để không lệch phân-vườn.
+  if (opts.farmId) form.append('farm_id', opts.farmId);
 
   for (let i = 0; i < imagePaths.length; i++) {
     (form as any).append('files', { uri: imagePaths[i], type: 'image/jpeg', name: `img_${i}.jpg` });
   }
+
+  // KHOANH-CÂY #6: crop nhất-quán query lẫn gallery.
+  appendRegion(form, opts.region);
 
   return _apiCall<VerifyAddResponse>(`${baseUrl}/api/verify_add`, 'POST', form, IMAGE_REQUEST_TIMEOUT_MS);
 }

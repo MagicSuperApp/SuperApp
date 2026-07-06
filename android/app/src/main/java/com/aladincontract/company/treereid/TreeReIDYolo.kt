@@ -37,8 +37,9 @@ object TreeReIDYolo {
     private const val PROTO = 160
     private const val PROTOS = 32
 
-    /** Ngưỡng coi là "có cây trong khung". Chỉnh theo thực địa (0..1). */
-    const val CONF_THRESHOLD = 0.35f
+    /** Ngưỡng coi là "có cây trong khung". Hạ 0.25 để KHÔNG chặn oan khi thân/vỏ bị
+     *  lá che một phần (cây rậm) — ReID chỉ cần thấy phần thân/vỏ. Chỉnh theo thực địa. */
+    const val CONF_THRESHOLD = 0.25f
 
     /** 1 box đã phát hiện — toạ độ chuẩn-hoá [0,1] theo frame (đã xoay về portrait). */
     data class Box(val x: Float, val y: Float, val w: Float, val h: Float, val conf: Float)

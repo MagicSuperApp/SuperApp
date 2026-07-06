@@ -25,8 +25,9 @@ final class TreeReIDYolo {
     private let confIndex = 4      // x1,y1,x2,y2,[conf],cls
     private let inferIntervalMs: Double = 150
 
-    /// Ngưỡng coi là "có cây trong khung". Chỉnh theo thực địa (0..1).
-    static let confThreshold: Float = 0.35
+    /// Ngưỡng coi là "có cây trong khung". Hạ 0.25 để KHÔNG chặn oan khi thân/vỏ bị
+    /// lá che một phần (cây rậm) — ReID chỉ cần thấy phần thân/vỏ. Chỉnh theo thực địa.
+    static let confThreshold: Float = 0.25
 
     /// 1 box — toạ-độ chuẩn-hoá [0,1] theo frame (portrait, như CVPixelBuffer nhận vào).
     struct Box { let x: Float; let y: Float; let w: Float; let h: Float; let conf: Float }

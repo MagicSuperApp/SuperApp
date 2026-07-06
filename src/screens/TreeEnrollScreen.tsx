@@ -20,7 +20,7 @@
  *    hoặc goBack().
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -31,6 +31,7 @@ import {
   ScrollView,
   ActivityIndicator,
   TextInput,
+  Image,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
@@ -43,6 +44,8 @@ import {
   type EnrollResponse,
 } from '../services/treeReIDService';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
+import type { RootState } from '../store';
+import { loadFarms } from '../modules/trace/store/farmSlice';
 import {
   selectCaptures,
   selectGPS,
@@ -131,8 +134,18 @@ const TreeEnrollScreen: React.FC = () => {
   const round1Captures = captures.filter(c => c.round === 1);
   const round2Captures = captures.filter(c => c.round === 2);
 
-  // Vườn hiện-hành (nếu mở từ ngữ-cảnh farm) — gắn cây enroll vào vườn.
-  const farmId = route.params?.farmId;
+  // Bộ chọn vườn — cây PHẢI thuộc một vườn mới hiện trong trang trại. Mặc định vườn
+  // mở từ ngữ-cảnh (route.farmId); không có thì cho chọn vườn đã có / tạo mới.
+  const farms = useAppSelector((s: RootState) => s.farm.farms);
+  const currentUser = useAppSelector((s: RootState) => s.user.currentUser);
+  const [selectedFarmId, setSelectedFarmId] = useState<string | undefined>(
+    route.params?.farmId,
+  );
+  const farmId = selectedFarmId;
+  useEffect(() => {
+    if (currentUser?.id && farms.length === 0) dispatch(loadFarms(currentUser.id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.id]);
 
   // Android không dispatch vào Redux captures — lấy paths từ route params.
   // iOS dùng Redux captures như bình thường.
@@ -366,12 +379,25 @@ const TreeEnrollScreen: React.FC = () => {
           {label} — {list.length} góc
         </Text>
         <View style={styles.captureGrid}>
-          {list.map((cap, idx) => (
-            <View key={cap.id} style={styles.captureTile}>
-              <Icon name="image-outline" size={22} color={NEUTRAL.textMuted} />
-              <Text style={styles.captureTileIndex}>#{idx + 1}</Text>
-            </View>
-          ))}
+          {list.map((cap, idx) => {
+            const raw = cap.fileURL ?? '';
+            const uri = raw
+              ? (raw.startsWith('file') || raw.startsWith('http') || raw.startsWith('content')
+                  ? raw : `file://${raw}`)
+              : undefined;
+            return (
+              <View key={cap.id} style={styles.captureTile}>
+                {uri ? (
+                  <Image source={{ uri }} style={styles.captureTileImage} resizeMode="cover" />
+                ) : (
+                  <Icon name="image-outline" size={22} color={NEUTRAL.textMuted} />
+                )}
+                <View style={styles.captureTileBadge}>
+                  <Text style={styles.captureTileBadgeText}>#{idx + 1}</Text>
+                </View>
+              </View>
+            );
+          })}
         </View>
       </View>
     );
@@ -419,6 +445,51 @@ const TreeEnrollScreen: React.FC = () => {
             </Text>
           </View>
         )}
+
+        {/* Chọn trang trại — cây PHẢI gắn vào vườn mới hiện trong trang trại. */}
+        <View style={styles.farmSection}>
+          <Text style={styles.inputLabel}>Trang trại {farmId ? '' : '*'}</Text>
+          <View style={styles.farmChips}>
+            {farms.map(f => {
+              const on = farmId === f.id;
+              return (
+                <TouchableOpacity
+                  key={f.id}
+                  style={[styles.farmChip, on && styles.farmChipActive]}
+                  onPress={() => setSelectedFarmId(f.id)}
+                  activeOpacity={0.8}
+                >
+                  <Icon
+                    name={on ? 'check-circle' : 'sprout-outline'}
+                    size={14}
+                    color={on ? '#1b5e20' : NEUTRAL.textMuted}
+                  />
+                  <Text
+                    style={[styles.farmChipText, on && styles.farmChipTextActive]}
+                    numberOfLines={1}
+                  >
+                    {f.name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+            <TouchableOpacity
+              style={styles.farmChipNew}
+              onPress={() =>
+                (navigation as any).navigate('FarmDetail', { farm_id: null })
+              }
+              activeOpacity={0.8}
+            >
+              <Icon name="plus" size={14} color="#1b5e20" />
+              <Text style={styles.farmChipNewText}>Tạo vườn mới</Text>
+            </TouchableOpacity>
+          </View>
+          {!farmId && (
+            <Text style={styles.farmWarnText}>
+              Chưa chọn vườn — cây sẽ không hiện trong trang trại. Hãy chọn hoặc tạo vườn.
+            </Text>
+          )}
+        </View>
 
         {/* Tên cây */}
         <View style={styles.inputSection}>
@@ -610,12 +681,44 @@ const styles = StyleSheet.create({
     borderColor: NEUTRAL.border,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
-  captureTileIndex: {
-    fontSize: 10,
-    color: NEUTRAL.textMuted,
-    marginTop: 3,
+  captureTileImage: {
+    ...StyleSheet.absoluteFillObject,
   },
+  captureTileBadge: {
+    position: 'absolute',
+    left: 3,
+    bottom: 3,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 6,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  captureTileBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#fff',
+  },
+
+  farmSection: { marginBottom: 16 },
+  farmChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  farmChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20,
+    backgroundColor: NEUTRAL.bgSoft, borderWidth: 1, borderColor: NEUTRAL.border,
+    maxWidth: 190,
+  },
+  farmChipActive: { backgroundColor: '#e8f5e9', borderColor: '#1b5e20' },
+  farmChipText: { fontSize: 12, fontWeight: '600', color: NEUTRAL.textMuted },
+  farmChipTextActive: { color: '#1b5e20' },
+  farmChipNew: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20,
+    borderWidth: 1.5, borderColor: '#1b5e20', borderStyle: 'dashed',
+  },
+  farmChipNewText: { fontSize: 12, fontWeight: '700', color: '#1b5e20' },
+  farmWarnText: { fontSize: 11, color: NEUTRAL.warning, marginTop: 8, fontWeight: '600' },
 
   warningBox: {
     flexDirection: 'row',

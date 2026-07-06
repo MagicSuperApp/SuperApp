@@ -1,6 +1,6 @@
 // modules/trace/screens/FarmDetailScreen.tsx
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -19,7 +19,7 @@ import {
   BackHandler,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../../../store';
 import { addFarm, setTrees, addTree, saveFarm, loadTrees, saveTree, loadFarm, syncTreesFromBackend } from '../store/farmSlice';
@@ -1319,6 +1319,14 @@ const FarmDetailScreen = () => {
       dispatch(syncTreesFromBackend(farm_id));
     }
   }, [farm_id]);
+
+  // Refetch cây MỖI KHI màn được focus lại (vd quay về sau khi đăng ký cây mới ở
+  // màn khác) → cây vừa tạo hiện ngay, không kẹt danh sách cũ (fix "cây không vào vườn").
+  useFocusEffect(
+    useCallback(() => {
+      if (farm_id) dispatch(syncTreesFromBackend(farm_id));
+    }, [farm_id]),
+  );
 
   useEffect(() => {
     if (params.farm_id && params.farm_id !== farm_id) {

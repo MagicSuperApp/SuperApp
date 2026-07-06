@@ -19,16 +19,17 @@ Pod::Spec.new do |s|
   s.platform     = :ios, '15.1'
   s.source       = { :path => '.' }
   s.source_files = '**/*.{swift,m,h}'
-  # Scanner YOLO đã gỡ → không còn .tflite. Giữ secrets.plist + GoogleService-Info.plist.
-  s.resources    = ['Resources/secrets.plist', 'Resources/GoogleService-Info.plist']
+  # secrets.plist + GoogleService-Info.plist + model YOLO gate TreeReID (Plan A).
+  s.resources    = ['Resources/secrets.plist', 'Resources/GoogleService-Info.plist', 'Resources/yolov26seg.tflite']
 
   s.swift_version = '5.9'
 
   # Chỉ giữ framework mà phần còn lại (TreeReID/PhoenixKey/VoiceMemo/Camera) dùng.
   s.frameworks = 'AVFoundation', 'CoreMotion', 'CoreLocation', 'CoreVideo', 'CoreMedia'
 
-  # TensorFlowLiteSwift / SQLite.swift / Firebase/Analytics đã gỡ cùng scanner YOLO
-  # (không file giữ lại nào dùng). Firebase app-level vẫn khai báo riêng trong Podfile.
+  # TFLite Swift — gate YOLO chất-lượng TreeReID (Plan A, TreeReIDYolo.swift chạy
+  # yolov26seg.tflite). SQLite.swift/Firebase vẫn gỡ. Podfile đã có CDN source cho pod này.
+  s.dependency 'TensorFlowLiteSwift', '~> 2.17.0'
 
   # PhoenixKey Rust core (Master_KEK / BIP39) — TaadEnclaveModule.swift imports it.
   s.dependency 'taad_enclave_core'

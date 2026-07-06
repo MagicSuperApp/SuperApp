@@ -3,6 +3,16 @@ import AVFoundation
 import React
 import ScannerModule
 
+/// Proxy yếu cho CADisplayLink: run-loop giữ link, link giữ target. Nếu target = view
+/// (target: self) thì view KHÔNG BAO GIỜ dealloc (retain cycle) → deinit không chạy →
+/// displayLink tick 15fps mãi mãi kể cả khi đã rời màn. Nhiều lần vào/ra scanner →
+/// tích lũy N link chạy nền → CPU/RAM tăng dần → đơ. Proxy giữ view YẾU để cắt cycle.
+private final class DisplayLinkProxy {
+    weak var target: TreeReIDCameraPreview?
+    init(_ t: TreeReIDCameraPreview) { target = t }
+    @objc func tick() { target?.tick() }
+}
+
 /// Auto-connects to TreeReIDBridgeModule's shared capture session when view appears.
 @objc(TreeReIDCameraPreview)
 final class TreeReIDCameraPreview: UIView {
@@ -10,6 +20,7 @@ final class TreeReIDCameraPreview: UIView {
     private var previewLayer: AVCaptureVideoPreviewLayer?
     private let boxLayer = CAShapeLayer()   // overlay khung YOLO (trên preview)
     private var displayLink: CADisplayLink?
+    private var linkProxy: DisplayLinkProxy?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -78,24 +89,37 @@ final class TreeReIDCameraPreview: UIView {
         stopBoxOverlay()
     }
 
+    /// RN không gọi disconnect() khi gỡ view (RCTViewManager không có hook remove).
+    /// Bắt thời điểm rời cửa sổ (newWindow == nil) để teardown tất định — mirror
+    /// onDetachedFromWindow của Android. KHÔNG dựa vào deinit (đã cắt cycle nhưng
+    /// đây là điểm dừng chắc chắn kể cả khi còn ref lạ giữ view).
+    override func willMove(toWindow newWindow: UIWindow?) {
+        super.willMove(toWindow: newWindow)
+        if newWindow == nil { disconnect() }
+        else if displayLink == nil { startBoxOverlay() }
+    }
+
     deinit { stopBoxOverlay() }
 
     // MARK: - Overlay khung YOLO
     private func startBoxOverlay() {
         stopBoxOverlay()
-        let link = CADisplayLink(target: self, selector: #selector(tick))
+        let proxy = DisplayLinkProxy(self)
+        let link = CADisplayLink(target: proxy, selector: #selector(DisplayLinkProxy.tick))
         link.preferredFramesPerSecond = 15   // đủ mượt, nhẹ CPU
         link.add(to: .main, forMode: .common)
         displayLink = link
+        linkProxy = proxy
     }
 
     private func stopBoxOverlay() {
         displayLink?.invalidate()
         displayLink = nil
+        linkProxy = nil
         boxLayer.path = nil
     }
 
-    @objc private func tick() {
+    fileprivate func tick() {
         guard let (boxes, aspect) = TreeReIDBridgeModule.sharedInstance?.currentYoloBoxes(),
               aspect > 0, !boxes.isEmpty else {
             if boxLayer.path != nil { boxLayer.path = nil }

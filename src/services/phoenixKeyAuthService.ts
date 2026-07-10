@@ -164,8 +164,47 @@ export const hasLocalIdentity = async (): Promise<boolean> => {
   return !!did && hasKey;
 };
 
+/**
+ * DID hiện tại CÓ tồn-tại trên PhoenixKey directory không (probe /identity/{did}/pubkey).
+ * - `true`  : có (HTTP 200).
+ * - `false` : chắc-chắn KHÔNG (HTTP 404 — DID mồ côi, vd server đã clean data).
+ * - `null`  : không xác-định (mạng lỗi / DID local trống) → KHÔNG kết-luận mồ côi để
+ *             tránh bắt user đăng-ký lại oan khi chỉ mất mạng tạm.
+ *
+ * Vì sao cần: khi server PhoenixKey bị reset, máy vẫn giữ DID+khoá local → OriLife
+ * verify resolve DID thất-bại (503). Probe này phân-biệt "DID mồ côi" với "server bận".
+ */
+export const isIdentityRegisteredOnServer = async (): Promise<boolean | null> => {
+  const did = await currentUserDid();
+  if (!did) return null;
+  try {
+    await phoenixKeyApi.identity.getPubkey(did);
+    return true;
+  } catch (err) {
+    if (err instanceof PhoenixKeyApiError && err.httpStatus === 404) return false;
+    return null; // lỗi khác (mạng/5xx) → không kết-luận
+  }
+};
+
+/**
+ * Đăng-ký LẠI danh-tính khi DID cũ mồ côi (server đã reset). Vì keypair cũ vẫn còn,
+ * registerIdentity sẽ "recover" DID cũ → phải WIPE trước để sinh khoá + DID MỚI,
+ * ghi genesis mới lên PhoenixKey. Trả GenesisResult (user DID mới + txHash).
+ *
+ * ⚠️ Tạo DID MỚI — dữ-liệu gắn DID cũ (nếu có) không tự chuyển sang. Chấp-nhận được
+ * sau khi server đã clean (DID cũ dù sao cũng không còn resolve được).
+ */
+export const reRegisterIdentity = async (
+  biometricKind: BiometricKind,
+): Promise<GenesisResult> => {
+  await wipeIdentity();
+  return registerIdentity(biometricKind);
+};
+
 export const phoenixKeyAuth = {
   registerIdentity,
+  reRegisterIdentity,
+  isIdentityRegisteredOnServer,
   unlockExistingIdentity,
   hasLocalIdentity,
   ownerPublicKey,

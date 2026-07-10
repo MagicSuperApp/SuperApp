@@ -69,7 +69,10 @@ import ResultBadge from '../components/reid/ResultBadge';
 import FactorBreakdown, { type FactorScores } from '../components/reid/FactorBreakdown';
 import ReidConfirmDialog, { type ReidCandidate } from '../components/reid/ReidConfirmDialog';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
-import { ensureOrilifeToken } from '../services/orilifeDidAuth';
+import { ensureOrilifeToken, clearOrilifeToken } from '../services/orilifeDidAuth';
+import { phoenixKeyAuth } from '../services/phoenixKeyAuthService';
+import { loginUser } from '../store/userSlice';
+import ReactNativeBiometrics, { BiometryTypes } from 'react-native-biometrics';
 import rLog from '../services/remoteLogger';
 import {
   addCapture,
@@ -141,6 +144,8 @@ const TreeIdentityScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<TreeIdentityRouteParams, 'TreeIdentity'>>();
   const dispatch = useAppDispatch();
+  // Giữ tên hiển-thị khi phải đăng-ký-lại (DID mới nhưng tên cũ).
+  const currentUser = useAppSelector(s => s.user.currentUser);
 
   // Vườn hiện-hành (nếu mở từ ngữ-cảnh farm) — truyền tiếp xuống TreeEnroll.
   const farmId = route.params?.farmId;
@@ -465,6 +470,32 @@ const TreeIdentityScreen: React.FC = () => {
     await runIdentify(androidImageUris);
   };
 
+  // ── Đăng-ký-lại danh-tính (DID mồ côi) rồi nhận-diện tiếp ─────────────────
+  // Keypair cũ còn nên registerIdentity sẽ recover DID cũ → reRegisterIdentity WIPE
+  // trước để sinh DID MỚI + ghi genesis mới lên PhoenixKey. Xong tự thử identify lại.
+  const reRegisterThenIdentify = async (imagePaths: string[]) => {
+    setIsIdentifyingLocal(true);
+    try {
+      // Xác-định loại sinh-trắc để đặt đúng nhãn khoá (không đổi hành-vi ký).
+      let kind: 'face' | 'fingerprint' | 'strong' = 'strong';
+      try {
+        const { biometryType } = await new ReactNativeBiometrics().isSensorAvailable();
+        kind = biometryType === BiometryTypes.FaceID ? 'face'
+          : biometryType === BiometryTypes.TouchID ? 'fingerprint' : 'strong';
+      } catch { /* mặc-định 'strong' */ }
+
+      const prevName = currentUser?.name;
+      const { user } = await phoenixKeyAuth.reRegisterIdentity(kind);
+      await clearOrilifeToken(); // token cũ (nếu có) gắn DID cũ → bỏ để login lại bằng DID mới
+      await dispatch(loginUser({ ...user, name: prevName } as any) as any);
+      // Đăng-ký xong → thử nhận-diện lại luôn (ensureOrilifeToken sẽ ký bằng DID mới).
+      await runIdentify(imagePaths);
+    } catch (e: any) {
+      setIsIdentifyingLocal(false);
+      Alert.alert('Đăng ký lại thất bại', e?.message || 'Vui lòng thử lại.');
+    }
+  };
+
   // ── Core: Gọi API identify ────────────────────────────────────────────────
   const runIdentify = async (imagePaths: string[]) => {
     setIsIdentifyingLocal(true);
@@ -479,11 +510,27 @@ const TreeIdentityScreen: React.FC = () => {
     const tokenOk = await ensureOrilifeToken(BASE_URL);
     if (!tokenOk) {
       rLog.treeIdentity.apiError('did_login_failed', imagePaths.length);
-      Alert.alert(
-        'Lỗi đăng nhập',
-        'Không đăng nhập được dịch vụ nhận diện (PhoenixKey). Kiểm tra danh tính/mạng rồi thử lại.',
-      );
       setIsIdentifyingLocal(false);
+      // Phân-biệt DID MỒ CÔI (server PhoenixKey đã reset → DID local không còn trên
+      // directory → OriLife trả 503) với lỗi tạm (mạng/server bận). Chỉ mời đăng-ký-lại
+      // khi probe trả 404 chắc-chắn — tránh bắt user đăng-ký oan khi chỉ mất mạng.
+      const registered = await phoenixKeyAuth.isIdentityRegisteredOnServer();
+      if (registered === false) {
+        Alert.alert(
+          'Danh tính chưa có trên máy chủ',
+          'Máy chủ nhận diện đã được làm mới nên danh tính cũ trên máy không còn hiệu lực. ' +
+            'Đăng ký lại danh tính để tiếp tục nhận diện?',
+          [
+            { text: 'Huỷ', style: 'cancel' },
+            { text: 'Đăng ký lại', onPress: () => reRegisterThenIdentify(imagePaths) },
+          ],
+        );
+      } else {
+        Alert.alert(
+          'Chưa nhận diện được',
+          'Máy chủ nhận diện đang bận hoặc mạng chập chờn. Vui lòng thử lại sau ít phút.',
+        );
+      }
       return;
     }
 

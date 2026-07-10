@@ -1,5 +1,5 @@
 // screens/GuardianScreen.tsx
-// Quản-lý guardian (khôi-phục xã-hội): thêm/bớt qua REST /user/guardian.
+// Quản-lý guardian (khôi-phục xã-hội): thêm/bớt qua POST /guardians/add|remove (API.md §6).
 // Chưa có endpoint LIST guardian → giữ danh sách cục bộ (AsyncStorage) để hiển thị;
 // đồng bộ server khi có GET (backend đã có, chờ contract).
 
@@ -11,7 +11,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS } from '../constants';
-import { phoenixKeyApi } from '../services/phoenixKey-api';
+import { addGuardian, removeGuardian } from '../services/guardianService';
 
 const PRIMARY = '#4A55C7';
 const DID_RE = /^did:phoenix:[a-z2-7]{13}:[0-9a-f]{64}$/;
@@ -47,7 +47,7 @@ const GuardianScreen: React.FC = () => {
     if (list.some((g) => g.did === did)) { Alert.alert('Đã có', 'Guardian này đã trong danh sách.'); return; }
     setBusy(true);
     try {
-      await phoenixKeyApi.guardians.add({ guardianDid: did, guardianName: name });
+      await addGuardian(did);
       await persist([...list, { did, name }]);
       setGDid(''); setGName('');
     } catch (e) {
@@ -62,7 +62,7 @@ const GuardianScreen: React.FC = () => {
         text: 'Gỡ', style: 'destructive',
         onPress: async () => {
           try {
-            await phoenixKeyApi.guardians.remove(g.did);
+            await removeGuardian(g.did);
             await persist(list.filter((x) => x.did !== g.did));
           } catch (e) {
             Alert.alert('Gỡ thất bại', e instanceof Error ? e.message : 'Thử lại.');

@@ -489,23 +489,28 @@ export const activation = {
     ),
 };
 
-// ── Guardian (khôi-phục xã-hội) ──────────────────────────────────────
+// ── Guardian (khôi-phục xã-hội) — API.md §6 ──────────────────────────
+// Route + body ĐÚNG theo API.md: POST /guardians/add · /guardians/remove,
+// body { user_did, guardian_did, nonce, proof_signature } (interceptor → snake_case).
+// ⚠️ CHUỖI challenge của proof_signature KHÔNG ghi trong API.md — client dựng theo
+// mẫu nhất-quán "PHOENIXKEY_<ACTION>:...:nonce" (như GENESIS/RECOVER/ROTATE), ký bằng
+// khoá HW owner (DER ECDSA). Nếu backend verify khác → chỉ chỉnh chuỗi trong
+// GuardianScreen (GUARDIAN_ADD/REMOVE_CHALLENGE). Chờ anh Đức chốt.
+export interface GuardianMutateRequest {
+  userDid: string;
+  guardianDid: string;
+  nonce: string;
+  proofSignature: string;
+}
 export const guardians = {
-  /** Thêm guardian. BE: POST /user/guardian (Bearer) — khớp client Dart. */
-  add: (body: { guardianDid: string; guardianName: string }) =>
+  add: (body: GuardianMutateRequest) =>
     unwrap<void>(
-      client.post('/user/guardian', body, { needsAuth: true } as AxiosRequestConfig),
+      client.post('/guardians/add', body, { needsAuth: true } as AxiosRequestConfig),
     ),
 
-  /**
-   * Bớt guardian. ⚠️ Route CHƯA có trong client Dart tham chiếu — suy-luận RESTful
-   * DELETE /user/guardian/:did; chờ anh xác nhận trước khi dùng thật.
-   */
-  remove: (guardianDid: string) =>
+  remove: (body: GuardianMutateRequest) =>
     unwrap<void>(
-      client.delete(`/user/guardian/${encodeURIComponent(guardianDid)}`, {
-        needsAuth: true,
-      } as AxiosRequestConfig),
+      client.post('/guardians/remove', body, { needsAuth: true } as AxiosRequestConfig),
     ),
 };
 

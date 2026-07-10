@@ -118,7 +118,8 @@ def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
         // Keep Android versionCode in lockstep with iOS CFBundleVersion.
         // Build 74 (2026-07-10): fix ví/mạng PhoenixKey (/wallet/all + Standard CIP-1852),
         // guardian đúng route §6, fix đơ iOS displayLink, YOLO gate C + A/B đăng-ký cây.
-        versionCode 74
+        // Build 75 (2026-07-10): tự phát hiện DID mồ côi + nút đăng-ký-lại khi server reset.
+        versionCode 75
         versionName "2.0"
 
         // ✅ Support 16KB page size (required by Google Play Store 2024)

@@ -66,7 +66,7 @@ export interface InstanceConfig {
 export const ALADIN_INSTANCE: InstanceConfig = {
   instanceId: 'aladin',
   displayName: 'Aladin',
-  enabledModules: ['trace', 'proofchat', 'work'],
+  enabledModules: ['trace', 'proofchat', 'work', 'orgmint'],
   tabs: [
     { kind: 'module', moduleId: 'proofchat' },
     { kind: 'module', moduleId: 'trace' },

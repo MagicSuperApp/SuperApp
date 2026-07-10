@@ -564,6 +564,19 @@ const AccountScreen = () => {
                     </Section>
                 </Animated.View>
 
+                {/* ── Tổ chức & LAMP ── */}
+                <Animated.View style={{ opacity: fadeAnim }}>
+                    <Section title="TỔ CHỨC">
+                        <MenuItem
+                            icon="domain-plus"
+                            label="Tạo tổ chức & mint LAMP"
+                            sublabel="OrgDID trên chuỗi + mint LAMP vào kho"
+                            onPress={() => navigation.navigate('OrgMintHome')}
+                            last
+                        />
+                    </Section>
+                </Animated.View>
+
                 {/* ── Cài đặt ── */}
                 <Animated.View style={{ opacity: fadeAnim }}>
                     <Section title="CÀI ĐẶT">

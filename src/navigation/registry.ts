@@ -22,6 +22,7 @@ import type { ComponentType } from 'react';
 import traceManifest from '../modules/trace/module.manifest.json';
 import proofchatManifest from '../modules/proofchat/module.manifest.json';
 import workManifest from '../modules/work/module.manifest.json';
+import orgMintManifest from '../modules/phoenixOrgMint/module.manifest.json';
 
 // --- Trace screens (compile-sẵn) ------------------------------------------
 import FarmListScreen from '../modules/trace/screens/FarmListScreen';
@@ -39,6 +40,12 @@ import WorkHomeScreen from '../modules/work/screens/WorkHomeScreen';
 import JobDetailScreen from '../modules/work/screens/JobDetailScreen';
 import PostJobScreen from '../modules/work/screens/PostJobScreen';
 import WorkerProfileScreen from '../modules/work/screens/WorkerProfileScreen';
+
+// --- OrgDID + mint LAMP screens --------------------------------------------
+import OrgMintHomeScreen from '../modules/phoenixOrgMint/screens/OrgMintHomeScreen';
+import OrgMintCreateScreen from '../modules/phoenixOrgMint/screens/OrgMintCreateScreen';
+import OrgMintConfirmScreen from '../modules/phoenixOrgMint/screens/OrgMintConfirmScreen';
+import OrgMintResultScreen from '../modules/phoenixOrgMint/screens/OrgMintResultScreen';
 
 export type ScreenComponent = ComponentType<any>;
 
@@ -64,7 +71,7 @@ export interface RegistryEntry {
 
 // moduleId nội bộ (ngắn gọn cho instance.config) — KHÁC moduleId reverse-DNS
 // trong manifest (magiclamp.trace). Map id ngắn ↔ entry.
-export type ModuleId = 'trace' | 'proofchat' | 'work';
+export type ModuleId = 'trace' | 'proofchat' | 'work' | 'orgmint';
 
 export const MODULE_REGISTRY: Record<ModuleId, RegistryEntry> = {
   trace: {
@@ -94,6 +101,16 @@ export const MODULE_REGISTRY: Record<ModuleId, RegistryEntry> = {
       JobDetail: JobDetailScreen,
       PostJob: PostJobScreen,
       WorkerProfile: WorkerProfileScreen,
+    },
+  },
+  orgmint: {
+    manifest: orgMintManifest as ModuleManifest,
+    screens: {
+      // manifest.routes: ["OrgMintHome","OrgMintCreate","OrgMintConfirm","OrgMintResult"]
+      OrgMintHome: OrgMintHomeScreen,
+      OrgMintCreate: OrgMintCreateScreen,
+      OrgMintConfirm: OrgMintConfirmScreen,
+      OrgMintResult: OrgMintResultScreen,
     },
   },
 };

@@ -81,6 +81,7 @@ export const TRACE_THEME = activeTheme.brand.trace;
 export const PROOFCHAT_THEME = activeTheme.brand.proofchat;
 export const WORK_THEME = activeTheme.brand.work;
 export const LAMPNET_THEME = activeTheme.brand.lampnet;
+export const ORGMINT_THEME = activeTheme.brand.orgmint;
 
 // Token phụ của module work (cam accent + nền nhạt) — giữ nguyên giá trị cũ.
 export const WORK_ACCENT = '#E08C3A';

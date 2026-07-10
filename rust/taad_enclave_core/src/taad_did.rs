@@ -899,6 +899,21 @@ fn taad_nft_asset_name(did: &str) -> Result<AssetName, &'static str> {
         .map_err(|_| "taad_nft_asset_name: AssetName::new failed (32 bytes within 32-byte limit)")
 }
 
+/// Public wrapper cho `taad_nft_asset_name` — trả hex(blake2b_256(did)). Dùng ở
+/// tầng caller (super-app) để tự tính asset-name của MỌI NFT khoá theo cùng
+/// công thức A-1 (anchor TAAD, Registry-NFT — `registry_mint` dùng
+/// blake2b_256(governing_did) y hệt) TRƯỚC khi build tx, vd để resolve UTxO
+/// đang giữ NFT đó qua Blockfrost `/assets/{unit}/addresses`. Builder tx tự
+/// tính lại nội bộ (không nhận asset_name làm tham số) — hàm này CHỈ phục vụ
+/// bước tra cứu chuỗi phía trước, không ảnh hưởng logic ráp tx.
+pub fn anchor_asset_name_hex(did: &str) -> Result<String, String> {
+    if did.is_empty() {
+        return Err("did rỗng".to_string());
+    }
+    let name = taad_nft_asset_name(did).map_err(|e| e.to_string())?;
+    Ok(hex::encode(name.name()))
+}
+
 /// Compute blake2b_224 of an Ed25519 public key — Cardano's standard
 /// `VerificationKeyHash` (used for `controller_pkh` in TAADDatum).
 fn blake2b_224(bytes: &[u8]) -> [u8; 28] {

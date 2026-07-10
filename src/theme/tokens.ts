@@ -139,6 +139,16 @@ export const BRAND_TOKENS = {
     onPrimary:    '#FFFFFF',
     gradient:     ['#F5A623', '#C47F0D'] as const,
   },
+  orgmint: {
+    key: 'orgmint',
+    name: 'Tạo tổ chức & mint LAMP',
+    primary:      '#F5A623',
+    primaryDeep:  '#C47F0D',
+    primaryLight: '#FDF3DC',
+    primaryGlow:  'rgba(245, 166, 35, 0.10)',
+    onPrimary:    '#FFFFFF',
+    gradient:     ['#F5A623', '#C47F0D'] as const,
+  },
 } as const;
 
 // ── Token nav (tab-bar) — gộp hex thô từ navigation/index.tsx ───────────────
@@ -168,7 +178,7 @@ export type NavTokens = typeof NAV_TOKENS;
 export type BrandKey = keyof typeof BRAND_TOKENS;
 
 export interface ModuleTheme {
-  key: 'trace' | 'proofchat' | 'work' | 'phoenixkey' | 'lampnet';
+  key: 'trace' | 'proofchat' | 'work' | 'phoenixkey' | 'lampnet' | 'orgmint';
   name: string;
   primary: string;
   primaryDeep: string;

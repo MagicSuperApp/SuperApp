@@ -1,0 +1,26 @@
+{
+  "$schema": "../manifest.schema.json",
+  "schemaVersion": "1.0",
+  "moduleId": "magiclamp.orgmint",
+  "version": "1.0.0",
+  "displayName": { "vi": "Tạo tổ chức & mint LAMP", "en": "OrgDID & LAMP mint" },
+  "integrationKind": "feature",
+
+  "entrypoint": "OrgMintHome",
+  "route": "OrgMintHome",
+  "icon": { "name": "domain-plus", "colorToken": "brand.orgmint.primary" },
+  "navSlot": "hub",
+  "routes": ["OrgMintHome", "OrgMintCreate", "OrgMintConfirm", "OrgMintResult"],
+
+  "capabilities": {
+    "data": ["read:profile", "write:orgmint.record"],
+    "wallet": ["read:wallet.utxo", "write:wallet.tx"],
+    "biometric": ["read:biometric.gate"]
+  },
+
+  "mergePolicy": "on-chain-total-order",
+  "mergePolicyNote": "Trạng thái thật của OrgDID + số LAMP đã mint là ledger Cardano (tx đã submit) — không có state cục bộ cần trộn nhiều thiết bị; app chỉ đọc lại UTxO/chain-data mỗi lần mở màn, không cache-rồi-merge.",
+
+  "trustTier": 0,
+  "stakeBondLamp": "0"
+}

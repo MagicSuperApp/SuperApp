@@ -13,6 +13,22 @@ declare module '@env' {
   export const PROOFCHAT_BACKEND_ENABLED: string;
   export const ANALYTICS_API_URL: string;
   export const ANALYTICS_API_KEY: string;
+
+  // Module "tạo OrgDID + mint LAMP" (src/modules/phoenixOrgMint).
+  export const PHOENIX_ORG_MINT_ENABLED: string;
+  export const CARDANO_NETWORK: string;
+  export const BLOCKFROST_KEY: string;
+  export const TAAD_SCRIPT_CBOR_HEX: string;
+  export const TAAD_POLICY_ID_HEX: string;
+  export const LAMP_POLICY_CBOR_HEX: string;
+  export const SUPPLY_STATE_SCRIPT_CBOR_HEX: string;
+  export const REGISTRY_NFT_POLICY_ID: string;
+  export const THREAD_NFT_POLICY_ID: string;
+  export const THREAD_NFT_NAME_HEX: string;
+  export const KHO_NFT_POLICY_ID: string;
+  export const KHO_NFT_NAME_HEX: string;
+  export const LAMP_TOKEN_TAG_HEX: string;
+  export const LAMP_TOKEN_NAME_HEX: string;
 }
 
 // Optional native module used by src/services/storageQueue.ts. Ships no bundled

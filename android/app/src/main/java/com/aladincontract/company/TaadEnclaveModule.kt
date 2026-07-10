@@ -27,6 +27,44 @@ class TaadEnclaveModule(reactContext: ReactApplicationContext) :
     private external fun nativeMasterKekToMnemonic(kekHex: String): String?
     private external fun nativeMnemonicToMasterKek(words: String): String?
 
+    // ── JNI — OrgDID + mint LAMP (bản B) ────────────────────────────────────
+    private external fun nativeConstructDid(typeByte: Int, creatorDid: String, slot: Long): String?
+    private external fun nativeAnchorAssetName(did: String): String?
+    private external fun nativeDeriveTaadPublicKey(masterKekHex: String): String?
+    private external fun nativeDeriveWalletSeed(masterKekHex: String): String?
+    private external fun nativeDeriveCardanoAddress(walletSeedHex: String, network: Int): String?
+    private external fun nativeBuildCreateChildTaadUtxoTx(
+        childDid: String,
+        ownerDid: String,
+        entityType: Int,
+        hwPubHex: String,
+        childTaadPubHex: String,
+        ownerMasterKekHex: String,
+        walletSeedHex: String,
+        network: Int,
+        taadScriptCborHex: String,
+        policyIdHex: String,
+        ownerUtxoJson: String,
+        utxoInputsJson: String,
+        protocolParamsJson: String,
+        currentSlot: Long,
+    ): String?
+    private external fun nativeBuildMintLampViaDid(
+        authorityKeksJson: String,
+        registryUtxoJson: String,
+        tokenTagHex: String,
+        supplyStateUtxoJson: String,
+        supplyStateScriptCbor: String,
+        khoUtxoJson: String,
+        lampPolicyCborHex: String,
+        mintJson: String,
+        utxosJson: String,
+        protocolParamsJson: String,
+        walletSeedHex: String,
+        network: Int,
+        currentSlot: Long,
+    ): String?
+
     // ── RN methods ──────────────────────────────────────────────────────────
 
     @ReactMethod
@@ -68,6 +106,151 @@ class TaadEnclaveModule(reactContext: ReactApplicationContext) :
             }
         } catch (e: Throwable) {
             promise.reject("E_MNEMONIC_INVALID", e.message ?: "Decode mnemonic thất bại", e)
+        }
+    }
+
+    // ── OrgDID + mint LAMP (bản B) ──────────────────────────────────────────
+
+    @ReactMethod
+    fun constructDid(typeByte: Double, creatorDid: String, slot: Double, promise: Promise) {
+        try {
+            val did = nativeConstructDid(typeByte.toInt(), creatorDid, slot.toLong())
+            if (did.isNullOrEmpty()) {
+                promise.reject("E_CONSTRUCT_DID", "Không dựng được chuỗi DID")
+            } else {
+                promise.resolve(did)
+            }
+        } catch (e: Throwable) {
+            promise.reject("E_CONSTRUCT_DID", e.message ?: "Dựng DID thất bại", e)
+        }
+    }
+
+    @ReactMethod
+    fun anchorAssetName(did: String, promise: Promise) {
+        try {
+            val hex = nativeAnchorAssetName(did)
+            if (hex.isNullOrEmpty()) {
+                promise.reject("E_ANCHOR_ASSET_NAME", "DID rỗng hoặc không hợp lệ")
+            } else {
+                promise.resolve(hex)
+            }
+        } catch (e: Throwable) {
+            promise.reject("E_ANCHOR_ASSET_NAME", e.message ?: "Tính asset-name thất bại", e)
+        }
+    }
+
+    @ReactMethod
+    fun deriveTaadPublicKey(masterKekHex: String, promise: Promise) {
+        try {
+            val pubkey = nativeDeriveTaadPublicKey(masterKekHex)
+            if (pubkey.isNullOrEmpty()) {
+                promise.reject("E_DERIVE_TAAD_PUBKEY", "Master_KEK không hợp lệ (cần 64-hex)")
+            } else {
+                promise.resolve(pubkey)
+            }
+        } catch (e: Throwable) {
+            promise.reject("E_DERIVE_TAAD_PUBKEY", e.message ?: "Suy TAAD pubkey thất bại", e)
+        }
+    }
+
+    @ReactMethod
+    fun deriveWalletSeed(masterKekHex: String, promise: Promise) {
+        try {
+            val seed = nativeDeriveWalletSeed(masterKekHex)
+            if (seed.isNullOrEmpty()) {
+                promise.reject("E_DERIVE_WALLET_SEED", "Master_KEK không hợp lệ (cần 64-hex)")
+            } else {
+                promise.resolve(seed)
+            }
+        } catch (e: Throwable) {
+            promise.reject("E_DERIVE_WALLET_SEED", e.message ?: "Suy ví seed thất bại", e)
+        }
+    }
+
+    @ReactMethod
+    fun deriveCardanoAddress(walletSeedHex: String, network: Double, promise: Promise) {
+        try {
+            val addr = nativeDeriveCardanoAddress(walletSeedHex, network.toInt())
+            if (addr.isNullOrEmpty()) {
+                promise.reject("E_DERIVE_ADDRESS", "Ví seed không hợp lệ (cần 64-hex)")
+            } else {
+                promise.resolve(addr)
+            }
+        } catch (e: Throwable) {
+            promise.reject("E_DERIVE_ADDRESS", e.message ?: "Suy địa chỉ ví thất bại", e)
+        }
+    }
+
+    @ReactMethod
+    fun buildCreateChildTaadUtxoTx(
+        childDid: String,
+        ownerDid: String,
+        entityType: Double,
+        hwPubHex: String,
+        childTaadPubHex: String,
+        ownerMasterKekHex: String,
+        walletSeedHex: String,
+        network: Double,
+        taadScriptCborHex: String,
+        policyIdHex: String,
+        ownerUtxoJson: String,
+        utxoInputsJson: String,
+        protocolParamsJson: String,
+        currentSlot: Double,
+        promise: Promise,
+    ) {
+        try {
+            val txHex = nativeBuildCreateChildTaadUtxoTx(
+                childDid, ownerDid, entityType.toInt(), hwPubHex, childTaadPubHex,
+                ownerMasterKekHex, walletSeedHex, network.toInt(), taadScriptCborHex,
+                policyIdHex, ownerUtxoJson, utxoInputsJson, protocolParamsJson, currentSlot.toLong(),
+            )
+            if (txHex.isNullOrEmpty()) {
+                promise.reject(
+                    "E_CREATE_CHILD_TAAD",
+                    "Không ráp được tx tạo OrgDID — kiểm tra UTxO owner/ví, entity_type (1..9), policy/script CBOR",
+                )
+            } else {
+                promise.resolve(txHex)
+            }
+        } catch (e: Throwable) {
+            promise.reject("E_CREATE_CHILD_TAAD", e.message ?: "Ráp tx tạo OrgDID thất bại", e)
+        }
+    }
+
+    @ReactMethod
+    fun buildMintLampViaDid(
+        authorityKeksJson: String,
+        registryUtxoJson: String,
+        tokenTagHex: String,
+        supplyStateUtxoJson: String,
+        supplyStateScriptCbor: String,
+        khoUtxoJson: String,
+        lampPolicyCborHex: String,
+        mintJson: String,
+        utxosJson: String,
+        protocolParamsJson: String,
+        walletSeedHex: String,
+        network: Double,
+        currentSlot: Double,
+        promise: Promise,
+    ) {
+        try {
+            val txHex = nativeBuildMintLampViaDid(
+                authorityKeksJson, registryUtxoJson, tokenTagHex, supplyStateUtxoJson,
+                supplyStateScriptCbor, khoUtxoJson, lampPolicyCborHex, mintJson, utxosJson,
+                protocolParamsJson, walletSeedHex, network.toInt(), currentSlot.toLong(),
+            )
+            if (txHex.isNullOrEmpty()) {
+                promise.reject(
+                    "E_MINT_LAMP",
+                    "Không ráp được tx mint LAMP — kiểm tra UTxO ví/Registry/SupplyState/KHO, authority KEK khớp entry registry, chưa vượt cap",
+                )
+            } else {
+                promise.resolve(txHex)
+            }
+        } catch (e: Throwable) {
+            promise.reject("E_MINT_LAMP", e.message ?: "Ráp tx mint LAMP thất bại", e)
         }
     }
 

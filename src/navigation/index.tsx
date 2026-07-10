@@ -1044,6 +1044,7 @@ const radialStyles = StyleSheet.create({
 const MainTabs = () => (
   <Tab.Navigator
     initialRouteName={DEFAULT_INSTANCE.initialTabRoute}
+    backBehavior="initialRoute"
     screenOptions={{ headerShown: false }}
     tabBar={(props) => <CurvedTabBar {...props} />}
   >

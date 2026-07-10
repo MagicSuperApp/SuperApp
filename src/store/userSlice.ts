@@ -4,7 +4,7 @@ import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import { User } from '../types';
 import { database } from '../utils/database';
 import { databaseManager } from '../services/databaseManager';
-import { phoenixKeyApi } from '../services/phoenixKey-api';
+import { phoenixKeyApi, summarizeWalletAll } from '../services/phoenixKey-api';
 import { parseDidNetwork } from '../services/phoenixDid';
 
 interface Wallet {
@@ -125,16 +125,20 @@ export const saveWallet = createAsyncThunk(
 export const refreshWallet = createAsyncThunk(
   'user/refreshWallet',
   async (did: string) => {
-    const balance = await phoenixKeyApi.wallet.getBalance(did);
+    // Endpoint GỘP /wallet/{did}/all (API.md §7). `/balance` cũ deprecated: ép MAGIC=0
+    // và thiếu địa-chỉ → chính là lý do màn Tài-khoản không hiện ví. Đọc địa-chỉ + số dư
+    // từ ví CÓ THẬT: ưu tiên Standard (CIP-1852, user tự kiểm-soát), fallback Phoenix custody.
+    const all = await phoenixKeyApi.wallet.getAll(did);
+    const s = summarizeWalletAll(all);
     const wallet: Wallet = {
       id: did,
       userId: did,
-      magicBalance: balance.balanceMagic,
-      lampBalance: balance.balanceLamp,
-      adaBalance: balance.balanceLovelace / 1_000_000,
-      address: balance.address,
-      magicAccrued: balance.magicAccrued,
-      magicRatePerSlot: balance.magicRatePerSlot,
+      magicBalance: s.magicAvailable,
+      lampBalance: s.lamp,
+      carpBalance: s.carp,
+      adaBalance: s.lovelace / 1_000_000,
+      address: s.address,
+      magicAccrued: s.magicAccrued,
       pendingCredits: 0,
       lastSynced: new Date().toISOString(),
       fromChain: true,

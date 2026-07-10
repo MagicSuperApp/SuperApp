@@ -1,4 +1,4 @@
-/**
+1/**
  * PhoenixKey backend REST client.
  *
  * Server: `api.phoenixkey.me` (or dev override via env PHOENIXKEY_API_URL).
@@ -91,6 +91,57 @@ export interface BalanceResponse {
   magicRatePerSlot: string;
   lastAccrualSlot: number;
   currentSlot: number;
+}
+
+/**
+ * GET /wallet/{did}/all — endpoint GỘP (thay `/balance` đã deprecated, API.md §7).
+ * `wallets[]` chỉ chứa ví ĐÃ có: `phoenix` (custody, từ User.walletAddress) và/hoặc
+ * `standard` (CIP-1852, sau khi mobile register). `magic` là số kế-toán Vault (không
+ * mint vào ví). Keys đã single-word nên interceptor camelCase giữ nguyên.
+ */
+export type WalletKind = 'phoenix' | 'standard';
+export interface WalletEntry {
+  kind: WalletKind;
+  addresses: { fixed?: string; active?: string; stake?: string };
+  balances: { lovelace: number; lamp: number; carp: number };
+}
+export interface WalletAllResponse {
+  wallets: WalletEntry[];
+  magic: { source: string; available: number; accrued: number };
+}
+
+/** POST /wallet/standard/register — client derive CIP-1852 rồi đăng-ký (API.md §7). */
+export interface StandardWalletRegisterRequest {
+  fixedAddress: string;   // account 0 base (bắt buộc)
+  activeAddress?: string; // account N base
+  stakeAddress?: string;  // stake credential role 2
+}
+
+/**
+ * Rút gọn WalletAllResponse về địa-chỉ + số dư để HIỂN THỊ. Một nguồn chuẩn cho mọi
+ * màn (Account, PhoenixWallet, SDK) — ưu tiên ví Standard (user tự kiểm-soát), fallback
+ * Phoenix custody. Ví rỗng → address null + số dư 0 (KHÔNG bịa).
+ */
+export function summarizeWalletAll(all: WalletAllResponse): {
+  address: string | null;
+  lovelace: number;
+  lamp: number;
+  carp: number;
+  magicAvailable: number;
+  magicAccrued: number;
+} {
+  const standard = all.wallets.find(w => w.kind === 'standard');
+  const phoenix = all.wallets.find(w => w.kind === 'phoenix');
+  const primary = standard ?? phoenix ?? null;
+  const b = primary?.balances ?? { lovelace: 0, lamp: 0, carp: 0 };
+  return {
+    address: primary?.addresses.active ?? primary?.addresses.fixed ?? null,
+    lovelace: b.lovelace,
+    lamp: b.lamp,
+    carp: b.carp,
+    magicAvailable: all.magic.available,
+    magicAccrued: all.magic.accrued,
+  };
 }
 
 export interface MagicClaimResponse {
@@ -352,11 +403,39 @@ export const wallet = {
       ),
     ),
 
+  /**
+   * Ví GỘP: Phoenix custody + Standard CIP-1852 + MAGIC vault trong 1 lần gọi.
+   * Đây là nguồn ĐÚNG cho địa-chỉ + số dư (thay getBalance đã deprecated).
+   */
+  getAll: (userDid: string) =>
+    unwrap<WalletAllResponse>(
+      client.get(`/wallet/${encodeURIComponent(userDid)}/all`),
+    ),
+
+  /**
+   * Đăng-ký ví Standard (CIP-1852) — client derive địa-chỉ rồi gửi lên. Idempotent:
+   * gọi lại cập-nhật active/stake, KHÔNG cho đổi fixed. Bearer session.
+   */
+  standardRegister: (body: StandardWalletRegisterRequest) =>
+    unwrap<{ code: number; message: string }>(
+      client.post('/wallet/standard/register', body, {
+        needsAuth: true,
+      } as AxiosRequestConfig),
+    ),
+
+  getStandard: (userDid: string) =>
+    unwrap<{
+      addresses: { fixed?: string; active?: string; stake?: string };
+      balances: { lovelace: number; lamp: number; carp: number };
+    }>(client.get(`/wallet/standard/${encodeURIComponent(userDid)}`)),
+
+  /** @deprecated API.md §7 — dùng getAll. Backend ép MAGIC = 0, có thể thiếu address. */
   getBalance: (userDid: string) =>
     unwrap<BalanceResponse>(
       client.get(`/wallet/${encodeURIComponent(userDid)}/balance`),
     ),
 
+  /** @deprecated API.md §7 — trả 410 Gone (1324). MAGIC là số kế-toán Vault, không mint. */
   claimMagic: () =>
     unwrap<MagicClaimResponse>(
       client.post('/wallet/magic/claim', undefined, {

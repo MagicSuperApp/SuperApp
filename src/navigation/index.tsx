@@ -17,6 +17,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Provider, useSelector, useDispatch } from 'react-redux';
 import { store, RootState } from '../store';
 import { refreshWallet, resolveNetwork, refreshControllerPkh } from '../store/userSlice';
+import { ensureStandardWalletRegistered } from '../services/standardWalletService';
 import { initPush } from '../services/pushHandler';
 import Toast from 'react-native-toast-message';
 import NetInfo from '@react-native-community/netinfo';
@@ -1073,7 +1074,12 @@ const ProtectedMain = () => {
   React.useEffect(() => {
     const did = user?.did || user?.id;
     if (did) {
-      dispatch(refreshWallet(did));
+      // Đăng-ký ví Standard (CIP-1852) TRƯỚC rồi mới refresh — để /wallet/all trả về ví
+      // Standard ngay lần đầu (idempotent, best-effort — không chặn nếu lỗi/offline).
+      (async () => {
+        await ensureStandardWalletRegistered();
+        dispatch(refreshWallet(did));
+      })();
       dispatch(resolveNetwork(did));
       dispatch(refreshControllerPkh(did));
       // Push FCM/APNs: đăng ký token với backend (devices.register cần Bearer →

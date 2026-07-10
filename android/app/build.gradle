@@ -116,7 +116,9 @@ def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
         // (1-tap Cây/Quả/Vườn), implicit farm 22m × 22m, biometric login,
         // walk-away auto-stop, drag-to-edit polygon. Field test target Đắk Lắk.
         // Keep Android versionCode in lockstep with iOS CFBundleVersion.
-        versionCode 73
+        // Build 74 (2026-07-10): fix ví/mạng PhoenixKey (/wallet/all + Standard CIP-1852),
+        // guardian đúng route §6, fix đơ iOS displayLink, YOLO gate C + A/B đăng-ký cây.
+        versionCode 74
         versionName "2.0"
 
         // ✅ Support 16KB page size (required by Google Play Store 2024)

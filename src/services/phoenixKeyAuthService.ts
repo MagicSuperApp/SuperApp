@@ -36,9 +36,41 @@ import {
   isMalformedPhoenixDid,
   isSupportedBackendDid,
 } from './phoenixDid';
+import taad from '../sdk/taadEnclave';
+import { getOrCreateMasterKek } from './masterKekStore';
 
 const DID_USERS_KEY = 'did_users';
 const BIOMETRIC_DID_KEY = 'biometric_did_map';
+
+// Mạng Cardano cho địa chỉ ví derive từ Master_KEK. 0 = preprod (testnet, mặc
+// định giai đoạn test, khớp Enclave), 1 = mainnet. Đổi khi lên production.
+const WALLET_NETWORK = 0;
+
+/**
+ * Trường ví Master_KEK gắn kèm register (ADDITIVE). Lấy/sinh KEK → derive
+ * TAAD_Key (Ed25519) + địa chỉ Cardano account-0. NON-BLOCKING: nếu Rust core
+ * chưa sẵn (build cũ) hoặc derive lỗi → trả {} → register DID như cũ (chỉ HW_Key),
+ * did_auth không bị ảnh hưởng.
+ */
+const deriveWalletRegisterFields = async (): Promise<{
+  taadPublicKeyHex?: string;
+  walletAddress?: string;
+  entityType?: 'PERSON';
+}> => {
+  if (!taad.isAvailable()) return {};
+  try {
+    const kek = await getOrCreateMasterKek();
+    const taadPublicKeyHex = await taad.deriveTaadPubkey(kek);
+    const walletAddress = await taad.deriveWalletAddress(kek, 0, WALLET_NETWORK);
+    if (!taadPublicKeyHex || !walletAddress) return {};
+    // Backend DidType enum là CHỮ HOA (PERSON/ORG/...). Gửi 'person' → 400 malformed
+    // (Cannot deserialize entity_type). PHẢI 'PERSON'.
+    return { taadPublicKeyHex, walletAddress, entityType: 'PERSON' };
+  } catch (e) {
+    console.warn('[PhoenixKey] derive ví từ KEK lỗi (bỏ qua, register chỉ HW_Key):', e);
+    return {};
+  }
+};
 
 interface GenesisResult {
   user: AuthUser;
@@ -69,6 +101,9 @@ export const registerIdentity = async (
     'Ký bằng khóa phần cứng vừa sinh',
   );
 
+  // ADDITIVE: gắn ví Master_KEK (TAAD_Key + địa chỉ Cardano). Bỏ qua nếu lỗi.
+  const walletFields = await deriveWalletRegisterFields();
+
   let userDid: string;
   let txHash: string;
   try {
@@ -77,6 +112,7 @@ export const registerIdentity = async (
       keyOrigin: 'SECURE_ENCLAVE',
       keyRole: 'owner',
       addedBySignature: signature,
+      ...walletFields,
     });
     userDid = assertSupportedBackendDid(res.userDid, 'PhoenixKey register userDid');
     txHash = res.txHash;
@@ -128,8 +164,47 @@ export const hasLocalIdentity = async (): Promise<boolean> => {
   return !!did && hasKey;
 };
 
+/**
+ * DID hiện tại CÓ tồn-tại trên PhoenixKey directory không (probe /identity/{did}/pubkey).
+ * - `true`  : có (HTTP 200).
+ * - `false` : chắc-chắn KHÔNG (HTTP 404 — DID mồ côi, vd server đã clean data).
+ * - `null`  : không xác-định (mạng lỗi / DID local trống) → KHÔNG kết-luận mồ côi để
+ *             tránh bắt user đăng-ký lại oan khi chỉ mất mạng tạm.
+ *
+ * Vì sao cần: khi server PhoenixKey bị reset, máy vẫn giữ DID+khoá local → OriLife
+ * verify resolve DID thất-bại (503). Probe này phân-biệt "DID mồ côi" với "server bận".
+ */
+export const isIdentityRegisteredOnServer = async (): Promise<boolean | null> => {
+  const did = await currentUserDid();
+  if (!did) return null;
+  try {
+    await phoenixKeyApi.identity.getPubkey(did);
+    return true;
+  } catch (err) {
+    if (err instanceof PhoenixKeyApiError && err.httpStatus === 404) return false;
+    return null; // lỗi khác (mạng/5xx) → không kết-luận
+  }
+};
+
+/**
+ * Đăng-ký LẠI danh-tính khi DID cũ mồ côi (server đã reset). Vì keypair cũ vẫn còn,
+ * registerIdentity sẽ "recover" DID cũ → phải WIPE trước để sinh khoá + DID MỚI,
+ * ghi genesis mới lên PhoenixKey. Trả GenesisResult (user DID mới + txHash).
+ *
+ * ⚠️ Tạo DID MỚI — dữ-liệu gắn DID cũ (nếu có) không tự chuyển sang. Chấp-nhận được
+ * sau khi server đã clean (DID cũ dù sao cũng không còn resolve được).
+ */
+export const reRegisterIdentity = async (
+  biometricKind: BiometricKind,
+): Promise<GenesisResult> => {
+  await wipeIdentity();
+  return registerIdentity(biometricKind);
+};
+
 export const phoenixKeyAuth = {
   registerIdentity,
+  reRegisterIdentity,
+  isIdentityRegisteredOnServer,
   unlockExistingIdentity,
   hasLocalIdentity,
   ownerPublicKey,
@@ -152,11 +227,13 @@ const recoverLocalIdentityFromKey = async (
       'Xác thực để khôi phục danh tính trên thiết bị này',
     );
 
+    const walletFields = await deriveWalletRegisterFields();
     const res = await phoenixKeyApi.identity.register({
       publicKeyHex,
       keyOrigin: 'SECURE_ENCLAVE',
       keyRole: 'owner',
       addedBySignature: signature,
+      ...walletFields,
     });
     const userDid = assertSupportedBackendDid(res.userDid, 'PhoenixKey recovered userDid');
     const user: AuthUser = {

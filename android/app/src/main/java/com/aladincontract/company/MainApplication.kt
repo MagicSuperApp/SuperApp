@@ -15,8 +15,8 @@ class MainApplication : Application(), ReactApplication {
       packageList =
         PackageList(this).packages.apply {
           // Add custom packages here
-          add(OriLifePackage())
           add(PhoenixKeyPackage())
+          add(com.aladincontract.company.treereid.TreeReIDPackage())
         },
     )
   }

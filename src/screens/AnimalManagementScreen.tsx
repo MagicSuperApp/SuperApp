@@ -42,9 +42,9 @@ import {
 // Config
 // ---------------------------------------------------------------------------
 
-import { ORILIFE_API_BASE_URL } from '@env';
+import { ORILIFE_BASE } from '../services/orilifeBase';
 const BASE_URL: string =
-  (ORILIFE_API_BASE_URL as string | undefined) ?? 'https://test.orilife.io';
+  ORILIFE_BASE;
 
 const PAGE_SIZE = 20;
 
@@ -395,16 +395,13 @@ const AnimalManagementScreen: React.FC = () => {
       <Text style={styles.emptySubtitle}>
         {selectedSpecies
           ? `Chưa có ${speciesLabel(selectedSpecies).toLowerCase()} nào được đăng ký`
-          : 'Bắt đầu bằng cách nhận diện hoặc đăng ký cá thể đầu tiên'}
+          : 'Chưa có vật nuôi nào'}
       </Text>
-      <TouchableOpacity
-        style={styles.emptyBtn}
-        onPress={() => navigation.navigate('AnimalIdentity')}
-        activeOpacity={0.8}
-      >
-        <Icon name="camera-plus-outline" size={20} color={NEUTRAL.white} />
-        <Text style={styles.emptyBtnText}>Đăng ký cá thể đầu tiên</Text>
-      </TouchableOpacity>
+      {/* Thêm/nhận diện vật nuôi cần ngữ cảnh trang trại (backend bắt buộc farm_id).
+          Màn này liệt kê mọi farm nên KHÔNG có nút thêm — vào từng trang trại để thêm. */}
+      <Text style={styles.emptySubtitle}>
+        Để thêm vật nuôi, hãy mở trang trại tương ứng rồi đăng ký từ trong đó.
+      </Text>
     </View>
   );
 
@@ -445,13 +442,9 @@ const AnimalManagementScreen: React.FC = () => {
             </View>
           )}
         </View>
-        <TouchableOpacity
-          style={styles.addBtn}
-          onPress={() => navigation.navigate('AnimalIdentity')}
-          activeOpacity={0.7}
-        >
-          <Icon name="plus" size={24} color={NEUTRAL.white} />
-        </TouchableOpacity>
+        {/* Bỏ nút "+" thêm ở màn toàn cục: thêm vật nuôi cần ngữ cảnh trang trại
+            (backend bắt buộc farm_id). Giữ View rỗng để cân header. */}
+        <View style={styles.addBtn} />
       </View>
 
       {/* Species filter chips */}
@@ -504,7 +497,7 @@ const AnimalManagementScreen: React.FC = () => {
           renderItem={({ item }) => (
             <AnimalCard
               item={item}
-              onPress={() => navigation.navigate('AnimalIdentity', { animalDid: item.animal_did })}
+              onPress={() => navigation.navigate('AnimalDetail', { animalDid: item.animal_did })}
               onLongPress={() => handleLongPress(item)}
             />
           )}

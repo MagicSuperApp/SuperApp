@@ -14,8 +14,9 @@ import {
     Alert,
     Modal,
     Linking,
-    Clipboard,
 } from 'react-native';
+// RN 0.84 đã gỡ Clipboard khỏi core → dùng package cộng đồng (API setString giữ nguyên).
+import Clipboard from '@react-native-clipboard/clipboard';
 import { logoutUser, selectChainWallet } from '../store/userSlice';
 import { setChatbotEnabled } from '../store/chatbotSlice';
 import { useSelector } from 'react-redux';
@@ -28,6 +29,21 @@ import StateView from '../components/state/StateView';
 import { showInfo } from '../utils/alert';
 import { useNavigation } from '@react-navigation/native';
 import { showWarning } from '../utils/alert';
+import { getVersion, getBuildNumber } from 'react-native-device-info';
+import { API_BASE_URL } from '../services/aladin-api';
+import taad from '../sdk/taadEnclave';
+import { getStoredMasterKek } from '../services/masterKekStore';
+
+// 0 = preprod (testnet), khớp WALLET_NETWORK bên register + PhoenixWalletScreen.
+const WALLET_NETWORK = 0;
+
+// Version THẬT đọc từ bundle (CFBundleShortVersionString / versionName + build number).
+// Thay chuỗi hard-code "Aladin v1.0.0" (Lỗi field #4) — để field biết đúng build đang chạy.
+const APP_VERSION_LABEL = `Aladin v${getVersion()} (${getBuildNumber()})`;
+
+// Chi tiết debug (tap version 5 lần): version + server API đang trỏ → field tự soi
+// máy có chạy đúng build + đúng server không (chẩn đoán 404 farm — Lỗi field #5).
+const APP_DEBUG_INFO = `${APP_VERSION_LABEL}\n\nMáy chủ: ${API_BASE_URL}\nNền: ${Platform.OS}`;
 import { Switch } from 'react-native';
 const { width } = Dimensions.get('window');
 
@@ -250,11 +266,31 @@ const AccountScreen = () => {
     const chainWallet = useSelector(selectChainWallet);
     const network = useSelector((state: RootState) => state.user.network);
     const phoenixKey = useSelector((state: RootState) => state.user.phoenixKey);
+    // Địa-chỉ-2: khoá điều-khiển DID (quản-trị, KHÔNG giữ tài sản). null = chưa lấy được.
+    const controllerPkh = useSelector((state: RootState) => state.user.controllerPkh);
     const chatbotEnabled = useSelector((state: RootState) => state.chatbot.enabled);
     const dispatch = useAppDispatch();
 
-    // Địa chỉ ví thật (nếu PhoenixKey đã cấp). PhoenixKey hiện là DID-only nên có thể chưa có.
-    const walletAddress = chainWallet?.address ?? phoenixKey?.walletAddress ?? user?.walletAddress ?? '';
+    // Địa-chỉ derive LOCAL từ Master_KEK (account-0) — ĐÚNG bằng địa-chỉ register gửi lên
+    // backend. Dùng làm fallback để ví HIỆN kể cả khi /wallet/all chưa trả (deriver backend
+    // chưa sẵn). Không cần mạng, không rò khoá (chỉ ra địa-chỉ công khai).
+    const [localAddr, setLocalAddr] = useState<string | null>(null);
+    useEffect(() => {
+        let alive = true;
+        (async () => {
+            try {
+                const kek = await getStoredMasterKek();
+                if (!kek) return;
+                const addr = await taad.deriveWalletAddress(kek, 0, WALLET_NETWORK);
+                if (alive && addr) setLocalAddr(addr);
+            } catch { /* giữ null → hiện "—" */ }
+        })();
+        return () => { alive = false; };
+    }, []);
+
+    // Ưu tiên địa-chỉ từ chuỗi (chainWallet), rồi local-derive, rồi các nguồn cũ.
+    const walletAddress =
+        chainWallet?.address ?? localAddr ?? phoenixKey?.walletAddress ?? user?.walletAddress ?? '';
     // Mạng: ưu tiên resolveNetwork (theo DID thật), else suy từ tiền tố địa chỉ ví. KHÔNG hardcode.
     const realNet: NetKind = normNetwork(network) ?? netFromAddress(walletAddress);
     const navigation: any = useNavigation();
@@ -289,7 +325,7 @@ const AccountScreen = () => {
         }, 1500);
         if (versionTapCount.current >= 5) {
             versionTapCount.current = 0;
-            showInfo('Aladin', 'Aladin v1.0.0');
+            showInfo('Aladin', APP_DEBUG_INFO);
         }
     };
 
@@ -359,9 +395,13 @@ const AccountScreen = () => {
         .join('')
         .toUpperCase();
 
-    const shortWallet = user?.walletAddress
-        ? `${user.walletAddress.slice(0, 8)}...${user.walletAddress.slice(-6)}`
-        : '—';
+    // Guard độ dài: chỉ rút gọn khi địa chỉ đủ dài (>= 14 ký tự). Địa chỉ ngắn
+    // (edge testnet) hiển thị nguyên vẹn — tránh lộ ký tự sai do slice chồng lấn.
+    const shortWallet = (() => {
+        const addr = user?.walletAddress;
+        if (!addr) return '—';
+        return addr.length >= 14 ? `${addr.slice(0, 8)}...${addr.slice(-6)}` : addr;
+    })();
 
     if (!user) {
         // Trước đây trả màn TRỐNG (vi phạm §7.3). Khi chưa có user (đang hydrate
@@ -387,7 +427,8 @@ const AccountScreen = () => {
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={[
                     styles.scrollContent,
-                    { paddingBottom: Math.max(insets.bottom, 12) + 20 },
+                    // iOS-fix: chừa khoảng dưới cho CurvedTabBar (navbar nổi) khỏi che nội dung.
+                    { paddingBottom: Math.max(insets.bottom, 12) + 120 },
                 ]}
             >
                 {/* ── Profile hero ── */}
@@ -453,7 +494,17 @@ const AccountScreen = () => {
                             color={COLORS.accent}
                             desc="Sinh MAGIC mỗi 5 ngày"
                         />
-                        {/* Ô-3: gom ADA + token khác + hợp đồng còn hạn — bấm để xem. */}
+                        {/* CARP — token hệ sinh thái thứ 3. TODO brand: icon/màu tạm; số dư chờ API Phoenix. */}
+                        <TokenCard
+                            index={2}
+                            icon="fish"
+                            label="CARP"
+                            value={chainWallet?.carpBalance}
+                            unit="CARP"
+                            color="#2F8F8F"
+                            desc="Token hệ sinh thái"
+                        />
+                        {/* Ô cuối: gom ADA + token khác + hợp đồng còn hạn — bấm để xem. */}
                         <TouchableOpacity style={styles.assetMoreCard} activeOpacity={0.85} onPress={() => setAssetsOpen(true)}>
                             <View style={[styles.tokenIconWrap, { backgroundColor: 'rgba(55,71,79,0.10)' }]}>
                                 <Icon name="wallet-bifold-outline" size={20} color="#37474f" />
@@ -502,6 +553,15 @@ const AccountScreen = () => {
                             value={did}
                             copyable mono
                         />
+                        {/* Địa-chỉ-2: khoá ĐIỀU-KHIỂN DID (quản-trị, KHÔNG giữ tài sản). Chỉ hiện khi backend trả về. */}
+                        {!!controllerPkh && (
+                            <InfoRow
+                                icon="key-outline"
+                                label="Khoá điều-khiển (quản-trị DID)"
+                                value={controllerPkh}
+                                copyable mono
+                            />
+                        )}
                         <InfoRow
                             icon="shield-key-outline"
                             label="Chuẩn khoá"
@@ -554,6 +614,43 @@ const AccountScreen = () => {
                     </Section>
                 </Animated.View>
 
+                {/* ── Ví ── */}
+                <Animated.View style={{ opacity: fadeAnim }}>
+                    <Section title="VÍ">
+                        <MenuItem
+                            icon="wallet-outline"
+                            label="Ví PhoenixKey"
+                            sublabel="Số dư ADA/LAMP/MAGIC + địa chỉ Cardano (từ cụm 24 từ)"
+                            onPress={() => navigation.navigate('PhoenixWallet')}
+                        />
+                        <MenuItem
+                            icon="card-account-details-outline"
+                            label="Xuất danh tính"
+                            sublabel="Xem/copy DID, khoá công khai, địa chỉ ví"
+                            onPress={() => navigation.navigate('ExportIdentity')}
+                        />
+                        <MenuItem
+                            icon="at"
+                            label="Username"
+                            sublabel="Đặt tên tra cứu để người khác tìm bạn"
+                            onPress={() => navigation.navigate('Username')}
+                        />
+                        <MenuItem
+                            icon="account-supervisor-outline"
+                            label="Người bảo hộ"
+                            sublabel="Thêm guardian để khôi phục khi mất thiết bị"
+                            onPress={() => navigation.navigate('Guardian')}
+                        />
+                        <MenuItem
+                            icon="history"
+                            label="Nhật ký hoạt động"
+                            sublabel="Lịch sử ký, xoay khoá, khôi phục"
+                            onPress={() => navigation.navigate('ActivityLog')}
+                            last
+                        />
+                    </Section>
+                </Animated.View>
+
                 {/* ── Bảo mật ── */}
                 <Animated.View style={{ opacity: fadeAnim }}>
                     <Section title="BẢO MẬT & KHÔI PHỤC">
@@ -570,9 +667,22 @@ const AccountScreen = () => {
                             onPress={handleRotate}
                         />
                         <MenuItem
-                            icon="qrcode"
-                            label="Xuất mã khôi phục"
-                            sublabel="Lưu trữ an toàn bên ngoài thiết bị"
+                            icon="qrcode-scan"
+                            label="Đăng nhập web (quét QR)"
+                            sublabel="Duyệt đăng nhập phoenixkey.me bằng khoá trên máy"
+                            onPress={() => navigation.navigate('WebLoginScan')}
+                        />
+                        <MenuItem
+                            icon="key-outline"
+                            label="Xuất cụm 24 từ khôi phục"
+                            sublabel="Sao lưu gốc-tin-cậy (BIP39) — ghi ra giấy, cất an toàn"
+                            onPress={() => navigation.navigate('SeedExport')}
+                        />
+                        <MenuItem
+                            icon="backup-restore"
+                            label="Khôi phục bằng cụm 24 từ"
+                            sublabel="Nhập cụm từ để khôi phục danh tính trên máy này"
+                            onPress={() => navigation.navigate('RestoreIdentity')}
                         />
                         <MenuItem
                             icon="account-multiple-outline"
@@ -594,7 +704,7 @@ const AccountScreen = () => {
                         <MenuItem
                             icon="information-outline"
                             label="Phiên bản ứng dụng"
-                            sublabel="Aladin v1.0.0"
+                            sublabel={APP_VERSION_LABEL}
                             showArrow={false}
                             onPress={handleVersionTap}
                             last

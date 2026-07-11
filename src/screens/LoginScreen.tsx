@@ -22,6 +22,7 @@ import {
   Dimensions,
   ScrollView,
   Easing,
+  Image,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useDispatch } from 'react-redux';
@@ -301,7 +302,7 @@ const LoginScreen = () => {
         >
           <View style={styles.logoOuter}>
             <View style={styles.logoInner}>
-              <Icon name="shield-key" size={32} color={BLUE.white} />
+              <Image source={require('../../assets/images/logo.png')} style={{ width: 50, height: 50, borderRadius: 9 }} />
             </View>
           </View>
           <Text allowFontScaling={false} style={styles.eyebrow}>ALADIN · PHOENIXKEY DID</Text>
@@ -408,6 +409,29 @@ const LoginScreen = () => {
             </Text>
             <Text style={styles.signUpSub} allowFontScaling={false}>
               Tạo danh tính mới bằng sinh trắc học · 3 bước
+            </Text>
+          </View>
+          <Icon name="arrow-right" size={18} color={BLUE.primary} />
+        </TouchableOpacity>
+
+        {/* Restore wallet CTA — khôi phục ví bằng cụm 24 từ (máy mới / cài lại) */}
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => {
+            trackPress('restore_cta', { action: 'open_restore' });
+            navigation.navigate('RestoreIdentity' as never);
+          }}
+          style={styles.signUpCard}
+        >
+          <View style={styles.signUpIcon}>
+            <Icon name="backup-restore" size={20} color={BLUE.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.signUpTitle} allowFontScaling={false}>
+              Đã có cụm 24 từ?
+            </Text>
+            <Text style={styles.signUpSub} allowFontScaling={false}>
+              Khôi phục ví trên thiết bị này
             </Text>
           </View>
           <Icon name="arrow-right" size={18} color={BLUE.primary} />
@@ -654,9 +678,10 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
   logoInner: {
-    width: 48, height: 48, borderRadius: 14,
+    borderRadius: 14,
     backgroundColor: 'rgba(255,255,255,0.18)',
     alignItems: 'center', justifyContent: 'center',
+    padding: 3,
   },
   eyebrow: {
     fontSize: 10, fontWeight: '800',

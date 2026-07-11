@@ -36,6 +36,9 @@ export interface IdentifyFactors {
 import type { FeeQuote } from '../types/fee';
 export type { FeeQuote };
 
+/** Băng tin-cậy THÔ (không lộ điểm số) — PoC-Tree §4 M2. */
+export type ConfidenceBand = 'cao' | 'vừa' | 'thấp';
+
 export interface IdentifyResponse {
   ok: boolean;
   decision: TreeDecision;
@@ -49,6 +52,13 @@ export interface IdentifyResponse {
   candidates: TreeCandidate[];
   moved_distance_m?: number;
   fee_quote?: FeeQuote;
+  /**
+   * ADDITIVE (Lợi PR #46): mã truy-vấn hex — GIỮ để gửi verdict.
+   * Không có khi backend cũ → verdict UI ẩn.
+   */
+  query_id?: string;
+  /** ADDITIVE (Lợi PR #46): băng tin-cậy thô (cao/vừa/thấp) — KHÔNG hiện điểm số. */
+  confidence?: ConfidenceBand;
 }
 
 export interface EnrollResponse {
@@ -104,8 +114,46 @@ export interface APIError {
   retry_after_seconds?: number;
   /** Mã lỗi máy chủ trả về (vd: 'duplicate_tree' | 'heterogeneous' | 'flat'). Ưu tiên dùng trường này thay vì phân tích chuỗi detail. */
   error_code?: string;
+  /** Câu gợi ý hành-động từ backend (vd "hãy đi vòng quanh cây, chụp góc khác"). */
+  reason?: string;
   /** tree_id của cây trùng — backend trả khi 409 duplicate_tree */
   existing_tree_id?: string;
+}
+
+/**
+ * Đổi lỗi API (field-reid) thành câu tiếng Việt DỄ HIỂU cho nông dân — hiện thay vì
+ * "lỗi" chung chung (Lỗi field #3). Ưu tiên `reason` (server đã trả câu gợi ý), rồi map
+ * theo `error_code`, cuối cùng fallback `detail`.
+ */
+export function fieldErrorMessage(err?: APIError): string {
+  if (!err) return 'Có lỗi xảy ra. Bạn thử lại nhé.';
+  if (err.reason && err.reason.trim()) return err.reason;
+
+  switch (err.error_code) {
+    case 'flat':
+      return 'Các góc chụp gần như giống nhau. Hãy ĐI VÒNG QUANH cây thật và chụp các góc khác nhau (đừng đứng yên một chỗ).';
+    case 'heterogeneous':
+      return 'Ảnh lẫn nhiều vật khác nhau — hãy chụp tập trung vào MỘT cây, cùng một thân.';
+    case 'need_gps':
+      return 'Cần bật định vị (GPS) để tạo/nhận diện cây. Hãy bật Vị trí rồi thử lại.';
+    case 'duplicate_tree':
+      return 'Cây này có thể đã được tạo trước đó.';
+    default:
+      break;
+  }
+
+  switch (err.type) {
+    case 'network_error':
+      return 'Mất kết nối mạng. Kiểm tra sóng/Wi-Fi rồi thử lại.';
+    case 'auth_error':
+      return 'Phiên đăng nhập hết hạn. Hãy đăng nhập lại.';
+    case 'rate_limited':
+      return 'Thao tác quá nhanh. Chờ một chút rồi thử lại.';
+    case 'server_error':
+      return 'Máy chủ đang bận. Thử lại sau ít phút.';
+    default:
+      return err.detail || 'Có lỗi xảy ra. Bạn thử lại nhé.';
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -113,7 +161,14 @@ export interface APIError {
 // ---------------------------------------------------------------------------
 
 const AUTH_TOKEN_KEY = 'auth_token';
+// Timeout mặc-định cho request nhẹ (trees / verdict / delete).
 const REQUEST_TIMEOUT_MS = 45_000;
+
+// Timeout cho tác-vụ NẶNG ẢNH (identify / enroll / verify_add): upload 20–30+ ảnh
+// rồi backend chạy match vỏ-thân (sift/xfeat/loftr) thường >45s → 45s bị AbortError.
+// Nâng lên 120s để không tự huỷ giữa chừng. (Xem log: tree_identity_api_error =
+// "AbortError: Aborted" đúng ~45s mỗi lần.)
+const IMAGE_REQUEST_TIMEOUT_MS = 120_000;
 
 // ---------------------------------------------------------------------------
 // Shared internal helper
@@ -132,6 +187,7 @@ async function _apiCall<T>(
   url: string,
   method: 'GET' | 'POST' | 'DELETE',
   body?: FormData,
+  timeoutMs: number = REQUEST_TIMEOUT_MS,
   attempt = 0,
 ): Promise<{ ok: boolean; data?: T; error?: APIError }> {
   const authHeader = await _getAuthHeader();
@@ -139,7 +195,7 @@ async function _apiCall<T>(
   if (authHeader) headers['Authorization'] = authHeader;
 
   const controller = new AbortController();
-  const timeoutHandle = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const resp = await fetch(url, {
@@ -186,10 +242,21 @@ async function _apiCall<T>(
       };
     }
 
-    if (resp.status === 422) {
+    if (resp.status === 400 || resp.status === 422) {
       let detail = 'Dữ liệu không hợp lệ';
-      try { detail = (await resp.json()).detail ?? detail; } catch { /* bỏ qua */ }
-      return { ok: false, error: { type: 'validation_error', detail, http_status: 422 } };
+      let errorCode: string | undefined;
+      let reason: string | undefined;
+      try {
+        const body = await resp.json();
+        detail = body.detail ?? detail;
+        // Backend field-reid trả mã lỗi chất-lượng ảnh ở code/error_code + câu gợi ý ở reason.
+        errorCode = body.code ?? body.error_code ?? undefined;
+        reason = body.reason ?? undefined;
+      } catch { /* bỏ qua */ }
+      return {
+        ok: false,
+        error: { type: 'validation_error', detail, http_status: resp.status, error_code: errorCode, reason },
+      };
     }
 
     if (resp.status >= 500) {
@@ -215,7 +282,7 @@ async function _apiCall<T>(
     const isConnErr = err instanceof TypeError && !isTimeoutErr;
 
     if (isConnErr && attempt === 0) {
-      return _apiCall<T>(url, method, body, 1);
+      return _apiCall<T>(url, method, body, timeoutMs, 1);
     }
 
     return {
@@ -229,6 +296,9 @@ async function _apiCall<T>(
 // Identify options
 // ---------------------------------------------------------------------------
 
+/** Matcher vỏ-thân (PoC-Tree §4 M4) — override ENV backend, CHỈ cho tester. */
+export type ShellMatcher = 'sift' | 'xfeat' | 'loftr';
+
 export interface IdentifyOptions {
   lat?: number;
   lon?: number;
@@ -237,6 +307,19 @@ export interface IdentifyOptions {
   pitch?: number;
   /** Khi true: bỏ qua kiểm tra trùng lặp, tạo cây mới bất kể. Dùng cho handleForceEnroll. */
   force?: boolean;
+  /**
+   * ADDITIVE (PoC-Tree §4 M4): ép matcher vỏ-thân (sift|xfeat|loftr) qua
+   * ?matcher=. Mặc-định KHÔNG gửi → backend dùng đường ENV. Chỉ tester bật.
+   */
+  matcher?: ShellMatcher;
+}
+
+export type IdentifyVerdict = 'correct' | 'wrong' | 'other';
+
+export interface IdentifyVerdictResponse {
+  ok: boolean;
+  query_id: string;
+  verdict: IdentifyVerdict;
 }
 
 // ---------------------------------------------------------------------------
@@ -261,7 +344,28 @@ export async function identifyTree(
   if (options.pitch !== undefined) form.append('pitch', String(options.pitch));
   form.append('source', 'phone');
 
-  return _apiCall<IdentifyResponse>(`${baseUrl}/api/identify`, 'POST', form);
+  // M4: chỉ nối ?matcher= khi tester ép — mặc-định để backend dùng ENV.
+  const qs = options.matcher ? `?matcher=${encodeURIComponent(options.matcher)}` : '';
+  return _apiCall<IdentifyResponse>(`${baseUrl}/api/identify${qs}`, 'POST', form, IMAGE_REQUEST_TIMEOUT_MS);
+}
+
+/**
+ * submitIdentifyVerdict — gửi phán-quyết người dùng cho 1 lần identify (PoC-Tree §4 M3).
+ *
+ * POST /api/identify_verdict (form): query_id (bắt-buộc), verdict (bắt-buộc),
+ * correct_tid? (khi verdict='other', mã cây đúng lấy từ /api/trees).
+ * Auth Bearer (qua _apiCall). Trả { ok, query_id, verdict }; 400 nếu thiếu/sai.
+ */
+export async function submitIdentifyVerdict(
+  baseUrl: string,
+  params: { queryId: string; verdict: IdentifyVerdict; correctTid?: string },
+): Promise<{ ok: boolean; data?: IdentifyVerdictResponse; error?: APIError }> {
+  const form = new FormData();
+  form.append('query_id', params.queryId);
+  form.append('verdict', params.verdict);
+  if (params.correctTid) form.append('correct_tid', params.correctTid);
+
+  return _apiCall<IdentifyVerdictResponse>(`${baseUrl}/api/identify_verdict`, 'POST', form);
 }
 
 export async function enrollTree(
@@ -291,7 +395,7 @@ export async function enrollTree(
   if (options.pitch !== undefined) form.append('pitch', String(options.pitch));
   if (options.force) form.append('force', 'true');
 
-  return _apiCall<EnrollResponse>(`${baseUrl}/api/enroll`, 'POST', form);
+  return _apiCall<EnrollResponse>(`${baseUrl}/api/enroll`, 'POST', form, IMAGE_REQUEST_TIMEOUT_MS);
 }
 
 export async function verifyAddTree(
@@ -307,7 +411,7 @@ export async function verifyAddTree(
     (form as any).append('files', { uri: imagePaths[i], type: 'image/jpeg', name: `img_${i}.jpg` });
   }
 
-  return _apiCall<VerifyAddResponse>(`${baseUrl}/api/verify_add`, 'POST', form);
+  return _apiCall<VerifyAddResponse>(`${baseUrl}/api/verify_add`, 'POST', form, IMAGE_REQUEST_TIMEOUT_MS);
 }
 
 export async function getTrees(

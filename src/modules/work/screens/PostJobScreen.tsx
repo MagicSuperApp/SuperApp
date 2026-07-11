@@ -19,6 +19,7 @@ import { useNavigation } from '@react-navigation/native';
 import { COLORS } from '../../../constants';
 import { WORK_THEME } from '../theme/colors';
 import { CATEGORIES } from '../data/mockData';
+import { usePostJob } from '../hooks/usePostJob';
 
 const PostJobScreen: React.FC = () => {
   const navigation = useNavigation<any>();
@@ -29,24 +30,40 @@ const PostJobScreen: React.FC = () => {
   const [budget, setBudget] = useState('');
   const [location, setLocation] = useState('');
   const [urgent, setUrgent] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+
+  // Đăng tin: flag ON → POST /jobs thật; OFF → giả lập thành công.
+  const { submitting, submit } = usePostJob();
 
   const canSubmit = title.length >= 10 && !!category && description.length >= 20 && !!budget && !!location;
 
-  const handleSubmit = () => {
-    if (!canSubmit) {
+  const handleSubmit = async () => {
+    if (!canSubmit || !category) {
       Alert.alert('Thiếu thông tin', 'Vui lòng điền đầy đủ các ô bắt buộc.');
       return;
     }
-    setSubmitting(true);
-    setTimeout(() => {
-      setSubmitting(false);
+    // Map form → body backend. LƯU Ý: form chưa có bước chọn JobType riêng →
+    // tạm dùng categoryId làm templateKey. Nếu backend trả 404 NO_TEMPLATE,
+    // báo user chọn đúng loại việc (JobType) khi bước chọn mẫu được bổ sung.
+    const priceVND = Number(String(budget).replace(/[^\d]/g, '')) || undefined;
+    const ok = await submit({
+      templateKey: category,
+      title,
+      desc: description,
+      priceVND,
+    });
+
+    if (ok) {
       Alert.alert(
         'Đăng tin thành công',
         'Tin của bạn đã được ký số bằng PhoenixKey và đăng lên Aladin Work.\n\nThợ phù hợp sẽ liên hệ qua Aladin Chat trong vài phút.',
         [{ text: 'OK', onPress: () => navigation.goBack() }],
       );
-    }, 1200);
+    } else {
+      Alert.alert(
+        'Chưa đăng được tin',
+        'Không gửi được tin lúc này. Kiểm tra kết nối, đăng nhập PhoenixKey và loại việc rồi thử lại.',
+      );
+    }
   };
 
   return (
@@ -186,7 +203,7 @@ const PostJobScreen: React.FC = () => {
             <Text style={styles.contractTitle}>Hợp đồng smart contract</Text>
           </View>
           <Text style={styles.contractText}>
-            Khi bạn đăng tin, một hợp đồng smart contract sẽ được tạo trên Cardano. Tiền cọc sẽ được giữ qua escrow và chỉ giải ngân khi hai bên xác nhận hoàn thành. Bạn ký số bằng PhoenixKey ở bước cuối.
+            Khi bạn đăng tin, một hợp đồng sẽ được tạo. Pledge định giá bằng MAGIC nhưng khóa/hoàn thật bằng CARP, chỉ giải ngân khi hai bên xác nhận hoàn thành. Bạn ký số bằng PhoenixKey (P-256) ở bước cuối.
           </Text>
         </View>
 

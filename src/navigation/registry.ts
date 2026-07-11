@@ -22,6 +22,7 @@ import type { ComponentType } from 'react';
 import traceManifest from '../modules/trace/module.manifest.json';
 import proofchatManifest from '../modules/proofchat/module.manifest.json';
 import workManifest from '../modules/work/module.manifest.json';
+import joinManifest from '../modules/join/module.manifest.json';
 
 // --- Trace screens (compile-sẵn) ------------------------------------------
 import FarmListScreen from '../modules/trace/screens/FarmListScreen';
@@ -39,6 +40,14 @@ import WorkHomeScreen from '../modules/work/screens/WorkHomeScreen';
 import JobDetailScreen from '../modules/work/screens/JobDetailScreen';
 import PostJobScreen from '../modules/work/screens/PostJobScreen';
 import WorkerProfileScreen from '../modules/work/screens/WorkerProfileScreen';
+import ContractsScreen from '../modules/work/screens/ContractsScreen';
+import ContractDetailScreen from '../modules/work/screens/ContractDetailScreen';
+import MatchScreen from '../modules/work/screens/MatchScreen';
+import AvailabilityScreen from '../modules/work/screens/AvailabilityScreen';
+
+// --- Join (Kết đèn) screens -----------------------------------------------
+import JoinHomeScreen from '../modules/join/screens/JoinHomeScreen';
+import ContributingScreen from '../modules/join/screens/ContributingScreen';
 
 export type ScreenComponent = ComponentType<any>;
 
@@ -64,7 +73,7 @@ export interface RegistryEntry {
 
 // moduleId nội bộ (ngắn gọn cho instance.config) — KHÁC moduleId reverse-DNS
 // trong manifest (magiclamp.trace). Map id ngắn ↔ entry.
-export type ModuleId = 'trace' | 'proofchat' | 'work';
+export type ModuleId = 'trace' | 'proofchat' | 'work' | 'join';
 
 export const MODULE_REGISTRY: Record<ModuleId, RegistryEntry> = {
   trace: {
@@ -89,11 +98,24 @@ export const MODULE_REGISTRY: Record<ModuleId, RegistryEntry> = {
   work: {
     manifest: workManifest as ModuleManifest,
     screens: {
-      // manifest.routes: ["WorkHome","JobDetail","PostJob","WorkerProfile"]
+      // manifest.routes: ["WorkHome","JobDetail","PostJob","WorkerProfile",
+      //                   "Contracts","ContractDetail","WorkMatch","WorkAvailability"]
       WorkHome: WorkHomeScreen,
       JobDetail: JobDetailScreen,
       PostJob: PostJobScreen,
       WorkerProfile: WorkerProfileScreen,
+      Contracts: ContractsScreen,
+      ContractDetail: ContractDetailScreen,
+      WorkMatch: MatchScreen,
+      WorkAvailability: AvailabilityScreen,
+    },
+  },
+  join: {
+    manifest: joinManifest as ModuleManifest,
+    screens: {
+      // manifest.routes: ["JoinHome","Contributing"]
+      JoinHome: JoinHomeScreen,       // entrypoint tab Kết đèn = "Tham gia LampNet"
+      Contributing: ContributingScreen, // màn "Đang đóng góp"
     },
   },
 };

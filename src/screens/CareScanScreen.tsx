@@ -30,7 +30,7 @@ const imagePicker = (() => {
   try { return require('react-native-image-picker'); } catch { return null; }
 })();
 
-import { ORILIFE_API_BASE_URL } from '@env';
+import { ORILIFE_BASE } from '../services/orilifeBase';
 import { NEUTRAL } from '../shared/theme';
 import { COLORS } from '../constants';
 import {
@@ -40,7 +40,7 @@ import {
   type CareLogResponse,
 } from '../services/careService';
 
-const BASE_URL: string = (ORILIFE_API_BASE_URL as string | undefined) ?? 'https://test.orilife.io';
+const BASE_URL: string = ORILIFE_BASE;
 const HEADER_BG = '#2F7D6B'; // xanh y-tế — thuốc/chăm-sóc
 
 const CAMERA_OPTIONS = {

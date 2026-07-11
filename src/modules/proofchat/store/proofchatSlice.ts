@@ -4,7 +4,7 @@
 // (chat / wallet / escrow), ta gộp vào 1 slice để giảm boilerplate cho MVP.
 // Proof System (features/proof/) KHÔNG có state — nó chỉ là pure functions/types.
 
-import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import type {
   ChatRoom,
   Conversation,
@@ -14,6 +14,27 @@ import type {
   Message,
   SyncState,
 } from '../features/chat/types';
+import {
+  proofChatApi,
+  isProofChatBackendEnabled,
+  getDeviceId,
+  type RemoteConversation,
+  type RemoteMessage,
+} from '../../../services/proofchat-api';
+/**
+ * Envelope tin đến từ realtime (ciphertext E2EE — server KHÔNG thấy plaintext).
+ * Trước ở `proofchatWs.ts` (raw WS đã bỏ); giữ tại đây để reducer `receiveWsMessage`
+ * dùng chung, độc lập transport. Đường thật hiện là socket.io (`chatSocket.ts`) →
+ * `proofchatService`; khi nối UI vào service sẽ map `MessagePayload` về shape này.
+ */
+export interface WsIncomingMessage {
+  id?: string;
+  conversationId: string;
+  senderId?: string;
+  senderDid?: string;
+  ciphertext?: string;
+  createdAt?: number | string;
+}
 import type {
   Wallet,
   WalletTransaction,
@@ -34,6 +55,9 @@ import {
   MOCK_PUBLIC_CONVERSATION_IDS,
 } from '../features/chat/data/mock';
 
+/** Trạng thái tải dữ liệu THẬT (chỉ có ý nghĩa khi feature flag ON). */
+export type ProofChatLoadStatus = 'idle' | 'loading' | 'ready' | 'error';
+
 interface ProofChatState {
   meId: string;
   // chat
@@ -49,6 +73,15 @@ interface ProofChatState {
   wallet: Wallet;
   identity: Identity;
   transactions: WalletTransaction[];
+  // ── Backend thật (feature flag) ────────────────────────────────────
+  /** Nguồn dữ liệu đang dùng: 'mock' (flag OFF/fallback) | 'backend' (flag ON). */
+  source: 'mock' | 'backend';
+  /** Trạng thái tải danh sách hội thoại từ BE. */
+  roomsStatus: ProofChatLoadStatus;
+  /** Trạng thái tải tin nhắn theo phòng (conversationId → status). */
+  messagesStatus: Record<string, ProofChatLoadStatus>;
+  /** Thông điệp lỗi thân thiện (KHÔNG lộ chi tiết kỹ thuật ra UI). */
+  loadError?: string;
 }
 
 const initialState: ProofChatState = {
@@ -63,7 +96,114 @@ const initialState: ProofChatState = {
   wallet: MOCK_WALLET,
   identity: MOCK_IDENTITY,
   transactions: MOCK_TRANSACTIONS,
+  source: 'mock',
+  roomsStatus: 'idle',
+  messagesStatus: {},
+  loadError: undefined,
 };
+
+// ── Mappers: RemoteConversation/RemoteMessage → shape UI ─────────────
+// UI ChatRoom giàu trường (jobTitle, counterparty…) mà BE hội thoại thô chưa cấp.
+// Map an toàn: giữ id thật, đổ trường còn thiếu bằng giá trị trung tính (UI KHÔNG
+// vỡ). Khi BE bổ sung metadata job/participant, chỉ cần mở rộng mapper này.
+
+const toEpoch = (v: number | string | undefined): number => {
+  if (typeof v === 'number') return v;
+  if (typeof v === 'string') {
+    const t = Date.parse(v);
+    return Number.isNaN(t) ? Date.now() : t;
+  }
+  return Date.now();
+};
+
+const remoteConvToRoom = (c: RemoteConversation): ChatRoom => ({
+  id: c.id,
+  jobTitle: c.title ?? 'Cuộc trò chuyện',
+  jobCategory: c.type ?? 'JOB_NEGOTIATION',
+  // Participants định danh bằng PhoenixKey DID (spec §6) — chưa có tên hiển thị
+  // từ BE hội thoại thô; để ownerId/DID làm định danh, UI hiển thị rút gọn.
+  counterpartyId: c.ownerId ?? c.id,
+  counterpartyName: c.title ?? 'Thành viên',
+  counterpartyAddress: c.ownerId ?? '',
+  counterpartyVerified: false,
+  online: false,
+  lastMessage: undefined,
+  lastMessageAt: c.createdAt ? toEpoch(c.createdAt) : undefined,
+  unreadCount: 0,
+});
+
+const remoteMsgToMessage = (
+  m: RemoteMessage,
+  roomId: string,
+  meId: string,
+): Message => {
+  const ciphertext = m.ciphertext ?? m.encryptedContent ?? '';
+  const sender = m.senderDid ?? m.senderId ?? 'peer';
+  return {
+    id: m.id,
+    roomId,
+    senderId: sender,
+    isMine: sender === meId,
+    timestamp: toEpoch(m.createdAt),
+    // Ciphertext E2EE — server KHÔNG thấy plaintext. text để trống tới khi crypto
+    // stack (MLS) giải mã (v2.1); UI hiển thị stage 'encrypted'.
+    text: undefined,
+    ciphertext,
+    proof: { hash: '', signature: '', merkleProof: '' },
+    verificationStatus: 'pending',
+    stage: 'encrypted',
+  };
+};
+
+// ── Async thunks: dữ liệu THẬT (chỉ chạy khi feature flag ON) ────────
+// Khi flag OFF → thunk trả về sớm với marker 'disabled'; reducer GIỮ mock, UI
+// không đổi. Khi ON nhưng chưa có phiên/BE lỗi → rejected, reducer giữ dữ liệu
+// hiện có + set trạng thái error (fallback mềm, KHÔNG vỡ UI).
+
+interface LoadConversationsResult {
+  rooms: ChatRoom[];
+  conversations: Conversation[];
+}
+
+/** Tải danh sách hội thoại thật từ BE ProofChat. */
+export const loadConversations = createAsyncThunk<
+  LoadConversationsResult | 'disabled'
+>('proofchat/loadConversations', async () => {
+  if (!isProofChatBackendEnabled()) return 'disabled';
+  const remote = await proofChatApi.conversations.list({ take: 100 });
+  const list = Array.isArray(remote) ? remote : [];
+  const rooms = list.map(remoteConvToRoom);
+  const conversations: Conversation[] = list.map((c) => ({
+    id: c.id,
+    title: c.title ?? 'Cuộc trò chuyện',
+    type: (c.type as ConversationType) ?? 'JOB_NEGOTIATION',
+    visibility: (c.visibility as 'public' | 'private') ?? 'private',
+    ownerId: c.ownerId ?? c.id,
+    memberCount: c.memberCount ?? 2,
+    createdAt: c.createdAt ? toEpoch(c.createdAt) : Date.now(),
+  }));
+  return { rooms, conversations };
+});
+
+interface LoadMessagesResult {
+  roomId: string;
+  messages: Message[];
+}
+
+/** Tải tin nhắn (ciphertext E2EE) thật của 1 phòng. */
+export const loadRoomMessages = createAsyncThunk<
+  LoadMessagesResult | 'disabled',
+  { roomId: string; meId: string }
+>('proofchat/loadRoomMessages', async ({ roomId, meId }) => {
+  if (!isProofChatBackendEnabled()) return 'disabled';
+  const deviceId = await getDeviceId();
+  const remote = await proofChatApi.conversations.getMessages(roomId, deviceId, {
+    take: 200,
+  });
+  const list = Array.isArray(remote) ? remote : [];
+  const messages = list.map((m) => remoteMsgToMessage(m, roomId, meId));
+  return { roomId, messages };
+});
 
 const slice = createSlice({
   name: 'proofchat',
@@ -289,6 +429,84 @@ const slice = createSlice({
         i => i.id !== action.payload.invitationId,
       );
     },
+
+    // ── WS real-time: tin đến từ contract:message.send ──────────────────────
+    // Envelope ciphertext E2EE — server KHÔNG thấy plaintext. Chèn vào phòng ở
+    // stage 'encrypted' (chờ crypto stack giải mã v2.1). Chống trùng theo id.
+    receiveWsMessage: (state, action: PayloadAction<WsIncomingMessage>) => {
+      const { conversationId, id, senderId, senderDid, ciphertext, createdAt } =
+        action.payload;
+      if (!conversationId) return;
+      const list = state.messagesByRoom[conversationId] ?? [];
+      const msgId = id ?? `ws-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+      if (list.some(m => m.id === msgId)) return; // đã có → bỏ qua
+      const sender = senderDid ?? senderId ?? 'peer';
+      const ts =
+        typeof createdAt === 'number'
+          ? createdAt
+          : typeof createdAt === 'string'
+          ? Date.parse(createdAt) || Date.now()
+          : Date.now();
+      const msg: Message = {
+        id: msgId,
+        roomId: conversationId,
+        senderId: sender,
+        isMine: sender === state.meId,
+        timestamp: ts,
+        text: undefined,
+        ciphertext: ciphertext ?? '',
+        proof: { hash: '', signature: '', merkleProof: '' },
+        verificationStatus: 'pending',
+        stage: 'encrypted',
+      };
+      state.messagesByRoom[conversationId] = [...list, msg];
+      const room = state.rooms.find(r => r.id === conversationId);
+      if (room) {
+        room.lastMessageAt = ts;
+        if (!msg.isMine) room.unreadCount += 1;
+      }
+    },
+  },
+
+  // ── extraReducers: kết quả thunk dữ liệu THẬT ─────────────────────────────
+  extraReducers: (builder) => {
+    builder
+      .addCase(loadConversations.pending, (state) => {
+        if (!isProofChatBackendEnabled()) return;
+        state.roomsStatus = 'loading';
+        state.loadError = undefined;
+      })
+      .addCase(loadConversations.fulfilled, (state, action) => {
+        if (action.payload === 'disabled') {
+          // Flag OFF → giữ nguyên mock, không đổi gì.
+          state.source = 'mock';
+          state.roomsStatus = 'idle';
+          return;
+        }
+        state.source = 'backend';
+        state.roomsStatus = 'ready';
+        state.rooms = action.payload.rooms;
+        state.conversations = action.payload.conversations;
+        state.loadError = undefined;
+      })
+      .addCase(loadConversations.rejected, (state) => {
+        // Lỗi mạng/phiên → giữ dữ liệu hiện có, báo trạng thái error (fallback mềm).
+        state.roomsStatus = 'error';
+        state.loadError = 'Không tải được danh sách trò chuyện. Kéo để thử lại.';
+      })
+      .addCase(loadRoomMessages.pending, (state, action) => {
+        if (!isProofChatBackendEnabled()) return;
+        state.messagesStatus[action.meta.arg.roomId] = 'loading';
+      })
+      .addCase(loadRoomMessages.fulfilled, (state, action) => {
+        if (action.payload === 'disabled') return; // giữ mock
+        const { roomId, messages } = action.payload;
+        state.messagesStatus[roomId] = 'ready';
+        state.messagesByRoom[roomId] = messages;
+      })
+      .addCase(loadRoomMessages.rejected, (state, action) => {
+        state.messagesStatus[action.meta.arg.roomId] = 'error';
+      });
   },
 });
 
@@ -307,6 +525,7 @@ export const {
   acceptInvitation,
   rejectInvitation,
   dismissInvitation,
+  receiveWsMessage,
 } = slice.actions;
 
 export default slice.reducer;

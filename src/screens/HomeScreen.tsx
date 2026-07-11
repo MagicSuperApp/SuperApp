@@ -32,6 +32,7 @@ import { MODULES, type ModuleEntry } from '../modules';
 import { COLORS } from '../constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import CreateFarmPromptModal from '../components/CreateFarmPromptModal';
+import { useCollapsibleHeader } from '../components/AppHeader';
 import Geolocation from 'react-native-geolocation-service';
 import { PermissionsAndroid, Alert, ActivityIndicator } from 'react-native';
 import {
@@ -45,7 +46,18 @@ const H_PADDING = 20;
 const CAROUSEL_W = width - H_PADDING * 2;
 const CAROUSEL_H = 140;
 const MODULE_GAP = 12;
-const MODULE_CARD_W = (width - H_PADDING * 2 - MODULE_GAP) / 2;
+// Card 2 cột. Trên máy nhỏ / landscape hẹp, nửa màn hình quá nhỏ khiến chữ tràn.
+// Đặt sàn tối thiểu (MODULE_CARD_MIN) — nếu 1 nửa màn hình < sàn thì cho card
+// chiếm gần trọn bề ngang (wrap xuống 1 cột) thay vì ép 2 cột chật.
+const MODULE_CARD_MIN = 150;
+const MODULE_HALF_W = (width - H_PADDING * 2 - MODULE_GAP) / 2;
+const MODULE_CARD_W =
+  MODULE_HALF_W >= MODULE_CARD_MIN ? MODULE_HALF_W : width - H_PADDING * 2;
+
+// Khoảng chừa dưới cho CurvedTabBar (navbar khuyết-tròn) — thanh cao 64 + nút
+// Home nhô lên 43 + cushion. Cộng thêm insets.bottom tại nơi dùng. Giữ đồng bộ
+// với TAB_BAR_HEIGHT/FLOAT trong navigation/index.tsx.
+const BOTTOM_NAV_CLEARANCE = 120;
 
 type QuickActionSheetOption = {
   key: string;
@@ -86,55 +98,10 @@ const BANNERS = [
   },
 ];
 
-// ── Hero bar ────────────────────────────────────────────────────────────────
-const HeroBar = ({
-  name,
-  initials,
-  unreadCount,
-  fade,
-  slide,
-  topInset,
-  onPressBell,
-  onPressAvatar,
-}: {
-  name: string;
-  initials: string;
-  unreadCount: number;
-  fade: Animated.Value;
-  slide: Animated.Value;
-  topInset: number;
-  onPressBell: () => void;
-  onPressAvatar: () => void;
-}) => (
-  <Animated.View
-    style={[
-      styles.hero,
-      { paddingTop: (Platform.OS === 'ios' ? 36 : 20) + 4 + topInset },
-      { opacity: fade, transform: [{ translateY: slide }] },
-    ]}
-  >
-    <TouchableOpacity onPress={onPressAvatar} activeOpacity={0.7} style={styles.heroLeft}>
-      <View style={styles.avatar}>
-        <Text style={styles.avatarText}>{initials}</Text>
-      </View>
-      <View>
-        <Text style={styles.heroEyebrow}>Xin chào 👋</Text>
-        <Text style={styles.heroName} numberOfLines={1}>
-          {name}
-        </Text>
-      </View>
-    </TouchableOpacity>
-
-    <TouchableOpacity style={styles.bellWrap} onPress={onPressBell} activeOpacity={0.7}>
-      <Icon name="bell" size={28} color={NEUTRAL.white} />
-      {unreadCount > 0 && (
-        <View style={styles.bellBadge}>
-          <Text style={styles.bellBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
-        </View>
-      )}
-    </TouchableOpacity>
-  </Animated.View>
-);
+// HeroBar (thanh chào + chuông + avatar) ĐÃ DỜI lên AppHeader toàn cục
+// (components/AppHeader.tsx) — thu/thả theo cuộn, hiển thị ở MỌI màn, nút Tài
+// khoản + Thông báo nằm ở đó thay vì trong từng màn. Xoá khỏi Home để tránh 2
+// thanh trên chồng nhau.
 
 // ── Carousel ────────────────────────────────────────────────────────────────
 const BannerCarousel = ({ fade }: { fade: Animated.Value }) => {
@@ -178,8 +145,19 @@ const BannerCarousel = ({ fade }: { fade: Animated.Value }) => {
             <View style={styles.bannerOrb} />
             <View style={styles.bannerOrb2} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.bannerTitle}>{item.title}</Text>
-              <Text style={styles.bannerSub}>{item.sub}</Text>
+              {/* Tiêu đề có \n cứng — giới hạn 2 dòng + co chữ khi người dùng bật
+                  font-scale lớn, tránh bị cắt cụt trong banner cao cố định. */}
+              <Text
+                style={styles.bannerTitle}
+                numberOfLines={2}
+                adjustsFontSizeToFit
+                minimumFontScale={0.8}
+              >
+                {item.title}
+              </Text>
+              <Text style={styles.bannerSub} numberOfLines={2}>
+                {item.sub}
+              </Text>
             </View>
             <View style={styles.bannerIconWrap}>
               <Icon name={item.icon} size={56} color="rgba(255,255,255,0.85)" />
@@ -462,6 +440,9 @@ const SectionHeader = ({
 const HomeScreen: React.FC = () => {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+  // Cuộn → thu/thả header toàn cục (Facebook-style). Header sống ở tầng nav; ở
+  // đây chỉ nối onScroll của ScrollView vào.
+  const { onScroll: onHeaderScroll, scrollEventThrottle: headerThrottle } = useCollapsibleHeader();
   const user = useSelector((s: RootState) => s.user.currentUser);
   const farms = useSelector((s: RootState) => s.farm.farms);
   const trees = useSelector((s: RootState) => s.farm.trees);
@@ -470,7 +451,6 @@ const HomeScreen: React.FC = () => {
   // Mock badges cho ProofChat / Work cho tới khi có module thật
   const proofChatUnread = 0;
   const workMatches = 5;
-  const totalUnread = proofChatUnread;
 
   const headerFade = useRef(new Animated.Value(0)).current;
   const headerSlide = useRef(new Animated.Value(-12)).current;
@@ -559,6 +539,7 @@ const HomeScreen: React.FC = () => {
         Alert.alert('Cần quyền vị trí', 'Bật GPS trong Cài đặt → Aladin.');
         return;
       }
+      // GPS + tạo vườn/cây ngầm trên bản đồ — GIỮ NGUYÊN.
       const gps = await getCurrentGPS();
       const farm = await getOrCreateImplicitFarm({
         userDid: user.id,
@@ -566,22 +547,16 @@ const HomeScreen: React.FC = () => {
         gps,
         accuracyMeters: gps.accuracy,
       });
-      const tree = await getOrCreateImplicitTree({
+      await getOrCreateImplicitTree({
         farmId: farm.farmId,
         userDid: user.id,
         gps,
         accuracyMeters: gps.accuracy,
       });
 
-      // Import ScannerSDK
-      const { ScannerSDK } = await import('../scansdk/ScannerSDK');
-
-      // Start scanner with fruit mode
-      await ScannerSDK.initialize();
-      await ScannerSDK.startScanner({
-        farm_id: farm.farmId,
-        scanMode: 'fruit',
-      });
+      // Sau khi thêm GPS/vườn-cây trên bản đồ xong → sang màn Nhận diện (TreeIdentity),
+      // thay cho scanner cũ (giống nút quick "Nhận diện").
+      (navigation as any).navigate('TreeIdentity', { farmId: farm.farmId });
     } catch (err: any) {
       console.error('[HomeScreen] handleQuickScanFruit failed:', err);
       Alert.alert('Lỗi', 'Không thể nhận diện quả. Bạn thử lại sau nhé.');
@@ -688,13 +663,6 @@ const HomeScreen: React.FC = () => {
     ]).start();
   }, []);
 
-  const initials = (user?.name ?? 'U')
-    .split(' ')
-    .map((w: string) => w[0])
-    .slice(0, 2)
-    .join('')
-    .toUpperCase();
-
   const moduleBadges: Record<string, number | undefined> = {
     trace: undefined,
     proofchat: proofChatUnread,
@@ -781,24 +749,23 @@ const HomeScreen: React.FC = () => {
         </TouchableOpacity>
       </Modal>
 
-      <HeroBar
-        name={user?.name ?? 'Người dùng'}
-        initials={initials}
-        unreadCount={totalUnread}
-        fade={headerFade}
-        slide={headerSlide}
-        topInset={insets.top}
-        onPressBell={() => {
-          navigation.navigate('Activity' as never);
-        }}
-        onPressAvatar={() => navigation.navigate('Account' as never)}
-      />
+      {/* HeroBar cũ ĐÃ BỎ: nút Tài khoản + Thông báo (chuông) nay nằm trong
+          AppHeader toàn cục (thu/thả theo cuộn) ở tầng nav — tránh 2 thanh trên
+          chồng nhau. Xem components/AppHeader.tsx. */}
 
       <ScrollView
         showsVerticalScrollIndicator={false}
+        onScroll={onHeaderScroll}
+        scrollEventThrottle={headerThrottle}
         contentContainerStyle={[
           styles.scroll,
-          { paddingBottom: Math.max(insets.bottom, 12) + 32 },
+          { paddingTop: 8 },
+          // iOS-fix: CurvedTabBar (navbar) là position:absolute nổi trên nội dung.
+          // Chừa đủ khoảng dưới = chiều cao thanh (64) + phần nhô nút Home (43) +
+          // safe-area dưới, để item cuối KHÔNG bị navbar che. (BOTTOM_NAV_CLEARANCE)
+          // Math.max: đảm bảo sàn tối thiểu ngay cả khi insets.bottom = 0 (Android
+          // không có home-indicator) — tránh navbar nổi che nội dung cuối.
+          { paddingBottom: Math.max(BOTTOM_NAV_CLEARANCE, insets.bottom + BOTTOM_NAV_CLEARANCE) },
         ]}
         refreshControl={
           <RefreshControl
@@ -818,20 +785,9 @@ const HomeScreen: React.FC = () => {
             Independent Feature Operation principle. Order per CPO Đức:
               🌳 Cây · Tree → 🍎 Quả · Fruit → 🗺️ Vườn · Farm */}
         <View style={styles.quickActionsRow}>
-          {/* Tree Identity - Native implementation */}
-          <TouchableOpacity
-            style={[styles.quickActionBtn]}
-            onPress={() => (navigation as any).navigate('TreeIdentity')}
-            disabled={quickActionBusy !== null}
-            activeOpacity={0.85}
-          >
-            <View style={styles.quickActionIconWrap}>
-              <Icon name="leaf" size={32} color="#1b5e20" />
-            </View>
-            <Text style={[styles.quickActionLabel, { color: '#1b5e20' }]}>Nhận diện</Text>
-            <Text style={styles.quickActionLabelEn}>AI Tree</Text>
-          </TouchableOpacity>
-
+          {/* Tree Identity - Native implementation.
+              Quét cây ĐỘC LẬP: vào thẳng TreeIdentity, KHÔNG ép chọn/tạo vườn.
+              Cây enroll qua đây có farm_id=null — gắn vườn sau (tuỳ chọn). */}
           <TouchableOpacity
             style={[styles.quickActionBtn]}
             onPress={handleQuickAddTree}
@@ -842,10 +798,14 @@ const HomeScreen: React.FC = () => {
               {quickActionBusy === 'tree' ? (
                 <ActivityIndicator color={COLORS.accent} size="small" />
               ) : (
-                <Icon name="pine-tree" size={32} color={COLORS.accent} />
+                <Image
+                  source={require('../../assets/images/modules/tree.png')}
+                  style={styles.quickActionImg}
+                  resizeMode="contain"
+                />
               )}
             </View>
-            <Text style={styles.quickActionLabel}>Cây</Text>
+            <Text style={styles.quickActionLabel}>Quét cây</Text>
             <Text style={styles.quickActionLabelEn}>Tree</Text>
           </TouchableOpacity>
 
@@ -859,7 +819,11 @@ const HomeScreen: React.FC = () => {
               {quickActionBusy === 'fruit' ? (
                 <ActivityIndicator color={COLORS.accent} size="small" />
               ) : (
-                <Icon name="fruit-cherries" size={32} color={COLORS.accent} />
+                <Image
+                  source={require('../../assets/images/modules/vegetable.png')}
+                  style={styles.quickActionImg}
+                  resizeMode="contain"
+                />
               )}
             </View>
             <Text style={styles.quickActionLabel}>Quả</Text>
@@ -889,7 +853,11 @@ const HomeScreen: React.FC = () => {
               {quickActionBusy === 'farm' ? (
                 <ActivityIndicator color={COLORS.accent} size="small" />
               ) : (
-                <Icon name="sprout" size={32} color={COLORS.accent} />
+                <Image
+                  source={require('../../assets/images/modules/add-growth.png')}
+                  style={styles.quickActionImg}
+                  resizeMode="contain"
+                />
               )}
             </View>
             <Text style={styles.quickActionLabel}>Thêm Vườn</Text>
@@ -1421,6 +1389,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 8,
+  },
+  quickActionImg: {
+    width: 34,
+    height: 34,
   },
   quickActionLabel: {
     color: COLORS.accentDeep,

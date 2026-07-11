@@ -294,10 +294,10 @@ Hai cực ngang nhau, adaptive từ đầu (INV-2/experience): cực yếu = And
 ### FG8 — Feature Integration Specs (↔ SG8)
 | ID | Feature | User benefit | Origin | Priority | Dependency |
 |---|---|---|---|---|---|
-| F8.1 | Tích hợp Work (escrow, JobMarketplace) | User tiếp cận lao động có chứng cứ; inherit nghiệp vụ AladinWork (R1.5) | REUSED from AladinWork | Must | AladinWork Specs |
+| F8.1 | Tích hợp Work (escrow, JobMarketplace) | User tiếp cận lao động có chứng cứ; inherit nghiệp vụ AladinWork (R1.5) | REUSED from AladinWork | Must | AladinWork Specs → spec tích hợp: `Specs/SG8-Work-Integration.md` (auth PhoenixKey + state machine Pledge + ProofChat E2EE; test được trên backend dev) |
 | F8.2 | Tích hợp Trace (TreeReID/FruitID) | User truy xuất nông sản; inherit OriLifeTrace | REUSED from OriLifeTrace | Must | OriLifeTrace Specs |
 | F8.3 | Tích hợp Chat (E2EE MLS) | User nhắn tin riêng tư; ProofChat CHƯA có spec chính tắc → đặc tả tích hợp dày hơn | ADAPTED from ProofChat | Must | ProofChat spec (Phase 1 kéo theo — team ProofChat ĐÃ được yêu cầu sản xuất spec) |
-| F8.4 | Tích hợp Join | User tham gia mạng; inherit LampNetCloud | REUSED from LampNetCloud | Should | LampNetCloud (DRAFT) |
+| F8.4 | Tích hợp Join | User góp compute vào LampNet, được verify + tích thưởng; inherit LampNetCloud | REUSED from LampNetCloud | Should | LampNetCloud (DRAFT) → spec tích hợp: `Specs/SG8-Join-Integration.md`; bản compute-contribution test được NGAY |
 | F8.5 | Tích hợp Farm | User canh tác | NEW | Could | — |
 
 > SG8 chỉ đặc tả TÍCH HỢP; nghiệp vụ inherit upstream (Hard Rule 4 boundary).

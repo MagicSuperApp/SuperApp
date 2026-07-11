@@ -58,18 +58,27 @@ export interface InstanceConfig {
 
 // ===========================================================================
 // DEFAULT = ALADIN (parity tuyệt đối với nav hard-import cũ).
-// 5 tab, đúng thứ tự cũ: Home (host) · ProofChatHome (proofchat) ·
-// Farms (trace) · WorkHome (work) · Account (host). initialRouteName='Home'.
+// 5 tab. Thứ tự đặt Home (host) Ở GIỮA để khớp navbar khuyết-tròn (CurvedTabBar):
+// nút Home tròn nổi nằm lọt vào khuyết giữa thanh, 2 tab mỗi bên cân đối:
+// ProofChatHome (proofchat) · Farms (trace) · Home (host) · WorkHome (work) ·
+// Account (host). initialRouteName='Home'.
 // ===========================================================================
 export const ALADIN_INSTANCE: InstanceConfig = {
   instanceId: 'aladin',
   displayName: 'Aladin',
-  enabledModules: ['trace', 'proofchat', 'work'],
+  enabledModules: ['trace', 'proofchat', 'work', 'join'],
+  // Navbar hiển thị 5 NÚT — Home (host) Ở GIỮA cho khuyết-tròn, 2 nút mỗi bên:
+  // proofchat·trace | Home | work·join. Riêng "Account" VẪN là tab (để navbar
+  // hiện cả ở TRANG TÀI KHOẢN + dùng chung thanh dưới) nhưng KHÔNG vẽ nút trên
+  // navbar (CurvedTabBar bỏ Account khỏi TAB_META). Vào Tài khoản (+ bật/tắt trợ
+  // lý, đăng xuất) qua toolbox cung tròn khi KÉO nút Home. cx của notch tính theo
+  // số NÚT HIỂN THỊ (bỏ tab ẩn) nên Home vẫn rơi đúng giữa.
   tabs: [
-    { kind: 'host', route: 'Home' },
     { kind: 'module', moduleId: 'proofchat' },
     { kind: 'module', moduleId: 'trace' },
+    { kind: 'host', route: 'Home' },
     { kind: 'module', moduleId: 'work' },
+    { kind: 'module', moduleId: 'join' },
     { kind: 'host', route: 'Account' },
   ],
   initialTabRoute: 'Home',

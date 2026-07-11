@@ -21,6 +21,7 @@ import {
   type APIError,
 } from '../services/treeReIDService';
 import { TreeReIDBridge, type CapturedImage } from '../services/treeReIDNativeBridge';
+import { ORILIFE_BASE } from '../services/orilifeBase';
 import { logout, logoutUser } from './userSlice';
 
 // ---------------------------------------------------------------------------
@@ -84,7 +85,8 @@ const initialState: TreeReIDState = {
 // Config (from env)
 // ---------------------------------------------------------------------------
 
-const TREE_REID_BASE_URL = 'https://test.orilife.io';
+// Base URL DUY NHẤT qua hằng chung — KHÔNG hardcode test/staging (đã chết).
+const TREE_REID_BASE_URL = ORILIFE_BASE;
 
 // ---------------------------------------------------------------------------
 // Async Thunks

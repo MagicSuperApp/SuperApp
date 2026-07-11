@@ -10,7 +10,8 @@ RCT_EXTERN_METHOD(startCaptureSession:(NSDictionary *)options
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
-RCT_EXTERN_METHOD(stopCaptureSession:(RCTPromiseResolveBlock)resolve
+RCT_EXTERN_METHOD(stopCaptureSession:(NSDictionary *)options
+                  resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
 RCT_EXTERN_METHOD(addCapturedImage:(NSDictionary *)imageData

@@ -1,10 +1,15 @@
 /**
- * PhoenixKey native bridge — typed wrapper around the Android Keystore module.
+ * PhoenixKey native bridge — typed wrapper around the hardware-key module.
  *
- * iOS implementation is not wired yet (Android-only MVP). Calling these on iOS
- * throws a clear "not implemented" error so callers can fall back gracefully.
+ * Cả hai nền-tảng đã có native module (cùng tên `PhoenixKeyModule`, cùng hợp-đồng:
+ * EC P-256 / SHA256withECDSA, pubkey `04||X||Y` hex, sign trả HEX của DER):
+ *   - Android: `android/app/src/main/java/com/aladincontract/company/PhoenixKeyModule.kt`
+ *     (Android Keystore + BiometricPrompt)
+ *   - iOS:     `ios/LocalPods/ScannerModule/UI/PhoenixKeyModule.swift`
+ *     (Secure Enclave + LocalAuthentication)
  *
- * Underlying module: `android/app/src/main/java/com/aladincontract/company/PhoenixKeyModule.kt`
+ * Nếu module vắng mặt (nền-tảng chưa build), các hàm reject "not available" để caller
+ * fallback an-toàn (xem isAvailable()).
  */
 
 import { NativeModules, Platform } from 'react-native';
@@ -30,7 +35,8 @@ const moduleNotAvailable = (): PhoenixKeyNativeBridge => {
     Promise.reject(
       new Error(
         `PhoenixKey native module not available on ${Platform.OS}. ` +
-          `Method '${method}' requires the Android Keystore bridge.`,
+          `Method '${method}' requires the hardware-key bridge ` +
+          `(Android Keystore / iOS Secure Enclave).`,
       ),
     );
   return {

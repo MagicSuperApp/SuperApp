@@ -20,7 +20,7 @@
  *    hoặc goBack().
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -31,6 +31,9 @@ import {
   ScrollView,
   ActivityIndicator,
   TextInput,
+  Image,
+  Modal,
+  Dimensions,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
@@ -43,6 +46,8 @@ import {
   type EnrollResponse,
 } from '../services/treeReIDService';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
+import type { RootState } from '../store';
+import { loadFarms } from '../modules/trace/store/farmSlice';
 import {
   selectCaptures,
   selectGPS,
@@ -53,15 +58,51 @@ import {
 // Config
 // ---------------------------------------------------------------------------
 
-import { ORILIFE_API_BASE_URL } from '@env';
+import { ORILIFE_BASE } from '../services/orilifeBase';
 const BASE_URL: string =
-  (ORILIFE_API_BASE_URL as string | undefined) ?? 'https://test.orilife.io';
+  ORILIFE_BASE;
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 const MIN_CAPTURES = 4;
+
+const GRID_GAP = 8;
+const GRID_COLS = 3;
+// scrollContent padding 16*2 = 32; (GRID_COLS - 1) khoảng cách giữa các ô
+const TILE_SIZE =
+  (Dimensions.get('window').width - 32 - GRID_GAP * (GRID_COLS - 1)) / GRID_COLS;
+
+// ---------------------------------------------------------------------------
+// Metadata helpers
+// ---------------------------------------------------------------------------
+
+/** Đổi độ (0–360) sang hướng la bàn tiếng Việt: B/ĐB/Đ/ĐN/N/TN/T/TB. */
+function headingToCompass(deg: number): string {
+  const dirs = ['B', 'ĐB', 'Đ', 'ĐN', 'N', 'TN', 'T', 'TB'];
+  const idx = Math.round((((deg % 360) + 360) % 360) / 45) % 8;
+  return dirs[idx];
+}
+
+/** timestamp (ms) → HH:MM. */
+function formatTime(ms: number): string {
+  const d = new Date(ms);
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
+// Ảnh chuẩn-hoá cho lưới hiển thị (gộp cả iOS Redux captures lẫn Android paths).
+type GridPhoto = {
+  key: string;
+  uri: string;
+  heading?: number;
+  pitch?: number;
+  roll?: number;
+  round?: number;
+  capturedAt?: number;
+};
 
 // ---------------------------------------------------------------------------
 // Types
@@ -127,28 +168,59 @@ const TreeEnrollScreen: React.FC = () => {
   // Duplicate state — lưu tạm tree_id cây trùng để gộp
   const [duplicateTreeId, setDuplicateTreeId] = useState<string | null>(null);
 
-  // ── Derived values ────────────────────────────────────────────────────────
-  const round1Captures = captures.filter(c => c.round === 1);
-  const round2Captures = captures.filter(c => c.round === 2);
+  // Ảnh đang xem chi tiết (modal)
+  const [selectedPhoto, setSelectedPhoto] = useState<GridPhoto | null>(null);
 
-  // Vườn hiện-hành (nếu mở từ ngữ-cảnh farm) — gắn cây enroll vào vườn.
-  const farmId = route.params?.farmId;
+  // ── Derived values ────────────────────────────────────────────────────────
+
+  // Bộ chọn vườn — cây PHẢI thuộc một vườn mới hiện trong trang trại. Mặc định vườn
+  // mở từ ngữ-cảnh (route.farmId); không có thì cho chọn vườn đã có / tạo mới.
+  const farms = useAppSelector((s: RootState) => s.farm.farms);
+  const currentUser = useAppSelector((s: RootState) => s.user.currentUser);
+  const [selectedFarmId, setSelectedFarmId] = useState<string | undefined>(
+    route.params?.farmId,
+  );
+  const farmId = selectedFarmId;
+  useEffect(() => {
+    if (currentUser?.id && farms.length === 0) dispatch(loadFarms(currentUser.id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.id]);
 
   // Android không dispatch vào Redux captures — lấy paths từ route params.
   // iOS dùng Redux captures như bình thường.
   const androidImagePaths = route.params?.androidImagePaths;
-  const imagePaths =
-    Platform.OS === 'android' && androidImagePaths && androidImagePaths.length > 0
-      ? androidImagePaths
-      : captures.map(c => `file://${c.fileURL}`);
+  const usingAndroidPaths =
+    Platform.OS === 'android' && !!androidImagePaths && androidImagePaths.length > 0;
+  const imagePaths = usingAndroidPaths
+    ? androidImagePaths!
+    : captures.map(c => `file://${c.fileURL}`);
 
   // Số ảnh hiệu dụng để kiểm tra MIN_CAPTURES
-  const effectiveCaptureCount =
-    Platform.OS === 'android' && androidImagePaths && androidImagePaths.length > 0
-      ? androidImagePaths.length
-      : captures.length;
+  const effectiveCaptureCount = usingAndroidPaths
+    ? androidImagePaths!.length
+    : captures.length;
 
   const canEnroll = !isEnrolling && effectiveCaptureCount >= MIN_CAPTURES && name.trim().length > 0;
+
+  // Ảnh chuẩn-hoá cho lưới — Android chỉ có URI, iOS có đầy-đủ metadata.
+  const photos: GridPhoto[] = usingAndroidPaths
+    ? androidImagePaths!.map((uri, i) => ({
+        key: `android-${i}`,
+        uri: uri.startsWith('file://') || uri.startsWith('content://') ? uri : `file://${uri}`,
+      }))
+    : captures.map(c => ({
+        key: c.id,
+        uri: `file://${c.fileURL}`,
+        heading: c.heading,
+        pitch: c.pitch,
+        roll: c.roll,
+        round: c.round,
+        capturedAt: c.capturedAt,
+      }));
+
+  const round1Photos = photos.filter(p => p.round === 1);
+  const round2Photos = photos.filter(p => p.round === 2);
+  const ungroupedPhotos = photos.filter(p => p.round == null);
 
   // ── Navigate sau thành công ───────────────────────────────────────────────
   const handleSuccess = useCallback(
@@ -354,23 +426,41 @@ const TreeEnrollScreen: React.FC = () => {
     }
   };
 
-  // ── Render capture thumbnails ─────────────────────────────────────────────
-  const renderCaptureGrid = (
-    list: typeof captures,
-    label: string,
-  ) => {
+  // ── Render lưới ảnh (dùng chung iOS/Android) ──────────────────────────────
+  const renderPhotoGrid = (list: GridPhoto[], label: string) => {
     if (list.length === 0) return null;
     return (
       <View style={styles.captureSection}>
         <Text style={styles.captureSectionLabel}>
-          {label} — {list.length} góc
+          {label} · {list.length} góc
         </Text>
         <View style={styles.captureGrid}>
-          {list.map((cap, idx) => (
-            <View key={cap.id} style={styles.captureTile}>
-              <Icon name="image-outline" size={22} color={NEUTRAL.textMuted} />
-              <Text style={styles.captureTileIndex}>#{idx + 1}</Text>
-            </View>
+          {list.map((photo, idx) => (
+            <TouchableOpacity
+              key={photo.key}
+              style={styles.captureTile}
+              activeOpacity={0.85}
+              onPress={() => setSelectedPhoto(photo)}
+            >
+              <Image
+                source={{ uri: photo.uri }}
+                style={styles.captureImage}
+                resizeMode="cover"
+              />
+              {/* Badge số thứ tự */}
+              <View style={styles.captureBadge}>
+                <Text style={styles.captureBadgeText}>{idx + 1}</Text>
+              </View>
+              {/* Chip hướng la bàn — mờ, chỉ khi có heading */}
+              {photo.heading != null && (
+                <View style={styles.tileMetaBar}>
+                  <Icon name="compass-outline" size={11} color={NEUTRAL.white} />
+                  <Text style={styles.tileMetaText}>
+                    {headingToCompass(photo.heading)} · {Math.round(photo.heading)}°
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
           ))}
         </View>
       </View>
@@ -420,6 +510,51 @@ const TreeEnrollScreen: React.FC = () => {
           </View>
         )}
 
+        {/* Chọn trang trại — cây PHẢI gắn vào vườn mới hiện trong trang trại. */}
+        <View style={styles.farmSection}>
+          <Text style={styles.inputLabel}>Trang trại {farmId ? '' : '*'}</Text>
+          <View style={styles.farmChips}>
+            {farms.map(f => {
+              const on = farmId === f.id;
+              return (
+                <TouchableOpacity
+                  key={f.id}
+                  style={[styles.farmChip, on && styles.farmChipActive]}
+                  onPress={() => setSelectedFarmId(f.id)}
+                  activeOpacity={0.8}
+                >
+                  <Icon
+                    name={on ? 'check-circle' : 'sprout-outline'}
+                    size={14}
+                    color={on ? '#1b5e20' : NEUTRAL.textMuted}
+                  />
+                  <Text
+                    style={[styles.farmChipText, on && styles.farmChipTextActive]}
+                    numberOfLines={1}
+                  >
+                    {f.name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+            <TouchableOpacity
+              style={styles.farmChipNew}
+              onPress={() =>
+                (navigation as any).navigate('FarmDetail', { farm_id: null })
+              }
+              activeOpacity={0.8}
+            >
+              <Icon name="plus" size={14} color="#1b5e20" />
+              <Text style={styles.farmChipNewText}>Tạo vườn mới</Text>
+            </TouchableOpacity>
+          </View>
+          {!farmId && (
+            <Text style={styles.farmWarnText}>
+              Chưa chọn vườn — cây sẽ không hiện trong trang trại. Hãy chọn hoặc tạo vườn.
+            </Text>
+          )}
+        </View>
+
         {/* Tên cây */}
         <View style={styles.inputSection}>
           <Text style={styles.inputLabel}>Tên cây *</Text>
@@ -451,9 +586,13 @@ const TreeEnrollScreen: React.FC = () => {
             </View>
           ) : (
             <>
-              {renderCaptureGrid(round1Captures, 'Lượt 1 — Thân cây')}
-              {round2Captures.length > 0 &&
-                renderCaptureGrid(round2Captures, 'Lượt 2 — Gốc/vỏ')}
+              {ungroupedPhotos.length > 0 &&
+                renderPhotoGrid(ungroupedPhotos, 'Ảnh đã chụp')}
+              {renderPhotoGrid(round1Photos, 'Lượt 1 — Thân cây')}
+              {round2Photos.length > 0 &&
+                renderPhotoGrid(round2Photos, 'Lượt 2 — Gốc/vỏ')}
+
+              <Text style={styles.gridHint}>Chạm vào ảnh để xem chi tiết</Text>
 
               {effectiveCaptureCount < MIN_CAPTURES && (
                 <View style={styles.warningBox}>
@@ -515,6 +654,83 @@ const TreeEnrollScreen: React.FC = () => {
           )}
         </TouchableOpacity>
       </View>
+
+      {/* Modal xem chi tiết ảnh */}
+      <Modal
+        visible={selectedPhoto != null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedPhoto(null)}
+        statusBarTranslucent
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={styles.modalBackdrop}
+            activeOpacity={1}
+            onPress={() => setSelectedPhoto(null)}
+          />
+          <View style={styles.modalCard}>
+            <TouchableOpacity
+              style={styles.modalClose}
+              onPress={() => setSelectedPhoto(null)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Icon name="close" size={22} color={NEUTRAL.white} />
+            </TouchableOpacity>
+
+            {selectedPhoto && (
+              <>
+                <Image
+                  source={{ uri: selectedPhoto.uri }}
+                  style={styles.modalImage}
+                  resizeMode="contain"
+                />
+                <View style={styles.modalMeta}>
+                  <View style={styles.chipRow}>
+                    {selectedPhoto.heading != null && (
+                      <View style={styles.chip}>
+                        <Icon name="compass-outline" size={13} color="#1b5e20" />
+                        <Text style={styles.chipText}>
+                          {headingToCompass(selectedPhoto.heading)} · {Math.round(selectedPhoto.heading)}°
+                        </Text>
+                      </View>
+                    )}
+                    {selectedPhoto.pitch != null && (
+                      <View style={styles.chip}>
+                        <Icon name="angle-acute" size={13} color="#1b5e20" />
+                        <Text style={styles.chipText}>Ngẩng {Math.round(selectedPhoto.pitch)}°</Text>
+                      </View>
+                    )}
+                    {selectedPhoto.roll != null && (
+                      <View style={styles.chip}>
+                        <Icon name="rotate-3d-variant" size={13} color="#1b5e20" />
+                        <Text style={styles.chipText}>Xoay {Math.round(selectedPhoto.roll)}°</Text>
+                      </View>
+                    )}
+                    {selectedPhoto.round != null && (
+                      <View style={styles.chip}>
+                        <Icon name="camera-outline" size={13} color="#1b5e20" />
+                        <Text style={styles.chipText}>Lượt {selectedPhoto.round}</Text>
+                      </View>
+                    )}
+                    {selectedPhoto.capturedAt != null && (
+                      <View style={styles.chip}>
+                        <Icon name="clock-outline" size={13} color="#1b5e20" />
+                        <Text style={styles.chipText}>{formatTime(selectedPhoto.capturedAt)}</Text>
+                      </View>
+                    )}
+                  </View>
+                  {selectedPhoto.heading == null && (
+                    <Text style={styles.modalNoMeta}>
+                      Ảnh này không kèm dữ liệu hướng/góc.
+                    </Text>
+                  )}
+                </View>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -602,20 +818,92 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   captureTile: {
-    width: 66,
-    height: 66,
+    width: TILE_SIZE,
+    height: TILE_SIZE,
     backgroundColor: NEUTRAL.bgSoft,
-    borderRadius: 8,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: NEUTRAL.border,
+    overflow: 'hidden',
+  },
+  captureImage: {
+    width: '100%',
+    height: '100%',
+  },
+  captureBadge: {
+    position: 'absolute',
+    top: 5,
+    left: 5,
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 5,
+    borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.55)',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
-  captureTileIndex: {
+  captureBadgeText: {
+    fontSize: 11,
+    color: NEUTRAL.white,
+    fontWeight: '700',
+  },
+  tileMetaBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+    paddingVertical: 3,
+    backgroundColor: 'rgba(0,0,0,0.42)',
+  },
+  tileMetaText: {
     fontSize: 10,
-    color: NEUTRAL.textMuted,
-    marginTop: 3,
+    color: 'rgba(255,255,255,0.9)',
+    fontWeight: '600',
   },
+  gridHint: {
+    fontSize: 11,
+    color: NEUTRAL.textMuted,
+    fontStyle: 'italic',
+    marginTop: 2,
+  },
+  captureTileBadge: {
+    position: 'absolute',
+    left: 3,
+    bottom: 3,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 6,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  captureTileBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#fff',
+  },
+
+  farmSection: { marginBottom: 16 },
+  farmChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  farmChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20,
+    backgroundColor: NEUTRAL.bgSoft, borderWidth: 1, borderColor: NEUTRAL.border,
+    maxWidth: 190,
+  },
+  farmChipActive: { backgroundColor: '#e8f5e9', borderColor: '#1b5e20' },
+  farmChipText: { fontSize: 12, fontWeight: '600', color: NEUTRAL.textMuted },
+  farmChipTextActive: { color: '#1b5e20' },
+  farmChipNew: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20,
+    borderWidth: 1.5, borderColor: '#1b5e20', borderStyle: 'dashed',
+  },
+  farmChipNewText: { fontSize: 12, fontWeight: '700', color: '#1b5e20' },
+  farmWarnText: { fontSize: 11, color: NEUTRAL.warning, marginTop: 8, fontWeight: '600' },
 
   warningBox: {
     flexDirection: 'row',
@@ -686,6 +974,77 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   footerBtnDisabled: { opacity: 0.45 },
+
+  // ── Modal xem chi tiết ảnh ────────────────────────────────────────────────
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.85)',
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 460,
+    backgroundColor: NEUTRAL.card,
+    borderRadius: 18,
+    overflow: 'hidden',
+  },
+  modalClose: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    zIndex: 2,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalImage: {
+    width: '100%',
+    height: Dimensions.get('window').width * 0.9,
+    maxHeight: 420,
+    backgroundColor: '#000',
+  },
+  modalMeta: {
+    padding: 14,
+    gap: 8,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#e8f5e9',
+    borderWidth: 1,
+    borderColor: '#c8e6c9',
+    borderRadius: 20,
+    paddingVertical: 6,
+    paddingHorizontal: 11,
+  },
+  chipText: {
+    fontSize: 12.5,
+    color: '#1b5e20',
+    fontWeight: '600',
+  },
+  modalNoMeta: {
+    fontSize: 12,
+    color: NEUTRAL.textMuted,
+    fontStyle: 'italic',
+  },
 });
 
 export default TreeEnrollScreen;

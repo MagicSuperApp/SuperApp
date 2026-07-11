@@ -19,11 +19,13 @@ import ChatInput from '../components/ChatInput';
 import SyncStatusPill from '../components/SyncStatusPill';
 import EscrowStatusCard from '../../escrow/components/EscrowStatusCard';
 import StateView from '../../../../../components/state/StateView';
+import type { AppDispatch } from '../../../../../store';
 import {
   sendMessage,
   setMessageStage,
   decryptMessage,
   markRoomRead,
+  loadRoomMessages,
 } from '../../../store/proofchatSlice';
 import {
   OUTGOING_PIPELINE,
@@ -31,11 +33,12 @@ import {
   finalStatusFor,
 } from '../../proof/lifecycle';
 import type { Message } from '../types';
+import { isProofChatBackendEnabled } from '../../../../../services/proofchat-api';
 
 const ChatScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
-  const dispatch = useDispatch();
+  const dispatch = useDispatch<AppDispatch>();
   const store = useStore<RootState>();
 
   const roomId: string = route.params?.roomId;
@@ -47,12 +50,25 @@ const ChatScreen: React.FC = () => {
   );
   const sync = useSelector((s: RootState) => s.proofchat.sync);
   const identity = useSelector((s: RootState) => s.proofchat.identity);
+  const meId = useSelector((s: RootState) => s.proofchat.meId);
 
   const listRef = useRef<FlatList>(null);
 
   useEffect(() => {
     if (room && room.unreadCount > 0) dispatch(markRoomRead(roomId));
   }, [roomId]);
+
+  // ── Wiring dữ liệu THẬT (chỉ khi feature flag ON) ─────────────────────────
+  // Tải tin nhắn (ciphertext E2EE) qua REST GET /conversations/:id/messages.
+  // Realtime nhận tin đi qua socket.io (chatSocket.ts → proofchatService, E2EE 3
+  // tầng của Thư). Màn này CHƯA nối trực tiếp vào proofchatService — sẽ nối UI ↔
+  // service trong bước sau (chờ staging creds + interop danh tính did:phoenix↔web).
+  // Raw WS cũ (proofchatWs.ts, host ws.proofchat.app đã chết) đã gỡ theo chỉ dẫn ProofChat.
+  const backendEnabled = isProofChatBackendEnabled();
+  useEffect(() => {
+    if (!backendEnabled || !roomId) return;
+    dispatch(loadRoomMessages({ roomId, meId }));
+  }, [backendEnabled, roomId, meId, dispatch]);
 
   const sections = useMemo(() => groupByDate(messages), [messages]);
 

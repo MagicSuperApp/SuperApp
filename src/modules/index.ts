@@ -3,14 +3,15 @@
 //
 // YC-2: registry tay này là nguồn entrypoint/route HIỆN TẠI. Bản declarative
 // tương ứng (validate bằng ./manifest.schema.json) nằm tại:
-//   ./trace/module.manifest.json, ./proofchat/module.manifest.json, ./work/module.manifest.json
+//   ./trace/module.manifest.json, ./proofchat/module.manifest.json,
+//   ./work/module.manifest.json, ./join/module.manifest.json
 // YC-3 ĐÃ refactor nav sang registry config-driven (INTEGRATION-STANDARD §7.1):
 // xem src/navigation/registry.ts + src/config/instance.config.ts.
 // routeName dưới đây = route nav THẬT, đã thống nhất với manifest.routes
 // (đã sửa lệch 'TraceDashboard' → 'Dashboard' ở YC-3).
 
 import type { ImageSourcePropType } from 'react-native';
-import { TRACE_THEME, PROOFCHAT_THEME, WORK_THEME } from '../theme';
+import { TRACE_THEME, PROOFCHAT_THEME, WORK_THEME, LAMPNET_THEME } from '../theme';
 import type { ModuleTheme } from '../theme/tokens';
 
 export interface ModuleEntry {
@@ -55,6 +56,18 @@ export const MODULES: ModuleEntry[] = [
     routeName: 'WorkHome',
     available: true,
   },
+  {
+    theme: LAMPNET_THEME,
+    title: 'Kết đèn',
+    description: 'Góp sức máy cho mạng LampNet & nhận thưởng',
+    icon: 'lightning-bolt',
+    // Chưa có PNG nhân vật riêng cho Kết đèn — dùng tạm ảnh scan (fallback icon vẫn hiện).
+    // TODO(thiết kế): bổ sung assets/images/modules/lamp-fi.png.
+    image: require('../../assets/images/modules/scan-fi.png'),
+    bgDark: '#C47F0D', // lampnet.primaryDeep (giữ nhất quán catalog card — bgDark hex thô như các entry khác)
+    routeName: 'JoinHome',
+    available: true,
+  },
 ];
 
-export { TRACE_THEME, PROOFCHAT_THEME, WORK_THEME };
+export { TRACE_THEME, PROOFCHAT_THEME, WORK_THEME, LAMPNET_THEME };

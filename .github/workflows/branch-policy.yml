@@ -1,0 +1,26 @@
+name: Branch policy
+
+# Quy-tắc nhánh SuperApp (giai-đoạn sắp production):
+#   feature/* , fix/* , claude/*  →  PR  →  develop        (nhánh tích-hợp)
+#   develop                        →  PR  →  main           (chỉ khi sẵn-sàng production)
+# Repo private + plan free nên GitHub chưa bật được branch protection cứng;
+# workflow này là chốt MỀM: PR nhắm main mà KHÔNG xuất-phát từ develop → fail.
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  only-develop-into-main:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Chỉ cho develop → main
+        if: ${{ github.head_ref != 'develop' }}
+        run: |
+          echo "::error title=Sai nhánh đích::PR vào 'main' phải xuất-phát từ 'develop'."
+          echo "Nhánh nguồn hiện tại: '${{ github.head_ref }}'."
+          echo "Quy-tắc: feature/fix → PR → develop; chỉ 'develop' mới được PR vào 'main' khi sẵn-sàng production."
+          exit 1
+      - name: Hợp-lệ
+        if: ${{ github.head_ref == 'develop' }}
+        run: echo "develop → main: hợp-lệ."

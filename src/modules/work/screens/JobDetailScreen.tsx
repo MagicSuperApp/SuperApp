@@ -17,7 +17,8 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { COLORS } from '../../../constants';
 import { WORK_THEME } from '../theme/colors';
-import { getJobById, formatVND } from '../data/mockData';
+import { formatVND } from '../data/mockData';
+import { useJobDetail } from '../hooks/useJobs';
 import StateView from '../../../components/state/StateView';
 
 type RouteParams = { JobDetail: { jobId: string } };
@@ -26,7 +27,8 @@ const JobDetailScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<RouteParams, 'JobDetail'>>();
   const { jobId } = route.params;
-  const job = getJobById(jobId);
+  // Nguồn chi tiết: flag ON → GET /jobs/:id; OFF → mock (useJobDetail xử lý).
+  const { job, loading, errorKind, reload } = useJobDetail(jobId);
 
   const [applied, setApplied] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -35,6 +37,30 @@ const JobDetailScreen: React.FC = () => {
   useEffect(() => {
     Animated.timing(fade, { toValue: 1, duration: 400, useNativeDriver: true }).start();
   }, [fade]);
+
+  if (loading) {
+    return (
+      <View style={styles.root}>
+        <StateView status="loading" loadingLines={5} />
+      </View>
+    );
+  }
+
+  if (errorKind === 'network') {
+    return (
+      <View style={styles.root}>
+        <StateView status="offline" onRetry={reload} />
+      </View>
+    );
+  }
+
+  if (errorKind && errorKind !== 'client') {
+    return (
+      <View style={styles.root}>
+        <StateView status="error" onRetry={reload} />
+      </View>
+    );
+  }
 
   if (!job) {
     return (
@@ -170,6 +196,21 @@ const JobDetailScreen: React.FC = () => {
           </View>
         </View>
 
+        <TouchableOpacity
+          style={styles.matchRow}
+          activeOpacity={0.85}
+          onPress={() => navigation.navigate('WorkMatch', { jobId: job.id })}
+        >
+          <View style={styles.infoIconWrap}>
+            <Icon name="account-search-outline" size={16} color={WORK_THEME.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.matchTitle}>Xem ứng viên phù hợp</Text>
+            <Text style={styles.matchSub}>Khớp theo năng lực & lịch rảnh (Jem-Math)</Text>
+          </View>
+          <Icon name="chevron-right" size={20} color={COLORS.textMuted} />
+        </TouchableOpacity>
+
         <View style={[styles.section, styles.trustSection]}>
           <View style={styles.trustHeader}>
             <Icon name="shield-check" size={16} color={WORK_THEME.primary} />
@@ -184,7 +225,7 @@ const JobDetailScreen: React.FC = () => {
           <View style={styles.trustItem}>
             <Icon name="bank-outline" size={12} color={COLORS.textSub} />
             <Text style={styles.trustItemText}>
-              Tiền cọc giữ qua escrow trên Cardano, chỉ giải ngân khi hai bên xác nhận
+              Pledge định giá bằng MAGIC, khóa/hoàn bằng CARP — chỉ giải ngân khi hai bên xác nhận
             </Text>
           </View>
           <View style={styles.trustItem}>
@@ -353,6 +394,15 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: WORK_THEME.primaryLight,
   },
   viewProfileText: { fontSize: 11, fontWeight: '700', color: WORK_THEME.primary },
+
+  matchRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: COLORS.card,
+    marginHorizontal: 12, marginBottom: 8, padding: 14,
+    borderRadius: 14, borderWidth: 1, borderColor: COLORS.border,
+  },
+  matchTitle: { fontSize: 13, fontWeight: '800', color: COLORS.text },
+  matchSub: { fontSize: 11, color: COLORS.textSub, marginTop: 2 },
 
   trustSection: {
     backgroundColor: WORK_THEME.primaryGlow,

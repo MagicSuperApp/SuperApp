@@ -1,0 +1,3 @@
+
+# PhoenixKey Rust core — .so sinh trên CI (build_android.sh / cargo-ndk)
+app/src/main/jniLibs/*/libtaad_enclave_core.so

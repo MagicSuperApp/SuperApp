@@ -365,7 +365,8 @@ const FarmListScreen = () => {
       <FlatList
         data={paginatedFarms}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
+        // iOS-fix: chừa khoảng dưới cho CurvedTabBar (navbar nổi) khỏi che item cuối.
+        contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 120 }]}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={renderEmpty()}
         ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
@@ -399,7 +400,7 @@ const FarmListScreen = () => {
 
       {/* ── FAB ── */}
       {farms.length > 0 && (
-        <View style={[styles.fabWrap, { bottom: (Platform.OS === 'ios' ? 40 : 28) + insets.bottom }]}>
+        <View style={[styles.fabWrap, { bottom: (Platform.OS === 'ios' ? 70 : 70) + insets.bottom }]}>
           <TouchableOpacity style={styles.fab} onPress={goToAddFarm} activeOpacity={0.88}>
             <View style={styles.fabShine} />
             <Icon name="plus" size={26} color={COLORS.white} />
@@ -652,7 +653,7 @@ const styles = StyleSheet.create({
   // ── FAB
   fabWrap: {
     position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 40 : 28,
+    bottom: Platform.OS === 'ios' ? 50 : 60,
     right: 24,
     alignItems: 'center',
     gap: 6,

@@ -1,0 +1,12 @@
+# Rust build artifacts
+/target
+/target-ios
+/target-android
+Cargo.lock
+
+# iOS build outputs (sinh trên CI bởi build_ios.sh + build.rs) — GIỮ podspec + module_shim.c
+/ios/*.a
+/ios/chat_mls.h
+
+# cbindgen tạm
+/cbindgen.toml

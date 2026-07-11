@@ -1,4 +1,4 @@
-/**
+1/**
  * PhoenixKey backend REST client.
  *
  * Server: `api.phoenixkey.me` (or dev override via env PHOENIXKEY_API_URL).
@@ -21,6 +21,15 @@ export interface RegisterRequest {
   keyOrigin: 'SECURE_ENCLAVE' | 'IMPORTED_BIP39' | 'DERIVED_CHILD';
   keyRole: 'owner' | 'manager' | 'viewer';
   addedBySignature: string;
+  // ── PhoenixKey Enclave (ADDITIVE, optional) — gắn ví Master_KEK vào DID. ──
+  // Interceptor axios tự đổi camelCase → snake_case (taad_public_key_hex,
+  // wallet_address, entity_type) đúng hợp đồng backend Java (khớp Enclave
+  // PhoenixApi.registerIdentity). HW_Key (publicKeyHex) VẪN là DID owner +
+  // genesis signature — KHÔNG đổi → did_auth không bị ảnh hưởng.
+  taadPublicKeyHex?: string; // TAAD_Key Ed25519 derive từ Master_KEK
+  walletAddress?: string;    // địa chỉ Cardano account-0 (cố định) derive từ KEK
+  // Backend DidType enum CHỮ HOA: PERSON/ORG/... (gửi 'person' → 400 malformed).
+  entityType?: 'PERSON' | 'ORG';
 }
 
 export interface RegisterResponse {
@@ -82,6 +91,57 @@ export interface BalanceResponse {
   magicRatePerSlot: string;
   lastAccrualSlot: number;
   currentSlot: number;
+}
+
+/**
+ * GET /wallet/{did}/all — endpoint GỘP (thay `/balance` đã deprecated, API.md §7).
+ * `wallets[]` chỉ chứa ví ĐÃ có: `phoenix` (custody, từ User.walletAddress) và/hoặc
+ * `standard` (CIP-1852, sau khi mobile register). `magic` là số kế-toán Vault (không
+ * mint vào ví). Keys đã single-word nên interceptor camelCase giữ nguyên.
+ */
+export type WalletKind = 'phoenix' | 'standard';
+export interface WalletEntry {
+  kind: WalletKind;
+  addresses: { fixed?: string; active?: string; stake?: string };
+  balances: { lovelace: number; lamp: number; carp: number };
+}
+export interface WalletAllResponse {
+  wallets: WalletEntry[];
+  magic: { source: string; available: number; accrued: number };
+}
+
+/** POST /wallet/standard/register — client derive CIP-1852 rồi đăng-ký (API.md §7). */
+export interface StandardWalletRegisterRequest {
+  fixedAddress: string;   // account 0 base (bắt buộc)
+  activeAddress?: string; // account N base
+  stakeAddress?: string;  // stake credential role 2
+}
+
+/**
+ * Rút gọn WalletAllResponse về địa-chỉ + số dư để HIỂN THỊ. Một nguồn chuẩn cho mọi
+ * màn (Account, PhoenixWallet, SDK) — ưu tiên ví Standard (user tự kiểm-soát), fallback
+ * Phoenix custody. Ví rỗng → address null + số dư 0 (KHÔNG bịa).
+ */
+export function summarizeWalletAll(all: WalletAllResponse): {
+  address: string | null;
+  lovelace: number;
+  lamp: number;
+  carp: number;
+  magicAvailable: number;
+  magicAccrued: number;
+} {
+  const standard = all.wallets.find(w => w.kind === 'standard');
+  const phoenix = all.wallets.find(w => w.kind === 'phoenix');
+  const primary = standard ?? phoenix ?? null;
+  const b = primary?.balances ?? { lovelace: 0, lamp: 0, carp: 0 };
+  return {
+    address: primary?.addresses.active ?? primary?.addresses.fixed ?? null,
+    lovelace: b.lovelace,
+    lamp: b.lamp,
+    carp: b.carp,
+    magicAvailable: all.magic.available,
+    magicAccrued: all.magic.accrued,
+  };
 }
 
 export interface MagicClaimResponse {
@@ -261,6 +321,27 @@ export const identity = {
     unwrap<{ userDid: string; username: string }>(
       client.get(`/identity/by-username/${encodeURIComponent(username)}`),
     ),
+
+  /**
+   * Khôi-phục mất-máy (Mode B): gắn HW_Key MỚI (thiết bị này) vào DID đã có, sau khi
+   * user khôi phục Master_KEK từ 24 từ. `signature` = Ed25519 của TAAD_Key khôi phục
+   * ký lên challenge (bind userDid+newHwPublicKeyHex+nonce). Backend verify với
+   * controller pubkey on-chain (không đổi khi restore) rồi chèn HW_Key mới.
+   * BE: POST /identity/recover-device (body snake_case — interceptor tự đổi).
+   */
+  recoverDevice: (body: {
+    userDid: string;
+    newHwPublicKeyHex: string;
+    taadPublicKeyHex: string;
+    signature: string;
+    nonce: string;
+  }) =>
+    unwrap<{ userDid: string; txHash?: string }>(
+      client.post('/identity/recover-device', {
+        ...body,
+        keyOrigin: 'SECURE_ENCLAVE',
+      }),
+    ),
 };
 
 export const session = {
@@ -322,11 +403,39 @@ export const wallet = {
       ),
     ),
 
+  /**
+   * Ví GỘP: Phoenix custody + Standard CIP-1852 + MAGIC vault trong 1 lần gọi.
+   * Đây là nguồn ĐÚNG cho địa-chỉ + số dư (thay getBalance đã deprecated).
+   */
+  getAll: (userDid: string) =>
+    unwrap<WalletAllResponse>(
+      client.get(`/wallet/${encodeURIComponent(userDid)}/all`),
+    ),
+
+  /**
+   * Đăng-ký ví Standard (CIP-1852) — client derive địa-chỉ rồi gửi lên. Idempotent:
+   * gọi lại cập-nhật active/stake, KHÔNG cho đổi fixed. Bearer session.
+   */
+  standardRegister: (body: StandardWalletRegisterRequest) =>
+    unwrap<{ code: number; message: string }>(
+      client.post('/wallet/standard/register', body, {
+        needsAuth: true,
+      } as AxiosRequestConfig),
+    ),
+
+  getStandard: (userDid: string) =>
+    unwrap<{
+      addresses: { fixed?: string; active?: string; stake?: string };
+      balances: { lovelace: number; lamp: number; carp: number };
+    }>(client.get(`/wallet/standard/${encodeURIComponent(userDid)}`)),
+
+  /** @deprecated API.md §7 — dùng getAll. Backend ép MAGIC = 0, có thể thiếu address. */
   getBalance: (userDid: string) =>
     unwrap<BalanceResponse>(
       client.get(`/wallet/${encodeURIComponent(userDid)}/balance`),
     ),
 
+  /** @deprecated API.md §7 — trả 410 Gone (1324). MAGIC là số kế-toán Vault, không mint. */
   claimMagic: () =>
     unwrap<MagicClaimResponse>(
       client.post('/wallet/magic/claim', undefined, {
@@ -343,6 +452,82 @@ export const keys = {
    */
   rotate: (body: KeyRotateRequest) =>
     unwrap<KeyRotationResponse>(client.post('/keys/rotate', body)),
+
+  /**
+   * Khoá/vô-hiệu-hoá 1 khoá của DID (mất trộm/nghi lộ). Backend đã có (anh xác nhận).
+   * ⚠️ Shape body CHƯA đối-chiếu client Dart — chờ anh chốt (userDid/keyId/publicKeyHex
+   * + nonce + chữ ký khoá owner). Giữ generic để không chặn UI; sửa khi có contract.
+   */
+  revoke: (body: {
+    userDid: string;
+    targetPublicKeyHex: string;
+    nonce: string;
+    ownerSignature: string;
+  }) =>
+    unwrap<{ txHash: string }>(client.post('/keys/revoke', body)),
+};
+
+// ── Activation (mua gói → LAMP + ADA vào ví; app KHÔNG tự mint) ───────
+// Contract khớp client Dart tham chiếu (Enclave/lib/bridge/phoenix_api.dart).
+export const activation = {
+  /** Chi tiết + trạng thái 1 lượt activation. BE: GET /activation/:id/status (Bearer). */
+  getStatus: (activationId: string) =>
+    unwrap<Record<string, unknown>>(
+      client.get(`/activation/${encodeURIComponent(activationId)}/status`, {
+        needsAuth: true,
+      } as AxiosRequestConfig),
+    ),
+
+  /** Nộp tx đã ký (CBOR hex) cho lượt activation. BE: POST /activation/:id/submit-tx. */
+  submitTx: (activationId: string, signedTxCbor: string) =>
+    unwrap<{ cardanoTxHash: string }>(
+      client.post(
+        `/activation/${encodeURIComponent(activationId)}/submit-tx`,
+        { signedTxCbor },
+        { needsAuth: true } as AxiosRequestConfig,
+      ),
+    ),
+};
+
+// ── Guardian (khôi-phục xã-hội) — API.md §6 ──────────────────────────
+// Route + body ĐÚNG theo API.md: POST /guardians/add · /guardians/remove,
+// body { user_did, guardian_did, nonce, proof_signature } (interceptor → snake_case).
+// ⚠️ CHUỖI challenge của proof_signature KHÔNG ghi trong API.md — client dựng theo
+// mẫu nhất-quán "PHOENIXKEY_<ACTION>:...:nonce" (như GENESIS/RECOVER/ROTATE), ký bằng
+// khoá HW owner (DER ECDSA). Nếu backend verify khác → chỉ chỉnh chuỗi trong
+// GuardianScreen (GUARDIAN_ADD/REMOVE_CHALLENGE). Chờ anh Đức chốt.
+export interface GuardianMutateRequest {
+  userDid: string;
+  guardianDid: string;
+  nonce: string;
+  proofSignature: string;
+}
+export const guardians = {
+  add: (body: GuardianMutateRequest) =>
+    unwrap<void>(
+      client.post('/guardians/add', body, { needsAuth: true } as AxiosRequestConfig),
+    ),
+
+  remove: (body: GuardianMutateRequest) =>
+    unwrap<void>(
+      client.post('/guardians/remove', body, { needsAuth: true } as AxiosRequestConfig),
+    ),
+};
+
+// ── Nhật-ký hoạt-động (ký/xoay khoá/export) ──────────────────────────
+export const activityLogs = {
+  /**
+   * Lịch-sử hoạt-động của tài-khoản. Backend đã có (anh xác nhận).
+   * ⚠️ Shape query/response CHƯA đối-chiếu — giả-định GET /activity-logs (Bearer)
+   * trả mảng; chờ anh chốt phân-trang + field.
+   */
+  list: (params?: { skip?: number; take?: number }) =>
+    unwrap<Array<Record<string, unknown>>>(
+      client.get('/activity-logs', {
+        needsAuth: true,
+        params,
+      } as AxiosRequestConfig),
+    ),
 };
 
 export const phoenixKeyApi = {
@@ -353,6 +538,9 @@ export const phoenixKeyApi = {
   seed,
   wallet,
   keys,
+  activation,
+  guardians,
+  activityLogs,
   setSessionToken,
   clearSessionToken,
   getSessionToken,

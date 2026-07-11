@@ -45,6 +45,22 @@ export interface ListConversationsOptions {
   take?: number;
 }
 
+/**
+ * Tin nhắn thô từ BE — envelope E2EE. Server KHÔNG thấy plaintext (spec §4/§6):
+ * chỉ trả ciphertext (variants[].encryptedContent). Giải mã do crypto stack (MLS)
+ * đảm nhiệm ở v2.1; tầng này chỉ vận chuyển.
+ */
+export interface RemoteMessage {
+  id: string;
+  conversationId: string;
+  senderId?: string; // PhoenixKey DID người gửi (KHÔNG dùng stakeAddress — spec §6)
+  senderDid?: string;
+  /** Nội dung đã mã hoá. Có thể ở variants[].encryptedContent hoặc field phẳng. */
+  ciphertext?: string;
+  encryptedContent?: string;
+  createdAt?: number | string; // do client tạo, KHÔNG override (ký MerkleLeaf)
+}
+
 export class ProofChatApiError extends Error {
   constructor(
     public readonly httpStatus: number,
@@ -63,8 +79,15 @@ export const isProofChatBackendEnabled = (): boolean =>
 
 // ── Lưu token ────────────────────────────────────────────────────────
 
+// LƯU Ý TOKEN AN TOÀN (spec §4): production PHẢI lưu token ở Keychain (iOS) /
+// Keystore (Android) — KHÔNG localStorage. AsyncStorage KHÔNG phải localStorage
+// (không đi qua WebView JS bridge công khai) nhưng cũng CHƯA mã hoá cứng bằng
+// Keychain. Nâng cấp sang react-native-keychain là việc còn treo — xem BLOCKER
+// trong PR (cần thư viện Keychain + review bảo mật). Interface get/set giữ nguyên
+// nên đổi backend lưu trữ KHÔNG phá caller.
 const ACCESS_TOKEN_KEY = 'proofchat_access_token';
 const REFRESH_TOKEN_KEY = 'proofchat_refresh_token';
+const DEVICE_ID_KEY = 'proofchat_device_id';
 
 export const setTokens = async (t: AuthTokens): Promise<void> => {
   await AsyncStorage.multiSet([
@@ -81,6 +104,34 @@ export const getRefreshToken = (): Promise<string | null> =>
 
 export const clearTokens = (): Promise<void> =>
   AsyncStorage.multiRemove([ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY]).then(() => undefined);
+
+// ── deviceId (1 UUID / thiết bị, persistent) ─────────────────────────
+// Spec §6: deviceId cần khi lấy tin nhắn + build variants + đăng KeyPackage MLS.
+// Tạo 1 lần khi cài (lần gọi đầu), lưu persistent. UUID v4 tự sinh — KHÔNG thêm
+// dependency `uuid` (chưa có trong package.json). Math.random đủ cho định danh
+// thiết bị (KHÔNG dùng cho khoá mật mã — khoá MLS do crypto stack sinh riêng).
+const genUuidV4 = (): string =>
+  'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+
+let deviceIdCache: string | null = null;
+
+/** Lấy (hoặc tạo lần đầu) deviceId persistent của thiết bị. */
+export const getDeviceId = async (): Promise<string> => {
+  if (deviceIdCache) return deviceIdCache;
+  const existing = await AsyncStorage.getItem(DEVICE_ID_KEY);
+  if (existing) {
+    deviceIdCache = existing;
+    return existing;
+  }
+  const fresh = genUuidV4();
+  await AsyncStorage.setItem(DEVICE_ID_KEY, fresh);
+  deviceIdCache = fresh;
+  return fresh;
+};
 
 // ── Axios setup ──────────────────────────────────────────────────────
 
@@ -233,7 +284,143 @@ export const conversations = {
     unwrap<string[]>(
       client.get('/conversations/ids', { needsAuth: true } as AuthableConfig),
     ),
+
+  /** 1 hội thoại theo ID. BE: GET /conversations/:id (Bearer). */
+  get: (id: string): Promise<RemoteConversation> =>
+    unwrap<RemoteConversation>(
+      client.get(`/conversations/${encodeURIComponent(id)}`, {
+        needsAuth: true,
+      } as AuthableConfig),
+    ),
+
+  /** Tạo hội thoại. BE: POST /conversations { type, participantIds, title?, proposalId? }. */
+  create: (body: {
+    type: string;
+    participantIds: string[];
+    title?: string;
+    proposalId?: string;
+  }): Promise<RemoteConversation> =>
+    unwrap<RemoteConversation>(
+      client.post('/conversations', body, { needsAuth: true } as AuthableConfig),
+    ),
+
+  /**
+   * Tin nhắn (ciphertext E2EE) của 1 hội thoại. BE: GET /conversations/:id/messages
+   * (Bearer) — query `deviceId` (chọn variant), `limit`/`offset` (phân trang).
+   */
+  getMessages: (
+    conversationId: string,
+    deviceId: string,
+    opts: { take?: number; offset?: number } = {},
+  ): Promise<RemoteMessage[]> =>
+    unwrap<RemoteMessage[]>(
+      client.get(`/conversations/${encodeURIComponent(conversationId)}/messages`, {
+        needsAuth: true,
+        params: { deviceId, limit: opts.take, offset: opts.offset },
+      } as AuthableConfig),
+    ),
 };
 
-export const proofChatApi = { auth, conversations };
+// ── MLS (bootstrap: KeyPackage + epoch-sync) ─────────────────────────
+// Khớp D:\BE modules/mls (controller `mls`) + modules/mls/epoch-sync. Dùng cho
+// proofchatService (lập nhóm, publish KeyPackage, đồng bộ epoch). Prefix baseURL
+// đã gồm `/api` như các route hiện có.
+
+/** 1 KeyPackage thành viên (BE KeyPackageResponse). */
+export interface RemoteKeyPackage {
+  stakeAddress: string;
+  deviceId: string;
+  keyPackage: string;
+  ciphersuite: string;
+  expiresAt: number | null;
+  createdAt: number;
+}
+
+/** Trạng thái KeyPackage của tôi (BE KeyPackageStatusResponse). */
+export interface KeyPackageStatus {
+  exists: boolean;
+  devices: Array<{ deviceId: string; expiresAt: number | null }>;
+}
+
+/** 1 bản ghi epoch-sync (BE MlsEpochSyncRecordDto). `mlsMessageType` không có ở BE
+ * hiện tại — để optional; phân biệt welcome/commit theo trường tương ứng khác rỗng. */
+export interface RemoteEpochRecord {
+  id?: string;
+  conversationId: string;
+  epoch: number;
+  commitMessage: string;
+  welcomeMessage: string;
+  ratchetTree: string | null;
+  createdAt: number;
+  createdBy: string;
+  mlsMessageType?: 'application' | 'epoch_sync' | 'welcome';
+}
+
+export const mls = {
+  /** Trạng thái KeyPackage của tôi. BE: GET /mls/keypackage/status (Bearer). */
+  keyPackageStatus: (): Promise<KeyPackageStatus> =>
+    unwrap<KeyPackageStatus>(
+      client.get('/mls/keypackage/status', { needsAuth: true } as AuthableConfig),
+    ),
+
+  /** Publish KeyPackage của thiết bị. BE: POST /mls/keypackage. */
+  publishKeyPackage: (body: {
+    deviceId: string;
+    keyPackage: string;
+    ciphersuite: string;
+  }): Promise<{ success: boolean; message: string }> =>
+    unwrap<{ success: boolean; message: string }>(
+      client.post('/mls/keypackage', body, { needsAuth: true } as AuthableConfig),
+    ),
+
+  /** KeyPackage các thành viên 1 phòng. BE: GET /mls/keypackages/room/:conversationId. */
+  roomKeyPackages: (
+    conversationId: string,
+    deviceId: string,
+  ): Promise<RemoteKeyPackage[]> =>
+    unwrap<RemoteKeyPackage[]>(
+      client.get(`/mls/keypackages/room/${encodeURIComponent(conversationId)}`, {
+        needsAuth: true,
+        params: { deviceId },
+      } as AuthableConfig),
+    ),
+
+  /** Tạo bản ghi epoch-sync (ADMIN). BE: POST /mls/epoch-sync. */
+  createEpochSync: (body: {
+    conversationId: string;
+    epoch: number;
+    commitMessage: string;
+    welcomeMessage: string;
+    ratchetTree?: string;
+  }): Promise<unknown> =>
+    unwrap<unknown>(
+      client.post('/mls/epoch-sync', body, { needsAuth: true } as AuthableConfig),
+    ),
+
+  /** Epoch hiện tại của phòng. BE: GET /mls/epoch-sync/:conversationId/current. */
+  epochCurrent: (
+    conversationId: string,
+  ): Promise<{ conversationId: string; currentEpoch: number; epoch?: number }> =>
+    unwrap<{ conversationId: string; currentEpoch: number; epoch?: number }>(
+      client.get(
+        `/mls/epoch-sync/${encodeURIComponent(conversationId)}/current`,
+        { needsAuth: true } as AuthableConfig,
+      ),
+    ),
+
+  /** Các bản ghi epoch trong khoảng [from,to]. BE: GET /mls/epoch-sync/:conversationId. */
+  epochRange: (
+    conversationId: string,
+    fromEpoch: number,
+    toEpoch: number,
+  ): Promise<RemoteEpochRecord[]> =>
+    unwrap<RemoteEpochRecord[]>(
+      client.get(`/mls/epoch-sync/${encodeURIComponent(conversationId)}`, {
+        needsAuth: true,
+        params: { fromEpoch, toEpoch },
+      } as AuthableConfig),
+    ),
+};
+
+export const proofChatApi = { auth, conversations, mls };
 export default proofChatApi;

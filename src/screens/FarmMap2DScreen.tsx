@@ -7,7 +7,7 @@
  *  Cây CHƯA có GPS → liệt-kê dưới bản-đồ (vẫn bấm mở được sơ-đồ).
  *
  *  KHÔNG dùng react-native-svg: khung/chấm = View + borderRadius + position:absolute.
- *  Backend = field-reid (ORILIFE_API_BASE_URL = test.orilife.io). Cùng client fruitReIDService.
+ *  Backend = field-reid (ORILIFE_API_BASE_URL = api.orilife.io). Cùng client fruitReIDService.
  *  Route params (RouteParams): farmId? (hiện backend /api/farm/layout không lọc theo farm — bỏ qua).
  */
 
@@ -18,7 +18,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useRoute, useNavigation } from '@react-navigation/native';
-import { ORILIFE_API_BASE_URL } from '@env';
+import { ORILIFE_BASE } from '../services/orilifeBase';
 
 import { COLORS } from '../constants';
 import {
@@ -26,7 +26,7 @@ import {
   type FarmLayoutResponse, type FarmTree,
 } from '../services/fruitReIDService';
 
-const BASE_URL = (ORILIFE_API_BASE_URL as string | undefined) ?? 'https://test.orilife.io';
+const BASE_URL = ORILIFE_BASE;
 
 interface RouteParams { farmId?: string }
 

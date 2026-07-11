@@ -21,7 +21,6 @@ import { Activity } from '../types';
 import { updateCredits, selectChainWallet } from '../../../store/userSlice';
 import { syncService } from '../../../services/syncService';
 import { COLORS } from '../../../constants';
-import { ScannerSDK, EVENTS, ScanCompleteData } from '../../../scansdk';
 import { RootState } from '../../../store';
 import { useAppDispatch } from '../../../store/hooks';
 import { showSuccess, showError, showWarning, showInfo } from '../../../utils/alert';
@@ -243,15 +242,6 @@ const ActivityScreen = () => {
   const hasFiles = scannedFiles.length > 0;
   const canSave = !!selected && !saving && hasFiles;
 
-  // Subscribe to scan complete — maps SDK tree results to activity scanned files
-  useEffect(() => {
-    const sub = ScannerSDK.addListener(EVENTS.SCAN_COMPLETE, (_data: ScanCompleteData) => {
-      // TODO: map treeIds to image file paths once SDK returns them
-      setScannedFiles([]);
-    });
-    return () => sub.remove();
-  }, []);
-
   const handleSave = async () => {
     if (!selected || !farm || !user || !selectedActivity) return;
     // CHỈ chặn khi ĐÃ BIẾT số dư thật (từ chain) và thực sự không đủ. Ví chưa nạp
@@ -303,17 +293,11 @@ const ActivityScreen = () => {
     }
   };
 
-  // Launch native scanner via OriLife SDK when recording becomes true
+  // "Ghi hình" cũ (scanner) thay bằng màn Nhận diện (TreeIdentity) — giống nút quick "Nhận diện".
   useEffect(() => {
-    showInfo("Các tính năng này đang được cập nhập!", "", {
-      onConfirm: () => {
-        navigation.goBack();
-      }
-    });
     if (recording && selectedActivity) {
-      ScannerSDK.startScanner({ mode: 'single' })
-        .catch(err => console.error('[ActivityScreen] Scanner error:', err));
       setRecording(false);
+      (navigation as any).navigate('TreeIdentity', farm ? { farmId: farm.id } : undefined);
     }
   }, [recording, selectedActivity]);
 

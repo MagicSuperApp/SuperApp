@@ -25,7 +25,6 @@ final class CameraSessionManager: NSObject {
     private let captureSession = AVCaptureSession()
     private let sessionQueue = DispatchQueue(label: "com.aladin.camera.session", qos: .userInteractive)
     private let videoOutputQueue = DispatchQueue(label: "com.aladin.camera.videoOutput", qos: .userInteractive)
-    private let captureQueue = DispatchQueue(label: "com.aladin.camera.capture", qos: .userInitiated)
 
     private var videoDeviceInput: AVCaptureDeviceInput?
     private var videoDataOutput: AVCaptureVideoDataOutput?
@@ -85,36 +84,30 @@ final class CameraSessionManager: NSObject {
     }
 
     /// Capture a high-res photo (called when a sector is triggered).
+    /// Must dispatch to sessionQueue — AVCapturePhotoOutput.capturePhoto(with:delegate:)
+    /// requires the same queue used to startRunning(); calling from any other queue crashes.
     func capturePhoto() {
-        guard let photoOutput = self.photoOutput else {
-            ScannerRemoteLog.breadcrumb(phase: "treereid_capture_photo_no_output", detail: [:])
-            return
-        }
-
-        ScannerRemoteLog.breadcrumb(phase: "treereid_capture_photo_enter", detail: [:])
-
-        let settings = AVCapturePhotoSettings()
-        settings.flashMode = .auto
-
-        if photoOutput.availablePhotoCodecTypes.contains(.hevc) {
-            settings.photoQualityPrioritization = .quality
-        }
-
-        ScannerRemoteLog.breadcrumb(phase: "treereid_capture_photo_dispatching", detail: [:])
-
-        captureQueue.async { [weak self] in
-            ScannerRemoteLog.breadcrumb(phase: "treereid_capture_photo_async_block_start", detail: [:])
-
+        sessionQueue.async { [weak self] in
             guard let self = self else {
                 ScannerRemoteLog.breadcrumb(phase: "treereid_capture_photo_self_deallocated", detail: [:])
                 return
             }
 
+            ScannerRemoteLog.breadcrumb(phase: "treereid_capture_photo_enter", detail: [:])
+
             guard let photoOutput = self.photoOutput else {
-                ScannerRemoteLog.breadcrumb(phase: "treereid_capture_photo_output_nil", detail: [:])
+                ScannerRemoteLog.breadcrumb(phase: "treereid_capture_photo_no_output", detail: [:])
                 return
             }
 
+            let settings = AVCapturePhotoSettings()
+            settings.flashMode = .auto
+
+            if photoOutput.availablePhotoCodecTypes.contains(.hevc) {
+                settings.photoQualityPrioritization = .quality
+            }
+
+            ScannerRemoteLog.breadcrumb(phase: "treereid_capture_photo_dispatching", detail: [:])
             photoOutput.capturePhoto(with: settings, delegate: self)
             ScannerRemoteLog.breadcrumb(phase: "treereid_capture_photo_after_capture", detail: [:])
         }
@@ -219,7 +212,11 @@ final class CameraSessionManager: NSObject {
         } else {
             photo.isHighResolutionCaptureEnabled = true
         }
-        // maxPhotoQualityPrioritization deprecated in iOS 17 — omit to use system default
+        // CRITICAL: must raise maxPhotoQualityPrioritization to .quality BEFORE any
+        // capture requests .quality. The default is .balanced; requesting a higher
+        // priority in AVCapturePhotoSettings than this max throws NSInvalidArgumentException
+        // synchronously inside capturePhoto(with:delegate:) → hard crash.
+        photo.maxPhotoQualityPrioritization = .quality
 
         if captureSession.canAddOutput(photo) {
             captureSession.addOutput(photo)

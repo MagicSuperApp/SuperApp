@@ -71,6 +71,7 @@ import {
   isProofChatBackendEnabled,
   getAccessToken,
   getRefreshToken,
+  getDeviceId,
   clearTokens,
   ProofChatApiError,
 } from './proofchat-api';
@@ -214,6 +215,44 @@ describe('conversations.list', () => {
     mockGet.mockResolvedValueOnce({ data: { message: 'no data' } });
     const list = await proofChatApi.conversations.list();
     expect(list).toEqual({ message: 'no data' });
+  });
+});
+
+describe('conversations.getMessages — deviceId trong query, token ở header', () => {
+  it('truyền deviceId qua params (KHÔNG token trong URL) + needsAuth', async () => {
+    mockGet.mockResolvedValueOnce({
+      data: { data: [{ id: 'm1', conversationId: 'c1' }], statusCode: 200 },
+    });
+    const list = await proofChatApi.conversations.getMessages('c1', 'dev-uuid', {
+      take: 50,
+    });
+    expect(list).toEqual([{ id: 'm1', conversationId: 'c1' }]);
+    const [path, cfg] = mockGet.mock.calls[0];
+    expect(path).toBe('/conversations/c1/messages');
+    expect(cfg.needsAuth).toBe(true);
+    // BE messages endpoint phân trang bằng `limit`/`offset` (D:\BE conversations
+    // controller @Query('limit')). Client nhận `take` cho tiện rồi map → `limit`.
+    expect(cfg.params).toMatchObject({ deviceId: 'dev-uuid', limit: 50 });
+    // Bất biến an toàn: KHÔNG có token trong path/query.
+    expect(path).not.toMatch(/token/i);
+  });
+
+  it('encode id có ký tự đặc biệt', async () => {
+    mockGet.mockResolvedValueOnce({ data: { data: [], statusCode: 200 } });
+    await proofChatApi.conversations.get('a/b c');
+    const [path] = mockGet.mock.calls[0];
+    expect(path).toBe('/conversations/a%2Fb%20c');
+  });
+});
+
+describe('getDeviceId — UUID persistent 1/thiết bị', () => {
+  it('tạo UUID v4 lần đầu, tái dùng lần sau (persistent)', async () => {
+    const id1 = await getDeviceId();
+    expect(id1).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    const id2 = await getDeviceId();
+    expect(id2).toBe(id1); // cùng thiết bị → cùng deviceId
   });
 });
 

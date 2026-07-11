@@ -57,33 +57,6 @@ jobs:
           EOF
           echo "gradle.properties created (JVM heap: 4096m)"
 
-      - name: Patch react-native-sqlite-storage (remove legacy buildscript + jcenter)
-        run: |
-          SQLITE_GRADLE="node_modules/react-native-sqlite-storage/platforms/android/build.gradle"
-          if [ -f "$SQLITE_GRADLE" ]; then
-            python3 -c "
-          path = 'node_modules/react-native-sqlite-storage/platforms/android/build.gradle'
-          with open(path) as f:
-              lines = f.readlines()
-          result, depth, skip = [], 0, False
-          for line in lines:
-              if not skip and line.strip().startswith('buildscript'):
-                  skip = True
-              if skip:
-                  depth += line.count('{') - line.count('}')
-                  if depth <= 0:
-                      skip = False
-                  continue
-              result.append(line)
-          with open(path, 'w') as f:
-              f.writelines(result)
-          print('Removed legacy buildscript block (gradle:3.1.4 → no OOM)')
-          "
-            echo "Patched react-native-sqlite-storage build.gradle"
-          else
-            echo "::warning::sqlite-storage gradle not found at $SQLITE_GRADLE, skipping"
-          fi
-
       - name: Build debug APK
         run: |
           set -eo pipefail

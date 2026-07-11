@@ -21,7 +21,20 @@ import {
   type RemoteConversation,
   type RemoteMessage,
 } from '../../../services/proofchat-api';
-import type { WsIncomingMessage } from '../../../services/proofchatWs';
+/**
+ * Envelope tin đến từ realtime (ciphertext E2EE — server KHÔNG thấy plaintext).
+ * Trước ở `proofchatWs.ts` (raw WS đã bỏ); giữ tại đây để reducer `receiveWsMessage`
+ * dùng chung, độc lập transport. Đường thật hiện là socket.io (`chatSocket.ts`) →
+ * `proofchatService`; khi nối UI vào service sẽ map `MessagePayload` về shape này.
+ */
+export interface WsIncomingMessage {
+  id?: string;
+  conversationId: string;
+  senderId?: string;
+  senderDid?: string;
+  ciphertext?: string;
+  createdAt?: number | string;
+}
 import type {
   Wallet,
   WalletTransaction,

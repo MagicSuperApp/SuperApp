@@ -30,4 +30,16 @@ RCT_EXTERN_METHOD(getCapturedImages:(RCTPromiseResolveBlock)resolve
 RCT_EXTERN_METHOD(getCurrentHeading:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
+// Cam controls: flash + lens 0.5x
+RCT_EXTERN_METHOD(getCameraCapabilities:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(setTorch:(BOOL)on
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(setUltraWide:(BOOL)on
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
 @end

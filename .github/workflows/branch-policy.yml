@@ -12,6 +12,10 @@ on:
 
 jobs:
   only-develop-into-main:
+    # Chỉ đánh giá cho pull_request THẬT vào main. Guard chống misfire: nếu event
+    # không phải pull_request (vd push tới nhánh) thì github.head_ref rỗng → bước
+    # dưới sẽ fail nhầm. Skip job ở mọi event khác pull_request.
+    if: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     steps:
       - name: Chỉ cho develop → main

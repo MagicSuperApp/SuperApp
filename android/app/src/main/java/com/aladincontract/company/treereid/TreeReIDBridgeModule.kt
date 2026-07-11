@@ -100,6 +100,8 @@ class TreeReIDBridgeModule(private val reactContext: ReactApplicationContext) :
                     (reactContext.currentActivity as? LifecycleOwner) ?: ProcessLifecycleOwner.get()
                 TreeReIDCamera.ensureController(reactContext)
                 TreeReIDCamera.bind(owner)
+                // Nạp model YOLO (Plan A) cho gate chất-lượng. Thiếu model → tự tắt gate.
+                TreeReIDYolo.ensureLoaded(reactContext)
 
                 synchronized(captures) { captures.clear() }
                 sessionId = UUID.randomUUID().toString()
@@ -298,10 +300,23 @@ class TreeReIDBridgeModule(private val reactContext: ReactApplicationContext) :
 
         if (u.shouldCapture &&
             countRound(currentRound) < MAX_PER_ROUND &&
+            yoloGatePass() &&
             isCapturing.compareAndSet(false, true)
         ) {
             triggerCapture(u.heading, u.pitch, u.roll)
         }
+    }
+
+    /**
+     * Gate YOLO (Plan A): chỉ cho chụp khi frame gần nhất CÓ cây (conf ≥ ngưỡng).
+     * An toàn — KHÔNG chặn oan khi: detector chưa nạp model, chưa có kết quả, hoặc
+     * kết quả quá cũ (>800ms). Lúc đó rơi về gate stillness (Plan B) như trước.
+     */
+    private fun yoloGatePass(): Boolean {
+        if (!TreeReIDYolo.available) return true
+        val (conf, ageMs) = TreeReIDCamera.latestTargetConfidence()
+        if (conf < 0f || ageMs > 800) return true
+        return conf >= TreeReIDYolo.CONF_THRESHOLD
     }
 
     private fun triggerCapture(heading: Double, pitch: Double, roll: Double) {

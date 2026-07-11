@@ -116,7 +116,10 @@ def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
         // (1-tap Cây/Quả/Vườn), implicit farm 22m × 22m, biometric login,
         // walk-away auto-stop, drag-to-edit polygon. Field test target Đắk Lắk.
         // Keep Android versionCode in lockstep with iOS CFBundleVersion.
-        versionCode 73
+        // Build 74 (2026-07-10): fix ví/mạng PhoenixKey (/wallet/all + Standard CIP-1852),
+        // guardian đúng route §6, fix đơ iOS displayLink, YOLO gate C + A/B đăng-ký cây.
+        // Build 75 (2026-07-10): tự phát hiện DID mồ côi + nút đăng-ký-lại khi server reset.
+        versionCode 75
         versionName "2.0"
 
         // ✅ Support 16KB page size (required by Google Play Store 2024)
@@ -135,6 +138,11 @@ def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
+    }
+
+    // Model .tflite phải KHÔNG nén để TFLite memory-map (FileUtil.loadMappedFile).
+    aaptOptions {
+        noCompress 'tflite'
     }
 }
 
@@ -163,6 +171,11 @@ dependencies {
     implementation "androidx.camera:camera-lifecycle:${camerax_version}"
     implementation "androidx.camera:camera-view:${camerax_version}"
     implementation "androidx.exifinterface:exifinterface:1.3.7"
+
+    // TFLite — gate YOLO chất-lượng chụp (Plan A, TreeReIDYolo). Model yolov26seg.tflite
+    // đặt ở app/src/main/assets (tự bỏ vào). Version khớp resolutionStrategy.force ở trên.
+    implementation 'org.tensorflow:tensorflow-lite:2.14.0'
+    implementation 'org.tensorflow:tensorflow-lite-support:0.4.4'
 
     // LOCATION - play-services-location được cung cấp bởi react-native-geolocation-service
 

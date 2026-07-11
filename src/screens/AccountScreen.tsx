@@ -31,6 +31,11 @@ import { useNavigation } from '@react-navigation/native';
 import { showWarning } from '../utils/alert';
 import { getVersion, getBuildNumber } from 'react-native-device-info';
 import { API_BASE_URL } from '../services/aladin-api';
+import taad from '../sdk/taadEnclave';
+import { getStoredMasterKek } from '../services/masterKekStore';
+
+// 0 = preprod (testnet), khớp WALLET_NETWORK bên register + PhoenixWalletScreen.
+const WALLET_NETWORK = 0;
 
 // Version THẬT đọc từ bundle (CFBundleShortVersionString / versionName + build number).
 // Thay chuỗi hard-code "Aladin v1.0.0" (Lỗi field #4) — để field biết đúng build đang chạy.
@@ -266,8 +271,26 @@ const AccountScreen = () => {
     const chatbotEnabled = useSelector((state: RootState) => state.chatbot.enabled);
     const dispatch = useAppDispatch();
 
-    // Địa chỉ ví thật (nếu PhoenixKey đã cấp). PhoenixKey hiện là DID-only nên có thể chưa có.
-    const walletAddress = chainWallet?.address ?? phoenixKey?.walletAddress ?? user?.walletAddress ?? '';
+    // Địa-chỉ derive LOCAL từ Master_KEK (account-0) — ĐÚNG bằng địa-chỉ register gửi lên
+    // backend. Dùng làm fallback để ví HIỆN kể cả khi /wallet/all chưa trả (deriver backend
+    // chưa sẵn). Không cần mạng, không rò khoá (chỉ ra địa-chỉ công khai).
+    const [localAddr, setLocalAddr] = useState<string | null>(null);
+    useEffect(() => {
+        let alive = true;
+        (async () => {
+            try {
+                const kek = await getStoredMasterKek();
+                if (!kek) return;
+                const addr = await taad.deriveWalletAddress(kek, 0, WALLET_NETWORK);
+                if (alive && addr) setLocalAddr(addr);
+            } catch { /* giữ null → hiện "—" */ }
+        })();
+        return () => { alive = false; };
+    }, []);
+
+    // Ưu tiên địa-chỉ từ chuỗi (chainWallet), rồi local-derive, rồi các nguồn cũ.
+    const walletAddress =
+        chainWallet?.address ?? localAddr ?? phoenixKey?.walletAddress ?? user?.walletAddress ?? '';
     // Mạng: ưu tiên resolveNetwork (theo DID thật), else suy từ tiền tố địa chỉ ví. KHÔNG hardcode.
     const realNet: NetKind = normNetwork(network) ?? netFromAddress(walletAddress);
     const navigation: any = useNavigation();

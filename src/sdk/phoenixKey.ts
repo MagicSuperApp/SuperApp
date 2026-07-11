@@ -15,7 +15,7 @@ import {
   deleteKey as nativeDeleteKey,
   sign as nativeSign,
 } from '../services/phoenixKey-native';
-import { phoenixKeyApi } from '../services/phoenixKey-api';
+import { phoenixKeyApi, summarizeWalletAll } from '../services/phoenixKey-api';
 import { assertSupportedBackendDid } from '../services/phoenixDid';
 
 export const STORAGE_USER_DID = 'phoenixkey_user_did';
@@ -83,8 +83,8 @@ class RealPhoenixKey implements PhoenixKeySDK {
     const did = await readStoredDid();
     if (!did) return false;
     try {
-      const balance = await phoenixKeyApi.wallet.getBalance(did);
-      return balance.balanceLamp > 0;
+      const s = summarizeWalletAll(await phoenixKeyApi.wallet.getAll(did));
+      return s.lamp > 0;
     } catch {
       return false;
     }
@@ -102,13 +102,13 @@ class RealPhoenixKey implements PhoenixKeySDK {
         lastUpdated: Date.now(),
       };
     }
-    const balance = await phoenixKeyApi.wallet.getBalance(did);
+    const s = summarizeWalletAll(await phoenixKeyApi.wallet.getAll(did));
     return {
-      isActivated: balance.balanceLamp > 0,
-      magicCredits: balance.balanceMagic + balance.magicAccrued,
-      lampTokens: balance.balanceLamp,
-      adaBalance: balance.balanceLovelace / 1_000_000,
-      address: balance.address ?? '',
+      isActivated: s.lamp > 0,
+      magicCredits: s.magicAvailable + s.magicAccrued,
+      lampTokens: s.lamp,
+      adaBalance: s.lovelace / 1_000_000,
+      address: s.address ?? '',
       lastUpdated: Date.now(),
     };
   }

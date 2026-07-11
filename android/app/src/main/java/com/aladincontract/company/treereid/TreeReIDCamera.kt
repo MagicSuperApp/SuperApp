@@ -1,8 +1,11 @@
 package com.aladincontract.company.treereid
 
 import android.content.Context
+import android.graphics.Bitmap
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageProxy
 import androidx.camera.view.CameraController
 import androidx.camera.view.LifecycleCameraController
 import androidx.camera.view.PreviewView
@@ -11,6 +14,7 @@ import androidx.lifecycle.LifecycleOwner
 import java.io.File
 import java.lang.ref.WeakReference
 import java.util.concurrent.Executor
+import java.util.concurrent.Executors
 
 /**
  * Holder singleton cho CameraX LifecycleCameraController — tương đương shared
@@ -27,13 +31,73 @@ object TreeReIDCamera {
     private var controller: LifecycleCameraController? = null
     private var previewRef: WeakReference<PreviewView>? = null
 
+    // ── YOLO gate (Plan A) — phân-tích frame preview để lọc "có cây" ─────────
+    private const val INFER_INTERVAL_MS = 150L
+    private val analysisExecutor = Executors.newSingleThreadExecutor()
+    @Volatile private var lastConf = -1f
+    @Volatile private var lastConfAtMs = 0L
+    private var lastInferMs = 0L
+
+    /** Callback box realtime cho overlay: (boxes chuẩn-hoá theo portrait, tỉ-lệ frame w/h). */
+    @Volatile var onBoxes: ((List<TreeReIDYolo.Box>, Float) -> Unit)? = null
+
+    /** (confidence gần nhất, tuổi ms). confidence < 0 = detector chưa sẵn sàng. */
+    fun latestTargetConfidence(): Pair<Float, Long> =
+        Pair(lastConf, System.currentTimeMillis() - lastConfAtMs)
+
+    private val yoloAnalyzer = ImageAnalysis.Analyzer { image ->
+        try {
+            val now = System.currentTimeMillis()
+            if (now - lastInferMs >= INFER_INTERVAL_MS && TreeReIDYolo.available) {
+                lastInferMs = now
+                // Xoay bitmap về đúng hướng hiển thị (portrait) trước khi detect → box
+                // chuẩn-hoá theo frame portrait, khớp preview (FILL_CENTER).
+                val raw = image.toBitmap()
+                val rot = image.imageInfo.rotationDegrees
+                val bmp = if (rot != 0) rotate(raw, rot).also { raw.recycle() } else raw
+                lastConf = TreeReIDYolo.detect(bmp)
+                lastConfAtMs = now
+                onBoxes?.invoke(TreeReIDYolo.latestBoxes, bmp.width.toFloat() / bmp.height.toFloat())
+                bmp.recycle()
+            }
+        } catch (_: Throwable) {
+            // nuốt lỗi — không làm sập luồng analysis
+        } finally {
+            image.close()
+        }
+    }
+
+    private fun rotate(src: Bitmap, degrees: Int): Bitmap {
+        val m = android.graphics.Matrix().apply { postRotate(degrees.toFloat()) }
+        return Bitmap.createBitmap(src, 0, 0, src.width, src.height, m, true)
+    }
+
+    /** ImageProxy (RGBA_8888) → Bitmap. Giữ padding cột (resize 640 ở detector lo). */
+    private fun ImageProxy.toBitmap(): Bitmap {
+        val plane = planes[0]
+        val buffer = plane.buffer
+        val pixelStride = plane.pixelStride
+        val rowStride = plane.rowStride
+        val rowPadding = rowStride - pixelStride * width
+        val bmp = Bitmap.createBitmap(
+            width + rowPadding / pixelStride, height, Bitmap.Config.ARGB_8888,
+        )
+        buffer.rewind()
+        bmp.copyPixelsFromBuffer(buffer)
+        return bmp
+    }
+
     /** Tạo controller nếu chưa có (gọi trên main thread). */
     fun ensureController(context: Context): LifecycleCameraController {
         controller?.let { return it }
         val c = LifecycleCameraController(context.applicationContext).apply {
             cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
-            setEnabledUseCases(CameraController.IMAGE_CAPTURE)
+            // Thêm IMAGE_ANALYSIS để chạy gate YOLO song song với IMAGE_CAPTURE.
+            setEnabledUseCases(CameraController.IMAGE_CAPTURE or CameraController.IMAGE_ANALYSIS)
             imageCaptureMode = ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY
+            // RGBA để đổi ImageProxy → Bitmap gọn (khỏi giải YUV).
+            imageAnalysisOutputImageFormat = ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888
+            setImageAnalysisAnalyzer(analysisExecutor, yoloAnalyzer)
         }
         controller = c
         attachToPreviewIfReady()
@@ -91,8 +155,11 @@ object TreeReIDCamera {
      *  Reset để session sau tạo controller MỚI — tránh lỗi bind lại controller cũ. */
     fun release() {
         previewRef?.get()?.controller = null
+        controller?.clearImageAnalysisAnalyzer()
         controller?.unbind()
         controller = null
         previewRef = null
+        lastConf = -1f
+        lastConfAtMs = 0L
     }
 }

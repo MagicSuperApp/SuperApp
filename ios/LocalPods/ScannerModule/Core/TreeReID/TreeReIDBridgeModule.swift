@@ -47,6 +47,7 @@ final class TreeReIDBridgeModule: RCTEventEmitter {
     private let imageProcessor = ImageProcessor()
     private let locationHelper = LocationHelper()
     private let cameraManager = CameraSessionManager()
+    private let yolo = TreeReIDYolo()   // Gate chất-lượng (Plan A) — lọc frame có cây.
 
     private var headingCallbacksSetup = false
     private var cameraCallbacksSetup = false
@@ -56,6 +57,11 @@ final class TreeReIDBridgeModule: RCTEventEmitter {
     /// Expose camera session for preview layer connection.
     @objc static var captureSession: AVCaptureSession {
         return sharedInstance?.cameraManager.session ?? AVCaptureSession()
+    }
+
+    /// Box YOLO gần nhất + tỉ-lệ frame (w/h) — cho overlay vẽ khung trên preview.
+    func currentYoloBoxes() -> ([TreeReIDYolo.Box], Float) {
+        return yolo.currentBoxes()
     }
 
     override static func moduleName() -> String! {
@@ -129,6 +135,13 @@ final class TreeReIDBridgeModule: RCTEventEmitter {
     private func handleCaptureTriggered(heading: Double, pitch: Double) {
         guard session != nil else { return }
 
+        // Gate YOLO (Plan A): chỉ chụp khi frame gần nhất CÓ cây. An toàn — không chặn
+        // oan khi detector chưa nạp model / kết quả cũ (rơi về gate stillness như cũ).
+        guard yolo.gatePass() else {
+            print("[TreeReIDBridge] ⛔ YOLO gate: chưa thấy cây — bỏ nhịp chụp này")
+            return
+        }
+
         // Trigger camera capture (already async on sessionQueue via CameraSessionManager)
         capturePhoto(heading: heading, pitch: pitch)
     }
@@ -172,6 +185,12 @@ final class TreeReIDBridgeModule: RCTEventEmitter {
             DispatchQueue.main.async {
                 self?.handlePhotoCaptured(data: data, size: size)
             }
+        }
+
+        // Frame preview → YOLO gate (Plan A). Chạy trên videoOutputQueue (nền), có
+        // throttle bên trong; cập nhật confidence để handleCaptureTriggered đọc.
+        cameraManager.onFrameCaptured = { [weak self] pixelBuffer, _ in
+            self?.yolo.processFrame(pixelBuffer)
         }
 
         cameraManager.onError = { error in
@@ -373,6 +392,10 @@ final class TreeReIDBridgeModule: RCTEventEmitter {
             headingManager.reset()
             headingManager.start()
             ScannerRemoteLog.breadcrumb(phase: "treereid_heading_started", detail: [:])
+
+            // Nạp model YOLO (Plan A) cho gate chất-lượng. Thiếu model → tự tắt gate.
+            yolo.reset()
+            yolo.loadModel()
 
             // Start camera
             ScannerRemoteLog.breadcrumb(phase: "treereid_camera_start", detail: [:])

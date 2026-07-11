@@ -23,7 +23,7 @@ import { showInfo, showWarning } from '../utils/alert';
 import taad from '../sdk/taadEnclave';
 import { getStoredMasterKek, getActiveAccountIndex, rotateActiveAccount } from '../services/masterKekStore';
 import { currentUserDid } from '../sdk/phoenixKey';
-import { phoenixKeyApi } from '../services/phoenixKey-api';
+import { phoenixKeyApi, summarizeWalletAll } from '../services/phoenixKey-api';
 
 // 0 = preprod (testnet, khớp register WALLET_NETWORK), 1 = mainnet.
 const WALLET_NETWORK = 0;
@@ -69,10 +69,11 @@ const PhoenixWalletScreen = () => {
       const did = await currentUserDid();
       if (did) {
         try {
-          const res = await phoenixKeyApi.wallet.getBalance(did);
-          setAda(res.balanceLovelace ?? 0);
-          setLamp(res.balanceLamp ?? 0);
-          setMagic(res.balanceMagic ?? 0);
+          // /wallet/{did}/all (API.md §7) — /balance cũ deprecated (ép MAGIC=0).
+          const s = summarizeWalletAll(await phoenixKeyApi.wallet.getAll(did));
+          setAda(s.lovelace ?? 0);
+          setLamp(s.lamp ?? 0);
+          setMagic(s.magicAvailable ?? 0);
         } catch {
           // số dư chưa lấy được — giữ null (hiện "—")
         }

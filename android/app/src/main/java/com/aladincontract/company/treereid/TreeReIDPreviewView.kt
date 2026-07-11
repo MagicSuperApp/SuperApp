@@ -19,8 +19,23 @@ class TreeReIDPreviewView(context: Context) : FrameLayout(context) {
         layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
     }
 
+    /** Overlay vẽ khung YOLO — nằm TRÊN preview. */
+    private val overlay = TreeReIDOverlayView(context).apply {
+        layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+    }
+
     init {
         addView(previewView)
+        addView(overlay)
+        // Nhận box realtime từ analyzer YOLO (chạy nền → overlay tự postInvalidate).
+        TreeReIDCamera.onBoxes = { boxes, aspect -> overlay.setBoxes(boxes, aspect) }
+    }
+
+    override fun onDetachedFromWindow() {
+        // Tránh giữ tham chiếu view sau khi gỡ preview.
+        if (TreeReIDCamera.onBoxes != null) TreeReIDCamera.onBoxes = null
+        overlay.clear()
+        super.onDetachedFromWindow()
     }
 
     private val layoutRunnable = Runnable {

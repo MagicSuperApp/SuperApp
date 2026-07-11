@@ -42,7 +42,7 @@ Tầm vóc đã mở rộng + đã qua phân tích rủi ro. Banzi viết Feat-S
 
 ### Đọc thêm bắt buộc
 - `Specs/_analysis/EXPANSION-ANALYSIS.md` — phán quyết GO-có-điều-kiện, 10 rủi ro, 8 quyết định kiến trúc.
-- `Specs/INTEGRATION-STANDARD.md` — chuẩn tích hợp đã soạn.
+- `Integration-Standard.md` (ROOT) — chuẩn tích hợp duy nhất; §10/§11 phần vận hành + danh mục platform.
 - `Specs/PLATFORM-MASTER.md` v0.2 — đã thêm INV-3, INV-SEC, §3bis pull model.
 
 ### Khung mới phải vào Feat-Spec

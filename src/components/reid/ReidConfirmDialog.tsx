@@ -47,6 +47,11 @@ interface ReidConfirmDialogProps {
   candidates: ReidCandidate[];
   onSelect: (id: string | 'new') => void;
   onDismiss: () => void;
+  /**
+   * Server có cho phép đăng-ký cá thể MỚI không (allow_enroll_new). Mặc định
+   * true (giữ hành vi cũ). Khi false → ẩn nút "Mới", chỉ cho chọn trong danh sách.
+   */
+  allowNew?: boolean;
 }
 
 // ─── Nhãn nội dung theo context ───────────────────────────────────────────────
@@ -95,6 +100,7 @@ const ReidConfirmDialog: React.FC<ReidConfirmDialogProps> = ({
   candidates,
   onSelect,
   onDismiss,
+  allowNew = true,
 }) => {
   const L = LABELS[context];
   const insets = useSafeAreaInsets();
@@ -146,7 +152,9 @@ const ReidConfirmDialog: React.FC<ReidConfirmDialogProps> = ({
               <View style={styles.emptyState} accessible={true}>
                 <Icon name="help-circle-outline" size={40} color={NEUTRAL.textMuted} />
                 <Text style={styles.emptyStateText}>
-                  Không có cá thể gợi ý — chọn Mới để đăng ký.
+                  {allowNew
+                    ? 'Không có cá thể gợi ý — chọn Mới để đăng ký.'
+                    : 'Không có cá thể phù hợp. Chế độ này chỉ tái-định-danh, không đăng ký mới.'}
                 </Text>
               </View>
             )}
@@ -251,23 +259,25 @@ const ReidConfirmDialog: React.FC<ReidConfirmDialogProps> = ({
               );
             })}
 
-            {/* ── Nút "Mới" ─────────────────────────────────────────────── */}
-            <TouchableOpacity
-              style={[styles.newBtn, { borderColor: L.headerColor }]}
-              onPress={() => onSelect('new')}
-              activeOpacity={0.7}
-              accessibilityLabel={L.newTitle}
-              accessibilityRole="button"
-            >
-              <Icon name={L.newButtonIcon} size={30} color={L.headerColor} />
-              <View style={styles.newBtnBody}>
-                <Text style={[styles.newBtnTitle, { color: L.headerColor }]}>
-                  {L.newTitle}
-                </Text>
-                <Text style={styles.newBtnSub}>{L.newSubtitle}</Text>
-              </View>
-              <Icon name="chevron-right" size={20} color={L.headerColor} />
-            </TouchableOpacity>
+            {/* ── Nút "Mới" — chỉ hiện khi server cho phép đăng-ký mới ─────── */}
+            {allowNew && (
+              <TouchableOpacity
+                style={[styles.newBtn, { borderColor: L.headerColor }]}
+                onPress={() => onSelect('new')}
+                activeOpacity={0.7}
+                accessibilityLabel={L.newTitle}
+                accessibilityRole="button"
+              >
+                <Icon name={L.newButtonIcon} size={30} color={L.headerColor} />
+                <View style={styles.newBtnBody}>
+                  <Text style={[styles.newBtnTitle, { color: L.headerColor }]}>
+                    {L.newTitle}
+                  </Text>
+                  <Text style={styles.newBtnSub}>{L.newSubtitle}</Text>
+                </View>
+                <Icon name="chevron-right" size={20} color={L.headerColor} />
+              </TouchableOpacity>
+            )}
           </ScrollView>
 
           {/* ── Nút Huỷ ────────────────────────────────────────────────────── */}

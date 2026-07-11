@@ -59,6 +59,12 @@ export interface IdentifyResponse {
   query_id?: string;
   /** ADDITIVE (Lợi PR #46): băng tin-cậy thô (cao/vừa/thấp) — KHÔNG hiện điểm số. */
   confidence?: ConfidenceBand;
+  /**
+   * ADDITIVE (B1): server cho phép đăng-ký cây MỚI trong không gian định danh này
+   * không. Vắng mặt (backend cũ) → coi như `true` (giữ hành vi cũ). `false` →
+   * ẩn nút "Đây là cây mới" ở ReidConfirmDialog (chế độ chỉ tái-định-danh).
+   */
+  allow_enroll_new?: boolean;
 }
 
 export interface EnrollResponse {

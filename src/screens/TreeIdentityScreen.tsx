@@ -884,7 +884,7 @@ const TreeIdentityScreen: React.FC = () => {
           </View>
         )}
 
-        {/* NO_MATCH / EMPTY_BUCKET: đăng ký mới */}
+        {/* NO_MATCH / EMPTY_BUCKET: đăng ký mới (chỉ khi server cho phép) */}
         {(decision === 'NO_MATCH' || decision === 'EMPTY_BUCKET') && (
           <View style={styles.actionGroup}>
             <Text style={styles.noMatchHint}>
@@ -892,14 +892,20 @@ const TreeIdentityScreen: React.FC = () => {
                 ? 'Chưa có cây nào gần vị trí này.'
                 : 'Cây chưa được đăng ký trong hệ thống.'}
             </Text>
-            <TouchableOpacity
-              style={[styles.decisionBtn, styles.btnGreen]}
-              onPress={handleRegisterNew}
-              activeOpacity={0.8}
-            >
-              <Icon name="plus-circle" size={18} color={NEUTRAL.white} />
-              <Text style={styles.decisionBtnText}>Đăng ký cây mới</Text>
-            </TouchableOpacity>
+            {identResult?.allow_enroll_new !== false ? (
+              <TouchableOpacity
+                style={[styles.decisionBtn, styles.btnGreen]}
+                onPress={handleRegisterNew}
+                activeOpacity={0.8}
+              >
+                <Icon name="plus-circle" size={18} color={NEUTRAL.white} />
+                <Text style={styles.decisionBtnText}>Đăng ký cây mới</Text>
+              </TouchableOpacity>
+            ) : (
+              <Text style={styles.noMatchHint}>
+                Chế độ này chỉ tái-định-danh — không thể đăng ký cây mới ở đây.
+              </Text>
+            )}
           </View>
         )}
 
@@ -1187,6 +1193,7 @@ const TreeIdentityScreen: React.FC = () => {
         }
         onSelect={handleSelectCandidate}
         onDismiss={() => setShowConfirm(false)}
+        allowNew={identResult?.allow_enroll_new !== false}
       />
 
       {/* M3: bộ chọn "cây khác" (correct_tid từ /api/trees) */}

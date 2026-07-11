@@ -1,6 +1,18 @@
 /**
- * Aladin Real API Client
- * Connects to actual backend (replaces mock API)
+ * Aladin Real API Client (backend "Lợi" — ĐÃ DEPRECATED cho farm/tree CRUD).
+ *
+ * @deprecated KHÔNG dùng cho code mới. Dữ-liệu OriLife (farm/tree) đã chuyển về
+ * MỘT backend field-reid: dùng `farmService` (farm) + `treeReIDService` (tree).
+ * Lý do: client này để client TỰ SINH `farm_id`/`id`, còn field-reid enroll ghi
+ * cây theo farm_id do SERVER cấp → hai id lệch nhau = gốc bug B2 ("tạo vườn nhưng
+ * cây không vào vườn"). Vi phạm INV-1 (INTEGRATION-STANDARD §3.2): client KHÔNG
+ * được tự sinh id, phải ghi qua API để backend cấp uuid.
+ *
+ * File này còn tồn tại CHỈ vì hệ offline-sync cũ vẫn tham chiếu:
+ *   - `src/modules/trace/utils/implicitParent.ts` (getOrCreateImplicitTree, gọi từ HomeScreen)
+ *   - `src/services/syncDispatch.ts` (hàng đợi outbox) ← `src/services/syncService.ts`
+ * Việc bóc nốt phần này thuộc quyết-định "giữ SQLite offline-first hay bỏ" của
+ * team SuperApp (xem handoff Thư/Tùng). ĐỪNG mở rộng dùng client này thêm.
  */
 
 import axios, { AxiosInstance } from 'axios';

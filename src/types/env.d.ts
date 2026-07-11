@@ -12,6 +12,7 @@ declare module '@env' {
   export const CAPTURES_3D_URL: string;
   export const PROOFCHAT_API_URL: string;
   export const PROOFCHAT_WS_URL: string;
+  export const PROOFCHAT_WS_PATH: string;
   export const PROOFCHAT_BACKEND_ENABLED: string;
   export const ANALYTICS_API_URL: string;
   export const ANALYTICS_API_KEY: string;

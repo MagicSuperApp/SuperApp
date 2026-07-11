@@ -7,13 +7,13 @@
  *   on    contract:message.new                             — nhận tin
  *   emit  mls:sync.epoch         (ack)                     — đẩy epoch-sync khi commit
  *   on    mls:sync.epoch                                   — nhận epoch-sync
- *   emit  contract:room.join                               — join phòng thủ công (thường auto)
+ *   emit  chat.room.join                                    — join phòng thủ công (thường auto)
  *
  * Nội dung tin là envelope MLS (opkId:'mls', type:2, body). Mã hoá/giải mã ở tầng native
  * (src/sdk/chatMls.ts) — socket chỉ vận chuyển.
  */
 import { io, Socket } from 'socket.io-client';
-import { PROOFCHAT_WS_URL } from '@env';
+import { PROOFCHAT_WS_URL, PROOFCHAT_WS_PATH } from '@env';
 import { getAccessToken } from './proofchat-api';
 
 // ── Kiểu payload (khớp WS/FE) ────────────────────────────────────────
@@ -69,9 +69,20 @@ const ACK_TIMEOUT_MS = 8_000;
 
 let socket: Socket | null = null;
 
-const wsBaseUrl = (): string => (PROOFCHAT_WS_URL as string | undefined) ?? '';
+// Chuẩn hoá base: bỏ '/' và '/chat' ở cuối nếu env lỡ kèm — code luôn tự nối '/chat'
+// bên dưới. INTEGRATION.md §5 để PROOFCHAT_WS_URL KHÔNG kèm /chat; addendum A2 lại ghi
+// kèm /chat → chuẩn hoá để cả hai cách dán env đều đúng, tránh 'wss://.../chat/chat'.
+const wsBaseUrl = (): string =>
+  ((PROOFCHAT_WS_URL as string | undefined) ?? '')
+    .trim()
+    .replace(/\/+$/, '')
+    .replace(/\/chat$/, '')
+    .replace(/\/+$/, '');
+// nginx route `/ws/` → WS gateway :8090 (strip prefix). BẮT BUỘC — thiếu path này
+// socket.io handshake không tới đúng gateway. Mặc định theo INTEGRATION.md ProofChat.
+const wsPath = (): string => (PROOFCHAT_WS_PATH as string | undefined) || '/ws/socket.io/';
 
-/** Kết nối (idempotent). Lấy JWT ProofChat từ AsyncStorage, gắn vào query handshake. */
+/** Kết nối (idempotent). Lấy JWT ProofChat từ AsyncStorage, gắn vào auth handshake. */
 export async function connect(): Promise<void> {
   if (socket?.connected) return;
   const url = wsBaseUrl();
@@ -79,13 +90,18 @@ export async function connect(): Promise<void> {
   const token = (await getAccessToken()) ?? '';
 
   socket = io(`${url}/chat`, {
-    transports: ['websocket', 'polling'],
+    path: wsPath(),
+    // Chỉ websocket theo contract ProofChat (INTEGRATION.md §4.1) — nginx /ws/ chỉ
+    // định tuyến WS upgrade; polling long-poll không đi đúng gateway.
+    transports: ['websocket'],
     reconnection: true,
     reconnectionAttempts: 10,
     reconnectionDelay: 1_000,
     reconnectionDelayMax: 30_000,
     forceNew: true,
-    query: { token },
+    // Token CHỈ ở `auth` handshake, KHÔNG dùng query `?token=` (addendum A1): query
+    // string bị ghi vào nginx access log → JWT TTL 24h nằm trong log server. `extractToken`
+    // của WS nhận cả hai, auth an toàn hơn.
     auth: { token },
   });
 
@@ -126,6 +142,10 @@ export function onEpochSync(cb: (r: EpochSyncWire) => void): () => void {
   return () => socket?.off('mls:sync.epoch', cb);
 }
 
+// TODO(addendum A3): FE#6 + WS#2 sẽ đổi `contract:message.typing` → `chat:typing`
+// (và read/pinned → `chat:message.*`) khi merge cùng lúc. Giữ tên hiện tại theo
+// production; cập nhật khi anh báo 2 PR đã merge. (send/new · mls:sync.epoch ·
+// chat.room.join GIỮ NGUYÊN.)
 export function onTyping(cb: (t: { userId: string; isTyping: boolean }) => void): () => void {
   socket?.on('contract:message.typing', cb);
   return () => socket?.off('contract:message.typing', cb);
@@ -147,7 +167,9 @@ export function syncEpoch(rec: EpochSyncWire): Promise<unknown> {
 }
 
 export function joinRoom(roomId: string): Promise<unknown> {
-  return requireSocket().timeout(ACK_TIMEOUT_MS).emitWithAck('contract:room.join', { roomId });
+  // Event `chat.room.join` theo contract WS (INTEGRATION.md §4.2) — KHÔNG phải
+  // `contract:room.join`. Thường auto-join server-side; hàm này cho join thủ công.
+  return requireSocket().timeout(ACK_TIMEOUT_MS).emitWithAck('chat.room.join', { roomId });
 }
 
 export function sendTyping(roomId: string, isTyping: boolean): void {

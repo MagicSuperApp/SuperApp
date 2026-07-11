@@ -1658,6 +1658,18 @@ const FarmDetailScreen = () => {
         if (backendErr?.response?.status === 422) {
           console.warn('[FarmDetailScreen] API 422 details:', JSON.stringify(backendErr.response.data, null, 2));
         }
+        // Local đã lưu; backend lỗi → ĐẨY VÀO SYNC QUEUE để retry thật (đối xứng
+        // implicitParent). Trước đây chỉ alert "will retry" mà KHÔNG có queue →
+        // farm vẽ tay lúc offline không bao giờ tới backend, cây dưới nó (POST
+        // /trees cần farm_id) cũng sync hỏng. import động tránh vòng phụ-thuộc.
+        try {
+          const { syncService } = await import('../../../services/syncService');
+          await syncService.addSyncItem('farm_update', {
+            farm: { id: farmId, userId: user.id, coordinates, name: farmName },
+          });
+        } catch (enqErr: any) {
+          console.warn('[FarmDetailScreen] enqueue farm_update failed:', enqErr?.message);
+        }
         // Both alert (informational, one-time) + toast (background sync indicator)
         Alert.alert(
           'Đã lưu vào máy · Saved locally',

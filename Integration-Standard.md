@@ -2,9 +2,9 @@
 
 > **Mục đích**: Tài liệu chuẩn để Agent/dev của MỌI platform (ProofChat, OriLife, AladinWork, LampNetCloud, Farm, và module mới bất kỳ) nắm context + thực thi đúng, đảm bảo nhất quán khi cắm vào host shell (kênh 1+2) và khi nhúng host ngoài (kênh 3).
 > **Cấp**: L1 Platform — Ecosystem-wide Standard.
-> **Status**: DRAFT v0.1 — 2026-06-17.
+> **Status**: v0.2.1 — 2026-07-12 (xem §9 Change Log).
 > **Owner**: Aladin (founder) · Orchestrator giữ interface contract.
-> **Nguồn chốt**: `PLATFORM-MASTER.md` (INV-1/INV-2, 8 Spec Group, 2 kiểu tích hợp), `BRAIN/KNOWLEDGE.md §F/G`, `_analysis/EXPANSION-ANALYSIS.md` (QĐ-1..QĐ-8).
+> **Nguồn chốt**: `Specs/PLATFORM-MASTER.md` (INV-1/INV-2, 8 Spec Group, 2 kiểu tích hợp), `Specs/_analysis/EXPANSION-ANALYSIS.md` (QĐ-1..QĐ-8).
 > **Quan hệ với spec khác**: Tài liệu này là CONTRACT trừu tượng. Chi tiết hiện thực thuộc các Spec Group SG1..SG8. Khi mâu thuẫn, Math-Spec (invariant) thắng. KHÔNG duplicate nội dung cross-group — chỉ tham chiếu.
 
 ---
@@ -216,7 +216,7 @@ Ví dụ `config.schema.json`:
 ### 7.1 Navigation grammar chung
 
 - MỘT framework điều hướng (sở hữu SG4). Module feature chỉ đăng ký `route` + `navSlot` (`primary`/`secondary`/`contextual`), KHÔNG tự dựng navigator riêng.
-- Refactor nav từ **hard-import sang registry config-driven** (QĐ-1): nav bind theo config instance, giữ default bundle nhúng binary làm fallback offline. (Hiện code vi phạm: nav import cứng — phải sửa.)
+- Nav **registry config-driven** (QĐ-1): nav bind theo config instance, giữ default bundle nhúng binary làm fallback offline. (YC-3 ĐÃ refactor từ hard-import → config-driven, xem `src/modules/index.ts` + `src/navigation/registry.ts`.)
 - Back/forward, deep-link (`magiclamp://<module>`), và handoff native theo một grammar chung xuyên mọi instance + kênh nhúng.
 
 ### 7.2 Adaptive 2 cực (token-driven, override 2 cấp)
@@ -281,4 +281,58 @@ Một platform/module chỉ được coi là READY khi TẤT CẢ mục dưới 
 ---
 
 ## 9. Change Log
+- v0.2.1 (2026-07-12): Rà soát nhất quán — sửa Status header (v0.1→v0.2), path "Nguồn chốt" trỏ `Specs/`, gỡ ghi chú lỗi thời §7.1 (nav ĐÃ config-driven qua YC-3), cập nhật vị trí git token (§10.2, chuẩn mới `Projects/Agents/.env`), làm rõ CARP thanh toán = tầng mạng nội bộ (§10.4 nhất quán §4.2), thống nhất mô tả upstream (§10.1↔§11).
+- v0.2 (2026-07-12): Gộp về MỘT file duy nhất tại ROOT (`Integration-Standard.md`) — dời khỏi `Specs/` (references dùng tên "INTEGRATION-STANDARD §X" không đổi). Thêm §10 (vận hành: env/cờ/token UI) + §11 (danh mục platform) + thư mục `Integration/` chứa snapshot 5 nền tảng. Đây là nơi mọi agent/dev tham chiếu chuẩn tích hợp.
 - v0.1 (2026-06-17): Khởi tạo Integration Standard. Tổng hợp QĐ-1..QĐ-8 từ EXPANSION-ANALYSIS + INV-1/INV-2/INV-3. 8 mục: Manifest, Design token/brand, Identity/data, Config/billing, Embed-SDK, Registry/governance, Frontend consistency, Checklist.
+
+---
+
+## 10. Vận hành tích hợp — Env · Feature Flag · Token UI (operational)
+
+> §0–§9 là CONTRACT trừu tượng (kiến trúc + bất biến). Mục này là quy ước VẬN HÀNH cụ thể để agent/dev cắm API THẬT của từng platform vào SuperApp. **App BUILD từ repo [`AladinContract/SuperApp`](https://github.com/AladinContract/SuperApp) — KHÔNG build từ repo platform.** Mọi giá trị SuperApp đọc đều nằm trong repo này.
+
+### 10.1 Nguồn sự-thật 2 lớp
+- **Upstream (canonical):** mỗi platform giữ `SuperApp-Integration.md` trong repo phù hợp của org mình — thường là repo Specs, hoặc repo backend nếu chưa tách Specs (xem cột "Upstream" §11). Đổi endpoint/auth/token → cập nhật cùng lúc (kèm ngày + HEAD commit).
+- **Snapshot (build):** SuperApp giữ bản đã kiểm chứng trong [`Integration/<Platform>.md`](Integration/). Đây là bản app THỰC SỰ đọc để build. Upstream đổi → đồng bộ snapshot rồi mới bật cờ. Mỗi phiên đọc snapshot, KHÔNG dựa trí nhớ.
+
+### 10.2 Vị trí key / creds
+- **Git token (push/PR):** `.env` ở workspace cha NGOÀI repo (2026-07-12: chuẩn mới `Projects/Agents/.env`, cũ `Projects/.env`), biến `GH_TOKEN_<ACCOUNT>`. KHÔNG commit, KHÔNG dán giá trị, KHÔNG nhúng trong URL remote.
+- **API host/key platform:** `.env` của SuperApp (gitignored; mẫu [`.env.example`](.env.example)). Quy ước biến: `<PLATFORM>_API_URL` · `<PLATFORM>_WS_URL`+`_WS_PATH` · `<PLATFORM>_API_KEY` · `<PLATFORM>_BACKEND_ENABLED`.
+- Platform dùng DID/session (OriLife/AladinWork/ProofChat) → KHÔNG static token; auth = PhoenixKey login → Bearer TTL (§3.1, §5.1).
+- **Token nhúng trong URL remote git = rò rỉ** — xoay vòng ngay, sửa `git remote set-url`.
+
+### 10.3 Feature flag
+- Mỗi module gọi backend gate bởi `<PLATFORM>_BACKEND_ENABLED`. **Mặc định `false` = mock**; app chạy offline khi cờ tắt/backend down (đồng bộ §7.3 Offline + durable outbox).
+- Bật `true` chỉ khi: snapshot Readiness 🟢 + có creds trong `.env` + đã đối chiếu shape API thật.
+
+### 10.4 Token hiển thị (bổ sung §4.2)
+- 3 token user-facing: **MAGIC** (đơn vị định giá) · **CARP** (đồng thanh toán trong mạng: pledge + phí giữ/chuyển; `402 NO_FUNDS` = thiếu CARP) · **LAMP** (backing/governance, cố định 36 tỷ, no-burn).
+- ⚠️ Nhất quán với §4.2: CARP/MAGIC/LAMP là thanh toán **tài nguyên mạng nội bộ**, KHÔNG phải thanh toán dịch vụ thương mại B2C (phí B2C fiat đi qua **PSP có giấy phép**, không qua crypto).
+- **ADA KHÔNG user-facing** — chỉ phí chain (lovelace). Ví on-chain CÓ giữ ADA thật để trả phí, nên ADA chỉ hiện ở mục "Tài sản khác", KHÔNG đặt ngang hàng MAGIC/LAMP/CARP ở màn chính.
+- Doc "CARP gộp MAGIC" DEPRECATED (2026-07-03) — KHÔNG dùng.
+
+### 10.5 Vai + ranh giới sửa code
+- **Thư** = mobile (native camera/EXIF, Enclave ký, wiring API backend-facing). **Tùng** = frontend/UIUX. **Claude/SuperApp** = frontend + gọi API (KHÔNG sửa backend platform).
+- Backend mỗi platform do team đó sở hữu: PhoenixKey=Long · ProofChat=Lợi · AladinWork=Work team · OriLife=OriLife agent · LampNet=LampNet team.
+
+## 11. Danh mục platform — snapshot (build) + upstream (canonical)
+
+| Platform | Module | Snapshot (đọc khi build) | Upstream canonical (team maintain) |
+|---|---|---|---|
+| OriLife | Truy-xuất | [`Integration/OriLife.md`](Integration/OriLife.md) | [`OriLifeTrace/OriLife-Specs`](https://github.com/OriLifeTrace/OriLife-Specs) |
+| PhoenixKey | DID · ví · mint | [`Integration/PhoenixKey.md`](Integration/PhoenixKey.md) | [`PhoenixKeyDID`](https://github.com/PhoenixKeyDID) |
+| ProofChat | Trò-chuyện (E2EE) | [`Integration/ProofChat.md`](Integration/ProofChat.md) | [`ProofChat/BE`](https://github.com/ProofChat/BE) |
+| AladinWork | Việc-làm | [`Integration/AladinWork.md`](Integration/AladinWork.md) | [`AladinWork/Specs`](https://github.com/AladinWork/Specs) |
+| LampNet | Kết đèn | [`Integration/LampNet.md`](Integration/LampNet.md) | [`LampNetCloud/Specs`](https://github.com/LampNetCloud/Specs) |
+
+**Hiện trạng cross-ref (2026-07-12):**
+
+| Platform | main HEAD | Base URL | Auth | Readiness |
+|---|---|---|---|---|
+| OriLife | `6e8210b` (07-08) | `api.orilife.io` | DID P-256, token 12h | 🟡 prod drift + B1/B2/B3 (issue [#20](https://github.com/AladinContract/SuperApp/issues/20)) |
+| PhoenixKey | `6c45962` (06-12) | `api.phoenixkey.me` | token-exchange ServiceDID + JWKS | Ví Standard 🟢 (đã nối, [#42](https://github.com/AladinContract/SuperApp/pull/42)) · Mint 🔴 |
+| ProofChat | BE `52a41db` (07-04) | `api.proofchat.me` | login → accessToken | 🔴 502 (BE#58 chưa merge) |
+| AladinWork | `8040617` (07-07) v0.2.0 | `<host>:7040` chưa có | challenge/verify P-256 → session | 🟡 code sẵn, chưa host |
+| LampNet | hivemind `506c611` (07-11) | `lampnet.cloud` | join public · upload Bearer | 🟡 join/compute chạy · 🔴 reward dry-run |
+
+> Trạng thái nhánh dọn dẹp: [`docs/BRANCH-AUDIT.md`](docs/BRANCH-AUDIT.md).

@@ -716,12 +716,14 @@ const TreeIdentityScreen: React.FC = () => {
   // ── Render result panel ───────────────────────────────────────────────────
   const renderResultPanel = () => {
     if (!identResult) return null;
-    const { decision, name, code, similarity, margin, factors, moved_distance_m, confidence } =
+    const { decision, name, code, similarity, margin, factors, moved_distance_m, confidence, suggest } =
       identResult as IdentifyResponse & {
         similarity?: number;
         margin?: number;
         factors?: FactorScores;
       };
+    // owner_review: backend thiếu cờ = cho tạo mới (giữ hành-vi cũ).
+    const allowEnrollNew = identResult.allow_enroll_new !== false;
 
     return (
       <ScrollView
@@ -745,6 +747,14 @@ const TreeIdentityScreen: React.FC = () => {
 
         {/* M2: băng tin-cậy THÔ (cao/vừa/thấp) — KHÔNG hiện điểm số */}
         {confidence && <ConfidenceBandView band={confidence} />}
+
+        {/* Gợi ý hành-động từ server (suggest) — vd "đi vòng chụp thêm góc" */}
+        {suggest ? (
+          <View style={styles.suggestBox}>
+            <Icon name="lightbulb-on-outline" size={16} color={NEUTRAL.warning} />
+            <Text style={styles.suggestText}>{suggest}</Text>
+          </View>
+        ) : null}
 
         {/* M3: phán-quyết người dùng — chỉ hiện khi backend trả query_id */}
         {queryId && (
@@ -884,7 +894,7 @@ const TreeIdentityScreen: React.FC = () => {
           </View>
         )}
 
-        {/* NO_MATCH / EMPTY_BUCKET: đăng ký mới (chỉ khi server cho phép) */}
+        {/* NO_MATCH / EMPTY_BUCKET: đăng ký mới (chỉ khi server CHO PHÉP) */}
         {(decision === 'NO_MATCH' || decision === 'EMPTY_BUCKET') && (
           <View style={styles.actionGroup}>
             <Text style={styles.noMatchHint}>
@@ -892,7 +902,7 @@ const TreeIdentityScreen: React.FC = () => {
                 ? 'Chưa có cây nào gần vị trí này.'
                 : 'Cây chưa được đăng ký trong hệ thống.'}
             </Text>
-            {identResult?.allow_enroll_new !== false ? (
+            {allowEnrollNew ? (
               <TouchableOpacity
                 style={[styles.decisionBtn, styles.btnGreen]}
                 onPress={handleRegisterNew}
@@ -903,7 +913,7 @@ const TreeIdentityScreen: React.FC = () => {
               </TouchableOpacity>
             ) : (
               <Text style={styles.noMatchHint}>
-                Chế độ này chỉ tái-định-danh — không thể đăng ký cây mới ở đây.
+                Kết quả chưa chắc chắn — hãy chụp thêm góc khác hoặc nhờ chủ vườn xác nhận. Tạm chưa thể đăng ký cây mới ở đây.
               </Text>
             )}
           </View>
@@ -1194,6 +1204,7 @@ const TreeIdentityScreen: React.FC = () => {
         onSelect={handleSelectCandidate}
         onDismiss={() => setShowConfirm(false)}
         allowNew={identResult?.allow_enroll_new !== false}
+        suggestText={identResult?.suggest}
       />
 
       {/* M3: bộ chọn "cây khác" (correct_tid từ /api/trees) */}
@@ -1797,6 +1808,24 @@ const styles = StyleSheet.create({
   noMatchHint: {
     fontSize: 13,
     color: NEUTRAL.textSub,
+    lineHeight: 18,
+  },
+  suggestBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginTop: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: NEUTRAL.bgWarm,
+    borderWidth: 1,
+    borderColor: NEUTRAL.border,
+  },
+  suggestText: {
+    flex: 1,
+    fontSize: 13,
+    color: NEUTRAL.text,
     lineHeight: 18,
   },
   decisionBtn: {

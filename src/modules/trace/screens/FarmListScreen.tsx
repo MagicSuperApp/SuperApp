@@ -17,7 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../../../store';
-import { loadFarms } from '../store/farmSlice';
+import { loadFarms, syncFarmsFromBackend } from '../store/farmSlice';
 import { selectChainWallet } from '../../../store/userSlice';
 import { COLORS } from '../../../constants';
 import PaginationControls from '../components/PaginationControls';
@@ -208,10 +208,17 @@ const FarmListScreen = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
 
+  // Làm mới vườn: hiện CACHE SQLite ngay (offline-first) rồi đồng bộ từ backend
+  // field-reid (nguồn sự-thật, INV-1) và nạp lại. Backend lỗi/offline →
+  // syncFarmsFromBackend tự lùi về cache, loadFarms vẫn hiển thị — không mất dữ liệu.
+  const refreshFarms = React.useCallback(() => {
+    if (!user) return;
+    dispatch(loadFarms(user.id));
+    dispatch(syncFarmsFromBackend(user.id)).finally(() => dispatch(loadFarms(user.id)));
+  }, [user, dispatch]);
+
   useEffect(() => {
-    if (user) {
-      dispatch(loadFarms(user.id));
-    }
+    refreshFarms();
     Animated.parallel([
       Animated.timing(headerFade,  { toValue: 1, duration: 500, useNativeDriver: true }),
       Animated.timing(headerSlide, { toValue: 0, duration: 500, useNativeDriver: true }),
@@ -226,11 +233,9 @@ const FarmListScreen = () => {
   // Reload farms when returning to this screen and move to page 1
   useFocusEffect(
     React.useCallback(() => {
-      if (user) {
-        dispatch(loadFarms(user.id));
-        setCurrentPage(1);
-      }
-    }, [user])
+      refreshFarms();
+      setCurrentPage(1);
+    }, [refreshFarms])
   );
 
   // Filter farms by search query
@@ -264,7 +269,7 @@ const FarmListScreen = () => {
     navigation.navigate('FarmDetail', { farm_id: null });
 
   const reloadFarms = () => {
-    if (user) dispatch(loadFarms(user.id));
+    refreshFarms();
   };
 
   // Trạng thái cho ListEmptyComponent (loading/offline/error/empty) — chỉ hiển

@@ -28,7 +28,11 @@ import { addFarm, setTrees, addTree, saveFarm, loadTrees, saveTree, loadFarm, sy
 import { database } from '../../../utils/database';
 import Geolocation from 'react-native-geolocation-service';
 import { COLORS } from '../../../constants';
-import aladinAPI from '../../../services/aladin-api';
+// B2: tạo vườn QUA field-reid (server sinh farm_id uuid THẬT) — bỏ aladinAPI
+// (backend Lợi deprecated + client tự sinh `farm-<ts>` = gốc B2). INV-1 §3.2.
+import { createFarm as createReidFarm } from '../../../services/farmService';
+import { ORILIFE_BASE } from '../../../services/orilifeBase';
+import { fieldErrorMessage } from '../../../services/treeReIDService';
 // We dynamically load MapLibre so the app can still run if the native module is missing
 // (e.g. not linked / not supported on the current device). We load it inside the
 // AddFarmMode component to avoid crashing on app startup.
@@ -398,6 +402,7 @@ const AddFarmMode = ({
   onDeleteVertex,
   onUndo,
   onResetFromScratch,
+  isSaving,
 }: {
   coordinates: { lat: number; lng: number }[];
   setCoordinates: React.Dispatch<React.SetStateAction<{ lat: number; lng: number }[]>>;
@@ -419,6 +424,8 @@ const AddFarmMode = ({
   onDeleteVertex: (index: number) => void;
   onUndo: () => void;
   onResetFromScratch: () => void;
+  /** B2: đang gọi backend tạo vườn → khoá nút Lưu + hiện spinner (§7.3). */
+  isSaving?: boolean;
 }) => {
   const insets = useSafeAreaInsets();
 
@@ -881,13 +888,22 @@ const AddFarmMode = ({
             )}
 
             <TouchableOpacity
-              style={[styles.saveBtn, !canSave && styles.btnDisabled]}
+              style={[styles.saveBtn, (!canSave || isSaving) && styles.btnDisabled]}
               onPress={onFinish}
-              disabled={!canSave}
+              disabled={!canSave || isSaving}
               activeOpacity={0.9}
             >
-              <Icon name="content-save-check" size={20} color={COLORS.white} />
-              <Text style={styles.saveBtnText}>Lưu vườn</Text>
+              {isSaving ? (
+                <>
+                  <ActivityIndicator color={COLORS.white} />
+                  <Text style={styles.saveBtnText}>Đang lưu...</Text>
+                </>
+              ) : (
+                <>
+                  <Icon name="content-save-check" size={20} color={COLORS.white} />
+                  <Text style={styles.saveBtnText}>Lưu vườn</Text>
+                </>
+              )}
             </TouchableOpacity>
           </View>
 
@@ -1547,6 +1563,8 @@ const FarmDetailScreen = () => {
   const [farmNameInput, setFarmNameInput] = useState<string>('');
   const farmNameInputRef = useRef<string>('');
   useEffect(() => { farmNameInputRef.current = farmNameInput; }, [farmNameInput]);
+  // B2: cờ đang gọi backend tạo vườn — khoá nút Lưu + hiện loading (§7.3), chống bấm kép.
+  const [isSavingFarm, setIsSavingFarm] = useState<boolean>(false);
 
   /**
    * Build 54 (CPO Đức 2026-05-18) — Offline-first farm save.
@@ -1600,85 +1618,66 @@ const FarmDetailScreen = () => {
         if (!proceed) return;
       }
 
-      // 2. Build closed polygon (GeoJSON)
-      const polygonCoords = coordinates.map(c => [c.lng, c.lat]);
-      const first = polygonCoords[0];
-      const last = polygonCoords[polygonCoords.length - 1];
-      if (first[0] !== last[0] || first[1] !== last[1]) {
-        polygonCoords.push([first[0], first[1]]);
-      }
-      const boundary = { type: 'Polygon' as const, coordinates: [polygonCoords] };
-
-      // 3. Build farm record
-      const farmId = `farm-${Date.now()}`;
+      // 2. Tên vườn
       const inputName = farmNameInputRef.current.trim();
       const farmName = inputName.length > 0
         ? inputName
         : `Vườn ${new Date().toLocaleDateString('vi-VN')}`;
 
-      const localFarm = {
-        id: farmId,
-        name: farmName,
-        coordinates,
-        userId: user.id,
-      };
-
-      // 4. SAVE LOCAL FIRST — source of truth, backend is best-effort
+      // 3. TẠO QUA BACKEND field-reid TRƯỚC — server sinh farm_id (uuid) THẬT.
+      //    INV-1 (INTEGRATION-STANDARD §3.2): client KHÔNG tự sinh id, ghi qua API
+      //    versioned; backend là nguồn sự-thật. farm_id thật là điều-kiện để enroll
+      //    gắn cây ĐÚNG vườn (sửa B2 "tạo vườn nhưng cây không vào vườn"). Trước đây
+      //    client tự sinh `farm-<ts>` + ghi backend Lợi → field-reid không biết id →
+      //    gán farm_id=null → cây mồ-côi.
+      //    farmService đóng boundary [lat,lon] từ coordinates {lat,lng}.
+      setIsSavingFarm(true);
+      let created;
       try {
-        await dispatch(saveFarm(localFarm));
-        console.log('[FarmDetailScreen] ✅ Local farm saved:', farmId);
-      } catch (localErr: any) {
-        console.error('[FarmDetailScreen] Local DB save failed:', localErr);
-        Alert.alert(
-          'Lỗi lưu cục bộ',
-          'Không thể lưu vào bộ nhớ máy. Hãy đóng app và mở lại, rồi thử lại.',
-        );
+        created = await createReidFarm(ORILIFE_BASE, {
+          name: farmName,
+          boundary: coordinates,
+        });
+      } finally {
+        setIsSavingFarm(false);
+      }
+
+      if (!created.ok || !created.farm) {
+        const err = created.error;
+        // Phân biệt mạng ⟂ auth ⟂ server (§7.3). KHÔNG tạo bản ghi cục-bộ id-giả →
+        // tránh cây mồ-côi. Giữ nguyên màn + điểm GPS để người dùng thử lại.
+        if (err?.type === 'network_error') {
+          Alert.alert(
+            'Cần kết nối mạng',
+            'Tạo vườn cần mạng để máy chủ cấp mã vườn. Việc thêm cây (chụp ảnh) cũng cần mạng — hãy kết nối rồi thử lại. Các điểm GPS bạn đã ghi vẫn được giữ.',
+          );
+        } else if (err?.type === 'auth_error') {
+          Alert.alert('Phiên đăng nhập hết hạn', 'Hãy đăng nhập lại (vân tay / Face ID) rồi thử lưu vườn.');
+        } else {
+          Alert.alert('Chưa lưu được vườn', fieldErrorMessage(err));
+        }
         return;
       }
 
-      // 5. Backend POST best-effort — region_code='auto' sentinel lets backend
-      //    derive region from boundary GPS centroid (CPO V4 decision #3).
+      // 4. Lưu CACHE SQLite (offline-first đọc lại) với id THẬT từ server.
+      //    owner = người đăng-nhập → loadFarms(user.id) khớp. Lỗi cache = không chặn
+      //    (vườn đã ở backend = nguồn sự-thật).
+      const serverFarm = { ...created.farm, userId: user.id };
       try {
-        await aladinAPI.createFarm({
-          farm_id: farmId,
-          owner_did: user.id,
-          region_code: 'auto',
-          farm_name: farmName,
-          boundary,
-        });
-        console.log('[FarmDetailScreen] ✅ Backend farm synced');
-        Toast.show({
-          type: 'success',
-          text1: '✓ Đã lưu nông trại · Saved',
-          text2: 'Đồng bộ thành công · Synced to cloud',
-          visibilityTime: 2500,
-        });
-      } catch (backendErr: any) {
-        console.warn('[FarmDetailScreen] Backend sync failed (will retry):', backendErr?.message);
-        if (backendErr?.response?.status === 422) {
-          console.warn('[FarmDetailScreen] API 422 details:', JSON.stringify(backendErr.response.data, null, 2));
-        }
-        // Local đã lưu; backend lỗi → ĐẨY VÀO SYNC QUEUE để retry thật (đối xứng
-        // implicitParent). Trước đây chỉ alert "will retry" mà KHÔNG có queue →
-        // farm vẽ tay lúc offline không bao giờ tới backend, cây dưới nó (POST
-        // /trees cần farm_id) cũng sync hỏng. import động tránh vòng phụ-thuộc.
-        try {
-          const { syncService } = await import('../../../services/syncService');
-          await syncService.addSyncItem('farm_update', {
-            farm: { id: farmId, userId: user.id, coordinates, name: farmName },
-          });
-        } catch (enqErr: any) {
-          console.warn('[FarmDetailScreen] enqueue farm_update failed:', enqErr?.message);
-        }
-        // Both alert (informational, one-time) + toast (background sync indicator)
-        Alert.alert(
-          'Đã lưu vào máy · Saved locally',
-          'Chưa đồng bộ lên máy chủ. Sẽ tự sync khi có mạng ổn định.',
-          [{ text: 'OK' }],
-        );
+        await dispatch(saveFarm(serverFarm)).unwrap();
+        console.log('[FarmDetailScreen] ✅ Farm created on backend + cached:', serverFarm.id);
+      } catch (localErr: any) {
+        console.warn('[FarmDetailScreen] Local cache save failed (non-blocking):', localErr?.message);
       }
 
-      // 6. Reset state + navigate
+      Toast.show({
+        type: 'success',
+        text1: '✓ Đã tạo vườn',
+        text2: 'Giờ bạn có thể thêm cây vào vườn này',
+        visibilityTime: 2500,
+      });
+
+      // 5. Reset state + navigate
       walkAwayStateRef.current = initWalkAwayState();
       lastPointTimestampRef.current = null;
       setEditMode('recording');
@@ -1942,6 +1941,7 @@ const FarmDetailScreen = () => {
         onDeleteVertex={handleDeleteVertex}
         onUndo={handleUndo}
         onResetFromScratch={handleResetFromScratch}
+        isSaving={isSavingFarm}
       />
     );
   }

@@ -3,7 +3,7 @@
 > **Scope**: L3 (Host Shell/Navigation) · DRAFT v0.1 (2026-07-12) · chờ anh Aladin duyệt, giao Tùng thi công (Tùng phụ trách UI/frontend).
 > **Thuộc**: thanh tab dưới (CurvedTabBar) + nút giữa (kế thừa SG4) + vỏ điều hướng khi vào app con.
 > **Tuân**: PLATFORM-MASTER INV-2 (data ⟂ experience), INTEGRATION §7.1 (nhãn nav = experience layer, KHÔNG nhét manifest). Phạm vi = CHỈ UI/UX SuperApp; KHÔNG đụng logic module; Wakeme = Wakeme agent.
-> **Nguồn hình**: 3 artifact thiết kế — IA blueprint · Nav Frame song ngữ · Mô hình điều hướng sub-app (link cuối tài liệu).
+> **Nguồn hình**: `Specs/_mockups/nav-shell-ux.html` — mô phỏng tương tác (persona · ánh sáng · SubHome · nút xoè). Xem cuối tài liệu.
 
 ## 0. Một câu định nghĩa
 Vỏ điều hướng phải khiến vào một app con (Chat, Farm, Work…) **cảm giác như một app thuần tuý**, mà đổi-app chỉ tốn **một cử chỉ trên MỘT cổng duy nhất** — không dựng hệ điều hướng thứ hai chồng lên cái đã có.
@@ -153,10 +153,9 @@ Thêm trục `luminance: 'day' | 'dim' | 'night'` cạnh `adaptive.ts` (đang lo
 | §6 Home tối giản | Spec xong · chạm HomeScreen | Tùng chủ trì |
 | §7 react-native-screens | Spec xong · cần test máy | Tùng |
 | §8 Màu tươi + luminance | Spec xong · code chờ | Tùng |
-| Mô phỏng HTML (`_mockups/nav-shell-ux.html`) | **ĐÃ CÓ** (mở bằng trình duyệt) | Claude |
+| Mô phỏng HTML (`_mockups/nav-shell-ux.html`) | **ĐÃ CÓ** | Claude |
 
 **KHÔNG thuộc spec này**: logic Wakeme (Wakeme agent), logic xử lý module, mint.
 
-## Mô phỏng (nguồn hình — mở bằng trình duyệt, KHÔNG cần tài khoản)
-- **`Specs/_mockups/nav-shell-ux.html`** — mô phỏng chính: thanh tab song ngữ (Me/Tôi + avatar), 3 biến thể persona, SubHome thu gọn + dropdown, nút xoè cổng (tái SG4), 3 chế độ ánh sáng (day/dim/night), palette tươi. Tự chứa, mở offline.
-> (Bản artifact claude.ai cũ cần tài khoản Team/Enterprise nên KHÔNG dùng làm nguồn cho Tùng — file HTML trong repo là nguồn chính.)
+## Mô phỏng (nguồn hình)
+- **`Specs/_mockups/nav-shell-ux.html`** — thanh tab song ngữ (Me/Tôi + avatar), 3 biến thể persona, SubHome thu gọn + dropdown, nút xoè cổng (tái SG4), 3 chế độ ánh sáng (day/dim/night), palette tươi. Tương tác được.

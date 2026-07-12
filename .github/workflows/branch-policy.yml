@@ -1,10 +1,10 @@
 name: Branch policy
 
-# Quy-tắc nhánh SuperApp (giai-đoạn sắp production):
-#   feature/* , fix/* , claude/*  →  PR  →  develop        (nhánh tích-hợp)
-#   develop                        →  PR  →  main           (chỉ khi sẵn-sàng production)
-# Repo private + plan free nên GitHub chưa bật được branch protection cứng;
-# workflow này là chốt MỀM: PR nhắm main mà KHÔNG xuất-phát từ develop → fail.
+# Quy-tac nhanh SuperApp (giai-doan sap production):
+#   feature/* , fix/* , claude/*  ->  PR  ->  develop   (nhanh tich-hop)
+#   develop                        ->  PR  ->  main      (chi khi san-sang production)
+# Repo private + plan free nen GitHub chua bat duoc branch protection cung;
+# workflow nay la chot MEM: PR nham main ma KHONG xuat-phat tu develop -> fail.
 
 on:
   pull_request:
@@ -12,15 +12,19 @@ on:
 
 jobs:
   only-develop-into-main:
+    # Guard: chi danh gia cho pull_request that vao main. O event khac (vd push
+    # toi nhanh) github.head_ref rong -> bo qua job, tranh fail nham.
+    if: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Chỉ cho develop → main
+      - name: Chi cho develop vao main
         if: ${{ github.head_ref != 'develop' }}
         run: |
-          echo "::error title=Sai nhánh đích::PR vào 'main' phải xuất-phát từ 'develop'."
-          echo "Nhánh nguồn hiện tại: '${{ github.head_ref }}'."
-          echo "Quy-tắc: feature/fix → PR → develop; chỉ 'develop' mới được PR vào 'main' khi sẵn-sàng production."
+          echo "::error title=Sai nhanh dich::PR vao 'main' phai xuat-phat tu 'develop'."
+          echo "Nhanh nguon hien tai: '${{ github.head_ref }}'."
+          echo "Quy-tac: feature/fix -> PR -> develop; chi 'develop' moi duoc PR vao 'main'."
           exit 1
-      - name: Hợp-lệ
+      - name: Hop-le
         if: ${{ github.head_ref == 'develop' }}
-        run: echo "develop → main: hợp-lệ."
+        run: |
+          echo "develop -> main: hop-le."

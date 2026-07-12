@@ -28,6 +28,8 @@ import { syncService } from '../services/syncService';
 import { resolveActions, ACTION_GROUP_COLOR } from './actionRegistry';
 import type { ActionDef } from './actionRegistry';
 import AppHeader, { AppHeaderProvider } from '../components/AppHeader';
+import { NAV_FRAME, navNational, navIcon } from './navLabels';
+import NavItemFrame from './NavItemFrame';
 
 // --- Host shell screens (KHÔNG thuộc module — vỏ giữ tĩnh) ------------------
 import LoginScreen from '../screens/LoginScreen';
@@ -114,28 +116,19 @@ const HOST_TAB_SCREENS: Record<string, React.ComponentType<any>> = {
   Home: HomeScreen,
   Account: AccountScreen,
 };
-// Nhãn tab theo route — GIỮ NGUYÊN parity Aladin. Cho cả host lẫn module:
-// label tab có thể khác displayName module (vd module 'trace' tên "Truy xuất"
-// nhưng tab Aladin hiển thị "Trang trại"). Đây là quyết định của INSTANCE
-// (experience layer), nên ở tầng nav — không nhét vào manifest module.
-const TAB_TITLES: Record<string, string> = {
-  Home: 'Trang chủ',
-  ProofChatHome: 'Tin nhắn',
-  Farms: 'Trang trại',
-  WorkHome: 'Việc làm',
-  JoinHome: 'Kết đèn',
-  Account: 'Tài khoản',
-};
+// Nhãn/icon tab DẪN XUẤT từ NAV_FRAME (navLabels.ts) — nguồn DUY NHẤT. Nhãn tab
+// khác displayName module (module 'proofchat' tên "ProofChat"; nav ngắn = "Chat").
+// Đây là quyết định của INSTANCE (experience layer), sống ở tầng nav — không nhét
+// vào manifest. Tiêu đề đơn-dòng (header/screen title) lấy nhãn NGÔN NGỮ QUỐC GIA;
+// còn thanh tab dưới vẽ song ngữ qua NavItemFrame.
+const TAB_TITLES: Record<string, string> = Object.fromEntries(
+  Object.keys(NAV_FRAME).map((route) => [route, navNational(route)]),
+);
 
-// Icon cho từng tab theo route name (giữ nguyên ánh xạ icon cũ của Aladin).
-const TAB_ICONS: Record<string, string> = {
-  Home: 'home',
-  ProofChatHome: 'chat-processing',
-  Farms: 'sprout',
-  WorkHome: 'briefcase',
-  JoinHome: 'lightning-bolt',
-  Account: 'account-circle',
-};
+// Icon đơn (filled) cho tiêu đề/host — dẫn xuất từ registry.
+const TAB_ICONS: Record<string, string> = Object.fromEntries(
+  Object.keys(NAV_FRAME).map((route) => [route, navIcon(route, true)]),
+);
 
 // 1. Component bọc riêng cho việc gọi FarmDetail từ Native (giữ nguyên).
 const NativeFarmDetailWrapper = (props: any) => {
@@ -222,14 +215,15 @@ const FLOAT = NOTCH_D / 2;                   // phần nhô lên trên mép than
 const CORNER_R = 26;                         // bo góc trên navbar
 
 // Icon cho từng tab (filled khi active, outline khi inactive) + nhãn hiển thị.
-const TAB_META: Record<string, { icon: string; iconActive: string; label: string }> = {
-  ProofChatHome: { icon: 'chat-processing-outline', iconActive: 'chat-processing', label: 'Tin nhắn' },
-  Farms: { icon: 'sprout-outline', iconActive: 'sprout', label: 'Trang trại' },
-  WorkHome: { icon: 'briefcase-outline', iconActive: 'briefcase', label: 'Việc làm' },
-  JoinHome: { icon: 'lightning-bolt-outline', iconActive: 'lightning-bolt', label: 'Kết đèn' },
-  // 'Account' CỐ Ý không có ở đây → CurvedTabBar KHÔNG vẽ nút Tài khoản trên
-  // navbar (route Account vẫn tồn tại như tab ẩn để thanh dưới hiện ở trang này).
-};
+// Route ĐƯỢC VẼ NÚT trên navbar = mọi route trong NAV_FRAME TRỪ Home (ô trống
+// giữa) + Account (CỐ Ý ẩn nút → vào Tài khoản qua toolbox nút giữa; route vẫn
+// tồn tại như tab ẩn để thanh dưới hiện ở trang đó). Nhãn/icon do NavItemFrame tự
+// tra NAV_FRAME — TAB_META chỉ đánh dấu route nào có ô tab.
+const TAB_META: Record<string, true> = Object.fromEntries(
+  Object.keys(NAV_FRAME)
+    .filter((route) => route !== 'Home' && route !== 'Account')
+    .map((route) => [route, true as const]),
+);
 
 // ── Toolbox cung tròn (KÉO nút chính để mở, kéo chọn, giữ 1s để đặt mặc định) ──
 // Nút chính (giữa navbar) KHÔNG còn là "Home" cứng: KÉO nó ra → hiện toolbox cung
@@ -611,10 +605,8 @@ const CurvedTabBar = ({ state, navigation }: BottomTabBarProps) => {
           if (route.name === 'Home') {
             return <View key={route.key} style={curvedStyles.homeSlot} />;
           }
-          const meta = TAB_META[route.name];
-          if (!meta) return null;
+          if (!TAB_META[route.name]) return null;
           const isFocused = state.index === index;
-          const tint = isFocused ? '#FFFFFF' : 'rgba(255,255,255,0.55)';
           return (
             <TouchableOpacity
               key={route.key}
@@ -622,13 +614,12 @@ const CurvedTabBar = ({ state, navigation }: BottomTabBarProps) => {
               activeOpacity={0.7}
               onPress={() => handlePress(route.name, route.key, isFocused)}
             >
-              <Icon name={isFocused ? meta.iconActive : meta.icon} size={24} color={tint} />
-              <Text
-                style={[curvedStyles.tabLabel, { color: tint, fontWeight: isFocused ? '700' : '500' }]}
-                numberOfLines={1}
-              >
-                {meta.label}
-              </Text>
+              <NavItemFrame
+                route={route.name}
+                focused={isFocused}
+                tint="#FFFFFF"
+                dimTint="rgba(255,255,255,0.55)"
+              />
             </TouchableOpacity>
           );
         })}
@@ -688,14 +679,9 @@ const curvedStyles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 3,
   },
   homeSlot: {
     flex: 1,
-  },
-  tabLabel: {
-    fontSize: 11,
-    letterSpacing: -0.2,
   },
   homeButton: {
     position: 'absolute',

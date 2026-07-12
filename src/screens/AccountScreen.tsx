@@ -30,7 +30,9 @@ import { showInfo } from '../utils/alert';
 import { useNavigation } from '@react-navigation/native';
 import { showWarning } from '../utils/alert';
 import { getVersion, getBuildNumber } from 'react-native-device-info';
-import { API_BASE_URL } from '../services/aladin-api';
+// Debug host = backend field-reid THẬT app đang dùng (ORILIFE_BASE), không phải
+// aladin-api (backend Lợi deprecated) — để field soi đúng server (Lỗi field #5).
+import { ORILIFE_BASE } from '../services/orilifeBase';
 import taad from '../sdk/taadEnclave';
 import { getStoredMasterKek } from '../services/masterKekStore';
 
@@ -43,7 +45,7 @@ const APP_VERSION_LABEL = `Aladin v${getVersion()} (${getBuildNumber()})`;
 
 // Chi tiết debug (tap version 5 lần): version + server API đang trỏ → field tự soi
 // máy có chạy đúng build + đúng server không (chẩn đoán 404 farm — Lỗi field #5).
-const APP_DEBUG_INFO = `${APP_VERSION_LABEL}\n\nMáy chủ: ${API_BASE_URL}\nNền: ${Platform.OS}`;
+const APP_DEBUG_INFO = `${APP_VERSION_LABEL}\n\nMáy chủ: ${ORILIFE_BASE}\nNền: ${Platform.OS}`;
 import { Switch } from 'react-native';
 const { width } = Dimensions.get('window');
 

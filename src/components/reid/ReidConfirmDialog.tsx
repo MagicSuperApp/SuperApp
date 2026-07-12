@@ -47,6 +47,14 @@ interface ReidConfirmDialogProps {
   candidates: ReidCandidate[];
   onSelect: (id: string | 'new') => void;
   onDismiss: () => void;
+  /**
+   * Server có CHO PHÉP đăng-ký cá thể MỚI không (allow_enroll_new). Mặc-định true
+   * (giữ hành-vi cũ). false → ẩn nút "Mới", chỉ cho chọn trong danh sách
+   * (chống tạo trùng khi cùng-loài mơ-hồ — owner_review B1/B2).
+   */
+  allowNew?: boolean;
+  /** Câu gợi ý hành-động do backend trả (suggest) — hiện dưới phụ đề nếu có. */
+  suggestText?: string;
 }
 
 // ─── Nhãn nội dung theo context ───────────────────────────────────────────────
@@ -95,6 +103,8 @@ const ReidConfirmDialog: React.FC<ReidConfirmDialogProps> = ({
   candidates,
   onSelect,
   onDismiss,
+  allowNew = true,
+  suggestText,
 }) => {
   const L = LABELS[context];
   const insets = useSafeAreaInsets();
@@ -136,6 +146,14 @@ const ReidConfirmDialog: React.FC<ReidConfirmDialogProps> = ({
             <Text style={styles.subtitle}>{L.subtitle(candidates.length)}</Text>
           )}
 
+          {/* ── Gợi ý hành-động từ server (suggest) ────────────────────────── */}
+          {suggestText ? (
+            <View style={styles.suggestBox} accessible={true}>
+              <Icon name="lightbulb-on-outline" size={16} color={NEUTRAL.warning} />
+              <Text style={styles.suggestText}>{suggestText}</Text>
+            </View>
+          ) : null}
+
           {/* ── Danh sách candidates ────────────────────────────────────────── */}
           <ScrollView
             style={styles.list}
@@ -146,7 +164,9 @@ const ReidConfirmDialog: React.FC<ReidConfirmDialogProps> = ({
               <View style={styles.emptyState} accessible={true}>
                 <Icon name="help-circle-outline" size={40} color={NEUTRAL.textMuted} />
                 <Text style={styles.emptyStateText}>
-                  Không có cá thể gợi ý — chọn Mới để đăng ký.
+                  {allowNew
+                    ? 'Không có cá thể gợi ý — chọn Mới để đăng ký.'
+                    : 'Không có cá thể phù hợp. Chế độ này chỉ tái-định-danh, chưa thể đăng ký mới.'}
                 </Text>
               </View>
             )}
@@ -251,23 +271,25 @@ const ReidConfirmDialog: React.FC<ReidConfirmDialogProps> = ({
               );
             })}
 
-            {/* ── Nút "Mới" ─────────────────────────────────────────────── */}
-            <TouchableOpacity
-              style={[styles.newBtn, { borderColor: L.headerColor }]}
-              onPress={() => onSelect('new')}
-              activeOpacity={0.7}
-              accessibilityLabel={L.newTitle}
-              accessibilityRole="button"
-            >
-              <Icon name={L.newButtonIcon} size={30} color={L.headerColor} />
-              <View style={styles.newBtnBody}>
-                <Text style={[styles.newBtnTitle, { color: L.headerColor }]}>
-                  {L.newTitle}
-                </Text>
-                <Text style={styles.newBtnSub}>{L.newSubtitle}</Text>
-              </View>
-              <Icon name="chevron-right" size={20} color={L.headerColor} />
-            </TouchableOpacity>
+            {/* ── Nút "Mới" — chỉ hiện khi server CHO PHÉP đăng-ký mới ─────── */}
+            {allowNew && (
+              <TouchableOpacity
+                style={[styles.newBtn, { borderColor: L.headerColor }]}
+                onPress={() => onSelect('new')}
+                activeOpacity={0.7}
+                accessibilityLabel={L.newTitle}
+                accessibilityRole="button"
+              >
+                <Icon name={L.newButtonIcon} size={30} color={L.headerColor} />
+                <View style={styles.newBtnBody}>
+                  <Text style={[styles.newBtnTitle, { color: L.headerColor }]}>
+                    {L.newTitle}
+                  </Text>
+                  <Text style={styles.newBtnSub}>{L.newSubtitle}</Text>
+                </View>
+                <Icon name="chevron-right" size={20} color={L.headerColor} />
+              </TouchableOpacity>
+            )}
           </ScrollView>
 
           {/* ── Nút Huỷ ────────────────────────────────────────────────────── */}
@@ -336,6 +358,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     lineHeight: 19,
+  },
+  suggestBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: NEUTRAL.bgWarm,
+    borderWidth: 1,
+    borderColor: NEUTRAL.border,
+  },
+  suggestText: {
+    flex: 1,
+    fontSize: 13,
+    color: NEUTRAL.text,
+    lineHeight: 18,
   },
   list: {
     maxHeight: 340,

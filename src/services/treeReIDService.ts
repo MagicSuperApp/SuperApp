@@ -59,6 +59,19 @@ export interface IdentifyResponse {
   query_id?: string;
   /** ADDITIVE (Lợi PR #46): băng tin-cậy thô (cao/vừa/thấp) — KHÔNG hiện điểm số. */
   confidence?: ConfidenceBand;
+  /**
+   * ADDITIVE: câu gợi ý hành-động do backend trả khi kết quả chưa chắc (vd
+   * "đi vòng quanh cây, chụp thêm góc khác" / "kết quả chưa chắc, nhờ chủ vườn
+   * xác nhận"). Hiện ở UNCERTAIN/NO_MATCH. Thiếu (backend cũ) → UI không hiện.
+   */
+  suggest?: string;
+  /**
+   * ADDITIVE (B1/B2 owner_review): backend có CHO PHÉP tạo cây MỚI ở lần này
+   * không. Thiếu/undefined (backend cũ) = true → GIỮ hành-vi cũ (cho tạo mới).
+   * false → ẩn nút "Đăng ký cây mới" để chống tạo cây trùng khi cùng-loài mơ-hồ
+   * (dải điểm sập, cần chủ vườn xác nhận trước).
+   */
+  allow_enroll_new?: boolean;
 }
 
 export interface EnrollResponse {

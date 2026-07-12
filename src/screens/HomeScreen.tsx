@@ -27,6 +27,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
+import { selectChainWallet } from '../store/userSlice';
 import { NEUTRAL, withAlpha } from '../shared/theme';
 import { MODULES, type ModuleEntry } from '../modules';
 import { COLORS } from '../constants';
@@ -58,6 +59,10 @@ const MODULE_CARD_W =
 // Home nhô lên 43 + cushion. Cộng thêm insets.bottom tại nơi dùng. Giữ đồng bộ
 // với TAB_BAR_HEIGHT/FLOAT trong navigation/index.tsx.
 const BOTTOM_NAV_CLEARANCE = 120;
+
+// Định dạng số dư token gọn cho stat row (làm tròn + phân tách hàng nghìn vi-VN).
+const formatToken = (n: number): string =>
+  Number.isFinite(n) ? Math.round(n).toLocaleString('vi-VN') : '0';
 
 type QuickActionSheetOption = {
   key: string;
@@ -448,9 +453,15 @@ const HomeScreen: React.FC = () => {
   const trees = useSelector((s: RootState) => s.farm.trees);
   const activities = useSelector((s: RootState) => s.farm.activities);
 
-  // Mock badges cho ProofChat / Work cho tới khi có module thật
-  const proofChatUnread = 0;
-  const workMatches = 5;
+  // Số THẬT (§6 — KHÔNG bịa dữ liệu):
+  //  - ProofChat: tổng tin chưa đọc từ CHÍNH store màn Chat dùng (rẻ, không mock).
+  //  - Work: chưa có nguồn thật → KHÔNG hiện số bịa (bỏ stat + badge, xem dưới).
+  const proofChatUnread = useSelector((s: RootState) =>
+    s.proofchat.rooms.reduce((n, r) => n + (r.unreadCount ?? 0), 0),
+  );
+  // Trạng thái VÍ thật: chỉ số ĐẾN TỪ CHAIN (selectChainWallet trả null khi chưa
+  // đồng bộ → hiển thị "Chưa đồng bộ", KHÔNG số cũ/bịa).
+  const chainWallet = useSelector(selectChainWallet);
 
   const headerFade = useRef(new Animated.Value(0)).current;
   const headerSlide = useRef(new Animated.Value(-12)).current;
@@ -666,7 +677,7 @@ const HomeScreen: React.FC = () => {
   const moduleBadges: Record<string, number | undefined> = {
     trace: undefined,
     proofchat: proofChatUnread,
-    work: workMatches,
+    work: undefined, // Work chưa có nguồn thật → không gắn badge số bịa.
   };
 
   const handleModulePress = (entry: ModuleEntry) => {
@@ -890,31 +901,37 @@ const HomeScreen: React.FC = () => {
         <View style={styles.quickStatsWrap}>
           <SectionHeader title="Thông tin nhanh" />
           <View style={styles.quickStatsCard}>
+            {/* Ví THẬT (§6): số đến từ chain; chưa đồng bộ → "Chưa đồng bộ". */}
             <QuickStatRow
               index={0}
-              icon="pine-tree"
-              label="Trang trại đang theo dõi"
-              value={`${farms.length} trang trại · ${trees.length} cây`}
-              color="#3B6EA8"
-              onPress={() => navigation.navigate('Farms' as never)}
+              icon="wallet-outline"
+              label="Ví của tôi"
+              value={
+                chainWallet
+                  ? `${formatToken(chainWallet.magicBalance)} MAGIC · ${formatToken(chainWallet.lampBalance)} LAMP`
+                  : 'Chưa đồng bộ'
+              }
+              color={COLORS.accent}
+              onPress={() => (navigation as any).navigate('PhoenixWallet')}
             />
             <View style={styles.statDivider} />
             <QuickStatRow
               index={1}
-              icon="message-text-outline"
-              label="Tin nhắn ProofChat"
-              value={`${proofChatUnread} tin nhắn mới`}
-              color="#3B6EA8"
-              onPress={() => navigation.navigate('ProofChatHome' as never)}
+              icon="pine-tree"
+              label="Trang trại đang theo dõi"
+              value={`${farms.length} trang trại · ${trees.length} cây`}
+              color={COLORS.accent}
+              onPress={() => navigation.navigate('Farms' as never)}
             />
             <View style={styles.statDivider} />
+            {/* ProofChat THẬT: đếm tin chưa đọc từ store; 0 → nhãn trung tính. */}
             <QuickStatRow
               index={2}
-              icon="briefcase-outline"
-              label="Việc làm phù hợp"
-              value={`${workMatches} cơ hội mới`}
-              color="#3B6EA8"
-              onPress={() => navigation.navigate('WorkHome' as never)}
+              icon="message-text-outline"
+              label="Tin nhắn ProofChat"
+              value={proofChatUnread > 0 ? `${proofChatUnread} tin nhắn mới` : 'Không có tin mới'}
+              color={COLORS.accent}
+              onPress={() => navigation.navigate('ProofChatHome' as never)}
             />
           </View>
         </View>

@@ -67,12 +67,13 @@ export const ALADIN_INSTANCE: InstanceConfig = {
   instanceId: 'aladin',
   displayName: 'Aladin',
   enabledModules: ['trace', 'proofchat', 'work', 'join'],
-  // Navbar hiển thị 5 NÚT — Home (host) Ở GIỮA cho khuyết-tròn, 2 nút mỗi bên:
-  // proofchat·trace | Home | work·join. Riêng "Account" VẪN là tab (để navbar
-  // hiện cả ở TRANG TÀI KHOẢN + dùng chung thanh dưới) nhưng KHÔNG vẽ nút trên
-  // navbar (CurvedTabBar bỏ Account khỏi TAB_META). Vào Tài khoản (+ bật/tắt trợ
-  // lý, đăng xuất) qua toolbox cung tròn khi KÉO nút Home. cx của notch tính theo
-  // số NÚT HIỂN THỊ (bỏ tab ẩn) nên Home vẫn rơi đúng giữa.
+  // `tabs` = TẬP ĐẦY ĐỦ các route có thể lên thanh (config giữ full). Việc CHỌN
+  // ô nào HIỂN THỊ + thứ tự do resolver runtime quyết (SG9 §2, navigation/
+  // resolveVisibleTabs.ts): 3 NEO (proofchat=Chat · Home · Account=Me) + 2 slot
+  // thích ứng persona trong {trace=Farm, work=Work, join=Join}. Module dôi ra vào
+  // cổng xoè (§4)/deep-link — KHÔNG biến mất. Home (host) đặt GIỮA cho khuyết-
+  // tròn; Account NAY vẽ nút (ô "Me/Tôi" = avatar), không còn ẩn. cx notch tính
+  // theo số ô resolver trả (5 ô) nên Home vẫn rơi đúng giữa.
   tabs: [
     { kind: 'module', moduleId: 'proofchat' },
     { kind: 'module', moduleId: 'trace' },

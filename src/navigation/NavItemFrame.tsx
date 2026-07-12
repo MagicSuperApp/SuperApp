@@ -8,7 +8,7 @@
 // khớp chiều cao thanh TAB_BAR_HEIGHT=64. Đổi số ở NAV_FRAME_DIMS = đổi đồng loạt.
 
 import * as React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, Image, StyleSheet } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { navEn, navNational, navIcon } from './navLabels';
 
@@ -16,6 +16,7 @@ export const NAV_FRAME_DIMS = {
   iconSize: 24,
   enSize: 11, // EN — nhãn chuẩn (dòng trên)
   nationalSize: 9, // ngôn ngữ quốc gia (dòng dưới)
+  avatarSize: 24, // đường kính avatar (khớp iconSize để cân với các tab khác)
 } as const;
 
 interface Props {
@@ -25,13 +26,33 @@ interface Props {
   tint: string;
   /** Màu khi tab nghỉ (mờ). */
   dimTint: string;
+  /**
+   * Ảnh đại diện user (vd tab "Me/Tôi"). Có uri → vẽ ảnh tròn thay icon.
+   * Không có → dùng `initials`; không có nốt → về icon mặc định của route.
+   */
+  avatarUri?: string;
+  /** Chữ viết tắt tên (fallback khi chưa có ảnh), vd "AL". */
+  initials?: string;
 }
 
-const NavItemFrame: React.FC<Props> = ({ route, focused, tint, dimTint }) => {
+const NavItemFrame: React.FC<Props> = ({ route, focused, tint, dimTint, avatarUri, initials }) => {
   const color = focused ? tint : dimTint;
+  const isAvatarTab = !!avatarUri || !!initials;
   return (
     <View style={styles.frame}>
-      <Icon name={navIcon(route, focused)} size={NAV_FRAME_DIMS.iconSize} color={color} />
+      {isAvatarTab ? (
+        <View style={[styles.avatar, { borderColor: color, opacity: focused ? 1 : 0.75 }]}>
+          {avatarUri ? (
+            <Image source={{ uri: avatarUri }} style={styles.avatarImg} />
+          ) : (
+            <Text style={[styles.avatarInitials, { color }]} allowFontScaling={false}>
+              {initials}
+            </Text>
+          )}
+        </View>
+      ) : (
+        <Icon name={navIcon(route, focused)} size={NAV_FRAME_DIMS.iconSize} color={color} />
+      )}
       <Text
         style={[styles.en, { color, fontWeight: focused ? '700' : '600' }]}
         numberOfLines={1}
@@ -63,6 +84,23 @@ const styles = StyleSheet.create({
     lineHeight: NAV_FRAME_DIMS.nationalSize + 2,
     letterSpacing: -0.1,
     opacity: 0.9,
+  },
+  avatar: {
+    width: NAV_FRAME_DIMS.avatarSize,
+    height: NAV_FRAME_DIMS.avatarSize,
+    borderRadius: NAV_FRAME_DIMS.avatarSize / 2,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarImg: {
+    width: '100%',
+    height: '100%',
+  },
+  avatarInitials: {
+    fontSize: 10,
+    fontWeight: '800',
   },
 });
 

@@ -37,7 +37,9 @@ export const NAV_FRAME: Record<string, NavFrame> = {
   Farms:         { en: 'Farm',    national: { vi: 'Trang trại' }, icon: 'sprout-outline',          iconActive: 'sprout' },
   WorkHome:      { en: 'Work',    national: { vi: 'Việc làm' },   icon: 'briefcase-outline',       iconActive: 'briefcase' },
   JoinHome:      { en: 'Join',    national: { vi: 'Kết đèn' },    icon: 'lightning-bolt-outline',  iconActive: 'lightning-bolt' },
-  Account:       { en: 'Account', national: { vi: 'Tài khoản' },  icon: 'account-circle-outline',  iconActive: 'account-circle' },
+  // Account = "Me/Tôi" (anh Aladin chốt). Icon dự phòng; ô này ưu tiên vẽ AVATAR
+  // user (ảnh hoặc initials) qua NavItemFrame — xem prop avatarUri/initials.
+  Account:       { en: 'Me',      national: { vi: 'Tôi' },       icon: 'account-circle-outline',  iconActive: 'account-circle' },
 };
 
 // Ngôn ngữ quốc gia hiện hành. App CHƯA có hệ i18n → mặc định 'vi' (thị trường

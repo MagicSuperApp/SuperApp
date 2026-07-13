@@ -21,7 +21,7 @@ describe('parseTraceCode', () => {
   });
 
   it('không params → params bỏ trống', () => {
-    expect(parseTraceCode('magiclamp://trace/Dashboard')).toEqual({ route: 'Dashboard' });
+    expect(parseTraceCode('magiclamp://trace/TreeDetail')).toEqual({ route: 'TreeDetail' });
   });
 
   it('nhiều params + giải mã %', () => {
@@ -34,6 +34,12 @@ describe('parseTraceCode', () => {
   it('route NGOÀI whitelist → null (không điều hướng bừa)', () => {
     expect(parseTraceCode('magiclamp://trace/SeedExport')).toBeNull();
     expect(parseTraceCode('magiclamp://Login')).toBeNull();
+    // Đã thu whitelist: danh sách/dashboard/enroll KHÔNG phải đích soi-nguồn-gốc.
+    expect(parseTraceCode('magiclamp://Farms')).toBeNull();
+    expect(parseTraceCode('magiclamp://trace/Dashboard')).toBeNull();
+    expect(parseTraceCode('magiclamp://Activity')).toBeNull();
+    expect(parseTraceCode('magiclamp://TreeIdentity')).toBeNull();
+    expect(parseTraceCode('magiclamp://AnimalIdentity')).toBeNull();
   });
 
   it('mã KHÔNG phải magiclamp:// → null', () => {

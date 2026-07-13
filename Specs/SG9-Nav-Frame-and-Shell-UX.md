@@ -129,6 +129,49 @@ Route non-tab tự push full-bleed; nav KHÔNG đọc `navSlot`. Để một khu
 
 ---
 
+## 5B. Vòng dịch vụ QUAY ĐƯỢC (rotary ring) — chứa hàng trăm, không ngộp
+Anh Aladin chốt hướng: cổng xoè + nav tầng-2 phải chứa được **rất nhiều** mục (một service có nhiều thứ) mà **màn hình vẫn chỉ hiện số ít, không rối mắt**.
+
+### 5B.1 Nguyên lý
+Cung xoè (§4) nâng cấp thành **vòng quay** (radial carousel / mặt số xoay):
+- **Chỉ một CỬA SỔ cố định** (đề xuất 5–7 mục) hiện trong cung tại một thời điểm → không bao giờ ngộp, dù danh sách đầy đủ có hàng trăm.
+- **Xoay THEO chiều kim đồng hồ** (kéo tiếp tuyến CW) → cuộn tới → lộ dần các dịch vụ ÍT dùng ("hàng trăm bên dưới"). **Xoay NGƯỢC** → quay về nhóm **thường dùng** (trạng thái nghỉ).
+- **Trạng thái nghỉ = mục thường dùng + ghim** (xếp theo `usage`), để cơ-bắp nhớ vị trí; đuôi dài nằm sâu trong vòng, xoay mới thấy. Hai đầu cung **mờ dần** (mục vào/ra êm).
+- **Chọn** = kéo RA XA rồi thả trúng mục (giữ đúng cử chỉ Tùng đã có). **Về Home ngay** = **chạm nút TÂM** bất cứ lúc nào.
+
+### 5B.2 Phân tầng — vòng lồng vòng (nav tầng-2 CŨNG THẾ)
+Cùng một tương tác cho mọi tầng; nút tâm = về Home (chạm) / lùi 1 tầng (giữ):
+- **L1** (cổng): service — Chat · Farm · Work · Join · **Wallet · SPO** · … (đuôi dài = dịch vụ cộng đồng).
+- **L2** (trong 1 service): ví dụ **Wallet → Phoenix · Standard**; **SPO → Wallet · Pool · Fund · Voting** (+ cntools mở rộng, xem 5B.4).
+- **L3** (trong 1 ví): **Send · Receive · Staking · Voting**.
+
+### 5B.3 Khi nào bật vòng quay (đừng dùng quá tay)
+- Danh sách **≤ cửa sổ** (vd ≤7 service lõi) → cung tĩnh như hiện tại, KHÔNG cần xoay.
+- Danh sách **> cửa sổ** (Wallet-tools, SPO, hàng trăm dịch vụ) → bật rotary. Tự động theo số mục, không phải hai component khác nhau.
+
+### 5B.4 Tab SPO — bám cntools (Guild Operators) để chuẩn hoá
+Anh liệt kê SPO: Wallet · Pool · Fund · Voting — đây đúng 4 nhóm chính của **cntools**. Bộ đầy đủ (để PhoenixKey map khi build):
+
+| Nhóm cntools | Ý nghĩa | Tab con gợi ý (L3) |
+|---|---|---|
+| **Wallet** | quản lý ví node | New/Import · List · Show · Delegate · Encrypt/Decrypt |
+| **Funds** | dòng tiền | Send · Delegate · Withdraw Rewards |
+| **Pool** | vận hành pool | New · Register · Modify · Retire · Show · Rotate KES |
+| **Vote** | quản trị on-chain | Governance/DRep (CIP-1694) · Catalyst |
+| Transaction | ký/gửi giao dịch | Sign · Submit · Witness |
+| Blocks | theo dõi block đúc | — |
+| Backup & Restore | sao lưu khoá | — |
+| Advanced | mint token/metadata | — |
+
+→ 4 nhóm anh nêu là **cửa sổ nghỉ** của vòng SPO; Transaction/Blocks/Backup/Advanced nằm trong phần **xoay tới**. (Nội dung công cụ SPO/Wallet là **PhoenixKey build** — SG9 chỉ thiết kế VỎ chứa: vòng quay + tầng. Không đụng logic ví/pool.)
+
+### 5B.5 Khả thi + rủi ro (thật)
+- **Khả thi RN**: `HomeRadialOverlay` đã có geometry cung + PanResponder. Thêm: kéo **tiếp tuyến** → góc xoay danh sách; kéo **hướng tâm-ra** → chọn (đã có). Cần ngưỡng phân biệt 2 cử chỉ (trục nào trội).
+- **Rủi ro & giảm thiểu**: (a) *lẫn cử chỉ* xoay↔chọn → ngưỡng góc/bán kính + snap-to-mục; (b) *khó phát hiện đuôi dài* → chấm/khía quanh vòng báo "còn nữa" + quán tính vẩy; (c) *độ chính xác màn nhỏ* → giới hạn cửa sổ + hit-target to; (d) *tiếp cận* → fallback danh sách phẳng cho screen-reader; (e) *hiệu năng* → ảo hoá, chỉ render cửa sổ + lân cận.
+- **Trạng thái**: THIẾT KẾ (spec) — giao Tùng dựng khi §4 cổng đã ổn trên máy thật. Không chặn merge PR hiện tại.
+
+---
+
 ## 6. Home tối giản (chờ Tùng — chạm HomeScreen, để Tùng chủ trì)
 Anh chốt: Home luôn **gọn nhẹ, ít nút**, không làm ngộp; Quick-Access dời về TỪNG service (chuẩn + thích ứng + ghim).
 - **Bỏ số giả** — ✅ ĐÃ LÀM: bỏ hẳn stat "Việc làm phù hợp" (`workMatches` số cứng, không nguồn thật). ProofChat nay nối tin-chưa-đọc THẬT từ store; thêm hàng "Ví của tôi" đọc số dư THẬT từ chain (`selectChainWallet` → "Chưa đồng bộ" nếu chưa có, KHÔNG số bịa).
@@ -168,7 +211,7 @@ Thêm trục `luminance: 'day' | 'dim' | 'night'` cạnh `adaptive.ts` (đang lo
 | Hạng mục | Trạng thái | Ai |
 |---|---|---|
 | §1 Frame song ngữ + sửa nhãn lệch (gồm Me/Tôi + avatar) | **ĐÃ CODE** (PR này, tsc sạch) | Claude → Tùng review |
-| §2 Tab-bar persona-adaptive | **ĐÃ CODE** (tsc sạch · 12 unit-test xanh) | Tùng |
+| §2 Tab-bar persona-adaptive | **KHUNG ĐÃ CODE** (tsc sạch · 12 unit-test xanh) · ⚠ thích ứng runtime hiện **NO-OP** — `usage` chưa nối nguồn Work → mọi user thấy thanh TĨNH `Chat·Farm·Home·Work·Me` (`'farmer'`=`'new'` layout); ràng buộc "1 đổi/phiên + toast" là **seam ngủ** tới khi có slice usage | Tùng |
 | §3 Trace nút-quét | **ĐÃ CODE** (màn quét + nút Home header + mục cổng §4 + deep-link · tsc sạch · 7 unit-test xanh) · chờ test camera máy thật | Tùng |
 | §4 Cổng thống nhất (tái nút xoè Tùng, nâng z-order) | **ĐÃ CODE** cung = service thuần + **arc con 2 tầng (hành động nhanh)** + Trace nổi bật giữa · z-order ở root (tsc sạch · 8 unit-test xanh) · chờ test cử chỉ máy | Tùng |
 | §5 SubHome thu gọn + SubHomeFrame | **ĐÃ CODE** khung (tsc sạch · 10 unit-test xanh) · chờ wire vào màn app con | Tùng |

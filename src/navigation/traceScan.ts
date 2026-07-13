@@ -14,17 +14,15 @@
 // Home + deep-link cùng tham chiếu.
 export const TRACE_SCAN_ROUTE_NAME = 'TraceScan';
 
-// Đích quét HỢP LỆ: chỉ các màn CHI TIẾT/truy-xuất (soi nguồn gốc). Whitelist để
-// mã QR lạ KHÔNG điều hướng bừa tới màn host nhạy cảm.
+// Đích quét HỢP LỆ: CHỈ các màn CHI TIẾT theo-sản-phẩm (soi nguồn gốc). Trace là
+// hành động phía TIÊU DÙNG "dùng-rồi-thoát" (§3) → chỉ đưa người quét tới trang
+// chi tiết của đúng thực thể trên bao bì, KHÔNG tới danh sách/dashboard nội bộ hay
+// luồng ĐĂNG KÝ (TreeIdentity/AnimalIdentity là enroll phía SẢN XUẤT — không phải
+// đích soi nguồn gốc). Whitelist hẹp cũng chặn QR lạ điều hướng bừa vào màn nhạy cảm.
 const TRACE_TARGET_WHITELIST = new Set<string>([
   'TreeDetail',
   'FarmDetail',
   'AnimalDetail',
-  'TreeIdentity',
-  'AnimalIdentity',
-  'Farms',
-  'Dashboard',
-  'Activity',
 ]);
 
 export interface TraceTarget {

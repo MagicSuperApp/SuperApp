@@ -172,11 +172,17 @@ Anh liệt kê SPO: Wallet · Pool · Fund · Voting — đây đúng 4 nhóm ch
 
 ---
 
-## 6. Home tối giản (chờ Tùng — chạm HomeScreen, để Tùng chủ trì)
-Anh chốt: Home luôn **gọn nhẹ, ít nút**, không làm ngộp; Quick-Access dời về TỪNG service (chuẩn + thích ứng + ghim).
-- **Bỏ số giả** — ✅ ĐÃ LÀM: bỏ hẳn stat "Việc làm phù hợp" (`workMatches` số cứng, không nguồn thật). ProofChat nay nối tin-chưa-đọc THẬT từ store; thêm hàng "Ví của tôi" đọc số dư THẬT từ chain (`selectChainWallet` → "Chưa đồng bộ" nếu chưa có, KHÔNG số bịa).
-- **Bỏ khối Quick Actions Trace khỏi Home** (`HomeScreen` QuickActionSheet ~L62–L80, `handleQuickAdd*` ~L509+) — ⏳ CHỜ: dời vào Quick-Access của Farm/Trace. Vì khối này gọi handler module (Trace/Farm), giữ nguyên tới khi Quick-Access per-service sẵn sàng để không hụt entry-point (Tùng chủ trì).
-- Home còn: chào + trạng thái ví (thật ✅) + hoạt động gần đây (thật). KHÔNG lưới hành động dày (⏳ carousel + lưới Dịch vụ dày vẫn còn — gỡ cùng đợt Quick-Access).
+## 6. Home tối giản — LÀM NGAY (PR follow-up, Tùng chủ trì)
+Anh chốt: Home luôn **gọn nhẹ, ít nút**, không làm ngộp. **KHÔNG hoãn tới khi có Quick-Access hoàn chỉnh** — rà lại thấy phần lớn Home-trim KHÔNG bị chặn (cổng xoè §4 đã gánh gần hết hành động).
+
+**Đã làm ✅:** bỏ số giả — xoá stat "Việc làm phù hợp" (`workMatches` cứng); ProofChat nối tin-chưa-đọc THẬT; hàng "Ví của tôi" số dư THẬT (`selectChainWallet` → "Chưa đồng bộ" nếu chưa có).
+
+**Làm NGAY ở PR kế (không chặn — cổng đã có lối):**
+1. **Gỡ carousel + lưới "Dịch vụ" dày** (`HomeScreen.tsx:791` BannerCarousel, `:878–898` moduleGrid + LayoutToggle) — thuần nội dung Home, KHÔNG phụ thuộc gì. Đổi-service đã có ở thanh tab + cổng xoè.
+2. **Gỡ hàng quick-action Tree/Fruit/Animal/Farm** (`:798–877`) — 3/4 hành động ĐÃ nằm trong cổng tier-2 (`resolveGateItems.ts:66–69`: Quét cây·con vật·nhãn thuốc·Thêm vườn). **Chỉ cần thêm 1 dòng "Quét quả → Fruit" vào `SUB_ACTIONS.Farms`** để không mất chức năng, rồi gỡ hàng khỏi Home.
+3. **Home còn lại (mục tiêu):** chào + trạng thái ví (thật) + hoạt động gần đây (thật) + tối đa 1 lối vào nhẹ. Hết ngộp.
+
+> Vì các nút gọi handler module (Trace/Farm) nên **Tùng chủ trì** thi công; SG9 lo phần cổng (thêm "Quả"). Quick-Access per-service (bản thích ứng+ghim đầy đủ) vẫn là đợt sau — nhưng Home-gọn KHÔNG chờ nó.
 
 ---
 
@@ -215,7 +221,7 @@ Thêm trục `luminance: 'day' | 'dim' | 'night'` cạnh `adaptive.ts` (đang lo
 | §3 Trace nút-quét | **ĐÃ CODE** (màn quét + nút Home header + mục cổng §4 + deep-link · tsc sạch · 7 unit-test xanh) · chờ test camera máy thật | Tùng |
 | §4 Cổng thống nhất (tái nút xoè Tùng, nâng z-order) | **ĐÃ CODE** cung = service thuần + **arc con 2 tầng (hành động nhanh)** + Trace nổi bật giữa · z-order ở root (tsc sạch · 8 unit-test xanh) · chờ test cử chỉ máy | Tùng |
 | §5 SubHome thu gọn + SubHomeFrame | **ĐÃ CODE** khung (tsc sạch · 10 unit-test xanh) · chờ wire vào màn app con | Tùng |
-| §6 Home tối giản | **BỎ số bịa xong** (Work) + nối ProofChat/Ví THẬT (tsc sạch) · CÒN: gỡ Quick Actions + lưới dày (chờ Quick-Access per-service) | Tùng chủ trì |
+| §6 Home tối giản | **BỎ số bịa xong** + ví/ProofChat THẬT · **LÀM NGAY PR kế** (không hoãn): gỡ carousel + lưới + hàng quick-action (cổng đã gánh; thêm "Quả" vào cổng) | Tùng chủ trì |
 | §7 react-native-screens | Spec xong · cần test máy | Tùng |
 | §8 Màu tươi + luminance | Spec xong · code chờ | Tùng |
 | Mô phỏng HTML (`_mockups/nav-shell-ux.html`) | **ĐÃ CÓ** | Claude |

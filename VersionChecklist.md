@@ -27,7 +27,7 @@
 | # | Hạng mục | TT | Chủ | Ghi chú |
 |---|---|---|---|---|
 | 2.1 | Bỏ số liệu bịa trên Home (workMatches…) | ✅ | Tùng | nối ví/ProofChat số thật |
-| 2.2 | **Home tối giản** — gỡ Quick Actions (Tree/Fruit/Animal/Farm) + lưới Dịch vụ dày + carousel | ⬜ | Tùng | ⚠ ƯU TIÊN #1 của anh chưa đạt; chờ đợt Quick-Access-per-service |
+| 2.2 | **Home tối giản** — gỡ Quick Actions (Tree/Fruit/Animal/Farm) + lưới Dịch vụ dày + carousel | 🟡 | Tùng | ƯU TIÊN #1; **PR kế — KHÔNG hoãn** (cổng xoè đã gánh hành động; chỉ thêm "Quả" vào cổng). Xem SG9 §6 |
 | 2.3 | Quick-Access per-service (chuẩn + thích ứng + ghim) | ⬜ | Tùng | nơi TIẾP NHẬN các quick-action dời khỏi Home |
 | 2.4 | Onboarding hỏi "nhu cầu" → set persona mặc định | ⬜ | Tùng | SG9 §2.2; hiện thiếu màn Needs |
 

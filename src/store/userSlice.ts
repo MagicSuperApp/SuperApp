@@ -4,7 +4,7 @@ import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import { User } from '../types';
 import { database } from '../utils/database';
 import { databaseManager } from '../services/databaseManager';
-import { phoenixKeyApi, summarizeWalletAll } from '../services/phoenixKey-api';
+import { phoenixKeyApi, summarizeWalletAll, type WalletEntry } from '../services/phoenixKey-api';
 import { parseDidNetwork } from '../services/phoenixDid';
 
 interface Wallet {
@@ -36,6 +36,10 @@ interface PhoenixKey {
 interface UserState {
   currentUser: User | null;
   wallet: Wallet | null;
+  // CẢ HAI ví từ /wallet/{did}/all: `phoenix` (hệ-thống giữ, backend derive theo DID) và
+  // `standard` (CIP-1852, user tự giữ khoá từ Master_KEK). Rỗng = chưa refresh / chưa có ví.
+  // `wallet` ở trên chỉ là bản RÚT-GỌN 1-ví (tổng quan) — dùng `wallets` khi cần tách bạch.
+  wallets: WalletEntry[];
   phoenixKey: PhoenixKey | null;
   // Mạng Cardano THẬT theo danh tính (resolveNetwork). null = chưa rõ → UI dùng nhãn env.
   network: string | null;
@@ -49,6 +53,7 @@ interface UserState {
 const initialState: UserState = {
   currentUser: null,
   wallet: null,
+  wallets: [],
   phoenixKey: null,
   network: null,
   controllerPkh: null,
@@ -143,7 +148,9 @@ export const refreshWallet = createAsyncThunk(
       lastSynced: new Date().toISOString(),
       fromChain: true,
     };
-    return wallet;
+    // GIỮ NGUYÊN cả mảng ví (phoenix + standard) để UI hiện TÁCH BẠCH 2 ví — `wallet`
+    // ở trên chỉ là bản rút-gọn 1-ví cho các màn cũ (tổng quan / SDK).
+    return { wallet, wallets: all.wallets };
   }
 );
 
@@ -233,6 +240,7 @@ const userSlice = createSlice({
     logout: (state) => {
       state.currentUser = null;
       state.wallet = null;
+      state.wallets = [];
       state.phoenixKey = null;
       state.network = null;
       state.controllerPkh = null;   // audit #3: tránh rò khoá quản-trị sang tài-khoản kế
@@ -311,7 +319,8 @@ const userSlice = createSlice({
       })
       // Ví thật từ chuỗi — chỉ set khi lấy được, lỗi thì giữ nguyên (không bịa)
       .addCase(refreshWallet.fulfilled, (state, action) => {
-        state.wallet = action.payload;
+        state.wallet = action.payload.wallet;
+        state.wallets = action.payload.wallets;
       })
       // Mạng theo danh tính thật — chỉ set khi resolve được, null thì giữ nguyên
       .addCase(resolveNetwork.fulfilled, (state, action) => {
@@ -334,5 +343,12 @@ export const { setUser, setLoading, setError, updateCredits, logout } = userSlic
  */
 export const selectChainWallet = (state: { user: UserState }): Wallet | null =>
   state.user.wallet?.fromChain ? state.user.wallet : null;
+
+/**
+ * CẢ HAI ví (phoenix custody + standard CIP-1852) từ /wallet/{did}/all — để UI hiện
+ * TÁCH BẠCH. Rỗng = chưa refresh hoặc DID chưa có ví nào trên backend.
+ */
+export const selectChainWallets = (state: { user: UserState }): WalletEntry[] =>
+  state.user.wallets;
 
 export default userSlice.reducer;

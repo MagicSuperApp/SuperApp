@@ -5,6 +5,8 @@ import android.graphics.Bitmap
 import android.util.Log
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.Interpreter
+import org.tensorflow.lite.gpu.CompatibilityList
+import org.tensorflow.lite.gpu.GpuDelegate
 import org.tensorflow.lite.support.common.FileUtil
 import org.tensorflow.lite.support.common.ops.NormalizeOp
 import org.tensorflow.lite.support.image.ImageProcessor
@@ -62,15 +64,46 @@ object TreeReIDYolo {
         .add(NormalizeOp(0f, 255f))   // [0,255] → [0,1] (khớp Python /255)
         .build()
 
-    /** Nạp model (idempotent). Gọi khi bắt đầu phiên chụp. */
+    /** GPU delegate (nếu máy hỗ-trợ) — phải close cùng interpreter, tránh rò native. */
+    @Volatile
+    private var gpuDelegate: GpuDelegate? = null
+
+    /**
+     * Nạp model (idempotent). Gọi khi bắt đầu phiên chụp.
+     *
+     * NHIỆT: ưu-tiên GPU delegate — conv-net chạy trên GPU tốn ÍT ĐIỆN hơn CPU 2 luồng
+     * rất nhiều → máy mát hơn (field 13/07 báo nóng). Máy không hỗ-trợ / delegate dựng
+     * lỗi → RƠI VỀ CPU 2 luồng (hành-vi cũ), KHÔNG crash, gate vẫn chạy.
+     */
     @Synchronized
     fun ensureLoaded(context: Context) {
         if (interpreter != null) return
         try {
             val buf = FileUtil.loadMappedFile(context.applicationContext, MODEL)
+
+            // 1) Thử GPU.
+            val compat = try { CompatibilityList() } catch (_: Throwable) { null }
+            if (compat?.isDelegateSupportedOnThisDevice == true) {
+                try {
+                    val d = GpuDelegate(compat.bestOptionsForThisDevice)
+                    interpreter = Interpreter(buf, Interpreter.Options().apply { addDelegate(d) })
+                    gpuDelegate = d
+                    available = true
+                    Log.d(TAG, "✅ $MODEL nạp trên GPU delegate — gate BẬT (mát hơn CPU)")
+                    return
+                } catch (e: Throwable) {
+                    // Model có op GPU không dựng được → dọn delegate rồi rơi về CPU.
+                    Log.w(TAG, "GPU delegate dựng lỗi → dùng CPU: ${e.message}")
+                    try { gpuDelegate?.close() } catch (_: Throwable) {}
+                    gpuDelegate = null
+                    interpreter = null
+                }
+            }
+
+            // 2) Fallback CPU (hành-vi cũ).
             interpreter = Interpreter(buf, Interpreter.Options().apply { setNumThreads(2) })
             available = true
-            Log.d(TAG, "✅ $MODEL đã nạp — gate YOLO BẬT")
+            Log.d(TAG, "✅ $MODEL nạp trên CPU (2 luồng) — gate BẬT")
         } catch (e: Throwable) {
             interpreter = null
             available = false
@@ -131,6 +164,9 @@ object TreeReIDYolo {
     fun close() {
         try { interpreter?.close() } catch (_: Throwable) {}
         interpreter = null
+        // Delegate phải close SAU interpreter (interpreter còn tham chiếu native của nó).
+        try { gpuDelegate?.close() } catch (_: Throwable) {}
+        gpuDelegate = null
         available = false
     }
 }

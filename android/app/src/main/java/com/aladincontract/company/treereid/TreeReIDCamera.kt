@@ -32,7 +32,10 @@ object TreeReIDCamera {
     private var previewRef: WeakReference<PreviewView>? = null
 
     // ── YOLO gate (Plan A) — phân-tích frame preview để lọc "có cây" ─────────
-    private const val INFER_INTERVAL_MS = 150L
+    // NHIỆT (field Giang 13/07: máy nóng): 150ms = 6.7 lần/giây là THỪA cho một cái gate
+    // "trong khung có cây không" — người quét không vung máy 7 lần/giây. Hạ 400ms (2.5/giây)
+    // cắt ~62% tải YOLO trên CPU mà KHÔNG đổi trải nghiệm gate.
+    private const val INFER_INTERVAL_MS = 400L
     private val analysisExecutor = Executors.newSingleThreadExecutor()
     @Volatile private var lastConf = -1f
     @Volatile private var lastConfAtMs = 0L

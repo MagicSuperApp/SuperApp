@@ -1,0 +1,82 @@
+// navigation/subHomeLabels.test.ts
+//
+// SG9 §5 — kiểm chứng xếp hạng tab con: top-N mặc định theo thứ tự khai, usage
+// re-rank, ghim đè, và khớp ví dụ spec (Chat/Farm).
+
+import {
+  rankSubTabs,
+  subNational,
+  subEn,
+  SUBHOME_FRAME,
+  type SubTab,
+} from './subHomeLabels';
+
+const CHAT = SUBHOME_FRAME.ProofChatHome;
+const FARM = SUBHOME_FRAME.Farms;
+const keys = (tabs: SubTab[]) => tabs.map((t) => t.key);
+
+describe('rankSubTabs — mặc định (chưa có usage)', () => {
+  it('Chat: hiện Chats·Calls·Pins + ⌄(Docs) — khớp ví dụ spec', () => {
+    const { visible, overflow } = rankSubTabs(CHAT);
+    expect(keys(visible)).toEqual(['chats', 'calls', 'pins']);
+    expect(keys(overflow)).toEqual(['docs']);
+  });
+
+  it('Farm: hiện Garden·Trees·Care + ⌄(Carbon) — khớp ví dụ spec', () => {
+    const { visible, overflow } = rankSubTabs(FARM);
+    expect(keys(visible)).toEqual(['garden', 'trees', 'care']);
+    expect(keys(overflow)).toEqual(['carbon']);
+  });
+});
+
+describe('rankSubTabs — usage re-rank', () => {
+  it('Docs dùng nhiều → lên khung, đẩy tab ít dùng nhất xuống', () => {
+    const { visible, overflow } = rankSubTabs(CHAT, { docs: 10, pins: 0 });
+    expect(keys(visible)).toContain('docs');
+    expect(keys(overflow)).toEqual(['pins']);
+  });
+
+  it('usage bằng nhau → giữ thứ tự khai báo (ổn định)', () => {
+    const { visible } = rankSubTabs(CHAT, { chats: 2, calls: 2, pins: 2, docs: 2 });
+    expect(keys(visible)).toEqual(['chats', 'calls', 'pins']);
+  });
+});
+
+describe('rankSubTabs — ghim đè', () => {
+  it('ghim Carbon → luôn hiển thị dù usage thấp', () => {
+    const { visible, overflow } = rankSubTabs(FARM, { garden: 9, trees: 9, care: 9 }, ['carbon']);
+    expect(keys(visible)).toContain('carbon');
+    expect(keys(visible)[0]).toBe('carbon'); // ghim đứng đầu
+    expect(keys(overflow)).toHaveLength(1);
+  });
+
+  it('ghim nhiều → theo thứ tự ghim', () => {
+    const { visible } = rankSubTabs(FARM, {}, ['carbon', 'care']);
+    expect(keys(visible).slice(0, 2)).toEqual(['carbon', 'care']);
+  });
+});
+
+describe('rankSubTabs — biên', () => {
+  it('ít tab hơn visibleCount → overflow rỗng, không lỗi', () => {
+    const two = CHAT.slice(0, 2);
+    const { visible, overflow } = rankSubTabs(two);
+    expect(keys(visible)).toEqual(['chats', 'calls']);
+    expect(overflow).toEqual([]);
+  });
+
+  it('visibleCount tuỳ biến', () => {
+    const { visible, overflow } = rankSubTabs(CHAT, {}, null, 2);
+    expect(visible).toHaveLength(2);
+    expect(overflow).toHaveLength(2);
+  });
+});
+
+describe('nhãn song ngữ', () => {
+  it('EN là nhãn hiển thị', () => {
+    expect(subEn(CHAT[0])).toBe('Chats');
+  });
+  it('quốc gia = tooltip (vi)', () => {
+    expect(subNational(CHAT[0])).toBe('Trò chuyện');
+    expect(subNational(FARM[3])).toBe('Carbon');
+  });
+});

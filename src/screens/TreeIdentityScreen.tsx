@@ -696,6 +696,20 @@ const TreeIdentityScreen: React.FC = () => {
     });
   };
 
+  // ── "Không phải cây này — đây là CÂY MỚI" (từ luồng MATCH sai) ────────────
+  // Field (Giang 13/07): server khớp NHẦM cây đã có (ngưỡng same-species chưa
+  // calibrate) → user biết là cây khác NHƯNG bộ chọn "Cây khác" chỉ liệt kê cây
+  // ĐÃ CÓ → KẸT, không tạo được cây mới nào nữa. Mở lối đăng-ký-mới ngay tại đây
+  // để field không phải chờ server chỉnh ngưỡng.
+  const handleRegisterNewFromMatch = () => {
+    setShowTreePicker(false);
+    // Phản hồi top-1 SAI (giúp server hiệu-chỉnh ngưỡng). Best-effort, không chặn UI.
+    if (queryId && !verdictSent && !isSendingVerdict) {
+      void sendVerdict('wrong');
+    }
+    handleRegisterNew();
+  };
+
   // ── Reset về trạng thái ban đầu ───────────────────────────────────────────
   const handleReset = () => {
     rLog.treeIdentity.reset();
@@ -910,6 +924,26 @@ const TreeIdentityScreen: React.FC = () => {
                 visible={showFactors}
               />
             )}
+          </View>
+        )}
+
+        {/* MATCH nhưng SAI cây → lối thoát đăng-ký cây mới.
+            Server có thể khớp NHẦM cây cùng-loài (ngưỡng chưa calibrate). Không có
+            lối này thì user KẸT: "Cây khác" chỉ chọn được cây đã có (field Giang 13/07). */}
+        {decision === 'MATCH' && allowEnrollNew && (
+          <View style={styles.actionGroup}>
+            <TouchableOpacity
+              style={[styles.decisionBtn, styles.btnOutlineGreen]}
+              onPress={handleRegisterNewFromMatch}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Không phải cây này, đăng ký cây mới"
+            >
+              <Icon name="plus-circle-outline" size={18} color="#1b5e20" />
+              <Text style={[styles.decisionBtnText, { color: '#1b5e20' }]}>
+                Không phải cây này — Đăng ký cây mới
+              </Text>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -1358,6 +1392,28 @@ const TreeIdentityScreen: React.FC = () => {
                   </TouchableOpacity>
                 )}
               />
+            )}
+
+            {/* LỐI THOÁT: không cây nào trong danh sách là đúng → ĐÂY LÀ CÂY MỚI.
+                Thiếu lối này thì khi server khớp NHẦM, user KẸT không tạo được cây
+                mới nào nữa (field Giang 13/07). */}
+            {!isLoadingPicker && !pickerError && (
+              <TouchableOpacity
+                style={styles.pickerNewBtn}
+                onPress={handleRegisterNewFromMatch}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel="Đây là cây mới, đăng ký cây mới"
+              >
+                <Icon name="plus-circle" size={20} color="#1b5e20" />
+                <View style={styles.pickerRowBody}>
+                  <Text style={styles.pickerNewTitle}>Đây là cây mới</Text>
+                  <Text style={styles.pickerRowSub}>
+                    Không phải cây nào ở trên — đăng ký thành cây mới
+                  </Text>
+                </View>
+                <Icon name="chevron-right" size={20} color="#1b5e20" />
+              </TouchableOpacity>
             )}
           </View>
         </View>
@@ -1938,6 +1994,13 @@ const styles = StyleSheet.create({
   },
   btnGreen: { backgroundColor: HEADER_BG },
   btnBlue: { backgroundColor: '#1565c0' },
+  // Viền xanh (phụ) — lối thoát "không phải cây này" ở luồng MATCH: rõ nhưng KHÔNG
+  // tranh vai với hành-động chính, tránh user bấm nhầm tạo cây trùng.
+  btnOutlineGreen: {
+    backgroundColor: '#e8f5e9',
+    borderWidth: 1.5,
+    borderColor: '#1b5e20',
+  },
   decisionBtnText: {
     color: NEUTRAL.white,
     fontSize: 15,
@@ -2159,6 +2222,26 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: NEUTRAL.textMuted,
     marginTop: 1,
+  },
+  // Lối thoát "Đây là cây mới" — nổi bật, tách khỏi danh sách cây đã có.
+  pickerNewBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginHorizontal: 12,
+    marginTop: 8,
+    marginBottom: 12,
+    paddingVertical: 13,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: '#1b5e20',
+    backgroundColor: '#e8f5e9',
+  },
+  pickerNewTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1b5e20',
   },
 
   // ── M4 matcher picker ─────────────────────────────────────────────────────

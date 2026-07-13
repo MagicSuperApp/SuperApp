@@ -23,7 +23,9 @@ final class TreeReIDYolo {
     private let numDet = 300
     private let totalValues = 38   // 6 box + 32 mask coeff
     private let confIndex = 4      // x1,y1,x2,y2,[conf],cls
-    private let inferIntervalMs: Double = 150
+    /// NHIỆT (field Giang 13/07: máy nóng): 150ms = 6.7 lần/giây là THỪA cho gate
+    /// "trong khung có cây không". Hạ 400ms (2.5/giây) → cắt ~62% tải CPU, gate vẫn nhạy.
+    private let inferIntervalMs: Double = 400
 
     /// Ngưỡng coi là "có cây trong khung". Hạ 0.25 để KHÔNG chặn oan khi thân/vỏ bị
     /// lá che một phần (cây rậm) — ReID chỉ cần thấy phần thân/vỏ. Chỉnh theo thực địa.
@@ -54,6 +56,10 @@ final class TreeReIDYolo {
 
     // MARK: - Load
     /// Nạp model (idempotent). Gọi khi bắt đầu phiên chụp.
+    ///
+    /// NHIỆT: ưu-tiên Core ML delegate → model chạy trên NEURAL ENGINE thay CPU, tốn ít
+    /// điện hơn hẳn → máy mát (field 13/07 báo nóng). Máy cũ / op không hỗ-trợ → RƠI VỀ
+    /// CPU 2 luồng (hành-vi cũ), gate vẫn chạy bình thường.
     func loadModel() {
         lock.lock(); defer { lock.unlock() }
         if interpreter != nil { return }
@@ -62,14 +68,31 @@ final class TreeReIDYolo {
             print("[TreeReIDYolo] ⚠️ yolov26seg.tflite không có trong bundle — gate TẮT (fallback stillness)")
             return
         }
+
+        var opts = Interpreter.Options()
+        opts.threadCount = 2
+
+        // 1) Thử Core ML (Neural Engine).
+        if let coreML = CoreMLDelegate() {
+            do {
+                let itp = try Interpreter(modelPath: path, options: opts, delegates: [coreML])
+                try itp.allocateTensors()
+                interpreter = itp
+                available = true
+                print("[TreeReIDYolo] ✅ model nạp trên Core ML delegate — gate BẬT (mát hơn CPU)")
+                return
+            } catch {
+                print("[TreeReIDYolo] Core ML delegate lỗi → dùng CPU: \(error)")
+            }
+        }
+
+        // 2) Fallback CPU (hành-vi cũ).
         do {
-            var opts = Interpreter.Options()
-            opts.threadCount = 2
             let itp = try Interpreter(modelPath: path, options: opts)
             try itp.allocateTensors()
             interpreter = itp
             available = true
-            print("[TreeReIDYolo] ✅ model nạp OK — gate BẬT")
+            print("[TreeReIDYolo] ✅ model nạp trên CPU (2 luồng) — gate BẬT")
         } catch {
             interpreter = nil
             available = false

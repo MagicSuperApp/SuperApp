@@ -176,6 +176,11 @@ dependencies {
     // đặt ở app/src/main/assets (tự bỏ vào). Version khớp resolutionStrategy.force ở trên.
     implementation 'org.tensorflow:tensorflow-lite:2.14.0'
     implementation 'org.tensorflow:tensorflow-lite-support:0.4.4'
+    // GPU delegate — chạy YOLO gate trên GPU thay CPU. Conv-net trên GPU tiêu-thụ điện
+    // THẤP hơn nhiều so với CPU 2 luồng → máy MÁT hơn hẳn (field: máy nóng 13/07).
+    // Máy không hỗ-trợ → TreeReIDYolo tự rơi về CPU (có fallback, không crash).
+    implementation 'org.tensorflow:tensorflow-lite-gpu:2.14.0'
+    implementation 'org.tensorflow:tensorflow-lite-gpu-api:2.14.0'
 
     // LOCATION - play-services-location được cung cấp bởi react-native-geolocation-service
 

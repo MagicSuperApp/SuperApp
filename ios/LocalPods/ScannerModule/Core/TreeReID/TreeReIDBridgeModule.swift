@@ -633,4 +633,33 @@ final class TreeReIDBridgeModule: RCTEventEmitter {
             "pitch": values.pitch as Any
         ])
     }
+
+    // MARK: - Cam controls (flash + lens 0.5x)
+
+    @objc(getCameraCapabilities:rejecter:)
+    func getCameraCapabilities(
+        _ resolve: @escaping RCTPromiseResolveBlock,
+        rejecter reject: @escaping RCTPromiseRejectBlock
+    ) {
+        let caps = cameraManager.cameraCapabilities()
+        resolve(["hasTorch": caps.hasTorch, "supportsUltraWide": caps.supportsUltraWide])
+    }
+
+    @objc(setTorch:resolver:rejecter:)
+    func setTorch(
+        _ on: Bool,
+        resolver resolve: @escaping RCTPromiseResolveBlock,
+        rejecter reject: @escaping RCTPromiseRejectBlock
+    ) {
+        resolve(cameraManager.setTorch(on))
+    }
+
+    @objc(setUltraWide:resolver:rejecter:)
+    func setUltraWide(
+        _ on: Bool,
+        resolver resolve: @escaping RCTPromiseResolveBlock,
+        rejecter reject: @escaping RCTPromiseRejectBlock
+    ) {
+        cameraManager.setUltraWide(on) { applied in resolve(applied) }
+    }
 }

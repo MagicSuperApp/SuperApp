@@ -83,6 +83,63 @@ final class CameraSessionManager: NSObject {
         }
     }
 
+    // MARK: - Cam controls (flash + lens 0.5x)
+
+    /// (có đèn, có lens 0.5x). Ultra-wide = tồn-tại builtInUltraWideCamera phía sau.
+    func cameraCapabilities() -> (hasTorch: Bool, supportsUltraWide: Bool) {
+        let hasTorch = videoDeviceInput?.device.hasTorch ?? false
+        let ultra = AVCaptureDevice.default(.builtInUltraWideCamera, for: .video, position: .back) != nil
+        return (hasTorch, ultra)
+    }
+
+    /// Bật/tắt đèn. Trả trạng-thái THỰC (false nếu không có đèn / lỗi). Torch reset khi
+    /// đổi lens nên UI nên áp lại sau setUltraWide.
+    @discardableResult
+    func setTorch(_ on: Bool) -> Bool {
+        guard let device = videoDeviceInput?.device, device.hasTorch else { return false }
+        do {
+            try device.lockForConfiguration()
+            device.torchMode = on ? .on : .off
+            device.unlockForConfiguration()
+            return on
+        } catch {
+            return false
+        }
+    }
+
+    /// Đổi lens 0.5x (builtInUltraWideCamera) ↔ 1x (builtInWideAngleCamera) bằng cách
+    /// tráo videoDeviceInput. Chạy trên sessionQueue; completion trả trạng-thái THỰC (đang 0.5x?).
+    func setUltraWide(_ on: Bool, completion: @escaping (Bool) -> Void) {
+        sessionQueue.async { [weak self] in
+            guard let self = self else { completion(false); return }
+            let type: AVCaptureDevice.DeviceType = on ? .builtInUltraWideCamera : .builtInWideAngleCamera
+            guard let current = self.videoDeviceInput else { completion(false); return }
+            if current.device.deviceType == type { completion(on); return } // đã đúng lens
+            guard let newDevice = AVCaptureDevice.default(type, for: .video, position: .back),
+                  let newInput = try? AVCaptureDeviceInput(device: newDevice) else {
+                completion(current.device.deviceType == .builtInUltraWideCamera); return
+            }
+            self.captureSession.beginConfiguration()
+            self.captureSession.removeInput(current)
+            if self.captureSession.canAddInput(newInput) {
+                self.captureSession.addInput(newInput)
+                self.videoDeviceInput = newInput
+                try? newDevice.lockForConfiguration()
+                if newDevice.isFocusModeSupported(.continuousAutoFocus) { newDevice.focusMode = .continuousAutoFocus }
+                if newDevice.isExposureModeSupported(.continuousAutoExposure) { newDevice.exposureMode = .continuousAutoExposure }
+                newDevice.unlockForConfiguration()
+                self.captureSession.commitConfiguration()
+                completion(on)
+            } else {
+                // Không thêm được → khôi-phục input cũ.
+                self.captureSession.addInput(current)
+                self.videoDeviceInput = current
+                self.captureSession.commitConfiguration()
+                completion(current.device.deviceType == .builtInUltraWideCamera)
+            }
+        }
+    }
+
     /// Capture a high-res photo (called when a sector is triggered).
     /// Must dispatch to sessionQueue — AVCapturePhotoOutput.capturePhoto(with:delegate:)
     /// requires the same queue used to startRunning(); calling from any other queue crashes.

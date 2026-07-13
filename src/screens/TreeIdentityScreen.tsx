@@ -194,6 +194,11 @@ const TreeIdentityScreen: React.FC = () => {
   // Android: captures tự quản lý cục bộ bằng mảng uri ảnh
   const [androidImageUris, setAndroidImageUris] = useState<string[]>([]);
 
+  // ── Cam controls: flash (mặc-định TẮT) + lens 0.5x ────────────────────────
+  const [camCaps, setCamCaps] = useState({ hasTorch: false, supportsUltraWide: false });
+  const [torchOn, setTorchOn] = useState(false);
+  const [ultraWideOn, setUltraWideOn] = useState(false);
+
   // iOS: đếm capture từ native event (capturesRedux chỉ được điền SAU stop).
   const [iosCaptureCount, setIosCaptureCount] = useState(0);
   // Snapshot tổng-số-capture tại thời điểm advance sang lượt 2 → tính per-round.
@@ -380,6 +385,48 @@ const TreeIdentityScreen: React.FC = () => {
       Alert.alert('Lỗi', 'Không thể bắt đầu chụp. Vui lòng thử lại.');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // ── Cam controls: nạp khả-năng khi bật camera; reset khi tắt ──────────────
+  // cameraInfo/device chỉ sẵn SAU khi preview bind → thử lại 1 lần nếu lần đầu rỗng.
+  useEffect(() => {
+    if (!isCaptureActive || !TreeReIDBridge.isAvailable()) {
+      setCamCaps({ hasTorch: false, supportsUltraWide: false });
+      setTorchOn(false);
+      setUltraWideOn(false);
+      return;
+    }
+    let alive = true;
+    let tries = 0;
+    const probe = async () => {
+      const caps = await TreeReIDBridge.getCameraCapabilities();
+      if (!alive) return;
+      if ((caps.hasTorch || caps.supportsUltraWide) || tries >= 3) {
+        setCamCaps(caps);
+      } else {
+        tries += 1;
+        setTimeout(probe, 400); // camera chưa bind xong → thử lại
+      }
+    };
+    probe();
+    return () => { alive = false; };
+  }, [isCaptureActive]);
+
+  const toggleTorch = async () => {
+    const next = !torchOn;
+    const applied = await TreeReIDBridge.setTorch(next);
+    setTorchOn(applied);
+  };
+
+  const toggleUltraWide = async () => {
+    const next = !ultraWideOn;
+    const applied = await TreeReIDBridge.setUltraWide(next);
+    setUltraWideOn(applied);
+    // Đổi lens reset đèn (iOS) → áp lại nếu user đang bật đèn.
+    if (torchOn) {
+      const t = await TreeReIDBridge.setTorch(true);
+      setTorchOn(t);
     }
   };
 
@@ -1099,6 +1146,36 @@ const TreeIdentityScreen: React.FC = () => {
             )}
             {/* Nháy "chụp" dịu — chỉ trong khung camera */}
             {nativeHudActive && <CaptureFlash count={totalCaptures} />}
+
+            {/* Điều-khiển cam: đèn (mặc-định TẮT) + lens 0.5x. Chỉ hiện khi máy hỗ-trợ. */}
+            {TreeReIDBridge.isAvailable() && isCaptureActive && (
+              <View style={styles.camControls}>
+                {camCaps.hasTorch && (
+                  <TouchableOpacity
+                    style={[styles.camCtrlBtn, torchOn && styles.camCtrlBtnOn]}
+                    onPress={toggleTorch}
+                    activeOpacity={0.8}
+                  >
+                    <Icon
+                      name={torchOn ? 'flash' : 'flash-off'}
+                      size={20}
+                      color={torchOn ? '#1a1a1a' : NEUTRAL.white}
+                    />
+                  </TouchableOpacity>
+                )}
+                {camCaps.supportsUltraWide && (
+                  <TouchableOpacity
+                    style={[styles.camCtrlBtn, ultraWideOn && styles.camCtrlBtnOn]}
+                    onPress={toggleUltraWide}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.camCtrlText, ultraWideOn && styles.camCtrlTextOn]}>
+                      {ultraWideOn ? '0.5x' : '1x'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
           </View>
           {nativeHudActive && (
             <View style={styles.topZone}>
@@ -1671,6 +1748,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  camControls: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    gap: 10,
+    alignItems: 'center',
+  },
+  camCtrlBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  camCtrlBtnOn: {
+    backgroundColor: '#FFD34E',
+    borderColor: '#FFD34E',
+  },
+  camCtrlText: { color: NEUTRAL.white, fontSize: 13, fontWeight: '800' },
+  camCtrlTextOn: { color: '#1a1a1a' },
   bottomZone: {
     backgroundColor: PANEL_BG,
     paddingHorizontal: 14,

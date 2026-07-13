@@ -157,13 +157,13 @@ Anh liệt kê SPO: Wallet · Pool · Fund · Voting — đây đúng 4 nhóm ch
 | **Wallet** | quản lý ví node | New/Import · List · Show · Delegate · Encrypt/Decrypt |
 | **Funds** | dòng tiền | Send · Delegate · Withdraw Rewards |
 | **Pool** | vận hành pool | New · Register · Modify · Retire · Show · Rotate KES |
-| **Vote** | quản trị on-chain | Governance/DRep (CIP-1694) · Catalyst |
-| Transaction | ký/gửi giao dịch | Sign · Submit · Witness |
-| Blocks | theo dõi block đúc | — |
-| Backup & Restore | sao lưu khoá | — |
-| Advanced | mint token/metadata | — |
+| **Vote** | quản trị on-chain (Conway/CIP-1694, thêm mới — dời khỏi menu Pool) | Governance actions · DRep (uỷ/đăng ký) |
+| Transaction | ký/gửi giao dịch (hybrid/offline) | Sign · Submit |
+| Blocks | lịch leader + thống kê block đúc | — |
+| Backup | sao lưu/khôi phục ví·pool·config | — |
+| Advanced | metadata · multi-asset (mint token) | — |
 
-→ 4 nhóm anh nêu là **cửa sổ nghỉ** của vòng SPO; Transaction/Blocks/Backup/Advanced nằm trong phần **xoay tới**. (Nội dung công cụ SPO/Wallet là **PhoenixKey build** — SG9 chỉ thiết kế VỎ chứa: vòng quay + tầng. Không đụng logic ví/pool.)
+→ Nguồn: cntools main menu = Wallet · Funds · Pool · Transaction · Blocks · **Vote** · Backup · Advanced (docs Guild Operators + changelog, verify 2026-07-13). 4 nhóm anh nêu (Wallet/Pool/Fund/Vote) là **cửa sổ nghỉ** của vòng SPO; Transaction/Blocks/Backup/Advanced nằm phần **xoay tới**. Lưu ý: cntools Vote = quản trị CIP-1694 (DRep/governance action), KHÔNG phải Project Catalyst (app bỏ phiếu quỹ riêng). Nội dung công cụ SPO/ví là **PhoenixKey build** — SG9 chỉ thiết kế VỎ chứa (vòng quay + tầng), không đụng logic ví/pool.
 
 ### 5B.5 Khả thi + rủi ro (thật)
 - **Khả thi RN**: `HomeRadialOverlay` đã có geometry cung + PanResponder. Thêm: kéo **tiếp tuyến** → góc xoay danh sách; kéo **hướng tâm-ra** → chọn (đã có). Cần ngưỡng phân biệt 2 cử chỉ (trục nào trội).

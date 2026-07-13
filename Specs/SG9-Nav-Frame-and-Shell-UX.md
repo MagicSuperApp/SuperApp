@@ -3,7 +3,19 @@
 > **Scope**: L3 (Host Shell/Navigation) · DRAFT v0.1 (2026-07-12) · chờ anh Aladin duyệt, giao Tùng thi công (Tùng phụ trách UI/frontend).
 > **Thuộc**: thanh tab dưới (CurvedTabBar) + nút giữa (kế thừa SG4) + vỏ điều hướng khi vào app con.
 > **Tuân**: PLATFORM-MASTER INV-2 (data ⟂ experience), INTEGRATION §7.1 (nhãn nav = experience layer, KHÔNG nhét manifest). Phạm vi = CHỈ UI/UX SuperApp; KHÔNG đụng logic module; Wakeme = Wakeme agent.
-> **Nguồn hình**: `Specs/_mockups/nav-shell-ux.html` — mô phỏng tương tác (persona · ánh sáng · SubHome · nút xoè). Xem cuối tài liệu.
+> **Nguồn hình**: [`_mockups/nav-shell-ux.html`](_mockups/nav-shell-ux.html) — mô phỏng tương tác (persona · ánh sáng · SubHome · nút xoè).
+
+### Bản đồ mã nguồn (clickable — đường dẫn tương đối, sống sau merge)
+| Vùng | File |
+|---|---|
+| Frame nhãn song ngữ | [`navLabels.ts`](../src/navigation/navLabels.ts) · [`NavItemFrame.tsx`](../src/navigation/NavItemFrame.tsx) |
+| Persona tab (§2) | [`resolveVisibleTabs.ts`](../src/navigation/resolveVisibleTabs.ts) · [`useVisibleTabs.ts`](../src/navigation/useVisibleTabs.ts) |
+| Trace quét (§3) | [`traceScan.ts`](../src/navigation/traceScan.ts) · [`TraceScanScreen.tsx`](../src/screens/TraceScanScreen.tsx) |
+| Cổng xoè (§4) | [`resolveGateItems.ts`](../src/navigation/resolveGateItems.ts) |
+| SubHome (§5) | [`SubHomeFrame.tsx`](../src/navigation/SubHomeFrame.tsx) · [`subHomeLabels.ts`](../src/navigation/subHomeLabels.ts) |
+| Navigator lõi | [`navigation/index.tsx`](../src/navigation/index.tsx) · [`instance.config.ts`](../src/config/instance.config.ts) |
+| Home (§6) | [`HomeScreen.tsx`](../src/screens/HomeScreen.tsx) |
+| Checklist production | [`VersionChecklist.md`](../VersionChecklist.md) |
 
 ## 0. Một câu định nghĩa
 Vỏ điều hướng phải khiến vào một app con (Chat, Farm, Work…) **cảm giác như một app thuần tuý**, mà đổi-app chỉ tốn **một cử chỉ trên MỘT cổng duy nhất** — không dựng hệ điều hướng thứ hai chồng lên cái đã có.

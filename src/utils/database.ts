@@ -164,6 +164,7 @@ class Database {
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
   }
 
   // Sync Queue operations

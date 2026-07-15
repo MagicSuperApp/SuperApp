@@ -44,3 +44,14 @@ pub fn derive_wallet_address(master_kek_hex: String, account: u32, network: u8) 
     }
     crate::cardano::derive_address_account(seed, account, network)
 }
+
+/// Địa-chỉ STAKE (reward) của account — cùng Master_KEK, cùng đường dẫn CIP-1852,
+/// chỉ lấy nhánh role 2. Dùng cho PhoenixKey /wallet/standard/register (stake_address)
+/// và staking sau này. Rỗng nếu KEK/seed sai.
+pub fn derive_stake_address(master_kek_hex: String, account: u32, network: u8) -> String {
+    let seed = derive_wallet_seed(master_kek_hex);
+    if seed.is_empty() {
+        return String::new();
+    }
+    crate::cardano::derive_stake_address_account(seed, account, network)
+}

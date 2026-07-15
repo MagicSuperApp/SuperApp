@@ -10,7 +10,7 @@
 
 use crate::utils;
 use cardano_serialization_lib::{
-    BaseAddress, Bip32PrivateKey, Credential, NetworkInfo,
+    BaseAddress, Bip32PrivateKey, Credential, NetworkInfo, RewardAddress,
 };
 
 #[derive(Debug)]
@@ -101,6 +101,55 @@ fn derive_address_inner(
 
     let base_address = BaseAddress::new(network_info.network_id(), &payment_cred, &stake_cred);
     Ok(base_address.to_address().to_bech32(None)
+        .map_err(|e| CardanoError::DerivationFailed(e.to_string()))?)
+}
+
+/// Derive the STAKE (reward) address for a CIP-1852 account.
+///
+/// Path: `m/1852'/1815'/account'/2/0` — ĐÚNG cái stake credential đã nhúng trong base
+/// address ở trên, chỉ xuất ra độc-lập dạng bech32 (`stake_test1...` / `stake1...`).
+///
+/// Dùng cho `PhoenixKey POST /wallet/standard/register` field `stake_address` (API.md §7)
+/// và về sau là delegate/staking. KHÔNG lộ khoá — chỉ ra địa-chỉ công-khai.
+///
+/// # Returns
+/// Bech32 reward address, hoặc chuỗi rỗng nếu lỗi (seed sai / encode lỗi).
+pub fn derive_stake_address_account(seed_hex: String, account: u32, network: u8) -> String {
+    derive_stake_address_inner(seed_hex, account, network).unwrap_or_default()
+}
+
+fn derive_stake_address_inner(
+    seed_hex: String,
+    account: u32,
+    network: u8,
+) -> Result<String, CardanoError> {
+    let entropy = utils::hex_to_bytes(&seed_hex)
+        .map_err(|e| CardanoError::InvalidSeed(e))?;
+    if entropy.len() != 32 {
+        return Err(CardanoError::InvalidSeed(format!(
+            "expected 32 bytes, got {}", entropy.len()
+        )));
+    }
+
+    let root_key = Bip32PrivateKey::from_bip39_entropy(&entropy, &[]);
+
+    let account_key = root_key
+        .derive(harden(1852))
+        .derive(harden(1815))
+        .derive(harden(account));
+
+    // Stake key (m/1852'/1815'/account'/2/0) — role 2 = stake credential.
+    let stake_key = account_key.derive(2).derive(0).to_raw_key().to_public();
+    let stake_cred = Credential::from_keyhash(&stake_key.hash());
+
+    let network_info = if network == 1 {
+        NetworkInfo::mainnet()
+    } else {
+        NetworkInfo::testnet_preprod()
+    };
+
+    let reward_address = RewardAddress::new(network_info.network_id(), &stake_cred);
+    Ok(reward_address.to_address().to_bech32(None)
         .map_err(|e| CardanoError::DerivationFailed(e.to_string()))?)
 }
 

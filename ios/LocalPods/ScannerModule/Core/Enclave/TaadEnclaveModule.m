@@ -30,6 +30,12 @@ RCT_EXTERN_METHOD(deriveWalletAddress:(NSString *)kekHex
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(deriveStakeAddress:(NSString *)kekHex
+                  account:(NSInteger)account
+                  network:(NSInteger)network
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
 RCT_EXTERN_METHOD(generateSalt:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 

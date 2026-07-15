@@ -140,6 +140,20 @@ pub extern "system" fn Java_com_aladincontract_company_TaadEnclaveModule_nativeD
     ret(&env, crate::mobile_kek::derive_wallet_address(kek, account as u32, network as u8))
 }
 
+/// Địa-chỉ STAKE (reward) — cùng CIP-1852 với ví, nhánh role 2.
+/// Kotlin: external fun nativeDeriveStakeAddress(kekHex: String, account: Int, network: Int): String?
+#[no_mangle]
+pub extern "system" fn Java_com_aladincontract_company_TaadEnclaveModule_nativeDeriveStakeAddress<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    kek_hex: JString<'local>,
+    account: jint,
+    network: jint,
+) -> jstring {
+    let kek = match jstr(&mut env, &kek_hex) { Some(s) => s, None => return null_jstring() };
+    ret(&env, crate::mobile_kek::derive_stake_address(kek, account as u32, network as u8))
+}
+
 #[no_mangle]
 pub extern "system" fn Java_com_aladincontract_company_TaadEnclaveModule_nativeGenerateSalt<'local>(
     env: JNIEnv<'local>,

@@ -7,9 +7,9 @@
  * derive sẵn) — đây là mảnh còn thiếu khiến màn Tài-khoản trống địa-chỉ.
  *
  * Client derive địa-chỉ TỪ Master_KEK (không rời khoá): fixed = account 0 (bắt buộc),
- * active = account N (nếu user đã xoay). `stake_address`: native CHƯA có deriveStakeAddress
- * → bỏ qua (spec cho optional). Idempotent — gọi lại chỉ cập-nhật active; backend KHÔNG
- * cho đổi fixed. Best-effort: nuốt lỗi (chưa có session/offline) → thử lại lần vào sau.
+ * active = account N (nếu user đã xoay), stake = role 2 CIP-1852 (m/1852'/1815'/0'/2/0)
+ * — cho staking/delegate sau này. Idempotent — gọi lại cập-nhật active/stake; backend
+ * KHÔNG cho đổi fixed. Best-effort: nuốt lỗi (chưa có session/offline) → thử lại lần sau.
  */
 
 import taad from '../sdk/taadEnclave';
@@ -38,9 +38,19 @@ export async function ensureStandardWalletRegistered(): Promise<boolean> {
         ? await taad.deriveWalletAddress(kek, activeIdx, WALLET_NETWORK)
         : undefined;
 
+    // stake_address (role 2, CIP-1852) — cùng account với ví cố-định. Best-effort:
+    // máy chưa cập-nhật native (thiếu deriveStakeAddress) → bỏ qua, backend cho optional.
+    let stakeAddress: string | undefined;
+    try {
+      stakeAddress = (await taad.deriveStakeAddress(kek, 0, WALLET_NETWORK)) || undefined;
+    } catch {
+      stakeAddress = undefined;
+    }
+
     await phoenixKeyApi.wallet.standardRegister({
       fixedAddress,
       ...(activeAddress ? { activeAddress } : {}),
+      ...(stakeAddress ? { stakeAddress } : {}),
     });
     return true;
   } catch {

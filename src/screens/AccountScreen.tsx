@@ -17,7 +17,8 @@ import {
 } from 'react-native';
 // RN 0.84 đã gỡ Clipboard khỏi core → dùng package cộng đồng (API setString giữ nguyên).
 import Clipboard from '@react-native-clipboard/clipboard';
-import { logoutUser, selectChainWallet } from '../store/userSlice';
+import { logoutUser, selectChainWallet, selectChainWallets } from '../store/userSlice';
+import type { WalletEntry } from '../services/phoenixKey-api';
 import { setChatbotEnabled } from '../store/chatbotSlice';
 import { useSelector } from 'react-redux';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -205,6 +206,68 @@ const InfoRow = ({
     );
 };
 
+// ── Khối MỘT ví (PhoenixKey API.md §7 trả 2 loại) ─────────────────────────────
+// `standard` = CIP-1852, khoá do CHÍNH user giữ (derive từ cụm 24 từ) → user tự chuyển tiền.
+// `phoenix`  = ví custody hệ-thống derive theo DID (script) → dùng cho MAGIC/kích-hoạt.
+// Hiện TÁCH BẠCH vì 2 ví có địa-chỉ + số dư RIÊNG; gộp làm một sẽ giấu mất tài sản.
+const WALLET_META: Record<'phoenix' | 'standard', {
+    title: string; sub: string; icon: string; color: string;
+}> = {
+    standard: {
+        title: 'Ví cơ bản',
+        sub: 'Bạn tự giữ khoá (từ cụm 24 từ)',
+        icon: 'wallet-outline',
+        color: COLORS.accent,
+    },
+    phoenix: {
+        title: 'Ví Phượng Hoàng',
+        sub: 'Hệ thống giữ hộ — gắn với DID',
+        icon: 'shield-star-outline',
+        color: '#B07D2F',
+    },
+};
+
+const WalletBlock = ({ entry }: { entry: WalletEntry }) => {
+    const meta = WALLET_META[entry.kind] ?? WALLET_META.standard;
+    // Ưu tiên địa-chỉ đang HOẠT-ĐỘNG (account N sau khi xoay), else account-0 cố-định.
+    const addr = entry.addresses?.active ?? entry.addresses?.fixed ?? '';
+    // Mạng suy theo CHÍNH địa-chỉ này (mỗi ví tự xác định, không dùng chung).
+    const net = netFromAddress(addr);
+    const b = entry.balances ?? { lovelace: 0, lamp: 0, carp: 0 };
+    const ada = (b.lovelace ?? 0) / 1_000_000;
+
+    return (
+        <View style={styles.walletBlock}>
+            <View style={styles.walletBlockHead}>
+                <View style={[styles.walletBlockIcon, { backgroundColor: `${meta.color}14` }]}>
+                    <Icon name={meta.icon} size={16} color={meta.color} />
+                </View>
+                <View style={styles.walletBlockHeadBody}>
+                    <Text style={[styles.walletBlockTitle, { color: meta.color }]}>{meta.title}</Text>
+                    <Text style={styles.walletBlockSub}>{meta.sub}</Text>
+                </View>
+            </View>
+
+            <InfoRow
+                icon="map-marker-outline"
+                label="Địa chỉ"
+                value={addr}
+                copyable
+                mono
+                explorerNet={addr ? net : null}
+            />
+
+            <View style={styles.walletBalRow}>
+                <Text style={styles.walletBalItem}>{ada} <Text style={styles.walletBalUnit}>ADA</Text></Text>
+                <Text style={styles.walletBalDot}>·</Text>
+                <Text style={styles.walletBalItem}>{b.lamp ?? 0} <Text style={styles.walletBalUnit}>LAMP</Text></Text>
+                <Text style={styles.walletBalDot}>·</Text>
+                <Text style={styles.walletBalItem}>{b.carp ?? 0} <Text style={styles.walletBalUnit}>CARP</Text></Text>
+            </View>
+        </View>
+    );
+};
+
 // ── Menu Item ─────────────────────────────────────────────────────────────────
 const MenuItem = ({
     icon, label, sublabel, color, onPress, showArrow = true, last, badge, trailing,
@@ -266,6 +329,8 @@ const AccountScreen = () => {
     const user = useSelector((state: RootState) => state.user.currentUser);
     // Ví ĐÁNG TIN: chỉ số đến từ chuỗi (refreshWallet). Chưa refresh → null → hiển thị "—" (không bịa).
     const chainWallet = useSelector(selectChainWallet);
+    // CẢ HAI ví (phoenix + standard) — hiện tách bạch, không gộp.
+    const chainWallets = useSelector(selectChainWallets);
     const network = useSelector((state: RootState) => state.user.network);
     const phoenixKey = useSelector((state: RootState) => state.user.phoenixKey);
     // Địa-chỉ-2: khoá điều-khiển DID (quản-trị, KHÔNG giữ tài sản). null = chưa lấy được.
@@ -541,14 +606,20 @@ const AccountScreen = () => {
                 {/* ── Blockchain info ── */}
                 <Animated.View style={{ opacity: fadeAnim }}>
                     <Section title="VÍ & DANH TÍNH">
-                        {/* Địa-chỉ-1: ví theo seed phrase — GIỮ tài sản (ADA/LAMP/MAGIC), có thể tra Explorer. */}
-                        <InfoRow
-                            icon="wallet-outline"
-                            label="Địa chỉ ví (giữ tài sản)"
-                            value={walletAddress}
-                            copyable mono
-                            explorerNet={walletAddress ? realNet : null}
-                        />
+                        {/* HAI ví (API.md §7): `standard` user tự giữ khoá + `phoenix` custody.
+                            Backend chưa trả ví nào (chưa đăng-ký / offline) → rơi về địa-chỉ
+                            derive LOCAL từ Master_KEK để user vẫn thấy ví của mình. */}
+                        {chainWallets.length > 0 ? (
+                            chainWallets.map(w => <WalletBlock key={w.kind} entry={w} />)
+                        ) : (
+                            <InfoRow
+                                icon="wallet-outline"
+                                label="Địa chỉ ví (giữ tài sản)"
+                                value={walletAddress}
+                                copyable mono
+                                explorerNet={walletAddress ? realNet : null}
+                            />
+                        )}
                         <InfoRow
                             icon="identifier"
                             label="DID"
@@ -577,7 +648,8 @@ const AccountScreen = () => {
                         <View style={styles.walletNote}>
                             <Icon name="information-outline" size={13} color={COLORS.textMuted} />
                             <Text style={styles.walletNoteText}>
-                                <Text style={styles.walletNoteStrong}>Địa chỉ ví</Text> giữ toàn bộ tài sản của bạn — gửi và nhận MAGIC, LAMP, ADA đều dùng địa chỉ này.
+                                <Text style={styles.walletNoteStrong}>Ví cơ bản</Text> do chính bạn giữ khoá (khôi phục bằng cụm 24 từ) — dùng để nhận và chuyển tài sản.{' '}
+                                <Text style={styles.walletNoteStrong}>Ví Phượng Hoàng</Text> do hệ thống giữ hộ theo DID — dùng cho kích hoạt và dịch vụ.
                             </Text>
                         </View>
                     </Section>
@@ -852,6 +924,32 @@ const styles = StyleSheet.create({
     infoValue: { fontSize: 13, fontWeight: '600', color: COLORS.text, textAlign: 'right', flexShrink: 1 },
     infoValueMono: { fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', fontSize: 12 },
     copyBtn: { padding: 2 },
+
+    // ── Khối 1 ví (2 ví: cơ bản + Phượng Hoàng) ──────────────────────────────
+    walletBlock: {
+        borderBottomWidth: 1,
+        borderBottomColor: COLORS.border,
+        paddingBottom: 4,
+    },
+    walletBlockHead: {
+        flexDirection: 'row', alignItems: 'center', gap: 10,
+        paddingHorizontal: 16, paddingTop: 13, paddingBottom: 4,
+    },
+    walletBlockIcon: {
+        width: 30, height: 30, borderRadius: 15,
+        alignItems: 'center', justifyContent: 'center',
+    },
+    walletBlockHeadBody: { flex: 1 },
+    walletBlockTitle: { fontSize: 14, fontWeight: '800' },
+    walletBlockSub: { fontSize: 11, color: COLORS.textMuted, marginTop: 1 },
+    walletBalRow: {
+        flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap',
+        paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12,
+    },
+    walletBalItem: { fontSize: 13, fontWeight: '700', color: COLORS.text },
+    walletBalUnit: { fontSize: 11, fontWeight: '600', color: COLORS.textMuted },
+    walletBalDot: { fontSize: 13, color: COLORS.textMuted },
+
     walletNote: {
         flexDirection: 'row', alignItems: 'flex-start', gap: 8,
         paddingHorizontal: 16, paddingVertical: 12,

@@ -31,6 +31,7 @@ import { COLORS } from '../../../constants';
 // B2: tạo vườn QUA field-reid (server sinh farm_id uuid THẬT) — bỏ aladinAPI
 // (backend Lợi deprecated + client tự sinh `farm-<ts>` = gốc B2). INV-1 §3.2.
 import { createFarm as createReidFarm } from '../../../services/farmService';
+import { ensureOrilifeToken } from '../../../services/orilifeDidAuth';
 import { ORILIFE_BASE } from '../../../services/orilifeBase';
 import { fieldErrorMessage } from '../../../services/treeReIDService';
 // We dynamically load MapLibre so the app can still run if the native module is missing
@@ -1634,10 +1635,30 @@ const FarmDetailScreen = () => {
       setIsSavingFarm(true);
       let created;
       try {
-        created = await createReidFarm(ORILIFE_BASE, {
-          name: farmName,
-          boundary: coordinates,
-        });
+        // Token OriLife field-reid (DID challenge-sign) — KHÁC login PhoenixKey/vân-tay.
+        // Tạo vườn ghi qua backend field-reid nên PHẢI có token này. Nếu user CHƯA quét
+        // cây lần nào (token chưa lấy) hoặc token 12h hết hạn → tạo vườn 401 "Phiên hết hạn"
+        // dù đã đăng-nhập. Chủ-động ký DID lấy token TRƯỚC (bằng khoá, không bắt nhập lại).
+        const tokenOk = await ensureOrilifeToken(ORILIFE_BASE);
+        if (tokenOk) {
+          created = await createReidFarm(ORILIFE_BASE, {
+            name: farmName,
+            boundary: coordinates,
+          });
+          // Token vừa hết hạn giữa chừng (401) → làm mới 1 lần rồi thử lại.
+          if (!created.ok && created.error?.type === 'auth_error') {
+            const relog = await ensureOrilifeToken(ORILIFE_BASE, { force: true });
+            if (relog) {
+              created = await createReidFarm(ORILIFE_BASE, {
+                name: farmName,
+                boundary: coordinates,
+              });
+            }
+          }
+        } else {
+          // Không lấy được token → coi như auth_error để nhánh dưới báo đúng.
+          created = { ok: false as const, error: { type: 'auth_error' as const, detail: 'Không lấy được phiên field-reid', http_status: 401 } };
+        }
       } finally {
         setIsSavingFarm(false);
       }
@@ -1652,7 +1673,12 @@ const FarmDetailScreen = () => {
             'Tạo vườn cần mạng để máy chủ cấp mã vườn. Việc thêm cây (chụp ảnh) cũng cần mạng — hãy kết nối rồi thử lại. Các điểm GPS bạn đã ghi vẫn được giữ.',
           );
         } else if (err?.type === 'auth_error') {
-          Alert.alert('Phiên đăng nhập hết hạn', 'Hãy đăng nhập lại (vân tay / Face ID) rồi thử lưu vườn.');
+          // App đã TỰ ký DID lấy token + thử lại 1 lần ở trên → vẫn auth_error nghĩa là
+          // danh-tính chưa đăng-ký trên máy chủ (DID mồ côi) hoặc máy chủ đang trục-trặc.
+          Alert.alert(
+            'Chưa xác thực được với máy chủ',
+            'Không tạo được phiên với máy chủ nhận diện. Thử đăng xuất rồi đăng nhập lại; nếu vẫn lỗi, có thể danh tính chưa được đăng ký trên máy chủ.',
+          );
         } else {
           Alert.alert('Chưa lưu được vườn', fieldErrorMessage(err));
         }

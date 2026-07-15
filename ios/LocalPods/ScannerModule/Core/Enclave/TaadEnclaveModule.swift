@@ -103,6 +103,20 @@ final class TaadEnclaveModule: NSObject {
         resolvePtr(out, resolve, reject, "E_DERIVE_ADDR", "Không derive được địa chỉ Cardano")
     }
 
+    /// Địa-chỉ STAKE (reward) — cùng CIP-1852 với ví, nhánh role 2 (m/1852'/1815'/acc'/2/0).
+    /// Dùng cho /wallet/standard/register (stake_address) + staking sau này.
+    @objc(deriveStakeAddress:account:network:resolver:rejecter:)
+    func deriveStakeAddress(_ kekHex: String,
+                            account: Int,
+                            network: Int,
+                            resolver resolve: @escaping RCTPromiseResolveBlock,
+                            rejecter reject: @escaping RCTPromiseRejectBlock) {
+        let out = kekHex.withCString {
+            taad_kek_derive_stake_address($0, UInt32(account), UInt8(network))
+        }
+        resolvePtr(out, resolve, reject, "E_DERIVE_STAKE", "Không derive được địa chỉ stake Cardano")
+    }
+
     @objc(generateSalt:rejecter:)
     func generateSalt(_ resolve: @escaping RCTPromiseResolveBlock,
                       rejecter reject: @escaping RCTPromiseRejectBlock) {

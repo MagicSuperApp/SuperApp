@@ -38,6 +38,8 @@ class TaadEnclaveModule(reactContext: ReactApplicationContext) :
     private external fun nativeDeriveTaadPubkey(kekHex: String): String?
     private external fun nativeDeriveWalletSeed(kekHex: String): String?
     private external fun nativeDeriveWalletAddress(kekHex: String, account: Int, network: Int): String?
+    /** Địa-chỉ STAKE (reward) — cùng CIP-1852 với ví, nhánh role 2 (m/1852'/1815'/acc'/2/0). */
+    private external fun nativeDeriveStakeAddress(kekHex: String, account: Int, network: Int): String?
     private external fun nativeGenerateSalt(): String?
     private external fun nativePbkdf2Derive(pin: String, saltHex: String): String?
     private external fun nativeAesGcmEncrypt(keyHex: String, plaintextHex: String): String?
@@ -116,6 +118,12 @@ class TaadEnclaveModule(reactContext: ReactApplicationContext) :
     fun deriveWalletAddress(kekHex: String, account: Int, network: Int, promise: Promise) =
         run(promise, "E_DERIVE_ADDR", "Không derive được địa chỉ Cardano") {
             nativeDeriveWalletAddress(kekHex, account, network)
+        }
+
+    @ReactMethod
+    fun deriveStakeAddress(kekHex: String, account: Int, network: Int, promise: Promise) =
+        run(promise, "E_DERIVE_STAKE", "Không derive được địa chỉ stake Cardano") {
+            nativeDeriveStakeAddress(kekHex, account, network)
         }
 
     @ReactMethod

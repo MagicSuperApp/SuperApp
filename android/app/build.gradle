@@ -119,7 +119,9 @@ def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
         // Build 74 (2026-07-10): fix ví/mạng PhoenixKey (/wallet/all + Standard CIP-1852),
         // guardian đúng route §6, fix đơ iOS displayLink, YOLO gate C + A/B đăng-ký cây.
         // Build 75 (2026-07-10): tự phát hiện DID mồ côi + nút đăng-ký-lại khi server reset.
-        versionCode 75
+        // Build 76 (2026-07-13): hiện 2 ví (Standard+Phoenix) + stake_address CIP-1852;
+        // fix "Phiên hết hạn" khi tạo vườn (tự lấy token field-reid); gộp fix cây + P0 nhiệt.
+        versionCode 76
         versionName "2.0"
 
         // ✅ Support 16KB page size (required by Google Play Store 2024)

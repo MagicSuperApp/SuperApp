@@ -133,6 +133,21 @@ pub unsafe extern "C" fn taad_kek_derive_wallet_address(
     if result.is_empty() { std::ptr::null_mut() } else { string_to_c(result) }
 }
 
+/// Địa chỉ STAKE (reward, Bech32 `stake_test1…`/`stake1…`) cho account index từ Master_KEK.
+/// Cùng CIP-1852 với ví, chỉ khác nhánh role 2. Dùng cho /wallet/standard/register
+/// (field `stake_address`) + staking. network: 0 = preprod, 1 = mainnet.
+/// null nếu KEK/derive sai.
+#[no_mangle]
+pub unsafe extern "C" fn taad_kek_derive_stake_address(
+    master_kek_hex: *const c_char,
+    account: u32,
+    network: u8,
+) -> *mut c_char {
+    let kek = match c_str_to_string(master_kek_hex) { Some(s) => s, None => return std::ptr::null_mut() };
+    let result = mobile_kek::derive_stake_address(kek, account, network);
+    if result.is_empty() { std::ptr::null_mut() } else { string_to_c(result) }
+}
+
 // ─── HKDF ────────────────────────────────────────────────────────
 
 /// Derive keying material using HKDF-SHA256.

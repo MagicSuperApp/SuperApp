@@ -26,6 +26,7 @@ interface TaadEnclaveNativeBridge {
   deriveTaadPubkey(kekHex: string): Promise<string>;
   deriveWalletSeed(kekHex: string): Promise<string>;
   deriveWalletAddress(kekHex: string, account: number, network: number): Promise<string>;
+  deriveStakeAddress(kekHex: string, account: number, network: number): Promise<string>;
   // Wrapping primitives
   generateSalt(): Promise<string>;
   pbkdf2Derive(pin: string, saltHex: string): Promise<string>;
@@ -54,6 +55,7 @@ const moduleNotAvailable = (): TaadEnclaveNativeBridge => {
     deriveTaadPubkey: () => reject('deriveTaadPubkey') as never,
     deriveWalletSeed: () => reject('deriveWalletSeed') as never,
     deriveWalletAddress: () => reject('deriveWalletAddress') as never,
+    deriveStakeAddress: () => reject('deriveStakeAddress') as never,
     generateSalt: () => reject('generateSalt') as never,
     pbkdf2Derive: () => reject('pbkdf2Derive') as never,
     aesGcmEncrypt: () => reject('aesGcmEncrypt') as never,
@@ -100,6 +102,18 @@ export const deriveWalletAddress = (
   account = 0,
   network = 0,
 ): Promise<string> => bridge.deriveWalletAddress(kekHex, account, network);
+
+/**
+ * Địa chỉ STAKE (reward) Cardano — bech32 `stake_test1…` (preprod) / `stake1…` (mainnet).
+ * Cùng CIP-1852 với ví, chỉ khác nhánh role 2 (m/1852'/1815'/account'/2/0).
+ * Dùng cho PhoenixKey `/wallet/standard/register` (field `stake_address`) + staking.
+ * network: 0=preprod, 1=mainnet. account: 0=cố định, ≥1=hoạt động.
+ */
+export const deriveStakeAddress = (
+  kekHex: string,
+  account = 0,
+  network = 0,
+): Promise<string> => bridge.deriveStakeAddress(kekHex, account, network);
 
 // ── Wrapping primitives (dùng để wrap/unwrap Master_KEK khi persist) ──────────
 
@@ -148,6 +162,7 @@ export default {
   deriveTaadPubkey,
   deriveWalletSeed,
   deriveWalletAddress,
+  deriveStakeAddress,
   generateSalt,
   pbkdf2Derive,
   aesGcmEncrypt,

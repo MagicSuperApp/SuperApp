@@ -16,8 +16,17 @@
  *     maskThreshold=0.50 (L127), blurVarianceThreshold=100.0 (L136).
  *   ios/.../Core/Detection/SegmentationHelper.swift: protoSize=160, numProtos=32.
  *   android/.../treereid/TreeReIDYolo.kt: CONF_THRESHOLD=0.25 (gate).
- *   android/.../treereid/HeadingCaptureManager.kt: MIN_HEADING_DELTA=25,
- *     MIN_PITCH_DELTA=18, STEADY_RATE_THRESHOLD=1.5, STEADY_FRAMES_REQUIRED=3.
+ *
+ * Nguồn ống-kính v0.2 (repo orilife-mobile-core @ review-mvp, com.mvp.orilife):
+ *   sampling/StabilitySampler.kt: windowSize=15, stableThreshold=50 (variance |accel|).
+ *   coordinator/CircularCaptureState.kt: 8 sector × 45° quét-vòng.
+ *   coordinator/CircularCaptureStateMachine.kt: cooldown 1500ms sau mỗi lần chụp.
+ *   detection/ImageCropper.kt: padding 30% bbox, clamp 30–120px.
+ *   detection/SegmentationHelper.kt: feather dual-threshold inner=0.6 / outer=0.3.
+ *   ⚠ LENS-CAPTURE/LENS-DETECT PHẢI mở lại nguồn trên đúng branch, đối chiếu số;
+ *     lệch với giá trị dưới đây → BÁO orchestrator (đừng tự sửa config, đây là frozen).
+ *   (heading cũ MIN_HEADING_DELTA/MIN_PITCH_DELTA/STEADY_* của HeadingCaptureManager.kt
+ *    ĐÃ BỎ — bản delta-đơn 25° sai, thay bằng 8-sector + StabilitySampler.)
  */
 
 export interface ModelConfig {
@@ -41,8 +50,17 @@ export interface ModelConfig {
   readonly nmsIouThreshold: number;
   /** Ngưỡng IoU coi 2 detection là CÙNG mục tiêu (tracking match). */
   readonly trackingIouThreshold: number;
-  /** Số frame liên tiếp match để 1 tracker trở nên "ổn định". */
+  /**
+   * Số frame liên tiếp match để coi 1 detection "ổn định" trong pipeline XỬ LÝ
+   * (PROCESSING_STABILITY_FRAMES nguồn = 3).
+   */
   readonly stableFrames: number;
+  /**
+   * Số frame liên tiếp để tracker đánh dấu `isConfirmed` (chống chụp trùng cùng mục tiêu).
+   * KHÁC `stableFrames`: nguồn `DetectionTracker.kt` dùng AR_OVERLAY_STABILITY_FRAMES=5
+   * cho ngưỡng xác-nhận-tracker, tách khỏi PROCESSING_STABILITY_FRAMES=3.
+   */
+  readonly trackerConfirmFrames: number;
   /**
    * Hệ-số EMA làm mượt box: smoothed = old*(1-α) + new*α.
    * ⚠️ Default ở đây = 0.3 (giá trị khởi-điểm/minh-hoạ, KHỚP vector kiểm thử).
@@ -69,14 +87,34 @@ export interface ModelConfig {
   readonly gateConfThreshold: number;
   /** Kết quả detect cũ hơn ngưỡng này (ms) → gate coi như PASS (rơi về stillness). */
   readonly gateStalenessMs: number;
-  /** |Δheading| (độ) tối thiểu so lần chụp gần nhất để trigger capture. */
-  readonly minHeadingDelta: number;
-  /** |Δpitch| (độ) tối thiểu. */
-  readonly minPitchDelta: number;
-  /** Tốc-độ xoay tức-thời (độ/frame) tối đa coi là "đứng yên". */
-  readonly steadyRateThreshold: number;
-  /** Số frame đứng-yên liên-tiếp cần có trước khi cho phép chụp. */
-  readonly steadyFramesRequired: number;
+
+  // --- Ống kính v0.2: StabilitySampler (đo đứng-yên bằng variance |accel| theo cửa sổ) ---
+  /** Số mẫu gia-tốc trong cửa sổ trượt để tính variance đứng-yên. */
+  readonly stabilityWindowSize: number;
+  /** Variance |accel| < ngưỡng này → coi là "đứng yên" (đủ ổn định để chụp). */
+  readonly stabilityThreshold: number;
+
+  // --- Ống kính v0.2: sector geometry (quét-vòng-quanh mục tiêu) ---
+  /** Số cung chia đều 360° (mặc định 8). */
+  readonly sectorCount: number;
+  /** Độ rộng mỗi cung (độ) = 360 / sectorCount (mặc định 45). */
+  readonly sectorSizeDeg: number;
+  /** Thời gian nghỉ (ms) sau mỗi lần chụp trước khi cho chụp cung kế (chống chụp dồn). */
+  readonly captureCooldownMs: number;
+
+  // --- Ống kính v0.2: crop-rect quanh bbox (thêm ngữ cảnh cho backend AI) ---
+  /** % mở rộng bbox mỗi chiều khi crop (0.30 = +30%). */
+  readonly cropPaddingPercent: number;
+  /** Padding tối thiểu (px) sau khi tính theo %. */
+  readonly cropPaddingMinPx: number;
+  /** Padding tối đa (px). */
+  readonly cropPaddingMaxPx: number;
+
+  // --- Ống kính v0.2: feather mask mềm 2 ngưỡng (viền alpha gradient) ---
+  /** Ngưỡng trong: mask ≥ inner → alpha=1 (foreground chắc). */
+  readonly featherInnerThreshold: number;
+  /** Ngưỡng ngoài: mask ≤ outer → alpha=0; giữa 2 ngưỡng nội-suy tuyến-tính. */
+  readonly featherOuterThreshold: number;
 }
 
 /**
@@ -95,6 +133,7 @@ export const DEFAULT_MODEL_CONFIG: ModelConfig = {
   nmsIouThreshold: 0.45,
   trackingIouThreshold: 0.5,
   stableFrames: 3,
+  trackerConfirmFrames: 5,
   smoothingAlpha: 0.3,
   minDetectionWidthPercent: 0.05,
   minDetectionHeightPercent: 0.08,
@@ -105,10 +144,17 @@ export const DEFAULT_MODEL_CONFIG: ModelConfig = {
   blurVarianceThreshold: 100.0,
   gateConfThreshold: 0.25,
   gateStalenessMs: 800,
-  minHeadingDelta: 25.0,
-  minPitchDelta: 18.0,
-  steadyRateThreshold: 1.5,
-  steadyFramesRequired: 3,
+  // Ống kính v0.2 (nguồn orilife-mobile-core@review-mvp — xem docstring đầu file):
+  stabilityWindowSize: 15,
+  stabilityThreshold: 50.0,
+  sectorCount: 8,
+  sectorSizeDeg: 45.0,
+  captureCooldownMs: 1500,
+  cropPaddingPercent: 0.3,
+  cropPaddingMinPx: 30,
+  cropPaddingMaxPx: 120,
+  featherInnerThreshold: 0.6,
+  featherOuterThreshold: 0.3,
 };
 
 /** Registry theo TÊN model. Thêm biến thể ở đây, KHÔNG rải hằng vào hàm toán. */

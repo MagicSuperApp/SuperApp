@@ -8,6 +8,8 @@
  * L0: nhận MẢNG GRAYSCALE đã có (native trích từ pixel buffer), KHÔNG tự đọc buffer.
  */
 
+import { DEFAULT_MODEL_CONFIG } from './config';
+
 /**
  * Variance của đáp-ứng Laplacian trên ảnh grayscale phẳng (row-major, width×height).
  * Chỉ tính pixel NỘI (bỏ viền 1px) — khớp Swift (y:1..h-1, x:1..w-1).
@@ -40,4 +42,27 @@ export function blurVariance(grayscale: ArrayLike<number>, width: number, height
   const mean = sum / laplacianSize;
   // variance = E[x^2] - (E[x])^2  (khớp vDSP_svesq/laplacianSize - mean^2 của Swift).
   return sumSq / laplacianSize - mean * mean;
+}
+
+/**
+ * Vỏ boolean quanh variance: variance < threshold → coi là MỜ.
+ * Dịch BlurChecker.isBlurry (Kotlin L91-96): dùng `<` nghiêm, ngưỡng mặc định = config.
+ * L0 nhận SỐ variance đã tính (không nhận bitmap) — tách phần toán khỏi phần đọc pixel.
+ */
+export function isBlurry(
+  variance: number,
+  threshold: number = DEFAULT_MODEL_CONFIG.blurVarianceThreshold,
+): boolean {
+  return variance < threshold;
+}
+
+/**
+ * Độ sắc-nét tương-đối = variance / threshold. 1.0 = ngay ngưỡng; >1 nét hơn; <1 mờ hơn.
+ * Dịch BlurChecker.getSharpnessScore (Kotlin L112-115).
+ */
+export function sharpnessScore(
+  variance: number,
+  threshold: number = DEFAULT_MODEL_CONFIG.blurVarianceThreshold,
+): number {
+  return variance / threshold;
 }

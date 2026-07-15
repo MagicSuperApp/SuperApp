@@ -1,34 +1,31 @@
 /**
- * MobileCore l0/ml — capture-by-heading (chụp theo hướng) + chuẩn-hoá góc.
+ * MobileCore l0/ml — chuẩn-hoá góc + quyết-định-chụp-theo-cung KHÔNG-TRẠNG-THÁI.
  *
- * Nguồn: android/app/src/main/java/com/aladincontract/company/treereid/HeadingCaptureManager.kt
- *   (repo _wt-superapp-mobilecore @ claude/orilife-farm-sync-enroll-gate) — pure Kotlin.
- *   process(): L60-98.  MIN_HEADING_DELTA=25 / MIN_PITCH_DELTA=18 (L17-18),
- *   STEADY_RATE_THRESHOLD=1.5 / STEADY_FRAMES_REQUIRED=3 (L25-26).
+ * ⚠️ VIẾT LẠI: bản cũ port nhầm HeadingCaptureManager (delta-đơn 25°/ pitch 18°) — mô-hình
+ * SAI cho quét-vòng. Thay bằng mô-hình 8-cung + StabilitySampler. Đã BỎ:
+ *   captureByHeading / initHeadingState / HeadingState / HeadingSample / HeadingResult.
+ * GIỮ normalizeAngle + signedAngleDelta (sector.ts & orientation.ts import từ đây).
  *
- * ⚠️ normalizeAngle: nguồn Kotlin (private, L110-115) chuẩn-hoá về [-180,180] để lấy
- * góc-lệch NGẮN NHẤT (dùng cho DELTA). Task lại yêu-cầu export normalizeAngle theo
- * [0,360) (vector 370→10, -10→350). → tách 2 hàm:
- *   - normalizeAngle(a)      → [0,360)   (đúng vector task, tiện hiển-thị la-bàn);
- *   - signedAngleDelta(a)    → [-180,180] (đúng Kotlin, dùng TÍNH delta trong capture).
- * Logic capture DÙNG signedAngleDelta để trung-thành nguồn.
+ * SESSION FSM (giữ tập capturedSectors, lập lịch cooldown captureCooldownMs, advance/skip/
+ * complete) là của OriLife — KHÔNG thuộc core. Core chỉ cho quyết-định 1-frame thuần.
+ *
+ * Nguồn hình-học/guidance: coordinator/CircularCaptureState.kt (xem sector.ts).
  */
 
-import type { ModelConfig } from './config';
-import { DEFAULT_MODEL_CONFIG } from './config';
+import { headingToSector, sectorCenter, guidanceToTarget, nearestUncapturedSector } from './sector';
+import type { Guidance } from './sector';
 
 /**
- * Chuẩn-hoá góc về [0, 360). Vector task: 370→10, -10→350, wrap qua 0.
- * (( a % 360 ) + 360 ) % 360.
+ * Chuẩn-hoá góc về [0, 360). 370→10, -10→350, wrap qua 0. (( a % 360 ) + 360 ) % 360.
+ * Tiện hiển-thị la-bàn; sector/orientation import hàm này.
  */
 export function normalizeAngle(angle: number): number {
   return ((angle % 360) + 360) % 360;
 }
 
 /**
- * Góc-lệch có dấu, chuẩn-hoá về [-180, 180] (khoảng-cách góc ngắn nhất).
- * Dịch HeadingCaptureManager.normalizeAngle (Kotlin L110-115):
- *   n = a % 360 ; n>180 → n-360 ; n<-180 → n+360.
+ * Góc-lệch có dấu, chuẩn-hoá về [-180, 180] (khoảng-cách góc ngắn nhất — dùng cho DELTA).
+ * n = a % 360 ; n>180 → n-360 ; n<-180 → n+360.
  */
 export function signedAngleDelta(angle: number): number {
   let n = angle % 360;
@@ -37,109 +34,60 @@ export function signedAngleDelta(angle: number): number {
   return n;
 }
 
-/** State máy chụp-theo-hướng. Bất-biến: hàm trả state MỚI, không sửa tại chỗ. */
-export interface HeadingState {
-  /** Heading lần chụp gần nhất (mốc so delta). null = chưa có. */
-  lastCapturedHeading: number | null;
-  lastCapturedPitch: number | null;
-  /** Mẫu frame trước (đo tốc-độ xoay tức-thời). */
-  prevSampleHeading: number | null;
-  prevSamplePitch: number | null;
-  /** Số frame đứng-yên liên-tiếp. */
-  steadyFrames: number;
-}
-
-/** State khởi-tạo (giống reset() của Kotlin). */
-export function initHeadingState(): HeadingState {
-  return {
-    lastCapturedHeading: null,
-    lastCapturedPitch: null,
-    prevSampleHeading: null,
-    prevSamplePitch: null,
-    steadyFrames: 0,
-  };
-}
-
-export interface HeadingSample {
+export interface SectorCaptureInput {
+  /** Heading la-bàn hiện-tại (độ). */
   heading: number;
-  pitch: number;
-  roll: number;
+  /** Thiết-bị đang đứng-yên chưa (từ stability.ts — core KHÔNG tự tính lại). */
+  isStable: boolean;
+  /** Có mục-tiêu YOLO trong khung chưa (từ gate.ts của consumer). */
+  hasTarget: boolean;
+  /** Tập cung ĐÃ chụp (OriLife giữ; core chỉ đọc). */
+  capturedSectors: Set<number> | number[];
+  /** Số cung (mặc định theo hình-học 8). */
+  sectorCount?: number;
+  /**
+   * Heading tuyệt-đối lúc BẮT ĐẦU phiên (cung 0 = hướng này). Mặc định 0 (neo Bắc,
+   * hành-vi cũ). OriLife truyền heading lúc mở phiên để KHÔNG ép user quét qua Bắc.
+   */
+  referenceHeading?: number;
 }
 
-export interface HeadingResult {
-  heading: number;
-  pitch: number;
-  roll: number;
-  /** Δheading (có dấu, [-180,180]) so lần chụp gần nhất. null nếu chưa có mốc. */
-  deltaHeading: number | null;
-  /** Δpitch so lần chụp gần nhất (KHÔNG wrap — pitch không quấn 360). null nếu chưa có. */
-  deltaPitch: number | null;
-  /** Có nên chụp frame này không. */
+export interface SectorCaptureDecision {
+  /** Cung heading đang trỏ vào (headingToSector). */
+  currentSector: number;
+  /**
+   * Cung nên nhắm tới: nếu cung hiện-tại CHƯA chụp → chính nó (đứng yên là chụp được);
+   * nếu đã chụp → cung chưa-chụp gần nhất để guidance dẫn qua. -1 khi hết cung.
+   */
+  targetSector: number;
+  /** Hướng + độ xoay tới tâm targetSector (null khi hết cung). */
+  guidance: Guidance | null;
+  /** isStable && hasTarget && cung hiện-tại CHƯA chụp. Quyết-định 1-frame, KHÔNG cooldown. */
   shouldCapture: boolean;
-  /** Mốc thời-gian (giây). Chỉ để báo-cáo, KHÔNG dùng trong quyết-định. */
-  timestamp: number;
 }
 
 /**
- * Xử-lý 1 mẫu cảm-biến → { state mới, result }.
- * Dịch HeadingCaptureManager.process (Kotlin L60-98):
- *   - lần đọc đầu: đặt mốc lastCaptured = heading/pitch;
- *   - deltaHeading = signedAngleDelta(heading - lastCaptured); deltaPitch = pitch - lastCaptured;
- *   - instRate = |Δpitch frame| + |signedAngleDelta(Δheading frame)| (prev null → +∞);
- *     instRate ≤ STEADY_RATE → steadyFrames+1, else 0; isSteady = steadyFrames ≥ REQUIRED;
- *   - angleMet = |Δheading|≥MIN_HEADING_DELTA hoặc |Δpitch|≥MIN_PITCH_DELTA;
- *   - shouldCapture = angleMet && isSteady;  nếu chụp → dời mốc lastCaptured về heading/pitch.
- * `now`: inject clock (ms) để thuần + test được; mặc định Date.now.
+ * Quyết-định-chụp KHÔNG-TRẠNG-THÁI cho 1 frame. OriLife giữ capturedSectors + cooldown
+ * timing; core cho quyết-định thuần từ (heading, đứng-yên, có-mục-tiêu, tập-đã-chụp).
+ * shouldCapture = isStable && hasTarget && cung hiện-tại chưa chụp.
  */
-export function captureByHeading(
-  state: HeadingState,
-  sample: HeadingSample,
-  cfg?: { model?: ModelConfig; now?: () => number },
-): { state: HeadingState; result: HeadingResult } {
-  const model = cfg?.model ?? DEFAULT_MODEL_CONFIG;
-  const now = cfg?.now ?? Date.now;
-  const timestamp = now() / 1000.0;
+export function decideSectorCapture(input: SectorCaptureInput): SectorCaptureDecision {
+  const { heading, isStable, hasTarget, capturedSectors, sectorCount, referenceHeading = 0 } = input;
+  const captured = capturedSectors instanceof Set ? capturedSectors : new Set(capturedSectors);
 
-  const { heading, pitch, roll } = sample;
+  const currentSector = headingToSector(heading, sectorCount, referenceHeading);
+  const isCurrentCaptured = captured.has(currentSector);
 
-  // Khởi-tạo mốc trên lần đọc đầu.
-  let lastCapturedHeading = state.lastCapturedHeading ?? heading;
-  let lastCapturedPitch = state.lastCapturedPitch ?? pitch;
+  const targetSector = isCurrentCaptured
+    ? nearestUncapturedSector(heading, captured, sectorCount, referenceHeading)
+    : currentSector;
 
-  const deltaHeading = signedAngleDelta(heading - lastCapturedHeading);
-  const deltaPitch = pitch - lastCapturedPitch;
+  const guidance =
+    targetSector < 0
+      ? null
+      : guidanceToTarget(heading, sectorCenter(targetSector, sectorCount, referenceHeading));
 
-  // Tốc-độ xoay tức-thời (frame→frame).
-  let instRate: number;
-  if (state.prevSamplePitch != null) {
-    const headingRate =
-      state.prevSampleHeading != null ? Math.abs(signedAngleDelta(heading - state.prevSampleHeading)) : 0;
-    instRate = Math.abs(pitch - state.prevSamplePitch) + headingRate;
-  } else {
-    instRate = Number.MAX_VALUE;
-  }
-  const steadyFrames = instRate <= model.steadyRateThreshold ? state.steadyFrames + 1 : 0;
-  const isSteady = steadyFrames >= model.steadyFramesRequired;
+  const shouldCapture = isStable && hasTarget && !isCurrentCaptured;
 
-  const angleMet =
-    Math.abs(deltaHeading) >= model.minHeadingDelta || Math.abs(deltaPitch) >= model.minPitchDelta;
-  const shouldCapture = angleMet && isSteady;
-
-  if (shouldCapture) {
-    lastCapturedHeading = heading;
-    lastCapturedPitch = pitch;
-  }
-
-  const nextState: HeadingState = {
-    lastCapturedHeading,
-    lastCapturedPitch,
-    prevSampleHeading: heading,
-    prevSamplePitch: pitch,
-    steadyFrames,
-  };
-
-  return {
-    state: nextState,
-    result: { heading, pitch, roll, deltaHeading, deltaPitch, shouldCapture, timestamp },
-  };
+  return { currentSector, targetSector, guidance, shouldCapture };
 }

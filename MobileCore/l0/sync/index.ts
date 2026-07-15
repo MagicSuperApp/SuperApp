@@ -14,6 +14,37 @@
  * BỎ khỏi bản port: mọi phần đụng SQLite/AsyncStorage/Redux/axios thật (đó là
  * app-layer cụ thể của OriLife) — thay bằng `KVStorage` injectable + callback
  * `send` injectable, giữ nguyên các con số/luật nghiệp vụ đã xác minh field.
+ *
+ * Hợp đồng net↔sync về AUTH (tên mã lỗi CỐ ĐỊNH, khớp l0/errors.ts):
+ *  - send() ném MobileCoreError `net/auth-transient` (refresh chết TẠM THỜI:
+ *    5xx/mạng lúc refresh) → item vào trạng thái **'blocked-on-auth'**: KHÔNG
+ *    bump retryCount, KHÔNG tính MAX_RETRY, KHÔNG dead-letter (chống mất dữ
+ *    liệu nông dân offline). Có backoff RIÊNG (authBlockCount) để không gọi dồn
+ *    dập endpoint đang hỏng-tạm-thời. Thoát trạng thái khi: (a) `unblockAuth()`
+ *    (tầng trên báo auth phục hồi) → về 'pending' ngay; HOẶC (b) hết cửa sổ
+ *    backoff → drain tự thử lại send(): thành công → xoá; lại auth-transient →
+ *    quay lại 'blocked-on-auth' (backoff tăng); lỗi khác → nhánh retry/terminal.
+ *  - send() ném `net/unauthorized` (phiên THẬT hết) → item vào **'auth-expired'**:
+ *    TERMINAL cho pipeline tự động (drain KHÔNG tự thử lại — tránh spam 401),
+ *    NHƯNG KHÔNG âm thầm dead-letter/huỷ dữ liệu — giữ nguyên item + surface qua
+ *    `onItemStatus(id,'auth-expired')` cho tầng trên (Redux → prompt re-login).
+ *    Sau khi user đăng nhập lại, tầng trên gọi `unblockAuth()` → về 'pending'.
+ *
+ * Idempotency (council chốt: CSPRNG chuyển từ net sang sync): id sinh mặc định
+ * bằng CSPRNG `globalThis.crypto.randomUUID()` (KHÔNG Math.random), injectable
+ * qua `genId` để test deterministic. 1 id DÙNG CHUNG cho cả `transactionId` LẪN
+ * `idempotencyKey`. Contract server: server scope idempotency theo auth-subject.
+ *
+ * ⚠️ Idempotency NGHIỆP-VỤ THẬT (chống double-submit khi app crash SAU enqueue
+ * nhưng TRƯỚC khi tầng trên kịp lưu id, rồi user bấm lại) đòi CALLER truyền
+ * `transactionId` BỀN — derive tất định từ chính hành động user (vd hash của
+ * {userId, formId, nội dung}) — KHÔNG dựa vào `genId` của sync. Lý do: genId chỉ
+ * là FALLBACK cho trường hợp caller không có id nghiệp vụ; mỗi lần enqueue lại
+ * genId sinh id MỚI → 2 lần bấm = 2 bản ghi khác id = double-submit. Khi caller
+ * truyền transactionId ổn định, lần enqueue thứ 2 trùng id → guard coi là trùng,
+ * bỏ bản thứ 2 (đúng ý). BẮT BUỘC genId dùng CSPRNG: nếu genId yếu (đụng id) thì
+ * 2 hành động KHÁC nhau vô tình trùng id → enqueue coi là trùng → bản ghi thứ 2
+ * bị BỎ LẶNG (mất write). Đó là lý do default khoá cứng CSPRNG, cấm Math.random.
  */
 
 import type { KVStorage, HttpResponse, HttpRequestOptions, LatLng } from '../types';
@@ -27,6 +58,8 @@ import { haversineDistance } from '../geo';
 export const MAX_RETRY_COUNT = 5;
 export const BACKOFF_BASE_MS = 5_000;
 export const BACKOFF_MAX_MS = 5 * 60_000; // 5 phút
+/** TTL mặc định cho dead-letter trước khi drain() purge (7 ngày). */
+export const DEAD_LETTER_TTL_MS = 7 * 24 * 60 * 60_000;
 
 /** Backoff luỹ thừa: base * 2^retryCount, chặn trên ở maxMs. */
 export function computeBackoffMs(
@@ -63,7 +96,20 @@ export function isRetryableError(error: unknown): boolean {
 // Outbox — queue bền trên KVStorage injected
 // ─────────────────────────────────────────────────────────────────────────
 
-export type SyncItemStatus = 'pending' | 'sending' | 'dead';
+/**
+ * Trạng thái item outbox:
+ *  - 'pending'         : chờ gửi (hoặc chờ hết backoff).
+ *  - 'sending'         : đang gửi (đọc lại được lúc drain = orphan phiên trước).
+ *  - 'blocked-on-auth' : refresh chết TẠM THỜI (net/auth-transient) — giữ dữ
+ *    liệu, backoff riêng, drain tự thử lại + unblockAuth() resume.
+ *  - 'auth-expired'    : phiên THẬT hết (net/unauthorized) — giữ dữ liệu, KHÔNG
+ *    tự thử lại; chỉ unblockAuth() (sau re-login) mới resume.
+ *  - 'dead'            : dead-letter (lỗi vĩnh viễn / cạn retry).
+ */
+export type SyncItemStatus = 'pending' | 'sending' | 'blocked-on-auth' | 'auth-expired' | 'dead';
+
+/** Trạng thái báo cho tầng UI (thêm 'sent' = gửi xong, item đã rời queue). */
+export type SyncItemNotifyStatus = SyncItemStatus | 'sent';
 
 /** Mã dead-letter — khớp `MobileCoreErrorCode` (nhóm sync/*, l0/errors.ts). */
 export type DeadLetterCode = Extract<MobileCoreErrorCode, 'sync/permanent' | 'sync/retry-exhausted'>;
@@ -88,6 +134,12 @@ export interface SyncQueueItem<T = unknown> {
   lastError?: string;
   /** Gắn khi status chuyển 'dead'. */
   deadLetterCode?: DeadLetterCode;
+  /**
+   * Số lần liên tiếp bị 'blocked-on-auth' (net/auth-transient). Dùng RIÊNG cho
+   * backoff của nhánh auth — TÁCH khỏi `retryCount` (auth-transient KHÔNG bump
+   * retryCount, KHÔNG tính MAX_RETRY). Reset về 0 khi unblockAuth()/gửi thành công.
+   */
+  authBlockCount?: number;
 }
 
 /**
@@ -103,6 +155,47 @@ export type SendFn<T = unknown> = (
   requestOptions: HttpRequestOptions,
 ) => Promise<HttpResponse>;
 
+/**
+ * Bọc 1 hàm gọi-xuống-net thô thành `SendFn` ĐẢM BẢO `idempotencyKey` luôn
+ * được ép = `item.idempotencyKey` trước khi tới net — không để lọt request
+ * thiếu key (kể cả khi consumer vô tình bỏ/ghi đè). Consumer:
+ *   const send = buildSyncSend((item, opts) =>
+ *     client.request('/trees', { ...opts, method: 'POST', body: item.payload }));
+ */
+export function buildSyncSend<T = unknown>(request: SendFn<T>): SendFn<T> {
+  return (item, requestOptions) =>
+    request(item, { ...requestOptions, idempotencyKey: item.idempotencyKey });
+}
+
+/**
+ * Sinh id mặc định = CSPRNG. Ưu tiên `crypto.randomUUID()`; fallback dựng UUID
+ * v4 từ `crypto.getRandomValues`. TUYỆT ĐỐI KHÔNG Math.random. Thiếu cả hai →
+ * ném lỗi rõ ràng (không âm thầm rơi về nguồn yếu → trùng id → mất write).
+ */
+export function defaultGenId(): string {
+  // Type cấu trúc tối thiểu (tsconfig L0 KHÔNG nạp DOM lib nên không có `Crypto`).
+  interface CryptoLike {
+    randomUUID?: () => string;
+    getRandomValues?: (array: Uint8Array) => Uint8Array;
+  }
+  const c: CryptoLike | undefined = (globalThis as { crypto?: CryptoLike }).crypto;
+  if (c && typeof c.randomUUID === 'function') return c.randomUUID();
+  if (c && typeof c.getRandomValues === 'function') {
+    const b = c.getRandomValues(new Uint8Array(16));
+    /* eslint-disable no-bitwise */ // dựng UUID v4 buộc mask bit version/variant
+    b[6] = (b[6] & 0x0f) | 0x40; // version 4
+    b[8] = (b[8] & 0x3f) | 0x80; // variant 10
+    /* eslint-enable no-bitwise */
+    const h = Array.from(b, (x) => x.toString(16).padStart(2, '0'));
+    return `${h.slice(0, 4).join('')}-${h.slice(4, 6).join('')}-${h.slice(6, 8).join('')}-${h.slice(8, 10).join('')}-${h.slice(10, 16).join('')}`;
+  }
+  throw new MobileCoreError(
+    'sync/no-csprng',
+    'CSPRNG unavailable: globalThis.crypto thiếu randomUUID/getRandomValues',
+    { retryable: false },
+  );
+}
+
 export interface SyncOutboxOptions<T = unknown> {
   /** Kho khoá-giá-trị bất đồng bộ — INJECT (SQLite/AsyncStorage do platform). */
   storage: KVStorage;
@@ -110,9 +203,26 @@ export interface SyncOutboxOptions<T = unknown> {
   send: SendFn<T>;
   /** Clock injectable — test dùng để điều khiển thời gian không cần fake timers thật. */
   now?: () => number;
+  /**
+   * Sinh id (dùng CHUNG cho transactionId + idempotencyKey) — INJECT để test
+   * deterministic. Mặc định `defaultGenId` (CSPRNG). KHÔNG dùng Math.random.
+   */
+  genId?: () => string;
   maxRetry?: number;
   backoffBaseMs?: number;
   backoffMaxMs?: number;
+  /**
+   * TTL (ms) cho item 'dead': hết hạn thì drain() purge (xoá storage + index).
+   * <=0 = giữ mãi (không purge). Mặc định 7 ngày — đủ để tầng trên surface/soi
+   * dead-letter trước khi dọn.
+   */
+  deadLetterTtlMs?: number;
+  /**
+   * Callback báo đổi trạng thái từng item cho tầng UI (Redux consumer). Gọi khi
+   * item chuyển 'sending'/'pending'/'blocked-on-auth'/'auth-expired'/'dead' và
+   * 'sent' (gửi xong, đã rời queue). Lỗi trong callback được nuốt — không phá drain.
+   */
+  onItemStatus?: (id: string, status: SyncItemNotifyStatus) => void;
   /** Tiền tố khoá lưu trữ — đổi khi cần nhiều outbox độc lập trên cùng storage. */
   storageKeyPrefix?: string;
 }
@@ -133,6 +243,13 @@ export interface SyncOutbox<T = unknown> {
    * mọi item đang chờ rồi `drain()` ngay, không chờ tới lượt định kỳ.
    */
   drainNow(): Promise<void>;
+  /**
+   * Tầng trên báo "auth đã phục hồi" (refresh xong / user re-login xong): chuyển
+   * NGAY mọi item đang 'blocked-on-auth' HOẶC 'auth-expired' về 'pending'
+   * (nextAttemptAt=now, reset authBlockCount) rồi drain() — giống drainNow nhưng
+   * cho nhánh auth. Đây là TIÊU CHÍ THOÁT tường minh của 2 trạng thái auth.
+   */
+  unblockAuth(): Promise<void>;
   /** Trạng thái hiện tại của toàn bộ queue — chủ yếu phục vụ test/inspect. */
   getSnapshot(): Promise<SyncQueueItem<T>[]>;
 }
@@ -145,14 +262,27 @@ export function createSyncOutbox<T = unknown>(options: SyncOutboxOptions<T>): Sy
     storage,
     send,
     now = () => Date.now(),
+    genId = defaultGenId,
     maxRetry = MAX_RETRY_COUNT,
     backoffBaseMs = BACKOFF_BASE_MS,
     backoffMaxMs = BACKOFF_MAX_MS,
+    deadLetterTtlMs = DEAD_LETTER_TTL_MS,
+    onItemStatus,
     storageKeyPrefix = 'sync',
   } = options;
 
   const indexKey = `${storageKeyPrefix}${INDEX_SUFFIX}`;
   const itemKey = (id: string): string => `${storageKeyPrefix}${ITEM_SUFFIX}${id}`;
+
+  /** Báo trạng thái cho UI — nuốt lỗi callback để không phá vòng drain. */
+  function notify(id: string, status: SyncItemNotifyStatus): void {
+    if (!onItemStatus) return;
+    try {
+      onItemStatus(id, status);
+    } catch {
+      // callback consumer ném — không để lan ra phá durability/loop.
+    }
+  }
 
   // P1-2 (khớp syncService.isProcessing): chống re-entrancy — 2 lời gọi
   // drain chồng nhau (interval + drainNow reconnect) có thể gửi trùng item
@@ -222,7 +352,19 @@ export function createSyncOutbox<T = unknown>(options: SyncOutboxOptions<T>): Sy
   }
 
   async function enqueue(type: string, payload: T, transactionId?: string): Promise<string> {
-    const id = transactionId ?? `${type}_${now()}_${Math.random().toString(36).slice(2, 9)}`;
+    // Guard chống trùng transactionId đang-xử-lý (chống mất write): nếu id được
+    // chỉ định TRÙNG 1 item chưa 'dead' → KHÔNG ghi đè (giữ nguyên state đang
+    // gửi / đang blocked), trả lại id cũ. Item 'dead' thì cho enqueue lại (hồi sinh).
+    if (transactionId !== undefined) {
+      const existing = await readItem(transactionId);
+      if (existing && existing.status !== 'dead') {
+        return existing.transactionId;
+      }
+    }
+
+    // id CSPRNG (genId injectable, mặc định crypto.randomUUID) — DÙNG CHUNG cho
+    // transactionId LẪN idempotencyKey (1 nguồn duy nhất, không lệch).
+    const id = transactionId ?? genId();
     const t = now();
     const item: SyncQueueItem<T> = {
       transactionId: id,
@@ -251,20 +393,37 @@ export function createSyncOutbox<T = unknown>(options: SyncOutboxOptions<T>): Sy
 
       for (const id of ids) {
         const item = await readItem(id);
-        if (!item) continue; // đã bị xoá (thành công) giữa chừng
+        if (!item) {
+          // Orphan-id: id còn trong index nhưng item đã biến mất khỏi storage
+          // (xoá dở / storage bị dọn ngoài) → gỡ id khỏi index cho sạch.
+          await removeFromIndex(id);
+          continue;
+        }
 
-        if (item.status === 'dead') continue; // dead-letter: giữ trong index, không retry
+        if (item.status === 'dead') {
+          // Dead-letter: giữ trong index, không retry. Purge sau TTL để queue
+          // không phình mãi (tầng trên đã có cửa sổ surface/soi trước đó).
+          if (deadLetterTtlMs > 0 && now() - item.updatedAt >= deadLetterTtlMs) {
+            await storage.removeItem(itemKey(id));
+            await removeFromIndex(id);
+          }
+          continue;
+        }
+
+        // 'auth-expired' (phiên THẬT hết): TERMINAL cho pipeline tự động — drain
+        // KHÔNG tự thử lại (tránh spam 401). Chỉ unblockAuth() (sau re-login)
+        // mới đưa về 'pending'. Dữ liệu vẫn giữ nguyên trong queue.
+        if (item.status === 'auth-expired') continue;
 
         const t = now();
         if (item.nextAttemptAt > t) continue; // còn trong cửa sổ backoff — bỏ qua vòng này
 
-        // Item 'pending' HOẶC orphan 'sending' (app bị kill giữa lúc gửi lần
-        // trước) đều tới đây và được thử lại — không phân biệt, an toàn vì
-        // isProcessing chống chồng lượt trong-phiên nên mọi 'sending' đọc
-        // được ở đầu vòng chắc chắn là orphan từ phiên trước.
+        // Tới đây: 'pending' | orphan 'sending' | 'blocked-on-auth' đã hết
+        // backoff. Đều thử gửi lại — an toàn vì isProcessing chống chồng lượt.
         item.status = 'sending';
         item.updatedAt = now();
         await writeItem(item);
+        notify(id, 'sending');
 
         // Dựng HttpRequestOptions MANG idempotencyKey rồi trao cho net (gap 2
         // đóng end-to-end: consumer spread requestOptions vào client.request).
@@ -275,37 +434,81 @@ export function createSyncOutbox<T = unknown>(options: SyncOutboxOptions<T>): Sy
           // Thành công → xoá item + gỡ id khỏi index (atomic, chỉ id này).
           await storage.removeItem(itemKey(id));
           await removeFromIndex(id);
+          notify(id, 'sent');
         } catch (err) {
-          const retryable = isRetryableError(err);
-          const nextRetryCount = item.retryCount + 1;
           const message = err instanceof Error ? err.message : String(err);
 
+          // RE-READ chống lost-update (adversary re-attack #1): item KHÔNG có
+          // lock/version per-record. Giữa read→set-'sending'→send()(inflight
+          // vài giây)→catch, tầng trên có thể đã ghi đè item qua storage — vd
+          // unblockAuth() reset về 'pending'/authBlockCount=0. Nếu ta ghi state
+          // mới tính từ bản CŨ trong bộ nhớ (item), reset đó bị XOÁ lặng lẽ.
+          // Sửa: đọc lại bản mới nhất; nếu item KHÔNG còn 'sending' (ai đó đã cố
+          // ý chuyển trạng thái) hoặc đã biến mất → TÔN TRỌNG bản mới, bỏ qua,
+          // KHÔNG ghi đè. Nếu vẫn 'sending' (không ai đụng) → tính state mới từ
+          // `cur` (không phải `item` cũ) để mọi field bám bản đã persist.
+          const cur = await readItem(id);
+          if (!cur || cur.status !== 'sending') continue;
+
+          // ── Nhánh AUTH-TRANSIENT: refresh chết TẠM THỜI → 'blocked-on-auth' ──
+          // KHÔNG bump retryCount, KHÔNG tính MAX_RETRY, KHÔNG dead-letter (chống
+          // mất write của nông dân offline). Có backoff RIÊNG (authBlockCount).
+          if (isMobileCoreError(err) && err.code === 'net/auth-transient') {
+            const authBlockCount = (cur.authBlockCount ?? 0) + 1;
+            cur.status = 'blocked-on-auth';
+            cur.authBlockCount = authBlockCount;
+            cur.nextAttemptAt =
+              now() + computeBackoffMs(authBlockCount - 1, backoffBaseMs, backoffMaxMs);
+            cur.lastError = message;
+            cur.updatedAt = now();
+            await writeItem(cur);
+            notify(id, 'blocked-on-auth');
+            continue;
+          }
+
+          // ── Nhánh AUTH-EXPIRED: phiên THẬT hết → 'auth-expired' (terminal tự
+          // động, KHÔNG dead-letter). Giữ dữ liệu + surface cho tầng trên re-login.
+          if (isMobileCoreError(err) && err.code === 'net/unauthorized') {
+            cur.status = 'auth-expired';
+            cur.lastError = message;
+            cur.updatedAt = now();
+            await writeItem(cur);
+            notify(id, 'auth-expired');
+            continue;
+          }
+
+          const retryable = isRetryableError(err);
+          const nextRetryCount = cur.retryCount + 1;
+
           if (!retryable) {
-            item.status = 'dead';
-            item.deadLetterCode = 'sync/permanent';
-            item.lastError = message;
-            item.retryCount = nextRetryCount;
-            item.updatedAt = now();
-            await writeItem(item); // id vẫn nằm sẵn trong index, không ghi index
+            cur.status = 'dead';
+            cur.deadLetterCode = 'sync/permanent';
+            cur.lastError = message;
+            cur.retryCount = nextRetryCount;
+            cur.updatedAt = now();
+            await writeItem(cur); // id vẫn nằm sẵn trong index, không ghi index
+            notify(id, 'dead');
             continue;
           }
 
           if (nextRetryCount >= maxRetry) {
-            item.status = 'dead';
-            item.deadLetterCode = 'sync/retry-exhausted';
-            item.lastError = message;
-            item.retryCount = nextRetryCount;
-            item.updatedAt = now();
-            await writeItem(item);
+            cur.status = 'dead';
+            cur.deadLetterCode = 'sync/retry-exhausted';
+            cur.lastError = message;
+            cur.retryCount = nextRetryCount;
+            cur.updatedAt = now();
+            await writeItem(cur);
+            notify(id, 'dead');
             continue;
           }
 
-          item.status = 'pending';
-          item.retryCount = nextRetryCount;
-          item.nextAttemptAt = now() + computeBackoffMs(nextRetryCount - 1, backoffBaseMs, backoffMaxMs);
-          item.lastError = message;
-          item.updatedAt = now();
-          await writeItem(item);
+          cur.status = 'pending';
+          cur.retryCount = nextRetryCount;
+          cur.nextAttemptAt = now() + computeBackoffMs(nextRetryCount - 1, backoffBaseMs, backoffMaxMs);
+          cur.lastError = message;
+          cur.updatedAt = now();
+          await writeItem(cur);
+          notify(id, 'pending');
         }
       }
     } finally {
@@ -314,14 +517,47 @@ export function createSyncOutbox<T = unknown>(options: SyncOutboxOptions<T>): Sy
   }
 
   async function drainNow(): Promise<void> {
-    // Mạng vừa phục hồi → xoá cửa sổ backoff của mọi item chưa dead, thử ngay.
+    // Mạng vừa phục hồi (NetInfo reconnect) → xoá cửa sổ backoff MẠNG để thử
+    // NGAY. CHỈ áp cho 'pending' (backoff sau lỗi 5xx/timeout) và orphan 'sending'.
+    // TUYỆT ĐỐI KHÔNG đụng backoff của:
+    //  - 'blocked-on-auth' (adversary re-attack #2): vùng sóng yếu nông thôn
+    //    bật/tắt NetInfo liên tục → mỗi reconnect reset nextAttemptAt=now sẽ gọi
+    //    lại refresh ngay, phá đúng mục đích chống-hammer của authBlockCount.
+    //    Tôn trọng nextAttemptAt hiện có; drain() chỉ thử khi backoff auth đã hết.
+    //  - 'auth-expired' (phiên thật hết — mạng phục hồi không cứu được, cần re-login).
+    //  - 'dead'.
+    // unblockAuth() là API reset tường minh DUY NHẤT cho nhánh auth.
     const ids = await readIndex();
     const t = now();
     for (const id of ids) {
       const item = await readItem(id);
-      if (item && item.status !== 'dead' && item.nextAttemptAt > t) {
+      if (
+        item &&
+        (item.status === 'pending' || item.status === 'sending') &&
+        item.nextAttemptAt > t
+      ) {
         item.nextAttemptAt = t;
         await writeItem(item);
+      }
+    }
+    await drain();
+  }
+
+  async function unblockAuth(): Promise<void> {
+    // Tầng trên báo auth đã phục hồi → mọi item đang chờ auth
+    // ('blocked-on-auth' | 'auth-expired') về 'pending' ngay (reset backoff auth),
+    // rồi drain(). Đây là tiêu chí thoát tường minh của 2 trạng thái auth.
+    const ids = await readIndex();
+    const t = now();
+    for (const id of ids) {
+      const item = await readItem(id);
+      if (item && (item.status === 'blocked-on-auth' || item.status === 'auth-expired')) {
+        item.status = 'pending';
+        item.nextAttemptAt = t;
+        item.authBlockCount = 0;
+        item.updatedAt = t;
+        await writeItem(item);
+        notify(id, 'pending');
       }
     }
     await drain();
@@ -337,7 +573,7 @@ export function createSyncOutbox<T = unknown>(options: SyncOutboxOptions<T>): Sy
     return items;
   }
 
-  return { enqueue, drain, drainNow, getSnapshot };
+  return { enqueue, drain, drainNow, unblockAuth, getSnapshot };
 }
 
 // ─────────────────────────────────────────────────────────────────────────

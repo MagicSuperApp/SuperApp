@@ -42,6 +42,16 @@ export interface KeystoreKeypairResult {
 }
 
 /**
+ * Mục đích của khoá được sinh — quyết định BẤT BIẾN hợp đồng về gating.
+ *
+ * - `'did-identity'`: khoá phục vụ ĐỊNH DANH DID (PhoenixKey). Bắt buộc
+ *   gate sinh trắc — xem bất biến ở `generateKeypair`. KHÔNG hạ cấp được.
+ * - `'general'`: khoá dùng chung (phiên/ký kỹ thuật không định danh) —
+ *   caller tự chọn có gate sinh trắc hay không qua `requireBiometric`.
+ */
+export type KeystoreKeyPurpose = 'did-identity' | 'general';
+
+/**
  * Contract native cho việc sinh/đọc/xoá/ký bằng khoá phần cứng
  * (Android Keystore / iOS Secure Enclave). Mỗi method map 1-1 với
  * 1 lệnh gọi TurboModule — KHÔNG có logic nghiệp vụ ở đây.
@@ -53,14 +63,33 @@ export interface KeystoreEngine {
    * BiometricPrompt.CryptoObject (Android) / LAContext (iOS) — mọi lần
    * `sign()` sau đó bắt buộc xác thực sinh trắc trước khi enclave ký.
    *
+   * ── BẤT BIẾN HỢP ĐỒNG: biometric-gated DID ─────────────────────────
+   * Khi `keyPurpose === 'did-identity'`, sinh trắc BẮT BUỘC bật:
+   *   - `requireBiometric` bị ÉP `true` bất kể giá trị caller truyền vào.
+   *   - Engine native PHẢI TỪ CHỐI (throw) mọi yêu cầu tạo khoá
+   *     `'did-identity'` KHÔNG gate sinh trắc — không có đường hạ cấp.
+   *   - Đây là bất biến ĐỊNH DANH: khoá đại diện DID người dùng không
+   *     được phép ký khi chưa có xác thực sinh trắc sống.
+   * Khi `keyPurpose === 'general'`, caller tự quyết qua `requireBiometric`.
+   * ───────────────────────────────────────────────────────────────────
+   *
    * @param alias Định danh khoá trong keystore (per-app, per-user).
-   * @param requireBiometric Gate ký bằng sinh trắc học.
-   * @throws khi alias đã tồn tại (harvest: `E_KEY_EXISTS`), hoặc keygen
-   *   thất bại (harvest: `E_KEYGEN_FAILED`).
+   * @param keyPurpose Mục đích khoá — `'did-identity'` kích hoạt bất biến
+   *   ép sinh trắc ở trên; `'general'` cho khoá dùng chung.
+   * @param requireBiometric Gate ký bằng sinh trắc học. BỊ BỎ QUA (ép
+   *   `true`) khi `keyPurpose === 'did-identity'`.
+   * @throws khi alias đã tồn tại (harvest: `E_KEY_EXISTS`), keygen thất
+   *   bại (harvest: `E_KEYGEN_FAILED`), hoặc tạo khoá `'did-identity'`
+   *   mà không gate sinh trắc (bất biến vi phạm — native PHẢI throw;
+   *   harvest đề xuất: `E_DID_KEY_REQUIRES_BIOMETRIC`).
    * @needs-device-test Cần chạy trên máy thật có Secure Enclave/StrongBox
    *   thật — simulator/emulator không đại diện hành vi enclave.
    */
-  generateKeypair(alias: string, requireBiometric: boolean): Promise<KeystoreKeypairResult>;
+  generateKeypair(
+    alias: string,
+    keyPurpose: KeystoreKeyPurpose,
+    requireBiometric: boolean,
+  ): Promise<KeystoreKeypairResult>;
 
   /**
    * Đọc public key hex (uncompressed EC point) của khoá đã tồn tại
@@ -95,13 +124,39 @@ export interface KeystoreEngine {
    * này trigger prompt sinh trắc (`promptTitle`/`promptSubtitle` hiển
    * thị trên dialog OS) trước khi enclave thực hiện ký.
    *
+   * ── DOMAIN-SEPARATION: CHỈ CHUYỂN TIẾP THAM SỐ, KHÔNG ĐỊNH NGHĨA ────
+   * `domainTag` là chuỗi OPAQUE do CALLER (PhoenixKey / tầng platform)
+   * cung cấp để tách miền chữ ký (chống replay khối payload giữa các
+   * ngữ cảnh: DID-auth vs token vs message...). MobileCore CHỈ chuyển
+   * tiếp `domainTag` xuống native — TUYỆT ĐỐI KHÔNG:
+   *   - tự chọn/hard-code giá trị `domainTag` bất kỳ;
+   *   - tự định nghĩa cách GHÉP `domainTag` với `dataHex` (prefix?
+   *     length-prefix? hash(tag||data)? tách field?);
+   *   - tự quyết `dataHex` là digest đã băm sẵn hay canonical bytes thô.
+   * Ba điều trên thuộc scheme mật mã single-source của PhoenixKey.
+   *
+   * [NEEDS-EVIDENCE] Format domain-separation + digest scheme thuộc
+   *   PhoenixKey-SDK/rust_core (`taad_sign_ed25519` / `canonicalize`).
+   *   MobileCore chỉ chuyển tiếp tham số; CẦN Long/Phoenix xác nhận
+   *   CHỮ KÝ HÀM chính xác: (a) giá trị/định dạng `domainTag`,
+   *   (b) cách native ghép `domainTag` vào dữ liệu trước khi ký,
+   *   (c) `dataHex` truyền vào là digest đã băm sẵn hay canonical bytes
+   *   thô để native tự băm, (d) khoá HW P-256 gate sinh trắc này CÓ
+   *   PHẢI chính là khoá DID hay chỉ là khoá attestation/wrapping (DID
+   *   ký thật bằng Ed25519 qua `taad_sign_ed25519` — cần làm rõ quan hệ).
+   * ───────────────────────────────────────────────────────────────────
+   *
    * @param alias Khoá dùng để ký.
-   * @param dataHex Bytes cần ký, dạng hex string (đã canonical hoá).
+   * @param dataHex Bytes cần ký, dạng hex string (đã canonical hoá bởi
+   *   tầng gọi). Xem [NEEDS-EVIDENCE] (c) về digest-vs-raw.
+   * @param domainTag Nhãn tách miền OPAQUE do caller/PhoenixKey cung cấp
+   *   — MobileCore không diễn giải, chỉ chuyển tiếp. Xem [NEEDS-EVIDENCE].
    * @param promptTitle Tiêu đề dialog sinh trắc (text người-đọc — do
    *   tầng UI platform truyền vào, KHÔNG hard-code trong core).
    * @param promptSubtitle Phụ đề dialog sinh trắc (tuỳ chọn).
-   * @returns Chữ ký ECDSA dạng hex (DER hoặc raw r||s tuỳ native — ghi
-   *   rõ định dạng khi hiện thực, PHASE-3 phải khớp verifier phía server).
+   * @returns Chữ ký dạng hex (định dạng — DER / raw r||s / Ed25519 64B —
+   *   do scheme PhoenixKey quyết; xem [NEEDS-EVIDENCE], PHASE-3 phải
+   *   khớp verifier phía server).
    * @throws khi không có khoá (harvest: `E_NO_KEY`), init ký lỗi
    *   (harvest: `E_SIGN_INIT`), lỗi sau xác thực (harvest:
    *   `E_SIGN_AFTER_AUTH`), user huỷ (harvest: `E_USER_CANCELED`), hoặc
@@ -114,6 +169,7 @@ export interface KeystoreEngine {
   sign(
     alias: string,
     dataHex: string,
+    domainTag: string,
     promptTitle: string,
     promptSubtitle?: string,
   ): Promise<string>;

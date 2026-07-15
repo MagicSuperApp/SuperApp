@@ -27,14 +27,11 @@ import {
   requireTarget,
   normalizeAngle,
   signedAngleDelta,
-  captureByHeading,
-  initHeadingState,
   getModelConfig,
   DEFAULT_MODEL_CONFIG,
   type Box,
   type ScoredBox,
   type TrackedDetection,
-  type HeadingState,
 } from '../index';
 
 // ── iou ────────────────────────────────────────────────────────────────────
@@ -413,65 +410,7 @@ describe('signedAngleDelta [-180,180]', () => {
   });
 });
 
-// ── captureByHeading ──────────────────────────────────────────────────────────
-describe('captureByHeading', () => {
-  const clock = () => 1_000_000; // clock cố định → thuần.
-
-  function feed(state: HeadingState, heading: number, pitch: number) {
-    return captureByHeading(state, { heading, pitch, roll: 0 }, { now: clock });
-  }
-
-  test('xoay từ-từ 1°/frame: kích khi Δheading đạt 25°, không trước đó', () => {
-    let state = initHeadingState();
-    // Mốc tại heading=0.
-    let r = feed(state, 0, 0);
-    state = r.state;
-    expect(r.result.shouldCapture).toBe(false);
-
-    let firedAt = -1;
-    for (let h = 1; h <= 30; h++) {
-      r = feed(state, h, 0);
-      state = r.state;
-      if (r.result.shouldCapture && firedAt < 0) firedAt = h;
-      if (h < 25) {
-        // Δheading = h < 25 → chưa đủ góc.
-        expect(r.result.shouldCapture).toBe(false);
-      }
-    }
-    // Δheading=25 tại h=25, đã đủ steadyFrames (xoay 1°/frame ≤1.5) → kích tại 25.
-    expect(firedAt).toBe(25);
-    // Sau khi chụp, mốc dời về 25; các frame 26..30 có Δ<25 nên KHÔNG chụp lại.
-    expect(state.lastCapturedHeading).toBe(25);
-  });
-
-  test('xoay quá nhanh (25° trong 1 frame) → KHÔNG kích (chưa đứng yên)', () => {
-    let state = initHeadingState();
-    let r = feed(state, 0, 0);
-    state = r.state;
-    // Vài frame đứng yên để steadyFrames tích luỹ.
-    for (let i = 0; i < 5; i++) {
-      r = feed(state, 0, 0);
-      state = r.state;
-    }
-    // Nhảy 30° trong 1 frame: instRate=30 > 1.5 → steadyFrames reset 0 → không steady.
-    r = feed(state, 30, 0);
-    expect(r.result.deltaHeading).toBeCloseTo(30, 6); // đủ GÓC...
-    expect(r.result.shouldCapture).toBe(false); // ...nhưng đang lia → hoãn.
-  });
-
-  test('trigger theo pitch: Δpitch ≥ 18° khi đứng yên', () => {
-    let state = initHeadingState();
-    let r = feed(state, 0, 0);
-    state = r.state;
-    let firedAt = -1;
-    for (let p = 1; p <= 20; p++) {
-      r = feed(state, 0, p);
-      state = r.state;
-      if (r.result.shouldCapture && firedAt < 0) firedAt = p;
-    }
-    expect(firedAt).toBe(18); // Δpitch=18 tại p=18.
-  });
-});
+// (captureByHeading cũ đã BỎ — thay bằng 8-sector + StabilitySampler; test mới ở capture.test.ts)
 
 // ── getModelConfig ────────────────────────────────────────────────────────────
 describe('getModelConfig', () => {

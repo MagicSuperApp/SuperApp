@@ -38,4 +38,14 @@ export interface TrackedDetection {
   classId: number;
   /** Số frame liên tiếp đã match (≥ 1). */
   count: number;
+  /**
+   * ID bền qua các frame (LENS-DETECT gán khi tracker mới sinh; giữ nguyên khi match).
+   * Dùng để KHÔNG chụp trùng cùng 1 mục tiêu qua nhiều frame. Optional để không phá
+   * consumer cũ chỉ đọc box/count.
+   */
+  id?: string;
+  /** true khi count ≥ stableFrames (đã "xác nhận", đủ tin để chụp/upload). */
+  isConfirmed?: boolean;
+  /** Trung bình confidence các lần match (ổn định hơn 1 frame lẻ). */
+  averageConfidence?: number;
 }

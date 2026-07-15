@@ -13,10 +13,13 @@ import {
   createDedupCache,
   computeBackoffMs,
   isRetryableError,
+  buildSyncSend,
+  defaultGenId,
   BACKOFF_BASE_MS,
   BACKOFF_MAX_MS,
   MAX_RETRY_COUNT,
   type SyncQueueItem,
+  type SendFn,
 } from '../index';
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -414,6 +417,383 @@ describe('createSyncOutbox', () => {
     } finally {
       (global as { fetch?: unknown }).fetch = originalFetch;
     }
+  });
+
+  // ── Việc 1: blocked-on-auth (net/auth-transient) — chống mất dữ liệu ──────
+  it('net/auth-transient → blocked-on-auth: KHÔNG dead-letter, KHÔNG bump retryCount, có nextAttemptAt backoff riêng', async () => {
+    const storage = createMemoryStorage();
+    let clock = 1_000;
+    const now = () => clock;
+    const send = jest.fn(async () => {
+      throw new MobileCoreError('net/auth-transient', 'refresh 503', { retryable: true });
+    });
+    const outbox = createSyncOutbox({ storage, send, now });
+
+    await outbox.enqueue('tree_identification', { a: 1 });
+    await outbox.drain();
+
+    let snap = await outbox.getSnapshot();
+    expect(snap).toHaveLength(1);
+    expect(snap[0].status).toBe('blocked-on-auth');
+    expect(snap[0].retryCount).toBe(0); // KHÔNG bump retryCount
+    expect(snap[0].authBlockCount).toBe(1); // đếm riêng cho nhánh auth
+    expect(snap[0].nextAttemptAt).toBe(clock + 5_000); // backoff riêng (không dồn dập mỗi tick)
+    expect(snap[0].deadLetterCode).toBeUndefined(); // KHÔNG dead-letter
+
+    // Kẹt auth kéo dài: dù lặp nhiều lần vẫn KHÔNG BAO GIỜ dead-letter, dữ liệu còn nguyên.
+    for (let i = 0; i < 10; i++) {
+      clock = snap[0].nextAttemptAt; // nhảy tới lúc due
+      await outbox.drain();
+      snap = await outbox.getSnapshot();
+      expect(snap).toHaveLength(1);
+      expect(snap[0].status).toBe('blocked-on-auth');
+      expect(snap[0].retryCount).toBe(0);
+    }
+    expect(send).toHaveBeenCalledTimes(11);
+  });
+
+  it('unblockAuth() → item blocked-on-auth về pending, drain gửi lại thành công', async () => {
+    const storage = createMemoryStorage();
+    let clock = 0;
+    const now = () => clock;
+    let mode: 'auth' | 'ok' = 'auth';
+    const send = jest.fn(async () => {
+      if (mode === 'auth') throw new MobileCoreError('net/auth-transient', 'refresh 503', { retryable: true });
+      return ok();
+    });
+    const outbox = createSyncOutbox({ storage, send, now });
+
+    await outbox.enqueue('farm_update', { b: 2 });
+    await outbox.drain();
+    expect((await outbox.getSnapshot())[0].status).toBe('blocked-on-auth');
+
+    mode = 'ok'; // tầng trên báo auth phục hồi
+    await outbox.unblockAuth(); // → pending → drain → gửi lại thành công
+    expect(await outbox.getSnapshot()).toEqual([]);
+    expect(send).toHaveBeenCalledTimes(2);
+  });
+
+  it('net/unauthorized → auth-expired: terminal (KHÔNG dead-letter, drain/drainNow KHÔNG tự retry), chỉ unblockAuth resume', async () => {
+    const storage = createMemoryStorage();
+    let clock = 0;
+    const now = () => clock;
+    let mode: 'unauth' | 'ok' = 'unauth';
+    const send = jest.fn(async () => {
+      if (mode === 'unauth') throw new MobileCoreError('net/unauthorized', 'session expired', { retryable: false });
+      return ok();
+    });
+    const outbox = createSyncOutbox({ storage, send, now });
+
+    await outbox.enqueue('tree_identification', { z: 1 });
+    await outbox.drain();
+
+    const snap = await outbox.getSnapshot();
+    expect(snap).toHaveLength(1);
+    expect(snap[0].status).toBe('auth-expired');
+    expect(snap[0].status).not.toBe('dead'); // KHÔNG âm thầm dead-letter dữ liệu
+    expect(snap[0].deadLetterCode).toBeUndefined();
+    expect(send).toHaveBeenCalledTimes(1);
+
+    // Pipeline tự động KHÔNG thử lại (tránh spam 401) — kể cả sau backoff dài / reconnect.
+    clock = 10 * 60_000;
+    await outbox.drain();
+    await outbox.drainNow();
+    expect(send).toHaveBeenCalledTimes(1);
+    expect((await outbox.getSnapshot())[0].status).toBe('auth-expired');
+
+    // Chỉ unblockAuth() (sau re-login) mới resume → gửi lại thành công.
+    mode = 'ok';
+    await outbox.unblockAuth();
+    expect(await outbox.getSnapshot()).toEqual([]);
+    expect(send).toHaveBeenCalledTimes(2);
+  });
+
+  // ── Việc 2: CSPRNG idempotency, genId injectable ─────────────────────────
+  it('genId injectable → id deterministic, DÙNG CHUNG transactionId + idempotencyKey + requestOptions', async () => {
+    const storage = createMemoryStorage();
+    const genId = jest.fn(() => 'fixed-id-123');
+    let seenOpts: HttpRequestOptions | undefined;
+    const send = jest.fn(async (_item: SyncQueueItem, opts: HttpRequestOptions) => {
+      seenOpts = opts;
+      return ok();
+    });
+    const outbox = createSyncOutbox({ storage, send, genId });
+
+    const txId = await outbox.enqueue('tree_identification', { a: 1 });
+    expect(txId).toBe('fixed-id-123');
+    expect(genId).toHaveBeenCalledTimes(1);
+
+    const snap = await outbox.getSnapshot();
+    expect(snap[0].transactionId).toBe('fixed-id-123');
+    expect(snap[0].idempotencyKey).toBe('fixed-id-123'); // 1 nguồn, không lệch
+
+    await outbox.drain();
+    expect(seenOpts?.idempotencyKey).toBe('fixed-id-123');
+  });
+
+  it('default genId = CSPRNG (crypto.randomUUID shape), TUYỆT ĐỐI KHÔNG Math.random', async () => {
+    const spy = jest.spyOn(Math, 'random');
+    const storage = createMemoryStorage();
+    const send = jest.fn(async () => ok());
+    const outbox = createSyncOutbox({ storage, send });
+
+    const id1 = await outbox.enqueue('t', { a: 1 });
+    const id2 = await outbox.enqueue('t', { a: 2 });
+
+    const uuidV4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+    expect(id1).toMatch(uuidV4);
+    expect(id2).toMatch(uuidV4);
+    expect(id1).not.toBe(id2);
+    expect(spy).not.toHaveBeenCalled(); // không dùng Math.random ở bất kỳ đâu
+    spy.mockRestore();
+  });
+
+  it('defaultGenId ném lỗi rõ ràng khi thiếu crypto (không âm thầm rơi về nguồn yếu)', () => {
+    const original = (globalThis as { crypto?: unknown }).crypto;
+    try {
+      Object.defineProperty(globalThis, 'crypto', { value: undefined, configurable: true });
+      expect(() => defaultGenId()).toThrow(/CSPRNG unavailable/);
+    } finally {
+      Object.defineProperty(globalThis, 'crypto', { value: original, configurable: true });
+    }
+  });
+
+  // ── Việc 3: buildSyncSend() ép idempotencyKey ────────────────────────────
+  it('buildSyncSend() ép idempotencyKey = item.idempotencyKey, ghi đè key sai, giữ field khác', async () => {
+    let seen: HttpRequestOptions | undefined;
+    const raw: SendFn = async (_item, opts) => {
+      seen = opts;
+      return ok();
+    };
+    const send = buildSyncSend(raw);
+    const item: SyncQueueItem = {
+      transactionId: 'X',
+      idempotencyKey: 'X',
+      type: 't',
+      payload: {},
+      status: 'pending',
+      retryCount: 0,
+      nextAttemptAt: 0,
+      createdAt: 0,
+      updatedAt: 0,
+    };
+    // requestOptions vào mang key SAI + field khác → phải ép key đúng, giữ method.
+    await send(item, { idempotencyKey: 'WRONG', method: 'POST' });
+    expect(seen?.idempotencyKey).toBe('X');
+    expect(seen?.method).toBe('POST');
+  });
+
+  // ── Việc 4a: guard enqueue trùng transactionId đang-gửi ──────────────────
+  it('enqueue trùng transactionId đang-xử-lý → KHÔNG ghi đè payload/state (chống mất write)', async () => {
+    const storage = createMemoryStorage();
+    const send = jest.fn(async () => ok());
+    const outbox = createSyncOutbox({ storage, send });
+
+    const id1 = await outbox.enqueue('t', { v: 1 }, 'FIX');
+    const id2 = await outbox.enqueue('t', { v: 2 }, 'FIX'); // trùng, item cũ chưa 'dead'
+    expect(id1).toBe('FIX');
+    expect(id2).toBe('FIX');
+
+    const snap = await outbox.getSnapshot();
+    expect(snap).toHaveLength(1); // không nhân đôi
+    expect((snap[0].payload as { v: number }).v).toBe(1); // payload GỐC giữ nguyên
+  });
+
+  // ── Việc 4b: orphan-id cleanup + purge dead sau TTL ──────────────────────
+  it('orphan-id (item null nhưng id còn trong index) → drain gỡ id khỏi index', async () => {
+    const storage = createMemoryStorage();
+    await storage.setItem('sync:queue:index', JSON.stringify(['ghost']));
+    // KHÔNG có key item:ghost → readItem trả null.
+    const send = jest.fn(async () => ok());
+    const outbox = createSyncOutbox({ storage, send });
+
+    await outbox.drain();
+    expect(await outbox.getSnapshot()).toEqual([]);
+    expect(await storage.getItem('sync:queue:index')).toBe('[]');
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('dead-letter quá TTL → drain() purge khỏi storage + index', async () => {
+    const storage = createMemoryStorage();
+    let clock = 1_000;
+    const now = () => clock;
+    const send = jest.fn(async () => {
+      throw new MobileCoreError('net/validation', 'bad', { retryable: false });
+    });
+    const outbox = createSyncOutbox({ storage, send, now, deadLetterTtlMs: 1_000, genId: () => 'DEADID' });
+
+    await outbox.enqueue('t', { a: 1 });
+    await outbox.drain(); // → dead (updatedAt = 1_000)
+    expect((await outbox.getSnapshot())[0].status).toBe('dead');
+
+    clock = 1_000 + 999; // chưa hết TTL
+    await outbox.drain();
+    expect(await outbox.getSnapshot()).toHaveLength(1); // vẫn giữ
+
+    clock = 1_000 + 1_000; // tới hạn TTL
+    await outbox.drain();
+    expect(await outbox.getSnapshot()).toEqual([]); // đã purge
+    expect(await storage.getItem('sync:queue:item:DEADID')).toBeNull();
+    expect(await storage.getItem('sync:queue:index')).toBe('[]');
+  });
+
+  // ── Việc 4c: onItemStatus callback ───────────────────────────────────────
+  it('onItemStatus báo chuyển trạng thái cho UI: sending→sent (thành công) và sending→dead (lỗi)', async () => {
+    const storage = createMemoryStorage();
+    const events: Array<[string, string]> = [];
+    const onItemStatus = (id: string, status: string): void => {
+      events.push([id, status]);
+    };
+    const sendOk = jest.fn(async () => ok());
+    const outboxOk = createSyncOutbox({ storage, send: sendOk, onItemStatus, genId: () => 'ID1' });
+    await outboxOk.enqueue('t', { a: 1 });
+    await outboxOk.drain();
+    expect(events).toEqual([
+      ['ID1', 'sending'],
+      ['ID1', 'sent'],
+    ]);
+
+    events.length = 0;
+    const sendBad = jest.fn(async () => {
+      throw new MobileCoreError('net/validation', 'bad', { retryable: false });
+    });
+    const outboxBad = createSyncOutbox({ storage, send: sendBad, onItemStatus, genId: () => 'ID2' });
+    await outboxBad.enqueue('t', { a: 2 });
+    await outboxBad.drain();
+    expect(events).toEqual([
+      ['ID2', 'sending'],
+      ['ID2', 'dead'],
+    ]);
+  });
+
+  it('onItemStatus báo blocked-on-auth và auth-expired cho UI', async () => {
+    const events: Array<[string, string]> = [];
+    const onItemStatus = (id: string, status: string): void => {
+      events.push([id, status]);
+    };
+
+    // net/auth-transient → 'blocked-on-auth'
+    const storage1 = createMemoryStorage();
+    const sendTransient = jest.fn(async () => {
+      throw new MobileCoreError('net/auth-transient', 'refresh 503', { retryable: true });
+    });
+    const outbox1 = createSyncOutbox({ storage: storage1, send: sendTransient, onItemStatus, genId: () => 'A1' });
+    await outbox1.enqueue('t', { a: 1 });
+    await outbox1.drain();
+    expect(events).toEqual([
+      ['A1', 'sending'],
+      ['A1', 'blocked-on-auth'],
+    ]);
+
+    // net/unauthorized → 'auth-expired' (surface cho tầng trên re-login)
+    events.length = 0;
+    const storage2 = createMemoryStorage();
+    const sendUnauth = jest.fn(async () => {
+      throw new MobileCoreError('net/unauthorized', 'session expired', { retryable: false });
+    });
+    const outbox2 = createSyncOutbox({ storage: storage2, send: sendUnauth, onItemStatus, genId: () => 'A2' });
+    await outbox2.enqueue('t', { a: 2 });
+    await outbox2.drain();
+    expect(events).toEqual([
+      ['A2', 'sending'],
+      ['A2', 'auth-expired'],
+    ]);
+  });
+
+  it('onItemStatus ném lỗi KHÔNG phá drain (nuốt lỗi callback)', async () => {
+    const storage = createMemoryStorage();
+    const onItemStatus = (): void => {
+      throw new Error('UI boom');
+    };
+    const send = jest.fn(async () => ok());
+    const outbox = createSyncOutbox({ storage, send, onItemStatus });
+    await outbox.enqueue('t', { a: 1 });
+
+    await expect(outbox.drain()).resolves.toBeUndefined();
+    expect(await outbox.getSnapshot()).toEqual([]); // vẫn gửi thành công
+  });
+
+  // ── Adversary re-attack #1: unblockAuth ↔ drain race (lost-update) ────────
+  it('unblockAuth chen giữa lúc send() inflight → reset authBlockCount SỐNG SÓT (re-read chống lost-update)', async () => {
+    const storage = createMemoryStorage();
+    const itemK = 'sync:queue:item:X';
+    let clock = 1_000;
+    const now = () => clock;
+
+    // send() mô phỏng unblockAuth() chạy song song GIỮA read→catch: ghi thẳng
+    // storage item X về pending/authBlockCount=0 (đúng hệ quả của unblockAuth),
+    // rồi ném net/auth-transient. Nếu catch dùng bản CŨ trong bộ nhớ
+    // (authBlockCount=3) → sẽ ghi đè thành blocked-on-auth/4, xoá sạch reset.
+    const send = jest.fn(async () => {
+      const raw = await storage.getItem(itemK);
+      const it = JSON.parse(raw!);
+      it.status = 'pending';
+      it.authBlockCount = 0;
+      it.nextAttemptAt = clock;
+      it.updatedAt = clock;
+      await storage.setItem(itemK, JSON.stringify(it));
+      throw new MobileCoreError('net/auth-transient', 'refresh 503', { retryable: true });
+    });
+
+    const outbox = createSyncOutbox({ storage, send, now });
+    await outbox.enqueue('t', { a: 1 }, 'X');
+    // Đặt trạng thái xuất phát: blocked-on-auth, authBlockCount=3, đã due.
+    await storage.setItem(
+      itemK,
+      JSON.stringify({
+        transactionId: 'X',
+        idempotencyKey: 'X',
+        type: 't',
+        payload: { a: 1 },
+        status: 'blocked-on-auth',
+        retryCount: 0,
+        authBlockCount: 3,
+        nextAttemptAt: clock,
+        createdAt: clock,
+        updatedAt: clock,
+      }),
+    );
+
+    await outbox.drain();
+
+    const snap = await outbox.getSnapshot();
+    expect(snap).toHaveLength(1);
+    // Bản mới (reset của unblockAuth) phải THẮNG — KHÔNG bị bản cũ ghi đè.
+    expect(snap[0].status).toBe('pending');
+    expect(snap[0].authBlockCount).toBe(0);
+    expect(snap[0].status).not.toBe('blocked-on-auth');
+  });
+
+  // ── Adversary re-attack #2: drainNow không được hammer refresh ────────────
+  it('drainNow KHÔNG reset backoff của blocked-on-auth (sóng chập chờn không đập refresh); vẫn thử khi backoff auth đã hết', async () => {
+    const storage = createMemoryStorage();
+    let clock = 0;
+    const now = () => clock;
+    const send = jest.fn(async () => {
+      throw new MobileCoreError('net/auth-transient', 'refresh 503', { retryable: true });
+    });
+    const outbox = createSyncOutbox({ storage, send, now });
+
+    await outbox.enqueue('t', { a: 1 });
+    await outbox.drain(); // → blocked-on-auth, nextAttemptAt = 0 + 5000
+    expect(send).toHaveBeenCalledTimes(1);
+    let snap = await outbox.getSnapshot();
+    expect(snap[0].status).toBe('blocked-on-auth');
+    expect(snap[0].nextAttemptAt).toBe(5_000);
+
+    // NetInfo reconnect liên tục khi backoff auth CHƯA hết → KHÔNG được thử sớm.
+    for (const tick of [50, 100, 1_000, 4_999]) {
+      clock = tick;
+      await outbox.drainNow();
+      expect(send).toHaveBeenCalledTimes(1); // vẫn 1 — không hammer refresh
+      snap = await outbox.getSnapshot();
+      expect(snap[0].nextAttemptAt).toBe(5_000); // backoff KHÔNG bị reset về now
+    }
+
+    // Khi backoff auth đã hết → drain/drainNow mới thử lại bình thường.
+    clock = 5_000;
+    await outbox.drainNow();
+    expect(send).toHaveBeenCalledTimes(2);
   });
 });
 

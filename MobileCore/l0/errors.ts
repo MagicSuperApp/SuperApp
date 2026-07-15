@@ -7,10 +7,16 @@
 /** Mã lỗi ổn định, phân nhóm theo domain E1–E4. Thêm mã mới ở cuối nhóm, KHÔNG đổi mã cũ. */
 export type MobileCoreErrorCode =
   // net (E3)
+  // Ghi chú phân loại auth (hợp đồng net↔sync, KHÔNG đổi tên):
+  //   net/unauthorized     = phiên THẬT hết / credential vô hiệu → TERMINAL (retryable:false).
+  //   net/auth-transient   = refresh chết TẠM THỜI (5xx/mạng) → RETRYABLE, sync KHÔNG dead-letter.
+  //   net/conflict         = 409 (idempotency trùng / bản đã tồn tại) → retryable:false.
   | 'net/timeout'
   | 'net/aborted'
   | 'net/offline'
   | 'net/unauthorized'
+  | 'net/auth-transient'
+  | 'net/conflict'
   | 'net/rate-limited'
   | 'net/validation'
   | 'net/server'
@@ -18,11 +24,13 @@ export type MobileCoreErrorCode =
   // sync (E3)
   | 'sync/permanent'
   | 'sync/retry-exhausted'
+  | 'sync/no-csprng'
   // geo (E4)
   | 'geo/invalid-polygon'
   | 'geo/gps-lost'
   // ml (E2)
   | 'ml/invalid-mask'
+  | 'ml/invalid-input'
   | 'ml/no-target';
 
 export class MobileCoreError extends Error {

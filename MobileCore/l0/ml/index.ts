@@ -23,23 +23,34 @@ export type { Box, ScoredBox, YoloDetection, TrackedDetection } from './types';
 // NMS + IoU.
 export { iou, nms } from './nms';
 
-// Letterbox + decode YOLO.
+// Letterbox + decode YOLO + proto-layout auto-detect.
 export {
   computeLetterbox,
   unLetterbox,
   letterboxCoord,
   decodeYolo,
+  decodeProtoMasks,
   type LetterboxInfo,
   type DecodeConfig,
+  type ProtoLayout,
+  type ProtoMasks,
 } from './letterbox';
 
-// Tracking + EMA.
-export { smoothBox, trackDetections, type DetectionInput } from './tracking';
+// Tracking + EMA + stable-id/confirm.
+export {
+  smoothBox,
+  trackDetections,
+  filterConfirmed,
+  initTrackerState,
+  stepTracker,
+  type DetectionInput,
+  type TrackerState,
+} from './tracking';
 
-// Blur (Laplacian variance).
-export { blurVariance } from './blur';
+// Blur (Laplacian variance) + vỏ boolean.
+export { blurVariance, isBlurry, sharpnessScore } from './blur';
 
-// Mask segmentation.
+// Mask segmentation + feather + crop-mapping.
 export {
   sigmoid,
   reconstructMask,
@@ -47,7 +58,19 @@ export {
   thresholdMask,
   isValidMask,
   assertValidMask,
+  featherMask,
+  mapBoxToProto,
+  applyMaskToCrop,
 } from './mask';
+
+// Crop-rect quanh bbox (Box-level, tái dùng letterbox).
+export {
+  cropRectForBox,
+  unionBox,
+  cropRectForDetections,
+  cropRectForModelBox,
+  type CropConfig,
+} from './crop';
 
 // Frame purpose classifier (harvest TS).
 export {
@@ -61,13 +84,39 @@ export {
 // Cổng "có mục tiêu".
 export { gatePass, requireTarget, type GateState } from './gate';
 
-// Capture-by-heading + chuẩn-hoá góc.
+// Chuẩn-hoá góc + quyết-định-chụp theo cung (stateless; SESSION FSM là của OriLife).
 export {
   normalizeAngle,
   signedAngleDelta,
-  captureByHeading,
-  initHeadingState,
-  type HeadingState,
-  type HeadingSample,
-  type HeadingResult,
+  decideSectorCapture,
+  type SectorCaptureInput,
+  type SectorCaptureDecision,
 } from './heading';
+
+// Orientation producer (sensor-fusion, phần toán thuần — engine cảm biến ở L1).
+export {
+  computeOrientationFromRotationMatrix,
+  accelOnlyTilt,
+  lowPassAngleFilter,
+  type Orientation,
+  type Tilt,
+} from './orientation';
+
+// Stability sampler (nhà DUY NHẤT đo đứng-yên bằng variance |accel| cửa-sổ).
+export {
+  sampleVariance,
+  createStabilitySampler,
+  type StabilityReading,
+  type StabilitySampler,
+} from './stability';
+
+// Sector geometry 8×45° + guidance CW/CCW (hình học thuần, không state-machine).
+export {
+  headingToSector,
+  sectorCenter,
+  sectorContainsHeading,
+  guidanceToTarget,
+  remainingSectors,
+  nearestUncapturedSector,
+  type Guidance,
+} from './sector';

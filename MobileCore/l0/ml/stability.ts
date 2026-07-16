@@ -3,6 +3,7 @@
  *
  * Đo rung tay bằng variance của |accel| trên cửa-sổ-trượt: variance thấp = đứng yên.
  * heading/sector-capture PHẢI gọi vào đây để biết đứng-yên — KHÔNG tự tính lại (dedup chốt).
+ * Nguồn cảm biến: l1/motion.interface.ts MotionEngine (L1 native).
  *
  * Nguồn: orilife-mobile-core @ review-mvp, sampling/StabilitySampler.kt:
  *   - windowSize=15, stableThreshold=50 (L8-9) → khớp config stabilityWindowSize/Threshold.

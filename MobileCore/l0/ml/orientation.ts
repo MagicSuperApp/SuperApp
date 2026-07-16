@@ -4,6 +4,7 @@
  * SINH ra {heading, pitch, roll} mà sector-capture TIÊU THỤ. Chỉ phần PURE:
  * ma-trận-xoay → góc (getOrientation), fallback accel-only, low-pass wrap-aware.
  * getRotationMatrix + đọc cảm-biến THẬT = native L1, KHÔNG thuộc file này.
+ * Nguồn cảm biến: l1/motion.interface.ts MotionEngine (L1 native).
  *
  * Nguồn: orilife-mobile-core @ review-mvp,
  *   sensor/SensorDataCollector.kt:

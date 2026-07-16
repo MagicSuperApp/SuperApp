@@ -26,3 +26,4 @@ export type { MlEngine } from './l1/ml-engine.interface';
 export type { SqliteEngine } from './l1/sqlite.interface';
 export type { LocationEngine } from './l1/location.interface';
 export type { CameraEngine } from './l1/camera.interface';
+export type { MotionEngine } from './l1/motion.interface';

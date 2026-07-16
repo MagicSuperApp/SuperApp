@@ -42,9 +42,9 @@ Ranh giới MECE (critic chốt): token TẠO/LƯU thuộc E3 (E1 chỉ trả ch
 **RULE phân nhóm MECE — phân theo NGUỒN SINH tín hiệu, KHÔNG theo consumer.** Cụm **capture-motion** (`l0/ml/orientation.ts`, `stability.ts`, `sector.ts`, `heading.ts`) bản chất là tín-hiệu **chuyển-động (E4-motion)**, NHƯNG hiện đồng-vị-trí với `l0/ml` vì phục vụ DUY NHẤT luồng chụp ống-kính. Quyết-định-hoãn có kiểm soát (Aladin veto được): **KHÔNG dời file lúc này** — tránh khuấy PR #51 đang review + YAGNI. Cảnh báo config-coupling: `stability.ts` lấy ngưỡng qua `getModelConfig` của registry ML (`stabilityWindowSize`/`stabilityThreshold`) → đây là **điểm-tách tương lai**: khi có consumer motion phi-ML (vd giữ máy ổn định quét NFC) → tách `l0/motion/` + tách config riêng.
 
 ### E1 — Danh tính & mật mã · tầng chủ đạo **L1 (native sâu)** · chủ **PhoenixKey**
-Sinh khoá HW non-exportable (Android Keystore secp256r1 / iOS Secure Enclave **P-256** `[NEEDS-EVIDENCE]`); ký gated-sinh-trắc ECDSA (BiometricPrompt.CryptoObject / LAContext); **khớp mẫu sinh trắc** (Face/Touch ID — dù qua OS API hay model, LUÔN thuộc E1); canonical-serialize trước ký; đọc pubkey / kiểm tồn tại / xoá-wipe khoá; ký challenge DID (trả chữ ký); Master_KEK + BIP39 mnemonic; HKDF derive; **Ed25519 ký TAAD** (`taad_sign_ed25519`) `[NEEDS-EVIDENCE]`; AES-256-GCM wrap KEK; PBKDF2-300k Device_KEK từ PIN; ECDSA P-256 verify low-S; BLAKE2b sinh DID; ký tx Cardano.
+Sinh khoá HW non-exportable HW_Key **P-256/secp256r1** (Android Keystore / iOS Secure Enclave) = khoá **DID-auth**; ký gated-sinh-trắc ECDSA (BiometricPrompt.CryptoObject / LAContext) → compact 64B `r‖s` low-S (không DER); **khớp mẫu sinh trắc** (Face/Touch ID — dù qua OS API hay model, LUÔN thuộc E1); canonical-serialize trước ký; đọc pubkey (SEC1) / kiểm tồn tại / xoá-wipe khoá; ký challenge DID; Master_KEK + BIP39 mnemonic; HKDF derive; **Ed25519 ký TAAD** (`taad_sign_ed25519`) = khoá on-chain RIÊNG (khác HW_Key); AES-256-GCM wrap KEK; PBKDF2-300k Device_KEK từ PIN; ECDSA P-256 verify low-S; BLAKE2b sinh DID; ký tx Cardano.
 
-**[NEEDS-EVIDENCE] quan hệ 2 khoá KHÁC ĐƯỜNG-CONG (đang hỏi Phoenix qua inbox):** khoá enclave **P-256** gate-sinh-trắc (`KeystoreEngine.generateKeypair('did-identity')` trong `l1/keystore.interface.ts`) CÓ PHẢI là khoá DID không, HAY chỉ là khoá attestation/wrapping — trong khi DID ký THẬT bằng **Ed25519** qua `taad_sign_ed25519`? Hai khoá khác đường-cong (P-256 ≠ Ed25519), quan hệ chưa rõ. **Cảnh báo consumer:** ĐỪNG coi `publicKeyHex` trả từ `generateKeypair('did-identity')` là public key DID để tự verify chữ ký DID — có thể sai đường-cong.
+**✅ Quan hệ 2 khoá (Phoenix chốt 2026-07-16):** khoá enclave **P-256** gate-sinh-trắc (`generateKeypair('did-identity')`) CHÍNH LÀ khoá **DID-auth** — server verify bằng `p256.verify(sig, sha256(msg), pub)` (`verifier.ts:141`). **Ed25519** (`taad_sign_ed25519`) là **TAAD_Key ký giao dịch ON-CHAIN**, khác khoá & khác đường-cong, KHÔNG thuộc keystore. → `publicKeyHex` từ `generateKeypair('did-identity')` = pubkey P-256 dùng verify DID-auth (đúng); KHÔNG dùng nó cho chữ ký on-chain Ed25519.
 
 _Đề xuất (chưa code — KHÔNG đóng khung package tới khi có mã):_ per-reading attestation (ký frame lúc chụp); device integrity attestation (Play Integrity / App Attest).
 **Bất biến (SEMANTIC):** `canonicalize` + DID/token **schema** đồng-version với signer & authority DID — nghĩa mật-mã (canonicalize + DID/token schema + domain-separation) KHÔNG rời PhoenixKey (lệch version = chữ ký hợp lệ hoá vô hiệu; schema nơi khác = nguồn DID thứ 2, phá INV-1). Xem §3 [I3] tách bạch nghĩa SEMANTIC vs vị-trí-file-interface.
@@ -118,7 +118,7 @@ Quy ước: **thêm mã mới ở CUỐI nhóm, KHÔNG đổi mã cũ** (mã là
 ## 3. Đặt ở đâu & sở hữu
 
 - **Tầng danh tính (E1) → PhoenixKey** (silent module, INTEGRATION-STANDARD §3.1/§0.4). **[I3] Tách 2 nghĩa của "ownership" (hết mâu thuẫn §3↔§5):**
-  - **(a) SEMANTIC** (canonicalize + DID/token schema + domain-separation + digest scheme) → PhoenixKey, **KHÔNG rời**. "SuperApp KHÔNG re-own khoá" nghĩa là KHÔNG re-own nghĩa mật-mã này — KHÔNG tự định nghĩa lại canonicalize / cách ghép `domainTag` / digest-vs-raw.
+  - **(a) SEMANTIC** (canonicalize + DID/token schema + domain-separation + digest scheme) → PhoenixKey, **KHÔNG rời**. "SuperApp KHÔNG re-own khoá" nghĩa là KHÔNG re-own nghĩa mật-mã này — KHÔNG tự định nghĩa lại canonicalize / DID-token schema / digest scheme (domain-separation nằm trong canonical JSON Phoenix dựng).
   - **(b) Vị-trí file INTERFACE** — `l1/keystore.interface.ts` ĐƯỢC host tại `MobileCore/l1` (cùng chỗ các L1 interface khác), MIỄN LÀ chỉ khai *chữ ký* sinh-khoá-HW + ký-digest và KHÔNG định nghĩa lại semantic (a). Native glue là PER-APP; canonicalize payload trước khi lấy `dataHex` là việc TẦNG GỌI, không phải KeystoreEngine.
 - **Device-processing core (E2/E3/E4) → SuperApp-as-platform** maintain interface-contract.
 - **App tích hợp thẳng platform (không qua SuperApp UI):** dùng lõi qua package versioned (`import`), KHÔNG kéo SuperApp shell — đúng silent module (không khai entrypoint/route). Lưu ý: package ≠ độc lập tổ chức (vẫn phụ thuộc nhịp release owner).
@@ -157,7 +157,7 @@ Aladin chốt: **xây MỚI trong `SuperApp/MobileCore/`, đúng chuẩn từ đ
 - **Cây thư mục THỰC TẾ v0.2:**
   - `l0/` (TS thuần, test Jest): `errors.ts` · `types.ts` (hợp-đồng đóng-băng) · `geo/` · `resource/` · `net/` · `sync/` · `ml/` (`config` `nms` `letterbox` `mask` `tracking` `crop` `blur` `gate` `frameClassifier` + cụm capture-motion `orientation` `stability` `sector` `heading`).
   - `l1/` (CHỈ interface TS, `@needs-device-test`): `keystore.interface.ts` · `ml-engine.interface.ts` · `sqlite.interface.ts` · `location.interface.ts` · `camera.interface.ts` · `motion.interface.ts`.
-  - **`l0/crypto-serialize` CỐ Ý KHÔNG build** — canonicalize + DID/token schema thuộc PhoenixKey (single-source), dựng lại ở đây = nguồn DID thứ 2, phá INV-1 (giải điểm I4). MobileCore chỉ khai `KeystoreEngine.sign(dataHex, domainTag)` chuyển-tiếp tham số, KHÔNG serialize.
+  - **`l0/crypto-serialize` CỐ Ý KHÔNG build** — canonicalize + DID/token schema thuộc PhoenixKey (single-source), dựng lại ở đây = nguồn DID thứ 2, phá INV-1 (giải điểm I4). MobileCore chỉ khai `KeystoreEngine.sign(dataHex)` ký canonical bytes Phoenix trao, KHÔNG serialize.
 - Mỗi năng lực ship kèm test thật (Jest cho L0: 261 test đang xanh; test máy cho L1). Không nhãn "xong" nếu chưa test thật (§8 BUILD-GATE).
 - **Trạng thái khởi động (đã xong):** E4 quản-trị-tài-nguyên (`l0/resource`: thermal throttle/frame-skip + watch idle-pause + refresh cooldown) ĐÃ build + test — vừa lập chuẩn vừa sửa lỗi nóng máy field. E2 media-ml (L0) + E3 net/sync (L0) cũng đã build v0.2.
 
@@ -168,12 +168,12 @@ Aladin chốt: **xây MỚI trong `SuperApp/MobileCore/`, đúng chuẩn từ đ
 - CHƯA đọc repo PhoenixKey-SDK → chưa xác nhận "L0 crypto agnostic (@noble/curves)" tái dùng được vs bản native Keystore đang dùng.
 - capability_router (định tuyến nhiệt/pin) tồn tại ở orilife-core NHƯNG chưa nối mobile.
 - mergePolicy thực tế = `lww`, không phải per-field-CRDT.
-- **4 [NEEDS-EVIDENCE] keystore/domain-separation (đang hỏi Phoenix qua inbox — `l1/keystore.interface.ts` `sign()`):**
-  1. **Định dạng `domainTag`** — giá trị/format chuỗi tách-miền (opaque, MobileCore chỉ chuyển-tiếp, KHÔNG tự chọn).
-  2. **Cách GHÉP `domainTag` với `dataHex`** — prefix? length-prefix? `hash(tag||data)`? tách field? (thuộc scheme PhoenixKey).
-  3. **`dataHex` là digest đã băm sẵn hay canonical bytes thô** để native tự băm.
-  4. **Khoá HW P-256 gate sinh-trắc CÓ PHẢI khoá DID không** — hay chỉ attestation/wrapping, khi DID ký thật Ed25519 qua `taad_sign_ed25519` (quan hệ 2 đường-cong, xem §2 E1).
-  Ba–bốn điều trên thuộc scheme mật-mã single-source PhoenixKey; PHASE-3 phải khớp verifier server trước khi hiện thực native.
+- **✅ ĐÃ ĐÓNG — keystore/quan-hệ-khoá (Phoenix xác nhận 2026-07-16, inbox `Phoenix-4items`):**
+  1. **Quan hệ 2 khoá:** HW_Key **P-256** gate-sinh-trắc (`generateKeypair('did-identity')`) CHÍNH LÀ khoá DID-auth mà server verify bằng `p256.verify(sig, sha256(msg), pub)` (`verifier.ts:141`). **Ed25519** (`taad_sign_ed25519`) là **TAAD_Key on-chain RIÊNG**, khác khoá — KHÔNG thuộc keystore này.
+  2. **`sign()` KHÔNG có `domainTag`** — domain-separation (nếu có) nằm TRONG canonical JSON do Phoenix dựng; keystore chỉ ký bytes canonical.
+  3. **`dataHex` = canonical bytes THÔ** (Phoenix trao); keystore tự **ECDSA-SHA256** nội bộ (không băm sẵn phía caller).
+  4. **Output = compact 64-byte `r‖s` hex, low-S, KHÔNG DER** (native mặc định DER → PHẢI convert — điểm gãy hay gặp nhất). Pubkey = SEC1 (chốt uncompressed 65B, publish cùng kiểu với `GET /identity/{did}/pubkey`).
+  → keystore.interface.ts ĐÃ áp 5 ràng buộc này. **Còn mở:** contract `FaceCapture` cho Knowme (Phoenix cần để build face-2FA).
 
 ---
 

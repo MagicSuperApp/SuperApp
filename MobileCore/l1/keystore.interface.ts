@@ -15,10 +15,19 @@
  * chữ ký đã ký (MOBILE-CORE-STANDARD.md §2 E1 "Bất biến").
  *
  * `KeystoreEngine` bên dưới chỉ bọc phần *sinh khoá HW non-exportable +
- * ký digest* (Android Keystore secp256r1 / iOS Secure Enclave P256).
+ * ký* (Android Keystore secp256r1 / iOS Secure Enclave P256).
  * Việc canonicalize payload trước khi lấy `dataHex` để truyền vào
  * `sign()` là việc của TẦNG GỌI (app/platform), KHÔNG phải của
  * KeystoreEngine — engine chỉ ký bytes đã canonical hoá sẵn.
+ *
+ * ── QUAN HỆ 2 KHOÁ (Phoenix xác nhận 2026-07-16, ĐÓNG NEEDS-EVIDENCE) ────
+ * Khoá HW_Key P-256 (secp256r1) gate-sinh-trắc dưới đây CHÍNH LÀ khoá
+ * DID-auth mà server Phoenix verify bằng `@noble/curves p256`
+ * (`PhoenixKey-SDK/src/verifier.ts:141` `p256.verify(sig, sha256(msg), pub)`).
+ * KHÁC HẲN `TAAD_Key` Ed25519 dùng ký giao dịch ON-CHAIN qua
+ * `taad_sign_ed25519` — TAAD_Key KHÔNG thuộc keystore này. Đừng đánh đồng:
+ * `getPublicKeyHex` ở đây trả pubkey P-256 để verify DID-auth, KHÔNG phải
+ * pubkey Ed25519 on-chain.
  *
  * Native glue là PER-APP — KHÔNG có 1 binary dùng chung giữa các app.
  * Mỗi app tự bind theo interface này. Bản mẫu tham khảo (OriLife,
@@ -35,7 +44,12 @@
  * ──────────────────────────────────────────────────────────────────────
  */
 
-/** Kết quả sinh cặp khoá — publicKeyHex là uncompressed EC point (0x04...). */
+/**
+ * Kết quả sinh cặp khoá.
+ * `publicKeyHex` = SEC1 hex. Phoenix `@noble/curves p256` nhận cả nén (33B)
+ * lẫn không nén (65B, `0x04…`) — CHỐT 1 kiểu và publish cùng kiểu với
+ * `GET /identity/{did}/pubkey`. Mặc định harvest: không nén `0x04…` (65B).
+ */
 export interface KeystoreKeypairResult {
   alias: string;
   publicKeyHex: string;
@@ -124,39 +138,31 @@ export interface KeystoreEngine {
    * này trigger prompt sinh trắc (`promptTitle`/`promptSubtitle` hiển
    * thị trên dialog OS) trước khi enclave thực hiện ký.
    *
-   * ── DOMAIN-SEPARATION: CHỈ CHUYỂN TIẾP THAM SỐ, KHÔNG ĐỊNH NGHĨA ────
-   * `domainTag` là chuỗi OPAQUE do CALLER (PhoenixKey / tầng platform)
-   * cung cấp để tách miền chữ ký (chống replay khối payload giữa các
-   * ngữ cảnh: DID-auth vs token vs message...). MobileCore CHỈ chuyển
-   * tiếp `domainTag` xuống native — TUYỆT ĐỐI KHÔNG:
-   *   - tự chọn/hard-code giá trị `domainTag` bất kỳ;
-   *   - tự định nghĩa cách GHÉP `domainTag` với `dataHex` (prefix?
-   *     length-prefix? hash(tag||data)? tách field?);
-   *   - tự quyết `dataHex` là digest đã băm sẵn hay canonical bytes thô.
-   * Ba điều trên thuộc scheme mật mã single-source của PhoenixKey.
-   *
-   * [NEEDS-EVIDENCE] Format domain-separation + digest scheme thuộc
-   *   PhoenixKey-SDK/rust_core (`taad_sign_ed25519` / `canonicalize`).
-   *   MobileCore chỉ chuyển tiếp tham số; CẦN Long/Phoenix xác nhận
-   *   CHỮ KÝ HÀM chính xác: (a) giá trị/định dạng `domainTag`,
-   *   (b) cách native ghép `domainTag` vào dữ liệu trước khi ký,
-   *   (c) `dataHex` truyền vào là digest đã băm sẵn hay canonical bytes
-   *   thô để native tự băm, (d) khoá HW P-256 gate sinh trắc này CÓ
-   *   PHẢI chính là khoá DID hay chỉ là khoá attestation/wrapping (DID
-   *   ký thật bằng Ed25519 qua `taad_sign_ed25519` — cần làm rõ quan hệ).
+   * ── HỢP ĐỒNG KÝ (Phoenix xác nhận 2026-07-16 — 5 ràng buộc BIND) ─────
+   * Để chữ ký khớp verifier Phoenix (`verifier.ts:141`
+   * `p256.verify(sig, sha256(msg), pub)`):
+   *   1. Đường cong = **P-256 (secp256r1)** cho HW_Key (KHÔNG Ed25519 —
+   *      Ed25519 là TAAD_Key on-chain, khác khoá).
+   *   2. Output = **compact 64-byte `r‖s` hex, KHÔNG DER.** Keystore native
+   *      iOS/Android mặc định trả DER → **PHẢI convert sang compact**
+   *      (điểm gãy hay gặp nhất — verifier `@noble/curves p256` mong compact).
+   *   3. Băm = **ECDSA-SHA256** nội bộ trong keystore: `dataHex` là
+   *      **canonical bytes THÔ** (message Phoenix trao đã canonical hoá),
+   *      keystore tự `sha256` bên trong. Keystore KHÔNG canonicalize,
+   *      KHÔNG băm sẵn phía caller.
+   *   4. Domain-separation (nếu có) đã nằm TRONG canonical JSON do Phoenix
+   *      dựng — keystore KHÔNG nhận `domainTag`, KHÔNG tự ghép nhãn.
+   *   5. **low-S canonical** (chống malleability) — keystore ép low-S
+   *      trước khi trả.
    * ───────────────────────────────────────────────────────────────────
    *
    * @param alias Khoá dùng để ký.
-   * @param dataHex Bytes cần ký, dạng hex string (đã canonical hoá bởi
-   *   tầng gọi). Xem [NEEDS-EVIDENCE] (c) về digest-vs-raw.
-   * @param domainTag Nhãn tách miền OPAQUE do caller/PhoenixKey cung cấp
-   *   — MobileCore không diễn giải, chỉ chuyển tiếp. Xem [NEEDS-EVIDENCE].
+   * @param dataHex Canonical bytes THÔ cần ký (hex) — Phoenix/tầng gọi đã
+   *   canonical hoá; keystore tự ECDSA-SHA256 nội bộ (ràng buộc #3).
    * @param promptTitle Tiêu đề dialog sinh trắc (text người-đọc — do
    *   tầng UI platform truyền vào, KHÔNG hard-code trong core).
    * @param promptSubtitle Phụ đề dialog sinh trắc (tuỳ chọn).
-   * @returns Chữ ký dạng hex (định dạng — DER / raw r||s / Ed25519 64B —
-   *   do scheme PhoenixKey quyết; xem [NEEDS-EVIDENCE], PHASE-3 phải
-   *   khớp verifier phía server).
+   * @returns Chữ ký **compact 64-byte `r‖s` hex, low-S** (ràng buộc #2,#5).
    * @throws khi không có khoá (harvest: `E_NO_KEY`), init ký lỗi
    *   (harvest: `E_SIGN_INIT`), lỗi sau xác thực (harvest:
    *   `E_SIGN_AFTER_AUTH`), user huỷ (harvest: `E_USER_CANCELED`), hoặc
@@ -169,7 +175,6 @@ export interface KeystoreEngine {
   sign(
     alias: string,
     dataHex: string,
-    domainTag: string,
     promptTitle: string,
     promptSubtitle?: string,
   ): Promise<string>;

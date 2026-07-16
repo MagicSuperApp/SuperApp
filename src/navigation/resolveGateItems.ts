@@ -110,18 +110,20 @@ function serviceItem(route: string): GateItem {
  *
  * Điều chỉnh menu arc (anh Aladin chốt):
  *   - BỎ "Me/Tôi" khỏi cung (Me tới qua ô tab dưới).
+ *   - BỎ "Trang chủ" khỏi cung (nhấn nút giữa đã về Home).
  *   - Trace-quét NỔI BẬT + nằm CHÍNH GIỮA cung.
  *   - Service có SubHome (Chat/Farm) mang `subApp` → tầng-2 arc con khi kéo tới.
  *
- * Thứ tự: Home · Chat · [slot persona] — rồi CHÈN Trace vào GIỮA.
+ * Thứ tự: Chat · [slot persona] — rồi CHÈN Trace vào GIỮA.
  *
  * @param farm  tín hiệu domain (state.farm) — suy persona
  * @param usage tần suất mở route (chưa có nguồn → {})
  */
 export function resolveGateItems(farm: FarmSignal, usage: UsageMap = {}): GateItem[] {
   const persona = resolvePersona(farm, usage);
-  // Service lên cung (KHÔNG gồm Me): Home · Chat · 3 slot persona.
-  const order = [NEO_CENTER, NEO_LEFT, ...slotPriority(persona)];
+  // Service lên cung (KHÔNG gồm Me VÀ KHÔNG gồm Home): Chat · 3 slot persona.
+  // Bỏ Home khỏi cung vì NHẤN 1 lần vào nút giữa đã về Trang chủ → mục Home thừa.
+  const order = [NEO_LEFT, ...slotPriority(persona)];
   const items = order.map(serviceItem);
 
   if (TRACE_SCAN_ROUTE) {

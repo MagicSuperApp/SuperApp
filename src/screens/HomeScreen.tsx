@@ -40,6 +40,8 @@ import { COLORS } from '../constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import CreateFarmPromptModal from '../components/CreateFarmPromptModal';
 import { useCollapsibleHeader } from '../components/AppHeader';
+import { useCoachMarkTarget, useCoachMark } from '../onboarding/CoachMarkContext';
+import { shouldAutoRunTutorial } from '../utils/tutorialStorage';
 
 const { width } = Dimensions.get('window');
 const H_PADDING = 20;
@@ -438,6 +440,10 @@ const SectionHeader = ({
 const HomeScreen: React.FC = () => {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+  // Target luồng hướng dẫn: khu "Dịch vụ" trên màn hình chính.
+  const servicesTarget = useCoachMarkTarget('home.services');
+  const { start: startTour } = useCoachMark();
+  const autoTourRef = useRef(false);
   // Cuộn → thu/thả header toàn cục (Facebook-style). Header sống ở tầng nav; ở
   // đây chỉ nối onScroll của ScrollView vào.
   const { onScroll: onHeaderScroll, scrollEventThrottle: headerThrottle } = useCollapsibleHeader();
@@ -445,6 +451,23 @@ const HomeScreen: React.FC = () => {
   const farms = useSelector((s: RootState) => s.farm.farms);
   const trees = useSelector((s: RootState) => s.farm.trees);
   const activities = useSelector((s: RootState) => s.farm.activities);
+
+  // Lần đầu người dùng vào Home sau khi đăng nhập → tự chạy luồng hướng dẫn
+  // (một lần cho mỗi người; đã skip/hoàn thành thì không tự chạy lại — xem
+  // utils/tutorialStorage). Chờ một nhịp cho layout (header + navbar + grid) ổn
+  // định để đo spotlight chính xác.
+  useEffect(() => {
+    const uid = user?.id;
+    if (!uid || autoTourRef.current) return;
+    autoTourRef.current = true;
+    let timer: ReturnType<typeof setTimeout>;
+    (async () => {
+      if (await shouldAutoRunTutorial(uid)) {
+        timer = setTimeout(() => startTour(uid), 700);
+      }
+    })();
+    return () => clearTimeout(timer);
+  }, [user?.id, startTour]);
 
   // Số THẬT (§6 — KHÔNG bịa dữ liệu):
   //  - ProofChat: tổng tin chưa đọc từ CHÍNH store màn Chat dùng (rẻ, không mock).
@@ -742,7 +765,7 @@ const HomeScreen: React.FC = () => {
         )}
 
         {/* Module Grid */}
-        <View style={styles.moduleGridWrap}>
+        <View ref={servicesTarget.ref} collapsable={false} style={styles.moduleGridWrap}>
           <View style={styles.sectionRow}>
             <Text style={styles.sectionTitle}>Dịch vụ</Text>
             <LayoutToggle value={moduleLayout} onChange={setModuleLayout} />

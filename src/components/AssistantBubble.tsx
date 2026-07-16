@@ -13,7 +13,7 @@ import {
   TouchableOpacity,
   Animated,
   PanResponder,
-  Dimensions,
+  useWindowDimensions,
   Modal,
   TextInput,
   KeyboardAvoidingView,
@@ -36,20 +36,12 @@ import {
   StreamChatHandle,
   ChatHistoryEntry,
 } from '../services/aladinChat';
-
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+import BlinkLogo from './BlinkLogo';
 
 const BUBBLE_SIZE = 56;
 const EDGE_PADDING = 12;
 const TOP_SAFE = Platform.OS === 'ios' ? 80 : 60;
 const BOTTOM_SAFE = Platform.OS === 'ios' ? 100 : 90;
-const DEFAULT_X = SCREEN_W - BUBBLE_SIZE - EDGE_PADDING;
-const DEFAULT_Y = SCREEN_H - BUBBLE_SIZE - BOTTOM_SAFE - 80;
-
-const clampX = (x: number) =>
-  Math.max(EDGE_PADDING, Math.min(SCREEN_W - BUBBLE_SIZE - EDGE_PADDING, x));
-const clampY = (y: number) =>
-  Math.max(TOP_SAFE, Math.min(SCREEN_H - BUBBLE_SIZE - BOTTOM_SAFE, y));
 
 interface ChatMessage {
   id: string;
@@ -71,8 +63,27 @@ const AssistantBubble: React.FC = () => {
   );
   const isLoggedIn = useSelector((s: RootState) => !!s.user.currentUser);
 
-  const pan = useRef(new Animated.ValueXY({ x: DEFAULT_X, y: DEFAULT_Y })).current;
-  const lastPos = useRef({ x: DEFAULT_X, y: DEFAULT_Y });
+  // Kích thước màn LẤY THEO HOOK (luôn đúng + phản ứng khi xoay). KHÔNG dùng
+  // Dimensions.get() ở tầng module vì trên Android có lúc trả 0 khi app chưa dựng
+  // xong → vị trí mặc định thành số ÂM → bong bóng nằm ngoài màn, không thấy đâu.
+  const { width: winW, height: winH } = useWindowDimensions();
+  const dims = useRef({ w: winW, h: winH });
+  dims.current = { w: winW, h: winH };
+
+  const clampX = (x: number) =>
+    Math.max(EDGE_PADDING, Math.min(dims.current.w - BUBBLE_SIZE - EDGE_PADDING, x));
+  const clampY = (y: number) =>
+    Math.max(TOP_SAFE, Math.min(dims.current.h - BUBBLE_SIZE - BOTTOM_SAFE, y));
+  const defaultPos = () => ({
+    x: dims.current.w - BUBBLE_SIZE - EDGE_PADDING,
+    y: dims.current.h - BUBBLE_SIZE - BOTTOM_SAFE - 80,
+  });
+
+  const pan = useRef(new Animated.ValueXY(defaultPos())).current;
+  const lastPos = useRef(defaultPos());
+  // Vị trí lúc bắt đầu kéo + vị trí (đã kẹp trong màn) hiện tại của lượt kéo.
+  const dragStart = useRef(defaultPos());
+  const curPos = useRef(defaultPos());
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -107,44 +118,83 @@ const AssistantBubble: React.FC = () => {
       const y = clampY(position.y);
       pan.setValue({ x, y });
       lastPos.current = { x, y };
+      curPos.current = { x, y };
     }
   }, [hydrated, position, pan]);
+
+  // TẮT rồi BẬT LẠI → đưa bong bóng VỀ VỊ TRÍ MẶC ĐỊNH (góc dưới phải). Đây cũng
+  // là cách lấy lại bong bóng khi lỡ kéo lạc mất. Chỉ reset khi CHUYỂN false→true
+  // (không phải mỗi lần mở app) để không xoá vị trí người dùng đã đặt.
+  const prevEnabledRef = useRef(enabled);
+  useEffect(() => {
+    const was = prevEnabledRef.current;
+    prevEnabledRef.current = enabled;
+    if (enabled && !was) {
+      const p = defaultPos();
+      pan.setValue(p);
+      lastPos.current = p;
+      curPos.current = p;
+      dispatch(setChatbotPosition(p));
+    }
+  }, [enabled, pan, dispatch]);
+
+  // Khi biết kích thước màn (lần đầu) hoặc xoay màn → kẹp lại cho chắc chắn nằm
+  // TRONG màn hình. Đây là chốt chặn cuối để bong bóng không bao giờ lạc ra ngoài.
+  useEffect(() => {
+    const x = clampX(lastPos.current.x);
+    const y = clampY(lastPos.current.y);
+    pan.setValue({ x, y });
+    lastPos.current = { x, y };
+    curPos.current = { x, y };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [winW, winH]);
+
+  // Đưa bong bóng về sát cạnh gần nhất + kẹp trong màn, lưu lại. Dùng chung cho
+  // cả RELEASE lẫn TERMINATE (bị responder khác cướp giữa chừng) để KHÔNG BAO GIỜ
+  // để bong bóng kẹt ngoài màn hình.
+  const settleToEdge = () => {
+    const cur = curPos.current;
+    const snapX =
+      cur.x + BUBBLE_SIZE / 2 < dims.current.w / 2
+        ? EDGE_PADDING
+        : dims.current.w - BUBBLE_SIZE - EDGE_PADDING;
+    const finalY = clampY(cur.y);
+    curPos.current = { x: snapX, y: finalY };
+    Animated.spring(pan, {
+      toValue: { x: snapX, y: finalY },
+      friction: 7,
+      useNativeDriver: false,
+    }).start(() => {
+      lastPos.current = { x: snapX, y: finalY };
+      dispatch(setChatbotPosition({ x: snapX, y: finalY }));
+    });
+  };
 
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: (_, gesture) =>
         Math.abs(gesture.dx) > 4 || Math.abs(gesture.dy) > 4,
+      // Không nhường responder giữa lúc kéo → tránh ScrollView/overlay cướp gesture
+      // làm mất sự kiện release (nguyên nhân bong bóng lạc ra ngoài trước đây).
+      onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: () => {
         draggingRef.current = false;
-        pan.extractOffset();
+        dragStart.current = { ...lastPos.current };
       },
       onPanResponderMove: (_, gesture) => {
         if (Math.abs(gesture.dx) > 4 || Math.abs(gesture.dy) > 4) {
           draggingRef.current = true;
         }
-        Animated.event([null, { dx: pan.x, dy: pan.y }], {
-          useNativeDriver: false,
-        })(_, gesture);
+        // KẸP LIÊN TỤC: bong bóng không thể bị kéo ra khỏi màn hình.
+        const x = clampX(dragStart.current.x + gesture.dx);
+        const y = clampY(dragStart.current.y + gesture.dy);
+        curPos.current = { x, y };
+        pan.setValue({ x, y });
       },
-      onPanResponderRelease: () => {
-        pan.flattenOffset();
-        // Snap to nearest edge
-        const cur: any = { x: (pan.x as any)._value, y: (pan.y as any)._value };
-        const snapX =
-          cur.x + BUBBLE_SIZE / 2 < SCREEN_W / 2
-            ? EDGE_PADDING
-            : SCREEN_W - BUBBLE_SIZE - EDGE_PADDING;
-        const finalY = clampY(cur.y);
-        Animated.spring(pan, {
-          toValue: { x: snapX, y: finalY },
-          friction: 7,
-          useNativeDriver: false,
-        }).start(() => {
-          lastPos.current = { x: snapX, y: finalY };
-          dispatch(setChatbotPosition({ x: snapX, y: finalY }));
-        });
-      },
+      onPanResponderRelease: settleToEdge,
+      // Gesture bị hủy (cướp responder / nhấc tay ngoài vùng) vẫn phải về trong màn.
+      onPanResponderTerminate: settleToEdge,
     }),
   ).current;
 
@@ -222,11 +272,24 @@ const AssistantBubble: React.FC = () => {
     });
   };
 
-  // Don't render bubble on login flow or when disabled
-  if (!isLoggedIn || !enabled) return null;
+  // Chỉ hiện bong bóng khi đã đăng nhập + đang bật.
+  const visible = isLoggedIn && enabled;
 
   return (
     <>
+      {/* [DEBUG — chỉ hiện ở bản dev] Băng chẩn đoán: cho biết vì sao bong bóng
+          ẩn (login/enabled/hydrated) và kích thước màn đo được. Xoá khi xong. */}
+      {/* {__DEV__ && (
+        <View pointerEvents="none" style={styles.debugBadge}>
+          <Text style={styles.debugText}>
+            🫧 login={String(isLoggedIn)} · enabled={String(enabled)} · hydrated=
+            {String(hydrated)} · {Math.round(winW)}×{Math.round(winH)} · pos=
+            {position ? `${Math.round(position.x)},${Math.round(position.y)}` : 'null'}
+          </Text>
+        </View>
+      )} */}
+
+      {visible && (
       <Animated.View
         style={[
           styles.bubbleWrap,
@@ -239,7 +302,8 @@ const AssistantBubble: React.FC = () => {
           onPress={handleTap}
           style={styles.bubble}
         >
-          <Image source={require('../../assets/images/chatbot.png')} style={{ width: 64, height: 64 }} />
+          <BlinkLogo size={BUBBLE_SIZE} autoPlay loop />
+          {/* <Image source={require('../../assets/images/chatbot.png')} style={{ width: 64, height: 64 }} /> */}
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -250,6 +314,7 @@ const AssistantBubble: React.FC = () => {
           <Icon name="close" size={12} color={COLORS.accent} />
         </TouchableOpacity>
       </Animated.View>
+      )}
 
       <Modal
         visible={open}
@@ -374,6 +439,26 @@ const styles = StyleSheet.create({
     height: BUBBLE_SIZE,
     zIndex: 9999,
     elevation: 12,
+    boxShadow: '0px 6px 12px rgba(40, 91, 35, 0.35)',
+    borderRadius: BUBBLE_SIZE / 2,
+  },
+  // [DEBUG] băng chẩn đoán — xoá sau khi tìm ra nguyên nhân.
+  debugBadge: {
+    position: 'absolute',
+    top: 120,
+    left: 8,
+    right: 8,
+    backgroundColor: 'rgba(200,0,0,0.9)',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    zIndex: 100000,
+    elevation: 100000,
+  },
+  debugText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
   },
   bubble: {
     width: BUBBLE_SIZE,

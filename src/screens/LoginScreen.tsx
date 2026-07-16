@@ -35,6 +35,7 @@ import { BiometricKind, phoenixKeyAuth } from '../services/phoenixKeyAuthService
 import { isAvailable as isPhoenixKeyAvailable } from '../services/phoenixKey-native';
 import { loginUser } from '../store/userSlice';
 import { showError } from '../utils/alert';
+import LoginSuccessOverlay from '../components/LoginSuccessOverlay';
 
 const PHOENIX_USERS_KEY = '@phoenixkey/users';
 const ACTIVE_USERNAME_KEY = '@phoenixkey/active_username';
@@ -106,6 +107,8 @@ const LoginScreen = () => {
   const [biometryType, setBiometryType] = useState<string>('');
   const [sensorAvailable, setSensorAvailable] = useState(false);
   const [busyKind, setBusyKind] = useState<BiometricKind | null>(null);
+  // Overlay hiệu ứng logo chớp mắt khi đăng nhập thành công (trước khi vào Main).
+  const [showSuccess, setShowSuccess] = useState(false);
   const [activeUser, setActiveUser] = useState<PhoenixUserEntry | null>(null);
   const [allUsers, setAllUsers] = useState<PhoenixUserEntry[]>([]);
 
@@ -219,7 +222,8 @@ const LoginScreen = () => {
       if (result.success && result.user) {
         trackAction('login_success', { metadata: { kind } });
         await dispatch(loginUser(result.user as any) as any);
-        navigation.reset({ index: 0, routes: [{ name: 'Main' as never }] });
+        // Hiện hiệu ứng logo chớp mắt; onDone của overlay sẽ reset về Main.
+        setShowSuccess(true);
       } else if (isPhoenixKeyAvailable() && !result.user) {
         // Chưa có danh tính PhoenixKey → tự động chuyển sang màn tạo tài khoản
         navigation.navigate('SignUpBiometric' as never);
@@ -470,6 +474,14 @@ const LoginScreen = () => {
           </Text>
         </View>
       </ScrollView>
+
+      {/* Hiệu ứng đăng nhập thành công — phủ toàn màn, chạy 1 nhịp chớp mắt rồi
+          reset về Main. */}
+      <LoginSuccessOverlay
+        visible={showSuccess}
+        username={activeUser?.username ?? 'bạn'}
+        onDone={() => navigation.reset({ index: 0, routes: [{ name: 'Main' as never }] })}
+      />
     </View>
   );
 };

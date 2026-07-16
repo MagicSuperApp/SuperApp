@@ -25,6 +25,8 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RootState } from '../store';
 import { useAppDispatch } from '../store/hooks';
+import { useCoachMark } from '../onboarding/CoachMarkContext';
+import { resetTutorial } from '../utils/tutorialStorage';
 import { COLORS } from '../constants';
 import StateView from '../components/state/StateView';
 import { showInfo } from '../utils/alert';
@@ -337,6 +339,13 @@ const AccountScreen = () => {
     const controllerPkh = useSelector((state: RootState) => state.user.controllerPkh);
     const chatbotEnabled = useSelector((state: RootState) => state.chatbot.enabled);
     const dispatch = useAppDispatch();
+    // Luồng hướng dẫn: chạy lại theo yêu cầu (xoá cờ đã-xem rồi start).
+    const { start: startTour } = useCoachMark();
+    const runTutorial = React.useCallback(() => {
+        const uid = user?.id;
+        resetTutorial(uid);
+        startTour(uid);
+    }, [user?.id, startTour]);
 
     // Địa-chỉ derive LOCAL từ Master_KEK (account-0) — ĐÚNG bằng địa-chỉ register gửi lên
     // backend. Dùng làm fallback để ví HIỆN kể cả khi /wallet/all chưa trả (deriver backend
@@ -684,6 +693,7 @@ const AccountScreen = () => {
                                 />
                             }
                         />
+                        <MenuItem icon="school-outline" label="Chạy luồng hướng dẫn" sublabel="Xem lại hướng dẫn thao tác cơ bản" onPress={runTutorial} />
                         <MenuItem icon="wifi-off" label="Chế độ offline" sublabel="Lưu cục bộ khi mất mạng" last />
                     </Section>
                 </Animated.View>

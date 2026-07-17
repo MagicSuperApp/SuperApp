@@ -324,6 +324,16 @@ const TreeDetailScreen = () => {
     (navigation as any).navigate('TreeIdentity');
   };
 
+  // Quay video quả cho CHÍNH cây này (OriLife User-Action-Flow) — tự điền tree_id.
+  const handleFruitVideo = () => {
+    if (!tree) return;
+    (navigation as any).navigate('FruitVideo', {
+      treeId: tree.id,
+      treeName: (tree as any).name,
+      farmId: tree.farmId,
+    });
+  };
+
   const handleScan3D = () => {
     if (!tree) return;
     (navigation as any).navigate('TreeIdentity');
@@ -516,18 +526,25 @@ const TreeDetailScreen = () => {
           <View style={styles.sectionDot} />
           <Text style={styles.sectionTitle}>DANH SÁCH QUẢ</Text>
         </View>
-        <TouchableOpacity
-          style={styles.addFruitBtn}
-          onPress={handleAddFruit}
-          onPressIn={() => Animated.spring(btnScale, { toValue: 0.94, useNativeDriver: true }).start()}
-          onPressOut={() => Animated.spring(btnScale, { toValue: 1, friction: 4, useNativeDriver: true }).start()}
-          activeOpacity={1}
-        >
-          <Animated.View style={[styles.addFruitBtnInner, { transform: [{ scale: btnScale }] }]}>
-            <Icon name="plus" size={15} color={COLORS.accent} />
-            <Text style={styles.addFruitBtnText}>Thêm quả</Text>
-          </Animated.View>
-        </TouchableOpacity>
+        <View style={styles.fruitActionRow}>
+          {/* Quay video quả cho cây này (OriLife) — gắn tree_id, cho phép gắn sai. */}
+          <TouchableOpacity style={styles.fruitVideoBtn} onPress={handleFruitVideo} activeOpacity={0.8}>
+            <Icon name="video-plus" size={15} color="#1b5e20" />
+            <Text style={styles.fruitVideoBtnText}>Video quả</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.addFruitBtn}
+            onPress={handleAddFruit}
+            onPressIn={() => Animated.spring(btnScale, { toValue: 0.94, useNativeDriver: true }).start()}
+            onPressOut={() => Animated.spring(btnScale, { toValue: 1, friction: 4, useNativeDriver: true }).start()}
+            activeOpacity={1}
+          >
+            <Animated.View style={[styles.addFruitBtnInner, { transform: [{ scale: btnScale }] }]}>
+              <Icon name="plus" size={15} color={COLORS.accent} />
+              <Text style={styles.addFruitBtnText}>Thêm quả</Text>
+            </Animated.View>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.searchContainer}>
@@ -996,6 +1013,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10,
   },
   addFruitBtnText: { fontSize: 13, fontWeight: '600', color: COLORS.accent },
+  fruitActionRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  fruitVideoBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: '#e8f5e9',
+    borderWidth: 1, borderColor: '#1b5e20',
+    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10,
+  },
+  fruitVideoBtnText: { fontSize: 13, fontWeight: '700', color: '#1b5e20' },
 
   fruitCard: {
     backgroundColor: COLORS.card,

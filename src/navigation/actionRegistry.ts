@@ -57,6 +57,10 @@ const scanTree = (label: string): ActionDef => ({
 const scanFruit: ActionDef = {
   key: 'scan-fruit', icon: 'fruit-cherries', label: 'Quét quả', group: 'scan', route: 'FruitList',
 };
+// Thu VIDEO quả → gắn cây (OriLife User-Action-Flow). Quay native + upload fruit_video.
+const fruitVideo: ActionDef = {
+  key: 'fruit-video', icon: 'video-plus', label: 'Video quả', group: 'scan', route: 'FruitVideo',
+};
 const scanAnimal = (label: string): ActionDef => ({
   key: 'scan-animal', icon: 'paw', label, group: 'scan', route: 'AnimalManagement',
   params: { farmId: 'default' },
@@ -84,16 +88,16 @@ export const DOMAIN_PACKS: Record<Domain, ActionPack> = {
   // Trồng sầu riêng: quét cây (theo loài) · quét quả · bón phân · thêm vườn.
   durian: (ctx) => [
     scanTree(`Quét ${ctx.speciesLabel ?? 'sầu riêng'}`),
+    fruitVideo,
     scanFruit,
     nutrition('Bón phân', 'watering-can'),
-    addFarm,
   ],
   // Cây trồng nói chung.
   tree: (ctx) => [
     scanTree(ctx.speciesLabel ? `Quét ${ctx.speciesLabel}` : 'Quét cây'),
+    fruitVideo,
     scanFruit,
     nutrition('Chăm sóc', 'watering-can'),
-    addFarm,
   ],
   // Vật nuôi: quét vật (theo loài) · cho ăn · tiêm thuốc · thêm đàn.
   animal: (ctx) => [

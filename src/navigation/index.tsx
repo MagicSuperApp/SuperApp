@@ -94,6 +94,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import AssistantBubble from '../components/AssistantBubble';
+import { CoachMarkProvider, useCoachMarkTarget } from '../onboarding/CoachMarkContext';
+import CoachMarkOverlay from '../onboarding/CoachMarkOverlay';
 import { AppRegistry } from 'react-native';
 
 // --- Registry config-driven -------------------------------------------------
@@ -271,6 +273,64 @@ const polarPt = (cx: number, cy: number, r: number, deg: number) => {
 };
 const RADIAL_BAND = RADIAL_RO - RADIAL_RI; // độ dày dải cung
 
+// Múi ACTIVE dạng MÚI CUNG (annular sector) — thay pill chữ nhật cũ (cạnh thẳng
+// nhìn lệch với dải cong). Dựng bằng nhiều lát mỏng phủ chồng dọc theo cung, mỗi
+// lát xoay theo tiếp tuyến → viền trong/ngoài ôm đúng độ cong của dải, như thể
+// đoạn dải cung đó "sáng lên". KHÔNG cần react-native-svg.
+//   c        : tâm cung (nút giữa)
+//   centerDeg: góc TÂM của múi (độ, đo từ trục đứng — cùng hệ với polarPt)
+//   spanDeg  : bề rộng góc của múi
+//   rInner/rOuter: bán kính trong/ngoài (khớp dải cung)
+const arcSegment = (
+  c: { x: number; y: number },
+  centerDeg: number,
+  spanDeg: number,
+  rInner: number,
+  rOuter: number,
+  color: string,
+  keyPrefix: string,
+) => {
+  const thickness = rOuter - rInner;
+  const rMid = (rInner + rOuter) / 2;
+  // Lát đủ dày (~3°/lát) để cung mượt mà không quá nhiều View.
+  const tiles = Math.max(5, Math.ceil(spanDeg / 3));
+  const stepDeg = spanDeg / tiles;
+  const startDeg = centerDeg - spanDeg / 2;
+  // Dây cung một lát + phủ chồng 3px để không hở mạch giữa các lát.
+  const tileW = 2 * rMid * Math.sin((stepDeg / 2) * (Math.PI / 180)) + 3;
+  const nodes: React.ReactNode[] = [];
+  for (let t = 0; t < tiles; t++) {
+    const tdeg = startDeg + (t + 0.5) * stepDeg;
+    const p = polarPt(c.x, c.y, rMid, tdeg);
+    const tang = Math.atan2(p.y - c.y, p.x - c.x) + Math.PI / 2;
+    const isEnd = t === 0 || t === tiles - 1;
+    nodes.push(
+      <View
+        key={`${keyPrefix}-${t}`}
+        style={{
+          position: 'absolute',
+          left: p.x - tileW / 2,
+          top: p.y - thickness / 2,
+          width: tileW,
+          height: thickness,
+          // Chỉ bo tròn hai lát ĐẦU/CUỐI → hai đầu múi bo tròn như pill cũ; lát
+          // giữa vuông (phủ chồng nên không thấy cạnh).
+          borderRadius: isEnd ? thickness / 2 : 0,
+          backgroundColor: color,
+          transform: [{ rotate: `${tang}rad` }],
+        }}
+      />,
+    );
+  }
+  // Bọc trong 1 lớp có opacity: đặt opacity ở TỪNG lát thì vùng phủ chồng bị nhân
+  // đôi alpha → sọc tối. Đặt ở lớp cha thì cả múi trong suốt đều.
+  return (
+    <View key={keyPrefix} pointerEvents="none" style={[StyleSheet.absoluteFill, { opacity: 0.96 }]}>
+      {nodes}
+    </View>
+  );
+};
+
 interface RadialItem {
   key: RadialKey;
   icon: string;
@@ -353,6 +413,9 @@ const CurvedTabBar = ({ state, navigation }: BottomTabBarProps) => {
   const insets = useSafeAreaInsets();
   const { width, height: windowHeight } = useWindowDimensions();
   const radial = React.useContext(RadialMenuContext);
+  // Target cho luồng hướng dẫn: nút Chính (giữa) + tab Tài khoản (Me).
+  const centerTarget = useCoachMarkTarget('nav.center');
+  const accountTarget = useCoachMarkTarget('nav.account');
   // SG9 §4 — CỔNG THỐNG NHẤT: cung xoè nút giữa = SERVICE THUẦN (đổi-app), thay
   // menu hành động SG4. Mục persona-adaptive (Farm-first / Work-first) suy từ
   // "chữ ký domain" (số cây/quả/vườn) — chỉ tính lại khi số này đổi, tránh
@@ -826,6 +889,7 @@ const CurvedTabBar = ({ state, navigation }: BottomTabBarProps) => {
           return (
             <TouchableOpacity
               key={route.key}
+              ref={name === NEO_RIGHT ? accountTarget.ref : undefined}
               style={curvedStyles.tabItem}
               activeOpacity={0.7}
               onPress={() => handlePress(route.name, route.key, isFocused)}
@@ -848,6 +912,8 @@ const CurvedTabBar = ({ state, navigation }: BottomTabBarProps) => {
       {homeIndex >= 0 && (
         <View
           {...panRef.current.panHandlers}
+          ref={centerTarget.ref}
+          collapsable={false}
           style={[curvedStyles.homeButton, { left: cx - HOME_BTN_SIZE / 2 }]}
         >
           <Icon name={mainIcon} size={30} color="#FFFFFF" />
@@ -1061,8 +1127,6 @@ const HomeRadialOverlay = () => {
           const a0 = -RADIAL_SPREAD / 2;
           const hotIdx =
             menu.active >= 0 ? menu.active : menu.assigned >= 0 ? menu.assigned : -1;
-          // Chiều dài cung của một đoạn (xấp xỉ dây cung) → chiều dài pill.
-          const chord = 2 * RADIAL_R * Math.sin((segW / 2) * (Math.PI / 180));
           return (
             <View pointerEvents="none" style={StyleSheet.absoluteFill}>
               {/* Vành nền: full-ring, phần dưới lọt ngoài màn nên nhìn như dải cung trên */}
@@ -1072,29 +1136,18 @@ const HomeRadialOverlay = () => {
                   { left: c.x - RADIAL_RO, top: c.y - RADIAL_RO, width: RADIAL_RO * 2, height: RADIAL_RO * 2 },
                 ]}
               />
-              {/* Múi đang chọn (pill bo góc, xoay theo tiếp tuyến vành) */}
+              {/* Múi đang chọn = MÚI CUNG khớp dải (bán kính trong/ngoài đúng dải,
+                  hai đầu bo tròn). Chừa 6% mỗi đoạn để không đè lên đường chia. */}
               {hotIdx >= 0 &&
-                (() => {
-                  const it = menu.items[hotIdx];
-                  const tang = Math.atan2(it.y - c.y, it.x - c.x) + Math.PI / 2;
-                  const L = chord + 14;
-                  return (
-                    <View
-                      style={[
-                        radialStyles.pill,
-                        {
-                          left: it.x - L / 2,
-                          top: it.y - (RADIAL_BAND - 8) / 2,
-                          width: L,
-                          height: RADIAL_BAND - 8,
-                          borderRadius: (RADIAL_BAND - 8) / 2,
-                          backgroundColor: it.tint,
-                          transform: [{ rotate: `${tang}rad` }],
-                        },
-                      ]}
-                    />
-                  );
-                })()}
+                arcSegment(
+                  c,
+                  a0 + (hotIdx + 0.5) * segW,
+                  segW * 0.94,
+                  RADIAL_RI,
+                  RADIAL_RO,
+                  menu.items[hotIdx].tint,
+                  'mainseg',
+                )}
               {/* Đường kẻ chia đoạn (giữa các nút) */}
               {Array.from({ length: n - 1 }, (_, k) => {
                 const d = a0 + (k + 1) * segW;
@@ -1184,7 +1237,6 @@ const HomeRadialOverlay = () => {
           const n = menu.subItems.length;
           const segS = SUB_ITEMS_SPREAD / n;
           const a0 = -SUB_ITEMS_SPREAD / 2;
-          const chordS = 2 * RADIAL_R_SUB * Math.sin((segS / 2) * (Math.PI / 180));
           return (
             <View pointerEvents="none" style={StyleSheet.absoluteFill}>
               {/* Vành nền arc con — đồng tâm, bán kính lớn hơn arc chính */}
@@ -1194,29 +1246,17 @@ const HomeRadialOverlay = () => {
                   { left: c.x - RADIAL_RO_SUB, top: c.y - RADIAL_RO_SUB, width: RADIAL_RO_SUB * 2, height: RADIAL_RO_SUB * 2 },
                 ]}
               />
-              {/* Pill mục con đang chọn (xoay theo tiếp tuyến vành, tâm = nút giữa) */}
+              {/* Múi con đang chọn = MÚI CUNG khớp dải arc con */}
               {menu.subActive >= 0 &&
-                (() => {
-                  const it = menu.subItems[menu.subActive];
-                  const tang = Math.atan2(it.y - c.y, it.x - c.x) + Math.PI / 2;
-                  const L = chordS + 14;
-                  return (
-                    <View
-                      style={[
-                        radialStyles.pill,
-                        {
-                          left: it.x - L / 2,
-                          top: it.y - (RADIAL_BAND_SUB - 10) / 2,
-                          width: L,
-                          height: RADIAL_BAND_SUB - 10,
-                          borderRadius: (RADIAL_BAND_SUB - 10) / 2,
-                          backgroundColor: it.tint,
-                          transform: [{ rotate: `${tang}rad` }],
-                        },
-                      ]}
-                    />
-                  );
-                })()}
+                arcSegment(
+                  c,
+                  a0 + (menu.subActive + 0.5) * segS,
+                  segS * 0.94,
+                  RADIAL_RI_SUB,
+                  RADIAL_RO_SUB,
+                  menu.subItems[menu.subActive].tint,
+                  'subseg',
+                )}
               {/* Đường chia giữa các mục con */}
               {Array.from({ length: n - 1 }, (_, k) => {
                 const d = a0 + (k + 1) * segS;
@@ -1307,7 +1347,6 @@ const radialStyles = StyleSheet.create({
     borderColor: 'rgba(17, 17, 17, 0.58)',
     backgroundColor: 'transparent',
   },
-  pill: { position: 'absolute', opacity: 0.96 },
   divider: { position: 'absolute', height: 1.5, backgroundColor: 'rgba(255, 255, 255, 0.76)' },
   guideWrap: { position: 'absolute', left: 28, right: 28, alignItems: 'center' },
   guideTitle: {
@@ -1596,6 +1635,7 @@ const AppNavigator = () => {
     <Provider store={store}>
       <RadialMenuProvider>
       <AppHeaderProvider>
+      <CoachMarkProvider>
       <NavigationContainer linking={buildLinking()} onStateChange={handleNavigationStateChange}>
         <Stack.Navigator
           initialRouteName={initialRoute}
@@ -1627,8 +1667,11 @@ const AppNavigator = () => {
         <AssistantBubble />
         {/* Overlay toolbox cung tròn — render TRÊN CÙNG (sau bubble), full-screen. */}
         <HomeRadialOverlay />
+        {/* Luồng hướng dẫn (coach-mark) — trên tất cả, chặn thao tác khi chạy. */}
+        <CoachMarkOverlay />
         <Toast />
       </NavigationContainer>
+      </CoachMarkProvider>
       </AppHeaderProvider>
       </RadialMenuProvider>
     </Provider>

@@ -33,6 +33,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useNavigationState } from '@react-navigation/native';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../store';
+import { useCoachMarkTarget } from '../onboarding/CoachMarkContext';
 import {
   HEADER_COLORS,
   PROOFCHAT_THEME,
@@ -132,6 +133,8 @@ const AppHeader = () => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const user = useSelector((s: RootState) => s.user.currentUser);
+  // Target luồng hướng dẫn: nút chuông thông báo.
+  const bellTarget = useCoachMarkTarget('header.bell');
 
   // Tên tab đang mở (nằm trong navigator Main) → chọn màu nền theo module.
   const activeTabName = useNavigationState((state: any) => {
@@ -194,6 +197,7 @@ const AppHeader = () => {
           </TouchableOpacity>
 
           <TouchableOpacity
+            ref={bellTarget.ref}
             style={styles.iconBtn}
             activeOpacity={0.7}
             accessibilityLabel="Thông báo"

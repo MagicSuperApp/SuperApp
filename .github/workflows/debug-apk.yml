@@ -6,7 +6,7 @@ name: Android Debug APK (SuperApp — sideload test)
 on:
   push:
     branches:
-      - dev
+      - develop        # nhánh tích-hợp THẬT (trước ghi 'dev' — sai tên → develop không build APK nào)
       - feat/**
     paths:
       - 'android/**'
@@ -16,8 +16,30 @@ on:
   workflow_dispatch:   # nút bấm build tay
 
 jobs:
+  # CỔNG chất-lượng: đỏ tsc/jest thì KHÔNG tốn 60 phút build APK (bắt hồi-quy sớm).
+  # Trước đây không cổng nào chạy tsc/jest → suite đỏ lọt lưới (vd resolveGateItems sau #53).
+  verify:
+    name: Verify (tsc + jest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.11.0'
+          cache: 'npm'
+      - name: Install npm dependencies
+        run: npm install --legacy-peer-deps
+      - name: Typecheck (tsc --noEmit)
+        run: npx tsc --noEmit -p tsconfig.json
+      - name: Unit tests (jest)
+        run: npx jest --ci
+
   build-debug-apk:
     name: Build debug APK
+    needs: verify          # chỉ build khi verify xanh
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -50,7 +72,9 @@ jobs:
           cat > android/gradle.properties << 'EOF'
           org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m
           android.useAndroidX=true
-          reactNativeArchitectures=armeabi-v7a,arm64-v8a,x86,x86_64
+          # Chỉ 2 ABI máy-thật (arm64 phổ biến + armeabi-v7a máy cũ/rẻ nông dân hay dùng).
+          # Bỏ x86/x86_64 (chỉ giả-lập) → APK universal gọn hơn nhiều (trước 4 ABI = 258MB).
+          reactNativeArchitectures=arm64-v8a,armeabi-v7a
           newArchEnabled=true
           hermesEnabled=true
           edgeToEdgeEnabled=false
@@ -84,7 +108,9 @@ jobs:
           path: |
             dist/superapp-debug.apk
             android-debug.log
-          retention-days: 30
+          # 3 ngày (trước 30): APK ~100-150MB × nhiều bản 30 ngày = vỡ quota Actions
+          # (~500MB gói free) → upload chết "storage quota has been hit" → không tải được bản test.
+          retention-days: 3
 
       - name: Build summary
         run: |

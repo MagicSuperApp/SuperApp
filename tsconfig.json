@@ -4,5 +4,6 @@
     "types": ["jest"]
   },
   "include": ["**/*.ts", "**/*.tsx"],
-  "exclude": ["**/node_modules", "**/Pods"]
+  "//": "MobileCore = bản vendored của gói ngoài @magiclamp/mobile-core (repo + CI riêng); src/ KHÔNG import nó. Test của nó dùng node/jest global khác cấu hình → loại khỏi typecheck SuperApp.",
+  "exclude": ["**/node_modules", "**/Pods", "MobileCore"]
 }

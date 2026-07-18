@@ -9,15 +9,17 @@ const NO_FARM = { farms: 0, trees: 0, fruits: 0 };
 const routes = (items: ReturnType<typeof resolveGateItems>) => items.map((i) => i.route);
 
 describe('resolveGateItems', () => {
-  it('user mới / nông dân: Home · Chat · Farm · [Trace giữa] · Work · Join', () => {
-    const expected = ['Home', 'ProofChatHome', 'Farms', 'TraceScan', 'WorkHome', 'JoinHome'];
+  // Điều chỉnh menu arc (Aladin chốt, #53): BỎ 'Home' khỏi cung (nhấn nút giữa đã về
+  // Home → mục Home thừa). Cung = Chat · [slot persona], Trace-quét chèn CHÍNH GIỮA.
+  it('user mới / nông dân: Chat · Farm · [Trace giữa] · Work · Join', () => {
+    const expected = ['ProofChatHome', 'Farms', 'TraceScan', 'WorkHome', 'JoinHome'];
     expect(routes(resolveGateItems(NO_FARM))).toEqual(expected);
     expect(routes(resolveGateItems({ farms: 2, trees: 9, fruits: 0 }))).toEqual(expected);
   });
 
   it('shipper (Work usage, không farm): Work/Join lên trước, Farm lùi; Trace vẫn giữa', () => {
     expect(routes(resolveGateItems(NO_FARM, { WorkHome: 8 }))).toEqual([
-      'Home', 'ProofChatHome', 'WorkHome', 'TraceScan', 'JoinHome', 'Farms',
+      'ProofChatHome', 'WorkHome', 'TraceScan', 'JoinHome', 'Farms',
     ]);
   });
 
@@ -46,7 +48,6 @@ describe('resolveGateItems', () => {
     const chat = byRoute.ProofChatHome.subActions ?? [];
     expect(chat.map((a) => a.route)).toEqual(['ProofChatWallet', 'Notifications']);
 
-    expect(byRoute.Home.subActions).toBeUndefined();
     expect(byRoute.WorkHome.subActions).toBeUndefined();
     expect(byRoute.JoinHome.subActions).toBeUndefined();
   });

@@ -66,6 +66,7 @@ import SeedExportScreen from '../screens/SeedExportScreen';
 import RestoreIdentityScreen from '../screens/RestoreIdentityScreen';
 import PhoenixWalletScreen from '../screens/PhoenixWalletScreen';
 import OrgDidScreen from '../screens/OrgDidScreen';
+import PoolHomeScreen from '../modules/pool/screens/PoolHomeScreen';
 import OrgMintScreen from '../screens/OrgMintScreen';
 import WebLoginScanScreen from '../screens/WebLoginScanScreen';
 import TraceScanScreen from '../screens/TraceScanScreen';
@@ -1543,6 +1544,8 @@ const HOST_STACK_SCREENS: Array<{
   // Ví tổ chức — tạo OrgDID + mint LAMP bằng OrgDID (2 bước: mint kho → claim-release).
   { name: 'OrgDid', component: OrgDidScreen, options: { headerShown: false } },
   { name: 'OrgMint', component: OrgMintScreen, options: { headerShown: false } },
+  // Pool (stake pool / SPO) — UI khung trỏ api.phoenixkey.io; contract chờ Phoenix (inbox).
+  { name: 'PoolHome', component: PoolHomeScreen, options: { headerShown: false } },
   { name: 'WebLoginScan', component: WebLoginScanScreen, options: { headerShown: false } },
   // SG9 §3 — Quét truy xuất (consumer): host stack, full-bleed, KHÔNG lên tabs[]
   // (immersive-by-omission). Tới được qua nút Home header + cổng §4 + deep-link.

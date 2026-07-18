@@ -8,6 +8,7 @@ import { databaseManager } from '../../../services/databaseManager';
 import { ORILIFE_BASE } from '../../../services/orilifeBase';
 import { listFarms } from '../../../services/farmService';
 import { getTrees, mapTreeInfoToUI } from '../../../services/treeReIDService';
+import { ensureOrilifeToken } from '../../../services/orilifeDidAuth';
 import { logout, logoutUser } from '../../../store/userSlice';
 
 // AsyncStorage key prefix for tree metadata (build 49 spec § 3).
@@ -42,7 +43,16 @@ export const syncFarmsFromBackend = createAsyncThunk(
   async (userId: string) => {
     try {
       databaseManager.ensureReady('syncFarmsFromBackend');
-      const res = await listFarms(ORILIFE_BASE);
+      // BUG-FIX: ký token DID TRƯỚC khi đọc. Trước đây token chỉ được ký khi user vào
+      // TreeIdentity/FarmDetail → mở app xong vào tab Vườn lần đầu là 401 → danh sách
+      // vườn rỗng oan. ensureOrilifeToken tự DID-login nếu chưa có token.
+      await ensureOrilifeToken(ORILIFE_BASE);
+      let res = await listFarms(ORILIFE_BASE);
+      // Token hết hạn (401) → ký lại 1 lần rồi thử lại, khớp cách FarmDetailScreen xử.
+      if (!res.ok && res.error?.type === 'auth_error') {
+        await ensureOrilifeToken(ORILIFE_BASE, { force: true });
+        res = await listFarms(ORILIFE_BASE);
+      }
       if (res.ok && res.farms) {
         // owner LẤY TỪ AUTH → gán userId hiện-hành để loadFarms(userId) khớp cache.
         const farms = res.farms.map((f) => ({ ...f, userId }));
@@ -70,7 +80,13 @@ export const syncTreesFromBackend = createAsyncThunk(
   async (farmId: string) => {
     try {
       databaseManager.ensureReady('syncTreesFromBackend');
-      const res = await getTrees(ORILIFE_BASE, farmId);
+      // Cùng lỗi token như syncFarmsFromBackend: ký trước + retry-force khi 401.
+      await ensureOrilifeToken(ORILIFE_BASE);
+      let res = await getTrees(ORILIFE_BASE, farmId);
+      if (!res.ok && res.error?.type === 'auth_error') {
+        await ensureOrilifeToken(ORILIFE_BASE, { force: true });
+        res = await getTrees(ORILIFE_BASE, farmId);
+      }
       if (res.ok && res.trees) {
         const trees = res.trees.map((t) => mapTreeInfoToUI(t, farmId));
         for (const tree of trees) {

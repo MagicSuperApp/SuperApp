@@ -6,6 +6,8 @@ import { database } from '../utils/database';
 import { databaseManager } from '../services/databaseManager';
 import { phoenixKeyApi, summarizeWalletAll, type WalletEntry } from '../services/phoenixKey-api';
 import { parseDidNetwork } from '../services/phoenixDid';
+import { clearWorkSession } from '../modules/work/services/session';
+import { disconnectProofChat } from '../services/proofchatAuthBridge';
 
 interface Wallet {
   id: string;
@@ -96,6 +98,19 @@ export const loginUser = createAsyncThunk(
 export const logoutUser = createAsyncThunk(
   'user/logoutUser',
   async () => {
+    // Xoá phiên XUYÊN MODULE trước khi đóng DB — nếu không, token Work (sống ~12h) +
+    // kết nối ProofChat sống sót qua đăng xuất → rò dữ liệu user A→B trên máy dùng chung.
+    // Best-effort: lỗi 1 nhánh KHÔNG được chặn đăng xuất (vẫn phải đóng DB per-user).
+    try {
+      await clearWorkSession();
+    } catch (error) {
+      console.warn('[Redux] Logout: clearWorkSession lỗi (bỏ qua):', error);
+    }
+    try {
+      await disconnectProofChat();
+    } catch (error) {
+      console.warn('[Redux] Logout: disconnectProofChat lỗi (bỏ qua):', error);
+    }
     try {
       console.log('[Redux] Logging out user');
       await databaseManager.closeDatabase();

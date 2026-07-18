@@ -1,0 +1,20 @@
+{
+  "$schema": "../manifest.schema.json",
+  "schemaVersion": "1.0",
+  "moduleId": "magiclamp.pool",
+  "version": "0.1.0",
+  "displayName": { "vi": "Pool", "en": "Pool" },
+  "integrationKind": "feature",
+
+  "entrypoint": "PoolHome",
+  "route": "PoolHome",
+  "icon": { "name": "server-network", "colorToken": "brand.lampnet.primary" },
+  "navSlot": "off-bar",
+  "routes": ["PoolHome"],
+
+  "capabilities": {
+    "data": ["read:profile"],
+    "wallet": ["read:wallet.address"],
+    "network": ["phoenixkey.pool.api"]
+  }
+}

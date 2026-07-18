@@ -3,6 +3,7 @@ declare module '@env' {
   export const ALADIN_API_KEY: string;
   export const ALADIN_REGION_CODE: string;
   export const PHOENIXKEY_API_URL: string;
+  export const PHOENIXKEY_POOL_API_URL: string;
   export const PHOENIX_WALLET_ENABLED: string;
   export const ORG_MINT_ENABLED: string;
   export const MESHAPI_USE_MOCK: string;

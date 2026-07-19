@@ -321,6 +321,30 @@ export const conversations = {
     ),
 };
 
+// ── Người dùng (tìm người để bắt đầu chat cá nhân / thêm vào nhóm) ────
+
+/** 1 người dùng từ tìm-kiếm (BE /users/search). Chỉ field tối-thiểu để lập hội-thoại. */
+export interface RemoteUser {
+  userDid: string;
+  username?: string;
+  displayName?: string;
+  avatar?: string | null;
+}
+
+export const users = {
+  /**
+   * Tìm người theo DID hoặc username để bắt đầu chat 1-1 / thêm vào nhóm.
+   * BE: GET /users/search?q=<did_or_username> (Bearer). Trả mảng RemoteUser.
+   */
+  search: (q: string): Promise<RemoteUser[]> =>
+    unwrap<RemoteUser[]>(
+      client.get('/users/search', {
+        needsAuth: true,
+        params: { q },
+      } as AuthableConfig),
+    ),
+};
+
 // ── MLS (bootstrap: KeyPackage + epoch-sync) ─────────────────────────
 // Khớp D:\BE modules/mls (controller `mls`) + modules/mls/epoch-sync. Dùng cho
 // proofchatService (lập nhóm, publish KeyPackage, đồng bộ epoch). Prefix baseURL
@@ -422,5 +446,5 @@ export const mls = {
     ),
 };
 
-export const proofChatApi = { auth, conversations, mls };
+export const proofChatApi = { auth, conversations, users, mls };
 export default proofChatApi;

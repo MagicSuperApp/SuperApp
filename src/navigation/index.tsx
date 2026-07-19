@@ -17,6 +17,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Provider, useSelector, useDispatch } from 'react-redux';
 import { store, RootState } from '../store';
 import { refreshWallet, resolveNetwork, refreshControllerPkh } from '../store/userSlice';
+import { ensurePhoenixSession } from '../services/phoenixSessionService';
 import { ensureStandardWalletRegistered } from '../services/standardWalletService';
 import { initPush } from '../services/pushHandler';
 import Toast from 'react-native-toast-message';
@@ -1459,9 +1460,13 @@ const ProtectedMain = () => {
   React.useEffect(() => {
     const did = user?.did || user?.id;
     if (did) {
-      // Đăng-ký ví Standard (CIP-1852) TRƯỚC rồi mới refresh — để /wallet/all trả về ví
-      // Standard ngay lần đầu (idempotent, best-effort — không chặn nếu lỗi/offline).
+      // 1) Self-pair PhoenixKey session (mobile tự ký lấy session token) — BẮT BUỘC vì
+      //    /wallet/standard/register cần Bearer session. User đăng-nhập-mobile-thuần
+      //    không có token này → trước đây đăng-ký ví fail câm → /wallet/all rỗng → không
+      //    hiện ví. 2) Đăng-ký ví Standard. 3) Refresh để /wallet/all trả về ví.
+      //    Tuần-tự + best-effort (không chặn nếu lỗi/offline).
       (async () => {
+        await ensurePhoenixSession();
         await ensureStandardWalletRegistered();
         dispatch(refreshWallet(did));
       })();

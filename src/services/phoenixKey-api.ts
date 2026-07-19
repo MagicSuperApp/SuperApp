@@ -345,8 +345,18 @@ export const identity = {
 };
 
 export const session = {
+  /**
+   * Tạo session (API.md §3). Body rỗng OK — backend KHÔNG bind domain lúc init
+   * (domain chỉ tham-gia chuỗi ký ở approve, không bị validate allowlist). Nhờ vậy
+   * MOBILE tự init được để self-pairing lấy session_token cho chính nó.
+   */
+  init: () =>
+    unwrap<{ sessionId: string; challenge: string; tempToken: string; expiresAt: number }>(
+      client.post('/auth/session/init', {}),
+    ),
+
   approve: (sessionId: string, body: ApproveSessionRequest) =>
-    unwrap<{ status: string; linkedDeviceToken?: string }>(
+    unwrap<{ status: string; sessionToken?: string; linkedDeviceToken?: string }>(
       client.post(`/auth/session/${encodeURIComponent(sessionId)}/approve`, body),
     ),
 

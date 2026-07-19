@@ -446,6 +446,17 @@ const AddFarmMode = ({
   const [draggingActive, setDraggingActive] = useState(false);
   const mapViewRef = useRef<any>(null);
 
+  // Thêm 1 điểm tại vị-trí chạm trên bản-đồ (chế-độ "Tự vẽ điểm"). Callback nhận thẳng
+  // GeoJSON.Feature: geometry.coordinates = [lng, lat].
+  const handleMapAddPoint = useCallback((e: any) => {
+    if (drawMode !== 'manual') return;
+    const c = e?.geometry?.coordinates ?? e?.payload?.geometry?.coordinates;
+    if (!c) return;
+    const [lng, lat] = c;
+    setSelectedVertex(null);
+    onManualTapAppend(lat, lng);
+  }, [drawMode, onManualTapAppend]);
+
   // Khi parent chuyển 'edit-ready' (walk-away auto-stop) → tắt auto-record + pulse.
   useEffect(() => {
     if (editMode === 'edit-ready' && isAutoRecording) setIsAutoRecording(false);
@@ -512,6 +523,9 @@ const AddFarmMode = ({
       const id = Geolocation.watchPosition(
         (pos) => {
           if (cancelled) return;
+          // Bỏ fix CACHE cũ (>15s): OS hay trả vị trí "tỉnh từng ở" tức thì trước khi
+          // GPS thật khoá → hiện sai tỉnh (field 13/07). Fix live luôn có timestamp mới.
+          if (pos.timestamp && Date.now() - pos.timestamp > 15000) return;
           const { latitude, longitude, accuracy } = pos.coords;
           setCurrentLocation({ lat: latitude, lng: longitude });
           setLastAccuracy(accuracy ?? null);
@@ -522,7 +536,13 @@ const AddFarmMode = ({
         },
         (err) => console.log('[AddFarmMode] watchPosition error:', err),
         // distanceFilter=3 đồng bộ với native LocationHelper (Build 51).
-        { enableHighAccuracy: true, distanceFilter: 3 },
+        // forceRequestLocation + showLocationDialog (Android): nhắc bật định-vị nếu tắt.
+        {
+          enableHighAccuracy: true,
+          distanceFilter: 3,
+          forceRequestLocation: true,
+          showLocationDialog: true,
+        },
       );
 
       if (cancelled) { Geolocation.clearWatch(id); return; }
@@ -557,11 +577,14 @@ const AddFarmMode = ({
     requestLocationPermission().then(setPermissionGranted);
   }, []);
 
-  // Auto-center một lần khi có định vị GPS đầu tiên (sau đó user tự pan/zoom).
+  // Auto-center theo GPS — BÁM THEO tới khi có fix ĐỦ CHÍNH XÁC rồi mới khoá (sau đó
+  // user tự pan/zoom). Vì sao KHÔNG khoá ngay fix đầu: iOS/Android hay trả fix CACHE
+  // (vị trí tỉnh TỪNG ở) tức thì trước khi GPS thật khoá → nếu center-rồi-khoá ở fix đầu
+  // thì kẹt ở "tỉnh khác" (field 13/07). Bám theo tới khi accuracy ≤ 60m → chắc về đúng
+  // chỗ đang đứng; chưa có accuracy thì vẫn center tạm nhưng CHƯA khoá (còn recenter được).
   useEffect(() => {
     if (didAutoCenterRef.current) return;
     if (currentLocation.lat === 0 && currentLocation.lng === 0) return;
-    didAutoCenterRef.current = true;
     try {
       cameraRef.current?.setCamera({
         centerCoordinate: [currentLocation.lng, currentLocation.lat],
@@ -569,7 +592,11 @@ const AddFarmMode = ({
         animationDuration: 600,
       });
     } catch {}
-  }, [currentLocation]);
+    // Chỉ khoá auto-center khi fix đủ tốt → tránh dính fix cache sai tỉnh.
+    if (lastAccuracy != null && lastAccuracy <= 60) {
+      didAutoCenterRef.current = true;
+    }
+  }, [currentLocation, lastAccuracy]);
 
   // Đóng popup nếu điểm đang chọn đã bị xoá khỏi mảng.
   useEffect(() => {
@@ -628,14 +655,7 @@ const AddFarmMode = ({
                 rotateEnabled={false}
                 pitchEnabled={false}
                 scrollEnabled={!draggingActive}
-                onPress={(e: any) => {
-                  if (drawMode !== 'manual') return;
-                  const c = e?.geometry?.coordinates ?? e?.payload?.geometry?.coordinates;
-                  if (!c) return;
-                  const [lng, lat] = c;
-                  setSelectedVertex(null);
-                  onManualTapAppend(lat, lng);
-                }}
+                onPress={handleMapAddPoint}
                 onDidFinishLoadingMap={() => setShowMarker(true)}
               >
                 <MapLib.Camera

@@ -9,7 +9,7 @@
  * wrap lại bằng Secure Enclave/Keystore của máy mới, đăng ký thiết bị.
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   StatusBar, TextInput, ActivityIndicator,
@@ -17,12 +17,15 @@ import {
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
+import { useDispatch } from 'react-redux';
 import { COLORS } from '../constants';
 import { showWarning, showSuccess } from '../utils/alert';
 import taadEnclave from '../sdk/taadEnclave';
 import { restoreMasterKekFromMnemonic } from '../services/masterKekStore';
-import { phoenixKeyApi } from '../services/phoenixKey-api';
-import { enrollKeypair, ownerPublicKey, saveUserDid } from '../sdk/phoenixKey';
+import { phoenixKeyApi, PhoenixKeyApiError } from '../services/phoenixKey-api';
+import { enrollKeypair, ownerPublicKey, saveUserDid, currentUserDid } from '../sdk/phoenixKey';
+import { phoenixKeyAuth } from '../services/phoenixKeyAuthService';
+import { loginUser } from '../store/userSlice';
 
 const DID_RE = /^did:phoenix:[a-z2-7]{13}:[0-9a-f]{64}$/;
 const genNonce = (): string => {
@@ -34,10 +37,17 @@ const genNonce = (): string => {
 const RestoreIdentityScreen = () => {
   const insets = useSafeAreaInsets();
   const navigation: any = useNavigation();
+  const dispatch = useDispatch();
 
   const [phrase, setPhrase] = useState('');
   const [did, setDid] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Prefill DID nếu máy đã lưu (đăng nhập lại trên CÙNG máy) → user khỏi gõ tay.
+  // Máy mới hoàn-toàn: trống → user tự nhập DID để gắn thiết bị + đăng nhập.
+  useEffect(() => {
+    currentUserDid().then(d => { if (d) setDid(prev => prev || d); }).catch(() => {});
+  }, []);
 
   // Đếm số từ realtime để hướng dẫn người dùng (cần đúng 24).
   const wordCount = useMemo(
@@ -67,25 +77,37 @@ const RestoreIdentityScreen = () => {
         throw new Error('Master_KEK trả về không hợp lệ');
       }
 
-      // Gắn thiết bị này vào DID (nếu người dùng nhập DID) — hoàn tất recover-device
-      // (Mode B): TAAD_Key khôi phục ký challenge (Ed25519) → POST /identity/recover-device.
-      const cleanDid = did.trim();
-      if (cleanDid) {
-        if (!DID_RE.test(cleanDid)) {
-          throw new Error('DID chưa đúng định dạng did:phoenix.');
-        }
-        const taadPub = await taadEnclave.deriveTaadPubkey(kek);
-        let newHwPub: string;
-        try {
-          newHwPub = (await enrollKeypair()).publicKeyHex;
-        } catch {
-          // Thiết bị đã có khoá HW → dùng lại khoá hiện có.
-          newHwPub = await ownerPublicKey();
-        }
-        const nonce = genNonce();
-        const challenge = `PHOENIXKEY_RECOVER:${cleanDid}:${newHwPub}:${nonce}`;
-        const signature = await taadEnclave.signEd25519(kek, challenge);
-        if (!signature) throw new Error('Ký bằng TAAD_Key thất bại');
+      // DID để ĐĂNG NHẬP LẠI: ưu tiên user nhập, else DID đã lưu trên máy (prefill).
+      // DID KHÔNG derive được từ KEK (gồm slot+hash ngẫu nhiên) nên bắt buộc phải có.
+      const cleanDid = did.trim() || ((await currentUserDid()) ?? '');
+      if (!cleanDid) {
+        showWarning(
+          'Cần DID để đăng nhập',
+          'Đã lưu ví an toàn trên máy. Nhưng để ĐĂNG NHẬP lại cần nhập DID của bạn ' +
+            '(did:phoenix:…) vào ô "Gắn vào DID". Máy không tự suy ra DID từ cụm 24 từ.',
+        );
+        return;
+      }
+      if (!DID_RE.test(cleanDid)) {
+        throw new Error('DID chưa đúng định dạng did:phoenix.');
+      }
+
+      // Gắn thiết bị này vào DID (Mode B recover-device): TAAD_Key khôi phục ký
+      // challenge (Ed25519) → POST /identity/recover-device (revoke owner-key cũ,
+      // gắn HW_Key mới của máy này). 409 = HW pubkey ĐÃ gắn (cùng máy) → coi như OK.
+      const taadPub = await taadEnclave.deriveTaadPubkey(kek);
+      let newHwPub: string;
+      try {
+        newHwPub = (await enrollKeypair()).publicKeyHex;
+      } catch {
+        // Thiết bị đã có khoá HW → dùng lại khoá hiện có.
+        newHwPub = await ownerPublicKey();
+      }
+      const nonce = genNonce();
+      const challenge = `PHOENIXKEY_RECOVER:${cleanDid}:${newHwPub}:${nonce}`;
+      const signature = await taadEnclave.signEd25519(kek, challenge);
+      if (!signature) throw new Error('Ký bằng TAAD_Key thất bại');
+      try {
         await phoenixKeyApi.identity.recoverDevice({
           userDid: cleanDid,
           newHwPublicKeyHex: newHwPub,
@@ -93,19 +115,24 @@ const RestoreIdentityScreen = () => {
           signature,
           nonce,
         });
-        await saveUserDid(cleanDid);
-        showSuccess(
-          'Đã khôi phục & gắn thiết bị',
-          'Cụm từ hợp lệ và thiết bị này đã được gắn vào danh tính của bạn.',
-          { onConfirm: () => navigation.navigate('Main') },
-        );
-        return;
+      } catch (e) {
+        // 409 = HW pubkey đã đăng ký (máy này đã recover trước đó) → bỏ qua, đăng
+        // nhập tiếp. Lỗi khác (403 chữ ký sai / 404 DID không tồn tại) → ném ra.
+        if (!(e instanceof PhoenixKeyApiError && e.httpStatus === 409)) throw e;
       }
+      await saveUserDid(cleanDid);
 
+      // ĐĂNG NHẬP THẬT: mở danh tính + dispatch loginUser (khớp LoginScreen) rồi vào
+      // Main. Thiếu bước này thì trước đây chỉ lưu KEK/goBack → không vào được app.
+      const user = await phoenixKeyAuth.unlockExistingIdentity();
+      if (!user) {
+        throw new Error('Không mở được danh tính sau khôi phục (thiếu khoá HW?).');
+      }
+      await dispatch(loginUser(user as any) as any);
       showSuccess(
-        'Đã khôi phục ví',
-        'Cụm từ hợp lệ — gốc-tin-cậy ví (Master_KEK) đã được lưu an toàn trên máy này.',
-        { onConfirm: () => navigation.goBack() },
+        'Đã khôi phục & đăng nhập',
+        'Danh tính đã gắn vào máy này và đăng nhập thành công.',
+        { onConfirm: () => navigation.reset({ index: 0, routes: [{ name: 'Main' }] }) },
       );
     } catch (e: any) {
       showWarning(
@@ -165,14 +192,15 @@ const RestoreIdentityScreen = () => {
           </Text>
         </View>
 
-        {/* DID (tuỳ chọn) — điền để GẮN thiết bị này vào danh tính (recover-device). */}
-        <Text style={styles.didLabel}>Gắn vào DID (tuỳ chọn)</Text>
+        {/* DID — cần để ĐĂNG NHẬP lại (gắn máy này vào danh tính). Tự điền nếu máy
+            đã lưu DID; máy mới thì nhập tay (máy không suy ra DID từ 24 từ). */}
+        <Text style={styles.didLabel}>DID để đăng nhập</Text>
         <View style={styles.didWrap}>
           <TextInput
             style={styles.didInput}
             value={did}
             onChangeText={setDid}
-            placeholder="did:phoenix:…  (để trống nếu chỉ khôi phục ví)"
+            placeholder="did:phoenix:…  (nhập DID của bạn để đăng nhập)"
             placeholderTextColor={COLORS.textMuted}
             autoCapitalize="none"
             autoCorrect={false}

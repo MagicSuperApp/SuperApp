@@ -42,7 +42,6 @@ import SignUpBiometricScreen from '../features/auth/screens/SignUpBiometricScree
 import SignUpCompleteScreen from '../features/auth/screens/SignUpCompleteScreen';
 import AccountScreen from '../screens/AccountScreen';
 import BiometricSettings from '../screens/BiometricSettings';
-import OnboardingWizard from '../screens/OnboardingWizard';
 import NotificationScreen from '../screens/NotificationScreen';
 // PhoenixKey — duyệt ký / guardian / nhật ký hoạt động.
 // (Khôi phục thiết bị dùng màn có sẵn RestoreIdentityScreen — đã hoàn thiện attach.)
@@ -81,7 +80,6 @@ import ProofChatEscrowScreen from '../modules/proofchat/features/escrow/screens/
 // Wrapper Native gọi FarmDetail trực tiếp (giữ nguyên hành vi cũ).
 import FarmDetailScreen from '../modules/trace/screens/FarmDetailScreen';
 
-import { shouldShowOnboarding } from '../utils/onboardingStorage';
 import {
   ActivityIndicator,
   View,
@@ -1507,7 +1505,6 @@ const HOST_STACK_SCREENS: Array<{
   component: React.ComponentType<any>;
   options?: object;
 }> = [
-  { name: 'Onboarding', component: OnboardingWizard, options: { headerShown: false } },
   { name: 'Login', component: LoginScreen, options: { headerShown: false } },
   { name: 'Activation', component: ActivationScreen },
   { name: 'BiometricSettings', component: BiometricSettings },
@@ -1604,12 +1601,9 @@ const AppNavigator = () => {
       console.log('[Navigation] Initializing sync service');
       syncService.start();
 
-      // Check onboarding status
-      const show = await shouldShowOnboarding();
-
-      // Always start from Login/Onboarding - never auto-login to Main
-      // User must explicitly authenticate via biometric each session
-      setInitialRoute(show ? 'Onboarding' : 'Login');
+      // Bỏ 3 màn welcome/onboarding — vào thẳng Login. Người dùng luôn phải xác
+      // thực sinh trắc mỗi phiên; KHÔNG auto-login vào Main.
+      setInitialRoute('Login');
     };
 
     initServices();

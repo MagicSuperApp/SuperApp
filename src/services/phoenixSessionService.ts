@@ -19,7 +19,13 @@
  */
 
 import { currentUserDid, ownerPublicKey, signRaw } from '../sdk/phoenixKey';
-import { phoenixKeyApi, setSessionToken, getSessionToken } from './phoenixKey-api';
+import {
+  phoenixKeyApi,
+  setSessionToken,
+  getSessionToken,
+  PhoenixKeyApiError,
+} from './phoenixKey-api';
+import rLog from './remoteLogger';
 
 // Domain tuỳ ý (không bị backend validate) — đặt tên app cho dễ truy vết log.
 const SELF_PAIR_DOMAIN = 'aladin-mobile';
@@ -40,18 +46,24 @@ const asciiToHex = (s: string): string => {
  * @param force  bỏ qua token đang lưu, ép self-pair mới (dùng khi gặp 401).
  */
 export async function ensurePhoenixSession(opts: { force?: boolean } = {}): Promise<string | null> {
+  // `step` bám theo tiến-trình để catch biết CHẾT Ở ĐÂU (log remote).
+  let step = 'existing';
   try {
-    if (!opts.force) {
-      const existing = await getSessionToken();
-      if (existing) return existing;
-    }
+    const existing = opts.force ? null : await getSessionToken();
+    rLog.phoenixWallet.sessionStart(!!existing, !!opts.force);
+    if (existing) return existing;
 
+    step = 'identity';
     const did = await currentUserDid();
     const pubkey = await ownerPublicKey();
+    rLog.phoenixWallet.sessionIdentity(!!did, !!pubkey);
     if (!did || !pubkey) return null;
 
+    step = 'init';
     const { sessionId, challenge, tempToken } = await phoenixKeyApi.session.init();
+    rLog.phoenixWallet.sessionInit(sessionId, !!challenge, !!tempToken);
 
+    step = 'sign';
     const timestamp = Math.floor(Date.now() / 1000);
     const message = `${challenge}:${SELF_PAIR_DOMAIN}:${timestamp}`;
     const signature = await signRaw(
@@ -59,26 +71,39 @@ export async function ensurePhoenixSession(opts: { force?: boolean } = {}): Prom
       'Kích hoạt ví',
       'Ký bằng khoá phần cứng để mở khoá dịch vụ ví',
     );
+    rLog.phoenixWallet.sessionSigned(signature?.length ?? 0);
 
     // approve MINT token nhưng KHÔNG trả sessionToken trong response HTTP (backend
     // SessionApproveResponse chỉ có status + linkedDeviceToken; sessionToken chỉ qua SSE).
-    await phoenixKeyApi.session.approve(sessionId, {
+    step = 'approve';
+    const approveRes = await phoenixKeyApi.session.approve(sessionId, {
       userDid: did,
       publicKeyHex: pubkey,
       signature,
       domain: SELF_PAIR_DOMAIN,
       timestamp,
     });
+    rLog.phoenixWallet.sessionApprove(approveRes?.status ?? 'unknown');
 
     // Lấy sessionToken qua /status (trả kèm khi approved) — Bearer tempToken.
+    step = 'status';
     const status = await phoenixKeyApi.session.getStatus(sessionId, tempToken);
+    rLog.phoenixWallet.sessionStatus(status?.status ?? 'unknown', !!status?.sessionToken);
     if (status?.sessionToken) {
       await setSessionToken(status.sessionToken);
+      rLog.phoenixWallet.sessionDone(true);
       return status.sessionToken;
     }
+    rLog.phoenixWallet.sessionDone(false);
     return null;
-  } catch {
+  } catch (err) {
     // Chưa có danh tính / offline / backend từ chối → thử lại lần vào sau.
+    // Log lỗi THẬT (code/httpStatus/message) để biết bước nào hỏng.
+    if (err instanceof PhoenixKeyApiError) {
+      rLog.phoenixWallet.sessionError(step, err.code, err.httpStatus, err.message);
+    } else {
+      rLog.phoenixWallet.sessionError(step, -1, 0, err instanceof Error ? err.message : String(err));
+    }
     return null;
   }
 }

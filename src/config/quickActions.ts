@@ -48,6 +48,14 @@ export const QUICK_ACTIONS: QuickActionConfig[] = [
     module: 'trace',
   },
   {
+    // Thu video quả → gắn cây (OriLife User-Action-Flow). Icon máy quay + dấu cộng.
+    route: 'FruitVideo',
+    label: 'Quay video\nquả',
+    labelEn: 'Fruit video',
+    icon: 'video-plus',
+    module: 'trace',
+  },
+  {
     route: 'FarmDetail',
     label: 'Thêm Vườn',
     labelEn: 'Farm',

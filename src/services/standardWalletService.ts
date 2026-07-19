@@ -14,7 +14,8 @@
 
 import taad from '../sdk/taadEnclave';
 import { getStoredMasterKek, getActiveAccountIndex } from './masterKekStore';
-import { phoenixKeyApi } from './phoenixKey-api';
+import { phoenixKeyApi, PhoenixKeyApiError } from './phoenixKey-api';
+import rLog from './remoteLogger';
 
 // 0 = preprod (testnet), khớp WALLET_NETWORK bên register + AccountScreen + PhoenixWalletScreen.
 const WALLET_NETWORK = 0;
@@ -24,13 +25,23 @@ const WALLET_NETWORK = 0;
  * (hoặc đã có — idempotent), `false` nếu bỏ qua (thiếu native/KEK/session). Không ném.
  */
 export async function ensureStandardWalletRegistered(): Promise<boolean> {
+  let step = 'available';
   try {
-    if (!taad.isAvailable()) return false;
+    const available = taad.isAvailable();
+    rLog.phoenixWallet.walletStart(available);
+    if (!available) return false;
+
+    step = 'kek';
     const kek = await getStoredMasterKek();
+    rLog.phoenixWallet.walletKek(!!kek);
     if (!kek) return false;
 
+    step = 'derive';
     const fixedAddress = await taad.deriveWalletAddress(kek, 0, WALLET_NETWORK);
-    if (!fixedAddress) return false;
+    if (!fixedAddress) {
+      rLog.phoenixWallet.walletDerive(false, false, false);
+      return false;
+    }
 
     const activeIdx = await getActiveAccountIndex();
     const activeAddress =
@@ -46,15 +57,24 @@ export async function ensureStandardWalletRegistered(): Promise<boolean> {
     } catch {
       stakeAddress = undefined;
     }
+    rLog.phoenixWallet.walletDerive(!!fixedAddress, !!activeAddress, !!stakeAddress);
 
+    step = 'register';
     await phoenixKeyApi.wallet.standardRegister({
       fixedAddress,
       ...(activeAddress ? { activeAddress } : {}),
       ...(stakeAddress ? { stakeAddress } : {}),
     });
+    rLog.phoenixWallet.walletRegisterDone(true);
     return true;
-  } catch {
+  } catch (err) {
     // Best-effort: chưa có session token / offline / backend chưa bật → thử lại lần sau.
+    // Log lỗi THẬT để biết bước nào hỏng (thường là register → 401 thiếu session token).
+    if (err instanceof PhoenixKeyApiError) {
+      rLog.phoenixWallet.walletError(step, err.code, err.httpStatus, err.message);
+    } else {
+      rLog.phoenixWallet.walletError(step, -1, 0, err instanceof Error ? err.message : String(err));
+    }
     return false;
   }
 }

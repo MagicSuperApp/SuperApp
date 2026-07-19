@@ -185,6 +185,52 @@ const rLog = {
     },
   },
 
+  // ── PhoenixKey self-pair + đăng-ký ví (trace vì sao ví không hiện) ──────────
+  // Mỗi bước một event; catch log kèm code/httpStatus/message để biết CHẾT Ở ĐÂU.
+
+  phoenixWallet: {
+    sessionStart(hasExisting: boolean, force: boolean): void {
+      send('pk_session_start', { hasExisting, force });
+    },
+    sessionIdentity(hasDid: boolean, hasPubkey: boolean): void {
+      send('pk_session_identity', { hasDid, hasPubkey }, hasDid && hasPubkey ? 'info' : 'error');
+    },
+    sessionInit(sessionId: string, hasChallenge: boolean, hasTempToken: boolean): void {
+      send('pk_session_init', { sessionId, hasChallenge, hasTempToken });
+    },
+    sessionSigned(sigLen: number): void {
+      send('pk_session_signed', { sigLen });
+    },
+    sessionApprove(status: string): void {
+      send('pk_session_approve', { status });
+    },
+    sessionStatus(status: string, hasSessionToken: boolean): void {
+      send('pk_session_status', { status, hasSessionToken }, hasSessionToken ? 'info' : 'error');
+    },
+    sessionDone(saved: boolean): void {
+      send('pk_session_done', { saved }, saved ? 'info' : 'error');
+    },
+    sessionError(step: string, code: number, httpStatus: number, message: string): void {
+      send('pk_session_error', { step, code, httpStatus, message }, 'error');
+    },
+
+    walletStart(available: boolean): void {
+      send('pk_wallet_start', { available }, available ? 'info' : 'error');
+    },
+    walletKek(hasKek: boolean): void {
+      send('pk_wallet_kek', { hasKek }, hasKek ? 'info' : 'error');
+    },
+    walletDerive(hasFixed: boolean, hasActive: boolean, hasStake: boolean): void {
+      send('pk_wallet_derive', { hasFixed, hasActive, hasStake }, hasFixed ? 'info' : 'error');
+    },
+    walletRegisterDone(ok: boolean): void {
+      send('pk_wallet_register_done', { ok }, ok ? 'info' : 'error');
+    },
+    walletError(step: string, code: number, httpStatus: number, message: string): void {
+      send('pk_wallet_error', { step, code, httpStatus, message }, 'error');
+    },
+  },
+
   // ── Bridge events (gọi từ native bridge subscription handlers) ──────────────
 
   nativeBridge: {

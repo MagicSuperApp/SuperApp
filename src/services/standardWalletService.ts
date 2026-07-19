@@ -25,11 +25,25 @@ const WALLET_NETWORK = 0;
 // Đổi ở đây mà không đổi backend → chữ ký fail (WALLET_PAYMENT_SIGNATURE_INVALID).
 const REGISTER_CHALLENGE_PREFIX = 'PHOENIXKEY_WALLET_STANDARD_REGISTER:';
 
+// Guard chống chạy TRÙNG (nhiều effect gọi gần đồng-thời) → tránh 2 lần register
+// (lần 2 dính 409) + 2 lần ký proof thừa. Gộp về 1 promise khi đang bay.
+let inflightRegister: Promise<boolean> | null = null;
+
 /**
  * Bảo đảm ví Standard đã đăng-ký với backend. Trả `true` nếu gọi register thành công
  * (hoặc đã có — idempotent), `false` nếu bỏ qua (thiếu native/KEK/session). Không ném.
  */
-export async function ensureStandardWalletRegistered(): Promise<boolean> {
+export function ensureStandardWalletRegistered(): Promise<boolean> {
+  if (inflightRegister) return inflightRegister;
+  const run = ensureStandardWalletRegisteredInner();
+  inflightRegister = run;
+  run.finally(() => {
+    if (inflightRegister === run) inflightRegister = null;
+  });
+  return run;
+}
+
+async function ensureStandardWalletRegisteredInner(): Promise<boolean> {
   let step = 'available';
   try {
     const available = taad.isAvailable();
@@ -95,6 +109,12 @@ export async function ensureStandardWalletRegistered(): Promise<boolean> {
     // Best-effort: chưa có session token / offline / backend chưa bật → thử lại lần sau.
     // Log lỗi THẬT để biết bước nào hỏng (thường là register → 401 thiếu session token).
     if (err instanceof PhoenixKeyApiError) {
+      // 409 (code 3005 "already exists") = ví ĐÃ đăng ký rồi (idempotent, hoặc do
+      // 2 lời gọi chạy song song) → coi như THÀNH CÔNG, không phải lỗi.
+      if (err.httpStatus === 409 || err.code === 3005) {
+        rLog.phoenixWallet.walletRegisterDone(true);
+        return true;
+      }
       rLog.phoenixWallet.walletError(step, err.code, err.httpStatus, err.message);
     } else {
       rLog.phoenixWallet.walletError(step, -1, 0, err instanceof Error ? err.message : String(err));

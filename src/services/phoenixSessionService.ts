@@ -39,13 +39,30 @@ const asciiToHex = (s: string): string => {
   return out;
 };
 
+// Guard chống chạy TRÙNG: nhiều effect/màn gọi ensurePhoenixSession gần như đồng
+// thời → nếu không khoá, self-pair chạy 2 lần = 2 lần ký = 2 Face ID + 2 đăng-ký
+// ví (lần 2 dính 409). Gộp về 1 promise dùng chung khi đang bay.
+let inflightSession: Promise<string | null> | null = null;
+
 /**
  * Bảo đảm có PhoenixKey session token. Trả token nếu có/vừa lấy được, null nếu bỏ qua
  * (chưa có danh tính / offline / lỗi). KHÔNG ném — best-effort như ensureOrilifeToken.
  *
  * @param force  bỏ qua token đang lưu, ép self-pair mới (dùng khi gặp 401).
  */
-export async function ensurePhoenixSession(opts: { force?: boolean } = {}): Promise<string | null> {
+export function ensurePhoenixSession(opts: { force?: boolean } = {}): Promise<string | null> {
+  // Đang có 1 lần chạy → dùng CHUNG kết quả (trừ khi force ép làm mới).
+  if (!opts.force && inflightSession) return inflightSession;
+  const run = ensurePhoenixSessionInner(opts);
+  inflightSession = run;
+  // Xoá khoá khi xong (thành công hay lỗi) để lần sau (vd force/401) chạy lại được.
+  run.finally(() => {
+    if (inflightSession === run) inflightSession = null;
+  });
+  return run;
+}
+
+async function ensurePhoenixSessionInner(opts: { force?: boolean }): Promise<string | null> {
   // `step` bám theo tiến-trình để catch biết CHẾT Ở ĐÂU (log remote).
   let step = 'existing';
   try {

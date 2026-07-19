@@ -291,6 +291,34 @@ async function unwrap<T>(
   }
 }
 
+/**
+ * unwrap cho endpoint trả VOID (chỉ envelope { code, message }, KHÔNG có `result`).
+ * `/wallet/standard/register` là loại này — trả code 1000 rỗng khi OK. Dùng `unwrap`
+ * thường sẽ ném nhầm "Empty response body" dù server nhận thành công (HTTP 200).
+ * Chỉ kiểm code === 1000; lỗi HTTP (4xx/5xx) vẫn ném PhoenixKeyApiError có httpStatus.
+ */
+async function unwrapVoid(
+  promise: Promise<{ data: { code: number; message: string } }>,
+): Promise<void> {
+  try {
+    const res = await promise;
+    if (res.data.code !== 1000) {
+      throw new PhoenixKeyApiError(res.data.code, 200, res.data.message);
+    }
+  } catch (err) {
+    if (err instanceof PhoenixKeyApiError) throw err;
+    const axiosErr = err as AxiosError<{ code: number; message: string }>;
+    if (axiosErr.response?.data) {
+      throw new PhoenixKeyApiError(
+        axiosErr.response.data.code ?? -1,
+        axiosErr.response.status,
+        axiosErr.response.data.message ?? axiosErr.message,
+      );
+    }
+    throw new PhoenixKeyApiError(-1, 0, axiosErr.message ?? 'Network error');
+  }
+}
+
 export const setSessionToken = (token: string): Promise<void> =>
   AsyncStorage.setItem(SESSION_TOKEN_KEY, token);
 
@@ -454,7 +482,7 @@ export const wallet = {
    * gọi lại cập-nhật active/stake, KHÔNG cho đổi fixed. Bearer session.
    */
   standardRegister: (body: StandardWalletRegisterRequest) =>
-    unwrap<{ code: number; message: string }>(
+    unwrapVoid(
       client.post('/wallet/standard/register', body, {
         needsAuth: true,
       } as AxiosRequestConfig),

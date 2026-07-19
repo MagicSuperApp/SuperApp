@@ -223,6 +223,9 @@ const rLog = {
     walletDerive(hasFixed: boolean, hasActive: boolean, hasStake: boolean): void {
       send('pk_wallet_derive', { hasFixed, hasActive, hasStake }, hasFixed ? 'info' : 'error');
     },
+    walletProof(hasPubkey: boolean, hasSignature: boolean): void {
+      send('pk_wallet_proof', { hasPubkey, hasSignature }, hasPubkey && hasSignature ? 'info' : 'error');
+    },
     walletRegisterDone(ok: boolean): void {
       send('pk_wallet_register_done', { ok }, ok ? 'info' : 'error');
     },

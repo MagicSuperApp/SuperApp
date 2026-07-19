@@ -154,6 +154,22 @@ pub extern "system" fn Java_com_aladincontract_company_TaadEnclaveModule_nativeD
     ret(&env, crate::mobile_kek::derive_stake_address(kek, account as u32, network as u8))
 }
 
+/// Ký challenge proof-of-ownership /wallet/standard/register bằng payment key.
+/// Kotlin: external fun nativeSignWalletRegister(kekHex: String, account: Int, message: String): String?
+/// Trả JSON {"paymentPublicKeyHex","signature"} (null nếu KEK/seed sai).
+#[no_mangle]
+pub extern "system" fn Java_com_aladincontract_company_TaadEnclaveModule_nativeSignWalletRegister<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    kek_hex: JString<'local>,
+    account: jint,
+    message: JString<'local>,
+) -> jstring {
+    let kek = match jstr(&mut env, &kek_hex) { Some(s) => s, None => return null_jstring() };
+    let msg = match jstr(&mut env, &message) { Some(s) => s, None => return null_jstring() };
+    ret(&env, crate::mobile_kek::sign_wallet_register(kek, account as u32, msg))
+}
+
 #[no_mangle]
 pub extern "system" fn Java_com_aladincontract_company_TaadEnclaveModule_nativeGenerateSalt<'local>(
     env: JNIEnv<'local>,

@@ -13,12 +13,17 @@
  */
 
 import taad from '../sdk/taadEnclave';
+import { currentUserDid } from '../sdk/phoenixKey';
 import { getStoredMasterKek, getActiveAccountIndex } from './masterKekStore';
 import { phoenixKeyApi, PhoenixKeyApiError } from './phoenixKey-api';
 import rLog from './remoteLogger';
 
 // 0 = preprod (testnet), khớp WALLET_NETWORK bên register + AccountScreen + PhoenixWalletScreen.
 const WALLET_NETWORK = 0;
+
+// Prefix challenge proof-of-ownership — KHỚP backend WalletV2ServiceImpl.REGISTER_PREFIX.
+// Đổi ở đây mà không đổi backend → chữ ký fail (WALLET_PAYMENT_SIGNATURE_INVALID).
+const REGISTER_CHALLENGE_PREFIX = 'PHOENIXKEY_WALLET_STANDARD_REGISTER:';
 
 /**
  * Bảo đảm ví Standard đã đăng-ký với backend. Trả `true` nếu gọi register thành công
@@ -59,11 +64,30 @@ export async function ensureStandardWalletRegistered(): Promise<boolean> {
     }
     rLog.phoenixWallet.walletDerive(!!fixedAddress, !!activeAddress, !!stakeAddress);
 
+    // ── Proof-of-ownership (Issue #47) ────────────────────────────────────────
+    // Backend đòi ký challenge canonical bằng PAYMENT key của fixedAddress (account
+    // 0). Thiếu → 400 code 9800. userDid cần cho challenge; nonce dùng-1-lần (reuse
+    // generateSalt = 16 byte hex = khớp regex ^[0-9a-fA-F]{32,}$).
+    step = 'proof';
+    const userDid = await currentUserDid();
+    if (!userDid) {
+      rLog.phoenixWallet.walletProof(false, false);
+      return false;
+    }
+    const nonce = await taad.generateSalt();
+    const challenge = `${REGISTER_CHALLENGE_PREFIX}${userDid}:${fixedAddress}:${nonce}`;
+    // fixedAddress = account 0 → ký bằng payment key account 0.
+    const proof = await taad.signWalletRegister(kek, 0, challenge);
+    rLog.phoenixWallet.walletProof(!!proof.paymentPublicKeyHex, !!proof.signature);
+
     step = 'register';
     await phoenixKeyApi.wallet.standardRegister({
       fixedAddress,
       ...(activeAddress ? { activeAddress } : {}),
       ...(stakeAddress ? { stakeAddress } : {}),
+      paymentPublicKeyHex: proof.paymentPublicKeyHex,
+      signature: proof.signature,
+      nonce,
     });
     rLog.phoenixWallet.walletRegisterDone(true);
     return true;

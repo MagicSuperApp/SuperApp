@@ -208,6 +208,33 @@ pub(crate) fn derive_payment_xprv_account(
     )
 }
 
+/// Ký một message THÔ bằng payment key của một account CIP-1852, trả về
+/// `(payment_public_key_hex, signature_hex)` cho proof-of-ownership ở
+/// PhoenixKey `POST /wallet/standard/register` (Issue #47/#45).
+///
+/// Payment key = `m/1852'/1815'/account'/0/0` — ĐÚNG khoá mà `Blake2b224(pubkey)`
+/// là payment credential của địa-chỉ [`derive_address_account`] sinh ra ở cùng
+/// `account`. Nhờ vậy CẢ HAI kiểm-tra của server đều đạt:
+///   1. Ed25519 verify(pubkey, message, signature) — CSL ký EdDSA thuần trên
+///      message bytes (KHÔNG hash trước), khớp BouncyCastle `Ed25519Signer`.
+///   2. `Blake2b224(pubkey) == payment credential(fixedAddress)`.
+///
+/// * trả `payment_public_key_hex` — 32-byte Ed25519 pubkey (64 hex).
+/// * trả `signature_hex`          — 64-byte raw Ed25519 signature (128 hex).
+///
+/// `None` nếu seed sai (khác 32 byte). KHÔNG log/persist khoá — chỉ ra pubkey+sig.
+pub fn sign_payment_message(
+    seed_hex: &str,
+    account: u32,
+    message: &[u8],
+) -> Option<(String, String)> {
+    let xprv = derive_payment_xprv_account(seed_hex, account)?;
+    let raw = xprv.to_raw_key(); // PrivateKey (Ed25519 mở-rộng BIP32)
+    let pubkey_hex = hex::encode(raw.to_public().as_bytes());
+    let signature_hex = hex::encode(raw.sign(message).to_bytes());
+    Some((pubkey_hex, signature_hex))
+}
+
 pub(crate) fn harden(index: u32) -> u32 {
     index | 0x80000000
 }
@@ -295,5 +322,51 @@ mod tests {
     fn bad_seed_returns_empty() {
         assert!(derive_address_account("zzzz".to_string(), 0, 0).is_empty());
         assert!(derive_address_account("00".to_string(), 1, 0).is_empty());
+    }
+
+    /// Proof-of-ownership (Issue #47): chữ ký PHẢI verify bằng Ed25519 chuẩn VÀ
+    /// `Blake2b224(pubkey)` PHẢI bằng payment credential của địa-chỉ account 0 —
+    /// đúng HAI kiểm-tra backend làm (WalletV2ServiceImpl). Nếu test này pass thì
+    /// register trên server sẽ qua proof-of-ownership.
+    #[test]
+    fn payment_proof_verifies_and_matches_address() {
+        use cardano_serialization_lib::{
+            BaseAddress, Ed25519Signature, PublicKey,
+        };
+
+        let msg = b"PHOENIXKEY_WALLET_STANDARD_REGISTER:did:phoenix:aaaa:addr_test1qxyz:0011223344556677";
+        let (pubkey_hex, sig_hex) =
+            sign_payment_message(SEED, 0, msg).expect("sign_payment_message should succeed");
+
+        // Kích thước đúng hợp-đồng backend: pubkey 32 byte, sig 64 byte.
+        assert_eq!(pubkey_hex.len(), 64, "pubkey phải 64 hex (32 byte)");
+        assert_eq!(sig_hex.len(), 128, "signature phải 128 hex (64 byte)");
+
+        let pk = PublicKey::from_bytes(&hex::decode(&pubkey_hex).unwrap()).unwrap();
+        let sig = Ed25519Signature::from_bytes(hex::decode(&sig_hex).unwrap()).unwrap();
+
+        // (1) Ed25519 verify chuẩn (giống BouncyCastle Ed25519Signer bên server).
+        assert!(pk.verify(msg, &sig), "chữ ký phải verify bằng Ed25519 chuẩn");
+
+        // (2) Blake2b224(pubkey) == payment credential của địa-chỉ account 0.
+        let addr_bech = derive_address_account(SEED.to_string(), 0, 0);
+        let base =
+            BaseAddress::from_address(&Address::from_bech32(&addr_bech).unwrap()).unwrap();
+        let cred_hash = base.payment_cred().to_keyhash().unwrap();
+        assert_eq!(
+            cred_hash.to_bytes(),
+            pk.hash().to_bytes(),
+            "Blake2b224(pubkey) phải bằng payment credential của fixedAddress"
+        );
+    }
+
+    /// Chữ ký KHÔNG verify với message khác — chống nhầm/tái-dùng.
+    #[test]
+    fn payment_proof_rejects_wrong_message() {
+        use cardano_serialization_lib::{Ed25519Signature, PublicKey};
+        let (pubkey_hex, sig_hex) = sign_payment_message(SEED, 0, b"message-A").unwrap();
+        let pk = PublicKey::from_bytes(&hex::decode(&pubkey_hex).unwrap()).unwrap();
+        let sig = Ed25519Signature::from_bytes(hex::decode(&sig_hex).unwrap()).unwrap();
+        assert!(!pk.verify(b"message-B", &sig), "message khác phải fail verify");
     }
 }

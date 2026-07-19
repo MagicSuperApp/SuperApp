@@ -27,6 +27,8 @@ interface TaadEnclaveNativeBridge {
   deriveWalletSeed(kekHex: string): Promise<string>;
   deriveWalletAddress(kekHex: string, account: number, network: number): Promise<string>;
   deriveStakeAddress(kekHex: string, account: number, network: number): Promise<string>;
+  // Ký proof-of-ownership /wallet/standard/register → JSON {"paymentPublicKeyHex","signature"}.
+  signWalletRegister(kekHex: string, account: number, message: string): Promise<string>;
   // Wrapping primitives
   generateSalt(): Promise<string>;
   pbkdf2Derive(pin: string, saltHex: string): Promise<string>;
@@ -56,6 +58,7 @@ const moduleNotAvailable = (): TaadEnclaveNativeBridge => {
     deriveWalletSeed: () => reject('deriveWalletSeed') as never,
     deriveWalletAddress: () => reject('deriveWalletAddress') as never,
     deriveStakeAddress: () => reject('deriveStakeAddress') as never,
+    signWalletRegister: () => reject('signWalletRegister') as never,
     generateSalt: () => reject('generateSalt') as never,
     pbkdf2Derive: () => reject('pbkdf2Derive') as never,
     aesGcmEncrypt: () => reject('aesGcmEncrypt') as never,
@@ -115,6 +118,33 @@ export const deriveStakeAddress = (
   network = 0,
 ): Promise<string> => bridge.deriveStakeAddress(kekHex, account, network);
 
+/** Proof-of-ownership cho ví Standard: pubkey + chữ ký payment key của `fixedAddress`. */
+export interface WalletRegisterProof {
+  paymentPublicKeyHex: string;
+  signature: string;
+}
+
+/**
+ * Ký challenge proof-of-ownership PhoenixKey `/wallet/standard/register` (Issue #47)
+ * bằng PAYMENT key của `account` (từ Master_KEK). `message` = challenge canonical
+ * (UTF-8) do caller dựng:
+ *   "PHOENIXKEY_WALLET_STANDARD_REGISTER:" + userDid + ":" + fixedAddress + ":" + nonce
+ * Trả { paymentPublicKeyHex (64 hex), signature (128 hex) }. Reject nếu KEK/seed sai.
+ * KHÔNG lộ khoá — native chỉ trả pubkey + chữ-ký.
+ */
+export const signWalletRegister = async (
+  kekHex: string,
+  account: number,
+  message: string,
+): Promise<WalletRegisterProof> => {
+  const json = await bridge.signWalletRegister(kekHex, account, message);
+  const parsed = JSON.parse(json) as WalletRegisterProof;
+  if (!parsed.paymentPublicKeyHex || !parsed.signature) {
+    throw new Error('signWalletRegister: native trả thiếu pubkey/signature');
+  }
+  return parsed;
+};
+
 // ── Wrapping primitives (dùng để wrap/unwrap Master_KEK khi persist) ──────────
 
 /** Sinh salt ngẫu nhiên (hex). */
@@ -163,6 +193,7 @@ export default {
   deriveWalletSeed,
   deriveWalletAddress,
   deriveStakeAddress,
+  signWalletRegister,
   generateSalt,
   pbkdf2Derive,
   aesGcmEncrypt,

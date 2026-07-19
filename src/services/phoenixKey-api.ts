@@ -110,11 +110,22 @@ export interface WalletAllResponse {
   magic: { source: string; available: number; accrued: number };
 }
 
-/** POST /wallet/standard/register — client derive CIP-1852 rồi đăng-ký (API.md §7). */
+/**
+ * POST /wallet/standard/register — client derive CIP-1852 rồi đăng-ký (API.md §7).
+ *
+ * Issue #47/#45: proof-of-ownership BẮT BUỘC. Client ký challenge canonical
+ *   "PHOENIXKEY_WALLET_STANDARD_REGISTER:" + userDid + ":" + fixedAddress + ":" + nonce
+ * bằng PAYMENT key của `fixedAddress`; server verify Ed25519 + Blake2b224(pubkey)
+ * == payment credential. Thiếu 3 trường dưới → 400 (code 9800). Interceptor tự
+ * đổi camelCase → snake_case (payment_public_key_hex/signature/nonce).
+ */
 export interface StandardWalletRegisterRequest {
-  fixedAddress: string;   // account 0 base (bắt buộc)
-  activeAddress?: string; // account N base
-  stakeAddress?: string;  // stake credential role 2
+  fixedAddress: string;        // account 0 base (bắt buộc)
+  activeAddress?: string;      // account N base
+  stakeAddress?: string;       // stake credential role 2
+  paymentPublicKeyHex: string; // Ed25519 pubkey (64 hex) của payment key fixedAddress
+  signature: string;           // Ed25519 raw (128 hex) ký challenge
+  nonce: string;               // hex ≥16 byte (≥32 hex), dùng-1-lần, TTL 5 phút
 }
 
 /**

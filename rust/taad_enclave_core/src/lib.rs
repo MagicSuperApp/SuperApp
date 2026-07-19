@@ -148,6 +148,24 @@ pub unsafe extern "C" fn taad_kek_derive_stake_address(
     if result.is_empty() { std::ptr::null_mut() } else { string_to_c(result) }
 }
 
+/// Ký challenge proof-of-ownership cho PhoenixKey `/wallet/standard/register`
+/// (Issue #47) bằng PAYMENT key của `account` từ Master_KEK. `message` = chuỗi
+/// challenge canonical UTF-8 do caller dựng
+/// ("PHOENIXKEY_WALLET_STANDARD_REGISTER:<did>:<fixedAddress>:<nonce>").
+/// Trả JSON {"paymentPublicKeyHex":"<64hex>","signature":"<128hex>"} (caller free)
+/// hoặc null nếu KEK/seed sai.
+#[no_mangle]
+pub unsafe extern "C" fn taad_kek_sign_wallet_register(
+    master_kek_hex: *const c_char,
+    account: u32,
+    message: *const c_char,
+) -> *mut c_char {
+    let kek = match c_str_to_string(master_kek_hex) { Some(s) => s, None => return std::ptr::null_mut() };
+    let msg = match c_str_to_string(message) { Some(s) => s, None => return std::ptr::null_mut() };
+    let result = mobile_kek::sign_wallet_register(kek, account, msg);
+    if result.is_empty() { std::ptr::null_mut() } else { string_to_c(result) }
+}
+
 // ─── HKDF ────────────────────────────────────────────────────────
 
 /// Derive keying material using HKDF-SHA256.

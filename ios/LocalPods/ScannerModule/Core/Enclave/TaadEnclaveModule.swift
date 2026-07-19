@@ -117,6 +117,22 @@ final class TaadEnclaveModule: NSObject {
         resolvePtr(out, resolve, reject, "E_DERIVE_STAKE", "Không derive được địa chỉ stake Cardano")
     }
 
+    /// Ký challenge proof-of-ownership /wallet/standard/register bằng payment key
+    /// của account (Issue #47). Trả JSON {"paymentPublicKeyHex","signature"}.
+    @objc(signWalletRegister:account:message:resolver:rejecter:)
+    func signWalletRegister(_ kekHex: String,
+                            account: Int,
+                            message: String,
+                            resolver resolve: @escaping RCTPromiseResolveBlock,
+                            rejecter reject: @escaping RCTPromiseRejectBlock) {
+        let out = kekHex.withCString { k in
+            message.withCString { m in
+                taad_kek_sign_wallet_register(k, UInt32(account), m)
+            }
+        }
+        resolvePtr(out, resolve, reject, "E_SIGN_WALLET_REG", "Không ký được proof-of-ownership ví Standard")
+    }
+
     @objc(generateSalt:rejecter:)
     func generateSalt(_ resolve: @escaping RCTPromiseResolveBlock,
                       rejecter reject: @escaping RCTPromiseRejectBlock) {

@@ -55,3 +55,25 @@ pub fn derive_stake_address(master_kek_hex: String, account: u32, network: u8) -
     }
     crate::cardano::derive_stake_address_account(seed, account, network)
 }
+
+/// Ký challenge proof-of-ownership cho PhoenixKey `/wallet/standard/register`
+/// (Issue #47) bằng PAYMENT key của `account` (suy từ Master_KEK). `message` =
+/// chuỗi challenge canonical do backend định (UTF-8), caller tự dựng:
+///   "PHOENIXKEY_WALLET_STANDARD_REGISTER:" + userDid + ":" + fixedAddress + ":" + nonce
+///
+/// Trả JSON `{"paymentPublicKeyHex":"<64hex>","signature":"<128hex>"}` — cả hai
+/// đều hex thuần nên nhúng thẳng vào JSON an-toàn (không cần escape). Rỗng nếu
+/// KEK/seed sai. KHÔNG lộ khoá — chỉ ra pubkey + chữ-ký.
+pub fn sign_wallet_register(master_kek_hex: String, account: u32, message: String) -> String {
+    let seed = derive_wallet_seed(master_kek_hex);
+    if seed.is_empty() {
+        return String::new();
+    }
+    match crate::cardano::sign_payment_message(&seed, account, message.as_bytes()) {
+        Some((pubkey_hex, signature_hex)) => format!(
+            r#"{{"paymentPublicKeyHex":"{}","signature":"{}"}}"#,
+            pubkey_hex, signature_hex
+        ),
+        None => String::new(),
+    }
+}

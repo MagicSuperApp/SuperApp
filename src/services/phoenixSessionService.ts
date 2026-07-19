@@ -50,7 +50,7 @@ export async function ensurePhoenixSession(opts: { force?: boolean } = {}): Prom
     const pubkey = await ownerPublicKey();
     if (!did || !pubkey) return null;
 
-    const { sessionId, challenge } = await phoenixKeyApi.session.init();
+    const { sessionId, challenge, tempToken } = await phoenixKeyApi.session.init();
 
     const timestamp = Math.floor(Date.now() / 1000);
     const message = `${challenge}:${SELF_PAIR_DOMAIN}:${timestamp}`;
@@ -60,7 +60,9 @@ export async function ensurePhoenixSession(opts: { force?: boolean } = {}): Prom
       'Ký bằng khoá phần cứng để mở khoá dịch vụ ví',
     );
 
-    const res = await phoenixKeyApi.session.approve(sessionId, {
+    // approve MINT token nhưng KHÔNG trả sessionToken trong response HTTP (backend
+    // SessionApproveResponse chỉ có status + linkedDeviceToken; sessionToken chỉ qua SSE).
+    await phoenixKeyApi.session.approve(sessionId, {
       userDid: did,
       publicKeyHex: pubkey,
       signature,
@@ -68,9 +70,11 @@ export async function ensurePhoenixSession(opts: { force?: boolean } = {}): Prom
       timestamp,
     });
 
-    if (res?.sessionToken) {
-      await setSessionToken(res.sessionToken);
-      return res.sessionToken;
+    // Lấy sessionToken qua /status (trả kèm khi approved) — Bearer tempToken.
+    const status = await phoenixKeyApi.session.getStatus(sessionId, tempToken);
+    if (status?.sessionToken) {
+      await setSessionToken(status.sessionToken);
+      return status.sessionToken;
     }
     return null;
   } catch {

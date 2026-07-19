@@ -355,14 +355,30 @@ export const session = {
       client.post('/auth/session/init', {}),
     ),
 
+  /**
+   * Approve — mint session/linked token. ⚠️ Response HTTP CHỈ trả { status,
+   * linkedDeviceToken } (backend SessionApproveResponse) — `sessionToken` KHÔNG
+   * có trong response này (chỉ đẩy qua SSE cho web). Muốn lấy sessionToken →
+   * gọi getStatus() sau approve (self-pairing dùng cách này).
+   */
   approve: (sessionId: string, body: ApproveSessionRequest) =>
     unwrap<{ status: string; sessionToken?: string; linkedDeviceToken?: string }>(
       client.post(`/auth/session/${encodeURIComponent(sessionId)}/approve`, body),
     ),
 
-  getStatus: (sessionId: string) =>
+  /**
+   * Trạng-thái session. Khi `approved` → trả kèm `sessionToken`. Cần Bearer `temp`
+   * (tempToken từ init) — truyền vào để gắn header trực-tiếp (KHÔNG dùng session
+   * token đã lưu, vì lúc self-pair chưa có).
+   */
+  getStatus: (sessionId: string, tempToken?: string) =>
     unwrap<SessionStatusResponse>(
-      client.get(`/auth/session/${encodeURIComponent(sessionId)}/status`),
+      client.get(
+        `/auth/session/${encodeURIComponent(sessionId)}/status`,
+        tempToken
+          ? ({ headers: { Authorization: `Bearer ${tempToken}` } } as AxiosRequestConfig)
+          : undefined,
+      ),
     ),
 };
 

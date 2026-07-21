@@ -339,13 +339,24 @@ const AccountScreen = () => {
     const controllerPkh = useSelector((state: RootState) => state.user.controllerPkh);
     const chatbotEnabled = useSelector((state: RootState) => state.chatbot.enabled);
     const dispatch = useAppDispatch();
+    const navigation: any = useNavigation();
     // Luồng hướng dẫn: chạy lại theo yêu cầu (xoá cờ đã-xem rồi start).
+    // QUAN TRỌNG: các bước đều spotlight vào phần tử của màn hình Chính (khu Dịch
+    // vụ, nút Chính, chuông…) nên phải VỀ HOME TRƯỚC rồi mới chạy — chạy ngay tại
+    // Cài đặt sẽ khoanh vào vùng không tồn tại/đang ẩn. Chờ một nhịp cho tab đổi
+    // và layout ổn định để đo spotlight chính xác.
     const { start: startTour } = useCoachMark();
+    const tourTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    React.useEffect(() => () => { if (tourTimer.current) clearTimeout(tourTimer.current); }, []);
     const runTutorial = React.useCallback(() => {
         const uid = user?.id;
         resetTutorial(uid);
-        startTour(uid);
-    }, [user?.id, startTour]);
+        // 'Main' → tab 'Home': đi qua stack cha nên đúng cả khi Tài khoản được mở
+        // như tab lẫn khi mở từ header.
+        navigation.navigate('Main', { screen: 'Home' });
+        if (tourTimer.current) clearTimeout(tourTimer.current);
+        tourTimer.current = setTimeout(() => startTour(uid), 500);
+    }, [user?.id, startTour, navigation]);
 
     // Địa-chỉ derive LOCAL từ Master_KEK (account-0) — ĐÚNG bằng địa-chỉ register gửi lên
     // backend. Dùng làm fallback để ví HIỆN kể cả khi /wallet/all chưa trả (deriver backend
@@ -369,7 +380,6 @@ const AccountScreen = () => {
         chainWallet?.address ?? localAddr ?? phoenixKey?.walletAddress ?? user?.walletAddress ?? '';
     // Mạng: ưu tiên resolveNetwork (theo DID thật), else suy từ tiền tố địa chỉ ví. KHÔNG hardcode.
     const realNet: NetKind = normNetwork(network) ?? netFromAddress(walletAddress);
-    const navigation: any = useNavigation();
 
     const did = phoenixKey?.did ?? user?.did ?? '';
     // Modal "Tài sản khác" (ADA + token khác + hợp đồng còn hạn).

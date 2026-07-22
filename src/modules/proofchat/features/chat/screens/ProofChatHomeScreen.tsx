@@ -34,6 +34,7 @@ import {
   rejectInvitation,
 } from '../../../store/proofchatSlice';
 import { isProofChatBackendEnabled } from '../../../../../services/proofchat-api';
+import { useCapabilityLive } from '../../../../../config/useCapabilityLive';
 
 type FilterKey = 'all' | 'unread' | 'escrow';
 
@@ -56,9 +57,11 @@ const ProofChatHomeScreen: React.FC = () => {
   );
   const roomsStatus = useSelector((s: RootState) => s.proofchat.roomsStatus);
 
-  // Feature flag: chỉ tải dữ liệu THẬT khi BE ProofChat được bật. Flag OFF →
-  // giữ mock (fallback, UI không vỡ). Tải 1 lần khi mở màn hình.
-  const backendEnabled = isProofChatBackendEnabled();
+  // Cổng runtime: chỉ tải dữ liệu THẬT khi BE ProofChat sống (probe /health 2xx).
+  // Chưa sống → giữ mock (UI không vỡ). Hook re-render khi cổng lật (backend vừa
+  // được sửa) mà KHÔNG cần build lại / mở lại màn.
+  const proofchatLive = useCapabilityLive('proofchat');
+  const backendEnabled = proofchatLive && isProofChatBackendEnabled();
   useEffect(() => {
     if (backendEnabled) {
       dispatch(loadConversations());

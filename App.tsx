@@ -9,6 +9,10 @@ import AppNavigator from './src/navigation';
 import AlertProvider from './src/components/AlertProvider';
 import { loadTreeDedupCache } from './src/services/treeDedupCache';
 import analytics from './src/services/analytics';
+import {
+  bootstrapRuntimeGate,
+  refreshRuntimeGate,
+} from './src/config/runtimeGateBootstrap';
 
 function App() {
   const appState = useRef(AppState.currentState);
@@ -23,12 +27,18 @@ function App() {
     // Khởi động hệ thống thu thập hành vi người dùng (fire-and-forget).
     void analytics.init();
 
+    // Cổng runtime: probe /health mỗi module → tự bật khi backend sống, khỏi
+    // build lại (fire-and-forget; default mock tới khi probe 2xx).
+    void bootstrapRuntimeGate();
+
     // Mỗi lần app quay lại foreground = một phiên mới; vào background thì chốt
     // thời gian xem màn hình cuối và đẩy dữ liệu còn tồn lên server.
     const sub = AppState.addEventListener('change', (next: AppStateStatus) => {
       const prev = appState.current;
       if (prev.match(/inactive|background/) && next === 'active') {
         analytics.startSession();
+        // Quay lại foreground → probe lại: backend vừa được sửa sẽ tự bật.
+        refreshRuntimeGate();
       } else if (prev === 'active' && next.match(/inactive|background/)) {
         analytics.endSession();
       }

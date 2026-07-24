@@ -88,3 +88,6 @@ replay_pid*
 .mcp.json
 .claude/settings.local.json
 
+# === Agent state (nội bộ, KHÔNG public) ===
+_Agents/
+

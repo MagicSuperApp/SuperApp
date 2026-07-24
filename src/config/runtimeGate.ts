@@ -23,12 +23,27 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 /** Các capability được cổng runtime điều khiển (đọc-được, an toàn health-auto). */
-export type GateCapability = 'work' | 'proofchat';
+export type GateCapability = 'work' | 'proofchat' | 'phoenix';
 
-const ALL_CAPS: GateCapability[] = ['work', 'proofchat'];
+const ALL_CAPS: GateCapability[] = ['work', 'proofchat', 'phoenix'];
 
 const CACHE_KEY = '@runtimeGate/live';
 const PROBE_TIMEOUT_MS = 6000;
+
+/**
+ * Đường health THEO TỪNG NỀN — không nền nào giống nền nào, phải đo THẬT.
+ * Đo bằng curl 2026-07-24 (đừng đoán, xem Forall §chống assert-by-plausibility):
+ *   - AladinWork: `https://api.aladin.work/api/v1/health`      → 200  (origin+/health = 404)
+ *   - Phoenix:    `https://api.phoenixkey.me/api/v1/health/cardano` → 200
+ *                 (KHÔNG có `/api/v1/health` — trả 404)
+ *   - ProofChat:  `/api/v1/health` (đang 502 toàn bộ host — chờ Lợi sửa cổng tunnel #72)
+ * Mặc định '/health' NỐI VÀO SAU BASE (base đã gồm `/api/v1`), KHÔNG cắt về origin.
+ */
+const HEALTH_PATH: Record<GateCapability, string> = {
+  work: '/health',
+  proofchat: '/health',
+  phoenix: '/health/cardano',
+};
 
 /** URL health đã đăng ký cho mỗi capability (undefined = chưa cấu hình host). */
 const healthUrls: Partial<Record<GateCapability, string>> = {};
@@ -37,6 +52,7 @@ const healthUrls: Partial<Record<GateCapability, string>> = {};
 const liveState: Record<GateCapability, boolean> = {
   work: false,
   proofchat: false,
+  phoenix: false,
 };
 
 // Subscription — probe chạy async, đổi liveState SAU khi component đã render.
@@ -63,20 +79,32 @@ const notify = (): void => {
 };
 
 /**
- * Suy URL health từ base URL — lấy ORIGIN (scheme://host[:port]) + '/health'.
+ * Suy URL health = BASE (giữ nguyên path, vd `/api/v1`) + đường health của nền.
+ *
+ * ⚠ SỬA LỖI 2026-07-24: bản đầu cắt base về ORIGIN rồi nối '/health'. Curl thật
+ * cho thấy sai: `api.aladin.work/health` → 404 trong khi `api.aladin.work/api/v1/health`
+ * → 200. Hậu quả: gate giữ MOCK dù backend đang SỐNG — đúng thứ nó sinh ra để tránh.
+ * Đường health nằm DƯỚI base, không nằm ở gốc host.
+ *
  * Dùng regex, KHÔNG dùng `new URL()` (Hermes/RN không đảm bảo có URL polyfill —
  * bài học adversary: L0/config không được phụ thuộc global ambient chưa chắc có).
  * Base rỗng/không hợp lệ → trả '' (capability coi như chưa cấu hình).
  */
-export const deriveHealthUrl = (base: string | undefined): string => {
+export const deriveHealthUrl = (
+  base: string | undefined,
+  healthPath: string = '/health',
+): string => {
   if (!base) return '';
-  const m = base.match(/^(https?:\/\/[^/]+)/i);
-  return m ? `${m[1]}/health` : '';
+  // Phải là URL http(s) tuyệt đối có host — 'not-a-url' → ''.
+  if (!/^https?:\/\/[^/\s]+/i.test(base)) return '';
+  const trimmed = base.replace(/\/+$/, '');
+  const suffix = healthPath.startsWith('/') ? healthPath : `/${healthPath}`;
+  return `${trimmed}${suffix}`;
 };
 
 /** Đăng ký endpoint health cho 1 capability (gọi lúc bootstrap, từ config module). */
 export const registerCapability = (cap: GateCapability, base: string | undefined): void => {
-  const url = deriveHealthUrl(base);
+  const url = deriveHealthUrl(base, HEALTH_PATH[cap]);
   if (url) healthUrls[cap] = url;
   else delete healthUrls[cap];
 };

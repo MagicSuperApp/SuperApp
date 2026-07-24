@@ -16,29 +16,46 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 }));
 
 describe('deriveHealthUrl', () => {
-  it('lấy origin + /health, bỏ path phía sau', () => {
+  // Neo vào ĐƯỜNG THẬT đã curl 2026-07-24, không phải quy ước đoán:
+  //   api.aladin.work/api/v1/health → 200  (api.aladin.work/health → 404)
+  it('GIỮ path của base rồi mới nối /health (không cắt về origin)', () => {
     expect(deriveHealthUrl('https://api.aladin.work/api/v1')).toBe(
-      'https://api.aladin.work/health',
+      'https://api.aladin.work/api/v1/health',
     );
     expect(deriveHealthUrl('https://api.proofchat.me/api/v1')).toBe(
-      'https://api.proofchat.me/health',
+      'https://api.proofchat.me/api/v1/health',
     );
     expect(deriveHealthUrl('http://localhost:8080/api/v1')).toBe(
-      'http://localhost:8080/health',
+      'http://localhost:8080/api/v1/health',
+    );
+  });
+  it('bỏ dấu / thừa cuối base', () => {
+    expect(deriveHealthUrl('https://api.aladin.work/api/v1/')).toBe(
+      'https://api.aladin.work/api/v1/health',
+    );
+  });
+  it('nhận đường health riêng theo nền (Phoenix: /health/cardano)', () => {
+    expect(deriveHealthUrl('https://api.phoenixkey.me/api/v1', '/health/cardano')).toBe(
+      'https://api.phoenixkey.me/api/v1/health/cardano',
+    );
+    // không có dấu / đầu vẫn đúng
+    expect(deriveHealthUrl('https://x.dev/api/v1', 'health')).toBe(
+      'https://x.dev/api/v1/health',
     );
   });
   it('base rỗng/không hợp lệ → chuỗi rỗng', () => {
     expect(deriveHealthUrl(undefined)).toBe('');
     expect(deriveHealthUrl('')).toBe('');
     expect(deriveHealthUrl('not-a-url')).toBe('');
+    expect(deriveHealthUrl('ftp://api.aladin.work/api/v1')).toBe('');
   });
 });
 
 describe('cổng runtime — probe health', () => {
-  const realFetch = global.fetch;
+  const realFetch = globalThis.fetch;
   afterEach(() => {
     __resetRuntimeGateForTest();
-    global.fetch = realFetch;
+    globalThis.fetch = realFetch;
   });
 
   it('mặc định false (mock) khi chưa probe', () => {
@@ -48,21 +65,21 @@ describe('cổng runtime — probe health', () => {
 
   it('health 2xx → live=true', async () => {
     registerCapability('work', 'https://api.aladin.work/api/v1');
-    global.fetch = jest.fn(async () => ({ ok: true }) as Response);
+    globalThis.fetch = jest.fn(async () => ({ ok: true }) as Response);
     await probeAllCapabilities();
     expect(isCapabilityLive('work')).toBe(true);
   });
 
   it('health 502/404 → giữ mock (false)', async () => {
     registerCapability('work', 'https://api.aladin.work/api/v1');
-    global.fetch = jest.fn(async () => ({ ok: false }) as Response);
+    globalThis.fetch = jest.fn(async () => ({ ok: false }) as Response);
     await probeAllCapabilities();
     expect(isCapabilityLive('work')).toBe(false);
   });
 
   it('fetch ném (mạng lỗi) → mock (false), không crash', async () => {
     registerCapability('proofchat', 'https://api.proofchat.me/api/v1');
-    global.fetch = jest.fn(async () => {
+    globalThis.fetch = jest.fn(async () => {
       throw new Error('network');
     });
     await probeAllCapabilities();
@@ -70,7 +87,7 @@ describe('cổng runtime — probe health', () => {
   });
 
   it('chưa đăng ký host → luôn false', async () => {
-    global.fetch = jest.fn(async () => ({ ok: true }) as Response);
+    globalThis.fetch = jest.fn(async () => ({ ok: true }) as Response);
     await probeAllCapabilities();
     expect(isCapabilityLive('work')).toBe(false);
   });
@@ -79,7 +96,7 @@ describe('cổng runtime — probe health', () => {
     registerCapability('work', 'https://api.aladin.work/api/v1');
     const listener = jest.fn();
     const unsub = subscribeRuntimeGate(listener);
-    global.fetch = jest.fn(async () => ({ ok: true }) as Response);
+    globalThis.fetch = jest.fn(async () => ({ ok: true }) as Response);
     await probeAllCapabilities();
     expect(listener).toHaveBeenCalled();
     unsub();

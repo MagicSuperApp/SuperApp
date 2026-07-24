@@ -63,15 +63,15 @@ export interface GateSubItem {
 const SUB_ACTIONS: Record<string, Omit<GateSubItem, 'key'>[]> = {
   // Trang trại (trace): quét cây · quét con vật · quét nhãn thuốc · thêm vườn.
   Farms: [
-    { icon: 'pine-tree', label: 'Quét cây', route: 'TreeIdentity' },
+    { icon: 'tree', label: 'Quét cây', route: 'TreeIdentity' },
     { icon: 'paw', label: 'Quét con vật', route: 'AnimalManagement', params: { farmId: 'default' } },
-    { icon: 'needle', label: 'Quét nhãn thuốc', route: 'CareScan', params: { targetType: 'farm', targetId: 'default', farmId: 'default' } },
-    { icon: 'barn', label: 'Thêm vườn', route: 'FarmDetail' },
+    { icon: 'syringe', label: 'Quét nhãn thuốc', route: 'CareScan', params: { targetType: 'farm', targetId: 'default', farmId: 'default' } },
+    { icon: 'warehouse', label: 'Thêm vườn', route: 'FarmDetail' },
   ],
   // Chat (proofchat): mở ví · thông báo.
   ProofChatHome: [
-    { icon: 'wallet-outline', label: 'Mở ví', route: 'ProofChatWallet' },
-    { icon: 'bell-outline', label: 'Thông báo', route: 'Notifications' },
+    { icon: 'wallet', label: 'Mở ví', route: 'ProofChatWallet' },
+    { icon: 'bell', label: 'Thông báo', route: 'Notifications' },
   ],
 };
 
@@ -129,8 +129,8 @@ export function resolveGateItems(farm: FarmSignal, usage: UsageMap = {}): GateIt
   if (TRACE_SCAN_ROUTE) {
     const trace: GateItem = {
       key: 'svc-trace-scan',
-      icon: 'qrcode-scan',
-      label: 'Quét truy xuất',
+      icon: 'qrcode',
+      label: '',
       tint: TRACE_THEME.primaryDeep,
       route: TRACE_SCAN_ROUTE,
       prominent: true,

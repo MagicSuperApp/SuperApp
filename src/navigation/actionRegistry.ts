@@ -31,7 +31,7 @@ export const ACTION_GROUP_COLOR: Record<ActionGroup, string> = {
 // chỉ tham chiếu bằng tên route — không nhúng component (giữ config thuần).
 export interface ActionDef {
   key: string;
-  icon: string;   // MaterialCommunityIcons
+  icon: string;   // tên icon Font Awesome Solid (bộ Icon dùng chung)
   label: string;  // nhãn 1 từ ưu tiên; ĐỘNG theo loài khi có
   group: ActionGroup;
   route: string;
@@ -52,14 +52,14 @@ type ActionPack = (ctx: DomainContext) => ActionDef[];
 
 // Hành động dùng lại (đích điều hướng có thật trong navigator hiện tại).
 const scanTree = (label: string): ActionDef => ({
-  key: 'scan-tree', icon: 'pine-tree', label, group: 'scan', route: 'TreeIdentity',
+  key: 'scan-tree', icon: 'tree', label, group: 'scan', route: 'TreeIdentity',
 });
 const scanFruit: ActionDef = {
-  key: 'scan-fruit', icon: 'fruit-cherries', label: 'Quét quả', group: 'scan', route: 'FruitList',
+  key: 'scan-fruit', icon: 'apple-whole', label: 'Quét quả', group: 'scan', route: 'FruitList',
 };
 // Thu VIDEO quả → gắn cây (OriLife User-Action-Flow). Quay native + upload fruit_video.
 const fruitVideo: ActionDef = {
-  key: 'fruit-video', icon: 'video-plus', label: 'Video quả', group: 'scan', route: 'FruitVideo',
+  key: 'fruit-video', icon: 'video', label: 'Video quả', group: 'scan', route: 'FruitVideo',
 };
 const scanAnimal = (label: string): ActionDef => ({
   key: 'scan-animal', icon: 'paw', label, group: 'scan', route: 'AnimalManagement',
@@ -76,7 +76,7 @@ const health = (label: string, icon: string): ActionDef => ({
   params: { targetType: 'farm', targetId: 'default', farmId: 'default' },
 });
 const addFarm: ActionDef = {
-  key: 'add-farm', icon: 'barn', label: 'Thêm vườn', group: 'create', route: 'FarmDetail',
+  key: 'add-farm', icon: 'warehouse', label: 'Thêm vườn', group: 'create', route: 'FarmDetail',
 };
 const addHerd: ActionDef = {
   key: 'add-herd', icon: 'cow', label: 'Thêm đàn', group: 'create', route: 'FarmDetail',
@@ -90,20 +90,20 @@ export const DOMAIN_PACKS: Record<Domain, ActionPack> = {
     scanTree(`Quét ${ctx.speciesLabel ?? 'sầu riêng'}`),
     fruitVideo,
     scanFruit,
-    nutrition('Bón phân', 'watering-can'),
+    nutrition('Bón phân', 'droplet'),
   ],
   // Cây trồng nói chung.
   tree: (ctx) => [
     scanTree(ctx.speciesLabel ? `Quét ${ctx.speciesLabel}` : 'Quét cây'),
     fruitVideo,
     scanFruit,
-    nutrition('Chăm sóc', 'watering-can'),
+    nutrition('Chăm sóc', 'droplet'),
   ],
   // Vật nuôi: quét vật (theo loài) · cho ăn · tiêm thuốc · thêm đàn.
   animal: (ctx) => [
     scanAnimal(ctx.speciesLabel ? `Quét ${ctx.speciesLabel}` : 'Quét vật'),
-    nutrition('Cho ăn', 'silverware-fork-knife'),
-    health('Tiêm thuốc', 'needle'),
+    nutrition('Cho ăn', 'utensils'),
+    health('Tiêm thuốc', 'syringe'),
     addHerd,
   ],
   // User MỚI (chưa có dữ liệu) → menu onboarding: các lối quét cơ bản + tạo vườn.

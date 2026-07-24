@@ -193,8 +193,11 @@ const DashboardScreen: React.FC = () => {
   useEffect(() => { setCurrentPage(1); }, [filter]);
 
   const loadDashboard = React.useCallback(async () => {
-    if (!user) return;
     try {
+      // Chưa có user (vd user mới chưa đăng nhập xong) → KHÔNG tải, nhưng vẫn phải
+      // rơi vào finally để đánh dấu đã-tải-xong. Nếu return sớm TRƯỚC try thì
+      // `hasLoadedOnce` kẹt false → skeleton loading hiện MÃI (màn trắng phau).
+      if (!user) return;
       await dispatch(loadFarms(user.id));
       if (farms.length > 0) {
         for (const farm of farms) await dispatch(loadTrees(farm.id));

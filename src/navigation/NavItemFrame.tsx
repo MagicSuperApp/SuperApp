@@ -9,7 +9,7 @@
 
 import * as React from 'react';
 import { View, Text, Image, StyleSheet } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { Icon } from '../components/Icon';
 import { navEn, navNational, navIcon } from './navLabels';
 
 export const NAV_FRAME_DIMS = {

@@ -23,7 +23,7 @@ import { initPush } from '../services/pushHandler';
 import Toast from 'react-native-toast-message';
 import NetInfo from '@react-native-community/netinfo';
 import { handleNavigationStateChange } from '../services/analytics';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { Icon } from '../components/Icon';
 import { COLORS, ACTION_COLORS } from '../theme';
 import { syncService } from '../services/syncService';
 import AppHeader, { AppHeaderProvider } from '../components/AppHeader';
@@ -179,7 +179,7 @@ function buildTabs(): BuiltTab[] {
         route: tab.route,
         component,
         title: TAB_TITLES[tab.route] ?? tab.route,
-        icon: TAB_ICONS[tab.route] ?? 'view-dashboard-outline',
+        icon: TAB_ICONS[tab.route] ?? 'table-cells-large',
       });
     } else {
       // Tab module: chỉ dựng nếu module đó được BẬT (an toàn — tránh tab mồ côi).
@@ -858,7 +858,7 @@ const CurvedTabBar = ({ state, navigation }: BottomTabBarProps) => {
   const mainIcon =
     effectiveDefaultKey && itemMeta[effectiveDefaultKey]
       ? itemMeta[effectiveDefaultKey].icon
-      : 'home-variant';
+      : 'house';
 
   // Ẩn HẲN navbar ở màn Kết đèn (JoinHome) — tránh navbar nổi đè nội dung.
   // (Đặt SAU mọi hook để không vi phạm rules-of-hooks.)
@@ -1113,7 +1113,7 @@ const HomeRadialOverlay = () => {
               radial?.setMenu(null);
             }}
           >
-            <Icon name="close-circle-outline" size={16} color="#FFFFFF" />
+            <Icon name="circle-xmark" size={16} color="#FFFFFF" />
             <Text style={radialStyles.removeText}>Gỡ mặc định</Text>
           </Pressable>
         </View>

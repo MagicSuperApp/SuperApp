@@ -18,6 +18,7 @@ import {
   TextInput,
   Modal,
   ScrollView,
+  Image,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -32,6 +33,7 @@ import { useAppDispatch } from '../../../store/hooks';
 import StateView from '../../../components/state/StateView';
 import TreeMetadataTab from './TreeMetadataTab';
 import { formatTreeName, shortTreeCode } from '../../../utils/treeNameFormatter';
+import { loadTreeImages } from '../../../services/treeImageStore';
 import { useSelector } from 'react-redux';
 
 const { width } = Dimensions.get('window');
@@ -262,6 +264,25 @@ const TreeDetailScreen = () => {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [statusDropdownVisible, setStatusDropdownVisible] = useState(false);
 
+  // Ảnh cây đã lưu (local, theo tree_id) — nguồn từ treeImageStore vì server
+  // /api/trees không trả URL ảnh. Kèm 1 ảnh đang xem phóng to (lightbox).
+  const [treeImages, setTreeImages] = useState<string[]>([]);
+  const [zoomImage, setZoomImage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    const id = tree?.id;
+    if (id) {
+      // Gộp ảnh server (nếu sau này có) + ảnh local đã lưu theo tree_id.
+      loadTreeImages(id).then(local => {
+        if (!alive) return;
+        const serverImgs: string[] = Array.isArray(tree?.images) ? tree.images : [];
+        setTreeImages(Array.from(new Set([...serverImgs, ...local])));
+      });
+    }
+    return () => { alive = false; };
+  }, [tree?.id]);
+
   useEffect(() => {
     if (tree?.id) {
       dispatch(loadFruits(tree.id));
@@ -319,9 +340,17 @@ const TreeDetailScreen = () => {
     if (activeTab === 'history') loadCaptures();
   }, [activeTab, loadCaptures]);
 
+  // "Thêm quả" = nhận diện/thêm QUẢ cho CHÍNH cây này — KHÔNG phải nhận diện cây.
+  // Trước đây điều hướng nhầm sang 'TreeIdentity' (luồng nhận diện + đăng ký CÂY),
+  // nên bấm "Thêm quả" lần đầu lại chạy ra quy trình nhận diện cây. Sửa: đi tới
+  // luồng quả gắn theo cây (FruitList), truyền tree_id như TreeManagement vẫn làm.
   const handleAddFruit = () => {
     if (!tree) return;
-    (navigation as any).navigate('TreeIdentity');
+    (navigation as any).navigate('FruitList', {
+      treeId: tree.id,
+      treeName: (tree as any).name,
+      farmId: tree.farmId,
+    });
   };
 
   // Quay video quả cho CHÍNH cây này (OriLife User-Action-Flow) — tự điền tree_id.
@@ -337,6 +366,20 @@ const TreeDetailScreen = () => {
   const handleScan3D = () => {
     if (!tree) return;
     (navigation as any).navigate('TreeIdentity');
+  };
+
+  // Cây có mô hình 3D chưa? (cùng cách gate như FarmDetailScreen/TreeCard).
+  const has3D = !!(tree?.has_3d ?? tree?.has3DModel ?? tree?.latest_mesh_cid ?? tree?.meshCid);
+  // Mã cây công khai để mở trang /view/{code} (three.js) — server nhận `code`, không phải id.
+  const tree3DCode = tree?.code ?? tree?.shortCode ?? '';
+
+  // Mở màn xem 3D (WebView → GET /view/{code}). Server field-reid đã có sẵn endpoint này.
+  const handleView3D = () => {
+    if (!tree || !tree3DCode) return;
+    (navigation as any).navigate('TreeViewer3D', {
+      code: tree3DCode,
+      treeName: treeDisplayName,
+    });
   };
 
   const handleSaveOnnet = async () => {
@@ -498,6 +541,31 @@ const TreeDetailScreen = () => {
         </View>
       </View>
 
+      {/* Ảnh cây đã lưu — dải ngang, chạm để phóng to. Ẩn nếu chưa có ảnh nào. */}
+      {treeImages.length > 0 && (
+        <View style={styles.photoStripWrap}>
+          <View style={styles.sectionLeft}>
+            <View style={styles.sectionDot} />
+            <Text style={styles.sectionTitle}>ẢNH CÂY ({treeImages.length})</Text>
+          </View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.photoStrip}
+          >
+            {treeImages.map((uri, i) => (
+              <TouchableOpacity
+                key={`${uri}-${i}`}
+                activeOpacity={0.85}
+                onPress={() => setZoomImage(uri)}
+              >
+                <Image source={{ uri }} style={styles.photoThumb} resizeMode="cover" />
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
       {/* Mesh fruit chip + capture-again CTA */}
       <View style={styles.meshChipRow}>
         <View style={styles.meshChip}>
@@ -506,6 +574,12 @@ const TreeDetailScreen = () => {
             {fruitCount} quả{fruitCount > 0 ? ` · ${nearRipeCount} gần chín` : ''}
           </Text>
         </View>
+        {has3D && (
+          <TouchableOpacity style={styles.view3DBtn} onPress={handleView3D} activeOpacity={0.85}>
+            <Icon name="cube-scan" size={16} color={COLORS.accent} />
+            <Text style={styles.view3DBtnText}>Xem 3D</Text>
+          </TouchableOpacity>
+        )}
         <TouchableOpacity style={styles.captureBtn} onPress={handleScan3D} activeOpacity={0.85}>
           <Icon name="camera-outline" size={16} color={COLORS.white} />
           <Text style={styles.captureBtnText}>Chụp lại</Text>
@@ -756,7 +830,7 @@ const TreeDetailScreen = () => {
         <View style={[styles.bottomBar, { paddingBottom: (Platform.OS === 'ios' ? 36 : 24) + insets.bottom }]}>
           <TouchableOpacity
             style={styles.harvestBtn}
-            onPress={() => (navigation as any).navigate('Activity', { tree })}
+            onPress={() => (navigation as any).navigate('Activity', { tree, farm: currentFarm ?? undefined })}
             activeOpacity={0.88}
           >
             <View style={styles.btnShine} />
@@ -765,6 +839,32 @@ const TreeDetailScreen = () => {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Lightbox ảnh cây */}
+      <Modal
+        visible={zoomImage != null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setZoomImage(null)}
+        statusBarTranslucent
+      >
+        <TouchableOpacity
+          style={styles.zoomOverlay}
+          activeOpacity={1}
+          onPress={() => setZoomImage(null)}
+        >
+          {zoomImage && (
+            <Image source={{ uri: zoomImage }} style={styles.zoomImage} resizeMode="contain" />
+          )}
+          <TouchableOpacity
+            style={styles.zoomClose}
+            onPress={() => setZoomImage(null)}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Icon name="close" size={24} color={COLORS.white} />
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
 
       <Modal
         visible={statusDropdownVisible}
@@ -957,6 +1057,27 @@ const styles = StyleSheet.create({
   },
   heroStatLabel: { fontSize: 10, color: COLORS.textMuted, textAlign: 'center' },
 
+  photoStripWrap: { marginBottom: 14, gap: 8 },
+  photoStrip: { gap: 8, paddingVertical: 2 },
+  photoThumb: {
+    width: 96, height: 96, borderRadius: 12,
+    backgroundColor: COLORS.border,
+    borderWidth: 1, borderColor: COLORS.border,
+  },
+  zoomOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  zoomImage: { width: '100%', height: '80%' },
+  zoomClose: {
+    position: 'absolute', top: 48, right: 20,
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+
   meshChipRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -987,6 +1108,18 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   captureBtnText: { color: COLORS.white, fontSize: 13, fontWeight: '700' },
+  view3DBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: COLORS.accentGlow,
+    borderWidth: 1,
+    borderColor: COLORS.accent,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  view3DBtnText: { color: COLORS.accent, fontSize: 13, fontWeight: '700' },
 
   estimateNote: {
     flexDirection: 'row', alignItems: 'center', gap: 8,

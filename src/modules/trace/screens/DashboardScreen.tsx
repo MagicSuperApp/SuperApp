@@ -198,17 +198,22 @@ const DashboardScreen: React.FC = () => {
       // rơi vào finally để đánh dấu đã-tải-xong. Nếu return sớm TRƯỚC try thì
       // `hasLoadedOnce` kẹt false → skeleton loading hiện MÃI (màn trắng phau).
       if (!user) return;
-      await dispatch(loadFarms(user.id));
-      if (farms.length > 0) {
-        for (const farm of farms) await dispatch(loadTrees(farm.id));
-        await dispatch(loadActivities(farms[0].id));
+      // Dùng KẾT QUẢ trả về của loadFarms (`.unwrap()` → mảng farm THẬT vừa tải),
+      // KHÔNG đọc `farms` từ closure: giá trị closure là snapshot lúc TẠO callback
+      // (thường rỗng ở lần focus đầu sau đăng nhập) → sẽ bỏ lỡ loadTrees/loadActivities
+      // và màn kẹt rỗng. `.unwrap()` cũng ném lỗi DB (ensureReady) → rơi vào catch →
+      // hiện trạng thái LỖI có nút thử lại, thay vì skeleton trắng vô hạn.
+      const loaded = await dispatch(loadFarms(user.id)).unwrap();
+      if (loaded.length > 0) {
+        for (const farm of loaded) await dispatch(loadTrees(farm.id));
+        await dispatch(loadActivities(loaded[0].id));
       }
     } catch (_) {
       showError('Lỗi', 'Không thể tải dữ liệu');
     } finally {
       setHasLoadedOnce(true);
     }
-  }, [user, farms, dispatch]);
+  }, [user, dispatch]);
 
   useFocusEffect(
     React.useCallback(() => { loadDashboard(); }, [loadDashboard])
@@ -288,10 +293,6 @@ const DashboardScreen: React.FC = () => {
   return (
     <View style={styles.root}>
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
-
-      {/* Top strip */}
-      <View style={[styles.topStrip, { height: 3 + insets.top, paddingTop: insets.top }]}><View style={styles.topStripAccent} /></View>
-
       <ScrollView
         contentContainerStyle={[
           styles.scrollContent,
@@ -350,14 +351,31 @@ const DashboardScreen: React.FC = () => {
 
           {/* Token row */}
           <View style={styles.tokenRow}>
-            <TokenChip index={0} icon="star-four-points-outline" label="MAGIC" value={wallet?.magicBalance ?? '—'} color="#B07D2F" />
-            <TokenChip index={1} icon="lightning-bolt" label="LAMP" value={wallet?.lampBalance ?? '—'} color={COLORS.accent} />
+            <TokenChip index={0} icon="star-four-points-outline" label="M" value={wallet?.magicBalance ?? '—'} color="#B07D2F" />
+            <TokenChip index={1} icon="lightning-bolt" label="L" value={wallet?.lampBalance ?? '—'} color={COLORS.accent} />
             {/* CARP — token hệ sinh thái thứ 3. TODO brand tạm; số dư chờ API Phoenix. */}
-            <TokenChip index={2} icon="fish" label="CARP" value={wallet?.carpBalance ?? '—'} color="#2F8F8F" />
-            <TokenChip index={3} icon="hexagon-outline" label="ADA" value={wallet?.adaBalance ?? '—'} color="#0033AD" />
+            <TokenChip index={2} icon="fish" label="C" value={wallet?.carpBalance ?? '—'} color="#2F8F8F" />
+            <TokenChip index={3} icon="hexagon-outline" label="A" value={wallet?.adaBalance ?? '—'} color="#0033AD" />
           </View>
         </Animated.View>
-
+        {/* ── Quick actions ── */}
+        <View style={[styles.sectionRow, { marginTop: 24 }]}>
+          <View style={styles.sectionDot} />
+          <Text style={styles.sectionTitle}>THAO TÁC NHANH</Text>
+        </View>
+        <View style={styles.quickActionsRow}>
+          <QuickAction index={0} icon="pine-tree" label="Trang trại" color={COLORS.accent}
+            onPress={() => navigation.navigate('FarmList')} />
+          <QuickAction index={1} icon="plus-circle" label="Thêm cây" color="#B07D2F"
+            onPress={() => {
+              if (farms.length > 0) navigation.navigate('FarmDetail', { farm_id: farms[0].id });
+              else showInfo('Thông báo', 'Vui lòng tạo trang trại trước');
+            }} />
+          <QuickAction index={2} icon={isSyncing ? 'sync' : 'cloud-upload-outline'} label="Đồng bộ" color={COLORS.success}
+            onPress={autoSync} disabled={isSyncing} />
+          <QuickAction index={3} icon="account-outline" label="Tài khoản" color="#7D3C98"
+            onPress={() => navigation.navigate('Account' as never)} />
+        </View>
         {/* ── Stats grid ── */}
         <View style={styles.sectionRow}>
           <View style={styles.sectionDot} />
@@ -370,24 +388,6 @@ const DashboardScreen: React.FC = () => {
           <StatCard index={3} icon="clipboard-text-outline" label="Hoạt động" value={activities.length} color="#7D3C98" />
         </View>
 
-        {/* ── Quick actions ── */}
-        <View style={[styles.sectionRow, { marginTop: 24 }]}>
-          <View style={styles.sectionDot} />
-          <Text style={styles.sectionTitle}>THAO TÁC NHANH</Text>
-        </View>
-        <View style={styles.quickActionsRow}>
-          <QuickAction index={0} icon="pine-tree" label="Trang trại" color={COLORS.accent}
-            onPress={() => navigation.navigate('Farms')} />
-          <QuickAction index={1} icon="plus-circle" label="Thêm cây" color="#B07D2F"
-            onPress={() => {
-              if (farms.length > 0) navigation.navigate('FarmDetail', { farm_id: farms[0].id });
-              else showInfo('Thông báo', 'Vui lòng tạo trang trại trước');
-            }} />
-          <QuickAction index={2} icon={isSyncing ? 'sync' : 'cloud-upload-outline'} label="Đồng bộ" color={COLORS.success}
-            onPress={autoSync} disabled={isSyncing} />
-          <QuickAction index={3} icon="account-outline" label="Tài khoản" color="#7D3C98"
-            onPress={() => navigation.navigate('Account' as never)} />
-        </View>
 
         {/* SurfaceTestCapture ẩn — chỉ dùng nội bộ thu dữ liệu test, không hiện với user */}
 
@@ -631,7 +631,7 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 11, color: COLORS.textMuted, fontWeight: '500' },
 
   // Quick actions
-  quickActionsRow: { flexDirection: 'row', gap: 10 },
+  quickActionsRow: { flexDirection: 'row', gap: 10, marginBottom: 24 },
   quickAction: {
     backgroundColor: COLORS.card,
     borderRadius: 14, paddingVertical: 14,

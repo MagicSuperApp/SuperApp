@@ -29,6 +29,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
+import { useAppDispatch } from '../store/hooks';
+import { loadFarms, loadTrees } from '../modules/trace/store/farmSlice';
 import { selectChainWallet } from '../store/userSlice';
 import { NEUTRAL, withAlpha } from '../shared/theme';
 import { MODULES, type ModuleEntry } from '../modules';
@@ -447,10 +449,37 @@ const HomeScreen: React.FC = () => {
   // Cuộn → thu/thả header toàn cục (Facebook-style). Header sống ở tầng nav; ở
   // đây chỉ nối onScroll của ScrollView vào.
   const { onScroll: onHeaderScroll, scrollEventThrottle: headerThrottle } = useCollapsibleHeader();
+  const dispatch = useAppDispatch();
   const user = useSelector((s: RootState) => s.user.currentUser);
   const farms = useSelector((s: RootState) => s.farm.farms);
   const trees = useSelector((s: RootState) => s.farm.trees);
   const activities = useSelector((s: RootState) => s.farm.activities);
+
+  // Warm-load dữ liệu trang trại vào store NGAY khi vào Home (sau đăng nhập DB đã
+  // mở). Store KHÔNG được persist → mỗi phiên khởi động lại là rỗng; nếu Home không
+  // chủ động nạp thì "Thông tin nhanh" hiện 0 trang trại/0 cây tới khi mở Dashboard,
+  // và Dashboard là nơi DUY NHẤT nạp farm → mở Truy xuất dễ gặp màn trắng. Nạp ở đây
+  // để Home phản ánh đúng số liệu VÀ hâm nóng store trước khi bấm Truy xuất.
+  useEffect(() => {
+    const uid = user?.id;
+    if (!uid) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const loaded = await dispatch(loadFarms(uid)).unwrap();
+        if (cancelled) return;
+        for (const f of loaded) {
+          if (cancelled) return;
+          await dispatch(loadTrees(f.id)).unwrap();
+        }
+      } catch (_) {
+        // DB chưa sẵn / lỗi đọc → im lặng; Dashboard sẽ thử lại & hiện trạng thái lỗi.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, dispatch]);
 
   // Lần đầu người dùng vào Home sau khi đăng nhập → tự chạy luồng hướng dẫn
   // (một lần cho mỗi người; đã skip/hoàn thành thì không tự chạy lại — xem
@@ -605,8 +634,9 @@ const HomeScreen: React.FC = () => {
 
   const handleCreateFarm = () => {
     setShowFarmPrompt(false);
-    // Navigate to Farm creation screen
-    navigation.navigate('Farms' as never);
+    // Mở thẳng màn TẠO trang trại (FarmDetail với farm_id null) — trước đây trỏ 'Farms'
+    // (là danh sách vườn); nay 'Farms' = Dashboard nên trỏ đúng màn tạo.
+    (navigation as any).navigate('FarmDetail', { farm_id: null });
   };
 
   const handleDismissFarmPrompt = async () => {
@@ -666,35 +696,6 @@ const HomeScreen: React.FC = () => {
             navbar và menu hành động. */}
         {quickVisible && (
           <View style={styles.quickCard}>
-            {/* Thanh đóng/mở — phẳng, không gradient. */}
-            <TouchableOpacity
-              activeOpacity={0.9}
-              onPress={toggleQuick}
-              style={styles.quickBar}
-              accessibilityRole="button"
-              accessibilityState={{ expanded: quickOpen }}
-              accessibilityLabel={quickOpen ? 'Thu gọn thao tác nhanh' : 'Mở thao tác nhanh'}
-            >
-              <Icon name="lightning-bolt" size={16} color={QUICK_GREEN_DEEP} />
-              <Text style={styles.quickBarTitle}>Thao tác nhanh</Text>
-              <View style={{ flex: 1 }} />
-              <Text style={styles.quickBarHint}>{quickOpen ? 'Thu gọn' : 'Mở rộng'}</Text>
-              <Animated.View
-                style={{
-                  transform: [
-                    {
-                      rotate: quickFx.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: ['0deg', '180deg'],
-                      }),
-                    },
-                  ],
-                }}
-              >
-                <Icon name="chevron-down" size={20} color={QUICK_GREEN_DEEP} />
-              </Animated.View>
-            </TouchableOpacity>
-
             {/* Thân hộp KHÔNG màu. Lượt render đầu chưa biết chiều cao thật → cho
                 thân nằm absolute + opacity 0 để ĐO (onLayout) mà không chiếm chỗ.
                 Đo xong (quickBodyH > 0) mới chuyển sang chiều cao có animation.
@@ -761,6 +762,29 @@ const HomeScreen: React.FC = () => {
                 </View>
               </Animated.View>
             </Animated.View>
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={toggleQuick}
+              style={styles.quickBar}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: quickOpen }}
+              accessibilityLabel={quickOpen ? 'Thu gọn thao tác nhanh' : 'Mở thao tác nhanh'}
+            >
+              <Animated.View
+                style={{
+                  transform: [
+                    {
+                      rotate: quickFx.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: ['0deg', '180deg'],
+                      }),
+                    },
+                  ],
+                }}
+              >
+                <Icon name="chevron-down" size={20} color={QUICK_GREEN_DEEP} style={styles.quickBarIcon} />
+              </Animated.View>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -1268,10 +1292,6 @@ const styles = StyleSheet.create({
   // Hộp KHÔNG màu — chỉ thanh header có gradient.
   quickCard: {
     marginTop: 16,
-    backgroundColor: NEUTRAL.card,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: NEUTRAL.border,
     shadowColor: NEUTRAL.shadow,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 1,
@@ -1284,7 +1304,14 @@ const styles = StyleSheet.create({
     gap: 7,
     paddingHorizontal: 12,
     borderRadius: 10,
-    backgroundColor: NEUTRAL.white
+    position: 'relative',
+    justifyContent: 'center',
+  },
+  quickBarIcon: {
+    width: 20,
+    height: 20,
+    borderRadius: 50,
+    backgroundColor: withAlpha(COLORS.accent, 0.12),
   },
   quickBarTitle: {
     fontSize: 13,

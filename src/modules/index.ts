@@ -33,7 +33,7 @@ export const MODULES: ModuleEntry[] = [
     icon: 'pine-tree',
     image: require('../../assets/images/modules/scan-fi.png'),
     bgDark: '#0F5132',
-    routeName: 'Dashboard',
+    routeName: 'Farms', // tab Trace (hiện Dashboard) → mở kèm navbar; KHÔNG dùng root-stack 'Dashboard'
     available: true,
   },
   {

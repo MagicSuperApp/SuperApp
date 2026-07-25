@@ -71,7 +71,8 @@ describe('resolveGateItems', () => {
     for (const it of resolveGateItems(NO_FARM)) {
       expect(it.key).toMatch(/^svc-/);
       expect(it.icon).toBeTruthy();
-      expect(it.label).toBeTruthy();
+      // Mục NỔI BẬT (Trace-quét) là icon-only (label rỗng có chủ đích) → miễn kiểm nhãn.
+      if (!it.prominent) expect(it.label).toBeTruthy();
       expect(it.tint).toMatch(/^#|rgb/);
       expect(it.route).toBeTruthy();
     }

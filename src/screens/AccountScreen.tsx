@@ -502,13 +502,6 @@ const AccountScreen = () => {
 
     return (
         <View style={styles.root}>
-            <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
-
-            {/* Top strip */}
-            <View style={[styles.topStrip, { height: 3 + insets.top, paddingTop: insets.top }]}>
-                <View style={styles.topStripAccent} />
-            </View>
-
             <ScrollView
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={[

@@ -33,16 +33,18 @@ const PROBE_TIMEOUT_MS = 6000;
 /**
  * Đường health THEO TỪNG NỀN — không nền nào giống nền nào, phải đo THẬT.
  * Đo bằng curl 2026-07-24 (đừng đoán, xem Forall §chống assert-by-plausibility):
- *   - AladinWork: `https://api.aladin.work/api/v1/health`      → 200  (origin+/health = 404)
- *   - Phoenix:    `https://api.phoenixkey.me/api/v1/health/cardano` → 200
- *                 (KHÔNG có `/api/v1/health` — trả 404)
+ *   - AladinWork: `https://api.aladin.work/api/v1/health`         → 200  (origin+/health = 404)
+ *   - Phoenix:    `https://api.phoenixkey.me/api/v1/actuator/health` → 200 {"status":"UP"}
+ *                 (liveness Spring Actuator chuẩn; KHÔNG có `/api/v1/health` = 404.
+ *                  Trước dùng /health/cardano nhưng nó trả 200 CẢ KHI config rỗng
+ *                  → không phải liveness thật; actuator/health mới đúng.)
  *   - ProofChat:  `/api/v1/health` (đang 502 toàn bộ host — chờ Lợi sửa cổng tunnel #72)
  * Mặc định '/health' NỐI VÀO SAU BASE (base đã gồm `/api/v1`), KHÔNG cắt về origin.
  */
 const HEALTH_PATH: Record<GateCapability, string> = {
   work: '/health',
   proofchat: '/health',
-  phoenix: '/health/cardano',
+  phoenix: '/actuator/health',
 };
 
 /** URL health đã đăng ký cho mỗi capability (undefined = chưa cấu hình host). */

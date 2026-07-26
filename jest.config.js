@@ -13,4 +13,10 @@ module.exports = {
   transformIgnorePatterns: [
     'node_modules/(?!(?:jest-)?(?:@?react-native(?:-community)?|@react-native(?:-community)?/.*|@react-navigation/.*|react-native-.*|react-redux|redux-persist|@reduxjs/.*|immer|@react-native-async-storage/.*)/)',
   ],
+  moduleNameMapper: {
+    // Model 3D (.glb/.gltf): trong app do Metro biến `require()` thành id asset dạng
+    // SỐ. Jest không có bước đó nên sẽ cố parse tệp nhị phân → nổ. Trả về một stub số
+    // để sổ đăng ký model (treeModels.ts) import được trong test.
+    '\\.(glb|gltf)$': '<rootDir>/__mocks__/assetModuleStub.js',
+  },
 };

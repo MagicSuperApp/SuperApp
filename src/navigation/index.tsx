@@ -53,6 +53,8 @@ import FruitListScreen from '../screens/FruitListScreen';
 import FruitCropperScreen from '../screens/FruitCropperScreen';
 import TreeMap2DScreen from '../screens/TreeMap2DScreen';
 import FarmMap2DScreen from '../screens/FarmMap2DScreen';
+import Space3DScreen from '../screens/Space3DScreen';
+import FruitPlace3DScreen from '../screens/FruitPlace3DScreen';
 import TreeIdentityScreen from '../screens/TreeIdentityScreen';
 import TreeEnrollScreen from '../screens/TreeEnrollScreen';
 import FruitVideoScreen from '../screens/FruitVideoScreen';
@@ -1529,8 +1531,14 @@ const HOST_STACK_SCREENS: Array<{
   // Capture/identity screens dùng chung (host-level).
   { name: 'FruitList', component: FruitListScreen, options: { headerShown: false } },
   { name: 'FruitCropper', component: FruitCropperScreen, options: { headerShown: false } },
+  // Sơ-đồ 2D CŨ — giữ đăng ký để deep-link cũ không gãy, nhưng KHÔNG nút nào trỏ
+  // tới nữa: mọi lối vào sơ đồ nay mở 'Space3D' (một hệ giao diện 3D duy nhất).
   { name: 'TreeMap2D', component: TreeMap2DScreen, options: { headerShown: false } },
   { name: 'FarmMap2D', component: FarmMap2DScreen, options: { headerShown: false } },
+  // KHÔNG-GIAN 3D DUY NHẤT: vườn ⇄ cây ⇄ quả (three + @react-three/fiber/native).
+  { name: 'Space3D', component: Space3DScreen, options: { headerShown: false } },
+  // Đặt toạ-độ 3D của quả trên cây bằng 3 hướng chiếu.
+  { name: 'FruitPlace3D', component: FruitPlace3DScreen, options: { headerShown: false } },
   { name: 'TreeIdentity', component: TreeIdentityScreen, options: { headerShown: false } },
   { name: 'TreeEnroll', component: TreeEnrollScreen, options: { headerShown: false } },
   // Thu video QUẢ → gắn cây (OriLife User-Action-Flow). Quay native + upload fruit_video.

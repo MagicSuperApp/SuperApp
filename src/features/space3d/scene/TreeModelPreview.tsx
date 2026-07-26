@@ -1,0 +1,145 @@
+/**
+ * space3d/scene/TreeModelPreview — ô xem trước 3D, dùng làm ICON cho nút chọn model.
+ *
+ * Mỗi ô là một <Canvas> riêng, quay chậm để thấy được dáng cây. Model tự canh khung:
+ * đo hộp bao rồi đặt camera lùi đủ xa, nên model nào cũng vừa khít ô, không phải
+ * chỉnh tay từng cái khi thêm model mới.
+ *
+ * LƯU Ý HIỆU NĂNG: mỗi Canvas = một ngữ-cảnh GL riêng. Vì vậy component này chỉ
+ * được gắn khi bộ chọn ĐANG MỞ (hộp thoại), và tắt khử răng cưa cho nhẹ.
+ */
+
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { Canvas, useFrame } from '@react-three/fiber/native';
+import * as THREE from 'three';
+import { loadTreeTemplate } from '../treeAsset';
+import { getTreeModel, isFileBacked, type TreeModelId } from '../treeModels';
+import { SPACE_COLORS } from '../visuals';
+import { TREE_HEIGHT, TREE_RADIUS } from '../treeFrame';
+
+/** Cây tự tạo thu nhỏ — bản xem trước của model mặc định (không có tệp). */
+function buildProceduralPreview(): THREE.Object3D {
+  const g = new THREE.Group();
+  const trunkH = TREE_HEIGHT * 0.42;
+  const crownH = TREE_HEIGHT * 0.42;
+
+  const trunk = new THREE.Mesh(
+    new THREE.CylinderGeometry(TREE_RADIUS * 0.1, TREE_RADIUS * 0.16, trunkH, 8),
+    new THREE.MeshStandardMaterial({ color: 0x6b4b2f, roughness: 1 }),
+  );
+  trunk.position.y = trunkH / 2;
+
+  const crownLow = new THREE.Mesh(
+    new THREE.ConeGeometry(TREE_RADIUS * 0.92, crownH * 1.1, 10),
+    new THREE.MeshStandardMaterial({ color: 0x3f7f45, roughness: 1 }),
+  );
+  crownLow.position.y = trunkH + crownH * 0.38;
+
+  const crownTop = new THREE.Mesh(
+    new THREE.ConeGeometry(TREE_RADIUS * 0.66, crownH * 0.95, 10),
+    new THREE.MeshStandardMaterial({ color: 0x4f8f4a, roughness: 1 }),
+  );
+  crownTop.position.y = trunkH + crownH * 0.95;
+
+  g.add(trunk, crownLow, crownTop);
+  return g;
+}
+
+/** Quay chậm quanh trục đứng + tự canh camera cho model vừa khung. */
+const Spinner: React.FC<{ object: THREE.Object3D }> = ({ object }) => {
+  const ref = useRef<THREE.Group>(null);
+
+  // Camera đặt theo kích-thước THẬT của model → model nào cũng vừa ô.
+  const { distance, center } = useMemo(() => {
+    const box = new THREE.Box3().setFromObject(object);
+    const size = new THREE.Vector3();
+    const c = new THREE.Vector3();
+    box.getSize(size);
+    box.getCenter(c);
+    const radius = Math.max(size.x, size.y, size.z) * 0.5 || 1;
+    return { distance: radius * 3.1, center: c };
+  }, [object]);
+
+  useFrame((state, delta) => {
+    if (ref.current) ref.current.rotation.y += delta * 0.55;
+    const cam = state.camera;
+    cam.position.set(distance * 0.55, center.y + distance * 0.32, distance * 0.9);
+    cam.lookAt(center.x, center.y, center.z);
+  });
+
+  return (
+    <group ref={ref}>
+      <primitive object={object} />
+    </group>
+  );
+};
+
+export interface TreeModelPreviewProps {
+  modelId: TreeModelId;
+  /** Cạnh ô (px). Ô vuông. */
+  size: number;
+}
+
+export const TreeModelPreview: React.FC<TreeModelPreviewProps> = ({ modelId, size }) => {
+  const def = useMemo(() => getTreeModel(modelId), [modelId]);
+  const [object, setObject] = useState<THREE.Object3D | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    setObject(null);
+    setFailed(false);
+
+    if (!isFileBacked(def)) {
+      setObject(buildProceduralPreview());
+      return;
+    }
+    loadTreeTemplate(def)
+      .then((tpl) => { if (alive) setObject(tpl.object.clone(true)); })
+      .catch(() => {
+        // Nạp hỏng → hiện cây tự tạo để ô không trống trơn; lỗi chi tiết đã được
+        // TreeModel báo lên HUD rồi, không nhân đôi thông báo ở đây.
+        if (alive) { setObject(buildProceduralPreview()); setFailed(true); }
+      });
+    return () => { alive = false; };
+  }, [def]);
+
+  return (
+    <View style={[styles.wrap, { width: size, height: size }]}>
+      {object ? (
+        <Canvas
+          style={StyleSheet.absoluteFill}
+          camera={{ fov: 40, near: 0.05, far: 200 }}
+          gl={{ antialias: false }}
+        >
+          <color attach="background" args={['#0b1512']} />
+          <hemisphereLight args={['#bfe8cf', '#0a1410', 1.1]} />
+          <ambientLight intensity={0.5} />
+          <directionalLight position={[3, 6, 4]} intensity={1.2} color="#e6fff0" />
+          <Spinner object={object} />
+        </Canvas>
+      ) : (
+        <ActivityIndicator size="small" color={SPACE_COLORS.accent} />
+      )}
+      {failed && <View style={styles.failedDot} />}
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  wrap: {
+    // 8px bo góc theo yêu cầu.
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#0b1512',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  failedDot: {
+    position: 'absolute', top: 5, right: 5,
+    width: 7, height: 7, borderRadius: 4, backgroundColor: '#fbbf24',
+  },
+});
+
+export default TreeModelPreview;

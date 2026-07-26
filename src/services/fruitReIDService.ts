@@ -12,6 +12,7 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ensureOrilifeToken } from './orilifeDidAuth';
 
 // ---------------------------------------------------------------------------
 // Types — khớp ĐÚNG response field-reid (server.py)
@@ -141,12 +142,22 @@ async function _authHeader(): Promise<string | null> {
   }
 }
 
+/** Base máy-chủ từ URL endpoint (`https://x/api/y` → `https://x`) — để ký lại token đúng chỗ. */
+function _baseOf(url: string): string {
+  const i = url.indexOf('/api/');
+  return i > 0 ? url.slice(0, i) : url;
+}
+
 async function _apiCall<T>(
   url: string,
   method: 'GET' | 'POST',
   body?: FormData,
   attempt = 0,
 ): Promise<ApiResult<T>> {
+  // Chưa có token (mở app xong vào THẲNG luồng quả, chưa qua màn nào ký DID) →
+  // tự ký bằng DID trước khi gọi. Không có bước này thì mọi endpoint quả trả 401
+  // "Phiên hết hạn" oan — cùng lỗi đã sửa ở farmSlice/FarmDetailScreen.
+  await ensureOrilifeToken(_baseOf(url));
   const auth = await _authHeader();
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (auth) headers['Authorization'] = auth;
@@ -157,7 +168,13 @@ async function _apiCall<T>(
     const resp = await fetch(url, { method, headers, body: body ?? undefined, signal: controller.signal });
     clearTimeout(timer);
 
-    if (resp.status === 401) return { ok: false, error: { type: 'auth_error', detail: 'Phiên hết hạn', http_status: 401 } };
+    if (resp.status === 401) {
+      // Token hết hạn → ký lại bằng DID 1 lần rồi thử lại (khớp cách farmSlice xử lý).
+      if (attempt === 0 && (await ensureOrilifeToken(_baseOf(url), { force: true }))) {
+        return _apiCall<T>(url, method, body, 1);
+      }
+      return { ok: false, error: { type: 'auth_error', detail: 'Phiên hết hạn', http_status: 401 } };
+    }
     if (resp.status === 429) {
       const ra = resp.headers.get('Retry-After');
       return { ok: false, error: { type: 'rate_limited', detail: 'Quá nhiều yêu cầu', http_status: 429, retry_after_seconds: ra ? parseInt(ra, 10) : 60 } };

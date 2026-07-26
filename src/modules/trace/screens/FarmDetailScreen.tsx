@@ -1192,8 +1192,11 @@ const FarmDetailMode = ({
               (navigation.navigate as any)('TreeDetail', { tree: item })
             }}
             onView3D={() => {
-              (navigation.navigate as any)('TreeViewer3D', {
-                code: item.code ?? item.shortCode ?? '',
+              // Mở KHÔNG-GIAN 3D chung (vườn ⇄ cây ⇄ quả) thay cho WebView /view/{code}.
+              (navigation.navigate as any)('Space3D', {
+                mode: 'tree',
+                treeId: item.id,
+                farmId: item.farmId ?? farm?.id,
                 treeName: formatTreeName(item, farm),
               });
             }}

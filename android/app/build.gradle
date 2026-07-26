@@ -51,6 +51,9 @@ react {
 
     /* Autolinking */
     autolinkLibrariesWithApp()
+    // CỐ Ý KHÔNG dùng entryFile/cliFile/bundleCommand="export:embed" mà
+    // install-expo-modules thêm vào: app vẫn đóng gói bằng RN CLI + metro RN gốc.
+    // Chỉ mượn expo-modules-core để autolink expo-gl (nền 3D).
 }
 
 /**

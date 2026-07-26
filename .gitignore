@@ -88,3 +88,8 @@ replay_pid*
 .mcp.json
 .claude/settings.local.json
 
+
+# Expo
+.expo
+dist/
+web-build/

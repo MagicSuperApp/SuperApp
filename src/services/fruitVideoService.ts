@@ -25,18 +25,35 @@ const UPLOAD_TIMEOUT_MS = 180_000; // video + mạng yếu → nới rộng (ser
 /** Giới hạn dung-lượng clip (spec: 80MB). */
 export const MAX_VIDEO_BYTES = 80 * 1024 * 1024;
 
+/**
+ * Một quả trong 1 khung. LỒNG bên trong FrameDetection — KHÔNG phải phần-tử cấp trên.
+ * (Sửa lệch schema OriLife báo 2026-07-24: backend server.py:2090-2105 trả detections[]
+ *  theo KHUNG, quả nằm trong `fruits[]`. Bản cũ khai phẳng {bbox,confidence} ở cấp
+ *  detection → luôn undefined; là mìn khi ai đó vẽ khung quả từ kết-quả video.)
+ */
+export interface VideoFruit {
+  bbox: [number, number, number, number];
+  confidence: number;
+  /** Tỉ lệ diện tích quả trên khung. */
+  area_frac: number;
+}
+
+/** Một KHUNG chắt từ clip; số quả trong khung = `fruits.length` (KHÔNG phải detections.length). */
 export interface FruitDetection {
-  bbox?: [number, number, number, number];
-  confidence?: number;
-  t_offset_s?: number;
+  frame_idx: number;
+  t_offset_s: number | null;
+  n_fruits: number;
+  fruits: VideoFruit[];
 }
 
 export interface FruitVideoResult {
   ok: boolean;
   /** Số khung server chắt được từ clip. */
   n_frames?: number;
-  /** Số quả nhiều nhất thấy trong 1 khung. */
+  /** Số quả nhiều nhất thấy trong 1 khung (ước-lượng HSV — hedge "khoảng ~N"). */
   n_fruits_max?: number;
+  /** Ước-lượng sơ-bộ (detector HSV), KHÔNG phải đếm chính-xác. */
+  fruit_count_method?: string;
   detections?: FruitDetection[];
   video_cid?: string;
   event_id?: string;

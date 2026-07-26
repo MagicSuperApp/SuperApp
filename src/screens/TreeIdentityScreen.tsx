@@ -224,16 +224,31 @@ const TreeIdentityScreen: React.FC = () => {
         if (granted !== PermissionsAndroid.RESULTS.GRANTED) return;
       }
 
-      geoWatchRef.current = Geolocation.watchPosition(
-        pos => {
-          dispatch(
-            setGPS({
-              lat: pos.coords.latitude,
-              lng: pos.coords.longitude,
-              accuracy: pos.coords.accuracy,
-            }),
-          );
+      const applyPos = (pos: {
+        coords: { latitude: number; longitude: number; accuracy: number };
+      }) =>
+        dispatch(
+          setGPS({
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+            accuracy: pos.coords.accuracy,
+          }),
+        );
+
+      // Field-test Đức 26/07 mục 2: trước chỉ watchPosition(enableHighAccuracy)
+      // KHÔNG timeout/maximumAge → chờ fix vệ tinh 30s–vài phút, Redux gps=null,
+      // enroll cây mới kẹt ở 400 need_gps. Nay LẤY NGAY vị trí thô (chấp nhận
+      // last-known tới 60s, timeout 5s) để mở khoá luồng, RỒI watch tinh chỉnh dần.
+      Geolocation.getCurrentPosition(
+        applyPos,
+        _err => {
+          // Không lấy được fix nhanh — watch bên dưới sẽ bù khi có tín hiệu.
         },
+        { enableHighAccuracy: false, maximumAge: 60_000, timeout: 5_000 },
+      );
+
+      geoWatchRef.current = Geolocation.watchPosition(
+        applyPos,
         _err => {
           // GPS không sẵn — tiếp tục không có toạ độ
         },

@@ -321,7 +321,13 @@ const TreeDetailScreen = () => {
 
   const handleAddFruit = () => {
     if (!tree) return;
-    (navigation as any).navigate('TreeIdentity');
+    // Field-test Đức 26/07 mục 11: stub cũ navigate('TreeIdentity') = mở nhầm luồng
+    // NHẬN DIỆN CÂY. "Thêm quả" phải vào luồng quả theo đúng cây này (tự điền tree_id).
+    (navigation as any).navigate('FruitVideo', {
+      treeId: tree.id,
+      treeName: (tree as any).name,
+      farmId: tree.farmId,
+    });
   };
 
   // Quay video quả cho CHÍNH cây này (OriLife User-Action-Flow) — tự điền tree_id.
@@ -336,7 +342,13 @@ const TreeDetailScreen = () => {
 
   const handleScan3D = () => {
     if (!tree) return;
-    (navigation as any).navigate('TreeIdentity');
+    // Field-test Đức 26/07 mục 8: stub cũ navigate('TreeIdentity') = mở nhầm màn
+    // nhận diện. Nút "Xem 3D" phải mở TreeViewer3D (dựng /view/{code}). Mẫu khớp
+    // FarmDetailScreen.onView3D. Model dựng async phía server — màn tự hiện "đang dựng".
+    (navigation as any).navigate('TreeViewer3D', {
+      code: (tree as any).code ?? (tree as any).shortCode ?? '',
+      treeName: (tree as any).name,
+    });
   };
 
   const handleSaveOnnet = async () => {

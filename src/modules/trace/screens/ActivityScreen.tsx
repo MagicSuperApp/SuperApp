@@ -1,6 +1,6 @@
 // modules/trace/screens/ActivityScreen.tsx
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -25,7 +25,24 @@ import { RootState } from '../../../store';
 import { useAppDispatch } from '../../../store/hooks';
 import { showSuccess, showError, showWarning, showInfo } from '../../../utils/alert';
 
-interface RouteParams { farm: any }
+// image-picker nạp mềm (giống FruitVideo/CareScan) — máy chưa cài thì báo rõ, không crash.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const imagePicker = (() => {
+  try { return require('react-native-image-picker'); } catch { return null; }
+})();
+
+// Quay clip ngắn cho hoạt động — trả về đường dẫn file để bật nút "Lưu onnet".
+const VIDEO_OPTIONS = {
+  mediaType: 'video' as const,
+  videoQuality: 'high' as const,
+  durationLimit: 30,
+  saveToPhotos: false,
+};
+
+// Nhận cả {farm} (caller cũ FarmDetail) lẫn {tree} (caller TreeDetail). Trước đây
+// TreeDetail truyền {tree} nhưng màn chỉ đọc `farm` → farm undefined → handleSave
+// thoát sớm, không lưu được hoạt động. Giờ suy ra farm từ tree.farmId.
+interface RouteParams { farm?: any; tree?: any }
 
 const ACTIVITIES = [
   {
@@ -223,7 +240,14 @@ const ActivityScreen = () => {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const route = useRoute();
-  const { farm } = (route.params ?? {}) as RouteParams;
+  const { farm: farmParam, tree } = (route.params ?? {}) as RouteParams;
+  const farms = useSelector((state: RootState) => state.farm.farms);
+  // farm hiệu dụng: ưu tiên param farm; nếu chỉ có tree thì tra vườn theo tree.farmId
+  // (fallback object tối thiểu để vẫn ghi được farmId khi vườn chưa nạp vào store).
+  const farm = farmParam
+    ?? (tree
+      ? farms.find((f: any) => f.id === tree.farmId) ?? { id: tree.farmId, name: tree.name ?? '—' }
+      : undefined);
   const dispatch = useAppDispatch();
   const user = useSelector((state: RootState) => state.user.currentUser);
   // Chỉ tin số dư đến TỪ CHAIN (selector chung). null = chưa biết số dư thật → không chặn nhầm.
@@ -232,7 +256,6 @@ const ActivityScreen = () => {
   const magicBalance = wallet?.magicBalance ?? 0;
 
   const [selected, setSelected] = useState<string | null>(null);
-  const [recording, setRecording] = useState(false);
   const [saving, setSaving] = useState(false);
   const [scannedFiles, setScannedFiles] = useState<string[]>([]);
   const [syncStatus, setSyncStatus] = useState('');
@@ -241,6 +264,25 @@ const ActivityScreen = () => {
   const selectedActivity = ACTIVITIES.find(a => a.type === selected);
   const hasFiles = scannedFiles.length > 0;
   const canSave = !!selected && !saving && hasFiles;
+
+  // Mở CAMERA QUAY VIDEO ngay (OS camera) và nhận đường dẫn file trả về → set vào
+  // scannedFiles để bật "Lưu onnet". Thay cho luồng cũ điều hướng sang TreeIdentity
+  // (màn nhận diện cây) vốn KHÔNG trả file về nên nút Lưu không bao giờ bật.
+  const handleRecord = useCallback(() => {
+    if (!imagePicker?.launchCamera) {
+      showError('Chưa cài camera', 'Cần cập nhật app (react-native-image-picker).');
+      return;
+    }
+    imagePicker.launchCamera(VIDEO_OPTIONS, (response: any) => {
+      if (response.didCancel) return;
+      if (response.errorCode) {
+        showError('Lỗi camera', response.errorMessage ?? 'Không mở được camera. Kiểm tra quyền.');
+        return;
+      }
+      const asset = response.assets?.[0];
+      if (asset?.uri) setScannedFiles([asset.uri]);
+    });
+  }, []);
 
   const handleSave = async () => {
     if (!selected || !farm || !user || !selectedActivity) return;
@@ -281,7 +323,8 @@ const ActivityScreen = () => {
       // thumbnailPath) which intentionally diverges from the in-memory Activity type.
       await dispatch(saveActivity(activityData as unknown as Activity));
       dispatch(updateCredits({ magic: -selectedActivity.credits, lamp: 0, ada: 0 }));
-      await syncService.addSyncItem('activity', { activity: activityData, farmName: farm.name }, []);
+      // Đính kèm clip đã quay để sync/upload (trước đây truyền [] → mất bằng chứng media).
+      await syncService.addSyncItem('activity', { activity: activityData, farmName: farm.name }, scannedFiles);
 
       showSuccess('Lưu trữ thành công', `Tiêu thụ: ${selectedActivity.credits} MAGIC`);
       navigation.goBack();
@@ -292,14 +335,6 @@ const ActivityScreen = () => {
       setSyncStatus('');
     }
   };
-
-  // "Ghi hình" cũ (scanner) thay bằng màn Nhận diện (TreeIdentity) — giống nút quick "Nhận diện".
-  useEffect(() => {
-    if (recording && selectedActivity) {
-      setRecording(false);
-      (navigation as any).navigate('TreeIdentity', farm ? { farmId: farm.id } : undefined);
-    }
-  }, [recording, selectedActivity]);
 
   return (
     <View style={styles.root}>
@@ -347,7 +382,14 @@ const ActivityScreen = () => {
               key={act.type}
               activity={act}
               selected={selected === act.type}
-              onSelect={() => { setSelected(p => p === act.type ? null : act.type); setScannedFiles([]); }}
+              onSelect={() => {
+                // Chọn 1 hoạt động → MỞ ỐNG KÍNH NGAY (bỏ bước bấm "Bắt đầu ghi hình").
+                // Bấm lại chính nó = bỏ chọn. Chọn cái mới = mở camera quay luôn.
+                if (selected === act.type) { setSelected(null); setScannedFiles([]); return; }
+                setSelected(act.type);
+                setScannedFiles([]);
+                handleRecord();
+              }}
             />
           ))}
         </View>
@@ -371,7 +413,7 @@ const ActivityScreen = () => {
                 </View>
                 <TouchableOpacity
                   style={styles.retakeBtn}
-                  onPress={() => { setScannedFiles([]); setRecording(true); }}
+                  onPress={handleRecord}
                 >
                   <Icon name="refresh" size={14} color={COLORS.textSub} />
                   <Text style={styles.retakeText}>Ghi lại</Text>
@@ -380,7 +422,7 @@ const ActivityScreen = () => {
             ) : (
               <TouchableOpacity
                 style={[styles.cameraCard, { borderColor: `${selectedActivity.color}30` }]}
-                onPress={() => setRecording(true)}
+                onPress={handleRecord}
                 activeOpacity={0.85}
               >
                 <View style={[styles.cameraIcon, { backgroundColor: selectedActivity.bg }]}>

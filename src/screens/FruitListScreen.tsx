@@ -167,10 +167,12 @@ const FruitListScreen: React.FC = () => {
         <TouchableOpacity
           style={styles.mapBtn}
           activeOpacity={0.85}
-          onPress={() => navigation.navigate('TreeMap2D', { treeId, treeName: treeName || layout?.tree.name })}
+          onPress={() => navigation.navigate('Space3D', {
+            mode: 'tree', treeId, treeName: treeName || layout?.tree.name,
+          })}
         >
-          <Icon name="map-outline" size={16} color="#fff" />
-          <Text style={styles.mapBtnTxt}>Sơ đồ cây</Text>
+          <Icon name="cube-scan" size={16} color="#fff" />
+          <Text style={styles.mapBtnTxt}>Sơ đồ 3D</Text>
         </TouchableOpacity>
       </View>
 

@@ -5,7 +5,11 @@ buildscript {
         compileSdkVersion = 36
         targetSdkVersion = 36
         ndkVersion = "27.1.12297006"
-        kotlinVersion = "1.9.24"
+        // Kotlin 2.1.20 = ĐÚNG bản RN 0.84 dùng trong version catalog của
+        // @react-native/gradle-plugin, và cũng là bản KSP dưới đây đã ghim
+        // (2.1.20-1.0.32). Cũng là mức TỐI THIỂU expo-modules yêu cầu (nền 3D
+        // expo-gl). Trước đây ghi 1.9.24 → lệch với cả RN lẫn KSP.
+        kotlinVersion = "2.1.20"
     }
     repositories {
         google()
@@ -31,4 +35,23 @@ allprojects {
     }
 }
 
+// expo-constants (đi kèm gói `expo`, kéo theo bởi expo-asset) chạy task
+// `createExpoConfig` ở mỗi lần build, và task đó ĐỌC `.env` bằng @expo/env.
+// @expo/env chặn cứng các khoá "nguy hiểm" — file .env của dự án có khoá `ENV`
+// → build gãy: "Refused to load dangerous environment variables from .env files".
+//
+// App này KHÔNG dùng hệ config của Expo: .env được nạp bằng `react-native-dotenv`
+// lúc Babel chạy, và app.json là JSON tĩnh không nội suy biến. Nên bảo Expo ĐỪNG
+// đọc .env. Đặt biến CHỈ cho đúng task đó (không đụng môi trường build chung).
+subprojects { sub ->
+    if (sub.name == 'expo-constants') {
+        // configureEach = cấu hình lười: task được đăng ký trong afterEvaluate của
+        // chính expo-constants (tức là SAU khối này), vẫn bắt được.
+        sub.tasks.matching { it.name == 'createExpoConfig' }.configureEach { t ->
+            t.environment 'EXPO_NO_DOTENV', '1'
+        }
+    }
+}
+
 apply plugin: "com.facebook.react.rootproject"
+apply plugin: "expo-root-project"

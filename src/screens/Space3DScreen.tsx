@@ -16,6 +16,13 @@
  * Đặt vị-trí cây thủ công: bật chế độ đặt → chạm mặt đất → cắt tia xuống mặt
  * phẳng y=0 → lưu (x,z) vào máy (server chưa có chỗ lưu vị-trí đặt tay).
  *
+ * NỀN BẢN ĐỒ + hai kiểu xem (nút ở cạnh phải):
+ *   3D — máy quay nghiêng, model cây dựng đứng, ảnh bản đồ trải dưới thửa đất.
+ *   2D — nhìn thẳng từ trên xuống, BẮC HƯỚNG LÊN, khoá nghiêng, cây thu về chấm
+ *        dẹt để không che ảnh; 1 ngón KÉO bản đồ thay vì xoay.
+ * Ảnh nền lấy từ ô raster Web-Mercator và đặt theo đúng ĐIỂM NỐI ranh giới đã vẽ
+ * lúc thêm vườn (xem `mapTiles.ts`) — không dùng thư-viện bản-đồ nào.
+ *
  * Route params: { mode?, farmId?, treeId?, treeName?, fruitId? }
  */
 
@@ -26,7 +33,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
 import { Canvas, useThree } from '@react-three/fiber/native';
 import * as THREE from 'three';
 
@@ -35,10 +42,13 @@ import { getFruitViews, type FruitView } from '../services/fruitReIDService';
 import { ringRadius, type Vec2 } from '../features/space3d/geo';
 import { TREE_HEIGHT, coordToLocalMeters, coordToZone, ZONE_LABEL } from '../features/space3d/treeFrame';
 import { SPACE_COLORS, fruitColor } from '../features/space3d/visuals';
-import { SpaceController } from '../features/space3d/controller';
+import { PHI_MIN, SpaceController } from '../features/space3d/controller';
 import { labelBus, type ScreenLabel } from '../features/space3d/labelBus';
 import { CameraDriver, Projector, type LabelPoint } from '../features/space3d/scene/Rig';
 import FarmGround from '../features/space3d/scene/FarmGround';
+import MapGround, { type MapGroundStatus } from '../features/space3d/scene/MapGround';
+import TreeMarkers from '../features/space3d/scene/TreeMarkers';
+import { DEFAULT_MAP_SOURCE_ID } from '../features/space3d/mapTiles';
 import TreeModel, {
   subscribeTreeModelStatus, type TreeModelStatus,
 } from '../features/space3d/scene/TreeModel';
@@ -66,6 +76,12 @@ const TAP_MS = 320;
 
 /** Số nhãn tối đa vẽ cùng lúc — vườn vài trăm cây thì chữ sẽ chồng thành cháo. */
 const MAX_LABELS = 26;
+
+/** Góc mở ống kính — khai ở đây vì vừa truyền cho <Canvas> vừa dùng để đổi px ⇄ mét. */
+const CAMERA_FOV = 55;
+
+/** Kiểu xem: cảnh 3D nghiêng hay bản đồ 2D nhìn thẳng từ trên xuống. */
+type ViewMode = '3d' | '2d';
 
 interface PickCtx { camera: THREE.Camera | null; width: number; height: number }
 
@@ -143,6 +159,7 @@ const Space3DScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const route = useRoute();
   const insets = useSafeAreaInsets();
+  const isFocused = useIsFocused();
   const params = (route.params ?? {}) as RouteParams;
 
   const [focusTreeId, setFocusTreeId] = useState<string | null>(params.treeId ?? null);
@@ -156,6 +173,13 @@ const Space3DScreen: React.FC = () => {
   useEffect(() => subscribeTreeModelStatus(setModelStatuses), []);
 
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
+
+  // ── Bản đồ nền + kiểu xem ──────────────────────────────────────────────────
+  const [viewMode, setViewMode] = useState<ViewMode>('3d');
+  const [mapOn, setMapOn] = useState(true);
+  // Nút đổi nguồn ảnh đang được tắt (xem khối chú thích ở phần HUD) → chỉ đọc.
+  const [mapSourceId] = useState<string>(DEFAULT_MAP_SOURCE_ID);
+  const [mapStatus, setMapStatus] = useState<MapGroundStatus | null>(null);
 
   const data = useSpaceData(params.farmId, focusTreeId ?? undefined);
   const { ring, hasBoundary, trees, fruits, fruitsLoading, fruitsError } = data;
@@ -212,17 +236,75 @@ const Space3DScreen: React.FC = () => {
 
   useFocusEffect(useCallback(() => () => labelBus.reset(), []));
 
+  // `modeRef`: các hàm dưới đây được tạo TRƯỚC khi biết kiểu xem hiện tại (chuỗi
+  // useCallback phụ thuộc lẫn nhau). Đọc qua ref để không phải xáo lại thứ tự.
+  const modeRef = useRef<ViewMode>('3d');
+
   const flyToTree = useCallback((t: SceneTree) => {
     setFocusTreeId(t.id);
     setSelectedFruitId(null);
+    // Ở chế độ 2D thì "vào xem cây" = kéo bản đồ về giữa cây và phóng lại gần,
+    // KHÔNG được nghiêng máy quay (nghiêng là hết 2D).
+    if (modeRef.current === '2d') {
+      controller.flyTo({
+        target: new THREE.Vector3(t.pos.x, 0, t.pos.z),
+        theta: 0, phi: PHI_MIN, radius: 14,
+      }, 1.0, 0);
+      return;
+    }
     controller.flyTo(treePose(t), 1.6, 0.34);
   }, [controller, treePose]);
 
   const flyToFarm = useCallback(() => {
     setFocusTreeId(null);
     setSelectedFruitId(null);
+    if (modeRef.current === '2d') {
+      controller.flyTo({
+        target: new THREE.Vector3(0, 0, 0),
+        theta: 0, phi: PHI_MIN, radius: Math.max(16, farmRadius * 2.6),
+      }, 1.0, 0);
+      return;
+    }
     controller.flyTo(farmPose(), 1.3, 0.28);
-  }, [controller, farmPose]);
+  }, [controller, farmPose, farmRadius]);
+
+  // ── Chuyển 3D ⇄ 2D ─────────────────────────────────────────────────────────
+  // 2D = nhìn thẳng từ trên xuống + BẮC HƯỚNG LÊN (theta = 0). Không hạ hẳn phi
+  // về 0: khi máy quay dựng đúng trục đứng thì `lookAt` suy biến (hướng nhìn song
+  // song với vector "lên") và cảnh lật lung tung — PHI_MIN là mức nghiêng tối
+  // thiểu an toàn, mắt gần như không phân biệt được với chính diện.
+  const map2DPose = useCallback(() => ({
+    target: focusTree
+      ? new THREE.Vector3(focusTree.pos.x, 0, focusTree.pos.z)
+      : new THREE.Vector3(0, 0, 0),
+    theta: 0,
+    phi: PHI_MIN,
+    radius: focusTree ? 14 : Math.max(16, farmRadius * 2.6),
+  }), [focusTree, farmRadius]);
+
+  const changeViewMode = useCallback((next: ViewMode) => {
+    setViewMode(next);
+    modeRef.current = next;
+    controller.phiLocked = next === '2d';
+    if (next === '2d') {
+      controller.flyTo(map2DPose(), 0.9, 0);
+    } else {
+      controller.flyTo(focusTree ? treePose(focusTree) : farmPose(), 0.9, 0.1);
+    }
+  }, [controller, map2DPose, focusTree, treePose, farmPose]);
+
+  /**
+   * Bao nhiêu MÉT trên mặt đất ứng với 1 px màn — dùng để kéo bản đồ ở chế độ 2D
+   * đi đúng bằng quãng ngón tay đi. Suy từ chiều cao khung nhìn tại khoảng cách
+   * hiện tại: 2·r·tan(fov/2) mét trải trên `height` px.
+   */
+  const metersPerPixel = useCallback(() => {
+    const h = ctxRef.current.height || 1;
+    return (2 * controller.pose.radius * Math.tan((CAMERA_FOV * Math.PI) / 360)) / h;
+  }, [controller]);
+
+  /** Có ảnh bản đồ để đặt không — vườn chưa có toạ-độ GPS thì chịu. */
+  const mapVisible = mapOn && data.origin != null;
 
   // ── Chọn đối-tượng bằng phép chiếu ────────────────────────────────────────
   const handleTap = useCallback((px: number, py: number) => {
@@ -260,17 +342,19 @@ const Space3DScreen: React.FC = () => {
       setSelectedFruitId(null);
     }
 
-    // Toàn cảnh: bắt cây (ngắm vào thân, ~nửa chiều cao).
+    // Toàn cảnh: bắt cây. Chỗ ngắm phải khớp thứ đang VẼ — 3D thì nhắm vào thân
+    // (~nửa chiều cao), 2D thì cây chỉ còn chấm dẹt nằm sát mặt đất.
+    const pickY = viewMode === '2d' ? 0.1 : TREE_HEIGHT * 0.45;
     let bestTree: { tree: SceneTree; d: number } | null = null;
     for (const t of trees) {
       if (t.id === focusTreeId) continue;
-      const p = project(new THREE.Vector3(t.pos.x, TREE_HEIGHT * 0.45, t.pos.z), ctx);
+      const p = project(new THREE.Vector3(t.pos.x, pickY, t.pos.z), ctx);
       if (!p?.front) continue;
       const d = Math.hypot(p.x - px, p.y - py);
       if (d <= TAP_RADIUS_PX && (!bestTree || d < bestTree.d)) bestTree = { tree: t, d };
     }
     if (bestTree) flyToTree(bestTree.tree);
-  }, [placingTreeId, focusTree, focusTreeId, fruits, trees, data, flyToTree]);
+  }, [placingTreeId, focusTree, focusTreeId, fruits, trees, data, flyToTree, viewMode]);
 
   // ── Cử chỉ: 1 ngón xoay · 2 ngón phóng · chạm nhanh chọn ──────────────────
   // startedAt/moved: phân biệt CHẠM (chọn) với KÉO (xoay).
@@ -309,7 +393,12 @@ const Space3DScreen: React.FC = () => {
         return;
       }
       gesture.pinch = 0;
-      controller.orbit(g.dx - gesture.lastDx, g.dy - gesture.lastDy);
+      const stepX = g.dx - gesture.lastDx;
+      const stepY = g.dy - gesture.lastDy;
+      // 2D là bản đồ: 1 ngón phải KÉO nền chứ không xoay quanh tâm — và vì góc
+      // nghiêng bị khoá, kéo dọc mà gọi orbit() sẽ không có phản hồi gì cả.
+      if (viewMode === '2d') controller.panBy(stepX, stepY, metersPerPixel());
+      else controller.orbit(stepX, stepY);
       gesture.lastDx = g.dx;
       gesture.lastDy = g.dy;
     },
@@ -319,9 +408,13 @@ const Space3DScreen: React.FC = () => {
       if (quick) handleTap(e.nativeEvent.locationX, e.nativeEvent.locationY);
     },
     onPanResponderTerminate: resetGesture,
-  }), [controller, gesture, handleTap, resetGesture]);
+  }), [controller, gesture, handleTap, resetGesture, viewMode, metersPerPixel]);
 
   // ── Nhãn cần chiếu ────────────────────────────────────────────────────────
+  // Ở 2D, treo nhãn trên ngọn cây là vô nghĩa (nhìn từ trên xuống thì ngọn nằm
+  // ngay chồng lên gốc) → hạ nhãn xuống sát chấm cây.
+  const treeLabelY = viewMode === '2d' ? 0.3 : TREE_HEIGHT * 1.05;
+
   const labelPoints: LabelPoint[] = useMemo(() => {
     if (focusTree) {
       const base = new THREE.Vector3(focusTree.pos.x, 0, focusTree.pos.z);
@@ -329,7 +422,7 @@ const Space3DScreen: React.FC = () => {
         id: `tree:${focusTree.id}`,
         kind: 'tree',
         text: focusTree.name,
-        position: [base.x, TREE_HEIGHT * 1.08, base.z],
+        position: [base.x, treeLabelY, base.z],
       }];
       for (const f of fruits) {
         const [lx, ly, lz] = coordToLocalMeters(f.coord);
@@ -346,9 +439,9 @@ const Space3DScreen: React.FC = () => {
       id: `tree:${t.id}`,
       kind: 'tree' as const,
       text: t.name,
-      position: [t.pos.x, TREE_HEIGHT * 1.05, t.pos.z] as [number, number, number],
+      position: [t.pos.x, treeLabelY, t.pos.z] as [number, number, number],
     }));
-  }, [focusTree, fruits, trees]);
+  }, [focusTree, fruits, trees, treeLabelY]);
 
   // ── Ảnh các góc của 1 quả ─────────────────────────────────────────────────
   const [viewsModal, setViewsModal] = useState<{ fruit: SceneFruit; views: FruitView[]; loading: boolean; error: string | null } | null>(null);
@@ -369,6 +462,7 @@ const Space3DScreen: React.FC = () => {
       fruitId: f.fruitId,
       fruitName: f.name,
       initial: f.coord,
+      returnTo: 'Space3D',
     });
   }, [navigation, focusTree]);
 
@@ -378,7 +472,39 @@ const Space3DScreen: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusTreeId]));
 
+  // Đặt vị trí xong phải đứng NGUYÊN ở cây vừa làm việc, chọn lại đúng quả đó —
+  // rơi về toàn cảnh là mất mạch thao tác (và người dùng phải tự bay vào lại).
+  // Đọc xong thì XOÁ tham số, nếu không mỗi lần màn này vẽ lại nó sẽ ép chọn lại.
+  useEffect(() => {
+    const p = route.params as (RouteParams & { placedTreeId?: string; placedFruitId?: string }) | undefined;
+    if (!p?.placedTreeId) return;
+    setFocusTreeId(p.placedTreeId);
+    if (p.placedFruitId) setSelectedFruitId(p.placedFruitId);
+    navigation.setParams({
+      placedTreeId: undefined, placedFruitId: undefined, pickedFruitCoord: undefined,
+    } as any);
+  }, [route.params, navigation]);
+
   const treeCountLabel = `${trees.length} cây`;
+
+  /** Câu nhắc về lớp bản đồ — chỉ hiện khi có chuyện đáng nói. */
+  const mapNote = useMemo(() => {
+    if (!mapOn) return null;
+    if (!data.origin) {
+      return 'Vườn chưa có điểm nối GPS nào nên không đặt được ảnh bản đồ. Vẽ ranh giới ở màn Trang trại rồi mở lại.';
+    }
+    if (mapStatus && mapStatus.failed > 0) {
+      return mapStatus.loaded === 0
+        ? `Không tải được ảnh bản đồ (${mapStatus.error ?? 'lỗi mạng'}). Kiểm tra kết nối rồi bật lại lớp bản đồ.`
+        : `Thiếu ${mapStatus.failed}/${mapStatus.total} ô ảnh bản đồ.`;
+    }
+    return null;
+  }, [mapOn, data.origin, mapStatus]);
+
+  /** Cử chỉ khác nhau giữa hai kiểu xem → nói đúng cái đang dùng được. */
+  const gestureHint = viewMode === '2d'
+    ? '1 ngón kéo bản đồ · 2 ngón phóng'
+    : '1 ngón xoay · 2 ngón phóng';
 
   // Chỉ báo trạng-thái của MODEL cây đang mở (mỗi cây có thể dùng model khác nhau).
   const focusModelStatus = useMemo(
@@ -402,13 +528,29 @@ const Space3DScreen: React.FC = () => {
     <View style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor={SPACE_COLORS.bg} />
 
+      {/* CHỈ dựng canvas khi màn đang hiển thị.
+          Stack navigator GIỮ NGUYÊN màn bên dưới khi mở màn mới, nên khi sang
+          FruitPlace3D (cũng có <Canvas>) sẽ có HAI ngữ-cảnh expo-gl cùng sống và
+          cùng vẽ mỗi khung hình — quay về là cảnh giật. Tháo canvas lúc mất tiêu
+          điểm vừa cắt hẳn tình trạng đó, vừa bảo đảm lần quay lại luôn là một
+          ngữ-cảnh GL SẠCH (đúng thứ mà "back ra rồi vào lại" đang làm thủ công).
+          Tư-thế máy quay không mất: nó nằm ở `controller` ngoài canvas, khung đầu
+          tiên sau khi dựng lại là CameraDriver ghi lại ngay. */}
+      {isFocused ? (
       <Canvas
         style={styles.canvas}
-        camera={{ fov: 55, near: 0.1, far: 2000, position: [0, 20, 40] }}
+        camera={{ fov: CAMERA_FOV, near: 0.1, far: 2000, position: [0, 20, 40] }}
         gl={{ antialias: true }}
       >
         <color attach="background" args={[SPACE_COLORS.bg]} />
-        <fog attach="fog" args={[SPACE_COLORS.fog, farmRadius * 1.6, farmRadius * 7 + 60]} />
+        {/* Có bản đồ thì đẩy sương ra XA: sương vốn để tạo chiều sâu trên nền tối,
+            nhưng nó cũng nhuộm đen ảnh vệ tinh ở rìa, làm bản đồ như bị cháy góc. */}
+        <fog
+          attach="fog"
+          args={mapVisible
+            ? [SPACE_COLORS.fog, farmRadius * 3.4, farmRadius * 14 + 240]
+            : [SPACE_COLORS.fog, farmRadius * 1.6, farmRadius * 7 + 60]}
+        />
 
         <hemisphereLight args={['#9fd8bb', '#0a1410', 0.75]} />
         <ambientLight intensity={0.35} />
@@ -418,19 +560,34 @@ const Space3DScreen: React.FC = () => {
         <CameraDriver controller={controller} />
         <Projector points={labelPoints} />
 
-        <FarmGround ring={ring} hasBoundary={hasBoundary} />
-
-        {/* Không bọc Suspense: TreeModel tự trả null khi model chưa nạp xong / lỗi,
-            nên phần còn lại của cảnh (mặt đất, ranh giới, chấm quả) vẫn hiện. */}
-        {trees.map((t) => (
-          <TreeModel
-            key={t.id}
-            position={[t.pos.x, 0, t.pos.z]}
-            modelId={t.modelId}
-            rotationY={t.rotationY}
-            highlighted={t.id === focusTreeId || t.id === placingTreeId}
+        {/* Ảnh bản đồ nằm DƯỚI thửa đất; thửa đất chuyển thành lớp nhuộm mờ. */}
+        {mapVisible && (
+          <MapGround
+            ring={ring}
+            origin={data.origin}
+            sourceId={mapSourceId}
+            onStatus={setMapStatus}
           />
-        ))}
+        )}
+
+        <FarmGround ring={ring} hasBoundary={hasBoundary} mapUnder={mapVisible} />
+
+        {/* 2D: cây thu về chấm dẹt để không che ảnh bản đồ (và nhẹ hơn nhiều).
+            3D: model thật. Không bọc Suspense — TreeModel tự trả null khi model
+            chưa nạp xong / lỗi, nên mặt đất, ranh giới, chấm quả vẫn hiện. */}
+        {viewMode === '2d' ? (
+          <TreeMarkers trees={trees} highlightIds={[focusTreeId, placingTreeId]} />
+        ) : (
+          trees.map((t) => (
+            <TreeModel
+              key={t.id}
+              position={[t.pos.x, 0, t.pos.z]}
+              modelId={t.modelId}
+              rotationY={t.rotationY}
+              highlighted={t.id === focusTreeId || t.id === placingTreeId}
+            />
+          ))
+        )}
 
         {focusTree && (
           <FruitDots
@@ -442,6 +599,9 @@ const Space3DScreen: React.FC = () => {
           />
         )}
       </Canvas>
+      ) : (
+        <View style={styles.canvas} />
+      )}
 
       {/* Lớp bắt cử chỉ — nằm trên canvas, dưới HUD */}
       <View style={StyleSheet.absoluteFill} {...panResponder.panHandlers} />
@@ -488,6 +648,60 @@ const Space3DScreen: React.FC = () => {
         )}
       </View>
 
+      {/* ── Bảng điều khiển cạnh phải: kiểu xem + lớp bản đồ ──────────────────
+          Đặt ở giữa cạnh phải để không đụng thanh tiêu đề (trên), thẻ quả và
+          dòng gợi ý (dưới), băng "đang đặt vị trí" (top: 108). */}
+      <View style={styles.sideDock} pointerEvents="box-none">
+        <View style={styles.modeSwitch}>
+          {(['3d', '2d'] as ViewMode[]).map((m) => {
+            const on = viewMode === m;
+            return (
+              <TouchableOpacity
+                key={m}
+                style={[styles.modeBtn, on && styles.modeBtnOn]}
+                onPress={() => changeViewMode(m)}
+                activeOpacity={0.85}
+              >
+                <Text style={[styles.modeTxt, on && styles.modeTxtOn]}>{m.toUpperCase()}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <TouchableOpacity
+          style={[styles.dockBtn, mapVisible && styles.dockBtnOn]}
+          onPress={() => setMapOn((v) => !v)}
+          activeOpacity={0.85}
+        >
+          <Icon
+            name={mapOn ? 'layers' : 'layers-off'}
+            size={19}
+            color={mapVisible ? '#06120c' : SPACE_COLORS.text}
+          />
+        </TouchableOpacity>
+
+        {/* Đổi nguồn ảnh nền — chỉ có nghĩa khi lớp bản đồ đang bật.
+        {mapVisible && MAP_SOURCES.length > 1 && (
+          <TouchableOpacity
+            style={styles.dockBtn}
+            onPress={() => {
+              const i = MAP_SOURCES.findIndex((s) => s.id === mapSourceId);
+              setMapSourceId(MAP_SOURCES[(i + 1) % MAP_SOURCES.length].id);
+            }}
+            activeOpacity={0.85}
+          >
+            <Icon
+              name={mapSourceId === 'satellite' ? 'satellite-variant' : 'map-outline'}
+              size={18}
+              color={SPACE_COLORS.text}
+            />
+            <Text style={styles.dockBtnTxt} numberOfLines={1}>
+              {getMapSource(mapSourceId).label}
+            </Text>
+          </TouchableOpacity>
+        )} */}
+      </View>
+
       {/* Hướng dẫn / trạng thái */}
       {placingTreeId ? (
         <View style={styles.placingBanner} pointerEvents="box-none">
@@ -523,6 +737,15 @@ const Space3DScreen: React.FC = () => {
               ? `Đang dùng cây tự tạo — không nạp được "${getTreeModel(focusModelStatus.modelId).label}": ${focusModelStatus.message}`
               : focusModelStatus.message}
           </Text>
+        </View>
+      ) : null}
+
+      {/* Lớp bản đồ trống thì phải nói RÕ vì sao — nếu không người dùng chỉ thấy
+          nền tối và tưởng nút bản đồ bị hỏng. */}
+      {mapNote ? (
+        <View style={styles.mapNote} pointerEvents="none">
+          <Icon name="map-marker-off" size={15} color="#fbbf24" />
+          <Text style={styles.modelWarnTxt} numberOfLines={3}>{mapNote}</Text>
         </View>
       ) : null}
 
@@ -570,7 +793,7 @@ const Space3DScreen: React.FC = () => {
               ? `⚠️ ${fruitsError}`
               : fruits.length === 0 && !fruitsLoading
                 ? 'Cây này chưa có quả nào — thêm quả ở màn Chi tiết cây.'
-                : 'Chạm 1 chấm sáng để xem quả · 1 ngón xoay · 2 ngón phóng'}
+                : `Chạm 1 chấm sáng để xem quả · ${gestureHint}`}
           </Text>
         </View>
       ) : (
@@ -578,7 +801,7 @@ const Space3DScreen: React.FC = () => {
           <Text style={styles.hintTxt}>
             {trees.length === 0
               ? 'Vườn chưa có cây nào.'
-              : 'Chạm 1 cây để bay vào xem quả · 1 ngón xoay · 2 ngón phóng'}
+              : `Chạm 1 cây để ${viewMode === '2d' ? 'xem quả' : 'bay vào xem quả'} · ${gestureHint}`}
           </Text>
         </View>
       )}
@@ -615,6 +838,14 @@ const Space3DScreen: React.FC = () => {
                     onPress={() => pickModel(m.id)}
                     activeOpacity={0.85}
                   >
+                    <View style={{
+                      width: "100%",
+                      height: "100%",
+                      position: "absolute",
+                      zIndex: 1,
+                      top: 0,
+                      left: 0,
+                    }}></View>
                     {/* Icon nút = chính model đó, dựng 3D và quay chậm. */}
                     <TreeModelPreview modelId={m.id} size={tileInner} />
                     <Text style={styles.modelLabel} numberOfLines={1}>{m.label}</Text>
@@ -706,6 +937,32 @@ const styles = StyleSheet.create({
   title: { fontSize: 19, fontWeight: '800', color: SPACE_COLORS.text, letterSpacing: -0.3 },
   subtitle: { fontSize: 11, color: SPACE_COLORS.textMuted, marginTop: 1 },
 
+  // Bảng điều khiển cạnh phải (kiểu xem + lớp bản đồ)
+  sideDock: {
+    position: 'absolute', right: 12, top: '38%',
+    alignItems: 'flex-end', gap: 10,
+  },
+  modeSwitch: {
+    backgroundColor: SPACE_COLORS.hudBg,
+    borderWidth: 1, borderColor: SPACE_COLORS.hudBorder,
+    borderRadius: 14, padding: 3, gap: 3,
+  },
+  modeBtn: {
+    width: 38, height: 32, borderRadius: 11,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  modeBtnOn: { backgroundColor: SPACE_COLORS.accent },
+  modeTxt: { color: SPACE_COLORS.textMuted, fontSize: 12, fontWeight: '800', letterSpacing: 0.4 },
+  modeTxtOn: { color: '#06120c' },
+  dockBtn: {
+    minWidth: 44, height: 38, borderRadius: 13, paddingHorizontal: 9,
+    alignItems: 'center', justifyContent: 'center', gap: 1,
+    backgroundColor: SPACE_COLORS.hudBg,
+    borderWidth: 1, borderColor: SPACE_COLORS.hudBorder,
+  },
+  dockBtnOn: { backgroundColor: SPACE_COLORS.accent, borderColor: SPACE_COLORS.accent },
+  dockBtnTxt: { color: SPACE_COLORS.textMuted, fontSize: 8, fontWeight: '700' },
+
   treeLabel: {
     position: 'absolute', width: 140, textAlign: 'center',
     fontSize: 12, fontWeight: '700', color: SPACE_COLORS.text,
@@ -744,6 +1001,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 9,
   },
   modelWarnTxt: { flex: 1, color: SPACE_COLORS.textMuted, fontSize: 11, lineHeight: 15 },
+
+  // Nằm TRÊN modelWarn để hai câu nhắc không đè lên nhau khi cùng xuất hiện.
+  mapNote: {
+    position: 'absolute', left: 14, right: 70, bottom: 136,
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+    backgroundColor: SPACE_COLORS.hudBg, borderRadius: 12,
+    borderWidth: 1, borderColor: SPACE_COLORS.hudBorder,
+    paddingHorizontal: 12, paddingVertical: 9,
+  },
 
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,

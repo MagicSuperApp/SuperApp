@@ -27,14 +27,26 @@ export interface ViewDef {
   label: string;
   /** Nhắc người dùng đang kéo trục nào. */
   hint: string;
-  icon: string;
+  /** Thứ tự trong luồng đặt vị trí (1-based) — hiện lên nhãn "Bước n/3". */
+  step: number;
 }
 
+/**
+ * Thứ tự cố định: Trước → Bên → Trên.
+ * Hai hướng đầu đã đủ khoá cả 3 trục; hướng Trên là bước SOÁT LẠI (nhìn từ trời
+ * thấy ngay quả nằm lệch trong/ngoài tán) rồi mới xác nhận.
+ */
 export const VIEW_DEFS: ViewDef[] = [
-  { key: 'front', label: 'Trước', hint: 'Kéo ngang = trái/phải · kéo dọc = cao/thấp', icon: 'image-filter-center-focus' },
-  { key: 'side',  label: 'Bên',   hint: 'Kéo ngang = trước/sau · kéo dọc = cao/thấp', icon: 'arrow-left-right' },
-  { key: 'top',   label: 'Trên',  hint: 'Nhìn từ trên xuống · kéo = trái/phải & trước/sau', icon: 'arrow-expand-all' },
+  { key: 'front', label: 'Trước', hint: 'Kéo ngang = trái/phải · kéo dọc = cao/thấp', step: 1 },
+  { key: 'side',  label: 'Bên',   hint: 'Kéo ngang = trước/sau · kéo dọc = cao/thấp', step: 2 },
+  { key: 'top',   label: 'Trên',  hint: 'Nhìn từ trên xuống · kéo = trái/phải & trước/sau', step: 3 },
 ];
+
+/** Hướng kế tiếp trong luồng. `null` = đang ở hướng CUỐI → bước xác nhận. */
+export function nextView(view: ViewDir): ViewDir | null {
+  const i = VIEW_DEFS.findIndex((v) => v.key === view);
+  return VIEW_DEFS[i + 1]?.key ?? null;
+}
 
 /** Tâm ngắm của camera trong hệ MÉT của cây (giữa thân) — điểm này rơi vào giữa canvas. */
 export const LOOK_AT_M: [number, number, number] = [0, TREE_HEIGHT / 2, 0];

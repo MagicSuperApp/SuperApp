@@ -16,7 +16,7 @@ import type { FruitStatus } from '../../services/fruitReIDService';
 export const SPACE_COLORS = {
   bg: '#05090c',
   fog: '#05090c',
-  ground: '#0e1a13',
+  ground: '#939291',
   groundEdge: '#3ddc84',
   grid: '#16302a',
   hudBg: 'rgba(6,12,10,0.82)',

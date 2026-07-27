@@ -15,7 +15,7 @@
  * vì sai lệch đó là thông tin cho người dùng biết ranh giới hoặc GPS đang lệch.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../../store';
 import type { Farm, Tree } from '../../modules/trace/types';
@@ -78,10 +78,21 @@ export function useSpaceData(farmIdParam?: string, focusTreeId?: string): SpaceD
   const allTrees = useSelector((s: RootState) => s.farm.trees);
 
   // farmId có thể không được truyền (mở thẳng từ chi tiết cây) → suy từ cây.
+  //
+  // BÁM DÍNH khi đã biết: mở màn từ Chi tiết cây / Danh sách quả thì route KHÔNG
+  // có farmId, vườn chỉ suy ra được qua cây đang mở. Bỏ chọn cây (bấm "xem toàn
+  // cảnh", quay về từ màn đặt vị trí…) mà để farmId rơi về undefined thì:
+  //   · `farm` = null → mất RANH GIỚI → mặt đất tụt về ô vuông mặc định,
+  //   · `origin` = null → LỚP BẢN ĐỒ biến mất,
+  //   · `farmTrees` hoá thành TẤT CẢ cây của mọi vườn.
+  // Triệu chứng thấy được: ra toàn cảnh thì không có bản đồ, chạm một cây thì bản
+  // đồ hiện lại. Vườn không tự đổi giữa chừng, nên nhớ lại là đúng.
+  const lastFarmId = useRef<string | undefined>(undefined);
   const farmId = useMemo(() => {
-    if (farmIdParam) return farmIdParam;
+    if (farmIdParam) { lastFarmId.current = farmIdParam; return farmIdParam; }
     const t = allTrees.find((x: Tree) => x.id === focusTreeId);
-    return t?.farmId;
+    if (t?.farmId) { lastFarmId.current = t.farmId; return t.farmId; }
+    return lastFarmId.current;
   }, [farmIdParam, allTrees, focusTreeId]);
 
   const farm = useMemo(

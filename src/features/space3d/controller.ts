@@ -39,6 +39,12 @@ export class SpaceController {
   minRadius = 2;
   maxRadius = 400;
 
+  /**
+   * Khoá góc nghiêng — chế độ BẢN ĐỒ 2D nhìn thẳng từ trên xuống. Kéo dọc lúc đó
+   * không được phép hạ máy quay xuống ngang nữa (sẽ hết là "2D").
+   */
+  phiLocked = false;
+
   private flight: {
     from: OrbitPose;
     to: OrbitPose;
@@ -68,7 +74,31 @@ export class SpaceController {
   orbit(dxPx: number, dyPx: number): void {
     if (this.flight) return;
     this.pose.theta -= dxPx * 0.006;
+    if (this.phiLocked) return;
     this.pose.phi = clamp(this.pose.phi - dyPx * 0.005, PHI_MIN, PHI_MAX);
+  }
+
+  /**
+   * KÉO BẢN ĐỒ (chế độ 2D): dời điểm ngắm trong mặt phẳng đất sao cho cảnh chạy
+   * theo ngón tay, đúng cảm giác của một bản đồ giấy.
+   *
+   * `metersPerPx` do nơi gọi tính (phụ thuộc khoảng cách máy quay + góc mở ống
+   * kính + chiều cao khung hình) nên 1 px kéo luôn bằng đúng 1 px cảnh, dù đang
+   * phóng to hay thu nhỏ.
+   *
+   * Hai trục lấy từ chính tư-thế máy quay:
+   *   phải-trên-màn  = ( cos θ, 0, −sin θ)
+   *   lên-trên-màn   = (−sin θ, 0, −cos θ)   (hình chiếu xuống mặt đất)
+   */
+  panBy(dxPx: number, dyPx: number, metersPerPx: number): void {
+    if (this.flight) return;
+    const s = Math.sin(this.pose.theta);
+    const c = Math.cos(this.pose.theta);
+    const mx = dxPx * metersPerPx;
+    const my = dyPx * metersPerPx;
+    // Ngón sang phải → nội dung sang phải → điểm ngắm dịch sang TRÁI.
+    this.pose.target.x += -c * mx + -s * my;
+    this.pose.target.z += s * mx + -c * my;
   }
 
   /** Chụm 2 ngón → tiến/lùi. */

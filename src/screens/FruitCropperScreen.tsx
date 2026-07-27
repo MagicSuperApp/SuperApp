@@ -2,13 +2,20 @@
  * FruitCropperScreen — cropper KHUNG TRÒN/ELIP (native port của ccStart/ccLayout/ccApply…)
  *
  * Khung TRÒN (hoặc ELIP) CỐ-ĐỊNH ở giữa; ảnh zoom/pan/xoay phía dưới; vùng ngoài khung CHE MỜ.
- * Nông dân di chuyển/phóng ảnh để 1 quả nằm gọn trong khung → "✓ Dùng vùng này" → map ngược
+ * Nông dân di chuyển/phóng ảnh để 1 quả nằm gọn trong khung → "Dùng vùng này" → map ngược
  * vùng khung về pixel ẢNH GỐC (bbox + points + shape + góc xoay) → gọi candidates / enroll / add_view.
  *
  *  KHÔNG vẽ-tay tự do (anh đã chốt bỏ vẽ-tay).
- *  KHÔNG dùng react-native-svg: khung = View borderRadius; mask = 4 panel nền tối quanh vùng khung;
- *  zoom/pan = PanResponder + Animated (built-in RN, KHÔNG cần native-link).
+ *  KHÔNG dùng react-native-svg cho khung: khung = View borderRadius; mask = 4 panel nền tối
+ *  quanh vùng khung; zoom/pan = PanResponder + Animated (built-in RN, KHÔNG cần native-link).
  *  Toán map-ngược (screen px → original px) port nguyên từ web ccRegionToOrig (giữ công thức elip xoay).
+ *
+ * ── Giao diện ────────────────────────────────────────────────────────────────
+ * Bước KHOANH dựng theo lối máy ảnh: ảnh chiếm TRỌN màn, mọi nút nổi lên trên
+ * ảnh chứ không xếp thành hàng bên dưới — vùng ngắm to hơn hẳn, và nút nằm đúng
+ * tầm ngón cái. Hai bước sau (đối chiếu / đặt tên) là màn sáng, dạng thẻ.
+ * Toàn bộ icon lấy từ `components/Icon`; không còn ký-tự hình trong chuỗi
+ * (＋ − ↺ ◯ ✓ ➕ …) — thứ đó mỗi máy vẽ một kiểu và không đổi màu theo trạng thái.
  *
  * Backend = field-reid (ORILIFE_API_BASE_URL = api.orilife.io). Cùng client fruitReIDService.
  *
@@ -18,13 +25,15 @@
 
 import React, { useMemo, useRef, useState, useCallback, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, Image, TouchableOpacity, TextInput,
+  View, Text, StyleSheet, Image, TouchableOpacity, TextInput, StatusBar,
   ActivityIndicator, ScrollView, PanResponder, LayoutChangeEvent,
+  Animated, Easing,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { ORILIFE_BASE } from '../services/orilifeBase';
 
+import { Icon } from '../components/Icon';
 import { COLORS } from '../constants';
 import {
   fruitCandidates, enrollFruit, addFruitView, detectFruit,
@@ -42,6 +51,19 @@ const ROT_STEP = 0.2618; // 15° mỗi nhịp xoay (khớp web ccRotate(±0.2618
 const ZOOM_MIN = 0.4;
 const ZOOM_MAX = 8;
 const ZONE_VI: Record<TreeZone, string> = { base: 'Gốc', mid: 'Thân giữa', canopy: 'Tán' };
+
+/** Nền tối của bước khoanh — ảnh là nhân vật chính, mọi thứ khác lùi ra sau. */
+const STAGE_BG = '#0E1512';
+const ON_STAGE = '#F2F6F3';
+const CHROME_BG = 'rgba(14, 21, 18, 0.72)';
+const CHROME_BORDER = 'rgba(242, 246, 243, 0.16)';
+const RING_COLOR = '#FFD166';
+/**
+ * Xanh lá RỰC cho lời mời "đã tìm thấy quả".
+ * Không dùng `COLORS.success` (#3D7A5E): màu đó trầm, đặt trên ảnh chụp vườn —
+ * vốn đã toàn lá xanh sẫm — thì chìm nghỉm, đúng thứ nút này không được phép.
+ */
+const DETECT_GREEN = '#22C55E';
 
 interface RouteParams {
   treeId: string;
@@ -66,9 +88,85 @@ function touchMid(touches: { pageX: number; pageY: number }[]): { x: number; y: 
   return { x: (a.pageX + b.pageX) / 2, y: (a.pageY + b.pageY) / 2 };
 }
 
+/**
+ * Nút mời "đã tìm thấy quả" — vòng sáng TOẢ RA liên tục + nút nảy nhẹ.
+ *
+ * Vì sao phải động: canh khung bằng tay là việc mất công nhất của màn này, mà
+ * máy đã tìm ra quả sẵn rồi. Một cái chip đứng yên giữa đống nút khác thì người
+ * dùng lướt qua không nhận ra, cứ è cổ kéo-phóng thủ công. Vòng sáng toả ra là
+ * thứ mắt bắt được ngay cả khi đang nhìn chỗ khác.
+ *
+ * Toả xong một nhịp thì tự bắt lại từ đầu; hai vòng lệch pha nửa nhịp cho liên
+ * tục, không có quãng đứng hình. Chỉ chạy transform + opacity nên đẩy được hết
+ * xuống luồng native, không giành khung hình với cảnh 3D.
+ *
+ * Bấm rồi thì THÔI động (`calm`): đã hiểu ý thì nhấp nháy tiếp chỉ còn là phiền,
+ * nhưng nút vẫn còn đó để canh lại lần nữa.
+ */
+const DetectInvite: React.FC<{ calm: boolean; onPress: () => void }> = ({ calm, onPress }) => {
+  const ringA = useRef(new Animated.Value(0)).current;
+  const ringB = useRef(new Animated.Value(0)).current;
+  const hop = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (calm) return;
+    const bloom = (v: Animated.Value) => Animated.loop(
+      Animated.timing(v, {
+        toValue: 1, duration: 1500, easing: Easing.out(Easing.quad), useNativeDriver: true,
+      }),
+    );
+    const a = bloom(ringA);
+    a.start();
+    // Vòng thứ hai vào sau nửa nhịp → luôn có một vòng đang toả.
+    let b: Animated.CompositeAnimation | null = null;
+    const t = setTimeout(() => { b = bloom(ringB); b.start(); }, 750);
+
+    const jump = Animated.loop(Animated.sequence([
+      Animated.timing(hop, { toValue: 1, duration: 240, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+      Animated.timing(hop, { toValue: 0, duration: 420, easing: Easing.bounce, useNativeDriver: true }),
+      Animated.delay(900),
+    ]));
+    jump.start();
+
+    return () => {
+      clearTimeout(t);
+      a.stop(); b?.stop(); jump.stop();
+      ringA.setValue(0); ringB.setValue(0); hop.setValue(0);
+    };
+  }, [calm, ringA, ringB, hop]);
+
+  const ringStyle = (v: Animated.Value) => ({
+    opacity: v.interpolate({ inputRange: [0, 1], outputRange: [0.55, 0] }),
+    transform: [{ scale: v.interpolate({ inputRange: [0, 1], outputRange: [1, 1.95] }) }],
+  });
+
+  return (
+    <Animated.View
+      style={[
+        styles.detectWrap,
+        { transform: [{ translateY: hop.interpolate({ inputRange: [0, 1], outputRange: [0, -5] }) }] },
+      ]}
+    >
+      {!calm && (
+        <>
+          <Animated.View pointerEvents="none" style={[styles.detectBloom, ringStyle(ringA)]} />
+          <Animated.View pointerEvents="none" style={[styles.detectBloom, ringStyle(ringB)]} />
+        </>
+      )}
+      <TouchableOpacity activeOpacity={0.85} style={styles.detectChip} onPress={onPress}>
+        <Icon name="bullseye" size={14} color={COLORS.white} />
+        <Text style={styles.detectChipTxt}>
+          {calm ? 'Canh lại vào quả đã tìm thấy' : 'Tự căn khung quả'}
+        </Text>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+};
+
 const FruitCropperScreen: React.FC = () => {
   const route = useRoute();
   const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
   const {
     treeId, treeName, imageUri, imageW, imageH, zone: zoneParam, fruitId, fruitName,
   } = (route.params ?? {}) as RouteParams;
@@ -111,6 +209,8 @@ const FruitCropperScreen: React.FC = () => {
   // bbox ẢNH GỐC của quả tự-phát-hiện (lớn nhất / tự-tin nhất). null = chưa có / không phát hiện.
   const [detectBox, setDetectBox] = useState<Bbox | null>(null);
   const detectTried = useRef(false);
+  /** Đã bấm "canh tự động" lần nào chưa → thôi nhấp nháy mời gọi. */
+  const [detectUsed, setDetectUsed] = useState(false);
 
   // ── baseScale (cover) — phủ kín viewport để quả to, dễ canh ─────────────────
   const base = useMemo(() => {
@@ -119,11 +219,13 @@ const FruitCropperScreen: React.FC = () => {
   }, [vw, vh, NW, NH]);
 
   // ── Tâm + bán-kính vòng (px màn hình) — vòng CỐ-ĐỊNH giữa viewport ──────────
+  // Tâm nhích LÊN một chút: thanh nút dưới che mất phần đáy, để giữa hình học thì
+  // vòng ngắm bị lệch xuống dưới vùng nhìn thật.
   const ring = useMemo(() => {
-    const cx = vw / 2, cy = vh / 2;
-    const r = Math.min(vw, vh) * 0.42;
+    const cx = vw / 2, cy = vh * 0.44;
+    const r = Math.min(vw, vh) * 0.34;
     let rx = r, ry = r;
-    if (shape === 'ellipse') { rx = Math.min(vw * 0.45, r * 1.25); ry = r * 0.78; }
+    if (shape === 'ellipse') { rx = Math.min(vw * 0.42, r * 1.25); ry = r * 0.78; }
     return { cx, cy, rx, ry };
   }, [vw, vh, shape]);
 
@@ -180,7 +282,7 @@ const FruitCropperScreen: React.FC = () => {
   }, []);
 
   // ── Auto-detect 1 LẦN khi đã đo viewport (chỉ luồng quả-mới, KHÔNG khi thêm-góc) ──
-  // Chạy nền: tìm-thấy → hiện nút gợi-ý "🎯 Nhảy vào quả phát hiện". Lỗi/không-thấy → im lặng,
+  // Chạy nền: tìm-thấy → hiện nút gợi-ý "Nhảy vào quả phát hiện". Lỗi/không-thấy → im lặng,
   // user tự canh khung như cũ (không chặn happy-path, không cảnh-báo thừa).
   useEffect(() => {
     if (fruitId || detectTried.current || !vw || !vh) return;
@@ -235,12 +337,9 @@ const FruitCropperScreen: React.FC = () => {
   }), []);
 
   // ── Đổi VÒNG ↔ ELIP (ccToggleShape) ────────────────────────────────────────
-  const toggleShape = useCallback(() => {
-    setShape(s => {
-      const next = s === 'circle' ? 'ellipse' : 'circle';
-      if (next === 'circle') setRot(0);
-      return next;
-    });
+  const pickShape = useCallback((next: FruitShape) => {
+    setShape(next);
+    if (next === 'circle') setRot(0);
   }, []);
 
   // ════════════════════════════════════════════════════════════════════════
@@ -298,7 +397,7 @@ const FruitCropperScreen: React.FC = () => {
     });
   }, [navigation, treeId, treeName, nameInput, coord]);
 
-  // ── "✓ Dùng vùng này" → chốt vùng → candidates (hoặc add_view nếu có fruitId) ─
+  // ── "Dùng vùng này" → chốt vùng → candidates (hoặc add_view nếu có fruitId) ─
   const useRegion = useCallback(async () => {
     const reg = regionToOrig();
     if (reg.bbox[2] < 8 || reg.bbox[3] < 8) {
@@ -375,9 +474,12 @@ const FruitCropperScreen: React.FC = () => {
   const maxR = Math.max(ring.rx, ring.ry);
   const holeL = ring.cx - maxR, holeT = ring.cy - maxR, holeS = maxR * 2;
 
+  // ── Bước 1: KHOANH — ảnh chiếm trọn màn, nút nổi lên trên ──────────────────
   const renderCrop = () => (
-    <>
-      <View style={styles.wrap} onLayout={onWrapLayout} {...panResponder.panHandlers}>
+    <View style={styles.stageRoot}>
+      <StatusBar barStyle="light-content" backgroundColor={STAGE_BG} />
+
+      <View style={StyleSheet.absoluteFill} onLayout={onWrapLayout} {...panResponder.panHandlers}>
         {vw > 0 && (
           <Image
             source={{ uri: imageUri }}
@@ -399,7 +501,7 @@ const FruitCropperScreen: React.FC = () => {
           </>
         )}
 
-        {/* VÒNG: View borderRadius (tròn = nửa cạnh; elip = scaleX/scaleY + xoay) */}
+        {/* VÒNG: View borderRadius (tròn = nửa cạnh; elip = rộng/cao khác nhau + xoay) */}
         {vw > 0 && (
           <View
             pointerEvents="none"
@@ -413,253 +515,487 @@ const FruitCropperScreen: React.FC = () => {
             }]}
           />
         )}
+      </View>
 
-        {/* Gợi-ý PHÁT-HIỆN-NGAY: 1-chạm nhảy khung vào quả tự-phát-hiện (không ép, ẩn nếu không thấy) */}
-        {vw > 0 && detectBox && (
-          <TouchableOpacity
-            activeOpacity={0.85}
-            style={styles.detectChip}
-            onPress={() => { if (detectBox) jumpToBox(detectBox); }}
-          >
-            <Text style={styles.detectChipTxt}>🎯 Nhảy vào quả phát hiện</Text>
-          </TouchableOpacity>
-        )}
-
-        <View pointerEvents="none" style={styles.hint}>
-          <Text style={styles.hintTxt}>
-            Kéo để di chuyển · chụm 2 ngón hoặc +/− để phóng — đưa <Text style={styles.hintB}>1 quả</Text> vào vòng
+      {/* ── Thanh trên (nổi) ──────────────────────────────────────────────── */}
+      <View style={[styles.stageTop, { paddingTop: insets.top + 8 }]} pointerEvents="box-none">
+        <TouchableOpacity style={styles.chromeBtn} onPress={() => navigation.goBack()} hitSlop={8}>
+          <Icon name="chevron-left" size={17} color={ON_STAGE} />
+        </TouchableOpacity>
+        <View style={styles.stageTitleWrap} pointerEvents="none">
+          <Text style={styles.stageEyebrow}>{fruitId ? 'THÊM GÓC ẢNH' : 'KHOANH QUẢ'}</Text>
+          <Text style={styles.stageTitle} numberOfLines={1}>
+            {fruitId ? (fruitName || 'Quả') : (treeName || 'Cây')}
           </Text>
         </View>
+        <View style={styles.chromeBtnGhost} />
       </View>
 
-      {/* Thanh nút: zoom · đổi hình · xoay (elip) */}
-      <View style={styles.btnRow}>
-        <View style={styles.zoomGrp}>
-          <TouchableOpacity style={styles.zoomBtn} onPress={() => zoomAround(0.83)}><Text style={styles.zoomTxt}>−</Text></TouchableOpacity>
-          <TouchableOpacity style={styles.zoomBtn} onPress={() => zoomAround(1.2)}><Text style={styles.zoomTxt}>＋</Text></TouchableOpacity>
-        </View>
-        <TouchableOpacity style={styles.shapeBtn} onPress={toggleShape}>
-          <Text style={styles.shapeTxt}>{shape === 'ellipse' ? '◯ Quả tròn' : '⬭ Quả dài (elip)'}</Text>
+      {/* ── Cột nút bên phải: phóng / thu / xoay ──────────────────────────── */}
+      <View style={styles.stageSide} pointerEvents="box-none">
+        <TouchableOpacity style={styles.chromeBtn} onPress={() => zoomAround(1.2)} activeOpacity={0.8}>
+          <Icon name="magnifying-glass-plus" size={17} color={ON_STAGE} />
         </TouchableOpacity>
-        {shape === 'ellipse' && (
-          <View style={styles.zoomGrp}>
-            <TouchableOpacity style={styles.zoomBtn} onPress={() => setRot(r => r - ROT_STEP)}><Text style={styles.zoomTxt}>↺</Text></TouchableOpacity>
-            <TouchableOpacity style={styles.zoomBtn} onPress={() => setRot(r => r + ROT_STEP)}><Text style={styles.zoomTxt}>↻</Text></TouchableOpacity>
-          </View>
-        )}
+        <TouchableOpacity style={styles.chromeBtn} onPress={() => zoomAround(0.83)} activeOpacity={0.8}>
+          <Icon name="magnifying-glass-minus" size={17} color={ON_STAGE} />
+        </TouchableOpacity>
+        {shape === 'ellipse' ? (
+          <>
+            <TouchableOpacity style={styles.chromeBtn} onPress={() => setRot(r => r - ROT_STEP)} activeOpacity={0.8}>
+              <Icon name="rotate-left" size={17} color={ON_STAGE} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.chromeBtn} onPress={() => setRot(r => r + ROT_STEP)} activeOpacity={0.8}>
+              <Icon name="rotate-right" size={17} color={ON_STAGE} />
+            </TouchableOpacity>
+          </>
+        ) : null}
       </View>
 
-      {errMsg ? <Text style={styles.err}>{errMsg}</Text> : null}
+      {/* ── Thanh dưới (nổi): hình khung · gợi ý · nút chính ──────────────── */}
+      <View style={[styles.stageBottom, { paddingBottom: Math.max(insets.bottom, 10) + 8 }]} pointerEvents="box-none">
+        {/* Lời mời canh-khung-tự-động, đặt NGAY TRÊN thanh chọn hình khung: đó là
+            vùng ngón cái đang đặt sẵn, và nằm cạnh nhau thì người dùng thấy được
+            ngay là có đường tắt, khỏi phải kéo-phóng bằng tay. */}
+        {vw > 0 && detectBox ? (
+          <DetectInvite
+            calm={detectUsed}
+            onPress={() => { setDetectUsed(true); jumpToBox(detectBox); }}
+          />
+        ) : null}
 
-      <TouchableOpacity style={[styles.primary, busy && styles.disabled]} disabled={busy} onPress={useRegion}>
-        {busy
-          ? <ActivityIndicator color="#fff" />
-          : <Text style={styles.primaryTxt}>{fruitId ? '✓ Thêm góc cho quả này' : '✓ Dùng vùng này'}</Text>}
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.ghost} onPress={() => navigation.goBack()}>
-        <Text style={styles.ghostTxt}>Xong — thoát chọn vùng</Text>
-      </TouchableOpacity>
-    </>
+        <View style={styles.shapeSeg}>
+          <ShapeOption label="Quả tròn" on={shape === 'circle'} wide={false} onPress={() => pickShape('circle')} />
+          <ShapeOption label="Quả dài" on={shape === 'ellipse'} wide onPress={() => pickShape('ellipse')} />
+        </View>
+
+        <View style={styles.stageHint}>
+          <Icon name="arrows-up-down-left-right" size={12} color={ON_STAGE} opacity={0.7} />
+          <Text style={styles.stageHintTxt} numberOfLines={2}>
+            Kéo để di chuyển, chụm hai ngón để phóng — đưa một quả vào vòng
+          </Text>
+        </View>
+
+        {errMsg ? (
+          <View style={styles.stageErr}>
+            <Icon name="triangle-exclamation" size={13} color={RING_COLOR} />
+            <Text style={styles.stageErrTxt} numberOfLines={2}>{errMsg}</Text>
+          </View>
+        ) : null}
+
+        <TouchableOpacity
+          style={[styles.stagePrimary, busy && styles.disabled]}
+          disabled={busy}
+          onPress={useRegion}
+          activeOpacity={0.88}
+        >
+          {busy ? <ActivityIndicator color={COLORS.white} /> : (
+            <>
+              <Icon name="check" size={15} color={COLORS.white} />
+              <Text style={styles.stagePrimaryTxt}>
+                {fruitId ? 'Thêm góc cho quả này' : 'Dùng vùng này'}
+              </Text>
+            </>
+          )}
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 
   const top = cands.length ? cands[0] : null;
   const others = cands.slice(1);
 
   const candRow = (c: FruitCandidate, isTop: boolean) => (
-    <TouchableOpacity key={c.fruit_id} style={[styles.candRow, isTop && styles.candTop]} disabled={busy} onPress={() => pickCandidate(c)}>
+    <TouchableOpacity
+      key={c.fruit_id}
+      style={[styles.candRow, isTop && styles.candTop]}
+      disabled={busy}
+      onPress={() => pickCandidate(c)}
+      activeOpacity={0.8}
+    >
       <View style={styles.cThumb}>
         {c.thumbnail_url
           ? <Image source={{ uri: `${BASE_URL}${c.thumbnail_url}` }} style={styles.cThumbImg} resizeMode="cover" />
-          : <Icon name="fruit-cherries" size={24} color={COLORS.textMuted} />}
+          : <Icon name="apple-whole" size={22} color={COLORS.textMuted} />}
       </View>
       <View style={styles.cBody}>
-        <Text style={styles.cName} numberOfLines={1}>
-          {isTop ? '⭐ ' : ''}{c.name || '(chưa đặt tên)'}
+        <View style={styles.cNameRow}>
+          {isTop ? <Icon name="star" size={11} color={COLORS.warning} /> : null}
+          <Text style={styles.cName} numberOfLines={1}>{c.name || 'Chưa đặt tên'}</Text>
+        </View>
+        <Text style={styles.cViews} numberOfLines={1}>
+          {c.n_views} góc{isTop ? ' · giống nhất, bấm nếu đúng quả này' : ''}
         </Text>
-        <Text style={styles.cViews}>{c.n_views} góc{isTop ? ' · bấm nếu ĐÚNG quả này' : ''}</Text>
       </View>
-      <Text style={styles.cGo}>✓ Đúng</Text>
+      <View style={styles.cPick}>
+        <Icon name="check" size={13} color={COLORS.success} />
+      </View>
     </TouchableOpacity>
   );
 
+  // ── Bước 2: ĐỐI CHIẾU ──────────────────────────────────────────────────────
   const renderCandidates = () => (
-    <ScrollView contentContainerStyle={styles.scroll}>
-      <Text style={styles.muted}>Vùng quả đã chốt — đây là quả nào?</Text>
-      {top ? candRow(top, true) : null}
-      <TouchableOpacity style={styles.candNew} disabled={busy} onPress={() => { setNameInput(''); setStep('naming'); }}>
-        <Text style={styles.candNewTxt}>➕ Đây là quả MỚI</Text>
-      </TouchableOpacity>
-
-      {others.length > 0 && !expanded && (
-        <TouchableOpacity style={styles.secBtn} onPress={() => setExpanded(true)}>
-          <Text style={styles.secTxt}>▾ Không phải — chọn quả khác ({others.length})</Text>
-        </TouchableOpacity>
-      )}
-      {others.length > 0 && expanded && (
-        <>
-          <Text style={[styles.muted, { marginTop: 8 }]}>Tất cả quả của cây (giống nhất trước):</Text>
-          {others.map(c => candRow(c, false))}
-          <TouchableOpacity style={styles.secBtn} onPress={() => setExpanded(false)}>
-            <Text style={styles.secTxt}>▴ Thu gọn</Text>
-          </TouchableOpacity>
-        </>
-      )}
-      {!cands.length && (
-        <Text style={[styles.muted, { paddingVertical: 6 }]}>Cây chưa có quả nào để đối chiếu — đặt tên lưu quả mới.</Text>
-      )}
-
-      {errMsg ? <Text style={styles.err}>{errMsg}</Text> : null}
-      {busy ? <ActivityIndicator color={COLORS.accent} style={{ marginVertical: 8 }} /> : null}
-
-      <TouchableOpacity style={styles.secBtn} onPress={recrop}>
-        <Text style={styles.secTxt}>↩︎ Khoanh lại vùng khác</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.ghost} onPress={() => navigation.goBack()}>
-        <Text style={styles.ghostTxt}>Xong — thoát chọn vùng</Text>
-      </TouchableOpacity>
-    </ScrollView>
-  );
-
-  const renderNaming = () => (
-    <ScrollView contentContainerStyle={styles.scroll}>
-      <Text style={styles.muted}>🆕 Lưu thành quả MỚI trên cây "{treeName || 'này'}":</Text>
-
-      {/* Toạ-độ 3D của quả trên cây (thay cho việc chỉ chọn 1 trong 3 vùng) */}
-      <Text style={styles.label}>📍 Quả nằm ở đâu trên cây?</Text>
-      <TouchableOpacity style={styles.coordBox} onPress={openPlacer} activeOpacity={0.85}>
-        <View style={styles.coordBoxTop}>
-          <Icon name="axis-arrow" size={20} color={COLORS.accent} />
-          <Text style={styles.coordBoxTitle}>Đặt vị trí trên cây (3D)</Text>
-          <Icon name="chevron-right" size={20} color={COLORS.textMuted} />
-        </View>
-        <View style={styles.coordVals}>
-          <Text style={styles.coordVal}>X {coord.x.toFixed(2)}</Text>
-          <Text style={styles.coordVal}>Y {coord.y.toFixed(2)}</Text>
-          <Text style={styles.coordVal}>Z {coord.z.toFixed(2)}</Text>
-          <Text style={styles.coordZone}>{ZONE_LABEL[zone]}</Text>
-        </View>
-        <Text style={styles.coordHint}>
-          Kéo icon quả trên hình cây theo 3 hướng chiếu để đặt đúng chỗ.
-        </Text>
-      </TouchableOpacity>
-
-      {/* Lối tắt chọn tầng thô — cho người chỉ cần nhanh, không muốn mở màn 3D. */}
-      <View style={styles.zoneRow}>
-        {(['base', 'mid', 'canopy'] as TreeZone[]).map(z => (
-          <TouchableOpacity
-            key={z}
-            style={[styles.zoneBtn, zone === z && styles.zoneBtnOn]}
-            onPress={() => setCoord(c => clampCoord({ ...c, y: zoneToY(z) }))}
-          >
-            <Text style={[styles.zoneTxt, zone === z && styles.zoneTxtOn]}>{ZONE_VI[z]}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      <TextInput
-        style={styles.input}
-        placeholder="Tên quả (vd: ngọn phía mãng cầu)"
-        placeholderTextColor={COLORS.textMuted}
-        value={nameInput}
-        onChangeText={setNameInput}
-        autoFocus
-      />
-
-      {errMsg ? <Text style={styles.err}>{errMsg}</Text> : null}
-
-      <TouchableOpacity style={[styles.primary, busy && styles.disabled]} disabled={busy} onPress={saveNewFruit}>
-        {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryTxt}>💾 Lưu quả MỚI</Text>}
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.secBtn} onPress={() => { setErrMsg(null); setStep('candidates'); }}>
-        <Text style={styles.secTxt}>↩︎ Quay lại danh sách</Text>
-      </TouchableOpacity>
-    </ScrollView>
-  );
-
-  return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.back}>
-          <Icon name="chevron-left" size={26} color={COLORS.text} />
-        </TouchableOpacity>
-        <Text style={styles.title} numberOfLines={1}>
-          {fruitId ? `📷 Thêm góc · ${fruitName || 'quả'}` : `✏️ Khoanh quả · ${treeName || 'Cây'}`}
+      <SheetHeader
+        eyebrow="BƯỚC 2 / 3"
+        title="Đây là quả nào?"
+        onBack={recrop}
+      />
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <Text style={styles.muted}>
+          Vùng quả đã chốt. Chọn quả đã có để thêm góc ảnh, hoặc lưu thành quả mới.
         </Text>
-      </View>
-      {step === 'crop' ? renderCrop() : step === 'candidates' ? renderCandidates() : renderNaming()}
+
+        {top ? candRow(top, true) : null}
+
+        <TouchableOpacity
+          style={styles.candNew}
+          disabled={busy}
+          onPress={() => { setNameInput(''); setStep('naming'); }}
+          activeOpacity={0.85}
+        >
+          <Icon name="circle-plus" size={15} color={COLORS.white} />
+          <Text style={styles.candNewTxt}>Đây là quả mới</Text>
+        </TouchableOpacity>
+
+        {others.length > 0 && !expanded ? (
+          <TouchableOpacity style={styles.linkBtn} onPress={() => setExpanded(true)} activeOpacity={0.7}>
+            <Icon name="chevron-down" size={12} color={COLORS.accent} />
+            <Text style={styles.linkTxt}>Không phải — xem {others.length} quả khác</Text>
+          </TouchableOpacity>
+        ) : null}
+
+        {others.length > 0 && expanded ? (
+          <>
+            <Text style={styles.sectionLbl}>TẤT CẢ QUẢ CỦA CÂY</Text>
+            {others.map(c => candRow(c, false))}
+            <TouchableOpacity style={styles.linkBtn} onPress={() => setExpanded(false)} activeOpacity={0.7}>
+              <Icon name="chevron-up" size={12} color={COLORS.accent} />
+              <Text style={styles.linkTxt}>Thu gọn</Text>
+            </TouchableOpacity>
+          </>
+        ) : null}
+
+        {!cands.length ? (
+          <Text style={styles.muted}>Cây chưa có quả nào để đối chiếu — đặt tên để lưu quả mới.</Text>
+        ) : null}
+
+        {errMsg ? <ErrLine text={errMsg} /> : null}
+        {busy ? <ActivityIndicator color={COLORS.accent} style={styles.inlineLoader} /> : null}
+
+        <TouchableOpacity style={styles.ghost} onPress={recrop} activeOpacity={0.8}>
+          <Icon name="arrow-rotate-left" size={14} color={COLORS.textSub} />
+          <Text style={styles.ghostTxt}>Khoanh lại vùng khác</Text>
+        </TouchableOpacity>
+      </ScrollView>
     </View>
   );
+
+  // ── Bước 3: ĐẶT TÊN + VỊ TRÍ ───────────────────────────────────────────────
+  const renderNaming = () => (
+    <View style={styles.container}>
+      <SheetHeader
+        eyebrow="BƯỚC 3 / 3"
+        title="Quả mới"
+        onBack={() => { setErrMsg(null); setStep('candidates'); }}
+      />
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <Text style={styles.muted}>Lưu thành quả mới trên cây {treeName || 'này'}.</Text>
+
+        <Text style={styles.sectionLbl}>TÊN QUẢ</Text>
+        <View style={styles.inputWrap}>
+          <Icon name="tag" size={14} color={COLORS.textMuted} />
+          <TextInput
+            style={styles.input}
+            placeholder="vd: quả ngọn phía đông"
+            placeholderTextColor={COLORS.textMuted}
+            value={nameInput}
+            onChangeText={setNameInput}
+            autoFocus
+            returnKeyType="done"
+          />
+        </View>
+
+        <Text style={styles.sectionLbl}>QUẢ NẰM Ở ĐÂU TRÊN CÂY</Text>
+        <TouchableOpacity style={styles.coordBox} onPress={openPlacer} activeOpacity={0.8}>
+          <View style={styles.coordIcon}><Icon name="location-dot" size={15} color={COLORS.accent} /></View>
+          <View style={styles.coordBody}>
+            <Text style={styles.coordTitle}>Đặt vị trí trên cây (3D)</Text>
+            <Text style={styles.coordHint}>Kéo icon quả theo ba hướng chiếu để đặt đúng chỗ</Text>
+          </View>
+          <Icon name="chevron-right" size={13} color={COLORS.accentLight} />
+        </TouchableOpacity>
+
+        <View style={styles.coordVals}>
+          <CoordVal axis="X" v={coord.x} />
+          <CoordVal axis="Y" v={coord.y} />
+          <CoordVal axis="Z" v={coord.z} />
+          <View style={styles.coordZone}><Text style={styles.coordZoneTxt}>{ZONE_LABEL[zone]}</Text></View>
+        </View>
+
+        {/* Lối tắt chọn tầng thô — cho người chỉ cần nhanh, không muốn mở màn 3D. */}
+        <View style={styles.zoneRow}>
+          {(['base', 'mid', 'canopy'] as TreeZone[]).map(z => (
+            <TouchableOpacity
+              key={z}
+              style={[styles.zoneBtn, zone === z && styles.zoneBtnOn]}
+              onPress={() => setCoord(c => clampCoord({ ...c, y: zoneToY(z) }))}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.zoneTxt, zone === z && styles.zoneTxtOn]}>{ZONE_VI[z]}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {errMsg ? <ErrLine text={errMsg} /> : null}
+
+        <TouchableOpacity
+          style={[styles.primary, busy && styles.disabled]}
+          disabled={busy}
+          onPress={saveNewFruit}
+          activeOpacity={0.88}
+        >
+          {busy ? <ActivityIndicator color={COLORS.white} /> : (
+            <>
+              <Icon name="floppy-disk" size={15} color={COLORS.white} />
+              <Text style={styles.primaryTxt}>Lưu quả mới</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      </ScrollView>
+    </View>
+  );
+
+  return step === 'crop' ? renderCrop() : step === 'candidates' ? renderCandidates() : renderNaming();
 };
+
+// ── Mảnh nhỏ ────────────────────────────────────────────────────────────────
+
+/** Ô chọn hình khung. Hình tròn/elip vẽ bằng CHÍNH icon `circle` kéo giãn ngang. */
+const ShapeOption: React.FC<{ label: string; on: boolean; wide: boolean; onPress: () => void }> = ({
+  label, on, wide, onPress,
+}) => (
+  <TouchableOpacity style={[styles.shapeOpt, on && styles.shapeOptOn]} onPress={onPress} activeOpacity={0.8}>
+    <View style={wide ? styles.shapeGlyphWide : undefined}>
+      <Icon name="circle" size={13} color={on ? '#0E1512' : ON_STAGE} variant="outline" strokeWidth={44} />
+    </View>
+    <Text style={[styles.shapeTxt, on && styles.shapeTxtOn]}>{label}</Text>
+  </TouchableOpacity>
+);
+
+const SheetHeader: React.FC<{ eyebrow: string; title: string; onBack: () => void }> = ({
+  eyebrow, title, onBack,
+}) => (
+  <View style={styles.header}>
+    <TouchableOpacity style={styles.headerBtn} onPress={onBack} hitSlop={8}>
+      <Icon name="chevron-left" size={17} color={COLORS.text} />
+    </TouchableOpacity>
+    <View style={styles.headerTitles}>
+      <Text style={styles.headerEyebrow}>{eyebrow}</Text>
+      <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
+    </View>
+  </View>
+);
+
+const CoordVal: React.FC<{ axis: string; v: number }> = ({ axis, v }) => (
+  <View style={styles.coordVal}>
+    <Text style={styles.coordAxis}>{axis}</Text>
+    <Text style={styles.coordNum}>{v.toFixed(2)}</Text>
+  </View>
+);
+
+const ErrLine: React.FC<{ text: string }> = ({ text }) => (
+  <View style={styles.errLine}>
+    <Icon name="triangle-exclamation" size={13} color={COLORS.error} />
+    <Text style={styles.errTxt}>{text}</Text>
+  </View>
+);
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 10, gap: 4 },
-  back: { padding: 4 },
-  title: { flex: 1, fontSize: 18, fontWeight: '800', color: COLORS.text },
 
-  // Cropper viewport
-  wrap: { width: '100%', height: 340, borderRadius: 14, overflow: 'hidden', backgroundColor: '#10140f', marginHorizontal: 0, alignSelf: 'stretch' },
+  // ── Bước KHOANH (nền tối, nút nổi trên ảnh) ───────────────────────────────
+  stageRoot: { flex: 1, backgroundColor: STAGE_BG },
   img: { position: 'absolute', top: 0, left: 0 },
-  maskPanel: { position: 'absolute', backgroundColor: 'rgba(16,20,15,0.55)' },
-  ring: { position: 'absolute', borderWidth: 2.5, borderColor: '#ffe082', backgroundColor: 'transparent' },
-  detectChip: { position: 'absolute', top: 8, alignSelf: 'center', backgroundColor: 'rgba(56,142,60,0.92)', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20 },
-  detectChipTxt: { color: '#fff', fontSize: 13, fontWeight: '800' },
-  hint: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 8, paddingVertical: 6, backgroundColor: 'rgba(0,0,0,0.45)' },
-  hintTxt: { color: '#fff', fontSize: 12, textAlign: 'center', lineHeight: 17 },
-  hintB: { fontWeight: '800' },
+  maskPanel: { position: 'absolute', backgroundColor: 'rgba(14,21,18,0.66)' },
+  ring: { position: 'absolute', borderWidth: 2.5, borderColor: RING_COLOR, backgroundColor: 'transparent' },
 
-  // Buttons row
-  btnRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, paddingHorizontal: 12, marginVertical: 8 },
-  zoomGrp: { flexDirection: 'row', gap: 6 },
-  zoomBtn: { backgroundColor: COLORS.textSub, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10, minWidth: 46, alignItems: 'center' },
-  zoomTxt: { color: '#fff', fontSize: 18, fontWeight: '700' },
-  shapeBtn: { backgroundColor: '#455a64', paddingHorizontal: 13, paddingVertical: 9, borderRadius: 10 },
-  shapeTxt: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  stageTop: {
+    position: 'absolute', top: 0, left: 0, right: 0,
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingHorizontal: 14, paddingBottom: 10,
+  },
+  stageTitleWrap: { flex: 1, minWidth: 0 },
+  stageEyebrow: { fontSize: 9, fontWeight: '800', letterSpacing: 1.8, color: RING_COLOR },
+  stageTitle: { fontSize: 17, fontWeight: '800', color: ON_STAGE, letterSpacing: -0.3 },
 
-  primary: { backgroundColor: COLORS.success, marginHorizontal: 12, marginTop: 4, paddingVertical: 15, borderRadius: 12, alignItems: 'center' },
-  primaryTxt: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  chromeBtn: {
+    width: 40, height: 40, borderRadius: 14,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: CHROME_BG, borderWidth: 1, borderColor: CHROME_BORDER,
+  },
+  chromeBtnGhost: { width: 40, height: 40 },
+
+  stageSide: { position: 'absolute', right: 14, top: '34%', gap: 10 },
+
+  detectWrap: { alignSelf: 'center', marginBottom: 2 },
+  detectBloom: {
+    // Phủ đúng bằng nút rồi phóng ra ngoài — vòng luôn đồng tâm với nút,
+    // không phải căn tay theo bề rộng chữ (chữ đổi theo trạng thái).
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 999, borderWidth: 2, borderColor: DETECT_GREEN,
+    backgroundColor: 'rgba(34,197,94,0.16)',
+  },
+  detectChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: DETECT_GREEN,
+    paddingHorizontal: 16, paddingVertical: 11, borderRadius: 999,
+    shadowColor: DETECT_GREEN,
+    shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.5, shadowRadius: 10,
+    elevation: 6,
+  },
+  detectChipTxt: { color: COLORS.white, fontSize: 13.5, fontWeight: '800' },
+
+  stageBottom: {
+    position: 'absolute', left: 0, right: 0, bottom: 0,
+    paddingHorizontal: 14, paddingTop: 14, gap: 10,
+  },
+  shapeSeg: {
+    flexDirection: 'row', alignSelf: 'center', gap: 4, padding: 4, borderRadius: 16,
+    backgroundColor: CHROME_BG, borderWidth: 1, borderColor: CHROME_BORDER,
+  },
+  shapeOpt: {
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12,
+  },
+  shapeOptOn: { backgroundColor: RING_COLOR },
+  shapeGlyphWide: { transform: [{ scaleX: 1.5 }] },
+  shapeTxt: { fontSize: 13, fontWeight: '700', color: ON_STAGE },
+  shapeTxtOn: { color: '#0E1512' },
+
+  stageHint: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingHorizontal: 8 },
+  stageHintTxt: { color: ON_STAGE, opacity: 0.72, fontSize: 12, lineHeight: 17 },
+
+  stageErr: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: CHROME_BG, borderWidth: 1, borderColor: CHROME_BORDER,
+    borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9,
+  },
+  stageErrTxt: { flex: 1, color: ON_STAGE, fontSize: 12, lineHeight: 17 },
+
+  stagePrimary: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: COLORS.accent, paddingVertical: 16, borderRadius: 16,
+  },
+  stagePrimaryTxt: { color: COLORS.white, fontSize: 16, fontWeight: '800' },
   disabled: { opacity: 0.5 },
-  ghost: { marginHorizontal: 12, marginTop: 8, paddingVertical: 13, borderRadius: 12, alignItems: 'center', backgroundColor: COLORS.textMuted },
-  ghostTxt: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  secBtn: { marginTop: 8, paddingVertical: 13, borderRadius: 12, alignItems: 'center', backgroundColor: COLORS.textSub },
-  secTxt: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  err: { color: COLORS.error, fontSize: 14, paddingHorizontal: 12, paddingVertical: 6 },
 
-  // Candidates
-  scroll: { paddingHorizontal: 12, paddingBottom: 24 },
-  muted: { color: COLORS.textMuted, fontSize: 14, marginVertical: 6 },
-  candRow: { flexDirection: 'row', alignItems: 'center', gap: 11, backgroundColor: '#fff', borderWidth: 1.5, borderColor: COLORS.border, borderRadius: 12, padding: 9, marginTop: 7 },
-  candTop: { borderWidth: 2, borderColor: COLORS.success, backgroundColor: '#f3fbf3' },
-  cThumb: { width: 54, height: 54, borderRadius: 9, backgroundColor: '#eef2ee', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  // ── Header hai bước sau ───────────────────────────────────────────────────
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 8, paddingBottom: 10, gap: 12 },
+  headerBtn: {
+    width: 38, height: 38, borderRadius: 12,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: COLORS.inputBg, borderWidth: 1, borderColor: COLORS.border,
+  },
+  headerTitles: { flex: 1, minWidth: 0 },
+  headerEyebrow: { fontSize: 9, fontWeight: '800', letterSpacing: 1.8, color: COLORS.textMuted },
+  headerTitle: { fontSize: 20, fontWeight: '800', color: COLORS.text, letterSpacing: -0.4, marginTop: 1 },
+
+  scroll: { paddingHorizontal: 16, paddingBottom: 32 },
+  muted: { color: COLORS.textMuted, fontSize: 13, lineHeight: 19, marginBottom: 12 },
+  sectionLbl: {
+    fontSize: 10, fontWeight: '800', letterSpacing: 1.4,
+    color: COLORS.textMuted, marginTop: 18, marginBottom: 8,
+  },
+  inlineLoader: { marginVertical: 10 },
+
+  // Đối chiếu
+  candRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border,
+    borderRadius: 16, padding: 10, marginBottom: 8,
+  },
+  candTop: { borderColor: COLORS.success, borderWidth: 1.5 },
+  cThumb: {
+    width: 52, height: 52, borderRadius: 12, backgroundColor: COLORS.inputBg,
+    alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+  },
   cThumbImg: { width: '100%', height: '100%' },
-  cBody: { flex: 1, minWidth: 0 },
-  cName: { fontSize: 15, fontWeight: '700', color: COLORS.text },
-  cViews: { fontSize: 12, color: COLORS.textMuted, marginTop: 2 },
-  cGo: { fontSize: 13, fontWeight: '700', color: COLORS.success },
-  candNew: { backgroundColor: COLORS.success, marginTop: 8, paddingVertical: 13, borderRadius: 12, alignItems: 'center' },
-  candNewTxt: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  cBody: { flex: 1, minWidth: 0, gap: 3 },
+  cNameRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  cName: { flex: 1, fontSize: 15, fontWeight: '700', color: COLORS.text },
+  cViews: { fontSize: 12, color: COLORS.textMuted },
+  cPick: {
+    width: 30, height: 30, borderRadius: 10,
+    alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.accentGlow,
+  },
+  candNew: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: COLORS.success, paddingVertical: 14, borderRadius: 16, marginTop: 4,
+  },
+  candNewTxt: { color: COLORS.white, fontSize: 15, fontWeight: '700' },
 
-  // Naming
-  label: { fontSize: 13, color: COLORS.textSub, fontWeight: '600', marginTop: 10, marginBottom: 4 },
+  linkBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 14 },
+  linkTxt: { color: COLORS.accent, fontSize: 14, fontWeight: '700' },
+
+  ghost: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    paddingVertical: 14, borderRadius: 16, marginTop: 8,
+    borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.inputBg,
+  },
+  ghostTxt: { color: COLORS.textSub, fontSize: 14, fontWeight: '700' },
+
+  // Đặt tên
+  inputWrap: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    borderWidth: 1, borderColor: COLORS.border, borderRadius: 14,
+    backgroundColor: COLORS.inputBg, paddingHorizontal: 14,
+  },
+  input: { flex: 1, paddingVertical: 13, fontSize: 15, color: COLORS.text },
+
   coordBox: {
-    borderWidth: 1.5, borderColor: COLORS.accent, borderRadius: 12,
-    backgroundColor: COLORS.accentGlow, padding: 12, gap: 8, marginBottom: 8,
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    borderWidth: 1, borderColor: COLORS.border, borderRadius: 16,
+    backgroundColor: COLORS.card, padding: 12,
   },
-  coordBoxTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  coordBoxTitle: { flex: 1, fontSize: 15, fontWeight: '800', color: COLORS.accent },
-  coordVals: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  coordIcon: {
+    width: 38, height: 38, borderRadius: 13,
+    alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.accentGlow,
+  },
+  coordBody: { flex: 1, minWidth: 0, gap: 2 },
+  coordTitle: { fontSize: 15, fontWeight: '700', color: COLORS.text },
+  coordHint: { fontSize: 12, color: COLORS.textMuted, lineHeight: 17 },
+
+  coordVals: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10 },
   coordVal: {
-    fontSize: 12, fontWeight: '700', color: COLORS.text,
-    backgroundColor: '#ffffffaa', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 7,
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: COLORS.inputBg, borderWidth: 1, borderColor: COLORS.border,
+    paddingHorizontal: 9, paddingVertical: 6, borderRadius: 10,
   },
-  coordZone: { fontSize: 12, fontWeight: '800', color: COLORS.accent },
-  coordHint: { fontSize: 11, color: COLORS.textMuted, lineHeight: 15 },
-  zoneRow: { flexDirection: 'row', gap: 6 },
-  zoneBtn: { flex: 1, paddingVertical: 10, borderRadius: 10, borderWidth: 2, borderColor: COLORS.border, backgroundColor: COLORS.inputBg, alignItems: 'center' },
-  zoneBtnOn: { backgroundColor: COLORS.success, borderColor: COLORS.success },
+  coordAxis: { fontSize: 10, fontWeight: '800', color: COLORS.textMuted },
+  coordNum: { fontSize: 12, fontWeight: '700', color: COLORS.text },
+  coordZone: {
+    marginLeft: 'auto', backgroundColor: COLORS.accentGlow,
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999,
+  },
+  coordZoneTxt: { fontSize: 12, fontWeight: '800', color: COLORS.accent },
+
+  zoneRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  zoneBtn: {
+    flex: 1, paddingVertical: 11, borderRadius: 12, alignItems: 'center',
+    borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.inputBg,
+  },
+  zoneBtnOn: { backgroundColor: COLORS.accent, borderColor: COLORS.accent },
   zoneTxt: { fontSize: 13, fontWeight: '700', color: COLORS.textSub },
-  zoneTxtOn: { color: '#fff' },
-  input: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, paddingHorizontal: 13, paddingVertical: 12, fontSize: 16, marginTop: 12, color: COLORS.text, backgroundColor: COLORS.inputBg },
+  zoneTxtOn: { color: COLORS.white },
+
+  primary: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: COLORS.accent, paddingVertical: 16, borderRadius: 16, marginTop: 22,
+  },
+  primaryTxt: { color: COLORS.white, fontSize: 16, fontWeight: '800' },
+
+  errLine: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14 },
+  errTxt: { flex: 1, color: COLORS.error, fontSize: 13, lineHeight: 18 },
 });
 
 export default FruitCropperScreen;

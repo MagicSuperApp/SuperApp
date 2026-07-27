@@ -15,9 +15,15 @@ export interface FarmGroundProps {
   ring: Vec2[];
   /** Ranh giới thật hay ô vuông mặc định (chưa vẽ ranh giới) → vẽ viền nét khác. */
   hasBoundary: boolean;
+  /**
+   * Có lớp BẢN ĐỒ nằm dưới hay không. Có thì thửa đất chuyển thành lớp phủ MỜ
+   * (chỉ còn nhuộm nhẹ để phân biệt trong/ngoài ranh giới) và tắt lưới mốc —
+   * nếu giữ nguyên mặt đất đặc thì bản đồ bên dưới không thấy được gì.
+   */
+  mapUnder?: boolean;
 }
 
-export const FarmGround: React.FC<FarmGroundProps> = ({ ring, hasBoundary }) => {
+export const FarmGround: React.FC<FarmGroundProps> = ({ ring, hasBoundary, mapUnder = false }) => {
   const { geometry, outline, gridSize } = useMemo(() => {
     const shape = new THREE.Shape();
     ring.forEach((p, i) => {
@@ -42,10 +48,12 @@ export const FarmGround: React.FC<FarmGroundProps> = ({ ring, hasBoundary }) => 
   return (
     <group>
       {/* Lưới mốc — mờ, chỉ để cảm nhận khoảng cách. */}
-      <gridHelper
-        args={[gridSize, Math.max(8, Math.round(gridSize / 5)), SPACE_COLORS.grid, SPACE_COLORS.grid]}
-        position={[0, -0.02, 0]}
-      />
+      {!mapUnder && (
+        <gridHelper
+          args={[gridSize, Math.max(8, Math.round(gridSize / 5)), SPACE_COLORS.grid, SPACE_COLORS.grid]}
+          position={[0, -0.02, 0]}
+        />
+      )}
 
       {/* Thửa đất */}
       <mesh geometry={geometry} receiveShadow>
@@ -54,6 +62,11 @@ export const FarmGround: React.FC<FarmGroundProps> = ({ ring, hasBoundary }) => 
           roughness={1}
           metalness={0}
           side={THREE.DoubleSide}
+          transparent={mapUnder}
+          // depthWrite tắt khi trong suốt: nếu vẫn ghi độ sâu, lớp phủ này sẽ
+          // che các chấm/nhãn vẽ sau nó dù mắt không nhìn thấy nó.
+          depthWrite={!mapUnder}
+          opacity={mapUnder ? 0.16 : 1}
         />
       </mesh>
 

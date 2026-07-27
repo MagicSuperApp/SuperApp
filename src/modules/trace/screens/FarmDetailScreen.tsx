@@ -1000,6 +1000,7 @@ const FarmDetailMode = ({
   onBack,
   onUpdateFarmName,
   onCoordinatesPress,
+  onView3DFarm,
 }: {
   farm: any;
   trees: any[];
@@ -1012,6 +1013,8 @@ const FarmDetailMode = ({
   onBack: () => void;
   onUpdateFarmName: (newName: string) => void;
   onCoordinatesPress: () => void;
+  /** Mở KHÔNG-GIAN 3D ở chế độ TOÀN CẢNH VƯỜN (Space3D mode='farm'). */
+  onView3DFarm: () => void;
 }) => {
   const navigation = useNavigation();
   const [renamePopupVisible, setRenamePopupVisible] = useState(false);
@@ -1215,7 +1218,8 @@ const FarmDetailMode = ({
                 onPreviousPage={handlePreviousPage}
                 onNextPage={handleNextPage}
               />
-              <View style={{ height: 30 }} />
+              {/* Chừa chỗ cho thanh hành động nổi ở đáy (2 nút). */}
+              <View style={{ height: 86 }} />
             </View>
           ) : null
         }
@@ -1223,6 +1227,18 @@ const FarmDetailMode = ({
 
       {/* Bottom action bar */}
       <View style={styles.bottomBar}>
+        {/* Toàn cảnh 3D của cả vườn (mặt đất theo ranh giới + mọi cây).
+            Chạm 1 cây trong đó → bay sà vào xem quả. */}
+        <TouchableOpacity
+          style={styles.view3DFarmBtn}
+          onPress={onView3DFarm}
+          activeOpacity={0.85}
+        >
+          <Icon name="rotate-3d-variant" size={19} color={COLORS.accent} />
+          <Text style={styles.view3DFarmBtnText}>Xem sơ đồ 3D của vườn</Text>
+          <Icon name="chevron-right" size={18} color={COLORS.accent} />
+        </TouchableOpacity>
+
         <TouchableOpacity style={styles.activityLargeBtn} onPress={onActivityUpdate} activeOpacity={0.88}>
           <View style={styles.btnShine} />
           <Icon name="sprout-outline" size={19} color={COLORS.white} />
@@ -2128,6 +2144,14 @@ const FarmDetailScreen = () => {
         onBack={() => navigation.goBack()}
         onUpdateFarmName={handleUpdateFarmName}
         onCoordinatesPress={() => setCoordMapVisible(true)}
+        onView3DFarm={() => {
+          // Toàn cảnh vườn: KHÔNG truyền treeId → Space3D mở ở chế độ vườn.
+          // farm_id là nguồn dự phòng khi `farm` (đọc từ SQLite) chưa về.
+          (navigation.navigate as any)('Space3D', {
+            mode: 'farm',
+            farmId: farm?.id ?? farm_id ?? undefined,
+          });
+        }}
       />
 
       {coordMapVisible && (
@@ -2423,6 +2447,25 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
   },
   scan3DExistingBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.accent,
+  },
+  view3DFarmBtn: {
+    marginBottom: 10,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: COLORS.accentGlow,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  view3DFarmBtnText: {
+    flex: 1,
     fontSize: 14,
     fontWeight: '700',
     color: COLORS.accent,

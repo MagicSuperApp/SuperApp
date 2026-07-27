@@ -5,6 +5,109 @@
 
 ---
 
+## Mất BẢN ĐỒ khi bỏ chọn cây (và giữ chế độ xem cây sau khi đặt vị trí)
+
+Triệu chứng: xác nhận vị trí quả xong, về Space3D thì KHÔNG có bản đồ; chạm vào một cây là bản đồ hiện lại.
+
+**Gốc rễ — `useSpaceData` để `farmId` rơi về `undefined`.** Mở Space3D từ Chi tiết cây / Danh sách quả thì route KHÔNG có `farmId` (chỉ có `treeId`), vườn hoàn toàn suy ra từ CÂY ĐANG MỞ. Hễ `focusTreeId` về null là đổ dây chuyền:
+`farm = null` → mất `coordinates` → mặt đất tụt về ô vuông mặc định · `origin = null` → `mapVisible` false → **mất lớp bản đồ** · `farmTrees` hoá thành TẤT CẢ cây của mọi vườn.
+Chạm một cây làm `focusTreeId` có lại → farmId suy ra được → bản đồ về. Đúng y triệu chứng.
+Sửa: `farmId` **BÁM DÍNH** — nhớ giá trị đã biết trong ref, không bao giờ tụt về undefined. Vườn không tự đổi giữa chừng nên nhớ lại là đúng.
+⚠️ Lỗi này KHÔNG chỉ xảy ra sau màn đặt vị trí: nút "xem toàn cảnh" trên header cũng gọi `flyToFarm()` → `focusTreeId = null` → mất bản đồ + cây bị rải lại chỗ khác. Nay hết cả hai.
+
+**Giữ chế độ xem cây sau khi xác nhận.** `FruitPlace3D.done()` trả kèm `placedTreeId`/`placedFruitId`; Space3D đọc rồi chọn lại đúng cây + quả đó, sau đó XOÁ tham số (không xoá thì mỗi lần vẽ lại sẽ ép chọn lại, người dùng không bay đi đâu được). `openFruitPlacer` truyền thêm `returnTo: 'Space3D'` để khỏi phải đoán màn trước qua `navigation.getState()`.
+
+**Texture bản đồ không được dùng chung giữa hai ngữ-cảnh GL.** Từ khi `<Canvas>` bị tháo lúc mất tiêu điểm (mục dưới), lần quay lại là ngữ-cảnh GL KHÁC — đưa lại đúng thể-hiện `THREE.Texture` cũ là trò may rủi. `mapTexture.ts` nay chỉ nhớ **TỆP + kích thước** (phần đắt: lượt tải mạng), còn `THREE.Texture` dựng MỚI mỗi lần; `MapGround` giữ danh sách texture của mình và `dispose()` khi tháo (kể cả ảnh về trễ sau khi đã tháo).
+
+## Luồng QUẢ: dựng lại giao diện + 3 lỗi đã sửa
+
+### 1. Kéo quả ở màn Đặt vị trí cứ TRÔI VỀ CHỖ CŨ  ⟵ lỗi nặng nhất
+`FruitPlace3DScreen`: `PanResponder.create` nằm trong `useMemo([offset.dx, offset.dy, coord, mpp, view])` → **mỗi lần kéo là dựng lại một thể-hiện MỚI**.
+Gốc rễ: `gestureState.dx` của PanResponder là quãng đường tích luỹ TỪ LÚC ĐẶT NGÓN, và nó nằm TRONG thể-hiện. Kéo → `setCoord` → render → thể-hiện mới có `dx = 0`; View đang giữ quyền phản hồi nhận tiếp sự-kiện move bằng thể-hiện mới đó. Code lại cộng `g.dx` vào mốc lúc BẮT ĐẦU kéo (`dragStart`, một ref nên vẫn còn) → mỗi khung hình quả bị kéo tuột về sát chỗ ban đầu. Đúng triệu chứng "kéo tới đâu nó chạy về đó".
+Sửa: `PanResponder.create` gọi ĐÚNG MỘT LẦN trong `useRef`, mọi giá trị đọc qua ref `live`. Cùng khuôn với `DraggableVertex` bên `FarmDetailScreen` (chỗ đó đã làm đúng từ trước).
+⚠️ Quy tắc chung: **PanResponder không bao giờ được nằm trong `useMemo` có deps đổi trong lúc kéo.**
+
+### 2. Quay về Space3D thì cảnh GIẬT, back ra vào lại mới hết
+Stack navigator GIỮ NGUYÊN màn bên dưới khi mở màn mới → sang `FruitPlace3D` (cũng có `<Canvas>`) là có **HAI ngữ-cảnh expo-gl cùng sống**, và vòng lặp dựng hình của R3F (`_roots`, một `requestAnimationFrame` chung) vẽ CẢ HAI mỗi khung hình.
+Sửa: cả `Space3DScreen` lẫn `FruitPlace3DScreen` chỉ dựng `<Canvas>` khi `useIsFocused()` — mất tiêu điểm là tháo. Vừa cắt hẳn cảnh hai ngữ-cảnh cùng chạy, vừa bảo đảm lần quay lại LUÔN là ngữ-cảnh GL sạch, tức chính cái mà "back ra rồi vào lại" đang làm thủ công.
+Tư-thế máy quay không mất: nó nằm ở `controller` NGOÀI canvas, khung đầu tiên sau khi dựng lại `CameraDriver` ghi lại ngay.
+> Chưa chạy trên máy thật. Đây là nguyên nhân KHẢ DĨ NHẤT chứ chưa đo được; điểm chắc chắn là sau sửa thì trạng thái hỏng không thể sống sót qua một lần điều hướng nữa.
+
+### 3. Luồng đặt vị trí quả: 3 BƯỚC tuần tự
+`projection.ts`: `ViewDef.icon` → `ViewDef.step` (1..3), thêm `nextView()` (thuần, có test).
+Trước → *Dùng vị trí này* → Bên → *Dùng vị trí này* → Trên → **Xác nhận**. Ba thẻ hướng vẫn bấm được để quay lại sửa; thẻ đã qua hiện dấu tích. Chip toạ-độ nào đang bị khoá thì mờ đi + ghi "đang khoá".
+Vì sao vẫn giữ bước Trên: hai hướng đầu đã đủ khoá cả 3 trục, nhưng nhìn từ trời mới thấy ngay quả nằm trong hay ngoài tán.
+Test: `projection.test.ts` +4 (thứ tự bước, `nextView` đi hết chuỗi không lặp, hướng cuối trả null).
+
+### 4. Giao diện — simplify modern, bỏ sạch ký-tự-hình
+- **Bỏ mọi emoji/ký tự làm icon** trong chuỗi (`＋ − ↺ ↻ ◯ ⬭ ✓ ➕ ▾ ▴ ↩︎ 💾 🎯 🆕 📍 📷 ✏️ ⭐ 🥥 🌿`) → dùng `components/Icon`. Lý do: emoji mỗi máy vẽ một kiểu, không đổi màu theo trạng thái, không canh được đường nền chữ.
+- **Icon**: tải thêm 17 icon fa6-solid → tổng **79** (`minus`, `magnifying-glass-plus/minus`, `rotate-left/right`, `circle`, `bullseye`, `floppy-disk`, `arrow-rotate-left`, `wifi`, `cube`, `images`, `crop-simple`, `circle-plus`, `tag`, `triangle-exclamation`, `arrows-up-down-left-right`).
+- **Nút + tròn** dùng `FAB` của **react-native-paper** — gói đã nằm trong `package.json` từ trước mà CHƯA CHỖ NÀO dùng. Icon truyền bằng HÀM DỰNG (`icon={({size,color}) => <Icon…/>}`) nên không kéo theo font MaterialCommunityIcons mà Paper mặc định dùng, và không cần `PaperProvider` (Paper v5 `createTheming(MD3LightTheme)` đã có theme mặc định khi không có Provider).
+- **`components/BottomSheet.tsx`** (mới) — tấm trượt từ đáy thay `Alert.alert`. Hộp thoại hệ thống mỗi nền tảng một kiểu, không đặt được icon, và **Android tự sắp lại thứ tự nút** nên bộ "Huỷ / Thư viện / Chụp ảnh" hiện ra mỗi máy một khác. Giữ `<Modal>` sống thêm một nhịp để chạy nốt hoạt-ảnh đóng.
+  ⚠️ Mở tấm này TỪ tấm chi tiết phải đóng cái trước rồi mới mở (chờ 220 ms) — hai `<Modal>` chồng nhau hay nuốt thao tác của nhau. Mở bộ chọn ảnh cũng chờ tấm đóng xong.
+- **`FruitListScreen`**: header eyebrow + tên cây, chip loài, thẻ thống kê 3 cột, hàng quả bấm được, trạng thái rỗng/lỗi có khối icon riêng. Thêm **CHI TIẾT QUẢ** (trước đây không có: hàng danh sách không bấm được) — tấm trượt gồm ảnh đại diện, trạng thái, 3 ô dữ-kiện, dải ảnh các góc (`GET /api/fruit/{id}/views`), nút "Xem trong 3D" và "Thêm góc ảnh" (mở thẳng cropper ở chế độ `fruitId`).
+- **`FruitCropperScreen`**: bước KHOANH dựng theo lối máy ảnh — ảnh chiếm TRỌN màn, nút nổi lên trên (trước là khung cố định cao 340 px rồi xếp nút thành hàng bên dưới). Tâm vòng ngắm hạ xuống `0.44·h` vì thanh nút dưới che mất phần đáy. Chọn hình khung là segmented `Quả tròn | Quả dài`, hình elip vẽ bằng CHÍNH icon `circle` kéo giãn ngang `scaleX 1.5`. Hai bước sau là màn sáng có nhãn "Bước 2/3", "Bước 3/3".
+- Toàn bộ phần TOÁN của cropper (`regionToOrig`, `posFromBox`, `jumpToBox`, PanResponder pinch/pan) giữ NGUYÊN — chỉ đổi vỏ.
+
+### 5. Lời mời "đã tìm thấy quả" — vòng sáng toả liên tục (`DetectInvite`)
+Máy đã tự tìm ra quả rồi mà người dùng vẫn è cổ kéo-phóng bằng tay, vì cái chip gợi ý cũ đứng yên, màu lam như mọi nút khác, lại nằm tít trên đỉnh màn.
+- Dời xuống **ngay trên thanh `Quả tròn | Quả dài`** — vùng ngón cái đang đặt sẵn, và nằm cạnh nhau thì thấy ngay là có đường tắt.
+- **Xanh lá rực `#22C55E`**, KHÔNG dùng `COLORS.success` (#3D7A5E): màu đó trầm, đặt trên ảnh chụp vườn vốn toàn lá xanh sẫm thì chìm nghỉm.
+- **Vòng sáng TOẢ RA liên tục** + nút nảy nhẹ. Hai vòng lệch pha nửa nhịp (vòng sau vào sau 750 ms của nhịp 1500 ms) nên không có quãng đứng hình. Vòng dùng `StyleSheet.absoluteFillObject` phủ đúng bằng nút rồi phóng ra → luôn đồng tâm, không phải căn tay theo bề rộng chữ (chữ đổi theo trạng thái).
+- Chỉ chạy `transform` + `opacity` → `useNativeDriver: true`, không giành khung hình với cảnh 3D.
+- Bấm rồi thì **THÔI động** (`detectUsed`): đã hiểu ý thì nhấp nháy tiếp chỉ còn là phiền; nút vẫn ở đó, đổi chữ thành "Canh lại vào quả đã tìm thấy".
+- Chỉ hiện ở luồng quả MỚI (`fruitId` rỗng) — đúng như phần auto-detect vốn có.
+
+## BẢN ĐỒ NỀN dưới thửa đất + hai kiểu xem 3D ⇄ 2D trong Space3D
+
+Ảnh bản đồ trải ngay DƯỚI mặt đất của vườn, đặt đúng theo ĐIỂM NỐI ranh giới đã vẽ lúc thêm vườn. **Không thêm thư-viện nào** — ô bản đồ chỉ là ảnh 256×256 theo lưới Web-Mercator, tự tính lấy.
+
+### Vì sao không nhét MapLibre vào cảnh
+MapLibre là view native RIÊNG, không vẽ được vào ngữ-cảnh GL của `<Canvas>` (đặt chồng lên thì không xoay/nghiêng theo camera 3D được). Đường đi đúng: tải ô raster về rồi dán làm texture trong CHÍNH cảnh three.
+
+### Lõi (toán THUẦN, có test)
+- `mapTiles.ts` — lat/lng ⇄ ô `z/x/y`, sổ đăng ký nguồn ảnh, `planTiles()` chọn ô phủ kín vườn. Mức phóng chọn từ NÉT NHẤT hạ dần cho tới khi số ô ≤ trần (`MAX_TILES = 36`) → vườn nhỏ được ảnh nét, vườn lớn tự lùi ra chứ không nổ số lượt tải. Vị trí ô trả về bằng MÉT trong hệ vườn.
+- `geo.ts` thêm `metersToLatLng()` (nghịch đảo `latLngToMeters`) — cần để đổi hộp bao của vườn về lat/lng mới hỏi được ô.
+- **Hai phép chiếu khác nhau vẫn khớp**: `geo.ts` dùng equirectangular, ô bản đồ dùng Mercator. Hai cái chỉ lệch ở hệ-số giãn theo vĩ độ, gần như hằng số trong vài km → sai lệch dưới chục cm, nhỏ hơn sai số GPS. Và vì MỌI ô quy đổi qua cùng một hàm nên cạnh chung khớp tuyệt đối → **không hở đường ke** (có test kiểm).
+- Test: `mapTiles.test.ts` — **23 test** (đi vòng lat/lng⇄ô, thứ tự `{z}/{y}/{x}` của Esri vs `{z}/{x}/{y}` của OSM, quấn vòng x / kẹp y, hạ mức phóng khi vườn rộng, phủ kín ranh giới, ô kề nhau khít cạnh, Nam bán cầu).
+- ✅ Đã gọi thử URL thật: Esri z19 trả **HTTP 200, JPEG 256×256** — xác nhận mẫu URL và thứ tự trục đúng.
+
+### Nạp ảnh (RN không có DOM)
+`mapTexture.ts` — `TextureLoader` của three vô dụng ở RN. Dùng lại đúng đường đã chạy thật ở `treeAsset.ts`: `downloadAsync` → `Image.getSize` → texture dạng `image = { data: { localUri }, width, height }` + `isDataTexture`, để expo-gl tự giải mã ảnh ở tầng native.
+- **`flipY = true`** (NGƯỢC với đường glTF ở `treeAsset` để `false`): ảnh bản đồ có gốc ở góc trên-trái, `PlaneGeometry` lấy uv(0,1) ở mép trên. Đã đọc mã nguồn expo-gl xác nhận nhánh nạp theo `localUri` CÓ tôn trọng `UNPACK_FLIP_Y_WEBGL` (`EXWebGLMethodsTextures.cpp`: `loadImage` xong thì `flipPixels`). Nếu sau này bản đồ hiện LỘN NGƯỢC thì đây là công tắc duy nhất cần lật.
+- **CỐ Ý không bật mipmap**: texture chỉ upload xong ở lô lệnh kế tiếp, `glGenerateMipmap` trên texture chưa hoàn chỉnh cho ra ô ĐEN — hỏng nặng hơn hẳn cái giá là hơi rung khi nhìn chếch. Giữ đúng cấu hình lọc `treeAsset` đã chạy thật.
+- Cache 2 tầng: theo URL ở mức module (đổi 3D⇄2D không tải lại, không upload lại GPU) + tệp trong `cacheDirectory` (mở lại app không tốn mạng).
+- Ô hỏng chỉ mất ô đó; các ô khác vẫn hiện dần từng cái một.
+
+### Cảnh
+- `scene/MapGround.tsx` — mỗi ô = 1 `<mesh>` phẳng riêng. Xoay `−π/2` quanh X làm +Y cục bộ (mép TRÊN của ảnh) quay về −Z = **BẮC**, đúng quy ước ô bản đồ → khỏi sửa uv bằng tay. `meshBasicMaterial` vì ảnh vệ tinh đã có sẵn nắng trong đó, cho đèn cảnh tác động nữa thì vườn tối đen một nửa.
+- `FarmGround` thêm `mapUnder`: có bản đồ thì thửa đất thành lớp nhuộm MỜ (`opacity 0.16`, `depthWrite=false` để không che chấm/nhãn vẽ sau) và TẮT lưới mốc — giữ mặt đất đặc thì bản đồ bên dưới vô hình.
+- Sương mù đẩy XA khi bật bản đồ, nếu không nó nhuộm đen rìa ảnh trông như cháy góc.
+
+### Hai kiểu xem (nút [3D]/[2D] ở cạnh phải)
+- **3D** — như cũ: máy quay nghiêng, model cây dựng đứng, bản đồ trải dưới.
+- **2D** — nhìn thẳng từ trên xuống, **BẮC HƯỚNG LÊN** (`theta = 0`), KHOÁ nghiêng (`controller.phiLocked`), cây thu về **chấm dẹt** (`scene/TreeMarkers.tsx`) vì nhìn từ trên thì tán 3D chồng lên nhau che gần hết ảnh.
+- **Không hạ `phi` về 0**: máy quay dựng đúng trục đứng thì `lookAt` suy biến (hướng nhìn song song vector "lên") và cảnh lật lung tung → dùng `PHI_MIN`, mắt gần như không phân biệt được.
+- `controller.panBy()` mới: ở 2D, 1 ngón **KÉO bản đồ** thay vì xoay (góc nghiêng đã khoá thì kéo dọc sẽ không có phản hồi gì cả). Quy đổi px→mét theo `2·r·tan(fov/2)/chiều-cao-khung` nên kéo 1 px luôn đi đúng 1 px cảnh ở mọi mức phóng.
+- Mọi đường bay đều phải biết kiểu xem: `flyToTree`/`flyToFarm` đọc `modeRef` — ở 2D thì bay THẲNG (giữ top-down) chứ không dùng `treePose`/`farmPose` (2 cái đó có `phi` nghiêng, `flyTo` ghi thẳng vào pose nên bỏ qua `phiLocked`).
+- Chỗ bắt chạm cây đổi theo kiểu xem: 3D nhắm nửa thân cây, 2D nhắm sát mặt đất. Nhãn cây cũng hạ xuống ~0.3 m ở 2D (nhìn từ trên thì ngọn nằm chồng lên gốc).
+
+### Nút bấm & báo lỗi
+Cạnh phải: `[3D]/[2D]` · bật/tắt lớp bản đồ · đổi nguồn ảnh (Vệ tinh Esri ↔ Bản đồ OSM, **mặc định vệ tinh** — vườn nông thôn nhìn ảnh vệ tinh mới thấy tán cây/luống/bờ ranh, bản đồ đường phố thường trắng trơn). Đặt ở GIỮA cạnh phải để không đụng thanh tiêu đề, thẻ quả, dòng gợi ý và băng "đang đặt vị trí" (`top: 108`).
+Lớp bản đồ trống thì nói RÕ lý do ngay trên màn (chưa có điểm nối GPS / không tải được ảnh / thiếu n trên m ô) — không có nó thì người dùng chỉ thấy nền tối và tưởng nút hỏng.
+
+> ⚠️ Vườn chưa có `Farm.coordinates` → `origin = null` → KHÔNG có gì để neo bản đồ. Trùng với cảnh báo ở mục dưới: `loadFarm` không đẩy farm vào `state.farm.farms` nên vào FarmDetail bằng đường lạnh cũng mất ranh giới.
+> ⚠️ OSM yêu cầu User-Agent hợp lệ và cấm dùng nặng. Đang là nguồn PHỤ; nếu sau này dùng nhiều thì chuyển sang nhà cung cấp có khoá riêng.
+
+## Nút "Xem sơ đồ 3D của vườn" ở Chi tiết trang trại
+
+Trước đây từ `FarmDetail` chỉ vào 3D được qua chip "Xem 3D" trên TỪNG thẻ cây (mà chip đó chỉ hiện khi cây có `has_3d`) → không có lối nào xem TOÀN CẢNH vườn.
+- `FarmDetailScreen.tsx`: thêm prop `onView3DFarm` cho `FarmDetailMode` + nút phụ trong thanh đáy (trên nút "Cập nhật hoạt động"), style `view3DFarmBtn`.
+- Điều hướng `Space3D { mode:'farm', farmId }` — **KHÔNG truyền `treeId`** chính là thứ quyết định chế độ toàn cảnh (Space3D chỉ bay sà vào cây khi có `treeId`).
+- `farmId` lấy `farm?.id ?? farm_id`: `farm` đọc từ SQLite qua thunk `loadFarm`, có thể chưa về khi mở nhanh; `farm_id` từ route params luôn có.
+- ⚠️ `loadFarm` KHÔNG có reducer → không đẩy farm vào `state.farm.farms`, mà `useSpaceData` lại tìm ranh giới trong ĐÓ. Vào FarmDetail bằng đường thường (qua `FarmList`/Home đã `loadFarms`) thì đủ dữ liệu; đường lạnh thì rơi về ô vuông mặc định — mất ranh giới thật chứ không nổ.
+- Chỗ chừa của FlatList tăng 30 → 86 px vì thanh đáy giờ cao thêm 1 nút (thanh này `position:absolute`, phủ lên list).
+
 ## KHÔNG-GIAN 3D vườn · cây · quả (three + @react-three/fiber/native)
 
 Một hệ giao diện 3D DUY NHẤT thay cho các sơ đồ 2D rời rạc + WebView `/view/{code}`.
@@ -32,7 +135,7 @@ Quả nằm trong tán nên bị model che → mỗi quả 2 lớp `depthTest:fa
 - **Server chỉ lưu 2 chiều** (`zone`+`pos_x`+`pos_h`) → trục z và vị-trí cây đặt tay lưu tại MÁY (`positionStore`, AsyncStorage). x/y vẫn đẩy lên server nên máy khác + sơ đồ 2D cũ vẫn đúng, chỉ mất chiều sâu.
 
 ### Lối vào đã đổi (mọi nút sơ đồ → 1 hệ 3D)
-`TreeDetail` "Sơ đồ 3D" · `FarmDetail` nút 3D trên thẻ cây · `FruitList` "Sơ đồ 3D" → đều mở `Space3D`. `TreeMap2D`/`FarmMap2D`/`TreeViewer3D` GIỮ đăng ký route (deep-link cũ) nhưng không nút nào trỏ tới nữa. Nút "Xem 3D" cũ chỉ hiện khi `has_3d` → nay cây NÀO cũng xem được.
+`TreeDetail` "Sơ đồ 3D" · `FarmDetail` nút 3D trên thẻ cây + nút "Xem sơ đồ 3D của vườn" ở thanh đáy · `FruitList` "Sơ đồ 3D" → đều mở `Space3D`. `TreeMap2D`/`FarmMap2D`/`TreeViewer3D` GIỮ đăng ký route (deep-link cũ) nhưng không nút nào trỏ tới nữa. Nút "Xem 3D" cũ chỉ hiện khi `has_3d` → nay cây NÀO cũng xem được.
 
 ### Gỡ build Android sau khi thêm expo-modules (5 lỗi nối tiếp)
 1. **`Kotlin 1.9.24 is not supported by Expo modules` (min 2.1.20)** → `android/build.gradle`: `kotlinVersion = "2.1.20"`. Đây vốn là bản RN 0.84 dùng trong version catalog của `@react-native/gradle-plugin`, VÀ khớp KSP đã ghim sẵn (`2.1.20-1.0.32`) — tức con số 1.9.24 cũ đã lệch từ trước.
@@ -189,7 +292,7 @@ Icon không tồn tại → render null + cảnh báo ở DEV.
 2. `npm run icons -- <ten1> <ten2>`  → tải SVG + regenerate registry.
    (Hoặc `node scripts/icons.js` không tham số = chỉ regenerate từ SVG đã có.)
 
-### Đã seed 62 icon (49 gốc + 13 cho navbar/arc)
+### Đã seed 79 icon (49 gốc + 13 navbar/arc + 17 luồng quả)
 arrow-left/right, arrow-right-from-bracket, bars, bell, bookmark, briefcase, calendar, camera,
 check, chevron-(left/right/up/down), circle-(info/check/xmark/exclamation), clock, comment(s),
 credit-card, ellipsis-vertical, envelope, eye, eye-slash, filter, gear, gift, heart, house,
@@ -197,6 +300,9 @@ house-chimney, image, leaf, location-dot, lock, magnifying-glass, paper-plane, p
 qrcode, share-nodes, sliders, star, trash, user, wallet, xmark.
 +navbar/arc: seedling, bolt, circle-user, table-cells-large, tree, apple-whole, video, paw, droplet,
 utensils, syringe, warehouse, cow.
++luồng quả: minus, magnifying-glass-plus, magnifying-glass-minus, rotate-left, rotate-right, circle,
+bullseye, floppy-disk, arrow-rotate-left, wifi, cube, images, crop-simple, circle-plus, tag,
+triangle-exclamation, arrows-up-down-left-right.
 
 ### Ghi chú kỹ thuật
 - `react-native-svg@15.15.5` đã thêm vào `package.json` (trước đó chỉ là transitive dep).

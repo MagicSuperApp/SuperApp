@@ -9,6 +9,12 @@
  *   Bên   → kéo được Z (trước/sau) và Y (cao/thấp)   · khoá X
  *   Trên  → kéo được X và Z (nhìn từ trên xuống)     · khoá Y
  *
+ * ── Luồng 3 BƯỚC ────────────────────────────────────────────────────────────
+ * Mặc định đi tuần tự Trước → Bên → Trên; nút chính đưa sang bước kế, tới hướng
+ * Trên thì đổi thành "Xác nhận". Ba thẻ hướng vẫn bấm được để quay lại sửa.
+ * Lý do có bước Trên: hai hướng đầu đã đủ khoá cả 3 trục, nhưng nhìn từ trời mới
+ * thấy ngay quả đang nằm trong hay ngoài tán.
+ *
  * Camera dùng ORTHOGRAPHIC nên px ⇄ mét là hằng số: icon quả vẽ bằng View của RN
  * đè lên canvas vẫn khớp chính xác với cây, và luôn kéo được (không cần raycast).
  *
@@ -23,19 +29,19 @@ import {
   View, Text, StyleSheet, TouchableOpacity, PanResponder,
   LayoutChangeEvent, StatusBar, ActivityIndicator,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
 import { Canvas, useThree } from '@react-three/fiber/native';
 import type * as THREE from 'three';
 
+import { Icon } from '../components/Icon';
 import {
   DEFAULT_FRUIT_COORD, ZONE_LABEL, clampCoord, coordToZone,
   type FruitCoord,
 } from '../features/space3d/treeFrame';
 import {
   VIEW_DEFS, cameraPose, coordToScreenOffset, frustumHeightM,
-  lockedAxis, metersPerPx, screenOffsetToCoord, LOOK_AT_M,
+  lockedAxis, metersPerPx, nextView, screenOffsetToCoord, LOOK_AT_M,
   type ViewDir,
 } from '../features/space3d/projection';
 import { SPACE_COLORS } from '../features/space3d/visuals';
@@ -80,6 +86,7 @@ const FruitPlace3DScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const route = useRoute();
   const insets = useSafeAreaInsets();
+  const isFocused = useIsFocused();
   const { treeId, treeName, fruitId, fruitName, initial, returnTo } = (route.params ?? {}) as RouteParams;
 
   // Dùng ĐÚNG model cây đó đang hiển thị ở sơ đồ 3D — đặt quả trên hình cây khác
@@ -107,43 +114,70 @@ const FruitPlace3DScreen: React.FC = () => {
     setCanvas({ w: width, h: height });
   }, []);
 
-  // Kéo icon quả: cộng dồn từ vị-trí lúc BẮT ĐẦU kéo (không phải từ toạ-độ hiện
-  // tại mỗi khung) → không bị trôi tích luỹ sai số.
-  const dragStart = useRef<{ dx: number; dy: number; coord: FruitCoord } | null>(null);
-  const panResponder = useMemo(() => PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponder: () => true,
-    onPanResponderGrant: () => {
-      dragStart.current = { dx: offset.dx, dy: offset.dy, coord };
-    },
-    onPanResponderMove: (_e, g) => {
-      const s = dragStart.current;
-      if (!s || !(mpp > 0)) return;
-      setCoord(screenOffsetToCoord(view, s.coord, s.dx + g.dx, s.dy + g.dy, mpp));
-    },
-    onPanResponderRelease: () => { dragStart.current = null; },
-    onPanResponderTerminate: () => { dragStart.current = null; },
-  }), [offset.dx, offset.dy, coord, mpp, view]);
+  // ── Kéo icon quả ───────────────────────────────────────────────────────────
+  // PanResponder tạo ĐÚNG MỘT LẦN; mọi giá trị đọc qua ref.
+  //
+  // Vì sao KHÔNG dựng lại theo `coord`: mỗi lần kéo là `setCoord` → render lại →
+  // `PanResponder.create` sinh thể-hiện MỚI với `gestureState.dx` khởi tạo bằng 0.
+  // View đang giữ quyền phản hồi liền nhận tiếp sự-kiện move bằng thể-hiện mới đó,
+  // nên `g.dx` không còn là quãng đường từ lúc ĐẶT NGÓN mà chỉ là quãng từ lần
+  // render vừa rồi. Cộng nó vào mốc lúc bắt đầu kéo → quả bị kéo tuột về gần chỗ
+  // cũ sau mỗi khung hình, đúng triệu chứng "kéo tới đâu nó chạy về chỗ ban đầu".
+  const live = useRef({ offset, coord, mpp, view });
+  live.current = { offset, coord, mpp, view };
 
+  const dragStart = useRef<{ dx: number; dy: number; coord: FruitCoord } | null>(null);
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => {
+        const s = live.current;
+        dragStart.current = { dx: s.offset.dx, dy: s.offset.dy, coord: s.coord };
+      },
+      onPanResponderMove: (_e, g) => {
+        const s = dragStart.current;
+        const { mpp: m, view: v } = live.current;
+        if (!s || !(m > 0)) return;
+        setCoord(screenOffsetToCoord(v, s.coord, s.dx + g.dx, s.dy + g.dy, m));
+      },
+      onPanResponderRelease: () => { dragStart.current = null; },
+      onPanResponderTerminate: () => { dragStart.current = null; },
+    }),
+  ).current;
+
+  // ── Kết thúc: trả toạ-độ về màn trước ──────────────────────────────────────
   const done = useCallback(async () => {
     setSaving(true);
     // Có sẵn quả trên server → lưu toạ-độ đủ 3 chiều vào máy ngay.
     if (fruitId) await saveFruitCoord(fruitId, coord);
     setSaving(false);
+    // Kèm cả CHỖ ĐANG ĐỨNG để màn trước khôi phục đúng ngữ cảnh: Space3D phải quay
+    // lại đúng chế độ xem CÂY đó chứ không rơi về toàn cảnh. FruitCropper không đọc
+    // hai tham số này nên thừa cũng vô hại.
+    const back = { pickedFruitCoord: coord, placedTreeId: treeId, placedFruitId: fruitId };
     const target = returnTo;
     if (target) {
-      navigation.navigate({ name: target, params: { pickedFruitCoord: coord }, merge: true } as any);
+      navigation.navigate({ name: target, params: back, merge: true } as any);
     } else {
       // Không biết tên màn trước → vẫn đẩy tham số bằng cách lui rồi set params.
       const parent = navigation.getState?.();
       const prev = parent?.routes?.[Math.max(0, (parent.index ?? 1) - 1)];
       if (prev?.name) {
-        navigation.navigate({ name: prev.name, params: { pickedFruitCoord: coord }, merge: true } as any);
+        navigation.navigate({ name: prev.name, params: back, merge: true } as any);
       } else {
         navigation.goBack();
       }
     }
-  }, [coord, fruitId, navigation, returnTo]);
+  }, [coord, fruitId, treeId, navigation, returnTo]);
+
+  /** Nút chính: chưa tới hướng cuối thì sang bước kế, tới rồi thì xác nhận. */
+  const upcoming = nextView(view);
+  const advance = useCallback(() => {
+    const nxt = nextView(view);
+    if (nxt) { setView(nxt); return; }
+    done();
+  }, [view, done]);
 
   const zone = coordToZone(coord);
   const locked = lockedAxis(view);
@@ -154,21 +188,22 @@ const FruitPlace3DScreen: React.FC = () => {
       <StatusBar barStyle="light-content" backgroundColor={SPACE_COLORS.bg} />
 
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-        <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.goBack()}>
-          <Icon name="chevron-left" size={24} color={SPACE_COLORS.text} />
+        <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.goBack()} hitSlop={8}>
+          <Icon name="chevron-left" size={17} color={SPACE_COLORS.text} />
         </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.eyebrow}>ĐẶT VỊ TRÍ QUẢ TRÊN CÂY</Text>
+        <View style={styles.headTitles}>
+          <Text style={styles.eyebrow}>ĐẶT VỊ TRÍ QUẢ · BƯỚC {activeDef.step}/{VIEW_DEFS.length}</Text>
           <Text style={styles.title} numberOfLines={1}>
             {fruitName || 'Quả mới'} · {treeName || 'Cây'}
           </Text>
         </View>
       </View>
 
-      {/* 3 hướng chiếu */}
+      {/* 3 hướng chiếu — cũng là 3 bước của luồng */}
       <View style={styles.viewTabs}>
         {VIEW_DEFS.map((v) => {
           const on = v.key === view;
+          const passed = v.step < activeDef.step;
           return (
             <TouchableOpacity
               key={v.key}
@@ -176,7 +211,11 @@ const FruitPlace3DScreen: React.FC = () => {
               onPress={() => setView(v.key)}
               activeOpacity={0.85}
             >
-              <Icon name={v.icon} size={16} color={on ? '#06120c' : SPACE_COLORS.text} />
+              <View style={[styles.stepBadge, on && styles.stepBadgeOn, passed && styles.stepBadgeDone]}>
+                {passed
+                  ? <Icon name="check" size={9} color={SPACE_COLORS.bg} />
+                  : <Text style={[styles.stepBadgeTxt, on && styles.stepBadgeTxtOn]}>{v.step}</Text>}
+              </View>
               <Text style={[styles.viewTabTxt, on && styles.viewTabTxtOn]}>{v.label}</Text>
             </TouchableOpacity>
           );
@@ -185,19 +224,23 @@ const FruitPlace3DScreen: React.FC = () => {
 
       {/* Khung 3D + icon quả kéo được */}
       <View style={styles.stage} onLayout={onCanvasLayout}>
-        <Canvas
-          style={StyleSheet.absoluteFill}
-          orthographic
-          camera={{ near: 0.1, far: 200 }}
-        >
-          <color attach="background" args={['#070d0b']} />
-          {/* zoom = px/mét: khung nhìn cao đúng frustumHeightM mét theo chiều cao canvas. */}
-          <OrthoRig view={view} zoom={canvas.h > 0 ? canvas.h / frustumHeightM(view) : 0} />
-          <hemisphereLight args={['#a8e6c4', '#0a1410', 0.9]} />
-          <ambientLight intensity={0.45} />
-          <directionalLight position={[8, 14, 10]} intensity={1.0} color="#e6fff0" />
-          <TreeModel position={[0, 0, 0]} modelId={modelId} />
-        </Canvas>
+        {/* Chỉ dựng canvas khi màn đang hiển thị — xem ghi chú cùng chủ đề ở
+            Space3DScreen: để hai ngữ-cảnh GL cùng sống là nguồn của giật hình. */}
+        {isFocused ? (
+          <Canvas
+            style={StyleSheet.absoluteFill}
+            orthographic
+            camera={{ near: 0.1, far: 200 }}
+          >
+            <color attach="background" args={['#070d0b']} />
+            {/* zoom = px/mét: khung nhìn cao đúng frustumHeightM mét theo chiều cao canvas. */}
+            <OrthoRig view={view} zoom={canvas.h > 0 ? canvas.h / frustumHeightM(view) : 0} />
+            <hemisphereLight args={['#a8e6c4', '#0a1410', 0.9]} />
+            <ambientLight intensity={0.45} />
+            <directionalLight position={[8, 14, 10]} intensity={1.0} color="#e6fff0" />
+            <TreeModel position={[0, 0, 0]} modelId={modelId} />
+          </Canvas>
+        ) : null}
 
         {/* Vạch mốc tâm ngắm — giúp ước lượng độ cao */}
         <View pointerEvents="none" style={[styles.axisH, { top: canvas.h / 2 }]} />
@@ -218,12 +261,12 @@ const FruitPlace3DScreen: React.FC = () => {
         </View>
       </View>
 
-      {/* Toạ độ + xác nhận */}
+      {/* Toạ độ + điều hướng bước */}
       <View style={[styles.footer, { paddingBottom: insets.bottom + 14 }]}>
         <View style={styles.coordRow}>
-          <CoordChip label="X" value={coord.x} hint="trái ⇄ phải" />
-          <CoordChip label="Y" value={coord.y} hint="gốc → ngọn" />
-          <CoordChip label="Z" value={coord.z} hint="trước ⇄ sau" />
+          <CoordChip label="X" value={coord.x} hint="trái ⇄ phải" active={locked !== 'X'} />
+          <CoordChip label="Y" value={coord.y} hint="gốc → ngọn" active={locked !== 'Y'} />
+          <CoordChip label="Z" value={coord.z} hint="trước ⇄ sau" active={locked !== 'Z'} />
           <View style={styles.zoneChip}>
             <Text style={styles.zoneChipTxt}>{ZONE_LABEL[zone]}</Text>
           </View>
@@ -233,19 +276,22 @@ const FruitPlace3DScreen: React.FC = () => {
           <TouchableOpacity
             style={styles.resetBtn}
             onPress={() => setCoord(DEFAULT_FRUIT_COORD)}
+            activeOpacity={0.8}
           >
-            <Icon name="restore" size={16} color={SPACE_COLORS.text} />
+            <Icon name="arrow-rotate-left" size={14} color={SPACE_COLORS.text} />
             <Text style={styles.resetTxt}>Đặt lại</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.doneBtn} onPress={done} disabled={saving}>
-            {saving
-              ? <ActivityIndicator color="#06120c" />
-              : (
-                <>
-                  <Icon name="check" size={18} color="#06120c" />
-                  <Text style={styles.doneTxt}>Dùng vị trí này</Text>
-                </>
-              )}
+          <TouchableOpacity style={styles.doneBtn} onPress={advance} disabled={saving} activeOpacity={0.88}>
+            {saving ? <ActivityIndicator color="#06120c" /> : (
+              <>
+                <Icon name={upcoming ? 'chevron-right' : 'check'} size={15} color="#06120c" />
+                <Text style={styles.doneTxt}>
+                  {upcoming
+                    ? `Dùng vị trí này · tiếp hướng ${VIEW_DEFS.find((v) => v.key === upcoming)!.label}`
+                    : 'Xác nhận vị trí'}
+                </Text>
+              </>
+            )}
           </TouchableOpacity>
         </View>
       </View>
@@ -253,11 +299,13 @@ const FruitPlace3DScreen: React.FC = () => {
   );
 };
 
-const CoordChip: React.FC<{ label: string; value: number; hint: string }> = ({ label, value, hint }) => (
-  <View style={styles.coordChip}>
-    <Text style={styles.coordLabel}>{label}</Text>
+const CoordChip: React.FC<{ label: string; value: number; hint: string; active: boolean }> = ({
+  label, value, hint, active,
+}) => (
+  <View style={[styles.coordChip, !active && styles.coordChipLocked]}>
+    <Text style={[styles.coordLabel, !active && styles.coordLabelLocked]}>{label}</Text>
     <Text style={styles.coordVal}>{value.toFixed(2)}</Text>
-    <Text style={styles.coordHint}>{hint}</Text>
+    <Text style={styles.coordHint}>{active ? hint : 'đang khoá'}</Text>
   </View>
 );
 
@@ -270,18 +318,28 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     backgroundColor: SPACE_COLORS.hudBg, borderWidth: 1, borderColor: SPACE_COLORS.hudBorder,
   },
-  eyebrow: { fontSize: 9, fontWeight: '800', letterSpacing: 2.2, color: SPACE_COLORS.accent },
+  headTitles: { flex: 1, minWidth: 0 },
+  eyebrow: { fontSize: 9, fontWeight: '800', letterSpacing: 2, color: SPACE_COLORS.accent },
   title: { fontSize: 17, fontWeight: '800', color: SPACE_COLORS.text },
 
   viewTabs: { flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingVertical: 10 },
   viewTab: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
     paddingVertical: 10, borderRadius: 12,
     borderWidth: 1, borderColor: SPACE_COLORS.hudBorder, backgroundColor: SPACE_COLORS.hudBg,
   },
   viewTabOn: { backgroundColor: SPACE_COLORS.accent, borderColor: SPACE_COLORS.accent },
   viewTabTxt: { color: SPACE_COLORS.text, fontSize: 13, fontWeight: '700' },
   viewTabTxtOn: { color: '#06120c' },
+  stepBadge: {
+    width: 18, height: 18, borderRadius: 9,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: SPACE_COLORS.hudBorder,
+  },
+  stepBadgeOn: { borderColor: 'rgba(6,18,12,0.35)' },
+  stepBadgeDone: { backgroundColor: SPACE_COLORS.accent, borderColor: SPACE_COLORS.accent },
+  stepBadgeTxt: { fontSize: 10, fontWeight: '800', color: SPACE_COLORS.textMuted },
+  stepBadgeTxtOn: { color: '#06120c' },
 
   stage: {
     flex: 1, marginHorizontal: 12, borderRadius: 18, overflow: 'hidden',
@@ -309,7 +367,9 @@ const styles = StyleSheet.create({
     flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 12,
     backgroundColor: SPACE_COLORS.hudBg, borderWidth: 1, borderColor: SPACE_COLORS.hudBorder,
   },
+  coordChipLocked: { opacity: 0.5 },
   coordLabel: { color: SPACE_COLORS.accent, fontSize: 10, fontWeight: '800', letterSpacing: 1.5 },
+  coordLabelLocked: { color: SPACE_COLORS.textMuted },
   coordVal: { color: SPACE_COLORS.text, fontSize: 15, fontWeight: '800', marginTop: 1 },
   coordHint: { color: SPACE_COLORS.textMuted, fontSize: 9, marginTop: 1 },
   zoneChip: {
@@ -329,7 +389,7 @@ const styles = StyleSheet.create({
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     paddingVertical: 14, borderRadius: 13, backgroundColor: SPACE_COLORS.accent,
   },
-  doneTxt: { color: '#06120c', fontSize: 15, fontWeight: '800' },
+  doneTxt: { color: '#06120c', fontSize: 14, fontWeight: '800' },
 });
 
 export default FruitPlace3DScreen;

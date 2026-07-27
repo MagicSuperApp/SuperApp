@@ -30,6 +30,19 @@ export function latLngToMeters(p: LatLng, origin: LatLng): Vec2 {
   return { x, z: -north }; // Bắc là −Z
 }
 
+/**
+ * Nghịch đảo của `latLngToMeters` — mét trong hệ vườn → lat/lng.
+ * Cần cho lớp BẢN ĐỒ NỀN: hộp bao của vườn đang ở mét, phải quay về lat/lng mới
+ * hỏi được ô bản đồ (tile) phủ vùng đó.
+ */
+export function metersToLatLng(p: Vec2, origin: LatLng): LatLng {
+  const cos = Math.cos(origin.lat * D2R);
+  return {
+    lat: origin.lat - p.z / (EARTH_R * D2R), // z âm là Bắc → lat tăng
+    lng: origin.lng + p.x / (EARTH_R * D2R * (cos || 1e-12)),
+  };
+}
+
 /** Trọng-tâm đơn giản (trung bình các đỉnh) — đủ dùng làm gốc toạ-độ. */
 export function centroidLatLng(points: LatLng[]): LatLng {
   if (points.length === 0) return { lat: 0, lng: 0 };

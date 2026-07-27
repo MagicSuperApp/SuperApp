@@ -1,5 +1,5 @@
 import {
-  VIEW_DEFS, coordToScreenOffset, frustumHeightM, lockedAxis,
+  VIEW_DEFS, coordToScreenOffset, frustumHeightM, lockedAxis, nextView,
   metersPerPx, screenOffsetToCoord, type ViewDir,
 } from './projection';
 import { TREE_HEIGHT, TREE_RADIUS, type FruitCoord } from './treeFrame';
@@ -124,5 +124,27 @@ describe('VIEW_DEFS', () => {
       expect(v.label.length).toBeGreaterThan(0);
       expect(v.hint.length).toBeGreaterThan(0);
     });
+  });
+
+  it('số bước đánh liên tiếp từ 1', () => {
+    expect(VIEW_DEFS.map((v) => v.step)).toEqual([1, 2, 3]);
+  });
+});
+
+describe('nextView — luồng Trước → Bên → Trên', () => {
+  it('đi đúng thứ tự', () => {
+    expect(nextView('front')).toBe('side');
+    expect(nextView('side')).toBe('top');
+  });
+
+  it('hướng cuối trả null (chuyển sang bước xác nhận)', () => {
+    expect(nextView('top')).toBeNull();
+  });
+
+  it('đi hết chuỗi thì thăm đủ 3 hướng, không lặp', () => {
+    const seen: string[] = ['front'];
+    let cur = nextView('front');
+    while (cur) { seen.push(cur); cur = nextView(cur); }
+    expect(seen).toEqual(['front', 'side', 'top']);
   });
 });

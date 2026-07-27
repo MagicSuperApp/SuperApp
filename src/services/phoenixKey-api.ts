@@ -211,7 +211,9 @@ export class PhoenixKeyApiError extends Error {
 
 const SESSION_TOKEN_KEY = 'phoenixkey_session_token';
 
-const baseURL =
+// Export để cổng runtime (config/runtimeGateBootstrap) dùng CHUNG một nguồn host,
+// không khai lại chuỗi mặc định ở nơi thứ hai (tránh lệch khi đổi host).
+export const baseURL =
   (PHOENIXKEY_API_URL as string | undefined) ??
   'https://api.phoenixkey.me/api/v1';
 

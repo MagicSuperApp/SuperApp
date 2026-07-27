@@ -3,24 +3,27 @@
  *
  * PHẠM VI KHUNG: CHỈ dựng lớp gọi REST + kiểu dữ liệu + phân loại lỗi để UI trỏ vào.
  *   - Nội dung hiển thị (danh sách pool, chỉ số, trạng thái uỷ quyền) THUỘC backend
- *     PhoenixKey `api.phoenixkey.io` — app KHÔNG tự tính, chỉ render đúng key BE trả.
- *   - Hợp đồng endpoint CHƯA chốt: đã inbox Phoenix agent xin cập nhật API. Mọi path
- *     dưới đây là ĐỀ XUẤT (TODO), khoá sau feature-flag → UI chạy khung mà không vỡ khi
- *     BE chưa có (offline-first). Khi Phoenix trả contract → cập nhật parser tại 1 chỗ.
+ *     PhoenixKey `api.phoenixkey.me` — app KHÔNG tự tính, chỉ render đúng key BE trả.
  *   - Uỷ quyền (delegate) là giao dịch KÝ CLIENT-SIDE (non-custodial) → KHÔNG ký ở đây;
  *     để CHỖ + TODO, nối ví sau (giống ranh giới seed_hex của joinService, INV-3).
  *
- * LƯU Ý HOST: Aladin nêu nội dung Pool ở `api.phoenixkey.io` (khác `api.phoenixkey.me`
- * mà phoenixKey-api.ts đang dùng). Đã hỏi Phoenix agent xác nhận .io vs .me trong inbox.
+ * HOST — ĐÃ CHỐT (Phoenix agent trả lời 2026-07-23, câu 4): dùng `.me`, KHÔNG phải `.io`.
+ * Nhất quán với `phoenixKey-api.ts`. (Trước đây để `.io` theo ghi chú ban đầu.)
+ *
+ * BACKEND — CHƯA CÓ (curl 2026-07-24, đo thật):
+ *   `GET /api/v1/pools` → 404 · `/api/v1/delegation/status` → 404 · `/api/v1/v1/pools` → 404
+ * Phoenix xác nhận backend KHÔNG có controller pool; đã inbox yêu cầu Long build.
+ * Mọi path dưới đây là ĐỀ XUẤT, khoá sau feature-flag → UI chạy khung không vỡ
+ * (offline-first). Khi backend có contract thật → cập nhật parser tại 1 chỗ.
  */
 
 // @ts-ignore — provided by react-native-dotenv at build time.
 import { PHOENIXKEY_POOL_API_URL } from '@env';
 
 // ── Base URL ─────────────────────────────────────────────────────────
-// Mặc định api.phoenixkey.io (Aladin chốt); override qua env khi dev.
+// Mặc định api.phoenixkey.me (Phoenix chốt 2026-07-23); override qua env khi dev.
 const BASE_URL =
-  (PHOENIXKEY_POOL_API_URL as string | undefined) ?? 'https://api.phoenixkey.io';
+  (PHOENIXKEY_POOL_API_URL as string | undefined) ?? 'https://api.phoenixkey.me';
 
 // Timeout mặc định — quá hạn coi là lỗi mạng.
 const DEFAULT_TIMEOUT_MS = 15000;
@@ -41,7 +44,7 @@ export class PoolApiError extends Error {
 }
 
 // ── Kiểu dữ liệu (shape thô, optional để chịu field lạ tới khi contract chốt) ──
-// TODO(Phoenix): thay bằng shape THẬT khi api.phoenixkey.io trả contract Pool.
+// TODO(Phoenix): thay bằng shape THẬT khi backend có controller pool (hiện 404).
 
 /** Một stake pool (SPO) hiển thị cho user chọn uỷ quyền. */
 export interface PoolSummary {

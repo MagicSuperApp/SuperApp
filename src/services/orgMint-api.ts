@@ -36,12 +36,25 @@ import { PhoenixKeyApiError } from './phoenixKey-api';
  * Tạo OrgDID single-owner. m-of-n founding (nhiều owner + threshold) = PR #40,
  * để CHỖ: khi merge, thêm `owners[]` + `threshold` vào đây.
  */
+/**
+ * Body `POST /identity/org/create` — ĐỐI CHIẾU BACKEND THẬT (curl prod 2026-07-24
+ * + đọc `OrgCreateRequest.java`). Trước đây app gửi `{owner_did, org_name}` →
+ * backend trả 400: "name is required; ownerSignature is required; nonce is required".
+ * Đã sửa cho khớp. Wire = snake_case (thực nghiệm: gửi snake_case thì bind được,
+ * camelCase thì backend báo thiếu field).
+ */
 export interface CreateOrgRequest {
-  /** DID owner khởi tạo (cá nhân đứng tên) — controller đầu tiên của org. */
+  /** PersonDID đứng tên — controller của org. Regex BE: `did:phoenix:<13>:<64 hex>`. */
   owner_did: string;
-  /** Tên hiển thị tổ chức (metadata off-chain). */
-  org_name: string;
-  // TODO(PR#40 m-of-n): owners?: string[]; threshold?: number;
+  /** Tên tổ chức, 1–100 ký tự. KHÔNG cần duy nhất (cùng tên khác nước là hợp lệ). */
+  name: string;
+  /** Mã số đăng ký kinh doanh (MST) — tuỳ chọn, ≤50 ký tự. */
+  registration_number?: string;
+  /** Chữ ký HW_Key của owner trên chuỗi challenge canonical (hex DER ECDSA P-256). */
+  owner_signature: string;
+  /** Nonce chống phát lại, 1–64 ký tự. Backend tiêu thụ 1 lần theo (owner_did, nonce). */
+  nonce: string;
+  // TODO(PR#40 m-of-n): luồng founding riêng = POST /identity/org/founding.
 }
 
 export interface CreateOrgResult {

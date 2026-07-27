@@ -18,19 +18,25 @@
 //   WORK_BACKEND_ENABLED=false   # bật true khi host sống + đã đối chiếu shape
 
 import { WORK_API_URL, WORK_BACKEND_ENABLED } from '@env';
+import { isCapabilityLive } from '../../../config/runtimeGate';
 
 /** Base URL AladinWork (đã gồm hậu tố /api/v1). Trống → chưa cấu hình host. */
 export const WORK_BASE_URL: string =
   (WORK_API_URL as string | undefined)?.trim() || '';
 
 /**
- * Cờ bật backend thật. CHỈ true khi:
- *   - WORK_BACKEND_ENABLED === 'true' TRONG .env, VÀ
- *   - có WORK_API_URL (host) hợp lệ.
- * Mọi trường hợp khác → false → module chạy mock (fallback an toàn).
+ * Cờ bật backend thật — nay do CỔNG RUNTIME quyết (config/runtimeGate.ts):
+ *   - CÓ host (WORK_API_URL), VÀ
+ *   - cổng runtime probe /health trả 2xx → tự bật khi backend sống, KHỎI build lại.
+ * Kill-switch thủ công: đặt WORK_BACKEND_ENABLED='off' trong .env để CƯỠNG BỨC mock
+ * (vd giữ 1 bản release luôn mock). Mọi giá trị khác → health quyết.
+ * (Trước đây cần WORK_BACKEND_ENABLED==='true' build-time → backend sống vẫn phải
+ * build lại; anh Aladin chốt 2026-07-22 chuyển sang tự động.)
  */
 export const isWorkBackendEnabled = (): boolean =>
-  String(WORK_BACKEND_ENABLED) === 'true' && WORK_BASE_URL.length > 0;
+  WORK_BASE_URL.length > 0 &&
+  String(WORK_BACKEND_ENABLED).toLowerCase() !== 'off' &&
+  isCapabilityLive('work');
 
 /** baseURL thực dùng cho axios; fallback localhost khi dev tự chạy backend. */
 export const resolveBaseURL = (): string =>

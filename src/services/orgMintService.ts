@@ -26,6 +26,42 @@ import {
   type WaitSignedHandle,
 } from './orgMint-api';
 import { isOrgMintEnabled } from '../config/orgMint';
+import { signRaw } from '../sdk/phoenixKey';
+import taad from '../sdk/taadEnclave';
+
+/**
+ * Chuỗi challenge canonical backend verify cho `POST /identity/org/create`
+ * (chép đúng từ `OrgCreateRequest.java` — KHÔNG suy đoán):
+ *
+ *   "PHOENIXKEY_ORG_MINT:" + ownerDid + ":" + name + ":"
+ *                          + (registrationNumber || "") + ":" + nonce
+ *
+ * Backend verify chữ ký này với HW_Key ĐANG HOẠT ĐỘNG của ownerDid → chống mạo danh.
+ * Lệch 1 ký tự = 403. Khi backend đổi chuỗi, CHỈ sửa ở đây.
+ */
+const CHALLENGE_ORG_MINT = 'PHOENIXKEY_ORG_MINT';
+
+// UTF-8 → hex (native `sign` nhận dataHex). Tên tổ chức có dấu tiếng Việt →
+// BẮT BUỘC xử-lý đa-byte đúng, không dùng charCodeAt thô.
+const utf8ToHex = (s: string): string => {
+  const push = (b: number) => b.toString(16).padStart(2, '0');
+  let out = '';
+  for (let i = 0; i < s.length; i += 1) {
+    const code = s.codePointAt(i)!;
+    if (code < 0x80) {
+      out += push(code);
+    } else if (code < 0x800) {
+      out += push(0xc0 | (code >> 6)) + push(0x80 | (code & 0x3f));
+    } else if (code < 0x10000) {
+      out += push(0xe0 | (code >> 12)) + push(0x80 | ((code >> 6) & 0x3f)) + push(0x80 | (code & 0x3f));
+    } else {
+      out += push(0xf0 | (code >> 18)) + push(0x80 | ((code >> 12) & 0x3f)) +
+        push(0x80 | ((code >> 6) & 0x3f)) + push(0x80 | (code & 0x3f));
+      i += 1; // cặp surrogate
+    }
+  }
+  return out;
+};
 
 // Re-export type để tầng UI (OrgMintScreen) import từ service, không thò tay vào -api.
 // Cùng lối như BuildAndSignMintTx export ở dưới; trước đây sót nên OrgMintScreen fail tsc.
@@ -109,10 +145,31 @@ export type BuildAndSignMintTx = (args: {
 export async function createOrg(args: {
   ownerDid: string;
   orgName: string;
+  /** Mã số đăng ký kinh doanh (MST) — tuỳ chọn. Bỏ trống = chuỗi rỗng trong challenge. */
+  registrationNumber?: string;
 }): Promise<CreateOrgResult> {
+  const name = args.orgName.trim();
+  const registrationNumber = args.registrationNumber?.trim() ?? '';
+  const nonce = await taad.generateSalt();
+
+  // Dựng ĐÚNG chuỗi backend verify. Phần registrationNumber rỗng vẫn phải có dấu ':'
+  // bao quanh — bỏ đi là lệch chuỗi → 403.
+  const challenge =
+    `${CHALLENGE_ORG_MINT}:${args.ownerDid}:${name}:${registrationNumber}:${nonce}`;
+
+  const ownerSignature = await signRaw(
+    utf8ToHex(challenge),
+    'Tạo danh tính tổ chức',
+    'Ký bằng khoá phần cứng của bạn',
+  );
+
   return orgMintApi.createOrg({
     owner_did: args.ownerDid,
-    org_name: args.orgName,
+    name,
+    // Chỉ gửi khi có — backend cho phép vắng mặt (@Size, không @NotBlank).
+    ...(registrationNumber ? { registration_number: registrationNumber } : {}),
+    owner_signature: ownerSignature,
+    nonce,
   });
 }
 

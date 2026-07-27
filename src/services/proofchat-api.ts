@@ -20,6 +20,7 @@ import axios, {
 } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PROOFCHAT_API_URL, PROOFCHAT_BACKEND_ENABLED } from '@env';
+import { isCapabilityLive } from '../config/runtimeGate';
 
 // ── Kiểu dữ liệu ─────────────────────────────────────────────────────
 
@@ -72,10 +73,15 @@ export class ProofChatApiError extends Error {
 }
 
 // ── Feature flag (Vận hành độc lập) ──────────────────────────────────
-// Mặc định OFF: chat tab vẫn chạy mock nếu BE chưa cấu hình / chết.
+// Nay do CỔNG RUNTIME quyết (config/runtimeGate.ts): có host + probe /health 2xx
+// → tự bật khi backend sống, KHỎI build lại. Kill-switch thủ công:
+// PROOFCHAT_BACKEND_ENABLED='off' cưỡng bức mock. Mặc định: chat tab chạy mock
+// tới khi /health 2xx. (Trước đây cần ==='true' build-time — anh Aladin chốt
+// 2026-07-22 chuyển tự động.)
 export const isProofChatBackendEnabled = (): boolean =>
-  String(PROOFCHAT_BACKEND_ENABLED) === 'true' &&
-  !!(PROOFCHAT_API_URL as string | undefined);
+  !!(PROOFCHAT_API_URL as string | undefined) &&
+  String(PROOFCHAT_BACKEND_ENABLED).toLowerCase() !== 'off' &&
+  isCapabilityLive('proofchat');
 
 // ── Lưu token ────────────────────────────────────────────────────────
 

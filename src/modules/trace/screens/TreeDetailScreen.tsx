@@ -363,6 +363,10 @@ const TreeDetailScreen = () => {
   // luồng quả gắn theo cây (FruitList), truyền tree_id như TreeManagement vẫn làm.
   const handleAddFruit = () => {
     if (!tree) return;
+    // Field-test Đức 26/07 mục 11 + fix #11: stub cũ navigate('TreeIdentity') mở nhầm
+    // luồng NHẬN DIỆN CÂY. Dùng FruitList (→ FruitCropper → POST /api/fruit/enroll) —
+    // ĐÚNG nơi /api/tree/{id}/layout đọc, để quả thêm xong HIỆN trong danh sách.
+    // (FruitVideo là nút "Video quả" riêng bên dưới → không dùng lại ở đây cho khỏi trùng.)
     (navigation as any).navigate('FruitList', {
       treeId: tree.id,
       treeName: (tree as any).name,
@@ -382,7 +386,13 @@ const TreeDetailScreen = () => {
 
   const handleScan3D = () => {
     if (!tree) return;
-    (navigation as any).navigate('TreeIdentity');
+    // Field-test Đức 26/07 mục 8: stub cũ navigate('TreeIdentity') = mở nhầm màn
+    // nhận diện. Nút "Xem 3D" phải mở TreeViewer3D (dựng /view/{code}). Mẫu khớp
+    // FarmDetailScreen.onView3D. Model dựng async phía server — màn tự hiện "đang dựng".
+    (navigation as any).navigate('TreeViewer3D', {
+      code: (tree as any).code ?? (tree as any).shortCode ?? '',
+      treeName: (tree as any).name,
+    });
   };
 
   // Mở KHÔNG-GIAN 3D chung: bay vào ĐÚNG cây này, thấy quả phát sáng trên tán.

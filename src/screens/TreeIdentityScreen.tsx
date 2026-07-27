@@ -236,7 +236,7 @@ const TreeIdentityScreen: React.FC = () => {
 
       // 1) FIX NHANH ngay lập tức: cho phép độ chính xác thô + dùng vị trí cache
       //    (Wi-Fi/cell) để có toạ độ trong vài giây thay vì đợi chip GPS cold-start
-      //    vài phút. Người dùng thấy GPS "sẵn sàng" gần như tức thì.
+      //    vài phút (field-test Đức 26/07 mục 2: tránh enroll cây mới kẹt 400 need_gps).
       Geolocation.getCurrentPosition(
         applyPos,
         _err => { /* chưa có fix nhanh — watch bên dưới sẽ bù */ },

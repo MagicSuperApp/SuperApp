@@ -152,5 +152,21 @@ target 'aladin_mobile_fe' do
     # từ ios/ vào app bundle → KHÔNG cần thêm thủ công vào resources_build_phase.
     # Chỉ cần đảm bảo 2 file tồn tại trong ios/ (codemagic.yaml đã copy sẵn).
     # Nếu gặp "Multiple commands produce" → xóa block này và chạy pod install lại.
+
+    # ── Guard: gỡ cầu nối expo↔worklets (ExpoModulesWorklets*) ────────────
+    # expo-modules-core 56 kèm bridge tùy chọn ExpoModulesWorklets/Adapter, cần
+    # react-native-worklets có header `worklets/Compat/StableApi.h` — bản 0.7.4 dự án
+    # đang dùng CHƯA có → compile bridge gãy (giống lỗi Android đã tắt bằng
+    # expo.enableWorkletsIntegration=false). App KHÔNG chạy expo module trên worklet
+    # runtime (chỉ dùng expo-gl/asset) → gỡ an toàn.
+    # No-op nếu CI/pod install KHÔNG kéo bridge vào (target không tồn tại).
+    installer.pods_project.targets.each do |t|
+      if t.name.start_with?('ExpoModulesWorklets')
+        Pod::UI.puts "🩹 Excluding worklets bridge target: #{t.name}".yellow
+        t.build_configurations.each do |c|
+          c.build_settings['EXCLUDED_SOURCE_FILE_NAMES'] = '*'
+        end
+      end
+    end
   end
 end

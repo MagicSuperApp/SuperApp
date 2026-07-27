@@ -1,0 +1,20 @@
+diff --git a/node_modules/expo-modules-core/android/build.gradle b/node_modules/expo-modules-core/android/build.gradle
+index 3793f8d..5a6c2b7 100644
+--- a/node_modules/expo-modules-core/android/build.gradle
++++ b/node_modules/expo-modules-core/android/build.gradle
+@@ -61,7 +61,14 @@ USE_HERMES = USE_HERMES && isExpoModulesCoreTests
+ 
+ def shouldTurnWarningsIntoErrors = findProperty("EXPO_TURN_WARNINGS_INTO_ERRORS") == "true"
+ 
+-def enableWorkletsIntegration = !isTests
++// Cho phép TẮT tích hợp worklets bằng property `expo.enableWorkletsIntegration=false`.
++// Lý do: expo-modules-core 56 cần react-native-worklets đủ mới (có header
++// `worklets/Compat/StableApi.h`); dự án đang dùng worklets 0.7.4 nên build C++ gãy.
++// Không màn nào của app chạy expo module trên worklet runtime (chỉ dùng expo-gl /
++// expo-asset / expo-file-system cho 3D) → tắt là an toàn: WorkletRuntimeInstaller.cpp
++// đã bọc toàn bộ trong `#if WORKLETS_ENABLED` và trả nullptr/0 khi tắt, còn phía
++// Kotlin chỉ tham chiếu class của chính expo, không import class của worklets.
++def enableWorkletsIntegration = !isTests && findProperty("expo.enableWorkletsIntegration") != "false"
+ def workletsProject = enableWorkletsIntegration ? findProject(":react-native-worklets") : null
+ 
+ if (workletsProject != null) {

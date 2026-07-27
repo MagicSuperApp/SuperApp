@@ -23,7 +23,7 @@ import { initPush } from '../services/pushHandler';
 import Toast from 'react-native-toast-message';
 import NetInfo from '@react-native-community/netinfo';
 import { handleNavigationStateChange } from '../services/analytics';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { Icon } from '../components/Icon';
 import { COLORS, ACTION_COLORS } from '../theme';
 import { syncService } from '../services/syncService';
 import AppHeader, { AppHeaderProvider } from '../components/AppHeader';
@@ -53,6 +53,8 @@ import FruitListScreen from '../screens/FruitListScreen';
 import FruitCropperScreen from '../screens/FruitCropperScreen';
 import TreeMap2DScreen from '../screens/TreeMap2DScreen';
 import FarmMap2DScreen from '../screens/FarmMap2DScreen';
+import Space3DScreen from '../screens/Space3DScreen';
+import FruitPlace3DScreen from '../screens/FruitPlace3DScreen';
 import TreeIdentityScreen from '../screens/TreeIdentityScreen';
 import TreeEnrollScreen from '../screens/TreeEnrollScreen';
 import FruitVideoScreen from '../screens/FruitVideoScreen';
@@ -179,7 +181,7 @@ function buildTabs(): BuiltTab[] {
         route: tab.route,
         component,
         title: TAB_TITLES[tab.route] ?? tab.route,
-        icon: TAB_ICONS[tab.route] ?? 'view-dashboard-outline',
+        icon: TAB_ICONS[tab.route] ?? 'table-cells-large',
       });
     } else {
       // Tab module: chỉ dựng nếu module đó được BẬT (an toàn — tránh tab mồ côi).
@@ -858,7 +860,7 @@ const CurvedTabBar = ({ state, navigation }: BottomTabBarProps) => {
   const mainIcon =
     effectiveDefaultKey && itemMeta[effectiveDefaultKey]
       ? itemMeta[effectiveDefaultKey].icon
-      : 'home-variant';
+      : 'house';
 
   // Ẩn HẲN navbar ở màn Kết đèn (JoinHome) — tránh navbar nổi đè nội dung.
   // (Đặt SAU mọi hook để không vi phạm rules-of-hooks.)
@@ -1113,7 +1115,7 @@ const HomeRadialOverlay = () => {
               radial?.setMenu(null);
             }}
           >
-            <Icon name="close-circle-outline" size={16} color="#FFFFFF" />
+            <Icon name="circle-xmark" size={16} color="#FFFFFF" />
             <Text style={radialStyles.removeText}>Gỡ mặc định</Text>
           </Pressable>
         </View>
@@ -1529,8 +1531,14 @@ const HOST_STACK_SCREENS: Array<{
   // Capture/identity screens dùng chung (host-level).
   { name: 'FruitList', component: FruitListScreen, options: { headerShown: false } },
   { name: 'FruitCropper', component: FruitCropperScreen, options: { headerShown: false } },
+  // Sơ-đồ 2D CŨ — giữ đăng ký để deep-link cũ không gãy, nhưng KHÔNG nút nào trỏ
+  // tới nữa: mọi lối vào sơ đồ nay mở 'Space3D' (một hệ giao diện 3D duy nhất).
   { name: 'TreeMap2D', component: TreeMap2DScreen, options: { headerShown: false } },
   { name: 'FarmMap2D', component: FarmMap2DScreen, options: { headerShown: false } },
+  // KHÔNG-GIAN 3D DUY NHẤT: vườn ⇄ cây ⇄ quả (three + @react-three/fiber/native).
+  { name: 'Space3D', component: Space3DScreen, options: { headerShown: false } },
+  // Đặt toạ-độ 3D của quả trên cây bằng 3 hướng chiếu.
+  { name: 'FruitPlace3D', component: FruitPlace3DScreen, options: { headerShown: false } },
   { name: 'TreeIdentity', component: TreeIdentityScreen, options: { headerShown: false } },
   { name: 'TreeEnroll', component: TreeEnrollScreen, options: { headerShown: false } },
   // Thu video QUẢ → gắn cây (OriLife User-Action-Flow). Quay native + upload fruit_video.

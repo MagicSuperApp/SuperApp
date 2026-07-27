@@ -8,8 +8,9 @@
 //
 // FRAME CHUẨN — thêm một dịch vụ = CLONE 1 DÒNG trong NAV_FRAME (đặt en +
 // national + icon). KHÔNG sửa navigator, KHÔNG sửa NavItemFrame. Ví dụ thêm Học
-// hành:  Learn: { en: 'Learn', national: { vi: 'Học hành' }, icon: 'school-outline',
-// iconActive: 'school' }  — rồi khai route trong instance.config như các tab khác.
+// hành:  Learn: { en: 'Learn', national: { vi: 'Học hành' }, icon: 'graduation-cap',
+// iconActive: 'graduation-cap' }  — nhớ tải icon FA (`npm run icons -- graduation-cap`)
+// rồi khai route trong instance.config như các tab khác.
 //
 // TẦNG: đây là quyết định của INSTANCE (trải nghiệm), KHÔNG nhét vào
 // module.manifest (manifest giữ TÊN SẢN PHẨM đầy đủ — vd proofchat.displayName =
@@ -24,22 +25,22 @@ export interface NavFrame {
   en: string;
   /** Nhãn theo ngôn ngữ quốc gia (dòng dưới), khoá theo mã ngôn ngữ. */
   national: Partial<Record<LangCode, string>>;
-  /** Icon Material Community — trạng thái nghỉ (outline). */
+  /** Tên icon Font Awesome Solid (bộ Icon dùng chung) — trạng thái nghỉ. */
   icon: string;
-  /** Icon khi tab đang mở (filled). */
+  /** Tên icon khi tab đang mở. FA Solid là 1 style → thường trùng `icon`; trạng thái phân biệt bằng màu. */
   iconActive: string;
 }
 
 // Khoá = route name (khớp instance.config.tabs + module.entrypoint).
 export const NAV_FRAME: Record<string, NavFrame> = {
-  Home:          { en: 'Home',    national: { vi: 'Trang chủ' },  icon: 'home-outline',           iconActive: 'home' },
-  ProofChatHome: { en: 'Chat',    national: { vi: 'Trò chuyện' }, icon: 'chat-processing-outline', iconActive: 'chat-processing' },
-  Farms:         { en: 'Farm',    national: { vi: 'Trang trại' }, icon: 'sprout-outline',          iconActive: 'sprout' },
-  WorkHome:      { en: 'Work',    national: { vi: 'Việc làm' },   icon: 'briefcase-outline',       iconActive: 'briefcase' },
-  JoinHome:      { en: 'Join',    national: { vi: 'Kết đèn' },    icon: 'lightning-bolt-outline',  iconActive: 'lightning-bolt' },
+  Home:          { en: 'Home',    national: { vi: 'Trang chủ' },  icon: 'house',       iconActive: 'house' },
+  ProofChatHome: { en: 'Chat',    national: { vi: 'Trò chuyện' }, icon: 'comments',    iconActive: 'comments' },
+  Farms:         { en: 'Farm',    national: { vi: 'Trang trại' }, icon: 'seedling',    iconActive: 'seedling' },
+  WorkHome:      { en: 'Work',    national: { vi: 'Việc làm' },   icon: 'briefcase',   iconActive: 'briefcase' },
+  JoinHome:      { en: 'Join',    national: { vi: 'Kết đèn' },    icon: 'bolt',        iconActive: 'bolt' },
   // Account = "Me/Tôi" (anh Aladin chốt). Icon dự phòng; ô này ưu tiên vẽ AVATAR
   // user (ảnh hoặc initials) qua NavItemFrame — xem prop avatarUri/initials.
-  Account:       { en: 'Me',      national: { vi: 'Tôi' },       icon: 'account-circle-outline',  iconActive: 'account-circle' },
+  Account:       { en: 'Me',      national: { vi: 'Tôi' },       icon: 'circle-user', iconActive: 'circle-user' },
 };
 
 // Ngôn ngữ quốc gia hiện hành. App CHƯA có hệ i18n → mặc định 'vi' (thị trường
@@ -64,6 +65,6 @@ export function navNational(route: string, lang: LangCode = getNationalLanguage(
 /** Icon cho một route (active = filled, ngược lại outline). */
 export function navIcon(route: string, active = false): string {
   const f = NAV_FRAME[route];
-  if (!f) return active ? 'view-dashboard' : 'view-dashboard-outline';
+  if (!f) return 'table-cells-large';
   return active ? f.iconActive : f.icon;
 }

@@ -43,6 +43,9 @@ const TreeViewer3DScreen: React.FC = () => {
   const webRef = useRef<WebView>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+  // 404 = cây public nhưng 3D CHƯA dựng xong (server trả HTML "đang dựng").
+  // Tách khỏi lỗi mạng để không doạ người dùng bằng thông báo sai.
+  const [notBuilt, setNotBuilt] = useState(false);
 
   // Mã cây có thể chứa ký-tự cần mã-hoá URL — luôn encode để an-toàn.
   const url = useMemo(
@@ -52,6 +55,7 @@ const TreeViewer3DScreen: React.FC = () => {
 
   const reload = useCallback(() => {
     setFailed(false);
+    setNotBuilt(false);
     setLoading(true);
     webRef.current?.reload();
   }, []);
@@ -92,7 +96,7 @@ const TreeViewer3DScreen: React.FC = () => {
       </View>
 
       <View style={styles.webWrap}>
-        {!failed && (
+        {!failed && !notBuilt && (
           <WebView
             ref={webRef}
             source={{ uri: url }}
@@ -107,18 +111,36 @@ const TreeViewer3DScreen: React.FC = () => {
               setLoading(false);
               setFailed(true);
             }}
-            onHttpError={() => {
+            onHttpError={(e) => {
               setLoading(false);
-              setFailed(true);
+              // 404 → 3D chưa dựng xong (không phải lỗi mạng). Server field-reid trả
+              // 404 kèm HTML "Mô hình 3D đang dựng hoặc chưa có" cho cây public.
+              if (e?.nativeEvent?.statusCode === 404) {
+                setNotBuilt(true);
+              } else {
+                setFailed(true);
+              }
             }}
             style={styles.web}
           />
         )}
 
-        {loading && !failed && (
+        {loading && !failed && !notBuilt && (
           <View style={styles.overlay} pointerEvents="none">
             <ActivityIndicator size="large" color={COLORS.accent} />
             <Text style={styles.loadingText}>Đang tải mô hình 3D…</Text>
+          </View>
+        )}
+
+        {notBuilt && (
+          <View style={styles.center}>
+            <Icon name="cube-scan" size={48} color={COLORS.textSub} />
+            <Text style={styles.emptyText}>
+              Mô hình 3D đang được dựng hoặc chưa có. Hãy quét thêm ảnh và quay lại sau.
+            </Text>
+            <TouchableOpacity style={styles.btn} onPress={reload}>
+              <Text style={styles.btnText}>Thử lại</Text>
+            </TouchableOpacity>
           </View>
         )}
 

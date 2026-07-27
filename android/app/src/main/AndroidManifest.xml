@@ -1,11 +1,18 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.CAMERA" />
     <!-- Build 52 (2026-05-18): voice memo 30s tap-to-record (P1 feature, iOS NSMicrophoneUsageDescription parity) -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
+    <!-- tools:replace — expo-file-system (kéo theo bởi expo-gl/expo-asset cho nền 3D)
+         khai báo cùng quyền này với maxSdkVersion=32. GIỮ 29 của app (chặt hơn:
+         từ Android 11 quyền này gần như vô hiệu, xin rộng thêm chỉ tổ vướng review
+         kho ứng dụng) và ép ghi đè để manifest merger không gãy. -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29"
+        tools:replace="android:maxSdkVersion" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />

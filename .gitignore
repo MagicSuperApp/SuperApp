@@ -91,3 +91,8 @@ replay_pid*
 # === Agent state (nội bộ, KHÔNG public) ===
 _Agents/
 
+
+# Expo
+.expo
+dist/
+web-build/

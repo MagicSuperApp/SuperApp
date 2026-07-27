@@ -53,6 +53,7 @@ import {
   selectGPS,
   clearAll,
 } from '../store/treeReIDSlice';
+import { appendTreeImages } from '../services/treeImageStore';
 
 // ---------------------------------------------------------------------------
 // Config
@@ -218,9 +219,34 @@ const TreeEnrollScreen: React.FC = () => {
         capturedAt: c.capturedAt,
       }));
 
-  const round1Photos = photos.filter(p => p.round === 1);
-  const round2Photos = photos.filter(p => p.round === 2);
-  const ungroupedPhotos = photos.filter(p => p.round == null);
+  // ── #5a: gán nhãn theo HƯỚNG ỐNG KÍNH THỰC (pitch), không theo nút "Lượt 2" ──
+  // Vấn đề cũ: sau khi bấm "Lượt 2: Cận gốc", mọi ảnh (kể cả lia ngang lấy toàn
+  // cảnh) đều bị gán round=2="Gốc". Sửa: dùng pitch cảm biến để phân biệt.
+  //
+  // Quy ước pitch tuyệt đối phụ thuộc cách cầm máy → KHÔNG hardcode ngưỡng tuyệt
+  // đối. Thay vào đó lấy pitch trung bình của Lượt 1 (chụp ngang thân) làm MỐC:
+  //  - ảnh có pitch GẦN mốc (lia ngang) = "Toàn cảnh/thân"
+  //  - ảnh có pitch LỆCH XA mốc (chĩa lên/xuống, cận gốc) = "Gốc/vỏ"
+  // Thiếu dữ liệu pitch (Android không native) → fallback nhãn theo round như cũ.
+  const PITCH_BASE_DELTA = 22; // độ; ~ trùng ngưỡng trigger 18° của native, nới nhẹ
+
+  const round1WithPitch = photos.filter(p => p.round === 1 && typeof p.pitch === 'number');
+  const refPitch = round1WithPitch.length > 0
+    ? round1WithPitch.reduce((s, p) => s + (p.pitch as number), 0) / round1WithPitch.length
+    : null;
+
+  const kindOf = (p: GridPhoto): 'trunk' | 'base' | 'unknown' => {
+    // Lượt 1 luôn là thân (ngang). Ảnh không có round → chưa nhóm.
+    if (p.round === 1) return 'trunk';
+    if (p.round !== 2) return 'unknown';
+    // Lượt 2: quyết định bằng pitch thực. Không có pitch hoặc chưa có mốc → giữ "base".
+    if (refPitch == null || typeof p.pitch !== 'number') return 'base';
+    return Math.abs(p.pitch - refPitch) <= PITCH_BASE_DELTA ? 'trunk' : 'base';
+  };
+
+  const trunkPhotos = photos.filter(p => kindOf(p) === 'trunk');
+  const basePhotos = photos.filter(p => kindOf(p) === 'base');
+  const ungroupedPhotos = photos.filter(p => kindOf(p) === 'unknown');
 
   // ── Navigate sau thành công ───────────────────────────────────────────────
   const handleSuccess = useCallback(
@@ -258,6 +284,8 @@ const TreeEnrollScreen: React.FC = () => {
         const res = await verifyAddTree(BASE_URL, treeId, imagePaths);
 
         if (res.ok && res.data) {
+          // Tích luỹ ảnh vừa chụp vào cây đã có để màn chi tiết hiển thị lại được.
+          await appendTreeImages(treeId, imagePaths);
           Alert.alert(
             'Đã gộp thành công',
             `Đã thêm ${res.data.n_added ?? 0} góc nhìn vào cây đã có.`,
@@ -295,6 +323,8 @@ const TreeEnrollScreen: React.FC = () => {
       }, farmId);
 
       if (res.ok && res.data) {
+        // Lưu ảnh local theo tree_id TRƯỚC clearAll để hiển thị lại ở màn chi tiết.
+        await appendTreeImages(res.data.tree_id, imagePaths);
         setEnrollResult(res.data);
         handleSuccess(res.data.tree_id, res.data.provenance?.code ?? res.data.tree_id);
       } else {
@@ -329,6 +359,8 @@ const TreeEnrollScreen: React.FC = () => {
       }, farmId);
 
       if (res.ok && res.data) {
+        // Lưu ảnh local theo tree_id TRƯỚC clearAll để hiển thị lại ở màn chi tiết.
+        await appendTreeImages(res.data.tree_id, imagePaths);
         setEnrollResult(res.data);
         handleSuccess(res.data.tree_id, res.data.provenance?.code ?? res.data.tree_id);
         return;
@@ -588,9 +620,9 @@ const TreeEnrollScreen: React.FC = () => {
             <>
               {ungroupedPhotos.length > 0 &&
                 renderPhotoGrid(ungroupedPhotos, 'Ảnh đã chụp')}
-              {renderPhotoGrid(round1Photos, 'Lượt 1 — Thân cây')}
-              {round2Photos.length > 0 &&
-                renderPhotoGrid(round2Photos, 'Lượt 2 — Gốc/vỏ')}
+              {renderPhotoGrid(trunkPhotos, 'Thân / toàn cảnh')}
+              {basePhotos.length > 0 &&
+                renderPhotoGrid(basePhotos, 'Gốc / vỏ (cận cảnh)')}
 
               <Text style={styles.gridHint}>Chạm vào ảnh để xem chi tiết</Text>
 

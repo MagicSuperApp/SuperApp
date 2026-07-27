@@ -18,6 +18,7 @@ import {
   Platform,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSelector } from 'react-redux';
 import { RootState } from '../../../store';
 import { useAppDispatch } from '../../../store/hooks';
@@ -83,6 +84,7 @@ function isoToParts(iso?: string): { d: string; m: string; y: string } {
 
 const TreeMetadataTab: React.FC<Props> = ({ tree }) => {
   const dispatch = useAppDispatch();
+  const insets = useSafeAreaInsets();
   const savingTree = useSelector((state: RootState) =>
     state.farm.trees.find(t => t.id === tree.id)
   );
@@ -357,8 +359,8 @@ const TreeMetadataTab: React.FC<Props> = ({ tree }) => {
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* Save button — sticky bottom */}
-      <View style={styles.bottomBar}>
+      {/* Save button — sticky bottom (nhấc lên khỏi mép bằng safe-area insets) */}
+      <View style={[styles.bottomBar, { paddingBottom: 10 + insets.bottom }]}>
         <TouchableOpacity
           style={[styles.saveBtn, !canSave && styles.saveBtnDisabled]}
           onPress={handleSave}
@@ -525,8 +527,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 0, left: 0, right: 0,
     paddingHorizontal: 20,
-    paddingBottom: Platform.OS === 'ios' ? 36 : 24,
-    paddingTop: 12,
+    // paddingBottom động = 10 + insets.bottom (áp inline). Nút gọn hơn, không sát mép.
+    paddingTop: 10,
     backgroundColor: COLORS.bg,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
@@ -534,7 +536,7 @@ const styles = StyleSheet.create({
   saveBtn: {
     backgroundColor: COLORS.accent,
     borderRadius: 14,
-    paddingVertical: 16,
+    paddingVertical: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

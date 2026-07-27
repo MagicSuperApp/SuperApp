@@ -224,20 +224,33 @@ const TreeIdentityScreen: React.FC = () => {
         if (granted !== PermissionsAndroid.RESULTS.GRANTED) return;
       }
 
+      const applyPos = (pos: { coords: { latitude: number; longitude: number; accuracy: number } }) => {
+        dispatch(
+          setGPS({
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+            accuracy: pos.coords.accuracy,
+          }),
+        );
+      };
+
+      // 1) FIX NHANH ngay lập tức: cho phép độ chính xác thô + dùng vị trí cache
+      //    (Wi-Fi/cell) để có toạ độ trong vài giây thay vì đợi chip GPS cold-start
+      //    vài phút. Người dùng thấy GPS "sẵn sàng" gần như tức thì.
+      Geolocation.getCurrentPosition(
+        applyPos,
+        _err => { /* chưa có fix nhanh — watch bên dưới sẽ bù */ },
+        { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 },
+      );
+
+      // 2) TINH CHỈNH liên tục bằng chip GPS. distanceFilter:0 để vẫn cập nhật
+      //    khi đứng yên (fix đầu thô sẽ được thay bằng toạ độ chính xác hơn).
       geoWatchRef.current = Geolocation.watchPosition(
-        pos => {
-          dispatch(
-            setGPS({
-              lat: pos.coords.latitude,
-              lng: pos.coords.longitude,
-              accuracy: pos.coords.accuracy,
-            }),
-          );
-        },
+        applyPos,
         _err => {
           // GPS không sẵn — tiếp tục không có toạ độ
         },
-        { enableHighAccuracy: true, distanceFilter: 5 },
+        { enableHighAccuracy: true, distanceFilter: 0 },
       );
     };
 

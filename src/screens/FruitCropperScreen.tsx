@@ -30,6 +30,11 @@ import {
   fruitCandidates, enrollFruit, addFruitView, detectFruit,
   type FruitShape, type FruitCandidate, type FruitRegion, type Bbox, type TreeZone,
 } from '../services/fruitReIDService';
+import {
+  DEFAULT_FRUIT_COORD, ZONE_LABEL, clampCoord, coordToServer, coordToZone, zoneToY,
+  type FruitCoord,
+} from '../features/space3d/treeFrame';
+import { saveFruitCoord } from '../features/space3d/positionStore';
 
 const BASE_URL = ORILIFE_BASE;
 
@@ -67,6 +72,8 @@ const FruitCropperScreen: React.FC = () => {
   const {
     treeId, treeName, imageUri, imageW, imageH, zone: zoneParam, fruitId, fruitName,
   } = (route.params ?? {}) as RouteParams;
+  // Kết quả trả về từ màn đặt toạ-độ 3D (FruitPlace3D điều hướng ngược có merge).
+  const pickedCoord = (route.params as any)?.pickedFruitCoord as FruitCoord | undefined;
 
   // Kích thước ẢNH GỐC (ccNW/ccNH). Phải > 0 để map-ngược đúng.
   const NW = imageW || 1;
@@ -90,8 +97,15 @@ const FruitCropperScreen: React.FC = () => {
   const [cands, setCands] = useState<FruitCandidate[]>([]);
   const [expanded, setExpanded] = useState(false);
   const [lastRegion, setLastRegion] = useState<FruitRegion | null>(null);
-  const [zone, setZone] = useState<TreeZone>(zoneParam ?? 'mid');
   const [nameInput, setNameInput] = useState('');
+
+  // Toạ-độ 3D của quả trên cây (hệ riêng của cây). Thay cho việc chỉ chọn 1 trong
+  // 3 vùng: người dùng kéo icon quả ở màn FruitPlace3D. zone gửi lên server được
+  // SUY RA từ chiều cao y nên dữ-liệu cũ/sơ-đồ 2D vẫn đọc đúng.
+  const [coord, setCoord] = useState<FruitCoord>(() =>
+    zoneParam ? { ...DEFAULT_FRUIT_COORD, y: zoneToY(zoneParam) } : DEFAULT_FRUIT_COORD,
+  );
+  const zone: TreeZone = coordToZone(coord);
 
   // ── Gợi-ý PHÁT-HIỆN-NGAY: auto-detect quả trên ảnh vừa chụp (KHÔNG ép, chỉ gợi 1-chạm) ──
   // bbox ẢNH GỐC của quả tự-phát-hiện (lớn nhất / tự-tin nhất). null = chưa có / không phát hiện.
@@ -266,6 +280,24 @@ const FruitCropperScreen: React.FC = () => {
     return { x: +x.toFixed(4), h: +h.toFixed(4) };
   }, [NW, NH]);
 
+  // Quay lại từ màn đặt toạ-độ 3D → nhận toạ-độ mới rồi XOÁ tham số, để lần sau
+  // mở lại màn này không bị dội lại giá trị cũ.
+  useEffect(() => {
+    if (!pickedCoord) return;
+    setCoord(clampCoord(pickedCoord));
+    navigation.setParams({ pickedFruitCoord: undefined });
+  }, [pickedCoord, navigation]);
+
+  const openPlacer = useCallback(() => {
+    navigation.navigate('FruitPlace3D', {
+      treeId,
+      treeName,
+      fruitName: nameInput.trim() || 'Quả mới',
+      initial: coord,
+      returnTo: 'FruitCropper',
+    });
+  }, [navigation, treeId, treeName, nameInput, coord]);
+
   // ── "✓ Dùng vùng này" → chốt vùng → candidates (hoặc add_view nếu có fruitId) ─
   const useRegion = useCallback(async () => {
     const reg = regionToOrig();
@@ -275,6 +307,10 @@ const FruitCropperScreen: React.FC = () => {
     }
     setErrMsg(null);
     setLastRegion(reg);
+    // Ước lượng SẴN toạ-độ từ chỗ quả nằm trong ảnh (ngang = x, cao = y) để người
+    // dùng chỉ phải tinh chỉnh chứ không đặt từ đầu. Chiều sâu z vẫn phải tự đặt.
+    const est = posFromBox(reg.bbox);
+    setCoord((c) => clampCoord({ ...c, x: est.x * 2 - 1, y: est.h }));
     setBusy(true);
 
     // Có fruitId (đến từ "thêm góc cho quả này") → add_view thẳng, bỏ qua candidates.
@@ -313,12 +349,17 @@ const FruitCropperScreen: React.FC = () => {
     if (!name) { setErrMsg('Đặt tên cho quả trước khi lưu.'); return; }
     setErrMsg(null);
     setBusy(true);
-    const p = posFromBox(lastRegion.bbox);
-    const r = await enrollFruit(BASE_URL, treeId, name, imageUri, lastRegion, { zone, posX: p.x, posH: p.h });
+    // zone/pos_x/pos_h SUY RA từ toạ-độ 3D → server và sơ-đồ 2D cũ vẫn hiểu đúng.
+    const srv = coordToServer(coord);
+    const r = await enrollFruit(BASE_URL, treeId, name, imageUri, lastRegion, {
+      zone: srv.zone, posX: srv.posX, posH: srv.posH,
+    });
+    // Chiều sâu z không có chỗ trên server → lưu đủ 3 chiều tại máy theo fruit_id.
+    if (r.ok && r.data?.fruit_id) await saveFruitCoord(r.data.fruit_id, coord);
     setBusy(false);
     if (r.ok) navigation.goBack();
     else setErrMsg(r.error?.detail ?? 'Không lưu được quả. Thử lại.');
-  }, [lastRegion, nameInput, posFromBox, zone, treeId, imageUri, navigation]);
+  }, [lastRegion, nameInput, coord, treeId, imageUri, navigation]);
 
   // ── Quay lại bước crop để khoanh vùng khác ─────────────────────────────────
   const recrop = useCallback(() => { setErrMsg(null); setStep('crop'); }, []);
@@ -483,11 +524,33 @@ const FruitCropperScreen: React.FC = () => {
     <ScrollView contentContainerStyle={styles.scroll}>
       <Text style={styles.muted}>🆕 Lưu thành quả MỚI trên cây "{treeName || 'này'}":</Text>
 
-      {/* Chọn VÙNG quả trên cây (zone) */}
-      <Text style={styles.label}>📍 Quả nằm ở vùng nào trên cây?</Text>
+      {/* Toạ-độ 3D của quả trên cây (thay cho việc chỉ chọn 1 trong 3 vùng) */}
+      <Text style={styles.label}>📍 Quả nằm ở đâu trên cây?</Text>
+      <TouchableOpacity style={styles.coordBox} onPress={openPlacer} activeOpacity={0.85}>
+        <View style={styles.coordBoxTop}>
+          <Icon name="axis-arrow" size={20} color={COLORS.accent} />
+          <Text style={styles.coordBoxTitle}>Đặt vị trí trên cây (3D)</Text>
+          <Icon name="chevron-right" size={20} color={COLORS.textMuted} />
+        </View>
+        <View style={styles.coordVals}>
+          <Text style={styles.coordVal}>X {coord.x.toFixed(2)}</Text>
+          <Text style={styles.coordVal}>Y {coord.y.toFixed(2)}</Text>
+          <Text style={styles.coordVal}>Z {coord.z.toFixed(2)}</Text>
+          <Text style={styles.coordZone}>{ZONE_LABEL[zone]}</Text>
+        </View>
+        <Text style={styles.coordHint}>
+          Kéo icon quả trên hình cây theo 3 hướng chiếu để đặt đúng chỗ.
+        </Text>
+      </TouchableOpacity>
+
+      {/* Lối tắt chọn tầng thô — cho người chỉ cần nhanh, không muốn mở màn 3D. */}
       <View style={styles.zoneRow}>
         {(['base', 'mid', 'canopy'] as TreeZone[]).map(z => (
-          <TouchableOpacity key={z} style={[styles.zoneBtn, zone === z && styles.zoneBtnOn]} onPress={() => setZone(z)}>
+          <TouchableOpacity
+            key={z}
+            style={[styles.zoneBtn, zone === z && styles.zoneBtnOn]}
+            onPress={() => setCoord(c => clampCoord({ ...c, y: zoneToY(z) }))}
+          >
             <Text style={[styles.zoneTxt, zone === z && styles.zoneTxtOn]}>{ZONE_VI[z]}</Text>
           </TouchableOpacity>
         ))}
@@ -578,6 +641,19 @@ const styles = StyleSheet.create({
 
   // Naming
   label: { fontSize: 13, color: COLORS.textSub, fontWeight: '600', marginTop: 10, marginBottom: 4 },
+  coordBox: {
+    borderWidth: 1.5, borderColor: COLORS.accent, borderRadius: 12,
+    backgroundColor: COLORS.accentGlow, padding: 12, gap: 8, marginBottom: 8,
+  },
+  coordBoxTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  coordBoxTitle: { flex: 1, fontSize: 15, fontWeight: '800', color: COLORS.accent },
+  coordVals: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  coordVal: {
+    fontSize: 12, fontWeight: '700', color: COLORS.text,
+    backgroundColor: '#ffffffaa', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 7,
+  },
+  coordZone: { fontSize: 12, fontWeight: '800', color: COLORS.accent },
+  coordHint: { fontSize: 11, color: COLORS.textMuted, lineHeight: 15 },
   zoneRow: { flexDirection: 'row', gap: 6 },
   zoneBtn: { flex: 1, paddingVertical: 10, borderRadius: 10, borderWidth: 2, borderColor: COLORS.border, backgroundColor: COLORS.inputBg, alignItems: 'center' },
   zoneBtnOn: { backgroundColor: COLORS.success, borderColor: COLORS.success },

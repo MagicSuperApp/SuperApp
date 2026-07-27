@@ -320,9 +320,21 @@ const FarmListScreen = () => {
       >
         {/* Top bar */}
         <View style={styles.headerTopBar}>
-          <View>
-            <Text style={styles.headerEyebrow}>TRUY XUẤT NGUỒN GỐC</Text>
-            <Text style={styles.headerTitle}>Trang trại</Text>
+          <View style={styles.headerTitleWrap}>
+            {/* Màn con (drill-down từ Dashboard) → cần nút quay lại (không có navbar ở đây). */}
+            {navigation.canGoBack() && (
+              <TouchableOpacity
+                onPress={() => navigation.goBack()}
+                style={styles.backBtn}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Icon name="arrow-left" size={24} color={COLORS.text} />
+              </TouchableOpacity>
+            )}
+            <View>
+              <Text style={styles.headerEyebrow}>TRUY XUẤT NGUỒN GỐC</Text>
+              <Text style={styles.headerTitle}>Trang trại</Text>
+            </View>
           </View>
           <MagicCreditBadge credits={wallet?.magicBalance ?? 0} />
         </View>
@@ -436,6 +448,18 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: 6,
+  },
+  headerTitleWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  backBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerEyebrow: {
     fontSize: 10,

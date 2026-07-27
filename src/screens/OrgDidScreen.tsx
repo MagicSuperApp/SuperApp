@@ -79,6 +79,7 @@ const OrgDidScreen: React.FC = () => {
   const [orgs, setOrgs] = useState<Org[]>([]);
   const [loadState, setLoadState] = useState<LoadState>('loading');
   const [orgName, setOrgName] = useState('');
+  const [orgRegNo, setOrgRegNo] = useState('');
   const [creating, setCreating] = useState(false);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -143,7 +144,12 @@ const OrgDidScreen: React.FC = () => {
     }
     setCreating(true);
     try {
-      const res = await createOrg({ ownerDid, orgName: trimmedName });
+      const res = await createOrg({
+        ownerDid,
+        orgName: trimmedName,
+        // MST tuỳ chọn — đưa vào challenge ký (backend cho phép vắng = chuỗi rỗng).
+        registrationNumber: orgRegNo.trim() || undefined,
+      });
       const created: Org = {
         orgDid: (res as any).orgDid ?? (res as any).org_did,
         orgName: (res as any).orgName ?? (res as any).org_name ?? trimmedName,
@@ -155,6 +161,7 @@ const OrgDidScreen: React.FC = () => {
       await writeCachedOrgs(next);
       setLoadState('ready');
       setOrgName('');
+      setOrgRegNo('');
       Alert.alert('Đã tạo tổ chức', `OrgDID: ${created.orgDid}`);
     } catch (err) {
       const msg =
@@ -298,9 +305,23 @@ const OrgDidScreen: React.FC = () => {
                   editable={!creating}
                   maxLength={64}
                 />
+                <Text style={[styles.fieldLabel, { marginTop: 14 }]}>
+                  Mã số đăng ký kinh doanh (MST){'  '}
+                  <Text style={styles.optional}>· tuỳ chọn</Text>
+                </Text>
+                <TextInput
+                  style={styles.input}
+                  value={orgRegNo}
+                  onChangeText={setOrgRegNo}
+                  placeholder="VD: 0312345678"
+                  placeholderTextColor={COLORS.textMuted}
+                  editable={!creating}
+                  keyboardType="number-pad"
+                  maxLength={20}
+                />
                 <Text style={styles.hint}>
                   Tạo OrgDID single-owner (bạn là chủ sở hữu đầu tiên). Nhiều chủ sở
-                  hữu m-of-n sẽ mở khi PR #40 xong.
+                  hữu m-of-n sẽ mở khi PR #40 xong. MST (nếu có) được ký cùng danh tính.
                 </Text>
 
                 <TouchableOpacity
@@ -409,6 +430,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.bgWarm,
   },
   hint: { fontSize: 12, color: COLORS.textMuted, marginTop: 8, lineHeight: 17 },
+  optional: { fontSize: 11, fontWeight: '500', color: COLORS.textMuted },
 
   primaryBtn: {
     flexDirection: 'row',

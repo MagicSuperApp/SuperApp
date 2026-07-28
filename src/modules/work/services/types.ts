@@ -74,7 +74,10 @@ export interface JobType {
   defaultPriceVND?: number;
   platformFeeMagic?: number;
   source?: 'seed' | 'dynamic';
-  mirageCid?: string;
+  // Backend gỡ CID giả: khi node LampNet chưa ghi được, trường này là `null` +
+  // `mirageStatus: 'pending'` (đừng coi chuỗi `mock:ln1q...` cũ là CID dùng được).
+  mirageCid?: string | null;
+  mirageStatus?: 'pending' | 'stored' | string;
   updatedAt?: string;
 }
 

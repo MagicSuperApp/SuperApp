@@ -336,3 +336,32 @@ Một platform/module chỉ được coi là READY khi TẤT CẢ mục dưới 
 | LampNet | hivemind `506c611` (07-11) | `lampnet.cloud` | join public · upload Bearer | 🟡 join/compute chạy · 🔴 reward dry-run |
 
 > Trạng thái nhánh dọn dẹp: [`docs/BRANCH-AUDIT.md`](docs/BRANCH-AUDIT.md).
+
+## 12. Handoff Ledger — module ĐẨY việc cho dev SuperApp (không để SuperApp đi hỏi)
+
+> **Vấn đề:** trước nay SuperApp phải đi HỎI từng module "backend xong chưa, shape gì" (pull).
+> Chậm + dễ sót. **Đảo chiều (push):** module/nền tảng nào hoàn thành một năng lực có phần
+> UI/wire cần dựng ở SuperApp thì TỰ GHI vào sổ bàn giao — dev SuperApp (Thư/Tùng) đọc 1 chỗ.
+
+### 12.1 File sổ
+- MỘT file sống: [`Integration/Module-Handoff.md`](Integration/Module-Handoff.md) trong repo SuperApp.
+- Là bảng nhiều-tay-ghi → tách khỏi tài liệu CONTRACT tĩnh này để tránh xung đột merge. §12 chỉ
+  định nghĩa FORMAT + nghĩa vụ; DỮ LIỆU nằm ở file sổ (KHÔNG duplicate — theo nguyên tắc doc này).
+
+### 12.2 Nghĩa vụ (áp cho MỌI agent module/nền tảng)
+Khi hoàn thành một năng lực backend/nền tảng mà SuperApp cần dựng UI hoặc nối API:
+1. **Append NGAY** một dòng vào bảng "Đang mở" của `Module-Handoff.md` (qua PR vào SuperApp,
+   hoặc nhờ SuperApp agent chèn nếu không có quyền push repo này) — KHÔNG chờ SuperApp hỏi.
+2. Cập nhật shape thật vào `Integration/<Platform>.md` (snapshot) TRƯỚC, rồi ledger chỉ TRỎ tới đó.
+3. Khi backend đổi shape/endpoint đã bàn giao → cập nhật lại dòng ledger + snapshot (kèm ngày).
+
+### 12.3 Format 1 dòng (8 cột)
+`ID | Module (agent) | Loại | Việc cụ thể ở SuperApp | Ref shape | BE | Ai (Thư/Tùng) | Ngày đẩy`
+- **Loại** ∈ {Screen, Wire, Shape, Fix}. **BE** ∈ {🟢 live · 🟡 code chưa deploy · 🔴 chưa build · ⚫ OPS/secret}.
+- **Ref shape** trỏ `Integration/<Platform>.md` hoặc endpoint cụ thể — KHÔNG chép shape vào ledger.
+- **Định nghĩa Done:** dev dựng xong + verify (tsc/test + đối chiếu shape thật) + merge develop → chuyển dòng xuống "Đã xong".
+
+### 12.4 Ranh giới rule
+- Nghĩa vụ HÀNH VI "phải tự đẩy khi xong" là rule CHÉO mọi agent → thuộc `_rules/Forall.md`
+  (chủ nhân kiểm soát tập trung, Forall §"không tự sửa file rule global"). §12 chỉ định nghĩa
+  cơ chế/format; việc ép mọi agent tuân do rule global chốt. Agent đề xuất, chủ nhân duyệt.

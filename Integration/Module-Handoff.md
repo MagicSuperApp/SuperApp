@@ -10,6 +10,19 @@
 
 Ký hiệu trạng thái BE: 🟢 live&deployed · 🟡 code có, chưa deploy · 🔴 chưa build · ⚫ OPS/secret chờ anh.
 
+> ### ⚠ Đọc trước khi build máy mới — bẫy `.env`
+> `.env` bị gitignore nên máy mới clone về là **RỖNG**. Khi rỗng thì mọi `import … from '@env'`
+> ra `undefined`, `registerCapability()` bị bỏ qua, và cổng runtime **tắt vĩnh viễn** Work /
+> ProofChat / Join — dù backend đang sống. Triệu chứng đánh lừa: app chạy, không lỗi, chỉ là
+> mọi thứ rỗng, rất dễ tưởng "backend chưa xong".
+> **Làm:** `cp .env.example .env` trước khi chạy lần đầu. Không cần khoá thật cho thực địa —
+> toàn URL công khai.
+> Đo thật 2026-07-29: `api.aladin.work/api/v1/health` 200 · `api.phoenixkey.me/api/v1/actuator/health`
+> 200 `{"status":"UP"}` · `api.orilife.io/api/health` 200 · `lampnet.cloud/health` 200 ·
+> `api.proofchat.me` **502** (chờ Lợi sửa cổng tunnel).
+> Biến `PHOENIXKEY_POOL_API_URL` khai ở `src/types/env.d.ts:6` nhưng **thiếu trong `.env.example`**
+> — mà backend Pool cũng chưa có (`/api/v1/pools` → 404), nên chưa cần bổ sung vội.
+
 ---
 
 ## Đang mở — chờ dev SuperApp dựng
@@ -24,7 +37,17 @@ Ký hiệu trạng thái BE: 🟢 live&deployed · 🟡 code có, chưa deploy �
 | H-06 | OriLife | Fix | #9 SafeArea insets 2 màn (FruitVideoScreen nút sát mép) — client thuần. | — | 🟢 | Tùng | 2026-07-27 |
 | H-07 | OriLife | Wire | Poll `POST /api/build3d/{tree_id}` + trạng thái khi model 3D chưa sẵn (viewer `/view/{code}`). | `Integration/OriLife.md` | 🟢 | Thư/Tùng | 2026-07-27 |
 | H-08 | LAMP+Core+Phoenix | Wire | Mint LAMP: cắm `buildAndSignTx` (dựng+ký CBOR, device_pkh Ed25519) + bật `ORG_MINT_ENABLED` + shape `mint-lamp`/SSE. UI 2 bước ĐÃ dựng, chỉ chờ 3 blocker. | `orgMintService.ts` · chờ LAMP/Core/Phoenix | 🔴 | Thư | 2026-07-27 |
-| H-09 | (native 3D) | Fix | `src/features/space3d/scene` — 79 lỗi tsc trên develop (feature 3D native WIP). Chưa rõ owner. | — | 🟡 | ? | 2026-07-27 |
+| H-10 | OriLife | Wire | Gửi `heading`/`pitch` THEO TỪNG ẢNH khi enroll + identify. Native đã trả (`treeReIDNativeBridge.ts:21-24`) nhưng `TreeIdentityScreen.tsx:485` vứt sạch, `TreeEnrollScreen.tsx:318,355` không gửi gì. Mất dữ liệu quý nhất cho MCR + dựng 3D. | chờ OriLife chốt tên trường/đơn vị (đã hỏi 29/07) | 🟢 | Thư | 2026-07-29 |
+| H-11 | OriLife | Wire | Gọi `POST /api/build3d/{tree_id}` — server ĐÃ có (đọc `openapi.json` 29/07), app chưa gọi ở đâu (grep 0). Hiện `TreeViewer3D` chỉ mở `/view/{code}`, hiện "đang dựng" mãi nếu server không tự dựng. | `Integration/OriLife.md` | 🟢 | Thư | 2026-07-29 |
+| H-12 | OriLife | Wire | Gọi `GET /api/tree_views?tree_id=` để xem lại ảnh cây TỪ MÁY CHỦ. Hiện `TreeDetailScreen.tsx:280-291` chỉ đọc đường dẫn `file://` trong máy (`treeImageStore.ts`) — xoá cache/đổi máy là trắng, người dùng tưởng mất dữ liệu. | chờ OriLife xác nhận url tuyệt-đối/tương-đối + auth | 🟢 | Tùng | 2026-07-29 |
+| H-13 | (điều hướng) | Fix | Cổng xoè "Quét con vật" (`resolveGateItems.ts:67`) trỏ `AnimalManagement` kèm `farmId:'default'` GIẢ → màn trống bảo người dùng tự đi tìm đường khác. `AnimalIdentity`/`AnimalEnroll` chạy được nhưng **không màn nào navigate tới**. Cùng lỗi: "Quét nhãn thuốc" gửi `targetId:'default'` lên backend. | — | 🟢 | Tùng | 2026-07-29 |
+| H-14 | (điều hướng) | Fix | Tab Join vừa không có ô trên thanh (`resolveVisibleTabs.ts:36` SLOT_COUNT=2 → 6 tab/5 ô, Join là tab rớt), vừa nuốt luôn thanh điều hướng khi vào (`navigation/index.tsx:867`). `PoolHome` không lối vào nào và không nút quay lại (`PoolHomeScreen.tsx:124`). | — | 🟢 | Tùng | 2026-07-29 |
+| H-15 | ProofChat | Wire | Chat là MOCK toàn phần: gửi tin không chạm mạng (`proofchatSlice.ts:213-241` tự chế ciphertext + chữ ký), `ChatScreen.tsx:92-160` là pipeline giả bằng setTimeout. `chatSocket.ts` + `proofchatService.ts` viết xong nhưng KHÔNG màn nào import. Cổng tắt thì rơi về mock **không nhãn DEMO** (Work thì có nhãn). | `chatSocket.ts` · host 502 | 🔴 | Thư | 2026-07-29 |
+| H-16 | AladinWork | Fix | `usePostJob.ts:39-42` khi cổng tắt **trả `true` giả vờ đăng việc thành công** — người dùng tin đã đăng, thực tế không có gì. Kèm: `PostJobScreen.tsx:21` vẫn dùng `CATEGORIES` mock kèm count giả thay vì `data/categories.ts` sạch; `WorkerProfileScreen` 100% dữ liệu giả. | `Integration/AladinWork.md` | 🟢 | Tùng | 2026-07-29 |
+| H-17 | (chất lượng) | Fix | Luồng chụp nhiều ảnh mất trắng khi bị ngắt: `TreeEnroll`/`AnimalEnroll`/`FruitVideo` không lưu nháp, không `beforeRemove`, không chỉ báo bước. Nông dân chụp 5 góc, có cuộc gọi tới → làm lại từ đầu. Video 80MB upload chỉ có spinner, không phần trăm. | — | 🟢 | Thư | 2026-07-29 |
+| H-18 | (chất lượng) | Fix | 203 mã màu hex hardcode / 689 lần / 85 file, vi phạm `src/theme/tokens.ts:5` ("CẤM hardcode màu"). 3 sắc đỏ "lỗi", 8 sắc xanh "thành công", 6 màu nút-chính tự chế. 55 file tự vẽ header (`AppHeader` chỉ dùng 3 nơi). Dọn dần, không làm một lần. | `src/theme/tokens.ts` | 🟢 | Tùng | 2026-07-29 |
+| H-19 | (ngôn ngữ) | Fix | Thuật ngữ kỹ thuật lọt giao diện nông dân: "Daemon LampNet", "Epoch", "µLAMP", "onnet", "Mint/Distribution/Claim", "DID" (6 lần ở màn Tôi), "Tasker", "Escrow", "Pool/stake", "P-256/Ed25519/BIP39". Kèm 9 khái niệm gọi nhiều tên (vườn/trang trại/nông trại/trại; 2 loại ví cùng tên "Ví"). Nhãn tab **"Kết đèn"** không ai hiểu — đề xuất "Góp máy". Chờ anh Aladin chốt từ vựng. | — | 🟢 | Tùng | 2026-07-29 |
+| H-20 | (hạ tầng) | Fix | Suite `src/services/proofchat-api.test.ts` không chạy được: `phoenixSessionService.ts:119` ném `TypeError: Right-hand side of 'instanceof' is not an object` làm sập cả worker jest. Đã đối chiếu — hỏng sẵn trên `develop`, không do thay đổi nào gần đây. 25/26 suite còn lại pass (571 test). | — | 🟢 | Thư | 2026-07-29 |
 
 ## Đã xong (giữ lịch sử)
 
@@ -32,9 +55,13 @@ Ký hiệu trạng thái BE: 🟢 live&deployed · 🟡 code có, chưa deploy �
 |----|------|-------|
 | — | Cổng runtime tự bật module khi backend sống | PR #68 (2026-07-27) |
 | — | Field-test Đức #8/#11/#2/#1 (nav 3D/quả, GPS, schema) | PR #72 (2026-07-27) |
-| — | AladinWork go-real: gỡ mock, empty-state thật, count thật | (chờ merge) |
-| — | OrgDID: thêm ô MST tuỳ chọn | (chờ merge) |
+| — | AladinWork go-real: gỡ mock, empty-state thật, count thật | PR #74 (2026-07-29) |
+| — | OrgDID: thêm ô MST tuỳ chọn | PR #75 (chờ merge) |
+| H-09 | ~~79 lỗi tsc ở `src/features/space3d/scene`~~ — **ĐÍNH CHÍNH 29/07: không phải lỗi code.** `node_modules` trên máy kiểm tra thiếu 9 gói (`three`, `@react-three/fiber`, `react-native-svg`, `expo*`) mà `package-lock.json` ĐÃ có sẵn. Chạy `npm install` → tsc từ 102 lỗi về **0**. Dev không phải sửa gì. | đóng (2026-07-29) |
+| — | Gỡ 6 rào cản thực địa: SafeArea `FruitVideoScreen`, 5 vùng chạm <44pt, cỡ chữ nav 9→11pt + cho phóng chữ, hiện `video_cid` làm bằng chứng LampNet, chặn bấm kép 2 modal ProofChat | (chờ merge) |
 
 ---
 
-*Cập nhật lần cuối bởi SuperApp agent 2026-07-27. Agent module: thêm dòng của mình vào bảng "Đang mở" theo §12.*
+*Cập nhật lần cuối bởi SuperApp agent 2026-07-29 (thêm H-10…H-20 từ đợt rà soát 6 nhánh:
+sẵn-sàng tính năng ×3 + trải nghiệm người dùng ×3). Agent module: thêm dòng của mình vào
+bảng "Đang mở" theo §12.*

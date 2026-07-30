@@ -17,9 +17,11 @@ Ký hiệu trạng thái BE: 🟢 live&deployed · 🟡 code có, chưa deploy �
 > mọi thứ rỗng, rất dễ tưởng "backend chưa xong".
 > **Làm:** `cp .env.example .env` trước khi chạy lần đầu. Không cần khoá thật cho thực địa —
 > toàn URL công khai.
-> Đo thật 2026-07-29: `api.aladin.work/api/v1/health` 200 · `api.phoenixkey.me/api/v1/actuator/health`
-> 200 `{"status":"UP"}` · `api.orilife.io/api/health` 200 · `lampnet.cloud/health` 200 ·
-> `api.proofchat.me` **502** (chờ Lợi sửa cổng tunnel).
+> Đo thật **2026-07-30**: `api.aladin.work/api/v1/health` 200 · `api.orilife.io/api/health` 200 ·
+> `lampnet.cloud/health` 200 · `api.lampnet.cloud/health` 200 · `api.phoenixkey.me` **502 TOÀN BỘ**
+> (xem H-21 — 29/07 còn 200 UP) · `api.proofchat.me` **502** (chờ Lợi sửa cổng tunnel).
+> Đo trước đó 2026-07-29: Phoenix `/api/v1/actuator/health` 200 `{"status":"UP"}`.
+> Quy tắc: **đo lại trước mỗi đợt thực địa**, đừng tin số đo cũ — Phoenix sập trong vòng 1 ngày.
 > Biến `PHOENIXKEY_POOL_API_URL` khai ở `src/types/env.d.ts:6` nhưng **thiếu trong `.env.example`**
 > — mà backend Pool cũng chưa có (`/api/v1/pools` → 404), nên chưa cần bổ sung vội.
 
@@ -47,6 +49,13 @@ Ký hiệu trạng thái BE: 🟢 live&deployed · 🟡 code có, chưa deploy �
 | H-17 | (chất lượng) | Fix | Luồng chụp nhiều ảnh mất trắng khi bị ngắt: `TreeEnroll`/`AnimalEnroll`/`FruitVideo` không lưu nháp, không `beforeRemove`, không chỉ báo bước. Nông dân chụp 5 góc, có cuộc gọi tới → làm lại từ đầu. Video 80MB upload chỉ có spinner, không phần trăm. | — | 🟢 | Thư | 2026-07-29 |
 | H-18 | (chất lượng) | Fix | 203 mã màu hex hardcode / 689 lần / 85 file, vi phạm `src/theme/tokens.ts:5` ("CẤM hardcode màu"). 3 sắc đỏ "lỗi", 8 sắc xanh "thành công", 6 màu nút-chính tự chế. 55 file tự vẽ header (`AppHeader` chỉ dùng 3 nơi). Dọn dần, không làm một lần. | `src/theme/tokens.ts` | 🟢 | Tùng | 2026-07-29 |
 | H-19 | (ngôn ngữ) | Fix | Thuật ngữ kỹ thuật lọt giao diện nông dân: "Daemon LampNet", "Epoch", "µLAMP", "onnet", "Mint/Distribution/Claim", "DID" (6 lần ở màn Tôi), "Tasker", "Escrow", "Pool/stake", "P-256/Ed25519/BIP39". Kèm 9 khái niệm gọi nhiều tên (vườn/trang trại/nông trại/trại; 2 loại ví cùng tên "Ví"). Nhãn tab **"Kết đèn"** không ai hiểu — đề xuất "Góp máy". Chờ anh Aladin chốt từ vựng. | — | 🟢 | Tùng | 2026-07-29 |
+| H-21 | PhoenixKey | ⚫OPS | **`api.phoenixkey.me` trả 502 TOÀN BỘ** (đo 30/07: `/actuator/health`, `/health`, `/v3/api-docs`, `mint-lamp`, `identity/org` — tất cả 502). Ngày 29/07 chính đường đó còn 200 `{"status":"UP"}` → hồi quy trong 1 ngày. Cổng runtime tắt cả trục danh tính: đăng nhập DID, ví, OrgDID, mint. **Chặn mục tiêu 2 của đợt thực địa.** Đã inbox Phoenix. | — | 🔴 | (Phoenix/OPS) | 2026-07-30 |
+| H-22 | OriLife | Shape | **`POST /api/tree/{id}/video` KHÔNG đẩy LampNet, không trả `video_cid`/`stored`** — chỉ `fruit_video` có (OriLife xác nhận 2 lần). Mục tiêu đợt là "video nông dân về LampNet gắn định danh cây", mà video nông dân quay là video CÂY. Không sửa thì đội đi cả ngày, video không có mặt trên LampNet dù app không lỗi. Đã inbox OriLife xin cho 2 route cùng đường lưu trữ. | `Integration/OriLife.md` | 🔴 | (OriLife BE) | 2026-07-30 |
+| H-23 | (native) | Fix | **Gốc quy chiếu la bàn SAI hợp đồng.** OriLife đòi Bắc THẬT. iOS `HeadingCaptureManager.swift:278` lấy `trueHeading` nhưng **âm thầm rơi về `magneticHeading`**; Android `HeadingSensorReader.kt:27` đọc `TYPE_ROTATION_VECTOR` **không cộng `GeomagneticField`** → Bắc TỪ. Hai nền tảng hai gốc, trộn vào cùng tập dữ liệu = sai KHÔNG phát hiện được về sau. App đã vá nhãn (`heading_ref`), sửa thật là việc native. | — | 🟢 | Thư | 2026-07-30 |
+| H-24 | OriLife | Wire | Route tra `video_cid` theo `tree_id` **không tồn tại** (OriLife grep hết `origin/main`). App đã tự lưu sổ cục bộ, nhưng sổ nằm trong **một máy** — hỏng máy/đổi điện thoại/trả máy công ty là mất bằng chứng, và nhiều người nhiều máy thì không ai gom được. Đã xin route. | chờ OriLife | 🔴 | Thư/Tùng | 2026-07-30 |
+| H-25 | OriLife | Wire | **Làn dựng 3D sẽ treo suốt buổi thực địa**: `server.py:1210` chỉ chạy 3D khi làn xuất xứ TRỐNG. Cả đội đăng ký cây liên tục nhiều giờ → làn không bao giờ trống → 3D coi như không chạy, màn "đang dựng" quay mãi. App cần mốc thời gian + đổi câu sang "đang xếp hàng". Cách xếp lịch là quyết định của OriLife (đã inbox). | `Integration/OriLife.md` | 🟡 | Thư | 2026-07-30 |
+| H-26 | (chất lượng) | Fix | Store redux **trộn 2 quy ước đơn vị**: `adaBalance` đã chia, `lampBalance`/`carpBalance` còn thô. Chính cái trộn này sinh lỗi hiện LAMP gấp triệu lần. Đã ghi đơn vị vào type + bắt mọi chỗ hiện đi qua `fmtLamp()`, nhưng CHƯA thống nhất một quy ước cho cả store (đụng 6 màn — không làm giữa đợt thực địa). | `src/utils/token.ts` | 🟢 | Tùng | 2026-07-30 |
+| H-27 | MAGIC+CARP | Shape | **decimals của MAGIC và CARP chưa chốt** → app in NGUYÊN SỐ THÔ (`CARP_DECIMALS_UNKNOWN = 0`), thà hiện thô hơn hiện sai. LAMP agent nói rõ "đừng giả định 6". Cần MAGIC agent xác nhận `magic.available` có phải đơn vị thô, và CARP agent cho decimals. Chốt xong = đổi 1 hằng số. | `src/utils/token.ts` | 🔴 | (MAGIC/CARP) | 2026-07-30 |
 | H-20 | (hạ tầng) | Fix | Suite `src/services/proofchat-api.test.ts` không chạy được: `phoenixSessionService.ts:119` ném `TypeError: Right-hand side of 'instanceof' is not an object` làm sập cả worker jest. Đã đối chiếu — hỏng sẵn trên `develop`, không do thay đổi nào gần đây. 25/26 suite còn lại pass (571 test). | — | 🟢 | Thư | 2026-07-29 |
 
 ## Đã xong (giữ lịch sử)
@@ -59,9 +68,22 @@ Ký hiệu trạng thái BE: 🟢 live&deployed · 🟡 code có, chưa deploy �
 | — | OrgDID: thêm ô MST tuỳ chọn | PR #75 (chờ merge) |
 | H-09 | ~~79 lỗi tsc ở `src/features/space3d/scene`~~ — **ĐÍNH CHÍNH 29/07: không phải lỗi code.** `node_modules` trên máy kiểm tra thiếu 9 gói (`three`, `@react-three/fiber`, `react-native-svg`, `expo*`) mà `package-lock.json` ĐÃ có sẵn. Chạy `npm install` → tsc từ 102 lỗi về **0**. Dev không phải sửa gì. | đóng (2026-07-29) |
 | — | Gỡ 6 rào cản thực địa: SafeArea `FruitVideoScreen`, 5 vùng chạm <44pt, cỡ chữ nav 9→11pt + cho phóng chữ, hiện `video_cid` làm bằng chứng LampNet, chặn bấm kép 2 modal ProofChat | (chờ merge) |
+| H-06 | ~~SafeArea 2 màn~~ — xong trong đợt gỡ rào cản thực địa (header notch + nút Gửi đè thanh home) | đóng (2026-07-29) |
+| H-10 | ~~Gửi `heading`/`pitch` theo từng ảnh~~ — **XONG 30/07.** Backend nhận sẵn cả 4 route (`server.py:1699`, `:1941`, `:2790`, `:2881`); gửi `captures` JSON theo khuôn `regions`, áp cho identify + enroll + verify_add. Thiếu số thì bỏ khoá, không gửi `""`/`"null"`. Phần server nhận `captures` OriLife đang dựng. **Gốc quy chiếu la bàn tách thành H-23.** | đóng (2026-07-30) |
+| — | Lưu `video_cid` cục bộ (`videoProofStore`) + hiện lại ở màn chi tiết cây, chạm để sao chép — ghi TRƯỚC khi vẽ vì không có route tra ngược | (chờ merge) |
+| — | Sửa LAMP hiện gấp 1.000.000 lần: `utils/token.ts` dùng BigInt (tổng cung 3,6e16 oildrop vượt `Number.MAX_SAFE_INTEGER`), áp 6 chỗ hiện, 10 test kể cả ca tràn số | (chờ merge) |
+| — | Xoá mã chết `src/utils/crypto.ts` (chữ ký giả + nonce `Math.random()`, 0 chỗ gọi) | (chờ merge) |
 
 ---
 
-*Cập nhật lần cuối bởi SuperApp agent 2026-07-29 (thêm H-10…H-20 từ đợt rà soát 6 nhánh:
-sẵn-sàng tính năng ×3 + trải nghiệm người dùng ×3). Agent module: thêm dòng của mình vào
-bảng "Đang mở" theo §12.*
+*Cập nhật lần cuối bởi SuperApp agent 2026-07-30 (thêm H-21…H-27 từ đợt rà soát chặn cho hai
+mục tiêu thực địa mới: video cây → LampNet, và OrgDID + mint LAMP. Đóng H-06, H-10.)
+Agent module: thêm dòng của mình vào bảng "Đang mở" theo §12.*
+
+> **Ghi chú về hiệu lực của §12 (30/07):** nghĩa vụ "tự đẩy dòng khi xong" hiện **chưa ràng buộc
+> được agent nào** — `grep -rl "Module-Handoff"` ngoài repo SuperApp cho **0 kết quả**, và
+> `_rules/Forall.md` không có chữ nào về sổ này. §12.4 đã nói rõ nghĩa vụ hành vi chéo agent
+> thuộc `Forall.md`, mà agent không tự sửa file rule global. Đã gửi đề xuất sang Systeme
+> (`SuperApp-de-nghi-them-nghia-vu-bao-trang-thai-ve-Integration-2026-07-30.md`) chờ chủ nhân
+> duyệt. Tới lúc đó, việc lan quy định vẫn làm BẰNG TAY: mỗi thư SuperApp gửi đi đều kèm câu
+> nhắc §12. Cách đó không bền, nên đừng coi ledger là đã đủ.

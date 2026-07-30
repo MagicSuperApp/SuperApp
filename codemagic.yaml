@@ -99,7 +99,6 @@ workflows:
       - name: Create .env for React Native
         script: |
           cat > .env <<EOF
-          ENV=production
 
           # OriLife / Aladin backend
           ALADIN_API_URL=${BASE_API_URL:-https://staging-api.orilife.io}
@@ -384,7 +383,6 @@ workflows:
       - name: Create .env for React Native
         script: |
           cat > .env <<EOF
-          ENV=production
           ALADIN_API_URL=${BASE_API_URL:-https://staging-api.orilife.io}
           ALADIN_API_KEY=${API_KEY:-mock-local-api-key}
           ALADIN_REGION_CODE=${REGION_CODE:-vn-south-01}
@@ -645,7 +643,6 @@ workflows:
       - name: Create .env for React Native
         script: |
           cat > .env <<EOF
-          ENV=production
           ALADIN_API_URL=${BASE_API_URL:-https://staging-api.orilife.io}
           ALADIN_API_KEY=${API_KEY:-mock-local-api-key}
           ALADIN_REGION_CODE=${REGION_CODE:-vn-south-01}
@@ -797,7 +794,6 @@ workflows:
       - name: Create .env for React Native
         script: |
           cat > .env <<EOF
-          ENV=production
           ALADIN_API_URL=${BASE_API_URL:-https://staging-api.orilife.io}
           ALADIN_API_KEY=${API_KEY:-mock-local-api-key}
           ALADIN_REGION_CODE=${REGION_CODE:-vn-south-01}

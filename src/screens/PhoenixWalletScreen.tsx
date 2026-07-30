@@ -13,13 +13,15 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  StatusBar, ActivityIndicator, Clipboard, RefreshControl,
+  StatusBar, ActivityIndicator, Clipboard, RefreshControl, Alert,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { COLORS } from '../constants';
-import { showInfo, showWarning } from '../utils/alert';
+import { showInfo, showWarning, showSuccess, showError } from '../utils/alert';
+import { enableDeviceKey } from '../services/deviceKeyService';
+import { rotateOwnerKey } from '../services/keyRotateService';
 import taad from '../sdk/taadEnclave';
 import { getStoredMasterKek, getActiveAccountIndex, rotateActiveAccount } from '../services/masterKekStore';
 import { currentUserDid } from '../sdk/phoenixKey';
@@ -36,6 +38,51 @@ const fmtNum = (n: number) => n.toLocaleString('en-US');
 const PhoenixWalletScreen = () => {
   const insets = useSafeAreaInsets();
   const navigation: any = useNavigation();
+
+  // Bật 2-Factor DeviceKey (Issue #28): sinh khoá thiết bị + đăng ký backend.
+  const handleEnable2fa = useCallback(() => {
+    Alert.alert(
+      'Bảo mật 2 lớp (DeviceKey)',
+      'Sinh khoá thiết bị để tăng bảo vệ khi ký giao dịch. Khoá lưu an toàn trên máy này.',
+      [
+        { text: 'Huỷ', style: 'cancel' },
+        {
+          text: 'Bật',
+          onPress: async () => {
+            try {
+              await enableDeviceKey();
+              showSuccess('Đã bật', 'Bảo mật 2 lớp đã kích hoạt trên máy này.');
+            } catch (e: any) {
+              showError('Không bật được', e?.message ?? 'Thử lại sau (cần cập nhật app + máy chủ hỗ trợ).');
+            }
+          },
+        },
+      ],
+    );
+  }, []);
+
+  // Xoay khoá owner DID (sinh khoá mới + ký bằng khoá cũ + publish updateDID).
+  const handleRotateKey = useCallback(() => {
+    Alert.alert(
+      'Xoay khoá bảo mật',
+      'Sinh khoá mới thay khoá hiện tại (nghi lộ/định kỳ). Cần xác nhận sinh trắc bằng khoá cũ. Danh tính (DID) không đổi.',
+      [
+        { text: 'Huỷ', style: 'cancel' },
+        {
+          text: 'Xoay khoá',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { txHash } = await rotateOwnerKey();
+              showSuccess('Đã xoay khoá', `Khoá mới đã kích hoạt.\nTx: ${txHash.slice(0, 16)}…`);
+            } catch (e: any) {
+              showError('Xoay khoá thất bại', e?.message ?? 'Đã giữ nguyên khoá cũ, thử lại sau.');
+            }
+          },
+        },
+      ],
+    );
+  }, []);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -248,6 +295,61 @@ const PhoenixWalletScreen = () => {
               <Text style={styles.orgEntryTitle}>Tổ chức &amp; Mint LAMP</Text>
               <Text style={styles.orgEntryDesc}>
                 Tạo OrgDID và mint LAMP vào kho Distribution.
+              </Text>
+            </View>
+            <Icon name="chevron-right" size={22} color={COLORS.textMuted} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.sectionWrap}>
+          <View style={styles.sectionHeaderRow}>
+            <View style={styles.sectionDot} />
+            <Text style={styles.sectionTitle}>UỶ THÁC STAKE</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.orgEntryCard}
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate('Staking')}
+          >
+            <View style={styles.orgEntryIcon}>
+              <Icon name="hand-coin-outline" size={20} color={COLORS.accent} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.orgEntryTitle}>Uỷ thác Stake (SPO)</Text>
+              <Text style={styles.orgEntryDesc}>
+                Uỷ thác stake của ví vào một pool để nhận thưởng.
+              </Text>
+            </View>
+            <Icon name="chevron-right" size={22} color={COLORS.textMuted} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.sectionWrap}>
+          <View style={styles.sectionHeaderRow}>
+            <View style={styles.sectionDot} />
+            <Text style={styles.sectionTitle}>BẢO MẬT</Text>
+          </View>
+          <TouchableOpacity style={styles.orgEntryCard} activeOpacity={0.85} onPress={handleEnable2fa}>
+            <View style={styles.orgEntryIcon}>
+              <Icon name="shield-key-outline" size={20} color={COLORS.accent} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.orgEntryTitle}>Bảo mật 2 lớp (DeviceKey)</Text>
+              <Text style={styles.orgEntryDesc}>
+                Sinh khoá thiết bị để đồng-ký khi ký giao dịch quan trọng.
+              </Text>
+            </View>
+            <Icon name="chevron-right" size={22} color={COLORS.textMuted} />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={[styles.orgEntryCard, { marginTop: 10 }]} activeOpacity={0.85} onPress={handleRotateKey}>
+            <View style={styles.orgEntryIcon}>
+              <Icon name="key-change" size={20} color={COLORS.accent} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.orgEntryTitle}>Xoay khoá bảo mật</Text>
+              <Text style={styles.orgEntryDesc}>
+                Thay khoá hiện tại bằng khoá mới (khi nghi lộ hoặc định kỳ).
               </Text>
             </View>
             <Icon name="chevron-right" size={22} color={COLORS.textMuted} />

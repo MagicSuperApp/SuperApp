@@ -65,6 +65,52 @@ export interface CreateOrgResult {
   org_name?: string;
 }
 
+/** Một founder/member đã ký challenge (đối chiếu OrgFounderInput.java). */
+export interface OrgFounderInputWire {
+  owner_did: string;
+  /** Hex ECDSA (P-256) chữ ký HW_Key của founder trên challenge canonical. */
+  owner_signature: string;
+}
+
+/**
+ * Body `POST /identity/org/founding` — tạo OrgDID m-of-n (đối chiếu OrgFoundingRequest.java).
+ * MỌI founder phải ký cùng challenge: "PHOENIXKEY_ORG_FOUNDING:" + name + ":" +
+ * sortedFounderDids.join(",") + ":" + threshold + ":" + nonce. threshold ≥ 2.
+ */
+export interface FoundOrgRequest {
+  founders: OrgFounderInputWire[];
+  threshold: number;
+  name: string;
+  registration_number?: string;
+  nonce: string;
+}
+export interface FoundOrgResult {
+  org_did: string;
+  tx_hash?: string;
+  org_name?: string;
+  threshold?: number;
+}
+
+/**
+ * Body `POST /identity/org/{orgDid}/upgrade-authority` — nâng single → threshold
+ * (đối chiếu OrgUpgradeAuthorityRequest.java). Current owner + MỌI new member ký
+ * challenge: "PHOENIXKEY_ORG_UPGRADE:" + orgDid + ":" + sortedNewMemberDids.join(",")
+ * + ":" + newThreshold + ":" + nonce. newThreshold ≥ 2.
+ */
+export interface UpgradeAuthorityRequest {
+  current_owner_did: string;
+  owner_signature: string;
+  new_members: OrgFounderInputWire[];
+  new_threshold: number;
+  nonce: string;
+}
+export interface UpgradeAuthorityResult {
+  org_did: string;
+  tx_hash?: string;
+  threshold?: number;
+  authority_model?: string;
+}
+
 /** Một OrgDID user điều-khiển (dùng cho màn danh sách, nếu backend có list). */
 export interface OrgSummary {
   org_did: string;
@@ -368,6 +414,22 @@ export const orgMintApi = {
       client.post('/identity/org/create', body, {
         needsAuth: true,
       } as AxiosRequestConfig),
+    ),
+
+  /** Tạo OrgDID m-of-n (mọi founder ký cùng challenge). POST /identity/org/founding. */
+  foundOrg: (body: FoundOrgRequest) =>
+    unwrap<FoundOrgResult>(
+      client.post('/identity/org/founding', body, { needsAuth: true } as AxiosRequestConfig),
+    ),
+
+  /** Nâng single → threshold. POST /identity/org/{orgDid}/upgrade-authority. */
+  upgradeAuthority: (orgDid: string, body: UpgradeAuthorityRequest) =>
+    unwrap<UpgradeAuthorityResult>(
+      client.post(
+        `/identity/org/${encodeURIComponent(orgDid)}/upgrade-authority`,
+        body,
+        { needsAuth: true } as AxiosRequestConfig,
+      ),
     ),
 
   /**

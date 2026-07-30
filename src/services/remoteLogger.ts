@@ -234,6 +234,53 @@ const rLog = {
     },
   },
 
+  // ── Xem 3D (WebView /view/{code} + GL react-three-fiber Space3D) ────────────
+  // Trace vì sao app CRASH khi mở 3D. Đọc event CUỐI trước khi mất log:
+  //   space_mount (không có space_gl_created) → chết lúc tạo ngữ cảnh GL (expo-gl/New Arch).
+  //   space_gl_created rồi im   → chết lúc render cảnh (glb/mesh) — boundary có thể bắt.
+  //   boundary_error            → lỗi JS đã xử lý êm (đọc message/stack).
+  //   webview_render_process_gone / content_process_terminated → renderer WebView chết.
+
+  viewer3d: {
+    // ── WebView 3D (TreeViewer3D → /view/{code}) ──
+    webviewOpen(code: string | null, url: string): void {
+      send('viewer3d_webview_open', { code, hasCode: !!code, url });
+    },
+    webviewLoadStart(url: string): void { send('viewer3d_webview_load_start', { url }); },
+    webviewLoadEnd(url: string): void { send('viewer3d_webview_load_end', { url }); },
+    webviewLoadError(url: string, desc?: string): void {
+      send('viewer3d_webview_load_error', { url, desc: desc ?? null }, 'error');
+    },
+    webviewHttpError(url: string, status: number): void {
+      send('viewer3d_webview_http_error', { url, status }, 'error');
+    },
+    webviewRenderGone(url: string, didCrash?: boolean): void {
+      send('viewer3d_webview_render_process_gone', { url, didCrash: didCrash ?? null }, 'error');
+    },
+    webviewProcessTerminated(url: string): void {
+      send('viewer3d_webview_content_process_terminated', { url }, 'error');
+    },
+    webviewClose(code: string | null): void { send('viewer3d_webview_close', { code }); },
+
+    // ── GL 3D (Space3D → react-three-fiber/expo-gl) ──
+    spaceNav(ctx: { treeId?: string; farmId?: string }): void {
+      send('viewer3d_space_nav', { treeId: ctx.treeId ?? null, farmId: ctx.farmId ?? null });
+    },
+    spaceMount(ctx: { mode?: string; farmId?: string; treeId?: string }): void {
+      send('viewer3d_space_mount', {
+        mode: ctx.mode ?? null, farmId: ctx.farmId ?? null, treeId: ctx.treeId ?? null,
+      });
+    },
+    spaceCanvasFocus(): void { send('viewer3d_space_canvas_focus', {}); },
+    spaceGlCreated(): void { send('viewer3d_space_gl_created', {}); },
+    spaceUnmount(): void { send('viewer3d_space_unmount', {}); },
+
+    /** ErrorBoundary quanh cảnh 3D bắt được lỗi JS (không phải native crash). */
+    boundaryError(tag: string, message: string, stack: string | null): void {
+      send('viewer3d_boundary_error', { tag, message, stack }, 'error');
+    },
+  },
+
   // ── Bridge events (gọi từ native bridge subscription handlers) ──────────────
 
   nativeBridge: {

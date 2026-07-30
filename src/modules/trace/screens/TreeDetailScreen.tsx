@@ -41,6 +41,7 @@ import { formatTreeName, shortTreeCode } from '../../../utils/treeNameFormatter'
 import { loadTreeImages } from '../../../services/treeImageStore';
 import { loadVideoProofs, type VideoProof } from '../../../services/videoProofStore';
 import { ORILIFE_BASE } from '../../../services/orilifeBase';
+import rLog from '../../../services/remoteLogger';
 import {
   getTreeLayout,
   type TreeLayoutResponse, type TreeLayoutFruit,
@@ -415,6 +416,8 @@ const TreeDetailScreen = () => {
   // nay không-gian 3D dựng từ model tree1.glb nên cây NÀO cũng xem được.
   const handleView3D = () => {
     if (!tree) return;
+    // Trace điểm vào Space3D (GL/react-three-fiber) — mốc cuối nếu app crash khi mở 3D.
+    rLog.viewer3d.spaceNav({ treeId: tree.id, farmId: tree.farmId });
     (navigation as any).navigate('Space3D', {
       mode: 'tree',
       treeId: tree.id,

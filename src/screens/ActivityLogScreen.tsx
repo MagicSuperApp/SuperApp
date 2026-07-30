@@ -1,20 +1,22 @@
 // screens/ActivityLogScreen.tsx
 // Nhật-ký hoạt-động (ký / xoay khoá / export…). GET /activity-logs.
-// ⚠️ Shape response CHƯA chốt với anh → render phòng-thủ (đọc field nếu có, không thì bỏ qua).
+// Shape ĐÃ đối-chiếu ActivityLogPage.java: cursor pagination, item { id, userId,
+// action, metadata, createdAt }. nextCursor=null → hết data.
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity, StatusBar,
+  View, Text, StyleSheet, FlatList, TouchableOpacity, StatusBar, ActivityIndicator,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import { COLORS } from '../constants';
-import { phoenixKeyApi } from '../services/phoenixKey-api';
+import { phoenixKeyApi, type ActivityLogItem } from '../services/phoenixKey-api';
 import StateView from '../components/state/StateView';
 
 const PRIMARY = '#4A55C7';
+const PAGE = 30;
 
-type LogItem = Record<string, unknown>;
+type LogItem = ActivityLogItem;
 
 /** Icon theo loại hoạt-động (đoán theo field type/action, phòng-thủ). */
 const iconFor = (t: string): string => {
@@ -38,16 +40,34 @@ const ActivityLogScreen: React.FC = () => {
   const [items, setItems] = useState<LogItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
 
+  // Tải trang đầu (reset). onRefresh cũng gọi cái này.
   const load = useCallback(async () => {
     setLoading(true); setError(false);
     try {
-      const res = await phoenixKeyApi.activityLogs.list({ take: 100 });
-      setItems(Array.isArray(res) ? res : []);
+      const res = await phoenixKeyApi.activityLogs.list({ limit: PAGE });
+      setItems(res.logs);
+      setCursor(res.nextCursor);
     } catch {
-      setError(true); setItems([]);
+      setError(true); setItems([]); setCursor(null);
     } finally { setLoading(false); }
   }, []);
+
+  // Tải thêm theo cursor (append). Dừng khi nextCursor=null.
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !cursor) return;
+    setLoadingMore(true);
+    try {
+      const res = await phoenixKeyApi.activityLogs.list({ limit: PAGE, cursor });
+      setItems(prev => [...prev, ...res.logs]);
+      setCursor(res.nextCursor);
+    } catch {
+      /* giữ nguyên list, cho phép thử lại lần cuộn sau */
+    } finally { setLoadingMore(false); }
+  }, [cursor, loadingMore]);
+
   useEffect(() => { load(); }, [load]);
 
   const header = (
@@ -68,17 +88,28 @@ const ActivityLogScreen: React.FC = () => {
       {header}
       <FlatList
         data={items}
-        keyExtractor={(it, i) => String((it.id as string) ?? i)}
+        keyExtractor={(it, i) => String(it.id ?? i)}
         contentContainerStyle={items.length === 0 ? styles.empty : styles.list}
         onRefresh={load}
         refreshing={loading}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.4}
+        ListFooterComponent={
+          loadingMore ? <ActivityIndicator style={{ paddingVertical: 16 }} color={PRIMARY} /> : null
+        }
         ListEmptyComponent={
           <StateView status="empty" title="Chưa có hoạt động" message="Các thao tác ký, xoay khoá, khôi phục sẽ hiện ở đây." />
         }
         renderItem={({ item }) => {
-          const type = String((item.type as string) ?? (item.action as string) ?? 'Hoạt động');
-          const desc = (item.description as string) ?? (item.displayText as string) ?? (item.detail as string) ?? '';
-          const time = fmtTime(item.createdAt ?? item.timestamp ?? item.ts);
+          const type = String(item.action ?? 'Hoạt động');
+          // metadata Zero-PII (vd { guardian_did, ip_hash }) → dòng mô-tả gọn.
+          const desc = item.metadata
+            ? Object.entries(item.metadata)
+                .filter(([k]) => k !== 'ip_hash')
+                .map(([k, v]) => `${k}: ${String(v)}`)
+                .join(' · ')
+            : '';
+          const time = fmtTime(item.createdAt);
           return (
             <View style={styles.row}>
               <View style={styles.iconWrap}><Icon name={iconFor(type)} size={18} color={PRIMARY} /></View>

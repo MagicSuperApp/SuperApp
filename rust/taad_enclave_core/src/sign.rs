@@ -82,6 +82,38 @@ pub fn derive_taad_public_key(master_kek_hex: String) -> String {
     hex::encode(verifying_key.as_bytes())
 }
 
+/// 2FA DeviceKey opt-in (Issue #28): sinh cặp Ed25519 NGẪU NHIÊN (per-device, KHÔNG
+/// derive từ Seed) rồi ký canonical opt-in bằng CHÍNH khoá đó (proof-of-ownership).
+/// Canonical: "PHOENIXKEY_DEVICE_KEY_OPTIN:" + user_did + ":" + publicKeyHex + ":" + nonce
+///
+/// Trả JSON {"publicKeyHex":<64hex>,"signature":<128hex>,"secretHex":<64hex>}.
+/// `secretHex` = 32-byte seed device key — caller LƯU vào K_bio (secureStore) để
+/// dùng cosign 2of2 sau; user_did/pub/nonce đều hex/ASCII nên nhúng JSON an-toàn.
+/// Rỗng nếu random/derive lỗi.
+pub fn device_key_optin(user_did: String, nonce: String) -> String {
+    // Random 32 byte từ nguồn CSPRNG dùng chung (generate_master_kek → 64-hex).
+    let seed_hex = crate::crypto::generate_master_kek();
+    let seed_bytes = match utils::hex_to_bytes(&seed_hex) {
+        Ok(b) if b.len() == 32 => b,
+        _ => return String::new(),
+    };
+    let seed: [u8; 32] = match seed_bytes.try_into() {
+        Ok(s) => s,
+        Err(_) => return String::new(),
+    };
+    let signing_key = SigningKey::from_bytes(&seed);
+    let verifying_key: VerifyingKey = (&signing_key).into();
+    let pub_hex = hex::encode(verifying_key.as_bytes());
+    let message = format!("PHOENIXKEY_DEVICE_KEY_OPTIN:{user_did}:{pub_hex}:{nonce}");
+    let signature = signing_key.sign(message.as_bytes());
+    format!(
+        "{{\"publicKeyHex\":\"{}\",\"signature\":\"{}\",\"secretHex\":\"{}\"}}",
+        pub_hex,
+        hex::encode(signature.to_bytes()),
+        seed_hex,
+    )
+}
+
 // ─── Tests ────────────────────────────────────────────────────────
 
 #[cfg(test)]

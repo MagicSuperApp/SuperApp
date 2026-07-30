@@ -2,18 +2,18 @@
  * Guardian (khôi-phục xã-hội) — dựng proof_signature + gọi API.md §6
  * `POST /guardians/add · /guardians/remove`.
  *
- * ⚠️ QUAN TRỌNG: API.md §6 CHỈ ghi body `{ user_did, guardian_did, nonce, proof_signature }`
- * mà KHÔNG mô-tả chuỗi challenge của proof_signature. Client dựng theo mẫu nhất-quán của
- * PhoenixKey ("PHOENIXKEY_<ACTION>:<fields>:<nonce>", như GENESIS/RECOVER/ROTATE) và ký
- * bằng khoá HW owner (DER ECDSA secp256r1 — cùng khoá owner ký genesis). Nếu backend
- * verify khác chuỗi/khoá → CHỈ cần sửa CHALLENGE_* dưới đây. Chờ anh Đức chốt hợp-đồng.
+ * ✅ ĐÃ ĐỐI-CHIẾU backend GuardianServiceImpl.java (2026-07-27):
+ *   message = "PHOENIXKEY_GUARDIAN_ADD:" + userDid + ":" + guardianDid + ":" + nonce
+ *             (remove dùng "PHOENIXKEY_GUARDIAN_REMOVE:"), verify bằng owner-key ACTIVE
+ *   qua verifyEcdsa (SHA256withECDSA secp256r1) — KHỚP đúng cách dựng dưới đây.
+ * Body { user_did, guardian_did, nonce, proof_signature }. Nonce TTL 5' (validateAndConsume).
  */
 
 import taad from '../sdk/taadEnclave';
 import { signRaw, currentUserDid } from '../sdk/phoenixKey';
 import { phoenixKeyApi, GuardianMutateRequest } from './phoenixKey-api';
 
-// Suy-luận (chưa có trong API.md) — sửa tại đây khi anh Đức xác nhận.
+// Khớp GUARDIAN_ADD_PREFIX/REMOVE_PREFIX trong GuardianServiceImpl.java (đã đối-chiếu).
 const CHALLENGE_ADD = 'PHOENIXKEY_GUARDIAN_ADD';
 const CHALLENGE_REMOVE = 'PHOENIXKEY_GUARDIAN_REMOVE';
 

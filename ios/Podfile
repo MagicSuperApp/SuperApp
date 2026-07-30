@@ -9,11 +9,13 @@ require Pod::Executable.execute_command('node', ['-p',
 # Explicit CDN source — bắt buộc để CocoaPods tìm TensorFlowLiteSwift 2.17.0
 source 'https://cdn.cocoapods.org/'
 
-# Trả về hằng của RN (0.84 = 15.1) thay vì số cứng '16.4' mà install-expo-modules
-# đặt cho SDK 57. Đã hạ Expo về SDK 56 — SDK 56 yêu cầu iOS 15.1, ĐÚNG bằng mức tối
-# thiểu của RN 0.84 → không cần nâng deployment target, cũng không phải sửa lại khi
-# nâng RN sau này.
-platform :ios, min_ios_version_supported
+# iOS 16.4: expo@56 (expo/expo-modules-core podspec) khai `:ios => '16.4'` — SDK 56
+# bản này ĐÒI 16.4 (không phải 15.1 như trước tưởng). Podfile PHẢI khai 16.4 để khớp
+# Xcode project (IPHONEOS_DEPLOYMENT_TARGET đã = 16.4) — nếu để min_ios_version_supported
+# (=15.1 của RN 0.84), CocoaPods coi app target 15.1 → từ chối link Expo ("requires iOS
+# 16.4 but app targets 15.1") → pod install fail. Đánh đổi: bỏ hỗ trợ iOS 15.x (bắt buộc
+# nếu còn dùng expo 56 cho expo-gl 3D).
+platform :ios, '16.4'
 prepare_react_native_project!
 
 # @react-native-firebase: BẮT BUỘC dưới use_frameworks! :static.

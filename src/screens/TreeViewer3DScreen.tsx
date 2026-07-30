@@ -10,7 +10,7 @@
  * UX (theo chuẩn OriLife): loading khi tải, báo lỗi thân-thiện khi mất mạng + nút thử lại,
  * KHÔNG hiện lỗi kỹ-thuật ra UI. Trang 3D là HTML công-khai (/view/{code}) nên không cần token.
  */
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -24,6 +24,7 @@ import { useNavigation, useRoute, type RouteProp } from '@react-navigation/nativ
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { ORILIFE_BASE } from '../services/orilifeBase';
 import { COLORS } from '../constants';
+import rLog from '../services/remoteLogger';
 
 const BASE_URL: string =
   ORILIFE_BASE;
@@ -52,6 +53,12 @@ const TreeViewer3DScreen: React.FC = () => {
     () => `${BASE_URL}/view/${encodeURIComponent(code)}`,
     [code],
   );
+
+  // Trace mở màn 3D — nếu crash native, log cuối cùng cho biết đã tới đâu.
+  useEffect(() => {
+    rLog.viewer3d.webviewOpen(code ?? null, url);
+    return () => rLog.viewer3d.webviewClose(code ?? null);
+  }, [code, url]);
 
   const reload = useCallback(() => {
     setFailed(false);
@@ -105,21 +112,40 @@ const TreeViewer3DScreen: React.FC = () => {
             setSupportMultipleWindows={false}
             javaScriptEnabled
             domStorageEnabled
-            onLoadStart={() => setLoading(true)}
-            onLoadEnd={() => setLoading(false)}
-            onError={() => {
+            // Giảm áp lực bộ nhớ WebGL: dùng layer phần cứng cho canvas 3D nặng.
+            androidLayerType="hardware"
+            onLoadStart={() => { setLoading(true); rLog.viewer3d.webviewLoadStart(url); }}
+            onLoadEnd={() => { setLoading(false); rLog.viewer3d.webviewLoadEnd(url); }}
+            onError={(e) => {
               setLoading(false);
               setFailed(true);
+              rLog.viewer3d.webviewLoadError(url, e?.nativeEvent?.description);
             }}
             onHttpError={(e) => {
               setLoading(false);
+              const status = e?.nativeEvent?.statusCode;
+              rLog.viewer3d.webviewHttpError(url, status);
               // 404 → 3D chưa dựng xong (không phải lỗi mạng). Server field-reid trả
               // 404 kèm HTML "Mô hình 3D đang dựng hoặc chưa có" cho cây public.
-              if (e?.nativeEvent?.statusCode === 404) {
+              if (status === 404) {
                 setNotBuilt(true);
               } else {
                 setFailed(true);
               }
+            }}
+            // ── CHỐNG CRASH APP: tiến trình renderer WebView chết (3D/WebGL hết RAM) ──
+            // Android: KHÔNG xử lý onRenderProcessGone → CẢ APP CRASH. Xử lý ở đây =
+            // log + hiện màn lỗi (reload) thay vì sập. Đây là nguyên nhân crash 3D hay gặp.
+            onRenderProcessGone={(e: any) => {
+              rLog.viewer3d.webviewRenderGone(url, e?.nativeEvent?.didCrash);
+              setLoading(false);
+              setFailed(true);
+            }}
+            // iOS: WKWebView content process bị hệ điều hành kill (bộ nhớ) → tránh sập.
+            onContentProcessDidTerminate={() => {
+              rLog.viewer3d.webviewProcessTerminated(url);
+              setLoading(false);
+              setFailed(true);
             }}
             style={styles.web}
           />

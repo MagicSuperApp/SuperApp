@@ -26,7 +26,7 @@ import {
   type WaitSignedHandle,
 } from './orgMint-api';
 import { isOrgMintEnabled } from '../config/orgMint';
-import { signRaw } from '../sdk/phoenixKey';
+import { signRaw, currentUserDid } from '../sdk/phoenixKey';
 import taad from '../sdk/taadEnclave';
 
 /**
@@ -182,6 +182,98 @@ export async function createOrg(args: {
 export async function listOrgs(): Promise<Org[]> {
   const rows = (await orgMintApi.listOrgs()) as unknown as Org[];
   return Array.isArray(rows) ? rows : [];
+}
+
+// ── OrgDID m-of-n: founding + upgrade-authority ───────────────────────────────
+// ⚠️ m-of-n = NHIỀU người ký, MỖI người trên MÁY RIÊNG (khoá HW của họ). 1 máy chỉ
+// ký được phần DID của mình → luồng: initiator dựng challenge (+nonce) → chia sẻ cho
+// đồng-sáng-lập → mỗi người ký-hộ (signSharedOrgChallenge) trả {ownerDid,ownerSignature}
+// → initiator gom đủ n chữ ký rồi foundOrg/upgradeAuthority.
+
+export interface FounderSig {
+  ownerDid: string;
+  ownerSignature: string;
+}
+
+/**
+ * Challenge canonical cho founding (đối chiếu OrgFoundingRequest.java):
+ *   "PHOENIXKEY_ORG_FOUNDING:" + name + ":" + sortedFounderDids.join(",") + ":" + threshold + ":" + nonce
+ * Founder DIDs SORT tăng dần trước khi join → chữ ký độc-lập với thứ tự client đóng gói.
+ */
+export function buildFoundingChallenge(args: {
+  name: string; founderDids: string[]; threshold: number; nonce: string;
+}): string {
+  const sorted = [...args.founderDids].map(d => d.trim()).filter(Boolean).sort();
+  return `PHOENIXKEY_ORG_FOUNDING:${args.name.trim()}:${sorted.join(',')}:${args.threshold}:${args.nonce}`;
+}
+
+/**
+ * Challenge canonical cho upgrade-authority (đối chiếu OrgUpgradeAuthorityRequest.java):
+ *   "PHOENIXKEY_ORG_UPGRADE:" + orgDid + ":" + sortedNewMemberDids.join(",") + ":" + newThreshold + ":" + nonce
+ */
+export function buildUpgradeChallenge(args: {
+  orgDid: string; newMemberDids: string[]; newThreshold: number; nonce: string;
+}): string {
+  const sorted = [...args.newMemberDids].map(d => d.trim()).filter(Boolean).sort();
+  return `PHOENIXKEY_ORG_UPGRADE:${args.orgDid}:${sorted.join(',')}:${args.newThreshold}:${args.nonce}`;
+}
+
+/**
+ * KÝ-HỘ 1 challenge founding/upgrade được chia sẻ, bằng khoá HW của MÁY NÀY.
+ * Trả {ownerDid (DID máy này), ownerSignature}. Dùng cho đồng-sáng-lập ký trên máy họ
+ * rồi gửi lại initiator. Ném nếu máy chưa có DID.
+ */
+export async function signSharedOrgChallenge(challenge: string): Promise<FounderSig> {
+  const ownerDid = await currentUserDid();
+  if (!ownerDid) throw new Error('Máy này chưa có danh tính (DID) để ký duyệt.');
+  const ownerSignature = await signRaw(
+    utf8ToHex(challenge),
+    'Ký duyệt tổ chức',
+    'Ký bằng khoá phần cứng của bạn',
+  );
+  return { ownerDid, ownerSignature };
+}
+
+/**
+ * Tạo OrgDID m-of-n. `founders` = ĐỦ n chữ ký (mỗi founder đã ký cùng challenge dựng từ
+ * cùng name/threshold/nonce/danh-sách DID). threshold ≥ 2. Trả {orgDid, txHash}.
+ */
+export async function foundOrg(args: {
+  name: string;
+  registrationNumber?: string;
+  threshold: number;
+  founders: FounderSig[];
+  nonce: string;
+}): Promise<{ orgDid: string; txHash?: string }> {
+  const res = (await orgMintApi.foundOrg({
+    founders: args.founders.map(f => ({ owner_did: f.ownerDid, owner_signature: f.ownerSignature })),
+    threshold: args.threshold,
+    name: args.name.trim(),
+    ...(args.registrationNumber?.trim() ? { registration_number: args.registrationNumber.trim() } : {}),
+    nonce: args.nonce,
+  })) as any;
+  return { orgDid: res.orgDid ?? res.org_did, txHash: res.txHash ?? res.tx_hash };
+}
+
+/**
+ * Nâng OrgDID single → threshold. `currentOwner` = chữ ký chủ hiện tại; `newMembers` =
+ * ĐỦ chữ ký từng thành-viên mới (cùng challenge upgrade). newThreshold ≥ 2.
+ */
+export async function upgradeAuthority(args: {
+  orgDid: string;
+  currentOwner: FounderSig;
+  newMembers: FounderSig[];
+  newThreshold: number;
+  nonce: string;
+}): Promise<{ orgDid: string; txHash?: string; threshold?: number }> {
+  const res = (await orgMintApi.upgradeAuthority(args.orgDid, {
+    current_owner_did: args.currentOwner.ownerDid,
+    owner_signature: args.currentOwner.ownerSignature,
+    new_members: args.newMembers.map(m => ({ owner_did: m.ownerDid, owner_signature: m.ownerSignature })),
+    new_threshold: args.newThreshold,
+    nonce: args.nonce,
+  })) as any;
+  return { orgDid: res.orgDid ?? res.org_did, txHash: res.txHash ?? res.tx_hash, threshold: res.threshold };
 }
 
 // ── Mint — BƯỚC 1: mint vào KHO Distribution ─────────────────────────────────

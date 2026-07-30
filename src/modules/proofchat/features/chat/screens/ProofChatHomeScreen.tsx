@@ -242,7 +242,7 @@ const ProofChatHomeScreen: React.FC = () => {
             placeholderTextColor={NEUTRAL.textMuted}
           />
           {query.length > 0 && (
-            <TouchableOpacity onPress={() => setQuery('')}>
+            <TouchableOpacity onPress={() => setQuery('')} hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}>
               <Icon name="close-circle" size={16} color={NEUTRAL.textMuted} />
             </TouchableOpacity>
           )}

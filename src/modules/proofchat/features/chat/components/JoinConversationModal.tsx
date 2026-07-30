@@ -65,9 +65,15 @@ const JoinConversationModal: React.FC<Props> = ({
 
   const canSubmit = !idError;
 
+  // Chặn bấm kép: onSubmit đóng modal ở lượt render sau, nên chạm 2 lần liên tiếp
+  // (hay xảy ra khi sóng yếu, người dùng tưởng chưa ăn) gửi 2 yêu cầu tham gia.
+  const [submitting, setSubmitting] = useState(false);
+  useEffect(() => { if (visible) setSubmitting(false); }, [visible]);
+
   const handleSubmit = () => {
     setTouched(true);
-    if (!canSubmit) return;
+    if (!canSubmit || submitting) return;
+    setSubmitting(true);
     onSubmit({
       conversationId: conversationId.trim(),
       message: message.trim() || undefined,
@@ -186,8 +192,9 @@ const JoinConversationModal: React.FC<Props> = ({
               <Text style={styles.btnGhostText}>Hủy bỏ</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.btn, styles.btnPrimary, !canSubmit && touched && styles.btnDisabled]}
+              style={[styles.btn, styles.btnPrimary, (!canSubmit || submitting) && styles.btnDisabled]}
               onPress={handleSubmit}
+              disabled={!canSubmit || submitting}
               activeOpacity={0.85}
             >
               <Icon

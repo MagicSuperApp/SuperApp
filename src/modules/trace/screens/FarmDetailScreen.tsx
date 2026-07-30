@@ -1136,7 +1136,7 @@ const FarmDetailMode = ({
           onChangeText={onSearchChange}
         />
         {searchQuery.length > 0 && (
-          <TouchableOpacity onPress={() => onSearchChange('')}>
+          <TouchableOpacity onPress={() => onSearchChange('')} hitSlop={{ top: 13, bottom: 13, left: 13, right: 13 }}>
             <Icon name="close-circle" size={18} color={COLORS.textMuted} />
           </TouchableOpacity>
         )}

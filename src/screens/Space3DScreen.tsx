@@ -57,6 +57,8 @@ import TreeModelPreview from '../features/space3d/scene/TreeModelPreview';
 import FruitDots from '../features/space3d/scene/FruitDots';
 import { useSpaceData, type SceneFruit, type SceneTree } from '../features/space3d/useSpaceData';
 import { saveTreePosition } from '../features/space3d/positionStore';
+import rLog from '../services/remoteLogger';
+import GLErrorBoundary from '../components/GLErrorBoundary';
 
 interface RouteParams {
   mode?: 'farm' | 'tree';
@@ -161,6 +163,17 @@ const Space3DScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const isFocused = useIsFocused();
   const params = (route.params ?? {}) as RouteParams;
+
+  // Trace vòng đời Space3D — nếu app crash khi mở 3D, log mount là mốc cuối cùng
+  // (crash TRƯỚC 'space3d_canvas_focus' = lỗi dựng cảnh/GL; sau = trong lúc render).
+  useEffect(() => {
+    rLog.viewer3d.spaceMount({ mode: params.mode, farmId: params.farmId, treeId: params.treeId });
+    return () => rLog.viewer3d.spaceUnmount();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (isFocused) rLog.viewer3d.spaceCanvasFocus();
+  }, [isFocused]);
 
   const [focusTreeId, setFocusTreeId] = useState<string | null>(params.treeId ?? null);
   const [selectedFruitId, setSelectedFruitId] = useState<string | null>(params.fruitId ?? null);
@@ -537,10 +550,12 @@ const Space3DScreen: React.FC = () => {
           Tư-thế máy quay không mất: nó nằm ở `controller` ngoài canvas, khung đầu
           tiên sau khi dựng lại là CameraDriver ghi lại ngay. */}
       {isFocused ? (
+      <GLErrorBoundary tag="space3d">
       <Canvas
         style={styles.canvas}
         camera={{ fov: CAMERA_FOV, near: 0.1, far: 2000, position: [0, 20, 40] }}
         gl={{ antialias: true }}
+        onCreated={() => rLog.viewer3d.spaceGlCreated()}
       >
         <color attach="background" args={[SPACE_COLORS.bg]} />
         {/* Có bản đồ thì đẩy sương ra XA: sương vốn để tạo chiều sâu trên nền tối,
@@ -599,6 +614,7 @@ const Space3DScreen: React.FC = () => {
           />
         )}
       </Canvas>
+      </GLErrorBoundary>
       ) : (
         <View style={styles.canvas} />
       )}

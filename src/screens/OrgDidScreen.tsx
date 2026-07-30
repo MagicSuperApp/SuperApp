@@ -215,35 +215,56 @@ const OrgDidScreen: React.FC = () => {
               <Icon name="office-building-outline" size={28} color={COLORS.textMuted} />
             </View>
             <Text style={styles.stateText}>Chưa có tổ chức nào. Tạo tổ chức đầu tiên ở trên.</Text>
+            <TouchableOpacity
+              style={styles.mofnBtn}
+              onPress={() => navigation.navigate('OrgAuthority', { mode: 'founding' })}
+            >
+              <Icon name="account-multiple-plus-outline" size={16} color={COLORS.accent} />
+              <Text style={styles.mofnText}>Tạo tổ chức đồng-sở-hữu (m/n)</Text>
+            </TouchableOpacity>
           </View>
         );
       case 'ready':
       default:
         return (
           <View style={styles.list}>
+            <TouchableOpacity
+              style={styles.mofnBtn}
+              onPress={() => navigation.navigate('OrgAuthority', { mode: 'founding' })}
+            >
+              <Icon name="account-multiple-plus-outline" size={16} color={COLORS.accent} />
+              <Text style={styles.mofnText}>Tạo tổ chức đồng-sở-hữu (m/n)</Text>
+            </TouchableOpacity>
             {orgs.map(org => (
-              <TouchableOpacity
-                key={org.orgDid}
-                style={styles.orgRow}
-                activeOpacity={0.8}
-                onPress={() => goMint(org)}
-              >
-                <View style={styles.orgIconWrap}>
-                  <Icon name="office-building" size={20} color={COLORS.accent} />
-                </View>
-                <View style={styles.orgBody}>
-                  <Text style={styles.orgName} numberOfLines={1}>
-                    {org.orgName || 'Tổ chức'}
-                  </Text>
-                  <Text style={styles.orgDid} numberOfLines={1}>
-                    {org.orgDid}
-                  </Text>
-                  <Text style={styles.orgMeta}>
-                    {(org.role || 'owner')} · ngưỡng ký {org.threshold ?? 1}
-                  </Text>
-                </View>
-                <Icon name="chevron-right" size={22} color={COLORS.textMuted} />
-              </TouchableOpacity>
+              <View key={org.orgDid} style={styles.orgRow}>
+                <TouchableOpacity style={styles.orgRowMain} activeOpacity={0.8} onPress={() => goMint(org)}>
+                  <View style={styles.orgIconWrap}>
+                    <Icon name="office-building" size={20} color={COLORS.accent} />
+                  </View>
+                  <View style={styles.orgBody}>
+                    <Text style={styles.orgName} numberOfLines={1}>
+                      {org.orgName || 'Tổ chức'}
+                    </Text>
+                    <Text style={styles.orgDid} numberOfLines={1}>
+                      {org.orgDid}
+                    </Text>
+                    <Text style={styles.orgMeta}>
+                      {(org.role || 'owner')} · ngưỡng ký {org.threshold ?? 1}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                {/* Nâng single → threshold (chỉ hợp lý khi đang single-owner). */}
+                {(org.threshold ?? 1) < 2 && (
+                  <TouchableOpacity
+                    style={styles.upgradeBtn}
+                    onPress={() => navigation.navigate('OrgAuthority', { mode: 'upgrade', orgDid: org.orgDid })}
+                    hitSlop={6}
+                  >
+                    <Icon name="shield-plus-outline" size={14} color={COLORS.accent} />
+                    <Text style={styles.upgradeText}>Nâng quyền</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             ))}
           </View>
         );
@@ -465,6 +486,20 @@ const styles = StyleSheet.create({
   orgName: { fontSize: 15, fontWeight: '700', color: COLORS.text },
   orgDid: { fontSize: 11.5, color: COLORS.textMuted, marginTop: 2 },
   orgMeta: { fontSize: 11.5, color: COLORS.textSub, marginTop: 2 },
+  orgRowMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  upgradeBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    borderWidth: 1, borderColor: COLORS.border, borderRadius: 8,
+    paddingHorizontal: 8, paddingVertical: 6,
+  },
+  upgradeText: { color: COLORS.accent, fontSize: 11, fontWeight: '700' },
+  mofnBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    paddingVertical: 12, borderRadius: 12,
+    borderWidth: 1.5, borderStyle: 'dashed', borderColor: COLORS.accent,
+    marginBottom: 12,
+  },
+  mofnText: { color: COLORS.accent, fontWeight: '700', fontSize: 13 },
 
   stateBox: { alignItems: 'center', paddingVertical: 28, gap: 12 },
   stateText: {

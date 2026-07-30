@@ -21,6 +21,7 @@ import { NEUTRAL } from '../shared/theme';
 import { ORILIFE_BASE } from '../services/orilifeBase';
 import { ensureOrilifeToken } from '../services/orilifeDidAuth';
 import { getTrees, type TreeInfo } from '../services/treeReIDService';
+import { appendVideoProof } from '../services/videoProofStore';
 import {
   uploadFruitVideo, MAX_VIDEO_BYTES, type FruitVideoResult,
 } from '../services/fruitVideoService';
@@ -127,6 +128,21 @@ const FruitVideoScreen: React.FC = () => {
         });
       }
       if (res.ok) {
+        // GHI BẰNG CHỨNG TRƯỚC KHI VẼ. OriLife không có route tra `video_cid` theo
+        // cây — mã này rời khỏi phản hồi là mất vĩnh viễn. Ghi rồi mới setResult.
+        if (res.video_cid) {
+          await appendVideoProof(selectedTreeId, {
+            videoCid: res.video_cid,
+            kind: 'fruit',
+            at: new Date().toISOString(),
+            eventId: res.event_id,
+            nFruitsMax: res.n_fruits_max,
+            nFrames: res.n_frames,
+            stored: res.stored,
+            lat: gps?.lat,
+            lon: gps?.lon,
+          });
+        }
         setResult(res);
       } else {
         Alert.alert('Chưa gửi được', res.error?.detail ?? 'Thử lại nơi sóng tốt.');

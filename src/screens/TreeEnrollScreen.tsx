@@ -43,6 +43,8 @@ import { COLORS } from '../constants';
 import {
   enrollTree,
   verifyAddTree,
+  toCaptureOrientations,
+  platformHeadingRef,
   type EnrollResponse,
 } from '../services/treeReIDService';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
@@ -196,6 +198,14 @@ const TreeEnrollScreen: React.FC = () => {
     ? androidImagePaths!
     : captures.map(c => `file://${c.fileURL}`);
 
+  // Hướng máy THEO TỪNG ẢNH — song song `imagePaths`. Native đã đo sẵn
+  // (`treeReIDNativeBridge.ts:22-24`); trước đây enroll không gửi gì, tức là ném
+  // đi dữ liệu quý nhất cho MCR + dựng 3D. Đường Android lấy ảnh từ route params
+  // nên KHÔNG có hướng → để undefined, không bịa.
+  const captureOrientations = usingAndroidPaths
+    ? undefined
+    : toCaptureOrientations(captures);
+
   // Số ảnh hiệu dụng để kiểm tra MIN_CAPTURES
   const effectiveCaptureCount = usingAndroidPaths
     ? androidImagePaths!.length
@@ -281,7 +291,13 @@ const TreeEnrollScreen: React.FC = () => {
     async (treeId: string) => {
       setIsEnrolling(true);
       try {
-        const res = await verifyAddTree(BASE_URL, treeId, imagePaths);
+        const res = await verifyAddTree(BASE_URL, treeId, imagePaths, {
+          lat: gps?.lat,
+          lon: gps?.lng,
+          acc: gps?.accuracy,
+          captures: captureOrientations,
+          headingRef: captureOrientations ? platformHeadingRef() : undefined,
+        });
 
         if (res.ok && res.data) {
           // Tích luỹ ảnh vừa chụp vào cây đã có để màn chi tiết hiển thị lại được.
@@ -307,7 +323,7 @@ const TreeEnrollScreen: React.FC = () => {
         setDuplicateTreeId(null);
       }
     },
-    [imagePaths, gps, dispatch, navigation],
+    [imagePaths, captureOrientations, gps, dispatch, navigation],
   );
 
   // ── Force enroll (tạo cây mới bất kể trùng) ──────────────────────────────
@@ -319,6 +335,8 @@ const TreeEnrollScreen: React.FC = () => {
         lat: gps?.lat,
         lon: gps?.lng,
         acc: gps?.accuracy,
+        captures: captureOrientations,
+        headingRef: captureOrientations ? platformHeadingRef() : undefined,
         force: true,
       }, farmId);
 
@@ -333,7 +351,7 @@ const TreeEnrollScreen: React.FC = () => {
     } finally {
       setIsEnrolling(false);
     }
-  }, [name, imagePaths, gps, handleSuccess, farmId]);
+  }, [name, imagePaths, captureOrientations, gps, handleSuccess, farmId]);
 
   // ── Main enroll ───────────────────────────────────────────────────────────
   const handleEnroll = async () => {
@@ -356,6 +374,8 @@ const TreeEnrollScreen: React.FC = () => {
         lat: gps?.lat,
         lon: gps?.lng,
         acc: gps?.accuracy,
+        captures: captureOrientations,
+        headingRef: captureOrientations ? platformHeadingRef() : undefined,
       }, farmId);
 
       if (res.ok && res.data) {

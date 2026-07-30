@@ -118,6 +118,19 @@ pub extern "system" fn Java_com_aladincontract_company_TaadEnclaveModule_nativeS
     ret(&env, crate::sign::sign_ed25519(kek, msg))
 }
 
+/// 2FA DeviceKey opt-in. Kotlin: nativeDeviceKeyOptin(userDid, nonce): String? (JSON).
+#[no_mangle]
+pub extern "system" fn Java_com_aladincontract_company_TaadEnclaveModule_nativeDeviceKeyOptin<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    user_did: JString<'local>,
+    nonce: JString<'local>,
+) -> jstring {
+    let did = match jstr(&mut env, &user_did) { Some(s) => s, None => return null_jstring() };
+    let n = match jstr(&mut env, &nonce) { Some(s) => s, None => return null_jstring() };
+    ret(&env, crate::sign::device_key_optin(did, n))
+}
+
 #[no_mangle]
 pub extern "system" fn Java_com_aladincontract_company_TaadEnclaveModule_nativeDeriveWalletSeed<'local>(
     mut env: JNIEnv<'local>,
@@ -168,6 +181,75 @@ pub extern "system" fn Java_com_aladincontract_company_TaadEnclaveModule_nativeS
     let kek = match jstr(&mut env, &kek_hex) { Some(s) => s, None => return null_jstring() };
     let msg = match jstr(&mut env, &message) { Some(s) => s, None => return null_jstring() };
     ret(&env, crate::mobile_kek::sign_wallet_register(kek, account as u32, msg))
+}
+
+/// Dựng + ký tx Cardano gửi ADA/LAMP (Issue #74). Kotlin:
+/// nativeBuildSignedTransfer(kekHex, account, toAddress, amountLovelace, lampAmount,
+///   lampPolicyHex, lampAssetNameHex, utxosJson, protocolParamsJson, network): String?
+/// amount* là String (u64 vượt precision bridge). Trả CBOR hex đã ký (null nếu lỗi).
+#[no_mangle]
+#[allow(clippy::too_many_arguments)]
+pub extern "system" fn Java_com_aladincontract_company_TaadEnclaveModule_nativeBuildSignedTransfer<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    kek_hex: JString<'local>,
+    account: jint,
+    to_address: JString<'local>,
+    amount_lovelace: JString<'local>,
+    lamp_amount: JString<'local>,
+    lamp_policy_hex: JString<'local>,
+    lamp_asset_name_hex: JString<'local>,
+    utxos_json: JString<'local>,
+    protocol_params_json: JString<'local>,
+    network: jint,
+) -> jstring {
+    let kek = match jstr(&mut env, &kek_hex) { Some(s) => s, None => return null_jstring() };
+    let to = match jstr(&mut env, &to_address) { Some(s) => s, None => return null_jstring() };
+    let amount = jstr(&mut env, &amount_lovelace).and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
+    let lamp = jstr(&mut env, &lamp_amount).and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
+    let policy = jstr(&mut env, &lamp_policy_hex).unwrap_or_default();
+    let name = jstr(&mut env, &lamp_asset_name_hex).unwrap_or_default();
+    let utxos = match jstr(&mut env, &utxos_json) { Some(s) => s, None => return null_jstring() };
+    let params = match jstr(&mut env, &protocol_params_json) { Some(s) => s, None => return null_jstring() };
+    ret(&env, crate::mobile_kek::build_signed_transfer(
+        kek, account as u32, to, amount, lamp, policy, name, utxos, params, network as u8,
+    ))
+}
+
+/// Dựng + ký tx uỷ thác stake vào 1 pool. Kotlin:
+/// nativeBuildStakeDelegation(kekHex, account, poolBech32, utxosJson, protocolParamsJson, network): String?
+#[no_mangle]
+pub extern "system" fn Java_com_aladincontract_company_TaadEnclaveModule_nativeBuildStakeDelegation<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    kek_hex: JString<'local>,
+    account: jint,
+    pool_bech32: JString<'local>,
+    utxos_json: JString<'local>,
+    protocol_params_json: JString<'local>,
+    network: jint,
+) -> jstring {
+    let kek = match jstr(&mut env, &kek_hex) { Some(s) => s, None => return null_jstring() };
+    let pool = match jstr(&mut env, &pool_bech32) { Some(s) => s, None => return null_jstring() };
+    let utxos = match jstr(&mut env, &utxos_json) { Some(s) => s, None => return null_jstring() };
+    let params = match jstr(&mut env, &protocol_params_json) { Some(s) => s, None => return null_jstring() };
+    ret(&env, crate::mobile_kek::build_stake_delegation(kek, account as u32, pool, utxos, params, network as u8))
+}
+
+/// Witness (ký) tx CBOR đã dựng sẵn (GetLAMP). Kotlin:
+/// nativeWitnessUnsignedTx(kekHex, account, unsignedTxCborHex, network): String?
+#[no_mangle]
+pub extern "system" fn Java_com_aladincontract_company_TaadEnclaveModule_nativeWitnessUnsignedTx<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    kek_hex: JString<'local>,
+    account: jint,
+    unsigned_tx_cbor_hex: JString<'local>,
+    network: jint,
+) -> jstring {
+    let kek = match jstr(&mut env, &kek_hex) { Some(s) => s, None => return null_jstring() };
+    let cbor = match jstr(&mut env, &unsigned_tx_cbor_hex) { Some(s) => s, None => return null_jstring() };
+    ret(&env, crate::mobile_kek::witness_unsigned_tx(kek, account as u32, cbor, network as u8))
 }
 
 #[no_mangle]

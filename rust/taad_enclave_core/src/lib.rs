@@ -166,6 +166,76 @@ pub unsafe extern "C" fn taad_kek_sign_wallet_register(
     if result.is_empty() { std::ptr::null_mut() } else { string_to_c(result) }
 }
 
+/// Dựng + ký tx Cardano gửi ADA/LAMP (Issue #74 — client build, backend relay qua
+/// POST /wallet/tx/submit). `amount_lovelace`/`lamp_amount` là CHUỖI thập phân
+/// (u64 vượt double-precision của RN bridge → truyền dạng string, parse trong Rust).
+/// `utxos_json` = Blockfrost `/addresses/{addr}/utxos`; `protocol_params_json` =
+/// Blockfrost `/epochs/latest/parameters` (JSON thô, snake_case).
+/// Trả CBOR hex đã ký (caller free) hoặc null nếu KEK/seed sai / build lỗi.
+#[no_mangle]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn taad_kek_build_signed_transfer(
+    master_kek_hex: *const c_char,
+    account: u32,
+    to_address: *const c_char,
+    amount_lovelace: *const c_char,
+    lamp_amount: *const c_char,
+    lamp_policy_hex: *const c_char,
+    lamp_asset_name_hex: *const c_char,
+    utxos_json: *const c_char,
+    protocol_params_json: *const c_char,
+    network: u8,
+) -> *mut c_char {
+    let kek = match c_str_to_string(master_kek_hex) { Some(s) => s, None => return std::ptr::null_mut() };
+    let to = match c_str_to_string(to_address) { Some(s) => s, None => return std::ptr::null_mut() };
+    let amount = c_str_to_string(amount_lovelace).and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
+    let lamp = c_str_to_string(lamp_amount).and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
+    let policy = c_str_to_string(lamp_policy_hex).unwrap_or_default();
+    let name = c_str_to_string(lamp_asset_name_hex).unwrap_or_default();
+    let utxos = match c_str_to_string(utxos_json) { Some(s) => s, None => return std::ptr::null_mut() };
+    let params = match c_str_to_string(protocol_params_json) { Some(s) => s, None => return std::ptr::null_mut() };
+    let result = mobile_kek::build_signed_transfer(
+        kek, account, to, amount, lamp, policy, name, utxos, params, network,
+    );
+    if result.is_empty() { std::ptr::null_mut() } else { string_to_c(result) }
+}
+
+/// Dựng + ký tx uỷ thác stake vào 1 pool (single-pool delegation, Issue #74).
+/// `pool_bech32` = pool id bech32 (`pool1...`). `utxos_json`/`protocol_params_json`
+/// = JSON thô Blockfrost. Trả CBOR hex đã ký (caller free) hoặc null nếu lỗi.
+#[no_mangle]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn taad_kek_build_stake_delegation(
+    master_kek_hex: *const c_char,
+    account: u32,
+    pool_bech32: *const c_char,
+    utxos_json: *const c_char,
+    protocol_params_json: *const c_char,
+    network: u8,
+) -> *mut c_char {
+    let kek = match c_str_to_string(master_kek_hex) { Some(s) => s, None => return std::ptr::null_mut() };
+    let pool = match c_str_to_string(pool_bech32) { Some(s) => s, None => return std::ptr::null_mut() };
+    let utxos = match c_str_to_string(utxos_json) { Some(s) => s, None => return std::ptr::null_mut() };
+    let params = match c_str_to_string(protocol_params_json) { Some(s) => s, None => return std::ptr::null_mut() };
+    let result = mobile_kek::build_stake_delegation(kek, account, pool, utxos, params, network);
+    if result.is_empty() { std::ptr::null_mut() } else { string_to_c(result) }
+}
+
+/// Witness (ký) tx CBOR ĐÃ DỰNG SẴN bằng payment key của account (GetLAMP §2 —
+/// BE build unsigned → client witness → BE submit). Trả CBOR hex đã ký hoặc null.
+#[no_mangle]
+pub unsafe extern "C" fn taad_kek_witness_unsigned_tx(
+    master_kek_hex: *const c_char,
+    account: u32,
+    unsigned_tx_cbor_hex: *const c_char,
+    network: u8,
+) -> *mut c_char {
+    let kek = match c_str_to_string(master_kek_hex) { Some(s) => s, None => return std::ptr::null_mut() };
+    let cbor = match c_str_to_string(unsigned_tx_cbor_hex) { Some(s) => s, None => return std::ptr::null_mut() };
+    let result = mobile_kek::witness_unsigned_tx(kek, account, cbor, network);
+    if result.is_empty() { std::ptr::null_mut() } else { string_to_c(result) }
+}
+
 // ─── HKDF ────────────────────────────────────────────────────────
 
 /// Derive keying material using HKDF-SHA256.
@@ -388,6 +458,20 @@ pub unsafe extern "C" fn taad_sign_ed25519(
     let msg = match c_str_to_string(message) { Some(s) => s, None => return std::ptr::null_mut() };
     let sig = sign::sign_ed25519(kek, msg);
     if sig.is_empty() { std::ptr::null_mut() } else { string_to_c(sig) }
+}
+
+/// 2FA DeviceKey opt-in (Issue #28): sinh Ed25519 NGẪU NHIÊN (per-device) + ký canonical
+/// "PHOENIXKEY_DEVICE_KEY_OPTIN:<did>:<pubkey>:<nonce>" bằng chính khoá đó.
+/// Trả JSON {"publicKeyHex","signature","secretHex"} (caller free; lưu secretHex vào K_bio).
+#[no_mangle]
+pub unsafe extern "C" fn taad_device_key_optin(
+    user_did: *const c_char,
+    nonce: *const c_char,
+) -> *mut c_char {
+    let did = match c_str_to_string(user_did) { Some(s) => s, None => return std::ptr::null_mut() };
+    let n = match c_str_to_string(nonce) { Some(s) => s, None => return std::ptr::null_mut() };
+    let out = sign::device_key_optin(did, n);
+    if out.is_empty() { std::ptr::null_mut() } else { string_to_c(out) }
 }
 
 // ================================================================

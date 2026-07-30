@@ -283,6 +283,56 @@ fn build_signed_transfer_inner(
     Ok(hex::encode(tx.to_bytes()))
 }
 
+/// Ký (witness) một tx CBOR ĐÃ DỰNG SẴN — vd BE GetLAMP trả unsigned tx, client thêm
+/// vkey witness của payment key rồi BE submit. Thêm vào witness-set CÓ SẴN (giữ witness
+/// BE có thể đã kèm), KHÔNG đụng body/auxiliary_data. Trả CBOR hex đã ký, "" nếu lỗi.
+///
+/// `account` = CIP-1852 account của payment key ký (thường 0 = ví cố định).
+/// `_network` giữ cho đồng bộ signature với các FFI khác (không dùng trong witness).
+pub fn witness_unsigned_tx(
+    seed_hex: &str,
+    account: u32,
+    unsigned_tx_cbor_hex: &str,
+    _network: u8,
+) -> String {
+    witness_unsigned_tx_inner(seed_hex, account, unsigned_tx_cbor_hex).unwrap_or_default()
+}
+
+fn witness_unsigned_tx_inner(
+    seed_hex: &str,
+    account: u32,
+    unsigned_tx_cbor_hex: &str,
+) -> Result<String, &'static str> {
+    let tx_bytes = hex::decode(unsigned_tx_cbor_hex.trim())
+        .map_err(|_| "unsigned_tx_cbor is not valid hex")?;
+    let tx = Transaction::from_bytes(tx_bytes)
+        .map_err(|_| "unsigned_tx_cbor is not a valid Cardano transaction")?;
+
+    let tx_body = tx.body();
+
+    // Hash body (BLAKE2b-256) — CÙNG cách build_signed_transfer_inner (CSL 13 ẩn hash_transaction).
+    let mut h = Blake2b256::new();
+    h.update(tx_body.to_bytes());
+    let tx_hash_bytes = h.finalize();
+    let tx_hash = TransactionHash::from_bytes(tx_hash_bytes.to_vec())
+        .map_err(|_| "TransactionHash::from_bytes failed (length mismatch)")?;
+
+    // Payment key của account → vkey witness.
+    let payment_xprv = cardano::derive_payment_xprv_account(seed_hex, account)
+        .ok_or("seed_hex invalid (must be 32-byte hex)")?;
+    let raw_priv = payment_xprv.to_raw_key();
+    let vkey_witness = csl::make_vkey_witness(&tx_hash, &raw_priv);
+
+    // Gộp vào witness-set CÓ SẴN (BE có thể đã kèm witness khác — không ghi đè).
+    let mut witnesses = tx.witness_set();
+    let mut vkeys = witnesses.vkeys().unwrap_or_else(Vkeywitnesses::new);
+    vkeys.add(&vkey_witness);
+    witnesses.set_vkeys(&vkeys);
+
+    let signed = Transaction::new(&tx_body, &witnesses, tx.auxiliary_data());
+    Ok(hex::encode(signed.to_bytes()))
+}
+
 /// Build the recipient `TransactionOutput`.
 /// - ADA-only: coin = `amount_lovelace`.
 /// - With LAMP: Value = (LAMP multiasset) + at-least-min-ada coin. We seed the

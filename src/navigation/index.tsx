@@ -68,6 +68,7 @@ import CareScanScreen from '../screens/CareScanScreen';
 import SeedExportScreen from '../screens/SeedExportScreen';
 import RestoreIdentityScreen from '../screens/RestoreIdentityScreen';
 import PhoenixWalletScreen from '../screens/PhoenixWalletScreen';
+import StakingScreen from '../screens/StakingScreen';
 import OrgDidScreen from '../screens/OrgDidScreen';
 import PoolHomeScreen from '../modules/pool/screens/PoolHomeScreen';
 import OrgMintScreen from '../screens/OrgMintScreen';
@@ -1554,6 +1555,7 @@ const HOST_STACK_SCREENS: Array<{
   { name: 'SeedExport', component: SeedExportScreen, options: { headerShown: false } },
   { name: 'RestoreIdentity', component: RestoreIdentityScreen, options: { headerShown: false } },
   { name: 'PhoenixWallet', component: PhoenixWalletScreen, options: { headerShown: false } },
+  { name: 'Staking', component: StakingScreen, options: { headerShown: false } },
   // Ví tổ chức — tạo OrgDID + mint LAMP bằng OrgDID (2 bước: mint kho → claim-release).
   { name: 'OrgDid', component: OrgDidScreen, options: { headerShown: false } },
   { name: 'OrgMint', component: OrgMintScreen, options: { headerShown: false } },

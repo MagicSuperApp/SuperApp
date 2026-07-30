@@ -1,10 +1,15 @@
 /**
  * Ví Phượng hoàng (did_payment) — REST client BUILD/SUBMIT giao dịch.
  *
- * ⚠️ TRẠNG-THÁI: backend did_payment = **Phase 2, CHƯA deploy** (team PhoenixKey
- * đang triển khai, 2026-06-23). Toàn bộ endpoint + shape dưới đây là DỰ-KIẾN, gắn
- * cờ [CHỜ team PhoenixKey chốt]. Khi backend deploy: đối-chiếu shape thật, sửa ở
- * ĐÚNG file này (interface + path), phần SDK/UI không phải đổi.
+ * ╔══════════════════════════════════════════════════════════════════════════╗
+ * ║ ⚠️ ĐÃ LỖI THỜI (2026-07-27) — KIẾN TRÚC BACKEND ĐỔI HƯỚNG.                ║
+ * ║ Backend KHÔNG làm /wallet/did-payment/build-tx và /submit. Thay vào đó    ║
+ * ║ (Issue #74): CLIENT tự dựng + ký CBOR (Rust enclave), backend chỉ RELAY   ║
+ * ║ stateless qua POST /wallet/tx/submit (xem `wallet.txSubmit` ở             ║
+ * ║ phoenixKey-api.ts). Đường ống mới sẽ hiện thực ở Pha 2 (bridge Rust       ║
+ * ║ build-tx → sign enclave → txSubmit). File này GIỮ TẠM cho tới khi Pha 2   ║
+ * ║ thay hẳn; KHÔNG thêm tính năng mới ở đây.                                 ║
+ * ╚══════════════════════════════════════════════════════════════════════════╝
  *
  * Tái-dùng cùng axios envelope của phoenixKey-api.ts: { code, message, result },
  * code 1000 == OK; request data snake_case, response camelCase; needsAuth gắn

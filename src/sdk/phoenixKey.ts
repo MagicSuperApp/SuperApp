@@ -19,7 +19,31 @@ import { phoenixKeyApi, summarizeWalletAll } from '../services/phoenixKey-api';
 import { assertSupportedBackendDid } from '../services/phoenixDid';
 
 export const STORAGE_USER_DID = 'phoenixkey_user_did';
+/** Alias MẶC ĐỊNH (install lần đầu). Sau khi xoay khoá, alias thực = con trỏ dưới. */
 export const KEY_ALIAS_OWNER = 'phoenixkey_owner_v1';
+
+// ── Con trỏ alias khoá owner (hỗ trợ xoay khoá) ───────────────────────────────
+// Keystore/Secure Enclave KHÔNG cho đổi tên khoá → xoay khoá = sinh khoá dưới alias
+// MỚI (vd _v2) rồi trỏ con trỏ này sang đó. Mọi thao tác owner-key đọc alias qua
+// getOwnerAlias() thay vì hằng cứng. Mặc định = KEY_ALIAS_OWNER để install cũ chạy nguyên.
+const OWNER_ALIAS_POINTER = 'phoenixkey_owner_alias';
+
+/** Alias khoá owner HIỆN HÀNH (đọc con trỏ; mặc định phoenixkey_owner_v1). */
+export const getOwnerAlias = async (): Promise<string> => {
+  const p = await AsyncStorage.getItem(OWNER_ALIAS_POINTER);
+  return p && p.trim() ? p : KEY_ALIAS_OWNER;
+};
+
+/** Đặt con trỏ alias owner (dùng sau khi xoay khoá thành công). */
+export const setOwnerAlias = (alias: string): Promise<void> =>
+  AsyncStorage.setItem(OWNER_ALIAS_POINTER, alias);
+
+/** Tính alias KẾ TIẾP khi xoay: bump hậu tố _v<N> (không có → _v2). */
+export const nextOwnerAlias = (current: string): string => {
+  const m = current.match(/^(.*_v)(\d+)$/);
+  if (m) return `${m[1]}${parseInt(m[2], 10) + 1}`;
+  return `${current}_v2`;
+};
 
 const utf8ToHex = (s: string): string => {
   let out = '';
@@ -117,7 +141,8 @@ class RealPhoenixKey implements PhoenixKeySDK {
     const canonical = canonicalize(payload);
     const dataHex = utf8ToHex(canonical);
 
-    const exists = await nativeHasKey(KEY_ALIAS_OWNER);
+    const alias = await getOwnerAlias();
+    const exists = await nativeHasKey(alias);
     if (!exists) {
       throw new Error(
         'PhoenixKey owner key not enrolled. Run Genesis flow to register a keypair first.',
@@ -125,12 +150,12 @@ class RealPhoenixKey implements PhoenixKeySDK {
     }
 
     const signature = await nativeSign(
-      KEY_ALIAS_OWNER,
+      alias,
       dataHex,
       'Ký xác nhận',
       'Xác minh dữ liệu để gửi lên backend',
     );
-    const publicKey = await nativeGetPublicKeyHex(KEY_ALIAS_OWNER);
+    const publicKey = await nativeGetPublicKeyHex(alias);
 
     return { payload, signature, publicKey };
   }
@@ -156,30 +181,39 @@ export const usePhoenixKey = () => ({
   requestActivation: phoenixKeySDK.requestActivation.bind(phoenixKeySDK),
 });
 
-export const isKeypairEnrolled = (): Promise<boolean> =>
-  nativeHasKey(KEY_ALIAS_OWNER);
+export const isKeypairEnrolled = async (): Promise<boolean> =>
+  nativeHasKey(await getOwnerAlias());
 
-export const enrollKeypair = (): Promise<{
+/**
+ * Đăng ký keypair owner LẦN ĐẦU. Reset con trỏ về alias mặc định (danh tính mới bắt
+ * đầu từ v1) rồi sinh khoá dưới đó.
+ */
+export const enrollKeypair = async (): Promise<{
   alias: string;
   publicKeyHex: string;
-}> => nativeGenerateKeypair(KEY_ALIAS_OWNER, true);
+}> => {
+  await setOwnerAlias(KEY_ALIAS_OWNER);
+  return nativeGenerateKeypair(KEY_ALIAS_OWNER, true);
+};
 
-export const ownerPublicKey = (): Promise<string> =>
-  nativeGetPublicKeyHex(KEY_ALIAS_OWNER);
+export const ownerPublicKey = async (): Promise<string> =>
+  nativeGetPublicKeyHex(await getOwnerAlias());
 
-export const signRaw = (
+export const signRaw = async (
   dataHex: string,
   promptTitle: string,
   promptSubtitle?: string,
 ): Promise<string> =>
-  nativeSign(KEY_ALIAS_OWNER, dataHex, promptTitle, promptSubtitle);
+  nativeSign(await getOwnerAlias(), dataHex, promptTitle, promptSubtitle);
 
 export const wipeIdentity = async (): Promise<void> => {
   try {
-    await nativeDeleteKey(KEY_ALIAS_OWNER);
+    await nativeDeleteKey(await getOwnerAlias());
   } catch {
     /* key may already be gone — ignore */
   }
+  // Reset con trỏ về alias mặc định để lần đăng ký sau bắt đầu sạch từ v1.
+  await AsyncStorage.removeItem(OWNER_ALIAS_POINTER);
   await AsyncStorage.removeItem(STORAGE_USER_DID);
   await phoenixKeyApi.clearSessionToken();
 };

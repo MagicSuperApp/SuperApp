@@ -1,4 +1,4 @@
-1/**
+/**
  * PhoenixKey backend REST client.
  *
  * Server: `api.phoenixkey.me` (or dev override via env PHOENIXKEY_API_URL).
@@ -383,6 +383,26 @@ export const identity = {
         keyOrigin: 'SECURE_ENCLAVE',
       }),
     ),
+
+  /**
+   * Bật 2-Factor DeviceKey (Issue #28, BE 07-23). Mobile sinh Ed25519 NGẪU NHIÊN
+   * (KHÔNG derive từ Seed), ký challenge canonical:
+   *   "PHOENIXKEY_DEVICE_KEY_OPTIN:" + userDid + ":" + devicePublicKeyHex + ":" + nonce
+   * bằng CHÍNH device private key đó (proof-of-ownership). Backend hash blake2b_224 →
+   * device_pkh (field 14 TAADDatum), bump key_version. Path `did` bị ép khớp `sub` của
+   * session token → cần Bearer session. Idempotent theo pubkey.
+   */
+  deviceKeyOptIn: (
+    did: string,
+    body: { devicePublicKeyHex: string; signature: string; nonce: string },
+  ) =>
+    unwrap<{ devicePkh?: string; keyVersion?: number }>(
+      client.post(
+        `/identity/${encodeURIComponent(did)}/device-key`,
+        body,
+        { needsAuth: true } as AxiosRequestConfig,
+      ),
+    ),
 };
 
 export const session = {
@@ -496,6 +516,21 @@ export const wallet = {
       balances: { lovelace: number; lamp: number; carp: number };
     }>(client.get(`/wallet/standard/${encodeURIComponent(userDid)}`)),
 
+  /**
+   * Relay giao-dịch Cardano ĐÃ KÝ (Issue #74, BE 07-23). Mô-hình MỚI: CLIENT tự
+   * dựng + ký CBOR (Rust enclave), backend chỉ relay STATELESS lên Blockfrost và
+   * dedupe theo tx_hash. Thay cho luồng did_payment build-tx cũ (BE KHÔNG làm).
+   * `signedTxCbor` = hex CBOR của tx đã witness đầy đủ.
+   */
+  txSubmit: (signedTxCbor: string) =>
+    unwrap<{ cardanoTxHash: string }>(
+      client.post(
+        '/wallet/tx/submit',
+        { signedTxCbor },
+        { needsAuth: true } as AxiosRequestConfig,
+      ),
+    ),
+
   /** @deprecated API.md §7 — dùng getAll. Backend ép MAGIC = 0, có thể thiếu address. */
   getBalance: (userDid: string) =>
     unwrap<BalanceResponse>(
@@ -511,6 +546,58 @@ export const wallet = {
     ),
 };
 
+// ── Pool / Staking (SPO) — Issue #74, BE 07-23 (relay Blockfrost + cache) ────
+// Shape khớp ĐÚNG DTO backend: PoolListResponse / PoolDetailResponse /
+// DelegationStatusResponse (dto/pool/PoolDtos.java). Số dư stake là CHUỖI thập
+// phân (u64 Cardano — mainnet whales vượt Number.MAX_SAFE_INTEGER).
+export interface PoolDetail {
+  poolId: string;
+  hex: string;
+  blocksMinted: number;
+  liveStake: string;
+  liveSaturation: number;
+  activeStake: string;
+  declaredPledge: string;
+  livePledge: string;
+  /** Fraction 0..1 (không phải %). */
+  marginCost: number;
+  /** Lovelace cố định mỗi epoch (chuỗi thập phân). */
+  fixedCost: string;
+  rewardAccount: string;
+  ticker?: string | null;
+  name?: string | null;
+  description?: string | null;
+  homepage?: string | null;
+}
+export interface DelegationStatus {
+  stakeAddress: string;
+  /** Account đã activate (staking key register) chưa. inactive → active=false, poolId=null (KHÔNG 404). */
+  active: boolean;
+  /** Pool đang delegate; null nếu chưa. */
+  poolId: string | null;
+  controlledAmount: string;
+  rewardsSum: string;
+  withdrawableAmount: string;
+}
+export const pools = {
+  /** Danh sách pool_id (100/trang, trang bắt đầu từ 1). BE: GET /pools?page&count (public). */
+  list: (params?: { page?: number; count?: number }) =>
+    unwrap<{ poolIds: string[]; page: number; count: number }>(
+      client.get('/pools', { params } as AxiosRequestConfig),
+    ),
+
+  /** Chi tiết 1 pool + metadata off-chain. BE: GET /pools/{poolId} (public). */
+  get: (poolId: string) =>
+    unwrap<PoolDetail>(client.get(`/pools/${encodeURIComponent(poolId)}`)),
+};
+export const delegation = {
+  /** Trạng-thái delegation của 1 stake address. BE: GET /delegation/status/{stake} (public). */
+  status: (stakeAddress: string) =>
+    unwrap<DelegationStatus>(
+      client.get(`/delegation/status/${encodeURIComponent(stakeAddress)}`),
+    ),
+};
+
 export const keys = {
   /**
    * Xoay khoá owner — thay khoá cũ bằng khoá mới qua Cardano updateDID.
@@ -521,17 +608,20 @@ export const keys = {
     unwrap<KeyRotationResponse>(client.post('/keys/rotate', body)),
 
   /**
-   * Khoá/vô-hiệu-hoá 1 khoá của DID (mất trộm/nghi lộ). Backend đã có (anh xác nhận).
-   * ⚠️ Shape body CHƯA đối-chiếu client Dart — chờ anh chốt (userDid/keyId/publicKeyHex
-   * + nonce + chữ ký khoá owner). Giữ generic để không chặn UI; sửa khi có contract.
+   * Khoá/vô-hiệu-hoá 1 khoá của DID (mất trộm/nghi lộ). Đối-chiếu KeyRevokeRequest.java:
+   * body { userDid, publicKeyHex, nonce, signature } (interceptor → snake_case). Backend
+   * validate+consume nonce (TTL 5'), soft-revoke key. `signature` bắt buộc NotBlank —
+   * hiện BE chưa verify (chưa có REVOKE_PREFIX) nhưng client vẫn ký owner-key trên
+   * canonical "PHOENIXKEY_REVOKE:"+userDid+":"+publicKeyHex+":"+nonce cho forward-compat.
+   * Response VOID (envelope rỗng khi OK).
    */
   revoke: (body: {
     userDid: string;
-    targetPublicKeyHex: string;
+    publicKeyHex: string;
     nonce: string;
-    ownerSignature: string;
+    signature: string;
   }) =>
-    unwrap<{ txHash: string }>(client.post('/keys/revoke', body)),
+    unwrapVoid(client.post('/keys/revoke', body)),
 };
 
 // ── Activation (mua gói → LAMP + ADA vào ví; app KHÔNG tự mint) ───────
@@ -556,13 +646,74 @@ export const activation = {
     ),
 };
 
-// ── Guardian (khôi-phục xã-hội) — API.md §6 ──────────────────────────
-// Route + body ĐÚNG theo API.md: POST /guardians/add · /guardians/remove,
-// body { user_did, guardian_did, nonce, proof_signature } (interceptor → snake_case).
-// ⚠️ CHUỖI challenge của proof_signature KHÔNG ghi trong API.md — client dựng theo
-// mẫu nhất-quán "PHOENIXKEY_<ACTION>:...:nonce" (như GENESIS/RECOVER/ROTATE), ký bằng
-// khoá HW owner (DER ECDSA). Nếu backend verify khác → chỉ chỉnh chuỗi trong
-// GuardianScreen (GUARDIAN_ADD/REMOVE_CHALLENGE). Chờ anh Đức chốt.
+// ── GetLAMP / Activation Vault 2-pha (Wakeme v5) — ActivationVaultController ──
+// Đối-chiếu ActivationVaultDtos.java. Luồng: build (BE trả unsigned tx) → CLIENT ký
+// (witness bằng Enclave) → submit. vault/pot là ĐỌC. ⚠️ BE hiện STUB happy-path (bật
+// qua PHOENIXKEY_ACTIVATION_MOCK_MODE) hoặc 501 — client sẵn, chạy thật khi BE nối logic.
+export interface GetLampBuildResponse {
+  unsignedTxCbor: string;
+  requiredSignerKeyHash: string;
+  vaultAddress: string;
+  dLamp: number;
+  dOildrop: number;
+  potBalanceLamp: number;
+  vestStartSlot: number;
+  phase1Days: number;
+  ttlSlot: number;
+}
+export interface GetLampSubmitResponse {
+  cardanoTxHash: string;
+  vaultAddress: string;
+  status: string;
+}
+export interface VaultStatusResponse {
+  did: string;
+  vaultAddress: string;
+  /** 1 = Daily | 2 = Epochy. */
+  phase: number;
+  daysElapsed: number;
+  phase1DaysTotal: number;
+  daysToPhase2: number;
+  initialDLamp: number;
+  conditionalLamp: number;
+  reclaimedToPotLamp: number;
+  vestStartSlot: number;
+  magicGeneratedTotal?: string | null;
+  magicBalanceCurrent?: string | null;
+  vestedUnlocked?: number | null;
+  activityGate?: Record<string, unknown> | null;
+  [k: string]: unknown;
+}
+export interface PotStatusResponse {
+  potBalanceLamp: number;
+  currentDLamp: number;
+  dCap: number;
+  scale: number;
+  saturated: boolean;
+}
+export const getlamp = {
+  /** Bước 1: BE build unsigned tx nạp D LAMP vào vault user. */
+  build: (body: { walletAddress: string; didCommit?: string }) =>
+    unwrap<GetLampBuildResponse>(
+      client.post('/activation/getlamp/build', body, { needsAuth: true } as AxiosRequestConfig),
+    ),
+  /** Bước 2: submit tx đã Enclave witness. */
+  submit: (signedTxCbor: string) =>
+    unwrap<GetLampSubmitResponse>(
+      client.post('/activation/getlamp/submit', { signedTxCbor }, { needsAuth: true } as AxiosRequestConfig),
+    ),
+  /** Dashboard vault 2-pha (public). result=null nếu chưa GetLAMP. */
+  vaultStatus: (did: string) =>
+    unwrap<VaultStatusResponse>(client.get(`/activation/vault/${encodeURIComponent(did)}`)),
+  /** Sức khoẻ pot: D một user mới sẽ nhận nếu GetLAMP ngay (public). */
+  pot: () => unwrap<PotStatusResponse>(client.get('/activation/pot')),
+};
+
+// ── Guardian (khôi-phục xã-hội) — ĐÃ đối-chiếu GuardianServiceImpl.java ────────
+// POST /guardians/add · /guardians/remove, body { user_did, guardian_did, nonce,
+// proof_signature }. proof_signature = owner-key ECDSA (SHA256withECDSA) ký canonical
+// "PHOENIXKEY_GUARDIAN_ADD:"+userDid+":"+guardianDid+":"+nonce (remove: _REMOVE:). Chuỗi
+// dựng trong guardianService.buildProof — KHỚP backend. Nonce TTL 5' (validateAndConsume).
 export interface GuardianMutateRequest {
   userDid: string;
   guardianDid: string;
@@ -582,14 +733,26 @@ export const guardians = {
 };
 
 // ── Nhật-ký hoạt-động (ký/xoay khoá/export) ──────────────────────────
+// Đối-chiếu ActivityLogController + ActivityLogPage.java (Issue #78 #2):
+// GET /activity-logs?limit(1-100,def 20)&cursor(opaque base64)&filter(action)&range(7d|30d|all).
+// result = { logs: ActivityLogItem[], nextCursor: string|null }. nextCursor=null → hết.
+export interface ActivityLogItem {
+  id: string;
+  /** 8 ký tự đầu UUID (Zero-PII). */
+  userId: string;
+  action: string;
+  metadata?: Record<string, unknown>;
+  /** ISO createdAt. */
+  createdAt: string;
+}
+export interface ActivityLogPage {
+  logs: ActivityLogItem[];
+  /** Truyền vào ?cursor= của trang kế; null = hết data. */
+  nextCursor: string | null;
+}
 export const activityLogs = {
-  /**
-   * Lịch-sử hoạt-động của tài-khoản. Backend đã có (anh xác nhận).
-   * ⚠️ Shape query/response CHƯA đối-chiếu — giả-định GET /activity-logs (Bearer)
-   * trả mảng; chờ anh chốt phân-trang + field.
-   */
-  list: (params?: { skip?: number; take?: number }) =>
-    unwrap<Array<Record<string, unknown>>>(
+  list: (params?: { limit?: number; cursor?: string; filter?: string; range?: '7d' | '30d' | 'all' }) =>
+    unwrap<ActivityLogPage>(
       client.get('/activity-logs', {
         needsAuth: true,
         params,
@@ -604,6 +767,9 @@ export const phoenixKeyApi = {
   devices,
   seed,
   wallet,
+  pools,
+  delegation,
+  getlamp,
   keys,
   activation,
   guardians,

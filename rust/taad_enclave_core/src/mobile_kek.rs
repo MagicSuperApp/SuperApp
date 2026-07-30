@@ -37,6 +37,85 @@ pub fn derive_wallet_seed(master_kek_hex: String) -> String {
 
 /// Địa chỉ Cardano Shelley (Bech32) cho `account` index từ Master_KEK.
 /// network: 0 = preprod, 1 = mainnet. '' nếu KEK/derive sai.
+/// Dựng + ký tx Cardano gửi ADA/LAMP (Issue #74 — CLIENT build, backend chỉ RELAY
+/// qua POST /wallet/tx/submit). Derive seed ví từ Master_KEK RỒI gọi
+/// `transfer::build_signed_transfer` → CBOR hex đã witness đầy đủ, sẵn sàng submit.
+/// Rỗng nếu KEK/seed sai hoặc build lỗi. KHÔNG lộ seed — chỉ trả CBOR đã ký.
+///
+/// `utxos_json`/`protocol_params_json` = JSON THÔ từ Blockfrost (giữ snake_case).
+#[allow(clippy::too_many_arguments)]
+pub fn build_signed_transfer(
+    master_kek_hex: String,
+    account: u32,
+    to_address: String,
+    amount_lovelace: u64,
+    lamp_amount: u64,
+    lamp_policy_hex: String,
+    lamp_asset_name_hex: String,
+    utxos_json: String,
+    protocol_params_json: String,
+    network: u8,
+) -> String {
+    let seed = derive_wallet_seed(master_kek_hex);
+    if seed.is_empty() {
+        return String::new();
+    }
+    crate::transfer::build_signed_transfer(
+        &seed,
+        account,
+        &to_address,
+        amount_lovelace,
+        lamp_amount,
+        &lamp_policy_hex,
+        &lamp_asset_name_hex,
+        &utxos_json,
+        &protocol_params_json,
+        network,
+    )
+}
+
+/// Dựng + ký tx UỶ THÁC stake vào 1 pool (single-pool delegation). Derive seed ví
+/// từ Master_KEK rồi gọi `staking::build_stake_delegation_tx` → CBOR hex đã witness
+/// (payment + stake key của account). Gồm StakeRegistration (nếu chưa) + StakeDelegation.
+/// Rỗng nếu KEK/seed sai hoặc build lỗi. Submit qua /wallet/tx/submit.
+#[allow(clippy::too_many_arguments)]
+pub fn build_stake_delegation(
+    master_kek_hex: String,
+    account: u32,
+    pool_bech32: String,
+    utxos_json: String,
+    protocol_params_json: String,
+    network: u8,
+) -> String {
+    let seed = derive_wallet_seed(master_kek_hex);
+    if seed.is_empty() {
+        return String::new();
+    }
+    crate::staking::build_stake_delegation_tx(
+        &seed,
+        account,
+        &pool_bech32,
+        &utxos_json,
+        &protocol_params_json,
+        network,
+    )
+}
+
+/// Witness (ký) tx CBOR ĐÃ DỰNG SẴN bằng payment key của account (GetLAMP §2).
+/// Derive seed từ Master_KEK rồi gọi `transfer::witness_unsigned_tx`. Rỗng nếu KEK sai.
+pub fn witness_unsigned_tx(
+    master_kek_hex: String,
+    account: u32,
+    unsigned_tx_cbor_hex: String,
+    network: u8,
+) -> String {
+    let seed = derive_wallet_seed(master_kek_hex);
+    if seed.is_empty() {
+        return String::new();
+    }
+    crate::transfer::witness_unsigned_tx(&seed, account, &unsigned_tx_cbor_hex, network)
+}
+
 pub fn derive_wallet_address(master_kek_hex: String, account: u32, network: u8) -> String {
     let seed = derive_wallet_seed(master_kek_hex);
     if seed.is_empty() {

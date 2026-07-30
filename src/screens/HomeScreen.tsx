@@ -39,6 +39,7 @@ import {
   type RankedQuickAction,
 } from '../services/featureUsageService';
 import { COLORS } from '../constants';
+import { fmtLamp } from '../utils/token';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import CreateFarmPromptModal from '../components/CreateFarmPromptModal';
 import { useCollapsibleHeader } from '../components/AppHeader';
@@ -821,7 +822,7 @@ const HomeScreen: React.FC = () => {
               label="Ví của tôi"
               value={
                 chainWallet
-                  ? `${formatToken(chainWallet.magicBalance)} MAGIC · ${formatToken(chainWallet.lampBalance)} LAMP`
+                  ? `${formatToken(chainWallet.magicBalance)} MAGIC · ${fmtLamp(chainWallet.lampBalance)} LAMP`
                   : 'Chưa đồng bộ'
               }
               color={COLORS.accent}

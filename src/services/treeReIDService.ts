@@ -7,6 +7,7 @@
  * Timeout: 45s, retry 1 lần cho lỗi mạng (không retry 4xx)
  */
 
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // ---------------------------------------------------------------------------
@@ -312,12 +313,45 @@ async function _apiCall<T>(
 /** Matcher vỏ-thân (PoC-Tree §4 M4) — override ENV backend, CHỈ cho tester. */
 export type ShellMatcher = 'sift' | 'xfeat' | 'loftr';
 
+/**
+ * Hướng máy lúc chụp MỘT ảnh. Mảng `captures` song song với `files[]` — khuôn này
+ * lấy đúng theo tiền lệ `regions` của OriLife (`server.py:1710-1712`, xử bởi
+ * `_parse_regions`), không đẻ hình dạng thứ hai. Ảnh nào không có số thì để `null`.
+ *
+ * Đơn vị (OriLife đề nghị 2026-07-29): `heading` độ [0,360), `pitch` độ [-90,90]
+ * dương là ngẩng lên, `roll` độ [-180,180] dương là nghiêng phải.
+ */
+export interface CaptureOrientation {
+  heading?: number | null;
+  pitch?: number | null;
+  roll?: number | null;
+}
+
+/**
+ * Gốc quy chiếu của `heading` — gửi kèm để server lọc được, vì hai nền tảng KHÔNG
+ * cùng gốc và app chưa sửa được điều đó:
+ *   · `ios_true_or_magnetic` — `HeadingCaptureManager.swift:278` lấy `trueHeading`
+ *     khi hợp lệ, ÂM THẦM rơi về `magneticHeading` khi không. Không phân biệt được
+ *     từng mẫu ở tầng JS.
+ *   · `android_magnetic` — `HeadingSensorReader.kt:27` đọc `TYPE_ROTATION_VECTOR`
+ *     và KHÔNG cộng độ lệch từ (`GeomagneticField`), nên là Bắc TỪ.
+ *
+ * OriLife yêu cầu Bắc THẬT. App CHƯA đạt, và sửa là việc native (Thư) — đã báo.
+ * Trong lúc đó thà khai đúng gốc quy chiếu còn hơn dán nhãn "true" cho số Bắc từ.
+ */
+export type HeadingRef = 'ios_true_or_magnetic' | 'android_magnetic';
+
 export interface IdentifyOptions {
   lat?: number;
   lon?: number;
   acc?: number;
   heading?: number;
   pitch?: number;
+  roll?: number;
+  /** Hướng THEO TỪNG ẢNH, song song `files[]`. Có `captures` thì nó thắng cấp request. */
+  captures?: CaptureOrientation[];
+  /** Gốc quy chiếu của mọi con số heading trong lần gửi này. */
+  headingRef?: HeadingRef;
   /** Khi true: bỏ qua kiểm tra trùng lặp, tạo cây mới bất kể. Dùng cho handleForceEnroll. */
   force?: boolean;
   /**
@@ -339,6 +373,49 @@ export interface IdentifyVerdictResponse {
 // Public API
 // ---------------------------------------------------------------------------
 
+/**
+ * Gắn GPS + hướng máy vào form. Dùng chung cho identify / enroll / verify_add để ba
+ * route không lệch nhau — trước đây enroll không gửi hướng nào, mà enroll lại chính
+ * là nguồn dựng 3D, tức chỗ mất dữ liệu nặng nhất.
+ *
+ * Quy tắc bỏ trường (OriLife chốt): thiếu số thì **KHÔNG gửi khoá đó**. Đừng gửi
+ * chuỗi rỗng, đừng gửi "null" — server ép kiểu không nổ nhưng nhật ký lưu rác.
+ */
+function appendGeoAndOrientation(form: FormData, options: IdentifyOptions): void {
+  if (options.lat !== undefined) form.append('lat', String(options.lat));
+  if (options.lon !== undefined) form.append('lon', String(options.lon));
+  if (options.acc !== undefined) form.append('acc', String(options.acc));
+  if (options.heading !== undefined) form.append('heading', String(options.heading));
+  if (options.pitch !== undefined) form.append('pitch', String(options.pitch));
+  if (options.roll !== undefined) form.append('roll', String(options.roll));
+  if (options.headingRef) form.append('heading_ref', options.headingRef);
+
+  // Chỉ gửi `captures` khi có ÍT NHẤT một ảnh có số thật — mảng toàn null chỉ làm
+  // nặng request và làm nhật ký server bẩn thêm.
+  if (options.captures?.length) {
+    const anyReal = options.captures.some(
+      c => c && (c.heading != null || c.pitch != null || c.roll != null),
+    );
+    if (anyReal) form.append('captures', JSON.stringify(options.captures));
+  }
+}
+
+/** Dựng mảng `captures` từ ảnh native đã chụp (đã song song với `files[]`). */
+export function toCaptureOrientations(
+  caps: Array<{ heading?: number | null; pitch?: number | null; roll?: number | null }>,
+): CaptureOrientation[] {
+  return caps.map(c => ({
+    heading: Number.isFinite(c?.heading as number) ? (c.heading as number) : null,
+    pitch: Number.isFinite(c?.pitch as number) ? (c.pitch as number) : null,
+    roll: Number.isFinite(c?.roll as number) ? (c.roll as number) : null,
+  }));
+}
+
+/** Gốc quy chiếu heading của nền tảng đang chạy. Xem chú thích `HeadingRef`. */
+export function platformHeadingRef(): HeadingRef {
+  return Platform.OS === 'ios' ? 'ios_true_or_magnetic' : 'android_magnetic';
+}
+
 export async function identifyTree(
   baseUrl: string,
   imagePaths: string[],
@@ -350,11 +427,7 @@ export async function identifyTree(
     (form as any).append('files', { uri: imagePaths[i], type: 'image/jpeg', name: `img_${i}.jpg` });
   }
 
-  if (options.lat !== undefined) form.append('lat', String(options.lat));
-  if (options.lon !== undefined) form.append('lon', String(options.lon));
-  if (options.acc !== undefined) form.append('acc', String(options.acc));
-  if (options.heading !== undefined) form.append('heading', String(options.heading));
-  if (options.pitch !== undefined) form.append('pitch', String(options.pitch));
+  appendGeoAndOrientation(form, options);
   form.append('source', 'phone');
 
   // M4: chỉ nối ?matcher= khi tester ép — mặc-định để backend dùng ENV.
@@ -401,11 +474,7 @@ export async function enrollTree(
     (form as any).append('files', { uri: imagePaths[i], type: 'image/jpeg', name: `img_${i}.jpg` });
   }
 
-  if (options.lat !== undefined) form.append('lat', String(options.lat));
-  if (options.lon !== undefined) form.append('lon', String(options.lon));
-  if (options.acc !== undefined) form.append('acc', String(options.acc));
-  if (options.heading !== undefined) form.append('heading', String(options.heading));
-  if (options.pitch !== undefined) form.append('pitch', String(options.pitch));
+  appendGeoAndOrientation(form, options);
   if (options.force) form.append('force', 'true');
 
   return _apiCall<EnrollResponse>(`${baseUrl}/api/enroll`, 'POST', form, IMAGE_REQUEST_TIMEOUT_MS);
@@ -415,6 +484,7 @@ export async function verifyAddTree(
   baseUrl: string,
   treeId: string,
   imagePaths: string[],
+  options: IdentifyOptions = {},
 ): Promise<{ ok: boolean; data?: VerifyAddResponse; error?: APIError }> {
   const form = new FormData();
 
@@ -423,6 +493,10 @@ export async function verifyAddTree(
   for (let i = 0; i < imagePaths.length; i++) {
     (form as any).append('files', { uri: imagePaths[i], type: 'image/jpeg', name: `img_${i}.jpg` });
   }
+
+  // verify_add cũng nhận heading/pitch/roll (`server.py:1941`) — gộp ảnh vào cây đã
+  // có mà không gửi hướng thì ảnh mới kém giá trị hơn ảnh cũ.
+  appendGeoAndOrientation(form, options);
 
   return _apiCall<VerifyAddResponse>(`${baseUrl}/api/verify_add`, 'POST', form, IMAGE_REQUEST_TIMEOUT_MS);
 }

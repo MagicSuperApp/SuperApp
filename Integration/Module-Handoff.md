@@ -65,7 +65,8 @@ Ký hiệu trạng thái BE: 🟢 live&deployed · 🟡 code có, chưa deploy �
 | — | Cổng runtime tự bật module khi backend sống | PR #68 (2026-07-27) |
 | — | Field-test Đức #8/#11/#2/#1 (nav 3D/quả, GPS, schema) | PR #72 (2026-07-27) |
 | — | AladinWork go-real: gỡ mock, empty-state thật, count thật | PR #74 (2026-07-29) |
-| — | OrgDID: thêm ô MST tuỳ chọn | PR #75 (chờ merge) |
+| — | OrgDID: thêm ô MST tuỳ chọn | PR #75 (merged 2026-07-30) |
+| — | Sổ bàn giao + `Integration-Standard.md §12` | PR #76 (merged 2026-07-30) |
 | H-09 | ~~79 lỗi tsc ở `src/features/space3d/scene`~~ — **ĐÍNH CHÍNH 29/07: không phải lỗi code.** `node_modules` trên máy kiểm tra thiếu 9 gói (`three`, `@react-three/fiber`, `react-native-svg`, `expo*`) mà `package-lock.json` ĐÃ có sẵn. Chạy `npm install` → tsc từ 102 lỗi về **0**. Dev không phải sửa gì. | đóng (2026-07-29) |
 | — | Gỡ 6 rào cản thực địa: SafeArea `FruitVideoScreen`, 5 vùng chạm <44pt, cỡ chữ nav 9→11pt + cho phóng chữ, hiện `video_cid` làm bằng chứng LampNet, chặn bấm kép 2 modal ProofChat | (chờ merge) |
 | H-06 | ~~SafeArea 2 màn~~ — xong trong đợt gỡ rào cản thực địa (header notch + nút Gửi đè thanh home) | đóng (2026-07-29) |
@@ -80,10 +81,13 @@ Ký hiệu trạng thái BE: 🟢 live&deployed · 🟡 code có, chưa deploy �
 mục tiêu thực địa mới: video cây → LampNet, và OrgDID + mint LAMP. Đóng H-06, H-10.)
 Agent module: thêm dòng của mình vào bảng "Đang mở" theo §12.*
 
-> **Ghi chú về hiệu lực của §12 (30/07):** nghĩa vụ "tự đẩy dòng khi xong" hiện **chưa ràng buộc
-> được agent nào** — `grep -rl "Module-Handoff"` ngoài repo SuperApp cho **0 kết quả**, và
-> `_rules/Forall.md` không có chữ nào về sổ này. §12.4 đã nói rõ nghĩa vụ hành vi chéo agent
-> thuộc `Forall.md`, mà agent không tự sửa file rule global. Đã gửi đề xuất sang Systeme
-> (`SuperApp-de-nghi-them-nghia-vu-bao-trang-thai-ve-Integration-2026-07-30.md`) chờ chủ nhân
-> duyệt. Tới lúc đó, việc lan quy định vẫn làm BẰNG TAY: mỗi thư SuperApp gửi đi đều kèm câu
-> nhắc §12. Cách đó không bền, nên đừng coi ledger là đã đủ.
+> **Hiệu lực của §12 (đo lại 30/07 sau khi fetch remote):**
+> · File sổ + §12 **ĐÃ có trên `develop`** (PR #76 merged) — Thư/Tùng mở đường dẫn chuẩn là thấy. ✔
+> · Nhưng nghĩa vụ "tự đẩy dòng khi xong" **vẫn chưa ràng buộc được agent module nào**:
+>   `grep -rl "Module-Handoff"` trong `Agents/`, `LAMP/`, `MAGIC/`, `OriLifeTrace/`, `MobileCore/`
+>   cho **0 kết quả**, và `_rules/Forall.md` không có chữ nào về sổ này.
+> · §12.4 đã nói rõ nghĩa vụ hành vi chéo agent thuộc `Forall.md`, mà agent không tự sửa file rule
+>   global. Đã gửi đề xuất sang Systeme
+>   (`SuperApp-de-nghi-them-nghia-vu-bao-trang-thai-ve-Integration-2026-07-30.md`), chờ chủ nhân duyệt.
+> · Tới lúc đó việc lan quy định vẫn làm BẰNG TAY: mỗi thư SuperApp gửi đi đều kèm câu nhắc §12.
+>   Cách đó không bền — đừng coi ledger là đã đủ.

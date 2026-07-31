@@ -39,7 +39,9 @@ workflows:
 
     environment:
       node: 22.11.0
-      xcode: latest
+      xcode: 16.4    # PIN — 'latest' đang ra Xcode 26.4, quá mới cho RN 0.84.1
+                     # (gây `no such module 'React_RCTAppDelegate'`). Đổi nếu codemagic
+                     # không có 16.4 (chọn bản 16.x cao nhất codemagic hỗ trợ).
       cocoapods: default
       groups:
         - scanner_secrets
@@ -328,7 +330,9 @@ workflows:
 
     environment:
       node: 22.11.0
-      xcode: latest
+      xcode: 16.4    # PIN — 'latest' đang ra Xcode 26.4, quá mới cho RN 0.84.1
+                     # (gây `no such module 'React_RCTAppDelegate'`). Đổi nếu codemagic
+                     # không có 16.4 (chọn bản 16.x cao nhất codemagic hỗ trợ).
       cocoapods: default
       groups:
         - scanner_secrets

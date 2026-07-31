@@ -18,6 +18,7 @@ import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 import { selectChainWallet } from '../store/userSlice';
 import { COLORS } from '../constants';
+import { fmtLamp } from '../utils/token';
 
 const { width, height } = Dimensions.get('window');
 
@@ -314,7 +315,7 @@ const ActivationScreen = () => {
                     ADA KHÔNG hiện ở đây — chỉ phí chain, xem mục "Tài sản khác" ở màn Ví.
                     CARP: brand tạm, số dư chờ API Phoenix. */}
                 <TokenBadge icon="star-four-points-outline" value={wallet?.magicBalance ?? '—'} label="MAGIC" color="#B07D2F" />
-                <TokenBadge icon="lightning-bolt"  value={wallet?.lampBalance ?? '—'} label="LAMP" color={COLORS.accent} />
+                <TokenBadge icon="lightning-bolt"  value={fmtLamp(wallet?.lampBalance)} label="LAMP" color={COLORS.accent} />
                 <TokenBadge icon="fish" value={wallet?.carpBalance ?? '—'} label="CARP" color="#2F8F8F" />
               </View>
 

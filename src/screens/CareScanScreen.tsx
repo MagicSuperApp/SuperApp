@@ -198,7 +198,7 @@ const CareScanScreen: React.FC = () => {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.7}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.7} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
           <Icon name="arrow-left" size={24} color={NEUTRAL.white} />
         </TouchableOpacity>
         <View style={styles.headerCenter}>

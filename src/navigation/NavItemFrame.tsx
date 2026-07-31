@@ -15,9 +15,14 @@ import { navEn, navNational, navIcon } from './navLabels';
 export const NAV_FRAME_DIMS = {
   iconSize: 24,
   enSize: 11, // EN — nhãn chuẩn (dòng trên)
-  nationalSize: 9, // ngôn ngữ quốc gia (dòng dưới)
+  nationalSize: 11, // ngôn ngữ quốc gia (dòng dưới) — 9pt cũ đọc không nổi ngoài nắng
   avatarSize: 24, // đường kính avatar (khớp iconSize để cân với các tab khác)
 } as const;
+
+// Nhãn nav TỪNG khoá cứng allowFontScaling={false} → người lớn tuổi chỉnh cỡ chữ
+// hệ thống to lên vẫn không đọc được thanh điều hướng. Nay cho phóng nhưng chặn
+// trần 1.3 để 6 ô không vỡ hàng.
+const NAV_FONT_SCALE_MAX = 1.3;
 
 interface Props {
   route: string;
@@ -56,11 +61,11 @@ const NavItemFrame: React.FC<Props> = ({ route, focused, tint, dimTint, avatarUr
       <Text
         style={[styles.en, { color, fontWeight: focused ? '700' : '600' }]}
         numberOfLines={1}
-        allowFontScaling={false}
+        maxFontSizeMultiplier={NAV_FONT_SCALE_MAX}
       >
         {navEn(route)}
       </Text>
-      <Text style={[styles.national, { color }]} numberOfLines={1} allowFontScaling={false}>
+      <Text style={[styles.national, { color }]} numberOfLines={1} maxFontSizeMultiplier={NAV_FONT_SCALE_MAX}>
         {navNational(route)}
       </Text>
     </View>

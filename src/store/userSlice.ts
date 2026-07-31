@@ -9,14 +9,32 @@ import { parseDidNetwork } from '../services/phoenixDid';
 import { clearWorkSession } from '../modules/work/services/session';
 import { disconnectProofChat } from '../services/proofchatAuthBridge';
 
+/**
+ * ⚠ ĐƠN VỊ — đọc trước khi hiện bất cứ con số nào ra màn hình.
+ *
+ * Store này TRỘN hai quy ước, và đó chính là cái bẫy đã làm màn ví hiện LAMP gấp
+ * 1.000.000 lần (LAMP agent phát hiện 2026-07-29):
+ *   · `adaBalance`  — ĐÃ chia, đơn vị ADA (người đọc được)
+ *   · `lampBalance` — CHƯA chia, đơn vị **oildrop** (thô on-chain, 1 LAMP = 10⁶)
+ *   · `carpBalance` — CHƯA chia, đơn vị thô; decimals CHƯA chốt (chờ CARP agent)
+ *   · `magicBalance`— sổ vault, không đọc từ UTxO; đơn vị chưa chốt (chờ MAGIC agent)
+ *
+ * Vì vậy MỌI chỗ hiện `lampBalance` PHẢI đi qua `fmtLamp()` (`src/utils/token.ts`).
+ * Đừng in thẳng. Việc thống nhất một quy ước cho cả store là dòng riêng trong sổ
+ * bàn giao — không làm giữa đợt thực địa vì nó đụng 6 màn.
+ */
 interface Wallet {
   id: string;
   userId: string;
+  /** Sổ vault MAGIC — đơn vị chưa chốt. */
   magicBalance: number;
+  /** **oildrop** (thô). Hiện ra màn hình PHẢI qua `fmtLamp()`. */
   lampBalance: number;
   // CARP — token hệ sinh thái thứ 3. Backend PhoenixKey CHƯA trả số dư → optional, hiện '—'
   // tới khi có API thật (xem message hỏi Phoenix Agent). Thứ tự chuẩn: MAGIC · LAMP · CARP.
+  /** Thô, decimals chưa chốt — chưa chia được, hiện nguyên số. */
   carpBalance?: number;
+  /** ĐÃ chia — đơn vị ADA. */
   adaBalance: number;
   lastSynced: string;
   pendingCredits: number;

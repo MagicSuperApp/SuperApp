@@ -322,6 +322,7 @@ const AnimalEnrollScreen: React.FC = () => {
                     style={styles.photoRemoveBtn}
                     onPress={() => handleRemovePhoto(idx)}
                     activeOpacity={0.8}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                   >
                     <Icon name="close" size={14} color={NEUTRAL.white} />
                   </TouchableOpacity>

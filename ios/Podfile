@@ -145,6 +145,19 @@ target 'aladin_mobile_fe' do
         if target.name == 'RNFBMessaging'
           config.build_settings['CLANG_ENABLE_MODULES'] = 'NO'
         end
+
+        # ── FIX: expose module `React_RCTAppDelegate` cho APP target ──────────
+        # Triệu chứng: dưới use_frameworks! :static + expo (SDK 56), pod
+        # React-RCTAppDelegate BUILD ĐƯỢC nhưng KHÔNG vend clang module →
+        # AppDelegate.swift `import React_RCTAppDelegate` báo "no such module"
+        # (Expo/RCTAppDelegateUmbrella.h dùng __has_include nên tự bỏ qua =
+        #  bằng chứng framework/header của pod này KHÔNG nằm trên search path).
+        # Ép sinh module map + bật clang modules cho chính pod này để framework
+        # xuất `React_RCTAppDelegate.framework` có module importable.
+        if target.name == 'React-RCTAppDelegate'
+          config.build_settings['DEFINES_MODULE'] = 'YES'
+          config.build_settings['CLANG_ENABLE_MODULES'] = 'YES'
+        end
       end
     end
 

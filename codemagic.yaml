@@ -39,9 +39,10 @@ workflows:
 
     environment:
       node: 22.11.0
-      xcode: 16.4    # PIN — 'latest' đang ra Xcode 26.4, quá mới cho RN 0.84.1
-                     # (gây `no such module 'React_RCTAppDelegate'`). Đổi nếu codemagic
-                     # không có 16.4 (chọn bản 16.x cao nhất codemagic hỗ trợ).
+      xcode: latest  # Xcode 26.x (Swift 6.2) — BẮT BUỘC: RN 0.84 prebuilt deps +
+                     # ExpoModulesJSI xcframework đòi Swift tools 6.2 (Xcode 16.4=Swift 6.1
+                     # FAIL sớm ở ExpoModulesJSI). Dưới 26.4 build chạy tới bước cuối, chỉ
+                     # còn AppDelegate.swift `import React_RCTAppDelegate` chưa resolve.
       cocoapods: default
       groups:
         - scanner_secrets
@@ -330,9 +331,10 @@ workflows:
 
     environment:
       node: 22.11.0
-      xcode: 16.4    # PIN — 'latest' đang ra Xcode 26.4, quá mới cho RN 0.84.1
-                     # (gây `no such module 'React_RCTAppDelegate'`). Đổi nếu codemagic
-                     # không có 16.4 (chọn bản 16.x cao nhất codemagic hỗ trợ).
+      xcode: latest  # Xcode 26.x (Swift 6.2) — BẮT BUỘC: RN 0.84 prebuilt deps +
+                     # ExpoModulesJSI xcframework đòi Swift tools 6.2 (Xcode 16.4=Swift 6.1
+                     # FAIL sớm ở ExpoModulesJSI). Dưới 26.4 build chạy tới bước cuối, chỉ
+                     # còn AppDelegate.swift `import React_RCTAppDelegate` chưa resolve.
       cocoapods: default
       groups:
         - scanner_secrets

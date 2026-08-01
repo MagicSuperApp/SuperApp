@@ -1,5 +1,5 @@
 diff --git a/node_modules/expo-modules-jsi/apple/Package.swift b/node_modules/expo-modules-jsi/apple/Package.swift
-index ecd7ed6..a39ca86 100644
+index ecd7ed6..d54f07c 100644
 --- a/node_modules/expo-modules-jsi/apple/Package.swift
 +++ b/node_modules/expo-modules-jsi/apple/Package.swift
 @@ -1,4 +1,4 @@
@@ -8,7 +8,7 @@ index ecd7ed6..a39ca86 100644
  // The swift-tools-version declares the minimum version of Swift required to build this package.
  
  import Foundation
-@@ -86,11 +86,9 @@ let package = Package(
+@@ -86,13 +86,12 @@ let package = Package(
        swiftSettings: [
          .interoperabilityMode(.Cxx),
  
@@ -22,8 +22,11 @@ index ecd7ed6..a39ca86 100644
 +        // when building with Xcode 26. Patched to use swiftLanguageModes: [.v5].
  
          .unsafeFlags([
++          "-swift-version", "5",
            "-enable-library-evolution",
-@@ -135,7 +133,7 @@ let package = Package(
+           "-emit-module-interface",
+           "-no-verify-emitted-module-interface",
+@@ -135,7 +134,7 @@ let package = Package(
        dependencies: testFrameworks.dependencies,
      ),
    ] + testFrameworks.binaryTargets,

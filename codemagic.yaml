@@ -269,6 +269,7 @@ workflows:
           LOG_FILE="$CM_BUILD_DIR/xcodebuild.log"
 
           xcodebuild \
+            -quiet \
             -workspace "$WORKSPACE" \
             -scheme "$XCODE_SCHEME" \
             -configuration Release \
@@ -556,6 +557,7 @@ workflows:
           find "$CM_BUILD_DIR/DerivedData" -name "*.signature" -delete 2>/dev/null || true
 
           xcodebuild \
+            -quiet \
             -workspace "$WORKSPACE" \
             -scheme "$XCODE_SCHEME" \
             -configuration Release \

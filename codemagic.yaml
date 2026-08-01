@@ -39,10 +39,9 @@ workflows:
 
     environment:
       node: 22.11.0
-      xcode: latest  # Xcode 26.x (Swift 6.2) — BẮT BUỘC: RN 0.84 prebuilt deps +
-                     # ExpoModulesJSI xcframework đòi Swift tools 6.2 (Xcode 16.4=Swift 6.1
-                     # FAIL sớm ở ExpoModulesJSI). Dưới 26.4 build chạy tới bước cuối, chỉ
-                     # còn AppDelegate.swift `import React_RCTAppDelegate` chưa resolve.
+      xcode: 26  # PHẢI dùng Xcode 26+ (Swift tools 6.2). `latest` đang resolve = Xcode 16.4
+                 # (Swift 6.1) → ExpoModulesJSI xcframework FAIL với:
+                 # "package 'apple' is using Swift tools version 6.2.0 but installed is 6.1.0"
       cocoapods: default
       groups:
         - scanner_secrets
@@ -331,10 +330,9 @@ workflows:
 
     environment:
       node: 22.11.0
-      xcode: latest  # Xcode 26.x (Swift 6.2) — BẮT BUỘC: RN 0.84 prebuilt deps +
-                     # ExpoModulesJSI xcframework đòi Swift tools 6.2 (Xcode 16.4=Swift 6.1
-                     # FAIL sớm ở ExpoModulesJSI). Dưới 26.4 build chạy tới bước cuối, chỉ
-                     # còn AppDelegate.swift `import React_RCTAppDelegate` chưa resolve.
+      xcode: 26  # PHẢI dùng Xcode 26+ (Swift tools 6.2). `latest` đang resolve = Xcode 16.4
+                 # (Swift 6.1) → ExpoModulesJSI xcframework FAIL với:
+                 # "package 'apple' is using Swift tools version 6.2.0 but installed is 6.1.0"
       cocoapods: default
       groups:
         - scanner_secrets

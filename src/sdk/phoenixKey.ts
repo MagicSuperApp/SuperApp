@@ -133,7 +133,8 @@ class RealPhoenixKey implements PhoenixKeySDK {
       // accrued (số tích-luỹ gồm cả phần đã decay) — cộng vào là tái-nhập phần đã
       // hết hạn, phồng số dư. Khớp PhoenixWalletScreen dùng magicAvailable một mình.
       magicCredits: s.magicAvailable,
-      lampTokens: s.lamp,
+      // LAMP decimals=6: s.lamp là OILDROP → chia 1e6 ra LAMP (như adaBalance/lovelace).
+      lampTokens: s.lamp / 1_000_000,
       adaBalance: s.lovelace / 1_000_000,
       address: s.address ?? '',
       lastUpdated: Date.now(),

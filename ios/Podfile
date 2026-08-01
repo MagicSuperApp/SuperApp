@@ -193,5 +193,45 @@ target 'aladin_mobile_fe' do
         end
       end
     end
+
+    # ── FIX (expo/expo #44475): `no such module 'React_RCTAppDelegate'` khi archive ──
+    # Với use_frameworks! :static + prebuilt React, expo-modules-autolinking lúc pod
+    # install PATCH modulemap trong React.xcframework: bỏ `framework module React`
+    # (để không đụng non-framework `module React` ở Target Support Files) NHƯNG GIỮ
+    # `framework module React_RCTAppDelegate`. Vấn đề: script RN "[RNDeps] Replace
+    # React Native Core" (target React-Core-prebuilt) chạy lúc BUILD, `rmSync` + giải
+    # nén LẠI React.xcframework khi đổi Debug↔Release → HOÀN NGUYÊN modulemap gốc →
+    # `framework module React` quay lại, xung đột `module React` → cả modulemap parse
+    # lỗi → `import React_RCTAppDelegate` báo "no such module" → archive fail.
+    # Cách xử lý (Option A của issue): thêm build phase CUỐI cho React-Core-prebuilt,
+    # chạy SAU script replace, re-patch bỏ `framework module React` mỗi lần build.
+    rncore_prebuilt = installer.pods_project.targets.find { |t| t.name == 'React-Core-prebuilt' }
+    if rncore_prebuilt
+      phase_name = '[Expo-fix] Re-patch React modulemap (post RNDeps replace)'
+      unless rncore_prebuilt.build_phases.any? { |p| p.respond_to?(:name) && p.name == phase_name }
+        phase = rncore_prebuilt.new_shell_script_build_phase(phase_name)
+        phase.shell_script = <<~'SH'
+          # Re-áp patch của expo-modules-autolinking (configure_use_frameworks →
+          # patch_framework_modulemaps) sau khi replace-rncore-version.js giải nén lại.
+          RUBY_BIN="$(command -v ruby || echo /usr/bin/ruby)"
+          "$RUBY_BIN" -e '
+            rx = /framework module React \{.*?\n\}\s*/m
+            paths = Dir.glob("#{ENV["PODS_ROOT"]}/React-Core-prebuilt/React.xcframework/*/React.framework/Modules/module.modulemap")
+            shared = "#{ENV["PODS_ROOT"]}/React-Core-prebuilt/React.xcframework/Modules/module.modulemap"
+            paths << shared if File.exist?(shared)
+            paths.each do |f|
+              c = File.read(f)
+              next unless c =~ rx
+              c.gsub!(rx, "")
+              File.write(f, c)
+              puts "[Expo-fix] re-patched framework modulemap: #{f}"
+            end
+          '
+        SH
+        # Không dựa vào dependency-analysis: luôn chạy để bám theo mỗi lần replace wipe.
+        phase.always_out_of_date = '1' if phase.respond_to?(:always_out_of_date=)
+        Pod::UI.puts "✅ Added '#{phase_name}' to React-Core-prebuilt".green
+      end
+    end
   end
 end

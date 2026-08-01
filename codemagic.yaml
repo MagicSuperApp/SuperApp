@@ -39,9 +39,11 @@ workflows:
 
     environment:
       node: 22.11.0
-      xcode: 26  # PHẢI dùng Xcode 26+ (Swift tools 6.2). `latest` đang resolve = Xcode 16.4
-                 # (Swift 6.1) → ExpoModulesJSI xcframework FAIL với:
-                 # "package 'apple' is using Swift tools version 6.2.0 but installed is 6.1.0"
+      xcode: 26.4  # PIN 26.4 CỤ THỂ — KHÔNG để `26` (resolve = 26.0 = Swift < 6.2) hay
+                   # `latest` (trôi về 26.0). expo-modules-jsi (expo 56) dùng `weak let`
+                   # (SE-0481, chỉ có ở Swift 6.2) → 26.0 FAIL "'weak' must be a mutable
+                   # variable"; 16.4=Swift 6.1 FAIL "Swift tools 6.2 but installed 6.1".
+                   # Xcode 26.4 = Swift 6.2 → ĐÃ chứng minh compile được ExpoModulesJSI.
       cocoapods: default
       groups:
         - scanner_secrets
@@ -329,9 +331,11 @@ workflows:
 
     environment:
       node: 22.11.0
-      xcode: 26  # PHẢI dùng Xcode 26+ (Swift tools 6.2). `latest` đang resolve = Xcode 16.4
-                 # (Swift 6.1) → ExpoModulesJSI xcframework FAIL với:
-                 # "package 'apple' is using Swift tools version 6.2.0 but installed is 6.1.0"
+      xcode: 26.4  # PIN 26.4 CỤ THỂ — KHÔNG để `26` (resolve = 26.0 = Swift < 6.2) hay
+                   # `latest` (trôi về 26.0). expo-modules-jsi (expo 56) dùng `weak let`
+                   # (SE-0481, chỉ có ở Swift 6.2) → 26.0 FAIL "'weak' must be a mutable
+                   # variable"; 16.4=Swift 6.1 FAIL "Swift tools 6.2 but installed 6.1".
+                   # Xcode 26.4 = Swift 6.2 → ĐÃ chứng minh compile được ExpoModulesJSI.
       cocoapods: default
       groups:
         - scanner_secrets

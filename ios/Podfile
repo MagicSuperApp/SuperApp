@@ -146,6 +146,16 @@ target 'aladin_mobile_fe' do
           config.build_settings['CLANG_ENABLE_MODULES'] = 'NO'
         end
 
+        # ── FIX: ExpoModulesJSI + Xcode 26 / Swift 6 breaking change ──────────
+        # Triệu chứng: Xcode 26 build ExpoModulesJSI xcframework với -swift-version 6
+        # → tất cả `weak let` bị lỗi: "'weak' must be a mutable variable, because it
+        # may change at runtime" (Swift 6 không cho phép weak let, phải dùng weak var).
+        # expo@56.0.x bundled expo-modules-jsi chưa update cho Swift 6.
+        # Fix: ép Swift 5.9 cho pod này → tương thích ngược, build pass.
+        if target.name == 'ExpoModulesJSI'
+          config.build_settings['SWIFT_VERSION'] = '5.9'
+        end
+
         # ── FIX: expose module `React_RCTAppDelegate` cho APP target ──────────
         # Triệu chứng: dưới use_frameworks! :static + expo (SDK 56), pod
         # React-RCTAppDelegate BUILD ĐƯỢC nhưng KHÔNG vend clang module →

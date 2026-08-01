@@ -37,6 +37,7 @@ import StateView from '../../../components/state/StateView';
 import TreeMetadataTab from './TreeMetadataTab';
 import { formatTreeName, shortTreeCode } from '../../../utils/treeNameFormatter';
 import { loadTreeImages } from '../../../services/treeImageStore';
+import { fetchTreeViews, treeViewImageUrls } from '../../../services/treeViewsService';
 import { ORILIFE_BASE } from '../../../services/orilifeBase';
 import rLog from '../../../services/remoteLogger';
 import {
@@ -278,22 +279,26 @@ const TreeDetailScreen = () => {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [statusDropdownVisible, setStatusDropdownVisible] = useState(false);
 
-  // Ảnh cây đã lưu (local, theo tree_id) — nguồn từ treeImageStore vì server
-  // /api/trees không trả URL ảnh. Kèm 1 ảnh đang xem phóng to (lightbox).
+  // Ảnh cây: ưu-tiên ảnh SERVER (GET /api/tree_views — sống theo tài-khoản, chống "đổi
+  // máy mất ảnh"), gộp thêm ảnh local (treeImageStore) chưa kịp đồng-bộ. Kèm 1 ảnh đang
+  // xem phóng to (lightbox).
   const [treeImages, setTreeImages] = useState<string[]>([]);
   const [zoomImage, setZoomImage] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
     const id = tree?.id;
-    if (id) {
-      // Gộp ảnh server (nếu sau này có) + ảnh local đã lưu theo tree_id.
-      loadTreeImages(id).then(local => {
-        if (!alive) return;
-        const serverImgs: string[] = Array.isArray(tree?.images) ? tree.images : [];
-        setTreeImages(Array.from(new Set([...serverImgs, ...local])));
-      });
-    }
+    if (!id) return () => { alive = false; };
+    // Chạy song song: ảnh server (nguồn thật) + ảnh local (dự-phòng khi mạng lỗi/chưa đồng-bộ).
+    Promise.all([
+      fetchTreeViews(ORILIFE_BASE, id).catch(() => null),
+      loadTreeImages(id).catch(() => [] as string[]),
+    ]).then(([viewsRes, local]) => {
+      if (!alive) return;
+      const serverImgs = viewsRes?.ok ? treeViewImageUrls(viewsRes.data, ORILIFE_BASE) : [];
+      // Server trước (ưu-tiên hiển-thị), rồi ảnh local chưa có trên server. Khử trùng theo URI.
+      setTreeImages(Array.from(new Set([...serverImgs, ...(local ?? [])])));
+    });
     return () => { alive = false; };
   }, [tree?.id]);
 
@@ -379,6 +384,17 @@ const TreeDetailScreen = () => {
   const handleFruitVideo = () => {
     if (!tree) return;
     (navigation as any).navigate('FruitVideo', {
+      treeId: tree.id,
+      treeName: (tree as any).name,
+      farmId: tree.farmId,
+    });
+  };
+
+  // Quay video ĐỊNH DANH CÂY → bổ-sung góc nhìn cho chính cây này (OriLife /api/tree/{id}/video).
+  // Khác "Video quả": làm giàu góc của cây để nhận-diện sau chắc hơn.
+  const handleTreeVideo = () => {
+    if (!tree) return;
+    (navigation as any).navigate('TreeVideo', {
       treeId: tree.id,
       treeName: (tree as any).name,
       farmId: tree.farmId,
@@ -562,9 +578,16 @@ const TreeDetailScreen = () => {
       {/* Ảnh cây đã lưu — dải ngang, chạm để phóng to. Ẩn nếu chưa có ảnh nào. */}
       {treeImages.length > 0 && (
         <View style={styles.photoStripWrap}>
-          <View style={styles.sectionLeft}>
-            <View style={styles.sectionDot} />
-            <Text style={styles.sectionTitle}>ẢNH CÂY ({treeImages.length})</Text>
+          <View style={styles.photoStripHeader}>
+            <View style={styles.sectionLeft}>
+              <View style={styles.sectionDot} />
+              <Text style={styles.sectionTitle}>ẢNH CÂY ({treeImages.length})</Text>
+            </View>
+            {/* Bổ-sung góc nhìn cho cây bằng video → /api/tree/{id}/video (server chắt khung). */}
+            <TouchableOpacity style={styles.treeVideoBtn} onPress={handleTreeVideo} activeOpacity={0.8}>
+              <Icon name="video-plus" size={15} color="#1b5e20" />
+              <Text style={styles.treeVideoBtnText}>Video cây</Text>
+            </TouchableOpacity>
           </View>
           <ScrollView
             horizontal
@@ -1071,6 +1094,14 @@ const styles = StyleSheet.create({
   heroStatLabel: { fontSize: 10, color: COLORS.textMuted, textAlign: 'center' },
 
   photoStripWrap: { marginBottom: 14, gap: 8 },
+  photoStripHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  treeVideoBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: '#e8f5e9',
+    borderWidth: 1, borderColor: '#1b5e20',
+    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10,
+  },
+  treeVideoBtnText: { fontSize: 13, fontWeight: '700', color: '#1b5e20' },
   photoStrip: { gap: 8, paddingVertical: 2 },
   photoThumb: {
     width: 96, height: 96, borderRadius: 12,

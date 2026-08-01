@@ -211,13 +211,19 @@ target 'aladin_mobile_fe' do
       unless rncore_prebuilt.build_phases.any? { |p| p.respond_to?(:name) && p.name == phase_name }
         phase = rncore_prebuilt.new_shell_script_build_phase(phase_name)
         phase.shell_script = <<~'SH'
-          # Re-áp patch của expo-modules-autolinking (configure_use_frameworks →
-          # patch_framework_modulemaps) sau khi replace-rncore-version.js giải nén lại.
+          # (1) Re-áp patch expo (bỏ `framework module React` để không đụng non-framework
+          #     `module React`) + (2) KHAI THẲNG `module React_RCTAppDelegate` vào
+          #     React-use-frameworks.modulemap — file SỐNG SÓT wipe + đã nằm trên search
+          #     path của app (qua -fmodule-map-file). Đây mới là mấu chốt: import React
+          #     chạy được vì có `module React` ở file này, còn React_RCTAppDelegate KHÔNG
+          #     được khai ở đâu app tìm thấy → thêm nó vào ngay đây (trỏ umbrella header
+          #     trong xcframework, giống hệt cách React_Core được khai).
           RUBY_BIN="$(command -v ruby || echo /usr/bin/ruby)"
           "$RUBY_BIN" -e '
+            root = ENV["PODS_ROOT"]
             rx = /framework module React \{.*?\n\}\s*/m
-            paths = Dir.glob("#{ENV["PODS_ROOT"]}/React-Core-prebuilt/React.xcframework/*/React.framework/Modules/module.modulemap")
-            shared = "#{ENV["PODS_ROOT"]}/React-Core-prebuilt/React.xcframework/Modules/module.modulemap"
+            paths = Dir.glob("#{root}/React-Core-prebuilt/React.xcframework/*/React.framework/Modules/module.modulemap")
+            shared = "#{root}/React-Core-prebuilt/React.xcframework/Modules/module.modulemap"
             paths << shared if File.exist?(shared)
             paths.each do |f|
               c = File.read(f)
@@ -225,6 +231,17 @@ target 'aladin_mobile_fe' do
               c.gsub!(rx, "")
               File.write(f, c)
               puts "[Expo-fix] re-patched framework modulemap: #{f}"
+            end
+            mm = "#{root}/Target Support Files/React-Core-prebuilt/React-use-frameworks.modulemap"
+            umb = "#{root}/React-Core-prebuilt/React.xcframework/Headers/React_RCTAppDelegate/React_RCTAppDelegate-umbrella.h"
+            if File.exist?(mm) && File.exist?(umb)
+              content = File.read(mm)
+              unless content.include?("module React_RCTAppDelegate")
+                File.write(mm, content + "\nmodule React_RCTAppDelegate {\n  umbrella header \"#{umb}\"\n  export *\n}\n")
+                puts "[Expo-fix] added module React_RCTAppDelegate -> #{mm}"
+              end
+            else
+              puts "[Expo-fix] WARN: missing modulemap or umbrella (mm=#{File.exist?(mm)} umb=#{File.exist?(umb)})"
             end
           '
         SH

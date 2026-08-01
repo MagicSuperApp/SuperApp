@@ -1564,7 +1564,7 @@ const HOST_STACK_SCREENS: Array<{
   { name: 'OrgDid', component: OrgDidScreen, options: { headerShown: false } },
   { name: 'OrgAuthority', component: OrgAuthorityScreen, options: { headerShown: false } },
   { name: 'OrgMint', component: OrgMintScreen, options: { headerShown: false } },
-  // Pool (stake pool / SPO) — UI khung trỏ api.phoenixkey.io; contract chờ Phoenix (inbox).
+  // Pool (stake pool / SPO) — UI khung trỏ api.phoenixkey.me; contract chờ Phoenix (inbox).
   { name: 'PoolHome', component: PoolHomeScreen, options: { headerShown: false } },
   { name: 'WebLoginScan', component: WebLoginScanScreen, options: { headerShown: false } },
   // SG9 §3 — Quét truy xuất (consumer): host stack, full-bleed, KHÔNG lên tabs[]

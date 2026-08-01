@@ -1,5 +1,5 @@
 diff --git a/node_modules/expo-modules-jsi/apple/Package.swift b/node_modules/expo-modules-jsi/apple/Package.swift
-index ecd7ed6..7173be6 100644
+index ecd7ed6..a39ca86 100644
 --- a/node_modules/expo-modules-jsi/apple/Package.swift
 +++ b/node_modules/expo-modules-jsi/apple/Package.swift
 @@ -1,4 +1,4 @@
@@ -23,11 +23,12 @@ index ecd7ed6..7173be6 100644
  
          .unsafeFlags([
            "-enable-library-evolution",
-@@ -135,7 +133,6 @@ let package = Package(
+@@ -135,7 +133,7 @@ let package = Package(
        dependencies: testFrameworks.dependencies,
      ),
    ] + testFrameworks.binaryTargets,
 -  swiftLanguageModes: [.v6],
++  swiftLanguageVersions: [.v5],
    cxxLanguageStandard: .cxx20
  )
  

@@ -1,0 +1,34 @@
+diff --git a/node_modules/expo-modules-jsi/apple/Package.swift b/node_modules/expo-modules-jsi/apple/Package.swift
+index ecd7ed6..412a420 100644
+--- a/node_modules/expo-modules-jsi/apple/Package.swift
++++ b/node_modules/expo-modules-jsi/apple/Package.swift
+@@ -1,4 +1,4 @@
+-// swift-tools-version: 6.2
++// swift-tools-version: 5.9
+ // The swift-tools-version declares the minimum version of Swift required to build this package.
+ 
+ import Foundation
+@@ -86,11 +86,9 @@ let package = Package(
+       swiftSettings: [
+         .interoperabilityMode(.Cxx),
+ 
+-        // Enable some upcoming features that improve ergonomics and reduce executor hoppings
+-        // https://github.com/swiftlang/swift-evolution/blob/main/proposals/0461-async-function-isolation.md
+-        .enableUpcomingFeature("NonisolatedNonsendingByDefault"),
+-        // https://github.com/swiftlang/swift-evolution/blob/main/proposals/0470-isolated-conformances.md
+-        .enableUpcomingFeature("InferIsolatedConformances"),
++        // NOTE: NonisolatedNonsendingByDefault and InferIsolatedConformances removed —
++        // these are Swift 6-only upcoming features that cause 'weak let' errors
++        // when building with Xcode 26. Patched to use swiftLanguageModes: [.v5].
+ 
+         .unsafeFlags([
+           "-enable-library-evolution",
+@@ -135,7 +133,7 @@ let package = Package(
+       dependencies: testFrameworks.dependencies,
+     ),
+   ] + testFrameworks.binaryTargets,
+-  swiftLanguageModes: [.v6],
++  swiftLanguageModes: [.v5],
+   cxxLanguageStandard: .cxx20
+ )
+ 

@@ -169,9 +169,8 @@ workflows:
           # --ignore-scripts: bỏ qua postinstall-postinstall (nó gọi `yarn run postinstall`
           # nhưng Codemagic có Yarn Berry → fail vì project không phải Yarn Berry workspace)
           npm install --legacy-peer-deps --ignore-scripts
-          npx patch-package --error-on-fail || echo "⚠️  patch-package: no patches or already applied" --ignore-scripts
-          # Chạy patch-package thủ công thay cho postinstall script
           npx patch-package --error-on-fail || echo "⚠️  patch-package: no patches or already applied"
+
           # Verify react-native installed — CocoaPods dùng file này để load Podfile
           if [ ! -f "node_modules/react-native/scripts/react_native_pods.rb" ]; then
             echo "❌ react-native/scripts/react_native_pods.rb NOT FOUND sau npm install"

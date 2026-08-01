@@ -178,21 +178,34 @@ target 'aladin_mobile_fe' do
     # Chỉ cần đảm bảo 2 file tồn tại trong ios/ (codemagic.yaml đã copy sẵn).
     # Nếu gặp "Multiple commands produce" → xóa block này và chạy pod install lại.
 
-    # ── Guard: gỡ cầu nối expo↔worklets (ExpoModulesWorklets*) ────────────
-    # expo-modules-core 56 kèm bridge tùy chọn ExpoModulesWorklets/Adapter, cần
-    # react-native-worklets có header `worklets/Compat/StableApi.h` — bản 0.7.4 dự án
-    # đang dùng CHƯA có → compile bridge gãy (giống lỗi Android đã tắt bằng
-    # expo.enableWorkletsIntegration=false). App KHÔNG chạy expo module trên worklet
-    # runtime (chỉ dùng expo-gl/asset) → gỡ an toàn.
-    # No-op nếu CI/pod install KHÔNG kéo bridge vào (target không tồn tại).
+    # ── Guard worklets: CHỈ stub ExpoModulesWorkletsAdapter ───────────────
+    # CHÍNH XÁC: chỉ `ExpoModulesWorkletsAdapter` gãy — ExpoWorkletsBridgeProvider.mm
+    # `#include <worklets/Compat/StableApi.h>` mà react-native-worklets 0.7.4 CHƯA có.
+    # `ExpoModulesWorklets` (pod chính) TỰ CHỨA (không include worklets runtime) → compile
+    # ĐƯỢC và PHẢI tạo framework để app link `-framework ExpoModulesWorklets` (guard cũ
+    # dùng start_with loại NHẦM cả nó → framework rỗng → link fail "not found").
+    # App không dùng worklets runtime → loại source thật của Adapter, chèn 1 stub để
+    # framework Adapter vẫn được tạo (linkable, rỗng).
     installer.pods_project.targets.each do |t|
-      if t.name.start_with?('ExpoModulesWorklets')
-        Pod::UI.puts "🩹 Excluding worklets bridge target: #{t.name}".yellow
-        t.build_configurations.each do |c|
-          c.build_settings['EXCLUDED_SOURCE_FILE_NAMES'] = '*'
-        end
+      next unless t.name == 'ExpoModulesWorkletsAdapter'
+      Pod::UI.puts "🩹 Stub worklets ADAPTER (thiếu StableApi.h): #{t.name}".yellow
+      stub_dir = File.join(installer.sandbox.root, 'ExpoStubs')
+      FileUtils.mkdir_p(stub_dir)
+      stub_file = File.join(stub_dir, 'ExpoModulesWorkletsAdapterStub.m')
+      unless File.exist?(stub_file)
+        File.write(stub_file, "// Stub: giữ framework Adapter linkable khi source thật bị loại\n" \
+                              "// (react-native-worklets 0.7.4 thiếu <worklets/Compat/StableApi.h>).\n" \
+                              "// App không dùng worklets runtime.\n" \
+                              "__attribute__((used)) static int expo_worklets_adapter_stub = 0;\n")
+      end
+      ref = installer.pods_project.new_file(stub_file)
+      t.source_build_phase.add_file_reference(ref, true)
+      t.build_configurations.each do |c|
+        c.build_settings['EXCLUDED_SOURCE_FILE_NAMES'] = '*'
+        c.build_settings['INCLUDED_SOURCE_FILE_NAMES'] = 'ExpoModulesWorkletsAdapterStub.m'
       end
     end
+    installer.pods_project.save
 
     # ── FIX (expo/expo #44475): `no such module 'React_RCTAppDelegate'` khi archive ──
     # Với use_frameworks! :static + prebuilt React, expo-modules-autolinking lúc pod

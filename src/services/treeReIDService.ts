@@ -585,3 +585,28 @@ export async function renameTree(
   const result = await _apiCall<{ ok: boolean }>(`${baseUrl}/api/rename`, 'POST', form);
   return { ok: result.ok, error: result.error };
 }
+
+/**
+ * buildTree3D — YÊU CẦU máy chủ dựng mô hình 3D cho cây (H-11/H-25).
+ * POST /api/build3d/{tree_id} (auth chủ cây):
+ *   200 { ok:true, building:true } → đã nhận vào làn dựng.
+ *   404 { ok:false, error:"không có xuất xứ" } → cây chưa có provenance (chưa đăng ký xong).
+ *
+ * QUAN TRỌNG (H-25): server chỉ chạy 3D khi làn provenance RẢNH → `building:true` KHÔNG
+ * đồng nghĩa "đang dựng ngay", thường là "đã xếp hàng, chờ hạ tầng rảnh". UI phải nói
+ * "đã xếp hàng" thay vì "đang dựng" quay mãi. `_apiCall` không đọc body 404 nên phân biệt
+ * "chưa có xuất xứ" qua `error.http_status === 404`.
+ */
+export async function buildTree3D(
+  baseUrl: string,
+  treeId: string,
+): Promise<{ ok: boolean; building?: boolean; noProvenance?: boolean; error?: APIError }> {
+  const result = await _apiCall<{ ok: boolean; building?: boolean }>(
+    `${baseUrl}/api/build3d/${encodeURIComponent(treeId)}`,
+    'POST',
+  );
+  if (result.ok && result.data) {
+    return { ok: !!result.data.ok, building: result.data.building };
+  }
+  return { ok: false, noProvenance: result.error?.http_status === 404, error: result.error };
+}

@@ -48,4 +48,22 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
   return (prevResolveRequest || context.resolveRequest)(context, moduleName, platform);
 };
 
+// TẮT inlineRequires — nguyên nhân crash release (build 73-78): metro bật
+// inlineRequires (nạp module LƯỜI tại nơi dùng) làm vỡ CIRCULAR DEPENDENCY trong
+// release bundle → 1 require trả về `undefined` → module khác đọc `.EventEmitter`
+// của nó (expo-modules-core) → "Cannot read property 'EventEmitter' of undefined"
+// → RN ExceptionsManager.reportException throw trên background queue → SIGABRT.
+// Debug/Metro không inline nên không lộ. Tắt để module nạp EAGER theo đúng thứ tự.
+const prevGetTransformOptions = config.transformer.getTransformOptions;
+config.transformer.getTransformOptions = async (...args) => {
+  const opts = prevGetTransformOptions ? await prevGetTransformOptions(...args) : {};
+  return {
+    ...opts,
+    transform: {
+      ...(opts.transform || {}),
+      inlineRequires: false,
+    },
+  };
+};
+
 module.exports = config;

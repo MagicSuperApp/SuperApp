@@ -115,9 +115,9 @@ workflows:
           PHOENIX_WALLET_ENABLED=${PHOENIX_WALLET_ENABLED:-false}
 
           # TreeReID / identify cây (RN layer)
-          ORILIFE_API_BASE_URL=${ORILIFE_API_BASE_URL:-https://test.orilife.io}
-          ORILIFE_TREEID_URL=${ORILIFE_TREEID_URL:-https://test.orilife.io/TreeIdentity}
-          ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://test.orilife.io}
+          ORILIFE_API_BASE_URL=${ORILIFE_API_BASE_URL:-https://api.orilife.io}
+          ORILIFE_TREEID_URL=${ORILIFE_TREEID_URL:-https://api.orilife.io/TreeIdentity}
+          ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://api.orilife.io}
 
           # LampNet 3D
           MESHAPI_USE_MOCK=false
@@ -396,9 +396,9 @@ workflows:
           ALADIN_REGION_CODE=${REGION_CODE:-vn-south-01}
           PHOENIXKEY_API_URL=${PHOENIXKEY_API_URL:-https://api.phoenixkey.me/api/v1}
           PHOENIX_WALLET_ENABLED=${PHOENIX_WALLET_ENABLED:-false}
-          ORILIFE_API_BASE_URL=${ORILIFE_API_BASE_URL:-https://test.orilife.io}
-          ORILIFE_TREEID_URL=${ORILIFE_TREEID_URL:-https://test.orilife.io/TreeIdentity}
-          ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://test.orilife.io}
+          ORILIFE_API_BASE_URL=${ORILIFE_API_BASE_URL:-https://api.orilife.io}
+          ORILIFE_TREEID_URL=${ORILIFE_TREEID_URL:-https://api.orilife.io/TreeIdentity}
+          ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://api.orilife.io}
           MESHAPI_USE_MOCK=false
           LAMPNET_BASE_URL=${LAMPNET_BASE_URL:-https://lampnet.cloud}
           LAMPNET_UPLOAD_URL=${LAMPNET_UPLOAD_URL:-https://lampnet.cloud/mirage/put?mode=symmetric}
@@ -662,9 +662,9 @@ workflows:
           ALADIN_REGION_CODE=${REGION_CODE:-vn-south-01}
           PHOENIXKEY_API_URL=${PHOENIXKEY_API_URL:-https://api.phoenixkey.me/api/v1}
           PHOENIX_WALLET_ENABLED=${PHOENIX_WALLET_ENABLED:-false}
-          ORILIFE_API_BASE_URL=${ORILIFE_API_BASE_URL:-https://test.orilife.io}
-          ORILIFE_TREEID_URL=${ORILIFE_TREEID_URL:-https://test.orilife.io/TreeIdentity}
-          ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://test.orilife.io}
+          ORILIFE_API_BASE_URL=${ORILIFE_API_BASE_URL:-https://api.orilife.io}
+          ORILIFE_TREEID_URL=${ORILIFE_TREEID_URL:-https://api.orilife.io/TreeIdentity}
+          ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://api.orilife.io}
           MESHAPI_USE_MOCK=false
           LAMPNET_BASE_URL=${LAMPNET_BASE_URL:-https://lampnet.cloud}
           LAMPNET_UPLOAD_URL=${LAMPNET_UPLOAD_URL:-https://lampnet.cloud/mirage/put?mode=symmetric}
@@ -813,9 +813,9 @@ workflows:
           ALADIN_REGION_CODE=${REGION_CODE:-vn-south-01}
           PHOENIXKEY_API_URL=${PHOENIXKEY_API_URL:-https://api.phoenixkey.me/api/v1}
           PHOENIX_WALLET_ENABLED=${PHOENIX_WALLET_ENABLED:-false}
-          ORILIFE_API_BASE_URL=${ORILIFE_API_BASE_URL:-https://test.orilife.io}
-          ORILIFE_TREEID_URL=${ORILIFE_TREEID_URL:-https://test.orilife.io/TreeIdentity}
-          ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://test.orilife.io}
+          ORILIFE_API_BASE_URL=${ORILIFE_API_BASE_URL:-https://api.orilife.io}
+          ORILIFE_TREEID_URL=${ORILIFE_TREEID_URL:-https://api.orilife.io/TreeIdentity}
+          ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://api.orilife.io}
           MESHAPI_USE_MOCK=false
           LAMPNET_BASE_URL=${LAMPNET_BASE_URL:-https://lampnet.cloud}
           LAMPNET_UPLOAD_URL=${LAMPNET_UPLOAD_URL:-https://lampnet.cloud/mirage/put?mode=symmetric}

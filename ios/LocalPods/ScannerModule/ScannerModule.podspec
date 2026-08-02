@@ -18,7 +18,7 @@ Pod::Spec.new do |s|
 
   s.platform     = :ios, '15.1'
   s.source       = { :path => '.' }
-  s.source_files = '**/*.{swift,m,h}'
+  s.source_files = '**/*.{swift,m,mm,h}'
   # secrets.plist + GoogleService-Info.plist + model YOLO gate TreeReID (Plan A).
   s.resources    = ['Resources/secrets.plist', 'Resources/GoogleService-Info.plist', 'Resources/yolov26seg.tflite']
 

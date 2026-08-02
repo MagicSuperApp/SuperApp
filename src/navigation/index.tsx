@@ -60,6 +60,7 @@ import GLErrorBoundary from '../components/GLErrorBoundary';
 import TreeIdentityScreen from '../screens/TreeIdentityScreen';
 import TreeEnrollScreen from '../screens/TreeEnrollScreen';
 import FruitVideoScreen from '../screens/FruitVideoScreen';
+import TreeVideoScreen from '../screens/TreeVideoScreen';
 import TreeManagementScreen from '../screens/TreeManagementScreen';
 import AnimalIdentityScreen from '../screens/AnimalIdentityScreen';
 import AnimalEnrollScreen from '../screens/AnimalEnrollScreen';
@@ -1583,6 +1584,8 @@ const HOST_STACK_SCREENS: Array<{
   { name: 'TreeEnroll', component: TreeEnrollScreen, options: { headerShown: false } },
   // Thu video QUẢ → gắn cây (OriLife User-Action-Flow). Quay native + upload fruit_video.
   { name: 'FruitVideo', component: FruitVideoScreen, options: { headerShown: false } },
+  // Thu video ĐỊNH DANH CÂY → bổ-sung góc cho cây (OriLife). Quay native + upload tree/{id}/video.
+  { name: 'TreeVideo', component: TreeVideoScreen, options: { headerShown: false } },
   { name: 'TreeManagement', component: TreeManagementScreen, options: { headerShown: false } },
   { name: 'AnimalIdentity', component: AnimalIdentityScreen, options: { headerShown: false } },
   { name: 'AnimalEnroll', component: AnimalEnrollScreen, options: { headerShown: false } },

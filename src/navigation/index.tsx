@@ -1514,18 +1514,22 @@ const _LazySpace3D = React.lazy(() => import('../screens/Space3DScreen'));
 const _LazyFruitPlace3D = React.lazy(() => import('../screens/FruitPlace3DScreen'));
 const _make3D = (Comp: React.LazyExoticComponent<any>, tag: string): React.FC<any> =>
   function Lazy3DScreen(props: any) {
+    // GLErrorBoundary NGOÀI Suspense: lỗi lúc LAZY-IMPORT (module expo-modules-core
+    // ném "globalThis.expo undefined" trên bản signed) được React.lazy re-throw ở
+    // tầng render — ErrorBoundary phải bọc NGOÀI Suspense mới bắt được (nếu để trong
+    // sẽ lọt → sập app). Bắt được = chỉ hiện màn lỗi 3D, app vẫn chạy.
     return (
-      <React.Suspense
-        fallback={
-          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#000' }}>
-            <ActivityIndicator size="large" color="#fff" />
-          </View>
-        }
-      >
-        <GLErrorBoundary tag={tag}>
+      <GLErrorBoundary tag={tag}>
+        <React.Suspense
+          fallback={
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#000' }}>
+              <ActivityIndicator size="large" color="#fff" />
+            </View>
+          }
+        >
           <Comp {...props} />
-        </GLErrorBoundary>
-      </React.Suspense>
+        </React.Suspense>
+      </GLErrorBoundary>
     );
   };
 const Space3DScreen = _make3D(_LazySpace3D, 'space3d_lazy');

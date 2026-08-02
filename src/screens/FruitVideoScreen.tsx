@@ -2,12 +2,17 @@
 //
 // Thu video QUẢ → gắn vào 1 CÂY (OriLife). Theo User-Action-Flow (OriLife-Mobile PR #2):
 //   Quay video (native launchCamera video) → xem lại → chọn cây (CHO gắn sai, VeData sửa
-//   sau) → upload POST /api/tree/{id}/fruit_video → hiện "đã lưu, thấy N quả".
+//   sau) → GỬI → hiện "đã lưu, thấy N quả".
+//
+// KIẾN TRÚC 1-CỬA: màn NÀY không bao giờ POST trực tiếp. "Gửi" = enqueueVideoUpload(...)
+// rồi flush 1 lần; "Gửi lại lên LampNet" = retryVideoJobNow(jobId). Hàng đợi
+// (videoUploadQueue) là nguồn sự-thật DUY NHẤT cho "clip đã gửi chưa" — nháp
+// (treeDraftStore) chỉ giữ metadata phiên chụp để app bị-ngắt còn khôi phục được UI.
 //
 // MobileCore KHÔNG cấp quay video — đây là native RN per-app (image-picker). Chắt khung
 // + detect quả ở SERVER. Không hiển thị lỗi kỹ-thuật thô cho nông dân.
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, StatusBar, ScrollView,
   ActivityIndicator, Alert, TextInput, Image, FlatList, Clipboard,
@@ -18,13 +23,24 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Geolocation from 'react-native-geolocation-service';
 import { COLORS } from '../constants';
 import { NEUTRAL } from '../shared/theme';
+import { useAppSelector } from '../store/hooks';
+import type { RootState } from '../store';
 import { ORILIFE_BASE } from '../services/orilifeBase';
-import { ensureOrilifeToken } from '../services/orilifeDidAuth';
 import { getTrees, type TreeInfo } from '../services/treeReIDService';
-import { appendVideoProof } from '../services/videoProofStore';
+import { loadVideoProofs } from '../services/videoProofStore';
+import { MAX_VIDEO_BYTES, type FruitVideoResult } from '../services/fruitVideoService';
 import {
-  uploadFruitVideo, MAX_VIDEO_BYTES, type FruitVideoResult,
-} from '../services/fruitVideoService';
+  saveFruitVideoDraft,
+  clearFruitVideoDraft,
+  restoreFruitVideoDraft,
+} from '../services/treeDraftStore';
+import {
+  enqueueVideoUpload,
+  flushVideoUploadQueue,
+  retryVideoJobNow,
+  isJobQueued,
+  getVideoQueueCount,
+} from '../services/videoUploadQueue';
 
 // image-picker nạp mềm (giống AnimalEnroll) — máy chưa cài thì báo rõ, không crash.
 const imagePicker = (() => {
@@ -47,8 +63,13 @@ const FruitVideoScreen: React.FC = () => {
   const initialTreeId = route.params?.treeId;
   const farmId = route.params?.farmId;
 
+  // Namespace nháp theo người dùng hiện tại (chống rò xuyên user trên tablet chung).
+  const currentUser = useAppSelector((s: RootState) => s.user.currentUser);
+  const draftOwner = currentUser?.did ?? currentUser?.id ?? '';
+
   const [videoUri, setVideoUri] = useState<string | null>(null);
   const [videoSize, setVideoSize] = useState<number | null>(null);
+  const [capturedAt, setCapturedAt] = useState<number | null>(null);
   const [note, setNote] = useState('');
   const [gps, setGps] = useState<{ lat: number; lon: number } | null>(null);
 
@@ -58,6 +79,19 @@ const FruitVideoScreen: React.FC = () => {
 
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<FruitVideoResult | null>(null);
+  const [queueCount, setQueueCount] = useState(0);
+  // Job vừa xếp hàng nhưng CHƯA lên LampNet — để nút "Gửi lại" nhắm đúng clip đó.
+  const [pendingJobId, setPendingJobId] = useState<string | null>(null);
+
+  // Ref soi videoUri MỚI NHẤT để chống đua khôi-phục-vs-phiên-mới (hộp thoại mở lâu).
+  const videoUriRef = useRef<string | null>(null);
+  videoUriRef.current = videoUri;
+
+  // Số clip đang chờ gửi trong hàng đợi bền — hiện để đội thực địa biết còn tồn.
+  const refreshQueueCount = useCallback(() => {
+    getVideoQueueCount().then(setQueueCount).catch(() => {});
+  }, []);
+  useEffect(() => { refreshQueueCount(); }, [refreshQueueCount]);
 
   // GPS 1 lần (best-effort) — kèm vào upload để định-vị nơi quay.
   useEffect(() => {
@@ -75,6 +109,56 @@ const FruitVideoScreen: React.FC = () => {
       if (res.ok && res.trees) setTrees(res.trees);
     })();
   }, [farmId]);
+
+  // ── H-17: hỏi khôi phục video quả quay dở khi mở màn ─────────────────────
+  // App bị ngắt sau khi quay xong nhưng CHƯA gửi → clip + lựa chọn cây/ghi chú mất
+  // trắng. restoreFruitVideoDraft tự bỏ nháp nếu clip đã bị OS dọn (không hỏi khống).
+  const didCheckDraftRef = useRef(false);
+  useEffect(() => {
+    if (didCheckDraftRef.current) return;
+    didCheckDraftRef.current = true;
+    if (videoUri) return;
+    (async () => {
+      const draft = await restoreFruitVideoDraft(draftOwner);
+      if (!draft?.videoUri) return;
+      Alert.alert(
+        'Khôi phục video dở?',
+        'Có video quả quay buổi trước nhưng chưa gửi. Khôi phục để gửi tiếp?',
+        [
+          { text: 'Bỏ', style: 'destructive', onPress: () => { clearFruitVideoDraft(draftOwner); } },
+          {
+            text: 'Khôi phục',
+            onPress: () => {
+              // RE-CHECK: người dùng có thể đã quay clip mới trong lúc hộp thoại mở →
+              // KHÔNG ghi đè phiên mới bằng clip nháp (chống gắn nhầm cây/hỏng provenance).
+              if (videoUriRef.current) return;
+              setVideoUri(draft.videoUri);
+              setVideoSize(draft.videoSize ?? null);
+              setCapturedAt(draft.capturedAt ?? null);
+              if (draft.note) setNote(draft.note);
+              if (draft.selectedTreeId) setSelectedTreeId(draft.selectedTreeId);
+            },
+          },
+        ],
+      );
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── H-17: lưu bản nháp video (METADATA) NGAY khi quay xong / đổi cây / ghi chú ─
+  useEffect(() => {
+    if (!videoUri) return;
+    saveFruitVideoDraft(draftOwner, {
+      v: 1,
+      savedAt: Date.now(),
+      videoUri,
+      videoSize,
+      selectedTreeId,
+      note,
+      farmId,
+      capturedAt: capturedAt ?? undefined,
+    });
+  }, [draftOwner, videoUri, videoSize, selectedTreeId, note, farmId, capturedAt]);
 
   const selectedTree = trees.find(t => t.tree_id === selectedTreeId);
 
@@ -99,11 +183,16 @@ const FruitVideoScreen: React.FC = () => {
       }
       setVideoUri(asset.uri);
       setVideoSize(size);
+      setCapturedAt(Date.now());     // mốc quay → clientEventId ổn định theo clip
       setResult(null);
     });
   }, []);
 
-  // ── Gửi ───────────────────────────────────────────────────────────────────
+  const resetForNext = useCallback(() => {
+    setVideoUri(null); setVideoSize(null); setCapturedAt(null); setNote(''); setResult(null);
+  }, []);
+
+  // ── Gửi (CỬA DUY NHẤT = hàng đợi) ────────────────────────────────────────
   const handleUpload = useCallback(async () => {
     if (!videoUri) return;
     if (!selectedTreeId) {
@@ -112,49 +201,77 @@ const FruitVideoScreen: React.FC = () => {
     }
     setUploading(true);
     try {
-      // Token field-reid (DID challenge-sign) — như luồng nhận-diện/tạo-vườn.
-      const tokenOk = await ensureOrilifeToken(ORILIFE_BASE);
-      if (!tokenOk) {
-        Alert.alert('Chưa xác thực', 'Không lấy được phiên máy chủ. Kiểm tra mạng/danh tính rồi thử lại.');
-        return;
-      }
-      let res = await uploadFruitVideo(ORILIFE_BASE, selectedTreeId, videoUri, {
-        lat: gps?.lat, lon: gps?.lon, note,
+      // 1) Xếp hàng (copy byte vào document dir bền + khử trùng theo clip).
+      const enq = await enqueueVideoUpload({
+        treeId: selectedTreeId,
+        videoUri,
+        kind: 'fruit',
+        lat: gps?.lat,
+        lon: gps?.lon,
+        note,
+        capturedAt: capturedAt ?? undefined,
+        size: videoSize ?? undefined,
       });
-      if (!res.ok && res.error?.type === 'auth_error') {
-        const relog = await ensureOrilifeToken(ORILIFE_BASE, { force: true });
-        if (relog) res = await uploadFruitVideo(ORILIFE_BASE, selectedTreeId, videoUri, {
-          lat: gps?.lat, lon: gps?.lon, note,
-        });
+      if (enq.droppedOldest > 0) {
+        Alert.alert(
+          'Hàng đợi đầy',
+          `Đã bỏ ${enq.droppedOldest} clip cũ nhất chưa gửi được để nhường chỗ. `
+            + 'Hãy tới nơi sóng tốt để gửi bớt.',
+        );
       }
-      if (res.ok) {
-        // GHI BẰNG CHỨNG TRƯỚC KHI VẼ. OriLife không có route tra `video_cid` theo
-        // cây — mã này rời khỏi phản hồi là mất vĩnh viễn. Ghi rồi mới setResult.
-        if (res.video_cid) {
-          await appendVideoProof(selectedTreeId, {
-            videoCid: res.video_cid,
-            kind: 'fruit',
-            at: new Date().toISOString(),
-            eventId: res.event_id,
-            nFruitsMax: res.n_fruits_max,
-            nFrames: res.n_frames,
-            stored: res.stored,
-            lat: gps?.lat,
-            lon: gps?.lon,
-          });
-        }
-        setResult(res);
+      // Nháp đã bàn giao cho hàng đợi (cửa duy nhất giữ độ bền) → xoá nháp màn.
+      clearFruitVideoDraft(draftOwner);
+
+      // 2) Kích gửi 1 lần.
+      await flushVideoUploadQueue();
+      refreshQueueCount();
+
+      // 3) Kết cục của CHÍNH clip này: còn trong hàng = chưa lên LampNet.
+      const stillQueued = await isJobQueued(enq.job.id);
+      if (!stillQueued) {
+        // Gửi xong + byte đã lên LampNet → dựng màn kết quả từ SỔ BẰNG CHỨNG.
+        const proofs = await loadVideoProofs(selectedTreeId);
+        const proof = proofs[0];
+        setPendingJobId(null);
+        setResult({
+          ok: true,
+          video_cid: proof?.videoCid,
+          event_id: proof?.eventId,
+          n_fruits_max: proof?.nFruitsMax,
+          n_frames: proof?.nFrames,
+          stored: proof?.stored ?? true,
+        });
       } else {
-        Alert.alert('Chưa gửi được', res.error?.detail ?? 'Thử lại nơi sóng tốt.');
+        // Còn trong hàng: mạng yếu / offline / stored=false → sẽ tự gửi lại.
+        setPendingJobId(enq.job.id);
+        Alert.alert(
+          'Đã lưu để gửi sau',
+          'Mạng đang yếu. Clip đã vào hàng đợi và sẽ tự gửi lại khi có mạng — cứ quay tiếp, '
+            + 'hoặc bấm "Gửi lại lên LampNet" khi có sóng tốt.',
+        );
+        resetForNext();
       }
     } finally {
       setUploading(false);
     }
-  }, [videoUri, selectedTreeId, gps, note]);
+  }, [videoUri, selectedTreeId, gps, note, capturedAt, videoSize, draftOwner, refreshQueueCount, resetForNext]);
 
-  const resetForNext = () => {
-    setVideoUri(null); setVideoSize(null); setNote(''); setResult(null);
-  };
+  // ── Gửi lại lên LampNet (giữ UX #94) — QUA hàng đợi, KHÔNG POST trực tiếp ──
+  const handleRetryPending = useCallback(async () => {
+    setUploading(true);
+    try {
+      if (pendingJobId) {
+        await retryVideoJobNow(pendingJobId);
+        if (!(await isJobQueued(pendingJobId))) setPendingJobId(null);
+      } else {
+        // Không nhớ job cụ thể (mở lại màn) → flush cả hàng.
+        await flushVideoUploadQueue();
+      }
+      refreshQueueCount();
+    } finally {
+      setUploading(false);
+    }
+  }, [pendingJobId, refreshQueueCount]);
 
   // ── Màn kết quả ───────────────────────────────────────────────────────────
   if (result) {
@@ -175,13 +292,9 @@ const FruitVideoScreen: React.FC = () => {
               ? `Chủ vườn sẽ xác nhận sau. (${result.n_frames} khung)`
               : 'Quay chậm hơn một chút sẽ tốt hơn. Chủ vườn xác nhận sau.'}
           </Text>
-          {result.stored === false && (
-            <Text style={styles.resultWarn}>Đã nhận clip, đang lưu trữ — sẽ xử lý lại sau.</Text>
-          )}
           {/* Bằng chứng clip đã nằm trên LampNet. Đội thực địa cần THẤY mã này để
-              đối chiếu sau buổi test, không chỉ tin vào dòng "đã lưu". Trước đây
-              server có trả video_cid nhưng app đọc rồi bỏ. */}
-          {result.stored !== false && !!result.video_cid && (
+              đối chiếu sau buổi test, không chỉ tin vào dòng "đã lưu". */}
+          {!!result.video_cid && (
             <TouchableOpacity
               style={styles.cidBox}
               activeOpacity={0.7}
@@ -301,6 +414,23 @@ const FruitVideoScreen: React.FC = () => {
 
       {/* Nút Gửi */}
       <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) + 8 }]}>
+        {queueCount > 0 && (
+          <View style={styles.queueBanner}>
+            <Icon name="cloud-clock" size={15} color="#e65100" />
+            <Text style={styles.queueBannerText}>
+              Đang chờ gửi ({queueCount}) · sẽ tự gửi lại khi có mạng
+            </Text>
+            <TouchableOpacity
+              onPress={handleRetryPending}
+              disabled={uploading}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.queueRetryText}>
+                {uploading ? 'Đang gửi…' : 'Gửi lại lên LampNet'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
         <TouchableOpacity
           style={[styles.primaryBtn, (!videoUri || uploading) && styles.primaryBtnDisabled]}
           onPress={handleUpload}
@@ -310,7 +440,7 @@ const FruitVideoScreen: React.FC = () => {
           {uploading ? (
             <>
               <ActivityIndicator color={NEUTRAL.white} />
-              <Text style={styles.primaryBtnText}>Đang tải lên… giữ app mở</Text>
+              <Text style={styles.primaryBtnText}>Đang gửi… giữ app mở</Text>
             </>
           ) : (
             <>
@@ -390,6 +520,12 @@ const styles = StyleSheet.create({
   },
 
   footer: { padding: 16, borderTopWidth: 1, borderTopColor: NEUTRAL.border, backgroundColor: COLORS.bg },
+  queueBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10,
+    backgroundColor: '#fff3e0', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8,
+  },
+  queueBannerText: { flex: 1, fontSize: 12.5, color: '#e65100', fontWeight: '600' },
+  queueRetryText: { fontSize: 12.5, color: '#1b5e20', fontWeight: '800' },
   primaryBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     backgroundColor: HEADER_BG, borderRadius: 14, paddingVertical: 15,

@@ -8,6 +8,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AppNavigator from './src/navigation';
 import AlertProvider from './src/components/AlertProvider';
 import { loadTreeDedupCache } from './src/services/treeDedupCache';
+import { flushVideoUploadQueue } from './src/services/videoUploadQueue';
 import analytics from './src/services/analytics';
 import {
   bootstrapRuntimeGate,
@@ -31,6 +32,10 @@ function App() {
     // build lại (fire-and-forget; default mock tới khi probe 2xx).
     void bootstrapRuntimeGate();
 
+    // Hàng đợi gửi video bền: mở lại app → thử gửi những clip còn kẹt từ buổi
+    // trước (mạng rớt / stored=false). Fire-and-forget; tự bỏ qua nếu offline.
+    void flushVideoUploadQueue();
+
     // Mỗi lần app quay lại foreground = một phiên mới; vào background thì chốt
     // thời gian xem màn hình cuối và đẩy dữ liệu còn tồn lên server.
     const sub = AppState.addEventListener('change', (next: AppStateStatus) => {
@@ -39,6 +44,8 @@ function App() {
         analytics.startSession();
         // Quay lại foreground → probe lại: backend vừa được sửa sẽ tự bật.
         refreshRuntimeGate();
+        // …và thử gửi lại clip video còn kẹt (mạng có thể vừa phục hồi).
+        void flushVideoUploadQueue();
       } else if (prev === 'active' && next.match(/inactive|background/)) {
         analytics.endSession();
       }

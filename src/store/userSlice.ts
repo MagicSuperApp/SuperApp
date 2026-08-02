@@ -8,6 +8,7 @@ import { phoenixKeyApi, summarizeWalletAll, type WalletEntry } from '../services
 import { parseDidNetwork } from '../services/phoenixDid';
 import { clearWorkSession } from '../modules/work/services/session';
 import { disconnectProofChat } from '../services/proofchatAuthBridge';
+import { clearAllDrafts } from '../services/treeDraftStore';
 
 /**
  * ⚠ ĐƠN VỊ — đọc trước khi hiện bất cứ con số nào ra màn hình.
@@ -128,6 +129,14 @@ export const logoutUser = createAsyncThunk(
       await disconnectProofChat();
     } catch (error) {
       console.warn('[Redux] Logout: disconnectProofChat lỗi (bỏ qua):', error);
+    }
+    try {
+      // Nháp chụp cây / video quả là dữ liệu PHIÊN. Tablet field dùng CHUNG → xoá sạch
+      // khi đăng xuất để nháp (ảnh+GPS+tên) user A KHÔNG lọt vào form user B. Namespace
+      // theo owner đã chặn đường app-kill; đây là lớp chắc chắn cho đường đăng xuất.
+      await clearAllDrafts();
+    } catch (error) {
+      console.warn('[Redux] Logout: clearAllDrafts lỗi (bỏ qua):', error);
     }
     try {
       console.log('[Redux] Logging out user');

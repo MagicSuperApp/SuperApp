@@ -27,6 +27,7 @@ const NotificationScreen = () => {
           activeOpacity={0.7}
           onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Main'))}
           accessibilityLabel="Quay lại"
+          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
         >
           <Icon name="arrow-left" size={22} color={COLORS.text} />
         </TouchableOpacity>

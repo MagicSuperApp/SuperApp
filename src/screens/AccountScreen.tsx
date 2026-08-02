@@ -36,6 +36,7 @@ import { getVersion, getBuildNumber } from 'react-native-device-info';
 // Debug host = backend field-reid THẬT app đang dùng (ORILIFE_BASE), không phải
 // aladin-api (backend Lợi deprecated) — để field soi đúng server (Lỗi field #5).
 import { ORILIFE_BASE } from '../services/orilifeBase';
+import { fmtLamp } from '../utils/token';
 import taad from '../sdk/taadEnclave';
 import { getStoredMasterKek } from '../services/masterKekStore';
 
@@ -237,8 +238,6 @@ const WalletBlock = ({ entry }: { entry: WalletEntry }) => {
     const net = netFromAddress(addr);
     const b = entry.balances ?? { lovelace: 0, lamp: 0, carp: 0 };
     const ada = (b.lovelace ?? 0) / 1_000_000;
-    // LAMP decimals=6: balances.lamp theo OILDROP → chia 1e6 ra LAMP (như ada/lovelace).
-    const lamp = (b.lamp ?? 0) / 1_000_000;
 
     return (
         <View style={styles.walletBlock}>
@@ -264,7 +263,7 @@ const WalletBlock = ({ entry }: { entry: WalletEntry }) => {
             <View style={styles.walletBalRow}>
                 <Text style={styles.walletBalItem}>{ada} <Text style={styles.walletBalUnit}>ADA</Text></Text>
                 <Text style={styles.walletBalDot}>·</Text>
-                <Text style={styles.walletBalItem}>{lamp} <Text style={styles.walletBalUnit}>LAMP</Text></Text>
+                <Text style={styles.walletBalItem}>{fmtLamp(b.lamp ?? 0)} <Text style={styles.walletBalUnit}>LAMP</Text></Text>
                 <Text style={styles.walletBalDot}>·</Text>
                 <Text style={styles.walletBalItem}>{b.carp ?? 0} <Text style={styles.walletBalUnit}>CARP</Text></Text>
             </View>
@@ -570,7 +569,7 @@ const AccountScreen = () => {
                             index={1}
                             icon="lightning-bolt"
                             label="LAMP"
-                            value={chainWallet?.lampBalance}
+                            value={fmtLamp(chainWallet?.lampBalance)}
                             unit="LAMP"
                             color={COLORS.accent}
                             desc="Sinh MAGIC mỗi 5 ngày"

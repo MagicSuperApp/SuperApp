@@ -53,8 +53,9 @@ interface ReidConfirmDialogProps {
    * (chống tạo trùng khi cùng-loài mơ-hồ — owner_review B1/B2).
    */
   allowNew?: boolean;
-  /** Câu gợi ý hành-động do backend trả (suggest) — hiện dưới phụ đề nếu có. */
-  suggestText?: string;
+  /** Câu gợi ý hành-động do backend trả (suggest) — hiện dưới phụ đề nếu có.
+   *  Backend có thể trả string HOẶC object {message, channel, n_candidates}. */
+  suggestText?: string | { message?: string } | null;
 }
 
 // ─── Nhãn nội dung theo context ───────────────────────────────────────────────
@@ -147,12 +148,23 @@ const ReidConfirmDialog: React.FC<ReidConfirmDialogProps> = ({
           )}
 
           {/* ── Gợi ý hành-động từ server (suggest) ────────────────────────── */}
-          {suggestText ? (
-            <View style={styles.suggestBox} accessible={true}>
-              <Icon name="lightbulb-on-outline" size={16} color={NEUTRAL.warning} />
-              <Text style={styles.suggestText}>{suggestText}</Text>
-            </View>
-          ) : null}
+          {/* Backend đôi khi trả `suggest` là OBJECT {channel, message, n_candidates}
+              (không phải string) khi UNCERTAIN → render thẳng object làm React child =
+              CRASH "Objects are not valid as a React child". Coerce về string an toàn. */}
+          {(() => {
+            const suggestStr =
+              typeof suggestText === 'string'
+                ? suggestText
+                : (suggestText && typeof suggestText === 'object'
+                    ? String((suggestText as { message?: unknown }).message ?? '')
+                    : '');
+            return suggestStr ? (
+              <View style={styles.suggestBox} accessible={true}>
+                <Icon name="lightbulb-on-outline" size={16} color={NEUTRAL.warning} />
+                <Text style={styles.suggestText}>{suggestStr}</Text>
+              </View>
+            ) : null;
+          })()}
 
           {/* ── Danh sách candidates ────────────────────────────────────────── */}
           <ScrollView

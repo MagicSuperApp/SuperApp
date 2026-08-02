@@ -1,9 +1,13 @@
-// GIỮ metro-config RN gốc (install-expo-modules tự đổi sang 'expo/metro-config' —
-// đã hoàn tác): bare RN, chỉ dùng expo-modules-core cho expo-gl (3D).
+// DÙNG 'expo/metro-config' (KHÔNG phải '@react-native/metro-config'):
+// build iOS đóng gói JS qua `@expo/cli export:embed`, cần serializer của expo
+// (trả về định dạng module-graph). Nếu dùng metro-config RN gốc → serializer mặc
+// định trả chuỗi `var __BUNDLE...` → `export:embed` báo:
+//   "Serializer did not return expected format ... Unexpected token 'v', var __BUND"
+// (reset-cache vẫn lỗi). App tích hợp expo (expo-gl/asset) nên bundler PHẢI là expo.
 const path = require('path');
-const { getDefaultConfig, mergeConfig } = require('@react-native/metro-config');
+const { getDefaultConfig } = require('expo/metro-config');
 
-const defaultConfig = getDefaultConfig(__dirname);
+const config = getDefaultConfig(__dirname);
 
 // ── MỘT bản three DUY NHẤT ───────────────────────────────────────────────────
 // package `three` khai báo exports 2 nhánh:
@@ -24,20 +28,24 @@ const THREE_ENTRY = path.resolve(__dirname, 'node_modules/three/build/three.modu
 // Metro's file watcher (ENOENT watch ...). Excluding them avoids that.
 const buildDirsBlockList = /[\/\\](android[\/\\]build|android[\/\\]\.gradle|ios[\/\\]build)[\/\\].*/;
 
-const config = {
-    resolver: {
-        // glb/gltf/bin/hdr: model 3D (assets/models/tree1.glb) nạp qua expo-asset
-        // cho three.js — Metro phải coi là ASSET, không phải mã nguồn.
-        assetExts: [...defaultConfig.resolver.assetExts, 'tflite', 'glb', 'gltf', 'bin', 'hdr'],
-        blockList: buildDirsBlockList,
-        // CHỈ chặn đúng specifier 'three'; 'three/examples/jsm/...' vẫn resolve bình thường.
-        resolveRequest: (context, moduleName, platform) => {
-            if (moduleName === 'three') {
-                return { type: 'sourceFile', filePath: THREE_ENTRY };
-            }
-            return context.resolveRequest(context, moduleName, platform);
-        },
-    },
+// glb/gltf/bin/hdr: model 3D (assets/models/tree1.glb) nạp qua expo-asset cho
+// three.js — Metro phải coi là ASSET, không phải mã nguồn.
+config.resolver.assetExts = [...config.resolver.assetExts, 'tflite', 'glb', 'gltf', 'bin', 'hdr'];
+
+// Gộp blockList của expo (nếu có) với build-dirs — KHÔNG ghi đè mất mặc định expo.
+const existingBlockList = config.resolver.blockList;
+config.resolver.blockList = existingBlockList
+  ? [].concat(existingBlockList, buildDirsBlockList)
+  : buildDirsBlockList;
+
+// CHỈ chặn đúng specifier 'three'; 'three/examples/jsm/...' vẫn resolve bình thường.
+// Chain vào resolveRequest sẵn có của expo (nếu có) để không mất hành vi mặc định.
+const prevResolveRequest = config.resolver.resolveRequest;
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (moduleName === 'three') {
+    return { type: 'sourceFile', filePath: THREE_ENTRY };
+  }
+  return (prevResolveRequest || context.resolveRequest)(context, moduleName, platform);
 };
 
-module.exports = mergeConfig(defaultConfig, config);
+module.exports = config;

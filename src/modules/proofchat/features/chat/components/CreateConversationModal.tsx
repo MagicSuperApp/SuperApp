@@ -137,9 +137,15 @@ const CreateConversationModal: React.FC<Props> = ({
 
   const canSubmit = !titleError && !avatarError && !memberError;
 
+  // Chặn bấm kép. `disabled={!canSubmit && touched}` cũ sai logic: chưa chạm ô nào
+  // thì touched=false nên nút KHÔNG bao giờ bị khoá — bấm 2 lần tạo 2 cuộc trò chuyện.
+  const [submitting, setSubmitting] = useState(false);
+  useEffect(() => { if (visible) setSubmitting(false); }, [visible]);
+
   const handleSubmit = () => {
     setTouched(true);
-    if (!canSubmit) return;
+    if (!canSubmit || submitting) return;
+    setSubmitting(true);
     onSubmit({
       title: title.trim(),
       avatar: avatar.trim() || undefined,
@@ -342,9 +348,9 @@ const CreateConversationModal: React.FC<Props> = ({
               <Text style={styles.btnGhostText}>Hủy bỏ</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.btn, styles.btnPrimary, !canSubmit && styles.btnDisabled]}
+              style={[styles.btn, styles.btnPrimary, (!canSubmit || submitting) && styles.btnDisabled]}
               onPress={handleSubmit}
-              disabled={!canSubmit && touched}
+              disabled={!canSubmit || submitting}
               activeOpacity={0.85}
             >
               <Icon name="check" size={16} color={NEUTRAL.white} />

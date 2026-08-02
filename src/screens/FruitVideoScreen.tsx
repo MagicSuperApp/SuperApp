@@ -10,16 +10,18 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, StatusBar, ScrollView,
-  ActivityIndicator, Alert, TextInput, Image, FlatList,
+  ActivityIndicator, Alert, TextInput, Image, FlatList, Clipboard,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Geolocation from 'react-native-geolocation-service';
 import { COLORS } from '../constants';
 import { NEUTRAL } from '../shared/theme';
 import { ORILIFE_BASE } from '../services/orilifeBase';
 import { ensureOrilifeToken } from '../services/orilifeDidAuth';
 import { getTrees, type TreeInfo } from '../services/treeReIDService';
+import { appendVideoProof } from '../services/videoProofStore';
 import {
   uploadFruitVideo, MAX_VIDEO_BYTES, type FruitVideoResult,
 } from '../services/fruitVideoService';
@@ -40,6 +42,7 @@ type ParamList = { FruitVideo: { treeId?: string; treeName?: string; farmId?: st
 
 const FruitVideoScreen: React.FC = () => {
   const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
   const route = useRoute<RouteProp<ParamList, 'FruitVideo'>>();
   const initialTreeId = route.params?.treeId;
   const farmId = route.params?.farmId;
@@ -125,6 +128,21 @@ const FruitVideoScreen: React.FC = () => {
         });
       }
       if (res.ok) {
+        // GHI BẰNG CHỨNG TRƯỚC KHI VẼ. OriLife không có route tra `video_cid` theo
+        // cây — mã này rời khỏi phản hồi là mất vĩnh viễn. Ghi rồi mới setResult.
+        if (res.video_cid) {
+          await appendVideoProof(selectedTreeId, {
+            videoCid: res.video_cid,
+            kind: 'fruit',
+            at: new Date().toISOString(),
+            eventId: res.event_id,
+            nFruitsMax: res.n_fruits_max,
+            nFrames: res.n_frames,
+            stored: res.stored,
+            lat: gps?.lat,
+            lon: gps?.lon,
+          });
+        }
         setResult(res);
       } else {
         Alert.alert('Chưa gửi được', res.error?.detail ?? 'Thử lại nơi sóng tốt.');
@@ -144,7 +162,7 @@ const FruitVideoScreen: React.FC = () => {
     return (
       <View style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor={HEADER_BG} />
-        <Header title="Đã lưu video quả" onBack={() => navigation.goBack()} />
+        <Header title="Đã lưu video quả" onBack={() => navigation.goBack()} topInset={insets.top} />
         <View style={styles.resultBody}>
           <Icon name="check-circle" size={64} color="#2e7d32" />
           <Text style={styles.resultTitle}>
@@ -158,7 +176,45 @@ const FruitVideoScreen: React.FC = () => {
               : 'Quay chậm hơn một chút sẽ tốt hơn. Chủ vườn xác nhận sau.'}
           </Text>
           {result.stored === false && (
-            <Text style={styles.resultWarn}>Đã nhận clip, đang lưu trữ — sẽ xử lý lại sau.</Text>
+            <>
+              {/* THẬT THÀ: stored=false = LampNet CHƯA giữ byte (mạng yếu). Trước đây báo
+                  "sẽ xử lý lại sau" là lời hứa RỖNG — không có gì gửi lại, rời màn là mất
+                  clip. Nay cho nút gửi lại thật + cảnh báo đừng rời màn khi chưa lưu được. */}
+              <Text style={styles.resultWarn}>
+                Đã nhận clip nhưng CHƯA lưu được lên LampNet (mạng yếu). Bấm "Gửi lại" khi
+                có sóng tốt. Đừng rời màn khi chưa lưu được — clip có thể mất.
+              </Text>
+              <TouchableOpacity
+                style={styles.primaryBtn}
+                onPress={handleUpload}
+                disabled={uploading}
+                activeOpacity={0.85}
+              >
+                <Icon name="cloud-upload" size={18} color={NEUTRAL.white} />
+                <Text style={styles.primaryBtnText}>
+                  {uploading ? 'Đang gửi lại…' : 'Gửi lại lên LampNet'}
+                </Text>
+              </TouchableOpacity>
+            </>
+          )}
+          {/* Bằng chứng clip đã nằm trên LampNet. Đội thực địa cần THẤY mã này để
+              đối chiếu sau buổi test, không chỉ tin vào dòng "đã lưu". Trước đây
+              server có trả video_cid nhưng app đọc rồi bỏ. */}
+          {result.stored !== false && !!result.video_cid && (
+            <TouchableOpacity
+              style={styles.cidBox}
+              activeOpacity={0.7}
+              onPress={() => {
+                Clipboard.setString(result.video_cid!);
+                Alert.alert('Đã sao chép', 'Mã lưu trữ đã vào bộ nhớ tạm.');
+              }}
+            >
+              <Icon name="shield-check" size={15} color="#1b5e20" />
+              <Text style={styles.cidText} numberOfLines={1}>
+                Đã lưu lên mạng LampNet · {result.video_cid}
+              </Text>
+              <Icon name="content-copy" size={14} color={NEUTRAL.textSub} />
+            </TouchableOpacity>
           )}
           <TouchableOpacity style={styles.primaryBtn} onPress={resetForNext} activeOpacity={0.85}>
             <Icon name="video-plus" size={18} color={NEUTRAL.white} />
@@ -175,7 +231,7 @@ const FruitVideoScreen: React.FC = () => {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={HEADER_BG} />
-      <Header title="Quay video quả" onBack={() => navigation.goBack()} />
+      <Header title="Quay video quả" onBack={() => navigation.goBack()} topInset={insets.top} />
 
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
         {/* Khung quay / xem lại */}
@@ -263,7 +319,7 @@ const FruitVideoScreen: React.FC = () => {
       </ScrollView>
 
       {/* Nút Gửi */}
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) + 8 }]}>
         <TouchableOpacity
           style={[styles.primaryBtn, (!videoUri || uploading) && styles.primaryBtnDisabled]}
           onPress={handleUpload}
@@ -288,9 +344,11 @@ const FruitVideoScreen: React.FC = () => {
 };
 
 // ── Header nhỏ dùng chung ──────────────────────────────────────────────────
+// paddingTop nhận insets.top: trước đây cứng 14 nên chữ chui dưới tai thỏ/status
+// bar trên máy có notch. Cùng lỗi với footer — nút Gửi đè thanh home indicator.
 const HEADER_BG = '#1b5e20';
-const Header = ({ title, onBack }: { title: string; onBack: () => void }) => (
-  <View style={styles.header}>
+const Header = ({ title, onBack, topInset }: { title: string; onBack: () => void; topInset: number }) => (
+  <View style={[styles.header, { paddingTop: topInset + 14 }]}>
     <TouchableOpacity onPress={onBack} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
       <Icon name="chevron-left" size={28} color={NEUTRAL.white} />
     </TouchableOpacity>
@@ -362,6 +420,12 @@ const styles = StyleSheet.create({
   resultTitle: { fontSize: 19, fontWeight: '800', color: '#1a1a1a', textAlign: 'center', marginTop: 8 },
   resultSub: { fontSize: 14, color: NEUTRAL.textSub, textAlign: 'center' },
   resultWarn: { fontSize: 12.5, color: '#e65100', textAlign: 'center' },
+  cidBox: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'stretch',
+    borderWidth: 1, borderColor: '#c8e6c9', backgroundColor: '#f1f8e9',
+    borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, marginTop: 4,
+  },
+  cidText: { flex: 1, fontSize: 13, color: '#1b5e20', fontWeight: '600' },
   ghostBtn: { paddingVertical: 12, marginTop: 4 },
   ghostBtnText: { color: NEUTRAL.textSub, fontSize: 15, fontWeight: '600' },
 });

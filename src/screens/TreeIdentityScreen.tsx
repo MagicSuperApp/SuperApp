@@ -54,6 +54,9 @@ import {
   type CapturedImage,
 } from '../services/treeReIDNativeBridge';
 import {
+  toCaptureOrientations,
+  platformHeadingRef,
+  type CaptureOrientation,
   identifyTree,
   verifyAddTree,
   submitIdentifyVerdict,
@@ -482,7 +485,12 @@ const TreeIdentityScreen: React.FC = () => {
         dispatch(addCapture(cap));
       }
 
-      await runIdentify(stopResult.captures.map(c => `file://${c.fileURL}`));
+      // Hướng máy đi CÙNG ảnh. `stopResult.captures` là nguồn tươi nhất — đọc
+      // `capturesRedux` ở đây sẽ lấy giá trị cũ vì dispatch chưa kịp vào selector.
+      await runIdentify(
+        stopResult.captures.map(c => `file://${c.fileURL}`),
+        toCaptureOrientations(stopResult.captures),
+      );
     } catch (e: any) {
       rLog.nativeBridge.bridgeError('stopCaptureSession', e?.message ?? String(e));
       Alert.alert('Lỗi', 'Không thể dừng chụp. Vui lòng thử lại.');
@@ -557,7 +565,7 @@ const TreeIdentityScreen: React.FC = () => {
   };
 
   // ── Core: Gọi API identify ────────────────────────────────────────────────
-  const runIdentify = async (imagePaths: string[]) => {
+  const runIdentify = async (imagePaths: string[], orientations?: CaptureOrientation[]) => {
     setIsIdentifyingLocal(true);
     // Mỗi lần identify mới → xoá phán-quyết cũ.
     setQueryId(null);
@@ -600,6 +608,10 @@ const TreeIdentityScreen: React.FC = () => {
         lon: gpsRedux?.lng,
         heading: heading ?? undefined,
         pitch: pitch ?? undefined,
+        // Hướng theo TỪNG ảnh — trước đây chỉ gửi một con số hiện-tại cho cả loạt,
+        // tức mọi ảnh trông như chụp từ cùng một chỗ.
+        captures: orientations,
+        headingRef: platformHeadingRef(),
         // M4: chỉ gửi khi tester đã bật toggle.
         matcher: matcher ?? undefined,
       });
@@ -658,7 +670,12 @@ const TreeIdentityScreen: React.FC = () => {
           ? capturesRedux.map(c => `file://${c.fileURL}`)
           : androidImageUris;
 
-      const res = await verifyAddTree(BASE_URL, identResult.tree_id, imgs);
+      const res = await verifyAddTree(BASE_URL, identResult.tree_id, imgs, {
+        lat: gpsRedux?.lat,
+        lon: gpsRedux?.lng,
+        captures: TreeReIDBridge.isAvailable() ? toCaptureOrientations(capturesRedux) : undefined,
+        headingRef: platformHeadingRef(),
+      });
 
       if (res.ok) {
         Alert.alert('Đã cập nhật', 'Vị trí mới của cây đã được lưu.');
@@ -689,7 +706,12 @@ const TreeIdentityScreen: React.FC = () => {
           ? capturesRedux.map(c => `file://${c.fileURL}`)
           : androidImageUris;
 
-      const res = await verifyAddTree(BASE_URL, id, imgs);
+      const res = await verifyAddTree(BASE_URL, id, imgs, {
+        lat: gpsRedux?.lat,
+        lon: gpsRedux?.lng,
+        captures: TreeReIDBridge.isAvailable() ? toCaptureOrientations(capturesRedux) : undefined,
+        headingRef: platformHeadingRef(),
+      });
 
       if (res.ok) {
         Alert.alert('Đã xác nhận', `Góc nhìn mới đã thêm vào cây.\nĐã thêm: ${res.data?.n_added ?? 0} góc.`);
@@ -822,13 +844,23 @@ const TreeIdentityScreen: React.FC = () => {
         {/* M2: băng tin-cậy THÔ (cao/vừa/thấp) — KHÔNG hiện điểm số */}
         {confidence && <ConfidenceBandView band={confidence} />}
 
-        {/* Gợi ý hành-động từ server (suggest) — vd "đi vòng chụp thêm góc" */}
-        {suggest ? (
-          <View style={styles.suggestBox}>
-            <Icon name="lightbulb-on-outline" size={16} color={NEUTRAL.warning} />
-            <Text style={styles.suggestText}>{suggest}</Text>
-          </View>
-        ) : null}
+        {/* Gợi ý hành-động từ server (suggest) — vd "đi vòng chụp thêm góc".
+            Backend đôi khi trả OBJECT {message, channel, n_candidates} thay vì string
+            → phải coerce, KHÔNG render thẳng object (crash "not valid React child"). */}
+        {(() => {
+          const suggestStr =
+            typeof suggest === 'string'
+              ? suggest
+              : (suggest && typeof suggest === 'object'
+                  ? String((suggest as { message?: unknown }).message ?? '')
+                  : '');
+          return suggestStr ? (
+            <View style={styles.suggestBox}>
+              <Icon name="lightbulb-on-outline" size={16} color={NEUTRAL.warning} />
+              <Text style={styles.suggestText}>{suggestStr}</Text>
+            </View>
+          ) : null;
+        })()}
 
         {/* M3: phán-quyết người dùng — chỉ hiện khi backend trả query_id */}
         {queryId && (

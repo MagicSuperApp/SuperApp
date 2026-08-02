@@ -37,9 +37,11 @@ export const usePostJob = () => {
 
   const submit = useCallback(async (input: PostJobInput): Promise<boolean> => {
     if (!isWorkBackendEnabled()) {
-      // Mock: coi như đăng thành công (không chạm mạng).
-      setState({ submitting: false, errorKind: null, errorCode: null, result: null });
-      return true;
+      // KHÔNG chạm mạng ⇒ KHÔNG được báo thành công. Trước đây `return true` là
+      // "đăng-giả": người dùng tin đã đăng tin tuyển, thực tế không có gì gửi đi.
+      // Trả false + mã BACKEND_DISABLED để UI báo trung thực "chưa đăng được".
+      setState({ submitting: false, errorKind: null, errorCode: 'BACKEND_DISABLED', result: null });
+      return false;
     }
     setState({ submitting: true, errorKind: null, errorCode: null, result: null });
     try {

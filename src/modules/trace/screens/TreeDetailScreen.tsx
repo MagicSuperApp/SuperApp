@@ -26,6 +26,8 @@ import {
   ScrollView,
   Image,
   ActivityIndicator,
+  Alert,
+  Clipboard,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -38,6 +40,7 @@ import TreeMetadataTab from './TreeMetadataTab';
 import { formatTreeName, shortTreeCode } from '../../../utils/treeNameFormatter';
 import { loadTreeImages } from '../../../services/treeImageStore';
 import { fetchTreeViews, treeViewImageUrls } from '../../../services/treeViewsService';
+import { loadVideoProofs, type VideoProof } from '../../../services/videoProofStore';
 import { ORILIFE_BASE } from '../../../services/orilifeBase';
 import rLog from '../../../services/remoteLogger';
 import {
@@ -284,6 +287,18 @@ const TreeDetailScreen = () => {
   // xem phóng to (lightbox).
   const [treeImages, setTreeImages] = useState<string[]>([]);
   const [zoomImage, setZoomImage] = useState<string | null>(null);
+  const [videoProofs, setVideoProofs] = useState<VideoProof[]>([]);
+
+  // Bằng chứng video đã lưu lên LampNet. Nạp lại mỗi lần màn được focus vì người
+  // dùng vừa gửi video xong là quay về đây — không nạp lại thì tưởng chưa lưu.
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true;
+      const id = tree?.id;
+      if (id) loadVideoProofs(id).then(p => { if (alive) setVideoProofs(p); });
+      return () => { alive = false; };
+    }, [tree?.id]),
+  );
 
   useEffect(() => {
     let alive = true;
@@ -409,6 +424,8 @@ const TreeDetailScreen = () => {
     (navigation as any).navigate('TreeViewer3D', {
       code: (tree as any).code ?? (tree as any).shortCode ?? '',
       treeName: (tree as any).name,
+      // treeId để màn 3D gọi được build3d (xếp hàng dựng) khi model chưa có — H-11/H-25.
+      treeId: tree.id,
     });
   };
 
@@ -604,6 +621,44 @@ const TreeDetailScreen = () => {
               </TouchableOpacity>
             ))}
           </ScrollView>
+        </View>
+      )}
+
+      {/* Bằng chứng video trên LampNet. Hiện mã lưu trữ vì OriLife KHÔNG có route
+          tra ngược — đây là chỗ duy nhất đội thực địa đối chiếu được sau buổi.
+          Chạm để sao chép mã. */}
+      {videoProofs.length > 0 && (
+        <View style={styles.proofWrap}>
+          <View style={styles.sectionLeft}>
+            <View style={styles.sectionDot} />
+            <Text style={styles.sectionTitle}>VIDEO ĐÃ LƯU ({videoProofs.length})</Text>
+          </View>
+          {videoProofs.map(p => (
+            <TouchableOpacity
+              key={p.videoCid}
+              style={styles.proofRow}
+              activeOpacity={0.7}
+              onPress={() => {
+                Clipboard.setString(p.videoCid);
+                Alert.alert('Đã sao chép', 'Mã lưu trữ đã vào bộ nhớ tạm.');
+              }}
+            >
+              <Icon
+                name={p.stored === false ? 'cloud-alert' : 'shield-check'}
+                size={15}
+                color={p.stored === false ? '#B26A00' : '#1b5e20'}
+              />
+              <View style={styles.proofBody}>
+                <Text style={styles.proofCid} numberOfLines={1}>{p.videoCid}</Text>
+                <Text style={styles.proofMeta}>
+                  {p.stored === false ? 'Chưa lên được mạng · ' : ''}
+                  {p.at ? new Date(p.at).toLocaleString('vi-VN') : ''}
+                  {p.nFruitsMax ? ` · khoảng ${p.nFruitsMax} quả` : ''}
+                </Text>
+              </View>
+              <Icon name="content-copy" size={14} color={COLORS.textMuted} />
+            </TouchableOpacity>
+          ))}
         </View>
       )}
 
@@ -1102,6 +1157,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10,
   },
   treeVideoBtnText: { fontSize: 13, fontWeight: '700', color: '#1b5e20' },
+  proofWrap: { marginBottom: 14, gap: 8 },
+  proofRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    borderWidth: 1, borderColor: '#c8e6c9', backgroundColor: '#f1f8e9',
+    borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8,
+  },
+  proofBody: { flex: 1, gap: 2 },
+  proofCid: { fontSize: 12.5, fontWeight: '700', color: '#1b5e20' },
+  proofMeta: { fontSize: 11.5, color: COLORS.textMuted },
   photoStrip: { gap: 8, paddingVertical: 2 },
   photoThumb: {
     width: 96, height: 96, borderRadius: 12,

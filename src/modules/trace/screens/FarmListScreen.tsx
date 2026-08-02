@@ -364,7 +364,7 @@ const FarmListScreen = () => {
             onChangeText={setSearchQuery}
           />
           {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
+            <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 13, bottom: 13, left: 13, right: 13 }}>
               <Icon name="close-circle" size={18} color={COLORS.textMuted} />
             </TouchableOpacity>
           )}

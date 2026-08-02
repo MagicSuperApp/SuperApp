@@ -24,6 +24,7 @@ import Toast from 'react-native-toast-message';
 import NetInfo from '@react-native-community/netinfo';
 import { handleNavigationStateChange } from '../services/analytics';
 import { Icon } from '../components/Icon';
+import RootErrorBoundary from '../components/RootErrorBoundary';
 import { COLORS, ACTION_COLORS } from '../theme';
 import { syncService } from '../services/syncService';
 import AppHeader, { AppHeaderProvider } from '../components/AppHeader';
@@ -53,8 +54,9 @@ import FruitListScreen from '../screens/FruitListScreen';
 import FruitCropperScreen from '../screens/FruitCropperScreen';
 import TreeMap2DScreen from '../screens/TreeMap2DScreen';
 import FarmMap2DScreen from '../screens/FarmMap2DScreen';
-import Space3DScreen from '../screens/Space3DScreen';
-import FruitPlace3DScreen from '../screens/FruitPlace3DScreen';
+// Space3D/FruitPlace3D nạp LAZY (định nghĩa gần HOST_STACK_SCREENS bên dưới) để expo
+// (expo-gl → expo-modules-core) KHÔNG chạy lúc startup. Xem chú thích tại chỗ định nghĩa.
+import GLErrorBoundary from '../components/GLErrorBoundary';
 import TreeIdentityScreen from '../screens/TreeIdentityScreen';
 import TreeEnrollScreen from '../screens/TreeEnrollScreen';
 import FruitVideoScreen from '../screens/FruitVideoScreen';
@@ -141,21 +143,27 @@ const TAB_ICONS: Record<string, string> = Object.fromEntries(
   Object.keys(NAV_FRAME).map((route) => [route, navIcon(route, true)]),
 );
 
-// 1. Component bọc riêng cho việc gọi FarmDetail từ Native (giữ nguyên).
+// 1. Component bọc riêng cho việc gọi FarmDetail từ Native.
+// PHẢI bọc RootErrorBoundary: đây là ROOT React thứ 2 (registerComponent bên dưới,
+// do FarmDetailActivity Android nạp qua ReactRootView riêng). Lưới chống-trắng-màn
+// ở index.js chỉ bọc root chính `aladin_mobile_fe` → root này nằm NGOÀI lưới đó;
+// FarmDetailScreen (hoặc con) ném lúc render sẽ trắng câm nếu không có boundary tại đây.
 const NativeFarmDetailWrapper = (props: any) => {
   return (
-    <Provider store={store}>
-      <NavigationContainer>
-        <Stack.Navigator>
-          <Stack.Screen
-            name="FarmDetail"
-            component={FarmDetailScreen}
-            initialParams={props}
-            options={{ headerShown: false }}
-          />
-        </Stack.Navigator>
-      </NavigationContainer>
-    </Provider>
+    <RootErrorBoundary>
+      <Provider store={store}>
+        <NavigationContainer>
+          <Stack.Navigator>
+            <Stack.Screen
+              name="FarmDetail"
+              component={FarmDetailScreen}
+              initialParams={props}
+              options={{ headerShown: false }}
+            />
+          </Stack.Navigator>
+        </NavigationContainer>
+      </Provider>
+    </RootErrorBoundary>
   );
 };
 
@@ -1505,6 +1513,36 @@ const ProtectedMain = () => {
 
 // --- Host-level stack screens (KHÔNG thuộc module) -------------------------
 // Đăng ký tĩnh; giữ nguyên route name + options cũ.
+// ── LAZY 3D ─────────────────────────────────────────────────────────────────
+// Space3D/FruitPlace3D kéo @react-three/fiber/native → expo-gl → expo-modules-core.
+// Nạp TĨNH khiến expo-modules-core chạy (globalThis.expo.EventEmitter) NGAY lúc startup;
+// trên bản signed globalThis.expo chưa sẵn → crash CẢ APP. Nạp LƯỜI: chỉ khi mở màn 3D.
+// Suspense + GLErrorBoundary: nếu expo vẫn lỗi thì chỉ hỏng khung 3D, KHÔNG sập app.
+const _LazySpace3D = React.lazy(() => import('../screens/Space3DScreen'));
+const _LazyFruitPlace3D = React.lazy(() => import('../screens/FruitPlace3DScreen'));
+const _make3D = (Comp: React.LazyExoticComponent<any>, tag: string): React.FC<any> =>
+  function Lazy3DScreen(props: any) {
+    // GLErrorBoundary NGOÀI Suspense: lỗi lúc LAZY-IMPORT (module expo-modules-core
+    // ném "globalThis.expo undefined" trên bản signed) được React.lazy re-throw ở
+    // tầng render — ErrorBoundary phải bọc NGOÀI Suspense mới bắt được (nếu để trong
+    // sẽ lọt → sập app). Bắt được = chỉ hiện màn lỗi 3D, app vẫn chạy.
+    return (
+      <GLErrorBoundary tag={tag}>
+        <React.Suspense
+          fallback={
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#000' }}>
+              <ActivityIndicator size="large" color="#fff" />
+            </View>
+          }
+        >
+          <Comp {...props} />
+        </React.Suspense>
+      </GLErrorBoundary>
+    );
+  };
+const Space3DScreen = _make3D(_LazySpace3D, 'space3d_lazy');
+const FruitPlace3DScreen = _make3D(_LazyFruitPlace3D, 'fruitplace3d_lazy');
+
 const HOST_STACK_SCREENS: Array<{
   name: string;
   component: React.ComponentType<any>;
@@ -1612,13 +1650,17 @@ const AppNavigator = () => {
     //
     // Reference: docs/PRINCIPLES/01-INDEPENDENT-FEATURE-OPERATION.md §3.3
     const initServices = async () => {
-      // Start sync service (database will be initialized per-user on login)
-      console.log('[Navigation] Initializing sync service');
-      syncService.start();
-
-      // Bỏ 3 màn welcome/onboarding — vào thẳng Login. Người dùng luôn phải xác
-      // thực sinh trắc mỗi phiên; KHÔNG auto-login vào Main.
-      setInitialRoute('Login');
+      try {
+        // Start sync service (database will be initialized per-user on login)
+        console.log('[Navigation] Initializing sync service');
+        syncService.start();
+      } finally {
+        // Bỏ 3 màn welcome/onboarding — vào thẳng Login. Người dùng luôn phải xác
+        // thực sinh trắc mỗi phiên; KHÔNG auto-login vào Main.
+        // finally: đây là điểm DUY NHẤT thoát spinner initialRoute=null. Nếu bất kỳ
+        // init nào ở trên ném thì vẫn PHẢI mở khoá UI — nếu không app kẹt spinner câm.
+        setInitialRoute('Login');
+      }
     };
 
     initServices();

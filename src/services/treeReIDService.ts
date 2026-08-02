@@ -7,7 +7,9 @@
  * Timeout: 45s, retry 1 lần cho lỗi mạng (không retry 4xx)
  */
 
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ensureOrilifeToken } from './orilifeDidAuth';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -63,8 +65,10 @@ export interface IdentifyResponse {
    * ADDITIVE: câu gợi ý hành-động do backend trả khi kết quả chưa chắc (vd
    * "đi vòng quanh cây, chụp thêm góc khác" / "kết quả chưa chắc, nhờ chủ vườn
    * xác nhận"). Hiện ở UNCERTAIN/NO_MATCH. Thiếu (backend cũ) → UI không hiện.
+   * LƯU Ý: backend đôi khi trả OBJECT {message, channel, n_candidates} thay vì
+   * string — UI phải coerce (ReidConfirmDialog) kẻo render object = crash React.
    */
-  suggest?: string;
+  suggest?: string | { message?: string; channel?: string; n_candidates?: number };
   /**
    * ADDITIVE (B1/B2 owner_review): backend có CHO PHÉP tạo cây MỚI ở lần này
    * không. Thiếu/undefined (backend cũ) = true → GIỮ hành-vi cũ (cho tạo mới).
@@ -196,6 +200,12 @@ async function _getAuthHeader(): Promise<string | null> {
   }
 }
 
+/** Cắt phần gốc (https://host) khỏi URL đầy đủ để truyền cho ensureOrilifeToken. */
+function _baseOf(url: string): string {
+  const i = url.indexOf('/api/');
+  return i > 0 ? url.slice(0, i) : url;
+}
+
 async function _apiCall<T>(
   url: string,
   method: 'GET' | 'POST' | 'DELETE',
@@ -203,6 +213,9 @@ async function _apiCall<T>(
   timeoutMs: number = REQUEST_TIMEOUT_MS,
   attempt = 0,
 ): Promise<{ ok: boolean; data?: T; error?: APIError }> {
+  // Đảm bảo có token DID trước khi gọi (mở app vào thẳng luồng cây chưa ký DID → 401 oan).
+  // Cùng auth_token field-reid với fruitReIDService — dùng chung cơ chế ký lại.
+  await ensureOrilifeToken(_baseOf(url));
   const authHeader = await _getAuthHeader();
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (authHeader) headers['Authorization'] = authHeader;
@@ -220,6 +233,12 @@ async function _apiCall<T>(
     clearTimeout(timeoutHandle);
 
     if (resp.status === 401) {
+      // Token hết hạn GIỮA BUỔI → ký lại bằng DID 1 lần rồi thử lại (khớp fruitReIDService).
+      // Trước đây trả thẳng auth_error → getTrees/identify câm giữa thực địa, không tự hồi:
+      // nông dân không chọn được cây để quay video dù mạng vẫn tốt.
+      if (attempt === 0 && (await ensureOrilifeToken(_baseOf(url), { force: true }))) {
+        return _apiCall<T>(url, method, body, timeoutMs, 1);
+      }
       return {
         ok: false,
         error: { type: 'auth_error', detail: 'Token hết hạn hoặc không hợp lệ', http_status: 401 },
@@ -312,12 +331,45 @@ async function _apiCall<T>(
 /** Matcher vỏ-thân (PoC-Tree §4 M4) — override ENV backend, CHỈ cho tester. */
 export type ShellMatcher = 'sift' | 'xfeat' | 'loftr';
 
+/**
+ * Hướng máy lúc chụp MỘT ảnh. Mảng `captures` song song với `files[]` — khuôn này
+ * lấy đúng theo tiền lệ `regions` của OriLife (`server.py:1710-1712`, xử bởi
+ * `_parse_regions`), không đẻ hình dạng thứ hai. Ảnh nào không có số thì để `null`.
+ *
+ * Đơn vị (OriLife đề nghị 2026-07-29): `heading` độ [0,360), `pitch` độ [-90,90]
+ * dương là ngẩng lên, `roll` độ [-180,180] dương là nghiêng phải.
+ */
+export interface CaptureOrientation {
+  heading?: number | null;
+  pitch?: number | null;
+  roll?: number | null;
+}
+
+/**
+ * Gốc quy chiếu của `heading` — gửi kèm để server lọc được, vì hai nền tảng KHÔNG
+ * cùng gốc và app chưa sửa được điều đó:
+ *   · `ios_true_or_magnetic` — `HeadingCaptureManager.swift:278` lấy `trueHeading`
+ *     khi hợp lệ, ÂM THẦM rơi về `magneticHeading` khi không. Không phân biệt được
+ *     từng mẫu ở tầng JS.
+ *   · `android_magnetic` — `HeadingSensorReader.kt:27` đọc `TYPE_ROTATION_VECTOR`
+ *     và KHÔNG cộng độ lệch từ (`GeomagneticField`), nên là Bắc TỪ.
+ *
+ * OriLife yêu cầu Bắc THẬT. App CHƯA đạt, và sửa là việc native (Thư) — đã báo.
+ * Trong lúc đó thà khai đúng gốc quy chiếu còn hơn dán nhãn "true" cho số Bắc từ.
+ */
+export type HeadingRef = 'ios_true_or_magnetic' | 'android_magnetic';
+
 export interface IdentifyOptions {
   lat?: number;
   lon?: number;
   acc?: number;
   heading?: number;
   pitch?: number;
+  roll?: number;
+  /** Hướng THEO TỪNG ẢNH, song song `files[]`. Có `captures` thì nó thắng cấp request. */
+  captures?: CaptureOrientation[];
+  /** Gốc quy chiếu của mọi con số heading trong lần gửi này. */
+  headingRef?: HeadingRef;
   /** Khi true: bỏ qua kiểm tra trùng lặp, tạo cây mới bất kể. Dùng cho handleForceEnroll. */
   force?: boolean;
   /**
@@ -339,6 +391,49 @@ export interface IdentifyVerdictResponse {
 // Public API
 // ---------------------------------------------------------------------------
 
+/**
+ * Gắn GPS + hướng máy vào form. Dùng chung cho identify / enroll / verify_add để ba
+ * route không lệch nhau — trước đây enroll không gửi hướng nào, mà enroll lại chính
+ * là nguồn dựng 3D, tức chỗ mất dữ liệu nặng nhất.
+ *
+ * Quy tắc bỏ trường (OriLife chốt): thiếu số thì **KHÔNG gửi khoá đó**. Đừng gửi
+ * chuỗi rỗng, đừng gửi "null" — server ép kiểu không nổ nhưng nhật ký lưu rác.
+ */
+function appendGeoAndOrientation(form: FormData, options: IdentifyOptions): void {
+  if (options.lat !== undefined) form.append('lat', String(options.lat));
+  if (options.lon !== undefined) form.append('lon', String(options.lon));
+  if (options.acc !== undefined) form.append('acc', String(options.acc));
+  if (options.heading !== undefined) form.append('heading', String(options.heading));
+  if (options.pitch !== undefined) form.append('pitch', String(options.pitch));
+  if (options.roll !== undefined) form.append('roll', String(options.roll));
+  if (options.headingRef) form.append('heading_ref', options.headingRef);
+
+  // Chỉ gửi `captures` khi có ÍT NHẤT một ảnh có số thật — mảng toàn null chỉ làm
+  // nặng request và làm nhật ký server bẩn thêm.
+  if (options.captures?.length) {
+    const anyReal = options.captures.some(
+      c => c && (c.heading != null || c.pitch != null || c.roll != null),
+    );
+    if (anyReal) form.append('captures', JSON.stringify(options.captures));
+  }
+}
+
+/** Dựng mảng `captures` từ ảnh native đã chụp (đã song song với `files[]`). */
+export function toCaptureOrientations(
+  caps: Array<{ heading?: number | null; pitch?: number | null; roll?: number | null }>,
+): CaptureOrientation[] {
+  return caps.map(c => ({
+    heading: Number.isFinite(c?.heading as number) ? (c.heading as number) : null,
+    pitch: Number.isFinite(c?.pitch as number) ? (c.pitch as number) : null,
+    roll: Number.isFinite(c?.roll as number) ? (c.roll as number) : null,
+  }));
+}
+
+/** Gốc quy chiếu heading của nền tảng đang chạy. Xem chú thích `HeadingRef`. */
+export function platformHeadingRef(): HeadingRef {
+  return Platform.OS === 'ios' ? 'ios_true_or_magnetic' : 'android_magnetic';
+}
+
 export async function identifyTree(
   baseUrl: string,
   imagePaths: string[],
@@ -350,11 +445,7 @@ export async function identifyTree(
     (form as any).append('files', { uri: imagePaths[i], type: 'image/jpeg', name: `img_${i}.jpg` });
   }
 
-  if (options.lat !== undefined) form.append('lat', String(options.lat));
-  if (options.lon !== undefined) form.append('lon', String(options.lon));
-  if (options.acc !== undefined) form.append('acc', String(options.acc));
-  if (options.heading !== undefined) form.append('heading', String(options.heading));
-  if (options.pitch !== undefined) form.append('pitch', String(options.pitch));
+  appendGeoAndOrientation(form, options);
   form.append('source', 'phone');
 
   // M4: chỉ nối ?matcher= khi tester ép — mặc-định để backend dùng ENV.
@@ -401,11 +492,7 @@ export async function enrollTree(
     (form as any).append('files', { uri: imagePaths[i], type: 'image/jpeg', name: `img_${i}.jpg` });
   }
 
-  if (options.lat !== undefined) form.append('lat', String(options.lat));
-  if (options.lon !== undefined) form.append('lon', String(options.lon));
-  if (options.acc !== undefined) form.append('acc', String(options.acc));
-  if (options.heading !== undefined) form.append('heading', String(options.heading));
-  if (options.pitch !== undefined) form.append('pitch', String(options.pitch));
+  appendGeoAndOrientation(form, options);
   if (options.force) form.append('force', 'true');
 
   return _apiCall<EnrollResponse>(`${baseUrl}/api/enroll`, 'POST', form, IMAGE_REQUEST_TIMEOUT_MS);
@@ -415,6 +502,7 @@ export async function verifyAddTree(
   baseUrl: string,
   treeId: string,
   imagePaths: string[],
+  options: IdentifyOptions = {},
 ): Promise<{ ok: boolean; data?: VerifyAddResponse; error?: APIError }> {
   const form = new FormData();
 
@@ -423,6 +511,10 @@ export async function verifyAddTree(
   for (let i = 0; i < imagePaths.length; i++) {
     (form as any).append('files', { uri: imagePaths[i], type: 'image/jpeg', name: `img_${i}.jpg` });
   }
+
+  // verify_add cũng nhận heading/pitch/roll (`server.py:1941`) — gộp ảnh vào cây đã
+  // có mà không gửi hướng thì ảnh mới kém giá trị hơn ảnh cũ.
+  appendGeoAndOrientation(form, options);
 
   return _apiCall<VerifyAddResponse>(`${baseUrl}/api/verify_add`, 'POST', form, IMAGE_REQUEST_TIMEOUT_MS);
 }
@@ -494,4 +586,29 @@ export async function renameTree(
 
   const result = await _apiCall<{ ok: boolean }>(`${baseUrl}/api/rename`, 'POST', form);
   return { ok: result.ok, error: result.error };
+}
+
+/**
+ * buildTree3D — YÊU CẦU máy chủ dựng mô hình 3D cho cây (H-11/H-25).
+ * POST /api/build3d/{tree_id} (auth chủ cây):
+ *   200 { ok:true, building:true } → đã nhận vào làn dựng.
+ *   404 { ok:false, error:"không có xuất xứ" } → cây chưa có provenance (chưa đăng ký xong).
+ *
+ * QUAN TRỌNG (H-25): server chỉ chạy 3D khi làn provenance RẢNH → `building:true` KHÔNG
+ * đồng nghĩa "đang dựng ngay", thường là "đã xếp hàng, chờ hạ tầng rảnh". UI phải nói
+ * "đã xếp hàng" thay vì "đang dựng" quay mãi. `_apiCall` không đọc body 404 nên phân biệt
+ * "chưa có xuất xứ" qua `error.http_status === 404`.
+ */
+export async function buildTree3D(
+  baseUrl: string,
+  treeId: string,
+): Promise<{ ok: boolean; building?: boolean; noProvenance?: boolean; error?: APIError }> {
+  const result = await _apiCall<{ ok: boolean; building?: boolean }>(
+    `${baseUrl}/api/build3d/${encodeURIComponent(treeId)}`,
+    'POST',
+  );
+  if (result.ok && result.data) {
+    return { ok: !!result.data.ok, building: result.data.building };
+  }
+  return { ok: false, noProvenance: result.error?.http_status === 404, error: result.error };
 }

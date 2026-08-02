@@ -5,6 +5,86 @@
 
 ---
 
+## Crash 3D bản AAB **lần 2** (build 83) — KHÔNG phải R8 nữa; bọc chắn cho FruitPlace3D
+
+Triệu chứng: build 83 (đã có rule `-keep class expo.modules.gl.**`) mở Space3D **và** FruitPlace3D vẫn sập app.
+
+**Đã loại trừ R8-ăn-expo-gl**: `android/app/build/outputs/mapping/release/seeds.txt` của chính bản đó có đủ 292 mục `expo.modules.gl.*` (`GLContext$GLThread`, `GLView`, `cpp.EXGL`…) → rule ăn rồi.
+
+**Phân loại crash**: logcat cho `DropBoxManagerService: add tag=data_app_crash` (KHÔNG phải `data_app_native_crash`) + hộp thoại "Application Error" → **exception Java/JS chưa bắt**, không phải SIGABRT của JNI như lần trước. Bản release RN biến lỗi JS chưa bắt thành `JavascriptException` đúng dạng này.
+> Cách phân loại nhanh về sau: `data_app_crash` = Java/JS · `data_app_native_crash` (+ tombstone) = native. Đọc stack thật bằng `adb logcat -b crash -d`.
+
+**Đã làm (giảm thiệt hại, chưa phải sửa gốc)** — `FruitPlace3DScreen.tsx`:
+- Bọc `<Canvas>` bằng `GLErrorBoundary tag="fruit_place3d"` — trước đó CHỈ Space3D có chắn, màn này để trần nên lỗi JS trong cảnh làm sập cả app.
+- Thêm mốc trace `viewer3d_place_mount` / `place_gl_created` / `place_unmount` (`remoteLogger.ts`), cùng bộ với Space3D → đọc mốc CUỐI biết chết lúc dựng ngữ-cảnh GL hay lúc render cảnh.
+
+> ⚠️ Lưu ý giới hạn: ErrorBoundary chỉ bắt lỗi lúc RENDER. Lỗi ném trong callback native (`onContextCreate` của expo-gl) hay trong vòng lặp vẽ nằm NGOÀI tầm — vẫn sập. Nếu bọc rồi mà còn sập thì thủ phạm ở đó.
+
+## Mở màn 3D là CRASH ở bản AAB/release (dev `npm run android` thì ổn) — R8 ăn `GLContext.flush()`
+
+Triệu chứng: `npm run android` mở Space3D / FruitPlace3D bình thường; đóng gói `.aab` rồi mở sơ đồ 3D của vườn là **crash tức thì**, không kịp thấy màn nào.
+
+### Gốc rễ — `expo-gl` KHÔNG ship rule ProGuard nào, mà C++ của nó gọi Java THEO TÊN
+`android/app/build.gradle` có `enableProguardInReleaseBuilds = true` → bản release chạy R8, bản debug thì không. Đó là toàn bộ khác biệt giữa hai bản.
+
+`expo-gl/android/src/main/cpp/EXGLJniApi.cpp` — `EXGLContextPrepare()`:
+```cpp
+jclass    GLContextClass  = env->GetObjectClass(glContext);
+jmethodID flushMethodRef  = env->GetMethodID(GLContextClass, "flush", "()V");
+// ... về sau: threadLocalEnv->CallVoidMethod(glContextRef, flushMethodRef);
+```
+`expo.modules.gl.GLContext` là class Java **thường**: không `extends Module`, không `implements ExpoView/Record/Enumerable`, không `@DoNotStrip` → **không rule nào đang áp giữ tên `flush()`**:
+- `expo-modules-core` và `expo` CÓ `consumerProguardFiles` (tự áp vào app) — nhưng chỉ giữ Module / ExpoView / Record / enum Enumerable / `@DoNotStrip`.
+- `expo-gl`, `expo-asset`, `expo-file-system` **không có** `consumerProguardFiles` (đã kiểm `build.gradle` từng gói). expo-asset/expo-file-system không sao vì mã Kotlin của chúng toàn Module + Record → đã được rules của core phủ. **expo-gl là ngoại lệ duy nhất.**
+- Rule của app `-keepclasseswithmembernames class * { native <methods>; }` giữ được `cpp/EXGL` (class có `native <methods>`, và `keepclasseswithmembernames` giữ CẢ tên class → tên hàm JNI `Java_expo_modules_gl_cpp_EXGL_*` vẫn khớp). Nhưng `GLContext.flush()` là hàm Java thường, rule này không với tới.
+
+→ R8 đổi tên (hoặc nội-tuyến rồi bỏ) `flush()` → `GetMethodID` trả **NULL** + treo sẵn `NoSuchMethodError` → `CallVoidMethod` với `jmethodID` NULL → **JNI abort / SIGABRT**. Xảy ra ở lần flush ĐẦU TIÊN, tức đúng khoảnh khắc ngữ-cảnh GL được dựng = lúc `<Canvas>` gắn vào cây → crash "ngay khi mở".
+
+**Sửa** — `android/app/proguard-rules.pro`: `-keep class expo.modules.gl.** { *; }`. Cả gói chỉ có 5 class + `cpp/EXGL`, giữ hết gần như không tăng kích thước. Lý do đầy đủ đã ghi ngay tại chỗ trong file.
+
+> ⚠️ Nâng `expo-gl` sau này thì kiểm lại: nếu upstream thêm `consumerProguardFiles` thì rule này thành dư (vô hại). Nếu thêm chỗ tra-cứu-theo-tên mới thì rule cả-gói vẫn phủ.
+> ⚠️ iOS không bị: không có R8.
+
+### Lỗi thứ hai (cùng lúc, KHÔNG chí mạng): bản release không nạp được model `.glb` nào
+`treeAsset.ts` → `uriViaResolveAssetSource`. Đường đọc model ở bản release **luôn** thất bại → mọi cây rơi về **cây dự phòng hình nón**. Dev không lộ vì đi đường khác (HTTP của metro).
+
+- `uriViaExpoAsset` vô dụng ở app này: `expo-asset` cần `expo-updates` để có `localAssets`; không có thì `selectAssetSource` trả `{ uri: '' }` → ném → rơi sang đường dự phòng. (Đúng như ghi chú cũ: expo-asset trông cậy vào plugin metro riêng của Expo.)
+- `uriViaResolveAssetSource`: ở release, `AssetSourceResolver.defaultAsset()` → `resourceIdentifierWithoutScale()` → uri là **TÊN TÀI NGUYÊN TRẦN không scheme**, vd `assets_models_tree1` (Metro nhét `.glb` vào `res/raw/`).
+- Code cũ trả thẳng tên đó ra, rồi `readAsStringAsync(uri, { encoding: 'base64' })`. Nhánh base64 của expo-file-system đi qua `getInputStream()`, hàm này **chỉ nhận `file://` · `asset://` · SAF** → scheme null là ném `Unsupported scheme for location`.
+  (Trớ trêu: nhánh **UTF-8** của cùng hàm đó lại có `uri.scheme == null -> openResourceInputStream(...)`. Chỉ nhánh base64 thiếu.)
+- **Sửa**: uri không có scheme thì `FileSystem.copyAsync({ from: uri, to: <cache>.glb })` **trước**, rồi đọc file thật. `copyAsync` CÓ nhánh `fromUri.scheme == null` → `openResourceInputStream` → `resources.openRawResource(getIdentifier(name, "raw", pkg))` (`FileSystemLegacyModule.kt`). Quyền cũng OK: `permissionsForUri` cho `scheme == null` → READ.
+
+## Sửa: chụm 2 ngón ở màn KHOANH QUẢ là ảnh phóng hết cỡ ngay
+
+`FruitCropperScreen` → `panResponder`. Kéo 1 ngón vẫn đúng, nhưng vừa chụm 2 ngón là zoom nhảy thẳng tới `ZOOM_MAX`.
+
+**Gốc rễ**: `onPanResponderGrant` chỉ chạy **một lần** — lúc ngón ĐẦU chạm xuống. Đặt ngón thứ hai sau đó KHÔNG sinh grant mới, nên mốc cử-chỉ vẫn là mốc của 1 ngón với `dist: 0` (`|| 1` ép về 1). Nhịp pinch đầu tiên tính `touchDist(t) / g.dist` = vài trăm px / 1 → tỉ-lệ hàng trăm lần → chạm trần ngay. Rời bớt một ngón (2→1) cũng lệch tương tự vì mốc cũ là tâm 2 ngón.
+
+**Sửa**: tách hàm `rebase(touches)` và ghi thêm `n` (số ngón lúc lấy mốc) vào `gStart`. Trong `onPanResponderMove`, hễ `g.n` khác số ngón hiện tại thì **lấy mốc mới rồi bỏ qua nhịp đó** — nhịp sau mới tính. Nhờ vậy 1↔2 ngón đổi qua lại giữa chừng đều liền mạch, không giật.
+
+## Lớp phủ ĐANG QUÉT (khoanh quả): đổi sang SÓNG CHẤM XANH
+
+`FruitCropperScreen` → `ScanOverlay`. Bỏ vạch sáng quét lên-xuống và khung ngắm bốn góc — hai thứ đó mượn hình máy quét QR, mà đây không quét QR; cái hộp vuông còn vẽ sẵn một chỗ giả nơi quả sắp nằm.
+
+Nay: **lưới chấm xanh mờ phủ kín màn khoanh**, mỗi chấm phồng–xẹp nhẹ; hàng dưới trễ pha hơn hàng trên nên cả lưới gợn thành sóng chạy từ trên xuống.
+
+- **Một `Animated.Value` duy nhất** chạy tuyến-tính 0→1 rồi lặp (`WAVE_PERIOD` 2400 ms). Hình sin của từng hàng dựng sẵn bằng `interpolate` lấy mẫu cosin ĐÃ DỊCH PHA (`WAVE_SAMPLES` 24 mốc) → cả trăm chấm chỉ tốn một driver, chạy trọn trên luồng native. Cosin liền mạch tại mốc 0 và 1 nên vòng lặp nối lại không giật.
+- Lưới tự chia theo kích thước màn (`DOT_GAP` 54, `DOT_SIZE` 13); độ trễ giữa hai hàng = `WAVE_ROW_LAG` (0.075 chu kỳ) — tăng thì sóng dốc hơn.
+- Thẻ "Đang quét ảnh để tìm quả…" + nút "Tự canh bằng tay" giữ nguyên: vẫn là lối thoát duy nhất khi mạng chết.
+
+## Màn KHOANH QUẢ: bỏ nút "Tự căn khung quả" — quét ảnh rồi TỰ căn
+
+`FruitCropperScreen`. Trước: ảnh vào màn là chạy `detectFruit` ngầm, tìm được thì hiện một CÁI NÚT xanh nhấp nháy mời bấm để nhảy khung vào quả. Thừa một bước: máy đã biết quả nằm đâu rồi, còn ai không đoán ra nút làm gì thì vẫn è cổ kéo-phóng bằng tay.
+
+Nay: vào màn → **lớp phủ ĐANG QUÉT** (`ScanOverlay`: vạch sáng chạy dọc ảnh + bốn góc ngắm thở nhẹ + thẻ "Đang quét ảnh để tìm quả…") → xong thì khung **tự trượt vào ôm quả**, kèm một câu báo tự tắt sau 3,2 s. Bỏ hẳn `DetectInvite`.
+
+- **Trong lúc quét thì GIẤU mask + vòng crop** (và cả cột nút phải, thanh dưới): vòng trống giữa màn lúc ảnh chưa căn chỉ tổ rối; quét xong khung mới hiện ra, đúng lúc nó đã ôm vào quả.
+- **Trượt mượt, không nhảy cóc** — `glideTo()` (rAF + easeOutCubic, ~520 ms) đổi `tx/ty/zoom`. Nhảy phắt một cái thì người dùng mất dấu, không rõ ảnh vừa bị phóng hay bị đổi chỗ. **Chạm vào ảnh là DỪNG ngay** (`stopGlide()` trong `onPanResponderGrant`) — tay người luôn thắng hoạt-ảnh.
+- ⚠️ `jumpToBox` nay tính bán-kính khung TỪ `vw/vh` chứ không lấy `ringRef`: hàm này ép `shape='circle'`, mà ring của khung ELIP đang mở có `rx/ry` khác → lấy nhầm thì căn lệch. (Lỗi cũ, ít lộ vì mặc định là khung tròn.)
+- **Luôn có lối thoát**: hạn chờ API là 45 s, nên lớp phủ có nút "Tự canh bằng tay"; bấm rồi thì kết quả quét về sau KHÔNG giật khung nữa (`scanSkipped` ref). `detectFruit(...)` bọc `.catch(() => null)` — mạng chết cũng phải tắt được lớp phủ.
+- Nút bullseye canh-lại chuyển vào **cột nút bên phải** (chỉ hiện khi đã tìm ra quả) — không còn là lời mời, chỉ là đường về sau khi kéo lệch mất quả.
+- Không thấy quả / lỗi → báo "Chưa nhận ra quả — kéo và phóng để đưa quả vào vòng" rồi im. Luồng THÊM GÓC (`fruitId`) không quét, không lớp phủ, y như cũ.
+
 ## Mất BẢN ĐỒ khi bỏ chọn cây (và giữ chế độ xem cây sau khi đặt vị trí)
 
 Triệu chứng: xác nhận vị trí quả xong, về Space3D thì KHÔNG có bản đồ; chạm vào một cây là bản đồ hiện lại.

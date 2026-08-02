@@ -179,6 +179,16 @@ const ChatScreen: React.FC = () => {
         onPressMore={() => {}}
       />
 
+      {/* DEMO banner — chat đang chạy mock: tin nhắn CHƯA gửi thật qua mạng.
+          Chữ ký/ciphertext là minh hoạ trong máy, không phải bằng chứng thật. */}
+      {!isProofChatBackendEnabled() && (
+        <View style={styles.demoBanner}>
+          <Text style={styles.demoText}>
+            DEMO — tin nhắn minh hoạ, CHƯA gửi thật qua mạng. Đang chờ máy chủ Aladin Chat.
+          </Text>
+        </View>
+      )}
+
       {/* Session expired banner */}
       {sessionExpired && (
         <View style={styles.expiredBanner}>
@@ -299,6 +309,15 @@ const styles = StyleSheet.create({
     borderBottomColor: '#E8B0A0',
   },
   expiredText: { fontSize: 11, color: '#8C3622', fontWeight: '600' },
+
+  demoBanner: {
+    backgroundColor: '#FFF4D6',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E8CE86',
+  },
+  demoText: { fontSize: 11, color: '#8A6D1B', fontWeight: '600' },
 
   syncStrip: {
     flexDirection: 'row',

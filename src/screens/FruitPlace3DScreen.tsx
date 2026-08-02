@@ -35,6 +35,8 @@ import { Canvas, useThree } from '@react-three/fiber/native';
 import type * as THREE from 'three';
 
 import { Icon } from '../components/Icon';
+import GLErrorBoundary from '../components/GLErrorBoundary';
+import rLog from '../services/remoteLogger';
 import {
   DEFAULT_FRUIT_COORD, ZONE_LABEL, clampCoord, coordToZone,
   type FruitCoord,
@@ -97,6 +99,14 @@ const FruitPlace3DScreen: React.FC = () => {
     if (treeId) loadTreeModelId(treeId).then((id) => { if (alive) setModelId(id); });
     return () => { alive = false; };
   }, [treeId]);
+
+  // Trace vòng đời — cùng bộ mốc với Space3D. Màn này cũng dựng ngữ-cảnh expo-gl,
+  // nên khi app sập lúc mở 3D thì phải phân biệt được sập ở Space3D hay ở đây.
+  useEffect(() => {
+    rLog.viewer3d.placeMount({ treeId, fruitId });
+    return () => rLog.viewer3d.placeUnmount();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [view, setView] = useState<ViewDir>('front');
   const [coord, setCoord] = useState<FruitCoord>(() => clampCoord(initial ?? DEFAULT_FRUIT_COORD));
@@ -227,19 +237,25 @@ const FruitPlace3DScreen: React.FC = () => {
         {/* Chỉ dựng canvas khi màn đang hiển thị — xem ghi chú cùng chủ đề ở
             Space3DScreen: để hai ngữ-cảnh GL cùng sống là nguồn của giật hình. */}
         {isFocused ? (
-          <Canvas
-            style={StyleSheet.absoluteFill}
-            orthographic
-            camera={{ near: 0.1, far: 200 }}
-          >
-            <color attach="background" args={['#070d0b']} />
-            {/* zoom = px/mét: khung nhìn cao đúng frustumHeightM mét theo chiều cao canvas. */}
-            <OrthoRig view={view} zoom={canvas.h > 0 ? canvas.h / frustumHeightM(view) : 0} />
-            <hemisphereLight args={['#a8e6c4', '#0a1410', 0.9]} />
-            <ambientLight intensity={0.45} />
-            <directionalLight position={[8, 14, 10]} intensity={1.0} color="#e6fff0" />
-            <TreeModel position={[0, 0, 0]} modelId={modelId} />
-          </Canvas>
+          // Cùng lớp chắn với Space3D: lỗi JS trong cảnh 3D ở bản release vốn nổ ra
+          // thành JavascriptException và SẬP CẢ APP. Bọc lại để chỉ mất khung 3D,
+          // người dùng vẫn còn nút quay lại và toạ-độ đang đặt.
+          <GLErrorBoundary tag="fruit_place3d">
+            <Canvas
+              style={StyleSheet.absoluteFill}
+              orthographic
+              camera={{ near: 0.1, far: 200 }}
+              onCreated={() => rLog.viewer3d.placeGlCreated()}
+            >
+              <color attach="background" args={['#070d0b']} />
+              {/* zoom = px/mét: khung nhìn cao đúng frustumHeightM mét theo chiều cao canvas. */}
+              <OrthoRig view={view} zoom={canvas.h > 0 ? canvas.h / frustumHeightM(view) : 0} />
+              <hemisphereLight args={['#a8e6c4', '#0a1410', 0.9]} />
+              <ambientLight intensity={0.45} />
+              <directionalLight position={[8, 14, 10]} intensity={1.0} color="#e6fff0" />
+              <TreeModel position={[0, 0, 0]} modelId={modelId} />
+            </Canvas>
+          </GLErrorBoundary>
         ) : null}
 
         {/* Vạch mốc tâm ngắm — giúp ước lượng độ cao */}

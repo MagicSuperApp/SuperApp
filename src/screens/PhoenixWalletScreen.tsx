@@ -26,18 +26,13 @@ import taad from '../sdk/taadEnclave';
 import { getStoredMasterKek, getActiveAccountIndex, rotateActiveAccount } from '../services/masterKekStore';
 import { currentUserDid } from '../sdk/phoenixKey';
 import { phoenixKeyApi, summarizeWalletAll } from '../services/phoenixKey-api';
+import { fmtAda, fmtLamp } from '../utils/token';
 
 // 0 = preprod (testnet, khớp register WALLET_NETWORK), 1 = mainnet.
 const WALLET_NETWORK = 0;
 
-const fmtAda = (lovelace: number) => (lovelace / 1_000_000).toLocaleString('en-US', {
-  minimumFractionDigits: 2, maximumFractionDigits: 6,
-});
-// LAMP có decimals=6: 1 LAMP = 1.000.000 oildrop (như lovelace của ADA). Backend trả
-// balances.lamp theo OILDROP → chia 1e6 khi hiển thị, y hệt fmtAda cho lovelace.
-const fmtLamp = (oildrop: number) => (oildrop / 1_000_000).toLocaleString('en-US', {
-  maximumFractionDigits: 6,
-});
+// Số dư từ Phoenix là ĐƠN VỊ THÔ trên chuỗi (lovelace / oildrop) — chia ở đây,
+// tầng hiển thị, bằng BigInt. Xem `src/utils/token.ts` để biết vì sao.
 const fmtNum = (n: number) => n.toLocaleString('en-US');
 
 const PhoenixWalletScreen = () => {
@@ -226,8 +221,11 @@ const PhoenixWalletScreen = () => {
       >
         {/* Số dư */}
         <View style={styles.balanceRow}>
-          <BalanceCard icon="cardano" label="ADA" value={ada == null ? '—' : fmtAda(ada)} color="#0033AD" />
-          <BalanceCard icon="lightbulb-on-outline" label="LAMP" value={lamp == null ? '—' : fmtLamp(lamp)} color="#B07D2F" />
+          <BalanceCard icon="cardano" label="ADA" value={fmtAda(ada)} color="#0033AD" />
+          <BalanceCard icon="lightbulb-on-outline" label="LAMP" value={fmtLamp(lamp)} color="#B07D2F" />
+          {/* MAGIC: `magic.available` là sổ vault (không đọc từ UTxO) nên CHƯA rõ có
+              phải đơn vị thô hay không — giữ in nguyên, đã hỏi MAGIC agent. Đừng
+              chia khi chưa có câu trả lời: chia sai còn tệ hơn không chia. */}
           <BalanceCard icon="star-four-points-outline" label="MAGIC" value={magic == null ? '—' : fmtNum(magic)} color="#7A4DB8" />
         </View>
 

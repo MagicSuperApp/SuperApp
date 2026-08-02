@@ -5,6 +5,21 @@
 
 ---
 
+## Crash 3D bản AAB **lần 2** (build 83) — KHÔNG phải R8 nữa; bọc chắn cho FruitPlace3D
+
+Triệu chứng: build 83 (đã có rule `-keep class expo.modules.gl.**`) mở Space3D **và** FruitPlace3D vẫn sập app.
+
+**Đã loại trừ R8-ăn-expo-gl**: `android/app/build/outputs/mapping/release/seeds.txt` của chính bản đó có đủ 292 mục `expo.modules.gl.*` (`GLContext$GLThread`, `GLView`, `cpp.EXGL`…) → rule ăn rồi.
+
+**Phân loại crash**: logcat cho `DropBoxManagerService: add tag=data_app_crash` (KHÔNG phải `data_app_native_crash`) + hộp thoại "Application Error" → **exception Java/JS chưa bắt**, không phải SIGABRT của JNI như lần trước. Bản release RN biến lỗi JS chưa bắt thành `JavascriptException` đúng dạng này.
+> Cách phân loại nhanh về sau: `data_app_crash` = Java/JS · `data_app_native_crash` (+ tombstone) = native. Đọc stack thật bằng `adb logcat -b crash -d`.
+
+**Đã làm (giảm thiệt hại, chưa phải sửa gốc)** — `FruitPlace3DScreen.tsx`:
+- Bọc `<Canvas>` bằng `GLErrorBoundary tag="fruit_place3d"` — trước đó CHỈ Space3D có chắn, màn này để trần nên lỗi JS trong cảnh làm sập cả app.
+- Thêm mốc trace `viewer3d_place_mount` / `place_gl_created` / `place_unmount` (`remoteLogger.ts`), cùng bộ với Space3D → đọc mốc CUỐI biết chết lúc dựng ngữ-cảnh GL hay lúc render cảnh.
+
+> ⚠️ Lưu ý giới hạn: ErrorBoundary chỉ bắt lỗi lúc RENDER. Lỗi ném trong callback native (`onContextCreate` của expo-gl) hay trong vòng lặp vẽ nằm NGOÀI tầm — vẫn sập. Nếu bọc rồi mà còn sập thì thủ phạm ở đó.
+
 ## Mở màn 3D là CRASH ở bản AAB/release (dev `npm run android` thì ổn) — R8 ăn `GLContext.flush()`
 
 Triệu chứng: `npm run android` mở Space3D / FruitPlace3D bình thường; đóng gói `.aab` rồi mở sơ đồ 3D của vườn là **crash tức thì**, không kịp thấy màn nào.

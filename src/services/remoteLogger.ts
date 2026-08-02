@@ -275,6 +275,15 @@ const rLog = {
     spaceGlCreated(): void { send('viewer3d_space_gl_created', {}); },
     spaceUnmount(): void { send('viewer3d_space_unmount', {}); },
 
+    // ── GL 3D (FruitPlace3D → cũng expo-gl, camera trực giao) ──
+    // Cùng bộ mốc với Space3D: mount → gl_created → unmount. Mốc CUỐI đọc được
+    // cho biết chết lúc dựng ngữ-cảnh GL hay lúc render cảnh.
+    placeMount(ctx: { treeId?: string; fruitId?: string }): void {
+      send('viewer3d_place_mount', { treeId: ctx.treeId ?? null, fruitId: ctx.fruitId ?? null });
+    },
+    placeGlCreated(): void { send('viewer3d_place_gl_created', {}); },
+    placeUnmount(): void { send('viewer3d_place_unmount', {}); },
+
     /** ErrorBoundary quanh cảnh 3D bắt được lỗi JS (không phải native crash). */
     boundaryError(tag: string, message: string, stack: string | null): void {
       send('viewer3d_boundary_error', { tag, message, stack }, 'error');

@@ -9,6 +9,7 @@
 
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ensureOrilifeToken } from './orilifeDidAuth';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -197,6 +198,12 @@ async function _getAuthHeader(): Promise<string | null> {
   }
 }
 
+/** Cắt phần gốc (https://host) khỏi URL đầy đủ để truyền cho ensureOrilifeToken. */
+function _baseOf(url: string): string {
+  const i = url.indexOf('/api/');
+  return i > 0 ? url.slice(0, i) : url;
+}
+
 async function _apiCall<T>(
   url: string,
   method: 'GET' | 'POST' | 'DELETE',
@@ -204,6 +211,9 @@ async function _apiCall<T>(
   timeoutMs: number = REQUEST_TIMEOUT_MS,
   attempt = 0,
 ): Promise<{ ok: boolean; data?: T; error?: APIError }> {
+  // Đảm bảo có token DID trước khi gọi (mở app vào thẳng luồng cây chưa ký DID → 401 oan).
+  // Cùng auth_token field-reid với fruitReIDService — dùng chung cơ chế ký lại.
+  await ensureOrilifeToken(_baseOf(url));
   const authHeader = await _getAuthHeader();
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (authHeader) headers['Authorization'] = authHeader;
@@ -221,6 +231,12 @@ async function _apiCall<T>(
     clearTimeout(timeoutHandle);
 
     if (resp.status === 401) {
+      // Token hết hạn GIỮA BUỔI → ký lại bằng DID 1 lần rồi thử lại (khớp fruitReIDService).
+      // Trước đây trả thẳng auth_error → getTrees/identify câm giữa thực địa, không tự hồi:
+      // nông dân không chọn được cây để quay video dù mạng vẫn tốt.
+      if (attempt === 0 && (await ensureOrilifeToken(_baseOf(url), { force: true }))) {
+        return _apiCall<T>(url, method, body, timeoutMs, 1);
+      }
       return {
         ok: false,
         error: { type: 'auth_error', detail: 'Token hết hạn hoặc không hợp lệ', http_status: 401 },

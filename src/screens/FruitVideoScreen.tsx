@@ -176,7 +176,26 @@ const FruitVideoScreen: React.FC = () => {
               : 'Quay chậm hơn một chút sẽ tốt hơn. Chủ vườn xác nhận sau.'}
           </Text>
           {result.stored === false && (
-            <Text style={styles.resultWarn}>Đã nhận clip, đang lưu trữ — sẽ xử lý lại sau.</Text>
+            <>
+              {/* THẬT THÀ: stored=false = LampNet CHƯA giữ byte (mạng yếu). Trước đây báo
+                  "sẽ xử lý lại sau" là lời hứa RỖNG — không có gì gửi lại, rời màn là mất
+                  clip. Nay cho nút gửi lại thật + cảnh báo đừng rời màn khi chưa lưu được. */}
+              <Text style={styles.resultWarn}>
+                Đã nhận clip nhưng CHƯA lưu được lên LampNet (mạng yếu). Bấm "Gửi lại" khi
+                có sóng tốt. Đừng rời màn khi chưa lưu được — clip có thể mất.
+              </Text>
+              <TouchableOpacity
+                style={styles.primaryBtn}
+                onPress={handleUpload}
+                disabled={uploading}
+                activeOpacity={0.85}
+              >
+                <Icon name="cloud-upload" size={18} color={NEUTRAL.white} />
+                <Text style={styles.primaryBtnText}>
+                  {uploading ? 'Đang gửi lại…' : 'Gửi lại lên LampNet'}
+                </Text>
+              </TouchableOpacity>
+            </>
           )}
           {/* Bằng chứng clip đã nằm trên LampNet. Đội thực địa cần THẤY mã này để
               đối chiếu sau buổi test, không chỉ tin vào dòng "đã lưu". Trước đây

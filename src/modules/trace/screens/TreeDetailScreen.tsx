@@ -424,6 +424,8 @@ const TreeDetailScreen = () => {
     (navigation as any).navigate('TreeViewer3D', {
       code: (tree as any).code ?? (tree as any).shortCode ?? '',
       treeName: (tree as any).name,
+      // treeId để màn 3D gọi được build3d (xếp hàng dựng) khi model chưa có — H-11/H-25.
+      treeId: tree.id,
     });
   };
 

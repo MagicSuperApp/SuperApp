@@ -53,8 +53,9 @@ import FruitListScreen from '../screens/FruitListScreen';
 import FruitCropperScreen from '../screens/FruitCropperScreen';
 import TreeMap2DScreen from '../screens/TreeMap2DScreen';
 import FarmMap2DScreen from '../screens/FarmMap2DScreen';
-import Space3DScreen from '../screens/Space3DScreen';
-import FruitPlace3DScreen from '../screens/FruitPlace3DScreen';
+// Space3D/FruitPlace3D nạp LAZY (định nghĩa gần HOST_STACK_SCREENS bên dưới) để expo
+// (expo-gl → expo-modules-core) KHÔNG chạy lúc startup. Xem chú thích tại chỗ định nghĩa.
+import GLErrorBoundary from '../components/GLErrorBoundary';
 import TreeIdentityScreen from '../screens/TreeIdentityScreen';
 import TreeEnrollScreen from '../screens/TreeEnrollScreen';
 import FruitVideoScreen from '../screens/FruitVideoScreen';
@@ -1504,6 +1505,32 @@ const ProtectedMain = () => {
 
 // --- Host-level stack screens (KHÔNG thuộc module) -------------------------
 // Đăng ký tĩnh; giữ nguyên route name + options cũ.
+// ── LAZY 3D ─────────────────────────────────────────────────────────────────
+// Space3D/FruitPlace3D kéo @react-three/fiber/native → expo-gl → expo-modules-core.
+// Nạp TĨNH khiến expo-modules-core chạy (globalThis.expo.EventEmitter) NGAY lúc startup;
+// trên bản signed globalThis.expo chưa sẵn → crash CẢ APP. Nạp LƯỜI: chỉ khi mở màn 3D.
+// Suspense + GLErrorBoundary: nếu expo vẫn lỗi thì chỉ hỏng khung 3D, KHÔNG sập app.
+const _LazySpace3D = React.lazy(() => import('../screens/Space3DScreen'));
+const _LazyFruitPlace3D = React.lazy(() => import('../screens/FruitPlace3DScreen'));
+const _make3D = (Comp: React.LazyExoticComponent<any>, tag: string): React.FC<any> =>
+  function Lazy3DScreen(props: any) {
+    return (
+      <React.Suspense
+        fallback={
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#000' }}>
+            <ActivityIndicator size="large" color="#fff" />
+          </View>
+        }
+      >
+        <GLErrorBoundary tag={tag}>
+          <Comp {...props} />
+        </GLErrorBoundary>
+      </React.Suspense>
+    );
+  };
+const Space3DScreen = _make3D(_LazySpace3D, 'space3d_lazy');
+const FruitPlace3DScreen = _make3D(_LazyFruitPlace3D, 'fruitplace3d_lazy');
+
 const HOST_STACK_SCREENS: Array<{
   name: string;
   component: React.ComponentType<any>;

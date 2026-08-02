@@ -65,6 +65,23 @@ class AppDelegate: ExpoAppDelegate {
       aladinReportNativeException("native_crash_recovered", saved, [])
     }
 
+    // ── PRE-WARM UIKit text/font trên MAIN THREAD (fix crash Fabric off-main) ──────
+    // NGUYÊN NHÂN GỐC màn trắng→crash bản signed: RN New Architecture (Fabric) đo &
+    // layout text trên BACKGROUND thread. Lần ĐẦU chạm UIFont/NSAttributedString,
+    // ObjC gọi `+initialize` của các class UIKit (UIFont, NSAttributeDictionary,
+    // NSParagraphStyle) — trên MÁY THẬT, `+initialize` chạy lần đầu NGOÀI main thread
+    // gây SIGABRT (crash log build 73: `+[UIFont systemFontOfSize:]`; build 74:
+    // `+[NSAttributeDictionary initialize]` — đều trên dispatch worker/JS thread).
+    // Giả lập timing khác nên không lộ. Chạm trước TRÊN MAIN để `+initialize` hoàn
+    // tất an toàn TRƯỚC khi Fabric đo text ở background.
+    let warmFont = UIFont.systemFont(ofSize: 14)
+    _ = UIFont.boldSystemFont(ofSize: 14)
+    _ = NSParagraphStyle.default
+    let warm = NSMutableAttributedString(string: "warmup")
+    warm.addAttribute(.font, value: warmFont, range: NSRange(location: 0, length: warm.length))
+    warm.addAttribute(.paragraphStyle, value: NSParagraphStyle.default, range: NSRange(location: 0, length: warm.length))
+    _ = warm.size()
+
     // ── Firebase init via GoogleService-Info.plist (native-side only) ────────────
     // Firebase Analytics for tracking user experience
     if FirebaseApp.app() == nil {

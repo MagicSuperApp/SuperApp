@@ -129,8 +129,15 @@ class RealPhoenixKey implements PhoenixKeySDK {
     const s = summarizeWalletAll(await phoenixKeyApi.wallet.getAll(did));
     return {
       isActivated: s.lamp > 0,
-      magicCredits: s.magicAvailable + s.magicAccrued,
-      lampTokens: s.lamp,
+      // magicCredits = số dư MAGIC SỐNG = available. KHÔNG cộng accrued: accrued
+      // gồm phần đã decay (use-or-lose) → cộng vào là đếm phần decay 2 lần
+      // (re-inflation). Đồng bộ với userSlice.refreshWallet. Đơn vị giữ như store
+      // (MAGIC_DECIMALS chưa chốt — H-27), chưa chia.
+      magicCredits: s.magicAvailable,
+      // lampTokens theo quy ước hiển thị của WalletStatus (adaBalance cũng đã /1e6):
+      // whole LAMP = oildrop / 1e6. Giữ oildrop THÔ dưới tên "lampTokens" trước đây
+      // là mìn: consumer in thẳng → tái sinh lỗi hiện gấp 1.000.000×.
+      lampTokens: s.lamp / 1_000_000,
       adaBalance: s.lovelace / 1_000_000,
       address: s.address ?? '',
       lastUpdated: Date.now(),

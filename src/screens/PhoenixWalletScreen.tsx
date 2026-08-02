@@ -33,6 +33,11 @@ const WALLET_NETWORK = 0;
 const fmtAda = (lovelace: number) => (lovelace / 1_000_000).toLocaleString('en-US', {
   minimumFractionDigits: 2, maximumFractionDigits: 6,
 });
+// LAMP có decimals=6: 1 LAMP = 1.000.000 oildrop (như lovelace của ADA). Backend trả
+// balances.lamp theo OILDROP → chia 1e6 khi hiển thị, y hệt fmtAda cho lovelace.
+const fmtLamp = (oildrop: number) => (oildrop / 1_000_000).toLocaleString('en-US', {
+  maximumFractionDigits: 6,
+});
 const fmtNum = (n: number) => n.toLocaleString('en-US');
 
 const PhoenixWalletScreen = () => {
@@ -222,7 +227,7 @@ const PhoenixWalletScreen = () => {
         {/* Số dư */}
         <View style={styles.balanceRow}>
           <BalanceCard icon="cardano" label="ADA" value={ada == null ? '—' : fmtAda(ada)} color="#0033AD" />
-          <BalanceCard icon="lightbulb-on-outline" label="LAMP" value={lamp == null ? '—' : fmtNum(lamp)} color="#B07D2F" />
+          <BalanceCard icon="lightbulb-on-outline" label="LAMP" value={lamp == null ? '—' : fmtLamp(lamp)} color="#B07D2F" />
           <BalanceCard icon="star-four-points-outline" label="MAGIC" value={magic == null ? '—' : fmtNum(magic)} color="#7A4DB8" />
         </View>
 

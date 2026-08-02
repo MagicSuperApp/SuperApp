@@ -147,6 +147,8 @@ export function summarizeWalletAll(all: WalletAllResponse): {
   const b = primary?.balances ?? { lovelace: 0, lamp: 0, carp: 0 };
   return {
     address: primary?.addresses.active ?? primary?.addresses.fixed ?? null,
+    // lovelace + lamp trả ĐƠN-VỊ-CON THÔ (lovelace, oildrop) — cả hai decimals=6.
+    // Nơi hiển thị chia 1e6 (fmtAda / fmtLamp). KHÔNG chia ở đây để giữ số nguyên chính-xác.
     lovelace: b.lovelace,
     lamp: b.lamp,
     carp: b.carp,

@@ -154,7 +154,8 @@ export const refreshWallet = createAsyncThunk(
       id: did,
       userId: did,
       magicBalance: s.magicAvailable,
-      lampBalance: s.lamp,
+      // LAMP decimals=6: s.lamp là OILDROP → chia 1e6 ra LAMP (y hệt adaBalance dưới).
+      lampBalance: s.lamp / 1_000_000,
       carpBalance: s.carp,
       adaBalance: s.lovelace / 1_000_000,
       address: s.address,

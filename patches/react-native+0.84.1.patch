@@ -1,0 +1,41 @@
+diff --git a/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm b/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
+index b36c819..0f8fe6e 100644
+--- a/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
++++ b/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
+@@ -461,7 +461,35 @@ void ObjCTurboModule::performVoidMethodInvocation(
+     @try {
+       [inv invokeWithTarget:strongModule];
+     } @catch (NSException *exception) {
+-      throw convertNSExceptionToJSError(runtime, exception, std::string{moduleName}, methodNameStr);
++      // [ALADIN PATCH] Void method chạy ASYNC trên method-queue (background thread).
++      // `throw` jsi::JSError ở đây = uncaught trên dispatch queue → std::terminate →
++      // SIGABRT: 1 native module ném NSException lúc khởi động làm CRASH CẢ APP (bản
++      // signed/máy thật). Thay vì crash: LOG module.method + reason + POST về log
++      // server, rồi NUỐT (void = fire-and-forget). App chạy tiếp; đọc log để biết
++      // ĐÚNG module rồi sửa gốc.
++      NSString *aladinInfo = [NSString stringWithFormat:@"%s.%s -> %@: %@",
++                                                        moduleName,
++                                                        methodNameStr.c_str(),
++                                                        exception.name,
++                                                        exception.reason ?: @"(nil)"];
++      NSLog(@"[ALADIN][TurboModule void NSException swallowed] %@", aladinInfo);
++      NSURL *aladinLogURL = [NSURL URLWithString:@"https://gutless-renovator-distaste.ngrok-free.dev/logs"];
++      if (aladinLogURL != nil) {
++        NSMutableURLRequest *aladinReq = [NSMutableURLRequest requestWithURL:aladinLogURL];
++        aladinReq.HTTPMethod = @"POST";
++        [aladinReq setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
++        [aladinReq setValue:@"true" forHTTPHeaderField:@"ngrok-skip-browser-warning"];
++        NSDictionary *aladinPayload = @{
++          @"event" : @"turbomodule_void_exception",
++          @"device" : @"iOS RN",
++          @"osVersion" : @"",
++          @"appVersion" : @"",
++          @"stackTrace" : @"",
++          @"data" : @{@"message" : aladinInfo, @"level" : @"error"},
++        };
++        aladinReq.HTTPBody = [NSJSONSerialization dataWithJSONObject:aladinPayload options:0 error:nil];
++        [[[NSURLSession sharedSession] dataTaskWithRequest:aladinReq] resume];
++      }
+     } @finally {
+       [retainedObjectsForInvocation removeAllObjects];
+     }

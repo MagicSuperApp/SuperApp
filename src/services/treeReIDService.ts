@@ -64,8 +64,10 @@ export interface IdentifyResponse {
    * ADDITIVE: câu gợi ý hành-động do backend trả khi kết quả chưa chắc (vd
    * "đi vòng quanh cây, chụp thêm góc khác" / "kết quả chưa chắc, nhờ chủ vườn
    * xác nhận"). Hiện ở UNCERTAIN/NO_MATCH. Thiếu (backend cũ) → UI không hiện.
+   * LƯU Ý: backend đôi khi trả OBJECT {message, channel, n_candidates} thay vì
+   * string — UI phải coerce (ReidConfirmDialog) kẻo render object = crash React.
    */
-  suggest?: string;
+  suggest?: string | { message?: string; channel?: string; n_candidates?: number };
   /**
    * ADDITIVE (B1/B2 owner_review): backend có CHO PHÉP tạo cây MỚI ở lần này
    * không. Thiếu/undefined (backend cũ) = true → GIỮ hành-vi cũ (cho tạo mới).

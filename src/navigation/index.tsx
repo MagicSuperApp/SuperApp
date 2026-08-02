@@ -24,6 +24,7 @@ import Toast from 'react-native-toast-message';
 import NetInfo from '@react-native-community/netinfo';
 import { handleNavigationStateChange } from '../services/analytics';
 import { Icon } from '../components/Icon';
+import RootErrorBoundary from '../components/RootErrorBoundary';
 import { COLORS, ACTION_COLORS } from '../theme';
 import { syncService } from '../services/syncService';
 import AppHeader, { AppHeaderProvider } from '../components/AppHeader';
@@ -141,21 +142,27 @@ const TAB_ICONS: Record<string, string> = Object.fromEntries(
   Object.keys(NAV_FRAME).map((route) => [route, navIcon(route, true)]),
 );
 
-// 1. Component bọc riêng cho việc gọi FarmDetail từ Native (giữ nguyên).
+// 1. Component bọc riêng cho việc gọi FarmDetail từ Native.
+// PHẢI bọc RootErrorBoundary: đây là ROOT React thứ 2 (registerComponent bên dưới,
+// do FarmDetailActivity Android nạp qua ReactRootView riêng). Lưới chống-trắng-màn
+// ở index.js chỉ bọc root chính `aladin_mobile_fe` → root này nằm NGOÀI lưới đó;
+// FarmDetailScreen (hoặc con) ném lúc render sẽ trắng câm nếu không có boundary tại đây.
 const NativeFarmDetailWrapper = (props: any) => {
   return (
-    <Provider store={store}>
-      <NavigationContainer>
-        <Stack.Navigator>
-          <Stack.Screen
-            name="FarmDetail"
-            component={FarmDetailScreen}
-            initialParams={props}
-            options={{ headerShown: false }}
-          />
-        </Stack.Navigator>
-      </NavigationContainer>
-    </Provider>
+    <RootErrorBoundary>
+      <Provider store={store}>
+        <NavigationContainer>
+          <Stack.Navigator>
+            <Stack.Screen
+              name="FarmDetail"
+              component={FarmDetailScreen}
+              initialParams={props}
+              options={{ headerShown: false }}
+            />
+          </Stack.Navigator>
+        </NavigationContainer>
+      </Provider>
+    </RootErrorBoundary>
   );
 };
 
@@ -1640,13 +1647,17 @@ const AppNavigator = () => {
     //
     // Reference: docs/PRINCIPLES/01-INDEPENDENT-FEATURE-OPERATION.md §3.3
     const initServices = async () => {
-      // Start sync service (database will be initialized per-user on login)
-      console.log('[Navigation] Initializing sync service');
-      syncService.start();
-
-      // Bỏ 3 màn welcome/onboarding — vào thẳng Login. Người dùng luôn phải xác
-      // thực sinh trắc mỗi phiên; KHÔNG auto-login vào Main.
-      setInitialRoute('Login');
+      try {
+        // Start sync service (database will be initialized per-user on login)
+        console.log('[Navigation] Initializing sync service');
+        syncService.start();
+      } finally {
+        // Bỏ 3 màn welcome/onboarding — vào thẳng Login. Người dùng luôn phải xác
+        // thực sinh trắc mỗi phiên; KHÔNG auto-login vào Main.
+        // finally: đây là điểm DUY NHẤT thoát spinner initialRoute=null. Nếu bất kỳ
+        // init nào ở trên ném thì vẫn PHẢI mở khoá UI — nếu không app kẹt spinner câm.
+        setInitialRoute('Login');
+      }
     };
 
     initServices();

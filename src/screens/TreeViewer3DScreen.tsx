@@ -33,6 +33,11 @@ const BASE_URL: string =
 // → rủi ro thực thi mã độc qua WebView bridge (Thư báo 2026-06-17).
 const ALLOWED_ORIGIN: string = BASE_URL.replace(/\/+$/, '');
 
+// Trang /view (server) nạp three.js từ unpkg qua <script type="importmap"> → BẮT BUỘC
+// cho phép CDN này, nếu không `import 'three'` gãy → 3D không render (đen/trắng). Chỉ
+// whitelist đúng CDN cần, KHÔNG mở '*' (giữ chống chèn mã độc qua WebView bridge).
+const ALLOWED_CDNS: readonly string[] = ['https://unpkg.com'];
+
 type TreeViewer3DParams = { code: string; treeName?: string };
 type TreeViewer3DRoute = RouteProp<{ TreeViewer3D: TreeViewer3DParams }, 'TreeViewer3D'>;
 
@@ -47,6 +52,9 @@ const TreeViewer3DScreen: React.FC = () => {
   // 404 = cây public nhưng 3D CHƯA dựng xong (server trả HTML "đang dựng").
   // Tách khỏi lỗi mạng để không doạ người dùng bằng thông báo sai.
   const [notBuilt, setNotBuilt] = useState(false);
+  // Chi tiết lỗi (mô tả iOS / HTTP status) — HIỆN lên UI để chẩn đoán tận nơi thay
+  // vì "kiểm tra mạng" chung chung (vd cert SSL, 500, DNS...).
+  const [errDetail, setErrDetail] = useState<string>('');
 
   // Mã cây có thể chứa ký-tự cần mã-hoá URL — luôn encode để an-toàn.
   const url = useMemo(
@@ -63,14 +71,18 @@ const TreeViewer3DScreen: React.FC = () => {
   const reload = useCallback(() => {
     setFailed(false);
     setNotBuilt(false);
+    setErrDetail('');
     setLoading(true);
     webRef.current?.reload();
   }, []);
 
-  // Chặn mọi điều hướng ra ngoài origin tin-cậy — chống redirect sang trang lạ.
+  // Chặn điều hướng ra ngoài origin tin-cậy — chống redirect sang trang lạ. CHO PHÉP
+  // thêm CDN three.js (unpkg) để viewer /view render được.
   const onShouldStartLoadWithRequest = useCallback(
     (req: { url: string }) =>
-      req.url === 'about:blank' || req.url.startsWith(`${ALLOWED_ORIGIN}/`),
+      req.url === 'about:blank' ||
+      req.url.startsWith(`${ALLOWED_ORIGIN}/`) ||
+      ALLOWED_CDNS.some((c) => req.url.startsWith(`${c}/`)),
     [],
   );
 
@@ -107,7 +119,7 @@ const TreeViewer3DScreen: React.FC = () => {
           <WebView
             ref={webRef}
             source={{ uri: url }}
-            originWhitelist={[ALLOWED_ORIGIN]}
+            originWhitelist={[ALLOWED_ORIGIN, ...ALLOWED_CDNS]}
             onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
             setSupportMultipleWindows={false}
             javaScriptEnabled
@@ -119,6 +131,8 @@ const TreeViewer3DScreen: React.FC = () => {
             onError={(e) => {
               setLoading(false);
               setFailed(true);
+              const desc = e?.nativeEvent?.description ?? 'lỗi không rõ';
+              setErrDetail(`Kết nối lỗi: ${desc}`);
               rLog.viewer3d.webviewLoadError(url, e?.nativeEvent?.description);
             }}
             onHttpError={(e) => {
@@ -130,6 +144,7 @@ const TreeViewer3DScreen: React.FC = () => {
               if (status === 404) {
                 setNotBuilt(true);
               } else {
+                setErrDetail(`Máy chủ trả HTTP ${status ?? '?'}`);
                 setFailed(true);
               }
             }}
@@ -176,6 +191,12 @@ const TreeViewer3DScreen: React.FC = () => {
             <Text style={styles.emptyText}>
               Không tải được mô hình 3D. Kiểm tra mạng rồi thử lại.
             </Text>
+            {errDetail ? (
+              <Text style={styles.errDetailText}>{errDetail}</Text>
+            ) : null}
+            <Text style={styles.errUrlText} numberOfLines={2}>
+              {url}
+            </Text>
             <TouchableOpacity style={styles.btn} onPress={reload}>
               <Text style={styles.btnText}>Thử lại</Text>
             </TouchableOpacity>
@@ -220,6 +241,20 @@ const styles = StyleSheet.create({
     fontSize: 15,
     textAlign: 'center',
     lineHeight: 22,
+  },
+  errDetailText: {
+    marginTop: 10,
+    color: '#c0392b',
+    fontSize: 13,
+    textAlign: 'center',
+    paddingHorizontal: 16,
+  },
+  errUrlText: {
+    marginTop: 6,
+    color: COLORS.textSub,
+    fontSize: 11,
+    textAlign: 'center',
+    paddingHorizontal: 16,
   },
   btn: {
     marginTop: 20,

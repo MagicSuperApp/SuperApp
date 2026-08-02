@@ -17,6 +17,11 @@
  * Toàn bộ icon lấy từ `components/Icon`; không còn ký-tự hình trong chuỗi
  * (＋ − ↺ ◯ ✓ ➕ …) — thứ đó mỗi máy vẽ một kiểu và không đổi màu theo trạng thái.
  *
+ * QUÉT rồi TỰ CĂN: vào màn (ảnh vừa chụp / vừa chọn) là chạy `detectFruit` ngay,
+ * phủ lên màn khoanh một lớp CHẤM XANH thở thành sóng trong lúc chờ; xong thì
+ * khung TỰ trượt vào ôm quả tìm được. Không còn nút "Tự căn khung quả" — máy đã
+ * biết quả ở đâu thì bắt bấm thêm một nút để dùng kết quả đó là thừa.
+ *
  * Backend = field-reid (ORILIFE_API_BASE_URL = api.orilife.io). Cùng client fruitReIDService.
  *
  * Route params (RouteParams): treeId, treeName?, imageUri, imageW, imageH, zone? (đoán sẵn), fruitId?
@@ -88,78 +93,99 @@ function touchMid(touches: { pageX: number; pageY: number }[]): { x: number; y: 
   return { x: (a.pageX + b.pageX) / 2, y: (a.pageY + b.pageY) / 2 };
 }
 
+/** Một vòng sóng chạy hết màn mất bằng này (ms). */
+const WAVE_PERIOD = 2400;
+/** Độ trễ pha giữa hai hàng chấm — càng lớn thì sóng càng dốc, chạy càng "rõ". */
+const WAVE_ROW_LAG = 0.075;
+/** Số mốc lấy mẫu để dựng đường cong cosin bằng interpolate (24 mốc là đủ mượt). */
+const WAVE_SAMPLES = 24;
+/** Khoảng cách mong muốn giữa hai chấm (px) — lưới tự chia lại cho vừa màn. */
+const DOT_GAP = 54;
+const DOT_SIZE = 5;
+
 /**
- * Nút mời "đã tìm thấy quả" — vòng sáng TOẢ RA liên tục + nút nảy nhẹ.
+ * Lớp phủ ĐANG QUÉT — chạy ngay khi vào màn (ảnh vừa chụp / vừa chọn từ máy).
  *
- * Vì sao phải động: canh khung bằng tay là việc mất công nhất của màn này, mà
- * máy đã tìm ra quả sẵn rồi. Một cái chip đứng yên giữa đống nút khác thì người
- * dùng lướt qua không nhận ra, cứ è cổ kéo-phóng thủ công. Vòng sáng toả ra là
- * thứ mắt bắt được ngay cả khi đang nhìn chỗ khác.
+ * Vì sao bỏ nút "Tự căn khung quả": máy đã tự tìm quả sẵn rồi, bắt người dùng
+ * bấm thêm một nút để dùng kết quả đó là thừa một bước — và ai không hiểu nút
+ * làm gì thì vẫn è cổ kéo-phóng bằng tay. Nay quét xong là khung TỰ căn vào quả.
  *
- * Toả xong một nhịp thì tự bắt lại từ đầu; hai vòng lệch pha nửa nhịp cho liên
- * tục, không có quãng đứng hình. Chỉ chạy transform + opacity nên đẩy được hết
- * xuống luồng native, không giành khung hình với cảnh 3D.
+ * Hoạt-ảnh: một LƯỚI CHẤM XANH mờ phủ kín màn, mỗi chấm phồng lên rồi xẹp
+ * xuống nhẹ nhàng; hàng dưới trễ pha hơn hàng trên nên cả lưới gợn thành SÓNG
+ * chạy từ trên xuống. Không khung ngắm, không vạch quét — mấy thứ đó mượn hình
+ * máy quét QR, mà đây không phải quét QR; chấm sóng vừa êm vừa không vẽ lên
+ * ảnh một cái hộp giả chỗ quả sẽ nằm.
  *
- * Bấm rồi thì THÔI động (`calm`): đã hiểu ý thì nhấp nháy tiếp chỉ còn là phiền,
- * nhưng nút vẫn còn đó để canh lại lần nữa.
+ * Một Animated.Value duy nhất chạy tuyến-tính 0→1 rồi lặp; hình sin của từng
+ * hàng dựng sẵn bằng `interpolate` (lấy mẫu cosin đã dịch pha) — nhờ vậy cả
+ * trăm chấm chỉ tốn một driver và chạy trọn trên luồng native.
+ *
+ * Luôn có lối thoát "Tự canh bằng tay": hạn chờ của API là 45 s, không được để
+ * người dùng kẹt trong lớp phủ khi mạng chết.
  */
-const DetectInvite: React.FC<{ calm: boolean; onPress: () => void }> = ({ calm, onPress }) => {
-  const ringA = useRef(new Animated.Value(0)).current;
-  const ringB = useRef(new Animated.Value(0)).current;
-  const hop = useRef(new Animated.Value(0)).current;
+const ScanOverlay: React.FC<{
+  w: number; h: number; bottomInset: number; onSkip: () => void;
+}> = ({ w, h, bottomInset, onSkip }) => {
+  const t = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    if (calm) return;
-    const bloom = (v: Animated.Value) => Animated.loop(
-      Animated.timing(v, {
-        toValue: 1, duration: 1500, easing: Easing.out(Easing.quad), useNativeDriver: true,
-      }),
+    const loop = Animated.loop(
+      Animated.timing(t, { toValue: 1, duration: WAVE_PERIOD, easing: Easing.linear, useNativeDriver: true }),
     );
-    const a = bloom(ringA);
-    a.start();
-    // Vòng thứ hai vào sau nửa nhịp → luôn có một vòng đang toả.
-    let b: Animated.CompositeAnimation | null = null;
-    const t = setTimeout(() => { b = bloom(ringB); b.start(); }, 750);
+    loop.start();
+    return () => { loop.stop(); t.setValue(0); };
+  }, [t]);
 
-    const jump = Animated.loop(Animated.sequence([
-      Animated.timing(hop, { toValue: 1, duration: 240, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-      Animated.timing(hop, { toValue: 0, duration: 420, easing: Easing.bounce, useNativeDriver: true }),
-      Animated.delay(900),
-    ]));
-    jump.start();
-
-    return () => {
-      clearTimeout(t);
-      a.stop(); b?.stop(); jump.stop();
-      ringA.setValue(0); ringB.setValue(0); hop.setValue(0);
-    };
-  }, [calm, ringA, ringB, hop]);
-
-  const ringStyle = (v: Animated.Value) => ({
-    opacity: v.interpolate({ inputRange: [0, 1], outputRange: [0.55, 0] }),
-    transform: [{ scale: v.interpolate({ inputRange: [0, 1], outputRange: [1, 1.95] }) }],
-  });
+  // Lưới chấm + đường cong riêng của từng hàng. Cosin liền mạch tại mốc 0 và 1
+  // nên vòng lặp nối lại không giật.
+  const rows = useMemo(() => {
+    if (!w || !h) return [];
+    const nCols = Math.max(4, Math.round(w / DOT_GAP));
+    const nRows = Math.max(4, Math.round(h / DOT_GAP));
+    const gapX = w / nCols, gapY = h / nRows;
+    const input = Array.from({ length: WAVE_SAMPLES + 1 }, (_, i) => i / WAVE_SAMPLES);
+    const xs = Array.from({ length: nCols }, (_, c) => gapX * (c + 0.5) - DOT_SIZE / 2);
+    return Array.from({ length: nRows }, (_, r) => {
+      // wave ∈ [0,1]: 0 = chấm nhỏ & mờ nhất, 1 = chấm to & rõ nhất.
+      const wave = input.map(u => 0.5 - 0.5 * Math.cos(2 * Math.PI * (u + r * WAVE_ROW_LAG)));
+      return {
+        key: r,
+        top: gapY * (r + 0.5) - DOT_SIZE / 2,
+        xs,
+        scale: t.interpolate({ inputRange: input, outputRange: wave.map(v => 0.55 + v * 0.6) }),
+        opacity: t.interpolate({ inputRange: input, outputRange: wave.map(v => 0.14 + v * 0.34) }),
+      };
+    });
+  }, [w, h, t]);
 
   return (
-    <Animated.View
-      style={[
-        styles.detectWrap,
-        { transform: [{ translateY: hop.interpolate({ inputRange: [0, 1], outputRange: [0, -5] }) }] },
-      ]}
-    >
-      {!calm && (
-        <>
-          <Animated.View pointerEvents="none" style={[styles.detectBloom, ringStyle(ringA)]} />
-          <Animated.View pointerEvents="none" style={[styles.detectBloom, ringStyle(ringB)]} />
-        </>
-      )}
-      <TouchableOpacity activeOpacity={0.85} style={styles.detectChip} onPress={onPress}>
-        <Icon name="bullseye" size={14} color={COLORS.white} />
-        <Text style={styles.detectChipTxt}>
-          {calm ? 'Canh lại vào quả đã tìm thấy' : 'Tự căn khung quả'}
-        </Text>
-      </TouchableOpacity>
-    </Animated.View>
+    <View style={styles.scanOverlay}>
+      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+        {rows.map(row => row.xs.map((x, c) => (
+          <Animated.View
+            key={`${row.key}-${c}`}
+            style={[styles.scanDot, {
+              left: x, top: row.top,
+              opacity: row.opacity,
+              transform: [{ scale: row.scale }],
+            }]}
+          />
+        )))}
+      </View>
+
+      <View style={[styles.scanFoot, { paddingBottom: Math.max(bottomInset, 10) + 18 }]}>
+        <View style={styles.scanCard}>
+          <ActivityIndicator size="small" color={DETECT_GREEN} />
+          <View style={styles.scanCardBody}>
+            <Text style={styles.scanTitle}>Đang quét ảnh để tìm quả…</Text>
+            <Text style={styles.scanSub}>Xong là khung tự căn vào quả</Text>
+          </View>
+        </View>
+        <TouchableOpacity style={styles.scanSkip} onPress={onSkip} activeOpacity={0.75} hitSlop={8}>
+          <Text style={styles.scanSkipTxt}>Tự canh bằng tay</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 };
 
@@ -205,12 +231,16 @@ const FruitCropperScreen: React.FC = () => {
   );
   const zone: TreeZone = coordToZone(coord);
 
-  // ── Gợi-ý PHÁT-HIỆN-NGAY: auto-detect quả trên ảnh vừa chụp (KHÔNG ép, chỉ gợi 1-chạm) ──
+  // ── QUÉT-NGAY: vừa vào màn là tự tìm quả rồi TỰ CĂN KHUNG vào quả tìm được ──
   // bbox ẢNH GỐC của quả tự-phát-hiện (lớn nhất / tự-tin nhất). null = chưa có / không phát hiện.
   const [detectBox, setDetectBox] = useState<Bbox | null>(null);
   const detectTried = useRef(false);
-  /** Đã bấm "canh tự động" lần nào chưa → thôi nhấp nháy mời gọi. */
-  const [detectUsed, setDetectUsed] = useState(false);
+  /** Đang chờ kết quả quét → hiện lớp phủ hoạt-ảnh. Luồng thêm-góc không quét. */
+  const [scanning, setScanning] = useState(!fruitId);
+  /** Người dùng đã bấm "tự canh bằng tay" → kệ kết quả quét về sau, đừng giật khung. */
+  const scanSkipped = useRef(false);
+  /** Câu báo ngắn sau khi quét xong, tự tắt sau ~3 s. */
+  const [scanNote, setScanNote] = useState<{ ok: boolean; text: string } | null>(null);
 
   // ── baseScale (cover) — phủ kín viewport để quả to, dễ canh ─────────────────
   const base = useMemo(() => {
@@ -235,8 +265,10 @@ const FruitCropperScreen: React.FC = () => {
   const zoomRef = useRef(zoom); zoomRef.current = zoom;
   const baseRef = useRef(base); baseRef.current = base;
   const ringRef = useRef(ring); ringRef.current = ring;
-  // Mốc lúc bắt đầu cử-chỉ.
-  const gStart = useRef<{ tx: number; ty: number; zoom: number; dist: number; cx: number; cy: number } | null>(null);
+  const vwRef = useRef(vw); vwRef.current = vw;
+  const vhRef = useRef(vh); vhRef.current = vh;
+  // Mốc lúc bắt đầu cử-chỉ. `n` = số ngón lúc lấy mốc — đổi số ngón là phải lấy MỐC MỚI.
+  const gStart = useRef<{ tx: number; ty: number; zoom: number; dist: number; cx: number; cy: number; n: 1 | 2 } | null>(null);
 
   // ── Đặt ảnh CĂN GIỮA viewport khi lần đầu đo được kích thước (ccFit) ─────────
   const fitDone = useRef(false);
@@ -263,60 +295,121 @@ const FruitCropperScreen: React.FC = () => {
     setZoom(z);
   }, []);
 
-  // ── Nhảy khung tròn ÔM 1 bbox (px ẢNH GỐC) — đặt zoom/tx/ty để khung phủ trùng quả ──
+  // ── Trượt MƯỢT tới một tư-thế ảnh (thay vì nhảy cóc) ───────────────────────
+  // Khung tự căn mà đổi phắt một cái thì người dùng mất dấu: không biết ảnh vừa
+  // bị phóng hay bị đổi chỗ. Trượt ~0,5 s cho mắt bám theo được quả.
+  // Người chạm vào ảnh là DỪNG ngay — tay người luôn thắng hoạt-ảnh.
+  const glideRef = useRef<number | null>(null);
+  const stopGlide = useCallback(() => {
+    if (glideRef.current != null) { cancelAnimationFrame(glideRef.current); glideRef.current = null; }
+  }, []);
+  const glideTo = useCallback((to: { tx: number; ty: number; zoom: number }, ms = 520) => {
+    stopGlide();
+    const from = { tx: txRef.current, ty: tyRef.current, zoom: zoomRef.current };
+    let t0 = -1;
+    const tick = (now: number) => {
+      if (t0 < 0) t0 = now;
+      const k = Math.min(1, (now - t0) / ms);
+      const e = 1 - Math.pow(1 - k, 3); // easeOutCubic
+      setTx(from.tx + (to.tx - from.tx) * e);
+      setTy(from.ty + (to.ty - from.ty) * e);
+      setZoom(from.zoom + (to.zoom - from.zoom) * e);
+      glideRef.current = k < 1 ? requestAnimationFrame(tick) : null;
+    };
+    glideRef.current = requestAnimationFrame(tick);
+  }, [stopGlide]);
+  useEffect(() => stopGlide, [stopGlide]);
+
+  // ── Căn khung tròn ÔM 1 bbox (px ẢNH GỐC) — đặt zoom/tx/ty để khung phủ trùng quả ──
   // Toán: screenX = tx + natX*sc. Chọn sc sao cho cạnh-lớn bbox ≈ đường-kính khung
   // (×1.35 để chừa lề, quả không sát viền), rồi dịch để tâm bbox về tâm khung.
-  const jumpToBox = useCallback((b: Bbox) => {
-    const r = ringRef.current;
-    const diam = Math.min(r.rx, r.ry) * 2;        // đường kính khung (px màn hình)
+  // Tính theo vòng TRÒN (không lấy ringRef): hàm này ép shape về 'circle', mà ring
+  // của khung elip đang mở có rx/ry khác — lấy nhầm thì căn lệch.
+  const jumpToBox = useCallback((b: Bbox, animate = true) => {
+    const cx = vwRef.current / 2, cy = vhRef.current * 0.44;
+    const rr = Math.min(vwRef.current, vhRef.current) * 0.34;
     const longSide = Math.max(b[2], b[3], 1);     // cạnh lớn bbox (px ảnh gốc)
-    const scWanted = diam / (longSide * 1.35);    // tỉ-lệ tổng cần (base*zoom)
+    const scWanted = (rr * 2) / (longSide * 1.35); // tỉ-lệ tổng cần (base*zoom)
     const b0 = baseRef.current || 1;
     const z = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, scWanted / b0));
     const sc = b0 * z;
     const bcx = b[0] + b[2] / 2, bcy = b[1] + b[3] / 2; // tâm bbox (px gốc)
     setShape('circle'); setRot(0);
-    setZoom(z);
-    setTx(r.cx - bcx * sc);                        // tâm bbox → tâm khung
-    setTy(r.cy - bcy * sc);
-  }, []);
+    const to = { tx: cx - bcx * sc, ty: cy - bcy * sc, zoom: z }; // tâm bbox → tâm khung
+    if (animate) glideTo(to);
+    else { stopGlide(); setZoom(to.zoom); setTx(to.tx); setTy(to.ty); }
+  }, [glideTo, stopGlide]);
 
-  // ── Auto-detect 1 LẦN khi đã đo viewport (chỉ luồng quả-mới, KHÔNG khi thêm-góc) ──
-  // Chạy nền: tìm-thấy → hiện nút gợi-ý "Nhảy vào quả phát hiện". Lỗi/không-thấy → im lặng,
-  // user tự canh khung như cũ (không chặn happy-path, không cảnh-báo thừa).
+  // ── QUÉT 1 LẦN khi đã đo viewport (chỉ luồng quả-mới, KHÔNG khi thêm-góc) ────
+  // Tìm thấy → TỰ căn khung vào quả luôn (không hỏi, không bắt bấm thêm nút).
+  // Không thấy / lỗi mạng → tắt lớp phủ, báo một câu rồi để người dùng tự canh:
+  // không chặn happy-path, cũng không im lặng làm người ta tưởng máy treo.
   useEffect(() => {
     if (fruitId || detectTried.current || !vw || !vh) return;
     detectTried.current = true;
     let alive = true;
     (async () => {
-      const r = await detectFruit(BASE_URL, imageUri, treeId);
+      // Mạng chết / server lỗi cũng phải TẮT được lớp phủ — kẹt trong màn "đang
+      // quét" mà không có đường ra là hỏng nặng hơn hẳn việc không tìm ra quả.
+      const r = await detectFruit(BASE_URL, imageUri, treeId).catch(() => null);
       if (!alive) return;
-      const dets = r.ok && r.data?.ok ? (r.data.detections ?? []) : [];
-      if (!dets.length) return;
+      const dets = r?.ok && r.data?.ok ? (r.data.detections ?? []) : [];
+      setScanning(false);
+      if (!dets.length) {
+        if (!scanSkipped.current) {
+          setScanNote({ ok: false, text: 'Chưa nhận ra quả — kéo và phóng để đưa quả vào vòng' });
+        }
+        return;
+      }
       // Chọn quả TO nhất (diện-tích bbox lớn nhất) — thường là quả user muốn khoanh.
       const best = dets.reduce((m, d) => (d.bbox[2] * d.bbox[3] > m.bbox[2] * m.bbox[3] ? d : m), dets[0]);
       setDetectBox(best.bbox);
+      // Đã bấm "tự canh bằng tay" thì thôi — giật khung lúc người ta đang kéo là tệ nhất.
+      if (scanSkipped.current) return;
+      jumpToBox(best.bbox);
+      setScanNote({ ok: true, text: 'Đã căn khung vào quả tìm thấy — chỉnh thêm nếu cần' });
     })();
     return () => { alive = false; };
-  }, [fruitId, vw, vh, imageUri, treeId]);
+  }, [fruitId, vw, vh, imageUri, treeId, jumpToBox]);
+
+  // Câu báo sau khi quét tự tắt — để lại thì nó thành một dòng chữ chết trên màn.
+  useEffect(() => {
+    if (!scanNote) return;
+    const t = setTimeout(() => setScanNote(null), 3200);
+    return () => clearTimeout(t);
+  }, [scanNote]);
 
   // ── PanResponder: 1 ngón = PAN, 2 ngón = PINCH zoom (port ccBindGestures) ────
+  //
+  // ⚠️ LẤY MỐC LẠI MỖI KHI ĐỔI SỐ NGÓN. `onPanResponderGrant` chỉ chạy MỘT lần —
+  // lúc ngón ĐẦU chạm xuống. Đặt ngón thứ hai sau đó KHÔNG sinh grant mới, nên
+  // nếu cứ dùng mốc cũ thì `dist` mốc vẫn là của cử-chỉ 1 ngón (0 → ép về 1),
+  // trong khi `touchDist` thật cỡ vài trăm px → tỉ-lệ vọt lên hàng trăm lần và
+  // ảnh nhảy thẳng tới ZOOM_MAX ngay nhịp pinch đầu tiên. Rời bớt một ngón (2→1)
+  // cũng vậy: mốc cũ là tâm 2 ngón, ảnh sẽ giật một phát.
+  const rebase = useCallback((t: ReadonlyArray<{ pageX: number; pageY: number }>) => {
+    const common = { tx: txRef.current, ty: tyRef.current, zoom: zoomRef.current };
+    if (t.length >= 2) {
+      const mid = touchMid(t as { pageX: number; pageY: number }[]);
+      gStart.current = { ...common, dist: touchDist(t as { pageX: number; pageY: number }[]) || 1, cx: mid.x, cy: mid.y, n: 2 };
+    } else {
+      gStart.current = { ...common, dist: 0, cx: t[0].pageX, cy: t[0].pageY, n: 1 };
+    }
+  }, []);
+
   const panResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder: () => true,
     onPanResponderGrant: (e) => {
-      const t = e.nativeEvent.touches;
-      if (t.length >= 2) {
-        const mid = touchMid(t);
-        gStart.current = { tx: txRef.current, ty: tyRef.current, zoom: zoomRef.current, dist: touchDist(t) || 1, cx: mid.x, cy: mid.y };
-      } else {
-        gStart.current = { tx: txRef.current, ty: tyRef.current, zoom: zoomRef.current, dist: 0, cx: t[0].pageX, cy: t[0].pageY };
-      }
+      stopGlide(); // tay người thắng hoạt-ảnh tự-căn
+      rebase(e.nativeEvent.touches);
     },
     onPanResponderMove: (e) => {
       const t = e.nativeEvent.touches;
+      if (!t.length) return;
       const g = gStart.current;
-      if (!g) return;
+      // Chưa có mốc, hoặc số ngón vừa đổi → lấy mốc mới rồi để nhịp sau xử lý.
+      if (!g || g.n !== (t.length >= 2 ? 2 : 1)) { rebase(t); return; }
       if (t.length >= 2) {
         // PINCH: phóng quanh tâm 2 ngón lúc bắt đầu (port _ccDoPinch).
         const mid = touchMid(t);
@@ -334,7 +427,7 @@ const FruitCropperScreen: React.FC = () => {
     },
     onPanResponderRelease: () => { gStart.current = null; },
     onPanResponderTerminate: () => { gStart.current = null; },
-  }), []);
+  }), [stopGlide, rebase]);
 
   // ── Đổi VÒNG ↔ ELIP (ccToggleShape) ────────────────────────────────────────
   const pickShape = useCallback((next: FruitShape) => {
@@ -491,8 +584,11 @@ const FruitCropperScreen: React.FC = () => {
           />
         )}
 
-        {/* MASK: 4 panel nền tối quanh hộp-bao vòng (top/bottom/left/right) */}
-        {vw > 0 && (
+        {/* MASK: 4 panel nền tối quanh hộp-bao vòng (top/bottom/left/right).
+            Trong lúc quét thì GIẤU cả mask lẫn vòng: lúc đó ảnh còn chưa căn,
+            khoe sẵn một cái vòng trống giữa màn chỉ tổ rối — quét xong, khung
+            hiện ra ĐÚNG lúc nó đã ôm vào quả. */}
+        {vw > 0 && !scanning && (
           <>
             <View pointerEvents="none" style={[styles.maskPanel, { left: 0, right: 0, top: 0, height: Math.max(0, holeT) }]} />
             <View pointerEvents="none" style={[styles.maskPanel, { left: 0, right: 0, top: holeT + holeS, bottom: 0 }]} />
@@ -502,7 +598,7 @@ const FruitCropperScreen: React.FC = () => {
         )}
 
         {/* VÒNG: View borderRadius (tròn = nửa cạnh; elip = rộng/cao khác nhau + xoay) */}
-        {vw > 0 && (
+        {vw > 0 && !scanning && (
           <View
             pointerEvents="none"
             style={[styles.ring, {
@@ -516,6 +612,16 @@ const FruitCropperScreen: React.FC = () => {
           />
         )}
       </View>
+
+      {/* ── Lớp phủ ĐANG QUÉT — nằm trên ảnh, dưới thanh tiêu-đề (vẫn thoát ra được) ── */}
+      {scanning && vw > 0 ? (
+        <ScanOverlay
+          w={vw}
+          h={vh}
+          bottomInset={insets.bottom}
+          onSkip={() => { scanSkipped.current = true; setScanning(false); }}
+        />
+      ) : null}
 
       {/* ── Thanh trên (nổi) ──────────────────────────────────────────────── */}
       <View style={[styles.stageTop, { paddingTop: insets.top + 8 }]} pointerEvents="box-none">
@@ -531,8 +637,19 @@ const FruitCropperScreen: React.FC = () => {
         <View style={styles.chromeBtnGhost} />
       </View>
 
-      {/* ── Cột nút bên phải: phóng / thu / xoay ──────────────────────────── */}
-      <View style={styles.stageSide} pointerEvents="box-none">
+      {/* ── Cột nút bên phải: căn lại / phóng / thu / xoay ─────────────────── */}
+      <View style={[styles.stageSide, scanning && styles.hidden]} pointerEvents={scanning ? 'none' : 'box-none'}>
+        {/* Căn lại vào quả máy đã tìm — không phải nút mời gọi như trước (khung đã
+            tự căn rồi), chỉ là đường về sau khi người dùng kéo lệch mất quả. */}
+        {detectBox ? (
+          <TouchableOpacity
+            style={[styles.chromeBtn, styles.chromeBtnDetect]}
+            onPress={() => jumpToBox(detectBox)}
+            activeOpacity={0.8}
+          >
+            <Icon name="bullseye" size={17} color={DETECT_GREEN} />
+          </TouchableOpacity>
+        ) : null}
         <TouchableOpacity style={styles.chromeBtn} onPress={() => zoomAround(1.2)} activeOpacity={0.8}>
           <Icon name="magnifying-glass-plus" size={17} color={ON_STAGE} />
         </TouchableOpacity>
@@ -552,15 +669,21 @@ const FruitCropperScreen: React.FC = () => {
       </View>
 
       {/* ── Thanh dưới (nổi): hình khung · gợi ý · nút chính ──────────────── */}
-      <View style={[styles.stageBottom, { paddingBottom: Math.max(insets.bottom, 10) + 8 }]} pointerEvents="box-none">
-        {/* Lời mời canh-khung-tự-động, đặt NGAY TRÊN thanh chọn hình khung: đó là
-            vùng ngón cái đang đặt sẵn, và nằm cạnh nhau thì người dùng thấy được
-            ngay là có đường tắt, khỏi phải kéo-phóng bằng tay. */}
-        {vw > 0 && detectBox ? (
-          <DetectInvite
-            calm={detectUsed}
-            onPress={() => { setDetectUsed(true); jumpToBox(detectBox); }}
-          />
+      <View
+        style={[styles.stageBottom, { paddingBottom: Math.max(insets.bottom, 10) + 8 }, scanning && styles.hidden]}
+        pointerEvents={scanning ? 'none' : 'box-none'}
+      >
+        {/* Kết quả quét: một câu rồi tự tắt. Không phải nút — khung đã tự căn xong,
+            người dùng chỉ cần biết VÌ SAO ảnh vừa tự dịch chuyển. */}
+        {scanNote ? (
+          <View style={[styles.notePill, scanNote.ok && styles.notePillOk]}>
+            <Icon
+              name={scanNote.ok ? 'check' : 'arrows-up-down-left-right'}
+              size={12}
+              color={scanNote.ok ? DETECT_GREEN : ON_STAGE}
+            />
+            <Text style={styles.noteTxt} numberOfLines={2}>{scanNote.text}</Text>
+          </View>
         ) : null}
 
         <View style={styles.shapeSeg}>
@@ -834,26 +957,40 @@ const styles = StyleSheet.create({
     backgroundColor: CHROME_BG, borderWidth: 1, borderColor: CHROME_BORDER,
   },
   chromeBtnGhost: { width: 40, height: 40 },
+  chromeBtnDetect: { borderColor: 'rgba(34,197,94,0.55)', backgroundColor: 'rgba(34,197,94,0.16)' },
+  hidden: { opacity: 0 },
 
-  stageSide: { position: 'absolute', right: 14, top: '34%', gap: 10 },
+  stageSide: { position: 'absolute', right: 14, top: '30%', gap: 10 },
 
-  detectWrap: { alignSelf: 'center', marginBottom: 2 },
-  detectBloom: {
-    // Phủ đúng bằng nút rồi phóng ra ngoài — vòng luôn đồng tâm với nút,
-    // không phải căn tay theo bề rộng chữ (chữ đổi theo trạng thái).
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: 999, borderWidth: 2, borderColor: DETECT_GREEN,
-    backgroundColor: 'rgba(34,197,94,0.16)',
-  },
-  detectChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
+  // ── Lớp phủ ĐANG QUÉT ─────────────────────────────────────────────────────
+  scanOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(14,21,18,0.58)' },
+  scanDot: {
+    position: 'absolute',
+    width: DOT_SIZE, height: DOT_SIZE, borderRadius: DOT_SIZE / 2,
     backgroundColor: DETECT_GREEN,
-    paddingHorizontal: 16, paddingVertical: 11, borderRadius: 999,
-    shadowColor: DETECT_GREEN,
-    shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.5, shadowRadius: 10,
-    elevation: 6,
   },
-  detectChipTxt: { color: COLORS.white, fontSize: 13.5, fontWeight: '800' },
+
+  scanFoot: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 20, gap: 6 },
+  scanCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: CHROME_BG, borderWidth: 1, borderColor: 'rgba(34,197,94,0.35)',
+    borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14,
+  },
+  scanCardBody: { flex: 1, minWidth: 0, gap: 2 },
+  scanTitle: { color: ON_STAGE, fontSize: 14.5, fontWeight: '800' },
+  scanSub: { color: ON_STAGE, opacity: 0.66, fontSize: 12, lineHeight: 17 },
+  scanSkip: { alignSelf: 'center', paddingVertical: 10, paddingHorizontal: 14 },
+  scanSkipTxt: { color: ON_STAGE, opacity: 0.7, fontSize: 13, fontWeight: '700' },
+
+  // ── Câu báo sau khi quét ──────────────────────────────────────────────────
+  notePill: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'center',
+    maxWidth: '100%',
+    backgroundColor: CHROME_BG, borderWidth: 1, borderColor: CHROME_BORDER,
+    borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9,
+  },
+  notePillOk: { borderColor: 'rgba(34,197,94,0.45)' },
+  noteTxt: { flexShrink: 1, color: ON_STAGE, fontSize: 12.5, fontWeight: '600', lineHeight: 17 },
 
   stageBottom: {
     position: 'absolute', left: 0, right: 0, bottom: 0,

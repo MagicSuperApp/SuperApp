@@ -62,13 +62,30 @@ async function uriViaResolveAssetSource(def: TreeModelDef): Promise<string> {
   const src = Image.resolveAssetSource(def.source as number);
   const uri = src?.uri;
   if (!uri) throw new Error('resolveAssetSource không trả về uri');
+  const dest = glbCachePath(def);
+
   if (/^https?:/.test(uri)) {
     // Chế độ dev: model do metro phục vụ qua HTTP → tải về cache mới đọc được.
-    const dest = glbCachePath(def);
     const res = await FileSystem.downloadAsync(uri, dest);
     if (res.status !== 200) throw new Error(`Tải model từ metro lỗi HTTP ${res.status}`);
     return res.uri;
   }
+
+  if (!uri.includes(':')) {
+    // ── Bản RELEASE (APK/AAB) ────────────────────────────────────────────────
+    // Metro nhét .glb vào `res/raw/`, và `resourceIdentifierWithoutScale()` của
+    // RN trả về TÊN TÀI NGUYÊN TRẦN, không scheme: "assets_models_tree1".
+    // KHÔNG được trả tên đó ra ngoài: `readAsStringAsync(..., base64)` đi qua
+    // `getInputStream()` của expo-file-system, hàm này CHỈ nhận file:// · asset://
+    // · SAF → scheme null là ném "Unsupported scheme for location".
+    // Nhưng `copyAsync` CÓ nhánh riêng cho scheme null (`openResourceInputStream`
+    // → `resources.openRawResource`) → chép ra cache trước rồi đọc file thật.
+    // (Đường dev đi HTTP nên không lộ; bản release thì mọi model đều rơi về cây
+    // dự phòng hình nón.)
+    await FileSystem.copyAsync({ from: uri, to: dest });
+    return dest;
+  }
+
   return uri;
 }
 

@@ -66,6 +66,15 @@ static void aladinTerminateHandler() {
   abort();
 }
 
-__attribute__((constructor)) static void aladinInstallTerminate(void) {
+// Đặt trong +load của ObjC class (KHÔNG dùng __attribute__((constructor)) — trong
+// static framework nó bị linker dead-strip vì không ai tham chiếu). App có `-ObjC`
+// trong OTHER_LDFLAGS → mọi class ObjC bị force-load → +load chắc chắn chạy lúc launch.
+@interface AladinCrashDiag : NSObject
+@end
+
+@implementation AladinCrashDiag
++ (void)load {
   gAladinPrevTerminate = std::set_terminate(&aladinTerminateHandler);
+  NSLog(@"[ALADIN-TERMINATE] installed std::set_terminate");
 }
+@end

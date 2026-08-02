@@ -43,12 +43,26 @@ class AppDelegate: ExpoAppDelegate {
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
   ) -> Bool {
     // PHẢI đặt SỚM NHẤT — bắt NSException gây SIGABRT lúc khởi động (bản signed).
+    // LƯU vào UserDefaults NGAY (không phụ thuộc mạng) rồi POST. Nếu POST lúc crash
+    // không kịp, lần mở SAU sẽ gửi lại (dưới) — bulletproof kể cả crash-loop.
     NSSetUncaughtExceptionHandler { exception in
+      let text = "\(exception.name.rawValue): \(exception.reason ?? "nil")\n"
+        + exception.callStackSymbols.prefix(30).joined(separator: "\n")
+      UserDefaults.standard.set(text, forKey: "aladin_native_crash")
+      UserDefaults.standard.synchronize()
       aladinReportNativeException(
         exception.name.rawValue,
         exception.reason ?? "nil",
         exception.callStackSymbols
       )
+    }
+
+    // Gửi lại crash lần trước (nếu POST lúc crash chưa kịp) — chạy TRƯỚC startReactNative
+    // nên kể cả app crash mỗi lần mở, lần mở kế vẫn đẩy được lý do lên server.
+    if let saved = UserDefaults.standard.string(forKey: "aladin_native_crash") {
+      UserDefaults.standard.removeObject(forKey: "aladin_native_crash")
+      UserDefaults.standard.synchronize()
+      aladinReportNativeException("native_crash_recovered", saved, [])
     }
 
     // ── Firebase init via GoogleService-Info.plist (native-side only) ────────────

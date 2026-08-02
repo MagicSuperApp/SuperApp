@@ -34,6 +34,10 @@ import {
   rejectInvitation,
 } from '../../../store/proofchatSlice';
 import { isProofChatBackendEnabled } from '../../../../../services/proofchat-api';
+import {
+  createGroupConversation,
+  createDirectConversation,
+} from '../../../../../services/proofchatService';
 import { useCapabilityLive } from '../../../../../config/useCapabilityLive';
 
 type FilterKey = 'all' | 'unread' | 'escrow';
@@ -92,14 +96,33 @@ const ProofChatHomeScreen: React.FC = () => {
     ]).start();
   }, []);
 
-  const handleCreate = (payload: CreateConversationPayload) => {
-    dispatch(createConversation(payload));
+  const handleCreate = async (payload: CreateConversationPayload) => {
+    // Backend TẮT (mock) → tạo phòng cục-bộ như cũ, không cần thành viên.
+    if (!backendEnabled) {
+      dispatch(createConversation(payload));
+      setCreateOpen(false);
+      Toast.show({ type: 'success', text1: 'Đã tạo cuộc trò chuyện', text2: payload.title });
+      return;
+    }
+
+    // Backend SỐNG → tạo nhóm THẬT qua MLS (Welcome đẩy cho thành viên đồng bộ).
+    const members = payload.participantIds ?? [];
+    if (members.length === 0) {
+      Toast.show({ type: 'error', text1: 'Chưa chọn thành viên', text2: 'Cần ít nhất 1 người để tạo nhóm.' });
+      return;
+    }
     setCreateOpen(false);
-    Toast.show({
-      type: 'success',
-      text1: 'Đã tạo cuộc trò chuyện',
-      text2: payload.title,
-    });
+    Toast.show({ type: 'info', text1: 'Đang tạo nhóm…', text2: payload.title });
+    const res =
+      payload.type === 'DIRECT'
+        ? await createDirectConversation(members[0])
+        : await createGroupConversation(payload.title, members);
+    if (res.ok) {
+      await dispatch(loadConversations());
+      Toast.show({ type: 'success', text1: 'Đã tạo nhóm', text2: payload.title });
+    } else {
+      Toast.show({ type: 'error', text1: 'Tạo nhóm thất bại', text2: res.error ?? 'Thử lại sau.' });
+    }
   };
 
   const handleJoin = (payload: JoinConversationPayload) => {
@@ -393,6 +416,7 @@ const ProofChatHomeScreen: React.FC = () => {
         visible={createOpen}
         onClose={() => setCreateOpen(false)}
         onSubmit={handleCreate}
+        requireMembers={backendEnabled}
       />
       <JoinConversationModal
         visible={joinOpen}

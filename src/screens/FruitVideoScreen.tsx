@@ -292,6 +292,12 @@ const FruitVideoScreen: React.FC = () => {
               ? `Chủ vườn sẽ xác nhận sau. (${result.n_frames} khung)`
               : 'Quay chậm hơn một chút sẽ tốt hơn. Chủ vườn xác nhận sau.'}
           </Text>
+          {/* #94 từng đặt ở đây khối "stored=false → nút Gửi lại" gọi thẳng handleUpload.
+              Kiến trúc 1-cửa bỏ khối đó: màn kết quả CHỈ dựng khi clip đã rời hàng đợi,
+              tức backend xác nhận stored!==false (videoUploadQueue.ts:497). Còn stored=false
+              thì job nằm lại trong hàng và người dùng thấy màn "Đã lưu để gửi sau" + nút
+              "Gửi lại" nối vào retryVideoJobNow. Gọi handleUpload ở đây sẽ xếp hàng clip
+              lần nữa = đúng lỗi gửi-trùng đã bịt. */}
           {/* Bằng chứng clip đã nằm trên LampNet. Đội thực địa cần THẤY mã này để
               đối chiếu sau buổi test, không chỉ tin vào dòng "đã lưu". */}
           {!!result.video_cid && (

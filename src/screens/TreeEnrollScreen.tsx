@@ -192,7 +192,12 @@ const TreeEnrollScreen: React.FC = () => {
 
   // Bộ chọn vườn — cây PHẢI thuộc một vườn mới hiện trong trang trại. Mặc định vườn
   // mở từ ngữ-cảnh (route.farmId); không có thì cho chọn vườn đã có / tạo mới.
+  // KHÔNG BAO GIỜ đăng ký cây với farm_id rỗng/'default' — cây mồ côi bị
+  // /api/trees?farm_id lọc bỏ, hỏng dữ liệu vườn. Đây là ràng buộc CỨNG:
+  //  - vào từ Home ("Quét cây") không kèm farmId → tự chọn nếu chỉ có 1 vườn,
+  //    bắt chọn nếu nhiều vườn, dẫn tạo vườn nếu chưa có vườn nào.
   const farms = useAppSelector((s: RootState) => s.farm.farms);
+  const farmsLoading = useAppSelector((s: RootState) => s.farm.isLoading);
   const currentUser = useAppSelector((s: RootState) => s.user.currentUser);
   // Namespace nháp theo người dùng hiện tại (chống rò xuyên user trên tablet chung).
   const draftOwner = currentUser?.did ?? currentUser?.id ?? '';
@@ -214,6 +219,17 @@ const TreeEnrollScreen: React.FC = () => {
       setSelectedFarmId(undefined);
     }
   }, [farms, selectedFarmId]);
+
+  // Đúng 1 vườn → tự chọn, không thêm ma sát. Nhiều vườn → để user chọn (không tự
+  // đoán). Chỉ tự chọn khi chưa có lựa chọn (giữ ngữ-cảnh route.farmId nếu có).
+  useEffect(() => {
+    if (!selectedFarmId && farms.length === 1) {
+      setSelectedFarmId(farms[0].id);
+    }
+  }, [farms, selectedFarmId]);
+
+  // Trạng thái vườn để dựng thông báo: đang nạp vs thật sự chưa có vườn nào.
+  const noFarms = !farmsLoading && farms.length === 0;
 
   // Ref soi captures / paths MỚI NHẤT — chống đua khôi-phục-vs-phiên-mới (hộp thoại
   // mở lâu, người dùng đã chụp mới trong lúc đó thì KHÔNG ghi đè bằng ảnh nháp).
@@ -313,7 +329,8 @@ const TreeEnrollScreen: React.FC = () => {
     : captures.length;
 
   // Bắt buộc vườn HỢP LỆ (còn tồn tại) mới cho đăng ký — tránh cây mồ côi gắn vào
-  // vườn đã xoá / id nháp chết. (Bất biến chung với PR #96.)
+  // vườn đã xoá / id nháp chết. Siết hơn bản #96 (`!!farmId`): nháp khôi phục có thể
+  // hồi sinh id vườn đã xoá, khi đó farmId truthy mà vườn không còn.
   const canEnroll = !isEnrolling && effectiveCaptureCount >= MIN_CAPTURES
     && name.trim().length > 0 && farmValid;
 
@@ -367,6 +384,28 @@ const TreeEnrollScreen: React.FC = () => {
     (treeId: string, code: string) => {
       // Đăng ký xong → bản nháp hết vai trò, xoá để lần sau không hỏi khôi phục.
       clearTreeCaptureDraft(draftOwner);
+      // Dựng object cây TỐI THIỂU để truyền THẲNG sang TreeDetail. Nếu chỉ gửi `treeId`,
+      // TreeDetail phải tra trong store — mà cây VỪA tạo CHƯA có trong store → nó goBack
+      // (bật ngược ngay). Đây là lỗi "đăng ký xong không xem được cây" ngoài thực địa.
+      // Shape khớp mapTreeInfoToUI (treeReIDService). Dựng TRƯỚC clearAll() để giữ gps/name.
+      const justCreated = {
+        id: treeId,
+        tree_id: treeId,
+        code,
+        name: name.trim(),
+        farmer_name: name.trim(),
+        farmId,
+        farm_id: farmId,
+        species: undefined,
+        latitude: gps?.lat,
+        longitude: gps?.lng,
+        images: [] as string[],
+        estimatedFruits: 0,
+        fruitCount: 0,
+        has_3d: false,
+        anchor: null,
+        n_views: 0,
+      };
       Alert.alert(
         'Đăng ký thành công',
         `Mã cây: ${code}`,
@@ -375,7 +414,7 @@ const TreeEnrollScreen: React.FC = () => {
             text: 'Xem chi tiết',
             onPress: () => {
               dispatch(clearAll());
-              navigation.navigate('TreeDetail', { treeId });
+              navigation.navigate('TreeDetail', { treeId, tree: justCreated } as any);
             },
           },
           {
@@ -389,7 +428,7 @@ const TreeEnrollScreen: React.FC = () => {
         { cancelable: false },
       );
     },
-    [dispatch, navigation, draftOwner],
+    [dispatch, navigation, draftOwner, name, farmId, gps],
   );
 
   // ── Gộp vào cây cũ (verify_add) ──────────────────────────────────────────
@@ -473,6 +512,27 @@ const TreeEnrollScreen: React.FC = () => {
   const handleEnroll = async () => {
     if (!name.trim()) {
       Alert.alert('Thiếu tên', 'Vui lòng nhập tên cây trước khi đăng ký.');
+      return;
+    }
+
+    // Chặn cây mồ côi — không cho đăng ký khi chưa gắn vào vườn nào.
+    if (!farmId) {
+      if (noFarms) {
+        Alert.alert(
+          'Chưa có vườn',
+          'Cây phải thuộc một vườn. Hãy tạo vườn trước rồi đăng ký cây.',
+          [
+            { text: 'Huỷ', style: 'cancel' },
+            {
+              text: 'Tạo vườn',
+              onPress: () =>
+                (navigation as any).navigate('FarmDetail', { farm_id: null }),
+            },
+          ],
+        );
+      } else {
+        Alert.alert('Chọn vườn', 'Vui lòng chọn vườn để gắn cây trước khi đăng ký.');
+      }
       return;
     }
 
@@ -723,7 +783,9 @@ const TreeEnrollScreen: React.FC = () => {
           </View>
           {!farmValid && (
             <Text style={styles.farmWarnText}>
-              Chưa chọn vườn — cây sẽ không hiện trong trang trại. Hãy chọn hoặc tạo vườn.
+              {noFarms
+                ? 'Chưa có vườn nào. Tạo vườn trước — cây phải thuộc một vườn mới đăng ký được.'
+                : 'Chọn vườn để đăng ký. Cây phải thuộc một vườn.'}
             </Text>
           )}
         </View>

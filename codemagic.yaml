@@ -115,9 +115,9 @@ workflows:
           PHOENIX_WALLET_ENABLED=${PHOENIX_WALLET_ENABLED:-false}
 
           # TreeReID / identify cây (RN layer)
-          ORILIFE_API_BASE_URL=${ORILIFE_API_BASE_URL:-https://test.orilife.io}
-          ORILIFE_TREEID_URL=${ORILIFE_TREEID_URL:-https://test.orilife.io/TreeIdentity}
-          ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://test.orilife.io}
+          ORILIFE_API_BASE_URL=${ORILIFE_API_BASE_URL:-https://api.orilife.io}
+          ORILIFE_TREEID_URL=${ORILIFE_TREEID_URL:-https://api.orilife.io/TreeIdentity}
+          ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://api.orilife.io}
 
           # LampNet 3D
           MESHAPI_USE_MOCK=false
@@ -396,9 +396,9 @@ workflows:
           ALADIN_REGION_CODE=${REGION_CODE:-vn-south-01}
           PHOENIXKEY_API_URL=${PHOENIXKEY_API_URL:-https://api.phoenixkey.me/api/v1}
           PHOENIX_WALLET_ENABLED=${PHOENIX_WALLET_ENABLED:-false}
-          ORILIFE_API_BASE_URL=${ORILIFE_API_BASE_URL:-https://test.orilife.io}
-          ORILIFE_TREEID_URL=${ORILIFE_TREEID_URL:-https://test.orilife.io/TreeIdentity}
-          ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://test.orilife.io}
+          ORILIFE_API_BASE_URL=${ORILIFE_API_BASE_URL:-https://api.orilife.io}
+          ORILIFE_TREEID_URL=${ORILIFE_TREEID_URL:-https://api.orilife.io/TreeIdentity}
+          ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://api.orilife.io}
           MESHAPI_USE_MOCK=false
           LAMPNET_BASE_URL=${LAMPNET_BASE_URL:-https://lampnet.cloud}
           LAMPNET_UPLOAD_URL=${LAMPNET_UPLOAD_URL:-https://lampnet.cloud/mirage/put?mode=symmetric}
@@ -511,7 +511,12 @@ workflows:
           unless target.shell_script_build_phases.find { |p| p.name == phase_name }
             phase = project.new(Xcodeproj::Project::Object::PBXShellScriptBuildPhase)
             phase.name = phase_name
-            phase.shell_script = 'find "$BUILD_DIR/${CONFIGURATION}-iphoneos" -name "*.signature" -delete 2>/dev/null || true'
+            # CHỈ xóa signature của MapLibre (đúng framework gây "signature couldn't be
+            # copied to Signatures"). TRƯỚC đây xóa MỌI *.signature → xóa cả của
+            # ExpoModulesJSI.xcframework → trên bản SIGNED (App Store validate chặt) framework
+            # không load → expo JSI (globalThis.expo) KHÔNG cài → 3D crash. Unsigned/AltStore
+            # validate lỏng nên vẫn load → chạy. Narrow để không đụng ExpoModulesJSI.
+            phase.shell_script = 'find "$BUILD_DIR/${CONFIGURATION}-iphoneos" -ipath "*MapLibre*" -name "*.signature" -delete 2>/dev/null || true'
             target.build_phases << phase
             project.save
             puts "✅ Added '#{phase_name}'"
@@ -657,9 +662,9 @@ workflows:
           ALADIN_REGION_CODE=${REGION_CODE:-vn-south-01}
           PHOENIXKEY_API_URL=${PHOENIXKEY_API_URL:-https://api.phoenixkey.me/api/v1}
           PHOENIX_WALLET_ENABLED=${PHOENIX_WALLET_ENABLED:-false}
-          ORILIFE_API_BASE_URL=${ORILIFE_API_BASE_URL:-https://test.orilife.io}
-          ORILIFE_TREEID_URL=${ORILIFE_TREEID_URL:-https://test.orilife.io/TreeIdentity}
-          ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://test.orilife.io}
+          ORILIFE_API_BASE_URL=${ORILIFE_API_BASE_URL:-https://api.orilife.io}
+          ORILIFE_TREEID_URL=${ORILIFE_TREEID_URL:-https://api.orilife.io/TreeIdentity}
+          ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://api.orilife.io}
           MESHAPI_USE_MOCK=false
           LAMPNET_BASE_URL=${LAMPNET_BASE_URL:-https://lampnet.cloud}
           LAMPNET_UPLOAD_URL=${LAMPNET_UPLOAD_URL:-https://lampnet.cloud/mirage/put?mode=symmetric}
@@ -808,9 +813,9 @@ workflows:
           ALADIN_REGION_CODE=${REGION_CODE:-vn-south-01}
           PHOENIXKEY_API_URL=${PHOENIXKEY_API_URL:-https://api.phoenixkey.me/api/v1}
           PHOENIX_WALLET_ENABLED=${PHOENIX_WALLET_ENABLED:-false}
-          ORILIFE_API_BASE_URL=${ORILIFE_API_BASE_URL:-https://test.orilife.io}
-          ORILIFE_TREEID_URL=${ORILIFE_TREEID_URL:-https://test.orilife.io/TreeIdentity}
-          ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://test.orilife.io}
+          ORILIFE_API_BASE_URL=${ORILIFE_API_BASE_URL:-https://api.orilife.io}
+          ORILIFE_TREEID_URL=${ORILIFE_TREEID_URL:-https://api.orilife.io/TreeIdentity}
+          ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://api.orilife.io}
           MESHAPI_USE_MOCK=false
           LAMPNET_BASE_URL=${LAMPNET_BASE_URL:-https://lampnet.cloud}
           LAMPNET_UPLOAD_URL=${LAMPNET_UPLOAD_URL:-https://lampnet.cloud/mirage/put?mode=symmetric}

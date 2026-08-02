@@ -9,6 +9,7 @@
 
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ensureOrilifeToken } from './orilifeDidAuth';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -64,8 +65,10 @@ export interface IdentifyResponse {
    * ADDITIVE: câu gợi ý hành-động do backend trả khi kết quả chưa chắc (vd
    * "đi vòng quanh cây, chụp thêm góc khác" / "kết quả chưa chắc, nhờ chủ vườn
    * xác nhận"). Hiện ở UNCERTAIN/NO_MATCH. Thiếu (backend cũ) → UI không hiện.
+   * LƯU Ý: backend đôi khi trả OBJECT {message, channel, n_candidates} thay vì
+   * string — UI phải coerce (ReidConfirmDialog) kẻo render object = crash React.
    */
-  suggest?: string;
+  suggest?: string | { message?: string; channel?: string; n_candidates?: number };
   /**
    * ADDITIVE (B1/B2 owner_review): backend có CHO PHÉP tạo cây MỚI ở lần này
    * không. Thiếu/undefined (backend cũ) = true → GIỮ hành-vi cũ (cho tạo mới).
@@ -197,6 +200,12 @@ async function _getAuthHeader(): Promise<string | null> {
   }
 }
 
+/** Cắt phần gốc (https://host) khỏi URL đầy đủ để truyền cho ensureOrilifeToken. */
+function _baseOf(url: string): string {
+  const i = url.indexOf('/api/');
+  return i > 0 ? url.slice(0, i) : url;
+}
+
 async function _apiCall<T>(
   url: string,
   method: 'GET' | 'POST' | 'DELETE',
@@ -204,6 +213,9 @@ async function _apiCall<T>(
   timeoutMs: number = REQUEST_TIMEOUT_MS,
   attempt = 0,
 ): Promise<{ ok: boolean; data?: T; error?: APIError }> {
+  // Đảm bảo có token DID trước khi gọi (mở app vào thẳng luồng cây chưa ký DID → 401 oan).
+  // Cùng auth_token field-reid với fruitReIDService — dùng chung cơ chế ký lại.
+  await ensureOrilifeToken(_baseOf(url));
   const authHeader = await _getAuthHeader();
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (authHeader) headers['Authorization'] = authHeader;
@@ -221,6 +233,12 @@ async function _apiCall<T>(
     clearTimeout(timeoutHandle);
 
     if (resp.status === 401) {
+      // Token hết hạn GIỮA BUỔI → ký lại bằng DID 1 lần rồi thử lại (khớp fruitReIDService).
+      // Trước đây trả thẳng auth_error → getTrees/identify câm giữa thực địa, không tự hồi:
+      // nông dân không chọn được cây để quay video dù mạng vẫn tốt.
+      if (attempt === 0 && (await ensureOrilifeToken(_baseOf(url), { force: true }))) {
+        return _apiCall<T>(url, method, body, timeoutMs, 1);
+      }
       return {
         ok: false,
         error: { type: 'auth_error', detail: 'Token hết hạn hoặc không hợp lệ', http_status: 401 },
@@ -568,4 +586,29 @@ export async function renameTree(
 
   const result = await _apiCall<{ ok: boolean }>(`${baseUrl}/api/rename`, 'POST', form);
   return { ok: result.ok, error: result.error };
+}
+
+/**
+ * buildTree3D — YÊU CẦU máy chủ dựng mô hình 3D cho cây (H-11/H-25).
+ * POST /api/build3d/{tree_id} (auth chủ cây):
+ *   200 { ok:true, building:true } → đã nhận vào làn dựng.
+ *   404 { ok:false, error:"không có xuất xứ" } → cây chưa có provenance (chưa đăng ký xong).
+ *
+ * QUAN TRỌNG (H-25): server chỉ chạy 3D khi làn provenance RẢNH → `building:true` KHÔNG
+ * đồng nghĩa "đang dựng ngay", thường là "đã xếp hàng, chờ hạ tầng rảnh". UI phải nói
+ * "đã xếp hàng" thay vì "đang dựng" quay mãi. `_apiCall` không đọc body 404 nên phân biệt
+ * "chưa có xuất xứ" qua `error.http_status === 404`.
+ */
+export async function buildTree3D(
+  baseUrl: string,
+  treeId: string,
+): Promise<{ ok: boolean; building?: boolean; noProvenance?: boolean; error?: APIError }> {
+  const result = await _apiCall<{ ok: boolean; building?: boolean }>(
+    `${baseUrl}/api/build3d/${encodeURIComponent(treeId)}`,
+    'POST',
+  );
+  if (result.ok && result.data) {
+    return { ok: !!result.data.ok, building: result.data.building };
+  }
+  return { ok: false, noProvenance: result.error?.http_status === 404, error: result.error };
 }

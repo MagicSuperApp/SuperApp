@@ -23,6 +23,7 @@ import { WebView } from 'react-native-webview';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { ORILIFE_BASE } from '../services/orilifeBase';
+import { buildTree3D } from '../services/treeReIDService';
 import { COLORS } from '../constants';
 import rLog from '../services/remoteLogger';
 
@@ -38,13 +39,13 @@ const ALLOWED_ORIGIN: string = BASE_URL.replace(/\/+$/, '');
 // whitelist đúng CDN cần, KHÔNG mở '*' (giữ chống chèn mã độc qua WebView bridge).
 const ALLOWED_CDNS: readonly string[] = ['https://unpkg.com'];
 
-type TreeViewer3DParams = { code: string; treeName?: string };
+type TreeViewer3DParams = { code: string; treeName?: string; treeId?: string };
 type TreeViewer3DRoute = RouteProp<{ TreeViewer3D: TreeViewer3DParams }, 'TreeViewer3D'>;
 
 const TreeViewer3DScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<TreeViewer3DRoute>();
-  const { code, treeName } = route.params ?? { code: '' };
+  const { code, treeName, treeId } = route.params ?? { code: '' };
 
   const webRef = useRef<WebView>(null);
   const [loading, setLoading] = useState(true);
@@ -55,6 +56,28 @@ const TreeViewer3DScreen: React.FC = () => {
   // Chi tiết lỗi (mô tả iOS / HTTP status) — HIỆN lên UI để chẩn đoán tận nơi thay
   // vì "kiểm tra mạng" chung chung (vd cert SSL, 500, DNS...).
   const [errDetail, setErrDetail] = useState<string>('');
+  // Trạng thái yêu cầu DỰNG 3D (POST build3d). Tách "đã xếp hàng" khỏi "đang dựng" (H-25).
+  const [buildMsg, setBuildMsg] = useState<string>('');
+  const [requesting, setRequesting] = useState(false);
+
+  // Xếp cây vào làn dựng 3D của máy chủ. Server chỉ dựng khi làn provenance rảnh nên
+  // building=true = "đã xếp hàng", KHÔNG hứa "đang dựng ngay" — nói đúng để đội không chờ mòn.
+  const requestBuild = useCallback(async () => {
+    if (!treeId || requesting) return;
+    setRequesting(true);
+    setBuildMsg('');
+    const r = await buildTree3D(ORILIFE_BASE, treeId);
+    setRequesting(false);
+    if (r.ok && r.building) {
+      setBuildMsg('Đã xếp cây vào hàng dựng 3D. Máy chủ dựng khi rảnh — quay lại sau ít phút rồi bấm "Thử lại".');
+    } else if (r.noProvenance) {
+      setBuildMsg('Cây chưa có xuất xứ (chưa đăng ký xong) nên chưa dựng được 3D.');
+    } else if (r.error?.http_status === 401) {
+      setBuildMsg('Phiên đăng nhập hết hạn. Hãy đăng nhập lại rồi thử.');
+    } else {
+      setBuildMsg('Chưa gửi được yêu cầu dựng. Thử lại sau ít phút.');
+    }
+  }, [treeId, requesting]);
 
   // Mã cây có thể chứa ký-tự cần mã-hoá URL — luôn encode để an-toàn.
   const url = useMemo(
@@ -72,6 +95,7 @@ const TreeViewer3DScreen: React.FC = () => {
     setFailed(false);
     setNotBuilt(false);
     setErrDetail('');
+    setBuildMsg('');
     setLoading(true);
     webRef.current?.reload();
   }, []);
@@ -177,10 +201,19 @@ const TreeViewer3DScreen: React.FC = () => {
           <View style={styles.center}>
             <Icon name="cube-scan" size={48} color={COLORS.textSub} />
             <Text style={styles.emptyText}>
-              Mô hình 3D đang được dựng hoặc chưa có. Hãy quét thêm ảnh và quay lại sau.
+              Mô hình 3D chưa sẵn sàng.{'\n'}
+              {treeId
+                ? 'Bấm "Dựng 3D" để xếp cây vào hàng dựng của máy chủ.'
+                : 'Hãy quét thêm ảnh và quay lại sau.'}
             </Text>
-            <TouchableOpacity style={styles.btn} onPress={reload}>
-              <Text style={styles.btnText}>Thử lại</Text>
+            {buildMsg ? <Text style={styles.buildMsgText}>{buildMsg}</Text> : null}
+            {treeId ? (
+              <TouchableOpacity style={styles.btn} onPress={requestBuild} disabled={requesting}>
+                <Text style={styles.btnText}>{requesting ? 'Đang gửi…' : 'Dựng 3D'}</Text>
+              </TouchableOpacity>
+            ) : null}
+            <TouchableOpacity style={styles.btnGhost} onPress={reload}>
+              <Text style={styles.btnGhostText}>Thử lại</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -264,6 +297,16 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   btnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  buildMsgText: {
+    marginTop: 10,
+    color: COLORS.textSub,
+    fontSize: 13,
+    textAlign: 'center',
+    paddingHorizontal: 16,
+    lineHeight: 20,
+  },
+  btnGhost: { marginTop: 12, paddingHorizontal: 24, paddingVertical: 10 },
+  btnGhostText: { color: COLORS.accent, fontSize: 15, fontWeight: '600' },
 });
 
 export default TreeViewer3DScreen;

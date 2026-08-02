@@ -844,13 +844,23 @@ const TreeIdentityScreen: React.FC = () => {
         {/* M2: băng tin-cậy THÔ (cao/vừa/thấp) — KHÔNG hiện điểm số */}
         {confidence && <ConfidenceBandView band={confidence} />}
 
-        {/* Gợi ý hành-động từ server (suggest) — vd "đi vòng chụp thêm góc" */}
-        {suggest ? (
-          <View style={styles.suggestBox}>
-            <Icon name="lightbulb-on-outline" size={16} color={NEUTRAL.warning} />
-            <Text style={styles.suggestText}>{suggest}</Text>
-          </View>
-        ) : null}
+        {/* Gợi ý hành-động từ server (suggest) — vd "đi vòng chụp thêm góc".
+            Backend đôi khi trả OBJECT {message, channel, n_candidates} thay vì string
+            → phải coerce, KHÔNG render thẳng object (crash "not valid React child"). */}
+        {(() => {
+          const suggestStr =
+            typeof suggest === 'string'
+              ? suggest
+              : (suggest && typeof suggest === 'object'
+                  ? String((suggest as { message?: unknown }).message ?? '')
+                  : '');
+          return suggestStr ? (
+            <View style={styles.suggestBox}>
+              <Icon name="lightbulb-on-outline" size={16} color={NEUTRAL.warning} />
+              <Text style={styles.suggestText}>{suggestStr}</Text>
+            </View>
+          ) : null;
+        })()}
 
         {/* M3: phán-quyết người dùng — chỉ hiện khi backend trả query_id */}
         {queryId && (

@@ -261,6 +261,28 @@ const TreeEnrollScreen: React.FC = () => {
   // ── Navigate sau thành công ───────────────────────────────────────────────
   const handleSuccess = useCallback(
     (treeId: string, code: string) => {
+      // Dựng object cây TỐI THIỂU để truyền THẲNG sang TreeDetail. Nếu chỉ gửi `treeId`,
+      // TreeDetail phải tra trong store — mà cây VỪA tạo CHƯA có trong store → nó goBack
+      // (bật ngược ngay). Đây là lỗi "đăng ký xong không xem được cây" ngoài thực địa.
+      // Shape khớp mapTreeInfoToUI (treeReIDService). Dựng TRƯỚC clearAll() để giữ gps/name.
+      const justCreated = {
+        id: treeId,
+        tree_id: treeId,
+        code,
+        name: name.trim(),
+        farmer_name: name.trim(),
+        farmId,
+        farm_id: farmId,
+        species: undefined,
+        latitude: gps?.lat,
+        longitude: gps?.lng,
+        images: [] as string[],
+        estimatedFruits: 0,
+        fruitCount: 0,
+        has_3d: false,
+        anchor: null,
+        n_views: 0,
+      };
       Alert.alert(
         'Đăng ký thành công',
         `Mã cây: ${code}`,
@@ -269,7 +291,7 @@ const TreeEnrollScreen: React.FC = () => {
             text: 'Xem chi tiết',
             onPress: () => {
               dispatch(clearAll());
-              navigation.navigate('TreeDetail', { treeId });
+              navigation.navigate('TreeDetail', { treeId, tree: justCreated } as any);
             },
           },
           {
@@ -283,7 +305,7 @@ const TreeEnrollScreen: React.FC = () => {
         { cancelable: false },
       );
     },
-    [dispatch, navigation],
+    [dispatch, navigation, name, farmId, gps],
   );
 
   // ── Gộp vào cây cũ (verify_add) ──────────────────────────────────────────

@@ -25,10 +25,51 @@
 
 **Deprecated (đừng dùng):** `/wallet/register`, `/wallet/{did}/balance` (V1).
 
+## `POST /identity/org/{orgDid}/mint-lamp` — là GRANT UỶ QUYỀN, không phải lệnh đúc
+> Cập nhật 2026-08-03 (Phoenix agent). Database **PR #119**, chờ Long merge → BE 🟡.
+> Đính chính bản cũ ghi "grep 0 hit / sẽ không có": endpoint CÓ, nhưng **nghĩa khác hẳn**
+> cái client `src/services/orgMint-api.ts` đang giả định.
+
+Endpoint **không đúc LAMP, không submit tx**. Nó verify controller của OrgDID đã ký thử thách,
+rồi phát một **Grant tự-verify** (Anchorme §11.2). Bên tiêu Grant để ráp + ký + submit giao dịch
+thật là **`dist_treasury` phía MagicLamp**, không phải app, không phải PhoenixKey.
+
+```
+POST /api/v1/identity/org/{orgDid}/mint-lamp
+{ "action": "mint:LAMP",            // mint:LAMP | pot:fund | pot:distribute (3 chặng)
+  "resource": "<pot-id / addr kho>",
+  "amountLamp": "26000000000000000", // oildrop — CHUỖI big-number, parse BigInt, ĐỪNG dùng number
+  "granteeDid": "did:phoenix:…",     // tuỳ chọn: operator dist_treasury được uỷ quyền
+  "validUntilSlot": 200000000,       // nên đặt hạn
+  "ownerDid": "did:phoenix:…",       // controller single-owner của org
+  "ownerSignature": "<hex>", "nonce": "<1–64>" }
+
+challenge = "PHOENIXKEY_ORG_LAMP:" + orgDid + ":" + action + ":" + amountLamp + ":"
+          + resource + ":" + (granteeDid||"") + ":" + (validUntilSlot||"") + ":" + nonce
+
+200 → { grantId, grantorDid, granteeDid, action, resource, amountLamp(String), validFromSlot,
+        validUntilSlot, nonce, status:"ISSUED", signerDid, signerPublicKeyHex, signature,
+        canonicalChallenge, revocable:true }
+403 chữ ký sai / signer≠controller · 404 org không tồn tại
+409 nonce đã dùng / org không single-owner · 400 validUntilSlot quá hạn
+```
+
+**Việc phía app phải sửa** (client hiện tại KHÔNG khớp):
+- `orgMint-api.ts:453` đang gửi `{orgDid, amount}` rồi chờ intent + SSE `/sign/request/{id}/stream`.
+  Hợp đồng thật cần đủ 8 trường trên, ký **Ed25519 device-key** trong Enclave, và **không** có
+  bước SSE nào — 200 trả thẳng Grant.
+- `amountLamp` là **chuỗi**. Ép về `number` là mất chính xác ở cỡ 2.6×10¹⁶ oildrop.
+- Ký on-chain dùng **Ed25519 device-key**; HW_Key P-256 chỉ verify off-chain (P-256 chưa verify
+  được on-chain). Đây đúng như app đang giả định.
+- m-of-n chưa hỗ trợ: org nhiều chủ → `409`. Follow-up phía Phoenix.
+
 ## Endpoints CHƯA có (app gọi nhưng backend thiếu — grep 0 hit)
-- `mint-lamp` + `mint-lamp/submit-tx` (issue giao Long còn DRAFT chưa post: `DRAFT-Long-issue-lamp-mint-2026-07-10.md`).
+- `mint-lamp/submit-tx` — **sẽ không có ở PhoenixKey**: submit là việc của bên tiêu Grant.
+- `GET /sign/request/{id}/stream` — SSE thật nằm ở `/auth/session/{id}/stream` (SDK dùng đường đó).
 - `did-payment/build-tx` + submit (Phase 2, chưa deploy).
-- `GET /identity/org` (list OrgDID theo owner).
+- `GET /identity/org` (list OrgDID theo owner) — app phải dựa cache cục bộ.
+- `GET /wallet/utxos` + `GET /wallet/params` — thiếu 2 proxy này thì native dựng được tx cũng
+  không có UTxO để ráp ⇒ **gửi ADA và uỷ thác pool đều chết**, dù `POST /wallet/tx/submit` đã có.
 
 ## Env / Creds cho SuperApp
 - KHÔNG có API-key/client-secret kiểu OAuth — cơ chế = **ServiceDID on-chain + JWKS**.
@@ -37,7 +78,12 @@
 ## Readiness
 - Ví Standard: 🟢 **backend sẵn, app CHƯA nối** — thêm client `wallet.registerStandard/getStandard/getAllWallets`, đổi V1 `getBalance`→`/wallet/{did}/all`.
 - Ví Phoenix (did-payment ký): 🔴 backend chưa có.
-- **Mint LAMP: 🔴 NO-GO.** Nguồn mint tiến xa nhất = worktree **`/Projects/_wt-superapp-mint`** (branch `claude/superapp-orgdid-mint`, HEAD `a0c11593` 07-11): build tx Rust FFI on-device → submit THẲNG Blockfrost (bỏ qua backend), bản B. cargo 150/150, tsc 0. **Chặn:** 3 deps on-chain chưa deploy Preview (TAAD anchor Active, Reserve `meter_nft`, policy FINAL) → "NO-GO có cơ sở". Long backend (mint-lamp endpoint) + threshold `@Min(2)` (nhánh `fix/47-low-cleanup`) chưa merge.
+- **Mint LAMP: 🟡 đổi thế.** Nghĩa đã chốt: OrgDID **xin uỷ quyền**, MagicLamp mới đúc. Endpoint
+  Grant có ở PR #119 (chờ merge) nên app dựng được luồng ký NGAY, cắm bên tiêu Grant sau —
+  không phải làm lại. Phần dưới là hiện trạng nhánh mint CŨ (đúc thẳng), giữ để đối chiếu:
+- **Mint LAMP (đường cũ, đúc thẳng): 🔴 NO-GO.** Nguồn mint tiến xa nhất = worktree **`/Projects/_wt-superapp-mint`** (branch `claude/superapp-orgdid-mint`, HEAD `a0c11593` 07-11): build tx Rust FFI on-device → submit THẲNG Blockfrost (bỏ qua backend), bản B. cargo 150/150, tsc 0. **Chặn:** 3 deps on-chain chưa deploy Preview (TAAD anchor Active, Reserve `meter_nft`, policy FINAL) → "NO-GO có cơ sở". Long backend (mint-lamp endpoint) + threshold `@Min(2)` (nhánh `fix/47-low-cleanup`) chưa merge.
 
 ## Changelog
+- 2026-08-03: `mint-lamp` = **Grant uỷ quyền** (PR #119) chứ không phải lệnh đúc — kèm hợp đồng
+  đầy đủ + danh sách việc app phải sửa. Bổ sung 2 proxy ví còn thiếu vào mục CHƯA có.
 - 2026-07-11: tạo file (5-agent cross-ref).

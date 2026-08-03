@@ -58,7 +58,15 @@ Trạng thái: `INIT → PENDING → ACTIVE → DELIVERED → RELEASED` (+ `FORF
 { "total": 2,
   "taskers": [{
     "did": "did:phoenix:…", "name": "Minh", "avatar": "🎬", "title": "…", "kind": "person",
-    "reputation": 112, "skills": ["video","motion-graphics"],
+    "reputation": 78,                  // HIỆU DỤNG, thang 0..100 — KHÔNG phải bộ đếm cũ
+    "reputationRaw": 112,              // bộ đếm cũ, ĐỪNG hiển thị
+    "reputationBasis": { "settledRecords": 6, "independentPartners": 3,
+                         "antiGamingDiscount": 0.7 },
+    "fromPriceVND": 90000,             // giá SÀN các dịch vụ đang mở; chưa có dịch vụ ⇒ null
+    "distanceKm": 3.4,                 // cần gọi kèm ?lat=&lon=; thợ chưa khai toạ độ ⇒ null
+    "lastActiveAt": 1785700000000,     // chưa có dấu vết ⇒ null
+    "avatarUrl": null,
+    "skills": ["video","motion-graphics"],
     "verifiedCredentials": 1,
     "credentials": [{ "taskType": "gt:video:short_form", "archetype": "A19",
                       "metric": { "videos": 80, "views": 25000 }, "quality_tier": "B" }],
@@ -75,6 +83,32 @@ Trạng thái: `INIT → PENDING → ACTIVE → DELIVERED → RELEASED` (+ `FORF
 - `?availableOnly=1` lọc cứng theo cửa sổ thời gian; `?now=<epoch ms>` để dựng lại đúng một cảnh.
 - Công khai — không kèm ví/khoá phiên/đối tác hợp đồng, an toàn hiện trước khi đăng nhập.
 - `GET /accounts` KHÔNG thay được: nó trả cả bên đi thuê lẫn hồ sơ rỗng, thiếu uy tín/chứng chỉ/giá.
+
+### ⚠ `reputation` ĐỔI NGHĨA (AladinWork Core PR #12, chờ merge)
+Trước là bộ đếm cộng dồn. Lỗ: `mutualRelease` cộng **+5 cho CẢ HAI bên** mỗi lần tất toán, mà
+khớp việc đọc thẳng con số đó ⇒ hai tài khoản bắt tay tất toán qua lại là một **máy in thứ hạng**,
+không cần khách thật, không cần tiền thật.
+
+| Trường | Dùng thế nào |
+|---|---|
+| `reputation` | **uy tín hiệu dụng, thang 0..100** = r̂ (co rút Bayesian trên sổ hợp đồng) × D (chiết khấu chống gaming). **Đây là số app hiển thị.** |
+| `reputationRaw` | bộ đếm cũ, giữ cho bên đang dùng — **ĐỪNG hiển thị** |
+| `reputationBasis` | `{settledRecords, independentPartners, antiGamingDiscount}` — để thẻ nói "dựa trên 6 việc với 3 khách" thay vì một con số trần trụi |
+
+**`reputation` KHÔNG phải hàm của `completedJobs`.** Một tài khoản có thể `completedJobs = 20` mà
+`reputation = 0` — đúng ca kẻ farm: 20 hợp đồng nhưng chỉ với MỘT đối tác, luân phiên vai. Hai số
+đo hai thứ khác nhau (số việc vs số việc ấy đáng tin tới đâu). Hiện cả hai thì đặt cạnh nhau có
+nhãn rõ, đừng để người dùng tự suy ra quan hệ.
+
+**Toạ độ thợ KHÔNG bao giờ ra ngoài** — nằm ở `offering.geo`, `GET /offerings` bóc bỏ trước khi
+trả; máy chủ chỉ trả `distanceKm`. Khoảng cách không dựng ngược thành toạ độ được.
+
+**Ba trạng thái lịch rảnh:** `available:false` + `availableFrom:null` = **chưa khai lịch** ·
+`false` + có mốc = đã khai nhưng ngoài cửa sổ · `true` + có mốc = rảnh tại thời điểm hỏi.
+`?now=<ms>` để app và máy chủ không đọc hai đồng hồ khác nhau.
+
+> **ĐỪNG dựng màn H-02 theo bản chụp này.** Đợi Core PR #12 merge rồi lấy shape từ
+> `AladinWork/Core → AladinWork-Integration.md` (gốc repo) — nguồn chân lý của họ.
 
 ## `POST /offerings` — nửa CUNG của chợ (mở H-28)
 Trước đây `offerings` chỉ sinh từ dữ liệu seed demo; bỏ seed ở môi trường thật ⇒ danh sách dịch vụ

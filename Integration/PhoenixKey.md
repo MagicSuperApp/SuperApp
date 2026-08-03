@@ -40,19 +40,40 @@ POST /api/v1/identity/org/{orgDid}/mint-lamp
   "resource": "<pot-id / addr kho>",
   "amountLamp": "26000000000000000", // oildrop — CHUỖI big-number, parse BigInt, ĐỪNG dùng number
   "granteeDid": "did:phoenix:…",     // tuỳ chọn: operator dist_treasury được uỷ quyền
-  "validUntilSlot": 200000000,       // nên đặt hạn
+  "validTtlSeconds": 3600,           // 60–604800, tuỳ chọn — hạn theo GIÂY tương đối
   "ownerDid": "did:phoenix:…",       // controller single-owner của org
   "ownerSignature": "<hex>", "nonce": "<1–64>" }
 
 challenge = "PHOENIXKEY_ORG_LAMP:" + orgDid + ":" + action + ":" + amountLamp + ":"
-          + resource + ":" + (granteeDid||"") + ":" + (validUntilSlot||"") + ":" + nonce
+          + resource + ":" + (granteeDid||"") + ":" + (validTtlSeconds||"") + ":" + nonce
 
 200 → { grantId, grantorDid, granteeDid, action, resource, amountLamp(String), validFromSlot,
         validUntilSlot, nonce, status:"ISSUED", signerDid, signerPublicKeyHex, signature,
         canonicalChallenge, revocable:true }
 403 chữ ký sai / signer≠controller · 404 org không tồn tại
-409 nonce đã dùng / org không single-owner · 400 validUntilSlot quá hạn
+409 nonce đã dùng / org không single-owner · 400 validTtlSeconds ngoài dải
 ```
+
+**`validTtlSeconds` chứ KHÔNG phải `validUntilSlot`** (Phoenix đổi hợp đồng 03/08 sau khi
+SuperApp chỉ ra backend không có đường trả slot công khai ⇒ hạn tuyệt đối là bất-khả-dụng cho
+app). Server tự đóng dấu `validFromSlot = tip`, tính `validUntilSlot = validFromSlot +
+validTtlSeconds` (≈1 slot/giây) rồi trả về tuyệt đối cho `dist_treasury`. **App không cần đồng
+hồ slot, không cần hằng số mạng, không quy đổi POSIXTime.** Bỏ trống = Grant không hết hạn
+(nonce dùng-một-lần vẫn chặn phát lại) — nhưng nên đặt hạn.
+
+**`nonce`: app tự sinh** (khuyến nghị ≥128-bit, 1–64 ký tự). Server tiêu dùng-một-lần theo
+`(ownerDid, nonce)`, **TTL 10 phút**. Verify chạy TRƯỚC khi tiêu ⇒ ký sai KHÔNG đốt nonce.
+Người dùng bấm hai lần vì mạng chậm: **khoá nút + hiện "đang xử lý"**, đừng để chạm `409`.
+Muốn thử lại sau khi hỏng thật → **sinh nonce MỚI** và ký lại, đừng tái dùng nonce cũ.
+
+**Grant LÀ BÍ MẬT — cất Enclave/Keychain, KHÔNG AsyncStorage.** Nó mang chữ ký controller nên
+là *bearer authorization*: ai cầm được đều trình cho `dist_treasury` để thực thi thao tác đã
+uỷ quyền. Đích (resource/amount) cố định trong Grant nên rò KHÔNG cho đổi hướng tiền, nhưng
+CHO thực-thi-sớm hoặc lặp trong cửa sổ hạn.
+
+**Đường Grant → `dist_treasury` chưa chốt** (push hay pull, đang chờ MagicLamp trả lời). Phoenix
+khuyến nghị app **lưu Grant BỀN, sống qua app-kill** — đúng cho cả hai cách, khỏi làm lại cấu
+trúc màn. Kết hợp với đoạn trên: bền **và** trong Enclave, không phải AsyncStorage.
 
 **Việc phía app phải sửa** (client hiện tại KHÔNG khớp):
 - `orgMint-api.ts:453` đang gửi `{orgDid, amount}` rồi chờ intent + SSE `/sign/request/{id}/stream`.
@@ -84,6 +105,9 @@ challenge = "PHOENIXKEY_ORG_LAMP:" + orgDid + ":" + action + ":" + amountLamp + 
 - **Mint LAMP (đường cũ, đúc thẳng): 🔴 NO-GO.** Nguồn mint tiến xa nhất = worktree **`/Projects/_wt-superapp-mint`** (branch `claude/superapp-orgdid-mint`, HEAD `a0c11593` 07-11): build tx Rust FFI on-device → submit THẲNG Blockfrost (bỏ qua backend), bản B. cargo 150/150, tsc 0. **Chặn:** 3 deps on-chain chưa deploy Preview (TAAD anchor Active, Reserve `meter_nft`, policy FINAL) → "NO-GO có cơ sở". Long backend (mint-lamp endpoint) + threshold `@Min(2)` (nhánh `fix/47-low-cleanup`) chưa merge.
 
 ## Changelog
+- 2026-08-03 (lần 2): hợp đồng đổi `validUntilSlot` → **`validTtlSeconds`** sau phản hồi của
+  SuperApp; chốt thêm nonce (app sinh, TTL 10 phút), Grant là bí mật (cất Enclave), và app phải
+  lưu Grant bền.
 - 2026-08-03: `mint-lamp` = **Grant uỷ quyền** (PR #119) chứ không phải lệnh đúc — kèm hợp đồng
   đầy đủ + danh sách việc app phải sửa. Bổ sung 2 proxy ví còn thiếu vào mục CHƯA có.
 - 2026-07-11: tạo file (5-agent cross-ref).

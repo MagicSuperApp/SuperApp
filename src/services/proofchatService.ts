@@ -250,6 +250,51 @@ export async function createDirectConversation(peerStakeAddress: string): Promis
   }
 }
 
+/**
+ * Tạo hội thoại GROUP với N thành viên (DID) + khởi tạo nhóm MLS.
+ * Giống createDirectConversation nhưng type='GROUP' và participantIds là mảng DID.
+ * participantIds = danh sách did:phoenix (từ users.search) — KHÔNG gồm chính mình.
+ */
+export async function createGroupConversation(
+  title: string,
+  participantIds: string[],
+): Promise<{ ok: boolean; conversationId?: string; error?: string }> {
+  if (!currentIdentity) return { ok: false, error: 'chưa init' };
+  const members = Array.from(
+    new Set(participantIds.map((s) => s.trim()).filter((s) => s && s !== currentIdentity)),
+  );
+  if (members.length === 0) return { ok: false, error: 'cần ít nhất 1 thành viên' };
+  const name = title.trim();
+  if (!name) return { ok: false, error: 'thiếu tiêu đề nhóm' };
+  try {
+    const conv = await proofChatApi.conversations.create({
+      type: 'GROUP',
+      title: name,
+      participantIds: members,
+    });
+    const conversationId = conv.id;
+
+    // Lấy KeyPackage các thành viên phòng (trừ mình) → tạo nhóm MLS + Welcome.
+    const kps = await proofChatApi.mls.roomKeyPackages(conversationId, DEVICE_ID);
+    const memberKps = kps.filter((k) => k.stakeAddress !== currentIdentity).map((k) => k.keyPackage);
+    const group = await chatMls.createGroup(conversationId, memberKps);
+
+    // Đẩy Welcome/Commit để thành viên đồng bộ epoch (nếu có KeyPackage).
+    if (group.welcome || group.commit) {
+      await proofChatApi.mls.createEpochSync({
+        conversationId,
+        epoch: group.epoch,
+        commitMessage: group.commit ?? '',
+        welcomeMessage: group.welcome ?? '',
+      }).catch(() => undefined);
+    }
+    await persistState();
+    return { ok: true, conversationId };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'tạo nhóm thất bại' };
+  }
+}
+
 /** Đồng bộ epoch cho 1 hội thoại: kéo các bản epoch-sync còn thiếu và xử lý. */
 export async function syncConversation(conversationId: string): Promise<void> {
   try {
@@ -284,5 +329,6 @@ export default {
   onDecryptedMessage,
   sendText,
   createDirectConversation,
+  createGroupConversation,
   syncConversation,
 };

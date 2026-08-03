@@ -22,6 +22,7 @@ import {
   CONVERSATION_TYPE_META,
   type ConversationType,
 } from '../types';
+import { users, type RemoteUser } from '../../../../../services/proofchat-api';
 
 const TITLE_MAX = 200;
 const TYPES: ConversationType[] = ['DIRECT', 'GROUP', 'THREAD', 'JOB_NEGOTIATION'];
@@ -30,19 +31,37 @@ export interface CreateConversationPayload {
   title: string;
   avatar?: string;
   type: ConversationType;
+  /** DID thành viên đã chọn (không gồm chính mình). Rỗng ở chế-độ mock. */
+  participantIds?: string[];
 }
 
 interface Props {
   visible: boolean;
   onClose: () => void;
   onSubmit: (payload: CreateConversationPayload) => void;
+  /**
+   * Backend ProofChat sống → BẮT BUỘC chọn ≥1 thành viên (tạo nhóm THẬT qua MLS).
+   * Tắt (mock) → bộ chọn ẩn, tạo phòng cục-bộ như cũ.
+   */
+  requireMembers?: boolean;
 }
 
-const CreateConversationModal: React.FC<Props> = ({ visible, onClose, onSubmit }) => {
+const CreateConversationModal: React.FC<Props> = ({
+  visible,
+  onClose,
+  onSubmit,
+  requireMembers = false,
+}) => {
   const [title, setTitle] = useState('');
   const [avatar, setAvatar] = useState('');
   const [type, setType] = useState<ConversationType>('GROUP');
   const [touched, setTouched] = useState(false);
+
+  // Bộ chọn thành viên (chỉ dùng khi requireMembers).
+  const [memberQuery, setMemberQuery] = useState('');
+  const [results, setResults] = useState<RemoteUser[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [selected, setSelected] = useState<RemoteUser[]>([]);
 
   useEffect(() => {
     if (visible) {
@@ -50,8 +69,47 @@ const CreateConversationModal: React.FC<Props> = ({ visible, onClose, onSubmit }
       setAvatar('');
       setType('GROUP');
       setTouched(false);
+      setMemberQuery('');
+      setResults([]);
+      setSearching(false);
+      setSelected([]);
     }
   }, [visible]);
+
+  // Tìm người theo DID/username (debounce 350ms) khi cần chọn thành viên.
+  useEffect(() => {
+    if (!requireMembers) return;
+    const q = memberQuery.trim();
+    if (q.length < 2) {
+      setResults([]);
+      setSearching(false);
+      return;
+    }
+    let alive = true;
+    setSearching(true);
+    const t = setTimeout(async () => {
+      try {
+        const r = await users.search(q);
+        if (alive) setResults(r);
+      } catch {
+        if (alive) setResults([]);
+      } finally {
+        if (alive) setSearching(false);
+      }
+    }, 350);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [memberQuery, requireMembers]);
+
+  const toggleMember = (u: RemoteUser) => {
+    setSelected((prev) =>
+      prev.some((p) => p.userDid === u.userDid)
+        ? prev.filter((p) => p.userDid !== u.userDid)
+        : [...prev, u],
+    );
+  };
 
   const titleError = useMemo(() => {
     const t = title.trim();
@@ -72,7 +130,12 @@ const CreateConversationModal: React.FC<Props> = ({ visible, onClose, onSubmit }
     }
   }, [avatar]);
 
-  const canSubmit = !titleError && !avatarError;
+  const memberError = useMemo(
+    () => (requireMembers && selected.length === 0 ? 'Chọn ít nhất 1 thành viên.' : null),
+    [requireMembers, selected.length],
+  );
+
+  const canSubmit = !titleError && !avatarError && !memberError;
 
   // Chặn bấm kép. `disabled={!canSubmit && touched}` cũ sai logic: chưa chạm ô nào
   // thì touched=false nên nút KHÔNG bao giờ bị khoá — bấm 2 lần tạo 2 cuộc trò chuyện.
@@ -87,6 +150,7 @@ const CreateConversationModal: React.FC<Props> = ({ visible, onClose, onSubmit }
       title: title.trim(),
       avatar: avatar.trim() || undefined,
       type,
+      participantIds: selected.map((u) => u.userDid),
     });
   };
 
@@ -158,6 +222,74 @@ const CreateConversationModal: React.FC<Props> = ({ visible, onClose, onSubmit }
                 keyboardType="url"
               />
             </Field>
+
+            {requireMembers && (
+              <Field
+                label="Thành viên"
+                required
+                hint="Tìm theo DID hoặc tên người dùng để thêm vào nhóm."
+                error={touched ? memberError : null}
+              >
+                {selected.length > 0 && (
+                  <View style={styles.chipRow}>
+                    {selected.map((u) => (
+                      <TouchableOpacity
+                        key={u.userDid}
+                        style={styles.chip}
+                        activeOpacity={0.8}
+                        onPress={() => toggleMember(u)}
+                      >
+                        <Text style={styles.chipText} numberOfLines={1}>
+                          {u.displayName || u.username || u.userDid.slice(0, 18)}
+                        </Text>
+                        <Icon name="close" size={12} color={PROOFCHAT_THEME.primary} />
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+                <View style={styles.memberSearchBox}>
+                  <Icon name="account-search-outline" size={16} color={NEUTRAL.textMuted} />
+                  <TextInput
+                    style={styles.memberSearchInput}
+                    value={memberQuery}
+                    onChangeText={setMemberQuery}
+                    placeholder="did:phoenix:… hoặc tên"
+                    placeholderTextColor={NEUTRAL.textMuted}
+                    autoCapitalize="none"
+                  />
+                  {searching && <Icon name="loading" size={14} color={NEUTRAL.textMuted} />}
+                </View>
+                {results.length > 0 && (
+                  <View style={styles.resultList}>
+                    {results.map((u) => {
+                      const on = selected.some((p) => p.userDid === u.userDid);
+                      return (
+                        <TouchableOpacity
+                          key={u.userDid}
+                          style={styles.resultRow}
+                          activeOpacity={0.8}
+                          onPress={() => toggleMember(u)}
+                        >
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.resultName} numberOfLines={1}>
+                              {u.displayName || u.username || 'Không tên'}
+                            </Text>
+                            <Text style={styles.resultDid} numberOfLines={1}>
+                              {u.userDid}
+                            </Text>
+                          </View>
+                          <Icon
+                            name={on ? 'check-circle' : 'plus-circle-outline'}
+                            size={20}
+                            color={on ? PROOFCHAT_THEME.primary : NEUTRAL.textMuted}
+                          />
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
+              </Field>
+            )}
 
             <Text style={styles.label}>
               Loại cuộc trò chuyện <Text style={styles.required}>*</Text>
@@ -320,6 +452,35 @@ const styles = StyleSheet.create({
   },
   hint: { fontSize: 11, color: NEUTRAL.textMuted, marginTop: 4 },
   errorText: { fontSize: 11, color: NEUTRAL.error, marginTop: 4, fontWeight: '600' },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 },
+  chip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    maxWidth: '100%',
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16,
+    backgroundColor: withAlpha(PROOFCHAT_THEME.primary, 0.10),
+    borderWidth: 1, borderColor: withAlpha(PROOFCHAT_THEME.primary, 0.30),
+  },
+  chipText: { fontSize: 12, fontWeight: '700', color: PROOFCHAT_THEME.primary, flexShrink: 1 },
+  memberSearchBox: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: Platform.OS === 'ios' ? 12 : 8,
+    borderRadius: 12,
+    borderWidth: 1, borderColor: NEUTRAL.border,
+    backgroundColor: NEUTRAL.bgSoft,
+  },
+  memberSearchInput: { flex: 1, fontSize: 13, color: NEUTRAL.text, padding: 0 },
+  resultList: {
+    marginTop: 8, borderRadius: 12,
+    borderWidth: 1, borderColor: NEUTRAL.border, overflow: 'hidden',
+  },
+  resultRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingHorizontal: 12, paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: NEUTRAL.borderSoft,
+  },
+  resultName: { fontSize: 13, fontWeight: '700', color: NEUTRAL.text },
+  resultDid: { fontSize: 10, color: NEUTRAL.textMuted, marginTop: 1 },
   typeGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',

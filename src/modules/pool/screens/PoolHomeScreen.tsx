@@ -1,7 +1,7 @@
 // modules/pool/screens/PoolHomeScreen.tsx
 // Màn "Pool" — danh sách stake pool (SPO) để user chọn uỷ quyền + trạng thái uỷ quyền.
 //
-// KHUNG UI + gọi API: nội dung THẬT thuộc backend PhoenixKey (api.phoenixkey.io) —
+// KHUNG UI + gọi API: nội dung THẬT thuộc backend PhoenixKey (api.phoenixkey.me) —
 // đã inbox Phoenix agent xin contract. Nay UI trỏ sẵn poolService; 4 trạng thái qua
 // StateView; uỷ quyền chờ nối ví ký client-side (non-custodial).
 //

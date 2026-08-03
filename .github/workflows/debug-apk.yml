@@ -6,7 +6,9 @@ name: Android Debug APK (SuperApp — sideload test)
 on:
   push:
     branches:
-      - dev
+      # Nhánh tích-hợp thật là `develop`. Trước ghi `dev` — nhánh KHÔNG tồn tại, nên
+      # mọi lần đẩy lên develop không sinh APK nào, mà cũng không ai thấy đỏ.
+      - develop
       - feat/**
     paths:
       - 'android/**'
@@ -16,8 +18,34 @@ on:
   workflow_dispatch:   # nút bấm build tay
 
 jobs:
+  # CỔNG chất-lượng chạy TRƯỚC: tsc/jest đỏ thì đừng đốt 60 phút build APK. Trước đây
+  # không cổng nào chạy tsc/jest trên CI nên suite đỏ lọt lưới nhiều đợt liền.
+  verify:
+    name: Verify (tsc + jest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.11.0'
+          cache: 'npm'
+
+      - name: Install npm dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Typecheck (tsc --noEmit)
+        run: npx tsc --noEmit -p tsconfig.json
+
+      - name: Unit tests (jest)
+        run: npx jest --ci
+
   build-debug-apk:
     name: Build debug APK
+    needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 60
 

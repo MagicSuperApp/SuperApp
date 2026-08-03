@@ -84,6 +84,19 @@ export interface VideoUploadJob {
   lastError?: string;
   /** true khi attempts chạm MAX_ATTEMPTS — ngừng tự thử, chờ can thiệp tay. */
   needsManual?: boolean;
+  /**
+   * CHỦ clip — DID (hoặc user-id) của người đăng nhập lúc xếp hàng.
+   *
+   * Vì sao cần: hàng đợi nằm dưới MỘT khoá AsyncStorage toàn cục và sống qua đăng
+   * xuất, trong khi tablet thực địa dùng CHUNG. Không có trường này thì clip của A
+   * sẽ được flush trong phiên của B (App mount / foreground / mạng lên đều gọi
+   * flush) và badge trên màn của B đếm clip của A — đúng cái bất biến chống rò
+   * A→B mà `treeDraftStore.ts:12-14` tự khai.
+   *
+   * Job CŨ (tạo trước bản này) không có trường này → coi là "vô chủ", vẫn gửi
+   * được để không bỏ rơi clip đã quay ngoài đồng.
+   */
+  owner?: string;
 }
 
 /** Phụ thuộc tiêm được — mặc định nối service thật, test thay bằng giả. */
@@ -160,14 +173,52 @@ function isJob(x: any): x is VideoUploadJob {
     && typeof x.videoUri === 'string';
 }
 
-/** Số clip đang chờ gửi (tính cả cần-can-thiệp-tay). Cho badge "đang chờ gửi (n)". */
-export async function getVideoQueueCount(): Promise<number> {
-  return (await loadVideoQueue()).length;
+// ── Chủ hàng đợi (chống rò clip A→B trên máy dùng chung) ─────────────────────
+
+/**
+ * DID người đang đăng nhập. Đặt ở `userSlice` (đăng nhập/đăng xuất) vì service này
+ * KHÔNG được phép import store. null = chưa đăng nhập / vừa đăng xuất.
+ */
+let queueOwner: string | null = null;
+
+/** Đặt chủ hàng đợi. Gọi khi đăng nhập (DID) và khi đăng xuất (null). */
+export function setVideoQueueOwner(owner: string | null | undefined): void {
+  queueOwner = owner && owner.length > 0 ? owner : null;
 }
 
-/** Số clip còn tự thử được (chưa chạm cap). */
+/** Chủ hàng đợi hiện tại (chủ yếu cho test + chẩn đoán). */
+export function getVideoQueueOwner(): string | null {
+  return queueOwner;
+}
+
+/**
+ * Job này có thuộc phiên hiện tại không.
+ * - Job vô chủ (dữ liệu cũ trước bản này) → luôn thuộc, để không bỏ rơi clip cũ.
+ * - Chưa đăng nhập → CHỈ job vô chủ, tuyệt đối không đụng clip của ai.
+ */
+function ownsJob(job: VideoUploadJob): boolean {
+  if (!job.owner) return true;
+  return job.owner === queueOwner;
+}
+
+/** Hàng đợi THUỘC phiên hiện tại. Mọi thứ hướng ra người dùng phải đi qua đây. */
+async function loadOwnQueue(): Promise<VideoUploadJob[]> {
+  return (await loadVideoQueue()).filter(ownsJob);
+}
+
+/** Số clip của TÔI đang chờ gửi (tính cả cần-can-thiệp-tay). Cho badge. */
+export async function getVideoQueueCount(): Promise<number> {
+  return (await loadOwnQueue()).length;
+}
+
+/** Số clip của TÔI còn tự thử được (chưa chạm cap) — phần "sẽ tự gửi lại". */
 export async function getPendingAutoCount(): Promise<number> {
-  return (await loadVideoQueue()).filter(j => !j.needsManual).length;
+  return (await loadOwnQueue()).filter(j => !j.needsManual).length;
+}
+
+/** Số clip của TÔI đã chạm cap — chỉ đi tiếp khi người dùng bấm gửi tay. */
+export async function getNeedsManualCount(): Promise<number> {
+  return (await loadOwnQueue()).filter(j => j.needsManual).length;
 }
 
 /** Job `id` còn nằm trong hàng không (màn dùng để biết clip vừa gửi đã xong hay còn chờ). */
@@ -217,6 +268,8 @@ export interface EnqueueInput {
   capturedAt?: number;
   /** Dung-lượng clip (byte) — để sinh clientEventId ổn định. */
   size?: number;
+  /** Chủ clip (DID). Thiếu → lấy chủ hàng đợi hiện tại. */
+  owner?: string;
 }
 
 /** Kết quả xếp hàng: job (mới hoặc đã có nếu trùng) + số job cũ bị loại do tràn. */
@@ -261,12 +314,17 @@ export async function enqueueVideoUpload(
   const { uri, managed } = await copyToDocuments(id, input.videoUri);
   const clientEventId = computeClientEventId(input.treeId, input.capturedAt, input.size, input.videoUri);
 
+  const owner = input.owner && input.owner.length > 0 ? input.owner : (queueOwner ?? undefined);
+
   return withQueueLock(async () => {
     const existing = await loadVideoQueue();
     // Khử trùng: cùng cây + cùng clip gốc, hoặc cùng clientEventId → thay job cũ.
+    // CHỈ trong phạm vi CÙNG CHỦ: hai người khác nhau quay cùng cây không được
+    // gộp job của nhau (job của A sẽ mang ghi chú/GPS của A).
     const dupe = existing.find(
-      j => (j.treeId === input.treeId && j.originalUri === input.videoUri)
-        || j.clientEventId === clientEventId,
+      j => (j.owner ?? undefined) === owner
+        && ((j.treeId === input.treeId && j.originalUri === input.videoUri)
+          || j.clientEventId === clientEventId),
     );
     if (dupe) {
       // Bản sao mới vừa tạo là dư thừa → xoá cho khỏi rác file, dùng lại bản cũ.
@@ -296,6 +354,7 @@ export async function enqueueVideoUpload(
       createdAt: new Date().toISOString(),
       attempts: 0,
       lastError,
+      owner,
     };
 
     let next = [job, ...existing];
@@ -405,6 +464,9 @@ export async function flushVideoUploadQueue(deps: FlushDeps = defaultDeps()): Pr
     let hitCap = 0;
 
     for (const job of snapshot) {
+      // Clip của người khác (hoặc chưa ai đăng nhập) → KHÔNG đụng tới. Nó chờ đúng
+      // chủ của nó đăng nhập lại; gửi hộ ở đây là rò dữ liệu A→B.
+      if (!ownsJob(job)) continue;
       // Cần can thiệp tay → giữ nguyên, không tự thử.
       if (job.needsManual) continue;
       // Job đang được retry tay gửi → bỏ qua để khỏi gửi trùng.
@@ -439,6 +501,8 @@ export async function retryVideoJobNow(
   const jobs = await loadVideoQueue();
   const target = jobs.find(j => j.id === id);
   if (!target) return false;
+  // Không gửi hộ clip của người khác, kể cả khi có id trong tay.
+  if (!ownsJob(target)) return false;
   if (!(await deps.isOnline())) return false;
   // Giành quyền gửi: flush đang gửi job này thì thôi (không gửi trùng).
   const claimed = await claimJob(id);
@@ -450,6 +514,28 @@ export async function retryVideoJobNow(
   } finally {
     releaseJob(id);
   }
+}
+
+/**
+ * Ép thử lại MỌI clip của phiên hiện tại, KỂ CẢ clip đã chạm cap `needsManual`.
+ *
+ * Vì sao cần: `retryVideoJobNow` phải biết id job, mà màn hình chỉ giữ id của clip
+ * vừa quay trong state. Rời màn / tắt app là mất id → nút "Gửi lại" rơi về
+ * `flushVideoUploadQueue`, mà flush CỐ Ý bỏ qua job `needsManual` ⇒ clip chạm cap
+ * không còn đường nào rời máy, trong khi badge vẫn hứa "sẽ tự gửi lại khi có mạng".
+ * Đây là đường thoát cho đúng những clip đó.
+ *
+ * Trả về số clip đã gửi xong và số còn lại (của phiên hiện tại).
+ */
+export async function retryAllVideoJobsNow(
+  deps: FlushDeps = defaultDeps(),
+): Promise<{ sent: number; remaining: number }> {
+  const jobs = await loadOwnQueue();
+  let sent = 0;
+  for (const job of jobs) {
+    if (await retryVideoJobNow(job.id, deps)) sent += 1;
+  }
+  return { sent, remaining: await getVideoQueueCount() };
 }
 
 /**
@@ -501,6 +587,11 @@ async function tryOne(
         kind: job.kind,
         at: new Date().toISOString(),
         eventId: res.event_id,
+        // Neo bằng chứng vào ĐÚNG clip đã gửi. Không có nó thì màn kết quả chỉ còn
+        // cách đoán "bản ghi mới nhất của cây" — và đoán sai khi một cây có nhiều
+        // clip trong hàng (flush duyệt [mới→cũ] còn sổ thì prepend ⇒ bản ghi cuối
+        // cùng lại là clip CŨ NHẤT).
+        clientEventId: job.clientEventId,
         nFruitsMax: res.n_fruits_max,
         nFrames: res.n_frames,
         stored: res.stored,
@@ -528,9 +619,10 @@ async function tryOne(
 
 // ── Test helper ──────────────────────────────────────────────────────────────
 
-/** CHỈ dùng trong test: xoá cờ flushing + mutex + inFlight kẹt giữa chừng. */
+/** CHỈ dùng trong test: xoá cờ flushing + mutex + inFlight + chủ hàng đợi. */
 export function _resetForTest(): void {
   flushing = false;
   mutex = Promise.resolve();
   inFlight.clear();
+  queueOwner = null;
 }

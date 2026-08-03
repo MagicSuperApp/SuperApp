@@ -83,6 +83,18 @@ export interface EnrollResponse {
   tree_id: string;
   n_views_added?: number;
   total_trees?: number;
+  /**
+   * Kênh MCR thứ 2 (vỏ-thân) tách được cây này khỏi cây rất giống nó (#235). Đăng ký
+   * VẪN cho qua, nhưng backend gửi kèm cảnh-báo nhẹ để chủ vườn tự đối chiếu — đúng
+   * ca "2 cây mai trắng" ngoài thực địa, nơi DINOv2 toàn cục báo trùng còn vỏ-thân
+   * thì phân biệt được.
+   */
+  dup_suspect?: {
+    tree_id?: string;
+    name?: string;
+    resolved_by?: string;
+    message_vi?: string;
+  };
   provenance?: {
     code?: string;
     has3d?: boolean;
@@ -264,9 +276,13 @@ async function _apiCall<T>(
       let existingTreeId: string | undefined;
       try {
         const body409 = await resp.json();
-        detail = body409.detail ?? detail;
-        errorCode = body409.code ?? undefined;
-        existingTreeId = body409.existing_tree_id ?? undefined;
+        // Đọc CẢ HAI dạng thân lỗi. Backend field-reid trả `error` + `similar.tree_id`;
+        // `detail` + `existing_tree_id` là bí danh bắc cầu thêm ở #235 cho bản app cũ.
+        // Chỉ đọc một dạng là nút "Gộp vào cây cũ" báo "Không xác định được cây trùng"
+        // đúng lúc người ta đang đứng ngoài vườn — lỗi field-test 26/07 mục 1(c).
+        detail = body409.detail ?? body409.error ?? detail;
+        errorCode = body409.code ?? body409.error_code ?? undefined;
+        existingTreeId = body409.existing_tree_id ?? body409.similar?.tree_id ?? undefined;
       } catch { /* bỏ qua */ }
       return {
         ok: false,
@@ -493,7 +509,14 @@ export async function enrollTree(
   }
 
   appendGeoAndOrientation(form, options);
-  if (options.force) form.append('force', 'true');
+  // Gửi CẢ HAI tên trường: `dup` là hợp-đồng sạch OriLife chốt ở #235
+  // (`_Agents/inbox/_done/OriLife-to-SuperApp-fieldtest-12-fixes-API-handoff-2026-07-26.md` mục 1),
+  // `force` là bí danh backend bắc cầu cho bản app cũ. Gửi cả hai để app chạy đúng
+  // dù backend đã hay chưa deploy #235 — đây từng là vòng 409 lặp vô tận ngoài đồng.
+  if (options.force) {
+    form.append('force', 'true');
+    form.append('dup', 'true');
+  }
 
   return _apiCall<EnrollResponse>(`${baseUrl}/api/enroll`, 'POST', form, IMAGE_REQUEST_TIMEOUT_MS);
 }

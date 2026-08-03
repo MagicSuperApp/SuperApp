@@ -9,6 +9,7 @@ import { parseDidNetwork } from '../services/phoenixDid';
 import { clearWorkSession } from '../modules/work/services/session';
 import { disconnectProofChat } from '../services/proofchatAuthBridge';
 import { clearAllDrafts } from '../services/treeDraftStore';
+import { setVideoQueueOwner, flushVideoUploadQueue } from '../services/videoUploadQueue';
 
 /**
  * ⚠ ĐƠN VỊ — đọc trước khi hiện bất cứ con số nào ra màn hình.
@@ -96,6 +97,15 @@ export const loginUser = createAsyncThunk(
 
       await databaseManager.initializeForUser(didKey);
 
+      // Hàng đợi video nằm dưới MỘT khoá toàn cục và sống qua đăng xuất. Gắn chủ
+      // cho phiên này để flush chỉ đụng clip của người đang đăng nhập — clip của
+      // người trước nằm yên chờ chính họ đăng nhập lại, không bị gửi hộ.
+      setVideoQueueOwner(didKey);
+      // App KHÔNG auto-login (navigation/index.tsx:1663 luôn vào Login), nên flush lúc
+      // App mount chạy khi chưa có chủ và bỏ qua clip có chủ. Đây là nhịp đầu tiên
+      // biết chủ là ai → đẩy luôn clip còn kẹt của chính người vừa đăng nhập.
+      void flushVideoUploadQueue().catch(() => {});
+
       const wallet = await database.getWallet(userData.id);
       const phoenixKey = await database.getPhoenixKey(userData.id);
 
@@ -138,6 +148,10 @@ export const logoutUser = createAsyncThunk(
     } catch (error) {
       console.warn('[Redux] Logout: clearAllDrafts lỗi (bỏ qua):', error);
     }
+    // Bỏ chủ hàng đợi video: từ giờ tới lần đăng nhập kế, flush KHÔNG được đụng
+    // clip có chủ. Cố ý KHÔNG xoá hàng đợi — clip quay ngoài đồng chưa gửi được là
+    // dữ liệu thật của người trước, xoá đi là mất trắng công một buổi.
+    setVideoQueueOwner(null);
     try {
       console.log('[Redux] Logging out user');
       await databaseManager.closeDatabase();

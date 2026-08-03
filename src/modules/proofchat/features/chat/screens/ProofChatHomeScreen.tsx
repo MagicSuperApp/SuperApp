@@ -15,7 +15,6 @@ import { RootState } from '../../../../../store';
 import { NEUTRAL, withAlpha } from '../../../../../shared/theme';
 import { PROOFCHAT_THEME } from '../../../theme/colors';
 import JobRoomItem from '../components/JobRoomItem';
-import SyncStatusPill from '../components/SyncStatusPill';
 import { TOKEN_SYMBOL } from '../../wallet/types';
 import CreateConversationModal, {
   type CreateConversationPayload,
@@ -54,7 +53,6 @@ const ProofChatHomeScreen: React.FC = () => {
   const rooms = useSelector((s: RootState) => s.proofchat.rooms);
   const sync = useSelector((s: RootState) => s.proofchat.sync);
   const wallet = useSelector((s: RootState) => s.proofchat.wallet);
-  const identity = useSelector((s: RootState) => s.proofchat.identity);
   const invitations = useSelector((s: RootState) => s.proofchat.invitations);
   const publicConversationIds = useSelector(
     (s: RootState) => s.proofchat.publicConversationIds,
@@ -94,7 +92,9 @@ const ProofChatHomeScreen: React.FC = () => {
       Animated.timing(headerFade, { toValue: 1, duration: 400, useNativeDriver: true }),
       Animated.timing(headerSlide, { toValue: 0, duration: 400, useNativeDriver: true }),
     ]).start();
-  }, []);
+    // headerFade/headerSlide là `useRef(...).current` — tham chiếu bền, thêm vào deps
+    // để đúng luật hook mà KHÔNG làm effect chạy lại.
+  }, [headerFade, headerSlide]);
 
   const handleCreate = async (payload: CreateConversationPayload) => {
     // Backend TẮT (mock) → tạo phòng cục-bộ như cũ, không cần thành viên.
@@ -111,15 +111,36 @@ const ProofChatHomeScreen: React.FC = () => {
       Toast.show({ type: 'error', text1: 'Chưa chọn thành viên', text2: 'Cần ít nhất 1 người để tạo nhóm.' });
       return;
     }
+    // DIRECT = trò chuyện 1-1. Chọn nhiều người mà vẫn gửi DIRECT thì service chỉ
+    // lấy members[0], những người còn lại rơi LẶNG LẼ — chặn ngay tại đây.
+    if (payload.type === 'DIRECT' && members.length > 1) {
+      Toast.show({
+        type: 'error',
+        text1: 'Trò chuyện riêng chỉ 1 người',
+        text2: 'Bỏ bớt người, hoặc đổi sang Nhóm để thêm nhiều thành viên.',
+      });
+      return;
+    }
     setCreateOpen(false);
     Toast.show({ type: 'info', text1: 'Đang tạo nhóm…', text2: payload.title });
     const res =
       payload.type === 'DIRECT'
         ? await createDirectConversation(members[0])
-        : await createGroupConversation(payload.title, members);
+        // Truyền ĐÚNG loại người dùng chọn (GROUP / THREAD / JOB_NEGOTIATION).
+        : await createGroupConversation(payload.title, members, payload.type);
     if (res.ok) {
       await dispatch(loadConversations());
-      Toast.show({ type: 'success', text1: 'Đã tạo nhóm', text2: payload.title });
+      if (res.welcomePublished === false) {
+        // Nhóm đã dựng trên máy nhưng lời mời CHƯA lên server → thành viên chưa vào
+        // được. Nói thật, đừng báo "đã tạo" rồi để phòng câm.
+        Toast.show({
+          type: 'info',
+          text1: 'Đã tạo nhóm — chưa mời được ai',
+          text2: 'Mạng yếu nên lời mời chưa gửi đi. App sẽ tự gửi lại khi mở chat lúc có mạng.',
+        });
+      } else {
+        Toast.show({ type: 'success', text1: 'Đã tạo nhóm', text2: payload.title });
+      }
     } else {
       Toast.show({ type: 'error', text1: 'Tạo nhóm thất bại', text2: res.error ?? 'Thử lại sau.' });
     }
@@ -209,7 +230,10 @@ const ProofChatHomeScreen: React.FC = () => {
 
           <View style={styles.headerCenter}>
             <Text style={styles.title}>Trò chuyện</Text>
-            {/* <View style={styles.subRow}>
+            {/* Hàng phụ (huy hiệu đồng bộ + danh tính đã xác thực) tạm ẩn. Bật lại thì
+                nhập lại `SyncStatusPill` và selector `s.proofchat.identity` — đã gỡ vì
+                để nguyên là hai lỗi lint dead-code.
+              <View style={styles.subRow}>
               <SyncStatusPill state={sync} />
               {identity.verified && (
                 <View style={styles.idPill}>

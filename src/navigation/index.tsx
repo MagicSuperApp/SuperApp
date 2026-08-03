@@ -27,6 +27,7 @@ import { Icon } from '../components/Icon';
 import RootErrorBoundary from '../components/RootErrorBoundary';
 import { COLORS, ACTION_COLORS } from '../theme';
 import { syncService } from '../services/syncService';
+import { flushVideoUploadQueue } from '../services/videoUploadQueue';
 import AppHeader, { AppHeaderProvider } from '../components/AppHeader';
 import { NAV_FRAME, navNational, navIcon } from './navLabels';
 import NavItemFrame from './NavItemFrame';
@@ -1673,6 +1674,10 @@ const AppNavigator = () => {
         console.log('[Navigation] Network restored — draining sync queue');
         syncService.drainNow().catch((err) =>
           console.warn('[Navigation] syncService.drainNow failed:', err),
+        );
+        // Mạng lên lại → thử gửi luôn các clip video còn kẹt trong hàng đợi bền.
+        flushVideoUploadQueue().catch((err) =>
+          console.warn('[Navigation] flushVideoUploadQueue failed:', err),
         );
       }
       wasConnected = isConnected;

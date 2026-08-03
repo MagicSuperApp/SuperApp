@@ -69,6 +69,13 @@ export interface FruitVideoOptions {
   lon?: number;
   note?: string;
   source?: string;
+  /**
+   * Khoá khử-trùng phía CLIENT, ỔN ĐỊNH theo clip (KHÔNG đổi qua các lần retry).
+   * Cùng clip gửi lại N lần → cùng clientEventId. Gửi kèm multipart để BACKEND
+   * dedup (chỉ tạo 1 event dù retry nhiều). Client chỉ bảo đảm gửi id không đổi;
+   * dedup thực sự là việc của server.
+   */
+  clientEventId?: string;
 }
 
 /**
@@ -96,6 +103,9 @@ export async function uploadFruitVideo(
   if (opts.lon != null) form.append('lon', String(opts.lon));
   form.append('source', opts.source ?? 'phone');
   if (opts.note && opts.note.trim()) form.append('note', opts.note.trim());
+  // Khoá khử-trùng ổn định theo clip — server dùng để dedup khi cùng clip retry
+  // nhiều lần (mạng yếu / app-kill). Dedup thực sự là việc của BACKEND.
+  if (opts.clientEventId) form.append('client_event_id', opts.clientEventId);
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);

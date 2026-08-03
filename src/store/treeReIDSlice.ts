@@ -251,6 +251,14 @@ const treeReIDSlice = createSlice({
       state.captures.push(action.payload);
     },
 
+    /**
+     * Khôi phục cả phiên chụp từ bản nháp bền (H-17). Thay TOÀN BỘ mảng captures
+     * (không push nối) để mở lại sau khi app bị ngắt vẫn dựng đúng ảnh + hướng.
+     */
+    restoreCaptureSession(state, action: PayloadAction<CapturedImage[]>) {
+      state.captures = action.payload;
+    },
+
     updateSensorData(state, action: PayloadAction<{ heading: number | null; pitch: number | null }>) {
       state.lastHeading = action.payload.heading;
       state.lastPitch = action.payload.pitch;
@@ -401,6 +409,7 @@ export const {
   setSessionId,
   setCurrentRound,
   addCapture,
+  restoreCaptureSession,
   updateSensorData,
   setGPS,
   setIdentificationResult,

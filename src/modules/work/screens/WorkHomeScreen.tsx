@@ -80,6 +80,9 @@ const WorkHomeScreen: React.FC = () => {
           <TouchableOpacity hitSlop={8} style={styles.iconBtnHeader} onPress={() => navigation.navigate('WorkTaskers')}>
             <Icon name="account-search-outline" size={20} color="#fff" />
           </TouchableOpacity>
+          <TouchableOpacity hitSlop={8} style={styles.iconBtnHeader} onPress={() => navigation.navigate('WorkCapabilities')}>
+            <Icon name="certificate-outline" size={20} color="#fff" />
+          </TouchableOpacity>
           <TouchableOpacity hitSlop={8} style={styles.iconBtnHeader} onPress={() => navigation.navigate('WorkAvailability')}>
             <Icon name="calendar-check-outline" size={20} color="#fff" />
           </TouchableOpacity>

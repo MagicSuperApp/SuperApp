@@ -215,14 +215,15 @@ export interface CapabilityBody {
   metric: Record<string, number>;
   evidence?: unknown;
 }
-export const createCapability = (body: CapabilityBody): Promise<Credential> =>
-  call(client().post('/capabilities', body, writeCfg()));
+export const createCapability = (body: CapabilityBody, opts?: WriteOpts): Promise<Credential> =>
+  call(client().post('/capabilities', body, writeCfg(opts)));
 
 export const verifyCapability = (
   id: string,
   body: { templateKey?: string } = {},
+  opts?: WriteOpts,
 ): Promise<{ verified: boolean; credential: Credential; stamp: unknown }> =>
-  call(client().post(`/capabilities/${encodeURIComponent(id)}/verify`, body, writeCfg()));
+  call(client().post(`/capabilities/${encodeURIComponent(id)}/verify`, body, writeCfg(opts)));
 
 // ─────────────────────────────────────────────────────────────────────
 // 17. OFFERINGS (dịch vụ — phía cung)
@@ -347,15 +348,20 @@ export const getConversation = (contractId: string): Promise<ConversationRef> =>
 // ─────────────────────────────────────────────────────────────────────
 // 27–28. EVIDENCE (VeData — Genie neo bằng chứng)
 // ─────────────────────────────────────────────────────────────────────
+export interface EvidenceItem {
+  type: 'note' | 'link' | string;
+  content: string;
+}
 export const registerEvidence = (
   contractId: string,
-  items: unknown[],
+  items: EvidenceItem[],
+  opts?: WriteOpts,
 ): Promise<unknown> =>
-  call(client().post(`/contracts/${encodeURIComponent(contractId)}/evidence/register`, { items }, writeCfg()));
+  call(client().post(`/contracts/${encodeURIComponent(contractId)}/evidence/register`, { items }, writeCfg(opts)));
 
 export const getEvidence = (
   contractId: string,
-): Promise<{ items: unknown[]; allAnchored: boolean; status: string }> =>
+): Promise<{ items: EvidenceItem[]; allAnchored: boolean; status: string }> =>
   call(client().get(`/contracts/${encodeURIComponent(contractId)}/evidence`, authCfg));
 
 // ─────────────────────────────────────────────────────────────────────

@@ -4,7 +4,7 @@
 
 import React from 'react';
 import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity, StatusBar,
+  View, Text, StyleSheet, FlatList, TouchableOpacity, StatusBar, Alert, ActivityIndicator,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
@@ -12,8 +12,9 @@ import { COLORS } from '../../../constants';
 import { WORK_THEME } from '../theme/colors';
 import { formatVND } from '../data/mockData';
 import { useTaskers } from '../hooks/useTaskers';
+import { useCreateContract } from '../hooks/useContracts';
 import StateView from '../../../components/state/StateView';
-import type { Tasker } from '../services/types';
+import type { Tasker, TaskerOffering } from '../services/types';
 
 const TaskersScreen: React.FC = () => {
   const navigation = useNavigation<any>();
@@ -21,6 +22,22 @@ const TaskersScreen: React.FC = () => {
   const { taskers, total, loading, errorKind, usingMock, reload } = useTaskers({
     availableOnly: onlyAvailable,
   });
+  const { create, creating, errorCode } = useCreateContract();
+
+  // Đặt 1 dịch vụ → tạo hợp đồng {offeringId} → mở ContractDetail (vào vòng đời pledge).
+  const handleBook = async (offeringId: string) => {
+    const contract = await create({ offeringId });
+    if (contract) {
+      navigation.navigate('ContractDetail', { contractId: contract.id });
+    } else {
+      Alert.alert(
+        'Chưa đặt được',
+        errorCode === 'BACKEND_DISABLED'
+          ? 'Cần máy chủ AladinWork để tạo hợp đồng. Thử lại khi dịch vụ sống.'
+          : `Không tạo được hợp đồng${errorCode ? ` (${errorCode})` : ''}. Thử lại sau.`,
+      );
+    }
+  };
 
   const header = (
     <View style={styles.header}>
@@ -74,20 +91,31 @@ const TaskersScreen: React.FC = () => {
           />
         }
         renderItem={({ item }) => (
-          <TaskerRow t={item} onPress={() => navigation.navigate('WorkerProfile', { workerId: item.did })} />
+          <TaskerRow
+            t={item}
+            creating={creating}
+            onPress={() => navigation.navigate('WorkerProfile', { workerId: item.did })}
+            onBook={handleBook}
+          />
         )}
       />
     </View>
   );
 };
 
-const TaskerRow: React.FC<{ t: Tasker; onPress: () => void }> = ({ t, onPress }) => {
-  const cheapest = (t.offerings ?? []).reduce<number | null>((min, o) => {
-    if (typeof o.minPriceVND !== 'number') return min;
-    return min === null ? o.minPriceVND : Math.min(min, o.minPriceVND);
+const TaskerRow: React.FC<{
+  t: Tasker; creating: boolean; onPress: () => void; onBook: (offeringId: string) => void;
+}> = ({ t, creating, onPress, onBook }) => {
+  // Dịch vụ rẻ nhất (có id) để đặt trực-tiếp → createContract({offeringId}).
+  const cheapestOffering = (t.offerings ?? []).reduce<TaskerOffering | null>((best, o) => {
+    if (typeof o.minPriceVND !== 'number') return best;
+    if (!best || typeof best.minPriceVND !== 'number') return o;
+    return o.minPriceVND < best.minPriceVND ? o : best;
   }, null);
+  const cheapest = cheapestOffering?.minPriceVND ?? null;
   const skills = (t.skills ?? []).slice(0, 3);
   return (
+    <View style={styles.rowWrap}>
     <TouchableOpacity style={styles.row} onPress={onPress} activeOpacity={0.9}>
       <View style={styles.avatar}><Text style={styles.avatarText}>{t.avatar ?? '👤'}</Text></View>
       <View style={{ flex: 1 }}>
@@ -120,6 +148,22 @@ const TaskerRow: React.FC<{ t: Tasker; onPress: () => void }> = ({ t, onPress })
         {cheapest !== null && <Text style={styles.price}>từ {formatVND(cheapest)}</Text>}
       </View>
     </TouchableOpacity>
+    {cheapestOffering && (
+      <TouchableOpacity
+        style={[styles.bookBtn, creating && styles.bookBtnOff]}
+        onPress={() => onBook(cheapestOffering.id)}
+        disabled={creating}
+        activeOpacity={0.9}
+      >
+        {creating
+          ? <ActivityIndicator color="#fff" size="small" />
+          : (<>
+              <Icon name="handshake-outline" size={15} color="#fff" />
+              <Text style={styles.bookText}>Đặt “{cheapestOffering.name}”</Text>
+            </>)}
+      </TouchableOpacity>
+    )}
+    </View>
   );
 };
 
@@ -148,11 +192,18 @@ const styles = StyleSheet.create({
   list: { padding: 12, gap: 10 },
   empty: { flexGrow: 1 },
 
+  rowWrap: { gap: 8 },
   row: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     backgroundColor: COLORS.card, borderRadius: 14, padding: 14,
     borderWidth: 1, borderColor: COLORS.border,
   },
+  bookBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: WORK_THEME.primary, borderRadius: 10, paddingVertical: 10,
+  },
+  bookBtnOff: { opacity: 0.5 },
+  bookText: { fontSize: 13, fontWeight: '800', color: '#fff' },
   avatar: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.bg },
   avatarText: { fontSize: 20 },
   nameLine: { flexDirection: 'row', alignItems: 'center', gap: 8 },

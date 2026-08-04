@@ -3,7 +3,7 @@
 
 import React from 'react';
 import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity, StatusBar,
+  View, Text, StyleSheet, FlatList, TouchableOpacity, StatusBar, Alert, ActivityIndicator,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -11,6 +11,7 @@ import { COLORS } from '../../../constants';
 import { WORK_THEME } from '../theme/colors';
 import { formatVND } from '../data/mockData';
 import { useMatch } from '../hooks/useMatch';
+import { useCreateContract } from '../hooks/useContracts';
 import StateView from '../../../components/state/StateView';
 import type { MatchCandidate } from '../services/types';
 
@@ -23,6 +24,25 @@ const MatchScreen: React.FC = () => {
   const route = useRoute<RouteProp<RouteParams, 'WorkMatch'>>();
   const { jobId } = route.params;
   const { result, loading, errorKind, usingMock, reload } = useMatch(jobId);
+  const { create, creating, errorCode } = useCreateContract();
+
+  // Thuê ứng viên → tạo hợp đồng {jobId, candidateDid} → mở ContractDetail (vào vòng
+  // đời pledge). Mock/lỗi → báo nhẹ, KHÔNG tạo hợp đồng giả.
+  const handleHire = async (candidateDid: string) => {
+    const contract = await create({ jobId, candidateDid });
+    if (contract) {
+      navigation.navigate('ContractDetail', { contractId: contract.id });
+    } else {
+      Alert.alert(
+        'Chưa thuê được',
+        errorCode === 'BACKEND_DISABLED'
+          ? 'Cần máy chủ AladinWork để tạo hợp đồng. Thử lại khi dịch vụ sống.'
+          : errorCode === 'ALREADY'
+          ? 'Đã có hợp đồng với ứng viên này cho tin việc.'
+          : `Không tạo được hợp đồng${errorCode ? ` (${errorCode})` : ''}. Thử lại sau.`,
+      );
+    }
+  };
 
   const header = (
     <View style={styles.header}>
@@ -56,32 +76,49 @@ const MatchScreen: React.FC = () => {
             message="Thử nới yêu cầu năng lực hoặc mở rộng khu vực để tăng số ứng viên khớp."
           />
         }
-        renderItem={({ item }) => <CandidateRow c={item} />}
+        renderItem={({ item }) => (
+          <CandidateRow c={item} creating={creating} onHire={() => handleHire(item.did)} />
+        )}
       />
     </View>
   );
 };
 
-const CandidateRow: React.FC<{ c: MatchCandidate }> = ({ c }) => {
+const CandidateRow: React.FC<{ c: MatchCandidate; creating: boolean; onHire: () => void }> = ({ c, creating, onHire }) => {
   const tier = c.qualityTier ?? 'D';
   const tierColor = TIER_COLOR[tier] ?? '#8A8F98';
   const pct = typeof c.score === 'number' ? Math.round(c.score * 100) : null;
   return (
     <View style={styles.row}>
-      <View style={[styles.tierBadge, { backgroundColor: tierColor }]}>
-        <Text style={styles.tierText}>{tier}</Text>
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.name} numberOfLines={1}>{c.name ?? c.did.slice(0, 24) + '…'}</Text>
-        <View style={styles.flags}>
-          <Flag ok={!!c.qualified} label={c.qualified ? 'Đạt năng lực' : 'Chưa đạt'} />
-          <Flag ok={!!c.available} label={c.available ? 'Đang rảnh' : 'Bận'} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <View style={[styles.tierBadge, { backgroundColor: tierColor }]}>
+          <Text style={styles.tierText}>{tier}</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.name} numberOfLines={1}>{c.name ?? c.did.slice(0, 24) + '…'}</Text>
+          <View style={styles.flags}>
+            <Flag ok={!!c.qualified} label={c.qualified ? 'Đạt năng lực' : 'Chưa đạt'} />
+            <Flag ok={!!c.available} label={c.available ? 'Đang rảnh' : 'Bận'} />
+          </View>
+        </View>
+        <View style={{ alignItems: 'flex-end', gap: 3 }}>
+          {pct !== null && <Text style={styles.score}>{pct}%</Text>}
+          {typeof c.priceVND === 'number' && <Text style={styles.price}>{formatVND(c.priceVND)}</Text>}
         </View>
       </View>
-      <View style={{ alignItems: 'flex-end', gap: 3 }}>
-        {pct !== null && <Text style={styles.score}>{pct}%</Text>}
-        {typeof c.priceVND === 'number' && <Text style={styles.price}>{formatVND(c.priceVND)}</Text>}
-      </View>
+      <TouchableOpacity
+        style={[styles.hireBtn, (creating || !c.qualified) && styles.hireBtnOff]}
+        onPress={onHire}
+        disabled={creating || !c.qualified}
+        activeOpacity={0.9}
+      >
+        {creating
+          ? <ActivityIndicator color="#fff" size="small" />
+          : (<>
+              <Icon name="handshake-outline" size={15} color="#fff" />
+              <Text style={styles.hireBtnText}>{c.qualified ? 'Thuê ứng viên này' : 'Chưa đủ điều kiện'}</Text>
+            </>)}
+      </TouchableOpacity>
     </View>
   );
 };
@@ -107,10 +144,16 @@ const styles = StyleSheet.create({
   empty: { flexGrow: 1 },
 
   row: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
+    gap: 12,
     backgroundColor: COLORS.card, borderRadius: 14, padding: 14,
     borderWidth: 1, borderColor: COLORS.border,
   },
+  hireBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: WORK_THEME.primary, borderRadius: 10, paddingVertical: 10,
+  },
+  hireBtnOff: { opacity: 0.45 },
+  hireBtnText: { fontSize: 13, fontWeight: '800', color: '#fff' },
   tierBadge: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   tierText: { fontSize: 16, fontWeight: '900', color: '#fff' },
   name: { fontSize: 14, fontWeight: '800', color: COLORS.text },

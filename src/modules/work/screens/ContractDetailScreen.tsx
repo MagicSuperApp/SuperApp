@@ -171,6 +171,17 @@ const ContractDetailScreen: React.FC = () => {
             : <Icon name="message-outline" size={20} color={WORK_THEME.primary} />}
         </TouchableOpacity>
         <View style={{ flex: 1, gap: 8 }}>
+          {/* Bên làm (Genie) đăng bằng chứng TRƯỚC khi giao việc (server đòi evidence
+              cho bước deliver). Hiện khi hợp đồng đang thực hiện. */}
+          {contract.state === 'ACTIVE' && contract.myRole === 'genie' && (
+            <TouchableOpacity
+              onPress={() => navigation.navigate('WorkEvidence', { contractId: contract.id })}
+              activeOpacity={0.85}
+              style={[styles.actionBtn, styles.actionSecondary]}
+            >
+              <Text style={[styles.actionText, { color: WORK_THEME.primary }]}>Đăng bằng chứng</Text>
+            </TouchableOpacity>
+          )}
           {actions.length === 0 ? (
             <View style={styles.noAction}>
               <Icon name="information-outline" size={14} color={COLORS.textMuted} />

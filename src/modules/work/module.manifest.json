@@ -25,7 +25,9 @@
     "WorkMatch",
     "WorkAvailability",
     "WorkTaskers",
-    "WorkCreateOffering"
+    "WorkCreateOffering",
+    "WorkCapabilities",
+    "WorkEvidence"
   ],
   "capabilities": {
     "data": [

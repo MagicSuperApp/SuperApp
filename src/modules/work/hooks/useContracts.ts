@@ -12,10 +12,12 @@ import {
   getMyContracts,
   getContract,
   contractAction,
+  createContract,
   newIdempotencyKey,
   WorkApiError,
   type WorkErrorKind,
   type ContractAction,
+  type CreateContractBody,
 } from '../services/workApi';
 import type { WorkContract } from '../services/types';
 import { MOCK_CONTRACTS, getMockContract } from '../data/workMockApi';
@@ -135,4 +137,37 @@ export const useContractAction = () => {
   );
 
   return { run, running };
+};
+
+/**
+ * Tạo hợp đồng (luồng THUÊ) — từ ứng viên khớp việc `{jobId, candidateDid}` hoặc từ
+ * dịch vụ `{offeringId}`. Thành công → trả WorkContract (caller điều-hướng ContractDetail).
+ * Mock/lỗi → false + errorCode (BACKEND_DISABLED khi chưa có host — không tạo hợp đồng giả).
+ * Idempotency-Key ổn-định theo lần bấm → mạng chập chờn không tạo 2 hợp đồng.
+ */
+export const useCreateContract = () => {
+  const [creating, setCreating] = useState(false);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
+
+  const create = useCallback(
+    async (body: CreateContractBody): Promise<WorkContract | false> => {
+      if (!isWorkBackendEnabled()) {
+        setErrorCode('BACKEND_DISABLED');
+        return false;
+      }
+      setCreating(true);
+      setErrorCode(null);
+      try {
+        return await createContract(body, { idempotencyKey: newIdempotencyKey() });
+      } catch (err) {
+        setErrorCode(err instanceof WorkApiError ? err.code : 'UNKNOWN');
+        return false;
+      } finally {
+        setCreating(false);
+      }
+    },
+    [],
+  );
+
+  return { create, creating, errorCode };
 };

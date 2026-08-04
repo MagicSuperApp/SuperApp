@@ -46,6 +46,8 @@ import MatchScreen from '../modules/work/screens/MatchScreen';
 import AvailabilityScreen from '../modules/work/screens/AvailabilityScreen';
 import TaskersScreen from '../modules/work/screens/TaskersScreen';
 import CreateOfferingScreen from '../modules/work/screens/CreateOfferingScreen';
+import CapabilitiesScreen from '../modules/work/screens/CapabilitiesScreen';
+import EvidenceScreen from '../modules/work/screens/EvidenceScreen';
 
 // --- Join (Kết đèn) screens -----------------------------------------------
 import JoinHomeScreen from '../modules/join/screens/JoinHomeScreen';
@@ -106,7 +108,7 @@ export const MODULE_REGISTRY: Record<ModuleId, RegistryEntry> = {
     screens: {
       // manifest.routes: ["WorkHome","JobDetail","PostJob","WorkerProfile",
       //                   "Contracts","ContractDetail","WorkMatch","WorkAvailability",
-      //                   "WorkTaskers","WorkCreateOffering"]
+      //                   "WorkTaskers","WorkCreateOffering","WorkCapabilities","WorkEvidence"]
       WorkHome: WorkHomeScreen,
       JobDetail: JobDetailScreen,
       PostJob: PostJobScreen,
@@ -117,6 +119,8 @@ export const MODULE_REGISTRY: Record<ModuleId, RegistryEntry> = {
       WorkAvailability: AvailabilityScreen,
       WorkTaskers: TaskersScreen,
       WorkCreateOffering: CreateOfferingScreen,
+      WorkCapabilities: CapabilitiesScreen,
+      WorkEvidence: EvidenceScreen,
     },
   },
   join: {

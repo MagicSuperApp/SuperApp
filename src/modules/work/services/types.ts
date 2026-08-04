@@ -150,6 +150,9 @@ export interface ContractLog {
 }
 export interface WorkContract {
   id: string;
+  // Version lạc-quan: gửi lại qua header `If-Version` khi chạy action → server
+  // 409 CONFLICT nếu lệch (chặn double-apply). Server trả trong body hợp-đồng.
+  version?: string;
   createdAt: number;
   service: string;
   jobId?: string | null;

@@ -67,7 +67,8 @@ const ContractDetailScreen: React.FC = () => {
         style: btn.tone === 'danger' ? 'destructive' : 'default',
         onPress: async () => {
           try {
-            const updated = await run(contract.id, btn.action, btn.body);
+            // Truyền version đang cầm → header If-Version chặn double-apply (409).
+            const updated = await run(contract.id, btn.action, btn.body, contract.version);
             if (updated) setContract(updated);
             if (isWorkBackendEnabled()) reload();
             else Alert.alert('Chế độ demo', 'Cần backend AladinWork để thực thi bước này.');

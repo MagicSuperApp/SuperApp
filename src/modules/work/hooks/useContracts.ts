@@ -12,6 +12,7 @@ import {
   getMyContracts,
   getContract,
   contractAction,
+  newIdempotencyKey,
   WorkApiError,
   type WorkErrorKind,
   type ContractAction,
@@ -112,6 +113,7 @@ export const useContractAction = () => {
       id: string,
       action: ContractAction,
       body: Record<string, unknown> = {},
+      ifVersion?: string, // version hợp-đồng đang cầm (screen truyền contract.version)
     ): Promise<WorkContract | null> => {
       if (!isWorkBackendEnabled()) {
         // Demo: không có host để thực thi state machine — trả mock hiện tại.
@@ -119,7 +121,12 @@ export const useContractAction = () => {
       }
       setRunning(action);
       try {
-        return await contractAction(id, action, body);
+        // Idempotency-Key ổn-định qua các retry mạng của LẦN BẤM này (axios giữ
+        // cùng config) + If-Version chặn double-apply khi bấm lại sau khi đã chạy.
+        return await contractAction(id, action, body, {
+          ifVersion,
+          idempotencyKey: newIdempotencyKey(),
+        });
       } finally {
         setRunning(null);
       }

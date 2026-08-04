@@ -157,12 +157,10 @@ export function summarizeWalletAll(all: WalletAllResponse): {
   };
 }
 
-export interface MagicClaimResponse {
-  claimId: string;
-  amountMagic: number;
-  cardanoTxHash: string;
-  status: 'PENDING' | 'SUBMITTED' | 'CONFIRMED' | 'FAILED';
-}
+// [GỠ] MagicClaimResponse + wallet.claimMagic đã xoá: /wallet/magic/claim nay trả
+// 410 Gone (1324 MAGIC_CLAIM_DEPRECATED, API.md §Wallet). MAGIC là số KẾ-TOÁN trong
+// Vault (sinh từ LAMP, tiêu cho dịch-vụ), KHÔNG mint ra ví → không có bước "claim".
+// Đọc số MAGIC hiện tại qua GET /wallet/{did}/all → `magic`. ĐỪNG thêm lại endpoint claim.
 
 /**
  * Nguồn gốc khoá. Khoá sinh trong Android Keystore/TEE → SECURE_ENCLAVE.
@@ -545,13 +543,9 @@ export const wallet = {
       client.get(`/wallet/${encodeURIComponent(userDid)}/balance`),
     ),
 
-  /** @deprecated API.md §7 — trả 410 Gone (1324). MAGIC là số kế-toán Vault, không mint. */
-  claimMagic: () =>
-    unwrap<MagicClaimResponse>(
-      client.post('/wallet/magic/claim', undefined, {
-        needsAuth: true,
-      } as AxiosRequestConfig),
-    ),
+  // [GỠ] claimMagic: /wallet/magic/claim → 410 Gone (deprecated). MAGIC không claim
+  // được (kế-toán Vault, đọc qua /wallet/{did}/all → magic). Xem chú-thích ở khối
+  // MagicClaimResponse phía trên. KHÔNG thêm lại.
 };
 
 // ── Pool / Staking (SPO) — Issue #74, BE 07-23 (relay Blockfrost + cache) ────

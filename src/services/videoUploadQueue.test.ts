@@ -51,6 +51,9 @@ import {
   computeClientEventId,
   flushVideoUploadQueue,
   retryVideoJobNow,
+  retryAllVideoJobsNow,
+  setVideoQueueOwner,
+  getNeedsManualCount,
   removeVideoJob,
   clearVideoQueue,
   MAX_ATTEMPTS,
@@ -312,5 +315,100 @@ describe('remove + clear', () => {
     await clearVideoQueue();
     expect(await getVideoQueueCount()).toBe(0);
     expect(deleted).toHaveLength(2);
+  });
+});
+
+// ── Nợ sau merge #97: chủ hàng đợi + đường thoát cho clip chạm cap ────────────
+
+describe('chủ hàng đợi (chống rò clip A→B trên máy dùng chung)', () => {
+  it('flush KHÔNG đụng clip của người khác, nhưng gửi clip của chính mình', async () => {
+    setVideoQueueOwner('did:phoenix:A');
+    await enqueueVideoUpload({ treeId: 't1', videoUri: 'file:///cache/a.mp4', kind: 'fruit' });
+    // A đăng xuất, B đăng nhập trên cùng máy.
+    setVideoQueueOwner('did:phoenix:B');
+    await enqueueVideoUpload({ treeId: 't2', videoUri: 'file:///cache/b.mp4', kind: 'fruit' });
+
+    const deps = makeDeps();
+    const res = await flushVideoUploadQueue(deps);
+
+    expect(deps.upload).toHaveBeenCalledTimes(1);
+    expect((deps.upload as jest.Mock).mock.calls[0][0].treeId).toBe('t2');
+    expect(res.sent).toBe(1);
+    // Clip của A vẫn nằm nguyên trong kho, chờ chính A đăng nhập lại.
+    const all = await loadVideoQueue();
+    expect(all.map(j => j.treeId)).toEqual(['t1']);
+  });
+
+  it('badge chỉ đếm clip của phiên hiện tại', async () => {
+    setVideoQueueOwner('did:phoenix:A');
+    await enqueueVideoUpload({ treeId: 't1', videoUri: 'file:///cache/a.mp4', kind: 'fruit' });
+    expect(await getVideoQueueCount()).toBe(1);
+    setVideoQueueOwner('did:phoenix:B');
+    expect(await getVideoQueueCount()).toBe(0);
+    // Đăng xuất hẳn: không ai được thấy clip có chủ.
+    setVideoQueueOwner(null);
+    expect(await getVideoQueueCount()).toBe(0);
+  });
+
+  it('job CŨ không có owner vẫn gửi được (không bỏ rơi clip quay trước bản này)', async () => {
+    storage[QUEUE_KEY] = JSON.stringify([{
+      id: 'old1', treeId: 't9', videoUri: 'file:///docs/old.mp4', managedCopy: true,
+      kind: 'fruit', clientEventId: 'ce_old', createdAt: new Date().toISOString(), attempts: 0,
+    }]);
+    setVideoQueueOwner('did:phoenix:B');
+    const deps = makeDeps();
+    await flushVideoUploadQueue(deps);
+    expect(deps.upload).toHaveBeenCalledTimes(1);
+  });
+
+  it('không gửi hộ clip người khác kể cả khi có id trong tay', async () => {
+    setVideoQueueOwner('did:phoenix:A');
+    const { job } = await enqueueVideoUpload({ treeId: 't1', videoUri: 'file:///cache/a.mp4', kind: 'fruit' });
+    setVideoQueueOwner('did:phoenix:B');
+    const deps = makeDeps();
+    expect(await retryVideoJobNow(job.id, deps)).toBe(false);
+    expect(deps.upload).not.toHaveBeenCalled();
+  });
+});
+
+describe('clip chạm cap vẫn còn đường rời máy', () => {
+  it('flush bỏ qua job needsManual, retryAllVideoJobsNow thì gửi được', async () => {
+    setVideoQueueOwner('did:phoenix:A');
+    await enqueueVideoUpload({ treeId: 't1', videoUri: 'file:///cache/a.mp4', kind: 'fruit' });
+
+    // Đốt hết lượt tự thử → needsManual.
+    const failing = makeDeps({
+      upload: jest.fn(async () => ({ ok: false, error: { type: 'network_error', detail: 'rớt mạng', http_status: 0 } } as FruitVideoResult)),
+    });
+    for (let i = 0; i < MAX_ATTEMPTS; i++) await flushVideoUploadQueue(failing);
+    const q = await loadVideoQueue();
+    expect(q[0].needsManual).toBe(true);
+    expect(await getPendingAutoCount()).toBe(0);
+    expect(await getNeedsManualCount()).toBe(1);
+
+    // Mạng tốt trở lại: flush vẫn cố ý bỏ qua…
+    const good = makeDeps();
+    await flushVideoUploadQueue(good);
+    expect(good.upload).not.toHaveBeenCalled();
+
+    // …còn nút "Gửi lại" khi không nhớ id job thì phải gửi được.
+    const manual = makeDeps();
+    const res = await retryAllVideoJobsNow(manual);
+    expect(manual.upload).toHaveBeenCalledTimes(1);
+    expect(res.sent).toBe(1);
+    expect(await getVideoQueueCount()).toBe(0);
+  });
+});
+
+describe('bằng chứng neo vào ĐÚNG clip', () => {
+  it('ghi clientEventId vào sổ bằng chứng để màn kết quả không lấy nhầm clip khác', async () => {
+    setVideoQueueOwner('did:phoenix:A');
+    const { job } = await enqueueVideoUpload({
+      treeId: 't1', videoUri: 'file:///cache/a.mp4', kind: 'fruit', capturedAt: 111, size: 222,
+    });
+    const deps = makeDeps();
+    await flushVideoUploadQueue(deps);
+    const proof = (deps.onProof as jest.Mock).mock.calls[0][1];
+    expect(proof.clientEventId).toBe(job.clientEventId);
   });
 });

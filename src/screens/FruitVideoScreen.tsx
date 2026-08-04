@@ -15,7 +15,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, StatusBar, ScrollView,
-  ActivityIndicator, Alert, TextInput, Image, FlatList, Clipboard,
+  ActivityIndicator, Alert, TextInput, FlatList, Clipboard,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
@@ -38,8 +38,10 @@ import {
   enqueueVideoUpload,
   flushVideoUploadQueue,
   retryVideoJobNow,
+  retryAllVideoJobsNow,
   isJobQueued,
   getVideoQueueCount,
+  getNeedsManualCount,
 } from '../services/videoUploadQueue';
 
 // image-picker nạp mềm (giống AnimalEnroll) — máy chưa cài thì báo rõ, không crash.
@@ -80,6 +82,8 @@ const FruitVideoScreen: React.FC = () => {
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<FruitVideoResult | null>(null);
   const [queueCount, setQueueCount] = useState(0);
+  // Trong số đang chờ, bao nhiêu clip đã chạm cap → KHÔNG tự gửi lại nữa, phải bấm tay.
+  const [manualCount, setManualCount] = useState(0);
   // Job vừa xếp hàng nhưng CHƯA lên LampNet — để nút "Gửi lại" nhắm đúng clip đó.
   const [pendingJobId, setPendingJobId] = useState<string | null>(null);
 
@@ -90,6 +94,7 @@ const FruitVideoScreen: React.FC = () => {
   // Số clip đang chờ gửi trong hàng đợi bền — hiện để đội thực địa biết còn tồn.
   const refreshQueueCount = useCallback(() => {
     getVideoQueueCount().then(setQueueCount).catch(() => {});
+    getNeedsManualCount().then(setManualCount).catch(() => {});
   }, []);
   useEffect(() => { refreshQueueCount(); }, [refreshQueueCount]);
 
@@ -211,6 +216,7 @@ const FruitVideoScreen: React.FC = () => {
         note,
         capturedAt: capturedAt ?? undefined,
         size: videoSize ?? undefined,
+        owner: draftOwner || undefined,
       });
       if (enq.droppedOldest > 0) {
         Alert.alert(
@@ -230,8 +236,12 @@ const FruitVideoScreen: React.FC = () => {
       const stillQueued = await isJobQueued(enq.job.id);
       if (!stillQueued) {
         // Gửi xong + byte đã lên LampNet → dựng màn kết quả từ SỔ BẰNG CHỨNG.
+        // Tra theo `clientEventId` của CHÍNH clip này, KHÔNG lấy `proofs[0]`:
+        // một cây có thể có nhiều clip trong hàng, flush duyệt [mới→cũ] còn sổ thì
+        // prepend ⇒ bản ghi đứng đầu lại là clip CŨ NHẤT vừa gửi. Lấy nhầm là
+        // đội thực địa cầm CID sai đi đối chiếu LampNet.
         const proofs = await loadVideoProofs(selectedTreeId);
-        const proof = proofs[0];
+        const proof = proofs.find(p => p.clientEventId === enq.job.clientEventId) ?? proofs[0];
         setPendingJobId(null);
         setResult({
           ok: true,
@@ -264,8 +274,10 @@ const FruitVideoScreen: React.FC = () => {
         await retryVideoJobNow(pendingJobId);
         if (!(await isJobQueued(pendingJobId))) setPendingJobId(null);
       } else {
-        // Không nhớ job cụ thể (mở lại màn) → flush cả hàng.
-        await flushVideoUploadQueue();
+        // Không nhớ job cụ thể (mở lại màn / tắt app) → ép gửi lại CẢ HÀNG, kể cả
+        // clip đã chạm cap. KHÔNG dùng flushVideoUploadQueue ở đây: flush cố ý bỏ
+        // qua job `needsManual`, nên bấm nút sẽ không gửi gì mà cũng không báo gì.
+        await retryAllVideoJobsNow();
       }
       refreshQueueCount();
     } finally {
@@ -423,8 +435,12 @@ const FruitVideoScreen: React.FC = () => {
         {queueCount > 0 && (
           <View style={styles.queueBanner}>
             <Icon name="cloud-clock" size={15} color="#e65100" />
+            {/* Nói ĐÚNG sự thật: clip đã chạm cap KHÔNG còn tự gửi lại nữa. Hứa
+                "sẽ tự gửi" cho những clip đó là để đội thực địa yên tâm nhầm. */}
             <Text style={styles.queueBannerText}>
-              Đang chờ gửi ({queueCount}) · sẽ tự gửi lại khi có mạng
+              {manualCount > 0
+                ? `Đang chờ gửi (${queueCount}) · ${manualCount} clip cần bấm gửi tay`
+                : `Đang chờ gửi (${queueCount}) · sẽ tự gửi lại khi có mạng`}
             </Text>
             <TouchableOpacity
               onPress={handleRetryPending}

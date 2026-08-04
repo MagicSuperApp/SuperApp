@@ -39,7 +39,6 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 
 import { NEUTRAL } from '../shared/theme';
-import { COLORS } from '../constants';
 import {
   enrollTree,
   verifyAddTree,
@@ -175,9 +174,6 @@ const TreeEnrollScreen: React.FC = () => {
   const [name, setName] = useState('');
   const [isEnrolling, setIsEnrolling] = useState(false);
   const [enrollResult, setEnrollResult] = useState<EnrollResponse | null>(null);
-
-  // Duplicate state — lưu tạm tree_id cây trùng để gộp
-  const [duplicateTreeId, setDuplicateTreeId] = useState<string | null>(null);
 
   // Ảnh đang xem chi tiết (modal)
   const [selectedPhoto, setSelectedPhoto] = useState<GridPhoto | null>(null);
@@ -467,7 +463,6 @@ const TreeEnrollScreen: React.FC = () => {
         }
       } finally {
         setIsEnrolling(false);
-        setDuplicateTreeId(null);
       }
     },
     [imagePaths, captureOrientations, gps, dispatch, navigation, draftOwner],
@@ -579,8 +574,6 @@ const TreeEnrollScreen: React.FC = () => {
           const fromBody = res.error?.existing_tree_id ?? null;
           const regexMatch = detail.match(/tree[-_]?([0-9a-f-]{8,})/i);
           const foundId = fromBody ?? (regexMatch ? regexMatch[1] : null);
-          setDuplicateTreeId(foundId);
-
           Alert.alert(
             'Trùng cây đã có',
             `${detail}\n\nBạn muốn làm gì?`,
@@ -853,6 +846,14 @@ const TreeEnrollScreen: React.FC = () => {
               <Text style={styles.successViews}>
                 {enrollResult.n_views_added ?? 0} góc đã lưu
               </Text>
+              {/* Kênh MCR vỏ-thân thấy một cây rất giống nhưng vẫn tách được → cho
+                  đăng ký, kèm cảnh-báo NHẸ để chủ vườn tự đối chiếu. Trước đây
+                  backend gửi `dup_suspect` mà app không hiện gì. */}
+              {!!enrollResult.dup_suspect?.message_vi && (
+                <Text style={styles.successDupWarn}>
+                  ⚠ {enrollResult.dup_suspect.message_vi}
+                </Text>
+              )}
             </View>
           </View>
         )}
@@ -1173,6 +1174,8 @@ const styles = StyleSheet.create({
   },
   successCode: { fontSize: 13, color: '#388e3c', marginTop: 2 },
   successViews: { fontSize: 12, color: '#388e3c', marginTop: 1 },
+  // Cảnh-báo NHẸ (cam, không đỏ): cây vẫn đăng ký được, chỉ nhắc đối chiếu.
+  successDupWarn: { fontSize: 12, color: '#e65100', marginTop: 4, lineHeight: 17 },
 
   footer: {
     flexDirection: 'row',

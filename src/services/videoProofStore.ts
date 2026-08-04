@@ -29,6 +29,12 @@ export interface VideoProof {
   at: string;
   /** `event_id` phía OriLife (nếu có) — để tra nhật ký sự kiện. */
   eventId?: string;
+  /**
+   * Khoá khử-trùng phía client của CHÍNH clip đã gửi (`VideoUploadJob.clientEventId`).
+   * Màn kết quả dùng nó để lấy đúng bằng chứng của clip vừa bấm Gửi, thay vì đoán
+   * "bản ghi mới nhất của cây" — một cây có thể có nhiều clip trong hàng đợi.
+   */
+  clientEventId?: string;
   /** Số quả nhiều nhất trong 1 khung — ước-lượng, không phải đếm chính xác. */
   nFruitsMax?: number;
   /** Số khung server chắt được. */

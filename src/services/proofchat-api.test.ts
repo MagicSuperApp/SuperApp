@@ -61,7 +61,13 @@ jest.mock('./proofchat-api', () => {
 
 // ── Mock PhoenixKey session token ────────────────────────────────────
 const mockGetPhoenixSession = jest.fn<Promise<string | null>, []>();
+// GIỮ NGUYÊN phần còn lại của module. Thay CẢ module (không `requireActual`) làm
+// `PhoenixKeyApiError` thành `undefined` trong sổ đăng ký; `phoenixSessionService.ts:119`
+// chạy `err instanceof PhoenixKeyApiError` bên trong `catch` của một async KHÔNG ai
+// await → unhandled rejection → jest worker chết, và thông điệp lỗi không hề trỏ về
+// dòng mock này. Đó là lý do suite đỏ mà không test nào đỏ.
 jest.mock('./phoenixKey-api', () => ({
+  ...jest.requireActual('./phoenixKey-api'),
   __esModule: true,
   getSessionToken: () => mockGetPhoenixSession(),
 }));

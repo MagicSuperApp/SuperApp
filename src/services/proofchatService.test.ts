@@ -71,6 +71,9 @@ const ME = 'did:phoenix:me';
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // State module (danh tính, hàng chờ Welcome, nhóm đã vào) dùng chung giữa các ca —
+  // không reset thì ca "chưa init" chỉ đúng nhờ MAY MẮN là nó chạy trước ca gọi init.
+  svc._resetForTest();
   mockCreate.mockResolvedValue({ id: 'conv-1' });
   mockRoomKeyPackages.mockResolvedValue([
     { stakeAddress: ME, keyPackage: 'kp-me' }, // chính mình — phải bị loại
@@ -92,6 +95,7 @@ describe('createGroupConversation', () => {
   });
 
   it('tạo nhóm THẬT: create → roomKeyPackages → createGroup(loại self) → epochSync', async () => {
+    await svc.init(ME);
     const r = await svc.createGroupConversation('Đội kỹ thuật', ['did:phoenix:bob', 'did:phoenix:kim']);
     expect(r.ok).toBe(true);
     expect(r.conversationId).toBe('conv-1');
@@ -108,6 +112,7 @@ describe('createGroupConversation', () => {
   });
 
   it('loại trùng + tự loại mình khỏi participantIds gửi lên server', async () => {
+    await svc.init(ME);
     await svc.createGroupConversation('X', ['did:phoenix:bob', 'did:phoenix:bob', ME, '  ']);
     expect(mockCreate).toHaveBeenCalledWith({
       type: 'GROUP',
@@ -117,6 +122,7 @@ describe('createGroupConversation', () => {
   });
 
   it('không còn thành viên nào (chỉ mình/rỗng) → lỗi, KHÔNG gọi API', async () => {
+    await svc.init(ME);
     const r = await svc.createGroupConversation('X', [ME, '   ']);
     expect(r.ok).toBe(false);
     expect(r.error).toMatch(/thành viên/);
@@ -124,15 +130,67 @@ describe('createGroupConversation', () => {
   });
 
   it('thiếu tiêu đề → lỗi, KHÔNG gọi API', async () => {
+    await svc.init(ME);
     const r = await svc.createGroupConversation('   ', ['did:phoenix:bob']);
     expect(r.ok).toBe(false);
     expect(mockCreate).not.toHaveBeenCalled();
   });
 
   it('lỗi mạng khi create → trả ok:false + message, không ném', async () => {
+    await svc.init(ME);
     mockCreate.mockRejectedValueOnce(new Error('boom'));
     const r = await svc.createGroupConversation('Nhóm', ['did:phoenix:bob']);
     expect(r.ok).toBe(false);
     expect(r.error).toBe('boom');
+  });
+});
+
+// ── Nợ sau merge #95: Welcome kẹt + loại hội thoại + nhánh join ──────────────
+
+describe('Welcome chưa lên được server', () => {
+  it('đẩy epoch-sync lỗi → BÁO welcomePublished:false thay vì im lặng báo đã tạo', async () => {
+    await svc.init(ME);
+    mockCreateEpochSync.mockRejectedValueOnce(new Error('rớt mạng'));
+    const r = await svc.createGroupConversation('Nhóm', ['did:phoenix:bob']);
+    expect(r.ok).toBe(true);
+    expect(r.welcomePublished).toBe(false);
+    expect(await svc.getPendingEpochCount()).toBe(1);
+  });
+
+  it('lượt sau có mạng → flushPendingEpochs đẩy nốt, hàng chờ về rỗng', async () => {
+    await svc.init(ME);
+    mockCreateEpochSync.mockRejectedValueOnce(new Error('rớt mạng'));
+    await svc.createGroupConversation('Nhóm', ['did:phoenix:bob']);
+    expect(await svc.getPendingEpochCount()).toBe(1);
+
+    const res = await svc.flushPendingEpochs();
+    expect(res.sent).toBe(1);
+    expect(res.remaining).toBe(0);
+    expect(await svc.getPendingEpochCount()).toBe(0);
+  });
+
+  it('đẩy được ngay → welcomePublished:true, không có gì kẹt', async () => {
+    await svc.init(ME);
+    const r = await svc.createGroupConversation('Nhóm', ['did:phoenix:bob']);
+    expect(r.welcomePublished).toBe(true);
+    expect(await svc.getPendingEpochCount()).toBe(0);
+  });
+});
+
+describe('loại hội thoại đi theo lựa chọn người dùng', () => {
+  it('JOB_NEGOTIATION KHÔNG bị ép thành GROUP', async () => {
+    await svc.init(ME);
+    await svc.createGroupConversation('Đàm phán', ['did:phoenix:bob'], 'JOB_NEGOTIATION');
+    expect(mockCreate).toHaveBeenCalledWith({
+      type: 'JOB_NEGOTIATION',
+      title: 'Đàm phán',
+      participantIds: ['did:phoenix:bob'],
+    });
+  });
+
+  it('không truyền loại → mặc định GROUP (giữ hành vi cũ)', async () => {
+    await svc.init(ME);
+    await svc.createGroupConversation('Nhóm', ['did:phoenix:bob']);
+    expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ type: 'GROUP' }));
   });
 });

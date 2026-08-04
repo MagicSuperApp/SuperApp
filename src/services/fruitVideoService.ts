@@ -125,9 +125,13 @@ export async function uploadFruitVideo(
 
     const body = await resp.json().catch(() => ({} as any));
     if (!resp.ok) {
+      // Server dùng `error` cho lỗi nghiệp-vụ (413 quá trần, 422 "Video rỗng.") và `detail`
+      // cho lỗi validate FastAPI. Ưu-tiên `error` để hiện đúng câu tiếng Việt của server
+      // thay vì rơi về "HTTP 4xx" chung chung.
+      const detail = body?.error ?? body?.detail ?? `HTTP ${resp.status}`;
       return {
         ok: false,
-        error: { type: 'server_error', detail: body?.detail ?? `HTTP ${resp.status}`, http_status: resp.status },
+        error: { type: 'server_error', detail, http_status: resp.status },
       };
     }
     // Server trả 200 kể cả khi stored:false / 0 khung — vẫn coi là OK (đã nhận clip).
@@ -135,6 +139,9 @@ export async function uploadFruitVideo(
       ok: true,
       n_frames: body?.n_frames ?? 0,
       n_fruits_max: body?.n_fruits_max ?? 0,
+      // Nhãn phương-pháp đếm ("hsv_estimate") — surface để UI cảnh-báo đây là ước-lượng
+      // sơ-bộ, KHÔNG phải ground-truth (khớp interface + doc mục 4).
+      fruit_count_method: body?.fruit_count_method,
       detections: body?.detections ?? [],
       video_cid: body?.video_cid,
       event_id: body?.event_id,

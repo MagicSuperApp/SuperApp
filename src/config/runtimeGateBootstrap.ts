@@ -9,6 +9,8 @@ import {
   probeAllCapabilities,
 } from './runtimeGate';
 import { WORK_BASE_URL } from '../modules/work/services/config';
+import { setWorkSessionProvider } from '../modules/work/services/workApi';
+import { ensureWorkSession } from '../modules/work/services/workAuthService';
 import { baseURL as PHOENIX_BASE_URL } from '../services/phoenixKey-api';
 // PROOFCHAT_API_URL khai ở src/types/env.d.ts (global @env).
 import { PROOFCHAT_API_URL } from '@env';
@@ -26,6 +28,9 @@ export const bootstrapRuntimeGate = async (): Promise<void> => {
     registerCapability('work', WORK_BASE_URL || undefined);
     registerCapability('proofchat', (PROOFCHAT_API_URL as string | undefined) || undefined);
     registerCapability('phoenix', PHOENIX_BASE_URL || undefined);
+    // Lazy-login AladinWork: interceptor tự lấy phiên (ký PhoenixKey) khi call cần-auth
+    // mà chưa có token — thay vì bắt màn nào cũng gọi login tay.
+    setWorkSessionProvider(ensureWorkSession);
   }
   await loadGateCache();
   await probeAllCapabilities();

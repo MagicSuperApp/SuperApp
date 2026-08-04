@@ -58,6 +58,13 @@ const classify = (httpStatus: number, code: string): WorkErrorKind => {
 // ── Axios client ─────────────────────────────────────────────────────
 let _client: AxiosInstance | null = null;
 
+// Provider phiên (lazy-login). Đăng ký ở bootstrap: setWorkSessionProvider(ensureWorkSession).
+// Dùng setter thay vì import trực-tiếp để cắt vòng import workApi ⟷ workAuthService.
+let _sessionProvider: (() => Promise<string | null>) | null = null;
+export const setWorkSessionProvider = (fn: () => Promise<string | null>): void => {
+  _sessionProvider = fn;
+};
+
 const client = (): AxiosInstance => {
   if (_client) return _client;
   _client = axios.create({
@@ -65,10 +72,13 @@ const client = (): AxiosInstance => {
     timeout: WORK_HTTP_TIMEOUT_MS,
     headers: { 'Content-Type': 'application/json' },
   });
-  // Gắn Bearer cho request cần auth (đánh dấu qua config.needsAuth).
+  // Gắn Bearer cho request cần auth (đánh dấu qua config.needsAuth). Thiếu token →
+  // tự đăng nhập lazy qua provider (đăng ký ở bootstrap: ensureWorkSession). Provider
+  // đặt bằng setter để TRÁNH circular import (workAuthService import ngược workApi).
   _client.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
     if ((config as InternalAuthableConfig).needsAuth) {
-      const token = await getWorkSessionToken();
+      let token = await getWorkSessionToken();
+      if (!token && _sessionProvider) token = await _sessionProvider();
       if (token) {
         (config.headers as Record<string, string>).Authorization = `Bearer ${token}`;
       }

@@ -83,7 +83,7 @@ workflows:
           <dict>
               <!-- ScannerConfig.swift: ScannerConfig.treeDetectionAPI / baseApiUrl -->
               <key>TREE_DETECTION_API</key>
-              <string>${TREE_DETECTION_API:-https://staging-api.orilife.io}</string>
+              <string>${TREE_DETECTION_API:-https://api.orilife.io}</string>
 
               <!-- ScannerConfig.swift: ScannerConfig.apiKey (X-API-Key header) -->
               <key>API_KEY</key>
@@ -105,7 +105,7 @@ workflows:
           cat > .env <<EOF
 
           # OriLife / Aladin backend
-          ALADIN_API_URL=${BASE_API_URL:-https://staging-api.orilife.io}
+          ALADIN_API_URL=${BASE_API_URL:-https://api.orilife.io}
           ALADIN_API_KEY=${API_KEY:-mock-local-api-key}
           ALADIN_REGION_CODE=${REGION_CODE:-vn-south-01}
 
@@ -123,7 +123,7 @@ workflows:
           MESHAPI_USE_MOCK=false
           LAMPNET_BASE_URL=${LAMPNET_BASE_URL:-https://lampnet.cloud}
           LAMPNET_UPLOAD_URL=${LAMPNET_UPLOAD_URL:-https://lampnet.cloud/mirage/put?mode=symmetric}
-          CAPTURES_3D_URL=${CAPTURES_3D_URL:-https://staging-api.orilife.io/captures/3d}
+          CAPTURES_3D_URL=${CAPTURES_3D_URL:-https://api.orilife.io/captures/3d}
 
           ANALYTICS_API_URL=${ANALYTICS_API_URL:-https://analytics.orilife.io}
           ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-prod-analytics-key}
@@ -378,7 +378,7 @@ workflows:
           <plist version="1.0">
           <dict>
               <key>TREE_DETECTION_API</key>
-              <string>${TREE_DETECTION_API:-https://staging-api.orilife.io}</string>
+              <string>${TREE_DETECTION_API:-https://api.orilife.io}</string>
               <key>API_KEY</key>
               <string>${API_KEY:-mock-local-api-key}</string>
               <key>REGION_CODE</key>
@@ -391,7 +391,7 @@ workflows:
       - name: Create .env for React Native
         script: |
           cat > .env <<EOF
-          ALADIN_API_URL=${BASE_API_URL:-https://staging-api.orilife.io}
+          ALADIN_API_URL=${BASE_API_URL:-https://api.orilife.io}
           ALADIN_API_KEY=${API_KEY:-mock-local-api-key}
           ALADIN_REGION_CODE=${REGION_CODE:-vn-south-01}
           PHOENIXKEY_API_URL=${PHOENIXKEY_API_URL:-https://api.phoenixkey.me/api/v1}
@@ -402,7 +402,7 @@ workflows:
           MESHAPI_USE_MOCK=false
           LAMPNET_BASE_URL=${LAMPNET_BASE_URL:-https://lampnet.cloud}
           LAMPNET_UPLOAD_URL=${LAMPNET_UPLOAD_URL:-https://lampnet.cloud/mirage/put?mode=symmetric}
-          CAPTURES_3D_URL=${CAPTURES_3D_URL:-https://staging-api.orilife.io/captures/3d}
+          CAPTURES_3D_URL=${CAPTURES_3D_URL:-https://api.orilife.io/captures/3d}
           ANALYTICS_API_URL=${ANALYTICS_API_URL:-https://analytics.orilife.io}
           ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-prod-analytics-key}
           EOF
@@ -657,7 +657,7 @@ workflows:
       - name: Create .env for React Native
         script: |
           cat > .env <<EOF
-          ALADIN_API_URL=${BASE_API_URL:-https://staging-api.orilife.io}
+          ALADIN_API_URL=${BASE_API_URL:-https://api.orilife.io}
           ALADIN_API_KEY=${API_KEY:-mock-local-api-key}
           ALADIN_REGION_CODE=${REGION_CODE:-vn-south-01}
           PHOENIXKEY_API_URL=${PHOENIXKEY_API_URL:-https://api.phoenixkey.me/api/v1}
@@ -668,7 +668,7 @@ workflows:
           MESHAPI_USE_MOCK=false
           LAMPNET_BASE_URL=${LAMPNET_BASE_URL:-https://lampnet.cloud}
           LAMPNET_UPLOAD_URL=${LAMPNET_UPLOAD_URL:-https://lampnet.cloud/mirage/put?mode=symmetric}
-          CAPTURES_3D_URL=${CAPTURES_3D_URL:-https://staging-api.orilife.io/captures/3d}
+          CAPTURES_3D_URL=${CAPTURES_3D_URL:-https://api.orilife.io/captures/3d}
           ANALYTICS_API_URL=${ANALYTICS_API_URL:-https://analytics.orilife.io}
           ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-prod-analytics-key}
           EOF
@@ -686,8 +686,8 @@ workflows:
           set -e
           # secrets.properties (gitignored) — API cho orilifesdk. Từ group scanner_secrets.
           cat > android/app/secrets.properties <<EOF
-          TREE_DETECTION_API=${TREE_DETECTION_API:-https://staging-api.orilife.io/evidences/ingest}
-          BASE_API_URL=${BASE_API_URL:-https://staging-api.orilife.io}
+          TREE_DETECTION_API=${TREE_DETECTION_API:-https://api.orilife.io/evidences/ingest}
+          BASE_API_URL=${BASE_API_URL:-https://api.orilife.io}
           API_KEY=${API_KEY:-mock-local-api-key}
           REGION_CODE=${REGION_CODE:-vn-south-01}
           EOF
@@ -808,7 +808,7 @@ workflows:
       - name: Create .env for React Native
         script: |
           cat > .env <<EOF
-          ALADIN_API_URL=${BASE_API_URL:-https://staging-api.orilife.io}
+          ALADIN_API_URL=${BASE_API_URL:-https://api.orilife.io}
           ALADIN_API_KEY=${API_KEY:-mock-local-api-key}
           ALADIN_REGION_CODE=${REGION_CODE:-vn-south-01}
           PHOENIXKEY_API_URL=${PHOENIXKEY_API_URL:-https://api.phoenixkey.me/api/v1}
@@ -819,7 +819,7 @@ workflows:
           MESHAPI_USE_MOCK=false
           LAMPNET_BASE_URL=${LAMPNET_BASE_URL:-https://lampnet.cloud}
           LAMPNET_UPLOAD_URL=${LAMPNET_UPLOAD_URL:-https://lampnet.cloud/mirage/put?mode=symmetric}
-          CAPTURES_3D_URL=${CAPTURES_3D_URL:-https://staging-api.orilife.io/captures/3d}
+          CAPTURES_3D_URL=${CAPTURES_3D_URL:-https://api.orilife.io/captures/3d}
           ANALYTICS_API_URL=${ANALYTICS_API_URL:-https://analytics.orilife.io}
           ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-prod-analytics-key}
           EOF
@@ -848,8 +848,8 @@ workflows:
           set -e
           # secrets.properties (gitignored) — API cho orilifesdk. Từ group scanner_secrets.
           cat > android/app/secrets.properties <<EOF
-          TREE_DETECTION_API=${TREE_DETECTION_API:-https://staging-api.orilife.io/evidences/ingest}
-          BASE_API_URL=${BASE_API_URL:-https://staging-api.orilife.io}
+          TREE_DETECTION_API=${TREE_DETECTION_API:-https://api.orilife.io/evidences/ingest}
+          BASE_API_URL=${BASE_API_URL:-https://api.orilife.io}
           API_KEY=${API_KEY:-mock-local-api-key}
           REGION_CODE=${REGION_CODE:-vn-south-01}
           EOF

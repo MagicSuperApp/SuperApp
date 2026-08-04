@@ -498,7 +498,13 @@ export const wallet = {
    */
   getAll: (userDid: string) =>
     unwrap<WalletAllResponse>(
-      client.get(`/wallet/${encodeURIComponent(userDid)}/all`),
+      // Bearer session BẮT BUỘC: production ép auth cho /wallet/{did}/all (trả 1304
+      // "Missing Bearer token" nếu thiếu) → refreshWallet reject → chainWallets rỗng →
+      // ví Phượng Hoàng KHÔNG hiện (chỉ còn ví cơ bản từ localAddr fallback). Thiếu cờ
+      // này là lý do phoenix mất dù server đã có địa-chỉ custody cho DID.
+      client.get(`/wallet/${encodeURIComponent(userDid)}/all`, {
+        needsAuth: true,
+      } as AxiosRequestConfig),
     ),
 
   /**

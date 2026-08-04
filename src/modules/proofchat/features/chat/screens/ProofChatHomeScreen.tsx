@@ -30,12 +30,15 @@ import {
   createConversation,
   joinConversation,
   loadConversations,
+  receiveDecryptedMessage,
   rejectInvitation,
 } from '../../../store/proofchatSlice';
 import { isProofChatBackendEnabled } from '../../../../../services/proofchat-api';
 import {
   createGroupConversation,
   createDirectConversation,
+  init as initProofChat,
+  onDecryptedMessage,
 } from '../../../../../services/proofchatService';
 import { useCapabilityLive } from '../../../../../config/useCapabilityLive';
 
@@ -68,6 +71,28 @@ const ProofChatHomeScreen: React.FC = () => {
     if (backendEnabled) {
       dispatch(loadConversations());
     }
+  }, [backendEnabled, dispatch]);
+
+  // Nối MLS realtime: đăng ký tin ĐÃ GIẢI MÃ → đổ vào store, rồi init (kết nối
+  // socket.io + phiên MLS). Chạy khi backend sống; best-effort (không native/ offline
+  // → chỉ log, UI vẫn chạy mock). Đây là điểm gỡ H-15 "UI chưa nối proofchatService".
+  useEffect(() => {
+    if (!backendEnabled) return;
+    let alive = true;
+    onDecryptedMessage(m => {
+      if (!alive) return;
+      dispatch(receiveDecryptedMessage({
+        id: m.id,
+        conversationId: m.conversationId,
+        senderId: m.senderId,
+        isMine: m.isMine,
+        timestamp: m.timestamp,
+        plaintext: m.plaintext,
+        merkleVerified: m.merkleVerified,
+      }));
+    });
+    initProofChat().catch(err => console.warn('[ProofChat] init failed:', err));
+    return () => { alive = false; };
   }, [backendEnabled, dispatch]);
 
   const [filter, setFilter] = useState<FilterKey>('all');

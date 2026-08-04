@@ -6,7 +6,7 @@
 
 import React, { useEffect, useMemo, useRef } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, StatusBar,
+  View, Text, StyleSheet, FlatList, StatusBar, Alert,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSelector, useDispatch, useStore } from 'react-redux';
@@ -32,8 +32,9 @@ import {
   INCOMING_PIPELINE,
   finalStatusFor,
 } from '../../proof/lifecycle';
-import type { Message } from '../types';
+import type { Message, ConversationType } from '../types';
 import { isProofChatBackendEnabled } from '../../../../../services/proofchat-api';
+import { sendText, syncConversation } from '../../../../../services/proofchatService';
 
 const ChatScreen: React.FC = () => {
   const navigation = useNavigation<any>();
@@ -51,6 +52,12 @@ const ChatScreen: React.FC = () => {
   const sync = useSelector((s: RootState) => s.proofchat.sync);
   const identity = useSelector((s: RootState) => s.proofchat.identity);
   const meId = useSelector((s: RootState) => s.proofchat.meId);
+  // Loại hội thoại (DIRECT/GROUP/…) lấy từ `conversations` (ChatRoom không mang type).
+  // Quyết định có đính Merkle-leaf khi gửi. Không rõ → 'GROUP' (an toàn, không ép merkle).
+  const convType = useSelector(
+    (s: RootState): ConversationType =>
+      s.proofchat.conversations.find(c => c.id === roomId)?.type ?? 'GROUP',
+  );
 
   const listRef = useRef<FlatList>(null);
 
@@ -59,15 +66,17 @@ const ChatScreen: React.FC = () => {
   }, [roomId]);
 
   // ── Wiring dữ liệu THẬT (chỉ khi feature flag ON) ─────────────────────────
-  // Tải tin nhắn (ciphertext E2EE) qua REST GET /conversations/:id/messages.
-  // Realtime nhận tin đi qua socket.io (chatSocket.ts → proofchatService, E2EE 3
-  // tầng của Thư). Màn này CHƯA nối trực tiếp vào proofchatService — sẽ nối UI ↔
-  // service trong bước sau (chờ staging creds + interop danh tính did:phoenix↔web).
-  // Raw WS cũ (proofchatWs.ts, host ws.proofchat.app đã chết) đã gỡ theo chỉ dẫn ProofChat.
+  // Tải tin cũ (ciphertext E2EE) qua REST; realtime nhận tin đã giải mã đi qua
+  // proofchatService.onDecryptedMessage (đăng ký ở ProofChatHome) → store. Màn này
+  // GỬI qua proofchatService.sendText (H-15 đã nối). Raw WS cũ (ws.proofchat.app
+  // đã chết) đã gỡ. Realtime nhận: socket.io (chatSocket → proofchatService).
   const backendEnabled = isProofChatBackendEnabled();
   useEffect(() => {
     if (!backendEnabled || !roomId) return;
     dispatch(loadRoomMessages({ roomId, meId }));
+    // Đảm bảo phiên MLS của phòng (createGroup/join + epoch-sync) TRƯỚC khi gửi —
+    // sendText yêu cầu nhóm đã được thiết lập cho conversationId. Best-effort.
+    syncConversation(roomId).catch(err => console.warn('[ProofChat] sync failed:', err));
   }, [backendEnabled, roomId, meId, dispatch]);
 
   const sections = useMemo(() => groupByDate(messages), [messages]);
@@ -91,6 +100,18 @@ const ChatScreen: React.FC = () => {
   // Đọc id của message vừa tạo từ store ngay sau khi dispatch sendMessage,
   // rồi chuyển stage theo timeline đã định nghĩa trong OUTGOING_PIPELINE.
   const handleSend = (text: string) => {
+    // ── Backend THẬT: mã hoá MLS + gửi socket. Tin hiện lên khi server echo về qua
+    // onDecryptedMessage (1 nguồn duy nhất → không nhân đôi). Thất bại → báo nhẹ.
+    if (backendEnabled) {
+      sendText(roomId, text, convType)
+        .then(ack => {
+          if (!ack.ok) Alert.alert('Không gửi được', ack.error ?? 'Vui lòng thử lại.');
+        })
+        .catch(() => Alert.alert('Không gửi được', 'Mất kết nối, thử lại.'));
+      return;
+    }
+
+    // ── Chế độ demo (mock): pipeline mô phỏng bằng setTimeout (giữ nguyên) ──
     dispatch(sendMessage({ roomId, text }));
     if (!sync.online) return;
 

@@ -1,49 +1,111 @@
 # AladinWork — SuperApp Integration
 
-> Chuẩn: `SuperApp/Integration-Standard.md`. Snapshot: 2026-07-11.
-> Module SuperApp: **Việc-làm** (jobs/contracts/pledge/match).
+> Chuẩn: `SuperApp/Integration-Standard.md`. Snapshot: **2026-08-03** (thay bản 07-11 đã lệch).
+> Nguồn chân lý đầy đủ: `AladinWork/Core → AladinWork-Integration.md` (gốc repo, nhánh
+> `feat/taskers-directory`, chờ duyệt đẩy). File này chỉ giữ phần SuperApp cần để nối.
+> Module SuperApp: **Việc-làm** (jobs/offerings/taskers/contracts/pledge/match).
 
-## HEAD
-- `aladin-backend` HEAD = `8040617` (2026-07-07, "artifact deploy production, sẵn sàng non-mock").
-- Version **0.2.0** (bump `c5f0628` 07-05, khớp spec SuperApp v0.2.0 — **lệch version cũ đã hết**).
-- Message mới nhất: `messages/08-SuperApp-enable-reply.md` (07-07).
+## Điểm vào
+- `WORK_API_URL=https://api.aladin.work/api/v1` — ngữ cảnh `/api/v1` nằm TRONG base.
+- Thăm dò sống PHẢI là `{base}/health`. `api.aladin.work/health` (thiếu `/api/v1`) trả 404.
+- **Đo 2026-08-03 (SuperApp tự curl): `api.aladin.work/api/v1/health` → 502.** Máy chủ gốc
+  không phản hồi. AladinWork agent đo cùng ngày ra **530** (Cloudflare 1033) — khác mã, cùng
+  một việc: đường tới máy gốc đứt. Việc vận hành, không phải lỗi mã.
+- Chạy cục bộ trong lúc chờ: repo `AladinWork/Core`, `docker compose up -d` theo `DEPLOY.md`,
+  rồi `WORK_API_URL=http://localhost:7040/api/v1`. Toàn bộ luồng dưới đây chạy thật, không cần khoá.
 
-## Base URL — CHƯA có host live
-- Context `/api/v1`, port 7040. `WORK_API_URL=http://<host>:7040/api/v1` — `<host>` còn **placeholder**. Docker image `aladinwork/aladin-backend:0.2.0` sẵn (compose+DEPLOY.md) nhưng CHƯA chạy trên máy reachable.
-- Prod PHẢI để `*_MOCK=0`.
+## Đăng nhập — PhoenixKey ký, AladinWork cấp phiên (không có khoá tĩnh)
+1. `POST /auth/challenge {did}` → `{challenge, domain, expiresAt, messageTemplate}`
+2. Ký P-256 trên `sha256("<challenge>:<domain>:<timestamp>")`, chữ ký DER hex, lệch cho phép ±60s.
+3. `POST /auth/verify {did, challenge, signature, timestamp}` → `{session}` →
+   `Authorization: Bearer <session>` (12 giờ).
+- `401 UNAUTH` = chữ ký/phiên sai → mời đăng nhập lại.
+- `503 PHOENIXKEY_UNAVAILABLE` = **dịch vụ danh tính chết** → báo gián đoạn, ĐỪNG bắt đăng nhập lại.
+- DID lạ đăng nhập hợp lệ lần đầu → tự tạo hồ sơ rỗng. Không có đường tạo tài khoản bỏ qua PhoenixKey.
 
-## Auth — PhoenixKey login → session Bearer (KHÔNG static token)
-- `POST /auth/challenge {did}` → `{challenge, domain, expiresAt}`.
-- Ký **P-256** message `${challenge}:${domain}:${timestamp}` (sha256, DER hex).
-- `POST /auth/verify {did, challenge, signature, timestamp}` → `{session, expiresAt}`. **503 `PHOENIXKEY_UNAVAILABLE`** (dịch vụ chết) ≠ 401 (token sai).
-- Route khác: `Authorization: Bearer <session>`. Resolve pubkey qua PhoenixKey: `GET {PHOENIXKEY_URL}/api/v1/identity/{did}/pubkey`.
+## Khuôn phản hồi
+Thành công trả thẳng dữ liệu (không bọc). Lỗi: `{ "error": "<câu tiếng Việt hiện được>", "code": "<MÃ>" }`.
+Mã hay gặp: `BAD_INPUT` 400 · `UNAUTH` 401 · **`NO_FUNDS` 402 (thiếu CARP)** · `FORBIDDEN`/`NOT_QUALIFIED` 403 ·
+`NO_JOB`/`NO_OFFER`/`NO_TEMPLATE`/`NO_CONTRACT`/`NO_ACC` 404 · `JOB_CLOSED`/`ALREADY`/`ESCROW_RULE`/**`CONFLICT`** 409 ·
+`NO_EVIDENCE`/`EVIDENCE_SHORT` 400 · `CARDANO_OFF` 503.
 
-## Endpoints chính
-| Method·Path | Field |
+## Hai bất biến ứng dụng phải tôn trọng
+- **`Idempotency-Key`** trên mọi lời gọi ghi: gửi lại cùng key → trả lại kết quả cũ, KHÔNG chạy lần
+  hai (không trừ CARP hai lần, không tạo hai dịch vụ). Mạng di động chập chờn thì luôn gửi.
+- **`If-Version: <version đang cầm>`** khi chạy hành động hợp đồng; lệch → `409 CONFLICT`, hành động
+  không chạy.
+
+## Endpoint
+| Nhóm | Đường |
 |---|---|
-| GET `/jobs` `?openOnly` · POST `/jobs` | tạo tin `{templateKey,title,quantity,priceVND,aladinPledge,geniePledge,req,deadlineDays}` |
-| GET `/jobs/:id/match` | → `{weights, candidates:[{did,name,qualified,available,score,priceVND}]}` |
-| POST `/capabilities` · `/capabilities/:id/verify` | credential (Stamp) |
-| POST `/contracts` | `{jobId,candidateDid}` hoặc `{offeringId,...}` → gate `qualified` (409 NOT_QUALIFIED) |
-| POST `/contracts/:id/:action` | action∈[lockPledge,activate,deliver,confirmPayment,mutualRelease,forfeit,dispute]. lockPledge `{side,amount}` khoá **CARP** min 100 → 402 NO_FUNDS |
-| POST `/contracts/:id/conversation` | → ProofChat `{conversationId,url}` |
+| Mẫu việc | `GET /templates` · `GET /templates/:key` (công khai; `fields[]` đủ để dựng biểu mẫu động) |
+| **Danh bạ thợ** | **`GET /taskers ?templateKey= &availableOnly=1 &limit= &now=`** (công khai) |
+| Dịch vụ (cung) | `GET /offerings ?ownerDid= ?activeOnly=1` · **`POST /offerings`** · **`PATCH/DELETE /offerings/:id`** |
+| Tin việc (cầu) | `GET /jobs ?openOnly=1` · `GET /jobs/:id` · `POST /jobs` · `GET /jobs/:id/match` |
+| Hồ sơ | `GET /me` · `GET /accounts` · `POST /capabilities` · `POST /capabilities/:id/verify` |
+| Lịch rảnh | `GET/POST/DELETE /availability` · `GET /availability/:did` (epoch **ms**) |
+| Hợp đồng | `POST /contracts` · `GET /contracts` · `GET /contracts/:id` · `POST /contracts/:id/:action` |
+| Trò chuyện | `POST/GET /contracts/:id/conversation` (ProofChat) |
+| Bằng chứng | `POST /contracts/:id/evidence/register` (chỉ bên làm) · `GET /contracts/:id/evidence` |
+| Khác | `GET /health` · `GET /treasury` · `GET /team/members` |
 
-State: INIT→PENDING→COMMITTED→ACTIVE→DELIVERED→RELEASED (+FORFEITED/DISPUTED).
+`action` ∈ `lockPledge · activate · deliver · confirmPayment · mutualRelease · forfeit · dispute`.
+Trạng thái: `INIT → PENDING → ACTIVE → DELIVERED → RELEASED` (+ `FORFEITED` / `DISPUTED`).
+`lockPledge {side:"aladin"|"genie", amount}`.
 
-## Token model — CHỐT
-- **3 ví: walletMAGIC + walletLAMP + walletCARP.** MAGIC=định giá (phi-chuyển, escrow không đụng); **CARP=thanh toán** (pledge+phí, `402 NO_FUNDS`=thiếu CARP); LAMP=backing.
-- **ADA KHÔNG user-facing** — chỉ demo onchain tuỳ chọn (action `'onchain'` ngoài ACTIONS chuẩn, cần `WALLET_SEED`+`BLOCKFROST`). "CARP gộp MAGIC" (v0.3) **DEPRECATED 07-03**.
-
-## Env cho SuperApp
+## `GET /taskers` — danh bạ thợ (đóng H-02)
+```jsonc
+{ "total": 2,
+  "taskers": [{
+    "did": "did:phoenix:…", "name": "Minh", "avatar": "🎬", "title": "…", "kind": "person",
+    "reputation": 112, "skills": ["video","motion-graphics"],
+    "verifiedCredentials": 1,
+    "credentials": [{ "taskType": "gt:video:short_form", "archetype": "A19",
+                      "metric": { "videos": 80, "views": 25000 }, "quality_tier": "B" }],
+    "offerings":   [{ "id": "DV-001", "templateKey": "video_short",
+                      "name": "Sản xuất video ngắn", "minPriceVND": 90000 }],
+    "available": false, "availableFrom": null, "availableUntil": null,
+    "completedJobs": 0
+  }]
+}
 ```
-WORK_API_URL=http://<host>:7040/api/v1   # <host> chưa có
-WORK_BACKEND_ENABLED=true                # bật sau khi có host
-```
-Backend cần: `AUTH_HMAC_SECRET`, `PHOENIXKEY_URL` thật, `PHOENIXKEY_MOCK=0` (`DEPLOY.md`).
+- **Chỉ người đã chào năng lực mới lọt danh bạ** (có chứng chỉ đã duyệt gắn đúng một JobType, hoặc
+  dịch vụ đang mở, hoặc đã khai lịch rảnh) ⇒ màn không đầy thẻ trắng của hồ sơ vừa đăng nhập.
+- **Thứ tự tất định**: uy tín → việc đã tất toán → số chứng chỉ → did. Kéo làm mới không nhảy.
+- `?availableOnly=1` lọc cứng theo cửa sổ thời gian; `?now=<epoch ms>` để dựng lại đúng một cảnh.
+- Công khai — không kèm ví/khoá phiên/đối tác hợp đồng, an toàn hiện trước khi đăng nhập.
+- `GET /accounts` KHÔNG thay được: nó trả cả bên đi thuê lẫn hồ sơ rỗng, thiếu uy tín/chứng chỉ/giá.
 
-## Readiness
-- 🟡 **Code SẴN SÀNG** (0.2.0 non-mock + Docker+compose+DEPLOY.md). Blocker = **hạ tầng**: chưa có host chạy + chưa set `AUTH_HMAC_SECRET`/`PHOENIXKEY_URL`.
-- Phụ thuộc con: token MAGIC/CARP on-chain thật chưa có (escrow = off-chain accounting DB); `credentialArchetype` chờ VeData lock.
+## `POST /offerings` — nửa CUNG của chợ (mở H-28)
+Trước đây `offerings` chỉ sinh từ dữ liệu seed demo; bỏ seed ở môi trường thật ⇒ danh sách dịch vụ
+**vĩnh viễn rỗng** và `POST /contracts {offeringId}` không bao giờ dùng được. Nay có đường ghi:
+
+| Đường | Ghi chú |
+|---|---|
+| `POST /offerings` (Bearer, nhận `Idempotency-Key`) | `{templateKey, name?, minPriceVND?, mode?, radiusKm?, schedule?, desc?, fields?}` → 201 |
+| `PATCH /offerings/:id` | chỉ chủ; `templateKey` **không đổi được** |
+| `DELETE /offerings/:id` | **đóng mềm** → `{id, status:"closed"}` |
+
+- Chủ gắn theo DID của phiên — `ownerDid` gửi trong thân yêu cầu bị bỏ qua.
+- `mode` ∈ `online | offline | ca-hai`; `online` ép `radiusKm = 0`.
+- `fields` chỉ nhận key đã khai trong mẫu (`GET /templates` → `fields[]`); sai enum/sai số →
+  `400 BAD_INPUT`. Dựng biểu mẫu động từ `template.fields[]` là đủ, không mã hoá cứng.
+- Trường giá trong `fields` tự theo `minPriceVND` — màn không hiện hai giá cho cùng một dịch vụ.
+
+## Ba ví
+`walletMAGIC` kế toán/định giá (không chuyển nhượng) · **`walletCARP` thanh toán — `402 NO_FUNDS`
+là thiếu cái này** · `walletLAMP` bảo chứng. AladinWork **không** nạp/đúc/giữ hộ CARP (không có
+`POST /wallet/deposit`). **Đơn vị hiển thị MAGIC/CARP chưa chốt** — in số thô còn hơn in sai (H-27).
+
+## Còn nợ
+- 🔴 máy chủ 502/530 (vận hành, đã báo anh Aladin).
+- 🔴 chứng chỉ dùng archetype **A19** bị validator VeData từ chối ⇒ `POST /capabilities/:id/verify`
+  gãy với video ngắn / motion / ba mẫu nội trợ. Cách chữa đã chốt: A19 → A12, chờ VeData khoá phân
+  loại phụ `competency_credential`. Đăng việc / khớp thợ / hợp đồng / danh bạ **không** dính.
+- 🟠 `walletAddress` còn lọt trong `candidates` của `/jobs/:id/match` — **đừng hiển thị**, sẽ gỡ.
+- Cọc và phí đang là kế toán ngoài chuỗi. **Đừng hứa với người dùng là tiền đang giữ trên chuỗi.**
 
 ## Changelog
+- 2026-08-03: thay toàn bộ theo bàn giao AladinWork agent — thêm `/taskers`, `POST /offerings`,
+  availability/evidence/conversation, khuôn lỗi, hai bất biến ghi. Số đo host là số SuperApp tự curl.
 - 2026-07-11: tạo file (5-agent cross-ref).

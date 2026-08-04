@@ -198,6 +198,43 @@ export interface MatchResult {
   candidates: MatchCandidate[];
 }
 
+// ── Taskers (danh bạ thợ — GET /taskers, công khai) ───────────────────
+// CHỈ người đã chào năng lực lọt danh bạ (chứng chỉ duyệt gắn 1 JobType, hoặc dịch
+// vụ đang mở, hoặc đã khai lịch rảnh). Thứ tự tất định: uy tín → việc tất toán →
+// số chứng chỉ → did. Công khai: KHÔNG kèm ví/khoá phiên.
+export interface TaskerCredential {
+  taskType?: string;
+  archetype?: string;
+  metric?: Record<string, number>;
+  quality_tier?: string;
+}
+export interface TaskerOffering {
+  id: string;
+  templateKey: string;
+  name: string;
+  minPriceVND?: number;
+}
+export interface Tasker {
+  did: string;
+  name?: string;
+  avatar?: string;
+  title?: string;
+  kind?: string;
+  reputation?: number;
+  skills?: string[];
+  verifiedCredentials?: number;
+  credentials?: TaskerCredential[];
+  offerings?: TaskerOffering[];
+  available?: boolean;
+  availableFrom?: number | null; // epoch ms
+  availableUntil?: number | null;
+  completedJobs?: number;
+}
+export interface TaskersResult {
+  total: number;
+  taskers: Tasker[];
+}
+
 // ── Credential / Stamp ───────────────────────────────────────────────
 export interface Credential {
   id: string;

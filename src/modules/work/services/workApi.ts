@@ -20,9 +20,9 @@ import axios, {
 import { resolveBaseURL, WORK_HTTP_TIMEOUT_MS } from './config';
 import { getWorkSessionToken, clearWorkSession } from './session';
 import type {
-  WorkAccount, JobType, WorkJob, Offering, WorkContract, MatchResult,
+  WorkAccount, JobType, WorkJob, Offering, WorkContract, MatchResult, MatchCandidate,
   Credential, AvailabilityResult, Availability, ChallengeResult, VerifyResult,
-  VerifyBody, HealthResult, ConversationRef,
+  VerifyBody, HealthResult, ConversationRef, TaskersResult,
 } from './types';
 
 // ── Phân loại lỗi (mạng ⟂ quyền ⟂ server) — INTEGRATION §7.3 ─────────
@@ -220,6 +220,25 @@ export const verifyCapability = (
 export const getOfferings = (params?: { ownerDid?: string; activeOnly?: boolean }): Promise<Offering[]> =>
   call(client().get('/offerings', { params }));
 
+// ── Danh bạ thợ (H-02) — GET /taskers, CÔNG KHAI (không auth), an-toàn hiện trước
+// khi đăng-nhập. availableOnly lọc cứng theo cửa-sổ thời-gian; now=<epoch ms> để
+// dựng lại đúng 1 cảnh (kéo làm mới không nhảy — server thứ-tự tất-định).
+export interface TaskersQuery {
+  templateKey?: string;
+  availableOnly?: boolean;
+  limit?: number;
+  now?: number; // epoch ms
+}
+export const getTaskers = (q: TaskersQuery = {}): Promise<TaskersResult> =>
+  call(client().get('/taskers', {
+    params: {
+      ...(q.templateKey ? { templateKey: q.templateKey } : {}),
+      ...(q.availableOnly ? { availableOnly: 1 } : {}),
+      ...(q.limit ? { limit: q.limit } : {}),
+      ...(q.now ? { now: q.now } : {}),
+    },
+  }));
+
 // ── Ghi CUNG (H-28): tạo/sửa/đóng dịch vụ. Chủ gắn theo DID của PHIÊN — `ownerDid`
 // gửi trong thân bị server BỎ QUA (không cho mạo chủ). `templateKey` cố định sau khi
 // tạo (PATCH không đổi được). `fields` chỉ nhận key khai trong mẫu (GET /templates →
@@ -278,8 +297,17 @@ export interface PostJobBody {
 export const postJob = (body: PostJobBody, opts?: WriteOpts): Promise<WorkJob> =>
   call(client().post('/jobs', body, writeCfg(opts)));
 
-export const getJobMatch = (id: string): Promise<MatchResult> =>
-  call(client().get(`/jobs/${encodeURIComponent(id)}/match`));
+// walletAddress còn LỌT trong candidates (backend sẽ gỡ — SPEC "Còn nợ"). Bóc NGAY
+// tại biên để không bao giờ tới UI/log: privacy (địa-chỉ ví ứng-viên) + tránh vô-tình
+// render. Bỏ ở 1 chokepoint → mọi consumer (useMatch, screen) đều sạch.
+const stripWalletAddress = (c: MatchCandidate): MatchCandidate => {
+  const { walletAddress: _drop, ...rest } = c as MatchCandidate & { walletAddress?: unknown };
+  return rest;
+};
+export const getJobMatch = async (id: string): Promise<MatchResult> => {
+  const r = await call<MatchResult>(client().get(`/jobs/${encodeURIComponent(id)}/match`));
+  return { ...r, candidates: (r.candidates ?? []).map(stripWalletAddress) };
+};
 
 // ─────────────────────────────────────────────────────────────────────
 // 22–24. CONTRACTS

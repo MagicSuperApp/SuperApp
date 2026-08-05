@@ -36,6 +36,8 @@ import { isAvailable as isPhoenixKeyAvailable } from '../services/phoenixKey-nat
 import { loginUser } from '../store/userSlice';
 import { showError } from '../utils/alert';
 import LoginSuccessOverlay from '../components/LoginSuccessOverlay';
+import LanguagePickerModal from '../components/LanguagePickerModal';
+import { LANGUAGES, useLanguage } from '../i18n';
 
 const PHOENIX_USERS_KEY = '@phoenixkey/users';
 const ACTIVE_USERNAME_KEY = '@phoenixkey/active_username';
@@ -111,6 +113,11 @@ const LoginScreen = () => {
   const [showSuccess, setShowSuccess] = useState(false);
   const [activeUser, setActiveUser] = useState<PhoenixUserEntry | null>(null);
   const [allUsers, setAllUsers] = useState<PhoenixUserEntry[]>([]);
+  // Nút cờ ở góc trên-phải khu logo: đổi ngôn ngữ NGAY tại màn đăng nhập, không
+  // phải đăng nhập vào mới đổi được (người dùng mới chưa có tài khoản).
+  const [langOpen, setLangOpen] = useState(false);
+  const lang = useLanguage();
+  const langMeta = LANGUAGES.find(l => l.code === lang) ?? LANGUAGES[0];
 
   // Load PhoenixUser đã đăng ký trên thiết bị mỗi khi màn này focus.
   useFocusEffect(
@@ -187,8 +194,11 @@ const LoginScreen = () => {
 
   const runBiometric = async (kind: BiometricKind) => {
     if (busyKind) return;
+    const langCode = langMeta.code;
     const prompt =
-      kind === 'face' ? 'Đăng nhập bằng khuôn mặt' : 'Đăng nhập bằng vân tay';
+      langCode === 'vi' ? 'Xác thực sinh trắc học' :
+      langCode === 'en' ? 'Biometric Authentication' :
+      '生物识别认证';
     // Ghi nhận lần nhấn nút sinh trắc + đánh dấu để đo độ trễ tới màn hình kế.
     trackPress(kind === 'face' ? 'biometric_face_button' : 'biometric_fingerprint_button', {
       action: 'login_biometric',
@@ -304,10 +314,26 @@ const LoginScreen = () => {
             { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
           ]}
         >
-          <View style={styles.logoOuter}>
-            <View style={styles.logoInner}>
-              <Image source={require('../../assets/images/logo.png')} style={{ width: 50, height: 50, borderRadius: 9 }} />
+          {/* Hàng logo: logo trái · nút cờ đổi ngôn ngữ ở góc PHẢI (cùng hàng nên
+              luôn nằm trên cùng khu logo dù chiều cao hero đổi theo màn hình). */}
+          <View style={styles.logoRow}>
+            <View style={styles.logoOuter}>
+              <View style={styles.logoInner}>
+                <Image source={require('../../assets/images/logo.png')} style={{ width: 50, height: 50, borderRadius: 9 }} />
+              </View>
             </View>
+
+            <TouchableOpacity
+              style={styles.langBtn}
+              activeOpacity={0.8}
+              hitSlop={8}
+              onPress={() => setLangOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel={langMeta.endonym}
+            >
+              <Text style={styles.langFlag} allowFontScaling={false}>{langMeta.flag}</Text>
+              <Icon name="chevron-down" size={14} color={BLUE.white} />
+            </TouchableOpacity>
           </View>
           <Text allowFontScaling={false} style={styles.eyebrow}>ALADIN · PHOENIXKEY DID</Text>
           <Text allowFontScaling={false} style={styles.title}>
@@ -482,6 +508,9 @@ const LoginScreen = () => {
         username={activeUser?.username ?? 'bạn'}
         onDone={() => navigation.reset({ index: 0, routes: [{ name: 'Main' as never }] })}
       />
+
+      {/* Popup đổi ngôn ngữ — mở từ nút cờ ở góc trên-phải khu logo. */}
+      <LanguagePickerModal visible={langOpen} onClose={() => setLangOpen(false)} />
     </View>
   );
 };
@@ -682,13 +711,29 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === 'ios' ? 70 : 50,
     justifyContent: 'flex-start',
   },
+  // Hàng chứa logo (trái) + nút cờ ngôn ngữ (phải).
+  logoRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: 18,
+  },
   logoOuter: {
     width: 64, height: 64, borderRadius: 20,
     backgroundColor: 'rgba(255,255,255,0.14)',
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.30)',
     alignItems: 'center', justifyContent: 'center',
-    marginBottom: 18,
   },
+  // Nút cờ: viên thuốc trong suốt trên nền hero, đủ tương phản cho chữ/icon trắng.
+  langBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    paddingLeft: 10, paddingRight: 7, paddingVertical: 6,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.32)',
+    marginTop: 4,
+  },
+  langFlag: { fontSize: 18, lineHeight: 22 },
   logoInner: {
     borderRadius: 14,
     backgroundColor: 'rgba(255,255,255,0.18)',

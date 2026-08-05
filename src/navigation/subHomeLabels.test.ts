@@ -75,20 +75,19 @@ describe('nhãn song ngữ', () => {
   it('EN vẫn là nhãn CHUẨN', () => {
     expect(subEn(CHAT[0])).toBe('Chats');
   });
-
-  // Từ 2026-08-05 nhãn quốc gia KHÔNG còn là tooltip: `SubHomeFrame` vẽ nó cạnh nhãn
-  // EN trên cùng một dòng. Trước đây nó chỉ nằm trong `accessibilityLabel`, nghĩa là
-  // nông dân thấy 8 tab con không có một chữ Việt nào.
-  it('nhãn quốc gia có đủ ba thứ tiếng', () => {
+  // Tham số `lang` truyền TƯỜNG MINH: mặc định của subNational là ngôn ngữ app
+  // đang đặt (i18n), nên bỏ trống sẽ khiến test phụ thuộc DEFAULT_LANG.
+  it('quốc gia = tooltip (vi)', () => {
     expect(subNational(CHAT[0], 'vi')).toBe('Trò chuyện');
-    expect(subNational(CHAT[0], 'zh')).toBe('聊天');
-    expect(subNational(CHAT[0], 'ja')).toBe('チャット');
+    expect(subNational(FARM[3], 'vi')).toBe('Carbon');
   });
 
-  // "Carbon" là thuật ngữ: người dùng cần biết đây là TÍN CHỈ các-bon, không phải
-  // nguyên tố hoá học. Đây là mẫu cho toàn bộ đợt dọn từ ngữ kỹ thuật.
-  it('nhãn kỹ thuật được viết lại bằng lời người dùng', () => {
-    expect(subNational(FARM[3], 'vi')).toBe('Tín chỉ');
-    expect(subNational(FARM[3], 'vi')).not.toBe('Carbon');
+  it('quốc gia = tooltip (zh)', () => {
+    expect(subNational(CHAT[0], 'zh')).toBe('聊天');
+    expect(subNational(FARM[0], 'zh')).toBe('果园');
+  });
+
+  it('app đặt tiếng Anh → tooltip rơi về chính nhãn EN', () => {
+    expect(subNational(CHAT[0], 'en')).toBe('Chats');
   });
 });

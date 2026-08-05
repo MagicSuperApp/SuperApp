@@ -3,6 +3,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { AUTH_BLUE } from '../theme';
+import { LANGUAGES, useLanguage } from '../../../i18n';
 
 interface Props {
   current: number;   // 1-based
@@ -11,9 +12,11 @@ interface Props {
 
 const StepIndicator: React.FC<Props> = ({ current, total }) => {
   const dots = Array.from({ length: total }, (_, i) => i + 1);
+  const lang = useLanguage();
+  const langMeta = LANGUAGES.find(l => l.code === lang) ?? LANGUAGES[0];
   return (
     <View style={styles.wrap}>
-      <Text style={styles.label}>Bước {current}/{total}</Text>
+      <Text style={styles.label}>{langMeta.code === 'vi' ? 'Bước' : langMeta.code === 'en' ? 'Step' : '步骤'} {current}/{total}</Text>
       <View style={styles.row}>
         {dots.map((n, i) => {
           const done = n < current;

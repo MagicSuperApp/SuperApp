@@ -31,19 +31,17 @@ export interface SubTab {
 export const SUBHOME_FRAME: Record<string, SubTab[]> = {
   // Chat (proofchat): hiện Chats · Calls · Pins + ⌄(Docs…).
   ProofChatHome: [
-    { key: 'chats', en: 'Chats', national: { vi: 'Trò chuyện', zh: '聊天',   ja: 'チャット' }, icon: 'chat-outline' },
-    { key: 'calls', en: 'Calls', national: { vi: 'Gọi',        zh: '通话',   ja: '通話' },     icon: 'phone-outline' },
-    { key: 'pins',  en: 'Pins',  national: { vi: 'Ghim',       zh: '置顶',   ja: 'ピン' },     icon: 'pin-outline' },
-    { key: 'docs',  en: 'Docs',  national: { vi: 'Tài liệu',   zh: '文件',   ja: '書類' },     icon: 'file-document-outline' },
+    { key: 'chats', en: 'Chats', national: { vi: 'Trò chuyện', zh: '聊天' }, icon: 'chat-outline' },
+    { key: 'calls', en: 'Calls', national: { vi: 'Gọi',        zh: '通话' }, icon: 'phone-outline' },
+    { key: 'pins',  en: 'Pins',  national: { vi: 'Ghim',       zh: '置顶' }, icon: 'pin-outline' },
+    { key: 'docs',  en: 'Docs',  national: { vi: 'Tài liệu',   zh: '文档' }, icon: 'file-document-outline' },
   ],
   // Farm (trace): hiện Garden · Trees · Care + ⌄(Carbon…).
   Farms: [
-    { key: 'garden', en: 'Garden', national: { vi: 'Vườn',       zh: '园子',     ja: '園地' },       icon: 'sprout-outline' },
-    { key: 'trees',  en: 'Trees',  national: { vi: 'Cây',        zh: '树木',     ja: '樹木' },       icon: 'pine-tree' },
-    { key: 'care',   en: 'Care',   national: { vi: 'Chăm sóc',   zh: '养护',     ja: '手入れ' },     icon: 'watering-can' },
-    // "Carbon" là thuật ngữ — người dùng cần biết đây là TÍN CHỈ các-bon, không phải
-    // nguyên tố hoá học.
-    { key: 'carbon', en: 'Carbon', national: { vi: 'Tín chỉ',    zh: '碳信用',   ja: 'カーボン' },   icon: 'leaf' },
+    { key: 'garden', en: 'Garden', national: { vi: 'Vườn',     zh: '果园' }, icon: 'sprout-outline' },
+    { key: 'trees',  en: 'Trees',  national: { vi: 'Cây',      zh: '树木' }, icon: 'pine-tree' },
+    { key: 'care',   en: 'Care',   national: { vi: 'Chăm sóc', zh: '养护' }, icon: 'watering-can' },
+    { key: 'carbon', en: 'Carbon', national: { vi: 'Carbon',   zh: '碳汇' }, icon: 'leaf' },
   ],
 };
 

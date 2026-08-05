@@ -6,6 +6,17 @@
 // về remoteLogger. Nếu "app_boot" TỚI server = JS bundle ĐÃ nạp & chạy.
 import './src/config/crashReporter';
 
+// I18N — PHẢI chạy TRƯỚC khi bất kỳ màn nào render: installI18n() thay thuộc tính
+// Text/TextInput trên module 'react-native' bằng bản tự dịch. Component nào render
+// trước lời gọi này sẽ giữ Text gốc (không dịch) cho tới lần mount sau.
+// Bọc try/catch: hỏng lớp dịch KHÔNG được phép chặn app khởi động.
+import { installI18n } from './src/i18n/install';
+try {
+  installI18n();
+} catch (e) {
+  console.warn('[i18n] installI18n lỗi — app chạy tiếng Việt:', e);
+}
+
 import React from 'react';
 import { AppRegistry, ScrollView, Text } from 'react-native';
 import { name as appName } from './app.json';

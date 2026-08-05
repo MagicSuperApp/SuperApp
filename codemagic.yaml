@@ -125,8 +125,21 @@ workflows:
           LAMPNET_UPLOAD_URL=${LAMPNET_UPLOAD_URL:-https://lampnet.cloud/mirage/put?mode=symmetric}
           CAPTURES_3D_URL=${CAPTURES_3D_URL:-https://api.orilife.io/captures/3d}
 
-          ANALYTICS_API_URL=${ANALYTICS_API_URL:-https://analytics.orilife.io}
-          ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-prod-analytics-key}
+          # AladinWork (Việc làm). THIẾU biến này = cổng runtime tắt vĩnh viễn, module
+          # rơi về rỗng DÙ máy chủ sống (đo 05/08: api.aladin.work/api/v1/health = 200).
+          WORK_API_URL=${WORK_API_URL:-https://api.aladin.work/api/v1}
+
+          # ProofChat. Host còn 502 (đo 05/08) nên cổng vẫn tắt — nhưng ghi sẵn để khi
+          # máy chủ sống lại thì bản build tự bật, không phải chờ một vòng phát hành nữa.
+          PROOFCHAT_API_URL=${PROOFCHAT_API_URL:-https://api.proofchat.me/api/v1}
+          PROOFCHAT_WS_URL=${PROOFCHAT_WS_URL:-https://api.proofchat.me}
+          PROOFCHAT_WS_PATH=${PROOFCHAT_WS_PATH:-/socket.io}
+          PROOFCHAT_BACKEND_ENABLED=${PROOFCHAT_BACKEND_ENABLED:-true}
+
+          # ⚠ analytics.orilife.io KHÔNG phân giải được (DNS NXDOMAIN, đo 05/08) — để
+          # trống thay vì nướng một host không tồn tại vào mọi bản build.
+          ANALYTICS_API_URL=${ANALYTICS_API_URL:-}
+          ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-}
           EOF
           # Dọn whitespace lạc (tab/space) mà biến môi trường Codemagic có thể dính
           # vào value khi paste — nếu không, URL như "\thttps://..." sẽ làm fetch ném
@@ -422,8 +435,21 @@ workflows:
           LAMPNET_BASE_URL=${LAMPNET_BASE_URL:-https://lampnet.cloud}
           LAMPNET_UPLOAD_URL=${LAMPNET_UPLOAD_URL:-https://lampnet.cloud/mirage/put?mode=symmetric}
           CAPTURES_3D_URL=${CAPTURES_3D_URL:-https://api.orilife.io/captures/3d}
-          ANALYTICS_API_URL=${ANALYTICS_API_URL:-https://analytics.orilife.io}
-          ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-prod-analytics-key}
+          # AladinWork (Việc làm). THIẾU biến này = cổng runtime tắt vĩnh viễn, module
+          # rơi về rỗng DÙ máy chủ sống (đo 05/08: api.aladin.work/api/v1/health = 200).
+          WORK_API_URL=${WORK_API_URL:-https://api.aladin.work/api/v1}
+
+          # ProofChat. Host còn 502 (đo 05/08) nên cổng vẫn tắt — nhưng ghi sẵn để khi
+          # máy chủ sống lại thì bản build tự bật, không phải chờ một vòng phát hành nữa.
+          PROOFCHAT_API_URL=${PROOFCHAT_API_URL:-https://api.proofchat.me/api/v1}
+          PROOFCHAT_WS_URL=${PROOFCHAT_WS_URL:-https://api.proofchat.me}
+          PROOFCHAT_WS_PATH=${PROOFCHAT_WS_PATH:-/socket.io}
+          PROOFCHAT_BACKEND_ENABLED=${PROOFCHAT_BACKEND_ENABLED:-true}
+
+          # ⚠ analytics.orilife.io KHÔNG phân giải được (DNS NXDOMAIN, đo 05/08) — để
+          # trống thay vì nướng một host không tồn tại vào mọi bản build.
+          ANALYTICS_API_URL=${ANALYTICS_API_URL:-}
+          ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-}
           EOF
           # Dọn whitespace lạc (tab/space) trong value biến môi trường Codemagic.
           perl -i -pe 's/^(\w+)=[ \t]+/$1=/; s/[ \t]+$//' .env
@@ -703,8 +729,21 @@ workflows:
           LAMPNET_BASE_URL=${LAMPNET_BASE_URL:-https://lampnet.cloud}
           LAMPNET_UPLOAD_URL=${LAMPNET_UPLOAD_URL:-https://lampnet.cloud/mirage/put?mode=symmetric}
           CAPTURES_3D_URL=${CAPTURES_3D_URL:-https://api.orilife.io/captures/3d}
-          ANALYTICS_API_URL=${ANALYTICS_API_URL:-https://analytics.orilife.io}
-          ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-prod-analytics-key}
+          # AladinWork (Việc làm). THIẾU biến này = cổng runtime tắt vĩnh viễn, module
+          # rơi về rỗng DÙ máy chủ sống (đo 05/08: api.aladin.work/api/v1/health = 200).
+          WORK_API_URL=${WORK_API_URL:-https://api.aladin.work/api/v1}
+
+          # ProofChat. Host còn 502 (đo 05/08) nên cổng vẫn tắt — nhưng ghi sẵn để khi
+          # máy chủ sống lại thì bản build tự bật, không phải chờ một vòng phát hành nữa.
+          PROOFCHAT_API_URL=${PROOFCHAT_API_URL:-https://api.proofchat.me/api/v1}
+          PROOFCHAT_WS_URL=${PROOFCHAT_WS_URL:-https://api.proofchat.me}
+          PROOFCHAT_WS_PATH=${PROOFCHAT_WS_PATH:-/socket.io}
+          PROOFCHAT_BACKEND_ENABLED=${PROOFCHAT_BACKEND_ENABLED:-true}
+
+          # ⚠ analytics.orilife.io KHÔNG phân giải được (DNS NXDOMAIN, đo 05/08) — để
+          # trống thay vì nướng một host không tồn tại vào mọi bản build.
+          ANALYTICS_API_URL=${ANALYTICS_API_URL:-}
+          ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-}
           EOF
           # Dọn whitespace lạc (tab/space) trong value biến môi trường Codemagic.
           perl -i -pe 's/^(\w+)=[ \t]+/$1=/; s/[ \t]+$//' .env
@@ -854,8 +893,21 @@ workflows:
           LAMPNET_BASE_URL=${LAMPNET_BASE_URL:-https://lampnet.cloud}
           LAMPNET_UPLOAD_URL=${LAMPNET_UPLOAD_URL:-https://lampnet.cloud/mirage/put?mode=symmetric}
           CAPTURES_3D_URL=${CAPTURES_3D_URL:-https://api.orilife.io/captures/3d}
-          ANALYTICS_API_URL=${ANALYTICS_API_URL:-https://analytics.orilife.io}
-          ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-prod-analytics-key}
+          # AladinWork (Việc làm). THIẾU biến này = cổng runtime tắt vĩnh viễn, module
+          # rơi về rỗng DÙ máy chủ sống (đo 05/08: api.aladin.work/api/v1/health = 200).
+          WORK_API_URL=${WORK_API_URL:-https://api.aladin.work/api/v1}
+
+          # ProofChat. Host còn 502 (đo 05/08) nên cổng vẫn tắt — nhưng ghi sẵn để khi
+          # máy chủ sống lại thì bản build tự bật, không phải chờ một vòng phát hành nữa.
+          PROOFCHAT_API_URL=${PROOFCHAT_API_URL:-https://api.proofchat.me/api/v1}
+          PROOFCHAT_WS_URL=${PROOFCHAT_WS_URL:-https://api.proofchat.me}
+          PROOFCHAT_WS_PATH=${PROOFCHAT_WS_PATH:-/socket.io}
+          PROOFCHAT_BACKEND_ENABLED=${PROOFCHAT_BACKEND_ENABLED:-true}
+
+          # ⚠ analytics.orilife.io KHÔNG phân giải được (DNS NXDOMAIN, đo 05/08) — để
+          # trống thay vì nướng một host không tồn tại vào mọi bản build.
+          ANALYTICS_API_URL=${ANALYTICS_API_URL:-}
+          ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-}
           EOF
           # Dọn whitespace lạc (tab/space) trong value biến môi trường Codemagic.
           perl -i -pe 's/^(\w+)=[ \t]+/$1=/; s/[ \t]+$//' .env

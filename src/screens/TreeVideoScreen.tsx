@@ -142,14 +142,19 @@ const TreeVideoScreen: React.FC = () => {
         // (`/v1/documents` đánh theo doc_type và GHI ĐÈ), nên mã này không app giữ thì
         // mất vĩnh viễn. Video quả đã làm đúng từ đợt trước; video cây thì chưa — đội đi
         // cả ngày, sau buổi không đối chiếu được clip nào.
-        if (res.video_cid) {
+        //
+        // CỜ QUYẾT ĐỊNH LÀ `stored`, KHÔNG PHẢI `video_cid` (OriLife chốt 05/08). Khi
+        // LampNet tắt, máy chủ VẪN trả một CID giả dạng `local_<sha16>_<tên>` — có mã
+        // nhưng không byte nào rời máy chủ. Ghi mã đó vào sổ bằng chứng là tự tạo ra
+        // một dòng không bao giờ tra được, mà sổ thì chỉ ghi thêm, không sửa được.
+        if (res.stored === true && res.video_cid) {
           await appendVideoProof(selectedTreeId, {
             videoCid: res.video_cid,
             kind: 'tree',
             at: new Date().toISOString(),
             eventId: res.event_id,
             nFrames: res.n_kept,
-            stored: res.stored,
+            stored: true,
             lat: gps?.lat,
             lon: gps?.lon,
           }).catch(() => undefined);
@@ -177,8 +182,13 @@ const TreeVideoScreen: React.FC = () => {
   if (result) {
     const added = !!result.added && (result.n_kept ?? 0) > 0;
     const n = result.n_kept ?? 0;
-    // Bằng-chứng LampNet: byte gốc đã lưu (PR #251). undefined trên prod cũ → coi như chưa rõ.
-    const savedToLampNet = result.stored === true || !!result.video_cid;
+    // Bằng-chứng LampNet: CHỈ `stored === true` mới là đã lưu thật.
+    //
+    // Trước đây dòng này có thêm `|| !!result.video_cid` — sai, vì chế độ LampNet tắt
+    // vẫn trả CID giả `local_…`. Nghĩa là app hiện dấu tích "đã lưu" trong khi không
+    // byte nào rời máy chủ, và nông dân yên tâm xoá clip trong máy. `undefined` (bản
+    // máy chủ cũ chưa có trường này) cũng KHÔNG được coi là đã lưu.
+    const savedToLampNet = result.stored === true;
     return (
       <View style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor={HEADER_BG} />
@@ -203,31 +213,33 @@ const TreeVideoScreen: React.FC = () => {
           </Text>
           {/* Đội thực địa phải THẤY mã lưu trữ để đối chiếu sau buổi, không chỉ tin
               một dòng chữ "đã lưu" — giống màn video quả. Chạm để sao chép. */}
-          {!!result.video_cid && (
+          {savedToLampNet && !!result.video_cid && (
             <TouchableOpacity
               style={styles.cidBox}
               activeOpacity={0.7}
               onPress={() => {
                 Clipboard.setString(result.video_cid!);
-                Alert.alert('Đã sao chép', 'Mã lưu trữ đã vào bộ nhớ tạm.');
+                Alert.alert('Đã sao chép', 'Mã tra cứu đã vào bộ nhớ tạm.');
               }}
             >
               <Icon name="shield-check" size={15} color="#1b5e20" />
               <Text style={styles.cidText} numberOfLines={1}>
-                Đã lưu lên mạng LampNet · {result.video_cid}
+                Đã cất giữ an toàn · {result.video_cid}
               </Text>
               <Icon name="content-copy" size={14} color={NEUTRAL.textSub} />
             </TouchableOpacity>
           )}
           {savedToLampNet && !result.video_cid && (
             <Text style={styles.resultEvidence}>
-              ✓ Video đã được lưu làm bằng chứng cho cây.
+              ✓ Video đã được cất giữ làm bằng chứng cho cây.
             </Text>
           )}
-          {result.stored === false && (
+          {/* KHÔNG hiện mã khi chưa cất được. Mã lúc đó là mã tạm, tra không ra gì —
+              hiện ra chỉ khiến người dùng tưởng đã xong rồi xoá clip trong máy. */}
+          {!savedToLampNet && (
             <Text style={styles.resultWarn}>
-              Máy chủ nhận được video nhưng CHƯA lưu được lên LampNet. Giữ lại clip
-              trong máy và báo đội kỹ thuật — đừng xoá.
+              Máy chủ đã nhận video nhưng CHƯA cất giữ được. Hãy GIỮ LẠI clip trong máy
+              và gửi lại khi có sóng tốt — đừng xoá.
             </Text>
           )}
           {(result.n_rejected ?? 0) > 0 && (

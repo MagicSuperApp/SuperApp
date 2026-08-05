@@ -12,8 +12,35 @@ on:
   workflow_dispatch:  # Manual trigger button
 
 jobs:
+  # CỔNG chất-lượng — nhánh `main` là nhánh RA PLAY STORE, mà trước đây lại là nhánh
+  # DUY NHẤT không có cổng nào: code đỏ tsc/jest đi thẳng ra bản người dùng tải.
+  # Giống hệt job `verify` của debug-apk.yml.
+  verify:
+    name: Verify (tsc + jest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.11.0'
+          cache: 'npm'
+
+      - name: Install npm dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Typecheck (tsc --noEmit)
+        run: npx tsc --noEmit -p tsconfig.json
+
+      - name: Unit tests (jest)
+        run: npx jest --ci
+
   build-aab:
     name: Build signed AAB for Play Store
+    needs: verify
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -36,7 +63,7 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: 'platform-tools platforms;android-36 build-tools;36.0.0 ndk;26.1.10909125'
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0 ndk;27.1.12297006'
 
       - name: Install npm dependencies
         run: npm install --legacy-peer-deps
@@ -50,6 +77,14 @@ jobs:
           newArchEnabled=true
           hermesEnabled=true
           edgeToEdgeEnabled=false
+          # Tắt tích hợp worklets của expo-modules-core. KHÔNG có dòng này thì
+          # WorkletRuntimeInstaller.cpp biên dịch với WORKLETS_ENABLED=1 và đòi
+          # <worklets/Compat/StableApi.h> — header chỉ có từ react-native-worklets
+          # 0.8.0, mà dự án ghim 0.7.4 ⇒ build native gãy. Bản vá
+          # patches/expo-modules-core+56.0.22.patch mở đúng công tắc này, nhưng
+          # android/gradle.properties bị gitignore và bị heredoc dưới đây ghi đè,
+          # nên bản vá vô tác dụng suốt từ 26/07 — 10/10 lần chạy CI đỏ vì nó.
+          expo.enableWorkletsIntegration=false
           EOF
           echo "gradle.properties created (JVM heap: 4096m)"
 

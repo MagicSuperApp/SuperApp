@@ -30,6 +30,7 @@ import StateView from '../../../components/state/StateView';
 import { CONTRIBUTION_LEVELS, type ContributionLevel } from '../data/contributionLevels';
 import {
   getPeerId,
+  isNativeJoinAvailable,
   joinViaNativeSdk,
   resolvePersonDid,
   isLampNetBackendEnabled,
@@ -51,7 +52,7 @@ const JoinHomeScreen: React.FC = () => {
   const [level, setLevel] = useState<ContributionLevel['id']>('balanced');
   const [phase, setPhase] = useState<JoinPhase>('idle');
   const [result, setResult] = useState<JoinResult | null>(null);
-  const [errorKind, setErrorKind] = useState<'auth' | 'server' | null>(null);
+  const [errorKind, setErrorKind] = useState<'auth' | 'server' | 'unsupported' | null>(null);
 
   const handleJoin = useCallback(async () => {
     // Chưa cấu hình backend → coi như offline (KHUNG chạy được, không vỡ).
@@ -62,6 +63,14 @@ const JoinHomeScreen: React.FC = () => {
     if (!personDid || !walletAddress) {
       // Thiếu danh tính/ví nhận thưởng → thông điệp quyền (auth), không phải lỗi mạng.
       setErrorKind('auth');
+      setPhase('error');
+      return;
+    }
+
+    // Cầu native chưa có ⇒ biết trước là không đăng ký được. Trả lời ngay, đừng bắt
+    // người dùng chờ một vòng mạng để nhận câu trả lời đã biết.
+    if (!isNativeJoinAvailable()) {
+      setErrorKind('unsupported');
       setPhase('error');
       return;
     }
@@ -204,10 +213,16 @@ const JoinHomeScreen: React.FC = () => {
         {phase === 'error' && (
           <StateView
             status="error"
-            title={errorKind === 'auth' ? 'Chưa tham gia được' : 'Mạng đang trục trặc'}
+            title={
+              errorKind === 'auth' ? 'Chưa tham gia được'
+              : errorKind === 'unsupported' ? 'Chưa hỗ trợ'
+              : 'Mạng đang trục trặc'
+            }
             message={
               errorKind === 'auth'
                 ? 'Cần danh tính PhoenixKey và ví nhận thưởng hợp lệ, hoặc chưa đủ bậc tham gia.'
+                : errorKind === 'unsupported'
+                ? 'Tính năng Kết đèn chưa có trên bản này — SDK native đang phát triển.'
                 : 'Daemon LampNet đang bận. Vui lòng thử lại sau ít phút.'
             }
             onRetry={retry}

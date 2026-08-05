@@ -2,11 +2,16 @@
 // Màn "Đang đóng góp" (Kết đèn) — spec SG8·F8.4 §4.2.
 //
 // KHUNG UI + gọi API: trạng thái node (online, việc đang chạy), số việc đã verify,
-// thưởng tích luỹ. Đọc song song /v1/node/stats + /v1/reward/epoch (spec §2 bước 7).
-// Token-driven, zero hardcode màu. Đủ 4 trạng thái loading/empty/offline/error.
+// thưởng tích luỹ. Token-driven, zero hardcode màu. Đủ 4 trạng thái.
+//
+// ⚠ 2026-08-05: BỎ `/v1/reward/epoch` khỏi màn này. Đường đó là POST phía vận hành
+// (nhận đóng góp của TẤT CẢ node + đòi header ký), gọi bằng GET trả 405 — mà 405 lại
+// bị xếp nhầm vào lỗi quyền, nên màn này CHƯA BAO GIỜ hiện được số nào, chỉ hiện lỗi.
+// Thưởng theo thiết bị nằm ở `GET /v1/mobile/rewards/{device_pubkey}`, chờ SDK native
+// cấp `device_pubkey` (xem `joinService.getDeviceRewards`).
 //
 // CHỖ CHỜ:
-//   - Endpoint LampNet dev sống → số liệu thật; nay bắt lỗi 3 lớp (JoinApiError).
+//   - `device_pubkey` từ SDK native → mở khoá ô "Thưởng tích luỹ".
 //   - App-loop nền (FGS/BGTask) = bản sau (spec §6) — màn này chỉ HIỂN THỊ.
 //   - µLAMP in-memory (spec §5: thử nghiệm, chưa MAGIC thật) — ghi rõ trên UI.
 
@@ -26,7 +31,6 @@ import { LAMPNET_THEME } from '../theme/colors';
 import StateView from '../../../components/state/StateView';
 import {
   getNodeStats,
-  getRewardEpoch,
   isLampNetBackendEnabled,
   JoinApiError,
   type NodeStats,
@@ -50,10 +54,11 @@ const ContributingScreen: React.FC = () => {
     }
     if (!isRefresh) setState('loading');
     try {
-      // Đọc song song 2 endpoint (spec §2 bước 7).
-      const [s, r] = await Promise.all([getNodeStats(), getRewardEpoch()]);
+      // CHỈ /v1/node/stats. Thưởng theo thiết bị chờ device_pubkey từ SDK native —
+      // xem ghi chú đầu file; đừng gọi lại /v1/reward/epoch ở đây.
+      const s = await getNodeStats();
       setStats(s);
-      setReward(r);
+      setReward(null);
       // Empty = chưa join / node chưa có dữ liệu (không phải lỗi).
       const hasData = s?.online !== undefined || s?.verified_jobs !== undefined;
       setState(hasData ? 'ready' : 'empty');
@@ -178,7 +183,9 @@ const ContributingScreen: React.FC = () => {
           <View style={styles.experimentalNote}>
             <Icon name="flask-outline" size={12} color={COLORS.textMuted} />
             <Text style={styles.experimentalText}>
-              Thử nghiệm — µLAMP tạm tính trong bộ nhớ. MAGIC thật vào ví ở bản sau.
+              {accrued != null
+                ? 'Thử nghiệm — µLAMP tạm tính trong bộ nhớ. MAGIC thật vào ví ở bản sau.'
+                : 'Chưa đo được thưởng của máy này: cần bản có SDK góp máy. Số 0 ở đây không có nghĩa là bạn chưa được ghi nhận.'}
             </Text>
           </View>
         </View>

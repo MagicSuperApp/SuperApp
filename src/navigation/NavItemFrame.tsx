@@ -11,6 +11,7 @@ import * as React from 'react';
 import { View, Text, Image, StyleSheet } from 'react-native';
 import { Icon } from '../components/Icon';
 import { navEn, navNational, navIcon } from './navLabels';
+import { useLanguage } from '../i18n';
 
 export const NAV_FRAME_DIMS = {
   iconSize: 24,
@@ -43,6 +44,14 @@ interface Props {
 const NavItemFrame: React.FC<Props> = ({ route, focused, tint, dimTint, avatarUri, initials }) => {
   const color = focused ? tint : dimTint;
   const isAvatarTab = !!avatarUri || !!initials;
+  // Đăng ký ngôn ngữ: navNational() là hàm thuần đọc store ngoài React, không tự
+  // kích hoạt vẽ lại. Hook này khiến ô tab vẽ lại ngay khi đổi ngôn ngữ.
+  const lang = useLanguage();
+  // Dòng dưới chỉ vẽ khi KHÁC dòng EN ở trên — app đang đặt tiếng Anh (hoặc route
+  // chưa khai nhãn quốc gia) sẽ trùng chữ, in hai lần trông như lỗi.
+  const en = navEn(route);
+  const national = navNational(route, lang);
+  const showNational = national !== en;
   return (
     <View style={styles.frame}>
       {isAvatarTab ? (
@@ -63,11 +72,13 @@ const NavItemFrame: React.FC<Props> = ({ route, focused, tint, dimTint, avatarUr
         numberOfLines={1}
         maxFontSizeMultiplier={NAV_FONT_SCALE_MAX}
       >
-        {navEn(route)}
+        {en}
       </Text>
-      <Text style={[styles.national, { color }]} numberOfLines={1} maxFontSizeMultiplier={NAV_FONT_SCALE_MAX}>
-        {navNational(route)}
-      </Text>
+      {showNational && (
+        <Text style={[styles.national, { color }]} numberOfLines={1} maxFontSizeMultiplier={NAV_FONT_SCALE_MAX}>
+          {national}
+        </Text>
+      )}
     </View>
   );
 };

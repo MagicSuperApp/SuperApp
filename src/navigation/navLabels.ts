@@ -17,8 +17,12 @@
 // "ProofChat"; còn nhãn NAV ngắn gọn là "Chat"). Vì thế nhãn nav sống ở đây, tách
 // khỏi displayName module (INTEGRATION-STANDARD §7.1 — experience layer).
 
-// Mã ngôn ngữ quốc gia được hỗ trợ. Mở rộng khi thêm thị trường: | 'th' | 'km' ...
-export type LangCode = 'vi';
+// Mã ngôn ngữ quốc gia được hỗ trợ = mã ngôn ngữ của app (src/i18n/types.ts).
+// Mở rộng thị trường: thêm mã ở i18n rồi thêm nhãn `national` dưới đây.
+import { getLanguage } from '../i18n/store';
+import type { LangCode as AppLangCode } from '../i18n/types';
+
+export type LangCode = AppLangCode;
 
 export interface NavFrame {
   /** Nhãn tiếng Anh — CHUẨN, hiển thị ở MỌI ngôn ngữ (dòng trên). */
@@ -33,21 +37,20 @@ export interface NavFrame {
 
 // Khoá = route name (khớp instance.config.tabs + module.entrypoint).
 export const NAV_FRAME: Record<string, NavFrame> = {
-  Home:          { en: 'Home',    national: { vi: 'Trang chủ' },  icon: 'house',       iconActive: 'house' },
-  ProofChatHome: { en: 'Chat',    national: { vi: 'Trò chuyện' }, icon: 'comments',    iconActive: 'comments' },
-  Farms:         { en: 'Farm',    national: { vi: 'Trang trại' }, icon: 'seedling',    iconActive: 'seedling' },
-  WorkHome:      { en: 'Work',    national: { vi: 'Việc làm' },   icon: 'briefcase',   iconActive: 'briefcase' },
-  JoinHome:      { en: 'Join',    national: { vi: 'Kết đèn' },    icon: 'bolt',        iconActive: 'bolt' },
+  Home:          { en: 'Home',    national: { vi: 'Trang chủ',  zh: '首页' }, icon: 'house',       iconActive: 'house' },
+  ProofChatHome: { en: 'Chat',    national: { vi: 'Trò chuyện', zh: '聊天' }, icon: 'comments',    iconActive: 'comments' },
+  Farms:         { en: 'Farm',    national: { vi: 'Trang trại', zh: '农场' }, icon: 'seedling',    iconActive: 'seedling' },
+  WorkHome:      { en: 'Work',    national: { vi: 'Việc làm',   zh: '工作' }, icon: 'briefcase',   iconActive: 'briefcase' },
+  JoinHome:      { en: 'Join',    national: { vi: 'Kết đèn',    zh: '连灯' }, icon: 'bolt',        iconActive: 'bolt' },
   // Account = "Me/Tôi" (anh Aladin chốt). Icon dự phòng; ô này ưu tiên vẽ AVATAR
   // user (ảnh hoặc initials) qua NavItemFrame — xem prop avatarUri/initials.
-  Account:       { en: 'Me',      national: { vi: 'Tôi' },       icon: 'circle-user', iconActive: 'circle-user' },
+  Account:       { en: 'Me',      national: { vi: 'Tôi',        zh: '我' },  icon: 'circle-user', iconActive: 'circle-user' },
 };
 
-// Ngôn ngữ quốc gia hiện hành. App CHƯA có hệ i18n → mặc định 'vi' (thị trường
-// đầu tiên). Đây là SEAM DUY NHẤT: khi thêm cài đặt ngôn ngữ, đọc setting tại đây,
-// mọi nhãn nav tự đổi theo.
+// Ngôn ngữ quốc gia hiện hành = ngôn ngữ app đang đặt (Cài đặt → Ngôn ngữ).
+// Đây là SEAM DUY NHẤT — mọi nhãn nav đổi theo nó.
 export function getNationalLanguage(): LangCode {
-  return 'vi';
+  return getLanguage();
 }
 
 /** Nhãn tiếng Anh (chuẩn) cho một route. Fallback = tên route. */
@@ -55,7 +58,14 @@ export function navEn(route: string): string {
   return NAV_FRAME[route]?.en ?? route;
 }
 
-/** Nhãn ngôn ngữ quốc gia cho một route (fallback en → route). */
+/**
+ * Nhãn ngôn ngữ quốc gia cho một route (fallback en → route).
+ *
+ * LUÔN trả nhãn THẬT, kể cả khi app đang là tiếng Anh — hàm này còn được dùng
+ * làm nhãn DUY NHẤT ở nơi khác (vd `resolveGateItems`, tiêu đề tab). Việc bỏ
+ * dòng thứ hai khi nó trùng dòng EN là quyết định TRÌNH BÀY của `NavItemFrame`,
+ * không phải của hàm tra nhãn.
+ */
 export function navNational(route: string, lang: LangCode = getNationalLanguage()): string {
   const f = NAV_FRAME[route];
   if (!f) return route;

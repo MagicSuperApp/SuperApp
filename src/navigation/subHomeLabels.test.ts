@@ -75,8 +75,19 @@ describe('nhãn song ngữ', () => {
   it('EN là nhãn hiển thị', () => {
     expect(subEn(CHAT[0])).toBe('Chats');
   });
+  // Tham số `lang` truyền TƯỜNG MINH: mặc định của subNational là ngôn ngữ app
+  // đang đặt (i18n), nên bỏ trống sẽ khiến test phụ thuộc DEFAULT_LANG.
   it('quốc gia = tooltip (vi)', () => {
-    expect(subNational(CHAT[0])).toBe('Trò chuyện');
-    expect(subNational(FARM[3])).toBe('Carbon');
+    expect(subNational(CHAT[0], 'vi')).toBe('Trò chuyện');
+    expect(subNational(FARM[3], 'vi')).toBe('Carbon');
+  });
+
+  it('quốc gia = tooltip (zh)', () => {
+    expect(subNational(CHAT[0], 'zh')).toBe('聊天');
+    expect(subNational(FARM[0], 'zh')).toBe('果园');
+  });
+
+  it('app đặt tiếng Anh → tooltip rơi về chính nhãn EN', () => {
+    expect(subNational(CHAT[0], 'en')).toBe('Chats');
   });
 });

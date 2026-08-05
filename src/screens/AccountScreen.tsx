@@ -39,6 +39,8 @@ import { ORILIFE_BASE } from '../services/orilifeBase';
 import { fmtLamp } from '../utils/token';
 import taad from '../sdk/taadEnclave';
 import { getStoredMasterKek } from '../services/masterKekStore';
+import LanguagePickerModal from '../components/LanguagePickerModal';
+import { LANGUAGES, useLanguage } from '../i18n';
 
 // 0 = preprod (testnet), khớp WALLET_NETWORK bên register + PhoenixWalletScreen.
 const WALLET_NETWORK = 0;
@@ -385,6 +387,12 @@ const AccountScreen = () => {
     const did = phoenixKey?.did ?? user?.did ?? '';
     // Modal "Tài sản khác" (ADA + token khác + hợp đồng còn hạn).
     const [assetsOpen, setAssetsOpen] = useState(false);
+    // Popup chọn ngôn ngữ (Việt · Anh · Trung). `useLanguage` để dòng phụ của mục
+    // "Ngôn ngữ" đổi ngay khi người dùng chọn xong.
+    const [langOpen, setLangOpen] = useState(false);
+    const lang = useLanguage();
+    // Tên ngôn ngữ viết bằng CHÍNH nó (English / 中文 / Tiếng Việt) — không dịch.
+    const langLabel = LANGUAGES.find(l => l.code === lang)?.endonym ?? 'Tiếng Việt';
 
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const slideAnim = useRef(new Animated.Value(20)).current;
@@ -681,7 +689,12 @@ const AccountScreen = () => {
                 <Animated.View style={{ opacity: fadeAnim }}>
                     <Section title="CÀI ĐẶT">
                         <MenuItem icon="bell-outline" label="Thông báo" sublabel="Quản lý thông báo đẩy" />
-                        <MenuItem icon="translate" label="Ngôn ngữ" sublabel="Tiếng Việt" />
+                        <MenuItem
+                            icon="translate"
+                            label="Ngôn ngữ"
+                            sublabel={langLabel}
+                            onPress={() => setLangOpen(true)}
+                        />
                         <MenuItem icon="fingerprint" label="Sinh trắc học" sublabel="Xác thực khuôn mặt & vân tay" onPress={() => navigation.navigate('BiometricSettings')} />
                         <MenuItem
                             icon="robot-happy-outline"
@@ -821,6 +834,9 @@ const AccountScreen = () => {
                     </TouchableOpacity>
                 </Animated.View>
             </ScrollView>
+
+            {/* Popup chọn ngôn ngữ — đặt NGOÀI ScrollView để phủ toàn màn. */}
+            <LanguagePickerModal visible={langOpen} onClose={() => setLangOpen(false)} />
         </View>
     );
 };

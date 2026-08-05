@@ -30,6 +30,7 @@ import { syncService } from '../services/syncService';
 import { flushVideoUploadQueue } from '../services/videoUploadQueue';
 import AppHeader, { AppHeaderProvider } from '../components/AppHeader';
 import { NAV_FRAME, navNational, navIcon } from './navLabels';
+import { hasChosenLanguage, whenLanguageReady } from '../i18n';
 import NavItemFrame from './NavItemFrame';
 import { useVisibleTabs } from './useVisibleTabs';
 import { NEO_CENTER, NEO_RIGHT } from './resolveVisibleTabs';
@@ -38,6 +39,8 @@ import { TRACE_SCAN_ROUTE_NAME } from './traceScan';
 
 // --- Host shell screens (KHÔNG thuộc module — vỏ giữ tĩnh) ------------------
 import LoginScreen from '../screens/LoginScreen';
+// Màn hỏi ngôn ngữ LẦN ĐẦU (máy vừa cài) — đứng TRƯỚC Login trong luồng khởi động.
+import LanguageSelectScreen from '../screens/LanguageSelectScreen';
 import ActivationScreen from '../screens/ActivationScreen';
 import HomeScreen from '../screens/HomeScreen';
 import SignUpBiometricScreen from '../features/auth/screens/SignUpBiometricScreen';
@@ -1550,6 +1553,13 @@ const HOST_STACK_SCREENS: Array<{
   options?: object;
 }> = [
   { name: 'Login', component: LoginScreen, options: { headerShown: false } },
+  // Hỏi-một-lần lúc mới cài. Không gestureEnabled: vuốt-back ra khỏi màn này sẽ
+  // để app không có màn nào ở dưới (đây là initialRoute khi chưa chọn ngôn ngữ).
+  {
+    name: 'LanguageSelect',
+    component: LanguageSelectScreen,
+    options: { headerShown: false, gestureEnabled: false },
+  },
   { name: 'Activation', component: ActivationScreen },
   { name: 'BiometricSettings', component: BiometricSettings },
   // PhoenixKey feature screens.
@@ -1651,16 +1661,29 @@ const AppNavigator = () => {
     //
     // Reference: docs/PRINCIPLES/01-INDEPENDENT-FEATURE-OPERATION.md §3.3
     const initServices = async () => {
+      // Máy VỪA CÀI (chưa từng chọn ngôn ngữ) → màn đầu tiên là "Chọn ngôn ngữ",
+      // rồi mới tới Đăng nhập. Đọc AsyncStorage là bất đồng bộ nên phải chờ ở đây;
+      // quyết định trước khi dựng Stack để không thấy Login nhấp nháy rồi mới nhảy.
+      // Lỗi đọc storage → coi như đã chọn (vào thẳng Login), KHÔNG chặn app.
+      let firstRoute = 'Login';
+      try {
+        await whenLanguageReady();
+        if (!hasChosenLanguage()) firstRoute = 'LanguageSelect';
+      } catch (e) {
+        console.warn('[Navigation] Không đọc được ngôn ngữ đã lưu:', e);
+      }
+
       try {
         // Start sync service (database will be initialized per-user on login)
         console.log('[Navigation] Initializing sync service');
         syncService.start();
       } finally {
-        // Bỏ 3 màn welcome/onboarding — vào thẳng Login. Người dùng luôn phải xác
-        // thực sinh trắc mỗi phiên; KHÔNG auto-login vào Main.
+        // Bỏ 3 màn welcome/onboarding — vào thẳng Login (hoặc Chọn ngôn ngữ ở lần
+        // mở đầu tiên). Người dùng luôn phải xác thực sinh trắc mỗi phiên; KHÔNG
+        // auto-login vào Main.
         // finally: đây là điểm DUY NHẤT thoát spinner initialRoute=null. Nếu bất kỳ
         // init nào ở trên ném thì vẫn PHẢI mở khoá UI — nếu không app kẹt spinner câm.
-        setInitialRoute('Login');
+        setInitialRoute(firstRoute);
       }
     };
 

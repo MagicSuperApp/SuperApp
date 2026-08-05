@@ -5,6 +5,55 @@
 
 ---
 
+## ĐA NGÔN NGỮ (Việt · Anh · Trung) — dịch TOÀN APP mà KHÔNG sửa 177 file màn hình
+
+Mục "Ngôn ngữ" ở Cài đặt trước đây là nút chết. Nay có: **màn chọn ngôn ngữ lúc mới cài**, **nút cờ ở màn Đăng nhập**, và **popup đổi ngôn ngữ ở Tài khoản → Cài đặt** — đổi là áp dụng NGAY cho mọi màn, không khởi động lại, không mất ngăn xếp điều hướng.
+
+### Cơ chế: bọc Ở CỬA RA, không bọc từng chuỗi
+App có ~1.7k chuỗi Việt hard-code trong 177 file. Bọc tay `t('…')` từng chỗ = sửa 177 file, dễ sót và dễ vỡ (template literal, chuỗi nối, chuỗi trong Alert). Thay vào đó: **mọi chữ muốn lên màn đều phải đi qua `<Text>`**, nên chỉ cần bọc `<Text>`.
+
+`src/i18n/install.ts` ghi đè thuộc tính `Text` / `TextInput` trên module `react-native`:
+```ts
+const RN = require('react-native');            // KHÔNG dùng `import * as RN`
+Object.defineProperty(RN, 'Text', { get: () => AutoText, configurable: true });
+```
+- `react-native/index.js` khai component bằng **getter trên object literal** → configurable → ghi đè được.
+- Babel dịch `import { Text } from 'react-native'` thành `_reactNative.Text` **tại chỗ dùng** (giữ live-binding ESM) → mọi file, kể cả trong `node_modules`, nhận bản đã bọc.
+- ⚠️ PHẢI dùng `require`: `import * as RN` bị Babel bọc `_interopRequireWildcard` → trả **bản sao**, ghi đè lên đó là vô ích.
+- Gọi ở `index.js` NGAY sau `crashReporter`, trước `require('./App')` — component render trước lời gọi này sẽ giữ Text gốc.
+- RN tương lai đổi cách khai → `defineProperty` ném → bắt lại, cảnh báo DEV, app chạy tiếng Việt (KHÔNG sập).
+
+### Khoá từ điển = CHÍNH chuỗi tiếng Việt trong mã nguồn
+`src/i18n/phrases/*.ts` → `{ 'Đăng xuất': { en: 'Sign out', zh: '退出登录' } }` (1785 mục, 8 file theo mảng nghiệp vụ), gom ở `dictionary.ts`.
+- Không khớp → **trả nguyên văn**. Hỏng từ điển không bao giờ ra màn trắng hay `missing.key.xxx`.
+- **Tên riêng & thuật ngữ tự động giữ nguyên**: Aladin, PhoenixKey, DID, LAMP, MAGIC, CARP, Cardano, ProofChat, LampNet… chỉ cần KHÔNG khai trong từ điển. Dữ liệu người dùng (tên vườn, tên người, địa chỉ ví) cũng rơi vào nhánh này → không cần danh sách loại trừ.
+- Khoảng trắng hai đầu được giữ (JSX hay tách `{'Xin chào '}{name}`).
+- Text JSX nhiều dòng bị JSX gộp thành MỘT chuỗi nối bằng **một dấu cách** → khoá phải viết liền một dòng.
+
+### Vẽ lại khi đổi ngôn ngữ
+Trạng thái ngôn ngữ sống **ngoài React** (`i18n/store.ts` + AsyncStorage `app_language_v1`) để `t()` gọi được cả trong service/util. `AutoText` bọc `useSyncExternalStore` → đổi ngôn ngữ là mọi `<Text>` đang mount tự vẽ lại. KHÔNG remount navigator (giữ nguyên màn đang mở).
+
+### Chuỗi KHÔNG nằm trong `<Text>` thì gọi tay
+`accessibilityLabel`, tiêu đề truyền qua props, chuỗi dựng trong service → `t('…')`; trong component cần vẽ lại thì `useT()`. Chuỗi có chỗ thay dùng `tf('Xin chào {name}', { name })` — **nối chuỗi sẽ không bao giờ khớp từ điển** (đã sửa lời chào ở `AppHeader`).
+
+### Màn hỏi-một-lần lúc mới cài
+`screens/LanguageSelectScreen.tsx` là màn ĐẦU TIÊN khi `hasChosenLanguage()` = false. `AppNavigator` `await whenLanguageReady()` trước khi chốt `initialRoute` (đọc AsyncStorage bất đồng bộ) → không thấy Login nhấp nháy rồi mới nhảy. Bấm Tiếp tục = `setLanguage(picked, true)` (force — chọn đúng mặc định vẫn tính là đã chọn) rồi `replace('Login')`.
+> Màn này là chỗ DUY NHẤT cố ý **không** qua từ điển: người dùng chưa chọn ngôn ngữ nào nên mọi chữ phải tự đọc được — tên ngôn ngữ viết bằng chính nó, tiêu đề in cả ba thứ tiếng, nhãn nút đổi theo mục đang chọn.
+
+### Ngôn ngữ MẶC ĐỊNH khi chưa chọn = `DEFAULT_LANG` (`'en'`, khai ở `i18n/types.ts`)
+Khác `SOURCE_LANG` (`'vi'` — ngôn ngữ viết trong mã). Hệ quả: **cụm từ nào chưa khai trong từ điển sẽ hiện nguyên văn tiếng Việt**, nên khi mặc định ≠ `'vi'` giao diện có thể LẪN hai thứ tiếng cho tới khi từ điển phủ hết (hiện phủ ~83% chuỗi UI). Đổi hằng số này là đổi hành vi lần chạy đầu của MỌI máy mới.
+
+### Nhãn nav
+`navLabels.getNationalLanguage()` nay đọc `getLanguage()` (trước hardcode `'vi'`). `NavItemFrame` gọi `useLanguage()` để vẽ lại.
+> ⚠️ Bẫy đã sập một lần: **KHÔNG** cho `navNational()` trả chuỗi rỗng khi app là tiếng Anh. `resolveGateItems` dùng chính hàm đó làm nhãn DUY NHẤT cho mục cổng xoè → cung tròn mất hết chữ. Việc bỏ dòng thứ hai khi nó trùng dòng EN là quyết định TRÌNH BÀY, để trong `NavItemFrame` (`showNational = national !== en`).
+
+### File
+`src/i18n/` (types · store · translate · autoText · install · useLanguage · dictionary · phrases/) · `src/components/LanguagePickerModal.tsx` · `src/screens/LanguageSelectScreen.tsx` · sửa `index.js` · `AccountScreen` · `LoginScreen` · `AppHeader` · `navLabels` · `NavItemFrame` · `subHomeLabels` · `navigation/index.tsx`.
+Test: `__tests__/i18n.test.tsx` (ghim cơ chế + tính toàn vẹn từ điển) · `__tests__/i18nFirstLaunch.test.ts` (luồng hỏi-một-lần).
+
+### Thêm bản dịch về sau
+Chỉ sửa `src/i18n/phrases/*.ts` — KHÔNG đụng màn hình. Chuỗi chưa khai vẫn hiện tiếng Việt.
+
 ## Crash 3D bản AAB **lần 2** (build 83) — KHÔNG phải R8 nữa; bọc chắn cho FruitPlace3D
 
 Triệu chứng: build 83 (đã có rule `-keep class expo.modules.gl.**`) mở Space3D **và** FruitPlace3D vẫn sập app.

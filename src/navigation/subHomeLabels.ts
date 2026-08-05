@@ -31,17 +31,17 @@ export interface SubTab {
 export const SUBHOME_FRAME: Record<string, SubTab[]> = {
   // Chat (proofchat): hiện Chats · Calls · Pins + ⌄(Docs…).
   ProofChatHome: [
-    { key: 'chats', en: 'Chats', national: { vi: 'Trò chuyện' }, icon: 'chat-outline' },
-    { key: 'calls', en: 'Calls', national: { vi: 'Gọi' },        icon: 'phone-outline' },
-    { key: 'pins',  en: 'Pins',  national: { vi: 'Ghim' },       icon: 'pin-outline' },
-    { key: 'docs',  en: 'Docs',  national: { vi: 'Tài liệu' },   icon: 'file-document-outline' },
+    { key: 'chats', en: 'Chats', national: { vi: 'Trò chuyện', zh: '聊天' }, icon: 'chat-outline' },
+    { key: 'calls', en: 'Calls', national: { vi: 'Gọi',        zh: '通话' }, icon: 'phone-outline' },
+    { key: 'pins',  en: 'Pins',  national: { vi: 'Ghim',       zh: '置顶' }, icon: 'pin-outline' },
+    { key: 'docs',  en: 'Docs',  national: { vi: 'Tài liệu',   zh: '文档' }, icon: 'file-document-outline' },
   ],
   // Farm (trace): hiện Garden · Trees · Care + ⌄(Carbon…).
   Farms: [
-    { key: 'garden', en: 'Garden', national: { vi: 'Vườn' },     icon: 'sprout-outline' },
-    { key: 'trees',  en: 'Trees',  national: { vi: 'Cây' },       icon: 'pine-tree' },
-    { key: 'care',   en: 'Care',   national: { vi: 'Chăm sóc' },  icon: 'watering-can' },
-    { key: 'carbon', en: 'Carbon', national: { vi: 'Carbon' },    icon: 'leaf' },
+    { key: 'garden', en: 'Garden', national: { vi: 'Vườn',     zh: '果园' }, icon: 'sprout-outline' },
+    { key: 'trees',  en: 'Trees',  national: { vi: 'Cây',      zh: '树木' }, icon: 'pine-tree' },
+    { key: 'care',   en: 'Care',   national: { vi: 'Chăm sóc', zh: '养护' }, icon: 'watering-can' },
+    { key: 'carbon', en: 'Carbon', national: { vi: 'Carbon',   zh: '碳汇' }, icon: 'leaf' },
   ],
 };
 

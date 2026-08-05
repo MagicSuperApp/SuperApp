@@ -1528,10 +1528,19 @@ const _LazySpace3D = React.lazy(() => import('../screens/Space3DScreen'));
 const _LazyFruitPlace3D = React.lazy(() => import('../screens/FruitPlace3DScreen'));
 const _make3D = (Comp: React.LazyExoticComponent<any>, tag: string): React.FC<any> =>
   function Lazy3DScreen(props: any) {
-    // GLErrorBoundary NGOÀI Suspense: lỗi lúc LAZY-IMPORT (module expo-modules-core
-    // ném "globalThis.expo undefined" trên bản signed) được React.lazy re-throw ở
-    // tầng render — ErrorBoundary phải bọc NGOÀI Suspense mới bắt được (nếu để trong
-    // sẽ lọt → sập app). Bắt được = chỉ hiện màn lỗi 3D, app vẫn chạy.
+    // CHẶN TRƯỚC KHI IMPORT: expo-gl cần `globalThis.expo` (do ExpoModulesCore cài).
+    // Trên bản signed hiện tại globalThis.expo KHÔNG được cài (TurboModule
+    // 'ExpoModulesCore' trả null → installModules() không chạy) → import expo-gl NÉM ở
+    // tầng module-eval. Lỗi này đi qua ExceptionsManager.reportException trong RELEASE
+    // và TỰ crash (SIGABRT) TRƯỚC khi GLErrorBoundary kịp bắt → sập app. Nên KHÔNG dựa
+    // vào boundary: kiểm globalThis.expo, thiếu thì hiện màn báo, TUYỆT ĐỐI không import
+    // Comp (không đụng expo-gl) → app KHÔNG crash. Khi native cài đúng globalThis.expo,
+    // nhánh dưới chạy và 3D hiển-thị bình-thường.
+    if (typeof (globalThis as { expo?: unknown }).expo === 'undefined') {
+      return <Expo3DUnavailable onBack={() => props.navigation?.goBack?.()} />;
+    }
+    // GLErrorBoundary NGOÀI Suspense: lỗi lazy-import khác (không phải expo thiếu) vẫn
+    // được bắt để chỉ hỏng khung 3D, không sập app.
     return (
       <GLErrorBoundary tag={tag}>
         <React.Suspense
@@ -1546,6 +1555,28 @@ const _make3D = (Comp: React.LazyExoticComponent<any>, tag: string): React.FC<an
       </GLErrorBoundary>
     );
   };
+
+// Màn thay thế khi mô-hình 3D chưa khả-dụng (globalThis.expo chưa cài — xem _make3D).
+// Không import bất kỳ module expo nào ⇒ an-toàn tuyệt-đối, chỉ RN core.
+const Expo3DUnavailable: React.FC<{ onBack: () => void }> = ({ onBack }) => (
+  <View style={{ flex: 1, backgroundColor: '#0b1f14', alignItems: 'center', justifyContent: 'center', padding: 28 }}>
+    <Text style={{ fontSize: 44, marginBottom: 12 }}>🌳</Text>
+    <Text style={{ fontSize: 17, fontWeight: '800', color: '#fff', textAlign: 'center' }}>
+      Mô hình 3D tạm chưa xem được
+    </Text>
+    <Text style={{ fontSize: 13.5, color: '#cfe3d6', textAlign: 'center', marginTop: 10, lineHeight: 20 }}>
+      Tính năng 3D cần thành phần đồ-hoạ đang được sửa cho bản này. Các chức năng khác
+      (nhận diện cây/quả, video, ví) vẫn hoạt động bình thường.
+    </Text>
+    <TouchableOpacity
+      onPress={onBack}
+      style={{ marginTop: 22, backgroundColor: '#1f7a4d', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 }}
+      activeOpacity={0.9}
+    >
+      <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14 }}>Quay lại</Text>
+    </TouchableOpacity>
+  </View>
+);
 const Space3DScreen = _make3D(_LazySpace3D, 'space3d_lazy');
 const FruitPlace3DScreen = _make3D(_LazyFruitPlace3D, 'fruitplace3d_lazy');
 

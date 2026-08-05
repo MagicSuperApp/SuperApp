@@ -49,8 +49,18 @@ import NetInfo from '@react-native-community/netinfo';
 // globalThis.expo đã có. (Cùng lý do màn 3D phải React.lazy.)
 type FileSystemLegacy = typeof import('expo-file-system/legacy');
 let _fs: FileSystemLegacy | null = null;
-const FileSystem = (): FileSystemLegacy =>
-  (_fs ??= require('expo-file-system/legacy'));
+// Trả null nếu KHÔNG nạp được expo-file-system. Trên bản signed lỗi ExpoModulesCore,
+// require sẽ NÉM ngay module-eval (expo-modules-core đọc `globalThis.expo.EventEmitter`
+// mà globalThis.expo chưa cài) → try/catch nuốt lỗi, trả null → caller bỏ qua bước copy
+// bền (video vẫn gửi từ URI gốc, chỉ mất lớp chống app-kill). KHÔNG crash. Trong test,
+// require trả mock jest bình thường. (Đây là ĐÒN nuốt lỗi TỔNG cho mọi lời gọi FS.)
+const FileSystem = (): FileSystemLegacy | null => {
+  try {
+    return (_fs ??= require('expo-file-system/legacy'));
+  } catch {
+    return null;
+  }
+};
 import { ORILIFE_BASE } from './orilifeBase';
 import { ensureOrilifeToken } from './orilifeDidAuth';
 import { uploadFruitVideo, type FruitVideoResult } from './fruitVideoService';
@@ -300,10 +310,11 @@ function newId(): string {
  */
 async function copyToDocuments(id: string, srcUri: string): Promise<{ uri: string; managed: boolean }> {
   try {
-    const dir = FileSystem().documentDirectory;
-    if (!dir) return { uri: srcUri, managed: false };
+    const fs = FileSystem();
+    const dir = fs?.documentDirectory;
+    if (!fs || !dir) return { uri: srcUri, managed: false };
     const dest = `${dir}videoq_${id}.mp4`;
-    await FileSystem().copyAsync({ from: srcUri, to: dest });
+    await fs.copyAsync({ from: srcUri, to: dest });
     return { uri: dest, managed: true };
   } catch {
     return { uri: srcUri, managed: false };
@@ -407,7 +418,7 @@ export async function clearVideoQueue(): Promise<void> {
 
 async function safeDeleteDefault(uri: string): Promise<void> {
   try {
-    await FileSystem().deleteAsync(uri, { idempotent: true });
+    await FileSystem()?.deleteAsync(uri, { idempotent: true });
   } catch {
     /* bỏ qua */
   }

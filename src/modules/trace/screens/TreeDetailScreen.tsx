@@ -314,8 +314,11 @@ const TreeDetailScreen = () => {
     ]).then(([viewsRes, local]) => {
       if (!alive) return;
       const serverImgs = viewsRes?.ok ? treeViewImageUrls(viewsRes.data, ORILIFE_BASE) : [];
-      // Server trước (ưu-tiên hiển-thị), rồi ảnh local chưa có trên server. Khử trùng theo URI.
-      setTreeImages(Array.from(new Set([...serverImgs, ...(local ?? [])])));
+      // Server là NGUỒN CHUẨN: mọi ảnh đã enroll đều lên server. Ảnh local (file://) là
+      // CÙNG những ảnh đó TRƯỚC khi đồng-bộ — nhưng URL-server và file:// là 2 chuỗi khác
+      // nhau nên `new Set` KHÔNG khử được → gộp cả hai làm 4 ảnh đội thành 8 (bug user báo).
+      // → Có ảnh server thì DÙNG server; server rỗng (offline/chưa sync) mới fallback local.
+      setTreeImages(serverImgs.length > 0 ? serverImgs : Array.from(new Set(local ?? [])));
       const feats = (viewsRes?.ok ? viewsRes.data?.views ?? [] : [])
         .flatMap(v => v.features_vi ?? [])
         .map(t => t.trim())

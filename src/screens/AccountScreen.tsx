@@ -696,6 +696,9 @@ const AccountScreen = () => {
                             onPress={() => setLangOpen(true)}
                         />
                         <MenuItem icon="fingerprint" label="Sinh trắc học" sublabel="Xác thực khuôn mặt & vân tay" onPress={() => navigation.navigate('BiometricSettings')} />
+                        {/* Nhãn song ngữ CỐ Ý: người đang cần đổi ngôn ngữ là người
+                            chưa đọc được ngôn ngữ đang hiện. */}
+                        <MenuItem icon="translate" label="Ngôn ngữ · Language" sublabel="Tiếng Việt · 中文 · 日本語" onPress={() => navigation.navigate('Language')} />
                         <MenuItem
                             icon="robot-happy-outline"
                             label="Trợ lý ảo"

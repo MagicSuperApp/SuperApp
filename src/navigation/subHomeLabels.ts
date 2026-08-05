@@ -19,8 +19,8 @@ export interface SubTab {
   key: string;
   /** Nhãn tiếng Anh — CHUẨN, hiển thị. */
   en: string;
-  /** Nhãn ngôn ngữ quốc gia — tooltip/accessibility (KHÔNG vẽ). */
-  national: Partial<Record<LangCode, string>>;
+  /** Nhãn ngôn ngữ quốc gia — `Record` đầy đủ, xem lý do ở `NavFrame.national`. */
+  national: Record<LangCode, string>;
   /** Icon Material Community. */
   icon: string;
 }

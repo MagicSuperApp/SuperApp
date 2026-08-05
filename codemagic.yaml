@@ -125,8 +125,27 @@ workflows:
           LAMPNET_UPLOAD_URL=${LAMPNET_UPLOAD_URL:-https://lampnet.cloud/mirage/put?mode=symmetric}
           CAPTURES_3D_URL=${CAPTURES_3D_URL:-https://api.orilife.io/captures/3d}
 
-          ANALYTICS_API_URL=${ANALYTICS_API_URL:-https://analytics.orilife.io}
-          ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-prod-analytics-key}
+          # AladinWork (Việc làm). THIẾU biến này = cổng runtime tắt vĩnh viễn, module
+          # rơi về rỗng DÙ máy chủ sống (đo 05/08: api.aladin.work/api/v1/health = 200).
+          WORK_API_URL=${WORK_API_URL:-https://api.aladin.work/api/v1}
+
+          # ProofChat. Ghi sẵn URL để khi máy chủ sống lại chỉ phải bật MỘT biến, không
+          # phải sửa cấu hình. Nhưng cờ mặc định là `off`, CỐ Ý: nếu để `true` thì cửa
+          # duy nhất còn lại là phép thử /health — máy chủ sống lại là module tự bật,
+          # trong khi chốt chặn bảo mật của chính nó chưa gỡ (proofchat-api.ts:88-93:
+          # token production PHẢI ở Keychain/Keystore, nay còn nằm AsyncStorage chưa mã
+          # hoá). Bật là quyết định của người phát hành, không phải hệ quả phụ.
+          PROOFCHAT_API_URL=${PROOFCHAT_API_URL:-https://api.proofchat.me/api/v1}
+          PROOFCHAT_WS_URL=${PROOFCHAT_WS_URL:-https://api.proofchat.me}
+          PROOFCHAT_WS_PATH=${PROOFCHAT_WS_PATH:-/socket.io}
+          PROOFCHAT_BACKEND_ENABLED=${PROOFCHAT_BACKEND_ENABLED:-off}
+
+          # ⚠ analytics.orilife.io KHÔNG phân giải được (DNS NXDOMAIN, đo 05/08) — để
+          # trống thay vì nướng một host không tồn tại vào mọi bản build. Để trống CHỈ
+          # an toàn sau khi đã gỡ đường lui viết cứng trong analyticsApi.ts (trước đây
+          # chuỗi rỗng làm nó lui về một tunnel ngrok tạm + khoá dev). Nay rỗng = TẮT.
+          ANALYTICS_API_URL=${ANALYTICS_API_URL:-}
+          ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-}
           EOF
           # Dọn whitespace lạc (tab/space) mà biến môi trường Codemagic có thể dính
           # vào value khi paste — nếu không, URL như "\thttps://..." sẽ làm fetch ném
@@ -422,8 +441,27 @@ workflows:
           LAMPNET_BASE_URL=${LAMPNET_BASE_URL:-https://lampnet.cloud}
           LAMPNET_UPLOAD_URL=${LAMPNET_UPLOAD_URL:-https://lampnet.cloud/mirage/put?mode=symmetric}
           CAPTURES_3D_URL=${CAPTURES_3D_URL:-https://api.orilife.io/captures/3d}
-          ANALYTICS_API_URL=${ANALYTICS_API_URL:-https://analytics.orilife.io}
-          ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-prod-analytics-key}
+          # AladinWork (Việc làm). THIẾU biến này = cổng runtime tắt vĩnh viễn, module
+          # rơi về rỗng DÙ máy chủ sống (đo 05/08: api.aladin.work/api/v1/health = 200).
+          WORK_API_URL=${WORK_API_URL:-https://api.aladin.work/api/v1}
+
+          # ProofChat. Ghi sẵn URL để khi máy chủ sống lại chỉ phải bật MỘT biến, không
+          # phải sửa cấu hình. Nhưng cờ mặc định là `off`, CỐ Ý: nếu để `true` thì cửa
+          # duy nhất còn lại là phép thử /health — máy chủ sống lại là module tự bật,
+          # trong khi chốt chặn bảo mật của chính nó chưa gỡ (proofchat-api.ts:88-93:
+          # token production PHẢI ở Keychain/Keystore, nay còn nằm AsyncStorage chưa mã
+          # hoá). Bật là quyết định của người phát hành, không phải hệ quả phụ.
+          PROOFCHAT_API_URL=${PROOFCHAT_API_URL:-https://api.proofchat.me/api/v1}
+          PROOFCHAT_WS_URL=${PROOFCHAT_WS_URL:-https://api.proofchat.me}
+          PROOFCHAT_WS_PATH=${PROOFCHAT_WS_PATH:-/socket.io}
+          PROOFCHAT_BACKEND_ENABLED=${PROOFCHAT_BACKEND_ENABLED:-off}
+
+          # ⚠ analytics.orilife.io KHÔNG phân giải được (DNS NXDOMAIN, đo 05/08) — để
+          # trống thay vì nướng một host không tồn tại vào mọi bản build. Để trống CHỈ
+          # an toàn sau khi đã gỡ đường lui viết cứng trong analyticsApi.ts (trước đây
+          # chuỗi rỗng làm nó lui về một tunnel ngrok tạm + khoá dev). Nay rỗng = TẮT.
+          ANALYTICS_API_URL=${ANALYTICS_API_URL:-}
+          ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-}
           EOF
           # Dọn whitespace lạc (tab/space) trong value biến môi trường Codemagic.
           perl -i -pe 's/^(\w+)=[ \t]+/$1=/; s/[ \t]+$//' .env
@@ -703,8 +741,27 @@ workflows:
           LAMPNET_BASE_URL=${LAMPNET_BASE_URL:-https://lampnet.cloud}
           LAMPNET_UPLOAD_URL=${LAMPNET_UPLOAD_URL:-https://lampnet.cloud/mirage/put?mode=symmetric}
           CAPTURES_3D_URL=${CAPTURES_3D_URL:-https://api.orilife.io/captures/3d}
-          ANALYTICS_API_URL=${ANALYTICS_API_URL:-https://analytics.orilife.io}
-          ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-prod-analytics-key}
+          # AladinWork (Việc làm). THIẾU biến này = cổng runtime tắt vĩnh viễn, module
+          # rơi về rỗng DÙ máy chủ sống (đo 05/08: api.aladin.work/api/v1/health = 200).
+          WORK_API_URL=${WORK_API_URL:-https://api.aladin.work/api/v1}
+
+          # ProofChat. Ghi sẵn URL để khi máy chủ sống lại chỉ phải bật MỘT biến, không
+          # phải sửa cấu hình. Nhưng cờ mặc định là `off`, CỐ Ý: nếu để `true` thì cửa
+          # duy nhất còn lại là phép thử /health — máy chủ sống lại là module tự bật,
+          # trong khi chốt chặn bảo mật của chính nó chưa gỡ (proofchat-api.ts:88-93:
+          # token production PHẢI ở Keychain/Keystore, nay còn nằm AsyncStorage chưa mã
+          # hoá). Bật là quyết định của người phát hành, không phải hệ quả phụ.
+          PROOFCHAT_API_URL=${PROOFCHAT_API_URL:-https://api.proofchat.me/api/v1}
+          PROOFCHAT_WS_URL=${PROOFCHAT_WS_URL:-https://api.proofchat.me}
+          PROOFCHAT_WS_PATH=${PROOFCHAT_WS_PATH:-/socket.io}
+          PROOFCHAT_BACKEND_ENABLED=${PROOFCHAT_BACKEND_ENABLED:-off}
+
+          # ⚠ analytics.orilife.io KHÔNG phân giải được (DNS NXDOMAIN, đo 05/08) — để
+          # trống thay vì nướng một host không tồn tại vào mọi bản build. Để trống CHỈ
+          # an toàn sau khi đã gỡ đường lui viết cứng trong analyticsApi.ts (trước đây
+          # chuỗi rỗng làm nó lui về một tunnel ngrok tạm + khoá dev). Nay rỗng = TẮT.
+          ANALYTICS_API_URL=${ANALYTICS_API_URL:-}
+          ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-}
           EOF
           # Dọn whitespace lạc (tab/space) trong value biến môi trường Codemagic.
           perl -i -pe 's/^(\w+)=[ \t]+/$1=/; s/[ \t]+$//' .env
@@ -734,6 +791,14 @@ workflows:
           newArchEnabled=true
           hermesEnabled=true
           edgeToEdgeEnabled=false
+          # Tắt tích hợp worklets của expo-modules-core. KHÔNG có dòng này thì
+          # WorkletRuntimeInstaller.cpp biên dịch với WORKLETS_ENABLED=1 và đòi
+          # <worklets/Compat/StableApi.h> — header chỉ có từ react-native-worklets
+          # 0.8.0, mà dự án ghim 0.7.4 ⇒ build native gãy. Bản vá
+          # patches/expo-modules-core+56.0.22.patch mở đúng công tắc này, nhưng
+          # android/gradle.properties bị gitignore và bị heredoc dưới đây ghi đè,
+          # nên bản vá vô tác dụng suốt từ 26/07 — 10/10 lần chạy CI đỏ vì nó.
+          expo.enableWorkletsIntegration=false
           EOF
           # Dọn whitespace lạc trong value biến môi trường Codemagic.
           perl -i -pe 's/^(\w+([.\w]*))=[ \t]+/$1=/; s/[ \t]+$//' android/app/secrets.properties android/gradle.properties
@@ -854,8 +919,27 @@ workflows:
           LAMPNET_BASE_URL=${LAMPNET_BASE_URL:-https://lampnet.cloud}
           LAMPNET_UPLOAD_URL=${LAMPNET_UPLOAD_URL:-https://lampnet.cloud/mirage/put?mode=symmetric}
           CAPTURES_3D_URL=${CAPTURES_3D_URL:-https://api.orilife.io/captures/3d}
-          ANALYTICS_API_URL=${ANALYTICS_API_URL:-https://analytics.orilife.io}
-          ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-prod-analytics-key}
+          # AladinWork (Việc làm). THIẾU biến này = cổng runtime tắt vĩnh viễn, module
+          # rơi về rỗng DÙ máy chủ sống (đo 05/08: api.aladin.work/api/v1/health = 200).
+          WORK_API_URL=${WORK_API_URL:-https://api.aladin.work/api/v1}
+
+          # ProofChat. Ghi sẵn URL để khi máy chủ sống lại chỉ phải bật MỘT biến, không
+          # phải sửa cấu hình. Nhưng cờ mặc định là `off`, CỐ Ý: nếu để `true` thì cửa
+          # duy nhất còn lại là phép thử /health — máy chủ sống lại là module tự bật,
+          # trong khi chốt chặn bảo mật của chính nó chưa gỡ (proofchat-api.ts:88-93:
+          # token production PHẢI ở Keychain/Keystore, nay còn nằm AsyncStorage chưa mã
+          # hoá). Bật là quyết định của người phát hành, không phải hệ quả phụ.
+          PROOFCHAT_API_URL=${PROOFCHAT_API_URL:-https://api.proofchat.me/api/v1}
+          PROOFCHAT_WS_URL=${PROOFCHAT_WS_URL:-https://api.proofchat.me}
+          PROOFCHAT_WS_PATH=${PROOFCHAT_WS_PATH:-/socket.io}
+          PROOFCHAT_BACKEND_ENABLED=${PROOFCHAT_BACKEND_ENABLED:-off}
+
+          # ⚠ analytics.orilife.io KHÔNG phân giải được (DNS NXDOMAIN, đo 05/08) — để
+          # trống thay vì nướng một host không tồn tại vào mọi bản build. Để trống CHỈ
+          # an toàn sau khi đã gỡ đường lui viết cứng trong analyticsApi.ts (trước đây
+          # chuỗi rỗng làm nó lui về một tunnel ngrok tạm + khoá dev). Nay rỗng = TẮT.
+          ANALYTICS_API_URL=${ANALYTICS_API_URL:-}
+          ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-}
           EOF
           # Dọn whitespace lạc (tab/space) trong value biến môi trường Codemagic.
           perl -i -pe 's/^(\w+)=[ \t]+/$1=/; s/[ \t]+$//' .env
@@ -896,6 +980,14 @@ workflows:
           newArchEnabled=true
           hermesEnabled=true
           edgeToEdgeEnabled=false
+          # Tắt tích hợp worklets của expo-modules-core. KHÔNG có dòng này thì
+          # WorkletRuntimeInstaller.cpp biên dịch với WORKLETS_ENABLED=1 và đòi
+          # <worklets/Compat/StableApi.h> — header chỉ có từ react-native-worklets
+          # 0.8.0, mà dự án ghim 0.7.4 ⇒ build native gãy. Bản vá
+          # patches/expo-modules-core+56.0.22.patch mở đúng công tắc này, nhưng
+          # android/gradle.properties bị gitignore và bị heredoc dưới đây ghi đè,
+          # nên bản vá vô tác dụng suốt từ 26/07 — 10/10 lần chạy CI đỏ vì nó.
+          expo.enableWorkletsIntegration=false
           ORILIFE_UPLOAD_STORE_FILE=keySigning.bin
           ORILIFE_UPLOAD_KEY_ALIAS=${ORILIFE_UPLOAD_KEY_ALIAS}
           ORILIFE_UPLOAD_STORE_PASSWORD=${ORILIFE_UPLOAD_STORE_PASSWORD}

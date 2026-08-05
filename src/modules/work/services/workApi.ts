@@ -315,8 +315,13 @@ const stripWalletAddress = (c: MatchCandidate): MatchCandidate => {
   const { walletAddress: _drop, ...rest } = c as MatchCandidate & { walletAddress?: unknown };
   return rest;
 };
+// ⚠ CẦN Bearer. Đường này chỉ chủ tin xem được (người khác → 403). Thiếu `authCfg`
+// thì máy chủ trả 401 UNAUTH — đo thật 2026-08-05 — và màn Ghép việc luôn hiện lỗi,
+// nghĩa là người đăng KHÔNG BAO GIỜ thấy ứng viên, nên thợ không bao giờ nhận được việc.
 export const getJobMatch = async (id: string): Promise<MatchResult> => {
-  const r = await call<MatchResult>(client().get(`/jobs/${encodeURIComponent(id)}/match`));
+  const r = await call<MatchResult>(
+    client().get(`/jobs/${encodeURIComponent(id)}/match`, authCfg),
+  );
   return { ...r, candidates: (r.candidates ?? []).map(stripWalletAddress) };
 };
 
@@ -418,11 +423,11 @@ export const getTreasury = (): Promise<unknown> =>
 export const treasurySnapshot = (): Promise<unknown> =>
   call(client().post('/treasury/snapshot', {}, writeCfg()));
 
-export const getTeamMembers = (): Promise<unknown[]> =>
-  call(client().get('/team/members'));
-
-export const getTeamTasks = (): Promise<unknown[]> =>
-  call(client().get('/team/tasks'));
+// ⛔ GỠ 2026-08-05: `/team/members` và `/team/tasks` trả hồ sơ nhân sự thật kèm
+// `baseSalaryVND`/`bonusVND` của người có tên. Máy chủ sẽ đóng lại thành 401/403
+// (AladinWork `Core#16`), nhưng bản đang chạy vẫn mở — nên gỡ ở phía ứng dụng
+// TRƯỚC, đừng chờ bản vá máy chủ. Không màn nào gọi hai hàm này (grep 0).
+// ĐỪNG dựng lại: lương người thật không phải dữ liệu của ứng dụng nông dân.
 
 // ── Gom lại 1 object cho tiện import ─────────────────────────────────
 export const workApi = {
@@ -440,7 +445,7 @@ export const workApi = {
   contractAction, lockPledge, activateContract, deliverContract,
   confirmPayment, mutualRelease, forfeitContract, disputeContract,
   contractOnchain,
-  getTreasury, treasurySnapshot, getTeamMembers, getTeamTasks,
+  getTreasury, treasurySnapshot,
 };
 
 export default workApi;

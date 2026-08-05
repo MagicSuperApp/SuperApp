@@ -5,8 +5,9 @@
 
 ## HEAD
 - `LampNetCloud` (Specs) origin/main = `479a12f` (07-01). `lampnet-hivemind` (daemon code thật) origin/main = `506c611` (07-11).
-- Doc join: `lampnet-hivemind/docs/join-ket-den.md`, `Specs/_shared/SuperApp-Join-Integration.md`.
-- ⚠️ SuperApp Join integration **vẫn PENDING** (chưa giao/chưa làm); bridge mobile-sdk đổi UniFFI→**C-ABI** (07-08, chưa làm).
+- Doc join: nguồn duy nhất là `github.com/LampNetCloud/Join` → `Join-Integration.md` v0.2.0. **`Specs/_shared/SuperApp-Join-Integration.md` = đường cũ, không còn dùng.**
+- ⚠️ **Luồng Kết đèn hiện không đăng ký được — 2 lỗi đã sửa 2026-08-05**: (1) `/v1/peer_id` trả plain text (không JSON) → chuyển sang `/v1/network_info` → `bootstrap_peer_id`; (2) `joinViaNativeSdk` fallback REST luôn 422 vì thiếu 18/22 trường → thay bằng lỗi "chưa hỗ trợ". Xem thư Join 2026-08-04.
+- Bridge mobile-sdk đổi UniFFI→**C-ABI** (07-08, chưa làm).
 
 ## Base URL
 - Prod `https://lampnet.cloud`. API daemon thật = `api.lampnet.cloud:6480`. Upload = `POST {BASE}/mirage/put` (multipart).

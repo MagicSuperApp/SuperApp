@@ -39,7 +39,18 @@ import NetInfo from '@react-native-community/netinfo';
 // v56: API documentDirectory/copyAsync/deleteAsync nằm ở gói con `/legacy` (giống
 // features/space3d). Import thẳng 'expo-file-system' sẽ KHÔNG có các hàm này (default
 // export là API File/Directory mới) → tsc fail + runtime không copy được bản bền.
-import * as FileSystem from 'expo-file-system/legacy';
+//
+// ⚠ NẠP TRỄ (require trong hàm), KHÔNG import top-level: expo-file-system kéo
+// expo-modules-core, mà module này lúc EVAL làm `exports.EventEmitter =
+// globalThis.expo.EventEmitter`. Trên bản SIGNED, `globalThis.expo` CHƯA được
+// ExpoModulesJSI cài xong lúc bundle bắt đầu chạy → import top-level = CRASH BOOT
+// "Cannot read property 'EventEmitter' of undefined" (file này eager qua App.tsx/
+// navigation/userSlice). Nạp trễ → tới lúc thật sự copy/xoá clip (useEffect/flush)
+// globalThis.expo đã có. (Cùng lý do màn 3D phải React.lazy.)
+type FileSystemLegacy = typeof import('expo-file-system/legacy');
+let _fs: FileSystemLegacy | null = null;
+const FileSystem = (): FileSystemLegacy =>
+  (_fs ??= require('expo-file-system/legacy'));
 import { ORILIFE_BASE } from './orilifeBase';
 import { ensureOrilifeToken } from './orilifeDidAuth';
 import { uploadFruitVideo, type FruitVideoResult } from './fruitVideoService';
@@ -289,10 +300,10 @@ function newId(): string {
  */
 async function copyToDocuments(id: string, srcUri: string): Promise<{ uri: string; managed: boolean }> {
   try {
-    const dir = FileSystem.documentDirectory;
+    const dir = FileSystem().documentDirectory;
     if (!dir) return { uri: srcUri, managed: false };
     const dest = `${dir}videoq_${id}.mp4`;
-    await FileSystem.copyAsync({ from: srcUri, to: dest });
+    await FileSystem().copyAsync({ from: srcUri, to: dest });
     return { uri: dest, managed: true };
   } catch {
     return { uri: srcUri, managed: false };
@@ -396,7 +407,7 @@ export async function clearVideoQueue(): Promise<void> {
 
 async function safeDeleteDefault(uri: string): Promise<void> {
   try {
-    await FileSystem.deleteAsync(uri, { idempotent: true });
+    await FileSystem().deleteAsync(uri, { idempotent: true });
   } catch {
     /* bỏ qua */
   }

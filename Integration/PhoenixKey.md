@@ -4,7 +4,7 @@
 > Module SuperApp: **DID login · Ví (Standard/Phoenix) · OrgDID/Mint LAMP**.
 
 ## HEAD
-- `PhoenixKey-Database` main = `6c45962` (2026-06-12). Việc mint LAMP nằm ở **worktree local CHƯA merge** (xem Readiness).
+- `PhoenixKey-Database` main = `b4c4ce2` (2026-08-04). PR #116 merged 2026-07-31: 3 endpoint đọc ví chuyển sang bắt buộc Bearer. Việc mint LAMP nằm ở **worktree local CHƯA merge** (xem Readiness).
 
 ## Base URL / JWKS
 - REST: `http://localhost:8080/api/v1` (dev); prod dự kiến `https://api.phoenixkey.me/api/v1` (⚠️ domain chưa thấy trong CORS list — [NEEDS-EVIDENCE]).
@@ -19,11 +19,11 @@
 | Method·Path | Field |
 |---|---|
 | POST `/wallet/standard/register` 🔒 | `fixed_address`* (bech32, idempotent), `active_address?`, `stake_address?` |
-| GET `/wallet/standard/{userDid}` | → `{addresses:{fixed,active,stake}, balances:{lovelace,lamp,carp}}`, 404 nếu chưa register |
-| GET `/wallet/{userDid}/all` | gộp ví phoenix+standard + `magic{}` (magic=0 tới khi vault wired). **Đây là API app NÊN dùng** |
+| GET `/wallet/standard/{userDid}` 🔒 | → `{addresses:{fixed,active,stake}, balances:{lovelace,lamp,carp}}`, 404 nếu chưa register |
+| GET `/wallet/{userDid}/all` 🔒 | gộp ví phoenix+standard + `magic{}` (magic=0 tới khi vault wired). **Đây là API app NÊN dùng**. `caller_did` phải == `path_did` |
 | POST `/identity/org/create` · `/founding`(m-of-n) · `/{orgDid}/upgrade-authority` | tạo/quản OrgDID |
 
-**Deprecated (đừng dùng):** `/wallet/register`, `/wallet/{did}/balance` (V1).
+**Deprecated (đừng dùng):** `/wallet/register`, `/wallet/{did}/balance` (V1 — giờ vừa deprecated vừa đòi Bearer 🔒).
 
 ## `POST /identity/org/{orgDid}/mint-lamp` — là GRANT UỶ QUYỀN, không phải lệnh đúc
 > Cập nhật 2026-08-03 (Phoenix agent). Database **PR #119**, chờ Long merge → BE 🟡.
@@ -105,6 +105,10 @@ trúc màn. Kết hợp với đoạn trên: bền **và** trong Enclave, không
 - **Mint LAMP (đường cũ, đúc thẳng): 🔴 NO-GO.** Nguồn mint tiến xa nhất = worktree **`/Projects/_wt-superapp-mint`** (branch `claude/superapp-orgdid-mint`, HEAD `a0c11593` 07-11): build tx Rust FFI on-device → submit THẲNG Blockfrost (bỏ qua backend), bản B. cargo 150/150, tsc 0. **Chặn:** 3 deps on-chain chưa deploy Preview (TAAD anchor Active, Reserve `meter_nft`, policy FINAL) → "NO-GO có cơ sở". Long backend (mint-lamp endpoint) + threshold `@Min(2)` (nhánh `fix/47-low-cleanup`) chưa merge.
 
 ## Changelog
+- 2026-08-05: đo lại host — `api.phoenixkey.me/api/v1/actuator/health` trả **200 `{"status":"UP"}`**
+  (ngày 30/07 còn 502 toàn bộ). `/health` và `/v3/api-docs` trả 404 Tomcat, đúng thiết kế vì đường
+  thật có tiền tố `/api/v1` — không phải hồi quy. Trục danh tính hết bị chặn ở tầng hạ tầng.
+- 2026-08-04: PR #116 merged — `/wallet/{did}/all`, `/wallet/standard/{did}`, `/wallet/{did}/balance` chuyển sang bắt buộc Bearer + ép `caller_did == path_did`. Cập nhật HEAD `b4c4ce2`, thêm 🔒 vào bảng. Thư Phoenix 2026-08-04.
 - 2026-08-03 (lần 2): hợp đồng đổi `validUntilSlot` → **`validTtlSeconds`** sau phản hồi của
   SuperApp; chốt thêm nonce (app sinh, TTL 10 phút), Grant là bí mật (cất Enclave), và app phải
   lưu Grant bền.

@@ -35,6 +35,7 @@ import {
   subNational,
   type SubTab,
 } from './subHomeLabels';
+import { useNationalLanguage } from '../i18n/useNationalLanguage';
 
 interface Props {
   /** Route app con (khoá SUBHOME_FRAME), vd 'ProofChatHome' | 'Farms'. */
@@ -64,6 +65,7 @@ const SubHomeFrame: React.FC<Props> = ({
   visibleCount = SUBHOME_VISIBLE_COUNT,
   style,
 }) => {
+  const lang = useNationalLanguage();
   const tabs = React.useMemo(() => SUBHOME_FRAME[appRoute] ?? [], [appRoute]);
   const { visible, overflow } = React.useMemo(
     () => rankSubTabs(tabs, usage ?? {}, pinned ?? null, visibleCount),
@@ -103,7 +105,7 @@ const SubHomeFrame: React.FC<Props> = ({
         activeOpacity={0.7}
         accessibilityRole="tab"
         accessibilityState={{ selected: focused }}
-        accessibilityLabel={subNational(tab)}
+        accessibilityLabel={subNational(tab, lang)}
         onPress={() => select(tab.key)}
       >
         <Icon name={tab.icon} size={18} color={color} />
@@ -115,7 +117,12 @@ const SubHomeFrame: React.FC<Props> = ({
           numberOfLines={1}
           allowFontScaling={false}
         >
-          {subEn(tab)}
+          {/* Tiếng Anh CHUẨN + ngôn ngữ quốc gia đi kèm trên CÙNG một dòng (khung này
+              chỉ cao ~40dp nên không vẽ hai dòng như tab dưới được). Trước đây chỉ vẽ
+              `subEn`, nghĩa là nông dân thấy 8 tab con không có một chữ Việt nào —
+              tiếng Việt bị hạ xuống làm tooltip mà tooltip thì trên di động không ai
+              thấy. `lang` lấy từ hook nên đổi ngôn ngữ là vẽ lại ngay. */}
+          {subEn(tab)} · {subNational(tab, lang)}
         </Text>
       </TouchableOpacity>
     );

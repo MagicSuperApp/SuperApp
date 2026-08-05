@@ -200,6 +200,26 @@ const FruitListScreen: React.FC = () => {
     );
   };
 
+  // Vào thẳng từ cổng xoè "Quét quả" thì KHÔNG có treeId (actionRegistry chỉ trỏ route,
+  // không kèm tham số). Trước đây màn vẫn dựng rồi gọi getTreeLayout(undefined) → màn
+  // trống bảo người dùng tự đi tìm đường khác. Nói thật và chỉ đường về màn chọn cây.
+  if (!treeId) {
+    return (
+      <View style={styles.center}>
+        <Icon name="apple-whole" size={40} color={COLORS.textMuted} />
+        <Text style={styles.muted}>Hãy chọn cây trước, rồi mới xem quả của cây đó.</Text>
+        <TouchableOpacity
+          style={styles.pickTreeBtn}
+          activeOpacity={0.85}
+          onPress={() => navigation.navigate('TreeManagement')}
+        >
+          <Icon name="tree" size={16} color={COLORS.white} />
+          <Text style={styles.pickTreeBtnText}>Chọn cây</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -467,6 +487,11 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 8 },
   muted: { color: COLORS.textMuted, fontSize: 13, textAlign: 'center', lineHeight: 19 },
+  pickTreeBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14,
+    backgroundColor: COLORS.accent, borderRadius: 12, paddingHorizontal: 18, paddingVertical: 12,
+  },
+  pickTreeBtnText: { color: COLORS.white, fontSize: 15, fontWeight: '700' },
 
   // Header
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12, gap: 12 },

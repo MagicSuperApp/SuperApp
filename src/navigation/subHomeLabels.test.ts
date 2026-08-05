@@ -72,7 +72,7 @@ describe('rankSubTabs — biên', () => {
 });
 
 describe('nhãn song ngữ', () => {
-  it('EN là nhãn hiển thị', () => {
+  it('EN vẫn là nhãn CHUẨN', () => {
     expect(subEn(CHAT[0])).toBe('Chats');
   });
   // Tham số `lang` truyền TƯỜNG MINH: mặc định của subNational là ngôn ngữ app

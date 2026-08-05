@@ -516,11 +516,21 @@ export const wallet = {
       } as AxiosRequestConfig),
     ),
 
+  /**
+   * ⚠ CẦN Bearer. PR #116 (merged 2026-07-31) siết đường này: đòi Bearer **và**
+   * `caller_did == path_did`. Thiếu `needsAuth` thì interceptor không gắn token
+   * (`:247-255`) ⇒ 401. Hiện chưa có nơi nào gọi nên chưa nổ, nhưng để nguyên là gài
+   * bẫy cho người dựng màn ví sau này.
+   */
   getStandard: (userDid: string) =>
     unwrap<{
       addresses: { fixed?: string; active?: string; stake?: string };
       balances: { lovelace: number; lamp: number; carp: number };
-    }>(client.get(`/wallet/standard/${encodeURIComponent(userDid)}`)),
+    }>(
+      client.get(`/wallet/standard/${encodeURIComponent(userDid)}`, {
+        needsAuth: true,
+      } as AxiosRequestConfig),
+    ),
 
   /**
    * Relay giao-dịch Cardano ĐÃ KÝ (Issue #74, BE 07-23). Mô-hình MỚI: CLIENT tự

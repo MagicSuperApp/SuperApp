@@ -41,9 +41,42 @@ rồi khai route trong `instance.config.tabs` như các tab khác. KHÔNG sửa 
 
 **Tab "Me/Tôi" = AVATAR user** (anh chốt): thay icon đơn điệu bằng ảnh đại diện tròn. `NavItemFrame` nhận `avatarUri` (ảnh) hoặc `initials` (chữ viết tắt tên, fallback khi chưa có ảnh — app hiện dùng initials từ `user.name`, xem `AccountScreen`); không có nốt thì về icon mặc định. Viền avatar sáng khi focus. → Tùng nối `avatarUri` từ hồ sơ user khi có ảnh; trước mắt dùng `initials`.
 
-**Đa ngôn ngữ về sau**: `getNationalLanguage()` là SEAM duy nhất — nay trả `'vi'`; khi có cài đặt ngôn ngữ, đọc setting tại đó, mọi nhãn tự đổi. `LangCode` mở rộng `'th' | 'km' …`.
+**Đa ngôn ngữ — ĐÃ DỰNG (2026-08-05, anh Aladin chốt: vi · zh · ja)**. Seam nay ở `src/i18n/languages.ts`, không còn nằm trong `navLabels.ts`. Xem §5.4.
 
 > Lưu ý tên: module thư mục `trace` (moduleId `magiclamp.trace`) route `Farms` phục vụ **quản lý trang trại** — nhãn nav đúng là **Farm**, KHÔNG phải Trace. Trace (truy xuất) là dịch vụ RIÊNG, xem §3. KHÔNG đổi tên module (ngoài phạm vi UI).
+
+### 1.1 Đa ngôn ngữ (vi · zh · ja) — hợp đồng
+
+**Quy ước KHÔNG đổi**: tiếng Anh là CHUẨN, luôn hiển thị. Ngôn ngữ quốc gia đi KÈM, không thay thế.
+Đổi so với bản trước: ngôn ngữ quốc gia nay **luôn được vẽ**, kể cả ở SubHome — trước đây SubHome hạ nó xuống làm tooltip, mà tooltip trên di động thì không ai thấy, nên 8 tab con hiện ra không có một chữ Việt nào.
+
+| Khung | Cách vẽ |
+|---|---|
+| Tab dưới (`NavItemFrame`) | 2 dòng — EN đậm ở trên, quốc gia ở dưới |
+| SubHome (`SubHomeFrame`, cao ~40dp) | 1 dòng — `EN · quốc gia` |
+
+**Nguồn duy nhất**: `src/i18n/languages.ts`.
+
+- `SUPPORTED_LANGS = ['vi','zh','ja']` — tiếng Anh KHÔNG có trong đây vì nó là chuẩn, không phải một lựa chọn ngang hàng.
+- `LangCode` dẫn xuất từ mảng đó. `navLabels.ts` re-export để mã cũ không phải sửa.
+- `NavFrame.national` và `SubTab.national` là `Record<LangCode,string>` **đầy đủ**, không `Partial`. Thêm ngôn ngữ = `tsc` chỉ ra ngay mọi chỗ thiếu, thay vì lặng lẽ rơi về tiếng Anh trên máy người dùng.
+- Thứ tự quyết định: **lựa chọn đã nhớ** → **ngôn ngữ máy** (`Intl`, có try/catch) → `DEFAULT_LANG = 'vi'`.
+- `getNationalLanguage()` ĐỒNG BỘ (gọi được trong render). Màn nào vẽ nhãn phải dùng `useNationalLanguage()` để đăng ký nghe đổi — thiếu nó thì đổi ngôn ngữ xong chữ vẫn cũ tới khi màn tình cờ vẽ lại.
+- `loadNationalLanguage()` gọi MỘT LẦN lúc khởi động, trước khi thoát spinner (`navigation/index.tsx`).
+
+**KHÔNG thêm phụ thuộc native** (`react-native-localize`): thêm là phải dựng lại cả hai nền tảng, mà khâu build vừa mới gỡ được nút thắt. Dò ngôn ngữ máy bằng `Intl` có sẵn trong Hermes.
+
+**Màn chọn**: `src/screens/LanguageScreen.tsx`, route `Language`, deep-link `magiclamp://language`, lối vào ở màn Tôi. Mỗi dòng ghi tên ngôn ngữ **bằng chính ngôn ngữ đó** — người mở màn này thường là người không đọc được giao diện đang hiện.
+
+### 5.4 CÒN NỢ — giao Tùng
+
+Bản này dựng **hạ tầng**, không phải bản dịch đầy đủ. Còn lại:
+
+1. **Dịch chuỗi trong màn.** Rà cho thấy **460 chuỗi hiển thị** trên **117 file** còn cứng tiếng Việt hoặc tiếng Anh. Cần một hàm tra chuỗi (`t(key)`) + kho chuỗi theo ngôn ngữ. Hạ tầng ở §1.1 là chỗ hàm đó đọc ngôn ngữ hiện hành.
+2. **Loại từ ngữ kỹ thuật trước khi dịch.** Dịch một câu lộ tên module nội bộ ra ba thứ tiếng là nhân ba cái sai. Thứ tự đúng: bỏ tên module → viết lại bằng lời người dùng → rồi mới dịch.
+3. **Định dạng theo vùng.** Ngày, số, tiền hiện đang cứng `toLocaleString('vi-VN')` ở nhiều chỗ; phải theo ngôn ngữ đang chọn.
+4. **Bề rộng chữ.** Nhãn tiếng Nhật dài hơn tiếng Việt đáng kể (`マイページ` so với `Tôi`). Cần thử trên máy thật ở khung SubHome 40dp.
+5. **Chữ trong ảnh và biểu tượng** chưa rà.
 
 ---
 

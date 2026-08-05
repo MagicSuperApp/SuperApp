@@ -27,8 +27,13 @@ export type LangCode = AppLangCode;
 export interface NavFrame {
   /** Nhãn tiếng Anh — CHUẨN, hiển thị ở MỌI ngôn ngữ (dòng trên). */
   en: string;
-  /** Nhãn theo ngôn ngữ quốc gia (dòng dưới), khoá theo mã ngôn ngữ. */
-  national: Partial<Record<LangCode, string>>;
+  /**
+   * Nhãn theo ngôn ngữ quốc gia (dòng dưới), khoá theo mã ngôn ngữ.
+   * `Record` ĐẦY ĐỦ, không phải `Partial`: thêm một ngôn ngữ vào `SUPPORTED_LANGS` là
+   * `tsc` chỉ ra ngay mọi mục còn thiếu, thay vì lặng lẽ rơi về tiếng Anh trên máy
+   * người dùng — thứ chỉ phát hiện được khi đã phát hành.
+   */
+  national: Record<LangCode, string>;
   /** Tên icon Font Awesome Solid (bộ Icon dùng chung) — trạng thái nghỉ. */
   icon: string;
   /** Tên icon khi tab đang mở. FA Solid là 1 style → thường trùng `icon`; trạng thái phân biệt bằng màu. */

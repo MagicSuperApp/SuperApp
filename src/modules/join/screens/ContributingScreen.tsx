@@ -185,7 +185,7 @@ const ContributingScreen: React.FC = () => {
             <Text style={styles.experimentalText}>
               {accrued != null
                 ? 'Thử nghiệm — µLAMP tạm tính trong bộ nhớ. MAGIC thật vào ví ở bản sau.'
-                : 'Chưa đo được thưởng của máy này: cần bản có SDK góp máy. Số 0 ở đây không có nghĩa là bạn chưa được ghi nhận.'}
+                : 'Chưa đo được thưởng của máy này: cần bản có phần góp máy. Dấu — nghĩa là chưa đo được, không phải bạn chưa được ghi nhận.'}
             </Text>
           </View>
         </View>

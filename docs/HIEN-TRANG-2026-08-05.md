@@ -6,8 +6,11 @@ Mục tiêu: **phát hành chính thức app v2.0.0**; tính năng nào hoàn th
 Mỗi khẳng định trong cột **Requirement** kèm `file:dòng` hoặc số đo thô. Chỗ nào chưa đo được thì
 ghi thẳng là chưa đo — không suy đoán.
 
-> ⚠ Ba mục **Mosaic**, **Spectra**, **Strata** đang được rà lại lần hai (chủ dự án báo kết luận cũ
-> đọc thiếu bản). Nội dung dưới đây là kết luận **lượt một**, sẽ cập nhật khi có bằng chứng mới.
+> ⚠ **Đã rà lại lượt hai (05/08) — ba mục Mosaic, Spectra, Strata đều bị chấm SAI ở lượt một.**
+> Cả ba đều có mã thật, đã build, đã test xanh. Nguyên nhân trượt: lượt một chỉ quét LAMP / MAGIC /
+> OriLifeTrace / SuperApp / PhoenixKeyDID, trong khi Mosaic nằm ở repo **VeDataIO** và
+> Spectra/Strata nằm ở **LampNetCloud** — ba repo chưa từng được mở. Nội dung ba mục dưới đây đã
+> được viết lại kèm bằng chứng mới; các mục còn lại giữ nguyên kết luận lượt một.
 
 ## Tóm tắt
 
@@ -15,9 +18,9 @@ ghi thẳng là chưa đo — không suy đoán.
 |---|---|---|
 | 1 | Nhận diện cây sầu riêng | 🟢 Chạy thật |
 | 2 | Nhận diện quả sầu riêng | 🟢 Chạy thật |
-| 3 | Ảnh/video về LampNet + mã Strata | 🟡 LampNet: quả 🟢, cây vừa vá · Strata 🔴 chưa build |
-| 4 | Neo dữ liệu L1 qua Mosaic | 🔴 Chưa build (tên gọi chưa có thật) |
-| 5 | Phân tích bằng Spectra | 🔴 Chưa nối |
+| 3 | Ảnh/video về LampNet + mã Strata | 🟡 LampNet: quả 🟢, cây vừa vá · Strata ⚠ chạy trên nhị phân cũ |
+| 4 | Neo dữ liệu L1 qua Mosaic | 🟠 Đã dựng xong + lên chuỗi thật, chưa deploy dịch vụ |
+| 5 | Phân tích bằng Spectra | 🟠 Lõi xong, 248 test xanh, chưa ai triển khai |
 | 6 | Mô tả đặc trưng dễ hiểu cho nông dân | 🟡 Đã vá phần vẽ, chờ đối chiếu dữ liệu thật |
 | 7 | Timeline cho từng cây/quả | 🟡 Máy chủ có, app chưa nối |
 | 8 | Mô hình 3D cho cây | 🟡 Nối rồi, sẽ treo nếu không dựng sẵn |
@@ -39,7 +42,8 @@ ghi thẳng là chưa đo — không suy đoán.
 | B2 | ⚠ CHẶN BUILD: cấu hình build thiếu | 🟢 Đã vá (chờ đẩy) |
 | B3 | ⚠ CHẶN BUILD: APK thiếu 2 thư viện Rust | ⚫ Chờ chủ dự án chọn đường build |
 
-**Đếm:** 🟢 4 · 🟡 7 · 🟠 6 · 🔴 6 · ⚫ 2 — tổng 25 dòng.
+**Đếm sau lượt hai:** 🟢 4 · 🟡 7 · 🟠 8 · 🔴 4 · ⚫ 2 — tổng 25 dòng.
+*(Lượt một chấm 🔴 6 · 🟠 6; Mosaic và Spectra đã chuyển 🔴 → 🟠 sau khi tìm ra mã thật.)*
 
 **Nghĩa các nhãn:** 🟢 chạy thật, có bằng chứng · 🟡 nối rồi nhưng chưa xác nhận chạy trọn vòng ·
 🟠 mã đủ nhưng bị chặn bởi chỗ khác · 🔴 chưa build · ⚫ chờ quyết định hoặc chờ bên khác.
@@ -88,43 +92,114 @@ có gì để xử lý tiếp, và công đi thực địa cả ngày thành s�
 `appendVideoProof(kind:'tree')` NGAY khi nhận phản hồi, và hiện mã chạm-để-chép.
 
 **Còn chặn.**
-- (a) Bản đang chạy của OriLife là `79bc76a`, **không có trong `origin/main`** — một lần deploy từ
-  main là gỡ mất đường video-cây→LampNet giữa sự kiện, im lặng.
+- (a) ~~Bản đang chạy của OriLife không có trong `origin/main`~~ — **cảnh báo này SAI, đã rút.**
+  Đúng là commit `79bc76a` chỉ nằm trên nhánh `claude/vet-loi-sau-268`, nhưng **bản squash của chính
+  nó đã vào main qua PR #269**. Đối chiếu blob: `git diff --stat 79bc76a origin/main` = **2 file, đều
+  không phải mã** (`.github/workflows/actionlint.yaml` và một file tài liệu). Toàn bộ `server.py`,
+  `lampnet.py`, `video_ingest.py`, `video_encode.py`, `video_hash.py`, `video_select.py`,
+  `redrive_lampnet.py`, `booth.py`, `static/scan.html` **giống hệt nhau**. Deploy từ main **không gỡ
+  mất gì**. Bài học: "commit không có trong main" chưa đủ để kết luận — phải đối chiếu blob, vì
+  squash-merge luôn sinh ra hash khác.
 - (b) `LAMPNET_ENABLED=0` làm `lampnet.py:84-94` trả CID GIẢ `local_…` mà app vẫn báo đã lưu.
 - (c) Video cây chưa qua hàng đợi bền — mất sóng là mất clip.
-- (d) Strata: grep trong SuperApp = 0; đường `/v1/strata/*` không được biên dịch vào node đang chạy;
-  client `strata_client.py` không băm nổi. *(đang rà lại)*
+- (d) Strata: grep trong SuperApp = 0 — app không gọi Strata, và không cần gọi.
 
-## 4. Neo dữ liệu L1 qua Mosaic — 🔴 Chưa build *(đang rà lại)*
+> **Đính chính lượt một về Strata — và một quả mìn hẹn giờ.**
+>
+> Kết luận cũ ("`/v1/strata/*` không được biên dịch vào node đang chạy") **đúng nửa đầu, sai nửa
+> sau**, và nửa sai mới là chỗ nguy hiểm.
+>
+> **Strata có service chạy được, test xanh.** `LampNetCloud/Strata`, crate `lampnet-strata v0.10.0`.
+> `Strata/node/src/routes.rs:54-62` đăng ký đủ 7 route; binary `strata-node`. Chạy thật lượt hai:
+> `cargo test --workspace --offline` → **167 pass, 0 fail**, trong đó 16 test HTTP.
+>
+> **Mã hiện tại đúng là không sinh ra route** — bản thứ hai ở
+> `lampnet-hivemind/lampnet-mirage/src/strata_routes.rs` (1.656 dòng) nằm sau `#[cfg(feature =
+> "strata")]`, mà commit `c80f128` (04/08) đã comment out cả dependency lẫn khối `[features]` vì CI
+> Docker không xác thực được vào repo riêng tư. Cfg luôn false ⇒ mã chết.
+>
+> **Nhưng máy chủ VẪN đang phục vụ route đó:**
+> `curl 'https://api.lampnet.cloud/v1/strata/resolve?ref_id=x'` → **400** (thiếu tham số), **không
+> phải 404** ⇒ route có thật. `/health` báo `uptime_secs: 188110` ≈ 2,2 ngày ⇒ nhị phân đang chạy có
+> TRƯỚC `c80f128`.
+>
+> ⚠ **Mã và máy đang lệch nhau. Lần dựng lại kế tiếp biến mọi `/v1/strata/*` thành 404 im lặng.**
+> Đây là quả mìn thứ hai cùng dạng với quả ở OriLife (mục 3a) — cả hai đều là "bản đang chạy không
+> có trong mã nguồn". Chặn thật là quyền truy cập repo riêng tư `LampNetCloud/Strata`: hoặc chuyển
+> repo sang công khai, hoặc cấp token đọc cho CI. **Đây là quyết định của chủ dự án.**
+
+## 4. Neo dữ liệu L1 qua Mosaic — 🟠 Đã dựng xong, chưa có đường cho app gọi
+
+> **Đính chính lượt một.** Kết luận cũ ("Mosaic là spec chưa viết code") **SAI**. Nguyên nhân: Mosaic
+> không nằm trong LAMP / MAGIC / OriLifeTrace / SuperApp / PhoenixKeyDID mà nằm ở repo
+> **`VeDataIO`** — repo chưa từng được quét ở lượt một.
 
 **Người dùng được gì.** Đóng dấu thời gian và nội dung lên chuỗi Cardano để bằng chứng không sửa
 được về sau. Với người mua sầu riêng, đây là khác biệt giữa lời hứa của người bán và một bản ghi
 công khai không ai xoá được.
 
-**Kỹ thuật (kết luận lượt một).** Chính tả "Moisac" không tồn tại ở repo nào. "Mosaic" tra được là
-spec chưa viết code — `Specs/Ecosystem-DataFlow.md:160` ghi thẳng "Mosaic chưa code"; trong Rust chỉ
-có mock test. Neo L1 THẬT đang chạy ở hai đường khác: OriLife tự neo Cardano metadata label 1455
-(`core/anchor.py:149`, `timeline_anchor.py:97`, route `server.py:3100`) và Strata→Settlement label
-1234 (có giao dịch thật trên Preview nhưng không nằm trong binary đang chạy). App chỉ HIỂN THỊ trạng
-thái neo, không dựng/gửi gì.
+**Mosaic là gì.** Module L3 neo dữ liệu lên Cardano L1 của VeData — validator on-chain (Aiken,
+Plutus V3) + 5 package off-chain TypeScript. `VeDataIO/Specs/Mosaic-Exec-Spec.md:16`; spec
+`Mosaic-Math.md` v2.4.0.
 
-**Việc.** Chốt lại từ vựng với chủ dự án. Đang rà lại lần hai vì chủ dự án báo Mosaic đã phát triển.
+**Đã build và test thật.**
+- On-chain: `VeDataIO/Code/mosaic/aiken/` — `mosaic.ak`, `mosaic_anchor.ak`, `mosaic_genesis.ak`,
+  `mosaic_hydra_fanout.ak`, `strata_anchor.ak`. `aiken/plutus.json` 67.323 B **đã sinh** ⇒ `aiken build`
+  chạy thật (Aiken v1.1.21).
+- Off-chain: 5 npm package (`mosaic/ts`, `merkle-builder`, `proof-server`, `cid-subscription-api`,
+  `tx-builder`).
+- Test: `VEDATA-ROADMAP.md:46-47` — `mosaic/ts` 10 suite / 94 test pass; `aiken check` 41 pass +
+  `aiken build` OK. `:88` Mosaic đầy đủ **164 test pass, tsc sạch**. `:93` `aiken check` **174 pass /
+  0 fail**. CI thật: `Code/.github/workflows/mosaic-ci.yml`.
+- Milestone M1–M4, M6, M7, M8, M15 = CODE-COMPLETE.
 
-## 5. Phân tích bằng Spectra — 🔴 Chưa nối *(đang rà lại)*
+**Đã lên chuỗi thật.** Preprod: mint `8d633401…`, update `8bd49960…` tại block 4.908.885,
+`valid_contract: True` (`VEDATA-MOSAIC-M15-REPORT.md:245-246`). Preview: Hydra L2 settle thật, snapshot
+2 và 4 (`M6-REPORT §7.4`). **Chưa mainnet.**
+
+**Vì sao vẫn 🟠 với ứng dụng này.** Hai chặn, cả hai đều nằm ngoài SuperApp:
+1. **Chưa có dịch vụ nào được deploy.** Không có Dockerfile / compose / systemd cho mosaic;
+   `api.vedata.io` chỉ tồn tại trong spec, không config triển khai nào trỏ tới. Node từng chạy là
+   local trên máy chủ dự án, thư mục đó nay không còn.
+2. **App di động không được phép gọi thẳng.** `Mosaic-Tech.md:796` chốt `source_module:
+   z.literal("stamp")`, và `:1106` đặt quyền theo danh tính module Stamp. Đường duy nhất là
+   **app → Stamp → Mosaic**. Trong SuperApp, Mosaic mới xuất hiện dạng phụ thuộc tương lai
+   (`Specs/SG8-Work-Integration.md:147`).
+
+**Neo L1 đang chạy thật cho nông sản đi đường khác:** OriLife tự neo Cardano metadata label 1455
+(`core/anchor.py:149`, `timeline_anchor.py:97`, route `server.py:3100`). App chỉ hiển thị trạng thái
+neo, không dựng/gửi gì. **Bản phát hành v2.0.0 dùng đường này.**
+
+**Việc.** Hỏi VeData: khi nào có dịch vụ Mosaic được deploy, và Stamp có nhận nguồn từ OriLife không —
+đó là hai thứ quyết định bao giờ app nối được.
+
+## 5. Phân tích bằng Spectra — 🟠 Lõi xong và xanh, chưa ai triển khai
+
+> **Đính chính lượt một.** Kết luận cũ ("phần ML là trait rỗng") **mô tả sai tỉ lệ**. `stubs.rs` chỉ
+> **44 dòng / 8.710 dòng** toàn crate. Hợp đồng ML thật là `src/workload.rs` (274 dòng, đã trên
+> `main`) với `DetOut`/`SegOut`/`EmbOut`/`CutOut` và mã lượng-tử-hoá chạy được (`workload.rs:40-46`).
+> Việc **không nhúng model là chủ ý kiến trúc**, không phải nợ: `stubs.rs:1-13` ghi rõ ML chạy như
+> workload riêng để giữ giấy phép sạch.
 
 **Người dùng được gì.** Tầng chọn khung hình từ video: lọc khung nét, ghép phơi sáng, bỏ khung rung
 — để phần nhận diện chỉ phải làm việc với ảnh tốt. Nông dân quay một vòng quanh cây bằng điện thoại
 rung tay là đủ, máy tự chọn khung đẹp.
 
-**Kỹ thuật (kết luận lượt một).** Lõi có, không đường nào chạm tới. Crate `lampnet-spectra` tồn tại
-(`Spectra/src/sharpness.rs`, `phash.rs`, `frame_select.rs`) nhưng phần ML là trait rỗng
-(`Spectra/src/stubs.rs:22-47`). Ranh giới đã chốt: tầng B chọn-khung/Mertens = Mirage, tầng C
-embed/fusion/identify = OriLife (`ARCH-video-spectra-mcr-identify.md:42`). OriLife xác nhận grep
-`spectra` trong core = 0, đang chạy bản thay thế `_select_frames()` (`server.py:776`). SuperApp grep
-= 1 hit, là ghi chú phải xoá.
+**Vị trí.** `LampNetCloud/Spectra` — repo git riêng. Mô hình 3 trục + 2 kênh (`src/lib.rs:1-24`).
 
-**Việc cho bản phát hành.** Không làm gì ở phía app. Muốn nói về "phân tích" thì dùng cái chạy thật:
-số khung giữ / khung loại.
+**Test — chạy thật lượt hai:** `cargo test --offline` → **248 passed, 0 failed** (gồm
+`workload::tests::*`, `integration_tests::score_frame_deterministic`).
+
+**Chặn thật.** Có hợp đồng ML kèm test, **chưa có ai thực thi hợp đồng đó**: `LampNetCloud/Splash`
+mới chỉ có tài liệu — `ls` toàn `.md` + `prototype/`, `git log` 3 commit đều là `docs(...)`. Và Spectra
+**không chạy ở đâu**: không compose/service/Dockerfile nào tham chiếu; binary `vingest` cần
+`required-features = ["daemon"]` (`Spectra/Cargo.toml:49-51`).
+
+**Không có bản mới hơn ở nhánh khác.** `main == origin/main == 72191e7`. Nhánh
+`spectra/ml-output-contract` **cũ hơn main 9.110 dòng** — nên xoá.
+
+**Việc cho v2.0.0.** Không làm gì ở phía app. Muốn nói về "phân tích" thì dùng cái chạy thật: số
+khung giữ / khung loại của OriLife (`_select_frames()`, `server.py:776`).
 
 ## 6. Mô tả đặc trưng dễ hiểu cho nông dân — 🟡
 

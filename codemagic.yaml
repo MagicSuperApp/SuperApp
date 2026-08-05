@@ -129,15 +129,21 @@ workflows:
           # rơi về rỗng DÙ máy chủ sống (đo 05/08: api.aladin.work/api/v1/health = 200).
           WORK_API_URL=${WORK_API_URL:-https://api.aladin.work/api/v1}
 
-          # ProofChat. Host còn 502 (đo 05/08) nên cổng vẫn tắt — nhưng ghi sẵn để khi
-          # máy chủ sống lại thì bản build tự bật, không phải chờ một vòng phát hành nữa.
+          # ProofChat. Ghi sẵn URL để khi máy chủ sống lại chỉ phải bật MỘT biến, không
+          # phải sửa cấu hình. Nhưng cờ mặc định là `off`, CỐ Ý: nếu để `true` thì cửa
+          # duy nhất còn lại là phép thử /health — máy chủ sống lại là module tự bật,
+          # trong khi chốt chặn bảo mật của chính nó chưa gỡ (proofchat-api.ts:88-93:
+          # token production PHẢI ở Keychain/Keystore, nay còn nằm AsyncStorage chưa mã
+          # hoá). Bật là quyết định của người phát hành, không phải hệ quả phụ.
           PROOFCHAT_API_URL=${PROOFCHAT_API_URL:-https://api.proofchat.me/api/v1}
           PROOFCHAT_WS_URL=${PROOFCHAT_WS_URL:-https://api.proofchat.me}
           PROOFCHAT_WS_PATH=${PROOFCHAT_WS_PATH:-/socket.io}
-          PROOFCHAT_BACKEND_ENABLED=${PROOFCHAT_BACKEND_ENABLED:-true}
+          PROOFCHAT_BACKEND_ENABLED=${PROOFCHAT_BACKEND_ENABLED:-off}
 
           # ⚠ analytics.orilife.io KHÔNG phân giải được (DNS NXDOMAIN, đo 05/08) — để
-          # trống thay vì nướng một host không tồn tại vào mọi bản build.
+          # trống thay vì nướng một host không tồn tại vào mọi bản build. Để trống CHỈ
+          # an toàn sau khi đã gỡ đường lui viết cứng trong analyticsApi.ts (trước đây
+          # chuỗi rỗng làm nó lui về một tunnel ngrok tạm + khoá dev). Nay rỗng = TẮT.
           ANALYTICS_API_URL=${ANALYTICS_API_URL:-}
           ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-}
           EOF
@@ -439,15 +445,21 @@ workflows:
           # rơi về rỗng DÙ máy chủ sống (đo 05/08: api.aladin.work/api/v1/health = 200).
           WORK_API_URL=${WORK_API_URL:-https://api.aladin.work/api/v1}
 
-          # ProofChat. Host còn 502 (đo 05/08) nên cổng vẫn tắt — nhưng ghi sẵn để khi
-          # máy chủ sống lại thì bản build tự bật, không phải chờ một vòng phát hành nữa.
+          # ProofChat. Ghi sẵn URL để khi máy chủ sống lại chỉ phải bật MỘT biến, không
+          # phải sửa cấu hình. Nhưng cờ mặc định là `off`, CỐ Ý: nếu để `true` thì cửa
+          # duy nhất còn lại là phép thử /health — máy chủ sống lại là module tự bật,
+          # trong khi chốt chặn bảo mật của chính nó chưa gỡ (proofchat-api.ts:88-93:
+          # token production PHẢI ở Keychain/Keystore, nay còn nằm AsyncStorage chưa mã
+          # hoá). Bật là quyết định của người phát hành, không phải hệ quả phụ.
           PROOFCHAT_API_URL=${PROOFCHAT_API_URL:-https://api.proofchat.me/api/v1}
           PROOFCHAT_WS_URL=${PROOFCHAT_WS_URL:-https://api.proofchat.me}
           PROOFCHAT_WS_PATH=${PROOFCHAT_WS_PATH:-/socket.io}
-          PROOFCHAT_BACKEND_ENABLED=${PROOFCHAT_BACKEND_ENABLED:-true}
+          PROOFCHAT_BACKEND_ENABLED=${PROOFCHAT_BACKEND_ENABLED:-off}
 
           # ⚠ analytics.orilife.io KHÔNG phân giải được (DNS NXDOMAIN, đo 05/08) — để
-          # trống thay vì nướng một host không tồn tại vào mọi bản build.
+          # trống thay vì nướng một host không tồn tại vào mọi bản build. Để trống CHỈ
+          # an toàn sau khi đã gỡ đường lui viết cứng trong analyticsApi.ts (trước đây
+          # chuỗi rỗng làm nó lui về một tunnel ngrok tạm + khoá dev). Nay rỗng = TẮT.
           ANALYTICS_API_URL=${ANALYTICS_API_URL:-}
           ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-}
           EOF
@@ -733,15 +745,21 @@ workflows:
           # rơi về rỗng DÙ máy chủ sống (đo 05/08: api.aladin.work/api/v1/health = 200).
           WORK_API_URL=${WORK_API_URL:-https://api.aladin.work/api/v1}
 
-          # ProofChat. Host còn 502 (đo 05/08) nên cổng vẫn tắt — nhưng ghi sẵn để khi
-          # máy chủ sống lại thì bản build tự bật, không phải chờ một vòng phát hành nữa.
+          # ProofChat. Ghi sẵn URL để khi máy chủ sống lại chỉ phải bật MỘT biến, không
+          # phải sửa cấu hình. Nhưng cờ mặc định là `off`, CỐ Ý: nếu để `true` thì cửa
+          # duy nhất còn lại là phép thử /health — máy chủ sống lại là module tự bật,
+          # trong khi chốt chặn bảo mật của chính nó chưa gỡ (proofchat-api.ts:88-93:
+          # token production PHẢI ở Keychain/Keystore, nay còn nằm AsyncStorage chưa mã
+          # hoá). Bật là quyết định của người phát hành, không phải hệ quả phụ.
           PROOFCHAT_API_URL=${PROOFCHAT_API_URL:-https://api.proofchat.me/api/v1}
           PROOFCHAT_WS_URL=${PROOFCHAT_WS_URL:-https://api.proofchat.me}
           PROOFCHAT_WS_PATH=${PROOFCHAT_WS_PATH:-/socket.io}
-          PROOFCHAT_BACKEND_ENABLED=${PROOFCHAT_BACKEND_ENABLED:-true}
+          PROOFCHAT_BACKEND_ENABLED=${PROOFCHAT_BACKEND_ENABLED:-off}
 
           # ⚠ analytics.orilife.io KHÔNG phân giải được (DNS NXDOMAIN, đo 05/08) — để
-          # trống thay vì nướng một host không tồn tại vào mọi bản build.
+          # trống thay vì nướng một host không tồn tại vào mọi bản build. Để trống CHỈ
+          # an toàn sau khi đã gỡ đường lui viết cứng trong analyticsApi.ts (trước đây
+          # chuỗi rỗng làm nó lui về một tunnel ngrok tạm + khoá dev). Nay rỗng = TẮT.
           ANALYTICS_API_URL=${ANALYTICS_API_URL:-}
           ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-}
           EOF
@@ -905,15 +923,21 @@ workflows:
           # rơi về rỗng DÙ máy chủ sống (đo 05/08: api.aladin.work/api/v1/health = 200).
           WORK_API_URL=${WORK_API_URL:-https://api.aladin.work/api/v1}
 
-          # ProofChat. Host còn 502 (đo 05/08) nên cổng vẫn tắt — nhưng ghi sẵn để khi
-          # máy chủ sống lại thì bản build tự bật, không phải chờ một vòng phát hành nữa.
+          # ProofChat. Ghi sẵn URL để khi máy chủ sống lại chỉ phải bật MỘT biến, không
+          # phải sửa cấu hình. Nhưng cờ mặc định là `off`, CỐ Ý: nếu để `true` thì cửa
+          # duy nhất còn lại là phép thử /health — máy chủ sống lại là module tự bật,
+          # trong khi chốt chặn bảo mật của chính nó chưa gỡ (proofchat-api.ts:88-93:
+          # token production PHẢI ở Keychain/Keystore, nay còn nằm AsyncStorage chưa mã
+          # hoá). Bật là quyết định của người phát hành, không phải hệ quả phụ.
           PROOFCHAT_API_URL=${PROOFCHAT_API_URL:-https://api.proofchat.me/api/v1}
           PROOFCHAT_WS_URL=${PROOFCHAT_WS_URL:-https://api.proofchat.me}
           PROOFCHAT_WS_PATH=${PROOFCHAT_WS_PATH:-/socket.io}
-          PROOFCHAT_BACKEND_ENABLED=${PROOFCHAT_BACKEND_ENABLED:-true}
+          PROOFCHAT_BACKEND_ENABLED=${PROOFCHAT_BACKEND_ENABLED:-off}
 
           # ⚠ analytics.orilife.io KHÔNG phân giải được (DNS NXDOMAIN, đo 05/08) — để
-          # trống thay vì nướng một host không tồn tại vào mọi bản build.
+          # trống thay vì nướng một host không tồn tại vào mọi bản build. Để trống CHỈ
+          # an toàn sau khi đã gỡ đường lui viết cứng trong analyticsApi.ts (trước đây
+          # chuỗi rỗng làm nó lui về một tunnel ngrok tạm + khoá dev). Nay rỗng = TẮT.
           ANALYTICS_API_URL=${ANALYTICS_API_URL:-}
           ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-}
           EOF

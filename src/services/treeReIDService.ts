@@ -104,10 +104,17 @@ export interface EnrollResponse {
   views_dropped_dup?: number;
   /** Câu tiếng Việt: CÒN THIẾU góc nào (`server.py:1902`). Thứ nông dân cần nhất. */
   coverage_hint_vi?: string;
-  /** Ảnh bị loại vì mờ/thiếu sáng — mỗi mục có câu giải thích tiếng Việt. */
-  quality_warnings?: Array<{ message_vi?: string }>;
-  /** Vùng ảnh chưa đạt (thân/lá/tán…). */
-  region_warnings?: Array<{ message_vi?: string }>;
+  /**
+   * Ảnh bị loại vì mờ/thiếu sáng. Shape ĐỌC TỪ MÁY CHỦ (`server.py:562`, dùng lại ở
+   * `:1925`): mỗi mục là `{idx, reasons[], messages[]}` — câu tiếng Việt nằm trong
+   * `messages`, KHÔNG có trường `message_vi`.
+   */
+  quality_warnings?: Array<{ idx?: number; reasons?: string[]; messages?: string[] }>;
+  /**
+   * Vùng khoanh chưa đạt (quá nhỏ, hoặc một vùng dùng chung cho nhiều ảnh).
+   * `server.py:1769` khai `list[str]` — **chuỗi trần**, không phải đối tượng.
+   */
+  region_warnings?: string[];
   /**
    * Cây bị rơi khỏi vườn đang chọn. Nếu nuốt trường này thì cây biến mất khỏi vườn
    * mà không ai được báo — người dùng tưởng đăng ký hỏng và làm lại từ đầu.
@@ -165,6 +172,34 @@ export interface APIError {
   reason?: string;
   /** tree_id của cây trùng — backend trả khi 409 duplicate_tree */
   existing_tree_id?: string;
+}
+
+/**
+ * Rút các câu cảnh báo tiếng Việt từ phản hồi đăng ký cây, gộp trùng, giữ thứ tự.
+ *
+ * Tồn tại vì HAI trường này có shape KHÁC NHAU và trước đây bị đọc nhầm thành một:
+ *   • `quality_warnings` = `[{idx, reasons[], messages[]}]` — câu nằm trong `messages`
+ *   • `region_warnings`  = `[string]` — chuỗi trần
+ * Đọc nhầm không làm app sập; nó chỉ khiến MỌI cảnh báo biến mất im lặng, nên phải có
+ * test canh. Tin phòng thủ vì đây là dữ liệu từ mạng: mảng có thể vắng hoặc sai kiểu.
+ */
+export function enrollWarningMessages(res?: {
+  quality_warnings?: EnrollResponse['quality_warnings'];
+  region_warnings?: EnrollResponse['region_warnings'];
+}): { quality: string[]; region: string[] } {
+  const clean = (xs: unknown[]): string[] => {
+    const out: string[] = [];
+    for (const x of xs) {
+      if (typeof x === 'string' && x.trim() && !out.includes(x)) out.push(x);
+    }
+    return out;
+  };
+  const q = Array.isArray(res?.quality_warnings) ? res!.quality_warnings! : [];
+  const r = Array.isArray(res?.region_warnings) ? res!.region_warnings! : [];
+  return {
+    quality: clean(q.flatMap(w => (Array.isArray(w?.messages) ? w.messages : []))),
+    region: clean(r),
+  };
 }
 
 /**

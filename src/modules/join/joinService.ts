@@ -206,7 +206,14 @@ export const reportResult = (
     body: JSON.stringify({ lease_id: leaseId, ...payload }),
   });
 
-/** Bước 6 — Quyết toán: sổ thưởng của cả epoch. Daemon khai **GET** (gọi POST → 405). */
+/**
+ * Bước 6 — Quyết toán: sổ thưởng của cả epoch.
+ *
+ * ⚠ CHƯA KIỂM. Đặt GET vì đó là suy đoán từ tên đường dẫn, NHƯNG
+ * `LampNetCloud/Join/Join-Integration.md:70` khai **POST** (nhãn [KHAI], không phải
+ * [ĐO]). Hai bên đang ngược nhau và chưa ai curl thật. Đã hỏi Join; trước khi có câu
+ * trả lời thì đừng dựa vào phương thức ở đây.
+ */
 export const settlement = (): Promise<Record<string, unknown>> =>
   request('/v1/mobile/settlement', { method: 'GET' });
 
@@ -216,8 +223,10 @@ export const getNodeStats = (): Promise<NodeStats> =>
 
 /**
  * Thưởng tích luỹ CỦA MỘT THIẾT BỊ — `GET /v1/mobile/rewards/{device_pubkey}`.
- * Đây là đường đúng cho màn "Đang đóng góp". Chưa gọi được vì `device_pubkey` do SDK
- * native sinh (Keystore/Keychain), mà cầu native chưa có — xem `joinViaNativeSdk`.
+ *
+ * ⚠ CHƯA KIỂM, và đường này KHÔNG có trong `Join-Integration.md` (grep `mobile/rewards`
+ * = 0). Nó là ĐỀ NGHỊ của bên này, chưa phải hợp đồng đã chốt. Đã hỏi Join xác nhận.
+ * Dù sao cũng chưa gọi được: `device_pubkey` do phần native sinh, mà cầu native chưa có.
  */
 export const getDeviceRewards = (
   devicePubkeyHex: string,
@@ -225,10 +234,15 @@ export const getDeviceRewards = (
   request(`/v1/mobile/rewards/${encodeURIComponent(devicePubkeyHex)}`, { method: 'GET' });
 
 /**
- * ⛔ KHÔNG dùng từ ứng dụng. `/v1/reward/epoch` là đường **POST** phía vận hành: nó nhận
- * đóng góp của TẤT CẢ node + `total_pool` và đòi header `X-LampNet-Sig`. Gọi bằng GET
- * trả 405 — chính chỗ này làm màn "Đang đóng góp" chưa bao giờ hiện được số nào.
- * Giữ lại để không ai dựng lại nhầm; thưởng theo thiết bị dùng `getDeviceRewards`.
+ * ⛔ KHÔNG dùng từ ứng dụng — nhưng lý do vẫn CHƯA ĐƯỢC ĐO, đừng chép lại như sự thật.
+ *
+ * Bên này ĐỌC mã daemon thấy `/v1/reward/epoch` là đường phía vận hành (nhận đóng góp
+ * của TẤT CẢ node + `total_pool`, đòi header `X-LampNet-Sig`), nên gọi bằng GET nhiều
+ * khả năng trả 405. NHƯNG `Join-Integration.md:71` khai `GET /v1/reward/epoch` và `:175`
+ * nói nó đang trả `accrued_micro_lamp` — ngược hẳn. Chưa bên nào curl thật.
+ *
+ * Vì chưa chốt được, màn "Đang đóng góp" tạm KHÔNG gọi đường này và nói thẳng là chưa
+ * đo được, thay vì hiện một con số có thể sai. Thưởng theo thiết bị: `getDeviceRewards`.
  * @deprecated
  */
 export const getRewardEpoch = (): Promise<RewardEpoch> =>

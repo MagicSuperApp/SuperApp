@@ -60,17 +60,22 @@ const JoinHomeScreen: React.FC = () => {
       setPhase('offline');
       return;
     }
-    if (!personDid || !walletAddress) {
-      // Thiếu danh tính/ví nhận thưởng → thông điệp quyền (auth), không phải lỗi mạng.
-      setErrorKind('auth');
+    // Cầu native chưa có ⇒ biết trước là không đăng ký được. Trả lời ngay, đừng bắt
+    // người dùng chờ một vòng mạng để nhận câu trả lời đã biết.
+    //
+    // CỔNG NÀY PHẢI ĐỨNG TRƯỚC cổng danh tính. Đặt sau thì người dùng nhận câu "cần
+    // danh tính và ví nhận thưởng", đi tạo danh tính sinh trắc + ví Cardano — một luồng
+    // dài không lấy lại được thời gian — rồi quay lại mới bị báo "bản này chưa hỗ trợ".
+    // Nói sai lý do còn tệ hơn không nói.
+    if (!isNativeJoinAvailable()) {
+      setErrorKind('unsupported');
       setPhase('error');
       return;
     }
 
-    // Cầu native chưa có ⇒ biết trước là không đăng ký được. Trả lời ngay, đừng bắt
-    // người dùng chờ một vòng mạng để nhận câu trả lời đã biết.
-    if (!isNativeJoinAvailable()) {
-      setErrorKind('unsupported');
+    if (!personDid || !walletAddress) {
+      // Thiếu danh tính/ví nhận thưởng → thông điệp quyền (auth), không phải lỗi mạng.
+      setErrorKind('auth');
       setPhase('error');
       return;
     }

@@ -44,6 +44,7 @@ import {
   verifyAddTree,
   toCaptureOrientations,
   platformHeadingRef,
+  enrollWarningMessages,
   type EnrollResponse,
 } from '../services/treeReIDService';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
@@ -865,18 +866,14 @@ const TreeEnrollScreen: React.FC = () => {
               {!!enrollResult.coverage_hint_vi && (
                 <Text style={styles.successHint}>{enrollResult.coverage_hint_vi}</Text>
               )}
-              {(enrollResult.quality_warnings ?? [])
-                .map(w => w?.message_vi)
-                .filter((m): m is string => !!m)
-                .map((m, i) => (
-                  <Text key={`q${i}`} style={styles.successDupWarn}>⚠ {m}</Text>
-                ))}
-              {(enrollResult.region_warnings ?? [])
-                .map(w => w?.message_vi)
-                .filter((m): m is string => !!m)
-                .map((m, i) => (
-                  <Text key={`r${i}`} style={styles.successDupWarn}>⚠ {m}</Text>
-                ))}
+              {/* Hai trường này khác shape nhau — rút qua một hàm CÓ TEST canh, đừng
+                  đọc tay tại chỗ (đọc nhầm là cảnh báo biến mất im lặng). */}
+              {enrollWarningMessages(enrollResult).quality.map((m, i) => (
+                <Text key={`q${i}`} style={styles.successDupWarn}>⚠ {m}</Text>
+              ))}
+              {enrollWarningMessages(enrollResult).region.map((m, i) => (
+                <Text key={`r${i}`} style={styles.successDupWarn}>⚠ {m}</Text>
+              ))}
               {enrollResult.farm_dropped === true && (
                 <Text style={styles.successDupWarn}>
                   ⚠ Cây đã đăng ký nhưng CHƯA gắn được vào vườn đang chọn. Hãy mở

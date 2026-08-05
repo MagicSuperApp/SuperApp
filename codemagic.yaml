@@ -254,6 +254,22 @@ workflows:
           rm -rf ios/aladin_mobile_fe.xcworkspace/xcshareddata/swiftpm/checkouts 2>/dev/null || true
           echo "✅ DerivedData + SPM cleaned"
 
+      # Xuất JS bundle + SOURCEMAP để de-minify stack crash JS (VD "Cannot read
+      # property 'default' of undefined" tại main.jsbundle:LINE:COL). Chạy CÙNG lệnh
+      # + CÙNG .env như phase bundle của Xcode (@expo/cli export:embed, dev=false,
+      # macOS) → bundle khớp byte, map giải đúng số dòng runtime. EXPO_UNSAFE_DOTENV_KEYS
+      # để expo chịu nạp var ENV/NODE_ENV trong .env (nếu không sẽ từ chối). Best-effort:
+      # lỗi ở đây KHÔNG được chặn archive.
+      - name: Export JS sourcemap (debug crash)
+        script: |
+          mkdir -p "$CM_BUILD_DIR/build/jsmap"
+          EXPO_UNSAFE_DOTENV_KEYS=ENV,NODE_ENV npx expo export:embed \
+            --platform ios --dev false --entry-file index.js \
+            --bundle-output "$CM_BUILD_DIR/build/jsmap/main.jsbundle" \
+            --sourcemap-output "$CM_BUILD_DIR/build/jsmap/main.jsbundle.map" \
+            2>&1 | tail -20 || echo "⚠️ export sourcemap lỗi (không chặn build)"
+          ls -lh "$CM_BUILD_DIR/build/jsmap/" 2>/dev/null || true
+
       - name: Build iOS Archive (unsigned)
         script: |
           mkdir -p "$(dirname "$ARCHIVE_PATH")"
@@ -321,6 +337,9 @@ workflows:
     artifacts:
       - build/ios/ipa/*.ipa
       - build/ios/OriLife.xcarchive/dSYMs/*.dSYM
+      # Sourcemap + bundle JS để de-minify stack crash (tải về gửi lại để giải frame).
+      - build/jsmap/main.jsbundle.map
+      - build/jsmap/main.jsbundle
 
   # ============================================================
   # Workflow 2: iOS App Store (Signed)
@@ -547,6 +566,18 @@ workflows:
           sed -i '' -E "s/CURRENT_PROJECT_VERSION = [0-9]+;/CURRENT_PROJECT_VERSION = ${NEW};/g" ios/*.xcodeproj/project.pbxproj
           echo "✅ iOS build number → ${NEW} (TestFlight latest: ${LATEST})"
 
+      # Xuất JS bundle + SOURCEMAP để de-minify stack crash JS (CÙNG lệnh/.env như
+      # phase bundle Xcode → khớp byte). Best-effort, không chặn archive.
+      - name: Export JS sourcemap (debug crash)
+        script: |
+          mkdir -p "$CM_BUILD_DIR/build/jsmap"
+          EXPO_UNSAFE_DOTENV_KEYS=ENV,NODE_ENV npx expo export:embed \
+            --platform ios --dev false --entry-file index.js \
+            --bundle-output "$CM_BUILD_DIR/build/jsmap/main.jsbundle" \
+            --sourcemap-output "$CM_BUILD_DIR/build/jsmap/main.jsbundle.map" \
+            2>&1 | tail -20 || echo "⚠️ export sourcemap lỗi (không chặn build)"
+          ls -lh "$CM_BUILD_DIR/build/jsmap/" 2>/dev/null || true
+
       - name: Build iOS Archive (signed)
         script: |
           mkdir -p "$(dirname "$ARCHIVE_PATH")"
@@ -614,6 +645,9 @@ workflows:
     artifacts:
       - build/ios/ipa/*.ipa
       - build/ios/OriLife.xcarchive/dSYMs/*.dSYM
+      # Sourcemap + bundle JS để de-minify stack crash (tải về gửi lại để giải frame).
+      - build/jsmap/main.jsbundle.map
+      - build/jsmap/main.jsbundle
 
     publishing:
       app_store_connect:

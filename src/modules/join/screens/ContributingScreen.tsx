@@ -58,6 +58,16 @@ const ContributingScreen: React.FC = () => {
       // xem ghi chú đầu file; đừng gọi lại /v1/reward/epoch ở đây.
       const s = await getNodeStats();
       setStats(s);
+      // ⛔ GIỮ NGUYÊN `null` — ĐỪNG nối `getDeviceRewards()` vào đây (LampNet 05/08).
+      // Không phải vì thiếu `device_pubkey`, mà vì con số bên kia trả về CHƯA GIỮ ĐƯỢC:
+      //   · sổ `mobile_rewards` nằm trong BỘ NHỚ, khởi động lại daemon là sạch;
+      //   · `GET /v1/signaling_config` là route công khai không auth và trả thẳng
+      //     `api_token` — chính token mà `require_bearer_auth` so sánh — nên BẤT KỲ AI
+      //     cũng gọi được `POST /v1/mobile/settlement/drain` → `rewards.clear()`;
+      //   · đơn vị chốt là CARP, lõi đang trả µLAMP.
+      // Nối vào = hiện một con số trông như SỐ DƯ trong khi nó vừa sai đơn vị vừa ai cũng
+      // xoá được. Dấu `—` kèm câu "chưa đo được" ở dưới là câu trả lời TRUNG THỰC hơn.
+      // Mở khoá khi LampNet ghi bền sổ VÀ sửa đơn vị — xem issue LampNetCloud/lampnet-hivemind#50.
       setReward(null);
       // Empty = chưa join / node chưa có dữ liệu (không phải lỗi).
       const hasData = s?.online !== undefined || s?.verified_jobs !== undefined;
@@ -173,9 +183,12 @@ const ContributingScreen: React.FC = () => {
             <Icon name="gift-outline" size={20} color={LAMPNET_THEME.primary} />
             <Text style={styles.rewardTitle}>Thưởng tích luỹ</Text>
           </View>
+          {/* Chưa có số thì ĐỪNG in đơn vị. "— µLAMP" khẳng định một đơn vị mà bên lõi
+              đã báo là SAI (chốt là CARP), lại còn là chữ nông dân không hiểu. Không có
+              số thì chỉ một dấu gạch, phần giải thích để câu bên dưới lo. */}
           <Text style={styles.rewardValue}>
             {accrued != null ? String(accrued) : '—'}
-            <Text style={styles.rewardUnit}> µLAMP</Text>
+            {accrued != null && <Text style={styles.rewardUnit}> µLAMP</Text>}
           </Text>
           {reward?.epoch != null && (
             <Text style={styles.rewardEpoch}>Epoch #{reward.epoch}</Text>

@@ -12,6 +12,22 @@ ghi thẳng là chưa đo — không suy đoán.
 > Spectra/Strata nằm ở **LampNetCloud** — ba repo chưa từng được mở. Nội dung ba mục dưới đây đã
 > được viết lại kèm bằng chứng mới; các mục còn lại giữ nguyên kết luận lượt một.
 
+> 📬 **Cập nhật 05/08 chiều — thư LampNet trả lời.** LampNet đối chiếu ba mục thuộc bên họ (§3
+> Strata, §20 mảnh đọc được, §22 sổ thưởng rỗng) và xác nhận **cả ba đúng**, trong đó §20 và §22
+> **nặng hơn** những gì ghi ở đây. Nội dung mới đã được nhập vào đúng ba mục đó. Không mục nào đổi
+> màu, nhưng §20 và §22 nay có bằng chứng cụ thể hơn.
+
+> 🎪 **Không có tính năng riêng cho sự kiện.** Chủ dự án chốt: gian hàng chỉ là chỗ công ty trưng
+> bày và trò chuyện với khách — **trên app không có gì khác biệt**, khách tham quan dùng đúng app
+> như một người dùng bình thường. Câu hỏi treo cũ "có dựng màn khách-quét không" **đã đóng: không
+> dựng**. Đối chiếu: `grep -rni booth src/` = **0 kết quả** ⇒ chưa có dòng mã nào cần gỡ.
+
+> 🔑 **Không có mật khẩu ở bất cứ đâu.** Đường vào duy nhất là PhoenixKey — vân tay hoặc khuôn mặt.
+> Đối chiếu: `grep -rn secureTextEntry src/` = **0 kết quả**; `LoginScreen.tsx:318` đã ghi đúng câu
+> "không mật khẩu, không OTP"; `orilifeDidAuth.ts:6` ghi rõ app KHÔNG có username/password, đăng
+> nhập máy chủ bằng cách ký challenge P-256 từ Secure Enclave/Keystore. Các chuỗi `password` còn
+> lại trong mã đều nằm ở `analytics/config.ts:47-52` — đó là **danh sách chặn ghi log**, giữ nguyên.
+
 ## Tóm tắt
 
 | # | Tasktodo | Donestatus |
@@ -127,6 +143,40 @@ có gì để xử lý tiếp, và công đi thực địa cả ngày thành s�
 > Đây là quả mìn thứ hai cùng dạng với quả ở OriLife (mục 3a) — cả hai đều là "bản đang chạy không
 > có trong mã nguồn". Chặn thật là quyền truy cập repo riêng tư `LampNetCloud/Strata`: hoặc chuyển
 > repo sang công khai, hoặc cấp token đọc cho CI. **Đây là quyết định của chủ dự án.**
+>
+> 📬 **LampNet xác nhận 05/08: "đúng từng chữ"**, đo lại `resolve?ref_id=x` → 400, `uptime_secs`
+> 188110. Và bổ sung một dữ kiện chưa có ở đây: Strata còn phụ thuộc một git riêng tư **thứ hai**
+> (`Anchor.git`) ⇒ **mở mỗi `Strata` là chưa đủ**. Quyết định của chủ dự án phải gồm cả hai repo.
+
+**📬 Tin tốt từ LampNet (05/08) — vòng dọn 1800 giây KHÔNG chạm ảnh của mình.**
+
+Vòng dọn chỉ chạy khi chế độ là `symmetric` (`lampnet-mirage/src/eviction/mod.rs:20-22` — khác
+`symmetric` là `Skip` ngay dòng đầu), mà chế độ chỉ thành `symmetric` khi bên gọi **tự thêm**
+`?mode=symmetric` vào URL tải lên (`lampnet-node.rs:1631`). Mặc định là Hybrid.
+
+Đã tự kiểm theo yêu cầu của LampNet: `grep -rn "symmetric" src/` trong SuperApp = **0 kết quả**;
+grep toàn `OriLife-Core` cũng không có chuỗi `mode=symmetric` nào (mọi kết quả đều là
+`asymmetric` của thư viện mật mã, hoặc tên hàm kiểm thử). ⟹ **Byte của mình đi đường Hybrid, không
+nằm trong vòng dọn.** 45 tài liệu mất ngày 03/08 đều là `symmetric`.
+
+⚠ **Nhưng Hybrid không đồng nghĩa với bền.** LampNet nói thẳng: chế độ mặc định giữ toàn bộ k mảnh
+nguồn **trên đúng máy đã tải lên** (`lampnet-node.rs:1801-1804`), nên con số "dư thừa 2,5×" mua
+đúng **0 độ bền** cho tới khi máy đó chết — và khi nó chết thì mất cả bản gốc lẫn mảnh. Vòng sửa
+chữa **không tái sinh mảnh đã mất**, chỉ chép mảnh còn sống (`lampnet-node.rs:5357-5370`).
+
+⟹ **Việc phải làm ở app: đừng để LampNet là bản duy nhất của clip nông dân.** Đo tại chỗ, tình
+trạng hôm nay còn xấu hơn: **cả 8 chỗ quay/chụp đều đặt `saveToPhotos: false`** —
+`TreeVideoScreen.tsx:39`, `FruitVideoScreen.tsx:56`, `AnimalEnrollScreen.tsx:61`,
+`AnimalIdentityScreen.tsx:81`, `CareScanScreen.tsx:51`, `TreeIdentityScreen.tsx:513`,
+`FruitListScreen.tsx:132`, `ActivityScreen.tsx:39` — nghĩa là clip **không bao giờ vào cuộn ảnh
+máy**; nó chỉ là tệp tạm. Rồi `videoUploadQueue.ts:613` xoá bản tạm đó ngay khi tải lên xong.
+
+⟹ Ghép hai đầu lại: **tải lên thành công = nông dân không còn bản nào cả**, trong khi phía kho độ
+bền thật là "sống tới khi cái máy đã nhận nó chết". Đây là đường mất dữ liệu thật, chưa vá, và
+không phải chỗ nào của LampNet — nó nằm trong 8 dòng ở app. **Đề xuất cho v2.0.0: đổi
+`saveToPhotos: true` cho các màn quay video bằng chứng.** Xin chủ dự án gật vì nó động vào quyền
+ghi thư viện ảnh (Android cần `WRITE_EXTERNAL_STORAGE`/scoped storage, iOS cần
+`NSPhotoLibraryAddUsageDescription`) — chưa tự sửa.
 
 ## 4. Neo dữ liệu L1 qua Mosaic — 🟠 Đã dựng xong, chưa có đường cho app gọi
 
@@ -440,6 +490,12 @@ Không có màn đồng ý.
 giữ mảnh **vẫn đọc được nội dung** (mảnh chỉ bị XOR bằng mặt nạ sinh từ hằng số công khai) và tên tệp
 gốc lộ nguyên văn. Join nói rõ: **chưa được phép viết mã** cho §6. Ô đồng ý để trống chờ bản pháp lý.
 
+**📬 LampNet xác nhận 05/08 — và nói mục này còn viết NHẸ hơn thực tế.** Không cần gom đủ k mảnh
+mới đọc được nội dung: `/internal/fetch/:cid` **không có xác thực** (`lampnet-node.rs:1511, 3091`)
+⇒ hỏi thẳng node là có byte. LampNet đã thêm 4 điều kiện chặn mới (10–13) vào `Join-Integration.md
+§6.5`, nâng tổng lên **13 điều kiện, vẫn chưa đạt điều nào**. Giữ nguyên 🔴 và giữ nguyên lệnh
+chưa-được-phép-build.
+
 ## 21. Bấm Join để tính thưởng — 🟠 Hết hỏng im lặng
 
 **Người dùng được gì.** Nông dân bấm "Kết đèn" là máy mình gia nhập mạng lưới và bắt đầu tích thưởng.
@@ -475,6 +531,32 @@ lỗi quyền ⇒ **màn này chưa bao giờ hiện được một con số nà
 **Còn chặn.** Chưa có khoá thiết bị (cần SDK native); sổ `mobile_rewards` **nằm trong bộ nhớ**, mất khi
 daemon khởi động lại; đơn vị thưởng chốt là CARP nhưng lõi đang trả µLAMP; Registry chưa deploy lên
 mạng nào.
+
+**📬 LampNet xác nhận 05/08 — nặng hơn ba bậc so với những gì viết ở trên.** Ngoài "khởi động lại là
+mất", còn ba đường nữa, **không cần khởi động lại, ai cũng làm được** (chi tiết ở
+[issue #50](https://github.com/LampNetCloud/lampnet-hivemind/issues/50)):
+
+- **(a) Hai request ẩn danh xoá sổ thưởng toàn mạng.** `GET /v1/signaling_config` là route công
+  khai không xác thực (`lampnet-node.rs:1489`) và **trả thẳng `api_token`** (`:6965`); token đó
+  chính là thứ `require_bearer_auth` so sánh, nên `POST /v1/mobile/settlement/drain` (`:3618`)
+  chạy `rewards.clear()` (`:8006`). Công của mọi người trả về trong phản hồi HTTP của người gọi
+  rồi biến mất — không ghi đĩa, không neo.
+- **(b) Mọi route "có bearer" của daemon đều mở**, cùng một lý do.
+- **(c) Phát thưởng lặp vô hạn.** `lease_id` tất định theo `(device, ts)` (`mobile_settle.rs:226`),
+  lease mới luôn `claimed: false` (`:269`), `leases.insert` ghi đè không kiểm
+  (`lampnet-node.rs:7815`) ⇒ xin lại lease với đúng `ts` cũ là `claimed` reset, nộp lại y nguyên
+  đáp án cũ, cộng thưởng lần nữa.
+- **(d) Sổ khoá theo `device_pubkey_hex`, không neo DID** ⇒ sinh khoá mới tốn 32 byte. Rào "người
+  thật" dừng ở cửa ứng dụng, không đi vào tầng thưởng.
+
+**LampNet đề nghị cho v2.0.0:** gỡ màn "Đang đóng góp" hoặc dán nhãn "tạm tính, chưa ghi nhận".
+**Đã đối chiếu mã — đề nghị này hôm nay chưa cần thi hành:** `ContributingScreen.tsx:60` đặt cứng
+`setReward(null)`, nên ô "Thưởng tích luỹ" **luôn hiện dấu `—`**, kèm đúng câu "Chưa đo được thưởng
+của máy này… không phải bạn chưa được ghi nhận" (`:188`). Nhánh vừa rồi chỉ thêm **hàm dịch vụ**
+`getDeviceRewards()`, **không** nối vào màn. ⟹ Không có con số nào hiện cho người thật trong bản
+này. **Chốt kỹ thuật: giữ nguyên `setReward(null)` cho tới khi LampNet ghi bền được sổ VÀ sửa đơn
+vị sang CARP.** Ai nối `getDeviceRewards` vào màn trước mốc đó là làm hiện một con số vừa sai đơn
+vị vừa ai cũng xoá được — đã ghi cảnh báo tại chỗ trong mã.
 
 ---
 

@@ -19,8 +19,8 @@ export interface SubTab {
   key: string;
   /** Nhãn tiếng Anh — CHUẨN, hiển thị. */
   en: string;
-  /** Nhãn ngôn ngữ quốc gia — tooltip/accessibility (KHÔNG vẽ). */
-  national: Partial<Record<LangCode, string>>;
+  /** Nhãn ngôn ngữ quốc gia — `Record` đầy đủ, xem lý do ở `NavFrame.national`. */
+  national: Record<LangCode, string>;
   /** Icon Material Community. */
   icon: string;
 }
@@ -31,17 +31,19 @@ export interface SubTab {
 export const SUBHOME_FRAME: Record<string, SubTab[]> = {
   // Chat (proofchat): hiện Chats · Calls · Pins + ⌄(Docs…).
   ProofChatHome: [
-    { key: 'chats', en: 'Chats', national: { vi: 'Trò chuyện' }, icon: 'chat-outline' },
-    { key: 'calls', en: 'Calls', national: { vi: 'Gọi' },        icon: 'phone-outline' },
-    { key: 'pins',  en: 'Pins',  national: { vi: 'Ghim' },       icon: 'pin-outline' },
-    { key: 'docs',  en: 'Docs',  national: { vi: 'Tài liệu' },   icon: 'file-document-outline' },
+    { key: 'chats', en: 'Chats', national: { vi: 'Trò chuyện', zh: '聊天',   ja: 'チャット' }, icon: 'chat-outline' },
+    { key: 'calls', en: 'Calls', national: { vi: 'Gọi',        zh: '通话',   ja: '通話' },     icon: 'phone-outline' },
+    { key: 'pins',  en: 'Pins',  national: { vi: 'Ghim',       zh: '置顶',   ja: 'ピン' },     icon: 'pin-outline' },
+    { key: 'docs',  en: 'Docs',  national: { vi: 'Tài liệu',   zh: '文件',   ja: '書類' },     icon: 'file-document-outline' },
   ],
   // Farm (trace): hiện Garden · Trees · Care + ⌄(Carbon…).
   Farms: [
-    { key: 'garden', en: 'Garden', national: { vi: 'Vườn' },     icon: 'sprout-outline' },
-    { key: 'trees',  en: 'Trees',  national: { vi: 'Cây' },       icon: 'pine-tree' },
-    { key: 'care',   en: 'Care',   national: { vi: 'Chăm sóc' },  icon: 'watering-can' },
-    { key: 'carbon', en: 'Carbon', national: { vi: 'Carbon' },    icon: 'leaf' },
+    { key: 'garden', en: 'Garden', national: { vi: 'Vườn',       zh: '园子',     ja: '園地' },       icon: 'sprout-outline' },
+    { key: 'trees',  en: 'Trees',  national: { vi: 'Cây',        zh: '树木',     ja: '樹木' },       icon: 'pine-tree' },
+    { key: 'care',   en: 'Care',   national: { vi: 'Chăm sóc',   zh: '养护',     ja: '手入れ' },     icon: 'watering-can' },
+    // "Carbon" là thuật ngữ — người dùng cần biết đây là TÍN CHỈ các-bon, không phải
+    // nguyên tố hoá học.
+    { key: 'carbon', en: 'Carbon', national: { vi: 'Tín chỉ',    zh: '碳信用',   ja: 'カーボン' },   icon: 'leaf' },
   ],
 };
 

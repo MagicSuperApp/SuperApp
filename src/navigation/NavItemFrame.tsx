@@ -11,6 +11,7 @@ import * as React from 'react';
 import { View, Text, Image, StyleSheet } from 'react-native';
 import { Icon } from '../components/Icon';
 import { navEn, navNational, navIcon } from './navLabels';
+import { useNationalLanguage } from '../i18n/useNationalLanguage';
 
 export const NAV_FRAME_DIMS = {
   iconSize: 24,
@@ -41,6 +42,10 @@ interface Props {
 }
 
 const NavItemFrame: React.FC<Props> = ({ route, focused, tint, dimTint, avatarUri, initials }) => {
+  // Đăng ký nghe đổi ngôn ngữ: `navNational` chỉ đọc giá trị hiện tại, React không tự
+  // biết nó đổi. Thiếu dòng này thì đổi ngôn ngữ xong thanh dưới vẫn giữ chữ cũ cho tới
+  // khi màn tình cờ vẽ lại — người dùng sẽ bấm đi bấm lại vì tưởng hụt.
+  const lang = useNationalLanguage();
   const color = focused ? tint : dimTint;
   const isAvatarTab = !!avatarUri || !!initials;
   return (
@@ -66,7 +71,7 @@ const NavItemFrame: React.FC<Props> = ({ route, focused, tint, dimTint, avatarUr
         {navEn(route)}
       </Text>
       <Text style={[styles.national, { color }]} numberOfLines={1} maxFontSizeMultiplier={NAV_FONT_SCALE_MAX}>
-        {navNational(route)}
+        {navNational(route, lang)}
       </Text>
     </View>
   );

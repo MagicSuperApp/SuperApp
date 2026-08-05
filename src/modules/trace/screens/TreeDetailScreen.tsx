@@ -286,6 +286,9 @@ const TreeDetailScreen = () => {
   // máy mất ảnh"), gộp thêm ảnh local (treeImageStore) chưa kịp đồng-bộ. Kèm 1 ảnh đang
   // xem phóng to (lightbox).
   const [treeImages, setTreeImages] = useState<string[]>([]);
+  // Câu tiếng Việt máy chủ mô tả đặc điểm nhận dạng của cây (`?describe=1`). Backend
+  // trả sẵn từ lâu (`server.py:3041`) nhưng màn này chưa bao giờ XIN, nên chưa bao giờ vẽ.
+  const [treeFeatures, setTreeFeatures] = useState<string[]>([]);
   const [zoomImage, setZoomImage] = useState<string | null>(null);
   const [videoProofs, setVideoProofs] = useState<VideoProof[]>([]);
 
@@ -306,13 +309,18 @@ const TreeDetailScreen = () => {
     if (!id) return () => { alive = false; };
     // Chạy song song: ảnh server (nguồn thật) + ảnh local (dự-phòng khi mạng lỗi/chưa đồng-bộ).
     Promise.all([
-      fetchTreeViews(ORILIFE_BASE, id).catch(() => null),
+      fetchTreeViews(ORILIFE_BASE, id, { describe: true }).catch(() => null),
       loadTreeImages(id).catch(() => [] as string[]),
     ]).then(([viewsRes, local]) => {
       if (!alive) return;
       const serverImgs = viewsRes?.ok ? treeViewImageUrls(viewsRes.data, ORILIFE_BASE) : [];
       // Server trước (ưu-tiên hiển-thị), rồi ảnh local chưa có trên server. Khử trùng theo URI.
       setTreeImages(Array.from(new Set([...serverImgs, ...(local ?? [])])));
+      const feats = (viewsRes?.ok ? viewsRes.data?.views ?? [] : [])
+        .flatMap(v => v.features_vi ?? [])
+        .map(t => t.trim())
+        .filter(Boolean);
+      setTreeFeatures(Array.from(new Set(feats)).slice(0, 8));
     });
     return () => { alive = false; };
   }, [tree?.id]);
@@ -621,6 +629,14 @@ const TreeDetailScreen = () => {
               </TouchableOpacity>
             ))}
           </ScrollView>
+          {treeFeatures.length > 0 && (
+            <View style={styles.featuresBox}>
+              <Text style={styles.featuresTitle}>Máy nhận ra cây này nhờ</Text>
+              {treeFeatures.map((f, i) => (
+                <Text key={`f${i}`} style={styles.featuresLine}>• {f}</Text>
+              ))}
+            </View>
+          )}
         </View>
       )}
 
@@ -1149,6 +1165,12 @@ const styles = StyleSheet.create({
   heroStatLabel: { fontSize: 10, color: COLORS.textMuted, textAlign: 'center' },
 
   photoStripWrap: { marginBottom: 14, gap: 8 },
+  featuresBox: {
+    marginTop: 2, paddingHorizontal: 12, paddingVertical: 10,
+    backgroundColor: '#f1f8e9', borderRadius: 12, borderWidth: 1, borderColor: '#dcedc8', gap: 3,
+  },
+  featuresTitle: { fontSize: 12, fontWeight: '700', color: '#33691e', marginBottom: 2 },
+  featuresLine: { fontSize: 12.5, color: '#33691e', lineHeight: 18 },
   photoStripHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   treeVideoBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,

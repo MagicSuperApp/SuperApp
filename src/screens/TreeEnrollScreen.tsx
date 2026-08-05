@@ -854,6 +854,35 @@ const TreeEnrollScreen: React.FC = () => {
                   ⚠ {enrollResult.dup_suspect.message_vi}
                 </Text>
               )}
+              {/* Máy chủ đã tính sẵn 4 câu dưới đây (server.py:1900-1927) mà app
+                  bỏ phí. Đây là chỗ nông dân biết mình còn phải đi vòng phía nào —
+                  không có nó thì họ chụp mò rồi bị loại ảnh mà không hiểu vì sao. */}
+              {enrollResult.views_dropped_dup != null && enrollResult.views_dropped_dup > 0 && (
+                <Text style={styles.successNote}>
+                  {enrollResult.views_dropped_dup} góc trùng với góc đã có nên không lưu thêm.
+                </Text>
+              )}
+              {!!enrollResult.coverage_hint_vi && (
+                <Text style={styles.successHint}>{enrollResult.coverage_hint_vi}</Text>
+              )}
+              {(enrollResult.quality_warnings ?? [])
+                .map(w => w?.message_vi)
+                .filter((m): m is string => !!m)
+                .map((m, i) => (
+                  <Text key={`q${i}`} style={styles.successDupWarn}>⚠ {m}</Text>
+                ))}
+              {(enrollResult.region_warnings ?? [])
+                .map(w => w?.message_vi)
+                .filter((m): m is string => !!m)
+                .map((m, i) => (
+                  <Text key={`r${i}`} style={styles.successDupWarn}>⚠ {m}</Text>
+                ))}
+              {enrollResult.farm_dropped === true && (
+                <Text style={styles.successDupWarn}>
+                  ⚠ Cây đã đăng ký nhưng CHƯA gắn được vào vườn đang chọn. Hãy mở
+                  danh sách cây của vườn để kiểm lại, đừng đăng ký lại lần nữa.
+                </Text>
+              )}
             </View>
           </View>
         )}
@@ -1176,6 +1205,8 @@ const styles = StyleSheet.create({
   successViews: { fontSize: 12, color: '#388e3c', marginTop: 1 },
   // Cảnh-báo NHẸ (cam, không đỏ): cây vẫn đăng ký được, chỉ nhắc đối chiếu.
   successDupWarn: { fontSize: 12, color: '#e65100', marginTop: 4, lineHeight: 17 },
+  successNote: { fontSize: 12, color: NEUTRAL.textSub, marginTop: 4, lineHeight: 17 },
+  successHint: { fontSize: 12.5, color: '#1b5e20', fontWeight: '600', marginTop: 4, lineHeight: 18 },
 
   footer: {
     flexDirection: 'row',

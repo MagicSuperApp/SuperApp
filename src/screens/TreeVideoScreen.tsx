@@ -20,7 +20,9 @@ import { COLORS } from '../constants';
 import { NEUTRAL } from '../shared/theme';
 import { ORILIFE_BASE } from '../services/orilifeBase';
 import { ensureOrilifeToken } from '../services/orilifeDidAuth';
+import Clipboard from '@react-native-clipboard/clipboard';
 import { getTrees, type TreeInfo } from '../services/treeReIDService';
+import { appendVideoProof } from '../services/videoProofStore';
 import {
   uploadTreeVideo, MAX_TREE_VIDEO_BYTES, type TreeVideoResult,
 } from '../services/treeVideoService';
@@ -129,6 +131,22 @@ const TreeVideoScreen: React.FC = () => {
         });
       }
       if (res.ok) {
+        // GHI BẰNG CHỨNG TRƯỚC KHI VẼ. LampNet không có đường tra ngược CID theo cây
+        // (`/v1/documents` đánh theo doc_type và GHI ĐÈ), nên mã này không app giữ thì
+        // mất vĩnh viễn. Video quả đã làm đúng từ đợt trước; video cây thì chưa — đội đi
+        // cả ngày, sau buổi không đối chiếu được clip nào.
+        if (res.video_cid) {
+          await appendVideoProof(selectedTreeId, {
+            videoCid: res.video_cid,
+            kind: 'tree',
+            at: new Date().toISOString(),
+            eventId: res.event_id,
+            nFrames: res.n_kept,
+            stored: res.stored,
+            lat: gps?.lat,
+            lon: gps?.lon,
+          }).catch(() => undefined);
+        }
         setResult(res);
       } else if (res.error?.type === 'no_usable_frames') {
         // 422 — clip đọc được nhưng không khung đẹp: hướng-dẫn quay lại, KHÔNG coi là lỗi hệ-thống.
@@ -176,9 +194,33 @@ const TreeVideoScreen: React.FC = () => {
               ? 'Cây sẽ được nhận diện chắc hơn ở những góc này.'
               : 'Các khung chưa khớp đúng cây này. Hãy quay gần cây hơn, chỉ một cây trong khung, đủ sáng.'}
           </Text>
-          {savedToLampNet && (
+          {/* Đội thực địa phải THẤY mã lưu trữ để đối chiếu sau buổi, không chỉ tin
+              một dòng chữ "đã lưu" — giống màn video quả. Chạm để sao chép. */}
+          {!!result.video_cid && (
+            <TouchableOpacity
+              style={styles.cidBox}
+              activeOpacity={0.7}
+              onPress={() => {
+                Clipboard.setString(result.video_cid!);
+                Alert.alert('Đã sao chép', 'Mã lưu trữ đã vào bộ nhớ tạm.');
+              }}
+            >
+              <Icon name="shield-check" size={15} color="#1b5e20" />
+              <Text style={styles.cidText} numberOfLines={1}>
+                Đã lưu lên mạng LampNet · {result.video_cid}
+              </Text>
+              <Icon name="content-copy" size={14} color={NEUTRAL.textSub} />
+            </TouchableOpacity>
+          )}
+          {savedToLampNet && !result.video_cid && (
             <Text style={styles.resultEvidence}>
               ✓ Video đã được lưu làm bằng chứng cho cây.
+            </Text>
+          )}
+          {result.stored === false && (
+            <Text style={styles.resultWarn}>
+              Máy chủ nhận được video nhưng CHƯA lưu được lên LampNet. Giữ lại clip
+              trong máy và báo đội kỹ thuật — đừng xoá.
             </Text>
           )}
           {(result.n_rejected ?? 0) > 0 && (
@@ -366,6 +408,12 @@ const styles = StyleSheet.create({
   resultSub: { fontSize: 14, color: NEUTRAL.textSub, textAlign: 'center' },
   resultWarn: { fontSize: 12.5, color: '#e65100', textAlign: 'center' },
   resultEvidence: { fontSize: 13, color: '#2e7d32', fontWeight: '600', textAlign: 'center' },
+  cidBox: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'stretch',
+    borderWidth: 1, borderColor: '#c8e6c9', backgroundColor: '#f1f8e9',
+    borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, marginTop: 4,
+  },
+  cidText: { flex: 1, fontSize: 13, color: '#1b5e20', fontWeight: '600' },
   ghostBtn: { paddingVertical: 12, marginTop: 4 },
   ghostBtnText: { color: NEUTRAL.textSub, fontSize: 15, fontWeight: '600' },
 });

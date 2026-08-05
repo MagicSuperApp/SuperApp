@@ -95,6 +95,24 @@ export interface EnrollResponse {
     resolved_by?: string;
     message_vi?: string;
   };
+  /**
+   * Số góc máy chủ GIỮ sau khi lọc, và số góc bị bỏ vì trùng với góc đã có
+   * (`server.py:1900`). Khác `n_views_added` ở chỗ nó nói cho nông dân biết
+   * công đi vòng quanh cây có được ăn hay không.
+   */
+  views_kept?: number;
+  views_dropped_dup?: number;
+  /** Câu tiếng Việt: CÒN THIẾU góc nào (`server.py:1902`). Thứ nông dân cần nhất. */
+  coverage_hint_vi?: string;
+  /** Ảnh bị loại vì mờ/thiếu sáng — mỗi mục có câu giải thích tiếng Việt. */
+  quality_warnings?: Array<{ message_vi?: string }>;
+  /** Vùng ảnh chưa đạt (thân/lá/tán…). */
+  region_warnings?: Array<{ message_vi?: string }>;
+  /**
+   * Cây bị rơi khỏi vườn đang chọn. Nếu nuốt trường này thì cây biến mất khỏi vườn
+   * mà không ai được báo — người dùng tưởng đăng ký hỏng và làm lại từ đầu.
+   */
+  farm_dropped?: boolean;
   provenance?: {
     code?: string;
     has3d?: boolean;

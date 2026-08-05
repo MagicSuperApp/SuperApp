@@ -1,8 +1,8 @@
 diff --git a/node_modules/expo/ios/AppDelegates/ExpoReactNativeFactory.mm b/node_modules/expo/ios/AppDelegates/ExpoReactNativeFactory.mm
-index 8dec877..9c88776 100644
+index 8dec877..df7c55c 100644
 --- a/node_modules/expo/ios/AppDelegates/ExpoReactNativeFactory.mm
 +++ b/node_modules/expo/ios/AppDelegates/ExpoReactNativeFactory.mm
-@@ -28,13 +28,17 @@
+@@ -28,13 +28,21 @@
  
  #pragma mark - RCTHostDelegate
  
@@ -17,7 +17,12 @@ index 8dec877..9c88776 100644
 +// tảng an toàn (RN 0.85 set trùng cùng giá trị = vô hại; gỡ patch khi bump lên 0.85).
  - (void)hostDidStart:(nonnull RCTHost *)host
  {
-   host.runtimeDelegate = self;
+-  host.runtimeDelegate = self;
++  // Ép kiểu: EXReactNativeFactory CÓ implement -host:didInitializeRuntime: (bên dưới)
++  // nhưng interface (.h) KHÔNG khai báo conform RCTHostRuntimeDelegate trên RN 0.84.1
++  // → assign trực-tiếp báo lỗi type. Cast để qua type-check; runtime dispatch method
++  // vẫn đúng (property + callback CÓ trong RCTHost.h của RN 0.84.1).
++  host.runtimeDelegate = (id<RCTHostRuntimeDelegate>)self;
  }
 -#endif
  

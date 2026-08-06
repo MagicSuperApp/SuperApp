@@ -78,7 +78,7 @@ const CAMERA_OPTIONS = {
   quality: 0.85,
   maxWidth: 1280,
   maxHeight: 1280,
-  saveToPhotos: false,
+  saveToPhotos: true,
   includeBase64: false,
 };
 

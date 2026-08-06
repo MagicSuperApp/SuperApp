@@ -46,6 +46,19 @@ export interface FruitDetection {
   fruits: VideoFruit[];
 }
 
+/** Lý do lưu trữ do OriLife trả kèm `stored` (bảng ở `FruitVideoResult.store_reason`). */
+export type StoreReason =
+  | 'lampnet_unreachable'
+  | 'lampnet_disabled'
+  | 'lampnet_rejected'
+  | 'empty_file'
+  | null;
+
+/** Gửi lại có ích không? `lampnet_disabled` / `empty_file` thì gửi lại chỉ đốt pin. */
+export function isRetryableStoreReason(r: StoreReason | undefined): boolean {
+  return r !== 'lampnet_disabled' && r !== 'empty_file';
+}
+
 export interface FruitVideoResult {
   ok: boolean;
   /** Số khung server chắt được từ clip. */
@@ -61,6 +74,22 @@ export interface FruitVideoResult {
   link_status?: string;
   /** false nếu LampNet lỗi (byte gốc chưa lưu được) — server vẫn trả 200. */
   stored?: boolean;
+  /**
+   * LÝ DO của `stored`, OriLife kèm ở MỌI nhánh (PR OriLife-Core #274).
+   *
+   * Tên là `store_reason` chứ KHÔNG phải `reason`, và đó là cố ý của bên OriLife:
+   * `reason` trong cùng phản hồi đã mang nghĩa khác — phán quyết của engine về việc
+   * khung có được gộp vào cây không. Dùng chung tên là đọc phán quyết engine mà tưởng
+   * là lý do lưu trữ, một giá trị hợp lệ của nghĩa sai, không có cách nào biết mình
+   * đọc nhầm. Vậy nên ở phía app cũng KHÔNG đặt biến trung gian tên `reason`.
+   *
+   *   null                  đã lưu
+   *   'lampnet_unreachable' đẩy hỏng (mạng/kho/token) — gửi lại CÓ ích
+   *   'lampnet_disabled'    LAMPNET_ENABLED=0, CID là GIẢ — gửi lại VÔ ích
+   *   'lampnet_rejected'    kho trả về nhưng tự khai chưa lưu — đừng lặp vô hạn
+   *   'empty_file'          tệp 0 byte (422) — lỗi phía app, xem lại đường ghi tệp tạm
+   */
+  store_reason?: StoreReason;
   error?: { type: string; detail: string; http_status: number };
 }
 
@@ -146,7 +175,13 @@ export async function uploadFruitVideo(
       video_cid: body?.video_cid,
       event_id: body?.event_id,
       link_status: body?.link_status ?? 'unconfirmed',
-      stored: body?.stored ?? true,
+      // KHÔNG mặc định `true`. Mặc định `true` nghĩa là "máy chủ không nói gì thì coi
+      // như đã lưu", và hàng đợi đọc cờ này để quyết định XOÁ bản sao clip — nên một
+      // bản máy chủ cũ (hoặc một nhánh trả thiếu trường) là đủ để xoá bằng chứng của
+      // nông dân mà không ai thấy lỗi. Để `undefined` thì hàng đợi vẫn coi là gửi
+      // xong nhưng GIỮ bản sao lại.
+      stored: body?.stored,
+      store_reason: body?.store_reason ?? null,
     };
   } catch (e: any) {
     clearTimeout(timeout);

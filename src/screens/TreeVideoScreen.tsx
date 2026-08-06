@@ -36,7 +36,14 @@ const VIDEO_OPTIONS = {
   mediaType: 'video' as const,
   videoQuality: 'medium' as const, // server downscale khung → medium đủ, nằm gọn dưới 20MB
   durationLimit: 15,               // ≤ 15s — cây đứng yên, đi vòng chậm là đủ góc
-  saveToPhotos: false,
+  // GIỮ BẢN GỐC TRONG MÁY (anh Aladin chốt 06/08). Trước đây `false`: clip chỉ là tệp
+  // TẠM, rồi `videoUploadQueue.ts` xoá bản tạm ngay khi gửi xong ⇒ gửi thành công là
+  // nông dân KHÔNG CÒN BẢN NÀO. Mà LampNet ở chế độ mặc định giữ toàn bộ mảnh nguồn
+  // trên ĐÚNG một máy và vòng sửa chữa không tái sinh mảnh đã mất, nên "đã đưa vào hệ
+  // phân tán" hiện chưa đồng nghĩa với "đã bền". Bản trong cuộn ảnh là chỗ dựa cho tới
+  // khi tầng dưới bền thật. Quyền đã khai sẵn: Info.plist NSPhotoLibraryAddUsageDescription,
+  // AndroidManifest WRITE_EXTERNAL_STORAGE — không phải xin thêm quyền nào.
+  saveToPhotos: true,
 };
 
 type ParamList = { TreeVideo: { treeId?: string; treeName?: string; farmId?: string } };

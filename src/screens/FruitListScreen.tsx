@@ -129,7 +129,7 @@ const FruitListScreen: React.FC = () => {
   // (asset.width/height đã theo maxWidth/maxHeight) → map-ngược vùng khung chuẩn.
   // `forFruitId` có → mở cropper ở chế độ THÊM GÓC cho quả đó.
   const openCropper = useCallback(async (fromCamera: boolean, forFruitId?: string, forFruitName?: string) => {
-    const opts: CameraOptions = { mediaType: 'photo', quality: 0.8, maxWidth: 1600, maxHeight: 1600, saveToPhotos: false };
+    const opts: CameraOptions = { mediaType: 'photo', quality: 0.8, maxWidth: 1600, maxHeight: 1600, saveToPhotos: true };
     const cb = (res: any) => {
       if (res.didCancel) return;
       if (res.errorCode) { Alert.alert('Lỗi ảnh', res.errorMessage || 'Không lấy được ảnh.'); return; }

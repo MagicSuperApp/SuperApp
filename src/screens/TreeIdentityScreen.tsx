@@ -510,7 +510,7 @@ const TreeIdentityScreen: React.FC = () => {
         quality: 0.8,
         maxWidth: 1280,
         maxHeight: 1280,
-        saveToPhotos: false,
+        saveToPhotos: true,
       });
       if (res.didCancel) return;
       if (res.errorCode) {

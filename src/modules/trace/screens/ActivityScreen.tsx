@@ -36,7 +36,7 @@ const VIDEO_OPTIONS = {
   mediaType: 'video' as const,
   videoQuality: 'high' as const,
   durationLimit: 30,
-  saveToPhotos: false,
+  saveToPhotos: true,
 };
 
 // Nhận cả {farm} (caller cũ FarmDetail) lẫn {tree} (caller TreeDetail). Trước đây

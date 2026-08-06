@@ -53,7 +53,7 @@ const VIDEO_OPTIONS = {
   mediaType: 'video' as const,
   videoQuality: 'high' as const,
   durationLimit: 20,          // ≤ 20s (spec) — clip ngắn, dung-lượng vừa
-  saveToPhotos: false,
+  saveToPhotos: true,
 };
 
 type ParamList = { FruitVideo: { treeId?: string; treeName?: string; farmId?: string } };

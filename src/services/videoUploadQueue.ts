@@ -63,7 +63,11 @@ const FileSystem = (): FileSystemLegacy | null => {
 };
 import { ORILIFE_BASE } from './orilifeBase';
 import { ensureOrilifeToken } from './orilifeDidAuth';
-import { uploadFruitVideo, type FruitVideoResult } from './fruitVideoService';
+import {
+  uploadFruitVideo,
+  isRetryableStoreReason,
+  type FruitVideoResult,
+} from './fruitVideoService';
 import { appendVideoProof, type VideoProof } from './videoProofStore';
 
 const QUEUE_KEY = '@aladin/videoUploadQueue/v1';
@@ -602,6 +606,16 @@ async function tryOne(
   }
 
   // Gửi xong VÀ byte đã lên LampNet.
+  //
+  // ⚠ `stored` là cờ QUYẾT ĐỊNH, và nó có thể VẮNG. `fruitVideoService` đọc
+  // `body?.stored ?? true`, nên máy chủ nào không trả trường này sẽ được coi là "đã
+  // lưu" — rồi khối dưới xoá bản sao. Đó là đường mất bằng chứng im lặng nhất trong
+  // dây: không lỗi, không cảnh báo, chỉ là một clip biến mất.
+  //
+  // Nay đã đỡ hai lớp: (1) mọi màn quay đặt `saveToPhotos: true` nên bản gốc còn nằm
+  // trong cuộn ảnh máy; (2) OriLife (PR OriLife-Core #274) kèm `store_reason` ở MỌI
+  // nhánh trả `stored`, nên phân biệt được "kho lỗi, gửi lại có ích" với
+  // "LAMPNET_ENABLED=0, CID là GIẢ, gửi lại vô nghĩa".
   if (res.ok && res.stored !== false) {
     if (res.video_cid) {
       await deps.onProof(job.treeId, {
@@ -621,20 +635,31 @@ async function tryOne(
         lon: job.lon,
       });
     }
-    if (job.managedCopy) await deps.deleteFile(job.videoUri);
+    // Chỉ xoá bản sao khi máy chủ NÓI RÕ đã lưu. `undefined` không còn được coi là
+    // "đã lưu" ở đây nữa: máy chủ im lặng thì giữ bản sao lại: tốn ít dung lượng còn
+    // hơn mất một ngày công đi vườn.
+    if (job.managedCopy && res.stored === true) await deps.deleteFile(job.videoUri);
     return { done: true };
   }
 
   // Chưa xong: server nhận nhưng stored===false, hoặc lỗi mạng/quyền.
   const attempts = job.attempts + 1;
   const lastError = res.ok
-    ? 'stored=false (byte chưa lên LampNet)'
+    ? `stored=false (byte chưa lên LampNet)${res.store_reason ? ` · ${res.store_reason}` : ''}`
     : (res.error?.detail ?? 'Gửi thất bại');
+
+  // Có lý do mà gửi lại KHÔNG cứu được thì dừng thử ngay, đừng đợi hết 5 lượt:
+  // `lampnet_disabled` nghĩa là kho đang tắt và CID vừa nhận là GIẢ — thử lại chỉ đốt
+  // pin và dữ liệu di động của nông dân giữa vườn, mà bản chất là việc của người trực
+  // máy chủ. `empty_file` là tệp 0 byte, tức lỗi đường ghi tệp tạm ở phía app; gửi lại
+  // cùng một tệp rỗng thì lần nào cũng rỗng. Cả hai đều GIỮ bản sao clip.
+  const hopeless = res.ok && !isRetryableStoreReason(res.store_reason);
+
   const updated: VideoUploadJob = {
     ...job,
     attempts,
     lastError,
-    needsManual: attempts >= MAX_ATTEMPTS,
+    needsManual: hopeless || attempts >= MAX_ATTEMPTS,
   };
   return { done: false, job: updated };
 }

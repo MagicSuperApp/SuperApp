@@ -174,6 +174,53 @@ describe('flush — thất bại giữ lại', () => {
     expect(deps.onProof).not.toHaveBeenCalled();
     expect(deps.deleteFile).not.toHaveBeenCalled();
   });
+
+  // Đây là đường mất bằng chứng im lặng nhất của cả dây: máy chủ KHÔNG nói gì về
+  // `stored` thì trước đây `fruitVideoService` điền hộ `true`, và khối thành công xoá
+  // bản sao clip. Không lỗi, không cảnh báo — chỉ là clip biến mất.
+  it('stored VẮNG → vẫn ghi bằng chứng nhưng GIỮ bản sao, không xoá', async () => {
+    await enqueueVideoUpload({ treeId: 't1', videoUri: 'file:///cache/c.mp4', kind: 'fruit' });
+    const deps = makeDeps({
+      upload: jest.fn(async () => ({ ok: true, video_cid: 'cid-im-lang' } as FruitVideoResult)),
+    });
+    const r = await flushVideoUploadQueue(deps);
+    expect(r.sent).toBe(1);
+    expect(deps.onProof).toHaveBeenCalledTimes(1);
+    expect(deps.deleteFile).not.toHaveBeenCalled();
+  });
+
+  it('lampnet_disabled → dừng thử ngay (CID là giả, gửi lại chỉ đốt pin giữa vườn)', async () => {
+    await enqueueVideoUpload({ treeId: 't1', videoUri: 'file:///cache/c.mp4', kind: 'fruit' });
+    const deps = makeDeps({
+      upload: jest.fn(async () =>
+        ({
+          ok: true,
+          stored: false,
+          store_reason: 'lampnet_disabled',
+          video_cid: 'local_deadbeef_c.mp4',
+        }) as FruitVideoResult,
+      ),
+    });
+    await flushVideoUploadQueue(deps);
+    const q = await loadVideoQueue();
+    expect(q[0].attempts).toBe(1);
+    expect(q[0].needsManual).toBe(true); // KHÔNG đợi hết 5 lượt
+    expect(q[0].lastError).toContain('lampnet_disabled');
+    expect(deps.deleteFile).not.toHaveBeenCalled();
+  });
+
+  it('lampnet_unreachable → vẫn thử lại như thường (mạng/kho lỗi, gửi lại có ích)', async () => {
+    await enqueueVideoUpload({ treeId: 't1', videoUri: 'file:///cache/c.mp4', kind: 'fruit' });
+    const deps = makeDeps({
+      upload: jest.fn(async () =>
+        ({ ok: true, stored: false, store_reason: 'lampnet_unreachable' }) as FruitVideoResult,
+      ),
+    });
+    await flushVideoUploadQueue(deps);
+    const q = await loadVideoQueue();
+    expect(q[0].attempts).toBe(1);
+    expect(q[0].needsManual).toBe(false);
+  });
 });
 
 describe('cap attempts', () => {

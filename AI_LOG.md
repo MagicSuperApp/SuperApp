@@ -5,6 +5,60 @@
 
 ---
 
+## Màn Đăng nhập: gộp 2 nút sinh trắc thành MỘT nút tròn chỉ-icon
+
+`src/screens/LoginScreen.tsx` — trước có 2 thẻ "Khuôn mặt" / "Vân tay" đặt cạnh nhau, mỗi thẻ có icon + tiêu đề + phụ đề. Nay còn **một nút tròn, không chữ**, icon đổi theo cảm biến của máy: Face ID → `face-recognition` · Touch ID → `fingerprint` · còn lại (Android `Biometrics`, hoặc lúc chưa dò xong) → `shield-lock-outline`.
+
+**Vì sao gộp được:** hai nút cũ chỉ khác nhau ở phần hiển thị. Cả hai gọi cùng `rn.simplePrompt()` rồi `phoenixKeyAuth.unlockExistingIdentity()` — `unlockExistingIdentity()` **không nhận tham số**, nên `kind` (`'face'`/`'fingerprint'`) chưa bao giờ đổi hành vi xác thực; nó chỉ chọn nút nào sáng lên và tên sự kiện analytics. Hộp thoại sinh trắc là do HỆ ĐIỀU HÀNH vẽ, người dùng không thật sự "chọn" mặt hay vân tay — thiết bị đã quyết định sẵn. Logic xác thực giữ nguyên 100%.
+
+**Vì sao không "làm cho nó thật" được** — giới hạn nền tảng, không phải thiếu công sức. iOS: mỗi máy chỉ có MỘT loại (Face ID **hoặc** Touch ID), không có gì để chọn. Android: `BiometricPrompt` chọn theo **độ mạnh** (`BIOMETRIC_STRONG`/`WEAK`), cố ý không cho ứng dụng ép người dùng dùng bộ phận cơ thể nào. Hai nút kia không thể thành thật — chỉ có thể thôi hứa.
+
+### `biometricKindFromType()` — một nguồn duy nhất, suy từ CẢM BIẾN chứ không từ NÚT
+Thêm ở `src/services/phoenixKeyAuthService.ts` (cạnh `type BiometricKind`, giữ nguyên type). `FaceID → 'face'` · `TouchID → 'fingerprint'` · còn lại (kể cả `Biometrics` và lúc chưa dò xong) `→ 'strong'`.
+
+Ba nơi từng tự suy, nay dùng chung:
+| file | trước | vấn đề |
+|---|---|---|
+| `LoginScreen` | từ nút người dùng bấm | đếm một lựa chọn không tồn tại |
+| `SignUpBiometricScreen:152` | `hasFaceId ? 'face' : 'fingerprint'` | **máy Android chỉ báo `Biometrics` bị gán nhầm `'fingerprint'`** (đúng ra `'strong'`) → nhãn khoá sai so với thứ đã xảy ra |
+| `TreeIdentityScreen:548` | ternary tay, đã đúng | bản sao trùng lặp |
+
+### `biometric_did_map`: một DID = MỘT bản ghi
+`BiometricSettings.tsx` trước ghi `map.face = did; map.fingerprint = did;` — bật một cái là bật cả hai, vì chúng chưa bao giờ là hai thứ. Nay ghi **một khoá**, đặt theo cảm biến thật, kèm dọn khoá loại khác cùng trỏ về DID đó. Cùng cách dọn (`pruneOtherKindsForDid`) áp cho `persistLegacyStores` + `migrateLegacyDidStores` trong service.
+
+**Máy cài từ bản cũ KHÔNG phải bật lại:** đường đọc quét theo **giá trị** (`Object.values(map).includes(did)`), không theo tên khoá — bản ghi `face`/`fingerprint` cũ vẫn được nhận là "đã bật". Chỉ phía GHI mới gộp.
+
+### Bốn trạng thái của nút, kể cả trạng thái không có cảm biến
+| `biometryType` | icon | `accessibilityLabel` |
+|---|---|---|
+| `FaceID` | `face-recognition` | Đăng nhập bằng khuôn mặt |
+| `TouchID` | `fingerprint` | Đăng nhập bằng vân tay |
+| `Biometrics` | `shield-lock-outline` | Đăng nhập bằng sinh trắc học |
+| không có | `fingerprint-off` | **nút TẮT** + câu chỉ đường, chạm mở `Linking.openSettings()` |
+
+`sensorAvailable` đổi `boolean` → **`boolean \| null`**: `null` = chưa dò xong. Thiếu phân biệt này thì nút loé sang trạng thái tắt trong mấy khung hình đầu mỗi lần mở màn. `noSensor` chỉ đúng khi `=== false`.
+
+Nhánh `else { showError('Thiết bị chưa hỗ trợ sinh trắc học…') }` trong `runBiometric` **xoá hẳn** — `tsc` chứng minh nó không tới được nữa (`noSensor` đã chặn ở đầu hàm và nút cũng đã tắt). Lúc `null` thì vẫn gọi `simplePrompt()`: hệ điều hành mới là bên phán quyết cuối, không phải kết quả dò của ta.
+
+### Analytics đổi khuôn — cập nhật dashboard nếu có báo cáo bám tên cũ
+`biometric_face_button` + `biometric_fingerprint_button` → gộp thành **`biometric_button`**, kèm `metadata.kind` (suy từ cảm biến) và `metadata.biometryType`. Áp cho cả `login_success`. Số liệu cũ **đang đếm nút được bấm**, không đếm thứ đã xảy ra. Thêm sự kiện `open_device_settings`.
+
+### i18n
+Nút không chữ ⇒ `accessibilityLabel` là thứ DUY NHẤT trình đọc màn hình đọc được. Prop chuỗi không đi qua `<Text>` nên lớp tự dịch không với tới — phải gọi `t()` tay. Thêm `'Đăng nhập bằng sinh trắc học'` + `'Bật Face ID hoặc vân tay trong Cài đặt máy để đăng nhập'` (đủ `en`/`zh`/`ja`) vào `phrases/navigation.ts`; `'Đăng nhập bằng khuôn mặt'`/`'Đăng nhập bằng vân tay'` đã nằm sẵn trong từ điển nhưng **chưa từng được dùng**, nay mới thật sự chạy. Gỡ `'Quét khuôn mặt'`/`'Quét vân tay'` — chỉ là phụ đề của 2 nút cũ.
+
+### Chi tiết UI
+**Kích thước co theo màn, chặn hai đầu:** `BIO_BTN_SIZE = clamp(SCREEN_W * 0.24, 84, 108)`, icon `= 44%` đường kính. Máy nhỏ vẫn quá vùng chạm 44pt, tablet không phình thành cái đĩa.
+
+**Trạng thái "đang xác thực" bỏ dòng chữ, thay bằng vòng sóng lan toả** (`bioPulseRing`, scale 1→1.6 · opacity 0.45→0) để nút thuần icon. Vòng nằm **dưới** nút nhờ `elevation: 8` của nút — trên Android thứ tự JSX không quyết định lớp vẽ, `elevation` mới quyết định.
+
+Đã dọn: state `busyKind: BiometricKind | null` → `busy: boolean`, `isGenericBiometric`, 8 style `bioGrid`/`bioIconOuter`/`bioIconWrap`/`bioTitle`/`bioSub`/`bioBusy`…, import `BiometryTypes` thừa ở `TreeIdentityScreen`. Sửa kèm: `useEffect` của pulse thiếu cleanup nên `Animated.loop` chạy tiếp sau khi unmount.
+
+`tsc --noEmit` sạch · **749/750 test xanh** (`treeModels.test.ts` đỏ **sẵn từ trước**, đã kiểm bằng cách stash — không liên quan sinh trắc học) · eslint không thêm lỗi mới.
+
+> **Chưa làm, thuộc issue khác:** lỗi bảo mật ở issue đăng nhập sinh trắc học (cùng file, cùng hàm `runBiometric`) — theo yêu cầu phải xong TRƯỚC lần gộp UI này. Chưa có mô tả lỗi đó nên không đụng vào.
+>
+> Sẵn có từ trước, **không** đụng tới: `ACCENT_ORANGE` (`LoginScreen.tsx:65`) là hằng chết; các catch-param `error` không dùng ở `BiometricSettings` — đều bị eslint báo đỏ nhưng nằm ngoài phạm vi.
+
 ## Module TRACE đổi sang bộ icon Iconify (fa6-solid): 79 → 140 icon, bỏ hẳn MaterialCommunityIcons
 
 Toàn bộ 9 file của `src/modules/trace` (Dashboard · FarmList · FarmDetail · TreeDetail · TreeMetadataTab · Activity · CommonPopup · PaginationControls · VoiceMemoButton) nay dùng `components/Icon` thay `react-native-vector-icons/MaterialCommunityIcons`.

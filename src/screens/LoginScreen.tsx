@@ -5,7 +5,7 @@
 //   │  HERO blue + blob circles  │  ← branding + tiêu đề
 //   ├────────────────────────────┤
 //   │  Sheet trắng (uốn cong)     │
-//   │  • 2 nút biometric          │
+//   │  • 1 nút biometric (tròn)   │
 //   │  • DID note                  │
 //   │  • Sự kiện / tin tức         │
 //   └────────────────────────────┘
@@ -23,6 +23,7 @@ import {
   ScrollView,
   Easing,
   Image,
+  Linking,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useDispatch } from 'react-redux';
@@ -31,7 +32,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import ReactNativeBiometrics, { BiometryTypes } from 'react-native-biometrics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS } from '../constants';
-import { BiometricKind, phoenixKeyAuth } from '../services/phoenixKeyAuthService';
+import { biometricKindFromType, phoenixKeyAuth } from '../services/phoenixKeyAuthService';
 import { isAvailable as isPhoenixKeyAvailable } from '../services/phoenixKey-native';
 import { loginUser } from '../store/userSlice';
 import { showError } from '../utils/alert';
@@ -52,14 +53,14 @@ const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
 // Aladin brand palette (xanh lá đậm + cam accent) — đồng bộ với app icon
 const BLUE = {
-  deep:    '#1F5C2A',
+  deep: '#1F5C2A',
   primary: '#2B7A39',
-  mid:     '#3D9248',
-  light:   '#7DBD89',
-  pale:    '#C8E3CE',
-  white:   '#FFFFFF',
-  glow:    'rgba(168, 212, 176, 0.35)',
-  glowSoft:'rgba(232, 245, 235, 0.45)',
+  mid: '#3D9248',
+  light: '#7DBD89',
+  pale: '#C8E3CE',
+  white: '#FFFFFF',
+  glow: 'rgba(168, 212, 176, 0.35)',
+  glowSoft: 'rgba(232, 245, 235, 0.45)',
 };
 const ACCENT_ORANGE = '#E08C3A';
 
@@ -107,8 +108,10 @@ const LoginScreen = () => {
   const { trackPress, trackAction } = useAnalytics('LoginScreen');
 
   const [biometryType, setBiometryType] = useState<string>('');
-  const [sensorAvailable, setSensorAvailable] = useState(false);
-  const [busyKind, setBusyKind] = useState<BiometricKind | null>(null);
+  // `null` = CHƯA dò xong. Phân biệt với `false` (dò xong, máy không có cảm biến)
+  // để nút không loé sang trạng thái tắt trong mấy khung hình đầu.
+  const [sensorAvailable, setSensorAvailable] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
   // Overlay hiệu ứng logo chớp mắt khi đăng nhập thành công (trước khi vào Main).
   const [showSuccess, setShowSuccess] = useState(false);
   const [activeUser, setActiveUser] = useState<PhoenixUserEntry | null>(null);
@@ -192,30 +195,61 @@ const LoginScreen = () => {
     })();
   }, [fadeAnim, slideAnim, blob1, blob2, blob3]);
 
-  const runBiometric = async (kind: BiometricKind) => {
-    if (busyKind) return;
+  const hasFaceId = biometryType === BiometryTypes.FaceID;
+  const hasTouchId = biometryType === BiometryTypes.TouchID;
+  // Đã dò XONG và máy không có cảm biến nào dùng được. `null` (chưa dò xong)
+  // KHÔNG tính là không có — nếu tính thì nút tắt oan ngay khi mở màn.
+  const noSensor = sensorAvailable === false;
+
+  // Loại sinh trắc suy từ cảm biến thật — dùng cho phần đo lường.
+  const bioKind = biometricKindFromType(biometryType);
+
+  // Một nút, hình dạng do THIẾT BỊ quyết định. Nhánh áp chót phủ `Biometrics`
+  // (Android gộp chung) lẫn lúc chưa dò xong (biometryType còn rỗng).
+  const bioIcon = noSensor
+    ? 'fingerprint-off'
+    : hasFaceId
+      ? 'face-recognition'
+      : hasTouchId
+        ? 'fingerprint'
+        : 'fingerprint';
+  // Nút không có chữ → nhãn cho trình đọc màn hình là thứ DUY NHẤT mô tả nó.
+  // `accessibilityLabel` là prop chuỗi, không đi qua <Text> nên lớp tự dịch không
+  // với tới: phải gọi `t()` tay.
+  const bioLabel = t(
+    noSensor
+      ? 'Thiết bị chưa thiết lập sinh trắc học'
+      : hasFaceId
+        ? 'Đăng nhập bằng khuôn mặt'
+        : hasTouchId
+          ? 'Đăng nhập bằng vân tay'
+          : 'Đăng nhập bằng sinh trắc học',
+  );
+
+  const runBiometric = async () => {
+    if (busy || noSensor) return;
     // Hộp thoại sinh trắc do HỆ ĐIỀU HÀNH vẽ → KHÔNG đi qua <Text> nên lớp tự dịch
     // không với tới; phải gọi `t()` tay. Tra từ điển thay vì chuỗi ternary: ternary
     // 3 nhánh sẽ lặng lẽ hiện tiếng Trung cho tiếng Nhật (đúng lỗi đã gặp).
     const prompt = t('Xác thực sinh trắc học');
     // Ghi nhận lần nhấn nút sinh trắc + đánh dấu để đo độ trễ tới màn hình kế.
-    trackPress(kind === 'face' ? 'biometric_face_button' : 'biometric_fingerprint_button', {
+    // `kind` suy từ CẢM BIẾN THẬT, không từ nút người dùng bấm. Số liệu cũ tách
+    // hai sự kiện theo nút nên đang đếm "người dùng bấm cái nào" — một lựa chọn
+    // không tồn tại — chứ không đếm thứ đã thật sự xảy ra.
+    trackPress('biometric_button', {
       action: 'login_biometric',
-      metadata: { kind },
+      metadata: { kind: bioKind, biometryType: biometryType || 'unknown' },
     });
     try {
-      setBusyKind(kind);
-      if (sensorAvailable) {
-        const rn = new ReactNativeBiometrics();
-        const { success } = await rn.simplePrompt({
-          promptMessage: prompt, cancelButtonText: t('Huỷ'),
-        });
-        if (!success) { setBusyKind(null); return; }
-      } else {
-        showError(
-          'Thiết bị chưa hỗ trợ sinh trắc học. Thử lập danh tính tạm thời trên thiết bị này.',
-        );
-      }
+      setBusy(true);
+      // Không còn nhánh "máy không có cảm biến": `noSensor` đã chặn ở đầu hàm và
+      // nút cũng đã tắt. Lúc chưa dò xong (`sensorAvailable === null`) thì vẫn gọi
+      // — hệ điều hành mới là bên phán quyết cuối, không phải kết quả dò của ta.
+      const rn = new ReactNativeBiometrics();
+      const { success } = await rn.simplePrompt({
+        promptMessage: prompt, cancelButtonText: t('Huỷ'),
+      });
+      if (!success) { setBusy(false); return; }
 
       // PhoenixKey flow: unlock existing identity
       let result;
@@ -229,7 +263,9 @@ const LoginScreen = () => {
       }
 
       if (result.success && result.user) {
-        trackAction('login_success', { metadata: { kind } });
+        trackAction('login_success', {
+          metadata: { kind: bioKind, biometryType: biometryType || 'unknown' },
+        });
         await dispatch(loginUser(result.user as any) as any);
         // Hiện hiệu ứng logo chớp mắt; onDone của overlay sẽ reset về Main.
         setShowSuccess(true);
@@ -243,14 +279,9 @@ const LoginScreen = () => {
       console.log('[Login] Biometric flow failed:', e);
       showError('Đăng nhập sinh trắc học thất bại');
     } finally {
-      setBusyKind(null);
+      setBusy(false);
     }
   };
-
-  const hasFaceId = biometryType === BiometryTypes.FaceID;
-  const hasTouchId = biometryType === BiometryTypes.TouchID;
-  const isGenericBiometric =
-    biometryType === BiometryTypes.Biometrics || (!hasFaceId && !hasTouchId);
 
   // Blob translate ranges (subtle, in pixels)
   const blob1Y = blob1.interpolate({ inputRange: [0, 1], outputRange: [0, 14] });
@@ -376,35 +407,41 @@ const LoginScreen = () => {
         {/* Drag handle */}
         <View style={styles.handle} />
 
-        {/* Biometric grid */}
+        {/* Nút sinh trắc học — MỘT nút tròn, chỉ icon */}
         <Animated.View
           style={[
-            styles.bioGrid,
+            styles.bioZone,
             { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
           ]}
         >
           <BioButton
-            icon="face-recognition"
-            title="Khuôn mặt"
-            subtitle={hasFaceId ? 'Face ID' : 'Quét khuôn mặt'}
-            busy={busyKind === 'face'}
-            disabled={busyKind !== null}
-            onPress={() => runBiometric('face')}
+            icon={bioIcon}
+            label={bioLabel}
+            busy={busy}
+            off={noSensor}
+            onPress={runBiometric}
           />
-          <BioButton
-            icon="fingerprint"
-            title="Vân tay"
-            subtitle={
-              hasTouchId
-                ? 'Touch ID'
-                : isGenericBiometric
-                ? 'Sinh trắc học'
-                : 'Quét vân tay'
-            }
-            busy={busyKind === 'fingerprint'}
-            disabled={busyKind !== null}
-            onPress={() => runBiometric('fingerprint')}
-          />
+
+          {/* Máy chưa có sinh trắc → nút tắt, và chỉ đường sang Cài đặt máy thay
+              vì để người dùng bấm vào một nút không bao giờ chạy. */}
+          {noSensor && (
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => {
+                trackPress('open_device_settings', { action: 'fix_no_biometric' });
+                Linking.openSettings().catch(() => { });
+              }}
+              style={styles.bioHint}
+              accessibilityRole="button"
+            >
+              <Text style={styles.bioHintText} allowFontScaling={false}>
+                Bật Face ID hoặc vân tay trong Cài đặt máy để đăng nhập
+              </Text>
+              <Text style={styles.bioHintLink} allowFontScaling={false}>
+                Mở Cài đặt
+              </Text>
+            </TouchableOpacity>
+          )}
         </Animated.View>
 
         {/* DID badge */}
@@ -519,78 +556,84 @@ const LoginScreen = () => {
 
 // ── Sub-components ──────────────────────────────────────────────────────────
 
+// Nút sinh trắc học duy nhất: hình tròn, chỉ icon, không chữ.
+// Trạng thái "đang xác thực" báo bằng vòng sóng lan toả — giữ nút thuần icon
+// thay vì chèn dòng chữ chỉ xuất hiện trong một khoảnh khắc.
 const BioButton: React.FC<{
   icon: string;
-  title: string;
-  subtitle: string;
+  label: string;
   busy: boolean;
-  disabled: boolean;
+  /** Máy không có sinh trắc → nút tắt hẳn, không giả vờ bấm được. */
+  off: boolean;
   onPress: () => void;
-}> = ({ icon, title, subtitle, busy, disabled, onPress }) => {
+}> = ({ icon, label, busy, off, onPress }) => {
   const scale = useRef(new Animated.Value(1)).current;
   const pulse = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    if (busy) {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulse, {
-            toValue: 1, duration: 800, useNativeDriver: true,
-          }),
-          Animated.timing(pulse, {
-            toValue: 0, duration: 800, useNativeDriver: true,
-          }),
-        ]),
-      ).start();
-    } else {
+    if (!busy) {
       pulse.stopAnimation();
       pulse.setValue(0);
+      return;
     }
-  }, [busy]);
+    const loop = Animated.loop(
+      Animated.timing(pulse, {
+        toValue: 1, duration: 1400,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
+      }),
+    );
+    loop.start();
+    // Dừng vòng lặp khi busy tắt HOẶC component tháo — thiếu bước này thì
+    // Animated giữ tham chiếu và cảnh báo cập nhật state sau khi unmount.
+    return () => loop.stop();
+  }, [busy, pulse]);
 
   const ringOpacity = pulse.interpolate({
-    inputRange: [0, 1], outputRange: [0, 0.4],
+    inputRange: [0, 1], outputRange: [0.45, 0],
   });
   const ringScale = pulse.interpolate({
-    inputRange: [0, 1], outputRange: [1, 1.25],
+    inputRange: [0, 1], outputRange: [1, 1.6],
   });
 
   return (
-    <Animated.View style={{ flex: 1, transform: [{ scale }] }}>
-      <TouchableOpacity
-        activeOpacity={1}
-        disabled={disabled}
-        onPressIn={() =>
-          Animated.spring(scale, { toValue: 0.97, useNativeDriver: true }).start()
-        }
-        onPressOut={() =>
-          Animated.spring(scale, {
-            toValue: 1, friction: 4, useNativeDriver: true,
-          }).start()
-        }
-        onPress={onPress}
-        style={[styles.bioBtn, busy && styles.bioBtnBusy]}
-      >
-        <View style={styles.bioIconOuter}>
-          <Animated.View
-            style={[
-              styles.bioPulseRing,
-              { opacity: ringOpacity, transform: [{ scale: ringScale }] },
-            ]}
+    <>
+      <Animated.View style={[styles.bioBtnWrap, { transform: [{ scale }] }]}>
+        <Animated.View
+          style={[
+            styles.bioPulseRing,
+            { opacity: ringOpacity, transform: [{ scale: ringScale }] },
+          ]}
+          pointerEvents="none"
+        />
+        <TouchableOpacity
+          activeOpacity={0.9}
+          disabled={busy || off}
+          onPressIn={() =>
+            Animated.spring(scale, { toValue: 0.94, useNativeDriver: true }).start()
+          }
+          onPressOut={() =>
+            Animated.spring(scale, {
+              toValue: 1, friction: 4, useNativeDriver: true,
+            }).start()
+          }
+          onPress={onPress}
+          style={[styles.bioBtn, busy && styles.bioBtnBusy, off && styles.bioBtnOff]}
+          accessibilityRole="button"
+          accessibilityLabel={label}
+          accessibilityState={{ busy, disabled: busy || off }}
+        >
+          <Icon
+            name={icon}
+            size={BIO_ICON_SIZE}
+            color={busy ? BLUE.white : BLUE.white}
           />
-          <View style={styles.bioIconWrap}>
-            <Icon name={icon} size={36} color={BLUE.primary} />
-          </View>
-        </View>
-        <Text allowFontScaling={false} style={styles.bioTitle}>{title}</Text>
-        <Text allowFontScaling={false} style={styles.bioSub}>{subtitle}</Text>
-        {busy && (
-          <Text allowFontScaling={false} style={styles.bioBusy}>
-            Đang xác thực…
-          </Text>
-        )}
-      </TouchableOpacity>
-    </Animated.View>
+        </TouchableOpacity>
+      </Animated.View>
+      <Text style={styles.bioBtnLabel} allowFontScaling={false}>
+        LOGIN WITH BIOMETRIC
+      </Text>
+    </>
   );
 };
 
@@ -645,7 +688,7 @@ const EventCard: React.FC<{
 // ── Decorative star dots positions ──────────────────────────────────────────
 type Dot = { top: `${number}%`; left: `${number}%`; size: number; opacity: number };
 const STAR_DOTS: Dot[] = [
-  { top: '8%',  left: '15%', size: 3, opacity: 0.5 },
+  { top: '8%', left: '15%', size: 3, opacity: 0.5 },
   { top: '14%', left: '78%', size: 4, opacity: 0.7 },
   { top: '32%', left: '88%', size: 2, opacity: 0.5 },
   { top: '40%', left: '10%', size: 3, opacity: 0.6 },
@@ -655,6 +698,11 @@ const STAR_DOTS: Dot[] = [
 
 // ── Styles ──────────────────────────────────────────────────────────────────
 const HERO_HEIGHT = Math.min(SCREEN_H * 0.46, 380);
+
+// Nút sinh trắc co theo bề ngang màn nhưng bị chặn hai đầu: máy nhỏ vẫn đủ vùng
+// chạm 44pt, máy tablet không phình thành cái đĩa.
+const BIO_BTN_SIZE = Math.min(Math.max(SCREEN_W * 0.24, 84), 108);
+const BIO_ICON_SIZE = Math.round(BIO_BTN_SIZE * 0.55);
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: BLUE.deep },
@@ -790,50 +838,58 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
 
-  // ── Bio buttons ───────────────────────────────────────
-  bioGrid: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 16,
+  // ── Nút sinh trắc học (1 nút tròn, chỉ icon) ──────────
+  bioZone: {
+    alignItems: 'center',
+    display: 'flex',
+    justifyContent: 'center',
+    paddingVertical: 12,
+  },
+  bioBtnWrap: {
+    width: BIO_BTN_SIZE, height: BIO_BTN_SIZE,
+    alignItems: 'center', justifyContent: 'center',
+    display: 'flex',
   },
   bioBtn: {
-    backgroundColor: '#618db318',
-    borderRadius: 18,
-    paddingVertical: 20, paddingHorizontal: 14,
-    alignItems: 'center',
-    shadowColor: "transparent",
-    elevation: 4,
+    width: BIO_BTN_SIZE - 2, height: BIO_BTN_SIZE - 2,
+    borderRadius: BIO_BTN_SIZE / 2,
+    backgroundColor: BLUE.primary,
+    alignItems: 'center', justifyContent: 'center',
   },
   bioBtnBusy: {
-    borderColor: BLUE.primary,
-    backgroundColor: BLUE.glowSoft,
+    backgroundColor: BLUE.mid,
   },
-  bioIconOuter: {
-    width: 64, height: 64,
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: 12, position: 'relative',
+  // Máy không có sinh trắc: nút xám, phẳng (bỏ đổ bóng) — trông đúng như thứ
+  // không bấm được, thay vì một nút xanh bấm vào chẳng có gì xảy ra.
+  bioBtnOff: {
+    backgroundColor: COLORS.border,
+    shadowOpacity: 0,
+    elevation: 0,
   },
+  // Câu chỉ đường sang Cài đặt máy khi không có cảm biến.
+  bioHint: {
+    alignItems: 'center',
+    marginTop: 14,
+    paddingHorizontal: 12,
+  },
+  bioHintText: {
+    fontSize: 12, color: COLORS.textMuted,
+    textAlign: 'center', lineHeight: 17,
+  },
+  bioHintLink: {
+    fontSize: 12, fontWeight: '800',
+    color: BLUE.primary, marginTop: 4,
+  },
+  bioBtnLabel: {
+    fontSize: 11, color: COLORS.textMuted,
+    marginTop: 14, letterSpacing: 1.2,
+  },
+  // Vòng sóng lan ra khi đang xác thực — nằm DƯỚI nút nên phải to hơn khung nút.
   bioPulseRing: {
     position: 'absolute',
-    width: 64, height: 64, borderRadius: 32,
+    width: BIO_BTN_SIZE + 10, height: BIO_BTN_SIZE + 10,
+    borderRadius: (BIO_BTN_SIZE + 10) / 2,
     backgroundColor: BLUE.primary,
-  },
-  bioIconWrap: {
-    width: 60, height: 60, borderRadius: 18,
-    backgroundColor: BLUE.glow,
-    borderWidth: 1, borderColor: BLUE.pale,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  bioTitle: {
-    fontSize: 15, fontWeight: '800',
-    color: COLORS.text, letterSpacing: -0.2,
-  },
-  bioSub: {
-    fontSize: 11, color: COLORS.textMuted, marginTop: 3,
-  },
-  bioBusy: {
-    fontSize: 10, color: BLUE.primary,
-    fontWeight: '700', marginTop: 6, letterSpacing: 0.4,
   },
 
   // ── DID badge ─────────────────────────────────────────

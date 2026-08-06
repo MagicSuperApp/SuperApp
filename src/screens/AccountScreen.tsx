@@ -819,16 +819,19 @@ const AccountScreen = () => {
                 {/* ── Hỗ trợ ── */}
                 <Animated.View style={{ opacity: fadeAnim }}>
                     <Section title="HỖ TRỢ">
-                        {/* ⚠ Hai mục này CHƯA có đích đến, nên `MenuItem` tự vẽ chúng ở
+                        {/* "Trung tâm hỗ trợ" CHƯA có đích đến, nên `MenuItem` tự vẽ nó ở
                             trạng thái tắt (mờ, không mũi tên, không bắt chạm) thay vì giả
-                            vờ bấm được. Nhưng "Điều khoản & Chính sách" là mục Google Play
-                            ĐÒI phải mở được ngay trong ứng dụng, nên tắt chỉ là đỡ tạm:
-                            trước khi lên cửa hàng phải có đích thật. Chưa tự đặt một URL
-                            nào ở đây — dẫn tới một trang không tồn tại còn tệ hơn để trống,
-                            và nội dung pháp lý không phải thứ tự nghĩ ra. Đã hỏi chủ dự án
-                            địa chỉ trang chính sách. */}
+                            vờ bấm được.
+                            "Điều khoản & Chính sách" thì nay có đích thật: màn `Terms` đọc
+                            được cả khi mất mạng, vì Google Play đòi phần tiết lộ dữ liệu
+                            phải mở được NGAY TRONG ứng dụng — mà người dùng ngoài vườn
+                            thường không có mạng đủ khoẻ để tải một trang web. */}
                         <MenuItem icon="help-circle-outline" label="Trung tâm hỗ trợ" />
-                        <MenuItem icon="file-document-outline" label="Điều khoản & Chính sách" />
+                        <MenuItem
+                            icon="file-document-outline"
+                            label="Điều khoản & Chính sách"
+                            onPress={() => navigation.navigate('Terms')}
+                        />
                         <MenuItem
                             icon="information-outline"
                             label="Phiên bản ứng dụng"

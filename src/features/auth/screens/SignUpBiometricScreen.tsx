@@ -340,6 +340,16 @@ const SignUpBiometricScreen: React.FC = () => {
         >
           <Text style={styles.linkText}>Tôi đã có tài khoản — Đăng nhập</Text>
         </TouchableOpacity>
+        {/* Đọc được TRƯỚC khi lập danh tính, không phải sau. Bước kế tiếp sinh một cặp
+            khoá không khôi phục hộ được — người dùng có quyền biết điều đó trước khi bấm,
+            và chỉ mục ở màn Tôi thì phải đăng nhập xong mới tới được. */}
+        <TouchableOpacity
+          onPress={() => navigation.navigate('Terms' as never)}
+          disabled={stage !== 'idle'}
+          hitSlop={8}
+        >
+          <Text style={styles.linkTextMuted}>Điều khoản & Chính sách</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -493,6 +503,10 @@ const styles = StyleSheet.create({
   linkText: {
     fontSize: 12, fontWeight: '700',
     color: AUTH_BLUE.primary, textAlign: 'center',
+  },
+  linkTextMuted: {
+    marginTop: 10, fontSize: 11, fontWeight: '600',
+    color: AUTH_BLUE.textMuted, textAlign: 'center',
   },
 });
 

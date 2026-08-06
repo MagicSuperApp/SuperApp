@@ -101,7 +101,7 @@ const FarmCard = ({
   const fruitCount = item.fruitCount || 0;
   const areaLabel  = item.areaSqm
     ? `${(item.areaSqm / 10000).toFixed(1)} ha`
-    : `${item.coordinates?.length ?? 0} điểm`;
+    : `${item.coordinates?.length ?? 0} Points`;
 
   // Status chip
   const statusMap: Record<string, { label: string; color: string; bg: string }> = {
@@ -345,8 +345,8 @@ const FarmListScreen = () => {
         <View style={styles.headerSubRow}>
           <Text style={styles.headerSub}>
             {filteredFarms.length > 0
-              ? `${filteredFarms.length} nông trại đang quản lý`
-              : 'Chưa có nông trại nào'}
+              ? `${filteredFarms.length} farm under management`
+              : 'No farms yet'}
           </Text>
           {filteredFarms.length > 0 && (
             <View style={styles.farmCountBadge}>

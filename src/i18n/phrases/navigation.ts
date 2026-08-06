@@ -289,5 +289,6 @@ export const NAVIGATION: PhraseMap = {
     en: 'For example:',
     zh: '例如：',
     ja: '例：'
-  }
+  },
+  'ĐẶT VỊ TRÍ QUẢ': { en: 'SET FRUIT LOCATION', zh: '设置果实位置', ja: '果実の位置を設定' },
 };

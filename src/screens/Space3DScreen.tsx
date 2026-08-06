@@ -780,7 +780,7 @@ const Space3DScreen: React.FC = () => {
             <View style={{ flex: 1 }}>
               <Text style={styles.fruitName} numberOfLines={1}>{selectedFruit.name}</Text>
               <Text style={styles.fruitMeta}>
-                {selectedFruit.nViews} góc ảnh · {ZONE_LABEL[coordToZone(selectedFruit.coord)]}
+                {selectedFruit.nViews} pictures · {ZONE_LABEL[coordToZone(selectedFruit.coord)]}
                 {`  ·  x ${selectedFruit.coord.x.toFixed(2)} / y ${selectedFruit.coord.y.toFixed(2)} / z ${selectedFruit.coord.z.toFixed(2)}`}
               </Text>
             </View>
@@ -791,7 +791,7 @@ const Space3DScreen: React.FC = () => {
           <View style={styles.fruitActions}>
             <TouchableOpacity style={styles.fruitBtn} onPress={() => openFruitViews(selectedFruit)}>
               <Icon name="image-multiple" size={16} color={SPACE_COLORS.text} />
-              <Text style={styles.fruitBtnTxt}>Ảnh các góc</Text>
+              <Text style={styles.fruitBtnTxt}>Pictures</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.fruitBtn, styles.fruitBtnPrimary]}

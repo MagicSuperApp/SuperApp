@@ -76,7 +76,7 @@ const STATUS_MAP: Record<FruitStatus, { label: string; color: string; bg: string
 };
 const getStatus = (s?: string) => STATUS_MAP[s as FruitStatus] ?? STATUS_MAP.on_tree;
 
-const ZONE_VI: Record<TreeZone, string> = { base: 'Gốc', mid: 'Thân giữa', canopy: 'Tán' };
+const ZONE_VI: Record<TreeZone, string> = { base: 'Base', mid: 'Mid', canopy: 'Canopy' };
 
 /** ISO → dd/mm/yyyy (rỗng nếu server không trả / sai định dạng). */
 const fmtDate = (iso?: string | null): string => {
@@ -138,7 +138,7 @@ const FruitCard = ({
             <View style={styles.fruitMetaRow}>
               <View style={styles.fruitMetaItem}>
                 <Icon name="camera" size={12} color={COLORS.textMuted} />
-                <Text style={styles.fruitMetaText}>{item.n_views} góc</Text>
+                <Text style={styles.fruitMetaText}>{item.n_views}</Text>
               </View>
               {item.zone && (
                 <View style={styles.fruitMetaItem}>
@@ -685,7 +685,7 @@ const TreeDetailScreen = () => {
         <View style={styles.meshChip}>
           <Text style={styles.meshChipEmoji}>🍈</Text>
           <Text style={styles.meshChipText}>
-            {totalFruits} quả{totalFruits > 0 ? ` · ${onTreeCount} trên cây` : ''}
+            {totalFruits}
           </Text>
         </View>
         <TouchableOpacity style={styles.view3DBtn} onPress={handleScan3D} activeOpacity={0.85}>
@@ -908,7 +908,7 @@ const TreeDetailScreen = () => {
                 {item.name || '(chưa đặt tên)'}
               </Text>
               <Text style={styles.captureMeta}>
-                {fmtDate(item.enrolled_at) || 'chưa rõ ngày'} · {item.n_views} góc
+                {fmtDate(item.enrolled_at) || 'chưa rõ ngày'} · {item.n_views} D
                 {item.zone ? ` · ${ZONE_VI[item.zone]}` : ''}
               </Text>
             </View>
@@ -1229,7 +1229,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   meshChipEmoji: { fontSize: 16 },
-  meshChipText: { fontSize: 13, color: COLORS.text, fontWeight: '600' },
+  meshChipText: { fontSize: 13, color: COLORS.text, fontWeight: '700' },
   captureBtn: {
     flexDirection: 'row',
     alignItems: 'center',

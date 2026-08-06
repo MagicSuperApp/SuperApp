@@ -23,7 +23,6 @@ import { getLanguage } from '../i18n/store';
 import type { LangCode as AppLangCode, NationalLang } from '../i18n/types';
 
 export type LangCode = AppLangCode;
-export type { NationalLang };
 
 export interface NavFrame {
   /** Nhãn tiếng Anh — CHUẨN, hiển thị ở MỌI ngôn ngữ (dòng trên). */
@@ -33,9 +32,7 @@ export interface NavFrame {
    * `Record` ĐẦY ĐỦ, không phải `Partial`: thêm một ngôn ngữ vào `NATIONAL_LANGS` là
    * `tsc` chỉ ra ngay mọi mục còn thiếu, thay vì lặng lẽ rơi về tiếng Anh trên máy
    * người dùng — thứ chỉ phát hiện được khi đã phát hành.
-   *
-   * Khoá là `NationalLang`, KHÔNG phải `LangCode`: tiếng Anh đã nằm ở trường `en` ngay
-   * trên. Để `LangCode` thì mỗi nhãn phải khai `en` hai lần cùng một chữ.
+   * KHÔNG có 'en': tiếng Anh đã nằm ở `en` (dòng trên), khai lại là in trùng chữ.
    */
   national: Record<NationalLang, string>;
   /** Tên icon Font Awesome Solid (bộ Icon dùng chung) — trạng thái nghỉ. */
@@ -46,14 +43,14 @@ export interface NavFrame {
 
 // Khoá = route name (khớp instance.config.tabs + module.entrypoint).
 export const NAV_FRAME: Record<string, NavFrame> = {
-  Home:          { en: 'Home',    national: { vi: 'Trang chủ',  zh: '首页', ja: 'ホーム' },     icon: 'house',       iconActive: 'house' },
-  ProofChatHome: { en: 'Chat',    national: { vi: 'Trò chuyện', zh: '聊天', ja: 'チャット' },   icon: 'comments',    iconActive: 'comments' },
-  Farms:         { en: 'Farm',    national: { vi: 'Trang trại', zh: '农场', ja: '農場' },       icon: 'seedling',    iconActive: 'seedling' },
-  WorkHome:      { en: 'Work',    national: { vi: 'Việc làm',   zh: '工作', ja: '仕事' },       icon: 'briefcase',   iconActive: 'briefcase' },
-  JoinHome:      { en: 'Join',    national: { vi: 'Kết đèn',    zh: '连灯', ja: '灯をつなぐ' }, icon: 'bolt',        iconActive: 'bolt' },
+  Home:          { en: 'Home', national: { vi: 'Trang chủ',  zh: '首页', ja: 'ホーム' },   icon: 'house',       iconActive: 'house' },
+  ProofChatHome: { en: 'Chat', national: { vi: 'Trò chuyện', zh: '聊天', ja: 'チャット' }, icon: 'comments',    iconActive: 'comments' },
+  Farms:         { en: 'Farm', national: { vi: 'Trang trại', zh: '农场', ja: '農場' },     icon: 'seedling',    iconActive: 'seedling' },
+  WorkHome:      { en: 'Work', national: { vi: 'Việc làm',   zh: '工作', ja: '仕事' },     icon: 'briefcase',   iconActive: 'briefcase' },
+  JoinHome:      { en: 'Join', national: { vi: 'Kết đèn',    zh: '连灯', ja: '参加' },     icon: 'bolt',        iconActive: 'bolt' },
   // Account = "Me/Tôi" (anh Aladin chốt). Icon dự phòng; ô này ưu tiên vẽ AVATAR
   // user (ảnh hoặc initials) qua NavItemFrame — xem prop avatarUri/initials.
-  Account:       { en: 'Me',      national: { vi: 'Tôi',        zh: '我',   ja: 'マイページ' }, icon: 'circle-user', iconActive: 'circle-user' },
+  Account:       { en: 'Me',   national: { vi: 'Tôi',        zh: '我',   ja: 'マイ' },     icon: 'circle-user', iconActive: 'circle-user' },
 };
 
 // Ngôn ngữ quốc gia hiện hành = ngôn ngữ app đang đặt (Cài đặt → Ngôn ngữ).
@@ -78,10 +75,8 @@ export function navEn(route: string): string {
 export function navNational(route: string, lang: LangCode = getNationalLanguage()): string {
   const f = NAV_FRAME[route];
   if (!f) return route;
-  // App đang là tiếng Anh → nhãn quốc gia CHÍNH LÀ nhãn chuẩn. Không có dòng thứ hai
-  // để tra, và `NavItemFrame` sẽ tự bỏ dòng dưới vì nó trùng dòng trên.
-  if (lang === 'en') return f.en;
-  return f.national[lang] ?? f.en;
+  // lang === 'en' không có trong `national` → rơi về chính nhãn chuẩn.
+  return (f.national as Partial<Record<LangCode, string>>)[lang] ?? f.en;
 }
 
 /** Icon cho một route (active = filled, ngược lại outline). */

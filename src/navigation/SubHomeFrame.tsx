@@ -35,9 +35,6 @@ import {
   subNational,
   type SubTab,
 } from './subHomeLabels';
-// Dùng chung `useLanguage` với `NavItemFrame` — một kho ngôn ngữ duy nhất. Hook cũ
-// `useNationalLanguage` đọc kho riêng của `languages.ts` nên khung tab con KHÔNG đổi
-// chữ khi người dùng đổi ngôn ngữ ở Cài đặt.
 import { useLanguage } from '../i18n';
 
 interface Props {

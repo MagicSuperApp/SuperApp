@@ -20,7 +20,9 @@ import {
   Animated,
   PanResponder,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+// Icon: bo Font Awesome Solid tai qua Iconify (assets/icons -> icons.generated).
+// Them icon moi: `node scripts/icons.js <ten-fa6-solid>`.
+import Icon from '../../../components/Icon';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../../../store';
@@ -118,7 +120,7 @@ class AddFarmErrorBoundary extends React.Component<{ children: React.ReactNode }
     if (this.state.hasError) {
       return (
         <View style={[styles.root, { justifyContent: 'center', alignItems: 'center' }]}>
-          <Icon name="alert-circle-outline" size={48} color={COLORS.error} />
+          <Icon name="circle-exclamation" size={48} color={COLORS.error} />
           <Text style={[styles.mapFallbackText, { marginTop: 16, textAlign: 'center' }]}>
             Đã xảy ra lỗi khi tải màn hình thêm trang trại
           </Text>
@@ -199,7 +201,7 @@ const TreeCard = ({
       <View style={styles.treeCard}>
         <View style={styles.treeCardLeft}>
           <View style={styles.treeIconWrap}>
-            <Icon name="tree-outline" size={22} color={COLORS.accent} />
+            <Icon name="tree" size={22} color={COLORS.accent} />
           </View>
           <View style={styles.treeProgBarWrap}>
             <View style={[styles.treeProgBar, { height: `${harvestPct}%` as any }]} />
@@ -220,14 +222,14 @@ const TreeCard = ({
                 onPress={onView3D}
                 hitSlop={6}
               >
-                <Icon name="cube-scan" size={12} color={COLORS.accent} />
+                <Icon name="expand" size={12} color={COLORS.accent} />
                 <Text style={[styles.treeFruitCount, { color: COLORS.accent }]}>
-                  Xem 3D · {fruitCount} quả
+                  3D · {fruitCount} quả
                 </Text>
               </TouchableOpacity>
             ) : (
               <View style={[styles.treeFruitChip, { backgroundColor: COLORS.bgWarm }]}>
-                <Icon name="cube-outline" size={12} color={COLORS.textMuted} />
+                <Icon name="cube" size={12} color={COLORS.textMuted} />
                 <Text style={[styles.treeFruitCount, { color: COLORS.textMuted }]}>
                   Chưa có 3D · {fruitCount} quả
                 </Text>
@@ -237,7 +239,7 @@ const TreeCard = ({
 
           {item.lastActivity && (
             <View style={styles.treeLastActivity}>
-              <Icon name="clock-outline" size={11} color={COLORS.textMuted} />
+              <Icon name="clock" size={11} color={COLORS.textMuted} />
               <Text style={styles.treeLastActivityText}>{item.lastActivity}</Text>
             </View>
           )}
@@ -753,7 +755,7 @@ const AddFarmMode = ({
               </MapLib.MapView>
             ) : (
               <View style={[styles.mapFallback, { backgroundColor: '#e8f5e9' }]}>
-                <Icon name="map-outline" size={32} color={COLORS.accentLight} />
+                <Icon name="map" size={32} color={COLORS.accentLight} />
                 <Text style={[styles.mapFallbackText, { marginTop: 8 }]}>
                   {mapError
                     ? `Lỗi bản đồ: ${mapError}`
@@ -811,7 +813,7 @@ const AddFarmMode = ({
             onPress={() => setMapType(m => (m === 'normal' ? 'satellite' : 'normal'))}
             activeOpacity={0.85}
           >
-            <Icon name={mapType === 'normal' ? 'satellite-variant' : 'map-outline'} size={20} color={COLORS.text} />
+            <Icon name={mapType === 'normal' ? 'satellite' : 'map'} size={20} color={COLORS.text} />
           </TouchableOpacity>
           <Text style={styles.circleBtnLabel}>{mapType === 'normal' ? 'Vệ tinh' : 'Bản đồ'}</Text>
         </View>
@@ -825,7 +827,7 @@ const AddFarmMode = ({
             <Icon name="minus" size={22} color={COLORS.text} />
           </TouchableOpacity>
           <TouchableOpacity style={[styles.circleBtn, { marginTop: 10 }]} onPress={recenter} activeOpacity={0.85}>
-            <Icon name="crosshairs-gps" size={20} color={COLORS.accent} />
+            <Icon name="location-crosshairs" size={20} color={COLORS.accent} />
           </TouchableOpacity>
         </View>
 
@@ -846,7 +848,7 @@ const AddFarmMode = ({
               onPress={() => setDrawMode('auto')}
               activeOpacity={0.85}
             >
-              <Icon name="walk" size={17} color={drawMode === 'auto' ? COLORS.white : COLORS.textSub} />
+              <Icon name="person-walking" size={17} color={drawMode === 'auto' ? COLORS.white : COLORS.textSub} />
               <Text style={[styles.segmentText, drawMode === 'auto' && styles.segmentTextActive]}>Tự động ghi</Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -854,7 +856,7 @@ const AddFarmMode = ({
               onPress={() => { setIsAutoRecording(false); setDrawMode('manual'); }}
               activeOpacity={0.85}
             >
-              <Icon name="gesture-tap" size={17} color={drawMode === 'manual' ? COLORS.white : COLORS.textSub} />
+              <Icon name="hand-pointer" size={17} color={drawMode === 'manual' ? COLORS.white : COLORS.textSub} />
               <Text style={[styles.segmentText, drawMode === 'manual' && styles.segmentTextActive]}>Tự vẽ điểm</Text>
             </TouchableOpacity>
           </View>
@@ -891,7 +893,7 @@ const AddFarmMode = ({
                 }}
                 activeOpacity={0.9}
               >
-                <Icon name={isAutoRecording ? 'pause-circle' : 'play-circle'} size={24} color={COLORS.white} />
+                <Icon name={isAutoRecording ? 'circle-pause' : 'circle-play'} size={24} color={COLORS.white} />
                 <Text style={styles.primaryBtnText}>
                   {isAutoRecording ? 'Tạm dừng' : coordinates.length === 0 ? 'Bắt đầu đi vòng' : 'Tiếp tục đi vòng'}
                 </Text>
@@ -903,7 +905,7 @@ const AddFarmMode = ({
                 disabled={editHistoryLength === 0}
                 activeOpacity={0.85}
               >
-                <Icon name="undo-variant" size={20} color={COLORS.textSub} />
+                <Icon name="arrow-rotate-left" size={20} color={COLORS.textSub} />
                 <Text style={styles.smallBtnText}>Hoàn tác điểm</Text>
               </TouchableOpacity>
             )}
@@ -921,7 +923,7 @@ const AddFarmMode = ({
                 </>
               ) : (
                 <>
-                  <Icon name="content-save-check" size={20} color={COLORS.white} />
+                  <Icon name="floppy-disk" size={20} color={COLORS.white} />
                   <Text style={styles.saveBtnText}>Lưu vườn</Text>
                 </>
               )}
@@ -937,7 +939,7 @@ const AddFarmMode = ({
                 disabled={editHistoryLength === 0}
                 activeOpacity={0.7}
               >
-                <Icon name="undo-variant" size={16} color={COLORS.textSub} />
+                <Icon name="arrow-rotate-left" size={16} color={COLORS.textSub} />
                 <Text style={styles.linkBtnText}>Hoàn tác</Text>
               </TouchableOpacity>
             )}
@@ -947,7 +949,7 @@ const AddFarmMode = ({
               disabled={coordinates.length === 0}
               activeOpacity={0.7}
             >
-              <Icon name="restart" size={16} color="#E74C3C" />
+              <Icon name="rotate" size={16} color="#E74C3C" />
               <Text style={[styles.linkBtnText, { color: '#E74C3C' }]}>Vẽ lại từ đầu</Text>
             </TouchableOpacity>
           </View>
@@ -964,7 +966,7 @@ const AddFarmMode = ({
                 </View>
                 <Text style={styles.vertexPopupTitle}>Điểm số {selectedVertex + 1}</Text>
                 <TouchableOpacity onPress={() => setSelectedVertex(null)} hitSlop={8}>
-                  <Icon name="close" size={20} color={COLORS.textMuted} />
+                  <Icon name="xmark" size={20} color={COLORS.textMuted} />
                 </TouchableOpacity>
               </View>
               <View style={styles.vertexPopupBody}>
@@ -976,7 +978,7 @@ const AddFarmMode = ({
                 onPress={() => { const idx = selectedVertex; setSelectedVertex(null); onDeleteVertex(idx); }}
                 activeOpacity={0.85}
               >
-                <Icon name="trash-can-outline" size={18} color={COLORS.white} />
+                <Icon name="trash" size={18} color={COLORS.white} />
                 <Text style={styles.vertexDeleteText}>Xoá điểm này</Text>
               </TouchableOpacity>
             </View>
@@ -1075,7 +1077,7 @@ const FarmDetailMode = ({
   const totalFruits = filteredTrees.reduce((sum, t) => sum + (t.fruitCount ?? 0), 0);
   const areaLabel = farm?.areaSqm
     ? `${(farm?.areaSqm / 10000).toFixed(1)} ha`
-    : `${farm?.coordinates?.length ?? 0} điểm`;
+    : `${farm?.coordinates?.length ?? 0} Points`;
 
   return (
     <View style={styles.root}>
@@ -1093,17 +1095,17 @@ const FarmDetailMode = ({
           </TouchableOpacity>
         </View>
         <TouchableOpacity style={styles.activityBtn} onPress={onActivityUpdate}>
-          <Icon name="clipboard-edit-outline" size={20} color={COLORS.accent} />
+          <Icon name="file-pen" size={20} color={COLORS.accent} />
         </TouchableOpacity>
       </View>
 
       {/* Stats banner */}
       <View style={styles.statsBanner}>
         {[
-          { icon: 'tree-outline', val: filteredTrees.length, label: 'cây' },
-          { icon: 'food-apple-outline', val: totalFruits, label: 'quả dự kiến' },
-          { icon: 'vector-polygon', val: areaLabel, label: '' },
-          { icon: 'map-marker-check-outline', val: farm?.coordinates?.length ?? 0, label: 'điểm GPS\n(nhấn xem)', onPress: () => onCoordinatesPress() },
+          { icon: 'tree', val: filteredTrees.length, label: 'cây' },
+          { icon: 'apple-whole', val: totalFruits, label: 'quả dự kiến' },
+          { icon: 'draw-polygon', val: areaLabel, label: '' },
+          { icon: 'map-pin', val: farm?.coordinates?.length ?? 0, label: 'điểm GPS\n(nhấn xem)', onPress: () => onCoordinatesPress() },
         ].map((s, i) => (
           <View
             key={i}
@@ -1127,7 +1129,7 @@ const FarmDetailMode = ({
 
       {/* Search Input */}
       <View style={styles.searchContainer}>
-        <Icon name="magnify" size={18} color={COLORS.textMuted} style={styles.searchIcon} />
+        <Icon name="magnifying-glass" size={18} color={COLORS.textMuted} />
         <TextInput
           style={styles.searchInput}
           placeholder="Tìm cây..."
@@ -1137,7 +1139,7 @@ const FarmDetailMode = ({
         />
         {searchQuery.length > 0 && (
           <TouchableOpacity onPress={() => onSearchChange('')} hitSlop={{ top: 13, bottom: 13, left: 13, right: 13 }}>
-            <Icon name="close-circle" size={18} color={COLORS.textMuted} />
+            <Icon name="circle-xmark" size={18} color={COLORS.textMuted} />
           </TouchableOpacity>
         )}
       </View>
@@ -1179,7 +1181,7 @@ const FarmDetailMode = ({
               />
             ) : (
               <View style={styles.noSearchResults}>
-                <Icon name="magnify-close" size={48} color={COLORS.textMuted} />
+                <Icon name="magnifying-glass-minus" size={48} color={COLORS.textMuted} />
                 <Text style={styles.noSearchResultsText}>Không tìm thấy cây</Text>
               </View>
             )
@@ -1234,14 +1236,14 @@ const FarmDetailMode = ({
           onPress={onView3DFarm}
           activeOpacity={0.85}
         >
-          <Icon name="rotate-3d-variant" size={19} color={COLORS.accent} />
+          <Icon name="arrows-spin" size={19} color={COLORS.accent} />
           <Text style={styles.view3DFarmBtnText}>Xem sơ đồ 3D của vườn</Text>
           <Icon name="chevron-right" size={18} color={COLORS.accent} />
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.activityLargeBtn} onPress={onActivityUpdate} activeOpacity={0.88}>
           <View style={styles.btnShine} />
-          <Icon name="sprout-outline" size={19} color={COLORS.white} />
+          <Icon name="seedling" size={19} color={COLORS.white} />
           <Text style={styles.activityLargeBtnText}>Cập nhật hoạt động</Text>
         </TouchableOpacity>
       </View>
@@ -2159,7 +2161,7 @@ const FarmDetailScreen = () => {
           <View style={styles.coordMapHeader}>
             <Text style={styles.coordMapHeaderText}>Bản đồ toạ độ nông trại</Text>
             <TouchableOpacity onPress={() => setCoordMapVisible(false)}>
-              <Icon name="close" size={22} color={COLORS.textMuted} />
+              <Icon name="xmark" size={22} color={COLORS.textMuted} />
             </TouchableOpacity>
           </View>
           <View style={styles.coordMapContainer}>
@@ -2172,7 +2174,7 @@ const FarmDetailScreen = () => {
         <View style={[StyleSheet.absoluteFill, { zIndex: 9999, elevation: 9999, backgroundColor: 'rgba(0,0,0,0.85)' }]}>
           <View style={[styles.identificationResult, { zIndex: 10000, elevation: 10000 }]}>
             <View style={styles.resultHeader}>
-              <Icon name="check-circle" size={48} color={COLORS.success} />
+              <Icon name="circle-check" size={48} color={COLORS.success} />
               <Text style={styles.resultTitle}>Đã xác định 1 cây!</Text>
             </View>
 
@@ -2400,9 +2402,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     gap: 8,
-  },
-  searchIcon: {
-    color: COLORS.textMuted,
   },
   searchInput: {
     flex: 1,

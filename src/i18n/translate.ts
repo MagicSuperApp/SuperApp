@@ -12,10 +12,15 @@
 //
 // Khoảng trắng hai đầu được GIỮ: JSX hay tách `{'Xin chào '}{name}` nên chuỗi tới
 // đây thường dính space. Tra bản đã trim rồi ghép lại nguyên khoảng trắng cũ.
+//
+// NẤC RƠI: ngôn ngữ đang chọn → FALLBACK_LANG ('en') → chuỗi nguồn. Nấc giữa là
+// điểm mấu chốt: thiếu một bản tiếng Nhật thì hiện TIẾNG ANH chứ không tống nguyên
+// văn tiếng Việt vào giữa màn tiếng Nhật. Nấc cuối vẫn còn nguyên nên tên riêng &
+// thuật ngữ (không khai trong từ điển) vẫn tự động giữ nguyên như trước.
 
 import { DICTIONARY } from './dictionary';
 import { getLanguage } from './store';
-import { SOURCE_LANG, type LangCode, type TargetLang } from './types';
+import { FALLBACK_LANG, SOURCE_LANG, type LangCode, type TargetLang } from './types';
 
 // Bộ nhớ đệm kết quả theo ngôn ngữ: Text vẽ lại rất nhiều lần, tránh chạy regex
 // trim + tra map mỗi khung hình. Xoá sạch khi đổi ngôn ngữ (xem clearCache).
@@ -31,13 +36,20 @@ function lookup(src: string, lang: TargetLang): string | undefined {
 }
 
 function compute(src: string, lang: TargetLang): string {
-  const direct = lookup(src, lang);
-  if (direct !== undefined) return direct;
+  // Khớp CHÍNH XÁC ưu tiên hơn khớp sau khi trim, ở cả hai ngôn ngữ.
+  const langs: TargetLang[] = lang === FALLBACK_LANG ? [lang] : [lang, FALLBACK_LANG];
+
+  for (const l of langs) {
+    const direct = lookup(src, l);
+    if (direct !== undefined) return direct;
+  }
 
   const m = EDGE_WS.exec(src);
   if (m && (m[1] || m[3]) && m[2]) {
-    const inner = lookup(m[2], lang);
-    if (inner !== undefined) return m[1] + inner + m[3];
+    for (const l of langs) {
+      const inner = lookup(m[2], l);
+      if (inner !== undefined) return m[1] + inner + m[3];
+    }
   }
   return src;
 }
@@ -76,7 +88,11 @@ export function tf(src: string, vars: Record<string, string | number>): string {
   );
 }
 
-/** Có bản dịch cho chuỗi này ở ngôn ngữ đang chọn không (dùng cho DEV/kiểm tra). */
+/**
+ * Có bản dịch cho chuỗi này ở ngôn ngữ đang chọn không (dùng cho DEV/kiểm tra).
+ * CHẶT hơn `t()`: false vẫn có thể ra chữ tiếng Anh nhờ nấc FALLBACK_LANG — đây là
+ * bài đo ĐỘ PHỦ từ điển, nên không được tính nấc rơi là "đã dịch".
+ */
 export function hasTranslation(src: string): boolean {
   const lang = getLanguage();
   if (lang === SOURCE_LANG) return true;

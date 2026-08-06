@@ -46,19 +46,28 @@ const CONTINUE_LABEL: Record<LangCode, string> = {
   ja: '続ける',
 };
 
+// Tiêu đề màn — cũng theo ngôn ngữ đang chọn (màn này KHÔNG qua từ điển).
+const TITLE: Record<LangCode, string> = {
+  vi: 'Cài đặt ngôn ngữ',
+  en: 'Select language',
+  zh: '选择语言',
+  ja: '言語を選択',
+};
+
 // Câu phụ dưới nút, cũng theo ngôn ngữ đang chọn: cho biết đổi lại được ở đâu.
 const HINT: Record<LangCode, string> = {
   vi: 'Đổi lại bất cứ lúc nào ở Tôi → Cài đặt → Ngôn ngữ.',
   en: 'You can change this any time in Me → Settings → Language.',
   zh: '你可以随时在 我 → 设置 → 语言 中更改。',
-  ja: 'マイページ → 設定 → 言語 でいつでも変更できます。',
+  ja: 'マイ → 設定 → 言語 でいつでも変更できます。',
 };
 
 const LanguageSelectScreen = () => {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
-  // Chọn TẠI CHỖ (chưa ghi) để người dùng xem trước rồi mới xác nhận. Mặc định
-  // là ngôn ngữ đang chạy ('vi' khi máy mới cài).
+  // Chọn TẠI CHỖ (chưa ghi) để người dùng xem trước rồi mới xác nhận. Mặc định là
+  // ngôn ngữ đang chạy — máy vừa cài thì đó là TIẾNG ANH (i18n/types.DEFAULT_LANG),
+  // không phải ngôn ngữ của điện thoại.
   const [picked, setPicked] = useState<LangCode>(getLanguage());
 
   const confirm = () => {
@@ -85,9 +94,9 @@ const LanguageSelectScreen = () => {
           </View>
         </View>
         <Text allowFontScaling={false} style={styles.eyebrow}>ALADINN</Text>
-        <Text allowFontScaling={false} style={styles.title}>{
-            picked === 'vi' ? 'Cài đặt ngôn ngữ' : picked === 'en' ? 'Select language' : '选择语言'
-        }</Text>
+        {/* Tra bảng thay vì chuỗi ternary: thêm ngôn ngữ mới mà quên nhánh thì
+            `tsc` báo ngay, chứ ternary sẽ lặng lẽ hiện tiếng Trung cho tiếng Nhật. */}
+        <Text allowFontScaling={false} style={styles.title}>{TITLE[picked]}</Text>
       </View>
 
       {/* ── Danh sách ngôn ngữ ─────────────────────────────────────────────── */}

@@ -1656,8 +1656,6 @@ const HOST_STACK_SCREENS: Array<{
   { name: 'TraceScan', component: TraceScanScreen, options: { headerShown: false } },
   { name: 'ExportIdentity', component: ExportIdentityScreen, options: { headerShown: false } },
   { name: 'Username', component: UsernameScreen, options: { headerShown: false } },
-  // Chọn ngôn ngữ quốc gia (vi · zh · ja). Tiếng Anh là chuẩn, luôn hiện — không phải
-  // một lựa chọn trong danh sách.
 ];
 
 // --- Module stack screens (config-driven) ----------------------------------
@@ -1677,6 +1675,9 @@ const buildLinking = () => {
   // platform khác). Màn CHI TIẾT (TreeDetail…) đã deep-link-được qua map module ở
   // trên → sản phẩm Aladin quét ngoài app mở thẳng màn kết quả.
   screens[TRACE_SCAN_ROUTE_NAME] = 'trace-scan';
+  // Đổi ngôn ngữ = popup mở tại chỗ (Cài đặt / màn Đăng nhập), KHÔNG còn màn riêng
+  // → không có route để deep-link tới. Màn `LanguageSelect` chỉ chạy lần đầu cài.
+  screens.LanguageSelect = 'language';
   return {
     prefixes: ['magiclamp://'],
     config: { screens },

@@ -11,7 +11,8 @@
 // một app, KHÔNG nhét vào module.manifest. Route/feature sub-tab tham chiếu bằng
 // ĐỊNH DANH (key), màn thực do app con tự điều hướng.
 
-import type { LangCode, NationalLang } from './navLabels';
+import type { LangCode } from './navLabels';
+import type { NationalLang } from '../i18n/types';
 import { getNationalLanguage } from './navLabels';
 
 export interface SubTab {
@@ -38,10 +39,10 @@ export const SUBHOME_FRAME: Record<string, SubTab[]> = {
   ],
   // Farm (trace): hiện Garden · Trees · Care + ⌄(Carbon…).
   Farms: [
-    { key: 'garden', en: 'Garden', national: { vi: 'Vườn',     zh: '果园', ja: '果樹園' },   icon: 'sprout-outline' },
-    { key: 'trees',  en: 'Trees',  national: { vi: 'Cây',      zh: '树木', ja: '樹木' },     icon: 'pine-tree' },
-    { key: 'care',   en: 'Care',   national: { vi: 'Chăm sóc', zh: '养护', ja: '手入れ' },   icon: 'watering-can' },
-    { key: 'carbon', en: 'Carbon', national: { vi: 'Tín chỉ',  zh: '碳汇', ja: 'カーボン' }, icon: 'leaf' },
+    { key: 'garden', en: 'Garden', national: { vi: 'Vườn',     zh: '果园', ja: '果樹園' }, icon: 'sprout-outline' },
+    { key: 'trees',  en: 'Trees',  national: { vi: 'Cây',      zh: '树木', ja: '樹木' },   icon: 'pine-tree' },
+    { key: 'care',   en: 'Care',   national: { vi: 'Chăm sóc', zh: '养护', ja: '手入れ' }, icon: 'watering-can' },
+    { key: 'carbon', en: 'Carbon', national: { vi: 'Carbon',   zh: '碳汇', ja: 'カーボン' }, icon: 'leaf' },
   ],
 };
 
@@ -61,9 +62,8 @@ export function subEn(tab: SubTab): string {
 
 /** Nhãn ngôn ngữ quốc gia (tooltip/accessibility) — fallback en. */
 export function subNational(tab: SubTab, lang: LangCode = getNationalLanguage()): string {
-  // App đang là tiếng Anh → không có dòng quốc gia; nhãn chuẩn chính là nó.
-  if (lang === 'en') return tab.en;
-  return tab.national[lang] ?? tab.en;
+  // lang === 'en' không có trong `national` → rơi về chính nhãn chuẩn.
+  return (tab.national as Partial<Record<LangCode, string>>)[lang] ?? tab.en;
 }
 
 export interface RankedSubTabs {

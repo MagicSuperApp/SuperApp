@@ -5,6 +5,132 @@
 
 ---
 
+## Module TRACE đổi sang bộ icon Iconify (fa6-solid): 79 → 140 icon, bỏ hẳn MaterialCommunityIcons
+
+Toàn bộ 9 file của `src/modules/trace` (Dashboard · FarmList · FarmDetail · TreeDetail · TreeMetadataTab · Activity · CommonPopup · PaginationControls · VoiceMemoButton) nay dùng `components/Icon` thay `react-native-vector-icons/MaterialCommunityIcons`.
+
+Lý do bỏ MCI: kéo theo file font riêng, nét dày mỏng không đồng bộ với phần còn lại của app (vốn đã dùng fa6-solid), và **tên icon không được kiểm** — gõ sai thì lặng lẽ ra ô trống.
+
+### Tải icon: `node scripts/icons.js <tên>`
+Thêm **61 icon** cho nghiệp vụ truy xuất nguồn gốc: `tractor` · `draw-polygon` (ranh giới vườn) · `location-crosshairs` · `map-pin` · `arrows-rotate` · `cloud-arrow-up` · `clipboard-list` · `spray-can` · `bug` · `flask` · `basket-shopping` · `truck-fast` · `certificate` · `clock-rotate-left` · `wand-magic-sparkles` · `coins` · `satellite` … (`wifi-slash` KHÔNG có trong fa6-solid — dùng `plug-circle-xmark`).
+
+### Dashboard: bảng `ICON` theo NGHĨA thay vì rải tên glyph
+Cùng một khái niệm (vườn · cây · quả · hoạt động) xuất hiện ở thẻ thống kê, pill lọc VÀ hàng dữ liệu — trước mỗi chỗ gõ lại tên nên sửa một chỗ là lệch ba chỗ. Nay gom về một bảng, khai kiểu `IconName` (qua `satisfies`) nên gõ sai là `tsc` báo.
+Quick action đổi: Trang trại `pine-tree`→`tractor` · Thêm cây `plus-circle`→`seedling` · Đồng bộ `sync`→`arrows-rotate`/`cloud-arrow-up` · Tài khoản `account-outline`→`user-gear`. Token đổi sang 4 hình PHÂN BIỆT được: MAGIC `wand-magic-sparkles` · LAMP `bolt` · CARP `fish` · ADA `coins`.
+
+### Ba cái bẫy khi đổi bộ icon
+1. **Thay theo tên chuỗi là nguy hiểm** — `'history'` ở `TreeDetailScreen` là **TabKey**, không phải icon; `'normal'`/`'satellite'` ở `FarmDetailScreen` là kiểu bản đồ. Chỉ đổi trên dòng có `name=` hoặc `icon:`, và `tsc` bắt được chỗ lọt (`TS2322: '"clock-rotate-left"' is not assignable to type 'TabKey'`).
+2. **`style` của Icon là `ViewStyle`, không phải `TextStyle`** — icon-font cũ nhận `style={{color}}`, Icon mới vẽ SVG nên không. Hai chỗ `styles.searchIcon` chỉ mang mỗi `color` → gỡ hẳn (màu đã truyền qua prop `color`).
+3. **Tên sai KHÔNG làm đỏ gì cả** — `<Icon>` trả `null`, chỉ `console.warn` ở DEV, bản release im lặng. Lần đổi này suýt để lọt **21 tên** (`food-apple-outline`, `vector-polygon`, `flower-outline`…) vì lượt grep đầu chỉ soi `name=` mà bỏ qua cấu hình `icon:` trong mảng.
+
+### Test mới: `Icon/iconNames.test.ts`
+Quét mã nguồn — file nào import `components/Icon` thì MỌI tên icon dạng chuỗi trong đó phải có trong registry. Chính bài này biến "ô trống lặng lẽ" thành lỗi đỏ. Có kèm bài canh `files.length > 5` để đổi đường dẫn import không làm bài tự vô hiệu hoá (quét 0 file thì luôn xanh).
+
+Toàn bộ **750 test xanh**, `tsc --noEmit` sạch.
+
+> Các module khác (work · proofchat · join · pool · screens/) VẪN dùng MaterialCommunityIcons — chưa đụng tới.
+
+## Phủ kín tiếng Anh: 85% → 95% từ điển, +247 mục (app chạy EN không còn lọt tiếng Việt)
+
+Sau khi chốt tiếng Anh làm mặc định (mục dưới), giao diện vẫn lẫn tiếng Việt ở những chỗ chưa khai trong từ điển. Đã **đo trước, dịch sau** thay vì mò từng màn.
+
+### Đo: quét mã nguồn rồi đối chiếu với từ điển
+Script quét `src/**/*.{ts,tsx}` (bỏ chú thích bằng máy trạng thái, bỏ `src/i18n` và file test), rút chuỗi có dấu tiếng Việt rồi so với khoá từ điển:
+
+| | trước | sau |
+|---|---|---|
+| chuỗi VI trong mã | 2043 | 2044 |
+| đã có bản dịch | 1730 (**85%**) | 1949 (**95%**) |
+| chưa có | 313 | 95 |
+
+**313 chuỗi "thiếu" KHÔNG phải 313 việc phải làm.** Bóc ra: 22 chuỗi `console.*` (không bao giờ lên màn) · 15 mẩu mã lọt lưới regex · 5 chuỗi CỐ Ý không qua từ điển (màn chọn ngôn ngữ, endonym) · 31 **mảnh của chuỗi nối bằng `+`** · phần còn lại mới là việc thật. Đã thêm **247 mục** (đủ cả `en` · `zh` · `ja`).
+
+95 chuỗi còn lại đã soi tay từng cái: đều là điểm mù của script (chuỗi khai bằng nháy kép, ký tự thoát `\n`/`\'`, thực thể `&amp;`) hoặc **TÊN RIÊNG của người** — cố ý không khai để giữ nguyên ở mọi ngôn ngữ.
+
+### Ba khuôn khiến khoá viết theo mã nguồn là SAI
+Đây là phần dễ mất công nhất, nay đã ghim bằng test trong `i18n.test.tsx`:
+- **Nối chuỗi `'a ' + 'b'`** → `t()` chỉ nhận được chuỗi ĐÃ nối. Khoá phải là cả câu; khai từng mảnh thì không mảnh nào khớp. (7 câu dài ở `SeedExport` · `RestoreIdentity` · `FruitVideo` · `syncDispatch`.)
+- **JSX đổi `&amp;` → `&`** lúc dịch mã. Khoá viết `&amp;` sẽ không bao giờ khớp.
+- **JSX xuống dòng gộp thành MỘT dòng** ngăn bằng một dấu cách (đã biết từ trước, nay có test).
+
+### Template literal thì từ điển bó tay — phải sửa mã
+`FeeDisplay.tsx`: `accessibilityLabel={\`Phí tác vụ: ${fee}. Nhấn để ${expanded ? 'thu gọn' : 'xem chi tiết'}.\`}` — chuỗi dựng lúc chạy nên không khoá nào khớp, mà `accessibilityLabel` cũng KHÔNG đi qua lớp autoText (lớp đó chỉ bọc `<Text>`/placeholder). Đổi sang `tf('Phí tác vụ: {fee}. Nhấn để {action}.', {...})` + `useT()` để vẽ lại khi đổi ngôn ngữ.
+> ⚠️ `useT()` phải gọi TRƯỚC nhánh `if (!feeQuote) return null` — thứ tự hook không được đổi giữa các lần vẽ.
+
+### Dữ liệu MẪU cũng phải dịch
+`modules/work/data/mockData.ts` (70 chuỗi) · `proofchat/.../mock.ts` (35) · `workMockApi.ts` (15) là nội dung DEMO hiện thẳng lên màn — tin tuyển việc, hồ sơ thợ, hội thoại mẫu. Đã dịch cả ba thứ tiếng.
+- **Tên người giữ nguyên** (Nguyễn Văn Tài, Phạm Thị Hằng…): không khai = tự động giữ, đúng như tên thật của người dùng. Riêng **kính ngữ + tên** thì dịch phần kính ngữ (`Anh Tuấn` → `Mr. Tuan`).
+- Tên tổ chức dịch phần danh từ chung, giữ phần riêng (`Nông trại Bảy Núi` → `Bay Nui Farm`).
+- `treeModels.ts`: `Bàng Singapore` là tên LOÀI → dịch; `Marc Solà` là tên tác giả model → giữ.
+- `services/analytics/config.ts`: `'mật khẩu'` nằm trong `SENSITIVE_FIELD_HINTS` — là **mẫu để dò**, không phải chữ trên màn. Dịch là hỏng bộ lọc.
+
+### Vạ lây
+- Gỡ **8 khoá khai trùng** phát sinh khi thêm (screens ↔ navigation/chat/trace, và 3 mục trùng trong CÙNG một file — `tsc` bắt bằng TS1117).
+- `FeeDisplay.test.tsx`: cập nhật snapshot — `accessibilityLabel` nay ra tiếng Anh, đúng như mặc định mới.
+
+### Test
+`i18n.test.tsx` +3 (ba khuôn ở trên). Toàn bộ **748 test xanh**, `tsc --noEmit` sạch.
+
+## TIẾNG ANH là mặc định — cả lúc khởi động lẫn khi từ điển thiếu bản dịch
+
+Hai chỗ trước đây rơi về tiếng Việt, nay rơi về tiếng Anh. Đổi hành vi, không đổi kiến trúc: khoá từ điển VẪN là chuỗi tiếng Việt trong mã, KHÔNG đụng file màn hình nào.
+
+### 1. Khởi động: bỏ dò ngôn ngữ máy (`i18n/store.ts`)
+```diff
+- let current: LangCode = detectDeviceLang() ?? DEFAULT_LANG;
++ let current: LangCode = DEFAULT_LANG;   // 'en' cho MỌI máy
+```
+Trước: điện thoại đặt tiếng Việt/Nhật thì app mở ra bằng đúng thứ tiếng đó. Nay máy nào cũng mở bằng tiếng Anh, rồi màn "Chọn ngôn ngữ" hỏi ngay sau đó — một thao tác rõ ràng hơn là đoán theo locale rồi đoán sai. Khớp SG9 §5.2 (tiếng Anh là chuẩn, nằm dòng trên ở khung nav).
+- `detectDeviceLang()` GIỮ LẠI ở `i18n/types.ts` (hàm thuần, có test, là chỗ duy nhất biết đọc locale) nhưng **không còn nối vào store** — đã ghi chú tại chỗ để không ai mắc lại.
+- `LanguageSelectScreen` không phải sửa: mục preselect đọc `getLanguage()` nên tự thành English.
+
+### 2. Từ điển: nấc rơi về tiếng Anh (`i18n/translate.ts`)
+`ngôn ngữ đang chọn → FALLBACK_LANG ('en') → chuỗi nguồn`. Nấc giữa là phần mới.
+
+Vì sao cần: khoá từ điển là chuỗi tiếng Việt, nên thiếu MỘT bản tiếng Nhật là nguyên câu tiếng Việt lọt ra giữa màn tiếng Nhật — người dùng Nhật không đọc được gì; tiếng Anh thì ít nhất còn đoán được. Nấc CUỐI giữ nguyên nên tên riêng & thuật ngữ (Aladin, PhoenixKey, DID…) và dữ liệu người dùng vẫn tự động giữ nguyên như cũ.
+
+`FALLBACK_LANG` khai RIÊNG, không tái dùng `DEFAULT_LANG`: đổi ngôn ngữ mở-máy-lần-đầu là quyết định về THỊ TRƯỜNG, không được lặng lẽ đổi luôn ngôn ngữ chống đỡ của từ điển.
+
+> `hasTranslation()` cố ý KHÔNG tính nấc rơi — nó là bài đo ĐỘ PHỦ từ điển.
+
+### 3. Hai lỗi vạ lây, sửa luôn
+- **Khoá khai trùng** `'Cài đặt ngôn ngữ của bạn'` (account.ts + navigation.ts, nội dung y hệt) — đang làm đỏ bài "không có khoá nào bị khai TRÙNG". Gỡ bản ở `navigation.ts`.
+- **`SignUpBiometricScreen`**: `<Text>Tên đăng nhập{'\n'}+ Sinh trắc học</Text>` lọt tiếng Việt ra màn. `autoText` tra từ điển theo TỪNG child là chuỗi, mà `'+ Sinh trắc học'` không khớp khoá nào. Tách `{'+ '}` thành node riêng → `'Sinh trắc học'` khớp bình thường.
+  ⚠️ Khuôn chung: chuỗi hiển thị bị dính THÊM ký tự ở đầu/cuối trong JSX thì phải tách ký tự đó ra, đừng thêm khoá "bẩn" vào từ điển.
+
+### Test
+`i18n.test.tsx` +5 (dựng từ điển GIẢ bằng `jest.isolateModules` + `doMock` — từ điển thật không còn lỗ hổng nào để đo nấc rơi) · `i18nFirstLaunch.test.ts` +1 (giả lập máy `ja-JP`, app vẫn phải mở bằng `en`). Toàn bộ 745 test xanh.
+
+## Gộp HAI hệ ngôn ngữ chạy song song + thêm tiếng NHẬT (vi · en · zh · ja)
+
+Merge #103 (`i18n/languages.ts`) và #104 (`i18n/store.ts`) vào cùng một nhánh, mỗi bên mang một hệ ngôn ngữ RIÊNG. Hậu quả nếu để nguyên:
+
+| | nhánh #103 | nhánh #104 |
+|---|---|---|
+| khoá lưu | `app_lang_v1` | `app_language_v1` |
+| ngôn ngữ | vi · zh · ja | vi · en · zh |
+| điều khiển | nhãn nav | lớp tự dịch toàn app |
+| màn chọn | `LanguageScreen` | `LanguageSelectScreen` + popup |
+
+→ Cài đặt có **hai** dòng "Ngôn ngữ", đổi ở dòng này thì dòng kia và nhãn nav **không** đổi theo.
+
+**Lỗi bundle chặn build** (`Identifier 'lang' has already been declared`, `NavItemFrame.tsx:53`) chỉ là phần nổi: merge giữ CẢ hai dòng `const lang = useNationalLanguage()` và `const lang = useLanguage()`.
+
+### Đã gộp về MỘT kho: `i18n/store.ts`
+- **Xoá** `i18n/languages.ts` · `i18n/useNationalLanguage.ts` · `screens/LanguageScreen.tsx` và dòng "Ngôn ngữ" thứ hai ở AccountScreen.
+- **Giữ lại phần hay của #103**, chuyển vào `i18n/types.ts`: `SUPPORTED_LANGS` · `normalizeLangTag` (nhận `vi-VN`, `zh-Hans-CN`, `ja_JP`, `ZH`) · `detectDeviceLang()` bằng `Intl` (KHÔNG thêm `react-native-localize` — thêm là phải dựng lại cả hai nền tảng) · `LANG_ENDONYM`.
+- **Đọc khoá cũ `app_lang_v1`** khi hydrate (chỉ đọc, ghi luôn khoá mới) → ai đã chọn ngôn ngữ ở bản dựng trung gian không phải chọn lại.
+- Giá trị ban đầu = **ngôn ngữ máy** (nếu app hỗ trợ) → `DEFAULT_LANG`. → ĐÃ BỎ, nay luôn là tiếng Anh (xem mục đầu file).
+- `languages.test.ts` giữ nguyên ý đồ, trỏ sang API hợp nhất — kể cả bài canh **không nhãn NAV_FRAME/SUBHOME_FRAME nào thiếu ở bất kỳ ngôn ngữ nào**.
+
+### `NATIONAL_LANGS` — vì sao tách khỏi `SUPPORTED_LANGS`
+Khung nav song ngữ (SG9 §5.2): tiếng Anh là CHUẨN ở dòng TRÊN, ngôn ngữ quốc gia ở dòng DƯỚI. Nên `national` khoá theo `NATIONAL_LANGS` = `['vi','zh','ja']` (KHÔNG có `'en'`, khai lại là in trùng chữ), còn `SUPPORTED_LANGS` = 4 ngôn ngữ chọn được ở Cài đặt.
+
+### Tiếng Nhật: 1803 mục
+Thêm bằng **script** (`addja.js` — quét khoá, chèn `ja:` sau `zh:`), KHÔNG viết tay lại 8 file: 1803 mục viết lại tay là chắc chắn rơi mất mục. Cũng gỡ **7 khoá khai trùng** do merge (`Đăng xuất` · `Thông báo` · `Ngôn ngữ` · `Trợ lý ảo` · `Sinh trắc học` · `Chạy luồng hướng dẫn` · `Hủy` — đã có ở `account.ts`/`common.ts`, khai lại ở `navigation.ts`).
+
+Test mới canh: mọi mục đủ CẢ BA ngôn ngữ đích (duyệt theo `SUPPORTED_LANGS` nên thêm ngôn ngữ mà quên dịch là đỏ ngay) · không khoá nào khai trùng · so bản dịch với CHÍNH từ điển thay vì ghim chuỗi cứng (sửa câu chữ không được làm đỏ test).
+
 ## ĐA NGÔN NGỮ (Việt · Anh · Trung) — dịch TOÀN APP mà KHÔNG sửa 177 file màn hình
 
 Mục "Ngôn ngữ" ở Cài đặt trước đây là nút chết. Nay có: **màn chọn ngôn ngữ lúc mới cài**, **nút cờ ở màn Đăng nhập**, và **popup đổi ngôn ngữ ở Tài khoản → Cài đặt** — đổi là áp dụng NGAY cho mọi màn, không khởi động lại, không mất ngăn xếp điều hướng.
@@ -42,6 +168,7 @@ Trạng thái ngôn ngữ sống **ngoài React** (`i18n/store.ts` + AsyncStorag
 
 ### Ngôn ngữ MẶC ĐỊNH khi chưa chọn = `DEFAULT_LANG` (`'en'`, khai ở `i18n/types.ts`)
 Khác `SOURCE_LANG` (`'vi'` — ngôn ngữ viết trong mã). Hệ quả: **cụm từ nào chưa khai trong từ điển sẽ hiện nguyên văn tiếng Việt**, nên khi mặc định ≠ `'vi'` giao diện có thể LẪN hai thứ tiếng cho tới khi từ điển phủ hết (hiện phủ ~83% chuỗi UI). Đổi hằng số này là đổi hành vi lần chạy đầu của MỌI máy mới.
+> ĐÃ ĐỔI: nay thiếu bản dịch thì rơi về TIẾNG ANH trước (`FALLBACK_LANG`), chỉ thiếu cả tiếng Anh mới ra chuỗi nguồn — xem mục đầu file.
 
 ### Nhãn nav
 `navLabels.getNationalLanguage()` nay đọc `getLanguage()` (trước hardcode `'vi'`). `NavItemFrame` gọi `useLanguage()` để vẽ lại.

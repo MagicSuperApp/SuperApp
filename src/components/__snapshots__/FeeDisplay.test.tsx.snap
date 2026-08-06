@@ -3,7 +3,7 @@
 exports[`FeeDisplay snapshot snapshot mở rộng khớp 1`] = `
 <View
   accessibilityHint="Thu gọn chi tiết phí"
-  accessibilityLabel="Phí tác vụ: 2.50 LAMP (~0.18 ADA). Nhấn để thu gọn."
+  accessibilityLabel="Transaction fee: 2.50 LAMP (~0.18 ADA). Tap to collapse."
   accessibilityRole="button"
   accessibilityState={
     {

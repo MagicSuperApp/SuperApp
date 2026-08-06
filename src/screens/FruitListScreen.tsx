@@ -38,9 +38,9 @@ import {
 
 const BASE_URL = ORILIFE_BASE;
 
-const STATUS_VI: Record<FruitStatus, string> = { on_tree: 'Trên cây', harvested: 'Đã thu', lost: 'Mất' };
+const STATUS_VI: Record<FruitStatus, string> = { on_tree: 'On Tree', harvested: 'Harvested', lost: 'Lost' };
 const STATUS_COLOR: Record<FruitStatus, string> = { on_tree: COLORS.success, harvested: COLORS.warning, lost: COLORS.textMuted };
-const ZONE_VI: Record<TreeZone, string> = { base: 'Gốc', mid: 'Thân giữa', canopy: 'Tán' };
+const ZONE_VI: Record<TreeZone, string> = { base: 'Base', mid: 'Mid', canopy: 'Canopy' };
 
 /** `enrolled_at` của server → ngày gọn. Chuỗi lạ thì trả rỗng chứ không "Invalid Date". */
 function shortDate(iso?: string | null): string {
@@ -435,7 +435,7 @@ const FruitListScreen: React.FC = () => {
                 }}
               >
                 <Icon name="cube" size={14} color={COLORS.accent} />
-                <Text style={styles.dGhostTxt}>Xem trong 3D</Text>
+                <Text style={styles.dGhostTxt}>3D Place</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.dPrimaryBtn}

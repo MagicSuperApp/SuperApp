@@ -833,7 +833,7 @@ const HomeScreen: React.FC = () => {
               index={1}
               icon="pine-tree"
               label="Trang trại đang theo dõi"
-              value={`${farms.length} trang trại · ${trees.length} cây`}
+              value={`${farms.length} Farm · ${trees.length} Tree`}
               color={COLORS.accent}
               onPress={() => navigation.navigate('Farms' as never)}
             />
@@ -843,7 +843,7 @@ const HomeScreen: React.FC = () => {
               index={2}
               icon="message-text-outline"
               label="Tin nhắn ProofChat"
-              value={proofChatUnread > 0 ? `${proofChatUnread} tin nhắn mới` : 'Không có tin mới'}
+              value={proofChatUnread > 0 ? `${proofChatUnread} new messages` : 'No new messages'}
               color={COLORS.accent}
               onPress={() => navigation.navigate('ProofChatHome' as never)}
             />

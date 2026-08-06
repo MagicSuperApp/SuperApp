@@ -11,7 +11,9 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+// Icon: bộ Font Awesome Solid tải qua Iconify (assets/icons → icons.generated).
+// Thêm icon mới: `node scripts/icons.js <tên-fa6-solid>`.
+import Icon from '../../../components/Icon';
 import { COLORS } from '../../../constants';
 
 interface CommonPopupProps {
@@ -79,7 +81,7 @@ const CommonPopup: React.FC<CommonPopupProps> = ({
             <View style={styles.header}>
               <Text style={styles.title}>{title}</Text>
               <TouchableOpacity onPress={handleClose} style={styles.closeBtn}>
-                <Icon name="close" size={24} color={COLORS.textMuted} />
+                <Icon name="xmark" size={24} color={COLORS.textMuted} />
               </TouchableOpacity>
             </View>
 

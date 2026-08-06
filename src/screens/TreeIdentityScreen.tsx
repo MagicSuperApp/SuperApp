@@ -123,7 +123,7 @@ const MIN_ROUND1 = 4;
 const MIN_ROUND2 = 2;
 
 const GUIDANCE = {
-  idle: 'Bấm "Bắt đầu" để nhận diện cây.',
+  idle: 'Tap "Start" to identify the tree',
   round1: 'Đi vòng quanh cây, lia chậm để lấy đủ góc.',
   round2: 'Đứng SÁT GỐC, chĩa ống kính LÊN — lấy rõ vỏ gốc, sẹo, chạc cây.',
   needMore: 'Xoay thêm một chút nữa để lấy góc mới.',
@@ -1094,7 +1094,7 @@ const TreeIdentityScreen: React.FC = () => {
             ) : (
               <>
                 <Icon name="magnify" size={22} color="#000000" />
-                <Text style={styles.ctrlBtnText}>Nhận diện</Text>
+                <Text style={styles.ctrlBtnText}>Identify</Text>
               </>
             )}
           </TouchableOpacity>
@@ -1155,7 +1155,7 @@ const TreeIdentityScreen: React.FC = () => {
             <>
               <Icon name="check-circle" size={22} color="#000000" />
               <Text style={styles.ctrlBtnText}>
-                Nhận diện ({totalCaptures} góc)
+                Identify ({totalCaptures} Directions)
               </Text>
             </>
           )}

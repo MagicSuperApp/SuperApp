@@ -17,7 +17,9 @@ import {
   ActivityIndicator,
   Platform,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+// Icon: bo Font Awesome Solid tai qua Iconify (assets/icons -> icons.generated).
+// Them icon moi: `node scripts/icons.js <ten-fa6-solid>`.
+import Icon from '../../../components/Icon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSelector } from 'react-redux';
 import { RootState } from '../../../store';
@@ -45,14 +47,14 @@ const VARIETY_OPTIONS: { value: TreeVariety; label: string }[] = [
 
 const HEALTH_OPTIONS: { value: TreeHealthStatus; label: string; icon: string; color: string }[] = [
   { value: 'healthy',               label: 'Khoẻ mạnh',     icon: 'leaf',                      color: '#3D7A5E' },
-  { value: 'flowering',             label: 'Đang ra hoa',   icon: 'flower-outline',            color: '#C97FB8' },
-  { value: 'fruiting',              label: 'Đang có quả',   icon: 'food-apple-outline',        color: '#B07D2F' },
-  { value: 'pest_damage',           label: 'Sâu hại',       icon: 'bug-outline',               color: '#C0533A' },
-  { value: 'nutrient_deficiency',   label: 'Thiếu dinh dưỡng', icon: 'water-percent',          color: '#7A8C80' },
-  { value: 'diseased',              label: 'Bệnh',          icon: 'medical-bag',               color: '#A6432B' },
+  { value: 'flowering',             label: 'Đang ra hoa',   icon: 'spa',            color: '#C97FB8' },
+  { value: 'fruiting',              label: 'Đang có quả',   icon: 'apple-whole',        color: '#B07D2F' },
+  { value: 'pest_damage',           label: 'Sâu hại',       icon: 'bug',               color: '#C0533A' },
+  { value: 'nutrient_deficiency',   label: 'Thiếu dinh dưỡng', icon: 'droplet',          color: '#7A8C80' },
+  { value: 'diseased',              label: 'Bệnh',          icon: 'briefcase-medical',               color: '#A6432B' },
   { value: 'dry',                   label: 'Khô',           icon: 'fire',                      color: '#B07D2F' },
-  { value: 'dead',                  label: 'Chết',          icon: 'tree-outline',              color: '#4D5A52' },
-  { value: 'unknown',               label: 'Chưa rõ',       icon: 'help-circle-outline',       color: '#7A8C80' },
+  { value: 'dead',                  label: 'Chết',          icon: 'tree',              color: '#4D5A52' },
+  { value: 'unknown',               label: 'Chưa rõ',       icon: 'circle-question',       color: '#7A8C80' },
 ];
 
 const NOTES_MAX = 500;
@@ -217,7 +219,7 @@ const TreeMetadataTab: React.FC<Props> = ({ tree }) => {
             onPress={() => setVarietyModalOpen(true)}
             activeOpacity={0.85}
           >
-            <Icon name="sprout-outline" size={18} color={COLORS.accent} />
+            <Icon name="seedling" size={18} color={COLORS.accent} />
             <Text style={[styles.dropdownText, !variety && styles.dropdownPlaceholder]}>
               {varietyLabel}
             </Text>
@@ -371,7 +373,7 @@ const TreeMetadataTab: React.FC<Props> = ({ tree }) => {
             <ActivityIndicator color={COLORS.white} />
           ) : (
             <>
-              <Icon name="content-save-outline" size={19} color={COLORS.white} />
+              <Icon name="floppy-disk" size={19} color={COLORS.white} />
               <Text style={styles.saveBtnText}>
                 {dirty ? 'Lưu thông tin' : 'Đã lưu'}
               </Text>

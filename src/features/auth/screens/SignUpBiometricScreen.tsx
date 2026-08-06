@@ -205,7 +205,10 @@ const SignUpBiometricScreen: React.FC = () => {
         ]}
       >
         <Text style={styles.eyebrow}>TẠO DANH TÍNH</Text>
-        <Text style={styles.title}>Tên đăng nhập{'\n'}+ Sinh trắc học</Text>
+        {/* Tách '+ ' thành node RIÊNG: lớp autoText tra từ điển theo TỪNG child là
+            chuỗi, nên để nguyên '+ Sinh trắc học' thì cả cụm không khớp khoá nào và
+            lọt ra màn bằng tiếng Việt. */}
+        <Text style={styles.title}>Tên đăng nhập{'\n'}{'+ '}Sinh trắc học</Text>
         <Text style={styles.subtitle}>
           Chọn tên đăng nhập (PhoenixUser), sau đó kích hoạt chip bảo mật bằng
           sinh trắc học. Khóa riêng sinh ngay trong chip và{' '}

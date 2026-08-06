@@ -12,7 +12,9 @@ import {
   ScrollView,
   Modal,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+// Icon: bộ Font Awesome Solid tải qua Iconify (assets/icons → icons.generated).
+// Thêm icon mới: `node scripts/icons.js <tên-fa6-solid>`.
+import Icon from '../../../components/Icon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSelector } from 'react-redux';
@@ -47,39 +49,39 @@ interface RouteParams { farm?: any; tree?: any }
 const ACTIVITIES = [
   {
     type: 'watering', label: 'Tưới nước', desc: 'Ghi lại quá trình tưới nước cho cây',
-    icon: 'water-outline', color: '#2E86C1', bg: 'rgba(46,134,193,0.10)', credits: 1,
+    icon: 'droplet', color: '#2E86C1', bg: 'rgba(46,134,193,0.10)', credits: 1,
     scannerTitle: 'Cập nhật Tưới Nước',
     scannerSteps: [
       { icon: 'water', label: 'Quay quá trình tưới nước tưới rễ' },
-      { icon: 'pine-tree', label: 'Hệ thống đang phát hiện cây...' },
+      { icon: 'tree', label: 'Hệ thống đang phát hiện cây...' },
     ],
   },
   {
     type: 'fertilizing', label: 'Bón phân', desc: 'Ghi lại loại phân và lượng bón',
-    icon: 'leaf-circle-outline', color: COLORS.success, bg: 'rgba(74,124,89,0.10)', credits: 2,
+    icon: 'leaf', color: COLORS.success, bg: 'rgba(74,124,89,0.10)', credits: 2,
     scannerTitle: 'Cập nhật Bón Phân',
     scannerSteps: [
-      { icon: 'flask-outline', label: 'Lia ống kính vào bao bì phân bón' },
+      { icon: 'flask', label: 'Lia ống kính vào bao bì phân bón' },
       { icon: 'tree', label: 'Đang bón phân cho cây...' },
     ],
   },
   {
     type: 'pesticide', label: 'Phun thuốc', desc: 'Lia camera vào nhãn thuốc để ghi nhận',
-    icon: 'spray-bottle', color: '#B07D2F', bg: 'rgba(176,125,47,0.10)', credits: 2,
+    icon: 'spray-can', color: '#B07D2F', bg: 'rgba(176,125,47,0.10)', credits: 2,
     scannerTitle: 'Cập nhật Phun Thuốc',
     scannerSteps: [
-      { icon: 'flask-outline', label: 'Lia ống kính vào nhãn thuốc' },
+      { icon: 'flask', label: 'Lia ống kính vào nhãn thuốc' },
       { icon: 'tree', label: 'Đang xịt thuốc cho cây...' },
     ],
   },
   {
     type: 'harvesting', label: 'Thu hoạch', desc: 'Ghi nhận quả được thu hái',
-    icon: 'basket-outline', color: '#7D3C98', bg: 'rgba(125,60,152,0.10)', credits: 3,
+    icon: 'basket-shopping', color: '#7D3C98', bg: 'rgba(125,60,152,0.10)', credits: 3,
     scannerTitle: 'Thu Hoạch Quả',
     scannerSteps: [
-      { icon: 'food-apple', label: 'Đưa quả thứ 1 trước ống kính' },
+      { icon: 'apple-whole', label: 'Đưa quả thứ 1 trước ống kính' },
       { icon: 'reload', label: 'Quay các mặt quả thứ 1...' },
-      { icon: 'food-apple', label: 'Đưa quả thứ 2 trước ống kính' },
+      { icon: 'apple-whole', label: 'Đưa quả thứ 2 trước ống kính' },
       { icon: 'reload', label: 'Phát hiện quả thành công' },
     ],
   },
@@ -142,7 +144,7 @@ const LampNetSyncModal = ({
             ]} />
             <Animated.View style={[styles.syncCenter, { transform: [{ scale: pulseAnim }] }]}>
               <Icon
-                name={isDone ? 'check-bold' : 'cube-send'}
+                name={isDone ? 'check' : 'cube'}
                 size={26}
                 color={isDone ? COLORS.success : COLORS.accent}
               />
@@ -216,7 +218,7 @@ const ActivityCard = ({
           <Text style={styles.actLabel}>{activity.label}</Text>
           <Text style={styles.actDesc}>{activity.desc}</Text>
           <View style={styles.actCreditRow}>
-            <Icon name="lightning-bolt" size={11} color={COLORS.textMuted} />
+            <Icon name="bolt" size={11} color={COLORS.textMuted} />
             <Text style={styles.actCreditText}>{activity.credits} MAGIC</Text>
           </View>
         </View>
@@ -228,7 +230,7 @@ const ActivityCard = ({
             backgroundColor: anim.interpolate({ inputRange: [0, 1], outputRange: ['transparent', activity.color] }),
           },
         ]}>
-          {selected && <Icon name="check-bold" size={12} color={COLORS.white} />}
+          {selected && <Icon name="check" size={12} color={COLORS.white} />}
         </Animated.View>
       </Animated.View>
     </TouchableOpacity>
@@ -350,7 +352,7 @@ const ActivityScreen = () => {
           <Text style={styles.title} numberOfLines={1}>{farm?.name ?? '—'}</Text>
         </View>
         <View style={styles.magicChip}>
-          <Icon name="lightning-bolt" size={12} color={COLORS.accent} />
+          <Icon name="bolt" size={12} color={COLORS.accent} />
           <Text style={styles.magicChipText}>{balanceKnown ? magicBalance : '—'}</Text>
         </View>
       </View>
@@ -363,7 +365,7 @@ const ActivityScreen = () => {
         {/* Guide */}
         <View style={styles.guideCard}>
           <View style={styles.guideIconWrap}>
-            <Icon name="information-outline" size={17} color={COLORS.accent} />
+            <Icon name="circle-info" size={17} color={COLORS.accent} />
           </View>
           <Text style={styles.guideText}>
             Chọn hoạt động, ghi hình, sau đó lưu lên LampNet &amp; blockchain.
@@ -405,7 +407,7 @@ const ActivityScreen = () => {
             {hasFiles ? (
               <View style={[styles.cameraCard, { borderColor: `${COLORS.success}44` }]}>
                 <View style={[styles.cameraIcon, { backgroundColor: `${COLORS.success}12` }]}>
-                  <Icon name="check-circle-outline" size={26} color={COLORS.success} />
+                  <Icon name="circle-check" size={26} color={COLORS.success} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.cameraTitle}>Đã chắt lọc {scannedFiles.length} hình ảnh</Text>
@@ -415,7 +417,7 @@ const ActivityScreen = () => {
                   style={styles.retakeBtn}
                   onPress={handleRecord}
                 >
-                  <Icon name="refresh" size={14} color={COLORS.textSub} />
+                  <Icon name="arrows-rotate" size={14} color={COLORS.textSub} />
                   <Text style={styles.retakeText}>Ghi lại</Text>
                 </TouchableOpacity>
               </View>
@@ -426,7 +428,7 @@ const ActivityScreen = () => {
                 activeOpacity={0.85}
               >
                 <View style={[styles.cameraIcon, { backgroundColor: selectedActivity.bg }]}>
-                  <Icon name="camera-plus-outline" size={24} color={selectedActivity.color} />
+                  <Icon name="camera" size={24} color={selectedActivity.color} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.cameraTitle}>Bắt đầu ghi hình</Text>
@@ -437,7 +439,7 @@ const ActivityScreen = () => {
             )}
 
             <View style={styles.creditNote}>
-              <Icon name="lightning-bolt" size={13} color={COLORS.accent} />
+              <Icon name="bolt" size={13} color={COLORS.accent} />
               <Text style={styles.creditNoteText}>
                 Hoạt động này tiêu tốn{' '}
                 <Text style={{ fontWeight: '700', color: COLORS.accent }}>
@@ -457,7 +459,7 @@ const ActivityScreen = () => {
           <View style={styles.bottomMeta}>
             <Text style={styles.bottomMetaLabel}>Chi phí</Text>
             <View style={styles.creditChip}>
-              <Icon name="lightning-bolt" size={11} color={COLORS.accent} />
+              <Icon name="bolt" size={11} color={COLORS.accent} />
               <Text style={styles.creditChipText}>{selectedActivity.credits} MAGIC</Text>
             </View>
             {!hasFiles && (
@@ -476,7 +478,7 @@ const ActivityScreen = () => {
             activeOpacity={1}
           >
             <View style={styles.btnShine} />
-            <Icon name={saving ? 'loading' : 'cloud-upload-outline'} size={20} color={COLORS.white} />
+            <Icon name={saving ? 'spinner' : 'cloud-arrow-up'} size={20} color={COLORS.white} />
             <Text style={styles.saveBtnText}>{saving ? 'Đang lưu...' : 'Lưu onnet'}</Text>
           </TouchableOpacity>
         </Animated.View>

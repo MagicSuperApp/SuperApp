@@ -225,9 +225,9 @@ const BiometricSettings = () => {
                       <Icon name="fingerprint" size={20} color={COLORS.accent} />
                     </View>
                     <View style={{ flex: 1, paddingRight: 8 }}>
-                      <Text style={styles.settingLabel}>Mở khóa bằng {getBiometryTypeText()}</Text>
+                      <Text style={styles.settingLabel}>Unlock by {getBiometryTypeText()}</Text>
                       <Text style={styles.settingDesc}>
-                        Sử dụng {getBiometryTypeText().toLowerCase()} để đăng nhập nhanh
+                        Use {getBiometryTypeText().toLowerCase()} to quickly unlock your account and authorize transactions.
                       </Text>
                     </View>
                   </View>

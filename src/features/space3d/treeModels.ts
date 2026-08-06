@@ -41,13 +41,13 @@ export const DEFAULT_TREE_MODEL_ID: TreeModelId = 'procedural';
 /* eslint-disable @typescript-eslint/no-var-requires */
 export const TREE_MODELS: TreeModelDef[] = [
   {
-    id: 'default',
+    id: DEFAULT_TREE_MODEL_ID,
     label: 'Cây tự tạo',
     source: null,
     credit: 'Dựng sẵn trong app',
   },
   {
-    id: DEFAULT_TREE_MODEL_ID,
+    id: 'tree1',
     label: 'Cây mẫu',
     source: require('../../../assets/models/tree1.glb'),
   },

@@ -10,11 +10,25 @@
  * HOST — ĐÃ CHỐT (Phoenix agent trả lời 2026-07-23, câu 4): dùng `.me`, KHÔNG phải `.io`.
  * Nhất quán với `phoenixKey-api.ts`. (Trước đây để `.io` theo ghi chú ban đầu.)
  *
- * BACKEND — CHƯA CÓ (curl 2026-07-24, đo thật):
- *   `GET /api/v1/pools` → 404 · `/api/v1/delegation/status` → 404 · `/api/v1/v1/pools` → 404
- * Phoenix xác nhận backend KHÔNG có controller pool; đã inbox yêu cầu Long build.
- * Mọi path dưới đây là ĐỀ XUẤT, khoá sau feature-flag → UI chạy khung không vỡ
- * (offline-first). Khi backend có contract thật → cập nhật parser tại 1 chỗ.
+ * ⚠ ĐÍNH CHÍNH 2026-08-06 — ghi chú cũ ở đây SAI, và cái sai đó làm cả màn Pool chết.
+ *
+ * Ghi chú cũ viết "backend CHƯA CÓ controller pool" và dẫn ba lần curl 404. Đo lại hôm
+ * nay thì backend **có đủ, dữ liệu thật**; ba lần đo kia 404 vì gõ thiếu tiền tố `/api`:
+ *
+ *   GET https://api.phoenixkey.me/v1/pools                 → 404   ← đường tệp này gọi
+ *   GET https://api.phoenixkey.me/api/v1/pools?page=1      → 200   {code, result.pool_ids[]}
+ *   GET https://api.phoenixkey.me/api/v1/pools/{pool_id}   → 200   ticker/name/live_stake/…
+ *   GET https://api.phoenixkey.me/api/v1/delegation/status/{stake} → 200
+ *
+ * `src/services/phoenixKey-api.ts` gọi ĐÚNG đường ngay từ đầu (`pools` mục :594) —
+ * nghĩa là trong repo có hai bản client Pool, một bản chạy được và một bản 404, và bản
+ * 404 lại là bản nối vào màn Pool. Nay tệp này gọi lại đúng đường + đúng shape.
+ *
+ * BAO NHIÊU LÀ HẾT PHẦN NÀY: đây là phía NGƯỜI UỶ QUYỀN (xem pool, chọn pool, xem
+ * trạng thái uỷ quyền). Phía NGƯỜI VẬN HÀNH pool — tạo pool, sinh và phân phát bộ khoá
+ * (cold/VRF/KES + operational certificate), xoay khoá KES định kỳ — **chưa có gì cả**,
+ * không ở app và cũng không ở backend. Xem issue trên PhoenixKey; đừng nhầm màn này là
+ * công cụ cho SPO.
  */
 
 // @ts-ignore — provided by react-native-dotenv at build time.
@@ -22,8 +36,10 @@ import { PHOENIXKEY_POOL_API_URL } from '@env';
 
 // ── Base URL ─────────────────────────────────────────────────────────
 // Mặc định api.phoenixkey.me (Phoenix chốt 2026-07-23); override qua env khi dev.
+// Tiền tố `/api/v1` nằm TRONG hằng này, đúng như `phoenixKey-api.ts` — thiếu `/api`
+// là 404 toàn bộ, và đó chính là lỗi đã làm màn Pool trắng suốt hai tuần.
 const BASE_URL =
-  (PHOENIXKEY_POOL_API_URL as string | undefined) ?? 'https://api.phoenixkey.me';
+  (PHOENIXKEY_POOL_API_URL as string | undefined) ?? 'https://api.phoenixkey.me/api/v1';
 
 // Timeout mặc định — quá hạn coi là lỗi mạng.
 const DEFAULT_TIMEOUT_MS = 15000;
@@ -122,19 +138,86 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 }
 
-// ── Endpoint ĐỀ XUẤT (TODO Phoenix chốt path/shape thật) ─────────────
+// ── Endpoint THẬT (đo 2026-08-06, dữ liệu thật trên mạng pre-production) ──────
+//
+// Máy chủ bọc mọi phản hồi trong `{ code, result }`. Bóc ở ĐÚNG một chỗ để nơi gọi
+// không phải biết lớp bọc đó.
+function unwrap<T>(body: unknown): T | undefined {
+  return (body as { result?: T } | undefined)?.result;
+}
 
-/** Danh sách pool để user chọn uỷ quyền. */
-export const listPools = (): Promise<{ pools?: PoolSummary[] }> =>
-  request<{ pools?: PoolSummary[] }>('/v1/pools', { method: 'GET' });
+/** Số pool lấy chi tiết cho trang đầu. Xem ghi chú trong `listPools`. */
+const DETAIL_PAGE_SIZE = 20;
+
+/**
+ * Danh sách pool để user chọn uỷ quyền.
+ *
+ * ⚠ `GET /pools` chỉ trả **mảng pool_id**, không có ticker/tên/stake — mà danh sách
+ * toàn chuỗi `pool1wn6a6…` thì không ai chọn được cái nào. Nên phải gọi thêm chi tiết
+ * từng pool. Bản này lấy chi tiết cho `DETAIL_PAGE_SIZE` pool đầu, chạy song song.
+ *
+ * Đây là chỗ CỐ Ý giới hạn, nói ra để không ai tưởng đã phủ hết: mạng có hàng nghìn
+ * pool; lấy chi tiết tất cả là hàng nghìn request từ điện thoại. Việc đúng là backend
+ * có một đường trả kèm chi tiết theo trang — đã hỏi Phoenix. Tới lúc đó, màn hiển thị
+ * 20 pool đầu.
+ */
+export async function listPools(): Promise<{ pools?: PoolSummary[] }> {
+  const body = await request<unknown>('/pools?page=1&count=100', { method: 'GET' });
+  const ids = unwrap<{ pool_ids?: string[] }>(body)?.pool_ids ?? [];
+  if (ids.length === 0) return { pools: [] };
+
+  const details = await Promise.all(
+    ids.slice(0, DETAIL_PAGE_SIZE).map(id =>
+      // Một pool lỗi KHÔNG được làm trắng cả danh sách — bỏ qua đúng pool đó.
+      getPool(id).catch(() => null),
+    ),
+  );
+  return { pools: details.filter((p): p is PoolSummary => p !== null) };
+}
 
 /** Chi tiết 1 pool. */
-export const getPool = (poolId: string): Promise<PoolSummary> =>
-  request<PoolSummary>(`/v1/pools/${encodeURIComponent(poolId)}`, { method: 'GET' });
+export async function getPool(poolId: string): Promise<PoolSummary> {
+  const body = await request<unknown>(`/pools/${encodeURIComponent(poolId)}`, {
+    method: 'GET',
+  });
+  const r = unwrap<Record<string, unknown>>(body);
+  if (!r) throw new PoolApiError('server', 200, 'Máy chủ Pool trả dữ liệu trống.');
+  // Đổi tên trường của máy chủ sang tên UI đang dùng. Giữ `live_stake`/`fixed_cost`
+  // NGUYÊN CHUỖI: lovelace của một pool lớn vượt 2^53, parse sang number là sai số.
+  return {
+    pool_id: String(r.pool_id ?? poolId),
+    ticker: r.ticker as string | undefined,
+    name: r.name as string | undefined,
+    description: r.description as string | undefined,
+    live_stake: r.live_stake as string | undefined,
+    saturation: r.live_saturation as number | undefined,
+    fixed_cost: r.fixed_cost as string | undefined,
+    margin: r.margin_cost as number | undefined,
+  };
+}
 
-/** Trạng thái uỷ quyền của user hiện tại (cần Bearer — nối sau). */
-export const getDelegationStatus = (): Promise<DelegationStatus> =>
-  request<DelegationStatus>('/v1/delegation/status', { method: 'GET' });
+/**
+ * Trạng thái uỷ quyền của một stake address.
+ *
+ * Máy chủ đánh theo ĐỊA CHỈ STAKE, không theo phiên đăng nhập — nên nơi gọi phải đưa
+ * địa chỉ vào. Chưa có ví thì chưa có địa chỉ, và câu trả lời đúng lúc đó là "chưa
+ * uỷ quyền", không phải một lỗi đỏ.
+ */
+export async function getDelegationStatus(
+  stakeAddress?: string,
+): Promise<DelegationStatus> {
+  if (!stakeAddress) return { delegated_pool_id: null };
+  const body = await request<unknown>(
+    `/delegation/status/${encodeURIComponent(stakeAddress)}`,
+    { method: 'GET' },
+  );
+  const r = unwrap<Record<string, unknown>>(body);
+  return {
+    delegated_pool_id: (r?.pool_id as string | null | undefined) ?? null,
+    active_stake: r?.controlled_amount as string | undefined,
+    available_rewards: r?.withdrawable_amount as string | undefined,
+  };
+}
 
 // ── Uỷ quyền — KÝ CLIENT-SIDE (non-custodial), CHỖ CHỜ nối ví ─────────
 // KHÔNG ký/nộp tx ở service này. Khi nối ví: dựng tx delegation, ký bằng khoá

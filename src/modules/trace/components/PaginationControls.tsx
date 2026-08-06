@@ -8,7 +8,9 @@ import {
   StyleSheet,
   Animated,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+// Icon: bộ Font Awesome Solid tải qua Iconify (assets/icons → icons.generated).
+// Thêm icon mới: `node scripts/icons.js <tên-fa6-solid>`.
+import Icon from '../../../components/Icon';
 import { COLORS } from '../../../constants';
 
 interface PaginationControlsProps {

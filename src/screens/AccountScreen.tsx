@@ -669,8 +669,8 @@ const AccountScreen = () => {
                         <View style={styles.walletNote}>
                             <Icon name="information-outline" size={13} color={COLORS.textMuted} />
                             <Text style={styles.walletNoteText}>
-                                <Text style={styles.walletNoteStrong}>Ví cơ bản</Text> do chính bạn giữ khoá (khôi phục bằng cụm 24 từ) — dùng để nhận và chuyển tài sản.{' '}
-                                <Text style={styles.walletNoteStrong}>Ví Phượng Hoàng</Text> do hệ thống giữ hộ theo DID — dùng cho kích hoạt và dịch vụ.
+                                <Text style={styles.walletNoteStrong}>Basic Wallet</Text> you hold the keys yourself (recovery via a 24-word phrase) — used to receive and transfer assets.{' '}
+                                <Text style={styles.walletNoteStrong}>Phoenix Wallet</Text> is managed by the system according to the DID — used for activation and services.
                             </Text>
                         </View>
                     </Section>
@@ -689,16 +689,16 @@ const AccountScreen = () => {
                 <Animated.View style={{ opacity: fadeAnim }}>
                     <Section title="CÀI ĐẶT">
                         <MenuItem icon="bell-outline" label="Thông báo" sublabel="Quản lý thông báo đẩy" />
+                        {/* Nhãn song ngữ CỐ Ý: người đang cần đổi ngôn ngữ là người
+                            chưa đọc được ngôn ngữ đang hiện. Dòng phụ = tên ngôn ngữ
+                            đang chọn, viết bằng CHÍNH nó (endonym, không dịch). */}
                         <MenuItem
                             icon="translate"
-                            label="Ngôn ngữ"
+                            label="Language"
                             sublabel={langLabel}
                             onPress={() => setLangOpen(true)}
                         />
                         <MenuItem icon="fingerprint" label="Sinh trắc học" sublabel="Xác thực khuôn mặt & vân tay" onPress={() => navigation.navigate('BiometricSettings')} />
-                        {/* Nhãn song ngữ CỐ Ý: người đang cần đổi ngôn ngữ là người
-                            chưa đọc được ngôn ngữ đang hiện. */}
-                        <MenuItem icon="translate" label="Ngôn ngữ · Language" sublabel="Tiếng Việt · 中文 · 日本語" onPress={() => navigation.navigate('Language')} />
                         <MenuItem
                             icon="robot-happy-outline"
                             label="Trợ lý ảo"

@@ -9,6 +9,7 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Animated, StatusBar } from 'react-native';
 import BlinkLogo from './BlinkLogo';
+import { tf } from '../i18n';
 
 const BRAND_BG = '#0F3D18'; // xanh lá rất đậm — nền chuyển tiếp
 
@@ -26,7 +27,9 @@ export default function LoginSuccessOverlay({
   visible,
   onDone,
   holdMs = 1600,
-  message = 'Xin chào %username%!',
+  // Khuôn dùng {name} (không phải %username%) để đi qua `tf` — chuỗi ĐÃ nối tên
+  // người thì không bao giờ khớp từ điển, đó là lý do câu này từng trơ tiếng Việt.
+  message = 'Xin chào {name}!',
   username = 'bạn',
 }: Props) {
   const fade = useRef(new Animated.Value(0)).current;
@@ -61,7 +64,7 @@ export default function LoginSuccessOverlay({
       <Animated.View style={{ alignItems: 'center', transform: [{ translateY: rise }] }}>
         {/* loop=false: chạy đúng 1 lượt; overlay tự đóng sau holdMs (ngắn hơn 3s). */}
         <BlinkLogo size={168} loop={false} />
-        <Text style={styles.msg}>{message.replace('%username%', username)}</Text>
+        <Text style={styles.msg}>{tf(message, { name: username })}</Text>
       </Animated.View>
     </Animated.View>
   );

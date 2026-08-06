@@ -14,7 +14,12 @@ import {
   Platform,
   Button,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+// Icon dùng bộ Font Awesome Solid tải sẵn qua Iconify (assets/icons → icons.generated).
+// KHÔNG dùng react-native-vector-icons/MaterialCommunityIcons nữa: bộ đó kéo theo file
+// font riêng, nét dày mỏng không đồng bộ với phần còn lại của app, và tên icon không
+// được TypeScript kiểm — gõ sai thì lặng lẽ ra ô trống.
+// Thêm icon mới: `node scripts/icons.js <tên-fa6-solid>`.
+import Icon, { type IconName } from '../../../components/Icon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useSelector, useDispatch } from 'react-redux';
@@ -32,6 +37,32 @@ import { formatTreeName, shortTreeCode } from '../../../utils/treeNameFormatter'
 
 const { width } = Dimensions.get('window');
 
+// ── Bảng icon theo NGHĨA, không theo tên glyph ────────────────────────────────
+// Cùng một khái niệm (vườn, cây, quả…) xuất hiện ở thẻ thống kê, pill lọc VÀ hàng
+// dữ liệu — trước đây mỗi chỗ gõ lại tên glyph nên sửa một chỗ là lệch ba chỗ.
+// Khai `IconName` (không phải `string`) để gõ sai tên là `tsc` báo, thay vì lặng lẽ
+// ra ô trống trên màn.
+const ICON = {
+  farm: 'tractor',
+  tree: 'tree',
+  fruit: 'apple-whole',
+  activity: 'clipboard-list',
+  all: 'table-cells-large',
+  unknown: 'circle-question',
+  empty: 'inbox',
+  addTree: 'seedling',
+  account: 'user-gear',
+  syncing: 'arrows-rotate',
+  syncPush: 'cloud-arrow-up',
+  synced: 'circle-check',
+  next: 'chevron-right',
+  // Token: mỗi loại một hình RIÊNG để liếc là phân biệt được, không phải đọc chữ.
+  magic: 'wand-magic-sparkles',
+  lamp: 'bolt',
+  carp: 'fish',
+  ada: 'coins',
+} satisfies Record<string, IconName>;
+
 type FilterType = 'all' | 'farms' | 'trees' | 'fruits' | 'activities';
 const ITEMS_PER_PAGE = 10;
 
@@ -39,7 +70,7 @@ const ITEMS_PER_PAGE = 10;
 const TokenChip = ({
   icon, label, value, color, index,
 }: {
-  icon: string; label: string; value: any; color: string; index: number;
+  icon: IconName; label: string; value: any; color: string; index: number;
 }) => {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -63,7 +94,7 @@ const TokenChip = ({
 const StatCard = ({
   icon, label, value, color, index,
 }: {
-  icon: string; label: string; value: number; color: string; index: number;
+  icon: IconName; label: string; value: number; color: string; index: number;
 }) => {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(12)).current;
@@ -90,7 +121,7 @@ const StatCard = ({
 const QuickAction = ({
   icon, label, color, onPress, disabled, index,
 }: {
-  icon: string; label: string; color: string;
+  icon: IconName; label: string; color: string;
   onPress: () => void; disabled?: boolean; index: number;
 }) => {
   const scaleAnim = useRef(new Animated.Value(1)).current;
@@ -125,13 +156,13 @@ const QuickAction = ({
 // ("Cây #3 góc Đông") thay vì raw UUID code.
 const getItemConfig = (item: any, farms?: any[]) => {
   if (item.type === 'farm' || 'coordinates' in item)
-    return { icon: 'pine-tree', color: COLORS.accent, typeLabel: 'TRẠI', title: item.name, sub: `${item.coordinates?.length ?? 0} điểm GPS` };
+    return { icon: ICON.farm, color: COLORS.accent, typeLabel: 'TRẠI', title: item.name, sub: `${item.coordinates?.length ?? 0} điểm GPS` };
   if (item.type === 'tree' || ('farmId' in item && !('treeId' in item))) {
     const farm = farms?.find(f => f.id === item.farmId);
     const title = formatTreeName(item, farm);
     const short = shortTreeCode(item);
     return {
-      icon: 'tree-outline',
+      icon: ICON.tree,
       color: '#B07D2F',
       typeLabel: 'CÂY',
       title,
@@ -139,19 +170,19 @@ const getItemConfig = (item: any, farms?: any[]) => {
     };
   }
   if (item.type === 'fruit' || 'treeId' in item)
-    return { icon: 'food-apple-outline', color: COLORS.success, typeLabel: 'QUẢ', title: item.code, sub: `Trạng thái: ${item.status}` };
+    return { icon: ICON.fruit, color: COLORS.success, typeLabel: 'QUẢ', title: item.code, sub: `Trạng thái: ${item.status}` };
   if (item.type === 'activity')
-    return { icon: 'clipboard-text-outline', color: '#7D3C98', typeLabel: 'HOẠT ĐỘNG', title: item.type, sub: `${item.creditsUsed} MAGIC` };
-  return { icon: 'help-circle-outline', color: COLORS.textMuted, typeLabel: '—', title: 'Unknown', sub: '' };
+    return { icon: ICON.activity, color: '#7D3C98', typeLabel: 'HOẠT ĐỘNG', title: item.type, sub: `${item.creditsUsed} MAGIC` };
+  return { icon: ICON.unknown, color: COLORS.textMuted, typeLabel: '—', title: 'Unknown', sub: '' };
 };
 
 // ── Filter pill ───────────────────────────────────────────────────────────────
-const FILTERS: { key: FilterType; label: string; icon: string }[] = [
-  { key: 'all', label: 'Tất cả', icon: 'view-grid-outline' },
-  { key: 'farms', label: 'Trang trại', icon: 'pine-tree' },
-  { key: 'trees', label: 'Cây trồng', icon: 'tree-outline' },
-  { key: 'fruits', label: 'Quả', icon: 'food-apple-outline' },
-  { key: 'activities', label: 'Hoạt động', icon: 'clipboard-text-outline' },
+const FILTERS: { key: FilterType; label: string; icon: IconName }[] = [
+  { key: 'all', label: 'Tất cả', icon: ICON.all },
+  { key: 'farms', label: 'Trang trại', icon: ICON.farm },
+  { key: 'trees', label: 'Cây trồng', icon: ICON.tree },
+  { key: 'fruits', label: 'Quả', icon: ICON.fruit },
+  { key: 'activities', label: 'Hoạt động', icon: ICON.activity },
 ];
 
 // ── Main Screen ───────────────────────────────────────────────────────────────
@@ -324,7 +355,7 @@ const DashboardScreen: React.FC = () => {
               disabled={isSyncing}
             >
               <Icon
-                name={isSyncing ? 'sync' : 'cloud-check-outline'}
+                name={isSyncing ? ICON.syncing : ICON.synced}
                 size={14}
                 color={isSyncing ? COLORS.accent : COLORS.success}
               />
@@ -347,16 +378,16 @@ const DashboardScreen: React.FC = () => {
 
           <Text style={styles.greetingName}>Xin chào 👋</Text>
           <Text style={styles.greetingDesc}>
-            Quản lý {farms.length} trang trại · {trees.length} cây · {fruits.length} quả
+            Manager {farms.length} Farms · {trees.length} trees · {fruits.length} fruits
           </Text>
 
           {/* Token row */}
           <View style={styles.tokenRow}>
-            <TokenChip index={0} icon="star-four-points-outline" label="M" value={wallet?.magicBalance ?? '—'} color="#B07D2F" />
-            <TokenChip index={1} icon="lightning-bolt" label="L" value={fmtLamp(wallet?.lampBalance)} color={COLORS.accent} />
+            <TokenChip index={0} icon={ICON.magic} label="M" value={wallet?.magicBalance ?? '—'} color="#B07D2F" />
+            <TokenChip index={1} icon={ICON.lamp} label="L" value={fmtLamp(wallet?.lampBalance)} color={COLORS.accent} />
             {/* CARP — token hệ sinh thái thứ 3. TODO brand tạm; số dư chờ API Phoenix. */}
-            <TokenChip index={2} icon="fish" label="C" value={wallet?.carpBalance ?? '—'} color="#2F8F8F" />
-            <TokenChip index={3} icon="hexagon-outline" label="A" value={wallet?.adaBalance ?? '—'} color="#0033AD" />
+            <TokenChip index={2} icon={ICON.carp} label="C" value={wallet?.carpBalance ?? '—'} color="#2F8F8F" />
+            <TokenChip index={3} icon={ICON.ada} label="A" value={wallet?.adaBalance ?? '—'} color="#0033AD" />
           </View>
         </Animated.View>
         {/* ── Quick actions ── */}
@@ -365,17 +396,15 @@ const DashboardScreen: React.FC = () => {
           <Text style={styles.sectionTitle}>THAO TÁC NHANH</Text>
         </View>
         <View style={styles.quickActionsRow}>
-          <QuickAction index={0} icon="pine-tree" label="Trang trại" color={COLORS.accent}
+          <QuickAction index={0} icon={ICON.farm} label="Trang trại" color={COLORS.accent}
             onPress={() => navigation.navigate('FarmList')} />
-          <QuickAction index={1} icon="plus-circle" label="Thêm cây" color="#B07D2F"
+          <QuickAction index={1} icon={ICON.addTree} label="Thêm cây" color="#B07D2F"
             onPress={() => {
               if (farms.length > 0) navigation.navigate('FarmDetail', { farm_id: farms[0].id });
               else showInfo('Thông báo', 'Vui lòng tạo trang trại trước');
             }} />
-          <QuickAction index={2} icon={isSyncing ? 'sync' : 'cloud-upload-outline'} label="Đồng bộ" color={COLORS.success}
+          <QuickAction index={2} icon={isSyncing ? ICON.syncing : ICON.syncPush} label="Đồng bộ" color={COLORS.success}
             onPress={autoSync} disabled={isSyncing} />
-          <QuickAction index={3} icon="account-outline" label="Tài khoản" color="#7D3C98"
-            onPress={() => navigation.navigate('Account' as never)} />
         </View>
         {/* ── Stats grid ── */}
         <View style={styles.sectionRow}>
@@ -383,10 +412,10 @@ const DashboardScreen: React.FC = () => {
           <Text style={styles.sectionTitle}>THỐNG KÊ</Text>
         </View>
         <View style={styles.statsGrid}>
-          <StatCard index={0} icon="pine-tree" label="Trang trại" value={farms.length} color={COLORS.accent} />
-          <StatCard index={1} icon="tree-outline" label="Cây trồng" value={trees.length} color="#B07D2F" />
-          <StatCard index={2} icon="food-apple-outline" label="Quả" value={fruits.length} color={COLORS.success} />
-          <StatCard index={3} icon="clipboard-text-outline" label="Hoạt động" value={activities.length} color="#7D3C98" />
+          <StatCard index={0} icon={ICON.farm} label="Trang trại" value={farms.length} color={COLORS.accent} />
+          <StatCard index={1} icon={ICON.tree} label="Cây trồng" value={trees.length} color="#B07D2F" />
+          <StatCard index={2} icon={ICON.fruit} label="Quả" value={fruits.length} color={COLORS.success} />
+          <StatCard index={3} icon={ICON.activity} label="Hoạt động" value={activities.length} color="#7D3C98" />
         </View>
 
 
@@ -425,7 +454,7 @@ const DashboardScreen: React.FC = () => {
         {filteredItems.length === 0 ? (
           <View style={styles.emptyWrap}>
             <View style={styles.emptyIconWrap}>
-              <Icon name="inbox-outline" size={36} color={COLORS.accentLight} />
+              <Icon name={ICON.empty} size={36} color={COLORS.accentLight} />
               <View style={styles.emptyRing} />
             </View>
             <Text style={styles.emptyTitle}>Chưa có dữ liệu</Text>
@@ -519,7 +548,7 @@ const ItemRow = ({
             <Text style={styles.itemSub} numberOfLines={1}>{config.sub}</Text>
           </View>
 
-          <Icon name="chevron-right" size={16} color={COLORS.accentLight} style={{ marginRight: 12 }} />
+          <Icon name={ICON.next} size={16} color={COLORS.accentLight} style={{ marginRight: 12 }} />
         </View>
       </TouchableOpacity>
     </Animated.View>

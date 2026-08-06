@@ -35,7 +35,7 @@ import {
   subNational,
   type SubTab,
 } from './subHomeLabels';
-import { useNationalLanguage } from '../i18n/useNationalLanguage';
+import { useLanguage } from '../i18n';
 
 interface Props {
   /** Route app con (khoá SUBHOME_FRAME), vd 'ProofChatHome' | 'Farms'. */
@@ -65,7 +65,7 @@ const SubHomeFrame: React.FC<Props> = ({
   visibleCount = SUBHOME_VISIBLE_COUNT,
   style,
 }) => {
-  const lang = useNationalLanguage();
+  const lang = useLanguage();
   const tabs = React.useMemo(() => SUBHOME_FRAME[appRoute] ?? [], [appRoute]);
   const { visible, overflow } = React.useMemo(
     () => rankSubTabs(tabs, usage ?? {}, pinned ?? null, visibleCount),

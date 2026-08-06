@@ -85,9 +85,10 @@ async function ensurePhoenixSessionInner(opts: { force?: boolean }): Promise<str
     const message = `${challenge}:${SELF_PAIR_DOMAIN}:${timestamp}`;
     const signature = await signRaw(
       asciiToHex(message),
-      'Kích hoạt ví',
-      'Ký bằng khoá phần cứng để mở khoá dịch vụ ví',
+      'Activate the wallet',
+      'Sign with the hardware key to unlock the wallet services',
     );
+
     rLog.phoenixWallet.sessionSigned(signature?.length ?? 0);
 
     // approve MINT token nhưng KHÔNG trả sessionToken trong response HTTP (backend

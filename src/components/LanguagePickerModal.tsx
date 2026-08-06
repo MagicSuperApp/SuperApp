@@ -45,7 +45,7 @@ const LanguagePickerModal: React.FC<Props> = ({ visible, onClose }) => {
           <View style={styles.grabber} />
           <Text style={styles.title}>Chọn ngôn ngữ</Text>
           <Text style={styles.subtitle}>
-            Áp dụng cho toàn bộ ứng dụng. Tên riêng và thuật ngữ giữ nguyên.
+            Cài đặt ngôn ngữ của bạn
           </Text>
 
           {LANGUAGES.map((lang, i) => {

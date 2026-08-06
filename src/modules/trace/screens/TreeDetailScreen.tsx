@@ -29,7 +29,9 @@ import {
   Alert,
   Clipboard,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+// Icon: bo Font Awesome Solid tai qua Iconify (assets/icons -> icons.generated).
+// Them icon moi: `node scripts/icons.js <ten-fa6-solid>`.
+import Icon, { type IconName } from '../../../components/Icon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import PaginationControls from '../components/PaginationControls';
@@ -55,10 +57,10 @@ const ITEMS_PER_PAGE = 20;
 
 type TabKey = 'overview' | 'history' | 'info';
 
-const TAB_DEFS: { key: TabKey; label: string; icon: string }[] = [
-  { key: 'overview', label: 'Tổng quan', icon: 'view-dashboard-outline' },
-  { key: 'history', label: 'Lịch sử', icon: 'history' },
-  { key: 'info', label: 'Thông tin', icon: 'clipboard-text-outline' },
+const TAB_DEFS: { key: TabKey; label: string; icon: IconName }[] = [
+  { key: 'overview', label: 'Tổng quan', icon: 'table-cells-large' },
+  { key: 'history', label: 'Lịch sử', icon: 'clock-rotate-left' },
+  { key: 'info', label: 'Thông tin', icon: 'clipboard-list' },
 ];
 
 interface RouteParams { tree?: any; treeId?: string; initialTab?: TabKey; farmId?: string }
@@ -68,9 +70,9 @@ interface RouteParams { tree?: any; treeId?: string; initialTab?: TabKey; farmId
 // (growing/mature/sold) là của bảng SQLite `fruits` không còn dùng → lọc theo nó
 // thì KHÔNG BAO GIỜ khớp quả thật, danh sách rỗng oan.
 const STATUS_MAP: Record<FruitStatus, { label: string; color: string; bg: string; icon: string }> = {
-  on_tree: { label: 'Trên cây', color: '#6FAF7F', bg: 'rgba(111,175,127,0.18)', icon: 'fruit-cherries' },
-  harvested: { label: 'Đã thu hoạch', color: COLORS.info, bg: 'rgba(8,138,185,0.12)', icon: 'basket-outline' },
-  lost: { label: 'Đã mất', color: COLORS.textMuted, bg: 'rgba(0,0,0,0.06)', icon: 'close-circle-outline' },
+  on_tree: { label: 'Trên cây', color: '#6FAF7F', bg: 'rgba(111,175,127,0.18)', icon: 'apple-whole' },
+  harvested: { label: 'Đã thu hoạch', color: COLORS.info, bg: 'rgba(8,138,185,0.12)', icon: 'basket-shopping' },
+  lost: { label: 'Đã mất', color: COLORS.textMuted, bg: 'rgba(0,0,0,0.06)', icon: 'circle-xmark' },
 };
 const getStatus = (s?: string) => STATUS_MAP[s as FruitStatus] ?? STATUS_MAP.on_tree;
 
@@ -135,18 +137,18 @@ const FruitCard = ({
 
             <View style={styles.fruitMetaRow}>
               <View style={styles.fruitMetaItem}>
-                <Icon name="camera-outline" size={12} color={COLORS.textMuted} />
+                <Icon name="camera" size={12} color={COLORS.textMuted} />
                 <Text style={styles.fruitMetaText}>{item.n_views} góc</Text>
               </View>
               {item.zone && (
                 <View style={styles.fruitMetaItem}>
-                  <Icon name="map-marker-outline" size={12} color={COLORS.textMuted} />
+                  <Icon name="location-dot" size={12} color={COLORS.textMuted} />
                   <Text style={styles.fruitMetaText}>{ZONE_VI[item.zone]}</Text>
                 </View>
               )}
               {enrolled ? (
                 <View style={styles.fruitMetaItem}>
-                  <Icon name="calendar-outline" size={12} color={COLORS.textMuted} />
+                  <Icon name="calendar" size={12} color={COLORS.textMuted} />
                   <Text style={styles.fruitMetaText}>{enrolled}</Text>
                 </View>
               ) : null}
@@ -371,7 +373,7 @@ const TreeDetailScreen = () => {
           <Text style={styles.headerTitle}>Lỗi</Text>
         </View>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <Icon name="alert-circle-outline" size={48} color={COLORS.error} />
+          <Icon name="circle-exclamation" size={48} color={COLORS.error} />
           <Text style={{ marginTop: 16, fontSize: 16, color: COLORS.text, textAlign: 'center' }}>
             Không tìm thấy thông tin cây
           </Text>
@@ -512,7 +514,7 @@ const TreeDetailScreen = () => {
 
   // ── Header (shared across tabs) ─────────────────────────────────────────────
   const Header = (
-    <Animated.View style={[styles.header, { paddingTop: (Platform.OS === 'ios' ? 56 : 40) + insets.top }, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+    <Animated.View style={[styles.header, { paddingTop: 40 + insets.top }, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
       <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
         <Icon name="arrow-left" size={20} color={COLORS.textSub} />
       </TouchableOpacity>
@@ -526,7 +528,7 @@ const TreeDetailScreen = () => {
       {/* Đặt vị-trí cây trong sơ đồ 3D bằng tay (tuỳ chọn — mặc định theo GPS
           hoặc rải ngẫu nhiên ổn định trong ranh giới vườn). */}
       <TouchableOpacity style={styles.headerActionBtn} onPress={handlePlaceInFarm}>
-        <Icon name="map-marker-plus" size={20} color={COLORS.textSub} />
+        <Icon name="map-pin" size={20} color={COLORS.textSub} />
       </TouchableOpacity>
       <TouchableOpacity
         style={styles.headerActionBtn}
@@ -534,7 +536,7 @@ const TreeDetailScreen = () => {
           targetType: 'tree', targetId: tree.id, treeName: (tree as any).name,
         })}
       >
-        <Icon name="spray-bottle" size={20} color={COLORS.textSub} />
+        <Icon name="spray-can" size={20} color={COLORS.textSub} />
       </TouchableOpacity>
     </Animated.View>
   );
@@ -559,12 +561,12 @@ const TreeDetailScreen = () => {
               ) : null}
               {tree?.farmName && (
                 <View style={styles.heroFarmRow}>
-                  <Icon name="pine-tree" size={12} color={COLORS.textMuted} />
+                  <Icon name="tree" size={12} color={COLORS.textMuted} />
                   <Text style={styles.heroFarmText}>{tree?.farmName}</Text>
                 </View>
               )}
               <View style={styles.heroFarmRow}>
-                <Icon name="map-marker-outline" size={12} color={COLORS.textMuted} />
+                <Icon name="location-dot" size={12} color={COLORS.textMuted} />
                 <Text style={styles.heroFarmText}>{gpsText}</Text>
               </View>
             </View>
@@ -574,16 +576,16 @@ const TreeDetailScreen = () => {
 
         <View style={styles.heroDivider}>
           <View style={styles.heroDividerLine} />
-          <Icon name="leaf-outline" size={12} color={COLORS.accentLight} />
+          <Icon name="leaf" size={12} color={COLORS.accentLight} />
           <View style={styles.heroDividerLine} />
         </View>
 
         <View style={styles.heroStats}>
           {[
             { icon: 'counter', val: totalFruits, label: 'quả đã ghi nhận', color: COLORS.accent },
-            { icon: 'fruit-cherries', val: onTreeCount, label: 'trên cây', color: '#6FAF7F' },
-            { icon: 'basket-outline', val: harvestedCount, label: 'đã thu hoạch', color: COLORS.info },
-            { icon: 'close-circle-outline', val: lostCount, label: 'đã mất', color: COLORS.textMuted },
+            { icon: 'apple-whole', val: onTreeCount, label: 'trên cây', color: '#6FAF7F' },
+            { icon: 'basket-shopping', val: harvestedCount, label: 'đã thu hoạch', color: COLORS.info },
+            { icon: 'circle-xmark', val: lostCount, label: 'đã mất', color: COLORS.textMuted },
           ].map((s, i) => (
             <View
               key={i}
@@ -606,11 +608,11 @@ const TreeDetailScreen = () => {
           <View style={styles.photoStripHeader}>
             <View style={styles.sectionLeft}>
               <View style={styles.sectionDot} />
-              <Text style={styles.sectionTitle}>ẢNH CÂY ({treeImages.length})</Text>
+              <Text style={styles.sectionTitle}>TREE PICTURES ({treeImages.length})</Text>
             </View>
             {/* Bổ-sung góc nhìn cho cây bằng video → /api/tree/{id}/video (server chắt khung). */}
             <TouchableOpacity style={styles.treeVideoBtn} onPress={handleTreeVideo} activeOpacity={0.8}>
-              <Icon name="video-plus" size={15} color="#1b5e20" />
+              <Icon name="video" size={15} color="#1b5e20" />
               <Text style={styles.treeVideoBtnText}>Video cây</Text>
             </TouchableOpacity>
           </View>
@@ -660,7 +662,7 @@ const TreeDetailScreen = () => {
               }}
             >
               <Icon
-                name={p.stored === false ? 'cloud-alert' : 'shield-check'}
+                name={p.stored === false ? 'triangle-exclamation' : 'shield-halved'}
                 size={15}
                 color={p.stored === false ? '#B26A00' : '#1b5e20'}
               />
@@ -672,7 +674,7 @@ const TreeDetailScreen = () => {
                   {p.nFruitsMax ? ` · khoảng ${p.nFruitsMax} quả` : ''}
                 </Text>
               </View>
-              <Icon name="content-copy" size={14} color={COLORS.textMuted} />
+              <Icon name="copy" size={14} color={COLORS.textMuted} />
             </TouchableOpacity>
           ))}
         </View>
@@ -687,18 +689,18 @@ const TreeDetailScreen = () => {
           </Text>
         </View>
         <TouchableOpacity style={styles.view3DBtn} onPress={handleScan3D} activeOpacity={0.85}>
-          <Icon name="camera-outline" size={16} color={COLORS.accent} />
+          <Icon name="camera" size={16} color={COLORS.accent} />
           <Text style={styles.view3DBtnText}>Chụp lại</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.captureBtn} onPress={handleView3D} activeOpacity={0.85}>
-          <Icon name="cube-scan" size={16} color={COLORS.white} />
+          <Icon name="expand" size={16} color={COLORS.white} />
           <Text style={styles.captureBtnText}>Sơ đồ 3D</Text>
         </TouchableOpacity>
       </View>
 
       {estimatedFruits > 0 && (
         <View style={styles.estimateNote}>
-          <Icon name="chart-bell-curve-cumulative" size={14} color={COLORS.accent} />
+          <Icon name="chart-line" size={14} color={COLORS.accent} />
           <Text style={styles.estimateText}>
             Dự kiến <Text style={{ fontWeight: '700', color: COLORS.accent }}>{estimatedFruits} quả</Text> trong mùa này
           </Text>
@@ -718,7 +720,7 @@ const TreeDetailScreen = () => {
       <View style={styles.fruitActionRow}>
         {/* Quay video quả cho cây này (OriLife) — gắn tree_id, cho phép gắn sai. */}
         <TouchableOpacity style={styles.fruitVideoBtn} onPress={handleFruitVideo} activeOpacity={0.8}>
-          <Icon name="video-plus" size={15} color="#1b5e20" />
+          <Icon name="video" size={15} color="#1b5e20" />
           <Text style={styles.fruitVideoBtnText}>Video quả</Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -737,7 +739,7 @@ const TreeDetailScreen = () => {
       <View style={styles.searchContainer}>
         <View style={styles.searchRow}>
           <View style={styles.searchInputWrap}>
-            <Icon name="magnify" size={18} color={COLORS.textMuted} style={styles.searchIcon} />
+            <Icon name="magnifying-glass" size={18} color={COLORS.textMuted} style={styles.searchIcon} />
             <TextInput
               style={styles.searchInput}
               placeholder="Tìm kiếm theo tên quả..."
@@ -756,7 +758,7 @@ const TreeDetailScreen = () => {
                 }}
                 style={styles.clearSearchBtn}
               >
-                <Icon name="close" size={16} color={COLORS.textMuted} />
+                <Icon name="xmark" size={16} color={COLORS.textMuted} />
               </TouchableOpacity>
             )}
           </View>
@@ -765,7 +767,7 @@ const TreeDetailScreen = () => {
             style={styles.statusFilterBtn}
             onPress={() => setStatusDropdownVisible(true)}
           >
-            <Icon name="filter-variant" size={18} color={COLORS.accent} />
+            <Icon name="filter" size={18} color={COLORS.accent} />
             <Text style={styles.statusFilterText}>
               {statusFilter === 'all' ? 'Tất cả trạng thái' : getStatus(statusFilter).label}
             </Text>
@@ -785,18 +787,18 @@ const TreeDetailScreen = () => {
     </View>
   ) : fruitsError ? (
     <View style={styles.emptyWrap}>
-      <Icon name="wifi-off" size={36} color={COLORS.warning} />
+      <Icon name="plug-circle-xmark" size={36} color={COLORS.warning} />
       <Text style={styles.emptyTitle}>Không tải được quả</Text>
       <Text style={styles.emptyBody}>{fruitsError}</Text>
       <TouchableOpacity style={styles.emptyAddBtn} onPress={() => fetchFruits(true)}>
-        <Icon name="refresh" size={15} color={COLORS.white} />
+        <Icon name="arrows-rotate" size={15} color={COLORS.white} />
         <Text style={styles.emptyAddBtnText}>Thử lại</Text>
       </TouchableOpacity>
     </View>
   ) : searchQuery.length > 0 || statusFilter !== 'all' ? (
     <View style={styles.noSearchResults}>
       <View style={styles.emptyIconWrap}>
-        <Icon name="magnify" size={36} color={COLORS.accentLight} />
+        <Icon name="magnifying-glass" size={36} color={COLORS.accentLight} />
         <View style={styles.emptyIconRing} />
       </View>
       <Text style={styles.emptyTitle}>Không tìm thấy quả nào</Text>
@@ -811,7 +813,7 @@ const TreeDetailScreen = () => {
           setCurrentPage(1);
         }}
       >
-        <Icon name="refresh" size={15} color={COLORS.white} />
+        <Icon name="arrows-rotate" size={15} color={COLORS.white} />
         <Text style={styles.emptyAddBtnText}>Xóa bộ lọc</Text>
       </TouchableOpacity>
     </View>
@@ -868,7 +870,7 @@ const TreeDetailScreen = () => {
       ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
       ListHeaderComponent={
         <View style={styles.historyHeader}>
-          <Icon name="history" size={16} color={COLORS.accent} />
+          <Icon name="clock-rotate-left" size={16} color={COLORS.accent} />
           <Text style={styles.historyHeaderText}>QUẢ ĐÃ GHI NHẬN GẦN ĐÂY</Text>
         </View>
       }
@@ -877,7 +879,7 @@ const TreeDetailScreen = () => {
           {fruitsLoading ? (
             <ActivityIndicator size="large" color={COLORS.accent} />
           ) : (
-            <Icon name="archive-outline" size={36} color={COLORS.accentLight} />
+            <Icon name="box-archive" size={36} color={COLORS.accentLight} />
           )}
           <Text style={styles.emptyTitle}>
             {fruitsLoading ? 'Đang tải lịch sử…' : 'Chưa ghi nhận quả nào'}
@@ -941,7 +943,7 @@ const TreeDetailScreen = () => {
             activeOpacity={0.88}
           >
             <View style={styles.btnShine} />
-            <Icon name="basket-outline" size={19} color={COLORS.white} />
+            <Icon name="basket-shopping" size={19} color={COLORS.white} />
             <Text style={styles.harvestBtnText}>Thu hoạch quả</Text>
           </TouchableOpacity>
         </View>
@@ -968,7 +970,7 @@ const TreeDetailScreen = () => {
             onPress={() => setZoomImage(null)}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
-            <Icon name="close" size={24} color={COLORS.white} />
+            <Icon name="xmark" size={24} color={COLORS.white} />
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>

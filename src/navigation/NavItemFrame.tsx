@@ -42,15 +42,12 @@ interface Props {
 }
 
 const NavItemFrame: React.FC<Props> = ({ route, focused, tint, dimTint, avatarUri, initials }) => {
-  // Đăng ký nghe đổi ngôn ngữ: `navNational` chỉ đọc giá trị hiện tại, React không tự
-  // biết nó đổi. Thiếu dòng này thì đổi ngôn ngữ xong thanh dưới vẫn giữ chữ cũ cho tới
-  // khi màn tình cờ vẽ lại — người dùng sẽ bấm đi bấm lại vì tưởng hụt.
-  const lang = useNationalLanguage();
+  // Đăng ký nghe đổi ngôn ngữ: `navNational` là hàm thuần đọc store ngoài React, React
+  // không tự biết nó đổi. Thiếu dòng này thì đổi ngôn ngữ xong thanh dưới vẫn giữ chữ cũ
+  // cho tới khi màn tình cờ vẽ lại — người dùng sẽ bấm đi bấm lại vì tưởng hụt.
+  const lang = useLanguage();
   const color = focused ? tint : dimTint;
   const isAvatarTab = !!avatarUri || !!initials;
-  // Đăng ký ngôn ngữ: navNational() là hàm thuần đọc store ngoài React, không tự
-  // kích hoạt vẽ lại. Hook này khiến ô tab vẽ lại ngay khi đổi ngôn ngữ.
-  const lang = useLanguage();
   // Dòng dưới chỉ vẽ khi KHÁC dòng EN ở trên — app đang đặt tiếng Anh (hoặc route
   // chưa khai nhãn quốc gia) sẽ trùng chữ, in hai lần trông như lỗi.
   const en = navEn(route);

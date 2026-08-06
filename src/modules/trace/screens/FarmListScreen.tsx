@@ -12,7 +12,9 @@ import {
   Platform,
   TextInput,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+// Icon: bo Font Awesome Solid tai qua Iconify (assets/icons -> icons.generated).
+// Them icon moi: `node scripts/icons.js <ten-fa6-solid>`.
+import Icon from '../../../components/Icon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useSelector, useDispatch } from 'react-redux';
@@ -51,7 +53,7 @@ const MagicCreditBadge = ({ credits }: { credits: number }) => {
 
   return (
     <Animated.View style={[styles.creditBadge, { transform: [{ scale: pulseAnim }] }]}>
-      <Icon name="lightning-bolt" size={13} color={COLORS.accent} />
+      <Icon name="bolt" size={13} color={COLORS.accent} />
       <Text style={styles.creditValue}>{credits?.toLocaleString() ?? '0'}</Text>
       <Text style={styles.creditLabel}>MAGIC</Text>
     </Animated.View>
@@ -130,7 +132,7 @@ const FarmCard = ({
             {/* Top row */}
             <View style={styles.cardTopRow}>
               <View style={styles.cardIconWrap}>
-                <Icon name="pine-tree" size={20} color={COLORS.accent} />
+                <Icon name="tree" size={20} color={COLORS.accent} />
               </View>
               <View
                 style={[
@@ -155,7 +157,7 @@ const FarmCard = ({
             {/* Location */}
             {item.location ? (
               <View style={styles.cardLocation}>
-                <Icon name="map-marker-outline" size={13} color={COLORS.textMuted} />
+                <Icon name="location-dot" size={13} color={COLORS.textMuted} />
                 <Text style={styles.cardLocationText} numberOfLines={1}>
                   {item.location}
                 </Text>
@@ -165,9 +167,9 @@ const FarmCard = ({
             {/* Stats */}
             <View style={styles.cardStats}>
               {[
-                { icon: 'tree-outline',        val: treeCount,  label: 'cây' },
-                { icon: 'food-apple-outline',  val: fruitCount, label: 'quả' },
-                { icon: 'vector-polygon',      val: areaLabel,  label: '' },
+                { icon: 'tree',        val: treeCount,  label: 'cây' },
+                { icon: 'apple-whole',  val: fruitCount, label: 'quả' },
+                { icon: 'draw-polygon',      val: areaLabel,  label: '' },
               ].map((s, i) => (
                 <View key={i} style={styles.cardStatItem}>
                   <Icon name={s.icon} size={13} color={COLORS.accentLight} />
@@ -300,7 +302,7 @@ const FarmListScreen = () => {
     // Có trại nhưng lọc rỗng → no-search-results (giữ riêng).
     return (
       <View style={styles.noSearchResults}>
-        <Icon name="magnify-close" size={48} color={COLORS.textMuted} />
+        <Icon name="magnifying-glass-minus" size={48} color={COLORS.textMuted} />
         <Text style={styles.noSearchResultsText}>Không tìm thấy nông trại</Text>
       </View>
     );
@@ -355,7 +357,7 @@ const FarmListScreen = () => {
 
         {/* Search Input */}
         <View style={styles.searchContainer}>
-          <Icon name="magnify" size={18} color={COLORS.textMuted} style={styles.searchIcon} />
+          <Icon name="magnifying-glass" size={18} color={COLORS.textMuted} />
           <TextInput
             style={styles.searchInput}
             placeholder="Tìm trang trại..."
@@ -365,7 +367,7 @@ const FarmListScreen = () => {
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 13, bottom: 13, left: 13, right: 13 }}>
-              <Icon name="close-circle" size={18} color={COLORS.textMuted} />
+              <Icon name="circle-xmark" size={18} color={COLORS.textMuted} />
             </TouchableOpacity>
           )}
         </View>
@@ -373,7 +375,7 @@ const FarmListScreen = () => {
         {/* Ornament */}
         <View style={styles.headerRule}>
           <View style={styles.headerRuleLine} />
-          <Icon name="leaf-outline" size={12} color={COLORS.accentLight} />
+          <Icon name="leaf" size={12} color={COLORS.accentLight} />
           <View style={styles.headerRuleLine} />
         </View>
       </Animated.View>
@@ -654,9 +656,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     gap: 8,
-  },
-  searchIcon: {
-    color: COLORS.textMuted,
   },
   searchInput: {
     flex: 1,

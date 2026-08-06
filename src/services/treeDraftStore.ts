@@ -102,6 +102,8 @@ export async function fileExists(uri: string): Promise<boolean> {
   if (!uri.startsWith('file://')) return true;
   try {
     // legacy API khớp cách space3d dùng (getInfoAsync còn ở legacy trên SDK này).
+    // require NÉM nếu globalThis.expo chưa cài (bản signed lỗi ExpoModulesCore) → catch
+    // trả true (coi như còn, không xoá nhầm nháp) — KHÔNG đụng expo tiếp → không crash.
     const FileSystem = require('expo-file-system/legacy');
     const info = await FileSystem.getInfoAsync(uri);
     return !!info?.exists;

@@ -265,6 +265,29 @@ workflows:
             echo "❌ No xcworkspace!"; ls -la ios/; exit 1
           fi
 
+      # Chẩn-đoán vì sao globalThis.expo KHÔNG được cài trên bản signed → 3D/expo-gl +
+      # video/expo-file-system crash. In các thứ SINH RA lúc pod install (không có ở
+      # checkout Windows). Đọc log step này gửi lại để chỉ đúng gốc. Không chặn build.
+      - name: Diagnose Expo modules (globalThis.expo)
+        script: |
+          echo "════════ EXPO DIAGNOSE ════════"
+          echo "--- 1) ExpoModulesProvider.swift (module nào được ĐĂNG KÝ) ---"
+          PROV=$(find ios -iname "ExpoModulesProvider.swift" 2>/dev/null | head -1)
+          echo "path: ${PROV:-KHÔNG TÌM THẤY (autolinking hỏng?)}"
+          [ -n "$PROV" ] && { echo "----- nội dung -----"; cat "$PROV"; echo "----- hết -----"; }
+          echo
+          echo "--- 2) Expo pods trong Podfile.lock ---"
+          grep -iE "ExpoModulesCore|ExpoGL|EXGL|ExpoFileSystem|ExpoAsset|^  - Expo|EXManifests|ExpoModulesProvider" ios/Podfile.lock 2>/dev/null | head -30 || echo "(không có)"
+          echo
+          echo "--- 3) New Arch flag trong xcconfig (RCT_NEW_ARCH_ENABLED) ---"
+          grep -rniE "RCT_NEW_ARCH_ENABLED|EX_DEV_CLIENT|USE_HERMES" ios/Pods/Target\ Support\ Files/Pods-*/*.release.xcconfig 2>/dev/null | head
+          echo
+          echo "--- 4) Có ExpoModulesCore TurboModule codegen không (New Arch) ---"
+          find ios -ipath "*ExpoModulesCore*" \( -iname "*.h" -o -iname "*JSI*" \) 2>/dev/null | head -10
+          echo "--- version expo-modules-core cài trên máy build ---"
+          node -e "console.log('expo-modules-core:', require('./node_modules/expo-modules-core/package.json').version, '| expo:', require('./node_modules/expo/package.json').version)"
+          echo "════════ /EXPO DIAGNOSE ════════"
+
       - name: Clean DerivedData & SPM
         script: |
           rm -rf ~/Library/Developer/Xcode/DerivedData
@@ -523,6 +546,21 @@ workflows:
           rm -rf ~/Library/Caches/CocoaPods Pods Podfile.lock
           pod install --repo-update
           cd ..
+
+      # Chẩn-đoán globalThis.expo (xem chú-thích ở workflow unsigned). In file sinh lúc
+      # pod install để chỉ đúng gốc 3D/video crash trên bản signed. Không chặn build.
+      - name: Diagnose Expo modules (globalThis.expo)
+        script: |
+          echo "════════ EXPO DIAGNOSE ════════"
+          PROV=$(find ios -iname "ExpoModulesProvider.swift" 2>/dev/null | head -1)
+          echo "ExpoModulesProvider: ${PROV:-KHÔNG TÌM THẤY}"
+          [ -n "$PROV" ] && { echo "----- nội dung -----"; cat "$PROV"; echo "----- hết -----"; }
+          echo "--- Expo pods (Podfile.lock) ---"
+          grep -iE "ExpoModulesCore|ExpoGL|EXGL|ExpoFileSystem|ExpoAsset|EXManifests" ios/Podfile.lock 2>/dev/null | head -30 || echo "(không có)"
+          echo "--- New Arch flag ---"
+          grep -rniE "RCT_NEW_ARCH_ENABLED|USE_HERMES" ios/Pods/Target\ Support\ Files/Pods-*/*.release.xcconfig 2>/dev/null | head
+          node -e "console.log('expo-modules-core:', require('./node_modules/expo-modules-core/package.json').version, '| expo:', require('./node_modules/expo/package.json').version)"
+          echo "════════ /EXPO DIAGNOSE ════════"
 
       - name: Disable code signing for Pods targets
         script: |

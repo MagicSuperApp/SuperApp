@@ -32,8 +32,6 @@ import AppHeader, { AppHeaderProvider } from '../components/AppHeader';
 import { NAV_FRAME, navNational, navIcon } from './navLabels';
 import { hasChosenLanguage, whenLanguageReady } from '../i18n';
 import NavItemFrame from './NavItemFrame';
-import LanguageScreen from '../screens/LanguageScreen';
-import { loadNationalLanguage } from '../i18n/languages';
 import { useVisibleTabs } from './useVisibleTabs';
 import { NEO_CENTER, NEO_RIGHT } from './resolveVisibleTabs';
 import { resolveGateItems, type GateItem } from './resolveGateItems';
@@ -1656,7 +1654,6 @@ const HOST_STACK_SCREENS: Array<{
   { name: 'Username', component: UsernameScreen, options: { headerShown: false } },
   // Chọn ngôn ngữ quốc gia (vi · zh · ja). Tiếng Anh là chuẩn, luôn hiện — không phải
   // một lựa chọn trong danh sách.
-  { name: 'Language', component: LanguageScreen, options: { headerShown: false } },
 ];
 
 // --- Module stack screens (config-driven) ----------------------------------
@@ -1676,7 +1673,6 @@ const buildLinking = () => {
   // platform khác). Màn CHI TIẾT (TreeDetail…) đã deep-link-được qua map module ở
   // trên → sản phẩm Aladin quét ngoài app mở thẳng màn kết quả.
   screens[TRACE_SCAN_ROUTE_NAME] = 'trace-scan';
-  screens['Language'] = 'language';
   return {
     prefixes: ['magiclamp://'],
     config: { screens },
@@ -1711,10 +1707,10 @@ const AppNavigator = () => {
       }
 
       try {
-        // Nạp ngôn ngữ đã chọn TRƯỚC khi thoát spinner, để khung điều hướng vẽ đúng
-        // ngay lần đầu — không chớp một nhịp tiếng Việt rồi mới nhảy sang tiếng Nhật.
-        // Hàm này tự nuốt lỗi và luôn trả về, nên nó không chặn được khởi động.
-        await loadNationalLanguage();
+        // Ngôn ngữ đã nạp xong ở `whenLanguageReady()` ngay phía trên — nó là kho DUY
+        // NHẤT. Lệnh `loadNationalLanguage()` trước đây ở đây nạp một kho THỨ HAI
+        // (`app_lang_v1`), và chính hai kho tách rời làm nhãn điều hướng không đổi theo
+        // Cài đặt. Đã bỏ; đừng thêm lại.
 
         // Start sync service (database will be initialized per-user on login)
         console.log('[Navigation] Initializing sync service');

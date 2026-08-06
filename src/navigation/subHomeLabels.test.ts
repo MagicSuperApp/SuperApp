@@ -79,7 +79,9 @@ describe('nhãn song ngữ', () => {
   // đang đặt (i18n), nên bỏ trống sẽ khiến test phụ thuộc DEFAULT_LANG.
   it('quốc gia = tooltip (vi)', () => {
     expect(subNational(CHAT[0], 'vi')).toBe('Trò chuyện');
-    expect(subNational(FARM[3], 'vi')).toBe('Carbon');
+    // Nhãn Việt của tab Carbon là "Tín chỉ" — người trồng cây không đọc chữ "Carbon"
+    // ra nghĩa gì; dòng chuẩn phía trên vẫn là "Carbon".
+    expect(subNational(FARM[3], 'vi')).toBe('Tín chỉ');
   });
 
   it('quốc gia = tooltip (zh)', () => {

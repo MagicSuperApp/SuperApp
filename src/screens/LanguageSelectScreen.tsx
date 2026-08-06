@@ -43,6 +43,7 @@ const CONTINUE_LABEL: Record<LangCode, string> = {
   vi: 'Tiếp tục',
   en: 'Continue',
   zh: '继续',
+  ja: '続ける',
 };
 
 // Câu phụ dưới nút, cũng theo ngôn ngữ đang chọn: cho biết đổi lại được ở đâu.
@@ -50,6 +51,7 @@ const HINT: Record<LangCode, string> = {
   vi: 'Đổi lại bất cứ lúc nào ở Tôi → Cài đặt → Ngôn ngữ.',
   en: 'You can change this any time in Me → Settings → Language.',
   zh: '你可以随时在 我 → 设置 → 语言 中更改。',
+  ja: 'マイページ → 設定 → 言語 でいつでも変更できます。',
 };
 
 const LanguageSelectScreen = () => {

@@ -238,7 +238,10 @@ export const NAVIGATION: PhraseMap = {
   // Khuôn có chỗ thay — dùng qua `tf` (xem components/AppHeader.tsx).
   'Xin chào {name}': { en: 'Hello {name}', zh: '你好，{name}' },
 
-  'Đăng xuất': { en: 'Sign out', zh: '登出' },
+  // 'Đăng xuất' đã khai ở `account.ts` (zh: '退出登录'). Khai lại ở đây với bản dịch KHÁC
+  // ('登出') là nguồn của một lỗi câm: `dictionary.ts` gộp NAVIGATION SAU ACCOUNT nên bản
+  // ở đây lặng lẽ đè bản kia, và app hiện chữ Trung không khớp phần còn lại. Đã gỡ —
+  // chuỗi tài khoản chỉ khai một chỗ. Test `phrases.test.ts` nay canh việc này.
   'Đổi ngôn ngữ': { en: 'Change language', zh: '更改语言' },
   'Chạy luồng hướng dẫn': { en: 'Run the walkthrough', zh: '运行操作引导' },
   'Cài đặt': { en: 'Settings', zh: '设置' },

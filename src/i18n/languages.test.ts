@@ -30,16 +30,17 @@ import {
   normalizeLangTag,
   getNationalLanguage,
   setNationalLanguage,
-  loadNationalLanguage,
   onNationalLanguageChange,
-  __resetLanguageForTest,
 } from './languages';
+import { LANG_STORAGE_KEY, setLanguage } from './store';
 import { NAV_FRAME } from '../navigation/navLabels';
 import { SUBHOME_FRAME } from '../navigation/subHomeLabels';
 
 beforeEach(() => {
   (AsyncStorage as unknown as { __clear: () => void }).__clear();
-  __resetLanguageForTest();
+  // Đặt lại về mặc định qua ĐÚNG kho đang dùng (`store.ts`) — `languages.ts` không còn
+  // giữ trạng thái riêng nên cũng không còn hàm reset riêng.
+  setLanguage(DEFAULT_LANG, true);
   jest.clearAllMocks();
 });
 
@@ -71,50 +72,43 @@ describe('normalizeLangTag', () => {
   });
 });
 
-describe('nhớ và đổi ngôn ngữ', () => {
-  it('chưa chọn bao giờ thì loadNationalLanguage giữ nguyên giá trị đang có', async () => {
-    expect(await loadNationalLanguage()).toBe(DEFAULT_LANG);
+// Nhóm này canh đúng MỘT lỗi, và là lỗi đã thật sự xảy ra ngày 05/08: hai hệ đa ngôn
+// ngữ vào `develop` cách nhau 3 phút, mỗi hệ một kho AsyncStorage riêng
+// (`app_lang_v1` vs `app_language_v1`). Hậu quả trên máy thật: đổi ngôn ngữ ở Cài đặt
+// thì chữ trong màn đổi, nhãn thanh điều hướng KHÔNG đổi. `tsc` không thấy được.
+describe('ngôn ngữ quốc gia đọc CHUNG một kho với hệ dịch', () => {
+  it('đổi ngôn ngữ là ghi vào ĐÚNG kho của store.ts, không phải kho thứ hai', () => {
+    setNationalLanguage('ja');
+    expect(AsyncStorage.setItem).toHaveBeenCalledWith(LANG_STORAGE_KEY, 'ja');
+    expect(AsyncStorage.setItem).not.toHaveBeenCalledWith('app_lang_v1', 'ja');
+    expect(getNationalLanguage()).toBe('ja');
   });
 
-  it('nhớ lựa chọn và nạp lại được ở lần mở sau', async () => {
-    await setNationalLanguage('ja');
-    expect(AsyncStorage.setItem).toHaveBeenCalledWith('app_lang_v1', 'ja');
-
-    __resetLanguageForTest(); // giả lập mở lại app
-    expect(getNationalLanguage()).toBe(DEFAULT_LANG);
-    expect(await loadNationalLanguage()).toBe('ja');
+  it('đặt ngôn ngữ qua store thì bên nhãn điều hướng thấy ngay', () => {
+    setLanguage('zh');
+    expect(getNationalLanguage()).toBe('zh');
   });
 
-  it('báo cho người nghe khi đổi, và huỷ đăng ký thì thôi báo', async () => {
-    const seen: string[] = [];
-    const off = onNationalLanguageChange(l => seen.push(l));
-    await setNationalLanguage('zh');
-    await setNationalLanguage('ja');
+  it('app đang là TIẾNG ANH → không có ngôn ngữ quốc gia nào (null, không rơi về vi)', () => {
+    setLanguage('en');
+    expect(getNationalLanguage()).toBeNull();
+  });
+
+  it('báo cho người nghe khi đổi, và huỷ đăng ký thì thôi báo', () => {
+    let count = 0;
+    const off = onNationalLanguageChange(() => {
+      count += 1;
+    });
+    setNationalLanguage('zh');
+    setNationalLanguage('ja');
     off();
-    await setNationalLanguage('vi');
-    expect(seen).toEqual(['zh', 'ja']);
+    setNationalLanguage('vi');
+    expect(count).toBe(2);
   });
 
-  it('đặt lại đúng ngôn ngữ đang dùng thì không báo thừa', async () => {
-    const seen: string[] = [];
-    onNationalLanguageChange(l => seen.push(l));
-    await setNationalLanguage(DEFAULT_LANG);
-    expect(seen).toEqual([]);
-  });
-
-  it('mã không hỗ trợ bị bỏ qua, không đổi gì', async () => {
-    await setNationalLanguage('en' as never);
-    expect(getNationalLanguage()).toBe(DEFAULT_LANG);
-  });
-
-  it('kho cài đặt hỏng KHÔNG làm ném lúc khởi động', async () => {
-    (AsyncStorage.getItem as jest.Mock).mockRejectedValueOnce(new Error('kho hỏng'));
-    await expect(loadNationalLanguage()).resolves.toBe(DEFAULT_LANG);
-  });
-
-  it('ghi đĩa hỏng vẫn đổi được ngôn ngữ trong phiên này', async () => {
+  it('ghi đĩa hỏng vẫn đổi được ngôn ngữ trong phiên này', () => {
     (AsyncStorage.setItem as jest.Mock).mockRejectedValueOnce(new Error('đầy đĩa'));
-    await setNationalLanguage('zh');
+    setNationalLanguage('zh');
     expect(getNationalLanguage()).toBe('zh');
   });
 });

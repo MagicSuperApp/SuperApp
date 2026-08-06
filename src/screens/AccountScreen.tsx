@@ -698,7 +698,11 @@ const AccountScreen = () => {
                         <MenuItem icon="fingerprint" label="Sinh trắc học" sublabel="Xác thực khuôn mặt & vân tay" onPress={() => navigation.navigate('BiometricSettings')} />
                         {/* Nhãn song ngữ CỐ Ý: người đang cần đổi ngôn ngữ là người
                             chưa đọc được ngôn ngữ đang hiện. */}
-                        <MenuItem icon="translate" label="Ngôn ngữ · Language" sublabel="Tiếng Việt · 中文 · 日本語" onPress={() => navigation.navigate('Language')} />
+                        {/* Mở ĐÚNG bộ chọn đang dùng ở màn Đăng nhập (LanguagePickerModal).
+                            Trước đây ô này mở màn 'Language' riêng — một bộ chọn THỨ HAI ghi
+                            vào một kho khác, nên đổi ở đây thì chữ trong app không đổi. Màn
+                            đó đã gỡ. */}
+                        <MenuItem icon="translate" label="Ngôn ngữ · Language" sublabel="Tiếng Việt · English · 中文" onPress={() => setLangOpen(true)} />
                         <MenuItem
                             icon="robot-happy-outline"
                             label="Trợ lý ảo"

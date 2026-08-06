@@ -12,6 +12,7 @@
 // ĐỊNH DANH (key), màn thực do app con tự điều hướng.
 
 import type { LangCode } from './navLabels';
+import type { NationalLang } from '../i18n/types';
 import { getNationalLanguage } from './navLabels';
 
 export interface SubTab {
@@ -20,7 +21,7 @@ export interface SubTab {
   /** Nhãn tiếng Anh — CHUẨN, hiển thị. */
   en: string;
   /** Nhãn ngôn ngữ quốc gia — `Record` đầy đủ, xem lý do ở `NavFrame.national`. */
-  national: Record<LangCode, string>;
+  national: Record<NationalLang, string>;
   /** Icon Material Community. */
   icon: string;
 }
@@ -31,17 +32,17 @@ export interface SubTab {
 export const SUBHOME_FRAME: Record<string, SubTab[]> = {
   // Chat (proofchat): hiện Chats · Calls · Pins + ⌄(Docs…).
   ProofChatHome: [
-    { key: 'chats', en: 'Chats', national: { vi: 'Trò chuyện', zh: '聊天' }, icon: 'chat-outline' },
-    { key: 'calls', en: 'Calls', national: { vi: 'Gọi',        zh: '通话' }, icon: 'phone-outline' },
-    { key: 'pins',  en: 'Pins',  national: { vi: 'Ghim',       zh: '置顶' }, icon: 'pin-outline' },
-    { key: 'docs',  en: 'Docs',  national: { vi: 'Tài liệu',   zh: '文档' }, icon: 'file-document-outline' },
+    { key: 'chats', en: 'Chats', national: { vi: 'Trò chuyện', zh: '聊天', ja: 'チャット' }, icon: 'chat-outline' },
+    { key: 'calls', en: 'Calls', national: { vi: 'Gọi',        zh: '通话', ja: '通話' },     icon: 'phone-outline' },
+    { key: 'pins',  en: 'Pins',  national: { vi: 'Ghim',       zh: '置顶', ja: 'ピン' },     icon: 'pin-outline' },
+    { key: 'docs',  en: 'Docs',  national: { vi: 'Tài liệu',   zh: '文档', ja: '書類' },     icon: 'file-document-outline' },
   ],
   // Farm (trace): hiện Garden · Trees · Care + ⌄(Carbon…).
   Farms: [
-    { key: 'garden', en: 'Garden', national: { vi: 'Vườn',     zh: '果园' }, icon: 'sprout-outline' },
-    { key: 'trees',  en: 'Trees',  national: { vi: 'Cây',      zh: '树木' }, icon: 'pine-tree' },
-    { key: 'care',   en: 'Care',   national: { vi: 'Chăm sóc', zh: '养护' }, icon: 'watering-can' },
-    { key: 'carbon', en: 'Carbon', national: { vi: 'Carbon',   zh: '碳汇' }, icon: 'leaf' },
+    { key: 'garden', en: 'Garden', national: { vi: 'Vườn',     zh: '果园', ja: '果樹園' }, icon: 'sprout-outline' },
+    { key: 'trees',  en: 'Trees',  national: { vi: 'Cây',      zh: '树木', ja: '樹木' },   icon: 'pine-tree' },
+    { key: 'care',   en: 'Care',   national: { vi: 'Chăm sóc', zh: '养护', ja: '手入れ' }, icon: 'watering-can' },
+    { key: 'carbon', en: 'Carbon', national: { vi: 'Carbon',   zh: '碳汇', ja: 'カーボン' }, icon: 'leaf' },
   ],
 };
 
@@ -61,7 +62,8 @@ export function subEn(tab: SubTab): string {
 
 /** Nhãn ngôn ngữ quốc gia (tooltip/accessibility) — fallback en. */
 export function subNational(tab: SubTab, lang: LangCode = getNationalLanguage()): string {
-  return tab.national[lang] ?? tab.en;
+  // lang === 'en' không có trong `national` → rơi về chính nhãn chuẩn.
+  return (tab.national as Partial<Record<LangCode, string>>)[lang] ?? tab.en;
 }
 
 export interface RankedSubTabs {

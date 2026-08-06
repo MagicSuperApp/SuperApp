@@ -20,7 +20,9 @@ import {
   Alert,
   Vibration,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+// Icon: bộ Font Awesome Solid tải qua Iconify (assets/icons → icons.generated).
+// Thêm icon mới: `node scripts/icons.js <tên-fa6-solid>`.
+import Icon from '../../../components/Icon';
 import { COLORS } from '../../../constants';
 
 type VoiceMemoNative = {
@@ -271,7 +273,7 @@ const VoiceMemoButton: React.FC<Props> = ({
           disabled={busy}
           activeOpacity={0.85}
         >
-          <Icon name="stop-circle" size={20} color={COLORS.white} />
+          <Icon name="circle-stop" size={20} color={COLORS.white} />
           <Text style={styles.stopBtnText}>Dừng ghi âm</Text>
         </TouchableOpacity>
       </View>
@@ -283,7 +285,7 @@ const VoiceMemoButton: React.FC<Props> = ({
       <View style={styles.existingCard}>
         <View style={styles.existingInfo}>
           <Icon
-            name={playing ? 'pause-circle' : 'play-circle'}
+            name={playing ? 'circle-pause' : 'circle-play'}
             size={32}
             color={COLORS.accent}
           />
@@ -308,14 +310,14 @@ const VoiceMemoButton: React.FC<Props> = ({
             onPress={handleStartRecording}
             activeOpacity={0.85}
           >
-            <Icon name="microphone-plus" size={18} color={COLORS.accent} />
+            <Icon name="microphone-lines" size={18} color={COLORS.accent} />
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.iconBtn}
             onPress={handleDelete}
             activeOpacity={0.85}
           >
-            <Icon name="trash-can-outline" size={18} color={COLORS.error} />
+            <Icon name="trash" size={18} color={COLORS.error} />
           </TouchableOpacity>
         </View>
       </View>

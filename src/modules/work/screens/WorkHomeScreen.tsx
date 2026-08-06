@@ -69,14 +69,15 @@ const WorkHomeScreen: React.FC = () => {
 
       {/* ── HEADER ─────────────────────────────────────── */}
       <View style={styles.header}>
+        <View style={styles.headerTitleBox}>
+            <Text style={styles.headerTitle}>Aladin Work</Text>
+            <Text style={styles.headerSubtitle}>Tìm thợ · Đặt việc · Ký hợp đồng số</Text>
+          </View>
         <View style={styles.headerTop}>
           <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={8}>
             <Icon name="arrow-left" size={22} color="#fff" />
           </TouchableOpacity>
-          <View style={styles.headerTitleBox}>
-            <Text style={styles.headerTitle}>Aladin Work</Text>
-            <Text style={styles.headerSubtitle}>Tìm thợ · Đặt việc · Ký hợp đồng số</Text>
-          </View>
+          
           <TouchableOpacity hitSlop={8} style={styles.iconBtnHeader} onPress={() => navigation.navigate('WorkTaskers')}>
             <Icon name="account-search-outline" size={20} color="#fff" />
           </TouchableOpacity>
@@ -413,7 +414,7 @@ const styles = StyleSheet.create({
 
   header: {
     backgroundColor: WORK_THEME.primaryDeep,
-    paddingTop: 56,
+    paddingTop: 16,
     paddingHorizontal: 16,
     paddingBottom: 14,
     borderBottomLeftRadius: 22,
@@ -425,7 +426,7 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 14,
   },
-  headerTitleBox: { flex: 1 },
+  headerTitleBox: { display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 8 },
   headerTitle: {
     fontSize: 19, fontWeight: '800', color: '#fff', letterSpacing: -0.3,
   },

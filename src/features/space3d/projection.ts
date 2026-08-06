@@ -37,9 +37,9 @@ export interface ViewDef {
  * thấy ngay quả nằm lệch trong/ngoài tán) rồi mới xác nhận.
  */
 export const VIEW_DEFS: ViewDef[] = [
-  { key: 'front', label: 'Trước', hint: 'Kéo ngang = trái/phải · kéo dọc = cao/thấp', step: 1 },
-  { key: 'side',  label: 'Bên',   hint: 'Kéo ngang = trước/sau · kéo dọc = cao/thấp', step: 2 },
-  { key: 'top',   label: 'Trên',  hint: 'Nhìn từ trên xuống · kéo = trái/phải & trước/sau', step: 3 },
+  { key: 'front', label: 'Front', hint: 'Kéo ngang = trái/phải · kéo dọc = cao/thấp', step: 1 },
+  { key: 'side',  label: 'Side',   hint: 'Kéo ngang = trước/sau · kéo dọc = cao/thấp', step: 2 },
+  { key: 'top',   label: 'Top',  hint: 'Nhìn từ trên xuống · kéo = trái/phải & trước/sau', step: 3 },
 ];
 
 /** Hướng kế tiếp trong luồng. `null` = đang ở hướng CUỐI → bước xác nhận. */

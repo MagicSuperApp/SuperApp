@@ -1,21 +1,29 @@
 // i18n/store.ts
 //
 // TRẠNG THÁI NGÔN NGỮ — store ngoài React (module-level) + persist AsyncStorage.
+// ĐÂY LÀ NƠI DUY NHẤT giữ "app đang hiển thị ngôn ngữ nào". Nhãn nav, tab con,
+// lớp tự dịch <Text> và màn Cài đặt đều đọc từ đây — hai kho trạng thái song song
+// sẽ lệch nhau ngay lần đầu người dùng đổi ngôn ngữ.
 //
 // Vì sao KHÔNG dùng Redux: chuỗi cần dịch xuất hiện cả ở nơi KHÔNG phải component
-// (service, util, alert, navigator options). `t()` phải gọi được ở mọi nơi, đồng
-// bộ, không hook. Component vẫn re-render đúng lúc nhờ `useLanguage()` bọc
+// (service, util, alert, navigator options). `t()` phải gọi được ở mọi nơi, ĐỒNG
+// BỘ, không hook — `navNational()` chẳng hạn được gọi giữa lúc render, không thể
+// `await`. Component vẫn vẽ lại đúng lúc nhờ `useLanguage()` bọc
 // useSyncExternalStore quanh store này.
 //
-// Đọc AsyncStorage là BẤT ĐỒNG BỘ → lúc app vừa khởi động ngôn ngữ tạm là
-// DEFAULT_LANG, khi đọc xong sẽ notify → mọi Text tự vẽ lại. Không chớp vì đọc
-// AsyncStorage thường < 50ms và điều hướng gốc còn chờ `whenLanguageReady()`
-// trước khi dựng màn đầu tiên.
+// Giá trị ban đầu = DEFAULT_LANG ('en') — TIẾNG ANH cho mọi máy, KHÔNG dò locale
+// (lý do đầy đủ ở `types.DEFAULT_LANG`). Đọc AsyncStorage là BẤT ĐỒNG BỘ, xong mới
+// notify → mọi Text tự vẽ lại. Không chớp vì điều hướng gốc còn chờ
+// `whenLanguageReady()` trước khi dựng màn đầu tiên.
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { DEFAULT_LANG, isLangCode, type LangCode } from './types';
+import { DEFAULT_LANG, normalizeLangTag, type LangCode } from './types';
 
 export const LANG_STORAGE_KEY = 'app_language_v1';
+
+// Khoá của bản dựng trung gian (nhánh đa-ngôn-ngữ đầu tiên) — chỉ ĐỌC để không
+// bắt người đã chọn ngôn ngữ ở bản đó phải chọn lại. Ghi thì luôn ghi khoá mới.
+const LEGACY_STORAGE_KEY = 'app_lang_v1';
 
 let current: LangCode = DEFAULT_LANG;
 let hydrated = false;
@@ -55,6 +63,10 @@ export function hasChosenLanguage(): boolean {
 
 /**
  * Đổi ngôn ngữ + lưu lại. Gọi từ popup/màn chọn ngôn ngữ.
+ *
+ * Đổi giá trị và báo cho giao diện NGAY, phần ghi xuống máy chạy sau (không
+ * `await`): người dùng thấy chữ đổi tức thì, đó là phản hồi họ cần.
+ *
  * `force` = ghi nhận "đã chọn" ngay cả khi trùng ngôn ngữ đang dùng (người dùng
  * bấm xác nhận đúng ngôn ngữ mặc định ở màn đầu — vẫn tính là đã chọn).
  */
@@ -77,13 +89,17 @@ export function hydrateLanguage(): Promise<void> {
   if (hydration) return hydration;
   hydration = (async () => {
     try {
-      const saved = await AsyncStorage.getItem(LANG_STORAGE_KEY);
-      if (isLangCode(saved)) {
+      const [saved, legacy] = await Promise.all([
+        AsyncStorage.getItem(LANG_STORAGE_KEY),
+        AsyncStorage.getItem(LEGACY_STORAGE_KEY),
+      ]);
+      const pick = normalizeLangTag(saved) ?? normalizeLangTag(legacy);
+      if (pick) {
         chosen = true;
-        if (saved !== current) current = saved;
+        if (pick !== current) current = pick;
       }
     } catch {
-      /* giữ mặc định 'vi', coi như chưa chọn */
+      /* giữ DEFAULT_LANG, coi như chưa chọn */
     } finally {
       hydrated = true;
       notify();
@@ -103,4 +119,13 @@ export function subscribe(listener: () => void): () => void {
   return () => {
     listeners.delete(listener);
   };
+}
+
+/** CHỈ dùng trong test — đặt lại trạng thái giữa các bài. */
+export function __resetLanguageForTest(lang: LangCode = DEFAULT_LANG): void {
+  current = lang;
+  chosen = false;
+  hydrated = false;
+  hydration = null;
+  listeners.clear();
 }

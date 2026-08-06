@@ -30,6 +30,25 @@ describe('lần mở app ĐẦU TIÊN (chưa từng chọn)', () => {
     expect(store.getLanguage()).toBe(DEFAULT_LANG);
   });
 
+  it('mở bằng TIẾNG ANH, KHÔNG chạy theo ngôn ngữ của điện thoại', async () => {
+    // Máy đặt tiếng Nhật. Trước đây store lấy luôn locale này làm ngôn ngữ đầu;
+    // nay tiếng Anh là chuẩn của app nên máy nào cũng mở ra tiếng Anh, rồi màn
+    // "Chọn ngôn ngữ" mới hỏi. Ghim 'en' thẳng chứ không ghim DEFAULT_LANG: bài
+    // này canh CHỦ ĐÍCH (tiếng Anh) chứ không canh giá trị hằng số.
+    const spy = jest
+      .spyOn(Intl, 'DateTimeFormat')
+      .mockImplementation(() => ({ resolvedOptions: () => ({ locale: 'ja-JP' }) }) as never);
+    try {
+      const store = freshStore();
+      expect(store.getLanguage()).toBe('en'); // ngay trước cả khi đọc đĩa
+      await store.whenLanguageReady();
+      expect(store.getLanguage()).toBe('en');
+      expect(store.hasChosenLanguage()).toBe(false);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('bấm Tiếp tục mà KHÔNG đổi gì vẫn ghi nhận là đã chọn', async () => {
     const store = freshStore();
     await store.whenLanguageReady();

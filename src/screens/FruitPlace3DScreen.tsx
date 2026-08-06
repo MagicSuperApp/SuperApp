@@ -202,7 +202,7 @@ const FruitPlace3DScreen: React.FC = () => {
           <Icon name="chevron-left" size={17} color={SPACE_COLORS.text} />
         </TouchableOpacity>
         <View style={styles.headTitles}>
-          <Text style={styles.eyebrow}>ĐẶT VỊ TRÍ QUẢ · BƯỚC {activeDef.step}/{VIEW_DEFS.length}</Text>
+          <Text style={styles.eyebrow}>SET FRUIT LOCATION · STEP {activeDef.step}/{VIEW_DEFS.length}</Text>
           <Text style={styles.title} numberOfLines={1}>
             {fruitName || 'Quả mới'} · {treeName || 'Cây'}
           </Text>
@@ -273,7 +273,7 @@ const FruitPlace3DScreen: React.FC = () => {
         )}
 
         <View pointerEvents="none" style={styles.stageHint}>
-          <Text style={styles.stageHintTxt}>{activeDef.hint} · khoá trục {locked}</Text>
+          <Text style={styles.stageHintTxt}>{activeDef.hint} · lock {locked}</Text>
         </View>
       </View>
 
@@ -303,7 +303,7 @@ const FruitPlace3DScreen: React.FC = () => {
                 <Icon name={upcoming ? 'chevron-right' : 'check'} size={15} color="#06120c" />
                 <Text style={styles.doneTxt}>
                   {upcoming
-                    ? `Dùng vị trí này · tiếp hướng ${VIEW_DEFS.find((v) => v.key === upcoming)!.label}`
+                    ? `Next ${VIEW_DEFS.find((v) => v.key === upcoming)!.label}`
                     : 'Xác nhận vị trí'}
                 </Text>
               </>

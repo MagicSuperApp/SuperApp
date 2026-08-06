@@ -128,8 +128,8 @@ export async function loginOrilifeWithDid(baseUrl: string): Promise<DidLoginResu
     try {
       signatureHex = await signRaw(
         asciiToHex(challenge),
-        'Đăng nhập OriLife',
-        'Ký bằng khoá PhoenixKey để nhận diện cây',
+        'OriLife login',
+        'Sign challenge for OriLife login (DID auth)',
       );
       pubkeyHex = await ownerPublicKey();
       rLog.info('did_login_signed', {

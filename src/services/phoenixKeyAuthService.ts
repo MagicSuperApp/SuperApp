@@ -97,8 +97,8 @@ export const registerIdentity = async (
 
   const signature = await signRaw(
     messageHex,
-    'Tạo danh tính mới',
-    'Ký bằng khóa phần cứng vừa sinh',
+    'Create a new identity',
+    'Sign to create a new PhoenixKey identity on this device',
   );
 
   // ADDITIVE: gắn ví Master_KEK (TAAD_Key + địa chỉ Cardano). Bỏ qua nếu lỗi.

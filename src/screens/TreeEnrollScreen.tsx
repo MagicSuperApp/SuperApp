@@ -627,7 +627,7 @@ const TreeEnrollScreen: React.FC = () => {
         }
 
         // 409 không phân loại được
-        Alert.alert('Xung đột', detail);
+        Alert.alert('Conflict', detail);
         return;
       }
 
@@ -659,7 +659,7 @@ const TreeEnrollScreen: React.FC = () => {
     return (
       <View style={styles.captureSection}>
         <Text style={styles.captureSectionLabel}>
-          {label} · {list.length} góc
+          {label} · {list.length} directions
         </Text>
         <View style={styles.captureGrid}>
           {list.map((photo, idx) => (
@@ -803,7 +803,7 @@ const TreeEnrollScreen: React.FC = () => {
         {/* Captures */}
         <View style={styles.capturesSection}>
           <Text style={styles.sectionTitle}>
-            Ảnh đã chụp ({effectiveCaptureCount} góc)
+            Pictures ({effectiveCaptureCount} direction{effectiveCaptureCount > 1 ? 's' : ''})
           </Text>
 
           {effectiveCaptureCount === 0 ? (

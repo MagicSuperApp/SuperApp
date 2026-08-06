@@ -37,7 +37,7 @@ import { loginUser } from '../store/userSlice';
 import { showError } from '../utils/alert';
 import LoginSuccessOverlay from '../components/LoginSuccessOverlay';
 import LanguagePickerModal from '../components/LanguagePickerModal';
-import { LANGUAGES, useLanguage } from '../i18n';
+import { LANGUAGES, t, tf, useLanguage } from '../i18n';
 
 const PHOENIX_USERS_KEY = '@phoenixkey/users';
 const ACTIVE_USERNAME_KEY = '@phoenixkey/active_username';
@@ -194,11 +194,10 @@ const LoginScreen = () => {
 
   const runBiometric = async (kind: BiometricKind) => {
     if (busyKind) return;
-    const langCode = langMeta.code;
-    const prompt =
-      langCode === 'vi' ? 'Xác thực sinh trắc học' :
-      langCode === 'en' ? 'Biometric Authentication' :
-      '生物识别认证';
+    // Hộp thoại sinh trắc do HỆ ĐIỀU HÀNH vẽ → KHÔNG đi qua <Text> nên lớp tự dịch
+    // không với tới; phải gọi `t()` tay. Tra từ điển thay vì chuỗi ternary: ternary
+    // 3 nhánh sẽ lặng lẽ hiện tiếng Trung cho tiếng Nhật (đúng lỗi đã gặp).
+    const prompt = t('Xác thực sinh trắc học');
     // Ghi nhận lần nhấn nút sinh trắc + đánh dấu để đo độ trễ tới màn hình kế.
     trackPress(kind === 'face' ? 'biometric_face_button' : 'biometric_fingerprint_button', {
       action: 'login_biometric',
@@ -209,7 +208,7 @@ const LoginScreen = () => {
       if (sensorAvailable) {
         const rn = new ReactNativeBiometrics();
         const { success } = await rn.simplePrompt({
-          promptMessage: prompt, cancelButtonText: 'Huỷ',
+          promptMessage: prompt, cancelButtonText: t('Huỷ'),
         });
         if (!success) { setBusyKind(null); return; }
       } else {
@@ -337,7 +336,10 @@ const LoginScreen = () => {
           </View>
           <Text allowFontScaling={false} style={styles.eyebrow}>ALADIN · PHOENIXKEY DID</Text>
           <Text allowFontScaling={false} style={styles.title}>
-            {activeUser ? `Chào @${activeUser.username}` : 'Chào mừng trở lại'}
+            {/* `tf` giữ tên người ra NGOÀI khoá từ điển: nối chuỗi rồi mới dịch sẽ
+                không bao giờ khớp, còn khuôn '{name}' cho bản dịch tự đặt lại vị
+                trí (tiếng Nhật/Trung có trật tự từ khác tiếng Việt). */}
+            {activeUser ? tf('Wellcome @{name}', { name: activeUser.username }) : 'Wellcome'}
           </Text>
           <Text allowFontScaling={false} style={styles.subtitle}>
             {activeUser

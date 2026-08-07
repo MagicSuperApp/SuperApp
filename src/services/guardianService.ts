@@ -44,7 +44,7 @@ async function buildProof(
   guardianDid: string,
 ): Promise<GuardianMutateRequest> {
   const userDid = await currentUserDid();
-  if (!userDid) throw new Error('Chưa có danh tính (DID) để ký xác nhận guardian.');
+  if (!userDid) throw new Error('Chưa có danh tính để ký xác nhận người giám hộ.');
   const nonce = await taad.generateSalt();
   const message = `${prefix}:${userDid}:${guardianDid}:${nonce}`;
   const proofSignature = await signRaw(

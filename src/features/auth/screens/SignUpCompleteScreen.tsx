@@ -34,7 +34,7 @@ const STEPS: Step[] = [
   },
   {
     icon: 'identifier',
-    title: 'Tạo định danh DID',
+    title: 'Tạo danh tính',
     detail: 'Public key được ghi vào danh sách khóa được phép',
     durationMs: 900,
   },

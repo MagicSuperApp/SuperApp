@@ -4,7 +4,7 @@
  * ⚠️ m-of-n = nhiều người ký trên MÁY RIÊNG. Luồng:
  *   1) Initiator (tab "Tạo m/n"/"Nâng quyền"): nhập tên/ngưỡng + DID đồng-sáng-lập →
  *      "Tạo challenge & ký của tôi" → khoá challenge + ký phần mình → CHIA SẺ challenge.
- *   2) Mỗi đồng-sáng-lập mở app, tab "Ký duyệt", DÁN challenge → ký → gửi lại {DID, chữ ký}.
+ *   2) Mỗi đồng-sáng-lập mở app, tab "Ký duyệt", DÁN challenge → ký → gửi lại {mã định danh, chữ ký}.
  *   3) Initiator DÁN đủ chữ ký của mọi người → "Hoàn tất".
  */
 
@@ -64,10 +64,10 @@ const OrgAuthorityScreen: React.FC = () => {
 
   // Initiator: dựng challenge + ký phần mình → khoá.
   const handlePrepare = useCallback(async () => {
-    if (!selfDid) { Alert.alert('Thiếu danh tính', 'Máy này chưa có DID.'); return; }
+    if (!selfDid) { Alert.alert('Thiếu danh tính', 'Máy này chưa có danh tính.'); return; }
     const members = memberDids.map(d => d.trim()).filter(Boolean);
     if (mode === 'founding' && !name.trim()) { Alert.alert('Thiếu tên', 'Nhập tên tổ chức.'); return; }
-    if (mode === 'upgrade' && !orgDid.trim()) { Alert.alert('Thiếu OrgDID', 'Nhập OrgDID cần nâng quyền.'); return; }
+    if (mode === 'upgrade' && !orgDid.trim()) { Alert.alert('Thiếu mã định danh tổ chức', 'Nhập OrgDID cần nâng quyền.'); return; }
     if (members.length < 1) { Alert.alert('Thiếu thành viên', 'Cần ≥ 1 đồng-sáng-lập/thành-viên khác.'); return; }
     const total = mode === 'upgrade' ? 1 + members.length : 1 + members.length;
     if (th < 2 || th > total) { Alert.alert('Ngưỡng không hợp lệ', `Ngưỡng phải từ 2 đến ${total}.`); return; }
@@ -157,7 +157,7 @@ const OrgAuthorityScreen: React.FC = () => {
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
         {mode === 'cosign' ? (
           <>
-            <Text style={styles.note}>Bạn được mời đồng-sáng-lập/nâng-quyền. Dán chuỗi challenge người khởi tạo chia sẻ, ký, rồi gửi lại {'{DID, chữ ký}'}.</Text>
+            <Text style={styles.note}>Bạn được mời đồng-sáng-lập/nâng-quyền. Dán chuỗi challenge người khởi tạo chia sẻ, ký, rồi gửi lại {'{mã định danh, chữ ký}'}.</Text>
             <TextInput
               style={styles.textarea}
               placeholder="PHOENIXKEY_ORG_FOUNDING:… hoặc PHOENIXKEY_ORG_UPGRADE:…"
@@ -169,13 +169,13 @@ const OrgAuthorityScreen: React.FC = () => {
             </TouchableOpacity>
             {cosign && (
               <View style={styles.card}>
-                <Text style={styles.label}>DID của bạn</Text>
+                <Text style={styles.label}>Mã định danh của bạn</Text>
                 <Text style={styles.mono} numberOfLines={1}>{cosign.ownerDid}</Text>
                 <Text style={[styles.label, { marginTop: 8 }]}>Chữ ký (gửi lại người khởi tạo)</Text>
                 <Text style={styles.mono} numberOfLines={3}>{cosign.ownerSignature}</Text>
-                <TouchableOpacity style={styles.copyBtn} onPress={() => copy(`${cosign.ownerDid}\n${cosign.ownerSignature}`, 'DID + chữ ký')}>
+                <TouchableOpacity style={styles.copyBtn} onPress={() => copy(`${cosign.ownerDid}\n${cosign.ownerSignature}`, 'Mã định danh + chữ ký')}>
                   <Icon name="content-copy" size={14} color={PRIMARY} />
-                  <Text style={styles.copyText}>Sao chép DID + chữ ký</Text>
+                  <Text style={styles.copyText}>Sao chép Mã định danh + chữ ký</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -199,10 +199,10 @@ const OrgAuthorityScreen: React.FC = () => {
             <Text style={[styles.label, { marginTop: 10 }]}>Ngưỡng m (số chữ ký tối thiểu, ≥ 2)</Text>
             <TextInput style={styles.input} value={threshold} onChangeText={t => setThreshold(t.replace(/[^0-9]/g, ''))} editable={!locked} keyboardType="number-pad" />
 
-            <Text style={[styles.label, { marginTop: 12 }]}>DID của tôi ({mode === 'upgrade' ? 'chủ hiện tại' : 'founder #1'})</Text>
+            <Text style={[styles.label, { marginTop: 12 }]}>Mã định danh của tôi ({mode === 'upgrade' ? 'chủ hiện tại' : 'người sáng lập #1'})</Text>
             <Text style={styles.mono} numberOfLines={1}>{selfDid || '(chưa có)'}</Text>
 
-            <Text style={[styles.label, { marginTop: 12 }]}>{mode === 'upgrade' ? 'Thành viên MỚI' : 'Đồng-sáng-lập khác'} (DID)</Text>
+            <Text style={[styles.label, { marginTop: 12 }]}>{mode === 'upgrade' ? 'Thành viên MỚI' : 'Đồng-sáng-lập khác'} (mã định danh)</Text>
             {memberDids.map((d, i) => (
               <View key={i} style={styles.memberRow}>
                 <TextInput

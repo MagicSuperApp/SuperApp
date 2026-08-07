@@ -25,10 +25,10 @@ export const WORK: PhraseMap = {
   'Việc mới đăng': { en: 'Newly posted', zh: '最新发布', ja: '新着の募集' },
   'Vừa đăng': { en: 'Just posted', zh: '刚刚发布', ja: '投稿したばかり' },
   'Cần đăng nhập lại': { en: 'Sign in again', zh: '需要重新登录', ja: '再ログインが必要です' },
-  'Phiên làm việc đã hết hạn. Vui lòng đăng nhập PhoenixKey lại.': {
-    en: 'Your session has expired. Please sign in with PhoenixKey again.',
-    zh: '会话已过期，请重新使用 PhoenixKey 登录。',
-    ja: 'セッションの有効期限が切れました。PhoenixKey でもう一度ログインしてください。',
+  'Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại.': {
+    en: 'Your session has expired. Please sign in again.',
+    zh: '会话已过期，请重新登录。',
+    ja: 'セッションの有効期限が切れました。もう一度ログインしてください。',
   },
   'Không có việc phù hợp': { en: 'No matching jobs', zh: '没有匹配的工作', ja: '条件に合う仕事がありません' },
   'Thử bỏ lọc hoặc tìm từ khóa khác.': { en: 'Try clearing filters or a different keyword.', zh: '请尝试清除筛选或换个关键词。', ja: '絞り込みを解除するか、別のキーワードでお試しください。' },
@@ -60,10 +60,10 @@ export const WORK: PhraseMap = {
   'Vui lòng điền đầy đủ các ô bắt buộc.': { en: 'Please fill in all required fields.', zh: '请填写所有必填项。', ja: '必須項目をすべて入力してください。' },
   'Đăng tin thành công': { en: 'Posted successfully', zh: '发布成功', ja: '投稿が完了しました' },
   'Chưa đăng được tin': { en: 'Could not post', zh: '发布失败', ja: '投稿できません' },
-  'Không gửi được tin lúc này. Kiểm tra kết nối, đăng nhập PhoenixKey và loại việc rồi thử lại.': {
-    en: 'Could not submit right now. Check your connection, PhoenixKey sign-in and job type, then try again.',
-    zh: '当前无法提交。请检查网络、PhoenixKey 登录状态和工作类型后重试。',
-    ja: '現在このリクエストを送信できません。通信状態、PhoenixKey のログイン、仕事の種類を確認してからお試しください。',
+  'Không gửi được tin lúc này. Kiểm tra kết nối, đăng nhập và loại việc rồi thử lại.': {
+    en: 'The post could not be sent right now. Check your connection, your sign-in and the job type, then try again.',
+    zh: '暂时无法发布。请检查网络连接、登录状态和工作类型后重试。',
+    ja: '今は投稿できませんでした。通信状態、ログイン、作業の種類を確認してからもう一度お試しください。',
   },
   'Tiêu đề công việc': { en: 'Job title', zh: '工作标题', ja: '仕事のタイトル' },
   'VD: Cần thợ điện sửa đường dây tầng 2': {
@@ -179,10 +179,10 @@ export const WORK: PhraseMap = {
   'Không tạo được': { en: 'Could not create', zh: '创建失败', ja: '作成できません' },
   'Chỉ số chưa hợp lệ theo mẫu — kiểm tra lại.': { en: 'The values do not match the template — check them.', zh: '指标不符合模板要求 — 请检查。', ja: 'テンプレートの条件を満たしていません — ご確認ください。' },
   'Chưa đạt': { en: 'Not passed', zh: '未通过', ja: '不合格' },
-  'VeData chưa duyệt chứng chỉ này. Xem lại chỉ số/bằng chứng.': {
-    en: 'VeData has not approved this credential. Review the values/evidence.',
-    zh: 'VeData 尚未批准该凭证，请检查指标/证据。',
-    ja: 'VeData はこの証明を承認していません。数値や証拠を見直してください。',
+  'Chứng chỉ này chưa được duyệt. Xem lại chỉ số và bằng chứng.': {
+    en: 'This credential has not been approved yet. Review the values and evidence.',
+    zh: '该凭证尚未通过审核。请检查指标和证据。',
+    ja: 'この証明はまだ承認されていません。数値と証拠を見直してください。',
   },
   'Cần máy chủ để xác minh.': { en: 'A server is required to verify.', zh: '验证需要服务器。', ja: '検証にはサーバーが必要です。' },
   'Không xác minh được': { en: 'Could not verify', zh: '无法验证', ja: '検証できません' },
@@ -276,7 +276,11 @@ export const WORK: PhraseMap = {
   'Đánh giá': { en: 'Reviews', zh: '评价', ja: '評価' },
   'Kỹ năng': { en: 'Skills', zh: '技能', ja: 'スキル' },
   'CMND/CCCD đã xác thực': { en: 'ID card verified', zh: '身份证已验证', ja: '身分証を確認済み' },
-  'Đã xác thực sinh trắc qua PhoenixKey': { en: 'Biometrics verified via PhoenixKey', zh: '已通过 PhoenixKey 验证生物识别', ja: 'PhoenixKey で生体認証を確認済み' },
+  'Đã xác thực sinh trắc học': {
+    en: 'Biometrics verified',
+    zh: '已通过生物识别验证',
+    ja: '生体認証で確認済み',
+  },
   'Chứng chỉ nghề (đã upload)': { en: 'Trade certificate (uploaded)', zh: '职业证书（已上传）', ja: '職業資格（アップロード済み）' },
 
   // ── Ký phiên làm việc ──────────────────────────────────────────────────────
@@ -291,12 +295,16 @@ export const WORK: PhraseMap = {
   'Hợp đồng của tôi': { en: 'My contracts', zh: '我的合同', ja: 'マイ契約' },
   'Ứng viên phù hợp': { en: 'Matching candidates', zh: '匹配的候选人', ja: '条件に合う候補者' },
   'Chỉ đang rảnh': { en: 'Available only', zh: '仅显示空闲', ja: '対応可能のみ' },
-  'https://… (ảnh/clip/CID)': { en: 'https://… (photo/clip/CID)', zh: 'https://…（图片/短片/CID）', ja: 'https://…（写真/クリップ/CID）' },
+  'https://… (đường dẫn ảnh hoặc clip)': {
+    en: 'https://… (link to a photo or clip)',
+    zh: 'https://…（图片或片段链接）',
+    ja: 'https://…（写真またはクリップのリンク）',
+  },
   'Quận 1, TP. HCM': { en: 'District 1, Ho Chi Minh City', zh: '胡志明市第一郡', ja: 'ホーチミン市1区' },
-  'Tin của bạn đã được ký số bằng PhoenixKey và đăng lên Aladin Work.\n\nThợ phù hợp sẽ liên hệ qua Aladin Chat trong vài phút.': {
-    en: 'Your post has been signed with PhoenixKey and published to Aladin Work.\n\nMatching workers will reach you through Aladin Chat within minutes.',
-    zh: '您的招工信息已用 PhoenixKey 签名并发布到 Aladin Work。\n\n合适的师傅会在几分钟内通过 Aladin Chat 联系您。',
-    ja: '投稿は PhoenixKey で署名され、Aladin Work に掲載されました。\n\n条件に合う職人が数分以内に Aladin Chat から連絡します。',
+  'Tin của bạn đã được ký số và đăng lên Aladin Work.\n\nThợ phù hợp sẽ liên hệ qua Aladin Chat trong vài phút.': {
+    en: 'Your post has been digitally signed and published on Aladin Work.\n\nSuitable workers will get in touch through Aladin Chat within a few minutes.',
+    zh: '你的招工信息已完成数字签名并发布到 Aladin Work。\n\n合适的师傅将在几分钟内通过 Aladin Chat 与你联系。',
+    ja: '募集は電子署名されて Aladin Work に掲載されました。\n\n条件に合う職人が数分以内に Aladin Chat から連絡します。',
   },
 
   // ── Dữ liệu MẪU (mockData / workMockApi) ───────────────────────────────────

@@ -63,10 +63,10 @@ export const CHAT: PhraseMap = {
   'VD: Đội kỹ thuật - sửa máy giặt LG': { en: 'e.g. Tech team – LG washing machine repair', zh: '例如：技术组 – 维修 LG 洗衣机', ja: '例：技術チーム – LG 洗濯機の修理' },
   'Tùy chọn — dán đường dẫn ảnh đại diện.': { en: 'Optional — paste an avatar image URL.', zh: '可选 — 粘贴头像图片链接。', ja: '任意 — アイコン画像の URL を貼り付けてください。' },
   'Thành viên': { en: 'Members', zh: '成员', ja: 'メンバー' },
-  'Tìm theo DID hoặc tên người dùng để thêm vào nhóm.': {
-    en: 'Search by DID or username to add to the group.',
-    zh: '按 DID 或用户名搜索以添加到群组。',
-    ja: 'DID かユーザー名で検索してグループに追加します。',
+  'Tìm theo mã định danh hoặc tên người dùng để thêm vào nhóm.': {
+    en: 'Search by identifier or username to add people to the group.',
+    zh: '按标识码或用户名搜索以添加到群组。',
+    ja: '識別子またはユーザー名で検索してグループに追加します。',
   },
   'did:phoenix:… hoặc tên': { en: 'did:phoenix:… or a name', zh: 'did:phoenix:… 或名称', ja: 'did:phoenix:… または名前' },
   'Vui lòng nhập ID cuộc trò chuyện.': { en: 'Please enter the conversation ID.', zh: '请输入会话 ID。', ja: '会話 ID を入力してください。' },
@@ -149,18 +149,26 @@ export const CHAT: PhraseMap = {
     zh: '贡献最多 — 建议连接充电器并使用 Wi-Fi。',
     ja: '最も多く貢献します — 充電しながら Wi-Fi でのご利用をおすすめします。',
   },
-  'Mất kết nối tới mạng LampNet.': { en: 'Lost connection to the LampNet network.', zh: '与 LampNet 网络的连接已断开。', ja: 'LampNet ネットワークとの接続が切れました。' },
+  'Mất kết nối tới máy chủ.': {
+    en: 'Lost connection to the server.',
+    zh: '与服务器的连接已断开。',
+    ja: 'サーバーとの接続が切れました。',
+  },
   'Chưa đủ quyền hoặc chưa đủ bậc tham gia.': {
     en: 'Insufficient permission or participation tier.',
     zh: '权限不足或参与等级不够。',
     ja: '権限または参加ランクが足りません。',
   },
-  'Daemon LampNet đang trục trặc.': { en: 'The LampNet daemon is having trouble.', zh: 'LampNet 守护进程出现故障。', ja: 'LampNet のデーモンに問題が発生しています。' },
+  'Máy chủ đang trục trặc.': {
+    en: 'The server is having trouble.',
+    zh: '服务器出现故障。',
+    ja: 'サーバーに問題が発生しています。',
+  },
   'Chưa tải được trạng thái node': { en: 'Could not load node status', zh: '无法加载节点状态', ja: 'ノードの状態を読み込めません' },
-  'Daemon LampNet đang bận hoặc chưa phản hồi. Vui lòng thử lại.': {
-    en: 'The LampNet daemon is busy or not responding. Please try again.',
-    zh: 'LampNet 守护进程繁忙或无响应，请重试。',
-    ja: 'LampNet のデーモンが混雑しているか応答していません。もう一度お試しください。',
+  'Máy chủ đang bận hoặc chưa phản hồi. Vui lòng thử lại.': {
+    en: 'The server is busy or not responding. Please try again.',
+    zh: '服务器繁忙或没有响应，请重试。',
+    ja: 'サーバーが混み合っているか応答がありません。もう一度お試しください。',
   },
   'Chưa đóng góp': { en: 'Not contributing', zh: '未贡献', ja: '未参加' },
   "Máy bạn chưa tham gia mạng. Vào 'Kết đèn' để bắt đầu góp sức.": {
@@ -177,16 +185,12 @@ export const CHAT: PhraseMap = {
   },
   'Chưa tham gia được': { en: 'Could not join', zh: '无法加入', ja: '参加できません' },
   'Mạng đang trục trặc': { en: 'The network is having trouble', zh: '网络出现故障', ja: 'ネットワークに問題が発生しています' },
-  'Cần danh tính PhoenixKey và ví nhận thưởng hợp lệ, hoặc chưa đủ bậc tham gia.': {
-    en: 'A PhoenixKey identity and a valid reward wallet are required, or your participation tier is too low.',
-    zh: '需要 PhoenixKey 身份和有效的奖励钱包，或参与等级不足。',
-    ja: 'PhoenixKey の本人情報と有効な報酬ウォレットが必要です。または参加ランクが足りません。',
+  'Cần có danh tính và ví nhận thưởng hợp lệ, hoặc bạn chưa đủ bậc tham gia.': {
+    en: 'You need an identity and a valid reward wallet, or your tier is not high enough yet.',
+    zh: '需要身份和有效的奖励钱包，或你的等级尚未达标。',
+    ja: '本人情報と有効な報酬ウォレットが必要です。または参加ランクがまだ足りません。',
   },
-  'Daemon LampNet đang bận. Vui lòng thử lại sau ít phút.': {
-    en: 'The LampNet daemon is busy. Please try again in a few minutes.',
-    zh: 'LampNet 守护进程繁忙，请几分钟后重试。',
-    ja: 'LampNet のデーモンが混雑しています。数分後にお試しください。',
-  },
+  // 'Máy chủ đang bận. Thử lại sau ít phút.' khai ở errors.ts — dùng chung.
   'Đang đóng góp': { en: 'Contributing', zh: '贡献中', ja: '貢献中' },
   'Đang kết đèn…': { en: 'Connecting…', zh: '连灯中…', ja: '参加中…' },
   'Kết đèn — Tham gia ngay': { en: 'Connect — join now', zh: '连灯 — 立即参与', ja: '参加 — 今すぐ加わる' },
@@ -195,10 +199,10 @@ export const CHAT: PhraseMap = {
   'Mất kết nối tới máy chủ Pool.': { en: 'Lost connection to the Pool server.', zh: '与矿池服务器的连接已断开。', ja: 'プールサーバーとの接続が切れました。' },
   'Chưa đủ quyền xem/uỷ quyền Pool.': { en: 'Not enough permission to view/delegate to the Pool.', zh: '没有查看/委托矿池的权限。', ja: 'プールの閲覧／委任の権限がありません。' },
   'Máy chủ Pool đang trục trặc.': { en: 'The Pool server is having trouble.', zh: '矿池服务器出现故障。', ja: 'プールサーバーに問題が発生しています。' },
-  'Uỷ quyền chưa nối ví ký — đang chờ hợp đồng ví + endpoint Pool.': {
-    en: 'Delegation is not wired to a signing wallet yet — awaiting the wallet contract and Pool endpoint.',
-    zh: '委托尚未接入签名钱包 — 等待钱包合约与矿池接口。',
-    ja: '委任はまだ署名ウォレットにつながっていません — ウォレット契約とプールのエンドポイント待ちです。',
+  'Uỷ quyền chưa nối được ví ký — tính năng sẽ mở ở bản sau.': {
+    en: 'Delegation is not yet connected to a signing wallet — this will open in a later release.',
+    zh: '委托尚未连接签名钱包 — 该功能将在后续版本开放。',
+    ja: '委任はまだ署名ウォレットに接続されていません — 今後のバージョンで開放されます。',
   },
 
   // ── Nút / nhãn còn thiếu ───────────────────────────────────────────────────

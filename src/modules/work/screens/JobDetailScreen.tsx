@@ -80,7 +80,7 @@ const JobDetailScreen: React.FC = () => {
     if (applied) return;
     Alert.alert(
       'Xác nhận ứng tuyển',
-      `Bạn sẽ tạo phòng chat với ${job.postedBy.name} để trao đổi về công việc này.\n\nMọi trao đổi sẽ được ký số bằng PhoenixKey và có giá trị pháp lý.`,
+      `Bạn sẽ tạo phòng chat với ${job.postedBy.name} để trao đổi về công việc này.\n\nMọi trao đổi sẽ được ký số ngay trên máy bạn và có giá trị pháp lý.`,
       [
         { text: 'Huỷ', style: 'cancel' },
         {
@@ -219,7 +219,7 @@ const JobDetailScreen: React.FC = () => {
           <View style={styles.trustItem}>
             <Icon name="lock-outline" size={12} color={COLORS.textSub} />
             <Text style={styles.trustItemText}>
-              Mọi thoả thuận được ký số bằng PhoenixKey, có giá trị pháp lý
+              Mọi thoả thuận được ký số ngay trên máy bạn, có giá trị pháp lý
             </Text>
           </View>
           <View style={styles.trustItem}>

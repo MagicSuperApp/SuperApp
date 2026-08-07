@@ -1,6 +1,6 @@
 // modules/work/screens/CapabilitiesScreen.tsx
 // Khai + xác-minh CHỨNG CHỈ NĂNG LỰC (H-02 điều kiện vào danh bạ thợ). Chọn mẫu việc
-// → nhập chỉ-số (template.metrics[]) → tạo chứng chỉ (pending) → Xác minh (VeData) →
+// → nhập chỉ-số (template.metrics[]) → tạo chứng chỉ (pending) → Gửi kiểm định →
 // hiện hạng (quality_tier). KHÔNG fake ở chế-độ demo (BACKEND_DISABLED).
 
 import React from 'react';
@@ -59,7 +59,7 @@ const CapabilitiesScreen: React.FC = () => {
         res.verified ? 'Đã xác minh' : 'Chưa đạt',
         res.verified
           ? `Chứng chỉ được duyệt — hạng ${res.credential.quality_tier ?? '?'}.`
-          : 'VeData chưa duyệt chứng chỉ này. Xem lại chỉ số/bằng chứng.',
+          : 'Chứng chỉ này chưa được duyệt. Xem lại chỉ số và bằng chứng.',
       );
     } else if (errorCode === 'BACKEND_DISABLED') {
       Alert.alert('Chưa kết nối máy chủ', 'Cần máy chủ để xác minh.');
@@ -86,7 +86,7 @@ const CapabilitiesScreen: React.FC = () => {
       {header}
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <Text style={styles.hint}>
-          Khai chứng chỉ năng lực để lọt danh bạ thợ. VeData xác minh → gắn hạng (A–D).
+          Khai chứng chỉ năng lực để lọt danh bạ thợ. Hệ thống kiểm định rồi gắn hạng (A–D).
         </Text>
 
         <Text style={styles.label}>Loại việc <Text style={styles.req}>*</Text></Text>
@@ -154,7 +154,7 @@ const CapabilitiesScreen: React.FC = () => {
                   <TouchableOpacity
                     style={[styles.primaryBtn, submitting && styles.btnOff]}
                     onPress={onVerify} disabled={submitting} activeOpacity={0.9}>
-                    {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Xác minh (VeData)</Text>}
+                    {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Gửi kiểm định</Text>}
                   </TouchableOpacity>
                 )}
                 <TouchableOpacity

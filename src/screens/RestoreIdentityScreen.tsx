@@ -102,9 +102,9 @@ const RestoreIdentityScreen = () => {
         // Máy MỚI (cài lại/đổi máy) — chưa từng lưu DID nào. Chỉ trường hợp này mới
         // cần user nhập DID (máy không thể suy ra DID chỉ từ 24 từ + không gọi backend).
         showWarning(
-          'Máy mới — cần nhập DID',
-          'Đã lưu ví an toàn. Máy này chưa từng đăng nhập nên không có DID để tự khôi phục. ' +
-            'Nếu là máy MỚI, nhập DID của bạn vào ô "DID để đăng nhập" bên dưới.',
+          'Máy mới — cần nhập mã định danh',
+          'Đã lưu ví an toàn. Máy này chưa từng đăng nhập nên không có mã định danh để tự khôi phục. ' +
+            'Nếu là máy MỚI, nhập mã định danh của bạn vào ô bên dưới.',
         );
         return;
       }
@@ -149,11 +149,11 @@ const RestoreIdentityScreen = () => {
 
       if (!matchedDid) {
         showWarning(
-          typedDid ? 'DID không khớp cụm từ' : 'Không tìm thấy tài khoản khớp',
+          typedDid ? 'Mã định danh không khớp cụm từ' : 'Không tìm thấy tài khoản khớp',
           typedDid
-            ? 'DID vừa nhập không khớp cụm 24 từ, hoặc không tồn tại trên máy chủ.'
+            ? 'Mã định danh vừa nhập không khớp cụm 24 từ, hoặc không có trên máy chủ.'
             : 'Các tài khoản đã lưu trên máy đều không khớp cụm 24 từ này. Kiểm tra lại cụm từ, ' +
-              'hoặc nhập DID đúng vào ô bên dưới nếu là máy mới.',
+              'hoặc nhập đúng mã định danh vào ô bên dưới nếu là máy mới.',
         );
         return;
       }
@@ -232,7 +232,7 @@ const RestoreIdentityScreen = () => {
 
         {/* DID — chỉ cần khi khôi phục trên MÁY MỚI (cài lại / đổi điện thoại). Trên
             cùng máy để trống: app tự tìm DID đã lưu để khôi phục chỉ bằng 24 từ. */}
-        <Text style={styles.didLabel}>DID để đăng nhập (chỉ khi máy mới)</Text>
+        <Text style={styles.didLabel}>Mã định danh để đăng nhập (chỉ khi máy mới)</Text>
         <View style={styles.didWrap}>
           <TextInput
             style={styles.didInput}

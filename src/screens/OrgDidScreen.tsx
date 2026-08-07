@@ -306,8 +306,8 @@ const OrgDidScreen: React.FC = () => {
               <View style={styles.noticeCard}>
                 <Icon name="information-outline" size={18} color={COLORS.warning} />
                 <Text style={styles.noticeText}>
-                  Tính năng mint đang ở chế độ xem trước — mint LAMP chưa chạy thật
-                  (chờ LAMP chốt cap/authority và Enclave native ráp ký).
+                  Tính năng phát hành đang ở chế độ xem trước — chưa chạy thật,
+                  sẽ mở ở bản sau.
                 </Text>
               </View>
             )}

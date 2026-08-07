@@ -56,7 +56,7 @@ const AnimalDetailScreen: React.FC = () => {
       <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent}>
         <View style={styles.card}>
           <Icon name="identifier" size={32} color={HEADER_BG} style={styles.cardIcon} />
-          <Text style={styles.cardLabel}>Animal DID</Text>
+          <Text style={styles.cardLabel}>Mã định danh vật nuôi</Text>
           <Text style={styles.cardDid} numberOfLines={3} selectable>
             {animalDid ?? 'Không có dữ liệu cá thể'}
           </Text>

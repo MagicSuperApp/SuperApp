@@ -34,7 +34,7 @@ const asciiToHex = (s: string): string =>
  */
 export async function rotateOwnerKey(): Promise<{ newPublicKeyHex: string; txHash: string }> {
   const userDid = await currentUserDid();
-  if (!userDid) throw new Error('Chưa có danh tính (DID) để xoay khoá.');
+  if (!userDid) throw new Error('Chưa có danh tính để đổi khoá.');
 
   const cur = await getOwnerAlias();
   const next = nextOwnerAlias(cur);

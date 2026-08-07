@@ -169,7 +169,7 @@ const StakingScreen: React.FC = () => {
                   </Text>
                   <Text style={styles.metaText}>Live stake: {fmtAda(poolDetail.liveStake)}</Text>
                   <Text style={styles.metaText}>Bão hoà: {(poolDetail.liveSaturation * 100).toFixed(1)}%</Text>
-                  <Text style={styles.metaText}>Phí: {(poolDetail.marginCost * 100).toFixed(1)}% + {fmtAda(poolDetail.fixedCost)}/epoch</Text>
+                  <Text style={styles.metaText}>Phí: {(poolDetail.marginCost * 100).toFixed(1)}% + {fmtAda(poolDetail.fixedCost)}/đợt</Text>
 
                   <TouchableOpacity
                     style={[styles.delegBtn, delegating && styles.delegBtnOff]}

@@ -129,7 +129,7 @@ const JoinHomeScreen: React.FC = () => {
           </TouchableOpacity>
           <View style={styles.headerTitleBox}>
             <Text style={styles.headerTitle}>Kết đèn</Text>
-            <Text style={styles.headerSubtitle}>Góp sức máy · Tham gia mạng LampNet</Text>
+            <Text style={styles.headerSubtitle}>Góp sức máy · Tham gia mạng lưới</Text>
           </View>
           <View style={styles.headerIconWrap}>
             <Icon name="lightning-bolt" size={20} color={LAMPNET_THEME.onPrimary} />
@@ -149,8 +149,8 @@ const JoinHomeScreen: React.FC = () => {
           </View>
           <Text style={styles.introTitle}>Biến điện thoại thành một ngọn đèn của mạng</Text>
           <Text style={styles.introBody}>
-            Máy bạn góp một phần sức tính toán cho LampNet. Mỗi việc hoàn thành được
-            mạng kiểm chứng (tính lại + ký) rồi tích thưởng. Bạn toàn quyền chọn mức góp.
+            Máy bạn góp một phần sức tính toán cho mạng lưới. Mỗi việc hoàn thành được
+            mạng kiểm chứng rồi tích thưởng. Bạn toàn quyền chọn mức góp.
           </Text>
         </View>
 
@@ -199,7 +199,7 @@ const JoinHomeScreen: React.FC = () => {
         <View style={styles.estimatePlaceholder}>
           <Icon name="lightning-bolt-outline" size={14} color={COLORS.textMuted} />
           <Text style={styles.estimateText}>
-            Ước lượng điện/ngày sẽ hiện ở đây khi mạng LampNet cập nhật (bản sau).
+            Ước lượng điện mỗi ngày sẽ hiện ở đây trong bản sau.
           </Text>
         </View>
 
@@ -225,10 +225,10 @@ const JoinHomeScreen: React.FC = () => {
             }
             message={
               errorKind === 'auth'
-                ? 'Cần danh tính PhoenixKey và ví nhận thưởng hợp lệ, hoặc chưa đủ bậc tham gia.'
+                ? 'Cần có danh tính và ví nhận thưởng hợp lệ, hoặc bạn chưa đủ bậc tham gia.'
                 : errorKind === 'unsupported'
-                ? 'Tính năng Kết đèn chưa có trên bản này — SDK native đang phát triển.'
-                : 'Daemon LampNet đang bận. Vui lòng thử lại sau ít phút.'
+                ? 'Tính năng Kết đèn sẽ mở ở bản sau.'
+                : 'Máy chủ đang bận. Thử lại sau ít phút.'
             }
             onRetry={retry}
           />
@@ -242,7 +242,7 @@ const JoinHomeScreen: React.FC = () => {
                 Bậc: {result?.tier != null ? String(result.tier) : '—'}
               </Text>
             </View>
-            <Text style={styles.tierTitle}>Đã tham gia LampNet</Text>
+            <Text style={styles.tierTitle}>Đã tham gia mạng lưới</Text>
             <Text style={styles.tierBody}>
               Máy của bạn giờ là một ngọn đèn của mạng. Theo dõi việc đang chạy và
               thưởng tích luỹ ở màn "Đang đóng góp".

@@ -5,6 +5,38 @@
 
 ---
 
+## Gỡ tên module nội bộ khỏi giao diện: 39 chuỗi kỹ thuật → 0
+
+Luật đã chốt (giao diện không gọi tên module nội bộ, không dùng từ kỹ thuật) nay được thi hành cho **83 dòng từ điển + ~40 nơi gọi trong mã**, chạm 50 file.
+
+**Nguyên tắc áp:** người dùng cần biết *chuyện gì đang xảy ra với thứ của họ*, không cần biết *bộ phận nào trong hệ thống* đang làm việc đó.
+
+| Trước | Sau |
+|---|---|
+| `Daemon LampNet đang bận…` | `Máy chủ đang bận. Thử lại sau ít phút.` |
+| `Phát tán lưu trữ trên mạng phân tán LampNet...` | `Đang lưu bản sao an toàn…` |
+| `Chưa ráp Enclave native ký giao dịch (Thư)…` | `Tính năng ký giao dịch sẽ mở ở bản sau.` |
+| `Máy này chưa có DID.` | `Máy này chưa có danh tính.` |
+| `Chưa có danh tính PhoenixKey` | `Chưa có danh tính` |
+| `Cần cài react-native-image-picker.\nnpm install…` | `Bản app này chưa mở được máy ảnh. Vui lòng cập nhật app rồi thử lại.` |
+
+Quy ước từ: **DID** → `danh tính` (khi nói về *của ai*) hoặc `mã định danh` (khi nói về *chuỗi để chép/đối chiếu*) · **PhoenixKey** → bỏ, hoặc `khoá trên máy` · **LampNet** → `mạng lưới` / `kho an toàn` / `máy chủ` tuỳ ngữ cảnh · **OriLife** → `hệ thống` / `chúng tôi` · **VeData** → `hệ thống kiểm định` · **epoch** → `đợt` · **Pledge** → `tiền cọc` · **mint** → `phát hành` · **endpoint · CBOR · P-256 · Enclave · SDK native** → bỏ hẳn.
+
+**Giữ nguyên hai ngoại lệ:** tên token (LAMP · MAGIC · CARP — in trên ví, trên sổ, trên sàn) và chuỗi `did:phoenix…` khi đang hiện **chính giá trị** để người dùng chép; chỉ câu *hướng dẫn* quanh nó viết bằng tiếng thường.
+
+### Sửa bằng script, không sửa tay
+`scratchpad/dejargon*.js` thay **nguyên dòng** từ điển (khoá vi + `en`/`zh`/`ja` cùng lúc) rồi thay chuỗi vi ở mọi nơi gọi trong cùng một lượt. Sửa tay thì kiểu gì cũng có dòng đổi khoá mà quên bản dịch — khi đó `autoText` **lặng lẽ** hiện lại tiếng Việt cho người nước ngoài: không lỗi, không cảnh báo. Lưu ý repo có **4 ngôn ngữ** (`en`/`zh`/**`ja`**), không phải 2 như issue viết.
+
+### Ba cái bẫy chỉ lộ ra khi chạy kiểm
+1. **Khoá trùng GIỮA các file không làm `tsc` đỏ.** `dictionary.ts` gộp 8 bộ theo thứ tự, bộ khai SAU **đè** bộ khai TRƯỚC (chỉ `console.warn` ở DEV). Gộp chuỗi làm sinh 6 khoá trùng mới (`Ví của tôi`, `Chưa có danh tính`, `Gửi lại`…) — đã gỡ bản thừa, để lại dòng chú thích trỏ sang nơi khai chính.
+2. **Chuỗi nối bằng `+` và chữ trong `<Text>` không dính script.** `AccountScreen` · `RestoreIdentityScreen` nối 4 mảnh rồi mới tra từ điển; `ActivityScreen` viết `&amp;` trong JSX. Phải sửa tay đúng 14 chỗ — sót một mảnh là cả câu trượt khoá.
+3. **Bỏ tiếng Anh có thể LÀM ĐỎ bài kiểm i18n.** `ALADIN · PHOENIXKEY DID` không dấu nên lọt lưới `authScreensI18n`; đổi thành `ALADIN · DANH TÍNH SỐ` là có dấu tiếng Việt ⇒ phải khai từ điển, không thì người dùng tiếng Nhật thấy nguyên tiếng Việt.
+
+### Kiểm
+`scratchpad/checkphrases.js` (bài tương đương `src/i18n/phrases.test.ts` của PR #107 — **chưa có trên nhánh này**) soi 2020 dòng: không khoá trùng, không bản dịch rỗng/thiếu. Phép đo của issue còn **1 chuỗi**, là tiền tố `console.log` không bao giờ lên màn. `tsc --noEmit` sạch · **749/750 test xanh** (`treeModels.test.ts` đỏ sẵn từ trước, đã kiểm bằng stash) · ảnh chụp `FeeDisplay` cập nhật theo `OriLife Treasury` → `Quỹ hệ thống`.
+
+> **Cố ý KHÔNG đụng — 4 dòng chẩn đoán kỹ thuật:** `buildSignedTransfer:` · `buildStakeDelegation:` (ném từ `sdk/taadEnclave.ts`, giá trị nằm ở chỗ gọi ĐÚNG TÊN hàm hỏng) · `[CẦN XÁC NHẬN CONTRACT] activity:…` (có test bám: `syncDispatch.test.ts:122`) · `stored=false (byte chưa lên LampNet)` (dòng mồ côi, không nơi nào gọi). Đây là chữ cho kỹ sư đọc log, không phải chữ cho nông dân đọc trên màn.
+
 ## Màn Đăng nhập: gộp 2 nút sinh trắc thành MỘT nút tròn chỉ-icon
 
 `src/screens/LoginScreen.tsx` — trước có 2 thẻ "Khuôn mặt" / "Vân tay" đặt cạnh nhau, mỗi thẻ có icon + tiêu đề + phụ đề. Nay còn **một nút tròn, không chữ**, icon đổi theo cảm biến của máy: Face ID → `face-recognition` · Touch ID → `fingerprint` · còn lại (Android `Biometrics`, hoặc lúc chưa dò xong) → `shield-lock-outline`.

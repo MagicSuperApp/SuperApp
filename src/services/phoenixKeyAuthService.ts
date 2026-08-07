@@ -110,7 +110,7 @@ export const registerIdentity = async (
     if (existing) return existing;
 
     throw new Error(
-      'Thiết bị đã có khóa PhoenixKey nhưng chưa khôi phục được danh tính. Vui lòng thử đăng nhập lại hoặc liên hệ hỗ trợ.',
+      'Thiết bị đã có khoá nhưng chưa khôi phục được danh tính. Vui lòng thử đăng nhập lại hoặc liên hệ hỗ trợ.',
     );
   }
 
@@ -246,7 +246,7 @@ const recoverLocalIdentityFromKey = async (
     const messageHex = utf8ToHex(genesisMessage);
     const signature = await signRaw(
       messageHex,
-      'Khôi phục danh tính PhoenixKey',
+      'Khôi phục danh tính',
       'Xác thực để khôi phục danh tính trên thiết bị này',
     );
 

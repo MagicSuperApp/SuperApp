@@ -60,7 +60,7 @@ type MintPhase = 'idle' | 'requesting' | 'waiting_sign' | 'submitting' | 'done' 
 // Hiện ném lỗi để KHÔNG giả-lập submit khi native chưa sẵn.
 const buildAndSignTxStub: BuildAndSignMintTx = async () => {
   throw new Error(
-    'Chưa ráp Enclave native ký giao dịch (Thư). Bước dựng + ký CBOR đang chờ.',
+    'Tính năng ký giao dịch sẽ mở ở bản sau.',
   );
 };
 
@@ -213,8 +213,8 @@ const OrgMintScreen: React.FC = () => {
               <View style={styles.noticeCard}>
                 <Icon name="information-outline" size={18} color={COLORS.warning} />
                 <Text style={styles.noticeText}>
-                  Chế độ xem trước — mint LAMP chưa chạy thật (chờ LAMP chốt
-                  cap/authority và Enclave native ráp ký giao dịch).
+                  Chế độ xem trước — phát hành LAMP chưa chạy thật, sẽ mở ở
+                  bản sau.
                 </Text>
               </View>
             )}
@@ -309,8 +309,8 @@ const OrgMintScreen: React.FC = () => {
 
               <View style={[styles.sectionCard, styles.sectionCardMuted]}>
                 <Text style={styles.mutedBody}>
-                  Đưa LAMP từ KHO Distribution về ví của bạn. Bước này CHƯA mở —
-                  PhoenixKey chưa cấp endpoint release.
+                  Đưa LAMP từ kho về ví của bạn. Bước này CHƯA mở — sẽ có ở
+                  bản sau.
                 </Text>
 
                 {releaseNotice && (
@@ -329,7 +329,7 @@ const OrgMintScreen: React.FC = () => {
                   activeOpacity={1}
                 >
                   <Icon name="wallet-outline" size={18} color="#FFFFFF" />
-                  <Text style={styles.primaryBtnText}>Claim về ví (chờ endpoint)</Text>
+                  <Text style={styles.primaryBtnText}>Nhận về ví (sắp có)</Text>
                 </TouchableOpacity>
               </View>
             </View>

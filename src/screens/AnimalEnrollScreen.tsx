@@ -128,8 +128,8 @@ const AnimalEnrollScreen: React.FC = () => {
 
     if (!imagePicker?.launchCamera) {
       Alert.alert(
-        'Chưa cài camera picker',
-        'Cần cài react-native-image-picker.\nnpm install react-native-image-picker',
+        'Chưa mở được máy ảnh',
+        'Bản app này chưa mở được máy ảnh. Vui lòng cập nhật app rồi thử lại.',
       );
       return;
     }

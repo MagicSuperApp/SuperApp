@@ -446,6 +446,13 @@ export interface IdentifyOptions {
    * ?matcher=. Mặc-định KHÔNG gửi → backend dùng đường ENV. Chỉ tester bật.
    */
   matcher?: ShellMatcher;
+  /**
+   * Vườn của cây. `enrollTree` đã gửi `farm_id` từ lâu (xem chú thích ở đó), còn
+   * `verifyAddTree` thì không — nên GỘP ảnh vào cây cũ làm backend gán
+   * `farm_id = null`, và `/api/trees?farm_id=X` lọc bỏ chính cây đó. Nông dân
+   * thấy cây "biến mất khỏi vườn" ngay sau khi bổ sung ảnh cho nó.
+   */
+  farmId?: string;
 }
 
 export type IdentifyVerdict = 'correct' | 'wrong' | 'other';
@@ -583,6 +590,11 @@ export async function verifyAddTree(
   const form = new FormData();
 
   form.append('tree_id', treeId);
+  form.append('source', 'phone');
+
+  // Gửi `farm_id` NHẤT QUÁN với `enrollTree`. Thiếu nó thì backend gán null và cây
+  // rơi khỏi bộ lọc `/api/trees?farm_id=X` — bổ sung ảnh xong là cây mất khỏi vườn.
+  if (options.farmId) form.append('farm_id', options.farmId);
 
   for (let i = 0; i < imagePaths.length; i++) {
     (form as any).append('files', { uri: imagePaths[i], type: 'image/jpeg', name: `img_${i}.jpg` });

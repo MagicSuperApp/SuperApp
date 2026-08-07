@@ -49,6 +49,7 @@ import {
   type FruitCoord,
 } from '../features/space3d/treeFrame';
 import { saveFruitCoord } from '../features/space3d/positionStore';
+import RemoteImage from '../components/RemoteImage';
 
 const BASE_URL = ORILIFE_BASE;
 
@@ -735,10 +736,17 @@ const FruitCropperScreen: React.FC = () => {
       onPress={() => pickCandidate(c)}
       activeOpacity={0.8}
     >
+      {/* Ảnh ứng viên ở màn NHẬN DIỆN: đây không phải trang trí, người dùng nhìn ảnh
+          để chọn "đây là quả nào". Ảnh hỏng mà không rơi về icon thì họ phải chọn mù
+          theo mỗi cái tên "(chưa đặt tên)". */}
       <View style={styles.cThumb}>
-        {c.thumbnail_url
-          ? <Image source={{ uri: `${BASE_URL}${c.thumbnail_url}` }} style={styles.cThumbImg} resizeMode="cover" />
-          : <Icon name="apple-whole" size={22} color={COLORS.textMuted} />}
+        <RemoteImage
+          uri={c.thumbnail_url ? `${BASE_URL}${c.thumbnail_url}` : null}
+          style={styles.cThumbImg}
+          containerStyle={styles.cThumbImg}
+          resizeMode="cover"
+          placeholder={<Icon name="apple-whole" size={22} color={COLORS.textMuted} />}
+        />
       </View>
       <View style={styles.cBody}>
         <View style={styles.cNameRow}>

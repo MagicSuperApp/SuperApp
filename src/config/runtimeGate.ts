@@ -127,17 +127,23 @@ const probeOne = async (cap: GateCapability): Promise<void> => {
     setLive(cap, false);
     return;
   }
+  const ctrl = new AbortController();
+  // `clearTimeout` PHẢI ở `finally`. Trước đây nó đứng SAU `await fetch`, nên mọi lần
+  // fetch ném (offline, DNS hỏng, host chưa cấp) là bộ đếm giờ này còn sống tới hết
+  // hạn rồi gọi `abort()` trên một controller đã chết. Trong app là rác nhỏ; trên CI
+  // thì 9 bộ đếm còn treo làm jest KHÔNG THOÁT sau khi test đã xanh — chạy tiếp ~19
+  // phút rồi chết vì hết bộ nhớ (exit 134), tức cổng kiểm luôn đỏ dù mã đúng.
+  const timer = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS);
   try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS);
     const res = await fetch(url, { method: 'GET', signal: ctrl.signal });
-    clearTimeout(timer);
     // CHỈ 2xx = live. 502/503/504 (host chưa cấp), 404 (route chưa deploy), 5xx
     // đều → mock (không kích hoạt nhầm vào backend chưa sẵn).
     setLive(cap, res.ok);
   } catch {
     // Abort/timeout/mạng lỗi → mock (an toàn, không đoán live).
     setLive(cap, false);
+  } finally {
+    clearTimeout(timer);
   }
 };
 

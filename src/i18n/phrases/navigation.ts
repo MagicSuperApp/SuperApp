@@ -159,10 +159,19 @@ export const NAVIGATION: PhraseMap = {
     zh: '扫描面容或指纹以解锁你的身份。\n自主安全 — 无需密码，无需验证码。',
     ja: '顔または指紋であなたの本人情報のロックを解除します。\n自分で管理するセキュリティ — パスワードもワンタイムコードも不要です。',
   },
-  'Quét khuôn mặt': { en: 'Scan face', zh: '扫描面容', ja: '顔をスキャン' },
-  'Quét vân tay': { en: 'Scan fingerprint', zh: '扫描指纹', ja: '指紋をスキャン' },
+  // Nhãn trợ năng của nút sinh trắc ở màn Đăng nhập — nút chỉ có icon nên đây là
+  // thứ DUY NHẤT trình đọc màn hình đọc được. Ba nhánh theo cảm biến của thiết bị.
   'Đăng nhập bằng khuôn mặt': { en: 'Sign in with face', zh: '使用面容登录', ja: '顔でログイン' },
   'Đăng nhập bằng vân tay': { en: 'Sign in with fingerprint', zh: '使用指纹登录', ja: '指紋でログイン' },
+  'Đăng nhập bằng sinh trắc học': { en: 'Sign in with biometrics', zh: '使用生物识别登录', ja: '生体認証でログイン' },
+  // Dòng chữ NGAY DƯỚI nút tròn ở màn Đăng nhập. Mệnh lệnh ngắn, không thuật ngữ
+  // — người dùng đích là bà con nông dân, cần đọc một nhịp là hiểu phải làm gì.
+  'Chạm để đăng nhập': { en: 'Tap to sign in', zh: '点击登录', ja: 'タップしてログイン' },
+  'Bật Face ID hoặc vân tay trong Cài đặt máy để đăng nhập': {
+    en: 'Turn on Face ID or fingerprint in your device Settings to sign in',
+    zh: '请在设备设置中开启面容或指纹后登录',
+    ja: '端末の設定で Face ID または指紋を有効にしてからログインしてください',
+  },
   'Thiết bị chưa hỗ trợ sinh trắc học. Thử lập danh tính tạm thời trên thiết bị này.': {
     en: 'This device does not support biometrics. Try creating a temporary identity on it.',
     zh: '此设备不支持生物识别。请尝试在本机创建临时身份。',

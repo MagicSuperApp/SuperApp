@@ -5,8 +5,31 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { BiometryTypes } from 'react-native-biometrics';
 
 export type BiometricKind = 'face' | 'fingerprint' | 'strong';
+
+/**
+ * Suy `BiometricKind` từ cảm biến THẬT của máy (`isSensorAvailable().biometryType`).
+ *
+ * KHÔNG suy từ nút người dùng bấm. `simplePrompt()` không nhận tham số chọn
+ * phương thức — hệ điều hành tự dùng thứ đang khai trên máy đó, nên "người dùng
+ * chọn khuôn mặt hay vân tay" chưa bao giờ là chuyện có thật:
+ *   • iOS  — mỗi máy chỉ có MỘT loại (Face ID hoặc Touch ID), không có gì để chọn.
+ *   • Android — `BiometricPrompt` chọn theo ĐỘ MẠNH (BIOMETRIC_STRONG/WEAK), cố ý
+ *     không cho ứng dụng ép người dùng dùng bộ phận cơ thể nào.
+ *
+ * `Biometrics` (Android gộp chung) và lúc chưa dò xong đều về `'strong'` — đúng
+ * với thứ nền tảng thật sự hứa: một cảm biến đủ mạnh, không nói rõ là cái gì.
+ */
+export const biometricKindFromType = (
+  biometryType?: string | null,
+): BiometricKind =>
+  biometryType === BiometryTypes.FaceID
+    ? 'face'
+    : biometryType === BiometryTypes.TouchID
+    ? 'fingerprint'
+    : 'strong';
 
 export interface AuthUser {
   id: string;
@@ -330,10 +353,31 @@ const persistLegacyStores = async (
   try {
     const raw = await AsyncStorage.getItem(BIOMETRIC_DID_KEY);
     const map: Record<string, string> = raw ? JSON.parse(raw) : {};
+    pruneOtherKindsForDid(map, user.did, biometricKind);
     map[biometricKind] = user.did;
     await AsyncStorage.setItem(BIOMETRIC_DID_KEY, JSON.stringify(map));
   } catch {
     /* non-fatal */
+  }
+};
+
+/**
+ * Một DID = MỘT bản ghi trong `biometric_did_map`.
+ *
+ * Bản cũ ghi CẢ `face` lẫn `fingerprint` cho cùng một DID, làm map trông như
+ * người dùng có hai lựa chọn tách rời — trong khi bật một cái là bật cả hai.
+ * Dọn các khoá loại khác trỏ về cùng DID trước khi ghi loại cảm biến thật.
+ *
+ * Đây chỉ là dọn phía GHI. Đường ĐỌC (`Object.values(map).includes(did)`) vẫn
+ * quét theo giá trị nên máy đã cài từ bản cũ không phải bật lại.
+ */
+const pruneOtherKindsForDid = (
+  map: Record<string, string>,
+  did: string,
+  keep: BiometricKind,
+): void => {
+  for (const kind of Object.keys(map)) {
+    if (kind !== keep && map[kind] === did) delete map[kind];
   }
 };
 
@@ -367,6 +411,8 @@ const migrateLegacyDidStores = async (
         map[kind] = userDid;
       }
     }
+    // Vá DID hỏng ở trên có thể để lại nhiều khoá cùng trỏ về DID mới → gộp lại.
+    pruneOtherKindsForDid(map, userDid, biometricKind);
     map[biometricKind] = userDid;
     await AsyncStorage.setItem(BIOMETRIC_DID_KEY, JSON.stringify(map));
   } catch {

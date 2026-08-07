@@ -4,7 +4,7 @@
 
 import React, { useEffect, useRef } from 'react';
 import { AppState, AppStateStatus, StatusBar, StyleSheet } from 'react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import AppNavigator from './src/navigation';
 import AlertProvider from './src/components/AlertProvider';
 import { loadTreeDedupCache } from './src/services/treeDedupCache';
@@ -59,7 +59,12 @@ function App() {
   }, []);
 
   return (
-    <SafeAreaProvider>
+    // `initialMetrics`: không có nó thì `useSafeAreaInsets()` trả 0 ở LƯỢT
+    // VẼ ĐẦU (phải đợi native đo xong mới báo lại) — màn nào cộng inset để né
+    // thanh trạng thái sẽ hiện ĐÈ lên thanh trạng thái ở mấy khung hình đầu, và
+    // màn không vẽ lại thì đè luôn. Giá trị này lấy ĐỒNG BỘ ngay lúc dựng nên
+    // khung hình đầu tiên đã đúng.
+    <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       <AlertProvider>
         <StatusBar barStyle="light-content" />
         <AppNavigator />

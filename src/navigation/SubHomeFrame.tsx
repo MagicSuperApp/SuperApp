@@ -122,7 +122,13 @@ const SubHomeFrame: React.FC<Props> = ({
               `subEn`, nghĩa là nông dân thấy 8 tab con không có một chữ Việt nào —
               tiếng Việt bị hạ xuống làm tooltip mà tooltip thì trên di động không ai
               thấy. `lang` lấy từ hook nên đổi ngôn ngữ là vẽ lại ngay. */}
-          {subEn(tab)} · {subNational(tab, lang)}
+          {/* `subNational` rơi về chính `tab.en` khi lang='en' (không có mục 'en' trong
+              `national`) — in thẳng ra là "Carbon · Carbon", "Trees · Trees". Máy mới
+              mặc định là tiếng Anh nên đây là thứ người dùng mới thấy đầu tiên. */}
+          {(() => {
+            const nat = subNational(tab, lang);
+            return nat === subEn(tab) ? subEn(tab) : `${subEn(tab)} · ${nat}`;
+          })()}
         </Text>
       </TouchableOpacity>
     );

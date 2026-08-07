@@ -35,6 +35,7 @@ import {
   type TreeLayoutResponse, type TreeLayoutFruit, type SpeciesCatalog,
   type FruitStatus, type TreeZone, type FruitView,
 } from '../services/fruitReIDService';
+import { withPhotoSave } from '../services/mediaSavePermission';
 
 const BASE_URL = ORILIFE_BASE;
 
@@ -142,7 +143,7 @@ const FruitListScreen: React.FC = () => {
         fruitId: forFruitId, fruitName: forFruitName,
       });
     };
-    if (fromCamera) { if (await requestCameraPermission()) launchCamera(opts, cb); }
+    if (fromCamera) { if (await requestCameraPermission()) launchCamera(await withPhotoSave(opts), cb); }
     else { launchImageLibrary(opts, cb); }
   }, [navigation, treeId, treeName, layout, requestCameraPermission]);
 

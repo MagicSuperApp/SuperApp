@@ -26,6 +26,7 @@ import { appendVideoProof } from '../services/videoProofStore';
 import {
   uploadTreeVideo, MAX_TREE_VIDEO_BYTES, type TreeVideoResult,
 } from '../services/treeVideoService';
+import { withPhotoSave } from '../services/mediaSavePermission';
 
 // image-picker nạp mềm (giống FruitVideo/AnimalEnroll) — máy chưa cài thì báo rõ, không crash.
 const imagePicker = (() => {
@@ -41,8 +42,13 @@ const VIDEO_OPTIONS = {
   // nông dân KHÔNG CÒN BẢN NÀO. Mà LampNet ở chế độ mặc định giữ toàn bộ mảnh nguồn
   // trên ĐÚNG một máy và vòng sửa chữa không tái sinh mảnh đã mất, nên "đã đưa vào hệ
   // phân tán" hiện chưa đồng nghĩa với "đã bền". Bản trong cuộn ảnh là chỗ dựa cho tới
-  // khi tầng dưới bền thật. Quyền đã khai sẵn: Info.plist NSPhotoLibraryAddUsageDescription,
-  // AndroidManifest WRITE_EXTERNAL_STORAGE — không phải xin thêm quyền nào.
+  // khi tầng dưới bền thật.
+  //
+  // ⚠ KHAI TRONG MANIFEST LÀ CHƯA ĐỦ. Trên Android ≤ 28, picker CHẶN camera mở nếu
+  // `saveToPhotos` bật mà WRITE_EXTERNAL_STORAGE chưa được cấp LÚC CHẠY — nghĩa là
+  // máy Android 8/9 (đúng phân khúc máy rẻ của đội) không quay được gì. Vì vậy mọi
+  // nơi mở camera đều đi qua `withPhotoSave()`: xin quyền, thiếu thì HẠ xuống
+  // `saveToPhotos:false` chứ không để mất luôn đường quay.
   saveToPhotos: true,
 };
 
@@ -89,12 +95,12 @@ const TreeVideoScreen: React.FC = () => {
     : (initialTreeName || (selectedTreeId ? `Cây ${selectedTreeId.slice(0, 6)}` : 'Chọn cây…'));
 
   // ── Quay video ────────────────────────────────────────────────────────────
-  const handleRecord = useCallback(() => {
+  const handleRecord = useCallback(async () => {
     if (!imagePicker?.launchCamera) {
       Alert.alert('Chưa cài camera', 'Cần cập nhật app (react-native-image-picker).');
       return;
     }
-    imagePicker.launchCamera(VIDEO_OPTIONS, (response: any) => {
+    imagePicker.launchCamera(await withPhotoSave(VIDEO_OPTIONS), (response: any) => {
       if (response.didCancel) return;
       if (response.errorCode) {
         Alert.alert('Lỗi camera', response.errorMessage ?? 'Không mở được camera. Kiểm tra quyền.');

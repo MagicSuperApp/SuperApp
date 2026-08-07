@@ -114,6 +114,30 @@ describe('enqueue', () => {
     expect(await getVideoQueueCount()).toBe(1);
   });
 
+  // Máy nông dân gần đầy sau một buổi quay là chuyện thường, và AsyncStorage ném
+  // SQLITE_FULL. Bản trước nuốt lỗi ghi: enqueue vẫn trả job trông như thật, màn xoá
+  // bản nháp, flush đọc hàng RỖNG nên không gọi upload lần nào, rồi màn suy "không
+  // còn trong hàng ⇒ đã gửi xong" và hiện "Đã lưu video". Clip chưa bao giờ rời máy.
+  it('ghi đĩa hỏng (máy đầy) → persisted=false, hàng đợi rỗng, không vờ như đã xếp hàng', async () => {
+    (AsyncStorage.setItem as jest.Mock).mockRejectedValueOnce(new Error('SQLITE_FULL'));
+    const enq = await enqueueVideoUpload({ treeId: 't1', videoUri: 'file:///cache/c.mp4', kind: 'fruit' });
+
+    expect(enq.persisted).toBe(false);
+    expect(await loadVideoQueue()).toHaveLength(0);
+    expect(await isJobQueued(enq.job.id)).toBe(false);
+
+    // Và flush KHÔNG được gọi upload cho một job không tồn tại.
+    const deps = makeDeps();
+    const r = await flushVideoUploadQueue(deps);
+    expect(r.sent).toBe(0);
+    expect(deps.upload).not.toHaveBeenCalled();
+  });
+
+  it('ghi đĩa tốt → persisted=true', async () => {
+    const enq = await enqueueVideoUpload({ treeId: 't1', videoUri: 'file:///cache/c.mp4', kind: 'fruit' });
+    expect(enq.persisted).toBe(true);
+  });
+
   it('khử trùng: cùng cây + cùng clip gốc → không nhân đôi', async () => {
     await enqueueVideoUpload({ treeId: 't1', videoUri: 'file:///cache/c.mp4', kind: 'fruit' });
     await enqueueVideoUpload({ treeId: 't1', videoUri: 'file:///cache/c.mp4', kind: 'fruit' }, 'lỗi lần 2');
@@ -178,15 +202,33 @@ describe('flush — thất bại giữ lại', () => {
   // Đây là đường mất bằng chứng im lặng nhất của cả dây: máy chủ KHÔNG nói gì về
   // `stored` thì trước đây `fruitVideoService` điền hộ `true`, và khối thành công xoá
   // bản sao clip. Không lỗi, không cảnh báo — chỉ là clip biến mất.
-  it('stored VẮNG → vẫn ghi bằng chứng nhưng GIỮ bản sao, không xoá', async () => {
+  //
+  // Bản trước chỉ thôi XOÁ bản sao mà job vẫn `done:true` ⇒ bị cắt khỏi hàng đợi. Tệp
+  // còn trên đĩa nhưng KHÔNG job nào trỏ tới: không màn nào thấy, `retryVideoJobNow`
+  // và `clearVideoQueue` cũng không với tới, rác cộng dồn mãi — mà màn kết quả lại suy
+  // "không còn trong hàng ⇒ đã gửi xong" nên hiện dấu tích "Đã lưu". Bài test cũ chỉ
+  // canh `deleteFile` nên lỗ này lọt qua lưới xanh.
+  it('stored VẮNG → GIỮ job trong hàng, giữ bản sao, KHÔNG tính là đã gửi', async () => {
     await enqueueVideoUpload({ treeId: 't1', videoUri: 'file:///cache/c.mp4', kind: 'fruit' });
     const deps = makeDeps({
       upload: jest.fn(async () => ({ ok: true, video_cid: 'cid-im-lang' } as FruitVideoResult)),
     });
     const r = await flushVideoUploadQueue(deps);
-    expect(r.sent).toBe(1);
-    expect(deps.onProof).toHaveBeenCalledTimes(1);
+
+    expect(r.sent).toBe(0);
     expect(deps.deleteFile).not.toHaveBeenCalled();
+
+    // Job PHẢI còn trong hàng — đó là thứ duy nhất cho phép gửi lại và là cờ mà màn
+    // kết quả đọc để quyết định có nói "đã lưu" hay không.
+    const q = await loadVideoQueue();
+    expect(q).toHaveLength(1);
+    expect(q[0].attempts).toBe(1);
+    expect(q[0].lastError).toContain('không xác nhận');
+
+    // Vẫn ghi mã vào sổ bằng chứng (có CID để đối chiếu), nhưng `stored` để NGUYÊN
+    // `undefined` — màn phải phân biệt "máy chủ xác nhận" với "máy chủ im lặng".
+    expect(deps.onProof).toHaveBeenCalledTimes(1);
+    expect((deps.onProof as jest.Mock).mock.calls[0][1].stored).toBeUndefined();
   });
 
   it('lampnet_disabled → dừng thử ngay (CID là giả, gửi lại chỉ đốt pin giữa vườn)', async () => {

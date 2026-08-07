@@ -49,6 +49,7 @@ import {
   type AnimalIdentifyResponse,
   type AnimalCandidate,
 } from '../services/animalReIDService';
+import { withPhotoSave } from '../services/mediaSavePermission';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -118,7 +119,7 @@ const AnimalIdentityScreen: React.FC = () => {
   }, []);
 
   // ── Chụp ảnh ──────────────────────────────────────────────────────────────
-  const handleCapture = useCallback(() => {
+  const handleCapture = useCallback(async () => {
     // Xoá kết quả cũ khi chụp lại
     setResult(null);
 
@@ -132,7 +133,7 @@ const AnimalIdentityScreen: React.FC = () => {
       return;
     }
 
-    imagePicker.launchCamera(CAMERA_OPTIONS, (response: any) => {
+    imagePicker.launchCamera(await withPhotoSave(CAMERA_OPTIONS), (response: any) => {
       if (response.didCancel) return;
       if (response.errorCode) {
         Alert.alert(

@@ -192,7 +192,11 @@ export async function getPool(poolId: string): Promise<PoolSummary> {
     live_stake: r.live_stake as string | undefined,
     saturation: r.live_saturation as number | undefined,
     fixed_cost: r.fixed_cost as string | undefined,
-    margin: r.margin_cost as number | undefined,
+    // `margin_cost` là PHÂN SỐ 0..1, không phải phần trăm — `phoenixKey-api.ts` (bản
+    // client Pool vẫn chạy được) ghi rõ điều đó. UI in `${margin}%`, nên không nhân
+    // 100 ở đây thì pool phí 3% hiện thành "0.03%": mọi pool trông như phí bằng 0 và
+    // người uỷ quyền chọn sai. Nhân ở ĐÚNG một chỗ này, cùng thang với `saturation`.
+    margin: r.margin_cost != null ? (r.margin_cost as number) * 100 : undefined,
   };
 }
 
@@ -204,7 +208,10 @@ export async function getPool(poolId: string): Promise<PoolSummary> {
  * uỷ quyền", không phải một lỗi đỏ.
  */
 export async function getDelegationStatus(
-  stakeAddress?: string,
+  // BẮT BUỘC, cố ý. Trước đây để `?` cho tiện, và nơi gọi duy nhất gọi rỗng
+  // `getDelegationStatus()` — tsc im lặng, còn banner "Đang uỷ quyền" thì không bao
+  // giờ hiện. Tham số bắt buộc để trình biên dịch bắt hộ lần sau.
+  stakeAddress: string,
 ): Promise<DelegationStatus> {
   if (!stakeAddress) return { delegated_pool_id: null };
   const body = await request<unknown>(

@@ -161,6 +161,11 @@ export async function uploadFruitVideo(
       return {
         ok: false,
         error: { type: 'server_error', detail, http_status: resp.status },
+        // ĐỌC `store_reason` Ở CẢ NHÁNH LỖI. `empty_file` (tệp 0 byte) về dưới dạng
+        // 422 — tức nhánh này — nên nếu chỉ đọc ở nhánh 200 thì cờ "gửi lại vô ích"
+        // không bao giờ tới được hàng đợi: app cứ thử đủ 5 lượt multipart trên 3G
+        // giữa vườn cho một tệp lần nào cũng rỗng.
+        store_reason: body?.store_reason ?? null,
       };
     }
     // Server trả 200 kể cả khi stored:false / 0 khung — vẫn coi là OK (đã nhận clip).

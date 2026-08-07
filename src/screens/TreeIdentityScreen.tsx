@@ -77,6 +77,7 @@ import { BiometricKind, biometricKindFromType, phoenixKeyAuth } from '../service
 import { loginUser } from '../store/userSlice';
 import ReactNativeBiometrics from 'react-native-biometrics';
 import rLog from '../services/remoteLogger';
+import { withPhotoSave } from '../services/mediaSavePermission';
 import {
   addCapture,
   setCapturing,
@@ -505,13 +506,13 @@ const TreeIdentityScreen: React.FC = () => {
     if (!hasPermission) return;
 
     try {
-      const res = await launchCamera({
-        mediaType: 'photo',
-        quality: 0.8,
+      const res = await launchCamera(await withPhotoSave({
+        mediaType: 'photo' as const,
+        quality: 0.8 as const,
         maxWidth: 1280,
         maxHeight: 1280,
         saveToPhotos: true,
-      });
+      }));
       if (res.didCancel) return;
       if (res.errorCode) {
         Alert.alert('Lỗi camera', res.errorMessage || 'Không mở được camera.');

@@ -73,9 +73,9 @@ import FactorBreakdown, { type FactorScores } from '../components/reid/FactorBre
 import ReidConfirmDialog, { type ReidCandidate } from '../components/reid/ReidConfirmDialog';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { ensureOrilifeToken, clearOrilifeToken } from '../services/orilifeDidAuth';
-import { phoenixKeyAuth } from '../services/phoenixKeyAuthService';
+import { BiometricKind, biometricKindFromType, phoenixKeyAuth } from '../services/phoenixKeyAuthService';
 import { loginUser } from '../store/userSlice';
-import ReactNativeBiometrics, { BiometryTypes } from 'react-native-biometrics';
+import ReactNativeBiometrics from 'react-native-biometrics';
 import rLog from '../services/remoteLogger';
 import {
   addCapture,
@@ -545,11 +545,10 @@ const TreeIdentityScreen: React.FC = () => {
     setIsIdentifyingLocal(true);
     try {
       // Xác-định loại sinh-trắc để đặt đúng nhãn khoá (không đổi hành-vi ký).
-      let kind: 'face' | 'fingerprint' | 'strong' = 'strong';
+      let kind: BiometricKind = 'strong';
       try {
         const { biometryType } = await new ReactNativeBiometrics().isSensorAvailable();
-        kind = biometryType === BiometryTypes.FaceID ? 'face'
-          : biometryType === BiometryTypes.TouchID ? 'fingerprint' : 'strong';
+        kind = biometricKindFromType(biometryType);
       } catch { /* mặc-định 'strong' */ }
 
       const prevName = currentUser?.name;

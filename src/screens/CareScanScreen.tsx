@@ -36,6 +36,7 @@ import { COLORS } from '../constants';
 import {
   matchCareLabel,
   logCare,
+  safeStateOf,
   type CareProduct,
   type CareLogResponse,
 } from '../services/careService';
@@ -128,18 +129,31 @@ const CareScanScreen: React.FC = () => {
 
   const renderLogged = () => {
     if (!logged) return null;
-    const blocked = !logged.safe && !!logged.blocked_until;
+    // `safe` có BA giá-trị. `null`/vắng-mặt = CHƯA XÁC ĐỊNH, KHÔNG phải an-toàn.
+    // Bản cũ dùng `!logged.safe && !!logged.blocked_until`: ca `null` không kèm
+    // `blocked_until` (không tra được thuốc thì không có ngày) rơi thẳng vào nhánh
+    // else và hiện khiên xanh "An-toàn" — khẳng định an-toàn trong đúng ca hệ không biết.
+    const safeState = safeStateOf(logged.safe);
     return (
       <View style={styles.resultSection}>
         <View style={styles.badgeRow}>
           <Icon name="check-circle" size={22} color={COLORS.success} />
           <Text style={[styles.badgeText, { color: COLORS.success }]}>Đã ghi nhật-ký</Text>
         </View>
-        {blocked ? (
+        {safeState === 'blocked' ? (
           <View style={styles.warnBox}>
             <Icon name="alert-octagon" size={18} color={COLORS.error} />
             <Text style={styles.warnText}>
-              Đang trong thời-gian CÁCH LY — chưa được thu-hoạch/bán đến {logged.blocked_until}.
+              Đang trong thời-gian CÁCH LY — chưa được thu-hoạch/bán
+              {logged.blocked_until ? ` đến ${logged.blocked_until}` : ''}.
+            </Text>
+          </View>
+        ) : safeState === 'unknown' ? (
+          <View style={styles.unknownBox}>
+            <Icon name="help-circle" size={18} color={COLORS.warning} />
+            <Text style={styles.unknownText}>
+              CHƯA khẳng-định được an-toàn — hệ chưa tra được thời-gian cách-ly của thuốc đã dùng.
+              Xin xem nhãn thuốc trước khi thu-hoạch/bán.
             </Text>
           </View>
         ) : (
@@ -293,6 +307,11 @@ const styles = StyleSheet.create({
     padding: 10, borderRadius: 10, borderLeftWidth: 3, borderLeftColor: COLORS.error,
   },
   warnText: { flex: 1, fontSize: 13, color: '#8a2c1c', lineHeight: 18, fontWeight: '600' },
+  unknownBox: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: '#fdf5e6',
+    padding: 10, borderRadius: 10, borderLeftWidth: 3, borderLeftColor: COLORS.warning,
+  },
+  unknownText: { flex: 1, fontSize: 13, color: '#6b4a12', lineHeight: 18, fontWeight: '600' },
   okBox: {
     flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#eaf6f0',
     padding: 10, borderRadius: 10, borderLeftWidth: 3, borderLeftColor: COLORS.success,

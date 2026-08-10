@@ -35,6 +35,7 @@ import {
   type TreeLayoutResponse, type TreeLayoutFruit, type SpeciesCatalog,
   type FruitStatus, type TreeZone, type FruitView,
 } from '../services/fruitReIDService';
+import RemoteImage from '../components/RemoteImage';
 
 const BASE_URL = ORILIFE_BASE;
 
@@ -183,9 +184,13 @@ const FruitListScreen: React.FC = () => {
     const thumb = item.thumbnail_url ? { uri: `${BASE_URL}${item.thumbnail_url}` } : undefined;
     return (
       <TouchableOpacity style={styles.row} activeOpacity={0.7} onPress={() => openDetail(item)}>
-        {thumb
-          ? <Image source={thumb} style={styles.thumb} resizeMode="cover" />
-          : <View style={[styles.thumb, styles.thumbPh]}><Icon name="apple-whole" size={22} color={COLORS.textMuted} /></View>}
+        <RemoteImage
+          uri={thumb?.uri}
+          style={styles.thumb}
+          containerStyle={[styles.thumb, styles.thumbPh]}
+          resizeMode="cover"
+          placeholder={<Icon name="apple-whole" size={22} color={COLORS.textMuted} />}
+        />
         <View style={styles.rowBody}>
           <Text style={styles.fname} numberOfLines={1}>{item.name || 'Chưa đặt tên'}</Text>
           <View style={styles.rowMeta}>
@@ -384,13 +389,13 @@ const FruitListScreen: React.FC = () => {
         {detail ? (
           <>
             <View style={styles.dHead}>
-              {detail.thumbnail_url ? (
-                <Image source={{ uri: `${BASE_URL}${detail.thumbnail_url}` }} style={styles.dThumb} resizeMode="cover" />
-              ) : (
-                <View style={[styles.dThumb, styles.thumbPh]}>
-                  <Icon name="apple-whole" size={26} color={COLORS.textMuted} />
-                </View>
-              )}
+              <RemoteImage
+                uri={detail.thumbnail_url ? `${BASE_URL}${detail.thumbnail_url}` : null}
+                style={styles.dThumb}
+                containerStyle={[styles.dThumb, styles.thumbPh]}
+                resizeMode="cover"
+                placeholder={<Icon name="apple-whole" size={26} color={COLORS.textMuted} />}
+              />
               <View style={styles.dHeadBody}>
                 <Text style={styles.dName} numberOfLines={2}>{detail.name || 'Chưa đặt tên'}</Text>
                 <View style={[styles.statusPill, { backgroundColor: STATUS_COLOR[detail.status] }]}>
@@ -414,9 +419,18 @@ const FruitListScreen: React.FC = () => {
               <Text style={styles.dEmpty}>Chưa có ảnh góc nào.</Text>
             ) : (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dStrip}>
+                {/* Dải "Ảnh các góc": ngay trên đầu có chữ `Góc ảnh: N`. N ô trống mà
+                    không một chữ giải thích đọc đúng như "mất ảnh". */}
                 {views.items.map((v, i) => (
                   v.url ? (
-                    <Image key={`${v.url}-${i}`} source={{ uri: `${BASE_URL}${v.url}` }} style={styles.dShot} resizeMode="cover" />
+                    <RemoteImage
+                      key={`${v.url}-${i}`}
+                      uri={/^https?:\/\//i.test(v.url) ? v.url : `${BASE_URL}${v.url}`}
+                      style={styles.dShot}
+                      containerStyle={[styles.dShot, styles.thumbPh]}
+                      resizeMode="cover"
+                      placeholder={<Icon name="image" size={20} color={COLORS.textMuted} />}
+                    />
                   ) : null
                 ))}
               </ScrollView>

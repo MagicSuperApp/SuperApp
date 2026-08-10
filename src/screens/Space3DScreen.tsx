@@ -59,6 +59,7 @@ import { useSpaceData, type SceneFruit, type SceneTree } from '../features/space
 import { saveTreePosition } from '../features/space3d/positionStore';
 import rLog from '../services/remoteLogger';
 import GLErrorBoundary from '../components/GLErrorBoundary';
+import RemoteImage from '../components/RemoteImage';
 
 interface RouteParams {
   mode?: 'farm' | 'tree';
@@ -912,11 +913,15 @@ const Space3DScreen: React.FC = () => {
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modalStrip}>
                 {viewsModal?.views.map((v, i) => (
                   v.url ? (
-                    <Image
+                    // Nền ô trùng nền màn tối (#12211b) → ảnh hỏng thành ô ĐEN TÀNG
+                    // HÌNH, người dùng không nhận ra là đáng lẽ có ảnh. Tệ hơn ô trắng.
+                    <RemoteImage
                       key={`${v.url}-${i}`}
-                      source={{ uri: `${ORILIFE_BASE}${v.url}` }}
+                      uri={/^https?:\/\//i.test(v.url) ? v.url : `${ORILIFE_BASE}${v.url}`}
                       style={styles.modalThumb}
+                      containerStyle={[styles.modalThumb, styles.modalThumbPh]}
                       resizeMode="cover"
+                      placeholder={<Icon name="image" size={26} color="#6f8f7e" />}
                     />
                   ) : null
                 ))}
@@ -1078,6 +1083,16 @@ const styles = StyleSheet.create({
   modalMuted: { color: SPACE_COLORS.textMuted, fontSize: 13, paddingVertical: 18, textAlign: 'center' },
   modalStrip: { gap: 10, paddingBottom: 18 },
   modalThumb: { width: 120, height: 120, borderRadius: 12, backgroundColor: '#12211b' },
+  // Nền ô ảnh trùng nền màn tối → ảnh hỏng thành ô đen tàng hình. Nền sáng hơn +
+  // viền nét đứt để người dùng thấy "chỗ này đáng lẽ có ảnh", không phải khoảng trống.
+  modalThumbPh: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1c3129',
+    borderWidth: 1,
+    borderColor: '#31554699',
+    borderStyle: 'dashed',
+  },
 
   modelGrid: {
     flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingBottom: 4,

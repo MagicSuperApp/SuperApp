@@ -502,7 +502,7 @@ export const TRACE: PhraseMap = {
   },
   'đã lưu': { en: 'saved', zh: '已保存', ja: '保存済み' },
   'sẽ tự gửi': { en: 'will send automatically', zh: '将自动发送', ja: '自動で送信されます' },
-  'Gửi lại lên LampNet': { en: 'Resend to LampNet', zh: '重新发送到 LampNet', ja: 'LampNet へ再送信' },
+  // 'Gửi lại' khai ở common.ts — dùng chung.
   'Chưa dùng được clip': { en: 'Clip not usable yet', zh: '该片段暂不可用', ja: 'この動画はまだ使えません' },
   'Chưa lấy được khung rõ từ video. Quay chậm hơn, đủ sáng, giữ chắc tay rồi thử lại.': {
     en: 'No clear frame could be extracted. Pan slower, ensure good light, hold steady and try again.',
@@ -560,7 +560,11 @@ export const TRACE: PhraseMap = {
   'sầu riêng': { en: 'durian', zh: '榴莲', ja: 'ドリアン' },
   'bò': { en: 'cow', zh: '牛', ja: 'ウシ' },
   'gà': { en: 'chicken', zh: '鸡', ja: 'ニワトリ' },
-  'Chưa cài camera picker': { en: 'Camera picker not installed', zh: '未安装相机选择器', ja: 'カメラピッカーが未インストールです' },
+  'Chưa mở được máy ảnh': {
+    en: 'Cannot open the camera',
+    zh: '无法打开相机',
+    ja: 'カメラを開けません',
+  },
   'Không thể mở camera. Kiểm tra quyền trong Cài đặt.': {
     en: 'Could not open the camera. Check permissions in Settings.',
     zh: '无法打开相机，请在设置中检查权限。',
@@ -619,19 +623,31 @@ export const TRACE: PhraseMap = {
   'mã hoá': { en: 'encrypting', zh: '加密', ja: '暗号化' },
   'Băm nhỏ dữ liệu': { en: 'Sharding data', zh: '数据分片', ja: 'データを分割' },
   'băm nhỏ': { en: 'sharding', zh: '分片', ja: '分割' },
-  'Phát tán LampNet': { en: 'Distributing on LampNet', zh: '在 LampNet 上分发', ja: 'LampNet へ分散' },
+  'Lưu bản sao': {
+    en: 'Backup copy',
+    zh: '备份副本',
+    ja: 'バックアップ',
+  },
   'Phát tán': { en: 'Distributing', zh: '分发', ja: '分散' },
   'Cập nhật blockchain': { en: 'Updating the blockchain', zh: '更新区块链', ja: 'ブロックチェーンを更新' },
   'cập nhật': { en: 'updating', zh: '更新', ja: '更新' },
   'Hoàn tất lưu trữ': { en: 'Storage complete', zh: '存储完成', ja: '保存が完了しました' },
-  'Đang lưu trữ LampNet': { en: 'Storing on LampNet', zh: '正在存储到 LampNet', ja: 'LampNet に保存中' },
-  'Chưa cài camera': { en: 'Camera not installed', zh: '未安装相机', ja: 'カメラが未インストールです' },
+  'Đang lưu bản sao an toàn': {
+    en: 'Saving a safe copy',
+    zh: '正在保存安全副本',
+    ja: '安全な控えを保存しています',
+  },
+
   'Lỗi camera': { en: 'Camera error', zh: '相机错误', ja: 'カメラのエラー' },
   'Không mở được camera. Kiểm tra quyền.': { en: 'Could not open the camera. Check permissions.', zh: '无法打开相机，请检查权限。', ja: 'カメラを開けません。権限をご確認ください。' },
   'Không đủ tín dụng': { en: 'Not enough credit', zh: '额度不足', ja: 'クレジットが足りません' },
   'Hệ thống đang mã hoá các hình ảnh, video...': { en: 'Encrypting images and video...', zh: '正在加密图片和视频...', ja: '画像と動画を暗号化しています...' },
   'Đang băm nhỏ dữ liệu thành hàng nghìn mảnh...': { en: 'Sharding the data into thousands of pieces...', zh: '正在将数据切分成数千个分片...', ja: 'データを数千の断片に分割しています...' },
-  'Phát tán lưu trữ trên mạng phân tán LampNet...': { en: 'Distributing storage across the LampNet network...', zh: '正在 LampNet 分布式网络上分发存储...', ja: 'LampNet 分散ネットワーク上に保存を広げています...' },
+  'Đang lưu bản sao an toàn…': {
+    en: 'Saving a safe copy…',
+    zh: '正在保存安全副本…',
+    ja: '安全な控えを保存しています…',
+  },
   'Đang cập nhật link và trạng thái lên blockchain...': { en: 'Writing the link and status to the blockchain...', zh: '正在将链接和状态写入区块链...', ja: 'リンクと状態をブロックチェーンに書き込んでいます...' },
   'Lưu trữ thành công': { en: 'Stored successfully', zh: '存储成功', ja: '保存が完了しました' },
   'Có lỗi xảy ra khi lưu trên chuỗi.': { en: 'Something went wrong while writing on-chain.', zh: '写入链上时发生错误。', ja: 'チェーンへの書き込みでエラーが発生しました。' },
@@ -770,11 +786,7 @@ export const TRACE: PhraseMap = {
   'Đưa quả thứ 1 trước ống kính': { en: 'Hold fruit 1 in front of the lens', zh: '把第 1 颗果实对准镜头', ja: '1つ目の果実をレンズの前に' },
   'Đưa quả thứ 2 trước ống kính': { en: 'Hold fruit 2 in front of the lens', zh: '把第 2 颗果实对准镜头', ja: '2つ目の果実をレンズの前に' },
   'Quay các mặt quả thứ 1...': { en: 'Recording every side of fruit 1...', zh: '正在拍摄第 1 颗果实的各个面…', ja: '1つ目の果実の各面を撮影中…' },
-  'Cần cập nhật app (react-native-image-picker).': {
-    en: 'The app needs updating (react-native-image-picker).',
-    zh: '需要更新应用（react-native-image-picker）。',
-    ja: 'アプリの更新が必要です（react-native-image-picker）。',
-  },
+
   // ('Chọn hoạt động, ghi hình, …' đã khai ở phrases/screens.ts.)
 
   // ── Vườn / cây ─────────────────────────────────────────────────────────────

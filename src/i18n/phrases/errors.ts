@@ -133,27 +133,35 @@ export const ERRORS: PhraseMap = {
   'App phiên bản cũ. Cập nhật rồi thử lại.': { en: 'App version is out of date. Update and try again.', zh: '应用版本过旧，请更新后重试。', ja: 'アプリのバージョンが古いです。更新してからお試しください。' },
   'Tạo danh tính thất bại. Thử lại.': { en: 'Identity creation failed. Try again.', zh: '创建身份失败，请重试。', ja: '本人情報の作成に失敗しました。もう一度お試しください。' },
   'Không tạo được danh tính. Vui lòng thử lại.': { en: 'Could not create the identity. Please try again.', zh: '无法创建身份，请重试。', ja: '本人情報を作成できません。もう一度お試しください。' },
-  'Thiết bị đã có khóa PhoenixKey nhưng chưa khôi phục được danh tính. Vui lòng thử đăng nhập lại hoặc liên hệ hỗ trợ.': {
-    en: 'The device has a PhoenixKey key but the identity could not be restored. Try signing in again or contact support.',
-    zh: '设备已有 PhoenixKey 密钥，但未能恢复身份。请重新登录或联系支持。',
-    ja: 'この端末には PhoenixKey の鍵がありますが、本人情報を復旧できませんでした。もう一度ログインするか、サポートにご連絡ください。',
+  'Thiết bị đã có khoá nhưng chưa khôi phục được danh tính. Vui lòng thử đăng nhập lại hoặc liên hệ hỗ trợ.': {
+    en: 'This device already has a key but the identity could not be restored. Please try signing in again or contact support.',
+    zh: '本机已有密钥，但未能恢复身份。请重新登录或联系支持。',
+    ja: 'この端末には鍵がありますが、本人情報を復旧できませんでした。もう一度ログインするか、サポートにご連絡ください。',
   },
-  'Chưa có danh tính PhoenixKey (DID) trên thiết bị.': {
-    en: 'No PhoenixKey identity (DID) on this device.',
-    zh: '本设备尚无 PhoenixKey 身份（DID）。',
-    ja: 'この端末には PhoenixKey の本人情報（DID）がありません。',
+  'Thiết bị chưa có danh tính.': {
+    en: 'This device has no identity yet.',
+    zh: '本机尚无身份。',
+    ja: 'この端末にはまだ本人情報がありません。',
   },
-  'Chưa có danh tính (DID) để bật 2FA.': { en: 'No identity (DID) available to enable 2FA.', zh: '没有可用于启用双因素认证的身份（DID）。', ja: '二要素認証を有効にするための本人情報（DID）がありません。' },
-  'Chưa có danh tính (DID) để ký xác nhận guardian.': {
-    en: 'No identity (DID) available to sign the guardian confirmation.',
-    zh: '没有可用于签署监护人确认的身份（DID）。',
-    ja: 'ガーディアンの確認に署名するための本人情報（DID）がありません。',
+  'Chưa có danh tính để bật xác thực hai lớp.': {
+    en: 'No identity yet, so two-factor authentication cannot be enabled.',
+    zh: '尚无身份，无法开启两步验证。',
+    ja: '本人情報がないため、二段階認証を有効にできません。',
   },
-  'Chưa có danh tính (DID) để xoay khoá.': { en: 'No identity (DID) available to rotate the key.', zh: '没有可用于轮换密钥的身份（DID）。', ja: '鍵をローテーションするための本人情報（DID）がありません。' },
-  'Thiết bị chưa hỗ trợ khoá bảo mật (native Enclave).': {
-    en: 'This device does not support the secure key (native Enclave).',
-    zh: '本设备不支持安全密钥（原生 Enclave）。',
-    ja: 'この端末はセキュリティ鍵（ネイティブ Enclave）に対応していません。',
+  'Chưa có danh tính để ký xác nhận người giám hộ.': {
+    en: 'No identity yet, so the guardian confirmation cannot be signed.',
+    zh: '尚无身份，无法签署监护人确认。',
+    ja: '本人情報がないため、保護者の確認に署名できません。',
+  },
+  'Chưa có danh tính để đổi khoá.': {
+    en: 'No identity yet, so the key cannot be rotated.',
+    zh: '尚无身份，无法更换密钥。',
+    ja: '本人情報がないため、鍵を交換できません。',
+  },
+  'Thiết bị chưa hỗ trợ khoá bảo mật.': {
+    en: 'This device does not support secure keys.',
+    zh: '本机不支持安全密钥。',
+    ja: 'この端末はセキュリティ鍵に対応していません。',
   },
   'Server không trả challenge.': { en: 'The server returned no challenge.', zh: '服务器未返回挑战值。', ja: 'サーバーがチャレンジを返しませんでした。' },
   'Chưa có refresh token — cần đăng nhập lại': { en: 'No refresh token — sign in again', zh: '没有刷新令牌 — 需要重新登录', ja: 'リフレッシュトークンがありません — 再ログインが必要です' },
@@ -170,7 +178,7 @@ export const ERRORS: PhraseMap = {
   'Ký bằng Ví Phượng hoàng': { en: 'Sign with the Phoenix wallet', zh: '使用凤凰钱包签名', ja: 'フェニックスウォレットで署名' },
   'Tạo danh tính mới': { en: 'Create a new identity', zh: '创建新身份', ja: '新しい本人情報を作成' },
   'Ký bằng khóa phần cứng vừa sinh': { en: 'Sign with the newly generated hardware key', zh: '使用刚生成的硬件密钥签名', ja: '生成したばかりのハードウェア鍵で署名' },
-  'Khôi phục danh tính PhoenixKey': { en: 'Restore the PhoenixKey identity', zh: '恢复 PhoenixKey 身份', ja: 'PhoenixKey の本人情報を復旧' },
+  // 'Khôi phục danh tính' khai ở navigation.ts — dùng chung.
   'Xác thực để khôi phục danh tính trên thiết bị này': {
     en: 'Authenticate to restore the identity on this device',
     zh: '进行验证以在本机恢复身份',
@@ -185,11 +193,15 @@ export const ERRORS: PhraseMap = {
     zh: '使用硬件密钥签名以解锁钱包服务',
     ja: 'ハードウェア鍵で署名してウォレット機能を解除します',
   },
-  'Đăng nhập OriLife': { en: 'Sign in to OriLife', zh: '登录 OriLife', ja: 'OriLife にログイン' },
-  'Ký bằng khoá PhoenixKey để nhận diện cây': {
-    en: 'Sign with the PhoenixKey key to identify trees',
-    zh: '使用 PhoenixKey 密钥签名以识别树木',
-    ja: 'PhoenixKey の鍵で署名して樹木を識別します',
+  'Đăng nhập': {
+    en: 'Sign in',
+    zh: '登录',
+    ja: 'ログイン',
+  },
+  'Ký bằng khoá trên máy để nhận diện cây': {
+    en: 'Sign with the key on this device to identify the tree',
+    zh: '使用本机密钥签名以识别树木',
+    ja: 'この端末の鍵で署名して樹木を識別します',
   },
   'Uỷ nhiệm phiên chat': { en: 'Delegate the chat session', zh: '委托聊天会话', ja: 'チャットセッションを委任' },
   'Ký để bật bằng chứng toàn vẹn tin nhắn (12 giờ)': {
@@ -198,10 +210,10 @@ export const ERRORS: PhraseMap = {
     ja: '署名してメッセージの整合性証明を有効にします（12 時間）',
   },
   'Tạo danh tính tổ chức': { en: 'Create the organisation identity', zh: '创建组织身份', ja: '組織の本人情報を作成' },
-  'Máy này chưa có danh tính (DID) để ký duyệt.': {
-    en: 'This device has no identity (DID) to sign the approval.',
-    zh: '本机没有可用于签署批准的身份（DID）。',
-    ja: 'この端末には承認に署名するための本人情報（DID）がありません。',
+  'Máy này chưa có danh tính để ký duyệt.': {
+    en: 'This device has no identity to sign the approval with.',
+    zh: '本机尚无用于签署批准的身份。',
+    ja: 'この端末には承認に署名するための本人情報がありません。',
   },
   'Ký duyệt tổ chức': { en: 'Sign the organisation approval', zh: '签署组织批准', ja: '組織の承認に署名' },
 
@@ -279,20 +291,20 @@ export const ERRORS: PhraseMap = {
     ja: '必要な署名が集まる前に、署名待ちのストリームが閉じました。',
   },
   'Lỗi mạng khi chờ ký.': { en: 'Network error while waiting for signatures.', zh: '等待签名时发生网络错误。', ja: '署名を待っている間に通信エラーが発生しました。' },
-  'Ví tổ chức chưa sẵn sàng — mint LAMP còn chờ LAMP chốt cap/authority và Enclave native ráp ký giao dịch.': {
-    en: 'The organisation wallet is not ready — minting LAMP still awaits the LAMP cap/authority decision and native Enclave transaction signing.',
-    zh: '组织钱包尚未就绪 — 铸造 LAMP 仍在等待 LAMP 上限/授权确定以及原生 Enclave 交易签名。',
-    ja: '組織ウォレットはまだ利用できません — LAMP の発行は、上限と発行権限の確定、およびネイティブ Enclave による取引署名の実装を待っています。',
+  'Ví tổ chức chưa sẵn sàng — tính năng phát hành LAMP sẽ mở ở bản sau.': {
+    en: 'The organisation wallet is not ready — LAMP issuance will open in a later release.',
+    zh: '组织钱包尚未就绪 — LAMP 发行将在后续版本开放。',
+    ja: '組織ウォレットはまだ準備できていません — LAMP の発行は今後のバージョンで開放されます。',
   },
-  'Bước đưa LAMP về ví (claim/vesting-release) chưa mở — PhoenixKey chưa cấp endpoint release. LAMP hiện đang nằm trong KHO Distribution.': {
-    en: 'Moving LAMP to the wallet (claim/vesting-release) is not open yet — PhoenixKey has not provided a release endpoint. LAMP currently sits in the Distribution treasury.',
-    zh: '将 LAMP 转入钱包（claim/vesting-release）尚未开放 — PhoenixKey 尚未提供 release 接口。LAMP 目前存放在 Distribution 金库中。',
-    ja: 'LAMP をウォレットへ移す手順（claim/vesting-release）はまだ開放されていません — PhoenixKey が release エンドポイントを提供していないためです。LAMP は現在 Distribution の保管庫にあります。',
+  'Bước đưa LAMP về ví chưa mở — sẽ có ở bản sau. LAMP của bạn vẫn đang được giữ an toàn trong kho.': {
+    en: 'Moving LAMP into your wallet is not open yet — it will arrive in a later release. Your LAMP is still held safely in the vault.',
+    zh: '将 LAMP 转入钱包的步骤尚未开放 — 将在后续版本推出。你的 LAMP 仍安全存放在金库中。',
+    ja: 'LAMP をウォレットへ移す手順はまだ開放されていません — 今後のバージョンで提供します。あなたの LAMP は保管庫で安全に保持されています。',
   },
-  'Chưa ráp Enclave native ký giao dịch (Thư). Bước dựng + ký CBOR đang chờ.': {
-    en: 'The native Enclave transaction signing is not wired up yet. Building and signing the CBOR is still pending.',
-    zh: '原生 Enclave 交易签名尚未接入。CBOR 的构建与签名仍在等待中。',
-    ja: 'ネイティブ Enclave による取引署名がまだ組み込まれていません。CBOR の作成と署名は保留中です。',
+  'Tính năng ký giao dịch sẽ mở ở bản sau.': {
+    en: 'Transaction signing will open in a later release.',
+    zh: '交易签名功能将在后续版本开放。',
+    ja: '取引の署名は今後のバージョンで開放されます。',
   },
   'Đang tạo yêu cầu mint…': { en: 'Creating the mint request…', zh: '正在创建铸造请求…', ja: '発行リクエストを作成中…' },
   'Đang chờ ký (sinh trắc)…': { en: 'Waiting for the signature (biometrics)…', zh: '等待签名（生物识别）…', ja: '署名を待っています（生体認証）…' },

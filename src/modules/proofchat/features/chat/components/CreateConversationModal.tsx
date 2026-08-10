@@ -227,7 +227,7 @@ const CreateConversationModal: React.FC<Props> = ({
               <Field
                 label="Thành viên"
                 required
-                hint="Tìm theo DID hoặc tên người dùng để thêm vào nhóm."
+                hint="Tìm theo mã định danh hoặc tên người dùng để thêm vào nhóm."
                 error={touched ? memberError : null}
               >
                 {selected.length > 0 && (

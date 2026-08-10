@@ -95,7 +95,7 @@ const ContributingScreen: React.FC = () => {
         <StateView
           status="error"
           title="Chưa tải được trạng thái node"
-          message="Daemon LampNet đang bận hoặc chưa phản hồi. Vui lòng thử lại."
+          message="Máy chủ đang bận hoặc chưa phản hồi. Vui lòng thử lại."
           onRetry={() => load()}
         />
       </ScreenShell>
@@ -178,7 +178,7 @@ const ContributingScreen: React.FC = () => {
             <Text style={styles.rewardUnit}> µLAMP</Text>
           </Text>
           {reward?.epoch != null && (
-            <Text style={styles.rewardEpoch}>Epoch #{reward.epoch}</Text>
+            <Text style={styles.rewardEpoch}>Đợt #{reward.epoch}</Text>
           )}
           <View style={styles.experimentalNote}>
             <Icon name="flask-outline" size={12} color={COLORS.textMuted} />

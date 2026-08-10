@@ -144,6 +144,6 @@ export async function delegateToPool(_poolId: string): Promise<never> {
   throw new PoolApiError(
     'server',
     0,
-    'Uỷ quyền chưa nối ví ký — đang chờ hợp đồng ví + endpoint Pool.',
+    'Uỷ quyền chưa nối được ví ký — tính năng sẽ mở ở bản sau.',
   );
 }

@@ -213,7 +213,7 @@ const WorkerProfileScreen: React.FC = () => {
             <View style={styles.bioBox}>
               <Text style={styles.bioTitle}>Chứng nhận đã xác thực</Text>
               <CertItem icon="card-account-details-outline" name="CMND/CCCD đã xác thực" />
-              <CertItem icon="shield-check-outline" name="Đã xác thực sinh trắc qua PhoenixKey" />
+              <CertItem icon="shield-check-outline" name="Đã xác thực sinh trắc học" />
               <CertItem icon="certificate-outline" name="Chứng chỉ nghề (đã upload)" />
               <CertItem icon="briefcase-check-outline" name={`${worker.yearsExperience} năm kinh nghiệm xác thực qua lịch sử Aladin`} />
             </View>

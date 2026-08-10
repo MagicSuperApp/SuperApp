@@ -117,7 +117,7 @@ describe('FeeDisplay', () => {
       // Cardano Treasury chỉ xuất hiện trong panel mở rộng
       expect(textExists(tree.root, 'Cardano Treasury')).toBe(false);
       expect(textExists(tree.root, 'MagicLamp Treasury')).toBe(false);
-      expect(textExists(tree.root, 'OriLife Treasury')).toBe(false);
+      expect(textExists(tree.root, 'Quỹ hệ thống')).toBe(false);
     });
   });
 
@@ -141,7 +141,7 @@ describe('FeeDisplay', () => {
       const root = tree.root;
       expect(textExists(root, 'Cardano Treasury')).toBe(true);
       expect(textExists(root, 'MagicLamp Treasury')).toBe(true);
-      expect(textExists(root, 'OriLife Treasury')).toBe(true);
+      expect(textExists(root, 'Quỹ hệ thống')).toBe(true);
     });
 
     it('bấm lần 2 → thu gọn lại, không còn hiện chi tiết', () => {

@@ -5,7 +5,7 @@
 //   sau) → GỬI → hiện "đã lưu, thấy N quả".
 //
 // KIẾN TRÚC 1-CỬA: màn NÀY không bao giờ POST trực tiếp. "Gửi" = enqueueVideoUpload(...)
-// rồi flush 1 lần; "Gửi lại lên LampNet" = retryVideoJobNow(jobId). Hàng đợi
+// rồi flush 1 lần; "Gửi lại" = retryVideoJobNow(jobId). Hàng đợi
 // (videoUploadQueue) là nguồn sự-thật DUY NHẤT cho "clip đã gửi chưa" — nháp
 // (treeDraftStore) chỉ giữ metadata phiên chụp để app bị-ngắt còn khôi phục được UI.
 //
@@ -170,7 +170,7 @@ const FruitVideoScreen: React.FC = () => {
   // ── Quay video ────────────────────────────────────────────────────────────
   const handleRecord = useCallback(() => {
     if (!imagePicker?.launchCamera) {
-      Alert.alert('Chưa cài camera', 'Cần cập nhật app (react-native-image-picker).');
+      Alert.alert('Chưa mở được máy ảnh', 'Bản app này chưa mở được máy ảnh. Vui lòng cập nhật app rồi thử lại.');
       return;
     }
     imagePicker.launchCamera(VIDEO_OPTIONS, (response: any) => {
@@ -257,7 +257,7 @@ const FruitVideoScreen: React.FC = () => {
         Alert.alert(
           'Đã lưu để gửi sau',
           'Mạng đang yếu. Clip đã vào hàng đợi và sẽ tự gửi lại khi có mạng — cứ quay tiếp, '
-            + 'hoặc bấm "Gửi lại lên LampNet" khi có sóng tốt.',
+            + 'hoặc bấm "Gửi lại" khi có sóng tốt.',
         );
         resetForNext();
       }
@@ -266,7 +266,7 @@ const FruitVideoScreen: React.FC = () => {
     }
   }, [videoUri, selectedTreeId, gps, note, capturedAt, videoSize, draftOwner, refreshQueueCount, resetForNext]);
 
-  // ── Gửi lại lên LampNet (giữ UX #94) — QUA hàng đợi, KHÔNG POST trực tiếp ──
+  // ── Gửi lại (giữ UX #94) — QUA hàng đợi, KHÔNG POST trực tiếp ──
   const handleRetryPending = useCallback(async () => {
     setUploading(true);
     try {
@@ -323,7 +323,7 @@ const FruitVideoScreen: React.FC = () => {
             >
               <Icon name="shield-check" size={15} color="#1b5e20" />
               <Text style={styles.cidText} numberOfLines={1}>
-                Đã lưu lên mạng LampNet · {result.video_cid}
+                Đã lưu vào kho an toàn · {result.video_cid}
               </Text>
               <Icon name="content-copy" size={14} color={NEUTRAL.textSub} />
             </TouchableOpacity>
@@ -448,7 +448,7 @@ const FruitVideoScreen: React.FC = () => {
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <Text style={styles.queueRetryText}>
-                {uploading ? 'Đang gửi…' : 'Gửi lại lên LampNet'}
+                {uploading ? 'Đang gửi…' : 'Gửi lại'}
               </Text>
             </TouchableOpacity>
           </View>

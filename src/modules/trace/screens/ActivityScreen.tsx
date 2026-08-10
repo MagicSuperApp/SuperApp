@@ -91,7 +91,7 @@ const ACTIVITIES = [
 const SYNC_STEPS = [
   { label: 'Mã hoá hình ảnh', keyword: 'mã hoá' },
   { label: 'Băm nhỏ dữ liệu', keyword: 'băm nhỏ' },
-  { label: 'Phát tán LampNet', keyword: 'Phát tán' },
+  { label: 'Lưu bản sao', keyword: 'Phát tán' },
   { label: 'Cập nhật blockchain', keyword: 'cập nhật' },
 ];
 
@@ -152,7 +152,7 @@ const LampNetSyncModal = ({
           </View>
 
           <Text style={styles.syncTitle}>
-            {isDone ? 'Hoàn tất lưu trữ' : 'Đang lưu trữ LampNet'}
+            {isDone ? 'Hoàn tất lưu trữ' : 'Đang lưu bản sao an toàn'}
           </Text>
           <Text style={styles.syncStatusText}>{currentStatus}</Text>
 
@@ -272,7 +272,7 @@ const ActivityScreen = () => {
   // (màn nhận diện cây) vốn KHÔNG trả file về nên nút Lưu không bao giờ bật.
   const handleRecord = useCallback(() => {
     if (!imagePicker?.launchCamera) {
-      showError('Chưa cài camera', 'Cần cập nhật app (react-native-image-picker).');
+      showError('Chưa mở được máy ảnh', 'Bản app này chưa mở được máy ảnh. Vui lòng cập nhật app rồi thử lại.');
       return;
     }
     imagePicker.launchCamera(VIDEO_OPTIONS, (response: any) => {
@@ -301,7 +301,7 @@ const ActivityScreen = () => {
       const steps = [
         'Hệ thống đang mã hoá các hình ảnh, video...',
         'Đang băm nhỏ dữ liệu thành hàng nghìn mảnh...',
-        'Phát tán lưu trữ trên mạng phân tán LampNet...',
+        'Đang lưu bản sao an toàn…',
         'Đang cập nhật link và trạng thái lên blockchain...',
       ];
       for (const s of steps) {
@@ -368,8 +368,8 @@ const ActivityScreen = () => {
             <Icon name="circle-info" size={17} color={COLORS.accent} />
           </View>
           <Text style={styles.guideText}>
-            Chọn hoạt động, ghi hình, sau đó lưu lên LampNet &amp; blockchain.
-            VeData tự động chắt lọc khung hình chất lượng nhất.
+            Chọn hoạt động, ghi hình, sau đó lưu vào kho an toàn và chuỗi khối.
+            Hệ thống tự chắt lọc khung hình chất lượng nhất.
           </Text>
         </View>
 

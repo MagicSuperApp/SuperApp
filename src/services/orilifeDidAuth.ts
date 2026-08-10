@@ -97,7 +97,7 @@ export async function loginOrilifeWithDid(baseUrl: string): Promise<DidLoginResu
     });
     if (!did) {
       rLog.error('did_login_no_did', { keyEnrolled, signerAvailable: phoenixKeyIsAvailable() });
-      return { ok: false, error: 'Chưa có danh tính PhoenixKey (DID) trên thiết bị.' };
+      return { ok: false, error: 'Thiết bị chưa có danh tính.' };
     }
 
     // 1) Lấy challenge (single-use, TTL 5 phút) — không cần auth.

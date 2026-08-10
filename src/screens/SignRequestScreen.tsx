@@ -71,7 +71,7 @@ const SignRequestScreen: React.FC = () => {
     setBusy('approve');
     try {
       const kek = await getStoredMasterKek();
-      if (!kek) { Alert.alert('Chưa sẵn sàng', 'Không tìm thấy khoá — hãy đăng nhập PhoenixKey.'); return; }
+      if (!kek) { Alert.alert('Chưa sẵn sàng', 'Không tìm thấy khoá — hãy đăng nhập lại.'); return; }
       const canonical = canonicalJson(data.intent);
       const taadPub = await taad.deriveTaadPubkey(kek);
       const signature = await taad.signEd25519(kek, canonical);

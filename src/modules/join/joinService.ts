@@ -120,7 +120,7 @@ async function request<T>(
   } catch (e: any) {
     // Abort (timeout) hoặc mất mạng → lớp network. KHÔNG lộ chi tiết kỹ thuật ra UI.
     console.warn(`[joinService] network lỗi khi gọi ${path}:`, e?.message ?? e);
-    throw new JoinApiError('network', 0, 'Mất kết nối tới mạng LampNet.');
+    throw new JoinApiError('network', 0, 'Mất kết nối tới máy chủ.');
   } finally {
     clearTimeout(timer);
   }
@@ -276,5 +276,5 @@ export async function joinViaNativeSdk(_config: JoinConfig): Promise<JoinResult>
   //   - KHÔNG log, KHÔNG trả seed_hex ra JS bridge (INV-3, spec §3).
   // Đường REST KHÔNG thay thế được: daemon đòi 22 trường kèm 2 chữ ký Ed25519 mà
   // chỉ SDK native mới dựng được — gọi REST với 4 trường luôn trả 422.
-  throw new JoinApiError('unsupported', 0, 'Kết đèn qua SDK native chưa hỗ trợ trên bản này.');
+  throw new JoinApiError('unsupported', 0, 'Bản này chưa hỗ trợ Kết đèn.');
 }

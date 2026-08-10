@@ -121,7 +121,7 @@ export function FeeDisplay({feeQuote, style}: Props): React.JSX.Element | null {
             icon="OL"
             iconBg={COLORS.olBg}
             iconColor={COLORS.olText}
-            label="OriLife Treasury"
+            label="Quỹ hệ thống"
             value={`${formatLamp(feeQuote.lamp_orilife)} LAMP`}
           />
 

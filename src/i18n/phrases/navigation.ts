@@ -27,10 +27,10 @@ export const NAVIGATION: PhraseMap = {
     zh: '寻找工作与预约各行业师傅',
     ja: 'あらゆる分野の仕事探しと職人の手配',
   },
-  'Góp sức máy cho mạng LampNet & nhận thưởng': {
-    en: 'Contribute device power to LampNet & earn rewards',
-    zh: '为 LampNet 网络贡献算力并获得奖励',
-    ja: 'LampNet ネットワークに端末の力を提供して報酬を得る',
+  'Góp sức máy cho mạng lưới & nhận thưởng': {
+    en: 'Contribute your device to the network & earn rewards',
+    zh: '贡献你的设备算力给网络并获得奖励',
+    ja: '端末の力をネットワークに提供して報酬を受け取る',
   },
 
   // ── Tab con (SubHome) ──────────────────────────────────────────────────────
@@ -159,6 +159,11 @@ export const NAVIGATION: PhraseMap = {
     zh: '扫描面容或指纹以解锁你的身份。\n自主安全 — 无需密码，无需验证码。',
     ja: '顔または指紋であなたの本人情報のロックを解除します。\n自分で管理するセキュリティ — パスワードもワンタイムコードも不要です。',
   },
+  // Dòng nhãn trên khu logo màn Đăng nhập. Bản cũ 'ALADIN · PHOENIXKEY DID'
+  // không dấu nên lọt lưới kiểm; bản mới có dấu tiếng Việt ⇒ BẮT BUỘC khai ở đây,
+  // không thì người dùng tiếng Nhật/Trung thấy nguyên tiếng Việt.
+  'ALADIN · DANH TÍNH SỐ': { en: 'ALADIN · DIGITAL IDENTITY', zh: 'ALADIN · 数字身份', ja: 'ALADIN · デジタル ID' },
+
   // Nhãn trợ năng của nút sinh trắc ở màn Đăng nhập — nút chỉ có icon nên đây là
   // thứ DUY NHẤT trình đọc màn hình đọc được. Ba nhánh theo cảm biến của thiết bị.
   'Đăng nhập bằng khuôn mặt': { en: 'Sign in with face', zh: '使用面容登录', ja: '顔でログイン' },
@@ -177,8 +182,12 @@ export const NAVIGATION: PhraseMap = {
     zh: '此设备不支持生物识别。请尝试在本机创建临时身份。',
     ja: 'この端末は生体認証に対応していません。この端末で一時的な本人情報を作成してみてください。',
   },
-  'Chưa có danh tính PhoenixKey': { en: 'No PhoenixKey identity yet', zh: '尚无 PhoenixKey 身份', ja: 'PhoenixKey の本人情報がありません' },
-  'PhoenixKey không khả dụng': { en: 'PhoenixKey unavailable', zh: 'PhoenixKey 不可用', ja: 'PhoenixKey を利用できません' },
+  // 'Chưa có danh tính' khai ở account.ts — dùng chung.
+  'Chưa dùng được danh tính trên máy này': {
+    en: 'Identity is not available on this device',
+    zh: '本机暂时无法使用身份',
+    ja: 'この端末では本人情報を利用できません',
+  },
   'Đăng nhập sinh trắc học thất bại': { en: 'Biometric sign-in failed', zh: '生物识别登录失败', ja: '生体認証でのログインに失敗しました' },
   'Aladin Chat — phiên bản mới': { en: 'Aladin Chat — new version', zh: 'Aladin Chat — 新版本', ja: 'Aladin Chat — 新バージョン' },
   'Tin nhắn ký số · Escrow tích hợp': { en: 'Digitally signed messages · Built-in escrow', zh: '数字签名消息 · 内置托管', ja: '電子署名付きメッセージ · エスクロー内蔵' },
@@ -238,11 +247,7 @@ export const NAVIGATION: PhraseMap = {
     ja: 'この端末では生体認証が設定されていません。端末の設定で Face ID または指紋を有効にしてからお試しください。この手順に代わる方法はありません。',
   },
   'Kích hoạt chip bảo mật để sinh khóa': { en: 'Activate the secure chip to generate the key', zh: '激活安全芯片以生成密钥', ja: 'セキュリティチップを有効にして鍵を生成' },
-  'Không tạo được danh tính PhoenixKey. Vui lòng thử lại.': {
-    en: 'Could not create a PhoenixKey identity. Please try again.',
-    zh: '无法创建 PhoenixKey 身份，请重试。',
-    ja: 'PhoenixKey の本人情報を作成できません。もう一度お試しください。',
-  },
+  // 'Không tạo được danh tính. Vui lòng thử lại.' khai ở errors.ts — dùng chung.
   'Đang sinh khóa…': { en: 'Generating key…', zh: '正在生成密钥…', ja: '鍵を生成中…' },
   'Bắt đầu xác thực sinh trắc học': { en: 'Start biometric authentication', zh: '开始生物识别认证', ja: '生体認証を開始' },
   'Sinh khóa phần cứng': { en: 'Hardware key generation', zh: '硬件密钥生成', ja: 'ハードウェア鍵の生成' },
@@ -251,7 +256,11 @@ export const NAVIGATION: PhraseMap = {
     zh: '私钥存放在安全芯片中，无法导出',
     ja: '秘密鍵はセキュリティチップの中にあり、取り出せません',
   },
-  'Tạo định danh DID': { en: 'Create the DID', zh: '创建 DID 标识', ja: 'DID を作成' },
+  'Tạo danh tính': {
+    en: 'Create your identity',
+    zh: '创建身份',
+    ja: '本人情報を作成',
+  },
   'Public key được ghi vào danh sách khóa được phép': {
     en: 'The public key is written to the allowed-key list',
     zh: '公钥被写入允许密钥列表',

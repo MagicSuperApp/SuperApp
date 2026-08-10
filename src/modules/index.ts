@@ -59,7 +59,7 @@ export const MODULES: ModuleEntry[] = [
   {
     theme: LAMPNET_THEME,
     title: 'Kết đèn',
-    description: 'Góp sức máy cho mạng LampNet & nhận thưởng',
+    description: 'Góp sức máy cho mạng lưới & nhận thưởng',
     icon: 'lightning-bolt',
     // Chưa có PNG nhân vật riêng cho Kết đèn — dùng tạm ảnh scan (fallback icon vẫn hiện).
     // TODO(thiết kế): bổ sung assets/images/modules/lamp-fi.png.

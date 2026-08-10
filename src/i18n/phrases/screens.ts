@@ -11,11 +11,15 @@ import type { PhraseMap } from '../types';
 
 export const SCREENS: PhraseMap = {
   // ── Đăng nhập / đăng ký ────────────────────────────────────────────────────
-  'Định danh phi tập trung (DID)': { en: 'Decentralised identity (DID)', zh: '去中心化身份（DID）', ja: '分散型 ID（DID）' },
-  'Khóa riêng được giữ trên thiết bị bằng PhoenixKey · Không có máy chủ nào lưu mật khẩu của bạn.': {
-    en: 'The private key stays on your device with PhoenixKey · No server stores your password.',
-    zh: '私钥由 PhoenixKey 保存在你的设备上 · 没有任何服务器存储你的密码。',
-    ja: '秘密鍵は PhoenixKey により端末内で保管されます · あなたのパスワードを保存するサーバーはありません。',
+  'Danh tính của riêng bạn': {
+    en: 'An identity that is yours alone',
+    zh: '完全属于你的身份',
+    ja: 'あなただけの本人情報',
+  },
+  'Khoá riêng được giữ ngay trên thiết bị · Không có máy chủ nào lưu mật khẩu của bạn.': {
+    en: 'Your private key stays on this device · No server stores your password.',
+    zh: '私钥只保存在本机 · 没有任何服务器保存你的密码。',
+    ja: '秘密鍵は端末内にとどまります · あなたのパスワードを保存するサーバーはありません。',
   },
   'Chưa có tài khoản?': { en: 'No account yet?', zh: '还没有账户？', ja: 'アカウントをお持ちでないですか？' },
   'Tạo danh tính mới bằng sinh trắc học · 3 bước': {
@@ -205,7 +209,11 @@ export const SCREENS: PhraseMap = {
   'Cụm 24 từ là cách': { en: 'The 24-word phrase is the', zh: '24 个助记词是', ja: '24 語のフレーズは' },
   'DUY NHẤT': { en: 'ONLY WAY', zh: '唯一方式', ja: '唯一の方法です' },
   'Không': { en: 'No one', zh: '没有人', ja: '誰も' },
-  'ai (kể cả OriLife) khôi phục giúp được.': { en: '(not even OriLife) can recover it for you.', zh: '（包括 OriLife）能替你恢复。', ja: '（OriLife も含めて）代わりに復旧することはできません。' },
+  'ai (kể cả chúng tôi) khôi phục giúp được.': {
+    en: 'one — not even us — can recover it for you.',
+    zh: '人（包括我们）能帮你恢复。',
+    ja: '誰も — 私たちでさえ — 復旧できません。',
+  },
   'Cụm từ sẽ hiện ngay bên dưới. Đảm bảo không ai nhìn màn hình của bạn.': {
     en: 'The phrase appears just below. Make sure nobody can see your screen.',
     zh: '助记词将显示在下方。请确保没有人能看到你的屏幕。',
@@ -221,26 +229,34 @@ export const SCREENS: PhraseMap = {
   'Khôi phục bằng cụm từ': { en: 'Restore with the phrase', zh: '用助记词恢复', ja: 'フレーズで復旧' },
   'Nhập đủ': { en: 'Enter all', zh: '请输入完整的', ja: 'すべて入力してください：' },
   '24 từ': { en: '24 words', zh: '24 个词', ja: '24 語' },
-  'DID để đăng nhập': { en: 'DID to sign in with', zh: '用于登录的 DID', ja: 'ログインに使う DID' },
-  'DID để đăng nhập (chỉ khi máy mới)': { en: 'DID to sign in with (new device only)', zh: '用于登录的 DID（仅新设备）', ja: 'ログインに使う DID（新しい端末のときのみ）' },
+  'Mã định danh để đăng nhập': {
+    en: 'Identifier for signing in',
+    zh: '登录用标识码',
+    ja: 'ログイン用の識別子',
+  },
+  'Mã định danh để đăng nhập (chỉ khi máy mới)': {
+    en: 'Identifier for signing in (new devices only)',
+    zh: '登录用标识码（仅新设备需要）',
+    ja: 'ログイン用の識別子（新しい端末のみ）',
+  },
   'Cụm từ chỉ được xử lý trên thiết bị của bạn — không gửi lên máy chủ.': {
     en: 'The phrase is processed only on your device — never sent to a server.',
     zh: '助记词仅在你的设备上处理 — 不会发送到服务器。',
     ja: 'フレーズはあなたの端末内でのみ処理されます — サーバーには送られません。',
   },
   'Lưu username': { en: 'Save username', zh: '保存用户名', ja: 'ユーザー名を保存' },
-  'Lối tắt để người khác tìm danh tính của bạn (thay vì gõ cả DID). Công khai — chọn tên bạn muốn hiển thị.': {
-    en: 'A shortcut so others can find your identity (instead of typing the full DID). Public — pick the name you want shown.',
-    zh: '方便他人找到你身份的快捷名（无需输入完整 DID）。公开可见 — 请选择你想展示的名字。',
-    ja: 'DID をすべて入力しなくても、他の人があなたを見つけられる近道です。公開されるので、表示したい名前を選んでください。',
+  'Lối tắt để người khác tìm danh tính của bạn (thay vì gõ cả mã định danh). Công khai — chọn tên bạn muốn hiển thị.': {
+    en: 'A shortcut so others can find you without typing your full identifier. Public — pick the name you want shown.',
+    zh: '让别人无需输入完整标识码就能找到你的捷径。公开 — 选择你想显示的名称。',
+    ja: '完全な識別子を打たなくても相手があなたを見つけられる近道です。公開されます — 表示したい名前を選んでください。',
   },
 
   // ── Guardian / duyệt ký ────────────────────────────────────────────────────
   'Người bảo hộ (Guardian)': { en: 'Guardian', zh: '监护人（Guardian）', ja: 'ガーディアン' },
-  'Guardian giúp bạn khôi phục danh tính khi mất thiết bị. Thêm người bạn tin tưởng bằng DID của họ.': {
-    en: 'Guardians help you recover your identity if you lose your device. Add people you trust by their DID.',
-    zh: '监护人可在你丢失设备时帮助恢复身份。用他们的 DID 添加你信任的人。',
-    ja: 'ガーディアンは、端末を紛失したときに本人情報の復旧を助けてくれます。信頼できる人を DID で追加してください。',
+  'Người giám hộ giúp bạn khôi phục danh tính khi mất thiết bị. Thêm người bạn tin tưởng bằng mã định danh của họ.': {
+    en: 'Guardians help you recover your identity if you lose your device. Add someone you trust using their identifier.',
+    zh: '监护人可在你丢失设备时帮你恢复身份。用对方的标识码添加你信任的人。',
+    ja: '保護者は端末をなくしたときに本人情報の復旧を助けてくれます。信頼できる人を識別子で追加してください。',
   },
   'Thêm guardian': { en: 'Add guardian', zh: '添加监护人', ja: 'ガーディアンを追加' },
   'Duyệt yêu cầu ký': { en: 'Approve the signing request', zh: '批准签名请求', ja: '署名リクエストを承認' },
@@ -287,9 +303,17 @@ export const SCREENS: PhraseMap = {
     ja: 'メンバー・しきい値・名称を変えるとチャレンジも変わり、署名をやり直す必要があります。修正するときは前の画面に戻って作り直してください。',
   },
   'Ký duyệt bằng khoá của tôi': { en: 'Sign the approval with my key', zh: '用我的密钥签署批准', ja: '自分の鍵で承認に署名' },
-  'DID của bạn': { en: 'Your DID', zh: '你的 DID', ja: 'あなたの DID' },
+  'Mã định danh của bạn': {
+    en: 'Your identifier',
+    zh: '你的标识码',
+    ja: 'あなたの識別子',
+  },
   'Chữ ký (gửi lại người khởi tạo)': { en: 'Signature (send back to the initiator)', zh: '签名（回传给发起人）', ja: '署名（作成者に返送してください）' },
-  'Sao chép DID + chữ ký': { en: 'Copy DID + signature', zh: '复制 DID + 签名', ja: 'DID と署名をコピー' },
+  'Sao chép mã định danh + chữ ký': {
+    en: 'Copy identifier + signature',
+    zh: '复制标识码 + 签名',
+    ja: '識別子と署名をコピー',
+  },
   'Đang nạp danh sách tổ chức…': { en: 'Loading organisations…', zh: '正在加载组织列表…', ja: '組織一覧を読み込み中…' },
   'Mất kết nối mạng — chưa nạp được danh sách.': { en: 'Network lost — the list could not load.', zh: '网络中断 — 无法加载列表。', ja: 'ネットワークが切断されました — 一覧を読み込めません。' },
   'Lỗi nạp danh sách tổ chức.': { en: 'Failed to load the organisation list.', zh: '加载组织列表失败。', ja: '組織一覧の読み込みでエラーが発生しました。' },
@@ -304,15 +328,15 @@ export const SCREENS: PhraseMap = {
     zh: '创建单一所有者的 OrgDID（你是第一位所有者）。多所有者 m-of-n 将在 PR #40 完成后开放。税号（如填写）会与身份一同签名。',
     ja: '単独所有者の OrgDID を作成します（あなたが最初の所有者です）。m-of-n の複数所有者は PR #40 の完了後に開放されます。税番号（入力した場合）は本人情報とともに署名されます。',
   },
-  'Chế độ xem trước — mint LAMP chưa chạy thật (chờ LAMP chốt cap/authority và Enclave native ráp ký giao dịch).': {
-    en: 'Preview mode — LAMP minting is not live yet (awaiting the LAMP cap/authority decision and native Enclave transaction signing).',
-    zh: '预览模式 — LAMP 铸造尚未真正运行（等待 LAMP 上限/授权确定及原生 Enclave 交易签名）。',
-    ja: 'プレビューモードです — LAMP の発行はまだ実際には動作しません（LAMP の上限・発行権限の確定と、ネイティブ Enclave による取引署名を待っています）。',
+  'Chế độ xem trước — phát hành LAMP chưa chạy thật, sẽ mở ở bản sau.': {
+    en: 'Preview mode — LAMP issuance is not live yet and will open in a later release.',
+    zh: '预览模式 — LAMP 发行尚未真正运行，将在后续版本开放。',
+    ja: 'プレビュー表示です — LAMP の発行はまだ動作しておらず、今後のバージョンで開放されます。',
   },
-  'Tính năng mint đang ở chế độ xem trước — mint LAMP chưa chạy thật (chờ LAMP chốt cap/authority và Enclave native ráp ký).': {
-    en: 'Minting is in preview mode — LAMP minting is not live yet (awaiting the LAMP cap/authority decision and native Enclave signing).',
-    zh: '铸造功能处于预览模式 — LAMP 铸造尚未真正运行（等待 LAMP 上限/授权确定及原生 Enclave 签名）。',
-    ja: '発行機能はプレビューモードです — LAMP の発行はまだ実際には動作しません（LAMP の上限・発行権限の確定と、ネイティブ Enclave の署名を待っています）。',
+  'Tính năng phát hành đang ở chế độ xem trước — chưa chạy thật, sẽ mở ở bản sau.': {
+    en: 'Issuance is in preview mode — it is not live yet and will open in a later release.',
+    zh: '发行功能处于预览模式 — 尚未真正运行，将在后续版本开放。',
+    ja: '発行機能はプレビュー表示です — まだ動作しておらず、今後のバージョンで開放されます。',
   },
   'Mint vào kho Distribution': { en: 'Mint into the Distribution treasury', zh: '铸造到 Distribution 金库', ja: 'Distribution の保管庫に発行' },
   'Số lượng LAMP': { en: 'LAMP amount', zh: 'LAMP 数量', ja: 'LAMP の数量' },
@@ -328,12 +352,16 @@ export const SCREENS: PhraseMap = {
   },
   'Mint vào kho': { en: 'Mint into the treasury', zh: '铸造入库', ja: '保管庫に発行' },
   'Claim-release về ví': { en: 'Claim-release to the wallet', zh: 'Claim-release 到钱包', ja: 'ウォレットへ claim-release' },
-  'Đưa LAMP từ KHO Distribution về ví của bạn. Bước này CHƯA mở — PhoenixKey chưa cấp endpoint release.': {
-    en: 'Move LAMP from the Distribution treasury into your wallet. This step is NOT open yet — PhoenixKey has not provided a release endpoint.',
-    zh: '将 LAMP 从 Distribution 金库转入你的钱包。此步骤尚未开放 — PhoenixKey 尚未提供 release 接口。',
-    ja: 'LAMP を Distribution の保管庫からあなたのウォレットへ移します。この手順はまだ開放されていません — PhoenixKey が release エンドポイントを提供していないためです。',
+  'Đưa LAMP từ kho về ví của bạn. Bước này CHƯA mở — sẽ có ở bản sau.': {
+    en: 'Move LAMP from the vault into your wallet. This step is NOT open yet — it will arrive in a later release.',
+    zh: '把 LAMP 从金库转入你的钱包。此步骤尚未开放 — 将在后续版本推出。',
+    ja: 'LAMP を保管庫からウォレットへ移します。この手順はまだ開放されていません — 今後のバージョンで提供します。',
   },
-  'Claim về ví (chờ endpoint)': { en: 'Claim to the wallet (awaiting endpoint)', zh: '领取到钱包（等待接口）', ja: 'ウォレットへ受け取る（エンドポイント待ち）' },
+  'Nhận về ví (sắp có)': {
+    en: 'Claim to wallet (coming soon)',
+    zh: '领取到钱包（即将推出）',
+    ja: 'ウォレットで受け取る（近日公開）',
+  },
 
   // ── Truy xuất: dashboard, vườn, cây ────────────────────────────────────────
   'TRUY XUẤT NGUỒN GỐC': { en: 'ORIGIN TRACING', zh: '来源追溯', ja: '産地のトレーサビリティ' },
@@ -617,10 +645,10 @@ export const SCREENS: PhraseMap = {
   'Lia camera vào khu vực cần ghi nhận': { en: 'Pan the camera over the area to record', zh: '将镜头对准需要记录的区域', ja: '記録したい場所にカメラを向けてください' },
   'Chi phí': { en: 'Cost', zh: '费用', ja: '費用' },
   'Cần ghi hình trước': { en: 'Record first', zh: '请先录制', ja: '先に撮影してください' },
-  'Chọn hoạt động, ghi hình, sau đó lưu lên LampNet & blockchain. VeData tự động chắt lọc khung hình chất lượng nhất.': {
-    en: 'Pick an activity, record it, then save to LampNet and the blockchain. VeData automatically keeps the best frames.',
-    zh: '选择活动、录制，然后保存到 LampNet 与区块链。VeData 会自动挑选质量最佳的帧。',
-    ja: '作業を選んで撮影し、LampNet とブロックチェーンに保存します。VeData が最も品質の高いフレームを自動で選び出します。',
+  'Chọn hoạt động, ghi hình, sau đó lưu vào kho an toàn và chuỗi khối. Hệ thống tự chắt lọc khung hình chất lượng nhất.': {
+    en: 'Pick an activity, record it, then save it to safe storage and the blockchain. The system automatically keeps the best frames.',
+    zh: '选择活动、录制，然后保存到安全存储和区块链。系统会自动挑选质量最好的画面。',
+    ja: '作業を選んで撮影し、安全な保管先とブロックチェーンに保存します。最も画質の良いコマはシステムが自動で選びます。',
   },
   'Chụp nhãn bao-bì thuốc/phân': { en: 'Photograph the product/fertiliser label', zh: '拍摄药剂/肥料包装标签', ja: '薬剤・肥料のラベルを撮影' },
   'Lấy rõ tên + hoạt-chất trên bao bì': { en: 'Capture the name and active ingredient clearly', zh: '清晰拍下名称与有效成分', ja: 'パッケージの名称と有効成分がはっきり写るようにしてください' },
@@ -672,10 +700,10 @@ export const SCREENS: PhraseMap = {
   'Hướng dẫn đăng việc trên Aladin': { en: 'How to post a job on Aladin', zh: '如何在 Aladin 上发布工作', ja: 'Aladin での募集の出し方' },
   'Một số lưu ý cho lần đầu đăng việc': { en: 'A few tips for your first posting', zh: '首次发布的几点提示', ja: '初めて募集を出す方へのヒント' },
   'Bảo vệ bởi smart contract': { en: 'Protected by a smart contract', zh: '由智能合约保护', ja: 'スマートコントラクトで保護' },
-  'Mọi giao dịch trên Aladin đều có hợp đồng số ký bằng PhoenixKey (P-256), Pledge định giá MAGIC nhưng khóa/hoàn bằng CARP — bạn không lo bị quỵt.': {
-    en: 'Every Aladin transaction carries a digital contract signed with PhoenixKey (P-256). Pledges are priced in MAGIC but locked/refunded in CARP — so you cannot be stiffed.',
-    zh: 'Aladin 上的每笔交易都有用 PhoenixKey（P-256）签署的数字合约。保证金以 MAGIC 计价，但用 CARP 锁定/退还 — 不必担心被赖账。',
-    ja: 'Aladin のすべての取引には PhoenixKey（P-256）で署名した電子契約が付きます。保証金は MAGIC で価格を表し、実際のロックと返還は CARP で行うので、踏み倒される心配がありません。',
+  'Mọi giao dịch trên Aladin đều có hợp đồng số ký bằng khoá trên máy bạn. Tiền cọc định giá bằng MAGIC nhưng khoá và hoàn bằng CARP — bạn không lo bị quỵt.': {
+    en: 'Every deal on Aladin comes with a digital contract signed by the key on your device. The deposit is priced in MAGIC but locked and refunded in CARP — so you cannot be stiffed.',
+    zh: 'Aladin 上的每笔交易都有用本机密钥签署的数字合同。押金以 MAGIC 计价，但以 CARP 锁定和退还 — 不用担心被赖账。',
+    ja: 'Aladin のすべての取引には、端末の鍵で署名された電子契約が付きます。保証金は MAGIC で値付けし、ロックと返金は CARP で行います — 踏み倒される心配はありません。',
   },
   'Nổi bật': { en: 'Featured', zh: '精选', ja: '注目' },
   'Chi tiết tin': { en: 'Posting details', zh: '信息详情', ja: '募集の詳細' },
@@ -693,10 +721,10 @@ export const SCREENS: PhraseMap = {
     ja: '能力と空き状況でマッチング（Jem-Math）',
   },
   'Bảo vệ Aladin': { en: 'Aladin protection', zh: 'Aladin 保障', ja: 'Aladin の保護' },
-  'Mọi thoả thuận được ký số bằng PhoenixKey, có giá trị pháp lý': {
-    en: 'Every agreement is digitally signed with PhoenixKey and legally binding',
-    zh: '所有协议均由 PhoenixKey 数字签名，具有法律效力',
-    ja: 'すべての合意は PhoenixKey で電子署名され、法的効力を持ちます',
+  'Mọi thoả thuận được ký số ngay trên máy bạn, có giá trị pháp lý': {
+    en: 'Every agreement is digitally signed on your own device and is legally binding',
+    zh: '每份协议都在你的设备上完成数字签名，具有法律效力',
+    ja: 'すべての合意はあなたの端末上で電子署名され、法的効力を持ちます',
   },
   'Pledge định giá bằng MAGIC, khóa/hoàn bằng CARP — chỉ giải ngân khi hai bên xác nhận': {
     en: 'Pledges are priced in MAGIC and locked/refunded in CARP — released only when both sides confirm',
@@ -717,10 +745,10 @@ export const SCREENS: PhraseMap = {
   'Đánh dấu Gấp': { en: 'Mark as urgent', zh: '标记为加急', ja: '急ぎとして表示' },
   'Ưu tiên hiển thị · phí thêm 20.000đ': { en: 'Priority placement · 20,000 ₫ extra', zh: '优先展示 · 额外 20,000 越南盾', ja: '優先表示 · 追加料金 20,000 ドン' },
   'Hợp đồng smart contract': { en: 'Smart contract', zh: '智能合约', ja: 'スマートコントラクト' },
-  'Khi bạn đăng tin, một hợp đồng sẽ được tạo. Pledge định giá bằng MAGIC nhưng khóa/hoàn thật bằng CARP, chỉ giải ngân khi hai bên xác nhận hoàn thành. Bạn ký số bằng PhoenixKey (P-256) ở bước cuối.': {
-    en: 'Posting creates a contract. The pledge is priced in MAGIC but actually locked/refunded in CARP, and is released only when both sides confirm completion. You sign with PhoenixKey (P-256) in the final step.',
-    zh: '发布后会创建一份合约。保证金以 MAGIC 计价，但实际用 CARP 锁定/退还，双方确认完成后才释放。最后一步由你用 PhoenixKey（P-256）签名。',
-    ja: '募集を出すと契約が作成されます。保証金は MAGIC で価格を表しますが、実際のロックと返還は CARP で行い、双方が完了を確認したときにのみ解放されます。最後のステップで PhoenixKey（P-256）により電子署名します。',
+  'Khi bạn đăng tin, một hợp đồng sẽ được tạo. Tiền cọc định giá bằng MAGIC nhưng khoá và hoàn thật bằng CARP, chỉ giải ngân khi hai bên xác nhận hoàn thành. Bạn ký số bằng khoá trên máy ở bước cuối.': {
+    en: 'When you post a job, a contract is created. The deposit is priced in MAGIC but locked and refunded in CARP, and is only released once both sides confirm the work is done. You sign it with the key on your device at the last step.',
+    zh: '发布招工后会生成一份合同。押金以 MAGIC 计价，但以 CARP 锁定和退还，只有双方确认完成后才会放款。最后一步你用本机密钥签名。',
+    ja: '募集を出すと契約が作られます。保証金は MAGIC で値付けし、ロックと返金は CARP で行い、双方が完了を確認したときだけ支払われます。最後にあなたが端末の鍵で署名します。',
   },
   'Đang đăng…': { en: 'Posting…', zh: '发布中…', ja: '投稿中…' },
   'Ký & Đăng tin': { en: 'Sign & post', zh: '签名并发布', ja: '署名して投稿' },
@@ -746,13 +774,17 @@ export const SCREENS: PhraseMap = {
   'Chứng nhận đã xác thực': { en: 'Verified credentials', zh: '已验证的资质', ja: '確認済みの資格' },
   'Đặt thợ ngay': { en: 'Book now', zh: '立即预约', ja: '今すぐ依頼' },
   'Khai năng lực': { en: 'Declare capabilities', zh: '申报能力', ja: '能力を申告' },
-  'Khai chứng chỉ năng lực để lọt danh bạ thợ. VeData xác minh → gắn hạng (A–D).': {
-    en: 'Declare capability credentials to appear in the worker directory. VeData verifies and assigns a grade (A–D).',
-    zh: '申报能力凭证即可进入师傅通讯录。VeData 验证后授予等级（A–D）。',
-    ja: '能力の証明を申告すると職人名簿に載ります。VeData が検証し、ランク（A〜D）が付きます。',
+  'Khai chứng chỉ năng lực để lọt danh bạ thợ. Hệ thống kiểm định rồi gắn hạng (A–D).': {
+    en: 'Declare capability credentials to appear in the worker directory. We verify them and assign a grade (A–D).',
+    zh: '申报能力凭证即可进入师傅通讯录。我们会核验并授予等级（A–D）。',
+    ja: '能力の証明を申告すると職人名簿に載ります。こちらで確認してランク（A〜D）を付けます。',
   },
   'Tạo chứng chỉ': { en: 'Create a credential', zh: '创建凭证', ja: '証明を作成' },
-  'Xác minh (VeData)': { en: 'Verify (VeData)', zh: '验证（VeData）', ja: '検証（VeData）' },
+  'Gửi kiểm định': {
+    en: 'Submit for verification',
+    zh: '提交核验',
+    ja: '確認を依頼する',
+  },
   'Khai chứng chỉ khác': { en: 'Declare another credential', zh: '申报其他凭证', ja: '別の証明を申告' },
   'Chào dịch vụ': { en: 'Offer a service', zh: '提供服务', ja: 'サービスを出品' },
   'Chào dịch vụ lên chợ': { en: 'List the service on the marketplace', zh: '将服务上架到市场', ja: 'サービスをマーケットに出す' },
@@ -767,21 +799,29 @@ export const SCREENS: PhraseMap = {
   },
 
   // ── Kết đèn ────────────────────────────────────────────────────────────────
-  'Góp sức máy · Tham gia mạng LampNet': { en: 'Share device power · Join LampNet', zh: '贡献算力 · 加入 LampNet 网络', ja: '端末の力を提供 · LampNet ネットワークに参加' },
+  'Góp sức máy · Tham gia mạng lưới': {
+    en: 'Contribute your device · Join the network',
+    zh: '贡献算力 · 加入网络',
+    ja: '端末の力を提供 · ネットワークに参加',
+  },
   'Biến điện thoại thành một ngọn đèn của mạng': { en: 'Turn your phone into a lamp on the network', zh: '把你的手机变成网络中的一盏灯', ja: 'スマートフォンをネットワークの灯りに変えましょう' },
-  'Máy bạn góp một phần sức tính toán cho LampNet. Mỗi việc hoàn thành được mạng kiểm chứng (tính lại + ký) rồi tích thưởng. Bạn toàn quyền chọn mức góp.': {
-    en: 'Your device contributes part of its compute to LampNet. Each completed task is verified by the network (recomputed and signed) before rewards accrue. You choose the contribution level.',
-    zh: '你的设备将部分算力贡献给 LampNet。每完成一项任务都会由网络验证（重新计算并签名）后再累计奖励。贡献级别完全由你决定。',
-    ja: 'あなたの端末が計算能力の一部を LampNet に提供します。完了した各タスクはネットワークが検証（再計算と署名）したうえで報酬が積み上がります。貢献の度合いはあなたが決められます。',
+  'Máy bạn góp một phần sức tính toán cho mạng lưới. Mỗi việc hoàn thành được mạng kiểm chứng rồi tích thưởng. Bạn toàn quyền chọn mức góp.': {
+    en: 'Your device contributes part of its computing power to the network. Each completed task is verified by the network and then earns rewards. You decide how much to contribute.',
+    zh: '你的设备将部分算力贡献给网络。每完成一项任务都会由网络验证后累积奖励。贡献多少完全由你决定。',
+    ja: 'あなたの端末は計算能力の一部をネットワークに提供します。完了した作業はネットワークが検証したうえで報酬に加算されます。提供量はあなたが自由に決められます。',
   },
   'Mức đóng góp': { en: 'Contribution level', zh: '贡献级别', ja: '貢献レベル' },
-  'Ước lượng điện/ngày sẽ hiện ở đây khi mạng LampNet cập nhật (bản sau).': {
-    en: 'Estimated daily power use will appear here once LampNet reports it (a later release).',
-    zh: '每日耗电估算将在 LampNet 提供数据后显示（后续版本）。',
-    ja: '1 日あたりの電力の目安は、LampNet からデータが届き次第ここに表示されます（今後のバージョン）。',
+  'Ước lượng điện mỗi ngày sẽ hiện ở đây trong bản sau.': {
+    en: 'The daily electricity estimate will appear here in a later release.',
+    zh: '每日耗电估算将在后续版本显示于此。',
+    ja: '1 日あたりの電気使用量の目安は今後のバージョンでここに表示されます。',
   },
   'Đang đăng ký tham gia mạng…': { en: 'Joining the network…', zh: '正在加入网络…', ja: 'ネットワークへの参加を登録中…' },
-  'Đã tham gia LampNet': { en: 'Joined LampNet', zh: '已加入 LampNet', ja: 'LampNet に参加しました' },
+  'Đã tham gia mạng lưới': {
+    en: 'Joined the network',
+    zh: '已加入网络',
+    ja: 'ネットワークに参加済み',
+  },
   'Máy của bạn giờ là một ngọn đèn của mạng. Theo dõi việc đang chạy và thưởng tích luỹ ở màn "Đang đóng góp".': {
     en: 'Your device is now a lamp on the network. Track running tasks and accrued rewards on the “Contributing” screen.',
     zh: '你的设备现在是网络中的一盏灯。可在“贡献中”页面查看运行任务与累计奖励。',
@@ -937,12 +977,12 @@ export const SCREENS: PhraseMap = {
   },
   '— đủ để đăng ký': { en: '— enough to register', zh: '— 足以登记', ja: '— 登録に十分です' },
   'Hồ sơ cá thể': { en: 'Individual profile', zh: '个体档案', ja: '個体プロフィール' },
-  'Cần cài react-native-image-picker.': { en: 'react-native-image-picker must be installed.', zh: '需要安装 react-native-image-picker。', ja: 'react-native-image-picker のインストールが必要です。' },
-  'Cần cài react-native-image-picker.\nnpm install react-native-image-picker': {
-    en: 'react-native-image-picker must be installed.\nnpm install react-native-image-picker',
-    zh: '需要安装 react-native-image-picker。\nnpm install react-native-image-picker',
-    ja: 'react-native-image-picker のインストールが必要です。\nnpm install react-native-image-picker',
+  'Bản app này chưa mở được máy ảnh. Vui lòng cập nhật app rồi thử lại.': {
+    en: 'This build cannot open the camera. Please update the app and try again.',
+    zh: '此版本无法打开相机。请更新应用后重试。',
+    ja: 'このバージョンではカメラを開けません。アプリを更新してからお試しください。',
   },
+
 
   // ── Video quả / cây ────────────────────────────────────────────────────────
   'Hãy tới nơi sóng tốt để gửi bớt.': {
@@ -950,32 +990,32 @@ export const SCREENS: PhraseMap = {
     zh: '请到信号好的地方把积压的上传发出去。',
     ja: '電波の良い場所へ移動して送信を進めてください。',
   },
-  'Mạng đang yếu. Clip đã vào hàng đợi và sẽ tự gửi lại khi có mạng — cứ quay tiếp, hoặc bấm "Gửi lại lên LampNet" khi có sóng tốt.': {
-    en: 'The connection is weak. The clip is queued and will resend automatically once you are back online — keep recording, or tap "Resend to LampNet" when the signal is good.',
-    zh: '网络较弱。短片已进入队列，联网后会自动重发 — 你可以继续拍摄，或在信号良好时点击“重新发送到 LampNet”。',
-    ja: '通信が弱いです。クリップはキューに入り、接続が戻れば自動的に再送されます。撮影を続けるか、電波が良いときに「LampNet へ再送信」を押してください。',
+  'Mạng đang yếu. Clip đã vào hàng đợi và sẽ tự gửi lại khi có mạng — cứ quay tiếp, hoặc bấm "Gửi lại" khi có sóng tốt.': {
+    en: 'The connection is weak. Your clip is queued and will be sent automatically once you are back online — keep filming, or tap "Send again" when the signal is good.',
+    zh: '网络信号弱。片段已排队，联网后会自动重发 — 你可以继续拍摄，或在信号好时点击“重新发送”。',
+    ja: '電波が弱いです。クリップは順番待ちに入り、通信が戻ると自動で送信されます — 撮影を続けるか、電波の良いときに「再送信」を押してください。',
   },
-  'Máy chủ nhận được video nhưng CHƯA lưu được lên LampNet. Giữ lại clip trong máy và báo đội kỹ thuật — đừng xoá.': {
-    en: 'The server received the video but could NOT store it on LampNet. Keep the clip on your device and tell the tech team — do not delete it.',
-    zh: '服务器已收到视频，但尚未能存入 LampNet。请把短片保留在手机里并告知技术团队 — 不要删除。',
-    ja: 'サーバーは動画を受け取りましたが、LampNet への保存ができていません。クリップは端末に残したまま技術チームへ連絡してください。削除しないでください。',
+  'Máy chủ nhận được video nhưng CHƯA lưu được vào kho an toàn. Giữ lại clip trong máy và báo đội kỹ thuật — đừng xoá.': {
+    en: 'The server received your video but has NOT yet stored it safely. Keep the clip on your phone and tell the technical team — do not delete it.',
+    zh: '服务器已收到视频，但尚未安全存储。请把片段保留在手机里并告知技术团队 — 不要删除。',
+    ja: 'サーバーは動画を受け取りましたが、まだ安全に保管できていません。クリップは端末に残したまま技術チームに知らせてください — 削除しないでください。',
   },
 
   // ── Ví / danh tính / tổ chức ───────────────────────────────────────────────
-  'DID vừa nhập không khớp cụm 24 từ, hoặc không tồn tại trên máy chủ.': {
-    en: 'The DID you entered does not match the 24-word phrase, or does not exist on the server.',
-    zh: '你输入的 DID 与这 24 个助记词不匹配，或在服务器上不存在。',
-    ja: '入力されたDIDは24語のフレーズと一致しないか、サーバー上に存在しません。',
+  'Mã định danh vừa nhập không khớp cụm 24 từ, hoặc không có trên máy chủ.': {
+    en: 'The identifier you entered does not match the 24-word phrase, or does not exist on the server.',
+    zh: '你输入的标识码与 24 个助记词不匹配，或在服务器上不存在。',
+    ja: '入力した識別子は 24 語のフレーズと一致しないか、サーバー上に存在しません。',
   },
-  'Đã lưu ví an toàn. Máy này chưa từng đăng nhập nên không có DID để tự khôi phục. Nếu là máy MỚI, nhập DID của bạn vào ô "DID để đăng nhập" bên dưới.': {
-    en: 'The wallet is safely stored. This device has never signed in, so there is no DID to restore automatically. On a NEW device, enter your DID in the "DID to sign in" field below.',
-    zh: '钱包已安全保存。本机从未登录过，因此没有可自动恢复的 DID。如果是新设备，请在下方“用于登录的 DID”栏中填入你的 DID。',
-    ja: 'ウォレットは安全に保存されました。この端末はログイン履歴がないため、自動復旧できるDIDがありません。新しい端末の場合は、下の「ログイン用DID」欄にDIDを入力してください。',
+  'Đã lưu ví an toàn. Máy này chưa từng đăng nhập nên không có mã định danh để tự khôi phục. Nếu là máy MỚI, nhập mã định danh của bạn vào ô bên dưới.': {
+    en: 'Your wallet is saved safely. This device has never signed in, so there is no identifier to restore from. If this is a NEW device, enter your identifier in the field below.',
+    zh: '钱包已安全保存。本机从未登录过，因此没有可用于自动恢复的标识码。如果这是新设备，请在下方输入你的标识码。',
+    ja: 'ウォレットは安全に保存されました。この端末は一度もログインしたことがないため、自動復旧に使える識別子がありません。新しい端末の場合は、下の欄に識別子を入力してください。',
   },
-  'Các tài khoản đã lưu trên máy đều không khớp cụm 24 từ này. Kiểm tra lại cụm từ, hoặc nhập DID đúng vào ô bên dưới nếu là máy mới.': {
-    en: 'None of the accounts stored on this device match this 24-word phrase. Check the phrase, or enter the correct DID below if this is a new device.',
-    zh: '本机保存的账户都与这 24 个助记词不匹配。请核对助记词，或在下方填入正确的 DID（如果这是新设备）。',
-    ja: 'この端末に保存されたアカウントは、いずれもこの24語のフレーズと一致しません。フレーズを確認するか、新しい端末の場合は下に正しいDIDを入力してください。',
+  'Các tài khoản đã lưu trên máy đều không khớp cụm 24 từ này. Kiểm tra lại cụm từ, hoặc nhập đúng mã định danh vào ô bên dưới nếu là máy mới.': {
+    en: 'None of the accounts saved on this device match this 24-word phrase. Check the phrase again, or enter the correct identifier below if this is a new device.',
+    zh: '本机上保存的账户都与这组 24 个助记词不匹配。请再次核对助记词，或在新设备上于下方输入正确的标识码。',
+    ja: 'この端末に保存されているどのアカウントも、この 24 語のフレーズと一致しません。フレーズを確認するか、新しい端末の場合は下に正しい識別子を入力してください。',
   },
   'ví dụ: abandon ability able about ...': { en: 'e.g. abandon ability able about ...', zh: '例如：abandon ability able about ...', ja: '例：abandon ability able about ...' },
   'did:phoenix:… (để trống nếu khôi phục trên máy cũ)': {
@@ -1026,7 +1066,11 @@ export const SCREENS: PhraseMap = {
     zh: 'PHOENIXKEY_ORG_FOUNDING:… 或 PHOENIXKEY_ORG_UPGRADE:…',
     ja: 'PHOENIXKEY_ORG_FOUNDING:… または PHOENIXKEY_ORG_UPGRADE:…',
   },
-  '{DID, chữ ký}': { en: '{DID, signature}', zh: '{DID, 签名}', ja: '{DID, 署名}' },
+  '{mã định danh, chữ ký}': {
+    en: '{identifier, signature}',
+    zh: '{标识码, 签名}',
+    ja: '{識別子, 署名}',
+  },
   'Vd: HTX Mai Vàng': { en: 'e.g. Mai Vang Co-op', zh: '例如：Mai Vàng 合作社', ja: '例：Mai Vàng 協同組合' },
   'VD: Hợp tác xã Sen Vàng': { en: 'e.g. Sen Vang Cooperative', zh: '例如：Sen Vàng 合作社', ja: '例：Sen Vàng 協同組合' },
   'Tên hiển thị (vd: Anh Tuấn)': { en: 'Display name (e.g. Mr. Tuan)', zh: '显示名称（例如：Tuấn 先生）', ja: '表示名（例：トゥアンさん）' },
@@ -1044,15 +1088,15 @@ export const SCREENS: PhraseMap = {
   },
 
   // ── Kết đèn (Join) ─────────────────────────────────────────────────────────
-  'Tính năng Kết đèn chưa có trên bản này — SDK native đang phát triển.': {
-    en: 'Lamp-linking is not available in this build — the native SDK is still in development.',
-    zh: '本版本暂无“连灯”功能 — 原生 SDK 仍在开发中。',
-    ja: 'このビルドでは「ランプ接続」は利用できません — ネイティブSDKは開発中です。',
+  'Tính năng Kết đèn sẽ mở ở bản sau.': {
+    en: 'Lamp linking will open in a later release.',
+    zh: '“结灯”功能将在后续版本开放。',
+    ja: '「灯をつなぐ」機能は今後のバージョンで開放されます。',
   },
-  'Kết đèn qua SDK native chưa hỗ trợ trên bản này.': {
-    en: 'Lamp-linking through the native SDK is not supported in this build.',
-    zh: '本版本尚不支持通过原生 SDK 连灯。',
-    ja: 'このビルドではネイティブSDK経由のランプ接続に対応していません。',
+  'Bản này chưa hỗ trợ Kết đèn.': {
+    en: 'Lamp linking is not supported in this release.',
+    zh: '此版本尚不支持“结灯”。',
+    ja: 'このバージョンでは「灯をつなぐ」に対応していません。',
   },
   // ('Máy bạn chưa tham gia mạng…' đã khai ở phrases/chat.ts.)
   'Chưa đo được thưởng của máy này: cần bản có phần góp máy. Dấu — nghĩa là chưa đo được, không phải bạn chưa được ghi nhận.': {

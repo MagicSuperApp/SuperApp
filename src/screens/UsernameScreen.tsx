@@ -82,7 +82,7 @@ const UsernameScreen = () => {
         <View style={styles.noteBox}>
           <Icon name="at" size={18} color={COLORS.accent} />
           <Text style={styles.noteText}>
-            Lối tắt để người khác tìm danh tính của bạn (thay vì gõ cả DID). Công khai — chọn tên bạn muốn hiển thị.
+            Lối tắt để người khác tìm danh tính của bạn (thay vì gõ cả mã định danh). Công khai — chọn tên bạn muốn hiển thị.
           </Text>
         </View>
 

@@ -84,7 +84,7 @@ const TreeVideoScreen: React.FC = () => {
   // ── Quay video ────────────────────────────────────────────────────────────
   const handleRecord = useCallback(() => {
     if (!imagePicker?.launchCamera) {
-      Alert.alert('Chưa cài camera', 'Cần cập nhật app (react-native-image-picker).');
+      Alert.alert('Chưa mở được máy ảnh', 'Bản app này chưa mở được máy ảnh. Vui lòng cập nhật app rồi thử lại.');
       return;
     }
     imagePicker.launchCamera(VIDEO_OPTIONS, (response: any) => {
@@ -207,7 +207,7 @@ const TreeVideoScreen: React.FC = () => {
             >
               <Icon name="shield-check" size={15} color="#1b5e20" />
               <Text style={styles.cidText} numberOfLines={1}>
-                Đã lưu lên mạng LampNet · {result.video_cid}
+                Đã lưu vào kho an toàn · {result.video_cid}
               </Text>
               <Icon name="content-copy" size={14} color={NEUTRAL.textSub} />
             </TouchableOpacity>
@@ -219,7 +219,7 @@ const TreeVideoScreen: React.FC = () => {
           )}
           {result.stored === false && (
             <Text style={styles.resultWarn}>
-              Máy chủ nhận được video nhưng CHƯA lưu được lên LampNet. Giữ lại clip
+              Máy chủ nhận được video nhưng CHƯA lưu được vào kho an toàn. Giữ lại clip
               trong máy và báo đội kỹ thuật — đừng xoá.
             </Text>
           )}

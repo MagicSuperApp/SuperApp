@@ -227,7 +227,7 @@ const WorkHomeScreen: React.FC = () => {
 
           {/* ── Tasker Nổi Bật: ĐÃ GỠ ────────────────────────────
               Mục này trước dựng từ FEATURED_WORKERS (dữ liệu mẫu). Anh Aladin chốt
-              2026-07-27 gỡ mọi mockup khỏi màn thật. Chưa có endpoint tasker/worker
+              2026-07-27 gỡ mọi mockup khỏi màn thật. Chưa có dữ liệu thợ thật
               thật (AladinWork accounts:0) → gỡ hẳn mục, phục hồi khi có API danh sách
               tasker thật (ghi ở HANDOFF-LEDGER). */}
 
@@ -248,7 +248,7 @@ const WorkHomeScreen: React.FC = () => {
               <StateView
                 status="error"
                 title="Cần đăng nhập lại"
-                message="Phiên làm việc đã hết hạn. Vui lòng đăng nhập PhoenixKey lại."
+                message="Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại."
                 onRetry={reload}
               />
             ) : errorKind ? (
@@ -279,7 +279,7 @@ const WorkHomeScreen: React.FC = () => {
             <View style={{ flex: 1 }}>
               <Text style={styles.trustTitle}>Bảo vệ bởi smart contract</Text>
               <Text style={styles.trustSub}>
-                Mọi giao dịch trên Aladin đều có hợp đồng số ký bằng PhoenixKey (P-256), Pledge định giá MAGIC nhưng khóa/hoàn bằng CARP — bạn không lo bị quỵt.
+                Mọi giao dịch trên Aladin đều có hợp đồng số ký bằng khoá trên máy bạn. Tiền cọc định giá bằng MAGIC nhưng khoá và hoàn bằng CARP — bạn không lo bị quỵt.
               </Text>
             </View>
           </View>

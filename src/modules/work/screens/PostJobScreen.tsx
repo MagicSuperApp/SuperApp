@@ -55,13 +55,13 @@ const PostJobScreen: React.FC = () => {
     if (ok) {
       Alert.alert(
         'Đăng tin thành công',
-        'Tin của bạn đã được ký số bằng PhoenixKey và đăng lên Aladin Work.\n\nThợ phù hợp sẽ liên hệ qua Aladin Chat trong vài phút.',
+        'Tin của bạn đã được ký số và đăng lên Aladin Work.\n\nThợ phù hợp sẽ liên hệ qua Aladin Chat trong vài phút.',
         [{ text: 'OK', onPress: () => navigation.goBack() }],
       );
     } else {
       Alert.alert(
         'Chưa đăng được tin',
-        'Không gửi được tin lúc này. Kiểm tra kết nối, đăng nhập PhoenixKey và loại việc rồi thử lại.',
+        'Không gửi được tin lúc này. Kiểm tra kết nối, đăng nhập và loại việc rồi thử lại.',
       );
     }
   };
@@ -203,7 +203,7 @@ const PostJobScreen: React.FC = () => {
             <Text style={styles.contractTitle}>Hợp đồng smart contract</Text>
           </View>
           <Text style={styles.contractText}>
-            Khi bạn đăng tin, một hợp đồng sẽ được tạo. Pledge định giá bằng MAGIC nhưng khóa/hoàn thật bằng CARP, chỉ giải ngân khi hai bên xác nhận hoàn thành. Bạn ký số bằng PhoenixKey (P-256) ở bước cuối.
+            Khi bạn đăng tin, một hợp đồng sẽ được tạo. Tiền cọc định giá bằng MAGIC nhưng khoá và hoàn thật bằng CARP, chỉ giải ngân khi hai bên xác nhận hoàn thành. Bạn ký số bằng khoá trên máy ở bước cuối.
           </Text>
         </View>
 

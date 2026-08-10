@@ -4,7 +4,7 @@
  * nên phép chia bằng Number sẽ sai âm thầm — test này chốt là ta không dùng Number.
  */
 
-import { fmtToken, fmtLamp, fmtAda, hasAnyLamp, LAMP_DECIMALS } from './token';
+import { fmtToken, fmtLamp, fmtAda, fmtCarp, hasAnyLamp, LAMP_DECIMALS, CARP_DECIMALS } from './token';
 
 describe('fmtToken', () => {
   it('đổi oildrop sang LAMP theo decimals 6', () => {
@@ -44,8 +44,31 @@ describe('fmtToken', () => {
     expect(fmtLamp(1_000_001)).toBe('1.000001');
   });
 
-  it('decimals 0 thì in nguyên số thô (ca CARP chưa chốt)', () => {
+  it('decimals 0 thì in nguyên số thô', () => {
     expect(fmtToken(12345, 0)).toBe('12,345');
+  });
+
+  it('fmtCarp đổi nanothread sang CARP — 1 CARP = 10^9 nanothread', () => {
+    expect(fmtCarp(1_000_000_000)).toBe('1');
+    expect(fmtCarp(2_500_000_000)).toBe('2.5');
+    expect(fmtCarp(null)).toBe('—');
+    // Cắt ở 4 chữ số lẻ ⟹ mọi số dư DƯỚI 10⁵ nanothread hiện thành '0'.
+    // Ghi rõ ở đây vì đó là hành vi có chủ ý, không phải sót: 0,0001 CARP là
+    // mức không đáng bày ra màn ví. Nhưng '0' KHÔNG có nghĩa là ví rỗng — chỗ
+    // nào cần phân biệt "rỗng" với "quá nhỏ" thì phải so trên số THÔ.
+    expect(fmtCarp(1)).toBe('0');
+    expect(fmtCarp(99_999)).toBe('0');
+    expect(fmtCarp(100_000)).toBe('0.0001');
+  });
+
+  it('CARP_DECIMALS = 9, khoá lại để không ai âm thầm đổi', () => {
+    // Nguồn: CarpetMint `onchain/lib/examples/magiclamp.ak:33`
+    // `sub_unit_scale = 1_000_000_000`. Đơn vị nhỏ nhất tên `nanothread`.
+    expect(CARP_DECIMALS).toBe(9);
+    // Bản cũ để 0 với lý do "in thô còn hơn in sai". Ở decimals 9 thì in thô
+    // CHÍNH LÀ in sai — sai một tỷ lần, và sai theo hướng người dùng tưởng giàu.
+    expect(fmtToken(1_000_000_000, 0)).toBe('1,000,000,000');
+    expect(fmtCarp(1_000_000_000)).toBe('1');
   });
 
   it('số âm giữ dấu', () => {

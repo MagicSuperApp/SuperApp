@@ -36,7 +36,7 @@ import { getVersion, getBuildNumber } from 'react-native-device-info';
 // Debug host = backend field-reid THẬT app đang dùng (ORILIFE_BASE), không phải
 // aladin-api (backend Lợi deprecated) — để field soi đúng server (Lỗi field #5).
 import { ORILIFE_BASE } from '../services/orilifeBase';
-import { fmtLamp } from '../utils/token';
+import { fmtLamp, fmtCarp } from '../utils/token';
 import taad from '../sdk/taadEnclave';
 import { getStoredMasterKek } from '../services/masterKekStore';
 import LanguagePickerModal from '../components/LanguagePickerModal';
@@ -267,7 +267,7 @@ const WalletBlock = ({ entry }: { entry: WalletEntry }) => {
                 <Text style={styles.walletBalDot}>·</Text>
                 <Text style={styles.walletBalItem}>{fmtLamp(b.lamp ?? 0)} <Text style={styles.walletBalUnit}>LAMP</Text></Text>
                 <Text style={styles.walletBalDot}>·</Text>
-                <Text style={styles.walletBalItem}>{b.carp ?? 0} <Text style={styles.walletBalUnit}>CARP</Text></Text>
+                <Text style={styles.walletBalItem}>{fmtCarp(b.carp)} <Text style={styles.walletBalUnit}>CARP</Text></Text>
             </View>
         </View>
     );
@@ -587,7 +587,7 @@ const AccountScreen = () => {
                             index={2}
                             icon="fish"
                             label="CARP"
-                            value={chainWallet?.carpBalance}
+                            value={fmtCarp(chainWallet?.carpBalance)}
                             unit="CARP"
                             color="#2F8F8F"
                             desc="Token hệ sinh thái"

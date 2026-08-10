@@ -27,7 +27,7 @@ import { RootState } from '../../../store';
 import { loadFarms, loadTrees, loadActivities } from '../store/farmSlice';
 import { selectChainWallet } from '../../../store/userSlice';
 import { COLORS } from '../../../constants';
-import { fmtLamp } from '../../../utils/token';
+import { fmtLamp, fmtCarp } from '../../../utils/token';
 import PaginationControls from '../components/PaginationControls';
 import { showError, showInfo } from '../../../utils/alert';
 import { useAppDispatch } from '../../../store/hooks';
@@ -386,7 +386,7 @@ const DashboardScreen: React.FC = () => {
             <TokenChip index={0} icon={ICON.magic} label="M" value={wallet?.magicBalance ?? '—'} color="#B07D2F" />
             <TokenChip index={1} icon={ICON.lamp} label="L" value={fmtLamp(wallet?.lampBalance)} color={COLORS.accent} />
             {/* CARP — token hệ sinh thái thứ 3. TODO brand tạm; số dư chờ API Phoenix. */}
-            <TokenChip index={2} icon={ICON.carp} label="C" value={wallet?.carpBalance ?? '—'} color="#2F8F8F" />
+            <TokenChip index={2} icon={ICON.carp} label="C" value={fmtCarp(wallet?.carpBalance)} color="#2F8F8F" />
             <TokenChip index={3} icon={ICON.ada} label="A" value={wallet?.adaBalance ?? '—'} color="#0033AD" />
           </View>
         </Animated.View>

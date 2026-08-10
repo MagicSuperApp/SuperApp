@@ -24,11 +24,19 @@ export const LAMP_DECIMALS = 6;
 export const ADA_DECIMALS = 6;
 
 /**
- * CARP: CHƯA CHỐT. LAMP agent nói rõ "hỏi CARP agent, đừng giả định 6".
- * Đang để 0 (in nguyên số thô) để KHÔNG bịa ra một con số sai — thà hiện thô còn
- * hơn hiện sai. Khi CARP agent trả lời thì đổi đúng một hằng số này.
+ * CARP: decimals **9** — 1 CARP = 1.000.000.000 **nanothread**.
+ *
+ * Nguồn là MÃ, không phải thư: `CarpetMint/onchain/lib/examples/magiclamp.ak:33`
+ * `sub_unit_scale = 1_000_000_000`. Tên đơn-vị nhỏ nhất chốt ở
+ * `CarpetMint-Core-Spec-Vi.md §T1` — **`nanothread`**, không phải `thread` trần
+ * (chữ `thread` trần đã dùng cho *thread NFT*, hai nghĩa khác hẳn nhau).
+ *
+ * Trước đây hằng này là `CARP_DECIMALS_UNKNOWN = 0` với lý do "in thô còn hơn in
+ * sai". Lý do đó KHÔNG đứng: hằng số ấy có **0 nơi dùng**, nên nó không bảo vệ
+ * gì cả — bốn màn vẫn in thẳng số thô. Ở decimals 9 thì in thô là hiện sai
+ * **một tỷ lần**, và hiện sai theo hướng người dùng tưởng mình giàu.
  */
-export const CARP_DECIMALS_UNKNOWN = 0;
+export const CARP_DECIMALS = 9;
 
 /**
  * Đổi số lượng thô → chuỗi hiển thị. KHÔNG dùng phép chia của Number.
@@ -75,6 +83,10 @@ export function fmtToken(
 /** Tiện dụng: LAMP từ oildrop thô. */
 export const fmtLamp = (raw: bigint | number | string | null | undefined) =>
   fmtToken(raw, LAMP_DECIMALS);
+
+/** Tiện dụng: CARP từ nanothread thô (1 CARP = 10^9 nanothread). */
+export const fmtCarp = (raw: bigint | number | string | null | undefined) =>
+  fmtToken(raw, CARP_DECIMALS, 4);
 
 /** Tiện dụng: ADA từ lovelace thô. */
 export const fmtAda = (raw: bigint | number | string | null | undefined) =>

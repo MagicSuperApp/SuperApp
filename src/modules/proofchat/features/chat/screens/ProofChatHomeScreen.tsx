@@ -15,7 +15,6 @@ import { RootState } from '../../../../../store';
 import { NEUTRAL, withAlpha } from '../../../../../shared/theme';
 import { PROOFCHAT_THEME } from '../../../theme/colors';
 import JobRoomItem from '../components/JobRoomItem';
-import { TOKEN_SYMBOL } from '../../wallet/types';
 import CreateConversationModal, {
   type CreateConversationPayload,
 } from '../components/CreateConversationModal';
@@ -55,7 +54,6 @@ const ProofChatHomeScreen: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
   const rooms = useSelector((s: RootState) => s.proofchat.rooms);
   const sync = useSelector((s: RootState) => s.proofchat.sync);
-  const wallet = useSelector((s: RootState) => s.proofchat.wallet);
   const invitations = useSelector((s: RootState) => s.proofchat.invitations);
   const publicConversationIds = useSelector(
     (s: RootState) => s.proofchat.publicConversationIds,
@@ -283,25 +281,18 @@ const ProofChatHomeScreen: React.FC = () => {
               </View>
             )}
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.iconBtn}
-            onPress={() => navigation.navigate('ProofChatWallet')}
-          >
-            <Icon name="wallet-outline" size={18} color={PROOFCHAT_THEME.primary} />
-          </TouchableOpacity>
         </View>
 
+        {/*
+          KHÔNG nút ví, KHÔNG ô "Đang khóa". Chat không có ví/escrow — quyết định
+          đã ghi trong `module.manifest.json` của proofchat. Ô "Đang khóa" cũ đọc
+          `wallet.lockedInEscrow` từ store (dữ-liệu MOCK): nó bày một số dư có vẻ
+          thật ngay trên màn chat. Số dư giả nguy hơn nút chết (issue #110).
+        */}
         <View style={styles.statsStrip}>
           <Stat label="Phòng" value={rooms.length} />
           <View style={styles.statDivider} />
           <Stat label="Chưa đọc" value={totalUnread} accent />
-          <View style={styles.statDivider} />
-          <Stat
-            label="Đang khóa"
-            value={`${wallet.lockedInEscrow.toLocaleString('vi-VN')} ${TOKEN_SYMBOL}`}
-            small
-          />
         </View>
 
         <View style={styles.searchBox}>

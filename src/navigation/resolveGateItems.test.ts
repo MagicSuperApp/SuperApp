@@ -46,7 +46,10 @@ describe('resolveGateItems', () => {
     for (const a of farm) expect(a.route).not.toBe('Farms');
 
     const chat = byRoute.ProofChatHome.subActions ?? [];
-    expect(chat.map((a) => a.route)).toEqual(['ProofChatWallet', 'Notifications']);
+    // KHÔNG có 'ProofChatWallet': chat không có ví (module.manifest.json của
+    // proofchat, issue #110). Test này giữ lối vào đó khỏi quay lại.
+    expect(chat.map((a) => a.route)).toEqual(['Notifications']);
+    expect(chat.map((a) => a.route)).not.toContain('ProofChatWallet');
 
     expect(byRoute.WorkHome.subActions).toBeUndefined();
     expect(byRoute.JoinHome.subActions).toBeUndefined();

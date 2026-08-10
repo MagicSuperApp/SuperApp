@@ -68,9 +68,11 @@ const SUB_ACTIONS: Record<string, Omit<GateSubItem, 'key'>[]> = {
     { icon: 'syringe', label: 'Quét nhãn thuốc', route: 'CareScan', params: { targetType: 'farm', targetId: 'default', farmId: 'default' } },
     { icon: 'warehouse', label: 'Thêm vườn', route: 'FarmDetail' },
   ],
-  // Chat (proofchat): mở ví · thông báo.
+  // Chat (proofchat): thông báo.
+  // KHÔNG có mục ví. `module.manifest.json` của proofchat ghi rõ chat KHÔNG
+  // escrow/ví và `routes` chỉ khai ["ProofChatHome","ProofChatRoom"] — mục
+  // 'Mở ví' → 'ProofChatWallet' ở đây là lối vào trái quyết định đó (issue #110).
   ProofChatHome: [
-    { icon: 'wallet', label: 'Mở ví', route: 'ProofChatWallet' },
     { icon: 'bell', label: 'Thông báo', route: 'Notifications' },
   ],
 };

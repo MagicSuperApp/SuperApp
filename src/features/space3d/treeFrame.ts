@@ -10,10 +10,16 @@
  *
  * 1 đơn-vị x/z = TREE_RADIUS mét, 1 đơn-vị y = TREE_HEIGHT mét.
  *
- * TƯƠNG-THÍCH SERVER: field-reid chỉ lưu `zone` + `pos_x` + `pos_h` (2 chiều).
- *   pos_x ⇄ x   ·   pos_h ⇄ y   ·   zone suy ra từ y   ·   z KHÔNG có chỗ lưu.
- * → z lưu cục bộ (positionStore). Thiếu z (quả cũ / máy khác) thì suy ra ổn-định
- * từ fruit_id, để quả không nằm dính hết trên một mặt phẳng.
+ * TƯƠNG-THÍCH SERVER: field-reid lưu `zone` + `pos_x` + `pos_h` + `pos_z` (đủ 3 chiều).
+ *   pos_x ⇄ x   ·   pos_h ⇄ y   ·   pos_z ⇄ z   ·   zone suy ra từ y.
+ * Cả ba pos_* trên máy chủ đều nằm trong dải 0..1 (`_clean_pos` kẹp về [0,1]),
+ * nên x và z ([−1,1]) phải đổi dải hai chiều, còn y đi thẳng.
+ *
+ * QUẢ CHƯA ĐẶT SÂU: máy chủ trả `pos_z = null` cho quả đăng ký trước khi có trục
+ * sâu. Trước đây chỗ này BỊA z bằng băm `fruit_id` — quả hiện ra ở độ sâu ngẫu
+ * nhiên nhưng trông đầy đủ và tự tin, mở trên máy khác là thấy một cái cây sai mà
+ * không có dấu hiệu nào báo sai. Nay thiếu z thì đặt ĐÚNG MẶT PHẲNG GIỮA
+ * (`UNSET_Z = 0`) và `hasServerZ()` cho biết đó là "chưa đặt" chứ không phải số đo.
  *
  * File THUẦN TÍNH (không import three/react) → test được bằng jest.
  */
@@ -68,30 +74,43 @@ export function zoneToY(zone: TreeZone): number {
 }
 
 /** Toạ-độ 3D → payload gửi field-reid (giữ nguyên sơ-đồ 2D cũ vẫn đúng). */
-export function coordToServer(c: FruitCoord): { zone: TreeZone; posX: number; posH: number } {
+export function coordToServer(c: FruitCoord): { zone: TreeZone; posX: number; posH: number; posZ: number } {
   const k = clampCoord(c);
   return {
     zone: coordToZone(k),
     posX: +((k.x + 1) / 2).toFixed(4), // [−1,1] → [0,1]
     posH: +k.y.toFixed(4),
+    posZ: +((k.z + 1) / 2).toFixed(4), // [−1,1] → [0,1]
   };
 }
 
-/** z suy ra ỔN-ĐỊNH từ fruit_id khi không có dữ-liệu z (quả cũ / máy khác). */
-export function derivedZ(fruitId: string): number {
-  return +(makeRng(hashSeed(`z:${fruitId}`))() * 1.4 - 0.7).toFixed(4);
-}
+/**
+ * z dùng khi CHƯA BIẾT độ sâu: mặt phẳng giữa tán.
+ *
+ * Đây là giá-trị "chưa đặt", KHÔNG phải số đo. Hỏi `hasServerZ()` trước khi coi
+ * z của một quả là thật. Tuyệt đối không thay bằng số sinh từ băm: một con số
+ * ngẫu-nhiên nhưng ổn-định trông y hệt dữ-liệu thật, và sai lệch nào trông như
+ * thật thì không ai đi kiểm.
+ */
+export const UNSET_Z = 0;
 
 export interface ServerFruitPos {
   fruit_id: string;
   zone?: TreeZone | null;
   pos_x?: number | null;
   pos_h?: number | null;
+  pos_z?: number | null;
+}
+
+/** Quả này đã có độ sâu THẬT trên máy chủ chưa (pos_z != null)? */
+export function hasServerZ(f: ServerFruitPos): boolean {
+  return f.pos_z != null && Number.isFinite(f.pos_z);
 }
 
 /**
  * Dữ-liệu quả từ server → toạ-độ 3D.
  * Thiếu pos_x/pos_h → rải ổn-định quanh dải của zone thay vì dồn cả đống vào giữa.
+ * Thiếu pos_z → UNSET_Z (mặt phẳng giữa) — xem ghi chú ở UNSET_Z.
  */
 export function coordFromServer(f: ServerFruitPos): FruitCoord {
   const zone: TreeZone = f.zone ?? 'mid';
@@ -105,7 +124,8 @@ export function coordFromServer(f: ServerFruitPos): FruitCoord {
         const [lo, hi] = ZONE_RANGE[zone] ?? ZONE_RANGE.mid;
         return lo + rng() * (hi - lo);
       })();
-  return clampCoord({ x, y, z: derivedZ(f.fruit_id) });
+  const z = hasServerZ(f) ? clamp(f.pos_z as number, 0, 1) * 2 - 1 : UNSET_Z;
+  return clampCoord({ x, y, z });
 }
 
 /** Nhãn tiếng Việt của zone (dùng chung mọi màn 3D). */

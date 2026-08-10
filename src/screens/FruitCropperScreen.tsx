@@ -41,8 +41,9 @@ import { ORILIFE_BASE } from '../services/orilifeBase';
 import { Icon } from '../components/Icon';
 import { COLORS } from '../constants';
 import {
-  fruitCandidates, enrollFruit, addFruitView, detectFruit,
+  fruitCandidates, enrollFruit, addFruitView, detectFruit, outcomeOf,
   type FruitShape, type FruitCandidate, type FruitRegion, type Bbox, type TreeZone,
+  type FruitViewType,
 } from '../services/fruitReIDService';
 import {
   DEFAULT_FRUIT_COORD, ZONE_LABEL, clampCoord, coordToServer, coordToZone, zoneToY,
@@ -79,9 +80,22 @@ interface RouteParams {
   zone?: TreeZone;
   fruitId?: string; // có → thêm góc cho quả này (bỏ qua bước candidates)
   fruitName?: string;
+  /** Số quả cây này đã có → đặt sẵn tên "Quả {n+1}" cho quả mới. */
+  fruitCount?: number;
 }
 
 type Step = 'crop' | 'candidates' | 'naming';
+
+/**
+ * Bốn mặt OriLife nhận. Nhãn viết theo lời nông dân nói, không theo tên trường:
+ * `bottom` = đít quả (mặt hệ cần nhất và cũng là mặt bị chặn oan nhiều nhất).
+ */
+const VIEW_CHOICES: { key: FruitViewType; label: string }[] = [
+  { key: 'side', label: 'Hông' },
+  { key: 'bottom', label: 'Đít quả' },
+  { key: 'stem', label: 'Cuống' },
+  { key: 'context', label: 'Cả chùm' },
+];
 
 /** Khoảng cách 2 ngón (pinch). */
 function touchDist(touches: { pageX: number; pageY: number }[]): number {
@@ -195,6 +209,7 @@ const FruitCropperScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const {
     treeId, treeName, imageUri, imageW, imageH, zone: zoneParam, fruitId, fruitName,
+    fruitCount,
   } = (route.params ?? {}) as RouteParams;
   // Kết quả trả về từ màn đặt toạ-độ 3D (FruitPlace3D điều hướng ngược có merge).
   const pickedCoord = (route.params as any)?.pickedFruitCoord as FruitCoord | undefined;
@@ -221,7 +236,23 @@ const FruitCropperScreen: React.FC = () => {
   const [cands, setCands] = useState<FruitCandidate[]>([]);
   const [expanded, setExpanded] = useState(false);
   const [lastRegion, setLastRegion] = useState<FruitRegion | null>(null);
-  const [nameInput, setNameInput] = useState('');
+  const [nameInput, setNameInput] = useState(
+    () => (fruitCount === undefined ? '' : `Quả ${fruitCount + 1}`),
+  );
+
+  /**
+   * Máy chủ TỪ CHỐI nhưng vẫn trả HTTP 200. Khi đó `data.ok === false` kèm câu
+   * `message` tiếng Việt và một cờ (`warn` hoặc `duplicate`). Ô này giữ câu đó
+   * cùng nút "vẫn làm" — vì người đứng tại vườn đúng nhiều hơn máy.
+   */
+  const [serverAsk, setServerAsk] = useState<{ message: string; yesLabel: string; onYes: () => void } | null>(null);
+
+  /**
+   * MẶT nào của quả đang chụp. Máy chủ cần trường này để thôi đem mặt đáy so với
+   * góc hông — thiếu nó là gốc của việc bồi góc bị chặn oan 30/32 lượt.
+   * Mặc định `side`: đó là mặt người ta chụp nhiều nhất khi đứng dưới gốc.
+   */
+  const [viewType, setViewType] = useState<FruitViewType>('side');
 
   // Toạ-độ 3D của quả trên cây (hệ riêng của cây). Thay cho việc chỉ chọn 1 trong
   // 3 vùng: người dùng kéo icon quả ở màn FruitPlace3D. zone gửi lên server được
@@ -480,6 +511,53 @@ const FruitCropperScreen: React.FC = () => {
     navigation.setParams({ pickedFruitCoord: undefined });
   }, [pickedCoord, navigation]);
 
+  /**
+   * Thêm GÓC cho một quả đã có, xử đúng ba tầng phản hồi.
+   *
+   * Chỗ hỏng của bản cũ: `if (r.ok) navigation.goBack()`. `r.ok` là cờ tầng VẬN
+   * CHUYỂN — mọi HTTP 200 đều `ok: true`. Nhưng khi cổng bồi góc từ chối, máy chủ
+   * trả **HTTP 200 kèm `{ok: false, warn, message}`**. Nên app đóng màn như đã
+   * lưu, trong khi góc ảnh KHÔNG hề được thêm, và không một chữ nào báo.
+   *
+   * Ba tầng, xét theo đúng thứ tự:
+   *   1. `!r.ok`              → hỏng mạng/máy chủ. Câu lỗi kỹ-thuật.
+   *   2. `r.ok && !r.data.ok` → máy chủ TỪ CHỐI có lý do. Hiện `message` của họ
+   *                             (đừng tự dịch) + nút ép thêm `allow_mismatch`.
+   *   3. còn lại              → thật sự xong.
+   */
+  const runAddView = useCallback(async (
+    targetFruitId: string,
+    region: FruitRegion,
+    p: { x: number; h: number },
+    allowMismatch = false,
+  ) => {
+    setServerAsk(null);
+    setErrMsg(null);
+    setBusy(true);
+    const r = await addFruitView(BASE_URL, targetFruitId, imageUri, region, {
+      zone, posX: p.x, posH: p.h, viewType, allowMismatch: allowMismatch || undefined,
+    });
+    setBusy(false);
+
+    const outcome = outcomeOf(r);
+    if (outcome === 'failed') { setErrMsg(r.error?.detail ?? 'Không thêm được góc. Thử lại.'); return; }
+
+    if (outcome === 'needs_confirm') {
+      const other = r.data?.best_other?.name;   // ĐỐI TƯỢNG, không phải chuỗi
+      setServerAsk({
+        message: r.data?.message
+          ?? (other
+            ? `Máy thấy ảnh này giống quả «${other}» hơn.`
+            : 'Máy chưa chắc đây là đúng quả đó.'),
+        yesLabel: 'Vẫn là quả này',
+        onYes: () => { void runAddView(targetFruitId, region, p, true); },
+      });
+      return;
+    }
+
+    navigation.goBack();
+  }, [imageUri, zone, viewType, navigation]);
+
   const openPlacer = useCallback(() => {
     navigation.navigate('FruitPlace3D', {
       treeId,
@@ -508,10 +586,7 @@ const FruitCropperScreen: React.FC = () => {
     // Có fruitId (đến từ "thêm góc cho quả này") → add_view thẳng, bỏ qua candidates.
     if (fruitId) {
       const p = posFromBox(reg.bbox);
-      const r = await addFruitView(BASE_URL, fruitId, imageUri, reg, { zone, posX: p.x, posH: p.h });
-      setBusy(false);
-      if (r.ok) navigation.goBack();
-      else setErrMsg(r.error?.detail ?? 'Không thêm được góc. Thử lại.');
+      await runAddView(fruitId, reg, p);
       return;
     }
 
@@ -526,32 +601,58 @@ const FruitCropperScreen: React.FC = () => {
   // ── Chọn 1 quả-đã-có → THÊM GÓC (add_view) ─────────────────────────────────
   const pickCandidate = useCallback(async (cand: FruitCandidate) => {
     if (!lastRegion) return;
-    setBusy(true);
-    const p = posFromBox(lastRegion.bbox);
-    const r = await addFruitView(BASE_URL, cand.fruit_id, imageUri, lastRegion, { zone, posX: p.x, posH: p.h });
-    setBusy(false);
-    if (r.ok) navigation.goBack();
-    else setErrMsg(r.error?.detail ?? 'Không thêm được góc. Thử lại.');
-  }, [lastRegion, posFromBox, zone, imageUri, navigation]);
+    await runAddView(cand.fruit_id, lastRegion, posFromBox(lastRegion.bbox));
+  }, [lastRegion, posFromBox, runAddView]);
 
   // ── Lưu quả MỚI (enroll) ───────────────────────────────────────────────────
-  const saveNewFruit = useCallback(async () => {
+  /**
+   * Lưu quả MỚI.
+   *
+   * Cùng bệnh với `runAddView`, và ở đây còn nặng hơn: `_apiCall` cố ý chuyển
+   * HTTP 409 (trùng quả) thành `{ok: true, data}` để caller đọc cờ `duplicate`
+   * — nhưng caller cũ không đọc. Nên `if (r.ok) goBack()` đóng màn như đã lưu
+   * trong khi KHÔNG có quả nào được tạo, và nhánh `r.data?.fruit_id` cũng rơi
+   * nên toạ-độ 3D không được ghi.
+   *
+   * Đây không phải ca hiếm: ngưỡng trùng dùng chung `ACCEPT_SIM = 0.72`, mà ở
+   * mức đó **73,0% (412/564) cặp khác-quả-cùng-cây bị coi là khớp**. Nông dân
+   * nhập tới quả thứ năm, thứ sáu trên cùng một cây là chạm liên tục.
+   */
+  const saveNewFruit = useCallback(async (allowDup = false) => {
     if (!lastRegion) return;
     const name = nameInput.trim();
     if (!name) { setErrMsg('Đặt tên cho quả trước khi lưu.'); return; }
+    setServerAsk(null);
     setErrMsg(null);
     setBusy(true);
     // zone/pos_x/pos_h SUY RA từ toạ-độ 3D → server và sơ-đồ 2D cũ vẫn hiểu đúng.
     const srv = coordToServer(coord);
     const r = await enrollFruit(BASE_URL, treeId, name, imageUri, lastRegion, {
-      zone: srv.zone, posX: srv.posX, posH: srv.posH,
+      zone: srv.zone, posX: srv.posX, posH: srv.posH, viewType,
+      allowDup: allowDup || undefined,
     });
-    // Chiều sâu z không có chỗ trên server → lưu đủ 3 chiều tại máy theo fruit_id.
-    if (r.ok && r.data?.fruit_id) await saveFruitCoord(r.data.fruit_id, coord);
     setBusy(false);
-    if (r.ok) navigation.goBack();
-    else setErrMsg(r.error?.detail ?? 'Không lưu được quả. Thử lại.');
-  }, [lastRegion, nameInput, coord, treeId, imageUri, navigation]);
+
+    const outcome = outcomeOf(r);
+    if (outcome === 'failed') { setErrMsg(r.error?.detail ?? 'Không lưu được quả. Thử lại.'); return; }
+
+    if (outcome === 'needs_confirm') {
+      const similar = r.data?.similar?.name;
+      setServerAsk({
+        message: r.data?.message
+          ?? (similar
+            ? `Máy nghĩ đây là quả «${similar}» đã có. Anh/chị đang cầm một quả khác?`
+            : 'Máy nghĩ quả này đã có trong kho.'),
+        yesLabel: 'Đây là quả khác',
+        onYes: () => { void saveNewFruit(true); },
+      });
+      return;
+    }
+
+    // Chiều sâu z không có chỗ trên server → lưu đủ 3 chiều tại máy theo fruit_id.
+    if (r.data?.fruit_id) await saveFruitCoord(r.data.fruit_id, coord);
+    navigation.goBack();
+  }, [lastRegion, nameInput, coord, treeId, imageUri, viewType, navigation]);
 
   // ── Quay lại bước crop để khoanh vùng khác ─────────────────────────────────
   const recrop = useCallback(() => { setErrMsg(null); setStep('crop'); }, []);
@@ -691,6 +792,30 @@ const FruitCropperScreen: React.FC = () => {
           <ShapeOption label="Quả dài" on={shape === 'ellipse'} wide onPress={() => pickShape('ellipse')} />
         </View>
 
+        {/*
+          MẶT nào của quả. Máy chủ cần biết để thôi đem mặt đáy so với góc hông:
+          54/54 góc đã lưu trước nay đều thiếu trường này, và đó là gốc của việc
+          cổng bồi góc chặn oan 30 trên 32 lượt. Đặt ở bước khoanh vì cả hai
+          đường (thêm góc thẳng, và qua bước đối chiếu) đều đi qua đây.
+        */}
+        <Text style={styles.viewLbl}>ĐANG CHỤP MẶT NÀO</Text>
+        <View style={styles.viewSeg}>
+          {VIEW_CHOICES.map(v => (
+            <TouchableOpacity
+              key={v.key}
+              style={[styles.viewOpt, viewType === v.key && styles.viewOptOn]}
+              onPress={() => setViewType(v.key)}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityState={{ selected: viewType === v.key }}
+            >
+              <Text style={[styles.viewOptTxt, viewType === v.key && styles.viewOptTxtOn]}>
+                {v.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
         <View style={styles.stageHint}>
           <Icon name="arrows-up-down-left-right" size={12} color={ON_STAGE} opacity={0.7} />
           <Text style={styles.stageHintTxt} numberOfLines={2}>
@@ -704,6 +829,8 @@ const FruitCropperScreen: React.FC = () => {
             <Text style={styles.stageErrTxt} numberOfLines={2}>{errMsg}</Text>
           </View>
         ) : null}
+
+        <ServerAsk ask={serverAsk} busy={busy} onDismiss={() => setServerAsk(null)} />
 
         <TouchableOpacity
           style={[styles.stagePrimary, busy && styles.disabled]}
@@ -773,7 +900,7 @@ const FruitCropperScreen: React.FC = () => {
         <TouchableOpacity
           style={styles.candNew}
           disabled={busy}
-          onPress={() => { setNameInput(''); setStep('naming'); }}
+          onPress={() => setStep('naming')}
           activeOpacity={0.85}
         >
           <Icon name="circle-plus" size={15} color={COLORS.white} />
@@ -803,6 +930,7 @@ const FruitCropperScreen: React.FC = () => {
         ) : null}
 
         {errMsg ? <ErrLine text={errMsg} /> : null}
+        <ServerAsk ask={serverAsk} busy={busy} onDismiss={() => setServerAsk(null)} />
         {busy ? <ActivityIndicator color={COLORS.accent} style={styles.inlineLoader} /> : null}
 
         <TouchableOpacity style={styles.ghost} onPress={recrop} activeOpacity={0.8}>
@@ -870,11 +998,15 @@ const FruitCropperScreen: React.FC = () => {
         </View>
 
         {errMsg ? <ErrLine text={errMsg} /> : null}
+        <ServerAsk ask={serverAsk} busy={busy} onDismiss={() => setServerAsk(null)} />
 
         <TouchableOpacity
           style={[styles.primary, busy && styles.disabled]}
           disabled={busy}
-          onPress={saveNewFruit}
+          // KHÔNG truyền thẳng `saveNewFruit`: onPress đưa vào một
+          // GestureResponderEvent, nó sẽ rơi đúng chỗ tham số `allowDup` và luôn
+          // truthy ⟹ mọi lần lưu đều ép qua cổng trùng.
+          onPress={() => { void saveNewFruit(); }}
           activeOpacity={0.88}
         >
           {busy ? <ActivityIndicator color={COLORS.white} /> : (
@@ -932,6 +1064,51 @@ const ErrLine: React.FC<{ text: string }> = ({ text }) => (
     <Text style={styles.errTxt}>{text}</Text>
   </View>
 );
+
+/**
+ * Máy chủ từ chối NHƯNG vẫn trả HTTP 200. Trước đây màn tự đóng lại như đã lưu.
+ *
+ * Câu chữ lấy nguyên của máy chủ (`data.message`), KHÔNG dịch lại ở app: OriLife
+ * đặt câu theo dữ-liệu họ có (tên quả nào giống hơn, đã đủ mấy góc), app dịch lại
+ * là làm hỏng thông tin đó.
+ *
+ * Luôn có nút "vẫn làm". OriLife nói thẳng: người đứng tại vườn đúng nhiều hơn
+ * máy — cổng bồi góc từng chặn oan 30 trên 32 lượt, có quả bị chặn 14 lần liền
+ * mà chỉ gom nổi 2 góc.
+ */
+const ServerAsk: React.FC<{
+  ask: { message: string; yesLabel: string; onYes: () => void } | null;
+  busy: boolean;
+  onDismiss: () => void;
+}> = ({ ask, busy, onDismiss }) => {
+  if (!ask) return null;
+  return (
+    <View style={styles.askBox}>
+      <View style={styles.askHead}>
+        <Icon name="circle-question" size={14} color={COLORS.warning} />
+        <Text style={styles.askTxt}>{ask.message}</Text>
+      </View>
+      <View style={styles.askRow}>
+        <TouchableOpacity
+          style={[styles.askGhost, busy && styles.disabled]}
+          disabled={busy}
+          onPress={onDismiss}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.askGhostTxt}>Để xem lại</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.askYes, busy && styles.disabled]}
+          disabled={busy}
+          onPress={ask.onYes}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.askYesTxt}>{ask.yesLabel}</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+};
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
@@ -1133,6 +1310,33 @@ const styles = StyleSheet.create({
 
   errLine: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14 },
   errTxt: { flex: 1, color: COLORS.error, fontSize: 13, lineHeight: 18 },
+
+  // Chọn MẶT quả (bước khoanh, nền tối)
+  viewLbl: { color: ON_STAGE, opacity: 0.65, fontSize: 10, letterSpacing: 1, marginTop: 14, marginBottom: 6 },
+  viewSeg: { flexDirection: 'row', gap: 6 },
+  viewOpt: {
+    flex: 1, paddingVertical: 8, borderRadius: 9, alignItems: 'center',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)',
+  },
+  viewOptOn: { backgroundColor: COLORS.accent, borderColor: COLORS.accent },
+  viewOptTxt: { color: ON_STAGE, fontSize: 12, fontWeight: '600' },
+  viewOptTxtOn: { color: COLORS.white },
+
+  // Hộp máy chủ hỏi lại (từ chối kèm lý do + nút vẫn làm)
+  askBox: {
+    marginTop: 14, padding: 12, borderRadius: 11,
+    backgroundColor: '#fdf5e6', borderLeftWidth: 3, borderLeftColor: COLORS.warning,
+  },
+  askHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  askTxt: { flex: 1, color: '#6b4a12', fontSize: 13, lineHeight: 19, fontWeight: '600' },
+  askRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  askGhost: {
+    flex: 1, paddingVertical: 10, borderRadius: 9, alignItems: 'center',
+    borderWidth: 1, borderColor: 'rgba(107,74,18,0.3)',
+  },
+  askGhostTxt: { color: '#6b4a12', fontSize: 13, fontWeight: '600' },
+  askYes: { flex: 1, paddingVertical: 10, borderRadius: 9, alignItems: 'center', backgroundColor: COLORS.accent },
+  askYesTxt: { color: COLORS.white, fontSize: 13, fontWeight: '700' },
 });
 
 export default FruitCropperScreen;

@@ -1,0 +1,50 @@
+name: Verify PR (tsc + jest)
+
+# VÌ SAO CÓ FILE NÀY:
+# Cổng chất-lượng `verify` trong `debug-apk.yml` chạy ở `on: push` tới `develop` —
+# tức CHỈ chạy SAU KHI đã merge. PR không bao giờ bị kiểm, nên mọi PR hiện lên là
+# "no checks reported" và người duyệt không có gì để nhìn. Đó đúng là cách develop
+# đỏ tsc từ 05/08 (issue #106): hai hệ đa ngôn ngữ trộn nhau lọt qua vì không cổng
+# nào chạy TRƯỚC merge. Cổng này chạy TRÊN PR, trước khi hỏng vào nhánh chung.
+#
+# Cố ý KHÔNG build APK ở đây: chỉ tsc + jest (~3-5 phút). Việc dựng APK/AAB vẫn để
+# `debug-apk.yml` / `android-aab.yml` lo sau merge.
+
+on:
+  pull_request:
+    branches: [develop, main]
+
+# PR đẩy thêm commit thì huỷ lượt chạy cũ — đỡ tốn phút chạy.
+concurrency:
+  group: verify-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify (tsc + jest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.11.0'
+          cache: 'npm'
+
+      - name: Install npm dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Typecheck (tsc --noEmit)
+        run: npx tsc --noEmit -p tsconfig.json
+
+      # `--forceExit`: test xanh rồi mà jest vẫn treo thì đó là handle còn mở, KHÔNG
+      # phải mã sai — nhưng runner cứ chạy tiếp tới lúc hết bộ nhớ và báo đỏ (đã xảy
+      # ra: treo ~19 phút rồi exit 134). Nguyên nhân gốc là bộ đếm giờ rò trong
+      # `runtimeGate.probeOne` (đã vá ở PR này). Cờ này là lưới đỡ cho những vòng lặp
+      # `Animated` của màn được render trong test — chúng vốn chạy mãi theo thiết kế.
+      # Kết quả test đã in TRƯỚC khi thoát nên cờ này không che được ca đỏ nào.
+      - name: Unit tests (jest)
+        run: npx jest --ci --forceExit

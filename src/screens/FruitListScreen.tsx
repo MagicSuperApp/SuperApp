@@ -35,6 +35,7 @@ import {
   type TreeLayoutResponse, type TreeLayoutFruit, type SpeciesCatalog,
   type FruitStatus, type TreeZone, type FruitView,
 } from '../services/fruitReIDService';
+import { withPhotoSave } from '../services/mediaSavePermission';
 import RemoteImage from '../components/RemoteImage';
 
 const BASE_URL = ORILIFE_BASE;
@@ -130,7 +131,7 @@ const FruitListScreen: React.FC = () => {
   // (asset.width/height đã theo maxWidth/maxHeight) → map-ngược vùng khung chuẩn.
   // `forFruitId` có → mở cropper ở chế độ THÊM GÓC cho quả đó.
   const openCropper = useCallback(async (fromCamera: boolean, forFruitId?: string, forFruitName?: string) => {
-    const opts: CameraOptions = { mediaType: 'photo', quality: 0.8, maxWidth: 1600, maxHeight: 1600, saveToPhotos: false };
+    const opts: CameraOptions = { mediaType: 'photo', quality: 0.8, maxWidth: 1600, maxHeight: 1600, saveToPhotos: true };
     const cb = (res: any) => {
       if (res.didCancel) return;
       if (res.errorCode) { Alert.alert('Lỗi ảnh', res.errorMessage || 'Không lấy được ảnh.'); return; }
@@ -143,7 +144,7 @@ const FruitListScreen: React.FC = () => {
         fruitId: forFruitId, fruitName: forFruitName,
       });
     };
-    if (fromCamera) { if (await requestCameraPermission()) launchCamera(opts, cb); }
+    if (fromCamera) { if (await requestCameraPermission()) launchCamera(await withPhotoSave(opts), cb); }
     else { launchImageLibrary(opts, cb); }
   }, [navigation, treeId, treeName, layout, requestCameraPermission]);
 

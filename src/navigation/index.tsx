@@ -47,6 +47,7 @@ import SignUpBiometricScreen from '../features/auth/screens/SignUpBiometricScree
 import SignUpCompleteScreen from '../features/auth/screens/SignUpCompleteScreen';
 import AccountScreen from '../screens/AccountScreen';
 import BiometricSettings from '../screens/BiometricSettings';
+import TermsScreen from '../screens/TermsScreen';
 import NotificationScreen from '../screens/NotificationScreen';
 // PhoenixKey — duyệt ký / guardian / nhật ký hoạt động.
 // (Khôi phục thiết bị dùng màn có sẵn RestoreIdentityScreen — đã hoàn thiện attach.)
@@ -1593,6 +1594,9 @@ const HOST_STACK_SCREENS: Array<{
   },
   { name: 'Activation', component: ActivationScreen },
   { name: 'BiometricSettings', component: BiometricSettings },
+  // Điều khoản & Chính sách — Google Play đòi mở được NGAY TRONG ứng dụng, nên nội dung
+  // gắn trong bản dựng chứ không mở trình duyệt (xem src/legal/policyContent.ts).
+  { name: 'Terms', component: TermsScreen, options: { headerShown: false } },
   // PhoenixKey feature screens.
   { name: 'SignRequest', component: SignRequestScreen, options: { headerShown: false } },
   { name: 'Guardian', component: GuardianScreen, options: { headerShown: false } },
@@ -1708,8 +1712,10 @@ const AppNavigator = () => {
       }
 
       try {
-        // (Ngôn ngữ đã nạp xong ở `whenLanguageReady()` bên trên — khung điều hướng
-        // vẽ đúng ngay lần đầu, không chớp một nhịp rồi mới đổi chữ.)
+        // Ngôn ngữ đã nạp xong ở `whenLanguageReady()` ngay phía trên — nó là kho DUY
+        // NHẤT. Lệnh `loadNationalLanguage()` trước đây ở đây nạp một kho THỨ HAI
+        // (`app_lang_v1`), và chính hai kho tách rời làm nhãn điều hướng không đổi theo
+        // Cài đặt. Đã bỏ; đừng thêm lại.
 
         // Start sync service (database will be initialized per-user on login)
         console.log('[Navigation] Initializing sync service');

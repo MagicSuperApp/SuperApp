@@ -286,16 +286,28 @@ const MenuItem = ({
     const scaleAnim = useRef(new Animated.Value(1)).current;
     const ic = color ?? COLORS.accent;
 
+    // Mục CHƯA có đích đến thì phải TRÔNG như chưa có đích đến.
+    //
+    // Trước đây mục thiếu `onPress` vẫn vẽ mũi tên ">" và vẫn chạy hoạt ảnh co lại khi
+    // chạm — người dùng nhận được phản hồi vật lý đầy đủ rồi không có gì mở ra. Đó
+    // không đọc ra là "tính năng chưa làm", nó đọc ra là "app hỏng", và người dùng sẽ
+    // chạm lại vài lần nữa để chắc. Nay: không mũi tên, không hoạt ảnh, không bắt chạm,
+    // chữ mờ đi — và trình đọc màn hình cũng báo là đang tắt.
+    const inert = !onPress;
+
     return (
         <TouchableOpacity
             activeOpacity={1}
             onPress={onPress}
-            onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.985, useNativeDriver: true }).start()}
-            onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, friction: 4, useNativeDriver: true }).start()}
+            disabled={inert}
+            accessibilityState={{ disabled: inert }}
+            onPressIn={() => { if (!inert) Animated.spring(scaleAnim, { toValue: 0.985, useNativeDriver: true }).start(); }}
+            onPressOut={() => { if (!inert) Animated.spring(scaleAnim, { toValue: 1, friction: 4, useNativeDriver: true }).start(); }}
         >
             <Animated.View style={[
                 styles.menuItem,
                 last && { borderBottomWidth: 0 },
+                inert && { opacity: 0.45 },
                 { transform: [{ scale: scaleAnim }] },
             ]}>
                 <View style={[styles.menuIconWrap, { backgroundColor: `${ic}12` }]}>
@@ -311,7 +323,7 @@ const MenuItem = ({
                     </View>
                 )}
                 {trailing}
-                {!trailing && showArrow && <Icon name="chevron-right" size={18} color={COLORS.accentLight} />}
+                {!trailing && showArrow && !inert && <Icon name="chevron-right" size={18} color={COLORS.accentLight} />}
             </Animated.View>
         </TouchableOpacity>
     );
@@ -803,8 +815,19 @@ const AccountScreen = () => {
                 {/* ── Hỗ trợ ── */}
                 <Animated.View style={{ opacity: fadeAnim }}>
                     <Section title="HỖ TRỢ">
+                        {/* "Trung tâm hỗ trợ" CHƯA có đích đến, nên `MenuItem` tự vẽ nó ở
+                            trạng thái tắt (mờ, không mũi tên, không bắt chạm) thay vì giả
+                            vờ bấm được.
+                            "Điều khoản & Chính sách" thì nay có đích thật: màn `Terms` đọc
+                            được cả khi mất mạng, vì Google Play đòi phần tiết lộ dữ liệu
+                            phải mở được NGAY TRONG ứng dụng — mà người dùng ngoài vườn
+                            thường không có mạng đủ khoẻ để tải một trang web. */}
                         <MenuItem icon="help-circle-outline" label="Trung tâm hỗ trợ" />
-                        <MenuItem icon="file-document-outline" label="Điều khoản & Chính sách" />
+                        <MenuItem
+                            icon="file-document-outline"
+                            label="Điều khoản & Chính sách"
+                            onPress={() => navigation.navigate('Terms')}
+                        />
                         <MenuItem
                             icon="information-outline"
                             label="Phiên bản ứng dụng"

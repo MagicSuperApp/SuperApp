@@ -149,8 +149,15 @@ const JoinHomeScreen: React.FC = () => {
           </View>
           <Text style={styles.introTitle}>Biến điện thoại thành một ngọn đèn của mạng</Text>
           <Text style={styles.introBody}>
-            Máy bạn góp một phần sức tính toán cho mạng lưới. Mỗi việc hoàn thành được
-            mạng kiểm chứng rồi tích thưởng. Bạn toàn quyền chọn mức góp.
+            {/* Câu cuối trước đây là "Bạn toàn quyền chọn mức góp." — một lời hứa RỖNG:
+                `CONTRIBUTION_LEVELS` người dùng chọn KHÔNG chảy vào `JoinConfig` (chỗ dựng
+                cấu hình chỉ gửi 4 trường), nên không có mức nào được cưỡng chế cả. Người
+                chọn "Nhẹ nhàng" rồi thấy máy nóng sẽ kết luận app nói dối, và họ đúng.
+                Hoặc nối vào cưỡng chế thật, hoặc nói đúng hiện trạng — chọn vế thứ hai
+                cho tới khi cầu native có thật (Join xác nhận chặn duy nhất còn lại là
+                khâu đóng gói uniffi, thuộc LampNet core). */}
+            Máy bạn góp một phần sức tính toán cho LampNet. Mỗi việc hoàn thành được
+            mạng kiểm chứng (tính lại + ký) rồi tích thưởng. Mức góp sẽ mở ở bản sau.
           </Text>
         </View>
 

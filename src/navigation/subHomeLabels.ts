@@ -42,7 +42,7 @@ export const SUBHOME_FRAME: Record<string, SubTab[]> = {
     { key: 'garden', en: 'Garden', national: { vi: 'Vườn',     zh: '果园', ja: '果樹園' }, icon: 'sprout-outline' },
     { key: 'trees',  en: 'Trees',  national: { vi: 'Cây',      zh: '树木', ja: '樹木' },   icon: 'pine-tree' },
     { key: 'care',   en: 'Care',   national: { vi: 'Chăm sóc', zh: '养护', ja: '手入れ' }, icon: 'watering-can' },
-    { key: 'carbon', en: 'Carbon', national: { vi: 'Carbon',   zh: '碳汇', ja: 'カーボン' }, icon: 'leaf' },
+    { key: 'carbon', en: 'Carbon', national: { vi: 'Tín chỉ',  zh: '碳汇', ja: 'カーボン' }, icon: 'leaf' },
   ],
 };
 

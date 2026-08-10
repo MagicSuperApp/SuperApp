@@ -40,8 +40,10 @@ jobs:
       - name: Typecheck (tsc --noEmit)
         run: npx tsc --noEmit -p tsconfig.json
 
+      # --forceExit: xem lý do ở `verify-pr.yml` (jest treo vì handle còn mở thì
+      # runner chạy tới hết bộ nhớ và báo đỏ dù test đã xanh).
       - name: Unit tests (jest)
-        run: npx jest --ci
+        run: npx jest --ci --forceExit
 
   build-debug-apk:
     name: Build debug APK

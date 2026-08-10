@@ -805,10 +805,10 @@ export const SCREENS: PhraseMap = {
     ja: '端末の力を提供 · ネットワークに参加',
   },
   'Biến điện thoại thành một ngọn đèn của mạng': { en: 'Turn your phone into a lamp on the network', zh: '把你的手机变成网络中的一盏灯', ja: 'スマートフォンをネットワークの灯りに変えましょう' },
-  'Máy bạn góp một phần sức tính toán cho mạng lưới. Mỗi việc hoàn thành được mạng kiểm chứng rồi tích thưởng. Bạn toàn quyền chọn mức góp.': {
-    en: 'Your device contributes part of its computing power to the network. Each completed task is verified by the network and then earns rewards. You decide how much to contribute.',
-    zh: '你的设备将部分算力贡献给网络。每完成一项任务都会由网络验证后累积奖励。贡献多少完全由你决定。',
-    ja: 'あなたの端末は計算能力の一部をネットワークに提供します。完了した作業はネットワークが検証したうえで報酬に加算されます。提供量はあなたが自由に決められます。',
+  'Máy bạn góp một phần sức tính toán cho LampNet. Mỗi việc hoàn thành được mạng kiểm chứng (tính lại + ký) rồi tích thưởng. Mức góp sẽ mở ở bản sau.': {
+    en: 'Your device contributes part of its compute to LampNet. Each completed task is verified by the network (recomputed and signed) before rewards accrue. Choosing the contribution level opens in a later release.',
+    zh: '你的设备将部分算力贡献给 LampNet。每完成一项任务都会由网络验证（重新计算并签名）后再累计奖励。贡献级别的选择将在后续版本开放。',
+    ja: 'あなたの端末が計算能力の一部を LampNet に提供します。完了した各タスクはネットワークが検証（再計算と署名）したうえで報酬が積み上がります。貢献の度合いの選択は今後のバージョンで開放されます。',
   },
   'Mức đóng góp': { en: 'Contribution level', zh: '贡献级别', ja: '貢献レベル' },
   'Ước lượng điện mỗi ngày sẽ hiện ở đây trong bản sau.': {

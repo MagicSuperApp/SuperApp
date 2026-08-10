@@ -26,6 +26,7 @@ import { COLORS } from '../../../constants';
 import { RootState } from '../../../store';
 import { useAppDispatch } from '../../../store/hooks';
 import { showSuccess, showError, showWarning, showInfo } from '../../../utils/alert';
+import { withPhotoSave } from '../../../services/mediaSavePermission';
 
 // image-picker nạp mềm (giống FruitVideo/CareScan) — máy chưa cài thì báo rõ, không crash.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -38,7 +39,7 @@ const VIDEO_OPTIONS = {
   mediaType: 'video' as const,
   videoQuality: 'high' as const,
   durationLimit: 30,
-  saveToPhotos: false,
+  saveToPhotos: true,
 };
 
 // Nhận cả {farm} (caller cũ FarmDetail) lẫn {tree} (caller TreeDetail). Trước đây
@@ -270,12 +271,12 @@ const ActivityScreen = () => {
   // Mở CAMERA QUAY VIDEO ngay (OS camera) và nhận đường dẫn file trả về → set vào
   // scannedFiles để bật "Lưu onnet". Thay cho luồng cũ điều hướng sang TreeIdentity
   // (màn nhận diện cây) vốn KHÔNG trả file về nên nút Lưu không bao giờ bật.
-  const handleRecord = useCallback(() => {
+  const handleRecord = useCallback(async () => {
     if (!imagePicker?.launchCamera) {
       showError('Chưa mở được máy ảnh', 'Bản app này chưa mở được máy ảnh. Vui lòng cập nhật app rồi thử lại.');
       return;
     }
-    imagePicker.launchCamera(VIDEO_OPTIONS, (response: any) => {
+    imagePicker.launchCamera(await withPhotoSave(VIDEO_OPTIONS), (response: any) => {
       if (response.didCancel) return;
       if (response.errorCode) {
         showError('Lỗi camera', response.errorMessage ?? 'Không mở được camera. Kiểm tra quyền.');

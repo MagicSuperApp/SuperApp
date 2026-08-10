@@ -63,7 +63,11 @@ const FileSystem = (): FileSystemLegacy | null => {
 };
 import { ORILIFE_BASE } from './orilifeBase';
 import { ensureOrilifeToken } from './orilifeDidAuth';
-import { uploadFruitVideo, type FruitVideoResult } from './fruitVideoService';
+import {
+  uploadFruitVideo,
+  isRetryableStoreReason,
+  type FruitVideoResult,
+} from './fruitVideoService';
 import { appendVideoProof, type VideoProof } from './videoProofStore';
 
 const QUEUE_KEY = '@aladin/videoUploadQueue/v1';
@@ -181,11 +185,21 @@ export async function loadVideoQueue(): Promise<VideoUploadJob[]> {
   }
 }
 
-async function saveQueue(jobs: VideoUploadJob[]): Promise<void> {
+/**
+ * Ghi hàng đợi xuống đĩa. TRẢ VỀ ghi được hay không — đừng nuốt.
+ *
+ * Máy nông dân gần đầy sau một buổi quay là chuyện thường, và `AsyncStorage`
+ * ném `SQLITE_FULL`. Bản cũ nuốt lỗi im lặng, nên `enqueueVideoUpload` vẫn trả về
+ * một job trông như thật, màn quay xoá bản nháp, rồi `flush` đọc hàng đợi RỖNG và
+ * không gọi upload lần nào — trong khi màn suy "không còn trong hàng ⇒ đã gửi xong"
+ * và hiện "Đã lưu video". Clip chưa bao giờ rời máy, nháp thì đã xoá.
+ */
+async function saveQueue(jobs: VideoUploadJob[]): Promise<boolean> {
   try {
     await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify(jobs.slice(0, MAX_QUEUE)));
+    return true;
   } catch {
-    /* bỏ qua — mất một lần ghi còn hơn làm sập màn vừa gửi xong */
+    return false;
   }
 }
 
@@ -298,6 +312,12 @@ export interface EnqueueResult {
   job: VideoUploadJob;
   /** >0 nghĩa là hàng đã đầy MAX_QUEUE và bấy nhiêu clip cũ nhất bị loại (đã xoá file). */
   droppedOldest: number;
+  /**
+   * Job đã GHI ĐƯỢC xuống đĩa chưa. `false` = máy hết dung lượng (AsyncStorage ném
+   * `SQLITE_FULL`) → hàng đợi thật sự RỖNG, sẽ không có lần gửi nào.
+   * Màn quay PHẢI kiểm cờ này TRƯỚC khi xoá bản nháp và trước khi nói "đã gửi".
+   */
+  persisted: boolean;
 }
 
 function newId(): string {
@@ -358,8 +378,8 @@ export async function enqueueVideoUpload(
         needsManual: false,
       };
       const next = existing.map(j => (j.id === dupe.id ? updated : j));
-      await saveQueue(next);
-      return { job: updated, droppedOldest: 0 };
+      const persisted = await saveQueue(next);
+      return { job: updated, droppedOldest: 0, persisted };
     }
 
     const job: VideoUploadJob = {
@@ -388,8 +408,8 @@ export async function enqueueVideoUpload(
       droppedOldest = dropped.length;
       next = next.slice(0, MAX_QUEUE);
     }
-    await saveQueue(next);
-    return { job, droppedOldest };
+    const persisted = await saveQueue(next);
+    return { job, droppedOldest, persisted };
   });
 }
 
@@ -602,6 +622,51 @@ async function tryOne(
   }
 
   // Gửi xong VÀ byte đã lên LampNet.
+  //
+  // ⚠ `stored` là cờ QUYẾT ĐỊNH, và nó có thể VẮNG. `fruitVideoService` đọc
+  // `body?.stored ?? true`, nên máy chủ nào không trả trường này sẽ được coi là "đã
+  // lưu" — rồi khối dưới xoá bản sao. Đó là đường mất bằng chứng im lặng nhất trong
+  // dây: không lỗi, không cảnh báo, chỉ là một clip biến mất.
+  //
+  // Nay đã đỡ hai lớp: (1) mọi màn quay đặt `saveToPhotos: true` nên bản gốc còn nằm
+  // trong cuộn ảnh máy; (2) OriLife (PR OriLife-Core #274) kèm `store_reason` ở MỌI
+  // nhánh trả `stored`, nên phân biệt được "kho lỗi, gửi lại có ích" với
+  // "LAMPNET_ENABLED=0, CID là GIẢ, gửi lại vô nghĩa".
+  // `stored === undefined` KHÔNG phải là xong. Trước đây nhánh này chỉ thôi XOÁ bản
+  // sao mà vẫn `return {done:true}` — mà `done:true` thì `applyOutcome` cắt job khỏi
+  // hàng đợi. Kết quả: tệp `videoq_<id>.mp4` còn trên đĩa nhưng KHÔNG job nào trỏ tới
+  // ⇒ không màn nào thấy, `retryVideoJobNow`/`clearVideoQueue` cũng không với tới,
+  // rác cộng dồn mãi; đồng thời màn kết quả suy "không còn trong hàng ⇒ đã gửi xong"
+  // nên hiện dấu tích "Đã lưu" cho một clip máy chủ CHƯA HỀ xác nhận.
+  // Cờ xoá tệp và cờ rời hàng đợi phải là CÙNG một cờ.
+  if (res.ok && res.stored === undefined) {
+    if (res.video_cid) {
+      await deps.onProof(job.treeId, {
+        videoCid: res.video_cid,
+        kind: job.kind,
+        at: new Date().toISOString(),
+        eventId: res.event_id,
+        clientEventId: job.clientEventId,
+        nFruitsMax: res.n_fruits_max,
+        nFrames: res.n_frames,
+        // Để nguyên `undefined` — màn phải phân biệt "máy chủ xác nhận" với "máy chủ
+        // im lặng", không được vẽ khiên xanh cho cái sau.
+        stored: undefined,
+        lat: job.lat,
+        lon: job.lon,
+      });
+    }
+    return {
+      done: false,
+      job: {
+        ...job,
+        attempts: job.attempts + 1,
+        lastError: 'máy chủ không xác nhận đã lưu (thiếu cờ stored)',
+        needsManual: job.attempts + 1 >= MAX_ATTEMPTS,
+      },
+    };
+  }
+
   if (res.ok && res.stored !== false) {
     if (res.video_cid) {
       await deps.onProof(job.treeId, {
@@ -621,20 +686,34 @@ async function tryOne(
         lon: job.lon,
       });
     }
-    if (job.managedCopy) await deps.deleteFile(job.videoUri);
+    // Chỉ xoá bản sao khi máy chủ NÓI RÕ đã lưu. `undefined` không còn được coi là
+    // "đã lưu" ở đây nữa: máy chủ im lặng thì giữ bản sao lại: tốn ít dung lượng còn
+    // hơn mất một ngày công đi vườn.
+    if (job.managedCopy && res.stored === true) await deps.deleteFile(job.videoUri);
     return { done: true };
   }
 
   // Chưa xong: server nhận nhưng stored===false, hoặc lỗi mạng/quyền.
   const attempts = job.attempts + 1;
   const lastError = res.ok
-    ? 'stored=false (byte chưa lên LampNet)'
+    ? `stored=false (byte chưa lên LampNet)${res.store_reason ? ` · ${res.store_reason}` : ''}`
     : (res.error?.detail ?? 'Gửi thất bại');
+
+  // Có lý do mà gửi lại KHÔNG cứu được thì dừng thử ngay, đừng đợi hết 5 lượt:
+  // `lampnet_disabled` nghĩa là kho đang tắt và CID vừa nhận là GIẢ — thử lại chỉ đốt
+  // pin và dữ liệu di động của nông dân giữa vườn, mà bản chất là việc của người trực
+  // máy chủ. `empty_file` là tệp 0 byte, tức lỗi đường ghi tệp tạm ở phía app; gửi lại
+  // cùng một tệp rỗng thì lần nào cũng rỗng. Cả hai đều GIỮ bản sao clip.
+  // KHÔNG kẹp `res.ok`: `empty_file` về dưới dạng 422 (nhánh lỗi), nên kẹp `ok` là
+  // đúng cái làm nhánh "gửi lại vô ích" thành mã chết. Chỉ cần CÓ `store_reason` và
+  // lý do đó không thuộc nhóm đáng thử lại.
+  const hopeless = res.store_reason != null && !isRetryableStoreReason(res.store_reason);
+
   const updated: VideoUploadJob = {
     ...job,
     attempts,
     lastError,
-    needsManual: attempts >= MAX_ATTEMPTS,
+    needsManual: hopeless || attempts >= MAX_ATTEMPTS,
   };
   return { done: false, job: updated };
 }

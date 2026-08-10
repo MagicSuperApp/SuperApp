@@ -39,6 +39,7 @@ import {
   type CareProduct,
   type CareLogResponse,
 } from '../services/careService';
+import { withPhotoSave } from '../services/mediaSavePermission';
 
 const BASE_URL: string = ORILIFE_BASE;
 const HEADER_BG = '#2F7D6B'; // xanh y-tế — thuốc/chăm-sóc
@@ -48,7 +49,7 @@ const CAMERA_OPTIONS = {
   quality: 0.85,
   maxWidth: 1280,
   maxHeight: 1280,
-  saveToPhotos: false,
+  saveToPhotos: true,
   includeBase64: false,
 };
 
@@ -67,14 +68,14 @@ const CareScanScreen: React.FC = () => {
   const [candidates, setCandidates] = useState<CareProduct[] | null>(null);
   const [logged, setLogged] = useState<CareLogResponse | null>(null);
 
-  const handleCapture = useCallback(() => {
+  const handleCapture = useCallback(async () => {
     setCandidates(null);
     setLogged(null);
     if (!imagePicker?.launchCamera) {
       Alert.alert('Chưa mở được máy ảnh', 'Bản app này chưa mở được máy ảnh. Vui lòng cập nhật app rồi thử lại.');
       return;
     }
-    imagePicker.launchCamera(CAMERA_OPTIONS, (response: any) => {
+    imagePicker.launchCamera(await withPhotoSave(CAMERA_OPTIONS), (response: any) => {
       if (response.didCancel) return;
       if (response.errorCode) {
         Alert.alert('Lỗi camera', response.errorMessage ?? 'Không thể mở camera. Kiểm tra quyền trong Cài đặt.');

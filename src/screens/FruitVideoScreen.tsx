@@ -43,6 +43,7 @@ import {
   getVideoQueueCount,
   getNeedsManualCount,
 } from '../services/videoUploadQueue';
+import { withPhotoSave } from '../services/mediaSavePermission';
 
 // image-picker nạp mềm (giống AnimalEnroll) — máy chưa cài thì báo rõ, không crash.
 const imagePicker = (() => {
@@ -53,7 +54,7 @@ const VIDEO_OPTIONS = {
   mediaType: 'video' as const,
   videoQuality: 'high' as const,
   durationLimit: 20,          // ≤ 20s (spec) — clip ngắn, dung-lượng vừa
-  saveToPhotos: false,
+  saveToPhotos: true,
 };
 
 type ParamList = { FruitVideo: { treeId?: string; treeName?: string; farmId?: string } };
@@ -168,12 +169,12 @@ const FruitVideoScreen: React.FC = () => {
   const selectedTree = trees.find(t => t.tree_id === selectedTreeId);
 
   // ── Quay video ────────────────────────────────────────────────────────────
-  const handleRecord = useCallback(() => {
+  const handleRecord = useCallback(async () => {
     if (!imagePicker?.launchCamera) {
       Alert.alert('Chưa mở được máy ảnh', 'Bản app này chưa mở được máy ảnh. Vui lòng cập nhật app rồi thử lại.');
       return;
     }
-    imagePicker.launchCamera(VIDEO_OPTIONS, (response: any) => {
+    imagePicker.launchCamera(await withPhotoSave(VIDEO_OPTIONS), (response: any) => {
       if (response.didCancel) return;
       if (response.errorCode) {
         Alert.alert('Lỗi camera', response.errorMessage ?? 'Không mở được camera. Kiểm tra quyền.');
@@ -225,6 +226,20 @@ const FruitVideoScreen: React.FC = () => {
             + 'Hãy tới nơi sóng tốt để gửi bớt.',
         );
       }
+      // GHI XUỐNG ĐĨA HỎNG (máy hết dung lượng) → hàng đợi thật sự rỗng, sẽ không có
+      // lần gửi nào. Dừng TẠI ĐÂY: không xoá nháp, không chạy tiếp xuống nhánh suy
+      // "không còn trong hàng ⇒ đã gửi xong" — nhánh đó sẽ hiện "Đã lưu video" cho
+      // một clip chưa bao giờ rời máy, mà nháp thì đã xoá mất.
+      if (!enq.persisted) {
+        setUploading(false);
+        Alert.alert(
+          'Máy hết dung lượng',
+          'Không ghi được clip vào hàng đợi nên chưa gửi đi được. Clip vẫn còn trong '
+            + 'máy — hãy xoá bớt ảnh/video cũ rồi bấm gửi lại.',
+        );
+        return;
+      }
+
       // Nháp đã bàn giao cho hàng đợi (cửa duy nhất giữ độ bền) → xoá nháp màn.
       clearFruitVideoDraft(draftOwner);
 
@@ -249,7 +264,9 @@ const FruitVideoScreen: React.FC = () => {
           event_id: proof?.eventId,
           n_fruits_max: proof?.nFruitsMax,
           n_frames: proof?.nFrames,
-          stored: proof?.stored ?? true,
+          // KHÔNG `?? true`: sổ bằng chứng để `undefined` đúng khi máy chủ im lặng.
+          // Bịa `true` ở đây là vẽ dấu tích "đã lưu" cho cái chưa ai xác nhận.
+          stored: proof?.stored,
         });
       } else {
         // Còn trong hàng: mạng yếu / offline / stored=false → sẽ tự gửi lại.

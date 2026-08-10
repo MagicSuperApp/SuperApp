@@ -144,7 +144,11 @@ export async function uploadTreeVideo(
           rejected: body?.rejected ?? [],
           added: false,
           reason: body?.reason ?? 'no_usable_frames',
-          stored: body?.stored ?? true,
+          // KHÔNG `?? true`. Đây đúng là nhánh "prod cũ" mà chú thích trên nói tới —
+          // máy chủ cũ không trả `stored`, mà mặc định `true` thì app ghi vĩnh viễn
+          // một dòng `stored:true` vào sổ chỉ-ghi-thêm cho một CID có thể là
+          // `local_<sha16>_…` giả, rồi hiện "Đã lưu video cây". Im lặng ≠ đã lưu.
+          stored: body?.stored,
           video_cid: body?.video_cid,
           event_id: body?.event_id,
           engine_verified: body?.engine_verified ?? false,

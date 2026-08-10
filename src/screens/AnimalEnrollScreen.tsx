@@ -41,6 +41,7 @@ import {
   enrollAnimal,
   type AnimalEnrollResponse,
 } from '../services/animalReIDService';
+import { withPhotoSave } from '../services/mediaSavePermission';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -58,7 +59,7 @@ const CAMERA_OPTIONS = {
   quality: 0.85,
   maxWidth: 1280,
   maxHeight: 1280,
-  saveToPhotos: false,
+  saveToPhotos: true,
   includeBase64: false,
 };
 
@@ -123,7 +124,7 @@ const AnimalEnrollScreen: React.FC = () => {
   const canEnroll = !isEnrolling && !enrollResult && photos.length >= MIN_PHOTOS;
 
   // ── Chụp ảnh ──────────────────────────────────────────────────────────────
-  const handleCapture = useCallback(() => {
+  const handleCapture = useCallback(async () => {
     if (!canAddMore) return;
 
     if (!imagePicker?.launchCamera) {
@@ -134,7 +135,7 @@ const AnimalEnrollScreen: React.FC = () => {
       return;
     }
 
-    imagePicker.launchCamera(CAMERA_OPTIONS, (response: any) => {
+    imagePicker.launchCamera(await withPhotoSave(CAMERA_OPTIONS), (response: any) => {
       if (response.didCancel) return;
       if (response.errorCode) {
         Alert.alert(

@@ -31,6 +31,7 @@ import {
   type PoolSummary,
   type DelegationStatus,
 } from '../poolService';
+import { fmtAda } from '../../../utils/token';
 
 const PoolHomeScreen: React.FC = () => {
   const [pools, setPools] = useState<PoolSummary[]>([]);
@@ -42,12 +43,14 @@ const PoolHomeScreen: React.FC = () => {
     setLoading(true);
     setErrStatus(null);
     try {
-      const [poolRes, delRes] = await Promise.all([
-        listPools(),
-        getDelegationStatus().catch(() => null), // trạng thái uỷ quyền best-effort
-      ]);
+      // Trạng thái uỷ quyền đánh theo ĐỊA CHỈ STAKE. Địa chỉ đó phải derive từ khoá
+      // trong Keystore (`stakingService.deriveStakeAddress`) — màn này chưa nối ví nên
+      // chưa có. Gọi rỗng như trước là chắc chắn trả `null`, tức banner "Đang uỷ quyền"
+      // KHÔNG BAO GIỜ hiện dù người dùng đang uỷ quyền thật. Nay không gọi nữa và
+      // KHÔNG vờ như đã hỏi; nối vào cùng lúc nối ví ký (`delegateToPool`).
+      const poolRes = await listPools();
       setPools(poolRes.pools ?? []);
-      setDelegation(delRes);
+      setDelegation(null);
     } catch (e) {
       // network → offline; auth/server → error (thông điệp thân thiện, không lộ kỹ thuật).
       const kind = e instanceof PoolApiError ? e.kind : 'server';
@@ -100,7 +103,10 @@ const PoolHomeScreen: React.FC = () => {
               label="Bão hoà"
               value={item.saturation != null ? `${Math.round(item.saturation * 100)}%` : '—'}
             />
-            <Metric label="Phí" value={item.margin != null ? `${item.margin}%` : '—'} />
+            <Metric
+              label="Phí"
+              value={item.margin != null ? `${item.margin.toFixed(1)}%` : '—'}
+            />
           </View>
 
           <TouchableOpacity
@@ -130,7 +136,7 @@ const PoolHomeScreen: React.FC = () => {
         <View style={styles.banner}>
           <Icon name="lightning-bolt" size={18} color={COLORS.accent} />
           <Text style={styles.bannerTxt}>
-            Đang uỷ quyền · Thưởng khả dụng: {delegation.available_rewards ?? '0'}
+            Đang uỷ quyền · Thưởng khả dụng: {fmtAda(delegation.available_rewards)}
           </Text>
         </View>
       ) : null}

@@ -5,7 +5,16 @@ module.exports = {
   // MỌI native module (lottie/firebase/…); giá trị chỉ là "không crash khi import", mà
   // `tsc --noEmit` (0 lỗi) đã bảo đảm mọi import/typing wire đúng. Tạm loại khỏi gate;
   // bật lại khi dựng đủ harness native. KHÔNG che lỗi app (447 unit test vẫn chạy đủ).
-  testPathIgnorePatterns: ['/node_modules/', '__tests__/App.test.tsx'],
+  // `Legacy/` = mã/tài-liệu ĐÃ VỀ HƯU (xem Legacy/README.md). Đo được: trước khi
+  // dọn, jest chạy 7 bộ test của `MobileCore/` — cây vendored có repo + CI RIÊNG,
+  // 0 importer trong `src/`. Tức bản sao cũ vẫn gác cổng của SuperApp, và nếu repo
+  // chủ đổi thì bản ở đây đỏ mà chẳng ai sửa được ở kho này. Đã loại, khớp với
+  // `tsconfig.json` cũng loại `Legacy`.
+  //
+  // `.claude/` = git worktree phụ do công cụ tạo (`.claude/worktrees/*`). Không
+  // loại thì jest quét cả chúng và CHẠY LẶP toàn bộ bộ test — đo được 3.020 test
+  // thay vì 755, kèm lỗi của cây phụ báo lẫn vào cây chính.
+  testPathIgnorePatterns: ['/node_modules/', '__tests__/App.test.tsx', '/Legacy/', '/\\.claude/'],
   // RN preset chỉ transform react-native + @react-native*. Các gói RN khác phát-hành
   // ESM thuần (@react-navigation, react-native-*, redux ESM…) → Jest gặp `export` sẽ
   // ném "Unexpected token 'export'" và cả suite chết (App.test.tsx). Nới allowlist để

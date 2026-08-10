@@ -29,10 +29,33 @@ export interface CareMatchResponse {
 
 export interface CareLogResponse {
   ok: boolean;
-  safe?: boolean;
+  /**
+   * BA giá-trị, không phải hai (OriLife `care.py:443-451`):
+   *   `false` → đang trong thời-gian cách-ly
+   *   `null`  → CHƯA XÁC ĐỊNH (không tra được thời-gian cách-ly của thuốc đã dùng)
+   *   `true`  → an-toàn
+   * `null` KHÔNG phải an-toàn. Trường vắng mặt cũng xử như `null`.
+   * Cấm `safe ?? true` và `safe !== false` — cả hai đẩy `null` sang nhánh an-toàn.
+   */
+  safe?: boolean | null;
+  /** Chỉ có khi tra được thuốc. `safe === false` vẫn có thể thiếu trường này. */
   blocked_until?: string;
   events?: unknown[];
   products?: CareProduct[];
+}
+
+export type SafeState = 'blocked' | 'unknown' | 'safe';
+
+/**
+ * Ép cờ `safe` BA giá-trị về ba nhánh tường-minh.
+ * Dùng hàm này ở MỌI nơi đọc `safe` — đừng viết lại điều-kiện tại chỗ, vì
+ * `safe ?? true` và `safe !== false` đều lặng lẽ đẩy `null` sang "an-toàn".
+ * Vắng mặt (`undefined`) xử như `null`: CHƯA XÁC ĐỊNH.
+ */
+export function safeStateOf(safe: boolean | null | undefined): SafeState {
+  if (safe === false) return 'blocked';
+  if (safe === true) return 'safe';
+  return 'unknown';
 }
 
 export interface CareProductsResponse {

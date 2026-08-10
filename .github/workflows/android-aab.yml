@@ -18,7 +18,10 @@ jobs:
   verify:
     name: Verify (tsc + jest)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Hạ 20 → 12: suite chạy thật mất ~1 phút. Trần 20 phút chỉ có tác dụng KÉO DÀI thời
+    # gian một job đã treo, và mỗi lần treo lại tốn đúng 20 phút runner. 12 phút vẫn dư
+    # gấp nhiều lần cho tsc + jest + npm install, mà hỏng thì biết sớm.
+    timeout-minutes: 12
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -35,8 +38,24 @@ jobs:
       - name: Typecheck (tsc --noEmit)
         run: npx tsc --noEmit -p tsconfig.json
 
+      # Vì sao cả cụm cờ này: 06–10/08 job verify chết 3 lần liên tiếp mà KHÔNG ai thấy.
+      # Cơ chế: một `Animated.loop` không được dọn giữ vòng lặp timer sống SAU khi 39 suite
+      # đã in đủ PASS/FAIL → heap phình tới `FATAL ERROR: Reached heap limit` → tiến trình
+      # treo tới `timeout-minutes` → GitHub gắn nhãn `cancelled`. Nhãn đó ĐỌC NHƯ "có người
+      # bấm huỷ" chứ không như "hỏng", nên cổng chết âm thầm 5 ngày liền.
+      #   • max-old-space-size=4096 — runner ít RAM hơn máy dev nhiều. Cấp trần rõ ràng để
+      #     hết bộ nhớ thì chết NGAY và ĐỎ, đừng bò dần tới lúc treo.
+      #   • --maxWorkers=2 — runner chỉ 2 lõi; jest mặc định sinh nhiều worker hơn, mỗi
+      #     worker một heap riêng, cộng lại vượt RAM runner.
+      #   • timeout 600 — chốt chặn ĐỔI NHÃN: treo thì `timeout` trả mã 124 ⇒ BƯỚC đỏ, thay
+      #     vì để job chạm trần thời gian rồi bị gắn nhãn `cancelled` mập mờ.
+      # KHÔNG dùng `--forceExit`: nó chỉ giết tiến trình sau khi test chạy xong, tức là CHE
+      # đúng loại rò handle vừa gây ra sự cố này chứ không sửa. Rò thật phải để nó lộ ra.
+      # Nhánh này RA PLAY STORE — cổng ở đây im lặng là bản hỏng tới tay người dùng.
       - name: Unit tests (jest)
-        run: npx jest --ci
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: timeout 600 npx jest --ci --maxWorkers=2
 
   build-aab:
     name: Build signed AAB for Play Store

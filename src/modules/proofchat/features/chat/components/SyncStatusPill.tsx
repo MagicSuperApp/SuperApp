@@ -15,19 +15,22 @@ const SyncStatusPill: React.FC<Props> = ({ state }) => {
   const spin = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    if (state.syncing) {
-      Animated.loop(
-        Animated.timing(spin, {
-          toValue: 1,
-          duration: 1200,
-          useNativeDriver: true,
-        }),
-      ).start();
-    } else {
+    if (!state.syncing) {
       spin.stopAnimation();
       spin.setValue(0);
+      return;
     }
-  }, [state.syncing]);
+    // Loop vô hạn — tháo pill (hoặc ngừng đồng bộ) mà không `stop()` thì nó quay mãi.
+    const loop = Animated.loop(
+      Animated.timing(spin, {
+        toValue: 1,
+        duration: 1200,
+        useNativeDriver: true,
+      }),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [state.syncing, spin]);
 
   if (!state.online) {
     return (

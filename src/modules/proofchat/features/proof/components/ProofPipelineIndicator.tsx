@@ -35,7 +35,8 @@ const ProofPipelineIndicator: React.FC<Props> = ({ stage, isMine }) => {
       duration: 220,
       useNativeDriver: true,
     }).start();
-    Animated.loop(
+    // Loop vô hạn — tháo indicator mà không `stop()` thì nhịp đập vẫn chạy ngầm mãi.
+    const pulseLoop = Animated.loop(
       Animated.sequence([
         Animated.timing(pulse, {
           toValue: 1,
@@ -48,7 +49,9 @@ const ProofPipelineIndicator: React.FC<Props> = ({ stage, isMine }) => {
           useNativeDriver: true,
         }),
       ]),
-    ).start();
+    );
+    pulseLoop.start();
+    return () => pulseLoop.stop();
   }, [stage]);
 
   const icon = STAGE_ICON[stage] ?? 'progress-clock';

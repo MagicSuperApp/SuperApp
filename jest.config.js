@@ -5,7 +5,12 @@ module.exports = {
   // MỌI native module (lottie/firebase/…); giá trị chỉ là "không crash khi import", mà
   // `tsc --noEmit` (0 lỗi) đã bảo đảm mọi import/typing wire đúng. Tạm loại khỏi gate;
   // bật lại khi dựng đủ harness native. KHÔNG che lỗi app (447 unit test vẫn chạy đủ).
-  testPathIgnorePatterns: ['/node_modules/', '__tests__/App.test.tsx'],
+  // `.claude/worktrees/*` là BẢN SAO NGUYÊN REPO của agent. Không loại thì jest vừa chạy
+  // trùng mọi suite vừa để haste-map bò hết các bản sao (cảnh báo "duplicate manual mock"),
+  // ngốn bộ nhớ vô ích. Loại ở đây để lệnh `npx jest` trần cũng sạch, không phải nhớ cờ.
+  testPathIgnorePatterns: ['/node_modules/', '__tests__/App.test.tsx', '/\\.claude/'],
+  // testPathIgnorePatterns chỉ chặn CHẠY, không chặn haste-map BÒ. Cần thêm dòng này.
+  modulePathIgnorePatterns: ['/\\.claude/'],
   // RN preset chỉ transform react-native + @react-native*. Các gói RN khác phát-hành
   // ESM thuần (@react-navigation, react-native-*, redux ESM…) → Jest gặp `export` sẽ
   // ném "Unexpected token 'export'" và cả suite chết (App.test.tsx). Nới allowlist để

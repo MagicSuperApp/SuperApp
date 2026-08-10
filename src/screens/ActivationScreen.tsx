@@ -29,23 +29,28 @@ const QRFrame = ({ scanning }: { scanning: boolean }) => {
   const cornerSize = 22;
 
   useEffect(() => {
-    if (scanning) {
+    if (!scanning) {
+      scanAnim.stopAnimation();
+      glowAnim.stopAnimation();
+      return;
+    }
+    // Loop vô hạn — rời màn giữa lúc quét mà không `stop()` thì hai vòng quay ngầm mãi.
+    const loops = [
       Animated.loop(
         Animated.timing(scanAnim, {
           toValue: 1, duration: 2000, useNativeDriver: true,
         })
-      ).start();
+      ),
       Animated.loop(
         Animated.sequence([
           Animated.timing(glowAnim, { toValue: 1, duration: 1000, useNativeDriver: false }),
           Animated.timing(glowAnim, { toValue: 0, duration: 1000, useNativeDriver: false }),
         ])
-      ).start();
-    } else {
-      scanAnim.stopAnimation();
-      glowAnim.stopAnimation();
-    }
-  }, [scanning]);
+      ),
+    ];
+    loops.forEach((l) => l.start());
+    return () => loops.forEach((l) => l.stop());
+  }, [scanning, scanAnim, glowAnim]);
 
   const scanLineY = scanAnim.interpolate({
     inputRange: [0, 1],

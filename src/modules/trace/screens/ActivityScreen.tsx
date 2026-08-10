@@ -105,21 +105,26 @@ const LampNetSyncModal = ({
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    if (visible) {
+    if (!visible) {
+      spinAnim.stopAnimation();
+      pulseAnim.stopAnimation();
+      return;
+    }
+    // Loop vô hạn — tháo overlay mà không `stop()` thì hai vòng này quay ngầm mãi.
+    const loops = [
       Animated.loop(
         Animated.timing(spinAnim, { toValue: 1, duration: 2600, useNativeDriver: true })
-      ).start();
+      ),
       Animated.loop(
         Animated.sequence([
           Animated.timing(pulseAnim, { toValue: 1.08, duration: 900, useNativeDriver: true }),
           Animated.timing(pulseAnim, { toValue: 1, duration: 900, useNativeDriver: true }),
         ])
-      ).start();
-    } else {
-      spinAnim.stopAnimation();
-      pulseAnim.stopAnimation();
-    }
-  }, [visible]);
+      ),
+    ];
+    loops.forEach((l) => l.start());
+    return () => loops.forEach((l) => l.stop());
+  }, [visible, spinAnim, pulseAnim]);
 
   const rotate = spinAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
   const isDone = currentStatus === 'Hoàn tất!';

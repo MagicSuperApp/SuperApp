@@ -70,13 +70,21 @@ function collectText(node: any, out: string[] = []): string[] {
   return out;
 }
 
+// Vẽ xong PHẢI tháo cây (`unmount`). Không tháo thì `useEffect` cleanup của màn không
+// bao giờ chạy → `Animated.loop` vô hạn trong LoginScreen/SignUpBiometricScreen cứ quay
+// tiếp sau khi test xong, giữ tiến trình jest sống và ăn heap tới lúc OOM (đúng lỗi đã
+// giết cổng CI 5 ngày liền). Đọc chữ trước, tháo sau.
 function renderInJa(Screen: React.ComponentType<any>): string[] {
   let tree: renderer.ReactTestRenderer;
   act(() => {
     setLanguage('ja');
     tree = renderer.create(<Screen />);
   });
-  return collectText(tree!.toJSON());
+  const texts = collectText(tree!.toJSON());
+  act(() => {
+    tree!.unmount();
+  });
+  return texts;
 }
 
 afterEach(() => {

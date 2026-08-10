@@ -127,17 +127,22 @@ const probeOne = async (cap: GateCapability): Promise<void> => {
     setLive(cap, false);
     return;
   }
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS);
   try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS);
     const res = await fetch(url, { method: 'GET', signal: ctrl.signal });
-    clearTimeout(timer);
     // CHỈ 2xx = live. 502/503/504 (host chưa cấp), 404 (route chưa deploy), 5xx
     // đều → mock (không kích hoạt nhầm vào backend chưa sẵn).
     setLive(cap, res.ok);
   } catch {
     // Abort/timeout/mạng lỗi → mock (an toàn, không đoán live).
     setLive(cap, false);
+  } finally {
+    // PHẢI `finally`: trước đây `clearTimeout` nằm trên đường THÀNH CÔNG, nên hễ fetch
+    // ném (mất sóng, host chết, abort) là bỏ lại một timer treo suốt PROBE_TIMEOUT_MS.
+    // Probe chạy lúc khởi động VÀ mỗi lần app trở lại foreground → máy sóng yếu rò một
+    // timer mỗi lần. Đây cũng chính là handle cuối còn giữ jest không thoát được.
+    clearTimeout(timer);
   }
 };
 

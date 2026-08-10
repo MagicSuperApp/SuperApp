@@ -74,17 +74,20 @@ const VoiceMemoButton: React.FC<Props> = ({
 
   // Pulse animation while recording (red dot heartbeat).
   useEffect(() => {
-    if (recording) {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, { toValue: 1.4, duration: 600, useNativeDriver: true }),
-          Animated.timing(pulseAnim, { toValue: 1.0, duration: 600, useNativeDriver: true }),
-        ])
-      ).start();
-    } else {
+    if (!recording) {
       pulseAnim.stopAnimation();
       pulseAnim.setValue(1);
+      return;
     }
+    // Loop vô hạn — tháo nút giữa lúc ghi mà không `stop()` thì nhịp đập chạy ngầm mãi.
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1.4, duration: 600, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1.0, duration: 600, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
   }, [recording, pulseAnim]);
 
   // Auto-stop on max + haptic warn at 25s.

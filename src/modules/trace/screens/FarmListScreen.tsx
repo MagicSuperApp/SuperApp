@@ -43,13 +43,16 @@ const MagicCreditBadge = ({ credits }: { credits: number }) => {
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    Animated.loop(
+    // Loop vô hạn — tháo badge mà không `stop()` thì nhịp đập vẫn chạy ngầm mãi.
+    const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, { toValue: 1.06, duration: 1800, useNativeDriver: true }),
         Animated.timing(pulseAnim, { toValue: 1,    duration: 1800, useNativeDriver: true }),
       ])
-    ).start();
-  }, []);
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulseAnim]);
 
   return (
     <Animated.View style={[styles.creditBadge, { transform: [{ scale: pulseAnim }] }]}>

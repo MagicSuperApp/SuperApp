@@ -434,6 +434,7 @@ const TreeEnrollScreen: React.FC = () => {
       setIsEnrolling(true);
       try {
         const res = await verifyAddTree(BASE_URL, treeId, imagePaths, {
+          farmId,
           lat: gps?.lat,
           lon: gps?.lng,
           acc: gps?.accuracy,
@@ -466,7 +467,7 @@ const TreeEnrollScreen: React.FC = () => {
         setIsEnrolling(false);
       }
     },
-    [imagePaths, captureOrientations, gps, dispatch, navigation, draftOwner],
+    [imagePaths, captureOrientations, gps, dispatch, navigation, draftOwner, farmId],
   );
 
   // ── Force enroll (tạo cây mới bất kể trùng) ──────────────────────────────

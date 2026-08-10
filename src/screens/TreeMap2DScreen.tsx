@@ -29,6 +29,7 @@ import {
   type TreeLayoutResponse, type TreeLayoutFruit, type TreeMarker,
   type FruitView, type TreeZone,
 } from '../services/fruitReIDService';
+import RemoteImage from '../components/RemoteImage';
 
 const BASE_URL = ORILIFE_BASE;
 
@@ -348,17 +349,13 @@ const TreeMap2DScreen: React.FC = () => {
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tlRow}>
                 {tlViews.map((v, i) => (
                   <View key={`${v.url ?? 'noimg'}-${i}`} style={styles.tlCard}>
-                    {v.url ? (
-                      <Image
-                        source={{ uri: v.url.startsWith('http') ? v.url : `${BASE_URL}${v.url}` }}
-                        style={styles.tlImg}
-                        resizeMode="cover"
-                      />
-                    ) : (
-                      <View style={[styles.tlImg, styles.tlImgPh]}>
-                        <Icon name="image-off" size={24} color={COLORS.textMuted} />
-                      </View>
-                    )}
+                    <RemoteImage
+                      uri={v.url ? (v.url.startsWith('http') ? v.url : `${BASE_URL}${v.url}`) : null}
+                      style={styles.tlImg}
+                      containerStyle={[styles.tlImg, styles.tlImgPh]}
+                      resizeMode="cover"
+                      placeholder={<Icon name="image-off" size={24} color={COLORS.textMuted} />}
+                    />
                     <Text style={styles.tlDate}>{fmtDate(v.enrolled_at)}</Text>
                   </View>
                 ))}

@@ -13,8 +13,12 @@ export const ACCOUNT: PhraseMap = {
 
   // ── Hồ sơ ──────────────────────────────────────────────────────────────────
   'Người dùng': { en: 'User', zh: '用户', ja: 'ユーザー' },
-  'Chưa có DID': { en: 'No DID yet', zh: '尚无 DID', ja: 'DID がありません' },
-  'DID đã xác minh': { en: 'DID verified', zh: 'DID 已验证', ja: 'DID 確認済み' },
+  // 'Chưa có danh tính' khai ở mục Tổ chức bên dưới — cùng một câu, dùng chung.
+  'Danh tính đã xác minh': {
+    en: 'Identity verified',
+    zh: '身份已验证',
+    ja: '本人確認済み',
+  },
 
   // ── Thẻ token ──────────────────────────────────────────────────────────────
   'Tín dụng sử dụng dịch vụ': { en: 'Service usage credit', zh: '服务使用额度', ja: 'サービス利用クレジット' },
@@ -39,14 +43,18 @@ export const ACCOUNT: PhraseMap = {
   },
   'Ví Phượng Hoàng': { en: 'Phoenix wallet', zh: '凤凰钱包', ja: 'フェニックスウォレット' },
   'Ví Phượng hoàng': { en: 'Phoenix wallet', zh: '凤凰钱包', ja: 'フェニックスウォレット' },
-  'Hệ thống giữ hộ — gắn với DID': {
-    en: 'Held in custody by the system — bound to your DID',
-    zh: '由系统托管 — 与 DID 绑定',
-    ja: 'システムが預かります — DID に紐づけ',
+  'Hệ thống giữ hộ — gắn với danh tính của bạn': {
+    en: 'Held in custody by the system — bound to your identity',
+    zh: '由系统托管 — 与你的身份绑定',
+    ja: 'システムが預かります — あなたの本人情報に紐づけ',
   },
   'Địa chỉ': { en: 'Address', zh: '地址', ja: 'アドレス' },
   'Địa chỉ ví (giữ tài sản)': { en: 'Wallet address (holds assets)', zh: '钱包地址（持有资产）', ja: 'ウォレットアドレス（資産を保有）' },
-  'Khoá điều-khiển (quản-trị DID)': { en: 'Controller key (DID administration)', zh: '控制密钥（DID 管理）', ja: 'コントローラー鍵（DID 管理）' },
+  'Khoá điều khiển (quản trị danh tính)': {
+    en: 'Controller key (identity administration)',
+    zh: '控制密钥（身份管理）',
+    ja: 'コントローラー鍵（本人情報の管理）',
+  },
   'Chuẩn khoá': { en: 'Key standard', zh: '密钥标准', ja: '鍵の規格' },
   'Mạng': { en: 'Network', zh: '网络', ja: 'ネットワーク' },
   'Cardano Preprod (Testnet)': { en: 'Cardano Preprod (Testnet)', zh: 'Cardano Preprod（测试网）', ja: 'Cardano Preprod（テストネット）' },
@@ -84,17 +92,17 @@ export const ACCOUNT: PhraseMap = {
   'Lưu cục bộ khi mất mạng': { en: 'Store locally when the network drops', zh: '断网时保存在本地', ja: '圏外のときは端末に保存' },
 
   // ── Mục Ví ─────────────────────────────────────────────────────────────────
-  'Ví PhoenixKey': { en: 'PhoenixKey wallet', zh: 'PhoenixKey 钱包', ja: 'PhoenixKey ウォレット' },
+  // 'Ví của tôi' khai ở navigation.ts — dùng chung.
   'Số dư ADA/LAMP/MAGIC + địa chỉ Cardano (từ cụm 24 từ)': {
     en: 'ADA/LAMP/MAGIC balance + Cardano address (from the 24-word phrase)',
     zh: 'ADA/LAMP/MAGIC 余额 + Cardano 地址（源自 24 个助记词）',
     ja: 'ADA/LAMP/MAGIC の残高と Cardano アドレス（24 語のフレーズから）',
   },
   'Xuất danh tính': { en: 'Export identity', zh: '导出身份', ja: '本人情報を書き出す' },
-  'Xem/copy DID, khoá công khai, địa chỉ ví': {
-    en: 'View/copy DID, public key, wallet address',
-    zh: '查看/复制 DID、公钥、钱包地址',
-    ja: 'DID・公開鍵・ウォレットアドレスを表示／コピー',
+  'Xem/sao chép mã định danh, khoá công khai, địa chỉ ví': {
+    en: 'View/copy your identifier, public key and wallet address',
+    zh: '查看/复制标识码、公钥、钱包地址',
+    ja: '識別子・公開鍵・ウォレットアドレスを表示/コピー',
   },
   'Đặt tên tra cứu để người khác tìm bạn': {
     en: 'Set a handle so others can find you',
@@ -116,10 +124,10 @@ export const ACCOUNT: PhraseMap = {
 
   // ── Mục Bảo mật ────────────────────────────────────────────────────────────
   'Tái sinh danh tính': { en: 'Identity rebirth', zh: '身份重生', ja: '本人情報の再生' },
-  'Khôi phục DID khi MẤT thiết bị (giữ danh tính cũ)': {
-    en: 'Recover your DID after LOSING the device (keeps the same identity)',
-    zh: '设备丢失后恢复 DID（保留原身份）',
-    ja: '端末を紛失したときに DID を復旧（同じ本人情報のまま）',
+  'Khôi phục khi MẤT thiết bị (giữ nguyên danh tính cũ)': {
+    en: 'Recover after LOSING your device (keeps your original identity)',
+    zh: '设备丢失后恢复（保留原身份）',
+    ja: '端末を紛失したときの復旧（元の本人情報を保持）',
   },
   'Xoay khoá': { en: 'Rotate key', zh: '轮换密钥', ja: '鍵のローテーション' },
   'Thay bộ khoá khi nghi bị lộ (vẫn giữ thiết bị)': {
@@ -165,16 +173,16 @@ export const ACCOUNT: PhraseMap = {
 
   // ── Hộp thoại Tái sinh / Xoay khoá (chuỗi ghép trong mã — khoá là bản ĐẦY ĐỦ) ──
   'Tái sinh danh tính (thử nghiệm)': { en: 'Identity rebirth (experimental)', zh: '身份重生（实验性）', ja: '本人情報の再生（試験機能）' },
-  'Dùng khi bạn MẤT thiết bị hoặc mất khoá. Hệ thống khôi phục lại CHÍNH danh tính (DID) cũ của bạn thông qua người bảo trợ và thời-gian-chờ an toàn — không tạo danh tính mới, không mất liên kết với cây/dữ-liệu đã ghi. Tính năng đang phát triển; nếu bạn mất thiết bị, vui lòng liên hệ đội hỗ trợ.': {
-    en: 'Use this when you have LOST your device or your key. The system restores your ORIGINAL identity (DID) through your guardians and a safe waiting period — no new identity is created, and links to your trees and recorded data are preserved. This feature is under development; if you have lost your device, please contact the support team.',
-    zh: '在设备或密钥丢失时使用。系统会通过您的监护人和安全等待期恢复您原有的身份（DID）——不会创建新身份，也不会丢失与树木/已记录数据的关联。该功能仍在开发中；若设备已丢失，请联系支持团队。',
-    ja: '端末や鍵をなくしたときに使います。ガーディアンと安全な待機期間を通じて、元の本人情報（DID）そのものを復旧します — 新しい本人情報は作られず、樹木や記録済みデータとのつながりも失われません。この機能は開発中です。端末を紛失された場合はサポートチームにご連絡ください。',
+  'Dùng khi bạn MẤT thiết bị hoặc mất khoá. Hệ thống khôi phục lại CHÍNH danh tính cũ của bạn thông qua người bảo trợ và thời gian chờ an toàn — không tạo danh tính mới, không mất liên kết với cây và dữ liệu đã ghi. Tính năng đang phát triển; nếu bạn mất thiết bị, vui lòng liên hệ đội hỗ trợ.': {
+    en: 'Use this when you have LOST your device or your key. The system restores your ORIGINAL identity through your guardians and a safe waiting period — no new identity is created, and links to your trees and recorded data are preserved. This feature is under development; if you have lost your device, please contact the support team.',
+    zh: '在设备或密钥丢失时使用。系统会通过你的监护人和安全等待期恢复你原有的身份——不会创建新身份，也不会丢失与树木和已记录数据的关联。该功能仍在开发中；若设备已丢失，请联系支持团队。',
+    ja: '端末や鍵をなくしたときに使います。保護者と安全な待機期間を通じて、元の本人情報そのものを復旧します — 新しい本人情報は作られず、樹木や記録済みデータとのつながりも失われません。この機能は開発中です。端末を紛失された場合はサポートチームにご連絡ください。',
   },
   'Xoay khoá (thử nghiệm)': { en: 'Key rotation (experimental)', zh: '密钥轮换（实验性）', ja: '鍵のローテーション（試験機能）' },
-  'Dùng khi bạn NGHI khoá bị lộ nhưng vẫn còn giữ thiết bị. Hệ thống thay bộ khoá điều-khiển bằng bộ khoá mới và cập nhật lên Cardano — danh tính (DID) của bạn GIỮ NGUYÊN. Luồng tráo khoá an toàn đang được đội kỹ thuật hoàn thiện để tránh rủi ro mất quyền truy cập nếu lỗi giữa chừng. Vui lòng liên hệ đội hỗ trợ nếu cần gấp.': {
-    en: 'Use this when you SUSPECT your key has leaked but you still hold the device. The system replaces the controller key with a new one and updates it on Cardano — your identity (DID) stays the SAME. The safe key-swap flow is still being finished by the engineering team to avoid losing access if it fails midway. Please contact the support team if this is urgent.',
-    zh: '在怀疑密钥泄露但设备仍在手中时使用。系统会用新的控制密钥替换旧密钥并更新到 Cardano——您的身份（DID）保持不变。安全换密钥流程仍在完善中，以避免中途失败导致失去访问权限。如有紧急需要，请联系支持团队。',
-    ja: '鍵の漏えいが疑われるが端末は手元にある、というときに使います。コントローラー鍵を新しいものに置き換え、Cardano 上を更新します — 本人情報（DID）はそのままです。途中で失敗してアクセスを失う事故を防ぐため、安全な鍵交換の流れは技術チームが仕上げ中です。お急ぎの場合はサポートチームにご連絡ください。',
+  'Dùng khi bạn NGHI khoá bị lộ nhưng vẫn còn giữ thiết bị. Hệ thống thay khoá điều khiển bằng khoá mới và cập nhật lên chuỗi khối — danh tính của bạn GIỮ NGUYÊN. Cách đổi khoá an toàn đang được hoàn thiện để tránh rủi ro mất quyền truy cập nếu lỗi giữa chừng. Vui lòng liên hệ đội hỗ trợ nếu cần gấp.': {
+    en: 'Use this when you SUSPECT your key has leaked but you still hold the device. The system replaces the controller key with a new one and records it on the blockchain — your identity stays the SAME. The safe key-swap flow is still being finished to avoid losing access if it fails midway. Please contact the support team if this is urgent.',
+    zh: '在怀疑密钥泄露但设备仍在手中时使用。系统会用新的控制密钥替换旧密钥并更新到区块链上——你的身份保持不变。安全换密钥流程仍在完善中，以避免中途失败导致失去访问权限。如有紧急需要，请联系支持团队。',
+    ja: '鍵の漏えいが疑われるが端末は手元にある、というときに使います。コントローラー鍵を新しいものに置き換え、ブロックチェーン上に記録します — 本人情報はそのままです。途中で失敗してアクセスを失う事故を防ぐため、安全な鍵交換の流れは仕上げ中です。お急ぎの場合はサポートチームにご連絡ください。',
   },
 
   // ── Sinh trắc học ──────────────────────────────────────────────────────────
@@ -194,7 +202,11 @@ export const ACCOUNT: PhraseMap = {
   'Khuôn mặt': { en: 'Face', zh: '面容', ja: '顔' },
 
   // ── Xuất danh tính ─────────────────────────────────────────────────────────
-  'Khoá công khai (HW · P-256)': { en: 'Public key (HW · P-256)', zh: '公钥（硬件 · P-256）', ja: '公開鍵（ハードウェア · P-256）' },
+  'Khoá công khai (giữ trong máy)': {
+    en: 'Public key (kept on this device)',
+    zh: '公钥（保存在本机）',
+    ja: '公開鍵（この端末に保管）',
+  },
   'Khoá HW': { en: 'HW key', zh: '硬件密钥', ja: 'ハードウェア鍵' },
   'Khoá công khai TAAD (Ed25519)': { en: 'TAAD public key (Ed25519)', zh: 'TAAD 公钥（Ed25519）', ja: 'TAAD 公開鍵（Ed25519）' },
   'Khoá TAAD': { en: 'TAAD key', zh: 'TAAD 密钥', ja: 'TAAD 鍵' },
@@ -222,10 +234,10 @@ export const ACCOUNT: PhraseMap = {
     ja: 'しばらくしてからお試しください（アプリの更新とサーバー側の対応が必要です）。',
   },
   'Xoay khoá bảo mật': { en: 'Rotate the security key', zh: '轮换安全密钥', ja: 'セキュリティ鍵をローテーション' },
-  'Sinh khoá mới thay khoá hiện tại (nghi lộ/định kỳ). Cần xác nhận sinh trắc bằng khoá cũ. Danh tính (DID) không đổi.': {
-    en: 'Generate a new key to replace the current one (suspected leak or routine rotation). Requires biometric confirmation with the old key. Your identity (DID) does not change.',
-    zh: '生成新密钥替换当前密钥（怀疑泄露或定期轮换）。需用旧密钥进行生物识别确认。身份（DID）不变。',
-    ja: '現在の鍵を新しい鍵に置き換えます（漏えいの疑い、または定期的な交換）。古い鍵での生体認証が必要です。本人情報（DID）は変わりません。',
+  'Sinh khoá mới thay khoá hiện tại (nghi lộ hoặc định kỳ). Cần xác nhận sinh trắc bằng khoá cũ. Danh tính của bạn không đổi.': {
+    en: 'Generate a new key to replace the current one (suspected leak or routine rotation). Requires biometric confirmation with the old key. Your identity does not change.',
+    zh: '生成新密钥替换当前密钥（怀疑泄露或定期轮换）。需用旧密钥进行生物识别确认。你的身份不变。',
+    ja: '現在の鍵を新しい鍵に置き換えます（漏えいの疑い、または定期的な交換）。古い鍵での生体認証が必要です。本人情報は変わりません。',
   },
   'Đã xoay khoá': { en: 'Key rotated', zh: '密钥已轮换', ja: '鍵をローテーションしました' },
   'Xoay khoá thất bại': { en: 'Key rotation failed', zh: '密钥轮换失败', ja: '鍵のローテーションに失敗しました' },
@@ -255,8 +267,16 @@ export const ACCOUNT: PhraseMap = {
   'Đặt username thất bại.': { en: 'Failed to set the username.', zh: '设置用户名失败。', ja: 'ユーザー名の設定に失敗しました。' },
 
   // ── Guardian ───────────────────────────────────────────────────────────────
-  'DID chưa đúng': { en: 'Invalid DID', zh: 'DID 不正确', ja: 'DID が正しくありません' },
-  'Nhập DID guardian dạng did:phoenix.': { en: 'Enter a guardian DID in the did:phoenix form.', zh: '请输入 did:phoenix 格式的监护人 DID。', ja: 'did:phoenix 形式のガーディアン DID を入力してください。' },
+  'Mã định danh chưa đúng': {
+    en: 'Invalid identifier',
+    zh: '标识码不正确',
+    ja: '識別子が正しくありません',
+  },
+  'Nhập mã định danh của người giám hộ.': {
+    en: 'Enter the guardian’s identifier.',
+    zh: '请输入监护人的标识码。',
+    ja: '保護者の識別子を入力してください。',
+  },
   'Thiếu tên': { en: 'Name missing', zh: '缺少名称', ja: '名前が未入力です' },
   'Nhập tên hiển thị cho guardian.': { en: 'Enter a display name for the guardian.', zh: '请输入监护人的显示名称。', ja: 'ガーディアンの表示名を入力してください。' },
   'Guardian này đã trong danh sách.': { en: 'This guardian is already on the list.', zh: '该监护人已在列表中。', ja: 'このガーディアンはすでに登録されています。' },
@@ -293,10 +313,10 @@ export const ACCOUNT: PhraseMap = {
     zh: '无法加载签名请求（已过期或网络错误）。',
     ja: '署名リクエストを読み込めません（期限切れまたは通信エラー）。',
   },
-  'Không tìm thấy khoá — hãy đăng nhập PhoenixKey.': {
-    en: 'Key not found — please sign in with PhoenixKey.',
-    zh: '未找到密钥 — 请使用 PhoenixKey 登录。',
-    ja: '鍵が見つかりません — PhoenixKey でログインしてください。',
+  'Không tìm thấy khoá — hãy đăng nhập lại.': {
+    en: 'Key not found — please sign in again.',
+    zh: '未找到密钥 — 请重新登录。',
+    ja: '鍵が見つかりません — もう一度ログインしてください。',
   },
 
   // ── Đăng nhập web ──────────────────────────────────────────────────────────
@@ -332,8 +352,16 @@ export const ACCOUNT: PhraseMap = {
     ja: 'もう一度ご確認ください：ちょうど 24 語、綴りが正しいこと、順序が正しいこと（英語の小文字）。',
   },
   'Không khôi phục được từ cụm từ này.': { en: 'Could not restore from this phrase.', zh: '无法用此助记词恢复。', ja: 'このフレーズでは復旧できません。' },
-  'Máy mới — cần nhập DID': { en: 'New device — enter your DID', zh: '新设备 — 需输入 DID', ja: '新しい端末です — DID の入力が必要です' },
-  'DID không khớp cụm từ': { en: 'DID does not match the phrase', zh: 'DID 与助记词不匹配', ja: 'DID がフレーズと一致しません' },
+  'Máy mới — cần nhập mã định danh': {
+    en: 'New device — enter your identifier',
+    zh: '新设备 — 需输入标识码',
+    ja: '新しい端末です — 識別子の入力が必要です',
+  },
+  'Mã định danh không khớp cụm từ': {
+    en: 'Identifier does not match the phrase',
+    zh: '标识码与助记词不匹配',
+    ja: '識別子がフレーズと一致しません',
+  },
   'Không tìm thấy tài khoản khớp': { en: 'No matching account found', zh: '未找到匹配的账户', ja: '一致するアカウントが見つかりません' },
   'Đã khôi phục & đăng nhập': { en: 'Restored and signed in', zh: '已恢复并登录', ja: '復旧してログインしました' },
   'Nhận diện danh tính từ cụm 24 từ và đăng nhập thành công.': {
@@ -365,9 +393,17 @@ export const ACCOUNT: PhraseMap = {
     ja: '組織を作成する前に本人情報を有効化してください。',
   },
   'Thiếu danh tính': { en: 'Identity missing', zh: '缺少身份', ja: '本人情報がありません' },
-  'Máy này chưa có DID.': { en: 'This device has no DID.', zh: '本机尚无 DID。', ja: 'この端末にはまだ DID がありません。' },
+  'Máy này chưa có danh tính.': {
+    en: 'This device has no identity yet.',
+    zh: '本机尚无身份。',
+    ja: 'この端末にはまだ本人情報がありません。',
+  },
   'Nhập tên tổ chức.': { en: 'Enter the organisation name.', zh: '请输入组织名称。', ja: '組織名を入力してください。' },
-  'Thiếu OrgDID': { en: 'OrgDID missing', zh: '缺少 OrgDID', ja: 'OrgDID がありません' },
+  'Thiếu mã định danh tổ chức': {
+    en: 'Organisation identifier missing',
+    zh: '缺少组织标识码',
+    ja: '組織の識別子がありません',
+  },
   'Nhập OrgDID cần nâng quyền.': { en: 'Enter the OrgDID to upgrade.', zh: '请输入需要提权的 OrgDID。', ja: '権限を引き上げる OrgDID を入力してください。' },
   'Thiếu thành viên': { en: 'Members missing', zh: '缺少成员', ja: 'メンバーがいません' },
   'Cần ≥ 1 đồng-sáng-lập/thành-viên khác.': { en: 'At least 1 other co-founder/member is required.', zh: '至少需要 1 位其他联合创始人/成员。', ja: '他の共同創設者／メンバーが 1 名以上必要です。' },
@@ -381,7 +417,11 @@ export const ACCOUNT: PhraseMap = {
   'Tạo m/n': { en: 'Create m/n', zh: '创建 m/n', ja: 'm/n を作成' },
   'Nâng quyền': { en: 'Upgrade', zh: '提权', ja: '権限を引き上げる' },
   'Ký duyệt': { en: 'Sign approval', zh: '签名批准', ja: '承認に署名' },
-  'DID + chữ ký': { en: 'DID + signature', zh: 'DID + 签名', ja: 'DID + 署名' },
+  'Mã định danh + chữ ký': {
+    en: 'Identifier + signature',
+    zh: '标识码 + 签名',
+    ja: '識別子 + 署名',
+  },
   'chủ hiện tại': { en: 'current owner', zh: '当前所有者', ja: '現在の所有者' },
   '(chưa có)': { en: '(none)', zh: '（暂无）', ja: '（なし）' },
   'Thành viên MỚI': { en: 'NEW member', zh: '新成员', ja: '新しいメンバー' },
@@ -408,9 +448,9 @@ export const ACCOUNT: PhraseMap = {
     zh: '本机尚无钱包，请先创建或恢复。',
     ja: 'この端末にはまだウォレットがありません。先に作成または復旧してください。',
   },
-  'do hệ thống giữ hộ theo DID — dùng cho kích hoạt và dịch vụ.': {
-    en: 'held for you by the system against your DID — used for activation and services.',
-    zh: '由系统按你的 DID 代为保管 — 用于激活和各项服务。',
-    ja: 'DID に紐づけてシステムが預かっています — 有効化とサービスに使われます。',
+  'do hệ thống giữ hộ theo danh tính của bạn — dùng cho kích hoạt và dịch vụ.': {
+    en: 'held for you by the system against your identity — used for activation and services.',
+    zh: '由系统按你的身份代为保管 — 用于激活和各项服务。',
+    ja: 'あなたの本人情報に紐づけてシステムが預かっています — 有効化とサービスに使われます。',
   },
 };

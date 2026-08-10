@@ -97,7 +97,7 @@ const TreeVideoScreen: React.FC = () => {
   // ── Quay video ────────────────────────────────────────────────────────────
   const handleRecord = useCallback(async () => {
     if (!imagePicker?.launchCamera) {
-      Alert.alert('Chưa cài camera', 'Cần cập nhật app (react-native-image-picker).');
+      Alert.alert('Chưa mở được máy ảnh', 'Bản app này chưa mở được máy ảnh. Vui lòng cập nhật app rồi thử lại.');
       return;
     }
     imagePicker.launchCamera(await withPhotoSave(VIDEO_OPTIONS), (response: any) => {

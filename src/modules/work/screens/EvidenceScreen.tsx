@@ -100,7 +100,7 @@ const EvidenceScreen: React.FC = () => {
             style={[styles.input, { flex: 1 }]}
             value={content}
             onChangeText={setContent}
-            placeholder={type === 'link' ? 'https://… (ảnh/clip/CID)' : 'Mô tả việc đã làm'}
+            placeholder={type === 'link' ? 'https://… (đường dẫn ảnh hoặc clip)' : 'Mô tả việc đã làm'}
             placeholderTextColor={COLORS.textMuted}
             autoCapitalize="none"
           />

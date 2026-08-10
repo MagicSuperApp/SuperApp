@@ -127,8 +127,8 @@ const AnimalIdentityScreen: React.FC = () => {
       // Fallback: react-native-image-picker chưa cài
       // npm install react-native-image-picker && npx pod-install
       Alert.alert(
-        'Chưa cài camera picker',
-        'Cần cài react-native-image-picker.\nnpm install react-native-image-picker',
+        'Chưa mở được máy ảnh',
+        'Bản app này chưa mở được máy ảnh. Vui lòng cập nhật app rồi thử lại.',
       );
       return;
     }
@@ -230,7 +230,7 @@ const AnimalIdentityScreen: React.FC = () => {
               )}
               {animal_did && (
                 <Text style={styles.matchDid} numberOfLines={1}>
-                  DID: {animal_did}
+                  Mã định danh: {animal_did}
                 </Text>
               )}
               <View style={styles.actionRow}>

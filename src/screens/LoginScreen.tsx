@@ -257,9 +257,9 @@ const LoginScreen = () => {
         const user = await phoenixKeyAuth.unlockExistingIdentity();
         result = user
           ? { success: true, user, message: '' }
-          : { success: false, user: null, message: 'Chưa có danh tính PhoenixKey' };
+          : { success: false, user: null, message: 'Chưa có danh tính' };
       } else {
-        result = { success: false, user: null, message: 'PhoenixKey không khả dụng' };
+        result = { success: false, user: null, message: 'Chưa dùng được danh tính trên máy này' };
       }
 
       if (result.success && result.user) {
@@ -270,7 +270,7 @@ const LoginScreen = () => {
         // Hiện hiệu ứng logo chớp mắt; onDone của overlay sẽ reset về Main.
         setShowSuccess(true);
       } else if (isPhoenixKeyAvailable() && !result.user) {
-        // Chưa có danh tính PhoenixKey → tự động chuyển sang màn tạo tài khoản
+        // Chưa có danh tính → tự động chuyển sang màn tạo tài khoản
         navigation.navigate('SignUpBiometric' as never);
       } else {
         showError(result.message);
@@ -365,7 +365,7 @@ const LoginScreen = () => {
               <Icon name="chevron-down" size={14} color={BLUE.white} />
             </TouchableOpacity>
           </View>
-          <Text allowFontScaling={false} style={styles.eyebrow}>ALADIN · PHOENIXKEY DID</Text>
+          <Text allowFontScaling={false} style={styles.eyebrow}>ALADIN · DANH TÍNH SỐ</Text>
           <Text allowFontScaling={false} style={styles.title}>
             {/* `tf` giữ tên người ra NGOÀI khoá từ điển: nối chuỗi rồi mới dịch sẽ
                 không bao giờ khớp, còn khuôn '{name}' cho bản dịch tự đặt lại vị
@@ -451,10 +451,10 @@ const LoginScreen = () => {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.didTitle} allowFontScaling={false}>
-              Định danh phi tập trung (DID)
+              Danh tính của riêng bạn
             </Text>
             <Text style={styles.didSub} allowFontScaling={false}>
-              Khóa riêng được giữ trên thiết bị bằng PhoenixKey · Không có máy chủ nào lưu mật khẩu của bạn.
+              Khoá riêng được giữ ngay trên thiết bị · Không có máy chủ nào lưu mật khẩu của bạn.
             </Text>
           </View>
         </View>

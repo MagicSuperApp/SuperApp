@@ -225,7 +225,7 @@ export function buildUpgradeChallenge(args: {
  */
 export async function signSharedOrgChallenge(challenge: string): Promise<FounderSig> {
   const ownerDid = await currentUserDid();
-  if (!ownerDid) throw new Error('Máy này chưa có danh tính (DID) để ký duyệt.');
+  if (!ownerDid) throw new Error('Máy này chưa có danh tính để ký duyệt.');
   const ownerSignature = await signRaw(
     utf8ToHex(challenge),
     'Ký duyệt tổ chức',

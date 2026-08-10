@@ -226,7 +226,7 @@ const WALLET_META: Record<'phoenix' | 'standard', {
     },
     phoenix: {
         title: 'Ví Phượng Hoàng',
-        sub: 'Hệ thống giữ hộ — gắn với DID',
+        sub: 'Hệ thống giữ hộ — gắn với danh tính của bạn',
         icon: 'shield-star-outline',
         color: '#B07D2F',
     },
@@ -466,9 +466,9 @@ const AccountScreen = () => {
     const handleRecover = () => {
         showWarning(
             'Tái sinh danh tính (thử nghiệm)',
-            'Dùng khi bạn MẤT thiết bị hoặc mất khoá. Hệ thống khôi phục lại CHÍNH danh tính (DID) cũ ' +
-            'của bạn thông qua người bảo trợ và thời-gian-chờ an toàn — không tạo danh tính mới, ' +
-            'không mất liên kết với cây/dữ-liệu đã ghi. Tính năng đang phát triển; nếu bạn mất thiết bị, ' +
+            'Dùng khi bạn MẤT thiết bị hoặc mất khoá. Hệ thống khôi phục lại CHÍNH danh tính cũ ' +
+            'của bạn thông qua người bảo trợ và thời gian chờ an toàn — không tạo danh tính mới, ' +
+            'không mất liên kết với cây và dữ liệu đã ghi. Tính năng đang phát triển; nếu bạn mất thiết bị, ' +
             'vui lòng liên hệ đội hỗ trợ.',
             { confirmText: 'Đã hiểu' },
         );
@@ -486,9 +486,9 @@ const AccountScreen = () => {
     const handleRotate = () => {
         showWarning(
             'Xoay khoá (thử nghiệm)',
-            'Dùng khi bạn NGHI khoá bị lộ nhưng vẫn còn giữ thiết bị. Hệ thống thay bộ khoá điều-khiển ' +
-            'bằng bộ khoá mới và cập nhật lên Cardano — danh tính (DID) của bạn GIỮ NGUYÊN. ' +
-            'Luồng tráo khoá an toàn đang được đội kỹ thuật hoàn thiện để tránh rủi ro mất quyền truy cập ' +
+            'Dùng khi bạn NGHI khoá bị lộ nhưng vẫn còn giữ thiết bị. Hệ thống thay khoá điều khiển ' +
+            'bằng khoá mới và cập nhật lên chuỗi khối — danh tính của bạn GIỮ NGUYÊN. ' +
+            'Cách đổi khoá an toàn đang được hoàn thiện để tránh rủi ro mất quyền truy cập ' +
             'nếu lỗi giữa chừng. Vui lòng liên hệ đội hỗ trợ nếu cần gấp.',
             { confirmText: 'Đã hiểu' },
         );
@@ -549,7 +549,7 @@ const AccountScreen = () => {
                             <View style={styles.profilePhoneRow}>
                                 <Icon name="identifier" size={13} color={COLORS.textMuted} />
                                 <Text style={styles.profilePhone} numberOfLines={1} ellipsizeMode="middle">
-                                    {(user?.did ?? user?.id) || 'Chưa có DID'}
+                                    {(user?.did ?? user?.id) || 'Chưa có danh tính'}
                                 </Text>
                             </View>
                             {user?.email && (
@@ -564,7 +564,7 @@ const AccountScreen = () => {
                     {/* DID badge */}
                     <View style={styles.didBadge}>
                         <Icon name="shield-check-outline" size={12} color={COLORS.success} />
-                        <Text style={styles.didBadgeText}>DID đã xác minh</Text>
+                        <Text style={styles.didBadgeText}>Danh tính đã xác minh</Text>
                     </View>
                 </Animated.View>
 
@@ -655,7 +655,7 @@ const AccountScreen = () => {
                         )}
                         <InfoRow
                             icon="identifier"
-                            label="DID"
+                            label="Mã định danh"
                             value={did}
                             copyable mono
                         />
@@ -663,7 +663,7 @@ const AccountScreen = () => {
                         {!!controllerPkh && (
                             <InfoRow
                                 icon="key-outline"
-                                label="Khoá điều-khiển (quản-trị DID)"
+                                label="Khoá điều khiển (quản trị danh tính)"
                                 value={controllerPkh}
                                 copyable mono
                             />
@@ -671,7 +671,7 @@ const AccountScreen = () => {
                         <InfoRow
                             icon="shield-key-outline"
                             label="Chuẩn khoá"
-                            value="PhoenixKey v1"
+                            value="Khoá phần cứng v1"
                         />
                         <InfoRow
                             icon="earth"
@@ -682,7 +682,7 @@ const AccountScreen = () => {
                             <Icon name="information-outline" size={13} color={COLORS.textMuted} />
                             <Text style={styles.walletNoteText}>
                                 <Text style={styles.walletNoteStrong}>Basic Wallet</Text> you hold the keys yourself (recovery via a 24-word phrase) — used to receive and transfer assets.{' '}
-                                <Text style={styles.walletNoteStrong}>Phoenix Wallet</Text> is managed by the system according to the DID — used for activation and services.
+                                <Text style={styles.walletNoteStrong}>Phoenix Wallet</Text> is managed by the system against your identity — used for activation and services.
                             </Text>
                         </View>
                     </Section>
@@ -735,14 +735,14 @@ const AccountScreen = () => {
                     <Section title="VÍ">
                         <MenuItem
                             icon="wallet-outline"
-                            label="Ví PhoenixKey"
+                            label="Ví của tôi"
                             sublabel="Số dư ADA/LAMP/MAGIC + địa chỉ Cardano (từ cụm 24 từ)"
                             onPress={() => navigation.navigate('PhoenixWallet')}
                         />
                         <MenuItem
                             icon="card-account-details-outline"
                             label="Xuất danh tính"
-                            sublabel="Xem/copy DID, khoá công khai, địa chỉ ví"
+                            sublabel="Xem/sao chép mã định danh, khoá công khai, địa chỉ ví"
                             onPress={() => navigation.navigate('ExportIdentity')}
                         />
                         <MenuItem
@@ -773,7 +773,7 @@ const AccountScreen = () => {
                         <MenuItem
                             icon="backup-restore"
                             label="Tái sinh danh tính"
-                            sublabel="Khôi phục DID khi MẤT thiết bị (giữ danh tính cũ)"
+                            sublabel="Khôi phục khi MẤT thiết bị (giữ nguyên danh tính cũ)"
                             onPress={handleRecover}
                         />
                         <MenuItem

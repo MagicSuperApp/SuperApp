@@ -65,7 +65,7 @@ const PhoenixWalletScreen = () => {
   const handleRotateKey = useCallback(() => {
     Alert.alert(
       'Xoay khoá bảo mật',
-      'Sinh khoá mới thay khoá hiện tại (nghi lộ/định kỳ). Cần xác nhận sinh trắc bằng khoá cũ. Danh tính (DID) không đổi.',
+      'Sinh khoá mới thay khoá hiện tại (nghi lộ hoặc định kỳ). Cần xác nhận sinh trắc bằng khoá cũ. Danh tính của bạn không đổi.',
       [
         { text: 'Huỷ', style: 'cancel' },
         {
@@ -172,7 +172,7 @@ const PhoenixWalletScreen = () => {
       <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
         <Icon name="chevron-left" size={26} color={COLORS.text} />
       </TouchableOpacity>
-      <Text style={styles.headerTitle}>Ví PhoenixKey</Text>
+      <Text style={styles.headerTitle}>Ví của tôi</Text>
       <View style={{ width: 26 }} />
     </View>
   );

@@ -38,6 +38,7 @@ import PaginationControls from '../components/PaginationControls';
 import { RootState } from '../../../store';
 import { COLORS } from '../../../constants';
 import StateView from '../../../components/state/StateView';
+import RemoteImage from '../../../components/RemoteImage';
 import TreeMetadataTab from './TreeMetadataTab';
 import { formatTreeName, shortTreeCode } from '../../../utils/treeNameFormatter';
 import { loadTreeImages } from '../../../services/treeImageStore';
@@ -116,13 +117,20 @@ const FruitCard = ({
     <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }, { scale: scaleAnim }] }}>
       <TouchableOpacity activeOpacity={1} onPress={onPress} onPressIn={hIn} onPressOut={hOut}>
         <View style={styles.fruitCard}>
-          {thumb ? (
-            <Image source={{ uri: thumb }} style={styles.fruitThumb} resizeMode="cover" />
-          ) : (
-            <View style={[styles.fruitIconWrap, { backgroundColor: st.bg }]}>
-              <Icon name={st.icon} size={22} color={st.color} />
-            </View>
-          )}
+          {/* Ảnh hỏng rơi về ĐÚNG ô icon vốn đã có cho trường hợp không ảnh — trước
+              đây chỉ nhánh `thumb === null` dùng nó, còn "có url mà tải hỏng" thì để
+              trống, cho ra ô xanh nhạt rỗng suốt cả danh sách. */}
+          <RemoteImage
+            uri={thumb}
+            style={styles.fruitThumb}
+            containerStyle={styles.fruitThumb}
+            resizeMode="cover"
+            placeholder={
+              <View style={[styles.fruitIconWrap, { backgroundColor: st.bg }]}>
+                <Icon name={st.icon} size={22} color={st.color} />
+              </View>
+            }
+          />
 
           <View style={styles.fruitCardBody}>
             <View style={styles.fruitTopRow}>
@@ -288,6 +296,14 @@ const TreeDetailScreen = () => {
   // máy mất ảnh"), gộp thêm ảnh local (treeImageStore) chưa kịp đồng-bộ. Kèm 1 ảnh đang
   // xem phóng to (lightbox).
   const [treeImages, setTreeImages] = useState<string[]>([]);
+  /** Bản `file://` CÙNG những ảnh đó còn trong máy — đường lùi khi `/gimg` từ chối. */
+  const [localImages, setLocalImages] = useState<string[]>([]);
+  /** Lỗi tầng danh sách (`/api/tree_views`), phân biệt với lỗi tầng byte (`/gimg`). */
+  const [imagesError, setImagesError] = useState<string | null>(null);
+  /** Đếm ảnh hỏng hẳn để nói thật với người dùng "4 ảnh · 4 chưa xem được". */
+  const [brokenImages, setBrokenImages] = useState(0);
+  /** Đổi số này = ép nạp lại ảnh kèm URL mới, phá bộ đệm âm (404 bị cache). */
+  const [imgRetry, setImgRetry] = useState(0);
   // Câu tiếng Việt máy chủ mô tả đặc điểm nhận dạng của cây (`?describe=1`). Backend
   // trả sẵn từ lâu (`server.py:3041`) nhưng màn này chưa bao giờ XIN, nên chưa bao giờ vẽ.
   const [treeFeatures, setTreeFeatures] = useState<string[]>([]);
@@ -305,30 +321,46 @@ const TreeDetailScreen = () => {
     }, [tree?.id]),
   );
 
-  useEffect(() => {
-    let alive = true;
+  // Nạp ảnh cây. Tách thành hàm riêng vì cần gọi lại khi màn được focus (quay video
+  // xong quay về) và khi người dùng bấm "Tải lại".
+  //
+  // HAI DANH SÁCH, KHÔNG CHỌN MỘT. Trước đây dòng này là
+  //   `setTreeImages(serverImgs.length > 0 ? serverImgs : local)`
+  // — điều kiện chọn là "danh sách server KHÔNG RỖNG", không phải "ảnh server HIỂN
+  // THỊ ĐƯỢC". Mà byte ảnh đi qua `/gimg`, một cổng KHÔNG ký, xét quyền lúc gọi, đóng
+  // theo tiến trình máy chủ. Nên `/api/tree_views` trả 200 kèm 4 URL trong khi cả 4
+  // URL đó 404: app VỨT 4 ảnh `file://` đang nằm sẵn trong máy rồi vẽ 4 ô xám câm.
+  // Nay giữ cả hai: dải vẫn đi theo thứ tự server (nguồn chuẩn, không nhân đôi ảnh),
+  // ảnh nào hỏng thì `RemoteImage` tự tráo sang bản local CÙNG CHỈ SỐ.
+  const loadImages = useCallback(async () => {
     const id = tree?.id;
-    if (!id) return () => { alive = false; };
-    // Chạy song song: ảnh server (nguồn thật) + ảnh local (dự-phòng khi mạng lỗi/chưa đồng-bộ).
-    Promise.all([
+    if (!id) return;
+    const [viewsRes, local] = await Promise.all([
       fetchTreeViews(ORILIFE_BASE, id, { describe: true }).catch(() => null),
       loadTreeImages(id).catch(() => [] as string[]),
-    ]).then(([viewsRes, local]) => {
-      if (!alive) return;
-      const serverImgs = viewsRes?.ok ? treeViewImageUrls(viewsRes.data, ORILIFE_BASE) : [];
-      // Server là NGUỒN CHUẨN: mọi ảnh đã enroll đều lên server. Ảnh local (file://) là
-      // CÙNG những ảnh đó TRƯỚC khi đồng-bộ — nhưng URL-server và file:// là 2 chuỗi khác
-      // nhau nên `new Set` KHÔNG khử được → gộp cả hai làm 4 ảnh đội thành 8 (bug user báo).
-      // → Có ảnh server thì DÙNG server; server rỗng (offline/chưa sync) mới fallback local.
-      setTreeImages(serverImgs.length > 0 ? serverImgs : Array.from(new Set(local ?? [])));
-      const feats = (viewsRes?.ok ? viewsRes.data?.views ?? [] : [])
-        .flatMap(v => v.features_vi ?? [])
-        .map(t => t.trim())
-        .filter(Boolean);
-      setTreeFeatures(Array.from(new Set(feats)).slice(0, 8));
-    });
-    return () => { alive = false; };
+    ]);
+    const localImgs = Array.from(new Set(local ?? []));
+    const serverImgs = viewsRes?.ok ? treeViewImageUrls(viewsRes.data, ORILIFE_BASE) : [];
+    setLocalImages(localImgs);
+    setTreeImages(serverImgs.length > 0 ? serverImgs : localImgs);
+    // Lỗi tầng DANH SÁCH (401 hết phiên / 403 không phải cây của bạn / mất mạng) —
+    // trước đây cả ba cho ra cùng một mảng rỗng, không thông báo, không nút thử lại.
+    setImagesError(viewsRes && !viewsRes.ok ? viewsRes.error?.type ?? 'unknown' : null);
+    setBrokenImages(0);
+    const feats = (viewsRes?.ok ? viewsRes.data?.views ?? [] : [])
+      .flatMap(v => v.features_vi ?? [])
+      .map(t => t.trim())
+      .filter(Boolean);
+    setTreeFeatures(Array.from(new Set(feats)).slice(0, 8));
   }, [tree?.id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true;
+      loadImages().catch(() => undefined).then(() => { if (!alive) return; });
+      return () => { alive = false; };
+    }, [loadImages]),
+  );
 
   useEffect(() => {
     Animated.parallel([
@@ -605,13 +637,19 @@ const TreeDetailScreen = () => {
         </View>
       </View>
 
-      {/* Ảnh cây đã lưu — dải ngang, chạm để phóng to. Ẩn nếu chưa có ảnh nào. */}
-      {treeImages.length > 0 && (
+      {/* Ảnh cây đã lưu — dải ngang, chạm để phóng to.
+          LUÔN VẼ KHỐI NÀY, kể cả khi chưa có ảnh nào: nút "Video cây" nằm trong đây,
+          mà đó đúng là lối để bổ sung ảnh. Ẩn khối khi rỗng = giấu mất lối thoát của
+          người đang thiếu ảnh. */}
+      {(
         <View style={styles.photoStripWrap}>
           <View style={styles.photoStripHeader}>
             <View style={styles.sectionLeft}>
               <View style={styles.sectionDot} />
-              <Text style={styles.sectionTitle}>TREE PICTURES ({treeImages.length})</Text>
+              <Text style={styles.sectionTitle}>
+                ẢNH CÂY ({treeImages.length})
+                {brokenImages > 0 ? ` · ${brokenImages} chưa xem được` : ''}
+              </Text>
             </View>
             {/* Bổ-sung góc nhìn cho cây bằng video → /api/tree/{id}/video (server chắt khung). */}
             <TouchableOpacity style={styles.treeVideoBtn} onPress={handleTreeVideo} activeOpacity={0.8}>
@@ -619,6 +657,32 @@ const TreeDetailScreen = () => {
               <Text style={styles.treeVideoBtnText}>Video cây</Text>
             </TouchableOpacity>
           </View>
+
+          {/* Ảnh 404 KHÔNG có nghĩa là ảnh mất: `/gimg` xét quyền lúc gọi và trả 404
+              giả-không-tồn-tại khi từ chối. Chữ phải nói đúng điều đó — tuyệt đối
+              không viết "ảnh đã mất/đã xoá" và không tô đỏ như lỗi của app. */}
+          {(brokenImages > 0 || imagesError) && (
+            <View style={styles.photoNote}>
+              <Icon name="circle-info" size={13} color="#8a6d1f" />
+              <Text style={styles.photoNoteText}>
+                {imagesError
+                  ? 'Chưa lấy được danh sách ảnh — kiểm tra mạng rồi thử lại. Ảnh vẫn còn trên máy chủ.'
+                  : 'Máy chủ đang từ chối trả ảnh. Ảnh vẫn còn — thử lại sau.'}
+              </Text>
+              <TouchableOpacity
+                onPress={() => { setImgRetry(n => n + 1); loadImages().catch(() => undefined); }}
+                style={styles.photoRetryBtn}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.photoRetryText}>Thử lại</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {treeImages.length === 0 && !imagesError && (
+            <Text style={styles.photoEmptyText}>Cây này chưa có ảnh nào.</Text>
+          )}
+
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -630,7 +694,16 @@ const TreeDetailScreen = () => {
                 activeOpacity={0.85}
                 onPress={() => setZoomImage(uri)}
               >
-                <Image source={{ uri }} style={styles.photoThumb} resizeMode="cover" />
+                <RemoteImage
+                  uri={uri}
+                  fallbackUri={localImages[i]}
+                  retryKey={imgRetry}
+                  style={styles.photoThumb}
+                  resizeMode="cover"
+                  onFinalError={() => setBrokenImages(n => n + 1)}
+                  placeholder={<Icon name="image" size={22} color="#9bb0a4" />}
+                  accessibilityLabel={`Ảnh cây ${i + 1}`}
+                />
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -899,13 +972,17 @@ const TreeDetailScreen = () => {
         const thumb = item.thumbnail_url ? `${ORILIFE_BASE}${item.thumbnail_url}` : null;
         return (
           <View style={styles.captureCard}>
-            {thumb ? (
-              <Image source={{ uri: thumb }} style={styles.captureThumb} resizeMode="cover" />
-            ) : (
-              <View style={styles.captureIconWrap}>
-                <Icon name={st.icon} size={20} color={st.color} />
-              </View>
-            )}
+            <RemoteImage
+              uri={thumb}
+              style={styles.captureThumb}
+              containerStyle={styles.captureThumb}
+              resizeMode="cover"
+              placeholder={
+                <View style={styles.captureIconWrap}>
+                  <Icon name={st.icon} size={20} color={st.color} />
+                </View>
+              }
+            />
             <View style={{ flex: 1 }}>
               <Text style={styles.captureDate} numberOfLines={1}>
                 {item.name || '(chưa đặt tên)'}
@@ -965,8 +1042,32 @@ const TreeDetailScreen = () => {
           activeOpacity={1}
           onPress={() => setZoomImage(null)}
         >
+          {/* Ảnh phóng to: nếu để `<Image>` trần thì ảnh 404 cho ra MÀN ĐEN CÂM phủ
+              90% màn hình, chỉ còn nút X — hình dạng "app treo" rõ nhất trong luồng. */}
           {zoomImage && (
-            <Image source={{ uri: zoomImage }} style={styles.zoomImage} resizeMode="contain" />
+            <RemoteImage
+              uri={zoomImage}
+              fallbackUri={localImages[treeImages.indexOf(zoomImage)]}
+              retryKey={imgRetry}
+              style={styles.zoomImage}
+              resizeMode="contain"
+              accessibilityLabel="Ảnh cây phóng to"
+              placeholder={
+                <View style={styles.zoomFallback}>
+                  <Icon name="image" size={40} color="rgba(255,255,255,0.5)" />
+                  <Text style={styles.zoomFallbackText}>
+                    Chưa xem được ảnh này. Máy chủ đang từ chối — ảnh vẫn còn.
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.zoomRetryBtn}
+                    onPress={() => setImgRetry(n => n + 1)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.zoomRetryText}>Thử lại</Text>
+                  </TouchableOpacity>
+                </View>
+              }
+            />
           )}
           <TouchableOpacity
             style={styles.zoomClose}
@@ -1206,6 +1307,46 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   zoomImage: { width: '100%', height: '80%' },
+  zoomFallback: { alignItems: 'center', gap: 12, paddingHorizontal: 32 },
+  zoomFallbackText: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 19,
+  },
+  zoomRetryBtn: {
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+  },
+  zoomRetryText: { color: COLORS.white, fontSize: 13, fontWeight: '600' },
+  photoNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 14,
+    marginTop: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: '#fdf6e3',
+  },
+  photoNoteText: { flex: 1, color: '#6b5518', fontSize: 12, lineHeight: 17 },
+  photoRetryBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 14,
+    backgroundColor: '#8a6d1f',
+  },
+  photoRetryText: { color: COLORS.white, fontSize: 12, fontWeight: '700' },
+  photoEmptyText: {
+    marginHorizontal: 14,
+    marginTop: 8,
+    color: '#7d8f85',
+    fontSize: 12.5,
+  },
   zoomClose: {
     position: 'absolute', top: 48, right: 20,
     width: 40, height: 40, borderRadius: 20,

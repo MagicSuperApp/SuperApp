@@ -274,7 +274,7 @@ exports[`FeeDisplay snapshot snapshot mở rộng khớp 1`] = `
       </Text>
     </View>
     <View
-      accessibilityLabel="OriLife Treasury: 1.25 LAMP"
+      accessibilityLabel="Quỹ hệ thống: 1.25 LAMP"
       style={
         {
           "alignItems": "center",
@@ -327,7 +327,7 @@ exports[`FeeDisplay snapshot snapshot mở rộng khớp 1`] = `
           }
         }
       >
-        OriLife Treasury
+        Quỹ hệ thống
       </Text>
       <Text
         numberOfLines={1}

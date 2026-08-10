@@ -36,11 +36,11 @@ export async function hasLocalDeviceKey(): Promise<boolean> {
  */
 export async function enableDeviceKey(): Promise<{ devicePublicKeyHex: string }> {
   if (!taad.isAvailable()) {
-    throw new Error('Thiết bị chưa hỗ trợ khoá bảo mật (native Enclave).');
+    throw new Error('Thiết bị chưa hỗ trợ khoá bảo mật.');
   }
   const userDid = await currentUserDid();
   if (!userDid) {
-    throw new Error('Chưa có danh tính (DID) để bật 2FA.');
+    throw new Error('Chưa có danh tính để bật xác thực hai lớp.');
   }
 
   // nonce dùng-1-lần (TTL 5' phía backend). generateSalt = 16 byte hex.

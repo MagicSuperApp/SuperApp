@@ -169,7 +169,7 @@ const SignUpBiometricScreen: React.FC = () => {
       );
     } catch (e: any) {
       console.log('[SignUp] PhoenixKey enrollment failed:', e);
-      showError(e?.message || 'Không tạo được danh tính PhoenixKey. Vui lòng thử lại.');
+      showError(e?.message || 'Không tạo được danh tính. Vui lòng thử lại.');
       setStage('idle');
     }
   };

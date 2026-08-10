@@ -41,13 +41,23 @@ export const DEFAULT_TREE_MODEL_ID: TreeModelId = 'procedural';
 /* eslint-disable @typescript-eslint/no-var-requires */
 export const TREE_MODELS: TreeModelDef[] = [
   {
-    id: 'default',
+    // `id` này là KHOÁ LƯU XUỐNG MÁY (treeModelStore ghi nguyên chuỗi vào
+    // AsyncStorage theo từng cây), nên đổi id = viết lại lựa chọn cũ của nông dân.
+    // Ngày 06/08 (`f14f17a`, tiêu đề "fix multi language", 100+ tệp) id
+    // `procedural` bị chuyển từ cây tự tạo sang `tree1.glb`, còn cây tự tạo đổi
+    // thành `default`. Hai hậu quả: (1) cây nông dân đã chọn "Cây tự tạo" âm thầm
+    // hiện thành "Cây mẫu"; (2) model MẶC ĐỊNH — chỗ rơi về của mọi cây chưa chọn
+    // và mọi id lạ — hoá ra CẦN TỆP .glb, nên tệp hỏng/thiếu là màn 3D trắng
+    // không còn đường lùi. Trả id về đúng như trước 06/08.
+    // Máy nào đã lưu `default` trong 4 ngày đó: `getTreeModel` không tra thấy →
+    // rơi về mặc định → vẫn ra đúng cây tự tạo. Không cần di trú dữ liệu.
+    id: DEFAULT_TREE_MODEL_ID,
     label: 'Cây tự tạo',
     source: null,
     credit: 'Dựng sẵn trong app',
   },
   {
-    id: DEFAULT_TREE_MODEL_ID,
+    id: 'tree1',
     label: 'Cây mẫu',
     source: require('../../../assets/models/tree1.glb'),
   },

@@ -27,6 +27,17 @@ describe('sổ đăng ký TREE_MODELS', () => {
     expect(isFileBacked(def!)).toBe(false);
   });
 
+  it('id là KHOÁ LƯU XUỐNG MÁY — khoá đúng vài id đã phát hành', () => {
+    // treeModelStore ghi nguyên chuỗi id vào AsyncStorage theo từng cây, nên đổi
+    // id = viết lại lựa chọn cũ của nông dân mà không ai thấy. Ngày 06/08
+    // (`f14f17a`) id `procedural` bị chuyển từ cây tự tạo sang tệp tree1.glb.
+    // Ba dòng dưới là để lần sau việc đó gãy ở đây chứ không gãy ngoài vườn.
+    const byId = Object.fromEntries(TREE_MODELS.map((m) => [m.id, m]));
+    expect(byId.procedural?.source).toBeNull();
+    expect(byId.tree1?.source).not.toBeNull();
+    expect(DEFAULT_TREE_MODEL_ID).toBe('procedural');
+  });
+
   it('model có tệp phải kèm source thật (require đã resolve)', () => {
     for (const m of TREE_MODELS.filter(isFileBacked)) {
       expect(m.source).not.toBeNull();

@@ -31,9 +31,13 @@ function fireError(tree: renderer.ReactTestRenderer): void {
 
 /** Dựng cây trong act() — component có effect đặt lại bước, không bọc thì React
  *  cảnh báo và bản dựng bị tháo trước khi test đọc được. */
-function mount(el: React.ReactElement): renderer.ReactTestRenderer {
+async function mount(el: React.ReactElement): Promise<renderer.ReactTestRenderer> {
   let tree!: renderer.ReactTestRenderer;
-  act(() => { tree = renderer.create(el); });
+  // `await act(async …)`: với ảnh trên máy chủ OriLife, component đọc token từ
+  // AsyncStorage (bất đồng bộ) TRƯỚC khi vẽ <Image> — cố ý, để không bắn một
+  // yêu cầu không mang token rồi ăn 404 oan và để 404 đó nằm lại trong bộ đệm
+  // ảnh của hệ điều hành. Không xả microtask ở đây thì test chỉ thấy vòng quay.
+  await act(async () => { tree = renderer.create(el); });
   return tree;
 }
 
@@ -61,20 +65,20 @@ describe('withCacheBuster', () => {
 });
 
 describe('RemoteImage — ba đường lùi', () => {
-  it('mặc định nạp ảnh máy chủ', () => {
-    const tree = mount(<RemoteImage uri={SERVER} fallbackUri={LOCAL} />);
+  it('mặc định nạp ảnh máy chủ', async () => {
+    const tree = await mount(<RemoteImage uri={SERVER} fallbackUri={LOCAL} />);
     expect(currentUri(tree)).toBe(SERVER);
   });
 
-  it('ảnh máy chủ 404 → TRÁO sang bản trong máy, không nhảy thẳng ra ô báo', () => {
-    const tree = mount(<RemoteImage uri={SERVER} fallbackUri={LOCAL} />);
+  it('ảnh máy chủ 404 → TRÁO sang bản trong máy, không nhảy thẳng ra ô báo', async () => {
+    const tree = await mount(<RemoteImage uri={SERVER} fallbackUri={LOCAL} />);
     fireError(tree);
     expect(currentUri(tree)).toBe(LOCAL);
   });
 
-  it('hỏng cả hai đường → vẽ ô báo và gọi onFinalError đúng MỘT lần', () => {
+  it('hỏng cả hai đường → vẽ ô báo và gọi onFinalError đúng MỘT lần', async () => {
     const onFinalError = jest.fn();
-    const tree = mount(
+    const tree = await mount(
       <RemoteImage
         uri={SERVER}
         fallbackUri={LOCAL}
@@ -89,9 +93,9 @@ describe('RemoteImage — ba đường lùi', () => {
     expect(onFinalError).toHaveBeenCalledTimes(1);
   });
 
-  it('không có bản trong máy → hỏng một phát là ra ô báo, không kẹt ở bước rỗng', () => {
+  it('không có bản trong máy → hỏng một phát là ra ô báo, không kẹt ở bước rỗng', async () => {
     const onFinalError = jest.fn();
-    const tree = mount(
+    const tree = await mount(
       <RemoteImage uri={SERVER} onFinalError={onFinalError} placeholder={<Text>trống</Text>} />,
     );
     fireError(tree);
@@ -99,17 +103,54 @@ describe('RemoteImage — ba đường lùi', () => {
     expect(onFinalError).toHaveBeenCalledTimes(1);
   });
 
-  it('không có uri nào → vẽ thẳng ô báo, KHÔNG dựng <Image source={{uri: undefined}}>', () => {
-    const tree = mount(<RemoteImage uri={null} placeholder={<Text>trống</Text>} />);
+  it('không có uri nào → vẽ thẳng ô báo, KHÔNG dựng <Image source={{uri: undefined}}>', async () => {
+    const tree = await mount(<RemoteImage uri={null} placeholder={<Text>trống</Text>} />);
     expect(tree.root.findAllByType(Image)).toHaveLength(0);
   });
 
-  it('đổi retryKey → quay lại đường đầu VÀ đổi URL (nếu không thì bộ đệm trả lại 404 cũ)', () => {
-    const tree = mount(<RemoteImage uri={SERVER} fallbackUri={LOCAL} retryKey={0} />);
+  it('đổi retryKey → quay lại đường đầu VÀ đổi URL (nếu không thì bộ đệm trả lại 404 cũ)', async () => {
+    const tree = await mount(<RemoteImage uri={SERVER} fallbackUri={LOCAL} retryKey={0} />);
     fireError(tree);
     expect(currentUri(tree)).toBe(LOCAL);
 
-    act(() => { tree.update(<RemoteImage uri={SERVER} fallbackUri={LOCAL} retryKey={1} />); });
+    // `await act(async …)` chứ không phải act đồng bộ: đổi `retryKey` làm URL đổi,
+    // mà URL đổi thì cổng xác-thực đọc lại token (cố ý — ca hỏng hay gặp nhất là
+    // token vừa hết hạn). Phải xả microtask rồi mới đọc được <Image>.
+    await act(async () => { tree.update(<RemoteImage uri={SERVER} fallbackUri={LOCAL} retryKey={1} />); });
     expect(currentUri(tree)).toBe(`${SERVER}?r=1`);
+  });
+});
+
+// ─── Xác thực cho ảnh (gộp từ nhánh AuthImage 10/08) ─────────────────────────
+//
+// `/gimg` KHÔNG xét `?token=`, chỉ xét header `Authorization`; và khi CHẶN thì
+// trả 404 — dùng chung mã với "ảnh không tồn tại". Nên hai điều phải đúng cùng
+// lúc: token đi bằng header (không bao giờ vào URL), và câu báo lỗi không được
+// khẳng định là ảnh không tồn tại.
+describe('shouldAttachAuth — token chỉ đi tới đúng máy chủ OriLife', () => {
+  const { shouldAttachAuth } = require('./RemoteImage');
+  const { ORILIFE_BASE } = require('../services/orilifeBase');
+
+  it('ảnh trên máy chủ OriLife → CÓ gắn', () => {
+    expect(shouldAttachAuth(`${ORILIFE_BASE}/gimg/abc/imgs/000.jpg`)).toBe(true);
+  });
+
+  it('ảnh trong máy (file://) → KHÔNG gắn — đây là đường lùi thứ hai của chính component này', () => {
+    expect(shouldAttachAuth('file:///data/user/0/app/cache/tree.jpg')).toBe(false);
+  });
+
+  it('host lạ → KHÔNG gắn (rò token sang bên thứ ba)', () => {
+    expect(shouldAttachAuth('https://evil.example.com/gimg/abc/imgs/000.jpg')).toBe(false);
+  });
+
+  it('data: và đường dẫn tương đối → KHÔNG gắn', () => {
+    expect(shouldAttachAuth('data:image/png;base64,AAAA')).toBe(false);
+    expect(shouldAttachAuth('/gimg/abc/imgs/000.jpg')).toBe(false);
+  });
+
+  it('so khớp KHÔNG phân biệt hoa thường, nhưng phải đúng cả host', () => {
+    const o = ORILIFE_BASE.replace(/^https?:\/\//i, '');
+    expect(shouldAttachAuth(`https://${o.toUpperCase()}/gimg/a.jpg`)).toBe(true);
+    expect(shouldAttachAuth(`https://${o}.evil.com/gimg/a.jpg`)).toBe(false);
   });
 });

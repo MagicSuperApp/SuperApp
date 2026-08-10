@@ -2,7 +2,7 @@
 
 > **Mục đích**: Tài liệu chuẩn để Agent/dev của MỌI platform (ProofChat, OriLife, AladinWork, LampNetCloud, Farm, và module mới bất kỳ) nắm context + thực thi đúng, đảm bảo nhất quán khi cắm vào host shell (kênh 1+2) và khi nhúng host ngoài (kênh 3).
 > **Cấp**: L1 Platform — Ecosystem-wide Standard.
-> **Status**: v0.2.1 — 2026-07-12 (xem §9 Change Log).
+> **Status**: v0.3 — 2026-08-10 (xem §9 Change Log).
 > **Owner**: Aladin (founder) · Orchestrator giữ interface contract.
 > **Nguồn chốt**: `Specs/PLATFORM-MASTER.md` (INV-1/INV-2, 8 Spec Group, 2 kiểu tích hợp), `Specs/_analysis/EXPANSION-ANALYSIS.md` (QĐ-1..QĐ-8).
 > **Quan hệ với spec khác**: Tài liệu này là CONTRACT trừu tượng. Chi tiết hiện thực thuộc các Spec Group SG1..SG8. Khi mâu thuẫn, Math-Spec (invariant) thắng. KHÔNG duplicate nội dung cross-group — chỉ tham chiếu.
@@ -177,7 +177,7 @@ Ví dụ `config.schema.json`:
   - **sender-constrained**: DPoP.
   - **không auto-bind bằng phone host** — bind DID qua bước "claim" một lần bằng kênh mạnh.
 - Kiểm `caller-id` BẤT BIẾN ở mọi ranh giới (chống confused-deputy / identity-confusion xuyên host).
-- **Chặn cứng (blocker cho B)**: cần issuer-side PhoenixKey mint EdDSA + `/.well-known/jwks.json` — thuộc Long, Claude KHÔNG sửa. Consumer-side (ProofChat) đã verify EdDSA qua JWKS.
+- **Chặn cứng (blocker cho B)**: cần issuer-side PhoenixKey mint EdDSA + `/api/v1/.well-known/jwks.json` (backend có context-path `/api/v1`; đường không tiền tố trả **404**) — thuộc Long, Claude KHÔNG sửa. Consumer-side (ProofChat) đã verify EdDSA qua JWKS.
 
 ### 5.2 Bề mặt API (surface)
 
@@ -281,6 +281,12 @@ Một platform/module chỉ được coi là READY khi TẤT CẢ mục dưới 
 ---
 
 ## 9. Change Log
+- v0.3 (2026-08-10): **Bỏ mô hình snapshot 2 lớp** — áp quyết định Aladin 2026-07-15 đã treo chưa land
+  (`_Agents/topics/integration-standard-convention.md`): platform sở hữu contract ở repo mình, SuperApp
+  chỉ giữ INDEX. Viết lại §10.1 + §11. Cất `Integration/ProofChat.md` + `Integration/OriLife.md`
+  (đều chốt 2026-07-11, dạy sai so với canonical) vào `Legacy/`. Cất cây `MobileCore/` v0.2 (repo chủ
+  đã lên v0.3, 0 importer trong `src/`) vào `Legacy/`. Sửa đường JWKS `/.well-known/jwks.json` →
+  `/api/v1/.well-known/jwks.json` ở §5.1 (đường cũ trả 404 — đo 2026-08-05).
 - v0.2.1 (2026-07-12): Rà soát nhất quán — sửa Status header (v0.1→v0.2), path "Nguồn chốt" trỏ `Specs/`, gỡ ghi chú lỗi thời §7.1 (nav ĐÃ config-driven qua YC-3), cập nhật vị trí git token (§10.2, chuẩn mới `Projects/Agents/.env`), làm rõ CARP thanh toán = tầng mạng nội bộ (§10.4 nhất quán §4.2), thống nhất mô tả upstream (§10.1↔§11).
 - v0.2 (2026-07-12): Gộp về MỘT file duy nhất tại ROOT (`Integration-Standard.md`) — dời khỏi `Specs/` (references dùng tên "INTEGRATION-STANDARD §X" không đổi). Thêm §10 (vận hành: env/cờ/token UI) + §11 (danh mục platform) + thư mục `Integration/` chứa snapshot 5 nền tảng. Đây là nơi mọi agent/dev tham chiếu chuẩn tích hợp.
 - v0.1 (2026-06-17): Khởi tạo Integration Standard. Tổng hợp QĐ-1..QĐ-8 từ EXPANSION-ANALYSIS + INV-1/INV-2/INV-3. 8 mục: Manifest, Design token/brand, Identity/data, Config/billing, Embed-SDK, Registry/governance, Frontend consistency, Checklist.
@@ -291,9 +297,22 @@ Một platform/module chỉ được coi là READY khi TẤT CẢ mục dưới 
 
 > §0–§9 là CONTRACT trừu tượng (kiến trúc + bất biến). Mục này là quy ước VẬN HÀNH cụ thể để agent/dev cắm API THẬT của từng platform vào SuperApp. **App BUILD từ repo [`AladinContract/SuperApp`](https://github.com/AladinContract/SuperApp) — KHÔNG build từ repo platform.** Mọi giá trị SuperApp đọc đều nằm trong repo này.
 
-### 10.1 Nguồn sự-thật 2 lớp
-- **Upstream (canonical):** mỗi platform giữ `SuperApp-Integration.md` trong repo phù hợp của org mình — thường là repo Specs, hoặc repo backend nếu chưa tách Specs (xem cột "Upstream" §11). Đổi endpoint/auth/token → cập nhật cùng lúc (kèm ngày + HEAD commit).
-- **Snapshot (build):** SuperApp giữ bản đã kiểm chứng trong [`Integration/<Platform>.md`](Integration/). Đây là bản app THỰC SỰ đọc để build. Upstream đổi → đồng bộ snapshot rồi mới bật cờ. Mỗi phiên đọc snapshot, KHÔNG dựa trí nhớ.
+### 10.1 MỘT nguồn sự-thật — platform sở hữu, SuperApp THAM CHIẾU (Aladin chốt 2026-07-15)
+
+> **Mô hình "2 lớp upstream + snapshot" trước đây ĐÃ BỎ.** Nguyên văn quyết định:
+> *"Mỗi platform TỰ GIỮ `<Platform>-Integration.md` ở root repo mình. SuperApp THAM CHIẾU về đó —
+> KHÔNG giữ snapshot/bản sao. Mô hình cũ 'SuperApp giữ `Integration/<Platform>.md` snapshot' = SAI,
+> phải bỏ."* Lý do: app NGOÀI cũng tích hợp thẳng platform → contract phải do platform sở hữu.
+> Nguồn: `_Agents/topics/integration-standard-convention.md` (2026-07-15), thắng bản §10.1 cũ (12/07).
+
+- **Canonical:** file contract nằm ở repo của CHÍNH platform (cột "Nguồn chuẩn" §11). Platform là chủ,
+  tự cập nhật theo version mình; đổi endpoint/auth/token → sửa tại đó (kèm ngày + HEAD commit).
+- **SuperApp giữ INDEX, không giữ bản sao.** Mỗi phiên đọc THẲNG file canonical, KHÔNG dựa trí nhớ,
+  KHÔNG đọc bản sao trong repo này.
+- **Bản sao đã cất:** snapshot ProofChat + OriLife (cả hai chốt ở 2026-07-11) đã chuyển vào
+  [`Legacy/`](Legacy/) — chúng dạy sai so với canonical hiện hành. Lý do từng cái: [`Legacy/README.md`](Legacy/README.md).
+- **Còn treo:** AladinWork và LampNet CHƯA publish file ở repo mình, nên bản trong `Integration/` tạm
+  thời vẫn là nguồn duy nhất — đánh dấu ⚠ ở §11. Khi họ publish xong → cất nốt bản ở đây.
 
 ### 10.2 Vị trí key / creds
 - **Git token (push/PR):** `.env` ở workspace cha NGOÀI repo (2026-07-12: chuẩn mới `Projects/Agents/.env`, cũ `Projects/.env`), biến `GH_TOKEN_<ACCOUNT>`. KHÔNG commit, KHÔNG dán giá trị, KHÔNG nhúng trong URL remote.
@@ -315,15 +334,22 @@ Một platform/module chỉ được coi là READY khi TẤT CẢ mục dưới 
 - **Thư** = mobile (native camera/EXIF, Enclave ký, wiring API backend-facing). **Tùng** = frontend/UIUX. **Claude/SuperApp** = frontend + gọi API (KHÔNG sửa backend platform).
 - Backend mỗi platform do team đó sở hữu: PhoenixKey=Long · ProofChat=Lợi · AladinWork=Work team · OriLife=OriLife agent · LampNet=LampNet team.
 
-## 11. Danh mục platform — snapshot (build) + upstream (canonical)
+## 11. Danh mục platform — INDEX trỏ tới nguồn chuẩn (§10.1)
 
-| Platform | Module | Snapshot (đọc khi build) | Upstream canonical (team maintain) |
+> Cột "Nguồn chuẩn" là thứ DUY NHẤT được đọc khi build. Không có cột snapshot nữa.
+
+| Platform | Module | Nguồn chuẩn (đọc THẲNG file này) | Chủ |
 |---|---|---|---|
-| OriLife | Truy-xuất | [`Integration/OriLife.md`](Integration/OriLife.md) | [`OriLifeTrace/OriLife-Specs`](https://github.com/OriLifeTrace/OriLife-Specs) |
-| PhoenixKey | DID · ví · mint | [`Integration/PhoenixKey.md`](Integration/PhoenixKey.md) | [`PhoenixKeyDID`](https://github.com/PhoenixKeyDID) |
-| ProofChat | Trò-chuyện (E2EE) | [`Integration/ProofChat.md`](Integration/ProofChat.md) | [`ProofChat/BE`](https://github.com/ProofChat/BE) |
-| AladinWork | Việc-làm | [`Integration/AladinWork.md`](Integration/AladinWork.md) | [`AladinWork/Specs`](https://github.com/AladinWork/Specs) |
-| LampNet | Kết đèn | [`Integration/LampNet.md`](Integration/LampNet.md) | [`LampNetCloud/Specs`](https://github.com/LampNetCloud/Specs) |
+| OriLife | Truy-xuất | `OriLifeTrace/OriLife-Integration.md` — v0.2.2 · 2026-08-06, ở root repo OriLife | OriLife agent |
+| PhoenixKey | DID · ví · mint | `PhoenixKeyDID/PhoenixKey-SDK/INTEGRATION.md` — canonical từ 2026-07-21 (bản `PhoenixKeyDID/PhoenixKey-Integration.md` chỉ là con trỏ) | Phoenix agent · Long |
+| ProofChat | Trò-chuyện (E2EE) | `ProofChat/INTEGRATION.md` — v2026-08-08, thay bản 2026-07-04 | Lợi |
+| AladinWork | Việc-làm | ⚠ [`Integration/AladinWork.md`](Integration/AladinWork.md) — **tạm**, upstream chưa publish | Work team |
+| LampNet | Kết đèn | ⚠ [`Integration/LampNet.md`](Integration/LampNet.md) — **tạm**, upstream chưa publish | LampNet team |
+
+> ⚠ **`Integration/PhoenixKey.md` vẫn còn trong repo** nhưng KHÔNG phải nguồn chuẩn — nó trùng lặp
+> với canonical ở trên và có chỗ lệch (canonical nói `grantee_did` để trống = Grant thành **bearer**,
+> phải LUÔN đặt; bản trong repo này ghi "tuỳ chọn"). Giữ tạm vì còn phần trạng thái riêng của
+> SuperApp chưa gỡ ra. **Đọc canonical trước.** Việc gỡ hẳn: chờ chủ dự án chốt.
 
 **Hiện trạng cross-ref (2026-07-12):**
 
@@ -352,13 +378,14 @@ Một platform/module chỉ được coi là READY khi TẤT CẢ mục dưới 
 Khi hoàn thành một năng lực backend/nền tảng mà SuperApp cần dựng UI hoặc nối API:
 1. **Append NGAY** một dòng vào bảng "Đang mở" của `Module-Handoff.md` (qua PR vào SuperApp,
    hoặc nhờ SuperApp agent chèn nếu không có quyền push repo này) — KHÔNG chờ SuperApp hỏi.
-2. Cập nhật shape thật vào `Integration/<Platform>.md` (snapshot) TRƯỚC, rồi ledger chỉ TRỎ tới đó.
+2. Cập nhật shape thật vào **file canonical ở repo mình** (§10.1/§11) TRƯỚC, rồi ledger chỉ TRỎ tới đó.
+   KHÔNG chép shape vào repo SuperApp.
 3. Khi backend đổi shape/endpoint đã bàn giao → cập nhật lại dòng ledger + snapshot (kèm ngày).
 
 ### 12.3 Format 1 dòng (8 cột)
 `ID | Module (agent) | Loại | Việc cụ thể ở SuperApp | Ref shape | BE | Ai (Thư/Tùng) | Ngày đẩy`
 - **Loại** ∈ {Screen, Wire, Shape, Fix}. **BE** ∈ {🟢 live · 🟡 code chưa deploy · 🔴 chưa build · ⚫ OPS/secret}.
-- **Ref shape** trỏ `Integration/<Platform>.md` hoặc endpoint cụ thể — KHÔNG chép shape vào ledger.
+- **Ref shape** trỏ file canonical của platform (§11) hoặc endpoint cụ thể — KHÔNG chép shape vào ledger.
 - **Định nghĩa Done:** dev dựng xong + verify (tsc/test + đối chiếu shape thật) + merge develop → chuyển dòng xuống "Đã xong".
 
 ### 12.4 Ranh giới rule

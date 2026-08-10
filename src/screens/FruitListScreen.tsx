@@ -142,6 +142,10 @@ const FruitListScreen: React.FC = () => {
         treeName: treeName || layout?.tree.name,
         imageUri: a.uri, imageW: a.width, imageH: a.height,
         fruitId: forFruitId, fruitName: forFruitName,
+        // Để màn khoanh đặt sẵn tên "Quả {n+1}". Nông dân nhắm 50–100 quả/người:
+        // bắt họ tự nghĩ ra ngần ấy tên phân biệt được, gõ trên điện thoại giữa
+        // vườn, là chỗ người ta bỏ cuộc — không phải chỗ nhận-diện sai.
+        fruitCount: layout?.fruits?.length ?? 0,
       });
     };
     if (fromCamera) { if (await requestCameraPermission()) launchCamera(await withPhotoSave(opts), cb); }

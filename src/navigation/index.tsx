@@ -28,6 +28,7 @@ import RootErrorBoundary from '../components/RootErrorBoundary';
 import { COLORS, ACTION_COLORS } from '../theme';
 import { syncService } from '../services/syncService';
 import { flushVideoUploadQueue } from '../services/videoUploadQueue';
+import { maybeReconcileOnNetChange } from '../services/videoProofReconcile';
 import AppHeader, { AppHeaderProvider } from '../components/AppHeader';
 import { NAV_FRAME, navNational, navIcon } from './navLabels';
 import { hasChosenLanguage, whenLanguageReady } from '../i18n';
@@ -1746,6 +1747,9 @@ const AppNavigator = () => {
           console.warn('[Navigation] flushVideoUploadQueue failed:', err),
         );
       }
+      // #117 mục 6: có WIFI thì đối chiếu một lượt các bằng chứng "đã lưu" với LampNet
+      // thật (nodes rỗng → báo người trực máy chủ). Service tự lọc wifi + throttle 30'.
+      maybeReconcileOnNetChange(state);
       wasConnected = isConnected;
     });
 

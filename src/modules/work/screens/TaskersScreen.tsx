@@ -136,10 +136,16 @@ const TaskerRow: React.FC<{
         )}
       </View>
       <View style={{ alignItems: 'flex-end', gap: 4 }}>
+        {/*
+          `reputation` là uy tín HIỆU DỤNG r̂×D, thang 0..100 — KHÔNG phải số lượt
+          đánh giá. Icon ngôi sao cạnh một con số trần là bẫy đọc: người thuê thấy
+          "72" cạnh ngôi sao sẽ hiểu 72 lượt đánh giá, không phải 72/100 điểm. Ở chợ
+          việc, đọc nhầm chỗ này là chọn nhầm người. Nên bỏ sao, ghi thẳng "/100".
+        */}
         {typeof t.reputation === 'number' && (
           <View style={styles.repLine}>
-            <Icon name="star" size={12} color={WORK_THEME.primary} />
-            <Text style={styles.rep}>{t.reputation}</Text>
+            <Icon name="shield-check-outline" size={12} color={WORK_THEME.primary} />
+            <Text style={styles.rep}>{t.reputation}<Text style={styles.repMax}>/100</Text></Text>
           </View>
         )}
         <Text style={[styles.avail, { color: t.available ? '#2E7D46' : COLORS.textMuted }]}>
@@ -216,6 +222,7 @@ const styles = StyleSheet.create({
   skillText: { fontSize: 10, fontWeight: '600', color: COLORS.textSub },
   repLine: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   rep: { fontSize: 14, fontWeight: '900', color: WORK_THEME.primary },
+  repMax: { fontSize: 10, fontWeight: '700', color: COLORS.textMuted },
   avail: { fontSize: 11, fontWeight: '700' },
   price: { fontSize: 11, fontWeight: '700', color: COLORS.textSub },
 });

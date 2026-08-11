@@ -478,30 +478,79 @@ pub(crate) fn build_tx_builder(
     Ok(TransactionBuilder::new(&cfg))
 }
 
-/// Convert a Blockfrost price field (a JSON decimal like `0.0577`, or a
-/// numerator/denominator-free number) into a (numerator, denominator) pair.
-/// Blockfrost serializes these as floats or numeric strings; we recover an
-/// exact fraction by scaling by a power of ten. Falls back to the supplied
+/// Convert a Blockfrost price field into an exact (numerator, denominator)
+/// pair. Accepts plain integers (`3`), plain decimals (`0.0577`) and
+/// **scientific notation** (`7.21E-5`, `5e-3`). Falls back to the supplied
 /// canonical fraction when the field is absent or unparseable.
+///
+/// # Why scientific notation matters here
+///
+/// Measured against the live proxy on 2026-08-11:
+///
+/// ```text
+/// GET https://api.phoenixkey.me/api/v1/wallet/params
+///   → {"price_mem":"0.0577", "price_step":"7.21E-5", "read_at_epoch":306, ...}
+/// ```
+///
+/// The previous implementation split on `'.'` only, so `"7.21E-5"` became
+/// `"721E-5"`, `parse::<u64>()` failed, and it silently returned the caller's
+/// default. Today that default (`721/10_000_000`) happens to equal the real
+/// value, so nothing looked wrong — but the fallback is a *hardcoded constant*,
+/// while the wire value is read fresh per epoch (`read_at_epoch` above). The
+/// day the chain changes ExUnit prices, the fee calculation keeps using the
+/// stale constant, the node rejects the tx for an undersized fee, and the
+/// failure surfaces as a chain error with nothing pointing back here.
+///
+/// The PhoenixKey side flagged this on 2026-08-11 and also warned that the
+/// *string form varies by epoch* — `price_mem` arrives plain while `price_step`
+/// arrives scientific, and which is which can swap. So the tests below pin both
+/// forms; a single-sample test would pass while production later breaks.
+///
+/// Residual risk kept on purpose: the fallback is still silent, because this
+/// runs under FFI where there is no error channel to raise into. What changed
+/// is that a well-formed value no longer *reaches* the fallback.
 fn parse_price_fraction(v: &JsonValue, default_num: u64, default_den: u64) -> (u64, u64) {
     let s = match v {
         JsonValue::Number(n) => n.to_string(),
         JsonValue::String(s) => s.clone(),
         _ => return (default_num, default_den),
     };
-    // Parse "a.b" → numerator = ab, denominator = 10^len(b).
-    match s.split_once('.') {
-        Some((int_part, frac_part)) => {
-            let combined = format!("{}{}", int_part, frac_part);
-            match combined.parse::<u64>() {
-                Ok(num) => (num, 10u64.pow(frac_part.len() as u32)),
-                Err(_) => (default_num, default_den),
-            }
-        }
-        None => match s.parse::<u64>() {
-            Ok(num) => (num, 1),
-            Err(_) => (default_num, default_den),
-        },
+    parse_decimal_fraction(s.trim()).unwrap_or((default_num, default_den))
+}
+
+/// `"7.21E-5"` → `(721, 10_000_000)`. `None` when the text is not a
+/// non-negative decimal, or when the exact fraction would overflow `u64`
+/// (falling back beats silently wrapping to a nonsense fee).
+fn parse_decimal_fraction(s: &str) -> Option<(u64, u64)> {
+    // Split off the exponent first: `mantissa` keeps its own decimal point.
+    let (mantissa, exponent) = match s.split_once(['e', 'E']) {
+        Some((m, e)) => (m, e.parse::<i32>().ok()?),
+        None => (s, 0),
+    };
+
+    let (int_part, frac_part) = match mantissa.split_once('.') {
+        Some((i, f)) => (i, f),
+        None => (mantissa, ""),
+    };
+    // Reject signs, spaces and any other stray character: `parse::<u64>()` on
+    // the concatenation would otherwise accept things like `"1.-2"`.
+    if !int_part.chars().all(|c| c.is_ascii_digit())
+        || !frac_part.chars().all(|c| c.is_ascii_digit())
+        || (int_part.is_empty() && frac_part.is_empty())
+    {
+        return None;
+    }
+
+    let num: u64 = format!("{}{}", int_part, frac_part).parse().ok()?;
+    // Denominator so far = 10^(digits after the point); the exponent then
+    // shifts it: negative exponent enlarges the denominator, positive shrinks it.
+    let den_pow = i32::try_from(frac_part.len()).ok()?.checked_sub(exponent)?;
+
+    if den_pow >= 0 {
+        Some((num, 10u64.checked_pow(u32::try_from(den_pow).ok()?)?))
+    } else {
+        // e.g. `1.5e3` → numerator 15, den_pow -2 → 1500/1.
+        Some((num.checked_mul(10u64.checked_pow(u32::try_from(-den_pow).ok()?)?)?, 1))
     }
 }
 
@@ -3239,6 +3288,59 @@ fn parse_pkh_list(json: &str, label: &str) -> Result<Vec<[u8; 28]>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ─── ExUnit price: hai dạng chuỗi cùng một endpoint ────────────
+
+    /// Bộ mẫu CÓ CẢ HAI dạng, cố ý. Đo 2026-08-11 trên
+    /// `GET api.phoenixkey.me/api/v1/wallet/params`: `price_mem` về dạng thường
+    /// `"0.0577"` còn `price_step` về dạng khoa học `"7.21E-5"` — cùng một lượt
+    /// gọi. Nhà PhoenixKey cảnh báo dạng chuỗi ĐỔI THEO EPOCH, nên test một mẫu
+    /// thì qua mà chạy thật vẫn vỡ ở một epoch nào đó về sau.
+    #[test]
+    fn price_fraction_reads_both_wire_forms() {
+        let plain = JsonValue::String("0.0577".to_string());
+        let sci = JsonValue::String("7.21E-5".to_string());
+
+        // Số mặc định truyền vào ĐỔI KHÁC giá trị đúng, để nếu hàm lại rơi về
+        // mặc định thì test đỏ. Bản cũ dùng đúng 721/10_000_000 làm mặc định nên
+        // lỗi bị che hoàn toàn — một test lấy mặc định trùng giá trị thật thì
+        // không phân biệt nổi "đọc được" với "rơi về mặc định".
+        assert_eq!(parse_price_fraction(&plain, 1, 1), (577, 10_000));
+        assert_eq!(parse_price_fraction(&sci, 1, 1), (721, 10_000_000));
+
+        // Đổi vai: hôm nào máy chủ trả `price_mem` dạng khoa học thì vẫn đúng.
+        let sci_lower = JsonValue::String("5.77e-2".to_string());
+        assert_eq!(parse_price_fraction(&sci_lower, 1, 1), (577, 10_000));
+    }
+
+    #[test]
+    fn price_fraction_handles_integers_and_positive_exponents() {
+        assert_eq!(parse_decimal_fraction("3"), Some((3, 1)));
+        assert_eq!(parse_decimal_fraction("0"), Some((0, 1)));
+        assert_eq!(parse_decimal_fraction("1.5e3"), Some((1500, 1)));
+        assert_eq!(parse_decimal_fraction("2E2"), Some((200, 1)));
+    }
+
+    /// Rác thì PHẢI rơi về mặc định, không được đoán bừa. `"1.-2"` là ca cụ thể
+    /// mà cách ghép chuỗi rồi `parse::<u64>()` của bản cũ nuốt sai.
+    #[test]
+    fn price_fraction_rejects_malformed_input() {
+        for bad in ["", "abc", "-0.5", "1.-2", "0.5.5", "1e", "1e999999", " "] {
+            assert_eq!(parse_decimal_fraction(bad), None, "phải từ chối: {bad:?}");
+        }
+        assert_eq!(parse_price_fraction(&JsonValue::Null, 721, 10_000_000), (721, 10_000_000));
+        assert_eq!(
+            parse_price_fraction(&JsonValue::String("rác".into()), 577, 10_000),
+            (577, 10_000)
+        );
+    }
+
+    /// Kiểu JSON số (không phải chuỗi) — Blockfrost trả dạng này ở vài bản.
+    #[test]
+    fn price_fraction_accepts_json_numbers() {
+        let n: JsonValue = serde_json::from_str("0.0577").unwrap();
+        assert_eq!(parse_price_fraction(&n, 1, 1), (577, 10_000));
+    }
 
     // ─── Model B: sinh khoá controller độc lập ─────────────────────
 

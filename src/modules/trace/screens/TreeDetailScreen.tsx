@@ -40,6 +40,7 @@ import { COLORS } from '../../../constants';
 import StateView from '../../../components/state/StateView';
 import RemoteImage from '../../../components/RemoteImage';
 import TreeMetadataTab from './TreeMetadataTab';
+import EntityTimeline from '../components/EntityTimeline';
 import { formatTreeName, shortTreeCode } from '../../../utils/treeNameFormatter';
 import { loadTreeImages } from '../../../services/treeImageStore';
 import { fetchTreeViews, treeViewImageUrls } from '../../../services/treeViewsService';
@@ -945,10 +946,22 @@ const TreeDetailScreen = () => {
       contentContainerStyle={styles.listContent}
       ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
       ListHeaderComponent={
-        <View style={styles.historyHeader}>
-          <Icon name="clock-rotate-left" size={16} color={COLORS.accent} />
-          <Text style={styles.historyHeaderText}>QUẢ ĐÃ GHI NHẬN GẦN ĐÂY</Text>
-        </View>
+        <>
+          {/*
+            Dòng thời gian thật của CÂY, đặt TRÊN danh sách quả. Hai thứ trả lời hai
+            câu khác nhau: danh sách quả trả lời "cây này có mấy quả", dòng thời gian
+            trả lời "cây này đã trải qua những gì" — và câu thứ hai mới là thứ người
+            mua nhìn vào. Trước bản này app chưa gọi đường timeline lần nào
+            (`grep '/timeline' src/` = 0) dù máy chủ có nó từ lâu.
+            Hỏng dòng thời gian KHÔNG được làm hỏng tab: component tự nuốt lỗi và
+            hiện một dòng giải thích, danh sách quả bên dưới vẫn nguyên.
+          */}
+          {!!tree?.id && <EntityTimeline entityType="tree" entityId={tree.id} limit={5} />}
+          <View style={styles.historyHeader}>
+            <Icon name="clock-rotate-left" size={16} color={COLORS.accent} />
+            <Text style={styles.historyHeaderText}>QUẢ ĐÃ GHI NHẬN GẦN ĐÂY</Text>
+          </View>
+        </>
       }
       ListEmptyComponent={
         <View style={styles.emptyWrap}>

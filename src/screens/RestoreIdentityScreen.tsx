@@ -27,6 +27,7 @@ import { phoenixKeyApi, PhoenixKeyApiError } from '../services/phoenixKey-api';
 import { enrollKeypair, ownerPublicKey, saveUserDid, currentUserDid } from '../sdk/phoenixKey';
 import { phoenixKeyAuth } from '../services/phoenixKeyAuthService';
 import { loginUser } from '../store/userSlice';
+import { countMnemonicWords, normalizeMnemonic } from '../utils/mnemonic';
 
 const DID_RE = /^did:phoenix:[a-z2-7]{13}:[0-9a-f]{64}$/;
 // Registry {username, did} app lưu lúc đăng ký (SignUpBiometricScreen) — dùng để
@@ -47,11 +48,11 @@ const RestoreIdentityScreen = () => {
   const [did, setDid] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Đếm số từ realtime để hướng dẫn người dùng (cần đúng 24).
-  const wordCount = useMemo(
-    () => phrase.trim().split(/\s+/).filter(Boolean).length,
-    [phrase],
-  );
+  // Cụm từ đã CHUẨN HOÁ — dùng cho cả phép đếm lẫn phép khôi phục. Xem
+  // `utils/mnemonic.ts`: chép cụm từ kèm số thứ tự / dấu phẩy làm phép đếm cũ ra
+  // 48 "từ" trong khi trên màn nhìn vẫn đúng 24, và nút Khôi phục chết không rõ lý do.
+  const cleanPhrase = useMemo(() => normalizeMnemonic(phrase), [phrase]);
+  const wordCount = useMemo(() => countMnemonicWords(phrase), [phrase]);
   const countOk = wordCount === 24;
 
   const handleRestore = async () => {
@@ -70,7 +71,7 @@ const RestoreIdentityScreen = () => {
       setLoading(true);
       // Validate cụm từ → Master_KEK → LƯU vào secure storage (ghi đè KEK ví hiện
       // có). Sau bước này SeedExport sẽ hiện đúng cụm này + ví derive nhất quán.
-      const kek = await restoreMasterKekFromMnemonic(phrase);
+      const kek = await restoreMasterKekFromMnemonic(cleanPhrase);
       if (!kek || kek.length !== 64) {
         throw new Error('Master_KEK trả về không hợp lệ');
       }
@@ -246,10 +247,13 @@ const RestoreIdentityScreen = () => {
           />
         </View>
 
+        {/* Nút vẫn BẤM ĐƯỢC khi chưa đủ 24 từ (chỉ mờ đi), để `handleRestore` nói ra
+            "cần đúng 24 từ — hiện có N". Khoá cứng thì người dùng chỉ thấy một cái
+            nút chết: họ tin là đã nhập đúng, và không có gì chỉ cho họ chỗ sai. */}
         <TouchableOpacity
           style={[styles.primaryBtn, (!countOk || loading) && { opacity: 0.5 }]}
           onPress={handleRestore}
-          disabled={!countOk || loading}
+          disabled={loading}
         >
           {loading ? (
             <ActivityIndicator color="#fff" />

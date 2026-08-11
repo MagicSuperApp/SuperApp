@@ -17,6 +17,7 @@ import {
   type StyleProp,
 } from 'react-native';
 import {NEUTRAL} from '../shared/theme';
+import {tf, useT} from '../i18n';
 import type {FeeQuote} from '../types/fee';
 
 // ---------------------------------------------------------------------------
@@ -52,6 +53,9 @@ function formatAda(n: number): string {
 
 export function FeeDisplay({feeQuote, style}: Props): React.JSX.Element | null {
   const [expanded, setExpanded] = useState(false);
+  // Hook PHẢI gọi trước nhánh `return null` bên dưới — thứ tự hook không được đổi
+  // giữa các lần vẽ.
+  const t = useT();
 
   if (!feeQuote) {
     return null;
@@ -61,13 +65,19 @@ export function FeeDisplay({feeQuote, style}: Props): React.JSX.Element | null {
     setExpanded(prev => !prev);
   };
 
+  // accessibilityLabel KHÔNG đi qua lớp autoText (chỉ <Text>/placeholder mới qua),
+  // và chuỗi dựng bằng template literal thì không bao giờ khớp khoá từ điển — nên
+  // phải dựng bằng `tf()` với chỗ thay.
   return (
     <TouchableOpacity
       onPress={toggleExpanded}
       style={[styles.container, style]}
       activeOpacity={0.75}
       accessibilityRole="button"
-      accessibilityLabel={`Phí tác vụ: ${feeQuote.display_vn}. Nhấn để ${expanded ? 'thu gọn' : 'xem chi tiết'}.`}
+      accessibilityLabel={tf('Phí tác vụ: {fee}. Nhấn để {action}.', {
+        fee: feeQuote.display_vn,
+        action: t(expanded ? 'thu gọn' : 'xem chi tiết'),
+      })}
       accessibilityHint={expanded ? 'Thu gọn chi tiết phí' : 'Mở rộng để xem phân bổ phí theo bucket'}
     >
       {/* Hàng tóm tắt */}
@@ -111,7 +121,7 @@ export function FeeDisplay({feeQuote, style}: Props): React.JSX.Element | null {
             icon="OL"
             iconBg={COLORS.olBg}
             iconColor={COLORS.olText}
-            label="OriLife Treasury"
+            label="Quỹ hệ thống"
             value={`${formatLamp(feeQuote.lamp_orilife)} LAMP`}
           />
 

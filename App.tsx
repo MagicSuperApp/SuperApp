@@ -4,11 +4,16 @@
 
 import React, { useEffect, useRef } from 'react';
 import { AppState, AppStateStatus, StatusBar, StyleSheet } from 'react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import AppNavigator from './src/navigation';
 import AlertProvider from './src/components/AlertProvider';
 import { loadTreeDedupCache } from './src/services/treeDedupCache';
+import { flushVideoUploadQueue } from './src/services/videoUploadQueue';
 import analytics from './src/services/analytics';
+import {
+  bootstrapRuntimeGate,
+  refreshRuntimeGate,
+} from './src/config/runtimeGateBootstrap';
 
 function App() {
   const appState = useRef(AppState.currentState);
@@ -23,12 +28,24 @@ function App() {
     // Khởi động hệ thống thu thập hành vi người dùng (fire-and-forget).
     void analytics.init();
 
+    // Cổng runtime: probe /health mỗi module → tự bật khi backend sống, khỏi
+    // build lại (fire-and-forget; default mock tới khi probe 2xx).
+    void bootstrapRuntimeGate();
+
+    // Hàng đợi gửi video bền: mở lại app → thử gửi những clip còn kẹt từ buổi
+    // trước (mạng rớt / stored=false). Fire-and-forget; tự bỏ qua nếu offline.
+    void flushVideoUploadQueue();
+
     // Mỗi lần app quay lại foreground = một phiên mới; vào background thì chốt
     // thời gian xem màn hình cuối và đẩy dữ liệu còn tồn lên server.
     const sub = AppState.addEventListener('change', (next: AppStateStatus) => {
       const prev = appState.current;
       if (prev.match(/inactive|background/) && next === 'active') {
         analytics.startSession();
+        // Quay lại foreground → probe lại: backend vừa được sửa sẽ tự bật.
+        refreshRuntimeGate();
+        // …và thử gửi lại clip video còn kẹt (mạng có thể vừa phục hồi).
+        void flushVideoUploadQueue();
       } else if (prev === 'active' && next.match(/inactive|background/)) {
         analytics.endSession();
       }
@@ -42,7 +59,12 @@ function App() {
   }, []);
 
   return (
-    <SafeAreaProvider>
+    // `initialMetrics`: không có nó thì `useSafeAreaInsets()` trả 0 ở LƯỢT
+    // VẼ ĐẦU (phải đợi native đo xong mới báo lại) — màn nào cộng inset để né
+    // thanh trạng thái sẽ hiện ĐÈ lên thanh trạng thái ở mấy khung hình đầu, và
+    // màn không vẽ lại thì đè luôn. Giá trị này lấy ĐỒNG BỘ ngay lúc dựng nên
+    // khung hình đầu tiên đã đúng.
+    <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       <AlertProvider>
         <StatusBar barStyle="light-content" />
         <AppNavigator />

@@ -5,7 +5,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Farm, Tree, TreeMetadata, Fruit, Activity } from '../types';
 import { database } from '../../../utils/database';
 import { databaseManager } from '../../../services/databaseManager';
-import aladinAPI from '../../../services/aladin-api';
+import { ORILIFE_BASE } from '../../../services/orilifeBase';
+import { listFarms } from '../../../services/farmService';
+import { getTrees, mapTreeInfoToUI } from '../../../services/treeReIDService';
+import { ensureOrilifeToken } from '../../../services/orilifeDidAuth';
 import { logout, logoutUser } from '../../../store/userSlice';
 
 // AsyncStorage key prefix for tree metadata (build 49 spec § 3).
@@ -31,41 +34,73 @@ const initialState: FarmState = {
   error: null,
 };
 
-// ✅ NEW: Sync farms from backend
+// Đồng bộ vườn TỪ BACKEND field-reid (nguồn sự-thật DUY-NHẤT, INV-1).
+// Trước đây gọi aladinAPI (backend Lợi deprecated) → farm_id lệch với nơi enroll
+// ghi cây (field-reid) = gốc B2. Nay listFarms field-reid (owner lấy từ auth) →
+// SQLite chỉ là CACHE offline-first, không phải nguồn id.
 export const syncFarmsFromBackend = createAsyncThunk(
   'farm/syncFarmsFromBackend',
   async (userId: string) => {
     try {
-      // Fetch from backend
-      const backendFarms = await aladinAPI.getFarms({ owner_did: userId });
-
-      // Save to local DB
-      for (const farm of backendFarms) {
-        await database.saveFarm(farm);
+      databaseManager.ensureReady('syncFarmsFromBackend');
+      // BUG-FIX: ký token DID TRƯỚC khi đọc. Trước đây token chỉ được ký khi user vào
+      // TreeIdentity/FarmDetail → mở app xong vào tab Vườn lần đầu là 401 → danh sách
+      // vườn rỗng oan. ensureOrilifeToken tự DID-login nếu chưa có token.
+      await ensureOrilifeToken(ORILIFE_BASE);
+      let res = await listFarms(ORILIFE_BASE);
+      // Token hết hạn (401) → ký lại 1 lần rồi thử lại, khớp cách FarmDetailScreen xử.
+      if (!res.ok && res.error?.type === 'auth_error') {
+        await ensureOrilifeToken(ORILIFE_BASE, { force: true });
+        res = await listFarms(ORILIFE_BASE);
       }
-
-      return backendFarms;
+      if (res.ok && res.farms) {
+        // owner LẤY TỪ AUTH → gán userId hiện-hành để loadFarms(userId) khớp cache.
+        const farms = res.farms.map((f) => ({ ...f, userId }));
+        for (const farm of farms) {
+          await database.saveFarm(farm);
+        }
+        return farms;
+      }
     } catch (error: any) {
-      console.error('[farmSlice] syncFarmsFromBackend error:', error.message);
-      // Fallback to local DB if backend fails
+      console.error('[farmSlice] syncFarmsFromBackend error:', error?.message);
+    }
+    // Backend lỗi/offline → dùng cache SQLite (offline-first; KHÔNG mất dữ liệu, INV-1).
+    try {
       return await database.getFarms(userId);
+    } catch {
+      return [];
     }
   }
 );
 
+// Đồng bộ cây của MỘT vườn TỪ field-reid (GET /api/trees?farm_id=X) — cùng backend
+// nơi enroll ghi cây, nên cây vừa tạo hiện đúng vườn (sửa "cây không vào vườn").
 export const syncTreesFromBackend = createAsyncThunk(
   'farm/syncTreesFromBackend',
   async (farmId: string) => {
-    databaseManager.ensureReady('syncTreesFromBackend');
     try {
-      const backendTrees = await aladinAPI.getTrees({ farm_id: farmId });
-      for (const tree of backendTrees) {
-        await database.saveTree(tree);
+      databaseManager.ensureReady('syncTreesFromBackend');
+      // Cùng lỗi token như syncFarmsFromBackend: ký trước + retry-force khi 401.
+      await ensureOrilifeToken(ORILIFE_BASE);
+      let res = await getTrees(ORILIFE_BASE, farmId);
+      if (!res.ok && res.error?.type === 'auth_error') {
+        await ensureOrilifeToken(ORILIFE_BASE, { force: true });
+        res = await getTrees(ORILIFE_BASE, farmId);
       }
-      return backendTrees;
+      if (res.ok && res.trees) {
+        const trees = res.trees.map((t) => mapTreeInfoToUI(t, farmId));
+        for (const tree of trees) {
+          await database.saveTree(tree);
+        }
+        return trees;
+      }
     } catch (error: any) {
-      console.error('[farmSlice] syncTreesFromBackend error:', error.message);
+      console.error('[farmSlice] syncTreesFromBackend error:', error?.message);
+    }
+    try {
       return await database.getTrees(farmId);
+    } catch {
+      return [];
     }
   }
 );

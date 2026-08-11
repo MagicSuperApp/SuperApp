@@ -51,6 +51,9 @@ react {
 
     /* Autolinking */
     autolinkLibrariesWithApp()
+    // CỐ Ý KHÔNG dùng entryFile/cliFile/bundleCommand="export:embed" mà
+    // install-expo-modules thêm vào: app vẫn đóng gói bằng RN CLI + metro RN gốc.
+    // Chỉ mượn expo-modules-core để autolink expo-gl (nền 3D).
 }
 
 /**
@@ -119,7 +122,9 @@ def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
         // Build 74 (2026-07-10): fix ví/mạng PhoenixKey (/wallet/all + Standard CIP-1852),
         // guardian đúng route §6, fix đơ iOS displayLink, YOLO gate C + A/B đăng-ký cây.
         // Build 75 (2026-07-10): tự phát hiện DID mồ côi + nút đăng-ký-lại khi server reset.
-        versionCode 75
+        // Build 76 (2026-07-13): hiện 2 ví (Standard+Phoenix) + stake_address CIP-1852;
+        // fix "Phiên hết hạn" khi tạo vườn (tự lấy token field-reid); gộp fix cây + P0 nhiệt.
+        versionCode 83
         versionName "2.0"
 
         // ✅ Support 16KB page size (required by Google Play Store 2024)
@@ -176,6 +181,11 @@ dependencies {
     // đặt ở app/src/main/assets (tự bỏ vào). Version khớp resolutionStrategy.force ở trên.
     implementation 'org.tensorflow:tensorflow-lite:2.14.0'
     implementation 'org.tensorflow:tensorflow-lite-support:0.4.4'
+    // GPU delegate — chạy YOLO gate trên GPU thay CPU. Conv-net trên GPU tiêu-thụ điện
+    // THẤP hơn nhiều so với CPU 2 luồng → máy MÁT hơn hẳn (field: máy nóng 13/07).
+    // Máy không hỗ-trợ → TreeReIDYolo tự rơi về CPU (có fallback, không crash).
+    implementation 'org.tensorflow:tensorflow-lite-gpu:2.14.0'
+    implementation 'org.tensorflow:tensorflow-lite-gpu-api:2.14.0'
 
     // LOCATION - play-services-location được cung cấp bởi react-native-geolocation-service
 

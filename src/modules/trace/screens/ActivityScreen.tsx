@@ -1,6 +1,6 @@
 // modules/trace/screens/ActivityScreen.tsx
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,9 @@ import {
   ScrollView,
   Modal,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+// Icon: bộ Font Awesome Solid tải qua Iconify (assets/icons → icons.generated).
+// Thêm icon mới: `node scripts/icons.js <tên-fa6-solid>`.
+import Icon from '../../../components/Icon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSelector } from 'react-redux';
@@ -24,45 +26,63 @@ import { COLORS } from '../../../constants';
 import { RootState } from '../../../store';
 import { useAppDispatch } from '../../../store/hooks';
 import { showSuccess, showError, showWarning, showInfo } from '../../../utils/alert';
+import { withPhotoSave } from '../../../services/mediaSavePermission';
 
-interface RouteParams { farm: any }
+// image-picker nạp mềm (giống FruitVideo/CareScan) — máy chưa cài thì báo rõ, không crash.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const imagePicker = (() => {
+  try { return require('react-native-image-picker'); } catch { return null; }
+})();
+
+// Quay clip ngắn cho hoạt động — trả về đường dẫn file để bật nút "Lưu onnet".
+const VIDEO_OPTIONS = {
+  mediaType: 'video' as const,
+  videoQuality: 'high' as const,
+  durationLimit: 30,
+  saveToPhotos: true,
+};
+
+// Nhận cả {farm} (caller cũ FarmDetail) lẫn {tree} (caller TreeDetail). Trước đây
+// TreeDetail truyền {tree} nhưng màn chỉ đọc `farm` → farm undefined → handleSave
+// thoát sớm, không lưu được hoạt động. Giờ suy ra farm từ tree.farmId.
+interface RouteParams { farm?: any; tree?: any }
 
 const ACTIVITIES = [
   {
     type: 'watering', label: 'Tưới nước', desc: 'Ghi lại quá trình tưới nước cho cây',
-    icon: 'water-outline', color: '#2E86C1', bg: 'rgba(46,134,193,0.10)', credits: 1,
+    icon: 'droplet', color: '#2E86C1', bg: 'rgba(46,134,193,0.10)', credits: 1,
     scannerTitle: 'Cập nhật Tưới Nước',
     scannerSteps: [
       { icon: 'water', label: 'Quay quá trình tưới nước tưới rễ' },
-      { icon: 'pine-tree', label: 'Hệ thống đang phát hiện cây...' },
+      { icon: 'tree', label: 'Hệ thống đang phát hiện cây...' },
     ],
   },
   {
     type: 'fertilizing', label: 'Bón phân', desc: 'Ghi lại loại phân và lượng bón',
-    icon: 'leaf-circle-outline', color: COLORS.success, bg: 'rgba(74,124,89,0.10)', credits: 2,
+    icon: 'leaf', color: COLORS.success, bg: 'rgba(74,124,89,0.10)', credits: 2,
     scannerTitle: 'Cập nhật Bón Phân',
     scannerSteps: [
-      { icon: 'flask-outline', label: 'Lia ống kính vào bao bì phân bón' },
+      { icon: 'flask', label: 'Lia ống kính vào bao bì phân bón' },
       { icon: 'tree', label: 'Đang bón phân cho cây...' },
     ],
   },
   {
     type: 'pesticide', label: 'Phun thuốc', desc: 'Lia camera vào nhãn thuốc để ghi nhận',
-    icon: 'spray-bottle', color: '#B07D2F', bg: 'rgba(176,125,47,0.10)', credits: 2,
+    icon: 'spray-can', color: '#B07D2F', bg: 'rgba(176,125,47,0.10)', credits: 2,
     scannerTitle: 'Cập nhật Phun Thuốc',
     scannerSteps: [
-      { icon: 'flask-outline', label: 'Lia ống kính vào nhãn thuốc' },
+      { icon: 'flask', label: 'Lia ống kính vào nhãn thuốc' },
       { icon: 'tree', label: 'Đang xịt thuốc cho cây...' },
     ],
   },
   {
     type: 'harvesting', label: 'Thu hoạch', desc: 'Ghi nhận quả được thu hái',
-    icon: 'basket-outline', color: '#7D3C98', bg: 'rgba(125,60,152,0.10)', credits: 3,
+    icon: 'basket-shopping', color: '#7D3C98', bg: 'rgba(125,60,152,0.10)', credits: 3,
     scannerTitle: 'Thu Hoạch Quả',
     scannerSteps: [
-      { icon: 'food-apple', label: 'Đưa quả thứ 1 trước ống kính' },
+      { icon: 'apple-whole', label: 'Đưa quả thứ 1 trước ống kính' },
       { icon: 'reload', label: 'Quay các mặt quả thứ 1...' },
-      { icon: 'food-apple', label: 'Đưa quả thứ 2 trước ống kính' },
+      { icon: 'apple-whole', label: 'Đưa quả thứ 2 trước ống kính' },
       { icon: 'reload', label: 'Phát hiện quả thành công' },
     ],
   },
@@ -72,7 +92,7 @@ const ACTIVITIES = [
 const SYNC_STEPS = [
   { label: 'Mã hoá hình ảnh', keyword: 'mã hoá' },
   { label: 'Băm nhỏ dữ liệu', keyword: 'băm nhỏ' },
-  { label: 'Phát tán LampNet', keyword: 'Phát tán' },
+  { label: 'Lưu bản sao', keyword: 'Phát tán' },
   { label: 'Cập nhật blockchain', keyword: 'cập nhật' },
 ];
 
@@ -125,7 +145,7 @@ const LampNetSyncModal = ({
             ]} />
             <Animated.View style={[styles.syncCenter, { transform: [{ scale: pulseAnim }] }]}>
               <Icon
-                name={isDone ? 'check-bold' : 'cube-send'}
+                name={isDone ? 'check' : 'cube'}
                 size={26}
                 color={isDone ? COLORS.success : COLORS.accent}
               />
@@ -133,7 +153,7 @@ const LampNetSyncModal = ({
           </View>
 
           <Text style={styles.syncTitle}>
-            {isDone ? 'Hoàn tất lưu trữ' : 'Đang lưu trữ LampNet'}
+            {isDone ? 'Hoàn tất lưu trữ' : 'Đang lưu bản sao an toàn'}
           </Text>
           <Text style={styles.syncStatusText}>{currentStatus}</Text>
 
@@ -199,7 +219,7 @@ const ActivityCard = ({
           <Text style={styles.actLabel}>{activity.label}</Text>
           <Text style={styles.actDesc}>{activity.desc}</Text>
           <View style={styles.actCreditRow}>
-            <Icon name="lightning-bolt" size={11} color={COLORS.textMuted} />
+            <Icon name="bolt" size={11} color={COLORS.textMuted} />
             <Text style={styles.actCreditText}>{activity.credits} MAGIC</Text>
           </View>
         </View>
@@ -211,7 +231,7 @@ const ActivityCard = ({
             backgroundColor: anim.interpolate({ inputRange: [0, 1], outputRange: ['transparent', activity.color] }),
           },
         ]}>
-          {selected && <Icon name="check-bold" size={12} color={COLORS.white} />}
+          {selected && <Icon name="check" size={12} color={COLORS.white} />}
         </Animated.View>
       </Animated.View>
     </TouchableOpacity>
@@ -223,7 +243,14 @@ const ActivityScreen = () => {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const route = useRoute();
-  const { farm } = (route.params ?? {}) as RouteParams;
+  const { farm: farmParam, tree } = (route.params ?? {}) as RouteParams;
+  const farms = useSelector((state: RootState) => state.farm.farms);
+  // farm hiệu dụng: ưu tiên param farm; nếu chỉ có tree thì tra vườn theo tree.farmId
+  // (fallback object tối thiểu để vẫn ghi được farmId khi vườn chưa nạp vào store).
+  const farm = farmParam
+    ?? (tree
+      ? farms.find((f: any) => f.id === tree.farmId) ?? { id: tree.farmId, name: tree.name ?? '—' }
+      : undefined);
   const dispatch = useAppDispatch();
   const user = useSelector((state: RootState) => state.user.currentUser);
   // Chỉ tin số dư đến TỪ CHAIN (selector chung). null = chưa biết số dư thật → không chặn nhầm.
@@ -232,7 +259,6 @@ const ActivityScreen = () => {
   const magicBalance = wallet?.magicBalance ?? 0;
 
   const [selected, setSelected] = useState<string | null>(null);
-  const [recording, setRecording] = useState(false);
   const [saving, setSaving] = useState(false);
   const [scannedFiles, setScannedFiles] = useState<string[]>([]);
   const [syncStatus, setSyncStatus] = useState('');
@@ -241,6 +267,25 @@ const ActivityScreen = () => {
   const selectedActivity = ACTIVITIES.find(a => a.type === selected);
   const hasFiles = scannedFiles.length > 0;
   const canSave = !!selected && !saving && hasFiles;
+
+  // Mở CAMERA QUAY VIDEO ngay (OS camera) và nhận đường dẫn file trả về → set vào
+  // scannedFiles để bật "Lưu onnet". Thay cho luồng cũ điều hướng sang TreeIdentity
+  // (màn nhận diện cây) vốn KHÔNG trả file về nên nút Lưu không bao giờ bật.
+  const handleRecord = useCallback(async () => {
+    if (!imagePicker?.launchCamera) {
+      showError('Chưa mở được máy ảnh', 'Bản app này chưa mở được máy ảnh. Vui lòng cập nhật app rồi thử lại.');
+      return;
+    }
+    imagePicker.launchCamera(await withPhotoSave(VIDEO_OPTIONS), (response: any) => {
+      if (response.didCancel) return;
+      if (response.errorCode) {
+        showError('Lỗi camera', response.errorMessage ?? 'Không mở được camera. Kiểm tra quyền.');
+        return;
+      }
+      const asset = response.assets?.[0];
+      if (asset?.uri) setScannedFiles([asset.uri]);
+    });
+  }, []);
 
   const handleSave = async () => {
     if (!selected || !farm || !user || !selectedActivity) return;
@@ -257,7 +302,7 @@ const ActivityScreen = () => {
       const steps = [
         'Hệ thống đang mã hoá các hình ảnh, video...',
         'Đang băm nhỏ dữ liệu thành hàng nghìn mảnh...',
-        'Phát tán lưu trữ trên mạng phân tán LampNet...',
+        'Đang lưu bản sao an toàn…',
         'Đang cập nhật link và trạng thái lên blockchain...',
       ];
       for (const s of steps) {
@@ -281,7 +326,8 @@ const ActivityScreen = () => {
       // thumbnailPath) which intentionally diverges from the in-memory Activity type.
       await dispatch(saveActivity(activityData as unknown as Activity));
       dispatch(updateCredits({ magic: -selectedActivity.credits, lamp: 0, ada: 0 }));
-      await syncService.addSyncItem('activity', { activity: activityData, farmName: farm.name }, []);
+      // Đính kèm clip đã quay để sync/upload (trước đây truyền [] → mất bằng chứng media).
+      await syncService.addSyncItem('activity', { activity: activityData, farmName: farm.name }, scannedFiles);
 
       showSuccess('Lưu trữ thành công', `Tiêu thụ: ${selectedActivity.credits} MAGIC`);
       navigation.goBack();
@@ -292,14 +338,6 @@ const ActivityScreen = () => {
       setSyncStatus('');
     }
   };
-
-  // "Ghi hình" cũ (scanner) thay bằng màn Nhận diện (TreeIdentity) — giống nút quick "Nhận diện".
-  useEffect(() => {
-    if (recording && selectedActivity) {
-      setRecording(false);
-      (navigation as any).navigate('TreeIdentity', farm ? { farmId: farm.id } : undefined);
-    }
-  }, [recording, selectedActivity]);
 
   return (
     <View style={styles.root}>
@@ -315,7 +353,7 @@ const ActivityScreen = () => {
           <Text style={styles.title} numberOfLines={1}>{farm?.name ?? '—'}</Text>
         </View>
         <View style={styles.magicChip}>
-          <Icon name="lightning-bolt" size={12} color={COLORS.accent} />
+          <Icon name="bolt" size={12} color={COLORS.accent} />
           <Text style={styles.magicChipText}>{balanceKnown ? magicBalance : '—'}</Text>
         </View>
       </View>
@@ -328,11 +366,11 @@ const ActivityScreen = () => {
         {/* Guide */}
         <View style={styles.guideCard}>
           <View style={styles.guideIconWrap}>
-            <Icon name="information-outline" size={17} color={COLORS.accent} />
+            <Icon name="circle-info" size={17} color={COLORS.accent} />
           </View>
           <Text style={styles.guideText}>
-            Chọn hoạt động, ghi hình, sau đó lưu lên LampNet &amp; blockchain.
-            VeData tự động chắt lọc khung hình chất lượng nhất.
+            Chọn hoạt động, ghi hình, sau đó lưu vào kho an toàn và chuỗi khối.
+            Hệ thống tự chắt lọc khung hình chất lượng nhất.
           </Text>
         </View>
 
@@ -347,7 +385,14 @@ const ActivityScreen = () => {
               key={act.type}
               activity={act}
               selected={selected === act.type}
-              onSelect={() => { setSelected(p => p === act.type ? null : act.type); setScannedFiles([]); }}
+              onSelect={() => {
+                // Chọn 1 hoạt động → MỞ ỐNG KÍNH NGAY (bỏ bước bấm "Bắt đầu ghi hình").
+                // Bấm lại chính nó = bỏ chọn. Chọn cái mới = mở camera quay luôn.
+                if (selected === act.type) { setSelected(null); setScannedFiles([]); return; }
+                setSelected(act.type);
+                setScannedFiles([]);
+                handleRecord();
+              }}
             />
           ))}
         </View>
@@ -363,7 +408,7 @@ const ActivityScreen = () => {
             {hasFiles ? (
               <View style={[styles.cameraCard, { borderColor: `${COLORS.success}44` }]}>
                 <View style={[styles.cameraIcon, { backgroundColor: `${COLORS.success}12` }]}>
-                  <Icon name="check-circle-outline" size={26} color={COLORS.success} />
+                  <Icon name="circle-check" size={26} color={COLORS.success} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.cameraTitle}>Đã chắt lọc {scannedFiles.length} hình ảnh</Text>
@@ -371,20 +416,20 @@ const ActivityScreen = () => {
                 </View>
                 <TouchableOpacity
                   style={styles.retakeBtn}
-                  onPress={() => { setScannedFiles([]); setRecording(true); }}
+                  onPress={handleRecord}
                 >
-                  <Icon name="refresh" size={14} color={COLORS.textSub} />
+                  <Icon name="arrows-rotate" size={14} color={COLORS.textSub} />
                   <Text style={styles.retakeText}>Ghi lại</Text>
                 </TouchableOpacity>
               </View>
             ) : (
               <TouchableOpacity
                 style={[styles.cameraCard, { borderColor: `${selectedActivity.color}30` }]}
-                onPress={() => setRecording(true)}
+                onPress={handleRecord}
                 activeOpacity={0.85}
               >
                 <View style={[styles.cameraIcon, { backgroundColor: selectedActivity.bg }]}>
-                  <Icon name="camera-plus-outline" size={24} color={selectedActivity.color} />
+                  <Icon name="camera" size={24} color={selectedActivity.color} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.cameraTitle}>Bắt đầu ghi hình</Text>
@@ -395,7 +440,7 @@ const ActivityScreen = () => {
             )}
 
             <View style={styles.creditNote}>
-              <Icon name="lightning-bolt" size={13} color={COLORS.accent} />
+              <Icon name="bolt" size={13} color={COLORS.accent} />
               <Text style={styles.creditNoteText}>
                 Hoạt động này tiêu tốn{' '}
                 <Text style={{ fontWeight: '700', color: COLORS.accent }}>
@@ -415,7 +460,7 @@ const ActivityScreen = () => {
           <View style={styles.bottomMeta}>
             <Text style={styles.bottomMetaLabel}>Chi phí</Text>
             <View style={styles.creditChip}>
-              <Icon name="lightning-bolt" size={11} color={COLORS.accent} />
+              <Icon name="bolt" size={11} color={COLORS.accent} />
               <Text style={styles.creditChipText}>{selectedActivity.credits} MAGIC</Text>
             </View>
             {!hasFiles && (
@@ -434,7 +479,7 @@ const ActivityScreen = () => {
             activeOpacity={1}
           >
             <View style={styles.btnShine} />
-            <Icon name={saving ? 'loading' : 'cloud-upload-outline'} size={20} color={COLORS.white} />
+            <Icon name={saving ? 'spinner' : 'cloud-arrow-up'} size={20} color={COLORS.white} />
             <Text style={styles.saveBtnText}>{saving ? 'Đang lưu...' : 'Lưu onnet'}</Text>
           </TouchableOpacity>
         </Animated.View>

@@ -1,0 +1,55 @@
+diff --git a/node_modules/expo-modules-jsi/apple/Package.swift b/node_modules/expo-modules-jsi/apple/Package.swift
+index ecd7ed6..385f8b3 100644
+--- a/node_modules/expo-modules-jsi/apple/Package.swift
++++ b/node_modules/expo-modules-jsi/apple/Package.swift
+@@ -1,4 +1,4 @@
+-// swift-tools-version: 6.2
++// swift-tools-version: 5.9
+ // The swift-tools-version declares the minimum version of Swift required to build this package.
+ 
+ import Foundation
+@@ -86,13 +86,18 @@ let package = Package(
+       swiftSettings: [
+         .interoperabilityMode(.Cxx),
+ 
+-        // Enable some upcoming features that improve ergonomics and reduce executor hoppings
+-        // https://github.com/swiftlang/swift-evolution/blob/main/proposals/0461-async-function-isolation.md
+-        .enableUpcomingFeature("NonisolatedNonsendingByDefault"),
+-        // https://github.com/swiftlang/swift-evolution/blob/main/proposals/0470-isolated-conformances.md
+-        .enableUpcomingFeature("InferIsolatedConformances"),
++        // FIX: bật lại bare-slash regex literals — mặc định BẬT ở Swift 6 mode nhưng
++        // patch này ép `-swift-version 5` (để né 'weak let' trên Xcode cũ) làm TẮT nó,
++        // gây lỗi "'$' is not a valid digit in integer literal" ở JavaScriptRuntime.swift
++        // dòng `name.wholeMatch(of: /^[a-zA-Z_$][a-zA-Z0-9_$]*$/)`. Bật tường minh dưới v5.
++        .enableUpcomingFeature("BareSlashRegexLiterals"),
++
++        // NOTE: NonisolatedNonsendingByDefault and InferIsolatedConformances removed —
++        // these are Swift 6-only upcoming features that cause 'weak let' errors
++        // when building with Xcode 26. Patched to use swiftLanguageModes: [.v5].
+ 
+         .unsafeFlags([
++          "-swift-version", "5",
+           "-enable-library-evolution",
+           "-emit-module-interface",
+           "-no-verify-emitted-module-interface",
+@@ -135,7 +140,7 @@ let package = Package(
+       dependencies: testFrameworks.dependencies,
+     ),
+   ] + testFrameworks.binaryTargets,
+-  swiftLanguageModes: [.v6],
++  swiftLanguageVersions: [.v5],
+   cxxLanguageStandard: .cxx20
+ )
+ 
+diff --git a/node_modules/expo-modules-jsi/apple/scripts/build-xcframework.sh b/node_modules/expo-modules-jsi/apple/scripts/build-xcframework.sh
+index 7c2587a..de4480f 100644
+--- a/node_modules/expo-modules-jsi/apple/scripts/build-xcframework.sh
++++ b/node_modules/expo-modules-jsi/apple/scripts/build-xcframework.sh
+@@ -213,6 +213,7 @@ build_slice() {
+     -skipMacroValidation \
+     -parallelizeTargets \
+     BUILD_LIBRARY_FOR_DISTRIBUTION=YES \
++    SWIFT_VERSION=5.9 \
+     SKIP_INSTALL=NO \
+     DEBUG_INFORMATION_FORMAT=dwarf-with-dsym \
+     COMPILER_INDEX_STORE_ENABLE=NO \

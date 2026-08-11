@@ -33,7 +33,7 @@ export const MODULES: ModuleEntry[] = [
     icon: 'pine-tree',
     image: require('../../assets/images/modules/scan-fi.png'),
     bgDark: '#0F5132',
-    routeName: 'Dashboard',
+    routeName: 'Farms', // tab Trace (hiện Dashboard) → mở kèm navbar; KHÔNG dùng root-stack 'Dashboard'
     available: true,
   },
   {
@@ -59,7 +59,7 @@ export const MODULES: ModuleEntry[] = [
   {
     theme: LAMPNET_THEME,
     title: 'Kết đèn',
-    description: 'Góp sức máy cho mạng LampNet & nhận thưởng',
+    description: 'Góp sức máy cho mạng lưới & nhận thưởng',
     icon: 'lightning-bolt',
     // Chưa có PNG nhân vật riêng cho Kết đèn — dùng tạm ảnh scan (fallback icon vẫn hiện).
     // TODO(thiết kế): bổ sung assets/images/modules/lamp-fi.png.

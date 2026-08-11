@@ -11,11 +11,14 @@
 // Hook này CHỈ:
 //   1. validate DID (did:phoenix regex) rồi gọi authChallenge(did)
 //      → nhận { challenge, domain, messageTemplate }
-//   2. [TODO THƯ] ký message = `${challenge}:${domain}:${timestamp}` (timestamp
-//      = GIÂY epoch) bằng khóa riêng P-256 của DID → signature DER hex
+//   2. ký message = `${challenge}:${domain}:${timestamp}` (timestamp = GIÂY epoch)
+//      bằng khóa riêng P-256 của DID → signature DER hex
 //   3. gọi authVerify({ did, challenge, signature, timestamp }) → session Bearer
 //   4. saveWorkSession(...)
-// signChallenge được TRUYỀN VÀO từ ngoài (do Thư cấp) — hook không tự ký.
+// signChallenge được TRUYỀN VÀO từ ngoài — bản THẬT là `signWorkChallenge`
+// (services/signWorkChallenge.ts, ký bằng signRaw PhoenixKey HW key). Luồng nền
+// KHÔNG dùng hook: interceptor tự gọi `ensureWorkSession` (workAuthService) khi
+// call cần-auth mà chưa có token. Hook này còn cho màn login TƯỜNG MINH nếu cần.
 // ══════════════════════════════════════════════════════════════════════════
 
 import { useState, useCallback } from 'react';
@@ -57,8 +60,9 @@ export const useWorkAuth = () => {
   }, []);
 
   /**
-   * Đăng nhập đầy đủ. signChallenge do Thư cấp (ký P-256 / secp256r1).
-   * TODO THƯ: nối signChallenge vào SDK/relay PhoenixKey thật (Secure Enclave/StrongBox).
+   * Đăng nhập đầy đủ. Truyền `signWorkChallenge` (services/signWorkChallenge.ts) để
+   * ký P-256 bằng PhoenixKey HW key thật. (Luồng nền dùng ensureWorkSession, không
+   * qua hook — hook này cho màn login tường minh.)
    */
   const login = useCallback(async (did: string, signChallenge: SignChallengeFn): Promise<boolean> => {
     setState(prev => ({ ...prev, loading: true, errorKind: null, errorCode: null }));

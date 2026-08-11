@@ -1,14 +1,14 @@
 // modules/work/hooks/useJobs.ts
 //
-// Hook nạp danh sách + chi tiết tin tuyển. ĐIỂM NỐI mock ⟷ API thật:
-//   - isWorkBackendEnabled() === true  → gọi workApi (API thật, đủ 4 trạng thái
-//     loading/empty/offline/error — INTEGRATION §7.3, phân biệt mạng/quyền/server).
-//   - false → trả MOCK ngay (UI test không vỡ khi chưa có host AladinWork dev).
-//
-// Không xoá mock: mock là fallback + nguồn cho flag OFF.
+// Hook nạp danh sách + chi tiết tin tuyển. LÀM THẬT — KHÔNG mock (anh Aladin chốt
+// 2026-07-27: "không cần seed, không cần mock, làm thật luôn"):
+//   - Cổng runtime bật (backend AladinWork sống, health 2xx) → gọi workApi THẬT,
+//     đủ 4 trạng thái loading/empty/offline/error (INTEGRATION §7.3).
+//   - Cổng tắt (chưa cấu hình host / backend chưa sống) → danh sách RỖNG + empty-state
+//     THẬT, TUYỆT ĐỐI không dựng dữ liệu mẫu lên màn thật.
 
 import { useCallback, useEffect, useState } from 'react';
-import { FEATURED_JOBS, type Job } from '../data/mockData';
+import { type Job } from '../data/mockData';
 import { toUiJob } from '../data/adapters';
 import { isWorkBackendEnabled } from '../services/config';
 import { getJobs, getJob, WorkApiError, type WorkErrorKind } from '../services/workApi';
@@ -17,7 +17,7 @@ export interface LoadState {
   loading: boolean;
   /** null = chưa lỗi. Ngược lại phân loại để StateView chọn offline/error/auth. */
   errorKind: WorkErrorKind | null;
-  /** true khi đang chạy mock (flag OFF) — screen có thể hiện nhãn dev nếu cần. */
+  /** Giữ để tương thích chữ ký cũ; nay LUÔN false (đã gỡ mock). */
   usingMock: boolean;
 }
 
@@ -30,9 +30,10 @@ export const useJobs = (openOnly = false) => {
 
   const load = useCallback(async () => {
     if (!isWorkBackendEnabled()) {
-      // Flag OFF → mock, không chạm mạng.
-      setJobs(FEATURED_JOBS);
-      setState({ loading: false, errorKind: null, usingMock: true });
+      // Cổng tắt (chưa cấu hình host / backend chưa sống) → RỖNG + empty-state thật,
+      // không dựng dữ liệu mẫu. Không chạm mạng để tránh gọi localhost vô nghĩa.
+      setJobs([]);
+      setState({ loading: false, errorKind: null, usingMock: false });
       return;
     }
     setState({ loading: true, errorKind: null, usingMock: false });
@@ -61,9 +62,10 @@ export const useJobDetail = (jobId: string) => {
 
   const load = useCallback(async () => {
     if (!isWorkBackendEnabled()) {
-      const local = FEATURED_JOBS.find(j => j.id === jobId) ?? null;
-      setJob(local);
-      setState({ loading: false, errorKind: null, usingMock: true });
+      // Cổng tắt → không có chi tiết thật để hiện; trả null (UI báo không tìm thấy),
+      // không rơi về dữ liệu mẫu.
+      setJob(null);
+      setState({ loading: false, errorKind: null, usingMock: false });
       return;
     }
     setState({ loading: true, errorKind: null, usingMock: false });

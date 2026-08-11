@@ -2,11 +2,16 @@
 // Màn "Đang đóng góp" (Kết đèn) — spec SG8·F8.4 §4.2.
 //
 // KHUNG UI + gọi API: trạng thái node (online, việc đang chạy), số việc đã verify,
-// thưởng tích luỹ. Đọc song song /v1/node/stats + /v1/reward/epoch (spec §2 bước 7).
-// Token-driven, zero hardcode màu. Đủ 4 trạng thái loading/empty/offline/error.
+// thưởng tích luỹ. Token-driven, zero hardcode màu. Đủ 4 trạng thái.
+//
+// ⚠ 2026-08-05: BỎ `/v1/reward/epoch` khỏi màn này. Đường đó là POST phía vận hành
+// (nhận đóng góp của TẤT CẢ node + đòi header ký), gọi bằng GET trả 405 — mà 405 lại
+// bị xếp nhầm vào lỗi quyền, nên màn này CHƯA BAO GIỜ hiện được số nào, chỉ hiện lỗi.
+// Thưởng theo thiết bị nằm ở `GET /v1/mobile/rewards/{device_pubkey}`, chờ SDK native
+// cấp `device_pubkey` (xem `joinService.getDeviceRewards`).
 //
 // CHỖ CHỜ:
-//   - Endpoint LampNet dev sống → số liệu thật; nay bắt lỗi 3 lớp (JoinApiError).
+//   - `device_pubkey` từ SDK native → mở khoá ô "Thưởng tích luỹ".
 //   - App-loop nền (FGS/BGTask) = bản sau (spec §6) — màn này chỉ HIỂN THỊ.
 //   - µLAMP in-memory (spec §5: thử nghiệm, chưa MAGIC thật) — ghi rõ trên UI.
 
@@ -26,7 +31,6 @@ import { LAMPNET_THEME } from '../theme/colors';
 import StateView from '../../../components/state/StateView';
 import {
   getNodeStats,
-  getRewardEpoch,
   isLampNetBackendEnabled,
   JoinApiError,
   type NodeStats,
@@ -50,10 +54,21 @@ const ContributingScreen: React.FC = () => {
     }
     if (!isRefresh) setState('loading');
     try {
-      // Đọc song song 2 endpoint (spec §2 bước 7).
-      const [s, r] = await Promise.all([getNodeStats(), getRewardEpoch()]);
+      // CHỈ /v1/node/stats. Thưởng theo thiết bị chờ device_pubkey từ SDK native —
+      // xem ghi chú đầu file; đừng gọi lại /v1/reward/epoch ở đây.
+      const s = await getNodeStats();
       setStats(s);
-      setReward(r);
+      // ⛔ GIỮ NGUYÊN `null` — ĐỪNG nối `getDeviceRewards()` vào đây (LampNet 05/08).
+      // Không phải vì thiếu `device_pubkey`, mà vì con số bên kia trả về CHƯA GIỮ ĐƯỢC:
+      //   · sổ `mobile_rewards` nằm trong BỘ NHỚ, khởi động lại daemon là sạch;
+      //   · `GET /v1/signaling_config` là route công khai không auth và trả thẳng
+      //     `api_token` — chính token mà `require_bearer_auth` so sánh — nên BẤT KỲ AI
+      //     cũng gọi được `POST /v1/mobile/settlement/drain` → `rewards.clear()`;
+      //   · đơn vị chốt là CARP, lõi đang trả µLAMP.
+      // Nối vào = hiện một con số trông như SỐ DƯ trong khi nó vừa sai đơn vị vừa ai cũng
+      // xoá được. Dấu `—` kèm câu "chưa đo được" ở dưới là câu trả lời TRUNG THỰC hơn.
+      // Mở khoá khi LampNet ghi bền sổ VÀ sửa đơn vị — xem issue LampNetCloud/lampnet-hivemind#50.
+      setReward(null);
       // Empty = chưa join / node chưa có dữ liệu (không phải lỗi).
       const hasData = s?.online !== undefined || s?.verified_jobs !== undefined;
       setState(hasData ? 'ready' : 'empty');
@@ -90,7 +105,7 @@ const ContributingScreen: React.FC = () => {
         <StateView
           status="error"
           title="Chưa tải được trạng thái node"
-          message="Daemon LampNet đang bận hoặc chưa phản hồi. Vui lòng thử lại."
+          message="Máy chủ đang bận hoặc chưa phản hồi. Vui lòng thử lại."
           onRetry={() => load()}
         />
       </ScreenShell>
@@ -168,17 +183,22 @@ const ContributingScreen: React.FC = () => {
             <Icon name="gift-outline" size={20} color={LAMPNET_THEME.primary} />
             <Text style={styles.rewardTitle}>Thưởng tích luỹ</Text>
           </View>
+          {/* Chưa có số thì ĐỪNG in đơn vị. "— µLAMP" khẳng định một đơn vị mà bên lõi
+              đã báo là SAI (chốt là CARP), lại còn là chữ nông dân không hiểu. Không có
+              số thì chỉ một dấu gạch, phần giải thích để câu bên dưới lo. */}
           <Text style={styles.rewardValue}>
             {accrued != null ? String(accrued) : '—'}
-            <Text style={styles.rewardUnit}> µLAMP</Text>
+            {accrued != null && <Text style={styles.rewardUnit}> µLAMP</Text>}
           </Text>
           {reward?.epoch != null && (
-            <Text style={styles.rewardEpoch}>Epoch #{reward.epoch}</Text>
+            <Text style={styles.rewardEpoch}>Đợt #{reward.epoch}</Text>
           )}
           <View style={styles.experimentalNote}>
             <Icon name="flask-outline" size={12} color={COLORS.textMuted} />
             <Text style={styles.experimentalText}>
-              Thử nghiệm — µLAMP tạm tính trong bộ nhớ. MAGIC thật vào ví ở bản sau.
+              {accrued != null
+                ? 'Thử nghiệm — µLAMP tạm tính trong bộ nhớ. MAGIC thật vào ví ở bản sau.'
+                : 'Chưa đo được thưởng của máy này: cần bản có phần góp máy. Dấu — nghĩa là chưa đo được, không phải bạn chưa được ghi nhận.'}
             </Text>
           </View>
         </View>

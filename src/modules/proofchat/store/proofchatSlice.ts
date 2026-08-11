@@ -466,6 +466,56 @@ const slice = createSlice({
         if (!msg.isMine) room.unreadCount += 1;
       }
     },
+
+    // ── Tin ĐÃ GIẢI MÃ từ proofchatService (MLS tầng-2 + Merkle tầng-3) ──────
+    // Khác receiveWsMessage (ciphertext thô): tin này đã có PLAINTEXT + kết-quả
+    // verify. Nguồn: onDecryptedMessage → dispatch. Chống trùng theo id (echo tin
+    // mình gửi cũng tới qua đây → 1 nguồn duy nhất, không optimistic để tránh nhân đôi).
+    receiveDecryptedMessage: (
+      state,
+      action: PayloadAction<{
+        id: string;
+        conversationId: string;
+        senderId: string;
+        isMine: boolean;
+        timestamp: number;
+        plaintext: string;
+        merkleVerified: boolean | null;
+      }>,
+    ) => {
+      const { id, conversationId, senderId, isMine, timestamp, plaintext, merkleVerified } =
+        action.payload;
+      const list = state.messagesByRoom[conversationId] ?? [];
+      const verificationStatus: VerificationStatus =
+        merkleVerified === false ? 'failed' : 'verified';
+      const existing = list.find(m => m.id === id);
+      if (existing) {
+        // Đã có (vd optimistic tương lai) → cập-nhật plaintext + verify, không nhân đôi.
+        existing.text = plaintext;
+        existing.stage = 'delivered';
+        existing.verificationStatus = verificationStatus;
+        return;
+      }
+      const msg: Message = {
+        id,
+        roomId: conversationId,
+        senderId,
+        isMine,
+        timestamp,
+        text: plaintext,
+        ciphertext: '',
+        proof: { hash: '', signature: '', merkleProof: '' },
+        verificationStatus,
+        stage: 'delivered',
+      };
+      state.messagesByRoom[conversationId] = [...list, msg];
+      const room = state.rooms.find(r => r.id === conversationId);
+      if (room) {
+        room.lastMessage = plaintext;
+        room.lastMessageAt = timestamp;
+        if (!isMine) room.unreadCount += 1;
+      }
+    },
   },
 
   // ── extraReducers: kết quả thunk dữ liệu THẬT ─────────────────────────────
@@ -512,6 +562,7 @@ const slice = createSlice({
 
 export const {
   sendMessage,
+  receiveDecryptedMessage,
   setMessageStage,
   decryptMessage,
   markRoomRead,

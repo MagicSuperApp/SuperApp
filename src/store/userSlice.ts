@@ -4,17 +4,39 @@ import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import { User } from '../types';
 import { database } from '../utils/database';
 import { databaseManager } from '../services/databaseManager';
-import { phoenixKeyApi, summarizeWalletAll } from '../services/phoenixKey-api';
+import { phoenixKeyApi, summarizeWalletAll, type WalletEntry } from '../services/phoenixKey-api';
 import { parseDidNetwork } from '../services/phoenixDid';
+import { clearWorkSession } from '../modules/work/services/session';
+import { disconnectProofChat } from '../services/proofchatAuthBridge';
+import { clearAllDrafts } from '../services/treeDraftStore';
+import { setVideoQueueOwner, flushVideoUploadQueue } from '../services/videoUploadQueue';
 
+/**
+ * ⚠ ĐƠN VỊ — đọc trước khi hiện bất cứ con số nào ra màn hình.
+ *
+ * Store này TRỘN hai quy ước, và đó chính là cái bẫy đã làm màn ví hiện LAMP gấp
+ * 1.000.000 lần (LAMP agent phát hiện 2026-07-29):
+ *   · `adaBalance`  — ĐÃ chia, đơn vị ADA (người đọc được)
+ *   · `lampBalance` — CHƯA chia, đơn vị **oildrop** (thô on-chain, 1 LAMP = 10⁶)
+ *   · `carpBalance` — CHƯA chia, đơn vị thô; decimals CHƯA chốt (chờ CARP agent)
+ *   · `magicBalance`— sổ vault, không đọc từ UTxO; đơn vị chưa chốt (chờ MAGIC agent)
+ *
+ * Vì vậy MỌI chỗ hiện `lampBalance` PHẢI đi qua `fmtLamp()` (`src/utils/token.ts`).
+ * Đừng in thẳng. Việc thống nhất một quy ước cho cả store là dòng riêng trong sổ
+ * bàn giao — không làm giữa đợt thực địa vì nó đụng 6 màn.
+ */
 interface Wallet {
   id: string;
   userId: string;
+  /** Sổ vault MAGIC — đơn vị chưa chốt. */
   magicBalance: number;
+  /** **oildrop** (thô). Hiện ra màn hình PHẢI qua `fmtLamp()`. */
   lampBalance: number;
   // CARP — token hệ sinh thái thứ 3. Backend PhoenixKey CHƯA trả số dư → optional, hiện '—'
   // tới khi có API thật (xem message hỏi Phoenix Agent). Thứ tự chuẩn: MAGIC · LAMP · CARP.
+  /** Thô, decimals chưa chốt — chưa chia được, hiện nguyên số. */
   carpBalance?: number;
+  /** ĐÃ chia — đơn vị ADA. */
   adaBalance: number;
   lastSynced: string;
   pendingCredits: number;
@@ -36,6 +58,10 @@ interface PhoenixKey {
 interface UserState {
   currentUser: User | null;
   wallet: Wallet | null;
+  // CẢ HAI ví từ /wallet/{did}/all: `phoenix` (hệ-thống giữ, backend derive theo DID) và
+  // `standard` (CIP-1852, user tự giữ khoá từ Master_KEK). Rỗng = chưa refresh / chưa có ví.
+  // `wallet` ở trên chỉ là bản RÚT-GỌN 1-ví (tổng quan) — dùng `wallets` khi cần tách bạch.
+  wallets: WalletEntry[];
   phoenixKey: PhoenixKey | null;
   // Mạng Cardano THẬT theo danh tính (resolveNetwork). null = chưa rõ → UI dùng nhãn env.
   network: string | null;
@@ -49,6 +75,7 @@ interface UserState {
 const initialState: UserState = {
   currentUser: null,
   wallet: null,
+  wallets: [],
   phoenixKey: null,
   network: null,
   controllerPkh: null,
@@ -69,6 +96,15 @@ export const loginUser = createAsyncThunk(
       console.log(`[Redux] Logging in user with DID: ${didKey}`);
 
       await databaseManager.initializeForUser(didKey);
+
+      // Hàng đợi video nằm dưới MỘT khoá toàn cục và sống qua đăng xuất. Gắn chủ
+      // cho phiên này để flush chỉ đụng clip của người đang đăng nhập — clip của
+      // người trước nằm yên chờ chính họ đăng nhập lại, không bị gửi hộ.
+      setVideoQueueOwner(didKey);
+      // App KHÔNG auto-login (navigation/index.tsx:1663 luôn vào Login), nên flush lúc
+      // App mount chạy khi chưa có chủ và bỏ qua clip có chủ. Đây là nhịp đầu tiên
+      // biết chủ là ai → đẩy luôn clip còn kẹt của chính người vừa đăng nhập.
+      void flushVideoUploadQueue().catch(() => {});
 
       const wallet = await database.getWallet(userData.id);
       const phoenixKey = await database.getPhoenixKey(userData.id);
@@ -91,6 +127,31 @@ export const loginUser = createAsyncThunk(
 export const logoutUser = createAsyncThunk(
   'user/logoutUser',
   async () => {
+    // Xoá phiên XUYÊN MODULE trước khi đóng DB — nếu không, token Work (sống ~12h) +
+    // kết nối ProofChat sống sót qua đăng xuất → rò dữ liệu user A→B trên máy dùng chung.
+    // Best-effort: lỗi 1 nhánh KHÔNG được chặn đăng xuất (vẫn phải đóng DB per-user).
+    try {
+      await clearWorkSession();
+    } catch (error) {
+      console.warn('[Redux] Logout: clearWorkSession lỗi (bỏ qua):', error);
+    }
+    try {
+      await disconnectProofChat();
+    } catch (error) {
+      console.warn('[Redux] Logout: disconnectProofChat lỗi (bỏ qua):', error);
+    }
+    try {
+      // Nháp chụp cây / video quả là dữ liệu PHIÊN. Tablet field dùng CHUNG → xoá sạch
+      // khi đăng xuất để nháp (ảnh+GPS+tên) user A KHÔNG lọt vào form user B. Namespace
+      // theo owner đã chặn đường app-kill; đây là lớp chắc chắn cho đường đăng xuất.
+      await clearAllDrafts();
+    } catch (error) {
+      console.warn('[Redux] Logout: clearAllDrafts lỗi (bỏ qua):', error);
+    }
+    // Bỏ chủ hàng đợi video: từ giờ tới lần đăng nhập kế, flush KHÔNG được đụng
+    // clip có chủ. Cố ý KHÔNG xoá hàng đợi — clip quay ngoài đồng chưa gửi được là
+    // dữ liệu thật của người trước, xoá đi là mất trắng công một buổi.
+    setVideoQueueOwner(null);
     try {
       console.log('[Redux] Logging out user');
       await databaseManager.closeDatabase();
@@ -143,7 +204,9 @@ export const refreshWallet = createAsyncThunk(
       lastSynced: new Date().toISOString(),
       fromChain: true,
     };
-    return wallet;
+    // GIỮ NGUYÊN cả mảng ví (phoenix + standard) để UI hiện TÁCH BẠCH 2 ví — `wallet`
+    // ở trên chỉ là bản rút-gọn 1-ví cho các màn cũ (tổng quan / SDK).
+    return { wallet, wallets: all.wallets };
   }
 );
 
@@ -233,6 +296,7 @@ const userSlice = createSlice({
     logout: (state) => {
       state.currentUser = null;
       state.wallet = null;
+      state.wallets = [];
       state.phoenixKey = null;
       state.network = null;
       state.controllerPkh = null;   // audit #3: tránh rò khoá quản-trị sang tài-khoản kế
@@ -311,7 +375,8 @@ const userSlice = createSlice({
       })
       // Ví thật từ chuỗi — chỉ set khi lấy được, lỗi thì giữ nguyên (không bịa)
       .addCase(refreshWallet.fulfilled, (state, action) => {
-        state.wallet = action.payload;
+        state.wallet = action.payload.wallet;
+        state.wallets = action.payload.wallets;
       })
       // Mạng theo danh tính thật — chỉ set khi resolve được, null thì giữ nguyên
       .addCase(resolveNetwork.fulfilled, (state, action) => {
@@ -334,5 +399,12 @@ export const { setUser, setLoading, setError, updateCredits, logout } = userSlic
  */
 export const selectChainWallet = (state: { user: UserState }): Wallet | null =>
   state.user.wallet?.fromChain ? state.user.wallet : null;
+
+/**
+ * CẢ HAI ví (phoenix custody + standard CIP-1852) từ /wallet/{did}/all — để UI hiện
+ * TÁCH BẠCH. Rỗng = chưa refresh hoặc DID chưa có ví nào trên backend.
+ */
+export const selectChainWallets = (state: { user: UserState }): WalletEntry[] =>
+  state.user.wallets;
 
 export default userSlice.reducer;

@@ -270,6 +270,35 @@ class TreeReIDBridgeModule(private val reactContext: ReactApplicationContext) :
         }
     }
 
+    // ── Cam controls: flash + lens 0.5x ─────────────────────────────────────
+    @ReactMethod
+    fun getCameraCapabilities(promise: Promise) {
+        UiThreadUtil.runOnUiThread {
+            val (hasTorch, ultra) = TreeReIDCamera.capabilities()
+            val res = Arguments.createMap().apply {
+                putBoolean("hasTorch", hasTorch)
+                putBoolean("supportsUltraWide", ultra)
+            }
+            promise.resolve(res)
+        }
+    }
+
+    @ReactMethod
+    fun setTorch(on: Boolean, promise: Promise) {
+        UiThreadUtil.runOnUiThread {
+            try { promise.resolve(TreeReIDCamera.setTorch(on)) }
+            catch (e: Exception) { promise.resolve(false) }
+        }
+    }
+
+    @ReactMethod
+    fun setUltraWide(on: Boolean, promise: Promise) {
+        UiThreadUtil.runOnUiThread {
+            try { promise.resolve(TreeReIDCamera.setUltraWide(on)) }
+            catch (e: Exception) { promise.resolve(false) }
+        }
+    }
+
     // NativeEventEmitter yêu cầu (no-op).
     @ReactMethod
     fun addListener(eventName: String) { /* keep */ }

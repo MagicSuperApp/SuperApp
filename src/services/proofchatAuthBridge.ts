@@ -9,6 +9,7 @@
  *        → lưu accessToken/refreshToken ProofChat.
  */
 import { getSessionToken as getPhoenixSessionToken } from './phoenixKey-api';
+import { ensurePhoenixSession } from './phoenixSessionService';
 import {
   proofChatApi,
   isProofChatBackendEnabled,
@@ -36,7 +37,12 @@ export const connectProofChat = async (): Promise<ConnectResult> => {
     return { status: 'connected', alreadyHadSession: true };
   }
 
-  const phoenixSession = await getPhoenixSessionToken();
+  let phoenixSession = await getPhoenixSessionToken();
+  if (!phoenixSession) {
+    // Mobile-only chưa có PhoenixKey session token (chưa self-pair) → tự ký lấy rồi
+    // thử lại. Cùng token dùng cho /wallet/standard/register — xem phoenixSessionService.
+    phoenixSession = await ensurePhoenixSession();
+  }
   if (!phoenixSession) {
     return { status: 'no-phoenix-session' };
   }

@@ -86,8 +86,8 @@ const ExportIdentityScreen = () => {
             </Text>
           </View>
 
-          <Field icon="identifier" label="DID" value={did} onCopy={() => copy(did, 'DID')} />
-          <Field icon="key" label="Khoá công khai (HW · P-256)" value={hwPub} onCopy={() => copy(hwPub, 'Khoá HW')} />
+          <Field icon="identifier" label="Mã định danh" value={did} onCopy={() => copy(did, 'Mã định danh')} />
+          <Field icon="key" label="Khoá công khai (giữ trong máy)" value={hwPub} onCopy={() => copy(hwPub, 'Khoá HW')} />
           <Field icon="key-link" label="Khoá công khai TAAD (Ed25519)" value={taadPub} onCopy={() => copy(taadPub, 'Khoá TAAD')} />
           <Field icon="wallet" label="Ví cố định (account 0)" value={fixedAddr} onCopy={() => copy(fixedAddr, 'ví cố định')} />
           <Field icon="wallet-outline" label={`Ví hoạt động (account ${activeIdx})`} value={activeAddr} onCopy={() => copy(activeAddr, 'ví hoạt động')} />

@@ -15,8 +15,6 @@ import { RootState } from '../../../../../store';
 import { NEUTRAL, withAlpha } from '../../../../../shared/theme';
 import { PROOFCHAT_THEME } from '../../../theme/colors';
 import JobRoomItem from '../components/JobRoomItem';
-import SyncStatusPill from '../components/SyncStatusPill';
-import { TOKEN_SYMBOL } from '../../wallet/types';
 import CreateConversationModal, {
   type CreateConversationPayload,
 } from '../components/CreateConversationModal';
@@ -31,9 +29,17 @@ import {
   createConversation,
   joinConversation,
   loadConversations,
+  receiveDecryptedMessage,
   rejectInvitation,
 } from '../../../store/proofchatSlice';
 import { isProofChatBackendEnabled } from '../../../../../services/proofchat-api';
+import {
+  createGroupConversation,
+  createDirectConversation,
+  init as initProofChat,
+  onDecryptedMessage,
+} from '../../../../../services/proofchatService';
+import { useCapabilityLive } from '../../../../../config/useCapabilityLive';
 
 type FilterKey = 'all' | 'unread' | 'escrow';
 
@@ -48,21 +54,43 @@ const ProofChatHomeScreen: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
   const rooms = useSelector((s: RootState) => s.proofchat.rooms);
   const sync = useSelector((s: RootState) => s.proofchat.sync);
-  const wallet = useSelector((s: RootState) => s.proofchat.wallet);
-  const identity = useSelector((s: RootState) => s.proofchat.identity);
   const invitations = useSelector((s: RootState) => s.proofchat.invitations);
   const publicConversationIds = useSelector(
     (s: RootState) => s.proofchat.publicConversationIds,
   );
   const roomsStatus = useSelector((s: RootState) => s.proofchat.roomsStatus);
 
-  // Feature flag: chỉ tải dữ liệu THẬT khi BE ProofChat được bật. Flag OFF →
-  // giữ mock (fallback, UI không vỡ). Tải 1 lần khi mở màn hình.
-  const backendEnabled = isProofChatBackendEnabled();
+  // Cổng runtime: chỉ tải dữ liệu THẬT khi BE ProofChat sống (probe /health 2xx).
+  // Chưa sống → giữ mock (UI không vỡ). Hook re-render khi cổng lật (backend vừa
+  // được sửa) mà KHÔNG cần build lại / mở lại màn.
+  const proofchatLive = useCapabilityLive('proofchat');
+  const backendEnabled = proofchatLive && isProofChatBackendEnabled();
   useEffect(() => {
     if (backendEnabled) {
       dispatch(loadConversations());
     }
+  }, [backendEnabled, dispatch]);
+
+  // Nối MLS realtime: đăng ký tin ĐÃ GIẢI MÃ → đổ vào store, rồi init (kết nối
+  // socket.io + phiên MLS). Chạy khi backend sống; best-effort (không native/ offline
+  // → chỉ log, UI vẫn chạy mock). Đây là điểm gỡ H-15 "UI chưa nối proofchatService".
+  useEffect(() => {
+    if (!backendEnabled) return;
+    let alive = true;
+    onDecryptedMessage(m => {
+      if (!alive) return;
+      dispatch(receiveDecryptedMessage({
+        id: m.id,
+        conversationId: m.conversationId,
+        senderId: m.senderId,
+        isMine: m.isMine,
+        timestamp: m.timestamp,
+        plaintext: m.plaintext,
+        merkleVerified: m.merkleVerified,
+      }));
+    });
+    initProofChat().catch(err => console.warn('[ProofChat] init failed:', err));
+    return () => { alive = false; };
   }, [backendEnabled, dispatch]);
 
   const [filter, setFilter] = useState<FilterKey>('all');
@@ -87,16 +115,58 @@ const ProofChatHomeScreen: React.FC = () => {
       Animated.timing(headerFade, { toValue: 1, duration: 400, useNativeDriver: true }),
       Animated.timing(headerSlide, { toValue: 0, duration: 400, useNativeDriver: true }),
     ]).start();
-  }, []);
+    // headerFade/headerSlide là `useRef(...).current` — tham chiếu bền, thêm vào deps
+    // để đúng luật hook mà KHÔNG làm effect chạy lại.
+  }, [headerFade, headerSlide]);
 
-  const handleCreate = (payload: CreateConversationPayload) => {
-    dispatch(createConversation(payload));
+  const handleCreate = async (payload: CreateConversationPayload) => {
+    // Backend TẮT (mock) → tạo phòng cục-bộ như cũ, không cần thành viên.
+    if (!backendEnabled) {
+      dispatch(createConversation(payload));
+      setCreateOpen(false);
+      Toast.show({ type: 'success', text1: 'Đã tạo cuộc trò chuyện', text2: payload.title });
+      return;
+    }
+
+    // Backend SỐNG → tạo nhóm THẬT qua MLS (Welcome đẩy cho thành viên đồng bộ).
+    const members = payload.participantIds ?? [];
+    if (members.length === 0) {
+      Toast.show({ type: 'error', text1: 'Chưa chọn thành viên', text2: 'Cần ít nhất 1 người để tạo nhóm.' });
+      return;
+    }
+    // DIRECT = trò chuyện 1-1. Chọn nhiều người mà vẫn gửi DIRECT thì service chỉ
+    // lấy members[0], những người còn lại rơi LẶNG LẼ — chặn ngay tại đây.
+    if (payload.type === 'DIRECT' && members.length > 1) {
+      Toast.show({
+        type: 'error',
+        text1: 'Trò chuyện riêng chỉ 1 người',
+        text2: 'Bỏ bớt người, hoặc đổi sang Nhóm để thêm nhiều thành viên.',
+      });
+      return;
+    }
     setCreateOpen(false);
-    Toast.show({
-      type: 'success',
-      text1: 'Đã tạo cuộc trò chuyện',
-      text2: payload.title,
-    });
+    Toast.show({ type: 'info', text1: 'Đang tạo nhóm…', text2: payload.title });
+    const res =
+      payload.type === 'DIRECT'
+        ? await createDirectConversation(members[0])
+        // Truyền ĐÚNG loại người dùng chọn (GROUP / THREAD / JOB_NEGOTIATION).
+        : await createGroupConversation(payload.title, members, payload.type);
+    if (res.ok) {
+      await dispatch(loadConversations());
+      if (res.welcomePublished === false) {
+        // Nhóm đã dựng trên máy nhưng lời mời CHƯA lên server → thành viên chưa vào
+        // được. Nói thật, đừng báo "đã tạo" rồi để phòng câm.
+        Toast.show({
+          type: 'info',
+          text1: 'Đã tạo nhóm — chưa mời được ai',
+          text2: 'Mạng yếu nên lời mời chưa gửi đi. App sẽ tự gửi lại khi mở chat lúc có mạng.',
+        });
+      } else {
+        Toast.show({ type: 'success', text1: 'Đã tạo nhóm', text2: payload.title });
+      }
+    } else {
+      Toast.show({ type: 'error', text1: 'Tạo nhóm thất bại', text2: res.error ?? 'Thử lại sau.' });
+    }
   };
 
   const handleJoin = (payload: JoinConversationPayload) => {
@@ -183,7 +253,10 @@ const ProofChatHomeScreen: React.FC = () => {
 
           <View style={styles.headerCenter}>
             <Text style={styles.title}>Trò chuyện</Text>
-            {/* <View style={styles.subRow}>
+            {/* Hàng phụ (huy hiệu đồng bộ + danh tính đã xác thực) tạm ẩn. Bật lại thì
+                nhập lại `SyncStatusPill` và selector `s.proofchat.identity` — đã gỡ vì
+                để nguyên là hai lỗi lint dead-code.
+              <View style={styles.subRow}>
               <SyncStatusPill state={sync} />
               {identity.verified && (
                 <View style={styles.idPill}>
@@ -208,25 +281,18 @@ const ProofChatHomeScreen: React.FC = () => {
               </View>
             )}
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.iconBtn}
-            onPress={() => navigation.navigate('ProofChatWallet')}
-          >
-            <Icon name="wallet-outline" size={18} color={PROOFCHAT_THEME.primary} />
-          </TouchableOpacity>
         </View>
 
+        {/*
+          KHÔNG nút ví, KHÔNG ô "Đang khóa". Chat không có ví/escrow — quyết định
+          đã ghi trong `module.manifest.json` của proofchat. Ô "Đang khóa" cũ đọc
+          `wallet.lockedInEscrow` từ store (dữ-liệu MOCK): nó bày một số dư có vẻ
+          thật ngay trên màn chat. Số dư giả nguy hơn nút chết (issue #110).
+        */}
         <View style={styles.statsStrip}>
           <Stat label="Phòng" value={rooms.length} />
           <View style={styles.statDivider} />
           <Stat label="Chưa đọc" value={totalUnread} accent />
-          <View style={styles.statDivider} />
-          <Stat
-            label="Đang khóa"
-            value={`${wallet.lockedInEscrow.toLocaleString('vi-VN')} ${TOKEN_SYMBOL}`}
-            small
-          />
         </View>
 
         <View style={styles.searchBox}>
@@ -239,7 +305,7 @@ const ProofChatHomeScreen: React.FC = () => {
             placeholderTextColor={NEUTRAL.textMuted}
           />
           {query.length > 0 && (
-            <TouchableOpacity onPress={() => setQuery('')}>
+            <TouchableOpacity onPress={() => setQuery('')} hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}>
               <Icon name="close-circle" size={16} color={NEUTRAL.textMuted} />
             </TouchableOpacity>
           )}
@@ -390,6 +456,7 @@ const ProofChatHomeScreen: React.FC = () => {
         visible={createOpen}
         onClose={() => setCreateOpen(false)}
         onSubmit={handleCreate}
+        requireMembers={backendEnabled}
       />
       <JoinConversationModal
         visible={joinOpen}

@@ -36,12 +36,25 @@ import { PhoenixKeyApiError } from './phoenixKey-api';
  * Tạo OrgDID single-owner. m-of-n founding (nhiều owner + threshold) = PR #40,
  * để CHỖ: khi merge, thêm `owners[]` + `threshold` vào đây.
  */
+/**
+ * Body `POST /identity/org/create` — ĐỐI CHIẾU BACKEND THẬT (curl prod 2026-07-24
+ * + đọc `OrgCreateRequest.java`). Trước đây app gửi `{owner_did, org_name}` →
+ * backend trả 400: "name is required; ownerSignature is required; nonce is required".
+ * Đã sửa cho khớp. Wire = snake_case (thực nghiệm: gửi snake_case thì bind được,
+ * camelCase thì backend báo thiếu field).
+ */
 export interface CreateOrgRequest {
-  /** DID owner khởi tạo (cá nhân đứng tên) — controller đầu tiên của org. */
+  /** PersonDID đứng tên — controller của org. Regex BE: `did:phoenix:<13>:<64 hex>`. */
   owner_did: string;
-  /** Tên hiển thị tổ chức (metadata off-chain). */
-  org_name: string;
-  // TODO(PR#40 m-of-n): owners?: string[]; threshold?: number;
+  /** Tên tổ chức, 1–100 ký tự. KHÔNG cần duy nhất (cùng tên khác nước là hợp lệ). */
+  name: string;
+  /** Mã số đăng ký kinh doanh (MST) — tuỳ chọn, ≤50 ký tự. */
+  registration_number?: string;
+  /** Chữ ký HW_Key của owner trên chuỗi challenge canonical (hex DER ECDSA P-256). */
+  owner_signature: string;
+  /** Nonce chống phát lại, 1–64 ký tự. Backend tiêu thụ 1 lần theo (owner_did, nonce). */
+  nonce: string;
+  // TODO(PR#40 m-of-n): luồng founding riêng = POST /identity/org/founding.
 }
 
 export interface CreateOrgResult {
@@ -50,6 +63,52 @@ export interface CreateOrgResult {
   /** Tx tạo org (nếu backend trả). */
   tx_hash?: string;
   org_name?: string;
+}
+
+/** Một founder/member đã ký challenge (đối chiếu OrgFounderInput.java). */
+export interface OrgFounderInputWire {
+  owner_did: string;
+  /** Hex ECDSA (P-256) chữ ký HW_Key của founder trên challenge canonical. */
+  owner_signature: string;
+}
+
+/**
+ * Body `POST /identity/org/founding` — tạo OrgDID m-of-n (đối chiếu OrgFoundingRequest.java).
+ * MỌI founder phải ký cùng challenge: "PHOENIXKEY_ORG_FOUNDING:" + name + ":" +
+ * sortedFounderDids.join(",") + ":" + threshold + ":" + nonce. threshold ≥ 2.
+ */
+export interface FoundOrgRequest {
+  founders: OrgFounderInputWire[];
+  threshold: number;
+  name: string;
+  registration_number?: string;
+  nonce: string;
+}
+export interface FoundOrgResult {
+  org_did: string;
+  tx_hash?: string;
+  org_name?: string;
+  threshold?: number;
+}
+
+/**
+ * Body `POST /identity/org/{orgDid}/upgrade-authority` — nâng single → threshold
+ * (đối chiếu OrgUpgradeAuthorityRequest.java). Current owner + MỌI new member ký
+ * challenge: "PHOENIXKEY_ORG_UPGRADE:" + orgDid + ":" + sortedNewMemberDids.join(",")
+ * + ":" + newThreshold + ":" + nonce. newThreshold ≥ 2.
+ */
+export interface UpgradeAuthorityRequest {
+  current_owner_did: string;
+  owner_signature: string;
+  new_members: OrgFounderInputWire[];
+  new_threshold: number;
+  nonce: string;
+}
+export interface UpgradeAuthorityResult {
+  org_did: string;
+  tx_hash?: string;
+  threshold?: number;
+  authority_model?: string;
 }
 
 /** Một OrgDID user điều-khiển (dùng cho màn danh sách, nếu backend có list). */
@@ -355,6 +414,22 @@ export const orgMintApi = {
       client.post('/identity/org/create', body, {
         needsAuth: true,
       } as AxiosRequestConfig),
+    ),
+
+  /** Tạo OrgDID m-of-n (mọi founder ký cùng challenge). POST /identity/org/founding. */
+  foundOrg: (body: FoundOrgRequest) =>
+    unwrap<FoundOrgResult>(
+      client.post('/identity/org/founding', body, { needsAuth: true } as AxiosRequestConfig),
+    ),
+
+  /** Nâng single → threshold. POST /identity/org/{orgDid}/upgrade-authority. */
+  upgradeAuthority: (orgDid: string, body: UpgradeAuthorityRequest) =>
+    unwrap<UpgradeAuthorityResult>(
+      client.post(
+        `/identity/org/${encodeURIComponent(orgDid)}/upgrade-authority`,
+        body,
+        { needsAuth: true } as AxiosRequestConfig,
+      ),
     ),
 
   /**

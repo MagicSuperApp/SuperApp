@@ -17,22 +17,30 @@ import {
 } from 'react-native';
 // RN 0.84 đã gỡ Clipboard khỏi core → dùng package cộng đồng (API setString giữ nguyên).
 import Clipboard from '@react-native-clipboard/clipboard';
-import { logoutUser, selectChainWallet } from '../store/userSlice';
+import { logoutUser, selectChainWallet, selectChainWallets } from '../store/userSlice';
+import type { WalletEntry } from '../services/phoenixKey-api';
 import { setChatbotEnabled } from '../store/chatbotSlice';
 import { useSelector } from 'react-redux';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RootState } from '../store';
 import { useAppDispatch } from '../store/hooks';
+import { useCoachMark } from '../onboarding/CoachMarkContext';
+import { resetTutorial } from '../utils/tutorialStorage';
 import { COLORS } from '../constants';
 import StateView from '../components/state/StateView';
 import { showInfo } from '../utils/alert';
 import { useNavigation } from '@react-navigation/native';
 import { showWarning } from '../utils/alert';
 import { getVersion, getBuildNumber } from 'react-native-device-info';
-import { API_BASE_URL } from '../services/aladin-api';
+// Debug host = backend field-reid THẬT app đang dùng (ORILIFE_BASE), không phải
+// aladin-api (backend Lợi deprecated) — để field soi đúng server (Lỗi field #5).
+import { ORILIFE_BASE } from '../services/orilifeBase';
+import { fmtLamp } from '../utils/token';
 import taad from '../sdk/taadEnclave';
 import { getStoredMasterKek } from '../services/masterKekStore';
+import LanguagePickerModal from '../components/LanguagePickerModal';
+import { LANGUAGES, useLanguage } from '../i18n';
 
 // 0 = preprod (testnet), khớp WALLET_NETWORK bên register + PhoenixWalletScreen.
 const WALLET_NETWORK = 0;
@@ -43,7 +51,7 @@ const APP_VERSION_LABEL = `Aladin v${getVersion()} (${getBuildNumber()})`;
 
 // Chi tiết debug (tap version 5 lần): version + server API đang trỏ → field tự soi
 // máy có chạy đúng build + đúng server không (chẩn đoán 404 farm — Lỗi field #5).
-const APP_DEBUG_INFO = `${APP_VERSION_LABEL}\n\nMáy chủ: ${API_BASE_URL}\nNền: ${Platform.OS}`;
+const APP_DEBUG_INFO = `${APP_VERSION_LABEL}\n\nMáy chủ: ${ORILIFE_BASE}\nNền: ${Platform.OS}`;
 import { Switch } from 'react-native';
 const { width } = Dimensions.get('window');
 
@@ -203,6 +211,68 @@ const InfoRow = ({
     );
 };
 
+// ── Khối MỘT ví (PhoenixKey API.md §7 trả 2 loại) ─────────────────────────────
+// `standard` = CIP-1852, khoá do CHÍNH user giữ (derive từ cụm 24 từ) → user tự chuyển tiền.
+// `phoenix`  = ví custody hệ-thống derive theo DID (script) → dùng cho MAGIC/kích-hoạt.
+// Hiện TÁCH BẠCH vì 2 ví có địa-chỉ + số dư RIÊNG; gộp làm một sẽ giấu mất tài sản.
+const WALLET_META: Record<'phoenix' | 'standard', {
+    title: string; sub: string; icon: string; color: string;
+}> = {
+    standard: {
+        title: 'Ví cơ bản',
+        sub: 'Bạn tự giữ khoá (từ cụm 24 từ)',
+        icon: 'wallet-outline',
+        color: COLORS.accent,
+    },
+    phoenix: {
+        title: 'Ví Phượng Hoàng',
+        sub: 'Hệ thống giữ hộ — gắn với danh tính của bạn',
+        icon: 'shield-star-outline',
+        color: '#B07D2F',
+    },
+};
+
+const WalletBlock = ({ entry }: { entry: WalletEntry }) => {
+    const meta = WALLET_META[entry.kind] ?? WALLET_META.standard;
+    // Ưu tiên địa-chỉ đang HOẠT-ĐỘNG (account N sau khi xoay), else account-0 cố-định.
+    const addr = entry.addresses?.active ?? entry.addresses?.fixed ?? '';
+    // Mạng suy theo CHÍNH địa-chỉ này (mỗi ví tự xác định, không dùng chung).
+    const net = netFromAddress(addr);
+    const b = entry.balances ?? { lovelace: 0, lamp: 0, carp: 0 };
+    const ada = (b.lovelace ?? 0) / 1_000_000;
+
+    return (
+        <View style={styles.walletBlock}>
+            <View style={styles.walletBlockHead}>
+                <View style={[styles.walletBlockIcon, { backgroundColor: `${meta.color}14` }]}>
+                    <Icon name={meta.icon} size={16} color={meta.color} />
+                </View>
+                <View style={styles.walletBlockHeadBody}>
+                    <Text style={[styles.walletBlockTitle, { color: meta.color }]}>{meta.title}</Text>
+                    <Text style={styles.walletBlockSub}>{meta.sub}</Text>
+                </View>
+            </View>
+
+            <InfoRow
+                icon="map-marker-outline"
+                label="Địa chỉ"
+                value={addr}
+                copyable
+                mono
+                explorerNet={addr ? net : null}
+            />
+
+            <View style={styles.walletBalRow}>
+                <Text style={styles.walletBalItem}>{ada} <Text style={styles.walletBalUnit}>ADA</Text></Text>
+                <Text style={styles.walletBalDot}>·</Text>
+                <Text style={styles.walletBalItem}>{fmtLamp(b.lamp ?? 0)} <Text style={styles.walletBalUnit}>LAMP</Text></Text>
+                <Text style={styles.walletBalDot}>·</Text>
+                <Text style={styles.walletBalItem}>{b.carp ?? 0} <Text style={styles.walletBalUnit}>CARP</Text></Text>
+            </View>
+        </View>
+    );
+};
+
 // ── Menu Item ─────────────────────────────────────────────────────────────────
 const MenuItem = ({
     icon, label, sublabel, color, onPress, showArrow = true, last, badge, trailing,
@@ -216,16 +286,28 @@ const MenuItem = ({
     const scaleAnim = useRef(new Animated.Value(1)).current;
     const ic = color ?? COLORS.accent;
 
+    // Mục CHƯA có đích đến thì phải TRÔNG như chưa có đích đến.
+    //
+    // Trước đây mục thiếu `onPress` vẫn vẽ mũi tên ">" và vẫn chạy hoạt ảnh co lại khi
+    // chạm — người dùng nhận được phản hồi vật lý đầy đủ rồi không có gì mở ra. Đó
+    // không đọc ra là "tính năng chưa làm", nó đọc ra là "app hỏng", và người dùng sẽ
+    // chạm lại vài lần nữa để chắc. Nay: không mũi tên, không hoạt ảnh, không bắt chạm,
+    // chữ mờ đi — và trình đọc màn hình cũng báo là đang tắt.
+    const inert = !onPress;
+
     return (
         <TouchableOpacity
             activeOpacity={1}
             onPress={onPress}
-            onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.985, useNativeDriver: true }).start()}
-            onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, friction: 4, useNativeDriver: true }).start()}
+            disabled={inert}
+            accessibilityState={{ disabled: inert }}
+            onPressIn={() => { if (!inert) Animated.spring(scaleAnim, { toValue: 0.985, useNativeDriver: true }).start(); }}
+            onPressOut={() => { if (!inert) Animated.spring(scaleAnim, { toValue: 1, friction: 4, useNativeDriver: true }).start(); }}
         >
             <Animated.View style={[
                 styles.menuItem,
                 last && { borderBottomWidth: 0 },
+                inert && { opacity: 0.45 },
                 { transform: [{ scale: scaleAnim }] },
             ]}>
                 <View style={[styles.menuIconWrap, { backgroundColor: `${ic}12` }]}>
@@ -241,7 +323,7 @@ const MenuItem = ({
                     </View>
                 )}
                 {trailing}
-                {!trailing && showArrow && <Icon name="chevron-right" size={18} color={COLORS.accentLight} />}
+                {!trailing && showArrow && !inert && <Icon name="chevron-right" size={18} color={COLORS.accentLight} />}
             </Animated.View>
         </TouchableOpacity>
     );
@@ -264,12 +346,32 @@ const AccountScreen = () => {
     const user = useSelector((state: RootState) => state.user.currentUser);
     // Ví ĐÁNG TIN: chỉ số đến từ chuỗi (refreshWallet). Chưa refresh → null → hiển thị "—" (không bịa).
     const chainWallet = useSelector(selectChainWallet);
+    // CẢ HAI ví (phoenix + standard) — hiện tách bạch, không gộp.
+    const chainWallets = useSelector(selectChainWallets);
     const network = useSelector((state: RootState) => state.user.network);
     const phoenixKey = useSelector((state: RootState) => state.user.phoenixKey);
     // Địa-chỉ-2: khoá điều-khiển DID (quản-trị, KHÔNG giữ tài sản). null = chưa lấy được.
     const controllerPkh = useSelector((state: RootState) => state.user.controllerPkh);
     const chatbotEnabled = useSelector((state: RootState) => state.chatbot.enabled);
     const dispatch = useAppDispatch();
+    const navigation: any = useNavigation();
+    // Luồng hướng dẫn: chạy lại theo yêu cầu (xoá cờ đã-xem rồi start).
+    // QUAN TRỌNG: các bước đều spotlight vào phần tử của màn hình Chính (khu Dịch
+    // vụ, nút Chính, chuông…) nên phải VỀ HOME TRƯỚC rồi mới chạy — chạy ngay tại
+    // Cài đặt sẽ khoanh vào vùng không tồn tại/đang ẩn. Chờ một nhịp cho tab đổi
+    // và layout ổn định để đo spotlight chính xác.
+    const { start: startTour } = useCoachMark();
+    const tourTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    React.useEffect(() => () => { if (tourTimer.current) clearTimeout(tourTimer.current); }, []);
+    const runTutorial = React.useCallback(() => {
+        const uid = user?.id;
+        resetTutorial(uid);
+        // 'Main' → tab 'Home': đi qua stack cha nên đúng cả khi Tài khoản được mở
+        // như tab lẫn khi mở từ header.
+        navigation.navigate('Main', { screen: 'Home' });
+        if (tourTimer.current) clearTimeout(tourTimer.current);
+        tourTimer.current = setTimeout(() => startTour(uid), 500);
+    }, [user?.id, startTour, navigation]);
 
     // Địa-chỉ derive LOCAL từ Master_KEK (account-0) — ĐÚNG bằng địa-chỉ register gửi lên
     // backend. Dùng làm fallback để ví HIỆN kể cả khi /wallet/all chưa trả (deriver backend
@@ -293,11 +395,16 @@ const AccountScreen = () => {
         chainWallet?.address ?? localAddr ?? phoenixKey?.walletAddress ?? user?.walletAddress ?? '';
     // Mạng: ưu tiên resolveNetwork (theo DID thật), else suy từ tiền tố địa chỉ ví. KHÔNG hardcode.
     const realNet: NetKind = normNetwork(network) ?? netFromAddress(walletAddress);
-    const navigation: any = useNavigation();
 
     const did = phoenixKey?.did ?? user?.did ?? '';
     // Modal "Tài sản khác" (ADA + token khác + hợp đồng còn hạn).
     const [assetsOpen, setAssetsOpen] = useState(false);
+    // Popup chọn ngôn ngữ (Việt · Anh · Trung). `useLanguage` để dòng phụ của mục
+    // "Ngôn ngữ" đổi ngay khi người dùng chọn xong.
+    const [langOpen, setLangOpen] = useState(false);
+    const lang = useLanguage();
+    // Tên ngôn ngữ viết bằng CHÍNH nó (English / 中文 / Tiếng Việt) — không dịch.
+    const langLabel = LANGUAGES.find(l => l.code === lang)?.endonym ?? 'Tiếng Việt';
 
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const slideAnim = useRef(new Animated.Value(20)).current;
@@ -359,9 +466,9 @@ const AccountScreen = () => {
     const handleRecover = () => {
         showWarning(
             'Tái sinh danh tính (thử nghiệm)',
-            'Dùng khi bạn MẤT thiết bị hoặc mất khoá. Hệ thống khôi phục lại CHÍNH danh tính (DID) cũ ' +
-            'của bạn thông qua người bảo trợ và thời-gian-chờ an toàn — không tạo danh tính mới, ' +
-            'không mất liên kết với cây/dữ-liệu đã ghi. Tính năng đang phát triển; nếu bạn mất thiết bị, ' +
+            'Dùng khi bạn MẤT thiết bị hoặc mất khoá. Hệ thống khôi phục lại CHÍNH danh tính cũ ' +
+            'của bạn thông qua người bảo trợ và thời gian chờ an toàn — không tạo danh tính mới, ' +
+            'không mất liên kết với cây và dữ liệu đã ghi. Tính năng đang phát triển; nếu bạn mất thiết bị, ' +
             'vui lòng liên hệ đội hỗ trợ.',
             { confirmText: 'Đã hiểu' },
         );
@@ -379,9 +486,9 @@ const AccountScreen = () => {
     const handleRotate = () => {
         showWarning(
             'Xoay khoá (thử nghiệm)',
-            'Dùng khi bạn NGHI khoá bị lộ nhưng vẫn còn giữ thiết bị. Hệ thống thay bộ khoá điều-khiển ' +
-            'bằng bộ khoá mới và cập nhật lên Cardano — danh tính (DID) của bạn GIỮ NGUYÊN. ' +
-            'Luồng tráo khoá an toàn đang được đội kỹ thuật hoàn thiện để tránh rủi ro mất quyền truy cập ' +
+            'Dùng khi bạn NGHI khoá bị lộ nhưng vẫn còn giữ thiết bị. Hệ thống thay khoá điều khiển ' +
+            'bằng khoá mới và cập nhật lên chuỗi khối — danh tính của bạn GIỮ NGUYÊN. ' +
+            'Cách đổi khoá an toàn đang được hoàn thiện để tránh rủi ro mất quyền truy cập ' +
             'nếu lỗi giữa chừng. Vui lòng liên hệ đội hỗ trợ nếu cần gấp.',
             { confirmText: 'Đã hiểu' },
         );
@@ -416,13 +523,6 @@ const AccountScreen = () => {
 
     return (
         <View style={styles.root}>
-            <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
-
-            {/* Top strip */}
-            <View style={[styles.topStrip, { height: 3 + insets.top, paddingTop: insets.top }]}>
-                <View style={styles.topStripAccent} />
-            </View>
-
             <ScrollView
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={[
@@ -449,7 +549,7 @@ const AccountScreen = () => {
                             <View style={styles.profilePhoneRow}>
                                 <Icon name="identifier" size={13} color={COLORS.textMuted} />
                                 <Text style={styles.profilePhone} numberOfLines={1} ellipsizeMode="middle">
-                                    {(user?.did ?? user?.id) || 'Chưa có DID'}
+                                    {(user?.did ?? user?.id) || 'Chưa có danh tính'}
                                 </Text>
                             </View>
                             {user?.email && (
@@ -464,7 +564,7 @@ const AccountScreen = () => {
                     {/* DID badge */}
                     <View style={styles.didBadge}>
                         <Icon name="shield-check-outline" size={12} color={COLORS.success} />
-                        <Text style={styles.didBadgeText}>DID đã xác minh</Text>
+                        <Text style={styles.didBadgeText}>Danh tính đã xác minh</Text>
                     </View>
                 </Animated.View>
 
@@ -489,7 +589,7 @@ const AccountScreen = () => {
                             index={1}
                             icon="lightning-bolt"
                             label="LAMP"
-                            value={chainWallet?.lampBalance}
+                            value={fmtLamp(chainWallet?.lampBalance)}
                             unit="LAMP"
                             color={COLORS.accent}
                             desc="Sinh MAGIC mỗi 5 ngày"
@@ -539,17 +639,23 @@ const AccountScreen = () => {
                 {/* ── Blockchain info ── */}
                 <Animated.View style={{ opacity: fadeAnim }}>
                     <Section title="VÍ & DANH TÍNH">
-                        {/* Địa-chỉ-1: ví theo seed phrase — GIỮ tài sản (ADA/LAMP/MAGIC), có thể tra Explorer. */}
-                        <InfoRow
-                            icon="wallet-outline"
-                            label="Địa chỉ ví (giữ tài sản)"
-                            value={walletAddress}
-                            copyable mono
-                            explorerNet={walletAddress ? realNet : null}
-                        />
+                        {/* HAI ví (API.md §7): `standard` user tự giữ khoá + `phoenix` custody.
+                            Backend chưa trả ví nào (chưa đăng-ký / offline) → rơi về địa-chỉ
+                            derive LOCAL từ Master_KEK để user vẫn thấy ví của mình. */}
+                        {chainWallets.length > 0 ? (
+                            chainWallets.map(w => <WalletBlock key={w.kind} entry={w} />)
+                        ) : (
+                            <InfoRow
+                                icon="wallet-outline"
+                                label="Địa chỉ ví (giữ tài sản)"
+                                value={walletAddress}
+                                copyable mono
+                                explorerNet={walletAddress ? realNet : null}
+                            />
+                        )}
                         <InfoRow
                             icon="identifier"
-                            label="DID"
+                            label="Mã định danh"
                             value={did}
                             copyable mono
                         />
@@ -557,7 +663,7 @@ const AccountScreen = () => {
                         {!!controllerPkh && (
                             <InfoRow
                                 icon="key-outline"
-                                label="Khoá điều-khiển (quản-trị DID)"
+                                label="Khoá điều khiển (quản trị danh tính)"
                                 value={controllerPkh}
                                 copyable mono
                             />
@@ -565,7 +671,7 @@ const AccountScreen = () => {
                         <InfoRow
                             icon="shield-key-outline"
                             label="Chuẩn khoá"
-                            value="PhoenixKey v1"
+                            value="Khoá phần cứng v1"
                         />
                         <InfoRow
                             icon="earth"
@@ -575,7 +681,8 @@ const AccountScreen = () => {
                         <View style={styles.walletNote}>
                             <Icon name="information-outline" size={13} color={COLORS.textMuted} />
                             <Text style={styles.walletNoteText}>
-                                <Text style={styles.walletNoteStrong}>Địa chỉ ví</Text> giữ toàn bộ tài sản của bạn — gửi và nhận MAGIC, LAMP, ADA đều dùng địa chỉ này.
+                                <Text style={styles.walletNoteStrong}>Basic Wallet</Text> you hold the keys yourself (recovery via a 24-word phrase) — used to receive and transfer assets.{' '}
+                                <Text style={styles.walletNoteStrong}>Phoenix Wallet</Text> is managed by the system against your identity — used for activation and services.
                             </Text>
                         </View>
                     </Section>
@@ -594,7 +701,15 @@ const AccountScreen = () => {
                 <Animated.View style={{ opacity: fadeAnim }}>
                     <Section title="CÀI ĐẶT">
                         <MenuItem icon="bell-outline" label="Thông báo" sublabel="Quản lý thông báo đẩy" />
-                        <MenuItem icon="translate" label="Ngôn ngữ" sublabel="Tiếng Việt" />
+                        {/* Nhãn song ngữ CỐ Ý: người đang cần đổi ngôn ngữ là người
+                            chưa đọc được ngôn ngữ đang hiện. Dòng phụ = tên ngôn ngữ
+                            đang chọn, viết bằng CHÍNH nó (endonym, không dịch). */}
+                        <MenuItem
+                            icon="translate"
+                            label="Language"
+                            sublabel={langLabel}
+                            onPress={() => setLangOpen(true)}
+                        />
                         <MenuItem icon="fingerprint" label="Sinh trắc học" sublabel="Xác thực khuôn mặt & vân tay" onPress={() => navigation.navigate('BiometricSettings')} />
                         <MenuItem
                             icon="robot-happy-outline"
@@ -610,6 +725,7 @@ const AccountScreen = () => {
                                 />
                             }
                         />
+                        <MenuItem icon="school-outline" label="Chạy luồng hướng dẫn" sublabel="Xem lại hướng dẫn thao tác cơ bản" onPress={runTutorial} />
                         <MenuItem icon="wifi-off" label="Chế độ offline" sublabel="Lưu cục bộ khi mất mạng" last />
                     </Section>
                 </Animated.View>
@@ -619,14 +735,14 @@ const AccountScreen = () => {
                     <Section title="VÍ">
                         <MenuItem
                             icon="wallet-outline"
-                            label="Ví PhoenixKey"
+                            label="Ví của tôi"
                             sublabel="Số dư ADA/LAMP/MAGIC + địa chỉ Cardano (từ cụm 24 từ)"
                             onPress={() => navigation.navigate('PhoenixWallet')}
                         />
                         <MenuItem
                             icon="card-account-details-outline"
                             label="Xuất danh tính"
-                            sublabel="Xem/copy DID, khoá công khai, địa chỉ ví"
+                            sublabel="Xem/sao chép mã định danh, khoá công khai, địa chỉ ví"
                             onPress={() => navigation.navigate('ExportIdentity')}
                         />
                         <MenuItem
@@ -657,7 +773,7 @@ const AccountScreen = () => {
                         <MenuItem
                             icon="backup-restore"
                             label="Tái sinh danh tính"
-                            sublabel="Khôi phục DID khi MẤT thiết bị (giữ danh tính cũ)"
+                            sublabel="Khôi phục khi MẤT thiết bị (giữ nguyên danh tính cũ)"
                             onPress={handleRecover}
                         />
                         <MenuItem
@@ -699,8 +815,19 @@ const AccountScreen = () => {
                 {/* ── Hỗ trợ ── */}
                 <Animated.View style={{ opacity: fadeAnim }}>
                     <Section title="HỖ TRỢ">
+                        {/* "Trung tâm hỗ trợ" CHƯA có đích đến, nên `MenuItem` tự vẽ nó ở
+                            trạng thái tắt (mờ, không mũi tên, không bắt chạm) thay vì giả
+                            vờ bấm được.
+                            "Điều khoản & Chính sách" thì nay có đích thật: màn `Terms` đọc
+                            được cả khi mất mạng, vì Google Play đòi phần tiết lộ dữ liệu
+                            phải mở được NGAY TRONG ứng dụng — mà người dùng ngoài vườn
+                            thường không có mạng đủ khoẻ để tải một trang web. */}
                         <MenuItem icon="help-circle-outline" label="Trung tâm hỗ trợ" />
-                        <MenuItem icon="file-document-outline" label="Điều khoản & Chính sách" />
+                        <MenuItem
+                            icon="file-document-outline"
+                            label="Điều khoản & Chính sách"
+                            onPress={() => navigation.navigate('Terms')}
+                        />
                         <MenuItem
                             icon="information-outline"
                             label="Phiên bản ứng dụng"
@@ -733,6 +860,9 @@ const AccountScreen = () => {
                     </TouchableOpacity>
                 </Animated.View>
             </ScrollView>
+
+            {/* Popup chọn ngôn ngữ — đặt NGOÀI ScrollView để phủ toàn màn. */}
+            <LanguagePickerModal visible={langOpen} onClose={() => setLangOpen(false)} />
         </View>
     );
 };
@@ -850,6 +980,32 @@ const styles = StyleSheet.create({
     infoValue: { fontSize: 13, fontWeight: '600', color: COLORS.text, textAlign: 'right', flexShrink: 1 },
     infoValueMono: { fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', fontSize: 12 },
     copyBtn: { padding: 2 },
+
+    // ── Khối 1 ví (2 ví: cơ bản + Phượng Hoàng) ──────────────────────────────
+    walletBlock: {
+        borderBottomWidth: 1,
+        borderBottomColor: COLORS.border,
+        paddingBottom: 4,
+    },
+    walletBlockHead: {
+        flexDirection: 'row', alignItems: 'center', gap: 10,
+        paddingHorizontal: 16, paddingTop: 13, paddingBottom: 4,
+    },
+    walletBlockIcon: {
+        width: 30, height: 30, borderRadius: 15,
+        alignItems: 'center', justifyContent: 'center',
+    },
+    walletBlockHeadBody: { flex: 1 },
+    walletBlockTitle: { fontSize: 14, fontWeight: '800' },
+    walletBlockSub: { fontSize: 11, color: COLORS.textMuted, marginTop: 1 },
+    walletBalRow: {
+        flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap',
+        paddingHorizontal: 16, paddingTop: 4, paddingBottom: 12,
+    },
+    walletBalItem: { fontSize: 13, fontWeight: '700', color: COLORS.text },
+    walletBalUnit: { fontSize: 11, fontWeight: '600', color: COLORS.textMuted },
+    walletBalDot: { fontSize: 13, color: COLORS.textMuted },
+
     walletNote: {
         flexDirection: 'row', alignItems: 'flex-start', gap: 8,
         paddingHorizontal: 16, paddingVertical: 12,

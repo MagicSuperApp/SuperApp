@@ -32,7 +32,10 @@ object TreeReIDCamera {
     private var previewRef: WeakReference<PreviewView>? = null
 
     // ── YOLO gate (Plan A) — phân-tích frame preview để lọc "có cây" ─────────
-    private const val INFER_INTERVAL_MS = 150L
+    // NHIỆT (field Giang 13/07: máy nóng): 150ms = 6.7 lần/giây là THỪA cho một cái gate
+    // "trong khung có cây không" — người quét không vung máy 7 lần/giây. Hạ 400ms (2.5/giây)
+    // cắt ~62% tải YOLO trên CPU mà KHÔNG đổi trải nghiệm gate.
+    private const val INFER_INTERVAL_MS = 400L
     private val analysisExecutor = Executors.newSingleThreadExecutor()
     @Volatile private var lastConf = -1f
     @Volatile private var lastConfAtMs = 0L
@@ -150,6 +153,39 @@ object TreeReIDCamera {
     }
 
     fun mainExecutor(context: Context): Executor = ContextCompat.getMainExecutor(context)
+
+    // ── Cam controls: flash (torch) + lens 0.5x (ultra-wide qua zoom) ─────────
+    // cameraInfo/cameraControl chỉ sẵn sau bindToLifecycle → null-safe, trả false
+    // khi chưa sẵn / không hỗ-trợ (JS ẩn nút tương-ứng).
+
+    /** (có đèn, có lens 0.5x). Ultra-wide suy từ minZoomRatio ≤ 0.6 (máy 1 cam = 1.0). */
+    fun capabilities(): Pair<Boolean, Boolean> {
+        val info = controller?.cameraInfo ?: return Pair(false, false)
+        val hasTorch = info.hasFlashUnit()
+        val minZoom = info.zoomState.value?.minZoomRatio ?: 1f
+        return Pair(hasTorch, minZoom <= 0.6f)
+    }
+
+    /** Bật/tắt đèn. Trả trạng-thái THỰC (false nếu máy không có đèn / chưa sẵn). */
+    fun setTorch(on: Boolean): Boolean {
+        val info = controller?.cameraInfo ?: return false
+        if (!info.hasFlashUnit()) return false
+        controller?.enableTorch(on)
+        return on
+    }
+
+    /** 0.5x (on → zoom về min của máy) ↔ 1x (off). Trả true nếu đang ở 0.5x. */
+    fun setUltraWide(on: Boolean): Boolean {
+        val info = controller?.cameraInfo ?: return false
+        val minZoom = info.zoomState.value?.minZoomRatio ?: 1f
+        if (on) {
+            if (minZoom > 0.6f) return false // máy không có ultra-wide
+            controller?.setZoomRatio(minZoom)
+            return true
+        }
+        controller?.setZoomRatio(1.0f)
+        return false
+    }
 
     /** Gỡ preview + unbind camera + RESET controller (main thread).
      *  Reset để session sau tạo controller MỚI — tránh lỗi bind lại controller cũ. */

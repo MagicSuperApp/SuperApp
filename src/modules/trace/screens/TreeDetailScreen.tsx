@@ -1,8 +1,14 @@
 // modules/trace/screens/TreeDetailScreen.tsx
 //
-// 2-tab refactor:
-//   - "Tổng quan": existing hero + fruit-list activity preserved.
-//   - "Lịch sử":   list of capture history (local fruits).
+// 3 tab:
+//   - "Tổng quan": hero + DANH SÁCH QUẢ của cây.
+//   - "Lịch sử":   quả đã ghi nhận theo thời gian.
+//   - "Thông tin": metadata cây.
+//
+// NGUỒN DỮ-LIỆU QUẢ = field-reid `GET /api/tree/{id}/layout` — ĐÚNG nơi luồng
+// "Thêm quả" (FruitList → FruitCropper → POST /api/fruit/enroll) ghi vào.
+// Trước đây màn này đọc bảng SQLite `fruits` (thunk loadFruits), mà bảng đó CHỈ
+// được ghi bởi luồng "Lưu onnet" đã bỏ → thêm quả xong danh sách vẫn RỖNG.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -18,20 +24,33 @@ import {
   TextInput,
   Modal,
   ScrollView,
+  Image,
+  ActivityIndicator,
+  Alert,
+  Clipboard,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+// Icon: bo Font Awesome Solid tai qua Iconify (assets/icons -> icons.generated).
+// Them icon moi: `node scripts/icons.js <ten-fa6-solid>`.
+import Icon, { type IconName } from '../../../components/Icon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import PaginationControls from '../components/PaginationControls';
 import { RootState } from '../../../store';
-import { Fruit } from '../types';
-import { saveFruit, loadFruits } from '../store/farmSlice';
-import { syncService } from '../../../services/syncService';
 import { COLORS } from '../../../constants';
-import { useAppDispatch } from '../../../store/hooks';
 import StateView from '../../../components/state/StateView';
+import RemoteImage from '../../../components/RemoteImage';
 import TreeMetadataTab from './TreeMetadataTab';
 import { formatTreeName, shortTreeCode } from '../../../utils/treeNameFormatter';
+import { loadTreeImages } from '../../../services/treeImageStore';
+import { fetchTreeViews, treeViewImageUrls } from '../../../services/treeViewsService';
+import { loadVideoProofs, type VideoProof } from '../../../services/videoProofStore';
+import { ORILIFE_BASE } from '../../../services/orilifeBase';
+import rLog from '../../../services/remoteLogger';
+import {
+  getTreeLayout,
+  type TreeLayoutResponse, type TreeLayoutFruit,
+  type FruitStatus, type TreeZone,
+} from '../../../services/fruitReIDService';
 import { useSelector } from 'react-redux';
 
 const { width } = Dimensions.get('window');
@@ -39,26 +58,33 @@ const ITEMS_PER_PAGE = 20;
 
 type TabKey = 'overview' | 'history' | 'info';
 
-const TAB_DEFS: { key: TabKey; label: string; icon: string }[] = [
-  { key: 'overview', label: 'Tổng quan', icon: 'view-dashboard-outline' },
-  { key: 'history',  label: 'Lịch sử',   icon: 'history' },
-  { key: 'info',     label: 'Thông tin', icon: 'clipboard-text-outline' },
+const TAB_DEFS: { key: TabKey; label: string; icon: IconName }[] = [
+  { key: 'overview', label: 'Tổng quan', icon: 'table-cells-large' },
+  { key: 'history', label: 'Lịch sử', icon: 'clock-rotate-left' },
+  { key: 'info', label: 'Thông tin', icon: 'clipboard-list' },
 ];
 
 interface RouteParams { tree?: any; treeId?: string; initialTab?: TabKey; farmId?: string }
 
 // ── Status config ─────────────────────────────────────────────────────────────
-// Build 51 (2026-05-17): farmer-friendly Vietnamese status labels.
-// "mature" → "Gần thu hoạch" (= chín, sẵn sàng thu hoạch) per user clarification.
-// growing keep "Đang lớn" — natural Vietnamese. harvested/sold giữ nguyên.
-// Multi-language sẽ ship phiên bản hoàn chỉnh (sau VN traction).
-const STATUS_MAP: Record<string, { label: string; color: string; bg: string; icon: string }> = {
-  growing:   { label: 'Đang lớn',        color: '#6FAF7F',        bg: 'rgba(111,175,127,0.18)', icon: 'sprout-outline' },
-  mature:    { label: 'Gần thu hoạch',   color: COLORS.warning,   bg: 'rgba(176,125,47,0.12)',  icon: 'food-apple-outline' },
-  harvested: { label: 'Đã thu hoạch',    color: COLORS.info,      bg: 'rgba(8,138,185,0.12)',   icon: 'basket-outline' },
-  sold:      { label: 'Đã bán',          color: '#0033AD',        bg: 'rgba(0,51,173,0.08)',    icon: 'tag-outline' },
+// Từ vựng trạng-thái theo ĐÚNG field-reid (on_tree / harvested / lost). Bộ cũ
+// (growing/mature/sold) là của bảng SQLite `fruits` không còn dùng → lọc theo nó
+// thì KHÔNG BAO GIỜ khớp quả thật, danh sách rỗng oan.
+const STATUS_MAP: Record<FruitStatus, { label: string; color: string; bg: string; icon: string }> = {
+  on_tree: { label: 'Trên cây', color: '#6FAF7F', bg: 'rgba(111,175,127,0.18)', icon: 'apple-whole' },
+  harvested: { label: 'Đã thu hoạch', color: COLORS.info, bg: 'rgba(8,138,185,0.12)', icon: 'basket-shopping' },
+  lost: { label: 'Đã mất', color: COLORS.textMuted, bg: 'rgba(0,0,0,0.06)', icon: 'circle-xmark' },
 };
-const getStatus = (s: string) => STATUS_MAP[s] ?? STATUS_MAP.growing;
+const getStatus = (s?: string) => STATUS_MAP[s as FruitStatus] ?? STATUS_MAP.on_tree;
+
+const ZONE_VI: Record<TreeZone, string> = { base: 'Base', mid: 'Mid', canopy: 'Canopy' };
+
+/** ISO → dd/mm/yyyy (rỗng nếu server không trả / sai định dạng). */
+const fmtDate = (iso?: string | null): string => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? '' : d.toLocaleDateString('vi-VN');
+};
 
 // ── Fruit Card ────────────────────────────────────────────────────────────────
 const FruitCard = ({
@@ -66,36 +92,51 @@ const FruitCard = ({
   index,
   onPress,
 }: {
-  item: any;
+  item: TreeLayoutFruit;
   index: number;
   onPress: () => void;
 }) => {
-  const fadeAnim  = useRef(new Animated.Value(0)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(14)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const st = getStatus(item.status);
+  const thumb = item.thumbnail_url ? `${ORILIFE_BASE}${item.thumbnail_url}` : null;
+  const enrolled = fmtDate(item.enrolled_at);
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(fadeAnim,  { toValue: 1, duration: 300, delay: index * 55, useNativeDriver: true }),
+      Animated.timing(fadeAnim, { toValue: 1, duration: 300, delay: index * 55, useNativeDriver: true }),
       Animated.timing(slideAnim, { toValue: 0, duration: 300, delay: index * 55, useNativeDriver: true }),
     ]).start();
   }, []);
 
-  const hIn  = () => Animated.spring(scaleAnim, { toValue: 0.97, useNativeDriver: true }).start();
+  const hIn = () => Animated.spring(scaleAnim, { toValue: 0.97, useNativeDriver: true }).start();
   const hOut = () => Animated.spring(scaleAnim, { toValue: 1, friction: 4, useNativeDriver: true }).start();
 
   return (
     <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }, { scale: scaleAnim }] }}>
       <TouchableOpacity activeOpacity={1} onPress={onPress} onPressIn={hIn} onPressOut={hOut}>
         <View style={styles.fruitCard}>
-          <View style={[styles.fruitIconWrap, { backgroundColor: st.bg }]}>
-            <Icon name={st.icon} size={22} color={st.color} />
-          </View>
+          {/* Ảnh hỏng rơi về ĐÚNG ô icon vốn đã có cho trường hợp không ảnh — trước
+              đây chỉ nhánh `thumb === null` dùng nó, còn "có url mà tải hỏng" thì để
+              trống, cho ra ô xanh nhạt rỗng suốt cả danh sách. */}
+          <RemoteImage
+            uri={thumb}
+            style={styles.fruitThumb}
+            containerStyle={styles.fruitThumb}
+            resizeMode="cover"
+            placeholder={
+              <View style={[styles.fruitIconWrap, { backgroundColor: st.bg }]}>
+                <Icon name={st.icon} size={22} color={st.color} />
+              </View>
+            }
+          />
 
           <View style={styles.fruitCardBody}>
             <View style={styles.fruitTopRow}>
-              <Text style={styles.fruitCode}>{item.code}</Text>
+              <Text style={styles.fruitCode} numberOfLines={1}>
+                {item.name || '(chưa đặt tên)'}
+              </Text>
               <View style={[styles.fruitStatusChip, { backgroundColor: st.bg }]}>
                 <View style={[styles.fruitStatusDot, { backgroundColor: st.color }]} />
                 <Text style={[styles.fruitStatusText, { color: st.color }]}>{st.label}</Text>
@@ -103,27 +144,22 @@ const FruitCard = ({
             </View>
 
             <View style={styles.fruitMetaRow}>
-              {item.weightGram && (
+              <View style={styles.fruitMetaItem}>
+                <Icon name="camera" size={12} color={COLORS.textMuted} />
+                <Text style={styles.fruitMetaText}>{item.n_views}</Text>
+              </View>
+              {item.zone && (
                 <View style={styles.fruitMetaItem}>
-                  <Icon name="scale-outline" size={12} color={COLORS.textMuted} />
-                  <Text style={styles.fruitMetaText}>{item.weightGram}g</Text>
+                  <Icon name="location-dot" size={12} color={COLORS.textMuted} />
+                  <Text style={styles.fruitMetaText}>{ZONE_VI[item.zone]}</Text>
                 </View>
               )}
-              {item.diameter && (
+              {enrolled ? (
                 <View style={styles.fruitMetaItem}>
-                  <Icon name="circle-outline" size={12} color={COLORS.textMuted} />
-                  <Text style={styles.fruitMetaText}>{item.diameter}cm</Text>
+                  <Icon name="calendar" size={12} color={COLORS.textMuted} />
+                  <Text style={styles.fruitMetaText}>{enrolled}</Text>
                 </View>
-              )}
-              {item.identifiedAt && (
-                <View style={styles.fruitMetaItem}>
-                  <Icon name="calendar-outline" size={12} color={COLORS.textMuted} />
-                  <Text style={styles.fruitMetaText}>{item.identifiedAt}</Text>
-                </View>
-              )}
-              {!item.weightGram && !item.diameter && !item.identifiedAt && (
-                <Text style={styles.fruitMetaText}>Chưa có dữ liệu bổ sung</Text>
-              )}
+              ) : null}
             </View>
           </View>
 
@@ -165,7 +201,7 @@ const CircleProgress = ({ pct, size = 72 }: { pct: number; size?: number }) => {
         <Text style={{ fontSize: 14, fontWeight: '800', color: COLORS.text, letterSpacing: -0.5 }}>
           {pct}%
         </Text>
-        <Text style={{ fontSize: 9, color: COLORS.textMuted, fontWeight: '600' }}>lớn</Text>
+        <Text style={{ fontSize: 9, color: COLORS.textMuted, fontWeight: '600' }}>đã thu</Text>
       </View>
     </View>
   );
@@ -214,8 +250,8 @@ const SegmentedTabBar: React.FC<{
 // ── Main Screen ───────────────────────────────────────────────────────────────
 const TreeDetailScreen = () => {
   const navigation = useNavigation();
-  const insets     = useSafeAreaInsets();
-  const route      = useRoute();
+  const insets = useSafeAreaInsets();
+  const route = useRoute();
   const params = route.params as RouteParams | undefined;
   const treesInStore = useSelector((state: RootState) => state.farm.trees);
   // Chấp nhận cả {tree} (object) lẫn {treeId} (string). Caller cũ TreeEnroll /
@@ -238,39 +274,127 @@ const TreeDetailScreen = () => {
     }
   }, [tree, navigation]);
 
-  const dispatch   = useAppDispatch();
-  const fruits     = useSelector((state: RootState) => state.farm.fruits);
-  const farms      = useSelector((state: RootState) => state.farm.farms);
+  const farms = useSelector((state: RootState) => state.farm.farms);
 
-  const fadeAnim  = useRef(new Animated.Value(0)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(-12)).current;
-  const btnScale  = useRef(new Animated.Value(1)).current;
+  const btnScale = useRef(new Animated.Value(1)).current;
 
-  // mesh viewer renders, even if the server's pre-computed fruit_count is stale
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab ?? 'overview');
-  const [captures, setCaptures] = useState<any[] | null>(null);
-  const [capturesLoading, setCapturesLoading] = useState(false);
 
-  const [fruitIdentificationResult, setFruitIdentificationResult] = useState<{
-    code: string;
-    treeCode: string;
-    farmCode: string;
-    images: string[];
-  } | null>(null);
+  // Quả của cây — lấy từ field-reid (xem chú thích đầu file).
+  const [layout, setLayout] = useState<TreeLayoutResponse | null>(null);
+  const [fruitsLoading, setFruitsLoading] = useState(false);
+  const [fruitsError, setFruitsError] = useState<string | null>(null);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [statusDropdownVisible, setStatusDropdownVisible] = useState(false);
 
+  // Ảnh cây: ưu-tiên ảnh SERVER (GET /api/tree_views — sống theo tài-khoản, chống "đổi
+  // máy mất ảnh"), gộp thêm ảnh local (treeImageStore) chưa kịp đồng-bộ. Kèm 1 ảnh đang
+  // xem phóng to (lightbox).
+  const [treeImages, setTreeImages] = useState<string[]>([]);
+  /** Bản `file://` CÙNG những ảnh đó còn trong máy — đường lùi khi `/gimg` từ chối. */
+  const [localImages, setLocalImages] = useState<string[]>([]);
+  /** Lỗi tầng danh sách (`/api/tree_views`), phân biệt với lỗi tầng byte (`/gimg`). */
+  const [imagesError, setImagesError] = useState<string | null>(null);
+  /** Đếm ảnh hỏng hẳn để nói thật với người dùng "4 ảnh · 4 chưa xem được". */
+  const [brokenImages, setBrokenImages] = useState(0);
+  /** Đổi số này = ép nạp lại ảnh kèm URL mới, phá bộ đệm âm (404 bị cache). */
+  const [imgRetry, setImgRetry] = useState(0);
+  // Câu tiếng Việt máy chủ mô tả đặc điểm nhận dạng của cây (`?describe=1`). Backend
+  // trả sẵn từ lâu (`server.py:3041`) nhưng màn này chưa bao giờ XIN, nên chưa bao giờ vẽ.
+  const [treeFeatures, setTreeFeatures] = useState<string[]>([]);
+  const [zoomImage, setZoomImage] = useState<string | null>(null);
+  const [videoProofs, setVideoProofs] = useState<VideoProof[]>([]);
+
+  // Bằng chứng video đã lưu lên LampNet. Nạp lại mỗi lần màn được focus vì người
+  // dùng vừa gửi video xong là quay về đây — không nạp lại thì tưởng chưa lưu.
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true;
+      const id = tree?.id;
+      if (id) loadVideoProofs(id).then(p => { if (alive) setVideoProofs(p); });
+      return () => { alive = false; };
+    }, [tree?.id]),
+  );
+
+  // Nạp ảnh cây. Tách thành hàm riêng vì cần gọi lại khi màn được focus (quay video
+  // xong quay về) và khi người dùng bấm "Tải lại".
+  //
+  // HAI DANH SÁCH, KHÔNG CHỌN MỘT. Trước đây dòng này là
+  //   `setTreeImages(serverImgs.length > 0 ? serverImgs : local)`
+  // — điều kiện chọn là "danh sách server KHÔNG RỖNG", không phải "ảnh server HIỂN
+  // THỊ ĐƯỢC". Mà byte ảnh đi qua `/gimg`, một cổng KHÔNG ký, xét quyền lúc gọi, đóng
+  // theo tiến trình máy chủ. Nên `/api/tree_views` trả 200 kèm 4 URL trong khi cả 4
+  // URL đó 404: app VỨT 4 ảnh `file://` đang nằm sẵn trong máy rồi vẽ 4 ô xám câm.
+  // Nay giữ cả hai: dải vẫn đi theo thứ tự server (nguồn chuẩn, không nhân đôi ảnh),
+  // ảnh nào hỏng thì `RemoteImage` tự tráo sang bản local CÙNG CHỈ SỐ.
+  const loadImages = useCallback(async () => {
+    const id = tree?.id;
+    if (!id) return;
+    const [viewsRes, local] = await Promise.all([
+      fetchTreeViews(ORILIFE_BASE, id, { describe: true }).catch(() => null),
+      loadTreeImages(id).catch(() => [] as string[]),
+    ]);
+    const localImgs = Array.from(new Set(local ?? []));
+    const serverImgs = viewsRes?.ok ? treeViewImageUrls(viewsRes.data, ORILIFE_BASE) : [];
+    setLocalImages(localImgs);
+    setTreeImages(serverImgs.length > 0 ? serverImgs : localImgs);
+    // Lỗi tầng DANH SÁCH (401 hết phiên / 403 không phải cây của bạn / mất mạng) —
+    // trước đây cả ba cho ra cùng một mảng rỗng, không thông báo, không nút thử lại.
+    setImagesError(viewsRes && !viewsRes.ok ? viewsRes.error?.type ?? 'unknown' : null);
+    setBrokenImages(0);
+    const feats = (viewsRes?.ok ? viewsRes.data?.views ?? [] : [])
+      .flatMap(v => v.features_vi ?? [])
+      .map(t => t.trim())
+      .filter(Boolean);
+    setTreeFeatures(Array.from(new Set(feats)).slice(0, 8));
+  }, [tree?.id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true;
+      loadImages().catch(() => undefined).then(() => { if (!alive) return; });
+      return () => { alive = false; };
+    }, [loadImages]),
+  );
+
   useEffect(() => {
-    if (tree?.id) {
-      dispatch(loadFruits(tree.id));
-    }
     Animated.parallel([
-      Animated.timing(fadeAnim,  { toValue: 1, duration: 500, useNativeDriver: true }),
+      Animated.timing(fadeAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
       Animated.timing(slideAnim, { toValue: 0, duration: 500, useNativeDriver: true }),
     ]).start();
   }, [tree?.id]);
+
+  // Nạp quả từ field-reid. reqIdRef: chỉ nhận kết-quả của yêu-cầu MỚI NHẤT (đổi cây
+  // / bấm thử-lại liên tục → không để phản hồi cũ về sau ghi đè danh sách mới).
+  const reqIdRef = useRef(0);
+  const fetchFruits = useCallback(async (showSpinner: boolean) => {
+    const id = tree?.id;
+    if (!id) return;
+    const myReq = ++reqIdRef.current;
+    if (showSpinner) setFruitsLoading(true);
+    const r = await getTreeLayout(ORILIFE_BASE, id);
+    if (myReq !== reqIdRef.current) return;
+    if (r.ok && r.data) {
+      setLayout(r.data);
+      setFruitsError(null);
+    } else {
+      setFruitsError(r.error?.detail ?? 'Không tải được danh sách quả.');
+    }
+    setFruitsLoading(false);
+  }, [tree?.id]);
+
+  // Nạp lại MỖI LẦN màn được focus → khoanh quả ở FruitCropper xong quay về là
+  // thấy ngay (lần đầu có spinner, các lần sau im lặng để không nháy màn hình).
+  const firstFruitLoad = useRef(true);
+  useFocusEffect(useCallback(() => {
+    fetchFruits(firstFruitLoad.current);
+    firstFruitLoad.current = false;
+  }, [fetchFruits]));
 
   // Early return if no tree data to prevent crashes
   if (!tree) {
@@ -284,7 +408,7 @@ const TreeDetailScreen = () => {
           <Text style={styles.headerTitle}>Lỗi</Text>
         </View>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <Icon name="alert-circle-outline" size={48} color={COLORS.error} />
+          <Icon name="circle-exclamation" size={48} color={COLORS.error} />
           <Text style={{ marginTop: 16, fontSize: 16, color: COLORS.text, textAlign: 'center' }}>
             Không tìm thấy thông tin cây
           </Text>
@@ -299,89 +423,114 @@ const TreeDetailScreen = () => {
     );
   }
 
-  // Lazy-load captures the first time the user opens the History tab.
-  const loadCaptures = useCallback(() => {
-    if (!tree?.id || capturesLoading || captures !== null) return;
-    setCapturesLoading(true);
-    // Use local fruits data as capture history
-    setTimeout(() => {
-      setCaptures(fruits.map(f => ({
-        id: f.id,
-        capturedAt: f.createdAt ?? f.updatedAt,
-        fruitId: f.fruitId,
-        status: f.status,
-      })));
-      setCapturesLoading(false);
-    }, 300);
-  }, [tree?.id, capturesLoading, captures, fruits]);
-
-  useEffect(() => {
-    if (activeTab === 'history') loadCaptures();
-  }, [activeTab, loadCaptures]);
-
+  // "Thêm quả" = nhận diện/thêm QUẢ cho CHÍNH cây này — KHÔNG phải nhận diện cây.
+  // Trước đây điều hướng nhầm sang 'TreeIdentity' (luồng nhận diện + đăng ký CÂY),
+  // nên bấm "Thêm quả" lần đầu lại chạy ra quy trình nhận diện cây. Sửa: đi tới
+  // luồng quả gắn theo cây (FruitList), truyền tree_id như TreeManagement vẫn làm.
   const handleAddFruit = () => {
     if (!tree) return;
-    (navigation as any).navigate('TreeIdentity');
+    // Field-test Đức 26/07 mục 11 + fix #11: stub cũ navigate('TreeIdentity') mở nhầm
+    // luồng NHẬN DIỆN CÂY. Dùng FruitList (→ FruitCropper → POST /api/fruit/enroll) —
+    // ĐÚNG nơi /api/tree/{id}/layout đọc, để quả thêm xong HIỆN trong danh sách.
+    // (FruitVideo là nút "Video quả" riêng bên dưới → không dùng lại ở đây cho khỏi trùng.)
+    (navigation as any).navigate('FruitList', {
+      treeId: tree.id,
+      treeName: (tree as any).name,
+      farmId: tree.farmId,
+    });
+  };
+
+  // Quay video quả cho CHÍNH cây này (OriLife User-Action-Flow) — tự điền tree_id.
+  const handleFruitVideo = () => {
+    if (!tree) return;
+    (navigation as any).navigate('FruitVideo', {
+      treeId: tree.id,
+      treeName: (tree as any).name,
+      farmId: tree.farmId,
+    });
+  };
+
+  // Quay video ĐỊNH DANH CÂY → bổ-sung góc nhìn cho chính cây này (OriLife /api/tree/{id}/video).
+  // Khác "Video quả": làm giàu góc của cây để nhận-diện sau chắc hơn.
+  const handleTreeVideo = () => {
+    if (!tree) return;
+    (navigation as any).navigate('TreeVideo', {
+      treeId: tree.id,
+      treeName: (tree as any).name,
+      farmId: tree.farmId,
+    });
   };
 
   const handleScan3D = () => {
     if (!tree) return;
-    (navigation as any).navigate('TreeIdentity');
+    // Field-test Đức 26/07 mục 8: stub cũ navigate('TreeIdentity') = mở nhầm màn
+    // nhận diện. Nút "Xem 3D" phải mở TreeViewer3D (dựng /view/{code}). Mẫu khớp
+    // FarmDetailScreen.onView3D. Model dựng async phía server — màn tự hiện "đang dựng".
+    (navigation as any).navigate('TreeViewer3D', {
+      code: (tree as any).code ?? (tree as any).shortCode ?? '',
+      treeName: (tree as any).name,
+      // treeId để màn 3D gọi được build3d (xếp hàng dựng) khi model chưa có — H-11/H-25.
+      treeId: tree.id,
+    });
   };
 
-  const handleSaveOnnet = async () => {
-    if (!fruitIdentificationResult || !tree) return;
-
-    try {
-      const newFruit: Fruit = {
-        id: `fruit_${Date.now()}`,
-        treeId: tree.id,
-        code: fruitIdentificationResult.code,
-        images: fruitIdentificationResult.images,
-        status: 'growing',
-      };
-
-      await dispatch(saveFruit(newFruit));
-      await syncService.addSyncItem('fruit_identification', {
-        fruit: newFruit,
-        treeCode: fruitIdentificationResult.treeCode,
-        farmCode: fruitIdentificationResult.farmCode,
-        images: fruitIdentificationResult.images,
-      }, fruitIdentificationResult.images);
-
-      setFruitIdentificationResult(null);
-      setCurrentPage(1);
-    } catch (error) {
-      console.error('Error saving fruit:', error);
-    }
+  // Mở KHÔNG-GIAN 3D chung: bay vào ĐÚNG cây này, thấy quả phát sáng trên tán.
+  // Trước đây mở WebView /view/{code} và chỉ hiện khi cây đã quét 3D (has_3d);
+  // nay không-gian 3D dựng từ model tree1.glb nên cây NÀO cũng xem được.
+  const handleView3D = () => {
+    if (!tree) return;
+    // Trace điểm vào Space3D (GL/react-three-fiber) — mốc cuối nếu app crash khi mở 3D.
+    rLog.viewer3d.spaceNav({ treeId: tree.id, farmId: tree.farmId });
+    (navigation as any).navigate('Space3D', {
+      mode: 'tree',
+      treeId: tree.id,
+      farmId: tree.farmId,
+      treeName: treeDisplayName,
+    });
   };
 
-  const handleCancelIdentification = () => setFruitIdentificationResult(null);
+  // Mở toàn cảnh vườn, kèm chế độ đặt vị-trí cây này bằng tay (tính năng tuỳ chọn —
+  // mặc định cây tự đứng theo GPS, hoặc rải ngẫu nhiên ổn định trong ranh giới).
+  const handlePlaceInFarm = () => {
+    if (!tree) return;
+    (navigation as any).navigate('Space3D', {
+      mode: 'farm',
+      farmId: tree.farmId,
+      placeTreeId: tree.id,
+    });
+  };
 
-  // Derived stats
-  const totalFruits    = fruits.length;
-  const growing        = fruits.filter(f => f.status === 'growing').length;
-  const mature         = fruits.filter(f => f.status === 'mature').length;
-  const harvested      = fruits.filter(f => f.status === 'harvested').length;
-  const harvestPct     = tree?.harvestProgress ?? 0;
+  // ── Dữ liệu quả (server) ───────────────────────────────────────────────────
+  const fruitItems: TreeLayoutFruit[] = layout?.fruits ?? [];
+  const stats = layout?.stats;
+  const totalFruits = stats?.total ?? fruitItems.length;
+  const onTreeCount = stats?.on_tree ?? fruitItems.filter(f => f.status === 'on_tree').length;
+  const harvestedCount = stats?.harvested ?? fruitItems.filter(f => f.status === 'harvested').length;
+  const lostCount = stats?.lost ?? fruitItems.filter(f => f.status === 'lost').length;
+  // % thu hoạch tính TỪ QUẢ THẬT (server /api/trees không trả harvestProgress →
+  // vòng tròn trước đây luôn đứng 0%).
+  const harvestPct = totalFruits > 0 ? Math.round((harvestedCount / totalFruits) * 100) : 0;
   const estimatedFruits = tree?.estimatedFruits ?? 0;
 
-  const sortedFruits = [...fruits].sort((a, b) => {
-    const aTime = Number(a.id?.split('_')[1] ?? 0);
-    const bTime = Number(b.id?.split('_')[1] ?? 0);
-    return bTime - aTime;
-  });
+  // Mới ghi nhận lên trước.
+  const sortedFruits = [...fruitItems].sort((a, b) =>
+    (b.enrolled_at ?? '').localeCompare(a.enrolled_at ?? '')
+  );
 
   const filteredFruits = sortedFruits.filter(fruit => {
-    const matchesCode = fruit.code.toLowerCase().includes(searchQuery.toLowerCase());
+    const q = searchQuery.trim().toLowerCase();
+    const matchesName = !q || (fruit.name ?? '').toLowerCase().includes(q);
     const matchesStatus = statusFilter === 'all' || fruit.status === statusFilter;
-    return matchesCode && matchesStatus;
+    return matchesName && matchesStatus;
   });
-  const totalPages = Math.ceil(filteredFruits.length / ITEMS_PER_PAGE);
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const totalPages = Math.max(1, Math.ceil(filteredFruits.length / ITEMS_PER_PAGE));
+  // Kẹp trang: danh sách co lại sau khi nạp lại (quả bị xoá/lọc) → trang hiện tại
+  // có thể vượt tổng số trang, gây màn trắng "không có gì" dù vẫn còn quả.
+  const page = Math.min(currentPage, totalPages);
+  const startIndex = (page - 1) * ITEMS_PER_PAGE;
   const paginatedFruits = filteredFruits.slice(startIndex, startIndex + ITEMS_PER_PAGE);
 
-  const handlePageChange = (page: number) => setCurrentPage(page);
+  const handlePageChange = (p: number) => setCurrentPage(Math.max(1, Math.min(p, totalPages)));
 
   const handleStatusFilterChange = (status: string) => {
     setStatusFilter(status);
@@ -389,11 +538,6 @@ const TreeDetailScreen = () => {
     setCurrentPage(1);
   };
 
-  // Compute from the fruits list so the chip stays consistent with whatever the
-  // mesh viewer renders, even if the server's pre-computed fruit_count is stale
-  // (e.g. a fruit was just marked harvested locally).
-  const fruitCount = fruits.filter(f => f.status !== 'harvested').length ?? 0;
-  const nearRipeCount = fruits.filter(f => f.status === 'near_ripe' || f.status === 'ripe').length ?? 0;
   const gpsText = tree?.gps?.lat && tree?.gps?.lng
     ? `${tree.gps.lat.toFixed(4)}, ${tree.gps.lng.toFixed(4)}`
     : 'Chưa có vị trí GPS';
@@ -405,7 +549,7 @@ const TreeDetailScreen = () => {
 
   // ── Header (shared across tabs) ─────────────────────────────────────────────
   const Header = (
-    <Animated.View style={[styles.header, { paddingTop: (Platform.OS === 'ios' ? 56 : 40) + insets.top }, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+    <Animated.View style={[styles.header, { paddingTop: 40 + insets.top }, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
       <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
         <Icon name="arrow-left" size={20} color={COLORS.textSub} />
       </TouchableOpacity>
@@ -416,13 +560,18 @@ const TreeDetailScreen = () => {
           <Text style={styles.headerSubtitle} numberOfLines={1}>Mã: {treeShortCode}</Text>
         ) : null}
       </View>
+      {/* Đặt vị-trí cây trong sơ đồ 3D bằng tay (tuỳ chọn — mặc định theo GPS
+          hoặc rải ngẫu nhiên ổn định trong ranh giới vườn). */}
+      <TouchableOpacity style={styles.headerActionBtn} onPress={handlePlaceInFarm}>
+        <Icon name="map-pin" size={20} color={COLORS.textSub} />
+      </TouchableOpacity>
       <TouchableOpacity
         style={styles.headerActionBtn}
         onPress={() => tree && (navigation as any).navigate('CareScan', {
           targetType: 'tree', targetId: tree.id, treeName: (tree as any).name,
         })}
       >
-        <Icon name="spray-bottle" size={20} color={COLORS.textSub} />
+        <Icon name="spray-can" size={20} color={COLORS.textSub} />
       </TouchableOpacity>
     </Animated.View>
   );
@@ -447,12 +596,12 @@ const TreeDetailScreen = () => {
               ) : null}
               {tree?.farmName && (
                 <View style={styles.heroFarmRow}>
-                  <Icon name="pine-tree" size={12} color={COLORS.textMuted} />
+                  <Icon name="tree" size={12} color={COLORS.textMuted} />
                   <Text style={styles.heroFarmText}>{tree?.farmName}</Text>
                 </View>
               )}
               <View style={styles.heroFarmRow}>
-                <Icon name="map-marker-outline" size={12} color={COLORS.textMuted} />
+                <Icon name="location-dot" size={12} color={COLORS.textMuted} />
                 <Text style={styles.heroFarmText}>{gpsText}</Text>
               </View>
             </View>
@@ -462,16 +611,16 @@ const TreeDetailScreen = () => {
 
         <View style={styles.heroDivider}>
           <View style={styles.heroDividerLine} />
-          <Icon name="leaf-outline" size={12} color={COLORS.accentLight} />
+          <Icon name="leaf" size={12} color={COLORS.accentLight} />
           <View style={styles.heroDividerLine} />
         </View>
 
         <View style={styles.heroStats}>
           {[
-            { icon: 'counter',             val: totalFruits,    label: 'quả đã ghi nhận',  color: COLORS.accent },
-            { icon: 'sprout-outline',       val: growing,        label: 'đang lớn',         color: '#6FAF7F' },
-            { icon: 'food-apple-outline',   val: mature,         label: 'gần thu hoạch',    color: COLORS.warning },
-            { icon: 'basket-outline',       val: harvested,      label: 'đã thu hoạch',     color: COLORS.info },
+            { icon: 'counter', val: totalFruits, label: 'quả đã ghi nhận', color: COLORS.accent },
+            { icon: 'apple-whole', val: onTreeCount, label: 'trên cây', color: '#6FAF7F' },
+            { icon: 'basket-shopping', val: harvestedCount, label: 'đã thu hoạch', color: COLORS.info },
+            { icon: 'circle-xmark', val: lostCount, label: 'đã mất', color: COLORS.textMuted },
           ].map((s, i) => (
             <View
               key={i}
@@ -488,23 +637,146 @@ const TreeDetailScreen = () => {
         </View>
       </View>
 
+      {/* Ảnh cây đã lưu — dải ngang, chạm để phóng to.
+          LUÔN VẼ KHỐI NÀY, kể cả khi chưa có ảnh nào: nút "Video cây" nằm trong đây,
+          mà đó đúng là lối để bổ sung ảnh. Ẩn khối khi rỗng = giấu mất lối thoát của
+          người đang thiếu ảnh. */}
+      {(
+        <View style={styles.photoStripWrap}>
+          <View style={styles.photoStripHeader}>
+            <View style={styles.sectionLeft}>
+              <View style={styles.sectionDot} />
+              <Text style={styles.sectionTitle}>
+                ẢNH CÂY ({treeImages.length})
+                {brokenImages > 0 ? ` · ${brokenImages} chưa xem được` : ''}
+              </Text>
+            </View>
+            {/* Bổ-sung góc nhìn cho cây bằng video → /api/tree/{id}/video (server chắt khung). */}
+            <TouchableOpacity style={styles.treeVideoBtn} onPress={handleTreeVideo} activeOpacity={0.8}>
+              <Icon name="video" size={15} color="#1b5e20" />
+              <Text style={styles.treeVideoBtnText}>Video cây</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Ảnh 404 KHÔNG có nghĩa là ảnh mất: `/gimg` xét quyền lúc gọi và trả 404
+              giả-không-tồn-tại khi từ chối. Chữ phải nói đúng điều đó — tuyệt đối
+              không viết "ảnh đã mất/đã xoá" và không tô đỏ như lỗi của app. */}
+          {(brokenImages > 0 || imagesError) && (
+            <View style={styles.photoNote}>
+              <Icon name="circle-info" size={13} color="#8a6d1f" />
+              <Text style={styles.photoNoteText}>
+                {imagesError
+                  ? 'Chưa lấy được danh sách ảnh — kiểm tra mạng rồi thử lại. Ảnh vẫn còn trên máy chủ.'
+                  : 'Máy chủ đang từ chối trả ảnh. Ảnh vẫn còn — thử lại sau.'}
+              </Text>
+              <TouchableOpacity
+                onPress={() => { setImgRetry(n => n + 1); loadImages().catch(() => undefined); }}
+                style={styles.photoRetryBtn}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.photoRetryText}>Thử lại</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {treeImages.length === 0 && !imagesError && (
+            <Text style={styles.photoEmptyText}>Cây này chưa có ảnh nào.</Text>
+          )}
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.photoStrip}
+          >
+            {treeImages.map((uri, i) => (
+              <TouchableOpacity
+                key={`${uri}-${i}`}
+                activeOpacity={0.85}
+                onPress={() => setZoomImage(uri)}
+              >
+                <RemoteImage
+                  uri={uri}
+                  fallbackUri={localImages[i]}
+                  retryKey={imgRetry}
+                  style={styles.photoThumb}
+                  resizeMode="cover"
+                  onFinalError={() => setBrokenImages(n => n + 1)}
+                  placeholder={<Icon name="image" size={22} color="#9bb0a4" />}
+                  accessibilityLabel={`Ảnh cây ${i + 1}`}
+                />
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+          {treeFeatures.length > 0 && (
+            <View style={styles.featuresBox}>
+              <Text style={styles.featuresTitle}>Máy nhận ra cây này nhờ</Text>
+              {treeFeatures.map((f, i) => (
+                <Text key={`f${i}`} style={styles.featuresLine}>• {f}</Text>
+              ))}
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* Bằng chứng video trên LampNet. Hiện mã lưu trữ vì OriLife KHÔNG có route
+          tra ngược — đây là chỗ duy nhất đội thực địa đối chiếu được sau buổi.
+          Chạm để sao chép mã. */}
+      {videoProofs.length > 0 && (
+        <View style={styles.proofWrap}>
+          <View style={styles.sectionLeft}>
+            <View style={styles.sectionDot} />
+            <Text style={styles.sectionTitle}>VIDEO ĐÃ LƯU ({videoProofs.length})</Text>
+          </View>
+          {videoProofs.map(p => (
+            <TouchableOpacity
+              key={p.videoCid}
+              style={styles.proofRow}
+              activeOpacity={0.7}
+              onPress={() => {
+                Clipboard.setString(p.videoCid);
+                Alert.alert('Đã sao chép', 'Mã lưu trữ đã vào bộ nhớ tạm.');
+              }}
+            >
+              <Icon
+                name={p.stored === false ? 'triangle-exclamation' : 'shield-halved'}
+                size={15}
+                color={p.stored === false ? '#B26A00' : '#1b5e20'}
+              />
+              <View style={styles.proofBody}>
+                <Text style={styles.proofCid} numberOfLines={1}>{p.videoCid}</Text>
+                <Text style={styles.proofMeta}>
+                  {p.stored === false ? 'Chưa lên được mạng · ' : ''}
+                  {p.at ? new Date(p.at).toLocaleString('vi-VN') : ''}
+                  {p.nFruitsMax ? ` · khoảng ${p.nFruitsMax} quả` : ''}
+                </Text>
+              </View>
+              <Icon name="copy" size={14} color={COLORS.textMuted} />
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
       {/* Mesh fruit chip + capture-again CTA */}
       <View style={styles.meshChipRow}>
         <View style={styles.meshChip}>
           <Text style={styles.meshChipEmoji}>🍈</Text>
           <Text style={styles.meshChipText}>
-            {fruitCount} quả{fruitCount > 0 ? ` · ${nearRipeCount} gần chín` : ''}
+            {totalFruits}
           </Text>
         </View>
-        <TouchableOpacity style={styles.captureBtn} onPress={handleScan3D} activeOpacity={0.85}>
-          <Icon name="camera-outline" size={16} color={COLORS.white} />
-          <Text style={styles.captureBtnText}>Chụp lại</Text>
+        <TouchableOpacity style={styles.view3DBtn} onPress={handleScan3D} activeOpacity={0.85}>
+          <Icon name="camera" size={16} color={COLORS.accent} />
+          <Text style={styles.view3DBtnText}>Chụp lại</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.captureBtn} onPress={handleView3D} activeOpacity={0.85}>
+          <Icon name="expand" size={16} color={COLORS.white} />
+          <Text style={styles.captureBtnText}>Sơ đồ 3D</Text>
         </TouchableOpacity>
       </View>
 
       {estimatedFruits > 0 && (
         <View style={styles.estimateNote}>
-          <Icon name="chart-bell-curve-cumulative" size={14} color={COLORS.accent} />
+          <Icon name="chart-line" size={14} color={COLORS.accent} />
           <Text style={styles.estimateText}>
             Dự kiến <Text style={{ fontWeight: '700', color: COLORS.accent }}>{estimatedFruits} quả</Text> trong mùa này
           </Text>
@@ -514,8 +786,19 @@ const TreeDetailScreen = () => {
       <View style={styles.sectionRow}>
         <View style={styles.sectionLeft}>
           <View style={styles.sectionDot} />
-          <Text style={styles.sectionTitle}>DANH SÁCH QUẢ</Text>
+          <Text style={styles.sectionTitle}>
+            DANH SÁCH QUẢ{totalFruits > 0 ? ` (${totalFruits})` : ''}
+          </Text>
+          {fruitsLoading && <ActivityIndicator size="small" color={COLORS.accent} />}
         </View>
+
+      </View>
+      <View style={styles.fruitActionRow}>
+        {/* Quay video quả cho cây này (OriLife) — gắn tree_id, cho phép gắn sai. */}
+        <TouchableOpacity style={styles.fruitVideoBtn} onPress={handleFruitVideo} activeOpacity={0.8}>
+          <Icon name="video" size={15} color="#1b5e20" />
+          <Text style={styles.fruitVideoBtnText}>Video quả</Text>
+        </TouchableOpacity>
         <TouchableOpacity
           style={styles.addFruitBtn}
           onPress={handleAddFruit}
@@ -529,14 +812,13 @@ const TreeDetailScreen = () => {
           </Animated.View>
         </TouchableOpacity>
       </View>
-
       <View style={styles.searchContainer}>
         <View style={styles.searchRow}>
           <View style={styles.searchInputWrap}>
-            <Icon name="magnify" size={18} color={COLORS.textMuted} style={styles.searchIcon} />
+            <Icon name="magnifying-glass" size={18} color={COLORS.textMuted} style={styles.searchIcon} />
             <TextInput
               style={styles.searchInput}
-              placeholder="Tìm kiếm theo mã quả..."
+              placeholder="Tìm kiếm theo tên quả..."
               placeholderTextColor={COLORS.textMuted}
               value={searchQuery}
               onChangeText={(text) => {
@@ -552,7 +834,7 @@ const TreeDetailScreen = () => {
                 }}
                 style={styles.clearSearchBtn}
               >
-                <Icon name="close" size={16} color={COLORS.textMuted} />
+                <Icon name="xmark" size={16} color={COLORS.textMuted} />
               </TouchableOpacity>
             )}
           </View>
@@ -561,7 +843,7 @@ const TreeDetailScreen = () => {
             style={styles.statusFilterBtn}
             onPress={() => setStatusDropdownVisible(true)}
           >
-            <Icon name="filter-variant" size={18} color={COLORS.accent} />
+            <Icon name="filter" size={18} color={COLORS.accent} />
             <Text style={styles.statusFilterText}>
               {statusFilter === 'all' ? 'Tất cả trạng thái' : getStatus(statusFilter).label}
             </Text>
@@ -572,58 +854,75 @@ const TreeDetailScreen = () => {
     </Animated.View>
   );
 
-  const overviewEmpty =
-    searchQuery.length > 0 || statusFilter !== 'all' ? (
-      <View style={styles.noSearchResults}>
-        <View style={styles.emptyIconWrap}>
-          <Icon name="magnify" size={36} color={COLORS.accentLight} />
-          <View style={styles.emptyIconRing} />
-        </View>
-        <Text style={styles.emptyTitle}>Không tìm thấy quả nào</Text>
-        <Text style={styles.emptyBody}>
-          Không có quả nào khớp với bộ lọc hiện tại.
-        </Text>
-        <TouchableOpacity
-          style={styles.emptyAddBtn}
-          onPress={() => {
-            setSearchQuery('');
-            setStatusFilter('all');
-            setCurrentPage(1);
-          }}
-        >
-          <Icon name="refresh" size={15} color={COLORS.white} />
-          <Text style={styles.emptyAddBtnText}>Xóa bộ lọc</Text>
-        </TouchableOpacity>
+  // Thứ tự ưu tiên: đang tải → lỗi tải → không khớp bộ lọc → thật sự chưa có quả.
+  // KHÔNG để lỗi mạng hiện ra như "chưa có quả" (nông dân tưởng mất dữ liệu).
+  const overviewEmpty = fruitsLoading ? (
+    <View style={styles.emptyWrap}>
+      <ActivityIndicator size="large" color={COLORS.accent} />
+      <Text style={styles.emptyBody}>Đang tải danh sách quả…</Text>
+    </View>
+  ) : fruitsError ? (
+    <View style={styles.emptyWrap}>
+      <Icon name="plug-circle-xmark" size={36} color={COLORS.warning} />
+      <Text style={styles.emptyTitle}>Không tải được quả</Text>
+      <Text style={styles.emptyBody}>{fruitsError}</Text>
+      <TouchableOpacity style={styles.emptyAddBtn} onPress={() => fetchFruits(true)}>
+        <Icon name="arrows-rotate" size={15} color={COLORS.white} />
+        <Text style={styles.emptyAddBtnText}>Thử lại</Text>
+      </TouchableOpacity>
+    </View>
+  ) : searchQuery.length > 0 || statusFilter !== 'all' ? (
+    <View style={styles.noSearchResults}>
+      <View style={styles.emptyIconWrap}>
+        <Icon name="magnifying-glass" size={36} color={COLORS.accentLight} />
+        <View style={styles.emptyIconRing} />
       </View>
-    ) : (
-      <StateView
-        status="empty"
-        title="Chưa có quả nào"
-        message={'Hướng camera vào chùm quả và bấm "Thêm quả".'}
-        actionLabel="Thêm quả đầu tiên"
-        onAction={handleAddFruit}
-      />
-    );
+      <Text style={styles.emptyTitle}>Không tìm thấy quả nào</Text>
+      <Text style={styles.emptyBody}>
+        Không có quả nào khớp với bộ lọc hiện tại.
+      </Text>
+      <TouchableOpacity
+        style={styles.emptyAddBtn}
+        onPress={() => {
+          setSearchQuery('');
+          setStatusFilter('all');
+          setCurrentPage(1);
+        }}
+      >
+        <Icon name="arrows-rotate" size={15} color={COLORS.white} />
+        <Text style={styles.emptyAddBtnText}>Xóa bộ lọc</Text>
+      </TouchableOpacity>
+    </View>
+  ) : (
+    <StateView
+      status="empty"
+      title="Chưa có quả nào"
+      message={'Hướng camera vào chùm quả và bấm "Thêm quả".'}
+      actionLabel="Thêm quả đầu tiên"
+      onAction={handleAddFruit}
+    />
+  );
 
   const overviewBody = (
     <FlatList
       data={paginatedFruits}
-      keyExtractor={(item) => item.id}
+      keyExtractor={(item) => item.fruit_id}
       showsVerticalScrollIndicator={false}
       contentContainerStyle={styles.listContent}
       ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
       ListHeaderComponent={overviewHeader}
       ListEmptyComponent={overviewEmpty}
       renderItem={({ item, index }) => (
-        <FruitCard item={item} index={index} onPress={() => {}} />
+        // Chạm 1 quả → màn quả đầy-đủ của cây (xem góc ảnh / sơ-đồ / thêm góc).
+        <FruitCard item={item} index={index} onPress={handleAddFruit} />
       )}
       ListFooterComponent={
         totalPages > 1 ? (
           <PaginationControls
-            currentPage={currentPage}
+            currentPage={page}
             totalPages={totalPages}
-            onNextPage={handlePageChange.bind(null, currentPage + 1)}
-            onPreviousPage={handlePageChange.bind(null, currentPage - 1)}
+            onNextPage={handlePageChange.bind(null, page + 1)}
+            onPreviousPage={handlePageChange.bind(null, page - 1)}
             startIndex={startIndex}
             endIndex={Math.min(startIndex + ITEMS_PER_PAGE, filteredFruits.length)}
             totalItems={filteredFruits.length}
@@ -636,47 +935,69 @@ const TreeDetailScreen = () => {
   );
 
   // ── History tab content ─────────────────────────────────────────────────────
+  // Lịch sử = các quả đã ghi nhận, mới nhất trước. Bản cũ đọc `capture_id`/
+  // `captured_at`/`frame_count` từ object KHÔNG hề có các field đó → tab trắng +
+  // "Invalid Date". Nay dùng đúng dữ-liệu quả server trả.
   const historyBody = (
     <FlatList
-      data={captures ?? []}
-      keyExtractor={(c) => c.capture_id}
+      data={sortedFruits}
+      keyExtractor={(f) => f.fruit_id}
       contentContainerStyle={styles.listContent}
       ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
       ListHeaderComponent={
         <View style={styles.historyHeader}>
-          <Icon name="history" size={16} color={COLORS.accent} />
-          <Text style={styles.historyHeaderText}>Các lần quét 3D gần đây</Text>
+          <Icon name="clock-rotate-left" size={16} color={COLORS.accent} />
+          <Text style={styles.historyHeaderText}>QUẢ ĐÃ GHI NHẬN GẦN ĐÂY</Text>
         </View>
       }
       ListEmptyComponent={
         <View style={styles.emptyWrap}>
-          <Icon name="archive-outline" size={36} color={COLORS.accentLight} />
+          {fruitsLoading ? (
+            <ActivityIndicator size="large" color={COLORS.accent} />
+          ) : (
+            <Icon name="box-archive" size={36} color={COLORS.accentLight} />
+          )}
           <Text style={styles.emptyTitle}>
-            {capturesLoading ? 'Đang tải lịch sử…' : 'Chưa có lần quét nào'}
+            {fruitsLoading ? 'Đang tải lịch sử…' : 'Chưa ghi nhận quả nào'}
           </Text>
-          {!capturesLoading && (
+          {!fruitsLoading && (
             <Text style={styles.emptyBody}>
-              Quét 3D cây này để tạo lần quét đầu tiên.
+              {fruitsError ?? 'Bấm "Thêm quả" ở tab Tổng quan để ghi nhận quả đầu tiên.'}
             </Text>
           )}
         </View>
       }
-      renderItem={({ item }) => (
-        <View style={styles.captureCard}>
-          <View style={styles.captureIconWrap}>
-            <Icon name="cube-scan" size={20} color={COLORS.accent} />
+      renderItem={({ item }) => {
+        const st = getStatus(item.status);
+        const thumb = item.thumbnail_url ? `${ORILIFE_BASE}${item.thumbnail_url}` : null;
+        return (
+          <View style={styles.captureCard}>
+            <RemoteImage
+              uri={thumb}
+              style={styles.captureThumb}
+              containerStyle={styles.captureThumb}
+              resizeMode="cover"
+              placeholder={
+                <View style={styles.captureIconWrap}>
+                  <Icon name={st.icon} size={20} color={st.color} />
+                </View>
+              }
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.captureDate} numberOfLines={1}>
+                {item.name || '(chưa đặt tên)'}
+              </Text>
+              <Text style={styles.captureMeta}>
+                {fmtDate(item.enrolled_at) || 'chưa rõ ngày'} · {item.n_views} D
+                {item.zone ? ` · ${ZONE_VI[item.zone]}` : ''}
+              </Text>
+            </View>
+            <View style={[styles.fruitStatusChip, { backgroundColor: st.bg }]}>
+              <Text style={[styles.fruitStatusText, { color: st.color }]}>{st.label}</Text>
+            </View>
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.captureDate}>
-              {new Date(item.captured_at).toLocaleString('vi-VN')}
-            </Text>
-            <Text style={styles.captureMeta}>
-              {item.frame_count} frame · {item.cid_v2 ? 'đã refine v2' : 'v1'}
-            </Text>
-          </View>
-          <Icon name="chevron-right" size={18} color={COLORS.accentLight} />
-        </View>
-      )}
+        );
+      }}
     />
   );
 
@@ -693,61 +1014,70 @@ const TreeDetailScreen = () => {
         {activeTab === 'info' && <TreeMetadataTab tree={tree} />}
       </View>
 
-      {fruitIdentificationResult && (
-        <View style={StyleSheet.absoluteFill}>
-          <View style={styles.identificationResult}>
-            <View style={styles.resultHeader}>
-              <Icon name="check-circle" size={48} color={COLORS.success} />
-              <Text style={styles.resultTitle}>Đã xác định 1 quả!</Text>
-            </View>
-
-            <View style={styles.resultDetails}>
-              <View style={styles.resultItem}>
-                <Text style={styles.resultLabel}>MÃ QUẢ</Text>
-                <Text style={styles.resultValue}>{fruitIdentificationResult.code}</Text>
-              </View>
-              <View style={styles.resultItem}>
-                <Text style={styles.resultLabel}>MÃ CÂY</Text>
-                <Text style={styles.resultValue}>{fruitIdentificationResult.treeCode}</Text>
-              </View>
-              <View style={styles.resultItem}>
-                <Text style={styles.resultLabel}>MÃ TRẠI</Text>
-                <Text style={styles.resultValue}>{fruitIdentificationResult.farmCode}</Text>
-              </View>
-            </View>
-
-            <View style={styles.resultActions}>
-              <TouchableOpacity
-                style={styles.cancelBtn}
-                onPress={handleCancelIdentification}
-              >
-                <Text style={styles.cancelBtnText}>Hủy</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.saveBtn}
-                onPress={handleSaveOnnet}
-              >
-                <Text style={styles.saveBtnText}>Lưu onnet</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      )}
-
       {/* Existing Activity navigation — preserved per spec */}
-      {activeTab === 'overview' && fruits.length > 0 && !fruitIdentificationResult && (
+      {activeTab === 'overview' && fruitItems.length > 0 && (
         <View style={[styles.bottomBar, { paddingBottom: (Platform.OS === 'ios' ? 36 : 24) + insets.bottom }]}>
           <TouchableOpacity
             style={styles.harvestBtn}
-            onPress={() => (navigation as any).navigate('Activity', { tree })}
+            onPress={() => (navigation as any).navigate('Activity', { tree, farm: currentFarm ?? undefined })}
             activeOpacity={0.88}
           >
             <View style={styles.btnShine} />
-            <Icon name="basket-outline" size={19} color={COLORS.white} />
+            <Icon name="basket-shopping" size={19} color={COLORS.white} />
             <Text style={styles.harvestBtnText}>Thu hoạch quả</Text>
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Lightbox ảnh cây */}
+      <Modal
+        visible={zoomImage != null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setZoomImage(null)}
+        statusBarTranslucent
+      >
+        <TouchableOpacity
+          style={styles.zoomOverlay}
+          activeOpacity={1}
+          onPress={() => setZoomImage(null)}
+        >
+          {/* Ảnh phóng to: nếu để `<Image>` trần thì ảnh 404 cho ra MÀN ĐEN CÂM phủ
+              90% màn hình, chỉ còn nút X — hình dạng "app treo" rõ nhất trong luồng. */}
+          {zoomImage && (
+            <RemoteImage
+              uri={zoomImage}
+              fallbackUri={localImages[treeImages.indexOf(zoomImage)]}
+              retryKey={imgRetry}
+              style={styles.zoomImage}
+              resizeMode="contain"
+              accessibilityLabel="Ảnh cây phóng to"
+              placeholder={
+                <View style={styles.zoomFallback}>
+                  <Icon name="image" size={40} color="rgba(255,255,255,0.5)" />
+                  <Text style={styles.zoomFallbackText}>
+                    Chưa xem được ảnh này. Máy chủ đang từ chối — ảnh vẫn còn.
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.zoomRetryBtn}
+                    onPress={() => setImgRetry(n => n + 1)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.zoomRetryText}>Thử lại</Text>
+                  </TouchableOpacity>
+                </View>
+              }
+            />
+          )}
+          <TouchableOpacity
+            style={styles.zoomClose}
+            onPress={() => setZoomImage(null)}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Icon name="xmark" size={24} color={COLORS.white} />
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
 
       <Modal
         visible={statusDropdownVisible}
@@ -773,7 +1103,7 @@ const TreeDetailScreen = () => {
               {statusFilter === 'all' && <Icon name="check" size={20} color={COLORS.accent} />}
             </TouchableOpacity>
 
-            {Object.entries(STATUS_MAP).map(([key, status]) => (
+            {(Object.entries(STATUS_MAP) as [FruitStatus, typeof STATUS_MAP[FruitStatus]][]).map(([key, status]) => (
               <TouchableOpacity
                 key={key}
                 style={[styles.modalOption, statusFilter === key && styles.modalOptionSelected]}
@@ -940,6 +1270,90 @@ const styles = StyleSheet.create({
   },
   heroStatLabel: { fontSize: 10, color: COLORS.textMuted, textAlign: 'center' },
 
+  photoStripWrap: { marginBottom: 14, gap: 8 },
+  featuresBox: {
+    marginTop: 2, paddingHorizontal: 12, paddingVertical: 10,
+    backgroundColor: '#f1f8e9', borderRadius: 12, borderWidth: 1, borderColor: '#dcedc8', gap: 3,
+  },
+  featuresTitle: { fontSize: 12, fontWeight: '700', color: '#33691e', marginBottom: 2 },
+  featuresLine: { fontSize: 12.5, color: '#33691e', lineHeight: 18 },
+  photoStripHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  treeVideoBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: '#e8f5e9',
+    borderWidth: 1, borderColor: '#1b5e20',
+    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10,
+  },
+  treeVideoBtnText: { fontSize: 13, fontWeight: '700', color: '#1b5e20' },
+  proofWrap: { marginBottom: 14, gap: 8 },
+  proofRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    borderWidth: 1, borderColor: '#c8e6c9', backgroundColor: '#f1f8e9',
+    borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8,
+  },
+  proofBody: { flex: 1, gap: 2 },
+  proofCid: { fontSize: 12.5, fontWeight: '700', color: '#1b5e20' },
+  proofMeta: { fontSize: 11.5, color: COLORS.textMuted },
+  photoStrip: { gap: 8, paddingVertical: 2 },
+  photoThumb: {
+    width: 96, height: 96, borderRadius: 12,
+    backgroundColor: COLORS.border,
+    borderWidth: 1, borderColor: COLORS.border,
+  },
+  zoomOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  zoomImage: { width: '100%', height: '80%' },
+  zoomFallback: { alignItems: 'center', gap: 12, paddingHorizontal: 32 },
+  zoomFallbackText: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 19,
+  },
+  zoomRetryBtn: {
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+  },
+  zoomRetryText: { color: COLORS.white, fontSize: 13, fontWeight: '600' },
+  photoNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 14,
+    marginTop: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: '#fdf6e3',
+  },
+  photoNoteText: { flex: 1, color: '#6b5518', fontSize: 12, lineHeight: 17 },
+  photoRetryBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 14,
+    backgroundColor: '#8a6d1f',
+  },
+  photoRetryText: { color: COLORS.white, fontSize: 12, fontWeight: '700' },
+  photoEmptyText: {
+    marginHorizontal: 14,
+    marginTop: 8,
+    color: '#7d8f85',
+    fontSize: 12.5,
+  },
+  zoomClose: {
+    position: 'absolute', top: 48, right: 20,
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+
   meshChipRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -959,7 +1373,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   meshChipEmoji: { fontSize: 16 },
-  meshChipText: { fontSize: 13, color: COLORS.text, fontWeight: '600' },
+  meshChipText: { fontSize: 13, color: COLORS.text, fontWeight: '700' },
   captureBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -970,6 +1384,18 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   captureBtnText: { color: COLORS.white, fontSize: 13, fontWeight: '700' },
+  view3DBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: COLORS.accentGlow,
+    borderWidth: 1,
+    borderColor: COLORS.accent,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  view3DBtnText: { color: COLORS.accent, fontSize: 13, fontWeight: '700' },
 
   estimateNote: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
@@ -996,6 +1422,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10,
   },
   addFruitBtnText: { fontSize: 13, fontWeight: '600', color: COLORS.accent },
+  fruitActionRow: { flexDirection: 'row', alignItems: 'center', gap: 8, width: '100%', marginBottom: 12 },
+  fruitVideoBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: '#e8f5e9',
+    borderWidth: 1, borderColor: '#1b5e20',
+    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10,
+    flex: 1, justifyContent: 'center',
+  },
+  fruitVideoBtnText: { fontSize: 13, fontWeight: '700', color: '#1b5e20' },
 
   fruitCard: {
     backgroundColor: COLORS.card,
@@ -1010,12 +1445,17 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     borderRightWidth: 1, borderRightColor: COLORS.border,
   },
+  fruitThumb: {
+    width: 64, height: 64, alignSelf: 'center',
+    marginLeft: 8, borderRadius: 12,
+    backgroundColor: COLORS.accentGlow,
+  },
   fruitCardBody: { flex: 1, padding: 12 },
   fruitTopRow: {
     flexDirection: 'row', alignItems: 'center',
     justifyContent: 'space-between', marginBottom: 6,
   },
-  fruitCode: { fontSize: 15, fontWeight: '700', color: COLORS.text, letterSpacing: -0.2 },
+  fruitCode: { flex: 1, fontSize: 15, fontWeight: '700', color: COLORS.text, letterSpacing: -0.2, marginRight: 8 },
   fruitStatusChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20,
@@ -1077,51 +1517,6 @@ const styles = StyleSheet.create({
     position: 'absolute', top: 0, left: 0, right: 0,
     height: '50%', backgroundColor: 'rgba(255,255,255,0.09)', borderRadius: 14,
   },
-
-  identificationResult: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: COLORS.bg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 20,
-  },
-  resultHeader: { alignItems: 'center', marginBottom: 32 },
-  resultTitle: { fontSize: 24, fontWeight: '800', color: COLORS.text, marginTop: 12 },
-  resultDetails: { width: '100%', marginBottom: 32 },
-  resultItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: COLORS.card,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  resultLabel: { fontSize: 12, fontWeight: '700', color: COLORS.accent, letterSpacing: 1 },
-  resultValue: { fontSize: 16, fontWeight: '700', color: COLORS.text },
-  resultActions: { flexDirection: 'row', gap: 12 },
-  cancelBtn: {
-    flex: 1,
-    backgroundColor: COLORS.card,
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  cancelBtnText: { fontSize: 15, fontWeight: '600', color: COLORS.textMuted },
-  saveBtn: {
-    flex: 1,
-    backgroundColor: COLORS.accent,
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  saveBtnText: { fontSize: 15, fontWeight: '700', color: COLORS.white },
 
   searchContainer: { marginTop: 12, marginBottom: 8 },
   searchRow: { flexDirection: 'row', gap: 12 },
@@ -1234,6 +1629,10 @@ const styles = StyleSheet.create({
     width: 40, height: 40, borderRadius: 12,
     backgroundColor: COLORS.accentGlow,
     alignItems: 'center', justifyContent: 'center',
+  },
+  captureThumb: {
+    width: 44, height: 44, borderRadius: 12,
+    backgroundColor: COLORS.accentGlow,
   },
   captureDate: { fontSize: 14, fontWeight: '600', color: COLORS.text },
   captureMeta: { fontSize: 12, color: COLORS.textMuted, marginTop: 2 },

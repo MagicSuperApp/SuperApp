@@ -18,7 +18,7 @@ Pod::Spec.new do |s|
 
   s.platform     = :ios, '15.1'
   s.source       = { :path => '.' }
-  s.source_files = '**/*.{swift,m,h}'
+  s.source_files = '**/*.{swift,m,mm,h}'
   # secrets.plist + GoogleService-Info.plist + model YOLO gate TreeReID (Plan A).
   s.resources    = ['Resources/secrets.plist', 'Resources/GoogleService-Info.plist', 'Resources/yolov26seg.tflite']
 
@@ -30,6 +30,10 @@ Pod::Spec.new do |s|
   # TFLite Swift — gate YOLO chất-lượng TreeReID (Plan A, TreeReIDYolo.swift chạy
   # yolov26seg.tflite). SQLite.swift/Firebase vẫn gỡ. Podfile đã có CDN source cho pod này.
   s.dependency 'TensorFlowLiteSwift', '~> 2.17.0'
+  # Core ML delegate — chạy YOLO gate trên Neural Engine thay CPU → máy MÁT hơn hẳn
+  # (field 13/07 báo nóng). Subspec này cung-cấp `CoreMLDelegate` cho TreeReIDYolo.
+  # Máy cũ / op không hỗ-trợ → TreeReIDYolo tự rơi về CPU (có fallback).
+  s.dependency 'TensorFlowLiteSwift/CoreML', '~> 2.17.0'
 
   # PhoenixKey Rust core (Master_KEK / BIP39) — TaadEnclaveModule.swift imports it.
   s.dependency 'taad_enclave_core'

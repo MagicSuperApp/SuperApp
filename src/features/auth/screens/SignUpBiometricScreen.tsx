@@ -18,7 +18,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AUTH_BLUE } from '../theme';
 import StepIndicator from '../components/StepIndicator';
 import { showError } from '../../../utils/alert';
-import { phoenixKeyAuth } from '../../../services/phoenixKeyAuthService';
+import { biometricKindFromType, phoenixKeyAuth } from '../../../services/phoenixKeyAuthService';
 import { loginUser } from '../../../store/userSlice';
 import { useDispatch } from 'react-redux';
 
@@ -148,8 +148,11 @@ const SignUpBiometricScreen: React.FC = () => {
     setStage('generating');
 
     try {
+      // Loại sinh-trắc suy từ CẢM BIẾN THẬT, không từ nút. `hasFaceId ? 'face' :
+      // 'fingerprint'` cũ gán nhầm 'fingerprint' cho máy Android chỉ báo
+      // `Biometrics` (đúng ra là 'strong') — nhãn khoá sai so với thứ đã xảy ra.
       const { user } = await phoenixKeyAuth.registerIdentity(
-        hasFaceId ? 'face' : 'fingerprint',
+        biometricKindFromType(biometryType),
       );
       const newEntry = { username: usernameTrim, did: user.did, createdAt: Date.now() };
       const raw = await AsyncStorage.getItem(PHOENIX_USERS_KEY);
@@ -166,7 +169,7 @@ const SignUpBiometricScreen: React.FC = () => {
       );
     } catch (e: any) {
       console.log('[SignUp] PhoenixKey enrollment failed:', e);
-      showError(e?.message || 'Không tạo được danh tính PhoenixKey. Vui lòng thử lại.');
+      showError(e?.message || 'Không tạo được danh tính. Vui lòng thử lại.');
       setStage('idle');
     }
   };
@@ -205,7 +208,10 @@ const SignUpBiometricScreen: React.FC = () => {
         ]}
       >
         <Text style={styles.eyebrow}>TẠO DANH TÍNH</Text>
-        <Text style={styles.title}>Tên đăng nhập{'\n'}+ Sinh trắc học</Text>
+        {/* Tách '+ ' thành node RIÊNG: lớp autoText tra từ điển theo TỪNG child là
+            chuỗi, nên để nguyên '+ Sinh trắc học' thì cả cụm không khớp khoá nào và
+            lọt ra màn bằng tiếng Việt. */}
+        <Text style={styles.title}>Tên đăng nhập{'\n'}{'+ '}Sinh trắc học</Text>
         <Text style={styles.subtitle}>
           Chọn tên đăng nhập (PhoenixUser), sau đó kích hoạt chip bảo mật bằng
           sinh trắc học. Khóa riêng sinh ngay trong chip và{' '}
@@ -339,6 +345,16 @@ const SignUpBiometricScreen: React.FC = () => {
           hitSlop={8}
         >
           <Text style={styles.linkText}>Tôi đã có tài khoản — Đăng nhập</Text>
+        </TouchableOpacity>
+        {/* Đọc được TRƯỚC khi lập danh tính, không phải sau. Bước kế tiếp sinh một cặp
+            khoá không khôi phục hộ được — người dùng có quyền biết điều đó trước khi bấm,
+            và chỉ mục ở màn Tôi thì phải đăng nhập xong mới tới được. */}
+        <TouchableOpacity
+          onPress={() => navigation.navigate('Terms' as never)}
+          disabled={stage !== 'idle'}
+          hitSlop={8}
+        >
+          <Text style={styles.linkTextMuted}>Điều khoản & Chính sách</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -493,6 +509,10 @@ const styles = StyleSheet.create({
   linkText: {
     fontSize: 12, fontWeight: '700',
     color: AUTH_BLUE.primary, textAlign: 'center',
+  },
+  linkTextMuted: {
+    marginTop: 10, fontSize: 11, fontWeight: '600',
+    color: AUTH_BLUE.textMuted, textAlign: 'center',
   },
 });
 

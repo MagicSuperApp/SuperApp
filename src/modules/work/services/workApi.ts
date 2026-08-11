@@ -20,9 +20,9 @@ import axios, {
 import { resolveBaseURL, WORK_HTTP_TIMEOUT_MS } from './config';
 import { getWorkSessionToken, clearWorkSession } from './session';
 import type {
-  WorkAccount, JobType, WorkJob, Offering, WorkContract, MatchResult,
+  WorkAccount, JobType, WorkJob, Offering, WorkContract, MatchResult, MatchCandidate,
   Credential, AvailabilityResult, Availability, ChallengeResult, VerifyResult,
-  VerifyBody, HealthResult, ConversationRef,
+  VerifyBody, HealthResult, ConversationRef, TaskersResult,
 } from './types';
 
 // ── Phân loại lỗi (mạng ⟂ quyền ⟂ server) — INTEGRATION §7.3 ─────────
@@ -58,6 +58,13 @@ const classify = (httpStatus: number, code: string): WorkErrorKind => {
 // ── Axios client ─────────────────────────────────────────────────────
 let _client: AxiosInstance | null = null;
 
+// Provider phiên (lazy-login). Đăng ký ở bootstrap: setWorkSessionProvider(ensureWorkSession).
+// Dùng setter thay vì import trực-tiếp để cắt vòng import workApi ⟷ workAuthService.
+let _sessionProvider: (() => Promise<string | null>) | null = null;
+export const setWorkSessionProvider = (fn: () => Promise<string | null>): void => {
+  _sessionProvider = fn;
+};
+
 const client = (): AxiosInstance => {
   if (_client) return _client;
   _client = axios.create({
@@ -65,10 +72,13 @@ const client = (): AxiosInstance => {
     timeout: WORK_HTTP_TIMEOUT_MS,
     headers: { 'Content-Type': 'application/json' },
   });
-  // Gắn Bearer cho request cần auth (đánh dấu qua config.needsAuth).
+  // Gắn Bearer cho request cần auth (đánh dấu qua config.needsAuth). Thiếu token →
+  // tự đăng nhập lazy qua provider (đăng ký ở bootstrap: ensureWorkSession). Provider
+  // đặt bằng setter để TRÁNH circular import (workAuthService import ngược workApi).
   _client.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
     if ((config as InternalAuthableConfig).needsAuth) {
-      const token = await getWorkSessionToken();
+      let token = await getWorkSessionToken();
+      if (!token && _sessionProvider) token = await _sessionProvider();
       if (token) {
         (config.headers as Record<string, string>).Authorization = `Bearer ${token}`;
       }
@@ -109,6 +119,26 @@ async function call<T>(p: Promise<{ data: T }>): Promise<T> {
 
 const authCfg: AuthableConfig = { needsAuth: true };
 
+// ── Hai BẤT BIẾN ghi (AladinWork SPEC) ────────────────────────────────
+// Idempotency-Key: BẮT BUỘC trên mọi lời gọi GHI. Gửi lại CÙNG key → server trả
+// kết quả cũ, KHÔNG chạy lần hai (không trừ CARP 2 lần / không tạo 2 hợp đồng).
+// Mạng di động chập chờn → luôn gửi. Không có uuid lib → sinh khoá đủ-ngẫu tại chỗ.
+// (Date.now/Math.random chạy được trên thiết-bị; chỉ cấm trong workflow-script.)
+export const newIdempotencyKey = (): string =>
+  `wk-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+
+// If-Version: gửi kèm khi chạy hành-động HỢP ĐỒNG. Server so với version đang giữ,
+// LỆCH → 409 CONFLICT (chặn double-apply khi user bấm lại sau khi action đã chạy).
+export type WriteOpts = { idempotencyKey?: string; ifVersion?: string };
+
+const writeCfg = (opts: WriteOpts = {}): AuthableConfig => ({
+  needsAuth: true,
+  headers: {
+    'Idempotency-Key': opts.idempotencyKey ?? newIdempotencyKey(),
+    ...(opts.ifVersion ? { 'If-Version': opts.ifVersion } : {}),
+  },
+});
+
 // ─────────────────────────────────────────────────────────────────────
 // 1. HEALTH (không auth) — luôn gọi để biết tích hợp nào sống (§8)
 // ─────────────────────────────────────────────────────────────────────
@@ -138,13 +168,13 @@ export const getTemplate = (key: string): Promise<JobType> =>
   call(client().get(`/templates/${encodeURIComponent(key)}`));
 
 export const createTemplate = (t: JobType): Promise<JobType> =>
-  call(client().post('/templates', t, authCfg));
+  call(client().post('/templates', t, writeCfg()));
 
 export const updateTemplate = (key: string, patch: Partial<JobType>): Promise<JobType> =>
-  call(client().patch(`/templates/${encodeURIComponent(key)}`, patch, authCfg));
+  call(client().patch(`/templates/${encodeURIComponent(key)}`, patch, writeCfg()));
 
 export const deleteTemplate = (key: string): Promise<{ key: string; removed: boolean }> =>
-  call(client().delete(`/templates/${encodeURIComponent(key)}`, authCfg));
+  call(client().delete(`/templates/${encodeURIComponent(key)}`, writeCfg()));
 
 // ─────────────────────────────────────────────────────────────────────
 // 9–10. ACCOUNTS / ME
@@ -169,10 +199,10 @@ export interface SetAvailabilityBody {
   note?: string;
 }
 export const setAvailability = (body: SetAvailabilityBody): Promise<Availability> =>
-  call(client().post('/availability', body, authCfg));
+  call(client().post('/availability', body, writeCfg()));
 
 export const clearAvailability = (): Promise<{ did: string; removed: boolean }> =>
-  call(client().delete('/availability', authCfg));
+  call(client().delete('/availability', writeCfg()));
 
 export const getAvailabilityOf = (did: string): Promise<AvailabilityResult> =>
   call(client().get(`/availability/${encodeURIComponent(did)}`));
@@ -185,20 +215,73 @@ export interface CapabilityBody {
   metric: Record<string, number>;
   evidence?: unknown;
 }
-export const createCapability = (body: CapabilityBody): Promise<Credential> =>
-  call(client().post('/capabilities', body, authCfg));
+export const createCapability = (body: CapabilityBody, opts?: WriteOpts): Promise<Credential> =>
+  call(client().post('/capabilities', body, writeCfg(opts)));
 
 export const verifyCapability = (
   id: string,
   body: { templateKey?: string } = {},
+  opts?: WriteOpts,
 ): Promise<{ verified: boolean; credential: Credential; stamp: unknown }> =>
-  call(client().post(`/capabilities/${encodeURIComponent(id)}/verify`, body, authCfg));
+  call(client().post(`/capabilities/${encodeURIComponent(id)}/verify`, body, writeCfg(opts)));
 
 // ─────────────────────────────────────────────────────────────────────
 // 17. OFFERINGS (dịch vụ — phía cung)
 // ─────────────────────────────────────────────────────────────────────
 export const getOfferings = (params?: { ownerDid?: string; activeOnly?: boolean }): Promise<Offering[]> =>
   call(client().get('/offerings', { params }));
+
+// ── Danh bạ thợ (H-02) — GET /taskers, CÔNG KHAI (không auth), an-toàn hiện trước
+// khi đăng-nhập. availableOnly lọc cứng theo cửa-sổ thời-gian; now=<epoch ms> để
+// dựng lại đúng 1 cảnh (kéo làm mới không nhảy — server thứ-tự tất-định).
+export interface TaskersQuery {
+  templateKey?: string;
+  availableOnly?: boolean;
+  limit?: number;
+  now?: number; // epoch ms
+}
+export const getTaskers = (q: TaskersQuery = {}): Promise<TaskersResult> =>
+  call(client().get('/taskers', {
+    params: {
+      ...(q.templateKey ? { templateKey: q.templateKey } : {}),
+      ...(q.availableOnly ? { availableOnly: 1 } : {}),
+      ...(q.limit ? { limit: q.limit } : {}),
+      ...(q.now ? { now: q.now } : {}),
+    },
+  }));
+
+// ── Ghi CUNG (H-28): tạo/sửa/đóng dịch vụ. Chủ gắn theo DID của PHIÊN — `ownerDid`
+// gửi trong thân bị server BỎ QUA (không cho mạo chủ). `templateKey` cố định sau khi
+// tạo (PATCH không đổi được). `fields` chỉ nhận key khai trong mẫu (GET /templates →
+// fields[]); sai enum/số → 400 BAD_INPUT. `mode:'online'` server ép `radiusKm=0`.
+export interface CreateOfferingBody {
+  templateKey: string;
+  name?: string;
+  minPriceVND?: number;
+  mode?: 'online' | 'offline' | 'ca-hai';
+  radiusKm?: number;
+  schedule?: string;
+  desc?: string;
+  fields?: Record<string, unknown>;
+}
+export const createOffering = (body: CreateOfferingBody, opts?: WriteOpts): Promise<Offering> =>
+  call(client().post('/offerings', body, writeCfg(opts)));
+
+// PATCH — chỉ chủ; KHÔNG đổi được `templateKey` (bỏ khỏi kiểu để tránh gửi nhầm).
+export type UpdateOfferingBody = Partial<Omit<CreateOfferingBody, 'templateKey'>>;
+export const updateOffering = (
+  id: string,
+  patch: UpdateOfferingBody,
+  opts?: WriteOpts,
+): Promise<Offering> =>
+  call(client().patch(`/offerings/${encodeURIComponent(id)}`, patch, writeCfg(opts)));
+
+// DELETE = đóng MỀM (không xoá cứng) → { id, status: 'closed' }.
+export const deleteOffering = (
+  id: string,
+  opts?: WriteOpts,
+): Promise<{ id: string; status: string }> =>
+  call(client().delete(`/offerings/${encodeURIComponent(id)}`, writeCfg(opts)));
 
 // ─────────────────────────────────────────────────────────────────────
 // 18–21. JOBS (tin tuyển)
@@ -222,11 +305,25 @@ export interface PostJobBody {
   postedByName?: string;
   postedByRole?: string;
 }
-export const postJob = (body: PostJobBody): Promise<WorkJob> =>
-  call(client().post('/jobs', body, authCfg));
+export const postJob = (body: PostJobBody, opts?: WriteOpts): Promise<WorkJob> =>
+  call(client().post('/jobs', body, writeCfg(opts)));
 
-export const getJobMatch = (id: string): Promise<MatchResult> =>
-  call(client().get(`/jobs/${encodeURIComponent(id)}/match`));
+// walletAddress còn LỌT trong candidates (backend sẽ gỡ — SPEC "Còn nợ"). Bóc NGAY
+// tại biên để không bao giờ tới UI/log: privacy (địa-chỉ ví ứng-viên) + tránh vô-tình
+// render. Bỏ ở 1 chokepoint → mọi consumer (useMatch, screen) đều sạch.
+const stripWalletAddress = (c: MatchCandidate): MatchCandidate => {
+  const { walletAddress: _drop, ...rest } = c as MatchCandidate & { walletAddress?: unknown };
+  return rest;
+};
+// ⚠ CẦN Bearer. Đường này chỉ chủ tin xem được (người khác → 403). Thiếu `authCfg`
+// thì máy chủ trả 401 UNAUTH — đo thật 2026-08-05 — và màn Ghép việc luôn hiện lỗi,
+// nghĩa là người đăng KHÔNG BAO GIỜ thấy ứng viên, nên thợ không bao giờ nhận được việc.
+export const getJobMatch = async (id: string): Promise<MatchResult> => {
+  const r = await call<MatchResult>(
+    client().get(`/jobs/${encodeURIComponent(id)}/match`, authCfg),
+  );
+  return { ...r, candidates: (r.candidates ?? []).map(stripWalletAddress) };
+};
 
 // ─────────────────────────────────────────────────────────────────────
 // 22–24. CONTRACTS
@@ -235,8 +332,8 @@ export type CreateContractBody =
   | { jobId: string; candidateDid: string }
   | { offeringId: string; priceVND?: number; aladinPledge?: number; geniePledge?: number };
 
-export const createContract = (body: CreateContractBody): Promise<WorkContract> =>
-  call(client().post('/contracts', body, authCfg));
+export const createContract = (body: CreateContractBody, opts?: WriteOpts): Promise<WorkContract> =>
+  call(client().post('/contracts', body, writeCfg(opts)));
 
 export const getMyContracts = (): Promise<WorkContract[]> =>
   call(client().get('/contracts', authCfg));
@@ -248,7 +345,7 @@ export const getContract = (id: string): Promise<WorkContract> =>
 // 25–26. CONVERSATION (ProofChat ref). Chưa cấu hình → status:'unconfigured'.
 // ─────────────────────────────────────────────────────────────────────
 export const openConversation = (contractId: string): Promise<ConversationRef> =>
-  call(client().post(`/contracts/${encodeURIComponent(contractId)}/conversation`, {}, authCfg));
+  call(client().post(`/contracts/${encodeURIComponent(contractId)}/conversation`, {}, writeCfg()));
 
 export const getConversation = (contractId: string): Promise<ConversationRef> =>
   call(client().get(`/contracts/${encodeURIComponent(contractId)}/conversation`, authCfg));
@@ -256,15 +353,20 @@ export const getConversation = (contractId: string): Promise<ConversationRef> =>
 // ─────────────────────────────────────────────────────────────────────
 // 27–28. EVIDENCE (VeData — Genie neo bằng chứng)
 // ─────────────────────────────────────────────────────────────────────
+export interface EvidenceItem {
+  type: 'note' | 'link' | string;
+  content: string;
+}
 export const registerEvidence = (
   contractId: string,
-  items: unknown[],
+  items: EvidenceItem[],
+  opts?: WriteOpts,
 ): Promise<unknown> =>
-  call(client().post(`/contracts/${encodeURIComponent(contractId)}/evidence/register`, { items }, authCfg));
+  call(client().post(`/contracts/${encodeURIComponent(contractId)}/evidence/register`, { items }, writeCfg(opts)));
 
 export const getEvidence = (
   contractId: string,
-): Promise<{ items: unknown[]; allAnchored: boolean; status: string }> =>
+): Promise<{ items: EvidenceItem[]; allAnchored: boolean; status: string }> =>
   call(client().get(`/contracts/${encodeURIComponent(contractId)}/evidence`, authCfg));
 
 // ─────────────────────────────────────────────────────────────────────
@@ -276,29 +378,32 @@ export type ContractAction =
   | 'lockPledge' | 'activate' | 'deliver' | 'confirmPayment'
   | 'mutualRelease' | 'forfeit' | 'dispute';
 
+// opts.ifVersion = version hợp-đồng đang cầm (chặn double-apply qua 409 CONFLICT).
+// opts.idempotencyKey = khoá ỔN ĐỊNH theo 1 lần bấm (retry mạng không chạy 2 lần).
 export const contractAction = (
   contractId: string,
   action: ContractAction,
   body: Record<string, unknown> = {},
+  opts: WriteOpts = {},
 ): Promise<WorkContract> =>
   call(
     client().post(
       `/contracts/${encodeURIComponent(contractId)}/${action}`,
       body,
-      authCfg,
+      writeCfg(opts),
     ),
   );
 
-// Tiện ích tường minh cho từng bước (đọc dễ ở UI):
-export const lockPledge = (id: string, side: 'aladin' | 'genie', amount: number) =>
-  contractAction(id, 'lockPledge', { side, amount });
-export const activateContract = (id: string) => contractAction(id, 'activate');
-export const deliverContract = (id: string) => contractAction(id, 'deliver');
-export const confirmPayment = (id: string) => contractAction(id, 'confirmPayment');
-export const mutualRelease = (id: string) => contractAction(id, 'mutualRelease');
-export const forfeitContract = (id: string, side: 'aladin' | 'genie') =>
-  contractAction(id, 'forfeit', { side });
-export const disputeContract = (id: string) => contractAction(id, 'dispute');
+// Tiện ích tường minh cho từng bước (đọc dễ ở UI). opts đẩy xuống để gửi If-Version.
+export const lockPledge = (id: string, side: 'aladin' | 'genie', amount: number, opts?: WriteOpts) =>
+  contractAction(id, 'lockPledge', { side, amount }, opts);
+export const activateContract = (id: string, opts?: WriteOpts) => contractAction(id, 'activate', {}, opts);
+export const deliverContract = (id: string, opts?: WriteOpts) => contractAction(id, 'deliver', {}, opts);
+export const confirmPayment = (id: string, opts?: WriteOpts) => contractAction(id, 'confirmPayment', {}, opts);
+export const mutualRelease = (id: string, opts?: WriteOpts) => contractAction(id, 'mutualRelease', {}, opts);
+export const forfeitContract = (id: string, side: 'aladin' | 'genie', opts?: WriteOpts) =>
+  contractAction(id, 'forfeit', { side }, opts);
+export const disputeContract = (id: string, opts?: WriteOpts) => contractAction(id, 'dispute', {}, opts);
 
 // ─────────────────────────────────────────────────────────────────────
 // 30. ONCHAIN escrow (Cardano Preview) — 503 CARDANO_OFF nếu chưa cấu hình.
@@ -307,7 +412,7 @@ export const contractOnchain = (
   contractId: string,
   body: { op: string; lovelace?: number; lockTxHash?: string },
 ): Promise<unknown> =>
-  call(client().post(`/contracts/${encodeURIComponent(contractId)}/onchain`, body, authCfg));
+  call(client().post(`/contracts/${encodeURIComponent(contractId)}/onchain`, body, writeCfg()));
 
 // ─────────────────────────────────────────────────────────────────────
 // 31–34. TREASURY + TEAM (điểm trách nhiệm nội bộ)
@@ -316,13 +421,13 @@ export const getTreasury = (): Promise<unknown> =>
   call(client().get('/treasury', authCfg));
 
 export const treasurySnapshot = (): Promise<unknown> =>
-  call(client().post('/treasury/snapshot', {}, authCfg));
+  call(client().post('/treasury/snapshot', {}, writeCfg()));
 
-export const getTeamMembers = (): Promise<unknown[]> =>
-  call(client().get('/team/members'));
-
-export const getTeamTasks = (): Promise<unknown[]> =>
-  call(client().get('/team/tasks'));
+// ⛔ GỠ 2026-08-05: `/team/members` và `/team/tasks` trả hồ sơ nhân sự thật kèm
+// `baseSalaryVND`/`bonusVND` của người có tên. Máy chủ sẽ đóng lại thành 401/403
+// (AladinWork `Core#16`), nhưng bản đang chạy vẫn mở — nên gỡ ở phía ứng dụng
+// TRƯỚC, đừng chờ bản vá máy chủ. Không màn nào gọi hai hàm này (grep 0).
+// ĐỪNG dựng lại: lương người thật không phải dữ liệu của ứng dụng nông dân.
 
 // ── Gom lại 1 object cho tiện import ─────────────────────────────────
 export const workApi = {
@@ -340,7 +445,7 @@ export const workApi = {
   contractAction, lockPledge, activateContract, deliverContract,
   confirmPayment, mutualRelease, forfeitContract, disputeContract,
   contractOnchain,
-  getTreasury, treasurySnapshot, getTeamMembers, getTeamTasks,
+  getTreasury, treasurySnapshot,
 };
 
 export default workApi;

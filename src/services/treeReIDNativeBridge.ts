@@ -96,6 +96,11 @@ type TreeReIDNativeModule = {
   getSessionState(): Promise<SessionState | null>;
   getCapturedImages(): Promise<CapturedImage[]>;
   getCurrentHeading(): Promise<{ heading: number | null; pitch: number | null }>;
+  // Cam controls (flash + lens 0.5x). Native trả trạng-thái THỰC đã áp (an-toàn nếu
+  // máy không hỗ-trợ → no-op + trả false/khả-năng false).
+  getCameraCapabilities?(): Promise<{ hasTorch: boolean; supportsUltraWide: boolean }>;
+  setTorch?(on: boolean): Promise<boolean>;
+  setUltraWide?(on: boolean): Promise<boolean>;
   addListener?(eventName: string): void;
   removeListeners?(count: number): void;
 };
@@ -165,6 +170,37 @@ export const TreeReIDBridge = {
   async getCurrentHeading(): Promise<{ heading: number | null; pitch: number | null }> {
     const native = ensureNative();
     return native.getCurrentHeading();
+  },
+
+  /** Khả-năng cam: có đèn / có lens 0.5x. Máy cũ (thiếu method) → cả hai false. */
+  async getCameraCapabilities(): Promise<{ hasTorch: boolean; supportsUltraWide: boolean }> {
+    const fallback = { hasTorch: false, supportsUltraWide: false };
+    if (!NativeBridge?.getCameraCapabilities) return fallback;
+    try {
+      return await NativeBridge.getCameraCapabilities();
+    } catch {
+      return fallback;
+    }
+  },
+
+  /** Bật/tắt đèn pin. Trả trạng-thái THỰC (false nếu máy không có đèn / lỗi). */
+  async setTorch(on: boolean): Promise<boolean> {
+    if (!NativeBridge?.setTorch) return false;
+    try {
+      return await NativeBridge.setTorch(on);
+    } catch {
+      return false;
+    }
+  },
+
+  /** Chuyển lens 0.5x (on) ↔ 1x (off). Trả trạng-thái THỰC đã áp. */
+  async setUltraWide(on: boolean): Promise<boolean> {
+    if (!NativeBridge?.setUltraWide) return false;
+    try {
+      return await NativeBridge.setUltraWide(on);
+    } catch {
+      return false;
+    }
   },
 };
 

@@ -18,16 +18,10 @@ import {
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import { COLORS } from '../../../constants';
-import { WORK_THEME, WORK_ACCENT, WORK_ACCENT_DEEP, WORK_BG_SOFT } from '../theme/colors';
+import { WORK_THEME, WORK_ACCENT, WORK_BG_SOFT } from '../theme/colors';
 import StateView from '../../../components/state/StateView';
-import {
-  CATEGORIES,
-  FEATURED_WORKERS,
-  formatVND,
-  type Job,
-  type Worker,
-  type JobCategory,
-} from '../data/mockData';
+import { formatVND, type Job } from '../data/mockData';
+import { WORK_CATEGORIES, type WorkCategory } from '../data/categories';
 import { useJobs } from '../hooks/useJobs';
 
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -56,6 +50,13 @@ const WorkHomeScreen: React.FC = () => {
     });
   }, [jobs, query, activeCategory]);
 
+  // Số việc mỗi ngành = đếm từ việc THẬT đã tải (không nhúng số giả).
+  const categoryCounts = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const j of jobs) m[j.categoryId] = (m[j.categoryId] ?? 0) + 1;
+    return m;
+  }, [jobs]);
+
   const handleRefresh = async () => {
     setRefreshing(true);
     await reload();
@@ -68,14 +69,21 @@ const WorkHomeScreen: React.FC = () => {
 
       {/* ── HEADER ─────────────────────────────────────── */}
       <View style={styles.header}>
+        <View style={styles.headerTitleBox}>
+            <Text style={styles.headerTitle}>Aladin Work</Text>
+            <Text style={styles.headerSubtitle}>Tìm thợ · Đặt việc · Ký hợp đồng số</Text>
+          </View>
         <View style={styles.headerTop}>
           <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={8}>
             <Icon name="arrow-left" size={22} color="#fff" />
           </TouchableOpacity>
-          <View style={styles.headerTitleBox}>
-            <Text style={styles.headerTitle}>Aladin Work</Text>
-            <Text style={styles.headerSubtitle}>Tìm thợ · Đặt việc · Ký hợp đồng số</Text>
-          </View>
+          
+          <TouchableOpacity hitSlop={8} style={styles.iconBtnHeader} onPress={() => navigation.navigate('WorkTaskers')}>
+            <Icon name="account-search-outline" size={20} color="#fff" />
+          </TouchableOpacity>
+          <TouchableOpacity hitSlop={8} style={styles.iconBtnHeader} onPress={() => navigation.navigate('WorkCapabilities')}>
+            <Icon name="certificate-outline" size={20} color="#fff" />
+          </TouchableOpacity>
           <TouchableOpacity hitSlop={8} style={styles.iconBtnHeader} onPress={() => navigation.navigate('WorkAvailability')}>
             <Icon name="calendar-check-outline" size={20} color="#fff" />
           </TouchableOpacity>
@@ -185,7 +193,7 @@ const WorkHomeScreen: React.FC = () => {
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Ngành nghề</Text>
-              <Text style={styles.sectionCount}>{CATEGORIES.length} ngành</Text>
+              <Text style={styles.sectionCount}>{WORK_CATEGORIES.length} ngành</Text>
             </View>
             <ScrollView
               horizontal
@@ -204,10 +212,11 @@ const WorkHomeScreen: React.FC = () => {
                   Tất cả
                 </Text>
               </TouchableOpacity>
-              {CATEGORIES.map((c, i) => (
+              {WORK_CATEGORIES.map((c, i) => (
                 <CategoryChip
                   key={c.id}
                   cat={c}
+                  count={categoryCounts[c.id] ?? 0}
                   active={activeCategory === c.id}
                   onPress={() => setActiveCategory(c.id === activeCategory ? null : c.id)}
                   index={i}
@@ -216,37 +225,17 @@ const WorkHomeScreen: React.FC = () => {
             </ScrollView>
           </View>
 
-          {/* ── Tasker Nổi Bật ──────────────────────────── */}
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Tasker Nổi Bật</Text>
-              <TouchableOpacity hitSlop={6}>
-                <Text style={[styles.sectionMore, { color: WORK_ACCENT }]}>Tất cả</Text>
-              </TouchableOpacity>
-            </View>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.workerHorizontalList}
-              decelerationRate="fast"
-              snapToInterval={140}
-            >
-              {FEATURED_WORKERS.map((w, i) => (
-                <TaskerCard
-                  key={w.id}
-                  worker={w}
-                  onPress={() => navigation.navigate('WorkerProfile', { workerId: w.id })}
-                  index={i}
-                />
-              ))}
-            </ScrollView>
-          </View>
+          {/* ── Tasker Nổi Bật: ĐÃ GỠ ────────────────────────────
+              Mục này trước dựng từ FEATURED_WORKERS (dữ liệu mẫu). Anh Aladin chốt
+              2026-07-27 gỡ mọi mockup khỏi màn thật. Chưa có dữ liệu thợ thật
+              thật (AladinWork accounts:0) → gỡ hẳn mục, phục hồi khi có API danh sách
+              tasker thật (ghi ở HANDOFF-LEDGER). */}
 
           {/* ── Việc mới đăng ────────────────────────────── */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>
-                {activeCategory ? CATEGORIES.find(c => c.id === activeCategory)?.name : 'Việc mới đăng'}
+                {activeCategory ? WORK_CATEGORIES.find(c => c.id === activeCategory)?.name : 'Việc mới đăng'}
               </Text>
               <Text style={styles.sectionCount}>{filteredJobs.length} tin</Text>
             </View>
@@ -259,7 +248,7 @@ const WorkHomeScreen: React.FC = () => {
               <StateView
                 status="error"
                 title="Cần đăng nhập lại"
-                message="Phiên làm việc đã hết hạn. Vui lòng đăng nhập PhoenixKey lại."
+                message="Phiên làm việc đã hết hạn. Vui lòng đăng nhập lại."
                 onRetry={reload}
               />
             ) : errorKind ? (
@@ -290,7 +279,7 @@ const WorkHomeScreen: React.FC = () => {
             <View style={{ flex: 1 }}>
               <Text style={styles.trustTitle}>Bảo vệ bởi smart contract</Text>
               <Text style={styles.trustSub}>
-                Mọi giao dịch trên Aladin đều có hợp đồng số ký bằng PhoenixKey (P-256), Pledge định giá MAGIC nhưng khóa/hoàn bằng CARP — bạn không lo bị quỵt.
+                Mọi giao dịch trên Aladin đều có hợp đồng số ký bằng khoá trên máy bạn. Tiền cọc định giá bằng MAGIC nhưng khoá và hoàn bằng CARP — bạn không lo bị quỵt.
               </Text>
             </View>
           </View>
@@ -305,8 +294,8 @@ const WorkHomeScreen: React.FC = () => {
 // ─── Sub-components ─────────────────────────────────────────────────────────
 
 const CategoryChip: React.FC<{
-  cat: JobCategory; active: boolean; onPress: () => void; index: number;
-}> = ({ cat, active, onPress, index }) => {
+  cat: WorkCategory; count: number; active: boolean; onPress: () => void; index: number;
+}> = ({ cat, count, active, onPress, index }) => {
   const fade = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.timing(fade, {
@@ -325,47 +314,18 @@ const CategoryChip: React.FC<{
       >
         <Icon name={cat.icon} size={18} color={active ? '#fff' : cat.color} />
         <Text style={[styles.catItemText, active && { color: '#fff' }]}>{cat.name}</Text>
-        <View style={[
-          styles.catItemCountWrap,
-          active && { backgroundColor: 'rgba(255,255,255,0.25)' },
-        ]}>
-          <Text style={[
-            styles.catItemCount,
-            active && { color: '#fff' },
-          ]}>{cat.count}</Text>
-        </View>
-      </TouchableOpacity>
-    </Animated.View>
-  );
-};
-
-const TaskerCard: React.FC<{
-  worker: Worker; onPress: () => void; index: number;
-}> = ({ worker, onPress, index }) => {
-  const fade = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    Animated.timing(fade, {
-      toValue: 1, duration: 400, delay: 100 + index * 60, useNativeDriver: true,
-    }).start();
-  }, [fade, index]);
-
-  return (
-    <Animated.View style={{ opacity: fade }}>
-      <TouchableOpacity activeOpacity={0.85} onPress={onPress} style={styles.taskerCard}>
-        <View style={styles.taskerAvatarWrap}>
-          <Image source={{ uri: worker.avatar }} style={styles.taskerAvatar} />
-          {worker.verified && (
-            <View style={styles.taskerVerifiedBadge}>
-              <Icon name="check" size={10} color="#fff" />
-            </View>
-          )}
-        </View>
-        <Text style={styles.taskerName} numberOfLines={1}>{worker.name.split(' ').slice(-2).join(' ')}</Text>
-        <Text style={styles.taskerRole} numberOfLines={1}>{worker.title.split('·')[0].trim()}</Text>
-        <View style={styles.taskerRating}>
-          <Icon name="star" size={11} color={WORK_ACCENT} />
-          <Text style={styles.taskerRatingText}>{worker.rating}/5</Text>
-        </View>
+        {/* Chỉ hiện badge khi có việc THẬT trong ngành (không hiện số 0). */}
+        {count > 0 && (
+          <View style={[
+            styles.catItemCountWrap,
+            active && { backgroundColor: 'rgba(255,255,255,0.25)' },
+          ]}>
+            <Text style={[
+              styles.catItemCount,
+              active && { color: '#fff' },
+            ]}>{count}</Text>
+          </View>
+        )}
       </TouchableOpacity>
     </Animated.View>
   );
@@ -454,7 +414,7 @@ const styles = StyleSheet.create({
 
   header: {
     backgroundColor: WORK_THEME.primaryDeep,
-    paddingTop: 56,
+    paddingTop: 16,
     paddingHorizontal: 16,
     paddingBottom: 14,
     borderBottomLeftRadius: 22,
@@ -466,7 +426,7 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 14,
   },
-  headerTitleBox: { flex: 1 },
+  headerTitleBox: { display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 8 },
   headerTitle: {
     fontSize: 19, fontWeight: '800', color: '#fff', letterSpacing: -0.3,
   },

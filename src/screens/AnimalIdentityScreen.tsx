@@ -49,6 +49,7 @@ import {
   type AnimalIdentifyResponse,
   type AnimalCandidate,
 } from '../services/animalReIDService';
+import { withPhotoSave } from '../services/mediaSavePermission';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -78,7 +79,7 @@ const CAMERA_OPTIONS = {
   quality: 0.85,
   maxWidth: 1280,
   maxHeight: 1280,
-  saveToPhotos: false,
+  saveToPhotos: true,
   includeBase64: false,
 };
 
@@ -118,7 +119,7 @@ const AnimalIdentityScreen: React.FC = () => {
   }, []);
 
   // ── Chụp ảnh ──────────────────────────────────────────────────────────────
-  const handleCapture = useCallback(() => {
+  const handleCapture = useCallback(async () => {
     // Xoá kết quả cũ khi chụp lại
     setResult(null);
 
@@ -126,13 +127,13 @@ const AnimalIdentityScreen: React.FC = () => {
       // Fallback: react-native-image-picker chưa cài
       // npm install react-native-image-picker && npx pod-install
       Alert.alert(
-        'Chưa cài camera picker',
-        'Cần cài react-native-image-picker.\nnpm install react-native-image-picker',
+        'Chưa mở được máy ảnh',
+        'Bản app này chưa mở được máy ảnh. Vui lòng cập nhật app rồi thử lại.',
       );
       return;
     }
 
-    imagePicker.launchCamera(CAMERA_OPTIONS, (response: any) => {
+    imagePicker.launchCamera(await withPhotoSave(CAMERA_OPTIONS), (response: any) => {
       if (response.didCancel) return;
       if (response.errorCode) {
         Alert.alert(
@@ -229,7 +230,7 @@ const AnimalIdentityScreen: React.FC = () => {
               )}
               {animal_did && (
                 <Text style={styles.matchDid} numberOfLines={1}>
-                  DID: {animal_did}
+                  Mã định danh: {animal_did}
                 </Text>
               )}
               <View style={styles.actionRow}>

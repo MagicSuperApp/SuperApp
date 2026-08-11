@@ -20,7 +20,7 @@
  *    hoặc goBack().
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -39,10 +39,12 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 
 import { NEUTRAL } from '../shared/theme';
-import { COLORS } from '../constants';
 import {
   enrollTree,
   verifyAddTree,
+  toCaptureOrientations,
+  platformHeadingRef,
+  enrollWarningMessages,
   type EnrollResponse,
 } from '../services/treeReIDService';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
@@ -52,7 +54,16 @@ import {
   selectCaptures,
   selectGPS,
   clearAll,
+  restoreCaptureSession,
+  setGPS,
 } from '../store/treeReIDSlice';
+import { appendTreeImages } from '../services/treeImageStore';
+import {
+  saveTreeCaptureDraft,
+  clearTreeCaptureDraft,
+  restoreTreeCaptureDraft,
+  draftHasContent,
+} from '../services/treeDraftStore';
 
 // ---------------------------------------------------------------------------
 // Config
@@ -165,42 +176,160 @@ const TreeEnrollScreen: React.FC = () => {
   const [isEnrolling, setIsEnrolling] = useState(false);
   const [enrollResult, setEnrollResult] = useState<EnrollResponse | null>(null);
 
-  // Duplicate state — lưu tạm tree_id cây trùng để gộp
-  const [duplicateTreeId, setDuplicateTreeId] = useState<string | null>(null);
-
   // Ảnh đang xem chi tiết (modal)
   const [selectedPhoto, setSelectedPhoto] = useState<GridPhoto | null>(null);
+
+  // ── H-17: khôi phục bản nháp sau khi app bị ngắt ─────────────────────────
+  // Android khôi phục lấy URI từ bản nháp (route params đã mất khi app khởi động
+  // lại). iOS khôi phục qua Redux (restoreCaptureSession).
+  const [restoredAndroidPaths, setRestoredAndroidPaths] = useState<string[] | undefined>();
+  const didCheckDraftRef = useRef(false);
 
   // ── Derived values ────────────────────────────────────────────────────────
 
   // Bộ chọn vườn — cây PHẢI thuộc một vườn mới hiện trong trang trại. Mặc định vườn
   // mở từ ngữ-cảnh (route.farmId); không có thì cho chọn vườn đã có / tạo mới.
+  // KHÔNG BAO GIỜ đăng ký cây với farm_id rỗng/'default' — cây mồ côi bị
+  // /api/trees?farm_id lọc bỏ, hỏng dữ liệu vườn. Đây là ràng buộc CỨNG:
+  //  - vào từ Home ("Quét cây") không kèm farmId → tự chọn nếu chỉ có 1 vườn,
+  //    bắt chọn nếu nhiều vườn, dẫn tạo vườn nếu chưa có vườn nào.
   const farms = useAppSelector((s: RootState) => s.farm.farms);
+  const farmsLoading = useAppSelector((s: RootState) => s.farm.isLoading);
   const currentUser = useAppSelector((s: RootState) => s.user.currentUser);
+  // Namespace nháp theo người dùng hiện tại (chống rò xuyên user trên tablet chung).
+  const draftOwner = currentUser?.did ?? currentUser?.id ?? '';
   const [selectedFarmId, setSelectedFarmId] = useState<string | undefined>(
     route.params?.farmId,
   );
   const farmId = selectedFarmId;
+  // farmId chỉ truthy là CHƯA đủ: nháp khôi phục có thể set lại farmId của vườn ĐÃ XOÁ
+  // → cây mồ côi (không hiện trong trang trại nào). Chỉ coi hợp lệ khi vườn còn tồn tại.
+  const farmValid = !!farmId && farms.some(f => f.id === farmId);
   useEffect(() => {
     if (currentUser?.id && farms.length === 0) dispatch(loadFarms(currentUser.id));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser?.id]);
+  // Đã tải danh sách vườn nhưng farmId đang chọn KHÔNG thuộc danh sách (vườn bị xoá,
+  // hoặc nháp cũ trỏ vườn không còn) → bỏ chọn để UI buộc chọn lại, khỏi gửi id chết.
+  useEffect(() => {
+    if (selectedFarmId && farms.length > 0 && !farms.some(f => f.id === selectedFarmId)) {
+      setSelectedFarmId(undefined);
+    }
+  }, [farms, selectedFarmId]);
 
-  // Android không dispatch vào Redux captures — lấy paths từ route params.
-  // iOS dùng Redux captures như bình thường.
-  const androidImagePaths = route.params?.androidImagePaths;
+  // Đúng 1 vườn → tự chọn, không thêm ma sát. Nhiều vườn → để user chọn (không tự
+  // đoán). Chỉ tự chọn khi chưa có lựa chọn (giữ ngữ-cảnh route.farmId nếu có).
+  useEffect(() => {
+    if (!selectedFarmId && farms.length === 1) {
+      setSelectedFarmId(farms[0].id);
+    }
+  }, [farms, selectedFarmId]);
+
+  // Trạng thái vườn để dựng thông báo: đang nạp vs thật sự chưa có vườn nào.
+  const noFarms = !farmsLoading && farms.length === 0;
+
+  // Ref soi captures / paths MỚI NHẤT — chống đua khôi-phục-vs-phiên-mới (hộp thoại
+  // mở lâu, người dùng đã chụp mới trong lúc đó thì KHÔNG ghi đè bằng ảnh nháp).
+  const capturesRef = useRef(captures);
+  capturesRef.current = captures;
+  const restoredAndroidRef = useRef(restoredAndroidPaths);
+  restoredAndroidRef.current = restoredAndroidPaths;
+
+  // ── H-17: hỏi khôi phục bản nháp chụp dở khi mở màn ──────────────────────
+  // Chỉ hỏi khi màn mở KHÔNG có ảnh nào (app bị ngắt giữa chừng buổi trước). Vào màn
+  // với ảnh sẵn (luồng bình thường) thì bản nháp sẽ được GHI ĐÈ bởi effect lưu — không hỏi.
+  useEffect(() => {
+    if (didCheckDraftRef.current) return;
+    didCheckDraftRef.current = true;
+
+    const hasLive =
+      (route.params?.androidImagePaths?.length ?? 0) > 0 || captures.length > 0;
+    if (hasLive) return;
+
+    (async () => {
+      const draft = await restoreTreeCaptureDraft(draftOwner);
+      if (!draft || !draftHasContent(draft)) return;
+      const count = draft.captures.length || draft.androidImagePaths?.length || 0;
+      Alert.alert(
+        'Khôi phục bản chụp dở?',
+        `Có ${count} ảnh đã chụp buổi trước nhưng chưa đăng ký. Khôi phục để tiếp tục?`,
+        [
+          {
+            text: 'Bỏ bản nháp',
+            style: 'destructive',
+            onPress: () => { clearTreeCaptureDraft(draftOwner); },
+          },
+          {
+            text: 'Khôi phục',
+            onPress: () => {
+              // RE-CHECK: người dùng có thể đã chụp ảnh mới trong lúc hộp thoại mở →
+              // KHÔNG ghi đè phiên mới (chống video/ảnh gắn nhầm tree, hỏng provenance).
+              const liveNow =
+                (route.params?.androidImagePaths?.length ?? 0) > 0
+                || capturesRef.current.length > 0
+                || (restoredAndroidRef.current?.length ?? 0) > 0;
+              if (liveNow) return;
+              if (draft.captures.length > 0) {
+                dispatch(restoreCaptureSession(draft.captures));
+              }
+              if (draft.androidImagePaths?.length) {
+                setRestoredAndroidPaths(draft.androidImagePaths);
+              }
+              if (draft.gps) dispatch(setGPS(draft.gps));
+              if (draft.name) setName(draft.name);
+              if (draft.farmId) setSelectedFarmId(draft.farmId);
+            },
+          },
+        ],
+      );
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── H-17: lưu bản nháp NGAY khi ảnh/tên/vườn/GPS đổi ─────────────────────
+  // Best-effort, fire-and-forget — chụp xong là bền, app bị kill vẫn khôi phục được.
+  useEffect(() => {
+    const paths = route.params?.androidImagePaths ?? restoredAndroidPaths;
+    const hasContent = captures.length > 0 || (paths?.length ?? 0) > 0;
+    if (!hasContent) return;
+    saveTreeCaptureDraft(draftOwner, {
+      v: 1,
+      savedAt: Date.now(),
+      captures,
+      androidImagePaths: paths,
+      gps: gps ?? null,
+      name: name.trim() || undefined,
+      farmId,
+    });
+  }, [draftOwner, captures, restoredAndroidPaths, gps, name, farmId, route.params?.androidImagePaths]);
+
+  // Android không dispatch vào Redux captures — lấy paths từ route params (hoặc nháp
+  // khôi phục sau khi app khởi động lại). iOS dùng Redux captures như bình thường.
+  const androidImagePaths = route.params?.androidImagePaths ?? restoredAndroidPaths;
   const usingAndroidPaths =
     Platform.OS === 'android' && !!androidImagePaths && androidImagePaths.length > 0;
   const imagePaths = usingAndroidPaths
     ? androidImagePaths!
     : captures.map(c => `file://${c.fileURL}`);
 
+  // Hướng máy THEO TỪNG ẢNH — song song `imagePaths`. Native đã đo sẵn
+  // (`treeReIDNativeBridge.ts:22-24`); trước đây enroll không gửi gì, tức là ném
+  // đi dữ liệu quý nhất cho MCR + dựng 3D. Đường Android lấy ảnh từ route params
+  // nên KHÔNG có hướng → để undefined, không bịa.
+  const captureOrientations = usingAndroidPaths
+    ? undefined
+    : toCaptureOrientations(captures);
+
   // Số ảnh hiệu dụng để kiểm tra MIN_CAPTURES
   const effectiveCaptureCount = usingAndroidPaths
     ? androidImagePaths!.length
     : captures.length;
 
-  const canEnroll = !isEnrolling && effectiveCaptureCount >= MIN_CAPTURES && name.trim().length > 0;
+  // Bắt buộc vườn HỢP LỆ (còn tồn tại) mới cho đăng ký — tránh cây mồ côi gắn vào
+  // vườn đã xoá / id nháp chết. Siết hơn bản #96 (`!!farmId`): nháp khôi phục có thể
+  // hồi sinh id vườn đã xoá, khi đó farmId truthy mà vườn không còn.
+  const canEnroll = !isEnrolling && effectiveCaptureCount >= MIN_CAPTURES
+    && name.trim().length > 0 && farmValid;
 
   // Ảnh chuẩn-hoá cho lưới — Android chỉ có URI, iOS có đầy-đủ metadata.
   const photos: GridPhoto[] = usingAndroidPaths
@@ -218,13 +347,62 @@ const TreeEnrollScreen: React.FC = () => {
         capturedAt: c.capturedAt,
       }));
 
-  const round1Photos = photos.filter(p => p.round === 1);
-  const round2Photos = photos.filter(p => p.round === 2);
-  const ungroupedPhotos = photos.filter(p => p.round == null);
+  // ── #5a: gán nhãn theo HƯỚNG ỐNG KÍNH THỰC (pitch), không theo nút "Lượt 2" ──
+  // Vấn đề cũ: sau khi bấm "Lượt 2: Cận gốc", mọi ảnh (kể cả lia ngang lấy toàn
+  // cảnh) đều bị gán round=2="Gốc". Sửa: dùng pitch cảm biến để phân biệt.
+  //
+  // Quy ước pitch tuyệt đối phụ thuộc cách cầm máy → KHÔNG hardcode ngưỡng tuyệt
+  // đối. Thay vào đó lấy pitch trung bình của Lượt 1 (chụp ngang thân) làm MỐC:
+  //  - ảnh có pitch GẦN mốc (lia ngang) = "Toàn cảnh/thân"
+  //  - ảnh có pitch LỆCH XA mốc (chĩa lên/xuống, cận gốc) = "Gốc/vỏ"
+  // Thiếu dữ liệu pitch (Android không native) → fallback nhãn theo round như cũ.
+  const PITCH_BASE_DELTA = 22; // độ; ~ trùng ngưỡng trigger 18° của native, nới nhẹ
+
+  const round1WithPitch = photos.filter(p => p.round === 1 && typeof p.pitch === 'number');
+  const refPitch = round1WithPitch.length > 0
+    ? round1WithPitch.reduce((s, p) => s + (p.pitch as number), 0) / round1WithPitch.length
+    : null;
+
+  const kindOf = (p: GridPhoto): 'trunk' | 'base' | 'unknown' => {
+    // Lượt 1 luôn là thân (ngang). Ảnh không có round → chưa nhóm.
+    if (p.round === 1) return 'trunk';
+    if (p.round !== 2) return 'unknown';
+    // Lượt 2: quyết định bằng pitch thực. Không có pitch hoặc chưa có mốc → giữ "base".
+    if (refPitch == null || typeof p.pitch !== 'number') return 'base';
+    return Math.abs(p.pitch - refPitch) <= PITCH_BASE_DELTA ? 'trunk' : 'base';
+  };
+
+  const trunkPhotos = photos.filter(p => kindOf(p) === 'trunk');
+  const basePhotos = photos.filter(p => kindOf(p) === 'base');
+  const ungroupedPhotos = photos.filter(p => kindOf(p) === 'unknown');
 
   // ── Navigate sau thành công ───────────────────────────────────────────────
   const handleSuccess = useCallback(
     (treeId: string, code: string) => {
+      // Đăng ký xong → bản nháp hết vai trò, xoá để lần sau không hỏi khôi phục.
+      clearTreeCaptureDraft(draftOwner);
+      // Dựng object cây TỐI THIỂU để truyền THẲNG sang TreeDetail. Nếu chỉ gửi `treeId`,
+      // TreeDetail phải tra trong store — mà cây VỪA tạo CHƯA có trong store → nó goBack
+      // (bật ngược ngay). Đây là lỗi "đăng ký xong không xem được cây" ngoài thực địa.
+      // Shape khớp mapTreeInfoToUI (treeReIDService). Dựng TRƯỚC clearAll() để giữ gps/name.
+      const justCreated = {
+        id: treeId,
+        tree_id: treeId,
+        code,
+        name: name.trim(),
+        farmer_name: name.trim(),
+        farmId,
+        farm_id: farmId,
+        species: undefined,
+        latitude: gps?.lat,
+        longitude: gps?.lng,
+        images: [] as string[],
+        estimatedFruits: 0,
+        fruitCount: 0,
+        has_3d: false,
+        anchor: null,
+        n_views: 0,
+      };
       Alert.alert(
         'Đăng ký thành công',
         `Mã cây: ${code}`,
@@ -233,7 +411,7 @@ const TreeEnrollScreen: React.FC = () => {
             text: 'Xem chi tiết',
             onPress: () => {
               dispatch(clearAll());
-              navigation.navigate('TreeDetail', { treeId });
+              navigation.navigate('TreeDetail', { treeId, tree: justCreated } as any);
             },
           },
           {
@@ -247,7 +425,7 @@ const TreeEnrollScreen: React.FC = () => {
         { cancelable: false },
       );
     },
-    [dispatch, navigation],
+    [dispatch, navigation, draftOwner, name, farmId, gps],
   );
 
   // ── Gộp vào cây cũ (verify_add) ──────────────────────────────────────────
@@ -255,9 +433,20 @@ const TreeEnrollScreen: React.FC = () => {
     async (treeId: string) => {
       setIsEnrolling(true);
       try {
-        const res = await verifyAddTree(BASE_URL, treeId, imagePaths);
+        const res = await verifyAddTree(BASE_URL, treeId, imagePaths, {
+          farmId,
+          lat: gps?.lat,
+          lon: gps?.lng,
+          acc: gps?.accuracy,
+          captures: captureOrientations,
+          headingRef: captureOrientations ? platformHeadingRef() : undefined,
+        });
 
         if (res.ok && res.data) {
+          // Tích luỹ ảnh vừa chụp vào cây đã có để màn chi tiết hiển thị lại được.
+          await appendTreeImages(treeId, imagePaths);
+          // Gộp xong cũng là kết thúc phiên chụp → xoá bản nháp.
+          clearTreeCaptureDraft(draftOwner);
           Alert.alert(
             'Đã gộp thành công',
             `Đã thêm ${res.data.n_added ?? 0} góc nhìn vào cây đã có.`,
@@ -276,25 +465,36 @@ const TreeEnrollScreen: React.FC = () => {
         }
       } finally {
         setIsEnrolling(false);
-        setDuplicateTreeId(null);
       }
     },
-    [imagePaths, gps, dispatch, navigation],
+    [imagePaths, captureOrientations, gps, dispatch, navigation, draftOwner, farmId],
   );
 
   // ── Force enroll (tạo cây mới bất kể trùng) ──────────────────────────────
   const handleForceEnroll = useCallback(async () => {
     if (!name.trim()) return;
+    // Vườn phải HỢP LỆ (còn tồn tại) — nhánh "Tạo cây mới" cũng không được tạo cây
+    // mồ côi gắn vào vườn đã xoá / id nháp chết.
+    if (!farmValid) {
+      Alert.alert('Chọn vườn', 'Hãy chọn một vườn còn hiệu lực trước khi tạo cây mới.');
+      return;
+    }
     setIsEnrolling(true);
     try {
       const res = await enrollTree(BASE_URL, name.trim(), imagePaths, {
         lat: gps?.lat,
         lon: gps?.lng,
         acc: gps?.accuracy,
+        captures: captureOrientations,
+        headingRef: captureOrientations ? platformHeadingRef() : undefined,
         force: true,
       }, farmId);
 
       if (res.ok && res.data) {
+        // Lưu ảnh local theo tree_id TRƯỚC clearAll để hiển thị lại ở màn chi tiết.
+        await appendTreeImages(res.data.tree_id, imagePaths);
+        // Nhánh 409 → "Tạo cây mới" cũng kết thúc phiên chụp → xoá nháp (khỏi cây nhân đôi).
+        clearTreeCaptureDraft(draftOwner);
         setEnrollResult(res.data);
         handleSuccess(res.data.tree_id, res.data.provenance?.code ?? res.data.tree_id);
       } else {
@@ -303,12 +503,33 @@ const TreeEnrollScreen: React.FC = () => {
     } finally {
       setIsEnrolling(false);
     }
-  }, [name, imagePaths, gps, handleSuccess, farmId]);
+  }, [name, imagePaths, captureOrientations, gps, handleSuccess, farmId, farmValid, draftOwner]);
 
   // ── Main enroll ───────────────────────────────────────────────────────────
   const handleEnroll = async () => {
     if (!name.trim()) {
       Alert.alert('Thiếu tên', 'Vui lòng nhập tên cây trước khi đăng ký.');
+      return;
+    }
+
+    // Chặn cây mồ côi — không cho đăng ký khi chưa gắn vào vườn nào.
+    if (!farmId) {
+      if (noFarms) {
+        Alert.alert(
+          'Chưa có vườn',
+          'Cây phải thuộc một vườn. Hãy tạo vườn trước rồi đăng ký cây.',
+          [
+            { text: 'Huỷ', style: 'cancel' },
+            {
+              text: 'Tạo vườn',
+              onPress: () =>
+                (navigation as any).navigate('FarmDetail', { farm_id: null }),
+            },
+          ],
+        );
+      } else {
+        Alert.alert('Chọn vườn', 'Vui lòng chọn vườn để gắn cây trước khi đăng ký.');
+      }
       return;
     }
 
@@ -320,15 +541,24 @@ const TreeEnrollScreen: React.FC = () => {
       return;
     }
 
+    if (!farmValid) {
+      Alert.alert('Chọn vườn', 'Hãy chọn một vườn còn hiệu lực để cây hiện đúng trong trang trại.');
+      return;
+    }
+
     setIsEnrolling(true);
     try {
       const res = await enrollTree(BASE_URL, name.trim(), imagePaths, {
         lat: gps?.lat,
         lon: gps?.lng,
         acc: gps?.accuracy,
+        captures: captureOrientations,
+        headingRef: captureOrientations ? platformHeadingRef() : undefined,
       }, farmId);
 
       if (res.ok && res.data) {
+        // Lưu ảnh local theo tree_id TRƯỚC clearAll để hiển thị lại ở màn chi tiết.
+        await appendTreeImages(res.data.tree_id, imagePaths);
         setEnrollResult(res.data);
         handleSuccess(res.data.tree_id, res.data.provenance?.code ?? res.data.tree_id);
         return;
@@ -346,8 +576,6 @@ const TreeEnrollScreen: React.FC = () => {
           const fromBody = res.error?.existing_tree_id ?? null;
           const regexMatch = detail.match(/tree[-_]?([0-9a-f-]{8,})/i);
           const foundId = fromBody ?? (regexMatch ? regexMatch[1] : null);
-          setDuplicateTreeId(foundId);
-
           Alert.alert(
             'Trùng cây đã có',
             `${detail}\n\nBạn muốn làm gì?`,
@@ -400,7 +628,7 @@ const TreeEnrollScreen: React.FC = () => {
         }
 
         // 409 không phân loại được
-        Alert.alert('Xung đột', detail);
+        Alert.alert('Conflict', detail);
         return;
       }
 
@@ -432,7 +660,7 @@ const TreeEnrollScreen: React.FC = () => {
     return (
       <View style={styles.captureSection}>
         <Text style={styles.captureSectionLabel}>
-          {label} · {list.length} góc
+          {label} · {list.length} directions
         </Text>
         <View style={styles.captureGrid}>
           {list.map((photo, idx) => (
@@ -512,7 +740,7 @@ const TreeEnrollScreen: React.FC = () => {
 
         {/* Chọn trang trại — cây PHẢI gắn vào vườn mới hiện trong trang trại. */}
         <View style={styles.farmSection}>
-          <Text style={styles.inputLabel}>Trang trại {farmId ? '' : '*'}</Text>
+          <Text style={styles.inputLabel}>Trang trại {farmValid ? '' : '*'}</Text>
           <View style={styles.farmChips}>
             {farms.map(f => {
               const on = farmId === f.id;
@@ -548,9 +776,11 @@ const TreeEnrollScreen: React.FC = () => {
               <Text style={styles.farmChipNewText}>Tạo vườn mới</Text>
             </TouchableOpacity>
           </View>
-          {!farmId && (
+          {!farmValid && (
             <Text style={styles.farmWarnText}>
-              Chưa chọn vườn — cây sẽ không hiện trong trang trại. Hãy chọn hoặc tạo vườn.
+              {noFarms
+                ? 'Chưa có vườn nào. Tạo vườn trước — cây phải thuộc một vườn mới đăng ký được.'
+                : 'Chọn vườn để đăng ký. Cây phải thuộc một vườn.'}
             </Text>
           )}
         </View>
@@ -574,7 +804,7 @@ const TreeEnrollScreen: React.FC = () => {
         {/* Captures */}
         <View style={styles.capturesSection}>
           <Text style={styles.sectionTitle}>
-            Ảnh đã chụp ({effectiveCaptureCount} góc)
+            Pictures ({effectiveCaptureCount} direction{effectiveCaptureCount > 1 ? 's' : ''})
           </Text>
 
           {effectiveCaptureCount === 0 ? (
@@ -588,9 +818,9 @@ const TreeEnrollScreen: React.FC = () => {
             <>
               {ungroupedPhotos.length > 0 &&
                 renderPhotoGrid(ungroupedPhotos, 'Ảnh đã chụp')}
-              {renderPhotoGrid(round1Photos, 'Lượt 1 — Thân cây')}
-              {round2Photos.length > 0 &&
-                renderPhotoGrid(round2Photos, 'Lượt 2 — Gốc/vỏ')}
+              {renderPhotoGrid(trunkPhotos, 'Thân / toàn cảnh')}
+              {basePhotos.length > 0 &&
+                renderPhotoGrid(basePhotos, 'Gốc / vỏ (cận cảnh)')}
 
               <Text style={styles.gridHint}>Chạm vào ảnh để xem chi tiết</Text>
 
@@ -618,6 +848,39 @@ const TreeEnrollScreen: React.FC = () => {
               <Text style={styles.successViews}>
                 {enrollResult.n_views_added ?? 0} góc đã lưu
               </Text>
+              {/* Kênh MCR vỏ-thân thấy một cây rất giống nhưng vẫn tách được → cho
+                  đăng ký, kèm cảnh-báo NHẸ để chủ vườn tự đối chiếu. Trước đây
+                  backend gửi `dup_suspect` mà app không hiện gì. */}
+              {!!enrollResult.dup_suspect?.message_vi && (
+                <Text style={styles.successDupWarn}>
+                  ⚠ {enrollResult.dup_suspect.message_vi}
+                </Text>
+              )}
+              {/* Máy chủ đã tính sẵn 4 câu dưới đây (server.py:1900-1927) mà app
+                  bỏ phí. Đây là chỗ nông dân biết mình còn phải đi vòng phía nào —
+                  không có nó thì họ chụp mò rồi bị loại ảnh mà không hiểu vì sao. */}
+              {enrollResult.views_dropped_dup != null && enrollResult.views_dropped_dup > 0 && (
+                <Text style={styles.successNote}>
+                  {enrollResult.views_dropped_dup} góc trùng với góc đã có nên không lưu thêm.
+                </Text>
+              )}
+              {!!enrollResult.coverage_hint_vi && (
+                <Text style={styles.successHint}>{enrollResult.coverage_hint_vi}</Text>
+              )}
+              {/* Hai trường này khác shape nhau — rút qua một hàm CÓ TEST canh, đừng
+                  đọc tay tại chỗ (đọc nhầm là cảnh báo biến mất im lặng). */}
+              {enrollWarningMessages(enrollResult).quality.map((m, i) => (
+                <Text key={`q${i}`} style={styles.successDupWarn}>⚠ {m}</Text>
+              ))}
+              {enrollWarningMessages(enrollResult).region.map((m, i) => (
+                <Text key={`r${i}`} style={styles.successDupWarn}>⚠ {m}</Text>
+              ))}
+              {enrollResult.farm_dropped === true && (
+                <Text style={styles.successDupWarn}>
+                  ⚠ Cây đã đăng ký nhưng CHƯA gắn được vào vườn đang chọn. Hãy mở
+                  danh sách cây của vườn để kiểm lại, đừng đăng ký lại lần nữa.
+                </Text>
+              )}
             </View>
           </View>
         )}
@@ -938,6 +1201,10 @@ const styles = StyleSheet.create({
   },
   successCode: { fontSize: 13, color: '#388e3c', marginTop: 2 },
   successViews: { fontSize: 12, color: '#388e3c', marginTop: 1 },
+  // Cảnh-báo NHẸ (cam, không đỏ): cây vẫn đăng ký được, chỉ nhắc đối chiếu.
+  successDupWarn: { fontSize: 12, color: '#e65100', marginTop: 4, lineHeight: 17 },
+  successNote: { fontSize: 12, color: NEUTRAL.textSub, marginTop: 4, lineHeight: 17 },
+  successHint: { fontSize: 12.5, color: '#1b5e20', fontWeight: '600', marginTop: 4, lineHeight: 18 },
 
   footer: {
     flexDirection: 'row',

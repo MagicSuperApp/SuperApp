@@ -3,27 +3,51 @@
   "schemaVersion": "1.0",
   "moduleId": "magiclamp.work",
   "version": "1.0.0",
-  "displayName": { "vi": "Việc làm", "en": "Work" },
+  "displayName": {
+    "vi": "Việc làm",
+    "en": "Work"
+  },
   "integrationKind": "feature",
-
   "entrypoint": "WorkHome",
   "route": "WorkHome",
-  "icon": { "name": "briefcase", "colorToken": "brand.work.primary" },
-  "navSlot": "tab",
-  "routes": ["WorkHome", "JobDetail", "PostJob", "WorkerProfile", "Contracts", "ContractDetail", "WorkMatch", "WorkAvailability"],
-
-  "capabilities": {
-    "data": ["read:profile", "read:work.job", "write:work.job"],
-    "network": ["fabric.api"]
+  "icon": {
+    "name": "briefcase",
+    "colorToken": "brand.work.primary"
   },
-
+  "navSlot": "tab",
+  "routes": [
+    "WorkHome",
+    "JobDetail",
+    "PostJob",
+    "WorkerProfile",
+    "Contracts",
+    "ContractDetail",
+    "WorkMatch",
+    "WorkAvailability",
+    "WorkTaskers",
+    "WorkCreateOffering",
+    "WorkCapabilities",
+    "WorkEvidence"
+  ],
+  "capabilities": {
+    "data": [
+      "read:profile",
+      "read:work.job",
+      "write:work.job"
+    ],
+    "network": [
+      "fabric.api"
+    ]
+  },
   "mergePolicy": "server-authoritative",
   "mergePolicyNote": "Tin tuyển dụng / hồ sơ thợ là dữ liệu thị trường dùng chung, cần một sự thật nhất quán (chống trùng/giả tin); server-authoritative cho backend validate + chuẩn hoá là điểm hội tụ (INV-1). Escrow/dòng tiền (nếu có sau) tách sang module SG5, KHÔNG khai ở đây.",
-
   "configSchemaRef": "./config.schema.json",
-  "billingHooks": ["task.post", "task.complete", "drone.spray"],
+  "billingHooks": [
+    "task.post",
+    "task.complete",
+    "drone.spray"
+  ],
   "billingHooksRef": "./billing.hooks.json",
-
   "trustTier": 0,
   "stakeBondLamp": "0"
 }

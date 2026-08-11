@@ -12,12 +12,14 @@ import {
   Platform,
   TextInput,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+// Icon: bo Font Awesome Solid tai qua Iconify (assets/icons -> icons.generated).
+// Them icon moi: `node scripts/icons.js <ten-fa6-solid>`.
+import Icon from '../../../components/Icon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../../../store';
-import { loadFarms } from '../store/farmSlice';
+import { loadFarms, syncFarmsFromBackend } from '../store/farmSlice';
 import { selectChainWallet } from '../../../store/userSlice';
 import { COLORS } from '../../../constants';
 import PaginationControls from '../components/PaginationControls';
@@ -51,7 +53,7 @@ const MagicCreditBadge = ({ credits }: { credits: number }) => {
 
   return (
     <Animated.View style={[styles.creditBadge, { transform: [{ scale: pulseAnim }] }]}>
-      <Icon name="lightning-bolt" size={13} color={COLORS.accent} />
+      <Icon name="bolt" size={13} color={COLORS.accent} />
       <Text style={styles.creditValue}>{credits?.toLocaleString() ?? '0'}</Text>
       <Text style={styles.creditLabel}>MAGIC</Text>
     </Animated.View>
@@ -99,7 +101,7 @@ const FarmCard = ({
   const fruitCount = item.fruitCount || 0;
   const areaLabel  = item.areaSqm
     ? `${(item.areaSqm / 10000).toFixed(1)} ha`
-    : `${item.coordinates?.length ?? 0} điểm`;
+    : `${item.coordinates?.length ?? 0} Points`;
 
   // Status chip
   const statusMap: Record<string, { label: string; color: string; bg: string }> = {
@@ -130,7 +132,7 @@ const FarmCard = ({
             {/* Top row */}
             <View style={styles.cardTopRow}>
               <View style={styles.cardIconWrap}>
-                <Icon name="pine-tree" size={20} color={COLORS.accent} />
+                <Icon name="tree" size={20} color={COLORS.accent} />
               </View>
               <View
                 style={[
@@ -155,7 +157,7 @@ const FarmCard = ({
             {/* Location */}
             {item.location ? (
               <View style={styles.cardLocation}>
-                <Icon name="map-marker-outline" size={13} color={COLORS.textMuted} />
+                <Icon name="location-dot" size={13} color={COLORS.textMuted} />
                 <Text style={styles.cardLocationText} numberOfLines={1}>
                   {item.location}
                 </Text>
@@ -165,9 +167,9 @@ const FarmCard = ({
             {/* Stats */}
             <View style={styles.cardStats}>
               {[
-                { icon: 'tree-outline',        val: treeCount,  label: 'cây' },
-                { icon: 'food-apple-outline',  val: fruitCount, label: 'quả' },
-                { icon: 'vector-polygon',      val: areaLabel,  label: '' },
+                { icon: 'tree',        val: treeCount,  label: 'cây' },
+                { icon: 'apple-whole',  val: fruitCount, label: 'quả' },
+                { icon: 'draw-polygon',      val: areaLabel,  label: '' },
               ].map((s, i) => (
                 <View key={i} style={styles.cardStatItem}>
                   <Icon name={s.icon} size={13} color={COLORS.accentLight} />
@@ -208,10 +210,17 @@ const FarmListScreen = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
 
+  // Làm mới vườn: hiện CACHE SQLite ngay (offline-first) rồi đồng bộ từ backend
+  // field-reid (nguồn sự-thật, INV-1) và nạp lại. Backend lỗi/offline →
+  // syncFarmsFromBackend tự lùi về cache, loadFarms vẫn hiển thị — không mất dữ liệu.
+  const refreshFarms = React.useCallback(() => {
+    if (!user) return;
+    dispatch(loadFarms(user.id));
+    dispatch(syncFarmsFromBackend(user.id)).finally(() => dispatch(loadFarms(user.id)));
+  }, [user, dispatch]);
+
   useEffect(() => {
-    if (user) {
-      dispatch(loadFarms(user.id));
-    }
+    refreshFarms();
     Animated.parallel([
       Animated.timing(headerFade,  { toValue: 1, duration: 500, useNativeDriver: true }),
       Animated.timing(headerSlide, { toValue: 0, duration: 500, useNativeDriver: true }),
@@ -226,11 +235,9 @@ const FarmListScreen = () => {
   // Reload farms when returning to this screen and move to page 1
   useFocusEffect(
     React.useCallback(() => {
-      if (user) {
-        dispatch(loadFarms(user.id));
-        setCurrentPage(1);
-      }
-    }, [user])
+      refreshFarms();
+      setCurrentPage(1);
+    }, [refreshFarms])
   );
 
   // Filter farms by search query
@@ -264,7 +271,7 @@ const FarmListScreen = () => {
     navigation.navigate('FarmDetail', { farm_id: null });
 
   const reloadFarms = () => {
-    if (user) dispatch(loadFarms(user.id));
+    refreshFarms();
   };
 
   // Trạng thái cho ListEmptyComponent (loading/offline/error/empty) — chỉ hiển
@@ -295,7 +302,7 @@ const FarmListScreen = () => {
     // Có trại nhưng lọc rỗng → no-search-results (giữ riêng).
     return (
       <View style={styles.noSearchResults}>
-        <Icon name="magnify-close" size={48} color={COLORS.textMuted} />
+        <Icon name="magnifying-glass-minus" size={48} color={COLORS.textMuted} />
         <Text style={styles.noSearchResultsText}>Không tìm thấy nông trại</Text>
       </View>
     );
@@ -315,9 +322,21 @@ const FarmListScreen = () => {
       >
         {/* Top bar */}
         <View style={styles.headerTopBar}>
-          <View>
-            <Text style={styles.headerEyebrow}>TRUY XUẤT NGUỒN GỐC</Text>
-            <Text style={styles.headerTitle}>Trang trại</Text>
+          <View style={styles.headerTitleWrap}>
+            {/* Màn con (drill-down từ Dashboard) → cần nút quay lại (không có navbar ở đây). */}
+            {navigation.canGoBack() && (
+              <TouchableOpacity
+                onPress={() => navigation.goBack()}
+                style={styles.backBtn}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Icon name="arrow-left" size={24} color={COLORS.text} />
+              </TouchableOpacity>
+            )}
+            <View>
+              <Text style={styles.headerEyebrow}>TRUY XUẤT NGUỒN GỐC</Text>
+              <Text style={styles.headerTitle}>Trang trại</Text>
+            </View>
           </View>
           <MagicCreditBadge credits={wallet?.magicBalance ?? 0} />
         </View>
@@ -326,8 +345,8 @@ const FarmListScreen = () => {
         <View style={styles.headerSubRow}>
           <Text style={styles.headerSub}>
             {filteredFarms.length > 0
-              ? `${filteredFarms.length} nông trại đang quản lý`
-              : 'Chưa có nông trại nào'}
+              ? `${filteredFarms.length} farm under management`
+              : 'No farms yet'}
           </Text>
           {filteredFarms.length > 0 && (
             <View style={styles.farmCountBadge}>
@@ -338,7 +357,7 @@ const FarmListScreen = () => {
 
         {/* Search Input */}
         <View style={styles.searchContainer}>
-          <Icon name="magnify" size={18} color={COLORS.textMuted} style={styles.searchIcon} />
+          <Icon name="magnifying-glass" size={18} color={COLORS.textMuted} />
           <TextInput
             style={styles.searchInput}
             placeholder="Tìm trang trại..."
@@ -347,8 +366,8 @@ const FarmListScreen = () => {
             onChangeText={setSearchQuery}
           />
           {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Icon name="close-circle" size={18} color={COLORS.textMuted} />
+            <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 13, bottom: 13, left: 13, right: 13 }}>
+              <Icon name="circle-xmark" size={18} color={COLORS.textMuted} />
             </TouchableOpacity>
           )}
         </View>
@@ -356,7 +375,7 @@ const FarmListScreen = () => {
         {/* Ornament */}
         <View style={styles.headerRule}>
           <View style={styles.headerRuleLine} />
-          <Icon name="leaf-outline" size={12} color={COLORS.accentLight} />
+          <Icon name="leaf" size={12} color={COLORS.accentLight} />
           <View style={styles.headerRuleLine} />
         </View>
       </Animated.View>
@@ -431,6 +450,18 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: 6,
+  },
+  headerTitleWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  backBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerEyebrow: {
     fontSize: 10,
@@ -625,9 +656,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     gap: 8,
-  },
-  searchIcon: {
-    color: COLORS.textMuted,
   },
   searchInput: {
     flex: 1,

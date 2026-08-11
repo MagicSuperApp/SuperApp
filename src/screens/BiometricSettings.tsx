@@ -21,6 +21,7 @@ import { RootState } from '../store';
 import { COLORS } from '../constants';
 import { showError, showSuccess } from '../utils/alert';
 import { currentUserDid } from '../sdk/phoenixKey';
+import { biometricKindFromType } from '../services/phoenixKeyAuthService';
 
 const BiometricSettings = () => {
   const navigation = useNavigation<any>();
@@ -82,6 +83,9 @@ const BiometricSettings = () => {
       const mapStr = await AsyncStorage.getItem('biometric_did_map');
       if (mapStr) {
         const map = JSON.parse(mapStr) as Record<string, string>;
+        // Quét theo GIÁ TRỊ, không theo tên khoá: máy cài từ bản cũ còn bản ghi
+        // dưới `face`/`fingerprint` — vẫn phải nhận ra là "đã bật", không bắt
+        // người dùng bật lại.
         setBiometricEnabled(Object.values(map).includes(did));
       } else {
         setBiometricEnabled(false);
@@ -96,8 +100,15 @@ const BiometricSettings = () => {
       let map: Record<string, string> = {};
       const existingStr = await AsyncStorage.getItem('biometric_did_map');
       if (existingStr) map = JSON.parse(existingStr);
-      map.face = did;
-      map.fingerprint = did;
+      // MỘT khoá duy nhất, đặt theo cảm biến THẬT của máy. Trước đây ghi cả
+      // `face` lẫn `fingerprint` cho cùng DID — bật một cái là bật cả hai, vì
+      // chúng chưa bao giờ là hai thứ tách rời. Dọn khoá loại khác của cùng DID
+      // để bản ghi cũ không sống sót thành lựa chọn ma.
+      const kind = biometricKindFromType(biometryType);
+      for (const k of Object.keys(map)) {
+        if (k !== kind && map[k] === did) delete map[k];
+      }
+      map[kind] = did;
       await AsyncStorage.setItem('biometric_did_map', JSON.stringify(map));
       setBiometricEnabled(true);
     } catch (error) {
@@ -225,9 +236,9 @@ const BiometricSettings = () => {
                       <Icon name="fingerprint" size={20} color={COLORS.accent} />
                     </View>
                     <View style={{ flex: 1, paddingRight: 8 }}>
-                      <Text style={styles.settingLabel}>Mở khóa bằng {getBiometryTypeText()}</Text>
+                      <Text style={styles.settingLabel}>Unlock by {getBiometryTypeText()}</Text>
                       <Text style={styles.settingDesc}>
-                        Sử dụng {getBiometryTypeText().toLowerCase()} để đăng nhập nhanh
+                        Use {getBiometryTypeText().toLowerCase()} to quickly unlock your account and authorize transactions.
                       </Text>
                     </View>
                   </View>

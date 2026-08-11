@@ -30,6 +30,52 @@ RCT_EXTERN_METHOD(deriveWalletAddress:(NSString *)kekHex
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(deriveStakeAddress:(NSString *)kekHex
+                  account:(NSInteger)account
+                  network:(NSInteger)network
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(signWalletRegister:(NSString *)kekHex
+                  account:(NSInteger)account
+                  message:(NSString *)message
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(buildSignedTransfer:(NSString *)kekHex
+                  account:(NSInteger)account
+                  toAddress:(NSString *)toAddress
+                  amountLovelace:(NSString *)amountLovelace
+                  lampAmount:(NSString *)lampAmount
+                  lampPolicyHex:(NSString *)lampPolicyHex
+                  lampAssetNameHex:(NSString *)lampAssetNameHex
+                  utxosJson:(NSString *)utxosJson
+                  protocolParamsJson:(NSString *)protocolParamsJson
+                  network:(NSInteger)network
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(buildStakeDelegation:(NSString *)kekHex
+                  account:(NSInteger)account
+                  poolBech32:(NSString *)poolBech32
+                  utxosJson:(NSString *)utxosJson
+                  protocolParamsJson:(NSString *)protocolParamsJson
+                  network:(NSInteger)network
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(witnessUnsignedTx:(NSString *)kekHex
+                  account:(NSInteger)account
+                  unsignedTxCborHex:(NSString *)unsignedTxCborHex
+                  network:(NSInteger)network
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(deviceKeyOptin:(NSString *)userDid
+                  nonce:(NSString *)nonce
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
 RCT_EXTERN_METHOD(generateSalt:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 

@@ -7,7 +7,9 @@
  * Timeout: 45s, retry 1 lần cho lỗi mạng (không retry 4xx)
  */
 
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ensureOrilifeToken } from './orilifeDidAuth';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -59,6 +61,21 @@ export interface IdentifyResponse {
   query_id?: string;
   /** ADDITIVE (Lợi PR #46): băng tin-cậy thô (cao/vừa/thấp) — KHÔNG hiện điểm số. */
   confidence?: ConfidenceBand;
+  /**
+   * ADDITIVE: câu gợi ý hành-động do backend trả khi kết quả chưa chắc (vd
+   * "đi vòng quanh cây, chụp thêm góc khác" / "kết quả chưa chắc, nhờ chủ vườn
+   * xác nhận"). Hiện ở UNCERTAIN/NO_MATCH. Thiếu (backend cũ) → UI không hiện.
+   * LƯU Ý: backend đôi khi trả OBJECT {message, channel, n_candidates} thay vì
+   * string — UI phải coerce (ReidConfirmDialog) kẻo render object = crash React.
+   */
+  suggest?: string | { message?: string; channel?: string; n_candidates?: number };
+  /**
+   * ADDITIVE (B1/B2 owner_review): backend có CHO PHÉP tạo cây MỚI ở lần này
+   * không. Thiếu/undefined (backend cũ) = true → GIỮ hành-vi cũ (cho tạo mới).
+   * false → ẩn nút "Đăng ký cây mới" để chống tạo cây trùng khi cùng-loài mơ-hồ
+   * (dải điểm sập, cần chủ vườn xác nhận trước).
+   */
+  allow_enroll_new?: boolean;
 }
 
 export interface EnrollResponse {
@@ -66,6 +83,43 @@ export interface EnrollResponse {
   tree_id: string;
   n_views_added?: number;
   total_trees?: number;
+  /**
+   * Kênh MCR thứ 2 (vỏ-thân) tách được cây này khỏi cây rất giống nó (#235). Đăng ký
+   * VẪN cho qua, nhưng backend gửi kèm cảnh-báo nhẹ để chủ vườn tự đối chiếu — đúng
+   * ca "2 cây mai trắng" ngoài thực địa, nơi DINOv2 toàn cục báo trùng còn vỏ-thân
+   * thì phân biệt được.
+   */
+  dup_suspect?: {
+    tree_id?: string;
+    name?: string;
+    resolved_by?: string;
+    message_vi?: string;
+  };
+  /**
+   * Số góc máy chủ GIỮ sau khi lọc, và số góc bị bỏ vì trùng với góc đã có
+   * (`server.py:1900`). Khác `n_views_added` ở chỗ nó nói cho nông dân biết
+   * công đi vòng quanh cây có được ăn hay không.
+   */
+  views_kept?: number;
+  views_dropped_dup?: number;
+  /** Câu tiếng Việt: CÒN THIẾU góc nào (`server.py:1902`). Thứ nông dân cần nhất. */
+  coverage_hint_vi?: string;
+  /**
+   * Ảnh bị loại vì mờ/thiếu sáng. Shape ĐỌC TỪ MÁY CHỦ (`server.py:562`, dùng lại ở
+   * `:1925`): mỗi mục là `{idx, reasons[], messages[]}` — câu tiếng Việt nằm trong
+   * `messages`, KHÔNG có trường `message_vi`.
+   */
+  quality_warnings?: Array<{ idx?: number; reasons?: string[]; messages?: string[] }>;
+  /**
+   * Vùng khoanh chưa đạt (quá nhỏ, hoặc một vùng dùng chung cho nhiều ảnh).
+   * `server.py:1769` khai `list[str]` — **chuỗi trần**, không phải đối tượng.
+   */
+  region_warnings?: string[];
+  /**
+   * Cây bị rơi khỏi vườn đang chọn. Nếu nuốt trường này thì cây biến mất khỏi vườn
+   * mà không ai được báo — người dùng tưởng đăng ký hỏng và làm lại từ đầu.
+   */
+  farm_dropped?: boolean;
   provenance?: {
     code?: string;
     has3d?: boolean;
@@ -118,6 +172,34 @@ export interface APIError {
   reason?: string;
   /** tree_id của cây trùng — backend trả khi 409 duplicate_tree */
   existing_tree_id?: string;
+}
+
+/**
+ * Rút các câu cảnh báo tiếng Việt từ phản hồi đăng ký cây, gộp trùng, giữ thứ tự.
+ *
+ * Tồn tại vì HAI trường này có shape KHÁC NHAU và trước đây bị đọc nhầm thành một:
+ *   • `quality_warnings` = `[{idx, reasons[], messages[]}]` — câu nằm trong `messages`
+ *   • `region_warnings`  = `[string]` — chuỗi trần
+ * Đọc nhầm không làm app sập; nó chỉ khiến MỌI cảnh báo biến mất im lặng, nên phải có
+ * test canh. Tin phòng thủ vì đây là dữ liệu từ mạng: mảng có thể vắng hoặc sai kiểu.
+ */
+export function enrollWarningMessages(res?: {
+  quality_warnings?: EnrollResponse['quality_warnings'];
+  region_warnings?: EnrollResponse['region_warnings'];
+}): { quality: string[]; region: string[] } {
+  const clean = (xs: unknown[]): string[] => {
+    const out: string[] = [];
+    for (const x of xs) {
+      if (typeof x === 'string' && x.trim() && !out.includes(x)) out.push(x);
+    }
+    return out;
+  };
+  const q = Array.isArray(res?.quality_warnings) ? res!.quality_warnings! : [];
+  const r = Array.isArray(res?.region_warnings) ? res!.region_warnings! : [];
+  return {
+    quality: clean(q.flatMap(w => (Array.isArray(w?.messages) ? w.messages : []))),
+    region: clean(r),
+  };
 }
 
 /**
@@ -183,6 +265,12 @@ async function _getAuthHeader(): Promise<string | null> {
   }
 }
 
+/** Cắt phần gốc (https://host) khỏi URL đầy đủ để truyền cho ensureOrilifeToken. */
+function _baseOf(url: string): string {
+  const i = url.indexOf('/api/');
+  return i > 0 ? url.slice(0, i) : url;
+}
+
 async function _apiCall<T>(
   url: string,
   method: 'GET' | 'POST' | 'DELETE',
@@ -190,6 +278,9 @@ async function _apiCall<T>(
   timeoutMs: number = REQUEST_TIMEOUT_MS,
   attempt = 0,
 ): Promise<{ ok: boolean; data?: T; error?: APIError }> {
+  // Đảm bảo có token DID trước khi gọi (mở app vào thẳng luồng cây chưa ký DID → 401 oan).
+  // Cùng auth_token field-reid với fruitReIDService — dùng chung cơ chế ký lại.
+  await ensureOrilifeToken(_baseOf(url));
   const authHeader = await _getAuthHeader();
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (authHeader) headers['Authorization'] = authHeader;
@@ -207,6 +298,12 @@ async function _apiCall<T>(
     clearTimeout(timeoutHandle);
 
     if (resp.status === 401) {
+      // Token hết hạn GIỮA BUỔI → ký lại bằng DID 1 lần rồi thử lại (khớp fruitReIDService).
+      // Trước đây trả thẳng auth_error → getTrees/identify câm giữa thực địa, không tự hồi:
+      // nông dân không chọn được cây để quay video dù mạng vẫn tốt.
+      if (attempt === 0 && (await ensureOrilifeToken(_baseOf(url), { force: true }))) {
+        return _apiCall<T>(url, method, body, timeoutMs, 1);
+      }
       return {
         ok: false,
         error: { type: 'auth_error', detail: 'Token hết hạn hoặc không hợp lệ', http_status: 401 },
@@ -232,9 +329,13 @@ async function _apiCall<T>(
       let existingTreeId: string | undefined;
       try {
         const body409 = await resp.json();
-        detail = body409.detail ?? detail;
-        errorCode = body409.code ?? undefined;
-        existingTreeId = body409.existing_tree_id ?? undefined;
+        // Đọc CẢ HAI dạng thân lỗi. Backend field-reid trả `error` + `similar.tree_id`;
+        // `detail` + `existing_tree_id` là bí danh bắc cầu thêm ở #235 cho bản app cũ.
+        // Chỉ đọc một dạng là nút "Gộp vào cây cũ" báo "Không xác định được cây trùng"
+        // đúng lúc người ta đang đứng ngoài vườn — lỗi field-test 26/07 mục 1(c).
+        detail = body409.detail ?? body409.error ?? detail;
+        errorCode = body409.code ?? body409.error_code ?? undefined;
+        existingTreeId = body409.existing_tree_id ?? body409.similar?.tree_id ?? undefined;
       } catch { /* bỏ qua */ }
       return {
         ok: false,
@@ -299,12 +400,45 @@ async function _apiCall<T>(
 /** Matcher vỏ-thân (PoC-Tree §4 M4) — override ENV backend, CHỈ cho tester. */
 export type ShellMatcher = 'sift' | 'xfeat' | 'loftr';
 
+/**
+ * Hướng máy lúc chụp MỘT ảnh. Mảng `captures` song song với `files[]` — khuôn này
+ * lấy đúng theo tiền lệ `regions` của OriLife (`server.py:1710-1712`, xử bởi
+ * `_parse_regions`), không đẻ hình dạng thứ hai. Ảnh nào không có số thì để `null`.
+ *
+ * Đơn vị (OriLife đề nghị 2026-07-29): `heading` độ [0,360), `pitch` độ [-90,90]
+ * dương là ngẩng lên, `roll` độ [-180,180] dương là nghiêng phải.
+ */
+export interface CaptureOrientation {
+  heading?: number | null;
+  pitch?: number | null;
+  roll?: number | null;
+}
+
+/**
+ * Gốc quy chiếu của `heading` — gửi kèm để server lọc được, vì hai nền tảng KHÔNG
+ * cùng gốc và app chưa sửa được điều đó:
+ *   · `ios_true_or_magnetic` — `HeadingCaptureManager.swift:278` lấy `trueHeading`
+ *     khi hợp lệ, ÂM THẦM rơi về `magneticHeading` khi không. Không phân biệt được
+ *     từng mẫu ở tầng JS.
+ *   · `android_magnetic` — `HeadingSensorReader.kt:27` đọc `TYPE_ROTATION_VECTOR`
+ *     và KHÔNG cộng độ lệch từ (`GeomagneticField`), nên là Bắc TỪ.
+ *
+ * OriLife yêu cầu Bắc THẬT. App CHƯA đạt, và sửa là việc native (Thư) — đã báo.
+ * Trong lúc đó thà khai đúng gốc quy chiếu còn hơn dán nhãn "true" cho số Bắc từ.
+ */
+export type HeadingRef = 'ios_true_or_magnetic' | 'android_magnetic';
+
 export interface IdentifyOptions {
   lat?: number;
   lon?: number;
   acc?: number;
   heading?: number;
   pitch?: number;
+  roll?: number;
+  /** Hướng THEO TỪNG ẢNH, song song `files[]`. Có `captures` thì nó thắng cấp request. */
+  captures?: CaptureOrientation[];
+  /** Gốc quy chiếu của mọi con số heading trong lần gửi này. */
+  headingRef?: HeadingRef;
   /** Khi true: bỏ qua kiểm tra trùng lặp, tạo cây mới bất kể. Dùng cho handleForceEnroll. */
   force?: boolean;
   /**
@@ -312,6 +446,13 @@ export interface IdentifyOptions {
    * ?matcher=. Mặc-định KHÔNG gửi → backend dùng đường ENV. Chỉ tester bật.
    */
   matcher?: ShellMatcher;
+  /**
+   * Vườn của cây. `enrollTree` đã gửi `farm_id` từ lâu (xem chú thích ở đó), còn
+   * `verifyAddTree` thì không — nên GỘP ảnh vào cây cũ làm backend gán
+   * `farm_id = null`, và `/api/trees?farm_id=X` lọc bỏ chính cây đó. Nông dân
+   * thấy cây "biến mất khỏi vườn" ngay sau khi bổ sung ảnh cho nó.
+   */
+  farmId?: string;
 }
 
 export type IdentifyVerdict = 'correct' | 'wrong' | 'other';
@@ -326,6 +467,49 @@ export interface IdentifyVerdictResponse {
 // Public API
 // ---------------------------------------------------------------------------
 
+/**
+ * Gắn GPS + hướng máy vào form. Dùng chung cho identify / enroll / verify_add để ba
+ * route không lệch nhau — trước đây enroll không gửi hướng nào, mà enroll lại chính
+ * là nguồn dựng 3D, tức chỗ mất dữ liệu nặng nhất.
+ *
+ * Quy tắc bỏ trường (OriLife chốt): thiếu số thì **KHÔNG gửi khoá đó**. Đừng gửi
+ * chuỗi rỗng, đừng gửi "null" — server ép kiểu không nổ nhưng nhật ký lưu rác.
+ */
+function appendGeoAndOrientation(form: FormData, options: IdentifyOptions): void {
+  if (options.lat !== undefined) form.append('lat', String(options.lat));
+  if (options.lon !== undefined) form.append('lon', String(options.lon));
+  if (options.acc !== undefined) form.append('acc', String(options.acc));
+  if (options.heading !== undefined) form.append('heading', String(options.heading));
+  if (options.pitch !== undefined) form.append('pitch', String(options.pitch));
+  if (options.roll !== undefined) form.append('roll', String(options.roll));
+  if (options.headingRef) form.append('heading_ref', options.headingRef);
+
+  // Chỉ gửi `captures` khi có ÍT NHẤT một ảnh có số thật — mảng toàn null chỉ làm
+  // nặng request và làm nhật ký server bẩn thêm.
+  if (options.captures?.length) {
+    const anyReal = options.captures.some(
+      c => c && (c.heading != null || c.pitch != null || c.roll != null),
+    );
+    if (anyReal) form.append('captures', JSON.stringify(options.captures));
+  }
+}
+
+/** Dựng mảng `captures` từ ảnh native đã chụp (đã song song với `files[]`). */
+export function toCaptureOrientations(
+  caps: Array<{ heading?: number | null; pitch?: number | null; roll?: number | null }>,
+): CaptureOrientation[] {
+  return caps.map(c => ({
+    heading: Number.isFinite(c?.heading as number) ? (c.heading as number) : null,
+    pitch: Number.isFinite(c?.pitch as number) ? (c.pitch as number) : null,
+    roll: Number.isFinite(c?.roll as number) ? (c.roll as number) : null,
+  }));
+}
+
+/** Gốc quy chiếu heading của nền tảng đang chạy. Xem chú thích `HeadingRef`. */
+export function platformHeadingRef(): HeadingRef {
+  return Platform.OS === 'ios' ? 'ios_true_or_magnetic' : 'android_magnetic';
+}
+
 export async function identifyTree(
   baseUrl: string,
   imagePaths: string[],
@@ -337,11 +521,7 @@ export async function identifyTree(
     (form as any).append('files', { uri: imagePaths[i], type: 'image/jpeg', name: `img_${i}.jpg` });
   }
 
-  if (options.lat !== undefined) form.append('lat', String(options.lat));
-  if (options.lon !== undefined) form.append('lon', String(options.lon));
-  if (options.acc !== undefined) form.append('acc', String(options.acc));
-  if (options.heading !== undefined) form.append('heading', String(options.heading));
-  if (options.pitch !== undefined) form.append('pitch', String(options.pitch));
+  appendGeoAndOrientation(form, options);
   form.append('source', 'phone');
 
   // M4: chỉ nối ?matcher= khi tester ép — mặc-định để backend dùng ENV.
@@ -388,12 +568,15 @@ export async function enrollTree(
     (form as any).append('files', { uri: imagePaths[i], type: 'image/jpeg', name: `img_${i}.jpg` });
   }
 
-  if (options.lat !== undefined) form.append('lat', String(options.lat));
-  if (options.lon !== undefined) form.append('lon', String(options.lon));
-  if (options.acc !== undefined) form.append('acc', String(options.acc));
-  if (options.heading !== undefined) form.append('heading', String(options.heading));
-  if (options.pitch !== undefined) form.append('pitch', String(options.pitch));
-  if (options.force) form.append('force', 'true');
+  appendGeoAndOrientation(form, options);
+  // Gửi CẢ HAI tên trường: `dup` là hợp-đồng sạch OriLife chốt ở #235
+  // (`_Agents/inbox/_done/OriLife-to-SuperApp-fieldtest-12-fixes-API-handoff-2026-07-26.md` mục 1),
+  // `force` là bí danh backend bắc cầu cho bản app cũ. Gửi cả hai để app chạy đúng
+  // dù backend đã hay chưa deploy #235 — đây từng là vòng 409 lặp vô tận ngoài đồng.
+  if (options.force) {
+    form.append('force', 'true');
+    form.append('dup', 'true');
+  }
 
   return _apiCall<EnrollResponse>(`${baseUrl}/api/enroll`, 'POST', form, IMAGE_REQUEST_TIMEOUT_MS);
 }
@@ -402,14 +585,24 @@ export async function verifyAddTree(
   baseUrl: string,
   treeId: string,
   imagePaths: string[],
+  options: IdentifyOptions = {},
 ): Promise<{ ok: boolean; data?: VerifyAddResponse; error?: APIError }> {
   const form = new FormData();
 
   form.append('tree_id', treeId);
+  form.append('source', 'phone');
+
+  // Gửi `farm_id` NHẤT QUÁN với `enrollTree`. Thiếu nó thì backend gán null và cây
+  // rơi khỏi bộ lọc `/api/trees?farm_id=X` — bổ sung ảnh xong là cây mất khỏi vườn.
+  if (options.farmId) form.append('farm_id', options.farmId);
 
   for (let i = 0; i < imagePaths.length; i++) {
     (form as any).append('files', { uri: imagePaths[i], type: 'image/jpeg', name: `img_${i}.jpg` });
   }
+
+  // verify_add cũng nhận heading/pitch/roll (`server.py:1941`) — gộp ảnh vào cây đã
+  // có mà không gửi hướng thì ảnh mới kém giá trị hơn ảnh cũ.
+  appendGeoAndOrientation(form, options);
 
   return _apiCall<VerifyAddResponse>(`${baseUrl}/api/verify_add`, 'POST', form, IMAGE_REQUEST_TIMEOUT_MS);
 }
@@ -481,4 +674,29 @@ export async function renameTree(
 
   const result = await _apiCall<{ ok: boolean }>(`${baseUrl}/api/rename`, 'POST', form);
   return { ok: result.ok, error: result.error };
+}
+
+/**
+ * buildTree3D — YÊU CẦU máy chủ dựng mô hình 3D cho cây (H-11/H-25).
+ * POST /api/build3d/{tree_id} (auth chủ cây):
+ *   200 { ok:true, building:true } → đã nhận vào làn dựng.
+ *   404 { ok:false, error:"không có xuất xứ" } → cây chưa có provenance (chưa đăng ký xong).
+ *
+ * QUAN TRỌNG (H-25): server chỉ chạy 3D khi làn provenance RẢNH → `building:true` KHÔNG
+ * đồng nghĩa "đang dựng ngay", thường là "đã xếp hàng, chờ hạ tầng rảnh". UI phải nói
+ * "đã xếp hàng" thay vì "đang dựng" quay mãi. `_apiCall` không đọc body 404 nên phân biệt
+ * "chưa có xuất xứ" qua `error.http_status === 404`.
+ */
+export async function buildTree3D(
+  baseUrl: string,
+  treeId: string,
+): Promise<{ ok: boolean; building?: boolean; noProvenance?: boolean; error?: APIError }> {
+  const result = await _apiCall<{ ok: boolean; building?: boolean }>(
+    `${baseUrl}/api/build3d/${encodeURIComponent(treeId)}`,
+    'POST',
+  );
+  if (result.ok && result.data) {
+    return { ok: !!result.data.ok, building: result.data.building };
+  }
+  return { ok: false, noProvenance: result.error?.http_status === 404, error: result.error };
 }

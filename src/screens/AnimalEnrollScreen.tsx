@@ -41,6 +41,7 @@ import {
   enrollAnimal,
   type AnimalEnrollResponse,
 } from '../services/animalReIDService';
+import { withPhotoSave } from '../services/mediaSavePermission';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -58,7 +59,7 @@ const CAMERA_OPTIONS = {
   quality: 0.85,
   maxWidth: 1280,
   maxHeight: 1280,
-  saveToPhotos: false,
+  saveToPhotos: true,
   includeBase64: false,
 };
 
@@ -123,18 +124,18 @@ const AnimalEnrollScreen: React.FC = () => {
   const canEnroll = !isEnrolling && !enrollResult && photos.length >= MIN_PHOTOS;
 
   // ── Chụp ảnh ──────────────────────────────────────────────────────────────
-  const handleCapture = useCallback(() => {
+  const handleCapture = useCallback(async () => {
     if (!canAddMore) return;
 
     if (!imagePicker?.launchCamera) {
       Alert.alert(
-        'Chưa cài camera picker',
-        'Cần cài react-native-image-picker.\nnpm install react-native-image-picker',
+        'Chưa mở được máy ảnh',
+        'Bản app này chưa mở được máy ảnh. Vui lòng cập nhật app rồi thử lại.',
       );
       return;
     }
 
-    imagePicker.launchCamera(CAMERA_OPTIONS, (response: any) => {
+    imagePicker.launchCamera(await withPhotoSave(CAMERA_OPTIONS), (response: any) => {
       if (response.didCancel) return;
       if (response.errorCode) {
         Alert.alert(
@@ -322,6 +323,7 @@ const AnimalEnrollScreen: React.FC = () => {
                     style={styles.photoRemoveBtn}
                     onPress={() => handleRemovePhoto(idx)}
                     activeOpacity={0.8}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                   >
                     <Icon name="close" size={14} color={NEUTRAL.white} />
                   </TouchableOpacity>

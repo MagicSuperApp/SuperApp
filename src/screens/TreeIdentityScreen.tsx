@@ -54,6 +54,9 @@ import {
   type CapturedImage,
 } from '../services/treeReIDNativeBridge';
 import {
+  toCaptureOrientations,
+  platformHeadingRef,
+  type CaptureOrientation,
   identifyTree,
   verifyAddTree,
   submitIdentifyVerdict,
@@ -70,10 +73,11 @@ import FactorBreakdown, { type FactorScores } from '../components/reid/FactorBre
 import ReidConfirmDialog, { type ReidCandidate } from '../components/reid/ReidConfirmDialog';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { ensureOrilifeToken, clearOrilifeToken } from '../services/orilifeDidAuth';
-import { phoenixKeyAuth } from '../services/phoenixKeyAuthService';
+import { BiometricKind, biometricKindFromType, phoenixKeyAuth } from '../services/phoenixKeyAuthService';
 import { loginUser } from '../store/userSlice';
-import ReactNativeBiometrics, { BiometryTypes } from 'react-native-biometrics';
+import ReactNativeBiometrics from 'react-native-biometrics';
 import rLog from '../services/remoteLogger';
+import { withPhotoSave } from '../services/mediaSavePermission';
 import {
   addCapture,
   setCapturing,
@@ -120,7 +124,7 @@ const MIN_ROUND1 = 4;
 const MIN_ROUND2 = 2;
 
 const GUIDANCE = {
-  idle: 'Bấm "Bắt đầu" để nhận diện cây.',
+  idle: 'Tap "Start" to identify the tree',
   round1: 'Đi vòng quanh cây, lia chậm để lấy đủ góc.',
   round2: 'Đứng SÁT GỐC, chĩa ống kính LÊN — lấy rõ vỏ gốc, sẹo, chạc cây.',
   needMore: 'Xoay thêm một chút nữa để lấy góc mới.',
@@ -194,6 +198,11 @@ const TreeIdentityScreen: React.FC = () => {
   // Android: captures tự quản lý cục bộ bằng mảng uri ảnh
   const [androidImageUris, setAndroidImageUris] = useState<string[]>([]);
 
+  // ── Cam controls: flash (mặc-định TẮT) + lens 0.5x ────────────────────────
+  const [camCaps, setCamCaps] = useState({ hasTorch: false, supportsUltraWide: false });
+  const [torchOn, setTorchOn] = useState(false);
+  const [ultraWideOn, setUltraWideOn] = useState(false);
+
   // iOS: đếm capture từ native event (capturesRedux chỉ được điền SAU stop).
   const [iosCaptureCount, setIosCaptureCount] = useState(0);
   // Snapshot tổng-số-capture tại thời điểm advance sang lượt 2 → tính per-round.
@@ -219,20 +228,33 @@ const TreeIdentityScreen: React.FC = () => {
         if (granted !== PermissionsAndroid.RESULTS.GRANTED) return;
       }
 
+      const applyPos = (pos: { coords: { latitude: number; longitude: number; accuracy: number } }) => {
+        dispatch(
+          setGPS({
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+            accuracy: pos.coords.accuracy,
+          }),
+        );
+      };
+
+      // 1) FIX NHANH ngay lập tức: cho phép độ chính xác thô + dùng vị trí cache
+      //    (Wi-Fi/cell) để có toạ độ trong vài giây thay vì đợi chip GPS cold-start
+      //    vài phút (field-test Đức 26/07 mục 2: tránh enroll cây mới kẹt 400 need_gps).
+      Geolocation.getCurrentPosition(
+        applyPos,
+        _err => { /* chưa có fix nhanh — watch bên dưới sẽ bù */ },
+        { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 },
+      );
+
+      // 2) TINH CHỈNH liên tục bằng chip GPS. distanceFilter:0 để vẫn cập nhật
+      //    khi đứng yên (fix đầu thô sẽ được thay bằng toạ độ chính xác hơn).
       geoWatchRef.current = Geolocation.watchPosition(
-        pos => {
-          dispatch(
-            setGPS({
-              lat: pos.coords.latitude,
-              lng: pos.coords.longitude,
-              accuracy: pos.coords.accuracy,
-            }),
-          );
-        },
+        applyPos,
         _err => {
           // GPS không sẵn — tiếp tục không có toạ độ
         },
-        { enableHighAccuracy: true, distanceFilter: 5 },
+        { enableHighAccuracy: true, distanceFilter: 0 },
       );
     };
 
@@ -383,6 +405,48 @@ const TreeIdentityScreen: React.FC = () => {
     }
   };
 
+  // ── Cam controls: nạp khả-năng khi bật camera; reset khi tắt ──────────────
+  // cameraInfo/device chỉ sẵn SAU khi preview bind → thử lại 1 lần nếu lần đầu rỗng.
+  useEffect(() => {
+    if (!isCaptureActive || !TreeReIDBridge.isAvailable()) {
+      setCamCaps({ hasTorch: false, supportsUltraWide: false });
+      setTorchOn(false);
+      setUltraWideOn(false);
+      return;
+    }
+    let alive = true;
+    let tries = 0;
+    const probe = async () => {
+      const caps = await TreeReIDBridge.getCameraCapabilities();
+      if (!alive) return;
+      if ((caps.hasTorch || caps.supportsUltraWide) || tries >= 3) {
+        setCamCaps(caps);
+      } else {
+        tries += 1;
+        setTimeout(probe, 400); // camera chưa bind xong → thử lại
+      }
+    };
+    probe();
+    return () => { alive = false; };
+  }, [isCaptureActive]);
+
+  const toggleTorch = async () => {
+    const next = !torchOn;
+    const applied = await TreeReIDBridge.setTorch(next);
+    setTorchOn(applied);
+  };
+
+  const toggleUltraWide = async () => {
+    const next = !ultraWideOn;
+    const applied = await TreeReIDBridge.setUltraWide(next);
+    setUltraWideOn(applied);
+    // Đổi lens reset đèn (iOS) → áp lại nếu user đang bật đèn.
+    if (torchOn) {
+      const t = await TreeReIDBridge.setTorch(true);
+      setTorchOn(t);
+    }
+  };
+
   // ── iOS: Advance to round 2 ───────────────────────────────────────────────
   const handleAdvanceToRound2 = async () => {
     try {
@@ -422,7 +486,12 @@ const TreeIdentityScreen: React.FC = () => {
         dispatch(addCapture(cap));
       }
 
-      await runIdentify(stopResult.captures.map(c => `file://${c.fileURL}`));
+      // Hướng máy đi CÙNG ảnh. `stopResult.captures` là nguồn tươi nhất — đọc
+      // `capturesRedux` ở đây sẽ lấy giá trị cũ vì dispatch chưa kịp vào selector.
+      await runIdentify(
+        stopResult.captures.map(c => `file://${c.fileURL}`),
+        toCaptureOrientations(stopResult.captures),
+      );
     } catch (e: any) {
       rLog.nativeBridge.bridgeError('stopCaptureSession', e?.message ?? String(e));
       Alert.alert('Lỗi', 'Không thể dừng chụp. Vui lòng thử lại.');
@@ -437,13 +506,13 @@ const TreeIdentityScreen: React.FC = () => {
     if (!hasPermission) return;
 
     try {
-      const res = await launchCamera({
-        mediaType: 'photo',
-        quality: 0.8,
+      const res = await launchCamera(await withPhotoSave({
+        mediaType: 'photo' as const,
+        quality: 0.8 as const,
         maxWidth: 1280,
         maxHeight: 1280,
-        saveToPhotos: false,
-      });
+        saveToPhotos: true,
+      }));
       if (res.didCancel) return;
       if (res.errorCode) {
         Alert.alert('Lỗi camera', res.errorMessage || 'Không mở được camera.');
@@ -477,11 +546,10 @@ const TreeIdentityScreen: React.FC = () => {
     setIsIdentifyingLocal(true);
     try {
       // Xác-định loại sinh-trắc để đặt đúng nhãn khoá (không đổi hành-vi ký).
-      let kind: 'face' | 'fingerprint' | 'strong' = 'strong';
+      let kind: BiometricKind = 'strong';
       try {
         const { biometryType } = await new ReactNativeBiometrics().isSensorAvailable();
-        kind = biometryType === BiometryTypes.FaceID ? 'face'
-          : biometryType === BiometryTypes.TouchID ? 'fingerprint' : 'strong';
+        kind = biometricKindFromType(biometryType);
       } catch { /* mặc-định 'strong' */ }
 
       const prevName = currentUser?.name;
@@ -497,7 +565,7 @@ const TreeIdentityScreen: React.FC = () => {
   };
 
   // ── Core: Gọi API identify ────────────────────────────────────────────────
-  const runIdentify = async (imagePaths: string[]) => {
+  const runIdentify = async (imagePaths: string[], orientations?: CaptureOrientation[]) => {
     setIsIdentifyingLocal(true);
     // Mỗi lần identify mới → xoá phán-quyết cũ.
     setQueryId(null);
@@ -540,6 +608,10 @@ const TreeIdentityScreen: React.FC = () => {
         lon: gpsRedux?.lng,
         heading: heading ?? undefined,
         pitch: pitch ?? undefined,
+        // Hướng theo TỪNG ảnh — trước đây chỉ gửi một con số hiện-tại cho cả loạt,
+        // tức mọi ảnh trông như chụp từ cùng một chỗ.
+        captures: orientations,
+        headingRef: platformHeadingRef(),
         // M4: chỉ gửi khi tester đã bật toggle.
         matcher: matcher ?? undefined,
       });
@@ -598,7 +670,12 @@ const TreeIdentityScreen: React.FC = () => {
           ? capturesRedux.map(c => `file://${c.fileURL}`)
           : androidImageUris;
 
-      const res = await verifyAddTree(BASE_URL, identResult.tree_id, imgs);
+      const res = await verifyAddTree(BASE_URL, identResult.tree_id, imgs, {
+        lat: gpsRedux?.lat,
+        lon: gpsRedux?.lng,
+        captures: TreeReIDBridge.isAvailable() ? toCaptureOrientations(capturesRedux) : undefined,
+        headingRef: platformHeadingRef(),
+      });
 
       if (res.ok) {
         Alert.alert('Đã cập nhật', 'Vị trí mới của cây đã được lưu.');
@@ -629,7 +706,12 @@ const TreeIdentityScreen: React.FC = () => {
           ? capturesRedux.map(c => `file://${c.fileURL}`)
           : androidImageUris;
 
-      const res = await verifyAddTree(BASE_URL, id, imgs);
+      const res = await verifyAddTree(BASE_URL, id, imgs, {
+        lat: gpsRedux?.lat,
+        lon: gpsRedux?.lng,
+        captures: TreeReIDBridge.isAvailable() ? toCaptureOrientations(capturesRedux) : undefined,
+        headingRef: platformHeadingRef(),
+      });
 
       if (res.ok) {
         Alert.alert('Đã xác nhận', `Góc nhìn mới đã thêm vào cây.\nĐã thêm: ${res.data?.n_added ?? 0} góc.`);
@@ -647,6 +729,20 @@ const TreeIdentityScreen: React.FC = () => {
       androidImagePaths: Platform.OS === 'android' ? androidImageUris : undefined,
       farmId,
     });
+  };
+
+  // ── "Không phải cây này — đây là CÂY MỚI" (từ luồng MATCH sai) ────────────
+  // Field (Giang 13/07): server khớp NHẦM cây đã có (ngưỡng same-species chưa
+  // calibrate) → user biết là cây khác NHƯNG bộ chọn "Cây khác" chỉ liệt kê cây
+  // ĐÃ CÓ → KẸT, không tạo được cây mới nào nữa. Mở lối đăng-ký-mới ngay tại đây
+  // để field không phải chờ server chỉnh ngưỡng.
+  const handleRegisterNewFromMatch = () => {
+    setShowTreePicker(false);
+    // Phản hồi top-1 SAI (giúp server hiệu-chỉnh ngưỡng). Best-effort, không chặn UI.
+    if (queryId && !verdictSent && !isSendingVerdict) {
+      void sendVerdict('wrong');
+    }
+    handleRegisterNew();
   };
 
   // ── Reset về trạng thái ban đầu ───────────────────────────────────────────
@@ -716,12 +812,14 @@ const TreeIdentityScreen: React.FC = () => {
   // ── Render result panel ───────────────────────────────────────────────────
   const renderResultPanel = () => {
     if (!identResult) return null;
-    const { decision, name, code, similarity, margin, factors, moved_distance_m, confidence } =
+    const { decision, name, code, similarity, margin, factors, moved_distance_m, confidence, suggest } =
       identResult as IdentifyResponse & {
         similarity?: number;
         margin?: number;
         factors?: FactorScores;
       };
+    // owner_review: backend thiếu cờ = cho tạo mới (giữ hành-vi cũ).
+    const allowEnrollNew = identResult.allow_enroll_new !== false;
 
     return (
       <ScrollView
@@ -745,6 +843,24 @@ const TreeIdentityScreen: React.FC = () => {
 
         {/* M2: băng tin-cậy THÔ (cao/vừa/thấp) — KHÔNG hiện điểm số */}
         {confidence && <ConfidenceBandView band={confidence} />}
+
+        {/* Gợi ý hành-động từ server (suggest) — vd "đi vòng chụp thêm góc".
+            Backend đôi khi trả OBJECT {message, channel, n_candidates} thay vì string
+            → phải coerce, KHÔNG render thẳng object (crash "not valid React child"). */}
+        {(() => {
+          const suggestStr =
+            typeof suggest === 'string'
+              ? suggest
+              : (suggest && typeof suggest === 'object'
+                  ? String((suggest as { message?: unknown }).message ?? '')
+                  : '');
+          return suggestStr ? (
+            <View style={styles.suggestBox}>
+              <Icon name="lightbulb-on-outline" size={16} color={NEUTRAL.warning} />
+              <Text style={styles.suggestText}>{suggestStr}</Text>
+            </View>
+          ) : null;
+        })()}
 
         {/* M3: phán-quyết người dùng — chỉ hiện khi backend trả query_id */}
         {queryId && (
@@ -856,6 +972,26 @@ const TreeIdentityScreen: React.FC = () => {
           </View>
         )}
 
+        {/* MATCH nhưng SAI cây → lối thoát đăng-ký cây mới.
+            Server có thể khớp NHẦM cây cùng-loài (ngưỡng chưa calibrate). Không có
+            lối này thì user KẸT: "Cây khác" chỉ chọn được cây đã có (field Giang 13/07). */}
+        {decision === 'MATCH' && allowEnrollNew && (
+          <View style={styles.actionGroup}>
+            <TouchableOpacity
+              style={[styles.decisionBtn, styles.btnOutlineGreen]}
+              onPress={handleRegisterNewFromMatch}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Không phải cây này, đăng ký cây mới"
+            >
+              <Icon name="plus-circle-outline" size={18} color="#1b5e20" />
+              <Text style={[styles.decisionBtnText, { color: '#1b5e20' }]}>
+                Không phải cây này — Đăng ký cây mới
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* MOVED: nút cập nhật vị trí */}
         {decision === 'MOVED' && (
           <View style={styles.actionGroup}>
@@ -884,7 +1020,7 @@ const TreeIdentityScreen: React.FC = () => {
           </View>
         )}
 
-        {/* NO_MATCH / EMPTY_BUCKET: đăng ký mới */}
+        {/* NO_MATCH / EMPTY_BUCKET: đăng ký mới (chỉ khi server CHO PHÉP) */}
         {(decision === 'NO_MATCH' || decision === 'EMPTY_BUCKET') && (
           <View style={styles.actionGroup}>
             <Text style={styles.noMatchHint}>
@@ -892,14 +1028,20 @@ const TreeIdentityScreen: React.FC = () => {
                 ? 'Chưa có cây nào gần vị trí này.'
                 : 'Cây chưa được đăng ký trong hệ thống.'}
             </Text>
-            <TouchableOpacity
-              style={[styles.decisionBtn, styles.btnGreen]}
-              onPress={handleRegisterNew}
-              activeOpacity={0.8}
-            >
-              <Icon name="plus-circle" size={18} color={NEUTRAL.white} />
-              <Text style={styles.decisionBtnText}>Đăng ký cây mới</Text>
-            </TouchableOpacity>
+            {allowEnrollNew ? (
+              <TouchableOpacity
+                style={[styles.decisionBtn, styles.btnGreen]}
+                onPress={handleRegisterNew}
+                activeOpacity={0.8}
+              >
+                <Icon name="plus-circle" size={18} color={NEUTRAL.white} />
+                <Text style={styles.decisionBtnText}>Đăng ký cây mới</Text>
+              </TouchableOpacity>
+            ) : (
+              <Text style={styles.noMatchHint}>
+                Kết quả chưa chắc chắn — hãy chụp thêm góc khác hoặc nhờ chủ vườn xác nhận. Tạm chưa thể đăng ký cây mới ở đây.
+              </Text>
+            )}
           </View>
         )}
 
@@ -952,7 +1094,7 @@ const TreeIdentityScreen: React.FC = () => {
             ) : (
               <>
                 <Icon name="magnify" size={22} color="#000000" />
-                <Text style={styles.ctrlBtnText}>Nhận diện</Text>
+                <Text style={styles.ctrlBtnText}>Identify</Text>
               </>
             )}
           </TouchableOpacity>
@@ -1013,7 +1155,7 @@ const TreeIdentityScreen: React.FC = () => {
             <>
               <Icon name="check-circle" size={22} color="#000000" />
               <Text style={styles.ctrlBtnText}>
-                Nhận diện ({totalCaptures} góc)
+                Identify ({totalCaptures} Directions)
               </Text>
             </>
           )}
@@ -1083,6 +1225,36 @@ const TreeIdentityScreen: React.FC = () => {
             )}
             {/* Nháy "chụp" dịu — chỉ trong khung camera */}
             {nativeHudActive && <CaptureFlash count={totalCaptures} />}
+
+            {/* Điều-khiển cam: đèn (mặc-định TẮT) + lens 0.5x. Chỉ hiện khi máy hỗ-trợ. */}
+            {TreeReIDBridge.isAvailable() && isCaptureActive && (
+              <View style={styles.camControls}>
+                {camCaps.hasTorch && (
+                  <TouchableOpacity
+                    style={[styles.camCtrlBtn, torchOn && styles.camCtrlBtnOn]}
+                    onPress={toggleTorch}
+                    activeOpacity={0.8}
+                  >
+                    <Icon
+                      name={torchOn ? 'flash' : 'flash-off'}
+                      size={20}
+                      color={torchOn ? '#1a1a1a' : NEUTRAL.white}
+                    />
+                  </TouchableOpacity>
+                )}
+                {camCaps.supportsUltraWide && (
+                  <TouchableOpacity
+                    style={[styles.camCtrlBtn, ultraWideOn && styles.camCtrlBtnOn]}
+                    onPress={toggleUltraWide}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.camCtrlText, ultraWideOn && styles.camCtrlTextOn]}>
+                      {ultraWideOn ? '0.5x' : '1x'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
           </View>
           {nativeHudActive && (
             <View style={styles.topZone}>
@@ -1187,6 +1359,8 @@ const TreeIdentityScreen: React.FC = () => {
         }
         onSelect={handleSelectCandidate}
         onDismiss={() => setShowConfirm(false)}
+        allowNew={identResult?.allow_enroll_new !== false}
+        suggestText={identResult?.suggest}
       />
 
       {/* M3: bộ chọn "cây khác" (correct_tid từ /api/trees) */}
@@ -1263,6 +1437,28 @@ const TreeIdentityScreen: React.FC = () => {
                   </TouchableOpacity>
                 )}
               />
+            )}
+
+            {/* LỐI THOÁT: không cây nào trong danh sách là đúng → ĐÂY LÀ CÂY MỚI.
+                Thiếu lối này thì khi server khớp NHẦM, user KẸT không tạo được cây
+                mới nào nữa (field Giang 13/07). */}
+            {!isLoadingPicker && !pickerError && (
+              <TouchableOpacity
+                style={styles.pickerNewBtn}
+                onPress={handleRegisterNewFromMatch}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel="Đây là cây mới, đăng ký cây mới"
+              >
+                <Icon name="plus-circle" size={20} color="#1b5e20" />
+                <View style={styles.pickerRowBody}>
+                  <Text style={styles.pickerNewTitle}>Đây là cây mới</Text>
+                  <Text style={styles.pickerRowSub}>
+                    Không phải cây nào ở trên — đăng ký thành cây mới
+                  </Text>
+                </View>
+                <Icon name="chevron-right" size={20} color="#1b5e20" />
+              </TouchableOpacity>
             )}
           </View>
         </View>
@@ -1653,6 +1849,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  camControls: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    gap: 10,
+    alignItems: 'center',
+  },
+  camCtrlBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  camCtrlBtnOn: {
+    backgroundColor: '#FFD34E',
+    borderColor: '#FFD34E',
+  },
+  camCtrlText: { color: NEUTRAL.white, fontSize: 13, fontWeight: '800' },
+  camCtrlTextOn: { color: '#1a1a1a' },
   bottomZone: {
     backgroundColor: PANEL_BG,
     paddingHorizontal: 14,
@@ -1792,6 +2011,24 @@ const styles = StyleSheet.create({
     color: NEUTRAL.textSub,
     lineHeight: 18,
   },
+  suggestBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginTop: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: NEUTRAL.bgWarm,
+    borderWidth: 1,
+    borderColor: NEUTRAL.border,
+  },
+  suggestText: {
+    flex: 1,
+    fontSize: 13,
+    color: NEUTRAL.text,
+    lineHeight: 18,
+  },
   decisionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1802,6 +2039,13 @@ const styles = StyleSheet.create({
   },
   btnGreen: { backgroundColor: HEADER_BG },
   btnBlue: { backgroundColor: '#1565c0' },
+  // Viền xanh (phụ) — lối thoát "không phải cây này" ở luồng MATCH: rõ nhưng KHÔNG
+  // tranh vai với hành-động chính, tránh user bấm nhầm tạo cây trùng.
+  btnOutlineGreen: {
+    backgroundColor: '#e8f5e9',
+    borderWidth: 1.5,
+    borderColor: '#1b5e20',
+  },
   decisionBtnText: {
     color: NEUTRAL.white,
     fontSize: 15,
@@ -2023,6 +2267,26 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: NEUTRAL.textMuted,
     marginTop: 1,
+  },
+  // Lối thoát "Đây là cây mới" — nổi bật, tách khỏi danh sách cây đã có.
+  pickerNewBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginHorizontal: 12,
+    marginTop: 8,
+    marginBottom: 12,
+    paddingVertical: 13,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: '#1b5e20',
+    backgroundColor: '#e8f5e9',
+  },
+  pickerNewTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1b5e20',
   },
 
   // ── M4 matcher picker ─────────────────────────────────────────────────────

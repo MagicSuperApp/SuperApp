@@ -26,6 +26,25 @@ interface TaadEnclaveNativeBridge {
   deriveTaadPubkey(kekHex: string): Promise<string>;
   deriveWalletSeed(kekHex: string): Promise<string>;
   deriveWalletAddress(kekHex: string, account: number, network: number): Promise<string>;
+  deriveStakeAddress(kekHex: string, account: number, network: number): Promise<string>;
+  // Ký proof-of-ownership /wallet/standard/register → JSON {"paymentPublicKeyHex","signature"}.
+  signWalletRegister(kekHex: string, account: number, message: string): Promise<string>;
+  // Dựng + ký tx Cardano (ADA/LAMP) → CBOR hex đã ký. amount* là chuỗi (u64 vượt bridge precision).
+  buildSignedTransfer(
+    kekHex: string, account: number, toAddress: string,
+    amountLovelace: string, lampAmount: string,
+    lampPolicyHex: string, lampAssetNameHex: string,
+    utxosJson: string, protocolParamsJson: string, network: number,
+  ): Promise<string>;
+  // Dựng + ký tx uỷ thác stake vào 1 pool → CBOR hex đã ký.
+  buildStakeDelegation(
+    kekHex: string, account: number, poolBech32: string,
+    utxosJson: string, protocolParamsJson: string, network: number,
+  ): Promise<string>;
+  // Witness (ký) tx CBOR đã dựng sẵn (GetLAMP) → CBOR hex đã ký.
+  witnessUnsignedTx(kekHex: string, account: number, unsignedTxCborHex: string, network: number): Promise<string>;
+  // 2FA DeviceKey opt-in: sinh Ed25519 ngẫu nhiên + ký canonical → JSON {publicKeyHex,signature,secretHex}.
+  deviceKeyOptin(userDid: string, nonce: string): Promise<string>;
   // Wrapping primitives
   generateSalt(): Promise<string>;
   pbkdf2Derive(pin: string, saltHex: string): Promise<string>;
@@ -54,6 +73,12 @@ const moduleNotAvailable = (): TaadEnclaveNativeBridge => {
     deriveTaadPubkey: () => reject('deriveTaadPubkey') as never,
     deriveWalletSeed: () => reject('deriveWalletSeed') as never,
     deriveWalletAddress: () => reject('deriveWalletAddress') as never,
+    deriveStakeAddress: () => reject('deriveStakeAddress') as never,
+    signWalletRegister: () => reject('signWalletRegister') as never,
+    buildSignedTransfer: () => reject('buildSignedTransfer') as never,
+    buildStakeDelegation: () => reject('buildStakeDelegation') as never,
+    witnessUnsignedTx: () => reject('witnessUnsignedTx') as never,
+    deviceKeyOptin: () => reject('deviceKeyOptin') as never,
     generateSalt: () => reject('generateSalt') as never,
     pbkdf2Derive: () => reject('pbkdf2Derive') as never,
     aesGcmEncrypt: () => reject('aesGcmEncrypt') as never,
@@ -100,6 +125,156 @@ export const deriveWalletAddress = (
   account = 0,
   network = 0,
 ): Promise<string> => bridge.deriveWalletAddress(kekHex, account, network);
+
+/**
+ * Địa chỉ STAKE (reward) Cardano — bech32 `stake_test1…` (preprod) / `stake1…` (mainnet).
+ * Cùng CIP-1852 với ví, chỉ khác nhánh role 2 (m/1852'/1815'/account'/2/0).
+ * Dùng cho PhoenixKey `/wallet/standard/register` (field `stake_address`) + staking.
+ * network: 0=preprod, 1=mainnet. account: 0=cố định, ≥1=hoạt động.
+ */
+export const deriveStakeAddress = (
+  kekHex: string,
+  account = 0,
+  network = 0,
+): Promise<string> => bridge.deriveStakeAddress(kekHex, account, network);
+
+/** Proof-of-ownership cho ví Standard: pubkey + chữ ký payment key của `fixedAddress`. */
+export interface WalletRegisterProof {
+  paymentPublicKeyHex: string;
+  signature: string;
+}
+
+/**
+ * Ký challenge proof-of-ownership PhoenixKey `/wallet/standard/register` (Issue #47)
+ * bằng PAYMENT key của `account` (từ Master_KEK). `message` = challenge canonical
+ * (UTF-8) do caller dựng:
+ *   "PHOENIXKEY_WALLET_STANDARD_REGISTER:" + userDid + ":" + fixedAddress + ":" + nonce
+ * Trả { paymentPublicKeyHex (64 hex), signature (128 hex) }. Reject nếu KEK/seed sai.
+ * KHÔNG lộ khoá — native chỉ trả pubkey + chữ-ký.
+ */
+export const signWalletRegister = async (
+  kekHex: string,
+  account: number,
+  message: string,
+): Promise<WalletRegisterProof> => {
+  const json = await bridge.signWalletRegister(kekHex, account, message);
+  const parsed = JSON.parse(json) as WalletRegisterProof;
+  if (!parsed.paymentPublicKeyHex || !parsed.signature) {
+    throw new Error('signWalletRegister: native trả thiếu pubkey/signature');
+  }
+  return parsed;
+};
+
+/**
+ * Dựng + ký tx Cardano (ADA/LAMP) trong Enclave (Issue #74). Derive seed ví từ
+ * Master_KEK trong native → build + witness → CBOR hex, KHÔNG lộ seed ra JS.
+ * Kết quả submit qua `phoenixKeyApi.wallet.txSubmit(cbor)`.
+ *
+ * `amountLovelace`/`lampAmount` truyền dạng CHUỖI thập phân (u64 vượt precision của
+ * cầu RN). `utxosJson`/`protocolParamsJson` = JSON THÔ Blockfrost (giữ snake_case —
+ * đừng đưa qua axios camelCase interceptor). network: 0=preprod, 1=mainnet.
+ */
+export const buildSignedTransfer = async (args: {
+  kekHex: string;
+  account: number;
+  toAddress: string;
+  amountLovelace: string;
+  lampAmount?: string;
+  lampPolicyHex?: string;
+  lampAssetNameHex?: string;
+  utxosJson: string;
+  protocolParamsJson: string;
+  network: number;
+}): Promise<string> => {
+  const cbor = await bridge.buildSignedTransfer(
+    args.kekHex,
+    args.account,
+    args.toAddress,
+    args.amountLovelace,
+    args.lampAmount ?? '0',
+    args.lampPolicyHex ?? '',
+    args.lampAssetNameHex ?? '',
+    args.utxosJson,
+    args.protocolParamsJson,
+    args.network,
+  );
+  if (!cbor) {
+    throw new Error('buildSignedTransfer: native trả rỗng (KEK/seed sai, UTXO trống, hoặc build lỗi)');
+  }
+  return cbor;
+};
+
+/**
+ * Dựng + ký tx UỶ THÁC stake vào 1 pool trong Enclave. Cùng nguồn dữ-liệu với
+ * buildSignedTransfer: `utxosJson`/`protocolParamsJson` = JSON THÔ Blockfrost.
+ * `poolBech32` = pool id (`pool1...`). network: 0=preprod, 1=mainnet.
+ * Kết quả submit qua `phoenixKeyApi.wallet.txSubmit(cbor)`.
+ */
+export const buildStakeDelegation = async (args: {
+  kekHex: string;
+  account: number;
+  poolBech32: string;
+  utxosJson: string;
+  protocolParamsJson: string;
+  network: number;
+}): Promise<string> => {
+  const cbor = await bridge.buildStakeDelegation(
+    args.kekHex,
+    args.account,
+    args.poolBech32,
+    args.utxosJson,
+    args.protocolParamsJson,
+    args.network,
+  );
+  if (!cbor) {
+    throw new Error('buildStakeDelegation: native trả rỗng (KEK/seed sai, UTXO trống, hoặc build lỗi)');
+  }
+  return cbor;
+};
+
+/**
+ * Witness (ký) tx CBOR ĐÃ DỰNG SẴN bằng payment key của account (GetLAMP §2). Dùng cho
+ * luồng "BE build unsigned → client witness → BE submit". Trả CBOR hex đã ký (thêm vkey
+ * witness vào witness-set có sẵn, không đụng body). network: 0=preprod, 1=mainnet.
+ */
+export const witnessUnsignedTx = async (
+  kekHex: string,
+  account: number,
+  unsignedTxCborHex: string,
+  network: number,
+): Promise<string> => {
+  const cbor = await bridge.witnessUnsignedTx(kekHex, account, unsignedTxCborHex, network);
+  if (!cbor) {
+    throw new Error('witnessUnsignedTx: native trả rỗng (KEK sai hoặc tx CBOR không hợp lệ)');
+  }
+  return cbor;
+};
+
+export interface DeviceKeyOptInProof {
+  /** Ed25519 raw pubkey 32 byte (64 hex) — gửi lên backend. */
+  publicKeyHex: string;
+  /** Ed25519 raw signature 64 byte (128 hex) trên canonical opt-in. */
+  signature: string;
+  /** 32-byte seed device key (64 hex) — caller LƯU K_bio (secureStore), KHÔNG gửi lên. */
+  secretHex: string;
+}
+
+/**
+ * 2FA DeviceKey opt-in (Issue #28): native sinh Ed25519 ngẫu nhiên (per-device) và ký
+ * canonical "PHOENIXKEY_DEVICE_KEY_OPTIN:userDid:pubkey:nonce". Trả pubkey + signature
+ * (gửi backend) + secretHex (caller lưu K_bio để cosign 2of2 sau). Reject nếu native lỗi.
+ */
+export const deviceKeyOptin = async (
+  userDid: string,
+  nonce: string,
+): Promise<DeviceKeyOptInProof> => {
+  const json = await bridge.deviceKeyOptin(userDid, nonce);
+  const parsed = JSON.parse(json) as DeviceKeyOptInProof;
+  if (!parsed.publicKeyHex || !parsed.signature || !parsed.secretHex) {
+    throw new Error('deviceKeyOptin: native trả thiếu pubkey/signature/secret');
+  }
+  return parsed;
+};
 
 // ── Wrapping primitives (dùng để wrap/unwrap Master_KEK khi persist) ──────────
 
@@ -148,6 +323,12 @@ export default {
   deriveTaadPubkey,
   deriveWalletSeed,
   deriveWalletAddress,
+  deriveStakeAddress,
+  signWalletRegister,
+  buildSignedTransfer,
+  buildStakeDelegation,
+  witnessUnsignedTx,
+  deviceKeyOptin,
   generateSalt,
   pbkdf2Derive,
   aesGcmEncrypt,

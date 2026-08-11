@@ -38,11 +38,32 @@ class TaadEnclaveModule(reactContext: ReactApplicationContext) :
     private external fun nativeDeriveTaadPubkey(kekHex: String): String?
     private external fun nativeDeriveWalletSeed(kekHex: String): String?
     private external fun nativeDeriveWalletAddress(kekHex: String, account: Int, network: Int): String?
+    /** Địa-chỉ STAKE (reward) — cùng CIP-1852 với ví, nhánh role 2 (m/1852'/1815'/acc'/2/0). */
+    private external fun nativeDeriveStakeAddress(kekHex: String, account: Int, network: Int): String?
+    private external fun nativeSignWalletRegister(kekHex: String, account: Int, message: String): String?
+    /** Dựng + ký tx Cardano (ADA/LAMP). amount* là String (u64 vượt precision bridge). */
+    private external fun nativeBuildSignedTransfer(
+        kekHex: String, account: Int, toAddress: String,
+        amountLovelace: String, lampAmount: String,
+        lampPolicyHex: String, lampAssetNameHex: String,
+        utxosJson: String, protocolParamsJson: String, network: Int,
+    ): String?
+    /** Dựng + ký tx uỷ thác stake vào 1 pool. */
+    private external fun nativeBuildStakeDelegation(
+        kekHex: String, account: Int, poolBech32: String,
+        utxosJson: String, protocolParamsJson: String, network: Int,
+    ): String?
+    /** Witness (ký) tx CBOR đã dựng sẵn (GetLAMP). */
+    private external fun nativeWitnessUnsignedTx(
+        kekHex: String, account: Int, unsignedTxCborHex: String, network: Int,
+    ): String?
     private external fun nativeGenerateSalt(): String?
     private external fun nativePbkdf2Derive(pin: String, saltHex: String): String?
     private external fun nativeAesGcmEncrypt(keyHex: String, plaintextHex: String): String?
     private external fun nativeAesGcmDecrypt(keyHex: String, encryptedJson: String): String?
     private external fun nativeSignEd25519(masterKekHex: String, message: String): String?
+    /** 2FA DeviceKey opt-in: sinh Ed25519 ngẫu nhiên + ký canonical → JSON. */
+    private external fun nativeDeviceKeyOptin(userDid: String, nonce: String): String?
 
     // ── RN methods ──────────────────────────────────────────────────────────
 
@@ -116,6 +137,58 @@ class TaadEnclaveModule(reactContext: ReactApplicationContext) :
     fun deriveWalletAddress(kekHex: String, account: Int, network: Int, promise: Promise) =
         run(promise, "E_DERIVE_ADDR", "Không derive được địa chỉ Cardano") {
             nativeDeriveWalletAddress(kekHex, account, network)
+        }
+
+    @ReactMethod
+    fun deriveStakeAddress(kekHex: String, account: Int, network: Int, promise: Promise) =
+        run(promise, "E_DERIVE_STAKE", "Không derive được địa chỉ stake Cardano") {
+            nativeDeriveStakeAddress(kekHex, account, network)
+        }
+
+    @ReactMethod
+    fun signWalletRegister(kekHex: String, account: Int, message: String, promise: Promise) =
+        run(promise, "E_SIGN_WALLET_REG", "Không ký được proof-of-ownership ví Standard") {
+            nativeSignWalletRegister(kekHex, account, message)
+        }
+
+    /** Dựng + ký tx Cardano (ADA/LAMP) — client build, backend relay (Issue #74). */
+    @ReactMethod
+    fun buildSignedTransfer(
+        kekHex: String, account: Int, toAddress: String,
+        amountLovelace: String, lampAmount: String,
+        lampPolicyHex: String, lampAssetNameHex: String,
+        utxosJson: String, protocolParamsJson: String, network: Int,
+        promise: Promise,
+    ) = run(promise, "E_BUILD_TX", "Không dựng được giao dịch Cardano") {
+        nativeBuildSignedTransfer(
+            kekHex, account, toAddress, amountLovelace, lampAmount,
+            lampPolicyHex, lampAssetNameHex, utxosJson, protocolParamsJson, network,
+        )
+    }
+
+    /** Dựng + ký tx uỷ thác stake vào 1 pool — client build, backend relay. */
+    @ReactMethod
+    fun buildStakeDelegation(
+        kekHex: String, account: Int, poolBech32: String,
+        utxosJson: String, protocolParamsJson: String, network: Int,
+        promise: Promise,
+    ) = run(promise, "E_BUILD_DELEG", "Không dựng được giao dịch uỷ thác") {
+        nativeBuildStakeDelegation(kekHex, account, poolBech32, utxosJson, protocolParamsJson, network)
+    }
+
+    /** Witness (ký) tx CBOR đã dựng sẵn (GetLAMP) — client witness, backend submit. */
+    @ReactMethod
+    fun witnessUnsignedTx(
+        kekHex: String, account: Int, unsignedTxCborHex: String, network: Int, promise: Promise,
+    ) = run(promise, "E_WITNESS_TX", "Không ký được giao dịch") {
+        nativeWitnessUnsignedTx(kekHex, account, unsignedTxCborHex, network)
+    }
+
+    /** 2FA DeviceKey opt-in: sinh Ed25519 ngẫu nhiên + ký canonical → JSON. */
+    @ReactMethod
+    fun deviceKeyOptin(userDid: String, nonce: String, promise: Promise) =
+        run(promise, "E_DEVICE_KEY", "Không sinh được khoá thiết bị 2FA") {
+            nativeDeviceKeyOptin(userDid, nonce)
         }
 
     @ReactMethod

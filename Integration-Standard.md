@@ -2,9 +2,9 @@
 
 > **Mục đích**: Tài liệu chuẩn để Agent/dev của MỌI platform (ProofChat, OriLife, AladinWork, LampNetCloud, Farm, và module mới bất kỳ) nắm context + thực thi đúng, đảm bảo nhất quán khi cắm vào host shell (kênh 1+2) và khi nhúng host ngoài (kênh 3).
 > **Cấp**: L1 Platform — Ecosystem-wide Standard.
-> **Status**: DRAFT v0.1 — 2026-06-17.
+> **Status**: v0.2.1 — 2026-07-12 (xem §9 Change Log).
 > **Owner**: Aladin (founder) · Orchestrator giữ interface contract.
-> **Nguồn chốt**: `PLATFORM-MASTER.md` (INV-1/INV-2, 8 Spec Group, 2 kiểu tích hợp), `BRAIN/KNOWLEDGE.md §F/G`, `_analysis/EXPANSION-ANALYSIS.md` (QĐ-1..QĐ-8).
+> **Nguồn chốt**: `Specs/PLATFORM-MASTER.md` (INV-1/INV-2, 8 Spec Group, 2 kiểu tích hợp), `Specs/_analysis/EXPANSION-ANALYSIS.md` (QĐ-1..QĐ-8).
 > **Quan hệ với spec khác**: Tài liệu này là CONTRACT trừu tượng. Chi tiết hiện thực thuộc các Spec Group SG1..SG8. Khi mâu thuẫn, Math-Spec (invariant) thắng. KHÔNG duplicate nội dung cross-group — chỉ tham chiếu.
 
 ---
@@ -216,7 +216,7 @@ Ví dụ `config.schema.json`:
 ### 7.1 Navigation grammar chung
 
 - MỘT framework điều hướng (sở hữu SG4). Module feature chỉ đăng ký `route` + `navSlot` (`primary`/`secondary`/`contextual`), KHÔNG tự dựng navigator riêng.
-- Refactor nav từ **hard-import sang registry config-driven** (QĐ-1): nav bind theo config instance, giữ default bundle nhúng binary làm fallback offline. (Hiện code vi phạm: nav import cứng — phải sửa.)
+- Nav **registry config-driven** (QĐ-1): nav bind theo config instance, giữ default bundle nhúng binary làm fallback offline. (YC-3 ĐÃ refactor từ hard-import → config-driven, xem `src/modules/index.ts` + `src/navigation/registry.ts`.)
 - Back/forward, deep-link (`magiclamp://<module>`), và handoff native theo một grammar chung xuyên mọi instance + kênh nhúng.
 
 ### 7.2 Adaptive 2 cực (token-driven, override 2 cấp)
@@ -281,6 +281,7 @@ Một platform/module chỉ được coi là READY khi TẤT CẢ mục dưới 
 ---
 
 ## 9. Change Log
+- v0.2.1 (2026-07-12): Rà soát nhất quán — sửa Status header (v0.1→v0.2), path "Nguồn chốt" trỏ `Specs/`, gỡ ghi chú lỗi thời §7.1 (nav ĐÃ config-driven qua YC-3), cập nhật vị trí git token (§10.2, chuẩn mới `Projects/Agents/.env`), làm rõ CARP thanh toán = tầng mạng nội bộ (§10.4 nhất quán §4.2), thống nhất mô tả upstream (§10.1↔§11).
 - v0.2 (2026-07-12): Gộp về MỘT file duy nhất tại ROOT (`Integration-Standard.md`) — dời khỏi `Specs/` (references dùng tên "INTEGRATION-STANDARD §X" không đổi). Thêm §10 (vận hành: env/cờ/token UI) + §11 (danh mục platform) + thư mục `Integration/` chứa snapshot 5 nền tảng. Đây là nơi mọi agent/dev tham chiếu chuẩn tích hợp.
 - v0.1 (2026-06-17): Khởi tạo Integration Standard. Tổng hợp QĐ-1..QĐ-8 từ EXPANSION-ANALYSIS + INV-1/INV-2/INV-3. 8 mục: Manifest, Design token/brand, Identity/data, Config/billing, Embed-SDK, Registry/governance, Frontend consistency, Checklist.
 
@@ -291,11 +292,11 @@ Một platform/module chỉ được coi là READY khi TẤT CẢ mục dưới 
 > §0–§9 là CONTRACT trừu tượng (kiến trúc + bất biến). Mục này là quy ước VẬN HÀNH cụ thể để agent/dev cắm API THẬT của từng platform vào SuperApp. **App BUILD từ repo [`AladinContract/SuperApp`](https://github.com/AladinContract/SuperApp) — KHÔNG build từ repo platform.** Mọi giá trị SuperApp đọc đều nằm trong repo này.
 
 ### 10.1 Nguồn sự-thật 2 lớp
-- **Upstream (canonical):** mỗi platform giữ `SuperApp-Integration.md` trong repo Specs của org mình (§11 có link). Đổi endpoint/auth/token → cập nhật cùng lúc (kèm ngày + HEAD commit).
+- **Upstream (canonical):** mỗi platform giữ `SuperApp-Integration.md` trong repo phù hợp của org mình — thường là repo Specs, hoặc repo backend nếu chưa tách Specs (xem cột "Upstream" §11). Đổi endpoint/auth/token → cập nhật cùng lúc (kèm ngày + HEAD commit).
 - **Snapshot (build):** SuperApp giữ bản đã kiểm chứng trong [`Integration/<Platform>.md`](Integration/). Đây là bản app THỰC SỰ đọc để build. Upstream đổi → đồng bộ snapshot rồi mới bật cờ. Mỗi phiên đọc snapshot, KHÔNG dựa trí nhớ.
 
 ### 10.2 Vị trí key / creds
-- **Git token (push/PR):** `/Users/ductiger/Projects/.env`, biến `GH_TOKEN_<ACCOUNT>`. KHÔNG commit, KHÔNG dán giá trị.
+- **Git token (push/PR):** `.env` ở workspace cha NGOÀI repo (2026-07-12: chuẩn mới `Projects/Agents/.env`, cũ `Projects/.env`), biến `GH_TOKEN_<ACCOUNT>`. KHÔNG commit, KHÔNG dán giá trị, KHÔNG nhúng trong URL remote.
 - **API host/key platform:** `.env` của SuperApp (gitignored; mẫu [`.env.example`](.env.example)). Quy ước biến: `<PLATFORM>_API_URL` · `<PLATFORM>_WS_URL`+`_WS_PATH` · `<PLATFORM>_API_KEY` · `<PLATFORM>_BACKEND_ENABLED`.
 - Platform dùng DID/session (OriLife/AladinWork/ProofChat) → KHÔNG static token; auth = PhoenixKey login → Bearer TTL (§3.1, §5.1).
 - **Token nhúng trong URL remote git = rò rỉ** — xoay vòng ngay, sửa `git remote set-url`.
@@ -305,7 +306,8 @@ Một platform/module chỉ được coi là READY khi TẤT CẢ mục dưới 
 - Bật `true` chỉ khi: snapshot Readiness 🟢 + có creds trong `.env` + đã đối chiếu shape API thật.
 
 ### 10.4 Token hiển thị (bổ sung §4.2)
-- 3 token user-facing: **MAGIC** (đơn vị định giá) · **CARP** (đồng thanh toán; `402 NO_FUNDS` = thiếu CARP) · **LAMP** (backing/governance, cố định 36 tỷ, no-burn).
+- 3 token user-facing: **MAGIC** (đơn vị định giá) · **CARP** (đồng thanh toán trong mạng: pledge + phí giữ/chuyển; `402 NO_FUNDS` = thiếu CARP) · **LAMP** (backing/governance, cố định 36 tỷ, no-burn).
+- ⚠️ Nhất quán với §4.2: CARP/MAGIC/LAMP là thanh toán **tài nguyên mạng nội bộ**, KHÔNG phải thanh toán dịch vụ thương mại B2C (phí B2C fiat đi qua **PSP có giấy phép**, không qua crypto).
 - **ADA KHÔNG user-facing** — chỉ phí chain (lovelace). Ví on-chain CÓ giữ ADA thật để trả phí, nên ADA chỉ hiện ở mục "Tài sản khác", KHÔNG đặt ngang hàng MAGIC/LAMP/CARP ở màn chính.
 - Doc "CARP gộp MAGIC" DEPRECATED (2026-07-03) — KHÔNG dùng.
 
@@ -334,3 +336,32 @@ Một platform/module chỉ được coi là READY khi TẤT CẢ mục dưới 
 | LampNet | hivemind `506c611` (07-11) | `lampnet.cloud` | join public · upload Bearer | 🟡 join/compute chạy · 🔴 reward dry-run |
 
 > Trạng thái nhánh dọn dẹp: [`docs/BRANCH-AUDIT.md`](docs/BRANCH-AUDIT.md).
+
+## 12. Handoff Ledger — module ĐẨY việc cho dev SuperApp (không để SuperApp đi hỏi)
+
+> **Vấn đề:** trước nay SuperApp phải đi HỎI từng module "backend xong chưa, shape gì" (pull).
+> Chậm + dễ sót. **Đảo chiều (push):** module/nền tảng nào hoàn thành một năng lực có phần
+> UI/wire cần dựng ở SuperApp thì TỰ GHI vào sổ bàn giao — dev SuperApp (Thư/Tùng) đọc 1 chỗ.
+
+### 12.1 File sổ
+- MỘT file sống: [`Integration/Module-Handoff.md`](Integration/Module-Handoff.md) trong repo SuperApp.
+- Là bảng nhiều-tay-ghi → tách khỏi tài liệu CONTRACT tĩnh này để tránh xung đột merge. §12 chỉ
+  định nghĩa FORMAT + nghĩa vụ; DỮ LIỆU nằm ở file sổ (KHÔNG duplicate — theo nguyên tắc doc này).
+
+### 12.2 Nghĩa vụ (áp cho MỌI agent module/nền tảng)
+Khi hoàn thành một năng lực backend/nền tảng mà SuperApp cần dựng UI hoặc nối API:
+1. **Append NGAY** một dòng vào bảng "Đang mở" của `Module-Handoff.md` (qua PR vào SuperApp,
+   hoặc nhờ SuperApp agent chèn nếu không có quyền push repo này) — KHÔNG chờ SuperApp hỏi.
+2. Cập nhật shape thật vào `Integration/<Platform>.md` (snapshot) TRƯỚC, rồi ledger chỉ TRỎ tới đó.
+3. Khi backend đổi shape/endpoint đã bàn giao → cập nhật lại dòng ledger + snapshot (kèm ngày).
+
+### 12.3 Format 1 dòng (8 cột)
+`ID | Module (agent) | Loại | Việc cụ thể ở SuperApp | Ref shape | BE | Ai (Thư/Tùng) | Ngày đẩy`
+- **Loại** ∈ {Screen, Wire, Shape, Fix}. **BE** ∈ {🟢 live · 🟡 code chưa deploy · 🔴 chưa build · ⚫ OPS/secret}.
+- **Ref shape** trỏ `Integration/<Platform>.md` hoặc endpoint cụ thể — KHÔNG chép shape vào ledger.
+- **Định nghĩa Done:** dev dựng xong + verify (tsc/test + đối chiếu shape thật) + merge develop → chuyển dòng xuống "Đã xong".
+
+### 12.4 Ranh giới rule
+- Nghĩa vụ HÀNH VI "phải tự đẩy khi xong" là rule CHÉO mọi agent → thuộc `_rules/Forall.md`
+  (chủ nhân kiểm soát tập trung, Forall §"không tự sửa file rule global"). §12 chỉ định nghĩa
+  cơ chế/format; việc ép mọi agent tuân do rule global chốt. Agent đề xuất, chủ nhân duyệt.

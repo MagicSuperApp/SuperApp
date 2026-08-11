@@ -1,3 +1,4 @@
+require File.join(File.dirname(`node --print "require.resolve('expo/package.json')"`), "scripts/autolinking")
 # Resolve react_native_pods.rb with node to allow for hoisting
 require Pod::Executable.execute_command('node', ['-p',
   'require.resolve(
@@ -8,7 +9,13 @@ require Pod::Executable.execute_command('node', ['-p',
 # Explicit CDN source — bắt buộc để CocoaPods tìm TensorFlowLiteSwift 2.17.0
 source 'https://cdn.cocoapods.org/'
 
-platform :ios, min_ios_version_supported
+# iOS 16.4: expo@56 (expo/expo-modules-core podspec) khai `:ios => '16.4'` — SDK 56
+# bản này ĐÒI 16.4 (không phải 15.1 như trước tưởng). Podfile PHẢI khai 16.4 để khớp
+# Xcode project (IPHONEOS_DEPLOYMENT_TARGET đã = 16.4) — nếu để min_ios_version_supported
+# (=15.1 của RN 0.84), CocoaPods coi app target 15.1 → từ chối link Expo ("requires iOS
+# 16.4 but app targets 15.1") → pod install fail. Đánh đổi: bỏ hỗ trợ iOS 15.x (bắt buộc
+# nếu còn dùng expo 56 cho expo-gl 3D).
+platform :ios, '16.4'
 prepare_react_native_project!
 
 # @react-native-firebase: BẮT BUỘC dưới use_frameworks! :static.
@@ -29,7 +36,24 @@ if linkage != nil
 end
 
 target 'aladin_mobile_fe' do
-  config = use_native_modules!
+  use_expo_modules!
+
+  if ENV['EXPO_USE_COMMUNITY_AUTOLINKING'] == '1'
+    config_command = ['node', '-e', "process.argv=['', '', 'config'];require('@react-native-community/cli').run()"];
+  else
+    config_command = [
+      'node',
+      '--no-warnings',
+      '--eval',
+      'require(require.resolve(\'expo-modules-autolinking\', { paths: [require.resolve(\'expo/package.json\')] }))(process.argv.slice(1))',
+      'react-native-config',
+      '--json',
+      '--platform',
+      'ios'
+    ]
+  end
+
+  config = use_native_modules!(config_command)
 
   use_react_native!(
     :path => config[:reactNativePath],
@@ -121,6 +145,29 @@ target 'aladin_mobile_fe' do
         if target.name == 'RNFBMessaging'
           config.build_settings['CLANG_ENABLE_MODULES'] = 'NO'
         end
+
+        # ── FIX: ExpoModulesJSI + Xcode 26 / Swift 6 breaking change ──────────
+        # Triệu chứng: Xcode 26 build ExpoModulesJSI xcframework với -swift-version 6
+        # → tất cả `weak let` bị lỗi: "'weak' must be a mutable variable, because it
+        # may change at runtime" (Swift 6 không cho phép weak let, phải dùng weak var).
+        # expo@56.0.x bundled expo-modules-jsi chưa update cho Swift 6.
+        # Fix: ép Swift 5.9 cho pod này → tương thích ngược, build pass.
+        if target.name == 'ExpoModulesJSI'
+          config.build_settings['SWIFT_VERSION'] = '5.9'
+        end
+
+        # ── FIX: expose module `React_RCTAppDelegate` cho APP target ──────────
+        # Triệu chứng: dưới use_frameworks! :static + expo (SDK 56), pod
+        # React-RCTAppDelegate BUILD ĐƯỢC nhưng KHÔNG vend clang module →
+        # AppDelegate.swift `import React_RCTAppDelegate` báo "no such module"
+        # (Expo/RCTAppDelegateUmbrella.h dùng __has_include nên tự bỏ qua =
+        #  bằng chứng framework/header của pod này KHÔNG nằm trên search path).
+        # Ép sinh module map + bật clang modules cho chính pod này để framework
+        # xuất `React_RCTAppDelegate.framework` có module importable.
+        if target.name == 'React-RCTAppDelegate'
+          config.build_settings['DEFINES_MODULE'] = 'YES'
+          config.build_settings['CLANG_ENABLE_MODULES'] = 'YES'
+        end
       end
     end
 
@@ -130,5 +177,91 @@ target 'aladin_mobile_fe' do
     # từ ios/ vào app bundle → KHÔNG cần thêm thủ công vào resources_build_phase.
     # Chỉ cần đảm bảo 2 file tồn tại trong ios/ (codemagic.yaml đã copy sẵn).
     # Nếu gặp "Multiple commands produce" → xóa block này và chạy pod install lại.
+
+    # ── Guard worklets: CHỈ stub ExpoModulesWorkletsAdapter ───────────────
+    # CHÍNH XÁC: chỉ `ExpoModulesWorkletsAdapter` gãy — ExpoWorkletsBridgeProvider.mm
+    # `#include <worklets/Compat/StableApi.h>` mà react-native-worklets 0.7.4 CHƯA có.
+    # `ExpoModulesWorklets` (pod chính) TỰ CHỨA (không include worklets runtime) → compile
+    # ĐƯỢC và PHẢI tạo framework để app link `-framework ExpoModulesWorklets` (guard cũ
+    # dùng start_with loại NHẦM cả nó → framework rỗng → link fail "not found").
+    # App không dùng worklets runtime → loại source thật của Adapter, chèn 1 stub để
+    # framework Adapter vẫn được tạo (linkable, rỗng).
+    installer.pods_project.targets.each do |t|
+      next unless t.name == 'ExpoModulesWorkletsAdapter'
+      Pod::UI.puts "🩹 Stub worklets ADAPTER (thiếu StableApi.h): #{t.name}".yellow
+      stub_dir = File.join(installer.sandbox.root, 'ExpoStubs')
+      FileUtils.mkdir_p(stub_dir)
+      stub_file = File.join(stub_dir, 'ExpoModulesWorkletsAdapterStub.m')
+      unless File.exist?(stub_file)
+        File.write(stub_file, "// Stub: giữ framework Adapter linkable khi source thật bị loại\n" \
+                              "// (react-native-worklets 0.7.4 thiếu <worklets/Compat/StableApi.h>).\n" \
+                              "// App không dùng worklets runtime.\n" \
+                              "__attribute__((used)) static int expo_worklets_adapter_stub = 0;\n")
+      end
+      ref = installer.pods_project.new_file(stub_file)
+      t.source_build_phase.add_file_reference(ref, true)
+      t.build_configurations.each do |c|
+        c.build_settings['EXCLUDED_SOURCE_FILE_NAMES'] = '*'
+        c.build_settings['INCLUDED_SOURCE_FILE_NAMES'] = 'ExpoModulesWorkletsAdapterStub.m'
+      end
+    end
+    installer.pods_project.save
+
+    # ── FIX (expo/expo #44475): `no such module 'React_RCTAppDelegate'` khi archive ──
+    # Với use_frameworks! :static + prebuilt React, expo-modules-autolinking lúc pod
+    # install PATCH modulemap trong React.xcframework: bỏ `framework module React`
+    # (để không đụng non-framework `module React` ở Target Support Files) NHƯNG GIỮ
+    # `framework module React_RCTAppDelegate`. Vấn đề: script RN "[RNDeps] Replace
+    # React Native Core" (target React-Core-prebuilt) chạy lúc BUILD, `rmSync` + giải
+    # nén LẠI React.xcframework khi đổi Debug↔Release → HOÀN NGUYÊN modulemap gốc →
+    # `framework module React` quay lại, xung đột `module React` → cả modulemap parse
+    # lỗi → `import React_RCTAppDelegate` báo "no such module" → archive fail.
+    # Cách xử lý (Option A của issue): thêm build phase CUỐI cho React-Core-prebuilt,
+    # chạy SAU script replace, re-patch bỏ `framework module React` mỗi lần build.
+    rncore_prebuilt = installer.pods_project.targets.find { |t| t.name == 'React-Core-prebuilt' }
+    if rncore_prebuilt
+      phase_name = '[Expo-fix] Re-patch React modulemap (post RNDeps replace)'
+      unless rncore_prebuilt.build_phases.any? { |p| p.respond_to?(:name) && p.name == phase_name }
+        phase = rncore_prebuilt.new_shell_script_build_phase(phase_name)
+        phase.shell_script = <<~'SH'
+          # (1) Re-áp patch expo (bỏ `framework module React` để không đụng non-framework
+          #     `module React`) + (2) KHAI THẲNG `module React_RCTAppDelegate` vào
+          #     React-use-frameworks.modulemap — file SỐNG SÓT wipe + đã nằm trên search
+          #     path của app (qua -fmodule-map-file). Đây mới là mấu chốt: import React
+          #     chạy được vì có `module React` ở file này, còn React_RCTAppDelegate KHÔNG
+          #     được khai ở đâu app tìm thấy → thêm nó vào ngay đây (trỏ umbrella header
+          #     trong xcframework, giống hệt cách React_Core được khai).
+          RUBY_BIN="$(command -v ruby || echo /usr/bin/ruby)"
+          "$RUBY_BIN" -e '
+            root = ENV["PODS_ROOT"]
+            rx = /framework module React \{.*?\n\}\s*/m
+            paths = Dir.glob("#{root}/React-Core-prebuilt/React.xcframework/*/React.framework/Modules/module.modulemap")
+            shared = "#{root}/React-Core-prebuilt/React.xcframework/Modules/module.modulemap"
+            paths << shared if File.exist?(shared)
+            paths.each do |f|
+              c = File.read(f)
+              next unless c =~ rx
+              c.gsub!(rx, "")
+              File.write(f, c)
+              puts "[Expo-fix] re-patched framework modulemap: #{f}"
+            end
+            mm = "#{root}/Target Support Files/React-Core-prebuilt/React-use-frameworks.modulemap"
+            umb = "#{root}/React-Core-prebuilt/React.xcframework/Headers/React_RCTAppDelegate/React_RCTAppDelegate-umbrella.h"
+            if File.exist?(mm) && File.exist?(umb)
+              content = File.read(mm)
+              unless content.include?("module React_RCTAppDelegate")
+                File.write(mm, content + "\nmodule React_RCTAppDelegate {\n  umbrella header \"#{umb}\"\n  export *\n}\n")
+                puts "[Expo-fix] added module React_RCTAppDelegate -> #{mm}"
+              end
+            else
+              puts "[Expo-fix] WARN: missing modulemap or umbrella (mm=#{File.exist?(mm)} umb=#{File.exist?(umb)})"
+            end
+          '
+        SH
+        # Không dựa vào dependency-analysis: luôn chạy để bám theo mỗi lần replace wipe.
+        phase.always_out_of_date = '1' if phase.respond_to?(:always_out_of_date=)
+        Pod::UI.puts "✅ Added '#{phase_name}' to React-Core-prebuilt".green
+      end
+    end
   end
 end

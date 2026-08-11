@@ -142,10 +142,10 @@ export function onEpochSync(cb: (r: EpochSyncWire) => void): () => void {
   return () => socket?.off('mls:sync.epoch', cb);
 }
 
-// TODO(addendum A3): FE#6 + WS#2 sẽ đổi `contract:message.typing` → `chat:typing`
-// (và read/pinned → `chat:message.*`) khi merge cùng lúc. Giữ tên hiện tại theo
-// production; cập nhật khi anh báo 2 PR đã merge. (send/new · mls:sync.epoch ·
-// chat.room.join GIỮ NGUYÊN.)
+// LƯU Ý (đối chiếu ProofChat INTEGRATION.md §7.2 + PR#15): tên ĐÚNG hiện tại là
+// `contract:message.typing`. Tên `chat:*` (bản FE#6/WS#2 gốc) là SAI và ĐÃ được
+// sửa thành `contract:message.*` — KHÔNG migrate ngược về `chat:typing`. (send/new
+// · read · mls:sync.epoch · chat.room.join đều giữ nguyên theo contract.)
 export function onTyping(cb: (t: { userId: string; isTyping: boolean }) => void): () => void {
   socket?.on('contract:message.typing', cb);
   return () => socket?.off('contract:message.typing', cb);

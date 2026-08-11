@@ -42,7 +42,7 @@ const GuardianScreen: React.FC = () => {
   const onAdd = async () => {
     const did = gDid.trim();
     const name = gName.trim();
-    if (!DID_RE.test(did)) { Alert.alert('DID chưa đúng', 'Nhập DID guardian dạng did:phoenix.'); return; }
+    if (!DID_RE.test(did)) { Alert.alert('Mã định danh chưa đúng', 'Nhập mã định danh của người giám hộ.'); return; }
     if (!name) { Alert.alert('Thiếu tên', 'Nhập tên hiển thị cho guardian.'); return; }
     if (list.some((g) => g.did === did)) { Alert.alert('Đã có', 'Guardian này đã trong danh sách.'); return; }
     setBusy(true);
@@ -84,7 +84,7 @@ const GuardianScreen: React.FC = () => {
 
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
         <Text style={styles.lead}>
-          Guardian giúp bạn khôi phục danh tính khi mất thiết bị. Thêm người bạn tin tưởng bằng DID của họ.
+          Người giám hộ giúp bạn khôi phục danh tính khi mất thiết bị. Thêm người bạn tin tưởng bằng mã định danh của họ.
         </Text>
 
         {/* Danh sách */}
@@ -108,7 +108,7 @@ const GuardianScreen: React.FC = () => {
         {/* Thêm */}
         <Text style={styles.section}>Thêm guardian</Text>
         <TextInput
-          style={styles.input} placeholder="DID guardian (did:phoenix:...)"
+          style={styles.input} placeholder="Mã định danh người giám hộ (did:phoenix:…)"
           placeholderTextColor={COLORS.textMuted} value={gDid} onChangeText={setGDid}
           autoCapitalize="none" autoCorrect={false}
         />

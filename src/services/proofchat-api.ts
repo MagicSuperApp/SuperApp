@@ -20,6 +20,7 @@ import axios, {
 } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PROOFCHAT_API_URL, PROOFCHAT_BACKEND_ENABLED } from '@env';
+import { isCapabilityLive } from '../config/runtimeGate';
 
 // ── Kiểu dữ liệu ─────────────────────────────────────────────────────
 
@@ -72,10 +73,15 @@ export class ProofChatApiError extends Error {
 }
 
 // ── Feature flag (Vận hành độc lập) ──────────────────────────────────
-// Mặc định OFF: chat tab vẫn chạy mock nếu BE chưa cấu hình / chết.
+// Nay do CỔNG RUNTIME quyết (config/runtimeGate.ts): có host + probe /health 2xx
+// → tự bật khi backend sống, KHỎI build lại. Kill-switch thủ công:
+// PROOFCHAT_BACKEND_ENABLED='off' cưỡng bức mock. Mặc định: chat tab chạy mock
+// tới khi /health 2xx. (Trước đây cần ==='true' build-time — anh Aladin chốt
+// 2026-07-22 chuyển tự động.)
 export const isProofChatBackendEnabled = (): boolean =>
-  String(PROOFCHAT_BACKEND_ENABLED) === 'true' &&
-  !!(PROOFCHAT_API_URL as string | undefined);
+  !!(PROOFCHAT_API_URL as string | undefined) &&
+  String(PROOFCHAT_BACKEND_ENABLED).toLowerCase() !== 'off' &&
+  isCapabilityLive('proofchat');
 
 // ── Lưu token ────────────────────────────────────────────────────────
 
@@ -321,6 +327,30 @@ export const conversations = {
     ),
 };
 
+// ── Người dùng (tìm người để bắt đầu chat cá nhân / thêm vào nhóm) ────
+
+/** 1 người dùng từ tìm-kiếm (BE /users/search). Chỉ field tối-thiểu để lập hội-thoại. */
+export interface RemoteUser {
+  userDid: string;
+  username?: string;
+  displayName?: string;
+  avatar?: string | null;
+}
+
+export const users = {
+  /**
+   * Tìm người theo DID hoặc username để bắt đầu chat 1-1 / thêm vào nhóm.
+   * BE: GET /users/search?q=<did_or_username> (Bearer). Trả mảng RemoteUser.
+   */
+  search: (q: string): Promise<RemoteUser[]> =>
+    unwrap<RemoteUser[]>(
+      client.get('/users/search', {
+        needsAuth: true,
+        params: { q },
+      } as AuthableConfig),
+    ),
+};
+
 // ── MLS (bootstrap: KeyPackage + epoch-sync) ─────────────────────────
 // Khớp D:\BE modules/mls (controller `mls`) + modules/mls/epoch-sync. Dùng cho
 // proofchatService (lập nhóm, publish KeyPackage, đồng bộ epoch). Prefix baseURL
@@ -422,5 +452,5 @@ export const mls = {
     ),
 };
 
-export const proofChatApi = { auth, conversations, mls };
+export const proofChatApi = { auth, conversations, users, mls };
 export default proofChatApi;

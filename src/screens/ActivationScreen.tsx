@@ -18,6 +18,7 @@ import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 import { selectChainWallet } from '../store/userSlice';
 import { COLORS } from '../constants';
+import { fmtLamp } from '../utils/token';
 
 const { width, height } = Dimensions.get('window');
 
@@ -271,7 +272,8 @@ const ActivationScreen = () => {
                 <Text style={styles.receiveTitle}>Bạn sẽ nhận được</Text>
                 <View style={styles.receiveRow}>
                   {[
-                    { icon: 'hexagon-outline',  val: '10',   label: 'ADA',  color: '#0033AD', desc: 'Phí giao dịch' },
+                    // ADA không user-facing (Integration-Standard §10.4) — chỉ phí chain,
+                    // KHÔNG hiện như tài sản "nhận được". Kích hoạt cấp LAMP (sinh MAGIC).
                     { icon: 'lightning-bolt',   val: '1,001',label: 'LAMP', color: COLORS.accent, desc: 'Sinh MAGIC' },
                   ].map((t, i) => (
                     <View key={i} style={styles.receiveItem}>
@@ -309,11 +311,12 @@ const ActivationScreen = () => {
 
               {/* Token balances */}
               <View style={styles.tokenRow}>
-                {/* Thứ tự chuẩn hệ sinh thái: MAGIC · LAMP · CARP (ADA về sau). CARP: brand tạm, số dư chờ API Phoenix. */}
+                {/* 3 token user-facing: MAGIC · LAMP · CARP (Integration-Standard §10.4).
+                    ADA KHÔNG hiện ở đây — chỉ phí chain, xem mục "Tài sản khác" ở màn Ví.
+                    CARP: brand tạm, số dư chờ API Phoenix. */}
                 <TokenBadge icon="star-four-points-outline" value={wallet?.magicBalance ?? '—'} label="MAGIC" color="#B07D2F" />
-                <TokenBadge icon="lightning-bolt"  value={wallet?.lampBalance ?? '—'} label="LAMP" color={COLORS.accent} />
+                <TokenBadge icon="lightning-bolt"  value={fmtLamp(wallet?.lampBalance)} label="LAMP" color={COLORS.accent} />
                 <TokenBadge icon="fish" value={wallet?.carpBalance ?? '—'} label="CARP" color="#2F8F8F" />
-                <TokenBadge icon="hexagon-outline" value={wallet?.adaBalance ?? '—'}  label="ADA"  color="#0033AD" />
               </View>
 
               {/* Info note */}

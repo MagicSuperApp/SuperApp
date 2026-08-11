@@ -19,6 +19,8 @@ import {
   FlatList,
   Image,
   Modal,
+  Easing,
+  LayoutChangeEvent,
   NativeSyntheticEvent,
   NativeScrollEvent,
 } from 'react-native';
@@ -27,19 +29,22 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
+import { useAppDispatch } from '../store/hooks';
+import { loadFarms, loadTrees } from '../modules/trace/store/farmSlice';
+import { selectChainWallet } from '../store/userSlice';
 import { NEUTRAL, withAlpha } from '../shared/theme';
 import { MODULES, type ModuleEntry } from '../modules';
+import {
+  getRankedQuickActions,
+  type RankedQuickAction,
+} from '../services/featureUsageService';
 import { COLORS } from '../constants';
+import { fmtLamp } from '../utils/token';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import CreateFarmPromptModal from '../components/CreateFarmPromptModal';
 import { useCollapsibleHeader } from '../components/AppHeader';
-import Geolocation from 'react-native-geolocation-service';
-import { PermissionsAndroid, Alert, ActivityIndicator } from 'react-native';
-import {
-  getOrCreateImplicitFarm,
-  getOrCreateImplicitTree,
-  isImplicitCreationInFlight,
-} from '../modules/trace/utils/implicitParent';
+import { useCoachMarkTarget, useCoachMark } from '../onboarding/CoachMarkContext';
+import { shouldAutoRunTutorial } from '../utils/tutorialStorage';
 
 const { width } = Dimensions.get('window');
 const H_PADDING = 20;
@@ -59,19 +64,17 @@ const MODULE_CARD_W =
 // với TAB_BAR_HEIGHT/FLOAT trong navigation/index.tsx.
 const BOTTOM_NAV_CLEARANCE = 120;
 
-type QuickActionSheetOption = {
-  key: string;
-  icon: string;
-  title: string;
-  subtitle: string;
-  onPress: () => void;
-};
+// ── Hộp Quick Action (thu/mở) ───────────────────────────────────────────────
+// Thanh header PHẲNG, không gradient. Chữ/icon dùng xanh-lá đậm — cùng ngôn ngữ
+// màu với nhóm hành động "quét" (ACTION_COLORS.scan) ở navbar.
+const QUICK_GREEN_DEEP = '#1F5C2A';
+// 4 nút / hàng; nút thừa (tính năng hay dùng ngoài bộ mặc định) tự xuống hàng.
+const QUICK_GAP = 8;
+const QUICK_ITEM_W = (width - H_PADDING * 2 - QUICK_GAP * 3) / 4;
 
-type QuickActionSheetConfig = {
-  title: string;
-  subtitle: string;
-  options: QuickActionSheetOption[];
-};
+// Định dạng số dư token gọn cho stat row (làm tròn + phân tách hàng nghìn vi-VN).
+const formatToken = (n: number): string =>
+  Number.isFinite(n) ? Math.round(n).toLocaleString('vi-VN') : '0';
 
 // ── Mock data (sẽ thay bằng API thật khi module có) ────────────────────────
 const BANNERS = [
@@ -440,17 +443,71 @@ const SectionHeader = ({
 const HomeScreen: React.FC = () => {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+  // Target luồng hướng dẫn: khu "Dịch vụ" trên màn hình chính.
+  const servicesTarget = useCoachMarkTarget('home.services');
+  const { start: startTour } = useCoachMark();
+  const autoTourRef = useRef(false);
   // Cuộn → thu/thả header toàn cục (Facebook-style). Header sống ở tầng nav; ở
   // đây chỉ nối onScroll của ScrollView vào.
   const { onScroll: onHeaderScroll, scrollEventThrottle: headerThrottle } = useCollapsibleHeader();
+  const dispatch = useAppDispatch();
   const user = useSelector((s: RootState) => s.user.currentUser);
   const farms = useSelector((s: RootState) => s.farm.farms);
   const trees = useSelector((s: RootState) => s.farm.trees);
   const activities = useSelector((s: RootState) => s.farm.activities);
 
-  // Mock badges cho ProofChat / Work cho tới khi có module thật
-  const proofChatUnread = 0;
-  const workMatches = 5;
+  // Warm-load dữ liệu trang trại vào store NGAY khi vào Home (sau đăng nhập DB đã
+  // mở). Store KHÔNG được persist → mỗi phiên khởi động lại là rỗng; nếu Home không
+  // chủ động nạp thì "Thông tin nhanh" hiện 0 trang trại/0 cây tới khi mở Dashboard,
+  // và Dashboard là nơi DUY NHẤT nạp farm → mở Truy xuất dễ gặp màn trắng. Nạp ở đây
+  // để Home phản ánh đúng số liệu VÀ hâm nóng store trước khi bấm Truy xuất.
+  useEffect(() => {
+    const uid = user?.id;
+    if (!uid) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const loaded = await dispatch(loadFarms(uid)).unwrap();
+        if (cancelled) return;
+        for (const f of loaded) {
+          if (cancelled) return;
+          await dispatch(loadTrees(f.id)).unwrap();
+        }
+      } catch (_) {
+        // DB chưa sẵn / lỗi đọc → im lặng; Dashboard sẽ thử lại & hiện trạng thái lỗi.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, dispatch]);
+
+  // Lần đầu người dùng vào Home sau khi đăng nhập → tự chạy luồng hướng dẫn
+  // (một lần cho mỗi người; đã skip/hoàn thành thì không tự chạy lại — xem
+  // utils/tutorialStorage). Chờ một nhịp cho layout (header + navbar + grid) ổn
+  // định để đo spotlight chính xác.
+  useEffect(() => {
+    const uid = user?.id;
+    if (!uid || autoTourRef.current) return;
+    autoTourRef.current = true;
+    let timer: ReturnType<typeof setTimeout>;
+    (async () => {
+      if (await shouldAutoRunTutorial(uid)) {
+        timer = setTimeout(() => startTour(uid), 700);
+      }
+    })();
+    return () => clearTimeout(timer);
+  }, [user?.id, startTour]);
+
+  // Số THẬT (§6 — KHÔNG bịa dữ liệu):
+  //  - ProofChat: tổng tin chưa đọc từ CHÍNH store màn Chat dùng (rẻ, không mock).
+  //  - Work: chưa có nguồn thật → KHÔNG hiện số bịa (bỏ stat + badge, xem dưới).
+  const proofChatUnread = useSelector((s: RootState) =>
+    s.proofchat.rooms.reduce((n, r) => n + (r.unreadCount ?? 0), 0),
+  );
+  // Trạng thái VÍ thật: chỉ số ĐẾN TỪ CHAIN (selectChainWallet trả null khi chưa
+  // đồng bộ → hiển thị "Chưa đồng bộ", KHÔNG số cũ/bịa).
+  const chainWallet = useSelector(selectChainWallet);
 
   const headerFade = useRef(new Animated.Value(0)).current;
   const headerSlide = useRef(new Animated.Value(-12)).current;
@@ -459,175 +516,67 @@ const HomeScreen: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [moduleLayout, setModuleLayout] = useState<ModuleLayout>('grid');
   const [showFarmPrompt, setShowFarmPrompt] = useState(false);
-  const [quickSheet, setQuickSheet] = useState<QuickActionSheetConfig | null>(null);
-  // Build 54 V5 — Quick Action state
-  const [quickActionBusy, setQuickActionBusy] = useState<'tree' | 'fruit' | 'farm' | null>(null);
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Build 54 V5 — Quick Actions: 1-tap entry to identify a tree, scan
-  // fruit, or create a farm. Implements §3.7 (1-tap-to-capture) of the
-  // Independent Feature Operation principle.
-  // ─────────────────────────────────────────────────────────────────────────
-  const requestLocationPermission = async (): Promise<boolean> => {
-    if (Platform.OS === 'android') {
-      try {
-        const granted = await PermissionsAndroid.request(
-          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-          {
-            title: 'Quyền vị trí',
-            message: 'Aladin cần quyền GPS để định vị nông trại / cây.',
-            buttonPositive: 'Cho phép',
-            buttonNegative: 'Từ chối',
-          },
-        );
-        return granted === PermissionsAndroid.RESULTS.GRANTED;
-      } catch {
-        return false;
-      }
-    }
-    try {
-      const status = await Geolocation.requestAuthorization('whenInUse');
-      return status === 'granted';
-    } catch {
-      return false;
-    }
+  // Hộp Quick Action: mặc định thu gọn (khi đã hiện — xem quickVisible bên dưới).
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [quickBodyH, setQuickBodyH] = useState(0);
+  // HAI Animated.Value tách driver — đây là mấu chốt để mở/đóng KHÔNG giật:
+  //  - quickFx (native driver): opacity + trượt + xoay chevron, chạy trên UI thread.
+  //  - quickH  (JS driver): CHỈ chiều cao (height không hỗ trợ native driver).
+  // Một Animated.Value không được trộn 2 driver, nên phải tách. Trước đây gộp làm
+  // một → mọi thứ chạy trên JS thread, mỗi khung phải qua cầu → giật.
+  const quickFx = useRef(new Animated.Value(0)).current;
+  const quickH = useRef(new Animated.Value(0)).current;
+
+  const toggleQuick = () => {
+    const next = !quickOpen;
+    setQuickOpen(next);
+    const duration = next ? 260 : 200;
+    const easing = next ? Easing.out(Easing.cubic) : Easing.in(Easing.cubic);
+    Animated.parallel([
+      Animated.timing(quickFx, { toValue: next ? 1 : 0, duration, easing, useNativeDriver: true }),
+      Animated.timing(quickH, { toValue: next ? 1 : 0, duration, easing, useNativeDriver: false }),
+    ]).start();
   };
 
-  const getCurrentGPS = (): Promise<{ lat: number; lng: number; accuracy: number | null }> =>
-    new Promise((resolve, reject) => {
-      Geolocation.getCurrentPosition(
-        pos => resolve({
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          accuracy: pos.coords.accuracy ?? null,
-        }),
-        err => reject(err),
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
-      );
-    });
-
-  const handleQuickAddTree = async () => {
-    if (quickActionBusy) return;
-    setQuickActionBusy('tree');
-    try {
-      if (!user) {
-        Alert.alert('Cần đăng nhập', 'Vui lòng đăng nhập trước.');
-        return;
-      }
-      // KHÔNG ép tạo farm. Cây là thực thể ĐỘC LẬP có DID riêng — vào thẳng luồng
-      // nhận-diện/đăng-ký ReID (TreeIdentity tự lo GPS + camera). Người làm thuê chưa
-      // được phân quyền farm, hay người dùng tò mò test, đều quét cây được ngay.
-      // Ai quản trại vẫn gắn cây vào trại qua FarmList → FarmDetail như cũ.
-      (navigation as any).navigate('TreeIdentity');
-    } catch (err: any) {
-      console.error('[HomeScreen] handleQuickAddTree failed:', err);
-      Alert.alert('Lỗi', 'Không mở được phần nhận diện cây. Bạn thử lại sau nhé.');
-    } finally {
-      setQuickActionBusy(null);
-    }
+  const onQuickBodyLayout = (e: LayoutChangeEvent) => {
+    const h = Math.round(e.nativeEvent.layout.height);
+    if (h > 0 && h !== quickBodyH) setQuickBodyH(h);
   };
 
-  const handleQuickScanFruit = async () => {
-    if (isImplicitCreationInFlight() || quickActionBusy) return;
-    setQuickActionBusy('fruit');
-    try {
-      if (!user) {
-        Alert.alert('Cần đăng nhập', 'Vui lòng đăng nhập trước.');
-        return;
-      }
-      if (!(await requestLocationPermission())) {
-        Alert.alert('Cần quyền vị trí', 'Bật GPS trong Cài đặt → Aladin.');
-        return;
-      }
-      // GPS + tạo vườn/cây ngầm trên bản đồ — GIỮ NGUYÊN.
-      const gps = await getCurrentGPS();
-      const farm = await getOrCreateImplicitFarm({
-        userDid: user.id,
-        userName: user.name,
-        gps,
-        accuracyMeters: gps.accuracy,
-      });
-      await getOrCreateImplicitTree({
-        farmId: farm.farmId,
-        userDid: user.id,
-        gps,
-        accuracyMeters: gps.accuracy,
-      });
+  // ── Quick Action = 100% dữ liệu hành vi ───────────────────────────────────
+  // Nút nào hiện, đứng thứ mấy đều do bảng feature_usage_events quyết định:
+  // tính năng phải đạt >= QUICK_ACTION_MIN_USES lượt mở mới được thêm vào, và
+  // sắp theo số lượt giảm dần. Máy mới cài → mảng rỗng → ẩn cả khối, kể cả thanh
+  // đóng/mở. Bản thân việc ĐẾM nằm ở NavigationContainer.onStateChange nên bấm
+  // mở tính năng từ đâu cũng tính (xem services/featureUsageService.ts).
+  const [rankedActions, setRankedActions] = useState<RankedQuickAction[]>([]);
 
-      // Sau khi thêm GPS/vườn-cây trên bản đồ xong → sang màn Nhận diện (TreeIdentity),
-      // thay cho scanner cũ (giống nút quick "Nhận diện").
-      (navigation as any).navigate('TreeIdentity', { farmId: farm.farmId });
-    } catch (err: any) {
-      console.error('[HomeScreen] handleQuickScanFruit failed:', err);
-      Alert.alert('Lỗi', 'Không thể nhận diện quả. Bạn thử lại sau nhé.');
-    } finally {
-      setQuickActionBusy(null);
-    }
-  };
+  const refreshQuickActions = React.useCallback(() => {
+    getRankedQuickActions()
+      .then(setRankedActions)
+      .catch((err) => console.warn('[HomeScreen] getRankedQuickActions failed:', err));
+  }, []);
 
-  const handleQuickAddFarm = () => {
-    // No implicit logic — direct path to AddFarmMode
-    (navigation as any).navigate('FarmDetail');
-  };
+  // Nạp lại mỗi lần Home được focus — vừa dùng tính năng xong quay về là thấy cập nhật.
+  useEffect(() => {
+    refreshQuickActions();
+    const unsub = navigation.addListener('focus', refreshQuickActions);
+    return unsub;
+  }, [navigation, refreshQuickActions]);
 
-  const openQuickTreeSheet = () => {
-    setQuickSheet({
-      title: 'Bạn muốn nhận diện cây ở đâu?',
-      subtitle: 'Chọn vườn trước để cây được gắn đúng vị trí.',
-      options: [
-        {
-          key: 'nearest',
-          icon: 'map-marker-radius',
-          title: 'Nhận diện ngay',
-          subtitle: 'Dùng GPS để chọn hoặc tạo vườn phù hợp',
-          onPress: () => (navigation as any).navigate('TreeIdentity'),
-        },
-        {
-          key: 'choose',
-          icon: 'sprout',
-          title: 'Chọn vườn có sẵn',
-          subtitle: 'Mở danh sách vườn rồi chọn cây cần nhận diện',
-          onPress: () => navigation.navigate('Farms' as never),
-        },
-        {
-          key: 'new',
-          icon: 'plus-circle-outline',
-          title: 'Tạo vườn mới',
-          subtitle: 'Tạo vườn tạm từ GPS rồi nhận diện cây',
-          onPress: () => (navigation as any).navigate('TreeIdentity'),
-        },
-      ],
-    });
-  };
+  const quickVisible = rankedActions.length > 0;
 
-  const openQuickFruitSheet = () => {
-    setQuickSheet({
-      title: 'Quét quả ở đâu?',
-      subtitle: 'Quả nên được gắn với cây hoặc vườn cụ thể.',
-      options: [
-        {
-          key: 'choose-tree',
-          icon: 'tree-outline',
-          title: 'Chọn cây',
-          subtitle: 'Gắn quả vào cây đã định danh',
-          onPress: () => navigation.navigate('Farms' as never),
-        },
-        {
-          key: 'scan-fruit',
-          icon: 'fruit-cherries',
-          title: 'Quét nhanh trong vườn gần nhất',
-          subtitle: 'Dùng GPS để chọn hoặc tạo vườn phù hợp',
-          onPress: handleQuickScanFruit,
-        },
-        {
-          key: 'scan-tree-first',
-          icon: 'tree-outline',
-          title: 'Quét cây trước',
-          subtitle: 'Nếu chưa có cây phù hợp',
-          onPress: handleQuickAddTree,
-        },
-      ],
-    });
+  // Bấm nút Quick Action = điều hướng thẳng tới route trong config. KHÔNG gọi hàm
+  // đếm ở đây: onStateChange sẽ tự ghi khi route mở — một luật đếm duy nhất.
+  const onQuickActionPress = (action: RankedQuickAction) => {
+    const params =
+      // FarmDetail/AnimalManagement cần farm hiện có (nếu có) — tham số động, không
+      // đặt tĩnh trong config được.
+      action.route === 'AnimalManagement'
+        ? { farmId: farms[0]?.id ?? 'default', ...action.params }
+        : action.params;
+    (navigation as any).navigate(action.route, params);
   };
 
   // ✅ Check if user has no farms and hasn't dismissed the prompt
@@ -666,7 +615,7 @@ const HomeScreen: React.FC = () => {
   const moduleBadges: Record<string, number | undefined> = {
     trace: undefined,
     proofchat: proofChatUnread,
-    work: workMatches,
+    work: undefined, // Work chưa có nguồn thật → không gắn badge số bịa.
   };
 
   const handleModulePress = (entry: ModuleEntry) => {
@@ -686,8 +635,9 @@ const HomeScreen: React.FC = () => {
 
   const handleCreateFarm = () => {
     setShowFarmPrompt(false);
-    // Navigate to Farm creation screen
-    navigation.navigate('Farms' as never);
+    // Mở thẳng màn TẠO trang trại (FarmDetail với farm_id null) — trước đây trỏ 'Farms'
+    // (là danh sách vườn); nay 'Farms' = Dashboard nên trỏ đúng màn tạo.
+    (navigation as any).navigate('FarmDetail', { farm_id: null });
   };
 
   const handleDismissFarmPrompt = async () => {
@@ -709,46 +659,6 @@ const HomeScreen: React.FC = () => {
         onCreateFarm={handleCreateFarm}
         onDismiss={handleDismissFarmPrompt}
       />
-
-      <Modal
-        visible={!!quickSheet}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setQuickSheet(null)}
-      >
-        <TouchableOpacity
-          style={styles.sheetBackdrop}
-          activeOpacity={1}
-          onPress={() => setQuickSheet(null)}
-        >
-          <TouchableOpacity activeOpacity={1} style={styles.quickSheetCard}>
-            <View style={styles.sheetHandle} />
-            <Text style={styles.quickSheetTitle}>{quickSheet?.title}</Text>
-            <Text style={styles.quickSheetSub}>{quickSheet?.subtitle}</Text>
-            {quickSheet?.options.map((option) => (
-              <TouchableOpacity
-                key={option.key}
-                style={styles.quickSheetOption}
-                activeOpacity={0.85}
-                onPress={() => {
-                  setQuickSheet(null);
-                  option.onPress();
-                }}
-              >
-                <View style={styles.quickSheetIconWrap}>
-                  <Icon name={option.icon} size={22} color={COLORS.accent} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.quickSheetOptionTitle}>{option.title}</Text>
-                  <Text style={styles.quickSheetOptionSub}>{option.subtitle}</Text>
-                </View>
-                <Icon name="chevron-right" size={22} color={NEUTRAL.textMuted} />
-              </TouchableOpacity>
-            ))}
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
-
       {/* HeroBar cũ ĐÃ BỎ: nút Tài khoản + Thông báo (chuông) nay nằm trong
           AppHeader toàn cục (thu/thả theo cuộn) ở tầng nav — tránh 2 thanh trên
           chồng nhau. Xem components/AppHeader.tsx. */}
@@ -780,92 +690,107 @@ const HomeScreen: React.FC = () => {
         <View>
           <BannerCarousel fade={carouselFade} />
         </View>
-        {/* Build 54 V5 — Quick Actions: 1-tap entry to identify a tree, capture
-            3D tree scan, scan fruit, or create a farm. Implements §3.7 (1-tap-to-capture) of the
-            Independent Feature Operation principle. Order per CPO Đức:
-              🌳 Cây · Tree → 🍎 Quả · Fruit → 🗺️ Vườn · Farm */}
-        <View style={styles.quickActionsRow}>
-          {/* Tree Identity - Native implementation.
-              Quét cây ĐỘC LẬP: vào thẳng TreeIdentity, KHÔNG ép chọn/tạo vườn.
-              Cây enroll qua đây có farm_id=null — gắn vườn sau (tuỳ chọn). */}
-          <TouchableOpacity
-            style={[styles.quickActionBtn]}
-            onPress={handleQuickAddTree}
-            disabled={quickActionBusy !== null}
-            activeOpacity={0.85}
-          >
-            <View style={styles.quickActionIconWrap}>
-              {quickActionBusy === 'tree' ? (
-                <ActivityIndicator color={COLORS.accent} size="small" />
-              ) : (
-                <Image
-                  source={require('../../assets/images/modules/tree.png')}
-                  style={styles.quickActionImg}
-                  resizeMode="contain"
-                />
-              )}
-            </View>
-            <Text style={styles.quickActionLabel}>Quét cây</Text>
-            <Text style={styles.quickActionLabelEn}>Tree</Text>
-          </TouchableOpacity>
+        {/* Quick Action — nút nào hiện & đứng thứ mấy đều do HÀNH VI quyết định:
+            danh sách nút khai ở config/quickActions.ts, lọc theo số lượt mở và sắp
+            giảm dần. Chưa tính năng nào đủ ngưỡng → rankedActions rỗng → ẩn TOÀN BỘ
+            khối, kể cả thanh đóng/mở. Lối vào tính năng lúc đó vẫn còn ở Dịch vụ,
+            navbar và menu hành động. */}
+        {quickVisible && (
+          <View style={styles.quickCard}>
+            {/* Thân hộp KHÔNG màu. Lượt render đầu chưa biết chiều cao thật → cho
+                thân nằm absolute + opacity 0 để ĐO (onLayout) mà không chiếm chỗ.
+                Đo xong (quickBodyH > 0) mới chuyển sang chiều cao có animation.
+                Lớp ngoài chỉ animate HEIGHT (quickH, JS driver); lớp trong animate
+                opacity + trượt (quickFx, native driver) → phần tốn kém nhất chạy
+                trên UI thread, hết giật. */}
+            <Animated.View
+              style={[
+                styles.quickBody,
+                quickBodyH === 0
+                  ? styles.quickBodyMeasuring
+                  : {
+                    height: quickH.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0, quickBodyH],
+                    }),
+                  },
+              ]}
+              pointerEvents={quickOpen ? 'auto' : 'none'}
+            >
+              <Animated.View
+                onLayout={onQuickBodyLayout}
+                style={{
+                  opacity: quickFx,
+                  transform: [
+                    {
+                      translateY: quickFx.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [-8, 0],
+                      }),
+                    },
+                  ],
+                }}
+              >
+                {/* Nút đến từ config/quickActions.ts; thứ tự = số lượt dùng thật
+                    (dùng nhiều đứng đầu), không nút nào cố định vị trí. */}
+                <View style={styles.quickActionsRow}>
+                  {rankedActions.map((a) => (
+                    <TouchableOpacity
+                      key={a.route}
+                      style={styles.quickActionBtn}
+                      onPress={() => onQuickActionPress(a)}
+                      activeOpacity={0.85}
+                    >
+                      <View style={styles.quickActionIconWrap}>
+                        {a.image ? (
+                          <Image
+                            source={a.image}
+                            style={styles.quickActionImg}
+                            resizeMode="contain"
+                          />
+                        ) : (
+                          <Icon name={a.icon!} size={32} color={COLORS.accent} />
+                        )}
+                      </View>
+                      <Text style={styles.quickActionLabel} numberOfLines={2}>
+                        {a.label}
+                      </Text>
+                      {!!a.labelEn && (
+                        <Text style={styles.quickActionLabelEn}>{a.labelEn}</Text>
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </Animated.View>
+            </Animated.View>
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={toggleQuick}
+              style={styles.quickBar}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: quickOpen }}
+              accessibilityLabel={quickOpen ? 'Thu gọn thao tác nhanh' : 'Mở thao tác nhanh'}
+            >
+              <Animated.View
+                style={{
+                  transform: [
+                    {
+                      rotate: quickFx.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: ['0deg', '180deg'],
+                      }),
+                    },
+                  ],
+                }}
+              >
+                <Icon name="chevron-down" size={20} color={QUICK_GREEN_DEEP} style={styles.quickBarIcon} />
+              </Animated.View>
+            </TouchableOpacity>
+          </View>
+        )}
 
-          <TouchableOpacity
-            style={[styles.quickActionBtn]}
-            onPress={openQuickFruitSheet}
-            disabled={quickActionBusy !== null}
-            activeOpacity={0.85}
-          >
-            <View style={styles.quickActionIconWrap}>
-              {quickActionBusy === 'fruit' ? (
-                <ActivityIndicator color={COLORS.accent} size="small" />
-              ) : (
-                <Image
-                  source={require('../../assets/images/modules/vegetable.png')}
-                  style={styles.quickActionImg}
-                  resizeMode="contain"
-                />
-              )}
-            </View>
-            <Text style={styles.quickActionLabel}>Quả</Text>
-            <Text style={styles.quickActionLabelEn}>Fruit</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.quickActionBtn]}
-            onPress={() => (navigation as any).navigate('AnimalManagement', { farmId: farms[0]?.id ?? 'default' })}
-            disabled={quickActionBusy !== null}
-            activeOpacity={0.85}
-          >
-            <View style={styles.quickActionIconWrap}>
-              <Icon name="paw" size={32} color={COLORS.accent} />
-            </View>
-            <Text style={styles.quickActionLabel}>Nhận diện{'\n'}con vật</Text>
-            <Text style={styles.quickActionLabelEn}>Animal</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.quickActionBtn]}
-            onPress={handleQuickAddFarm}
-            disabled={quickActionBusy !== null}
-            activeOpacity={0.85}
-          >
-            <View style={styles.quickActionIconWrap}>
-              {quickActionBusy === 'farm' ? (
-                <ActivityIndicator color={COLORS.accent} size="small" />
-              ) : (
-                <Image
-                  source={require('../../assets/images/modules/add-growth.png')}
-                  style={styles.quickActionImg}
-                  resizeMode="contain"
-                />
-              )}
-            </View>
-            <Text style={styles.quickActionLabel}>Thêm Vườn</Text>
-            <Text style={styles.quickActionLabelEn}>Farm</Text>
-          </TouchableOpacity>
-        </View>
         {/* Module Grid */}
-        <View style={styles.moduleGridWrap}>
+        <View ref={servicesTarget.ref} collapsable={false} style={styles.moduleGridWrap}>
           <View style={styles.sectionRow}>
             <Text style={styles.sectionTitle}>Dịch vụ</Text>
             <LayoutToggle value={moduleLayout} onChange={setModuleLayout} />
@@ -890,31 +815,37 @@ const HomeScreen: React.FC = () => {
         <View style={styles.quickStatsWrap}>
           <SectionHeader title="Thông tin nhanh" />
           <View style={styles.quickStatsCard}>
+            {/* Ví THẬT (§6): số đến từ chain; chưa đồng bộ → "Chưa đồng bộ". */}
             <QuickStatRow
               index={0}
-              icon="pine-tree"
-              label="Trang trại đang theo dõi"
-              value={`${farms.length} trang trại · ${trees.length} cây`}
-              color="#3B6EA8"
-              onPress={() => navigation.navigate('Farms' as never)}
+              icon="wallet-outline"
+              label="Ví của tôi"
+              value={
+                chainWallet
+                  ? `${formatToken(chainWallet.magicBalance)} MAGIC · ${fmtLamp(chainWallet.lampBalance)} LAMP`
+                  : 'Chưa đồng bộ'
+              }
+              color={COLORS.accent}
+              onPress={() => (navigation as any).navigate('PhoenixWallet')}
             />
             <View style={styles.statDivider} />
             <QuickStatRow
               index={1}
-              icon="message-text-outline"
-              label="Tin nhắn ProofChat"
-              value={`${proofChatUnread} tin nhắn mới`}
-              color="#3B6EA8"
-              onPress={() => navigation.navigate('ProofChatHome' as never)}
+              icon="pine-tree"
+              label="Trang trại đang theo dõi"
+              value={`${farms.length} Farm · ${trees.length} Tree`}
+              color={COLORS.accent}
+              onPress={() => navigation.navigate('Farms' as never)}
             />
             <View style={styles.statDivider} />
+            {/* ProofChat THẬT: đếm tin chưa đọc từ store; 0 → nhãn trung tính. */}
             <QuickStatRow
               index={2}
-              icon="briefcase-outline"
-              label="Việc làm phù hợp"
-              value={`${workMatches} cơ hội mới`}
-              color="#3B6EA8"
-              onPress={() => navigation.navigate('WorkHome' as never)}
+              icon="message-text-outline"
+              label="Tin nhắn ProofChat"
+              value={proofChatUnread > 0 ? `${proofChatUnread} new messages` : 'No new messages'}
+              color={COLORS.accent}
+              onPress={() => navigation.navigate('ProofChatHome' as never)}
             />
           </View>
         </View>
@@ -1358,26 +1289,76 @@ const styles = StyleSheet.create({
   },
   emptyText: { fontSize: 12, color: NEUTRAL.textMuted, fontWeight: '500' },
 
-  // Build 54 V5 — Quick Actions row
+  // Hộp Quick Action thu/mở (mặc định đóng).
+  // Hộp KHÔNG màu — chỉ thanh header có gradient.
+  quickCard: {
+    marginTop: 16,
+    shadowColor: NEUTRAL.shadow,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 12,
+    elevation: 2,
+  },
+  quickBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    position: 'relative',
+    justifyContent: 'center',
+  },
+  quickBarIcon: {
+    width: 20,
+    height: 20,
+    borderRadius: 50,
+    backgroundColor: withAlpha(COLORS.accent, 0.12),
+  },
+  quickBarTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: QUICK_GREEN_DEEP,
+    letterSpacing: -0.2,
+  },
+  quickBarCoTitle: {
+    fontSize: 12,
+    color: QUICK_GREEN_DEEP,
+    letterSpacing: -0.2,
+  },
+  quickBarHint: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: NEUTRAL.textSub,
+    marginRight: 2,
+  },
+  quickBody: {
+    overflow: 'hidden',
+  },
+  // Lượt render đầu: nằm ngoài dòng chảy layout để đo chiều cao thật mà không chớp.
+  quickBodyMeasuring: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    opacity: 0,
+  },
+
+  // Build 54 V5 — Quick Actions row. 4 nút/hàng, nút thừa tự xuống hàng.
   quickActionsRow: {
     flexDirection: 'row',
-    marginTop: 16,
-    gap: 8,
+    flexWrap: 'wrap',
+    paddingTop: 12,
+    gap: QUICK_GAP,
   },
+  // KHÔNG shadow/elevation: nút nằm trong hộp đang animate chiều cao — bóng đổ
+  // phải tính lại mỗi khung hình (đắt trên Android) và chính là nguồn giật.
   quickActionBtn: {
-    flex: 1,
+    width: QUICK_ITEM_W,
     minHeight: 108,
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: NEUTRAL.card,
-    borderWidth: 1,
-    borderColor: NEUTRAL.border,
-    shadowColor: NEUTRAL.shadow,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 10,
-    elevation: 2,
     paddingVertical: 10,
     paddingHorizontal: 4,
   },
@@ -1409,67 +1390,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 2,
     textAlign: 'center',
-  },
-  sheetBackdrop: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(11, 27, 42, 0.35)',
-  },
-  quickSheetCard: {
-    backgroundColor: NEUTRAL.card,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: Platform.OS === 'ios' ? 34 : 22,
-  },
-  sheetHandle: {
-    width: 44,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: NEUTRAL.border,
-    alignSelf: 'center',
-    marginBottom: 16,
-  },
-  quickSheetTitle: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: NEUTRAL.text,
-    letterSpacing: -0.4,
-  },
-  quickSheetSub: {
-    fontSize: 13,
-    color: NEUTRAL.textSub,
-    marginTop: 4,
-    marginBottom: 14,
-    lineHeight: 18,
-  },
-  quickSheetOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 12,
-    borderTopWidth: 1,
-    borderTopColor: NEUTRAL.borderSoft,
-  },
-  quickSheetIconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: 13,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: withAlpha(COLORS.accent, 0.10),
-  },
-  quickSheetOptionTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: NEUTRAL.text,
-  },
-  quickSheetOptionSub: {
-    fontSize: 12,
-    color: NEUTRAL.textSub,
-    marginTop: 2,
-    lineHeight: 16,
   },
 });
 

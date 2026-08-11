@@ -79,6 +79,7 @@ const OrgDidScreen: React.FC = () => {
   const [orgs, setOrgs] = useState<Org[]>([]);
   const [loadState, setLoadState] = useState<LoadState>('loading');
   const [orgName, setOrgName] = useState('');
+  const [orgRegNo, setOrgRegNo] = useState('');
   const [creating, setCreating] = useState(false);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -143,7 +144,12 @@ const OrgDidScreen: React.FC = () => {
     }
     setCreating(true);
     try {
-      const res = await createOrg({ ownerDid, orgName: trimmedName });
+      const res = await createOrg({
+        ownerDid,
+        orgName: trimmedName,
+        // MST tuỳ chọn — đưa vào challenge ký (backend cho phép vắng = chuỗi rỗng).
+        registrationNumber: orgRegNo.trim() || undefined,
+      });
       const created: Org = {
         orgDid: (res as any).orgDid ?? (res as any).org_did,
         orgName: (res as any).orgName ?? (res as any).org_name ?? trimmedName,
@@ -155,6 +161,7 @@ const OrgDidScreen: React.FC = () => {
       await writeCachedOrgs(next);
       setLoadState('ready');
       setOrgName('');
+      setOrgRegNo('');
       Alert.alert('Đã tạo tổ chức', `OrgDID: ${created.orgDid}`);
     } catch (err) {
       const msg =
@@ -208,35 +215,56 @@ const OrgDidScreen: React.FC = () => {
               <Icon name="office-building-outline" size={28} color={COLORS.textMuted} />
             </View>
             <Text style={styles.stateText}>Chưa có tổ chức nào. Tạo tổ chức đầu tiên ở trên.</Text>
+            <TouchableOpacity
+              style={styles.mofnBtn}
+              onPress={() => navigation.navigate('OrgAuthority', { mode: 'founding' })}
+            >
+              <Icon name="account-multiple-plus-outline" size={16} color={COLORS.accent} />
+              <Text style={styles.mofnText}>Tạo tổ chức đồng-sở-hữu (m/n)</Text>
+            </TouchableOpacity>
           </View>
         );
       case 'ready':
       default:
         return (
           <View style={styles.list}>
+            <TouchableOpacity
+              style={styles.mofnBtn}
+              onPress={() => navigation.navigate('OrgAuthority', { mode: 'founding' })}
+            >
+              <Icon name="account-multiple-plus-outline" size={16} color={COLORS.accent} />
+              <Text style={styles.mofnText}>Tạo tổ chức đồng-sở-hữu (m/n)</Text>
+            </TouchableOpacity>
             {orgs.map(org => (
-              <TouchableOpacity
-                key={org.orgDid}
-                style={styles.orgRow}
-                activeOpacity={0.8}
-                onPress={() => goMint(org)}
-              >
-                <View style={styles.orgIconWrap}>
-                  <Icon name="office-building" size={20} color={COLORS.accent} />
-                </View>
-                <View style={styles.orgBody}>
-                  <Text style={styles.orgName} numberOfLines={1}>
-                    {org.orgName || 'Tổ chức'}
-                  </Text>
-                  <Text style={styles.orgDid} numberOfLines={1}>
-                    {org.orgDid}
-                  </Text>
-                  <Text style={styles.orgMeta}>
-                    {(org.role || 'owner')} · ngưỡng ký {org.threshold ?? 1}
-                  </Text>
-                </View>
-                <Icon name="chevron-right" size={22} color={COLORS.textMuted} />
-              </TouchableOpacity>
+              <View key={org.orgDid} style={styles.orgRow}>
+                <TouchableOpacity style={styles.orgRowMain} activeOpacity={0.8} onPress={() => goMint(org)}>
+                  <View style={styles.orgIconWrap}>
+                    <Icon name="office-building" size={20} color={COLORS.accent} />
+                  </View>
+                  <View style={styles.orgBody}>
+                    <Text style={styles.orgName} numberOfLines={1}>
+                      {org.orgName || 'Tổ chức'}
+                    </Text>
+                    <Text style={styles.orgDid} numberOfLines={1}>
+                      {org.orgDid}
+                    </Text>
+                    <Text style={styles.orgMeta}>
+                      {(org.role || 'owner')} · ngưỡng ký {org.threshold ?? 1}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                {/* Nâng single → threshold (chỉ hợp lý khi đang single-owner). */}
+                {(org.threshold ?? 1) < 2 && (
+                  <TouchableOpacity
+                    style={styles.upgradeBtn}
+                    onPress={() => navigation.navigate('OrgAuthority', { mode: 'upgrade', orgDid: org.orgDid })}
+                    hitSlop={6}
+                  >
+                    <Icon name="shield-plus-outline" size={14} color={COLORS.accent} />
+                    <Text style={styles.upgradeText}>Nâng quyền</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             ))}
           </View>
         );
@@ -278,8 +306,8 @@ const OrgDidScreen: React.FC = () => {
               <View style={styles.noticeCard}>
                 <Icon name="information-outline" size={18} color={COLORS.warning} />
                 <Text style={styles.noticeText}>
-                  Tính năng mint đang ở chế độ xem trước — mint LAMP chưa chạy thật
-                  (chờ LAMP chốt cap/authority và Enclave native ráp ký).
+                  Tính năng phát hành đang ở chế độ xem trước — chưa chạy thật,
+                  sẽ mở ở bản sau.
                 </Text>
               </View>
             )}
@@ -298,9 +326,23 @@ const OrgDidScreen: React.FC = () => {
                   editable={!creating}
                   maxLength={64}
                 />
+                <Text style={[styles.fieldLabel, { marginTop: 14 }]}>
+                  Mã số đăng ký kinh doanh (MST){'  '}
+                  <Text style={styles.optional}>· tuỳ chọn</Text>
+                </Text>
+                <TextInput
+                  style={styles.input}
+                  value={orgRegNo}
+                  onChangeText={setOrgRegNo}
+                  placeholder="VD: 0312345678"
+                  placeholderTextColor={COLORS.textMuted}
+                  editable={!creating}
+                  keyboardType="number-pad"
+                  maxLength={20}
+                />
                 <Text style={styles.hint}>
                   Tạo OrgDID single-owner (bạn là chủ sở hữu đầu tiên). Nhiều chủ sở
-                  hữu m-of-n sẽ mở khi PR #40 xong.
+                  hữu m-of-n sẽ mở khi PR #40 xong. MST (nếu có) được ký cùng danh tính.
                 </Text>
 
                 <TouchableOpacity
@@ -409,6 +451,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.bgWarm,
   },
   hint: { fontSize: 12, color: COLORS.textMuted, marginTop: 8, lineHeight: 17 },
+  optional: { fontSize: 11, fontWeight: '500', color: COLORS.textMuted },
 
   primaryBtn: {
     flexDirection: 'row',
@@ -443,6 +486,20 @@ const styles = StyleSheet.create({
   orgName: { fontSize: 15, fontWeight: '700', color: COLORS.text },
   orgDid: { fontSize: 11.5, color: COLORS.textMuted, marginTop: 2 },
   orgMeta: { fontSize: 11.5, color: COLORS.textSub, marginTop: 2 },
+  orgRowMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  upgradeBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    borderWidth: 1, borderColor: COLORS.border, borderRadius: 8,
+    paddingHorizontal: 8, paddingVertical: 6,
+  },
+  upgradeText: { color: COLORS.accent, fontSize: 11, fontWeight: '700' },
+  mofnBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    paddingVertical: 12, borderRadius: 12,
+    borderWidth: 1.5, borderStyle: 'dashed', borderColor: COLORS.accent,
+    marginBottom: 12,
+  },
+  mofnText: { color: COLORS.accent, fontWeight: '700', fontSize: 13 },
 
   stateBox: { alignItems: 'center', paddingVertical: 28, gap: 12 },
   stateText: {

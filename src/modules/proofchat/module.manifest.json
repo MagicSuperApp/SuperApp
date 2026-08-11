@@ -3,7 +3,7 @@
   "schemaVersion": "1.0",
   "moduleId": "magiclamp.proofchat",
   "version": "1.0.0",
-  "displayName": { "vi": "Trò chuyện", "en": "ProofChat" },
+  "displayName": { "vi": "Trò chuyện", "en": "Chat" },
   "integrationKind": "feature",
 
   "entrypoint": "ProofChatHome",

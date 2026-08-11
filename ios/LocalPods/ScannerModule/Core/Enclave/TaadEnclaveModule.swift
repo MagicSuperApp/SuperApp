@@ -103,6 +103,116 @@ final class TaadEnclaveModule: NSObject {
         resolvePtr(out, resolve, reject, "E_DERIVE_ADDR", "Không derive được địa chỉ Cardano")
     }
 
+    /// Địa-chỉ STAKE (reward) — cùng CIP-1852 với ví, nhánh role 2 (m/1852'/1815'/acc'/2/0).
+    /// Dùng cho /wallet/standard/register (stake_address) + staking sau này.
+    @objc(deriveStakeAddress:account:network:resolver:rejecter:)
+    func deriveStakeAddress(_ kekHex: String,
+                            account: Int,
+                            network: Int,
+                            resolver resolve: @escaping RCTPromiseResolveBlock,
+                            rejecter reject: @escaping RCTPromiseRejectBlock) {
+        let out = kekHex.withCString {
+            taad_kek_derive_stake_address($0, UInt32(account), UInt8(network))
+        }
+        resolvePtr(out, resolve, reject, "E_DERIVE_STAKE", "Không derive được địa chỉ stake Cardano")
+    }
+
+    /// Ký challenge proof-of-ownership /wallet/standard/register bằng payment key
+    /// của account (Issue #47). Trả JSON {"paymentPublicKeyHex","signature"}.
+    @objc(signWalletRegister:account:message:resolver:rejecter:)
+    func signWalletRegister(_ kekHex: String,
+                            account: Int,
+                            message: String,
+                            resolver resolve: @escaping RCTPromiseResolveBlock,
+                            rejecter reject: @escaping RCTPromiseRejectBlock) {
+        let out = kekHex.withCString { k in
+            message.withCString { m in
+                taad_kek_sign_wallet_register(k, UInt32(account), m)
+            }
+        }
+        resolvePtr(out, resolve, reject, "E_SIGN_WALLET_REG", "Không ký được proof-of-ownership ví Standard")
+    }
+
+    /// Dựng + ký tx Cardano (ADA/LAMP) — client build, backend relay (Issue #74).
+    /// amount* là String (u64 vượt precision). Trả CBOR hex đã ký.
+    @objc(buildSignedTransfer:account:toAddress:amountLovelace:lampAmount:lampPolicyHex:lampAssetNameHex:utxosJson:protocolParamsJson:network:resolver:rejecter:)
+    func buildSignedTransfer(_ kekHex: String,
+                             account: Int,
+                             toAddress: String,
+                             amountLovelace: String,
+                             lampAmount: String,
+                             lampPolicyHex: String,
+                             lampAssetNameHex: String,
+                             utxosJson: String,
+                             protocolParamsJson: String,
+                             network: Int,
+                             resolver resolve: @escaping RCTPromiseResolveBlock,
+                             rejecter reject: @escaping RCTPromiseRejectBlock) {
+        let out = kekHex.withCString { k in
+            toAddress.withCString { to in
+            amountLovelace.withCString { amt in
+            lampAmount.withCString { lamp in
+            lampPolicyHex.withCString { pol in
+            lampAssetNameHex.withCString { nm in
+            utxosJson.withCString { ux in
+            protocolParamsJson.withCString { pp in
+                taad_kek_build_signed_transfer(
+                    k, UInt32(account), to, amt, lamp, pol, nm, ux, pp, UInt8(network))
+            }}}}}}}
+        }
+        resolvePtr(out, resolve, reject, "E_BUILD_TX", "Không dựng được giao dịch Cardano")
+    }
+
+    /// Dựng + ký tx uỷ thác stake vào 1 pool — client build, backend relay.
+    @objc(buildStakeDelegation:account:poolBech32:utxosJson:protocolParamsJson:network:resolver:rejecter:)
+    func buildStakeDelegation(_ kekHex: String,
+                              account: Int,
+                              poolBech32: String,
+                              utxosJson: String,
+                              protocolParamsJson: String,
+                              network: Int,
+                              resolver resolve: @escaping RCTPromiseResolveBlock,
+                              rejecter reject: @escaping RCTPromiseRejectBlock) {
+        let out = kekHex.withCString { k in
+            poolBech32.withCString { pool in
+            utxosJson.withCString { ux in
+            protocolParamsJson.withCString { pp in
+                taad_kek_build_stake_delegation(k, UInt32(account), pool, ux, pp, UInt8(network))
+            }}}
+        }
+        resolvePtr(out, resolve, reject, "E_BUILD_DELEG", "Không dựng được giao dịch uỷ thác")
+    }
+
+    /// Witness (ký) tx CBOR đã dựng sẵn (GetLAMP) — client witness, backend submit.
+    @objc(witnessUnsignedTx:account:unsignedTxCborHex:network:resolver:rejecter:)
+    func witnessUnsignedTx(_ kekHex: String,
+                           account: Int,
+                           unsignedTxCborHex: String,
+                           network: Int,
+                           resolver resolve: @escaping RCTPromiseResolveBlock,
+                           rejecter reject: @escaping RCTPromiseRejectBlock) {
+        let out = kekHex.withCString { k in
+            unsignedTxCborHex.withCString { cbor in
+                taad_kek_witness_unsigned_tx(k, UInt32(account), cbor, UInt8(network))
+            }
+        }
+        resolvePtr(out, resolve, reject, "E_WITNESS_TX", "Không ký được giao dịch")
+    }
+
+    /// 2FA DeviceKey opt-in: sinh Ed25519 ngẫu nhiên + ký canonical → JSON.
+    @objc(deviceKeyOptin:nonce:resolver:rejecter:)
+    func deviceKeyOptin(_ userDid: String,
+                        nonce: String,
+                        resolver resolve: @escaping RCTPromiseResolveBlock,
+                        rejecter reject: @escaping RCTPromiseRejectBlock) {
+        let out = userDid.withCString { d in
+            nonce.withCString { n in
+                taad_device_key_optin(d, n)
+            }
+        }
+        resolvePtr(out, resolve, reject, "E_DEVICE_KEY", "Không sinh được khoá thiết bị 2FA")
+    }
+
     @objc(generateSalt:rejecter:)
     func generateSalt(_ resolve: @escaping RCTPromiseResolveBlock,
                       rejecter reject: @escaping RCTPromiseRejectBlock) {

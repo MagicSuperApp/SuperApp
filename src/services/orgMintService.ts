@@ -26,6 +26,42 @@ import {
   type WaitSignedHandle,
 } from './orgMint-api';
 import { isOrgMintEnabled } from '../config/orgMint';
+import { signRaw, currentUserDid } from '../sdk/phoenixKey';
+import taad from '../sdk/taadEnclave';
+
+/**
+ * Chuỗi challenge canonical backend verify cho `POST /identity/org/create`
+ * (chép đúng từ `OrgCreateRequest.java` — KHÔNG suy đoán):
+ *
+ *   "PHOENIXKEY_ORG_MINT:" + ownerDid + ":" + name + ":"
+ *                          + (registrationNumber || "") + ":" + nonce
+ *
+ * Backend verify chữ ký này với HW_Key ĐANG HOẠT ĐỘNG của ownerDid → chống mạo danh.
+ * Lệch 1 ký tự = 403. Khi backend đổi chuỗi, CHỈ sửa ở đây.
+ */
+const CHALLENGE_ORG_MINT = 'PHOENIXKEY_ORG_MINT';
+
+// UTF-8 → hex (native `sign` nhận dataHex). Tên tổ chức có dấu tiếng Việt →
+// BẮT BUỘC xử-lý đa-byte đúng, không dùng charCodeAt thô.
+const utf8ToHex = (s: string): string => {
+  const push = (b: number) => b.toString(16).padStart(2, '0');
+  let out = '';
+  for (let i = 0; i < s.length; i += 1) {
+    const code = s.codePointAt(i)!;
+    if (code < 0x80) {
+      out += push(code);
+    } else if (code < 0x800) {
+      out += push(0xc0 | (code >> 6)) + push(0x80 | (code & 0x3f));
+    } else if (code < 0x10000) {
+      out += push(0xe0 | (code >> 12)) + push(0x80 | ((code >> 6) & 0x3f)) + push(0x80 | (code & 0x3f));
+    } else {
+      out += push(0xf0 | (code >> 18)) + push(0x80 | ((code >> 12) & 0x3f)) +
+        push(0x80 | ((code >> 6) & 0x3f)) + push(0x80 | (code & 0x3f));
+      i += 1; // cặp surrogate
+    }
+  }
+  return out;
+};
 
 // Re-export type để tầng UI (OrgMintScreen) import từ service, không thò tay vào -api.
 // Cùng lối như BuildAndSignMintTx export ở dưới; trước đây sót nên OrgMintScreen fail tsc.
@@ -109,10 +145,31 @@ export type BuildAndSignMintTx = (args: {
 export async function createOrg(args: {
   ownerDid: string;
   orgName: string;
+  /** Mã số đăng ký kinh doanh (MST) — tuỳ chọn. Bỏ trống = chuỗi rỗng trong challenge. */
+  registrationNumber?: string;
 }): Promise<CreateOrgResult> {
+  const name = args.orgName.trim();
+  const registrationNumber = args.registrationNumber?.trim() ?? '';
+  const nonce = await taad.generateSalt();
+
+  // Dựng ĐÚNG chuỗi backend verify. Phần registrationNumber rỗng vẫn phải có dấu ':'
+  // bao quanh — bỏ đi là lệch chuỗi → 403.
+  const challenge =
+    `${CHALLENGE_ORG_MINT}:${args.ownerDid}:${name}:${registrationNumber}:${nonce}`;
+
+  const ownerSignature = await signRaw(
+    utf8ToHex(challenge),
+    'Tạo danh tính tổ chức',
+    'Ký bằng khoá phần cứng của bạn',
+  );
+
   return orgMintApi.createOrg({
     owner_did: args.ownerDid,
-    org_name: args.orgName,
+    name,
+    // Chỉ gửi khi có — backend cho phép vắng mặt (@Size, không @NotBlank).
+    ...(registrationNumber ? { registration_number: registrationNumber } : {}),
+    owner_signature: ownerSignature,
+    nonce,
   });
 }
 
@@ -125,6 +182,98 @@ export async function createOrg(args: {
 export async function listOrgs(): Promise<Org[]> {
   const rows = (await orgMintApi.listOrgs()) as unknown as Org[];
   return Array.isArray(rows) ? rows : [];
+}
+
+// ── OrgDID m-of-n: founding + upgrade-authority ───────────────────────────────
+// ⚠️ m-of-n = NHIỀU người ký, MỖI người trên MÁY RIÊNG (khoá HW của họ). 1 máy chỉ
+// ký được phần DID của mình → luồng: initiator dựng challenge (+nonce) → chia sẻ cho
+// đồng-sáng-lập → mỗi người ký-hộ (signSharedOrgChallenge) trả {ownerDid,ownerSignature}
+// → initiator gom đủ n chữ ký rồi foundOrg/upgradeAuthority.
+
+export interface FounderSig {
+  ownerDid: string;
+  ownerSignature: string;
+}
+
+/**
+ * Challenge canonical cho founding (đối chiếu OrgFoundingRequest.java):
+ *   "PHOENIXKEY_ORG_FOUNDING:" + name + ":" + sortedFounderDids.join(",") + ":" + threshold + ":" + nonce
+ * Founder DIDs SORT tăng dần trước khi join → chữ ký độc-lập với thứ tự client đóng gói.
+ */
+export function buildFoundingChallenge(args: {
+  name: string; founderDids: string[]; threshold: number; nonce: string;
+}): string {
+  const sorted = [...args.founderDids].map(d => d.trim()).filter(Boolean).sort();
+  return `PHOENIXKEY_ORG_FOUNDING:${args.name.trim()}:${sorted.join(',')}:${args.threshold}:${args.nonce}`;
+}
+
+/**
+ * Challenge canonical cho upgrade-authority (đối chiếu OrgUpgradeAuthorityRequest.java):
+ *   "PHOENIXKEY_ORG_UPGRADE:" + orgDid + ":" + sortedNewMemberDids.join(",") + ":" + newThreshold + ":" + nonce
+ */
+export function buildUpgradeChallenge(args: {
+  orgDid: string; newMemberDids: string[]; newThreshold: number; nonce: string;
+}): string {
+  const sorted = [...args.newMemberDids].map(d => d.trim()).filter(Boolean).sort();
+  return `PHOENIXKEY_ORG_UPGRADE:${args.orgDid}:${sorted.join(',')}:${args.newThreshold}:${args.nonce}`;
+}
+
+/**
+ * KÝ-HỘ 1 challenge founding/upgrade được chia sẻ, bằng khoá HW của MÁY NÀY.
+ * Trả {ownerDid (DID máy này), ownerSignature}. Dùng cho đồng-sáng-lập ký trên máy họ
+ * rồi gửi lại initiator. Ném nếu máy chưa có DID.
+ */
+export async function signSharedOrgChallenge(challenge: string): Promise<FounderSig> {
+  const ownerDid = await currentUserDid();
+  if (!ownerDid) throw new Error('Máy này chưa có danh tính để ký duyệt.');
+  const ownerSignature = await signRaw(
+    utf8ToHex(challenge),
+    'Ký duyệt tổ chức',
+    'Ký bằng khoá phần cứng của bạn',
+  );
+  return { ownerDid, ownerSignature };
+}
+
+/**
+ * Tạo OrgDID m-of-n. `founders` = ĐỦ n chữ ký (mỗi founder đã ký cùng challenge dựng từ
+ * cùng name/threshold/nonce/danh-sách DID). threshold ≥ 2. Trả {orgDid, txHash}.
+ */
+export async function foundOrg(args: {
+  name: string;
+  registrationNumber?: string;
+  threshold: number;
+  founders: FounderSig[];
+  nonce: string;
+}): Promise<{ orgDid: string; txHash?: string }> {
+  const res = (await orgMintApi.foundOrg({
+    founders: args.founders.map(f => ({ owner_did: f.ownerDid, owner_signature: f.ownerSignature })),
+    threshold: args.threshold,
+    name: args.name.trim(),
+    ...(args.registrationNumber?.trim() ? { registration_number: args.registrationNumber.trim() } : {}),
+    nonce: args.nonce,
+  })) as any;
+  return { orgDid: res.orgDid ?? res.org_did, txHash: res.txHash ?? res.tx_hash };
+}
+
+/**
+ * Nâng OrgDID single → threshold. `currentOwner` = chữ ký chủ hiện tại; `newMembers` =
+ * ĐỦ chữ ký từng thành-viên mới (cùng challenge upgrade). newThreshold ≥ 2.
+ */
+export async function upgradeAuthority(args: {
+  orgDid: string;
+  currentOwner: FounderSig;
+  newMembers: FounderSig[];
+  newThreshold: number;
+  nonce: string;
+}): Promise<{ orgDid: string; txHash?: string; threshold?: number }> {
+  const res = (await orgMintApi.upgradeAuthority(args.orgDid, {
+    current_owner_did: args.currentOwner.ownerDid,
+    owner_signature: args.currentOwner.ownerSignature,
+    new_members: args.newMembers.map(m => ({ owner_did: m.ownerDid, owner_signature: m.ownerSignature })),
+    new_threshold: args.newThreshold,
+    nonce: args.nonce,
+  })) as any;
+  return { orgDid: res.orgDid ?? res.org_did, txHash: res.txHash ?? res.tx_hash, threshold: res.threshold };
 }
 
 // ── Mint — BƯỚC 1: mint vào KHO Distribution ─────────────────────────────────

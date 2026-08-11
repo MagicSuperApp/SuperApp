@@ -31,7 +31,7 @@ const DEFAULT_TIMEOUT_MS = 15000;
 
 // ── Phân loại lỗi ────────────────────────────────────────────────────
 
-export type JoinErrorKind = 'network' | 'auth' | 'server';
+export type JoinErrorKind = 'network' | 'auth' | 'server' | 'unsupported';
 
 export class JoinApiError extends Error {
   constructor(
@@ -120,21 +120,24 @@ async function request<T>(
   } catch (e: any) {
     // Abort (timeout) hoặc mất mạng → lớp network. KHÔNG lộ chi tiết kỹ thuật ra UI.
     console.warn(`[joinService] network lỗi khi gọi ${path}:`, e?.message ?? e);
-    throw new JoinApiError('network', 0, 'Mất kết nối tới mạng LampNet.');
+    throw new JoinApiError('network', 0, 'Mất kết nối tới máy chủ.');
   } finally {
     clearTimeout(timer);
   }
 
   if (!res.ok) {
-    // 4xx = quyền/tier (auth) ≠ 5xx = daemon (server) — thông điệp khác nhau (spec §4).
-    const kind: JoinErrorKind = res.status >= 500 ? 'server' : 'auth';
+    // CHỈ 401/403 mới là chuyện quyền. Gộp cả 4xx vào 'auth' như trước là đổ lỗi cho
+    // người dùng: 405 (sai phương thức) và 422 (app gửi thiếu trường) là lỗi của app,
+    // mà giao diện lại bảo "chưa đủ bậc tham gia" — đúng cách để không ai tìm ra lỗi.
+    const kind: JoinErrorKind =
+      res.status === 401 || res.status === 403 ? 'auth' : 'server';
     console.warn(`[joinService] ${path} trả HTTP ${res.status} (${kind}).`);
     throw new JoinApiError(
       kind,
       res.status,
       kind === 'auth'
         ? 'Chưa đủ quyền hoặc chưa đủ bậc tham gia.'
-        : 'Daemon LampNet đang trục trặc.',
+        : `Mạng LampNet chưa nhận yêu cầu này (mã ${res.status}).`,
     );
   }
 
@@ -144,16 +147,25 @@ async function request<T>(
   try {
     return JSON.parse(text) as T;
   } catch {
-    console.warn(`[joinService] ${path} body không phải JSON hợp lệ — trả rỗng.`);
-    return {} as T;
+    // JSON parse thất bại → ném để tầng trên hiện lỗi (không nuốt thành {}).
+    console.warn(`[joinService] ${path} body không phải JSON hợp lệ:`, text.slice(0, 80));
+    throw new JoinApiError('server', res.status, 'Phản hồi server không hợp lệ.');
   }
 }
 
 // ── Endpoint theo hợp đồng spec §2 ───────────────────────────────────
 
-/** Bước 0 — Bootstrap: lấy bootstrap_did. */
-export const getPeerId = (): Promise<PeerIdResult> =>
-  request<PeerIdResult>('/v1/peer_id', { method: 'GET' });
+/**
+ * Bước 0 — Bootstrap: lấy bootstrap_did từ /v1/network_info (trả JSON).
+ * Không dùng /v1/peer_id vì endpoint đó trả plain text, không phải JSON.
+ */
+export const getPeerId = async (): Promise<PeerIdResult> => {
+  const info = await request<{ bootstrap_peer_id?: string }>('/v1/network_info', { method: 'GET' });
+  if (!info.bootstrap_peer_id) {
+    throw new JoinApiError('server', 0, 'network_info thiếu bootstrap_peer_id.');
+  }
+  return { bootstrap_did: info.bootstrap_peer_id };
+};
 
 /**
  * Bước 1 — Đăng ký (đường REST).
@@ -194,15 +206,45 @@ export const reportResult = (
     body: JSON.stringify({ lease_id: leaseId, ...payload }),
   });
 
-/** Bước 6 — Quyết toán: tích thưởng epoch. */
+/**
+ * Bước 6 — Quyết toán: sổ thưởng của cả epoch.
+ *
+ * ⚠ CHƯA KIỂM. Đặt GET vì đó là suy đoán từ tên đường dẫn, NHƯNG
+ * `LampNetCloud/Join/Join-Integration.md:70` khai **POST** (nhãn [KHAI], không phải
+ * [ĐO]). Hai bên đang ngược nhau và chưa ai curl thật. Đã hỏi Join; trước khi có câu
+ * trả lời thì đừng dựa vào phương thức ở đây.
+ */
 export const settlement = (): Promise<Record<string, unknown>> =>
-  request('/v1/mobile/settlement', { method: 'POST' });
+  request('/v1/mobile/settlement', { method: 'GET' });
 
 /** Bước 7 — Trạng thái node (online, việc đang chạy, việc đã verify). Màn "Đang đóng góp". */
 export const getNodeStats = (): Promise<NodeStats> =>
   request<NodeStats>('/v1/node/stats', { method: 'GET' });
 
-/** Bước 7 — Thưởng tích luỹ epoch. Màn "Đang đóng góp". */
+/**
+ * Thưởng tích luỹ CỦA MỘT THIẾT BỊ — `GET /v1/mobile/rewards/{device_pubkey}`.
+ *
+ * ⚠ CHƯA KIỂM, và đường này KHÔNG có trong `Join-Integration.md` (grep `mobile/rewards`
+ * = 0). Nó là ĐỀ NGHỊ của bên này, chưa phải hợp đồng đã chốt. Đã hỏi Join xác nhận.
+ * Dù sao cũng chưa gọi được: `device_pubkey` do phần native sinh, mà cầu native chưa có.
+ */
+export const getDeviceRewards = (
+  devicePubkeyHex: string,
+): Promise<{ device_pubkey_hex: string; units: number; ulamp: number }> =>
+  request(`/v1/mobile/rewards/${encodeURIComponent(devicePubkeyHex)}`, { method: 'GET' });
+
+/**
+ * ⛔ KHÔNG dùng từ ứng dụng — nhưng lý do vẫn CHƯA ĐƯỢC ĐO, đừng chép lại như sự thật.
+ *
+ * Bên này ĐỌC mã daemon thấy `/v1/reward/epoch` là đường phía vận hành (nhận đóng góp
+ * của TẤT CẢ node + `total_pool`, đòi header `X-LampNet-Sig`), nên gọi bằng GET nhiều
+ * khả năng trả 405. NHƯNG `Join-Integration.md:71` khai `GET /v1/reward/epoch` và `:175`
+ * nói nó đang trả `accrued_micro_lamp` — ngược hẳn. Chưa bên nào curl thật.
+ *
+ * Vì chưa chốt được, màn "Đang đóng góp" tạm KHÔNG gọi đường này và nói thẳng là chưa
+ * đo được, thay vì hiện một con số có thể sai. Thưởng theo thiết bị: `getDeviceRewards`.
+ * @deprecated
+ */
 export const getRewardEpoch = (): Promise<RewardEpoch> =>
   request<RewardEpoch>('/v1/reward/epoch', { method: 'GET' });
 
@@ -217,14 +259,22 @@ export function resolvePersonDid(rawDid: string | null | undefined): string | nu
 }
 
 // ── FFI native — CHỖ CHỜ THƯ (spec §1/§3) ────────────────────────────
-// KHÔNG tự viết binding. Khi Thư publish uniffi SDK Rust, gọi native
-// `join_and_contribute(JoinConfig)`: native tự sinh/đọc seed_hex trong
-// Keystore/Keychain (INV-3), KHÔNG trả seed về JS. Màn "Tham gia" gọi hàm này;
-// nay fallback về requestJoin (đường REST) để KHUNG UI chạy được end-to-end.
-export async function joinViaNativeSdk(config: JoinConfig): Promise<JoinResult> {
-  // TODO(Thư): thay bằng NativeModules.LampNetJoin.joinAndContribute(config).
+// KHÔNG tự viết binding. Hàm Rust ĐÃ CÓ SẴN phía LampNet
+// (`lampnet-mobile-sdk/src/join.rs:166` — `#[uniffi::export] join_and_contribute`),
+// nó tự dựng đủ 22 trường + 2 chữ ký Ed25519 + benchmark thiết bị và trả `request_json`.
+// Thiếu đúng khâu đóng gói: build uniffi → .aar/.xcframework + TurboModule.
+// ⚠ ĐỪNG dựng lại 22 trường ở JS — seed không được ra khỏi Secure Element (INV-3).
+
+/** Cầu native đã gắn chưa. Dùng để trả lời NGAY, không tốn một vòng mạng. */
+export function isNativeJoinAvailable(): boolean {
+  return false; // TODO(Thư): !!NativeModules.LampNetJoin
+}
+
+export async function joinViaNativeSdk(_config: JoinConfig): Promise<JoinResult> {
+  // TODO(Thư): thay bằng NativeModules.LampNetJoin.joinAndContribute(_config).
   //   - native lo attestation Hardware + seed_hex ở Secure Element.
   //   - KHÔNG log, KHÔNG trả seed_hex ra JS bridge (INV-3, spec §3).
-  console.warn('[joinService] native join_and_contribute chưa có — fallback REST requestJoin (KHUNG).');
-  return requestJoin(config);
+  // Đường REST KHÔNG thay thế được: daemon đòi 22 trường kèm 2 chữ ký Ed25519 mà
+  // chỉ SDK native mới dựng được — gọi REST với 4 trường luôn trả 422.
+  throw new JoinApiError('unsupported', 0, 'Bản này chưa hỗ trợ Kết đèn.');
 }

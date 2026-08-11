@@ -39,7 +39,11 @@ workflows:
 
     environment:
       node: 22.11.0
-      xcode: latest
+      xcode: 26.4  # PIN 26.4 CỤ THỂ — KHÔNG để `26` (resolve = 26.0 = Swift < 6.2) hay
+                   # `latest` (trôi về 26.0). expo-modules-jsi (expo 56) dùng `weak let`
+                   # (SE-0481, chỉ có ở Swift 6.2) → 26.0 FAIL "'weak' must be a mutable
+                   # variable"; 16.4=Swift 6.1 FAIL "Swift tools 6.2 but installed 6.1".
+                   # Xcode 26.4 = Swift 6.2 → ĐÃ chứng minh compile được ExpoModulesJSI.
       cocoapods: default
       groups:
         - scanner_secrets
@@ -79,7 +83,7 @@ workflows:
           <dict>
               <!-- ScannerConfig.swift: ScannerConfig.treeDetectionAPI / baseApiUrl -->
               <key>TREE_DETECTION_API</key>
-              <string>${TREE_DETECTION_API:-https://staging-api.orilife.io}</string>
+              <string>${TREE_DETECTION_API:-https://api.orilife.io}</string>
 
               <!-- ScannerConfig.swift: ScannerConfig.apiKey (X-API-Key header) -->
               <key>API_KEY</key>
@@ -99,10 +103,9 @@ workflows:
       - name: Create .env for React Native
         script: |
           cat > .env <<EOF
-          ENV=production
 
           # OriLife / Aladin backend
-          ALADIN_API_URL=${BASE_API_URL:-https://staging-api.orilife.io}
+          ALADIN_API_URL=${BASE_API_URL:-https://api.orilife.io}
           ALADIN_API_KEY=${API_KEY:-mock-local-api-key}
           ALADIN_REGION_CODE=${REGION_CODE:-vn-south-01}
 
@@ -112,18 +115,37 @@ workflows:
           PHOENIX_WALLET_ENABLED=${PHOENIX_WALLET_ENABLED:-false}
 
           # TreeReID / identify cây (RN layer)
-          ORILIFE_API_BASE_URL=${ORILIFE_API_BASE_URL:-https://test.orilife.io}
-          ORILIFE_TREEID_URL=${ORILIFE_TREEID_URL:-https://test.orilife.io/TreeIdentity}
-          ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://test.orilife.io}
+          ORILIFE_API_BASE_URL=${ORILIFE_API_BASE_URL:-https://api.orilife.io}
+          ORILIFE_TREEID_URL=${ORILIFE_TREEID_URL:-https://api.orilife.io/TreeIdentity}
+          ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://api.orilife.io}
 
           # LampNet 3D
           MESHAPI_USE_MOCK=false
           LAMPNET_BASE_URL=${LAMPNET_BASE_URL:-https://lampnet.cloud}
           LAMPNET_UPLOAD_URL=${LAMPNET_UPLOAD_URL:-https://lampnet.cloud/mirage/put?mode=symmetric}
-          CAPTURES_3D_URL=${CAPTURES_3D_URL:-https://staging-api.orilife.io/captures/3d}
+          CAPTURES_3D_URL=${CAPTURES_3D_URL:-https://api.orilife.io/captures/3d}
 
-          ANALYTICS_API_URL=${ANALYTICS_API_URL:-https://analytics.orilife.io}
-          ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-prod-analytics-key}
+          # AladinWork (Việc làm). THIẾU biến này = cổng runtime tắt vĩnh viễn, module
+          # rơi về rỗng DÙ máy chủ sống (đo 05/08: api.aladin.work/api/v1/health = 200).
+          WORK_API_URL=${WORK_API_URL:-https://api.aladin.work/api/v1}
+
+          # ProofChat. Ghi sẵn URL để khi máy chủ sống lại chỉ phải bật MỘT biến, không
+          # phải sửa cấu hình. Nhưng cờ mặc định là `off`, CỐ Ý: nếu để `true` thì cửa
+          # duy nhất còn lại là phép thử /health — máy chủ sống lại là module tự bật,
+          # trong khi chốt chặn bảo mật của chính nó chưa gỡ (proofchat-api.ts:88-93:
+          # token production PHẢI ở Keychain/Keystore, nay còn nằm AsyncStorage chưa mã
+          # hoá). Bật là quyết định của người phát hành, không phải hệ quả phụ.
+          PROOFCHAT_API_URL=${PROOFCHAT_API_URL:-https://api.proofchat.me/api/v1}
+          PROOFCHAT_WS_URL=${PROOFCHAT_WS_URL:-https://api.proofchat.me}
+          PROOFCHAT_WS_PATH=${PROOFCHAT_WS_PATH:-/socket.io}
+          PROOFCHAT_BACKEND_ENABLED=${PROOFCHAT_BACKEND_ENABLED:-off}
+
+          # ⚠ analytics.orilife.io KHÔNG phân giải được (DNS NXDOMAIN, đo 05/08) — để
+          # trống thay vì nướng một host không tồn tại vào mọi bản build. Để trống CHỈ
+          # an toàn sau khi đã gỡ đường lui viết cứng trong analyticsApi.ts (trước đây
+          # chuỗi rỗng làm nó lui về một tunnel ngrok tạm + khoá dev). Nay rỗng = TẮT.
+          ANALYTICS_API_URL=${ANALYTICS_API_URL:-}
+          ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-}
           EOF
           # Dọn whitespace lạc (tab/space) mà biến môi trường Codemagic có thể dính
           # vào value khi paste — nếu không, URL như "\thttps://..." sẽ làm fetch ném
@@ -168,9 +190,8 @@ workflows:
           # --ignore-scripts: bỏ qua postinstall-postinstall (nó gọi `yarn run postinstall`
           # nhưng Codemagic có Yarn Berry → fail vì project không phải Yarn Berry workspace)
           npm install --legacy-peer-deps --ignore-scripts
-          npx patch-package --error-on-fail || echo "⚠️  patch-package: no patches or already applied" --ignore-scripts
-          # Chạy patch-package thủ công thay cho postinstall script
           npx patch-package --error-on-fail || echo "⚠️  patch-package: no patches or already applied"
+
           # Verify react-native installed — CocoaPods dùng file này để load Podfile
           if [ ! -f "node_modules/react-native/scripts/react_native_pods.rb" ]; then
             echo "❌ react-native/scripts/react_native_pods.rb NOT FOUND sau npm install"
@@ -244,6 +265,29 @@ workflows:
             echo "❌ No xcworkspace!"; ls -la ios/; exit 1
           fi
 
+      # Chẩn-đoán vì sao globalThis.expo KHÔNG được cài trên bản signed → 3D/expo-gl +
+      # video/expo-file-system crash. In các thứ SINH RA lúc pod install (không có ở
+      # checkout Windows). Đọc log step này gửi lại để chỉ đúng gốc. Không chặn build.
+      - name: Diagnose Expo modules (globalThis.expo)
+        script: |
+          echo "════════ EXPO DIAGNOSE ════════"
+          echo "--- 1) ExpoModulesProvider.swift (module nào được ĐĂNG KÝ) ---"
+          PROV=$(find ios -iname "ExpoModulesProvider.swift" 2>/dev/null | head -1)
+          echo "path: ${PROV:-KHÔNG TÌM THẤY (autolinking hỏng?)}"
+          [ -n "$PROV" ] && { echo "----- nội dung -----"; cat "$PROV"; echo "----- hết -----"; }
+          echo
+          echo "--- 2) Expo pods trong Podfile.lock ---"
+          grep -iE "ExpoModulesCore|ExpoGL|EXGL|ExpoFileSystem|ExpoAsset|^  - Expo|EXManifests|ExpoModulesProvider" ios/Podfile.lock 2>/dev/null | head -30 || echo "(không có)"
+          echo
+          echo "--- 3) New Arch flag trong xcconfig (RCT_NEW_ARCH_ENABLED) ---"
+          grep -rniE "RCT_NEW_ARCH_ENABLED|EX_DEV_CLIENT|USE_HERMES" ios/Pods/Target\ Support\ Files/Pods-*/*.release.xcconfig 2>/dev/null | head
+          echo
+          echo "--- 4) Có ExpoModulesCore TurboModule codegen không (New Arch) ---"
+          find ios -ipath "*ExpoModulesCore*" \( -iname "*.h" -o -iname "*JSI*" \) 2>/dev/null | head -10
+          echo "--- version expo-modules-core cài trên máy build ---"
+          node -e "console.log('expo-modules-core:', require('./node_modules/expo-modules-core/package.json').version, '| expo:', require('./node_modules/expo/package.json').version)"
+          echo "════════ /EXPO DIAGNOSE ════════"
+
       - name: Clean DerivedData & SPM
         script: |
           rm -rf ~/Library/Developer/Xcode/DerivedData
@@ -251,6 +295,22 @@ workflows:
           rm -rf ~/Library/Caches/com.apple.dt.Xcode/SwiftPM
           rm -rf ios/aladin_mobile_fe.xcworkspace/xcshareddata/swiftpm/checkouts 2>/dev/null || true
           echo "✅ DerivedData + SPM cleaned"
+
+      # Xuất JS bundle + SOURCEMAP để de-minify stack crash JS (VD "Cannot read
+      # property 'default' of undefined" tại main.jsbundle:LINE:COL). Chạy CÙNG lệnh
+      # + CÙNG .env như phase bundle của Xcode (@expo/cli export:embed, dev=false,
+      # macOS) → bundle khớp byte, map giải đúng số dòng runtime. EXPO_UNSAFE_DOTENV_KEYS
+      # để expo chịu nạp var ENV/NODE_ENV trong .env (nếu không sẽ từ chối). Best-effort:
+      # lỗi ở đây KHÔNG được chặn archive.
+      - name: Export JS sourcemap (debug crash)
+        script: |
+          mkdir -p "$CM_BUILD_DIR/build/jsmap"
+          EXPO_UNSAFE_DOTENV_KEYS=ENV,NODE_ENV npx expo export:embed \
+            --platform ios --dev false --entry-file index.js \
+            --bundle-output "$CM_BUILD_DIR/build/jsmap/main.jsbundle" \
+            --sourcemap-output "$CM_BUILD_DIR/build/jsmap/main.jsbundle.map" \
+            2>&1 | tail -20 || echo "⚠️ export sourcemap lỗi (không chặn build)"
+          ls -lh "$CM_BUILD_DIR/build/jsmap/" 2>/dev/null || true
 
       - name: Build iOS Archive (unsigned)
         script: |
@@ -267,6 +327,7 @@ workflows:
           LOG_FILE="$CM_BUILD_DIR/xcodebuild.log"
 
           xcodebuild \
+            -quiet \
             -workspace "$WORKSPACE" \
             -scheme "$XCODE_SCHEME" \
             -configuration Release \
@@ -318,6 +379,9 @@ workflows:
     artifacts:
       - build/ios/ipa/*.ipa
       - build/ios/OriLife.xcarchive/dSYMs/*.dSYM
+      # Sourcemap + bundle JS để de-minify stack crash (tải về gửi lại để giải frame).
+      - build/jsmap/main.jsbundle.map
+      - build/jsmap/main.jsbundle
 
   # ============================================================
   # Workflow 2: iOS App Store (Signed)
@@ -329,7 +393,11 @@ workflows:
 
     environment:
       node: 22.11.0
-      xcode: latest
+      xcode: 26.4  # PIN 26.4 CỤ THỂ — KHÔNG để `26` (resolve = 26.0 = Swift < 6.2) hay
+                   # `latest` (trôi về 26.0). expo-modules-jsi (expo 56) dùng `weak let`
+                   # (SE-0481, chỉ có ở Swift 6.2) → 26.0 FAIL "'weak' must be a mutable
+                   # variable"; 16.4=Swift 6.1 FAIL "Swift tools 6.2 but installed 6.1".
+                   # Xcode 26.4 = Swift 6.2 → ĐÃ chứng minh compile được ExpoModulesJSI.
       cocoapods: default
       groups:
         - scanner_secrets
@@ -371,7 +439,7 @@ workflows:
           <plist version="1.0">
           <dict>
               <key>TREE_DETECTION_API</key>
-              <string>${TREE_DETECTION_API:-https://staging-api.orilife.io}</string>
+              <string>${TREE_DETECTION_API:-https://api.orilife.io}</string>
               <key>API_KEY</key>
               <string>${API_KEY:-mock-local-api-key}</string>
               <key>REGION_CODE</key>
@@ -384,21 +452,39 @@ workflows:
       - name: Create .env for React Native
         script: |
           cat > .env <<EOF
-          ENV=production
-          ALADIN_API_URL=${BASE_API_URL:-https://staging-api.orilife.io}
+          ALADIN_API_URL=${BASE_API_URL:-https://api.orilife.io}
           ALADIN_API_KEY=${API_KEY:-mock-local-api-key}
           ALADIN_REGION_CODE=${REGION_CODE:-vn-south-01}
           PHOENIXKEY_API_URL=${PHOENIXKEY_API_URL:-https://api.phoenixkey.me/api/v1}
           PHOENIX_WALLET_ENABLED=${PHOENIX_WALLET_ENABLED:-false}
-          ORILIFE_API_BASE_URL=${ORILIFE_API_BASE_URL:-https://test.orilife.io}
-          ORILIFE_TREEID_URL=${ORILIFE_TREEID_URL:-https://test.orilife.io/TreeIdentity}
-          ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://test.orilife.io}
+          ORILIFE_API_BASE_URL=${ORILIFE_API_BASE_URL:-https://api.orilife.io}
+          ORILIFE_TREEID_URL=${ORILIFE_TREEID_URL:-https://api.orilife.io/TreeIdentity}
+          ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://api.orilife.io}
           MESHAPI_USE_MOCK=false
           LAMPNET_BASE_URL=${LAMPNET_BASE_URL:-https://lampnet.cloud}
           LAMPNET_UPLOAD_URL=${LAMPNET_UPLOAD_URL:-https://lampnet.cloud/mirage/put?mode=symmetric}
-          CAPTURES_3D_URL=${CAPTURES_3D_URL:-https://staging-api.orilife.io/captures/3d}
-          ANALYTICS_API_URL=${ANALYTICS_API_URL:-https://analytics.orilife.io}
-          ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-prod-analytics-key}
+          CAPTURES_3D_URL=${CAPTURES_3D_URL:-https://api.orilife.io/captures/3d}
+          # AladinWork (Việc làm). THIẾU biến này = cổng runtime tắt vĩnh viễn, module
+          # rơi về rỗng DÙ máy chủ sống (đo 05/08: api.aladin.work/api/v1/health = 200).
+          WORK_API_URL=${WORK_API_URL:-https://api.aladin.work/api/v1}
+
+          # ProofChat. Ghi sẵn URL để khi máy chủ sống lại chỉ phải bật MỘT biến, không
+          # phải sửa cấu hình. Nhưng cờ mặc định là `off`, CỐ Ý: nếu để `true` thì cửa
+          # duy nhất còn lại là phép thử /health — máy chủ sống lại là module tự bật,
+          # trong khi chốt chặn bảo mật của chính nó chưa gỡ (proofchat-api.ts:88-93:
+          # token production PHẢI ở Keychain/Keystore, nay còn nằm AsyncStorage chưa mã
+          # hoá). Bật là quyết định của người phát hành, không phải hệ quả phụ.
+          PROOFCHAT_API_URL=${PROOFCHAT_API_URL:-https://api.proofchat.me/api/v1}
+          PROOFCHAT_WS_URL=${PROOFCHAT_WS_URL:-https://api.proofchat.me}
+          PROOFCHAT_WS_PATH=${PROOFCHAT_WS_PATH:-/socket.io}
+          PROOFCHAT_BACKEND_ENABLED=${PROOFCHAT_BACKEND_ENABLED:-off}
+
+          # ⚠ analytics.orilife.io KHÔNG phân giải được (DNS NXDOMAIN, đo 05/08) — để
+          # trống thay vì nướng một host không tồn tại vào mọi bản build. Để trống CHỈ
+          # an toàn sau khi đã gỡ đường lui viết cứng trong analyticsApi.ts (trước đây
+          # chuỗi rỗng làm nó lui về một tunnel ngrok tạm + khoá dev). Nay rỗng = TẮT.
+          ANALYTICS_API_URL=${ANALYTICS_API_URL:-}
+          ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-}
           EOF
           # Dọn whitespace lạc (tab/space) trong value biến môi trường Codemagic.
           perl -i -pe 's/^(\w+)=[ \t]+/$1=/; s/[ \t]+$//' .env
@@ -461,6 +547,21 @@ workflows:
           pod install --repo-update
           cd ..
 
+      # Chẩn-đoán globalThis.expo (xem chú-thích ở workflow unsigned). In file sinh lúc
+      # pod install để chỉ đúng gốc 3D/video crash trên bản signed. Không chặn build.
+      - name: Diagnose Expo modules (globalThis.expo)
+        script: |
+          echo "════════ EXPO DIAGNOSE ════════"
+          PROV=$(find ios -iname "ExpoModulesProvider.swift" 2>/dev/null | head -1)
+          echo "ExpoModulesProvider: ${PROV:-KHÔNG TÌM THẤY}"
+          [ -n "$PROV" ] && { echo "----- nội dung -----"; cat "$PROV"; echo "----- hết -----"; }
+          echo "--- Expo pods (Podfile.lock) ---"
+          grep -iE "ExpoModulesCore|ExpoGL|EXGL|ExpoFileSystem|ExpoAsset|EXManifests" ios/Podfile.lock 2>/dev/null | head -30 || echo "(không có)"
+          echo "--- New Arch flag ---"
+          grep -rniE "RCT_NEW_ARCH_ENABLED|USE_HERMES" ios/Pods/Target\ Support\ Files/Pods-*/*.release.xcconfig 2>/dev/null | head
+          node -e "console.log('expo-modules-core:', require('./node_modules/expo-modules-core/package.json').version, '| expo:', require('./node_modules/expo/package.json').version)"
+          echo "════════ /EXPO DIAGNOSE ════════"
+
       - name: Disable code signing for Pods targets
         script: |
           find ios/Pods -name '*.xcconfig' | xargs grep -l 'CODE_SIGN' | while read f; do
@@ -505,7 +606,12 @@ workflows:
           unless target.shell_script_build_phases.find { |p| p.name == phase_name }
             phase = project.new(Xcodeproj::Project::Object::PBXShellScriptBuildPhase)
             phase.name = phase_name
-            phase.shell_script = 'find "$BUILD_DIR/${CONFIGURATION}-iphoneos" -name "*.signature" -delete 2>/dev/null || true'
+            # CHỈ xóa signature của MapLibre (đúng framework gây "signature couldn't be
+            # copied to Signatures"). TRƯỚC đây xóa MỌI *.signature → xóa cả của
+            # ExpoModulesJSI.xcframework → trên bản SIGNED (App Store validate chặt) framework
+            # không load → expo JSI (globalThis.expo) KHÔNG cài → 3D crash. Unsigned/AltStore
+            # validate lỏng nên vẫn load → chạy. Narrow để không đụng ExpoModulesJSI.
+            phase.shell_script = 'find "$BUILD_DIR/${CONFIGURATION}-iphoneos" -ipath "*MapLibre*" -name "*.signature" -delete 2>/dev/null || true'
             target.build_phases << phase
             project.save
             puts "✅ Added '#{phase_name}'"
@@ -536,6 +642,18 @@ workflows:
           sed -i '' -E "s/CURRENT_PROJECT_VERSION = [0-9]+;/CURRENT_PROJECT_VERSION = ${NEW};/g" ios/*.xcodeproj/project.pbxproj
           echo "✅ iOS build number → ${NEW} (TestFlight latest: ${LATEST})"
 
+      # Xuất JS bundle + SOURCEMAP để de-minify stack crash JS (CÙNG lệnh/.env như
+      # phase bundle Xcode → khớp byte). Best-effort, không chặn archive.
+      - name: Export JS sourcemap (debug crash)
+        script: |
+          mkdir -p "$CM_BUILD_DIR/build/jsmap"
+          EXPO_UNSAFE_DOTENV_KEYS=ENV,NODE_ENV npx expo export:embed \
+            --platform ios --dev false --entry-file index.js \
+            --bundle-output "$CM_BUILD_DIR/build/jsmap/main.jsbundle" \
+            --sourcemap-output "$CM_BUILD_DIR/build/jsmap/main.jsbundle.map" \
+            2>&1 | tail -20 || echo "⚠️ export sourcemap lỗi (không chặn build)"
+          ls -lh "$CM_BUILD_DIR/build/jsmap/" 2>/dev/null || true
+
       - name: Build iOS Archive (signed)
         script: |
           mkdir -p "$(dirname "$ARCHIVE_PATH")"
@@ -551,6 +669,7 @@ workflows:
           find "$CM_BUILD_DIR/DerivedData" -name "*.signature" -delete 2>/dev/null || true
 
           xcodebuild \
+            -quiet \
             -workspace "$WORKSPACE" \
             -scheme "$XCODE_SCHEME" \
             -configuration Release \
@@ -602,6 +721,9 @@ workflows:
     artifacts:
       - build/ios/ipa/*.ipa
       - build/ios/OriLife.xcarchive/dSYMs/*.dSYM
+      # Sourcemap + bundle JS để de-minify stack crash (tải về gửi lại để giải frame).
+      - build/jsmap/main.jsbundle.map
+      - build/jsmap/main.jsbundle
 
     publishing:
       app_store_connect:
@@ -645,21 +767,39 @@ workflows:
       - name: Create .env for React Native
         script: |
           cat > .env <<EOF
-          ENV=production
-          ALADIN_API_URL=${BASE_API_URL:-https://staging-api.orilife.io}
+          ALADIN_API_URL=${BASE_API_URL:-https://api.orilife.io}
           ALADIN_API_KEY=${API_KEY:-mock-local-api-key}
           ALADIN_REGION_CODE=${REGION_CODE:-vn-south-01}
           PHOENIXKEY_API_URL=${PHOENIXKEY_API_URL:-https://api.phoenixkey.me/api/v1}
           PHOENIX_WALLET_ENABLED=${PHOENIX_WALLET_ENABLED:-false}
-          ORILIFE_API_BASE_URL=${ORILIFE_API_BASE_URL:-https://test.orilife.io}
-          ORILIFE_TREEID_URL=${ORILIFE_TREEID_URL:-https://test.orilife.io/TreeIdentity}
-          ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://test.orilife.io}
+          ORILIFE_API_BASE_URL=${ORILIFE_API_BASE_URL:-https://api.orilife.io}
+          ORILIFE_TREEID_URL=${ORILIFE_TREEID_URL:-https://api.orilife.io/TreeIdentity}
+          ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://api.orilife.io}
           MESHAPI_USE_MOCK=false
           LAMPNET_BASE_URL=${LAMPNET_BASE_URL:-https://lampnet.cloud}
           LAMPNET_UPLOAD_URL=${LAMPNET_UPLOAD_URL:-https://lampnet.cloud/mirage/put?mode=symmetric}
-          CAPTURES_3D_URL=${CAPTURES_3D_URL:-https://staging-api.orilife.io/captures/3d}
-          ANALYTICS_API_URL=${ANALYTICS_API_URL:-https://analytics.orilife.io}
-          ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-prod-analytics-key}
+          CAPTURES_3D_URL=${CAPTURES_3D_URL:-https://api.orilife.io/captures/3d}
+          # AladinWork (Việc làm). THIẾU biến này = cổng runtime tắt vĩnh viễn, module
+          # rơi về rỗng DÙ máy chủ sống (đo 05/08: api.aladin.work/api/v1/health = 200).
+          WORK_API_URL=${WORK_API_URL:-https://api.aladin.work/api/v1}
+
+          # ProofChat. Ghi sẵn URL để khi máy chủ sống lại chỉ phải bật MỘT biến, không
+          # phải sửa cấu hình. Nhưng cờ mặc định là `off`, CỐ Ý: nếu để `true` thì cửa
+          # duy nhất còn lại là phép thử /health — máy chủ sống lại là module tự bật,
+          # trong khi chốt chặn bảo mật của chính nó chưa gỡ (proofchat-api.ts:88-93:
+          # token production PHẢI ở Keychain/Keystore, nay còn nằm AsyncStorage chưa mã
+          # hoá). Bật là quyết định của người phát hành, không phải hệ quả phụ.
+          PROOFCHAT_API_URL=${PROOFCHAT_API_URL:-https://api.proofchat.me/api/v1}
+          PROOFCHAT_WS_URL=${PROOFCHAT_WS_URL:-https://api.proofchat.me}
+          PROOFCHAT_WS_PATH=${PROOFCHAT_WS_PATH:-/socket.io}
+          PROOFCHAT_BACKEND_ENABLED=${PROOFCHAT_BACKEND_ENABLED:-off}
+
+          # ⚠ analytics.orilife.io KHÔNG phân giải được (DNS NXDOMAIN, đo 05/08) — để
+          # trống thay vì nướng một host không tồn tại vào mọi bản build. Để trống CHỈ
+          # an toàn sau khi đã gỡ đường lui viết cứng trong analyticsApi.ts (trước đây
+          # chuỗi rỗng làm nó lui về một tunnel ngrok tạm + khoá dev). Nay rỗng = TẮT.
+          ANALYTICS_API_URL=${ANALYTICS_API_URL:-}
+          ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-}
           EOF
           # Dọn whitespace lạc (tab/space) trong value biến môi trường Codemagic.
           perl -i -pe 's/^(\w+)=[ \t]+/$1=/; s/[ \t]+$//' .env
@@ -675,8 +815,8 @@ workflows:
           set -e
           # secrets.properties (gitignored) — API cho orilifesdk. Từ group scanner_secrets.
           cat > android/app/secrets.properties <<EOF
-          TREE_DETECTION_API=${TREE_DETECTION_API:-https://staging-api.orilife.io/evidences/ingest}
-          BASE_API_URL=${BASE_API_URL:-https://staging-api.orilife.io}
+          TREE_DETECTION_API=${TREE_DETECTION_API:-https://api.orilife.io/evidences/ingest}
+          BASE_API_URL=${BASE_API_URL:-https://api.orilife.io}
           API_KEY=${API_KEY:-mock-local-api-key}
           REGION_CODE=${REGION_CODE:-vn-south-01}
           EOF
@@ -689,6 +829,14 @@ workflows:
           newArchEnabled=true
           hermesEnabled=true
           edgeToEdgeEnabled=false
+          # Tắt tích hợp worklets của expo-modules-core. KHÔNG có dòng này thì
+          # WorkletRuntimeInstaller.cpp biên dịch với WORKLETS_ENABLED=1 và đòi
+          # <worklets/Compat/StableApi.h> — header chỉ có từ react-native-worklets
+          # 0.8.0, mà dự án ghim 0.7.4 ⇒ build native gãy. Bản vá
+          # patches/expo-modules-core+56.0.22.patch mở đúng công tắc này, nhưng
+          # android/gradle.properties bị gitignore và bị heredoc dưới đây ghi đè,
+          # nên bản vá vô tác dụng suốt từ 26/07 — 10/10 lần chạy CI đỏ vì nó.
+          expo.enableWorkletsIntegration=false
           EOF
           # Dọn whitespace lạc trong value biến môi trường Codemagic.
           perl -i -pe 's/^(\w+([.\w]*))=[ \t]+/$1=/; s/[ \t]+$//' android/app/secrets.properties android/gradle.properties
@@ -797,21 +945,39 @@ workflows:
       - name: Create .env for React Native
         script: |
           cat > .env <<EOF
-          ENV=production
-          ALADIN_API_URL=${BASE_API_URL:-https://staging-api.orilife.io}
+          ALADIN_API_URL=${BASE_API_URL:-https://api.orilife.io}
           ALADIN_API_KEY=${API_KEY:-mock-local-api-key}
           ALADIN_REGION_CODE=${REGION_CODE:-vn-south-01}
           PHOENIXKEY_API_URL=${PHOENIXKEY_API_URL:-https://api.phoenixkey.me/api/v1}
           PHOENIX_WALLET_ENABLED=${PHOENIX_WALLET_ENABLED:-false}
-          ORILIFE_API_BASE_URL=${ORILIFE_API_BASE_URL:-https://test.orilife.io}
-          ORILIFE_TREEID_URL=${ORILIFE_TREEID_URL:-https://test.orilife.io/TreeIdentity}
-          ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://test.orilife.io}
+          ORILIFE_API_BASE_URL=${ORILIFE_API_BASE_URL:-https://api.orilife.io}
+          ORILIFE_TREEID_URL=${ORILIFE_TREEID_URL:-https://api.orilife.io/TreeIdentity}
+          ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://api.orilife.io}
           MESHAPI_USE_MOCK=false
           LAMPNET_BASE_URL=${LAMPNET_BASE_URL:-https://lampnet.cloud}
           LAMPNET_UPLOAD_URL=${LAMPNET_UPLOAD_URL:-https://lampnet.cloud/mirage/put?mode=symmetric}
-          CAPTURES_3D_URL=${CAPTURES_3D_URL:-https://staging-api.orilife.io/captures/3d}
-          ANALYTICS_API_URL=${ANALYTICS_API_URL:-https://analytics.orilife.io}
-          ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-prod-analytics-key}
+          CAPTURES_3D_URL=${CAPTURES_3D_URL:-https://api.orilife.io/captures/3d}
+          # AladinWork (Việc làm). THIẾU biến này = cổng runtime tắt vĩnh viễn, module
+          # rơi về rỗng DÙ máy chủ sống (đo 05/08: api.aladin.work/api/v1/health = 200).
+          WORK_API_URL=${WORK_API_URL:-https://api.aladin.work/api/v1}
+
+          # ProofChat. Ghi sẵn URL để khi máy chủ sống lại chỉ phải bật MỘT biến, không
+          # phải sửa cấu hình. Nhưng cờ mặc định là `off`, CỐ Ý: nếu để `true` thì cửa
+          # duy nhất còn lại là phép thử /health — máy chủ sống lại là module tự bật,
+          # trong khi chốt chặn bảo mật của chính nó chưa gỡ (proofchat-api.ts:88-93:
+          # token production PHẢI ở Keychain/Keystore, nay còn nằm AsyncStorage chưa mã
+          # hoá). Bật là quyết định của người phát hành, không phải hệ quả phụ.
+          PROOFCHAT_API_URL=${PROOFCHAT_API_URL:-https://api.proofchat.me/api/v1}
+          PROOFCHAT_WS_URL=${PROOFCHAT_WS_URL:-https://api.proofchat.me}
+          PROOFCHAT_WS_PATH=${PROOFCHAT_WS_PATH:-/socket.io}
+          PROOFCHAT_BACKEND_ENABLED=${PROOFCHAT_BACKEND_ENABLED:-off}
+
+          # ⚠ analytics.orilife.io KHÔNG phân giải được (DNS NXDOMAIN, đo 05/08) — để
+          # trống thay vì nướng một host không tồn tại vào mọi bản build. Để trống CHỈ
+          # an toàn sau khi đã gỡ đường lui viết cứng trong analyticsApi.ts (trước đây
+          # chuỗi rỗng làm nó lui về một tunnel ngrok tạm + khoá dev). Nay rỗng = TẮT.
+          ANALYTICS_API_URL=${ANALYTICS_API_URL:-}
+          ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-}
           EOF
           # Dọn whitespace lạc (tab/space) trong value biến môi trường Codemagic.
           perl -i -pe 's/^(\w+)=[ \t]+/$1=/; s/[ \t]+$//' .env
@@ -838,8 +1004,8 @@ workflows:
           set -e
           # secrets.properties (gitignored) — API cho orilifesdk. Từ group scanner_secrets.
           cat > android/app/secrets.properties <<EOF
-          TREE_DETECTION_API=${TREE_DETECTION_API:-https://staging-api.orilife.io/evidences/ingest}
-          BASE_API_URL=${BASE_API_URL:-https://staging-api.orilife.io}
+          TREE_DETECTION_API=${TREE_DETECTION_API:-https://api.orilife.io/evidences/ingest}
+          BASE_API_URL=${BASE_API_URL:-https://api.orilife.io}
           API_KEY=${API_KEY:-mock-local-api-key}
           REGION_CODE=${REGION_CODE:-vn-south-01}
           EOF
@@ -852,6 +1018,14 @@ workflows:
           newArchEnabled=true
           hermesEnabled=true
           edgeToEdgeEnabled=false
+          # Tắt tích hợp worklets của expo-modules-core. KHÔNG có dòng này thì
+          # WorkletRuntimeInstaller.cpp biên dịch với WORKLETS_ENABLED=1 và đòi
+          # <worklets/Compat/StableApi.h> — header chỉ có từ react-native-worklets
+          # 0.8.0, mà dự án ghim 0.7.4 ⇒ build native gãy. Bản vá
+          # patches/expo-modules-core+56.0.22.patch mở đúng công tắc này, nhưng
+          # android/gradle.properties bị gitignore và bị heredoc dưới đây ghi đè,
+          # nên bản vá vô tác dụng suốt từ 26/07 — 10/10 lần chạy CI đỏ vì nó.
+          expo.enableWorkletsIntegration=false
           ORILIFE_UPLOAD_STORE_FILE=keySigning.bin
           ORILIFE_UPLOAD_KEY_ALIAS=${ORILIFE_UPLOAD_KEY_ALIAS}
           ORILIFE_UPLOAD_STORE_PASSWORD=${ORILIFE_UPLOAD_STORE_PASSWORD}

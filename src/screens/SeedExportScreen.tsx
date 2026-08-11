@@ -110,7 +110,7 @@ const SeedExportScreen = () => {
           <Text style={styles.warnText}>
             Cụm 24 từ là cách <Text style={styles.bold}>DUY NHẤT</Text> để khôi phục
             danh tính & ví nếu mất máy. Ghi ra giấy, cất nơi an toàn.{'\n'}
-            <Text style={styles.bold}>Không</Text> ai (kể cả OriLife) khôi phục giúp được.
+            <Text style={styles.bold}>Không</Text> ai (kể cả chúng tôi) khôi phục giúp được.
           </Text>
         </View>
 

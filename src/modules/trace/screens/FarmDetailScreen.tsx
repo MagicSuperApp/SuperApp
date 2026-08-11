@@ -20,7 +20,9 @@ import {
   Animated,
   PanResponder,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+// Icon: bo Font Awesome Solid tai qua Iconify (assets/icons -> icons.generated).
+// Them icon moi: `node scripts/icons.js <ten-fa6-solid>`.
+import Icon from '../../../components/Icon';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../../../store';
@@ -28,7 +30,12 @@ import { addFarm, setTrees, addTree, saveFarm, loadTrees, saveTree, loadFarm, sy
 import { database } from '../../../utils/database';
 import Geolocation from 'react-native-geolocation-service';
 import { COLORS } from '../../../constants';
-import aladinAPI from '../../../services/aladin-api';
+// B2: tạo vườn QUA field-reid (server sinh farm_id uuid THẬT) — bỏ aladinAPI
+// (backend Lợi deprecated + client tự sinh `farm-<ts>` = gốc B2). INV-1 §3.2.
+import { createFarm as createReidFarm } from '../../../services/farmService';
+import { ensureOrilifeToken } from '../../../services/orilifeDidAuth';
+import { ORILIFE_BASE } from '../../../services/orilifeBase';
+import { fieldErrorMessage } from '../../../services/treeReIDService';
 // We dynamically load MapLibre so the app can still run if the native module is missing
 // (e.g. not linked / not supported on the current device). We load it inside the
 // AddFarmMode component to avoid crashing on app startup.
@@ -113,7 +120,7 @@ class AddFarmErrorBoundary extends React.Component<{ children: React.ReactNode }
     if (this.state.hasError) {
       return (
         <View style={[styles.root, { justifyContent: 'center', alignItems: 'center' }]}>
-          <Icon name="alert-circle-outline" size={48} color={COLORS.error} />
+          <Icon name="circle-exclamation" size={48} color={COLORS.error} />
           <Text style={[styles.mapFallbackText, { marginTop: 16, textAlign: 'center' }]}>
             Đã xảy ra lỗi khi tải màn hình thêm trang trại
           </Text>
@@ -194,7 +201,7 @@ const TreeCard = ({
       <View style={styles.treeCard}>
         <View style={styles.treeCardLeft}>
           <View style={styles.treeIconWrap}>
-            <Icon name="tree-outline" size={22} color={COLORS.accent} />
+            <Icon name="tree" size={22} color={COLORS.accent} />
           </View>
           <View style={styles.treeProgBarWrap}>
             <View style={[styles.treeProgBar, { height: `${harvestPct}%` as any }]} />
@@ -215,14 +222,14 @@ const TreeCard = ({
                 onPress={onView3D}
                 hitSlop={6}
               >
-                <Icon name="cube-scan" size={12} color={COLORS.accent} />
+                <Icon name="expand" size={12} color={COLORS.accent} />
                 <Text style={[styles.treeFruitCount, { color: COLORS.accent }]}>
-                  Xem 3D · {fruitCount} quả
+                  3D · {fruitCount} quả
                 </Text>
               </TouchableOpacity>
             ) : (
               <View style={[styles.treeFruitChip, { backgroundColor: COLORS.bgWarm }]}>
-                <Icon name="cube-outline" size={12} color={COLORS.textMuted} />
+                <Icon name="cube" size={12} color={COLORS.textMuted} />
                 <Text style={[styles.treeFruitCount, { color: COLORS.textMuted }]}>
                   Chưa có 3D · {fruitCount} quả
                 </Text>
@@ -232,7 +239,7 @@ const TreeCard = ({
 
           {item.lastActivity && (
             <View style={styles.treeLastActivity}>
-              <Icon name="clock-outline" size={11} color={COLORS.textMuted} />
+              <Icon name="clock" size={11} color={COLORS.textMuted} />
               <Text style={styles.treeLastActivityText}>{item.lastActivity}</Text>
             </View>
           )}
@@ -398,6 +405,7 @@ const AddFarmMode = ({
   onDeleteVertex,
   onUndo,
   onResetFromScratch,
+  isSaving,
 }: {
   coordinates: { lat: number; lng: number }[];
   setCoordinates: React.Dispatch<React.SetStateAction<{ lat: number; lng: number }[]>>;
@@ -419,6 +427,8 @@ const AddFarmMode = ({
   onDeleteVertex: (index: number) => void;
   onUndo: () => void;
   onResetFromScratch: () => void;
+  /** B2: đang gọi backend tạo vườn → khoá nút Lưu + hiện spinner (§7.3). */
+  isSaving?: boolean;
 }) => {
   const insets = useSafeAreaInsets();
 
@@ -437,6 +447,17 @@ const AddFarmMode = ({
   // Khi đang kéo 1 đỉnh → tắt pan bản đồ để không xê dịch nền.
   const [draggingActive, setDraggingActive] = useState(false);
   const mapViewRef = useRef<any>(null);
+
+  // Thêm 1 điểm tại vị-trí chạm trên bản-đồ (chế-độ "Tự vẽ điểm"). Callback nhận thẳng
+  // GeoJSON.Feature: geometry.coordinates = [lng, lat].
+  const handleMapAddPoint = useCallback((e: any) => {
+    if (drawMode !== 'manual') return;
+    const c = e?.geometry?.coordinates ?? e?.payload?.geometry?.coordinates;
+    if (!c) return;
+    const [lng, lat] = c;
+    setSelectedVertex(null);
+    onManualTapAppend(lat, lng);
+  }, [drawMode, onManualTapAppend]);
 
   // Khi parent chuyển 'edit-ready' (walk-away auto-stop) → tắt auto-record + pulse.
   useEffect(() => {
@@ -504,6 +525,9 @@ const AddFarmMode = ({
       const id = Geolocation.watchPosition(
         (pos) => {
           if (cancelled) return;
+          // Bỏ fix CACHE cũ (>15s): OS hay trả vị trí "tỉnh từng ở" tức thì trước khi
+          // GPS thật khoá → hiện sai tỉnh (field 13/07). Fix live luôn có timestamp mới.
+          if (pos.timestamp && Date.now() - pos.timestamp > 15000) return;
           const { latitude, longitude, accuracy } = pos.coords;
           setCurrentLocation({ lat: latitude, lng: longitude });
           setLastAccuracy(accuracy ?? null);
@@ -514,7 +538,13 @@ const AddFarmMode = ({
         },
         (err) => console.log('[AddFarmMode] watchPosition error:', err),
         // distanceFilter=3 đồng bộ với native LocationHelper (Build 51).
-        { enableHighAccuracy: true, distanceFilter: 3 },
+        // forceRequestLocation + showLocationDialog (Android): nhắc bật định-vị nếu tắt.
+        {
+          enableHighAccuracy: true,
+          distanceFilter: 3,
+          forceRequestLocation: true,
+          showLocationDialog: true,
+        },
       );
 
       if (cancelled) { Geolocation.clearWatch(id); return; }
@@ -549,11 +579,14 @@ const AddFarmMode = ({
     requestLocationPermission().then(setPermissionGranted);
   }, []);
 
-  // Auto-center một lần khi có định vị GPS đầu tiên (sau đó user tự pan/zoom).
+  // Auto-center theo GPS — BÁM THEO tới khi có fix ĐỦ CHÍNH XÁC rồi mới khoá (sau đó
+  // user tự pan/zoom). Vì sao KHÔNG khoá ngay fix đầu: iOS/Android hay trả fix CACHE
+  // (vị trí tỉnh TỪNG ở) tức thì trước khi GPS thật khoá → nếu center-rồi-khoá ở fix đầu
+  // thì kẹt ở "tỉnh khác" (field 13/07). Bám theo tới khi accuracy ≤ 60m → chắc về đúng
+  // chỗ đang đứng; chưa có accuracy thì vẫn center tạm nhưng CHƯA khoá (còn recenter được).
   useEffect(() => {
     if (didAutoCenterRef.current) return;
     if (currentLocation.lat === 0 && currentLocation.lng === 0) return;
-    didAutoCenterRef.current = true;
     try {
       cameraRef.current?.setCamera({
         centerCoordinate: [currentLocation.lng, currentLocation.lat],
@@ -561,7 +594,11 @@ const AddFarmMode = ({
         animationDuration: 600,
       });
     } catch {}
-  }, [currentLocation]);
+    // Chỉ khoá auto-center khi fix đủ tốt → tránh dính fix cache sai tỉnh.
+    if (lastAccuracy != null && lastAccuracy <= 60) {
+      didAutoCenterRef.current = true;
+    }
+  }, [currentLocation, lastAccuracy]);
 
   // Đóng popup nếu điểm đang chọn đã bị xoá khỏi mảng.
   useEffect(() => {
@@ -620,14 +657,7 @@ const AddFarmMode = ({
                 rotateEnabled={false}
                 pitchEnabled={false}
                 scrollEnabled={!draggingActive}
-                onPress={(e: any) => {
-                  if (drawMode !== 'manual') return;
-                  const c = e?.geometry?.coordinates ?? e?.payload?.geometry?.coordinates;
-                  if (!c) return;
-                  const [lng, lat] = c;
-                  setSelectedVertex(null);
-                  onManualTapAppend(lat, lng);
-                }}
+                onPress={handleMapAddPoint}
                 onDidFinishLoadingMap={() => setShowMarker(true)}
               >
                 <MapLib.Camera
@@ -725,7 +755,7 @@ const AddFarmMode = ({
               </MapLib.MapView>
             ) : (
               <View style={[styles.mapFallback, { backgroundColor: '#e8f5e9' }]}>
-                <Icon name="map-outline" size={32} color={COLORS.accentLight} />
+                <Icon name="map" size={32} color={COLORS.accentLight} />
                 <Text style={[styles.mapFallbackText, { marginTop: 8 }]}>
                   {mapError
                     ? `Lỗi bản đồ: ${mapError}`
@@ -783,7 +813,7 @@ const AddFarmMode = ({
             onPress={() => setMapType(m => (m === 'normal' ? 'satellite' : 'normal'))}
             activeOpacity={0.85}
           >
-            <Icon name={mapType === 'normal' ? 'satellite-variant' : 'map-outline'} size={20} color={COLORS.text} />
+            <Icon name={mapType === 'normal' ? 'satellite' : 'map'} size={20} color={COLORS.text} />
           </TouchableOpacity>
           <Text style={styles.circleBtnLabel}>{mapType === 'normal' ? 'Vệ tinh' : 'Bản đồ'}</Text>
         </View>
@@ -797,7 +827,7 @@ const AddFarmMode = ({
             <Icon name="minus" size={22} color={COLORS.text} />
           </TouchableOpacity>
           <TouchableOpacity style={[styles.circleBtn, { marginTop: 10 }]} onPress={recenter} activeOpacity={0.85}>
-            <Icon name="crosshairs-gps" size={20} color={COLORS.accent} />
+            <Icon name="location-crosshairs" size={20} color={COLORS.accent} />
           </TouchableOpacity>
         </View>
 
@@ -818,7 +848,7 @@ const AddFarmMode = ({
               onPress={() => setDrawMode('auto')}
               activeOpacity={0.85}
             >
-              <Icon name="walk" size={17} color={drawMode === 'auto' ? COLORS.white : COLORS.textSub} />
+              <Icon name="person-walking" size={17} color={drawMode === 'auto' ? COLORS.white : COLORS.textSub} />
               <Text style={[styles.segmentText, drawMode === 'auto' && styles.segmentTextActive]}>Tự động ghi</Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -826,7 +856,7 @@ const AddFarmMode = ({
               onPress={() => { setIsAutoRecording(false); setDrawMode('manual'); }}
               activeOpacity={0.85}
             >
-              <Icon name="gesture-tap" size={17} color={drawMode === 'manual' ? COLORS.white : COLORS.textSub} />
+              <Icon name="hand-pointer" size={17} color={drawMode === 'manual' ? COLORS.white : COLORS.textSub} />
               <Text style={[styles.segmentText, drawMode === 'manual' && styles.segmentTextActive]}>Tự vẽ điểm</Text>
             </TouchableOpacity>
           </View>
@@ -863,7 +893,7 @@ const AddFarmMode = ({
                 }}
                 activeOpacity={0.9}
               >
-                <Icon name={isAutoRecording ? 'pause-circle' : 'play-circle'} size={24} color={COLORS.white} />
+                <Icon name={isAutoRecording ? 'circle-pause' : 'circle-play'} size={24} color={COLORS.white} />
                 <Text style={styles.primaryBtnText}>
                   {isAutoRecording ? 'Tạm dừng' : coordinates.length === 0 ? 'Bắt đầu đi vòng' : 'Tiếp tục đi vòng'}
                 </Text>
@@ -875,19 +905,28 @@ const AddFarmMode = ({
                 disabled={editHistoryLength === 0}
                 activeOpacity={0.85}
               >
-                <Icon name="undo-variant" size={20} color={COLORS.textSub} />
+                <Icon name="arrow-rotate-left" size={20} color={COLORS.textSub} />
                 <Text style={styles.smallBtnText}>Hoàn tác điểm</Text>
               </TouchableOpacity>
             )}
 
             <TouchableOpacity
-              style={[styles.saveBtn, !canSave && styles.btnDisabled]}
+              style={[styles.saveBtn, (!canSave || isSaving) && styles.btnDisabled]}
               onPress={onFinish}
-              disabled={!canSave}
+              disabled={!canSave || isSaving}
               activeOpacity={0.9}
             >
-              <Icon name="content-save-check" size={20} color={COLORS.white} />
-              <Text style={styles.saveBtnText}>Lưu vườn</Text>
+              {isSaving ? (
+                <>
+                  <ActivityIndicator color={COLORS.white} />
+                  <Text style={styles.saveBtnText}>Đang lưu...</Text>
+                </>
+              ) : (
+                <>
+                  <Icon name="floppy-disk" size={20} color={COLORS.white} />
+                  <Text style={styles.saveBtnText}>Lưu vườn</Text>
+                </>
+              )}
             </TouchableOpacity>
           </View>
 
@@ -900,7 +939,7 @@ const AddFarmMode = ({
                 disabled={editHistoryLength === 0}
                 activeOpacity={0.7}
               >
-                <Icon name="undo-variant" size={16} color={COLORS.textSub} />
+                <Icon name="arrow-rotate-left" size={16} color={COLORS.textSub} />
                 <Text style={styles.linkBtnText}>Hoàn tác</Text>
               </TouchableOpacity>
             )}
@@ -910,7 +949,7 @@ const AddFarmMode = ({
               disabled={coordinates.length === 0}
               activeOpacity={0.7}
             >
-              <Icon name="restart" size={16} color="#E74C3C" />
+              <Icon name="rotate" size={16} color="#E74C3C" />
               <Text style={[styles.linkBtnText, { color: '#E74C3C' }]}>Vẽ lại từ đầu</Text>
             </TouchableOpacity>
           </View>
@@ -927,7 +966,7 @@ const AddFarmMode = ({
                 </View>
                 <Text style={styles.vertexPopupTitle}>Điểm số {selectedVertex + 1}</Text>
                 <TouchableOpacity onPress={() => setSelectedVertex(null)} hitSlop={8}>
-                  <Icon name="close" size={20} color={COLORS.textMuted} />
+                  <Icon name="xmark" size={20} color={COLORS.textMuted} />
                 </TouchableOpacity>
               </View>
               <View style={styles.vertexPopupBody}>
@@ -939,7 +978,7 @@ const AddFarmMode = ({
                 onPress={() => { const idx = selectedVertex; setSelectedVertex(null); onDeleteVertex(idx); }}
                 activeOpacity={0.85}
               >
-                <Icon name="trash-can-outline" size={18} color={COLORS.white} />
+                <Icon name="trash" size={18} color={COLORS.white} />
                 <Text style={styles.vertexDeleteText}>Xoá điểm này</Text>
               </TouchableOpacity>
             </View>
@@ -963,6 +1002,7 @@ const FarmDetailMode = ({
   onBack,
   onUpdateFarmName,
   onCoordinatesPress,
+  onView3DFarm,
 }: {
   farm: any;
   trees: any[];
@@ -975,6 +1015,8 @@ const FarmDetailMode = ({
   onBack: () => void;
   onUpdateFarmName: (newName: string) => void;
   onCoordinatesPress: () => void;
+  /** Mở KHÔNG-GIAN 3D ở chế độ TOÀN CẢNH VƯỜN (Space3D mode='farm'). */
+  onView3DFarm: () => void;
 }) => {
   const navigation = useNavigation();
   const [renamePopupVisible, setRenamePopupVisible] = useState(false);
@@ -1035,7 +1077,7 @@ const FarmDetailMode = ({
   const totalFruits = filteredTrees.reduce((sum, t) => sum + (t.fruitCount ?? 0), 0);
   const areaLabel = farm?.areaSqm
     ? `${(farm?.areaSqm / 10000).toFixed(1)} ha`
-    : `${farm?.coordinates?.length ?? 0} điểm`;
+    : `${farm?.coordinates?.length ?? 0} Points`;
 
   return (
     <View style={styles.root}>
@@ -1053,17 +1095,17 @@ const FarmDetailMode = ({
           </TouchableOpacity>
         </View>
         <TouchableOpacity style={styles.activityBtn} onPress={onActivityUpdate}>
-          <Icon name="clipboard-edit-outline" size={20} color={COLORS.accent} />
+          <Icon name="file-pen" size={20} color={COLORS.accent} />
         </TouchableOpacity>
       </View>
 
       {/* Stats banner */}
       <View style={styles.statsBanner}>
         {[
-          { icon: 'tree-outline', val: filteredTrees.length, label: 'cây' },
-          { icon: 'food-apple-outline', val: totalFruits, label: 'quả dự kiến' },
-          { icon: 'vector-polygon', val: areaLabel, label: '' },
-          { icon: 'map-marker-check-outline', val: farm?.coordinates?.length ?? 0, label: 'điểm GPS\n(nhấn xem)', onPress: () => onCoordinatesPress() },
+          { icon: 'tree', val: filteredTrees.length, label: 'cây' },
+          { icon: 'apple-whole', val: totalFruits, label: 'quả dự kiến' },
+          { icon: 'draw-polygon', val: areaLabel, label: '' },
+          { icon: 'map-pin', val: farm?.coordinates?.length ?? 0, label: 'điểm GPS\n(nhấn xem)', onPress: () => onCoordinatesPress() },
         ].map((s, i) => (
           <View
             key={i}
@@ -1087,7 +1129,7 @@ const FarmDetailMode = ({
 
       {/* Search Input */}
       <View style={styles.searchContainer}>
-        <Icon name="magnify" size={18} color={COLORS.textMuted} style={styles.searchIcon} />
+        <Icon name="magnifying-glass" size={18} color={COLORS.textMuted} />
         <TextInput
           style={styles.searchInput}
           placeholder="Tìm cây..."
@@ -1096,8 +1138,8 @@ const FarmDetailMode = ({
           onChangeText={onSearchChange}
         />
         {searchQuery.length > 0 && (
-          <TouchableOpacity onPress={() => onSearchChange('')}>
-            <Icon name="close-circle" size={18} color={COLORS.textMuted} />
+          <TouchableOpacity onPress={() => onSearchChange('')} hitSlop={{ top: 13, bottom: 13, left: 13, right: 13 }}>
+            <Icon name="circle-xmark" size={18} color={COLORS.textMuted} />
           </TouchableOpacity>
         )}
       </View>
@@ -1139,7 +1181,7 @@ const FarmDetailMode = ({
               />
             ) : (
               <View style={styles.noSearchResults}>
-                <Icon name="magnify-close" size={48} color={COLORS.textMuted} />
+                <Icon name="magnifying-glass-minus" size={48} color={COLORS.textMuted} />
                 <Text style={styles.noSearchResultsText}>Không tìm thấy cây</Text>
               </View>
             )
@@ -1155,8 +1197,11 @@ const FarmDetailMode = ({
               (navigation.navigate as any)('TreeDetail', { tree: item })
             }}
             onView3D={() => {
-              (navigation.navigate as any)('TreeViewer3D', {
-                code: item.code ?? item.shortCode ?? '',
+              // Mở KHÔNG-GIAN 3D chung (vườn ⇄ cây ⇄ quả) thay cho WebView /view/{code}.
+              (navigation.navigate as any)('Space3D', {
+                mode: 'tree',
+                treeId: item.id,
+                farmId: item.farmId ?? farm?.id,
                 treeName: formatTreeName(item, farm),
               });
             }}
@@ -1175,7 +1220,8 @@ const FarmDetailMode = ({
                 onPreviousPage={handlePreviousPage}
                 onNextPage={handleNextPage}
               />
-              <View style={{ height: 30 }} />
+              {/* Chừa chỗ cho thanh hành động nổi ở đáy (2 nút). */}
+              <View style={{ height: 86 }} />
             </View>
           ) : null
         }
@@ -1183,9 +1229,21 @@ const FarmDetailMode = ({
 
       {/* Bottom action bar */}
       <View style={styles.bottomBar}>
+        {/* Toàn cảnh 3D của cả vườn (mặt đất theo ranh giới + mọi cây).
+            Chạm 1 cây trong đó → bay sà vào xem quả. */}
+        <TouchableOpacity
+          style={styles.view3DFarmBtn}
+          onPress={onView3DFarm}
+          activeOpacity={0.85}
+        >
+          <Icon name="arrows-spin" size={19} color={COLORS.accent} />
+          <Text style={styles.view3DFarmBtnText}>Xem sơ đồ 3D của vườn</Text>
+          <Icon name="chevron-right" size={18} color={COLORS.accent} />
+        </TouchableOpacity>
+
         <TouchableOpacity style={styles.activityLargeBtn} onPress={onActivityUpdate} activeOpacity={0.88}>
           <View style={styles.btnShine} />
-          <Icon name="sprout-outline" size={19} color={COLORS.white} />
+          <Icon name="seedling" size={19} color={COLORS.white} />
           <Text style={styles.activityLargeBtnText}>Cập nhật hoạt động</Text>
         </TouchableOpacity>
       </View>
@@ -1547,6 +1605,8 @@ const FarmDetailScreen = () => {
   const [farmNameInput, setFarmNameInput] = useState<string>('');
   const farmNameInputRef = useRef<string>('');
   useEffect(() => { farmNameInputRef.current = farmNameInput; }, [farmNameInput]);
+  // B2: cờ đang gọi backend tạo vườn — khoá nút Lưu + hiện loading (§7.3), chống bấm kép.
+  const [isSavingFarm, setIsSavingFarm] = useState<boolean>(false);
 
   /**
    * Build 54 (CPO Đức 2026-05-18) — Offline-first farm save.
@@ -1600,73 +1660,91 @@ const FarmDetailScreen = () => {
         if (!proceed) return;
       }
 
-      // 2. Build closed polygon (GeoJSON)
-      const polygonCoords = coordinates.map(c => [c.lng, c.lat]);
-      const first = polygonCoords[0];
-      const last = polygonCoords[polygonCoords.length - 1];
-      if (first[0] !== last[0] || first[1] !== last[1]) {
-        polygonCoords.push([first[0], first[1]]);
-      }
-      const boundary = { type: 'Polygon' as const, coordinates: [polygonCoords] };
-
-      // 3. Build farm record
-      const farmId = `farm-${Date.now()}`;
+      // 2. Tên vườn
       const inputName = farmNameInputRef.current.trim();
       const farmName = inputName.length > 0
         ? inputName
         : `Vườn ${new Date().toLocaleDateString('vi-VN')}`;
 
-      const localFarm = {
-        id: farmId,
-        name: farmName,
-        coordinates,
-        userId: user.id,
-      };
-
-      // 4. SAVE LOCAL FIRST — source of truth, backend is best-effort
+      // 3. TẠO QUA BACKEND field-reid TRƯỚC — server sinh farm_id (uuid) THẬT.
+      //    INV-1 (INTEGRATION-STANDARD §3.2): client KHÔNG tự sinh id, ghi qua API
+      //    versioned; backend là nguồn sự-thật. farm_id thật là điều-kiện để enroll
+      //    gắn cây ĐÚNG vườn (sửa B2 "tạo vườn nhưng cây không vào vườn"). Trước đây
+      //    client tự sinh `farm-<ts>` + ghi backend Lợi → field-reid không biết id →
+      //    gán farm_id=null → cây mồ-côi.
+      //    farmService đóng boundary [lat,lon] từ coordinates {lat,lng}.
+      setIsSavingFarm(true);
+      let created;
       try {
-        await dispatch(saveFarm(localFarm));
-        console.log('[FarmDetailScreen] ✅ Local farm saved:', farmId);
-      } catch (localErr: any) {
-        console.error('[FarmDetailScreen] Local DB save failed:', localErr);
-        Alert.alert(
-          'Lỗi lưu cục bộ',
-          'Không thể lưu vào bộ nhớ máy. Hãy đóng app và mở lại, rồi thử lại.',
-        );
+        // Token OriLife field-reid (DID challenge-sign) — KHÁC login PhoenixKey/vân-tay.
+        // Tạo vườn ghi qua backend field-reid nên PHẢI có token này. Nếu user CHƯA quét
+        // cây lần nào (token chưa lấy) hoặc token 12h hết hạn → tạo vườn 401 "Phiên hết hạn"
+        // dù đã đăng-nhập. Chủ-động ký DID lấy token TRƯỚC (bằng khoá, không bắt nhập lại).
+        const tokenOk = await ensureOrilifeToken(ORILIFE_BASE);
+        if (tokenOk) {
+          created = await createReidFarm(ORILIFE_BASE, {
+            name: farmName,
+            boundary: coordinates,
+          });
+          // Token vừa hết hạn giữa chừng (401) → làm mới 1 lần rồi thử lại.
+          if (!created.ok && created.error?.type === 'auth_error') {
+            const relog = await ensureOrilifeToken(ORILIFE_BASE, { force: true });
+            if (relog) {
+              created = await createReidFarm(ORILIFE_BASE, {
+                name: farmName,
+                boundary: coordinates,
+              });
+            }
+          }
+        } else {
+          // Không lấy được token → coi như auth_error để nhánh dưới báo đúng.
+          created = { ok: false as const, error: { type: 'auth_error' as const, detail: 'Không lấy được phiên field-reid', http_status: 401 } };
+        }
+      } finally {
+        setIsSavingFarm(false);
+      }
+
+      if (!created.ok || !created.farm) {
+        const err = created.error;
+        // Phân biệt mạng ⟂ auth ⟂ server (§7.3). KHÔNG tạo bản ghi cục-bộ id-giả →
+        // tránh cây mồ-côi. Giữ nguyên màn + điểm GPS để người dùng thử lại.
+        if (err?.type === 'network_error') {
+          Alert.alert(
+            'Cần kết nối mạng',
+            'Tạo vườn cần mạng để máy chủ cấp mã vườn. Việc thêm cây (chụp ảnh) cũng cần mạng — hãy kết nối rồi thử lại. Các điểm GPS bạn đã ghi vẫn được giữ.',
+          );
+        } else if (err?.type === 'auth_error') {
+          // App đã TỰ ký DID lấy token + thử lại 1 lần ở trên → vẫn auth_error nghĩa là
+          // danh-tính chưa đăng-ký trên máy chủ (DID mồ côi) hoặc máy chủ đang trục-trặc.
+          Alert.alert(
+            'Chưa xác thực được với máy chủ',
+            'Không tạo được phiên với máy chủ nhận diện. Thử đăng xuất rồi đăng nhập lại; nếu vẫn lỗi, có thể danh tính chưa được đăng ký trên máy chủ.',
+          );
+        } else {
+          Alert.alert('Chưa lưu được vườn', fieldErrorMessage(err));
+        }
         return;
       }
 
-      // 5. Backend POST best-effort — region_code='auto' sentinel lets backend
-      //    derive region from boundary GPS centroid (CPO V4 decision #3).
+      // 4. Lưu CACHE SQLite (offline-first đọc lại) với id THẬT từ server.
+      //    owner = người đăng-nhập → loadFarms(user.id) khớp. Lỗi cache = không chặn
+      //    (vườn đã ở backend = nguồn sự-thật).
+      const serverFarm = { ...created.farm, userId: user.id };
       try {
-        await aladinAPI.createFarm({
-          farm_id: farmId,
-          owner_did: user.id,
-          region_code: 'auto',
-          farm_name: farmName,
-          boundary,
-        });
-        console.log('[FarmDetailScreen] ✅ Backend farm synced');
-        Toast.show({
-          type: 'success',
-          text1: '✓ Đã lưu nông trại · Saved',
-          text2: 'Đồng bộ thành công · Synced to cloud',
-          visibilityTime: 2500,
-        });
-      } catch (backendErr: any) {
-        console.warn('[FarmDetailScreen] Backend sync failed (will retry):', backendErr?.message);
-        if (backendErr?.response?.status === 422) {
-          console.warn('[FarmDetailScreen] API 422 details:', JSON.stringify(backendErr.response.data, null, 2));
-        }
-        // Both alert (informational, one-time) + toast (background sync indicator)
-        Alert.alert(
-          'Đã lưu vào máy · Saved locally',
-          'Chưa đồng bộ lên máy chủ. Sẽ tự sync khi có mạng ổn định.',
-          [{ text: 'OK' }],
-        );
+        await dispatch(saveFarm(serverFarm)).unwrap();
+        console.log('[FarmDetailScreen] ✅ Farm created on backend + cached:', serverFarm.id);
+      } catch (localErr: any) {
+        console.warn('[FarmDetailScreen] Local cache save failed (non-blocking):', localErr?.message);
       }
 
-      // 6. Reset state + navigate
+      Toast.show({
+        type: 'success',
+        text1: '✓ Đã tạo vườn',
+        text2: 'Giờ bạn có thể thêm cây vào vườn này',
+        visibilityTime: 2500,
+      });
+
+      // 5. Reset state + navigate
       walkAwayStateRef.current = initWalkAwayState();
       lastPointTimestampRef.current = null;
       setEditMode('recording');
@@ -1930,6 +2008,7 @@ const FarmDetailScreen = () => {
         onDeleteVertex={handleDeleteVertex}
         onUndo={handleUndo}
         onResetFromScratch={handleResetFromScratch}
+        isSaving={isSavingFarm}
       />
     );
   }
@@ -2067,6 +2146,14 @@ const FarmDetailScreen = () => {
         onBack={() => navigation.goBack()}
         onUpdateFarmName={handleUpdateFarmName}
         onCoordinatesPress={() => setCoordMapVisible(true)}
+        onView3DFarm={() => {
+          // Toàn cảnh vườn: KHÔNG truyền treeId → Space3D mở ở chế độ vườn.
+          // farm_id là nguồn dự phòng khi `farm` (đọc từ SQLite) chưa về.
+          (navigation.navigate as any)('Space3D', {
+            mode: 'farm',
+            farmId: farm?.id ?? farm_id ?? undefined,
+          });
+        }}
       />
 
       {coordMapVisible && (
@@ -2074,7 +2161,7 @@ const FarmDetailScreen = () => {
           <View style={styles.coordMapHeader}>
             <Text style={styles.coordMapHeaderText}>Bản đồ toạ độ nông trại</Text>
             <TouchableOpacity onPress={() => setCoordMapVisible(false)}>
-              <Icon name="close" size={22} color={COLORS.textMuted} />
+              <Icon name="xmark" size={22} color={COLORS.textMuted} />
             </TouchableOpacity>
           </View>
           <View style={styles.coordMapContainer}>
@@ -2087,7 +2174,7 @@ const FarmDetailScreen = () => {
         <View style={[StyleSheet.absoluteFill, { zIndex: 9999, elevation: 9999, backgroundColor: 'rgba(0,0,0,0.85)' }]}>
           <View style={[styles.identificationResult, { zIndex: 10000, elevation: 10000 }]}>
             <View style={styles.resultHeader}>
-              <Icon name="check-circle" size={48} color={COLORS.success} />
+              <Icon name="circle-check" size={48} color={COLORS.success} />
               <Text style={styles.resultTitle}>Đã xác định 1 cây!</Text>
             </View>
 
@@ -2316,9 +2403,6 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     gap: 8,
   },
-  searchIcon: {
-    color: COLORS.textMuted,
-  },
   searchInput: {
     flex: 1,
     fontSize: 14,
@@ -2362,6 +2446,25 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
   },
   scan3DExistingBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.accent,
+  },
+  view3DFarmBtn: {
+    marginBottom: 10,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: COLORS.accentGlow,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  view3DFarmBtnText: {
+    flex: 1,
     fontSize: 14,
     fontWeight: '700',
     color: COLORS.accent,

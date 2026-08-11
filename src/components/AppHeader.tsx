@@ -33,6 +33,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useNavigationState } from '@react-navigation/native';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../store';
+import { useCoachMarkTarget } from '../onboarding/CoachMarkContext';
+import { t, tf, useLanguage } from '../i18n';
 import {
   HEADER_COLORS,
   PROOFCHAT_THEME,
@@ -126,20 +128,16 @@ export function useCollapsibleHeader() {
   };
 }
 
-const initialsOf = (name?: string) =>
-  (name ?? 'U')
-    .split(' ')
-    .map((w) => w[0])
-    .slice(0, 2)
-    .join('')
-    .toUpperCase();
-
 // ── Header thật (đặt Ở TRÊN khối tab, trong ProtectedMain) ──────────────────
 const AppHeader = () => {
   const ctx = React.useContext(AppHeaderContext);
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const user = useSelector((s: RootState) => s.user.currentUser);
+  // Lời chào + accessibilityLabel dựng NGOÀI <Text> nên phải tự đăng ký ngôn ngữ.
+  useLanguage();
+  // Target luồng hướng dẫn: nút chuông thông báo.
+  const bellTarget = useCoachMarkTarget('header.bell');
 
   // Tên tab đang mở (nằm trong navigator Main) → chọn màu nền theo module.
   const activeTabName = useNavigationState((state: any) => {
@@ -168,8 +166,9 @@ const AppHeader = () => {
 
   // Tên thương hiệu = "Aladin" (mặc định); màn có thể override qua ctx.setTitle.
   const title = ctx.title ?? 'Aladin';
-  const greeting = `Xin chào ${user?.name ?? 'bạn'}`;
-  const initials = initialsOf(user?.name);
+  // Lời chào dựng bằng `tf` chứ KHÔNG nối chuỗi: nối chuỗi tạo ra một chuỗi khác
+  // nhau mỗi user nên không bao giờ khớp từ điển. `tf` dịch khuôn rồi mới thay tên.
+  const greeting = tf('Xin chào {name}', { name: user?.name ?? t('bạn') });
 
   return (
     <Animated.View style={[styles.wrap, { height, paddingTop: insets.top, backgroundColor: bg }]}>
@@ -190,12 +189,23 @@ const AppHeader = () => {
           </View>
         </View>
 
-        {/* Phải: THÔNG BÁO + TÀI KHOẢN (cạnh nhau, giống Facebook) */}
+        {/* Phải: QUÉT TRUY XUẤT (toàn cục — soi nguồn gốc mọi sản phẩm, §3) +
+            THÔNG BÁO + TÀI KHOẢN */}
         <View style={styles.actions}>
           <TouchableOpacity
             style={styles.iconBtn}
             activeOpacity={0.7}
-            accessibilityLabel="Thông báo"
+            accessibilityLabel={t('Quét truy xuất')}
+            onPress={() => navigation.navigate('TraceScan')}
+          >
+            <Icon name="qrcode-scan" size={22} color={HEADER_COLORS.onBg} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            ref={bellTarget.ref}
+            style={styles.iconBtn}
+            activeOpacity={0.7}
+            accessibilityLabel={t('Thông báo')}
             onPress={() => navigation.navigate('Notifications')}
           >
             <Icon name="bell-outline" size={23} color={HEADER_COLORS.onBg} />
@@ -204,7 +214,7 @@ const AppHeader = () => {
           <TouchableOpacity
             style={styles.avatarBtn}
             activeOpacity={0.7}
-            accessibilityLabel="Tài khoản"
+            accessibilityLabel={t('Tài khoản')}
             // Tài khoản là TAB LỒNG trong navigator 'Main'. Header dùng nav của
             // root stack nên phải điều hướng LỒNG (navigate('Main',{screen})),
             // navigate('Account') trống sẽ KHÔNG chuyển được tab lồng.
@@ -272,7 +282,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarText: { color: HEADER_COLORS.onBg, fontSize: 13, fontWeight: '800' },
 });
 
 export default AppHeader;

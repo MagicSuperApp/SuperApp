@@ -30,6 +30,7 @@ import StateView from '../../../components/state/StateView';
 import { CONTRIBUTION_LEVELS, type ContributionLevel } from '../data/contributionLevels';
 import {
   getPeerId,
+  isNativeJoinAvailable,
   joinViaNativeSdk,
   resolvePersonDid,
   isLampNetBackendEnabled,
@@ -51,7 +52,7 @@ const JoinHomeScreen: React.FC = () => {
   const [level, setLevel] = useState<ContributionLevel['id']>('balanced');
   const [phase, setPhase] = useState<JoinPhase>('idle');
   const [result, setResult] = useState<JoinResult | null>(null);
-  const [errorKind, setErrorKind] = useState<'auth' | 'server' | null>(null);
+  const [errorKind, setErrorKind] = useState<'auth' | 'server' | 'unsupported' | null>(null);
 
   const handleJoin = useCallback(async () => {
     // Chưa cấu hình backend → coi như offline (KHUNG chạy được, không vỡ).
@@ -59,6 +60,19 @@ const JoinHomeScreen: React.FC = () => {
       setPhase('offline');
       return;
     }
+    // Cầu native chưa có ⇒ biết trước là không đăng ký được. Trả lời ngay, đừng bắt
+    // người dùng chờ một vòng mạng để nhận câu trả lời đã biết.
+    //
+    // CỔNG NÀY PHẢI ĐỨNG TRƯỚC cổng danh tính. Đặt sau thì người dùng nhận câu "cần
+    // danh tính và ví nhận thưởng", đi tạo danh tính sinh trắc + ví Cardano — một luồng
+    // dài không lấy lại được thời gian — rồi quay lại mới bị báo "bản này chưa hỗ trợ".
+    // Nói sai lý do còn tệ hơn không nói.
+    if (!isNativeJoinAvailable()) {
+      setErrorKind('unsupported');
+      setPhase('error');
+      return;
+    }
+
     if (!personDid || !walletAddress) {
       // Thiếu danh tính/ví nhận thưởng → thông điệp quyền (auth), không phải lỗi mạng.
       setErrorKind('auth');
@@ -115,7 +129,7 @@ const JoinHomeScreen: React.FC = () => {
           </TouchableOpacity>
           <View style={styles.headerTitleBox}>
             <Text style={styles.headerTitle}>Kết đèn</Text>
-            <Text style={styles.headerSubtitle}>Góp sức máy · Tham gia mạng LampNet</Text>
+            <Text style={styles.headerSubtitle}>Góp sức máy · Tham gia mạng lưới</Text>
           </View>
           <View style={styles.headerIconWrap}>
             <Icon name="lightning-bolt" size={20} color={LAMPNET_THEME.onPrimary} />
@@ -135,8 +149,15 @@ const JoinHomeScreen: React.FC = () => {
           </View>
           <Text style={styles.introTitle}>Biến điện thoại thành một ngọn đèn của mạng</Text>
           <Text style={styles.introBody}>
+            {/* Câu cuối trước đây là "Bạn toàn quyền chọn mức góp." — một lời hứa RỖNG:
+                `CONTRIBUTION_LEVELS` người dùng chọn KHÔNG chảy vào `JoinConfig` (chỗ dựng
+                cấu hình chỉ gửi 4 trường), nên không có mức nào được cưỡng chế cả. Người
+                chọn "Nhẹ nhàng" rồi thấy máy nóng sẽ kết luận app nói dối, và họ đúng.
+                Hoặc nối vào cưỡng chế thật, hoặc nói đúng hiện trạng — chọn vế thứ hai
+                cho tới khi cầu native có thật (Join xác nhận chặn duy nhất còn lại là
+                khâu đóng gói uniffi, thuộc LampNet core). */}
             Máy bạn góp một phần sức tính toán cho LampNet. Mỗi việc hoàn thành được
-            mạng kiểm chứng (tính lại + ký) rồi tích thưởng. Bạn toàn quyền chọn mức góp.
+            mạng kiểm chứng (tính lại + ký) rồi tích thưởng. Mức góp sẽ mở ở bản sau.
           </Text>
         </View>
 
@@ -185,7 +206,7 @@ const JoinHomeScreen: React.FC = () => {
         <View style={styles.estimatePlaceholder}>
           <Icon name="lightning-bolt-outline" size={14} color={COLORS.textMuted} />
           <Text style={styles.estimateText}>
-            Ước lượng điện/ngày sẽ hiện ở đây khi mạng LampNet cập nhật (bản sau).
+            Ước lượng điện mỗi ngày sẽ hiện ở đây trong bản sau.
           </Text>
         </View>
 
@@ -204,11 +225,17 @@ const JoinHomeScreen: React.FC = () => {
         {phase === 'error' && (
           <StateView
             status="error"
-            title={errorKind === 'auth' ? 'Chưa tham gia được' : 'Mạng đang trục trặc'}
+            title={
+              errorKind === 'auth' ? 'Chưa tham gia được'
+              : errorKind === 'unsupported' ? 'Chưa hỗ trợ'
+              : 'Mạng đang trục trặc'
+            }
             message={
               errorKind === 'auth'
-                ? 'Cần danh tính PhoenixKey và ví nhận thưởng hợp lệ, hoặc chưa đủ bậc tham gia.'
-                : 'Daemon LampNet đang bận. Vui lòng thử lại sau ít phút.'
+                ? 'Cần có danh tính và ví nhận thưởng hợp lệ, hoặc bạn chưa đủ bậc tham gia.'
+                : errorKind === 'unsupported'
+                ? 'Tính năng Kết đèn sẽ mở ở bản sau.'
+                : 'Máy chủ đang bận. Thử lại sau ít phút.'
             }
             onRetry={retry}
           />
@@ -222,7 +249,7 @@ const JoinHomeScreen: React.FC = () => {
                 Bậc: {result?.tier != null ? String(result.tier) : '—'}
               </Text>
             </View>
-            <Text style={styles.tierTitle}>Đã tham gia LampNet</Text>
+            <Text style={styles.tierTitle}>Đã tham gia mạng lưới</Text>
             <Text style={styles.tierBody}>
               Máy của bạn giờ là một ngọn đèn của mạng. Theo dõi việc đang chạy và
               thưởng tích luỹ ở màn "Đang đóng góp".

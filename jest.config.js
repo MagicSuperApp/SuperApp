@@ -5,7 +5,13 @@ module.exports = {
   // MỌI native module (lottie/firebase/…); giá trị chỉ là "không crash khi import", mà
   // `tsc --noEmit` (0 lỗi) đã bảo đảm mọi import/typing wire đúng. Tạm loại khỏi gate;
   // bật lại khi dựng đủ harness native. KHÔNG che lỗi app (447 unit test vẫn chạy đủ).
-  testPathIgnorePatterns: ['/node_modules/', '__tests__/App.test.tsx'],
+  testPathIgnorePatterns: ['/node_modules/', '__tests__/App.test.tsx', '/\\.claude/'],
+  // `.claude/worktrees/` chứa BẢN SAO toàn bộ repo (cây làm việc của agent). Chỉ
+  // chặn ở `testPathIgnorePatterns` là chưa đủ: nó chặn CHẠY, không chặn haste-map
+  // BÒ vào. Hệ quả đo được: `jest-haste-map: duplicate manual mock found:
+  // assetModuleStub` lặp theo số worktree, và bản sao cũ của một test có thể được
+  // gom vào lượt chạy — tức CI báo đỏ/xanh theo mã KHÔNG nằm trong commit.
+  modulePathIgnorePatterns: ['/\\.claude/'],
   // RN preset chỉ transform react-native + @react-native*. Các gói RN khác phát-hành
   // ESM thuần (@react-navigation, react-native-*, redux ESM…) → Jest gặp `export` sẽ
   // ném "Unexpected token 'export'" và cả suite chết (App.test.tsx). Nới allowlist để

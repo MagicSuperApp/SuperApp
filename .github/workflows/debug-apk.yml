@@ -49,7 +49,11 @@ jobs:
     name: Build debug APK
     needs: verify
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # 60 → 90: bước dựng Rust mới thêm vào tốn ~10-15 phút khi nhớ đệm trượt, mà
+    # riêng gradle đã 30-39 phút (đo 4 lượt gần nhất). Để 60 thì lượt đầu sau khi
+    # đổi Cargo.lock sẽ chạm trần — và chạm trần bị gắn nhãn `cancelled`, tức hỏng
+    # mà đọc như có người bấm huỷ. Đúng cách develop giấu lỗi 5 ngày.
+    timeout-minutes: 90
 
     steps:
       - name: Checkout repository
@@ -94,6 +98,11 @@ jobs:
           expo.enableWorkletsIntegration=false
           EOF
           echo "gradle.properties created (JVM heap: 4096m)"
+
+      # PHẢI trước gradle: gradle chỉ đóng gói .so có sẵn trong jniLibs, không dựng.
+      # Lý do đầy đủ ở .github/actions/rust-android/action.yml.
+      - name: Dựng Rust core (taad_enclave_core + chat_mls)
+        uses: ./.github/actions/rust-android
 
       - name: Build debug APK
         run: |

@@ -189,6 +189,23 @@ export const NAVIGATION: PhraseMap = {
     ja: 'この端末では本人情報を利用できません',
   },
   'Đăng nhập sinh trắc học thất bại': { en: 'Biometric sign-in failed', zh: '生物识别登录失败', ja: '生体認証でのログインに失敗しました' },
+  // Phụ đề hộp thoại sinh trắc do CHIP bật lúc đăng nhập (gọi t() tay — hộp thoại
+  // của hệ điều hành không đi qua <Text> nên lớp tự dịch không với tới).
+  'Xác thực để mở danh tính trên máy này': {
+    en: 'Authenticate to unlock your identity on this device',
+    zh: '验证身份以在本机解锁你的身份',
+    ja: 'この端末で本人情報を解除するには認証してください',
+  },
+  'Sai sinh trắc học nhiều lần nên máy đang tạm khoá. Chờ khoảng 30 giây rồi thử lại, hoặc mở khoá máy bằng mã PIN trước.': {
+    en: 'Too many failed attempts, so the device has locked biometrics for now. Wait about 30 seconds and try again, or unlock the device with your PIN first.',
+    zh: '生物识别失败次数过多，设备已暂时锁定。请等待约 30 秒后重试，或先用 PIN 码解锁设备。',
+    ja: '生体認証の失敗が続いたため、端末が一時的にロックしています。約 30 秒待ってからもう一度お試しいただくか、先に PIN で端末のロックを解除してください。',
+  },
+  'Khoá trên máy không còn dùng được (thường do vừa thêm hoặc xoá vân tay/khuôn mặt trong Cài đặt). Hãy khôi phục danh tính để dùng tiếp.': {
+    en: 'The key on this device can no longer be used (usually because a fingerprint or face was just added or removed in Settings). Restore your identity to carry on.',
+    zh: '本机上的密钥已无法使用（通常是刚在设置中添加或删除了指纹/人脸）。请恢复身份后继续使用。',
+    ja: 'この端末の鍵は使用できなくなりました（多くは設定で指紋や顔を追加・削除した直後です）。続けるには本人情報を復元してください。',
+  },
   'Aladin Chat — phiên bản mới': { en: 'Aladin Chat — new version', zh: 'Aladin Chat — 新版本', ja: 'Aladin Chat — 新バージョン' },
   'Tin nhắn ký số · Escrow tích hợp': { en: 'Digitally signed messages · Built-in escrow', zh: '数字签名消息 · 内置托管', ja: '電子署名付きメッセージ · エスクロー内蔵' },
   'Đăng ký thợ — nhận 100 MAGIC': { en: 'Register as a pro — get 100 MAGIC', zh: '注册师傅 — 获得 100 MAGIC', ja: '職人登録で 100 MAGIC 進呈' },

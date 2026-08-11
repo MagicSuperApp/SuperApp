@@ -19,7 +19,20 @@
  * đè lên canvas vẫn khớp chính xác với cây, và luôn kéo được (không cần raycast).
  *
  * Trả kết quả về màn trước bằng `navigate(..., { merge: true })` với tham số
- * `pickedFruitCoord`; nếu đã có `fruitId` thì lưu thẳng vào máy luôn.
+ * `pickedFruitCoord`.
+ *
+ * ── QUẢ MỚI vs QUẢ ĐÃ CÓ: hai đường đi KHÁC NHAU ────────────────────────────
+ * · Quả MỚI (không có `fruitId`, vào từ FruitCropper): toạ-độ trả ngược về màn
+ *   khoanh quả, rồi đi lên máy chủ cùng ảnh trong `enroll` — đủ cả pos_x/pos_h/pos_z.
+ * · Quả ĐÃ CÓ (`fruitId`, vào từ Space3D): CHỈ lưu được vào máy này.
+ *   Máy chủ OriLife nhận toạ-độ ở đúng hai chỗ — `POST /api/fruit/enroll` và
+ *   `POST /api/fruit/add_view` — và cả hai đều BẮT BUỘC kèm ảnh (`file: UploadFile
+ *   = File(...)`), vì chúng là đường nạp ảnh chứ không phải đường sửa vị-trí.
+ *   Không có endpoint nào sửa riêng toạ-độ của quả đã đăng ký. Màn này không cầm
+ *   ảnh nào trong tay, nên không có gì hợp lệ để gửi.
+ *   → nói thẳng với người dùng là vị-trí chỉ nằm ở máy này, đừng để họ tưởng đã
+ *     lưu lên máy chủ rồi mở máy khác mới biết là không. Sửa tận gốc phải thêm
+ *     endpoint bên OriLifeTrace (kho đó nhà này không sửa).
  *
  * Route params: { treeId, treeName?, fruitId?, fruitName?, initial?, returnTo? }
  */
@@ -159,7 +172,9 @@ const FruitPlace3DScreen: React.FC = () => {
   // ── Kết thúc: trả toạ-độ về màn trước ──────────────────────────────────────
   const done = useCallback(async () => {
     setSaving(true);
-    // Có sẵn quả trên server → lưu toạ-độ đủ 3 chiều vào máy ngay.
+    // Quả đã có trên máy chủ → chỉ lưu được vào máy này (không có endpoint sửa
+    // toạ-độ rời; xem ghi chú đầu tệp). Người dùng được báo trước bằng dòng cảnh
+    // báo dưới footer, nên đây không còn là chỗ lặng lẽ nuốt dữ-liệu.
     if (fruitId) await saveFruitCoord(fruitId, coord);
     setSaving(false);
     // Kèm cả CHỖ ĐANG ĐỨNG để màn trước khôi phục đúng ngữ cảnh: Space3D phải quay
@@ -288,6 +303,18 @@ const FruitPlace3DScreen: React.FC = () => {
           </View>
         </View>
 
+        {/* Quả đã đăng ký: nói thật là vị-trí không rời khỏi máy này. Im lặng ở đây
+            thì người dùng chỉ phát hiện khi mở máy khác và thấy quả nằm sai chỗ. */}
+        {fruitId ? (
+          <View style={styles.localOnly}>
+            <Icon name="circle-info" size={12} color={SPACE_COLORS.textMuted} />
+            <Text style={styles.localOnlyTxt}>
+              Vị trí này chỉ lưu trên máy đang dùng. Máy khác chưa thấy được —
+              chụp thêm một góc cho quả để đẩy vị trí lên máy chủ.
+            </Text>
+          </View>
+        ) : null}
+
         <View style={styles.footerBtns}>
           <TouchableOpacity
             style={styles.resetBtn}
@@ -393,6 +420,13 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(61,220,132,0.16)', borderWidth: 1, borderColor: SPACE_COLORS.hudBorder,
   },
   zoneChipTxt: { color: SPACE_COLORS.accent, fontSize: 12, fontWeight: '800' },
+
+  localOnly: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 7,
+    paddingHorizontal: 11, paddingVertical: 9, borderRadius: 11,
+    backgroundColor: SPACE_COLORS.hudBg, borderWidth: 1, borderColor: SPACE_COLORS.hudBorder,
+  },
+  localOnlyTxt: { flex: 1, color: SPACE_COLORS.textMuted, fontSize: 11, lineHeight: 15 },
 
   footerBtns: { flexDirection: 'row', gap: 10 },
   resetBtn: {

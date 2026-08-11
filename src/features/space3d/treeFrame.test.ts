@@ -1,6 +1,6 @@
 import {
-  DEFAULT_FRUIT_COORD, TREE_HEIGHT, TREE_RADIUS, clampCoord, coordFromServer,
-  coordToLocalMeters, coordToServer, coordToZone, derivedZ, zoneToY,
+  DEFAULT_FRUIT_COORD, TREE_HEIGHT, TREE_RADIUS, UNSET_Z, clampCoord, coordFromServer,
+  coordToLocalMeters, coordToServer, coordToZone, hasServerZ, zoneToY,
 } from './treeFrame';
 
 describe('clampCoord', () => {
@@ -65,17 +65,31 @@ describe('coordToServer', () => {
   it('zone khớp với coordToZone', () => {
     expect(coordToServer({ x: 0, y: 0.2, z: 0.5 }).zone).toBe('base');
   });
+
+  it('z ∈ [−1,1] → pos_z ∈ [0,1] (trục sâu ĐƯỢC gửi lên, không rơi mất)', () => {
+    expect(coordToServer({ x: 0, y: 0.5, z: -1 }).posZ).toBeCloseTo(0, 6);
+    expect(coordToServer({ x: 0, y: 0.5, z: 0 }).posZ).toBeCloseTo(0.5, 6);
+    expect(coordToServer({ x: 0, y: 0.5, z: 1 }).posZ).toBeCloseTo(1, 6);
+    expect(coordToServer({ x: 0, y: 0.5, z: -0.35 }).posZ).toBeCloseTo(0.325, 4);
+  });
+
+  it('z ngoài dải bị kẹp trước khi đổi dải (không sinh pos_z < 0 hay > 1)', () => {
+    expect(coordToServer({ x: 0, y: 0.5, z: -9 }).posZ).toBe(0);
+    expect(coordToServer({ x: 0, y: 0.5, z: 9 }).posZ).toBe(1);
+  });
 });
 
 describe('coordFromServer ⇄ coordToServer', () => {
-  it('đi vòng qua server GIỮ NGUYÊN x và y (z không có chỗ lưu)', () => {
+  it('đi vòng qua server GIỮ NGUYÊN cả x, y VÀ z', () => {
     const original = { x: 0.42, y: 0.71, z: -0.35 };
     const payload = coordToServer(original);
     const back = coordFromServer({
-      fruit_id: 'f-1', zone: payload.zone, pos_x: payload.posX, pos_h: payload.posH,
+      fruit_id: 'f-1', zone: payload.zone,
+      pos_x: payload.posX, pos_h: payload.posH, pos_z: payload.posZ,
     });
     expect(back.x).toBeCloseTo(original.x, 3);
     expect(back.y).toBeCloseTo(original.y, 3);
+    expect(back.z).toBeCloseTo(original.z, 3);
   });
 
   it('thiếu pos_x/pos_h → vẫn ra toạ-độ hợp lệ trong dải của zone', () => {
@@ -95,22 +109,46 @@ describe('coordFromServer ⇄ coordToServer', () => {
     expect(a).toEqual(b);
   });
 
-  it('quả khác nhau KHÔNG dồn hết vào cùng một mặt phẳng z', () => {
-    const zs = new Set(
-      Array.from({ length: 12 }, (_, i) => coordFromServer({ fruit_id: `f-${i}`, zone: 'mid' }).z),
-    );
-    expect(zs.size).toBeGreaterThan(6);
+  it('pos_z thật từ server được DÙNG, không bị số suy-diễn đè lên', () => {
+    expect(coordFromServer({ fruit_id: 'f-5', zone: 'mid', pos_z: 0 }).z).toBeCloseTo(-1, 6);
+    expect(coordFromServer({ fruit_id: 'f-5', zone: 'mid', pos_z: 1 }).z).toBeCloseTo(1, 6);
+    expect(coordFromServer({ fruit_id: 'f-5', zone: 'mid', pos_z: 0.75 }).z).toBeCloseTo(0.5, 6);
   });
 });
 
-describe('derivedZ', () => {
-  it('ổn định và nằm trong [−0.7, 0.7]', () => {
-    for (let i = 0; i < 30; i++) {
-      const z = derivedZ(`fruit-${i}`);
-      expect(z).toBe(derivedZ(`fruit-${i}`));
-      expect(z).toBeGreaterThanOrEqual(-0.7);
-      expect(z).toBeLessThanOrEqual(0.7);
-    }
+// ── Ca "CHƯA BIẾT z" — chỗ trước đây bịa số ─────────────────────────────────
+// Cũ: z = băm(fruit_id) → mỗi quả một độ sâu ngẫu-nhiên nhưng ổn-định, tức trông
+// y hệt dữ-liệu đo thật. Mở mô hình trên máy khác là cả cây sai mà không có dấu
+// hiệu nào báo. Số giả trông như thật là sai lệch thầm lặng — tệ hơn thiếu dữ-liệu.
+describe('thiếu pos_z → "chưa đặt", KHÔNG bịa số', () => {
+  it('không có pos_z → đúng mặt phẳng giữa (UNSET_Z), không phải số từ băm', () => {
+    expect(coordFromServer({ fruit_id: 'f-a', zone: 'mid' }).z).toBe(UNSET_Z);
+    expect(UNSET_Z).toBe(0);
+  });
+
+  it('pos_z = null (quả đăng ký trước khi có trục sâu) cũng là chưa đặt', () => {
+    expect(coordFromServer({ fruit_id: 'f-b', zone: 'canopy', pos_z: null }).z).toBe(UNSET_Z);
+  });
+
+  it('gọi hai lần cùng đầu vào ra cùng kết quả (thuần, không ngẫu-nhiên)', () => {
+    const a = coordFromServer({ fruit_id: 'f-c', zone: 'mid' });
+    const b = coordFromServer({ fruit_id: 'f-c', zone: 'mid' });
+    expect(a).toEqual(b);
+  });
+
+  it('MỌI quả chưa đặt đều nằm CHUNG một mặt phẳng — không rải cho giống thật', () => {
+    const zs = new Set(
+      Array.from({ length: 12 }, (_, i) => coordFromServer({ fruit_id: `f-${i}`, zone: 'mid' }).z),
+    );
+    expect(zs).toEqual(new Set([UNSET_Z]));
+  });
+
+  it('hasServerZ phân biệt được "đã đặt" với "chưa đặt"', () => {
+    expect(hasServerZ({ fruit_id: 'f-d', pos_z: 0.5 })).toBe(true);
+    expect(hasServerZ({ fruit_id: 'f-d', pos_z: 0 })).toBe(true);   // 0 là số đo hợp lệ, không phải "trống"
+    expect(hasServerZ({ fruit_id: 'f-d', pos_z: null })).toBe(false);
+    expect(hasServerZ({ fruit_id: 'f-d' })).toBe(false);
+    expect(hasServerZ({ fruit_id: 'f-d', pos_z: NaN })).toBe(false);
   });
 });
 

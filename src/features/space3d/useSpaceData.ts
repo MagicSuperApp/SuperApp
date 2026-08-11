@@ -26,7 +26,7 @@ import {
   buildFarmRing, hashSeed, latLngToMeters, makeRng, seededPointInRing,
   type LatLng, type Vec2,
 } from './geo';
-import { coordFromServer, type FruitCoord } from './treeFrame';
+import { coordFromServer, hasServerZ, type FruitCoord } from './treeFrame';
 import { loadFruitCoords, loadTreePositions } from './positionStore';
 import { loadTreeModelIds, saveTreeModelId } from './treeModelStore';
 import { DEFAULT_TREE_MODEL_ID, type TreeModelId } from './treeModels';
@@ -51,6 +51,12 @@ export interface SceneFruit {
   status?: string | null;
   nViews: number;
   coord: FruitCoord;
+  /**
+   * Độ sâu (coord.z) là số ĐÃ ĐẶT hay chỉ là mặc-định "chưa đặt".
+   * false → quả đang nằm ở mặt phẳng giữa vì chưa ai đặt sâu cho nó, KHÔNG phải
+   * vì nó thật sự ở đó. Giao diện nên nói ra điều này thay vì vẽ như đã biết.
+   */
+  zPlaced: boolean;
   raw: TreeLayoutFruit;
 }
 
@@ -194,7 +200,10 @@ export function useSpaceData(farmIdParam?: string, focusTreeId?: string): SpaceD
       if (!alive) return;
       if (r.ok && r.data) {
         const list = r.data.fruits ?? [];
-        // Toạ-độ đặt tay (có đủ z) đè lên toạ-độ suy từ server (chỉ có x,y).
+        // Toạ-độ đặt tay đè lên toạ-độ từ server. Còn cần đè vì FruitPlace3D chỉnh
+        // vị-trí quả ĐÃ CÓ vẫn không đẩy lên được (máy chủ không có endpoint sửa
+        // toạ-độ rời — xem ghi chú ở FruitPlace3DScreen), nên bản cục bộ là chỗ duy
+        // nhất giữ chỉnh-sửa đó. Máy khác sẽ thấy giá trị của máy chủ.
         const overrides = await loadFruitCoords(list.map((f) => f.fruit_id));
         if (!alive) return;
         setFruits(list.map((f) => ({
@@ -203,6 +212,8 @@ export function useSpaceData(farmIdParam?: string, focusTreeId?: string): SpaceD
           status: f.status,
           nViews: f.n_views ?? 0,
           coord: overrides[f.fruit_id] ?? coordFromServer(f),
+          // Đặt tay trên máy này cũng là ĐÃ ĐẶT — chỉ là mới đặt ở một chỗ.
+          zPlaced: overrides[f.fruit_id] != null || hasServerZ(f),
           raw: f,
         })));
         setFruitsError(null);

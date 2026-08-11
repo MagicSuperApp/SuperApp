@@ -141,7 +141,10 @@ export interface FruitViewsResponse { fruit_id: string; n: number; views: FruitV
 
 export interface TreeLayoutFruit {
   fruit_id: string; name: string | null; status: FruitStatus; n_views: number;
+  /** pos_x / pos_h / pos_z đều 0..1 (server `_clean_pos` kẹp về dải này). */
   zone: TreeZone | null; pos_x: number | null; pos_h: number | null;
+  /** Trục SÂU. null = quả đăng ký TRƯỚC khi có trục sâu → chưa đặt, đừng bịa số. */
+  pos_z: number | null;
   thumbnail_url: string | null; bbox: Bbox | null; enrolled_at: string;
 }
 export interface TreeMarker { label: string; side: 'left' | 'right' | 'front' | 'back' }
@@ -290,8 +293,14 @@ export function fruitCandidates(baseUrl: string, treeId: string, imagePath: stri
   return _apiCall<FruitCandidatesResponse>(`${baseUrl}/api/fruit/candidates`, 'POST', form);
 }
 
-/** Lưu quả MỚI. allowDup=true để vẫn lưu khi trùng (sau xác nhận). */
-export function enrollFruit(baseUrl: string, treeId: string, name: string, imagePath: string, region: FruitRegion, opts?: { allowDup?: boolean; zone?: TreeZone; posX?: number; posH?: number; viewType?: FruitViewType }): Promise<ApiResult<FruitEnrollResponse>> {
+/**
+ * Lưu quả MỚI. allowDup=true để vẫn lưu khi trùng (sau xác nhận).
+ *
+ * posZ = trục SÂU 0..1. BỎ TRỐNG khi người dùng chưa thật sự đặt độ sâu — máy chủ
+ * chỉ ghi pos_z khi nhận được, nên vắng mặt = "chưa đặt", còn gửi bừa 0.5 thì quả
+ * bị đóng dấu là đã-đặt-ở-giữa và không ai còn phân biệt được nữa.
+ */
+export function enrollFruit(baseUrl: string, treeId: string, name: string, imagePath: string, region: FruitRegion, opts?: { allowDup?: boolean; zone?: TreeZone; posX?: number; posH?: number; posZ?: number; viewType?: FruitViewType }): Promise<ApiResult<FruitEnrollResponse>> {
   const form = new FormData();
   form.append('tree_id', treeId);
   form.append('name', name);
@@ -300,12 +309,19 @@ export function enrollFruit(baseUrl: string, treeId: string, name: string, image
   if (opts?.zone) form.append('zone', opts.zone);
   if (opts?.posX !== undefined) form.append('pos_x', String(opts.posX));
   if (opts?.posH !== undefined) form.append('pos_h', String(opts.posH));
+  if (opts?.posZ !== undefined) form.append('pos_z', String(opts.posZ));
   if (opts?.viewType) form.append('view_type', opts.viewType);
   return _apiCall<FruitEnrollResponse>(`${baseUrl}/api/fruit/enroll`, 'POST', form);
 }
 
-/** Thêm GÓC vào quả đã có. allowMismatch=true để ép thêm khi backend cảnh báo nhồi-nhầm. */
-export function addFruitView(baseUrl: string, fruitId: string, imagePath: string, region: FruitRegion, opts?: { allowMismatch?: boolean; zone?: TreeZone; posX?: number; posH?: number; viewType?: FruitViewType }): Promise<ApiResult<FruitAddViewResponse>> {
+/**
+ * Thêm GÓC vào quả đã có. allowMismatch=true để ép thêm khi backend cảnh báo nhồi-nhầm.
+ *
+ * zone/posX/posH/posZ: máy chủ CHỈ cập nhật trường nào được truyền. Bỏ trống →
+ * giữ nguyên giá trị cũ. Nên đừng gửi posZ khi lần này người dùng không đặt lại
+ * độ sâu: gửi = ghi đè mất độ sâu họ đã đặt lần trước.
+ */
+export function addFruitView(baseUrl: string, fruitId: string, imagePath: string, region: FruitRegion, opts?: { allowMismatch?: boolean; zone?: TreeZone; posX?: number; posH?: number; posZ?: number; viewType?: FruitViewType }): Promise<ApiResult<FruitAddViewResponse>> {
   const form = new FormData();
   form.append('fruit_id', fruitId);
   _appendImageRegion(form, imagePath, region);
@@ -313,6 +329,7 @@ export function addFruitView(baseUrl: string, fruitId: string, imagePath: string
   if (opts?.zone) form.append('zone', opts.zone);
   if (opts?.posX !== undefined) form.append('pos_x', String(opts.posX));
   if (opts?.posH !== undefined) form.append('pos_h', String(opts.posH));
+  if (opts?.posZ !== undefined) form.append('pos_z', String(opts.posZ));
   if (opts?.viewType) form.append('view_type', opts.viewType);
   return _apiCall<FruitAddViewResponse>(`${baseUrl}/api/fruit/add_view`, 'POST', form);
 }

@@ -263,6 +263,12 @@ const FruitCropperScreen: React.FC = () => {
   );
   const zone: TreeZone = coordToZone(coord);
 
+  // Người dùng đã THẬT SỰ đặt độ sâu chưa (tức có đi qua màn FruitPlace3D lần này).
+  // Chưa đặt thì KHÔNG gửi pos_z: `coord.z` lúc đó chỉ là giá-trị mặc định 0, gửi
+  // lên là đóng dấu "đã đặt ở giữa tán" cho một quả chưa ai đặt — và với add_view
+  // thì còn ghi đè mất độ sâu đã đặt từ lần trước.
+  const [zPlaced, setZPlaced] = useState(false);
+
   // ── QUÉT-NGAY: vừa vào màn là tự tìm quả rồi TỰ CĂN KHUNG vào quả tìm được ──
   // bbox ẢNH GỐC của quả tự-phát-hiện (lớn nhất / tự-tin nhất). null = chưa có / không phát hiện.
   const [detectBox, setDetectBox] = useState<Bbox | null>(null);
@@ -509,6 +515,7 @@ const FruitCropperScreen: React.FC = () => {
   useEffect(() => {
     if (!pickedCoord) return;
     setCoord(clampCoord(pickedCoord));
+    setZPlaced(true);
     navigation.setParams({ pickedFruitCoord: undefined });
   }, [pickedCoord, navigation]);
 
@@ -537,6 +544,9 @@ const FruitCropperScreen: React.FC = () => {
     setBusy(true);
     const r = await addFruitView(BASE_URL, targetFruitId, imageUri, region, {
       zone, posX: p.x, posH: p.h, viewType, allowMismatch: allowMismatch || undefined,
+      // CHỈ gửi posZ khi người dùng thật sự đặt độ sâu lần này. Máy chủ chỉ cập
+      // nhật trường nào nhận được — gửi bừa là GHI ĐÈ mất độ sâu đặt lần trước.
+      posZ: zPlaced ? coordToServer(coord).posZ : undefined,
     });
     setBusy(false);
 
@@ -557,7 +567,7 @@ const FruitCropperScreen: React.FC = () => {
     }
 
     navigation.goBack();
-  }, [imageUri, zone, viewType, navigation]);
+  }, [imageUri, zone, viewType, coord, zPlaced, navigation]);
 
   const openPlacer = useCallback(() => {
     navigation.navigate('FruitPlace3D', {
@@ -579,7 +589,8 @@ const FruitCropperScreen: React.FC = () => {
     setErrMsg(null);
     setLastRegion(reg);
     // Ước lượng SẴN toạ-độ từ chỗ quả nằm trong ảnh (ngang = x, cao = y) để người
-    // dùng chỉ phải tinh chỉnh chứ không đặt từ đầu. Chiều sâu z vẫn phải tự đặt.
+    // dùng chỉ phải tinh chỉnh chứ không đặt từ đầu. Chiều sâu z KHÔNG suy ra được
+    // từ ảnh phẳng → vẫn phải tự đặt ở màn 3D, không đặt thì để trống chứ không đoán.
     const est = posFromBox(reg.bbox);
     setCoord((c) => clampCoord({ ...c, x: est.x * 2 - 1, y: est.h }));
     setBusy(true);
@@ -597,7 +608,7 @@ const FruitCropperScreen: React.FC = () => {
     else { setCands([]); } // mạng yếu / lỗi → vẫn cho lưu quả mới
     setExpanded(false);
     setStep('candidates');
-  }, [regionToOrig, fruitId, posFromBox, zone, imageUri, treeId, navigation]);
+  }, [regionToOrig, fruitId, posFromBox, zone, coord, zPlaced, imageUri, treeId, navigation]);
 
   // ── Chọn 1 quả-đã-có → THÊM GÓC (add_view) ─────────────────────────────────
   const pickCandidate = useCallback(async (cand: FruitCandidate) => {
@@ -626,10 +637,12 @@ const FruitCropperScreen: React.FC = () => {
     setServerAsk(null);
     setErrMsg(null);
     setBusy(true);
-    // zone/pos_x/pos_h SUY RA từ toạ-độ 3D → server và sơ-đồ 2D cũ vẫn hiểu đúng.
+    // zone/pos_x/pos_h/pos_z SUY RA từ toạ-độ 3D → server và sơ-đồ 2D cũ vẫn hiểu đúng.
+    // pos_z chỉ gửi khi người dùng đã thật sự đặt độ sâu (xem `zPlaced`).
     const srv = coordToServer(coord);
     const r = await enrollFruit(BASE_URL, treeId, name, imageUri, lastRegion, {
       zone: srv.zone, posX: srv.posX, posH: srv.posH, viewType,
+      posZ: zPlaced ? srv.posZ : undefined,
       allowDup: allowDup || undefined,
     });
     setBusy(false);
@@ -650,10 +663,11 @@ const FruitCropperScreen: React.FC = () => {
       return;
     }
 
-    // Chiều sâu z không có chỗ trên server → lưu đủ 3 chiều tại máy theo fruit_id.
+    // Máy chủ đã giữ đủ 3 chiều; bản cục bộ chỉ còn là bộ nhớ đệm cho máy này
+    // (và là chỗ duy nhất giữ được chỉnh-sửa từ FruitPlace3D — xem màn đó).
     if (r.data?.fruit_id) await saveFruitCoord(r.data.fruit_id, coord);
     navigation.goBack();
-  }, [lastRegion, nameInput, coord, treeId, imageUri, viewType, navigation]);
+  }, [lastRegion, nameInput, coord, zPlaced, treeId, imageUri, viewType, navigation]);
 
   // ── Quay lại bước crop để khoanh vùng khác ─────────────────────────────────
   const recrop = useCallback(() => { setErrMsg(null); setStep('crop'); }, []);

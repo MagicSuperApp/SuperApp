@@ -18,7 +18,7 @@ import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 import { selectChainWallet } from '../store/userSlice';
 import { COLORS } from '../constants';
-import { fmtLamp } from '../utils/token';
+import { fmtLamp, fmtCarp } from '../utils/token';
 
 const { width, height } = Dimensions.get('window');
 
@@ -316,7 +316,7 @@ const ActivationScreen = () => {
                     CARP: brand tạm, số dư chờ API Phoenix. */}
                 <TokenBadge icon="star-four-points-outline" value={wallet?.magicBalance ?? '—'} label="MAGIC" color="#B07D2F" />
                 <TokenBadge icon="lightning-bolt"  value={fmtLamp(wallet?.lampBalance)} label="LAMP" color={COLORS.accent} />
-                <TokenBadge icon="fish" value={wallet?.carpBalance ?? '—'} label="CARP" color="#2F8F8F" />
+                <TokenBadge icon="fish" value={fmtCarp(wallet?.carpBalance)} label="CARP" color="#2F8F8F" />
               </View>
 
               {/* Info note */}

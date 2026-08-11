@@ -18,7 +18,7 @@ import { setVideoQueueOwner, flushVideoUploadQueue } from '../services/videoUplo
  * 1.000.000 lần (LAMP agent phát hiện 2026-07-29):
  *   · `adaBalance`  — ĐÃ chia, đơn vị ADA (người đọc được)
  *   · `lampBalance` — CHƯA chia, đơn vị **oildrop** (thô on-chain, 1 LAMP = 10⁶)
- *   · `carpBalance` — CHƯA chia, đơn vị thô; decimals CHƯA chốt (chờ CARP agent)
+ *   · `carpBalance` — CHƯA chia, đơn vị **nanothread** (thô on-chain, 1 CARP = 10⁹)
  *   · `magicBalance`— sổ vault, không đọc từ UTxO; đơn vị chưa chốt (chờ MAGIC agent)
  *
  * Vì vậy MỌI chỗ hiện `lampBalance` PHẢI đi qua `fmtLamp()` (`src/utils/token.ts`).
@@ -34,7 +34,7 @@ interface Wallet {
   lampBalance: number;
   // CARP — token hệ sinh thái thứ 3. Backend PhoenixKey CHƯA trả số dư → optional, hiện '—'
   // tới khi có API thật (xem message hỏi Phoenix Agent). Thứ tự chuẩn: MAGIC · LAMP · CARP.
-  /** Thô, decimals chưa chốt — chưa chia được, hiện nguyên số. */
+  /** Thô, đơn vị nanothread. Hiện PHẢI qua `fmtCarp()` — in thẳng là sai 10⁹ lần. */
   carpBalance?: number;
   /** ĐÃ chia — đơn vị ADA. */
   adaBalance: number;

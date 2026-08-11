@@ -8,11 +8,13 @@
  *
  * DELEGATE (write): dựng cert delegation bằng Rust `staking.rs`
  * (`taad_kek_build_stake_delegation`) → ký Enclave → `phoenixKeyApi.wallet.txSubmit`.
- * Cần rebuild native + 2 proxy endpoint UTXO/params (như Pha 2).
+ * Hai endpoint UTXO/params ĐÃ CÓ (đo 2026-08-11): `/wallet/params` 200,
+ * `/wallet/{did}/utxos` 401 (tồn tại, đòi phiên). Còn lại: rebuild native cho FFI mới.
  */
 
 import taad from '../sdk/taadEnclave';
 import { fetchWalletUtxosAndParams } from './cardanoTxService';
+import { currentUserDid } from '../sdk/phoenixKey';
 import {
   phoenixKeyApi,
   type PoolDetail,
@@ -61,7 +63,9 @@ export async function deriveStakeAddress(
  * (StakeRegistration nếu chưa + StakeDelegation) → submit qua /wallet/tx/submit.
  * Trả txHash. Ném lỗi nếu thiếu UTXO / build lỗi / submit từ chối.
  *
- * ⏳ Cần: rebuild native (FFI mới) + 2 proxy endpoint UTXO/params (Pha 2).
+ * ⏳ Còn chặn: rebuild native cho FFI mới. Hai endpoint UTXO/params KHÔNG còn chặn —
+ * ghi chú cũ nói thiếu là do bên này gọi sai hình đường (`/wallet/utxos?address=`
+ * thay vì `/wallet/{did}/utxos`), không phải backend thiếu.
  */
 export async function delegateToPool(args: {
   kekHex: string;
@@ -77,7 +81,14 @@ export async function delegateToPool(args: {
     throw new Error('Không derive được địa chỉ ví (KEK sai?).');
   }
 
-  const { utxosJson, protocolParamsJson } = await fetchWalletUtxosAndParams(senderAddress);
+  // UTXO khoá theo DID, không theo địa chỉ: một DID có nhiều địa chỉ chi được cùng
+  // lúc (Phoenix + Standard), mà dựng cert uỷ thác cần TOÀN BỘ chứ không một mảnh.
+  // Chi tiết + bằng chứng đo ở `cardanoTxService.UTXOS_PATH`.
+  const did = await currentUserDid();
+  if (!did) {
+    throw new Error('Chưa đăng nhập PhoenixKey — không lấy được UTXO của ví.');
+  }
+  const { utxosJson, protocolParamsJson } = await fetchWalletUtxosAndParams(did);
 
   const cbor = await taad.buildStakeDelegation({
     kekHex: args.kekHex,

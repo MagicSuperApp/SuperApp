@@ -179,20 +179,26 @@ const LoginScreen = () => {
           }),
         ]),
       );
-    float(blob1, 4500).start();
-    float(blob2, 6000).start();
-    float(blob3, 5200).start();
+    // Giữ tham chiếu để dừng lúc rời màn — cùng lối đã dùng ở nút sinh trắc bên
+    // dưới (:579). Ba vòng này chạy vô hạn theo thiết kế, không dừng là chúng quay
+    // tiếp sau khi màn đăng nhập đã đóng.
+    const loops = [float(blob1, 4500), float(blob2, 6000), float(blob3, 5200)];
+    loops.forEach(l => l.start());
 
+    let alive = true;
     (async () => {
       try {
         const rn = new ReactNativeBiometrics();
         const { available, biometryType: type } = await rn.isSensorAvailable();
+        if (!alive) return; // màn đã rời — đừng đặt state vào cây đã tháo
         setSensorAvailable(available);
         setBiometryType(type || '');
       } catch (e) {
         console.log('[Login] Biometric sensor check failed:', e);
       }
     })();
+
+    return () => { alive = false; loops.forEach(l => l.stop()); };
   }, [fadeAnim, slideAnim, blob1, blob2, blob3]);
 
   const hasFaceId = biometryType === BiometryTypes.FaceID;

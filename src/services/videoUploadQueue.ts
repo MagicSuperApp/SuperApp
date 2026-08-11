@@ -29,9 +29,13 @@
  *  - Tràn MAX_QUEUE: loại job CŨ NHẤT nhưng XOÁ file bản sao của nó + trả tín hiệu
  *    `droppedOldest` (không nuốt im lặng + không để file mồ côi).
  *
- * PHẠM VI: hiện chỉ có một route video (`fruit_video`) trên backend nên mọi job —
- * kể cả `kind:'tree'` — đều gửi qua `uploadFruitVideo`. Giữ trường `kind` để
- * forward-compat khi backend tách route video cây riêng.
+ * ĐỊNH TUYẾN THEO `kind` (sửa 2026-08-11). Tiền đề cũ ghi ở đây — "hiện chỉ có một
+ * route video (`fruit_video`)" — SAI, và sai từ lúc viết:
+ *   POST /api/tree/{id}/video        làm GIÀU góc nhìn của chính CÂY (treeVideoService)
+ *   POST /api/tree/{id}/fruit_video  ĐẾM QUẢ trên cây          (fruitVideoService)
+ * Hai cửa khác nghĩa. Vì tiền đề sai, mọi job `kind:'tree'` (Space3DScreen:437/:454,
+ * TreeVideoScreen:159) bị gửi vào cửa ĐẾM QUẢ — clip cây nông dân quay được xử như
+ * clip đếm quả, và cây KHÔNG được bổ sung góc nào. Nhà OriLife xác nhận 11/08.
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -68,6 +72,7 @@ import {
   isRetryableStoreReason,
   type FruitVideoResult,
 } from './fruitVideoService';
+import { uploadTreeVideo } from './treeVideoService';
 import { appendVideoProof, type VideoProof } from './videoProofStore';
 
 const QUEUE_KEY = '@aladin/videoUploadQueue/v1';
@@ -456,12 +461,45 @@ async function defaultIsOnline(): Promise<boolean> {
   }
 }
 
+/**
+ * Gửi job video CÂY qua đúng cửa `/api/tree/{id}/video`, rồi khớp kết quả về hình
+ * dạng `FruitVideoResult` mà `flush` đang đọc.
+ *
+ * Khớp trường, nói rõ chỗ không khớp được:
+ *   ok · stored · video_cid · event_id · link_status · error → cùng nghĩa, chép thẳng.
+ *   n_frames ← n_kept + n_rejected — tổng khung máy chủ chắt được từ clip, đúng
+ *     nghĩa `n_frames` của cửa quả. Số khung THẬT SỰ vào cây là `n_kept`; ai cần
+ *     con số đó thì đọc từ màn (TreeVideoScreen), không đọc từ hàng đợi.
+ *   n_fruits_max — KHÔNG khớp: clip cây không đếm quả. Để trống, đừng bịa 0.
+ *   store_reason — cửa cây chưa trả trường này. Để trống ⟹ `isRetryableStoreReason`
+ *     không kết luận "hết hy vọng" ⟹ job được thử lại. Nghiêng về thử lại là đúng
+ *     chiều: mất công gửi lại còn hơn vứt bằng chứng của nông dân.
+ */
+async function uploadTreeVideoAsQueueResult(
+  job: VideoUploadJob,
+): Promise<FruitVideoResult> {
+  const r = await uploadTreeVideo(ORILIFE_BASE, job.treeId, job.videoUri, {
+    lat: job.lat, lon: job.lon,
+  });
+  return {
+    ok: r.ok,
+    n_frames: (r.n_kept ?? 0) + (r.n_rejected ?? 0),
+    video_cid: r.video_cid,
+    event_id: r.event_id,
+    link_status: r.link_status,
+    stored: r.stored,
+    error: r.error,
+  };
+}
+
 function defaultDeps(): FlushDeps {
   return {
     ensureToken: (force?: boolean) => ensureOrilifeToken(ORILIFE_BASE, force ? { force: true } : undefined),
-    upload: (job) => uploadFruitVideo(ORILIFE_BASE, job.treeId, job.videoUri, {
-      lat: job.lat, lon: job.lon, note: job.note, clientEventId: job.clientEventId,
-    }),
+    upload: (job) => (job.kind === 'tree'
+      ? uploadTreeVideoAsQueueResult(job)
+      : uploadFruitVideo(ORILIFE_BASE, job.treeId, job.videoUri, {
+        lat: job.lat, lon: job.lon, note: job.note, clientEventId: job.clientEventId,
+      })),
     isOnline: defaultIsOnline,
     deleteFile: safeDeleteDefault,
     onProof: appendVideoProof,

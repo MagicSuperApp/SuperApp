@@ -11,16 +11,22 @@
  * ĐÚNG đường embed + verify_add ẢNH CŨ (bổ-sung góc cho cây, KHÔNG enroll-mới, chống nhiễm
  * gallery). Khác `fruit_video` (đếm quả): đây làm GIÀU góc nhìn của chính CÂY.
  *
- * Trần dung-lượng: server chặn cứng 20MB/request (MAX_UPLOAD_BYTES, server.py:406) — cả
- * middleware (Content-Length) lẫn _check_size sau read → 413. Vì server còn tự downscale
- * khung, KHÔNG cần quay full-HD: quay vừa + ngắn để nằm gọn dưới 20MB.
+ * Trần dung-lượng: **80MB**, KHÔNG phải 20MB. Máy chủ tách trần riêng cho đường video:
+ *   _VIDEO_PATH_SUFFIXES = ("/video", "/fruit_video")
+ *   _path_cap(path) → _is_video_path → MAX_VIDEO_BYTES = 80 * 1024 * 1024
+ * Route này khớp hậu tố `/video` nên luôn nằm ở trần 80MB, và đã vậy TỪ TRƯỚC — con
+ * số 20MB ở đây là MAX_UPLOAD_BYTES, trần chung cho request thường, không áp cho
+ * đường video. (Nhà OriLife đo trên prod và xác nhận 2026-08-11.)
+ *
+ * Hệ quả của con số sai: app TỰ chặn ở 20MB rồi báo "Clip vượt 20MB" trong khi máy
+ * chủ nhận thoải mái — nông dân bị bắt quay lại ngắn hơn mà không có lý do thật.
  *
  * Mã trả:
  *   200 {ok:true, tree_id, n_kept, n_rejected, status, rejected[], added, reason}
  *       - added=true & n_kept>0 : engine nhận, đã bổ-sung n_kept góc cho cây.
  *       - added=false           : khung không khớp cây (quay lẫn cây khác / quá mờ) — không bổ-sung.
  *   422 {ok:false, error, status, n_kept:0, n_rejected, rejected[]} : không chắt được khung dùng được.
- *   413 : clip vượt 20MB. 403 : cây không thuộc chủ (IDOR). 401 : phiên hết hạn.
+ *   413 : clip vượt 80MB. 403 : cây không thuộc chủ (IDOR). 401 : phiên hết hạn.
  *
  * TIẾN HOÁ CONTRACT (OriLife PR #251 `claude/tree-video-lampnet`, chờ Lợi merge+deploy — prod
  * hiện `b38496f` CHƯA có): route sẽ đẩy byte gốc lên LampNet TRƯỚC khi chắt khung và trả thêm
@@ -40,8 +46,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const AUTH_TOKEN_KEY = 'auth_token';
 const UPLOAD_TIMEOUT_MS = 180_000; // video + mạng yếu + server chắt khung → nới rộng
 
-/** Trần dung-lượng clip — KHỚP server (MAX_UPLOAD_BYTES = 20MB). Quá là 413. */
-export const MAX_TREE_VIDEO_BYTES = 20 * 1024 * 1024;
+/**
+ * Trần dung-lượng clip — KHỚP server (`MAX_VIDEO_BYTES` = 80MB). Quá là 413.
+ * Bằng đúng `fruitVideoService.MAX_VIDEO_BYTES`: cùng một clip mà bấm nút này được,
+ * bấm nút kia lại 413 là thứ không giải thích nổi cho người ngoài vườn.
+ */
+export const MAX_TREE_VIDEO_BYTES = 80 * 1024 * 1024;
 
 /** Một khung bị loại + lý-do (mã máy đọc + câu Việt cho người dùng). */
 export interface TreeVideoRejected {
@@ -124,7 +134,7 @@ export async function uploadTreeVideo(
       return { ok: false, error: { type: 'forbidden', detail: 'Cây này không thuộc bạn', http_status: 403 } };
     }
     if (resp.status === 413) {
-      return { ok: false, error: { type: 'too_large', detail: 'Clip vượt 20MB — quay ngắn hơn.', http_status: 413 } };
+      return { ok: false, error: { type: 'too_large', detail: 'Clip vượt 80MB — quay ngắn hơn.', http_status: 413 } };
     }
 
     const body = await resp.json().catch(() => ({} as any));

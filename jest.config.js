@@ -15,6 +15,11 @@ module.exports = {
   // loại thì jest quét cả chúng và CHẠY LẶP toàn bộ bộ test — đo được 3.020 test
   // thay vì 755, kèm lỗi của cây phụ báo lẫn vào cây chính.
   testPathIgnorePatterns: ['/node_modules/', '__tests__/App.test.tsx', '/Legacy/', '/\\.claude/'],
+  // Chặn ở `testPathIgnorePatterns` là chưa đủ cho `.claude/`: nó chặn CHẠY, không
+  // chặn haste-map BÒ vào. Hệ quả đo được: `jest-haste-map: duplicate manual mock
+  // found: assetModuleStub` lặp theo số worktree, và bản sao cũ của một test có thể
+  // được gom vào lượt chạy — tức CI báo đỏ/xanh theo mã KHÔNG nằm trong commit.
+  modulePathIgnorePatterns: ['/\\.claude/'],
   // RN preset chỉ transform react-native + @react-native*. Các gói RN khác phát-hành
   // ESM thuần (@react-navigation, react-native-*, redux ESM…) → Jest gặp `export` sẽ
   // ném "Unexpected token 'export'" và cả suite chết (App.test.tsx). Nới allowlist để

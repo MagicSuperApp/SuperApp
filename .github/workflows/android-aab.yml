@@ -35,14 +35,22 @@ jobs:
       - name: Typecheck (tsc --noEmit)
         run: npx tsc --noEmit -p tsconfig.json
 
+      # `--forceExit`: khớp `verify-pr.yml` và `debug-apk.yml`. KHÔNG có cờ này thì
+      # jest in xong kết quả nhưng không thoát (vòng `Animated` của màn render trong
+      # test chạy mãi theo thiết kế), runner chạy tới hết bộ nhớ rồi chạm
+      # `timeout-minutes` → job bị gắn nhãn `cancelled`. Nhãn đó đọc như "có người
+      # bấm huỷ" nên năm ngày liền không ai thấy develop đang hỏng. Cổng bản PHÁT
+      # HÀNH là chỗ cuối cùng còn thiếu cờ này — tức nó vẫn còn nguyên mìn.
       - name: Unit tests (jest)
-        run: npx jest --ci
+        run: npx jest --ci --forceExit
 
   build-aab:
     name: Build signed AAB for Play Store
     needs: verify
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # 60 → 90, cùng lý do như `debug-apk.yml`: thêm bước dựng Rust, và chạm trần
+    # thời gian bị gắn nhãn `cancelled` chứ không phải `failure`.
+    timeout-minutes: 90
 
     steps:
       - name: Checkout repository
@@ -68,6 +76,33 @@ jobs:
       - name: Install npm dependencies
         run: npm install --legacy-peer-deps
 
+      # Bản PHÁT HÀNH không được rơi về khoá giả. `aladin-api.ts:75` lấy
+      # `ALADIN_API_KEY || 'mock-local-api-key'` và gắn vào header `X-API-Key` của
+      # MỌI lệnh đồng bộ vườn/cây; `api.orilife.io/api/health` trả `auth_open:false`
+      # (đo 2026-08-11) — tức máy chủ CÓ kiểm khoá. Nướng khoá giả vào bản lên Play
+      # Store nghĩa là mọi người dùng đồng bộ hỏng, và hỏng theo kiểu 401 im lặng.
+      # Bản debug thì vẫn rơi về khoá giả — chỗ đó chấp nhận được, đây thì không.
+      - name: Chặn bản phát hành thiếu khoá API
+        env:
+          ALADIN_API_KEY: ${{ secrets.ALADIN_API_KEY }}
+        run: |
+          if [ -z "$ALADIN_API_KEY" ]; then
+            echo "::error::Thiếu secret ALADIN_API_KEY — bản phát hành sẽ nướng khoá giả 'mock-local-api-key'."
+            echo "Nạp: gh secret set ALADIN_API_KEY --repo AladinContract/SuperApp"
+            echo "Đây là quyết định có thể đảo: muốn cho qua thì gỡ bước này, nhưng bản"
+            echo "phát hành sẽ đồng bộ hỏng 401 trên máy mọi người dùng."
+            exit 1
+          fi
+          echo "ALADIN_API_KEY có mặt (${#ALADIN_API_KEY} ký tự)."
+
+      # PHẢI trước gradle — lý do đầy đủ ở .github/actions/rn-env/action.yml.
+      - name: Sinh biến môi trường React Native
+        uses: ./.github/actions/rn-env
+        with:
+          aladin-api-key: ${{ secrets.ALADIN_API_KEY }}
+          analytics-api-url: ${{ secrets.ANALYTICS_API_URL }}
+          analytics-api-key: ${{ secrets.ANALYTICS_API_KEY }}
+
       - name: Create android/gradle.properties
         run: |
           cat > android/gradle.properties << 'EOF'
@@ -88,27 +123,50 @@ jobs:
           EOF
           echo "gradle.properties created (JVM heap: 4096m)"
 
-      - name: Verify Android secrets.properties
-        run: |
-          if [ ! -f android/app/secrets.properties ]; then
-            echo "::error::android/app/secrets.properties missing"
-            exit 1
-          fi
-          echo "secrets.properties found"
-          grep -E "BASE_API_URL|API_KEY|REGION_CODE" android/app/secrets.properties || true
+      # ĐÃ GỠ 2026-08-10 — cổng ma. Chỗ này từng chặn: nếu không có
+      # `android/app/secrets.properties` thì dừng build. Đó là lý do DUY NHẤT khiến
+      # bản AAB hỏng ở lần chạy 11/07 (`##[error]android/app/secrets.properties
+      # missing`, run 29165647429) — và AAB chỉ chạy 2 lần trong đời, hỏng cả 2.
+      #
+      # Nhưng KHÔNG có tệp gradle nào của Android đọc tệp đó:
+      #   grep -rn "secrets\|Properties()" android/ --include=*.gradle  → trống
+      #   android/settings.gradle chỉ include ':app' — không có module orilifesdk
+      # Tệp này là của đường iOS (ios/LocalPods/ScannerModule/Core/APISecrets.swift)
+      # và của Codemagic (codemagic.yaml:817 tự sinh nó). Bản Android trên GitHub
+      # không dùng tới, nên cổng này chặn một tệp mà không ai đọc.
+      #
+      # KHÔNG thay bằng bước tự sinh tệp: sinh ra một tệp không ai đọc, mang giá trị
+      # mặc định `API_KEY=mock-local-api-key`, nằm trong đường ra Play Store, là gài
+      # mìn cho người sau. Khi nào Android thật sự cần thì thêm cùng lúc với mã đọc nó.
 
       - name: Restore keystore from secret
         env:
           ORILIFE_UPLOAD_STORE_FILE_B64: ${{ secrets.ORILIFE_UPLOAD_STORE_FILE_B64 }}
         run: |
           if [ -z "$ORILIFE_UPLOAD_STORE_FILE_B64" ]; then
-            echo "::error::ORILIFE_UPLOAD_STORE_FILE_B64 secret not set"
-            echo "Setup: gh secret set ORILIFE_UPLOAD_STORE_FILE_B64 < /tmp/keysigning_base64.txt"
+            echo "::error::Kho khoá ký chưa nạp — repo hiện có 0 secret."
+            echo "Đo 2026-08-10: gh api repos/AladinContract/SuperApp/actions/secrets"
+            echo "               → {\"total_count\":0,\"secrets\":[]}"
+            echo ""
+            echo "Cần nạp ĐỦ BỐN cái, thiếu một cái là bước ký gãy:"
+            echo "  ORILIFE_UPLOAD_STORE_FILE_B64   (keystore .jks đã base64)"
+            echo "  ORILIFE_UPLOAD_KEY_ALIAS"
+            echo "  ORILIFE_UPLOAD_STORE_PASSWORD"
+            echo "  ORILIFE_UPLOAD_KEY_PASSWORD"
+            echo ""
+            echo "Chỉ CHỦ SỞ HỮU kho khoá nạp được — đây là khoá ký ra bản Play Store,"
+            echo "mất là mất luôn quyền cập nhật ứng dụng đã phát hành."
             exit 1
           fi
           echo "$ORILIFE_UPLOAD_STORE_FILE_B64" | base64 -d > android/app/keySigning.bin
           ls -lh android/app/keySigning.bin
           echo "Keystore restored ($(stat -c%s android/app/keySigning.bin) bytes)"
+
+      # PHẢI trước gradle — lý do đầy đủ ở .github/actions/rust-android/action.yml.
+      # Bản ra Play Store mà thiếu 2 .so này thì ví/DID/chat mã hoá im lặng không
+      # dùng được, và build vẫn xanh.
+      - name: Dựng Rust core (taad_enclave_core + chat_mls)
+        uses: ./.github/actions/rust-android
 
       - name: Build signed AAB
         env:

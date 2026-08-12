@@ -22,9 +22,12 @@ import { LAMPNET_BASE_URL } from '@env';
 
 // ── Base URL ─────────────────────────────────────────────────────────
 // LAMPNET_BASE_URL đã có sẵn trong .env (dùng chung với upload Mirage).
-// TODO(backend LampNet): xác nhận daemon dev expose các path /v1/* dưới base này,
-// hay có prefix riêng — đối chiếu message team LampNet trước khi bật thật.
-const BASE_URL = (LAMPNET_BASE_URL as string | undefined) ?? 'https://lampnet.cloud';
+//
+// `api.lampnet.cloud` là bề mặt CHUẨN giữ lâu dài (LampNet đã chốt). `lampnet.cloud`
+// hôm nay trỏ cùng một node — đo 12/08, hai host trả cùng peer id — nhưng **không có
+// cam kết nào rằng nó sẽ mãi như vậy**. Đổi mặc định sang `api.` để không dựa vào một
+// sự trùng hợp; `.env` vẫn ghi đè được.
+const BASE_URL = (LAMPNET_BASE_URL as string | undefined) ?? 'https://api.lampnet.cloud';
 
 // Timeout mặc định — quá hạn coi là lỗi mạng (spec §2: "timeout → error").
 const DEFAULT_TIMEOUT_MS = 15000;
@@ -157,7 +160,10 @@ async function request<T>(
 
 /**
  * Bước 0 — Bootstrap: lấy bootstrap_did từ /v1/network_info (trả JSON).
- * Không dùng /v1/peer_id vì endpoint đó trả plain text, không phải JSON.
+ *
+ * Lý do né `/v1/peer_id` (trả plain text) **đã hết hiệu lực** từ PR #57 (`2e294b3`):
+ * `/v1/peer_id?format=json` nay trả JSON thật. Cả hai đường đều sống, nên giữ
+ * `network_info` không sai — ghi lại để người sau khỏi tưởng đây là ràng buộc còn đúng.
  */
 export const getPeerId = async (): Promise<PeerIdResult> => {
   const info = await request<{ bootstrap_peer_id?: string }>('/v1/network_info', { method: 'GET' });
@@ -207,15 +213,28 @@ export const reportResult = (
   });
 
 /**
- * Bước 6 — Quyết toán: sổ thưởng của cả epoch.
+ * Quyết toán tích luỹ CỦA MỘT THIẾT BỊ — `GET /v1/mobile/settlement`.
  *
- * ⚠ CHƯA KIỂM. Đặt GET vì đó là suy đoán từ tên đường dẫn, NHƯNG
- * `LampNetCloud/Join/Join-Integration.md:70` khai **POST** (nhãn [KHAI], không phải
- * [ĐO]). Hai bên đang ngược nhau và chưa ai curl thật. Đã hỏi Join; trước khi có câu
- * trả lời thì đừng dựa vào phương thức ở đây.
+ * ĐÃ ĐO (12/08, curl thật 4/4 đường, nhà LampNet xác nhận): GET đúng, không phải POST.
+ * Tranh cãi "GET hay POST" trước đây là câu hỏi sai — hai bên đọc hai tài liệu khác nhau
+ * mà chưa ai gọi thật.
+ *
+ * ⚠️ `total_ulamp` là tích luỹ **per-verified-unit của một THIẾT BỊ**; nó KHÔNG phải
+ * phần chia epoch của node (`magic_amount` ở `POST /v1/reward/epoch`). Hai con số sinh
+ * ra ở hai đường mã không gặp nhau — **không cộng, không so, không vẽ chung một biểu đồ.**
+ *
+ * ⚠️ ĐƠN VỊ CHƯA CHỐT — đừng quy đổi, đừng gắn nhãn token. Bốn nguồn đang nói ba tên:
+ * `Reward-Math.md` V1 nói MAGIC · V2 + `Reward-Tech.md §6.1` nói LAMP · rule toàn hệ +
+ * `CARP-LampNet-Coordination.md` nói CARP · mã đang chạy chi µLAMP. Anh Đức chưa chốt.
+ * Vì vậy màn "Đang đóng góp" giữ **dấu gạch**, không hiện số quy đổi.
  */
-export const settlement = (): Promise<Record<string, unknown>> =>
-  request('/v1/mobile/settlement', { method: 'GET' });
+export interface MobileSettlementView {
+  /** Xem cảnh báo đơn vị ở trên. Tên trường giữ NGUYÊN như máy chủ trả. */
+  total_ulamp?: number;
+  [k: string]: unknown;
+}
+export const settlement = (): Promise<MobileSettlementView> =>
+  request<MobileSettlementView>('/v1/mobile/settlement', { method: 'GET' });
 
 /** Bước 7 — Trạng thái node (online, việc đang chạy, việc đã verify). Màn "Đang đóng góp". */
 export const getNodeStats = (): Promise<NodeStats> =>
@@ -227,6 +246,13 @@ export const getNodeStats = (): Promise<NodeStats> =>
  * ⚠ CHƯA KIỂM, và đường này KHÔNG có trong `Join-Integration.md` (grep `mobile/rewards`
  * = 0). Nó là ĐỀ NGHỊ của bên này, chưa phải hợp đồng đã chốt. Đã hỏi Join xác nhận.
  * Dù sao cũng chưa gọi được: `device_pubkey` do phần native sinh, mà cầu native chưa có.
+ *
+ * ⚠️ VÀ KỂ CẢ KHI CÓ CẦU NATIVE, "suất theo thiết bị" vẫn chưa có nền (LampNet xác nhận
+ * 12/08): phía máy chủ `device_pubkey` **không neo vào bất cứ danh tính nào** —
+ * `verify_lease_request` chỉ đòi chữ ký Ed25519 của chính thiết bị trên field của chính
+ * nó, mà sinh keypair mới là miễn phí. Nên "một thiết bị" hiện chỉ có nghĩa "một khoá",
+ * không phải "một máy", càng không phải "một người". Chống một người khai nhiều thiết bị
+ * thì phải neo vào PhoenixKey DID. Đừng hứa với người dùng nhiều hơn thế.
  */
 export const getDeviceRewards = (
   devicePubkeyHex: string,

@@ -23,6 +23,7 @@ import StateView from '../../../components/state/StateView';
 import { formatVND, type Job } from '../data/mockData';
 import { WORK_CATEGORIES, type WorkCategory } from '../data/categories';
 import { useJobs } from '../hooks/useJobs';
+import { useTemplates } from '../hooks/useTemplates';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -34,6 +35,9 @@ const WorkHomeScreen: React.FC = () => {
 
   // Nguồn tin: flag ON → API thật (chỉ tin mở); OFF → mock (useJobs xử lý).
   const { jobs, loading, errorKind, reload } = useJobs(true);
+  // 14 mẫu việc THẬT từ `GET /templates` — dùng để nói đúng sự thật khi chợ chưa có tin.
+  // KHÔNG phải dữ liệu mồi: nhà AladinWork xác nhận đây là dữ liệu thật, không bịa dòng nào.
+  const { templates } = useTemplates();
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -254,11 +258,35 @@ const WorkHomeScreen: React.FC = () => {
             ) : errorKind ? (
               <StateView status="error" onRetry={reload} />
             ) : filteredJobs.length === 0 ? (
-              <StateView
-                status="empty"
-                title="Không có việc phù hợp"
-                message="Thử bỏ lọc hoặc tìm từ khóa khác."
-              />
+              /*
+                Hai cảnh RẤT khác nhau, trước đây nói chung một câu:
+                  · `jobs` có mà lọc ra rỗng  → lỗi của bộ lọc, bảo họ bỏ lọc là đúng;
+                  · `jobs` rỗng hẳn           → CHỢ chưa có tin nào, bảo họ "thử bỏ lọc"
+                    là sai và làm họ tưởng app hỏng.
+                Cảnh thứ hai là cảnh THẬT hôm nay, và nhà AladinWork xác nhận kho rỗng là
+                CỐ Ý: chợ chưa có hợp đồng thật nào nên mọi tin nạp vào đều là bịa, mà
+                buổi đo có khách thật đứng xem.
+                Nhưng "chưa có tin" không có nghĩa là không nói được gì: `GET /templates`
+                trả 14 mẫu việc DỮ LIỆU THẬT — nói được nền tảng này nhận loại việc gì,
+                mà không bịa một dòng nào.
+              */
+              jobs.length === 0 ? (
+                <StateView
+                  status="empty"
+                  title="Chưa có tin việc nào đang mở"
+                  message={
+                    templates.length > 0
+                      ? `Nền tảng nhận ${templates.length} loại việc. Tin đầu tiên sẽ hiện ở đây.`
+                      : 'Tin đầu tiên sẽ hiện ở đây.'
+                  }
+                />
+              ) : (
+                <StateView
+                  status="empty"
+                  title="Không có việc phù hợp"
+                  message="Thử bỏ lọc hoặc tìm từ khóa khác."
+                />
+              )
             ) : (
               filteredJobs.map((j, i) => (
                 <JobCard

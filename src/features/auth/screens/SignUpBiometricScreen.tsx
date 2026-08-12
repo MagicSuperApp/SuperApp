@@ -197,8 +197,21 @@ const SignUpBiometricScreen: React.FC = () => {
    * Ba lối ra, không lối nào là ngõ cụt:
    *  1. chính chủ cài lại app  → khôi phục danh tính cũ (hành vi cũ, nay có xác nhận);
    *  2. người khác, đã có 24 từ → màn Khôi phục, gắn máy này vào ĐÚNG danh tính của họ;
-   *  3. người khác, chưa có gì  → nói thật là phải dùng máy riêng, và vì sao.
+   *  3. người khác, chưa có gì  → nói thật là BẢN NÀY chưa giữ được hai danh tính.
    * Không có nhánh nào âm thầm gộp hai người thành một tài khoản.
+   *
+   * ĐÍNH CHÍNH 2026-08-12 theo nhà Phoenix: giới hạn "một máy một danh tính" KHÔNG
+   * phải giới hạn của thiết kế. Backend không có `UNIQUE(device_id)`, validator không
+   * ràng buộc thiết bị on-chain, `device_pkh` là quan hệ một-nhiều thật. Chặn nằm
+   * TOÀN BỘ ở phía app: một khe lưu trữ duy nhất, nhãn khoá phần cứng là hằng số, và
+   * sinh khoá thì XOÁ KHOÁ CŨ TRƯỚC (iOS `SecItemDelete` trong `generateKeyPair`,
+   * Android `deleteKeyIfExists()` ở dòng đầu `generateKey`).
+   *
+   * `PhoenixKey-Core` PR #56 vá cả ba, 56/56 test xanh — nhưng CHƯA GỘP. Nên vẫn phải
+   * chặn: mở lối "tạo danh tính mới" trước khi PR đó về là để người thứ hai xoá vĩnh
+   * viễn khoá phần cứng của người thứ nhất. Cái sửa được ngay hôm nay là CÂU CHỮ —
+   * nói đúng rằng đây là giới hạn của bản ứng dụng này, không phải luật của hệ thống.
+   * Khi PR #56 về: đổi nhánh 3 thành nút "Tạo danh tính mới trên máy này".
    */
   const askWhoIsHoldingThePhone = () => {
     Alert.alert(
@@ -221,9 +234,9 @@ const SignUpBiometricScreen: React.FC = () => {
           style: 'destructive',
           onPress: () =>
             showError(
-              'Mỗi máy chỉ giữ được một danh tính, vì khoá nằm trong chip bảo mật của máy. '
-              + 'Bạn hãy tạo danh tính trên máy của mình. Nếu bắt buộc dùng máy này, chủ máy '
-              + 'phải xoá danh tính cũ trước — và họ sẽ cần 24 từ để lấy lại.',
+              'Bản ứng dụng này chưa giữ được hai danh tính trên cùng một máy — tạo danh tính '
+              + 'mới ở đây sẽ xoá vĩnh viễn khoá của người đang dùng máy. Bản cập nhật tới mở '
+              + 'được việc đó. Trong lúc chờ, bạn hãy tạo danh tính trên máy của mình.',
             ),
         },
         { text: 'Huỷ', style: 'cancel' },

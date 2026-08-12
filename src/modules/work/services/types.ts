@@ -218,9 +218,20 @@ export interface Tasker {
   did: string;
   name?: string;
   avatar?: string;
+  avatarUrl?: string;
   title?: string;
   kind?: string;
+  /**
+   * Uy tín là ĐIỂM 0..100 TÍNH ĐƯỢC, không phải trung bình số sao người ta bấm.
+   * Nền tảng tính `r̂ × D` (uy tín hiệu dụng × hệ số dòng dõi) và neo vào việc đã
+   * tất toán — thang sao thì bơm được bằng tài khoản phụ, thang này thì không.
+   * Nhà AladinWork nói rõ: họ sẽ KHÔNG BAO GIỜ có "sao". Nên đừng ai nối lại một
+   * khối "đánh giá 5 sao" ở đây; cái thiếu không phải endpoint, mà là khái niệm.
+   */
   reputation?: number;
+  reputationRaw?: number;
+  /** CƠ SỞ của con số uy tín — để màn hình không phải bắt người xem tin một số trần. */
+  reputationBasis?: string;
   skills?: string[];
   verifiedCredentials?: number;
   credentials?: TaskerCredential[];

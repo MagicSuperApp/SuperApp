@@ -76,13 +76,20 @@ const POLICY_HEX_LEN = 56;
  *    trong cùng UTxO biến mất khỏi tính toán — **không lỗi nào được in**.
  * 3. `unit` là policy(56 hex) nối thẳng asset name hex, phải cắt ra.
  *
- * ⚠ MỨC CHẮC CHẮN: hình này đọc từ `WalletTxBuildDtos.WalletUtxo` +
- * `WalletController.getUtxos` (kho PhoenixKey-Database), CỘNG với một phép đo gián
- * tiếp: `GET /wallet/params` trả `min_fee_a`/`coins_per_utxo_size` — tức Jackson đang
- * đổi camelCase sang snake_case cho TOÀN BỘ phản hồi, nên `txHash` trên dây là
- * `tx_hash`. Bên này CHƯA gọi được thân 200 của `/utxos` (đòi Bearer của máy thật).
- * Nên hàm nhận CẢ HAI cách viết cho mỗi trường — không phải để "phòng xa", mà vì
- * bên này thật sự chưa đo được cái nào đúng, và nói thẳng như vậy.
+ * TÊN TRƯỜNG TRÊN DÂY ĐÃ CHỐT — snake_case, đọc thẳng từ cấu hình máy chủ:
+ *
+ *   # PhoenixKey-Database, main, src/main/resources/application.yml:8-9
+ *   jackson:
+ *     property-naming-strategy: SNAKE_CASE
+ *
+ * Bản trước của hàm này nhận CẢ HAI cách viết (`tx_hash` lẫn `txHash`) vì lúc đó
+ * bên này chưa gọi được thân 200 thật và không dám chọn. Nay có nguồn trực tiếp thì
+ * nhánh camelCase là mã CHẾT — mà mã chết ở chỗ đổi hình thì tệ hơn mã thiếu: nó
+ * làm người đọc sau tưởng máy chủ có hai cách viết, rồi giữ mãi cái nhánh đó.
+ *
+ * Hình đã đọc ở `dto/wallet/WalletTxBuildDtos.java` (bản main): `lovelace` và mọi
+ * `quantity` là CHUỖI (`@JsonSerialize(ToStringSerializer)`), `output_index` là SỐ,
+ * `native_assets` là BẢNG `unit → quantity`.
  */
 export function toRustUtxos(items: unknown): RustUtxo[] {
   if (!Array.isArray(items)) return [];
@@ -90,14 +97,12 @@ export function toRustUtxos(items: unknown): RustUtxo[] {
   for (const raw of items) {
     if (!raw || typeof raw !== 'object') continue;
     const it = raw as Record<string, unknown>;
-    const txHash = it.tx_hash ?? it.txHash;
-    const idx = it.output_index ?? it.outputIndex ?? it.index;
+    const txHash = it.tx_hash;
+    const idx = it.output_index;
     if (typeof txHash !== 'string' || !txHash) continue;
     if (typeof idx !== 'number' || !Number.isInteger(idx) || idx < 0) continue;
 
-    const assetsMap = (it.native_assets ?? it.nativeAssets) as
-      | Record<string, unknown>
-      | undefined;
+    const assetsMap = it.native_assets as Record<string, unknown> | undefined;
     const assets: RustUtxo['assets'] = [];
     if (assetsMap && typeof assetsMap === 'object' && !Array.isArray(assetsMap)) {
       for (const [unit, qty] of Object.entries(assetsMap)) {

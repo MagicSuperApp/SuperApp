@@ -44,14 +44,16 @@ describe('toRustUtxos — đổi hình PhoenixKey → hình Rust đợi', () => 
     expect(out[0].assets.map(a => a.quantity).sort()).toEqual(['7', '9']);
   });
 
-  it('chấp cả cách viết camelCase, vì bên này CHƯA đo được thân 200 thật', () => {
+  // Máy chủ khai `jackson.property-naming-strategy: SNAKE_CASE` cho MỌI phản hồi
+  // (`PhoenixKey-Database` main, `src/main/resources/application.yml:8-9`), nên trên
+  // dây KHÔNG có camelCase. Bản trước của hàm này nhận cả hai cách viết vì chưa đo
+  // được; nay bỏ nhánh đó, và test này khoá việc bỏ — nhận camelCase trở lại là
+  // dựng lại một nhánh chết mà người đọc sau sẽ tưởng máy chủ có hai cách viết.
+  it('KHÔNG nhận camelCase — máy chủ khai SNAKE_CASE toàn cục', () => {
     const out = toRustUtxos([
       { txHash: 'ab', outputIndex: 1, lovelace: 3, nativeAssets: { [POLICY + NAME_HEX]: 5 } },
     ]);
-    expect(out[0]).toEqual({
-      tx_hash: 'ab', index: 1, lovelace: '3',
-      assets: [{ policy: POLICY, name: NAME_HEX, quantity: '5' }],
-    });
+    expect(out).toEqual([]);
   });
 
   it('lovelace/quantity luôn ra CHUỖI — u64 vượt 2^53 của JSON number', () => {

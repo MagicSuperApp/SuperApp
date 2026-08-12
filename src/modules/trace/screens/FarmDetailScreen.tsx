@@ -672,14 +672,24 @@ const AddFarmMode = ({
                     bấm "Vệ tinh" không ăn — vẫn thấy bản đồ thường.)
                     Lớp vệ tinh khai báo SAU nên nằm TRÊN; opacity=1 sẽ che lớp thường.
                     Ở mức zoom Esri thiếu tile, lớp thường bên dưới lộ ra làm nền dự phòng. */}
+                {/* ⚠ `maxZoomLevel` PHẢI khai trên RasterSource, và PHẢI là 19.
+                    Camera cho phóng tới 20 (ở trên), nhưng cả hai nguồn ảnh chỉ CÓ
+                    ảnh tới z19 — chính repo này ghi rõ ở `mapTiles.ts:45` ("vượt qua
+                    là ô trống/404"), `:61` (Esri 19), `:68` (OSM 19).
+                    Thiếu khai báo ⇒ ở z20 MapLibre đi xin tile KHÔNG TỒN TẠI và người
+                    dùng thấy ô trắng — đúng cái "phóng to thì lỗi bản đồ" mà anh Cường
+                    gặp ngoài vườn 12/08. Khai 19 thì MapLibre KÉO GIÃN ảnh z19: nền chỉ
+                    mờ đi, không mất. Vẫn phóng được tới 20 để đặt đỉnh ranh giới cho
+                    chính xác — đa giác là vector nên nét ở mọi mức.
+                    KHÔNG hạ camera xuống 19 để "cho khớp": người vẽ ranh giới cần phóng
+                    sâu hơn mức ảnh có, và ảnh mờ vẫn ướm được, còn ô trắng thì không. */}
                 <MapLib.RasterSource
                   id="osm-tiles"
-                  tileUrlTemplates={[
-                    'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  ]}
+                  /* Tên miền `a/b/c.` là dạng subdomain OSM đã ngưng — chỗ khác trong
+                     chính repo dùng đúng `tile.openstreetmap.org` (`mapTiles.ts:67`). */
+                  tileUrlTemplates={['https://tile.openstreetmap.org/{z}/{x}/{y}.png']}
                   tileSize={256}
+                  maxZoomLevel={19}
                 >
                   <MapLib.RasterLayer id="osm-tiles-layer" sourceID="osm-tiles" />
                 </MapLib.RasterSource>
@@ -688,6 +698,7 @@ const AddFarmMode = ({
                   id="sat-tiles"
                   tileUrlTemplates={['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}']}
                   tileSize={256}
+                  maxZoomLevel={19}
                 >
                   <MapLib.RasterLayer
                     id="sat-tiles-layer"

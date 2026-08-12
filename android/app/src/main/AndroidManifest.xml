@@ -14,7 +14,14 @@
         android:maxSdkVersion="29"
         tools:replace="android:maxSdkVersion" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <!-- KHÔNG xin READ_MEDIA_IMAGES. Chính sách Photo & Video Permissions của Google Play
+         (bắt buộc từ 2025-05-28, app không tuân bị GỠ khỏi kho) chỉ cho phép quyền này khi
+         truy cập TOÀN BỘ thư viện ảnh là chức năng lõi — app quản lý ảnh, thư viện ảnh.
+         App này chỉ chọn từng ảnh một, và `react-native-image-picker` v8 đã đi qua Android
+         Photo Picker (`PickVisualMedia`, xem `ImagePickerModuleImpl.java:29`) — cửa đó KHÔNG
+         cần quyền nào cả. Xin quyền thừa ở đây là tự chuốc một lượt từ chối.
+         Nếu một thư viện nào đó merge quyền này vào, chặn thẳng bằng tools:node="remove". -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" tools:node="remove" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.USE_FINGERPRINT" />

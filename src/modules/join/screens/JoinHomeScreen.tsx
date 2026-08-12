@@ -254,6 +254,20 @@ const JoinHomeScreen: React.FC = () => {
               Máy của bạn giờ là một ngọn đèn của mạng. Theo dõi việc đang chạy và
               thưởng tích luỹ ở màn "Đang đóng góp".
             </Text>
+            {/* Bậc là con số máy chủ TỰ SUY, KHÔNG được chữ ký nào phủ. Nhà LampNet
+                đo và báo 12/08: `classify_tier` tính bậc từ `hw_cpu_score`/`hw_ram_mb`
+                (`lib.rs:96-104`), mà bốn trường `hw_*` KHÔNG nằm trong `F` — khối được
+                ký ở `attest_sig_hex`. Ai đứng trên đường truyền, kể cả node bootstrap
+                nhận yêu cầu, sửa hai số đó là đổi bậc của người khác mà không phá chữ
+                ký nào.
+                Nên đừng trình bậc như một thuộc tính đã được chứng thực. Dòng dưới là
+                mức trung thực rẻ nhất; khi nào bốn trường đó được ký thì gỡ nó đi. */}
+            {result?.tier != null && (
+              <Text style={styles.tierNote}>
+                Bậc do máy chủ tự xếp theo cấu hình máy bạn khai. Nó chưa được ký, nên
+                hãy coi là ước lượng.
+              </Text>
+            )}
             <TouchableOpacity
               activeOpacity={0.9}
               style={styles.tierCta}
@@ -393,6 +407,7 @@ const styles = StyleSheet.create({
   tierBadgeText: { fontSize: 12, fontWeight: '800', color: LAMPNET_THEME.onPrimary },
   tierTitle: { fontSize: 16, fontWeight: '800', color: COLORS.text, marginBottom: 6 },
   tierBody: { fontSize: 12, color: COLORS.textSub, lineHeight: 18, marginBottom: 14 },
+  tierNote: { fontSize: 11, color: COLORS.textMuted, lineHeight: 16, marginBottom: 14 },
   tierCta: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     paddingVertical: 12, borderRadius: 12,

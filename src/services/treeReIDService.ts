@@ -366,7 +366,18 @@ async function _apiCall<T>(
         // Chỉ đọc một dạng là nút "Gộp vào cây cũ" báo "Không xác định được cây trùng"
         // đúng lúc người ta đang đứng ngoài vườn — lỗi field-test 26/07 mục 1(c).
         detail = body409.detail ?? body409.error ?? detail;
-        errorCode = body409.code ?? body409.error_code ?? undefined;
+        // `code`/`error_code` là hợp-đồng bên này TƯỞNG có — máy chủ CHƯA BAO GIỜ gửi.
+        // `grep -rn "duplicate_tree" OriLifeTrace` = rỗng. Thứ máy chủ thật sự gửi là
+        // ba CỜ BOOLEAN, mỗi loại 409 một cờ:
+        //   server.py:2115  {"ok":false,"error":…,"heterogeneous":true}
+        //   server.py:2120  {"ok":false,"error":…,"flat":true}
+        //   server.py:2128  {"ok":false,"error":…,"detail":…,"duplicate":true,"existing_tree_id":…}
+        // Thiếu ba dòng dưới thì `error_code` luôn undefined, màn đăng-ký phải đoán loại
+        // 409 bằng cách dò chữ trong câu tiếng Việt — và nó đoán trượt (xem classify409).
+        errorCode = body409.code ?? body409.error_code
+          ?? (body409.duplicate ? 'duplicate_tree'
+            : body409.flat ? 'flat'
+              : body409.heterogeneous ? 'heterogeneous' : undefined);
         existingTreeId = body409.existing_tree_id ?? body409.similar?.tree_id ?? undefined;
       } catch { /* bỏ qua */ }
       return {

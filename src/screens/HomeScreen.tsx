@@ -40,8 +40,6 @@ import {
 } from '../services/featureUsageService';
 import { COLORS } from '../constants';
 import { fmtLamp } from '../utils/token';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import CreateFarmPromptModal from '../components/CreateFarmPromptModal';
 import { useCollapsibleHeader } from '../components/AppHeader';
 import { useCoachMarkTarget, useCoachMark } from '../onboarding/CoachMarkContext';
 import { shouldAutoRunTutorial } from '../utils/tutorialStorage';
@@ -515,7 +513,6 @@ const HomeScreen: React.FC = () => {
 
   const [refreshing, setRefreshing] = useState(false);
   const [moduleLayout, setModuleLayout] = useState<ModuleLayout>('grid');
-  const [showFarmPrompt, setShowFarmPrompt] = useState(false);
 
   // Hộp Quick Action: mặc định thu gọn (khi đã hiện — xem quickVisible bên dưới).
   const [quickOpen, setQuickOpen] = useState(false);
@@ -579,28 +576,18 @@ const HomeScreen: React.FC = () => {
     (navigation as any).navigate(action.route, params);
   };
 
-  // ✅ Check if user has no farms and hasn't dismissed the prompt
-  useEffect(() => {
-    const checkFarmPrompt = async () => {
-      try {
-        // ✅ Hide modal if user has farms
-        if (farms.length > 0) {
-          setShowFarmPrompt(false);
-          return;
-        }
-
-        const dismissed = await AsyncStorage.getItem('farm_prompt_dismissed');
-        if (!dismissed && farms.length === 0) {
-          // Show modal after 500ms delay for better UX
-          setTimeout(() => setShowFarmPrompt(true), 500);
-        }
-      } catch (error) {
-        console.log('Error checking farm prompt:', error);
-      }
-    };
-
-    checkFarmPrompt();
-  }, [farms.length]);
+  // BỎ modal "Tạo nông trại trước" tự bật.
+  //
+  // Ba lý do, lý do thứ ba mới là lý do chính:
+  //   1. Nó là <Modal> phủ toàn màn (CreateFarmPromptModal.tsx:67) nên nó che cả
+  //      navbar — người mới mở app ra thấy một cửa ải, không thấy sản phẩm.
+  //   2. `setTimeout` ở bản cũ không có cleanup. Store không persist nên mỗi phiên
+  //      `farms` khởi tạo rỗng rồi mới nạp; hẹn giờ 500ms đã đặt vẫn nổ sau khi
+  //      farm về ⇒ người ĐÃ CÓ vườn vẫn bị đập modal vào mặt mỗi lần mở app.
+  //   3. App này không chỉ dành cho nông dân. Người cộng đồng Cardano vào để dùng
+  //      Ví, người LampNet vào để góp máy, freelancer vào để nhận việc, người mới
+  //      vào để nhắn tin. Bắt tất cả tạo nông trại trước là hỏi sai câu hỏi ngay ở
+  //      giây đầu tiên. Ai cần vườn thì vào tab Trang trại — nút tạo nằm sẵn ở đó.
 
   useEffect(() => {
     Animated.stagger(100, [
@@ -633,32 +620,10 @@ const HomeScreen: React.FC = () => {
     setRefreshing(false);
   };
 
-  const handleCreateFarm = () => {
-    setShowFarmPrompt(false);
-    // Mở thẳng màn TẠO trang trại (FarmDetail với farm_id null) — trước đây trỏ 'Farms'
-    // (là danh sách vườn); nay 'Farms' = Dashboard nên trỏ đúng màn tạo.
-    (navigation as any).navigate('FarmDetail', { farm_id: null });
-  };
-
-  const handleDismissFarmPrompt = async () => {
-    setShowFarmPrompt(false);
-    try {
-      await AsyncStorage.setItem('farm_prompt_dismissed', 'true');
-    } catch (error) {
-      console.log('Error saving farm prompt dismissed:', error);
-    }
-  };
-
   return (
     <View style={styles.root}>
       <StatusBar barStyle="dark-content" backgroundColor={NEUTRAL.bg} />
 
-      {/* ✅ Farm Prompt Modal */}
-      <CreateFarmPromptModal
-        visible={showFarmPrompt}
-        onCreateFarm={handleCreateFarm}
-        onDismiss={handleDismissFarmPrompt}
-      />
       {/* HeroBar cũ ĐÃ BỎ: nút Tài khoản + Thông báo (chuông) nay nằm trong
           AppHeader toàn cục (thu/thả theo cuộn) ở tầng nav — tránh 2 thanh trên
           chồng nhau. Xem components/AppHeader.tsx. */}

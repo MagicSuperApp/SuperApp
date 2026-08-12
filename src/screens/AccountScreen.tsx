@@ -745,6 +745,22 @@ const AccountScreen = () => {
                             sublabel="Xem/sao chép mã định danh, khoá công khai, địa chỉ ví"
                             onPress={() => navigation.navigate('ExportIdentity')}
                         />
+                        {/*
+                          Lối vào THỨ HAI cho OrgDID. Lối cũ là lối duy nhất và nó bị chặn:
+                          thẻ "VÍ TỔ CHỨC" nằm ở PhoenixWalletScreen.tsx:280-302, mà màn đó
+                          return sớm ở :190 khi máy chưa có Master_KEK — người chưa thiết lập
+                          ví chỉ thấy "Chưa có ví" và không có đường nào tới màn tạo tổ chức.
+                          Cổng đó THỪA với OrgDID: tạo tổ chức ký bằng khoá phần cứng /
+                          owner DID, không đụng Master_KEK (orgMintService.ts:160-164).
+                          Kèm theo: lối cũ nằm sâu ba lớp sau một nhãn tên "Ví của tôi" —
+                          không ai đoán "tạo tổ chức" nằm trong ví.
+                        */}
+                        <MenuItem
+                            icon="office-building-outline"
+                            label="Tổ chức (OrgDID)"
+                            sublabel="Tạo danh tính tổ chức và mint LAMP vào kho Distribution"
+                            onPress={() => navigation.navigate('OrgDid')}
+                        />
                         <MenuItem
                             icon="at"
                             label="Username"

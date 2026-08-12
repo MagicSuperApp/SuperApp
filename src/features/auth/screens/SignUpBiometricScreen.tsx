@@ -21,6 +21,7 @@ import { showError } from '../../../utils/alert';
 import { biometricKindFromType, phoenixKeyAuth } from '../../../services/phoenixKeyAuthService';
 import { loginUser } from '../../../store/userSlice';
 import { useDispatch } from 'react-redux';
+import { useBottomActionPadding } from '../../../hooks/useBottomActionPadding';
 
 // PhoenixUser local registry — sẽ sync lên api.phoenixkey.me khi backend production sẵn sàng.
 // Mỗi entry: { username, did, createdAt }.
@@ -37,6 +38,7 @@ type Stage =
   | 'done';
 
 const SignUpBiometricScreen: React.FC = () => {
+  const bottomPad = useBottomActionPadding();
   const navigation = useNavigation<any>();
   const dispatch = useDispatch();
 
@@ -314,7 +316,7 @@ const SignUpBiometricScreen: React.FC = () => {
       </Animated.View>
 
       {/* Action bar */}
-      <View style={styles.actionBar}>
+      <View style={[styles.actionBar, { paddingBottom: bottomPad }]}>
         <TouchableOpacity
           activeOpacity={0.85}
           onPress={startEnrollment}

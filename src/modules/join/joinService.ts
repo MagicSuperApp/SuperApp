@@ -260,19 +260,25 @@ export const getDeviceRewards = (
   request(`/v1/mobile/rewards/${encodeURIComponent(devicePubkeyHex)}`, { method: 'GET' });
 
 /**
- * ⛔ KHÔNG dùng từ ứng dụng — nhưng lý do vẫn CHƯA ĐƯỢC ĐO, đừng chép lại như sự thật.
+ * ⛔ `/v1/reward/epoch` — ĐÃ ĐO 12/08, ĐÃ XOÁ hàm gọi. Đừng viết lại.
  *
- * Bên này ĐỌC mã daemon thấy `/v1/reward/epoch` là đường phía vận hành (nhận đóng góp
- * của TẤT CẢ node + `total_pool`, đòi header `X-LampNet-Sig`), nên gọi bằng GET nhiều
- * khả năng trả 405. NHƯNG `Join-Integration.md:71` khai `GET /v1/reward/epoch` và `:175`
- * nói nó đang trả `accrued_micro_lamp` — ngược hẳn. Chưa bên nào curl thật.
+ * Trước đây chỗ này ghi "chưa đo được". Nay đo trên mã daemon `main@c89da10`, hai lý do
+ * độc lập, mỗi lý do đủ để chặn:
+ * - `lampnet-node.rs:1504` đăng ký đường này là **POST**, không có nhánh GET ⇒ gọi GET
+ *   được 405.
+ * - `lampnet-node.rs:6354-6355` gọi `require_p2p_sig(…, "POST", "/v1/reward/epoch", &raw_body)`
+ *   — chữ ký P2P daemon-to-daemon **buộc theo thân yêu cầu**. Điện thoại không có khoá
+ *   P2P của daemon nên không ký được, kể cả gọi đúng POST.
  *
- * Vì chưa chốt được, màn "Đang đóng góp" tạm KHÔNG gọi đường này và nói thẳng là chưa
- * đo được, thay vì hiện một con số có thể sai. Thưởng theo thiết bị: `getDeviceRewards`.
- * @deprecated
+ * Tức `Join-Integration.md:71` (khai `GET`) và `superapp-api.md:13` (xếp đường này vào ô
+ * "Bearer JWT") **đều sai**. Nhà LampNet đã nhận là lỗi tài liệu bên họ (thư 12/08) và
+ * cảnh báo đúng đường này là chỗ đáng nghi kế tiếp — đo ra thì đúng thật.
+ *
+ * Luật: với LampNet, đối chiếu `require_p2p_sig` / `require_bearer_auth` trong
+ * `lampnet-node.rs` theo đúng chuỗi route, ĐỪNG suy loại xác thực từ bảng trong tài liệu.
+ *
+ * Thưởng theo thiết bị thì dùng `getDeviceRewards` (đường `/v1/mobile/*`, không đòi sig P2P).
  */
-export const getRewardEpoch = (): Promise<RewardEpoch> =>
-  request<RewardEpoch>('/v1/reward/epoch', { method: 'GET' });
 
 // ── DID adapter (spec §6 — cô lập did:cardano sau 1 lớp, INV-2) ───────
 // UI/logic KHÔNG đọc thẳng did:cardano. Bản sau ép did:phoenix → CHỈ đổi hàm này,

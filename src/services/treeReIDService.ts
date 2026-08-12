@@ -21,7 +21,15 @@ export interface TreeCandidate {
   tree_id: string;
   name: string | null;
   code: string | null;
-  sim: number;
+  /**
+   * Độ giống của ứng viên này. Tên trên dây là `score` — `server.py:3879`
+   * (`"score": round(float(s), 4)`). Máy chủ CÓ một trường `_sim` nhưng chỉ dùng
+   * nội bộ để sắp xếp rồi `pop` đi trước khi trả (`server.py:3888`), nên `sim`
+   * KHÔNG BAO GIỜ tới client. Bản trước đọc `sim` ⇒ huy hiệu % trong hộp thoại
+   * xác nhận không bao giờ vẽ — đúng ở ca `UNCERTAIN`, tức ca duy nhất mà nông dân
+   * phải tự chọn cây và cần con số đó nhất.
+   */
+  score: number;
   near_prev?: boolean;
   has3d?: boolean;
   anchor?: string | null;
@@ -47,10 +55,34 @@ export interface IdentifyResponse {
   tree_id?: string;
   name?: string;
   code?: string;
-  similarity: number;
+  /**
+   * Điểm top-1. Tên trên dây là `s_top1` — `server.py:3897`. `similarity` là tên
+   * NỘI BỘ của máy chủ (`res.similarity`), không phải tên trường trả về; bản trước
+   * đọc `similarity` nên con số % ở màn kết quả không bao giờ hiện, và nhật ký
+   * chẩn đoán ghi `null` — tức đang đo mù.
+   */
+  s_top1: number;
+  /**
+   * `s_top1 − s_top2`. CHỈ tin khi `candidates.length >= 2`: bucket một ứng viên
+   * trả margin GIẢ bằng chính `s_top1` vì chưa so với ai (`server.py:3893-3896`).
+   */
   margin: number;
   factors: IdentifyFactors;
+  /**
+   * Câu giải thích của máy chủ, đã có tiếng Việt sẵn. Gồm cả lý do máy "khó tính
+   * lên" với cây thiếu toạ độ (`visual_reid.py:1879`). Không hiện ra thì nông dân
+   * chỉ thấy máy từ chối mà không biết vì sao.
+   */
   warnings: string[];
+  /**
+   * Cây được chọn CHƯA có toạ độ (`server.py:3905`, vào từ #309 ngày 11/08). Đây là
+   * TRẠNG THÁI THỨ BA — không phải "trong bán kính", cũng không phải "ngoài bán
+   * kính". Cây thiếu toạ độ bị siết ngưỡng, và cách gỡ đúng là bổ sung vị trí qua
+   * `POST /api/update_location`, KHÔNG phải bắt chụp lại cả lô ảnh.
+   */
+  needs_location_update?: boolean;
+  /** Câu phẳng máy chủ dựng sẵn cho app (`server.py:3913`); `suggest` là dict. */
+  suggest_text?: string | null;
   candidates: TreeCandidate[];
   moved_distance_m?: number;
   fee_quote?: FeeQuote;
@@ -401,9 +433,22 @@ async function _apiCall<T>(
 export type ShellMatcher = 'sift' | 'xfeat' | 'loftr';
 
 /**
- * Hướng máy lúc chụp MỘT ảnh. Mảng `captures` song song với `files[]` — khuôn này
- * lấy đúng theo tiền lệ `regions` của OriLife (`server.py:1710-1712`, xử bởi
- * `_parse_regions`), không đẻ hình dạng thứ hai. Ảnh nào không có số thì để `null`.
+ * Hướng máy lúc chụp MỘT ảnh, song song với `files[]`.
+ *
+ * ⚠ TÊN TRƯỜNG TRÊN DÂY LÀ `view_poses`, KHÔNG PHẢI `captures`.
+ * `captures` là tên của khái niệm phía app (phiên chụp trong Redux). Máy chủ khai
+ * receiver dưới tên khác — `server.py:2382` (enroll) và `:2734` (verify_add),
+ * `view_poses: str = Form(None)`, parser `_parse_view_poses` (`:339`). Grep
+ * `captures|heading_ref` trên `server.py` nhánh main: **0 khớp**.
+ *
+ * Bản trước gửi `captures`. FastAPI bỏ im lặng trường không khai ⇒ toàn bộ tư thế
+ * theo từng ảnh rơi mất, không một lỗi nào in ra — đúng thứ mà chính máy chủ ghi
+ * trong chú thích của họ: *"Trước đây server KHÔNG có receiver nào cho `view_poses`
+ * → mảng pose rơi ÂM-THẦM"* (`server.py:297`). Họ đã dựng receiver; app thì vẫn gõ
+ * tên cũ. Hai bên cùng sửa một lỗi, ở hai phía, mà không gặp nhau.
+ *
+ * Khuôn dữ liệu KHÔNG đổi — mảng song song `files[]`, ảnh không có số để `null` —
+ * và nó vốn đã khớp `_view_pose_item` (`server.py:318`) từng trường một.
  *
  * Đơn vị (OriLife đề nghị 2026-07-29): `heading` độ [0,360), `pitch` độ [-90,90]
  * dương là ngẩng lên, `roll` độ [-180,180] dương là nghiêng phải.
@@ -425,6 +470,13 @@ export interface CaptureOrientation {
  *
  * OriLife yêu cầu Bắc THẬT. App CHƯA đạt, và sửa là việc native (Thư) — đã báo.
  * Trong lúc đó thà khai đúng gốc quy chiếu còn hơn dán nhãn "true" cho số Bắc từ.
+ *
+ * ⚠ MÁY CHỦ CHƯA CÓ CHỖ NHẬN. `grep heading_ref` toàn `MassTreeIdentify/core/` nhánh
+ * main: 0 khớp. Trường này đang bị bỏ im lặng. Vẫn gửi (không tốn gì, sẵn sàng cho
+ * ngày họ thêm), nhưng KHÔNG được coi là "đã khai báo gốc quy chiếu" — trên máy chủ
+ * hiện mọi số heading vẫn không có nguồn gốc. Đã xin OriLife thêm receiver.
+ * Nó cũng không nhét được vào từng phần tử `view_poses`: parser chỉ giữ field SỐ
+ * (`_view_pose_item`, `server.py:325-336`), mà đây là chuỗi.
  */
 export type HeadingRef = 'ios_true_or_magnetic' | 'android_magnetic';
 
@@ -474,8 +526,11 @@ export interface IdentifyVerdictResponse {
  *
  * Quy tắc bỏ trường (OriLife chốt): thiếu số thì **KHÔNG gửi khoá đó**. Đừng gửi
  * chuỗi rỗng, đừng gửi "null" — server ép kiểu không nổ nhưng nhật ký lưu rác.
+ *
+ * XUẤT ra chỉ để bài kiểm khoá được TÊN TRƯỜNG TRÊN DÂY. Tên sai ở đây không làm
+ * gãy gì cả — máy chủ bỏ im lặng — nên không có cách nào khác để bắt.
  */
-function appendGeoAndOrientation(form: FormData, options: IdentifyOptions): void {
+export function appendGeoAndOrientation(form: FormData, options: IdentifyOptions): void {
   if (options.lat !== undefined) form.append('lat', String(options.lat));
   if (options.lon !== undefined) form.append('lon', String(options.lon));
   if (options.acc !== undefined) form.append('acc', String(options.acc));
@@ -484,13 +539,16 @@ function appendGeoAndOrientation(form: FormData, options: IdentifyOptions): void
   if (options.roll !== undefined) form.append('roll', String(options.roll));
   if (options.headingRef) form.append('heading_ref', options.headingRef);
 
-  // Chỉ gửi `captures` khi có ÍT NHẤT một ảnh có số thật — mảng toàn null chỉ làm
-  // nặng request và làm nhật ký server bẩn thêm.
+  // Chỉ gửi khi có ÍT NHẤT một ảnh có số thật — mảng toàn null chỉ làm nặng request
+  // và làm nhật ký server bẩn thêm.
+  // Tên trường trên dây là `view_poses` (xem chú thích `CaptureOrientation`). KHÔNG
+  // đổi lại thành `captures`: máy chủ không khai tên đó, và trường không khai bị bỏ
+  // im lặng chứ không báo lỗi.
   if (options.captures?.length) {
     const anyReal = options.captures.some(
       c => c && (c.heading != null || c.pitch != null || c.roll != null),
     );
-    if (anyReal) form.append('captures', JSON.stringify(options.captures));
+    if (anyReal) form.append('view_poses', JSON.stringify(options.captures));
   }
 }
 

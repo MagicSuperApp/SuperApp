@@ -13,13 +13,33 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+/**
+ * Một sản phẩm thuốc/phân như MÁY CHỦ trả về.
+ *
+ * ⚠ Ba tên trường ở bản trước SAI, và sai câm: `name`, `active_ingredient`,
+ * `withdrawal_days`. Máy chủ trả `trade_name`, `active_ingredients` (số nhiều),
+ * `withdrawal_period_days` — `care_router.py:177-183` (`_candidate_view`) và
+ * `:326-334` (`/api/care/products`). Đọc trường không có ⇒ `undefined` ⇒ thẻ sản
+ * phẩm rơi về mã sản phẩm thô và **dòng "Cách ly: N ngày" không bao giờ được vẽ**.
+ * Đó đúng là con số nông dân cần thấy trước khi bấm ghi.
+ *
+ * `score` đã bỏ: máy chủ CỐ Ý không trả điểm khớp (`care_router.py:175`
+ * — *"KHÔNG kèm score (giấu nội-tạng)"*). Giữ khai báo đó chỉ mời người sau sắp
+ * xếp theo một trường vĩnh viễn `undefined`.
+ */
 export interface CareProduct {
   product_id: string;
-  name?: string;
+  trade_name?: string;
+  active_ingredients?: string;
   category?: string;
-  active_ingredient?: string;
-  withdrawal_days?: number;
-  score?: number;
+  scope?: string;
+  withdrawal_period_days?: number;
+  /**
+   * `low`/`medium` ⇒ thời gian cách ly là ƯỚC TÍNH, giao diện phải nói ra.
+   * `high`/vắng ⇒ đáng tin. (`care_router.py:181`)
+   */
+  phi_confidence?: string | null;
+  manufacturer?: string;
 }
 
 export interface CareMatchResponse {
@@ -27,10 +47,31 @@ export interface CareMatchResponse {
   candidates?: CareProduct[];
 }
 
+/**
+ * Thân trả về THẬT của `POST /api/care/log` — `care_router.py:273-274`.
+ *
+ * ⚠ KHÔNG có `safe`, KHÔNG có `blocked_until`. Bản trước đọc hai trường đó ở đây và
+ * dựng cả một hàm ba nhánh rất cẩn thận cho chúng (`safeStateOf`) — cẩn thận với một
+ * trường không tồn tại. Hệ quả: mọi lượt ghi đều rơi vào `'unknown'`, nông dân luôn
+ * thấy "CHƯA khẳng định được an toàn", và nhánh `blocked` thật **không bao giờ chạm
+ * tới**. Cờ ba giá trị nằm ở `GET /api/care/withdrawal` (`care_router.py:311`) —
+ * xem `getWithdrawalStatus`.
+ */
 export interface CareLogResponse {
   ok: boolean;
+  care_event_id?: string;
+  /** Mốc hết cách ly do CHÍNH lần ghi này sinh ra. Không tra được thuốc → null. */
+  withdrawal_until?: string | null;
+}
+
+/**
+ * Thân trả về của `GET /api/care/withdrawal` — `care_router.py:310-318`.
+ * Đây mới là nơi có cờ an toàn.
+ */
+export interface CareWithdrawalResponse {
+  ok: boolean;
   /**
-   * BA giá-trị, không phải hai (OriLife `care.py:443-451`):
+   * BA giá-trị, không phải hai (`care.py:443-451`):
    *   `false` → đang trong thời-gian cách-ly
    *   `null`  → CHƯA XÁC ĐỊNH (không tra được thời-gian cách-ly của thuốc đã dùng)
    *   `true`  → an-toàn
@@ -38,10 +79,21 @@ export interface CareLogResponse {
    * Cấm `safe ?? true` và `safe !== false` — cả hai đẩy `null` sang nhánh an-toàn.
    */
   safe?: boolean | null;
-  /** Chỉ có khi tra được thuốc. `safe === false` vẫn có thể thiếu trường này. */
-  blocked_until?: string;
-  events?: unknown[];
-  products?: CareProduct[];
+  blocked_until?: string | null;
+  days_left?: number | null;
+  by_product?: string | null;
+  /** Có thuốc mà không tra được thời gian cách ly của nó. */
+  unknown_phi?: boolean;
+  flags?: string[];
+  advice?: string[];
+  /**
+   * VẬT NUÔI: thịt có thể đã qua cách ly trong khi TRỨNG/SỮA thì chưa (ví dụ máy chủ
+   * nêu: Via-Levasol thịt 3 ngày, trứng-sữa 4 ngày). Máy chủ trả khối riêng và
+   * `eggmilk_safe: false` để app KHÔNG báo an toàn cho việc thu trứng/sữa.
+   * Bỏ qua khối này là báo an toàn sai trong đúng khoảng chênh đó.
+   */
+  eggmilk?: { safe?: boolean | null; blocked_until?: string | null; days_left?: number | null; by_product?: string | null };
+  eggmilk_safe?: boolean;
 }
 
 export type SafeState = 'blocked' | 'unknown' | 'safe';
@@ -151,7 +203,13 @@ export async function matchCareLabel(
   return _apiCall<CareMatchResponse>(`${baseUrl}/api/care/match`, 'POST', form);
 }
 
-/** Ghi nhật-ký dùng thuốc/phân cho 1 cây/quả/vườn → trả trạng-thái cách-ly. */
+/**
+ * Ghi nhật-ký dùng thuốc/phân cho 1 cây/quả/vườn.
+ *
+ * Trả `care_event_id` + `withdrawal_until` của CHÍNH lần ghi này — KHÔNG trả cờ an
+ * toàn. Muốn biết đối tượng đó hiện có đang bị cách ly không thì gọi
+ * `getWithdrawalStatus` (mốc xa nhất trong MỌI lần ghi, không riêng lần này).
+ */
 export async function logCare(
   baseUrl: string,
   params: {
@@ -179,6 +237,23 @@ export async function logCare(
     (form as any).append('files', { uri: params.imagePath, type: 'image/jpeg', name: 'apply.jpg' });
   }
   return _apiCall<CareLogResponse>(`${baseUrl}/api/care/log`, 'POST', form);
+}
+
+/**
+ * TRẠNG THÁI CÁCH LY của một đối tượng — cửa duy nhất có cờ `safe`.
+ * `GET /api/care/withdrawal?target_type=&target_id=` (`care_router.py:299`).
+ *
+ * Máy chủ gộp MỌI lần ghi của đối tượng và lấy mốc XA NHẤT, nên đây mới là câu trả
+ * lời cho "cây/con này bán được chưa" — `withdrawal_until` của một lần ghi lẻ thì
+ * không, vì một lần ghi khác có thể còn xa hơn.
+ */
+export async function getWithdrawalStatus(
+  baseUrl: string,
+  targetType: string,
+  targetId: string,
+): Promise<{ ok: boolean; data?: CareWithdrawalResponse; error?: APIError }> {
+  const qs = new URLSearchParams({ target_type: targetType, target_id: targetId });
+  return _apiCall<CareWithdrawalResponse>(`${baseUrl}/api/care/withdrawal?${qs.toString()}`, 'GET');
 }
 
 /** Kho sản-phẩm để cache offline (chọn tay khi mạng kém / nhận-diện không ra). */

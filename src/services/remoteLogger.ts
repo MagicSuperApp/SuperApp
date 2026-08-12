@@ -284,6 +284,13 @@ const rLog = {
     placeGlCreated(): void { send('viewer3d_place_gl_created', {}); },
     placeUnmount(): void { send('viewer3d_place_unmount', {}); },
 
+    /**
+     * Dò expo-gl ngay trước khi mở màn 3D (xem `_glAvailable` trong navigation/index).
+     * ok=false ⇒ native chưa cài `globalThis.expo` → app hiện màn thay thế, KHÔNG crash.
+     */
+    glProbe(ok: boolean, message: string | null): void {
+      send('viewer3d_gl_probe', { ok, message }, ok ? 'info' : 'error');
+    },
     /** ErrorBoundary quanh cảnh 3D bắt được lỗi JS (không phải native crash). */
     boundaryError(tag: string, message: string, stack: string | null): void {
       send('viewer3d_boundary_error', { tag, message, stack }, 'error');

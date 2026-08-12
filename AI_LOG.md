@@ -5,6 +5,26 @@
 
 ---
 
+## BẬT LẠI 3D — bỏ chốt chặn `globalThis.expo`, thay bằng phép dò expo-gl thật
+
+Từ `3149f0b` mọi màn 3D (`Space3D` · `FruitPlace3D`) bị **chặn cứng** trong `_make3D` (`src/navigation/index.tsx`): `typeof globalThis.expo === 'undefined'` ⇒ hiện màn "Mô hình 3D tạm chưa xem được", **không bao giờ import** màn thật. Chốt đó đúng ở thời điểm nó ra đời (bản signed crash SIGABRT), và commit ấy tự ghi rõ *"3D chỉ HẾT CRASH, chưa HIỂN THỊ lại"*. Nguyên nhân gốc đã sửa từ lâu — `patches/expo+56.0.17.patch` set `host.runtimeDelegate` cho iOS (RN 0.84.1 không tự set như 0.85+), Android đã dùng `ExpoReactHostFactory` trong `MainApplication.kt` — nhưng **chốt JS thì chưa ai gỡ**. Nay gỡ.
+
+**Thay bằng `_glAvailable()` — dò THẬT, không đoán:**
+```ts
+try { require('expo-gl'); ok = true } catch (e) { ok = false }   // dò 1 lần, nhớ kết quả
+```
+`require` **đồng bộ** trong `try/catch` là mấu chốt an-toàn: nếu native chưa cài `globalThis.expo`, expo-modules-core ném ở module-eval và lỗi bị bắt **ngay tại đây** như một lỗi JS thường. Khác hẳn việc để `React.lazy` nuốt lỗi **bất đồng bộ** — đường đó ở bản RELEASE đi qua `ExceptionsManager.reportException` rồi **tự SIGABRT** trước khi `GLErrorBoundary` kịp bắt (chính là lý do chốt cứng ra đời).
+
+Vì sao dò hơn kiểm cờ: `globalThis.expo` chỉ là dấu hiệu **gián tiếp**. Cờ có mà expo-gl vẫn hỏng (R8 ăn `GLContext.flush()` như mục "Crash 3D bản AAB" bên dưới) thì cờ nói dối; ngược lại cờ được cài bằng đường khác thì chốt cứng chặn oan. Dò đúng thứ sắp dùng thì không có khe hở đó.
+
+Thời điểm dò **không đổi so với trước**: chỉ chạy khi người dùng mở màn 3D, nên expo **vẫn không** bị kéo về lúc startup — lý do `React.lazy` tồn tại vẫn còn nguyên. `Suspense` + `GLErrorBoundary` giữ nguyên. `Expo3DUnavailable` giữ lại nhưng đổi vai: từ **công tắc tắt** thành **lưới an toàn** cuối cùng.
+
+**Mốc log mới** `viewer3d_gl_probe {ok, message}` (`remoteLogger.ts`) — đọc log là biết ngay máy đó nạp được expo-gl hay không, kèm câu lỗi. Trước đây không phân biệt được "máy thiếu expo" với "3D chưa bật".
+
+⚠ `node_modules` trên máy local **chưa được vá** (cài trước khi có patch) → đã chạy `npx patch-package`. Ai kéo về mà build iOS thì phải chắc `postinstall` đã chạy, không thì `globalThis.expo` vẫn thiếu và 3D lại rơi vào lưới an toàn.
+
+Kiểm: `tsc --noEmit` sạch · 39/39 test `src/navigation` xanh. Còn lại phải thử trên máy thật (dựng ngữ-cảnh GL là chuyện native, không test JS được).
+
 ## Chuỗi thử LẺ ký tự làm mọi lần đăng nhập báo "khoá đã hỏng" + nút Khôi phục chết
 
 Hai lỗi người dùng báo ngay sau bản trước. Lỗi đầu là **do chính bản trước gây ra**.

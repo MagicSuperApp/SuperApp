@@ -130,7 +130,7 @@ export const CHAT: PhraseMap = {
   'Phí giao dịch': { en: 'Transaction fee', zh: '交易手续费', ja: '取引手数料' },
   'Nạp từ ví ngoài': { en: 'Top-up from an external wallet', zh: '从外部钱包充值', ja: '外部ウォレットから入金' },
 
-  // ── Kết đèn (LampNet) ──────────────────────────────────────────────────────
+  // ── Góp máy (LampNet) ──────────────────────────────────────────────────────
   'Nhẹ nhàng': { en: 'Light', zh: '轻度', ja: '軽め' },
   'Ít ảnh hưởng pin & máy — góp khi rảnh.': {
     en: 'Minimal battery and device impact — contributes when idle.',
@@ -171,8 +171,8 @@ export const CHAT: PhraseMap = {
     ja: 'サーバーが混み合っているか応答がありません。もう一度お試しください。',
   },
   'Chưa đóng góp': { en: 'Not contributing', zh: '未贡献', ja: '未参加' },
-  "Máy bạn chưa tham gia mạng. Vào 'Kết đèn' để bắt đầu góp sức.": {
-    en: 'Your device has not joined the network. Open “Connect” to start contributing.',
+  "Máy bạn chưa tham gia mạng. Vào 'Góp máy' để bắt đầu góp sức.": {
+    en: 'Your device has not joined the network. Open “Join” to start contributing.',
     zh: '你的设备尚未加入网络。请打开“连灯”开始贡献。',
     ja: 'この端末はまだネットワークに参加していません。「参加」を開いて貢献を始めましょう。',
   },
@@ -192,8 +192,8 @@ export const CHAT: PhraseMap = {
   },
   // 'Máy chủ đang bận. Thử lại sau ít phút.' khai ở errors.ts — dùng chung.
   'Đang đóng góp': { en: 'Contributing', zh: '贡献中', ja: '貢献中' },
-  'Đang kết đèn…': { en: 'Connecting…', zh: '连灯中…', ja: '参加中…' },
-  'Kết đèn — Tham gia ngay': { en: 'Connect — join now', zh: '连灯 — 立即参与', ja: '参加 — 今すぐ加わる' },
+  'Đang góp máy…': { en: 'Joining…', zh: '连灯中…', ja: '参加中…' },
+  'Góp máy — Tham gia ngay': { en: 'Join — take part now', zh: '连灯 — 立即参与', ja: '参加 — 今すぐ加わる' },
 
   // ── Pool ───────────────────────────────────────────────────────────────────
   'Mất kết nối tới máy chủ Pool.': { en: 'Lost connection to the Pool server.', zh: '与矿池服务器的连接已断开。', ja: 'プールサーバーとの接続が切れました。' },

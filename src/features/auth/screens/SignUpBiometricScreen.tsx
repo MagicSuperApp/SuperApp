@@ -9,7 +9,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, StatusBar,
   Animated, Easing, Platform, ActivityIndicator,
-  TextInput,
+  TextInput, Alert,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
@@ -18,7 +18,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AUTH_BLUE } from '../theme';
 import StepIndicator from '../components/StepIndicator';
 import { showError } from '../../../utils/alert';
-import { biometricKindFromType, phoenixKeyAuth } from '../../../services/phoenixKeyAuthService';
+import {
+  biometricKindFromType,
+  phoenixKeyAuth,
+  type RegisterIntent,
+} from '../../../services/phoenixKeyAuthService';
 import { loginUser } from '../../../store/userSlice';
 import { useDispatch } from 'react-redux';
 import { useBottomActionPadding } from '../../../hooks/useBottomActionPadding';
@@ -148,13 +152,20 @@ const SignUpBiometricScreen: React.FC = () => {
     }
 
     setStage('generating');
+    // Người bấm "Đăng ký" tự khai là NGƯỜI MỚI. Nếu máy đã có khoá chủ thì dừng
+    // lại hỏi, đừng âm thầm trao danh tính của người trước — xem
+    // `phoenixKeyAuthService.ts` (DeviceHasOwnerKeyError).
+    await completeSignUp('new-person');
+  };
 
+  const completeSignUp = async (intent: RegisterIntent) => {
     try {
       // Loại sinh-trắc suy từ CẢM BIẾN THẬT, không từ nút. `hasFaceId ? 'face' :
       // 'fingerprint'` cũ gán nhầm 'fingerprint' cho máy Android chỉ báo
       // `Biometrics` (đúng ra là 'strong') — nhãn khoá sai so với thứ đã xảy ra.
       const { user } = await phoenixKeyAuth.registerIdentity(
         biometricKindFromType(biometryType),
+        intent,
       );
       const newEntry = { username: usernameTrim, did: user.did, createdAt: Date.now() };
       const raw = await AsyncStorage.getItem(PHOENIX_USERS_KEY);
@@ -170,10 +181,54 @@ const SignUpBiometricScreen: React.FC = () => {
         600,
       );
     } catch (e: any) {
+      if (e?.code === 'DEVICE_HAS_OWNER_KEY') {
+        setStage('idle');
+        askWhoIsHoldingThePhone();
+        return;
+      }
       console.log('[SignUp] PhoenixKey enrollment failed:', e);
       showError(e?.message || 'Không tạo được danh tính. Vui lòng thử lại.');
       setStage('idle');
     }
+  };
+
+  /**
+   * Máy đã có khoá chủ. App KHÔNG đoán được người đang cầm máy là ai — nên hỏi.
+   * Ba lối ra, không lối nào là ngõ cụt:
+   *  1. chính chủ cài lại app  → khôi phục danh tính cũ (hành vi cũ, nay có xác nhận);
+   *  2. người khác, đã có 24 từ → màn Khôi phục, gắn máy này vào ĐÚNG danh tính của họ;
+   *  3. người khác, chưa có gì  → nói thật là phải dùng máy riêng, và vì sao.
+   * Không có nhánh nào âm thầm gộp hai người thành một tài khoản.
+   */
+  const askWhoIsHoldingThePhone = () => {
+    Alert.alert(
+      'Máy này đã có một danh tính',
+      'Một danh tính đã được tạo trên máy này trước đó. Bạn là ai?',
+      [
+        {
+          text: 'Tôi là chủ danh tính đó',
+          onPress: () => {
+            setStage('generating');
+            void completeSignUp('resume');
+          },
+        },
+        {
+          text: 'Người khác — tôi có 24 từ',
+          onPress: () => navigation.navigate('RestoreIdentity'),
+        },
+        {
+          text: 'Người khác — chưa có',
+          style: 'destructive',
+          onPress: () =>
+            showError(
+              'Mỗi máy chỉ giữ được một danh tính, vì khoá nằm trong chip bảo mật của máy. '
+              + 'Bạn hãy tạo danh tính trên máy của mình. Nếu bắt buộc dùng máy này, chủ máy '
+              + 'phải xoá danh tính cũ trước — và họ sẽ cần 24 từ để lấy lại.',
+            ),
+        },
+        { text: 'Huỷ', style: 'cancel' },
+      ],
+    );
   };
 
   const hasFaceId = biometryType === BiometryTypes.FaceID;

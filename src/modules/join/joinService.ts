@@ -276,5 +276,5 @@ export async function joinViaNativeSdk(_config: JoinConfig): Promise<JoinResult>
   //   - KHÔNG log, KHÔNG trả seed_hex ra JS bridge (INV-3, spec §3).
   // Đường REST KHÔNG thay thế được: daemon đòi 22 trường kèm 2 chữ ký Ed25519 mà
   // chỉ SDK native mới dựng được — gọi REST với 4 trường luôn trả 422.
-  throw new JoinApiError('unsupported', 0, 'Bản này chưa hỗ trợ Kết đèn.');
+  throw new JoinApiError('unsupported', 0, 'Bản này chưa hỗ trợ Góp máy.');
 }

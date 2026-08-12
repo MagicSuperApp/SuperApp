@@ -739,6 +739,19 @@ const AccountScreen = () => {
                             sublabel="Số dư ADA/LAMP/MAGIC + địa chỉ Cardano (từ cụm 24 từ)"
                             onPress={() => navigation.navigate('PhoenixWallet')}
                         />
+                        {/*
+                          WakeMe — cùng lý do bố trí như OrgDID bên dưới: tính năng cũng
+                          cần Master_KEK, nên lối trong PhoenixWalletScreen là chính đáng,
+                          nhưng nếu ĐÓ là lối duy nhất thì người chưa lập ví không bao giờ
+                          nhìn thấy tính năng tồn tại. Lối này để họ THẤY, rồi màn WakeMe
+                          tự dẫn sang thiết lập ví nếu chưa có.
+                        */}
+                        <MenuItem
+                            icon="lightbulb-on-outline"
+                            label="Nhận LAMP (WakeMe)"
+                            sublabel="Nhận phần LAMP khởi tạo vào vault của bạn"
+                            onPress={() => navigation.navigate('WakeMe')}
+                        />
                         <MenuItem
                             icon="card-account-details-outline"
                             label="Xuất danh tính"

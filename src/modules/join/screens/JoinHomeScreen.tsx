@@ -128,7 +128,7 @@ const JoinHomeScreen: React.FC = () => {
             <Icon name="arrow-left" size={22} color={LAMPNET_THEME.onPrimary} />
           </TouchableOpacity>
           <View style={styles.headerTitleBox}>
-            <Text style={styles.headerTitle}>Kết đèn</Text>
+            <Text style={styles.headerTitle}>Góp máy</Text>
             <Text style={styles.headerSubtitle}>Góp sức máy · Tham gia mạng lưới</Text>
           </View>
           <View style={styles.headerIconWrap}>
@@ -234,7 +234,7 @@ const JoinHomeScreen: React.FC = () => {
               errorKind === 'auth'
                 ? 'Cần có danh tính và ví nhận thưởng hợp lệ, hoặc bạn chưa đủ bậc tham gia.'
                 : errorKind === 'unsupported'
-                ? 'Tính năng Kết đèn sẽ mở ở bản sau.'
+                ? 'Tính năng Góp máy sẽ mở ở bản sau.'
                 : 'Máy chủ đang bận. Thử lại sau ít phút.'
             }
             onRetry={retry}
@@ -279,7 +279,7 @@ const JoinHomeScreen: React.FC = () => {
           >
             <Icon name="power-plug-outline" size={20} color={LAMPNET_THEME.onPrimary} />
             <Text style={styles.joinBtnText}>
-              {phase === 'joining' ? 'Đang kết đèn…' : 'Kết đèn — Tham gia ngay'}
+              {phase === 'joining' ? 'Đang góp máy…' : 'Góp máy — Tham gia ngay'}
             </Text>
           </TouchableOpacity>
         </View>

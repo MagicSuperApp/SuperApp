@@ -35,6 +35,16 @@ export const ADA_DECIMALS = 6;
  * sai". Lý do đó KHÔNG đứng: hằng số ấy có **0 nơi dùng**, nên nó không bảo vệ
  * gì cả — bốn màn vẫn in thẳng số thô. Ở decimals 9 thì in thô là hiện sai
  * **một tỷ lần**, và hiện sai theo hướng người dùng tưởng mình giàu.
+ *
+ * CarpetMint xác nhận 13/08 và đề nghị neo decimals theo `policy_id` thay vì hằng
+ * toàn cục, vì `sub_unit_scale` là apply-param **nướng vào `policy_id`** ⇒ không
+ * tồn tại ca "cùng policy_id, decimals đổi"; policy khác = token khác.
+ *
+ * Chưa làm, có chủ ý: app **không bao giờ thấy `policy_id`** (`grep -i policy_id
+ * src/` = 0). Số dư CARP là một `number` do PhoenixKey trả sẵn
+ * (`phoenixKey-api.ts:106,147`), việc lọc UTxO nằm ở đó. Dựng bảng tra theo policy
+ * ở đây là dựng thêm một hằng 0 nơi dùng — đúng cái bẫy đoạn trên vừa gỡ. Chỗ phải
+ * neo theo policy là PhoenixKey; đã báo sang nhà đó.
  */
 export const CARP_DECIMALS = 9;
 

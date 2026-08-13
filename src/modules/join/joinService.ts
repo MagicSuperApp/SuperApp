@@ -29,6 +29,21 @@ import { LAMPNET_BASE_URL } from '@env';
 // sự trùng hợp; `.env` vẫn ghi đè được.
 const BASE_URL = (LAMPNET_BASE_URL as string | undefined) ?? 'https://api.lampnet.cloud';
 
+// ⚠ PROD ĐANG CHẠY BẢN CŨ HƠN `main` — thử end-to-end sẽ gãy ở bước phát nonce,
+// và ĐÓ KHÔNG PHẢI LỖI APP. Đừng đi sửa app vì bài thử đỏ. Tự đo 13/08:
+//
+//   GET https://api.lampnet.cloud/v1/join/challenge   → 404   (route CÓ THẬT ở
+//                                                     lampnet-node.rs:1990 @dc27fa9)
+//   GET https://api.lampnet.cloud/v1/network_info     → 200
+//   GET https://join-api.lampnet.cloud/health         → 502
+//
+// LampNet chứng minh nhị phân prod cũ bằng cách đối chiếu tên chỉ số `/metrics`:
+// prod thiếu `lampnet_durability_blocked_cids`, `…_blocked_reason`,
+// `…_peer_registry_size`, `…_chap_nhan_request_ky_dung`, `…_tu_choi_request_khong_ky`
+// — đều là chỉ số sinh ra SAU sự cố 03/08.
+//
+// Gỡ ghi chú này khi LampNet báo đã deploy VÀ `join/challenge` trả khác 404.
+
 // Timeout mặc định — quá hạn coi là lỗi mạng (spec §2: "timeout → error").
 const DEFAULT_TIMEOUT_MS = 15000;
 
@@ -184,7 +199,24 @@ export const requestJoin = (config: JoinConfig): Promise<JoinResult> =>
     body: JSON.stringify(config),
   });
 
-/** Bước 2 — Kích hoạt ví: gắn địa chỉ nhận thưởng. */
+/**
+ * Bước 2 — Kích hoạt ví: gắn địa chỉ nhận thưởng.
+ *
+ * ⚠ ĐỪNG NỐI VÀO UI TRƯỚC KHI LAMPNET BÁO ĐÃ SỬA. Hàm này **đúng hợp đồng**;
+ * cửa phía máy chủ mới là chỗ hỏng, LampNet tự đo và báo 13/08 (`dc27fa9`):
+ *
+ * - `lampnet-node.rs:9708-9711` — `wallet_activate_handler` tra địa chỉ Cardano
+ *   trong `join_node_states` bằng `state.peer_id`.
+ * - Bảng đó chỉ có 2 writer: `:8014` ghi theo `body.subject_did` (client gửi) và
+ *   `:9807` qua `/v1/dev/register_wallet` (chỉ khi `LAMPNET_DEV_MODE=true`).
+ *   **Không writer nào ghi `peer_id`** ⇒ reader trượt 100%.
+ * - Chú thích `:9706` khẳng định peer_id ĐƯỢC dùng làm `subject_did` — sai:
+ *   cổng `/v1/peer/enroll:4739` gọi `is_valid_did` (`did_auth.rs:176-188`) đòi
+ *   `did:phoenix:<13 base32>:<64 hex>`, `12D3Koo…` không lọt.
+ *
+ * Khác ca `getRewardEpoch` đã XOÁ 12/08 (ở đó hàm sai: GET vào route POST,
+ * thiếu chữ ký P2P). Ở đây giữ hàm, vì sửa nằm phía máy chủ.
+ */
 export const activateWallet = (cardanoAddress: string): Promise<void> =>
   request<void>('/v1/wallet/activate', {
     method: 'POST',

@@ -46,6 +46,7 @@ import HomeScreen from '../screens/HomeScreen';
 import SignUpBiometricScreen from '../features/auth/screens/SignUpBiometricScreen';
 import SignUpCompleteScreen from '../features/auth/screens/SignUpCompleteScreen';
 import AccountScreen from '../screens/AccountScreen';
+import DeleteAccountScreen from '../screens/DeleteAccountScreen';
 import BiometricSettings from '../screens/BiometricSettings';
 import NotificationScreen from '../screens/NotificationScreen';
 // PhoenixKey — duyệt ký / guardian / nhật ký hoạt động.
@@ -1617,6 +1618,8 @@ const HOST_STACK_SCREENS: Array<{
   },
   { name: 'Activation', component: ActivationScreen },
   { name: 'BiometricSettings', component: BiometricSettings },
+  // Xoá tài khoản — bắt buộc bởi Apple 5.1.1(v) + Google Play (issue #144). Vào từ màn Tôi.
+  { name: 'DeleteAccount', component: DeleteAccountScreen, options: { headerShown: false } },
   // PhoenixKey feature screens.
   { name: 'SignRequest', component: SignRequestScreen, options: { headerShown: false } },
   { name: 'Guardian', component: GuardianScreen, options: { headerShown: false } },

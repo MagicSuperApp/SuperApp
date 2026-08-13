@@ -453,4 +453,44 @@ export const ACCOUNT: PhraseMap = {
     zh: '由系统按你的身份代为保管 — 用于激活和各项服务。',
     ja: 'あなたの本人情報に紐づけてシステムが預かっています — 有効化とサービスに使われます。',
   },
+
+  // ── Xoá tài khoản (issue #144 — Apple 5.1.1(v) + Google Play bắt buộc) ────────
+  'Xoá tài khoản': { en: 'Delete account', zh: '删除账户', ja: 'アカウントを削除' },
+  'Xoá tài khoản là việc không thể hoàn tác. Hãy đọc kỹ trước khi tiếp tục.': {
+    en: 'Deleting your account cannot be undone. Please read carefully before continuing.',
+    zh: '删除账户无法撤销。请在继续前仔细阅读。',
+    ja: 'アカウントの削除は取り消せません。続行する前によくお読みください。',
+  },
+  'Xoá khỏi máy này': { en: 'Remove from this device', zh: '从本机移除', ja: 'この端末から削除' },
+  'Mọi khoá, danh tính, phiên đăng nhập và dữ liệu tạm trên điện thoại — kể cả clip chưa gửi. Sau bước này bạn không đăng nhập lại được trên thiết bị này.': {
+    en: 'All keys, identity, login sessions and temporary data on the phone — including clips not yet sent. After this you cannot sign in again on this device.',
+    zh: '手机上的所有密钥、身份、登录会话和临时数据 — 包括尚未发送的短片。此后你无法在本设备重新登录。',
+    ja: '端末上のすべての鍵・本人情報・ログインセッション・一時データ（未送信のクリップを含む）。この後、この端末では再ログインできません。',
+  },
+  'Gửi yêu cầu xoá tới máy chủ': { en: 'Send a deletion request to the servers', zh: '向服务器发送删除请求', ja: 'サーバーへ削除リクエストを送信' },
+  'Yêu cầu xoá dữ liệu gắn với danh tính của bạn: hồ sơ vườn, công việc, hội thoại.': {
+    en: 'Request deletion of the data tied to your identity: farm records, work, conversations.',
+    zh: '请求删除与你身份关联的数据：农场记录、工作、会话。',
+    ja: 'あなたの本人情報に紐づくデータ（農園記録・仕事・会話）の削除を要求します。',
+  },
+  'Có thứ không xoá được': { en: 'Some data cannot be removed', zh: '有些数据无法删除', ja: '削除できないデータがあります' },
+  'Dữ liệu đã ghi lên chuỗi và đặc trưng ảnh đã gộp vào mô hình nhận diện chung thì không thể gỡ. Đây là giới hạn kỹ thuật, không phải lựa chọn.': {
+    en: 'Data already written on-chain and image features already merged into the shared recognition model cannot be removed. This is a technical limit, not a choice.',
+    zh: '已写入链上的数据、以及已并入共享识别模型的图像特征无法删除。这是技术限制，并非选择。',
+    ja: 'すでにチェーンに記録されたデータや、共有の認識モデルに統合された画像特徴は削除できません。これは技術的な制約であり、選択の問題ではありません。',
+  },
+  'Nhập XOÁ để xác nhận': { en: 'Type DELETE to confirm', zh: '输入 删除 以确认', ja: '確認のため「削除」と入力' },
+  'Xoá vĩnh viễn': { en: 'Delete permanently', zh: '永久删除', ja: '完全に削除' },
+  'Đang xoá tài khoản…': { en: 'Deleting account…', zh: '正在删除账户…', ja: 'アカウントを削除しています…' },
+  'Đã xoá tài khoản': { en: 'Account deleted', zh: '账户已删除', ja: 'アカウントを削除しました' },
+  'Dữ liệu trên máy này đã được xoá. Yêu cầu xoá phía máy chủ đã được ghi nhận và sẽ được xử lý.': {
+    en: 'Data on this device has been removed. The server-side deletion request has been recorded and will be processed.',
+    zh: '本机数据已删除。服务器端的删除请求已记录，将会处理。',
+    ja: 'この端末のデータは削除されました。サーバー側の削除リクエストは記録され、処理されます。',
+  },
+  'Chưa xoá được. Thử lại khi có mạng tốt.': {
+    en: 'Could not delete. Try again with a good connection.',
+    zh: '无法删除。请在网络良好时重试。',
+    ja: '削除できませんでした。通信状態の良いときに再試行してください。',
+  },
 };

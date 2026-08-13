@@ -216,6 +216,27 @@ export const requestJoin = (config: JoinConfig): Promise<JoinResult> =>
  *
  * Khác ca `getRewardEpoch` đã XOÁ 12/08 (ở đó hàm sai: GET vào route POST,
  * thiếu chữ ký P2P). Ở đây giữ hàm, vì sửa nằm phía máy chủ.
+ *
+ * 🔴 VÀ MỘT VẾ NẶNG HƠN, LampNet trả lời 13/08: **địa chỉ KHÔNG HỀ được lưu.**
+ *
+ *   lampnet-node.rs:450  @dc27fa9  join_node_states: Arc<Mutex<HashMap<…>>>
+ *   lampnet-node.rs:939  @dc27fa9  khởi tạo RỖNG — không nạp từ đĩa
+ *   lampnet-node.rs:8021 @dc27fa9  entry.1 = body.cardano_address.clone();
+ *
+ * Bảng nằm trong RAM, không đọc đĩa, không ghi đĩa ⇒ **node khởi động lại là
+ * mất sạch địa chỉ của mọi người**, và app không được báo gì. Đây là hành vi
+ * bình thường của mã hiện tại, không phải đường tấn công.
+ *
+ * ⇒ Màn Góp máy **không được hứa "đã lưu địa chỉ nhận thưởng của anh/chị"**.
+ * Câu đó chỉ đúng cho tới lần khởi động lại kế tiếp. Và vì `cardano_address` là
+ * MỘT ô `Option<String>` bị ghi đè thẳng — không lịch sử, không log, không phiên
+ * bản — nên không chứng minh được đã bị đổi, mà cũng **không** chứng minh được
+ * chưa bị đổi. "Không thấy dấu hiệu" ở đây không phải bằng chứng, vì không có
+ * chỗ nào để dấu hiệu xuất hiện.
+ *
+ * Chưa mất tiền của ai: thưởng đang là 0 cho mọi node (xem `reputation` gán
+ * cứng `0.0` ở `lampnet-node.rs:8459,8466`), nên chưa đồng nào chi ra địa chỉ
+ * nào. LampNet nhận việc persist + auth về phía họ, không đẩy sang app.
  */
 export const activateWallet = (cardanoAddress: string): Promise<void> =>
   request<void>('/v1/wallet/activate', {

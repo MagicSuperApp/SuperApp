@@ -14,6 +14,13 @@ on:
       - 'android/**'
       - 'src/**'
       - 'package.json'
+      # `rust/**` BẮT BUỘC có mặt: từ 2026-08-14 chính workflow này dựng lõi Rust
+      # (bước `uses: ./.github/actions/rust-android`). Thiếu dòng này thì một commit
+      # CHỈ đụng `rust/` không kích hoạt bản dựng nào — tức đúng thay đổi cần được
+      # biên dịch lại là thay đổi duy nhất đi lọt. Kèm cả thư mục action, vì sửa
+      # chính bước dựng cũng phải chạy lại.
+      - 'rust/**'
+      - '.github/actions/rust-android/**'
       - '.github/workflows/debug-apk.yml'
   workflow_dispatch:   # nút bấm build tay
 

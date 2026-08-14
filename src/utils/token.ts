@@ -40,11 +40,29 @@ export const ADA_DECIMALS = 6;
  * toàn cục, vì `sub_unit_scale` là apply-param **nướng vào `policy_id`** ⇒ không
  * tồn tại ca "cùng policy_id, decimals đổi"; policy khác = token khác.
  *
- * Chưa làm, có chủ ý: app **không bao giờ thấy `policy_id`** (`grep -i policy_id
- * src/` = 0). Số dư CARP là một `number` do PhoenixKey trả sẵn
+ * Chưa làm, có chủ ý — nhưng lý do phải phát biểu theo ĐƯỜNG DỮ LIỆU, không theo
+ * kết quả grep. Bản trước viết "app không bao giờ thấy `policy_id` (`grep -i
+ * policy_id src/` = 0)"; câu đó sai hai lần, đo lại 14/08:
+ *
+ *   grep -i policy_id src/        → 4  (cả 4 là chính đoạn chú thích này)
+ *   grep -iE 'policyHex|AssetNameHex' src/ → 9
+ *
+ * Sai thứ nhất: phép đo tự đếm chính nó, nên nó không thể trả 0 kể cả khi đúng.
+ * Sai thứ hai, nặng hơn: nó neo vào CHỮ được viết ra chứ không vào thứ chạy — app
+ * CÓ mang policy id, dưới tên `lampPolicyHex` (`sdk/taadEnclave.ts:36`,
+ * `services/cardanoTxService.ts:84`).
+ *
+ * Phát biểu đúng: hai trường đó là tham số tuỳ chọn, mặc định chuỗi rỗng
+ * (`taadEnclave.ts:195-196`), và **chưa caller nào truyền giá trị** — app chưa gửi
+ * giao dịch LAMP/CARP thật. Số dư CARP là một `number` PhoenixKey trả sẵn
  * (`phoenixKey-api.ts:106,147`), việc lọc UTxO nằm ở đó. Dựng bảng tra theo policy
  * ở đây là dựng thêm một hằng 0 nơi dùng — đúng cái bẫy đoạn trên vừa gỡ. Chỗ phải
  * neo theo policy là PhoenixKey; đã báo sang nhà đó.
+ *
+ * ⚠ Con số 9 dẫn từ mã testnet (`CarpetMint/onchain/lib/examples/magiclamp.ak:33`).
+ * CarpetMint 14/08: **chưa kiểm trên mainnet**, và cặp `(policy_id, asset_name)`
+ * canonical chưa có. Khi họ gửi cặp đó thì kiểm lại `sub_unit_scale` mainnet trước
+ * khi tin hằng này.
  */
 export const CARP_DECIMALS = 9;
 

@@ -1,4 +1,5 @@
 import { uploadTreeVideo, MAX_TREE_VIDEO_BYTES } from './treeVideoService';
+import { MAX_VIDEO_BYTES as MAX_FRUIT_VIDEO_BYTES } from './fruitVideoService';
 
 // AsyncStorage đã được mock ở jest.setup.js (getItem trả null → không có token, vẫn gửi được).
 const BASE = 'https://api.orilife.io';
@@ -101,7 +102,11 @@ describe('uploadTreeVideo — map mã trả server /api/tree/{id}/video', () => 
     expect(r.error?.type).toBe('network_error');
   });
 
-  it('trần dung-lượng khớp server 20MB', () => {
-    expect(MAX_TREE_VIDEO_BYTES).toBe(20 * 1024 * 1024);
+  // Trần thật của đường video là MAX_VIDEO_BYTES = 80MB (server tách trần riêng cho
+  // hậu tố `/video` và `/fruit_video`), KHÔNG phải MAX_UPLOAD_BYTES = 20MB. Test cũ
+  // khoá đúng con số sai, nên nó giữ app tự chặn oan thay vì bắt lỗi.
+  it('trần dung-lượng khớp server 80MB — và BẰNG đường quả', () => {
+    expect(MAX_TREE_VIDEO_BYTES).toBe(80 * 1024 * 1024);
+    expect(MAX_TREE_VIDEO_BYTES).toBe(MAX_FRUIT_VIDEO_BYTES);
   });
 });

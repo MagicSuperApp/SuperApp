@@ -6,7 +6,7 @@
 //
 // Khác "Video quả" (FruitVideoScreen, đếm quả): đây làm GIÀU góc nhìn của chính cây để
 // nhận-diện sau chắc hơn. MobileCore KHÔNG cấp quay video — native RN per-app (image-picker).
-// Server tự downscale + chặn 20MB → quay vừa, ngắn (≤15s) là đủ, khỏi phí băng-thông.
+// Server tự downscale khung; trần thật là 80MB (không phải 20MB — xem treeVideoService).
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
@@ -35,7 +35,10 @@ const imagePicker = (() => {
 
 const VIDEO_OPTIONS = {
   mediaType: 'video' as const,
-  videoQuality: 'medium' as const, // server downscale khung → medium đủ, nằm gọn dưới 20MB
+  // 'medium' → 'high': preset cũ chọn theo trần 20MB tưởng tượng. Trần thật là 80MB
+  // (treeVideoService.ts:44), và khung rõ hơn thì engine bắt góc tốt hơn — đây là
+  // đường làm giàu góc nhìn của CÂY, chất lượng khung là đầu vào của nó.
+  videoQuality: 'high' as const,
   durationLimit: 15,               // ≤ 15s — cây đứng yên, đi vòng chậm là đủ góc
   // GIỮ BẢN GỐC TRONG MÁY (anh Aladin chốt 06/08). Trước đây `false`: clip chỉ là tệp
   // TẠM, rồi `videoUploadQueue.ts` xoá bản tạm ngay khi gửi xong ⇒ gửi thành công là
@@ -110,7 +113,7 @@ const TreeVideoScreen: React.FC = () => {
       if (!asset?.uri) return;
       const size = asset.fileSize ?? null;
       if (size && size > MAX_TREE_VIDEO_BYTES) {
-        Alert.alert('Video quá nặng', 'Clip vượt 20MB — hãy quay ngắn hơn (dưới 15 giây).');
+        Alert.alert('Video quá nặng', 'Clip vượt 80MB — hãy quay ngắn hơn.');
         return;
       }
       setVideoUri(asset.uri);

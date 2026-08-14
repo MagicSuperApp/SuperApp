@@ -15,18 +15,22 @@ const SyncStatusPill: React.FC<Props> = ({ state }) => {
   const spin = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    if (state.syncing) {
-      Animated.loop(
-        Animated.timing(spin, {
-          toValue: 1,
-          duration: 1200,
-          useNativeDriver: true,
-        }),
-      ).start();
-    } else {
+    if (!state.syncing) {
       spin.stopAnimation();
       spin.setValue(0);
+      return;
     }
+    // Nhánh `else` dừng được vòng lặp khi cờ đổi, nhưng KHÔNG dừng khi cả thẻ bị gỡ
+    // trong lúc đang đồng bộ — effect không chạy lại, chỉ hàm dọn chạy.
+    const loop = Animated.loop(
+      Animated.timing(spin, {
+        toValue: 1,
+        duration: 1200,
+        useNativeDriver: true,
+      }),
+    );
+    loop.start();
+    return () => loop.stop();
   }, [state.syncing]);
 
   if (!state.online) {

@@ -4,7 +4,7 @@
  * nên phép chia bằng Number sẽ sai âm thầm — test này chốt là ta không dùng Number.
  */
 
-import { fmtToken, fmtLamp, fmtAda, fmtCarp, hasAnyLamp, LAMP_DECIMALS, CARP_DECIMALS } from './token';
+import { fmtToken, fmtLamp, fmtAda, fmtCarp, hasAnyLamp, LAMP_DECIMALS, CARP_DECIMALS, fmtAdaLabel } from './token';
 
 describe('fmtToken', () => {
   it('đổi oildrop sang LAMP theo decimals 6', () => {
@@ -88,5 +88,27 @@ describe('hasAnyLamp', () => {
     expect(hasAnyLamp(0)).toBe(false);
     expect(hasAnyLamp(null)).toBe(false);
     expect(hasAnyLamp('36000000000000000')).toBe(true);
+  });
+});
+
+describe('fmtAdaLabel — gộp bản sao từ StakingScreen', () => {
+  it('2 chữ số thập phân + ký hiệu ₳', () => {
+    expect(fmtAdaLabel(1_234_567)).toBe('1.23 ₳');
+    expect(fmtAdaLabel(3_000_000)).toBe('3 ₳');
+  });
+
+  it('nhóm chữ số theo en-US, giống fmtLamp/fmtCarp', () => {
+    expect(fmtAdaLabel(64_123_456_789_012)).toBe('64,123,456.78 ₳');
+  });
+
+  it('thiếu số trả dấu gạch, KHÔNG trả "0 ₳"', () => {
+    // Bản cũ trong StakingScreen trả '0 ₳' — tức khẳng định số dư bằng 0 trong khi
+    // thật ra chưa đo được. Xem `ContributingScreen.tsx:201` cho cùng luật.
+    expect(fmtAdaLabel(undefined)).toBe('—');
+    expect(fmtAdaLabel(null)).toBe('—');
+  });
+
+  it('số 0 thật vẫn là 0, không thành dấu gạch', () => {
+    expect(fmtAdaLabel(0)).toBe('0 ₳');
   });
 });

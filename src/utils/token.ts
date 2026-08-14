@@ -121,6 +121,27 @@ export const fmtAda = (raw: bigint | number | string | null | undefined) =>
   fmtToken(raw, ADA_DECIMALS, 6);
 
 /**
+ * ADA **cho màn hình**: 2 chữ số thập phân + ký hiệu ₳.
+ *
+ * Có mặt vì `StakingScreen.tsx` từng khai một `fmtAda` RIÊNG, và hai bản cho hai
+ * kết quả khác nhau trên cùng một số — loại trùng lặp không gãy, chỉ hiện sai:
+ *
+ *   lovelace 1_234_567 → bản trong màn: `1,23 ₳`   · bản ở đây: `1.234567`
+ *   lovelace undefined → bản trong màn: `0 ₳`      · bản ở đây: `—`
+ *
+ * Gộp về một nguồn, và giữ hai điểm khác biệt CÓ CHỦ Ý so với bản trong màn:
+ *  - Nhóm chữ số theo `en-US`, giống `fmtLamp`/`fmtCarp`, thay vì `vi-VN` — dòng
+ *    hiển thị chuẩn của app là tiếng Anh, và ba hàm cùng họ thì phải cùng dạng.
+ *  - Thiếu số trả `—`, KHÔNG trả `0 ₳`. Đây là luật đã có ở màn "Đang đóng góp"
+ *    (`modules/join/screens/ContributingScreen.tsx:201`): dấu gạch nghĩa là CHƯA
+ *    ĐO ĐƯỢC, còn số 0 là một khẳng định về số dư — hai chuyện khác hẳn nhau.
+ */
+export const fmtAdaLabel = (raw: bigint | number | string | null | undefined) => {
+  const body = fmtToken(raw, ADA_DECIMALS, 2);
+  return body === '—' ? body : `${body} ₳`;
+};
+
+/**
  * `true` khi ví có LƯỢNG LAMP đáng kể (≥ 1 oildrop). Dùng cho các phép kiểm
  * "đã kích hoạt chưa" — giữ ngưỡng ở đơn vị THÔ, đừng so sánh với số đã chia.
  */

@@ -87,12 +87,20 @@ export const toUiWorker = (a: WorkAccount): Worker => ({
     ? a.avatar
     : 'https://i.pravatar.cc/150?u=' + encodeURIComponent(a.did),
   title: a.title || (a.skills?.[0] ?? 'Cộng tác viên'),
-  rating: 5,
-  reviewCount: (a.jems?.length ?? 0),
-  completedJobs: (a.jems?.length ?? 0),
+  // `rating` KHÔNG có thật: dây AladinWork không hề cấp trường nào tên `rating`
+  // (nhà đó xác nhận 11/08). Gán cứng 5 là vẽ ra một điểm đánh giá chưa ai chấm.
+  // 0 = "chưa có", và màn phải hiểu số 0 là chưa có chứ không phải điểm kém.
+  rating: 0,
+  // Cũng không có thật — `jems` là việc NHẬN, không phải lượt đánh giá.
+  reviewCount: 0,
+  // Số THẬT từ dây: hợp đồng đã tất toán mà người này đứng vai Genie
+  // (`Core/server.js:2339`). `jems.length` là việc nhận — sai nghĩa hoàn toàn.
+  completedJobs: a.completedJobs ?? 0,
   hourlyRate: 0,
   location: 'Việt Nam',
   skills: a.skills ?? [],
+  // `verified` đúng theo SPEC §1 (mọi tài khoản AladinWork đều qua PhoenixKey DID)
+  // — đây là suy ra từ điều kiện tạo tài khoản, KHÔNG phải trường dây trả về.
   verified: true,
   online: false,
   bio: a.title || '',

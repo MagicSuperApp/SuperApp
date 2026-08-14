@@ -59,6 +59,8 @@ import FruitListScreen from '../screens/FruitListScreen';
 import FruitCropperScreen from '../screens/FruitCropperScreen';
 import TreeMap2DScreen from '../screens/TreeMap2DScreen';
 import FarmMap2DScreen from '../screens/FarmMap2DScreen';
+import WayfindScreen from '../screens/WayfindScreen';
+import FruitScanScreen from '../screens/FruitScanScreen';
 // Space3D/FruitPlace3D nạp LAZY (định nghĩa gần HOST_STACK_SCREENS bên dưới) để expo
 // (expo-gl → expo-modules-core) KHÔNG chạy lúc startup. Xem chú thích tại chỗ định nghĩa.
 import GLErrorBoundary from '../components/GLErrorBoundary';
@@ -1641,6 +1643,11 @@ const HOST_STACK_SCREENS: Array<{
   // Capture/identity screens dùng chung (host-level).
   { name: 'FruitList', component: FruitListScreen, options: { headerShown: false } },
   { name: 'FruitCropper', component: FruitCropperScreen, options: { headerShown: false } },
+  // Quét QUẢ khi CHƯA biết cây: chụp quả → hỏi máy chủ quả nào của cây nào (soi
+  // trên các cây gần chỗ đứng) → mở đúng cây. Xem đầu file FruitScanScreen.
+  { name: 'FruitScan', component: FruitScanScreen, options: { headerShown: false } },
+  // Dẫn đường tới vườn / tới gốc cây (chặng xa giao bản đồ ngoài, chặng gần tự chỉ).
+  { name: 'Wayfind', component: WayfindScreen, options: { headerShown: false } },
   // Sơ-đồ 2D CŨ — giữ đăng ký để deep-link cũ không gãy, nhưng KHÔNG nút nào trỏ
   // tới nữa: mọi lối vào sơ đồ nay mở 'Space3D' (một hệ giao diện 3D duy nhất).
   { name: 'TreeMap2D', component: TreeMap2DScreen, options: { headerShown: false } },

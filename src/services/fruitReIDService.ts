@@ -6,7 +6,8 @@
  * (file Thư đang build). Cùng pattern: Bearer token AsyncStorage, timeout 45s, retry 1 lần.
  *
  * API: GET /api/species/catalog · POST /api/tree/set_species · POST /api/fruit/detect ·
- *      POST /api/fruit/candidates · POST /api/fruit/enroll · POST /api/fruit/add_view ·
+ *      POST /api/fruit/candidates · POST /api/fruit/identify · POST /api/fruit/enroll ·
+ *      POST /api/fruit/add_view · POST /api/fruit/identify_verdict ·
  *      GET /api/fruit/list · GET /api/fruit/{id}/views ·
  *      GET /api/tree/{id}/layout · GET /api/farm/layout · POST /api/tree/marker
  */
@@ -65,7 +66,68 @@ export interface FruitCandidate {
   thumbnail_url: string | null;
   bbox: Bbox | null;
 }
-export interface FruitCandidatesResponse { ok: boolean; n: number; candidates: FruitCandidate[] }
+export interface FruitCandidatesResponse {
+  ok: boolean;
+  n: number;
+  candidates: FruitCandidate[];
+  /**
+   * "Đã kiểm phạm vi" — khẳng định, KHÔNG phải `error: null`. Vắng mặt =
+   * **chưa biết** (bản máy chủ cũ), KHÔNG được đọc thành "đã kiểm và rỗng".
+   * OriLife nhận nguyên đề nghị này 11/08; prod hôm đó còn chậm 18 lần gộp nên
+   * trường này sẽ `undefined` một thời gian nữa. Đừng suy ra gì từ chỗ vắng.
+   */
+  scope_checked?: boolean;
+  query_id?: string;
+  message?: string;
+}
+
+/**
+ * Phán quyết của máy soi quả. CÙNG bộ nhãn với cây (`TreeDecision`) nhưng là
+ * đường KHÁC — quả có ngưỡng riêng và độ tin cậy thấp hơn cây nhiều.
+ */
+export type FruitDecision = 'MATCH' | 'UNCERTAIN' | 'NO_MATCH' | 'EMPTY_BUCKET';
+
+/**
+ * Ứng viên của cửa `identify` — soi TOÀN VƯỜN nên có thể kèm cây.
+ *
+ * `tree_id`/`tree_name` để TUỲ CHỌN vì hợp đồng bàn giao (07/17) chỉ chốt
+ * `query_id + decision + confidence`, chưa chốt hình dạng phần tử. Thiếu thì
+ * bên này tự tra cây bằng `GET /api/fruit/list` (xem `features/fruitFind`) chứ
+ * KHÔNG đoán — nói "quả này của cây X" mà không có cơ sở là hồ sơ sai vĩnh viễn.
+ */
+export interface IdentifiedFruitCandidate extends FruitCandidate {
+  status?: FruitStatus;
+  score?: number;
+  tree_id?: string;
+  tree_name?: string | null;
+}
+
+/**
+ * Soi MỘT quả lạ ra tên — cửa duy nhất không cần biết cây trước.
+ *
+ * ⚠ `decision` KHÔNG PHẢI CÂU TRẢ LỜI. Đo trên prod của OriLife: hệ nói `MATCH`
+ * thì đúng **19/37 = 51,4%**, và ở ngưỡng đang chạy nó nhận nhầm **73% (412/564)**
+ * cặp quả KHÁC NHAU trên cùng một cây — hai quả khác nhau cùng cây trông giống
+ * nhau hơn là cùng một quả chụp hai lần. Chỉ `rank-5` (0,92–0,95) là con số dùng
+ * được. Vì vậy màn hình PHẢI là bộ CHỌN top-5, và tuyệt đối không có dấu tích
+ * xanh cho `MATCH`. Nguồn: thư OriLife 08/08 §1 + 07/08 §4.
+ */
+export interface FruitIdentifyResponse {
+  ok: boolean;
+  /** Neo của lượt soi này. CHỈ cửa `identify` sinh ra nó — `candidates` thì không. */
+  query_id?: string;
+  decision?: FruitDecision;
+  confidence?: number;
+  /**
+   * Danh sách để nông dân TỰ CHỌN. Bản máy chủ cũ chỉ dựng khi
+   * `decision === 'UNCERTAIN'` nên ca `MATCH` trả về rỗng; PR #291 cho luôn có.
+   * Prod chạy sau nhiều lần gộp, nên phải chịu được CẢ HAI: rỗng thì nói thẳng
+   * là chưa chọn được, đừng lấy `decision` lấp vào chỗ trống.
+   */
+  candidates?: IdentifiedFruitCandidate[];
+  /** Câu tiếng Việt máy chủ đặt cho nông dân. HIỆN THẲNG, đừng tự dịch lại. */
+  message?: string;
+}
 
 /**
  * MẶT nào của quả. OriLife bàn giao 07/08: 54/54 góc đã lưu đều KHÔNG có trường
@@ -337,26 +399,66 @@ export function addFruitView(baseUrl: string, fruitId: string, imagePath: string
 }
 
 /**
+ * Soi 1 quả lạ ra tên, KHÔNG cần biết cây trước — đây là "quét quả → ra cây".
+ *
+ * Bắt buộc `file`. Tuỳ chọn `tree_id` (thu hẹp về 1 cây), `lat`/`lon` (thu hẹp
+ * theo chỗ đứng). Hợp đồng: thư OriLife 17/07 §bảng cửa quả.
+ *
+ * GỬI KÈM GPS KHI CÓ. Người cầm quả đang đứng ngay gốc cây; toạ-độ là tín hiệu
+ * thu hẹp mạnh nhất mà bên này có, và nó miễn phí. Bỏ trống thì máy phải so với
+ * toàn kho — đúng ca mà tỉ lệ nhận nhầm 73% cắn mạnh nhất.
+ *
+ * Xem `FruitIdentifyResponse` về việc vì sao `decision` KHÔNG được hiện như câu
+ * trả lời cuối.
+ */
+export function identifyFruit(
+  baseUrl: string,
+  imagePath: string,
+  opts?: { treeId?: string; lat?: number; lon?: number; region?: FruitRegion },
+): Promise<ApiResult<FruitIdentifyResponse>> {
+  const form = new FormData();
+  _appendImageRegion(form, imagePath, opts?.region);
+  if (opts?.treeId) form.append('tree_id', opts.treeId);
+  if (opts?.lat !== undefined) form.append('lat', String(opts.lat));
+  if (opts?.lon !== undefined) form.append('lon', String(opts.lon));
+  return _apiCall<FruitIdentifyResponse>(`${baseUrl}/api/fruit/identify`, 'POST', form);
+}
+
+/** Nông dân phán quả máy đoán có đúng không. `other` = không phải quả nào máy đưa. */
+export type FruitVerdict = 'correct' | 'wrong' | 'other';
+
+/**
  * Nông dân phán quả máy đoán có ĐÚNG không.
  *
- * OriLife nói thẳng đây là thứ giá-trị nhất bên này có thể cho họ: `identify_verdict`
- * của quả hiện **0 lượt gọi**, nên không ai biết tỉ-lệ trúng thật là bao nhiêu.
- * Mọi ngưỡng bên OriLife còn mang nhãn `[CẦN CALIBRATE từ ≥50 quả thực địa]` —
- * không có nhãn đúng/sai thì 100 nông dân nhập xong vẫn không hiệu-chỉnh được gì.
+ * OriLife nói thẳng đây là thứ giá-trị nhất bên này có thể cho họ: cửa này hiện
+ * **0 lượt gọi**, nên không ai biết tỉ-lệ trúng thật là bao nhiêu. Mọi ngưỡng
+ * bên đó còn mang nhãn `[CẦN CALIBRATE từ ≥50 quả thực địa]` — không có nhãn
+ * đúng/sai thì 100 nông dân nhập xong vẫn không hiệu-chỉnh được gì.
+ *
+ * ⚠ NEO LÀ `query_id`, KHÔNG PHẢI `fruit_id`. Bản trước gửi
+ * `fruit_id + correct + actual_fruit_id` — hợp đồng thật KHÔNG CÓ tham số nào
+ * trong ba cái đó (thư OriLife 10/08 §2, nguyên văn: *"Không có tham số
+ * `fruit_id`"*). `query_id` đã neo sẵn *cái máy nói*, app chỉ gửi *cái người
+ * nói*; máy chủ tự ghép. Hàm cũ chưa có nơi nào gọi nên chưa gây hại — nhưng
+ * gọi là 422.
+ *
+ * `query_id` CHỈ sinh ra ở `/api/fruit/identify`. Đi vào bằng
+ * `/api/fruit/candidates` thì chưa có neo để gửi phán quyết (bên OriLife hứa
+ * thêm, chưa lên prod) — lúc đó ĐỪNG hiện nút phán quyết chứ đừng bịa neo.
  *
  * Đường CÂY đã có sẵn ở `treeReIDService.ts` (`/api/identify_verdict`); đây là
  * đường QUẢ, tách riêng vì endpoint khác.
  */
 export function fruitIdentifyVerdict(
   baseUrl: string,
-  fruitId: string,
-  correct: boolean,
-  opts?: { actualFruitId?: string },
+  queryId: string,
+  verdict: FruitVerdict,
+  opts?: { correctFruitId?: string },
 ): Promise<ApiResult<FruitVerdictResponse>> {
   const form = new FormData();
-  form.append('fruit_id', fruitId);
-  form.append('correct', correct ? '1' : '0');
-  if (opts?.actualFruitId) form.append('actual_fruit_id', opts.actualFruitId);
+  form.append('query_id', queryId);
+  form.append('verdict', verdict);
+  if (opts?.correctFruitId) form.append('correct_fruit_id', opts.correctFruitId);
   return _apiCall<FruitVerdictResponse>(`${baseUrl}/api/fruit/identify_verdict`, 'POST', form);
 }
 

@@ -86,10 +86,20 @@ replay_pid*
 # === Misc tooling ===
 .serena
 .mcp.json
-.claude/settings.local.json
 
 # === Agent state (nội bộ, KHÔNG public) ===
+# `_Agents/` đã chặn từ trước. Hai dòng dưới đây bổ sung 2026-08-14 vì chúng CHƯA
+# được chặn: `git check-ignore -v CLAUDE.md .claude/` trả mã thoát 1, tức cả hai
+# đang nằm ở trạng thái "chưa track nhưng cũng chưa bị chặn" — chỉ cách remote
+# đúng một lần `git add -A`. Kho này đã trả giá cho đúng chuyện đó một lần rồi.
+#
+# `.claude/` chặn CẢ thư mục chứ không chỉ `settings.local.json`: nó còn chứa
+# `worktrees/` — mỗi worktree là một bản chép đầy đủ của kho (đo 14/08: 3 bản,
+# 4.023 tệp, 146 MB). Không tệp nào dưới `.claude/` đang được track
+# (`git ls-files .claude/` rỗng), nên chặn cả thư mục không làm mất gì.
 _Agents/
+CLAUDE.md
+.claude/
 
 
 # Expo

@@ -5,6 +5,84 @@
 
 ---
 
+## BẬT LẠI 3D — bỏ chốt chặn `globalThis.expo`, thay bằng phép dò expo-gl thật
+
+Từ `3149f0b` mọi màn 3D (`Space3D` · `FruitPlace3D`) bị **chặn cứng** trong `_make3D` (`src/navigation/index.tsx`): `typeof globalThis.expo === 'undefined'` ⇒ hiện màn "Mô hình 3D tạm chưa xem được", **không bao giờ import** màn thật. Chốt đó đúng ở thời điểm nó ra đời (bản signed crash SIGABRT), và commit ấy tự ghi rõ *"3D chỉ HẾT CRASH, chưa HIỂN THỊ lại"*. Nguyên nhân gốc đã sửa từ lâu — `patches/expo+56.0.17.patch` set `host.runtimeDelegate` cho iOS (RN 0.84.1 không tự set như 0.85+), Android đã dùng `ExpoReactHostFactory` trong `MainApplication.kt` — nhưng **chốt JS thì chưa ai gỡ**. Nay gỡ.
+
+**Thay bằng `_glAvailable()` — dò THẬT, không đoán:**
+```ts
+try { require('expo-gl'); ok = true } catch (e) { ok = false }   // dò 1 lần, nhớ kết quả
+```
+`require` **đồng bộ** trong `try/catch` là mấu chốt an-toàn: nếu native chưa cài `globalThis.expo`, expo-modules-core ném ở module-eval và lỗi bị bắt **ngay tại đây** như một lỗi JS thường. Khác hẳn việc để `React.lazy` nuốt lỗi **bất đồng bộ** — đường đó ở bản RELEASE đi qua `ExceptionsManager.reportException` rồi **tự SIGABRT** trước khi `GLErrorBoundary` kịp bắt (chính là lý do chốt cứng ra đời).
+
+Vì sao dò hơn kiểm cờ: `globalThis.expo` chỉ là dấu hiệu **gián tiếp**. Cờ có mà expo-gl vẫn hỏng (R8 ăn `GLContext.flush()` như mục "Crash 3D bản AAB" bên dưới) thì cờ nói dối; ngược lại cờ được cài bằng đường khác thì chốt cứng chặn oan. Dò đúng thứ sắp dùng thì không có khe hở đó.
+
+Thời điểm dò **không đổi so với trước**: chỉ chạy khi người dùng mở màn 3D, nên expo **vẫn không** bị kéo về lúc startup — lý do `React.lazy` tồn tại vẫn còn nguyên. `Suspense` + `GLErrorBoundary` giữ nguyên. `Expo3DUnavailable` giữ lại nhưng đổi vai: từ **công tắc tắt** thành **lưới an toàn** cuối cùng.
+
+**Mốc log mới** `viewer3d_gl_probe {ok, message}` (`remoteLogger.ts`) — đọc log là biết ngay máy đó nạp được expo-gl hay không, kèm câu lỗi. Trước đây không phân biệt được "máy thiếu expo" với "3D chưa bật".
+
+⚠ `node_modules` trên máy local **chưa được vá** (cài trước khi có patch) → đã chạy `npx patch-package`. Ai kéo về mà build iOS thì phải chắc `postinstall` đã chạy, không thì `globalThis.expo` vẫn thiếu và 3D lại rơi vào lưới an toàn.
+
+Kiểm: `tsc --noEmit` sạch · 39/39 test `src/navigation` xanh. Còn lại phải thử trên máy thật (dựng ngữ-cảnh GL là chuyện native, không test JS được).
+
+## Chuỗi thử LẺ ký tự làm mọi lần đăng nhập báo "khoá đã hỏng" + nút Khôi phục chết
+
+Hai lỗi người dùng báo ngay sau bản trước. Lỗi đầu là **do chính bản trước gây ra**.
+
+### 1. Đăng nhập nào cũng báo khoá hỏng — vì chuỗi hex lẻ ký tự
+Triệu chứng: tạo tài khoản xong, thoát app 2 giây rồi vào lại là nhận *"Khoá trên máy không còn dùng được (thường do vừa thêm hoặc xoá vân tay…)"* trong khi không ai đụng vào vân tay. Thực ra **lần đăng nhập nào cũng vậy**, không riêng lúc vào lại.
+
+Chuỗi thử viết là `Date.now().toString(16)` (**11** ký tự) ghép 8 ký tự ngẫu nhiên = **19 ký tự — LẺ**. Bên native:
+
+```kotlin
+require(clean.length % 2 == 0) { "Hex string must be even length…" }   // ném
+```
+mà lệnh `hexToBytes` đó nằm **cùng khối `try` với `initSign`**, nên lỗi trả về là `E_SIGN_INIT` — đúng cái mã mà bản trước vừa dịch thành "khoá không còn dùng được". Một lỗi định dạng chuỗi đội lốt một lỗi phần cứng bảo mật.
+
+Sửa: sinh nonce **theo từng byte** (16 byte → 32 ký tự hex), độ dài luôn chẵn theo cấu tạo chứ không nhờ may mắn.
+
+> Bài học giữ lại trong mã: `E_SIGN_INIT` bên native gộp **mọi** lỗi lúc dựng chữ ký, không riêng "khoá bị huỷ". Ai dịch mã đó thành một câu khẳng định chắc nịch thì phải chắc đầu vào của mình sạch trước.
+
+### 2. Nhập đủ 24 từ mà nút Khôi phục vẫn khoá
+`RestoreIdentityScreen` đếm từ bằng `phrase.trim().split(/\s+/)`. Người dùng chép cụm từ kèm **số thứ tự** ("1. abandon 2. ability …"), dấu phẩy hay gạch đầu dòng thì máy đếm ra **48** trong khi trên màn nhìn vẫn đúng 24 ⇒ `countOk` sai ⇒ nút chết, và **không có gì chỉ ra chỗ sai** (bộ đếm nhỏ ở góc thì mấy ai để ý).
+
+- `utils/mnemonic.ts` (**9 bài kiểm**): bỏ chữ số + dấu câu, gộp khoảng trắng, viết thường — rồi mới đếm. **Giữ** chữ có dấu và kana: wordlist BIP39 còn bản tiếng Pháp và tiếng Nhật, bỏ hết thứ không phải `a–z` là giết cụm từ của họ.
+- Cụm từ **gửi đi khôi phục** cũng dùng bản đã chuẩn hoá — BIP39 đối chiếu theo TỪ, dấu phẩy dính vào là trượt hết wordlist.
+- Nút **vẫn bấm được** khi chưa đủ 24 từ (chỉ mờ đi) để câu báo sẵn có *"Cần đúng 24 từ — hiện có N"* nói ra được. Khoá cứng thì người dùng chỉ thấy một cái nút chết, mà họ đang tin là mình nhập đúng.
+
+Kiểm: `tsc` sạch · **804/805 test xanh** (`treeModels.test.ts` đỏ sẵn từ trước) · eslint không thêm lỗi mới. Phần đăng nhập vẫn phải thử trên máy thật.
+
+## Đăng nhập sinh trắc: từ một cờ `true` ở tầng JS → thành một CHỮ KÝ của chip
+
+Đo lại đúng hai lỗi trong issue. **Lỗi 1 đã sửa từ trước** (mục "Màn Đăng nhập: gộp 2 nút sinh trắc" bên dưới): nhánh `else { showError(…) }` rồi chạy tiếp đã bị xoá hẳn, `runBiometric` chặn ngay đầu hàm bằng `if (busy || noSensor) return`. **Không đụng lại.** Mục đó cũng đã tự ghi: *"Chưa làm, thuộc issue khác: lỗi bảo mật ở issue đăng nhập sinh trắc học"* — nay làm nốt.
+
+**Lỗi 2 thì còn nguyên.** `rn.simplePrompt()` trả một `boolean` ở tầng JS, không ký gì, không mở gì, không ràng buộc vào cặp khoá trong chip; bước sau `isKeypairEnrolled()` chỉ hỏi *"trong chip CÓ khoá không"*, không hỏi *"chủ khoá CÓ MẶT không"*. Cả đường đăng nhập không có một chữ ký nào — trong khi đường KÝ (`sdk/phoenixKey.ts` → `signRaw`) thì làm đúng vì buộc phải đi qua chip.
+
+### Sửa: cho đăng nhập đi đúng con đường mà việc ký đang đi
+```ts
+const nonceHex = <thời-điểm + số ngẫu nhiên, dạng hex>;
+await signRaw(nonceHex, prompt, t('Xác thực để mở danh tính trên máy này'));
+// signRaw ném ⇒ chưa xác thực ⇒ KHÔNG đăng nhập
+```
+Hộp thoại nay do **chip** bật (Android: `BiometricPrompt` gắn `CryptoObject`; khoá sinh với `setUserAuthenticationValidityDurationSeconds(-1)` nên **mỗi lần dùng đều phải xác thực lại** · iOS: access control `.privateKeyUsage + .biometryCurrentSet`). Sửa JS không đi vòng được. Chữ ký **không gửi đi đâu** — giá trị của nó nằm ở chỗ nó KHÔNG TỒN TẠI nếu chủ khoá vắng mặt. Cũng vì thế không cần nguồn ngẫu-nhiên mật-mã cho chuỗi thử: không ai xác minh chữ ký này, thứ bảo vệ đăng nhập là lời gọi native NÉM.
+
+### Bốn mã lỗi, bốn câu khác nhau
+| Mã | Nói với người dùng |
+|---|---|
+| `E_USER_CANCELED` | **im lặng** quay lại màn đăng nhập — tự huỷ thì không phải lỗi |
+| `E_BIOMETRIC_LOCKOUT` | máy đang tạm khoá, chờ ~30 giây hoặc mở khoá bằng mã PIN trước |
+| `E_NO_KEY` · `E_SIGN_INIT` | khoá không dùng được nữa → khôi phục danh tính |
+| còn lại | "Đăng nhập sinh trắc học thất bại" (như cũ) |
+
+Nhánh thứ ba là thứ **trước đây không ai phát hiện được lúc đăng nhập**: người dùng thêm/xoá vân tay trong Cài đặt khiến hệ điều hành HUỶ khoá, mà `hasKey()` vẫn trả `true`, nên mãi tới lúc ký giao dịch mới lộ ra — muộn hơn nhiều.
+
+### Một thay đổi thứ tự, cố ý
+Máy **chưa có** danh tính (`did`/`hasKey` rỗng) nay đi thẳng sang màn tạo tài khoản, **không** bật hộp thoại sinh trắc nữa. Trước đây phải qua `simplePrompt` rồi mới bị đẩy sang đó — bắt người dùng xác thực cho một cái khoá **không tồn tại**. Cùng màn đích, bớt một hộp thoại vô nghĩa; và nếu không kiểm trước thì `signRaw` sẽ ném `E_NO_KEY` và người mới cài app lại đọc phải câu "khoá không còn dùng được".
+
+Phần dò cảm biến (`isSensorAvailable`) giữ nguyên — nó chỉ chọn icon và nhãn cho trình đọc màn hình, không còn là bên phán quyết.
+
+Kiểm: `tsc --noEmit` sạch · `jest --ci` **795/796 xanh** (`treeModels.test.ts` đỏ sẵn từ trước) · eslint không thêm lỗi mới · 3 chuỗi mới khai đủ 4 ngôn ngữ, soi 2039 khoá không trùng. **Chưa thử trên máy thật** — hai phép thử tay trong issue (máy ảo không khai sinh trắc học; huỷ hộp thoại) phải chạy trên thiết bị.
+
 ## Gỡ tên module nội bộ khỏi giao diện: 39 chuỗi kỹ thuật → 0
 
 Luật đã chốt (giao diện không gọi tên module nội bộ, không dùng từ kỹ thuật) nay được thi hành cho **83 dòng từ điển + ~40 nơi gọi trong mã**, chạm 50 file.

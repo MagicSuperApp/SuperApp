@@ -26,6 +26,8 @@ import { FAB } from 'react-native-paper';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import { launchCamera, launchImageLibrary, type CameraOptions } from 'react-native-image-picker';
 import { ORILIFE_BASE } from '../services/orilifeBase';
+import { buildCaptureMeta, serializeCaptureMeta } from '../services/captureMeta';
+import { TreeReIDBridge } from '../services/treeReIDNativeBridge';
 
 import { Icon } from '../components/Icon';
 import BottomSheet from '../components/BottomSheet';
@@ -132,15 +134,24 @@ const FruitListScreen: React.FC = () => {
   // `forFruitId` có → mở cropper ở chế độ THÊM GÓC cho quả đó.
   const openCropper = useCallback(async (fromCamera: boolean, forFruitId?: string, forFruitName?: string) => {
     const opts: CameraOptions = { mediaType: 'photo', quality: 0.8, maxWidth: 1600, maxHeight: 1600, saveToPhotos: true };
-    const cb = (res: any) => {
+    const cb = async (res: any) => {
       if (res.didCancel) return;
       if (res.errorCode) { Alert.alert('Lỗi ảnh', res.errorMessage || 'Không lấy được ảnh.'); return; }
       const a = res.assets?.[0];
       if (!a?.uri || !a.width || !a.height) { Alert.alert('Lỗi ảnh', 'Không đọc được kích thước ảnh — thử ảnh khác.'); return; }
+      // Siêu dữ liệu đọc NGAY ĐÂY, không đợi lúc tải lên: heading/pitch là số đo
+      // tại thời điểm bấm máy. Đọc muộn thì người ta đã xoay máy đi rồi, và một
+      // góc sai tệ hơn không có góc. Hỏng thì bỏ trống, không chặn luồng chụp —
+      // mất khối siêu dữ liệu là mất khả năng ĐO tấm ảnh, chặn ảnh là mất cả ảnh.
+      let capture: string | undefined;
+      try {
+        capture = serializeCaptureMeta(await buildCaptureMeta(a, TreeReIDBridge));
+      } catch { capture = undefined; }
       navigation.navigate('FruitCropper', {
         treeId,
         treeName: treeName || layout?.tree.name,
         imageUri: a.uri, imageW: a.width, imageH: a.height,
+        capture,
         fruitId: forFruitId, fruitName: forFruitName,
         // Để màn khoanh đặt sẵn tên "Quả {n+1}". Nông dân nhắm 50–100 quả/người:
         // bắt họ tự nghĩ ra ngần ấy tên phân biệt được, gõ trên điện thoại giữa

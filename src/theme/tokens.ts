@@ -131,7 +131,7 @@ export const BRAND_TOKENS = {
   },
   lampnet: {
     key: 'lampnet',
-    name: 'Kết đèn',
+    name: 'Góp máy',
     // Vàng-hổ-phách (đèn) trên nền app chủ — brand LampNet (spec SG8·F8.4 §4.1).
     primary:      '#D9A227',
     primaryDeep:  '#A87A16',

@@ -28,7 +28,6 @@ import RootErrorBoundary from '../components/RootErrorBoundary';
 import { COLORS, ACTION_COLORS } from '../theme';
 import { syncService } from '../services/syncService';
 import { flushVideoUploadQueue } from '../services/videoUploadQueue';
-import { maybeReconcileOnNetChange } from '../services/videoProofReconcile';
 import AppHeader, { AppHeaderProvider } from '../components/AppHeader';
 import { NAV_FRAME, navNational, navIcon } from './navLabels';
 import { hasChosenLanguage, whenLanguageReady } from '../i18n';
@@ -47,8 +46,8 @@ import HomeScreen from '../screens/HomeScreen';
 import SignUpBiometricScreen from '../features/auth/screens/SignUpBiometricScreen';
 import SignUpCompleteScreen from '../features/auth/screens/SignUpCompleteScreen';
 import AccountScreen from '../screens/AccountScreen';
+import DeleteAccountScreen from '../screens/DeleteAccountScreen';
 import BiometricSettings from '../screens/BiometricSettings';
-import TermsScreen from '../screens/TermsScreen';
 import NotificationScreen from '../screens/NotificationScreen';
 // PhoenixKey — duyệt ký / guardian / nhật ký hoạt động.
 // (Khôi phục thiết bị dùng màn có sẵn RestoreIdentityScreen — đã hoàn thiện attach.)
@@ -63,6 +62,7 @@ import FarmMap2DScreen from '../screens/FarmMap2DScreen';
 // Space3D/FruitPlace3D nạp LAZY (định nghĩa gần HOST_STACK_SCREENS bên dưới) để expo
 // (expo-gl → expo-modules-core) KHÔNG chạy lúc startup. Xem chú thích tại chỗ định nghĩa.
 import GLErrorBoundary from '../components/GLErrorBoundary';
+import rLog from '../services/remoteLogger';
 import TreeIdentityScreen from '../screens/TreeIdentityScreen';
 import TreeEnrollScreen from '../screens/TreeEnrollScreen';
 import FruitVideoScreen from '../screens/FruitVideoScreen';
@@ -77,6 +77,7 @@ import CareScanScreen from '../screens/CareScanScreen';
 import SeedExportScreen from '../screens/SeedExportScreen';
 import RestoreIdentityScreen from '../screens/RestoreIdentityScreen';
 import PhoenixWalletScreen from '../screens/PhoenixWalletScreen';
+import WakeMeScreen from '../screens/WakeMeScreen';
 import StakingScreen from '../screens/StakingScreen';
 import OrgDidScreen from '../screens/OrgDidScreen';
 import OrgAuthorityScreen from '../screens/OrgAuthorityScreen';
@@ -1524,19 +1525,42 @@ const ProtectedMain = () => {
 // Nạp TĨNH khiến expo-modules-core chạy (globalThis.expo.EventEmitter) NGAY lúc startup;
 // trên bản signed globalThis.expo chưa sẵn → crash CẢ APP. Nạp LƯỜI: chỉ khi mở màn 3D.
 // Suspense + GLErrorBoundary: nếu expo vẫn lỗi thì chỉ hỏng khung 3D, KHÔNG sập app.
+// Màn thay thế `Expo3DUnavailable` chỉ còn là LƯỚI AN TOÀN (khi expo-gl thật sự không
+// nạp được), KHÔNG còn là công tắc tắt 3D — xem `_glAvailable` bên dưới.
 const _LazySpace3D = React.lazy(() => import('../screens/Space3DScreen'));
 const _LazyFruitPlace3D = React.lazy(() => import('../screens/FruitPlace3DScreen'));
+
+// ── DÒ expo-gl (thay cho việc CHẶN CỨNG theo `globalThis.expo`) ──────────────
+// Vì sao phải dò chứ không import thẳng: nếu native chưa cài `globalThis.expo`
+// (ExpoModulesCore TurboModule trả null), expo-modules-core NÉM ngay ở module-eval.
+// Để React.lazy nuốt lỗi đó thì ở bản RELEASE nó đi qua ExceptionsManager.reportException
+// và TỰ crash (SIGABRT) TRƯỚC khi GLErrorBoundary kịp bắt → sập cả app.
+// Vì sao KHÔNG kiểm `globalThis.expo` nữa: đó chỉ là dấu hiệu GIÁN TIẾP, và từ khi
+// patches/expo+56.0.17.patch set `host.runtimeDelegate` trên iOS (RN 0.84.1 không tự set)
+// + MainApplication.kt dùng ExpoReactHostFactory trên Android thì nó đã được cài —
+// nhưng cờ đó vẫn có thể lệch với việc expo-gl thật sự nạp được hay không.
+// Cách chắc ăn: require ĐỒNG BỘ trong try/catch. require đồng bộ ném = lỗi JS thường,
+// bị bắt NGAY tại đây, không qua ExceptionsManager ⇒ không crash. Nạp được thì mở 3D.
+// Dò một lần rồi nhớ: cùng thời điểm với lazy-import cũ (chỉ khi người dùng mở màn 3D),
+// nên KHÔNG kéo expo về lúc startup.
+let _glProbe: boolean | null = null;
+const _glAvailable = (): boolean => {
+  if (_glProbe !== null) return _glProbe;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    require('expo-gl');
+    _glProbe = true;
+    rLog.viewer3d.glProbe(true, null);
+  } catch (e) {
+    _glProbe = false;
+    rLog.viewer3d.glProbe(false, e instanceof Error ? e.message : String(e));
+  }
+  return _glProbe;
+};
+
 const _make3D = (Comp: React.LazyExoticComponent<any>, tag: string): React.FC<any> =>
   function Lazy3DScreen(props: any) {
-    // CHẶN TRƯỚC KHI IMPORT: expo-gl cần `globalThis.expo` (do ExpoModulesCore cài).
-    // Trên bản signed hiện tại globalThis.expo KHÔNG được cài (TurboModule
-    // 'ExpoModulesCore' trả null → installModules() không chạy) → import expo-gl NÉM ở
-    // tầng module-eval. Lỗi này đi qua ExceptionsManager.reportException trong RELEASE
-    // và TỰ crash (SIGABRT) TRƯỚC khi GLErrorBoundary kịp bắt → sập app. Nên KHÔNG dựa
-    // vào boundary: kiểm globalThis.expo, thiếu thì hiện màn báo, TUYỆT ĐỐI không import
-    // Comp (không đụng expo-gl) → app KHÔNG crash. Khi native cài đúng globalThis.expo,
-    // nhánh dưới chạy và 3D hiển-thị bình-thường.
-    if (typeof (globalThis as { expo?: unknown }).expo === 'undefined') {
+    if (!_glAvailable()) {
       return <Expo3DUnavailable onBack={() => props.navigation?.goBack?.()} />;
     }
     // GLErrorBoundary NGOÀI Suspense: lỗi lazy-import khác (không phải expo thiếu) vẫn
@@ -1556,7 +1580,7 @@ const _make3D = (Comp: React.LazyExoticComponent<any>, tag: string): React.FC<an
     );
   };
 
-// Màn thay thế khi mô-hình 3D chưa khả-dụng (globalThis.expo chưa cài — xem _make3D).
+// Màn thay thế khi expo-gl KHÔNG nạp được (xem `_glAvailable`) — lưới an toàn cuối.
 // Không import bất kỳ module expo nào ⇒ an-toàn tuyệt-đối, chỉ RN core.
 const Expo3DUnavailable: React.FC<{ onBack: () => void }> = ({ onBack }) => (
   <View style={{ flex: 1, backgroundColor: '#0b1f14', alignItems: 'center', justifyContent: 'center', padding: 28 }}>
@@ -1595,9 +1619,8 @@ const HOST_STACK_SCREENS: Array<{
   },
   { name: 'Activation', component: ActivationScreen },
   { name: 'BiometricSettings', component: BiometricSettings },
-  // Điều khoản & Chính sách — Google Play đòi mở được NGAY TRONG ứng dụng, nên nội dung
-  // gắn trong bản dựng chứ không mở trình duyệt (xem src/legal/policyContent.ts).
-  { name: 'Terms', component: TermsScreen, options: { headerShown: false } },
+  // Xoá tài khoản — bắt buộc bởi Apple 5.1.1(v) + Google Play (issue #144). Vào từ màn Tôi.
+  { name: 'DeleteAccount', component: DeleteAccountScreen, options: { headerShown: false } },
   // PhoenixKey feature screens.
   { name: 'SignRequest', component: SignRequestScreen, options: { headerShown: false } },
   { name: 'Guardian', component: GuardianScreen, options: { headerShown: false } },
@@ -1644,6 +1667,9 @@ const HOST_STACK_SCREENS: Array<{
   { name: 'SeedExport', component: SeedExportScreen, options: { headerShown: false } },
   { name: 'RestoreIdentity', component: RestoreIdentityScreen, options: { headerShown: false } },
   { name: 'PhoenixWallet', component: PhoenixWalletScreen, options: { headerShown: false } },
+  // WakeMe — nhận phần LAMP khởi tạo. Route HOST, KHÔNG thêm vào `buildLinking()`:
+  // màn này chuyển LAMP thật, không nên mở được bằng một đường dẫn từ bên ngoài.
+  { name: 'WakeMe', component: WakeMeScreen, options: { headerShown: false } },
   { name: 'Staking', component: StakingScreen, options: { headerShown: false } },
   // Ví tổ chức — tạo OrgDID + mint LAMP bằng OrgDID (2 bước: mint kho → claim-release).
   { name: 'OrgDid', component: OrgDidScreen, options: { headerShown: false } },
@@ -1713,10 +1739,8 @@ const AppNavigator = () => {
       }
 
       try {
-        // Ngôn ngữ đã nạp xong ở `whenLanguageReady()` ngay phía trên — nó là kho DUY
-        // NHẤT. Lệnh `loadNationalLanguage()` trước đây ở đây nạp một kho THỨ HAI
-        // (`app_lang_v1`), và chính hai kho tách rời làm nhãn điều hướng không đổi theo
-        // Cài đặt. Đã bỏ; đừng thêm lại.
+        // (Ngôn ngữ đã nạp xong ở `whenLanguageReady()` bên trên — khung điều hướng
+        // vẽ đúng ngay lần đầu, không chớp một nhịp rồi mới đổi chữ.)
 
         // Start sync service (database will be initialized per-user on login)
         console.log('[Navigation] Initializing sync service');
@@ -1747,9 +1771,6 @@ const AppNavigator = () => {
           console.warn('[Navigation] flushVideoUploadQueue failed:', err),
         );
       }
-      // #117 mục 6: có WIFI thì đối chiếu một lượt các bằng chứng "đã lưu" với LampNet
-      // thật (nodes rỗng → báo người trực máy chủ). Service tự lọc wifi + throttle 30'.
-      maybeReconcileOnNetChange(state);
       wasConnected = isConnected;
     });
 

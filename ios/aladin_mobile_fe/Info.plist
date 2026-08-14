@@ -41,10 +41,13 @@
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- ATS: KHÔNG mở NSAllowsArbitraryLoads. Khoá đó tắt bảo vệ tầng vận chuyển cho TOÀN
+	     BỘ app và là chỗ App Review hỏi đầu tiên — Apple yêu cầu lý do chính đáng, và
+	     "cho tiện lúc phát triển" không phải lý do được nhận. App này không cần nó: mọi
+	     base URL đều https (`.env.example:37,45,49`) và không còn URL http:// thật nào
+	     trong `src/`. NSAllowsLocalNetworking đủ cho Metro chạy qua LAN lúc gỡ lỗi. -->
 	<key>NSAppTransportSecurity</key>
 	<dict>
-		<key>NSAllowsArbitraryLoads</key>
-		<true/>
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
@@ -54,8 +57,11 @@
 	<string>Aladin ghi âm môi trường xung quanh cây trong 30 giây để hệ thống học hỏi thêm về điều kiện chụp.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Ứng dụng sử dụng Face ID để đăng nhập nhanh và bảo mật tài khoản.</string>
-	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>Ứng dụng cần vị trí để ghi nhận ranh giới nông trại và gắn toạ độ GPS cho mỗi điểm đo.</string>
+	<!-- ĐÃ GỠ NSLocationAlwaysAndWhenInUseUsageDescription. Khai khoá đó là xin quyền vị trí
+	     NỀN, mà app chỉ đọc vị trí lúc đang mở: `Geolocation.watchPosition` ở
+	     `FarmDetailScreen.tsx:525` và `TreeIdentityScreen.tsx:252`, và UIBackgroundModes chỉ
+	     có remote-notification. Xin "Always" mà không dùng thì iOS hiện hộp thoại nặng hơn
+	     cho người dùng, còn App Review đòi giải trình một hành vi app không hề có. -->
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Ứng dụng cần vị trí để ghi nhận ranh giới nông trại và gắn toạ độ GPS cho mỗi điểm đo.</string>
 	<key>NSMotionUsageDescription</key>

@@ -448,6 +448,8 @@ export const TRACE_STRINGS = {
   },
   'trace.fruitVideo.retakeCover': { vi: 'Chụp lại', en: 'Retake', zh: '重拍', ja: '撮り直す' },
 
+  'trace.farmList.wayfind': { vi: 'Dẫn đường tới {name}', en: 'Navigate to {name}', zh: '导航到 {name}', ja: '{name} への道案内' },
+
   // ── Bầu trời (mã WMO → chữ, xem `describeWeather`) ────────────────────────
   'trace.sky.clear': { vi: 'Trời quang', en: 'Clear sky', zh: '晴朗', ja: '快晴' },
   'trace.sky.mostlyClear': { vi: 'Nắng nhẹ', en: 'Mostly clear', zh: '晴间少云', ja: 'おおむね晴れ' },

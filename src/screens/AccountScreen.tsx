@@ -858,6 +858,17 @@ const AccountScreen = () => {
                         <Icon name="logout" size={18} color={COLORS.error} />
                         <Text style={styles.logoutText}>Đăng xuất</Text>
                     </TouchableOpacity>
+                    {/* Xoá tài khoản — bắt buộc bởi Apple 5.1.1(v) + Google Play (issue #144).
+                        Để mờ, dưới Đăng xuất: hành động huỷ-diệt, không mời gọi. */}
+                    <TouchableOpacity
+                        onPress={() => navigation.navigate('DeleteAccount')}
+                        style={{ marginTop: 16, alignItems: 'center' }}
+                        activeOpacity={0.7}
+                    >
+                        <Text style={{ color: COLORS.textMuted, fontSize: 13, textDecorationLine: 'underline' }}>
+                            Xoá tài khoản
+                        </Text>
+                    </TouchableOpacity>
                 </Animated.View>
             </ScrollView>
 

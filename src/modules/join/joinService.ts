@@ -207,15 +207,44 @@ export const reportResult = (
   });
 
 /**
- * Bước 6 — Quyết toán: sổ thưởng của cả epoch.
+ * Bước 6 — XEM sổ quyết toán của epoch hiện tại (chỉ đọc, không rút).
  *
- * ⚠ CHƯA KIỂM. Đặt GET vì đó là suy đoán từ tên đường dẫn, NHƯNG
- * `LampNetCloud/Join/Join-Integration.md:70` khai **POST** (nhãn [KHAI], không phải
- * [ĐO]). Hai bên đang ngược nhau và chưa ai curl thật. Đã hỏi Join; trước khi có câu
- * trả lời thì đừng dựa vào phương thức ở đây.
+ * ── ĐÃ ĐO 2026-08-11, không còn là suy đoán ───────────────────────────────────
+ * Tranh cãi cũ "GET hay POST" hoá ra là câu hỏi sai: có **BỐN** đường quyết toán
+ * khác nhau, nên tài liệu và mã đều đúng — cho hai đường khác nhau. Nhà LampNet
+ * chỉ ra điều này (`lampnet-node.rs:1541-1552`), bên này curl thật cả bốn:
+ *
+ *   /v1/reward/settlement          GET=405  POST=401   → POST. Dữ liệu cho tx Cardano.
+ *   /v1/service/settle             GET=405  POST=422   → POST. Ghi nhận settlement dịch vụ.
+ *   /v1/mobile/settlement          GET=200  POST=405   → GET.  ← đường NÀY, xem sổ.
+ *   /v1/mobile/settlement/drain    GET=405  POST=401   → POST. Rút sổ (đòi chữ ký P2P).
+ *
+ * ⇒ `GET` ở đây ĐÚNG. `Join-Integration.md:70` khai POST cũng đúng, nhưng nó nói về
+ * `/v1/reward/settlement`. Bài học ghi lại: **thư liên nhà phải ghi TÊN ĐƯỜNG cạnh
+ * phương thức**; hai bên tranh nhau về `settlement()` suốt nhiều đợt vì cả hai đều
+ * gọi nó bằng tên hàm, không bằng tên đường.
+ *
+ * ── Thân trả về (đo thật, không phải khai) ────────────────────────────────────
+ *   {"merkle_root":"b7559f6c…","total_ulamp":0,"entry_count":0,"drained":false,"entries":[]}
+ *
+ * ⚠ ĐƠN VỊ CHƯA CHỐT — đừng hiện `total_ulamp` ra màn hình như một số LAMP.
+ * Trường tên `ulamp` nhưng rule kiến trúc là "thưởng tài nguyên = CARP"; nhà LampNet
+ * xác nhận mã daemon còn dùng hằng `BASE_PRICE_COMPUTE_ULAMP`
+ * (`lampnet-mirage/src/mobile_settle.rs:27` @lampnet-hivemind@2e294b3) và đã chuyển
+ * việc chốt đơn vị sang Registry agent + anh Đức. Trước khi có chốt: hiện dấu gạch,
+ * không hiện số kèm đơn vị — hiện sai đơn vị cho người dùng là loại sai khó rút lại.
  */
-export const settlement = (): Promise<Record<string, unknown>> =>
-  request('/v1/mobile/settlement', { method: 'GET' });
+export interface MobileSettlementView {
+  merkle_root: string;
+  /** ⚠ Tên trường là DI SẢN. Đơn vị đang chờ Registry chốt — xem chú thích trên. */
+  total_ulamp: number;
+  entry_count: number;
+  drained: boolean;
+  entries: unknown[];
+}
+
+export const settlement = (): Promise<MobileSettlementView> =>
+  request<MobileSettlementView>('/v1/mobile/settlement', { method: 'GET' });
 
 /** Bước 7 — Trạng thái node (online, việc đang chạy, việc đã verify). Màn "Đang đóng góp". */
 export const getNodeStats = (): Promise<NodeStats> =>

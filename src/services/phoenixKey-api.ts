@@ -223,10 +223,12 @@ const client: AxiosInstance = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-const toSnakeCase = (s: string): string =>
+// Xuất ra để bài kiểm chạy đúng bộ chuyển đổi THẬT, không phải một bản chép lại —
+// bản chép lại sẽ trôi khỏi bản thật đúng vào lúc cần nó nhất.
+export const toSnakeCase = (s: string): string =>
   s.replace(/[A-Z]/g, c => '_' + c.toLowerCase());
 
-const toCamelCase = (s: string): string =>
+export const toCamelCase = (s: string): string =>
   s.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
 
 const transformKeys = (
@@ -658,25 +660,55 @@ export const activation = {
     ),
 };
 
-// ── GetLAMP / Activation Vault 2-pha (Wakeme v5) — ActivationVaultController ──
-// Đối-chiếu ActivationVaultDtos.java. Luồng: build (BE trả unsigned tx) → CLIENT ký
-// (witness bằng Enclave) → submit. vault/pot là ĐỌC. ⚠️ BE hiện STUB happy-path (bật
-// qua PHOENIXKEY_ACTIVATION_MOCK_MODE) hoặc 501 — client sẵn, chạy thật khi BE nối logic.
-export interface GetLampBuildResponse {
+// ── WakeMe / Activation Vault 2-pha — WakemeController ────────────────────────
+// Đối-chiếu `ActivationVaultDtos.java`. Luồng: build (BE trả unsigned tx) → CLIENT ký
+// → submit. vault/pot là ĐỌC.
+//
+// ĐƯỜNG DẪN: `/wakeme/*`, KHÔNG phải `/activation/*`. `WakemeController.java:43-44`
+// nói rõ `ActivationVaultController` là bí danh cũ và sẽ bị XOÁ sau khi mobile
+// chuyển sang đường mới. Hai đường hiện dùng chung một service, đổi không phá gì.
+//
+// ⚠️ CHỮ HOA LIỀN CHỮ HOA — ĐỌC TRƯỚC KHI "SỬA CHÍNH TẢ" MẤY TÊN DƯỚI ĐÂY.
+// Jackson `SNAKE_CASE` gặp hai chữ hoa liền nhau thì chỉ chèn MỘT gạch dưới:
+//   `initialDLamp` → `initial_dlamp` ·  `currentDLamp` → `current_dlamp`
+// còn `toCamelCase` của app (`:226-230`) chỉ viết hoa chữ ngay sau gạch dưới:
+//   `initial_dlamp` → `initialDlamp` ·  `current_dlamp` → `currentDlamp`
+// Nên tên ĐÚNG ở phía này là `initialDlamp`/`currentDlamp` (chữ l thường).
+// Khai `initialDLamp` như bản cũ thì trường VĨNH VIỄN `undefined` và KHÔNG BÁO LỖI —
+// cùng đúng một họ với sáu tên trường lệch của OriLife. Có test khoá ở
+// `wakemeService.test.ts`; sửa tên ở đây là test đỏ ngay.
+export interface WakeMeBuildResponse {
   unsignedTxCbor: string;
+  /** = controller_pkh (băm TAAD_Key), KHÔNG phải khoá ví. Xem `getLamp()`. */
   requiredSignerKeyHash: string;
   vaultAddress: string;
   dLamp: number;
-  dOildrop: number;
-  potBalanceLamp: number;
+  /** CHUỖI trên dây (`@JsonSerialize(ToStringSerializer)` — `ActivationVaultDtos.java:65`). */
+  dOildrop: string;
+  /** CHUỖI, và đơn vị là OILDROP dù tên là `_lamp` (`ActivationVaultServiceImpl.java:199-202`). */
+  potBalanceLamp: string;
   vestStartSlot: number;
   phase1Days: number;
   ttlSlot: number;
 }
-export interface GetLampSubmitResponse {
+export interface WakeMeSubmitResponse {
   cardanoTxHash: string;
+  /**
+   * ⚠️ LUÔN RỖNG ở đường thật (`ActivationVaultServiceImpl.java:145-147`) — đây là
+   * chủ ý của BE, không phải lỗi. Giữ `vaultAddress` lấy từ bước build mà dùng.
+   */
   vaultAddress: string;
   status: string;
+}
+export interface WakeMeActivityGate {
+  usedThisPeriod?: boolean | null;
+  graceActive?: boolean | null;
+  graceDaysLeft?: number | null;
+  epochUsed?: boolean | null;
+  atRiskLamp?: number | null;
+  minMagicConsume?: string | null;
+  warning?: string | null;
+  note?: string | null;
 }
 export interface VaultStatusResponse {
   did: string;
@@ -686,40 +718,58 @@ export interface VaultStatusResponse {
   daysElapsed: number;
   phase1DaysTotal: number;
   daysToPhase2: number;
-  initialDLamp: number;
+  /** `initial_dlamp` trên dây — l THƯỜNG. Xem khối chú thích ở trên. */
+  initialDlamp: number;
   conditionalLamp: number;
   reclaimedToPotLamp: number;
   vestStartSlot: number;
   magicGeneratedTotal?: string | null;
   magicBalanceCurrent?: string | null;
   vestedUnlocked?: number | null;
-  activityGate?: Record<string, unknown> | null;
-  [k: string]: unknown;
+  idleEpochsP2?: number | null;
+  lastTickDay?: number | null;
+  lastTickEpoch?: number | null;
+  p2Epoch?: number | null;
+  activityGate?: WakeMeActivityGate | null;
+  // KHÔNG khai `[k: string]: unknown`. Chỉ mục đó nuốt mọi tên lạ — kể cả tên SAI —
+  // nên nó chính là thứ đã che lỗi `initialDLamp` suốt thời gian qua.
 }
 export interface PotStatusResponse {
-  potBalanceLamp: number;
-  currentDLamp: number;
+  /** CHUỖI trên dây, đơn vị oildrop. */
+  potBalanceLamp: string;
+  /** `current_dlamp` — l THƯỜNG. Đây là con số "bạn sẽ nhận bao nhiêu LAMP". */
+  currentDlamp: number;
   dCap: number;
   scale: number;
   saturated: boolean;
 }
-export const getlamp = {
-  /** Bước 1: BE build unsigned tx nạp D LAMP vào vault user. */
+export const wakeme = {
+  /** Bước 1: BE build unsigned tx nạp D LAMP vào vault user. Cần Bearer. */
   build: (body: { walletAddress: string; didCommit?: string }) =>
-    unwrap<GetLampBuildResponse>(
-      client.post('/activation/getlamp/build', body, { needsAuth: true } as AxiosRequestConfig),
+    unwrap<WakeMeBuildResponse>(
+      client.post('/wakeme/build', body, { needsAuth: true } as AxiosRequestConfig),
     ),
-  /** Bước 2: submit tx đã Enclave witness. */
+  /** Bước 2: submit tx đã ký. Cần Bearer. */
   submit: (signedTxCbor: string) =>
-    unwrap<GetLampSubmitResponse>(
-      client.post('/activation/getlamp/submit', { signedTxCbor }, { needsAuth: true } as AxiosRequestConfig),
+    unwrap<WakeMeSubmitResponse>(
+      client.post('/wakeme/submit', { signedTxCbor }, { needsAuth: true } as AxiosRequestConfig),
     ),
-  /** Dashboard vault 2-pha (public). result=null nếu chưa GetLAMP. */
+  /**
+   * Bảng vault 2-pha (công khai).
+   * ⚠️ Ném 501 KHÔNG ĐIỀU KIỆN ở đường thật (`ActivationVaultServiceImpl.java:158-159`).
+   */
   vaultStatus: (did: string) =>
-    unwrap<VaultStatusResponse>(client.get(`/activation/vault/${encodeURIComponent(did)}`)),
-  /** Sức khoẻ pot: D một user mới sẽ nhận nếu GetLAMP ngay (public). */
-  pot: () => unwrap<PotStatusResponse>(client.get('/activation/pot')),
+    unwrap<VaultStatusResponse>(client.get(`/wakeme/vault/${encodeURIComponent(did)}`)),
+  /**
+   * Sức khoẻ pot (công khai, KHÔNG cần Bearer). Endpoint DUY NHẤT của cụm này
+   * chạy thật hôm nay (`ActivationVaultServiceImpl.java:199-202`, đọc Blockfrost).
+   * Ném 9501/501 khi máy chủ chưa set biến môi trường activation-vault (`:192-195`).
+   * Vì vậy nó cũng là ĐẦU DÒ "tính năng đã mở chưa" — xem `wakemeService.isFeatureOpen`.
+   */
+  pot: () => unwrap<PotStatusResponse>(client.get('/wakeme/pot')),
 };
+/** Bí danh cũ — giữ một đợt cho nơi gọi cũ. Dùng `wakeme` cho mã mới. */
+export const getlamp = wakeme;
 
 // ── Guardian (khôi-phục xã-hội) — ĐÃ đối-chiếu GuardianServiceImpl.java ────────
 // POST /guardians/add · /guardians/remove, body { user_did, guardian_did, nonce,
@@ -781,6 +831,8 @@ export const phoenixKeyApi = {
   wallet,
   pools,
   delegation,
+  wakeme,
+  /** Bí danh cũ của `wakeme` — giữ một đợt cho nơi gọi cũ. */
   getlamp,
   keys,
   activation,

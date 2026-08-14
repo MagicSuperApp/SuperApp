@@ -540,7 +540,24 @@ const slice = createSlice({
         state.loadError = undefined;
       })
       .addCase(loadConversations.rejected, (state) => {
-        // Lỗi mạng/phiên → giữ dữ liệu hiện có, báo trạng thái error (fallback mềm).
+        // THẤT BẠI PHẢI XOÁ, KHÔNG ĐƯỢC GIỮ.
+        //
+        // Bản cũ "giữ dữ liệu hiện có (fallback mềm)". Nghe thì hiền, nhưng dữ liệu
+        // "hiện có" lúc đó chính là MOCK trong `initialState` — nên mạng hỏng lại
+        // hiện ra một danh sách hội thoại đầy đủ, có tin nhắn, có tích đã-xác-minh.
+        // Người dùng KHÔNG có cách nào biết mình đang nhìn dữ liệu bịa:
+        //   · nhãn DEMO ở `ChatScreen.tsx:205` hỏi CỜ (`!isProofChatBackendEnabled()`),
+        //     mà cờ đang BẬT ⇒ nhãn không hiện;
+        //   · câu báo lỗi dưới đây nằm trong `ListEmptyComponent`
+        //     (`ProofChatHomeScreen.tsx:346`), mà mock giữ danh sách KHÔNG rỗng
+        //     ⇒ câu báo lỗi không bao giờ được vẽ.
+        // Tức là mock vừa giả làm thật, vừa bịt luôn lời cảnh báo về chính nó.
+        //
+        // Xoá rỗng thì `ListEmptyComponent` mới chạy và người dùng mới thấy sự thật.
+        // Chế độ demo (cờ TẮT) không đi qua đây — nhánh `fulfilled` trả 'disabled'.
+        state.rooms = [];
+        state.conversations = [];
+        state.messagesByRoom = {};
         state.roomsStatus = 'error';
         state.loadError = 'Không tải được danh sách trò chuyện. Kéo để thử lại.';
       })
@@ -555,7 +572,12 @@ const slice = createSlice({
         state.messagesByRoom[roomId] = messages;
       })
       .addCase(loadRoomMessages.rejected, (state, action) => {
-        state.messagesStatus[action.meta.arg.roomId] = 'error';
+        // Cùng lý do như `loadConversations.rejected`: không xoá thì phòng chat hiện
+        // ra tin nhắn mock kèm tích "đã xác minh chữ ký" trong khi chưa hề tải được
+        // gì. Thà trống và báo lỗi còn hơn đầy và sai.
+        const { roomId } = action.meta.arg;
+        state.messagesByRoom[roomId] = [];
+        state.messagesStatus[roomId] = 'error';
       });
   },
 });

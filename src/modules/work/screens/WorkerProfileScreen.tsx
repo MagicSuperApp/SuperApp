@@ -1,72 +1,91 @@
 // modules/work/screens/WorkerProfileScreen.tsx
-// Hồ sơ thợ — đánh giá, kỹ năng, lịch sử công việc.
+// Hồ sơ thợ — dữ liệu THẬT từ `GET /taskers`, khớp theo `did`.
+//
+// ĐÃ GỠ hai khối "Đánh giá" và "Lịch sử việc" (2026-08-12). Không phải vì chưa kịp
+// làm — nhà AladinWork trả lời thẳng: đánh giá/nhận xét **không tồn tại trong mô
+// hình** (không collection, không cửa, không trường), còn lịch sử việc **không có
+// đường nào đọc được** (`completedJobs` là một con số ĐẾM, không phải danh sách;
+// `GET /contracts` đòi phiên đăng nhập và chỉ trả hợp đồng của CHÍNH người đang
+// đăng nhập, nên không thể thành đường xem lịch sử của người thứ ba).
+//
+// Trước đó màn này hiện 3 nhận xét và 4 việc đã xong — tên người, số tiền, ngày
+// tháng, ảnh đại diện — tất cả đều bịa, gắn lên hồ sơ một NGƯỜI THẬT. Thà thiếu
+// còn hơn bịa uy tín của một người thật.
+//
+// Và đừng dựng lại khi nào backend "có dữ liệu": sẽ không bao giờ có "sao". Uy tín
+// ở nền tảng này là điểm 0..100 tính được — xem chú thích ở `Tasker.reputation`.
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
-  ScrollView,
   StyleSheet,
   TouchableOpacity,
   StatusBar,
   Image,
   Animated,
+  ActivityIndicator,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { COLORS } from '../../../constants';
 import { WORK_THEME } from '../theme/colors';
-import { getWorkerById, formatVND } from '../data/mockData';
+import { useTaskers } from '../hooks/useTaskers';
 
 type RouteParams = { WorkerProfile: { workerId: string } };
 
-const REVIEWS = [
-  {
-    id: 'r1', reviewer: 'Anh Tuấn', avatar: 'https://i.pravatar.cc/100?img=12',
-    rating: 5, comment: 'Làm rất tỉ mỉ, đúng giờ, giá cả phải chăng. Sẽ thuê lại.',
-    job: 'Kéo dây điện nhà mới', time: '3 ngày trước',
-  },
-  {
-    id: 'r2', reviewer: 'Chị Linh', avatar: 'https://i.pravatar.cc/100?img=47',
-    rating: 5, comment: 'Anh Tài làm việc rất chuyên nghiệp. Có giấy phép, đầy đủ bảo hộ.',
-    job: 'Sửa hệ thống điện văn phòng', time: '2 tuần trước',
-  },
-  {
-    id: 'r3', reviewer: 'Chú Bình', avatar: 'https://i.pravatar.cc/100?img=70',
-    rating: 4, comment: 'Tốt, hài lòng. Chỉ một chút chậm so với hẹn nhưng chất lượng OK.',
-    job: 'Lắp đèn LED và quạt trần', time: '1 tháng trước',
-  },
-];
-
-const JOB_HISTORY = [
-  { id: 'h1', title: 'Kéo dây điện nhà mới 3 tầng', category: 'Sửa chữa', amount: 3500000, rating: 5, date: '12/05/2026', status: 'completed' },
-  { id: 'h2', title: 'Sửa hệ thống điện văn phòng', category: 'Sửa chữa', amount: 2800000, rating: 5, date: '28/04/2026', status: 'completed' },
-  { id: 'h3', title: 'Lắp đặt CCTV cho cửa hàng', category: 'Sửa chữa', amount: 4200000, rating: 4.8, date: '10/04/2026', status: 'completed' },
-  { id: 'h4', title: 'Sửa ổ cắm điện hỏng', category: 'Sửa chữa', amount: 450000, rating: 5, date: '02/04/2026', status: 'completed' },
-];
+const formatVND = (n: number): string => n.toLocaleString('vi-VN');
 
 const WorkerProfileScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<RouteParams, 'WorkerProfile'>>();
   const { workerId } = route.params;
-  const worker = getWorkerById(workerId);
 
-  const [activeTab, setActiveTab] = useState<'reviews' | 'history' | 'skills'>('reviews');
+  // `GET /taskers/{did}` CHƯA CÓ (nhà AladinWork xác nhận 2026-08-12). Danh sách đã
+  // mang đủ mọi trường màn này cần, nên khớp `did` từ danh sách là chạy được ngay.
+  // Khi nào bên đó mở `GET /taskers/:did` thì đổi sang gọi thẳng — tải cả danh bạ để
+  // hiện MỘT hồ sơ là cái bẫy bậc hai đã đo được ở chính `/taskers` (3760ms một lượt).
+  // Hôm nay `total = 0` nên chưa đau; nó đau đúng lúc chợ bắt đầu chạy.
+  const { taskers, loading, errorKind } = useTaskers();
+  const worker = useMemo(
+    () => taskers.find(t => t.did === workerId),
+    [taskers, workerId],
+  );
+
+  const [activeTab, setActiveTab] = useState<'services' | 'skills'>('services');
   const fade = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.timing(fade, { toValue: 1, duration: 400, useNativeDriver: true }).start();
   }, [fade]);
 
-  if (!worker) {
+  if (loading) {
     return (
-      <View style={[styles.root, { justifyContent: 'center', alignItems: 'center' }]}>
-        <Text style={{ color: COLORS.textMuted }}>Không tìm thấy thợ.</Text>
+      <View style={[styles.root, styles.centerBox]}>
+        <ActivityIndicator color={WORK_THEME.primary} />
+      </View>
+    );
+  }
+
+  if (!worker) {
+    // Phân biệt "mạng hỏng" với "không có người này" — hai chuyện khác nhau, và câu
+    // chữ chung một mẫu là đúng lỗi vừa phải dọn ở màn Việc.
+    return (
+      <View style={[styles.root, styles.centerBox]}>
+        <Text style={{ color: COLORS.textMuted, textAlign: 'center', paddingHorizontal: 32 }}>
+          {errorKind
+            ? 'Chưa đọc được danh bạ thợ. Kiểm tra mạng rồi thử lại.'
+            : 'Không có thợ nào mang mã này trong danh bạ.'}
+        </Text>
         <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: 16 }}>
           <Text style={{ color: WORK_THEME.primary, fontWeight: '700' }}>Quay lại</Text>
         </TouchableOpacity>
       </View>
     );
   }
+
+  const offerings = worker.offerings ?? [];
+  const skills = worker.skills ?? [];
+  const avatarUri = worker.avatarUrl ?? worker.avatar;
 
   return (
     <View style={styles.root}>
@@ -90,41 +109,56 @@ const WorkerProfileScreen: React.FC = () => {
         <View style={styles.heroCard}>
           <View style={styles.heroTop}>
             <View style={styles.avatarWrap}>
-              <Image source={{ uri: worker.avatar }} style={styles.avatar} />
-              {worker.online && <View style={styles.onlineDot} />}
+              {avatarUri
+                ? <Image source={{ uri: avatarUri }} style={styles.avatar} />
+                : <View style={[styles.avatar, styles.avatarBlank]}>
+                    <Icon name="account" size={32} color={COLORS.textMuted} />
+                  </View>}
+              {worker.available && <View style={styles.onlineDot} />}
             </View>
             <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Text style={styles.name}>{worker.name}</Text>
-                {worker.verified && (
-                  <Icon name="check-decagram" size={16} color={WORK_THEME.primary} />
-                )}
-              </View>
-              <Text style={styles.title}>{worker.title}</Text>
-              <View style={styles.locRow}>
-                <Icon name="map-marker-outline" size={12} color={COLORS.textMuted} />
-                <Text style={styles.locText}>{worker.location}</Text>
-              </View>
+              <Text style={styles.name}>{worker.name ?? 'Chưa đặt tên'}</Text>
+              {!!worker.title && <Text style={styles.title}>{worker.title}</Text>}
+              {/* Mã DID là thứ duy nhất chắc chắn có. Hiện rút gọn để người thuê đối
+                  chiếu được, vì tên thì trùng nhau được còn DID thì không. */}
+              <Text style={styles.didText} numberOfLines={1}>
+                {worker.did.length > 24 ? `${worker.did.slice(0, 16)}…${worker.did.slice(-6)}` : worker.did}
+              </Text>
             </View>
           </View>
 
+          {/* Ba con số này đều có thật trong `GET /taskers`. Không con số nào ở đây
+              được suy ra, và không ô nào hiện khi trường vắng — thà trống còn hơn số bịa. */}
           <View style={styles.statsRow}>
-            <Stat icon="star" iconColor="#E08C3A" value={String(worker.rating)} label={`(${worker.reviewCount} đánh giá)`} />
+            <Stat
+              icon="shield-star-outline" iconColor={WORK_THEME.primary}
+              value={worker.reputation != null ? String(Math.round(worker.reputation)) : '—'}
+              label="uy tín / 100"
+            />
             <View style={styles.statDivider} />
-            <Stat icon="check-circle-outline" iconColor={COLORS.success} value={String(worker.completedJobs)} label="việc hoàn thành" />
+            <Stat
+              icon="check-circle-outline" iconColor={COLORS.success}
+              value={worker.completedJobs != null ? String(worker.completedJobs) : '—'}
+              label="việc đã tất toán"
+            />
             <View style={styles.statDivider} />
-            <Stat icon="briefcase-clock-outline" iconColor={WORK_THEME.primary} value={`${worker.yearsExperience}`} label="năm kinh nghiệm" />
+            <Stat
+              icon="certificate-outline" iconColor="#E08C3A"
+              value={worker.verifiedCredentials != null ? String(worker.verifiedCredentials) : '—'}
+              label="chứng chỉ đã kiểm"
+            />
           </View>
 
-          <View style={styles.rateBox}>
-            <Text style={styles.rateLabel}>Phí dự kiến</Text>
-            <Text style={styles.rateValue}>{formatVND(worker.hourlyRate)} VND<Text style={styles.rateUnit}> / giờ</Text></Text>
-          </View>
+          {/* `reputationBasis` là CƠ SỞ của điểm uy tín. Nhà AladinWork trả kèm chính
+              vì lý do này: để bên hiển thị không bắt người xem tin một con số trần. */}
+          {!!worker.reputationBasis && (
+            <Text style={styles.basisText}>{worker.reputationBasis}</Text>
+          )}
         </View>
 
         <View style={styles.tabBar}>
-          {(['reviews', 'history', 'skills'] as const).map(t => {
-            const labels = { reviews: 'Đánh giá', history: 'Lịch sử', skills: 'Kỹ năng' };
+          {(['services', 'skills'] as const).map(t => {
+            const labels = { services: 'Dịch vụ', skills: 'Kỹ năng' };
             return (
               <TouchableOpacity
                 key={t}
@@ -139,58 +173,23 @@ const WorkerProfileScreen: React.FC = () => {
           })}
         </View>
 
-        {activeTab === 'reviews' && (
+        {activeTab === 'services' && (
           <View style={{ paddingHorizontal: 12 }}>
-            <View style={styles.bioBox}>
-              <Text style={styles.bioTitle}>Giới thiệu</Text>
-              <Text style={styles.bioText}>{worker.bio}</Text>
-            </View>
-            {REVIEWS.map(r => (
-              <View key={r.id} style={styles.reviewCard}>
-                <Image source={{ uri: r.avatar }} style={styles.reviewAvatar} />
-                <View style={{ flex: 1 }}>
-                  <View style={styles.reviewHeader}>
-                    <Text style={styles.reviewName}>{r.reviewer}</Text>
-                    <View style={styles.reviewStars}>
-                      {[1, 2, 3, 4, 5].map(s => (
-                        <Icon
-                          key={s}
-                          name={s <= r.rating ? 'star' : 'star-outline'}
-                          size={12}
-                          color={s <= r.rating ? '#E08C3A' : COLORS.textMuted}
-                        />
-                      ))}
-                    </View>
-                  </View>
-                  <Text style={styles.reviewJob}>{r.job} · {r.time}</Text>
-                  <Text style={styles.reviewComment}>{r.comment}</Text>
-                </View>
+            {offerings.length === 0 ? (
+              <View style={styles.bioBox}>
+                <Text style={styles.bioText}>Người này chưa chào dịch vụ nào.</Text>
               </View>
-            ))}
-          </View>
-        )}
-
-        {activeTab === 'history' && (
-          <View style={{ paddingHorizontal: 12 }}>
-            {JOB_HISTORY.map(j => (
-              <View key={j.id} style={styles.historyCard}>
-                <View style={styles.historyIconWrap}>
-                  <Icon name="check-circle" size={18} color={COLORS.success} />
-                </View>
+            ) : offerings.map(o => (
+              <View key={o.id} style={styles.offerCard}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.historyTitle} numberOfLines={1}>{j.title}</Text>
-                  <View style={styles.historyMeta}>
-                    <Text style={styles.historyCategory}>{j.category}</Text>
-                    <Text style={styles.historyDate}>· {j.date}</Text>
-                  </View>
-                  <View style={styles.historyBottom}>
-                    <Text style={styles.historyAmount}>{formatVND(j.amount)} VND</Text>
-                    <View style={styles.historyRating}>
-                      <Icon name="star" size={10} color="#E08C3A" />
-                      <Text style={styles.historyRatingText}>{j.rating}</Text>
-                    </View>
-                  </View>
+                  <Text style={styles.offerName} numberOfLines={2}>{o.name}</Text>
+                  {!!o.templateKey && <Text style={styles.offerKey}>{o.templateKey}</Text>}
                 </View>
+                {o.minPriceVND != null && (
+                  <Text style={styles.offerPrice}>
+                    từ {formatVND(o.minPriceVND)}<Text style={styles.offerUnit}> VND</Text>
+                  </Text>
+                )}
               </View>
             ))}
           </View>
@@ -199,23 +198,39 @@ const WorkerProfileScreen: React.FC = () => {
         {activeTab === 'skills' && (
           <View style={{ paddingHorizontal: 12 }}>
             <View style={styles.bioBox}>
-              <Text style={styles.bioTitle}>Kỹ năng chuyên môn</Text>
-              <View style={styles.skillList}>
-                {worker.skills.map((s, i) => (
-                  <View key={i} style={styles.skillChip}>
-                    <Icon name="check" size={11} color={WORK_THEME.primary} />
-                    <Text style={styles.skillText}>{s}</Text>
-                  </View>
-                ))}
-              </View>
+              <Text style={styles.bioTitle}>Kỹ năng</Text>
+              {skills.length === 0 ? (
+                <Text style={styles.bioText}>Chưa khai kỹ năng nào.</Text>
+              ) : (
+                <View style={styles.skillList}>
+                  {skills.map((s, i) => (
+                    <View key={i} style={styles.skillChip}>
+                      <Icon name="check" size={11} color={WORK_THEME.primary} />
+                      <Text style={styles.skillText}>{s}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
             </View>
 
+            {/* Trước đây bốn dòng chứng nhận là HẰNG CỨNG — mọi thợ đều "đã xác thực
+                CCCD, sinh trắc, chứng chỉ nghề". Nay chỉ vẽ những gì máy chủ trả. */}
             <View style={styles.bioBox}>
-              <Text style={styles.bioTitle}>Chứng nhận đã xác thực</Text>
-              <CertItem icon="card-account-details-outline" name="CMND/CCCD đã xác thực" />
-              <CertItem icon="shield-check-outline" name="Đã xác thực sinh trắc học" />
-              <CertItem icon="certificate-outline" name="Chứng chỉ nghề (đã upload)" />
-              <CertItem icon="briefcase-check-outline" name={`${worker.yearsExperience} năm kinh nghiệm xác thực qua lịch sử Aladin`} />
+              <Text style={styles.bioTitle}>Chứng chỉ đã kiểm</Text>
+              {(worker.credentials ?? []).length === 0 ? (
+                <Text style={styles.bioText}>
+                  {worker.verifiedCredentials
+                    ? `Có ${worker.verifiedCredentials} chứng chỉ đã kiểm, chưa đọc được chi tiết.`
+                    : 'Chưa có chứng chỉ nào được kiểm.'}
+                </Text>
+              ) : (worker.credentials ?? []).map((c, i) => (
+                <CertItem
+                  key={i}
+                  icon="certificate-outline"
+                  name={c.taskType ?? c.archetype ?? 'Chứng chỉ'}
+                  tier={c.quality_tier}
+                />
+              ))}
             </View>
           </View>
         )}
@@ -223,7 +238,7 @@ const WorkerProfileScreen: React.FC = () => {
 
       <View style={styles.bottomBar}>
         <TouchableOpacity
-          onPress={() => navigation.navigate('ProofChatRoom', { roomId: `worker-${worker.id}` })}
+          onPress={() => navigation.navigate('ProofChatRoom', { roomId: `worker-${worker.did}` })}
           style={styles.chatBtn}
         >
           <Icon name="message-outline" size={20} color={WORK_THEME.primary} />
@@ -251,18 +266,39 @@ const Stat: React.FC<{ icon: string; iconColor: string; value: string; label: st
   </View>
 );
 
-const CertItem: React.FC<{ icon: string; name: string }> = ({ icon, name }) => (
+const CertItem: React.FC<{ icon: string; name: string; tier?: string }> = ({ icon, name, tier }) => (
   <View style={styles.certItem}>
     <View style={styles.certIconWrap}>
       <Icon name={icon} size={14} color={WORK_THEME.primary} />
     </View>
     <Text style={styles.certText}>{name}</Text>
+    {!!tier && <Text style={styles.certTier}>{tier}</Text>}
     <Icon name="check-decagram" size={14} color={COLORS.success} />
   </View>
 );
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
+  centerBox: { justifyContent: 'center', alignItems: 'center' },
+  avatarBlank: { alignItems: 'center', justifyContent: 'center' },
+  didText: { fontSize: 10, color: COLORS.textMuted, marginTop: 6, fontVariant: ['tabular-nums'] },
+  basisText: {
+    fontSize: 11, color: COLORS.textMuted, lineHeight: 16,
+    marginTop: 2, paddingHorizontal: 2,
+  },
+  offerCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: COLORS.card,
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 8,
+    borderWidth: 1, borderColor: COLORS.border,
+  },
+  offerName: { fontSize: 13, fontWeight: '700', color: COLORS.text },
+  offerKey: { fontSize: 10, color: COLORS.textMuted, marginTop: 3 },
+  offerPrice: { fontSize: 13, fontWeight: '800', color: WORK_THEME.primary },
+  offerUnit: { fontSize: 10, fontWeight: '600', color: COLORS.textMuted },
+  certTier: { fontSize: 10, fontWeight: '700', color: WORK_THEME.primary },
 
   header: {
     flexDirection: 'row',
@@ -298,8 +334,6 @@ const styles = StyleSheet.create({
   },
   name: { fontSize: 17, fontWeight: '800', color: COLORS.text },
   title: { fontSize: 12, color: COLORS.textSub, marginTop: 2 },
-  locRow: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 6 },
-  locText: { fontSize: 11, color: COLORS.textMuted, fontWeight: '600' },
 
   statsRow: {
     flexDirection: 'row', alignItems: 'center',
@@ -313,17 +347,6 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 9, color: COLORS.textMuted, textAlign: 'center', paddingHorizontal: 4 },
   statDivider: { width: 1, height: 30, backgroundColor: COLORS.border },
 
-  rateBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: WORK_THEME.primaryGlow,
-    padding: 12,
-    borderRadius: 10,
-  },
-  rateLabel: { fontSize: 11, color: COLORS.textSub, fontWeight: '700' },
-  rateValue: { fontSize: 16, fontWeight: '900', color: WORK_THEME.primary },
-  rateUnit: { fontSize: 11, fontWeight: '600', color: COLORS.textMuted },
 
   tabBar: {
     flexDirection: 'row', gap: 6,
@@ -356,53 +379,6 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: WORK_THEME.primaryLight,
   },
   skillText: { fontSize: 11, fontWeight: '700', color: WORK_THEME.primaryDeep },
-
-  reviewCard: {
-    flexDirection: 'row', gap: 10,
-    backgroundColor: COLORS.card,
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 8,
-    borderWidth: 1, borderColor: COLORS.border,
-  },
-  reviewAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: COLORS.divider },
-  reviewHeader: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-  },
-  reviewName: { fontSize: 12, fontWeight: '800', color: COLORS.text },
-  reviewStars: { flexDirection: 'row', gap: 1 },
-  reviewJob: { fontSize: 10, color: COLORS.textMuted, marginTop: 2 },
-  reviewComment: { fontSize: 12, color: COLORS.textSub, marginTop: 6, lineHeight: 17 },
-
-  historyCard: {
-    flexDirection: 'row', gap: 10, alignItems: 'flex-start',
-    backgroundColor: COLORS.card,
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 8,
-    borderWidth: 1, borderColor: COLORS.border,
-  },
-  historyIconWrap: {
-    width: 36, height: 36, borderRadius: 12,
-    backgroundColor: '#E8F5EE',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  historyTitle: { fontSize: 12, fontWeight: '700', color: COLORS.text },
-  historyMeta: { flexDirection: 'row', gap: 4, marginTop: 3 },
-  historyCategory: { fontSize: 10, color: WORK_THEME.primary, fontWeight: '700' },
-  historyDate: { fontSize: 10, color: COLORS.textMuted },
-  historyBottom: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    marginTop: 6,
-  },
-  historyAmount: { fontSize: 12, fontWeight: '800', color: COLORS.text },
-  historyRating: {
-    flexDirection: 'row', alignItems: 'center', gap: 2,
-    paddingHorizontal: 6, paddingVertical: 2,
-    backgroundColor: '#FFF6E5',
-    borderRadius: 6,
-  },
-  historyRatingText: { fontSize: 10, fontWeight: '800', color: '#B07D2F' },
 
   certItem: {
     flexDirection: 'row', alignItems: 'center', gap: 10,

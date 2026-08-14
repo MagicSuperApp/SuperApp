@@ -15,6 +15,7 @@ import { useDispatch } from 'react-redux';
 import { AUTH_BLUE } from '../theme';
 import StepIndicator from '../components/StepIndicator';
 import { loginUser } from '../../../store/userSlice';
+import { useBottomActionPadding } from '../../../hooks/useBottomActionPadding';
 
 type StepStatus = 'pending' | 'processing' | 'done';
 
@@ -53,6 +54,7 @@ const STEPS: Step[] = [
 ];
 
 const SignUpCompleteScreen: React.FC = () => {
+  const bottomPad = useBottomActionPadding();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const dispatch = useDispatch();
@@ -211,7 +213,7 @@ const SignUpCompleteScreen: React.FC = () => {
       </ScrollView>
 
       {/* Action */}
-      <View style={styles.actionBar}>
+      <View style={[styles.actionBar, { paddingBottom: bottomPad }]}>
         <TouchableOpacity
           activeOpacity={0.85}
           onPress={enterApp}

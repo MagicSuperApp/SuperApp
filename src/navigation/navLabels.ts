@@ -47,7 +47,11 @@ export const NAV_FRAME: Record<string, NavFrame> = {
   ProofChatHome: { en: 'Chat', national: { vi: 'Trò chuyện', zh: '聊天', ja: 'チャット' }, icon: 'comments',    iconActive: 'comments' },
   Farms:         { en: 'Farm', national: { vi: 'Trang trại', zh: '农场', ja: '農場' },     icon: 'seedling',    iconActive: 'seedling' },
   WorkHome:      { en: 'Work', national: { vi: 'Việc làm',   zh: '工作', ja: '仕事' },     icon: 'briefcase',   iconActive: 'briefcase' },
-  JoinHome:      { en: 'Join', national: { vi: 'Kết đèn',    zh: '连灯', ja: '参加' },     icon: 'bolt',        iconActive: 'bolt' },
+  // 'Góp máy' là nhãn TẠM (anh Aladin chốt 12/08, theo đề xuất Tùng ở
+  // `Integration/Module-Handoff.md:58` H-19). 'Kết đèn' là ẩn dụ nội bộ — người
+  // ngoài đọc không ra việc. 'Góp máy' nói đúng việc tab đang làm. Sẽ chọn lại
+  // tên chính thức khi chốt bộ từ vựng toàn app (H-19 còn mở cho ~10 thuật ngữ khác).
+  JoinHome:      { en: 'Join', national: { vi: 'Góp máy',    zh: '连灯', ja: '参加' },     icon: 'bolt',        iconActive: 'bolt' },
   // Account = "Me/Tôi" (anh Aladin chốt). Icon dự phòng; ô này ưu tiên vẽ AVATAR
   // user (ảnh hoặc initials) qua NavItemFrame — xem prop avatarUri/initials.
   Account:       { en: 'Me',   national: { vi: 'Tôi',        zh: '我',   ja: 'マイ' },     icon: 'circle-user', iconActive: 'circle-user' },

@@ -36,9 +36,11 @@ import { COLORS } from '../constants';
 import {
   matchCareLabel,
   logCare,
+  getWithdrawalStatus,
   safeStateOf,
   type CareProduct,
   type CareLogResponse,
+  type CareWithdrawalResponse,
 } from '../services/careService';
 import { withPhotoSave } from '../services/mediaSavePermission';
 
@@ -68,10 +70,15 @@ const CareScanScreen: React.FC = () => {
   const [logging, setLogging] = useState(false);
   const [candidates, setCandidates] = useState<CareProduct[] | null>(null);
   const [logged, setLogged] = useState<CareLogResponse | null>(null);
+  // Cờ an toàn KHÔNG nằm trong thân của `/api/care/log` — phải hỏi riêng
+  // `/api/care/withdrawal`. `null` = chưa hỏi xong hoặc hỏi hỏng; hai ca đó đều
+  // KHÔNG được hiện "an toàn" (xem `renderLogged`).
+  const [wd, setWd] = useState<CareWithdrawalResponse | null>(null);
 
   const handleCapture = useCallback(async () => {
     setCandidates(null);
     setLogged(null);
+    setWd(null);
     if (!imagePicker?.launchCamera) {
       Alert.alert('Chưa mở được máy ảnh', 'Bản app này chưa mở được máy ảnh. Vui lòng cập nhật app rồi thử lại.');
       return;
@@ -120,6 +127,12 @@ const CareScanScreen: React.FC = () => {
       });
       if (res.ok && res.data) {
         setLogged(res.data);
+        // Ghi xong mới hỏi được trạng thái cách ly, và phải hỏi ở cửa KHÁC: máy chủ
+        // gộp MỌI lần ghi của đối tượng rồi lấy mốc xa nhất. `withdrawal_until` của
+        // riêng lần ghi này không trả lời được câu "cây này bán được chưa" — một lần
+        // ghi trước đó có thể còn xa hơn.
+        const w = await getWithdrawalStatus(BASE_URL, targetType, targetId);
+        setWd(w.ok && w.data ? w.data : null);
       } else {
         Alert.alert('Lỗi', res.error?.detail ?? 'Ghi nhật-ký thất bại. Vui lòng thử lại.');
       }
@@ -131,10 +144,15 @@ const CareScanScreen: React.FC = () => {
   const renderLogged = () => {
     if (!logged) return null;
     // `safe` có BA giá-trị. `null`/vắng-mặt = CHƯA XÁC ĐỊNH, KHÔNG phải an-toàn.
-    // Bản cũ dùng `!logged.safe && !!logged.blocked_until`: ca `null` không kèm
-    // `blocked_until` (không tra được thuốc thì không có ngày) rơi thẳng vào nhánh
-    // else và hiện khiên xanh "An-toàn" — khẳng định an-toàn trong đúng ca hệ không biết.
-    const safeState = safeStateOf(logged.safe);
+    // Bản cũ đọc `logged.safe` — mà `/api/care/log` KHÔNG trả trường đó
+    // (`care_router.py:273-274`), nên mọi lượt đều rơi vào `'unknown'` và nhánh
+    // `blocked` chưa từng chạy một lần nào. Nay đọc từ `/api/care/withdrawal`.
+    // `wd === null` (hỏi hỏng/mất mạng) cũng vào `'unknown'`: khi không biết thì
+    // nói là không biết, đừng nói an toàn.
+    const safeState = safeStateOf(wd?.safe);
+    // Trứng/sữa có mốc cách ly RIÊNG và có thể còn hạn trong khi thịt đã qua. Máy chủ
+    // chỉ gửi khối này khi còn hạn (`care_router.py:315-318`), nên có mặt = còn cấm.
+    const eggmilkBlocked = wd?.eggmilk != null;
     return (
       <View style={styles.resultSection}>
         <View style={styles.badgeRow}>
@@ -146,7 +164,9 @@ const CareScanScreen: React.FC = () => {
             <Icon name="alert-octagon" size={18} color={COLORS.error} />
             <Text style={styles.warnText}>
               Đang trong thời-gian CÁCH LY — chưa được thu-hoạch/bán
-              {logged.blocked_until ? ` đến ${logged.blocked_until}` : ''}.
+              {wd?.blocked_until ? ` đến ${wd.blocked_until}` : ''}
+              {wd?.days_left != null ? ` (còn ${wd.days_left} ngày)` : ''}
+              {wd?.by_product ? ` — do ${wd.by_product}` : ''}.
             </Text>
           </View>
         ) : safeState === 'unknown' ? (
@@ -163,6 +183,21 @@ const CareScanScreen: React.FC = () => {
             <Text style={styles.okText}>An-toàn — không trong thời-gian cách-ly.</Text>
           </View>
         )}
+        {/* Cấm riêng trứng/sữa: hiện KỂ CẢ khi khối trên đã báo an-toàn, vì mốc thịt
+            qua trước mốc trứng/sữa. Bỏ khối này là báo an toàn sai đúng khoảng chênh. */}
+        {eggmilkBlocked && (
+          <View style={styles.warnBox}>
+            <Icon name="alert-octagon" size={18} color={COLORS.error} />
+            <Text style={styles.warnText}>
+              Riêng TRỨNG/SỮA còn trong thời-gian cách-ly — chưa được thu/bán
+              {wd?.eggmilk?.blocked_until ? ` đến ${wd.eggmilk.blocked_until}` : ''}
+              {wd?.eggmilk?.days_left != null ? ` (còn ${wd.eggmilk.days_left} ngày)` : ''}.
+            </Text>
+          </View>
+        )}
+        {!!wd?.advice?.length && wd.advice.map((a, i) => (
+          <Text key={`advice-${i}`} style={styles.unknownText}>{a}</Text>
+        ))}
         <TouchableOpacity style={[styles.btn, styles.btnPrimary, styles.btnFull]} onPress={() => navigation.goBack()} activeOpacity={0.85}>
           <Icon name="check" size={18} color={NEUTRAL.white} />
           <Text style={styles.btnPrimaryText}>Xong</Text>
@@ -193,14 +228,20 @@ const CareScanScreen: React.FC = () => {
           >
             <Icon name="bottle-tonic" size={20} color={HEADER_BG} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.productName}>{p.name ?? p.product_id}</Text>
-              {(p.category || p.active_ingredient) && (
+              <Text style={styles.productName}>{p.trade_name ?? p.product_id}</Text>
+              {(p.category || p.active_ingredients) && (
                 <Text style={styles.productSub} numberOfLines={1}>
-                  {[p.category, p.active_ingredient].filter(Boolean).join(' · ')}
+                  {[p.category, p.active_ingredients].filter(Boolean).join(' · ')}
                 </Text>
               )}
-              {p.withdrawal_days != null && (
-                <Text style={styles.productSub}>Cách ly: {p.withdrawal_days} ngày</Text>
+              {p.withdrawal_period_days != null && (
+                <Text style={styles.productSub}>
+                  Cách ly: {p.withdrawal_period_days} ngày
+                  {/* Máy chủ tự khai độ tin của con số này. `low`/`medium` là ƯỚC
+                      TÍNH — in số trần mà giấu chữ "ước tính" là để nông dân tin
+                      chắc hơn mức hệ thật sự biết. (`care_router.py:181`) */}
+                  {(p.phi_confidence === 'low' || p.phi_confidence === 'medium') ? ' (ước tính)' : ''}
+                </Text>
               )}
             </View>
             {logging ? <ActivityIndicator size="small" color={HEADER_BG} /> : <Icon name="chevron-right" size={20} color={NEUTRAL.textMuted} />}

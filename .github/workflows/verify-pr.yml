@@ -1,4 +1,4 @@
-name: Verify PR (tsc + jest)
+name: Verify PR (tsc + jest + cargo)
 
 # VÌ SAO CÓ FILE NÀY:
 # Cổng chất-lượng `verify` trong `debug-apk.yml` chạy ở `on: push` tới `develop` —
@@ -9,6 +9,15 @@ name: Verify PR (tsc + jest)
 #
 # Cố ý KHÔNG build APK ở đây: chỉ tsc + jest (~3-5 phút). Việc dựng APK/AAB vẫn để
 # `debug-apk.yml` / `android-aab.yml` lo sau merge.
+#
+# VÀ MỘT LỖ NỮA, VÁ 2026-08-14: cổng này trước chỉ chạy tsc + jest, tức KHÔNG cổng
+# nào trong repo biên dịch Rust. Đo được ở PR #135 (sửa `rust/taad_enclave_core/
+# src/taad_did.rs`): PR hiện dấu XANH trong khi mã Rust của nó chưa từng được biên
+# dịch ở bất kỳ đâu — dấu xanh nói về tsc/jest, không nói gì về thứ PR đó thật sự
+# đổi. Một lỗi cú pháp Rust sẽ lọt qua cổng, vào develop, rồi mới đỏ ở `debug-apk`
+# (bản GitHub Actions còn chưa dựng Rust nên tới đó cũng chưa chắc đỏ) — hoặc tệ
+# hơn: chỉ vỡ trên Codemagic, là đường DUY NHẤT dựng ra bản dùng được.
+# Job `rust` dưới đây đóng lỗ đó.
 
 on:
   pull_request:
@@ -48,3 +57,75 @@ jobs:
       # Kết quả test đã in TRƯỚC khi thoát nên cờ này không che được ca đỏ nào.
       - name: Unit tests (jest)
         run: npx jest --ci --forceExit
+
+  rust:
+    name: Verify Rust (cargo test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # PHẢI là 2, không phải mặc-định 1. Bản checkout của `pull_request` là
+          # commit GỘP THỬ; depth 1 chỉ lấy đúng commit đó, hai cha nằm ở ranh giới
+          # nông nên KHÔNG có cây tệp để `git diff` — bước dò phạm vi dưới sẽ ngã vì
+          # lý do không liên quan gì tới PR. Depth 2 lấy đủ cả hai cha.
+          fetch-depth: 2
+
+      # Chỉ chạy phần nặng khi PR THẬT SỰ đụng `rust/`. Không dùng `on.pull_request
+      # .paths` vì bộ lọc đó chặn CẢ workflow — mọi PR không đụng Rust sẽ mất luôn
+      # cổng tsc + jest, tức vá lỗ này thì thủng lỗ to hơn.
+      #
+      # Ở event `pull_request`, actions/checkout lấy commit GỘP THỬ: `HEAD^1` là
+      # nhánh đích, `HEAD^2` là nhánh nguồn. So hai cái đó thì không phải fetch thêm
+      # và không cần action bên thứ ba.
+      #
+      # Nói cho đúng: phép so này KHÔNG bằng chính xác "tập tệp PR đổi" — nó còn
+      # tính cả thứ nhánh đích có mà nhánh nguồn chưa có. Nên nó sai được theo đúng
+      # MỘT chiều: chạy cargo trong lượt lẽ ra không cần. Tốn vài phút, không bỏ sót
+      # lượt nào — và đó là chiều sai duy nhất chấp nhận được cho một cổng kiểm.
+      # (Bản chuẩn cần `git merge-base`, mà cái đó đòi lịch sử sâu hơn depth 2.)
+      - name: PR có đụng rust/ không
+        id: scope
+        run: |
+          set -euo pipefail
+          if git diff --name-only HEAD^1 HEAD^2 | grep -qE '^rust/'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "PR có đổi tệp dưới rust/ → chạy cargo test."
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "PR không đụng rust/ → bỏ qua (vẫn báo xanh)."
+          fi
+
+      - name: Nhớ đệm cargo
+        if: steps.scope.outputs.run == 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/taad_enclave_core/target
+            rust/chat_mls/target
+          key: cargo-verify-${{ runner.os }}-${{ hashFiles('rust/*/Cargo.toml') }}
+          restore-keys: cargo-verify-${{ runner.os }}-
+
+      # `rustup`/`cargo` có sẵn trên ubuntu-latest.
+      #
+      # KHÔNG dùng `--locked`, và đây là dữ kiện chứ không phải lười: `git ls-files
+      # rust/taad_enclave_core/Cargo.lock rust/chat_mls/Cargo.lock` trả RỖNG — hai
+      # tệp có trên máy nhưng chưa bao giờ vào git (`.gitignore` cũng không nhắc
+      # tới chúng, nên đây là bỏ sót chứ không phải cố ý). Bản checkout của CI không
+      # có lock, `--locked` sẽ đỏ ngay lượt đầu vì lý do chẳng liên quan gì tới mã.
+      #
+      # ⚠ Hệ quả còn treo: mỗi lượt dựng tự giải phụ thuộc lại, nên bản Codemagic
+      # mang ra vườn hôm nay và bản dựng tuần sau CÓ THỂ khác dep mà không ai đổi
+      # một dòng mã nào. Việc đưa hai Cargo.lock vào git là việc riêng, đáng làm,
+      # nhưng nó đổi thứ Codemagic đang dựng nên không gộp chung vào lần vá cổng
+      # này — tách ra để nếu có vỡ thì biết vỡ vì cái gì.
+      - name: cargo test — taad_enclave_core
+        if: steps.scope.outputs.run == 'true'
+        run: cargo test --manifest-path rust/taad_enclave_core/Cargo.toml
+
+      - name: cargo test — chat_mls
+        if: steps.scope.outputs.run == 'true'
+        run: cargo test --manifest-path rust/chat_mls/Cargo.toml

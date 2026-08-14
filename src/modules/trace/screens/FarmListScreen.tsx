@@ -25,6 +25,7 @@ import { COLORS } from '../../../constants';
 import PaginationControls from '../components/PaginationControls';
 import StateView from '../../../components/state/StateView';
 import { useOffline } from '../../../hooks/useOffline';
+import { polygonCenter } from '../../../features/wayfind/wayfind';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -64,15 +65,21 @@ const MagicCreditBadge = ({ credits }: { credits: number }) => {
   );
 };
 
+/** Tâm vườn để dẫn đường tới. Vườn chưa vẽ ranh giới → null (ẩn nút). */
+const farmCenterOf = (farm: any) => polygonCenter(farm?.coordinates);
+
 // ── Farm Card ─────────────────────────────────────────────────────────────────
 const FarmCard = ({
   item,
   index,
   onPress,
+  onWayfind,
 }: {
   item: any;
   index: number;
   onPress: () => void;
+  /** null = vườn chưa vẽ ranh giới → chưa có toạ-độ để dẫn tới. */
+  onWayfind: (() => void) | null;
 }) => {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const fadeAnim  = useRef(new Animated.Value(0)).current;
@@ -183,6 +190,19 @@ const FarmCard = ({
               ))}
             </View>
           </View>
+
+          {/* Dẫn đường tới vườn — đích là TRỌNG TÂM ranh giới đã vẽ, không phải
+              một điểm nào đó trong đa-giác. Chưa vẽ ranh giới thì không hiện nút. */}
+          {onWayfind ? (
+            <TouchableOpacity
+              style={styles.cardChevron}
+              onPress={onWayfind}
+              accessibilityLabel={`Dẫn đường tới ${item.name}`}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Icon name="map-location-dot" size={20} color={COLORS.accent} />
+            </TouchableOpacity>
+          ) : null}
 
           {/* Chevron */}
           <View style={styles.cardChevron}>
@@ -400,6 +420,14 @@ const FarmListScreen = () => {
             onPress={() =>
               navigation.navigate('FarmDetail', { farm_id: item.id })
             }
+            onWayfind={farmCenterOf(item)
+              ? () => {
+                const c = farmCenterOf(item)!;
+                navigation.navigate('Wayfind', {
+                  lat: c.lat, lon: c.lng, kind: 'farm', label: item.name, farmId: item.id,
+                });
+              }
+              : null}
           />
         )}
         ListFooterComponent={

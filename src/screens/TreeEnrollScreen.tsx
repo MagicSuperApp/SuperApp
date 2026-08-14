@@ -70,6 +70,9 @@ import {
 // ---------------------------------------------------------------------------
 
 import { ORILIFE_BASE } from '../services/orilifeBase';
+// Phân loại 409 nằm ở tệp riêng để bài kiểm chạm được — xem treeEnrollConflict.ts.
+import { classify409 } from '../services/treeEnrollConflict';
+import { useBottomActionPadding } from '../hooks/useBottomActionPadding';
 const BASE_URL: string =
   ORILIFE_BASE;
 
@@ -141,29 +144,13 @@ type RouteParams = {
 // Error helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Phân loại 409 theo error.code hoặc detail text.
- * Backend trả: { detail: '...', code: 'duplicate_tree' | 'heterogeneous' | 'flat' }
- */
-function classify409(detail: string): 'duplicate' | 'heterogeneous' | 'flat' | 'unknown' {
-  const d = detail.toLowerCase();
-  if (d.includes('heterogeneous') || d.includes('nhiều cây') || d.includes('multiple trees')) {
-    return 'heterogeneous';
-  }
-  if (d.includes('flat') || d.includes('phẳng') || d.includes('lặp')) {
-    return 'flat';
-  }
-  if (d.includes('duplicate') || d.includes('trùng') || d.includes('already exists')) {
-    return 'duplicate';
-  }
-  return 'unknown';
-}
 
 // ---------------------------------------------------------------------------
 // Screen
 // ---------------------------------------------------------------------------
 
 const TreeEnrollScreen: React.FC = () => {
+  const bottomPad = useBottomActionPadding();
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<RouteParams, 'TreeEnroll'>>();
 
@@ -569,7 +556,7 @@ const TreeEnrollScreen: React.FC = () => {
       const detail = res.error?.detail ?? 'Lỗi không xác định';
 
       if (status === 409) {
-        const kind = classify409(detail);
+        const kind = classify409(detail, res.error?.error_code);
 
         if (kind === 'duplicate') {
           // Ưu tiên existing_tree_id từ body 409; fallback: trích từ detail text (capture group [1])
@@ -627,8 +614,21 @@ const TreeEnrollScreen: React.FC = () => {
           return;
         }
 
-        // 409 không phân loại được
-        Alert.alert('Conflict', detail);
+        // 409 không phân loại được — VẪN PHẢI CÓ ĐƯỜNG RA.
+        // Bản cũ ở đây là một hộp thoại một nút OK: bấm OK rồi bấm Đăng ký lại thì
+        // gặp đúng 409 đó, mãi mãi. Bộ phân loại trên có thể trượt lần nữa (máy chủ
+        // đổi một chữ trong câu là trượt), nên lối thoát KHÔNG được phụ thuộc vào
+        // việc phân loại đúng. Nhánh này giờ mở thẳng nút "Tạo cây mới" — cùng
+        // hành động mà nhánh 'duplicate' cho, chỉ khác là không dám đoán lý do.
+        Alert.alert(
+          'Máy chủ từ chối đăng ký',
+          `${detail}\n\nNếu chắc đây là một cây KHÁC, chọn "Tạo cây mới".`,
+          [
+            { text: 'Huỷ', style: 'cancel' },
+            { text: 'Chụp lại', onPress: () => navigation.goBack() },
+            { text: 'Tạo cây mới', style: 'destructive', onPress: handleForceEnroll },
+          ],
+        );
         return;
       }
 
@@ -887,7 +887,7 @@ const TreeEnrollScreen: React.FC = () => {
       </ScrollView>
 
       {/* Action buttons */}
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: bottomPad }]}>
         <TouchableOpacity
           style={[styles.footerBtn, styles.footerBtnCancel]}
           onPress={() => navigation.goBack()}

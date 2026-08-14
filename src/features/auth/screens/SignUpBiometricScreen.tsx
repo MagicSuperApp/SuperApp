@@ -9,7 +9,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, StatusBar,
   Animated, Easing, Platform, ActivityIndicator,
-  TextInput,
+  TextInput, Alert,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
@@ -18,9 +18,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AUTH_BLUE } from '../theme';
 import StepIndicator from '../components/StepIndicator';
 import { showError } from '../../../utils/alert';
-import { biometricKindFromType, phoenixKeyAuth } from '../../../services/phoenixKeyAuthService';
+import {
+  biometricKindFromType,
+  phoenixKeyAuth,
+  type RegisterIntent,
+} from '../../../services/phoenixKeyAuthService';
 import { loginUser } from '../../../store/userSlice';
 import { useDispatch } from 'react-redux';
+import { useBottomActionPadding } from '../../../hooks/useBottomActionPadding';
 
 // PhoenixUser local registry — sẽ sync lên api.phoenixkey.me khi backend production sẵn sàng.
 // Mỗi entry: { username, did, createdAt }.
@@ -37,6 +42,7 @@ type Stage =
   | 'done';
 
 const SignUpBiometricScreen: React.FC = () => {
+  const bottomPad = useBottomActionPadding();
   const navigation = useNavigation<any>();
   const dispatch = useDispatch();
 
@@ -146,13 +152,20 @@ const SignUpBiometricScreen: React.FC = () => {
     }
 
     setStage('generating');
+    // Người bấm "Đăng ký" tự khai là NGƯỜI MỚI. Nếu máy đã có khoá chủ thì dừng
+    // lại hỏi, đừng âm thầm trao danh tính của người trước — xem
+    // `phoenixKeyAuthService.ts` (DeviceHasOwnerKeyError).
+    await completeSignUp('new-person');
+  };
 
+  const completeSignUp = async (intent: RegisterIntent) => {
     try {
       // Loại sinh-trắc suy từ CẢM BIẾN THẬT, không từ nút. `hasFaceId ? 'face' :
       // 'fingerprint'` cũ gán nhầm 'fingerprint' cho máy Android chỉ báo
       // `Biometrics` (đúng ra là 'strong') — nhãn khoá sai so với thứ đã xảy ra.
       const { user } = await phoenixKeyAuth.registerIdentity(
         biometricKindFromType(biometryType),
+        intent,
       );
       const newEntry = { username: usernameTrim, did: user.did, createdAt: Date.now() };
       const raw = await AsyncStorage.getItem(PHOENIX_USERS_KEY);
@@ -168,10 +181,67 @@ const SignUpBiometricScreen: React.FC = () => {
         600,
       );
     } catch (e: any) {
+      if (e?.code === 'DEVICE_HAS_OWNER_KEY') {
+        setStage('idle');
+        askWhoIsHoldingThePhone();
+        return;
+      }
       console.log('[SignUp] PhoenixKey enrollment failed:', e);
       showError(e?.message || 'Không tạo được danh tính. Vui lòng thử lại.');
       setStage('idle');
     }
+  };
+
+  /**
+   * Máy đã có khoá chủ. App KHÔNG đoán được người đang cầm máy là ai — nên hỏi.
+   * Ba lối ra, không lối nào là ngõ cụt:
+   *  1. chính chủ cài lại app  → khôi phục danh tính cũ (hành vi cũ, nay có xác nhận);
+   *  2. người khác, đã có 24 từ → màn Khôi phục, gắn máy này vào ĐÚNG danh tính của họ;
+   *  3. người khác, chưa có gì  → nói thật là BẢN NÀY chưa giữ được hai danh tính.
+   * Không có nhánh nào âm thầm gộp hai người thành một tài khoản.
+   *
+   * ĐÍNH CHÍNH 2026-08-12 theo nhà Phoenix: giới hạn "một máy một danh tính" KHÔNG
+   * phải giới hạn của thiết kế. Backend không có `UNIQUE(device_id)`, validator không
+   * ràng buộc thiết bị on-chain, `device_pkh` là quan hệ một-nhiều thật. Chặn nằm
+   * TOÀN BỘ ở phía app: một khe lưu trữ duy nhất, nhãn khoá phần cứng là hằng số, và
+   * sinh khoá thì XOÁ KHOÁ CŨ TRƯỚC (iOS `SecItemDelete` trong `generateKeyPair`,
+   * Android `deleteKeyIfExists()` ở dòng đầu `generateKey`).
+   *
+   * `PhoenixKey-Core` PR #56 vá cả ba, 56/56 test xanh — nhưng CHƯA GỘP. Nên vẫn phải
+   * chặn: mở lối "tạo danh tính mới" trước khi PR đó về là để người thứ hai xoá vĩnh
+   * viễn khoá phần cứng của người thứ nhất. Cái sửa được ngay hôm nay là CÂU CHỮ —
+   * nói đúng rằng đây là giới hạn của bản ứng dụng này, không phải luật của hệ thống.
+   * Khi PR #56 về: đổi nhánh 3 thành nút "Tạo danh tính mới trên máy này".
+   */
+  const askWhoIsHoldingThePhone = () => {
+    Alert.alert(
+      'Máy này đã có một danh tính',
+      'Một danh tính đã được tạo trên máy này trước đó. Bạn là ai?',
+      [
+        {
+          text: 'Tôi là chủ danh tính đó',
+          onPress: () => {
+            setStage('generating');
+            void completeSignUp('resume');
+          },
+        },
+        {
+          text: 'Người khác — tôi có 24 từ',
+          onPress: () => navigation.navigate('RestoreIdentity'),
+        },
+        {
+          text: 'Người khác — chưa có',
+          style: 'destructive',
+          onPress: () =>
+            showError(
+              'Bản ứng dụng này chưa giữ được hai danh tính trên cùng một máy — tạo danh tính '
+              + 'mới ở đây sẽ xoá vĩnh viễn khoá của người đang dùng máy. Bản cập nhật tới mở '
+              + 'được việc đó. Trong lúc chờ, bạn hãy tạo danh tính trên máy của mình.',
+            ),
+        },
+        { text: 'Huỷ', style: 'cancel' },
+      ],
+    );
   };
 
   const hasFaceId = biometryType === BiometryTypes.FaceID;
@@ -314,7 +384,7 @@ const SignUpBiometricScreen: React.FC = () => {
       </Animated.View>
 
       {/* Action bar */}
-      <View style={styles.actionBar}>
+      <View style={[styles.actionBar, { paddingBottom: bottomPad }]}>
         <TouchableOpacity
           activeOpacity={0.85}
           onPress={startEnrollment}

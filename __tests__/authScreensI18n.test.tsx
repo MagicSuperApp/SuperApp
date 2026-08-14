@@ -16,6 +16,7 @@ import { act } from 'react';
 
 import { installI18n } from '../src/i18n/install';
 import { setLanguage } from '../src/i18n';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 installI18n();
 
@@ -70,11 +71,24 @@ function collectText(node: any, out: string[] = []): string[] {
   return out;
 }
 
+// Bọc SafeAreaProvider đúng như App.tsx:67 làm ở thật. Không bọc thì
+// `useSafeAreaInsets()` ném ngay khi vẽ — và bài kiểm sẽ đỏ vì lý do KHÔNG liên
+// quan gì tới chuyện nó đang kiểm (chữ tiếng Nhật). `initialMetrics` cho inset
+// tất định, khỏi phụ thuộc môi trường.
+const TEST_METRICS = {
+  frame: { x: 0, y: 0, width: 390, height: 844 },
+  insets: { top: 47, left: 0, right: 0, bottom: 34 },
+};
+
 function renderInJa(Screen: React.ComponentType<any>): string[] {
   let tree: renderer.ReactTestRenderer;
   act(() => {
     setLanguage('ja');
-    tree = renderer.create(<Screen />);
+    tree = renderer.create(
+      <SafeAreaProvider initialMetrics={TEST_METRICS}>
+        <Screen />
+      </SafeAreaProvider>,
+    );
   });
   return collectText(tree!.toJSON());
 }

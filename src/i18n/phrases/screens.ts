@@ -1087,16 +1087,16 @@ export const SCREENS: PhraseMap = {
     ja: '識別を続けるために、もう一度登録しますか？',
   },
 
-  // ── Kết đèn (Join) ─────────────────────────────────────────────────────────
-  'Tính năng Kết đèn sẽ mở ở bản sau.': {
-    en: 'Lamp linking will open in a later release.',
-    zh: '“结灯”功能将在后续版本开放。',
-    ja: '「灯をつなぐ」機能は今後のバージョンで開放されます。',
+  // ── Góp máy (Join) ─────────────────────────────────────────────────────────
+  'Tính năng Góp máy sẽ mở ở bản sau.': {
+    en: 'Device sharing will open in a later release.',
+    zh: '“连灯”功能将在后续版本开放。',
+    ja: '「参加」機能は今後のバージョンで開放されます。',
   },
-  'Bản này chưa hỗ trợ Kết đèn.': {
-    en: 'Lamp linking is not supported in this release.',
-    zh: '此版本尚不支持“结灯”。',
-    ja: 'このバージョンでは「灯をつなぐ」に対応していません。',
+  'Bản này chưa hỗ trợ Góp máy.': {
+    en: 'Device sharing is not supported in this release.',
+    zh: '此版本尚不支持“连灯”。',
+    ja: 'このバージョンでは「参加」に対応していません。',
   },
   // ('Máy bạn chưa tham gia mạng…' đã khai ở phrases/chat.ts.)
   'Chưa đo được thưởng của máy này: cần bản có phần góp máy. Dấu — nghĩa là chưa đo được, không phải bạn chưa được ghi nhận.': {

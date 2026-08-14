@@ -15,31 +15,124 @@
  *   snake_case. Nên ta fetch THÔ (fetch thuần), lấy `result` NGUYÊN VĂN rồi
  *   JSON.stringify đưa xuống native.
  *
- * ⏳ PHỤ THUỘC BACKEND: 2 endpoint proxy dưới CẦN team PhoenixKey thêm (xem
- *   docs/phoenixkey-mobile-gap-plan.md §Pha2). Trước khi có, sendCardano sẽ ném lỗi
- *   rõ ràng ở bước fetch (404) — KHÔNG âm thầm hỏng.
+ * ✅ HAI ENDPOINT ĐÃ CÓ (đo 2026-08-11) — ghi chú cũ "CẦN team PhoenixKey thêm" đã
+ *   lỗi thời: `GET /wallet/params` → 200, `GET /wallet/{did}/utxos` → 401 (tức tồn
+ *   tại, đang đòi phiên). Bên này từng kết luận "thiếu" vì gọi
+ *   `/wallet/utxos?address=` — sai HÌNH ĐƯỜNG GỌI, không phải thiếu đường.
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import taad from '../sdk/taadEnclave';
 import { phoenixKeyApi, baseURL, PhoenixKeyApiError } from './phoenixKey-api';
+import { currentUserDid } from '../sdk/phoenixKey';
 
 const SESSION_TOKEN_KEY = 'phoenixkey_session_token';
 
-// Endpoint proxy [CHỜ backend] — Blockfrost passthrough, result GIỮ NGUYÊN snake_case.
-const UTXOS_PATH = (address: string) => `/wallet/utxos?address=${encodeURIComponent(address)}`;
+// ── UTXO: khoá là DID, KHÔNG phải address ────────────────────────────────────
+//
+// Bản cũ gọi `/wallet/utxos?address=…` và bên này kết luận "backend thiếu đường".
+// Kết luận đó SAI, và sai theo một kiểu đáng ghi lại:
+//
+//   GET /api/v1/wallet/utxos?address=…      → 404
+//   GET /api/v1/wallet/{userDid}/utxos      → 401 {"code":1304,"Missing Bearer token"}
+//
+// `401` là bằng chứng đường TỒN TẠI. `404` không là bằng chứng của gì cả — nó đọc
+// được ít nhất ba nghĩa: chưa có · gọi sai hình · prod tụt sau `main`. Nhà PhoenixKey
+// chỉ ra chỗ này 2026-08-11 và nêu thành quy tắc: **thử hình có tham số ĐƯỜNG DẪN
+// trước khi kết luận thiếu.** Đây là cùng họ với bài học `grep` tuần trước — một mã
+// trả về là CHỖ CẦN ĐỌC, không phải kết luận.
+//
+// Vì sao khoá là DID: ví Phoenix là mỗi-DID-nhiều-địa-chỉ-chi-được (Phoenix +
+// Standard fixed/active). Hỏi "UTxO của địa chỉ X" trả lời được MỘT MẢNH, mà dựng tx
+// uỷ thác cần TOÀN BỘ. Backend gom sẵn qua `listSpendableAddresses(userDid)` và loại
+// stake address (không chi ADA được từ đó).
+const UTXOS_PATH = (did: string) => `/wallet/${encodeURIComponent(did)}/utxos`;
 const PARAMS_PATH = '/wallet/params';
 
 /**
- * Lấy UTXO + protocol-params THÔ (snake_case) cho 1 địa chỉ — dùng chung cho gửi tx
- * lẫn uỷ thác stake. Trả về 2 chuỗi JSON sẵn sàng đưa xuống native.
+ * Một UTxO ĐÚNG HÌNH mà Rust đợi (`transfer::TransferUtxo` / `staking::StakeUtxo`):
+ * `{ tx_hash, index, lovelace, assets: [{ policy, name, quantity }] }`.
+ * `lovelace`/`quantity` là CHUỖI — u64 vượt 2^53 của JSON number.
+ */
+interface RustUtxo {
+  tx_hash: string;
+  index: number;
+  lovelace: string;
+  assets: { policy: string; name: string; quantity: string }[];
+}
+
+/** Độ dài hex của policy id Cardano: 28 byte = 56 ký tự. */
+const POLICY_HEX_LEN = 56;
+
+/**
+ * Đổi hình UTxO của PhoenixKey sang hình Rust đợi. KHÔNG phải đổi tên suông — ba chỗ
+ * lệch thật, và hai trong ba chỗ sẽ hỏng CÂM nếu bỏ qua:
+ *
+ * 1. `output_index` (backend) vs `index` (Rust) — serde thiếu trường bắt buộc thì ném,
+ *    nên chỗ này hỏng TO TIẾNG. Đỡ nhất trong ba.
+ * 2. `native_assets` là **bảng** `unit → quantity`, còn Rust đợi **mảng**
+ *    `{policy, name, quantity}`. `assets` ở Rust có `#[serde(default)]` ⇒ bảng lạ bị
+ *    bỏ qua và mảng thành RỖNG. Hậu quả: chọn coin tưởng ví chỉ có ADA, LAMP/CARP
+ *    trong cùng UTxO biến mất khỏi tính toán — **không lỗi nào được in**.
+ * 3. `unit` là policy(56 hex) nối thẳng asset name hex, phải cắt ra.
+ *
+ * ⚠ MỨC CHẮC CHẮN: hình này đọc từ `WalletTxBuildDtos.WalletUtxo` +
+ * `WalletController.getUtxos` (kho PhoenixKey-Database), CỘNG với một phép đo gián
+ * tiếp: `GET /wallet/params` trả `min_fee_a`/`coins_per_utxo_size` — tức Jackson đang
+ * đổi camelCase sang snake_case cho TOÀN BỘ phản hồi, nên `txHash` trên dây là
+ * `tx_hash`. Bên này CHƯA gọi được thân 200 của `/utxos` (đòi Bearer của máy thật).
+ * Nên hàm nhận CẢ HAI cách viết cho mỗi trường — không phải để "phòng xa", mà vì
+ * bên này thật sự chưa đo được cái nào đúng, và nói thẳng như vậy.
+ */
+export function toRustUtxos(items: unknown): RustUtxo[] {
+  if (!Array.isArray(items)) return [];
+  const out: RustUtxo[] = [];
+  for (const raw of items) {
+    if (!raw || typeof raw !== 'object') continue;
+    const it = raw as Record<string, unknown>;
+    const txHash = it.tx_hash ?? it.txHash;
+    const idx = it.output_index ?? it.outputIndex ?? it.index;
+    if (typeof txHash !== 'string' || !txHash) continue;
+    if (typeof idx !== 'number' || !Number.isInteger(idx) || idx < 0) continue;
+
+    const assetsMap = (it.native_assets ?? it.nativeAssets) as
+      | Record<string, unknown>
+      | undefined;
+    const assets: RustUtxo['assets'] = [];
+    if (assetsMap && typeof assetsMap === 'object' && !Array.isArray(assetsMap)) {
+      for (const [unit, qty] of Object.entries(assetsMap)) {
+        // Unit ngắn hơn policy id thì không cắt được — bỏ qua còn hơn dựng một
+        // policy cụt rồi ký một giao dịch chi nhầm tài sản.
+        if (typeof unit !== 'string' || unit.length < POLICY_HEX_LEN) continue;
+        assets.push({
+          policy: unit.slice(0, POLICY_HEX_LEN),
+          name: unit.slice(POLICY_HEX_LEN),
+          quantity: String(qty),
+        });
+      }
+    }
+    out.push({ tx_hash: txHash, index: idx, lovelace: String(it.lovelace ?? '0'), assets });
+  }
+  return out;
+}
+
+/**
+ * Lấy UTXO + protocol-params cho MỘT DID — dùng chung cho gửi tx lẫn uỷ thác stake.
+ * Trả 2 chuỗi JSON sẵn sàng đưa xuống native.
+ *
+ * `params` đưa xuống NGUYÊN VĂN (Rust đọc `min_fee_a`… đúng như dây trả). `utxos` thì
+ * phải đổi hình — xem `toRustUtxos`.
  */
 export async function fetchWalletUtxosAndParams(
-  address: string,
+  did: string,
 ): Promise<{ utxosJson: string; protocolParamsJson: string }> {
-  const utxos = await rawGet<unknown>(UTXOS_PATH(address));
+  const utxoBody = await rawGet<Record<string, unknown>>(UTXOS_PATH(did));
   const params = await rawGet<unknown>(PARAMS_PATH);
-  return { utxosJson: JSON.stringify(utxos), protocolParamsJson: JSON.stringify(params) };
+  const items = utxoBody?.items ?? utxoBody;
+  return {
+    utxosJson: JSON.stringify(toRustUtxos(items)),
+    protocolParamsJson: JSON.stringify(params),
+  };
 }
 
 /** GET thô giữ nguyên JSON (KHÔNG camelCase). Bóc envelope { code, message, result }. */
@@ -98,9 +191,14 @@ export async function sendCardano(params: SendCardanoParams): Promise<{ txHash: 
     throw new Error('Không derive được địa chỉ ví người gửi (KEK sai?).');
   }
 
-  // 2) UTXO + protocol params THÔ từ proxy (giữ snake_case cho Rust).
-  const utxos = await rawGet<unknown>(UTXOS_PATH(senderAddress));
-  const protocolParams = await rawGet<unknown>(PARAMS_PATH);
+  // 2) UTXO + protocol params. UTXO khoá theo DID (không theo address) — xem
+  //    `UTXOS_PATH`. `senderAddress` vẫn cần ở bước dựng tx bên dưới.
+  const did = await currentUserDid();
+  if (!did) {
+    throw new Error('Chưa đăng nhập PhoenixKey — không lấy được UTXO của ví.');
+  }
+  const { utxosJson: utxosStr, protocolParamsJson: paramsStr } =
+    await fetchWalletUtxosAndParams(did);
 
   // 3) Native dựng + ký CBOR (seed không rời native).
   const cbor = await taad.buildSignedTransfer({
@@ -111,8 +209,8 @@ export async function sendCardano(params: SendCardanoParams): Promise<{ txHash: 
     lampAmount: params.lampAmount,
     lampPolicyHex: params.lampPolicyHex,
     lampAssetNameHex: params.lampAssetNameHex,
-    utxosJson: JSON.stringify(utxos),
-    protocolParamsJson: JSON.stringify(protocolParams),
+    utxosJson: utxosStr,
+    protocolParamsJson: paramsStr,
     network: net,
   });
 

@@ -81,7 +81,6 @@ import WakeMeScreen from '../screens/WakeMeScreen';
 import StakingScreen from '../screens/StakingScreen';
 import OrgDidScreen from '../screens/OrgDidScreen';
 import OrgAuthorityScreen from '../screens/OrgAuthorityScreen';
-import PoolHomeScreen from '../modules/pool/screens/PoolHomeScreen';
 import OrgMintScreen from '../screens/OrgMintScreen';
 import WebLoginScanScreen from '../screens/WebLoginScanScreen';
 import TraceScanScreen from '../screens/TraceScanScreen';
@@ -1675,8 +1674,8 @@ const HOST_STACK_SCREENS: Array<{
   { name: 'OrgDid', component: OrgDidScreen, options: { headerShown: false } },
   { name: 'OrgAuthority', component: OrgAuthorityScreen, options: { headerShown: false } },
   { name: 'OrgMint', component: OrgMintScreen, options: { headerShown: false } },
-  // Pool (stake pool / SPO) — UI khung trỏ api.phoenixkey.me; contract chờ Phoenix (inbox).
-  { name: 'PoolHome', component: PoolHomeScreen, options: { headerShown: false } },
+  // Uỷ thác stake (SPO) là màn `Staking` ở trên — tới từ PhoenixWalletScreen:312.
+  // `PoolHome` cũ đã gỡ 2026-08-10: bản thứ hai của cùng một việc, không màn nào mở được.
   { name: 'WebLoginScan', component: WebLoginScanScreen, options: { headerShown: false } },
   // SG9 §3 — Quét truy xuất (consumer): host stack, full-bleed, KHÔNG lên tabs[]
   // (immersive-by-omission). Tới được qua nút Home header + cổng §4 + deep-link.

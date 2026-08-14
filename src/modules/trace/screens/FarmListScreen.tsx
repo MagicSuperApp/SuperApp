@@ -139,7 +139,7 @@ const FarmCard: React.FC<{
 
           <View style={[styles.chip, { backgroundColor: st.soft }]}>
             <View style={[styles.chipDot, { backgroundColor: st.tone }]} />
-            <Text style={[styles.chipTxt, { color: st.tone }]}>{tk(st.key)}</Text>
+            <Text style={[styles.chipTxt, { color: st.tone }]} numberOfLines={1}>{tk(st.key)}</Text>
           </View>
         </View>
 
@@ -379,7 +379,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10, paddingVertical: 6, borderRadius: RADIUS.chip,
   },
   chipDot: { width: 6, height: 6, borderRadius: 3 },
-  chipTxt: { fontSize: 12.5, fontWeight: '600' },
+  // Hàng đầu thẻ nay có thêm nút dẫn đường, nên chip trạng thái phải biết co lại
+  // thay vì đẩy tên vườn ra khỏi thẻ trên máy màn hẹp.
+  chipTxt: { fontSize: 12.5, fontWeight: '600', flexShrink: 1 },
 
   cardStats: {
     flexDirection: 'row', alignItems: 'center',

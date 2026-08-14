@@ -50,6 +50,24 @@ export interface CaptureMeta {
   orig_w?: number;
   orig_h?: number;
   heading?: number;
+  /**
+   * Gốc quy chiếu của `heading`. THIẾU TRƯỜNG NÀY thì máy chủ ghi `"unknown"` và
+   * không ai truy ngược được tấm nào đo từ đâu (OriLife 13/08) — mà iOS trả Bắc
+   * THẬT còn Android trả Bắc TỪ, lệch nhau tới ~15° tuỳ nơi.
+   *
+   * Chỉ khai `"magnetic"` cho Android, và đó là số đo chứ không phải suy đoán:
+   *   HeadingSensorReader.kt:27  `TYPE_ROTATION_VECTOR`
+   *   HeadingSensorReader.kt:65  `getOrientation` — KHÔNG cộng `GeomagneticField`
+   * ⇒ đúng nghĩa Bắc từ.
+   *
+   * iOS thì BỎ TRỐNG, cố ý: `HeadingCaptureManager.swift:278` lấy `trueHeading`
+   * khi hợp lệ và ÂM THẦM rơi về `magneticHeading` khi không, còn
+   * `TreeReIDBridgeModule.swift:630-634` chỉ trả `heading` + `pitch` — nên tầng
+   * JS không phân biệt được từng mẫu. Khai `"true"` ở đây là dán nhãn đúng cho
+   * một nửa số mẫu và SAI cho nửa kia, mà cái sai đó không ai phát hiện được nữa.
+   * `"unknown"` thành thật hơn (chính OriLife dặn vậy).
+   */
+  heading_ref?: 'magnetic';
   pitch?: number;
   device_model?: string;
   os_version?: string;
@@ -117,6 +135,9 @@ export async function buildCaptureMeta(
       const h = await headingSource.getCurrentHeading();
       if (typeof h?.heading === 'number' && Number.isFinite(h.heading)) meta.heading = h.heading;
       if (typeof h?.pitch === 'number' && Number.isFinite(h.pitch)) meta.pitch = h.pitch;
+      // Khai gốc CHỈ khi thật sự có số để khai — "gốc mà không có heading" bị cửa
+      // nhận bỏ hẳn, và một nhãn đứng một mình thì cũng không nói được gì.
+      if (meta.heading !== undefined && Platform.OS === 'android') meta.heading_ref = 'magnetic';
     } catch {
       // Cầu la-bàn vắng hoặc từ chối — bỏ trống, đúng quy tắc "không đoán".
     }

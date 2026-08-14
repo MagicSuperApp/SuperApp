@@ -101,6 +101,43 @@ describe('buildCaptureMeta', () => {
   });
 });
 
+/**
+ * `heading_ref` — khoá vế "thà không khai còn hơn khai sai".
+ *
+ * Cửa nhận của OriLife ghi `"unknown"` cho cả hai ca: không khai, và khai gốc lạ.
+ * Nên bài kiểm ở đây KHÔNG đo "có gửi trường không" mà đo đúng một điều: nhãn chỉ
+ * xuất hiện ở nền tảng mà bên này ĐO ĐƯỢC gốc quy chiếu.
+ */
+describe('heading_ref', () => {
+  const { Platform } = require('react-native');
+  const os = Platform.OS;
+  afterEach(() => { Platform.OS = os; });
+
+  it('Android → "magnetic": HeadingSensorReader.kt:65 không cộng độ lệch từ', async () => {
+    Platform.OS = 'android';
+    const m = await buildCaptureMeta({ width: 800, height: 600 }, heading(271.4, 12.5));
+    expect(m.heading_ref).toBe('magnetic');
+  });
+
+  it('iOS → vắng hẳn: swift:278 rơi true↔magnetic ÂM THẦM, JS không tách được mẫu', async () => {
+    Platform.OS = 'ios';
+    const m = await buildCaptureMeta({ width: 800, height: 600 }, heading(271.4, 12.5));
+    expect('heading_ref' in m).toBe(false);
+  });
+
+  it('không có heading → không khai gốc, kể cả trên Android', async () => {
+    Platform.OS = 'android';
+    const m = await buildCaptureMeta({ width: 800, height: 600 }, heading(null, null));
+    expect('heading_ref' in m).toBe(false);
+  });
+
+  it('không có cầu la-bàn → không khai gốc', async () => {
+    Platform.OS = 'android';
+    const m = await buildCaptureMeta({ width: 800, height: 600 });
+    expect('heading_ref' in m).toBe(false);
+  });
+});
+
 describe('serializeCaptureMeta', () => {
   it('khối rỗng → undefined, không gửi "{}" giả làm đã đo', () => {
     expect(serializeCaptureMeta({})).toBeUndefined();

@@ -33,6 +33,7 @@ import Icon, { type IconName } from '../../../components/Icon';
 import StateView from '../../../components/state/StateView';
 import { useOffline } from '../../../hooks/useOffline';
 import { useTk } from '../../../i18n/keys';
+import { polygonCenter } from '../../../features/wayfind/wayfind';
 import { RootState } from '../../../store';
 import { loadFarms, syncFarmsFromBackend } from '../store/farmSlice';
 import { Ground } from '../components/layered/Surface';
@@ -64,10 +65,19 @@ const STATUS: Record<string, { key: string; tone: string; soft: string }> = {
   harvest: { key: 'trace.status.harvest', tone: TONE.sun, soft: TONE.sunSoft },
 };
 
+/** Tâm vườn để dẫn đường tới. Vườn chưa vẽ ranh giới → null (ẩn nút). */
+const farmCenterOf = (farm: any) => polygonCenter(farm?.coordinates);
+
 // ── Thẻ một vườn ────────────────────────────────────────────────────────────
 
-const FarmCard: React.FC<{ item: any; index: number; onPress: () => void }> = ({
-  item, index, onPress,
+const FarmCard: React.FC<{
+  item: any;
+  index: number;
+  onPress: () => void;
+  /** null = vườn chưa vẽ ranh giới → chưa có toạ-độ để dẫn tới. */
+  onWayfind: (() => void) | null;
+}> = ({
+  item, index, onPress, onWayfind,
 }) => {
   const tk = useTk();
   const fade = useRef(new Animated.Value(0)).current;
@@ -112,6 +122,21 @@ const FarmCard: React.FC<{ item: any; index: number; onPress: () => void }> = ({
               </View>
             ) : null}
           </View>
+          {/* Dẫn đường tới vườn — đích là TRỌNG TÂM ranh giới đã vẽ, không phải
+              một điểm nào đó trong đa-giác. Chưa vẽ ranh giới thì không hiện nút.
+              Nút nằm TRONG thẻ nhưng bắt chạm riêng, nên bấm vào nó không mở
+              luôn trang chi tiết vườn. */}
+          {onWayfind ? (
+            <Pressable
+              style={({ pressed }) => [styles.wayBtn, pressed && styles.pressed]}
+              onPress={onWayfind}
+              accessibilityLabel={tk('trace.farmList.wayfind', { name: item.name })}
+              hitSlop={10}
+            >
+              <Icon name="map-location-dot" size={19} color={TONE.primary} />
+            </Pressable>
+          ) : null}
+
           <View style={[styles.chip, { backgroundColor: st.soft }]}>
             <View style={[styles.chipDot, { backgroundColor: st.tone }]} />
             <Text style={[styles.chipTxt, { color: st.tone }]}>{tk(st.key)}</Text>
@@ -280,6 +305,14 @@ const FarmListScreen: React.FC = () => {
             item={item}
             index={index}
             onPress={() => navigation.navigate('FarmDetail', { farm_id: item.id })}
+            onWayfind={farmCenterOf(item)
+              ? () => {
+                const c = farmCenterOf(item)!;
+                navigation.navigate('Wayfind', {
+                  lat: c.lat, lon: c.lng, kind: 'farm', label: item.name, farmId: item.id,
+                });
+              }
+              : null}
           />
         )}
         ListFooterComponent={
@@ -337,6 +370,10 @@ const styles = StyleSheet.create({
   cardPlace: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   cardPlaceTxt: { ...TYPE.caption, flexShrink: 1, fontSize: 13 },
 
+  wayBtn: {
+    width: 40, height: 40, ...ORGANIC_TILE,
+    alignItems: 'center', justifyContent: 'center', backgroundColor: TONE.primarySoft,
+  },
   chip: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
     paddingHorizontal: 10, paddingVertical: 6, borderRadius: RADIUS.chip,

@@ -15,6 +15,7 @@ import {
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import { COLORS } from '../constants';
+import { fmtAdaLabel } from '../utils/token';
 import { getStoredMasterKek } from '../services/masterKekStore';
 import {
   getUserDelegation, getPool, delegateToPool,
@@ -25,12 +26,12 @@ const PRIMARY = '#0033AD'; // Cardano blue
 const NETWORK = 0;         // preprod, khớp WALLET_NETWORK
 const ACCOUNT = 0;         // ví cố định (stake key đã đăng ký)
 
-/** lovelace (chuỗi thập phân) → "N.NN ₳". */
-const fmtAda = (lovelace?: string): string => {
-  if (!lovelace) return '0 ₳';
-  const n = Number(lovelace) / 1_000_000;
-  return `${n.toLocaleString('vi-VN', { maximumFractionDigits: 2 })} ₳`;
-};
+// `fmtAda` bản riêng của màn này đã gỡ 2026-08-14: nó là bản thứ hai của một hàm
+// đã có ở `utils/token.ts`, và hai bản cho hai kết quả khác nhau trên cùng một số
+// (`1_234_567` → `1,23 ₳` ở đây, `1.234567` ở nguồn). Nguồn có bộ kiểm neo
+// (`utils/token.test.ts`), bản này thì không. Dùng `fmtAdaLabel` — cùng dạng hiển
+// thị, khác hai chỗ có chủ ý: nhóm chữ số `en-US` như `fmtLamp`/`fmtCarp`, và
+// thiếu số thì trả `—` chứ không trả `0 ₳`.
 
 const StakingScreen: React.FC = () => {
   const navigation = useNavigation<any>();
@@ -133,8 +134,8 @@ const StakingScreen: React.FC = () => {
                     <Text style={styles.rowText}>Đang uỷ thác</Text>
                   </View>
                   <Text style={styles.mono} numberOfLines={1}>Pool: {deleg.poolId}</Text>
-                  <Text style={styles.metaText}>Đang stake: {fmtAda(deleg.controlledAmount)}</Text>
-                  <Text style={styles.metaText}>Reward chưa rút: {fmtAda(deleg.rewardsSum)}</Text>
+                  <Text style={styles.metaText}>Đang stake: {fmtAdaLabel(deleg.controlledAmount)}</Text>
+                  <Text style={styles.metaText}>Reward chưa rút: {fmtAdaLabel(deleg.rewardsSum)}</Text>
                 </>
               ) : (
                 <View style={styles.row}>
@@ -167,9 +168,9 @@ const StakingScreen: React.FC = () => {
                   <Text style={styles.poolName}>
                     {poolDetail.ticker ? `[${poolDetail.ticker}] ` : ''}{poolDetail.name || '(không tên)'}
                   </Text>
-                  <Text style={styles.metaText}>Live stake: {fmtAda(poolDetail.liveStake)}</Text>
+                  <Text style={styles.metaText}>Live stake: {fmtAdaLabel(poolDetail.liveStake)}</Text>
                   <Text style={styles.metaText}>Bão hoà: {(poolDetail.liveSaturation * 100).toFixed(1)}%</Text>
-                  <Text style={styles.metaText}>Phí: {(poolDetail.marginCost * 100).toFixed(1)}% + {fmtAda(poolDetail.fixedCost)}/đợt</Text>
+                  <Text style={styles.metaText}>Phí: {(poolDetail.marginCost * 100).toFixed(1)}% + {fmtAdaLabel(poolDetail.fixedCost)}/đợt</Text>
 
                   <TouchableOpacity
                     style={[styles.delegBtn, delegating && styles.delegBtnOff]}

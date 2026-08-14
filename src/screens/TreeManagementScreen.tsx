@@ -41,6 +41,7 @@ import {
 // ---------------------------------------------------------------------------
 
 import { ORILIFE_BASE } from '../services/orilifeBase';
+import { fromGpsPair } from '../features/wayfind/wayfind';
 const BASE_URL: string =
   ORILIFE_BASE;
 
@@ -135,9 +136,11 @@ interface TreeCardProps {
   onPress: () => void;
   onLongPress: () => void;
   onFruits: () => void;
+  /** null = cây chưa có toạ-độ → KHÔNG hiện nút dẫn đường (không có gì để dẫn tới). */
+  onWayfind: (() => void) | null;
 }
 
-const TreeCard: React.FC<TreeCardProps> = ({ item, onPress, onLongPress, onFruits }) => (
+const TreeCard: React.FC<TreeCardProps> = ({ item, onPress, onLongPress, onFruits, onWayfind }) => (
   <TouchableOpacity
     style={styles.card}
     onPress={onPress}
@@ -186,6 +189,19 @@ const TreeCard: React.FC<TreeCardProps> = ({ item, onPress, onLongPress, onFruit
         )}
       </View>
     </View>
+
+    {/* Dẫn đường tới đúng gốc cây — chỉ khi cây đã có toạ-độ */}
+    {onWayfind && (
+      <TouchableOpacity
+        style={styles.fruitPill}
+        onPress={onWayfind}
+        accessibilityLabel={`Dẫn đường tới ${item.name || 'cây'}`}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <Icon name="navigation-variant-outline" size={16} color={HEADER_BG} />
+        <Text style={styles.fruitPillText}>Đường</Text>
+      </TouchableOpacity>
+    )}
 
     {/* Lối vào danh-sách QUẢ (field-reid) — dùng đúng tree_id của cây này */}
     <TouchableOpacity style={styles.fruitPill} onPress={onFruits} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -402,14 +418,22 @@ const TreeManagementScreen: React.FC = () => {
         <FlatList
           data={trees}
           keyExtractor={item => item.tree_id}
-          renderItem={({ item }) => (
-            <TreeCard
-              item={item}
-              onPress={() => navigation.navigate('TreeDetail', { treeId: item.tree_id })}
-              onLongPress={() => handleLongPress(item)}
-              onFruits={() => navigation.navigate('FruitList', { treeId: item.tree_id, treeName: item.name })}
-            />
-          )}
+          renderItem={({ item }) => {
+            const pos = fromGpsPair(item.gps);
+            return (
+              <TreeCard
+                item={item}
+                onPress={() => navigation.navigate('TreeDetail', { treeId: item.tree_id })}
+                onLongPress={() => handleLongPress(item)}
+                onFruits={() => navigation.navigate('FruitList', { treeId: item.tree_id, treeName: item.name })}
+                onWayfind={pos ? () => navigation.navigate('Wayfind', {
+                  lat: pos.lat, lon: pos.lon, kind: 'tree',
+                  label: item.name || `Cây ${item.tree_id.slice(0, 6)}`,
+                  treeId: item.tree_id,
+                }) : null}
+              />
+            );
+          }}
           contentContainerStyle={
             trees.length === 0 ? styles.listEmpty : styles.listContent
           }

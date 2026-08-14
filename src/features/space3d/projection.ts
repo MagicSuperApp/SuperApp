@@ -24,7 +24,10 @@ export type ViewDir = 'front' | 'side' | 'top';
 
 export interface ViewDef {
   key: ViewDir;
+  /** Nhan tho — chi con dung cho log/kiem thu, khong hien len man. */
   label: string;
+  /** Khoa chu hien len man. */
+  labelKey: string;
   /** Nhắc người dùng đang kéo trục nào. */
   hint: string;
   /** Thứ tự trong luồng đặt vị trí (1-based) — hiện lên nhãn "Bước n/3". */
@@ -37,9 +40,9 @@ export interface ViewDef {
  * thấy ngay quả nằm lệch trong/ngoài tán) rồi mới xác nhận.
  */
 export const VIEW_DEFS: ViewDef[] = [
-  { key: 'front', label: 'Front', hint: 'Kéo ngang = trái/phải · kéo dọc = cao/thấp', step: 1 },
-  { key: 'side',  label: 'Side',   hint: 'Kéo ngang = trước/sau · kéo dọc = cao/thấp', step: 2 },
-  { key: 'top',   label: 'Top',  hint: 'Nhìn từ trên xuống · kéo = trái/phải & trước/sau', step: 3 },
+  { key: 'front', label: 'Front', labelKey: 'trace.place3d.viewFront', hint: 'Kéo ngang = trái/phải · kéo dọc = cao/thấp', step: 1 },
+  { key: 'side', label: 'Side', labelKey: 'trace.place3d.viewSide', hint: 'Kéo ngang = trước/sau · kéo dọc = cao/thấp', step: 2 },
+  { key: 'top', label: 'Top', labelKey: 'trace.place3d.viewTop', hint: 'Nhìn từ trên xuống · kéo = trái/phải & trước/sau', step: 3 },
 ];
 
 /** Hướng kế tiếp trong luồng. `null` = đang ở hướng CUỐI → bước xác nhận. */

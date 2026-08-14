@@ -86,6 +86,18 @@ export interface FruitVideoDraft {
   farmId?: string;
   /** Mốc quay (ms) — để màn dựng lại clientEventId ổn định khi gửi. */
   capturedAt?: number;
+  /**
+   * Ảnh tĩnh chụp kèm clip + tên đặt cho quả.
+   *
+   * Clip một mình KHÔNG tạo được bản ghi quả: `POST /api/fruit/enroll` đòi ảnh, mà
+   * `fruit_video` chỉ đếm chứ không enroll. Hai trường này là thứ biến buổi quay
+   * thành một quả có tên trong danh sách — mất chúng khi app bị ngắt là mất luôn
+   * phần đó, nên chúng nằm trong nháp cùng clip.
+   */
+  coverUri?: string | null;
+  coverW?: number | null;
+  coverH?: number | null;
+  fruitName?: string;
 }
 
 // ---------------------------------------------------------------------------

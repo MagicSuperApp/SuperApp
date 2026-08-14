@@ -25,6 +25,12 @@ import { useSelector } from 'react-redux';
 import { RootState } from '../../../store';
 import { useAppDispatch } from '../../../store/hooks';
 import { COLORS } from '../../../constants';
+// Nen huu co dung chung cua module (tong dat/la) - xem theme/depth.ts
+import {
+  SURFACE as ORG_SURFACE, TONE as ORG_TONE, NATURE as ORG_NATURE,
+  ORGANIC_CARD, ELEVATION as ORG_ELEV, TYPE as ORG_TYPE, RADIUS as ORG_RADIUS,
+} from '../theme/depth';
+import { useTk } from '../../../i18n/keys';
 import {
   Tree,
   TreeMetadata,
@@ -38,23 +44,24 @@ interface Props {
   tree: Tree;
 }
 
-const VARIETY_OPTIONS: { value: TreeVariety; label: string }[] = [
-  { value: 'ri6',          label: 'Ri6' },
-  { value: 'monthong',     label: 'Monthong' },
-  { value: 'musang_king',  label: 'Musang King' },
-  { value: 'other',        label: 'Khác' },
+/** Ten giong la ten RIENG — khong dich; chi muc "Khac" moi la chu thuong. */
+const VARIETY_OPTIONS: { value: TreeVariety; label?: string; labelKey?: string }[] = [
+  { value: 'ri6', label: 'Ri6' },
+  { value: 'monthong', label: 'Monthong' },
+  { value: 'musang_king', label: 'Musang King' },
+  { value: 'other', labelKey: 'trace.meta.other' },
 ];
 
-const HEALTH_OPTIONS: { value: TreeHealthStatus; label: string; icon: string; color: string }[] = [
-  { value: 'healthy',               label: 'Khoẻ mạnh',     icon: 'leaf',                      color: '#3D7A5E' },
-  { value: 'flowering',             label: 'Đang ra hoa',   icon: 'spa',            color: '#C97FB8' },
-  { value: 'fruiting',              label: 'Đang có quả',   icon: 'apple-whole',        color: '#B07D2F' },
-  { value: 'pest_damage',           label: 'Sâu hại',       icon: 'bug',               color: '#C0533A' },
-  { value: 'nutrient_deficiency',   label: 'Thiếu dinh dưỡng', icon: 'droplet',          color: '#7A8C80' },
-  { value: 'diseased',              label: 'Bệnh',          icon: 'briefcase-medical',               color: '#A6432B' },
-  { value: 'dry',                   label: 'Khô',           icon: 'fire',                      color: '#B07D2F' },
-  { value: 'dead',                  label: 'Chết',          icon: 'tree',              color: '#4D5A52' },
-  { value: 'unknown',               label: 'Chưa rõ',       icon: 'circle-question',       color: '#7A8C80' },
+const HEALTH_OPTIONS: { value: TreeHealthStatus; labelKey: string; icon: string; color: string }[] = [
+  { value: 'healthy', labelKey: 'trace.health.healthy', icon: 'leaf', color: ORG_TONE.primary },
+  { value: 'flowering', labelKey: 'trace.health.flowering', icon: 'spa', color: '#C97FB8' },
+  { value: 'fruiting', labelKey: 'trace.health.fruiting', icon: 'apple-whole', color: ORG_TONE.sun },
+  { value: 'pest_damage', labelKey: 'trace.health.pest', icon: 'bug', color: ORG_TONE.danger },
+  { value: 'nutrient_deficiency', labelKey: 'trace.health.nutrient', icon: 'droplet', color: ORG_NATURE.barkSoft },
+  { value: 'diseased', labelKey: 'trace.health.diseased', icon: 'briefcase-medical', color: '#A6432B' },
+  { value: 'dry', labelKey: 'trace.health.dry', icon: 'fire', color: ORG_NATURE.clay },
+  { value: 'dead', labelKey: 'trace.health.dead', icon: 'tree', color: '#4D5A52' },
+  { value: 'unknown', labelKey: 'trace.health.unknown', icon: 'circle-question', color: ORG_NATURE.barkSoft },
 ];
 
 const NOTES_MAX = 500;
@@ -85,6 +92,7 @@ function isoToParts(iso?: string): { d: string; m: string; y: string } {
 }
 
 const TreeMetadataTab: React.FC<Props> = ({ tree }) => {
+  const tk = useTk();
   const dispatch = useAppDispatch();
   const insets = useSafeAreaInsets();
   const savingTree = useSelector((state: RootState) =>
@@ -133,10 +141,12 @@ const TreeMetadataTab: React.FC<Props> = ({ tree }) => {
     setDirty(changed);
   }, [variety, varietyOther, ageYears, healthStatus, dateDay, dateMonth, dateYear, notes, voiceMemoPath, current]);
 
+  /** Ten giong (Ri6, Monthong...) la ten rieng nen giu nguyen; rieng "Khac" thi dich. */
   const varietyLabel = useMemo(() => {
-    if (!variety) return 'Chọn giống cây';
-    return VARIETY_OPTIONS.find(o => o.value === variety)?.label ?? 'Chọn giống cây';
-  }, [variety]);
+    const opt = variety ? VARIETY_OPTIONS.find(o => o.value === variety) : undefined;
+    if (!opt) return tk('trace.meta.varietyPick');
+    return opt.labelKey ? tk(opt.labelKey) : opt.label!;
+  }, [variety, tk]);
 
   const ageError = useMemo(() => {
     if (!ageYears) return null;
@@ -147,10 +157,10 @@ const TreeMetadataTab: React.FC<Props> = ({ tree }) => {
 
   const dateError = useMemo(() => {
     if (!dateDay && !dateMonth && !dateYear) return null;
-    if (!dateDay || !dateMonth || !dateYear) return 'Nhập đủ DD/MM/YYYY';
-    if (!partsToIso(dateDay, dateMonth, dateYear)) return 'Ngày không hợp lệ';
+    if (!dateDay || !dateMonth || !dateYear) return tk('trace.meta.dateIncomplete');
+    if (!partsToIso(dateDay, dateMonth, dateYear)) return tk('trace.meta.dateInvalid');
     return null;
-  }, [dateDay, dateMonth, dateYear]);
+  }, [dateDay, dateMonth, dateYear, tk]);
 
   const notesOver = notes.length > NOTES_MAX;
   const canSave = !ageError && !dateError && !notesOver && dirty && !saving;
@@ -179,9 +189,9 @@ const TreeMetadataTab: React.FC<Props> = ({ tree }) => {
 
       await dispatch(saveTreeMetadata({ treeId: tree.id, metadata })).unwrap();
       setDirty(false);
-      Alert.alert('Đã lưu', 'Thông tin cây đã được cập nhật.');
+      Alert.alert(tk('trace.meta.saved'), tk('trace.meta.savedBody'));
     } catch (e: any) {
-      Alert.alert('Lưu thất bại', e?.message ?? 'Không thể lưu thông tin.');
+      Alert.alert(tk('trace.meta.saveFail'), e?.message ?? tk('trace.meta.saveFailBody'));
     } finally {
       setSaving(false);
     }
@@ -209,11 +219,11 @@ const TreeMetadataTab: React.FC<Props> = ({ tree }) => {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <View style={styles.sectionDot} />
-            <Text style={styles.sectionTitle}>THÔNG TIN SINH HỌC</Text>
+            <Text style={styles.sectionTitle}>{tk('trace.meta.bio')}</Text>
           </View>
 
           {/* Variety dropdown */}
-          <Text style={styles.fieldLabel}>Giống cây</Text>
+          <Text style={styles.fieldLabel}>{tk('trace.meta.variety')}</Text>
           <TouchableOpacity
             style={styles.dropdownBtn}
             onPress={() => setVarietyModalOpen(true)}
@@ -229,7 +239,7 @@ const TreeMetadataTab: React.FC<Props> = ({ tree }) => {
           {variety === 'other' && (
             <TextInput
               style={[styles.input, { marginTop: 8 }]}
-              placeholder="Tên giống khác..."
+              placeholder={tk('trace.meta.varietyOther')}
               placeholderTextColor={COLORS.textMuted}
               value={varietyOther}
               onChangeText={setVarietyOther}
@@ -238,20 +248,20 @@ const TreeMetadataTab: React.FC<Props> = ({ tree }) => {
           )}
 
           {/* Age */}
-          <Text style={[styles.fieldLabel, { marginTop: 16 }]}>Tuổi cây (năm)</Text>
+          <Text style={[styles.fieldLabel, { marginTop: 16 }]}>{tk('trace.meta.age')}</Text>
           <TextInput
             style={[styles.input, ageError && styles.inputError]}
-            placeholder="Vd: 12"
+            placeholder={tk('trace.meta.ageHint')}
             placeholderTextColor={COLORS.textMuted}
             keyboardType="number-pad"
             value={ageYears}
             onChangeText={(v) => setAgeYears(v.replace(/[^0-9]/g, ''))}
             maxLength={3}
           />
-          {ageError && <Text style={styles.errorText}>Tuổi phải từ {ageError}</Text>}
+          {ageError && <Text style={styles.errorText}>{tk('trace.meta.ageError', { range: ageError })}</Text>}
 
           {/* Health status */}
-          <Text style={[styles.fieldLabel, { marginTop: 16 }]}>Tình trạng</Text>
+          <Text style={[styles.fieldLabel, { marginTop: 16 }]}>{tk('trace.meta.health')}</Text>
           <View style={styles.chipGrid}>
             {HEALTH_OPTIONS.map((opt) => {
               const active = opt.value === healthStatus;
@@ -270,7 +280,7 @@ const TreeMetadataTab: React.FC<Props> = ({ tree }) => {
                     styles.chipText,
                     active && { color: opt.color, fontWeight: '700' },
                   ]}>
-                    {opt.label}
+                    {tk(opt.labelKey)}
                   </Text>
                 </TouchableOpacity>
               );
@@ -278,7 +288,7 @@ const TreeMetadataTab: React.FC<Props> = ({ tree }) => {
           </View>
 
           {/* Last harvest date */}
-          <Text style={[styles.fieldLabel, { marginTop: 16 }]}>Lần thu hoạch gần nhất</Text>
+          <Text style={[styles.fieldLabel, { marginTop: 16 }]}>{tk('trace.meta.lastHarvest')}</Text>
           <View style={styles.dateRow}>
             <TextInput
               style={[styles.dateInput, dateError && styles.inputError]}
@@ -328,12 +338,12 @@ const TreeMetadataTab: React.FC<Props> = ({ tree }) => {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <View style={styles.sectionDot} />
-            <Text style={styles.sectionTitle}>GHI CHÚ</Text>
+            <Text style={styles.sectionTitle}>{tk('trace.meta.notes')}</Text>
           </View>
 
           <TextInput
             style={[styles.textarea, notesOver && styles.inputError]}
-            placeholder="Vd: Cây ven bờ ao, lá xanh tốt, sai quả..."
+            placeholder={tk('trace.meta.notesHint')}
             placeholderTextColor={COLORS.textMuted}
             multiline
             value={notes}
@@ -347,7 +357,7 @@ const TreeMetadataTab: React.FC<Props> = ({ tree }) => {
             </Text>
           </View>
 
-          <Text style={[styles.fieldLabel, { marginTop: 8 }]}>Ghi âm</Text>
+          <Text style={[styles.fieldLabel, { marginTop: 8 }]}>{tk('trace.meta.voice')}</Text>
           <VoiceMemoButton
             treeId={tree.id}
             existingPath={voiceMemoPath}
@@ -375,7 +385,7 @@ const TreeMetadataTab: React.FC<Props> = ({ tree }) => {
             <>
               <Icon name="floppy-disk" size={19} color={COLORS.white} />
               <Text style={styles.saveBtnText}>
-                {dirty ? 'Lưu thông tin' : 'Đã lưu'}
+                {tk(dirty ? 'trace.meta.save' : 'trace.meta.saved')}
               </Text>
             </>
           )}
@@ -395,7 +405,7 @@ const TreeMetadataTab: React.FC<Props> = ({ tree }) => {
           onPress={() => setVarietyModalOpen(false)}
         >
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Chọn giống cây</Text>
+            <Text style={styles.modalTitle}>{tk('trace.meta.varietyPick')}</Text>
             {VARIETY_OPTIONS.map((opt) => {
               const active = opt.value === variety;
               return (
@@ -409,7 +419,7 @@ const TreeMetadataTab: React.FC<Props> = ({ tree }) => {
                   }}
                 >
                   <Text style={[styles.modalOptionText, active && styles.modalOptionTextSelected]}>
-                    {opt.label}
+                    {opt.labelKey ? tk(opt.labelKey) : opt.label}
                   </Text>
                   {active && <Icon name="check" size={20} color={COLORS.accent} />}
                 </TouchableOpacity>
@@ -423,37 +433,29 @@ const TreeMetadataTab: React.FC<Props> = ({ tree }) => {
 };
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: COLORS.bg },
+  root: { flex: 1, backgroundColor: ORG_SURFACE.ground },
   scrollContent: { paddingHorizontal: 20, paddingTop: 12 },
 
   section: {
-    backgroundColor: COLORS.card,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 16,
+    backgroundColor: ORG_SURFACE.raised,
+    ...ORGANIC_CARD,
+    padding: 18,
     marginBottom: 14,
-    shadowColor: COLORS.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 1,
-    shadowRadius: 8,
-    elevation: 1,
+    ...ORG_ELEV.card,
   },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
-  sectionDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.accent },
-  sectionTitle: { fontSize: 11, fontWeight: '700', color: COLORS.accent, letterSpacing: 2 },
+  sectionDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: ORG_TONE.primary },
+  sectionTitle: { ...ORG_TYPE.section },
 
-  fieldLabel: { fontSize: 12, fontWeight: '600', color: COLORS.textSub, marginBottom: 6 },
+  fieldLabel: { fontSize: 15, fontWeight: '600', color: ORG_NATURE.bark, marginBottom: 7 },
 
   input: {
-    backgroundColor: COLORS.inputBg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: Platform.OS === 'ios' ? 12 : 10,
-    fontSize: 15,
-    color: COLORS.text,
+    backgroundColor: ORG_SURFACE.sunken,
+    borderRadius: ORG_RADIUS.field,
+    paddingHorizontal: 15,
+    paddingVertical: Platform.OS === 'ios' ? 14 : 12,
+    fontSize: 16,
+    color: ORG_NATURE.bark,
   },
   inputError: { borderColor: COLORS.error },
   errorText: { fontSize: 11, color: COLORS.error, marginTop: 4 },
@@ -464,7 +466,7 @@ const styles = StyleSheet.create({
     gap: 10,
     backgroundColor: COLORS.inputBg,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: ORG_TONE.border,
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 12,
@@ -479,7 +481,7 @@ const styles = StyleSheet.create({
     gap: 6,
     backgroundColor: COLORS.inputBg,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: ORG_TONE.border,
     borderRadius: 20,
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -491,7 +493,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.inputBg,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: ORG_TONE.border,
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: Platform.OS === 'ios' ? 12 : 10,
@@ -503,7 +505,7 @@ const styles = StyleSheet.create({
   todayBtn: {
     backgroundColor: COLORS.accentGlow,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: ORG_TONE.border,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -514,7 +516,7 @@ const styles = StyleSheet.create({
   textarea: {
     backgroundColor: COLORS.inputBg,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: ORG_TONE.border,
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 10,
@@ -531,42 +533,38 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     // paddingBottom động = 10 + insets.bottom (áp inline). Nút gọn hơn, không sát mép.
     paddingTop: 10,
-    backgroundColor: COLORS.bg,
+    backgroundColor: ORG_SURFACE.ground,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
   },
   saveBtn: {
-    backgroundColor: COLORS.accent,
-    borderRadius: 14,
-    paddingVertical: 12,
+    backgroundColor: ORG_TONE.primary,
+    ...ORGANIC_CARD,
+    paddingVertical: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,
-    shadowColor: COLORS.accent,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 14,
-    elevation: 6,
+    ...ORG_ELEV.cardStrong,
   },
-  saveBtnDisabled: { backgroundColor: COLORS.textMuted, shadowOpacity: 0 },
-  saveBtnText: { fontSize: 15, fontWeight: '700', color: COLORS.white, letterSpacing: 0.2 },
+  saveBtnDisabled: { backgroundColor: ORG_NATURE.barkSoft, shadowOpacity: 0, elevation: 0 },
+  saveBtnText: { fontSize: 17, fontWeight: '700', color: ORG_NATURE.paper },
 
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: ORG_SURFACE.scrim,
     justifyContent: 'center',
     alignItems: 'center',
   },
   modalContent: {
-    backgroundColor: COLORS.card,
+    backgroundColor: ORG_SURFACE.raised,
     borderRadius: 16,
     padding: 20,
     margin: 20,
     maxWidth: 320,
     width: '100%',
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: ORG_TONE.border,
   },
   modalTitle: {
     fontSize: 18,

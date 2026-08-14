@@ -5,6 +5,204 @@
 
 ---
 
+## Quay video giờ đẻ ra một QUẢ thật, không chỉ còn cái mã lưu trữ
+
+### Vì sao phải chụp thêm một tấm ảnh
+`POST /api/fruit/enroll` — đường **duy nhất** tạo được bản ghi quả — đòi một **ảnh tĩnh** kèm vùng khoanh. Còn `fruit_video` chỉ đếm quả trên khung hình, không enroll (câu này ghi sẵn ở đầu `fruitVideoService.ts`). Máy chủ cũng không mở đường tạo quả từ keyframe của clip, và dự án chưa có thư viện nào cắt khung hình từ video. Nên tấm ảnh phải do người dùng bấm — **một chạm**.
+
+### Vùng khoanh lấy từ đâu
+Gửi tấm ảnh qua `POST /api/fruit/detect` để **chính máy chủ** chỉ ra quả nằm đâu, rồi enroll bằng ô **lớn nhất** nó tìm được. Máy chủ không thấy gì thì lùi về ô vuông giữa khung (60% cạnh ngắn) — đúng chỗ màn đã dặn đặt quả vào. Khoanh cả khung là nhét luôn lá và nền vào chữ ký nhận dạng của quả.
+
+### Thứ tự gửi có chủ ý: CLIP trước, QUẢ sau
+Clip là bằng chứng gốc, phải vào LampNet trước. Tạo quả hỏng thì clip vẫn còn nguyên và màn **nói rõ** còn thiếu bước nào. Làm ngược lại thì hỏng ở clip sẽ để lại **một quả mồ côi không có bằng chứng**.
+
+Nhánh mạng yếu (clip nằm lại hàng đợi) **vẫn thử tạo quả**: clip kẹt có thể chỉ vì LampNet chưa nhận byte, mà `enroll` là đường khác hẳn. Và chỉ dọn màn khi quả đã tạo xong — còn thiếu quả mà xoá sạch ảnh với tên là bắt người ta chụp lại từ đầu.
+
+Trùng quả **không chặn** ở đây (`allowDup`): người dùng đang giữa vườn, vừa quay xong; dựng cổng hỏi-trùng tại đó là bắt họ phán xử giữa nắng. VeData gộp sau — mất một bản ghi tệ hơn có một bản thừa.
+
+### Màn quay nay bốn chặng
+`Quay → Ảnh quả → Đặt tên → Chọn cây`. Nút Gửi vẫn nói thẳng cái đang thiếu ("Chụp ảnh quả trước đã" / "Đặt tên cho quả trước đã"), nên hộp thoại chặn "Hãy chọn cây" của bản cũ không còn ai bấm tới — đã gỡ. Ảnh bìa + tên quả nằm trong bản nháp cùng clip, app bị ngắt giữa chừng vẫn dựng lại đủ.
+
+Xong việc, màn kết quả hiện thẳng **"Đã lưu thành quả «tên»"** cạnh mã lưu trữ. Quay về trang Quả trên cây là thấy quả đó (`useFocusEffect` nạp lại).
+
+Kiểm: `tsc` sạch · **669/669 test xanh** · eslint `FruitVideoScreen` 0 lỗi.
+
+## Bốn màn QUẢ · một cửa thêm quả · hai thứ đi tìm lại
+
+### `FruitVideoScreen` — viết lại, bố cục thành BA CHẶNG
+Bản cũ đổ tất cả xuống một trang cuộn: khung quay, chọn cây, ghi chú, nút Gửi — ngang hàng nhau, không cái nào nói cho biết còn thiếu gì. Người dùng quay xong, bấm Gửi, **rồi mới** bị hộp thoại chặn "Hãy chọn cây".
+
+Nay có **vạch ba chặng** (quay → chọn cây → gửi) tự sáng theo việc đã làm, và nút Gửi **nói thẳng cái đang thiếu** ("Quay clip trước đã" / "Chọn cây trước đã") thay vì để người ta bấm rồi mới báo. Cả hai đọc từ cùng một biến `stage` nên không bao giờ nói lệch nhau. Danh sách cây quá 6 cây thì tự hiện ô tìm theo tên.
+
+### `FruitListScreen` — ba con số thống kê nay BẤM ĐƯỢC
+Câu hỏi thật của nhà vườn luôn là "quả nào **còn trên cây**" hay "đã hái bao nhiêu rồi". Ba con số cũ nằm im ở đầu màn; nay chính là **bộ lọc**, số trên chip và số quả trong danh sách cùng một nguồn nên luôn khớp. Lọc ra rỗng nói khác "cây chưa có quả nào".
+
+Bảng `STATUS_VI`/`ZONE_VI` tên là "VI" mà ruột là tiếng Anh (`On Tree`, `Harvested`, `Base`, `Canopy`) — nhà vườn đọc màn tiếng Việt gặp bốn chữ tiếng Anh. Đã sang khoá. Nút nổi bỏ `FAB` của react-native-paper (tròn đều + bóng Material, lạc giữa các thẻ bo góc lệch).
+
+### `FruitCropperScreen` · `FruitPlace3DScreen`
+Hai tấm "Đây là quả nào?" và "Quả mới" sang tông đất + khoá chữ. **Bước khoanh vùng và khung 3D giữ nền tối** — chúng đặt trên ảnh thật / cảnh 3D thật, đổi sang nền sáng là vòng khoanh chìm vào ảnh và mô hình cây mất luôn độ đọc. Bỏ chữ kỹ sư viết cho chính mình: `SET FRUIT LOCATION · STEP 1/3`, `Next Front`, `lock X`.
+
+### Một cửa thêm quả
+Màn chi tiết cây có **hai nút cùng nói "thêm quả" mà chạy hai cơ chế khác hẳn**:
+
+| nút | đường đi | kết quả |
+|---|---|---|
+| Thêm quả | FruitList → Cropper → `POST /api/fruit/enroll` | **tạo một bản ghi quả** — có tên, có ảnh góc, hiện trong danh sách |
+| Video quả | `POST /api/tree/{id}/fruit_video` | chỉ **đếm** quả trên khung hình — *không enroll, không đụng gallery* |
+
+Dòng thứ hai là câu ghi sẵn ở đầu `fruitVideoService.ts`. **Đó chính là lý do quay video xong danh sách quả vẫn rỗng, chỉ thấy mã lưu trữ ở "Video đã lưu"** — không phải lỗi, mà là hợp đồng của máy chủ.
+
+Nay còn một cửa: "Thêm quả" mở trang Quả trên cây, và chính trang đó cho chọn **chụp ảnh · thư viện · quay video**, trong đó lối video ghi thẳng nó làm gì. Bỏ luôn nút "Chụp lại" cạnh sơ đồ 3D (lối chụp thứ ba cho cùng mục đích).
+
+### Mô tả cây: không mất, chỉ bị chôn và im lặng
+`git log -S "cành"` chỉ ra commit `2b6b37f` gỡ scanner YOLO trên máy — nhưng khối chữ này **không lấy số liệu từ đó**. Nó lấy từ `features_vi` của `/api/tree_views?describe=1`, và **vẫn còn nguyên trong mã**. Nó không hiện vì hai lẽ:
+
+1. Nó nằm ở **cuối dải ảnh cây** — phải cuộn hết ảnh mới thấy. Mô tả *cây* thì thuộc về cây, không thuộc dải ảnh.
+2. Nó gác sau `treeFeatures.length > 0`. Máy chủ cũ (trước bản `b38496f`) bỏ qua tham số `describe` → mảng rỗng → **khối biến mất không một lời nào**.
+
+Đã đưa lên ngay dưới hàng số liệu của cây, và khi cây đã có ảnh mà máy chủ vẫn chưa trả mô tả thì **nói ra một câu** thay vì biến mất lặng lẽ.
+
+Kiểm: `tsc` sạch · **669/669 test xanh** · eslint 4 màn quả còn 3 lỗi (đều là `react-hooks/exhaustive-deps` có sẵn).
+
+> **Còn lại:** hộp thoại `Alert.alert` trong 4 màn quả vẫn giữ chuỗi tiếng Việt — phần nhìn thấy trên màn đã 100% qua khoá, phần hộp thoại thì chưa.
+
+## Bóng nhẹ hẳn · chỗ cắm ảnh nền · nốt ba màn còn lại
+
+### Bóng: một công thức cho cả module, nhạt hơn nhiều
+Bóng "hiện đại" không phải bóng ĐẬM mà là bóng **khó thấy**: loang rộng gấp 4–6 lần độ dời, độ đục dưới 0,07. Mắt không đọc ra "cái bóng", chỉ đọc ra "thẻ này nổi lên một chút". Thang mới trong `theme/depth.ts`:
+
+| bậc | trước | nay |
+|---|---|---|
+| `card` | dời 3 · loang 12 · đục **0,08** · elev 3 | dời 2 · loang 14 · đục **0,05** · elev 1 |
+| `cardStrong` | dời 8 · loang 22 · đục **0,12** · elev 7 | dời 4 · loang 20 · đục **0,07** · elev 3 |
+| `sheet` | đục 0,18 · elev 12 | đục 0,10 · elev 8 |
+| `modal` | đục 0,24 · elev 20 | đục 0,16 · elev 16 |
+
+Thẻ ở trang Tổng quan đi qua đúng thang này nên nhẹ theo, không phải sửa riêng.
+
+Quét luôn **21 chỗ bóng viết tay** rải trong module về ba bậc token — phần lớn là bóng kiểu cũ (dời 6 · đục 0,3 · loang 8) và **bóng màu xanh dưới nút Lưu**, thứ nhìn ra ngay là giao diện đời trước. Nay `grep shadowRadius` ngoài `theme/depth.ts` ra **0 dòng**: sửa bóng một chỗ là đổi khắp module.
+
+### Ảnh nền: chỗ cắm sẵn, chưa có ảnh thì vùng xanh nhạt
+Thêm `theme/backdrops.ts` — một bảng duy nhất, ba dòng `null` kèm sẵn dòng `require(...)` viết sẵn ngay cạnh. Bỏ ảnh vào `assets/images/trace/`, thay `null` bằng dòng đó là xong, **không đụng màn nào**. Chưa cắm thì `GroundBackdrop` vẽ **vùng xanh nhạt** (hai lớp ellipse chồng cho mép tan dần) — không ô trống, không khung vỡ.
+
+Ảnh nào cắm vào cũng bị hạ độ đục xuống `PHOTO_OPACITY` (0,18) và phủ một lớp kem ở mép dưới: ảnh vườn có chỗ nắng chói và chỗ bóng gần đen nằm sát nhau, chữ đen đè lên vùng tối là **mất hẳn** khi đọc ngoài trời. Nền chỉ cần gợi ra khu vườn.
+
+### Ba màn còn lại
+`ActivityScreen` · `TreeMetadataTab` · `TreeDetailScreen` — đổi mặt nền, thẻ, ô bấm, nút, hộp thoại sang token hữu cơ; bỏ hết nhãn IN HOA cỡ nhỏ; **chữ hiện trên màn giờ 100% đi qua khoá** (kể cả câu báo lỗi và hộp thoại).
+
+Hai thứ đáng nói tìm thấy khi làm:
+
+- **Vạch tiến độ lúc lưu đối chiếu bằng chuỗi.** Bốn bước ("mã hoá" → "băm nhỏ" → "phát tán" → "cập nhật") được dò bằng cách xem câu trạng thái đang hiện *có chứa từ khoá đó không* — mà cả hai đầu của phép so đều nằm trong chính tệp ấy. Sửa một dấu câu là vạch tiến độ đứng yên suốt quá trình lưu, **không báo lỗi gì**. Nay đếm số bước thẳng.
+- **Cấu hình chết trong `ActivityScreen`.** Bốn muc `scannerTitle` + `scannerSteps` (chữ cho màn quét từng bước) không nơi nào đọc — màn quét đó bỏ từ Build 54. Đã gỡ.
+
+`AddFarmMode` trong `FarmDetailScreen` vẫn **cố ý giữ nguyên** như lượt trước: màn bản đồ toàn khung, kéo đỉnh ranh giới, ghi GPS theo bước chân. 71 chuỗi tiếng Việt còn lại của module nằm gần hết ở đó.
+
+Kiểm: `tsc` sạch · **669/669 test xanh** · eslint `src/modules/trace` giữ **45**.
+
+## FarmList dựng lại trọn vẹn · FarmDetail đổi vỏ — cả hai theo Organic + khoá chữ
+
+### `FarmListScreen` — viết lại từ đầu (722 → 330 dòng)
+Thẻ vườn nay là thẻ nổi trên nền đất, **góc bo không đều**, có lá mờ ở góc, và chỉ ba con số nhà vườn thật sự hỏi: **cây · quả · rộng bao nhiêu**.
+
+**Bốn thứ bỏ đi:**
+- **Huy hiệu MAGIC** cạnh tiêu đề — số dư tiền mã hoá đặt cạnh tên vườn. Người mở màn "Trang trại" đang tìm mảnh vườn, không tìm ví.
+- **Nút chuyển trang** « ‹ 1/3 › » → tự hiện thêm khi cuộn tới cuối, cùng lối với mục tin. Nông dân không đếm trang.
+- **Chữ IN HOA** "TRUY XUẤT NGUỒN GỐC".
+- **Tiếng Anh lẫn trong giao diện tiếng Việt**: `farm under management` · `No farms yet` · `Points`.
+
+Sửa luôn một lỗi hoạt-ảnh: trễ hiện thẻ nhân theo vị trí (`index * 80`) nên **mục thứ 30 phải đợi 2,4 giây** mới hiện — người dùng đọc thành "màn bị treo". Nay chặn trần ở 6 mục.
+
+### `FarmDetailScreen` — đổi vỏ, giữ ruột (3.015 dòng)
+Đổi **mặt nền · thẻ cây · bảng thống kê · nút quay lại · tiêu đề mục** sang token hữu cơ (góc lệch, bóng nâu, viền đất), và chuyển các chuỗi hiện trên màn sang khoá.
+
+**CỐ Ý không đụng `AddFarmMode`** (~600 dòng): đó là màn bản đồ toàn khung có kéo đỉnh ranh giới, ghi GPS theo bước chân, cảnh báo tự cắt. Đổi bố cục ở đó mà không chạy thử ngoài thực địa là đánh cược với dữ liệu ranh giới vườn — thứ người dùng phải đi bộ vòng quanh mới có được.
+
+### Nếp đặt khoá nới ra, theo đúng thứ vừa dùng
+Bài kiểm chặn khoá lạ nay cho **camelCase ở cả nhóm lẫn tên** (`trace.farmList.title`) và **chữ số trong tên** (`trace.label.has3d`) — hai thứ bản đầu cấm oan. Vẫn cấm chữ HOA dẫn đầu và dấu gạch: khoá là thứ đọc bằng mắt trong mã nguồn.
+
+Kiểm: `tsc` sạch · **669/669 test xanh** · eslint `src/modules/trace` **54 → 44** (bớt 10 so với trước khi bắt đầu loạt này).
+
+> **Còn lại:** `TreeDetail` · `Activity` · `TreeMetadataTab` mới có nền/thẻ hữu cơ, chưa dựng lại bố cục và chưa chuyển chuỗi sang khoá. `AddFarmMode` giữ nguyên như nói ở trên.
+
+## Module Truy xuất đổi sang Organic / Nature UI · tin tự tải thêm · chữ theo KHOÁ
+
+Ba việc trong một lượt. Hai việc đầu là thị giác, việc thứ ba đổi cách viết chuỗi trong toàn app về sau.
+
+### 1. Phong cách Organic / Nature — `theme/depth.ts` + `components/layered/Organic.tsx`
+Giữ nguyên thang chiều sâu đã dựng (L0 nền → L2 thẻ → L3 tấm trượt → L4 hộp thoại), thay thứ **trông thấy được**:
+
+| Trước | Sau |
+|---|---|
+| xanh dương thương hiệu `#3B6EA8` | **lá non `#4A7C3F`** + tông đất |
+| nền `#F1F4EF` phẳng | **đất phù sa `#F5F1E8`** + mảng loang & lá mờ phía sau |
+| thẻ trắng tinh, bo đều 20 | **trắng ngà `#FDFCF8`**, bo **KHÔNG ĐỀU** (26/20/26/20) |
+| bóng đen | bóng **ngả nâu** — bóng đen trên nền kem trông như vết bẩn |
+
+**Vì sao bo góc lệch:** bo đều bốn góc cho ra hình do *máy* vẽ. Trong tự nhiên không có gì đối xứng tuyệt đối — lá, đá cuội, vũng nước đều lệch. Lệch 4–10 px là đủ để mắt đọc thành "mềm". Đây cũng là chỗ khác Neumorphism: Neumorphism giả **vật liệu nhựa** bằng bóng lồi/lõm, còn ở đây mượn **hình khối tự nhiên**.
+
+**Nền vẽ bằng SVG, không dùng ảnh chụp cây cỏ.** Ảnh bitmap phủ màn có ba cái giá: nặng bản dựng (200–400 KB mỗi tỉ-lệ máy), không đổi màu theo chủ đề, và sau chữ thì luôn có chỗ tương phản không đủ — người đọc ngoài nắng mất chữ ngay chỗ tán lá đậm. Hình vẽ nhẹ vài KB, tô đúng token, và giữ được **dưới 12% độ đậm**. `<Blob>` dựng từ 4 cung bán kính lệch nhau; `<Leaf>` có gân giữa; `<GroundBackdrop>` có 3 kiểu bố cục để hai màn cạnh nhau không giống hệt nhau.
+
+### 2. Tin tức: bỏ nút "Xem thêm" · thẻ ẢNH-TRƯỚC
+Cuộn gần đáy (còn 240 px) là tin **tự hiện thêm** 4 tin một. Bắt bấm một cái nút để đọc tiếp là dựng một cánh cửa ở giữa hành lang. Chặn ở `news.length` nên tới hết là dừng hẳn, không có vòng lặp nào chạy tiếp; cuối danh sách nói thẳng *"Hết tin mới rồi"*.
+
+Thẻ tin đổi sang **Image-first**: ảnh phủ ngang trên cùng (cao 190), rồi tiêu đề, rồi trích đoạn.
+- **Tiêu đề KHÔNG cắt dòng.** Tiêu đề báo tiếng Việt hay dài, mà cắt giữa chừng thì mất đúng vế mang tin: *"Mít giá thấp vẫn cười: bóc tách tâm lý bán…"* — vế sau mới là nội dung.
+- **Trích đoạn cắt 2 dòng** — nó chỉ để ướm xem có đáng đọc không.
+- Ảnh cao 190 chứ không cao hơn: đủ thấy cảnh vườn trong ảnh báo, chưa tới mức mỗi tin chiếm trọn màn.
+
+### 3. Chuỗi theo KHOÁ — `src/i18n/keys/`
+`tk('trace.button.addTree')` thay cho chuỗi tiếng Việt viết thẳng trong mã. Lối cũ lấy **chính câu tiếng Việt** làm khoá từ điển: sửa một dấu phẩy là mất bản dịch của cả 3 thứ tiếng mà **không có gì báo** — người dùng nước ngoài lặng lẽ thấy tiếng Việt. Hai chỗ khác ngữ cảnh cùng viết "Đã lưu" thì buộc phải dùng chung một bản dịch. Và mã nguồn đầy tiếng Việt thì người viết phần mềm không đọc tiếng Việt không sửa được giao diện.
+
+- **Sống chung, không thay thế.** Hơn 2.000 dòng từ điển cũ và mấy chục màn vẫn chạy theo `autoText`; rứt bỏ trong một lần là chắc chắn làm vỡ chỗ nào đó không ai để ý. Lối khoá dùng cho mã **viết mới**, bắt đầu từ module Truy xuất.
+- Khoá lạ → trả **chính khoá** (`trace.button.addTree` hiện trên màn) chứ không trả chuỗi rỗng: thấy khoá thì biết ngay thiếu bản dịch, còn khoảng trống thì không ai giải thích được.
+- **Tầng dịch vụ cũng thôi trả tiếng Việt**: `describeWeather` nay trả `labelKey`, `farmAdvice` → `farmAdviceKey`. Dịch vụ không được quyết định người dùng đọc thứ tiếng gì.
+- 7 bài kiểm canh: đủ 4 ngôn ngữ cho **mọi** khoá, đúng nếp `trace.<nhóm>.<tên>`, không khoá rỗng.
+
+### 5 màn còn lại của module
+`FarmList` · `Activity` · `TreeDetail` · `FarmDetail` · `TreeMetadataTab` đã đổi **mặt nền, mặt thẻ và màu viền** sang token hữu cơ (nền đất, giấy ngà, viền ngả đất) — làm bằng script để không sót chỗ nào. **Chưa** dựng lại bố cục và chưa chuyển chuỗi sang khoá: đó là thay đổi thị giác lớn, phải nhìn màn thật mới làm được, và 7.400 dòng sửa mù là cách chắc chắn nhất để làm vỡ một màn đang chạy tốt.
+
+Kiểm: `tsc` sạch · **669/669 test xanh** · eslint trong `src/modules/trace` **54 → 45 lỗi** (bớt 9, không thêm cái nào).
+
+## Trang Tổng quan viết lại cho NHÀ VƯỜN + hệ thiết kế nhiều lớp cho module Truy xuất
+
+### Hệ nhiều lớp — `theme/depth.ts` + `components/layered/Surface.tsx`
+Mỗi màn trong module trước đây tự chọn nền, tự chọn bo góc, tự chọn đổ bóng, nên đứng cạnh nhau chúng không giống một sản phẩm. Nay có MỘT thang chiều sâu, màn hình chỉ nói "cái này nằm ở lớp mấy":
+
+| | Lớp | Dùng cho |
+|---|---|---|
+| L0 | `<Ground>` | mặt đất của trang — **hơi ngả xanh**, không trắng tinh |
+| L1 | `<SectionHeader>` | chữ/hàng nằm thẳng trên nền |
+| L2 | `<Card>` `<CardRow>` | đơn vị chính, trắng, bóng mềm |
+| L3 | `<Sheet>` | tấm trượt từ đáy |
+| L4 | `<Dialog>` | hộp thoại giữa màn |
+
+Càng lên cao thì **bo góc càng lớn và bóng càng xa** — hai tín hiệu đó nói với mắt "cái này gần bạn hơn" mà không cần một đường viền nào. Nền L0 không được trắng tinh: thẻ trắng đặt lên nền trắng thì không có lớp nào cả, và ngoài nắng thì loá.
+
+**Chữ đặt cho người đọc ngoài ruộng**, không theo mặc định thư viện: chữ nền **16** (bản cũ 13–14), số liệu to hẳn, vùng bấm tối thiểu **56 px** (không phải 44 — tay bẩn, tay ướt, có khi đeo găng), và **bỏ nhãn IN HOA cỡ nhỏ** — in hoa xoá mất đường viền trên/dưới của chữ nên mắt phải đọc từng ký tự, chậm hẳn với người lớn tuổi.
+
+### Trang Tổng quan còn đúng ba mục
+1. **Vườn của tôi** — đếm vườn/cây/quả + một nút đi tiếp.
+2. **Thời tiết** — hôm nay + 7 ngày, tra theo **tâm ranh giới vườn** người dùng đã vẽ. Thời tiết ở tỉnh và ở mảnh vườn cách nhau 30 km là hai chuyện khác nhau với người quyết định hôm nay có phun thuốc hay không.
+3. **Tin nhà nông** — RSS Dân Việt (Nhà nông + Nông thôn mới).
+
+**Đã bỏ, và vì sao:**
+- Dải token **MAGIC · LAMP · CARP · ADA** — bốn chữ viết tắt tiền mã hoá ngay đầu trang một ứng dụng nhà vườn. Người trồng sầu riêng mở app buổi sáng không hỏi "ví mình còn bao nhiêu ADA". Số dư vẫn nguyên ở màn Tài khoản.
+- **Bộ lọc 5 nút + danh sách trộn vườn/cây/quả/hoạt động + phân trang** — đó là bảng tra dữ liệu của người viết phần mềm.
+- **Huy hiệu "Đã lưu / Đồng bộ…"** — bấm vào chỉ chạy `setTimeout(1200)` rồi tự tắt. Một cái nút **giả vờ** đồng bộ; thà bỏ còn hơn dạy người dùng tin vào tín hiệu không có thật.
+- Câu `Manager 3 Farms · 12 trees` — tiếng Anh lẫn tiếng Việt trong cùng một dòng.
+
+### Hai nguồn dữ liệu, đều KHÔNG cần khoá API
+- **`weatherService`** — Open-Meteo. Chọn vì không cần khoá: khoá nhúng trong app di động coi như công khai, rồi tới ngày vượt hạn mức là cả app mất thời tiết mà không ai biết vì sao. Có thêm `farmAdvice()` — rút dự báo thành **một câu việc nhà nông** ("khả năng mưa rất cao — hoãn phun thuốc, thuốc gặp mưa là trôi hết") thay vì bắt người dùng tự suy từ con số. Không có gì đáng nói thì **im lặng**, không nhét câu vô nghĩa.
+- **`agriNewsService`** — RSS công khai, tự đọc XML thay vì kéo thêm thư viện: RSS 2.0 phẳng và đã biết trước hình dạng.
+
+**Ba cái bẫy có bài kiểm bám** (44 bài): `precipitation_probability_max` **có thể null** → để nguyên là màn hiện `NaN%`; `pubDate` của Dân Việt là `2026-08-14T09:52:00 +07:00` — **có khoảng trắng trước múi giờ**, `new Date()` không nuốt được; và `code >= 95` bắt luôn mọi mã lạ rồi báo "Dông" — bài kiểm bắt đúng lỗi này, đã chặn trần `<= 99`.
+
+Kiểm: `tsc` sạch · **660/660 test xanh** · eslint 0 lỗi trong file mới · 11 icon mới sinh bằng `scripts/icons.js`.
+
+> **Còn lại, chưa làm:** 5 màn khác của module (`FarmDetail` 3.012 dòng · `TreeDetail` 1.654 · `FarmList` 722 · `Activity` 672 · `TreeMetadataTab` 592) chưa chuyển sang hệ nhiều lớp. Hệ đã dựng xong và dùng được ngay; chuyển từng màn là việc kế tiếp, cần làm kèm nhìn màn thật vì đây là thay đổi thị giác.
+
+> **Quả quay video KHÔNG vào được danh sách quả — chặn ở BACKEND, không sửa được ở app.** `fruitVideoService` ghi rõ hợp đồng của `POST /api/tree/{id}/fruit_video`: server chắt khung, **detect quả nhưng KHÔNG enroll, KHÔNG đụng gallery**, chỉ ghi MỘT sự kiện timeline `link_status="unconfirmed"`. Phản hồi `FruitVideoResult` **không có `fruit_id` nào** — chỉ `detections[]` (bbox theo khung), `video_cid`, `event_id`. Không có id thì không có gì để đưa vào danh sách quả hay sơ đồ 3D. App cũng không tự enroll thay được: `enrollFruit` cần **ảnh + vùng khoanh**, mà khung hình nằm ở server (repo không có gói nào chắt khung video — đã soi `package.json`). Cần backend: enroll quả từ keyframe rồi trả về `fruit_ids[]` trong phản hồi; app nối vào là hiện ngay ở cả hai chỗ.
+
 ## BẬT LẠI 3D — bỏ chốt chặn `globalThis.expo`, thay bằng phép dò expo-gl thật
 
 Từ `3149f0b` mọi màn 3D (`Space3D` · `FruitPlace3D`) bị **chặn cứng** trong `_make3D` (`src/navigation/index.tsx`): `typeof globalThis.expo === 'undefined'` ⇒ hiện màn "Mô hình 3D tạm chưa xem được", **không bao giờ import** màn thật. Chốt đó đúng ở thời điểm nó ra đời (bản signed crash SIGABRT), và commit ấy tự ghi rõ *"3D chỉ HẾT CRASH, chưa HIỂN THỊ lại"*. Nguyên nhân gốc đã sửa từ lâu — `patches/expo+56.0.17.patch` set `host.runtimeDelegate` cho iOS (RN 0.84.1 không tự set như 0.85+), Android đã dùng `ExpoReactHostFactory` trong `MainApplication.kt` — nhưng **chốt JS thì chưa ai gỡ**. Nay gỡ.

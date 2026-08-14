@@ -32,14 +32,31 @@ const PROBE_TIMEOUT_MS = 6000;
 
 /**
  * Đường health THEO TỪNG NỀN — không nền nào giống nền nào, phải đo THẬT.
- * Đo bằng curl 2026-07-24 (đừng đoán, xem Forall §chống assert-by-plausibility):
+ * Đo bằng curl, lần gần nhất 2026-08-14 (đừng đoán, xem Forall §chống
+ * assert-by-plausibility):
  *   - AladinWork: `https://api.aladin.work/api/v1/health`         → 200  (origin+/health = 404)
- *   - Phoenix:    `https://api.phoenixkey.me/api/v1/actuator/health` → 200 {"status":"UP"}
+ *   - Phoenix:    `https://api.phoenixkey.me/api/v1/actuator/health` → 200
  *                 (liveness Spring Actuator chuẩn; KHÔNG có `/api/v1/health` = 404.
  *                  Trước dùng /health/cardano nhưng nó trả 200 CẢ KHI config rỗng
- *                  → không phải liveness thật; actuator/health mới đúng.)
- *   - ProofChat:  `/api/v1/health` (đang 502 toàn bộ host — chờ Lợi sửa cổng tunnel #72)
+ *                  → không phải liveness thật; actuator/health mới đúng. Đây là ca
+ *                  mẫu của lớp lỗi "phép đo trả giá trị hợp lệ đúng lúc nó không đo
+ *                  được gì" — xem cảnh báo cuối khối này.)
+ *   - ProofChat:  `https://api.proofchat.me/api/v1/health`        → 200
+ *                 (ghi chú cũ "đang 502 toàn bộ host — chờ Lợi sửa cổng tunnel #72"
+ *                  ĐÃ HẾT HIỆU LỰC: đo 12/08 và 14/08 đều 200.)
  * Mặc định '/health' NỐI VÀO SAU BASE (base đã gồm `/api/v1`), KHÔNG cắt về origin.
+ *
+ * ⚠ HẠN CHẾ CÒN NGUYÊN của cổng này — cờ trả về CHỈ có hai trạng thái, trong khi
+ * thực tế có BA. `setLive(cap, false)` được gọi từ ba nguyên nhân khác hẳn nhau:
+ *   (a) chưa cấu hình host          — `:126-128`, `if (!url)`
+ *   (b) backend trả 404/502         — `:141`, `setLive(cap, res.ok)`   ← ĐO ĐƯỢC
+ *   (c) mạng rớt / quá hạn / abort  — `:142-144`, `catch`              ← KHÔNG ĐO ĐƯỢC
+ * `isCapabilityLive` (`:115`) chỉ trả boolean nên nơi tiêu thụ không hỏi được "vì
+ * sao". Nặng nhất là `registerCapability` (`:108-112`): env sai DẠNG bị `delete`
+ * lặng lẽ rồi rơi vào (a) ⇒ **gõ nhầm URL không phân biệt được với backend chết**.
+ * Trạng thái mù đang in ra cùng màu với trạng thái đo được. Sửa đúng là cho cổng
+ * mang theo lý do và để trạng thái (c) kêu to hơn (b) — chưa làm, không gộp vào
+ * lượt dọn chú thích này vì nó đổi hình dạng của 14 nơi tiêu thụ.
  */
 const HEALTH_PATH: Record<GateCapability, string> = {
   work: '/health',

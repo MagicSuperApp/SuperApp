@@ -290,11 +290,15 @@ const StepRow: React.FC<{
 const SpinningIcon: React.FC<{ name: string }> = ({ name }) => {
   const spin = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.loop(
+    // Icon này chỉ hiện lúc đang chạy một bước, rồi bị gỡ khỏi cây. Không dừng vòng
+    // lặp thì mỗi lần hiện lại để lại một vòng quay mãi.
+    const loop = Animated.loop(
       Animated.timing(spin, {
         toValue: 1, duration: 1400, useNativeDriver: true,
       }),
-    ).start();
+    );
+    loop.start();
+    return () => loop.stop();
   }, []);
   const rot = spin.interpolate({
     inputRange: [0, 1], outputRange: ['0deg', '360deg'],

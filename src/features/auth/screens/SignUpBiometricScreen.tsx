@@ -92,7 +92,10 @@ const SignUpBiometricScreen: React.FC = () => {
       Animated.timing(slide, { toValue: 0, duration: 500, useNativeDriver: true }),
     ]).start();
 
-    Animated.loop(
+    // Giữ tham chiếu để DỪNG lúc rời màn. `Animated.loop` chạy vô hạn theo thiết
+    // kế: không gọi `.stop()` thì nó vẫn quay sau khi cây đã tháo — hao pin máy
+    // nông dân, và trong jest thì giữ handle khiến tiến trình không thoát.
+    const pulse = Animated.loop(
       Animated.sequence([
         Animated.timing(ringPulse, {
           toValue: 1, duration: 1400,
@@ -105,19 +108,24 @@ const SignUpBiometricScreen: React.FC = () => {
           useNativeDriver: true,
         }),
       ]),
-    ).start();
+    );
+    pulse.start();
 
+    let alive = true;
     (async () => {
       try {
         const rn = new ReactNativeBiometrics();
         const { available, biometryType: type } = await rn.isSensorAvailable();
+        if (!alive) return; // màn đã rời — đừng đặt state vào cây đã tháo
         setSensorAvailable(available);
         setBiometryType(type || '');
       } catch (e) {
         console.log('[SignUp] Biometric sensor check failed:', e);
-        setSensorAvailable(false);
+        if (alive) setSensorAvailable(false);
       }
     })();
+
+    return () => { alive = false; pulse.stop(); };
   }, []);
 
   const startEnrollment = async () => {

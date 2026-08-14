@@ -1,739 +1,552 @@
-// modules/trace/screens/DashboardScreen.tsx
+/**
+ * DashboardScreen — trang TỔNG QUAN của module Truy xuất, dựng cho NHÀ VƯỜN.
+ *
+ * ── Ba mục, hết ─────────────────────────────────────────────────────────────
+ *   1. VƯỜN CỦA TÔI  — vườn, cây, quả: mấy con số đó và lối đi tiếp.
+ *   2. THỜI TIẾT     — hôm nay + 7 ngày tới, ngay tại mảnh vườn của họ.
+ *   3. TIN NHÀ NÔNG  — báo Việt Nam viết cho người làm vườn, TỰ tải thêm khi cuộn.
+ *
+ * ── Phong cách: Organic / Nature ────────────────────────────────────────────
+ * Màu đất và màu lá, mảng loang mờ phía sau, góc bo KHÔNG ĐỀU, chữ nhẹ. Khác
+ * Neumorphism ở chỗ không giả vật liệu nhựa bằng bóng lồi/lõm — ở đây hình khối
+ * mượn từ thứ người dùng nhìn mỗi ngày: hòn cuội, chiếc lá, vũng nước.
+ * Tokens ở `theme/depth.ts`, hình nền ở `components/layered/Organic.tsx`.
+ *
+ * ── Chữ ─────────────────────────────────────────────────────────────────────
+ * KHÔNG còn chuỗi tiếng Việt viết thẳng trong mã. Mọi câu đi qua `tk('trace.…')`
+ * (xem `src/i18n/keys`) — sửa câu chữ không đụng tới mã, và người viết phần mềm
+ * không đọc tiếng Việt vẫn sửa được giao diện.
+ *
+ * ── Đã BỎ khỏi bản cũ, và vì sao ────────────────────────────────────────────
+ * · Dải token MAGIC · LAMP · CARP · ADA — bốn chữ viết tắt tiền mã hoá ngay đầu
+ *   trang một ứng dụng nhà vườn. Số dư vẫn còn nguyên ở màn Tài khoản.
+ * · Bộ lọc 5 nút + danh sách trộn vườn/cây/quả/hoạt động + phân trang — bảng tra
+ *   dữ liệu của người viết phần mềm, không phải thứ để nhìn buổi sáng.
+ * · Huy hiệu "Đã lưu / Đồng bộ…" chỉ chạy `setTimeout(1200)` rồi tự tắt — một cái
+ *   nút GIẢ VỜ đồng bộ.
+ * · Nút "Xem thêm tin": tin nay TỰ hiện thêm khi người dùng cuộn tới cuối. Bắt bấm
+ *   một cái nút để đọc tiếp là dựng một cánh cửa ở giữa hành lang.
+ */
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  StatusBar,
-  RefreshControl,
-  Animated,
-  Dimensions,
-  Platform,
-  Button,
+  ActivityIndicator, Animated, Image, Linking, Pressable, RefreshControl,
+  ScrollView, StatusBar, StyleSheet, Text, View,
+  type NativeScrollEvent, type NativeSyntheticEvent,
 } from 'react-native';
-// Icon dùng bộ Font Awesome Solid tải sẵn qua Iconify (assets/icons → icons.generated).
-// KHÔNG dùng react-native-vector-icons/MaterialCommunityIcons nữa: bộ đó kéo theo file
-// font riêng, nét dày mỏng không đồng bộ với phần còn lại của app, và tên icon không
-// được TypeScript kiểm — gõ sai thì lặng lẽ ra ô trống.
-// Thêm icon mới: `node scripts/icons.js <tên-fa6-solid>`.
-import Icon, { type IconName } from '../../../components/Icon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import { useSelector, useDispatch } from 'react-redux';
-import { RootState } from '../../../store';
-import { loadFarms, loadTrees, loadActivities } from '../store/farmSlice';
-import { selectChainWallet } from '../../../store/userSlice';
-import { COLORS } from '../../../constants';
-import { fmtLamp, fmtCarp } from '../../../utils/token';
-import PaginationControls from '../components/PaginationControls';
-import { showError, showInfo } from '../../../utils/alert';
-import { useAppDispatch } from '../../../store/hooks';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useSelector } from 'react-redux';
+
+import Icon, { type IconName } from '../../../components/Icon';
 import StateView from '../../../components/state/StateView';
 import { useOffline } from '../../../hooks/useOffline';
-import { formatTreeName, shortTreeCode } from '../../../utils/treeNameFormatter';
+import { useTk } from '../../../i18n/keys';
+import { RootState } from '../../../store';
+import { useAppDispatch } from '../../../store/hooks';
+import { loadActivities, loadFarms, loadTrees } from '../store/farmSlice';
+import { showError } from '../../../utils/alert';
+import { Card, Ground, SectionHeader } from '../components/layered/Surface';
+import { Leaf } from '../components/layered/Organic';
+import {
+  NATURE, ORGANIC_CARD, ORGANIC_TILE, RADIUS,
+  SPACE, SURFACE, TONE, TOUCH_MIN, TYPE,
+} from '../theme/depth';
+import {
+  DEFAULT_COORD, centroidOf, describeWeather, farmAdviceKey, fetchWeather, weekdayVi,
+  type WeatherReport,
+} from '../../../services/weatherService';
+import { fetchAgriNews, timeAgoVi, type NewsItem } from '../../../services/agriNewsService';
+import { COLORS } from '../../../theme';
 
-const { width } = Dimensions.get('window');
-
-// ── Bảng icon theo NGHĨA, không theo tên glyph ────────────────────────────────
-// Cùng một khái niệm (vườn, cây, quả…) xuất hiện ở thẻ thống kê, pill lọc VÀ hàng
-// dữ liệu — trước đây mỗi chỗ gõ lại tên glyph nên sửa một chỗ là lệch ba chỗ.
-// Khai `IconName` (không phải `string`) để gõ sai tên là `tsc` báo, thay vì lặng lẽ
-// ra ô trống trên màn.
 const ICON = {
   farm: 'tractor',
   tree: 'tree',
   fruit: 'apple-whole',
-  activity: 'clipboard-list',
-  all: 'table-cells-large',
-  unknown: 'circle-question',
-  empty: 'inbox',
-  addTree: 'seedling',
-  account: 'user-gear',
-  syncing: 'arrows-rotate',
-  syncPush: 'cloud-arrow-up',
-  synced: 'circle-check',
-  next: 'chevron-right',
-  // Token: mỗi loại một hình RIÊNG để liếc là phân biệt được, không phải đọc chữ.
-  magic: 'wand-magic-sparkles',
-  lamp: 'bolt',
-  carp: 'fish',
-  ada: 'coins',
+  weather: 'cloud-sun',
+  news: 'newspaper',
+  place: 'location-dot',
+  humidity: 'droplet',
+  wind: 'wind',
+  add: 'circle-plus',
 } satisfies Record<string, IconName>;
 
-type FilterType = 'all' | 'farms' | 'trees' | 'fruits' | 'activities';
-const ITEMS_PER_PAGE = 10;
+/** Lời chào theo giờ — nông dân bắt đầu ngày rất sớm, "buổi sáng" lúc 5h là đúng. */
+function greetingKey(hour: number): string {
+  if (hour < 11) return 'trace.greeting.morning';
+  if (hour < 14) return 'trace.greeting.noon';
+  if (hour < 18) return 'trace.greeting.afternoon';
+  return 'trace.greeting.evening';
+}
 
-// ── Token chip ────────────────────────────────────────────────────────────────
-const TokenChip = ({
-  icon, label, value, color, index,
-}: {
-  icon: IconName; label: string; value: any; color: string; index: number;
-}) => {
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    Animated.timing(fadeAnim, { toValue: 1, duration: 400, delay: index * 100, useNativeDriver: true }).start();
-  }, []);
+const toneBg = (t: string) =>
+  t === 'sun' ? TONE.sunSoft : t === 'rain' || t === 'storm' ? TONE.rainSoft : TONE.primarySoft;
+const toneFg = (t: string) =>
+  t === 'sun' ? TONE.sun : t === 'rain' || t === 'storm' ? TONE.rain : TONE.primary;
 
-  return (
-    <Animated.View style={[styles.tokenChip, { borderColor: `${color}28`, opacity: fadeAnim }]}>
-      <View style={[styles.tokenChipIcon, { backgroundColor: `${color}14` }]}>
-        <Icon name={icon} size={14} color={color} />
-      </View>
-      <View>
-        <Text style={[styles.tokenChipVal, { color }]}>{value ?? 0}</Text>
-        <Text style={styles.tokenChipLabel}>{label}</Text>
-      </View>
-    </Animated.View>
-  );
-};
+// ════════════════════════════════════════════════════════════════════════════
+// MÀN HÌNH
+// ════════════════════════════════════════════════════════════════════════════
 
-// ── Stat card ─────────────────────────────────────────────────────────────────
-const StatCard = ({
-  icon, label, value, color, index,
-}: {
-  icon: IconName; label: string; value: number; color: string; index: number;
-}) => {
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(12)).current;
+/** Số tin hiện lúc đầu, và số tin thêm mỗi lần cuộn tới cuối. */
+const NEWS_FIRST = 4;
+const NEWS_STEP = 4;
+/** Còn cách đáy bằng này thì đã tính là "tới cuối" — nạp trước, đừng để hụt. */
+const NEAR_BOTTOM_PX = 240;
 
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, { toValue: 1, duration: 350, delay: 100 + index * 70, useNativeDriver: true }),
-      Animated.timing(slideAnim, { toValue: 0, duration: 350, delay: 100 + index * 70, useNativeDriver: true }),
-    ]).start();
-  }, []);
-
-  return (
-    <Animated.View style={[styles.statCard, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
-      <View style={[styles.statIconWrap, { backgroundColor: `${color}12` }]}>
-        <Icon name={icon} size={20} color={color} />
-      </View>
-      <Text style={[styles.statValue, { color }]}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </Animated.View>
-  );
-};
-
-// ── Quick action ──────────────────────────────────────────────────────────────
-const QuickAction = ({
-  icon, label, color, onPress, disabled, index,
-}: {
-  icon: IconName; label: string; color: string;
-  onPress: () => void; disabled?: boolean; index: number;
-}) => {
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.timing(fadeAnim, { toValue: 1, duration: 350, delay: 200 + index * 60, useNativeDriver: true }).start();
-  }, []);
-
-  return (
-    <Animated.View style={[{ flex: 1 }, { opacity: fadeAnim }]}>
-      <TouchableOpacity
-        onPress={onPress}
-        disabled={disabled}
-        activeOpacity={1}
-        onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.95, useNativeDriver: true }).start()}
-        onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, friction: 4, useNativeDriver: true }).start()}
-      >
-        <Animated.View style={[styles.quickAction, disabled && styles.quickActionDisabled, { transform: [{ scale: scaleAnim }] }]}>
-          <View style={[styles.quickActionIcon, { backgroundColor: `${color}14` }]}>
-            <Icon name={icon} size={22} color={disabled ? COLORS.textMuted : color} />
-          </View>
-          <Text style={[styles.quickActionLabel, disabled && { color: COLORS.textMuted }]}>{label}</Text>
-        </Animated.View>
-      </TouchableOpacity>
-    </Animated.View>
-  );
-};
-
-// ── Item type config ──────────────────────────────────────────────────────────
-// Build 52 § A7 — `farms` passed-in để format tree name farmer-friendly
-// ("Cây #3 góc Đông") thay vì raw UUID code.
-const getItemConfig = (item: any, farms?: any[]) => {
-  if (item.type === 'farm' || 'coordinates' in item)
-    return { icon: ICON.farm, color: COLORS.accent, typeLabel: 'TRẠI', title: item.name, sub: `${item.coordinates?.length ?? 0} điểm GPS` };
-  if (item.type === 'tree' || ('farmId' in item && !('treeId' in item))) {
-    const farm = farms?.find(f => f.id === item.farmId);
-    const title = formatTreeName(item, farm);
-    const short = shortTreeCode(item);
-    return {
-      icon: ICON.tree,
-      color: '#B07D2F',
-      typeLabel: 'CÂY',
-      title,
-      sub: short ? `Mã: ${short}` : `Farm: ${item.farmId}`,
-    };
-  }
-  if (item.type === 'fruit' || 'treeId' in item)
-    return { icon: ICON.fruit, color: COLORS.success, typeLabel: 'QUẢ', title: item.code, sub: `Trạng thái: ${item.status}` };
-  if (item.type === 'activity')
-    return { icon: ICON.activity, color: '#7D3C98', typeLabel: 'HOẠT ĐỘNG', title: item.type, sub: `${item.creditsUsed} MAGIC` };
-  return { icon: ICON.unknown, color: COLORS.textMuted, typeLabel: '—', title: 'Unknown', sub: '' };
-};
-
-// ── Filter pill ───────────────────────────────────────────────────────────────
-const FILTERS: { key: FilterType; label: string; icon: IconName }[] = [
-  { key: 'all', label: 'Tất cả', icon: ICON.all },
-  { key: 'farms', label: 'Trang trại', icon: ICON.farm },
-  { key: 'trees', label: 'Cây trồng', icon: ICON.tree },
-  { key: 'fruits', label: 'Quả', icon: ICON.fruit },
-  { key: 'activities', label: 'Hoạt động', icon: ICON.activity },
-];
-
-// ── Main Screen ───────────────────────────────────────────────────────────────
 const DashboardScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const dispatch = useAppDispatch();
+  const tk = useTk();
 
-  const user = useSelector((state: RootState) => state.user.currentUser);
-  // Số dư THẬT từ chuỗi (nhất quán với Account/Activity), null → '—' (không bịa).
-  const wallet = useSelector(selectChainWallet);
-  const farms = useSelector((state: RootState) => state.farm.farms);
-  const trees = useSelector((state: RootState) => state.farm.trees);
-  const fruits = useSelector((state: RootState) => state.farm.fruits);
-  const activities = useSelector((state: RootState) => state.farm.activities);
-  const isLoading = useSelector((state: RootState) => state.farm.isLoading);
-  const loadError = useSelector((state: RootState) => state.farm.error);
+  const user = useSelector((s: RootState) => s.user.currentUser);
+  const farms = useSelector((s: RootState) => s.farm.farms);
+  const trees = useSelector((s: RootState) => s.farm.trees);
+  const fruits = useSelector((s: RootState) => s.farm.fruits);
+  const isLoading = useSelector((s: RootState) => s.farm.isLoading);
+  const loadError = useSelector((s: RootState) => s.farm.error);
   const offline = useOffline();
 
-  const [filter, setFilter] = useState<FilterType>('all');
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  // Cờ đã-chạy-tải-lần-đầu: isLoading của store chỉ true SAU khi thunk pending
-  // dispatch. Giữa lúc mount và pending, isLoading=false + chưa có data → danh
-  // sách rỗng chớp thoáng qua. Cờ này giữ skeleton loading tới khi lần tải đầu
-  // xong (không chặn refresh về sau vì chỉ set 1 lần).
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [weather, setWeather] = useState<WeatherReport | null>(null);
+  const [weatherLoading, setWeatherLoading] = useState(true);
+  const [news, setNews] = useState<NewsItem[]>([]);
+  const [newsLoading, setNewsLoading] = useState(true);
+  /** Số tin ĐANG hiện — tăng dần khi cuộn tới cuối, không cần nút nào. */
+  const [shown, setShown] = useState(NEWS_FIRST);
 
-  const headerFade = useRef(new Animated.Value(0)).current;
-  const headerSlide = useRef(new Animated.Value(-16)).current;
-
+  const fade = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.parallel([
-      Animated.timing(headerFade, { toValue: 1, duration: 500, useNativeDriver: true }),
-      Animated.timing(headerSlide, { toValue: 0, duration: 500, useNativeDriver: true }),
-    ]).start();
-  }, []);
+    Animated.timing(fade, { toValue: 1, duration: 420, useNativeDriver: true }).start();
+  }, [fade]);
 
-  useEffect(() => { setCurrentPage(1); }, [filter]);
-
-  const loadDashboard = React.useCallback(async () => {
+  // ── Vườn ──────────────────────────────────────────────────────────────────
+  const loadGarden = useCallback(async () => {
     try {
-      // Chưa có user (vd user mới chưa đăng nhập xong) → KHÔNG tải, nhưng vẫn phải
-      // rơi vào finally để đánh dấu đã-tải-xong. Nếu return sớm TRƯỚC try thì
-      // `hasLoadedOnce` kẹt false → skeleton loading hiện MÃI (màn trắng phau).
       if (!user) return;
-      // Dùng KẾT QUẢ trả về của loadFarms (`.unwrap()` → mảng farm THẬT vừa tải),
-      // KHÔNG đọc `farms` từ closure: giá trị closure là snapshot lúc TẠO callback
-      // (thường rỗng ở lần focus đầu sau đăng nhập) → sẽ bỏ lỡ loadTrees/loadActivities
-      // và màn kẹt rỗng. `.unwrap()` cũng ném lỗi DB (ensureReady) → rơi vào catch →
-      // hiện trạng thái LỖI có nút thử lại, thay vì skeleton trắng vô hạn.
       const loaded = await dispatch(loadFarms(user.id)).unwrap();
       if (loaded.length > 0) {
         for (const farm of loaded) await dispatch(loadTrees(farm.id));
         await dispatch(loadActivities(loaded[0].id));
       }
-    } catch (_) {
-      showError('Lỗi', 'Không thể tải dữ liệu');
+    } catch {
+      showError(tk('trace.error.loadTitle'), tk('trace.error.loadBody'));
     } finally {
       setHasLoadedOnce(true);
     }
-  }, [user, dispatch]);
+  }, [user, dispatch, tk]);
 
-  useFocusEffect(
-    React.useCallback(() => { loadDashboard(); }, [loadDashboard])
-  );
+  useFocusEffect(useCallback(() => { loadGarden(); }, [loadGarden]));
 
-  const autoSync = async () => {
-    if (isSyncing) return;
-    setIsSyncing(true);
-    try {
-      await new Promise<void>(r => setTimeout(() => r(), 1200));
-    } finally {
-      setIsSyncing(false);
-    }
-  };
+  // ── Thời tiết: theo TÂM RANH GIỚI vườn đầu tiên ───────────────────────────
+  const spot = useMemo(() => {
+    const c = centroidOf(farms[0]?.coordinates ?? []);
+    return c
+      ? { ...c, name: farms[0]?.name ?? tk('trace.weather.yourGarden') }
+      : { ...DEFAULT_COORD, name: tk('trace.weather.defaultPlace') };
+  }, [farms, tk]);
 
-  const handleRefresh = async () => {
-    setIsRefreshing(true);
-    try { await loadDashboard(); } finally { setIsRefreshing(false); }
-  };
+  const loadWeather = useCallback(async () => {
+    setWeatherLoading(true);
+    setWeather(await fetchWeather(spot.lat, spot.lon));
+    setWeatherLoading(false);
+  }, [spot.lat, spot.lon]);
 
-  const getFilteredItems = () => {
-    switch (filter) {
-      case 'farms': return farms;
-      case 'trees': return trees;
-      case 'fruits': return fruits;
-      case 'activities': return activities;
-      default: return [
-        ...farms.map(f => ({ ...f, type: 'farm' })),
-        ...trees.map(t => ({ ...t, type: 'tree' })),
-        ...fruits.map(f => ({ ...f, type: 'fruit' })),
-        ...activities.map(a => ({ ...a, type: 'activity' })),
-      ];
-    }
-  };
+  useEffect(() => { loadWeather(); }, [loadWeather]);
 
-  const filteredItems = getFilteredItems();
-  const totalPages = Math.max(1, Math.ceil(filteredItems.length / ITEMS_PER_PAGE));
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const endIndex = startIndex + ITEMS_PER_PAGE;
-  const paginatedItems = filteredItems.slice(startIndex, endIndex);
+  // ── Tin ───────────────────────────────────────────────────────────────────
+  const loadNews = useCallback(async () => {
+    setNewsLoading(true);
+    setNews(await fetchAgriNews());
+    setShown(NEWS_FIRST);
+    setNewsLoading(false);
+  }, []);
 
-  // Initials
-  const initials = (user?.name ?? 'U')
-    .split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase();
+  useEffect(() => { loadNews(); }, [loadNews]);
+
+  /**
+   * Cuộn gần tới đáy thì hiện thêm tin. Không nút, không "trang 2".
+   * Chặn ở `news.length` nên tới hết là dừng hẳn — không có vòng lặp nào chạy tiếp.
+   */
+  const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
+    const nearBottom =
+      contentOffset.y + layoutMeasurement.height >= contentSize.height - NEAR_BOTTOM_PX;
+    if (nearBottom) setShown(n => (n >= news.length ? n : Math.min(n + NEWS_STEP, news.length)));
+  }, [news.length]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try { await Promise.all([loadGarden(), loadWeather(), loadNews()]); }
+    finally { setRefreshing(false); }
+  }, [loadGarden, loadWeather, loadNews]);
 
   const hasData = farms.length > 0;
 
-  // 4 trạng thái khi chưa có dữ liệu (đã có dữ liệu cũ thì vẫn render, kể cả
-  // offline — INV-1). Phân biệt mạng ⟂ server (§7.3).
-  // Hiện skeleton loading toàn màn khi ĐANG tải HOẶC chưa chạy xong lần tải đầu,
-  // và chưa có dữ liệu cũ để hiển thị. Bao khe hở mount→pending (lỗi hiển thị 3).
   if ((isLoading || !hasLoadedOnce) && !hasData && !offline && !loadError) {
     return (
-      <View style={styles.root}>
-        <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
+      <Ground>
+        <StatusBar barStyle="dark-content" backgroundColor={SURFACE.ground} />
         <StateView status="loading" loadingLines={5} />
-      </View>
+      </Ground>
     );
   }
   if (!hasData && offline) {
     return (
-      <View style={styles.root}>
-        <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
-        <StateView status="offline" onRetry={loadDashboard} />
-      </View>
+      <Ground>
+        <StatusBar barStyle="dark-content" backgroundColor={SURFACE.ground} />
+        <StateView status="offline" onRetry={loadGarden} />
+      </Ground>
     );
   }
   if (!hasData && loadError) {
     return (
-      <View style={styles.root}>
-        <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
-        <StateView status="error" onRetry={loadDashboard} />
-      </View>
+      <Ground>
+        <StatusBar barStyle="dark-content" backgroundColor={SURFACE.ground} />
+        <StateView status="error" onRetry={loadGarden} />
+      </Ground>
     );
   }
 
+  const visibleNews = news.slice(0, shown);
+  const moreComing = shown < news.length;
+  const look = weather ? describeWeather(weather.now.code) : null;
+  const adviceKey = weather ? farmAdviceKey(weather.now, weather.days) : null;
+  const todayIso = weather?.days[0]?.date;
+
   return (
-    <View style={styles.root}>
-      <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
+    <Ground backdrop="home">
+      <StatusBar barStyle="dark-content" backgroundColor={SURFACE.ground} />
       <ScrollView
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingBottom: Math.max(insets.bottom, 12) + 40 },
-        ]}
+        contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, SPACE.md) + 36 }}
         showsVerticalScrollIndicator={false}
+        onScroll={onScroll}
+        scrollEventThrottle={160}
         refreshControl={
           <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={handleRefresh}
-            colors={[COLORS.accent]}
-            progressBackgroundColor={COLORS.bg}
-            tintColor={COLORS.accent}
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[TONE.primary]}
+            tintColor={TONE.primary}
+            progressBackgroundColor={SURFACE.raised}
           />
         }
       >
-        {/* ── Header ── */}
-        <Animated.View style={[styles.topBar, { transform: [{ translateY: headerSlide }] }]}>
-          <View>
-            <Text style={styles.topBarEyebrow}>TRUY XUẤT NGUỒN GỐC</Text>
-            <Text style={styles.topBarTitle}>Tổng quan</Text>
-          </View>
-          <View style={styles.topBarRight}>
-            {/* Sync status */}
-            <TouchableOpacity
-              style={[styles.syncBadge, isSyncing && styles.syncBadgeActive]}
-              onPress={autoSync}
-              disabled={isSyncing}
-            >
-              <Icon
-                name={isSyncing ? ICON.syncing : ICON.synced}
-                size={14}
-                color={isSyncing ? COLORS.accent : COLORS.success}
-              />
-              <Text style={[styles.syncBadgeText, isSyncing && { color: COLORS.accent }]}>
-                {isSyncing ? 'Đồng bộ...' : 'Đã lưu'}
-              </Text>
-            </TouchableOpacity>
-            {/* Avatar */}
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{initials}</Text>
-            </View>
-          </View>
-        </Animated.View>
-
-        {/* ── Greeting + Token strip ── */}
-        <Animated.View style={[styles.greetingCard, { transform: [{ translateY: headerSlide }] }]}>
-          {/* Decorative orb */}
-          <View style={styles.greetingOrb} />
-          <View style={styles.greetingOrb2} />
-
-          <Text style={styles.greetingName}>Xin chào 👋</Text>
-          <Text style={styles.greetingDesc}>
-            Manager {farms.length} Farms · {trees.length} trees · {fruits.length} fruits
-          </Text>
-
-          {/* Token row */}
-          <View style={styles.tokenRow}>
-            <TokenChip index={0} icon={ICON.magic} label="M" value={wallet?.magicBalance ?? '—'} color="#B07D2F" />
-            <TokenChip index={1} icon={ICON.lamp} label="L" value={fmtLamp(wallet?.lampBalance)} color={COLORS.accent} />
-            {/* CARP — token hệ sinh thái thứ 3. TODO brand tạm; số dư chờ API Phoenix. */}
-            <TokenChip index={2} icon={ICON.carp} label="C" value={fmtCarp(wallet?.carpBalance)} color="#2F8F8F" />
-            <TokenChip index={3} icon={ICON.ada} label="A" value={wallet?.adaBalance ?? '—'} color="#0033AD" />
-          </View>
-        </Animated.View>
-        {/* ── Quick actions ── */}
-        <View style={[styles.sectionRow, { marginTop: 24 }]}>
-          <View style={styles.sectionDot} />
-          <Text style={styles.sectionTitle}>THAO TÁC NHANH</Text>
-        </View>
-        <View style={styles.quickActionsRow}>
-          <QuickAction index={0} icon={ICON.farm} label="Trang trại" color={COLORS.accent}
-            onPress={() => navigation.navigate('FarmList')} />
-          <QuickAction index={1} icon={ICON.addTree} label="Thêm cây" color="#B07D2F"
-            onPress={() => {
-              if (farms.length > 0) navigation.navigate('FarmDetail', { farm_id: farms[0].id });
-              else showInfo('Thông báo', 'Vui lòng tạo trang trại trước');
-            }} />
-          <QuickAction index={2} icon={isSyncing ? ICON.syncing : ICON.syncPush} label="Đồng bộ" color={COLORS.success}
-            onPress={autoSync} disabled={isSyncing} />
-        </View>
-        {/* ── Stats grid ── */}
-        <View style={styles.sectionRow}>
-          <View style={styles.sectionDot} />
-          <Text style={styles.sectionTitle}>THỐNG KÊ</Text>
-        </View>
-        <View style={styles.statsGrid}>
-          <StatCard index={0} icon={ICON.farm} label="Trang trại" value={farms.length} color={COLORS.accent} />
-          <StatCard index={1} icon={ICON.tree} label="Cây trồng" value={trees.length} color="#B07D2F" />
-          <StatCard index={2} icon={ICON.fruit} label="Quả" value={fruits.length} color={COLORS.success} />
-          <StatCard index={3} icon={ICON.activity} label="Hoạt động" value={activities.length} color="#7D3C98" />
-        </View>
-
-
-        {/* SurfaceTestCapture ẩn — chỉ dùng nội bộ thu dữ liệu test, không hiện với user */}
-
-        {/* ── Filter tabs ── */}
-        <View style={[styles.sectionRow, { marginTop: 24 }]}>
-          <View style={styles.sectionDot} />
-          <Text style={styles.sectionTitle}>DỮ LIỆU</Text>
-        </View>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.filterScroll}
-          contentContainerStyle={styles.filterScrollContent}
-        >
-          {FILTERS.map(f => {
-            const active = filter === f.key;
-            return (
-              <TouchableOpacity
-                key={f.key}
-                style={[styles.filterPill, active && styles.filterPillActive]}
-                onPress={() => setFilter(f.key)}
-                activeOpacity={0.8}
-              >
-                <Icon name={f.icon} size={13} color={active ? COLORS.white : COLORS.textSub} />
-                <Text style={[styles.filterPillText, active && styles.filterPillTextActive]}>
-                  {f.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-
-        {/* ── Items list ── */}
-        {filteredItems.length === 0 ? (
-          <View style={styles.emptyWrap}>
-            <View style={styles.emptyIconWrap}>
-              <Icon name={ICON.empty} size={36} color={COLORS.accentLight} />
-              <View style={styles.emptyRing} />
-            </View>
-            <Text style={styles.emptyTitle}>Chưa có dữ liệu</Text>
-            <Text style={styles.emptyBody}>
-              {filter === 'all' ? 'Hãy thêm trang trại đầu tiên để bắt đầu.' : `Không có ${FILTERS.find(f => f.key === filter)?.label?.toLowerCase()} nào.`}
+        <Animated.View style={{ opacity: fade }}>
+          {/* ── Lời chào ───────────────────────────────────────────────── */}
+          <View style={styles.hello}>
+            <Text style={styles.helloGreet}>{tk(greetingKey(new Date().getHours()))}</Text>
+            <Text style={TYPE.title} numberOfLines={1}>
+              {user?.name?.trim() || tk('trace.greeting.fallbackName')}
             </Text>
           </View>
-        ) : (
-          <>
-            {paginatedItems.map((item: any, idx: number) => {
-              const cfg = getItemConfig(item, farms);
-              return (
-                <ItemRow
-                  key={item.id ?? idx}
-                  item={item}
-                  config={cfg}
-                  index={idx}
-                  onPress={() => {
-                    if (item.type === 'farm' || 'coordinates' in item)
-                      navigation.navigate('FarmDetail', { farm_id: item.id });
-                    else if (item.type === 'tree' || ('farmId' in item && !('treeId' in item)))
-                      navigation.navigate('TreeDetail', { tree: item });
-                  }}
-                />
-              );
-            })}
 
-            <PaginationControls
-              currentPage={currentPage}
-              totalPages={totalPages}
-              startIndex={startIndex}
-              endIndex={endIndex}
-              totalItems={filteredItems.length}
-              onPreviousPage={() => currentPage > 1 && setCurrentPage(p => p - 1)}
-              onNextPage={() => currentPage < totalPages && setCurrentPage(p => p + 1)}
-            />
-          </>
-        )}
-
-        <View style={{ height: 32 }} />
-      </ScrollView>
-    </View>
-  );
-};
-
-// ── Item Row ──────────────────────────────────────────────────────────────────
-const ItemRow = ({
-  item, config, index, onPress,
-}: {
-  item: any;
-  config: ReturnType<typeof getItemConfig>;
-  index: number;
-  onPress: () => void;
-}) => {
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(10)).current;
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, { toValue: 1, duration: 300, delay: index * 45, useNativeDriver: true }),
-      Animated.timing(slideAnim, { toValue: 0, duration: 300, delay: index * 45, useNativeDriver: true }),
-    ]).start();
-  }, []);
-
-  return (
-    <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }, { scale: scaleAnim }] }}>
-      <TouchableOpacity
-        activeOpacity={1}
-        onPress={onPress}
-        onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.98, useNativeDriver: true }).start()}
-        onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, friction: 4, useNativeDriver: true }).start()}
-      >
-        <View style={styles.itemCard}>
-          {/* Left accent */}
-          <View style={[styles.itemAccentBar, { backgroundColor: config.color }]} />
-
-          {/* Icon */}
-          <View style={[styles.itemIconWrap, { backgroundColor: `${config.color}12` }]}>
-            <Icon name={config.icon} size={22} color={config.color} />
-          </View>
-
-          {/* Content */}
-          <View style={styles.itemContent}>
-            <View style={styles.itemTopRow}>
-              <Text style={styles.itemTitle} numberOfLines={1}>{config.title}</Text>
-              <View style={[styles.itemTypeBadge, { backgroundColor: `${config.color}12` }]}>
-                <Text style={[styles.itemTypeText, { color: config.color }]}>{config.typeLabel}</Text>
-              </View>
+          {/* ══ MỤC 1 — VƯỜN CỦA TÔI ══════════════════════════════════════ */}
+          <SectionHeader
+            icon={ICON.farm}
+            title={tk('trace.section.myGarden')}
+            hint={hasData ? spot.name : tk('trace.empty.noGarden')}
+            actionLabel={hasData ? tk('trace.button.viewGardens') : undefined}
+            onAction={hasData ? () => navigation.navigate('FarmList') : undefined}
+          />
+          <Card strong style={{ backgroundColor: "#fbfffd96" }}>
+            {/* Chiếc lá nhỏ ở góc thẻ — dấu hiệu của phong cách, không phải trang trí thừa */}
+            <Leaf size={70} color={NATURE.moss} opacity={0.07} rotate={28} style={styles.cardLeaf} />
+            <View style={styles.metrics}>
+              <Metric icon={ICON.farm} value={farms.length} label={tk('trace.label.gardens')}
+                tone={TONE.primary} toneSoft={TONE.primarySoft} />
+              <View style={styles.metricSep} />
+              <Metric icon={ICON.tree} value={trees.length} label={tk('trace.label.trees')}
+                tone={TONE.leaf} toneSoft={TONE.leafSoft} />
+              <View style={styles.metricSep} />
+              <Metric icon={ICON.fruit} value={fruits.length} label={tk('trace.label.fruits')}
+                tone={TONE.sun} toneSoft={TONE.sunSoft} />
             </View>
-            <Text style={styles.itemSub} numberOfLines={1}>{config.sub}</Text>
-          </View>
 
-          <Icon name={ICON.next} size={16} color={COLORS.accentLight} style={{ marginRight: 12 }} />
-        </View>
-      </TouchableOpacity>
-    </Animated.View>
+            <Pressable
+              style={({ pressed }) => [styles.primaryBtn, pressed && styles.pressed]}
+              onPress={() => (hasData
+                ? navigation.navigate('FarmDetail', { farm_id: farms[0].id })
+                : navigation.navigate('FarmList'))}
+            >
+              <Icon name={hasData ? ICON.add : ICON.farm} size={17} color={NATURE.paper} />
+              <Text style={styles.primaryBtnTxt}>
+                {tk(hasData ? 'trace.button.addTree' : 'trace.button.createFirstGarden')}
+              </Text>
+            </Pressable>
+          </Card>
+
+          {/* ══ MỤC 2 — THỜI TIẾT ═════════════════════════════════════════ */}
+          <View style={styles.sectionGap} />
+          <SectionHeader
+            icon={ICON.weather}
+            title={tk('trace.section.weather')}
+            hint={tk('trace.weather.hint')}
+          />
+          {weatherLoading && !weather ? (
+            <Card>
+              <View style={styles.inlineLoad}>
+                <ActivityIndicator color={TONE.primary} />
+                <Text style={TYPE.caption}>{tk('trace.weather.loading')}</Text>
+              </View>
+            </Card>
+          ) : !weather || !look ? (
+            <Card>
+              <Text style={TYPE.cardTitle}>{tk('trace.weather.failTitle')}</Text>
+              <Text style={[TYPE.caption, styles.gapTop]}>{tk('trace.weather.failBody')}</Text>
+              <Pressable style={styles.retryBtn} onPress={loadWeather}>
+                <Text style={styles.retryTxt}>{tk('trace.button.retry')}</Text>
+              </Pressable>
+            </Card>
+          ) : (
+            <Card strong padded={false}>
+              <View style={styles.wxToday}>
+                <View style={styles.wxTodayLeft}>
+                  <View style={styles.wxPlace}>
+                    <Icon name={ICON.place} size={12} color={TONE.primary} />
+                    <Text style={styles.wxPlaceTxt} numberOfLines={1}>{spot.name}</Text>
+                  </View>
+                  <Text style={styles.wxTemp}>{weather.now.tempC}°</Text>
+                  <Text style={styles.wxLabel}>{tk(look.labelKey)}</Text>
+                </View>
+                <View style={[styles.wxGlyph, { backgroundColor: toneBg(look.tone) }]}>
+                  <Icon name={look.icon as IconName} size={46} color={toneFg(look.tone)} />
+                </View>
+              </View>
+
+              <View style={styles.wxFacts}>
+                <Fact icon={ICON.humidity} value={`${weather.now.humidity}%`} label={tk('trace.weather.humidity')} />
+                <Fact icon={ICON.wind} value={`${weather.now.windKph} km/h`} label={tk('trace.weather.wind')} />
+                <Fact icon="cloud-rain" value={`${weather.days[0]?.rainChance ?? 0}%`} label={tk('trace.weather.rainChance')} />
+              </View>
+
+              {adviceKey ? (
+                <View style={styles.advice}>
+                  <Icon name="seedling" size={15} color={TONE.primaryDeep} />
+                  <Text style={styles.adviceTxt}>{tk(adviceKey)}</Text>
+                </View>
+              ) : null}
+
+              <View style={styles.wxWeek}>
+                {weather.days.map(d => {
+                  const dl = describeWeather(d.code);
+                  const isToday = d.date === todayIso;
+                  return (
+                    <View key={d.date} style={[styles.wxDay, isToday && styles.wxDayToday]}>
+                      <Text style={[styles.wxDayName, isToday && styles.wxDayNameToday]}>
+                        {weekdayVi(d.date)}
+                      </Text>
+                      <Icon name={dl.icon as IconName} size={20} color={isToday ? "yellow" : toneFg(dl.tone)} />
+                      <Text style={[styles.wxDayMax, isToday && { color: "white" }]}>{d.maxC}°</Text>
+                      <Text style={[styles.wxDayMin, isToday && { color: "white" }]}>{d.minC}°</Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </Card>
+          )}
+
+          {/* ══ MỤC 3 — TIN NHÀ NÔNG ══════════════════════════════════════ */}
+          <View style={styles.sectionGap} />
+          <SectionHeader
+            icon={ICON.news}
+            title={tk('trace.section.news')}
+            hint={tk('trace.news.hint')}
+
+          />
+
+          {newsLoading && !news.length ? (
+            <Card>
+              <View style={styles.inlineLoad}>
+                <ActivityIndicator color={TONE.primary} />
+                <Text style={TYPE.caption}>{tk('trace.news.loading')}</Text>
+              </View>
+            </Card>
+          ) : !news.length ? (
+            <Card>
+              <Text style={TYPE.cardTitle}>{tk('trace.news.failTitle')}</Text>
+              <Text style={[TYPE.caption, styles.gapTop]}>{tk('trace.news.failBody')}</Text>
+            </Card>
+          ) : (
+            <>
+              {visibleNews.map(item => <NewsCard key={item.id} item={item} />)}
+              {/* Cuộn tới đây là tin tự hiện thêm — dòng này chỉ để người dùng biết
+                  còn tin phía dưới, không phải nút bấm. */}
+              <View style={styles.newsFoot}>
+                {moreComing ? (
+                  <>
+                    <ActivityIndicator size="small" color={TONE.primary} />
+                    <Text style={TYPE.caption}>{tk('trace.news.loadingMore')}</Text>
+                  </>
+                ) : (
+                  <Text style={TYPE.caption}>{tk('trace.news.end')}</Text>
+                )}
+              </View>
+            </>
+          )}
+        </Animated.View>
+      </ScrollView>
+    </Ground>
   );
 };
 
-// ── Styles ────────────────────────────────────────────────────────────────────
+// ── Mảnh nhỏ ────────────────────────────────────────────────────────────────
+
+const Metric: React.FC<{
+  icon: IconName; value: number; label: string; tone: string; toneSoft: string;
+}> = ({ icon, value, label, tone, toneSoft }) => (
+  <View style={styles.metric}>
+    <View style={[styles.metricIcon, { backgroundColor: toneSoft }]}>
+      <Icon name={icon} size={18} color={tone} />
+    </View>
+    <Text style={TYPE.metricSm}>{value}</Text>
+    <Text style={styles.metricLabel} numberOfLines={1}>{label}</Text>
+  </View>
+);
+
+const Fact: React.FC<{ icon: IconName; value: string; label: string }> = ({ icon, value, label }) => (
+  <View style={styles.fact}>
+    <Icon name={icon} size={15} color={TONE.primary} />
+    <View>
+      <Text style={styles.factValue}>{value}</Text>
+      <Text style={styles.factLabel}>{label}</Text>
+    </View>
+  </View>
+);
+
+/**
+ * Thẻ tin kiểu ẢNH-TRƯỚC: ảnh chiếm trọn bề ngang ở trên, chữ nằm dưới.
+ *
+ *   ┌─────────────────────┐
+ *   │        ẢNH          │
+ *   ├─────────────────────┤
+ *   │ Tiêu đề — ĐỦ CÂU    │
+ *   │ Trích một đoạn ngắn │
+ *   │ Nguồn · 3 giờ trước │
+ *   └─────────────────────┘
+ *
+ * TIÊU ĐỀ KHÔNG CẮT. Tiêu đề báo tiếng Việt hay dài, mà cắt giữa chừng thì mất
+ * đúng vế mang tin ("Mít giá thấp vẫn cười: bóc tách tâm lý bán…" — vế sau mới là
+ * nội dung). Phần TRÍCH thì cắt 2 dòng: nó chỉ để ướm xem có đáng đọc không.
+ */
+const NewsCard: React.FC<{ item: NewsItem }> = ({ item }) => (
+  <Card onPress={() => Linking.openURL(item.link).catch(() => { })} padded={false} style={styles.newsCard}>
+    {item.imageUrl ? (
+      <Image source={{ uri: item.imageUrl }} style={styles.newsCover} resizeMode="cover" />
+    ) : (
+      <View style={[styles.newsCover, styles.newsCoverEmpty]}>
+        <Icon name={ICON.news} size={30} color={TONE.primary} />
+      </View>
+    )}
+    <View style={styles.newsBody}>
+      <Text style={styles.newsTitle}>{item.title}</Text>
+      {item.summary ? (
+        <Text style={styles.newsSummary} numberOfLines={2}>{item.summary}</Text>
+      ) : null}
+      <View style={styles.newsMeta}>
+        <Text style={styles.newsSource} numberOfLines={1}>{item.source}</Text>
+        {item.publishedAt ? (
+          <>
+            <View style={styles.dot} />
+            <Text style={styles.newsTime}>{timeAgoVi(item.publishedAt)}</Text>
+          </>
+        ) : null}
+      </View>
+    </View>
+  </Card>
+);
+
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: COLORS.bg },
+  hello: { paddingHorizontal: SPACE.page, paddingTop: SPACE.xl, paddingBottom: SPACE.xl },
+  helloGreet: { ...TYPE.body, color: TONE.primary, fontWeight: '600', marginBottom: 2 },
 
-  topStrip: { height: 3, backgroundColor: COLORS.bgWarm, flexDirection: 'row' },
-  topStripAccent: { width: '40%', height: '100%', backgroundColor: COLORS.accent },
+  sectionGap: { height: SPACE.section },
+  gapTop: { marginTop: 4 },
+  pressed: { opacity: 0.9 },
+  inlineLoad: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md, paddingVertical: SPACE.sm },
 
-  scrollContent: {
-    paddingTop: Platform.OS === 'ios' ? 52 : 36,
-    paddingHorizontal: 20,
-    paddingBottom: 40,
+  // Mục 1
+  cardLeaf: { position: 'absolute', top: -14, right: -10 },
+  metrics: { flexDirection: 'row', alignItems: 'center' },
+  metric: { flex: 1, alignItems: 'center', gap: 4 },
+  metricIcon: {
+    width: 44, height: 44, ...ORGANIC_TILE,
+    alignItems: 'center', justifyContent: 'center', marginBottom: 2,
   },
+  metricLabel: { ...TYPE.caption, fontWeight: '600' },
+  metricSep: { width: 1, height: 46, backgroundColor: TONE.border },
 
-  // Loading
-  loadingCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 20, padding: 36,
-    alignItems: 'center',
-    borderWidth: 1, borderColor: COLORS.border,
-    shadowColor: COLORS.shadow,
-    shadowOffset: { width: 0, height: 4 }, shadowOpacity: 1, shadowRadius: 16,
-    elevation: 4,
+  primaryBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.sm,
+    minHeight: TOUCH_MIN, marginTop: SPACE.lg,
+    ...ORGANIC_CARD, backgroundColor: TONE.primary,
   },
-  loadingText: { fontSize: 14, color: COLORS.textMuted, marginTop: 12 },
+  primaryBtnTxt: { fontSize: 17, fontWeight: '700', color: NATURE.paper },
 
-  // Top bar
-  topBar: {
+  // Mục 2
+  retryBtn: {
+    alignSelf: 'flex-start', marginTop: SPACE.md,
+    paddingHorizontal: SPACE.lg, minHeight: 46, justifyContent: 'center',
+    borderRadius: RADIUS.field, backgroundColor: TONE.primarySoft,
+  },
+  retryTxt: { fontSize: 16, fontWeight: '700', color: TONE.primaryDeep },
+
+  wxToday: {
     flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 18,
+    paddingHorizontal: SPACE.lg, paddingTop: SPACE.lg, paddingBottom: SPACE.md,
   },
-  topBarEyebrow: { fontSize: 10, fontWeight: '700', color: COLORS.accent, letterSpacing: 2.5, marginBottom: 1 },
-  topBarTitle: { fontSize: 26, fontWeight: '800', color: COLORS.text, letterSpacing: -0.6 },
-  topBarRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  syncBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: COLORS.card,
-    borderRadius: 20, paddingHorizontal: 10, paddingVertical: 6,
-    borderWidth: 1, borderColor: COLORS.border,
-  },
-  syncBadgeActive: { borderColor: COLORS.accent, backgroundColor: COLORS.accentGlow },
-  syncBadgeText: { fontSize: 11, fontWeight: '600', color: COLORS.success },
-  avatar: {
-    width: 36, height: 36, borderRadius: 11,
-    backgroundColor: COLORS.accentGlow,
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1.5, borderColor: COLORS.accent,
-  },
-  avatarText: { fontSize: 13, fontWeight: '800', color: COLORS.accent },
+  wxTodayLeft: { flex: 1, minWidth: 0 },
+  wxPlace: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 2 },
+  wxPlaceTxt: { ...TYPE.caption, flexShrink: 1, fontWeight: '600', color: TONE.primary },
+  wxTemp: { fontSize: 56, lineHeight: 62, fontWeight: '700', letterSpacing: -2, color: NATURE.bark },
+  wxLabel: { ...TYPE.body, fontWeight: '600', marginTop: -2 },
+  wxGlyph: { width: 96, height: 96, borderTopLeftRadius: 40, borderTopRightRadius: 30, borderBottomRightRadius: 40, borderBottomLeftRadius: 30, alignItems: 'center', justifyContent: 'center' },
 
-  // Greeting card
-  greetingCard: {
-    backgroundColor: COLORS.accent,
-    borderRadius: 20, padding: 20,
-    marginBottom: 24,
-    overflow: 'hidden', position: 'relative',
-    shadowColor: COLORS.accent,
-    shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.25, shadowRadius: 16,
-    elevation: 6,
-  },
-  greetingOrb: {
-    position: 'absolute', width: 120, height: 120, borderRadius: 60,
-    backgroundColor: 'rgba(255,255,255,0.07)', top: -30, right: -20,
-  },
-  greetingOrb2: {
-    position: 'absolute', width: 70, height: 70, borderRadius: 35,
-    backgroundColor: 'rgba(255,255,255,0.05)', bottom: -10, left: 40,
-  },
-  greetingName: { fontSize: 17, fontWeight: '700', color: COLORS.white, marginBottom: 4 },
-  greetingDesc: { fontSize: 13, color: 'rgba(255,255,255,0.72)', marginBottom: 16 },
-  tokenRow: { flexDirection: 'row', gap: 10 },
-  tokenChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: COLORS.white,
-    borderRadius: 12, paddingHorizontal: 10, paddingVertical: 8,
-    borderWidth: 1, flex: 1,
-    shadowColor: 'rgba(0,0,0,0.08)',
-    shadowOffset: { width: 0, height: 2 }, shadowOpacity: 1, shadowRadius: 6,
-    elevation: 2,
-  },
-  tokenChipIcon: { width: 26, height: 26, borderRadius: 7, alignItems: 'center', justifyContent: 'center' },
-  tokenChipVal: { fontSize: 13, fontWeight: '800', letterSpacing: -0.3 },
-  tokenChipLabel: { fontSize: 9, color: COLORS.textMuted, fontWeight: '600', letterSpacing: 0.5 },
+  wxFacts: { flexDirection: 'row', gap: SPACE.md, paddingHorizontal: SPACE.lg, paddingBottom: SPACE.md },
+  fact: { flex: 1, display: "flex", flexDirection: 'row', alignItems: 'center', gap: SPACE.sm },
+  factValue: { fontSize: 16, fontWeight: '700', color: NATURE.bark },
+  factLabel: { ...TYPE.caption, fontSize: 13},
 
-  // Section header
-  sectionRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
-  sectionDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.accent },
-  sectionTitle: { fontSize: 11, fontWeight: '700', color: COLORS.accent, letterSpacing: 2 },
+  advice: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: SPACE.sm,
+    marginHorizontal: SPACE.lg, marginBottom: SPACE.md,
+    padding: SPACE.md, ...ORGANIC_TILE, backgroundColor: TONE.primarySoft,
+  },
+  adviceTxt: { flex: 1, fontSize: 15, lineHeight: 22, fontWeight: '600', color: TONE.primaryDeep },
 
-  // Stats
-  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  statCard: {
-    width: (width - 40 - 10) / 2,
-    backgroundColor: COLORS.card,
-    borderRadius: 16, padding: 16,
-    alignItems: 'center', gap: 4,
-    borderWidth: 1, borderColor: COLORS.border,
-    shadowColor: COLORS.shadow,
-    shadowOffset: { width: 0, height: 2 }, shadowOpacity: 1, shadowRadius: 8,
-    elevation: 2,
+  wxWeek: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    paddingHorizontal: SPACE.md, paddingTop: SPACE.md, paddingBottom: SPACE.lg,
+    borderTopWidth: 1, borderTopColor: TONE.border,
   },
-  statIconWrap: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
-  statValue: { fontSize: 26, fontWeight: '800', letterSpacing: -0.8 },
-  statLabel: { fontSize: 11, color: COLORS.textMuted, fontWeight: '500' },
+  wxDay: { flex: 1, alignItems: 'center', gap: 5, paddingVertical: SPACE.sm, borderRadius: RADIUS.field },
+  wxDayToday: { backgroundColor: NATURE.leaf, color: "white" },
+  wxDayName: { ...TYPE.caption, fontSize: 13, fontWeight: '600' },
+  wxDayNameToday: { color: "white", fontWeight: '700' },
+  wxDayMax: { fontSize: 15, fontWeight: '700', color: NATURE.bark },
+  wxDayMin: { ...TYPE.caption, fontSize: 13 },
 
-  // Quick actions
-  quickActionsRow: { flexDirection: 'row', gap: 10, marginBottom: 24 },
-  quickAction: {
-    backgroundColor: COLORS.card,
-    borderRadius: 14, paddingVertical: 14,
-    alignItems: 'center', gap: 8,
-    borderWidth: 1, borderColor: COLORS.border,
-    shadowColor: COLORS.shadow,
-    shadowOffset: { width: 0, height: 2 }, shadowOpacity: 1, shadowRadius: 8,
-    elevation: 2,
-  },
-  quickActionDisabled: { opacity: 0.45 },
-  quickActionIcon: { width: 44, height: 44, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
-  quickActionLabel: { fontSize: 11, fontWeight: '600', color: COLORS.textSub },
-  captureCta: {
-    flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 16,
-    backgroundColor: COLORS.card, borderRadius: 16, padding: 14,
-    borderWidth: 1, borderColor: COLORS.border,
-    shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 1, shadowRadius: 8, elevation: 2,
-  },
-  captureCtaIcon: { width: 44, height: 44, borderRadius: 13, backgroundColor: `${COLORS.accent}14`, alignItems: 'center', justifyContent: 'center' },
-  captureCtaTitle: { fontSize: 14, fontWeight: '700', color: COLORS.text },
-  captureCtaSub: { fontSize: 12, color: COLORS.textMuted, marginTop: 2 },
+  // Mục 3 — thẻ tin ẢNH-TRƯỚC
+  newsCard: { marginBottom: SPACE.lg },
+  // Ảnh cao 190: đủ để thấy cảnh vườn/quả trong ảnh báo, chưa tới mức mỗi tin
+  // chiếm trọn màn khiến người dùng phải cuộn mãi mới thấy tin thứ hai.
+  newsCover: { width: '100%', height: 190, backgroundColor: SURFACE.sunken },
+  newsCoverEmpty: { alignItems: 'center', justifyContent: 'center' },
+  newsBody: { padding: SPACE.lg, gap: SPACE.sm },
+  // KHÔNG numberOfLines: tiêu đề phải hiện đủ câu.
+  newsTitle: { fontSize: 17.5, lineHeight: 25, fontWeight: '700', color: NATURE.bark },
+  newsSummary: { ...TYPE.caption, fontSize: 14.5, lineHeight: 21 },
+  newsMeta: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, marginTop: 2 },
+  newsSource: { ...TYPE.caption, fontSize: 13, flexShrink: 1, color: TONE.primary, fontWeight: '600' },
+  dot: { width: 3, height: 3, borderRadius: 2, backgroundColor: TONE.border },
+  newsTime: { ...TYPE.caption, fontSize: 13 },
 
-  // Filters
-  filterScroll: { marginBottom: 14 },
-  filterScrollContent: { gap: 8, paddingRight: 4 },
-  filterPill: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 14, paddingVertical: 8,
-    borderRadius: 20, backgroundColor: COLORS.card,
-    borderWidth: 1, borderColor: COLORS.border,
+  newsFoot: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.sm,
+    paddingVertical: SPACE.xl,
   },
-  filterPillActive: { backgroundColor: COLORS.accent, borderColor: COLORS.accent },
-  filterPillText: { fontSize: 12, fontWeight: '600', color: COLORS.textSub },
-  filterPillTextActive: { color: COLORS.white },
-
-  // Empty
-  emptyWrap: { alignItems: 'center', paddingVertical: 48 },
-  emptyIconWrap: {
-    width: 80, height: 80, borderRadius: 40,
-    backgroundColor: COLORS.accentGlow,
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: 16, position: 'relative',
-  },
-  emptyRing: {
-    position: 'absolute', top: -6, left: -6, right: -6, bottom: -6,
-    borderRadius: 46, borderWidth: 1.5, borderColor: COLORS.accentLight, opacity: 0.3,
-  },
-  emptyTitle: { fontSize: 17, fontWeight: '700', color: COLORS.text, marginBottom: 8 },
-  emptyBody: { fontSize: 13, color: COLORS.textMuted, textAlign: 'center', lineHeight: 20, paddingHorizontal: 20 },
-
-  // Item card
-  itemCard: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: COLORS.card,
-    borderRadius: 14, borderWidth: 1, borderColor: COLORS.border,
-    marginBottom: 8, overflow: 'hidden',
-    shadowColor: COLORS.shadow,
-    shadowOffset: { width: 0, height: 2 }, shadowOpacity: 1, shadowRadius: 8,
-    elevation: 1,
-  },
-  itemAccentBar: { width: 4, alignSelf: 'stretch' },
-  itemIconWrap: {
-    width: 44, height: 44, borderRadius: 12,
-    alignItems: 'center', justifyContent: 'center',
-    margin: 12,
-  },
-  itemContent: { flex: 1, paddingVertical: 12 },
-  itemTopRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 3 },
-  itemTitle: { flex: 1, fontSize: 14, fontWeight: '700', color: COLORS.text },
-  itemTypeBadge: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 },
-  itemTypeText: { fontSize: 9, fontWeight: '700', letterSpacing: 0.8 },
-  itemSub: { fontSize: 11, color: COLORS.textMuted },
 });
 
 export default DashboardScreen;

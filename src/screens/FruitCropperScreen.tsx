@@ -40,6 +40,11 @@ import { ORILIFE_BASE } from '../services/orilifeBase';
 
 import { Icon } from '../components/Icon';
 import { COLORS } from '../constants';
+import { useTk } from '../i18n/keys';
+import {
+  ELEVATION as ORG_ELEV, ORGANIC_CARD, ORGANIC_TILE,
+  SURFACE as ORG_SURFACE, TONE as ORG_TONE, TYPE as ORG_TYPE,
+} from '../modules/trace/theme/depth';
 import {
   fruitCandidates, enrollFruit, addFruitView, detectFruit, outcomeOf,
   type FruitShape, type FruitCandidate, type FruitRegion, type Bbox, type TreeZone,
@@ -211,6 +216,7 @@ const ScanOverlay: React.FC<{
 };
 
 const FruitCropperScreen: React.FC = () => {
+  const tk = useTk();
   const route = useRoute();
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
@@ -914,14 +920,12 @@ const FruitCropperScreen: React.FC = () => {
   const renderCandidates = () => (
     <View style={styles.container}>
       <SheetHeader
-        eyebrow="BƯỚC 2 / 3"
-        title="Đây là quả nào?"
+        eyebrow={tk('trace.crop.step', { i: 2, n: 3 })}
+        title={tk('trace.crop.whichFruit')}
         onBack={recrop}
       />
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        <Text style={styles.muted}>
-          Vùng quả đã chốt. Chọn quả đã có để thêm góc ảnh, hoặc lưu thành quả mới.
-        </Text>
+        <Text style={styles.muted}>{tk('trace.crop.whichFruitHint')}</Text>
 
         {top ? candRow(top, true) : null}
 
@@ -932,29 +936,29 @@ const FruitCropperScreen: React.FC = () => {
           activeOpacity={0.85}
         >
           <Icon name="circle-plus" size={15} color={COLORS.white} />
-          <Text style={styles.candNewTxt}>Đây là quả mới</Text>
+          <Text style={styles.candNewTxt}>{tk('trace.crop.isNew')}</Text>
         </TouchableOpacity>
 
         {others.length > 0 && !expanded ? (
           <TouchableOpacity style={styles.linkBtn} onPress={() => setExpanded(true)} activeOpacity={0.7}>
             <Icon name="chevron-down" size={12} color={COLORS.accent} />
-            <Text style={styles.linkTxt}>Không phải — xem {others.length} quả khác</Text>
+            <Text style={styles.linkTxt}>{tk('trace.crop.seeOthers', { n: others.length })}</Text>
           </TouchableOpacity>
         ) : null}
 
         {others.length > 0 && expanded ? (
           <>
-            <Text style={styles.sectionLbl}>TẤT CẢ QUẢ CỦA CÂY</Text>
+            <Text style={styles.sectionLbl}>{tk('trace.crop.allFruits')}</Text>
             {others.map(c => candRow(c, false))}
             <TouchableOpacity style={styles.linkBtn} onPress={() => setExpanded(false)} activeOpacity={0.7}>
               <Icon name="chevron-up" size={12} color={COLORS.accent} />
-              <Text style={styles.linkTxt}>Thu gọn</Text>
+              <Text style={styles.linkTxt}>{tk('trace.crop.collapse')}</Text>
             </TouchableOpacity>
           </>
         ) : null}
 
         {!cands.length ? (
-          <Text style={styles.muted}>Cây chưa có quả nào để đối chiếu — đặt tên để lưu quả mới.</Text>
+          <Text style={styles.muted}>{tk('trace.crop.nothingToMatch')}</Text>
         ) : null}
 
         {errMsg ? <ErrLine text={errMsg} /> : null}
@@ -963,7 +967,7 @@ const FruitCropperScreen: React.FC = () => {
 
         <TouchableOpacity style={styles.ghost} onPress={recrop} activeOpacity={0.8}>
           <Icon name="arrow-rotate-left" size={14} color={COLORS.textSub} />
-          <Text style={styles.ghostTxt}>Khoanh lại vùng khác</Text>
+          <Text style={styles.ghostTxt}>{tk('trace.crop.recrop')}</Text>
         </TouchableOpacity>
       </ScrollView>
     </View>
@@ -973,19 +977,21 @@ const FruitCropperScreen: React.FC = () => {
   const renderNaming = () => (
     <View style={styles.container}>
       <SheetHeader
-        eyebrow="BƯỚC 3 / 3"
-        title="Quả mới"
+        eyebrow={tk('trace.crop.step', { i: 3, n: 3 })}
+        title={tk('trace.crop.newFruit')}
         onBack={() => { setErrMsg(null); setStep('candidates'); }}
       />
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        <Text style={styles.muted}>Lưu thành quả mới trên cây {treeName || 'này'}.</Text>
+        <Text style={styles.muted}>
+          {tk('trace.crop.saveOnTree', { name: treeName || tk('trace.crop.thisTree') })}
+        </Text>
 
-        <Text style={styles.sectionLbl}>TÊN QUẢ</Text>
+        <Text style={styles.sectionLbl}>{tk('trace.crop.fruitName')}</Text>
         <View style={styles.inputWrap}>
           <Icon name="tag" size={14} color={COLORS.textMuted} />
           <TextInput
             style={styles.input}
-            placeholder="vd: quả ngọn phía đông"
+            placeholder={tk('trace.crop.fruitNameHint')}
             placeholderTextColor={COLORS.textMuted}
             value={nameInput}
             onChangeText={setNameInput}
@@ -994,12 +1000,12 @@ const FruitCropperScreen: React.FC = () => {
           />
         </View>
 
-        <Text style={styles.sectionLbl}>QUẢ NẰM Ở ĐÂU TRÊN CÂY</Text>
+        <Text style={styles.sectionLbl}>{tk('trace.crop.whereOnTree')}</Text>
         <TouchableOpacity style={styles.coordBox} onPress={openPlacer} activeOpacity={0.8}>
           <View style={styles.coordIcon}><Icon name="location-dot" size={15} color={COLORS.accent} /></View>
           <View style={styles.coordBody}>
-            <Text style={styles.coordTitle}>Đặt vị trí trên cây (3D)</Text>
-            <Text style={styles.coordHint}>Kéo icon quả theo ba hướng chiếu để đặt đúng chỗ</Text>
+            <Text style={styles.coordTitle}>{tk('trace.crop.place3d')}</Text>
+            <Text style={styles.coordHint}>{tk('trace.crop.place3dHint')}</Text>
           </View>
           <Icon name="chevron-right" size={13} color={COLORS.accentLight} />
         </TouchableOpacity>
@@ -1040,7 +1046,7 @@ const FruitCropperScreen: React.FC = () => {
           {busy ? <ActivityIndicator color={COLORS.white} /> : (
             <>
               <Icon name="floppy-disk" size={15} color={COLORS.white} />
-              <Text style={styles.primaryTxt}>Lưu quả mới</Text>
+              <Text style={styles.primaryTxt}>{tk('trace.crop.save')}</Text>
             </>
           )}
         </TouchableOpacity>
@@ -1232,31 +1238,30 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.5 },
 
   // ── Header hai bước sau ───────────────────────────────────────────────────
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 8, paddingBottom: 10, gap: 12 },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingTop: 10, paddingBottom: 12, gap: 12 },
   headerBtn: {
-    width: 38, height: 38, borderRadius: 12,
+    width: 44, height: 44, ...ORGANIC_TILE, ...ORG_ELEV.card,
     alignItems: 'center', justifyContent: 'center',
-    backgroundColor: COLORS.inputBg, borderWidth: 1, borderColor: COLORS.border,
+    backgroundColor: ORG_SURFACE.raised,
   },
   headerTitles: { flex: 1, minWidth: 0 },
-  headerEyebrow: { fontSize: 9, fontWeight: '800', letterSpacing: 1.8, color: COLORS.textMuted },
-  headerTitle: { fontSize: 20, fontWeight: '800', color: COLORS.text, letterSpacing: -0.4, marginTop: 1 },
+  // Nhãn bước để nhỏ và NHẠT, không in hoa giãn chữ: nó là số thứ tự, không phải
+  // tiêu đề. Tiêu đề mới là câu người dùng cần đọc.
+  headerEyebrow: { fontSize: 13, fontWeight: '600', color: ORG_TONE.primary },
+  headerTitle: { ...ORG_TYPE.title, fontSize: 23, marginTop: 1 },
 
-  scroll: { paddingHorizontal: 16, paddingBottom: 32 },
-  muted: { color: COLORS.textMuted, fontSize: 13, lineHeight: 19, marginBottom: 12 },
-  sectionLbl: {
-    fontSize: 10, fontWeight: '800', letterSpacing: 1.4,
-    color: COLORS.textMuted, marginTop: 18, marginBottom: 8,
-  },
+  scroll: { paddingHorizontal: 18, paddingBottom: 32 },
+  muted: { ...ORG_TYPE.caption, fontSize: 14.5, marginBottom: 12 },
+  sectionLbl: { ...ORG_TYPE.section, fontSize: 17, marginTop: 20, marginBottom: 8 },
   inlineLoader: { marginVertical: 10 },
 
   // Đối chiếu
   candRow: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border,
-    borderRadius: 16, padding: 10, marginBottom: 8,
+    backgroundColor: ORG_SURFACE.raised, ...ORGANIC_CARD, ...ORG_ELEV.card,
+    padding: 12, marginBottom: 8,
   },
-  candTop: { borderColor: COLORS.success, borderWidth: 1.5 },
+  candTop: { borderColor: ORG_TONE.primary, borderWidth: 1.5 },
   cThumb: {
     width: 52, height: 52, borderRadius: 12, backgroundColor: COLORS.inputBg,
     alignItems: 'center', justifyContent: 'center', overflow: 'hidden',

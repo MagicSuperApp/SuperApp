@@ -12,6 +12,7 @@ import {
 // Thêm icon mới: `node scripts/icons.js <tên-fa6-solid>`.
 import Icon from '../../../components/Icon';
 import { COLORS } from '../../../constants';
+import { ELEVATION } from '../theme/depth';
 
 interface PaginationControlsProps {
   currentPage: number;
@@ -166,11 +167,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     overflow: 'hidden',
-    shadowColor: COLORS.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 1,
-    shadowRadius: 8,
-    elevation: 2,
+    ...ELEVATION.card,
   },
 
   infoRow: {

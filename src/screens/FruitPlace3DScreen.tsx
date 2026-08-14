@@ -48,6 +48,8 @@ import { Canvas, useThree } from '@react-three/fiber/native';
 import type * as THREE from 'three';
 
 import { Icon } from '../components/Icon';
+import { useTk } from '../i18n/keys';
+import { ORGANIC_TILE, ORGANIC_CARD } from '../modules/trace/theme/depth';
 import GLErrorBoundary from '../components/GLErrorBoundary';
 import rLog from '../services/remoteLogger';
 import {
@@ -204,6 +206,7 @@ const FruitPlace3DScreen: React.FC = () => {
     done();
   }, [view, done]);
 
+  const tk = useTk();
   const zone = coordToZone(coord);
   const locked = lockedAxis(view);
   const activeDef = VIEW_DEFS.find((v) => v.key === view)!;
@@ -217,9 +220,13 @@ const FruitPlace3DScreen: React.FC = () => {
           <Icon name="chevron-left" size={17} color={SPACE_COLORS.text} />
         </TouchableOpacity>
         <View style={styles.headTitles}>
-          <Text style={styles.eyebrow}>SET FRUIT LOCATION · STEP {activeDef.step}/{VIEW_DEFS.length}</Text>
           <Text style={styles.title} numberOfLines={1}>
-            {fruitName || 'Quả mới'} · {treeName || 'Cây'}
+            {tk('trace.place3d.title')}
+          </Text>
+          <Text style={styles.eyebrow} numberOfLines={1}>
+            {tk('trace.place3d.step', { i: activeDef.step, n: VIEW_DEFS.length })}
+            {' · '}{fruitName || tk('trace.place3d.newFruit')}
+            {treeName ? ` · ${treeName}` : ''}
           </Text>
         </View>
       </View>
@@ -241,7 +248,7 @@ const FruitPlace3DScreen: React.FC = () => {
                   ? <Icon name="check" size={9} color={SPACE_COLORS.bg} />
                   : <Text style={[styles.stepBadgeTxt, on && styles.stepBadgeTxtOn]}>{v.step}</Text>}
               </View>
-              <Text style={[styles.viewTabTxt, on && styles.viewTabTxtOn]}>{v.label}</Text>
+              <Text style={[styles.viewTabTxt, on && styles.viewTabTxtOn]}>{tk(v.labelKey)}</Text>
             </TouchableOpacity>
           );
         })}
@@ -288,16 +295,16 @@ const FruitPlace3DScreen: React.FC = () => {
         )}
 
         <View pointerEvents="none" style={styles.stageHint}>
-          <Text style={styles.stageHintTxt}>{activeDef.hint} · lock {locked}</Text>
+          <Text style={styles.stageHintTxt}>{activeDef.hint}</Text>
         </View>
       </View>
 
       {/* Toạ độ + điều hướng bước */}
       <View style={[styles.footer, { paddingBottom: insets.bottom + 14 }]}>
         <View style={styles.coordRow}>
-          <CoordChip label="X" value={coord.x} hint="trái ⇄ phải" active={locked !== 'X'} />
-          <CoordChip label="Y" value={coord.y} hint="gốc → ngọn" active={locked !== 'Y'} />
-          <CoordChip label="Z" value={coord.z} hint="trước ⇄ sau" active={locked !== 'Z'} />
+          <CoordChip label="X" value={coord.x} hint={tk('trace.place3d.axisX')} active={locked !== 'X'} lockedTxt={tk('trace.place3d.locked')} />
+          <CoordChip label="Y" value={coord.y} hint={tk('trace.place3d.axisY')} active={locked !== 'Y'} lockedTxt={tk('trace.place3d.locked')} />
+          <CoordChip label="Z" value={coord.z} hint={tk('trace.place3d.axisZ')} active={locked !== 'Z'} lockedTxt={tk('trace.place3d.locked')} />
           <View style={styles.zoneChip}>
             <Text style={styles.zoneChipTxt}>{ZONE_LABEL[zone]}</Text>
           </View>
@@ -308,10 +315,7 @@ const FruitPlace3DScreen: React.FC = () => {
         {fruitId ? (
           <View style={styles.localOnly}>
             <Icon name="circle-info" size={12} color={SPACE_COLORS.textMuted} />
-            <Text style={styles.localOnlyTxt}>
-              Vị trí này chỉ lưu trên máy đang dùng. Máy khác chưa thấy được —
-              chụp thêm một góc cho quả để đẩy vị trí lên máy chủ.
-            </Text>
+            <Text style={styles.localOnlyTxt}>{tk('trace.place3d.localOnly')}</Text>
           </View>
         ) : null}
 
@@ -322,7 +326,7 @@ const FruitPlace3DScreen: React.FC = () => {
             activeOpacity={0.8}
           >
             <Icon name="arrow-rotate-left" size={14} color={SPACE_COLORS.text} />
-            <Text style={styles.resetTxt}>Đặt lại</Text>
+            <Text style={styles.resetTxt}>{tk('trace.place3d.reset')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.doneBtn} onPress={advance} disabled={saving} activeOpacity={0.88}>
             {saving ? <ActivityIndicator color="#06120c" /> : (
@@ -330,8 +334,10 @@ const FruitPlace3DScreen: React.FC = () => {
                 <Icon name={upcoming ? 'chevron-right' : 'check'} size={15} color="#06120c" />
                 <Text style={styles.doneTxt}>
                   {upcoming
-                    ? `Next ${VIEW_DEFS.find((v) => v.key === upcoming)!.label}`
-                    : 'Xác nhận vị trí'}
+                    ? tk('trace.place3d.next', {
+                        view: tk(VIEW_DEFS.find((v) => v.key === upcoming)!.labelKey),
+                      })
+                    : tk('trace.place3d.confirm')}
                 </Text>
               </>
             )}
@@ -342,13 +348,13 @@ const FruitPlace3DScreen: React.FC = () => {
   );
 };
 
-const CoordChip: React.FC<{ label: string; value: number; hint: string; active: boolean }> = ({
-  label, value, hint, active,
-}) => (
+const CoordChip: React.FC<{
+  label: string; value: number; hint: string; active: boolean; lockedTxt: string;
+}> = ({ label, value, hint, active, lockedTxt }) => (
   <View style={[styles.coordChip, !active && styles.coordChipLocked]}>
     <Text style={[styles.coordLabel, !active && styles.coordLabelLocked]}>{label}</Text>
     <Text style={styles.coordVal}>{value.toFixed(2)}</Text>
-    <Text style={styles.coordHint}>{active ? hint : 'đang khoá'}</Text>
+    <Text style={styles.coordHint}>{active ? hint : lockedTxt}</Text>
   </View>
 );
 
@@ -357,7 +363,7 @@ const styles = StyleSheet.create({
 
   header: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingBottom: 8 },
   iconBtn: {
-    width: 40, height: 40, borderRadius: 13,
+    width: 44, height: 44, ...ORGANIC_TILE,
     alignItems: 'center', justifyContent: 'center',
     backgroundColor: SPACE_COLORS.hudBg, borderWidth: 1, borderColor: SPACE_COLORS.hudBorder,
   },
@@ -437,9 +443,9 @@ const styles = StyleSheet.create({
   resetTxt: { color: SPACE_COLORS.text, fontSize: 14, fontWeight: '700' },
   doneBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    paddingVertical: 14, borderRadius: 13, backgroundColor: SPACE_COLORS.accent,
+    paddingVertical: 16, ...ORGANIC_CARD, backgroundColor: SPACE_COLORS.accent,
   },
-  doneTxt: { color: '#06120c', fontSize: 14, fontWeight: '800' },
+  doneTxt: { color: '#06120c', fontSize: 16, fontWeight: '700' },
 });
 
 export default FruitPlace3DScreen;

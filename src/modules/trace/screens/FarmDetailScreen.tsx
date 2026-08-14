@@ -30,6 +30,13 @@ import { addFarm, setTrees, addTree, saveFarm, loadTrees, saveTree, loadFarm, sy
 import { database } from '../../../utils/database';
 import Geolocation from 'react-native-geolocation-service';
 import { COLORS } from '../../../constants';
+// Nen huu co dung chung cua module (tong dat/la) - xem theme/depth.ts
+import {
+  SURFACE as ORG_SURFACE, TONE as ORG_TONE, NATURE as ORG_NATURE,
+  ORGANIC_CARD, ORGANIC_TILE, ELEVATION as ORG_ELEV,
+} from '../theme/depth';
+import { GroundBackdrop } from '../components/layered/Organic';
+import { useTk } from '../../../i18n/keys';
 // B2: tạo vườn QUA field-reid (server sinh farm_id uuid THẬT) — bỏ aladinAPI
 // (backend Lợi deprecated + client tự sinh `farm-<ts>` = gốc B2). INV-1 §3.2.
 import { createFarm as createReidFarm } from '../../../services/farmService';
@@ -185,6 +192,7 @@ const TreeCard = ({
   onPress: () => void;
   onView3D?: () => void;
 }) => {
+  const tk = useTk();
   const fruitCount = item.fruitCount ?? 0;
   const has3DModel = item.has_3d ?? item.has3DModel ?? item.latest_mesh_cid ?? item.meshCid;
   // Build 58 (2026-05-26): bỏ random fallback 10-90% — field test 25/5 báo
@@ -213,7 +221,7 @@ const TreeCard = ({
             <View style={{ flex: 1, marginRight: 8 }}>
               <Text style={styles.treeCode} numberOfLines={1}>{treeDisplayName}</Text>
               {treeShortCode ? (
-                <Text style={styles.treeCodeSub} numberOfLines={1}>Mã: {treeShortCode}</Text>
+                <Text style={styles.treeCodeSub} numberOfLines={1}>{tk('trace.label.code')} {treeShortCode}</Text>
               ) : null}
             </View>
             {has3DModel && onView3D ? (
@@ -223,15 +231,15 @@ const TreeCard = ({
                 hitSlop={6}
               >
                 <Icon name="expand" size={12} color={COLORS.accent} />
-                <Text style={[styles.treeFruitCount, { color: COLORS.accent }]}>
-                  3D · {fruitCount} quả
+                <Text style={[styles.treeFruitCount, { color: ORG_TONE.primary }]}>
+                  {tk('trace.label.has3d', { n: fruitCount })}
                 </Text>
               </TouchableOpacity>
             ) : (
-              <View style={[styles.treeFruitChip, { backgroundColor: COLORS.bgWarm }]}>
+              <View style={[styles.treeFruitChip, { backgroundColor: ORG_SURFACE.raised }]}>
                 <Icon name="cube" size={12} color={COLORS.textMuted} />
-                <Text style={[styles.treeFruitCount, { color: COLORS.textMuted }]}>
-                  Chưa có 3D · {fruitCount} quả
+                <Text style={[styles.treeFruitCount, { color: ORG_NATURE.barkSoft }]}>
+                  {tk('trace.label.no3d', { n: fruitCount })}
                 </Text>
               </View>
             )}
@@ -1030,6 +1038,7 @@ const FarmDetailMode = ({
   onView3DFarm: () => void;
 }) => {
   const navigation = useNavigation();
+  const tk = useTk();
   const [renamePopupVisible, setRenamePopupVisible] = useState(false);
 
   useEffect(() => {
@@ -1088,11 +1097,12 @@ const FarmDetailMode = ({
   const totalFruits = filteredTrees.reduce((sum, t) => sum + (t.fruitCount ?? 0), 0);
   const areaLabel = farm?.areaSqm
     ? `${(farm?.areaSqm / 10000).toFixed(1)} ha`
-    : `${farm?.coordinates?.length ?? 0} Points`;
+    : `${farm?.coordinates?.length ?? 0} ${tk('trace.unit.points')}`;
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
+      <StatusBar barStyle="dark-content" backgroundColor={ORG_SURFACE.ground} />
+      <GroundBackdrop variant="detail" />
 
       {/* Header */}
       <View style={styles.header}>
@@ -1100,7 +1110,7 @@ const FarmDetailMode = ({
           <Icon name="arrow-left" size={20} color={COLORS.textSub} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={styles.headerEyebrow}>TRANG TRẠI</Text>
+          <Text style={styles.headerEyebrow}>{tk('trace.farmList.title')}</Text>
           <TouchableOpacity onPress={() => setRenamePopupVisible(true)} activeOpacity={0.7}>
             <Text style={styles.headerTitle} numberOfLines={1}>{farm?.name}</Text>
           </TouchableOpacity>
@@ -1159,7 +1169,7 @@ const FarmDetailMode = ({
       <View style={styles.sectionHeaderRow}>
         <View style={styles.sectionHeaderLeft}>
           <View style={styles.sectionDot} />
-          <Text style={styles.sectionTitle}>DANH SÁCH CÂY</Text>
+          <Text style={styles.sectionTitle}>{tk('trace.section.treeList')}</Text>
         </View>
         <TouchableOpacity
           style={styles.addTreeBtn}
@@ -2211,13 +2221,13 @@ const FarmDetailScreen = () => {
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: COLORS.bg },
+  root: { flex: 1, backgroundColor: ORG_SURFACE.ground },
 
   mapFallback: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.card,
+    backgroundColor: ORG_SURFACE.raised,
     padding: 20,
   },
   mapFallbackText: {
@@ -2231,55 +2241,47 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === 'ios' ? 56 : 40,
     paddingHorizontal: 20,
     paddingBottom: 14,
-    backgroundColor: COLORS.bg,
+    backgroundColor: ORG_SURFACE.ground,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
   },
   backBtn: {
-    width: 40, height: 40, borderRadius: 12,
-    backgroundColor: COLORS.white,
+    width: 44, height: 44, ...ORGANIC_TILE,
+    backgroundColor: ORG_SURFACE.raised,
     alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: COLORS.border,
-    shadowColor: COLORS.shadow,
-    shadowOffset: { width: 0, height: 2 }, shadowOpacity: 1, shadowRadius: 6,
-    elevation: 2,
+    ...ORG_ELEV.card,
   },
   headerEyebrow: {
-    fontSize: 10, fontWeight: '700', color: COLORS.accent,
-    letterSpacing: 2.5, marginBottom: 1,
+    fontSize: 14, fontWeight: '600', color: ORG_TONE.primary,
+    marginBottom: 1,
   },
   headerTitle: {
-    fontSize: 24, fontWeight: '800', color: COLORS.text, letterSpacing: -0.5,
+    fontSize: 26, fontWeight: '700', color: ORG_NATURE.bark, letterSpacing: -0.4,
   },
   activityBtn: {
-    width: 40, height: 40, borderRadius: 12,
-    backgroundColor: COLORS.accentGlow,
+    width: 44, height: 44, ...ORGANIC_TILE,
+    backgroundColor: ORG_TONE.primarySoft,
     alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: COLORS.border,
   },
 
   // Stats banner
   statsBanner: {
     flexDirection: 'row',
-    backgroundColor: COLORS.card,
-    marginHorizontal: 20,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    backgroundColor: ORG_SURFACE.raised,
+    marginHorizontal: 18,
+    ...ORGANIC_CARD,
     marginBottom: 16,
-    shadowColor: COLORS.shadow,
-    shadowOffset: { width: 0, height: 3 }, shadowOpacity: 1, shadowRadius: 10,
-    elevation: 2,
+    ...ORG_ELEV.card,
   },
   statBannerItem: {
     flex: 1, paddingVertical: 14, alignItems: 'center', gap: 3,
   },
   statBannerVal: {
-    fontSize: 14, fontWeight: '800', color: COLORS.text, letterSpacing: -0.3,
+    fontSize: 18, fontWeight: '700', color: ORG_NATURE.bark, letterSpacing: -0.3,
   },
   statBannerLabel: {
-    fontSize: 10, color: COLORS.textMuted,
+    fontSize: 13, color: ORG_NATURE.barkSoft,
   },
 
   // Section header
@@ -2293,13 +2295,13 @@ const styles = StyleSheet.create({
     width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.accent,
   },
   sectionTitle: {
-    fontSize: 11, fontWeight: '700', color: COLORS.accent, letterSpacing: 2,
+    fontSize: 19, fontWeight: '700', color: ORG_NATURE.bark, letterSpacing: -0.2,
   },
   addTreeBtn: { overflow: 'hidden', borderRadius: 10 },
   addTreeBtnInner: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     backgroundColor: COLORS.accentGlow,
-    borderWidth: 1, borderColor: COLORS.border,
+    borderWidth: 1, borderColor: ORG_TONE.border,
     paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10,
   },
   addTreeBtnText: {
@@ -2313,16 +2315,14 @@ const styles = StyleSheet.create({
 
   // Tree card
   treeCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 16, borderWidth: 1, borderColor: COLORS.border,
+    backgroundColor: ORG_SURFACE.raised,
+    ...ORGANIC_CARD,
     flexDirection: 'row', alignItems: 'stretch',
-    shadowColor: COLORS.shadow,
-    shadowOffset: { width: 0, height: 2 }, shadowOpacity: 1, shadowRadius: 8,
-    elevation: 1, overflow: 'hidden',
+    ...ORG_ELEV.card, overflow: 'hidden',
   },
   treeCardLeft: {
     width: 48, alignItems: 'center', paddingVertical: 14, gap: 8,
-    backgroundColor: COLORS.bgWarm,
+    backgroundColor: ORG_SURFACE.raised,
     borderRightWidth: 1, borderRightColor: COLORS.border,
   },
   treeIconWrap: {
@@ -2394,7 +2394,7 @@ const styles = StyleSheet.create({
   treeEmptyBtn: {
     marginTop: 8, paddingHorizontal: 20, paddingVertical: 10,
     borderRadius: 12, backgroundColor: COLORS.accentGlow,
-    borderWidth: 1, borderColor: COLORS.border,
+    borderWidth: 1, borderColor: ORG_TONE.border,
   },
   treeEmptyBtnText: {
     fontSize: 13, fontWeight: '600', color: COLORS.accent,
@@ -2404,14 +2404,14 @@ const styles = StyleSheet.create({
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.card,
+    backgroundColor: ORG_SURFACE.raised,
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 10,
     marginHorizontal: 20,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: ORG_TONE.border,
     gap: 8,
   },
   searchInput: {
@@ -2441,7 +2441,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: Platform.OS === 'ios' ? 36 : 24,
     paddingTop: 12,
-    backgroundColor: COLORS.bg,
+    backgroundColor: ORG_SURFACE.ground,
     borderTopWidth: 1, borderTopColor: COLORS.border,
   },
   scan3DExistingBtn: {
@@ -2454,7 +2454,7 @@ const styles = StyleSheet.create({
     gap: 8,
     backgroundColor: COLORS.accentGlow,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: ORG_TONE.border,
   },
   scan3DExistingBtnText: {
     fontSize: 14,
@@ -2472,7 +2472,7 @@ const styles = StyleSheet.create({
     gap: 8,
     backgroundColor: COLORS.accentGlow,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: ORG_TONE.border,
   },
   view3DFarmBtnText: {
     flex: 1,
@@ -2485,10 +2485,8 @@ const styles = StyleSheet.create({
     borderRadius: 14, paddingVertical: 16,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 10, overflow: 'hidden', position: 'relative',
-    shadowColor: COLORS.accent,
-    shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 14,
-    elevation: 6,
-  },
+    ...ORG_ELEV.cardStrong,
+},
   activityLargeBtnText: {
     fontSize: 15, fontWeight: '700', color: COLORS.white, letterSpacing: 0.2,
   },
@@ -2509,7 +2507,7 @@ const styles = StyleSheet.create({
   addFarmFormPane: {
     flexShrink: 0,
     maxHeight: height * 0.44,
-    backgroundColor: COLORS.bg,
+    backgroundColor: ORG_SURFACE.ground,
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
   },
@@ -2518,14 +2516,12 @@ const styles = StyleSheet.create({
     paddingTop: 8,
   },
   instructionCard: {
-    backgroundColor: COLORS.card,
+    backgroundColor: ORG_SURFACE.raised,
     borderRadius: 18, padding: 20,
-    borderWidth: 1, borderColor: COLORS.border,
+    borderWidth: 1, borderColor: ORG_TONE.border,
     marginBottom: 16,
-    shadowColor: COLORS.shadow,
-    shadowOffset: { width: 0, height: 3 }, shadowOpacity: 1, shadowRadius: 12,
-    elevation: 2,
-  },
+    ...ORG_ELEV.card,
+},
   instructionIconWrap: {
     width: 52, height: 52, borderRadius: 16,
     backgroundColor: COLORS.accentGlow,
@@ -2540,9 +2536,9 @@ const styles = StyleSheet.create({
     fontSize: 14, color: COLORS.textSub, lineHeight: 22,
   },
   gpsStatusCard: {
-    backgroundColor: COLORS.card,
+    backgroundColor: ORG_SURFACE.raised,
     borderRadius: 16, padding: 16,
-    borderWidth: 1, borderColor: COLORS.border,
+    borderWidth: 1, borderColor: ORG_TONE.border,
     flexDirection: 'row', alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 16,
@@ -2557,7 +2553,7 @@ const styles = StyleSheet.create({
   coordCountWrap: {
     alignItems: 'center', backgroundColor: COLORS.accentGlow,
     paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12,
-    borderWidth: 1, borderColor: COLORS.border,
+    borderWidth: 1, borderColor: ORG_TONE.border,
     flexShrink: 0,
   },
   coordCountNum: {
@@ -2580,13 +2576,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: COLORS.card,
+    backgroundColor: ORG_SURFACE.raised,
     paddingVertical: 12,
     paddingHorizontal: 14,
     borderTopLeftRadius: 12,
     borderTopRightRadius: 12,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: ORG_TONE.border,
   },
   coordMapHeaderText: {
     fontSize: 16,
@@ -2596,10 +2592,10 @@ const styles = StyleSheet.create({
   coordMapContainer: {
     width: '100%',
     height: '80%',
-    backgroundColor: COLORS.bg,
+    backgroundColor: ORG_SURFACE.ground,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: ORG_TONE.border,
     overflow: 'hidden',
     marginTop: 8,
   },
@@ -2607,7 +2603,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.card,
+    backgroundColor: ORG_SURFACE.raised,
   },
   coordMapLoadingText: {
     fontSize: 14,
@@ -2618,7 +2614,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.card,
+    backgroundColor: ORG_SURFACE.raised,
     padding: 16,
   },
   coordMapErrorText: {
@@ -2643,17 +2639,17 @@ const styles = StyleSheet.create({
   },
 
   coordPreview: {
-    backgroundColor: COLORS.card,
+    backgroundColor: ORG_SURFACE.raised,
     borderRadius: 14, padding: 14,
-    borderWidth: 1, borderColor: COLORS.border,
+    borderWidth: 1, borderColor: ORG_TONE.border,
   },
   coordPreviewLabel: {
     fontSize: 11, fontWeight: '700', color: COLORS.accent, letterSpacing: 1.5,
   },
   coordChip: {
-    backgroundColor: COLORS.bgWarm,
+    backgroundColor: ORG_SURFACE.raised,
     borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6,
-    marginRight: 8, borderWidth: 1, borderColor: COLORS.border,
+    marginRight: 8, borderWidth: 1, borderColor: ORG_TONE.border,
   },
   coordChipText: { fontSize: 11, color: COLORS.textSub, fontWeight: '500' },
 
@@ -2677,7 +2673,7 @@ const styles = StyleSheet.create({
     paddingBottom: Platform.OS === 'ios' ? 36 : 24,
     paddingTop: 12,
     borderTopWidth: 1, borderTopColor: COLORS.border,
-    backgroundColor: COLORS.bg,
+    backgroundColor: ORG_SURFACE.ground,
   },
   recordBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
@@ -2692,14 +2688,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 10, paddingVertical: 16,
     borderRadius: 14, backgroundColor: COLORS.accent,
-    shadowColor: COLORS.accent,
-    shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.30, shadowRadius: 12,
-    elevation: 5,
-  },
+    ...ORG_ELEV.cardStrong,
+},
   autoTrackBtnActive: {
     backgroundColor: '#C0533A',
-    shadowColor: '#C0533A',
-  },
+    ...ORG_ELEV.card,
+},
   autoTrackBtnDisabled: {
     backgroundColor: COLORS.textMuted,
     shadowOpacity: 0,
@@ -2713,10 +2707,8 @@ const styles = StyleSheet.create({
     gap: 8, paddingVertical: 15,
     borderRadius: 14, backgroundColor: COLORS.accent,
     overflow: 'hidden', position: 'relative',
-    shadowColor: COLORS.accent,
-    shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.28, shadowRadius: 12,
-    elevation: 5,
-  },
+    ...ORG_ELEV.cardStrong,
+},
   finishBtnDisabled: { opacity: 0.45 },
   finishBtnText: {
     fontSize: 15, fontWeight: '700', color: COLORS.white,
@@ -2724,13 +2716,13 @@ const styles = StyleSheet.create({
   minPointsNote: {
     fontSize: 12, color: COLORS.textMuted, textAlign: 'center',
     paddingBottom: 8, paddingHorizontal: 20,
-    backgroundColor: COLORS.bg,
+    backgroundColor: ORG_SURFACE.ground,
   },
 
   // Identification result
   identificationResult: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: COLORS.bg,
+    backgroundColor: ORG_SURFACE.ground,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 20,
@@ -2802,11 +2794,8 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     gap: 10,
     elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 6,
-  },
+    ...ORG_ELEV.card,
+},
   primaryWalkBtn: {
     backgroundColor: '#3B6EA8',
     minHeight: 92,
@@ -2855,9 +2844,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.96)',
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.18, shadowRadius: 5, elevation: 4,
-  },
+    ...ORG_ELEV.card,
+},
   circleBtnLabel: {
     marginTop: 4, fontSize: 10, fontWeight: '700', color: COLORS.text,
     backgroundColor: 'rgba(255,255,255,0.9)', paddingHorizontal: 6,
@@ -2875,9 +2863,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.96)',
     borderRadius: 14, paddingVertical: 7, paddingHorizontal: 14,
     maxWidth: width - 132,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15, shadowRadius: 5, elevation: 4,
-  },
+    ...ORG_ELEV.card,
+},
   infoItem: { alignItems: 'center', minWidth: 50 },
   infoVal: { fontSize: 14, fontWeight: '800', color: COLORS.text, letterSpacing: -0.3 },
   infoLbl: { fontSize: 9, fontWeight: '600', color: COLORS.textMuted, marginTop: 1 },
@@ -2909,9 +2896,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.98)',
     borderTopLeftRadius: 22, borderTopRightRadius: 22,
     paddingHorizontal: 16, paddingTop: 12,
-    shadowColor: '#000', shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.12, shadowRadius: 12, elevation: 12,
-  },
+    ...ORG_ELEV.modal,
+},
   hintLine: {
     flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10,
     paddingHorizontal: 2,
@@ -2919,9 +2905,9 @@ const styles = StyleSheet.create({
   hintText: { flex: 1, fontSize: 12, color: COLORS.textSub, lineHeight: 16 },
 
   segment: {
-    flexDirection: 'row', backgroundColor: COLORS.bgWarm,
+    flexDirection: 'row', backgroundColor: ORG_SURFACE.raised,
     borderRadius: 12, padding: 4, marginBottom: 10,
-    borderWidth: 1, borderColor: COLORS.border,
+    borderWidth: 1, borderColor: ORG_TONE.border,
   },
   segmentBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
@@ -2929,16 +2915,15 @@ const styles = StyleSheet.create({
   },
   segmentBtnActive: {
     backgroundColor: COLORS.accent,
-    shadowColor: COLORS.accent, shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3, shadowRadius: 5, elevation: 3,
-  },
+    ...ORG_ELEV.card,
+},
   segmentText: { fontSize: 13, fontWeight: '700', color: COLORS.textSub },
   segmentTextActive: { color: COLORS.white },
 
   nameInput: {
-    borderWidth: 1, borderColor: COLORS.border, borderRadius: 10,
+    borderWidth: 1, borderColor: ORG_TONE.border, borderRadius: 10,
     paddingHorizontal: 14, paddingVertical: Platform.OS === 'ios' ? 11 : 8,
-    fontSize: 15, color: COLORS.text, backgroundColor: COLORS.white, marginBottom: 10,
+    fontSize: 15, color: COLORS.text, backgroundColor: ORG_SURFACE.raised, marginBottom: 10,
   },
 
   primaryRow: { flexDirection: 'row', gap: 10, marginBottom: 8 },
@@ -2948,20 +2933,18 @@ const styles = StyleSheet.create({
   },
   primaryBtnGo: {
     backgroundColor: '#3B6EA8',
-    shadowColor: '#3B6EA8', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3, shadowRadius: 8, elevation: 4,
-  },
+    ...ORG_ELEV.card,
+},
   primaryBtnRec: {
     backgroundColor: '#C0533A',
-    shadowColor: '#C0533A', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3, shadowRadius: 8, elevation: 4,
-  },
+    ...ORG_ELEV.card,
+},
   primaryBtnText: { color: COLORS.white, fontSize: 15, fontWeight: '800', letterSpacing: -0.2 },
 
   smallBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 6, paddingVertical: 14, paddingHorizontal: 16, borderRadius: 14,
-    backgroundColor: COLORS.bgWarm, borderWidth: 1, borderColor: COLORS.border,
+    backgroundColor: ORG_SURFACE.raised, borderWidth: 1, borderColor: ORG_TONE.border,
   },
   smallBtnFlex: { flex: 1 },
   smallBtnText: { fontSize: 14, fontWeight: '700', color: COLORS.textSub },
@@ -2969,9 +2952,8 @@ const styles = StyleSheet.create({
   saveBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 8, paddingVertical: 14, borderRadius: 14, backgroundColor: '#2ECC71',
-    shadowColor: '#2ECC71', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.32, shadowRadius: 8, elevation: 4,
-  },
+    ...ORG_ELEV.card,
+},
   saveBtnText: { color: COLORS.white, fontSize: 15, fontWeight: '800', letterSpacing: -0.2 },
 
   secondaryRow: {
@@ -2987,11 +2969,10 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', padding: 32,
   },
   vertexPopup: {
-    width: '100%', maxWidth: 320, backgroundColor: COLORS.white,
+    width: '100%', maxWidth: 320, backgroundColor: ORG_SURFACE.raised,
     borderRadius: 18, padding: 18,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25, shadowRadius: 20, elevation: 12,
-  },
+    ...ORG_ELEV.modal,
+},
   vertexPopupHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
   vertexPopupBadge: {
     width: 30, height: 30, borderRadius: 15, backgroundColor: COLORS.accent,
@@ -3000,7 +2981,7 @@ const styles = StyleSheet.create({
   vertexPopupBadgeText: { color: COLORS.white, fontSize: 13, fontWeight: '800' },
   vertexPopupTitle: { flex: 1, fontSize: 16, fontWeight: '800', color: COLORS.text },
   vertexPopupBody: {
-    backgroundColor: COLORS.bgWarm, borderRadius: 10, padding: 12, marginBottom: 14, gap: 4,
+    backgroundColor: ORG_SURFACE.raised, borderRadius: 10, padding: 12, marginBottom: 14, gap: 4,
   },
   vertexPopupCoord: { fontSize: 13, color: COLORS.textSub, fontVariant: ['tabular-nums'] },
   vertexDeleteBtn: {

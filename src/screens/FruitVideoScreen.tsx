@@ -1,49 +1,54 @@
-// screens/FruitVideoScreen.tsx
-//
-// Thu video QUẢ → gắn vào 1 CÂY (OriLife). Theo User-Action-Flow (OriLife-Mobile PR #2):
-//   Quay video (native launchCamera video) → xem lại → chọn cây (CHO gắn sai, VeData sửa
-//   sau) → GỬI → hiện "đã lưu, thấy N quả".
-//
-// KIẾN TRÚC 1-CỬA: màn NÀY không bao giờ POST trực tiếp. "Gửi" = enqueueVideoUpload(...)
-// rồi flush 1 lần; "Gửi lại" = retryVideoJobNow(jobId). Hàng đợi
-// (videoUploadQueue) là nguồn sự-thật DUY NHẤT cho "clip đã gửi chưa" — nháp
-// (treeDraftStore) chỉ giữ metadata phiên chụp để app bị-ngắt còn khôi phục được UI.
-//
-// MobileCore KHÔNG cấp quay video — đây là native RN per-app (image-picker). Chắt khung
-// + detect quả ở SERVER. Không hiển thị lỗi kỹ-thuật thô cho nông dân.
+/**
+ * FruitVideoScreen — quay clip một CHÙM QUẢ rồi gắn vào một CÂY.
+ *
+ * ── Bố cục: ba chặng, không phải một tờ khai ────────────────────────────────
+ * Bản cũ đổ tất cả xuống một trang cuộn: khung quay, chọn cây, ghi chú, nút Gửi —
+ * ngang hàng nhau, không cái nào nói cho biết còn thiếu gì. Người dùng quay xong,
+ * bấm Gửi, rồi mới bị hộp thoại chặn lại "Hãy chọn cây". Nay màn có **vạch ba
+ * chặng** (quay → chọn cây → gửi) tự sáng theo việc đã làm, và nút Gửi **nói
+ * thẳng cái đang thiếu** thay vì để người ta bấm rồi mới báo.
+ *
+ * ── Danh sách cây tự biết co giãn ───────────────────────────────────────────
+ * Vườn 5 cây thì cuộn tay là xong; vườn 60 cây thì cuộn tay là cực hình. Quá
+ * NGƯỠNG thì hiện thêm ô tìm theo tên.
+ *
+ * ── Giữ nguyên phần ruột ────────────────────────────────────────────────────
+ * KIẾN TRÚC 1-CỬA không đổi: màn này KHÔNG bao giờ POST thẳng. "Gửi" =
+ * `enqueueVideoUpload` rồi flush một lần; "Gửi lại" = `retryVideoJobNow`. Hàng
+ * đợi là nguồn sự-thật DUY NHẤT cho "clip đã gửi chưa"; nháp (`treeDraftStore`)
+ * chỉ giữ metadata để app bị ngắt còn dựng lại được màn.
+ */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, StatusBar, ScrollView,
-  ActivityIndicator, Alert, TextInput, FlatList, Clipboard,
+  ActivityIndicator, Alert, Clipboard, FlatList, Image, Pressable, ScrollView,
+  StatusBar, StyleSheet, Text, TextInput, View,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Geolocation from 'react-native-geolocation-service';
-import { COLORS } from '../constants';
-import { NEUTRAL } from '../shared/theme';
+
+import Icon from '../components/Icon';
+import { useTk } from '../i18n/keys';
 import { useAppSelector } from '../store/hooks';
 import type { RootState } from '../store';
 import { ORILIFE_BASE } from '../services/orilifeBase';
 import { getTrees, type TreeInfo } from '../services/treeReIDService';
 import { loadVideoProofs } from '../services/videoProofStore';
 import { MAX_VIDEO_BYTES, type FruitVideoResult } from '../services/fruitVideoService';
+import { detectFruit, enrollFruit, type Bbox } from '../services/fruitReIDService';
 import {
-  saveFruitVideoDraft,
-  clearFruitVideoDraft,
-  restoreFruitVideoDraft,
+  saveFruitVideoDraft, clearFruitVideoDraft, restoreFruitVideoDraft,
 } from '../services/treeDraftStore';
 import {
-  enqueueVideoUpload,
-  flushVideoUploadQueue,
-  retryVideoJobNow,
-  retryAllVideoJobsNow,
-  isJobQueued,
-  getVideoQueueCount,
-  getNeedsManualCount,
+  enqueueVideoUpload, flushVideoUploadQueue, retryVideoJobNow, retryAllVideoJobsNow,
+  isJobQueued, getVideoQueueCount, getNeedsManualCount,
 } from '../services/videoUploadQueue';
 import { withPhotoSave } from '../services/mediaSavePermission';
+import { GroundBackdrop } from '../modules/trace/components/layered/Organic';
+import {
+  ELEVATION, NATURE, ORGANIC_CARD, ORGANIC_TILE, RADIUS, SPACE, SURFACE, TONE, TYPE,
+} from '../modules/trace/theme/depth';
 
 // image-picker nạp mềm (giống AnimalEnroll) — máy chưa cài thì báo rõ, không crash.
 const imagePicker = (() => {
@@ -57,12 +62,45 @@ const VIDEO_OPTIONS = {
   saveToPhotos: true,
 };
 
+/** Quá bấy nhiêu cây thì hiện ô tìm — dưới ngưỡng, cuộn tay còn nhanh hơn gõ. */
+const SEARCH_THRESHOLD = 6;
+
+/** Ảnh nhận dạng quả. Cùng cỡ với luồng khoanh ảnh để máy chủ nhận cùng chất lượng. */
+const PHOTO_OPTIONS = {
+  mediaType: 'photo' as const,
+  quality: 0.8,
+  maxWidth: 1600,
+  maxHeight: 1600,
+  saveToPhotos: true,
+};
+
+/** Ô lùi khi máy chủ không thấy quả nào: vuông giữa khung, 60% cạnh ngắn. */
+const CENTER_BOX_RATIO = 0.6;
+
+function centerBox(w: number, h: number): Bbox {
+  const side = Math.round(Math.min(w, h) * CENTER_BOX_RATIO);
+  return [Math.round((w - side) / 2), Math.round((h - side) / 2), side, side];
+}
+
+/** Ô lớn nhất trong các ô máy chủ tìm được — quả to nhất khung là quả người ta nhắm. */
+function biggestBox(boxes: Array<{ bbox: Bbox }>): Bbox | null {
+  let best: Bbox | null = null;
+  let bestArea = 0;
+  for (const d of boxes) {
+    const [, , w, h] = d.bbox;
+    const area = w * h;
+    if (area > bestArea) { bestArea = area; best = d.bbox; }
+  }
+  return best;
+}
+
 type ParamList = { FruitVideo: { treeId?: string; treeName?: string; farmId?: string } };
 
 const FruitVideoScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const route = useRoute<RouteProp<ParamList, 'FruitVideo'>>();
+  const tk = useTk();
   const initialTreeId = route.params?.treeId;
   const farmId = route.params?.farmId;
 
@@ -76,9 +114,17 @@ const FruitVideoScreen: React.FC = () => {
   const [note, setNote] = useState('');
   const [gps, setGps] = useState<{ lat: number; lon: number } | null>(null);
 
+  // Ảnh tĩnh + tên → hai thứ biến buổi quay thành một QUẢ trong danh sách.
+  const [coverUri, setCoverUri] = useState<string | null>(null);
+  const [coverSize, setCoverSize] = useState<{ w: number; h: number } | null>(null);
+  const [fruitName, setFruitName] = useState('');
+  /** Tên quả đã lưu được — màn xong đọc để nói "đã lưu thành quả …". */
+  const [savedFruitName, setSavedFruitName] = useState<string | null>(null);
+
   const [trees, setTrees] = useState<TreeInfo[]>([]);
   const [selectedTreeId, setSelectedTreeId] = useState<string | undefined>(initialTreeId);
   const [showTreePicker, setShowTreePicker] = useState(false);
+  const [treeQuery, setTreeQuery] = useState('');
 
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<FruitVideoResult | null>(null);
@@ -143,6 +189,9 @@ const FruitVideoScreen: React.FC = () => {
               setCapturedAt(draft.capturedAt ?? null);
               if (draft.note) setNote(draft.note);
               if (draft.selectedTreeId) setSelectedTreeId(draft.selectedTreeId);
+              if (draft.coverUri) setCoverUri(draft.coverUri);
+              if (draft.coverW && draft.coverH) setCoverSize({ w: draft.coverW, h: draft.coverH });
+              if (draft.fruitName) setFruitName(draft.fruitName);
             },
           },
         ],
@@ -163,10 +212,21 @@ const FruitVideoScreen: React.FC = () => {
       note,
       farmId,
       capturedAt: capturedAt ?? undefined,
+      coverUri,
+      coverW: coverSize?.w ?? null,
+      coverH: coverSize?.h ?? null,
+      fruitName,
     });
-  }, [draftOwner, videoUri, videoSize, selectedTreeId, note, farmId, capturedAt]);
+  }, [draftOwner, videoUri, videoSize, selectedTreeId, note, farmId, capturedAt,
+      coverUri, coverSize, fruitName]);
 
   const selectedTree = trees.find(t => t.tree_id === selectedTreeId);
+  const treeLabel = (t: TreeInfo) => t.name || `Cây ${t.tree_id.slice(0, 6)}`;
+
+  const shownTrees = useMemo(() => {
+    const q = treeQuery.trim().toLowerCase();
+    return q ? trees.filter(t => treeLabel(t).toLowerCase().includes(q)) : trees;
+  }, [trees, treeQuery]);
 
   // ── Quay video ────────────────────────────────────────────────────────────
   const handleRecord = useCallback(async () => {
@@ -194,17 +254,66 @@ const FruitVideoScreen: React.FC = () => {
     });
   }, []);
 
+  /** Ảnh nhận dạng của quả — tấm mà `/api/fruit/enroll` sẽ học. */
+  const handleCover = useCallback(async () => {
+    if (!imagePicker?.launchCamera) {
+      Alert.alert(tk('trace.activity.noCamera'), tk('trace.activity.noCameraBody'));
+      return;
+    }
+    imagePicker.launchCamera(await withPhotoSave(PHOTO_OPTIONS), (response: any) => {
+      if (response.didCancel) return;
+      if (response.errorCode) {
+        Alert.alert(tk('trace.activity.cameraErr'), response.errorMessage ?? tk('trace.activity.cameraErrBody'));
+        return;
+      }
+      const a = response.assets?.[0];
+      if (!a?.uri) return;
+      setCoverUri(a.uri);
+      setCoverSize(a.width && a.height ? { w: a.width, h: a.height } : null);
+    });
+  }, [tk]);
+
   const resetForNext = useCallback(() => {
     setVideoUri(null); setVideoSize(null); setCapturedAt(null); setNote(''); setResult(null);
+    setCoverUri(null); setCoverSize(null); setFruitName(''); setSavedFruitName(null);
   }, []);
+
+  /**
+   * Tạo bản ghi QUẢ từ tấm ảnh vừa chụp. Trả câu lỗi để màn nói thật khi không
+   * xong — clip lúc này đã lưu rồi, im lặng ở đây là để người ta tưởng đã có quả.
+   */
+  const enrollFromCover = useCallback(async (treeId: string): Promise<string | null> => {
+    if (!coverUri) return 'thiếu ảnh quả';
+    const w = coverSize?.w ?? 0;
+    const h = coverSize?.h ?? 0;
+
+    // Hỏi máy chủ quả nằm đâu trong tấm ảnh. Hỏng/không thấy → ô giữa khung.
+    let box: Bbox | null = null;
+    try {
+      const det = await detectFruit(ORILIFE_BASE, coverUri, treeId);
+      if (det.ok && det.data?.detections?.length) box = biggestBox(det.data.detections);
+    } catch { box = null; }
+    if (!box) {
+      if (!w || !h) return 'không đọc được kích thước ảnh';
+      box = centerBox(w, h);
+    }
+
+    const res = await enrollFruit(
+      ORILIFE_BASE, treeId, fruitName.trim(), coverUri, { bbox: box },
+      // Quả trùng KHÔNG chặn ở đây: người dùng đang ở giữa vườn, vừa quay xong một
+      // clip; dựng cổng hỏi-trùng tại đây là bắt họ phán xử giữa nắng. Trùng thì
+      // VeData gộp sau — mất một bản ghi quả tệ hơn có một bản ghi thừa.
+      { allowDup: true },
+    );
+    return res.ok ? null : (res.error?.detail ?? 'máy chủ từ chối');
+  }, [coverUri, coverSize, fruitName]);
 
   // ── Gửi (CỬA DUY NHẤT = hàng đợi) ────────────────────────────────────────
   const handleUpload = useCallback(async () => {
     if (!videoUri) return;
-    if (!selectedTreeId) {
-      Alert.alert('Chọn cây', 'Hãy chọn cây mà chùm quả này thuộc về.');
-      return;
-    }
+    // Không còn hộp thoại "Hãy chọn cây" ở đây: nút Gửi tự khoá và nói thẳng cái
+    // đang thiếu, nên nhánh này chỉ còn là chốt an toàn cho lập trình viên.
+    if (!selectedTreeId || !coverUri || !fruitName.trim()) return;
     setUploading(true);
     try {
       // 1) Xếp hàng (copy byte vào document dir bền + khử trùng theo clip).
@@ -258,6 +367,21 @@ const FruitVideoScreen: React.FC = () => {
         const proofs = await loadVideoProofs(selectedTreeId);
         const proof = proofs.find(p => p.clientEventId === enq.job.clientEventId) ?? proofs[0];
         setPendingJobId(null);
+
+        // Clip đã nằm trên LampNet → giờ mới tạo bản ghi QUẢ. Thứ tự này có chủ ý:
+        // clip là bằng chứng gốc, hỏng ở bước tạo quả thì clip vẫn còn và màn nói
+        // rõ còn thiếu gì. Làm ngược lại sẽ để lại quả mồ côi không bằng chứng.
+        const failReason = await enrollFromCover(selectedTreeId);
+        if (failReason) {
+          Alert.alert(
+            tk('trace.fruitVideo.fruitFailTitle'),
+            tk('trace.fruitVideo.fruitFailBody', { reason: failReason }),
+          );
+          setSavedFruitName(null);
+        } else {
+          setSavedFruitName(fruitName.trim());
+        }
+
         setResult({
           ok: true,
           video_cid: proof?.videoCid,
@@ -271,17 +395,28 @@ const FruitVideoScreen: React.FC = () => {
       } else {
         // Còn trong hàng: mạng yếu / offline / stored=false → sẽ tự gửi lại.
         setPendingJobId(enq.job.id);
+
+        // Vẫn THỬ tạo quả: clip nằm lại hàng đợi có thể chỉ vì LampNet chưa nhận
+        // byte, chứ mạng vẫn đi được — mà `enroll` là một đường khác hẳn.
+        const failReason = await enrollFromCover(selectedTreeId);
         Alert.alert(
           'Đã lưu để gửi sau',
           'Mạng đang yếu. Clip đã vào hàng đợi và sẽ tự gửi lại khi có mạng — cứ quay tiếp, '
             + 'hoặc bấm "Gửi lại" khi có sóng tốt.',
         );
-        resetForNext();
+        // Chỉ dọn màn khi quả ĐÃ tạo xong. Còn thiếu quả mà xoá sạch ảnh với tên
+        // là bắt người ta chụp lại từ đầu — giữ nguyên để bấm Gửi lần nữa là được.
+        if (!failReason) resetForNext();
+        else Alert.alert(
+          tk('trace.fruitVideo.fruitFailTitle'),
+          tk('trace.fruitVideo.fruitFailBody', { reason: failReason }),
+        );
       }
     } finally {
       setUploading(false);
     }
-  }, [videoUri, selectedTreeId, gps, note, capturedAt, videoSize, draftOwner, refreshQueueCount, resetForNext]);
+  }, [videoUri, selectedTreeId, coverUri, gps, note, capturedAt, videoSize, draftOwner,
+      refreshQueueCount, resetForNext, enrollFromCover, fruitName, tk]);
 
   // ── Gửi lại (giữ UX #94) — QUA hàng đợi, KHÔNG POST trực tiếp ──
   const handleRetryPending = useCallback(async () => {
@@ -306,284 +441,478 @@ const FruitVideoScreen: React.FC = () => {
   if (result) {
     const n = result.n_fruits_max ?? 0;
     return (
-      <View style={styles.container}>
-        <StatusBar barStyle="light-content" backgroundColor={HEADER_BG} />
-        <Header title="Đã lưu video quả" onBack={() => navigation.goBack()} topInset={insets.top} />
-        <View style={styles.resultBody}>
-          <Icon name="check-circle" size={64} color="#2e7d32" />
-          <Text style={styles.resultTitle}>
-            {n > 0
-              ? `Đã lưu video và thấy ${n} quả.`
-              : 'Đã lưu video.'}
+      <View style={styles.root}>
+        <StatusBar barStyle="dark-content" backgroundColor={SURFACE.ground} />
+        <GroundBackdrop variant="detail" />
+        <ScreenHeader title={tk('trace.fruitVideo.doneTitle')} onBack={() => navigation.goBack()} top={insets.top} />
+
+        <View style={styles.doneBody}>
+          <View style={styles.doneSeal}>
+            <Icon name="circle-check" size={46} color={TONE.primary} />
+          </View>
+          <Text style={styles.doneTitle}>
+            {n > 0 ? tk('trace.fruitVideo.doneSawN', { n }) : tk('trace.fruitVideo.doneSaved')}
           </Text>
-          <Text style={styles.resultSub}>
+          {savedFruitName ? (
+            <View style={styles.savedFruitChip}>
+              <Icon name="apple-whole" size={15} color={TONE.primaryDeep} />
+              <Text style={styles.savedFruitTxt} numberOfLines={1}>
+                {tk('trace.fruitVideo.savedFruit', { name: savedFruitName })}
+              </Text>
+            </View>
+          ) : null}
+          <Text style={styles.doneSub}>
             {result.n_frames && result.n_frames > 0
-              ? `Chủ vườn sẽ xác nhận sau. (${result.n_frames} khung)`
-              : 'Quay chậm hơn một chút sẽ tốt hơn. Chủ vườn xác nhận sau.'}
+              ? tk('trace.fruitVideo.doneFrames', { n: result.n_frames })
+              : tk('trace.fruitVideo.doneSlower')}
           </Text>
-          {/* #94 từng đặt ở đây khối "stored=false → nút Gửi lại" gọi thẳng handleUpload.
-              Kiến trúc 1-cửa bỏ khối đó: màn kết quả CHỈ dựng khi clip đã rời hàng đợi,
-              tức backend xác nhận stored!==false (videoUploadQueue.ts:497). Còn stored=false
-              thì job nằm lại trong hàng và người dùng thấy màn "Đã lưu để gửi sau" + nút
-              "Gửi lại" nối vào retryVideoJobNow. Gọi handleUpload ở đây sẽ xếp hàng clip
-              lần nữa = đúng lỗi gửi-trùng đã bịt. */}
+
           {/* Bằng chứng clip đã nằm trên LampNet. Đội thực địa cần THẤY mã này để
               đối chiếu sau buổi test, không chỉ tin vào dòng "đã lưu". */}
           {!!result.video_cid && (
-            <TouchableOpacity
+            <Pressable
               style={styles.cidBox}
-              activeOpacity={0.7}
               onPress={() => {
                 Clipboard.setString(result.video_cid!);
-                Alert.alert('Đã sao chép', 'Mã lưu trữ đã vào bộ nhớ tạm.');
+                Alert.alert(tk('trace.tree.copied'), tk('trace.tree.copiedBody'));
               }}
             >
-              <Icon name="shield-check" size={15} color="#1b5e20" />
+              <Icon name="shield-halved" size={15} color={TONE.primary} />
               <Text style={styles.cidText} numberOfLines={1}>
-                Đã lưu vào kho an toàn · {result.video_cid}
+                {tk('trace.fruitVideo.storedCid', { cid: result.video_cid })}
               </Text>
-              <Icon name="content-copy" size={14} color={NEUTRAL.textSub} />
-            </TouchableOpacity>
+              <Icon name="copy" size={14} color={NATURE.barkSoft} />
+            </Pressable>
           )}
-          <TouchableOpacity style={styles.primaryBtn} onPress={resetForNext} activeOpacity={0.85}>
-            <Icon name="video-plus" size={18} color={NEUTRAL.white} />
-            <Text style={styles.primaryBtnText}>Quay clip khác</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.ghostBtn} onPress={() => navigation.goBack()}>
-            <Text style={styles.ghostBtnText}>Xong</Text>
-          </TouchableOpacity>
+
+          <Pressable style={({ pressed }) => [styles.primaryBtn, pressed && styles.pressed]} onPress={resetForNext}>
+            <Icon name="video" size={19} color={NATURE.paper} />
+            <Text style={styles.primaryBtnText}>{tk('trace.fruitVideo.another')}</Text>
+          </Pressable>
+          <Pressable style={styles.ghostBtn} onPress={() => navigation.goBack()}>
+            <Text style={styles.ghostBtnText}>{tk('trace.fruitVideo.finish')}</Text>
+          </Pressable>
         </View>
       </View>
     );
   }
 
+  // Chặng đang đứng — vạch ba chặng và nhãn nút Gửi đều đọc từ đây, nên hai thứ
+  // đó không bao giờ nói lệch nhau.
+  const stage = !videoUri ? 0 : !coverUri ? 1 : !fruitName.trim() ? 2 : !selectedTreeId ? 3 : 4;
+  const blockedBy = !videoUri
+    ? tk('trace.fruitVideo.needClip')
+    : !coverUri ? tk('trace.fruitVideo.needCover')
+      : !fruitName.trim() ? tk('trace.fruitVideo.needName')
+        : !selectedTreeId ? tk('trace.fruitVideo.needTree') : null;
+
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={HEADER_BG} />
-      <Header title="Quay video quả" onBack={() => navigation.goBack()} topInset={insets.top} />
+    <View style={styles.root}>
+      <StatusBar barStyle="dark-content" backgroundColor={SURFACE.ground} />
+      <GroundBackdrop variant="detail" />
+      <ScreenHeader title={tk('trace.fruitVideo.title')} onBack={() => navigation.goBack()} top={insets.top} />
+
+      <StageSpine
+        stage={stage}
+        labels={[
+          tk('trace.fruitVideo.stepRecord'),
+          tk('trace.fruitVideo.stepCover'),
+          tk('trace.fruitVideo.stepName'),
+          tk('trace.fruitVideo.stepTree'),
+        ]}
+      />
 
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-        {/* Khung quay / xem lại */}
+        {/* ── Chặng 1 — quay ── */}
         {!videoUri ? (
-          <TouchableOpacity style={styles.recordCard} onPress={handleRecord} activeOpacity={0.85}>
-            <View style={styles.recordDot} />
-            <Text style={styles.recordTitle}>Bấm để quay video chùm quả</Text>
-            <Text style={styles.recordHint}>
-              Lia chậm qua chùm quả · đủ sáng · giữ chắc tay · dưới 20 giây
-            </Text>
-          </TouchableOpacity>
+          <Pressable
+            style={({ pressed }) => [styles.recordCard, pressed && styles.pressed]}
+            onPress={handleRecord}
+          >
+            <View style={styles.recordDot}><View style={styles.recordDotInner} /></View>
+            <Text style={styles.recordTitle}>{tk('trace.fruitVideo.tapToRecord')}</Text>
+            <Text style={styles.recordHint}>{tk('trace.fruitVideo.tapHint')}</Text>
+          </Pressable>
         ) : (
-          <View style={styles.previewCard}>
-            <View style={styles.previewThumb}>
-              <Icon name="video-check" size={40} color="#2e7d32" />
-              <Text style={styles.previewText}>
-                Đã quay xong{videoSize ? ` · ${(videoSize / 1024 / 1024).toFixed(1)}MB` : ''}
-              </Text>
+          <View style={[styles.card, styles.previewCard]}>
+            <View style={styles.previewIcon}>
+              <Icon name="circle-check" size={26} color={TONE.primary} />
             </View>
-            <TouchableOpacity style={styles.retakeBtn} onPress={handleRecord} activeOpacity={0.8}>
-              <Icon name="camera-retake" size={16} color={COLORS.accent} />
-              <Text style={styles.retakeText}>Quay lại</Text>
-            </TouchableOpacity>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.cardTitle}>{tk('trace.fruitVideo.recorded')}</Text>
+              {videoSize ? (
+                <Text style={styles.cardSub}>{(videoSize / 1024 / 1024).toFixed(1)} MB</Text>
+              ) : null}
+            </View>
+            <Pressable style={styles.retakeBtn} onPress={handleRecord}>
+              <Icon name="arrows-rotate" size={14} color={NATURE.barkSoft} />
+              <Text style={styles.retakeText}>{tk('trace.fruitVideo.retake')}</Text>
+            </Pressable>
           </View>
         )}
 
-        {/* Chọn cây */}
-        <Text style={styles.sectionLabel}>Chùm quả này thuộc cây nào?</Text>
-        <TouchableOpacity
-          style={styles.treeSelect}
+        {/* ── Chặng 2 — ảnh nhận dạng quả ──
+            Clip không thay được tấm này: `/api/fruit/enroll` chỉ nhận ảnh tĩnh. */}
+        <Text style={styles.sectionLabel}>{tk('trace.fruitVideo.coverTitle')}</Text>
+        {!coverUri ? (
+          <Pressable
+            style={({ pressed }) => [styles.card, styles.coverEmpty, pressed && styles.pressed]}
+            onPress={handleCover}
+          >
+            <View style={styles.coverIcon}>
+              <Icon name="camera" size={24} color={TONE.primary} />
+            </View>
+            <Text style={styles.coverHint}>{tk('trace.fruitVideo.coverHint')}</Text>
+          </Pressable>
+        ) : (
+          <View style={[styles.card, styles.coverDone]}>
+            <Image source={{ uri: coverUri }} style={styles.coverThumb} resizeMode="cover" />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.cardTitle}>{tk('trace.fruitVideo.coverDone')}</Text>
+            </View>
+            <Pressable style={styles.retakeBtn} onPress={handleCover}>
+              <Icon name="arrows-rotate" size={14} color={NATURE.barkSoft} />
+              <Text style={styles.retakeText}>{tk('trace.fruitVideo.retakeCover')}</Text>
+            </Pressable>
+          </View>
+        )}
+
+        {/* ── Chặng 3 — tên quả ── */}
+        <Text style={styles.sectionLabel}>{tk('trace.fruitVideo.nameLabel')}</Text>
+        <TextInput
+          style={styles.noteInput}
+          placeholder={tk('trace.fruitVideo.nameHint')}
+          placeholderTextColor={NATURE.barkSoft}
+          value={fruitName}
+          onChangeText={setFruitName}
+          maxLength={60}
+        />
+
+        {/* ── Chặng 4 — cây nào ── */}
+        <Text style={styles.sectionLabel}>{tk('trace.fruitVideo.whichTree')}</Text>
+        <Pressable
+          style={({ pressed }) => [styles.card, styles.treeSelect, pressed && styles.pressed]}
           onPress={() => setShowTreePicker(v => !v)}
-          activeOpacity={0.8}
         >
-          <Icon name="tree" size={18} color="#1b5e20" />
-          <Text style={styles.treeSelectText} numberOfLines={1}>
-            {selectedTree ? (selectedTree.name || `Cây ${selectedTree.tree_id.slice(0, 6)}`)
-              : 'Chọn cây…'}
+          <View style={styles.treeIcon}>
+            <Icon name="tree" size={19} color={TONE.primary} />
+          </View>
+          <Text style={[styles.treeSelectText, !selectedTree && styles.treeSelectEmpty]} numberOfLines={1}>
+            {selectedTree ? treeLabel(selectedTree) : tk('trace.fruitVideo.pickTree')}
           </Text>
-          <Icon name={showTreePicker ? 'chevron-up' : 'chevron-down'} size={20} color={NEUTRAL.textMuted} />
-        </TouchableOpacity>
-        <Text style={styles.allowWrongHint}>
-          Chọn nhầm cây cũng không sao — hệ thống sẽ giúp sửa lại sau.
-        </Text>
+          <Icon name={showTreePicker ? 'chevron-up' : 'chevron-down'} size={18} color={NATURE.barkSoft} />
+        </Pressable>
+        <Text style={styles.softNote}>{tk('trace.fruitVideo.wrongOk')}</Text>
 
         {showTreePicker && (
-          <View style={styles.treeList}>
+          <View style={[styles.card, styles.treeList]}>
+            {trees.length > SEARCH_THRESHOLD && (
+              <View style={styles.treeSearch}>
+                <Icon name="magnifying-glass" size={16} color={NATURE.barkSoft} />
+                <TextInput
+                  style={styles.treeSearchInput}
+                  placeholder={tk('trace.fruitVideo.searchTree')}
+                  placeholderTextColor={NATURE.barkSoft}
+                  value={treeQuery}
+                  onChangeText={setTreeQuery}
+                />
+                {treeQuery.length > 0 && (
+                  <Pressable onPress={() => setTreeQuery('')} hitSlop={10}>
+                    <Icon name="circle-xmark" size={16} color={NATURE.barkSoft} />
+                  </Pressable>
+                )}
+              </View>
+            )}
+
             {trees.length === 0 ? (
-              <Text style={styles.treeEmpty}>Chưa có cây nào trong vườn.</Text>
+              <Text style={styles.treeEmpty}>{tk('trace.fruitVideo.noTree')}</Text>
+            ) : shownTrees.length === 0 ? (
+              <Text style={styles.treeEmpty}>{tk('trace.fruitVideo.noTreeMatch')}</Text>
             ) : (
               <FlatList
-                data={trees}
+                data={shownTrees}
                 keyExtractor={t => t.tree_id}
-                style={{ maxHeight: 240 }}
+                style={{ maxHeight: 260 }}
                 keyboardShouldPersistTaps="handled"
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    style={[styles.treeRow, item.tree_id === selectedTreeId && styles.treeRowActive]}
-                    onPress={() => { setSelectedTreeId(item.tree_id); setShowTreePicker(false); }}
-                    activeOpacity={0.7}
-                  >
-                    <Icon name="tree" size={18} color="#1b5e20" />
-                    <Text style={styles.treeRowText} numberOfLines={1}>
-                      {item.name || `Cây ${item.tree_id.slice(0, 6)}`}
-                    </Text>
-                    {item.tree_id === selectedTreeId && (
-                      <Icon name="check" size={18} color="#1b5e20" />
-                    )}
-                  </TouchableOpacity>
-                )}
+                renderItem={({ item }) => {
+                  const active = item.tree_id === selectedTreeId;
+                  return (
+                    <Pressable
+                      style={({ pressed }) => [styles.treeRow, active && styles.treeRowActive, pressed && styles.pressed]}
+                      onPress={() => { setSelectedTreeId(item.tree_id); setShowTreePicker(false); setTreeQuery(''); }}
+                    >
+                      <Icon name="tree" size={17} color={active ? TONE.primary : NATURE.barkSoft} />
+                      <Text style={[styles.treeRowText, active && styles.treeRowTextActive]} numberOfLines={1}>
+                        {treeLabel(item)}
+                      </Text>
+                      {active && <Icon name="check" size={17} color={TONE.primary} />}
+                    </Pressable>
+                  );
+                }}
               />
             )}
           </View>
         )}
 
-        {/* Ghi chú */}
-        <Text style={styles.sectionLabel}>Ghi chú (tuỳ chọn)</Text>
+        {/* ── Ghi thêm ── */}
+        <Text style={styles.sectionLabel}>{tk('trace.fruitVideo.note')}</Text>
         <TextInput
           style={styles.noteInput}
-          placeholder="vd: chùm phía đông"
-          placeholderTextColor={NEUTRAL.textMuted}
+          placeholder={tk('trace.fruitVideo.noteHint')}
+          placeholderTextColor={NATURE.barkSoft}
           value={note}
           onChangeText={setNote}
           maxLength={120}
         />
       </ScrollView>
 
-      {/* Nút Gửi */}
+      {/* ── Chặng 3 — gửi ── */}
       <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) + 8 }]}>
         {queueCount > 0 && (
           <View style={styles.queueBanner}>
-            <Icon name="cloud-clock" size={15} color="#e65100" />
+            <Icon name="clock" size={15} color={TONE.sun} />
             {/* Nói ĐÚNG sự thật: clip đã chạm cap KHÔNG còn tự gửi lại nữa. Hứa
                 "sẽ tự gửi" cho những clip đó là để đội thực địa yên tâm nhầm. */}
             <Text style={styles.queueBannerText}>
               {manualCount > 0
-                ? `Đang chờ gửi (${queueCount}) · ${manualCount} clip cần bấm gửi tay`
-                : `Đang chờ gửi (${queueCount}) · sẽ tự gửi lại khi có mạng`}
+                ? tk('trace.fruitVideo.queueManual', { n: queueCount, m: manualCount })
+                : tk('trace.fruitVideo.queueAuto', { n: queueCount })}
             </Text>
-            <TouchableOpacity
-              onPress={handleRetryPending}
-              disabled={uploading}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
+            <Pressable onPress={handleRetryPending} disabled={uploading} hitSlop={10}>
               <Text style={styles.queueRetryText}>
-                {uploading ? 'Đang gửi…' : 'Gửi lại'}
+                {tk(uploading ? 'trace.fruitVideo.sendingShort' : 'trace.fruitVideo.retrySend')}
               </Text>
-            </TouchableOpacity>
+            </Pressable>
           </View>
         )}
-        <TouchableOpacity
-          style={[styles.primaryBtn, (!videoUri || uploading) && styles.primaryBtnDisabled]}
+
+        <Pressable
+          style={({ pressed }) => [
+            styles.primaryBtn,
+            (blockedBy || uploading) && styles.primaryBtnOff,
+            pressed && styles.pressed,
+          ]}
           onPress={handleUpload}
-          disabled={!videoUri || uploading}
-          activeOpacity={0.85}
+          disabled={!!blockedBy || uploading}
         >
           {uploading ? (
             <>
-              <ActivityIndicator color={NEUTRAL.white} />
-              <Text style={styles.primaryBtnText}>Đang gửi… giữ app mở</Text>
+              <ActivityIndicator color={NATURE.paper} />
+              <Text style={styles.primaryBtnText}>{tk('trace.fruitVideo.sending')}</Text>
             </>
           ) : (
             <>
-              <Icon name="cloud-upload-outline" size={18} color={NEUTRAL.white} />
-              <Text style={styles.primaryBtnText}>Gửi</Text>
+              <Icon name="cloud-arrow-up" size={19} color={NATURE.paper} />
+              <Text style={styles.primaryBtnText}>{blockedBy ?? tk('trace.fruitVideo.send')}</Text>
             </>
           )}
-        </TouchableOpacity>
+        </Pressable>
       </View>
     </View>
   );
 };
 
-// ── Header nhỏ dùng chung ──────────────────────────────────────────────────
-// paddingTop nhận insets.top: trước đây cứng 14 nên chữ chui dưới tai thỏ/status
-// bar trên máy có notch. Cùng lỗi với footer — nút Gửi đè thanh home indicator.
-const HEADER_BG = '#1b5e20';
-const Header = ({ title, onBack, topInset }: { title: string; onBack: () => void; topInset: number }) => (
-  <View style={[styles.header, { paddingTop: topInset + 14 }]}>
-    <TouchableOpacity onPress={onBack} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-      <Icon name="chevron-left" size={28} color={NEUTRAL.white} />
-    </TouchableOpacity>
-    <Text style={styles.headerTitle}>{title}</Text>
-    <View style={{ width: 28 }} />
+// ── Mảnh dùng lại ───────────────────────────────────────────────────────────
+
+const ScreenHeader: React.FC<{ title: string; onBack: () => void; top: number }> = ({
+  title, onBack, top,
+}) => (
+  <View style={[styles.header, { paddingTop: top + SPACE.md }]}>
+    <Pressable onPress={onBack} style={styles.backBtn} hitSlop={10}>
+      <Icon name="arrow-left" size={21} color={NATURE.bark} />
+    </Pressable>
+    <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
+  </View>
+);
+
+/**
+ * Vạch ba chặng. Chặng đã qua tô đặc, chặng đang đứng có vòng sáng, chặng chưa
+ * tới để mờ — nhìn một cái là biết còn thiếu bước nào.
+ */
+const StageSpine: React.FC<{ stage: number; labels: string[] }> = ({ stage, labels }) => (
+  <View style={styles.spine}>
+    {labels.map((label, i) => {
+      const done = i < stage;
+      const here = i === stage;
+      return (
+        <React.Fragment key={label}>
+          {i > 0 && <View style={[styles.spineLine, done && styles.spineLineDone]} />}
+          <View style={styles.spineItem}>
+            <View style={[styles.spineDot, done && styles.spineDotDone, here && styles.spineDotHere]}>
+              {done
+                ? <Icon name="check" size={11} color={NATURE.paper} />
+                : <Text style={[styles.spineNum, here && styles.spineNumHere]}>{i + 1}</Text>}
+            </View>
+            <Text style={[styles.spineLabel, (done || here) && styles.spineLabelOn]} numberOfLines={1}>
+              {label}
+            </Text>
+          </View>
+        </React.Fragment>
+      );
+    })}
   </View>
 );
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.bg },
+  root: { flex: 1, backgroundColor: SURFACE.ground },
+  pressed: { opacity: 0.9 },
+
   header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: HEADER_BG, paddingHorizontal: 12, paddingTop: 14, paddingBottom: 14,
+    flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
+    paddingHorizontal: SPACE.page, paddingBottom: SPACE.md,
   },
-  headerTitle: { color: NEUTRAL.white, fontSize: 17, fontWeight: '700' },
-  body: { padding: 16, paddingBottom: 24 },
+  backBtn: {
+    width: 44, height: 44, ...ORGANIC_TILE, ...ELEVATION.card,
+    backgroundColor: SURFACE.raised, alignItems: 'center', justifyContent: 'center',
+  },
+  headerTitle: { ...TYPE.title, fontSize: 23, flex: 1 },
 
+  // ── Vạch chặng
+  spine: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: SPACE.page, paddingBottom: SPACE.lg,
+  },
+  spineItem: { alignItems: 'center', gap: 5, width: 66 },
+  spineDot: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: SURFACE.sunken, alignItems: 'center', justifyContent: 'center',
+  },
+  spineDotDone: { backgroundColor: TONE.primary },
+  spineDotHere: { backgroundColor: SURFACE.raised, borderWidth: 2, borderColor: TONE.primary },
+  spineNum: { fontSize: 13, fontWeight: '700', color: NATURE.barkSoft },
+  spineNumHere: { color: TONE.primary },
+  spineLabel: { fontSize: 11.5, color: NATURE.barkSoft, textAlign: 'center' },
+  spineLabelOn: { color: NATURE.bark, fontWeight: '600' },
+  spineLine: { flex: 1, height: 2, backgroundColor: SURFACE.sunken, marginBottom: 20 },
+  spineLineDone: { backgroundColor: TONE.primary },
+
+  body: { paddingHorizontal: SPACE.page, paddingBottom: SPACE.xxl },
+
+  card: {
+    backgroundColor: SURFACE.raised, ...ORGANIC_CARD, ...ELEVATION.card,
+    padding: SPACE.lg,
+  },
+  cardTitle: { fontSize: 16, fontWeight: '700', color: NATURE.bark },
+  cardSub: { ...TYPE.caption, fontSize: 13 },
+
+  // ── Chặng 1
   recordCard: {
-    borderWidth: 2, borderColor: '#c62828', borderStyle: 'dashed', borderRadius: 16,
-    paddingVertical: 34, alignItems: 'center', backgroundColor: '#fff5f5',
+    ...ORGANIC_CARD, ...ELEVATION.card,
+    backgroundColor: SURFACE.raised,
+    paddingVertical: SPACE.xxl, paddingHorizontal: SPACE.xl,
+    alignItems: 'center', gap: SPACE.sm,
   },
-  recordDot: { width: 26, height: 26, borderRadius: 13, backgroundColor: '#c62828', marginBottom: 12 },
-  recordTitle: { fontSize: 16, fontWeight: '800', color: '#1a1a1a' },
-  recordHint: { fontSize: 12.5, color: NEUTRAL.textSub, marginTop: 6, textAlign: 'center', paddingHorizontal: 20 },
+  recordDot: {
+    width: 62, height: 62, borderRadius: 31, marginBottom: SPACE.xs,
+    borderWidth: 3, borderColor: TONE.danger,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  recordDotInner: { width: 34, height: 34, borderRadius: 17, backgroundColor: TONE.danger },
+  recordTitle: { fontSize: 17, fontWeight: '700', color: NATURE.bark, textAlign: 'center' },
+  recordHint: { ...TYPE.caption, textAlign: 'center' },
 
-  previewCard: {
-    borderWidth: 1, borderColor: NEUTRAL.border, borderRadius: 16, padding: 16,
-    backgroundColor: '#f1f8f2', alignItems: 'center', gap: 10,
+  previewCard: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md },
+  previewIcon: {
+    width: 48, height: 48, ...ORGANIC_TILE,
+    backgroundColor: TONE.primarySoft, alignItems: 'center', justifyContent: 'center',
   },
-  previewThumb: { alignItems: 'center', gap: 6 },
-  previewText: { fontSize: 14, fontWeight: '700', color: '#2e7d32' },
-  retakeBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 12 },
-  retakeText: { color: COLORS.accent, fontWeight: '700', fontSize: 13 },
+  retakeBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: SURFACE.sunken, borderRadius: RADIUS.chip,
+    paddingHorizontal: 12, paddingVertical: 9,
+  },
+  retakeText: { fontSize: 13, fontWeight: '600', color: NATURE.barkSoft },
 
-  sectionLabel: { fontSize: 14, fontWeight: '700', color: NEUTRAL.text, marginTop: 20, marginBottom: 8 },
-  treeSelect: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    borderWidth: 1, borderColor: NEUTRAL.border, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 13,
-    backgroundColor: NEUTRAL.white,
+  // ── Chặng 2
+  sectionLabel: { ...TYPE.section, fontSize: 17, marginTop: SPACE.xl, marginBottom: SPACE.sm },
+  treeSelect: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md, minHeight: 60 },
+  treeIcon: {
+    width: 40, height: 40, ...ORGANIC_TILE,
+    backgroundColor: TONE.primarySoft, alignItems: 'center', justifyContent: 'center',
   },
-  treeSelectText: { flex: 1, fontSize: 15, color: NEUTRAL.text, fontWeight: '600' },
-  allowWrongHint: { fontSize: 12, color: NEUTRAL.textMuted, marginTop: 6, fontStyle: 'italic' },
-  treeList: {
-    marginTop: 8, borderWidth: 1, borderColor: NEUTRAL.border, borderRadius: 12,
-    backgroundColor: NEUTRAL.white, overflow: 'hidden',
+  treeSelectText: { flex: 1, fontSize: 16, fontWeight: '600', color: NATURE.bark },
+  treeSelectEmpty: { color: NATURE.barkSoft, fontWeight: '400' },
+  softNote: { ...TYPE.caption, fontSize: 13, marginTop: SPACE.sm, paddingHorizontal: SPACE.xs },
+
+  treeList: { marginTop: SPACE.sm, padding: 0, overflow: 'hidden' },
+  treeSearch: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACE.sm,
+    paddingHorizontal: SPACE.lg, paddingVertical: SPACE.md,
+    borderBottomWidth: 1, borderBottomColor: TONE.border,
   },
-  treeEmpty: { padding: 16, color: NEUTRAL.textMuted, textAlign: 'center' },
+  treeSearchInput: { flex: 1, fontSize: 15, color: NATURE.bark, paddingVertical: 0 },
+  treeEmpty: { ...TYPE.caption, padding: SPACE.xl, textAlign: 'center' },
   treeRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 13,
-    borderBottomWidth: 1, borderBottomColor: NEUTRAL.border,
+    flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
+    paddingHorizontal: SPACE.lg, minHeight: 54,
   },
-  treeRowActive: { backgroundColor: '#e8f5e9' },
-  treeRowText: { flex: 1, fontSize: 15, color: NEUTRAL.text, fontWeight: '600' },
+  treeRowActive: { backgroundColor: TONE.primarySoft },
+  treeRowText: { flex: 1, fontSize: 15.5, color: NATURE.bark },
+  treeRowTextActive: { fontWeight: '700' },
 
   noteInput: {
-    borderWidth: 1, borderColor: NEUTRAL.border, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12,
-    fontSize: 15, color: NEUTRAL.text, backgroundColor: NEUTRAL.white,
+    backgroundColor: SURFACE.raised, ...ORGANIC_CARD, ...ELEVATION.card,
+    paddingHorizontal: SPACE.lg, paddingVertical: 15,
+    fontSize: 16, color: NATURE.bark,
   },
 
-  footer: { padding: 16, borderTopWidth: 1, borderTopColor: NEUTRAL.border, backgroundColor: COLORS.bg },
+  coverEmpty: { alignItems: 'center', gap: SPACE.md, paddingVertical: SPACE.xl },
+  coverIcon: {
+    width: 58, height: 58, ...ORGANIC_TILE,
+    backgroundColor: TONE.primarySoft, alignItems: 'center', justifyContent: 'center',
+  },
+  coverHint: { ...TYPE.caption, textAlign: 'center', paddingHorizontal: SPACE.sm },
+  coverDone: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md },
+  coverThumb: { width: 58, height: 58, ...ORGANIC_TILE, backgroundColor: SURFACE.sunken },
+
+  savedFruitChip: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACE.sm,
+    backgroundColor: TONE.primarySoft, borderRadius: RADIUS.chip,
+    paddingHorizontal: SPACE.lg, paddingVertical: SPACE.md,
+  },
+  savedFruitTxt: { flexShrink: 1, fontSize: 15, fontWeight: '700', color: TONE.primaryDeep },
+
+  // ── Chặng 3
+  footer: {
+    paddingHorizontal: SPACE.page, paddingTop: SPACE.md,
+    borderTopWidth: 1, borderTopColor: TONE.border,
+    backgroundColor: SURFACE.ground, gap: SPACE.sm,
+  },
   queueBanner: {
-    flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10,
-    backgroundColor: '#fff3e0', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8,
+    flexDirection: 'row', alignItems: 'center', gap: SPACE.sm,
+    backgroundColor: TONE.sunSoft, borderRadius: RADIUS.field,
+    paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm,
   },
-  queueBannerText: { flex: 1, fontSize: 12.5, color: '#e65100', fontWeight: '600' },
-  queueRetryText: { fontSize: 12.5, color: '#1b5e20', fontWeight: '800' },
-  primaryBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    backgroundColor: HEADER_BG, borderRadius: 14, paddingVertical: 15,
-  },
-  primaryBtnDisabled: { opacity: 0.5 },
-  primaryBtnText: { color: NEUTRAL.white, fontSize: 16, fontWeight: '800' },
+  queueBannerText: { flex: 1, fontSize: 13, color: NATURE.bark, fontWeight: '500' },
+  queueRetryText: { fontSize: 13, color: TONE.primaryDeep, fontWeight: '700' },
 
-  resultBody: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28, gap: 12 },
-  resultTitle: { fontSize: 19, fontWeight: '800', color: '#1a1a1a', textAlign: 'center', marginTop: 8 },
-  resultSub: { fontSize: 14, color: NEUTRAL.textSub, textAlign: 'center' },
-  resultWarn: { fontSize: 12.5, color: '#e65100', textAlign: 'center' },
-  cidBox: {
-    flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'stretch',
-    borderWidth: 1, borderColor: '#c8e6c9', backgroundColor: '#f1f8e9',
-    borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8, marginTop: 4,
+  primaryBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.sm,
+    backgroundColor: TONE.primary, ...ORGANIC_CARD, ...ELEVATION.cardStrong,
+    padding: 16
   },
-  cidText: { flex: 1, fontSize: 13, color: '#1b5e20', fontWeight: '600' },
-  ghostBtn: { paddingVertical: 12, marginTop: 4 },
-  ghostBtnText: { color: NEUTRAL.textSub, fontSize: 15, fontWeight: '600' },
+  primaryBtnOff: { opacity: 0.45 },
+  primaryBtnText: { color: NATURE.paper, fontSize: 17, fontWeight: '700' },
+
+  // ── Màn xong
+  doneBody: {
+    flex: 1, alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: SPACE.xl, gap: SPACE.md,
+  },
+  doneSeal: {
+    width: 92, height: 92, borderRadius: 46, marginBottom: SPACE.xs,
+    backgroundColor: TONE.primarySoft, alignItems: 'center', justifyContent: 'center',
+  },
+  doneTitle: { ...TYPE.section, fontSize: 20, textAlign: 'center' },
+  doneSub: { ...TYPE.body, fontSize: 15, textAlign: 'center' },
+  cidBox: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, alignSelf: 'stretch',
+    backgroundColor: TONE.primarySoft, borderRadius: RADIUS.field,
+    paddingHorizontal: SPACE.md, paddingVertical: SPACE.md, marginTop: SPACE.xs,
+  },
+  cidText: { flex: 1, fontSize: 13, color: TONE.primaryDeep, fontWeight: '600' },
+  ghostBtn: { paddingVertical: SPACE.md },
+  ghostBtnText: { color: NATURE.barkSoft, fontSize: 16, fontWeight: '600' },
 });
 
 export default FruitVideoScreen;

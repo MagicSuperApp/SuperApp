@@ -426,10 +426,10 @@ const styles = StyleSheet.create({
   footer: { padding: 16, borderTopWidth: 1, borderTopColor: NEUTRAL.border, backgroundColor: COLORS.bg },
   primaryBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    backgroundColor: HEADER_BG, borderRadius: 14, paddingVertical: 15,
+    backgroundColor: HEADER_BG, borderRadius: 14, paddingVertical: 15, padding: 8
   },
   primaryBtnDisabled: { opacity: 0.5 },
-  primaryBtnText: { color: NEUTRAL.white, fontSize: 16, fontWeight: '800' },
+  primaryBtnText: { color: NEUTRAL.white, fontSize: 16, fontWeight: '800', padding: 4 },
 
   resultBody: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28, gap: 12 },
   resultTitle: { fontSize: 19, fontWeight: '800', color: '#1a1a1a', textAlign: 'center', marginTop: 8 },

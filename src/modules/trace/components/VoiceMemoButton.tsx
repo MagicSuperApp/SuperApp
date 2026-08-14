@@ -18,8 +18,9 @@ import {
   Platform,
   Animated,
   Alert,
-  Vibration,
 } from 'react-native';
+
+import { buzz } from '../../../utils/haptics';
 // Icon: bộ Font Awesome Solid tải qua Iconify (assets/icons → icons.generated).
 // Thêm icon mới: `node scripts/icons.js <tên-fa6-solid>`.
 import Icon from '../../../components/Icon';
@@ -105,7 +106,7 @@ const VoiceMemoButton: React.FC<Props> = ({
           warnedRef.current = true;
           // Short vibration (≈200ms) to signal "5 seconds left". iOS ignores
           // duration arg but vibrates ≈400ms regardless; that's acceptable.
-          Vibration.vibrate(200);
+          buzz(200);
         }
         if (next >= maxSeconds) {
           // Schedule stop on next tick — calling stopRecording from inside the

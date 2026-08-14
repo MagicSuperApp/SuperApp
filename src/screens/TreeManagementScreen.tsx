@@ -41,7 +41,7 @@ import {
 // ---------------------------------------------------------------------------
 
 import { ORILIFE_BASE } from '../services/orilifeBase';
-import { fromGpsPair } from '../features/wayfind/wayfind';
+import { forTree, useOpenWayfind } from '../features/wayfind/WayfindButton';
 const BASE_URL: string =
   ORILIFE_BASE;
 
@@ -219,6 +219,8 @@ const TreeCard: React.FC<TreeCardProps> = ({ item, onPress, onLongPress, onFruit
 
 const TreeManagementScreen: React.FC = () => {
   const navigation = useNavigation<any>();
+  // Đường vào màn Dẫn đường đi qua cửa chung — xem `features/wayfind/WayfindButton`.
+  const openWayfind = useOpenWayfind();
 
   const [trees, setTrees] = useState<TreeItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -419,18 +421,15 @@ const TreeManagementScreen: React.FC = () => {
           data={trees}
           keyExtractor={item => item.tree_id}
           renderItem={({ item }) => {
-            const pos = fromGpsPair(item.gps);
+            // Cây chưa có toạ độ → `forTree` trả null → thẻ tự giấu nút.
+            const target = forTree(item);
             return (
               <TreeCard
                 item={item}
                 onPress={() => navigation.navigate('TreeDetail', { treeId: item.tree_id })}
                 onLongPress={() => handleLongPress(item)}
                 onFruits={() => navigation.navigate('FruitList', { treeId: item.tree_id, treeName: item.name })}
-                onWayfind={pos ? () => navigation.navigate('Wayfind', {
-                  lat: pos.lat, lon: pos.lon, kind: 'tree',
-                  label: item.name || `Cây ${item.tree_id.slice(0, 6)}`,
-                  treeId: item.tree_id,
-                }) : null}
+                onWayfind={target ? () => openWayfind(target) : null}
               />
             );
           }}

@@ -24,6 +24,7 @@
 import { getLanguage, subscribe } from '../store';
 import { DEFAULT_LANG, SOURCE_LANG, type LangCode } from '../types';
 import { TRACE_STRINGS } from './trace';
+import { MAP_STRINGS } from './map';
 import React from 'react';
 
 /** Một khoá → bản dịch đủ 4 ngôn ngữ. Thiếu là `tsc` báo, không phải người dùng. */
@@ -33,9 +34,10 @@ export type KeyMap = Record<string, KeyEntry>;
 /** Gộp mọi bộ khoá. Thêm module mới thì thêm một dòng ở đây. */
 const REGISTRY: KeyMap = {
   ...TRACE_STRINGS,
+  ...MAP_STRINGS,
 };
 
-export type StringKey = keyof typeof TRACE_STRINGS;
+export type StringKey = keyof typeof TRACE_STRINGS | keyof typeof MAP_STRINGS;
 
 /**
  * Khoá → chữ theo ngôn ngữ đang chọn.
@@ -75,4 +77,4 @@ export function allKeys(): string[] {
   return Object.keys(REGISTRY);
 }
 
-export { TRACE_STRINGS };
+export { TRACE_STRINGS, MAP_STRINGS };

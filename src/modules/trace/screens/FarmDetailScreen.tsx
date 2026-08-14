@@ -19,6 +19,7 @@ import {
   BackHandler,
   Animated,
   PanResponder,
+  Pressable,
 } from 'react-native';
 // Icon: bo Font Awesome Solid tai qua Iconify (assets/icons -> icons.generated).
 // Them icon moi: `node scripts/icons.js <ten-fa6-solid>`.
@@ -73,6 +74,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
 import { KeyboardAvoidingView } from 'react-native';
+import WayfindButton, { forFarm } from '../../../features/wayfind/WayfindButton';
 
 const { width, height } = Dimensions.get('window');
 
@@ -345,7 +347,7 @@ const DraggableVertex = ({
             const s = stateRef.current;
             if (pos) s.onDragMove(s.index, pos[1], pos[0]);
           })
-          .catch(() => {})
+          .catch(() => { })
           .finally(() => { convertingRef.current = false; });
       },
       onPanResponderRelease: (_e, g) => {
@@ -601,7 +603,7 @@ const AddFarmMode = ({
         zoomLevel: 17,
         animationDuration: 600,
       });
-    } catch {}
+    } catch { }
     // Chỉ khoá auto-center khi fix đủ tốt → tránh dính fix cache sai tỉnh.
     if (lastAccuracy != null && lastAccuracy <= 60) {
       didAutoCenterRef.current = true;
@@ -618,11 +620,11 @@ const AddFarmMode = ({
   const zoomBy = (d: number) => {
     const z = Math.max(3, Math.min(20, zoomRef.current + d));
     zoomRef.current = z;
-    try { cameraRef.current?.zoomTo(z, 200); } catch {}
+    try { cameraRef.current?.zoomTo(z, 200); } catch { }
   };
   const recenter = () => {
     if (currentLocation.lat === 0 && currentLocation.lng === 0) return;
-    try { cameraRef.current?.flyTo([currentLocation.lng, currentLocation.lat], 500); } catch {}
+    try { cameraRef.current?.flyTo([currentLocation.lng, currentLocation.lat], 500); } catch { }
   };
 
   // Khi đang kéo, hiển thị điểm i ở vị trí preview (chưa commit vào state gốc).
@@ -637,8 +639,8 @@ const AddFarmMode = ({
     ? `⚠ ${lastRejectReason}`
     : drawMode === 'manual'
       ? (coordinates.length < MIN_POINTS_TO_DEFINE
-          ? `Nhấn lên bản đồ để thêm điểm (cần ≥ ${MIN_POINTS_TO_DEFINE} điểm)`
-          : 'Nhấn thêm điểm · kéo để chỉnh · nhấn vào điểm để xoá')
+        ? `Nhấn lên bản đồ để thêm điểm (cần ≥ ${MIN_POINTS_TO_DEFINE} điểm)`
+        : 'Nhấn thêm điểm · kéo để chỉnh · nhấn vào điểm để xoá')
       : isAutoRecording
         ? `Đang ghi… đi vòng quanh vườn${lastAccuracy != null ? ` · GPS ~${Math.round(lastAccuracy)}m` : ''}`
         : coordinates.length === 0
@@ -1092,7 +1094,7 @@ const FarmDetailMode = ({
     }
   };
 
-  const handleScanExisting3D = () => {};
+  const handleScanExisting3D = () => { };
 
   const totalFruits = filteredTrees.reduce((sum, t) => sum + (t.fruitCount ?? 0), 0);
   const areaLabel = farm?.areaSqm
@@ -1125,7 +1127,6 @@ const FarmDetailMode = ({
         {[
           { icon: 'tree', val: filteredTrees.length, label: 'cây' },
           { icon: 'apple-whole', val: totalFruits, label: 'quả dự kiến' },
-          { icon: 'draw-polygon', val: areaLabel, label: '' },
           { icon: 'map-pin', val: farm?.coordinates?.length ?? 0, label: 'điểm GPS\n(nhấn xem)', onPress: () => onCoordinatesPress() },
         ].map((s, i) => (
           <View
@@ -1252,16 +1253,20 @@ const FarmDetailMode = ({
       <View style={styles.bottomBar}>
         {/* Toàn cảnh 3D của cả vườn (mặt đất theo ranh giới + mọi cây).
             Chạm 1 cây trong đó → bay sà vào xem quả. */}
-        <TouchableOpacity
-          style={styles.view3DFarmBtn}
-          onPress={onView3DFarm}
-          activeOpacity={0.85}
-        >
-          <Icon name="arrows-spin" size={19} color={COLORS.accent} />
-          <Text style={styles.view3DFarmBtnText}>Xem sơ đồ 3D của vườn</Text>
-          <Icon name="chevron-right" size={18} color={COLORS.accent} />
-        </TouchableOpacity>
-
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <TouchableOpacity
+            style={styles.view3DFarmBtn}
+            onPress={onView3DFarm}
+            activeOpacity={0.85}
+          >
+            <Icon name="arrows-spin" size={19} color={COLORS.accent} />
+            <Text style={styles.view3DFarmBtnText}>Xem sơ đồ 3D của vườn</Text>
+            <Icon name="chevron-right" size={18} color={COLORS.accent} />
+          </TouchableOpacity>
+          {/* Đích là TRỌNG TÂM ranh giới đã vẽ. Vườn chưa vẽ ranh giới →
+              `forFarm` trả null → nút tự ẩn (không có toạ độ nào để đi tới). */}
+          <WayfindButton target={forFarm(farm)} size="sm" />
+        </View>
         <TouchableOpacity style={styles.activityLargeBtn} onPress={onActivityUpdate} activeOpacity={0.88}>
           <View style={styles.btnShine} />
           <Icon name="seedling" size={19} color={COLORS.white} />
@@ -2464,6 +2469,7 @@ const styles = StyleSheet.create({
   view3DFarmBtn: {
     marginBottom: 10,
     borderRadius: 14,
+    flex: 1,
     paddingVertical: 12,
     paddingHorizontal: 14,
     flexDirection: 'row',
@@ -2486,7 +2492,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 10, overflow: 'hidden', position: 'relative',
     ...ORG_ELEV.cardStrong,
-},
+  },
   activityLargeBtnText: {
     fontSize: 15, fontWeight: '700', color: COLORS.white, letterSpacing: 0.2,
   },
@@ -2521,7 +2527,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: ORG_TONE.border,
     marginBottom: 16,
     ...ORG_ELEV.card,
-},
+  },
   instructionIconWrap: {
     width: 52, height: 52, borderRadius: 16,
     backgroundColor: COLORS.accentGlow,
@@ -2689,11 +2695,11 @@ const styles = StyleSheet.create({
     gap: 10, paddingVertical: 16,
     borderRadius: 14, backgroundColor: COLORS.accent,
     ...ORG_ELEV.cardStrong,
-},
+  },
   autoTrackBtnActive: {
     backgroundColor: '#C0533A',
     ...ORG_ELEV.card,
-},
+  },
   autoTrackBtnDisabled: {
     backgroundColor: COLORS.textMuted,
     shadowOpacity: 0,
@@ -2708,7 +2714,7 @@ const styles = StyleSheet.create({
     borderRadius: 14, backgroundColor: COLORS.accent,
     overflow: 'hidden', position: 'relative',
     ...ORG_ELEV.cardStrong,
-},
+  },
   finishBtnDisabled: { opacity: 0.45 },
   finishBtnText: {
     fontSize: 15, fontWeight: '700', color: COLORS.white,
@@ -2795,7 +2801,7 @@ const styles = StyleSheet.create({
     gap: 10,
     elevation: 3,
     ...ORG_ELEV.card,
-},
+  },
   primaryWalkBtn: {
     backgroundColor: '#3B6EA8',
     minHeight: 92,
@@ -2845,7 +2851,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 1, borderColor: 'rgba(0,0,0,0.06)',
     ...ORG_ELEV.card,
-},
+  },
   circleBtnLabel: {
     marginTop: 4, fontSize: 10, fontWeight: '700', color: COLORS.text,
     backgroundColor: 'rgba(255,255,255,0.9)', paddingHorizontal: 6,
@@ -2864,7 +2870,7 @@ const styles = StyleSheet.create({
     borderRadius: 14, paddingVertical: 7, paddingHorizontal: 14,
     maxWidth: width - 132,
     ...ORG_ELEV.card,
-},
+  },
   infoItem: { alignItems: 'center', minWidth: 50 },
   infoVal: { fontSize: 14, fontWeight: '800', color: COLORS.text, letterSpacing: -0.3 },
   infoLbl: { fontSize: 9, fontWeight: '600', color: COLORS.textMuted, marginTop: 1 },
@@ -2897,7 +2903,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 22, borderTopRightRadius: 22,
     paddingHorizontal: 16, paddingTop: 12,
     ...ORG_ELEV.modal,
-},
+  },
   hintLine: {
     flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10,
     paddingHorizontal: 2,
@@ -2916,7 +2922,7 @@ const styles = StyleSheet.create({
   segmentBtnActive: {
     backgroundColor: COLORS.accent,
     ...ORG_ELEV.card,
-},
+  },
   segmentText: { fontSize: 13, fontWeight: '700', color: COLORS.textSub },
   segmentTextActive: { color: COLORS.white },
 
@@ -2934,11 +2940,11 @@ const styles = StyleSheet.create({
   primaryBtnGo: {
     backgroundColor: '#3B6EA8',
     ...ORG_ELEV.card,
-},
+  },
   primaryBtnRec: {
     backgroundColor: '#C0533A',
     ...ORG_ELEV.card,
-},
+  },
   primaryBtnText: { color: COLORS.white, fontSize: 15, fontWeight: '800', letterSpacing: -0.2 },
 
   smallBtn: {
@@ -2953,7 +2959,7 @@ const styles = StyleSheet.create({
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 8, paddingVertical: 14, borderRadius: 14, backgroundColor: '#2ECC71',
     ...ORG_ELEV.card,
-},
+  },
   saveBtnText: { color: COLORS.white, fontSize: 15, fontWeight: '800', letterSpacing: -0.2 },
 
   secondaryRow: {
@@ -2972,7 +2978,7 @@ const styles = StyleSheet.create({
     width: '100%', maxWidth: 320, backgroundColor: ORG_SURFACE.raised,
     borderRadius: 18, padding: 18,
     ...ORG_ELEV.modal,
-},
+  },
   vertexPopupHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
   vertexPopupBadge: {
     width: 30, height: 30, borderRadius: 15, backgroundColor: COLORS.accent,

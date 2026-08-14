@@ -28,6 +28,10 @@
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <!-- Push FCM (Android 13+ cần xin quyền hiện thông báo) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Rung: báo "đã tới nơi" ở màn Dẫn đường, báo bắt đầu ghi âm ở nút ghi chú
+         giọng nói. Là quyền THƯỜNG (không hỏi lúc chạy), nhưng thiếu khai ở đây
+         thì `Vibration.vibrate` ném SecurityException và làm sập màn. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
     <uses-feature android:name="android.hardware.location.gps" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <uses-feature android:name="android.hardware.camera" android:required="true" />

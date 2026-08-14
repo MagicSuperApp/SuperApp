@@ -182,6 +182,29 @@ export const TOUCH_MIN = 56;
 // Màu ngữ nghĩa — tên theo VIỆC, không theo sắc độ
 // ---------------------------------------------------------------------------
 
+/**
+ * KÍNH MỜ — lớp trong suốt đặt trên nền ảnh vườn.
+ *
+ * Không dùng `BlurView` (cần mô-đun native app chưa cài). Dáng "kính" ở đây dựng
+ * bằng các lớp trong suốt chồng nhau; nền phía sau vốn đã mờ nên mắt gần như
+ * không phân biệt được với làm-mờ thật.
+ *
+ * Màu để ở ĐÂY chứ không rải trong màn: nó là màu của hệ thiết kế, và luật lint
+ * cấm hex nằm trong tệp màn hình là đúng — chỗ của chúng là tệp này.
+ */
+export const GLASS = {
+  /** Mặt kính chính — đủ đục để chữ đen trên nó vẫn đọc được ngoài nắng. */
+  film: 'rgba(255, 255, 255, 0.68)',
+  /** Lớp mỏng hơn, cho chip và nút phụ. */
+  filmSoft: 'rgba(255, 255, 255, 0.52)',
+  /** Viền sáng quanh mép kính. */
+  rim: 'rgba(255, 255, 255, 0.75)',
+  /** Vệt sáng hắt vào mặt kính (dùng cho gradient SVG). */
+  sheen: '#FFFFFF',
+  /** Nền của dấu "đã tới" — trắng đặc hơn để dấu tích nổi hẳn. */
+  seal: 'rgba(255, 255, 255, 0.72)',
+} as const;
+
 export const TONE = {
   primary: NATURE.leaf,
   primaryDeep: NATURE.leafDeep,

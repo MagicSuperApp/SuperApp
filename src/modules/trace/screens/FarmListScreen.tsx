@@ -33,7 +33,7 @@ import Icon, { type IconName } from '../../../components/Icon';
 import StateView from '../../../components/state/StateView';
 import { useOffline } from '../../../hooks/useOffline';
 import { useTk } from '../../../i18n/keys';
-import { polygonCenter } from '../../../features/wayfind/wayfind';
+import WayfindButton, { forFarm } from '../../../features/wayfind/WayfindButton';
 import { RootState } from '../../../store';
 import { loadFarms, syncFarmsFromBackend } from '../store/farmSlice';
 import { Ground } from '../components/layered/Surface';
@@ -65,95 +65,78 @@ const STATUS: Record<string, { key: string; tone: string; soft: string }> = {
   harvest: { key: 'trace.status.harvest', tone: TONE.sun, soft: TONE.sunSoft },
 };
 
-/** Tâm vườn để dẫn đường tới. Vườn chưa vẽ ranh giới → null (ẩn nút). */
-const farmCenterOf = (farm: any) => polygonCenter(farm?.coordinates);
-
 // ── Thẻ một vườn ────────────────────────────────────────────────────────────
 
 const FarmCard: React.FC<{
   item: any;
   index: number;
   onPress: () => void;
-  /** null = vườn chưa vẽ ranh giới → chưa có toạ-độ để dẫn tới. */
-  onWayfind: (() => void) | null;
 }> = ({
-  item, index, onPress, onWayfind,
+  item, index, onPress,
 }) => {
-  const tk = useTk();
-  const fade = useRef(new Animated.Value(0)).current;
-  const slide = useRef(new Animated.Value(14)).current;
+    const tk = useTk();
+    const fade = useRef(new Animated.Value(0)).current;
+    const slide = useRef(new Animated.Value(14)).current;
 
-  useEffect(() => {
-    // Trễ theo vị trí, nhưng CHẶN TRẦN ở 6 mục: danh sách dài mà nhân mãi thì mục
-    // thứ 30 phải đợi 2,4 giây mới hiện — người dùng đọc thành "màn bị treo".
-    const delay = Math.min(index, 6) * 70;
-    Animated.parallel([
-      Animated.timing(fade, { toValue: 1, duration: 320, delay, useNativeDriver: true }),
-      Animated.timing(slide, { toValue: 0, duration: 320, delay, useNativeDriver: true }),
-    ]).start();
-  }, [fade, slide, index]);
+    useEffect(() => {
+      // Trễ theo vị trí, nhưng CHẶN TRẦN ở 6 mục: danh sách dài mà nhân mãi thì mục
+      // thứ 30 phải đợi 2,4 giây mới hiện — người dùng đọc thành "màn bị treo".
+      const delay = Math.min(index, 6) * 70;
+      Animated.parallel([
+        Animated.timing(fade, { toValue: 1, duration: 320, delay, useNativeDriver: true }),
+        Animated.timing(slide, { toValue: 0, duration: 320, delay, useNativeDriver: true }),
+      ]).start();
+    }, [fade, slide, index]);
 
-  const trees = item.treeCount || 0;
-  const fruits = item.fruitCount || 0;
-  const area = item.areaSqm
-    ? `${(item.areaSqm / 10000).toFixed(1)} ha`
-    : `${item.coordinates?.length ?? 0} ${tk('trace.unit.points')}`;
-  const st = STATUS[item.status] ?? STATUS.active;
+    const trees = item.treeCount || 0;
+    const fruits = item.fruitCount || 0;
+    const area = item.areaSqm
+      ? `${(item.areaSqm / 10000).toFixed(1)} ha`
+      : `${item.coordinates?.length ?? 0} ${tk('trace.unit.points')}`;
+    const st = STATUS[item.status] ?? STATUS.active;
 
-  return (
-    <Animated.View style={{ opacity: fade, transform: [{ translateY: slide }] }}>
-      <Pressable
-        onPress={onPress}
-        style={({ pressed }) => [styles.card, ELEVATION.card, pressed && styles.pressed]}
-        android_ripple={{ color: TONE.primarySoft }}
-      >
-        <Leaf size={78} color={NATURE.moss} opacity={0.07} rotate={22} style={styles.cardLeaf} />
+    return (
+      <Animated.View style={{ opacity: fade, transform: [{ translateY: slide }] }}>
+        <Pressable
+          onPress={onPress}
+          style={({ pressed }) => [styles.card, ELEVATION.card, pressed && styles.pressed]}
+          android_ripple={{ color: TONE.primarySoft }}
+        >
+          <Leaf size={78} color={NATURE.moss} opacity={0.07} rotate={22} style={styles.cardLeaf} />
 
-        <View style={styles.cardHead}>
-          <View style={styles.cardIcon}>
-            <Icon name="tree" size={20} color={TONE.primary} />
+          <View style={styles.cardHead}>
+            <View style={styles.cardIcon}>
+              <Icon name="tree" size={20} color={TONE.primary} />
+            </View>
+            <View style={styles.cardHeadText}>
+              <Text style={styles.cardName} numberOfLines={1}>{item.name}</Text>
+              {item.location ? (
+                <View style={styles.cardPlace}>
+                  <Icon name="location-dot" size={12} color={NATURE.barkSoft} />
+                  <Text style={styles.cardPlaceTxt} numberOfLines={1}>{item.location}</Text>
+                </View>
+              ) : null}
+            </View>
+            
+            <View style={[styles.chip, { backgroundColor: st.soft }]}>
+              <View style={[styles.chipDot, { backgroundColor: st.tone }]} />
+              <Text style={[styles.chipTxt, { color: st.tone }]} numberOfLines={1}>{tk(st.key)}</Text>
+            </View>
           </View>
-          <View style={styles.cardHeadText}>
-            <Text style={styles.cardName} numberOfLines={1}>{item.name}</Text>
-            {item.location ? (
-              <View style={styles.cardPlace}>
-                <Icon name="location-dot" size={12} color={NATURE.barkSoft} />
-                <Text style={styles.cardPlaceTxt} numberOfLines={1}>{item.location}</Text>
-              </View>
-            ) : null}
-          </View>
-          {/* Dẫn đường tới vườn — đích là TRỌNG TÂM ranh giới đã vẽ, không phải
-              một điểm nào đó trong đa-giác. Chưa vẽ ranh giới thì không hiện nút.
-              Nút nằm TRONG thẻ nhưng bắt chạm riêng, nên bấm vào nó không mở
-              luôn trang chi tiết vườn. */}
-          {onWayfind ? (
-            <Pressable
-              style={({ pressed }) => [styles.wayBtn, pressed && styles.pressed]}
-              onPress={onWayfind}
-              accessibilityLabel={tk('trace.farmList.wayfind', { name: item.name })}
-              hitSlop={10}
-            >
-              <Icon name="map-location-dot" size={19} color={TONE.primary} />
-            </Pressable>
-          ) : null}
 
-          <View style={[styles.chip, { backgroundColor: st.soft }]}>
-            <View style={[styles.chipDot, { backgroundColor: st.tone }]} />
-            <Text style={[styles.chipTxt, { color: st.tone }]} numberOfLines={1}>{tk(st.key)}</Text>
+          <View style={styles.cardStats}>
+            <Stat icon="tree" value={String(trees)} label={tk('trace.label.trees')} tone={TONE.primary} />
+            <View style={styles.statSep} />
+            <Stat icon="apple-whole" value={String(fruits)} label={tk('trace.label.fruits')} tone={TONE.sun} />
+            {/* Nút nằm TRONG thẻ nhưng bắt chạm riêng, nên bấm vào nó không mở
+              luôn trang chi tiết vườn. Vườn chưa vẽ ranh giới → `forFarm` trả
+              null → nút tự ẩn. */}
+            <WayfindButton target={forFarm(item)} size="sm" />
           </View>
-        </View>
-
-        <View style={styles.cardStats}>
-          <Stat icon="tree" value={String(trees)} label={tk('trace.label.trees')} tone={TONE.primary} />
-          <View style={styles.statSep} />
-          <Stat icon="apple-whole" value={String(fruits)} label={tk('trace.label.fruits')} tone={TONE.sun} />
-          <View style={styles.statSep} />
-          <Stat icon="draw-polygon" value={area} label="" tone={TONE.leaf} />
-        </View>
-      </Pressable>
-    </Animated.View>
-  );
-};
+        </Pressable>
+      </Animated.View>
+    );
+  };
 
 const Stat: React.FC<{ icon: IconName; value: string; label: string; tone: string }> = ({
   icon, value, label, tone,
@@ -207,8 +190,8 @@ const FarmListScreen: React.FC = () => {
     const q = query.trim().toLowerCase();
     const list = q
       ? farms.filter(f =>
-          f.name.toLowerCase().includes(q) ||
-          String((f as any).location ?? '').toLowerCase().includes(q))
+        f.name.toLowerCase().includes(q) ||
+        String((f as any).location ?? '').toLowerCase().includes(q))
       : farms;
     return [...list].sort((a, b) => idTimestamp(b.id) - idTimestamp(a.id));
   }, [farms, query]);
@@ -305,14 +288,6 @@ const FarmListScreen: React.FC = () => {
             item={item}
             index={index}
             onPress={() => navigation.navigate('FarmDetail', { farm_id: item.id })}
-            onWayfind={farmCenterOf(item)
-              ? () => {
-                const c = farmCenterOf(item)!;
-                navigation.navigate('Wayfind', {
-                  lat: c.lat, lon: c.lng, kind: 'farm', label: item.name, farmId: item.id,
-                });
-              }
-              : null}
           />
         )}
         ListFooterComponent={
@@ -370,10 +345,6 @@ const styles = StyleSheet.create({
   cardPlace: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   cardPlaceTxt: { ...TYPE.caption, flexShrink: 1, fontSize: 13 },
 
-  wayBtn: {
-    width: 40, height: 40, ...ORGANIC_TILE,
-    alignItems: 'center', justifyContent: 'center', backgroundColor: TONE.primarySoft,
-  },
   chip: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
     paddingHorizontal: 10, paddingVertical: 6, borderRadius: RADIUS.chip,

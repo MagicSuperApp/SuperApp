@@ -20,6 +20,9 @@ class MainApplication : Application(), ReactApplication {
           // Add custom packages here
           add(PhoenixKeyPackage())
           add(com.aladincontract.company.treereid.TreeReIDPackage())
+          // La bàn dùng chung (màn Dẫn đường). Bọc lại HeadingSensorReader vốn
+          // nằm trong TreeReID — đọc hướng mà không phải mở camera.
+          add(com.aladincontract.company.compass.CompassHeadingPackage())
         },
       // BẮT BUỘC ghi rõ "index". getDefaultReactHost của Expo mặc định
       // jsMainModulePath = ".expo/.virtual-metro-entry" — entry ảo của Expo CLI.

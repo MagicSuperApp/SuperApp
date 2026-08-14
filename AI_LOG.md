@@ -99,6 +99,70 @@ Hai thứ đáng nói tìm thấy khi làm:
 
 Kiểm: `tsc` sạch · **669/669 test xanh** · eslint `src/modules/trace` giữ **45**.
 
+## Màn Dẫn đường: ba chế độ — kim vườn → mặt phẳng tìm cây → kim cây
+
+### Tới nơi thì kim hết việc
+Ở khoảng cách 0, góc phương-vị chỉ còn là nhiễu GPS — kim quay vòng vòng và **nói dối rằng nó biết hướng**. Nên khi tới vườn, màn đổi hẳn sang **mặt phẳng tìm cây** bán kính 20 m.
+
+- **Phủ toàn màn**, không cắt thành đĩa tròn: đĩa tròn cắt mất bốn góc màn mà chẳng đổi lấy gì, trong khi cây ở góc màn vẫn là cây thật.
+- **Không có tia quét.** Tia quét trong radar thật có nghĩa — nó là ăng-ten đang quay, chấm chỉ sáng khi tia đi qua. Ở đây không có gì quay cả; vẽ tia quét là bịa ra một cơ chế không tồn tại.
+- **Hướng máy quay lên**: chấm bên trái màn = cây bên trái NGƯỜI. Bắc-quay-lên bắt người dùng tự xoay bản đồ trong đầu — giữa vườn, tay bẩn, nắng chói, không ai làm đúng phép xoay đó.
+- **Vùng vườn**: đa-giác nối các điểm ranh giới đã ghi. Nó trả lời câu mà chấm cây không trả lời được: *"tôi đang đứng TRONG vườn hay còn ngoài bờ?"* — giữa vườn sầu riêng ranh giới không có hàng rào. Vẽ ĐỦ mọi đỉnh kể cả đỉnh ngoài tầm nhìn, vì đỉnh xa vẫn định hình cạnh đi ngang qua tầm nhìn.
+
+### Cụm cây, không phải một danh sách phẳng
+Chấm dở đúng một việc: hai cây cách nhau một mét thì hai chấm chồng lên nhau, không chọn được. Nên có thêm tấm dưới chia theo **tầm với** — không phải số tròn cho đẹp: ≤5 m là đứng đó chạm được thân, ≤12 m là còn nhìn rõ giữa tán.
+
+### Kim cây dùng CHÍNH component của kim vườn
+Góc trên bên phải, rộng đúng 1/3 màn. Chép thành hai bản là mở đường cho hai kim quay khác nhau trên cùng một màn — thứ người dùng đọc ra ngay là "cái nào đúng?".
+
+### Một lỗi suýt lọt
+Đặt tên tệp component là `Needle.tsx` cạnh `needle.ts` (phép tính). Windows và macOS **không phân biệt hoa-thường** → `import` lấy nhầm module. Đã đổi thành `CompassNeedle.tsx`.
+
+Kiểm: `tsc` sạch · **802/802 test xanh** (+26 test phép chiếu) · eslint **0** trên toàn `features/wayfind/`.
+
+## Màn Dẫn đường: kính mờ, kim có quán tính, neo một điểm thay vì tính liên tục
+
+### Cái gì khoá, cái gì không
+**ĐÍCH khoá**: toạ độ vườn/cây chốt một lần, không bao giờ tính lại. Kim có đúng một nhiệm vụ — luôn chỉ về cái đích đó.
+
+**CHỖ ĐANG ĐỨNG không khoá**, vì góc từ chỗ đứng tới đích đổi theo từng bước chân. Đóng băng chỗ đứng là kim chỉ theo một góc CŨ: đi chệch mười mét là nó chỉ trượt qua đích mà nhìn màn không có gì báo.
+
+Thứ gây giật không phải việc tính lại, mà là **nhiễu**: GPS lắc vài mét mỗi giây, ở cự ly 20 m thì vài mét đó xoay góc phương-vị hàng chục độ. Nên chỗ đứng đi qua bộ lọc (`smoothPosition`) rồi mới tính góc — kim luôn chỉ đúng đích mà thôi rung. Nhảy xa hơn 25 m thì nhận thẳng, không bò theo.
+
+### Kim có khối lượng
+`Animated.spring` ma sát thấp → kim vượt qua đích rồi lắc về hai ba nhịp, đúng dáng kim la bàn thật. Hai chỗ dễ sai tách sang `features/wayfind/needle.ts` **có bài kiểm** (20 test):
+- **Vòng ngắn** — 350° → 10° phải là **+20**, không phải −340. Gán thẳng góc là kim quay ngược gần trọn vòng.
+- **Lọc nhiễu theo vòng tròn** — trung bình của 350 và 10 phải ra **0**, không phải 180.
+
+Tới nơi thì kim **thôi quay** (ở khoảng cách 0, góc phương-vị chỉ còn là nhiễu thuần tuý) và máy **rung ba nhịp ngắn**, đúng một lần mỗi lần tới.
+
+### La bàn: nối thật, bằng chính mã la bàn đã có
+
+Kim đứng im khi xoay máy vì app **không có đường nào lấy hướng** — `useHeading` dò không ra mô-đun nào nên luôn lùi về hướng-đi GPS, mà đứng yên thì hướng-đi là `null`.
+
+Phần đọc cảm biến thì **đã có sẵn và đã chỉnh kỹ**: `HeadingSensorReader.kt` (Android, TYPE_ROTATION_VECTOR, α=0,15) và `HeadingCaptureManager.swift` (iOS). Nhưng chúng **bị khoá trong phiên chụp ảnh cây**: `startSession` vừa bật cảm biến vừa **mở camera**.
+
+Nên bản này **không viết lại phép đọc cảm biến**, chỉ bọc thêm vòng đời bật/tắt độc lập với camera:
+- `android/.../compass/CompassHeadingModule.kt` — dùng chính `HeadingSensorReader`
+- `ios/.../Core/Compass/CompassHeadingModule.swift` — `CLLocationManager` thuần phần la bàn, lấy **trueHeading** (đã bù độ lệch từ thiên; lấy nhầm hướng từ là kim lệch đều vài độ ở mọi chỗ)
+
+Tên module + tên sự kiện đặt **trùng `react-native-compass-heading`** — sau này thay bằng thư viện thì phía JS không đụng dòng nào.
+
+> **Cần dựng lại app** (thêm mã native). Chưa dựng lại thì kim vẫn đứng im — không phải lỗi mã JS.
+
+### Chỗ cắm cũ (đã thay bằng bản thật ở trên)
+`package.json` không có thư viện la bàn nào; `TreeReIDBridge.getCurrentHeading` chỉ sống trong phiên chụp ảnh cây và chỉ có trên iOS. `features/wayfind/useHeading.ts` **dò mô-đun lúc chạy**: có thì dùng la bàn thật (đúng cả khi đứng yên), chưa có thì lùi về hướng-đi GPS (chỉ đúng khi đang đi). Màn **nói rõ đang dùng nguồn nào** — chỉ sai hướng giữa vườn tệ hơn nhiều so với thú nhận chưa biết.
+
+> Cài `react-native-compass-heading` + dựng lại app là kim quay khi đứng yên. **Không phải sửa màn**, chỉ sửa `useHeading.ts`.
+
+### Kính mờ mà không cần thư viện làm mờ
+`BlurView` cần mô-đun native chưa cài. Mặt kính dựng bằng ba lớp trong suốt chồng nhau + vệt sáng lệch tâm + vành khắc 12 vạch (SVG) — nhìn gần như không khác vì nền phía sau vốn đã mờ.
+
+### Không gian khoá thứ hai: `map.`
+36 khoá `map.*` theo đúng dạng anh đặt (`map.openmap`). Bài kiểm khoá nới cho hai không gian tên và cho khoá **hai tầng** lẫn ba tầng.
+
+Kiểm: `tsc` sạch · **771/771 test xanh** (+20 test kim) · eslint sạch trên các tệp mới · 0 chuỗi tiếng Việt còn sót trong màn.
+
 ## FarmList dựng lại trọn vẹn · FarmDetail đổi vỏ — cả hai theo Organic + khoá chữ
 
 ### `FarmListScreen` — viết lại từ đầu (722 → 330 dòng)

@@ -25,10 +25,12 @@ describe('bộ khoá', () => {
     expect(thieu).toEqual([]);
   });
 
-  it('khoá đặt đúng nếp trace.<nhóm>.<tên>', () => {
-    // Nhom va ten deu cho camelCase + chu so (`trace.place3d.step`, `trace.label.has3d`).
+  it('khoá đặt đúng nếp <khonggian>.<nhóm>.<tên>', () => {
+    // Hai khong gian ten dang dung: `trace.` va `map.`. Moi doan deu camelCase,
+    // cho chu so (`trace.place3d.step`, `trace.label.has3d`), va cho ca khoa hai
+    // tang (`map.openmap`) lan ba tang (`map.openmap.note`).
     // Cam chu HOA dan dau va dau gach: khoa la thu doc bang mat trong ma nguon.
-    const sai = allKeys().filter(k => !/^trace\.[a-z][a-zA-Z0-9]*\.[a-z][a-zA-Z0-9]*$/.test(k));
+    const sai = allKeys().filter(k => !/^(trace|map)(\.[a-z][a-zA-Z0-9]*)+$/.test(k));
     expect(sai).toEqual([]);
   });
 

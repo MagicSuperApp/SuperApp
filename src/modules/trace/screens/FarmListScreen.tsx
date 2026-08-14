@@ -43,12 +43,16 @@ const MagicCreditBadge = ({ credits }: { credits: number }) => {
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    Animated.loop(
+    // Huy hiệu này nằm trong danh sách vườn — cuộn là gắn/gỡ liên tục. Mỗi lần gắn
+    // mà không dừng vòng cũ là thêm một vòng chạy mãi, cộng dồn theo số lần cuộn.
+    const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, { toValue: 1.06, duration: 1800, useNativeDriver: true }),
         Animated.timing(pulseAnim, { toValue: 1,    duration: 1800, useNativeDriver: true }),
       ])
-    ).start();
+    );
+    loop.start();
+    return () => loop.stop();
   }, []);
 
   return (

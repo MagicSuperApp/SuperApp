@@ -35,7 +35,9 @@ const ProofPipelineIndicator: React.FC<Props> = ({ stage, isMine }) => {
       duration: 220,
       useNativeDriver: true,
     }).start();
-    Animated.loop(
+    // Effect chạy lại mỗi lần `stage` đổi. Không dừng vòng cũ thì mỗi bước của
+    // đường ống để lại thêm một vòng nhấp nháy chồng lên nhau.
+    const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(pulse, {
           toValue: 1,
@@ -48,7 +50,9 @@ const ProofPipelineIndicator: React.FC<Props> = ({ stage, isMine }) => {
           useNativeDriver: true,
         }),
       ]),
-    ).start();
+    );
+    loop.start();
+    return () => loop.stop();
   }, [stage]);
 
   const icon = STAGE_ICON[stage] ?? 'progress-clock';

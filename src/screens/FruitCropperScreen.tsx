@@ -83,6 +83,12 @@ interface RouteParams {
   fruitName?: string;
   /** Số quả cây này đã có → đặt sẵn tên "Quả {n+1}" cho quả mới. */
   fruitCount?: number;
+  /**
+   * Khối `capture` (JSON đã chuỗi-hoá) dựng ở màn chụp — xem `captureMeta.ts`.
+   * Đọc tại thời điểm bấm máy nên phải đi kèm qua đây, không dựng lại ở đây
+   * được: tới lúc này người ta đã xoay máy, heading/pitch không còn đúng nữa.
+   */
+  capture?: string;
 }
 
 type Step = 'crop' | 'candidates' | 'naming';
@@ -210,7 +216,7 @@ const FruitCropperScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const {
     treeId, treeName, imageUri, imageW, imageH, zone: zoneParam, fruitId, fruitName,
-    fruitCount,
+    fruitCount, capture,
   } = (route.params ?? {}) as RouteParams;
   // Kết quả trả về từ màn đặt toạ-độ 3D (FruitPlace3D điều hướng ngược có merge).
   const pickedCoord = (route.params as any)?.pickedFruitCoord as FruitCoord | undefined;
@@ -543,7 +549,7 @@ const FruitCropperScreen: React.FC = () => {
     setErrMsg(null);
     setBusy(true);
     const r = await addFruitView(BASE_URL, targetFruitId, imageUri, region, {
-      zone, posX: p.x, posH: p.h, viewType, allowMismatch: allowMismatch || undefined,
+      zone, posX: p.x, posH: p.h, viewType, allowMismatch: allowMismatch || undefined, capture,
       // CHỈ gửi posZ khi người dùng thật sự đặt độ sâu lần này. Máy chủ chỉ cập
       // nhật trường nào nhận được — gửi bừa là GHI ĐÈ mất độ sâu đặt lần trước.
       posZ: zPlaced ? coordToServer(coord).posZ : undefined,
@@ -641,7 +647,7 @@ const FruitCropperScreen: React.FC = () => {
     // pos_z chỉ gửi khi người dùng đã thật sự đặt độ sâu (xem `zPlaced`).
     const srv = coordToServer(coord);
     const r = await enrollFruit(BASE_URL, treeId, name, imageUri, lastRegion, {
-      zone: srv.zone, posX: srv.posX, posH: srv.posH, viewType,
+      zone: srv.zone, posX: srv.posX, posH: srv.posH, viewType, capture,
       posZ: zPlaced ? srv.posZ : undefined,
       allowDup: allowDup || undefined,
     });

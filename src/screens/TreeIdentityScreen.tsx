@@ -632,7 +632,7 @@ const TreeIdentityScreen: React.FC = () => {
           data.confidence ?? null,
           data.tree_id ?? null,
           data.query_id ?? null,
-          data.similarity ?? null,
+          data.s_top1 ?? null,
         );
         setIdentResult(data);
         dispatch(setIdentificationResult(data));
@@ -812,12 +812,16 @@ const TreeIdentityScreen: React.FC = () => {
   // ── Render result panel ───────────────────────────────────────────────────
   const renderResultPanel = () => {
     if (!identResult) return null;
-    const { decision, name, code, similarity, margin, factors, moved_distance_m, confidence, suggest } =
+    const { decision, name, code, s_top1, margin, factors, moved_distance_m, confidence, suggest } =
       identResult as IdentifyResponse & {
-        similarity?: number;
+        s_top1?: number;
         margin?: number;
         factors?: FactorScores;
       };
+    // `margin` chỉ có nghĩa khi có TỪ HAI ứng viên: bucket một ứng viên trả margin
+    // GIẢ bằng chính `s_top1` vì chưa so với ai (`server.py:3893-3896`). In nó ra ở
+    // ca đó là bịa một khoảng cách với một cây không tồn tại.
+    const marginTrustworthy = (identResult.candidates?.length ?? 0) >= 2;
     // owner_review: backend thiếu cờ = cho tạo mới (giữ hành-vi cũ).
     const allowEnrollNew = identResult.allow_enroll_new !== false;
 
@@ -861,6 +865,34 @@ const TreeIdentityScreen: React.FC = () => {
             </View>
           ) : null;
         })()}
+
+        {/* Cảnh báo của máy chủ — trước đây bị bỏ HẾT. Đây là chỗ máy chủ giải thích
+            vì sao nó vừa khó tính lên: cây thiếu toạ độ bị siết ngưỡng
+            (`visual_reid.py:1879`), vùng khoanh quá nhỏ nên đã embed cả khung
+            (`server.py:3909`), một vùng dùng chung nhiều ảnh… Không hiện ra thì nông
+            dân chỉ thấy máy từ chối mà không biết vì sao, rồi chụp lại mãi. Câu đã
+            có sẵn tiếng Việt, app không phải dịch. */}
+        {(identResult.warnings ?? []).map((w, i) => (
+          <View key={`warn-${i}`} style={styles.suggestBox}>
+            <Icon name="alert-outline" size={16} color={NEUTRAL.warning} />
+            <Text style={styles.suggestText}>{w}</Text>
+          </View>
+        ))}
+
+        {/* TRẠNG THÁI THỨ BA: cây được chọn chưa có toạ độ. Không phải "trong bán
+            kính", cũng không phải "ngoài bán kính" (#309, `server.py:3905`). Cách gỡ
+            đúng là bổ sung vị trí, không phải chụp lại cả lô ảnh — nhưng cửa
+            `POST /api/update_location` app CHƯA nối, nên ở đây chỉ nói thật là
+            thiếu gì, không hứa một nút chưa có. */}
+        {identResult.needs_location_update && (
+          <View style={styles.suggestBox}>
+            <Icon name="map-marker-alert-outline" size={16} color={NEUTRAL.warning} />
+            <Text style={styles.suggestText}>
+              Cây này chưa có toạ độ nên máy phải xét khắt khe hơn. Lần tới hãy đứng
+              cạnh cây và bật định vị khi chụp.
+            </Text>
+          </View>
+        )}
 
         {/* M3: phán-quyết người dùng — chỉ hiện khi backend trả query_id */}
         {queryId && (
@@ -934,13 +966,13 @@ const TreeIdentityScreen: React.FC = () => {
               <Text style={styles.matchLabel}>Mã</Text>
               <Text style={styles.matchValue}>{code ?? '—'}</Text>
             </View>
-            {typeof similarity === 'number' && (
+            {typeof s_top1 === 'number' && (
               <View style={styles.matchRow}>
                 <Icon name="percent" size={16} color="#1b5e20" />
                 <Text style={styles.matchLabel}>Độ giống</Text>
                 <Text style={styles.matchValue}>
-                  {Math.round(similarity * 100)}%
-                  {typeof margin === 'number'
+                  {Math.round(s_top1 * 100)}%
+                  {typeof margin === 'number' && marginTrustworthy
                     ? ` (+${Math.round(margin * 100)}% so với cây tiếp theo)`
                     : ''}
                 </Text>
@@ -1350,7 +1382,7 @@ const TreeIdentityScreen: React.FC = () => {
               id: c.tree_id,
               name: c.name ?? '',
               code: c.code ?? undefined,
-              sim: (c as any).sim,
+              sim: c.score,
               near_prev: c.near_prev,
               has3d: c.has3d,
               anchor: c.anchor ?? undefined,

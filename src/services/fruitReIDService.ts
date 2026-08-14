@@ -300,11 +300,12 @@ export function fruitCandidates(baseUrl: string, treeId: string, imagePath: stri
  * chỉ ghi pos_z khi nhận được, nên vắng mặt = "chưa đặt", còn gửi bừa 0.5 thì quả
  * bị đóng dấu là đã-đặt-ở-giữa và không ai còn phân biệt được nữa.
  */
-export function enrollFruit(baseUrl: string, treeId: string, name: string, imagePath: string, region: FruitRegion, opts?: { allowDup?: boolean; zone?: TreeZone; posX?: number; posH?: number; posZ?: number; viewType?: FruitViewType }): Promise<ApiResult<FruitEnrollResponse>> {
+export function enrollFruit(baseUrl: string, treeId: string, name: string, imagePath: string, region: FruitRegion, opts?: { allowDup?: boolean; zone?: TreeZone; posX?: number; posH?: number; posZ?: number; viewType?: FruitViewType; capture?: string }): Promise<ApiResult<FruitEnrollResponse>> {
   const form = new FormData();
   form.append('tree_id', treeId);
   form.append('name', name);
   _appendImageRegion(form, imagePath, region);
+  if (opts?.capture) form.append('capture', opts.capture);
   if (opts?.allowDup) form.append('allow_dup', '1');
   if (opts?.zone) form.append('zone', opts.zone);
   if (opts?.posX !== undefined) form.append('pos_x', String(opts.posX));
@@ -321,10 +322,11 @@ export function enrollFruit(baseUrl: string, treeId: string, name: string, image
  * giữ nguyên giá trị cũ. Nên đừng gửi posZ khi lần này người dùng không đặt lại
  * độ sâu: gửi = ghi đè mất độ sâu họ đã đặt lần trước.
  */
-export function addFruitView(baseUrl: string, fruitId: string, imagePath: string, region: FruitRegion, opts?: { allowMismatch?: boolean; zone?: TreeZone; posX?: number; posH?: number; posZ?: number; viewType?: FruitViewType }): Promise<ApiResult<FruitAddViewResponse>> {
+export function addFruitView(baseUrl: string, fruitId: string, imagePath: string, region: FruitRegion, opts?: { allowMismatch?: boolean; zone?: TreeZone; posX?: number; posH?: number; posZ?: number; viewType?: FruitViewType; capture?: string }): Promise<ApiResult<FruitAddViewResponse>> {
   const form = new FormData();
   form.append('fruit_id', fruitId);
   _appendImageRegion(form, imagePath, region);
+  if (opts?.capture) form.append('capture', opts.capture);
   if (opts?.allowMismatch) form.append('allow_mismatch', '1');
   if (opts?.zone) form.append('zone', opts.zone);
   if (opts?.posX !== undefined) form.append('pos_x', String(opts.posX));

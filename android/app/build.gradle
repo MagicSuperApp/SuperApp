@@ -134,9 +134,17 @@ def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
     }
     buildTypes {
         debug {
+            // `AndroidManifest.xml:36` dùng ${usesCleartextTraffic} nhưng KHÔNG chỗ nào trong
+            // repo (build.gradle, gradle.properties, codemagic.yaml, .github/workflows/) định
+            // nghĩa giá trị. Bản dựng nào không truyền -P sẽ gãy ở bước merge manifest.
+            // Đặt tường minh: debug MỞ (Metro chạy http qua LAN), release ĐÓNG.
+            manifestPlaceholders = [usesCleartextTraffic: "true"]
             signingConfig signingConfigs.debug
         }
         release {
+            // Bản phát hành KHÔNG đi http trần. Mọi base URL trong `.env.example` đều https
+            // và `grep -rnoE "http://" src/` không còn URL thật nào (chỉ 1 chuỗi trong test).
+            manifestPlaceholders = [usesCleartextTraffic: "false"]
             // Caution! In production, you need to generate your own keystore file.
             // see https://reactnative.dev/docs/signed-apk-android.
             signingConfig signingConfigs.release

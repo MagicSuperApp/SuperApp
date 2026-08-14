@@ -42,6 +42,7 @@ import {
   type AnimalEnrollResponse,
 } from '../services/animalReIDService';
 import { withPhotoSave } from '../services/mediaSavePermission';
+import { useBottomActionPadding } from '../hooks/useBottomActionPadding';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -109,6 +110,7 @@ interface CapturedPhoto {
 // ---------------------------------------------------------------------------
 
 const AnimalEnrollScreen: React.FC = () => {
+  const bottomPad = useBottomActionPadding();
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<RouteParams, 'AnimalEnroll'>>();
   const { species, farmId } = route.params;
@@ -423,7 +425,7 @@ const AnimalEnrollScreen: React.FC = () => {
       </ScrollView>
 
       {/* Footer */}
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: bottomPad }]}>
         <TouchableOpacity
           style={[styles.footerBtn, styles.footerBtnCancel]}
           onPress={() => navigation.goBack()}

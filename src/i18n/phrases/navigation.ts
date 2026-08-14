@@ -10,7 +10,13 @@ export const NAVIGATION: PhraseMap = {
   'Truy xuất': { en: 'Trace', zh: '溯源', ja: 'トレース' },
   'Trò chuyện': { en: 'Chat', zh: '聊天', ja: 'チャット' },
   'Việc làm': { en: 'Work', zh: '工作', ja: '仕事' },
-  'Kết đèn': { en: 'Connect', zh: '连灯', ja: '参加' },
+  // KHÔNG dịch là 'Connect'. Với người dùng Cardano, "Connect" đã có nghĩa cố định
+  // là NỐI VÍ vào một ứng dụng web3 — họ đọc tab này thành "kết nối ví" và bấm vào
+  // với kỳ vọng sai. 'Join' đúng việc tab đang làm: góp máy vào mạng LampNet.
+  // Nhãn navbar (`navigation/navLabels.ts:54`) vốn đã là 'Join'; dòng này là chỗ
+  // duy nhất còn sinh ra chữ 'Connect' — hai nguồn từng nói hai đằng.
+  // Tiếng Việt: 'Kết đèn' → 'Góp máy' (TẠM, anh Aladin chốt 12/08 theo Tùng).
+  'Góp máy': { en: 'Join', zh: '连灯', ja: '参加' },
   'Trang trại': { en: 'Farm', zh: '农场', ja: '農場' },
   'Quản lý trang trại & truy xuất nguồn gốc nông sản': {
     en: 'Farm management & produce origin tracing',

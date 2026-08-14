@@ -117,8 +117,8 @@ const ContributingScreen: React.FC = () => {
         <StateView
           status="empty"
           title="Chưa đóng góp"
-          message="Máy bạn chưa tham gia mạng. Vào 'Kết đèn' để bắt đầu góp sức."
-          actionLabel="Kết đèn"
+          message="Máy bạn chưa tham gia mạng. Vào 'Góp máy' để bắt đầu góp sức."
+          actionLabel="Góp máy"
           onAction={() => navigation.navigate('JoinHome')}
         />
       </ScreenShell>

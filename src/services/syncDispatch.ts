@@ -9,7 +9,12 @@
 //   - POST /farms : tồn tại (aladinAPI.createFarm). region_code REQUIRED.
 //   - POST /trees : tồn tại (aladinAPI.createTree). farm_id + geohash_7 REQUIRED.
 //   - POST /fruits: KHÔNG tồn tại — fruits chỉ sinh qua /captures/3d + MeshGPU.
-//   - activity    : CHƯA có endpoint nào trong codebase.
+//   - activity    : POST /api/{entity_type}/{entity_id}/event — CÓ THẬT, đo lại
+//     2026-08-15 trên `https://api.orilife.io/openapi.json`. Dòng cũ ở đây ghi
+//     "CHƯA có endpoint nào trong codebase" và đúng theo nghĩa đen (mã app chưa
+//     gọi), nhưng người đọc hiểu thành "máy chủ chưa có" và nhật ký chăm sóc
+//     nằm chết trong hàng đợi. Từ nay: chưa thấy trong mã ⇒ HỎI openapi.json,
+//     đừng kết luận từ mã app.
 //
 // Nguyên tắc: chỉ gọi API khi payload có ĐỦ field cho contract đã xác nhận.
 // Thiếu field hoặc thiếu contract → trả 'unsupported' (item GIỮ trong queue,
@@ -18,6 +23,23 @@
 import aladinAPI from './aladin-api';
 import { computeGeohash7 } from '../modules/trace/utils/implicitParent';
 import { ALADIN_REGION_CODE } from '@env';
+import { ORILIFE_BASE } from './orilifeBase';
+import { addTimelineEvent, type TimelineKind } from './timelineService';
+
+/**
+ * Việc đồng áng (mã app) → `kind` timeline (mã máy chủ).
+ *
+ * Danh sách `kind` hợp lệ ở `timelineService.ts`; máy chủ ÉP mọi `kind` lạ về
+ * `observe`, im lặng. Nên bảng này phải khớp, đừng gửi chữ tự nghĩ: gửi
+ * `'watering'` thì việc tưới nằm lẫn vào đống "ghi nhận chung", không lọc ra
+ * được nữa.
+ */
+const ACTIVITY_TO_TIMELINE_KIND: Record<string, TimelineKind> = {
+  watering: 'care',
+  fertilizing: 'care',
+  pesticide: 'care',
+  harvesting: 'harvest',
+};
 
 /** Phân loại lỗi để syncService quyết định retry hay đánh dấu chết. */
 export type DispatchClass =
@@ -123,14 +145,49 @@ export function classifySyncItem(envelope: SyncEnvelope): DispatchClass {
       };
 
     case 'activity':
-    case 'activity_log':
-      // [CẦN XÁC NHẬN CONTRACT] Chưa tìm thấy endpoint activity nào trong
-      // codebase. Giữ trong queue chờ contract.
+    case 'activity_log': {
+      // Endpoint ĐÃ CÓ. Chú thích cũ ("chưa tìm thấy endpoint activity nào")
+      // đúng theo cách tìm hồi đó — tìm chữ "activity" trong mã nguồn — nhưng
+      // sai về máy chủ: bản đang chạy tự mô tả ở
+      // `https://api.orilife.io/openapi.json` (đo 2026-08-15, 139 đường) có
+      //     POST /api/{entity_type}/{entity_id}/event   tag `timeline`
+      // "Ghi 1 sự-kiện vào timeline". Nhật ký chăm sóc CHÍNH LÀ một sự kiện
+      // timeline, không cần đường riêng.
+      //
+      // KHÔNG dùng `POST /api/care/log`: đường đó bắt buộc `product_id`, chỉ
+      // hợp bón phân/thuốc. Tưới và thu hoạch không có `product_id` ⇒ dùng nó
+      // sẽ phải bịa một mã sản phẩm.
+      const act = data.activity ?? data;
+      const farmId = act.farmId ?? act.farm_id;
+      if (!act.type || !farmId) {
+        return {
+          kind: 'unsupported',
+          reason: 'activity thiếu type/farmId — không đủ field cho POST /{entity}/{id}/event',
+        };
+      }
       return {
-        kind: 'unsupported',
-        reason:
-          '[CẦN XÁC NHẬN CONTRACT] activity: chưa có endpoint backend xác nhận',
+        kind: 'api',
+        run: async () => {
+          const res = await addTimelineEvent(ORILIFE_BASE, 'farm', String(farmId), {
+            kind: ACTIVITY_TO_TIMELINE_KIND[act.type] ?? 'observe',
+            ts: act.timestamp,
+            payload: {
+              activity_type: act.type,
+              // `credits` là số MAGIC màn hình ĐỊNH GIÁ cho việc này. Gửi kèm để
+              // máy chủ tự trừ khi nào bên đó bật thu phí — app KHÔNG tự trừ.
+              quoted_magic: act.creditsUsed,
+              materials: act.materials ?? [],
+            },
+          });
+          if (!res.ok) {
+            // Ném để syncService chạy đúng nhánh phân loại lỗi/backoff sẵn có.
+            throw Object.assign(new Error(res.error?.detail ?? 'Ghi sự kiện thất bại'), {
+              response: { status: res.error?.http_status ?? 0 },
+            });
+          }
+        },
       };
+    }
 
     default:
       return {

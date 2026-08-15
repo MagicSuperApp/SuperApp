@@ -127,12 +127,13 @@ export const TRACE_STRINGS = {
   'trace.activity.retake': { vi: 'Quay lại', en: 'Retake', zh: '重拍', ja: '撮り直す' },
   'trace.activity.save': { vi: 'Lưu vào sổ', en: 'Save to the log', zh: '保存到记录', ja: '記録に保存' },
   'trace.activity.saving': { vi: 'Đang lưu…', en: 'Saving…', zh: '正在保存…', ja: '保存中…' },
-  'trace.activity.syncTitle': { vi: 'Đang cất bản sao an toàn', en: 'Storing a safe copy', zh: '正在保存安全副本', ja: '安全な控えを保存中' },
-  'trace.activity.syncDone': { vi: 'Đã cất xong', en: 'Stored', zh: '已保存', ja: '保存しました' },
-  'trace.activity.step1': { vi: 'Khoá hình ảnh', en: 'Locking the images', zh: '加密图像', ja: '画像を暗号化' },
-  'trace.activity.step2': { vi: 'Chia nhỏ dữ liệu', en: 'Splitting the data', zh: '分块数据', ja: 'データを分割' },
-  'trace.activity.step3': { vi: 'Cất nhiều bản sao', en: 'Storing copies', zh: '存储多份副本', ja: '控えを複数保存' },
-  'trace.activity.step4': { vi: 'Ghi vào sổ chung', en: 'Writing to the shared ledger', zh: '写入共享账本', ja: '共有台帳に記録' },
+  'trace.activity.syncTitle': { vi: 'Đang lưu việc vừa làm', en: 'Saving what you just did', zh: '正在保存刚才的农事', ja: '作業内容を保存中' },
+  'trace.activity.syncDone': { vi: 'Đã lưu vào máy', en: 'Saved on this phone', zh: '已保存到本机', ja: 'この端末に保存しました' },
+  // Hai bước THẬT. Bốn bước cũ (khoá hình · chia nhỏ · nhiều bản sao · ghi sổ
+  // chung) tả bốn việc mà mã không hề làm — xem `ActivityScreen.tsx` mục
+  // SYNC_STEPS. Câu chữ ở đây chỉ được hứa đúng thứ đã xảy ra.
+  'trace.activity.stepSave': { vi: 'Ghi vào máy', en: 'Saving on this phone', zh: '保存到本机', ja: 'この端末に保存' },
+  'trace.activity.stepQueue': { vi: 'Xếp hàng gửi máy chủ', en: 'Queued to send to the server', zh: '排队等待上传', ja: 'サーバー送信待ちに追加' },
 
   // ── Tab THÔNG TIN CÂY ────────────────────────────────────────
   'trace.meta.bio': { vi: 'Về cây này', en: 'About this tree', zh: '关于这棵树', ja: 'この木について' },
@@ -198,7 +199,9 @@ export const TRACE_STRINGS = {
   'trace.activity.lowCredit': { vi: 'Không đủ tín dụng', en: 'Not enough credit', zh: '额度不足', ja: 'クレジット不足' },
   'trace.activity.lowCreditBody': { vi: 'Cần ít nhất {n} MAGIC', en: 'At least {n} MAGIC is needed', zh: '至少需要 {n} MAGIC', ja: '少なくとも {n} MAGIC が必要です' },
   'trace.activity.savedTitle': { vi: 'Đã lưu vào sổ', en: 'Saved to the log', zh: '已保存到记录', ja: '記録に保存しました' },
-  'trace.activity.savedBody': { vi: 'Dùng hết {n} MAGIC', en: 'Used {n} MAGIC', zh: '消耗 {n} MAGIC', ja: '{n} MAGIC を使用' },
+  // KHÔNG viết "Dùng hết {n} MAGIC" nữa: không có chỗ nào trừ MAGIC thật cả —
+  // bản trước chỉ trừ trong bộ nhớ máy rồi lần đồng bộ sau số dư nhảy về cũ.
+  'trace.activity.savedBody': { vi: 'Sẽ gửi lên máy chủ khi có mạng', en: 'It will be sent to the server when you are online', zh: '有网络时会自动上传', ja: 'オンラインになり次第サーバーへ送信します' },
   'trace.activity.saveFail': { vi: 'Chưa lưu được', en: 'Could not save', zh: '保存失败', ja: '保存できませんでした' },
   'trace.activity.saveFailBody': {
     vi: 'Có trục trặc khi ghi lên sổ chung. Bạn thử lại giúp nhé.',

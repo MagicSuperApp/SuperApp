@@ -161,6 +161,98 @@ export async function fetchTimeline(
   }
 }
 
+/**
+ * GHI một sự kiện vào dòng thời gian của thực thể.
+ *
+ *   POST /api/{entity_type}/{entity_id}/event   (Bearer BẮT BUỘC)
+ *   thân: object tự do (`additionalProperties: true`) — máy chủ đọc `kind`,
+ *   `payload`, `media`, `ts`; `kind` lạ bị ép về `observe`.
+ *
+ * Đo trên bản đang chạy 2026-08-15: đường có trong
+ * `https://api.orilife.io/openapi.json` (139 đường), tag `timeline`, mô tả của
+ * chính máy chủ: "owner TỪ auth (chống IDOR)" và thực thể CHƯA đăng ký (chưa
+ * enroll) bị trả **403** để không ai tạo sự kiện đầu nhằm chiếm quyền chủ.
+ * ⇒ 403 ở đây KHÔNG phải lỗi mạng: nó nghĩa là cây/vườn này chưa đăng ký lên
+ * máy chủ. Màn phải nói đúng như vậy, đừng gộp vào "lỗi không rõ".
+ *
+ * KHÔNG ném — mọi lỗi gói vào `error` để nơi gọi tự quyết giữ hàng đợi hay báo.
+ */
+export async function addTimelineEvent(
+  baseUrl: string,
+  entityType: TimelineEntityType,
+  entityId: string,
+  body: { kind: TimelineKind; ts?: string; payload?: Record<string, unknown>; media?: unknown[] },
+): Promise<{ ok: boolean; event_id?: string; error?: APIError }> {
+  const authHeader = await _authHeader();
+  if (!authHeader) {
+    return { ok: false, error: { type: 'auth_error', detail: 'Chưa đăng nhập', http_status: 401 } };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const url =
+      `${baseUrl}/api/${encodeURIComponent(entityType)}` +
+      `/${encodeURIComponent(entityId)}/event`;
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: authHeader,
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (resp.status === 401) {
+      return { ok: false, error: { type: 'auth_error', detail: 'Phiên hết hạn', http_status: 401 } };
+    }
+    if (resp.status === 403) {
+      return {
+        ok: false,
+        error: {
+          type: 'validation_error',
+          detail: 'Thực thể này chưa đăng ký trên máy chủ',
+          http_status: 403,
+          error_code: 'entity_not_enrolled',
+        },
+      };
+    }
+    if (resp.status === 404) {
+      return {
+        ok: false,
+        error: { type: 'validation_error', detail: 'Máy chủ chưa bật dòng thời gian', http_status: 404, error_code: 'timeline_off' },
+      };
+    }
+    if (!resp.ok) {
+      return {
+        ok: false,
+        error: {
+          type: resp.status >= 500 ? 'server_error' : 'validation_error',
+          detail: `HTTP ${resp.status}`,
+          http_status: resp.status,
+        },
+      };
+    }
+
+    const json = await resp.json().catch(() => ({} as any));
+    // Cùng bẫy HAI TẦNG `ok` như `fetchTimeline`: máy chủ này trả `{"ok": false}`
+    // kèm HTTP 200 ở vài đường.
+    if (json?.ok === false) {
+      return {
+        ok: false,
+        error: { type: 'server_error', detail: String(json?.error ?? json?.detail ?? 'Máy chủ từ chối'), http_status: resp.status },
+      };
+    }
+    return { ok: true, event_id: typeof json?.event_id === 'string' ? json.event_id : undefined };
+  } catch (err: unknown) {
+    clearTimeout(timeout);
+    return { ok: false, error: { type: 'network_error', detail: String(err), http_status: 0 } };
+  }
+}
+
 /** Nhãn tiếng Việt cho `kind`. Loại lạ → trả lại chính chuỗi đó, KHÔNG nuốt. */
 export const KIND_VI: Record<string, string> = {
   enroll: 'Đăng ký cây',

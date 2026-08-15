@@ -10,7 +10,6 @@ import {
   TouchableOpacity,
   StatusBar,
   TextInput,
-  Image,
   Animated,
   RefreshControl,
   Dimensions,
@@ -24,6 +23,7 @@ import { formatVND, type Job } from '../data/mockData';
 import { WORK_CATEGORIES, type WorkCategory } from '../data/categories';
 import { useJobs } from '../hooks/useJobs';
 import { useTemplates } from '../hooks/useTemplates';
+import PosterAvatar from '../components/PosterAvatar';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -403,15 +403,22 @@ const JobCard: React.FC<{
             <Icon name="map-marker-outline" size={12} color={COLORS.textMuted} />
             <Text style={styles.jobMetaText}>{job.district}, {job.location}</Text>
           </View>
-          <View style={styles.jobMetaItem}>
-            <Icon name="clock-outline" size={12} color={COLORS.textMuted} />
-            <Text style={styles.jobMetaText}>{job.postedAt}</Text>
-          </View>
+          {!!job.postedAt && (
+            <View style={styles.jobMetaItem}>
+              <Icon name="clock-outline" size={12} color={COLORS.textMuted} />
+              <Text style={styles.jobMetaText}>{job.postedAt}</Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.jobFooter}>
           <View style={styles.jobPoster}>
-            <Image source={{ uri: job.postedBy.avatar }} style={styles.jobPosterAvatar} />
+            <PosterAvatar
+              uri={job.postedBy.avatar}
+              name={job.postedBy.name}
+              style={styles.jobPosterAvatar}
+              fontSize={12}
+            />
             <View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <Text style={styles.jobPosterName}>{job.postedBy.name}</Text>
@@ -419,16 +426,22 @@ const JobCard: React.FC<{
                   <Icon name="check-decagram" size={12} color={WORK_THEME.primary} />
                 )}
               </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-                <Icon name="star" size={10} color={WORK_ACCENT} />
-                <Text style={styles.jobPosterRating}>{job.postedBy.rating}</Text>
-              </View>
+              {/* rating 0 = dây chưa cấp điểm nào — ẩn hẳn, không hiện "0 sao". */}
+              {job.postedBy.rating > 0 && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                  <Icon name="star" size={10} color={WORK_ACCENT} />
+                  <Text style={styles.jobPosterRating}>{job.postedBy.rating}</Text>
+                </View>
+              )}
             </View>
           </View>
-          <View style={styles.jobApplicants}>
-            <Icon name="account-multiple-outline" size={12} color={COLORS.textMuted} />
-            <Text style={styles.jobApplicantsText}>{job.applicantCount} ứng tuyển</Text>
-          </View>
+          {/* Dây không trả số người ứng tuyển ⇒ 0 nghĩa là "chưa biết", ẩn đi. */}
+          {job.applicantCount > 0 && (
+            <View style={styles.jobApplicants}>
+              <Icon name="account-multiple-outline" size={12} color={COLORS.textMuted} />
+              <Text style={styles.jobApplicantsText}>{job.applicantCount} ứng tuyển</Text>
+            </View>
+          )}
         </View>
       </TouchableOpacity>
     </Animated.View>

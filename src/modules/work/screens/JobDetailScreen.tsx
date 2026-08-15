@@ -9,7 +9,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   StatusBar,
-  Image,
   Animated,
   Alert,
 } from 'react-native';
@@ -20,6 +19,7 @@ import { WORK_THEME } from '../theme/colors';
 import { formatVND } from '../data/mockData';
 import { useJobDetail } from '../hooks/useJobs';
 import StateView from '../../../components/state/StateView';
+import PosterAvatar from '../components/PosterAvatar';
 
 type RouteParams = { JobDetail: { jobId: string } };
 
@@ -153,8 +153,14 @@ const JobDetailScreen: React.FC = () => {
           <Text style={styles.sectionTitle}>Thông tin chung</Text>
           <View style={styles.infoGrid}>
             <InfoItem icon="map-marker-outline" label="Địa điểm" value={`${job.district}, ${job.location}`} />
-            <InfoItem icon="clock-outline" label="Đăng" value={job.postedAt} />
-            <InfoItem icon="account-multiple-outline" label="Ứng tuyển" value={`${job.applicantCount} người`} />
+            {/* Dây không có trường thời gian đăng, cũng không có số người ứng
+                tuyển ⇒ rỗng/0 nghĩa là CHƯA BIẾT. Hiện "—" chứ không bịa. */}
+            <InfoItem icon="clock-outline" label="Đăng" value={job.postedAt || '—'} />
+            <InfoItem
+              icon="account-multiple-outline"
+              label="Ứng tuyển"
+              value={job.applicantCount > 0 ? `${job.applicantCount} người` : '—'}
+            />
             <InfoItem icon="briefcase-outline" label="Loại việc" value={job.category} />
           </View>
         </View>
@@ -177,7 +183,12 @@ const JobDetailScreen: React.FC = () => {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Người đăng tin</Text>
           <View style={styles.posterCard}>
-            <Image source={{ uri: job.postedBy.avatar }} style={styles.posterAvatar} />
+            <PosterAvatar
+              uri={job.postedBy.avatar}
+              name={job.postedBy.name}
+              style={styles.posterAvatar}
+              fontSize={18}
+            />
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <Text style={styles.posterName}>{job.postedBy.name}</Text>
@@ -185,9 +196,15 @@ const JobDetailScreen: React.FC = () => {
                   <Icon name="check-decagram" size={14} color={WORK_THEME.primary} />
                 )}
               </View>
+              {/* rating 0 = dây chưa cấp điểm nào ⇒ bỏ ngôi sao, chỉ giữ phần
+                  xác thực (cái này CÓ thật: mọi tài khoản qua PhoenixKey DID). */}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
-                <Icon name="star" size={12} color="#E08C3A" />
-                <Text style={styles.posterRating}>{job.postedBy.rating} · Đã xác thực Aladin</Text>
+                {job.postedBy.rating > 0 && <Icon name="star" size={12} color="#E08C3A" />}
+                <Text style={styles.posterRating}>
+                  {job.postedBy.rating > 0
+                    ? `${job.postedBy.rating} · Đã xác thực Aladin`
+                    : 'Đã xác thực Aladin'}
+                </Text>
               </View>
             </View>
             <TouchableOpacity style={styles.viewProfileBtn}>

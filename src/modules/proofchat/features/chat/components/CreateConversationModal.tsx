@@ -61,6 +61,7 @@ const CreateConversationModal: React.FC<Props> = ({
   const [memberQuery, setMemberQuery] = useState('');
   const [results, setResults] = useState<RemoteUser[]>([]);
   const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [selected, setSelected] = useState<RemoteUser[]>([]);
 
   useEffect(() => {
@@ -72,6 +73,7 @@ const CreateConversationModal: React.FC<Props> = ({
       setMemberQuery('');
       setResults([]);
       setSearching(false);
+      setSearchError(null);
       setSelected([]);
     }
   }, [visible]);
@@ -83,16 +85,29 @@ const CreateConversationModal: React.FC<Props> = ({
     if (q.length < 2) {
       setResults([]);
       setSearching(false);
+      setSearchError(null);
       return;
     }
     let alive = true;
     setSearching(true);
+    setSearchError(null);
     const t = setTimeout(async () => {
       try {
         const r = await users.search(q);
         if (alive) setResults(r);
-      } catch {
-        if (alive) setResults([]);
+      } catch (e) {
+        // KHÔNG nuốt lỗi thành mảng rỗng: `GET /users/search` hiện tắt ở BE
+        // (`user.controller.ts:95` bị bình luận) nên nuốt lỗi thì người dùng đọc
+        // thành "không có ai tên này" và gõ lại mãi. Nói thẳng là tra cứu hỏng.
+        if (alive) {
+          setResults([]);
+          const status = (e as { httpStatus?: number } | null)?.httpStatus;
+          setSearchError(
+            status === 404
+              ? 'Máy chủ chưa mở đường tìm người. Chưa tra cứu được — không phải không có ai.'
+              : 'Không tra cứu được lúc này. Thử lại sau.',
+          );
+        }
       } finally {
         if (alive) setSearching(false);
       }
@@ -259,6 +274,9 @@ const CreateConversationModal: React.FC<Props> = ({
                   />
                   {searching && <Icon name="loading" size={14} color={NEUTRAL.textMuted} />}
                 </View>
+                {searchError !== null && (
+                  <Text style={styles.errorText}>{searchError}</Text>
+                )}
                 {results.length > 0 && (
                   <View style={styles.resultList}>
                     {results.map((u) => {

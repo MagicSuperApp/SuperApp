@@ -170,8 +170,10 @@ export const loadConversations = createAsyncThunk<
   LoadConversationsResult | 'disabled'
 >('proofchat/loadConversations', async () => {
   if (!isProofChatBackendEnabled()) return 'disabled';
-  const remote = await proofChatApi.conversations.list({ take: 100 });
-  const list = Array.isArray(remote) ? remote : [];
+  // `conversations.list` nay LUÔN trả mảng hoặc ném (`proofchat-api.ts` §unwrapList).
+  // Chốt `Array.isArray(...) ? ... : []` cũ đã gỡ: chính nó biến "gọi hỏng" thành
+  // "chưa có hội thoại" và giấu lỗi hai lớp bọc suốt thời gian qua.
+  const list = await proofChatApi.conversations.list({ take: 100 });
   const rooms = list.map(remoteConvToRoom);
   const conversations: Conversation[] = list.map((c) => ({
     id: c.id,
@@ -197,10 +199,9 @@ export const loadRoomMessages = createAsyncThunk<
 >('proofchat/loadRoomMessages', async ({ roomId, meId }) => {
   if (!isProofChatBackendEnabled()) return 'disabled';
   const deviceId = await getDeviceId();
-  const remote = await proofChatApi.conversations.getMessages(roomId, deviceId, {
+  const list = await proofChatApi.conversations.getMessages(roomId, deviceId, {
     take: 200,
   });
-  const list = Array.isArray(remote) ? remote : [];
   const messages = list.map((m) => remoteMsgToMessage(m, roomId, meId));
   return { roomId, messages };
 });

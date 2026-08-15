@@ -20,7 +20,7 @@ import axios, {
 import { resolveBaseURL, WORK_HTTP_TIMEOUT_MS } from './config';
 import { getWorkSessionToken, clearWorkSession } from './session';
 import type {
-  WorkAccount, JobType, WorkJob, Offering, WorkContract, MatchResult, MatchCandidate,
+  WorkAccount, JobType, WorkJob, Offering, WorkContract, ContractParty, MatchResult, MatchCandidate,
   Credential, AvailabilityResult, Availability, ChallengeResult, VerifyResult,
   VerifyBody, HealthResult, ConversationRef, TaskersResult,
 } from './types';
@@ -332,14 +332,46 @@ export type CreateContractBody =
   | { jobId: string; candidateDid: string }
   | { offeringId: string; priceVND?: number; aladinPledge?: number; geniePledge?: number };
 
+// ⚠ CỔNG CHỐNG VỠ — đọc kỹ trước khi gỡ.
+//
+// `types.ts:186` khai `parties` là trường BẮT BUỘC, còn `GET /contracts/:id` của
+// AladinWork KHÔNG trả trường đó. Nên `ContractDetailScreen.tsx:147` đọc
+// `contract.parties.aladin` sẽ ném TypeError ngay dòng đầu — và ném đúng vào lúc
+// module chuyển từ mock sang máy chủ thật, tức lúc `config.ts:36-39` thấy
+// `/health` trả 200 rồi tự mở cổng. Nói cách khác: máy chủ SỐNG LẠI là app VỠ.
+// Mock đang che đúng lỗi này vì `workMockApi.ts:31,52,68` luôn có `parties`.
+//
+// Chuẩn hoá ở ĐÂY, một chỗ, thay vì rải `?.` khắp màn hình: mọi hợp đồng đi vào
+// app đều qua ba hàm dưới. Rải `?.` thì lần thêm màn hình thứ tư là quên.
+//
+// Giá trị bù CỐ Ý để rỗng/0 chứ không bịa tên: một bên hợp đồng không có thật thì
+// phải hiện ra là trống, không phải hiện ra một cái tên trông như thật. Đây là chỗ
+// cùng loại với `data/adapters.ts:58-72` (đang bịa `rating: 5`, `verified: true`) —
+// chỗ đó chưa sửa, còn chờ chủ nhân quyết.
+const emptyParty = (role: 'aladin' | 'genie'): ContractParty => ({
+  accId: '',
+  name: '',
+  role,
+  pledgeLocked: 0,
+  pledgeAsk: 0,
+});
+
+const normalizeContract = (c: WorkContract): WorkContract => ({
+  ...c,
+  parties: {
+    aladin: c?.parties?.aladin ?? emptyParty('aladin'),
+    genie: c?.parties?.genie ?? emptyParty('genie'),
+  },
+});
+
 export const createContract = (body: CreateContractBody, opts?: WriteOpts): Promise<WorkContract> =>
-  call(client().post('/contracts', body, writeCfg(opts)));
+  call<WorkContract>(client().post('/contracts', body, writeCfg(opts))).then(normalizeContract);
 
 export const getMyContracts = (): Promise<WorkContract[]> =>
-  call(client().get('/contracts', authCfg));
+  call<WorkContract[]>(client().get('/contracts', authCfg)).then(r => (r ?? []).map(normalizeContract));
 
 export const getContract = (id: string): Promise<WorkContract> =>
-  call(client().get(`/contracts/${encodeURIComponent(id)}`, authCfg));
+  call<WorkContract>(client().get(`/contracts/${encodeURIComponent(id)}`, authCfg)).then(normalizeContract);
 
 // ─────────────────────────────────────────────────────────────────────
 // 25–26. CONVERSATION (ProofChat ref). Chưa cấu hình → status:'unconfigured'.

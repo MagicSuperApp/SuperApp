@@ -54,7 +54,11 @@ export function streamChat({
   // Chưa cấu hình endpoint ⇒ báo lỗi rõ ràng ngay, KHÔNG mở kết nối đi đâu cả.
   // Bình thường `AssistantBubble` đã ẩn nhờ `chatEnabled()` nên nhánh này không tới;
   // giữ ở đây để một caller khác gọi thẳng cũng không lọt ra mạng.
-  if (!ALADIN_CHAT_URL) {
+  // Đo `CHAT_URL` (đã cắt khoảng trắng) chứ KHÔNG đo `ALADIN_CHAT_URL` thô: một
+  // tệp môi trường ghi `ALADIN_CHAT_URL= ` cho ra chuỗi một dấu cách — thô thì
+  // truthy, lọt cổng, rồi `xhr.open('POST', ' ')` ném "Network request failed".
+  // Lỗi đó đọc như mất mạng chứ không như thiếu cấu hình.
+  if (!CHAT_URL) {
     onError?.(new Error('Trợ lý Aladin chưa được cấu hình ở bản dựng này'));
     return { abort: () => {} };
   }
@@ -63,7 +67,7 @@ export function streamChat({
   let lastIndex = 0;
   let aborted = false;
 
-  xhr.open('POST', ALADIN_CHAT_URL, true);
+  xhr.open('POST', CHAT_URL, true);
   xhr.setRequestHeader('Content-Type', 'application/json');
   xhr.setRequestHeader('Accept', 'text/plain');
 

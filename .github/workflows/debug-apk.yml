@@ -92,7 +92,18 @@ jobs:
           cat > android/gradle.properties << 'EOF'
           org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m
           android.useAndroidX=true
-          reactNativeArchitectures=armeabi-v7a,arm64-v8a,x86,x86_64
+          # 4 kiến trúc → 2. ĐÂY LÀ NGUYÊN NHÂN ĐỎ THẬT của job này, không phải cái
+          # ghi ở chú thích worklets bên dưới. Log run 31786988791:
+          #   09:59:54 ##[warning]You are running out of disk space. Free space left: 0 MB
+          #   09:59:56 > Task :app:mergeDebugNativeLibs FAILED
+          #   09:59:58 tee: android-debug.log: No space left on device
+          # Runner ubuntu-latest có ~14 GB trống; nhân 4 ABI với .so Rust + Hermes +
+          # maplibre + TFLite thì không đủ. Bản này là APK SIDELOAD để đội thực địa cài
+          # lên MÁY THẬT — máy thật chỉ có arm. x86/x86_64 là kiến trúc máy ảo, ai cần
+          # chạy máy ảo thì dựng tại chỗ. Bỏ 2 cái đó cắt gần nửa dung lượng native.
+          # ⚠ Cổng "Soi chính tệp APK" bên dưới vì thế CHỈ soi 2 ABI này — khác
+          # android-aab.yml (soi thêm x86_64, vì bản AAB có đóng gói x86_64).
+          reactNativeArchitectures=armeabi-v7a,arm64-v8a
           newArchEnabled=true
           hermesEnabled=true
           edgeToEdgeEnabled=false
@@ -131,6 +142,52 @@ jobs:
           echo "✅ APK: $APK_FILE ($(stat -c%s "$APK_FILE") bytes)"
           mkdir -p dist
           cp "$APK_FILE" dist/superapp-debug.apk
+
+      # Cùng lý do với bước tương ứng ở android-aab.yml: bước "Dựng Rust core" chỉ
+      # kiểm ĐẦU VÀO của gradle. Bản đội thực địa cài là bản này, nên nếu gói thiếu
+      # `.so` hoặc nướng nhầm host thì người ra vườn là người phát hiện, không phải CI.
+      - name: Soi chính tệp APK — .so và biến môi trường
+        run: |
+          set -eo pipefail
+          WORK=$(mktemp -d)
+          unzip -q -o dist/superapp-debug.apk -d "$WORK"
+          FAIL=0
+
+          echo "── Thư viện native theo ABI ─────────────────────────────────"
+          ls "$WORK/lib/" || true
+          for ABI in arm64-v8a armeabi-v7a; do
+            for LIB in libtaad_enclave_core.so libchat_mls.so; do
+              if [ ! -f "$WORK/lib/$ABI/$LIB" ]; then
+                echo "::error::THIẾU $ABI/$LIB — máy thực địa sẽ không tạo được danh tính, và app KHÔNG báo lỗi"
+                FAIL=1
+              else
+                echo "  OK  $ABI/$LIB"
+              fi
+            done
+          done
+
+          echo "── Biến môi trường nướng vào bundle ────────────────────────"
+          BUNDLE="$WORK/assets/index.android.bundle"
+          if [ -f "$BUNDLE" ]; then
+            strings "$BUNDLE" > "$WORK/strings.txt"
+            for MUST in 'api.orilife.io' 'api.aladin.work' 'api.proofchat.me'; do
+              grep -qF "$MUST" "$WORK/strings.txt" \
+                && echo "  OK  có $MUST" \
+                || { echo "::error::Bundle KHÔNG có '$MUST' — biến @env là undefined"; FAIL=1; }
+            done
+            for BAD in 'staging-api.orilife.io' 'localhost:8001'; do
+              grep -qF "$BAD" "$WORK/strings.txt" \
+                && { echo "::error::Bundle CÓ '$BAD' — dựng từ .env sai"; FAIL=1; } \
+                || echo "  OK  không có $BAD"
+            done
+          else
+            # Bản debug có thể nạp bundle qua Metro thay vì nhúng — đó là trạng thái
+            # THỨ BA, không phải "đạt". Nói rõ ra thay vì im lặng cho qua.
+            echo "::warning::APK không nhúng index.android.bundle (debug nạp qua Metro?) — KHÔNG ĐO ĐƯỢC phần biến môi trường"
+          fi
+
+          rm -rf "$WORK"
+          [ "$FAIL" -eq 0 ] || { echo "::error::APK không đạt"; exit 1; }
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4

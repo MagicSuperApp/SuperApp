@@ -124,12 +124,27 @@ def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
         // Build 75 (2026-07-10): tự phát hiện DID mồ côi + nút đăng-ký-lại khi server reset.
         // Build 76 (2026-07-13): hiện 2 ví (Standard+Phoenix) + stake_address CIP-1852;
         // fix "Phiên hết hạn" khi tạo vườn (tự lấy token field-reid); gộp fix cây + P0 nhiệt.
-        versionCode 87
+        // Build 88 (2026-08-15): số 87 ĐÃ BỊ TIÊU THỤ bởi một bản `app-release.aab` dựng
+        // tay (Telegram 15/08 00:24) — bản đó thiếu libtaad_enclave_core.so và
+        // libchat_mls.so vì không đi qua đường dựng có bước Rust. Giữ 87 ở đây nghĩa là
+        // bản dựng đúng tiếp theo mang CÙNG số với bản hỏng đó.
+        // ⚠ Hai đường dựng cộng thêm số đếm RIÊNG lên số này: Codemagic
+        // `codemagic.yaml:1116` cộng BUILD_NUMBER; `.github/workflows/android-aab.yml`
+        // KHÔNG cộng gì (chỉ in ra ở dòng 227). Nên hai bản GitHub liên tiếp ra cùng một
+        // versionCode và Play sẽ từ chối bản thứ hai — hỏng TO và rõ, không im lặng.
+        versionCode 88
         versionName "2.0"
 
         // ✅ Support 16KB page size (required by Google Play Store 2024)
+        // Bỏ 'x86' (32-bit) từ 2026-08-15. Lý do: `.github/actions/rust-android/action.yml:71,76,89`
+        // và `codemagic.yaml` CỐ Ý không dựng Rust cho x86 (máy thật không dùng nó).
+        // Nhưng gradle vẫn đóng gói theo danh sách NÀY, nên bản dựng ĐÚNG vẫn đẻ ra một
+        // lát `base/lib/x86/` thiếu `libtaad_enclave_core.so` + `libchat_mls.so`. Play giao
+        // lát đó cho thiết bị x86 ⇒ đúng lỗi "mất cụm 24 từ sao lưu trong im lặng" mà bản
+        // dựng tay 87 mắc phải, chỉ khác là chỉ một nhóm máy dính. Giữ x86_64 vì Rust CÓ
+        // dựng cho nó (`action.yml:35,76`), tức lát đó đủ thư viện.
         ndk {
-            abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
+            abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86_64'
         }
     }
     buildTypes {

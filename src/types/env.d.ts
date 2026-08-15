@@ -16,6 +16,11 @@ declare module '@env' {
   export const PROOFCHAT_BACKEND_ENABLED: string;
   export const ANALYTICS_API_URL: string;
   export const ANALYTICS_API_KEY: string;
+  // Hai biến dưới đây CỐ Ý để trống ở bản phát hành. Xem lời dẫn ở
+  // `src/services/remoteLogger.ts` và `src/services/aladinChat.ts`:
+  // trống = tính năng tắt hẳn, KHÔNG phải lui về một địa chỉ mặc định nào.
+  export const REMOTE_LOG_URL: string;
+  export const ALADIN_CHAT_URL: string;
 }
 
 // Optional native module used by src/services/storageQueue.ts. Ships no bundled

@@ -120,6 +120,15 @@ runs:
         # Analytics — trống = TẮT.
         ANALYTICS_API_URL=${IN_ANALYTICS_API_URL}
         ANALYTICS_API_KEY=${IN_ANALYTICS_API_KEY}
+
+        # Nhật ký từ xa + trợ lý Aladin — CỐ Ý TRỐNG ở bản phát hành.
+        # Hai thứ này trước đây viết cứng địa chỉ ngrok trên máy lập trình viên
+        # (`remoteLogger.ts`, `aladinChat.ts`) nên mọi bản phát hành đều đẩy nhật ký
+        # thiết bị và câu hỏi của người dùng thật lên một tên miền tạm. Nay trống =
+        # tắt hẳn: rLog chỉ in console, bong bóng trợ lý ẩn luôn.
+        # Có endpoint phát hành thật thì điền vào đây, ĐỪNG điền lại ngrok.
+        REMOTE_LOG_URL=
+        ALADIN_CHAT_URL=
         EOF
         # Cắt khoảng trắng lạc sau '=' và cuối dòng: một URL dính tab đầu chuỗi sẽ
         # làm fetch ném "Network request failed" trên máy thật, và lỗi đó đọc như
@@ -133,9 +142,15 @@ runs:
         # Đối chiếu chỗ ÉP (mọi `import { … } from '@env'` trong src/) với chỗ vừa
         # ghi. Thêm một biến `@env` mới mà quên khai ở đây thì nó thành `undefined`
         # ÂM THẦM — bước này biến cái im lặng đó thành đỏ.
+        # Hai lát `sed`/`grep` cuối vá một lỗ của chính cổng này: dạng bí danh
+        # `import { A as B }` trước đây bóc ra chuỗi "A as B", không khớp tên nào
+        # trong tệp vừa ghi ⇒ cổng báo THIẾU một biến đã khai đủ. Tức cổng tự đẻ ra
+        # đỏ giả. Cắt phần ` as …` rồi chỉ giữ token đúng dạng TÊN_BIẾN.
         grep -rh "from '@env'" src --include="*.ts" --include="*.tsx" \
           | sed "s/.*import *{//; s/} *from.*//" | tr ',' '\n' \
-          | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -v '^$' | sort -u > /tmp/env-needed.txt
+          | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' \
+          | sed 's/[[:space:]]\+as[[:space:]]\+.*$//' \
+          | grep -E '^[A-Z0-9_]+$' | sort -u > /tmp/env-needed.txt
         cut -d= -f1 .env | grep -E '^[A-Z0-9_]+$' | sort -u > /tmp/env-have.txt
         MISSING=$(comm -23 /tmp/env-needed.txt /tmp/env-have.txt || true)
         if [ -n "$MISSING" ]; then

@@ -74,7 +74,12 @@ const QUICK_ITEM_W = (width - H_PADDING * 2 - QUICK_GAP * 3) / 4;
 const formatToken = (n: number): string =>
   Number.isFinite(n) ? Math.round(n).toLocaleString('vi-VN') : '0';
 
-// ── Mock data (sẽ thay bằng API thật khi module có) ────────────────────────
+// ── Băng giới thiệu tính năng (nội dung viết cứng, KHÔNG phải dữ liệu giả) ──
+// Chú thích cũ ghi "Mock data" nên đợt rà 15/08 suýt gỡ nhầm cả khu. Ba tấm này
+// mô tả đúng tính năng đang có: truy xuất tới từng trái (chạy thật), Trò chuyện
+// ("sắp ra mắt" — đúng, ProofChat còn sau cổng), Việc làm (có thật). Không tấm nào
+// hứa khuyến mãi hay mốc thời gian, nên không quá hạn được. Đổi nội dung khi tính
+// năng đổi; đừng nối API tin tức vào đây.
 const BANNERS = [
   {
     id: 'b1',

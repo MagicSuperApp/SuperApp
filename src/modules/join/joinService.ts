@@ -117,6 +117,49 @@ export const isLampNetBackendEnabled = (): boolean =>
 
 // ── fetch helper: timeout + phân loại lỗi 3 lớp ──────────────────────
 
+/** Trần ký tự cho câu lỗi lấy từ máy chủ — dài hơn là log/stack, không phải câu cho người. */
+const SERVER_MESSAGE_MAX = 160;
+
+/**
+ * Lấy câu lỗi CHO NGƯỜI ĐỌC từ thân phản hồi lỗi, hoặc `null` nếu không có câu nào
+ * đáng hiện. LampNet trả lý do bằng **văn bản thuần** (đo 15/08 ở
+ * `POST /v1/wallet/activate` → 403), nhưng vài đường khác trả JSON, nên nhận cả hai.
+ *
+ * Chặn ba thứ không được để lọt ra giao diện: thân rỗng, thân quá dài (log/HTML/stack),
+ * và thân có dấu vết kỹ thuật (thẻ HTML, đường dẫn tệp mã nguồn). Thân đọc hỏng thì
+ * trả `null` — hàm này KHÔNG được phép làm hỏng đường lỗi mà nó đang phục vụ.
+ */
+async function readHumanMessage(res: Response): Promise<string | null> {
+  let text: string;
+  try {
+    text = (await res.text()).trim();
+  } catch {
+    return null;
+  }
+  if (!text) return null;
+
+  let msg = text;
+  if (text.startsWith('{') || text.startsWith('[')) {
+    try {
+      const body = JSON.parse(text) as Record<string, unknown>;
+      const cand = body?.message ?? body?.error ?? body?.detail;
+      if (typeof cand !== 'string' || !cand.trim()) return null;
+      msg = cand.trim();
+    } catch {
+      return null;
+    }
+  }
+
+  if (msg.length > SERVER_MESSAGE_MAX) return null;
+  // Thẻ HTML thật (`<html>`, `</body>`) — KHÔNG chặn `<` trần: câu lỗi thật của
+  // LampNet có so sánh số ("Reputation 46.3 < threshold 50.0"), chặn `<` trần là
+  // giết đúng câu cần hiện.
+  if (/<\/?[a-z][^>]*>/i.test(msg)) return null;
+  // Dấu vết stack/mã nguồn.
+  if (/\.rs:\d|\bat \w+\.\w+ \(/.test(msg)) return null;
+  return msg;
+}
+
 async function request<T>(
   path: string,
   init?: RequestInit,
@@ -149,13 +192,22 @@ async function request<T>(
     // mà giao diện lại bảo "chưa đủ bậc tham gia" — đúng cách để không ai tìm ra lỗi.
     const kind: JoinErrorKind =
       res.status === 401 || res.status === 403 ? 'auth' : 'server';
-    console.warn(`[joinService] ${path} trả HTTP ${res.status} (${kind}).`);
+    // Máy chủ CÓ nói lý do, và nói bằng tiếng Việt cho người dùng đọc. Đo 15/08:
+    //   POST /v1/wallet/activate (403) → "Reputation 46.3 < threshold 50.0. Cần thêm
+    //   uptime/shards."
+    // Bản trước đọc body CHỈ ở nhánh `res.ok`, nên câu đó bị vứt và người dùng nhận
+    // "Chưa đủ quyền hoặc chưa đủ bậc tham gia." — không nói được còn thiếu bao nhiêu,
+    // cũng không nói phải làm gì. Nay lấy câu của máy chủ khi nó thật sự là câu cho
+    // người đọc; không thì mới rơi về câu chung.
+    const detail = await readHumanMessage(res);
+    console.warn(`[joinService] ${path} trả HTTP ${res.status} (${kind}). ${detail ?? ''}`);
     throw new JoinApiError(
       kind,
       res.status,
-      kind === 'auth'
-        ? 'Chưa đủ quyền hoặc chưa đủ bậc tham gia.'
-        : `Mạng LampNet chưa nhận yêu cầu này (mã ${res.status}).`,
+      detail ??
+        (kind === 'auth'
+          ? 'Chưa đủ quyền hoặc chưa đủ bậc tham gia.'
+          : `Mạng LampNet chưa nhận yêu cầu này (mã ${res.status}).`),
     );
   }
 

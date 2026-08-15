@@ -199,6 +199,22 @@ describe('conversations.list', () => {
     expect(cfg.params).toMatchObject({ take: 10 });
   });
 
+  it('HÌNH THẬT của BE: envelope bọc { data, total } → vẫn ra mảng', async () => {
+    // `findAll` khai `Promise<{ data: Array<…>; total: number }>`
+    // (BE conversations.service.ts:111), controller trả thẳng (:73) → hai lớp bọc.
+    // Trước bản vá, hàm này trả object `{data,total}` trong khi kiểu khai là mảng,
+    // và `proofchatSlice.ts:174` có `Array.isArray(x) ? x : []` nên danh sách LUÔN rỗng.
+    mockGet.mockResolvedValueOnce({
+      data: {
+        data: { data: [{ id: 'c1', title: 'Phòng 1' }], total: 1 },
+        message: 'ok',
+        statusCode: 200,
+      },
+    });
+    const list = await proofChatApi.conversations.list();
+    expect(list).toEqual([{ id: 'c1', title: 'Phòng 1' }]);
+  });
+
   it('envelope data=[] → trả mảng rỗng (KHÔNG trả nhầm object envelope)', async () => {
     mockGet.mockResolvedValueOnce({
       data: { data: [], message: 'ok', statusCode: 200 },
@@ -208,19 +224,17 @@ describe('conversations.list', () => {
     expect(list).toEqual([]);
   });
 
-  it('envelope data=null → trả null (giữ nguyên, không nuốt)', async () => {
+  it('envelope data=null → NÉM, không trả [] (không nuốt thành "chưa có hội thoại")', async () => {
     mockGet.mockResolvedValueOnce({
       data: { data: null, message: 'ok', statusCode: 200 },
     });
-    const list = await proofChatApi.conversations.list();
-    expect(list).toBeNull();
+    await expect(proofChatApi.conversations.list()).rejects.toThrow(/hình lạ/);
   });
 
-  it('body thiếu hẳn data + không có statusCode → coi như raw body', async () => {
+  it('body thiếu hẳn data + không có statusCode → NÉM (hình không đọc được)', async () => {
     // handler void: NestJS JSON bỏ field undefined → client nhận {message,...}
     mockGet.mockResolvedValueOnce({ data: { message: 'no data' } });
-    const list = await proofChatApi.conversations.list();
-    expect(list).toEqual({ message: 'no data' });
+    await expect(proofChatApi.conversations.list()).rejects.toThrow(/hình lạ/);
   });
 });
 
@@ -241,6 +255,23 @@ describe('conversations.getMessages — deviceId trong query, token ở header',
     expect(cfg.params).toMatchObject({ deviceId: 'dev-uuid', limit: 50 });
     // Bất biến an toàn: KHÔNG có token trong path/query.
     expect(path).not.toMatch(/token/i);
+  });
+
+  it('HÌNH THẬT của BE: envelope bọc { data, total, hasMore, limit, offset }', async () => {
+    mockGet.mockResolvedValueOnce({
+      data: {
+        data: {
+          data: [{ id: 'm1', conversationId: 'c1' }],
+          total: 1,
+          hasMore: false,
+          limit: 50,
+          offset: 0,
+        },
+        statusCode: 200,
+      },
+    });
+    const list = await proofChatApi.conversations.getMessages('c1', 'dev-uuid');
+    expect(list).toEqual([{ id: 'm1', conversationId: 'c1' }]);
   });
 
   it('encode id có ký tự đặc biệt', async () => {

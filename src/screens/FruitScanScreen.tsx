@@ -126,8 +126,25 @@ const FruitScanScreen: React.FC = () => {
 
   /**
    * Bảng tra `fruit_id → cây`, dựng bằng các lượt GET RẺ (không tải ảnh lên).
-   * Cần vì hợp đồng chưa chốt là ứng viên của `identify` có kèm cây hay không —
-   * có thì dùng của máy chủ, không thì tra ở đây, vẫn không có thì để trống.
+   *
+   * **Hợp đồng ĐÃ CHỐT 15/08** (thư OriLife): ứng viên của `identify` CÓ kèm
+   * `tree_id`, `name`, `status` — `server.py:6534-6536` trên `main@29fa6e9`, và
+   * cùng ba dòng đó có ở đúng bản đang chạy prod (`582d9f6:server.py:6130-6132`).
+   * Nên đường thường ngày là `treeSource: 'server'`, không đi qua bảng này.
+   *
+   * OriLife đề nghị XOÁ hẳn nhánh tra bù. Nhà này GIỮ, vì hai lẽ đo được:
+   *
+   * 1. Nó **đã không chạy rồi**. Dòng gọi bên dưới có cổng
+   *    `raw.some(c => !c.tree_id)` — máy chủ trả đủ cây thì `buildIndex()` không
+   *    được gọi lần nào. Tức 6 lượt GET mà thư lo đã bằng 0 ở đường thường.
+   *    Xoá không tiết kiệm thêm gì; chỉ mất lưới.
+   * 2. Chính thư đó (§2) đo prod đang ngồi trên nhánh **PHÂN KỲ**
+   *    (`deploy/monitor-lich-su`, không phải tổ tiên của `main`, `main` đi trước
+   *    10 commit). Máy chủ tụt về bản cũ là kịch bản SỐNG, không phải giả định —
+   *    và §3 của chính thư đó giữ nhánh `match_without_list` với đúng lý do ấy.
+   *
+   * Xoá đi thì lúc prod tụt bản, người quét quả nhận `treeSource: 'unknown'` —
+   * mất đường tới cây, im lặng. Giữ lại thì tệ nhất là 6 GET rẻ trong một ca hiếm.
    */
   const buildIndex = useCallback(async () => {
     const lists = await Promise.all(

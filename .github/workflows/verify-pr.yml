@@ -10,14 +10,25 @@ name: Verify PR (tsc + jest + cargo)
 # Cố ý KHÔNG build APK ở đây: chỉ tsc + jest (~3-5 phút). Việc dựng APK/AAB vẫn để
 # `debug-apk.yml` / `android-aab.yml` lo sau merge.
 #
-# VÀ MỘT LỖ NỮA, VÁ 2026-08-14: cổng này trước chỉ chạy tsc + jest, tức KHÔNG cổng
-# nào trong repo biên dịch Rust. Đo được ở PR #135 (sửa `rust/taad_enclave_core/
-# src/taad_did.rs`): PR hiện dấu XANH trong khi mã Rust của nó chưa từng được biên
-# dịch ở bất kỳ đâu — dấu xanh nói về tsc/jest, không nói gì về thứ PR đó thật sự
-# đổi. Một lỗi cú pháp Rust sẽ lọt qua cổng, vào develop, rồi mới đỏ ở `debug-apk`
-# (bản GitHub Actions còn chưa dựng Rust nên tới đó cũng chưa chắc đỏ) — hoặc tệ
-# hơn: chỉ vỡ trên Codemagic, là đường DUY NHẤT dựng ra bản dùng được.
-# Job `rust` dưới đây đóng lỗ đó.
+# VÀ MỘT LỖ NỮA, VÁ 2026-08-14: cổng này trước chỉ chạy tsc + jest, tức cổng chạy
+# TRƯỚC merge không hề chạm tới Rust.
+#
+# ⚠ Bản viết đầu của khối này nói "KHÔNG cổng nào trong repo biên dịch Rust" — SAI,
+# và sai vì đo nhầm chỗ: phép đếm grep `cargo|rustup|jniLibs` chạy trên ba tệp
+# workflow, trong khi bước dựng nằm trong composite action gọi qua `uses:`. Thực tế
+# `android-aab.yml:169` và `debug-apk.yml:113` đều gọi
+# `./.github/actions/rust-android` từ 2026-08-11 (`1db7871`, `2524427`), và action đó
+# dựng 2 crate × 3 ABI rồi kiểm 6 tệp `.so`. Ghi lại câu sai này thay vì lặng lẽ xoá,
+# vì nó đã suýt thành "sự thật" chỉ nhờ nằm trong tệp workflow.
+#
+# Hai lỗ THẬT, và đây là thứ job `rust` + bản vá `paths:` đóng:
+#   1. Hai workflow kia chạy `on: push`, tức SAU merge. PR #135 (sửa
+#      `rust/taad_enclave_core/src/taad_did.rs`) hiện dấu xanh, mà dấu đó chỉ nói về
+#      tsc/jest.
+#   2. `paths:` của hai workflow kia KHÔNG liệt kê `rust/**`, nên commit chỉ đụng
+#      `rust/` không kích hoạt bản dựng nào. Đo được ở merge commit `ae1085b` của
+#      PR #135: `gh api ".../actions/runs?head_sha=ae1085b" --jq '.total_count'` → 0.
+#      Không một workflow nào chạy.
 
 on:
   pull_request:
@@ -142,3 +153,54 @@ jobs:
       - name: cargo test — chat_mls
         if: steps.scope.outputs.run == 'true'
         run: cargo test --manifest-path rust/chat_mls/Cargo.toml
+
+      # ── VÌ SAO PHẢI CÓ BƯỚC THỨ HAI, THEO TARGET ANDROID ──────────────────
+      #
+      # Hai bước `cargo test` trên chạy trên `ubuntu-latest`, tức dựng cho host
+      # `x86_64-unknown-linux-gnu`. Nhưng đúng tầng cầu nối sang Kotlin lại nằm
+      # sau một cổng biên dịch có điều kiện:
+      #
+      #   rust/taad_enclave_core/src/lib.rs:28-29   #[cfg(target_os = "android")]
+      #   rust/chat_mls/src/lib.rs:18-19            #[cfg(target_os = "android")]
+      #
+      # và `jni` chỉ khai dưới `[target.'cfg(target_os = "android")'.dependencies]`.
+      # Trên host, rustc KHÔNG ĐỌC một dòng nào của hai tệp `android_jni.rs`
+      # (297 + 236 = 533 dòng). Đã dựng crate thử để đo: cùng một tệp, có dòng
+      # `cfg` thì `cargo check` trả 0 kể cả khi nội dung là rác hoàn toàn; gỡ
+      # dòng `cfg` ra thì trả 101.
+      #
+      # Ca hỏng nếu chỉ có cổng host: đổi tên một symbol
+      # `Java_com_aladincontract_company_TaadEnclaveModule_native…`
+      # (`android_jni.rs:27`) hoặc nâng `jni` 0.21→0.22 có đổi API → cổng xanh
+      # trong vài giây → gộp → `cargo ndk build` vẫn ra `.so` hợp lệ (chỉ sai
+      # symbol) → bước kiểm jniLibs vẫn xanh vì tệp CÓ TỒN TẠI → AAB phát hành
+      # → `System.loadLibrary` thành công → `UnsatisfiedLinkError` lúc gọi
+      # method → Kotlin bắt, đặt `libLoaded=false` → toàn bộ tầng PhoenixKey
+      # (ví · DID · Master_KEK · seed) tắt câm. Đúng loại lỗi mà
+      # `.github/actions/rust-android/action.yml` đã ghi: "build xanh, người
+      # dùng mới thấy".
+      #
+      # `check` chứ không `build`: chỉ cần rustc ĐỌC được 533 dòng đó và soi
+      # kiểu, không cần ra tệp `.so`. Một ABI là đủ — ba ABI dùng chung mã.
+      - name: Setup Android SDK (chỉ NDK, cho cargo ndk check)
+        if: steps.scope.outputs.run == 'true'
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'ndk;27.1.12297006'
+
+      - name: cargo check — cầu JNI (target Android thật)
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          set -eo pipefail
+          rustup target add aarch64-linux-android
+          command -v cargo-ndk >/dev/null 2>&1 || cargo install cargo-ndk --locked
+          ANDROID_NDK_HOME=$(ls -d "$ANDROID_SDK_ROOT"/ndk/*/ 2>/dev/null | sort | tail -1)
+          if [ -z "$ANDROID_NDK_HOME" ]; then
+            echo "::error::Không thấy NDK trong $ANDROID_SDK_ROOT/ndk"
+            exit 1
+          fi
+          export ANDROID_NDK_HOME
+          for crate in taad_enclave_core chat_mls; do
+            echo "── soi cầu JNI: $crate ──"
+            ( cd "rust/$crate" && cargo ndk -t arm64-v8a check --lib )
+          done

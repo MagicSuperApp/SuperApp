@@ -8,13 +8,18 @@ on:
       - 'android/**'
       - 'src/**'
       - 'package.json'
-      # `rust/**` BẮT BUỘC có mặt: từ 2026-08-14 chính workflow này dựng lõi Rust
+      # `rust/**` BẮT BUỘC có mặt: từ 2026-08-11 chính workflow này dựng lõi Rust
       # (bước `uses: ./.github/actions/rust-android`). Thiếu dòng này thì một commit
       # CHỈ đụng `rust/` không kích hoạt bản dựng nào — tức đúng thay đổi cần được
-      # biên dịch lại là thay đổi duy nhất đi lọt. Kèm cả thư mục action, vì sửa
-      # chính bước dựng cũng phải chạy lại.
+      # biên dịch lại là thay đổi duy nhất đi lọt. Đo được ở merge commit `ae1085b`
+      # của PR #135: `gh api ".../actions/runs?head_sha=ae1085b" --jq '.total_count'`
+      # trả 0 — không một workflow nào chạy.
+      #
+      # `.github/actions/**` phủ CẢ THƯ MỤC chứ không riêng `rust-android`: workflow
+      # này còn gọi `./.github/actions/rn-env`, nên liệt kê từng cái là dựng lại đúng
+      # cái lỗ vừa vá, chỉ ở tên khác.
       - 'rust/**'
-      - '.github/actions/rust-android/**'
+      - '.github/actions/**'
       - '.github/workflows/android-aab.yml'
   workflow_dispatch:  # Manual trigger button
 

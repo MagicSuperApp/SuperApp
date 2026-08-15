@@ -49,11 +49,45 @@ describe('toRustUtxos — đổi hình PhoenixKey → hình Rust đợi', () => 
   // dây KHÔNG có camelCase. Bản trước của hàm này nhận cả hai cách viết vì chưa đo
   // được; nay bỏ nhánh đó, và test này khoá việc bỏ — nhận camelCase trở lại là
   // dựng lại một nhánh chết mà người đọc sau sẽ tưởng máy chủ có hai cách viết.
-  it('KHÔNG nhận camelCase — máy chủ khai SNAKE_CASE toàn cục', () => {
+  it('KHÔNG nhận camelCase — máy chủ khai SNAKE_CASE toàn cục, và NÉM chứ không im', () => {
+    // Bản trước của test này viết `expect(out).toEqual([])` — tức đóng đinh sự IM
+    // LẶNG làm hành vi đúng. Mảng rỗng đi xuống Rust thành "no funds to spend"
+    // (`rust/taad_enclave_core/src/transfer.rs:177-179`) trong khi ví đang có
+    // 5 ADA + 1200 LAMP, và người dùng đọc câu đó sẽ tưởng mình hết tiền.
+    expect(() =>
+      toRustUtxos([
+        { txHash: 'ab', outputIndex: 1, lovelace: 3, nativeAssets: { [POLICY + NAME_HEX]: 5 } },
+      ]),
+    ).toThrow(/lệch hình dữ liệu/);
+  });
+
+  it('mảng vào RỖNG thì trả rỗng, KHÔNG ném — ví mới chưa có UTxO là chuyện thường', () => {
+    expect(toRustUtxos([])).toEqual([]);
+  });
+
+  // `de_u64_str` bên Rust (`transfer.rs:80-82`) nhận cả chuỗi lẫn số. Nếu mai kia
+  // ai bỏ `ToStringSerializer` ở `WalletTxBuildDtos.java` thì bên này KHÔNG được
+  // im lặng bỏ tiền. Bản trước xoá hẳn test có giá trị số ⇒ mất luôn vùng phủ này.
+  it('nhận lovelace/quantity dạng SỐ, đổi sang chuỗi', () => {
     const out = toRustUtxos([
-      { txHash: 'ab', outputIndex: 1, lovelace: 3, nativeAssets: { [POLICY + NAME_HEX]: 5 } },
+      { tx_hash: 'a1', output_index: 0, lovelace: 2000000, native_assets: { [POLICY + NAME_HEX]: 7 } },
     ]);
-    expect(out).toEqual([]);
+    expect(out[0].lovelace).toBe('2000000');
+    expect(out[0].assets[0].quantity).toBe('7');
+  });
+
+  it('số nguyên vượt 2^53 bị TỪ CHỐI, không làm tròn âm thầm', () => {
+    // Đo được: String(9007199254740993) === '9007199254740992' — sai 1 đơn vị,
+    // không một lời cảnh báo nào.
+    expect(() =>
+      toRustUtxos([{ tx_hash: 'a2', output_index: 0, lovelace: 9007199254740993 }]),
+    ).toThrow(/2\^53/);
+  });
+
+  it('thiếu hẳn `lovelace` → bỏ UTxO đó, KHÔNG khai thành 0 ADA', () => {
+    expect(() =>
+      toRustUtxos([{ tx_hash: 'a3', output_index: 0, native_assets: { [POLICY + NAME_HEX]: '7' } }]),
+    ).toThrow(/lệch hình dữ liệu/);
   });
 
   it('lovelace/quantity luôn ra CHUỖI — u64 vượt 2^53 của JSON number', () => {

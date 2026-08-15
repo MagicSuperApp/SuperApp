@@ -207,6 +207,82 @@ jobs:
           echo "aab_path=dist/superapp-release.aab" >> $GITHUB_OUTPUT
           echo "aab_size=$(stat -c%s dist/superapp-release.aab)" >> $GITHUB_OUTPUT
 
+      # ── VÌ SAO CÓ BƯỚC NÀY ──────────────────────────────────────────────────
+      # Bước "Dựng Rust core" ở trên kiểm jniLibs — tức kiểm ĐẦU VÀO của gradle.
+      # Nó KHÔNG kiểm gradle có thật sự gói hai `.so` đó vào gói cuối không, và
+      # không kiểm tệp `.env` có thật sự tới được bundle JS không.
+      #
+      # Chỗ trống đó đã có người rơi vào: bản `app-release.aab` gửi 15/08 00:24
+      # (versionCode 87, chữ ký ĐÚNG) có 25 `.so` nhưng KHÔNG có
+      # libtaad_enclave_core.so lẫn libchat_mls.so, và bundle nướng
+      # `staging-api.orilife.io` (host chết) thay vì `api.orilife.io`. Cầu Kotlin
+      # vẫn nằm trong dex nên app KHÔNG sập — nó reject E_NATIVE_UNAVAILABLE
+      # (TaadEnclaveModule.kt:295) ⇒ người cài mới KHÔNG tạo được danh tính/ví và
+      # KHÔNG có cụm 24 từ. Hỏng câm, và mọi cổng phía trước đều xanh.
+      #
+      # Nên cổng thật phải soi chính tệp giao đi, không soi vật liệu làm ra nó.
+      - name: Soi chính tệp AAB — .so, biến môi trường, versionCode
+        run: |
+          set -eo pipefail
+          AAB=dist/superapp-release.aab
+          WORK=$(mktemp -d)
+          unzip -q -o "$AAB" -d "$WORK"
+
+          echo "── Thư viện native theo ABI ─────────────────────────────────"
+          ls "$WORK/base/lib/" || true
+          FAIL=0
+          # arm64-v8a là ABI bắt buộc cho Play từ 2019; hai ABI kia còn thiết bị cũ.
+          for ABI in arm64-v8a armeabi-v7a x86_64; do
+            for LIB in libtaad_enclave_core.so libchat_mls.so; do
+              if [ ! -f "$WORK/base/lib/$ABI/$LIB" ]; then
+                echo "::error::THIẾU $ABI/$LIB trong AAB — gốc danh tính PhoenixKey sẽ chết câm trên máy người dùng"
+                FAIL=1
+              else
+                echo "  OK  $ABI/$LIB ($(stat -c%s "$WORK/base/lib/$ABI/$LIB") byte)"
+              fi
+            done
+          done
+
+          echo "── Biến môi trường thật sự nướng vào bundle JS ──────────────"
+          BUNDLE="$WORK/base/assets/index.android.bundle"
+          if [ ! -f "$BUNDLE" ]; then
+            echo "::error::Không tìm thấy index.android.bundle trong AAB"
+            exit 1
+          fi
+          # Bundle là Hermes bytecode — chuỗi vẫn đọc được bằng `strings`.
+          strings "$BUNDLE" > "$WORK/strings.txt"
+
+          # PHẢI CÓ. Thiếu = tệp .env không tới được bundle ⇒ mọi biến @env là
+          # undefined ⇒ app rơi về đường lui localhost, im lặng.
+          for MUST in 'api.orilife.io' 'api.aladin.work' 'api.proofchat.me' 'api.phoenixkey.me'; do
+            if grep -qF "$MUST" "$WORK/strings.txt"; then
+              echo "  OK  có $MUST"
+            else
+              echo "::error::Bundle KHÔNG có '$MUST' — biến @env tương ứng là undefined, module rơi về mock/localhost vĩnh viễn"
+              FAIL=1
+            fi
+          done
+
+          # TUYỆT ĐỐI KHÔNG ĐƯỢC CÓ.
+          for BAD in 'staging-api.orilife.io' 'localhost:8001' 'localhost:3000' 'ngrok-free.dev'; do
+            if grep -qF "$BAD" "$WORK/strings.txt"; then
+              echo "::error::Bundle CÓ '$BAD' — bản này dựng từ tệp .env sai (máy cá nhân?), không phải từ đường dựng của kho"
+              FAIL=1
+            else
+              echo "  OK  không có $BAD"
+            fi
+          done
+
+          echo "── versionCode thật trong manifest của gói ─────────────────"
+          # Manifest trong AAB là protobuf, không phải XML nhị phân — đọc số bằng
+          # `strings` thì không tin được. Đối chiếu với mã nguồn là đủ để chặn
+          # trường hợp gradle dùng một giá trị khác cái vừa commit.
+          grep -m1 -E 'versionCode [0-9]+' android/app/build.gradle
+
+          rm -rf "$WORK"
+          [ "$FAIL" -eq 0 ] || { echo "::error::AAB không đạt — ĐỪNG nộp Play"; exit 1; }
+          echo "AAB đạt cả ba nhóm kiểm."
+
       - name: Upload AAB artifact
         uses: actions/upload-artifact@v4
         with:

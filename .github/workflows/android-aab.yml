@@ -214,11 +214,14 @@ jobs:
       #
       # Chỗ trống đó đã có người rơi vào: bản `app-release.aab` gửi 15/08 00:24
       # (versionCode 87, chữ ký ĐÚNG) có 25 `.so` nhưng KHÔNG có
-      # libtaad_enclave_core.so lẫn libchat_mls.so, và bundle nướng
-      # `staging-api.orilife.io` (host chết) thay vì `api.orilife.io`. Cầu Kotlin
+      # libtaad_enclave_core.so lẫn libchat_mls.so ở CẢ BỐN lát ABI. Bundle của nó
+      # có `api.orilife.io` (đúng) NHƯNG cũng nướng kèm `staging-api.orilife.io` và
+      # hai host ngrok cá nhân, đồng thời THIẾU hẳn `api.aladin.work` và
+      # `api.proofchat.me` — hai biến đó rỗng lúc dựng tay. Cầu Kotlin
       # vẫn nằm trong dex nên app KHÔNG sập — nó reject E_NATIVE_UNAVAILABLE
-      # (TaadEnclaveModule.kt:295) ⇒ người cài mới KHÔNG tạo được danh tính/ví và
-      # KHÔNG có cụm 24 từ. Hỏng câm, và mọi cổng phía trước đều xanh.
+      # (TaadEnclaveModule.kt:295). Lỗi bị NUỐT ở phoenixKeyAuthService.ts:92-95 nên
+      # đăng ký VẪN thành công: người cài mới CÓ danh tính, nhưng KHÔNG có ví và
+      # KHÔNG có cụm 24 từ sao lưu. Hỏng câm, và mọi cổng phía trước đều xanh.
       #
       # Nên cổng thật phải soi chính tệp giao đi, không soi vật liệu làm ra nó.
       - name: Soi chính tệp AAB — .so, biến môi trường, versionCode
@@ -231,16 +234,31 @@ jobs:
           echo "── Thư viện native theo ABI ─────────────────────────────────"
           ls "$WORK/base/lib/" || true
           FAIL=0
-          # arm64-v8a là ABI bắt buộc cho Play từ 2019; hai ABI kia còn thiết bị cũ.
-          for ABI in arm64-v8a armeabi-v7a x86_64; do
+          # Duyệt theo lát ABI CÓ THẬT trong gói, không theo danh sách viết tay.
+          # Lý do: `gradle.properties:28` vẫn khai `x86` trong reactNativeArchitectures,
+          # chỉ có `android/app/build.gradle:147` abiFilters mới cắt nó. Ai gỡ dòng
+          # abiFilters đó thì lát `x86` quay lại — mà Rust CỐ Ý không dựng cho x86
+          # (`.github/actions/rust-android/action.yml:71,76,89`) nên lát ấy thiếu cả
+          # hai `.so`. Danh sách viết tay sẽ không thấy, vì nó chỉ soi 3 lát nó biết.
+          for ABIDIR in "$WORK"/base/lib/*/; do
+            ABI=$(basename "$ABIDIR")
             for LIB in libtaad_enclave_core.so libchat_mls.so; do
-              if [ ! -f "$WORK/base/lib/$ABI/$LIB" ]; then
+              if [ ! -f "$ABIDIR/$LIB" ]; then
                 echo "::error::THIẾU $ABI/$LIB trong AAB — gốc danh tính PhoenixKey sẽ chết câm trên máy người dùng"
                 FAIL=1
               else
-                echo "  OK  $ABI/$LIB ($(stat -c%s "$WORK/base/lib/$ABI/$LIB") byte)"
+                echo "  OK  $ABI/$LIB ($(stat -c%s "$ABIDIR/$LIB") byte)"
               fi
             done
+          done
+          # Và ba lát BẮT BUỘC phải có mặt: arm64-v8a là ABI Play yêu cầu từ 2019,
+          # hai lát kia còn thiết bị cũ và máy ảo. Vòng trên chỉ soi lát đang có —
+          # nếu gradle nuốt mất cả một lát thì vòng trên im lặng.
+          for ABI in arm64-v8a armeabi-v7a x86_64; do
+            if [ ! -d "$WORK/base/lib/$ABI" ]; then
+              echo "::error::AAB KHÔNG có lát $ABI — thiết bị dùng ABI đó sẽ không cài được"
+              FAIL=1
+            fi
           done
 
           echo "── Biến môi trường thật sự nướng vào bundle JS ──────────────"
@@ -254,8 +272,15 @@ jobs:
 
           # PHẢI CÓ. Thiếu = tệp .env không tới được bundle ⇒ mọi biến @env là
           # undefined ⇒ app rơi về đường lui localhost, im lặng.
+          #
+          # Phải neo đầu chuỗi, KHÔNG được dùng `grep -F` trần. Đo được ca qua mặt:
+          #   printf 'https://staging-api.orilife.io\n' | grep -qF 'api.orilife.io'  → KHỚP
+          # Tức một gói chỉ chứa host chết `staging-api.orilife.io` vẫn được báo
+          # "OK có api.orilife.io". Đúng lỗi của bản 87, mà cổng MUST không bắt được —
+          # lần đó chỉ danh sách CẤM phía dưới cứu. Neo bằng lớp ký tự đứng trước:
+          # ký tự trước host phải KHÔNG phải chữ/số/`-`/`.` (trong bundle là dấu `/`).
           for MUST in 'api.orilife.io' 'api.aladin.work' 'api.proofchat.me' 'api.phoenixkey.me'; do
-            if grep -qF "$MUST" "$WORK/strings.txt"; then
+            if grep -qE "(^|[^-A-Za-z0-9.])$(echo "$MUST" | sed 's/\./\\./g')" "$WORK/strings.txt"; then
               echo "  OK  có $MUST"
             else
               echo "::error::Bundle KHÔNG có '$MUST' — biến @env tương ứng là undefined, module rơi về mock/localhost vĩnh viễn"

@@ -53,6 +53,10 @@ const JoinHomeScreen: React.FC = () => {
   const [phase, setPhase] = useState<JoinPhase>('idle');
   const [result, setResult] = useState<JoinResult | null>(null);
   const [errorKind, setErrorKind] = useState<'auth' | 'server' | 'unsupported' | null>(null);
+  // Câu lý do CỦA MÁY CHỦ, khi nó nói cụ thể hơn câu chung của app. Đo 15/08:
+  // `POST /v1/wallet/activate` trả 403 kèm "Reputation 46.3 < threshold 50.0. Cần thêm
+  // uptime/shards." — câu đó nói được còn thiếu bao nhiêu, câu chung thì không.
+  const [errorDetail, setErrorDetail] = useState<string | null>(null);
 
   const handleJoin = useCallback(async () => {
     // Chưa cấu hình backend → coi như offline (KHUNG chạy được, không vỡ).
@@ -103,10 +107,12 @@ const JoinHomeScreen: React.FC = () => {
           setPhase('offline');
         } else {
           setErrorKind(e.kind);
+          setErrorDetail(e.message || null);
           setPhase('error');
         }
       } else {
         setErrorKind('server');
+        setErrorDetail(null);
         setPhase('error');
       }
     }
@@ -115,6 +121,7 @@ const JoinHomeScreen: React.FC = () => {
   const retry = useCallback(() => {
     setPhase('idle');
     setErrorKind(null);
+    setErrorDetail(null);
   }, []);
 
   return (
@@ -231,11 +238,12 @@ const JoinHomeScreen: React.FC = () => {
               : 'Mạng đang trục trặc'
             }
             message={
-              errorKind === 'auth'
+              errorDetail ??
+              (errorKind === 'auth'
                 ? 'Cần có danh tính và ví nhận thưởng hợp lệ, hoặc bạn chưa đủ bậc tham gia.'
                 : errorKind === 'unsupported'
                 ? 'Tính năng Góp máy sẽ mở ở bản sau.'
-                : 'Máy chủ đang bận. Thử lại sau ít phút.'
+                : 'Máy chủ đang bận. Thử lại sau ít phút.')
             }
             onRetry={retry}
           />

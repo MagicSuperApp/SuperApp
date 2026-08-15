@@ -1,0 +1,10 @@
+# Kịch bản shell PHẢI giữ xuống dòng LF trong kho và khi checkout.
+#
+# Máy dựng chính đang đặt `core.autocrlf=true` (Windows), nên không có dòng này thì
+# `scripts/soi-aab.sh` checkout ra kiểu CRLF và `bash scripts/soi-aab.sh` chết ngay
+# dòng đầu với `$'\r': command not found` — đúng lúc người ta cần nó nhất, tức lúc
+# đang đứng trước một tệp .aab chuẩn bị nộp Play.
+#
+# Cùng lý do với `rust/*/build_android.sh` và `build_ios.sh`: chúng chạy trên máy
+# dựng macOS/Linux của Codemagic.
+*.sh text eol=lf

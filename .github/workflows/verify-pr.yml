@@ -27,6 +27,19 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          # `fetch-depth: 0` để bước soi khoá dưới đây có sha gốc của PR trong
+          # kho local. Bản cắt nông mặc định (depth 1) KHÔNG có nó, và
+          # `git diff base...head` sẽ chết bằng "bad object" chứ không phải "xanh".
+          fetch-depth: 0
+
+      # Chốt này thay cho "secret scanning" của GitHub — tính năng đó chỉ có ở kho
+      # công khai hoặc gói trả tiền, kho này riêng tư + org gói free nên KHÔNG có
+      # (đo: `GET /repos/.../rulesets` → 403 "Upgrade to GitHub Pro..."). Máy anh
+      # có chốt pre-commit tương tự, nhưng nó nằm ở MÁY anh — commit từ máy khác
+      # không đi qua nó. Đặt TRƯỚC `npm install` để đỏ sớm, khỏi tốn 3 phút cài.
+      - name: Soi khoá/token lọt vào diff
+        run: bash scripts/soi-khoa.sh "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
 
       - name: Setup Node.js 22
         uses: actions/setup-node@v4

@@ -13,9 +13,14 @@
 // rồi khai route trong instance.config như các tab khác.
 //
 // TẦNG: đây là quyết định của INSTANCE (trải nghiệm), KHÔNG nhét vào
-// module.manifest (manifest giữ TÊN SẢN PHẨM đầy đủ — vd proofchat.displayName =
-// "ProofChat"; còn nhãn NAV ngắn gọn là "Chat"). Vì thế nhãn nav sống ở đây, tách
-// khỏi displayName module (INTEGRATION-STANDARD §7.1 — experience layer).
+// module.manifest. Nhãn nav có thể NGẮN HƠN displayName module, và một instance
+// khác (vd TonFarm) có quyền đặt nhãn khác cho cùng module. Vì thế nhãn nav sống
+// ở đây, tách khỏi displayName module (INTEGRATION-STANDARD §7.1 — experience
+// layer).
+//
+// Tên KHE module là tên chức năng (chat/trace/work/join), KHÔNG phải tên nhà
+// cung cấp. Nhà cung cấp (ProofChat, OriLife, AladinWork, LampNet) chỉ xuất hiện
+// ở lớp dịch vụ `src/services/*` và biến môi trường `PROOFCHAT_*`/`ORILIFE_*`.
 
 // Mã ngôn ngữ quốc gia được hỗ trợ = mã ngôn ngữ của app (src/i18n/types.ts).
 // Mở rộng thị trường: thêm mã ở i18n rồi thêm nhãn `national` dưới đây.
@@ -44,7 +49,7 @@ export interface NavFrame {
 // Khoá = route name (khớp instance.config.tabs + module.entrypoint).
 export const NAV_FRAME: Record<string, NavFrame> = {
   Home:          { en: 'Home', national: { vi: 'Trang chủ',  zh: '首页', ja: 'ホーム' },   icon: 'house',       iconActive: 'house' },
-  ProofChatHome: { en: 'Chat', national: { vi: 'Trò chuyện', zh: '聊天', ja: 'チャット' }, icon: 'comments',    iconActive: 'comments' },
+  ChatHome: { en: 'Chat', national: { vi: 'Trò chuyện', zh: '聊天', ja: 'チャット' }, icon: 'comments',    iconActive: 'comments' },
   Farms:         { en: 'Farm', national: { vi: 'Trang trại', zh: '农场', ja: '農場' },     icon: 'seedling',    iconActive: 'seedling' },
   WorkHome:      { en: 'Work', national: { vi: 'Việc làm',   zh: '工作', ja: '仕事' },     icon: 'briefcase',   iconActive: 'briefcase' },
   // 'Góp máy' là nhãn TẠM (anh Aladin chốt 12/08, theo đề xuất Tùng ở

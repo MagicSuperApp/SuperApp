@@ -60,22 +60,22 @@ export interface InstanceConfig {
 // DEFAULT = ALADIN (parity tuyệt đối với nav hard-import cũ).
 // 5 tab. Thứ tự đặt Home (host) Ở GIỮA để khớp navbar khuyết-tròn (CurvedTabBar):
 // nút Home tròn nổi nằm lọt vào khuyết giữa thanh, 2 tab mỗi bên cân đối:
-// ProofChatHome (proofchat) · Farms (trace) · Home (host) · WorkHome (work) ·
+// ChatHome (chat) · Farms (trace) · Home (host) · WorkHome (work) ·
 // Account (host). initialRouteName='Home'.
 // ===========================================================================
 export const ALADIN_INSTANCE: InstanceConfig = {
   instanceId: 'aladin',
   displayName: 'Aladin',
-  enabledModules: ['trace', 'proofchat', 'work', 'join'],
+  enabledModules: ['trace', 'chat', 'work', 'join'],
   // `tabs` = TẬP ĐẦY ĐỦ các route có thể lên thanh (config giữ full). Việc CHỌN
   // ô nào HIỂN THỊ + thứ tự do resolver runtime quyết (SG9 §2, navigation/
-  // resolveVisibleTabs.ts): 3 NEO (proofchat=Chat · Home · Account=Me) + 2 slot
+  // resolveVisibleTabs.ts): 3 NEO (chat=Chat · Home · Account=Me) + 2 slot
   // thích ứng persona trong {trace=Farm, work=Work, join=Join}. Module dôi ra vào
   // cổng xoè (§4)/deep-link — KHÔNG biến mất. Home (host) đặt GIỮA cho khuyết-
   // tròn; Account NAY vẽ nút (ô "Me/Tôi" = avatar), không còn ẩn. cx notch tính
   // theo số ô resolver trả (5 ô) nên Home vẫn rơi đúng giữa.
   tabs: [
-    { kind: 'module', moduleId: 'proofchat' },
+    { kind: 'module', moduleId: 'chat' },
     { kind: 'module', moduleId: 'trace' },
     { kind: 'host', route: 'Home' },
     { kind: 'module', moduleId: 'work' },
@@ -90,17 +90,17 @@ export const ALADIN_INSTANCE: InstanceConfig = {
 // ---------------------------------------------------------------------------
 // VÍ DỤ TonFarm (trace + chat + farm, KHÔNG work) — MINH HOẠ, KHÔNG kích hoạt.
 // Cùng base binary, chỉ đổi tập module + tab + brand. KHÔNG sửa navigator.
-// (farm = module SG-future; ở đây minh hoạ bằng 'trace'+'proofchat' đang có,
+// (farm = module SG-future; ở đây minh hoạ bằng 'trace'+'chat' đang có,
 //  và bỏ 'work' để cho thấy một app suy biến nạp ÍT module hơn vẫn chạy.)
 //
 // export const TONFARM_INSTANCE: InstanceConfig = {
 //   instanceId: 'tonfarm',
 //   displayName: 'TonFarm',
-//   enabledModules: ['trace', 'proofchat'],
+//   enabledModules: ['trace', 'chat'],
 //   tabs: [
 //     { kind: 'host', route: 'Home' },
 //     { kind: 'module', moduleId: 'trace' },
-//     { kind: 'module', moduleId: 'proofchat' },
+//     { kind: 'module', moduleId: 'chat' },
 //     { kind: 'host', route: 'Account' },
 //   ],
 //   initialTabRoute: 'Home',

@@ -506,7 +506,7 @@ const HomeScreen: React.FC = () => {
   //  - ProofChat: tổng tin chưa đọc từ CHÍNH store màn Chat dùng (rẻ, không mock).
   //  - Work: chưa có nguồn thật → KHÔNG hiện số bịa (bỏ stat + badge, xem dưới).
   const proofChatUnread = useSelector((s: RootState) =>
-    s.proofchat.rooms.reduce((n, r) => n + (r.unreadCount ?? 0), 0),
+    s.chat.rooms.reduce((n, r) => n + (r.unreadCount ?? 0), 0),
   );
   // Trạng thái VÍ thật: chỉ số ĐẾN TỪ CHAIN (selectChainWallet trả null khi chưa
   // đồng bộ → hiển thị "Chưa đồng bộ", KHÔNG số cũ/bịa).
@@ -815,7 +815,7 @@ const HomeScreen: React.FC = () => {
               label="Tin nhắn ProofChat"
               value={proofChatUnread > 0 ? `${proofChatUnread} new messages` : 'No new messages'}
               color={COLORS.accent}
-              onPress={() => navigation.navigate('ProofChatHome' as never)}
+              onPress={() => navigation.navigate('ChatHome' as never)}
             />
           </View>
         </View>

@@ -8,7 +8,7 @@
 // theo kết quả này; `instance.config` giữ TẬP ĐẦY ĐỦ (resolver chỉ chọn subset).
 //
 // Bố cục 5 ô = 3 NEO + 2 SLOT:  Chat · [slot] · (Home) · [slot] · Me
-//   - NEO (cố định mọi persona): ProofChatHome (Chat) · Home (giữa) · Account (Me).
+//   - NEO (cố định mọi persona): ChatHome (Chat) · Home (giữa) · Account (Me).
 //   - SLOT (2 ô trong): hoán vị trong {Farm, Work, Join} theo persona; module dôi
 //     ra KHÔNG biến mất — vào cổng xoè (§4) / deep-link.
 //
@@ -17,7 +17,7 @@
 // phiên + toast" do hook useVisibleTabs (index.tsx) đảm nhiệm — hàm này thuần.
 
 // ── NEO (cố định) ────────────────────────────────────────────────────────────
-export const NEO_LEFT = 'ProofChatHome'; // Chat — đầu trái
+export const NEO_LEFT = 'ChatHome'; // Chat — đầu trái
 export const NEO_CENTER = 'Home';        // ô giữa (cổng)
 export const NEO_RIGHT = 'Account';      // Me — đầu phải (AVATAR user)
 

@@ -14,11 +14,18 @@ jest.mock('./aladin-api', () => ({
   },
 }));
 
+const mockAddTimelineEvent = jest.fn<Promise<any>, any[]>(async () => ({ ok: true }));
+jest.mock('./timelineService', () => ({
+  __esModule: true,
+  addTimelineEvent: (...a: any[]) => mockAddTimelineEvent(...a),
+}));
+
 import { classifySyncItem, isRetryableError } from './syncDispatch';
 
 beforeEach(() => {
   mockCreateFarm.mockClear();
   mockCreateTree.mockClear();
+  mockAddTimelineEvent.mockClear();
 });
 
 describe('classifySyncItem — farm_update', () => {
@@ -106,7 +113,7 @@ describe('classifySyncItem — tree_identification', () => {
 });
 
 describe('classifySyncItem — loại chưa có contract (giữ queue, không bịa)', () => {
-  it.each(['fruit_identification', 'activity', 'activity_log', 'unknown_xyz'])(
+  it.each(['fruit_identification', 'unknown_xyz'])(
     '%s → unsupported',
     (type) => {
       const d = classifySyncItem({ type, data: {} });
@@ -120,6 +127,61 @@ describe('classifySyncItem — loại chưa có contract (giữ queue, không b�
     const d = classifySyncItem({ type: 'fruit_identification', data: {} });
     if (d.kind !== 'unsupported') throw new Error('expected unsupported');
     expect(d.reason).toContain('CẦN XÁC NHẬN CONTRACT');
+  });
+});
+
+describe('classifySyncItem — activity ghi vào dòng thời gian THẬT', () => {
+  const act = {
+    id: 'activity_1',
+    type: 'watering',
+    farmId: 'farm-9',
+    materials: [],
+    timestamp: '2026-08-15T01:00:00.000Z',
+    creditsUsed: 1,
+  };
+
+  it('tưới → POST sự kiện `care` lên đúng vườn', async () => {
+    const d = classifySyncItem({ type: 'activity', data: { activity: act } });
+    expect(d.kind).toBe('api');
+    if (d.kind !== 'api') return;
+    await d.run();
+    expect(mockAddTimelineEvent).toHaveBeenCalledTimes(1);
+    const [, entityType, entityId, body] = mockAddTimelineEvent.mock.calls[0];
+    expect(entityType).toBe('farm');
+    expect(entityId).toBe('farm-9');
+    expect(body.kind).toBe('care');
+    expect(body.ts).toBe(act.timestamp);
+    expect(body.payload.activity_type).toBe('watering');
+  });
+
+  it('thu hoạch → `harvest`, KHÔNG phải `care`', async () => {
+    const d = classifySyncItem({ type: 'activity_log', data: { activity: { ...act, type: 'harvesting' } } });
+    if (d.kind !== 'api') throw new Error('expected api');
+    await d.run();
+    expect(mockAddTimelineEvent.mock.calls[0][3].kind).toBe('harvest');
+  });
+
+  it('máy chủ từ chối → NÉM, để hàng đợi giữ lại chứ không báo đã gửi', async () => {
+    mockAddTimelineEvent.mockResolvedValueOnce({
+      ok: false,
+      error: { type: 'validation_error', detail: 'Vườn chưa đăng ký', http_status: 403 },
+    });
+    const d = classifySyncItem({ type: 'activity', data: { activity: act } });
+    if (d.kind !== 'api') throw new Error('expected api');
+    await expect(d.run()).rejects.toThrow('Vườn chưa đăng ký');
+  });
+
+  it('thiếu farmId → unsupported, KHÔNG gọi mạng', () => {
+    const d = classifySyncItem({ type: 'activity', data: { activity: { type: 'watering' } } });
+    expect(d.kind).toBe('unsupported');
+    expect(mockAddTimelineEvent).not.toHaveBeenCalled();
+  });
+
+  it('việc lạ chưa có trong bảng → `observe`, KHÔNG bịa `kind` mới', async () => {
+    const d = classifySyncItem({ type: 'activity', data: { activity: { ...act, type: 'pruning' } } });
+    if (d.kind !== 'api') throw new Error('expected api');
+    await d.run();
+    expect(mockAddTimelineEvent.mock.calls[0][3].kind).toBe('observe');
   });
 });
 

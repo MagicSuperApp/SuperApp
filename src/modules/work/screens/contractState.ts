@@ -3,7 +3,7 @@
 // hành động khả dụng theo (state, vai). Backend là NGƯỜI QUYẾT ĐỊNH cuối (trả
 // 409 ESCROW_RULE nếu sai bước) — hàm này chỉ ĐỀ XUẤT nút cho UI.
 
-import type { ContractState, WorkContract } from '../services/types';
+import type { ContractParty, ContractState, WorkContract } from '../services/types';
 import type { ContractAction } from '../services/workApi';
 
 export interface StateMeta { label: string; color: string; glow: string }
@@ -45,6 +45,17 @@ export interface PledgeActionBtn {
  * Nút hành động khả dụng theo (state, vai). Đúng thứ tự máy trạng thái:
  * lockPledge → activate → deliver → confirmPayment → mutualRelease.
  */
+/**
+ * Bên tham gia có thật hay chỉ là ô trống do máy chủ trả thiếu `parties`
+ * (`workApi.normalizeContract` bù vào để app không vỡ). Ô trống mang
+ * `accId: ''` và `pledgeAsk: 0` — KHÔNG được sinh nút hành động từ nó.
+ * Đo được ca hỏng: `0 < (0 || 1)` là đúng, nên trước đây ô trống đẻ ra nút
+ * "Khoá cọc 0 MAGIC" bấm được, gửi `amount: 0` lên máy chủ, và hợp đồng
+ * có thể sang COMMITTED mà không đồng cọc nào bị khoá.
+ */
+const isRealParty = (p: ContractParty | undefined): p is ContractParty =>
+  !!p && p.accId !== '' && p.pledgeAsk > 0;
+
 export function availableActions(c: WorkContract): PledgeActionBtn[] {
   const role = c.myRole ?? 'aladin';
   const me = c.parties[role];
@@ -53,7 +64,7 @@ export function availableActions(c: WorkContract): PledgeActionBtn[] {
   switch (c.state) {
     case 'INIT':
     case 'PENDING':
-      if (me && me.pledgeLocked < (me.pledgeAsk || 1)) {
+      if (isRealParty(me) && me.pledgeLocked < me.pledgeAsk) {
         btns.push({
           action: 'lockPledge',
           label: `Khoá cọc ${me.pledgeAsk} MAGIC`,

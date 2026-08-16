@@ -24,7 +24,7 @@
 
 import * as chatMls from '../sdk/chatMls';
 import type { MessagePayload, EncryptedContent } from './chatSocket';
-import type { ConversationType } from '../modules/proofchat/features/chat/types';
+import type { ConversationType } from '../modules/chat/features/chat/types';
 
 // ── Merkle scope: khớp FE needsMerkleVerification ──────────────────────────────
 

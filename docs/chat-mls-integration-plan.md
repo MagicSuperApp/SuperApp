@@ -22,7 +22,7 @@ Kiến trúc runtime: `App → WS (realtime) → BullMQ → BE (persist)`; lịc
 ### 0.2 Hiện trạng chat trong app mobile (`d:\SuperApp`)
 
 - 100% **mock**. HTTP client [proofchat-api.ts](../src/services/proofchat-api.ts) có sẵn nhưng feature-flag `PROOFCHAT_BACKEND_ENABLED` mặc định OFF.
-- **Không có** socket.io-client, **không có** bộ crypto MLS. Các bước "mã hoá/ký/gửi" chỉ là animation timer trong [ChatScreen.tsx](../src/modules/proofchat/features/chat/screens/ChatScreen.tsx).
+- **Không có** socket.io-client, **không có** bộ crypto MLS. Các bước "mã hoá/ký/gửi" chỉ là animation timer trong [ChatScreen.tsx](../src/modules/chat/features/chat/screens/ChatScreen.tsx).
 - `PROOFCHAT_API_URL` mặc định sai (`localhost:3000`), thực tế BE=8080, WS=8090.
 - Ghi chú trong code: gửi/nhận thật hoãn tới v2.1 vì "MLS/LampNet RN client chưa publish". → Chính là việc plan này giải quyết.
 
@@ -167,7 +167,7 @@ Mục tiêu: chứng minh Rust MLS khớp wire với ts-mls/BE **trước khi** 
 - [ ] Publish KeyPackage lúc đăng nhập/đăng ký thiết bị: gọi Rust `generate_keypackage` → `POST /mls/keypackage`.
 
 ### PHA 4 — Nối UI hiện có (bỏ mock)
-- [ ] Redux [proofchatSlice.ts](../src/modules/proofchat/store/proofchatSlice.ts): thay reducer mock bằng thunk thật.
+- [ ] Redux [chatSlice.ts](../src/modules/chat/store/chatSlice.ts): thay reducer mock bằng thunk thật.
 - [ ] **Gửi**: UI text → Rust `encrypt_message` (+ `create_merkle_leaf` nếu DIRECT/JOB) → emit `contract:message.send` → lưu plaintext local (SQLite) → cập nhật trạng thái `sent`.
 - [ ] **Nhận**: listen `contract:message.new` → check cache → Rust `decrypt_message` → `verify_merkle_leaf` → lưu cache → render. Xử lý `before_join`/`missing_epoch_secret`.
 - [ ] **Epoch sync**: listen `mls:sync.epoch`; khi mở app so `localEpoch` vs `GET .../current`, thiếu thì kéo range `process_commit` tuần tự (offline recovery như web §5).
@@ -252,7 +252,7 @@ JWT lấy từ luồng auth; secret/JWKS phía server đã cấu hình (`JWT_SEC
 
 ## 8. Tham chiếu file
 
-**Mobile (`d:\SuperApp`):** `src/services/proofchat-api.ts`, `src/services/proofchatAuthBridge.ts`, `src/services/phoenixKeyAuthService.ts`, `src/modules/proofchat/store/proofchatSlice.ts`, `src/modules/proofchat/features/chat/screens/ChatScreen.tsx`, `src/sdk/taadEnclave.ts`, `src/sdk/phoenixKey.ts`.
+**Mobile (`d:\SuperApp`):** `src/services/proofchat-api.ts`, `src/services/proofchatAuthBridge.ts`, `src/services/phoenixKeyAuthService.ts`, `src/modules/chat/store/chatSlice.ts`, `src/modules/chat/features/chat/screens/ChatScreen.tsx`, `src/sdk/taadEnclave.ts`, `src/sdk/phoenixKey.ts`.
 
 **BE (`D:\BE`):** `src/modules/mls/*`, `src/modules/conversations/*`, `src/modules/messages/*`, `src/modules/auth/*`, `prisma/schemas/10-messages.prisma`, `11-signal.prisma`.
 

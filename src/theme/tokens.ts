@@ -26,7 +26,7 @@ export const withAlpha = (hex: string, alpha: number): string => {
 // Lớp `app`  : palette nền/typography/feedback chủ đạo (kế thừa COLORS cũ).
 // Lớp `neutral`: palette trung tính dùng chung (kế thừa NEUTRAL cũ) — một số
 //   giá trị khác `app` (vd border/text) nên giữ riêng để không lệch pixel.
-// Lớp `brand`: bảng màu thương hiệu mỗi module (trace/proofchat/work).
+// Lớp `brand`: bảng màu thương hiệu mỗi module (trace/chat/work).
 //
 // Khi white-label, theme.config.ts override CHỈ giá trị các token này.
 // ---------------------------------------------------------------------------
@@ -97,7 +97,7 @@ export const NEUTRAL_TOKENS = {
 } as const;
 
 // ── Brand palette mỗi module (nguồn: src/modules/<m>/theme/colors.ts) ──────
-// trace & proofchat dùng chung blue; work dùng Aladin green + cam accent.
+// trace & chat dùng chung blue; work dùng Aladin green + cam accent.
 export const BRAND_TOKENS = {
   trace: {
     key: 'trace',
@@ -109,9 +109,9 @@ export const BRAND_TOKENS = {
     onPrimary:    '#FFFFFF',
     gradient:     ['#4A86C2', '#264E7E'] as const,
   },
-  proofchat: {
-    key: 'proofchat',
-    name: 'ProofChat',
+  chat: {
+    key: 'chat',
+    name: 'Trò chuyện',
     primary:      '#3B6EA8',
     primaryDeep:  '#264E7E',
     primaryLight: '#B7CEE8',
@@ -202,7 +202,7 @@ export type NavTokens = typeof NAV_TOKENS;
 export type BrandKey = keyof typeof BRAND_TOKENS;
 
 export interface ModuleTheme {
-  key: 'trace' | 'proofchat' | 'work' | 'lampnet' | 'phoenixkey';
+  key: 'trace' | 'chat' | 'work' | 'lampnet' | 'phoenixkey';
   name: string;
   primary: string;
   primaryDeep: string;

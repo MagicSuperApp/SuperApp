@@ -203,7 +203,7 @@ describe('conversations.list', () => {
     // `findAll` khai `Promise<{ data: Array<…>; total: number }>`
     // (BE conversations.service.ts:111), controller trả thẳng (:73) → hai lớp bọc.
     // Trước bản vá, hàm này trả object `{data,total}` trong khi kiểu khai là mảng,
-    // và `proofchatSlice.ts:174` có `Array.isArray(x) ? x : []` nên danh sách LUÔN rỗng.
+    // và `chatSlice.ts:174` có `Array.isArray(x) ? x : []` nên danh sách LUÔN rỗng.
     mockGet.mockResolvedValueOnce({
       data: {
         data: { data: [{ id: 'c1', title: 'Phòng 1' }], total: 1 },

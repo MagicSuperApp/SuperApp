@@ -92,7 +92,7 @@ const ContractDetailScreen: React.FC = () => {
         Alert.alert('Chat chưa sẵn sàng', 'ProofChat chưa được cấu hình cho hợp đồng này. Bạn có thể nối lại sau.');
         return;
       }
-      navigation.navigate('ProofChatRoom', { roomId: conv.conversationId });
+      navigation.navigate('ChatRoom', { roomId: conv.conversationId });
     } catch {
       Alert.alert('Lỗi', 'Không mở được phòng chat, thử lại.');
     } finally {

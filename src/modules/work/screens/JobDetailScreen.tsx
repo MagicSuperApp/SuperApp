@@ -256,7 +256,7 @@ const JobDetailScreen: React.FC = () => {
 
       <View style={styles.bottomBar}>
         <TouchableOpacity
-          onPress={() => navigation.navigate('ProofChatRoom', { roomId: `job-${job.id}` })}
+          onPress={() => navigation.navigate('ChatRoom', { roomId: `job-${job.id}` })}
           style={styles.chatBtn}
         >
           <Icon name="message-outline" size={20} color={WORK_THEME.primary} />

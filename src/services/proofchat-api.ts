@@ -228,7 +228,7 @@ async function unwrap<T>(
  *
  * `unwrap` chỉ biết lớp ngoài, nên trước bản vá này caller nhận `{ data, total }`
  * trong khi kiểu khai là mảng. Mọi chỗ gọi đều có `Array.isArray(x) ? x : []`
- * (`proofchatSlice.ts:174`, `:203`) nên hỏng biểu hiện thành **danh sách luôn
+ * (`chatSlice.ts:174`, `:203`) nên hỏng biểu hiện thành **danh sách luôn
  * rỗng, không một dòng lỗi**.
  *
  * Hình lạ thì NÉM chứ không trả `[]`: trả `[]` là dựng lại đúng cái vỏ im lặng

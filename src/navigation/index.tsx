@@ -90,8 +90,8 @@ import ExportIdentityScreen from '../screens/ExportIdentityScreen';
 import UsernameScreen from '../screens/UsernameScreen';
 // ProofChat wallet/escrow: hiện vẫn đăng ký ở host stack (chưa khai trong manifest
 // proofchat — anh Aladin chốt chat KHÔNG ví/escrow; giữ route để không vỡ màn cũ).
-import ProofChatWalletScreen from '../modules/proofchat/features/wallet/screens/WalletScreen';
-import ProofChatEscrowScreen from '../modules/proofchat/features/escrow/screens/EscrowScreen';
+import ChatWalletScreen from '../modules/chat/features/wallet/screens/WalletScreen';
+import ChatEscrowScreen from '../modules/chat/features/escrow/screens/EscrowScreen';
 // Wrapper Native gọi FarmDetail trực tiếp (giữ nguyên hành vi cũ).
 import FarmDetailScreen from '../modules/trace/screens/FarmDetailScreen';
 
@@ -138,7 +138,8 @@ const HOST_TAB_SCREENS: Record<string, React.ComponentType<any>> = {
   Account: AccountScreen,
 };
 // Nhãn/icon tab DẪN XUẤT từ NAV_FRAME (navLabels.ts) — nguồn DUY NHẤT. Nhãn tab
-// khác displayName module (module 'proofchat' tên "ProofChat"; nav ngắn = "Chat").
+// CÓ THỂ khác displayName module; hiện module 'chat' khai displayName "Trò
+// chuyện"/"Chat" nên hai bên trùng nhau, nhưng vẫn giữ hai tầng tách rời.
 // Đây là quyết định của INSTANCE (experience layer), sống ở tầng nav — không nhét
 // vào manifest. Tiêu đề đơn-dòng (header/screen title) lấy nhãn NGÔN NGỮ QUỐC GIA;
 // còn thanh tab dưới vẽ song ngữ qua NavItemFrame.
@@ -1635,8 +1636,8 @@ const HOST_STACK_SCREENS: Array<{
   // phủ TRÙM lên Main → che mất AppHeader (header sống ở ProtectedMain, TRÊN các
   // tab). Header (nút Tài khoản) mở qua navigate('Main', { screen: 'Account' }).
   // ProofChat ví/escrow — chưa khai manifest, giữ ở host stack.
-  { name: 'ProofChatWallet', component: ProofChatWalletScreen, options: { headerShown: false } },
-  { name: 'ProofChatEscrow', component: ProofChatEscrowScreen, options: { headerShown: false } },
+  { name: 'ProofChatWallet', component: ChatWalletScreen, options: { headerShown: false } },
+  { name: 'ProofChatEscrow', component: ChatEscrowScreen, options: { headerShown: false } },
   // Auth flow.
   { name: 'SignUpBiometric', component: SignUpBiometricScreen, options: { headerShown: false } },
   { name: 'SignUpComplete', component: SignUpCompleteScreen, options: { headerShown: false, gestureEnabled: false } },

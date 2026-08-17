@@ -41,6 +41,12 @@ import { TRACE_SCAN_ROUTE_NAME } from './traceScan';
 import LoginScreen from '../screens/LoginScreen';
 // Màn hỏi ngôn ngữ LẦN ĐẦU (máy vừa cài) — đứng TRƯỚC Login trong luồng khởi động.
 import LanguageSelectScreen from '../screens/LanguageSelectScreen';
+// Màn CHÀO (hỏi-một-lần) — đứng giữa Chọn ngôn ngữ và Đăng nhập. App lên hai cửa
+// hàng từ v1.0 mà chưa có chỗ nào nói Aladin là gì; xem đầu OnboardingScreen.tsx.
+import OnboardingScreen from '../screens/OnboardingScreen';
+// Mở trang aladin.work TRONG app (danh sách trang cho phép ở utils/webLink.ts).
+import WebPageScreen from '../screens/WebPageScreen';
+import { hasSeenOnboarding } from '../utils/onboardingFlag';
 import ActivationScreen from '../screens/ActivationScreen';
 import HomeScreen from '../screens/HomeScreen';
 import SignUpBiometricScreen from '../features/auth/screens/SignUpBiometricScreen';
@@ -1619,6 +1625,14 @@ const HOST_STACK_SCREENS: Array<{
     component: LanguageSelectScreen,
     options: { headerShown: false, gestureEnabled: false },
   },
+  // Màn chào. Cũng KHÔNG gestureEnabled: nó là initialRoute ở lần mở đầu tiên sau
+  // khi đã chọn ngôn ngữ, vuốt-back sẽ để trống ngăn xếp.
+  {
+    name: 'Onboarding',
+    component: OnboardingScreen,
+    options: { headerShown: false, gestureEnabled: false },
+  },
+  { name: 'WebPage', component: WebPageScreen, options: { headerShown: false } },
   { name: 'Activation', component: ActivationScreen },
   { name: 'BiometricSettings', component: BiometricSettings },
   // Xoá tài khoản — bắt buộc bởi Apple 5.1.1(v) + Google Play (issue #144). Vào từ màn Tôi.
@@ -1737,10 +1751,19 @@ const AppNavigator = () => {
       // rồi mới tới Đăng nhập. Đọc AsyncStorage là bất đồng bộ nên phải chờ ở đây;
       // quyết định trước khi dựng Stack để không thấy Login nhấp nháy rồi mới nhảy.
       // Lỗi đọc storage → coi như đã chọn (vào thẳng Login), KHÔNG chặn app.
+      //
+      // Ba đích có thể: Chọn ngôn ngữ → Chào → Đăng nhập.
+      //   · máy vừa cài            → LanguageSelect (màn đó tự chuyển sang Onboarding)
+      //   · đã chọn ngôn ngữ, chưa xem màn chào → Onboarding
+      //   · còn lại                → Login
+      // Người đã cài bản cũ (v1.0 lên cửa hàng từ trước, chưa hề có màn chào) rơi
+      // vào nhánh giữa: họ thấy màn chào ĐÚNG MỘT LẦN rồi thôi. Cố ý — đó chính là
+      // nhóm chưa từng được nói cho biết Aladin là gì.
       let firstRoute = 'Login';
       try {
         await whenLanguageReady();
         if (!hasChosenLanguage()) firstRoute = 'LanguageSelect';
+        else if (!(await hasSeenOnboarding())) firstRoute = 'Onboarding';
       } catch (e) {
         console.warn('[Navigation] Không đọc được ngôn ngữ đã lưu:', e);
       }
@@ -1753,9 +1776,9 @@ const AppNavigator = () => {
         console.log('[Navigation] Initializing sync service');
         syncService.start();
       } finally {
-        // Bỏ 3 màn welcome/onboarding — vào thẳng Login (hoặc Chọn ngôn ngữ ở lần
-        // mở đầu tiên). Người dùng luôn phải xác thực sinh trắc mỗi phiên; KHÔNG
-        // auto-login vào Main.
+        // Ba màn welcome/onboarding CŨ đã bỏ; nay có MỘT màn chào bỏ-qua-được
+        // (`Onboarding`), chỉ hiện một lần. Người dùng luôn phải xác thực sinh trắc
+        // mỗi phiên; KHÔNG auto-login vào Main.
         // finally: đây là điểm DUY NHẤT thoát spinner initialRoute=null. Nếu bất kỳ
         // init nào ở trên ném thì vẫn PHẢI mở khoá UI — nếu không app kẹt spinner câm.
         setInitialRoute(firstRoute);

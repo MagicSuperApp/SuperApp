@@ -9,14 +9,17 @@
 
 import { SUPPORTED_LANGS } from '../types';
 import { setLanguage, __resetLanguageForTest } from '../store';
-import { tk, allKeys, TRACE_STRINGS } from './index';
+import { tk, allKeys, ALL_STRINGS } from './index';
 
 beforeEach(() => { __resetLanguageForTest(); });
 
 describe('bộ khoá', () => {
+  // Soi TOÀN BỘ bộ khoá, không riêng `TRACE_STRINGS`. Bản trước chỉ soi bộ trace
+  // ⇒ bộ thêm sau (map, onboarding) thiếu một ngôn ngữ vẫn xanh: cổng đo một tập
+  // hẹp hơn tập nó khẳng định, đúng hình dạng "xanh vì chưa kiểm".
   it('mọi khoá đủ 4 ngôn ngữ, không cái nào rỗng', () => {
     const thieu: string[] = [];
-    for (const [key, entry] of Object.entries(TRACE_STRINGS)) {
+    for (const [key, entry] of Object.entries(ALL_STRINGS)) {
       for (const lang of SUPPORTED_LANGS) {
         const v = (entry as Record<string, string>)[lang];
         if (!v || !v.trim()) thieu.push(`${key} · ${lang}`);
@@ -26,11 +29,14 @@ describe('bộ khoá', () => {
   });
 
   it('khoá đặt đúng nếp <khonggian>.<nhóm>.<tên>', () => {
-    // Hai khong gian ten dang dung: `trace.` va `map.`. Moi doan deu camelCase,
+    // Bon khong gian ten dang dung: `trace.`, `map.`, `onboarding.`, `web.`.
+    // Moi doan deu camelCase,
     // cho chu so (`trace.place3d.step`, `trace.label.has3d`), va cho ca khoa hai
     // tang (`map.openmap`) lan ba tang (`map.openmap.note`).
     // Cam chu HOA dan dau va dau gach: khoa la thu doc bang mat trong ma nguon.
-    const sai = allKeys().filter(k => !/^(trace|map)(\.[a-z][a-zA-Z0-9]*)+$/.test(k));
+    const sai = allKeys().filter(
+      k => !/^(trace|map|onboarding|web)(\.[a-z][a-zA-Z0-9]*)+$/.test(k),
+    );
     expect(sai).toEqual([]);
   });
 

@@ -76,13 +76,29 @@ const POLICY_HEX_LEN = 56;
  *    trong cùng UTxO biến mất khỏi tính toán — **không lỗi nào được in**.
  * 3. `unit` là policy(56 hex) nối thẳng asset name hex, phải cắt ra.
  *
- * ⚠ MỨC CHẮC CHẮN: hình này đọc từ `WalletTxBuildDtos.WalletUtxo` +
- * `WalletController.getUtxos` (kho PhoenixKey-Database), CỘNG với một phép đo gián
- * tiếp: `GET /wallet/params` trả `min_fee_a`/`coins_per_utxo_size` — tức Jackson đang
- * đổi camelCase sang snake_case cho TOÀN BỘ phản hồi, nên `txHash` trên dây là
- * `tx_hash`. Bên này CHƯA gọi được thân 200 của `/utxos` (đòi Bearer của máy thật).
- * Nên hàm nhận CẢ HAI cách viết cho mỗi trường — không phải để "phòng xa", mà vì
- * bên này thật sự chưa đo được cái nào đúng, và nói thẳng như vậy.
+ * TÊN TRƯỜNG TRÊN DÂY ĐÃ CHỐT — snake_case, đọc thẳng từ cấu hình máy chủ:
+ *
+ *   # PhoenixKey-Database, main, src/main/resources/application.yml:8-9
+ *   jackson:
+ *     property-naming-strategy: SNAKE_CASE
+ *
+ * Bản trước của hàm này nhận CẢ HAI cách viết (`tx_hash` lẫn `txHash`) vì lúc đó
+ * bên này chưa gọi được thân 200 thật và không dám chọn. Nay có nguồn trực tiếp thì
+ * nhánh camelCase là mã CHẾT — mà mã chết ở chỗ đổi hình thì tệ hơn mã thiếu: nó
+ * làm người đọc sau tưởng máy chủ có hai cách viết, rồi giữ mãi cái nhánh đó.
+ *
+ * Hình đã đọc ở `dto/wallet/WalletTxBuildDtos.java` (bản main): `lovelace` là CHUỖI
+ * (`@JsonSerialize(ToStringSerializer)`), `output_index` là SỐ, `native_assets` là
+ * BẢNG `unit → quantity` kiểu `Map<String, String>` — tức `quantity` là chuỗi vì
+ * KIỂU của bảng, không phải vì `ToStringSerializer`.
+ *
+ * Vẫn NHẬN cả số cho `lovelace`/`quantity`: `de_u64_str` bên Rust
+ * (`rust/taad_enclave_core/src/transfer.rs:80-82`) chấp nhận cả hai, và nếu mai kia
+ * ai đó bỏ `ToStringSerializer` thì đây không được im lặng bỏ tiền. Nhưng số JS trên
+ * 2^53 đã mất chính xác TRƯỚC khi tới đây — đo được: `String(9007199254740993)` ra
+ * `'9007199254740992'`. Nên số nguyên quá lớn bị TỪ CHỐI thay vì làm tròn âm thầm.
+ *
+ * NÉM khi có hàng mà rơi sạch: xem `toRustUtxos` bên dưới.
  */
 export function toRustUtxos(items: unknown): RustUtxo[] {
   if (!Array.isArray(items)) return [];
@@ -90,14 +106,12 @@ export function toRustUtxos(items: unknown): RustUtxo[] {
   for (const raw of items) {
     if (!raw || typeof raw !== 'object') continue;
     const it = raw as Record<string, unknown>;
-    const txHash = it.tx_hash ?? it.txHash;
-    const idx = it.output_index ?? it.outputIndex ?? it.index;
+    const txHash = it.tx_hash;
+    const idx = it.output_index;
     if (typeof txHash !== 'string' || !txHash) continue;
     if (typeof idx !== 'number' || !Number.isInteger(idx) || idx < 0) continue;
 
-    const assetsMap = (it.native_assets ?? it.nativeAssets) as
-      | Record<string, unknown>
-      | undefined;
+    const assetsMap = it.native_assets as Record<string, unknown> | undefined;
     const assets: RustUtxo['assets'] = [];
     if (assetsMap && typeof assetsMap === 'object' && !Array.isArray(assetsMap)) {
       for (const [unit, qty] of Object.entries(assetsMap)) {
@@ -107,13 +121,48 @@ export function toRustUtxos(items: unknown): RustUtxo[] {
         assets.push({
           policy: unit.slice(0, POLICY_HEX_LEN),
           name: unit.slice(POLICY_HEX_LEN),
-          quantity: String(qty),
+          quantity: amountToString(qty, `native_assets['${unit}']`),
         });
       }
     }
-    out.push({ tx_hash: txHash, index: idx, lovelace: String(it.lovelace ?? '0'), assets });
+    // `lovelace` THIẾU không được thành '0'. Bản trước viết `it.lovelace ?? '0'`:
+    // một UTxO 5 ADA mà dây quên trường sẽ tự khai là rỗng, rồi chọn coin bỏ nó
+    // ra và ví báo không đủ tiền trong khi tiền vẫn nằm đó. Thiếu = bỏ UTxO đó.
+    if (it.lovelace == null) continue;
+    out.push({ tx_hash: txHash, index: idx, lovelace: amountToString(it.lovelace, 'lovelace'), assets });
+  }
+  // Có hàng vào mà không ra được cái nào ⇒ hình trên dây đã đổi. Trả `[]` là để
+  // Rust ném "no funds to spend" (`transfer.rs:177-179`) trong khi ví đang có
+  // tiền — người dùng đọc câu đó sẽ tưởng mình hết tiền. Ném TO TIẾNG ở đây.
+  if (items.length > 0 && out.length === 0) {
+    throw new Error(
+      'UTxO từ máy chủ không đọc được trường nào (chờ snake_case: tx_hash/output_index/lovelace). ' +
+        'Ví có thể vẫn còn tiền — đây là lệch hình dữ liệu, không phải hết tiền.',
+    );
   }
   return out;
+}
+
+/**
+ * Số tiền → chuỗi thập phân, nhận cả chuỗi lẫn số.
+ *
+ * Số JS chỉ giữ nguyên vẹn số nguyên tới 2^53-1. Trên ngưỡng đó `String()` trả về
+ * một số ĐÃ SAI mà không báo gì — với số dư token thì đó là chi nhầm lượng.
+ */
+function amountToString(v: unknown, field: string): string {
+  if (typeof v === 'string') return v;
+  if (typeof v === 'number') {
+    if (!Number.isInteger(v) || v < 0) {
+      throw new Error(`${field}: chờ số nguyên không âm, nhận ${v}`);
+    }
+    if (!Number.isSafeInteger(v)) {
+      throw new Error(
+        `${field}: ${v} vượt ngưỡng nguyên vẹn của số JS (2^53-1) — máy chủ phải trả chuỗi`,
+      );
+    }
+    return String(v);
+  }
+  throw new Error(`${field}: chờ chuỗi hoặc số, nhận ${typeof v}`);
 }
 
 /**

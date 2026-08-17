@@ -29,6 +29,15 @@ on:
       - '.github/workflows/debug-apk.yml'
   workflow_dispatch:   # nút bấm build tay
 
+# Gộp 3 PR liên tiếp vào `develop` lúc 07:37-07:38 ngày 17/08 sinh BA lượt dựng APK
+# chạy song song (runs 32006654041, 32006680621, 32006716625), mỗi lượt ~40 phút.
+# Hai lượt đầu vô nghĩa: đỉnh `develop` đã đổi trước khi chúng dựng xong. Ba lượt
+# cùng lúc còn nhân ba lượng đĩa/máy chạy đúng lúc job này đang chết vì hết đĩa.
+# `verify-pr.yml` đã có khoá này từ đầu; đường `push` thì chưa.
+concurrency:
+  group: debug-apk-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # CỔNG chất-lượng chạy TRƯỚC: tsc/jest đỏ thì đừng đốt 60 phút build APK. Trước đây
   # không cổng nào chạy tsc/jest trên CI nên suite đỏ lọt lưới nhiều đợt liền.

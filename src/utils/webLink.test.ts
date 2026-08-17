@@ -34,7 +34,7 @@ describe('isAllowedWebUrl', () => {
     expect(isAllowedWebUrl('http://aladin.work/')).toBe(false);
     expect(isAllowedWebUrl('javascript:alert(1)')).toBe(false);
     expect(isAllowedWebUrl('file:///etc/passwd')).toBe(false);
-    expect(isAllowedWebUrl('magiclamp://main')).toBe(false);
+    expect(isAllowedWebUrl('lamp://main')).toBe(false);
     expect(isAllowedWebUrl('data:text/html,<h1>x</h1>')).toBe(false);
   });
 

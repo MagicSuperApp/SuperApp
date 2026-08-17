@@ -950,21 +950,34 @@ console.log('Screen name check: OK');
 
 ### 5.5 Điều hướng giữa các platform
 
-Platform **không được** import screen component hoặc navigation type từ platform khác. Điều hướng cross-platform dùng deep link với scheme `magiclamp://` (scheme thực tế đăng ký trong SuperApp):
+Platform **không được** import screen component hoặc navigation type từ platform khác. Điều hướng cross-platform dùng deep link với scheme `lamp://`.
+
+> ⚠️ **CHƯA CHẠY ĐƯỢC — đo 2026-08-17.** Câu cũ ở đây viết `(scheme thực tế đăng ký trong
+> SuperApp)`. **Sai.** SuperApp KHÔNG đăng ký scheme nào ở tầng hệ điều hành:
+> `ios/aladin_mobile_fe/Info.plist:25-35` chỉ có scheme OAuth của Google;
+> `android/app/src/main/AndroidManifest.xml` chỉ có intent-filter `MAIN`/`LAUNCHER`, không có
+> `<data android:scheme>` nào. `prefixes` ở `src/navigation/index.tsx` chỉ nói cho React
+> Navigation biết cách ĐỌC một URL đã tới tay app — nó KHÔNG bảo hệ điều hành gửi URL tới.
+>
+> Gốc: app CŨ `Legacy/Aladin_mobile` có đăng ký thật (`aladin`, xem Info.plist của nó). Đợt đổi
+> tên scheme (§ nhật ký bản 1.1.0) sửa TÀI LIỆU, không sửa phần native, và app mới dựng lại từ
+> đầu thì không mang theo. Nên `Linking.openURL('lamp://…')` hôm nay **thất bại im lặng**.
+>
+> Đoạn dưới là hợp đồng ĐÃ THIẾT KẾ, chưa phải hiện trạng. Đừng dựa vào nó để bỏ đường dự phòng.
 
 ```typescript
 // Trong platform A, muốn mở screen của platform B
 import { Linking } from 'react-native';
 
-// Scheme magiclamp:// — khớp với prefixes trong SuperApp navigation/index.tsx
-await Linking.openURL('magiclamp://proofchat-chat/rooms/123');
+// Scheme lamp:// — khớp với prefixes trong SuperApp navigation/index.tsx
+await Linking.openURL('lamp://proofchat-chat/rooms/123');
 // Chú ý: host dùng hyphen (proofchat-chat), không dùng dấu chấm (proofchat.chat)
 // vì một số Android webview version không xử lý đúng dấu chấm trong custom scheme host
 ```
 
-Deep link scheme format: `magiclamp://<org>-<product>/<path>`. Ví dụ:
-- `magiclamp://orilife-trace/farms/123`
-- `magiclamp://proofchat-chat/rooms/456`
+Deep link scheme format: `lamp://<org>-<product>/<path>`. Ví dụ:
+- `lamp://orilife-trace/farms/123`
+- `lamp://proofchat-chat/rooms/456`
 
 ---
 
@@ -2077,7 +2090,7 @@ Tổng hợp từ phản biện của RN architect, ecosystem architect, và sec
 
 - §7.3: Bỏ ràng buộc "tất cả method phải async" — codegen RN 0.84 hỗ trợ sync method với primitive.
 - §7.5: Sửa hướng dẫn UniFFI — bỏ "check raw pointer", thay bằng 3 điểm thực tế (Tokio, build script, XCFramework).
-- §5.5: Đổi scheme từ `aladin://` sang `magiclamp://`, đổi host format từ `org.product` sang `org-product`.
+- §5.5: Đổi scheme từ `aladin://` sang `lamp://`, đổi host format từ `org.product` sang `org-product`.
 - §2.1: `billingHooks[].unit` đổi từ enum sang free string với pattern — dễ mở rộng khi có platform mới.
 - §2.1: `featureFlags` thêm `propertyNames` pattern constraint.
 - §4.2: Thêm subpath exports `./types` và `./manifest` — chuẩn bị cho future use.

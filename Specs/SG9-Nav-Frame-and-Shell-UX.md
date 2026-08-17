@@ -66,7 +66,7 @@ rồi khai route trong `instance.config.tabs` như các tab khác. KHÔNG sửa 
 
 **KHÔNG thêm phụ thuộc native** (`react-native-localize`): thêm là phải dựng lại cả hai nền tảng, mà khâu build vừa mới gỡ được nút thắt. Dò ngôn ngữ máy bằng `Intl` có sẵn trong Hermes.
 
-**Màn chọn**: `src/screens/LanguageScreen.tsx`, route `Language`, deep-link `magiclamp://language`, lối vào ở màn Tôi. Mỗi dòng ghi tên ngôn ngữ **bằng chính ngôn ngữ đó** — người mở màn này thường là người không đọc được giao diện đang hiện.
+**Màn chọn**: `src/screens/LanguageScreen.tsx`, route `Language`, deep-link `lamp://language`, lối vào ở màn Tôi. Mỗi dòng ghi tên ngôn ngữ **bằng chính ngôn ngữ đó** — người mở màn này thường là người không đọc được giao diện đang hiện.
 
 ### 5.4 CÒN NỢ — giao Tùng
 
@@ -119,10 +119,14 @@ Anh chốt: Trace là **hành động quét tức thời** (soi nguồn gốc B�
 
 **Đã thi công**:
 - Màn `screens/TraceScanScreen.tsx` — full-bleed, tái dùng camera `react-native-camera-kit` (như WebLoginScan). Nhận diện được → **REPLACE** bằng màn CHI TIẾT đã có (TreeDetail/FarmDetail/AnimalDetail) nên back về thẳng nơi khởi động; không nhận diện → báo + quét lại. Nút-back an toàn (`canGoBack` → về `Main` nếu mở bằng deep-link, không thoát app).
-- Phân giải mã: `navigation/traceScan.ts` — hàm thuần `parseTraceCode` (chỉ nhận `magiclamp://…`, whitelist đích, tách params). Route quét host stack `TraceScan` (`headerShown:false`, KHÔNG vào tabs).
+- Phân giải mã: `navigation/traceScan.ts` — hàm thuần `parseTraceCode` (chỉ nhận `lamp://…`, whitelist đích, tách params). Route quét host stack `TraceScan` (`headerShown:false`, KHÔNG vào tabs).
 - Entry points: (a) nút **qrcode-scan** ở AppHeader — CHỈ hiện ở Trang chủ; (b) mục **Trace-quét** trong cổng §4 (`TRACE_SCAN_ROUTE` đã bật).
-- Deep-link: `magiclamp://trace-scan` mở màn quét; màn CHI TIẾT sản phẩm Aladin đã deep-link-được sẵn (buildLinking map route module) → quét NGOÀI app mở thẳng màn kết quả.
-- ⏳ Còn: luồng truy xuất sản phẩm NGOÀI hệ Aladin (mã không phải `magiclamp://`) cần backend provenance — để mở khi có API; hiện hiện trạng thái "chưa nhận diện". Test camera trên máy thật.
+- Deep-link: `lamp://trace-scan` **đã khai trong `buildLinking`, nhưng CHƯA chạy được** — đo
+  2026-08-17: không platform nào đăng ký scheme ở tầng hệ điều hành (`Info.plist:25-35` chỉ có
+  scheme OAuth Google; `AndroidManifest.xml` chỉ có `MAIN`/`LAUNCHER`). Câu cũ ở dòng này nói
+  "quét NGOÀI app mở thẳng màn kết quả" — sai, vì hệ điều hành không gửi URL nào tới app. Đây là
+  seam ngủ; mọi đường vào màn quét hôm nay đều là điều hướng NỘI BỘ (§entry points ở trên).
+- ⏳ Còn: luồng truy xuất sản phẩm NGOÀI hệ Aladin (mã không phải `lamp://`) cần backend provenance — để mở khi có API; hiện hiện trạng thái "chưa nhận diện". Test camera trên máy thật.
 
 ---
 

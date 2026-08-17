@@ -1717,15 +1717,21 @@ const HOST_STACK_SCREENS: Array<{
 // kể cả route đã là tab — RN cho phép trùng tên giữa Tab và Stack vì khác navigator.
 const MODULE_STACK_SCREENS = collectModuleScreens(DEFAULT_INSTANCE.enabledModules);
 
-// --- Deep-link: magiclamp://<module>/<route> -------------------------------
-// Map mỗi route module sang path 'magiclamp://<moduleId>/<route>'. Host route
+// --- Deep-link: lamp://<module>/<route> -------------------------------
+// Map mỗi route module sang path 'lamp://<moduleId>/<route>'. Host route
 // không khai (truy cập qua điều hướng nội bộ). Rẻ + declarative — bật luôn.
+//
+// ⚠️ SEAM NGỦ, đo 2026-08-17. `prefixes` dưới đây chỉ dạy React Navigation cách ĐỌC
+// một URL ĐÃ tới tay app. Nó KHÔNG đăng ký scheme với hệ điều hành — việc đó nằm ở
+// `Info.plist` (CFBundleURLTypes) và `AndroidManifest.xml` (`<data android:scheme>`),
+// và hôm nay CẢ HAI đều không khai `lamp`. Nghĩa là chưa URL nào từ ngoài vào được.
+// Đừng đọc khối này thành "deep-link đã chạy"; muốn chạy thì phải khai phần native.
 const buildLinking = () => {
   const screens: Record<string, string> = { Main: 'main' };
   MODULE_STACK_SCREENS.forEach(({ moduleId, route }) => {
     screens[route] = `${moduleId}/${route}`;
   });
-  // SG9 §3 — mở màn quét truy xuất qua deep-link `magiclamp://trace-scan` (quét từ
+  // SG9 §3 — mở màn quét truy xuất qua deep-link `lamp://trace-scan` (quét từ
   // platform khác). Màn CHI TIẾT (TreeDetail…) đã deep-link-được qua map module ở
   // trên → sản phẩm Aladin quét ngoài app mở thẳng màn kết quả.
   screens[TRACE_SCAN_ROUTE_NAME] = 'trace-scan';
@@ -1733,7 +1739,7 @@ const buildLinking = () => {
   // → không có route để deep-link tới. Màn `LanguageSelect` chỉ chạy lần đầu cài.
   screens.LanguageSelect = 'language';
   return {
-    prefixes: ['magiclamp://'],
+    prefixes: ['lamp://'],
     config: { screens },
   };
 };

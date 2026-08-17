@@ -769,3 +769,91 @@ export async function buildTree3D(
   }
   return { ok: false, noProvenance: result.error?.http_status === 404, error: result.error };
 }
+
+/**
+ * setTreeFarm — GÁN/ĐỔI vườn cho cây ĐÃ đăng ký. `POST /api/tree/set_farm`.
+ *
+ * Đây là đường vá lỗi thực địa 11/07 "tạo vườn nhưng cây không vào vườn": sửa
+ * link SAU khi enroll, thay vì phải xoá cây rồi tạo lại. Máy chủ có đường này từ
+ * lúc đó; app chưa từng gọi.
+ *
+ * `farmId` rỗng/`null` → GỠ cây khỏi vườn (về mồ côi). Cây vẫn truy được bình
+ * thường — đây là hành vi cố ý, không phải mất dữ liệu.
+ *
+ * Hai mã lỗi có nghĩa khác nhau, đừng gộp:
+ *   `403` — cây không thuộc chủ (chống IDOR).
+ *   `404` — vườn không tồn tại **hoặc** không thuộc tài khoản này. Máy chủ CỐ Ý
+ *           gộp hai ca vào một mã để không lộ sự tồn tại vườn của người khác, nên
+ *           app cũng không được đoán ra ca nào.
+ *
+ * Máy chủ nói rõ vì sao cửa này báo lỗi tường minh thay vì bỏ qua âm thầm như
+ * `enroll`: đây là cửa SỬA LINK chuyên trách — gán hụt mà im lặng thì việc vá vô nghĩa.
+ */
+export async function setTreeFarm(
+  baseUrl: string,
+  treeId: string,
+  farmId: string | null,
+): Promise<{ ok: boolean; farmId?: string | null; notOwner?: boolean; farmNotFound?: boolean; error?: APIError }> {
+  const form = new FormData();
+  form.append('tree_id', treeId);
+  // Gửi chuỗi rỗng = gỡ khỏi vườn (`Form(None)` phía máy chủ nhận rỗng → mồ côi).
+  form.append('farm_id', farmId ?? '');
+
+  const result = await _apiCall<{ ok: boolean; tree_id?: string; farm_id?: string | null }>(
+    `${baseUrl}/api/tree/set_farm`,
+    'POST',
+    form,
+  );
+  if (result.ok && result.data) {
+    // `data.ok === false` là máy chủ nói KHÔNG gán được (cây không có trong kho ảnh)
+    // — HTTP vẫn 200. Đọc cờ, đừng đọc mỗi tầng vận chuyển.
+    return { ok: result.data.ok === true, farmId: result.data.farm_id ?? null };
+  }
+  return {
+    ok: false,
+    notOwner: result.error?.http_status === 403,
+    farmNotFound: result.error?.http_status === 404,
+    error: result.error,
+  };
+}
+
+/**
+ * removeTreeViews — XOÁ các góc ảnh đã chụp nhầm. `POST /api/remove_views`.
+ *
+ * Đây chính là nút mà `capture/plan` trỏ tới khi trả `next.action = "recheck"`.
+ * Không có nó thì `recheck` là một lời khuyên **không làm được**, và một tấm chụp
+ * nhầm cây bên cạnh nằm lại trong chữ ký cây vĩnh viễn.
+ *
+ * `indices` là VỊ TRÍ trong danh sách góc của cây (`/api/tree_views`), không phải
+ * id. ⚠ Xoá xong thì các vị trí phía sau DỒN LÊN — gọi lại `/api/tree_views` sau
+ * mỗi lượt xoá, đừng xoá nhiều lượt liên tiếp theo một danh sách vị trí cũ.
+ *
+ * Máy chủ bỏ qua vị trí không phải số và trả `removed` = số ảnh THẬT SỰ bị xoá.
+ * Đọc `removed`, đừng suy từ `indices.length`: hai số đó lệch nhau là dấu hiệu
+ * app đang đếm theo một danh sách đã cũ.
+ */
+export async function removeTreeViews(
+  baseUrl: string,
+  treeId: string,
+  indices: number[],
+): Promise<{ ok: boolean; removed?: number; notOwner?: boolean; error?: APIError }> {
+  const clean = indices.filter((i) => Number.isInteger(i) && i >= 0);
+  if (clean.length === 0) {
+    // Không gọi máy chủ với danh sách rỗng: `indices` là `Form(...)` bắt buộc, gửi
+    // rỗng ra 422 — một lỗi do app tự tạo, không phải lỗi của người dùng.
+    return { ok: false, removed: 0, error: { type: 'validation_error', detail: 'Chưa chọn ảnh nào để xoá', http_status: 0 } };
+  }
+  const form = new FormData();
+  form.append('tree_id', treeId);
+  form.append('indices', clean.join(','));
+
+  const result = await _apiCall<{ ok: boolean; removed?: number }>(
+    `${baseUrl}/api/remove_views`,
+    'POST',
+    form,
+  );
+  if (result.ok && result.data) {
+    return { ok: result.data.ok === true, removed: result.data.removed ?? 0 };
+  }
+  return { ok: false, notOwner: result.error?.http_status === 403, error: result.error };
+}

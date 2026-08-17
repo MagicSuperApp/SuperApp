@@ -55,12 +55,28 @@ const UsernameScreen = () => {
       showSuccess('Đã đặt username', `Người khác có thể tìm bạn qua "@${res.username}".${cd}`,
         { onConfirm: () => navigation.goBack() });
     } catch (e: any) {
+      // Máy chủ trả HAI lý do khác hẳn nhau dưới CÙNG một mã HTTP 409
+      // (`ErrorCode.java:196,199` — cả `USERNAME_TAKEN(2005)` lẫn
+      // `USERNAME_COOLDOWN(2006)` đều map sang `HttpStatus.CONFLICT`).
+      // Bản cũ phân nhánh bằng `httpStatus` nên gộp chúng làm một, và luôn in câu
+      // "đã có người dùng" — kể cả khi thật ra là khoá 30 ngày của CHÍNH mình
+      // (`UsernameServiceImpl.java:79-87`, `COOLDOWN_DAYS = 30`). Nhánh 429 viết cho
+      // cooldown là mã chết: cửa này không bao giờ trả 429.
+      //
+      // Nói sai lý do ở đây tốn của người dùng nhiều hơn một lần bấm: họ đi nghĩ
+      // tên khác, đặt tên khác, rồi khoá 30 ngày lại đếm lại từ đầu.
+      const code = e?.code;
       const http = e?.httpStatus;
+      const serverMsg = typeof e?.message === 'string' && e.message.trim() ? e.message : null;
       showWarning(
         'Không đặt được',
-        http === 409 ? 'Username đã có người dùng. Chọn tên khác.' :
-          http === 429 ? 'Đang trong thời gian chờ (cooldown). Thử lại sau.' :
-            (e?.message ?? 'Đặt username thất bại.'),
+        code === 2006
+          ? `Bạn vừa đổi username gần đây nên đang trong thời gian chờ 30 ngày.\n${serverMsg ?? 'Thử lại sau.'}`
+          : code === 2005
+            ? `Tên này đã được cấp cho người khác (hoặc đã từng được dùng và không tái sử dụng).\n${serverMsg ?? ''}`.trim()
+            : http === 409
+              ? (serverMsg ?? 'Tên này hiện không đặt được. Chọn tên khác hoặc thử lại sau.')
+              : (serverMsg ?? 'Đặt username thất bại.'),
       );
     } finally {
       setLoading(false);

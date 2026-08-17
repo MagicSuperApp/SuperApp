@@ -31,7 +31,7 @@ export interface SubTab {
 // dropdown ⌄. usage re-rank; ghim đè.
 export const SUBHOME_FRAME: Record<string, SubTab[]> = {
   // Chat (proofchat): hiện Chats · Calls · Pins + ⌄(Docs…).
-  ProofChatHome: [
+  ChatHome: [
     { key: 'chats', en: 'Chats', national: { vi: 'Trò chuyện', zh: '聊天', ja: 'チャット' }, icon: 'chat-outline' },
     { key: 'calls', en: 'Calls', national: { vi: 'Gọi',        zh: '通话', ja: '通話' },     icon: 'phone-outline' },
     { key: 'pins',  en: 'Pins',  national: { vi: 'Ghim',       zh: '置顶', ja: 'ピン' },     icon: 'pin-outline' },

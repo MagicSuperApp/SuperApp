@@ -11,7 +11,7 @@
 // (đã sửa lệch 'TraceDashboard' → 'Dashboard' ở YC-3).
 
 import type { ImageSourcePropType } from 'react-native';
-import { TRACE_THEME, PROOFCHAT_THEME, WORK_THEME, LAMPNET_THEME } from '../theme';
+import { TRACE_THEME, CHAT_THEME, WORK_THEME, LAMPNET_THEME } from '../theme';
 import type { ModuleTheme } from '../theme/tokens';
 
 export interface ModuleEntry {
@@ -37,13 +37,13 @@ export const MODULES: ModuleEntry[] = [
     available: true,
   },
   {
-    theme: PROOFCHAT_THEME,
+    theme: CHAT_THEME,
     title: 'Trò chuyện',
     description: 'Tin nhắn xác thực bằng chữ ký blockchain',
     icon: 'message-text-outline',
     image: require('../../assets/images/modules/chat-fi.png'),
     bgDark: '#421e8a',
-    routeName: 'ProofChatHome',
+    routeName: 'ChatHome',
     available: true,
   },
   {
@@ -58,7 +58,7 @@ export const MODULES: ModuleEntry[] = [
   },
   {
     theme: LAMPNET_THEME,
-    title: 'Kết đèn',
+    title: 'Góp máy',
     description: 'Góp sức máy cho mạng lưới & nhận thưởng',
     icon: 'lightning-bolt',
     // Chưa có PNG nhân vật riêng cho Kết đèn — dùng tạm ảnh scan (fallback icon vẫn hiện).
@@ -70,4 +70,4 @@ export const MODULES: ModuleEntry[] = [
   },
 ];
 
-export { TRACE_THEME, PROOFCHAT_THEME, WORK_THEME, LAMPNET_THEME };
+export { TRACE_THEME, CHAT_THEME, WORK_THEME, LAMPNET_THEME };

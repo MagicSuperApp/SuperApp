@@ -36,7 +36,7 @@ import { getVersion, getBuildNumber } from 'react-native-device-info';
 // Debug host = backend field-reid THẬT app đang dùng (ORILIFE_BASE), không phải
 // aladin-api (backend Lợi deprecated) — để field soi đúng server (Lỗi field #5).
 import { ORILIFE_BASE } from '../services/orilifeBase';
-import { fmtLamp } from '../utils/token';
+import { fmtLamp, fmtCarp } from '../utils/token';
 import taad from '../sdk/taadEnclave';
 import { getStoredMasterKek } from '../services/masterKekStore';
 import LanguagePickerModal from '../components/LanguagePickerModal';
@@ -267,7 +267,7 @@ const WalletBlock = ({ entry }: { entry: WalletEntry }) => {
                 <Text style={styles.walletBalDot}>·</Text>
                 <Text style={styles.walletBalItem}>{fmtLamp(b.lamp ?? 0)} <Text style={styles.walletBalUnit}>LAMP</Text></Text>
                 <Text style={styles.walletBalDot}>·</Text>
-                <Text style={styles.walletBalItem}>{b.carp ?? 0} <Text style={styles.walletBalUnit}>CARP</Text></Text>
+                <Text style={styles.walletBalItem}>{fmtCarp(b.carp)} <Text style={styles.walletBalUnit}>CARP</Text></Text>
             </View>
         </View>
     );
@@ -599,7 +599,7 @@ const AccountScreen = () => {
                             index={2}
                             icon="fish"
                             label="CARP"
-                            value={chainWallet?.carpBalance}
+                            value={fmtCarp(chainWallet?.carpBalance)}
                             unit="CARP"
                             color="#2F8F8F"
                             desc="Token hệ sinh thái"
@@ -739,11 +739,40 @@ const AccountScreen = () => {
                             sublabel="Số dư ADA/LAMP/MAGIC + địa chỉ Cardano (từ cụm 24 từ)"
                             onPress={() => navigation.navigate('PhoenixWallet')}
                         />
+                        {/*
+                          WakeMe — cùng lý do bố trí như OrgDID bên dưới: tính năng cũng
+                          cần Master_KEK, nên lối trong PhoenixWalletScreen là chính đáng,
+                          nhưng nếu ĐÓ là lối duy nhất thì người chưa lập ví không bao giờ
+                          nhìn thấy tính năng tồn tại. Lối này để họ THẤY, rồi màn WakeMe
+                          tự dẫn sang thiết lập ví nếu chưa có.
+                        */}
+                        <MenuItem
+                            icon="lightbulb-on-outline"
+                            label="Nhận LAMP (WakeMe)"
+                            sublabel="Nhận phần LAMP khởi tạo vào vault của bạn"
+                            onPress={() => navigation.navigate('WakeMe')}
+                        />
                         <MenuItem
                             icon="card-account-details-outline"
                             label="Xuất danh tính"
                             sublabel="Xem/sao chép mã định danh, khoá công khai, địa chỉ ví"
                             onPress={() => navigation.navigate('ExportIdentity')}
+                        />
+                        {/*
+                          Lối vào THỨ HAI cho OrgDID. Lối cũ là lối duy nhất và nó bị chặn:
+                          thẻ "VÍ TỔ CHỨC" nằm ở PhoenixWalletScreen.tsx:280-302, mà màn đó
+                          return sớm ở :190 khi máy chưa có Master_KEK — người chưa thiết lập
+                          ví chỉ thấy "Chưa có ví" và không có đường nào tới màn tạo tổ chức.
+                          Cổng đó THỪA với OrgDID: tạo tổ chức ký bằng khoá phần cứng /
+                          owner DID, không đụng Master_KEK (orgMintService.ts:160-164).
+                          Kèm theo: lối cũ nằm sâu ba lớp sau một nhãn tên "Ví của tôi" —
+                          không ai đoán "tạo tổ chức" nằm trong ví.
+                        */}
+                        <MenuItem
+                            icon="office-building-outline"
+                            label="Tổ chức (OrgDID)"
+                            sublabel="Tạo danh tính tổ chức và mint LAMP vào kho Distribution"
+                            onPress={() => navigation.navigate('OrgDid')}
                         />
                         <MenuItem
                             icon="at"
@@ -857,6 +886,17 @@ const AccountScreen = () => {
                     <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout} activeOpacity={0.88}>
                         <Icon name="logout" size={18} color={COLORS.error} />
                         <Text style={styles.logoutText}>Đăng xuất</Text>
+                    </TouchableOpacity>
+                    {/* Xoá tài khoản — bắt buộc bởi Apple 5.1.1(v) + Google Play (issue #144).
+                        Để mờ, dưới Đăng xuất: hành động huỷ-diệt, không mời gọi. */}
+                    <TouchableOpacity
+                        onPress={() => navigation.navigate('DeleteAccount')}
+                        style={{ marginTop: 16, alignItems: 'center' }}
+                        activeOpacity={0.7}
+                    >
+                        <Text style={{ color: COLORS.textMuted, fontSize: 13, textDecorationLine: 'underline' }}>
+                            Xoá tài khoản
+                        </Text>
                     </TouchableOpacity>
                 </Animated.View>
             </ScrollView>

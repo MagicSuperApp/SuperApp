@@ -1,219 +1,178 @@
-// modules/trace/screens/FarmListScreen.tsx
+/**
+ * FarmListScreen — danh sách VƯỜN, dựng theo phong cách Organic / Nature.
+ *
+ * ── Thẻ vườn ────────────────────────────────────────────────────────────────
+ * Mỗi vườn là một thẻ nổi trên nền đất, góc bo KHÔNG ĐỀU, có một chiếc lá mờ ở
+ * góc. Trong thẻ chỉ ba con số nhà vườn thật sự hỏi: bao nhiêu CÂY, bao nhiêu
+ * QUẢ, rộng bao nhiêu.
+ *
+ * ── Đã bỏ khỏi bản cũ, và vì sao ────────────────────────────────────────────
+ * · Huy hiệu MAGIC ở góc phải tiêu đề — số dư tiền mã hoá đặt cạnh tên vườn.
+ *   Cùng lý do đã gỡ khỏi trang Tổng quan: người mở màn "Trang trại" đang tìm
+ *   mảnh vườn của mình, không tìm ví. Số dư vẫn ở màn Tài khoản.
+ * · Chữ IN HOA "TRUY XUẤT NGUỒN GỐC" trên tiêu đề — in hoa cỡ nhỏ đọc chậm hơn
+ *   hẳn với người lớn tuổi (xem `theme/depth.ts`).
+ * · Nút chuyển trang « ‹ 1/3 › » — thay bằng TỰ hiện thêm khi cuộn tới cuối,
+ *   cùng lối với mục tin ở trang Tổng quan. Nông dân không đếm trang.
+ * · Chữ tiếng Anh lẫn trong giao diện tiếng Việt ("farm under management",
+ *   "No farms yet", "Points").
+ *
+ * Mọi câu chữ đi qua `tk('trace.…')` — không còn chuỗi tiếng Việt trong mã.
+ */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View,
-  Text,
-  FlatList,
-  StyleSheet,
-  TouchableOpacity,
-  Animated,
-  StatusBar,
-  Platform,
-  TextInput,
+  Animated, FlatList, Pressable, StatusBar, StyleSheet, Text, TextInput, View,
+  type NativeScrollEvent, type NativeSyntheticEvent,
 } from 'react-native';
-// Icon: bo Font Awesome Solid tai qua Iconify (assets/icons -> icons.generated).
-// Them icon moi: `node scripts/icons.js <ten-fa6-solid>`.
-import Icon from '../../../components/Icon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import { useSelector, useDispatch } from 'react-redux';
-import { RootState } from '../../../store';
-import { loadFarms, syncFarmsFromBackend } from '../store/farmSlice';
-import { selectChainWallet } from '../../../store/userSlice';
-import { COLORS } from '../../../constants';
-import PaginationControls from '../components/PaginationControls';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useDispatch, useSelector } from 'react-redux';
+
+import Icon, { type IconName } from '../../../components/Icon';
 import StateView from '../../../components/state/StateView';
 import { useOffline } from '../../../hooks/useOffline';
+import { useTk } from '../../../i18n/keys';
+import WayfindButton, { forFarm } from '../../../features/wayfind/WayfindButton';
+import { RootState } from '../../../store';
+import { loadFarms, syncFarmsFromBackend } from '../store/farmSlice';
+import { Ground } from '../components/layered/Surface';
+import { Leaf } from '../components/layered/Organic';
+import {
+  ELEVATION, NATURE, ORGANIC_CARD, ORGANIC_TILE, RADIUS,
+  SPACE, SURFACE, TONE, TYPE,
+} from '../theme/depth';
 
-const ITEMS_PER_PAGE = 10;
+/** Số vườn hiện lúc đầu và mỗi lần cuộn tới cuối. */
+const PAGE_FIRST = 8;
+const PAGE_STEP = 8;
+const NEAR_BOTTOM_PX = 200;
 
-// Tách "mốc thời gian" từ id để sắp mới-nhất-trước. id có thể là UUID hoặc
-// `prefix_<ts>` / `prefix-<ts>` — lấy dãy số LỚN NHẤT trong id (thường là
-// timestamp ms). Trước đây split('_')[1] ra undefined với UUID → NaN → sắp sai.
+/**
+ * Mốc thời gian rút từ id để xếp mới-nhất-trước. id có thể là UUID hoặc
+ * `prefix_<ts>` — lấy dãy số LỚN NHẤT trong id. Bản cũ dùng `split('_')[1]` nên
+ * gặp UUID là ra `undefined` → `NaN` → xếp sai thứ tự mà không ai thấy.
+ */
 const idTimestamp = (id?: string): number => {
   if (!id) return 0;
   const matches = id.match(/\d+/g);
-  if (!matches) return 0;
-  return matches.reduce((max, m) => Math.max(max, Number(m)), 0);
+  return matches ? matches.reduce((max, m) => Math.max(max, Number(m)), 0) : 0;
 };
 
-// ── Credit Badge ─────────────────────────────────────────────────────────────
-const MagicCreditBadge = ({ credits }: { credits: number }) => {
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.06, duration: 1800, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1,    duration: 1800, useNativeDriver: true }),
-      ])
-    ).start();
-  }, []);
-
-  return (
-    <Animated.View style={[styles.creditBadge, { transform: [{ scale: pulseAnim }] }]}>
-      <Icon name="bolt" size={13} color={COLORS.accent} />
-      <Text style={styles.creditValue}>{credits?.toLocaleString() ?? '0'}</Text>
-      <Text style={styles.creditLabel}>MAGIC</Text>
-    </Animated.View>
-  );
+const STATUS: Record<string, { key: string; tone: string; soft: string }> = {
+  active: { key: 'trace.status.active', tone: TONE.primary, soft: TONE.primarySoft },
+  inactive: { key: 'trace.status.inactive', tone: NATURE.barkSoft, soft: SURFACE.sunken },
+  harvest: { key: 'trace.status.harvest', tone: TONE.sun, soft: TONE.sunSoft },
 };
 
-// ── Farm Card ─────────────────────────────────────────────────────────────────
-const FarmCard = ({
-  item,
-  index,
-  onPress,
-}: {
+// ── Thẻ một vườn ────────────────────────────────────────────────────────────
+
+const FarmCard: React.FC<{
   item: any;
   index: number;
   onPress: () => void;
+}> = ({
+  item, index, onPress,
 }) => {
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-  const fadeAnim  = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(16)).current;
+    const tk = useTk();
+    const fade = useRef(new Animated.Value(0)).current;
+    const slide = useRef(new Animated.Value(14)).current;
 
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 350,
-        delay: index * 80,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 350,
-        delay: index * 80,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, []);
+    useEffect(() => {
+      // Trễ theo vị trí, nhưng CHẶN TRẦN ở 6 mục: danh sách dài mà nhân mãi thì mục
+      // thứ 30 phải đợi 2,4 giây mới hiện — người dùng đọc thành "màn bị treo".
+      const delay = Math.min(index, 6) * 70;
+      Animated.parallel([
+        Animated.timing(fade, { toValue: 1, duration: 320, delay, useNativeDriver: true }),
+        Animated.timing(slide, { toValue: 0, duration: 320, delay, useNativeDriver: true }),
+      ]).start();
+    }, [fade, slide, index]);
 
-  const handlePressIn  = () =>
-    Animated.spring(scaleAnim, { toValue: 0.97, useNativeDriver: true }).start();
-  const handlePressOut = () =>
-    Animated.spring(scaleAnim, { toValue: 1, friction: 4, useNativeDriver: true }).start();
+    const trees = item.treeCount || 0;
+    const fruits = item.fruitCount || 0;
+    const area = item.areaSqm
+      ? `${(item.areaSqm / 10000).toFixed(1)} ha`
+      : `${item.coordinates?.length ?? 0} ${tk('trace.unit.points')}`;
+    const st = STATUS[item.status] ?? STATUS.active;
 
-  // Derive some display info
-  const treeCount  = item.treeCount || 0;
-  const fruitCount = item.fruitCount || 0;
-  const areaLabel  = item.areaSqm
-    ? `${(item.areaSqm / 10000).toFixed(1)} ha`
-    : `${item.coordinates?.length ?? 0} Points`;
+    return (
+      <Animated.View style={{ opacity: fade, transform: [{ translateY: slide }] }}>
+        <Pressable
+          onPress={onPress}
+          style={({ pressed }) => [styles.card, ELEVATION.card, pressed && styles.pressed]}
+          android_ripple={{ color: TONE.primarySoft }}
+        >
+          <Leaf size={78} color={NATURE.moss} opacity={0.07} rotate={22} style={styles.cardLeaf} />
 
-  // Status chip
-  const statusMap: Record<string, { label: string; color: string; bg: string }> = {
-    active:   { label: 'Đang hoạt động', color: COLORS.success,  bg: 'rgba(74,124,89,0.10)' },
-    inactive: { label: 'Tạm dừng',       color: COLORS.textMuted, bg: COLORS.bgWarm },
-    harvest:  { label: 'Mùa thu hoạch',  color: '#B07D2F',        bg: 'rgba(176,125,47,0.10)' },
-  };
-  const status = statusMap[item.status] ?? statusMap.active;
-
-  return (
-    <Animated.View
-      style={{
-        opacity: fadeAnim,
-        transform: [{ translateY: slideAnim }, { scale: scaleAnim }],
-      }}
-    >
-      <TouchableOpacity
-        activeOpacity={1}
-        onPress={onPress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-      >
-        <View style={styles.card}>
-          {/* Left accent bar */}
-          <View style={styles.cardAccentBar} />
-
-          <View style={styles.cardBody}>
-            {/* Top row */}
-            <View style={styles.cardTopRow}>
-              <View style={styles.cardIconWrap}>
-                <Icon name="tree" size={20} color={COLORS.accent} />
-              </View>
-              <View
-                style={[
-                  styles.statusChip,
-                  { backgroundColor: status.bg },
-                ]}
-              >
-                <View
-                  style={[styles.statusDot, { backgroundColor: status.color }]}
-                />
-                <Text style={[styles.statusText, { color: status.color }]}>
-                  {status.label}
-                </Text>
-              </View>
+          <View style={styles.cardHead}>
+            <View style={styles.cardIcon}>
+              <Icon name="tree" size={20} color={TONE.primary} />
             </View>
-
-            {/* Farm name */}
-            <Text style={styles.cardName} numberOfLines={1}>
-              {item.name}
-            </Text>
-
-            {/* Location */}
-            {item.location ? (
-              <View style={styles.cardLocation}>
-                <Icon name="location-dot" size={13} color={COLORS.textMuted} />
-                <Text style={styles.cardLocationText} numberOfLines={1}>
-                  {item.location}
-                </Text>
-              </View>
-            ) : null}
-
-            {/* Stats */}
-            <View style={styles.cardStats}>
-              {[
-                { icon: 'tree',        val: treeCount,  label: 'cây' },
-                { icon: 'apple-whole',  val: fruitCount, label: 'quả' },
-                { icon: 'draw-polygon',      val: areaLabel,  label: '' },
-              ].map((s, i) => (
-                <View key={i} style={styles.cardStatItem}>
-                  <Icon name={s.icon} size={13} color={COLORS.accentLight} />
-                  <Text style={styles.cardStatVal}>{s.val}</Text>
-                  {s.label ? <Text style={styles.cardStatLabel}>{s.label}</Text> : null}
+            <View style={styles.cardHeadText}>
+              <Text style={styles.cardName} numberOfLines={1}>{item.name}</Text>
+              {item.location ? (
+                <View style={styles.cardPlace}>
+                  <Icon name="location-dot" size={12} color={NATURE.barkSoft} />
+                  <Text style={styles.cardPlaceTxt} numberOfLines={1}>{item.location}</Text>
                 </View>
-              ))}
+              ) : null}
+            </View>
+            
+            <View style={[styles.chip, { backgroundColor: st.soft }]}>
+              <View style={[styles.chipDot, { backgroundColor: st.tone }]} />
+              <Text style={[styles.chipTxt, { color: st.tone }]} numberOfLines={1}>{tk(st.key)}</Text>
             </View>
           </View>
 
-          {/* Chevron */}
-          <View style={styles.cardChevron}>
-            <Icon name="chevron-right" size={20} color={COLORS.accentLight} />
+          <View style={styles.cardStats}>
+            <Stat icon="tree" value={String(trees)} label={tk('trace.label.trees')} tone={TONE.primary} />
+            <View style={styles.statSep} />
+            <Stat icon="apple-whole" value={String(fruits)} label={tk('trace.label.fruits')} tone={TONE.sun} />
+            {/* Nút nằm TRONG thẻ nhưng bắt chạm riêng, nên bấm vào nó không mở
+              luôn trang chi tiết vườn. Vườn chưa vẽ ranh giới → `forFarm` trả
+              null → nút tự ẩn. */}
+            <WayfindButton target={forFarm(item)} size="sm" />
           </View>
-        </View>
-      </TouchableOpacity>
-    </Animated.View>
-  );
-};
+        </Pressable>
+      </Animated.View>
+    );
+  };
 
-// ── Main Screen ───────────────────────────────────────────────────────────────
-const FarmListScreen = () => {
+const Stat: React.FC<{ icon: IconName; value: string; label: string; tone: string }> = ({
+  icon, value, label, tone,
+}) => (
+  <View style={styles.stat}>
+    <Icon name={icon} size={14} color={tone} />
+    <Text style={styles.statVal} numberOfLines={1}>{value}</Text>
+    {label ? <Text style={styles.statLabel}>{label}</Text> : null}
+  </View>
+);
+
+// ── Màn hình ────────────────────────────────────────────────────────────────
+
+const FarmListScreen: React.FC = () => {
   const navigation = useNavigation<any>();
-  const insets     = useSafeAreaInsets();
-  const dispatch   = useDispatch<any>();
-  const farms      = useSelector((state: RootState) => state.farm.farms);
-  const isLoading  = useSelector((state: RootState) => state.farm.isLoading);
-  const loadError  = useSelector((state: RootState) => state.farm.error);
-  const user       = useSelector((state: RootState) => state.user.currentUser);
-  const offline    = useOffline();
-  // Số dư MAGIC THẬT từ chuỗi (nhất quán với Account/Activity/Dashboard).
-  const wallet     = useSelector(selectChainWallet);
+  const insets = useSafeAreaInsets();
+  const dispatch = useDispatch<any>();
+  const tk = useTk();
 
-  const headerFade  = useRef(new Animated.Value(0)).current;
-  const headerSlide = useRef(new Animated.Value(-12)).current;
+  const farms = useSelector((s: RootState) => s.farm.farms);
+  const isLoading = useSelector((s: RootState) => s.farm.isLoading);
+  const loadError = useSelector((s: RootState) => s.farm.error);
+  const user = useSelector((s: RootState) => s.user.currentUser);
+  const offline = useOffline();
 
-  // Search and Pagination state
-  const [searchQuery, setSearchQuery] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
+  const [query, setQuery] = useState('');
+  const [shown, setShown] = useState(PAGE_FIRST);
 
-  // Làm mới vườn: hiện CACHE SQLite ngay (offline-first) rồi đồng bộ từ backend
-  // field-reid (nguồn sự-thật, INV-1) và nạp lại. Backend lỗi/offline →
-  // syncFarmsFromBackend tự lùi về cache, loadFarms vẫn hiển thị — không mất dữ liệu.
-  const refreshFarms = React.useCallback(() => {
+  const headerFade = useRef(new Animated.Value(0)).current;
+
+  /**
+   * Hiện CACHE trong máy ngay (đọc được lúc mất sóng), rồi đồng bộ từ máy chủ và
+   * nạp lại. Máy chủ lỗi/offline → `syncFarmsFromBackend` tự lùi về cache, danh
+   * sách vẫn hiện — không màn trắng.
+   */
+  const refreshFarms = useCallback(() => {
     if (!user) return;
     dispatch(loadFarms(user.id));
     dispatch(syncFarmsFromBackend(user.id)).finally(() => dispatch(loadFarms(user.id)));
@@ -221,499 +180,206 @@ const FarmListScreen = () => {
 
   useEffect(() => {
     refreshFarms();
-    Animated.parallel([
-      Animated.timing(headerFade,  { toValue: 1, duration: 500, useNativeDriver: true }),
-      Animated.timing(headerSlide, { toValue: 0, duration: 500, useNativeDriver: true }),
-    ]).start();
-  }, [user]);
+    Animated.timing(headerFade, { toValue: 1, duration: 420, useNativeDriver: true }).start();
+  }, [refreshFarms, headerFade]);
 
-  // Reset page when search changes
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery]);
+  useFocusEffect(useCallback(() => { refreshFarms(); setShown(PAGE_FIRST); }, [refreshFarms]));
+  useEffect(() => { setShown(PAGE_FIRST); }, [query]);
 
-  // Reload farms when returning to this screen and move to page 1
-  useFocusEffect(
-    React.useCallback(() => {
-      refreshFarms();
-      setCurrentPage(1);
-    }, [refreshFarms])
-  );
+  const matched = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const list = q
+      ? farms.filter(f =>
+        f.name.toLowerCase().includes(q) ||
+        String((f as any).location ?? '').toLowerCase().includes(q))
+      : farms;
+    return [...list].sort((a, b) => idTimestamp(b.id) - idTimestamp(a.id));
+  }, [farms, query]);
 
-  // Filter farms by search query
-  const filteredFarms = farms.filter(farm =>
-    farm.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    ((farm as any).location && (farm as any).location.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  const visible = matched.slice(0, shown);
+  const moreComing = shown < matched.length;
 
-  // New farms should show first (by id timestamp 'farm_<ts>')
-  const sortedFarms = [...filteredFarms].sort((a, b) => idTimestamp(b.id) - idTimestamp(a.id));
-
-  // Pagination logic
-  const totalPages = Math.ceil(filteredFarms.length / ITEMS_PER_PAGE);
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const endIndex = startIndex + ITEMS_PER_PAGE;
-  const paginatedFarms = sortedFarms.slice(startIndex, endIndex);
-
-  const handlePreviousPage = () => {
-    if (currentPage > 1) {
-      setCurrentPage(currentPage - 1);
+  const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
+    if (contentOffset.y + layoutMeasurement.height >= contentSize.height - NEAR_BOTTOM_PX) {
+      setShown(n => (n >= matched.length ? n : Math.min(n + PAGE_STEP, matched.length)));
     }
-  };
+  }, [matched.length]);
 
-  const handleNextPage = () => {
-    if (currentPage < totalPages) {
-      setCurrentPage(currentPage + 1);
-    }
-  };
+  const goToAddFarm = () => navigation.navigate('FarmDetail', { farm_id: null });
 
-  const goToAddFarm = () =>
-    navigation.navigate('FarmDetail', { farm_id: null });
-
-  const reloadFarms = () => {
-    refreshFarms();
-  };
-
-  // Trạng thái cho ListEmptyComponent (loading/offline/error/empty) — chỉ hiển
-  // thị khi CHƯA có dữ liệu nào (đã có dữ liệu cũ thì giữ hiển thị, offline vẫn
-  // xem được — INV-1). Phân biệt mạng ⟂ server (§7.3).
   const renderEmpty = () => {
-    if (filteredFarms.length > 0) return null;
-    if (isLoading && farms.length === 0) {
-      return <StateView status="loading" loadingLines={4} />;
-    }
-    if (farms.length === 0 && offline) {
-      return <StateView status="offline" onRetry={reloadFarms} />;
-    }
-    if (farms.length === 0 && loadError) {
-      return <StateView status="error" onRetry={reloadFarms} />;
-    }
+    if (matched.length > 0) return null;
+    if (isLoading && farms.length === 0) return <StateView status="loading" loadingLines={4} />;
+    if (farms.length === 0 && offline) return <StateView status="offline" onRetry={refreshFarms} />;
+    if (farms.length === 0 && loadError) return <StateView status="error" onRetry={refreshFarms} />;
     if (farms.length === 0) {
       return (
         <StateView
           status="empty"
-          title="Chưa có trang trại nào"
-          message={'Hãy thêm nông trại đầu tiên để bắt đầu ghi nhận và truy xuất sầu riêng của bạn.'}
-          actionLabel="Thêm trang trại"
+          title={tk('trace.empty.noFarmTitle')}
+          message={tk('trace.empty.noFarmBody')}
+          actionLabel={tk('trace.button.addFarm')}
           onAction={goToAddFarm}
         />
       );
     }
-    // Có trại nhưng lọc rỗng → no-search-results (giữ riêng).
+    // Có vườn nhưng lọc rỗng — khác hẳn "chưa có vườn nào", nên nói khác.
     return (
-      <View style={styles.noSearchResults}>
-        <Icon name="magnifying-glass-minus" size={48} color={COLORS.textMuted} />
-        <Text style={styles.noSearchResultsText}>Không tìm thấy nông trại</Text>
+      <View style={styles.noResult}>
+        <View style={styles.noResultIcon}>
+          <Icon name="magnifying-glass-minus" size={30} color={TONE.primary} />
+        </View>
+        <Text style={TYPE.cardTitle}>{tk('trace.farmList.noResults')}</Text>
+        <Text style={[TYPE.caption, styles.noResultHint]}>{tk('trace.farmList.noResultsHint')}</Text>
       </View>
     );
   };
 
   return (
-    <View style={styles.root}>
-      <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
+    <Ground backdrop="list">
+      <StatusBar barStyle="dark-content" backgroundColor={SURFACE.ground} />
 
-      {/* ── Header ── */}
-      <Animated.View
-        style={[
-          styles.header,
-          { paddingTop: (Platform.OS === 'ios' ? 60 : 44) + insets.top },
-          { opacity: headerFade, transform: [{ translateY: headerSlide }] },
-        ]}
-      >
-        {/* Top bar */}
-        <View style={styles.headerTopBar}>
-          <View style={styles.headerTitleWrap}>
-            {/* Màn con (drill-down từ Dashboard) → cần nút quay lại (không có navbar ở đây). */}
-            {navigation.canGoBack() && (
-              <TouchableOpacity
-                onPress={() => navigation.goBack()}
-                style={styles.backBtn}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Icon name="arrow-left" size={24} color={COLORS.text} />
-              </TouchableOpacity>
-            )}
-            <View>
-              <Text style={styles.headerEyebrow}>TRUY XUẤT NGUỒN GỐC</Text>
-              <Text style={styles.headerTitle}>Trang trại</Text>
-            </View>
-          </View>
-          <MagicCreditBadge credits={wallet?.magicBalance ?? 0} />
-        </View>
-
-        {/* Subtitle + count */}
-        <View style={styles.headerSubRow}>
-          <Text style={styles.headerSub}>
-            {filteredFarms.length > 0
-              ? `${filteredFarms.length} farm under management`
-              : 'No farms yet'}
-          </Text>
-          {filteredFarms.length > 0 && (
-            <View style={styles.farmCountBadge}>
-              <Text style={styles.farmCountText}>{filteredFarms.length}</Text>
-            </View>
+      <Animated.View style={[styles.header, { paddingTop: insets.top + SPACE.md, opacity: headerFade }]}>
+        <View style={styles.headRow}>
+          {navigation.canGoBack() && (
+            <Pressable onPress={() => navigation.goBack()} style={styles.backBtn} hitSlop={10}>
+              <Icon name="arrow-left" size={22} color={NATURE.bark} />
+            </Pressable>
           )}
+          <View style={styles.headText}>
+            <Text style={TYPE.title} numberOfLines={1}>{tk('trace.farmList.title')}</Text>
+            <Text style={TYPE.caption}>
+              {farms.length > 0
+                ? tk('trace.farmList.count', { n: matched.length })
+                : tk('trace.empty.noFarmTitle')}
+            </Text>
+          </View>
         </View>
 
-        {/* Search Input */}
-        <View style={styles.searchContainer}>
-          <Icon name="magnifying-glass" size={18} color={COLORS.textMuted} />
+        <View style={styles.search}>
+          <Icon name="magnifying-glass" size={17} color={NATURE.barkSoft} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Tìm trang trại..."
-            placeholderTextColor={COLORS.textMuted}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
+            placeholder={tk('trace.farmList.search')}
+            placeholderTextColor={NATURE.barkSoft}
+            value={query}
+            onChangeText={setQuery}
           />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 13, bottom: 13, left: 13, right: 13 }}>
-              <Icon name="circle-xmark" size={18} color={COLORS.textMuted} />
-            </TouchableOpacity>
+          {query.length > 0 && (
+            <Pressable onPress={() => setQuery('')} hitSlop={12}>
+              <Icon name="circle-xmark" size={17} color={NATURE.barkSoft} />
+            </Pressable>
           )}
-        </View>
-
-        {/* Ornament */}
-        <View style={styles.headerRule}>
-          <View style={styles.headerRuleLine} />
-          <Icon name="leaf" size={12} color={COLORS.accentLight} />
-          <View style={styles.headerRuleLine} />
         </View>
       </Animated.View>
 
-      {/* ── List ── */}
       <FlatList
-        data={paginatedFarms}
-        keyExtractor={(item) => item.id}
-        // iOS-fix: chừa khoảng dưới cho CurvedTabBar (navbar nổi) khỏi che item cuối.
-        contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 120 }]}
+        data={visible}
+        keyExtractor={item => item.id}
+        contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 132 }]}
         showsVerticalScrollIndicator={false}
+        onScroll={onScroll}
+        scrollEventThrottle={160}
         ListEmptyComponent={renderEmpty()}
-        ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+        ItemSeparatorComponent={() => <View style={{ height: SPACE.md }} />}
         renderItem={({ item, index }) => (
           <FarmCard
             item={item}
             index={index}
-            onPress={() =>
-              navigation.navigate('FarmDetail', { farm_id: item.id })
-            }
+            onPress={() => navigation.navigate('FarmDetail', { farm_id: item.id })}
           />
         )}
         ListFooterComponent={
-          filteredFarms.length > 0 ? (
-            <View>
-              {/* Pagination */}
-              <PaginationControls
-                currentPage={currentPage}
-                totalPages={totalPages}
-                startIndex={startIndex}
-                endIndex={endIndex}
-                totalItems={filteredFarms.length}
-                onPreviousPage={handlePreviousPage}
-                onNextPage={handleNextPage}
-              />
-              <View style={{ height: 30 }} />
-            </View>
-          ) : null
+          moreComing ? <View style={styles.moreHint}><Leaf size={26} color={TONE.primary} opacity={0.35} /></View> : null
         }
       />
 
-      {/* ── FAB ── */}
       {farms.length > 0 && (
-        <View style={[styles.fabWrap, { bottom: (Platform.OS === 'ios' ? 70 : 70) + insets.bottom }]}>
-          <TouchableOpacity style={styles.fab} onPress={goToAddFarm} activeOpacity={0.88}>
-            <View style={styles.fabShine} />
-            <Icon name="plus" size={26} color={COLORS.white} />
-          </TouchableOpacity>
-          <Text style={styles.fabLabel}>Thêm trại</Text>
+        <View style={[styles.fabWrap, { bottom: insets.bottom + 78 }]}>
+          <Pressable
+            style={({ pressed }) => [styles.fab, ELEVATION.cardStrong, pressed && styles.pressed]}
+            onPress={goToAddFarm}
+          >
+            <Icon name="plus" size={24} color={NATURE.paper} />
+          </Pressable>
+          <Text style={styles.fabLabel}>{tk('trace.button.addFarm')}</Text>
         </View>
       )}
-    </View>
+    </Ground>
   );
 };
 
-// ── Styles ────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: COLORS.bg,
-  },
-
-  // ── Header
-  header: {
-    paddingTop: Platform.OS === 'ios' ? 60 : 44,
-    paddingHorizontal: 24,
-    paddingBottom: 16,
-    backgroundColor: COLORS.bg,
-  },
-  headerTopBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 6,
-  },
-  headerTitleWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
+  header: { paddingHorizontal: SPACE.page, paddingBottom: SPACE.lg, gap: SPACE.lg },
+  headRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md },
   backBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 42, height: 42, ...ORGANIC_TILE,
+    alignItems: 'center', justifyContent: 'center', backgroundColor: SURFACE.raised,
   },
-  headerEyebrow: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: COLORS.accent,
-    letterSpacing: 2.5,
-    marginBottom: 2,
-  },
-  headerTitle: {
-    fontSize: 34,
-    fontWeight: '800',
-    color: COLORS.text,
-    letterSpacing: -1,
-  },
-  headerSubRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 14,
-  },
-  headerSub: {
-    fontSize: 13,
-    color: COLORS.textMuted,
-    fontWeight: '400',
-  },
-  farmCountBadge: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: COLORS.accentGlow,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  farmCountText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: COLORS.accent,
-  },
-  headerRule: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  headerRuleLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: COLORS.border,
-  },
+  headText: { flex: 1, minWidth: 0, gap: 1 },
 
-  // ── Credit Badge
-  creditBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: COLORS.accentGlow,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+  search: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
+    minHeight: 52, paddingHorizontal: SPACE.lg,
+    ...ORGANIC_CARD, backgroundColor: SURFACE.raised, ...ELEVATION.card,
   },
-  creditValue: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: COLORS.accent,
-    letterSpacing: 0.3,
-  },
-  creditLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: COLORS.accentLight,
-    letterSpacing: 1,
-  },
+  searchInput: { flex: 1, fontSize: 16, color: NATURE.bark, paddingVertical: 0 },
 
-  // ── List
-  listContent: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    flexGrow: 1,
-  },
+  list: { paddingHorizontal: SPACE.page, paddingTop: SPACE.xs },
 
-  // ── Farm Card
   card: {
-    backgroundColor: COLORS.card,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    flexDirection: 'row',
-    alignItems: 'center',
-    overflow: 'hidden',
-    shadowColor: COLORS.shadow,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 1,
-    shadowRadius: 12,
-    elevation: 2,
+    ...ORGANIC_CARD, backgroundColor: SURFACE.raised,
+    padding: SPACE.lg, gap: SPACE.md, overflow: 'hidden',
   },
-  cardAccentBar: {
-    width: 4,
-    alignSelf: 'stretch',
-    backgroundColor: COLORS.accent,
-    borderTopLeftRadius: 18,
-    borderBottomLeftRadius: 18,
+  pressed: { opacity: 0.92 },
+  cardLeaf: { position: 'absolute', top: -16, right: -12 },
+
+  cardHead: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md },
+  cardIcon: {
+    width: 46, height: 46, ...ORGANIC_TILE,
+    alignItems: 'center', justifyContent: 'center', backgroundColor: TONE.primarySoft,
   },
-  cardBody: {
-    flex: 1,
-    padding: 14,
-    paddingLeft: 14,
+  cardHeadText: { flex: 1, minWidth: 0, gap: 2 },
+  cardName: { fontSize: 18, fontWeight: '700', color: NATURE.bark },
+  cardPlace: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  cardPlaceTxt: { ...TYPE.caption, flexShrink: 1, fontSize: 13 },
+
+  chip: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: RADIUS.chip,
   },
-  cardTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  cardIconWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    backgroundColor: COLORS.accentGlow,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  statusChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: 20,
-  },
-  statusDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-  },
-  statusText: {
-    fontSize: 10,
-    fontWeight: '600',
-    letterSpacing: 0.2,
-  },
-  cardName: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: COLORS.text,
-    letterSpacing: -0.3,
-    marginBottom: 5,
-  },
-  cardLocation: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginBottom: 10,
-  },
-  cardLocationText: {
-    fontSize: 12,
-    color: COLORS.textMuted,
-    flex: 1,
-  },
+  chipDot: { width: 6, height: 6, borderRadius: 3 },
+  // Hàng đầu thẻ nay có thêm nút dẫn đường, nên chip trạng thái phải biết co lại
+  // thay vì đẩy tên vườn ra khỏi thẻ trên máy màn hẹp.
+  chipTxt: { fontSize: 12.5, fontWeight: '600', flexShrink: 1 },
+
   cardStats: {
-    flexDirection: 'row',
-    gap: 14,
+    flexDirection: 'row', alignItems: 'center',
+    paddingTop: SPACE.md, borderTopWidth: 1, borderTopColor: TONE.border,
   },
-  cardStatItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  cardStatVal: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: COLORS.text,
-  },
-  cardStatLabel: {
-    fontSize: 11,
-    color: COLORS.textMuted,
-  },
-  cardChevron: {
-    paddingRight: 14,
-    paddingLeft: 4,
-  },
+  stat: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  statVal: { fontSize: 16, fontWeight: '700', color: NATURE.bark },
+  statLabel: { ...TYPE.caption, fontSize: 13 },
+  statSep: { width: 1, height: 20, backgroundColor: TONE.border },
 
-  // ── Search
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.card,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    marginTop: 14,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    gap: 8,
+  noResult: { alignItems: 'center', paddingTop: SPACE.xxl, paddingHorizontal: SPACE.xl, gap: SPACE.sm },
+  noResultIcon: {
+    width: 66, height: 66, ...ORGANIC_TILE, marginBottom: SPACE.sm,
+    alignItems: 'center', justifyContent: 'center', backgroundColor: TONE.primarySoft,
   },
-  searchInput: {
-    flex: 1,
-    fontSize: 14,
-    color: COLORS.text,
-    paddingVertical: 4,
-  },
+  noResultHint: { textAlign: 'center' },
 
-  // ── No Search Results
-  noSearchResults: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 80,
-  },
-  noSearchResultsText: {
-    fontSize: 16,
-    color: COLORS.textMuted,
-    marginTop: 12,
-    fontWeight: '500',
-  },
+  moreHint: { alignItems: 'center', paddingVertical: SPACE.xl },
 
-  // ── FAB
-  fabWrap: {
-    position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 50 : 60,
-    right: 24,
-    alignItems: 'center',
-    gap: 6,
-  },
+  fabWrap: { position: 'absolute', right: SPACE.page, alignItems: 'center', gap: 6 },
   fab: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: COLORS.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-    position: 'relative',
-    shadowColor: COLORS.accent,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.38,
-    shadowRadius: 16,
-    elevation: 8,
+    width: 62, height: 62,
+    borderTopLeftRadius: 26, borderTopRightRadius: 20,
+    borderBottomRightRadius: 26, borderBottomLeftRadius: 20,
+    alignItems: 'center', justifyContent: 'center', backgroundColor: TONE.primary,
   },
-  fabShine: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0,
-    height: '50%',
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderRadius: 29,
-  },
-  fabLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: COLORS.textMuted,
-    letterSpacing: 0.5,
-  },
+  fabLabel: { fontSize: 13, fontWeight: '600', color: TONE.primaryDeep },
 });
 
 export default FarmListScreen;

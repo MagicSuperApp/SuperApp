@@ -11,10 +11,20 @@
  */
 
 import { Platform } from 'react-native';
+import { REMOTE_LOG_URL } from '@env';
 
-// Hardcode cùng giá trị với ScannerRemoteLog.swift
-const REMOTE_LOG_SERVER_URL =
-  'https://gutless-renovator-distaste.ngrok-free.dev/logs';
+// ⛔ KHÔNG có đường lui mặc định. Chỗ này từng viết cứng
+// `https://gutless-renovator-distaste.ngrok-free.dev/logs` — một tunnel tạm trên máy
+// lập trình viên. Nghĩa là MỌI bản phát hành đều đẩy nhật ký thiết bị của người dùng
+// thật (luồng nhận diện cây, và cả `orilifeDidAuth`) lên một tên miền tạm mà bất kỳ ai
+// cũng giành lại được sau khi tunnel tắt. Bản `app-release.aab` dựng tay 15/08 CÓ chuỗi
+// đó nướng sẵn trong bundle — đo bằng `strings` trên chính tệp .aab.
+// Thiếu cấu hình phải là TẮT. Địa chỉ cũ coi như đã lộ (còn trong lịch sử git).
+// Cổng `.github/workflows/android-aab.yml` nay chặn `ngrok-free.dev` trong bundle.
+const REMOTE_LOG_SERVER_URL = String(REMOTE_LOG_URL ?? '').trim();
+
+/** Có nơi để gửi nhật ký không. Chưa cấu hình ⇒ chỉ in ra console, không đi mạng. */
+export const remoteLogEnabled = (): boolean => REMOTE_LOG_SERVER_URL.length > 0;
 
 // ── Device info (resolve 1 lần) ───────────────────────────────────────────────
 
@@ -54,6 +64,12 @@ function send(event: string, data: Record<string, unknown>, level = 'info'): voi
     console.error(tag, data);
   } else {
     console.log(tag, data);
+  }
+
+  // Chưa cấu hình đích ⇒ dừng ở console echo phía trên. Console vẫn chạy nên khi
+  // gỡ lỗi bằng Metro/Xcode không mất gì; chỉ phần ĐI RA MẠNG là tắt.
+  if (!REMOTE_LOG_SERVER_URL) {
+    return;
   }
 
   fetch(REMOTE_LOG_SERVER_URL, {
@@ -284,6 +300,13 @@ const rLog = {
     placeGlCreated(): void { send('viewer3d_place_gl_created', {}); },
     placeUnmount(): void { send('viewer3d_place_unmount', {}); },
 
+    /**
+     * Dò expo-gl ngay trước khi mở màn 3D (xem `_glAvailable` trong navigation/index).
+     * ok=false ⇒ native chưa cài `globalThis.expo` → app hiện màn thay thế, KHÔNG crash.
+     */
+    glProbe(ok: boolean, message: string | null): void {
+      send('viewer3d_gl_probe', { ok, message }, ok ? 'info' : 'error');
+    },
     /** ErrorBoundary quanh cảnh 3D bắt được lỗi JS (không phải native crash). */
     boundaryError(tag: string, message: string, stack: string | null): void {
       send('viewer3d_boundary_error', { tag, message, stack }, 'error');

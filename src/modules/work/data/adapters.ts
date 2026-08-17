@@ -6,7 +6,9 @@
 //
 // LƯU Ý chênh lệch schema (đánh dấu để không tưởng nhầm là dữ liệu thật):
 //   - Backend KHÔNG có district/location/postedAt tách riêng, rating người
-//     đăng, applicantCount. Map default an toàn + suy ra từ trường có sẵn.
+//     đăng, applicantCount. Trường nào dây không có thì để RỖNG/0 và màn ẩn đi
+//     — KHÔNG điền giá trị vẽ ra (đã từng gán cứng `rating: 5`,
+//     `postedAt: 'Vừa đăng'`, khiến mọi việc trông như vừa đăng bởi người 5 sao).
 //   - budget = priceVND (off-chain, VND). deadline suy từ deadlineDays.
 //   - DID người dùng LUÔN did:phoenix → `verified: true` (mọi account qua
 //     PhoenixKey DID). KHÔNG để did:cardano rò vào UI (did:cardano chỉ cho
@@ -40,6 +42,18 @@ const categoryIdFor = (job: WorkJob): string => {
   return SKILL_TO_CATEGORY[skill] || 'other';
 };
 
+/**
+ * Ảnh đại diện: CHỈ nhận đường dẫn http(s) do dây trả về, không có thì trả rỗng
+ * và để `PosterAvatar` vẽ vòng chữ cái đầu tại máy.
+ *
+ * Bản trước dựng `https://i.pravatar.cc/150?u=<DID>` làm ảnh thay thế ⇒ DID
+ * PhoenixKey của người dùng bị gửi sang máy chủ bên thứ ba trong query string
+ * mỗi lần mở danh sách việc, và nằm lại trong log của họ. DID là định danh gắn
+ * với sinh trắc, không được rời máy theo đường này.
+ */
+const httpAvatar = (url?: string): string =>
+  url && /^https?:\/\//.test(url) ? url : '';
+
 const deadlineLabel = (deadlineDays?: number): string => {
   if (!deadlineDays || deadlineDays <= 0) return 'Không giới hạn';
   const d = new Date(Date.now() + deadlineDays * 24 * 3600 * 1000);
@@ -57,16 +71,24 @@ export const toUiJob = (j: WorkJob): Job => ({
   // Backend chưa tách địa điểm → để nhãn trung tính (KHÔNG bịa quận/thành phố).
   location: 'Việt Nam',
   district: j.template?.label || j.skill || '',
-  postedAt: 'Vừa đăng',
+  // `WorkJob` KHÔNG có trường thời gian nào (xem `services/types.ts`) ⇒ không
+  // suy ra được lúc đăng. Trả rỗng để màn ẩn dòng, thay vì viết cứng
+  // "Vừa đăng" cho MỌI việc — kể cả việc đăng từ tháng trước.
+  postedAt: '',
   deadline: deadlineLabel(j.deadlineDays),
   postedBy: {
     name: j.ownerName || j.postedByName || 'Người đăng',
-    avatar: j.ownerAvatar || 'https://i.pravatar.cc/150?u=' + encodeURIComponent(j.ownerDid),
-    rating: 5,
+    avatar: httpAvatar(j.ownerAvatar),
+    // Dây AladinWork không cấp trường `rating` nào (nhà đó xác nhận 11/08) —
+    // giống hệt `toUiWorker` bên dưới. Gán cứng 5 là vẽ ra điểm chưa ai chấm.
+    // 0 = "chưa có", màn phải hiểu 0 là chưa có chứ không phải điểm kém.
+    rating: 0,
     verified: true, // mọi tài khoản AladinWork đều qua PhoenixKey DID (SPEC §1)
   },
   description: j.desc || '',
   requirements: reqToList(j.req),
+  // Cũng không có thật: dây không trả số người ứng tuyển. 0 = "chưa biết",
+  // màn ẩn dòng này khi bằng 0 thay vì báo "0 ứng tuyển".
   applicantCount: 0,
   isUrgent: false,
   isFeatured: false,
@@ -83,16 +105,22 @@ const reqToList = (req?: Record<string, unknown>): string[] => {
 export const toUiWorker = (a: WorkAccount): Worker => ({
   id: a.did,
   name: a.name || 'Genie',
-  avatar: a.avatar && a.avatar.startsWith('http')
-    ? a.avatar
-    : 'https://i.pravatar.cc/150?u=' + encodeURIComponent(a.did),
+  avatar: httpAvatar(a.avatar),
   title: a.title || (a.skills?.[0] ?? 'Cộng tác viên'),
-  rating: 5,
-  reviewCount: (a.jems?.length ?? 0),
-  completedJobs: (a.jems?.length ?? 0),
+  // `rating` KHÔNG có thật: dây AladinWork không hề cấp trường nào tên `rating`
+  // (nhà đó xác nhận 11/08). Gán cứng 5 là vẽ ra một điểm đánh giá chưa ai chấm.
+  // 0 = "chưa có", và màn phải hiểu số 0 là chưa có chứ không phải điểm kém.
+  rating: 0,
+  // Cũng không có thật — `jems` là việc NHẬN, không phải lượt đánh giá.
+  reviewCount: 0,
+  // Số THẬT từ dây: hợp đồng đã tất toán mà người này đứng vai Genie
+  // (`Core/server.js:2339`). `jems.length` là việc nhận — sai nghĩa hoàn toàn.
+  completedJobs: a.completedJobs ?? 0,
   hourlyRate: 0,
   location: 'Việt Nam',
   skills: a.skills ?? [],
+  // `verified` đúng theo SPEC §1 (mọi tài khoản AladinWork đều qua PhoenixKey DID)
+  // — đây là suy ra từ điều kiện tạo tài khoản, KHÔNG phải trường dây trả về.
   verified: true,
   online: false,
   bio: a.title || '',

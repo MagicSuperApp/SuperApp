@@ -449,10 +449,18 @@ const Space3DScreen: React.FC = () => {
       }
       return pts;
     }
+    // `posSource === 'auto'` nghĩa là cây KHÔNG có toạ độ, và chỗ nó đang đứng là
+    // do `seededPointInRing()` rắc ngẫu nhiên trong ranh giới (`useSpaceData.ts:167`).
+    // Cờ đó sinh ra từ đầu nhưng CHƯA nơi nào đọc — nên tới hôm nay, cây bịa vị trí
+    // trông y hệt cây có GPS thật. Người thực địa nhìn sơ đồ, đi 60m tới góc vườn,
+    // và ở đó không có cây nào. Đây đúng cơ chế "giá trị hợp lý thay cho giá trị
+    // vắng": không có gì báo lỗi, chỉ có một vị trí sai trông rất thuyết phục.
+    // Dấu `~` là mức rẻ nhất để nói thật; nó không sửa được vị trí, nhưng nó thôi
+    // hứa một thứ app không biết.
     return trees.map((t) => ({
       id: `tree:${t.id}`,
       kind: 'tree' as const,
-      text: t.name,
+      text: t.posSource === 'auto' ? `~ ${t.name}` : t.name,
       position: [t.pos.x, treeLabelY, t.pos.z] as [number, number, number],
     }));
   }, [focusTree, fruits, trees, treeLabelY]);

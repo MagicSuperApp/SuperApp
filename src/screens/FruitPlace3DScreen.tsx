@@ -19,7 +19,20 @@
  * đè lên canvas vẫn khớp chính xác với cây, và luôn kéo được (không cần raycast).
  *
  * Trả kết quả về màn trước bằng `navigate(..., { merge: true })` với tham số
- * `pickedFruitCoord`; nếu đã có `fruitId` thì lưu thẳng vào máy luôn.
+ * `pickedFruitCoord`.
+ *
+ * ── QUẢ MỚI vs QUẢ ĐÃ CÓ: hai đường đi KHÁC NHAU ────────────────────────────
+ * · Quả MỚI (không có `fruitId`, vào từ FruitCropper): toạ-độ trả ngược về màn
+ *   khoanh quả, rồi đi lên máy chủ cùng ảnh trong `enroll` — đủ cả pos_x/pos_h/pos_z.
+ * · Quả ĐÃ CÓ (`fruitId`, vào từ Space3D): CHỈ lưu được vào máy này.
+ *   Máy chủ OriLife nhận toạ-độ ở đúng hai chỗ — `POST /api/fruit/enroll` và
+ *   `POST /api/fruit/add_view` — và cả hai đều BẮT BUỘC kèm ảnh (`file: UploadFile
+ *   = File(...)`), vì chúng là đường nạp ảnh chứ không phải đường sửa vị-trí.
+ *   Không có endpoint nào sửa riêng toạ-độ của quả đã đăng ký. Màn này không cầm
+ *   ảnh nào trong tay, nên không có gì hợp lệ để gửi.
+ *   → nói thẳng với người dùng là vị-trí chỉ nằm ở máy này, đừng để họ tưởng đã
+ *     lưu lên máy chủ rồi mở máy khác mới biết là không. Sửa tận gốc phải thêm
+ *     endpoint bên OriLifeTrace (kho đó nhà này không sửa).
  *
  * Route params: { treeId, treeName?, fruitId?, fruitName?, initial?, returnTo? }
  */
@@ -35,6 +48,8 @@ import { Canvas, useThree } from '@react-three/fiber/native';
 import type * as THREE from 'three';
 
 import { Icon } from '../components/Icon';
+import { useTk } from '../i18n/keys';
+import { ORGANIC_TILE, ORGANIC_CARD } from '../modules/trace/theme/depth';
 import GLErrorBoundary from '../components/GLErrorBoundary';
 import rLog from '../services/remoteLogger';
 import {
@@ -159,7 +174,9 @@ const FruitPlace3DScreen: React.FC = () => {
   // ── Kết thúc: trả toạ-độ về màn trước ──────────────────────────────────────
   const done = useCallback(async () => {
     setSaving(true);
-    // Có sẵn quả trên server → lưu toạ-độ đủ 3 chiều vào máy ngay.
+    // Quả đã có trên máy chủ → chỉ lưu được vào máy này (không có endpoint sửa
+    // toạ-độ rời; xem ghi chú đầu tệp). Người dùng được báo trước bằng dòng cảnh
+    // báo dưới footer, nên đây không còn là chỗ lặng lẽ nuốt dữ-liệu.
     if (fruitId) await saveFruitCoord(fruitId, coord);
     setSaving(false);
     // Kèm cả CHỖ ĐANG ĐỨNG để màn trước khôi phục đúng ngữ cảnh: Space3D phải quay
@@ -189,6 +206,7 @@ const FruitPlace3DScreen: React.FC = () => {
     done();
   }, [view, done]);
 
+  const tk = useTk();
   const zone = coordToZone(coord);
   const locked = lockedAxis(view);
   const activeDef = VIEW_DEFS.find((v) => v.key === view)!;
@@ -202,9 +220,13 @@ const FruitPlace3DScreen: React.FC = () => {
           <Icon name="chevron-left" size={17} color={SPACE_COLORS.text} />
         </TouchableOpacity>
         <View style={styles.headTitles}>
-          <Text style={styles.eyebrow}>SET FRUIT LOCATION · STEP {activeDef.step}/{VIEW_DEFS.length}</Text>
           <Text style={styles.title} numberOfLines={1}>
-            {fruitName || 'Quả mới'} · {treeName || 'Cây'}
+            {tk('trace.place3d.title')}
+          </Text>
+          <Text style={styles.eyebrow} numberOfLines={1}>
+            {tk('trace.place3d.step', { i: activeDef.step, n: VIEW_DEFS.length })}
+            {' · '}{fruitName || tk('trace.place3d.newFruit')}
+            {treeName ? ` · ${treeName}` : ''}
           </Text>
         </View>
       </View>
@@ -226,7 +248,7 @@ const FruitPlace3DScreen: React.FC = () => {
                   ? <Icon name="check" size={9} color={SPACE_COLORS.bg} />
                   : <Text style={[styles.stepBadgeTxt, on && styles.stepBadgeTxtOn]}>{v.step}</Text>}
               </View>
-              <Text style={[styles.viewTabTxt, on && styles.viewTabTxtOn]}>{v.label}</Text>
+              <Text style={[styles.viewTabTxt, on && styles.viewTabTxtOn]}>{tk(v.labelKey)}</Text>
             </TouchableOpacity>
           );
         })}
@@ -273,20 +295,29 @@ const FruitPlace3DScreen: React.FC = () => {
         )}
 
         <View pointerEvents="none" style={styles.stageHint}>
-          <Text style={styles.stageHintTxt}>{activeDef.hint} · lock {locked}</Text>
+          <Text style={styles.stageHintTxt}>{activeDef.hint}</Text>
         </View>
       </View>
 
       {/* Toạ độ + điều hướng bước */}
       <View style={[styles.footer, { paddingBottom: insets.bottom + 14 }]}>
         <View style={styles.coordRow}>
-          <CoordChip label="X" value={coord.x} hint="trái ⇄ phải" active={locked !== 'X'} />
-          <CoordChip label="Y" value={coord.y} hint="gốc → ngọn" active={locked !== 'Y'} />
-          <CoordChip label="Z" value={coord.z} hint="trước ⇄ sau" active={locked !== 'Z'} />
+          <CoordChip label="X" value={coord.x} hint={tk('trace.place3d.axisX')} active={locked !== 'X'} lockedTxt={tk('trace.place3d.locked')} />
+          <CoordChip label="Y" value={coord.y} hint={tk('trace.place3d.axisY')} active={locked !== 'Y'} lockedTxt={tk('trace.place3d.locked')} />
+          <CoordChip label="Z" value={coord.z} hint={tk('trace.place3d.axisZ')} active={locked !== 'Z'} lockedTxt={tk('trace.place3d.locked')} />
           <View style={styles.zoneChip}>
             <Text style={styles.zoneChipTxt}>{ZONE_LABEL[zone]}</Text>
           </View>
         </View>
+
+        {/* Quả đã đăng ký: nói thật là vị-trí không rời khỏi máy này. Im lặng ở đây
+            thì người dùng chỉ phát hiện khi mở máy khác và thấy quả nằm sai chỗ. */}
+        {fruitId ? (
+          <View style={styles.localOnly}>
+            <Icon name="circle-info" size={12} color={SPACE_COLORS.textMuted} />
+            <Text style={styles.localOnlyTxt}>{tk('trace.place3d.localOnly')}</Text>
+          </View>
+        ) : null}
 
         <View style={styles.footerBtns}>
           <TouchableOpacity
@@ -295,7 +326,7 @@ const FruitPlace3DScreen: React.FC = () => {
             activeOpacity={0.8}
           >
             <Icon name="arrow-rotate-left" size={14} color={SPACE_COLORS.text} />
-            <Text style={styles.resetTxt}>Đặt lại</Text>
+            <Text style={styles.resetTxt}>{tk('trace.place3d.reset')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.doneBtn} onPress={advance} disabled={saving} activeOpacity={0.88}>
             {saving ? <ActivityIndicator color="#06120c" /> : (
@@ -303,8 +334,10 @@ const FruitPlace3DScreen: React.FC = () => {
                 <Icon name={upcoming ? 'chevron-right' : 'check'} size={15} color="#06120c" />
                 <Text style={styles.doneTxt}>
                   {upcoming
-                    ? `Next ${VIEW_DEFS.find((v) => v.key === upcoming)!.label}`
-                    : 'Xác nhận vị trí'}
+                    ? tk('trace.place3d.next', {
+                        view: tk(VIEW_DEFS.find((v) => v.key === upcoming)!.labelKey),
+                      })
+                    : tk('trace.place3d.confirm')}
                 </Text>
               </>
             )}
@@ -315,13 +348,13 @@ const FruitPlace3DScreen: React.FC = () => {
   );
 };
 
-const CoordChip: React.FC<{ label: string; value: number; hint: string; active: boolean }> = ({
-  label, value, hint, active,
-}) => (
+const CoordChip: React.FC<{
+  label: string; value: number; hint: string; active: boolean; lockedTxt: string;
+}> = ({ label, value, hint, active, lockedTxt }) => (
   <View style={[styles.coordChip, !active && styles.coordChipLocked]}>
     <Text style={[styles.coordLabel, !active && styles.coordLabelLocked]}>{label}</Text>
     <Text style={styles.coordVal}>{value.toFixed(2)}</Text>
-    <Text style={styles.coordHint}>{active ? hint : 'đang khoá'}</Text>
+    <Text style={styles.coordHint}>{active ? hint : lockedTxt}</Text>
   </View>
 );
 
@@ -330,7 +363,7 @@ const styles = StyleSheet.create({
 
   header: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingBottom: 8 },
   iconBtn: {
-    width: 40, height: 40, borderRadius: 13,
+    width: 44, height: 44, ...ORGANIC_TILE,
     alignItems: 'center', justifyContent: 'center',
     backgroundColor: SPACE_COLORS.hudBg, borderWidth: 1, borderColor: SPACE_COLORS.hudBorder,
   },
@@ -394,6 +427,13 @@ const styles = StyleSheet.create({
   },
   zoneChipTxt: { color: SPACE_COLORS.accent, fontSize: 12, fontWeight: '800' },
 
+  localOnly: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 7,
+    paddingHorizontal: 11, paddingVertical: 9, borderRadius: 11,
+    backgroundColor: SPACE_COLORS.hudBg, borderWidth: 1, borderColor: SPACE_COLORS.hudBorder,
+  },
+  localOnlyTxt: { flex: 1, color: SPACE_COLORS.textMuted, fontSize: 11, lineHeight: 15 },
+
   footerBtns: { flexDirection: 'row', gap: 10 },
   resetBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
@@ -403,9 +443,9 @@ const styles = StyleSheet.create({
   resetTxt: { color: SPACE_COLORS.text, fontSize: 14, fontWeight: '700' },
   doneBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    paddingVertical: 14, borderRadius: 13, backgroundColor: SPACE_COLORS.accent,
+    paddingVertical: 16, ...ORGANIC_CARD, backgroundColor: SPACE_COLORS.accent,
   },
-  doneTxt: { color: '#06120c', fontSize: 14, fontWeight: '800' },
+  doneTxt: { color: '#06120c', fontSize: 16, fontWeight: '700' },
 });
 
 export default FruitPlace3DScreen;

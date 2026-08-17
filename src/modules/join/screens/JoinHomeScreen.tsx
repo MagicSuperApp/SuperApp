@@ -53,6 +53,10 @@ const JoinHomeScreen: React.FC = () => {
   const [phase, setPhase] = useState<JoinPhase>('idle');
   const [result, setResult] = useState<JoinResult | null>(null);
   const [errorKind, setErrorKind] = useState<'auth' | 'server' | 'unsupported' | null>(null);
+  // Câu lý do CỦA MÁY CHỦ, khi nó nói cụ thể hơn câu chung của app. Đo 15/08:
+  // `POST /v1/wallet/activate` trả 403 kèm "Reputation 46.3 < threshold 50.0. Cần thêm
+  // uptime/shards." — câu đó nói được còn thiếu bao nhiêu, câu chung thì không.
+  const [errorDetail, setErrorDetail] = useState<string | null>(null);
 
   const handleJoin = useCallback(async () => {
     // Chưa cấu hình backend → coi như offline (KHUNG chạy được, không vỡ).
@@ -103,10 +107,12 @@ const JoinHomeScreen: React.FC = () => {
           setPhase('offline');
         } else {
           setErrorKind(e.kind);
+          setErrorDetail(e.message || null);
           setPhase('error');
         }
       } else {
         setErrorKind('server');
+        setErrorDetail(null);
         setPhase('error');
       }
     }
@@ -115,6 +121,7 @@ const JoinHomeScreen: React.FC = () => {
   const retry = useCallback(() => {
     setPhase('idle');
     setErrorKind(null);
+    setErrorDetail(null);
   }, []);
 
   return (
@@ -128,7 +135,7 @@ const JoinHomeScreen: React.FC = () => {
             <Icon name="arrow-left" size={22} color={LAMPNET_THEME.onPrimary} />
           </TouchableOpacity>
           <View style={styles.headerTitleBox}>
-            <Text style={styles.headerTitle}>Kết đèn</Text>
+            <Text style={styles.headerTitle}>Góp máy</Text>
             <Text style={styles.headerSubtitle}>Góp sức máy · Tham gia mạng lưới</Text>
           </View>
           <View style={styles.headerIconWrap}>
@@ -231,11 +238,12 @@ const JoinHomeScreen: React.FC = () => {
               : 'Mạng đang trục trặc'
             }
             message={
-              errorKind === 'auth'
+              errorDetail ??
+              (errorKind === 'auth'
                 ? 'Cần có danh tính và ví nhận thưởng hợp lệ, hoặc bạn chưa đủ bậc tham gia.'
                 : errorKind === 'unsupported'
-                ? 'Tính năng Kết đèn sẽ mở ở bản sau.'
-                : 'Máy chủ đang bận. Thử lại sau ít phút.'
+                ? 'Tính năng Góp máy sẽ mở ở bản sau.'
+                : 'Máy chủ đang bận. Thử lại sau ít phút.')
             }
             onRetry={retry}
           />
@@ -254,6 +262,20 @@ const JoinHomeScreen: React.FC = () => {
               Máy của bạn giờ là một ngọn đèn của mạng. Theo dõi việc đang chạy và
               thưởng tích luỹ ở màn "Đang đóng góp".
             </Text>
+            {/* Bậc là con số máy chủ TỰ SUY, KHÔNG được chữ ký nào phủ. Nhà LampNet
+                đo và báo 12/08: `classify_tier` tính bậc từ `hw_cpu_score`/`hw_ram_mb`
+                (`lib.rs:96-104`), mà bốn trường `hw_*` KHÔNG nằm trong `F` — khối được
+                ký ở `attest_sig_hex`. Ai đứng trên đường truyền, kể cả node bootstrap
+                nhận yêu cầu, sửa hai số đó là đổi bậc của người khác mà không phá chữ
+                ký nào.
+                Nên đừng trình bậc như một thuộc tính đã được chứng thực. Dòng dưới là
+                mức trung thực rẻ nhất; khi nào bốn trường đó được ký thì gỡ nó đi. */}
+            {result?.tier != null && (
+              <Text style={styles.tierNote}>
+                Bậc do máy chủ tự xếp theo cấu hình máy bạn khai. Nó chưa được ký, nên
+                hãy coi là ước lượng.
+              </Text>
+            )}
             <TouchableOpacity
               activeOpacity={0.9}
               style={styles.tierCta}
@@ -279,7 +301,7 @@ const JoinHomeScreen: React.FC = () => {
           >
             <Icon name="power-plug-outline" size={20} color={LAMPNET_THEME.onPrimary} />
             <Text style={styles.joinBtnText}>
-              {phase === 'joining' ? 'Đang kết đèn…' : 'Kết đèn — Tham gia ngay'}
+              {phase === 'joining' ? 'Đang góp máy…' : 'Góp máy — Tham gia ngay'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -393,6 +415,7 @@ const styles = StyleSheet.create({
   tierBadgeText: { fontSize: 12, fontWeight: '800', color: LAMPNET_THEME.onPrimary },
   tierTitle: { fontSize: 16, fontWeight: '800', color: COLORS.text, marginBottom: 6 },
   tierBody: { fontSize: 12, color: COLORS.textSub, lineHeight: 18, marginBottom: 14 },
+  tierNote: { fontSize: 11, color: COLORS.textMuted, lineHeight: 16, marginBottom: 14 },
   tierCta: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     paddingVertical: 12, borderRadius: 12,

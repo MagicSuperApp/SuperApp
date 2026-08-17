@@ -33,7 +33,11 @@ import ReactNativeBiometrics, { BiometryTypes } from 'react-native-biometrics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS } from '../constants';
 import { biometricKindFromType, phoenixKeyAuth } from '../services/phoenixKeyAuthService';
-import { isAvailable as isPhoenixKeyAvailable } from '../services/phoenixKey-native';
+import {
+  isAvailable as isPhoenixKeyAvailable,
+  PhoenixKeyNativeError,
+} from '../services/phoenixKey-native';
+import { currentUserDid, isKeypairEnrolled, signRaw } from '../sdk/phoenixKey';
 import { loginUser } from '../store/userSlice';
 import { showError } from '../utils/alert';
 import LoginSuccessOverlay from '../components/LoginSuccessOverlay';
@@ -74,32 +78,9 @@ type EventItem = {
   subtitle: string;
 };
 
-const EVENTS: EventItem[] = [
-  {
-    id: 'e1',
-    badge: 'NEW',
-    badgeColor: '#2B7A39',
-    icon: 'message-badge-outline',
-    title: 'Aladin Chat — phiên bản mới',
-    subtitle: 'Tin nhắn ký số · Escrow tích hợp',
-  },
-  {
-    id: 'e2',
-    badge: 'HOT',
-    badgeColor: '#E08C3A',
-    icon: 'gift-outline',
-    title: 'Đăng ký thợ — nhận 100 MAGIC',
-    subtitle: 'Ưu đãi cho người mới đến 30/04',
-  },
-  {
-    id: 'e3',
-    badge: 'EVENT',
-    badgeColor: '#3D7A5E',
-    icon: 'calendar-star',
-    title: 'Aladin Day 30/04',
-    subtitle: 'Sự kiện cộng đồng & airdrop',
-  },
-];
+// Mảng `EVENTS` viết cứng ĐÃ GỠ (2026-08-15) — xem lý do ở chỗ dựng khu này bên
+// dưới. Giữ lại kiểu `EventItem` và thành phần `EventCard`: có API tin tức thật thì
+// chỉ cần đổ dữ liệu vào là dựng lại được, KHÔNG viết cứng mốc thời gian lần nữa.
 
 // ── Component ───────────────────────────────────────────────────────────────
 const LoginScreen = () => {
@@ -179,20 +160,26 @@ const LoginScreen = () => {
           }),
         ]),
       );
-    float(blob1, 4500).start();
-    float(blob2, 6000).start();
-    float(blob3, 5200).start();
+    // Giữ tham chiếu để dừng lúc rời màn — cùng lối đã dùng ở nút sinh trắc bên
+    // dưới (:579). Ba vòng này chạy vô hạn theo thiết kế, không dừng là chúng quay
+    // tiếp sau khi màn đăng nhập đã đóng.
+    const loops = [float(blob1, 4500), float(blob2, 6000), float(blob3, 5200)];
+    loops.forEach(l => l.start());
 
+    let alive = true;
     (async () => {
       try {
         const rn = new ReactNativeBiometrics();
         const { available, biometryType: type } = await rn.isSensorAvailable();
+        if (!alive) return; // màn đã rời — đừng đặt state vào cây đã tháo
         setSensorAvailable(available);
         setBiometryType(type || '');
       } catch (e) {
         console.log('[Login] Biometric sensor check failed:', e);
       }
     })();
+
+    return () => { alive = false; loops.forEach(l => l.stop()); };
   }, [fadeAnim, slideAnim, blob1, blob2, blob3]);
 
   const hasFaceId = biometryType === BiometryTypes.FaceID;
@@ -242,40 +229,78 @@ const LoginScreen = () => {
     });
     try {
       setBusy(true);
-      // Không còn nhánh "máy không có cảm biến": `noSensor` đã chặn ở đầu hàm và
-      // nút cũng đã tắt. Lúc chưa dò xong (`sensorAvailable === null`) thì vẫn gọi
-      // — hệ điều hành mới là bên phán quyết cuối, không phải kết quả dò của ta.
-      const rn = new ReactNativeBiometrics();
-      const { success } = await rn.simplePrompt({
-        promptMessage: prompt, cancelButtonText: t('Huỷ'),
-      });
-      if (!success) { setBusy(false); return; }
-
-      // PhoenixKey flow: unlock existing identity
-      let result;
-      if (isPhoenixKeyAvailable()) {
-        const user = await phoenixKeyAuth.unlockExistingIdentity();
-        result = user
-          ? { success: true, user, message: '' }
-          : { success: false, user: null, message: 'Chưa có danh tính' };
-      } else {
-        result = { success: false, user: null, message: 'Chưa dùng được danh tính trên máy này' };
+      if (!isPhoenixKeyAvailable()) {
+        showError('Chưa dùng được danh tính trên máy này');
+        return;
       }
 
-      if (result.success && result.user) {
-        trackAction('login_success', {
-          metadata: { kind: bioKind, biometryType: biometryType || 'unknown' },
-        });
-        await dispatch(loginUser(result.user as any) as any);
-        // Hiện hiệu ứng logo chớp mắt; onDone của overlay sẽ reset về Main.
-        setShowSuccess(true);
-      } else if (isPhoenixKeyAvailable() && !result.user) {
-        // Chưa có danh tính → tự động chuyển sang màn tạo tài khoản
+      // Máy CHƯA có danh tính thì đi thẳng sang màn tạo tài khoản — hỏi sinh trắc
+      // trước là bắt người dùng xác thực cho một cái khoá không tồn tại.
+      const [did, hasKey] = await Promise.all([currentUserDid(), isKeypairEnrolled()]);
+      if (!did || !hasKey) {
         navigation.navigate('SignUpBiometric' as never);
-      } else {
-        showError(result.message);
+        return;
       }
+
+      // ── XÁC THỰC BẰNG CHÍNH KHOÁ, không phải bằng một cờ boolean ─────────────
+      // Trước đây chỗ này gọi `rn.simplePrompt()`: hộp thoại do JS bật, kết quả là
+      // một `boolean` ở tầng JS, KHÔNG ràng buộc gì với cặp khoá trong chip. Ai sửa
+      // được luồng JS (máy đã root/jailbreak, bundle bị vá, hook lúc chạy) là đổi
+      // được `success` thành true, và bước sau cũng không kiểm gì thêm —
+      // `isKeypairEnrolled()` chỉ hỏi "trong chip CÓ khoá không", không hỏi "chủ
+      // khoá CÓ MẶT không". Cả đường đăng nhập không có một chữ ký nào.
+      //
+      // Nay đăng nhập đi đúng con đường mà việc KÝ đang đi: ký một chuỗi thử.
+      // Hộp thoại sinh trắc do CHIP bật (BiometricPrompt gắn CryptoObject), và chữ
+      // ký chỉ ra khi chip đã đối chiếu xong khuôn mặt/vân tay — sửa JS không đi
+      // vòng được. Chữ ký này không gửi đi đâu: giá trị của nó nằm ở chỗ nó KHÔNG
+      // TỒN TẠI nếu chủ khoá vắng mặt.
+      //
+      // Chuỗi thử đổi mỗi lần để không phải lúc nào cũng ký đúng một khối byte;
+      // không cần nguồn ngẫu-nhiên mật-mã vì không ai xác minh chữ ký này — thứ
+      // bảo vệ đăng nhập là lời gọi native NÉM khi chưa xác thực.
+      //
+      // ⚠️ Sinh THEO TỪNG BYTE để chuỗi hex LUÔN CHẴN. Bản đầu ghép
+      // `Date.now().toString(16)` (11 ký tự) với 8 ký tự ngẫu nhiên = 19 ký tự LẺ;
+      // `hexToBytes` bên native `require(length % 2 == 0)` nên ném ngay, mà lệnh đó
+      // nằm CÙNG khối try với `initSign` ⇒ trả về `E_SIGN_INIT` — đúng cái mã mà
+      // app đang dịch thành "khoá trên máy không còn dùng được". Kết quả: mọi lần
+      // đăng nhập đều báo khoá hỏng dù khoá hoàn toàn bình thường.
+      let nonceHex = '';
+      for (let i = 0; i < 16; i++) {
+        nonceHex += ((Math.random() * 256) | 0).toString(16).padStart(2, '0');
+      }
+      await signRaw(nonceHex, prompt, t('Xác thực để mở danh tính trên máy này'));
+
+      const user = await phoenixKeyAuth.unlockExistingIdentity();
+      if (!user) {
+        // Có khoá nhưng không dựng lại được danh tính (DID hỏng/không hỗ trợ).
+        navigation.navigate('SignUpBiometric' as never);
+        return;
+      }
+
+      trackAction('login_success', {
+        metadata: { kind: bioKind, biometryType: biometryType || 'unknown' },
+      });
+      await dispatch(loginUser(user as any) as any);
+      // Hiện hiệu ứng logo chớp mắt; onDone của overlay sẽ reset về Main.
+      setShowSuccess(true);
     } catch (e) {
+      // Mã lỗi native đã có sẵn — gộp hết vào một câu "thất bại" là bắt người dùng
+      // đoán xem họ vừa huỷ, hay máy đang khoá tạm, hay khoá đã hỏng.
+      const code = (e as { code?: string } | null)?.code;
+      if (code === PhoenixKeyNativeError.USER_CANCELED) return; // tự huỷ: im lặng quay lại
+      if (code === PhoenixKeyNativeError.BIOMETRIC_LOCKOUT) {
+        showError('Sai sinh trắc học nhiều lần nên máy đang tạm khoá. Chờ khoảng 30 giây rồi thử lại, hoặc mở khoá máy bằng mã PIN trước.');
+        return;
+      }
+      if (code === PhoenixKeyNativeError.NO_KEY || code === PhoenixKeyNativeError.SIGN_INIT) {
+        // Khoá không dùng được nữa — hay gặp nhất là người dùng vừa thêm/xoá vân tay
+        // khiến hệ điều hành HUỶ khoá. `hasKey()` vẫn báo có, nên nếu không bắt ở đây
+        // thì mãi tới lúc ký giao dịch mới lộ ra, muộn hơn nhiều.
+        showError('Khoá trên máy không còn dùng được (thường do vừa thêm hoặc xoá vân tay/khuôn mặt trong Cài đặt). Hãy khôi phục danh tính để dùng tiếp.');
+        return;
+      }
       console.log('[Login] Biometric flow failed:', e);
       showError('Đăng nhập sinh trắc học thất bại');
     } finally {
@@ -506,30 +531,13 @@ const LoginScreen = () => {
           <Icon name="arrow-right" size={18} color={BLUE.primary} />
         </TouchableOpacity>
 
-        {/* Events */}
-        <View style={styles.eventsHeader}>
-          <View style={styles.eventsTitleRow}>
-            <View style={styles.eventsDot} />
-            <Text style={styles.eventsTitle} allowFontScaling={false}>
-              TIN MỚI · SỰ KIỆN
-            </Text>
-          </View>
-          <TouchableOpacity hitSlop={6}>
-            <Text style={styles.eventsMore} allowFontScaling={false}>Xem tất cả</Text>
-          </TouchableOpacity>
-        </View>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.eventsList}
-          decelerationRate="fast"
-          snapToInterval={SCREEN_W * 0.78 + 12}
-        >
-          {EVENTS.map((ev, i) => (
-            <EventCard key={ev.id} event={ev} index={i} fadeAnim={fadeAnim} />
-          ))}
-        </ScrollView>
+        {/* Khu "TIN MỚI · SỰ KIỆN" ĐÃ GỠ (2026-08-15).
+            Ba thẻ ở đây là dữ liệu viết cứng, và tới lúc phát hành thì hai thẻ đã
+            quá hạn 3,5 tháng: "Đăng ký thợ — nhận 100 MAGIC · ưu đãi đến 30/04" và
+            "Aladin Day 30/04 · airdrop". Đó là màn ĐẦU TIÊN người mới nhìn thấy —
+            hứa MAGIC và airdrop không có thật, còn nút "Xem tất cả" thì bấm không
+            ra gì. Không có API tin tức nào để nối vào, nên gỡ hẳn thay vì để chờ.
+            Có API thật thì dựng lại từ `EventCard` (còn nguyên bên dưới). */}
 
         {/* Footer */}
         <View style={styles.footer}>

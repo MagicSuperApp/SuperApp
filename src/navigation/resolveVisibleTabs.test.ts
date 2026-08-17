@@ -86,7 +86,7 @@ describe('resolveVisibleTabs', () => {
   it('instance suy biến: slot chưa bật bị bỏ, thanh vẫn cân', () => {
     // Chỉ trace(Farm)+proofchat(Chat) bật — không work/join.
     const avail = (r: string) =>
-      ['ProofChatHome', 'Farms', 'Home', 'Account'].includes(r);
+      ['ChatHome', 'Farms', 'Home', 'Account'].includes(r);
     expect(resolveVisibleTabs(NO_FARM, {}, null, avail)).toEqual([
       NEO_LEFT, 'Farms', NEO_CENTER, NEO_RIGHT,
     ]);

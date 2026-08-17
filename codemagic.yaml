@@ -146,6 +146,19 @@ workflows:
           # chuỗi rỗng làm nó lui về một tunnel ngrok tạm + khoá dev). Nay rỗng = TẮT.
           ANALYTICS_API_URL=${ANALYTICS_API_URL:-}
           ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-}
+
+          # Bốn biến dưới đây `src/` CÓ import nhưng codemagic.yaml TỪNG KHÔNG ghi
+          # (đo 15/08: 0 dòng trong cả 4 khối). Thiếu ở đây không đỏ, không cảnh báo —
+          # react-native-dotenv mặc định `allowUndefined: true` nên biến thành
+          # `undefined` lặng lẽ. Đường GitHub có cổng đối chiếu
+          # (.github/actions/rn-env/action.yml) bắt được; đường Codemagic thì không,
+          # nên phải ghi tay và giữ đồng bộ. Giá trị đặt đúng bằng bản GitHub ghi.
+          ORG_MINT_ENABLED=${ORG_MINT_ENABLED:-false}
+          # Trống = để cổng runtime /health quyết (config.ts:38 chỉ chặn khi đúng 'off').
+          WORK_BACKEND_ENABLED=${WORK_BACKEND_ENABLED:-}
+          # Trống = TẮT hẳn. ĐỪNG điền tunnel ngrok — xem remoteLogger.ts, aladinChat.ts.
+          REMOTE_LOG_URL=${REMOTE_LOG_URL:-}
+          ALADIN_CHAT_URL=${ALADIN_CHAT_URL:-}
           EOF
           # Dọn whitespace lạc (tab/space) mà biến môi trường Codemagic có thể dính
           # vào value khi paste — nếu không, URL như "\thttps://..." sẽ làm fetch ném
@@ -417,6 +430,12 @@ workflows:
       branch_patterns:
         - pattern: main
           include: true
+        # develop cũng ra bản TestFlight (issue #144 mục 2.2) — trước đây chỉ `main` nên
+        # build từ develop chỉ ra IPA unsigned, không bao giờ tới người thử. App Store
+        # review KHÔNG tự nộp (submit_to_app_store: false ở publishing), nên push develop
+        # chỉ phát TestFlight, an toàn.
+        - pattern: develop
+          include: true
       cancel_previous_builds: true
 
     scripts:
@@ -485,6 +504,19 @@ workflows:
           # chuỗi rỗng làm nó lui về một tunnel ngrok tạm + khoá dev). Nay rỗng = TẮT.
           ANALYTICS_API_URL=${ANALYTICS_API_URL:-}
           ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-}
+
+          # Bốn biến dưới đây `src/` CÓ import nhưng codemagic.yaml TỪNG KHÔNG ghi
+          # (đo 15/08: 0 dòng trong cả 4 khối). Thiếu ở đây không đỏ, không cảnh báo —
+          # react-native-dotenv mặc định `allowUndefined: true` nên biến thành
+          # `undefined` lặng lẽ. Đường GitHub có cổng đối chiếu
+          # (.github/actions/rn-env/action.yml) bắt được; đường Codemagic thì không,
+          # nên phải ghi tay và giữ đồng bộ. Giá trị đặt đúng bằng bản GitHub ghi.
+          ORG_MINT_ENABLED=${ORG_MINT_ENABLED:-false}
+          # Trống = để cổng runtime /health quyết (config.ts:38 chỉ chặn khi đúng 'off').
+          WORK_BACKEND_ENABLED=${WORK_BACKEND_ENABLED:-}
+          # Trống = TẮT hẳn. ĐỪNG điền tunnel ngrok — xem remoteLogger.ts, aladinChat.ts.
+          REMOTE_LOG_URL=${REMOTE_LOG_URL:-}
+          ALADIN_CHAT_URL=${ALADIN_CHAT_URL:-}
           EOF
           # Dọn whitespace lạc (tab/space) trong value biến môi trường Codemagic.
           perl -i -pe 's/^(\w+)=[ \t]+/$1=/; s/[ \t]+$//' .env
@@ -492,10 +524,20 @@ workflows:
 
       - name: Disable NSAllowsArbitraryLoads (production)
         script: |
-          /usr/libexec/PlistBuddy \
-            -c "Set :NSAppTransportSecurity:NSAllowsArbitraryLoads false" \
-            ios/aladin_mobile_fe/Info.plist || true
-          echo "✅ NSAllowsArbitraryLoads = false"
+          PLIST=ios/aladin_mobile_fe/Info.plist
+          # Đặt ATS TẮT cho prod. `Set` đỏ nếu khoá chưa có → thử `Add`; cây cha chưa có
+          # thì tạo dict trước. (issue #144 mục 2.4)
+          /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity dict" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Set :NSAppTransportSecurity:NSAllowsArbitraryLoads false" "$PLIST" 2>/dev/null \
+            || /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity:NSAllowsArbitraryLoads bool false" "$PLIST"
+          # ĐỌC LẠI giá trị thật — chỉ in ✅ khi đúng là false, sai thì ĐỎ build. Trước đây
+          # `|| true` nuốt lỗi rồi vẫn in ✅ dối: bản có thể lên kho với ATS còn mở.
+          val=$(/usr/libexec/PlistBuddy -c "Print :NSAppTransportSecurity:NSAllowsArbitraryLoads" "$PLIST" 2>/dev/null)
+          if [ "$val" = "false" ]; then
+            echo "✅ NSAllowsArbitraryLoads = false"
+          else
+            echo "❌ Không đặt được NSAllowsArbitraryLoads=false (đọc lại: '$val')"; exit 1
+          fi
 
       - name: Install npm dependencies
         script: |
@@ -730,8 +772,19 @@ workflows:
         api_key: $APP_STORE_CONNECT_PRIVATE_KEY
         key_id: 5JA4K7A7JD
         issuer_id: e56d98f1-e6f0-4e46-9ca8-29b30c2a9a7b
-        submit_to_testflight: false
-        submit_to_app_store: true
+        # submit_to_testflight: gán build vào nhóm tester TestFlight NGAY sau upload —
+        # nếu không, build lên App Store Connect nhưng không ai nhận được (issue #144 mục 2.1).
+        # ⚠ `beta_groups` PHẢI khớp TÊN NHÓM THẬT trong App Store Connect, sai thì bước
+        # publish đỏ. Nhóm Internal (≤100 người có vai trò ASC) phát ngay, KHÔNG cần Beta
+        # App Review; nhóm External phải qua review mỗi bản. Đổi tên dưới đây nếu nhóm khác.
+        submit_to_testflight: true
+        beta_groups:
+          - OriLife Testing
+        # submit_to_app_store: false — KHÔNG tự nộp App Store review mỗi lần build. Nay
+        # workflow này chạy cả trên develop (issue #144 mục 2.2), auto-nộp review mỗi push
+        # là sai; nộp App Store là hành động RELEASE làm tay trên App Store Connect khi
+        # thật sự phát hành. TestFlight (ở trên) vẫn tự động để người thử nhận build.
+        submit_to_app_store: false
 
   # ============================================================
   # Workflow 3: Android Debug APK — Demo / Direct Install
@@ -800,6 +853,19 @@ workflows:
           # chuỗi rỗng làm nó lui về một tunnel ngrok tạm + khoá dev). Nay rỗng = TẮT.
           ANALYTICS_API_URL=${ANALYTICS_API_URL:-}
           ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-}
+
+          # Bốn biến dưới đây `src/` CÓ import nhưng codemagic.yaml TỪNG KHÔNG ghi
+          # (đo 15/08: 0 dòng trong cả 4 khối). Thiếu ở đây không đỏ, không cảnh báo —
+          # react-native-dotenv mặc định `allowUndefined: true` nên biến thành
+          # `undefined` lặng lẽ. Đường GitHub có cổng đối chiếu
+          # (.github/actions/rn-env/action.yml) bắt được; đường Codemagic thì không,
+          # nên phải ghi tay và giữ đồng bộ. Giá trị đặt đúng bằng bản GitHub ghi.
+          ORG_MINT_ENABLED=${ORG_MINT_ENABLED:-false}
+          # Trống = để cổng runtime /health quyết (config.ts:38 chỉ chặn khi đúng 'off').
+          WORK_BACKEND_ENABLED=${WORK_BACKEND_ENABLED:-}
+          # Trống = TẮT hẳn. ĐỪNG điền tunnel ngrok — xem remoteLogger.ts, aladinChat.ts.
+          REMOTE_LOG_URL=${REMOTE_LOG_URL:-}
+          ALADIN_CHAT_URL=${ALADIN_CHAT_URL:-}
           EOF
           # Dọn whitespace lạc (tab/space) trong value biến môi trường Codemagic.
           perl -i -pe 's/^(\w+)=[ \t]+/$1=/; s/[ \t]+$//' .env
@@ -978,6 +1044,19 @@ workflows:
           # chuỗi rỗng làm nó lui về một tunnel ngrok tạm + khoá dev). Nay rỗng = TẮT.
           ANALYTICS_API_URL=${ANALYTICS_API_URL:-}
           ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-}
+
+          # Bốn biến dưới đây `src/` CÓ import nhưng codemagic.yaml TỪNG KHÔNG ghi
+          # (đo 15/08: 0 dòng trong cả 4 khối). Thiếu ở đây không đỏ, không cảnh báo —
+          # react-native-dotenv mặc định `allowUndefined: true` nên biến thành
+          # `undefined` lặng lẽ. Đường GitHub có cổng đối chiếu
+          # (.github/actions/rn-env/action.yml) bắt được; đường Codemagic thì không,
+          # nên phải ghi tay và giữ đồng bộ. Giá trị đặt đúng bằng bản GitHub ghi.
+          ORG_MINT_ENABLED=${ORG_MINT_ENABLED:-false}
+          # Trống = để cổng runtime /health quyết (config.ts:38 chỉ chặn khi đúng 'off').
+          WORK_BACKEND_ENABLED=${WORK_BACKEND_ENABLED:-}
+          # Trống = TẮT hẳn. ĐỪNG điền tunnel ngrok — xem remoteLogger.ts, aladinChat.ts.
+          REMOTE_LOG_URL=${REMOTE_LOG_URL:-}
+          ALADIN_CHAT_URL=${ALADIN_CHAT_URL:-}
           EOF
           # Dọn whitespace lạc (tab/space) trong value biến môi trường Codemagic.
           perl -i -pe 's/^(\w+)=[ \t]+/$1=/; s/[ \t]+$//' .env

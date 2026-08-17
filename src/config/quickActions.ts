@@ -25,7 +25,7 @@ export type QuickActionConfig = {
   /** Tên icon MaterialCommunityIcons, dùng khi không có `image`. */
   icon?: string;
   /** Module sở hữu tính năng — để lọc/nhóm về sau. */
-  module: 'trace' | 'proofchat' | 'work' | 'lampnet';
+  module: 'trace' | 'chat' | 'work' | 'lampnet';
 };
 
 // Ngưỡng "dùng nhiều" — dưới ngưỡng thì nút KHÔNG xuất hiện.

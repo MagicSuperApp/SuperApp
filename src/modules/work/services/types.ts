@@ -34,7 +34,25 @@ export interface WorkAccount {
   walletLAMP: number;   // backing (ẩn)
   walletMAGIC: number;  // đơn vị KẾ TOÁN/ĐỊNH GIÁ — phi-chuyển-nhượng, decay
   walletCARP: number;   // đồng THANH TOÁN — Pledge + phí trừ/hoàn ở ĐÂY; số dư khả dụng
+  /**
+   * Uy tín HIỆU DỤNG `r̂ × D` (đã chiết khấu chống-gaming), thang **0..100**.
+   * KHÔNG phải bộ đếm cộng dồn. Nguồn: AladinWork `Core/server.js:2351`
+   * (`Math.round(d.combined*1000)/10`), nhà đó xác nhận 2026-08-11.
+   */
   reputation: number;
+  /** Bộ đếm THÔ cũ, giữ để tương thích ngược. ĐỪNG nối vào — dùng `reputation`. */
+  reputationRaw?: number;
+  /** Cơ sở của điểm uy tín — dùng khi cần hiện "vì sao điểm này", đừng tự suy. */
+  reputationBasis?: {
+    settledRecords?: number;
+    independentPartners?: number;
+    antiGamingDiscount?: number;
+  };
+  /**
+   * Số hợp đồng ĐÃ TẤT TOÁN mà người này đứng vai Genie (`Core/server.js:2339`).
+   * KHÁC hẳn `jems.length` — jem là việc nhận, không phải việc đã tất toán.
+   */
+  completedJobs?: number;
   skills: string[];
   jems: Jem[];
   delegate?: { name: string; role: string; avatar: string; note: string };
@@ -218,9 +236,20 @@ export interface Tasker {
   did: string;
   name?: string;
   avatar?: string;
+  avatarUrl?: string;
   title?: string;
   kind?: string;
+  /**
+   * Uy tín là ĐIỂM 0..100 TÍNH ĐƯỢC, không phải trung bình số sao người ta bấm.
+   * Nền tảng tính `r̂ × D` (uy tín hiệu dụng × hệ số dòng dõi) và neo vào việc đã
+   * tất toán — thang sao thì bơm được bằng tài khoản phụ, thang này thì không.
+   * Nhà AladinWork nói rõ: họ sẽ KHÔNG BAO GIỜ có "sao". Nên đừng ai nối lại một
+   * khối "đánh giá 5 sao" ở đây; cái thiếu không phải endpoint, mà là khái niệm.
+   */
   reputation?: number;
+  reputationRaw?: number;
+  /** CƠ SỞ của con số uy tín — để màn hình không phải bắt người xem tin một số trần. */
+  reputationBasis?: string;
   skills?: string[];
   verifiedCredentials?: number;
   credentials?: TaskerCredential[];

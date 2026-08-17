@@ -20,9 +20,16 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSelector } from 'react-redux';
 import { saveActivity } from '../store/farmSlice';
 import { Activity } from '../types';
-import { updateCredits, selectChainWallet } from '../../../store/userSlice';
+import { selectChainWallet } from '../../../store/userSlice';
 import { syncService } from '../../../services/syncService';
 import { COLORS } from '../../../constants';
+// Nen huu co dung chung cua module (tong dat/la) - xem theme/depth.ts
+import {
+  SURFACE as ORG_SURFACE, TONE as ORG_TONE, NATURE as ORG_NATURE,
+  ORGANIC_CARD, ORGANIC_TILE, ELEVATION as ORG_ELEV, TYPE as ORG_TYPE,
+} from '../theme/depth';
+import { GroundBackdrop } from '../components/layered/Organic';
+import { useTk } from '../../../i18n/keys';
 import { RootState } from '../../../store';
 import { useAppDispatch } from '../../../store/hooks';
 import { showSuccess, showError, showWarning, showInfo } from '../../../utils/alert';
@@ -47,90 +54,87 @@ const VIDEO_OPTIONS = {
 // thoát sớm, không lưu được hoạt động. Giờ suy ra farm từ tree.farmId.
 interface RouteParams { farm?: any; tree?: any }
 
+/**
+ * Bon viec nha vuon ghi duoc. `labelKey`/`descKey` la KHOA chu, khong phai cau
+ * tieng Viet — doi loi van khong dung toi ma.
+ *
+ * Ban cu con `scannerTitle` + `scannerSteps` cho ca bon muc: chu cho man quet
+ * tung buoc. Khong noi nao doc chung — man quet do da bo tu Build 54. Da go.
+ */
 const ACTIVITIES = [
   {
-    type: 'watering', label: 'Tưới nước', desc: 'Ghi lại quá trình tưới nước cho cây',
-    icon: 'droplet', color: '#2E86C1', bg: 'rgba(46,134,193,0.10)', credits: 1,
-    scannerTitle: 'Cập nhật Tưới Nước',
-    scannerSteps: [
-      { icon: 'water', label: 'Quay quá trình tưới nước tưới rễ' },
-      { icon: 'tree', label: 'Hệ thống đang phát hiện cây...' },
-    ],
+    type: 'watering', labelKey: 'trace.activity.watering', descKey: 'trace.activity.wateringDesc',
+    icon: 'droplet', color: ORG_TONE.rain, bg: ORG_TONE.rainSoft, credits: 1,
   },
   {
-    type: 'fertilizing', label: 'Bón phân', desc: 'Ghi lại loại phân và lượng bón',
-    icon: 'leaf', color: COLORS.success, bg: 'rgba(74,124,89,0.10)', credits: 2,
-    scannerTitle: 'Cập nhật Bón Phân',
-    scannerSteps: [
-      { icon: 'flask', label: 'Lia ống kính vào bao bì phân bón' },
-      { icon: 'tree', label: 'Đang bón phân cho cây...' },
-    ],
+    type: 'fertilizing', labelKey: 'trace.activity.fertilizing', descKey: 'trace.activity.fertilizingDesc',
+    icon: 'leaf', color: ORG_TONE.primary, bg: ORG_TONE.primarySoft, credits: 2,
   },
   {
-    type: 'pesticide', label: 'Phun thuốc', desc: 'Lia camera vào nhãn thuốc để ghi nhận',
-    icon: 'spray-can', color: '#B07D2F', bg: 'rgba(176,125,47,0.10)', credits: 2,
-    scannerTitle: 'Cập nhật Phun Thuốc',
-    scannerSteps: [
-      { icon: 'flask', label: 'Lia ống kính vào nhãn thuốc' },
-      { icon: 'tree', label: 'Đang xịt thuốc cho cây...' },
-    ],
+    type: 'pesticide', labelKey: 'trace.activity.pesticide', descKey: 'trace.activity.pesticideDesc',
+    icon: 'spray-can', color: ORG_TONE.sun, bg: ORG_TONE.sunSoft, credits: 2,
   },
   {
-    type: 'harvesting', label: 'Thu hoạch', desc: 'Ghi nhận quả được thu hái',
-    icon: 'basket-shopping', color: '#7D3C98', bg: 'rgba(125,60,152,0.10)', credits: 3,
-    scannerTitle: 'Thu Hoạch Quả',
-    scannerSteps: [
-      { icon: 'apple-whole', label: 'Đưa quả thứ 1 trước ống kính' },
-      { icon: 'reload', label: 'Quay các mặt quả thứ 1...' },
-      { icon: 'apple-whole', label: 'Đưa quả thứ 2 trước ống kính' },
-      { icon: 'reload', label: 'Phát hiện quả thành công' },
-    ],
+    type: 'harvesting', labelKey: 'trace.activity.harvesting', descKey: 'trace.activity.harvestingDesc',
+    icon: 'basket-shopping', color: ORG_TONE.soil, bg: 'rgba(201,123,74,0.10)', credits: 3,
   },
 ];
 
 // ── Step config for LampNet progress ─────────────────────────────────────────
-const SYNC_STEPS = [
-  { label: 'Mã hoá hình ảnh', keyword: 'mã hoá' },
-  { label: 'Băm nhỏ dữ liệu', keyword: 'băm nhỏ' },
-  { label: 'Lưu bản sao', keyword: 'Phát tán' },
-  { label: 'Cập nhật blockchain', keyword: 'cập nhật' },
-];
+/**
+ * Các bước THẬT của việc lưu, hiện trên vạch tiến độ.
+ *
+ * Bản trước có bốn bước — "Khoá hình ảnh · Chia nhỏ dữ liệu · Cất nhiều bản sao
+ * · Ghi vào sổ chung" — chạy bằng bốn lần `setTimeout(1100)` rồi thêm 500ms
+ * nữa. Không có mã hoá, không có chia mảnh, không có bản sao, không có lần ghi
+ * sổ nào; 4,9 giây đó là màn kịch, và nó nói với nông dân rằng bằng chứng của
+ * họ đã lên sổ chung trong khi tệp còn nằm nguyên trong máy.
+ *
+ * Hai bước dưới đây neo vào việc thật, và `setSyncStep` chỉ nhích khi việc đó
+ * xong: (0) ghi vào máy, (1) xếp vào hàng gửi máy chủ. Việc gửi lên
+ * `POST /api/farm/{id}/event` chạy nền theo hàng đợi — có thể vài giây, có thể
+ * ngày mai mới có sóng — nên màn KHÔNG hứa nó đã lên tới nơi.
+ */
+const SYNC_STEPS = ['trace.activity.stepSave', 'trace.activity.stepQueue'];
+
+/** -1 = chưa bắt đầu · 0..1 = đang ở bước đó · 2 = xong. */
+const STEP_DONE = SYNC_STEPS.length;
 
 // ── LampNet Sync Modal ────────────────────────────────────────────────────────
 const LampNetSyncModal = ({
-  visible, currentStatus,
+  visible, step,
 }: {
-  visible: boolean; currentStatus: string;
+  visible: boolean; step: number;
 }) => {
+  const tk = useTk();
   const spinAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    if (visible) {
+    if (!visible) {
+      spinAnim.stopAnimation();
+      pulseAnim.stopAnimation();
+      return;
+    }
+    // Hộp thoại đồng bộ LampNet có thể bị gỡ trong lúc đang hiện (rời màn giữa
+    // chừng). Khi đó nhánh `else` không chạy — chỉ hàm dọn chạy.
+    const loops = [
       Animated.loop(
         Animated.timing(spinAnim, { toValue: 1, duration: 2600, useNativeDriver: true })
-      ).start();
+      ),
       Animated.loop(
         Animated.sequence([
           Animated.timing(pulseAnim, { toValue: 1.08, duration: 900, useNativeDriver: true }),
           Animated.timing(pulseAnim, { toValue: 1, duration: 900, useNativeDriver: true }),
         ])
-      ).start();
-    } else {
-      spinAnim.stopAnimation();
-      pulseAnim.stopAnimation();
-    }
+      ),
+    ];
+    loops.forEach(l => l.start());
+    return () => loops.forEach(l => l.stop());
   }, [visible]);
 
   const rotate = spinAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
-  const isDone = currentStatus === 'Hoàn tất!';
-
-  // Determine which steps are done based on current status text
-  const stepsDone = SYNC_STEPS.map((s, i) => {
-    if (isDone) return true;
-    const idx = SYNC_STEPS.findIndex(x => currentStatus.toLowerCase().includes(x.keyword.toLowerCase()));
-    return i < idx;
-  });
+  const isDone = step >= STEP_DONE;
 
   return (
     <Modal visible={visible} transparent animationType="fade">
@@ -153,17 +157,17 @@ const LampNetSyncModal = ({
           </View>
 
           <Text style={styles.syncTitle}>
-            {isDone ? 'Hoàn tất lưu trữ' : 'Đang lưu bản sao an toàn'}
+            {tk(isDone ? 'trace.activity.syncDone' : 'trace.activity.syncTitle')}
           </Text>
-          <Text style={styles.syncStatusText}>{currentStatus}</Text>
+          <Text style={styles.syncStatusText}>
+            {step >= 0 && step < STEP_DONE ? tk(SYNC_STEPS[step]) : ''}
+          </Text>
 
           {/* Step list */}
           <View style={styles.syncStepList}>
-            {SYNC_STEPS.map((s, i) => {
-              const done = stepsDone[i];
-              const active = !done && SYNC_STEPS.findIndex(
-                x => currentStatus.toLowerCase().includes(x.keyword.toLowerCase())
-              ) === i;
+            {SYNC_STEPS.map((labelKey, i) => {
+              const done = isDone || i < step;
+              const active = !done && i === step;
               return (
                 <View key={i} style={styles.syncStepRow}>
                   <View style={[
@@ -181,7 +185,7 @@ const LampNetSyncModal = ({
                     styles.syncStepLabel,
                     done && { color: COLORS.success },
                     active && { color: COLORS.accent, fontWeight: '600' },
-                  ]}>{s.label}</Text>
+                  ]}>{tk(labelKey)}</Text>
                 </View>
               );
             })}
@@ -199,6 +203,7 @@ const ActivityCard = ({
 }: {
   activity: typeof ACTIVITIES[0]; selected: boolean; onSelect: () => void;
 }) => {
+  const tk = useTk();
   const anim = useRef(new Animated.Value(selected ? 1 : 0)).current;
 
   useEffect(() => {
@@ -206,7 +211,7 @@ const ActivityCard = ({
   }, [selected]);
 
   const borderColor = anim.interpolate({ inputRange: [0, 1], outputRange: [COLORS.border, activity.color] });
-  const bgColor = anim.interpolate({ inputRange: [0, 1], outputRange: [COLORS.card, activity.bg] });
+  const bgColor = anim.interpolate({ inputRange: [0, 1], outputRange: [ORG_SURFACE.raised, activity.bg] });
 
   return (
     <TouchableOpacity onPress={onSelect} activeOpacity={0.82}>
@@ -216,8 +221,8 @@ const ActivityCard = ({
         </View>
 
         <View style={styles.actBody}>
-          <Text style={styles.actLabel}>{activity.label}</Text>
-          <Text style={styles.actDesc}>{activity.desc}</Text>
+          <Text style={styles.actLabel}>{tk(activity.labelKey)}</Text>
+          <Text style={styles.actDesc}>{tk(activity.descKey)}</Text>
           <View style={styles.actCreditRow}>
             <Icon name="bolt" size={11} color={COLORS.textMuted} />
             <Text style={styles.actCreditText}>{activity.credits} MAGIC</Text>
@@ -241,6 +246,7 @@ const ActivityCard = ({
 // ── Main Screen ───────────────────────────────────────────────────────────────
 const ActivityScreen = () => {
   const navigation = useNavigation();
+  const tk = useTk();
   const insets = useSafeAreaInsets();
   const route = useRoute();
   const { farm: farmParam, tree } = (route.params ?? {}) as RouteParams;
@@ -261,7 +267,7 @@ const ActivityScreen = () => {
   const [selected, setSelected] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [scannedFiles, setScannedFiles] = useState<string[]>([]);
-  const [syncStatus, setSyncStatus] = useState('');
+  const [syncStep, setSyncStep] = useState(-1);
   const btnScale = useRef(new Animated.Value(1)).current;
 
   const selectedActivity = ACTIVITIES.find(a => a.type === selected);
@@ -273,13 +279,13 @@ const ActivityScreen = () => {
   // (màn nhận diện cây) vốn KHÔNG trả file về nên nút Lưu không bao giờ bật.
   const handleRecord = useCallback(async () => {
     if (!imagePicker?.launchCamera) {
-      showError('Chưa mở được máy ảnh', 'Bản app này chưa mở được máy ảnh. Vui lòng cập nhật app rồi thử lại.');
+      showError(tk('trace.activity.noCamera'), tk('trace.activity.noCameraBody'));
       return;
     }
     imagePicker.launchCamera(await withPhotoSave(VIDEO_OPTIONS), (response: any) => {
       if (response.didCancel) return;
       if (response.errorCode) {
-        showError('Lỗi camera', response.errorMessage ?? 'Không mở được camera. Kiểm tra quyền.');
+        showError(tk('trace.activity.cameraErr'), response.errorMessage ?? tk('trace.activity.cameraErrBody'));
         return;
       }
       const asset = response.assets?.[0];
@@ -293,25 +299,12 @@ const ActivityScreen = () => {
     // xong (balanceKnown=false) → KHÔNG chặn nhầm, để nông dân vẫn ghi việc đồng
     // (offline-first); backend là nơi đối soát phí cuối cùng.
     if (balanceKnown && magicBalance < selectedActivity.credits) {
-      showError('Không đủ tín dụng', `Cần ít nhất ${selectedActivity.credits} MAGIC`);
+      showError(tk('trace.activity.lowCredit'), tk('trace.activity.lowCreditBody', { n: selectedActivity.credits }));
       return;
     }
 
     setSaving(true);
     try {
-      const steps = [
-        'Hệ thống đang mã hoá các hình ảnh, video...',
-        'Đang băm nhỏ dữ liệu thành hàng nghìn mảnh...',
-        'Đang lưu bản sao an toàn…',
-        'Đang cập nhật link và trạng thái lên blockchain...',
-      ];
-      for (const s of steps) {
-        setSyncStatus(s);
-        await new Promise<void>(r => setTimeout(() => r(), 1100));
-      }
-      setSyncStatus('Hoàn tất!');
-      await new Promise<void>(r => setTimeout(() => r(), 500));
-
       const activityData = {
         id: `activity_${Date.now()}`,
         type: selected,
@@ -324,18 +317,29 @@ const ActivityScreen = () => {
 
       // activityData is the persistence/sync shape (string timestamp, materials,
       // thumbnailPath) which intentionally diverges from the in-memory Activity type.
+      setSyncStep(0);
       await dispatch(saveActivity(activityData as unknown as Activity));
-      dispatch(updateCredits({ magic: -selectedActivity.credits, lamp: 0, ada: 0 }));
-      // Đính kèm clip đã quay để sync/upload (trước đây truyền [] → mất bằng chứng media).
-      await syncService.addSyncItem('activity', { activity: activityData, farmName: farm.name }, scannedFiles);
 
-      showSuccess('Lưu trữ thành công', `Tiêu thụ: ${selectedActivity.credits} MAGIC`);
+      // KHÔNG trừ MAGIC tại máy. Bản trước gọi
+      //   dispatch(updateCredits({ magic: -selectedActivity.credits, ... }))
+      // mà `updateCredits` (`store/userSlice.ts:312-323`) ghi thẳng vào
+      // `state.wallet.magicBalance` — đúng con số mà dòng :257 ngay trên đây
+      // tuyên bố "Chỉ tin số dư đến TỪ CHAIN". Kết quả: số dư trên màn tụt sau
+      // mỗi lần ghi việc, rồi nhảy về nguyên giá trị cũ ở lần đồng bộ sau, vì
+      // chẳng có nơi nào trừ thật. Phí (nếu thu) là việc của máy chủ; app gửi
+      // kèm `quoted_magic` trong sự kiện và ĐỌC lại số dư từ chain.
+      // Đính kèm clip đã quay để sync/upload (trước đây truyền [] → mất bằng chứng media).
+      setSyncStep(1);
+      await syncService.addSyncItem('activity', { activity: activityData, farmName: farm.name }, scannedFiles);
+      setSyncStep(STEP_DONE);
+
+      showSuccess(tk('trace.activity.savedTitle'), tk('trace.activity.savedBody'));
       navigation.goBack();
     } catch (_) {
-      showError('Lỗi', 'Có lỗi xảy ra khi lưu trên chuỗi.');
+      showError(tk('trace.activity.saveFail'), tk('trace.activity.saveFailBody'));
     } finally {
       setSaving(false);
-      setSyncStatus('');
+      setSyncStep(-1);
     }
   };
 
@@ -344,12 +348,14 @@ const ActivityScreen = () => {
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
 
       {/* Header */}
+      <GroundBackdrop variant="detail" />
+
       <View style={[styles.header, { paddingTop: (Platform.OS === 'ios' ? 56 : 40) + insets.top }]}>
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
           <Icon name="arrow-left" size={20} color={COLORS.textSub} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={styles.eyebrow}>CẬP NHẬT HOẠT ĐỘNG</Text>
+          <Text style={styles.eyebrow}>{tk('trace.activity.title')}</Text>
           <Text style={styles.title} numberOfLines={1}>{farm?.name ?? '—'}</Text>
         </View>
         <View style={styles.magicChip}>
@@ -368,16 +374,13 @@ const ActivityScreen = () => {
           <View style={styles.guideIconWrap}>
             <Icon name="circle-info" size={17} color={COLORS.accent} />
           </View>
-          <Text style={styles.guideText}>
-            Chọn hoạt động, ghi hình, sau đó lưu vào kho an toàn và chuỗi khối.
-            Hệ thống tự chắt lọc khung hình chất lượng nhất.
-          </Text>
+          <Text style={styles.guideText}>{tk('trace.activity.guide')}</Text>
         </View>
 
         {/* Activity selection */}
         <View style={styles.sectionRow}>
           <View style={styles.dot} />
-          <Text style={styles.sectionLabel}>CHỌN HOẠT ĐỘNG</Text>
+          <Text style={styles.sectionLabel}>{tk('trace.activity.pick')}</Text>
         </View>
         <View style={styles.actList}>
           {ACTIVITIES.map(act => (
@@ -402,7 +405,7 @@ const ActivityScreen = () => {
           <>
             <View style={[styles.sectionRow, { marginTop: 10 }]}>
               <View style={styles.dot} />
-              <Text style={styles.sectionLabel}>GHI HÌNH DỮ LIỆU</Text>
+              <Text style={styles.sectionLabel}>{tk('trace.activity.record')}</Text>
             </View>
 
             {hasFiles ? (
@@ -411,15 +414,15 @@ const ActivityScreen = () => {
                   <Icon name="circle-check" size={26} color={COLORS.success} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.cameraTitle}>Đã chắt lọc {scannedFiles.length} hình ảnh</Text>
-                  <Text style={styles.cameraSub}>Sẵn sàng lưu onnet</Text>
+                  <Text style={styles.cameraTitle}>{tk('trace.activity.gotClip', { n: scannedFiles.length })}</Text>
+                  <Text style={styles.cameraSub}>{tk('trace.activity.gotClipHint')}</Text>
                 </View>
                 <TouchableOpacity
                   style={styles.retakeBtn}
                   onPress={handleRecord}
                 >
                   <Icon name="arrows-rotate" size={14} color={COLORS.textSub} />
-                  <Text style={styles.retakeText}>Ghi lại</Text>
+                  <Text style={styles.retakeText}>{tk('trace.activity.retake')}</Text>
                 </TouchableOpacity>
               </View>
             ) : (
@@ -432,8 +435,8 @@ const ActivityScreen = () => {
                   <Icon name="camera" size={24} color={selectedActivity.color} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.cameraTitle}>Bắt đầu ghi hình</Text>
-                  <Text style={styles.cameraSub}>Lia camera vào khu vực cần ghi nhận</Text>
+                  <Text style={styles.cameraTitle}>{tk('trace.activity.startRecord')}</Text>
+                  <Text style={styles.cameraSub}>{tk('trace.activity.startRecordHint')}</Text>
                 </View>
                 <Icon name="chevron-right" size={18} color={COLORS.accentLight} />
               </TouchableOpacity>
@@ -442,10 +445,7 @@ const ActivityScreen = () => {
             <View style={styles.creditNote}>
               <Icon name="bolt" size={13} color={COLORS.accent} />
               <Text style={styles.creditNoteText}>
-                Hoạt động này tiêu tốn{' '}
-                <Text style={{ fontWeight: '700', color: COLORS.accent }}>
-                  {selectedActivity.credits} MAGIC
-                </Text>
+                {tk('trace.activity.cost', { n: selectedActivity.credits })}
               </Text>
             </View>
           </>
@@ -458,13 +458,13 @@ const ActivityScreen = () => {
       <View style={[styles.bottomBar, { paddingBottom: (Platform.OS === 'ios' ? 36 : 24) + insets.bottom }]}>
         {selectedActivity && (
           <View style={styles.bottomMeta}>
-            <Text style={styles.bottomMetaLabel}>Chi phí</Text>
+            <Text style={styles.bottomMetaLabel}>{tk('trace.activity.costLabel')}</Text>
             <View style={styles.creditChip}>
               <Icon name="bolt" size={11} color={COLORS.accent} />
               <Text style={styles.creditChipText}>{selectedActivity.credits} MAGIC</Text>
             </View>
             {!hasFiles && (
-              <Text style={styles.bottomHint}>Cần ghi hình trước</Text>
+              <Text style={styles.bottomHint}>{tk('trace.activity.needClip')}</Text>
             )}
           </View>
         )}
@@ -480,80 +480,74 @@ const ActivityScreen = () => {
           >
             <View style={styles.btnShine} />
             <Icon name={saving ? 'spinner' : 'cloud-arrow-up'} size={20} color={COLORS.white} />
-            <Text style={styles.saveBtnText}>{saving ? 'Đang lưu...' : 'Lưu onnet'}</Text>
+            <Text style={styles.saveBtnText}>
+              {tk(saving ? 'trace.activity.saving' : 'trace.activity.save')}
+            </Text>
           </TouchableOpacity>
         </Animated.View>
       </View>
 
-      <LampNetSyncModal visible={saving} currentStatus={syncStatus} />
+      <LampNetSyncModal visible={saving} step={syncStep} />
     </View>
   );
 };
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: COLORS.bg },
+  root: { flex: 1, backgroundColor: ORG_SURFACE.ground },
 
   header: {
     paddingTop: Platform.OS === 'ios' ? 56 : 40,
     paddingHorizontal: 20, paddingBottom: 14,
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: COLORS.bg,
-    borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
   backBtn: {
-    width: 40, height: 40, borderRadius: 12,
-    backgroundColor: COLORS.white,
+    width: 44, height: 44, ...ORGANIC_TILE,
+    backgroundColor: ORG_SURFACE.raised,
     alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: COLORS.border,
-    shadowColor: COLORS.shadow,
-    shadowOffset: { width: 0, height: 2 }, shadowOpacity: 1, shadowRadius: 6,
-    elevation: 2,
+    ...ORG_ELEV.card,
   },
-  eyebrow: { fontSize: 10, fontWeight: '700', color: COLORS.accent, letterSpacing: 2.5, marginBottom: 1 },
-  title: { fontSize: 22, fontWeight: '800', color: COLORS.text, letterSpacing: -0.4 },
+  eyebrow: { fontSize: 14, fontWeight: '600', color: ORG_TONE.primary, marginBottom: 1 },
+  title: { ...ORG_TYPE.title, fontSize: 23 },
   magicChip: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: COLORS.accentGlow,
-    borderRadius: 20, paddingHorizontal: 11, paddingVertical: 7,
-    borderWidth: 1, borderColor: COLORS.border,
+    backgroundColor: ORG_TONE.sunSoft,
+    borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7,
   },
-  magicChipText: { fontSize: 13, fontWeight: '700', color: COLORS.accent },
+  magicChipText: { fontSize: 14, fontWeight: '700', color: ORG_TONE.sun },
 
   scroll: { paddingHorizontal: 20, paddingTop: 18, flexGrow: 1 },
 
   guideCard: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 10,
-    backgroundColor: COLORS.accentGlow,
-    borderRadius: 13, padding: 12,
-    borderWidth: 1, borderColor: COLORS.border,
+    backgroundColor: ORG_TONE.primarySoft,
+    ...ORGANIC_CARD, padding: 14,
     marginBottom: 20,
   },
   guideIconWrap: {
-    width: 30, height: 30, borderRadius: 9,
-    backgroundColor: COLORS.white,
+    width: 34, height: 34, ...ORGANIC_TILE,
+    backgroundColor: ORG_SURFACE.raised,
     alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: COLORS.border,
     marginTop: 1,
   },
-  guideText: { flex: 1, fontSize: 12, color: COLORS.textSub, lineHeight: 19 },
+  guideText: { flex: 1, ...ORG_TYPE.body, fontSize: 15, lineHeight: 22 },
 
   sectionRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
-  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.accent },
-  sectionLabel: { fontSize: 11, fontWeight: '700', color: COLORS.accent, letterSpacing: 2 },
+  dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: ORG_TONE.primary },
+  sectionLabel: { ...ORG_TYPE.section },
 
   actList: { gap: 10, marginBottom: 4 },
   actCard: {
-    borderRadius: 14, borderWidth: 1.5,
+    ...ORGANIC_CARD, borderWidth: 1.5,
     flexDirection: 'row', alignItems: 'center',
-    padding: 13, gap: 12,
+    minHeight: 76, padding: 14, gap: 12,
   },
-  actIconWrap: { width: 48, height: 48, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  actIconWrap: { width: 52, height: 52, ...ORGANIC_TILE, alignItems: 'center', justifyContent: 'center' },
   actBody: { flex: 1 },
-  actLabel: { fontSize: 15, fontWeight: '700', color: COLORS.text, marginBottom: 2 },
-  actDesc: { fontSize: 12, color: COLORS.textSub, lineHeight: 17, marginBottom: 5 },
+  actLabel: { fontSize: 17, fontWeight: '700', color: ORG_NATURE.bark, marginBottom: 2 },
+  actDesc: { fontSize: 14, color: ORG_NATURE.barkSoft, lineHeight: 20, marginBottom: 5 },
   actCreditRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  actCreditText: { fontSize: 11, color: COLORS.textMuted, fontWeight: '500' },
+  actCreditText: { fontSize: 12.5, color: ORG_NATURE.barkSoft, fontWeight: '500' },
   actCheck: {
     width: 24, height: 24, borderRadius: 12,
     borderWidth: 2, alignItems: 'center', justifyContent: 'center',
@@ -561,38 +555,35 @@ const styles = StyleSheet.create({
 
   cameraCard: {
     flexDirection: 'row', alignItems: 'center', gap: 14,
-    backgroundColor: COLORS.card,
-    borderRadius: 14, padding: 15,
+    backgroundColor: ORG_SURFACE.raised,
+    ...ORGANIC_CARD, padding: 16,
     borderWidth: 1.5, marginBottom: 10,
-    shadowColor: COLORS.shadow,
-    shadowOffset: { width: 0, height: 2 }, shadowOpacity: 1, shadowRadius: 8,
-    elevation: 1,
+    ...ORG_ELEV.card,
   },
-  cameraIcon: { width: 46, height: 46, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
-  cameraTitle: { fontSize: 14, fontWeight: '700', color: COLORS.text, marginBottom: 2 },
-  cameraSub: { fontSize: 12, color: COLORS.textMuted },
+  cameraIcon: { width: 50, height: 50, ...ORGANIC_TILE, alignItems: 'center', justifyContent: 'center' },
+  cameraTitle: { fontSize: 16, fontWeight: '700', color: ORG_NATURE.bark, marginBottom: 2 },
+  cameraSub: { fontSize: 14, color: ORG_NATURE.barkSoft },
   retakeBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: COLORS.bgWarm, paddingHorizontal: 10, paddingVertical: 7,
-    borderRadius: 9, borderWidth: 1, borderColor: COLORS.border,
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: ORG_SURFACE.sunken, paddingHorizontal: 12, paddingVertical: 9,
+    borderRadius: 999,
   },
-  retakeText: { fontSize: 11, fontWeight: '600', color: COLORS.textSub },
+  retakeText: { fontSize: 13, fontWeight: '600', color: ORG_NATURE.barkSoft },
 
   creditNote: {
-    flexDirection: 'row', alignItems: 'center', gap: 7,
-    backgroundColor: COLORS.accentGlow,
-    borderRadius: 11, padding: 10,
-    borderWidth: 1, borderColor: COLORS.border,
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: ORG_TONE.sunSoft,
+    borderRadius: 999, paddingHorizontal: 14, paddingVertical: 10,
   },
-  creditNoteText: { fontSize: 13, color: COLORS.textSub },
+  creditNoteText: { fontSize: 14, color: ORG_NATURE.bark },
 
   bottomBar: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     paddingHorizontal: 20,
     paddingBottom: Platform.OS === 'ios' ? 36 : 24,
     paddingTop: 12,
-    backgroundColor: COLORS.bg,
-    borderTopWidth: 1, borderTopColor: COLORS.border,
+    backgroundColor: ORG_SURFACE.ground,
+    borderTopWidth: 1, borderTopColor: ORG_TONE.border,
     gap: 10,
   },
   bottomMeta: { flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -601,22 +592,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 4,
     backgroundColor: COLORS.accentGlow,
     paddingHorizontal: 9, paddingVertical: 4,
-    borderRadius: 20, borderWidth: 1, borderColor: COLORS.border,
+    borderRadius: 20, borderWidth: 1, borderColor: ORG_TONE.border,
   },
   creditChipText: { fontSize: 12, fontWeight: '700', color: COLORS.accent },
   bottomHint: { fontSize: 11, color: COLORS.textMuted, marginLeft: 'auto' as any },
 
   saveBtn: {
-    backgroundColor: COLORS.accent,
-    borderRadius: 14, paddingVertical: 16,
+    backgroundColor: ORG_TONE.primary,
+    ...ORGANIC_CARD, paddingVertical: 18,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 10, overflow: 'hidden', position: 'relative',
-    shadowColor: COLORS.accent,
-    shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.28, shadowRadius: 14,
-    elevation: 6,
+    gap: 10, overflow: 'hidden',
+    ...ORG_ELEV.cardStrong,
   },
   saveBtnOff: { opacity: 0.40 },
-  saveBtnText: { fontSize: 15, fontWeight: '700', color: COLORS.white, letterSpacing: 0.2 },
+  saveBtnText: { fontSize: 17, fontWeight: '700', color: ORG_NATURE.paper },
   btnShine: {
     position: 'absolute', top: 0, left: 0, right: 0,
     height: '50%', backgroundColor: 'rgba(255,255,255,0.09)', borderRadius: 14,
@@ -624,17 +613,15 @@ const styles = StyleSheet.create({
 
   // Modal
   modalOverlay: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.55)',
+    flex: 1, backgroundColor: ORG_SURFACE.scrim,
     alignItems: 'center', justifyContent: 'center', padding: 32,
   },
   syncCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 24, padding: 28, width: '100%',
-    alignItems: 'center',
-    borderWidth: 1, borderColor: COLORS.border,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.18, shadowRadius: 24,
-    elevation: 12,
+    backgroundColor: ORG_SURFACE.raised,
+    borderTopLeftRadius: 34, borderTopRightRadius: 24,
+    borderBottomRightRadius: 34, borderBottomLeftRadius: 24,
+    padding: 28, width: '100%', alignItems: 'center',
+    ...ORG_ELEV.modal,
   },
   syncIconWrap: {
     width: 76, height: 76, alignItems: 'center', justifyContent: 'center', marginBottom: 18,
@@ -645,23 +632,22 @@ const styles = StyleSheet.create({
   },
   syncCenter: {
     width: 56, height: 56, borderRadius: 28,
-    backgroundColor: COLORS.accentGlow,
+    backgroundColor: ORG_TONE.primarySoft,
     alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: COLORS.border,
   },
-  syncTitle: { fontSize: 17, fontWeight: '800', color: COLORS.text, marginBottom: 5, letterSpacing: -0.3 },
-  syncStatusText: { fontSize: 13, color: COLORS.textSub, textAlign: 'center', marginBottom: 20, lineHeight: 20 },
+  syncTitle: { fontSize: 19, fontWeight: '700', color: ORG_NATURE.bark, marginBottom: 5, letterSpacing: -0.3 },
+  syncStatusText: { fontSize: 14, color: ORG_NATURE.barkSoft, textAlign: 'center', marginBottom: 20, lineHeight: 21 },
 
   syncStepList: { width: '100%', gap: 11 },
   syncStepRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   syncStepBullet: {
     width: 22, height: 22, borderRadius: 11,
-    borderWidth: 1.5, borderColor: COLORS.border,
-    backgroundColor: COLORS.bgWarm,
+    borderWidth: 1.5, borderColor: ORG_TONE.border,
+    backgroundColor: ORG_SURFACE.raised,
     alignItems: 'center', justifyContent: 'center',
   },
   syncActiveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.accent },
-  syncStepLabel: { fontSize: 13, color: COLORS.textMuted, fontWeight: '500' },
+  syncStepLabel: { fontSize: 14, color: ORG_NATURE.barkSoft, fontWeight: '500' },
 });
 
 export default ActivityScreen;

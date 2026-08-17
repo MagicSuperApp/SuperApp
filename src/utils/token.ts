@@ -24,11 +24,54 @@ export const LAMP_DECIMALS = 6;
 export const ADA_DECIMALS = 6;
 
 /**
- * CARP: CHƯA CHỐT. LAMP agent nói rõ "hỏi CARP agent, đừng giả định 6".
- * Đang để 0 (in nguyên số thô) để KHÔNG bịa ra một con số sai — thà hiện thô còn
- * hơn hiện sai. Khi CARP agent trả lời thì đổi đúng một hằng số này.
+ * CARP: decimals **9** — 1 CARP = 1.000.000.000 **nanothread**.
+ *
+ * Nguồn là MÃ, không phải thư: `CarpetMint/onchain/lib/examples/magiclamp.ak:33`
+ * `sub_unit_scale = 1_000_000_000`. Tên đơn-vị nhỏ nhất chốt ở
+ * `CarpetMint-Core-Spec-Vi.md §T1` — **`nanothread`**, không phải `thread` trần
+ * (chữ `thread` trần đã dùng cho *thread NFT*, hai nghĩa khác hẳn nhau).
+ *
+ * Trước đây hằng này là `CARP_DECIMALS_UNKNOWN = 0` với lý do "in thô còn hơn in
+ * sai". Lý do đó KHÔNG đứng: hằng số ấy có **0 nơi dùng**, nên nó không bảo vệ
+ * gì cả — bốn màn vẫn in thẳng số thô. Ở decimals 9 thì in thô là hiện sai
+ * **một tỷ lần**, và hiện sai theo hướng người dùng tưởng mình giàu.
+ *
+ * CarpetMint xác nhận 13/08 và đề nghị neo decimals theo `policy_id` thay vì hằng
+ * toàn cục, vì `sub_unit_scale` là apply-param **nướng vào `policy_id`** ⇒ không
+ * tồn tại ca "cùng policy_id, decimals đổi"; policy khác = token khác.
+ *
+ * Chưa làm, có chủ ý — nhưng lý do phải phát biểu theo ĐƯỜNG DỮ LIỆU, không theo
+ * kết quả grep. Bản trước viết "app không bao giờ thấy `policy_id` (`grep -i
+ * policy_id src/` = 0)"; câu đó sai hai lần, đo lại 14/08:
+ *
+ *   grep -i policy_id src/        → 4  (cả 4 là chính đoạn chú thích này)
+ *   grep -iE 'policyHex|AssetNameHex' src/ → 9
+ *
+ * Sai thứ nhất: phép đo tự đếm chính nó, nên nó không thể trả 0 kể cả khi đúng.
+ * Sai thứ hai, nặng hơn: nó neo vào CHỮ được viết ra chứ không vào thứ chạy — app
+ * CÓ mang policy id, dưới tên `lampPolicyHex` (`sdk/taadEnclave.ts:36`,
+ * `services/cardanoTxService.ts:84`).
+ *
+ * Phát biểu đúng: hai trường đó là tham số tuỳ chọn, mặc định chuỗi rỗng
+ * (`taadEnclave.ts:195-196`), và **chưa caller nào truyền giá trị** — app chưa gửi
+ * giao dịch LAMP/CARP thật. Số dư CARP là một `number` PhoenixKey trả sẵn
+ * (`phoenixKey-api.ts:106,147`), việc lọc UTxO nằm ở đó. Dựng bảng tra theo policy
+ * ở đây là dựng thêm một hằng 0 nơi dùng — đúng cái bẫy đoạn trên vừa gỡ. Chỗ phải
+ * neo theo policy là PhoenixKey; đã báo sang nhà đó.
+ *
+ * ⚠ Con số 9 dẫn từ mã testnet (`CarpetMint/onchain/lib/examples/magiclamp.ak:33`).
+ * CarpetMint 14/08: **chưa kiểm trên mainnet**, và cặp `(policy_id, asset_name)`
+ * canonical chưa có. Khi họ gửi cặp đó thì kiểm lại `sub_unit_scale` mainnet trước
+ * khi tin hằng này.
+ *
+ * CarpetMint 16/08 nói rõ thêm vì sao con số này NEO ĐƯỢC mà chỗ đọc nó thì không:
+ * `sub_unit_scale` là apply-param của Θ, đóng băng lúc compile ⇒ 1-1 và bất biến
+ * với `policy_id` (đổi nó là đổi `policy_id`, tức instance khác hẳn, không phải
+ * "cùng đồng với decimals mới"). Nên hằng viết tay ở đây chỉ đúng chừng nào chưa
+ * có instance THỨ HAI chạm vào app — ngày đó tới thì ba màn chỉ lệch một bội của
+ * 10, không có gì đỏ lên, và người dùng là bên phát hiện.
  */
-export const CARP_DECIMALS_UNKNOWN = 0;
+export const CARP_DECIMALS = 9;
 
 /**
  * Đổi số lượng thô → chuỗi hiển thị. KHÔNG dùng phép chia của Number.
@@ -76,9 +119,34 @@ export function fmtToken(
 export const fmtLamp = (raw: bigint | number | string | null | undefined) =>
   fmtToken(raw, LAMP_DECIMALS);
 
+/** Tiện dụng: CARP từ nanothread thô (1 CARP = 10^9 nanothread). */
+export const fmtCarp = (raw: bigint | number | string | null | undefined) =>
+  fmtToken(raw, CARP_DECIMALS, 4);
+
 /** Tiện dụng: ADA từ lovelace thô. */
 export const fmtAda = (raw: bigint | number | string | null | undefined) =>
   fmtToken(raw, ADA_DECIMALS, 6);
+
+/**
+ * ADA **cho màn hình**: 2 chữ số thập phân + ký hiệu ₳.
+ *
+ * Có mặt vì `StakingScreen.tsx` từng khai một `fmtAda` RIÊNG, và hai bản cho hai
+ * kết quả khác nhau trên cùng một số — loại trùng lặp không gãy, chỉ hiện sai:
+ *
+ *   lovelace 1_234_567 → bản trong màn: `1,23 ₳`   · bản ở đây: `1.234567`
+ *   lovelace undefined → bản trong màn: `0 ₳`      · bản ở đây: `—`
+ *
+ * Gộp về một nguồn, và giữ hai điểm khác biệt CÓ CHỦ Ý so với bản trong màn:
+ *  - Nhóm chữ số theo `en-US`, giống `fmtLamp`/`fmtCarp`, thay vì `vi-VN` — dòng
+ *    hiển thị chuẩn của app là tiếng Anh, và ba hàm cùng họ thì phải cùng dạng.
+ *  - Thiếu số trả `—`, KHÔNG trả `0 ₳`. Đây là luật đã có ở màn "Đang đóng góp"
+ *    (`modules/join/screens/ContributingScreen.tsx:201`): dấu gạch nghĩa là CHƯA
+ *    ĐO ĐƯỢC, còn số 0 là một khẳng định về số dư — hai chuyện khác hẳn nhau.
+ */
+export const fmtAdaLabel = (raw: bigint | number | string | null | undefined) => {
+  const body = fmtToken(raw, ADA_DECIMALS, 2);
+  return body === '—' ? body : `${body} ₳`;
+};
 
 /**
  * `true` khi ví có LƯỢNG LAMP đáng kể (≥ 1 oildrop). Dùng cho các phép kiểm

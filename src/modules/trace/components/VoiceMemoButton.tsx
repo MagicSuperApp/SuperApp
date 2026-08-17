@@ -18,8 +18,9 @@ import {
   Platform,
   Animated,
   Alert,
-  Vibration,
 } from 'react-native';
+
+import { buzz } from '../../../utils/haptics';
 // Icon: bộ Font Awesome Solid tải qua Iconify (assets/icons → icons.generated).
 // Thêm icon mới: `node scripts/icons.js <tên-fa6-solid>`.
 import Icon from '../../../components/Icon';
@@ -74,17 +75,21 @@ const VoiceMemoButton: React.FC<Props> = ({
 
   // Pulse animation while recording (red dot heartbeat).
   useEffect(() => {
-    if (recording) {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, { toValue: 1.4, duration: 600, useNativeDriver: true }),
-          Animated.timing(pulseAnim, { toValue: 1.0, duration: 600, useNativeDriver: true }),
-        ])
-      ).start();
-    } else {
+    if (!recording) {
       pulseAnim.stopAnimation();
       pulseAnim.setValue(1);
+      return;
     }
+    // Nhánh `else` chỉ chạy khi cờ `recording` đổi. Rời màn GIỮA lúc đang ghi thì
+    // effect không chạy lại — chỉ hàm dọn chạy, nên vòng lặp phải dừng ở đây.
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1.4, duration: 600, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1.0, duration: 600, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
   }, [recording, pulseAnim]);
 
   // Auto-stop on max + haptic warn at 25s.
@@ -101,7 +106,7 @@ const VoiceMemoButton: React.FC<Props> = ({
           warnedRef.current = true;
           // Short vibration (≈200ms) to signal "5 seconds left". iOS ignores
           // duration arg but vibrates ≈400ms regardless; that's acceptable.
-          Vibration.vibrate(200);
+          buzz(200);
         }
         if (next >= maxSeconds) {
           // Schedule stop on next tick — calling stopRecording from inside the

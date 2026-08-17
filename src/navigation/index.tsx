@@ -28,7 +28,6 @@ import RootErrorBoundary from '../components/RootErrorBoundary';
 import { COLORS, ACTION_COLORS } from '../theme';
 import { syncService } from '../services/syncService';
 import { flushVideoUploadQueue } from '../services/videoUploadQueue';
-import { maybeReconcileOnNetChange } from '../services/videoProofReconcile';
 import AppHeader, { AppHeaderProvider } from '../components/AppHeader';
 import { NAV_FRAME, navNational, navIcon } from './navLabels';
 import { hasChosenLanguage, whenLanguageReady } from '../i18n';
@@ -42,13 +41,19 @@ import { TRACE_SCAN_ROUTE_NAME } from './traceScan';
 import LoginScreen from '../screens/LoginScreen';
 // Màn hỏi ngôn ngữ LẦN ĐẦU (máy vừa cài) — đứng TRƯỚC Login trong luồng khởi động.
 import LanguageSelectScreen from '../screens/LanguageSelectScreen';
+// Màn CHÀO (hỏi-một-lần) — đứng giữa Chọn ngôn ngữ và Đăng nhập. App lên hai cửa
+// hàng từ v1.0 mà chưa có chỗ nào nói Aladin là gì; xem đầu OnboardingScreen.tsx.
+import OnboardingScreen from '../screens/OnboardingScreen';
+// Mở trang aladin.work TRONG app (danh sách trang cho phép ở utils/webLink.ts).
+import WebPageScreen from '../screens/WebPageScreen';
+import { hasSeenOnboarding } from '../utils/onboardingFlag';
 import ActivationScreen from '../screens/ActivationScreen';
 import HomeScreen from '../screens/HomeScreen';
 import SignUpBiometricScreen from '../features/auth/screens/SignUpBiometricScreen';
 import SignUpCompleteScreen from '../features/auth/screens/SignUpCompleteScreen';
 import AccountScreen from '../screens/AccountScreen';
+import DeleteAccountScreen from '../screens/DeleteAccountScreen';
 import BiometricSettings from '../screens/BiometricSettings';
-import TermsScreen from '../screens/TermsScreen';
 import NotificationScreen from '../screens/NotificationScreen';
 // PhoenixKey — duyệt ký / guardian / nhật ký hoạt động.
 // (Khôi phục thiết bị dùng màn có sẵn RestoreIdentityScreen — đã hoàn thiện attach.)
@@ -60,9 +65,12 @@ import FruitListScreen from '../screens/FruitListScreen';
 import FruitCropperScreen from '../screens/FruitCropperScreen';
 import TreeMap2DScreen from '../screens/TreeMap2DScreen';
 import FarmMap2DScreen from '../screens/FarmMap2DScreen';
+import WayfindScreen from '../screens/WayfindScreen';
+import FruitScanScreen from '../screens/FruitScanScreen';
 // Space3D/FruitPlace3D nạp LAZY (định nghĩa gần HOST_STACK_SCREENS bên dưới) để expo
 // (expo-gl → expo-modules-core) KHÔNG chạy lúc startup. Xem chú thích tại chỗ định nghĩa.
 import GLErrorBoundary from '../components/GLErrorBoundary';
+import rLog from '../services/remoteLogger';
 import TreeIdentityScreen from '../screens/TreeIdentityScreen';
 import TreeEnrollScreen from '../screens/TreeEnrollScreen';
 import FruitVideoScreen from '../screens/FruitVideoScreen';
@@ -77,10 +85,10 @@ import CareScanScreen from '../screens/CareScanScreen';
 import SeedExportScreen from '../screens/SeedExportScreen';
 import RestoreIdentityScreen from '../screens/RestoreIdentityScreen';
 import PhoenixWalletScreen from '../screens/PhoenixWalletScreen';
+import WakeMeScreen from '../screens/WakeMeScreen';
 import StakingScreen from '../screens/StakingScreen';
 import OrgDidScreen from '../screens/OrgDidScreen';
 import OrgAuthorityScreen from '../screens/OrgAuthorityScreen';
-import PoolHomeScreen from '../modules/pool/screens/PoolHomeScreen';
 import OrgMintScreen from '../screens/OrgMintScreen';
 import WebLoginScanScreen from '../screens/WebLoginScanScreen';
 import TraceScanScreen from '../screens/TraceScanScreen';
@@ -88,8 +96,8 @@ import ExportIdentityScreen from '../screens/ExportIdentityScreen';
 import UsernameScreen from '../screens/UsernameScreen';
 // ProofChat wallet/escrow: hiện vẫn đăng ký ở host stack (chưa khai trong manifest
 // proofchat — anh Aladin chốt chat KHÔNG ví/escrow; giữ route để không vỡ màn cũ).
-import ProofChatWalletScreen from '../modules/proofchat/features/wallet/screens/WalletScreen';
-import ProofChatEscrowScreen from '../modules/proofchat/features/escrow/screens/EscrowScreen';
+import ChatWalletScreen from '../modules/chat/features/wallet/screens/WalletScreen';
+import ChatEscrowScreen from '../modules/chat/features/escrow/screens/EscrowScreen';
 // Wrapper Native gọi FarmDetail trực tiếp (giữ nguyên hành vi cũ).
 import FarmDetailScreen from '../modules/trace/screens/FarmDetailScreen';
 
@@ -136,7 +144,8 @@ const HOST_TAB_SCREENS: Record<string, React.ComponentType<any>> = {
   Account: AccountScreen,
 };
 // Nhãn/icon tab DẪN XUẤT từ NAV_FRAME (navLabels.ts) — nguồn DUY NHẤT. Nhãn tab
-// khác displayName module (module 'proofchat' tên "ProofChat"; nav ngắn = "Chat").
+// CÓ THỂ khác displayName module; hiện module 'chat' khai displayName "Trò
+// chuyện"/"Chat" nên hai bên trùng nhau, nhưng vẫn giữ hai tầng tách rời.
 // Đây là quyết định của INSTANCE (experience layer), sống ở tầng nav — không nhét
 // vào manifest. Tiêu đề đơn-dòng (header/screen title) lấy nhãn NGÔN NGỮ QUỐC GIA;
 // còn thanh tab dưới vẽ song ngữ qua NavItemFrame.
@@ -1524,19 +1533,42 @@ const ProtectedMain = () => {
 // Nạp TĨNH khiến expo-modules-core chạy (globalThis.expo.EventEmitter) NGAY lúc startup;
 // trên bản signed globalThis.expo chưa sẵn → crash CẢ APP. Nạp LƯỜI: chỉ khi mở màn 3D.
 // Suspense + GLErrorBoundary: nếu expo vẫn lỗi thì chỉ hỏng khung 3D, KHÔNG sập app.
+// Màn thay thế `Expo3DUnavailable` chỉ còn là LƯỚI AN TOÀN (khi expo-gl thật sự không
+// nạp được), KHÔNG còn là công tắc tắt 3D — xem `_glAvailable` bên dưới.
 const _LazySpace3D = React.lazy(() => import('../screens/Space3DScreen'));
 const _LazyFruitPlace3D = React.lazy(() => import('../screens/FruitPlace3DScreen'));
+
+// ── DÒ expo-gl (thay cho việc CHẶN CỨNG theo `globalThis.expo`) ──────────────
+// Vì sao phải dò chứ không import thẳng: nếu native chưa cài `globalThis.expo`
+// (ExpoModulesCore TurboModule trả null), expo-modules-core NÉM ngay ở module-eval.
+// Để React.lazy nuốt lỗi đó thì ở bản RELEASE nó đi qua ExceptionsManager.reportException
+// và TỰ crash (SIGABRT) TRƯỚC khi GLErrorBoundary kịp bắt → sập cả app.
+// Vì sao KHÔNG kiểm `globalThis.expo` nữa: đó chỉ là dấu hiệu GIÁN TIẾP, và từ khi
+// patches/expo+56.0.17.patch set `host.runtimeDelegate` trên iOS (RN 0.84.1 không tự set)
+// + MainApplication.kt dùng ExpoReactHostFactory trên Android thì nó đã được cài —
+// nhưng cờ đó vẫn có thể lệch với việc expo-gl thật sự nạp được hay không.
+// Cách chắc ăn: require ĐỒNG BỘ trong try/catch. require đồng bộ ném = lỗi JS thường,
+// bị bắt NGAY tại đây, không qua ExceptionsManager ⇒ không crash. Nạp được thì mở 3D.
+// Dò một lần rồi nhớ: cùng thời điểm với lazy-import cũ (chỉ khi người dùng mở màn 3D),
+// nên KHÔNG kéo expo về lúc startup.
+let _glProbe: boolean | null = null;
+const _glAvailable = (): boolean => {
+  if (_glProbe !== null) return _glProbe;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    require('expo-gl');
+    _glProbe = true;
+    rLog.viewer3d.glProbe(true, null);
+  } catch (e) {
+    _glProbe = false;
+    rLog.viewer3d.glProbe(false, e instanceof Error ? e.message : String(e));
+  }
+  return _glProbe;
+};
+
 const _make3D = (Comp: React.LazyExoticComponent<any>, tag: string): React.FC<any> =>
   function Lazy3DScreen(props: any) {
-    // CHẶN TRƯỚC KHI IMPORT: expo-gl cần `globalThis.expo` (do ExpoModulesCore cài).
-    // Trên bản signed hiện tại globalThis.expo KHÔNG được cài (TurboModule
-    // 'ExpoModulesCore' trả null → installModules() không chạy) → import expo-gl NÉM ở
-    // tầng module-eval. Lỗi này đi qua ExceptionsManager.reportException trong RELEASE
-    // và TỰ crash (SIGABRT) TRƯỚC khi GLErrorBoundary kịp bắt → sập app. Nên KHÔNG dựa
-    // vào boundary: kiểm globalThis.expo, thiếu thì hiện màn báo, TUYỆT ĐỐI không import
-    // Comp (không đụng expo-gl) → app KHÔNG crash. Khi native cài đúng globalThis.expo,
-    // nhánh dưới chạy và 3D hiển-thị bình-thường.
-    if (typeof (globalThis as { expo?: unknown }).expo === 'undefined') {
+    if (!_glAvailable()) {
       return <Expo3DUnavailable onBack={() => props.navigation?.goBack?.()} />;
     }
     // GLErrorBoundary NGOÀI Suspense: lỗi lazy-import khác (không phải expo thiếu) vẫn
@@ -1556,7 +1588,7 @@ const _make3D = (Comp: React.LazyExoticComponent<any>, tag: string): React.FC<an
     );
   };
 
-// Màn thay thế khi mô-hình 3D chưa khả-dụng (globalThis.expo chưa cài — xem _make3D).
+// Màn thay thế khi expo-gl KHÔNG nạp được (xem `_glAvailable`) — lưới an toàn cuối.
 // Không import bất kỳ module expo nào ⇒ an-toàn tuyệt-đối, chỉ RN core.
 const Expo3DUnavailable: React.FC<{ onBack: () => void }> = ({ onBack }) => (
   <View style={{ flex: 1, backgroundColor: '#0b1f14', alignItems: 'center', justifyContent: 'center', padding: 28 }}>
@@ -1593,11 +1625,18 @@ const HOST_STACK_SCREENS: Array<{
     component: LanguageSelectScreen,
     options: { headerShown: false, gestureEnabled: false },
   },
+  // Màn chào. Cũng KHÔNG gestureEnabled: nó là initialRoute ở lần mở đầu tiên sau
+  // khi đã chọn ngôn ngữ, vuốt-back sẽ để trống ngăn xếp.
+  {
+    name: 'Onboarding',
+    component: OnboardingScreen,
+    options: { headerShown: false, gestureEnabled: false },
+  },
+  { name: 'WebPage', component: WebPageScreen, options: { headerShown: false } },
   { name: 'Activation', component: ActivationScreen },
   { name: 'BiometricSettings', component: BiometricSettings },
-  // Điều khoản & Chính sách — Google Play đòi mở được NGAY TRONG ứng dụng, nên nội dung
-  // gắn trong bản dựng chứ không mở trình duyệt (xem src/legal/policyContent.ts).
-  { name: 'Terms', component: TermsScreen, options: { headerShown: false } },
+  // Xoá tài khoản — bắt buộc bởi Apple 5.1.1(v) + Google Play (issue #144). Vào từ màn Tôi.
+  { name: 'DeleteAccount', component: DeleteAccountScreen, options: { headerShown: false } },
   // PhoenixKey feature screens.
   { name: 'SignRequest', component: SignRequestScreen, options: { headerShown: false } },
   { name: 'Guardian', component: GuardianScreen, options: { headerShown: false } },
@@ -1611,14 +1650,19 @@ const HOST_STACK_SCREENS: Array<{
   // phủ TRÙM lên Main → che mất AppHeader (header sống ở ProtectedMain, TRÊN các
   // tab). Header (nút Tài khoản) mở qua navigate('Main', { screen: 'Account' }).
   // ProofChat ví/escrow — chưa khai manifest, giữ ở host stack.
-  { name: 'ProofChatWallet', component: ProofChatWalletScreen, options: { headerShown: false } },
-  { name: 'ProofChatEscrow', component: ProofChatEscrowScreen, options: { headerShown: false } },
+  { name: 'ProofChatWallet', component: ChatWalletScreen, options: { headerShown: false } },
+  { name: 'ProofChatEscrow', component: ChatEscrowScreen, options: { headerShown: false } },
   // Auth flow.
   { name: 'SignUpBiometric', component: SignUpBiometricScreen, options: { headerShown: false } },
   { name: 'SignUpComplete', component: SignUpCompleteScreen, options: { headerShown: false, gestureEnabled: false } },
   // Capture/identity screens dùng chung (host-level).
   { name: 'FruitList', component: FruitListScreen, options: { headerShown: false } },
   { name: 'FruitCropper', component: FruitCropperScreen, options: { headerShown: false } },
+  // Quét QUẢ khi CHƯA biết cây: chụp quả → hỏi máy chủ quả nào của cây nào (soi
+  // trên các cây gần chỗ đứng) → mở đúng cây. Xem đầu file FruitScanScreen.
+  { name: 'FruitScan', component: FruitScanScreen, options: { headerShown: false } },
+  // Dẫn đường tới vườn / tới gốc cây (chặng xa giao bản đồ ngoài, chặng gần tự chỉ).
+  { name: 'Wayfind', component: WayfindScreen, options: { headerShown: false } },
   // Sơ-đồ 2D CŨ — giữ đăng ký để deep-link cũ không gãy, nhưng KHÔNG nút nào trỏ
   // tới nữa: mọi lối vào sơ đồ nay mở 'Space3D' (một hệ giao diện 3D duy nhất).
   { name: 'TreeMap2D', component: TreeMap2DScreen, options: { headerShown: false } },
@@ -1644,13 +1688,16 @@ const HOST_STACK_SCREENS: Array<{
   { name: 'SeedExport', component: SeedExportScreen, options: { headerShown: false } },
   { name: 'RestoreIdentity', component: RestoreIdentityScreen, options: { headerShown: false } },
   { name: 'PhoenixWallet', component: PhoenixWalletScreen, options: { headerShown: false } },
+  // WakeMe — nhận phần LAMP khởi tạo. Route HOST, KHÔNG thêm vào `buildLinking()`:
+  // màn này chuyển LAMP thật, không nên mở được bằng một đường dẫn từ bên ngoài.
+  { name: 'WakeMe', component: WakeMeScreen, options: { headerShown: false } },
   { name: 'Staking', component: StakingScreen, options: { headerShown: false } },
   // Ví tổ chức — tạo OrgDID + mint LAMP bằng OrgDID (2 bước: mint kho → claim-release).
   { name: 'OrgDid', component: OrgDidScreen, options: { headerShown: false } },
   { name: 'OrgAuthority', component: OrgAuthorityScreen, options: { headerShown: false } },
   { name: 'OrgMint', component: OrgMintScreen, options: { headerShown: false } },
-  // Pool (stake pool / SPO) — UI khung trỏ api.phoenixkey.me; contract chờ Phoenix (inbox).
-  { name: 'PoolHome', component: PoolHomeScreen, options: { headerShown: false } },
+  // Uỷ thác stake (SPO) là màn `Staking` ở trên — tới từ PhoenixWalletScreen:312.
+  // `PoolHome` cũ đã gỡ 2026-08-10: bản thứ hai của cùng một việc, không màn nào mở được.
   { name: 'WebLoginScan', component: WebLoginScanScreen, options: { headerShown: false } },
   // SG9 §3 — Quét truy xuất (consumer): host stack, full-bleed, KHÔNG lên tabs[]
   // (immersive-by-omission). Tới được qua nút Home header + cổng §4 + deep-link.
@@ -1704,27 +1751,34 @@ const AppNavigator = () => {
       // rồi mới tới Đăng nhập. Đọc AsyncStorage là bất đồng bộ nên phải chờ ở đây;
       // quyết định trước khi dựng Stack để không thấy Login nhấp nháy rồi mới nhảy.
       // Lỗi đọc storage → coi như đã chọn (vào thẳng Login), KHÔNG chặn app.
+      //
+      // Ba đích có thể: Chọn ngôn ngữ → Chào → Đăng nhập.
+      //   · máy vừa cài            → LanguageSelect (màn đó tự chuyển sang Onboarding)
+      //   · đã chọn ngôn ngữ, chưa xem màn chào → Onboarding
+      //   · còn lại                → Login
+      // Người đã cài bản cũ (v1.0 lên cửa hàng từ trước, chưa hề có màn chào) rơi
+      // vào nhánh giữa: họ thấy màn chào ĐÚNG MỘT LẦN rồi thôi. Cố ý — đó chính là
+      // nhóm chưa từng được nói cho biết Aladin là gì.
       let firstRoute = 'Login';
       try {
         await whenLanguageReady();
         if (!hasChosenLanguage()) firstRoute = 'LanguageSelect';
+        else if (!(await hasSeenOnboarding())) firstRoute = 'Onboarding';
       } catch (e) {
         console.warn('[Navigation] Không đọc được ngôn ngữ đã lưu:', e);
       }
 
       try {
-        // Ngôn ngữ đã nạp xong ở `whenLanguageReady()` ngay phía trên — nó là kho DUY
-        // NHẤT. Lệnh `loadNationalLanguage()` trước đây ở đây nạp một kho THỨ HAI
-        // (`app_lang_v1`), và chính hai kho tách rời làm nhãn điều hướng không đổi theo
-        // Cài đặt. Đã bỏ; đừng thêm lại.
+        // (Ngôn ngữ đã nạp xong ở `whenLanguageReady()` bên trên — khung điều hướng
+        // vẽ đúng ngay lần đầu, không chớp một nhịp rồi mới đổi chữ.)
 
         // Start sync service (database will be initialized per-user on login)
         console.log('[Navigation] Initializing sync service');
         syncService.start();
       } finally {
-        // Bỏ 3 màn welcome/onboarding — vào thẳng Login (hoặc Chọn ngôn ngữ ở lần
-        // mở đầu tiên). Người dùng luôn phải xác thực sinh trắc mỗi phiên; KHÔNG
-        // auto-login vào Main.
+        // Ba màn welcome/onboarding CŨ đã bỏ; nay có MỘT màn chào bỏ-qua-được
+        // (`Onboarding`), chỉ hiện một lần. Người dùng luôn phải xác thực sinh trắc
+        // mỗi phiên; KHÔNG auto-login vào Main.
         // finally: đây là điểm DUY NHẤT thoát spinner initialRoute=null. Nếu bất kỳ
         // init nào ở trên ném thì vẫn PHẢI mở khoá UI — nếu không app kẹt spinner câm.
         setInitialRoute(firstRoute);
@@ -1747,9 +1801,6 @@ const AppNavigator = () => {
           console.warn('[Navigation] flushVideoUploadQueue failed:', err),
         );
       }
-      // #117 mục 6: có WIFI thì đối chiếu một lượt các bằng chứng "đã lưu" với LampNet
-      // thật (nodes rỗng → báo người trực máy chủ). Service tự lọc wifi + throttle 30'.
-      maybeReconcileOnNetChange(state);
       wasConnected = isConnected;
     });
 

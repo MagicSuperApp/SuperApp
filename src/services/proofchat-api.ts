@@ -217,6 +217,38 @@ async function unwrap<T>(
   }
 }
 
+/**
+ * Bóc danh sách cho các endpoint PHÂN TRANG — nơi BE bọc HAI lớp.
+ *
+ * Lớp ngoài là TransformInterceptor global (`{ data, message, statusCode,
+ * timestamp }`), lớp trong là chính service: `findAll` khai
+ * `Promise<{ data: Array<…>; total: number }>` (`BE conversations.service.ts:111`)
+ * và `getMessages` trả `{ data, total, hasMore, limit, offset }`. Controller trả
+ * thẳng kết quả service (`conversations.controller.ts:73`, `:245`), không dàn phẳng.
+ *
+ * `unwrap` chỉ biết lớp ngoài, nên trước bản vá này caller nhận `{ data, total }`
+ * trong khi kiểu khai là mảng. Mọi chỗ gọi đều có `Array.isArray(x) ? x : []`
+ * (`chatSlice.ts:174`, `:203`) nên hỏng biểu hiện thành **danh sách luôn
+ * rỗng, không một dòng lỗi**.
+ *
+ * Hình lạ thì NÉM chứ không trả `[]`: trả `[]` là dựng lại đúng cái vỏ im lặng
+ * vừa gỡ — người dùng đọc "chưa có hội thoại" trong khi thật ra là gọi hỏng.
+ */
+async function unwrapList<T>(
+  promise: Promise<{ data: unknown }>,
+): Promise<T[]> {
+  const body = await unwrap<unknown>(promise);
+  if (Array.isArray(body)) return body as T[];
+  if (body !== null && typeof body === 'object') {
+    const inner = (body as { data?: unknown }).data;
+    if (Array.isArray(inner)) return inner as T[];
+  }
+  throw new ProofChatApiError(
+    0,
+    'BE trả hình lạ cho danh sách — không phải mảng, cũng không phải { data: [...] }',
+  );
+}
+
 // Refresh single-flight: nhiều request 401 song song chỉ kích hoạt 1 lần refresh
 // (refresh token thường xoay vòng — gọi nhiều lần sẽ vô hiệu phiên).
 let refreshInFlight: Promise<AuthTokens> | null = null;
@@ -272,9 +304,12 @@ export const auth = {
 // ── Hội thoại (chỉ đọc cho v2.0) ─────────────────────────────────────
 
 export const conversations = {
-  /** Danh sách hội thoại của tài khoản. BE: GET /conversations (Bearer). */
+  /**
+   * Danh sách hội thoại của tài khoản. BE: GET /conversations (Bearer).
+   * Trả `{ data, total }` BÊN TRONG envelope → dùng `unwrapList` (xem chú thích ở đó).
+   */
   list: (opts: ListConversationsOptions = {}): Promise<RemoteConversation[]> =>
-    unwrap<RemoteConversation[]>(
+    unwrapList<RemoteConversation>(
       client.get('/conversations', {
         needsAuth: true,
         params: {
@@ -313,13 +348,14 @@ export const conversations = {
   /**
    * Tin nhắn (ciphertext E2EE) của 1 hội thoại. BE: GET /conversations/:id/messages
    * (Bearer) — query `deviceId` (chọn variant), `limit`/`offset` (phân trang).
+   * Trả `{ data, total, hasMore, limit, offset }` BÊN TRONG envelope → `unwrapList`.
    */
   getMessages: (
     conversationId: string,
     deviceId: string,
     opts: { take?: number; offset?: number } = {},
   ): Promise<RemoteMessage[]> =>
-    unwrap<RemoteMessage[]>(
+    unwrapList<RemoteMessage>(
       client.get(`/conversations/${encodeURIComponent(conversationId)}/messages`, {
         needsAuth: true,
         params: { deviceId, limit: opts.take, offset: opts.offset },
@@ -341,9 +377,16 @@ export const users = {
   /**
    * Tìm người theo DID hoặc username để bắt đầu chat 1-1 / thêm vào nhóm.
    * BE: GET /users/search?q=<did_or_username> (Bearer). Trả mảng RemoteUser.
+   *
+   * ⚠️ Đường này hiện **TẮT ở BE**: `ProofChat/BE/src/modules/users/user.controller.ts:95`
+   * — cả khối `@Get('search')` bị bình luận (`// @Get('search')` … `// }`), cùng 8 route
+   * GET khác của `users`. `usersService.searchUsers` vẫn còn, chỉ controller không mở.
+   * Nên mọi lượt gọi ở đây trả 404 cho tới khi bên ProofChat mở lại. Giữ nguyên mã gọi
+   * (mở lại là chạy, không phải sửa app), nhưng chỗ dùng PHẢI hiện lỗi chứ không được
+   * nuốt thành "không tìm thấy ai".
    */
   search: (q: string): Promise<RemoteUser[]> =>
-    unwrap<RemoteUser[]>(
+    unwrapList<RemoteUser>(
       client.get('/users/search', {
         needsAuth: true,
         params: { q },

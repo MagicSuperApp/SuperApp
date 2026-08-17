@@ -15,6 +15,7 @@ import {
 // Thêm icon mới: `node scripts/icons.js <tên-fa6-solid>`.
 import Icon from '../../../components/Icon';
 import { COLORS } from '../../../constants';
+import { ELEVATION } from '../theme/depth';
 
 interface CommonPopupProps {
   visible: boolean;
@@ -143,11 +144,7 @@ const styles = StyleSheet.create({
     width: 250,
     borderWidth: 1,
     borderColor: COLORS.border,
-    shadowColor: COLORS.shadow,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.5,
-    shadowRadius: 20,
-    elevation: 10,
+    ...ELEVATION.modal,
   },
   header: {
     flexDirection: 'row',

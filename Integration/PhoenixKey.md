@@ -1,6 +1,15 @@
 # PhoenixKey — SuperApp Integration
 
-> Chuẩn: `SuperApp/Integration-Standard.md`. Snapshot: 2026-07-11.
+> 🔴 **KHÔNG phải nguồn chuẩn.** Canonical = **`PhoenixKeyDID/PhoenixKey-SDK/INTEGRATION.md`**
+> (anh chốt 2026-07-21, repo công khai + versioned). Mâu thuẫn thì **canonical thắng** — đã biết
+> một chỗ lệch: canonical nói `grantee_did` để TRỐNG khiến Grant thành **bearer** (ai cầm cũng
+> trình được) nên phải LUÔN đặt, còn file này ghi "tuỳ chọn". Canonical cũng ghi thêm: **phía TIÊU
+> Grant chưa tồn tại** trên `main` — lấy được Grant KHÔNG có nghĩa LAMP chảy.
+>
+> File này giữ tạm vì còn phần trạng thái riêng của SuperApp (Readiness, việc app phải sửa) chưa
+> gỡ ra chỗ khác. Theo §10.1 nó sẽ được cất nốt. Đọc canonical TRƯỚC.
+
+> Chuẩn: `SuperApp/Integration-Standard.md`. Snapshot: 2026-07-11 (thân bài cập nhật tới 2026-08-05).
 > Module SuperApp: **DID login · Ví (Standard/Phoenix) · OrgDID/Mint LAMP**.
 
 ## HEAD
@@ -8,7 +17,7 @@
 
 ## Base URL / JWKS
 - REST: `http://localhost:8080/api/v1` (dev); prod dự kiến `https://api.phoenixkey.me/api/v1` (⚠️ domain chưa thấy trong CORS list — [NEEDS-EVIDENCE]).
-- JWKS: `GET /.well-known/jwks.json` (Ed25519, `kid=phoenixkey-ed25519-1`). ⚠️ Live = **404** hiện tại; backend đang verify HS256 (RS256/JWKS planned V1.2).
+- JWKS: `GET /api/v1/.well-known/jwks.json` (Ed25519, `kid=phoenixkey-ed25519-1`). ⚠️ **Đường KHÔNG có tiền tố `/api/v1` trả 404** — backend có context-path `/api/v1`, giống `/health` vs `/api/v1/actuator/health` ở Changelog 2026-08-05. Đường đúng hiện **vẫn trả 400 trên prod** kể cả khi không gửi header `Origin` (chặn cả gọi máy-tới-máy); vá ở PhoenixKey Database PR #123. ⇒ chưa verify được chữ ký bằng khoá công khai, đừng dựng luồng phụ thuộc JWKS rồi chờ. (Nguồn: `ProofChat/INTEGRATION.md` v2026-08-08 §9 + mục ⚠️ #4, đo 2026-08-05.)
 
 ## Auth — token-exchange qua ServiceDID
 - `POST /auth/token/exchange {sessionToken, aud=<ServiceDID app>, redirectUri, nonce?}` → `{appToken(JWT EdDSA), userDid}`.

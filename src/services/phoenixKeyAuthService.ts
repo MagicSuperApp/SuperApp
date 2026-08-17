@@ -100,10 +100,44 @@ interface GenesisResult {
   txHash: string;
 }
 
+/**
+ * Máy đã có khoá chủ trong chip, nhưng người đang đứng trước máy vừa tự khai là
+ * NGƯỜI MỚI (bấm "Đăng ký", nhập username mới).
+ *
+ * VÌ SAO PHẢI NÉM RA CHỨ KHÔNG ÂM THẦM KHÔI PHỤC — `isKeypairEnrolled()` chỉ trả
+ * lời được "máy này đã có khoá chưa", KHÔNG trả lời được "người đang cầm máy có
+ * phải chủ khoá đó không". Hai tình huống rất khác nhau lại cho cùng một tín hiệu:
+ *   (a) chính chủ cài lại app / xoá cache  → khôi phục là ĐÚNG;
+ *   (b) người thứ hai mượn máy đăng ký     → khôi phục là TRAO NHẦM DANH TÍNH.
+ * Trước bản này app luôn chọn (a). Hệ quả ngoài vườn: người thứ hai nhận LẠI DID
+ * của người thứ nhất, hai người thành MỘT tài khoản trên máy chủ — thấy hết ảnh,
+ * GPS vườn, nhật ký chăm sóc của nhau, và xoá được cây của nhau.
+ *
+ * Máy không tự phân biệt được thì phải HỎI. Lỗi này là cái cớ để màn hình hỏi.
+ */
+export class DeviceHasOwnerKeyError extends Error {
+  readonly code = 'DEVICE_HAS_OWNER_KEY';
+  constructor() {
+    super('Máy này đã có một danh tính được tạo trước đó.');
+    this.name = 'DeviceHasOwnerKeyError';
+  }
+}
+
+/**
+ * `resume`     — mặc định: khoá cũ nghĩa là chính người này quay lại (cài lại app,
+ *                xoá cache). Giữ nguyên hành vi cũ cho mọi nơi gọi đang có.
+ * `new-person` — người đứng trước máy tự khai là người MỚI. Gặp khoá cũ thì DỪNG
+ *                và ném `DeviceHasOwnerKeyError` để màn hình hỏi lại, không đoán.
+ */
+export type RegisterIntent = 'resume' | 'new-person';
+
 export const registerIdentity = async (
   biometricKind: BiometricKind,
+  intent: RegisterIntent = 'resume',
 ): Promise<GenesisResult> => {
   if (await isKeypairEnrolled()) {
+    if (intent === 'new-person') throw new DeviceHasOwnerKeyError();
+
     // Nếu keypair đã tồn tại nhưng JS storage bị mất (reinstall/update/cache clear),
     // đừng bắt user đăng xuất/tạo mới. Khôi phục local identity từ native key.
     const existing = await recoverLocalIdentityFromKey(biometricKind);
@@ -227,6 +261,7 @@ export const reRegisterIdentity = async (
 export const phoenixKeyAuth = {
   registerIdentity,
   reRegisterIdentity,
+  DeviceHasOwnerKeyError,
   isIdentityRegisteredOnServer,
   unlockExistingIdentity,
   hasLocalIdentity,

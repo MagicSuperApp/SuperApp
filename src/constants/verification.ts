@@ -164,8 +164,18 @@ export const SYNC_STATE_ICONS = {
   error: 'alert-circle',
 } as const;
 
+/**
+ * Bảng này hiện KHÔNG nơi nào dùng (`grep VERIFICATION_ICONS src/` → chỉ dòng
+ * khai). Giữ lại thì phải giữ cho ĐÚNG, vì cái bẫy nằm ở chỗ nó trông vô hại:
+ * ai đó nối nó vào một màn là dấu tích xanh quay lại.
+ *
+ * `MATCH` KHÔNG được mang dấu tích. Máy tra ra "khớp" chỉ đúng 19/37 = 51,4%
+ * (số đo OriLife). Nguồn trình bày CHUẨN là `src/components/reid/ResultBadge.tsx`
+ * — có test khoá. Cần biểu-tượng cho kết quả nhận-diện thì lấy ở đó, đừng dựng
+ * bảng thứ hai.
+ */
 export const VERIFICATION_ICONS = {
-  MATCH: 'check-circle',
+  MATCH: 'magnify',
   NO_MATCH: 'close-circle',
   PENDING_VERIFICATION: 'help-circle',
 } as const;

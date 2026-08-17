@@ -1,0 +1,100 @@
+name: Build Rust cores for Android
+description: >
+  Dựng libtaad_enclave_core.so + libchat_mls.so vào android/app/src/main/jniLibs.
+  PHẢI chạy TRƯỚC gradle.
+
+# VÌ SAO CÓ TỆP NÀY
+# ─────────────────
+# Hai module Kotlin nạp thư viện native lúc lớp được khởi tạo:
+#   android/app/src/main/java/com/aladincontract/company/TaadEnclaveModule.kt:295
+#       System.loadLibrary("taad_enclave_core")
+#   android/app/src/main/java/com/aladincontract/company/ChatMlsModule.kt:168
+#       System.loadLibrary("chat_mls")
+#
+# Cả hai .so đều KHÔNG có trong git (`git ls-files android/app/src/main/jniLibs`
+# chỉ trả libcardano_serialization_lib) và gradle KHÔNG tự dựng chúng
+# (android/app/build.gradle không có cargo/rust/externalNativeBuild).
+# Codemagic dựng chúng ở bước riêng (codemagic.yaml:845 + :877), còn hai workflow
+# GitHub thì KHÔNG — nên APK/AAB ra từ GitHub thiếu cả hai thư viện.
+#
+# Hai module có bọc try/catch nên app KHÔNG sập; nó đặt `libLoaded=false` và mọi
+# method reject. Nghĩa là bản dựng "xanh" vẫn cài được, chỉ có toàn bộ tầng danh
+# tính PhoenixKey (ví · DID · Master_KEK · seed · uỷ thác) và chat mã hoá đầu-cuối
+# là im lặng không dùng được. Lỗi câm — build xanh, người dùng mới thấy.
+#
+# Hành động dùng chung này để hai workflow không giữ hai bản sao của cùng một
+# bước; đó đúng là loại trùng lặp đã làm bản Pool lệch khỏi bản Staking.
+
+runs:
+  using: composite
+  steps:
+    - name: Cài Rust toolchain + target Android
+      shell: bash
+      run: |
+        set -eo pipefail
+        rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+
+    # Dựng 2 crate × 3 ABI ở chế độ release rất lâu nếu không nhớ đệm. Khoá theo
+    # Cargo.lock: lock đổi thì dựng lại, không đổi thì dùng lại.
+    - name: Nhớ đệm cargo
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          ~/.cargo/bin/cargo-ndk
+          rust/taad_enclave_core/target
+          rust/chat_mls/target
+        key: rust-android-${{ runner.os }}-${{ hashFiles('rust/*/Cargo.lock', 'rust/*/Cargo.toml') }}
+        restore-keys: |
+          rust-android-${{ runner.os }}-
+
+    - name: Cài cargo-ndk
+      shell: bash
+      run: |
+        set -eo pipefail
+        command -v cargo-ndk >/dev/null 2>&1 || cargo install cargo-ndk --locked
+
+    - name: Dựng taad_enclave_core + chat_mls
+      shell: bash
+      run: |
+        set -eo pipefail
+        # setup-android đặt SDK ở ANDROID_SDK_ROOT; lấy NDK mới nhất đang cài.
+        ANDROID_NDK_HOME=$(ls -d "$ANDROID_SDK_ROOT"/ndk/*/ 2>/dev/null | sort | tail -1)
+        if [ -z "$ANDROID_NDK_HOME" ]; then
+          echo "::error::Không thấy NDK trong $ANDROID_SDK_ROOT/ndk — bước Setup Android SDK phải xin gói ndk;<version>"
+          exit 1
+        fi
+        export ANDROID_NDK_HOME
+        echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME"
+
+        # 3 ABI, khớp đúng codemagic.yaml:867. x86 (32-bit) cố ý bỏ: máy thật không
+        # còn dùng, và mỗi ABI thêm vào là thêm thời gian dựng.
+        for crate in taad_enclave_core chat_mls; do
+          echo "── dựng $crate ──"
+          ( cd "rust/$crate" && cargo ndk \
+              -t arm64-v8a -t armeabi-v7a -t x86_64 \
+              -o ../../android/app/src/main/jniLibs \
+              build --release --lib )
+        done
+
+    # Kiểm SAU khi dựng, không kiểm trước. Thiếu .so mà vẫn cho qua thì lỗi chỉ lộ
+    # trên máy người dùng, và lộ dưới dạng "tính năng không khả dụng" chứ không
+    # phải dưới dạng build đỏ — đúng cách nó đã ẩn được tới hôm nay.
+    - name: Kiểm .so đã vào jniLibs
+      shell: bash
+      run: |
+        set -eo pipefail
+        missing=0
+        for abi in arm64-v8a armeabi-v7a x86_64; do
+          for lib in libtaad_enclave_core.so libchat_mls.so; do
+            f="android/app/src/main/jniLibs/$abi/$lib"
+            if [ -f "$f" ]; then
+              echo "  ok  $f ($(stat -c%s "$f") byte)"
+            else
+              echo "::error::thiếu $f"
+              missing=1
+            fi
+          done
+        done
+        [ "$missing" -eq 0 ] || exit 1

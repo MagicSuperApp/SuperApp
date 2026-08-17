@@ -37,7 +37,7 @@ import { useCoachMarkTarget } from '../onboarding/CoachMarkContext';
 import { t, tf, useLanguage } from '../i18n';
 import {
   HEADER_COLORS,
-  PROOFCHAT_THEME,
+  CHAT_THEME,
   TRACE_THEME,
   WORK_THEME,
   LAMPNET_THEME,
@@ -52,7 +52,7 @@ const NEAR_TOP = 24;            // gần đỉnh → luôn hiện lại
 // hoặc route lạ → nền mặc định (xanh đậm HEADER_COLORS.bg). KHÔNG hardcode hex —
 // lấy từ brand token của theme.
 const ROUTE_BG: Record<string, string> = {
-  ProofChatHome: PROOFCHAT_THEME.primaryDeep,
+  ChatHome: CHAT_THEME.primaryDeep,
   Farms:         TRACE_THEME.primaryDeep,
   WorkHome:      WORK_THEME.primaryDeep,
   JoinHome:      LAMPNET_THEME.primaryDeep,

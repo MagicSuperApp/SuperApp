@@ -38,7 +38,7 @@ import {
 import { useLanguage } from '../i18n';
 
 interface Props {
-  /** Route app con (khoá SUBHOME_FRAME), vd 'ProofChatHome' | 'Farms'. */
+  /** Route app con (khoá SUBHOME_FRAME), vd 'ChatHome' | 'Farms'. */
   appRoute: string;
   /** Tab con đang mở. */
   activeKey: string;

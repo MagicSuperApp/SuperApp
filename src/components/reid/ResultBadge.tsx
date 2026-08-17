@@ -11,8 +11,19 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { NEUTRAL } from '../../shared/theme';
 
 // ─── Bảng màu quyết định ──────────────────────────────────────────────────────
-const DECISION_COLORS: Record<string, string> = {
-  MATCH:        '#1b5e20',
+//
+// XANH LÁ ĐƯỢC GIỮ RIÊNG cho thứ NGƯỜI đã xác nhận. Máy đoán thì không được
+// mang màu đó, dù máy có chắc tới đâu.
+//
+// Số đo của OriLife: `decision == "MATCH"` chỉ ĐÚNG **19/37 = 51,4%**. Một dấu
+// tích xanh ở tỉ lệ đó nói dối khoảng một nửa số lần, và nói dối theo hướng
+// nông dân tin — họ gắn nhãn quả/cây theo câu trả lời của máy rồi đi bán.
+// Biên giữa ứng viên nhất và nhì có trung vị 0,030, thấp nhất 0,002: hệ gần như
+// luôn "chắc chắn" trên một khoảng cách mỏng như thế.
+//
+// Nên MATCH nay là XANH DƯƠNG (tin báo), không phải xanh lá (đã đúng).
+export const DECISION_COLORS: Record<string, string> = {
+  MATCH:        '#0277bd',
   UNCERTAIN:    '#f9a825',
   NO_MATCH:     '#c62828',
   EMPTY_BUCKET: '#607d8b',
@@ -22,8 +33,8 @@ const DECISION_COLORS: Record<string, string> = {
 
 // ─── Nhãn văn bản theo context ────────────────────────────────────────────────
 // TreeDecision: MATCH | UNCERTAIN | NO_MATCH | EMPTY_BUCKET | MOVED
-const TREE_LABELS: Record<string, string> = {
-  MATCH:        '✓ KHỚP',
+export const TREE_LABELS: Record<string, string> = {
+  MATCH:        'MÁY ĐOÁN: CÂY NÀY',
   UNCERTAIN:    '? CHƯA CHẮC',
   NO_MATCH:     '✗ CHƯA NHẬN RA',
   EMPTY_BUCKET: '• CHƯA CÓ CÂY GẦN ĐÂY',
@@ -31,8 +42,8 @@ const TREE_LABELS: Record<string, string> = {
 };
 
 // AnimalDecision: MATCH | UNCERTAIN | NO_MATCH | EMPTY_FARM | MOVED
-const ANIMAL_LABELS: Record<string, string> = {
-  MATCH:        '✓ NHẬN RA',
+export const ANIMAL_LABELS: Record<string, string> = {
+  MATCH:        'MÁY ĐOÁN: CON NÀY',
   UNCERTAIN:    '? CHƯA CHẮC',
   NO_MATCH:     '✗ CHƯA NHẬN RA',
   EMPTY_FARM:   '• TRẠI CHƯA CÓ CÁ THỂ',
@@ -40,8 +51,10 @@ const ANIMAL_LABELS: Record<string, string> = {
 };
 
 // ─── Icon theo decision ───────────────────────────────────────────────────────
-const DECISION_ICONS: Record<string, string> = {
-  MATCH:        'check-circle',
+export const DECISION_ICONS: Record<string, string> = {
+  // KHÔNG 'check-circle'. Dấu tích đọc ra là "đã xác nhận đúng" — máy không biết
+  // điều đó. `magnify` nói đúng việc máy vừa làm: nó đã TRA, chưa ai XÁC NHẬN.
+  MATCH:        'magnify',
   UNCERTAIN:    'help-circle',
   NO_MATCH:     'close-circle',
   EMPTY_BUCKET: 'circle-outline',
@@ -79,6 +92,14 @@ const ResultBadge: React.FC<ResultBadgeProps> = ({ decision, context, extra }) =
           {extra}
         </Text>
       )}
+
+      {/* MATCH luôn kèm câu xin xác nhận. Không phải lời khuyên — là điều kiện
+          để con số 51,4% không bị đọc thành câu trả lời cuối. */}
+      {decision === 'MATCH' && (
+        <Text style={styles.confirmHint}>
+          Máy tra ra thế này, chưa phải kết luận. Xin nhìn lại {context === 'tree' ? 'cây' : 'con vật'} rồi xác nhận.
+        </Text>
+      )}
     </View>
   );
 };
@@ -98,6 +119,12 @@ const styles = StyleSheet.create({
   },
   icon: {
     marginRight: 5,
+  },
+  confirmHint: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: NEUTRAL.textMuted,
+    fontStyle: 'italic',
   },
   label: {
     fontSize: 13,

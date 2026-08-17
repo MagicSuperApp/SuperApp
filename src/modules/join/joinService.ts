@@ -22,9 +22,27 @@ import { LAMPNET_BASE_URL } from '@env';
 
 // ── Base URL ─────────────────────────────────────────────────────────
 // LAMPNET_BASE_URL đã có sẵn trong .env (dùng chung với upload Mirage).
-// TODO(backend LampNet): xác nhận daemon dev expose các path /v1/* dưới base này,
-// hay có prefix riêng — đối chiếu message team LampNet trước khi bật thật.
-const BASE_URL = (LAMPNET_BASE_URL as string | undefined) ?? 'https://lampnet.cloud';
+//
+// `api.lampnet.cloud` là bề mặt CHUẨN giữ lâu dài (LampNet đã chốt). `lampnet.cloud`
+// hôm nay trỏ cùng một node — đo 12/08, hai host trả cùng peer id — nhưng **không có
+// cam kết nào rằng nó sẽ mãi như vậy**. Đổi mặc định sang `api.` để không dựa vào một
+// sự trùng hợp; `.env` vẫn ghi đè được.
+const BASE_URL = (LAMPNET_BASE_URL as string | undefined) ?? 'https://api.lampnet.cloud';
+
+// ⚠ PROD ĐANG CHẠY BẢN CŨ HƠN `main` — thử end-to-end sẽ gãy ở bước phát nonce,
+// và ĐÓ KHÔNG PHẢI LỖI APP. Đừng đi sửa app vì bài thử đỏ. Tự đo 13/08:
+//
+//   GET https://api.lampnet.cloud/v1/join/challenge   → 404   (route CÓ THẬT ở
+//                                                     lampnet-node.rs:1990 @dc27fa9)
+//   GET https://api.lampnet.cloud/v1/network_info     → 200
+//   GET https://join-api.lampnet.cloud/health         → 502
+//
+// LampNet chứng minh nhị phân prod cũ bằng cách đối chiếu tên chỉ số `/metrics`:
+// prod thiếu `lampnet_durability_blocked_cids`, `…_blocked_reason`,
+// `…_peer_registry_size`, `…_chap_nhan_request_ky_dung`, `…_tu_choi_request_khong_ky`
+// — đều là chỉ số sinh ra SAU sự cố 03/08.
+//
+// Gỡ ghi chú này khi LampNet báo đã deploy VÀ `join/challenge` trả khác 404.
 
 // Timeout mặc định — quá hạn coi là lỗi mạng (spec §2: "timeout → error").
 const DEFAULT_TIMEOUT_MS = 15000;
@@ -99,6 +117,49 @@ export const isLampNetBackendEnabled = (): boolean =>
 
 // ── fetch helper: timeout + phân loại lỗi 3 lớp ──────────────────────
 
+/** Trần ký tự cho câu lỗi lấy từ máy chủ — dài hơn là log/stack, không phải câu cho người. */
+const SERVER_MESSAGE_MAX = 160;
+
+/**
+ * Lấy câu lỗi CHO NGƯỜI ĐỌC từ thân phản hồi lỗi, hoặc `null` nếu không có câu nào
+ * đáng hiện. LampNet trả lý do bằng **văn bản thuần** (đo 15/08 ở
+ * `POST /v1/wallet/activate` → 403), nhưng vài đường khác trả JSON, nên nhận cả hai.
+ *
+ * Chặn ba thứ không được để lọt ra giao diện: thân rỗng, thân quá dài (log/HTML/stack),
+ * và thân có dấu vết kỹ thuật (thẻ HTML, đường dẫn tệp mã nguồn). Thân đọc hỏng thì
+ * trả `null` — hàm này KHÔNG được phép làm hỏng đường lỗi mà nó đang phục vụ.
+ */
+async function readHumanMessage(res: Response): Promise<string | null> {
+  let text: string;
+  try {
+    text = (await res.text()).trim();
+  } catch {
+    return null;
+  }
+  if (!text) return null;
+
+  let msg = text;
+  if (text.startsWith('{') || text.startsWith('[')) {
+    try {
+      const body = JSON.parse(text) as Record<string, unknown>;
+      const cand = body?.message ?? body?.error ?? body?.detail;
+      if (typeof cand !== 'string' || !cand.trim()) return null;
+      msg = cand.trim();
+    } catch {
+      return null;
+    }
+  }
+
+  if (msg.length > SERVER_MESSAGE_MAX) return null;
+  // Thẻ HTML thật (`<html>`, `</body>`) — KHÔNG chặn `<` trần: câu lỗi thật của
+  // LampNet có so sánh số ("Reputation 46.3 < threshold 50.0"), chặn `<` trần là
+  // giết đúng câu cần hiện.
+  if (/<\/?[a-z][^>]*>/i.test(msg)) return null;
+  // Dấu vết stack/mã nguồn.
+  if (/\.rs:\d|\bat \w+\.\w+ \(/.test(msg)) return null;
+  return msg;
+}
+
 async function request<T>(
   path: string,
   init?: RequestInit,
@@ -131,13 +192,22 @@ async function request<T>(
     // mà giao diện lại bảo "chưa đủ bậc tham gia" — đúng cách để không ai tìm ra lỗi.
     const kind: JoinErrorKind =
       res.status === 401 || res.status === 403 ? 'auth' : 'server';
-    console.warn(`[joinService] ${path} trả HTTP ${res.status} (${kind}).`);
+    // Máy chủ CÓ nói lý do, và nói bằng tiếng Việt cho người dùng đọc. Đo 15/08:
+    //   POST /v1/wallet/activate (403) → "Reputation 46.3 < threshold 50.0. Cần thêm
+    //   uptime/shards."
+    // Bản trước đọc body CHỈ ở nhánh `res.ok`, nên câu đó bị vứt và người dùng nhận
+    // "Chưa đủ quyền hoặc chưa đủ bậc tham gia." — không nói được còn thiếu bao nhiêu,
+    // cũng không nói phải làm gì. Nay lấy câu của máy chủ khi nó thật sự là câu cho
+    // người đọc; không thì mới rơi về câu chung.
+    const detail = await readHumanMessage(res);
+    console.warn(`[joinService] ${path} trả HTTP ${res.status} (${kind}). ${detail ?? ''}`);
     throw new JoinApiError(
       kind,
       res.status,
-      kind === 'auth'
-        ? 'Chưa đủ quyền hoặc chưa đủ bậc tham gia.'
-        : `Mạng LampNet chưa nhận yêu cầu này (mã ${res.status}).`,
+      detail ??
+        (kind === 'auth'
+          ? 'Chưa đủ quyền hoặc chưa đủ bậc tham gia.'
+          : `Mạng LampNet chưa nhận yêu cầu này (mã ${res.status}).`),
     );
   }
 
@@ -157,7 +227,10 @@ async function request<T>(
 
 /**
  * Bước 0 — Bootstrap: lấy bootstrap_did từ /v1/network_info (trả JSON).
- * Không dùng /v1/peer_id vì endpoint đó trả plain text, không phải JSON.
+ *
+ * Lý do né `/v1/peer_id` (trả plain text) **đã hết hiệu lực** từ PR #57 (`2e294b3`):
+ * `/v1/peer_id?format=json` nay trả JSON thật. Cả hai đường đều sống, nên giữ
+ * `network_info` không sai — ghi lại để người sau khỏi tưởng đây là ràng buộc còn đúng.
  */
 export const getPeerId = async (): Promise<PeerIdResult> => {
   const info = await request<{ bootstrap_peer_id?: string }>('/v1/network_info', { method: 'GET' });
@@ -178,7 +251,45 @@ export const requestJoin = (config: JoinConfig): Promise<JoinResult> =>
     body: JSON.stringify(config),
   });
 
-/** Bước 2 — Kích hoạt ví: gắn địa chỉ nhận thưởng. */
+/**
+ * Bước 2 — Kích hoạt ví: gắn địa chỉ nhận thưởng.
+ *
+ * ⚠ ĐỪNG NỐI VÀO UI TRƯỚC KHI LAMPNET BÁO ĐÃ SỬA. Hàm này **đúng hợp đồng**;
+ * cửa phía máy chủ mới là chỗ hỏng, LampNet tự đo và báo 13/08 (`dc27fa9`):
+ *
+ * - `lampnet-node.rs:9708-9711` — `wallet_activate_handler` tra địa chỉ Cardano
+ *   trong `join_node_states` bằng `state.peer_id`.
+ * - Bảng đó chỉ có 2 writer: `:8014` ghi theo `body.subject_did` (client gửi) và
+ *   `:9807` qua `/v1/dev/register_wallet` (chỉ khi `LAMPNET_DEV_MODE=true`).
+ *   **Không writer nào ghi `peer_id`** ⇒ reader trượt 100%.
+ * - Chú thích `:9706` khẳng định peer_id ĐƯỢC dùng làm `subject_did` — sai:
+ *   cổng `/v1/peer/enroll:4739` gọi `is_valid_did` (`did_auth.rs:176-188`) đòi
+ *   `did:phoenix:<13 base32>:<64 hex>`, `12D3Koo…` không lọt.
+ *
+ * Khác ca `getRewardEpoch` đã XOÁ 12/08 (ở đó hàm sai: GET vào route POST,
+ * thiếu chữ ký P2P). Ở đây giữ hàm, vì sửa nằm phía máy chủ.
+ *
+ * 🔴 VÀ MỘT VẾ NẶNG HƠN, LampNet trả lời 13/08: **địa chỉ KHÔNG HỀ được lưu.**
+ *
+ *   lampnet-node.rs:450  @dc27fa9  join_node_states: Arc<Mutex<HashMap<…>>>
+ *   lampnet-node.rs:939  @dc27fa9  khởi tạo RỖNG — không nạp từ đĩa
+ *   lampnet-node.rs:8021 @dc27fa9  entry.1 = body.cardano_address.clone();
+ *
+ * Bảng nằm trong RAM, không đọc đĩa, không ghi đĩa ⇒ **node khởi động lại là
+ * mất sạch địa chỉ của mọi người**, và app không được báo gì. Đây là hành vi
+ * bình thường của mã hiện tại, không phải đường tấn công.
+ *
+ * ⇒ Màn Góp máy **không được hứa "đã lưu địa chỉ nhận thưởng của anh/chị"**.
+ * Câu đó chỉ đúng cho tới lần khởi động lại kế tiếp. Và vì `cardano_address` là
+ * MỘT ô `Option<String>` bị ghi đè thẳng — không lịch sử, không log, không phiên
+ * bản — nên không chứng minh được đã bị đổi, mà cũng **không** chứng minh được
+ * chưa bị đổi. "Không thấy dấu hiệu" ở đây không phải bằng chứng, vì không có
+ * chỗ nào để dấu hiệu xuất hiện.
+ *
+ * Chưa mất tiền của ai: thưởng đang là 0 cho mọi node (xem `reputation` gán
+ * cứng `0.0` ở `lampnet-node.rs:8459,8466`), nên chưa đồng nào chi ra địa chỉ
+ * nào. LampNet nhận việc persist + auth về phía họ, không đẩy sang app.
+ */
 export const activateWallet = (cardanoAddress: string): Promise<void> =>
   request<void>('/v1/wallet/activate', {
     method: 'POST',
@@ -207,15 +318,52 @@ export const reportResult = (
   });
 
 /**
- * Bước 6 — Quyết toán: sổ thưởng của cả epoch.
+ * Bước 6 — XEM sổ quyết toán của epoch hiện tại (chỉ đọc, không rút).
  *
- * ⚠ CHƯA KIỂM. Đặt GET vì đó là suy đoán từ tên đường dẫn, NHƯNG
- * `LampNetCloud/Join/Join-Integration.md:70` khai **POST** (nhãn [KHAI], không phải
- * [ĐO]). Hai bên đang ngược nhau và chưa ai curl thật. Đã hỏi Join; trước khi có câu
- * trả lời thì đừng dựa vào phương thức ở đây.
+ * ── ĐÃ ĐO 2026-08-11, không còn là suy đoán ───────────────────────────────────
+ * Tranh cãi cũ "GET hay POST" hoá ra là câu hỏi sai: có **BỐN** đường quyết toán
+ * khác nhau, nên tài liệu và mã đều đúng — cho hai đường khác nhau. Nhà LampNet
+ * chỉ ra điều này (`lampnet-node.rs:1541-1552`), bên này curl thật cả bốn:
+ *
+ *   /v1/reward/settlement          GET=405  POST=401   → POST. Dữ liệu cho tx Cardano.
+ *   /v1/service/settle             GET=405  POST=422   → POST. Ghi nhận settlement dịch vụ.
+ *   /v1/mobile/settlement          GET=200  POST=405   → GET.  ← đường NÀY, xem sổ.
+ *   /v1/mobile/settlement/drain    GET=405  POST=401   → POST. Rút sổ (đòi chữ ký P2P).
+ *
+ * ⇒ `GET` ở đây ĐÚNG. `Join-Integration.md:70` khai POST cũng đúng, nhưng nó nói về
+ * `/v1/reward/settlement`. Bài học ghi lại: **thư liên nhà phải ghi TÊN ĐƯỜNG cạnh
+ * phương thức**; hai bên tranh nhau về `settlement()` suốt nhiều đợt vì cả hai đều
+ * gọi nó bằng tên hàm, không bằng tên đường.
+ *
+ * ── Thân trả về (đo thật, không phải khai) ────────────────────────────────────
+ *   {"merkle_root":"b7559f6c…","total_ulamp":0,"entry_count":0,"drained":false,"entries":[]}
+ *
+ * ── Con số này ĐO CÁI GÌ — chỗ dễ đọc nhầm nhất ───────────────────────────────
+ * `total_ulamp` là tích luỹ **per-verified-unit của MỘT THIẾT BỊ**. Nó KHÔNG phải
+ * phần chia epoch của node (`magic_amount` ở `POST /v1/reward/epoch`). Hai con số
+ * sinh ra ở hai đường mã không gặp nhau — **không cộng, không so, không vẽ chung
+ * một biểu đồ.** Đặt cạnh nhau là dựng một phép tính không ai kiểm được.
+ *
+ * ⚠ ĐƠN VỊ CHƯA CHỐT — đừng quy đổi, đừng gắn nhãn token, đừng hiện như số LAMP.
+ * Bốn nguồn đang nói ba tên: `Reward-Math.md` V1 nói MAGIC · V2 + `Reward-Tech.md
+ * §6.1` nói LAMP · rule toàn hệ + `CARP-LampNet-Coordination.md` nói CARP · mã đang
+ * chạy chi µLAMP (hằng `BASE_PRICE_COMPUTE_ULAMP`,
+ * `lampnet-mirage/src/mobile_settle.rs:27` @lampnet-hivemind@2e294b3). LampNet đã
+ * chuyển việc chốt sang Registry agent + anh Đức. Trước khi có chốt: màn "Đang đóng
+ * góp" giữ **dấu gạch**, không hiện số kèm đơn vị — hiện sai đơn vị cho người dùng
+ * là loại sai khó rút lại.
  */
-export const settlement = (): Promise<Record<string, unknown>> =>
-  request('/v1/mobile/settlement', { method: 'GET' });
+export interface MobileSettlementView {
+  merkle_root: string;
+  /** ⚠ Tên trường là DI SẢN, và là số CỦA THIẾT BỊ — xem hai cảnh báo ở trên. */
+  total_ulamp: number;
+  entry_count: number;
+  drained: boolean;
+  entries: unknown[];
+}
+
+export const settlement = (): Promise<MobileSettlementView> =>
+  request<MobileSettlementView>('/v1/mobile/settlement', { method: 'GET' });
 
 /** Bước 7 — Trạng thái node (online, việc đang chạy, việc đã verify). Màn "Đang đóng góp". */
 export const getNodeStats = (): Promise<NodeStats> =>
@@ -227,6 +375,13 @@ export const getNodeStats = (): Promise<NodeStats> =>
  * ⚠ CHƯA KIỂM, và đường này KHÔNG có trong `Join-Integration.md` (grep `mobile/rewards`
  * = 0). Nó là ĐỀ NGHỊ của bên này, chưa phải hợp đồng đã chốt. Đã hỏi Join xác nhận.
  * Dù sao cũng chưa gọi được: `device_pubkey` do phần native sinh, mà cầu native chưa có.
+ *
+ * ⚠️ VÀ KỂ CẢ KHI CÓ CẦU NATIVE, "suất theo thiết bị" vẫn chưa có nền (LampNet xác nhận
+ * 12/08): phía máy chủ `device_pubkey` **không neo vào bất cứ danh tính nào** —
+ * `verify_lease_request` chỉ đòi chữ ký Ed25519 của chính thiết bị trên field của chính
+ * nó, mà sinh keypair mới là miễn phí. Nên "một thiết bị" hiện chỉ có nghĩa "một khoá",
+ * không phải "một máy", càng không phải "một người". Chống một người khai nhiều thiết bị
+ * thì phải neo vào PhoenixKey DID. Đừng hứa với người dùng nhiều hơn thế.
  */
 export const getDeviceRewards = (
   devicePubkeyHex: string,
@@ -234,19 +389,25 @@ export const getDeviceRewards = (
   request(`/v1/mobile/rewards/${encodeURIComponent(devicePubkeyHex)}`, { method: 'GET' });
 
 /**
- * ⛔ KHÔNG dùng từ ứng dụng — nhưng lý do vẫn CHƯA ĐƯỢC ĐO, đừng chép lại như sự thật.
+ * ⛔ `/v1/reward/epoch` — ĐÃ ĐO 12/08, ĐÃ XOÁ hàm gọi. Đừng viết lại.
  *
- * Bên này ĐỌC mã daemon thấy `/v1/reward/epoch` là đường phía vận hành (nhận đóng góp
- * của TẤT CẢ node + `total_pool`, đòi header `X-LampNet-Sig`), nên gọi bằng GET nhiều
- * khả năng trả 405. NHƯNG `Join-Integration.md:71` khai `GET /v1/reward/epoch` và `:175`
- * nói nó đang trả `accrued_micro_lamp` — ngược hẳn. Chưa bên nào curl thật.
+ * Trước đây chỗ này ghi "chưa đo được". Nay đo trên mã daemon `main@c89da10`, hai lý do
+ * độc lập, mỗi lý do đủ để chặn:
+ * - `lampnet-node.rs:1504` đăng ký đường này là **POST**, không có nhánh GET ⇒ gọi GET
+ *   được 405.
+ * - `lampnet-node.rs:6354-6355` gọi `require_p2p_sig(…, "POST", "/v1/reward/epoch", &raw_body)`
+ *   — chữ ký P2P daemon-to-daemon **buộc theo thân yêu cầu**. Điện thoại không có khoá
+ *   P2P của daemon nên không ký được, kể cả gọi đúng POST.
  *
- * Vì chưa chốt được, màn "Đang đóng góp" tạm KHÔNG gọi đường này và nói thẳng là chưa
- * đo được, thay vì hiện một con số có thể sai. Thưởng theo thiết bị: `getDeviceRewards`.
- * @deprecated
+ * Tức `Join-Integration.md:71` (khai `GET`) và `superapp-api.md:13` (xếp đường này vào ô
+ * "Bearer JWT") **đều sai**. Nhà LampNet đã nhận là lỗi tài liệu bên họ (thư 12/08) và
+ * cảnh báo đúng đường này là chỗ đáng nghi kế tiếp — đo ra thì đúng thật.
+ *
+ * Luật: với LampNet, đối chiếu `require_p2p_sig` / `require_bearer_auth` trong
+ * `lampnet-node.rs` theo đúng chuỗi route, ĐỪNG suy loại xác thực từ bảng trong tài liệu.
+ *
+ * Thưởng theo thiết bị thì dùng `getDeviceRewards` (đường `/v1/mobile/*`, không đòi sig P2P).
  */
-export const getRewardEpoch = (): Promise<RewardEpoch> =>
-  request<RewardEpoch>('/v1/reward/epoch', { method: 'GET' });
 
 // ── DID adapter (spec §6 — cô lập did:cardano sau 1 lớp, INV-2) ───────
 // UI/logic KHÔNG đọc thẳng did:cardano. Bản sau ép did:phoenix → CHỈ đổi hàm này,
@@ -276,5 +437,5 @@ export async function joinViaNativeSdk(_config: JoinConfig): Promise<JoinResult>
   //   - KHÔNG log, KHÔNG trả seed_hex ra JS bridge (INV-3, spec §3).
   // Đường REST KHÔNG thay thế được: daemon đòi 22 trường kèm 2 chữ ký Ed25519 mà
   // chỉ SDK native mới dựng được — gọi REST với 4 trường luôn trả 422.
-  throw new JoinApiError('unsupported', 0, 'Bản này chưa hỗ trợ Kết đèn.');
+  throw new JoinApiError('unsupported', 0, 'Bản này chưa hỗ trợ Góp máy.');
 }

@@ -1,0 +1,165 @@
+name: 'Sinh tệp biến môi trường cho React Native'
+description: >
+  Ghi tệp `.env` mà react-native-dotenv nướng vào bundle. KHÔNG có bước này thì
+  mọi biến `@env` là `undefined` và app rơi về đường lui localhost — im lặng.
+
+# ── VÌ SAO CÓ TỆP NÀY ─────────────────────────────────────────────────────────
+#
+# Đo 2026-08-11 trên `origin/develop` @8d0acda:
+#
+#   grep -n "cat >\|tee \|touch \|base64 -d\|printf" .github/workflows/debug-apk.yml
+#     → 84:  cat > android/gradle.properties << 'EOF'
+#     → 112: ./gradlew assembleDebug ... | tee android-debug.log
+#
+# Tức toàn bộ đường build GitHub chỉ sinh ĐÚNG MỘT tệp, và không có tệp biến môi
+# trường. Còn `node_modules/react-native-dotenv/index.js:70` đặt
+# `allowUndefined: true` làm mặc định — thiếu tệp thì plugin KHÔNG báo lỗi, nó
+# thay mọi `import { X } from '@env'` bằng `undefined`.
+#
+# Hệ quả trên bản APK/AAB dựng từ GitHub (đối chiếu chỗ ÉP, không phải chỗ khai):
+#
+#   | biến               | đường lui khi undefined            | máy chủ thật             |
+#   |--------------------|------------------------------------|--------------------------|
+#   | ORILIFE_API_BASE   | https://api.orilife.io  (đúng)     | api.orilife.io      200  |
+#   | PHOENIXKEY_API_URL | https://api.phoenixkey.me/api/v1   | 200                      |
+#   | LAMPNET_BASE_URL   | https://lampnet.cloud   (đúng)     | /v1/network_info    200  |
+#   | ALADIN_API_URL     | http://localhost:8001   ✗ SAI      | api.orilife.io      200  |
+#   | WORK_API_URL       | '' → cổng runtime tắt   ✗ SAI      | api.aladin.work     200  |
+#   | PROOFCHAT_API_URL  | http://localhost:3000   ✗ SAI      | api.proofchat.me    200  |
+#
+#   - `aladin-api.ts:68` → `syncDispatch.ts` là đường ĐỒNG BỘ vườn/cây. Trỏ
+#     localhost:8001 nghĩa là đồng bộ hỏng câm trên máy nông dân.
+#   - `modules/work/services/config.ts:24` `?.trim() || ''` → `WORK_BASE_URL=''`
+#     → `isWorkBackendEnabled()` luôn false → module Việc kẹt mock VĨNH VIỄN,
+#     dù `api.aladin.work/api/v1/health` trả 200.
+#   - `proofchat-api.ts:145` cùng dạng.
+#
+# `codemagic.yaml:103-154` ĐÃ sinh tệp này từ lâu với đúng các giá trị prod. Nên
+# hai đường build đang cho ra HAI ỨNG DỤNG KHÁC NHAU từ cùng một commit — bản
+# Codemagic nối máy chủ thật, bản GitHub nối localhost. Đó mới là lỗi thật; tệp
+# này gỡ nó bằng cách bắt đường GitHub ghi CÙNG bộ giá trị.
+#
+# Sửa ở đây thì SỬA CẢ `codemagic.yaml` — hai chỗ lệch nhau là quay lại đúng lỗi này.
+
+inputs:
+  aladin-api-key:
+    description: 'X-API-Key gọi backend OriLife/Aladin. Trống → mock-local-api-key (khớp codemagic.yaml:109).'
+    required: false
+    default: ''
+  analytics-api-url:
+    description: 'Trống = TẮT analytics. analytics.orilife.io không phân giải được (DNS NXDOMAIN, đo 05/08).'
+    required: false
+    default: ''
+  analytics-api-key:
+    required: false
+    default: ''
+  proofchat-backend-enabled:
+    description: >
+      Mặc định `off` CỐ Ý. Máy chủ ProofChat đã sống lại (api.proofchat.me/api/v1/health
+      → 200, đo 2026-08-11), nên nếu để trống thì cổng runtime tự bật module — trong khi
+      chốt chặn của chính nó chưa gỡ (proofchat-api.ts:88-93: token phải nằm
+      Keychain/Keystore, nay còn ở AsyncStorage chưa mã hoá). Bật là quyết định của
+      người phát hành, không phải hệ quả phụ của việc máy chủ hồi sinh.
+    required: false
+    default: 'off'
+
+runs:
+  using: composite
+  steps:
+    - name: Ghi tệp biến môi trường
+      shell: bash
+      env:
+        IN_ALADIN_API_KEY: ${{ inputs.aladin-api-key }}
+        IN_ANALYTICS_API_URL: ${{ inputs.analytics-api-url }}
+        IN_ANALYTICS_API_KEY: ${{ inputs.analytics-api-key }}
+        IN_PROOFCHAT_ENABLED: ${{ inputs.proofchat-backend-enabled }}
+      run: |
+        set -eo pipefail
+        ENV_FILE=".env"
+        cat > "$ENV_FILE" <<EOF
+        # SINH TỰ ĐỘNG bởi .github/actions/rn-env — đừng sửa tay trong runner.
+        # Giá trị phải TRÙNG codemagic.yaml:103-154, nếu không hai đường build cho
+        # ra hai ứng dụng khác nhau từ cùng một commit.
+
+        # OriLife / Aladin (đồng bộ vườn + cây)
+        ALADIN_API_URL=https://api.orilife.io
+        ALADIN_API_KEY=${IN_ALADIN_API_KEY:-mock-local-api-key}
+        ALADIN_REGION_CODE=vn-south-01
+
+        # PhoenixKey + Ví Phượng hoàng
+        PHOENIXKEY_API_URL=https://api.phoenixkey.me/api/v1
+        # false = luồng ký chưa mở (native Ed25519 signer còn stub — OrgMintScreen.tsx:61).
+        PHOENIX_WALLET_ENABLED=false
+        ORG_MINT_ENABLED=false
+        # Module Pool đang được gỡ (PR #130 — bản thứ hai của cùng một việc, không
+        # màn nào mở được). Giữ dòng này tới khi #130 vào develop, vì poolService.ts
+        # còn import nó và bước đối chiếu bên dưới sẽ đỏ nếu thiếu.
+        PHOENIXKEY_POOL_API_URL=https://api.phoenixkey.me/api/v1
+
+        # TreeReID / identify cây
+        ORILIFE_API_BASE_URL=https://api.orilife.io
+
+        # LampNet
+        MESHAPI_USE_MOCK=false
+        LAMPNET_BASE_URL=https://lampnet.cloud
+        LAMPNET_UPLOAD_URL=https://lampnet.cloud/mirage/put?mode=symmetric
+        CAPTURES_3D_URL=https://api.orilife.io/captures/3d
+
+        # AladinWork (Việc làm)
+        WORK_API_URL=https://api.aladin.work/api/v1
+        # Kill-switch THỦ CÔNG. Trống = để cổng runtime quyết theo /health
+        # (config.ts:36-39 chỉ chặn khi giá trị đúng bằng 'off').
+        WORK_BACKEND_ENABLED=
+
+        # ProofChat
+        PROOFCHAT_API_URL=https://api.proofchat.me/api/v1
+        PROOFCHAT_WS_URL=https://api.proofchat.me
+        PROOFCHAT_WS_PATH=/socket.io
+        PROOFCHAT_BACKEND_ENABLED=${IN_PROOFCHAT_ENABLED}
+
+        # Analytics — trống = TẮT.
+        ANALYTICS_API_URL=${IN_ANALYTICS_API_URL}
+        ANALYTICS_API_KEY=${IN_ANALYTICS_API_KEY}
+
+        # Nhật ký từ xa + trợ lý Aladin — CỐ Ý TRỐNG ở bản phát hành.
+        # Hai thứ này trước đây viết cứng địa chỉ ngrok trên máy lập trình viên
+        # (`remoteLogger.ts`, `aladinChat.ts`) nên mọi bản phát hành đều đẩy nhật ký
+        # thiết bị và câu hỏi của người dùng thật lên một tên miền tạm. Nay trống =
+        # tắt hẳn: rLog chỉ in console, bong bóng trợ lý ẩn luôn.
+        # Có endpoint phát hành thật thì điền vào đây, ĐỪNG điền lại ngrok.
+        REMOTE_LOG_URL=
+        ALADIN_CHAT_URL=
+        EOF
+        # Cắt khoảng trắng lạc sau '=' và cuối dòng: một URL dính tab đầu chuỗi sẽ
+        # làm fetch ném "Network request failed" trên máy thật, và lỗi đó đọc như
+        # mất mạng chứ không như cấu hình sai (codemagic.yaml:153 cùng lý do).
+        perl -i -pe 's/^(\w+)=[ \t]+/$1=/; s/[ \t]+$//' "$ENV_FILE"
+
+    - name: Kiểm tệp vừa ghi có đủ biến mà mã thật sự import không
+      shell: bash
+      run: |
+        set -eo pipefail
+        # Đối chiếu chỗ ÉP (mọi `import { … } from '@env'` trong src/) với chỗ vừa
+        # ghi. Thêm một biến `@env` mới mà quên khai ở đây thì nó thành `undefined`
+        # ÂM THẦM — bước này biến cái im lặng đó thành đỏ.
+        # Hai lát `sed`/`grep` cuối vá một lỗ của chính cổng này: dạng bí danh
+        # `import { A as B }` trước đây bóc ra chuỗi "A as B", không khớp tên nào
+        # trong tệp vừa ghi ⇒ cổng báo THIẾU một biến đã khai đủ. Tức cổng tự đẻ ra
+        # đỏ giả. Cắt phần ` as …` rồi chỉ giữ token đúng dạng TÊN_BIẾN.
+        grep -rh "from '@env'" src --include="*.ts" --include="*.tsx" \
+          | sed "s/.*import *{//; s/} *from.*//" | tr ',' '\n' \
+          | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' \
+          | sed 's/[[:space:]]\+as[[:space:]]\+.*$//' \
+          | grep -E '^[A-Z0-9_]+$' | sort -u > /tmp/env-needed.txt
+        cut -d= -f1 .env | grep -E '^[A-Z0-9_]+$' | sort -u > /tmp/env-have.txt
+        MISSING=$(comm -23 /tmp/env-needed.txt /tmp/env-have.txt || true)
+        if [ -n "$MISSING" ]; then
+          echo "::error::Mã import biến @env chưa được khai trong tệp môi trường:"
+          echo "$MISSING" | sed 's/^/  - /'
+          echo "Thêm vào .github/actions/rn-env/action.yml VÀ codemagic.yaml (cả hai)."
+          exit 1
+        fi
+        echo "Đủ $(wc -l < /tmp/env-needed.txt) biến @env mà src/ đang import."
+        echo "--- ALADIN_API_URL   : $(grep '^ALADIN_API_URL=' .env)"
+        echo "--- WORK_API_URL     : $(grep '^WORK_API_URL=' .env)"
+        echo "--- PROOFCHAT_API_URL: $(grep '^PROOFCHAT_API_URL=' .env)"

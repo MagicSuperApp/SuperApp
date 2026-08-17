@@ -40,11 +40,20 @@ import { ORILIFE_BASE } from '../services/orilifeBase';
 
 import { Icon } from '../components/Icon';
 import { COLORS } from '../constants';
+import { useTk } from '../i18n/keys';
+import {
+  ELEVATION as ORG_ELEV, ORGANIC_CARD, ORGANIC_TILE,
+  SURFACE as ORG_SURFACE, TONE as ORG_TONE, TYPE as ORG_TYPE,
+} from '../modules/trace/theme/depth';
 import {
   fruitCandidates, enrollFruit, addFruitView, detectFruit, outcomeOf,
   type FruitShape, type FruitCandidate, type FruitRegion, type Bbox, type TreeZone,
   type FruitViewType,
 } from '../services/fruitReIDService';
+import {
+  getCapturePlan, suggestedFace,
+  type CapturePlan,
+} from '../services/capturePlanService';
 import {
   DEFAULT_FRUIT_COORD, ZONE_LABEL, clampCoord, coordToServer, coordToZone, zoneToY,
   type FruitCoord,
@@ -83,6 +92,12 @@ interface RouteParams {
   fruitName?: string;
   /** Số quả cây này đã có → đặt sẵn tên "Quả {n+1}" cho quả mới. */
   fruitCount?: number;
+  /**
+   * Khối `capture` (JSON đã chuỗi-hoá) dựng ở màn chụp — xem `captureMeta.ts`.
+   * Đọc tại thời điểm bấm máy nên phải đi kèm qua đây, không dựng lại ở đây
+   * được: tới lúc này người ta đã xoay máy, heading/pitch không còn đúng nữa.
+   */
+  capture?: string;
 }
 
 type Step = 'crop' | 'candidates' | 'naming';
@@ -205,12 +220,13 @@ const ScanOverlay: React.FC<{
 };
 
 const FruitCropperScreen: React.FC = () => {
+  const tk = useTk();
   const route = useRoute();
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const {
     treeId, treeName, imageUri, imageW, imageH, zone: zoneParam, fruitId, fruitName,
-    fruitCount,
+    fruitCount, capture,
   } = (route.params ?? {}) as RouteParams;
   // Kết quả trả về từ màn đặt toạ-độ 3D (FruitPlace3D điều hướng ngược có merge).
   const pickedCoord = (route.params as any)?.pickedFruitCoord as FruitCoord | undefined;
@@ -251,9 +267,27 @@ const FruitCropperScreen: React.FC = () => {
   /**
    * MẶT nào của quả đang chụp. Máy chủ cần trường này để thôi đem mặt đáy so với
    * góc hông — thiếu nó là gốc của việc bồi góc bị chặn oan 30/32 lượt.
-   * Mặc định `side`: đó là mặt người ta chụp nhiều nhất khi đứng dưới gốc.
+   *
+   * Giá trị khởi tạo `side` là chỗ ĐỖ TẠM, không phải câu trả lời: nó chỉ đúng
+   * cho tới khi `/api/capture/plan` trả về mặt máy chủ đang thiếu. Người dùng
+   * chạm tay vào bộ chọn thì kế hoạch KHÔNG được ghi đè nữa (`faceTouched`) —
+   * người đứng tại vườn thấy quả, máy chủ chỉ thấy ảnh cũ.
    */
   const [viewType, setViewType] = useState<FruitViewType>('side');
+  const faceTouched = useRef(false);
+  const pickFace = useCallback((v: FruitViewType) => {
+    faceTouched.current = true;
+    setViewType(v);
+  }, []);
+
+  /**
+   * "Còn thiếu gì, chụp gì tiếp" — `GET /api/capture/plan`.
+   *
+   * `null` = CHƯA CÓ kế hoạch (chưa gọi, hoặc gọi hỏng). Màn không được vẽ gì
+   * thay cho nó: một thanh tiến độ dựng từ chỗ trống trông y hệt thanh dựng từ
+   * số 0, và người chụp không có cách nào biết mình đang nhìn số thật hay số bịa.
+   */
+  const [plan, setPlan] = useState<CapturePlan | null>(null);
 
   // Toạ-độ 3D của quả trên cây (hệ riêng của cây). Thay cho việc chỉ chọn 1 trong
   // 3 vùng: người dùng kéo icon quả ở màn FruitPlace3D. zone gửi lên server được
@@ -262,6 +296,12 @@ const FruitCropperScreen: React.FC = () => {
     zoneParam ? { ...DEFAULT_FRUIT_COORD, y: zoneToY(zoneParam) } : DEFAULT_FRUIT_COORD,
   );
   const zone: TreeZone = coordToZone(coord);
+
+  // Người dùng đã THẬT SỰ đặt độ sâu chưa (tức có đi qua màn FruitPlace3D lần này).
+  // Chưa đặt thì KHÔNG gửi pos_z: `coord.z` lúc đó chỉ là giá-trị mặc định 0, gửi
+  // lên là đóng dấu "đã đặt ở giữa tán" cho một quả chưa ai đặt — và với add_view
+  // thì còn ghi đè mất độ sâu đã đặt từ lần trước.
+  const [zPlaced, setZPlaced] = useState(false);
 
   // ── QUÉT-NGAY: vừa vào màn là tự tìm quả rồi TỰ CĂN KHUNG vào quả tìm được ──
   // bbox ẢNH GỐC của quả tự-phát-hiện (lớn nhất / tự-tin nhất). null = chưa có / không phát hiện.
@@ -404,6 +444,30 @@ const FruitCropperScreen: React.FC = () => {
     return () => { alive = false; };
   }, [fruitId, vw, vh, imageUri, treeId, jumpToBox]);
 
+  /**
+   * KẾ HOẠCH CHỤP — hỏi máy chủ "quả này còn thiếu mặt nào" ngay khi mở màn.
+   *
+   * Chỉ chạy ở luồng THÊM GÓC (`fruitId` có): luồng quả mới chưa có đối tượng nào
+   * trên máy chủ để lập kế hoạch, gọi vào là 404 chắc chắn.
+   *
+   * Lấy được mặt máy chủ đang thiếu thì đặt luôn cho bộ chọn — trước đây chỗ này
+   * viết cứng `'side'`, tức mọi lượt bồi góc đều khai cùng một mặt bất kể quả
+   * thiếu mặt nào. Hỏng thì KHÔNG làm gì: giữ nguyên `side` và không hiện dòng
+   * hướng dẫn nào, thay vì bịa ra một câu nghe như của máy chủ.
+   */
+  const loadPlan = useCallback(async (afterReject?: null) => {
+    if (!fruitId) return;
+    const r = await getCapturePlan(BASE_URL, 'fruit', fruitId, { afterReject: afterReject ?? null })
+      .catch(() => null);
+    if (!r?.ok || !r.data?.ok) return;
+    setPlan(r.data);
+    // Người dùng đã tự chọn mặt thì thôi — họ đang cầm quả trên tay.
+    const face = suggestedFace(r.data);
+    if (face && !faceTouched.current) setViewType(face);
+  }, [fruitId]);
+
+  useEffect(() => { void loadPlan(); }, [loadPlan]);
+
   // Câu báo sau khi quét tự tắt — để lại thì nó thành một dòng chữ chết trên màn.
   useEffect(() => {
     if (!scanNote) return;
@@ -509,6 +573,7 @@ const FruitCropperScreen: React.FC = () => {
   useEffect(() => {
     if (!pickedCoord) return;
     setCoord(clampCoord(pickedCoord));
+    setZPlaced(true);
     navigation.setParams({ pickedFruitCoord: undefined });
   }, [pickedCoord, navigation]);
 
@@ -536,7 +601,10 @@ const FruitCropperScreen: React.FC = () => {
     setErrMsg(null);
     setBusy(true);
     const r = await addFruitView(BASE_URL, targetFruitId, imageUri, region, {
-      zone, posX: p.x, posH: p.h, viewType, allowMismatch: allowMismatch || undefined,
+      zone, posX: p.x, posH: p.h, viewType, allowMismatch: allowMismatch || undefined, capture,
+      // CHỈ gửi posZ khi người dùng thật sự đặt độ sâu lần này. Máy chủ chỉ cập
+      // nhật trường nào nhận được — gửi bừa là GHI ĐÈ mất độ sâu đặt lần trước.
+      posZ: zPlaced ? coordToServer(coord).posZ : undefined,
     });
     setBusy(false);
 
@@ -553,11 +621,21 @@ const FruitCropperScreen: React.FC = () => {
         yesLabel: 'Vẫn là quả này',
         onYes: () => { void runAddView(targetFruitId, region, p, true); },
       });
+      // Câu từ chối nói VÌ SAO; kế hoạch nói LÀM GÌ TIẾP. Lấy lại kế hoạch để dòng
+      // dưới nút cập nhật theo tình trạng vừa đổi.
+      //
+      // ⛔ KHÔNG gửi `after_reject` ở đường quả. `/api/fruit/add_view` từ chối bằng
+      // HTTP 200 + `warn` ∈ {better_other, low_self}, và hai mã đó CHƯA có trong
+      // bảng dịch `_REJECT_TO_ACTION` của máy chủ (nhà OriLife xác nhận 16/08).
+      // Gửi lên hôm nay thì cửa trả kế hoạch THƯỜNG, im lặng, không báo lỗi — app
+      // sẽ tưởng mình đang hiện câu gỡ đúng cái vừa chặn trong khi không phải.
+      // Trường `message` máy chủ đã trả sẵn là câu tiếng Việt hoàn chỉnh, dùng nó.
+      void loadPlan();
       return;
     }
 
     navigation.goBack();
-  }, [imageUri, zone, viewType, navigation]);
+  }, [imageUri, zone, viewType, coord, zPlaced, navigation, loadPlan]);
 
   const openPlacer = useCallback(() => {
     navigation.navigate('FruitPlace3D', {
@@ -579,7 +657,8 @@ const FruitCropperScreen: React.FC = () => {
     setErrMsg(null);
     setLastRegion(reg);
     // Ước lượng SẴN toạ-độ từ chỗ quả nằm trong ảnh (ngang = x, cao = y) để người
-    // dùng chỉ phải tinh chỉnh chứ không đặt từ đầu. Chiều sâu z vẫn phải tự đặt.
+    // dùng chỉ phải tinh chỉnh chứ không đặt từ đầu. Chiều sâu z KHÔNG suy ra được
+    // từ ảnh phẳng → vẫn phải tự đặt ở màn 3D, không đặt thì để trống chứ không đoán.
     const est = posFromBox(reg.bbox);
     setCoord((c) => clampCoord({ ...c, x: est.x * 2 - 1, y: est.h }));
     setBusy(true);
@@ -597,7 +676,7 @@ const FruitCropperScreen: React.FC = () => {
     else { setCands([]); } // mạng yếu / lỗi → vẫn cho lưu quả mới
     setExpanded(false);
     setStep('candidates');
-  }, [regionToOrig, fruitId, posFromBox, zone, imageUri, treeId, navigation]);
+  }, [regionToOrig, fruitId, posFromBox, zone, coord, zPlaced, imageUri, treeId, navigation]);
 
   // ── Chọn 1 quả-đã-có → THÊM GÓC (add_view) ─────────────────────────────────
   const pickCandidate = useCallback(async (cand: FruitCandidate) => {
@@ -626,10 +705,12 @@ const FruitCropperScreen: React.FC = () => {
     setServerAsk(null);
     setErrMsg(null);
     setBusy(true);
-    // zone/pos_x/pos_h SUY RA từ toạ-độ 3D → server và sơ-đồ 2D cũ vẫn hiểu đúng.
+    // zone/pos_x/pos_h/pos_z SUY RA từ toạ-độ 3D → server và sơ-đồ 2D cũ vẫn hiểu đúng.
+    // pos_z chỉ gửi khi người dùng đã thật sự đặt độ sâu (xem `zPlaced`).
     const srv = coordToServer(coord);
     const r = await enrollFruit(BASE_URL, treeId, name, imageUri, lastRegion, {
-      zone: srv.zone, posX: srv.posX, posH: srv.posH, viewType,
+      zone: srv.zone, posX: srv.posX, posH: srv.posH, viewType, capture,
+      posZ: zPlaced ? srv.posZ : undefined,
       allowDup: allowDup || undefined,
     });
     setBusy(false);
@@ -650,10 +731,11 @@ const FruitCropperScreen: React.FC = () => {
       return;
     }
 
-    // Chiều sâu z không có chỗ trên server → lưu đủ 3 chiều tại máy theo fruit_id.
+    // Máy chủ đã giữ đủ 3 chiều; bản cục bộ chỉ còn là bộ nhớ đệm cho máy này
+    // (và là chỗ duy nhất giữ được chỉnh-sửa từ FruitPlace3D — xem màn đó).
     if (r.data?.fruit_id) await saveFruitCoord(r.data.fruit_id, coord);
     navigation.goBack();
-  }, [lastRegion, nameInput, coord, treeId, imageUri, viewType, navigation]);
+  }, [lastRegion, nameInput, coord, zPlaced, treeId, imageUri, viewType, navigation]);
 
   // ── Quay lại bước crop để khoanh vùng khác ─────────────────────────────────
   const recrop = useCallback(() => { setErrMsg(null); setStep('crop'); }, []);
@@ -799,13 +881,29 @@ const FruitCropperScreen: React.FC = () => {
           cổng bồi góc chặn oan 30 trên 32 lượt. Đặt ở bước khoanh vì cả hai
           đường (thêm góc thẳng, và qua bước đối chiếu) đều đi qua đây.
         */}
+        {/*
+          Việc-phải-làm tiếp, do MÁY CHỦ đặt câu (`next.text_vi`) — không hiện gì
+          khi chưa có kế hoạch. `why_vi` là dòng phụ, chữ nhỏ.
+        */}
+        {plan?.next?.text_vi ? (
+          <View style={styles.planBox}>
+            <Icon name="lightbulb" size={12} color={DETECT_GREEN} />
+            <View style={styles.planTxtWrap}>
+              <Text style={styles.planTxt} numberOfLines={2}>{plan.next.text_vi}</Text>
+              {plan.why_vi ? (
+                <Text style={styles.planWhy} numberOfLines={2}>{plan.why_vi}</Text>
+              ) : null}
+            </View>
+          </View>
+        ) : null}
+
         <Text style={styles.viewLbl}>ĐANG CHỤP MẶT NÀO</Text>
         <View style={styles.viewSeg}>
           {VIEW_CHOICES.map(v => (
             <TouchableOpacity
               key={v.key}
               style={[styles.viewOpt, viewType === v.key && styles.viewOptOn]}
-              onPress={() => setViewType(v.key)}
+              onPress={() => pickFace(v.key)}
               activeOpacity={0.8}
               accessibilityRole="button"
               accessibilityState={{ selected: viewType === v.key }}
@@ -894,14 +992,12 @@ const FruitCropperScreen: React.FC = () => {
   const renderCandidates = () => (
     <View style={styles.container}>
       <SheetHeader
-        eyebrow="BƯỚC 2 / 3"
-        title="Đây là quả nào?"
+        eyebrow={tk('trace.crop.step', { i: 2, n: 3 })}
+        title={tk('trace.crop.whichFruit')}
         onBack={recrop}
       />
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        <Text style={styles.muted}>
-          Vùng quả đã chốt. Chọn quả đã có để thêm góc ảnh, hoặc lưu thành quả mới.
-        </Text>
+        <Text style={styles.muted}>{tk('trace.crop.whichFruitHint')}</Text>
 
         {top ? candRow(top, true) : null}
 
@@ -912,29 +1008,29 @@ const FruitCropperScreen: React.FC = () => {
           activeOpacity={0.85}
         >
           <Icon name="circle-plus" size={15} color={COLORS.white} />
-          <Text style={styles.candNewTxt}>Đây là quả mới</Text>
+          <Text style={styles.candNewTxt}>{tk('trace.crop.isNew')}</Text>
         </TouchableOpacity>
 
         {others.length > 0 && !expanded ? (
           <TouchableOpacity style={styles.linkBtn} onPress={() => setExpanded(true)} activeOpacity={0.7}>
             <Icon name="chevron-down" size={12} color={COLORS.accent} />
-            <Text style={styles.linkTxt}>Không phải — xem {others.length} quả khác</Text>
+            <Text style={styles.linkTxt}>{tk('trace.crop.seeOthers', { n: others.length })}</Text>
           </TouchableOpacity>
         ) : null}
 
         {others.length > 0 && expanded ? (
           <>
-            <Text style={styles.sectionLbl}>TẤT CẢ QUẢ CỦA CÂY</Text>
+            <Text style={styles.sectionLbl}>{tk('trace.crop.allFruits')}</Text>
             {others.map(c => candRow(c, false))}
             <TouchableOpacity style={styles.linkBtn} onPress={() => setExpanded(false)} activeOpacity={0.7}>
               <Icon name="chevron-up" size={12} color={COLORS.accent} />
-              <Text style={styles.linkTxt}>Thu gọn</Text>
+              <Text style={styles.linkTxt}>{tk('trace.crop.collapse')}</Text>
             </TouchableOpacity>
           </>
         ) : null}
 
         {!cands.length ? (
-          <Text style={styles.muted}>Cây chưa có quả nào để đối chiếu — đặt tên để lưu quả mới.</Text>
+          <Text style={styles.muted}>{tk('trace.crop.nothingToMatch')}</Text>
         ) : null}
 
         {errMsg ? <ErrLine text={errMsg} /> : null}
@@ -943,7 +1039,7 @@ const FruitCropperScreen: React.FC = () => {
 
         <TouchableOpacity style={styles.ghost} onPress={recrop} activeOpacity={0.8}>
           <Icon name="arrow-rotate-left" size={14} color={COLORS.textSub} />
-          <Text style={styles.ghostTxt}>Khoanh lại vùng khác</Text>
+          <Text style={styles.ghostTxt}>{tk('trace.crop.recrop')}</Text>
         </TouchableOpacity>
       </ScrollView>
     </View>
@@ -953,19 +1049,21 @@ const FruitCropperScreen: React.FC = () => {
   const renderNaming = () => (
     <View style={styles.container}>
       <SheetHeader
-        eyebrow="BƯỚC 3 / 3"
-        title="Quả mới"
+        eyebrow={tk('trace.crop.step', { i: 3, n: 3 })}
+        title={tk('trace.crop.newFruit')}
         onBack={() => { setErrMsg(null); setStep('candidates'); }}
       />
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        <Text style={styles.muted}>Lưu thành quả mới trên cây {treeName || 'này'}.</Text>
+        <Text style={styles.muted}>
+          {tk('trace.crop.saveOnTree', { name: treeName || tk('trace.crop.thisTree') })}
+        </Text>
 
-        <Text style={styles.sectionLbl}>TÊN QUẢ</Text>
+        <Text style={styles.sectionLbl}>{tk('trace.crop.fruitName')}</Text>
         <View style={styles.inputWrap}>
           <Icon name="tag" size={14} color={COLORS.textMuted} />
           <TextInput
             style={styles.input}
-            placeholder="vd: quả ngọn phía đông"
+            placeholder={tk('trace.crop.fruitNameHint')}
             placeholderTextColor={COLORS.textMuted}
             value={nameInput}
             onChangeText={setNameInput}
@@ -974,12 +1072,12 @@ const FruitCropperScreen: React.FC = () => {
           />
         </View>
 
-        <Text style={styles.sectionLbl}>QUẢ NẰM Ở ĐÂU TRÊN CÂY</Text>
+        <Text style={styles.sectionLbl}>{tk('trace.crop.whereOnTree')}</Text>
         <TouchableOpacity style={styles.coordBox} onPress={openPlacer} activeOpacity={0.8}>
           <View style={styles.coordIcon}><Icon name="location-dot" size={15} color={COLORS.accent} /></View>
           <View style={styles.coordBody}>
-            <Text style={styles.coordTitle}>Đặt vị trí trên cây (3D)</Text>
-            <Text style={styles.coordHint}>Kéo icon quả theo ba hướng chiếu để đặt đúng chỗ</Text>
+            <Text style={styles.coordTitle}>{tk('trace.crop.place3d')}</Text>
+            <Text style={styles.coordHint}>{tk('trace.crop.place3dHint')}</Text>
           </View>
           <Icon name="chevron-right" size={13} color={COLORS.accentLight} />
         </TouchableOpacity>
@@ -1020,7 +1118,7 @@ const FruitCropperScreen: React.FC = () => {
           {busy ? <ActivityIndicator color={COLORS.white} /> : (
             <>
               <Icon name="floppy-disk" size={15} color={COLORS.white} />
-              <Text style={styles.primaryTxt}>Lưu quả mới</Text>
+              <Text style={styles.primaryTxt}>{tk('trace.crop.save')}</Text>
             </>
           )}
         </TouchableOpacity>
@@ -1212,31 +1310,30 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.5 },
 
   // ── Header hai bước sau ───────────────────────────────────────────────────
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 8, paddingBottom: 10, gap: 12 },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingTop: 10, paddingBottom: 12, gap: 12 },
   headerBtn: {
-    width: 38, height: 38, borderRadius: 12,
+    width: 44, height: 44, ...ORGANIC_TILE, ...ORG_ELEV.card,
     alignItems: 'center', justifyContent: 'center',
-    backgroundColor: COLORS.inputBg, borderWidth: 1, borderColor: COLORS.border,
+    backgroundColor: ORG_SURFACE.raised,
   },
   headerTitles: { flex: 1, minWidth: 0 },
-  headerEyebrow: { fontSize: 9, fontWeight: '800', letterSpacing: 1.8, color: COLORS.textMuted },
-  headerTitle: { fontSize: 20, fontWeight: '800', color: COLORS.text, letterSpacing: -0.4, marginTop: 1 },
+  // Nhãn bước để nhỏ và NHẠT, không in hoa giãn chữ: nó là số thứ tự, không phải
+  // tiêu đề. Tiêu đề mới là câu người dùng cần đọc.
+  headerEyebrow: { fontSize: 13, fontWeight: '600', color: ORG_TONE.primary },
+  headerTitle: { ...ORG_TYPE.title, fontSize: 23, marginTop: 1 },
 
-  scroll: { paddingHorizontal: 16, paddingBottom: 32 },
-  muted: { color: COLORS.textMuted, fontSize: 13, lineHeight: 19, marginBottom: 12 },
-  sectionLbl: {
-    fontSize: 10, fontWeight: '800', letterSpacing: 1.4,
-    color: COLORS.textMuted, marginTop: 18, marginBottom: 8,
-  },
+  scroll: { paddingHorizontal: 18, paddingBottom: 32 },
+  muted: { ...ORG_TYPE.caption, fontSize: 14.5, marginBottom: 12 },
+  sectionLbl: { ...ORG_TYPE.section, fontSize: 17, marginTop: 20, marginBottom: 8 },
   inlineLoader: { marginVertical: 10 },
 
   // Đối chiếu
   candRow: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border,
-    borderRadius: 16, padding: 10, marginBottom: 8,
+    backgroundColor: ORG_SURFACE.raised, ...ORGANIC_CARD, ...ORG_ELEV.card,
+    padding: 12, marginBottom: 8,
   },
-  candTop: { borderColor: COLORS.success, borderWidth: 1.5 },
+  candTop: { borderColor: ORG_TONE.primary, borderWidth: 1.5 },
   cThumb: {
     width: 52, height: 52, borderRadius: 12, backgroundColor: COLORS.inputBg,
     alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
@@ -1320,6 +1417,15 @@ const styles = StyleSheet.create({
   errTxt: { flex: 1, color: COLORS.error, fontSize: 13, lineHeight: 18 },
 
   // Chọn MẶT quả (bước khoanh, nền tối)
+  planBox: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 12,
+    paddingVertical: 9, paddingHorizontal: 11, borderRadius: 11,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1, borderColor: 'rgba(94,197,138,0.35)',
+  },
+  planTxtWrap: { flex: 1 },
+  planTxt: { color: ON_STAGE, fontSize: 13, fontWeight: '600', lineHeight: 18 },
+  planWhy: { color: ON_STAGE, opacity: 0.62, fontSize: 11, lineHeight: 15, marginTop: 2 },
   viewLbl: { color: ON_STAGE, opacity: 0.65, fontSize: 10, letterSpacing: 1, marginTop: 14, marginBottom: 6 },
   viewSeg: { flexDirection: 'row', gap: 6 },
   viewOpt: {

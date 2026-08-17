@@ -4,6 +4,6 @@
     "types": ["jest"]
   },
   "include": ["**/*.ts", "**/*.tsx"],
-  "//": "MobileCore = cây vendored có repo + CI riêng (@magiclamp/mobile-core), 0 importer trong src/. Loại khỏi tsc của SuperApp để test nội bộ của nó không tạo lỗi ma ở đây.",
-  "exclude": ["**/node_modules", "**/Pods", "MobileCore"]
+  "//": "Legacy/ = tài liệu + mã đã bị thay, giữ để đối chiếu (xem Legacy/README.md). Trong đó có MobileCore-v0.2-2026-07-16 — cây vendored cũ, có repo + CI riêng (@magiclamp/mobile-core), 0 importer trong src/. Loại khỏi tsc của SuperApp để test nội bộ của nó không tạo lỗi ma ở đây.",
+  "exclude": ["**/node_modules", "**/Pods", "Legacy"]
 }

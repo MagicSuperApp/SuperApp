@@ -14,8 +14,29 @@ on:
       - 'android/**'
       - 'src/**'
       - 'package.json'
+      # `rust/**` BẮT BUỘC có mặt: từ 2026-08-11 chính workflow này dựng lõi Rust
+      # (bước `uses: ./.github/actions/rust-android`). Thiếu dòng này thì một commit
+      # CHỈ đụng `rust/` không kích hoạt bản dựng nào — tức đúng thay đổi cần được
+      # biên dịch lại là thay đổi duy nhất đi lọt. Đo được ở merge commit `ae1085b`
+      # của PR #135: `gh api ".../actions/runs?head_sha=ae1085b" --jq '.total_count'`
+      # trả 0 — không một workflow nào chạy.
+      #
+      # `.github/actions/**` phủ CẢ THƯ MỤC chứ không riêng `rust-android`: workflow
+      # này còn gọi `./.github/actions/rn-env`, nên liệt kê từng cái là dựng lại đúng
+      # cái lỗ vừa vá, chỉ ở tên khác.
+      - 'rust/**'
+      - '.github/actions/**'
       - '.github/workflows/debug-apk.yml'
   workflow_dispatch:   # nút bấm build tay
+
+# Gộp 3 PR liên tiếp vào `develop` lúc 07:37-07:38 ngày 17/08 sinh BA lượt dựng APK
+# chạy song song (runs 32006654041, 32006680621, 32006716625), mỗi lượt ~40 phút.
+# Hai lượt đầu vô nghĩa: đỉnh `develop` đã đổi trước khi chúng dựng xong. Ba lượt
+# cùng lúc còn nhân ba lượng đĩa/máy chạy đúng lúc job này đang chết vì hết đĩa.
+# `verify-pr.yml` đã có khoá này từ đầu; đường `push` thì chưa.
+concurrency:
+  group: debug-apk-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   # CỔNG chất-lượng chạy TRƯỚC: tsc/jest đỏ thì đừng đốt 60 phút build APK. Trước đây
@@ -49,11 +70,37 @@ jobs:
     name: Build debug APK
     needs: verify
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # 60 → 90: bước dựng Rust mới thêm vào tốn ~10-15 phút khi nhớ đệm trượt, mà
+    # riêng gradle đã 30-39 phút (đo 4 lượt gần nhất). Để 60 thì lượt đầu sau khi
+    # đổi Cargo.lock sẽ chạm trần — và chạm trần bị gắn nhãn `cancelled`, tức hỏng
+    # mà đọc như có người bấm huỷ. Đúng cách develop giấu lỗi 5 ngày.
+    timeout-minutes: 90
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      # ⛔ NGUYÊN NHÂN ĐỎ THẬT của job này — 5 lượt liên tiếp 15/08 → 17/08: HẾT ĐĨA.
+      # KHÔNG phải gradle hỏng. Chính tiến trình runner chết khi ghi nhật ký của nó:
+      #   System.IO.IOException: No space left on device :
+      #   '/home/runner/actions-runner/cached/2.336.0/_diag/Worker_20260817-043812-utc.log'
+      # (annotation của job 95285397387, và job 95186581759 hôm trước y hệt).
+      # Runner chết TRƯỚC khi tải nhật ký lên ⇒ `gh run view --log` trả về gói chỉ có
+      # log của job `verify`, còn job này KHÔNG có dòng nào. Lỗi vì thế đọc như "không
+      # rõ nguyên nhân" trong khi nguyên nhân nằm nguyên trong annotation.
+      # Đó là lý do phải dọn ở ĐẦU job: dọn sau khi thấy đỏ thì đã không còn log để đọc.
+      - name: Dọn đĩa runner (ubuntu-latest chỉ còn ~14 GB trống)
+        run: |
+          echo "TRƯỚC:"; df -h / | tail -1
+          # Chỉ gỡ thứ job này KHÔNG dùng. KHÔNG đụng /usr/local/lib/android
+          # (Android SDK + NDK — bước dựng Rust cần nó) và KHÔNG xoá cả
+          # /opt/hostedtoolcache (setup-node và setup-java cài vào trong đó).
+          sudo rm -rf /usr/share/dotnet /usr/share/swift /usr/share/miniconda \
+                      /opt/ghc /usr/local/.ghcup \
+                      /usr/local/share/powershell /usr/local/share/boost \
+                      /opt/hostedtoolcache/CodeQL || true
+          sudo docker image prune -af || true
+          echo "SAU:"; df -h / | tail -1
 
       - name: Setup Node.js 22
         uses: actions/setup-node@v4
@@ -75,12 +122,31 @@ jobs:
       - name: Install npm dependencies
         run: npm install --legacy-peer-deps
 
+      # PHẢI trước gradle: gradle gọi Metro, Metro nướng giá trị @env vào bundle.
+      # Thiếu bước này thì mọi biến @env là `undefined` và app trỏ localhost —
+      # KHÔNG có lỗi nào được in ra. Lý do đầy đủ ở .github/actions/rn-env/action.yml.
+      - name: Sinh biến môi trường React Native
+        uses: ./.github/actions/rn-env
+        with:
+          aladin-api-key: ${{ secrets.ALADIN_API_KEY }}
+
       - name: Create android/gradle.properties
         run: |
           cat > android/gradle.properties << 'EOF'
           org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m
           android.useAndroidX=true
-          reactNativeArchitectures=armeabi-v7a,arm64-v8a,x86,x86_64
+          # 4 kiến trúc → 2. ĐÂY LÀ NGUYÊN NHÂN ĐỎ THẬT của job này, không phải cái
+          # ghi ở chú thích worklets bên dưới. Log run 31786988791:
+          #   09:59:54 ##[warning]You are running out of disk space. Free space left: 0 MB
+          #   09:59:56 > Task :app:mergeDebugNativeLibs FAILED
+          #   09:59:58 tee: android-debug.log: No space left on device
+          # Runner ubuntu-latest có ~14 GB trống; nhân 4 ABI với .so Rust + Hermes +
+          # maplibre + TFLite thì không đủ. Bản này là APK SIDELOAD để đội thực địa cài
+          # lên MÁY THẬT — máy thật chỉ có arm. x86/x86_64 là kiến trúc máy ảo, ai cần
+          # chạy máy ảo thì dựng tại chỗ. Bỏ 2 cái đó cắt gần nửa dung lượng native.
+          # ⚠ Cổng "Soi chính tệp APK" bên dưới vì thế CHỈ soi 2 ABI này — khác
+          # android-aab.yml (soi thêm x86_64, vì bản AAB có đóng gói x86_64).
+          reactNativeArchitectures=armeabi-v7a,arm64-v8a
           newArchEnabled=true
           hermesEnabled=true
           edgeToEdgeEnabled=false
@@ -94,6 +160,11 @@ jobs:
           expo.enableWorkletsIntegration=false
           EOF
           echo "gradle.properties created (JVM heap: 4096m)"
+
+      # PHẢI trước gradle: gradle chỉ đóng gói .so có sẵn trong jniLibs, không dựng.
+      # Lý do đầy đủ ở .github/actions/rust-android/action.yml.
+      - name: Dựng Rust core (taad_enclave_core + chat_mls)
+        uses: ./.github/actions/rust-android
 
       - name: Build debug APK
         run: |
@@ -114,6 +185,52 @@ jobs:
           echo "✅ APK: $APK_FILE ($(stat -c%s "$APK_FILE") bytes)"
           mkdir -p dist
           cp "$APK_FILE" dist/superapp-debug.apk
+
+      # Cùng lý do với bước tương ứng ở android-aab.yml: bước "Dựng Rust core" chỉ
+      # kiểm ĐẦU VÀO của gradle. Bản đội thực địa cài là bản này, nên nếu gói thiếu
+      # `.so` hoặc nướng nhầm host thì người ra vườn là người phát hiện, không phải CI.
+      - name: Soi chính tệp APK — .so và biến môi trường
+        run: |
+          set -eo pipefail
+          WORK=$(mktemp -d)
+          unzip -q -o dist/superapp-debug.apk -d "$WORK"
+          FAIL=0
+
+          echo "── Thư viện native theo ABI ─────────────────────────────────"
+          ls "$WORK/lib/" || true
+          for ABI in arm64-v8a armeabi-v7a; do
+            for LIB in libtaad_enclave_core.so libchat_mls.so; do
+              if [ ! -f "$WORK/lib/$ABI/$LIB" ]; then
+                echo "::error::THIẾU $ABI/$LIB — máy thực địa sẽ không tạo được danh tính, và app KHÔNG báo lỗi"
+                FAIL=1
+              else
+                echo "  OK  $ABI/$LIB"
+              fi
+            done
+          done
+
+          echo "── Biến môi trường nướng vào bundle ────────────────────────"
+          BUNDLE="$WORK/assets/index.android.bundle"
+          if [ -f "$BUNDLE" ]; then
+            strings "$BUNDLE" > "$WORK/strings.txt"
+            for MUST in 'api.orilife.io' 'api.aladin.work' 'api.proofchat.me'; do
+              grep -qF "$MUST" "$WORK/strings.txt" \
+                && echo "  OK  có $MUST" \
+                || { echo "::error::Bundle KHÔNG có '$MUST' — biến @env là undefined"; FAIL=1; }
+            done
+            for BAD in 'staging-api.orilife.io' 'localhost:8001'; do
+              grep -qF "$BAD" "$WORK/strings.txt" \
+                && { echo "::error::Bundle CÓ '$BAD' — dựng từ .env sai"; FAIL=1; } \
+                || echo "  OK  không có $BAD"
+            done
+          else
+            # Bản debug có thể nạp bundle qua Metro thay vì nhúng — đó là trạng thái
+            # THỨ BA, không phải "đạt". Nói rõ ra thay vì im lặng cho qua.
+            echo "::warning::APK không nhúng index.android.bundle (debug nạp qua Metro?) — KHÔNG ĐO ĐƯỢC phần biến môi trường"
+          fi
+
+          rm -rf "$WORK"
+          [ "$FAIL" -eq 0 ] || { echo "::error::APK không đạt"; exit 1; }
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4

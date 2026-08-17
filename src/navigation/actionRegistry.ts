@@ -54,8 +54,12 @@ type ActionPack = (ctx: DomainContext) => ActionDef[];
 const scanTree = (label: string): ActionDef => ({
   key: 'scan-tree', icon: 'tree', label, group: 'scan', route: 'TreeIdentity',
 });
+// "Quét quả" nay QUÉT THẬT: chụp quả → `POST /api/fruit/identify` soi ra quả nào,
+// cây nào (xem `FruitScanScreen`). Trước đây nó trỏ `FruitList` — màn đó BẮT BUỘC
+// có `treeId`, mà cổng xoè không kèm tham số nào, nên nút "Quét quả" chỉ dẫn tới
+// một lời nhắc đi chọn cây. Đường chọn-cây-trước vẫn còn nguyên trong màn mới.
 const scanFruit: ActionDef = {
-  key: 'scan-fruit', icon: 'apple-whole', label: 'Quét quả', group: 'scan', route: 'FruitList',
+  key: 'scan-fruit', icon: 'apple-whole', label: 'Quét quả', group: 'scan', route: 'FruitScan',
 };
 // Thu VIDEO quả → gắn cây (OriLife User-Action-Flow). Quay native + upload fruit_video.
 const fruitVideo: ActionDef = {

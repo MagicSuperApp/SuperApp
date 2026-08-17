@@ -28,6 +28,7 @@ import RootErrorBoundary from '../components/RootErrorBoundary';
 import { COLORS, ACTION_COLORS } from '../theme';
 import { syncService } from '../services/syncService';
 import { flushVideoUploadQueue } from '../services/videoUploadQueue';
+import { maybeReconcileOnNetChange } from '../services/videoProofReconcile';
 import AppHeader, { AppHeaderProvider } from '../components/AppHeader';
 import { NAV_FRAME, navNational, navIcon } from './navLabels';
 import { hasChosenLanguage, whenLanguageReady } from '../i18n';
@@ -92,6 +93,7 @@ import OrgAuthorityScreen from '../screens/OrgAuthorityScreen';
 import OrgMintScreen from '../screens/OrgMintScreen';
 import WebLoginScanScreen from '../screens/WebLoginScanScreen';
 import TraceScanScreen from '../screens/TraceScanScreen';
+import TraceResultScreen from '../screens/TraceResultScreen';
 import ExportIdentityScreen from '../screens/ExportIdentityScreen';
 import UsernameScreen from '../screens/UsernameScreen';
 // ProofChat wallet/escrow: hiện vẫn đăng ký ở host stack (chưa khai trong manifest
@@ -1702,6 +1704,10 @@ const HOST_STACK_SCREENS: Array<{
   // SG9 §3 — Quét truy xuất (consumer): host stack, full-bleed, KHÔNG lên tabs[]
   // (immersive-by-omission). Tới được qua nút Home header + cổng §4 + deep-link.
   { name: 'TraceScan', component: TraceScanScreen, options: { headerShown: false } },
+  // Kết quả tra mã — góc NGƯỜI MUA, không đăng nhập. Tách khỏi `TreeDetail` vì màn
+  // đó tra cây trong Redux `state.farm.trees` (vườn của chính người đăng nhập), nên
+  // người mua quét mã lạ luôn ra "không tìm thấy" dù máy chủ đã trả đủ hồ sơ.
+  { name: 'TraceResult', component: TraceResultScreen, options: { headerShown: false } },
   { name: 'ExportIdentity', component: ExportIdentityScreen, options: { headerShown: false } },
   { name: 'Username', component: UsernameScreen, options: { headerShown: false } },
 ];
@@ -1802,6 +1808,14 @@ const AppNavigator = () => {
         );
       }
       wasConnected = isConnected;
+
+      // Đối chiếu bằng chứng video đã "lưu" với LampNet thật (H-34: vòng eviction
+      // của daemon từng xoá 22 tài liệu, có cả video cây/quả). Dịch vụ này viết từ
+      // 2026-08-10 kèm bài kiểm, nhưng KHÔNG chỗ nào trong mã chạy gọi tới — nên
+      // tới bản này việc dò CID mồ côi chưa từng chạy một lần trên máy người dùng.
+      // Tự nó chỉ chạy khi WIFI, tối đa 1 lượt/30 phút, và chỉ báo NGƯỜI TRỰC MÁY
+      // CHỦ qua remoteLogger — nông dân không thấy gì, vì họ không sửa được.
+      maybeReconcileOnNetChange(state);
     });
 
     // Cleanup on unmount

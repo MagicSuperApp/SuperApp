@@ -18,7 +18,8 @@ import { useNavigation } from '@react-navigation/native';
 // @ts-ignore — react-native-camera-kit không kèm types cho Camera prop scanBarcode
 import { Camera } from 'react-native-camera-kit';
 import { COLORS } from '../constants';
-import { parseTraceCode } from '../navigation/traceScan';
+import { parseTraceCode, parseTreeCode } from '../navigation/traceScan';
+import { TRACE_RESULT_ROUTE_NAME } from './TraceResultScreen';
 
 type Step = 'scanning' | 'unknown';
 
@@ -49,6 +50,17 @@ const TraceScanScreen = () => {
       navigation.replace(target.route, target.params);
       return;
     }
+
+    // QR THẬT in trên bao bì không phải `magiclamp://…` — máy chủ nhúng URL
+    // `{PUBLIC_BASE_URL}/t/{code}` (`server.py:730-741`). Thiếu nhánh này thì mọi
+    // mã đã in ra đều rơi vào "chưa nhận diện", và cửa `/api/tree_by_code/{code}`
+    // đang chạy trên máy chủ không có đường nào của app gọi tới.
+    const code = parseTreeCode(raw);
+    if (code) {
+      navigation.replace(TRACE_RESULT_ROUTE_NAME, { code });
+      return;
+    }
+
     setLastCode(raw);
     setStep('unknown');
   };

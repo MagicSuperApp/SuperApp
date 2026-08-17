@@ -223,6 +223,20 @@ describe('gpsRadiusMeters — đọc số, KHÔNG đóng cứng 111', () => {
     expect(gpsRadiusMeters({ gps_precision_m: NaN })).toBeNull();
     expect(gpsRadiusMeters(null)).toBeNull();
   });
+
+  // ⚠️ NHÓM NÀY KHOÁ ĐIỀU KIỆN, KHÔNG KHOÁ KẾT QUẢ — đừng gộp vào nhóm trên.
+  //
+  // Nhóm trên khoá *chuỗi ra là gì*. Nó KHÔNG giữ được cái điều kiện sinh ra chuỗi
+  // đó: đổi `typeof m !== 'number'` thành `m !== null` thì `null`, `-5`, `NaN` vẫn
+  // ra `null` y như cũ, bốn dòng trên vẫn xanh, mà hàm đã hỏng. Bốn giá trị dưới
+  // đây là những giá trị DUY NHẤT phát hiện được cú đổi ấy — chúng không phải ca
+  // máy chủ thật sự gửi, chúng là ca giữ điều kiện. Nhà OriLife chỉ ra lằn ranh này.
+  it('giữ ĐIỀU KIỆN `typeof === number`: undefined · chuỗi · boolean · Infinity', () => {
+    expect(gpsRadiusMeters({ gps_precision_m: undefined })).toBeNull();
+    expect(gpsRadiusMeters({ gps_precision_m: '12' as unknown as number })).toBeNull();
+    expect(gpsRadiusMeters({ gps_precision_m: true as unknown as number })).toBeNull();
+    expect(gpsRadiusMeters({ gps_precision_m: Infinity })).toBeNull();
+  });
 });
 
 describe('canPinExactly — chỉ exact mới được vẽ ghim', () => {
@@ -258,6 +272,24 @@ describe('gpsPrecisionLabelVi', () => {
     const s = gpsPrecisionLabelVi('coarse', null) ?? '';
     expect(s).not.toContain('111');
     expect(s).toContain('chưa rõ');
+  });
+
+  // Cùng lý do như nhóm "giữ ĐIỀU KIỆN" ở trên: `null` một mình không giữ nổi
+  // `typeof === 'number'`. Đây là ca duy nhất bắt được người sau đổi sang
+  // `radiusMeters !== null` — lúc đó `undefined` lọt vào `Math.round` và màn in
+  // ra "khoảng NaNm".
+  it('coarse + undefined (KHÔNG phải null) → vẫn là câu "chưa rõ", không ra NaN', () => {
+    const s = gpsPrecisionLabelVi('coarse', undefined) ?? '';
+    expect(s).toContain('chưa rõ');
+    expect(s).not.toContain('NaN');
+  });
+
+  it('coarse + số vô nghĩa (NaN, Infinity, âm) → cũng không in ra số', () => {
+    for (const bad of [NaN, Infinity, -3]) {
+      const s = gpsPrecisionLabelVi('coarse', bad) ?? '';
+      expect(s).toContain('chưa rõ');
+      expect(s).not.toMatch(/[0-9]+m/);
+    }
   });
 
   it('hidden và absent là HAI câu khác nhau', () => {

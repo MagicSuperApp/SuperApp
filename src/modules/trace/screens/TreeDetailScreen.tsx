@@ -661,6 +661,28 @@ const TreeDetailScreen = () => {
       >
         <Icon name="spray-can" size={20} color={COLORS.textSub} />
       </TouchableOpacity>
+      {/* Biến thiên của cây — "cây thay lá rồi, máy còn nhận ra nó không?".
+          Máy chủ tính sẵn số này từ lâu; đây là chỗ đầu tiên app hỏi tới. */}
+      <TouchableOpacity
+        style={styles.headerActionBtn}
+        onPress={() => tree && (navigation as any).navigate('TreeDrift', {
+          treeId: tree.id, treeName: (tree as any).name,
+        })}
+        accessibilityLabel="Biến thiên của cây"
+      >
+        <Icon name="chart-line" size={20} color={COLORS.textSub} />
+      </TouchableOpacity>
+      {/* Chia sẻ dữ liệu RIÊNG của đúng cây này cho một người — không phải mở
+          công khai, và không đụng tới cây khác. */}
+      <TouchableOpacity
+        style={styles.headerActionBtn}
+        onPress={() => tree && (navigation as any).navigate('TreeShare', {
+          scopeType: 'tree', scopeId: tree.id, scopeName: (tree as any).name,
+        })}
+        accessibilityLabel="Chia sẻ dữ liệu riêng của cây"
+      >
+        <Icon name="share-nodes" size={20} color={COLORS.textSub} />
+      </TouchableOpacity>
     </Animated.View>
   );
 

@@ -29,6 +29,17 @@ import rLog from './remoteLogger';
 
 const AUTH_TOKEN_KEY = 'auth_token';
 
+/**
+ * `owner-ref` của chính người đang đăng nhập (`acct:<id>` hoặc DID).
+ *
+ * Máy chủ trả nó ở bước verify nhưng trước đây app vứt đi, nên không chỗ nào biết
+ * "mình là ai" theo cách máy chủ gọi. Cửa `GET /api/grants` trả danh sách chia sẻ
+ * HAI CHIỀU trong một mảng phẳng — không có mã này thì không tách nổi "mình cấp
+ * cho người ta" với "người ta cấp cho mình", và đoán bừa là hiển thị đúng ngược
+ * chiều. Xem `grantService.splitGrants`.
+ */
+export const OWNER_REF_KEY = 'orilife_owner_ref';
+
 // ── helpers ────────────────────────────────────────────────────────────────
 
 /** challenge là base64url ASCII (mọi ký-tự < 0x80) → 1 byte/ký-tự. */
@@ -173,6 +184,11 @@ export async function loginOrilifeWithDid(baseUrl: string): Promise<DidLoginResu
 
     // 4) Lưu token → mọi service ReID tự gắn Bearer.
     await AsyncStorage.setItem(AUTH_TOKEN_KEY, vBody.token);
+    // Lưu luôn owner-ref (xem OWNER_REF_KEY). Best-effort: máy chủ không hứa
+    // trường này, và thiếu nó thì màn chia sẻ nói "không rõ chiều" chứ không đoán.
+    if (typeof vBody.owner === 'string' && vBody.owner.trim()) {
+      await AsyncStorage.setItem(OWNER_REF_KEY, vBody.owner.trim()).catch(() => {});
+    }
     rLog.info('did_login_success', { owner: vBody.owner ?? null, username: vBody.username ?? null });
 
     return {
@@ -196,6 +212,25 @@ export async function hasOrilifeToken(): Promise<boolean> {
 /** Xoá token (vd khi 401 / đăng xuất). */
 export async function clearOrilifeToken(): Promise<void> {
   await AsyncStorage.removeItem(AUTH_TOKEN_KEY);
+  // Xoá cùng lúc: owner-ref của phiên cũ mà còn sót lại thì màn chia sẻ tách
+  // danh sách theo NGƯỜI KHÁC — sai chiều mà không có gì báo.
+  await AsyncStorage.removeItem(OWNER_REF_KEY).catch(() => {});
+}
+
+/**
+ * `owner-ref` của người đang đăng nhập, hoặc `null` nếu chưa biết.
+ *
+ * `null` là một câu trả lời hợp lệ: tài khoản đăng nhập từ trước bản này chưa
+ * lưu mã đó, và nó chỉ có sau lần đăng nhập kế tiếp. Chỗ gọi phải chịu được
+ * `null` chứ không được dựng ra một mã giả.
+ */
+export async function currentOwnerRef(): Promise<string | null> {
+  try {
+    const v = await AsyncStorage.getItem(OWNER_REF_KEY);
+    return v && v.trim() ? v.trim() : null;
+  } catch {
+    return null;
+  }
 }
 
 /**

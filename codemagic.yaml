@@ -440,6 +440,19 @@ workflows:
 
     scripts:
 
+      # CỔNG CHẶN — cùng lý do với `android-appstore-aab`. Workflow này bắn thẳng
+      # lên TestFlight (`publishing.app_store_connect`), nên thiếu `API_KEY` là
+      # phát cho người thử một bản đồng bộ hỏng 401 im lặng.
+      - name: Chặn bản phát hành thiếu khoá API
+        script: |
+          if [ -z "$API_KEY" ]; then
+            echo "❌ Thiếu API_KEY — bản phát hành sẽ nướng khoá giả 'mock-local-api-key'."
+            echo "   Nạp ở: Codemagic → Environment variables → nhóm 'scanner_secrets' → biến API_KEY."
+            echo "   Khoá là của api.orilife.io, do bên OriLife cấp."
+            exit 1
+          fi
+          echo "✅ API_KEY có mặt (${#API_KEY} ký tự)."
+
       - name: Set up code signing
         script: |
           keychain initialize
@@ -1008,6 +1021,23 @@ workflows:
       events: []  # Manual only — tránh build signed ngoài ý muốn
 
     scripts:
+      # CỔNG CHẶN — phải đứng TRƯỚC mọi bước dựng. Đường GitHub đã có cổng này
+      # (`android-aab.yml` bước "Chặn bản phát hành thiếu khoá API"); đường
+      # Codemagic thì KHÔNG, nên trước bản này một bản PHÁT HÀNH thiếu `API_KEY`
+      # vẫn dựng XANH và nướng `mock-local-api-key` vào header `X-API-Key`
+      # (`aladin-api.ts:75`) — mọi người dùng đồng bộ hỏng 401 IM LẶNG, sau khi
+      # bản đã lên Play. Xanh mà sai hỏng tệ hơn đỏ.
+      # Chỉ đặt ở HAI workflow PHÁT HÀNH; bản debug/adhoc vẫn chạy được khoá giả.
+      - name: Chặn bản phát hành thiếu khoá API
+        script: |
+          if [ -z "$API_KEY" ]; then
+            echo "❌ Thiếu API_KEY — bản phát hành sẽ nướng khoá giả 'mock-local-api-key'."
+            echo "   Nạp ở: Codemagic → Environment variables → nhóm 'scanner_secrets' → biến API_KEY."
+            echo "   Khoá là của api.orilife.io, do bên OriLife cấp."
+            exit 1
+          fi
+          echo "✅ API_KEY có mặt (${#API_KEY} ký tự)."
+
       - name: Create .env for React Native
         script: |
           cat > .env <<EOF

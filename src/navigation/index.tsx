@@ -94,6 +94,8 @@ import OrgMintScreen from '../screens/OrgMintScreen';
 import WebLoginScanScreen from '../screens/WebLoginScanScreen';
 import TraceScanScreen from '../screens/TraceScanScreen';
 import TraceResultScreen from '../screens/TraceResultScreen';
+import TreeDriftScreen from '../screens/TreeDriftScreen';
+import TreeShareScreen from '../screens/TreeShareScreen';
 import ExportIdentityScreen from '../screens/ExportIdentityScreen';
 import UsernameScreen from '../screens/UsernameScreen';
 // ProofChat wallet/escrow: hiện vẫn đăng ký ở host stack (chưa khai trong manifest
@@ -1708,6 +1710,11 @@ const HOST_STACK_SCREENS: Array<{
   // đó tra cây trong Redux `state.farm.trees` (vườn của chính người đăng nhập), nên
   // người mua quét mã lạ luôn ra "không tìm thấy" dù máy chủ đã trả đủ hồ sơ.
   { name: 'TraceResult', component: TraceResultScreen, options: { headerShown: false } },
+  // Biến thiên của cây + chia sẻ dữ liệu riêng. Route HOST, KHÔNG thêm vào
+  // `buildLinking()`: cả hai đọc/ghi dữ liệu RIÊNG của vườn, không nên mở được
+  // bằng một đường dẫn từ bên ngoài — cùng lý do với `WakeMe` ở trên.
+  { name: 'TreeDrift', component: TreeDriftScreen, options: { headerShown: false } },
+  { name: 'TreeShare', component: TreeShareScreen, options: { headerShown: false } },
   { name: 'ExportIdentity', component: ExportIdentityScreen, options: { headerShown: false } },
   { name: 'Username', component: UsernameScreen, options: { headerShown: false } },
 ];

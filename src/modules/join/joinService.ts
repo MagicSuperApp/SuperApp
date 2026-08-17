@@ -338,16 +338,24 @@ export const reportResult = (
  * ── Thân trả về (đo thật, không phải khai) ────────────────────────────────────
  *   {"merkle_root":"b7559f6c…","total_ulamp":0,"entry_count":0,"drained":false,"entries":[]}
  *
- * ⚠ ĐƠN VỊ CHƯA CHỐT — đừng hiện `total_ulamp` ra màn hình như một số LAMP.
- * Trường tên `ulamp` nhưng rule kiến trúc là "thưởng tài nguyên = CARP"; nhà LampNet
- * xác nhận mã daemon còn dùng hằng `BASE_PRICE_COMPUTE_ULAMP`
- * (`lampnet-mirage/src/mobile_settle.rs:27` @lampnet-hivemind@2e294b3) và đã chuyển
- * việc chốt đơn vị sang Registry agent + anh Đức. Trước khi có chốt: hiện dấu gạch,
- * không hiện số kèm đơn vị — hiện sai đơn vị cho người dùng là loại sai khó rút lại.
+ * ── Con số này ĐO CÁI GÌ — chỗ dễ đọc nhầm nhất ───────────────────────────────
+ * `total_ulamp` là tích luỹ **per-verified-unit của MỘT THIẾT BỊ**. Nó KHÔNG phải
+ * phần chia epoch của node (`magic_amount` ở `POST /v1/reward/epoch`). Hai con số
+ * sinh ra ở hai đường mã không gặp nhau — **không cộng, không so, không vẽ chung
+ * một biểu đồ.** Đặt cạnh nhau là dựng một phép tính không ai kiểm được.
+ *
+ * ⚠ ĐƠN VỊ CHƯA CHỐT — đừng quy đổi, đừng gắn nhãn token, đừng hiện như số LAMP.
+ * Bốn nguồn đang nói ba tên: `Reward-Math.md` V1 nói MAGIC · V2 + `Reward-Tech.md
+ * §6.1` nói LAMP · rule toàn hệ + `CARP-LampNet-Coordination.md` nói CARP · mã đang
+ * chạy chi µLAMP (hằng `BASE_PRICE_COMPUTE_ULAMP`,
+ * `lampnet-mirage/src/mobile_settle.rs:27` @lampnet-hivemind@2e294b3). LampNet đã
+ * chuyển việc chốt sang Registry agent + anh Đức. Trước khi có chốt: màn "Đang đóng
+ * góp" giữ **dấu gạch**, không hiện số kèm đơn vị — hiện sai đơn vị cho người dùng
+ * là loại sai khó rút lại.
  */
 export interface MobileSettlementView {
   merkle_root: string;
-  /** ⚠ Tên trường là DI SẢN. Đơn vị đang chờ Registry chốt — xem chú thích trên. */
+  /** ⚠ Tên trường là DI SẢN, và là số CỦA THIẾT BỊ — xem hai cảnh báo ở trên. */
   total_ulamp: number;
   entry_count: number;
   drained: boolean;

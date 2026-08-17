@@ -18,7 +18,8 @@ import { useNavigation } from '@react-navigation/native';
 // @ts-ignore — react-native-camera-kit không kèm types cho Camera prop scanBarcode
 import { Camera } from 'react-native-camera-kit';
 import { COLORS } from '../constants';
-import { parseTraceCode } from '../navigation/traceScan';
+import { parseTraceCode, parseTreeCode } from '../navigation/traceScan';
+import { TRACE_RESULT_ROUTE_NAME } from './TraceResultScreen';
 
 type Step = 'scanning' | 'unknown';
 
@@ -49,6 +50,18 @@ const TraceScanScreen = () => {
       navigation.replace(target.route, target.params);
       return;
     }
+
+    // Mã cây công khai `ORI-…`: máy chủ ghép thành URL `{PUBLIC_BASE_URL}/t/{code}`
+    // (`server.py:730-741`) rồi phát ra dưới dạng QR ở `/qr/{code}`. Chuỗi quét được
+    // là URL http, KHÔNG phải `lamp://…`, nên `parseTraceCode` ở trên không đọc nổi.
+    // Đây là LỐI TẮT tra cứu xuất xứ, không phải cách định danh cây — định danh đi
+    // bằng ảnh qua `/api/identify` (xem chú thích đầu `navigation/traceScan.ts`).
+    const code = parseTreeCode(raw);
+    if (code) {
+      navigation.replace(TRACE_RESULT_ROUTE_NAME, { code });
+      return;
+    }
+
     setLastCode(raw);
     setStep('unknown');
   };

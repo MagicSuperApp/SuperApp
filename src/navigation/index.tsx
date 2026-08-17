@@ -28,6 +28,7 @@ import RootErrorBoundary from '../components/RootErrorBoundary';
 import { COLORS, ACTION_COLORS } from '../theme';
 import { syncService } from '../services/syncService';
 import { flushVideoUploadQueue } from '../services/videoUploadQueue';
+import { maybeReconcileOnNetChange } from '../services/videoProofReconcile';
 import AppHeader, { AppHeaderProvider } from '../components/AppHeader';
 import { NAV_FRAME, navNational, navIcon } from './navLabels';
 import { hasChosenLanguage, whenLanguageReady } from '../i18n';
@@ -92,6 +93,9 @@ import OrgAuthorityScreen from '../screens/OrgAuthorityScreen';
 import OrgMintScreen from '../screens/OrgMintScreen';
 import WebLoginScanScreen from '../screens/WebLoginScanScreen';
 import TraceScanScreen from '../screens/TraceScanScreen';
+import TraceResultScreen from '../screens/TraceResultScreen';
+import TreeDriftScreen from '../screens/TreeDriftScreen';
+import TreeShareScreen from '../screens/TreeShareScreen';
 import ExportIdentityScreen from '../screens/ExportIdentityScreen';
 import UsernameScreen from '../screens/UsernameScreen';
 // ProofChat wallet/escrow: hiện vẫn đăng ký ở host stack (chưa khai trong manifest
@@ -1702,6 +1706,15 @@ const HOST_STACK_SCREENS: Array<{
   // SG9 §3 — Quét truy xuất (consumer): host stack, full-bleed, KHÔNG lên tabs[]
   // (immersive-by-omission). Tới được qua nút Home header + cổng §4 + deep-link.
   { name: 'TraceScan', component: TraceScanScreen, options: { headerShown: false } },
+  // Kết quả tra mã — góc NGƯỜI MUA, không đăng nhập. Tách khỏi `TreeDetail` vì màn
+  // đó tra cây trong Redux `state.farm.trees` (vườn của chính người đăng nhập), nên
+  // người mua quét mã lạ luôn ra "không tìm thấy" dù máy chủ đã trả đủ hồ sơ.
+  { name: 'TraceResult', component: TraceResultScreen, options: { headerShown: false } },
+  // Biến thiên của cây + chia sẻ dữ liệu riêng. Route HOST, KHÔNG thêm vào
+  // `buildLinking()`: cả hai đọc/ghi dữ liệu RIÊNG của vườn, không nên mở được
+  // bằng một đường dẫn từ bên ngoài — cùng lý do với `WakeMe` ở trên.
+  { name: 'TreeDrift', component: TreeDriftScreen, options: { headerShown: false } },
+  { name: 'TreeShare', component: TreeShareScreen, options: { headerShown: false } },
   { name: 'ExportIdentity', component: ExportIdentityScreen, options: { headerShown: false } },
   { name: 'Username', component: UsernameScreen, options: { headerShown: false } },
 ];
@@ -1711,15 +1724,21 @@ const HOST_STACK_SCREENS: Array<{
 // kể cả route đã là tab — RN cho phép trùng tên giữa Tab và Stack vì khác navigator.
 const MODULE_STACK_SCREENS = collectModuleScreens(DEFAULT_INSTANCE.enabledModules);
 
-// --- Deep-link: magiclamp://<module>/<route> -------------------------------
-// Map mỗi route module sang path 'magiclamp://<moduleId>/<route>'. Host route
+// --- Deep-link: lamp://<module>/<route> -------------------------------
+// Map mỗi route module sang path 'lamp://<moduleId>/<route>'. Host route
 // không khai (truy cập qua điều hướng nội bộ). Rẻ + declarative — bật luôn.
+//
+// ⚠️ SEAM NGỦ, đo 2026-08-17. `prefixes` dưới đây chỉ dạy React Navigation cách ĐỌC
+// một URL ĐÃ tới tay app. Nó KHÔNG đăng ký scheme với hệ điều hành — việc đó nằm ở
+// `Info.plist` (CFBundleURLTypes) và `AndroidManifest.xml` (`<data android:scheme>`),
+// và hôm nay CẢ HAI đều không khai `lamp`. Nghĩa là chưa URL nào từ ngoài vào được.
+// Đừng đọc khối này thành "deep-link đã chạy"; muốn chạy thì phải khai phần native.
 const buildLinking = () => {
   const screens: Record<string, string> = { Main: 'main' };
   MODULE_STACK_SCREENS.forEach(({ moduleId, route }) => {
     screens[route] = `${moduleId}/${route}`;
   });
-  // SG9 §3 — mở màn quét truy xuất qua deep-link `magiclamp://trace-scan` (quét từ
+  // SG9 §3 — mở màn quét truy xuất qua deep-link `lamp://trace-scan` (quét từ
   // platform khác). Màn CHI TIẾT (TreeDetail…) đã deep-link-được qua map module ở
   // trên → sản phẩm Aladin quét ngoài app mở thẳng màn kết quả.
   screens[TRACE_SCAN_ROUTE_NAME] = 'trace-scan';
@@ -1727,7 +1746,7 @@ const buildLinking = () => {
   // → không có route để deep-link tới. Màn `LanguageSelect` chỉ chạy lần đầu cài.
   screens.LanguageSelect = 'language';
   return {
-    prefixes: ['magiclamp://'],
+    prefixes: ['lamp://'],
     config: { screens },
   };
 };
@@ -1802,6 +1821,14 @@ const AppNavigator = () => {
         );
       }
       wasConnected = isConnected;
+
+      // Đối chiếu bằng chứng video đã "lưu" với LampNet thật (H-34: vòng eviction
+      // của daemon từng xoá 22 tài liệu, có cả video cây/quả). Dịch vụ này viết từ
+      // 2026-08-10 kèm bài kiểm, nhưng KHÔNG chỗ nào trong mã chạy gọi tới — nên
+      // tới bản này việc dò CID mồ côi chưa từng chạy một lần trên máy người dùng.
+      // Tự nó chỉ chạy khi WIFI, tối đa 1 lượt/30 phút, và chỉ báo NGƯỜI TRỰC MÁY
+      // CHỦ qua remoteLogger — nông dân không thấy gì, vì họ không sửa được.
+      maybeReconcileOnNetChange(state);
     });
 
     // Cleanup on unmount

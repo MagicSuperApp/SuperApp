@@ -32,21 +32,30 @@ import {
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { COLORS } from '../theme';
 import { useTk } from '../i18n/keys';
 import { markOnboardingSeen } from '../utils/onboardingFlag';
 import { ALADIN_WEB_URL } from '../utils/webLink';
 
-// Xanh lá thương hiệu — cùng bảng với màn Chọn ngôn ngữ và HERO màn Đăng nhập, để
-// ba màn đầu tiên liền một mạch.
+// Xanh lá KHỞI ĐỘNG — cùng bảng với màn Chọn ngôn ngữ và HERO màn Đăng nhập, để ba
+// màn đầu tiên liền một mạch.
+//
+// NỢ ĐÃ BIẾT: ba giá trị này viết cứng, y như `LanguageSelectScreen.tsx` đang làm.
+// Bảng token hiện KHÔNG có nhóm "màu khởi động của app" — xanh này trùng nhóm brand
+// `work` (theme/tokens.ts:124-130) nhưng dùng nhóm đó ở màn chào là gán sai nghĩa
+// (đây là vỏ app, không phải module Việc làm). Khi dựng thương hiệu thứ hai
+// (TonFarm) phải thêm nhóm token khởi động và sửa CẢ BA màn cùng lúc — sửa lẻ một
+// màn thì hai màn kia lệch màu mà không có gì báo.
 const BRAND = {
   deep: '#1F5C2A',
   primary: '#2B7A39',
   pale: '#C8E3CE',
-  white: '#FFFFFF',
-  ink: '#1A1F1C',
-  sub: '#4D5A52',
-  line: '#E5E0D8',
-  card: '#FFFFFF',
+  // Còn lại lấy từ token — không có lý do gì viết cứng.
+  white: COLORS.white,
+  ink: COLORS.text,
+  sub: COLORS.textSub,
+  line: COLORS.border,
+  card: COLORS.card,
 };
 
 // Bốn khe module — ĐÚNG bốn khe đang có trong khung điều hướng (trace/chat/work/join).

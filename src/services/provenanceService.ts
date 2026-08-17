@@ -1,10 +1,12 @@
 /**
  * provenanceService — "lấy gì chứng minh cây này là cây này".
  *
- * Ba cửa OriLife field-reid:
- *   · `GET /api/provenance/{tree_id}`  (`server.py:5301`) — CÔNG KHAI, không auth
- *   · `GET /api/tree_by_code/{code}`   (`server.py:5313`) — CÔNG KHAI, không auth
- *   · `GET /api/fruit/{fruit_id}`      (`server.py:7268`) — CẦN auth, chỉ chủ
+ * Ba cửa OriLife field-reid. Số dòng đo trên `OriLife-Core@54a463c`; **tra bằng
+ * đường route trước, số dòng chỉ để nhảy nhanh** — bản trước ghi số đọc từ một
+ * bản cũ hơn 8 commit và lệch tới 108 dòng ở cửa quả:
+ *   · `GET /api/provenance/{tree_id}`  (`server.py:5310`) — CÔNG KHAI, không auth
+ *   · `GET /api/tree_by_code/{code}`   (`server.py:5322`) — CÔNG KHAI, không auth
+ *   · `GET /api/fruit/{fruit_id}`      (`server.py:7376`) — CẦN auth, chỉ chủ
  *
  * VÌ SAO CÓ FILE NÀY. Hai cửa đầu là nửa sản phẩm dành cho NGƯỜI MUA: quét mã dán
  * ở gốc cây hoặc trên thùng hàng, đọc ra ảnh + CID + trạng thái neo, không cần tài
@@ -14,7 +16,7 @@
  * ⚠️ BA CÁI BẪY, cả ba đều thuộc loại hỏng-mà-không-có-gì-báo:
  *
  * 1. **404 ở hai cửa công khai KHÔNG phải "dữ liệu hỏng".** Máy chủ CỐ Ý trả cùng
- *    404 cho *cây riêng tư* và *cây không tồn tại* (`server.py:5307`, `:5317` —
+ *    404 cho *cây riêng tư* và *cây không tồn tại* (`server.py:5317`, `:5327` —
  *    rọc-phách §18: phân biệt hai ca là lộ sự tồn tại của cây riêng tư người khác
  *    qua mã in trên QR). App hiện "lỗi, thử lại" ở đây là hiện sai: không có gì để
  *    thử lại. Vì vậy hàm trả **ba nhánh**, `not_public` là một câu trả lời bình
@@ -45,7 +47,7 @@ const AUTH_TOKEN_KEY = 'auth_token';
 const REQUEST_TIMEOUT_MS = 20_000;
 
 // ---------------------------------------------------------------------------
-// Kiểu — khớp allowlist `_public_prov` (`server.py:806-838`)
+// Kiểu — khớp allowlist `_public_prov` (`server.py:808`, đo trên @54a463c)
 // ---------------------------------------------------------------------------
 
 /** Toạ độ máy chủ trả: `[lat, lon]`, hoặc `null` khi chủ vườn chọn ẩn. */
@@ -61,7 +63,7 @@ export interface ProvImage {
 
 /**
  * Hồ sơ xuất xứ đã lọc cho cửa công khai. Danh sách trường là allowlist ở
- * `server.py:812-816` — máy chủ thêm trường mới thì nó KHÔNG tự lọt ra đây.
+ * `PUBLIC_FIELDS` trong `_public_prov` — máy chủ thêm trường mới thì nó KHÔNG tự lọt ra đây.
  */
 export interface Provenance {
   tree_id?: string;
@@ -84,7 +86,7 @@ export interface Provenance {
   record_hash?: string;
   lampnet_base?: string;
   lampnet_pending?: boolean;
-  /** URL xem ảnh trực tiếp theo CID — máy chủ gắn thêm (`server.py:837`). */
+  /** URL xem ảnh trực tiếp theo CID — máy chủ gắn thêm ở cuối `_public_prov`. */
   lampnet_view?: string;
   anchor?: Record<string, unknown> | null;
 }

@@ -198,8 +198,18 @@ describe('gpsRadiusMeters — đọc số, KHÔNG đóng cứng 111', () => {
     expect(gpsRadiusMeters({ gps_precision_m: 111 })).toBe(111);
   });
 
-  it('máy chủ hạ xuống 2 chữ số → app đi theo, không giữ 111', () => {
-    expect(gpsRadiusMeters({ gps_precision_m: 1110 })).toBe(1110);
+  it('đọc BẤT KỲ số nào máy chủ gửi — không có hằng nào ẩn trong hàm', () => {
+    // ⚠️ Bản trước khoá ca "2 chữ-số" bằng số gõ tay `1110`. SAI 3 mét: máy chủ
+    // tính `round(111_320 / 10**PUBLIC_GPS_DECIMALS)` (`server.py:800`), nên 2
+    // chữ-số ra **1113**. Sai nằm ở BÊN KIỂM chứ không ở bên bị kiểm — dạng sai
+    // đắt nhất để tìm, vì ngày ai đó lấy fixture này đối chiếu phản hồi thật thì
+    // lệch 3 mét không ai nhìn ra ngay. Nhà OriLife chỉ ra.
+    //
+    // Nhưng số đúng KHÔNG phải cách khoá đúng: gõ tay số nào cũng vẫn qua nếu hàm
+    // lỡ trả một hằng. Khoá bằng NHIỀU giá trị — hàm trả hằng 111 sẽ đỏ ngay.
+    for (const m of [111, 1113, 11132, 0.5]) {
+      expect(gpsRadiusMeters({ gps_precision_m: m })).toBe(m);
+    }
   });
 
   it('exact → 0 là một số THẬT, không rơi xuống null', () => {

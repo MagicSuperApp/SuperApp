@@ -43,27 +43,53 @@ QUA_ONG=0
 FAIL=0
 bao() { echo "✗ $1"; FAIL=1; }
 
+# ⛔ BẪY THỨ TƯ, phát hiện 17/08 — nguồn rỗng có HAI nghĩa, và bản cũ trả lời
+# `exit 0` cho cả hai:
+#     (a) đã soi được, PR thật sự không thêm dòng nào  → xanh là ĐÚNG
+#     (b) KHÔNG soi được (git diff hỏng, ống vào rỗng) → xanh là NÓI DỐI
+# Bản cũ viết `... || true` nên `git diff` hỏng cũng ra chuỗi rỗng, rồi rơi vào
+# đúng nhánh "diff rỗng — không có gì để soi" và cổng xanh. Đây là cổng CI, mà
+# cổng CI không đo được thì phải ĐỎ, không được im. Nay tách hai nghĩa ra:
+# `RAW` giữ nguyên đầu ra thô + mã thoát của git, `DIFF` mới là phần đã lọc.
 if [ "$GOC" = "-" ]; then
   QUA_ONG=1
-  DIFF="$(cat | grep -E '^\+' | grep -Ev '^\+\+\+' || true)"
+  RAW="$(cat)"
   NGUON="ống vào"
+  if [ -z "$RAW" ]; then
+    # Người gọi CHỦ ĐỘNG đưa diff qua ống mà ống rỗng ⇒ không phải "PR sạch",
+    # là lệnh sinh diff ở đầu kia đã hỏng. Xanh ở đây là xanh giả.
+    echo "✗ ống vào rỗng — KHÔNG soi được gì, coi như đỏ"
+    exit 1
+  fi
 else
   if ! git rev-parse --verify "$GOC" >/dev/null 2>&1; then
     echo "✗ không thấy sha gốc: $GOC"
     exit 1
   fi
-  # Chỉ dòng THÊM, bỏ chính kịch bản này ra.
-  DIFF="$(git diff --unified=0 "$GOC...$NGON" -- . ':(exclude)scripts/soi-khoa.sh' \
-          | grep -E '^\+' | grep -Ev '^\+\+\+' || true)"
+  # Chỉ dòng THÊM, bỏ chính kịch bản này ra. Bắt mã thoát của git RIÊNG, không
+  # nhét vào cùng ống lọc — `pipefail` không phân biệt được git hỏng với grep
+  # không khớp (grep trả 1 khi không khớp, đó là ca bình thường).
+  if ! RAW="$(git diff --unified=0 "$GOC...$NGON" -- . ':(exclude)scripts/soi-khoa.sh')"; then
+    echo "✗ git diff hỏng ($GOC...$NGON) — KHÔNG soi được gì, coi như đỏ"
+    exit 1
+  fi
   NGUON="$GOC...$NGON"
 fi
 
+DIFF="$(printf '%s\n' "$RAW" | grep -E '^\+' | grep -Ev '^\+\+\+' || true)"
+
 if [ -z "$DIFF" ]; then
-  echo "· diff rỗng ($NGUON) — không có gì để soi"
+  # Tới được đây nghĩa là ĐÃ đo: git chạy xong, hoặc ống vào có nội dung.
+  # Rỗng ở đây là câu trả lời thật — không thêm dòng nào — nên xanh là đúng.
+  echo "· đã soi $NGUON — không có dòng THÊM nào (chỉ xoá, hoặc không đổi gì)"
   exit 0
 fi
 
-echo "· soi $(printf '%s' "$DIFF" | wc -l | tr -d ' ') dòng thêm ($NGUON)"
+# `printf '%s'` (không có `\n`) đếm hụt đúng 1: nó không đóng dòng cuối, nên một
+# diff có ĐÚNG một dòng thêm được in ra là "0 dòng thêm" — cổng vẫn soi dòng đó và
+# vẫn bắt được khoá, nhưng con số in ra nói ngược. Số của một cổng mà sai thì lần
+# sau không ai tin số nào của nó nữa.
+echo "· soi $(printf '%s\n' "$DIFF" | wc -l | tr -d ' ') dòng thêm ($NGUON)"
 
 # ── 1. Khoá nhận ra được bằng chính hình dạng của nó ────────────────────────
 # Ghép từ mảnh để chuỗi mẫu không nằm nguyên văn trong tệp (bẫy 3).

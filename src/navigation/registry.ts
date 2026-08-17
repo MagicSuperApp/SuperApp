@@ -88,7 +88,7 @@ export const MODULE_REGISTRY: Record<ModuleId, RegistryEntry> = {
       // → mở từ nút "Truy xuất"/tab Farm vẫn GIỮ navbar (là tab, không phủ Main).
       // Danh sách vườn tách ra route 'FarmList' = màn con (drill-down từ Dashboard).
       Farms: DashboardScreen,
-      Dashboard: DashboardScreen, // giữ route cũ cho deep-link magiclamp://trace/Dashboard
+      Dashboard: DashboardScreen, // giữ route cũ cho deep-link lamp://trace/Dashboard
       FarmList: FarmListScreen,
       FarmDetail: FarmDetailScreen,
       TreeDetail: TreeDetailScreen,

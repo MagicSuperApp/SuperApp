@@ -1,55 +1,55 @@
 // navigation/traceScan.test.ts
 //
 // SG9 §3 — kiểm chứng bộ phân giải mã QR truy xuất: chỉ nhận deep-link nội bộ
-// magiclamp://, whitelist đích, tách params; mã lạ → null.
+// lamp://, whitelist đích, tách params; mã lạ → null.
 
 import { parseTraceCode, parseTreeCode } from './traceScan';
 
 describe('parseTraceCode', () => {
   it('deep-link module có moduleId + route + params', () => {
-    expect(parseTraceCode('magiclamp://trace/TreeDetail?treeId=abc123')).toEqual({
+    expect(parseTraceCode('lamp://trace/TreeDetail?treeId=abc123')).toEqual({
       route: 'TreeDetail',
       params: { treeId: 'abc123' },
     });
   });
 
   it('deep-link route trực tiếp (không moduleId)', () => {
-    expect(parseTraceCode('magiclamp://FarmDetail?farmId=f1')).toEqual({
+    expect(parseTraceCode('lamp://FarmDetail?farmId=f1')).toEqual({
       route: 'FarmDetail',
       params: { farmId: 'f1' },
     });
   });
 
   it('không params → params bỏ trống', () => {
-    expect(parseTraceCode('magiclamp://trace/TreeDetail')).toEqual({ route: 'TreeDetail' });
+    expect(parseTraceCode('lamp://trace/TreeDetail')).toEqual({ route: 'TreeDetail' });
   });
 
   it('nhiều params + giải mã %', () => {
-    expect(parseTraceCode('magiclamp://AnimalDetail?id=a1&name=B%C3%B2')).toEqual({
+    expect(parseTraceCode('lamp://AnimalDetail?id=a1&name=B%C3%B2')).toEqual({
       route: 'AnimalDetail',
       params: { id: 'a1', name: 'Bò' },
     });
   });
 
   it('route NGOÀI whitelist → null (không điều hướng bừa)', () => {
-    expect(parseTraceCode('magiclamp://trace/SeedExport')).toBeNull();
-    expect(parseTraceCode('magiclamp://Login')).toBeNull();
+    expect(parseTraceCode('lamp://trace/SeedExport')).toBeNull();
+    expect(parseTraceCode('lamp://Login')).toBeNull();
     // Đã thu whitelist: danh sách/dashboard/enroll KHÔNG phải đích soi-nguồn-gốc.
-    expect(parseTraceCode('magiclamp://Farms')).toBeNull();
-    expect(parseTraceCode('magiclamp://trace/Dashboard')).toBeNull();
-    expect(parseTraceCode('magiclamp://Activity')).toBeNull();
-    expect(parseTraceCode('magiclamp://TreeIdentity')).toBeNull();
-    expect(parseTraceCode('magiclamp://AnimalIdentity')).toBeNull();
+    expect(parseTraceCode('lamp://Farms')).toBeNull();
+    expect(parseTraceCode('lamp://trace/Dashboard')).toBeNull();
+    expect(parseTraceCode('lamp://Activity')).toBeNull();
+    expect(parseTraceCode('lamp://TreeIdentity')).toBeNull();
+    expect(parseTraceCode('lamp://AnimalIdentity')).toBeNull();
   });
 
-  it('mã KHÔNG phải magiclamp:// → null', () => {
+  it('mã KHÔNG phải lamp:// → null', () => {
     expect(parseTraceCode('https://example.com/x')).toBeNull();
     expect(parseTraceCode('just some text')).toBeNull();
     expect(parseTraceCode('')).toBeNull();
   });
 
   it('bỏ khoảng trắng thừa, không phân biệt hoa/thường ở scheme', () => {
-    expect(parseTraceCode('  MAGICLAMP://trace/TreeDetail  ')).toEqual({ route: 'TreeDetail' });
+    expect(parseTraceCode('  LAMP://trace/TreeDetail  ')).toEqual({ route: 'TreeDetail' });
   });
 });
 
@@ -108,7 +108,7 @@ describe('parseTreeCode', () => {
   it('chuỗi lạ, rỗng, và mã nằm ở chỗ khác trong URL → null', () => {
     expect(parseTreeCode('')).toBeNull();
     expect(parseTreeCode('just some text')).toBeNull();
-    expect(parseTreeCode('magiclamp://trace/TreeDetail')).toBeNull();
+    expect(parseTreeCode('lamp://trace/TreeDetail')).toBeNull();
     // `ORI-…` nằm trong query của trang khác KHÔNG được nuốt thành mã: chỉ đoạn
     // ngay sau `/t/` mới tính.
     expect(parseTreeCode(`https://example.com/x?ref=${OK}`)).toBeNull();

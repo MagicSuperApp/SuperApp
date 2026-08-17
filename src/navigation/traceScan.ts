@@ -13,9 +13,12 @@
 // "không tìm thấy". Vì vậy mã `ORI-…` đi sang `TraceResult` (màn công khai), còn
 // deep-link nội bộ vẫn đi các màn chi tiết như cũ.
 //
-// Cross-platform: sản phẩm Aladin mã hoá deep-link
-// `magiclamp://…` (đã khai trong buildLinking) → quét ngoài app cũng mở thẳng
-// màn kết quả; quét TRONG app thì màn này điều hướng tới đó.
+// SỬA 2026-08-17 (2) — dòng cũ ở đây nói "quét ngoài app cũng mở thẳng màn kết quả".
+// SAI. Deep-link `lamp://…` mới chỉ khai ở `buildLinking`; KHÔNG platform nào đăng ký
+// scheme ở tầng hệ điều hành (`ios/aladin_mobile_fe/Info.plist:25-35` chỉ có scheme
+// OAuth Google; `android/.../AndroidManifest.xml` chỉ có intent-filter MAIN/LAUNCHER).
+// `prefixes` chỉ dạy React Navigation cách ĐỌC một URL đã tới tay app, không bảo hệ
+// điều hành gửi URL tới. Nên `parseTraceCode` hôm nay chỉ phục vụ đường quét TRONG app.
 
 // Tên route màn quét (host stack, full-bleed — immersive-by-omission: KHÔNG vào
 // tabs[], tới được qua navigate/deep-link). Nguồn DUY NHẤT để §4 (cổng) + header
@@ -38,14 +41,28 @@ export interface TraceTarget {
   params?: Record<string, string>;
 }
 
-// ── Mã cây CÔNG KHAI in trên bao bì ─────────────────────────────────────────
+// ── Mã cây CÔNG KHAI — LỐI TẮT tra cứu, KHÔNG phải cách định danh ────────────
 //
-// Máy chủ sinh mã theo `identity.tree_code()` = `ORI-{geohash7}-{crockford8}`, và
-// nhúng vào QR dưới dạng URL `{PUBLIC_BASE_URL}/t/{code}` (`server.py:730-741`).
-// Nghĩa là QR THẬT trên sản phẩm KHÔNG phải `magiclamp://…` — nó là một URL http.
-// Trước bản này, `parseTraceCode` chỉ nhận deep-link nội bộ nên mọi QR in ra đều
-// rơi vào nhánh "chưa nhận diện": cửa `GET /api/tree_by_code/{code}` đã chạy trên
-// máy chủ mà không đường nào của app gọi tới.
+// ⚠️ Đọc kỹ chỗ này, đây là chỗ dễ hiểu ngược nhất của cả hệ.
+//
+// ĐỊNH DANH cây/quả trong OriLife là bằng ẢNH — mô hình so khớp lại cá thể
+// (`/api/identify`, đường quét quả ở PR #151). Mã `ORI-…` KHÔNG định danh gì cả:
+// nó là một cái NHÃN máy chủ cấp SAU khi cây đã được định danh, để người mua tra
+// nhanh trang xuất xứ mà không phải chụp lại quả. Bỏ mã này đi thì hệ vẫn định danh
+// bình thường; bỏ đường ảnh đi thì hệ chết. Đừng đảo thứ tự đó trong đầu.
+//
+// Nguồn hợp đồng: `OriLifeTrace/OriLife-Integration.md:75` xếp `/t/{code}`·`/qr/{code}`
+// vào nhóm "Chia-sẻ · Xuất-xứ", và `:257` xếp "Xuất-xứ/QR" ở bước MỞ RỘNG truy xuất —
+// không nằm trong vòng lõi định danh.
+//
+// Khuôn mã: `identity.tree_code()` = `ORI-{geohash7}-{crockford8}`; máy chủ ghép thành
+// URL `{PUBLIC_BASE_URL}/t/{code}` (`server.py:730-741`) và cửa `/qr/{code}` trả URL đó
+// dưới dạng ảnh QR SVG (`server.py:5431`). Nên chuỗi quét được là URL http, KHÔNG phải
+// `lamp://…`, và `parseTraceCode` (chỉ nhận deep-link nội bộ) không đọc nổi.
+//
+// CHƯA ĐO ĐƯỢC, nói thẳng: nhà này KHÔNG có bằng chứng nào cho thấy đã có bao bì thật
+// in mã này ngoài thực địa. Cửa máy chủ thì sống, nhưng "QR thật trên bao bì" là điều
+// CHƯA kiểm. Hàm dưới đây làm cho đường tra mã sẵn sàng, không chứng minh nó đang được dùng.
 //
 // Bảng chữ COPY ĐÚNG `_CODE_RE` phía máy chủ (`server.py:718`): geohash bỏ a,i,l,o
 // (chữ THƯỜNG), crockford bỏ I,L,O,U (chữ HOA). Không nới thành `[a-z0-9]` cho gọn
@@ -83,14 +100,14 @@ export function parseTreeCode(raw: string): string | null {
 /**
  * Phân giải mã QR quét được → đích điều hướng, hoặc null nếu KHÔNG nhận diện.
  *
- * Chỉ nhận deep-link nội bộ `magiclamp://…` (sản phẩm Aladin đã đăng ký). Lấy
+ * Chỉ nhận deep-link nội bộ `lamp://…` (sản phẩm Aladin đã đăng ký). Lấy
  * đoạn cuối path làm route; query (?k=v) thành params. Route ngoài whitelist →
  * null (màn quét hiện "chưa nhận diện"). HÀM THUẦN — không điều hướng.
  */
 export function parseTraceCode(raw: string): TraceTarget | null {
   if (!raw) return null;
   const s = raw.trim();
-  const m = /^magiclamp:\/\/(.+)$/i.exec(s);
+  const m = /^lamp:\/\/(.+)$/i.exec(s);
   if (!m) return null;
 
   const [pathPart, queryPart] = m[1].split('?');

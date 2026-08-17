@@ -51,10 +51,11 @@ const TraceScanScreen = () => {
       return;
     }
 
-    // QR THẬT in trên bao bì không phải `magiclamp://…` — máy chủ nhúng URL
-    // `{PUBLIC_BASE_URL}/t/{code}` (`server.py:730-741`). Thiếu nhánh này thì mọi
-    // mã đã in ra đều rơi vào "chưa nhận diện", và cửa `/api/tree_by_code/{code}`
-    // đang chạy trên máy chủ không có đường nào của app gọi tới.
+    // Mã cây công khai `ORI-…`: máy chủ ghép thành URL `{PUBLIC_BASE_URL}/t/{code}`
+    // (`server.py:730-741`) rồi phát ra dưới dạng QR ở `/qr/{code}`. Chuỗi quét được
+    // là URL http, KHÔNG phải `lamp://…`, nên `parseTraceCode` ở trên không đọc nổi.
+    // Đây là LỐI TẮT tra cứu xuất xứ, không phải cách định danh cây — định danh đi
+    // bằng ảnh qua `/api/identify` (xem chú thích đầu `navigation/traceScan.ts`).
     const code = parseTreeCode(raw);
     if (code) {
       navigation.replace(TRACE_RESULT_ROUTE_NAME, { code });

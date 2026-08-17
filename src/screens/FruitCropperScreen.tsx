@@ -51,6 +51,10 @@ import {
   type FruitViewType,
 } from '../services/fruitReIDService';
 import {
+  getCapturePlan, suggestedFace,
+  type CapturePlan,
+} from '../services/capturePlanService';
+import {
   DEFAULT_FRUIT_COORD, ZONE_LABEL, clampCoord, coordToServer, coordToZone, zoneToY,
   type FruitCoord,
 } from '../features/space3d/treeFrame';
@@ -263,9 +267,27 @@ const FruitCropperScreen: React.FC = () => {
   /**
    * MẶT nào của quả đang chụp. Máy chủ cần trường này để thôi đem mặt đáy so với
    * góc hông — thiếu nó là gốc của việc bồi góc bị chặn oan 30/32 lượt.
-   * Mặc định `side`: đó là mặt người ta chụp nhiều nhất khi đứng dưới gốc.
+   *
+   * Giá trị khởi tạo `side` là chỗ ĐỖ TẠM, không phải câu trả lời: nó chỉ đúng
+   * cho tới khi `/api/capture/plan` trả về mặt máy chủ đang thiếu. Người dùng
+   * chạm tay vào bộ chọn thì kế hoạch KHÔNG được ghi đè nữa (`faceTouched`) —
+   * người đứng tại vườn thấy quả, máy chủ chỉ thấy ảnh cũ.
    */
   const [viewType, setViewType] = useState<FruitViewType>('side');
+  const faceTouched = useRef(false);
+  const pickFace = useCallback((v: FruitViewType) => {
+    faceTouched.current = true;
+    setViewType(v);
+  }, []);
+
+  /**
+   * "Còn thiếu gì, chụp gì tiếp" — `GET /api/capture/plan`.
+   *
+   * `null` = CHƯA CÓ kế hoạch (chưa gọi, hoặc gọi hỏng). Màn không được vẽ gì
+   * thay cho nó: một thanh tiến độ dựng từ chỗ trống trông y hệt thanh dựng từ
+   * số 0, và người chụp không có cách nào biết mình đang nhìn số thật hay số bịa.
+   */
+  const [plan, setPlan] = useState<CapturePlan | null>(null);
 
   // Toạ-độ 3D của quả trên cây (hệ riêng của cây). Thay cho việc chỉ chọn 1 trong
   // 3 vùng: người dùng kéo icon quả ở màn FruitPlace3D. zone gửi lên server được
@@ -422,6 +444,30 @@ const FruitCropperScreen: React.FC = () => {
     return () => { alive = false; };
   }, [fruitId, vw, vh, imageUri, treeId, jumpToBox]);
 
+  /**
+   * KẾ HOẠCH CHỤP — hỏi máy chủ "quả này còn thiếu mặt nào" ngay khi mở màn.
+   *
+   * Chỉ chạy ở luồng THÊM GÓC (`fruitId` có): luồng quả mới chưa có đối tượng nào
+   * trên máy chủ để lập kế hoạch, gọi vào là 404 chắc chắn.
+   *
+   * Lấy được mặt máy chủ đang thiếu thì đặt luôn cho bộ chọn — trước đây chỗ này
+   * viết cứng `'side'`, tức mọi lượt bồi góc đều khai cùng một mặt bất kể quả
+   * thiếu mặt nào. Hỏng thì KHÔNG làm gì: giữ nguyên `side` và không hiện dòng
+   * hướng dẫn nào, thay vì bịa ra một câu nghe như của máy chủ.
+   */
+  const loadPlan = useCallback(async (afterReject?: null) => {
+    if (!fruitId) return;
+    const r = await getCapturePlan(BASE_URL, 'fruit', fruitId, { afterReject: afterReject ?? null })
+      .catch(() => null);
+    if (!r?.ok || !r.data?.ok) return;
+    setPlan(r.data);
+    // Người dùng đã tự chọn mặt thì thôi — họ đang cầm quả trên tay.
+    const face = suggestedFace(r.data);
+    if (face && !faceTouched.current) setViewType(face);
+  }, [fruitId]);
+
+  useEffect(() => { void loadPlan(); }, [loadPlan]);
+
   // Câu báo sau khi quét tự tắt — để lại thì nó thành một dòng chữ chết trên màn.
   useEffect(() => {
     if (!scanNote) return;
@@ -575,11 +621,21 @@ const FruitCropperScreen: React.FC = () => {
         yesLabel: 'Vẫn là quả này',
         onYes: () => { void runAddView(targetFruitId, region, p, true); },
       });
+      // Câu từ chối nói VÌ SAO; kế hoạch nói LÀM GÌ TIẾP. Lấy lại kế hoạch để dòng
+      // dưới nút cập nhật theo tình trạng vừa đổi.
+      //
+      // ⛔ KHÔNG gửi `after_reject` ở đường quả. `/api/fruit/add_view` từ chối bằng
+      // HTTP 200 + `warn` ∈ {better_other, low_self}, và hai mã đó CHƯA có trong
+      // bảng dịch `_REJECT_TO_ACTION` của máy chủ (nhà OriLife xác nhận 16/08).
+      // Gửi lên hôm nay thì cửa trả kế hoạch THƯỜNG, im lặng, không báo lỗi — app
+      // sẽ tưởng mình đang hiện câu gỡ đúng cái vừa chặn trong khi không phải.
+      // Trường `message` máy chủ đã trả sẵn là câu tiếng Việt hoàn chỉnh, dùng nó.
+      void loadPlan();
       return;
     }
 
     navigation.goBack();
-  }, [imageUri, zone, viewType, coord, zPlaced, navigation]);
+  }, [imageUri, zone, viewType, coord, zPlaced, navigation, loadPlan]);
 
   const openPlacer = useCallback(() => {
     navigation.navigate('FruitPlace3D', {
@@ -825,13 +881,29 @@ const FruitCropperScreen: React.FC = () => {
           cổng bồi góc chặn oan 30 trên 32 lượt. Đặt ở bước khoanh vì cả hai
           đường (thêm góc thẳng, và qua bước đối chiếu) đều đi qua đây.
         */}
+        {/*
+          Việc-phải-làm tiếp, do MÁY CHỦ đặt câu (`next.text_vi`) — không hiện gì
+          khi chưa có kế hoạch. `why_vi` là dòng phụ, chữ nhỏ.
+        */}
+        {plan?.next?.text_vi ? (
+          <View style={styles.planBox}>
+            <Icon name="lightbulb" size={12} color={DETECT_GREEN} />
+            <View style={styles.planTxtWrap}>
+              <Text style={styles.planTxt} numberOfLines={2}>{plan.next.text_vi}</Text>
+              {plan.why_vi ? (
+                <Text style={styles.planWhy} numberOfLines={2}>{plan.why_vi}</Text>
+              ) : null}
+            </View>
+          </View>
+        ) : null}
+
         <Text style={styles.viewLbl}>ĐANG CHỤP MẶT NÀO</Text>
         <View style={styles.viewSeg}>
           {VIEW_CHOICES.map(v => (
             <TouchableOpacity
               key={v.key}
               style={[styles.viewOpt, viewType === v.key && styles.viewOptOn]}
-              onPress={() => setViewType(v.key)}
+              onPress={() => pickFace(v.key)}
               activeOpacity={0.8}
               accessibilityRole="button"
               accessibilityState={{ selected: viewType === v.key }}
@@ -1345,6 +1417,15 @@ const styles = StyleSheet.create({
   errTxt: { flex: 1, color: COLORS.error, fontSize: 13, lineHeight: 18 },
 
   // Chọn MẶT quả (bước khoanh, nền tối)
+  planBox: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 12,
+    paddingVertical: 9, paddingHorizontal: 11, borderRadius: 11,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1, borderColor: 'rgba(94,197,138,0.35)',
+  },
+  planTxtWrap: { flex: 1 },
+  planTxt: { color: ON_STAGE, fontSize: 13, fontWeight: '600', lineHeight: 18 },
+  planWhy: { color: ON_STAGE, opacity: 0.62, fontSize: 11, lineHeight: 15, marginTop: 2 },
   viewLbl: { color: ON_STAGE, opacity: 0.65, fontSize: 10, letterSpacing: 1, marginTop: 14, marginBottom: 6 },
   viewSeg: { flexDirection: 'row', gap: 6 },
   viewOpt: {

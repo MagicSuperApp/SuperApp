@@ -60,6 +60,7 @@ import {
   type TreeLayoutResponse, type TreeLayoutFruit,
   type FruitStatus, type TreeZone,
 } from '../../../services/fruitReIDService';
+import { removeTreeViews, setTreeFarm } from '../../../services/treeReIDService';
 import { useSelector } from 'react-redux';
 
 const { width } = Dimensions.get('window');
@@ -324,6 +325,25 @@ const TreeDetailScreen = () => {
   const [zoomImage, setZoomImage] = useState<string | null>(null);
   const [videoProofs, setVideoProofs] = useState<VideoProof[]>([]);
 
+  /**
+   * Bao nhiêu ảnh ĐẦU dải là ảnh máy chủ. Con số này là điều kiện SỐNG CÒN của
+   * nút xoá góc: `/api/remove_views` nhận VỊ TRÍ trong `/api/tree_views`, mà dải
+   * ảnh ở đây có thể đang là danh sách LOCAL (đường lùi khi máy chủ trả rỗng).
+   * Xoá theo vị trí của dải local = xoá nhầm góc khác trên máy chủ, và người dùng
+   * KHÔNG thấy gì sai vì ảnh trong máy vẫn còn nguyên. Nên `0` = không cho xoá.
+   */
+  const [serverImgCount, setServerImgCount] = useState(0);
+  const [deletingIdx, setDeletingIdx] = useState<number | null>(null);
+
+  /**
+   * Vườn do màn này vừa gán. `undefined` = chưa đụng tới (dùng `tree.farmId`).
+   * `null` = vừa gỡ khỏi vườn. Giữ riêng vì `tree` đến từ route/store, gán xong
+   * mà chờ store đồng bộ thì hàng vườn vẫn hiện giá trị cũ.
+   */
+  const [farmOverride, setFarmOverride] = useState<string | null | undefined>(undefined);
+  const [farmPickerOpen, setFarmPickerOpen] = useState(false);
+  const [farmSaving, setFarmSaving] = useState(false);
+
   // Bằng chứng video đã lưu lên LampNet. Nạp lại mỗi lần màn được focus vì người
   // dùng vừa gửi video xong là quay về đây — không nạp lại thì tưởng chưa lưu.
   useFocusEffect(
@@ -357,6 +377,7 @@ const TreeDetailScreen = () => {
     const serverImgs = viewsRes?.ok ? treeViewImageUrls(viewsRes.data, ORILIFE_BASE) : [];
     setLocalImages(localImgs);
     setTreeImages(serverImgs.length > 0 ? serverImgs : localImgs);
+    setServerImgCount(serverImgs.length);
     // Lỗi tầng DANH SÁCH (401 hết phiên / 403 không phải cây của bạn / mất mạng) —
     // trước đây cả ba cho ra cùng một mảng rỗng, không thông báo, không nút thử lại.
     setImagesError(viewsRes && !viewsRes.ok ? viewsRes.error?.type ?? 'unknown' : null);
@@ -375,6 +396,73 @@ const TreeDetailScreen = () => {
       return () => { alive = false; };
     }, [loadImages]),
   );
+
+  // Gán cây vào vườn / gỡ khỏi vườn — `POST /api/tree/set_farm`.
+  //
+  // VÌ SAO MÀN NÀY CẦN: cây đăng ký thiếu `farm_id` bị `/api/trees?farm_id` lọc
+  // bỏ, tức nó BIẾN MẤT khỏi danh sách cây của vườn. Người dùng mở được nó qua
+  // mã/quét nhưng không có đường nào sửa — trước đây app không hề gọi cửa này.
+  const handlePickFarm = useCallback(async (farmId: string | null) => {
+    const id = tree?.id;
+    if (!id) return;
+    setFarmSaving(true);
+    const r = await setTreeFarm(ORILIFE_BASE, id, farmId);
+    setFarmSaving(false);
+    setFarmPickerOpen(false);
+    if (r.ok) { setFarmOverride(r.farmId ?? null); return; }
+    // 404 của máy chủ GỘP "vườn không tồn tại" với "vườn của người khác" — cố ý,
+    // để không lộ sự tồn tại vườn người khác. App không được đoán ra một trong hai.
+    Alert.alert(
+      'Chưa đổi được vườn',
+      r.notOwner
+        ? 'Cây này không thuộc tài khoản đang đăng nhập.'
+        : r.farmNotFound
+          ? 'Không mở được vườn vừa chọn. Nạp lại danh sách vườn rồi thử lại.'
+          : r.error?.detail ?? 'Không gọi được máy chủ. Thử lại khi có mạng.',
+    );
+  }, [tree?.id]);
+
+  // Xoá một góc ảnh hỏng — `POST /api/remove_views`.
+  //
+  // Xoá TỪNG góc một rồi nạp lại, KHÔNG gom nhiều chỉ số vào một lần bấm: sau mỗi
+  // lần xoá các vị trí phía sau dồn lên, nên chỉ số thứ hai trong cùng một mẻ đã
+  // trỏ sang góc khác.
+  const handleDeleteView = useCallback((idx: number) => {
+    const id = tree?.id;
+    if (!id) return;
+    Alert.alert(
+      'Xoá góc ảnh này?',
+      'Cây sẽ còn ít góc nhận dạng hơn. Chỉ nên xoá ảnh chụp hỏng hoặc chụp nhầm cây.',
+      [
+        { text: 'Thôi', style: 'cancel' },
+        {
+          text: 'Xoá',
+          style: 'destructive',
+          onPress: async () => {
+            setDeletingIdx(idx);
+            const r = await removeTreeViews(ORILIFE_BASE, id, [idx]);
+            setDeletingIdx(null);
+            if (!r.ok) {
+              Alert.alert(
+                'Chưa xoá được',
+                r.notOwner
+                  ? 'Cây này không thuộc tài khoản đang đăng nhập.'
+                  : r.error?.detail ?? 'Không gọi được máy chủ. Thử lại khi có mạng.',
+              );
+              return;
+            }
+            // Đọc `removed` của máy chủ. `ok:true` mà `removed:0` là ca THẬT (chỉ
+            // số ngoài phạm vi) — im lặng ở đây thì người dùng thấy ảnh vẫn còn và
+            // tưởng app đơ.
+            if ((r.removed ?? 0) === 0) {
+              Alert.alert('Máy chủ không xoá góc nào', 'Danh sách ảnh vừa đổi. Nạp lại rồi chọn lại ảnh cần xoá.');
+            }
+            await loadImages().catch(() => undefined);
+          },
+        },
+      ],
+    );
+  }, [tree?.id, loadImages]);
 
   useEffect(() => {
     Animated.parallel([
@@ -535,7 +623,15 @@ const TreeDetailScreen = () => {
     : tk('trace.tree.noGps');
 
   // Build 52 § A7 — farmer-friendly tree name (UUID → "Cây #3 góc Đông")
-  const currentFarm = tree ? farms.find(f => f.id === tree.farmId) : null;
+  // Vườn ĐANG hiệu lực = bản vừa gán ở màn này (nếu có), không thì bản của cây.
+  const effectiveFarmId: string | null =
+    farmOverride !== undefined ? farmOverride : (tree?.farmId ?? null);
+  const currentFarm = effectiveFarmId ? farms.find(f => f.id === effectiveFarmId) ?? null : null;
+  // Tên vườn hiện lên: ưu tiên tên trong danh sách vườn; `tree.farmName` là bản
+  // chụp lúc mở màn nên chỉ dùng khi chưa gán lại ở đây.
+  const farmLabel = currentFarm?.name
+    ?? (farmOverride === undefined ? (tree?.farmName as string | undefined) : undefined)
+    ?? null;
   const treeDisplayName = tree ? formatTreeName(tree, currentFarm) : '';
   const treeShortCode = tree ? shortTreeCode(tree) : '';
 
@@ -586,12 +682,20 @@ const TreeDetailScreen = () => {
               {treeShortCode ? (
                 <Text style={styles.heroCodeSub}>Mã: {treeShortCode}</Text>
               ) : null}
-              {tree?.farmName && (
-                <View style={styles.heroFarmRow}>
-                  <Icon name="tree" size={12} color={COLORS.textMuted} />
-                  <Text style={styles.heroFarmText}>{tree?.farmName}</Text>
-                </View>
-              )}
+              {/* Hàng vườn LUÔN hiện, kể cả khi cây chưa thuộc vườn nào. Bản cũ
+                  ẩn hàng này khi không có tên vườn — đúng ca cây mồ côi, tức là
+                  ca DUY NHẤT cần sửa lại bị giấu đi. Chạm để gán vườn. */}
+              <TouchableOpacity
+                style={styles.heroFarmRow}
+                activeOpacity={0.7}
+                onPress={() => setFarmPickerOpen(true)}
+                accessibilityLabel={farmLabel ? `Vườn ${farmLabel}, chạm để đổi` : 'Cây chưa thuộc vườn nào, chạm để chọn vườn'}
+              >
+                <Icon name="tree" size={12} color={farmLabel ? COLORS.textMuted : ORG_TONE.sun} />
+                <Text style={[styles.heroFarmText, !farmLabel && styles.heroFarmMissing]}>
+                  {farmLabel ?? 'Chưa thuộc vườn nào — chạm để chọn'}
+                </Text>
+              </TouchableOpacity>
               <View style={styles.heroFarmRow}>
                 <Icon name="location-dot" size={12} color={COLORS.textMuted} />
                 <Text style={styles.heroFarmText}>{gpsText}</Text>
@@ -703,22 +807,37 @@ const TreeDetailScreen = () => {
             contentContainerStyle={styles.photoStrip}
           >
             {treeImages.map((uri, i) => (
-              <TouchableOpacity
-                key={`${uri}-${i}`}
-                activeOpacity={0.85}
-                onPress={() => setZoomImage(uri)}
-              >
-                <RemoteImage
-                  uri={uri}
-                  fallbackUri={localImages[i]}
-                  retryKey={imgRetry}
-                  style={styles.photoThumb}
-                  resizeMode="cover"
-                  onFinalError={() => setBrokenImages(n => n + 1)}
-                  placeholder={<Icon name="image" size={22} color="#9bb0a4" />}
-                  accessibilityLabel={`Ảnh cây ${i + 1}`}
-                />
-              </TouchableOpacity>
+              <View key={`${uri}-${i}`}>
+                <TouchableOpacity activeOpacity={0.85} onPress={() => setZoomImage(uri)}>
+                  <RemoteImage
+                    uri={uri}
+                    fallbackUri={localImages[i]}
+                    retryKey={imgRetry}
+                    style={styles.photoThumb}
+                    resizeMode="cover"
+                    onFinalError={() => setBrokenImages(n => n + 1)}
+                    placeholder={<Icon name="image" size={22} color="#9bb0a4" />}
+                    accessibilityLabel={`Ảnh cây ${i + 1}`}
+                  />
+                </TouchableOpacity>
+                {/* Chỉ ảnh nào ĐANG là ảnh máy chủ mới xoá được: `remove_views`
+                    nhận vị trí trong `/api/tree_views`. Dải đang chạy bản lùi
+                    local thì vị trí không khớp nữa ⇒ không hiện nút, thà thiếu
+                    nút còn hơn xoá nhầm góc mà không ai thấy. */}
+                {i < serverImgCount && (
+                  <TouchableOpacity
+                    style={styles.photoDelBtn}
+                    activeOpacity={0.8}
+                    disabled={deletingIdx !== null}
+                    onPress={() => handleDeleteView(i)}
+                    accessibilityLabel={`Xoá ảnh cây ${i + 1}`}
+                  >
+                    {deletingIdx === i
+                      ? <ActivityIndicator size="small" color="#fff" />
+                      : <Icon name="trash" size={11} color="#fff" />}
+                  </TouchableOpacity>
+                )}
+              </View>
             ))}
           </ScrollView>
         </View>
@@ -1102,6 +1221,55 @@ const TreeDetailScreen = () => {
         </TouchableOpacity>
       </Modal>
 
+      {/* Chọn vườn cho cây (`/api/tree/set_farm`). Có cả lối GỠ khỏi vườn vì máy
+          chủ nhận `farm_id` rỗng có chủ đích — người dùng nhặt nhầm vườn phải có
+          đường lùi, không thì cây kẹt trong vườn sai vĩnh viễn. */}
+      <Modal
+        visible={farmPickerOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setFarmPickerOpen(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => !farmSaving && setFarmPickerOpen(false)}
+        >
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Cây này thuộc vườn nào?</Text>
+            {farms.length === 0 && (
+              <Text style={styles.farmPickEmpty}>
+                Tài khoản này chưa có vườn nào. Tạo vườn trước rồi quay lại đây.
+              </Text>
+            )}
+            <ScrollView style={{ maxHeight: 260 }}>
+              {farms.map(f => (
+                <TouchableOpacity
+                  key={f.id}
+                  style={[styles.modalOption, effectiveFarmId === f.id && styles.modalOptionSelected]}
+                  disabled={farmSaving}
+                  onPress={() => handlePickFarm(f.id)}
+                >
+                  <Text style={[styles.modalOptionText, effectiveFarmId === f.id && styles.modalOptionTextSelected]}>
+                    {f.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            {effectiveFarmId && (
+              <TouchableOpacity
+                style={styles.modalOption}
+                disabled={farmSaving}
+                onPress={() => handlePickFarm(null)}
+              >
+                <Text style={[styles.modalOptionText, styles.farmPickRemove]}>Gỡ khỏi vườn</Text>
+              </TouchableOpacity>
+            )}
+            {farmSaving && <ActivityIndicator style={{ marginTop: 10 }} color={COLORS.accent} />}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
       <Modal
         visible={statusDropdownVisible}
         transparent
@@ -1266,6 +1434,9 @@ const styles = StyleSheet.create({
   },
   heroFarmRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   heroFarmText: { fontSize: 12, color: COLORS.textMuted },
+  heroFarmMissing: { color: ORG_TONE.sun, fontWeight: '600' },
+  farmPickEmpty: { fontSize: 13, color: COLORS.textMuted, paddingVertical: 8 },
+  farmPickRemove: { color: COLORS.error },
 
   heroDivider: {
     flexDirection: 'row', alignItems: 'center',
@@ -1318,6 +1489,12 @@ const styles = StyleSheet.create({
     width: 96, height: 96, borderRadius: 12,
     backgroundColor: COLORS.border,
     borderWidth: 1, borderColor: ORG_TONE.border,
+  },
+  photoDelBtn: {
+    position: 'absolute', top: 4, right: 4,
+    width: 24, height: 24, borderRadius: 12,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.55)',
   },
   zoomOverlay: {
     flex: 1,

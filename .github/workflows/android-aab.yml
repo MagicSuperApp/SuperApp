@@ -100,7 +100,7 @@ jobs:
         run: |
           if [ -z "$ALADIN_API_KEY" ]; then
             echo "::error::Thiếu secret ALADIN_API_KEY — bản phát hành sẽ nướng khoá giả 'mock-local-api-key'."
-            echo "Nạp: gh secret set ALADIN_API_KEY --repo AladinContract/SuperApp"
+            echo "Nạp: gh secret set ALADIN_API_KEY --repo ${{ github.repository }}"
             echo "Đây là quyết định có thể đảo: muốn cho qua thì gỡ bước này, nhưng bản"
             echo "phát hành sẽ đồng bộ hỏng 401 trên máy mọi người dùng."
             exit 1
@@ -157,7 +157,8 @@ jobs:
         run: |
           if [ -z "$ORILIFE_UPLOAD_STORE_FILE_B64" ]; then
             echo "::error::Kho khoá ký chưa nạp — repo hiện có 0 secret."
-            echo "Đo 2026-08-10: gh api repos/AladinContract/SuperApp/actions/secrets"
+            echo "Đo 2026-08-10 (kho khi đó còn ở AladinContract; nay là ${{ github.repository }}):"
+            echo "               gh api repos/AladinContract/SuperApp/actions/secrets"
             echo "               → {\"total_count\":0,\"secrets\":[]}"
             echo ""
             echo "Cần nạp ĐỦ BỐN cái, thiếu một cái là bước ký gãy:"

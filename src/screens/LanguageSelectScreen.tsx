@@ -76,7 +76,12 @@ const LanguageSelectScreen = () => {
     setLanguage(picked, true);
     // replace: màn hỏi-một-lần không nên nằm lại trong ngăn xếp (bấm back từ
     // Đăng nhập sẽ quay lại đây).
-    navigation.replace('Login');
+    //
+    // Sang MÀN CHÀO, không thẳng tới Đăng nhập: tới được đây nghĩa là máy CHƯA từng
+    // chọn ngôn ngữ, tức máy vừa cài, tức chắc chắn chưa xem màn chào — nên không
+    // cần đọc cờ `onboarding_seen_v1` ở đây (đọc bất đồng bộ, còn chỗ này đang trong
+    // tay người dùng vừa bấm nút).
+    navigation.replace('Onboarding');
   };
 
   return (

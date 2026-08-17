@@ -71,6 +71,28 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # ⛔ NGUYÊN NHÂN ĐỎ THẬT của job này — 5 lượt liên tiếp 15/08 → 17/08: HẾT ĐĨA.
+      # KHÔNG phải gradle hỏng. Chính tiến trình runner chết khi ghi nhật ký của nó:
+      #   System.IO.IOException: No space left on device :
+      #   '/home/runner/actions-runner/cached/2.336.0/_diag/Worker_20260817-043812-utc.log'
+      # (annotation của job 95285397387, và job 95186581759 hôm trước y hệt).
+      # Runner chết TRƯỚC khi tải nhật ký lên ⇒ `gh run view --log` trả về gói chỉ có
+      # log của job `verify`, còn job này KHÔNG có dòng nào. Lỗi vì thế đọc như "không
+      # rõ nguyên nhân" trong khi nguyên nhân nằm nguyên trong annotation.
+      # Đó là lý do phải dọn ở ĐẦU job: dọn sau khi thấy đỏ thì đã không còn log để đọc.
+      - name: Dọn đĩa runner (ubuntu-latest chỉ còn ~14 GB trống)
+        run: |
+          echo "TRƯỚC:"; df -h / | tail -1
+          # Chỉ gỡ thứ job này KHÔNG dùng. KHÔNG đụng /usr/local/lib/android
+          # (Android SDK + NDK — bước dựng Rust cần nó) và KHÔNG xoá cả
+          # /opt/hostedtoolcache (setup-node và setup-java cài vào trong đó).
+          sudo rm -rf /usr/share/dotnet /usr/share/swift /usr/share/miniconda \
+                      /opt/ghc /usr/local/.ghcup \
+                      /usr/local/share/powershell /usr/local/share/boost \
+                      /opt/hostedtoolcache/CodeQL || true
+          sudo docker image prune -af || true
+          echo "SAU:"; df -h / | tail -1
+
       - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:

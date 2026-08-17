@@ -68,6 +68,27 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # ⛔ Job này CHƯA từng chạy trên `main`, nhưng job em ruột của nó
+      # (`debug-apk.yml` trên `develop`) chết 5 lượt liên tiếp 15/08 → 17/08 vì HẾT ĐĨA:
+      #   System.IO.IOException: No space left on device :
+      #   '/home/runner/actions-runner/cached/2.336.0/_diag/Worker_20260817-043812-utc.log'
+      # (annotation job 95285397387). Job NÀY nặng hơn job kia — bản AAB đóng gói
+      # BA lát ABI (thêm x86_64) chứ không phải hai — nên nó chắc chắn chết trước.
+      # Runner chết TRƯỚC khi tải nhật ký lên, nên nếu để nguyên thì bản ra Play hỏng
+      # mà không để lại một dòng log nào để đọc.
+      - name: Dọn đĩa runner (ubuntu-latest chỉ còn ~14 GB trống)
+        run: |
+          echo "TRƯỚC:"; df -h / | tail -1
+          # Chỉ gỡ thứ job này KHÔNG dùng. KHÔNG đụng /usr/local/lib/android
+          # (Android SDK + NDK — bước dựng Rust cần nó) và KHÔNG xoá cả
+          # /opt/hostedtoolcache (setup-node và setup-java cài vào trong đó).
+          sudo rm -rf /usr/share/dotnet /usr/share/swift /usr/share/miniconda \
+                      /opt/ghc /usr/local/.ghcup \
+                      /usr/local/share/powershell /usr/local/share/boost \
+                      /opt/hostedtoolcache/CodeQL || true
+          sudo docker image prune -af || true
+          echo "SAU:"; df -h / | tail -1
+
       - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:

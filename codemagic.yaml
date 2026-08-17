@@ -440,18 +440,28 @@ workflows:
 
     scripts:
 
-      # CỔNG CHẶN — cùng lý do với `android-appstore-aab`. Workflow này bắn thẳng
-      # lên TestFlight (`publishing.app_store_connect`), nên thiếu `API_KEY` là
-      # phát cho người thử một bản đồng bộ hỏng 401 im lặng.
-      - name: Chặn bản phát hành thiếu khoá API
+      # CỔNG SOÁT — cùng lý do với `android-appstore-aab` (đọc chú thích dài ở đó).
+      # Workflow này bắn thẳng lên TestFlight (`publishing.app_store_connect`) nên
+      # bản thiếu khoá tới tay người thử ngay, không kịp rút lại.
+      - name: Soát khoá API trước khi phát hành
         script: |
-          if [ -z "$API_KEY" ]; then
-            echo "❌ Thiếu API_KEY — bản phát hành sẽ nướng khoá giả 'mock-local-api-key'."
+          if [ -n "$API_KEY" ]; then
+            echo "✅ API_KEY có mặt (${#API_KEY} ký tự)."
+          elif [ "$ALLOW_NO_API_KEY" = "1" ]; then
+            echo "⚠️  Không có API_KEY — dựng tiếp vì ALLOW_NO_API_KEY=1."
+            echo "    Bản này nướng 'mock-local-api-key' vào header X-API-Key (aladin-api.ts:75)."
+            echo "    Chỉ chạm client aladin-api (ĐÃ deprecated, xem chú thích đầu tệp đó);"
+            echo "    farmService / treeReIDService / provenanceService KHÔNG gửi header này."
+          else
+            echo "❌ Không có API_KEY."
             echo "   Nạp ở: Codemagic → Environment variables → nhóm 'scanner_secrets' → biến API_KEY."
-            echo "   Khoá là của api.orilife.io, do bên OriLife cấp."
+            echo "   HOẶC, nếu chốt là bản này không cần: đặt ALLOW_NO_API_KEY=1 rồi dựng lại."
+            echo "   Đo 2026-08-17 trước khi quyết: mã máy chủ OriLife KHÔNG có chỗ nào đọc header"
+            echo "   X-API-Key, và hai cửa ĐỌC công khai trả lời bình thường khi không gửi khoá"
+            echo "   (GET /api/health → 200; GET /api/tree_by_code/<mã> → 404 đúng hợp đồng, không 401)."
+            echo "   Cửa GHI thì CHƯA đo được — đó là lý do cổng này còn đứng thay vì bỏ hẳn."
             exit 1
           fi
-          echo "✅ API_KEY có mặt (${#API_KEY} ký tự)."
 
       - name: Set up code signing
         script: |
@@ -949,9 +959,16 @@ workflows:
 
           echo "=== Rust Android outputs (jniLibs) ==="
           ls -lh android/app/src/main/jniLibs/*/ 2>/dev/null
-          if [ ! -f android/app/src/main/jniLibs/arm64-v8a/libtaad_enclave_core.so ]; then
-            echo "❌ libtaad_enclave_core.so (arm64-v8a) NOT built"; exit 1
-          fi
+          # Canh CẢ BA kiến trúc `cargo ndk` vừa dựng, không chỉ arm64-v8a. Cổng cũ chỉ
+          # canh arm64 nên một bản thiếu `.so` cho máy 32-bit vẫn dựng XANH và đóng gói
+          # bình thường — đúng dạng lỗi đã làm hỏng bản 87 (#156), chỉ khác kiến trúc.
+          # Máy nào thiếu `.so` thì `System.loadLibrary` ném lỗi lúc mở app, không phải
+          # lúc dựng: hỏng ở tay người dùng, không hỏng ở CI.
+          for ABI in arm64-v8a armeabi-v7a x86_64; do
+            if [ ! -f "android/app/src/main/jniLibs/$ABI/libtaad_enclave_core.so" ]; then
+              echo "❌ libtaad_enclave_core.so ($ABI) NOT built"; exit 1
+            fi
+          done
 
       - name: Build Rust chat_mls (Android)
         script: |
@@ -965,9 +982,12 @@ workflows:
               -t arm64-v8a -t armeabi-v7a -t x86_64 \
               -o ../../android/app/src/main/jniLibs \
               build --release --lib )
-          if [ ! -f android/app/src/main/jniLibs/arm64-v8a/libchat_mls.so ]; then
-            echo "❌ libchat_mls.so (arm64-v8a) NOT built"; exit 1
-          fi
+          # Cả ba kiến trúc — cùng lý do với cổng `libtaad_enclave_core.so` ở bước trên.
+          for ABI in arm64-v8a armeabi-v7a x86_64; do
+            if [ ! -f "android/app/src/main/jniLibs/$ABI/libchat_mls.so" ]; then
+              echo "❌ libchat_mls.so ($ABI) NOT built"; exit 1
+            fi
+          done
 
       - name: Build debug APK
         script: |
@@ -1021,22 +1041,39 @@ workflows:
       events: []  # Manual only — tránh build signed ngoài ý muốn
 
     scripts:
-      # CỔNG CHẶN — phải đứng TRƯỚC mọi bước dựng. Đường GitHub đã có cổng này
-      # (`android-aab.yml` bước "Chặn bản phát hành thiếu khoá API"); đường
-      # Codemagic thì KHÔNG, nên trước bản này một bản PHÁT HÀNH thiếu `API_KEY`
-      # vẫn dựng XANH và nướng `mock-local-api-key` vào header `X-API-Key`
-      # (`aladin-api.ts:75`) — mọi người dùng đồng bộ hỏng 401 IM LẶNG, sau khi
-      # bản đã lên Play. Xanh mà sai hỏng tệ hơn đỏ.
+      # CỔNG SOÁT — đứng TRƯỚC mọi bước dựng. Đường GitHub đã có cổng tương đương
+      # (`android-aab.yml`); đường Codemagic thì chưa, nên một bản PHÁT HÀNH thiếu
+      # `API_KEY` vẫn dựng XANH và nướng `mock-local-api-key` vào header `X-API-Key`
+      # (`aladin-api.ts:75`) mà không có gì báo. Xanh mà sai hỏng tệ hơn đỏ.
+      #
+      # ĐÍNH CHÍNH 2026-08-17 — bản đầu của cổng này (PR #168) nói thiếu khoá thì
+      # "mọi người dùng đồng bộ hỏng 401 im lặng". CHƯA đo được, và đo lại thì
+      # ngược: mã máy chủ OriLife không có chỗ nào đọc `X-API-Key`, hai cửa ĐỌC
+      # công khai trả lời bình thường khi không gửi khoá. Ngoài ra `aladin-api.ts`
+      # là client ĐÃ deprecated (chú thích đầu tệp), chỉ còn đường sync cũ gọi.
+      # Nên cổng KHÔNG chặn cứng nữa: có `ALLOW_NO_API_KEY=1` để đi tiếp có chủ ý.
+      # Vẫn giữ cổng vì cửa GHI chưa đo được — chưa đo thì chưa được tuyên là an toàn.
+      #
       # Chỉ đặt ở HAI workflow PHÁT HÀNH; bản debug/adhoc vẫn chạy được khoá giả.
-      - name: Chặn bản phát hành thiếu khoá API
+      - name: Soát khoá API trước khi phát hành
         script: |
-          if [ -z "$API_KEY" ]; then
-            echo "❌ Thiếu API_KEY — bản phát hành sẽ nướng khoá giả 'mock-local-api-key'."
+          if [ -n "$API_KEY" ]; then
+            echo "✅ API_KEY có mặt (${#API_KEY} ký tự)."
+          elif [ "$ALLOW_NO_API_KEY" = "1" ]; then
+            echo "⚠️  Không có API_KEY — dựng tiếp vì ALLOW_NO_API_KEY=1."
+            echo "    Bản này nướng 'mock-local-api-key' vào header X-API-Key (aladin-api.ts:75)."
+            echo "    Chỉ chạm client aladin-api (ĐÃ deprecated, xem chú thích đầu tệp đó);"
+            echo "    farmService / treeReIDService / provenanceService KHÔNG gửi header này."
+          else
+            echo "❌ Không có API_KEY."
             echo "   Nạp ở: Codemagic → Environment variables → nhóm 'scanner_secrets' → biến API_KEY."
-            echo "   Khoá là của api.orilife.io, do bên OriLife cấp."
+            echo "   HOẶC, nếu chốt là bản này không cần: đặt ALLOW_NO_API_KEY=1 rồi dựng lại."
+            echo "   Đo 2026-08-17 trước khi quyết: mã máy chủ OriLife KHÔNG có chỗ nào đọc header"
+            echo "   X-API-Key, và hai cửa ĐỌC công khai trả lời bình thường khi không gửi khoá"
+            echo "   (GET /api/health → 200; GET /api/tree_by_code/<mã> → 404 đúng hợp đồng, không 401)."
+            echo "   Cửa GHI thì CHƯA đo được — đó là lý do cổng này còn đứng thay vì bỏ hẳn."
             exit 1
           fi
-          echo "✅ API_KEY có mặt (${#API_KEY} ký tự)."
 
       - name: Create .env for React Native
         script: |
@@ -1168,9 +1205,16 @@ workflows:
               -t arm64-v8a -t armeabi-v7a -t x86_64 \
               -o ../../android/app/src/main/jniLibs \
               build --release --lib )
-          if [ ! -f android/app/src/main/jniLibs/arm64-v8a/libtaad_enclave_core.so ]; then
-            echo "❌ libtaad_enclave_core.so (arm64-v8a) NOT built"; exit 1
-          fi
+          # Canh CẢ BA kiến trúc `cargo ndk` vừa dựng, không chỉ arm64-v8a. Cổng cũ chỉ
+          # canh arm64 nên một bản thiếu `.so` cho máy 32-bit vẫn dựng XANH và đóng gói
+          # bình thường — đúng dạng lỗi đã làm hỏng bản 87 (#156), chỉ khác kiến trúc.
+          # Máy nào thiếu `.so` thì `System.loadLibrary` ném lỗi lúc mở app, không phải
+          # lúc dựng: hỏng ở tay người dùng, không hỏng ở CI.
+          for ABI in arm64-v8a armeabi-v7a x86_64; do
+            if [ ! -f "android/app/src/main/jniLibs/$ABI/libtaad_enclave_core.so" ]; then
+              echo "❌ libtaad_enclave_core.so ($ABI) NOT built"; exit 1
+            fi
+          done
 
       - name: Build Rust chat_mls (Android)
         script: |
@@ -1184,9 +1228,12 @@ workflows:
               -t arm64-v8a -t armeabi-v7a -t x86_64 \
               -o ../../android/app/src/main/jniLibs \
               build --release --lib )
-          if [ ! -f android/app/src/main/jniLibs/arm64-v8a/libchat_mls.so ]; then
-            echo "❌ libchat_mls.so (arm64-v8a) NOT built"; exit 1
-          fi
+          # Cả ba kiến trúc — cùng lý do với cổng `libtaad_enclave_core.so` ở bước trên.
+          for ABI in arm64-v8a armeabi-v7a x86_64; do
+            if [ ! -f "android/app/src/main/jniLibs/$ABI/libchat_mls.so" ]; then
+              echo "❌ libchat_mls.so ($ABI) NOT built"; exit 1
+            fi
+          done
 
       - name: Bump versionCode (base + Codemagic BUILD_NUMBER)
         script: |

@@ -6,9 +6,10 @@
  *   1. **404 ở cửa công khai là CÂU TRẢ LỜI, không phải lỗi.** Máy chủ cố ý gộp
  *      *cây riêng tư* với *cây không có* (rọc-phách §18). Đọc nó thành lỗi thì
  *      màn hình mời người dùng "thử lại" một việc không có gì để thử.
- *   2. **GPS có thể đã bị làm thô ~111m mà không trường nào nói.** Vẽ ghim nhọn
- *      lên toạ độ đó là nói dối bằng đồ hoạ. Bài kiểm khoá đúng ranh: chứng minh
- *      được "chưa bị làm tròn", KHÔNG chứng minh được "chính xác".
+ *   2. **Mức lộ GPS phải ĐỌC, không đoán.** Máy chủ trả `gps_precision` +
+ *      `gps_precision_m` (hợp đồng §11.3). Hai bài kiểm khoá đúng hai chiều mà
+ *      phép đoán-theo-hình-dạng-số cũ đọc sai: toạ độ tròn mà khai `exact`, và
+ *      toạ độ lẻ mà khai `coarse`. Bán kính đọc từ trường, KHÔNG đóng cứng 111.
  *   3. **200 mà thiếu thân.** Không được dựng một hồ sơ rỗng trông như hồ sơ thật.
  *
  * Bài kiểm gọi thẳng cửa công khai và khẳng định **không có `Authorization`** —
@@ -20,6 +21,8 @@ import {
   getTreeByCode,
   getFruitDetail,
   gpsPrecision,
+  gpsRadiusMeters,
+  canPinExactly,
   gpsPrecisionLabelVi,
   isAnchored,
   evidenceCount,
@@ -161,36 +164,108 @@ describe('getTreeByCode', () => {
 // 2. GPS — ranh giới giữa "chưa bị làm tròn" và "chính xác"
 // ---------------------------------------------------------------------------
 
-describe('gpsPrecision', () => {
-  it('4 chữ số trở lên → chứng minh được là chưa làm tròn', () => {
-    expect(gpsPrecision([12.67812, 108.12345])).toBe('exact_not_coarsened');
+describe('gpsPrecision — ĐỌC trường máy chủ, không đoán theo hình dạng số', () => {
+  it('bốn giá trị máy chủ khai được trả nguyên', () => {
+    expect(gpsPrecision({ gps_precision: 'exact' })).toBe('exact');
+    expect(gpsPrecision({ gps_precision: 'coarse' })).toBe('coarse');
+    expect(gpsPrecision({ gps_precision: 'hidden' })).toBe('hidden');
+    expect(gpsPrecision({ gps_precision: 'absent' })).toBe('absent');
   });
 
-  it('đúng 3 chữ số → maybe_coarsened, KHÔNG được gọi là chính xác', () => {
-    expect(gpsPrecision([12.678, 108.123])).toBe('maybe_coarsened');
+  it('máy chủ CHƯA gửi trường → unknown, KHÔNG suy ra coarse', () => {
+    expect(gpsPrecision({ gps: [12.678, 108.123] })).toBe('unknown');
   });
 
-  it('một trục lẻ chữ số cũng đủ chứng minh chưa làm tròn', () => {
-    // `_coarsen_public_gps` làm tròn CẢ HAI trục cùng lúc, nên chỉ cần một trục
-    // còn chữ số thứ 4 là biết chắc chưa qua bộ làm thô.
-    expect(gpsPrecision([12.678, 108.12345])).toBe('exact_not_coarsened');
+  it('toạ độ TRÒN 3 chữ số mà máy chủ khai exact → vẫn là exact', () => {
+    // Đây đúng ca mà phép đếm chữ số của bản trước đọc SAI: toạ độ thật tình cờ
+    // tròn ⇒ bị hạ thành "vùng ~100m" cho chính người đã chọn công khai chính xác.
+    expect(gpsPrecision({ gps: [12.678, 108.123], gps_precision: 'exact' })).toBe('exact');
   });
 
-  it('số nguyên → maybe_coarsened (nghiêng về thận trọng)', () => {
-    expect(gpsPrecision([12, 108])).toBe('maybe_coarsened');
+  it('toạ độ LẺ nhiều chữ số mà máy chủ khai coarse → vẫn là coarse', () => {
+    // Chiều ngược lại: không được lấy hình dạng số lật ngược lời khai của máy chủ.
+    expect(gpsPrecision({ gps: [12.67812, 108.12345], gps_precision: 'coarse' })).toBe('coarse');
   });
 
-  it('null / thiếu / sai kiểu → hidden', () => {
-    expect(gpsPrecision(null)).toBe('hidden');
-    expect(gpsPrecision(undefined)).toBe('hidden');
-    expect(gpsPrecision([NaN, 108.1] as unknown as [number, number])).toBe('hidden');
-    expect(gpsPrecision(['12.6', '108.1'] as unknown as [number, number])).toBe('hidden');
+  it('giá trị lạ → unknown, không nhận bừa', () => {
+    expect(gpsPrecision({ gps_precision: 'blurred' as never })).toBe('unknown');
+    expect(gpsPrecision(null)).toBe('unknown');
+  });
+});
+
+describe('gpsRadiusMeters — đọc số, KHÔNG đóng cứng 111', () => {
+  it('lấy đúng gps_precision_m máy chủ gửi', () => {
+    expect(gpsRadiusMeters({ gps_precision_m: 111 })).toBe(111);
   });
 
-  it('câu tiếng Việt: hidden không có câu nào, thô nói rõ là VÙNG', () => {
-    expect(gpsPrecisionLabelVi('hidden')).toBeNull();
-    expect(gpsPrecisionLabelVi('maybe_coarsened')).toContain('vùng');
-    expect(gpsPrecisionLabelVi('exact_not_coarsened')).toContain('chính xác');
+  it('máy chủ hạ xuống 2 chữ số → app đi theo, không giữ 111', () => {
+    expect(gpsRadiusMeters({ gps_precision_m: 1110 })).toBe(1110);
+  });
+
+  it('exact → 0 là một số THẬT, không rơi xuống null', () => {
+    expect(gpsRadiusMeters({ gps_precision: 'exact', gps_precision_m: 0 })).toBe(0);
+  });
+
+  it('vắng / null / sai kiểu / âm → null, KHÔNG thay bằng 111', () => {
+    expect(gpsRadiusMeters({})).toBeNull();
+    expect(gpsRadiusMeters({ gps_precision_m: null })).toBeNull();
+    expect(gpsRadiusMeters({ gps_precision_m: -5 })).toBeNull();
+    expect(gpsRadiusMeters({ gps_precision_m: NaN })).toBeNull();
+    expect(gpsRadiusMeters(null)).toBeNull();
+  });
+});
+
+describe('canPinExactly — chỉ exact mới được vẽ ghim', () => {
+  it('exact + có toạ độ → true', () => {
+    expect(canPinExactly({ gps: [12.678, 108.123], gps_precision: 'exact' })).toBe(true);
+  });
+
+  it('coarse → false', () => {
+    expect(canPinExactly({ gps: [12.678, 108.123], gps_precision: 'coarse' })).toBe(false);
+  });
+
+  it('unknown → false: chưa biết thì vẽ vùng, không vẽ ghim', () => {
+    expect(canPinExactly({ gps: [12.67812, 108.12345] })).toBe(false);
+  });
+
+  it('exact mà KHÔNG có toạ độ → false', () => {
+    expect(canPinExactly({ gps_precision: 'exact' })).toBe(false);
+  });
+});
+
+describe('gpsPrecisionLabelVi', () => {
+  it('coarse nói "khu vực" kèm số mét, KHÔNG nói "vị trí cây"', () => {
+    const s = gpsPrecisionLabelVi('coarse', 111) ?? '';
+    expect(s).toContain('khu vực');
+    expect(s).toContain('111m');
+    // Phải NÓI RA rằng đây không phải vị trí cây. Khẳng định bằng chuỗi khẳng
+    // định, không bằng một `not.toMatch` — bản trước viết `not.toMatch` rồi đỏ
+    // vì chính câu ĐÚNG cũng chứa cụm "vị trí của cây" (nằm sau chữ "không phải").
+    expect(s).toContain('không phải vị trí của cây');
+  });
+
+  it('coarse mà thiếu số mét → nói rõ là chưa rõ, không bịa 111', () => {
+    const s = gpsPrecisionLabelVi('coarse', null) ?? '';
+    expect(s).not.toContain('111');
+    expect(s).toContain('chưa rõ');
+  });
+
+  it('hidden và absent là HAI câu khác nhau', () => {
+    const h = gpsPrecisionLabelVi('hidden');
+    const a = gpsPrecisionLabelVi('absent');
+    expect(h).not.toBe(a);
+    expect(h).toContain('không công khai');
+    expect(a).toContain('chưa ghi');
+  });
+
+  it('unknown KHÔNG mượn câu của coarse — câu đó ngụ ý đã đo', () => {
+    const u = gpsPrecisionLabelVi('unknown') ?? '';
+    expect(u).toContain('chưa cho biết');
+    expect(u).not.toBe(gpsPrecisionLabelVi('coarse', null));
+  });
+
+  it('exact nói chính xác', () => {
+    expect(gpsPrecisionLabelVi('exact')).toContain('chính xác');
   });
 });
 

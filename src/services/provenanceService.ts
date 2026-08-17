@@ -20,17 +20,17 @@
  *    thử lại. Vì vậy hàm trả **ba nhánh**, `not_public` là một câu trả lời bình
  *    thường chứ không phải lỗi.
  *
- * 2. **GPS trả về có thể ĐÃ BỊ LÀM THÔ ~111m, và không có trường nào nói điều đó.**
- *    `_coarsen_public_gps` (`server.py`) làm tròn 3 chữ số theo mặc định
- *    `expose_location = 'geohash_coarse'`; chủ vườn phải chủ động đặt `'exact'`.
- *    Nhưng `_public_prov` KHÔNG trả `expose_location` ra ngoài — nên client nhận
- *    hai con số và không có cách nào biết chúng chỉ cây hay chỉ một ô 111m. Vẽ một
- *    ghim nhọn lên đó là nói dối bằng đồ hoạ. `gpsPrecision()` dưới đây trả lời
- *    đúng mức biết được: **chứng minh được "không bị làm thô", KHÔNG chứng minh
- *    được "chính xác"** — vì một toạ độ thật cũng có thể tình cờ đúng 3 chữ số.
+ * 2. **GPS công khai có thể đã bị làm thô, và bản máy chủ CŨ không nói điều đó.**
+ *    `_coarsen_public_gps` làm tròn 3 chữ số theo mặc định
+ *    `expose_location = 'geohash_coarse'`. Bản trước OriLife-Core #378 không trả
+ *    mức lộ ra cửa công khai, nên client nhận hai con số mà không biết chúng chỉ
+ *    cây hay chỉ một ô ~111m — vẽ ghim nhọn lên đó là nói dối bằng đồ hoạ. Nay máy
+ *    chủ trả `gps_precision` + `gps_precision_m` (hợp đồng §11.3) và `gpsPrecision()`
+ *    **đọc dữ kiện, không đoán theo hình dạng số**. Máy chủ chưa gửi ⇒ `'unknown'`,
+ *    và `'unknown'` KHÔNG được vẽ thành ghim.
  *
- * 3. **`gps` có thể là `null` hẳn** (`expose_location = 'none'`). Đó là lựa chọn
- *    của chủ vườn, không phải dữ liệu thiếu.
+ * 3. **`gps` có thể là `null`** vì HAI lý do khác nhau: chủ không công khai
+ *    (`hidden`) và cây chưa ghi vị trí (`absent`). Câu hiện lên màn phải khác nhau.
  *
  * Hai cửa công khai KHÔNG gửi `Authorization` và KHÔNG gọi `ensureOrilifeToken`:
  * người mua chưa có tài khoản, ép lấy token là dựng một cánh cửa khoá ngay trước
@@ -68,6 +68,13 @@ export interface Provenance {
   code?: string;
   name?: string;
   gps?: ProvGps;
+  /**
+   * Mức lộ vị trí do máy chủ KHAI (hợp đồng §11.3, OriLife-Core #378).
+   * Vắng mặt = bản máy chủ cũ ⇒ `gpsPrecision()` trả `'unknown'`.
+   */
+  gps_precision?: 'exact' | 'coarse' | 'hidden' | 'absent';
+  /** Bán kính ô làm tròn, mét. `exact` → 0. Đọc lúc gọi, đừng đóng cứng 111. */
+  gps_precision_m?: number | null;
   created_at?: string;
   images?: ProvImage[];
   model3d?: Record<string, unknown> | null;
@@ -124,49 +131,85 @@ export type FruitDetailResult =
 // ---------------------------------------------------------------------------
 
 /**
- * `exact_not_coarsened` — có chữ số thứ 4 trở đi ⇒ CHẮC CHẮN chưa qua làm tròn.
- * `maybe_coarsened`     — ≤ 3 chữ số thập phân ⇒ có thể là ô ~111m, cũng có thể
- *                         là toạ độ thật tình cờ tròn. Không phân biệt được.
- * `hidden`              — chủ vườn chọn ẩn (`expose_location='none'`).
+ * Bốn giá trị máy chủ KHAI (`gps_precision`, hợp đồng §11.3), cộng một giá trị
+ * của riêng client:
+ *
+ * | giá trị    | `gps`            | nghĩa                                  | vẽ gì |
+ * |------------|------------------|----------------------------------------|-------|
+ * | `exact`    | toạ độ cây       | chủ CHỦ ĐỘNG mở `expose_location=exact`| ghim nhọn |
+ * | `coarse`   | tâm ô đã làm tròn| mặc định                               | VÒNG bán kính `gps_precision_m` |
+ * | `hidden`   | `null`           | cây CÓ vị trí, chủ không công khai     | câu giải thích |
+ * | `absent`   | `null`           | cây CHƯA ghi vị trí                    | câu giải thích |
+ * | `unknown`  | bất kỳ           | **máy chủ chưa gửi trường này**        | coi như vùng, KHÔNG vẽ ghim |
+ *
+ * `unknown` KHÔNG phải một mức lộ — nó là "chưa đo được", dành cho bản máy chủ
+ * trước PR OriLife-Core #378. Đọc nó thành `coarse` là bịa một bán kính; đọc
+ * thành `exact` là vẽ ghim lên chỗ có thể lệch 111m.
  */
-export type GpsPrecision = 'exact_not_coarsened' | 'maybe_coarsened' | 'hidden';
+export type GpsPrecision = 'exact' | 'coarse' | 'hidden' | 'absent' | 'unknown';
 
-/** Số chữ số thập phân `_coarsen_public_gps` làm tròn về. */
-const COARSE_DECIMALS = 3;
+const _KNOWN_PRECISIONS: readonly string[] = ['exact', 'coarse', 'hidden', 'absent'];
 
-function _decimals(n: number): number {
-  if (!Number.isFinite(n)) return 0;
-  const s = String(n);
-  const dot = s.indexOf('.');
-  if (dot < 0) return 0;
-  // Số rất nhỏ/rất lớn in ra dạng mũ (`1e-7`) — không đếm được bằng cách này,
-  // và một toạ độ thật không bao giờ ở dạng đó. Coi như 0 chữ số ⇒ rơi về
-  // `maybe_coarsened`, tức về phía THẬN TRỌNG.
-  if (s.includes('e') || s.includes('E')) return 0;
-  return s.length - dot - 1;
+/**
+ * Mức lộ vị trí, ĐỌC TỪ MÁY CHỦ.
+ *
+ * ⚠️ Bản đầu của tệp này suy mức lộ từ **hình dạng con số** (đếm chữ số thập phân
+ * ⇒ "chưa bị làm tròn"). Nhà OriLife đã bỏ nhu cầu đó bằng cách trả thẳng trường
+ * `gps_precision` (thư 17/08, hợp đồng §11.3). Phép suy cũ có một lỗ không vá
+ * được: một toạ độ THẬT cũng tình cờ tròn 3 chữ số, nên đúng cây mà chủ đã chọn
+ * công khai chính xác lại bị app hiện thành "vùng ~100m". Nay đọc dữ kiện.
+ *
+ * Máy chủ chưa gửi trường ⇒ `unknown`, KHÔNG đoán bù.
+ */
+export function gpsPrecision(p: Provenance | null | undefined): GpsPrecision {
+  const v = p?.gps_precision;
+  if (typeof v === 'string' && _KNOWN_PRECISIONS.includes(v)) return v as GpsPrecision;
+  return 'unknown';
 }
 
 /**
- * Nói được gì về độ chính xác của toạ độ nhận từ cửa công khai.
+ * Bán kính vòng cần vẽ, mét. `null` = không có số để vẽ vòng.
  *
- * ⚠️ Không có nhánh nào trả "chính xác". Máy chủ không gửi `expose_location` ra
- * cửa công khai, nên thứ duy nhất chứng minh được là **chưa bị làm tròn**. Màn
- * hình phải vẽ vùng chứ không vẽ ghim khi kết quả là `maybe_coarsened`.
+ * ⚠️ ĐỌC `gps_precision_m`, TUYỆT ĐỐI KHÔNG đóng cứng 111. Nhà OriLife tính nó từ
+ * số chữ số làm tròn **ngay lúc gọi** và cố ý để nó là hàm chứ không phải hằng:
+ * ngày Core hạ xuống 2 chữ số thì ô rộng gấp 10. Đóng cứng 111 là vẽ vòng sai bán
+ * kính mà không có gì báo.
  */
-export function gpsPrecision(gps: ProvGps | undefined): GpsPrecision {
-  if (!Array.isArray(gps) || gps.length < 2) return 'hidden';
-  const [lat, lon] = gps;
-  if (typeof lat !== 'number' || typeof lon !== 'number') return 'hidden';
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return 'hidden';
-  const d = Math.max(_decimals(lat), _decimals(lon));
-  return d > COARSE_DECIMALS ? 'exact_not_coarsened' : 'maybe_coarsened';
+export function gpsRadiusMeters(p: Provenance | null | undefined): number | null {
+  const m = p?.gps_precision_m;
+  if (typeof m !== 'number' || !Number.isFinite(m) || m < 0) return null;
+  return m;
 }
 
-/** Câu tiếng Việt đi kèm bản đồ. `null` = không có gì để nói (chưa đo được). */
-export function gpsPrecisionLabelVi(p: GpsPrecision): string | null {
-  if (p === 'hidden') return null;
-  if (p === 'exact_not_coarsened') return 'Vị trí chính xác do chủ vườn công bố';
-  return 'Vị trí chỉ tới vùng khoảng 100m — không phải toạ độ cây';
+/**
+ * Toạ độ có được phép vẽ thành MỘT ĐIỂM không.
+ *
+ * Chỉ đúng ở `exact`. `unknown` trả `false` — chưa biết thì vẽ vùng, không vẽ ghim.
+ */
+export function canPinExactly(p: Provenance | null | undefined): boolean {
+  return gpsPrecision(p) === 'exact' && Array.isArray(p?.gps);
+}
+
+/**
+ * Câu tiếng Việt đi kèm bản đồ. `null` = không có gì để nói.
+ *
+ * Chữ dùng "khu vực", KHÔNG dùng "vị trí cây" cho mức thô: ô ~111m ở vùng trồng
+ * dày chứa nhiều cây — nó nói VÙNG, không định vị được cây nào.
+ */
+export function gpsPrecisionLabelVi(
+  p: GpsPrecision,
+  radiusMeters?: number | null,
+): string | null {
+  if (p === 'exact') return 'Vị trí chính xác do chủ vườn công khai';
+  if (p === 'hidden') return 'Chủ vườn không công khai vị trí';
+  if (p === 'absent') return 'Cây chưa ghi vị trí';
+  const r =
+    typeof radiusMeters === 'number' && Number.isFinite(radiusMeters) && radiusMeters > 0
+      ? `khoảng ${Math.round(radiusMeters)}m`
+      : 'chưa rõ bao nhiêu mét';
+  if (p === 'coarse') return `Chỉ tới khu vực ${r} — không phải vị trí của cây`;
+  // unknown: nói đúng là CHƯA BIẾT, đừng mượn câu của `coarse` (câu đó ngụ ý đã đo).
+  return 'Máy chủ chưa cho biết vị trí này chính xác tới đâu';
 }
 
 // ---------------------------------------------------------------------------

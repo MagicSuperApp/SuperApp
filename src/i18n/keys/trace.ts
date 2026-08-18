@@ -314,6 +314,7 @@ export const TRACE_STRINGS = {
   'trace.weather.today': { vi: 'Hôm nay', en: 'Today', zh: '今天', ja: '今日' },
 
   // ── Màn QUẢ TRÊN CÂY ─────────────────────────────────────────
+  'trace.fruitList.identify': { vi: 'Quả này là quả nào?', en: 'Which fruit is this?', zh: '这是哪个果实？', ja: 'どの果実ですか？' },
   'trace.fruitList.title': { vi: 'Quả trên cây', en: 'Fruit on the tree', zh: '树上的果实', ja: '木になる果実' },
   'trace.fruitList.loading': { vi: 'Đang tải quả…', en: 'Loading fruit…', zh: '正在加载果实…', ja: '果実を読み込み中…' },
   'trace.fruitList.statAll': { vi: 'Tất cả', en: 'All', zh: '全部', ja: 'すべて' },

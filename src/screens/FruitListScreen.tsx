@@ -337,6 +337,32 @@ const FruitListScreen: React.FC = () => {
           </Text>
           <Text style={styles.subtitle}>{tk('trace.fruitList.title')}</Text>
         </View>
+        {/* LỐI VÀO DUY NHẤT của màn nhận diện quả.
+            `FruitScanScreen` gọi `POST /api/fruit/identify` — cửa DUY NHẤT trả ra
+            kết luận (`decision` + `fruit_id` + `confidence`). Nó đã đăng ký route từ
+            lâu nhưng KHÔNG có nút nào mở, và hai cổng cùng trượt theo hai kiểu khác
+            nhau — phải đọc cả hai mới thấy:
+              · `src/navigation/actionRegistry.ts` CÓ khai ô "Quét quả" trỏ tới nó,
+                nhưng chính tệp đó là mã chết (`resolveActions` 0 nơi gọi).
+              · `src/navigation/resolveGateItems.ts` mới là cổng SỐNG
+                (`src/navigation/index.tsx:460`) — và nó KHÔNG có mục nào cho màn này.
+            Nhìn mỗi tệp đầu thì tưởng đã có lối vào; nhìn mỗi tệp sau thì tưởng chưa
+            ai định làm.
+            Nhà OriLife đo độc lập trên sổ sự kiện máy chủ: `fruit_identify` 0 lượt
+            trong 1.859 dòng từ tháng 6, trong khi `fruit_candidates` 123 lượt. Hai
+            tín hiệu trùng nhau. Đó là lý do thật của "đăng ký quả rồi mà quét lại
+            không nhận ra": app chưa từng gõ cửa có kết luận.
+            Truyền `treeId` để màn kia ghim đúng cây — có ghim thì nó mới khoanh vùng
+            được trước khi so, và mới thu hẹp kho so về một cây. */}
+        <Pressable
+          style={styles.iconBtn}
+          accessibilityLabel={tk('trace.fruitList.identify')}
+          onPress={() => navigation.navigate('FruitScan', {
+            treeId, treeName: treeName || layout?.tree.name, farmId,
+          })}
+        >
+          <Icon name="bullseye" size={19} color={TONE.primary} />
+        </Pressable>
         <Pressable
           style={styles.iconBtn}
           accessibilityLabel={tk('trace.fruitList.place3d')}

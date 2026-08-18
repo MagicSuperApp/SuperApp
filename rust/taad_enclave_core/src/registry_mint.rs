@@ -54,6 +54,12 @@ use blake2::Digest;
 /// predicates. Submit paths MUST evaluate-then-patch.
 /// Trần số khoá của một authority MultiSig — đối xứng `expect list.length(pkhs)
 /// <= 16` ở `LAMP/Genesis/onchain/lib/magiclamp/genesis/registry.ak:98`.
+///
+/// Đây là RÀO TIỆN LỢI, KHÔNG phải rào an ninh. Nguồn sự thật duy nhất là
+/// validator on-chain; rào ở đây chỉ để caller khỏi phát ra tx chắc chắn bị bác
+/// rồi mất phí và collateral. Ai bỏ qua bộ dựng này vẫn dựng tx được — và đúng
+/// ra là phải được, vì quyền mint không thuộc về một bộ dựng nào. Mô tả cổng
+/// offchain như cổng an ninh còn nguy hơn không có cổng.
 const MAX_MULTISIG_PKHS: usize = 16;
 
 const REGISTRY_EX_UNITS_MEM: u64 = 2_000_000;

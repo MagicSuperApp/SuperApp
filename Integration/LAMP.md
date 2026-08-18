@@ -80,18 +80,60 @@ số tham số với `plutus.json` trước khi apply**. Phía LAMP đã chốt 
 
 **Còn chặn, KHÔNG phải việc của LAMP:**
 
-1. **`codemagic.yaml` không đặt `ORG_MINT_ENABLED` ở đâu cả** (grep 0). Biến vắng →
-   `undefined` → `'' !== 'true'` → `false`. Kết quả trùng ý định nhưng là **do vô tình**:
-   đặt `ORG_MINT_ENABLED=true` trên giao diện Codemagic **không có tác dụng gì**. Muốn bật
-   thật thì phải sửa `codemagic.yaml` trước.
-2. `OrgMintScreen.tsx:61-65` — bước ký còn là stub ném lỗi.
+1. ~~`codemagic.yaml` không đặt `ORG_MINT_ENABLED` ở đâu cả~~ — **ĐÃ XONG, câu cũ nay SAI.**
+   `ORG_MINT_ENABLED=${ORG_MINT_ENABLED:-false}` có mặt ở `codemagic.yaml:156,537,886,1121`
+   (thêm ở `ed05f21`). Đặt biến trên giao diện Codemagic **có tác dụng thật**. Ai đọc câu cũ
+   rồi tưởng bật không ăn thì sẽ bật nhầm mà không biết.
+2. ~~`OrgMintScreen.tsx` bước ký còn là stub~~ — **ĐÃ NỐI** (`#176`). Còn lại ba resolver
+   `chuaCoNguon` ở `OrgMintScreen.tsx:68`: tầng màn hình chưa có chỗ mở Master_KEK và chưa có
+   nguồn slot tip. Có rào `ORG_MINT_CHAIN == null` nên không bao giờ chạy tới.
 3. `orgMint-api.ts` — sai hình dạng: gửi `{orgDid, amount}` + chờ SSE, trong khi `mint-lamp`
    là **Grant uỷ quyền** (8 trường, ký Ed25519 khoá thiết bị, 200 trả thẳng Grant, **không
    SSE**). `mint-lamp/submit-tx` sẽ không bao giờ tồn tại. — việc của PhoenixKey + app.
 4. Ô nhập nhãn "Số lượng LAMP" ↔ dây oildrop (mục 0).
 
-➜ **Giữ `ORG_MINT_ENABLED=false`** cho tới khi PR #23 gộp **và** 4 mục trên xong. Bật sớm là
-mở đường cho một tính năng đúc token thật mà chưa chạy được lần nào.
+➜ **Giữ `ORG_MINT_ENABLED=false`.** Nhà LAMP xác nhận cùng kết luận (thư 2026-08-18).
+
+### ⛔ Mắt xích on-chain còn thiếu — đo 2026-08-18, hai nhà độc lập cùng kết quả
+
+Không phải "chưa tới lượt". **Chưa ai viết.**
+
+`LAMP/Genesis/onchain/validators/` có đúng 5 validator — `lock_vault`, `thread_nft`,
+`dist_treasury`, `supply_state`, `lamp_mint` — **không cái nào quản `RegistryDatum`**.
+`registry.ak` không có khối `validator` nào, chỉ là thư viện đọc (`validate_mint`,
+`authority_satisfied`, `find_registry_datum`). `did_token_mint` grep toàn kho LAMP = 0.
+
+Hệ quả, nói đúng chữ để không hứa suông:
+
+- Không tạo được Registry UTxO ⇒ `find_registry_datum` trả `None` ⇒ cổng Registry của
+  `lamp_mint` bản 12 tham số **không bao giờ đóng**.
+- `taad_build_deploy_mint_registry` / `taad_build_update_mint_registry` có sẵn phía Rust nhưng
+  **chưa nối cầu, và cố ý không nối** — không có đầu bên kia.
+- `taad_build_mint_via_registry` **đã nối đủ 5 tầng** (đường ĐỌC, sống ngay khi Registry UTxO
+  có mặt). Nhưng nó **không dùng để mint LAMP**: không dựng output KHO (A-DEST) mà nhánh
+  `DistributionVest` đòi.
+
+**Mốc thời gian: chưa có.** LAMP không đặt mốc suông; việc xếp sau (i) viết + audit validator
+Registry, (ii) gộp PR #25, (iii) chủ dự án chốt. Câu đúng để nói với người dùng là *"chưa nối
+được, vì thiếu một mắt xích on-chain chưa ai viết"* — **không phải** *"sắp có"*.
+
+### Mainnet hôm nay chạy bản MỒI 8 tham số
+
+Policy-id `55d3e01b…180f0` (`LAMP/Genesis/offchain/src/deployed.ts:63`, byte khớp 2121/2121).
+Bản mồi **không đọc registry, không đọc DID, không cần reference input**; cổng đúc là
+`dist_authority` một pkh + `auth_threshold = 1`. Bản 12 tham số sẽ có **policy-id KHÁC**
+(`deployed.ts:17,111`) — một lần phát hành token mới, không phải nâng cấp.
+
+Đính chính một điều dễ chép nhầm: bất biến one-shot của `kho_nft_policy` **không áp cho mainnet
+hôm nay** — bản 8 tham số không có tham số đó, nó nướng thẳng `dist_dest` là script hash kho
+(`deployed.ts:90`). Bất biến đó chỉ áp cho bản 12 tham số, tức chưa có gì để xác nhận hay bác.
+
+### Trần thông lượng — thứ duy nhất không mua được bằng phí
+
+`lamp_mint.ak:78-80` đòi đúng 1 input mang thread NFT và đúng 1 output mang lại nó. Mọi lượt
+mint toàn hệ đi qua **một** UTxO SupplyState ⇒ trần **1 lượt mint / block** (≈4.320/ngày), bất
+kể bao nhiêu app cùng dựng, không tăng được bằng cách trả thêm phí. Bên tích hợp thứ ba phải
+biết trước con số này.
 
 ## 3. Grant — nghĩa vụ phía tiêu thụ
 

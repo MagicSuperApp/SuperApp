@@ -53,9 +53,11 @@ import {
   type RoundComplete,
   type CapturedImage,
 } from '../services/treeReIDNativeBridge';
+import { autoTreeRegions } from '../services/treeRegionAuto';
 import {
   toCaptureOrientations,
   platformHeadingRef,
+  type TreeRegion,
   type CaptureOrientation,
   identifyTree,
   verifyAddTree,
@@ -491,6 +493,7 @@ const TreeIdentityScreen: React.FC = () => {
       await runIdentify(
         stopResult.captures.map(c => `file://${c.fileURL}`),
         toCaptureOrientations(stopResult.captures),
+        autoTreeRegions(stopResult.captures).regions,
       );
     } catch (e: any) {
       rLog.nativeBridge.bridgeError('stopCaptureSession', e?.message ?? String(e));
@@ -565,7 +568,13 @@ const TreeIdentityScreen: React.FC = () => {
   };
 
   // ── Core: Gọi API identify ────────────────────────────────────────────────
-  const runIdentify = async (imagePaths: string[], orientations?: CaptureOrientation[]) => {
+  const runIdentify = async (
+    imagePaths: string[],
+    orientations?: CaptureOrientation[],
+    // Vùng cây theo TỪNG ảnh, suy từ box YOLO máy đã tính sẵn cho mỗi khung.
+    // Bỏ trống ⟹ không gửi trường nào, máy chủ embed cả khung như trước.
+    regions?: Array<TreeRegion | null>,
+  ) => {
     setIsIdentifyingLocal(true);
     // Mỗi lần identify mới → xoá phán-quyết cũ.
     setQueryId(null);
@@ -611,6 +620,7 @@ const TreeIdentityScreen: React.FC = () => {
         // Hướng theo TỪNG ảnh — trước đây chỉ gửi một con số hiện-tại cho cả loạt,
         // tức mọi ảnh trông như chụp từ cùng một chỗ.
         captures: orientations,
+        regions,
         headingRef: platformHeadingRef(),
         // M4: chỉ gửi khi tester đã bật toggle.
         matcher: matcher ?? undefined,

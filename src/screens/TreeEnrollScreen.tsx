@@ -20,7 +20,7 @@
  *    hoặc goBack().
  */
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -39,6 +39,12 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 
 import { NEUTRAL } from '../shared/theme';
+import {
+  autoTreeRegions,
+  candidateBoxes,
+  mapBoxToImage,
+  type YoloBox,
+} from '../services/treeRegionAuto';
 import {
   enrollTree,
   verifyAddTree,
@@ -307,6 +313,47 @@ const TreeEnrollScreen: React.FC = () => {
     ? undefined
     : toCaptureOrientations(captures);
 
+  // VÙNG CÂY theo TỪNG ảnh — suy từ box YOLO máy ĐÃ tính cho mỗi khung và ĐÃ vẽ
+  // lên preview lúc chụp. Nông dân không khoanh gì cả: bắt vẽ tay từng ảnh vừa
+  // chậm vừa cho vùng lệch nhau mỗi ảnh một kiểu. Đường Android-không-native lấy
+  // ảnh từ route params nên không có box → không gửi vùng, hành vi như cũ.
+  //
+  // Khi hai cây trong khung to ngang nhau thì máy KHÔNG được tự chọn — chọn sai là
+  // gắn danh tính vào nhầm cây, mà sai kiểu đó không ai phát hiện ra. Đó là chỗ
+  // DUY NHẤT hỏi nông dân, và chỉ hỏi cho ảnh đầu tiên: chọn xong thì `seed` dẫn
+  // các ảnh sau bám theo cùng một cây.
+  const [chosenBox, setChosenBox] = useState<YoloBox | null>(null);
+  const [askSkipped, setAskSkipped] = useState(false);
+
+  const { regions: treeRegions, ambiguousAt } = useMemo(
+    () =>
+      usingAndroidPaths
+        ? { regions: [], ambiguousAt: [] }
+        : autoTreeRegions(captures, { seed: chosenBox }),
+    [usingAndroidPaths, captures, chosenBox],
+  );
+
+  // Ảnh cần hỏi = ảnh lưỡng lự đầu tiên. Bỏ qua rồi thì thôi, đừng hỏi lại.
+  const askIndex = askSkipped ? null : ambiguousAt[0] ?? null;
+  const askCapture = askIndex == null ? null : captures[askIndex] ?? null;
+
+  // Box để vẽ đè lên ảnh — quy về TỈ LỆ của chính ảnh đang hiện, dùng lại đúng
+  // phép quy hệ đã có test. Vẽ theo toạ độ preview là lệch, vì máy ảnh cắt giữa.
+  const askChoices = useMemo(() => {
+    if (!askCapture) return [] as Array<{ box: YoloBox; rect: [number, number, number, number] }>;
+    const w = askCapture.width ?? 0;
+    const h = askCapture.height ?? 0;
+    if (w <= 0 || h <= 0) return [];
+    return candidateBoxes(askCapture)
+      .map(box => {
+        const px = mapBoxToImage(box, askCapture.frameAspect, w, h);
+        if (!px) return null;
+        const rect: [number, number, number, number] = [px[0] / w, px[1] / h, px[2] / w, px[3] / h];
+        return { box, rect };
+      })
+      .filter((v): v is { box: YoloBox; rect: [number, number, number, number] } => v != null);
+  }, [askCapture]);
+
   // Số ảnh hiệu dụng để kiểm tra MIN_CAPTURES
   const effectiveCaptureCount = usingAndroidPaths
     ? androidImagePaths!.length
@@ -474,6 +521,7 @@ const TreeEnrollScreen: React.FC = () => {
         acc: gps?.accuracy,
         captures: captureOrientations,
         headingRef: captureOrientations ? platformHeadingRef() : undefined,
+        regions: treeRegions,
         force: true,
       }, farmId);
 
@@ -490,7 +538,7 @@ const TreeEnrollScreen: React.FC = () => {
     } finally {
       setIsEnrolling(false);
     }
-  }, [name, imagePaths, captureOrientations, gps, handleSuccess, farmId, farmValid, draftOwner]);
+  }, [name, imagePaths, captureOrientations, treeRegions, gps, handleSuccess, farmId, farmValid, draftOwner]);
 
   // ── Main enroll ───────────────────────────────────────────────────────────
   const handleEnroll = async () => {
@@ -541,6 +589,7 @@ const TreeEnrollScreen: React.FC = () => {
         acc: gps?.accuracy,
         captures: captureOrientations,
         headingRef: captureOrientations ? platformHeadingRef() : undefined,
+        regions: treeRegions,
       }, farmId);
 
       if (res.ok && res.data) {
@@ -994,6 +1043,71 @@ const TreeEnrollScreen: React.FC = () => {
           </View>
         </View>
       </Modal>
+
+      {/* Hỏi ĐÚNG MỘT LẦN khi trong khung có hai cây to ngang nhau */}
+      <Modal
+        visible={askCapture != null && askChoices.length >= 2}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAskSkipped(true)}
+        statusBarTranslucent
+      >
+        <View style={styles.askOverlay}>
+          <View style={styles.askCard}>
+            <Text style={styles.askTitle}>Cây nào là cây bác đang đăng ký?</Text>
+            <Text style={styles.askHint}>
+              Trong ảnh có hai cây to gần bằng nhau. Bác chạm vào đúng cây — chỉ hỏi
+              một lần này thôi, các ảnh còn lại máy tự bám theo.
+            </Text>
+
+            {askCapture != null && (
+              <View
+                style={[
+                  styles.askImageBox,
+                  {
+                    aspectRatio:
+                      (askCapture.width ?? 1) / Math.max(1, askCapture.height ?? 1),
+                  },
+                ]}
+              >
+                <Image
+                  source={{ uri: askCapture.fileURL }}
+                  style={styles.askImage}
+                  resizeMode="stretch"
+                />
+                {askChoices.map((c, i) => (
+                  <TouchableOpacity
+                    key={`${c.rect[0]}-${c.rect[1]}-${i}`}
+                    activeOpacity={0.7}
+                    onPress={() => setChosenBox(c.box)}
+                    style={[
+                      styles.askBox,
+                      {
+                        left: `${c.rect[0] * 100}%`,
+                        top: `${c.rect[1] * 100}%`,
+                        width: `${c.rect[2] * 100}%`,
+                        height: `${c.rect[3] * 100}%`,
+                      },
+                    ]}
+                  >
+                    <View style={styles.askBoxTag}>
+                      <Text style={styles.askBoxTagText}>{i + 1}</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={styles.askSkipBtn}
+              activeOpacity={0.8}
+              onPress={() => setAskSkipped(true)}
+            >
+              <Text style={styles.askSkipText}>Để máy tự chọn</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -1311,6 +1425,80 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: NEUTRAL.textMuted,
     fontStyle: 'italic',
+  },
+
+  // ── Hỏi cây nào (chỉ hiện khi hai cây to ngang nhau) ───────────────────────
+  askOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    backgroundColor: 'rgba(0,0,0,0.72)',
+  },
+  askCard: {
+    width: '100%',
+    maxWidth: 460,
+    backgroundColor: NEUTRAL.card,
+    borderRadius: 18,
+    padding: 16,
+  },
+  askTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: NEUTRAL.text,
+    marginBottom: 6,
+  },
+  askHint: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: NEUTRAL.textSub,
+    marginBottom: 14,
+  },
+  askImageBox: {
+    width: '100%',
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: NEUTRAL.bgSoft,
+  },
+  askImage: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  // Viền dày + nhãn số: ngoài trời nắng, viền mảnh nhìn không ra.
+  askBox: {
+    position: 'absolute',
+    borderWidth: 3,
+    borderColor: NEUTRAL.success,
+    borderRadius: 6,
+  },
+  askBoxTag: {
+    position: 'absolute',
+    top: -2,
+    left: -2,
+    minWidth: 26,
+    height: 26,
+    borderRadius: 6,
+    backgroundColor: NEUTRAL.success,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  askBoxTagText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: NEUTRAL.white,
+  },
+  askSkipBtn: {
+    marginTop: 14,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: NEUTRAL.border,
+    alignItems: 'center',
+  },
+  askSkipText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: NEUTRAL.textSub,
   },
 });
 

@@ -60,6 +60,11 @@ class TreeReIDBridgeModule(private val reactContext: ReactApplicationContext) :
         val capturedAt: Double,
         val width: Int,
         val height: Int,
+        /** Box YOLO của khung ngay TRƯỚC lúc bấm — chuẩn-hoá 0–1 theo frame PREVIEW
+         *  (portrait), KHÔNG theo ảnh đã lưu. Rỗng = khung đó không thấy cây. */
+        val boxes: List<TreeReIDYolo.Box>,
+        /** w/h của frame preview mà `boxes` đo trên đó — để JS quy về hệ ảnh. */
+        val frameAspect: Float,
     )
 
     private val hcm = HeadingCaptureManager()
@@ -378,6 +383,8 @@ class TreeReIDBridgeModule(private val reactContext: ReactApplicationContext) :
                         putInt("totalCaptures", synchronized(captures) { captures.size })
                         putInt("width", rec.width)
                         putInt("height", rec.height)
+                        putArray("boxes", boxesArray(rec.boxes))
+                        putDouble("frameAspect", rec.frameAspect.toDouble())
                     }
                     sendEvent(EV_CAPTURE, after)
                 } catch (e: Exception) {
@@ -409,6 +416,10 @@ class TreeReIDBridgeModule(private val reactContext: ReactApplicationContext) :
             capturedAt = System.currentTimeMillis() / 1000.0,
             width = p.width,
             height = p.height,
+            // Máy ĐÃ biết cây nằm đâu và đã vẽ khung đó lên preview — trước đây chỗ
+            // này vứt đi, nên nông dân phải tự khoanh lại thứ vốn có sẵn.
+            boxes = TreeReIDYolo.latestBoxes,
+            frameAspect = TreeReIDCamera.latestFrameAspect,
         )
         synchronized(captures) { captures.add(rec) }
         return rec
@@ -418,6 +429,21 @@ class TreeReIDBridgeModule(private val reactContext: ReactApplicationContext) :
 
     private fun countRound(round: Int): Int =
         synchronized(captures) { captures.count { it.round == round } }
+
+    /** Box → mảng cầu RN. `Double` vì cầu RN không có kiểu float. */
+    private fun boxesArray(boxes: List<TreeReIDYolo.Box>): WritableArray {
+        val arr = Arguments.createArray()
+        for (b in boxes) {
+            arr.pushMap(Arguments.createMap().apply {
+                putDouble("x", b.x.toDouble())
+                putDouble("y", b.y.toDouble())
+                putDouble("w", b.w.toDouble())
+                putDouble("h", b.h.toDouble())
+                putDouble("conf", b.conf.toDouble())
+            })
+        }
+        return arr
+    }
 
     private fun buildCapturesArray(): WritableArray {
         val arr = Arguments.createArray()
@@ -433,6 +459,8 @@ class TreeReIDBridgeModule(private val reactContext: ReactApplicationContext) :
                     putDouble("capturedAt", c.capturedAt)
                     putInt("width", c.width)
                     putInt("height", c.height)
+                    putArray("boxes", boxesArray(c.boxes))
+                    putDouble("frameAspect", c.frameAspect.toDouble())
                 })
             }
         }

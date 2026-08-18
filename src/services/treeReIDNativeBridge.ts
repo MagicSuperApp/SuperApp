@@ -12,6 +12,8 @@
 
 import { NativeEventEmitter, NativeModules, Platform } from 'react-native';
 
+import type { YoloBox } from './treeRegionAuto';
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -26,6 +28,16 @@ export interface CapturedImage {
   capturedAt: number;
   width: number;
   height: number;
+  /**
+   * Box YOLO của khung ngay TRƯỚC lúc bấm — chuẩn-hoá 0–1 theo frame PREVIEW,
+   * KHÔNG theo ảnh này. Máy đã vẽ chính các box đó lên preview. Quy về pixel ảnh
+   * bằng `autoTreeRegions` (`treeRegionAuto.ts`), đừng nhân thẳng width/height.
+   *
+   * KHÔNG có ở bản native cũ ⟹ optional. Thiếu ⟹ không gửi vùng, hành vi như cũ.
+   */
+  boxes?: YoloBox[];
+  /** w/h của frame preview mà `boxes` đo trên đó. Thiếu ⟹ coi như trùng tỉ lệ ảnh. */
+  frameAspect?: number;
 }
 
 export interface SessionState {

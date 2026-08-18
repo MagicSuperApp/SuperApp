@@ -183,6 +183,62 @@ describe('classifySyncItem — activity ghi vào dòng thời gian THẬT', () =
     await d.run();
     expect(mockAddTimelineEvent.mock.calls[0][3].kind).toBe('observe');
   });
+
+  // Người dùng vào màn hoạt động TỪ một cây rồi ghi việc tưới. Nơi duy nhất app
+  // vẽ dòng thời gian của cây là `TreeDetailScreen`. Ghi vào vườn = ghi vào chỗ
+  // không màn nào đọc — đúng, đồng bộ xong, và vô hình với người vừa ghi.
+  it('có treeId → ghi vào dòng của CÂY, không phải của vườn', async () => {
+    const d = classifySyncItem({
+      type: 'activity',
+      data: { activity: { ...act, treeId: 'tree-7' } },
+    });
+    if (d.kind !== 'api') throw new Error('expected api');
+    await d.run();
+    const [, entityType, entityId] = mockAddTimelineEvent.mock.calls[0];
+    expect(entityType).toBe('tree');
+    expect(entityId).toBe('tree-7');
+  });
+
+  it('có treeId → payload vẫn kèm cả farm_id lẫn tree_id', async () => {
+    const d = classifySyncItem({
+      type: 'activity',
+      data: { activity: { ...act, treeId: 'tree-7' } },
+    });
+    if (d.kind !== 'api') throw new Error('expected api');
+    await d.run();
+    const body = mockAddTimelineEvent.mock.calls[0][3];
+    expect(body.payload.farm_id).toBe('farm-9');
+    expect(body.payload.tree_id).toBe('tree-7');
+  });
+
+  it('chỉ có treeId, không có farmId → vẫn ghi được vào cây', async () => {
+    const d = classifySyncItem({
+      type: 'activity',
+      data: { activity: { type: 'watering', treeId: 'tree-7', timestamp: act.timestamp } },
+    });
+    if (d.kind !== 'api') throw new Error('expected api');
+    await d.run();
+    const [, entityType, entityId] = mockAddTimelineEvent.mock.calls[0];
+    expect(entityType).toBe('tree');
+    expect(entityId).toBe('tree-7');
+  });
+
+  it('không có cả treeId lẫn farmId → unsupported, KHÔNG gọi mạng', () => {
+    const d = classifySyncItem({ type: 'activity', data: { activity: { type: 'watering' } } });
+    expect(d.kind).toBe('unsupported');
+    expect(mockAddTimelineEvent).not.toHaveBeenCalled();
+  });
+
+  it('chấp nhận cả dạng rắn `tree_id` (payload từ bản cũ / máy chủ)', async () => {
+    const d = classifySyncItem({
+      type: 'activity',
+      data: { activity: { ...act, tree_id: 'tree-8' } },
+    });
+    if (d.kind !== 'api') throw new Error('expected api');
+    await d.run();
+    expect(mockAddTimelineEvent.mock.calls[0][1]).toBe('tree');
+    expect(mockAddTimelineEvent.mock.calls[0][2]).toBe('tree-8');
+  });
 });
 
 describe('isRetryableError', () => {

@@ -159,20 +159,38 @@ export function classifySyncItem(envelope: SyncEnvelope): DispatchClass {
       // sẽ phải bịa một mã sản phẩm.
       const act = data.activity ?? data;
       const farmId = act.farmId ?? act.farm_id;
-      if (!act.type || !farmId) {
+      const treeId = act.treeId ?? act.tree_id;
+      if (!act.type || (!farmId && !treeId)) {
         return {
           kind: 'unsupported',
-          reason: 'activity thiếu type/farmId — không đủ field cho POST /{entity}/{id}/event',
+          reason: 'activity thiếu type và cả treeId lẫn farmId — không đủ field cho POST /{entity}/{id}/event',
         };
       }
+      // GHI VÀO ĐÚNG THỰC THỂ NGƯỜI DÙNG ĐANG ĐỨNG TRƯỚC.
+      //
+      // Bản trước ghi CỨNG vào `farm`. Nhưng nơi duy nhất trong app đọc dòng thời
+      // gian là `TreeDetailScreen.tsx:1109` — và nó đọc dòng của CÂY. Người ghi
+      // việc tưới cho một cây rồi mở đúng cây đó ra xem thì không thấy gì, vì bản
+      // ghi nằm ở dòng của VƯỜN, mà không màn nào vẽ dòng của vườn. Ghi thành
+      // công, đồng bộ thành công, và biến mất — đúng kiểu hỏng không có tín hiệu.
+      //
+      // Nay: có cây thì ghi vào cây (người dùng vào màn này TỪ một cây), không có
+      // thì ghi vào vườn. `farm_id` luôn đi kèm trong payload để bên máy chủ và
+      // màn vườn còn gom được.
+      const entityType = treeId ? 'tree' : 'farm';
+      const entityId = String(treeId ?? farmId);
       return {
         kind: 'api',
         run: async () => {
-          const res = await addTimelineEvent(ORILIFE_BASE, 'farm', String(farmId), {
+          const res = await addTimelineEvent(ORILIFE_BASE, entityType, entityId, {
             kind: ACTIVITY_TO_TIMELINE_KIND[act.type] ?? 'observe',
             ts: act.timestamp,
             payload: {
               activity_type: act.type,
+              // Luôn kèm, kể cả khi sự kiện đã nằm trên dòng của cây — màn vườn
+              // và máy chủ cần biết cây này thuộc vườn nào mà không phải tra thêm.
+              farm_id: farmId ? String(farmId) : undefined,
+              tree_id: treeId ? String(treeId) : undefined,
               // `credits` là số MAGIC màn hình ĐỊNH GIÁ cho việc này. Gửi kèm để
               // máy chủ tự trừ khi nào bên đó bật thu phí — app KHÔNG tự trừ.
               quoted_magic: act.creditsUsed,

@@ -102,6 +102,19 @@ const POOR_ACCURACY_M = 25;
 /** Bao nhiêu cây gần đó thì liệt kê ở cuối màn. */
 const NEARBY_LIMIT = 8;
 
+/**
+ * Bán kính tối đa của "cây quanh chỗ bạn đứng".
+ *
+ * Không có trần thì danh sách chỉ bị cắt theo SỐ LƯỢNG, không theo khoảng cách:
+ * chủ hai vườn cách nhau 30 km sẽ thấy cây của vườn kia đứng trong mục này kèm
+ * số "30 km" — đúng phép tính mà vô nghĩa với người đang đứng giữa vườn. 300 m
+ * là tầm đi bộ trong một vườn; xa hơn thì không còn là "quanh chỗ bạn đứng".
+ *
+ * Trần này là lớp chặn ĐỘC LẬP với việc lọc theo vườn: nơi gọi quên truyền mã
+ * vườn thì nó vẫn giữ danh sách nằm trong tầm chân người.
+ */
+const NEARBY_MAX_M = 300;
+
 /** Cỡ mặt la bàn. Đủ to để đọc được khi cầm máy một tay giữa nắng. */
 const DIAL = 264;
 
@@ -180,6 +193,17 @@ const WayfindScreen: React.FC = () => {
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [denied, setDenied] = useState(false);
   const [nearbyTrees, setNearbyTrees] = useState<TreeInfo[]>([]);
+  /**
+   * Hỏi danh sách cây HỎNG. Khác `null` nghĩa là CHƯA BIẾT quanh đây có cây nào
+   * — không phải "quanh đây không có cây". Trước bản này hai chuyện đó vẽ ra
+   * cùng một màn trống, và nông dân kết luận vườn mình chưa có cây nào trong
+   * khi màn chỉ chưa hỏi được máy chủ.
+   */
+  const [treesError, setTreesError] = useState<string | null>(null);
+  /** Đã hỏi xong ít nhất một lượt chưa — để không kết luận "vườn trống" quá sớm. */
+  const [treesLoaded, setTreesLoaded] = useState(false);
+  /** Đổi số này = hỏi lại. Nút "Thử lại" chỉ việc tăng nó lên. */
+  const [treesNonce, setTreesNonce] = useState(0);
   const watchId = useRef<number | null>(null);
   /** Vị trí đã lọc của lần đọc trước — đầu vào cho lần lọc kế tiếp. */
   const smoothedPos = useRef<LatLon | null>(null);
@@ -270,10 +294,25 @@ const WayfindScreen: React.FC = () => {
     let alive = true;
     (async () => {
       const res = await getTrees(ORILIFE_BASE, params.farmId);
-      if (alive && res.ok && res.trees) setNearbyTrees(res.trees);
+      if (!alive) return;
+      if (res.ok && res.trees) {
+        setNearbyTrees(res.trees);
+        setTreesError(null);
+      } else {
+        // KHÔNG xoá danh sách đang có: mất sóng giữa vườn mà xoá sạch thì người
+        // dùng mất luôn thứ vừa đọc được. Chỉ ghi cờ lỗi để màn NÓI RA.
+        setTreesError(res.error?.detail || tk('map.nearby.error'));
+      }
+      setTreesLoaded(true);
     })();
     return () => { alive = false; };
-  }, [params.farmId]);
+  }, [params.farmId, treesNonce, tk]);
+
+  /** Hỏi lại danh sách cây. Xoá cờ lỗi trước để nút không nằm lại giữa lượt hỏi. */
+  const retryTrees = useCallback(() => {
+    setTreesError(null);
+    setTreesNonce(n => n + 1);
+  }, []);
 
   // ── Số liệu dẫn đường — tính lại mỗi lần chỗ đứng đổi, đích thì đứng yên ──
   const nav = useMemo(() => {
@@ -326,7 +365,10 @@ const WayfindScreen: React.FC = () => {
       // Cùng luật với mặt phẳng: đặt tay thắng GPS. Hai chỗ trên CÙNG một màn mà
       // đọc vị trí khác nhau cho cùng một cây là lỗi không ai đọc ra được.
       t => treeGeoPoint({ serverGps: t.gps, localPos: placedPos[t.tree_id], origin }),
-      { limit: NEARBY_LIMIT },
+      // `maxMeters` KHÔNG được bỏ: `nearestFixes` chỉ lọc theo khoảng cách khi
+      // có trần (xem `wayfind.ts`), nên thiếu nó là danh sách kéo về cây của
+      // vườn khác cách hàng chục km.
+      { limit: NEARBY_LIMIT, maxMeters: NEARBY_MAX_M },
     );
   }, [fix, nearbyTrees, params.treeId, placedPos, origin]);
 
@@ -436,6 +478,27 @@ const WayfindScreen: React.FC = () => {
             </View>
           </View>
 
+          {/* Mặt phẳng trống vì CHƯA HỎI ĐƯỢC máy chủ thì phải nói ra ngay trên
+              mặt phẳng. Ở chế độ này không có khối "Cây quanh chỗ bạn đứng" để
+              chở câu đó, mà một mặt phẳng trống trơn thì đọc thành "vườn không
+              có cây" — kết luận sai và không có gì đính chính. */}
+          {treesError ? (
+            <View style={[styles.radarNotice, { top: insets.top + 66 }]} pointerEvents="box-none">
+              <View style={styles.nearbyErr}>
+                <Text style={styles.nearbyNote}>{treesError}</Text>
+                <Pressable
+                  onPress={retryTrees}
+                  style={({ pressed }) => [styles.nearbyRetry, pressed && styles.pressed]}
+                  accessibilityRole="button"
+                  hitSlop={8}
+                >
+                  <Icon name="rotate-right" size={15} color={TONE.primary} />
+                  <Text style={styles.nearbyRetryTxt}>{tk('map.nearby.retry')}</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
+
           {/* Kim tìm CÂY — góc trên bên phải, rộng 1/3 màn. Đặt ở đó để nó không
               che phần giữa, chỗ mặt phẳng đang bày các cây khác. */}
           {pickedTree && treeNav ? (
@@ -517,9 +580,31 @@ const WayfindScreen: React.FC = () => {
             </Pressable>
             <Text style={styles.ctaNote}>{tk('map.openmap.note')}</Text>
 
-            {nearby.length > 0 ? (
+            {/* ── Cây quanh chỗ bạn đứng ──
+                Khối này KHÔNG được biến mất khi danh sách rỗng. Trước bản này
+                nó chỉ hiện lúc `nearby.length > 0`, nên "chưa hỏi được máy chủ"
+                (token hết hạn, 3G rớt) trông y hệt "vườn chưa có cây nào" — và
+                đây đúng là việc chính của màn. Nay ba tình huống nói ba câu
+                khác nhau, và tình huống hỏng có nút hỏi lại. */}
+            {treesError || treesLoaded ? (
               <View style={styles.glassCard}>
                 <Text style={styles.nearbyTitle}>{tk('map.nearby.title')}</Text>
+
+                {treesError ? (
+                  <View style={styles.nearbyErr}>
+                    <Text style={styles.nearbyNote}>{treesError}</Text>
+                    <Pressable
+                      onPress={retryTrees}
+                      style={({ pressed }) => [styles.nearbyRetry, pressed && styles.pressed]}
+                      accessibilityRole="button"
+                      hitSlop={8}
+                    >
+                      <Icon name="rotate-right" size={15} color={TONE.primary} />
+                      <Text style={styles.nearbyRetryTxt}>{tk('map.nearby.retry')}</Text>
+                    </Pressable>
+                  </View>
+                ) : null}
+
                 {nearby.map(f => (
                   <Pressable
                     key={f.item.tree_id}
@@ -534,6 +619,17 @@ const WayfindScreen: React.FC = () => {
                     <Text style={styles.nearbyDir}>{compassPointVi(f.bearingDeg)}</Text>
                   </Pressable>
                 ))}
+
+                {/* Rỗng mà KHÔNG lỗi: nói rõ rỗng vì đâu. Chưa có chỗ đứng thì
+                    im — dòng cảnh báo GPS ở đầu màn đã nói rồi, nói thêm
+                    "không cây nào trong 300 m" lúc chưa biết mình ở đâu là sai. */}
+                {!treesError && nearby.length === 0 && (nearbyTrees.length === 0 || fix) ? (
+                  <Text style={styles.nearbyNote}>
+                    {nearbyTrees.length === 0
+                      ? tk('map.nearby.empty')
+                      : tk('map.nearby.outOfRange', { n: NEARBY_MAX_M })}
+                  </Text>
+                ) : null}
               </View>
             ) : null}
           </ScrollView>
@@ -707,6 +803,21 @@ const styles = StyleSheet.create({
   nearbyName: { flex: 1, fontSize: 15, color: NATURE.bark },
   nearbyDist: { fontSize: 14, fontWeight: '700', color: NATURE.bark },
   nearbyDir: { fontSize: 12.5, color: NATURE.barkSoft, width: 76, textAlign: 'right' },
+  radarNotice: {
+    position: 'absolute', left: SPACE.page, right: SPACE.page,
+    backgroundColor: GLASS.film, ...ORGANIC_CARD, ...ELEVATION.card,
+    paddingHorizontal: SPACE.sm,
+  },
+  nearbyErr: { paddingHorizontal: SPACE.xs, paddingVertical: SPACE.sm, gap: SPACE.sm },
+  nearbyNote: {
+    fontSize: 13.5, color: NATURE.barkSoft, lineHeight: 20,
+    paddingHorizontal: SPACE.xs, paddingVertical: SPACE.sm,
+  },
+  nearbyRetry: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACE.xs,
+    alignSelf: 'flex-start', minHeight: 44, paddingRight: SPACE.sm,
+  },
+  nearbyRetryTxt: { fontSize: 14.5, fontWeight: '700', color: TONE.primary },
 
   emptyIcon: {
     width: 68, height: 68, ...ORGANIC_TILE, marginBottom: SPACE.xs,

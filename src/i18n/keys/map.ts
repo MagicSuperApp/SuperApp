@@ -114,6 +114,51 @@ export const MAP_STRINGS = {
   // ── Cây quanh đây ─────────────────────────────────────────────────────────
   'map.nearby.title': { vi: 'Cây quanh chỗ bạn đứng', en: 'Trees around you', zh: '你周围的果树', ja: '周りの木' },
   'map.nearby.unnamed': { vi: 'Cây {code}', en: 'Tree {code}', zh: '果树 {code}', ja: '木 {code}' },
+  // Ba câu dưới TÁCH BẠCH ba tình huống trước đây cùng vẽ ra một màn trống:
+  // chưa hỏi được máy chủ / vườn thật sự chưa có cây / có cây nhưng ngoài tầm.
+  'map.nearby.error': {
+    vi: 'Chưa hỏi được máy chủ nên chưa biết quanh đây có cây nào.',
+    en: 'Could not reach the server, so nearby trees are unknown.',
+    zh: '无法连接服务器，暂时不知道附近有哪些果树。',
+    ja: 'サーバーに接続できないため、周りの木がわかりません。',
+  },
+  'map.nearby.retry': { vi: 'Thử lại', en: 'Try again', zh: '重试', ja: 'もう一度' },
+  'map.nearby.empty': {
+    vi: 'Vườn này chưa có cây nào được đăng ký.',
+    en: 'No trees have been registered in this farm yet.',
+    zh: '这个果园还没有登记果树。',
+    ja: 'この果樹園にはまだ木が登録されていません。',
+  },
+  'map.nearby.outOfRange': {
+    vi: 'Không có cây nào có toạ độ trong bán kính {n} m quanh bạn.',
+    en: 'No tree with coordinates within {n} m of you.',
+    zh: '你周围 {n} 米内没有带坐标的果树。',
+    ja: '半径 {n} m 以内に座標のある木はありません。',
+  },
+
+  // ── Tra một CÂY khi kho trong máy chưa có ─────────────────────────────────
+  // Ba câu này do `modules/trace/screens/TreeDetailScreen` dùng, nên chỗ đúng
+  // của chúng là `keys/trace.ts` với tiền tố `trace.tree.*`. Đặt tạm ở đây vì
+  // `trace.ts` đang do người khác sửa trong cùng lượt việc này. Dời sang đó khi
+  // tệp kia rảnh — chỉ là đổi tên khoá, không đổi hành vi.
+  'map.tree.loading': {
+    vi: 'Đang hỏi máy chủ về cây này…',
+    en: 'Asking the server about this tree…',
+    zh: '正在向服务器查询这棵果树…',
+    ja: 'この木についてサーバーに問い合わせています…',
+  },
+  'map.tree.loadFail': {
+    vi: 'Chưa hỏi được máy chủ về cây này. Kiểm tra mạng rồi thử lại — cây vẫn còn trên máy chủ.',
+    en: 'Could not ask the server about this tree. Check your connection and retry — the tree is still on the server.',
+    zh: '无法向服务器查询这棵果树。请检查网络后重试——果树仍在服务器上。',
+    ja: 'この木についてサーバーに問い合わせできませんでした。通信を確認して再試行してください。木はサーバーに残っています。',
+  },
+  'map.tree.notFound': {
+    vi: 'Không tìm thấy cây này trên máy chủ.',
+    en: 'This tree was not found on the server.',
+    zh: '服务器上找不到这棵果树。',
+    ja: 'この木はサーバーに見つかりませんでした。',
+  },
 
   // ── Xin quyền ─────────────────────────────────────────────────────────────
   'map.perm.title': { vi: 'Quyền truy cập vị trí', en: 'Location permission', zh: '定位权限', ja: '位置情報の許可' },

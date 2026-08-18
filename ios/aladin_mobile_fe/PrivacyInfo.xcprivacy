@@ -74,6 +74,23 @@
 			</array>
 		</dict>
 		<dict>
+			<!-- Đo 2026-08-18: cardanoTxService.ts gửi UTXO/số dư/tx hash tới
+			     GET /wallet/{did}/utxos, POST /wallet/tx/submit; phoenixKey-api.ts
+			     register() gửi walletAddress (địa chỉ Cardano) lên backend khi tạo tài
+			     khoản; JoinHomeScreen.tsx gửi cardano_address. Trước bản sửa này mục
+			     dữ liệu tài chính CHƯA được khai ở đây dù app thật sự chạm tới. -->
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeOtherFinancialInfo</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<dict>
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypePhotosorVideos</string>
 			<key>NSPrivacyCollectedDataTypeLinked</key>

@@ -28,6 +28,7 @@ import {
   TouchableOpacity,
   Platform,
   Alert,
+  Linking,
   ScrollView,
   ActivityIndicator,
   TextInput,
@@ -79,6 +80,8 @@ import { ORILIFE_BASE } from '../services/orilifeBase';
 // Phân loại 409 nằm ở tệp riêng để bài kiểm chạm được — xem treeEnrollConflict.ts.
 import { classify409 } from '../services/treeEnrollConflict';
 import { useBottomActionPadding } from '../hooks/useBottomActionPadding';
+import { tk } from '../i18n/keys';
+import { whenLabel } from '../utils/whenLabel';
 const BASE_URL: string =
   ORILIFE_BASE;
 
@@ -87,6 +90,8 @@ const BASE_URL: string =
 // ---------------------------------------------------------------------------
 
 const MIN_CAPTURES = 4;
+
+
 
 const GRID_GAP = 8;
 const GRID_COLS = 3;
@@ -243,17 +248,20 @@ const TreeEnrollScreen: React.FC = () => {
       const draft = await restoreTreeCaptureDraft(draftOwner);
       if (!draft || !draftHasContent(draft)) return;
       const count = draft.captures.length || draft.androidImagePaths?.length || 0;
+      // Hộp thoại này canh một hành động BẤT KHẢ HỒI: bỏ nháp là mất cả vòng đi
+      // quanh cây, chụp lại không lấy lại được. Bản cũ đặt nút phá ở VỊ TRÍ ĐẦU,
+      // gọi nó bằng cái tên vô hại ("Bỏ bản nháp"), và không nói bản nháp đó là
+      // CÂY NÀO — trong khi `draft.name`/`draft.savedAt` đều nằm sẵn trong tay.
+      // Nay: nút giữ đứng trước, nút phá nói rõ nó xoá bao nhiêu ảnh, và thân hộp
+      // gọi đúng tên cây để người dùng biết mình đang bỏ cái gì.
       Alert.alert(
-        'Khôi phục bản chụp dở?',
-        `Có ${count} ảnh đã chụp buổi trước nhưng chưa đăng ký. Khôi phục để tiếp tục?`,
+        tk('trace.enroll.draftTitle'),
+        draft.name
+          ? tk('trace.enroll.draftBodyNamed', { name: draft.name, n: count, when: whenLabel(draft.savedAt) })
+          : tk('trace.enroll.draftBody', { n: count, when: whenLabel(draft.savedAt) }),
         [
           {
-            text: 'Bỏ bản nháp',
-            style: 'destructive',
-            onPress: () => { clearTreeCaptureDraft(draftOwner); },
-          },
-          {
-            text: 'Khôi phục',
+            text: tk('trace.enroll.draftKeep'),
             onPress: () => {
               // RE-CHECK: người dùng có thể đã chụp ảnh mới trong lúc hộp thoại mở →
               // KHÔNG ghi đè phiên mới (chống video/ảnh gắn nhầm tree, hỏng provenance).
@@ -272,6 +280,11 @@ const TreeEnrollScreen: React.FC = () => {
               if (draft.name) setName(draft.name);
               if (draft.farmId) setSelectedFarmId(draft.farmId);
             },
+          },
+          {
+            text: tk('trace.enroll.draftDrop', { n: count }),
+            style: 'destructive',
+            onPress: () => { clearTreeCaptureDraft(draftOwner); },
           },
         ],
       );
@@ -365,6 +378,27 @@ const TreeEnrollScreen: React.FC = () => {
   const canEnroll = !isEnrolling && effectiveCaptureCount >= MIN_CAPTURES
     && name.trim().length > 0 && farmValid;
 
+
+  /**
+   * Câu nói nút "Đăng ký" đang THIẾU gì — rỗng nghĩa là bấm được.
+   *
+   * Vì sao cần: `handleEnroll` có năm hộp thoại giải thích ("Thiếu tên", "Chưa có
+   * vườn", "Chưa đủ ảnh"…), nhưng nó CHỈ được gọi từ chính cái nút đang bị
+   * `disabled={!canEnroll}` — nên năm câu đó chưa từng hiện ra trước mặt ai. Người
+   * dùng chỉ thấy một nút xám, bấm không có gì xảy ra, không một chữ. Chỗ này đưa
+   * đúng nội dung ấy ra ngoài, không phải chờ bấm mới biết.
+   * Thứ tự kiểm giống hệt `canEnroll` để hai chỗ không bao giờ nói khác nhau.
+   */
+  const missingHint = useMemo(() => {
+    if (isEnrolling) return '';
+    if (effectiveCaptureCount < MIN_CAPTURES) {
+      return tk('trace.enroll.missingPhotos', { n: MIN_CAPTURES - effectiveCaptureCount });
+    }
+    if (!name.trim()) return tk('trace.enroll.missingName');
+    if (!farmValid) return tk('trace.enroll.missingFarm');
+    return '';
+  }, [isEnrolling, effectiveCaptureCount, name, farmValid]);
+
   // Ảnh chuẩn-hoá cho lưới — Android chỉ có URI, iOS có đầy-đủ metadata.
   const photos: GridPhoto[] = usingAndroidPaths
     ? androidImagePaths!.map((uri, i) => ({
@@ -442,17 +476,21 @@ const TreeEnrollScreen: React.FC = () => {
         `Mã cây: ${code}`,
         [
           {
-            text: 'Xem chi tiết',
+            text: tk('trace.enroll.viewDetail'),
             onPress: () => {
               dispatch(clearAll());
               navigation.navigate('TreeDetail', { treeId, tree: justCreated } as any);
             },
           },
           {
-            text: 'OK',
+            // Trước đây là 'OK' → `goBack()`, và màn nhận diện bên kia vẫn giữ
+            // nguyên kết quả cũ ⇒ người dùng thấy lại "Cây chưa được đăng ký"
+            // ngay sau khi vừa đăng ký thành công. Nay nói đúng việc nó làm:
+            // dọn sạch rồi mở lượt ghi cây kế tiếp.
+            text: tk('trace.enroll.nextTree'),
             onPress: () => {
               dispatch(clearAll());
-              navigation.goBack();
+              (navigation as any).navigate('TreeIdentity', { farmId, retake: Date.now() });
             },
           },
         ],
@@ -555,7 +593,42 @@ const TreeEnrollScreen: React.FC = () => {
   }, [name, imagePaths, captureOrientations, treeRegions, gps, handleSuccess, farmId, farmValid, draftOwner]);
 
   // ── Main enroll ───────────────────────────────────────────────────────────
+
+  /**
+   * Về màn nhận diện Ở TRẠNG THÁI SẠCH.
+   *
+   * `navigation.goBack()` không đủ: màn kia giữ `identResult` trong state cục bộ,
+   * nên quay về là thấy y nguyên bảng kết quả cũ kèm nút "Đăng ký cây mới" — dù
+   * cây vừa đăng ký xong. Bấm tiếp thì sang đây với `captures` đã bị xoá, màn báo
+   * "Chưa có ảnh nào", và người dùng ra chụp lại từ đầu → HAI bản ghi cho MỘT gốc
+   * cây. Tham số `retake` mang mốc thời gian để màn kia biết đây là lượt mới.
+   */
+  const goRetake = useCallback(() => {
+    (navigation as any).navigate('TreeIdentity', { farmId, retake: Date.now() });
+  }, [navigation, farmId]);
+
+  /**
+   * Chốt chống bấm HAI LẦN.
+   *
+   * `disabled={!canEnroll}` không đủ: nó chỉ có hiệu lực sau khi React vẽ lại, mà
+   * giữa hai nhịp chạm trên máy yếu (tay bẩn, màn ướt, app đang nén ảnh) có thể
+   * chưa kịp vẽ. Hai lượt bấm thành HAI request độc lập bay đi gần như đồng thời —
+   * không lượt nào là "gửi lại" nên cổng chống trùng phía máy chủ có cửa sổ đua
+   * thật. Ref chặn ngay trong cùng một nhịp, không chờ render.
+   */
+  const enrollInFlight = useRef(false);
+
   const handleEnroll = async () => {
+    if (enrollInFlight.current) return;
+    enrollInFlight.current = true;
+    try {
+      await runEnroll();
+    } finally {
+      enrollInFlight.current = false;
+    }
+  };
+
+  const runEnroll = async () => {
     if (!name.trim()) {
       Alert.alert('Thiếu tên', 'Vui lòng nhập tên cây trước khi đăng ký.');
       return;
@@ -631,16 +704,17 @@ const TreeEnrollScreen: React.FC = () => {
             `${detail}\n\nBạn muốn làm gì?`,
             [
               { text: 'Huỷ', style: 'cancel' },
-              {
-                text: 'Gộp vào cây cũ',
-                onPress: () => {
-                  if (foundId) {
-                    handleMergeToExisting(foundId);
-                  } else {
-                    Alert.alert('Không xác định được cây trùng', 'Vui lòng chụp lại và thử nhận diện trước.');
-                  }
-                },
-              },
+              // Nút gộp CHỈ hiện khi biết gộp vào cây nào. Bản cũ luôn hiện nút,
+              // rồi khi `foundId` rỗng thì bật một hộp thoại thứ hai bảo "chụp lại
+              // và thử nhận diện trước" — trong khi người dùng VỪA nhận diện xong,
+              // đó chính là cách họ tới được đây. Mời một việc không làm nổi thì
+              // thà không mời.
+              ...(foundId
+                ? [{
+                  text: 'Gộp vào cây cũ',
+                  onPress: () => handleMergeToExisting(foundId),
+                }]
+                : []),
               {
                 text: 'Tạo cây mới',
                 style: 'destructive',
@@ -658,7 +732,7 @@ const TreeEnrollScreen: React.FC = () => {
               + 'Vui lòng chỉ chụp một cây duy nhất trong khung hình.',
             [
               { text: 'Huỷ', style: 'cancel' },
-              { text: 'Chụp lại', onPress: () => navigation.goBack() },
+              { text: tk('trace.enroll.retake'), onPress: goRetake },
             ],
           );
           return;
@@ -671,7 +745,7 @@ const TreeEnrollScreen: React.FC = () => {
               + 'Hãy đi vòng quanh cây và chụp từ nhiều hướng đa dạng hơn.',
             [
               { text: 'Huỷ', style: 'cancel' },
-              { text: 'Chụp lại', onPress: () => navigation.goBack() },
+              { text: tk('trace.enroll.retake'), onPress: goRetake },
             ],
           );
           return;
@@ -688,7 +762,7 @@ const TreeEnrollScreen: React.FC = () => {
           `${detail}\n\nNếu chắc đây là một cây KHÁC, chọn "Tạo cây mới".`,
           [
             { text: 'Huỷ', style: 'cancel' },
-            { text: 'Chụp lại', onPress: () => navigation.goBack() },
+            { text: tk('trace.enroll.retake'), onPress: goRetake },
             { text: 'Tạo cây mới', style: 'destructive', onPress: handleForceEnroll },
           ],
         );
@@ -701,6 +775,10 @@ const TreeEnrollScreen: React.FC = () => {
             'Cần bật GPS',
             'Đăng ký cây yêu cầu thông tin vị trí. Vui lòng bật GPS và thử lại.',
             [
+              // "Thử lại" một mình là vòng lặp kín: không có gì bật được GPS nên
+              // lần nào cũng về đúng hộp thoại này. Mẫu mở Cài đặt đã có ở
+              // `TreeIdentityScreen` (quyền camera) — dùng lại đúng mẫu đó.
+              { text: tk('trace.enroll.openSettings'), onPress: () => { Linking.openSettings(); } },
               { text: 'Thử lại', onPress: handleEnroll },
               { text: 'Huỷ', style: 'cancel' },
             ],
@@ -723,7 +801,7 @@ const TreeEnrollScreen: React.FC = () => {
     return (
       <View style={styles.captureSection}>
         <Text style={styles.captureSectionLabel}>
-          {label} · {list.length} directions
+          {tk('trace.enroll.viewsN', { label, n: list.length })}
         </Text>
         <View style={styles.captureGrid}>
           {list.map((photo, idx) => (
@@ -867,7 +945,7 @@ const TreeEnrollScreen: React.FC = () => {
         {/* Captures */}
         <View style={styles.capturesSection}>
           <Text style={styles.sectionTitle}>
-            Pictures ({effectiveCaptureCount} direction{effectiveCaptureCount > 1 ? 's' : ''})
+            {tk('trace.enroll.picturesN', { n: effectiveCaptureCount })}
           </Text>
 
           {effectiveCaptureCount === 0 ? (
@@ -950,6 +1028,12 @@ const TreeEnrollScreen: React.FC = () => {
       </ScrollView>
 
       {/* Action buttons */}
+      {missingHint ? (
+        <View style={styles.missingBar}>
+          <Icon name="information-outline" size={15} color={NEUTRAL.textSub} />
+          <Text style={styles.missingText}>{missingHint}</Text>
+        </View>
+      ) : null}
       <View style={[styles.footer, { paddingBottom: bottomPad }]}>
         <TouchableOpacity
           style={[styles.footerBtn, styles.footerBtnCancel]}
@@ -1334,6 +1418,15 @@ const styles = StyleSheet.create({
   successNote: { fontSize: 12, color: NEUTRAL.textSub, marginTop: 4, lineHeight: 17 },
   successHint: { fontSize: 12.5, color: '#1b5e20', fontWeight: '600', marginTop: 4, lineHeight: 18 },
 
+  missingBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    backgroundColor: NEUTRAL.card,
+  },
+  missingText: { fontSize: 13, color: NEUTRAL.textSub, fontWeight: '600' },
   footer: {
     flexDirection: 'row',
     gap: 12,

@@ -26,6 +26,18 @@ export type QuickActionConfig = {
   icon?: string;
   /** Module sở hữu tính năng — để lọc/nhóm về sau. */
   module: 'trace' | 'chat' | 'work' | 'lampnet';
+  /**
+   * Nút NỀN: hiện từ lượt dùng thứ 0, không chờ đủ ngưỡng.
+   *
+   * Luật "chỉ hiện sau 3 lượt dùng" đúng cho tính năng phụ, nhưng với việc CỐT
+   * LÕI nó khoá vòng: nút chỉ hiện sau khi người dùng đã mở tính năng ba lần
+   * bằng ĐƯỜNG KHÁC — mà đường khác duy nhất là cử chỉ kéo hai chặng trên nút
+   * giữa (`navigation/resolveGateItems.ts`). Người không kéo được thì không bao
+   * giờ đủ ba lượt, nên không bao giờ thấy nút. Người mới cài mở app ra thấy
+   * khối Quick Action ẩn hẳn (`HomeScreen`: `quickVisible = length > 0`).
+   * Cờ này chỉ đặt cho những việc mà một người mới TẤT YẾU phải làm.
+   */
+  alwaysShow?: boolean;
 };
 
 // Ngưỡng "dùng nhiều" — dưới ngưỡng thì nút KHÔNG xuất hiện.
@@ -35,6 +47,7 @@ export const QUICK_ACTION_MIN_USES = 3;
 export const QUICK_ACTIONS: QuickActionConfig[] = [
   {
     route: 'TreeIdentity',
+    alwaysShow: true,
     label: 'Quét cây',
     labelEn: 'Tree',
     image: require('../../assets/images/modules/tree.png'),
@@ -57,6 +70,7 @@ export const QUICK_ACTIONS: QuickActionConfig[] = [
   },
   {
     route: 'FarmDetail',
+    alwaysShow: true,
     label: 'Thêm Vườn',
     labelEn: 'Farm',
     image: require('../../assets/images/modules/add-growth.png'),
@@ -64,6 +78,7 @@ export const QUICK_ACTIONS: QuickActionConfig[] = [
   },
   {
     route: 'Farms',
+    alwaysShow: true,
     label: 'Vườn của tôi',
     labelEn: 'My farms',
     image: require('../../assets/images/modules/vegetable.png'),

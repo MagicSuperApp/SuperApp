@@ -32,6 +32,7 @@ import {
 } from '../theme';
 import { TRACE_SCAN_ROUTE_NAME } from './traceScan';
 
+import { tk } from '../i18n/keys';
 // Mục cổng — SHAPE tương thích bộ chạy của HomeRadialOverlay (key/icon/label/
 // route/params) + `tint` trực tiếp (thay `group` của ActionDef SG4).
 export interface GateItem {
@@ -146,7 +147,9 @@ export function resolveGateItems(farm: FarmSignal, usage: UsageMap = {}): GateIt
     const trace: GateItem = {
       key: 'svc-trace-scan',
       icon: 'qrcode',
-      label: '',
+      // Mục NỔI BẬT, to nhất, nằm CHÍNH GIỮA cung — và trước đây nhãn là chuỗi
+      // rỗng, nên thứ dễ thấy nhất trên cổng lại là thứ duy nhất không có tên.
+      label: tk('trace.gate.scan'),
       tint: TRACE_THEME.primaryDeep,
       route: TRACE_SCAN_ROUTE,
       prominent: true,

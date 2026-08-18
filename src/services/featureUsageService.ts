@@ -45,6 +45,6 @@ export type RankedQuickAction = QuickActionConfig & { useCount: number };
 export async function getRankedQuickActions(): Promise<RankedQuickAction[]> {
   const counts = await getUsageCounts();
   return QUICK_ACTIONS.map((a) => ({ ...a, useCount: counts[a.route] ?? 0 }))
-    .filter((a) => a.useCount >= QUICK_ACTION_MIN_USES)
+    .filter((a) => a.alwaysShow || a.useCount >= QUICK_ACTION_MIN_USES)
     .sort((a, b) => b.useCount - a.useCount);
 }

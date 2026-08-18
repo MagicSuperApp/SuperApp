@@ -6,6 +6,15 @@
  *     file   = clip .mp4 (bắt buộc) — full-res, KHÔNG crop client
  *     lat/lon = GPS lúc quay (tuỳ)
  *     source = "phone" (tuỳ, mặc định "phone")
+ *     farm_id = vườn của cây (tuỳ) — thiếu thì bản ghi rơi khỏi truy vấn theo vườn
+ *     client_event_id = khoá khử-trùng của client (tuỳ) — thiếu thì gửi lại đẻ bản ghi thừa
+ *
+ * ⚠ CHƯA ĐO trên máy chủ thật: hai trường `farm_id` / `client_event_id` ở route NÀY.
+ * Chúng là nếp CHUNG của các cửa ghi khác cùng máy chủ (`enroll`, `verify_add`,
+ * `tree/set_farm`, `care`, và `fruit_video` cho `client_event_id`), nên gửi kèm là
+ * đúng chiều; nhưng route video cây thì chưa ai gọi thử để xác nhận máy chủ ĐỌC.
+ * Gửi kèm không rủi ro (multipart thừa trường thì FastAPI bỏ qua), chỉ là chưa được
+ * tuyên là "đã có tác dụng". Ai đo được thì sửa dòng này.
  *
  * Server: chắt-lọc khung-hình đại-diện (video_ingest, tự DOWNSCALE) → mỗi khung jpeg đẩy qua
  * ĐÚNG đường embed + verify_add ẢNH CŨ (bổ-sung góc cho cây, KHÔNG enroll-mới, chống nhiễm
@@ -91,6 +100,23 @@ export interface TreeVideoOptions {
   lat?: number;
   lon?: number;
   source?: string;
+  /**
+   * Vườn của cây. Mọi đường GHI khác của cùng máy chủ đều gửi `farm_id`
+   * (`treeReIDService` enroll/verify_add/set_farm, `careService`), nên bản ghi
+   * từ đường video mà thiếu nó thì rơi khỏi truy vấn theo vườn: nông dân quay
+   * clip xong, mở vườn ra không thấy đâu. Nhà OriLife đã cảnh báo đúng hậu quả
+   * này cho cửa cây (xem chú thích `treeReIDService.ts:520`).
+   */
+  farmId?: string;
+  /**
+   * Khoá khử-trùng phía CLIENT, ỔN ĐỊNH theo clip (KHÔNG đổi qua các lần gửi
+   * lại). Cùng nếp với `fruitVideoService`: hàng đợi sinh id bằng
+   * `computeClientEventId(treeId, mốc-quay, kích-thước, uri)` — xem
+   * `videoUploadQueue.ts`. Thiếu nó thì gửi lại sau khi mất sóng đẻ ra nhiều
+   * bản ghi cho cùng một clip, vì máy chủ không có gì để khử trùng.
+   * Client chỉ bảo đảm gửi id KHÔNG đổi; dedup thật là việc của backend.
+   */
+  clientEventId?: string;
 }
 
 /**
@@ -117,6 +143,10 @@ export async function uploadTreeVideo(
   if (opts.lat != null) form.append('lat', String(opts.lat));
   if (opts.lon != null) form.append('lon', String(opts.lon));
   form.append('source', opts.source ?? 'phone');
+  // Chỉ gửi khi CÓ: gửi chuỗi rỗng là nói với máy chủ "cây này không thuộc vườn
+  // nào", khác hẳn với "lần gửi này không biết vườn".
+  if (opts.farmId) form.append('farm_id', opts.farmId);
+  if (opts.clientEventId) form.append('client_event_id', opts.clientEventId);
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);

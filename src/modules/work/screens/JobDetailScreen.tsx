@@ -30,7 +30,6 @@ const JobDetailScreen: React.FC = () => {
   // Nguồn chi tiết: flag ON → GET /jobs/:id; OFF → mock (useJobDetail xử lý).
   const { job, loading, errorKind, reload } = useJobDetail(jobId);
 
-  const [applied, setApplied] = useState(false);
   const [saved, setSaved] = useState(false);
 
   const fade = useRef(new Animated.Value(0)).current;
@@ -76,21 +75,22 @@ const JobDetailScreen: React.FC = () => {
     );
   }
 
+  /**
+   * Bản trước hứa hai thứ KHÔNG có thật: "tạo phòng chat với người thuê" và "mọi trao
+   * đổi được ký số, có giá trị pháp lý" — rồi chỉ đặt một biến trong màn (`setApplied`)
+   * và đóng hộp thoại. Không một lời gọi máy chủ nào; `workApi` không có cửa ứng tuyển
+   * (đã grep: có `getJob`, `getJobMatch`, `createContract`, không có apply). Người tìm
+   * việc thấy "Đã ứng tuyển", ngồi đợi một tin nhắn không bao giờ tới, và tin đó lại là
+   * lời hứa về giá trị pháp lý — nặng hơn hẳn một nút hỏng thường.
+   *
+   * Chưa có cửa thì nói chưa có. KHÔNG đặt `applied` nữa: trạng thái đó là lời khẳng
+   * định đã gửi đi, mà chưa gửi gì cả.
+   */
   const handleApply = () => {
-    if (applied) return;
     Alert.alert(
-      'Xác nhận ứng tuyển',
-      `Bạn sẽ tạo phòng chat với ${job.postedBy.name} để trao đổi về công việc này.\n\nMọi trao đổi sẽ được ký số ngay trên máy bạn và có giá trị pháp lý.`,
-      [
-        { text: 'Huỷ', style: 'cancel' },
-        {
-          text: 'Ứng tuyển',
-          onPress: () => {
-            setApplied(true);
-            Alert.alert('Đã ứng tuyển', 'Phòng chat Aladin sẽ mở để bạn trao đổi với người thuê.');
-          },
-        },
-      ],
+      'Chưa mở ứng tuyển trong ứng dụng',
+      'Bản này chưa gửi được hồ sơ ứng tuyển tới người đăng tin. Đường ứng tuyển đang được nối; ' +
+        'trong lúc chờ, tin vẫn xem và lưu lại được.',
     );
   };
 
@@ -261,19 +261,12 @@ const JobDetailScreen: React.FC = () => {
         >
           <Icon name="message-outline" size={20} color={WORK_THEME.primary} />
         </TouchableOpacity>
-        <TouchableOpacity
-          onPress={handleApply}
-          activeOpacity={0.85}
-          style={[styles.applyBtn, applied && { backgroundColor: COLORS.success }]}
-        >
-          <Icon
-            name={applied ? 'check-circle' : 'send-outline'}
-            size={16}
-            color="#fff"
-          />
-          <Text style={styles.applyBtnText}>
-            {applied ? 'Đã ứng tuyển' : 'Ứng tuyển ngay'}
-          </Text>
+        {/* Trạng thái "Đã ứng tuyển" đã bỏ cùng với `applied`: nó chỉ đổi màu nút chứ
+            chưa bao giờ có hồ sơ nào được gửi đi. Ngày nối được cửa ứng tuyển thì dựng
+            lại trạng thái từ CÂU TRẢ LỜI của máy chủ, đừng dựng lại từ biến trong màn. */}
+        <TouchableOpacity onPress={handleApply} activeOpacity={0.85} style={styles.applyBtn}>
+          <Icon name="send-outline" size={16} color="#fff" />
+          <Text style={styles.applyBtnText}>Ứng tuyển ngay</Text>
         </TouchableOpacity>
       </View>
     </View>

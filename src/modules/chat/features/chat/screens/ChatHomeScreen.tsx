@@ -59,6 +59,8 @@ const ChatHomeScreen: React.FC = () => {
     (s: RootState) => s.chat.publicConversationIds,
   );
   const roomsStatus = useSelector((s: RootState) => s.chat.roomsStatus);
+  // Nguồn dữ liệu đang vẽ: 'mock' = phòng chat MẪU, không phải phòng của người dùng.
+  const source = useSelector((s: RootState) => s.chat.source);
 
   // Cổng runtime: chỉ tải dữ liệu THẬT khi BE ProofChat sống (probe /health 2xx).
   // Chưa sống → giữ mock (UI không vỡ). Hook re-render khi cổng lật (backend vừa
@@ -294,6 +296,20 @@ const ChatHomeScreen: React.FC = () => {
           <View style={styles.statDivider} />
           <Stat label="Chưa đọc" value={totalUnread} accent />
         </View>
+
+        {/* Cùng lý lẽ với khối chú thích ngay trên: dữ-liệu MẪU bày ra mà không nói là
+            mẫu thì nguy hơn một nút chết. Máy chủ ProofChat chưa sống thì màn này vẫn
+            vẽ đủ phòng, đủ tin nhắn, đủ số "chưa đọc" — người dùng nhắn vào đó rồi ngồi
+            đợi trả lời. Nói thẳng một dòng, và chỉ hiện đúng lúc còn đang mẫu. */}
+        {source === 'mock' && (
+          <View style={styles.mockNotice}>
+            <Icon name="information-outline" size={13} color={NEUTRAL.textMuted} />
+            <Text style={styles.mockNoticeText}>
+              Đây là phòng chat mẫu để xem trước. Máy chủ trò chuyện chưa mở, tin nhắn gửi ở
+              đây chưa tới ai.
+            </Text>
+          </View>
+        )}
 
         <View style={styles.searchBox}>
           <Icon name="magnify" size={18} color={NEUTRAL.textMuted} />
@@ -558,6 +574,24 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, borderColor: NEUTRAL.bg,
   },
   bellBadgeText: { fontSize: 9, fontWeight: '800', color: NEUTRAL.white },
+  mockNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    marginTop: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: NEUTRAL.bg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: NEUTRAL.textMuted,
+  },
+  mockNoticeText: {
+    flex: 1,
+    fontSize: 11,
+    lineHeight: 15,
+    color: NEUTRAL.textMuted,
+  },
   statsStrip: {
     flexDirection: 'row',
     backgroundColor: NEUTRAL.bgSoft,

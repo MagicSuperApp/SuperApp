@@ -870,7 +870,21 @@ const AccountScreen = () => {
 
                 {/* ── Nạp tín dụng ── */}
                 <Animated.View style={{ opacity: fadeAnim, marginHorizontal: 20, marginBottom: 12 }}>
-                    <TouchableOpacity style={styles.topupBtn} activeOpacity={0.88}>
+                    {/* Nút này TRƯỚC ĐÂY không có `onPress` — bấm vào không xảy ra gì, không một
+                        dòng báo. Kho chưa có màn nạp tín dụng nào (grep navigator: không route),
+                        nên chưa thể nối đích thật. Trong lúc chờ, nói thẳng là chưa mở còn hơn
+                        để người dùng bấm mãi tưởng máy treo — và nút chết cũng là thứ kho ứng
+                        dụng đánh trượt khi xét bản phát hành. */}
+                    <TouchableOpacity
+                        style={styles.topupBtn}
+                        activeOpacity={0.88}
+                        onPress={() =>
+                            Alert.alert(
+                                'Chưa mở nạp tín dụng',
+                                'Đường nạp tín dụng MAGIC chưa mở trong bản này. Khi mở, nút này sẽ dẫn thẳng tới màn nạp.',
+                            )
+                        }
+                    >
                         <View style={styles.btnShine} />
                         <Icon name="lightning-bolt" size={19} color={COLORS.white} />
                         <View>

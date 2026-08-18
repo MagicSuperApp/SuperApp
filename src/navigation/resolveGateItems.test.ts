@@ -39,9 +39,18 @@ describe('resolveGateItems', () => {
   it('Farm/Chat mang hành-động-nhanh (arc con tầng-2), route ĐÍCH thật', () => {
     const byRoute = Object.fromEntries(resolveGateItems(NO_FARM).map((i) => [i.route, i]));
     const farm = byRoute.Farms.subActions ?? [];
+    // 'AnimalIdentity' (màn CÓ máy ảnh) đứng trước 'AnimalManagement' (sổ danh sách):
+    // trước đây "Quét con vật" trỏ thẳng sổ, nên cả nhánh đăng ký vật nuôi không có
+    // lối vào nào — `AnimalIdentity` nằm trong navigator mà 0 lời gọi `navigate`.
     expect(farm.map((a) => a.route)).toEqual([
-      'TreeIdentity', 'AnimalManagement', 'CareScan', 'FarmDetail',
+      'TreeIdentity', 'AnimalIdentity', 'AnimalManagement', 'CareScan', 'FarmDetail',
     ]);
+    // Không mục nào được mang mã BỊA. `'default'` từng lọt qua cổng chặn của màn quét
+    // nhãn thuốc và ghi rác lên máy chủ; test này giữ nó khỏi quay lại.
+    for (const a of farm) {
+      const p = (a.params ?? {}) as Record<string, unknown>;
+      expect(Object.values(p)).not.toContain('default');
+    }
     // Route đích KHÁC route module (không mở lại màn module).
     for (const a of farm) expect(a.route).not.toBe('Farms');
 

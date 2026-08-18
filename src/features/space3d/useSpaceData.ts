@@ -187,11 +187,24 @@ export function useSpaceData(farmIdParam?: string, focusTreeId?: string): SpaceD
 
   const reloadFruits = useCallback(() => setFruitNonce((n) => n + 1), []);
 
+  /** Cây mà danh sách `fruits` đang thuộc về. Dùng để biết khi nào phải xoá. */
+  const fruitsOfTreeRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (!focusTreeId) {
       setFruits([]);
       setFruitsError(null);
+      fruitsOfTreeRef.current = null;
       return;
+    }
+    // ĐỔI CÂY thì xoá danh sách cũ NGAY, trước khi hỏi máy chủ. Giữ lại là quả
+    // của cây A nằm dưới tên cây B trong lúc chờ — và nếu lượt hỏi hỏng thì nó
+    // nằm đó luôn, không dấu hiệu gì. Nạp lại CÙNG một cây (`reloadFruits`) thì
+    // không xoá, để danh sách khỏi nháy trắng.
+    if (fruitsOfTreeRef.current !== focusTreeId) {
+      setFruits([]);
+      setFruitsError(null);
+      fruitsOfTreeRef.current = focusTreeId;
     }
     let alive = true;
     setFruitsLoading(true);
@@ -218,6 +231,11 @@ export function useSpaceData(farmIdParam?: string, focusTreeId?: string): SpaceD
         })));
         setFruitsError(null);
       } else {
+        // Hỏi hỏng: xoá về rỗng + đặt cờ lỗi. Không xoá thì màn vẽ ra một danh
+        // sách quả CÓ THẬT nhưng của cây khác — sai mà trông y như đúng. Rỗng
+        // kèm cờ lỗi thì màn còn phân biệt được "cây chưa có quả" với "chưa hỏi
+        // được", và người dùng biết mình đang nhìn cái gì.
+        setFruits([]);
         setFruitsError(r.error?.detail ?? 'Không tải được quả của cây.');
       }
       setFruitsLoading(false);

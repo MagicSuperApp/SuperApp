@@ -804,6 +804,16 @@ export async function verifyAddTree(
   // có mà không gửi hướng thì ảnh mới kém giá trị hơn ảnh cũ.
   appendGeoAndOrientation(form, options);
 
+  // KHOANH VÙNG — cùng một lớp lỗi vừa bắt được ở quả, ở đây là cây.
+  //
+  // `enrollTree` gửi `regions` (`:771`) và `identifyTree` cũng gửi (`:723`), nhưng
+  // hàm này thì không. Nghĩa là: lúc lập hồ sơ cây và lúc soi cây thì ảnh được cắt
+  // đúng thân cây, còn lúc BỒI THÊM GÓC vào cây đã có — việc nông dân làm nhiều
+  // nhất — lại gửi cả khung. Hai cây đứng sát nhau thì ảnh bồi kéo luôn cây hàng
+  // xóm vào chữ ký của cây này, và hỏng dần theo từng lượt bồi chứ không hỏng ngay,
+  // nên không ai thấy.
+  appendTreeRegions(form, options.regions);
+
   return _apiCall<VerifyAddResponse>(`${baseUrl}/api/verify_add`, 'POST', form, IMAGE_REQUEST_TIMEOUT_MS);
 }
 

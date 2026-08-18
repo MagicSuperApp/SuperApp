@@ -36,7 +36,9 @@ import { ORILIFE_BASE } from '../services/orilifeBase';
 import { getTrees, type TreeInfo } from '../services/treeReIDService';
 import { loadVideoProofs } from '../services/videoProofStore';
 import { MAX_VIDEO_BYTES, type FruitVideoResult } from '../services/fruitVideoService';
-import { detectFruit, enrollFruit, type Bbox } from '../services/fruitReIDService';
+import { detectFruit, enrollFruit, outcomeOf, type Bbox } from '../services/fruitReIDService';
+import { buildCaptureMeta, serializeCaptureMeta } from '../services/captureMeta';
+import { TreeReIDBridge } from '../services/treeReIDNativeBridge';
 import {
   saveFruitVideoDraft, clearFruitVideoDraft, restoreFruitVideoDraft,
 } from '../services/treeDraftStore';
@@ -65,7 +67,13 @@ const VIDEO_OPTIONS = {
 /** Quá bấy nhiêu cây thì hiện ô tìm — dưới ngưỡng, cuộn tay còn nhanh hơn gõ. */
 const SEARCH_THRESHOLD = 6;
 
-/** Ảnh nhận dạng quả. Cùng cỡ với luồng khoanh ảnh để máy chủ nhận cùng chất lượng. */
+/**
+ * Ảnh nhận dạng quả. Cùng cỡ với luồng khoanh ảnh để máy chủ nhận cùng chất lượng.
+ *
+ * ⚠️ CHƯA GIẢI: `FruitScanScreen` CỐ Ý không co ảnh, dẫn cảnh báo OriLife 14/08.
+ * Tức luồng quả đang gửi lên hai cỡ khác nhau. Chưa ai đo cỡ nào cho kết quả đối
+ * chiếu tốt hơn, nên KHÔNG tự chốt số — đang chờ OriLife trả lời.
+ */
 const PHOTO_OPTIONS = {
   mediaType: 'photo' as const,
   quality: 0.8,
@@ -74,13 +82,18 @@ const PHOTO_OPTIONS = {
   saveToPhotos: true,
 };
 
-/** Ô lùi khi máy chủ không thấy quả nào: vuông giữa khung, 60% cạnh ngắn. */
-const CENTER_BOX_RATIO = 0.6;
-
-function centerBox(w: number, h: number): Bbox {
-  const side = Math.round(Math.min(w, h) * CENTER_BOX_RATIO);
-  return [Math.round((w - side) / 2), Math.round((h - side) / 2), side, side];
-}
+/**
+ * ⛔ KHÔNG dựng lại ô lùi "vuông giữa khung 60%".
+ *
+ * Bản cũ có `centerBox()`: máy chủ không thấy quả nào thì bịa một ô giữa khung
+ * rồi gửi đi như dữ liệu thật. Người chụp không thấy ô đó, không sửa được, nên
+ * ảnh mẫu của quả nhiễm lá và nền — hỏng âm thầm, và hỏng ngay ở tấm ảnh NHẬN
+ * DẠNG, thứ mọi lượt đối chiếu sau này dựa vào.
+ *
+ * Đối chiếu: màn khoanh tay còn từ chối vùng nhỏ hơn 8 px và bắt người tự canh
+ * (`FruitCropperScreen.tsx`). Ở đây bịa cả ô thì càng không được. Không thấy quả
+ * ⇒ báo thật và mời khoanh tay ở màn "Quả trên cây", KHÔNG gửi ô đoán.
+ */
 
 /** Ô lớn nhất trong các ô máy chủ tìm được — quả to nhất khung là quả người ta nhắm. */
 function biggestBox(boxes: Array<{ bbox: Bbox }>): Bbox | null {
@@ -117,6 +130,15 @@ const FruitVideoScreen: React.FC = () => {
   // Ảnh tĩnh + tên → hai thứ biến buổi quay thành một QUẢ trong danh sách.
   const [coverUri, setCoverUri] = useState<string | null>(null);
   const [coverSize, setCoverSize] = useState<{ w: number; h: number } | null>(null);
+  /**
+   * Khối `capture` của tấm ảnh quả (heading/pitch/cỡ ảnh gốc/máy).
+   *
+   * Dựng NGAY trong callback máy ảnh, không dựng lúc gửi: heading và pitch là số
+   * đo tại thời điểm bấm máy, tới lúc gửi người ta đã xoay máy đi rồi. Xem
+   * `captureMeta.ts` — ảnh chụp thiếu thông số ống kính thì vĩnh viễn không đo
+   * được kích thước quả, không có đợt sau nào vá lại được.
+   */
+  const [coverCapture, setCoverCapture] = useState<string | undefined>(undefined);
   const [fruitName, setFruitName] = useState('');
   /** Tên quả đã lưu được — màn xong đọc để nói "đã lưu thành quả …". */
   const [savedFruitName, setSavedFruitName] = useState<string | null>(null);
@@ -260,7 +282,7 @@ const FruitVideoScreen: React.FC = () => {
       Alert.alert(tk('trace.activity.noCamera'), tk('trace.activity.noCameraBody'));
       return;
     }
-    imagePicker.launchCamera(await withPhotoSave(PHOTO_OPTIONS), (response: any) => {
+    imagePicker.launchCamera(await withPhotoSave(PHOTO_OPTIONS), async (response: any) => {
       if (response.didCancel) return;
       if (response.errorCode) {
         Alert.alert(tk('trace.activity.cameraErr'), response.errorMessage ?? tk('trace.activity.cameraErrBody'));
@@ -270,12 +292,18 @@ const FruitVideoScreen: React.FC = () => {
       if (!a?.uri) return;
       setCoverUri(a.uri);
       setCoverSize(a.width && a.height ? { w: a.width, h: a.height } : null);
+      // Hỏng thì bỏ trống, KHÔNG chặn luồng chụp: mất khối siêu dữ liệu là mất khả
+      // năng đo tấm ảnh, còn chặn ảnh là mất cả tấm ảnh lẫn buổi quay.
+      try {
+        setCoverCapture(serializeCaptureMeta(await buildCaptureMeta(a, TreeReIDBridge)));
+      } catch { setCoverCapture(undefined); }
     });
   }, [tk]);
 
   const resetForNext = useCallback(() => {
     setVideoUri(null); setVideoSize(null); setCapturedAt(null); setNote(''); setResult(null);
-    setCoverUri(null); setCoverSize(null); setFruitName(''); setSavedFruitName(null);
+    setCoverUri(null); setCoverSize(null); setCoverCapture(undefined);
+    setFruitName(''); setSavedFruitName(null);
   }, []);
 
   /**
@@ -284,29 +312,42 @@ const FruitVideoScreen: React.FC = () => {
    */
   const enrollFromCover = useCallback(async (treeId: string): Promise<string | null> => {
     if (!coverUri) return 'thiếu ảnh quả';
-    const w = coverSize?.w ?? 0;
-    const h = coverSize?.h ?? 0;
 
-    // Hỏi máy chủ quả nằm đâu trong tấm ảnh. Hỏng/không thấy → ô giữa khung.
+    // Hỏi máy chủ quả nằm đâu trong tấm ảnh. Không ra ô nào thì DỪNG — xem khối
+    // chú thích chỗ `biggestBox` để biết vì sao không được lùi về ô đoán.
     let box: Bbox | null = null;
     try {
       const det = await detectFruit(ORILIFE_BASE, coverUri, treeId);
       if (det.ok && det.data?.detections?.length) box = biggestBox(det.data.detections);
     } catch { box = null; }
-    if (!box) {
-      if (!w || !h) return 'không đọc được kích thước ảnh';
-      box = centerBox(w, h);
-    }
+    if (!box) return 'máy chưa nhận ra quả trong ảnh — hãy tự khoanh quả ở trang “Quả trên cây”';
 
     const res = await enrollFruit(
       ORILIFE_BASE, treeId, fruitName.trim(), coverUri, { bbox: box },
-      // Quả trùng KHÔNG chặn ở đây: người dùng đang ở giữa vườn, vừa quay xong một
-      // clip; dựng cổng hỏi-trùng tại đây là bắt họ phán xử giữa nắng. Trùng thì
-      // VeData gộp sau — mất một bản ghi quả tệ hơn có một bản ghi thừa.
-      { allowDup: true },
+      {
+        // Quả trùng KHÔNG chặn ở đây: người dùng đang ở giữa vườn, vừa quay xong một
+        // clip; dựng cổng hỏi-trùng tại đây là bắt họ phán xử giữa nắng. Trùng thì
+        // VeData gộp sau — mất một bản ghi quả tệ hơn có một bản ghi thừa.
+        allowDup: true,
+        // `side` là khai CÓ Ý THỨC, không phải mặc định bỏ quên: màn này chỉ yêu
+        // cầu "một tấm ảnh quả", không hỏi mặt nào, và người ta chụp chùm quả
+        // trên cây thì gần như luôn là mặt hông. Thiếu hẳn trường này mới là cái
+        // đắt — 54/54 góc lưu trước đó không có nó, và đó là gốc của việc cổng bồi
+        // góc chặn oan 30/32 lượt. Muốn đúng hơn thì phải thêm bộ chọn mặt vào
+        // màn này, không phải đoán ở đây.
+        viewType: 'side',
+        capture: coverCapture,
+      },
     );
-    return res.ok ? null : (res.error?.detail ?? 'máy chủ từ chối');
-  }, [coverUri, coverSize, fruitName]);
+    // KHÔNG đọc `res.ok`: đó là tầng vận chuyển. Máy chủ từ chối bằng HTTP 200 kèm
+    // `{ok:false}`, và 409 (trùng quả) được `_apiCall` cố ý đổi thành `{ok:true}`
+    // để caller đọc cờ. Chỉ xét `res.ok` là báo "Đã lưu thành quả «X»" cho một
+    // lượt kho không hề ghi gì.
+    const outcome = outcomeOf(res);
+    if (outcome === 'ok') return null;
+    if (outcome === 'needs_confirm') return res.data?.message ?? 'máy chủ chưa nhận quả này';
+    return res.error?.detail ?? 'máy chủ từ chối';
+  }, [coverUri, coverCapture, fruitName]);
 
   // ── Gửi (CỬA DUY NHẤT = hàng đợi) ────────────────────────────────────────
   const handleUpload = useCallback(async () => {
@@ -461,10 +502,16 @@ const FruitVideoScreen: React.FC = () => {
               </Text>
             </View>
           ) : null}
+          {/* BA nhánh, không phải hai. `n_frames` là `undefined` khi sổ bằng chứng
+              chưa có bản ghi cho clip này — gộp ca đó vào ca "0 khung" là trách oan
+              người quay đúng bằng câu "lần sau quay chậm hơn", trong khi app chỉ
+              đơn giản là chưa biết. */}
           <Text style={styles.doneSub}>
-            {result.n_frames && result.n_frames > 0
-              ? tk('trace.fruitVideo.doneFrames', { n: result.n_frames })
-              : tk('trace.fruitVideo.doneSlower')}
+            {result.n_frames === undefined
+              ? tk('trace.fruitVideo.doneFramesUnknown')
+              : result.n_frames > 0
+                ? tk('trace.fruitVideo.doneFrames', { n: result.n_frames })
+                : tk('trace.fruitVideo.doneSlower')}
           </Text>
 
           {/* Bằng chứng clip đã nằm trên LampNet. Đội thực địa cần THẤY mã này để

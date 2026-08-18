@@ -11,6 +11,7 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ensureOrilifeToken } from './orilifeDidAuth';
 
 export type AnimalDecision = 'MATCH' | 'UNCERTAIN' | 'NO_MATCH' | 'EMPTY_FARM' | 'MOVED';
 
@@ -92,12 +93,22 @@ async function _getAuthHeader(): Promise<string | null> {
   }
 }
 
+/** Cắt phần gốc (https://host) khỏi URL đầy đủ để truyền cho ensureOrilifeToken. */
+function _baseOf(url: string): string {
+  const i = url.indexOf('/api/');
+  return i > 0 ? url.slice(0, i) : url;
+}
+
 async function _apiCall<T>(
   url: string,
   method: 'GET' | 'POST' | 'DELETE',
   body?: FormData,
   attempt = 0,
 ): Promise<{ ok: boolean; data?: T; error?: APIError }> {
+  // Ký DID TRƯỚC mỗi lệnh (khớp treeReIDService:315). Vì sao: `auth_token` chỉ do
+  // orilifeDidAuth ghi. Ai mở app vào thẳng "Quét con vật" mà chưa chạm luồng
+  // cây/vườn thì chưa có ai ký → 401 oan ngay giữa ruộng.
+  await ensureOrilifeToken(_baseOf(url));
   const authHeader = await _getAuthHeader();
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (authHeader) headers['Authorization'] = authHeader;
@@ -110,6 +121,12 @@ async function _apiCall<T>(
     clearTimeout(timeoutHandle);
 
     if (resp.status === 401) {
+      // Token hết hạn GIỮA BUỔI → ký lại bằng DID ĐÚNG MỘT lần rồi thử lại (khớp
+      // treeReIDService:336). Trước đây trả thẳng auth_error: nút "Thử lại" ở màn
+      // quản lý gọi lại đúng đường cũ nên lặp lại đúng lỗi đó vĩnh viễn.
+      if (attempt === 0 && (await ensureOrilifeToken(_baseOf(url), { force: true }))) {
+        return _apiCall<T>(url, method, body, 1);
+      }
       return { ok: false, error: { type: 'auth_error', detail: 'Token hết hạn hoặc không hợp lệ', http_status: 401 } };
     }
     if (resp.status === 429) {

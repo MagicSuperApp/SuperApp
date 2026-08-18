@@ -50,6 +50,7 @@ import { fieldErrorMessage } from '../../../services/treeReIDService';
 let MapLibreGL: any = null;
 
 import PaginationControls from '../components/PaginationControls';
+import EntityTimeline from '../components/EntityTimeline';
 import CommonPopup from '../components/CommonPopup';
 import StateView from '../../../components/state/StateView';
 import { useAppDispatch } from '../../../store/hooks';
@@ -1248,9 +1249,9 @@ const FarmDetailMode = ({
           />
         )}
         ListFooterComponent={
-          filteredTrees.length > 0 ? (
-            <View>
-              {/* Pagination */}
+          <View>
+            {filteredTrees.length > 0 ? (
+              /* Pagination */
               <PaginationControls
                 currentPage={currentPage}
                 totalPages={totalPages}
@@ -1260,10 +1261,18 @@ const FarmDetailMode = ({
                 onPreviousPage={handlePreviousPage}
                 onNextPage={handleNextPage}
               />
-              {/* Chừa chỗ cho thanh hành động nổi ở đáy (2 nút). */}
-              <View style={{ height: 86 }} />
-            </View>
-          ) : null
+            ) : null}
+            {/* Dòng thời gian của CẢ VƯỜN.
+                Việc đồng áng ghi từ màn hoạt động mà không gắn cây nào thì nằm ở
+                dòng của vườn. Trước bản này app không có chỗ nào vẽ dòng của vườn
+                — ghi xong là biến mất khỏi tầm mắt người ghi. Vẽ cả khi vườn chưa
+                có cây nào, vì việc đồng áng không đợi có cây mới ghi được. */}
+            {!!farm?.id && (
+              <EntityTimeline entityType="farm" entityId={String(farm.id)} limit={5} />
+            )}
+            {/* Chừa chỗ cho thanh hành động nổi ở đáy (2 nút). */}
+            <View style={{ height: 86 }} />
+          </View>
         }
       />
 

@@ -309,6 +309,11 @@ const ActivityScreen = () => {
         id: `activity_${Date.now()}`,
         type: selected,
         farmId: farm.id,
+        // Kèm cây khi người dùng vào màn này TỪ một cây. `syncDispatch` dùng nó để
+        // ghi sự kiện vào dòng thời gian của CÂY — chỗ duy nhất app có màn hình vẽ
+        // ra được (`TreeDetailScreen`). Thiếu trường này thì việc tưới/xịt vẫn ghi
+        // thành công nhưng nằm ở dòng của vườn, và người ghi mở cây ra không thấy gì.
+        treeId: tree?.id,
         materials: [],
         thumbnailPath: scannedFiles[0] ?? '',
         timestamp: new Date().toISOString(),

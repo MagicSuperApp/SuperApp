@@ -333,6 +333,93 @@ fn witness_unsigned_tx_inner(
     Ok(hex::encode(signed.to_bytes()))
 }
 
+/// Ký (witness) một tx CBOR ĐÃ DỰNG SẴN bằng KHOÁ Ed25519 THÔ — TAAD_Key và/hoặc
+/// DeviceKey — thay vì khoá thanh toán CIP-1852.
+///
+/// VÌ SAO CẦN HÀM RIÊNG: `witness_unsigned_tx` ở trên ký bằng khoá thanh toán
+/// (xprv mở rộng, dẫn xuất CIP-1852). Hai khoá dưới đây KHÁC hẳn:
+///   · TAAD_Key  — Ed25519 32-byte seed, HKDF từ Master_KEK (`sign::derive_taad_seed`),
+///                 băm blake2b-224 của pubkey chính là `controller_pkh` trong datum.
+///   · DeviceKey — Ed25519 32-byte seed NGẪU NHIÊN mỗi máy (`sign::device_key_optin`),
+///                 caller giữ trong secureStore; băm pubkey là `device_pkh`.
+/// Cả hai đều là Ed25519 THƯỜNG (không mở rộng) nên phải đi qua
+/// `PrivateKey::from_normal_bytes`, không qua `Bip32PrivateKey::to_raw_key`.
+///
+/// GỘP, KHÔNG GHI ĐÈ: witness được thêm vào witness-set CÓ SẴN, nên gọi được nối
+/// tiếp sau `witness_unsigned_tx` (khoá thanh toán) khi một tx đòi cả ba chữ ký.
+/// Thứ tự gọi không quan trọng — `Vkeywitnesses` là tập, và mọi witness đều ký
+/// trên cùng một `blake2b-256(tx_body)`.
+///
+/// Tham số rỗng = BỎ QUA khoá đó. Cả hai rỗng = lỗi (không thêm gì thì caller
+/// đang gọi nhầm hàm, trả tx nguyên vẹn sẽ giấu lỗi đó tới tận lúc submit).
+///
+/// Trả CBOR hex đã ký, "" nếu lỗi. KHÔNG đụng body/auxiliary_data.
+///
+/// CHƯA CÓ FFI — cố ý. Bắc cầu ra TS bây giờ là mở một đường mà bấm vào chắc chắn
+/// hỏng: `GET /wakeme/pot` trên máy chủ thật trả `501 "pot deploy trên Preprod
+/// chưa có — chờ dependency ngoài"` (đo 2026-08-18). Hàm này là mảnh phía mình,
+/// đã có bài kiểm khoá, để khi máy chủ mở thì chỉ còn việc bắc cầu.
+#[allow(dead_code)]
+pub fn witness_unsigned_tx_ed25519(
+    unsigned_tx_cbor_hex: &str,
+    taad_master_kek_hex: &str,
+    device_secret_hex: &str,
+) -> String {
+    witness_unsigned_tx_ed25519_inner(unsigned_tx_cbor_hex, taad_master_kek_hex, device_secret_hex)
+        .unwrap_or_default()
+}
+
+#[allow(dead_code)]
+fn witness_unsigned_tx_ed25519_inner(
+    unsigned_tx_cbor_hex: &str,
+    taad_master_kek_hex: &str,
+    device_secret_hex: &str,
+) -> Result<String, &'static str> {
+    let kek_hex = taad_master_kek_hex.trim();
+    let dev_hex = device_secret_hex.trim();
+    if kek_hex.is_empty() && dev_hex.is_empty() {
+        return Err("cần ít nhất một trong hai: taad_master_kek_hex hoặc device_secret_hex");
+    }
+
+    let tx_bytes = hex::decode(unsigned_tx_cbor_hex.trim())
+        .map_err(|_| "unsigned_tx_cbor is not valid hex")?;
+    let tx = Transaction::from_bytes(tx_bytes)
+        .map_err(|_| "unsigned_tx_cbor is not a valid Cardano transaction")?;
+    let tx_body = tx.body();
+
+    // Hash body (BLAKE2b-256) — CSL 13 ẩn hash_transaction, làm tay như các chỗ khác.
+    let mut h = Blake2b256::new();
+    h.update(tx_body.to_bytes());
+    let tx_hash = TransactionHash::from_bytes(h.finalize().to_vec())
+        .map_err(|_| "TransactionHash::from_bytes failed (length mismatch)")?;
+
+    let mut witnesses = tx.witness_set();
+    let mut vkeys = witnesses.vkeys().unwrap_or_else(Vkeywitnesses::new);
+
+    if !kek_hex.is_empty() {
+        let kek = hex::decode(kek_hex).map_err(|_| "taad_master_kek_hex is not valid hex")?;
+        let seed = crate::sign::derive_taad_seed(&kek)
+            .ok_or("taad_master_kek_hex must decode to exactly 32 bytes")?;
+        let priv_key = csl::PrivateKey::from_normal_bytes(&*seed)
+            .map_err(|_| "derived TAAD seed is not a valid Ed25519 private key")?;
+        vkeys.add(&csl::make_vkey_witness(&tx_hash, &priv_key));
+    }
+
+    if !dev_hex.is_empty() {
+        let dev = hex::decode(dev_hex).map_err(|_| "device_secret_hex is not valid hex")?;
+        if dev.len() != 32 {
+            return Err("device_secret_hex must decode to exactly 32 bytes (Ed25519 seed)");
+        }
+        let priv_key = csl::PrivateKey::from_normal_bytes(&dev)
+            .map_err(|_| "device_secret_hex is not a valid Ed25519 private key")?;
+        vkeys.add(&csl::make_vkey_witness(&tx_hash, &priv_key));
+    }
+
+    witnesses.set_vkeys(&vkeys);
+    let signed = Transaction::new(&tx_body, &witnesses, tx.auxiliary_data());
+    Ok(hex::encode(signed.to_bytes()))
+}
+
 /// Build the recipient `TransactionOutput`.
 /// - ADA-only: coin = `amount_lovelace`.
 /// - With LAMP: Value = (LAMP multiasset) + at-least-min-ada coin. We seed the
@@ -740,6 +827,94 @@ mod tests {
             expected_hash.to_bytes(),
             "witness vkey must be the payment key of this account"
         );
+    }
+
+    // ── Ký bằng khoá Ed25519 THÔ (TAAD_Key / DeviceKey) ───────────
+    //
+    // WakeMe đòi hai chữ ký KHÔNG phải khoá thanh toán: `controller_pkh` (băm
+    // TAAD_Key) và `device_pkh`. Bộ bài dưới đây khoá đúng ba điều: witness cũ
+    // KHÔNG bị mất, khoá đúng là khoá suy ra được, và tham số rỗng thì bỏ qua
+    // chứ không âm thầm trả về tx nguyên vẹn.
+
+    const KEK: &str = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
+    const DEV: &str = "1122334455667788991122334455667788112233445566778899112233445566";
+
+    #[test]
+    fn ed25519_witness_them_du_hai_khoa_va_giu_witness_cu() {
+        let hex_tx = build_ada(3_000_000, &utxos_ada(10_000_000));
+        assert_eq!(parse_tx(&hex_tx).witness_set().vkeys().unwrap().len(), 1);
+
+        let out = witness_unsigned_tx_ed25519(&hex_tx, KEK, DEV);
+        assert!(!out.is_empty(), "phải ký được");
+        let vkeys = parse_tx(&out).witness_set().vkeys().unwrap();
+        assert_eq!(vkeys.len(), 3, "1 khoá thanh toán cũ + TAAD + Device");
+    }
+
+    #[test]
+    fn ed25519_witness_dung_khoa_taad_suy_tu_kek() {
+        let hex_tx = build_ada(3_000_000, &utxos_ada(10_000_000));
+        let out = witness_unsigned_tx_ed25519(&hex_tx, KEK, "");
+        let vkeys = parse_tx(&out).witness_set().vkeys().unwrap();
+        assert_eq!(vkeys.len(), 2, "chỉ thêm ĐÚNG một witness khi bỏ trống device");
+
+        // Khoá thêm vào phải băm ra đúng controller_pkh mà validator đòi.
+        let seed = crate::sign::derive_taad_seed(&hex::decode(KEK).unwrap()).unwrap();
+        let want = csl::PrivateKey::from_normal_bytes(&*seed)
+            .unwrap()
+            .to_public()
+            .hash()
+            .to_bytes();
+        let found = (0..vkeys.len())
+            .any(|i| vkeys.get(i).vkey().public_key().hash().to_bytes() == want);
+        assert!(found, "phải có witness của TAAD_Key suy từ Master_KEK");
+    }
+
+    #[test]
+    fn ed25519_witness_chu_ky_kiem_lai_duoc_tren_hash_than_tx() {
+        use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+
+        let hex_tx = build_ada(3_000_000, &utxos_ada(10_000_000));
+        let out = witness_unsigned_tx_ed25519(&hex_tx, "", DEV);
+        let tx = parse_tx(&out);
+
+        let mut h = Blake2b256::new();
+        h.update(tx.body().to_bytes());
+        let body_hash = h.finalize().to_vec();
+
+        let dev_seed: [u8; 32] = hex::decode(DEV).unwrap().try_into().unwrap();
+        let want = csl::PrivateKey::from_normal_bytes(&dev_seed)
+            .unwrap()
+            .to_public();
+
+        let vkeys = tx.witness_set().vkeys().unwrap();
+        let w = (0..vkeys.len())
+            .map(|i| vkeys.get(i))
+            .find(|w| w.vkey().public_key().as_bytes() == want.as_bytes())
+            .expect("phải có witness của DeviceKey");
+
+        // Chữ ký phải kiểm được trên blake2b-256(tx_body) — nếu băm sai chỗ thì
+        // tx vẫn dựng ra được, vẫn nộp được, và chỉ chết ở chuỗi.
+        let vk = VerifyingKey::from_bytes(&want.as_bytes().try_into().unwrap()).unwrap();
+        let sig_bytes: [u8; 64] = w.signature().to_bytes().try_into().unwrap();
+        vk.verify(&body_hash, &Signature::from_bytes(&sig_bytes))
+            .expect("chữ ký DeviceKey phải kiểm lại được trên hash thân tx");
+    }
+
+    #[test]
+    fn ed25519_witness_hai_tham_so_rong_thi_bao_loi_chu_khong_tra_tx_nguyen() {
+        let hex_tx = build_ada(3_000_000, &utxos_ada(10_000_000));
+        assert!(
+            witness_unsigned_tx_ed25519(&hex_tx, "", "").is_empty(),
+            "không thêm khoá nào mà vẫn trả tx thì caller tưởng đã ký"
+        );
+    }
+
+    #[test]
+    fn ed25519_witness_bac_kek_va_device_sai_do_dai() {
+        let hex_tx = build_ada(3_000_000, &utxos_ada(10_000_000));
+        assert!(witness_unsigned_tx_ed25519(&hex_tx, "ab", "").is_empty(), "KEK 1 byte");
+        assert!(witness_unsigned_tx_ed25519(&hex_tx, "", "ab").is_empty(), "device 1 byte");
+        assert!(witness_unsigned_tx_ed25519("zz", KEK, DEV).is_empty(), "cbor không phải hex");
     }
 
     // ── Test 7: signed CBOR re-parses as a Transaction ────────────

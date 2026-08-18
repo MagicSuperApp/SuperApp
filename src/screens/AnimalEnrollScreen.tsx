@@ -18,7 +18,7 @@
  * Ảnh quản lý hoàn toàn bằng local state.
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -95,8 +95,8 @@ const imagePicker = (() => {
 
 type RouteParams = {
   AnimalEnroll: {
-    species: string;
-    farmId: string;
+    species?: string;
+    farmId?: string;
   };
 };
 
@@ -113,7 +113,16 @@ const AnimalEnrollScreen: React.FC = () => {
   const bottomPad = useBottomActionPadding();
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<RouteParams, 'AnimalEnroll'>>();
-  const { species, farmId } = route.params;
+  // Guard cùng mẫu với AnimalIdentityScreen: `route.params` có thể vắng (deep-link
+  // hoặc caller quên truyền). Bóc thẳng là `TypeError` ⇒ màn TRẮNG, không một dòng
+  // nói vì sao. Đăng ký KHÔNG tự đoán loài/vườn được nên thiếu là quay lại.
+  const species = route.params?.species ?? '';
+  const farmId = route.params?.farmId ?? '';
+
+  useEffect(() => {
+    if (!species || !farmId) navigation.goBack();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Local state ───────────────────────────────────────────────────────────
   const [photos, setPhotos] = useState<CapturedPhoto[]>([]);
@@ -205,15 +214,20 @@ const AnimalEnrollScreen: React.FC = () => {
         const detail = res.error?.detail ?? 'Lỗi không xác định';
 
         if (status === 409) {
+          // Nút cũ ở đây là "Đăng ký mới" gọi lại `doEnroll()` với ĐÚNG nguyên gói
+          // cũ. `enrollAnimal` không có tham số `force`/`allow_duplicate` nào
+          // (animalReIDService.ts:175-190) ⇒ 409 lần nữa, hộp thoại y hệt, vòng lặp
+          // kín. Máy chủ cũng không trả mã cá thể trùng về tới đây (nhánh 409 chỉ
+          // giữ `detail`), nên KHÔNG mở thẳng hồ sơ trùng được — đừng bịa.
+          // Việc client làm được: mở sổ vật nuôi của đúng vườn để tự tìm.
           Alert.alert(
             'Cá thể có thể đã tồn tại',
-            `${detail}\n\nBạn có muốn đăng ký mới không?`,
+            `${detail}\n\nMáy chủ chưa cho ép tạo bản trùng. Mở sổ vật nuôi của vườn này để xem con đó đã có chưa. Ảnh vừa chụp vẫn giữ nguyên.`,
             [
-              { text: 'Huỷ', style: 'cancel' },
+              { text: 'Để sau', style: 'cancel' },
               {
-                text: 'Đăng ký mới',
-                style: 'destructive',
-                onPress: () => doEnroll(),
+                text: 'Mở sổ vật nuôi',
+                onPress: () => navigation.navigate('AnimalManagement', { farmId }),
               },
             ],
           );
@@ -248,7 +262,7 @@ const AnimalEnrollScreen: React.FC = () => {
         setIsEnrolling(false);
       }
     },
-    [photos, species, farmId, name, handleSuccess],
+    [photos, species, farmId, name, handleSuccess, navigation],
   );
 
   const handleEnroll = useCallback(() => {

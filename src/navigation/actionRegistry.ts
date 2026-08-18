@@ -1,5 +1,19 @@
 // navigation/actionRegistry.ts
 //
+// ⚠️ TỆP NÀY LÀ MÃ CHẾT — ĐỌC TRƯỚC KHI SỬA BẤT CỨ THỨ GÌ Ở ĐÂY.
+//
+// Đo 2026-08-18 (grep toàn `src/`): `resolveActions`, `DOMAIN_PACKS`, `resolveDomain`
+// đều KHÔNG có nơi nào gọi. Cổng xoè đang SỐNG là `src/navigation/resolveGateItems.ts`,
+// dùng ở `src/navigation/index.tsx:460`.
+//
+// Vì sao ghi cảnh báo này: đã có hai lượt rà kết luận "màn quét quả có lối vào rồi"
+// chỉ vì thấy ô "Quét quả" khai ở đây. Ngoài đồng thì không nút nào mở được màn đó —
+// máy chủ OriLife đếm 0/1859 lượt gọi `fruit/identify` suốt đợt thử thực địa.
+// Khai một ô ở tệp này KHÔNG mở được lối nào. Muốn thêm lối vào: sửa `resolveGateItems.ts`.
+//
+// Giữ tệp lại vì thiết kế "menu theo loại canh tác" bên dưới vẫn là hướng đã chốt,
+// chỉ là chưa ai nối. Ngày nối thì xoá khối cảnh báo này.
+//
 // SG4 — MENU HÀNH ĐỘNG THÍCH ỨNG (Adaptive Action Menu).
 //
 // Cốt lõi (reviewer §6): menu nhanh của nút chính KHÔNG cố định "Quét cây/Quả/

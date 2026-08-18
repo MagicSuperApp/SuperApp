@@ -64,8 +64,22 @@ const SUB_ACTIONS: Record<string, Omit<GateSubItem, 'key'>[]> = {
   // Trang trại (trace): quét cây · quét con vật · quét nhãn thuốc · thêm vườn.
   Farms: [
     { icon: 'tree', label: 'Quét cây', route: 'TreeIdentity' },
-    { icon: 'paw', label: 'Quét con vật', route: 'AnimalManagement', params: { farmId: 'default' } },
-    { icon: 'syringe', label: 'Quét nhãn thuốc', route: 'CareScan', params: { targetType: 'farm', targetId: 'default', farmId: 'default' } },
+    // "Quét con vật" phải mở màn CÓ MÁY ẢNH. Trước đây nó trỏ `AnimalManagement`
+    // — màn DANH SÁCH, không camera — nên cả nhánh vật nuôi không có lối vào nào:
+    // `AnimalIdentity` có trong navigator mà 0 lời gọi `navigate`, còn `AnimalEnroll`
+    // chỉ được gọi từ trong `AnimalIdentity` nên chết theo (sổ nợ H-13).
+    // KHÔNG kèm params: cổng chỉ biết SỐ ĐẾM vườn, không biết mã vườn nào. Màn đích
+    // tự chọn vườn (mẫu TreeEnrollScreen). Chuỗi bịa `'default'` đã từng ghi rác lên
+    // máy chủ ở nhánh chăm sóc — đừng lặp lại.
+    { icon: 'paw', label: 'Quét con vật', route: 'AnimalIdentity' },
+    { icon: 'format-list-bulleted', label: 'Sổ vật nuôi', route: 'AnimalManagement' },
+    // KHÔNG kèm `targetId: 'default'`/`farmId: 'default'` nữa. Chuỗi đó không phải mã
+    // vườn — nó là mã BỊA, và màn quét chỉ chặn mã RỖNG nên nó lọt qua, rồi nhật ký
+    // thuốc được POST thật lên máy chủ dưới một mã không thuộc về ai. Không màn nào
+    // đọc lại được (mọi màn đọc theo `farm.id`/`tree.id` thật). Cách ly là thứ chặn
+    // thu hoạch và chặn bán, nên ghi hụt ở đây đắt hơn hẳn chỗ khác.
+    // Bỏ params đi thì `targetId` về rỗng và cổng chặn của màn quét bắt đúng ca này.
+    { icon: 'syringe', label: 'Quét nhãn thuốc', route: 'CareScan' },
     { icon: 'warehouse', label: 'Thêm vườn', route: 'FarmDetail' },
   ],
   // Chat (proofchat): thông báo.

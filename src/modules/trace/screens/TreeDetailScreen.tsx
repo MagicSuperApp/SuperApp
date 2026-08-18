@@ -60,7 +60,7 @@ import {
   type TreeLayoutResponse, type TreeLayoutFruit,
   type FruitStatus, type TreeZone,
 } from '../../../services/fruitReIDService';
-import { removeTreeViews, setTreeFarm } from '../../../services/treeReIDService';
+import { getTrees, mapTreeInfoToUI, removeTreeViews, setTreeFarm } from '../../../services/treeReIDService';
 import { useSelector } from 'react-redux';
 
 const { width } = Dimensions.get('window');
@@ -261,6 +261,17 @@ const SegmentedTabBar: React.FC<{
   );
 };
 
+/** Kiểu riêng cho màn "chưa có cây" (đang tải / hỏi hỏng / không có). */
+const noTreeStyles = StyleSheet.create({
+  body: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 },
+  line: { marginTop: 16, fontSize: 16, color: COLORS.text, textAlign: 'center' },
+  retry: {
+    marginTop: 20, paddingHorizontal: 20, paddingVertical: 12,
+    backgroundColor: COLORS.accent, borderRadius: 8,
+  },
+  retryTxt: { color: COLORS.white, fontWeight: '600' },
+});
+
 // ── Main Screen ───────────────────────────────────────────────────────────────
 const TreeDetailScreen = () => {
   const tk = useTk();
@@ -271,9 +282,8 @@ const TreeDetailScreen = () => {
   const treesInStore = useSelector((state: RootState) => state.farm.trees);
   // Chấp nhận cả {tree} (object) lẫn {treeId} (string). Caller cũ TreeEnroll /
   // TreeManagement chỉ truyền treeId → tra cây từ store theo id hoặc tree_id.
-  // Chỉ dùng cây TÌM THẤY (đúng shape) nên không rủi ro sai ID; không thấy →
-  // rơi về màn not-found sẵn có bên dưới.
-  const tree = useMemo(() => {
+  // Chỉ dùng cây TÌM THẤY (đúng shape) nên không rủi ro sai ID.
+  const treeFromStore = useMemo(() => {
     if (params?.tree) return params.tree;
     const id = params?.treeId;
     if (!id) return undefined;
@@ -281,13 +291,65 @@ const TreeDetailScreen = () => {
   }, [params?.tree, params?.treeId, treesInStore]);
   const initialTab = params?.initialTab;
 
-  // Safety check: if no tree data, go back
+  /**
+   * ĐƯỜNG LÙI VỀ MÁY CHỦ khi Redux chưa có cây.
+   *
+   * Đo được: vào đây từ `TreeManagement` thì màn bật ngược trở ra. Danh sách ở
+   * `TreeManagement` lấy THẲNG từ máy chủ (`GET /api/trees`) và không đổ vào
+   * Redux, còn màn này chỉ tra Redux — nên cây vừa bấm không có trong store,
+   * `tree` là `undefined`, và effect an-toàn cũ gọi `goBack()` ngay. Người dùng
+   * thấy màn nhấp nháy rồi văng về, không một chữ giải thích.
+   *
+   * Nay: Redux không có thì HỎI MÁY CHỦ. Máy chủ chưa có cửa lấy MỘT cây
+   * (`treeReIDService` chỉ mở `GET /api/trees`, xem danh sách endpoint đầu tệp
+   * đó), nên hỏi cả danh sách rồi lọc theo `tree_id` — không bịa cửa mới.
+   * Dựng đúng bằng `mapTreeInfoToUI`, cùng hàm store dùng, để cây đến từ hai
+   * đường có CÙNG một hình dạng; hai hình dạng khác nhau là chỗ đẻ lỗi sau này.
+   */
+  const [fetchedTree, setFetchedTree] = useState<any>(null);
+  /** Đang hỏi máy chủ. Khác hẳn "không có cây" — màn phải nói ra là đang chờ. */
+  const [treeLoading, setTreeLoading] = useState(false);
+  /** Hỏi hỏng (mạng/máy chủ). Còn cây hay không thì CHƯA BIẾT. */
+  const [treeError, setTreeError] = useState<string | null>(null);
+  /** Máy chủ trả lời rõ ràng là KHÔNG có cây này. Chỉ lúc đó mới được bật ra. */
+  const [treeMissing, setTreeMissing] = useState(false);
+  const [treeNonce, setTreeNonce] = useState(0);
+  const retryTree = useCallback(() => {
+    setTreeError(null);
+    setTreeNonce(n => n + 1);
+  }, []);
+
+  const tree = treeFromStore ?? fetchedTree ?? undefined;
+
   useEffect(() => {
-    if (!tree) {
-      console.error('[TreeDetailScreen] No tree data provided, going back');
-      navigation.goBack();
-    }
-  }, [tree, navigation]);
+    const id = params?.treeId;
+    // Đã có cây (tham số hoặc store) thì khỏi hỏi — đừng bắn thêm một lượt mạng
+    // giữa vườn chỉ để lấy thứ đang cầm trong tay.
+    if (treeFromStore || !id) return;
+    let alive = true;
+    setTreeLoading(true);
+    setTreeError(null);
+    setTreeMissing(false);
+    (async () => {
+      const res = await getTrees(ORILIFE_BASE, params?.farmId);
+      if (!alive) return;
+      if (!res.ok || !res.trees) {
+        setTreeError(res.error?.detail || tk('map.tree.loadFail'));
+      } else {
+        const hit = res.trees.find(t => t.tree_id === id);
+        if (hit) setFetchedTree(mapTreeInfoToUI(hit, params?.farmId ?? ''));
+        else setTreeMissing(true);
+      }
+      setTreeLoading(false);
+    })();
+    return () => { alive = false; };
+  }, [treeFromStore, params?.treeId, params?.farmId, treeNonce, tk]);
+
+  // Bật ra CHỈ khi máy chủ cũng nói không có. Mạng hỏng thì ở lại và hỏi lại —
+  // bật ra lúc chưa biết là biến một trục trặc mạng thành "cây này không tồn tại".
+  useEffect(() => {
+    if (treeMissing) navigation.goBack();
+  }, [treeMissing, navigation]);
 
   const farms = useSelector((state: RootState) => state.farm.farms);
 
@@ -498,7 +560,9 @@ const TreeDetailScreen = () => {
     firstFruitLoad.current = false;
   }, [fetchFruits]));
 
-  // Early return if no tree data to prevent crashes
+  // Chưa có cây thì màn phải nói ĐANG Ở ĐÂU trong ba tình huống khác hẳn nhau:
+  // đang hỏi máy chủ / hỏi hỏng (chưa biết) / máy chủ nói không có. Trước bản
+  // này cả ba đều bị effect an-toàn nuốt thành một cú `goBack()` im lặng.
   if (!tree) {
     return (
       <View style={styles.root}>
@@ -507,19 +571,27 @@ const TreeDetailScreen = () => {
           <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
             <Icon name="arrow-left" size={22} color={COLORS.text} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Lỗi</Text>
+          <Text style={styles.headerTitle}>{tk('trace.tree.title')}</Text>
         </View>
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <Icon name="circle-exclamation" size={48} color={COLORS.error} />
-          <Text style={{ marginTop: 16, fontSize: 16, color: COLORS.text, textAlign: 'center' }}>
-            Không tìm thấy thông tin cây
-          </Text>
-          <TouchableOpacity
-            style={{ marginTop: 20, paddingHorizontal: 20, paddingVertical: 12, backgroundColor: COLORS.accent, borderRadius: 8 }}
-            onPress={() => navigation.goBack()}
-          >
-            <Text style={{ color: COLORS.white, fontWeight: '600' }}>Quay lại</Text>
-          </TouchableOpacity>
+        <View style={noTreeStyles.body}>
+          {treeLoading ? (
+            <>
+              <ActivityIndicator size="large" color={COLORS.accent} />
+              <Text style={noTreeStyles.line}>{tk('map.tree.loading')}</Text>
+            </>
+          ) : (
+            <>
+              <Icon name="circle-exclamation" size={48} color={COLORS.error} />
+              <Text style={noTreeStyles.line}>{treeError ?? tk('map.tree.notFound')}</Text>
+              {/* Nút hỏi lại CHỈ hiện khi lỗi là do hỏi hỏng. Máy chủ đã nói
+                  không có cây thì hỏi lại chẳng đổi được gì. */}
+              {treeError ? (
+                <TouchableOpacity style={noTreeStyles.retry} onPress={retryTree}>
+                  <Text style={noTreeStyles.retryTxt}>{tk('trace.button.retry')}</Text>
+                </TouchableOpacity>
+              ) : null}
+            </>
+          )}
         </View>
       </View>
     );

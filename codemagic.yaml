@@ -72,15 +72,16 @@ workflows:
     #
     # Và nếu gỡ rồi mà kiểu sự cố "gộp xong không thấy bản mới" VẪN tái diễn thì giả
     # thuyết này sai — đừng coi việc gỡ ở đây là đã sửa xong.
+    #
+    # Còn `feat/*` thì KHÔNG giữ lại, vì nó chưa từng khớp gì. Quy ước nhánh của kho là
+    # `feature/*`, `fix/*`, `claude/*` (`.github/workflows/branch-policy.yml:4`), và
+    # danh sách nhánh thật trên remote hôm nay chỉ có tiền tố `claude/`, `develop`,
+    # `main`. Đổi `feat/*` thành `claude/*` thì mỗi lượt đẩy nhánh làm việc lại khởi một
+    # bản dựng mac — đắt hơn hẳn thứ nó đem lại. Nên: CHẠY TAY.
+    # Đây vẫn là công cụ chẩn đoán có giá trị (bản không ký nạp được ExpoModulesJSI,
+    # bản ký thì không) — thứ cần khi đang truy lỗi, không phải mỗi lượt đẩy.
     triggering:
-      events:
-        - push
-      branch_patterns:
-        - pattern: 'feat/foundation'
-          include: true
-        - pattern: 'feat/*'
-          include: true
-      cancel_previous_builds: true
+      events: []
 
     scripts:
 
@@ -928,19 +929,17 @@ workflows:
       vars:
         APK_OUTPUT: $CM_BUILD_DIR/android/app/build/outputs/apk/debug
 
+    # CHẠY TAY (2026-08-18). Đường GitHub đã dựng APK debug trên `develop`
+    # (`.github/workflows/debug-apk.yml`) — chạy trên `ubuntu-latest` thay vì
+    # `mac_mini_m2`, và MẠNH HƠN bản này: nó soi chính tệp APK vừa ra (đủ `.so` cho mọi
+    # lát ABI, đúng host trong bản đã đóng gói), còn bản ở đây chỉ soi vật liệu đầu vào.
+    # Chạy gradle trên máy Mac để ra một tệp APK thứ hai không ai tải là trả giá đắt cho
+    # việc rẻ.
+    #
+    # Cái mất: bản 4 lát ABI (bản GitHub cố ý chỉ 2 lát vì runner hết đĩa), và APK debug
+    # từ `main`. Cần máy ảo x86 thì bấm chạy tay workflow này.
     triggering:
-      events:
-        - push
-      branch_patterns:
-        - pattern: main
-          include: true
-        - pattern: develop
-          include: true
-        - pattern: 'feat/foundation'
-          include: true
-        - pattern: 'feat/*'
-          include: true
-      cancel_previous_builds: true
+      events: []
 
     scripts:
       - name: Create .env for React Native
@@ -1375,7 +1374,18 @@ workflows:
           # credentials, không bao giờ trùng. Luôn > base (70) trên Play.
           BASE=$(grep -m1 -E "versionCode [0-9]+" android/app/build.gradle | grep -oE "[0-9]+")
           NEW=$(( BASE + ${BUILD_NUMBER:-1} ))
-          sed -i -E "s/versionCode [0-9]+/versionCode ${NEW}/" android/app/build.gradle
+          # `sed -i '' -E` chứ KHÔNG phải `sed -i -E`. Workflow này chạy trên
+          # `mac_mini_m2`, tức BSD sed: ở đó `-i` ĂN đối số ngay sau nó làm đuôi tệp sao
+          # lưu, nên `-E` bị nuốt mất, phần thay thế rơi về biểu thức chính quy cơ bản và
+          # `[0-9]+` thành dấu cộng theo nghĩa đen ⇒ KHÔNG thay gì cả, thoát 0, vẫn in
+          # dòng "✅ Android versionCode → N".
+          # Đo trên chính máy Mac này 2026-08-18: `sed -i -E` để nguyên `versionCode 70`
+          # và đẻ ra một tệp rác `build.gradle-E`; `sed -i '' -E` sửa đúng thành 99.
+          # Hệ quả nếu không vá: mọi AAB dựng từ Codemagic mang versionCode committed
+          # (70), Play từ chối vì trùng — mà nhật ký bản dựng thì báo xanh.
+          # Chỗ iOS trong chính tệp này đã viết đúng kiểu macOS từ đầu; chỉ chỗ này lệch.
+          sed -i '' -E "s/versionCode [0-9]+/versionCode ${NEW}/" android/app/build.gradle
+          echo "   đối chiếu lại từ chính tệp: $(grep -m1 -E 'versionCode [0-9]+' android/app/build.gradle)"
           echo "✅ Android versionCode → ${NEW} (base=${BASE}, BUILD_NUMBER=${BUILD_NUMBER:-1})"
 
       - name: Build signed AAB

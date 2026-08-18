@@ -1,3 +1,132 @@
+## SỬA: nút "Tải ảnh mã QR" gửi MÃ DẠNG CHỮ thay vì ảnh
+
+### Nguyên nhân, đọc từ mã React Native
+Bản trước gọi `Share.share({ url: dataUrl, message: code })`. Trên Android, `Share` của RN **vứt bỏ `url`**: nó chỉ dựng lại `{ title, message }` rồi gửi đi.
+
+```js
+// react-native/Libraries/Share/Share.js:112-115
+const newContent = {
+  title: content.title,
+  message: typeof content.message === 'string' ? content.message : undefined,
+};
+```
+
+Nên nó gửi đúng cái `message: code` tôi truyền vào. Comment tôi viết trong bản trước — *"ở Android ta chia sẻ chuỗi `data:`"* — là **sai**: nhánh Android không đọc `url` dưới bất kỳ dạng nào.
+
+### Đây là loại hỏng tệ nhất
+Nó **không báo lỗi**. Một việc khác đã xảy ra, và báo thành công. Người dùng bấm "tải ảnh", nhận được chữ, và không có gì trên màn nói rằng có chuyện gì sai.
+
+Nên luật của tệp đó bây giờ là: **không có đường lùi nào gửi chữ thay cho ảnh.** Không xuất được ảnh thì nói không xuất được ảnh.
+
+### Đường đúng
+Thêm `expo-sharing` (~56.0.23, khớp SDK) — nó chia sẻ được TỆP trên cả hai nền, và trên Android tự dựng `content://` qua FileProvider của chính nó, thứ mà `Share` của RN không làm còn app này thì chưa khai FileProvider nào.
+
+Đường đi: PNG base64 → ghi tệp tạm → `Sharing.shareAsync(uri, { mimeType: 'image/png' })`.
+
+Đường lùi **chỉ trên iOS**, và chỉ với `url` là `file://` — ở đó nhánh `ios` của `Share.js` thật sự đọc `url`. Android **không có đường lùi**, và đó là câu trả lời đúng chứ không phải thiếu sót.
+
+### Bài kiểm khoá đúng lỗi này
+`saveQrImage.test.ts` không chỉ kiểm "có gọi chia sẻ không". Nó kiểm rằng không đường nào gửi chữ:
+- expo-sharing dùng được ⇒ **không đụng** tới `Share` của RN;
+- ghi tệp hỏng ⇒ `unavailable`, `Share` không được gọi;
+- Android + expo-sharing báo không hỗ trợ ⇒ `unavailable`, `Share` không được gọi (đây chính là ca đã hỏng);
+- ngay cả đường lùi iOS cũng **không** truyền `message`.
+
+### Câu lỗi tách làm hai
+`unavailable` (chưa dựng lại app sau khi thêm gói) nói *"cần cập nhật ứng dụng"*; `failed` nói *"thử lại giúp"*. Gộp lại thì người dùng bấm mãi một nút không bao giờ chạy được trên bản app họ đang cầm.
+
+Kiểm: `tsc` sạch · **1.478/1.478 test xanh** (+11) · eslint 0 lỗi.
+
+## Mã QR công khai: chấm tròn trên nền logo, và một tấm trượt để bật
+
+### Vì sao phải tự dựng lưới, không dùng ảnh của máy chủ
+`GET /qr/{code}` trả một tấm SVG **đã vẽ xong** — ô vuông đen, nền trắng, không có chỗ chen vào. Muốn cái nhìn khác thì phải có **LƯỚI**, không phải có **ẢNH**. Nên thêm `qrcode-generator` (thuần JS, không native, không cần dựng lại app) và app tự sinh lưới ở `features/treeQr/qrMatrix.ts`.
+
+Tự sinh mã an toàn ở đây vì thứ nhúng vào QR là URL công khai do chính app dựng (`publicTraceUrl`) — không phải bí mật nào của máy chủ, và hai bên ra cùng một chuỗi.
+
+### Ba chốt giữ cho mã còn quét được
+Ảnh nền + chấm tròn đều ăn vào phần "sạch" của mã. Ba thứ bù lại, đừng gỡ cái nào:
+
+1. **Ô SÁNG cũng phải vẽ** (chấm màu nền, đục). Bỏ chúng thì logo lộ nguyên mảng và độ tương phản sáng/tối biến mất — mã trông đẹp hơn và chết hẳn. Logo lộ ra qua **bốn góc nhỏ** mà chấm tròn chừa lại ở mỗi ô; máy quét lấy mẫu ở TÂM ô, nơi luôn là màu đặc.
+2. **Ba ô định vị vẽ VUÔNG, trên nền trơn.** Máy quét tìm mã bằng tỉ lệ 1:1:3:1:1 của ba ô đó. Bo tròn hoặc cho logo chạy qua là phá đúng cái mốc dùng để tìm mã. Bản mẫu web cũng giữ vuông — nhưng nó dùng `zone = 11` (quét cả vùng canh giờ), ở đây dùng đúng 7×7 rồi lót thêm một ô trắng mỗi phía.
+3. **Mức sửa lỗi H (~30%)**, không phải mặc định M. Cái giá là lưới dày hơn ⇒ ô nhỏ đi — đánh đổi đúng cho một cái tem đem dán ngoài vườn.
+
+Thêm một chốt bản mẫu web không có: **lề trắng 4 ô** theo chuẩn. Nhiều thư viện rút xuống 1–2 cho gọn, và đó là lý do quen thuộc khiến một mã "đẹp" không quét được khi dán sát mép nhãn.
+
+### Tải ảnh: bảng chia sẻ, KHÔNG phải lưu thẳng vào thư viện
+`react-native-svg` có sẵn `toDataURL` trên ref → PNG base64. Lưu thẳng vào thư viện ảnh cần `expo-media-library`/CameraRoll — dự án không có, và thêm mô-đun native nghĩa là phải dựng lại app trước khi nút sống. Bảng chia sẻ thì có sẵn và làm được nhiều hơn: chọn *Lưu ảnh*, hoặc **gửi thẳng cho thợ in** — với một cái tem cần đem đi in thì việc sau hay xảy ra hơn.
+
+Hai bẫy đã tránh: Android **không nhận `file://`** qua `Share` (đòi `content://` + FileProvider) nên ở đó chia sẻ chuỗi `data:`; và tên tệp mang **mã cây**, không phải `qr.png` — xuất mã cho mười cây rồi mở thư mục Tải về mà nhìn thấy mười tệp `qr.png` thì coi như hỏng.
+
+### Nút bật công khai ra khỏi chỗ khuất
+Trước đây đây là NƠI DUY NHẤT bật được công khai, và nó là một thẻ nằm trong tab thứ ba. Đo trên kho sản xuất 08/2026: **139 cây — 54 riêng tư, 85 chưa đặt, 0 công khai.** Không phải nông dân không muốn; là không ai tìm ra chỗ bấm.
+
+Nay: nút **ngay trên nút "Thu hoạch quả"**, mở một tấm trượt (`TreePublicSheet`). Nút phụ vẽ **viền** chứ không đặc, để hai nút không tranh nhau làm nút chính của màn.
+
+⚠ Điều kiện dựng thanh dưới đã đổi: trước nó chỉ hiện khi cây **đã có quả**, vì trong thanh chỉ có nút thu hoạch. Bật công khai thì không đợi cây có quả — nó là mắt xích đầu của chuỗi truy xuất, phải bấm được từ ngày trồng. Nên thanh hiện ở mọi cây; riêng nút thu hoạch giữ điều kiện cũ.
+
+`TreePublicCard` (tab Thông tin) rút về đúng vai: một dòng cho biết trạng thái + lối đi tới cùng tấm trượt đó. Giữ cả hai bản giao diện thì thành hai màn cùng làm một việc, và sớm muộn hai bản lệch nhau.
+
+Kiểm: `tsc` sạch · **1.467/1.467 test xanh** (+16) · eslint 0 lỗi trên tệp mới (TreeDetailScreen giữ đúng 6 lỗi có sẵn).
+
+## Thẻ vườn ở trang Tổng quan: một mảng xanh lá mạ, có tán lá ở góc
+
+Thẻ "Vườn của tôi" (tab thông tin) từ **ba ô trắng rời** thành **một thẻ màu**.
+
+### Vì sao đổi lần thứ tư
+Ba bản trước: thẻ to bọc ba cụm icon-trên-số ngăn bằng vạch dọc (lối bảng biểu 2010) → lưới hai hàng → một hàng ba ô trắng. Vấn đề còn lại của bản ba: **ba ô trắng trên nền trắng thì mắt phải đi tìm chúng**. Vườn · cây · quả là thứ liếc MỘT cái rồi đi tiếp — một mảng màu đặc kéo mắt tới đúng chỗ nhanh hơn mọi cỡ chữ.
+
+Và nó chỉ hiệu quả chừng nào **trong trang chỉ có MỘT** mảng như vậy. Thêm cái thứ hai là hai cái cùng mất tác dụng — ghi thẳng vào chú thích của `LIME_CARD` để bản sau không rải màu ra khắp trang.
+
+### Màu: lá mạ, hạ tối vừa đủ để chữ trắng đọc được
+`#4F7D22`. "Lá mạ" là xanh ngả vàng của mạ non, không phải xanh lá cây già. Với chữ trắng cho tỉ lệ tương phản **~5,4:1** — qua mức AA (4,5) cho cả cỡ chữ nhỏ, mà vẫn còn ra màu mạ chứ chưa thành màu rêu. Đặt trong `theme/depth.ts` chứ không viết thẳng vào màn: eslint của dự án cấm hex trong component, và đúng ra là vậy.
+
+### Hoạ tiết tán lá — góc dưới bên phải
+Dùng lại `<Leaf>` sẵn có ở `components/layered/Organic` (phiến lá + gân giữa), ba lá **lệch cỡ và lệch góc**: xoay đều nhau thì ra hình do máy vẽ, lệch thì mắt đọc thành tán lá thật.
+
+Hai chi tiết có chủ ý:
+- Lá **tràn ra ngoài mép** và bị `overflow: hidden` cắt. Lá bị cắt ở mép trông như tán còn tiếp diễn; lá nằm gọn trong khung trông như một cái tem dán.
+- Lớp lá `pointerEvents="none"` và nằm DƯỚI chữ — không bao giờ ăn mất cú chạm.
+
+### Hai thứ dọn theo
+- **Cả thẻ bấm được** (mở danh sách vườn). Bản trước chỉ ô "Vườn" bấm được, tức hai phần ba mảng là vùng chết mà nhìn y hệt phần sống.
+- **Bỏ `hint` ở SectionHeader.** Tên vườn nay nằm trong chính thẻ; để cả hai chỗ là in cùng một chuỗi hai lần cách nhau 40 px, người đọc phải kiểm xem hai dòng có khác nhau không rồi phát hiện là không.
+- Xoá hẳn `Tile` và năm khoá kiểu của nó — không ai gọi nữa.
+
+Kiểm: `tsc` sạch · **1.451/1.451 test xanh** · eslint 0 lỗi.
+
+## Gộp develop vào feat/scan — hai nhánh cùng dựng cửa tra quả
+
+Bốn tệp xung đột, và không phải xung đột vặt: nhánh `develop` (PR #184) và nhánh này **dựng trùng nhau** cửa `POST /api/fruit/lookup` — hai service, hai màn hình, cùng một endpoint.
+
+### Điều đáng mừng: hai bên độc lập đọc ra CÙNG một hợp đồng
+Bản của develop cũng dùng `pick` · `regions` · `img_urls` · `lookup_id` · `verdict`/`EMPTY_SCOPE` · `image_unusable` · `rate_limited` · `sess`. Tức cả hai đã đọc từ máy chủ thật, không ai đoán. Xung đột là về **hình dạng API phía app**, không phải về sự thật.
+
+### Chọn gì, và vì sao
+
+| tệp | giữ | lý do |
+|---|---|---|
+| `TraceScanScreen.tsx` | bản này | ba lượt quyết định của anh nằm ở đây: bỏ tự chụp, bỏ khoanh vùng, cắt vuông theo khung ngắm. Bản develop là màn QR cũ 198 dòng, chưa có gì trong số đó. |
+| `fruitLookupService.ts` | bản này | có `imageBytes` (`prepareImage` cần), chốt 2MB tại máy, `safeExplorerUrl`/`safeHttpUrl`, và 36 bài kiểm bám theo. |
+| `fruitLookupService.test.ts` | bản này | đi kèm service trên. |
+| `FarmDetailScreen.tsx` | gộp tay | **cả hai bên đều thêm khối dòng thời gian vườn** — cùng một kết luận, khác chỗ đặt. Giữ vị trí TRÊN danh sách cây, và giữ lập luận của develop: vẽ cả khi vườn chưa có cây nào, vì việc đồng áng không đợi có cây mới ghi được. |
+
+### Không vứt cái của người khác
+Ba thứ develop đo được mà bên này chưa có, đã chép vào đầu `fruitLookupService`:
+
+- **Ba đường quả** — `identify` (nông dân, cần đăng nhập, pool theo owner) · `scan` (khách hội chợ, theo phiên trưng bày) · `lookup` (người lạ, theo cây công khai). Kèm cảnh báo của chính máy chủ: *"TUYỆT ĐỐI KHÔNG nới /api/fruit/identify cho người lạ — nới nó là biến kho thành máy tra-cứu-ngược toàn bộ quả của mọi chủ."*
+- **`SOLO` không có nghĩa "chắc chắn là quả này"** — nó nghĩa là "trong tầm chỉ có một ứng viên". Ở ngưỡng 0,72 có 73% (412/564) cặp quả khác nhau cùng cây bị nhận nhầm; siết hết nhận nhầm thì chỉ giữ 7,8% quả thật.
+- Số đo `server.py:8321` làm căn cứ cho việc màn hình không được có dấu tích xanh.
+
+Một chỗ CỐ Ý không theo develop: mã phiên `sess` **không lưu xuống đĩa**. Máy chủ tự nhận đây là lớp giữ trải nghiệm chứ không phải lớp an ninh và "giả được", nên lưu chẳng siết thêm gì — chỉ đổi lấy một mã bền theo máy, đúng thứ dùng để lần theo một người mua không đăng nhập.
+
+### Việc phải làm thêm mà danh sách xung đột KHÔNG báo
+`FruitLookupScreen.tsx` của develop (màn riêng, route `FruitLookup`) không nằm trong bốn tệp xung đột, nhưng nó gọi API của service vừa bị thay ⇒ vỡ lúc dịch. Đã chuyển nó sang union bảy nhánh.
+
+Bài học: git chỉ báo tệp **cả hai bên cùng sửa**. Tệp chỉ MỘT bên sửa mà phụ thuộc vào bên kia thì nó im — `tsc` mới là thứ tìm ra.
+
+Kiểm sau gộp: `tsc` sạch · **1.451/1.451 test xanh** (92 bộ) · eslint 0 lỗi mới (FarmDetailScreen giữ đúng 30 lỗi có sẵn từ trước, không thêm bớt).
+
 ## Thông báo: tin nhiều báo cùng đưa · dông · gió giật · mưa to
 
 Luật cảnh báo (`alertRules`) đã có từ trước nhưng **chưa có đường ra** — nó quyết định cái gì đáng báo rồi không có gì đưa nó khỏi app. Nay nối xong, và thêm nhánh thời tiết.

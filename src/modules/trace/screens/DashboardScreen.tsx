@@ -48,9 +48,10 @@ import { loadActivities, loadFarms, loadTrees, syncFarmsFromBackend } from '../s
 import FarmsMapCard from '../components/FarmsMap';
 import { showError } from '../../../utils/alert';
 import { Card, Ground, SectionHeader } from '../components/layered/Surface';
+import { Leaf } from '../components/layered/Organic';
 import {
-  AI_TINT, DARK_CARD, NATURE, ORGANIC_CARD, ORGANIC_TILE, RADIUS,
-  SPACE, SURFACE, TONE, TOUCH_MIN, TYPE,
+  AI_TINT, DARK_CARD, LIME_CARD, NATURE, ORGANIC_CARD, ORGANIC_TILE, RADIUS,
+  SPACE, SURFACE, TONE, TYPE,
 } from '../theme/depth';
 import {
   DEFAULT_COORD, centroidOf, describeWeather, farmAdviceKey, fetchWeather, weekdayVi,
@@ -386,10 +387,13 @@ const DashboardScreen: React.FC = () => {
           </View>
 
           {/* ══ MỤC 1 — VƯỜN CỦA TÔI ══════════════════════════════════════ */}
+          {/* KHÔNG còn `hint` ở đây: tên vườn nay nằm trong chính thẻ bên dưới.
+              Để cả hai chỗ là in cùng một chuỗi hai lần cách nhau 40 px — người
+              đọc phải kiểm xem hai dòng đó có khác nhau không, rồi phát hiện là
+              không. */}
           <SectionHeader
             icon={ICON.farm}
             title={tk('trace.section.myGarden')}
-            hint={hasData ? spot.name : tk('trace.empty.noGarden')}
             actionLabel={hasData ? tk('trace.button.viewGardens') : undefined}
             onAction={hasData ? () => navigation.navigate('FarmList') : undefined}
           />
@@ -416,31 +420,86 @@ const DashboardScreen: React.FC = () => {
 
           {gardenTab === 'list' ? (
             <>
-              {/* Lưới BENTO: ba ô số, không viền chung, không icon.
-                  Bản trước là một thẻ to bọc ba cụm icon-trên-số, ngăn nhau bằng hai
-                  vạch dọc — đúng lối bảng biểu những năm 2010. Bỏ icon vì ở đây icon
-                  không thêm nghĩa nào: "Vườn", "Cây", "Quả" đã là ba chữ ai cũng đọc
-                  được, còn ba icon xanh-vàng chỉ tranh chỗ với chính con số. */}
-              {/* Thu gọn còn một HÀNG NGANG ba ô, thay cho lưới hai hàng.
-                  Ba con số này là thứ liếc qua chứ không phải thứ đọc kỹ — chiếm hơn
-                  một phần ba màn hình cho chúng là lấy mất chỗ của thời tiết và giá,
-                  hai thứ người ta mở app để xem. Icon nhỏ cạnh nhãn thay cho ô icon
-                  to: vẫn nhận ra nhanh, mà chỉ tốn 14 px. */}
-              <View style={styles.bento}>
-                <Tile icon={ICON.farm} value={farms.length} label={tk('trace.label.gardens')}
-                  onPress={() => navigation.navigate('FarmList')} />
-                <Tile icon={ICON.tree} value={trees.length} label={tk('trace.label.trees')} />
-                <Tile icon={ICON.fruit} value={fruits.length} label={tk('trace.label.fruits')} />
-              </View>
+              {/*
+                MỘT THẺ, không phải ba ô rời.
 
-              <View style={styles.pagePad}>
+                Ba bản trước lần lượt là: thẻ to bọc ba cụm icon-trên-số ngăn bằng
+                vạch dọc (lối bảng biểu 2010) → lưới hai hàng → một hàng ba ô
+                trắng. Bản này gom lại thành MỘT mảng màu.
+
+                Vì sao đổi lần nữa: ba ô trắng trên nền trắng thì mắt phải đi tìm
+                chúng. Vườn · cây · quả là thứ liếc MỘT cái rồi đi tiếp — một mảng
+                màu đặc kéo mắt tới đúng chỗ nhanh hơn mọi cỡ chữ. Và nó chỉ hiệu
+                quả chừng nào trong trang CHỈ CÓ MỘT mảng như vậy; thêm cái thứ hai
+                là hai cái cùng mất tác dụng (xem `LIME_CARD` ở `theme/depth`).
+
+                HAI vùng chạm, KHÔNG lồng nhau: phần số bấm vào mở danh sách vườn,
+                nút bên dưới thêm cây. Lồng `Pressable` trong `Pressable` thì trên
+                Android chuyện "cú chạm này thuộc về ai" phụ thuộc thứ tự dựng và
+                vùng đè — thứ chỉ lộ ra trên máy thật, ở đúng cái nút quan trọng
+                nhất của trang. Tách phẳng thì không phải đoán.
+              */}
+              <View style={styles.gardenCard}>
+                {/*
+                  HOẠ TIẾT TÁN LÁ — góc dưới bên phải.
+
+                  Nằm DƯỚI chữ và `pointerEvents="none"`, nên không bao giờ ăn mất
+                  cú chạm. Ba lá lệch cỡ và lệch góc: xoay đều nhau thì ra hình do
+                  máy vẽ, lệch thì mắt đọc thành tán lá thật. Tràn ra ngoài mép và
+                  bị `overflow: hidden` cắt — lá bị cắt ở mép trông như tán lá còn
+                  tiếp diễn, lá nằm gọn trong khung thì trông như một cái tem dán.
+                */}
+                <View style={styles.gardenLeaves} pointerEvents="none">
+                  <Leaf size={132} color={LIME_CARD.leaf} opacity={0.20} rotate={-18} style={styles.leafA} />
+                  <Leaf size={92} color={LIME_CARD.leaf} opacity={0.28} rotate={34} style={styles.leafB} />
+                  <Leaf size={64} color={NATURE.paper} opacity={0.13} rotate={-52} style={styles.leafC} />
+                </View>
+
                 <Pressable
-                  style={({ pressed }) => [styles.primaryBtn, pressed && styles.pressed]}
+                  onPress={() => navigation.navigate('FarmList')}
+                  style={({ pressed }) => [styles.gardenTop, pressed && styles.pressed]}
+                  accessibilityRole="button"
+                  accessibilityLabel={tk('trace.section.myGarden')}
+                >
+                  <View style={styles.gardenHead}>
+                    <Icon name={ICON.farm} size={13} color={LIME_CARD.textSoft} />
+                    <Text style={styles.gardenHeadTxt} numberOfLines={1}>
+                      {hasData ? spot.name : tk('trace.empty.noGarden')}
+                    </Text>
+                    <Icon name="chevron-right" size={12} color={LIME_CARD.textSoft} />
+                  </View>
+
+                  <View style={styles.gardenStats}>
+                    <GardenStat value={farms.length} label={tk('trace.label.gardens')} />
+                    <GardenStat value={trees.length} label={tk('trace.label.trees')} />
+                    <GardenStat value={fruits.length} label={tk('trace.label.fruits')} />
+                  </View>
+                </Pressable>
+
+                {/*
+                  NÚT TRONG THẺ — viền mảnh, nền trong suốt.
+
+                  Nút đặc màu xanh của trang (`TONE.primary`) đặt lên nền lá mạ là
+                  xanh-trên-xanh: hai mảng cùng họ màu chồng nhau thì mép nút biến
+                  mất, và cái duy nhất còn phân biệt được là bóng đổ — thứ bảng màu
+                  này đã bỏ. Nút VIỀN thì đường ranh do chính viền vẽ ra, không phụ
+                  thuộc vào việc hai màu có khác nhau đủ hay không.
+
+                  Không tô nền trắng: trắng đặc trên nền màu là mảng SÁNG NHẤT thẻ,
+                  nó sẽ kéo mắt về trước cả ba con số — mà ba con số mới là lý do
+                  thẻ này tồn tại. Nền chỉ là một lớp tối rất mỏng (LIME_CARD.wash),
+                  đủ để hoạ tiết lá chạy phía sau không làm chữ trắng lúc đậm lúc
+                  nhạt theo từng chữ cái.
+                */}
+                <Pressable
+                  style={({ pressed }) => [styles.gardenAction, pressed && styles.gardenActionOn]}
                   onPress={() => (hasData
                     ? navigation.navigate('FarmDetail', { farm_id: farms[0].id })
                     : navigation.navigate('FarmList'))}
+                  accessibilityRole="button"
                 >
-                  <Text style={styles.primaryBtnTxt}>
+                  <Icon name={ICON.add} size={15} color={LIME_CARD.text} />
+                  <Text style={styles.gardenActionTxt}>
                     {tk(hasData ? 'trace.button.addTree' : 'trace.button.createFirstGarden')}
                   </Text>
                 </Pressable>
@@ -656,34 +715,18 @@ const GardenTab: React.FC<{
 );
 
 /**
- * Một ô số trong lưới Bento.
+ * Một con số trong thẻ vườn.
  *
- * `wide` chiếm nguyên hàng trên; hai ô còn lại chia đôi hàng dưới. Ô rộng dành
- * cho VƯỜN vì đó là thứ bấm vào được — cây và quả chỉ là con số đếm theo.
+ * Không icon cạnh nhãn: trên nền màu đặc, một icon nhỏ mờ đi thành vệt bẩn, còn
+ * đủ đậm thì nó tranh chỗ với chính con số. "Vườn" · "Cây" · "Quả" là ba chữ ai
+ * cũng đọc được — thêm hình vào là thêm thứ để nhìn chứ không thêm nghĩa.
  */
-const Tile: React.FC<{
-  icon: IconName; value: number; label: string; onPress?: () => void;
-}> = ({ icon, value, label, onPress }) => {
-  const body = (
-    <>
-      <Text style={styles.tileVal}>{value}</Text>
-      <View style={styles.tileLblRow}>
-        <Icon name={icon} size={12} color={NATURE.barkSoft} />
-        <Text style={styles.tileLbl} numberOfLines={1}>{label}</Text>
-      </View>
-    </>
-  );
-  return onPress ? (
-    <Pressable
-      style={({ pressed }) => [styles.tile, pressed && styles.tileOn]}
-      onPress={onPress}
-    >
-      {body}
-    </Pressable>
-  ) : (
-    <View style={styles.tile}>{body}</View>
-  );
-};
+const GardenStat: React.FC<{ value: number; label: string }> = ({ value, label }) => (
+  <View style={styles.gardenStat}>
+    <Text style={styles.gardenStatVal}>{value}</Text>
+    <Text style={styles.gardenStatLbl} numberOfLines={1}>{label}</Text>
+  </View>
+);
 
 /** `1723...` → `13/08/2026`. Mốc 0 (nguồn không ghi ngày) → chuỗi rỗng. */
 function shortDate(ms: number): string {
@@ -844,13 +887,6 @@ const styles = StyleSheet.create({
   // Mục 1
   metricLabel: { ...TYPE.caption, fontWeight: '600' },
 
-  primaryBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.sm,
-    minHeight: TOUCH_MIN, marginTop: SPACE.lg,
-    ...ORGANIC_CARD, backgroundColor: TONE.primary,
-  },
-  primaryBtnTxt: { fontSize: 17, fontWeight: '700', color: NATURE.paper },
-
   // Mục 2
   retryBtn: {
     alignSelf: 'flex-start', marginTop: SPACE.md,
@@ -877,17 +913,56 @@ const styles = StyleSheet.create({
   tabTxt: { fontSize: 14.5, fontWeight: '700', color: NATURE.barkSoft },
   tabTxtOn: { color: NATURE.paper },
 
-  bento: { flexDirection: 'row', gap: SPACE.sm, paddingHorizontal: SPACE.page },
-  tile: {
-    flex: 1,
-    backgroundColor: SURFACE.raised, ...ORGANIC_CARD,
-    borderWidth: 1, borderColor: TONE.border,
-    paddingVertical: SPACE.md, paddingHorizontal: SPACE.md,
+  // Thẻ vườn — mảng màu DUY NHẤT của trang
+  gardenCard: {
+    marginHorizontal: SPACE.page,
+    paddingHorizontal: SPACE.lg,
+    paddingTop: SPACE.md,
+    paddingBottom: SPACE.md,
+    backgroundColor: LIME_CARD.bg,
+    borderWidth: 1,
+    borderColor: LIME_CARD.border,
+    // `overflow: hidden` là thứ cắt hoạ tiết lá ở mép thẻ — bỏ nó thì lá tràn ra
+    // ngoài và đè lên phần bên dưới.
+    overflow: 'hidden',
+    ...ORGANIC_CARD,
   },
-  tileOn: { backgroundColor: TONE.primarySoft },
-  tileVal: { fontSize: 24, lineHeight: 28, fontWeight: '700', letterSpacing: -0.8, color: NATURE.bark },
-  tileLblRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 1 },
-  tileLbl: { fontSize: 12.5, color: NATURE.barkSoft, flexShrink: 1 },
+  gardenLeaves: { ...StyleSheet.absoluteFillObject },
+  leafA: { position: 'absolute', right: -34, bottom: -40 },
+  leafB: { position: 'absolute', right: 34, bottom: -30 },
+  leafC: { position: 'absolute', right: -8, bottom: 24 },
+
+  /** Vùng chạm thứ nhất: nhãn + ba con số → mở danh sách vườn. */
+  gardenTop: { paddingBottom: SPACE.md },
+  gardenHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  gardenHeadTxt: {
+    flex: 1, fontSize: 13, fontWeight: '600', color: LIME_CARD.textSoft,
+  },
+  gardenStats: { flexDirection: 'row', marginTop: SPACE.md },
+  gardenStat: { flex: 1 },
+  gardenStatVal: {
+    fontSize: 30, lineHeight: 34, fontWeight: '800',
+    letterSpacing: -1, color: LIME_CARD.text,
+  },
+  gardenStatLbl: { fontSize: 13, color: LIME_CARD.textSoft, marginTop: 1 },
+
+  /**
+   * Vùng chạm thứ hai: nút thêm cây.
+   *
+   * Cao 46 chứ không 56 như `TOUCH_MIN` của trang: đây là hành động PHỤ nằm trong
+   * một thẻ, không phải nút chính giữa màn trống. 46 vẫn trên ngưỡng 44 mà cả
+   * Android lẫn iOS đặt cho vùng chạm nhỏ nhất — vẫn bấm được bằng ngón tay đeo
+   * găng, mà không biến nửa dưới thẻ thành một cái nút.
+   */
+  gardenAction: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+    minHeight: 46,
+    borderRadius: RADIUS.chip,
+    borderWidth: 1, borderColor: LIME_CARD.border,
+    backgroundColor: LIME_CARD.wash,
+  },
+  gardenActionOn: { backgroundColor: LIME_CARD.washOn },
+  gardenActionTxt: { fontSize: 15.5, fontWeight: '700', color: LIME_CARD.text },
 
   // ── Mục giá
   priceCard: {

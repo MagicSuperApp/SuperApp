@@ -217,6 +217,39 @@ export const TONE = {
  */
 export const AI_TINT = '#EDE7FB';
 
+/**
+ * Thẻ XANH LÁ MẠ — thẻ thông tin vườn ở trang Tổng quan.
+ *
+ * "Lá mạ" là xanh ngả vàng của mạ non, không phải xanh lá cây già. Hạ tối vừa đủ
+ * để chữ TRẮNG đọc được: #4F7D22 với chữ trắng cho tỉ lệ tương phản ~5,4:1 — qua
+ * mức AA (4,5) cho cả cỡ chữ nhỏ, mà vẫn còn ra màu mạ chứ chưa thành màu rêu.
+ *
+ * Vì sao một thẻ MÀU giữa trang toàn thẻ trắng: ba con số vườn·cây·quả là thứ
+ * người ta liếc một cái rồi đi tiếp. Một mảng màu đặc kéo mắt tới đúng chỗ đó
+ * nhanh hơn bất cứ cỡ chữ nào, và nó chỉ hiệu quả chừng nào TRONG TRANG CHỈ CÓ
+ * MỘT — thêm cái thứ hai là hai cái cùng mất tác dụng.
+ */
+export const LIME_CARD = {
+  bg: '#4F7D22',
+  /** Đậm hơn — dùng cho lớp nằm dưới / mảng loang trong thẻ. */
+  bgDeep: '#3E6419',
+  /** Sáng hơn nền — dùng cho hoạ tiết lá, đủ nổi mà không thành hình vẽ chính. */
+  leaf: '#8CBF4D',
+  text: '#FFFFFF',
+  textSoft: 'rgba(255, 255, 255, 0.78)',
+  border: 'rgba(255, 255, 255, 0.14)',
+  /**
+   * Lớp tối rất nhẹ cho một vùng NẰM TRONG thẻ (nút, ô nhập).
+   *
+   * Cần nó vì hoạ tiết lá chạy qua phía sau: nút để trong suốt hoàn toàn thì chữ
+   * trắng có lúc nằm trên nền lá sáng hơn, có lúc trên nền thẻ — độ tương phản
+   * đổi theo từng chữ cái. Một lớp tối mỏng làm nền dưới chữ trở lại đồng đều mà
+   * không cần thêm màu nào mới.
+   */
+  wash: 'rgba(0, 0, 0, 0.13)',
+  washOn: 'rgba(0, 0, 0, 0.26)',
+} as const;
+
 export const DARK_CARD = {
   bg: '#123A47',
   bgSoft: '#1B4C5C',

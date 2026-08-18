@@ -62,8 +62,35 @@
  *   một lượt tải 2G rồi mới nhận lỗi. Cân KHÔNG được thì vẫn gửi — chặn oan một
  *   tấm hợp lệ tệ hơn nhận một 413.
  *
- * Tệp RIÊNG, không nhét vào `fruitReIDService`, vì tệp kia ký DID ở mọi lượt
- * gọi. Người mua vừa bổ quả ra ăn thì không có DID nào cả.
+ * ══ BA ĐƯỜNG QUẢ, ĐỪNG LẪN ═══════════════════════════════════════════════
+ * (Gộp từ nhánh `develop` khi hai bên cùng dựng cửa này — phần dưới là dữ kiện
+ * bên kia đo được mà bên này chưa có.)
+ *
+ * Máy chủ khai BA cửa quả, mỗi cửa một PHẠM VI và một TIỀN ĐỀ khác hẳn:
+ *
+ *   /api/fruit/identify  NÔNG DÂN · cần đăng nhập · pool khoá cứng theo `owner`.
+ *                        Đường đọc nội bộ vườn mình → `fruitReIDService.ts`.
+ *   /api/fruit/scan      KHÁCH HỘI CHỢ · không đăng nhập · phạm vi = một phiên
+ *                        trưng bày; phiên đóng là mã chết.
+ *   /api/fruit/lookup    NGƯỜI LẠ · không đăng nhập · phạm vi = quả thuộc cây mà
+ *                        chính nông dân đã bật CÔNG KHAI.        ← TỆP NÀY
+ *
+ * Máy chủ ghi thẳng vào mã: *"TUYỆT ĐỐI KHÔNG nới `/api/fruit/identify` cho người
+ * lạ — nới nó là biến kho thành máy tra-cứu-ngược toàn bộ quả của mọi chủ."* Nên
+ * đừng bao giờ "gộp cho gọn" hai tệp service này lại.
+ *
+ * Tệp RIÊNG, không nhét vào `fruitReIDService`, cũng vì lẽ đó — và vì tệp kia ký
+ * DID ở mọi lượt gọi, còn người mua vừa bổ quả ra ăn thì không có DID nào cả.
+ *
+ * ══ `SOLO` KHÔNG CÓ NGHĨA LÀ "CHẮC CHẮN LÀ QUẢ NÀY" ══════════════════════════
+ * Đo trên máy chủ 04/08/2026 (`server.py:8321`): ở ngưỡng 0,72 có **73%
+ * (412/564)** cặp quả KHÁC NHAU trên cùng một cây bị nhận nhầm là cùng quả; siết
+ * tới mức hết nhận nhầm thì chỉ giữ 7,8% quả thật. Kết luận của chính nhà đó:
+ * *"Không có điểm hoạt động nào cứu được một đáp án đơn."*
+ *
+ * ⇒ `verdict === 'SOLO'` nghĩa là **"trong tầm chỉ có một ứng viên"**, KHÔNG phải
+ * "đúng là quả này". Màn hình tiêu thụ tệp này tuyệt đối không được dựng dấu tích
+ * xanh và không được tự đi tiếp giùm người dùng, kể cả ở ca SOLO.
  */
 
 import type { APIError } from './fruitReIDService';
@@ -212,6 +239,11 @@ let _sess: string | null = null;
  *
  * Sinh mới mỗi lần mở app, KHÔNG lưu xuống đĩa: đây không phải danh tính, và
  * một mã theo máy vĩnh viễn thì đúng là thứ dùng để lần theo người mua.
+ *
+ * (Nhánh `develop` lưu mã này vào AsyncStorage. Đã cân nhắc và giữ bản không
+ * lưu: máy chủ tự nhận đây là lớp GIỮ TRẢI NGHIỆM chứ không phải lớp an ninh và
+ * "giả được", nên lưu xuống đĩa chẳng siết thêm được gì — chỉ đổi lấy một mã bền
+ * theo máy, tức đúng thứ dùng để lần theo một người mua không đăng nhập.)
  */
 export function lookupSession(): string {
   if (!_sess) {

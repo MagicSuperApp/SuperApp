@@ -16,9 +16,18 @@ jest.mock('../sdk/chatMls', () => ({
   },
 }));
 
+// Secure store GIẢ có nhớ: cần đọc lại được thứ vừa ghi để test hàng chờ epoch
+// (trần lần thử, quá hạn, bản ghi định dạng cũ). Tên biến phải bắt đầu bằng
+// `mock` thì jest mới cho factory tham chiếu ra ngoài.
+const mockSecureStoreData: Record<string, string> = {};
 jest.mock('../sdk/taadEnclave', () => ({
-  secureLoad: jest.fn(async () => null),
-  secureStore: jest.fn(async () => undefined),
+  secureLoad: jest.fn(async (k: string) =>
+    Object.prototype.hasOwnProperty.call(mockSecureStoreData, k) ? mockSecureStoreData[k] : null,
+  ),
+  secureStore: jest.fn(async (k: string, v: string) => {
+    mockSecureStoreData[k] = v;
+    return true;
+  }),
 }));
 
 const mockCreate: jest.Mock = jest.fn();
@@ -74,6 +83,12 @@ beforeEach(() => {
   // State module (danh tính, hàng chờ Welcome, nhóm đã vào) dùng chung giữa các ca —
   // không reset thì ca "chưa init" chỉ đúng nhờ MAY MẮN là nó chạy trước ca gọi init.
   svc._resetForTest();
+  // Secure store giả cũng phải dọn: `_resetForTest()` chỉ xoá biến trong module,
+  // còn state ĐÃ LƯU thì ca sau nạp lại và ăn theo ca trước.
+  for (const k of Object.keys(mockSecureStoreData)) delete mockSecureStoreData[k];
+  // `clearAllMocks` KHÔNG gỡ implementation → `mockRejectedValue` của ca trước còn
+  // sống sang ca sau. Đặt lại mặc định "đẩy thành công" ở đây.
+  mockCreateEpochSync.mockReset().mockResolvedValue(undefined);
   mockCreate.mockResolvedValue({ id: 'conv-1' });
   mockRoomKeyPackages.mockResolvedValue([
     { stakeAddress: ME, keyPackage: 'kp-me' }, // chính mình — phải bị loại
@@ -192,5 +207,153 @@ describe('loại hội thoại đi theo lựa chọn người dùng', () => {
     await svc.init(ME);
     await svc.createGroupConversation('Nhóm', ['did:phoenix:bob']);
     expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ type: 'GROUP' }));
+  });
+});
+
+// ── Trần của hàng chờ epoch ─────────────────────────────────────────────────
+//
+// Trước bản vá: bản ghi CHỈ rời hàng chờ khi đẩy thành công. Server từ chối vĩnh
+// viễn một bản ⇒ nó được gọi lại ở MỌI lần mở chat, mãi mãi; hàng chờ cũng không
+// có trần kích thước. Các ca dưới đây khoá ba trần lại.
+
+const PENDING_KEY = 'chat_mls_pending_epoch';
+const MAX_ATTEMPTS = 8; // khớp MAX_EPOCH_ATTEMPTS trong proofchatService.ts
+const MAX_QUEUE = 50; // khớp MAX_PENDING_EPOCHS
+const TTL_MS = 7 * 24 * 60 * 60 * 1000; // khớp PENDING_EPOCH_TTL_MS
+
+/** Nạp sẵn hàng chờ vào secure store giả (như thể lần chạy trước để lại). */
+const seedPending = (recs: unknown[]): void => {
+  mockSecureStoreData[PENDING_KEY] = JSON.stringify(recs);
+};
+
+describe('hàng chờ epoch có trần', () => {
+  let warnSpy: jest.SpyInstance;
+  beforeEach(() => {
+    // dropPending() cố tình console.warn — đúng ý đồ (không nuốt im), nhưng đừng
+    // để nó lấp đầy đầu ra test.
+    warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+  });
+  afterEach(() => warnSpy.mockRestore());
+
+  it('bản ghi định dạng CŨ (thiếu attempts/thời gian) vẫn đọc được, không sập', async () => {
+    seedPending([
+      { conversationId: 'conv-cũ', epoch: 3, commitMessage: 'C', welcomeMessage: 'W' },
+    ]);
+    expect(await svc.getPendingEpochCount()).toBe(1);
+
+    const res = await svc.flushPendingEpochs();
+    expect(res).toEqual({ sent: 1, remaining: 0, dropped: 0 });
+    // Chỉ 4 trường đi lên server — sổ sách nội bộ KHÔNG rò ra API.
+    expect(mockCreateEpochSync).toHaveBeenCalledWith({
+      conversationId: 'conv-cũ',
+      epoch: 3,
+      commitMessage: 'C',
+      welcomeMessage: 'W',
+    });
+  });
+
+  it('bản ghi cũ KHÔNG bị coi là quá hạn ngay lần mở đầu tiên', async () => {
+    // Thiếu firstQueuedAt → tuổi tính từ LÚC ĐỌC, không phải mốc 0 (1970).
+    seedPending([{ conversationId: 'c', epoch: 1, commitMessage: '', welcomeMessage: 'W' }]);
+    mockCreateEpochSync.mockRejectedValue(new Error('rớt mạng'));
+
+    const res = await svc.flushPendingEpochs();
+    expect(res.remaining).toBe(1);
+    expect(res.dropped).toBe(0);
+  });
+
+  it('server hỏng vĩnh viễn → sau đúng 8 lần thử thì RỜI hàng chờ, không gọi lại nữa', async () => {
+    seedPending([{ conversationId: 'conv-hỏng', epoch: 1, commitMessage: 'C', welcomeMessage: 'W' }]);
+    mockCreateEpochSync.mockRejectedValue(new Error('server từ chối vĩnh viễn'));
+
+    for (let i = 0; i < 20; i += 1) await svc.flushPendingEpochs();
+
+    expect(mockCreateEpochSync).toHaveBeenCalledTimes(MAX_ATTEMPTS);
+    const stats = await svc.getEpochQueueStats();
+    expect(stats.pending).toBe(0);
+    expect(stats.dropped).toBe(1);
+    expect(stats.drops[0]).toMatchObject({
+      conversationId: 'conv-hỏng',
+      epoch: 1,
+      attempts: MAX_ATTEMPTS,
+      reason: 'attempts',
+    });
+  });
+
+  it('bản quá 7 ngày → rời hàng chờ, KHÔNG gọi server lần nào nữa', async () => {
+    seedPending([
+      {
+        conversationId: 'conv-hết-hạn',
+        epoch: 2,
+        commitMessage: 'C',
+        welcomeMessage: 'W',
+        attempts: 2,
+        firstQueuedAt: Date.now() - TTL_MS - 60_000,
+        lastAttemptAt: Date.now() - 60_000,
+      },
+    ]);
+
+    const res = await svc.flushPendingEpochs();
+    expect(mockCreateEpochSync).not.toHaveBeenCalled();
+    expect(res).toEqual({ sent: 0, remaining: 0, dropped: 1 });
+    const stats = await svc.getEpochQueueStats();
+    expect(stats.drops[0]).toMatchObject({ conversationId: 'conv-hết-hạn', reason: 'expired' });
+  });
+
+  it('hàng chờ vượt trần 50 → bỏ bản VÀO SỚM NHẤT, giữ bản mới', async () => {
+    const now = Date.now();
+    seedPending(
+      Array.from({ length: 55 }, (_, i) => ({
+        conversationId: `conv-${i}`,
+        epoch: 1,
+        commitMessage: 'C',
+        welcomeMessage: 'W',
+        attempts: 0,
+        firstQueuedAt: now - (55 - i) * 1000,
+        lastAttemptAt: now,
+      })),
+    );
+    mockCreateEpochSync.mockRejectedValue(new Error('rớt mạng'));
+
+    const res = await svc.flushPendingEpochs();
+    expect(res.remaining).toBe(MAX_QUEUE);
+    expect(res.dropped).toBe(5);
+    const stats = await svc.getEpochQueueStats();
+    // 5 bản vào sớm nhất là conv-0..conv-4.
+    expect(stats.drops.map((d) => d.conversationId)).toEqual([
+      'conv-0', 'conv-1', 'conv-2', 'conv-3', 'conv-4',
+    ]);
+    expect(stats.drops.every((d) => d.reason === 'overflow')).toBe(true);
+  });
+
+  it('sổ bản hỏng SỐNG QUA lần mở lại (đọc từ secure store), rồi xoá được', async () => {
+    seedPending([
+      {
+        conversationId: 'conv-hết-hạn',
+        epoch: 9,
+        commitMessage: '',
+        welcomeMessage: 'W',
+        attempts: 1,
+        firstQueuedAt: Date.now() - TTL_MS - 1,
+        lastAttemptAt: Date.now(),
+      },
+    ]);
+    await svc.flushPendingEpochs();
+    expect((await svc.getEpochQueueStats()).dropped).toBe(1);
+
+    // Mở lại app: state module trắng, nhưng sổ đã lưu → UI vẫn nói được "1 bản hỏng".
+    svc._resetForTest();
+    expect((await svc.getEpochQueueStats()).dropped).toBe(1);
+
+    await svc.acknowledgeDroppedEpochs();
+    expect((await svc.getEpochQueueStats()).dropped).toBe(0);
+    svc._resetForTest();
+    expect((await svc.getEpochQueueStats()).dropped).toBe(0);
+  });
+
+  it('secureLoad hỏng → hàng chờ về rỗng chứ không ném ra luồng chat', async () => {
+    const taadMock = jest.requireMock('../sdk/taadEnclave') as { secureLoad: jest.Mock };
+    taadMock.secureLoad.mockRejectedValueOnce(new Error('keystore lỗi'));
+    await expect(svc.getPendingEpochCount()).resolves.toBe(0);
   });
 });

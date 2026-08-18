@@ -19,6 +19,7 @@ import axios, {
   InternalAxiosRequestConfig,
 } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as taad from '../sdk/taadEnclave';
 import { PROOFCHAT_API_URL, PROOFCHAT_BACKEND_ENABLED } from '@env';
 import { isCapabilityLive } from '../config/runtimeGate';
 
@@ -86,30 +87,112 @@ export const isProofChatBackendEnabled = (): boolean =>
 // ── Lưu token ────────────────────────────────────────────────────────
 
 // LƯU Ý TOKEN AN TOÀN (spec §4): production PHẢI lưu token ở Keychain (iOS) /
-// Keystore (Android) — KHÔNG localStorage. AsyncStorage KHÔNG phải localStorage
-// (không đi qua WebView JS bridge công khai) nhưng cũng CHƯA mã hoá cứng bằng
-// Keychain. Nâng cấp sang react-native-keychain là việc còn treo — xem BLOCKER
-// trong PR (cần thư viện Keychain + review bảo mật). Interface get/set giữ nguyên
-// nên đổi backend lưu trữ KHÔNG phá caller.
+// Keystore (Android) — KHÔNG localStorage. Trước bản vá này token nằm THẲNG trong
+// AsyncStorage: không mã hoá cứng, và trên máy đã root/jailbreak thì đọc được như
+// tệp thường.
+//
+// Nay lưu qua `taad.secureStore` — CHÍNH cầu Keychain(iOS)/Keystore-AES(Android)
+// mà `proofchatService.ts` đã dùng cho state MLS và hàng chờ Welcome
+// (`proofchatService.ts:67`). KHÔNG thêm thư viện mới: cầu native đã có sẵn trong
+// kho (`src/sdk/taadEnclave.ts:456-465`).
+//
+// DI TRÚ: máy đã cài bản cũ vẫn còn token nằm trần trong AsyncStorage. Lần ĐỌC đầu
+// tiên sẽ chuyển giá trị đó sang secure store rồi XOÁ bản cũ — chỉ xoá khi ghi
+// secure đã xác nhận thành công, để không làm mất phiên của người đang dùng.
+//
+// KHI CẦU NATIVE KHÔNG CÓ (jest node, hoặc nền tảng chưa build Rust core):
+// `taad.secureStore` ném. Lúc đó rơi về AsyncStorage như cũ + `console.warn` một
+// lần, chứ KHÔNG làm chết đăng nhập. Đây là suy giảm CÓ BÁO, không im lặng: đọc
+// `getTokenStorageBackend()` để biết token thực tế đang nằm ở đâu.
 const ACCESS_TOKEN_KEY = 'proofchat_access_token';
 const REFRESH_TOKEN_KEY = 'proofchat_refresh_token';
 const DEVICE_ID_KEY = 'proofchat_device_id';
 
-export const setTokens = async (t: AuthTokens): Promise<void> => {
-  await AsyncStorage.multiSet([
-    [ACCESS_TOKEN_KEY, t.accessToken],
-    [REFRESH_TOKEN_KEY, t.refreshToken],
-  ]);
+/** 'secure' = Keychain/Keystore; 'async-storage' = suy giảm; null = chưa ghi lần nào. */
+let tokenBackend: 'secure' | 'async-storage' | null = null;
+let warnedInsecure = false;
+
+/** Nơi token phiên THỰC SỰ nằm ở lượt ghi/đọc gần nhất (để đo, không đoán). */
+export const getTokenStorageBackend = (): 'secure' | 'async-storage' | null => tokenBackend;
+
+const secureWrite = async (key: string, value: string): Promise<boolean> => {
+  try {
+    // Cầu native trả boolean; coi `false` cũng là trượt.
+    return (await taad.secureStore(key, value)) !== false;
+  } catch {
+    return false;
+  }
 };
 
-export const getAccessToken = (): Promise<string | null> =>
-  AsyncStorage.getItem(ACCESS_TOKEN_KEY);
+const secureRead = async (key: string): Promise<string | null> => {
+  try {
+    return await taad.secureLoad(key);
+  } catch {
+    return null;
+  }
+};
 
-export const getRefreshToken = (): Promise<string | null> =>
-  AsyncStorage.getItem(REFRESH_TOKEN_KEY);
+const warnInsecureOnce = (): void => {
+  tokenBackend = 'async-storage';
+  if (warnedInsecure) return;
+  warnedInsecure = true;
+  console.warn(
+    '[proofchat] TaadEnclave secure store không dùng được — token phiên đang nằm ' +
+      'trong AsyncStorage (KHÔNG mã hoá phần cứng).',
+  );
+};
 
-export const clearTokens = (): Promise<void> =>
-  AsyncStorage.multiRemove([ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY]).then(() => undefined);
+const writeToken = async (key: string, value: string): Promise<void> => {
+  if (await secureWrite(key, value)) {
+    tokenBackend = 'secure';
+    // Dọn nốt bản cũ để trần nếu máy này từng chạy bản trước.
+    await AsyncStorage.removeItem(key).catch(() => undefined);
+    return;
+  }
+  warnInsecureOnce();
+  await AsyncStorage.setItem(key, value);
+};
+
+const readToken = async (key: string): Promise<string | null> => {
+  const secure = await secureRead(key);
+  if (secure) {
+    tokenBackend = 'secure';
+    return secure;
+  }
+  const legacy = await AsyncStorage.getItem(key);
+  if (!legacy) return null;
+  // Di trú một chiều: chỉ xoá bản trần SAU KHI ghi secure đã thành công.
+  if (await secureWrite(key, legacy)) {
+    tokenBackend = 'secure';
+    await AsyncStorage.removeItem(key).catch(() => undefined);
+  } else {
+    warnInsecureOnce();
+  }
+  return legacy;
+};
+
+const deleteToken = async (key: string): Promise<void> => {
+  try {
+    await taad.secureDelete(key);
+  } catch {
+    /* không có cầu native → chỉ còn bản AsyncStorage bên dưới */
+  }
+  await AsyncStorage.removeItem(key).catch(() => undefined);
+};
+
+export const setTokens = async (t: AuthTokens): Promise<void> => {
+  await writeToken(ACCESS_TOKEN_KEY, t.accessToken);
+  await writeToken(REFRESH_TOKEN_KEY, t.refreshToken);
+};
+
+export const getAccessToken = (): Promise<string | null> => readToken(ACCESS_TOKEN_KEY);
+
+export const getRefreshToken = (): Promise<string | null> => readToken(REFRESH_TOKEN_KEY);
+
+export const clearTokens = async (): Promise<void> => {
+  await deleteToken(ACCESS_TOKEN_KEY);
+  await deleteToken(REFRESH_TOKEN_KEY);
+};
 
 // ── deviceId (1 UUID / thiết bị, persistent) ─────────────────────────
 // Spec §6: deviceId cần khi lấy tin nhắn + build variants + đăng KeyPackage MLS.
@@ -278,7 +361,8 @@ const refreshSingleFlight = (): Promise<AuthTokens> => {
 
 export const auth = {
   /**
-   * Đổi session token PhoenixKey lấy phiên ProofChat. Lưu token vào AsyncStorage.
+   * Đổi session token PhoenixKey lấy phiên ProofChat. Lưu token qua secure store
+   * (Keychain/Keystore) — xem khối "Lưu token" bên trên.
    * BE: POST /auth/phoenixkey/login { sessionToken } → { accessToken, refreshToken }.
    */
   phoenixKeyLogin: async (sessionToken: string): Promise<AuthTokens> => {

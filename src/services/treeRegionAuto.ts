@@ -99,6 +99,19 @@ export function pickBox(
 }
 
 /**
+ * Các box đáng đưa ra hỏi ở MỘT khung, lớn trước. Chỉ dùng cho lúc hỏi — luồng
+ * thường không gọi tới. Cắt còn `max` vì hỏi quá hai ba lựa chọn thì người ta
+ * bấm đại, tức là còn tệ hơn để máy tự quyết.
+ */
+export function candidateBoxes(
+  capture: CaptureWithBoxes | null | undefined,
+  max = 3,
+): YoloBox[] {
+  const valid = (Array.isArray(capture?.boxes) ? capture!.boxes! : []).filter(usable);
+  return [...valid].sort((a, b) => area(b) - area(a)).slice(0, Math.max(0, max));
+}
+
+/**
  * Box (hệ preview) → bbox pixel của ảnh đã lưu.
  *
  * Preview và ảnh có thể khác tỉ lệ; giả thiết là hai bên nhìn CÙNG cảnh, canh
@@ -168,6 +181,14 @@ export interface CaptureWithBoxes {
  */
 export function autoTreeRegions(
   captures: ReadonlyArray<CaptureWithBoxes> | null | undefined,
+  opts?: {
+    /**
+     * Box nông dân đã chọn ở lần hỏi (nếu có hỏi). Đặt làm dấu ban đầu ⟹ mọi
+     * khung sau bám theo nó, và không còn khung nào bị coi là lưỡng lự nữa —
+     * đó chính là chỗ "chỉ hỏi MỘT lần".
+     */
+    seed?: YoloBox | null;
+  },
 ): { regions: Array<TreeRegion | null>; ambiguousAt: number[] } {
   if (!Array.isArray(captures) || captures.length === 0) {
     return { regions: [], ambiguousAt: [] };
@@ -175,7 +196,8 @@ export function autoTreeRegions(
 
   const regions: Array<TreeRegion | null> = [];
   const ambiguousAt: number[] = [];
-  let prev: YoloBox | null = null;
+  const seed = opts?.seed;
+  let prev: YoloBox | null = seed && usable(seed) ? seed : null;
 
   captures.forEach((c, i) => {
     const { box, ambiguous } = pickBox(c?.boxes, prev);

@@ -2,6 +2,7 @@ import {
   pickBox,
   mapBoxToImage,
   autoTreeRegions,
+  candidateBoxes,
   AMBIGUOUS_AREA_RATIO,
   BOX_PAD,
   type YoloBox,
@@ -166,5 +167,62 @@ describe('autoTreeRegions — song song files[], 0 quyết định', () => {
     // ảnh 600px được quy về hệ 300px ⟹ hai vùng trùng nhau
     expect(items[1].bbox[0]).toBeCloseTo(items[0].bbox[0], 6);
     expect(items[1].bbox[2]).toBeCloseTo(items[0].bbox[2], 6);
+  });
+});
+
+describe('hỏi MỘT lần — chọn xong thì các khung sau tự bám', () => {
+  const trai = { x: 0.05, y: 0.2, w: 0.3, h: 0.6, conf: 0.9 };
+  const phai = { x: 0.62, y: 0.2, w: 0.3, h: 0.6, conf: 0.88 };
+  const khung = (boxes: YoloBox[]) => ({
+    width: 1000,
+    height: 1000,
+    frameAspect: 1,
+    boxes,
+  });
+
+  it('hai cây ngang nhau ở khung đầu ⟹ báo lưỡng lự đúng một chỗ', () => {
+    const { ambiguousAt } = autoTreeRegions([
+      khung([trai, phai]),
+      khung([trai, phai]),
+    ]);
+    expect(ambiguousAt).toEqual([0]);
+  });
+
+  it('có seed ⟹ hết lưỡng lự, và MỌI khung bám đúng cây đã chọn', () => {
+    const { regions, ambiguousAt } = autoTreeRegions(
+      [khung([trai, phai]), khung([trai, phai]), khung([trai, phai])],
+      { seed: phai },
+    );
+    expect(ambiguousAt).toEqual([]);
+    // Cây phải nằm ở nửa bên phải ảnh 1000px — mọi vùng phải theo nó.
+    for (const r of regions) {
+      expect(r).not.toBeNull();
+      expect(r?.bbox?.[0] ?? 0).toBeGreaterThan(500);
+    }
+  });
+
+  it('seed rác (w=0) bị bỏ qua, quay về hành vi tự quyết', () => {
+    const { ambiguousAt } = autoTreeRegions([khung([trai, phai])], {
+      seed: { x: 0.5, y: 0.5, w: 0, h: 0, conf: 0.9 },
+    });
+    expect(ambiguousAt).toEqual([0]);
+  });
+
+  it('candidateBoxes trả lớn trước và cắt còn tối đa 3', () => {
+    const nhieu = [
+      { x: 0.0, y: 0.0, w: 0.1, h: 0.1, conf: 0.9 },
+      { x: 0.2, y: 0.0, w: 0.4, h: 0.4, conf: 0.9 },
+      { x: 0.4, y: 0.0, w: 0.2, h: 0.2, conf: 0.9 },
+      { x: 0.6, y: 0.0, w: 0.3, h: 0.3, conf: 0.9 },
+    ];
+    const out = candidateBoxes(khung(nhieu));
+    expect(out).toHaveLength(3);
+    expect(out[0].w).toBe(0.4);
+    expect(out[2].w).toBe(0.2);
+  });
+
+  it('khung không có box ⟹ candidateBoxes rỗng, không ném', () => {
+    expect(candidateBoxes(khung([]))).toEqual([]);
+    expect(candidateBoxes(null)).toEqual([]);
   });
 });

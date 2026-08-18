@@ -6,6 +6,9 @@
 //  - Tap mở panel chat (placeholder UI sẵn sàng nối với backend chatbot).
 
 import React, { useEffect, useRef, useState } from 'react';
+import { DeviceEventEmitter } from 'react-native';
+
+import { ASSISTANT_OPEN_EVENT } from './assistantBus';
 import {
   View,
   Text,
@@ -95,6 +98,26 @@ const AssistantBubble: React.FC = () => {
     },
   ]);
   const [draft, setDraft] = useState('');
+
+  /**
+   * Mở trợ lý TỪ NƠI KHÁC trong app (thanh hỏi ở trang Tổng quan).
+   *
+   * Dùng sự kiện chứ không dùng route: trợ lý là một BONG BÓNG NỔI trên mọi màn,
+   * không phải một trang — `navigate` tới nó là không có gì để tới. Cùng lối với
+   * sự kiện `openScreen` sẵn có trong app.
+   *
+   * `text` có thì đặt sẵn vào ô nhập, để người dùng gõ tiếp chứ không phải gõ lại.
+   */
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(
+      ASSISTANT_OPEN_EVENT,
+      (payload?: { text?: string }) => {
+        if (payload?.text) setDraft(payload.text);
+        setOpen(true);
+      },
+    );
+    return () => sub.remove();
+  }, []);
   const [isStreaming, setIsStreaming] = useState(false);
   const draggingRef = useRef(false);
   const streamHandleRef = useRef<StreamChatHandle | null>(null);

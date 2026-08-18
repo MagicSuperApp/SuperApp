@@ -7,7 +7,7 @@
  */
 
 import {
-  parseFeed, parseRssDate, cleanText, mergeFeeds, timeAgoVi, type NewsItem,
+  parseFeed, parseRssDate, cleanText, mergeFeeds, timeAgoVi, hotNews, type NewsItem,
 } from './agriNewsService';
 
 const FEED = `<?xml version="1.0" encoding="UTF-8"?>
@@ -125,5 +125,39 @@ describe('cleanText', () => {
 
   it('gộp khoảng trắng và xuống dòng', () => {
     expect(cleanText('  a\n\n  b  ')).toBe('a b');
+  });
+});
+
+describe('hotNews — tin nóng cho trang Tổng quan', () => {
+  const NOW = 1_700_000_000_000;
+  const H = 3600_000;
+  const mk = (id: string, agoH: number): NewsItem => ({
+    id, title: `Tin ${id}`, link: `https://x/${id}`, summary: '', imageUrl: null,
+    publishedAt: agoH < 0 ? 0 : NOW - agoH * H, source: 'test',
+  });
+
+  it('chỉ lấy tin trong 24 giờ, mới nhất trước', () => {
+    const out = hotNews([mk('a', 30), mk('b', 2), mk('c', 10)], { now: NOW });
+    expect(out.map(n => n.id)).toEqual(['b', 'c']);
+  });
+
+  it('cắt đúng số lượng yêu cầu', () => {
+    const out = hotNews([mk('a', 1), mk('b', 2), mk('c', 3), mk('d', 4)], { now: NOW, limit: 2 });
+    expect(out.map(n => n.id)).toEqual(['a', 'b']);
+  });
+
+  it('KHÔNG có tin nào trong 24 giờ → vẫn trả tin mới nhất, không để mục trống', () => {
+    const out = hotNews([mk('a', 100), mk('b', 50)], { now: NOW, limit: 2 });
+    expect(out.map(n => n.id)).toEqual(['b', 'a']);
+  });
+
+  it('tin không đọc được ngày rơi xuống cuối, không bị coi là mới', () => {
+    const out = hotNews([mk('nodate', -1), mk('a', 2)], { now: NOW });
+    expect(out[0].id).toBe('a');
+  });
+
+  it('danh sách rỗng → mảng rỗng, không nổ', () => {
+    expect(hotNews([], { now: NOW })).toEqual([]);
+    expect(hotNews(undefined as any, { now: NOW })).toEqual([]);
   });
 });

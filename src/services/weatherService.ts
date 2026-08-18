@@ -73,26 +73,35 @@ export function centroidOf(points: Array<{ lat: number; lng: number }>): { lat: 
  */
 export interface WeatherLook {
   labelKey: string;
+  /** Icon giao diện đơn sắc (Font Awesome) — dùng ở chỗ chật, cần theo màu chữ. */
   icon: string;
+  /**
+   * Icon THỜI TIẾT nhiều màu (bộ meteocons, tiền tố `wx-`).
+   *
+   * Dùng bộ riêng vì icon giao diện đơn sắc không phân biệt nổi "mưa nhỏ" với
+   * "mưa to" khi chỉ còn 20 px — cả hai đều ra một đám mây có mấy vạch. Bộ thời
+   * tiết có màu và hình riêng cho từng hiện tượng, đọc được ở cỡ nhỏ.
+   */
+  wxIcon: string;
   tone: 'sun' | 'cloud' | 'rain' | 'storm';
 }
 
 export function describeWeather(code: number): WeatherLook {
-  if (code === 0) return { labelKey: 'trace.sky.clear', icon: 'sun', tone: 'sun' };
-  if (code === 1) return { labelKey: 'trace.sky.mostlyClear', icon: 'sun', tone: 'sun' };
-  if (code === 2) return { labelKey: 'trace.sky.partlyCloudy', icon: 'cloud-sun', tone: 'cloud' };
-  if (code === 3) return { labelKey: 'trace.sky.cloudy', icon: 'cloud', tone: 'cloud' };
-  if (code === 45 || code === 48) return { labelKey: 'trace.sky.fog', icon: 'smog', tone: 'cloud' };
-  if (code >= 51 && code <= 57) return { labelKey: 'trace.sky.drizzle', icon: 'cloud-rain', tone: 'rain' };
-  if (code >= 61 && code <= 65) return { labelKey: 'trace.sky.rain', icon: 'cloud-showers-heavy', tone: 'rain' };
-  if (code === 66 || code === 67) return { labelKey: 'trace.sky.freezingRain', icon: 'cloud-rain', tone: 'rain' };
-  if (code >= 71 && code <= 77) return { labelKey: 'trace.sky.snow', icon: 'snowflake', tone: 'cloud' };
-  if (code >= 80 && code <= 82) return { labelKey: 'trace.sky.showers', icon: 'cloud-showers-heavy', tone: 'rain' };
-  if (code === 85 || code === 86) return { labelKey: 'trace.sky.sleet', icon: 'snowflake', tone: 'cloud' };
+  if (code === 0) return { labelKey: 'trace.sky.clear', icon: 'sun', wxIcon: 'wx-clear', tone: 'sun' };
+  if (code === 1) return { labelKey: 'trace.sky.mostlyClear', icon: 'sun', wxIcon: 'wx-clear', tone: 'sun' };
+  if (code === 2) return { labelKey: 'trace.sky.partlyCloudy', icon: 'cloud-sun', wxIcon: 'wx-partly', tone: 'cloud' };
+  if (code === 3) return { labelKey: 'trace.sky.cloudy', icon: 'cloud', wxIcon: 'wx-cloudy', tone: 'cloud' };
+  if (code === 45 || code === 48) return { labelKey: 'trace.sky.fog', icon: 'smog', wxIcon: 'wx-fog', tone: 'cloud' };
+  if (code >= 51 && code <= 57) return { labelKey: 'trace.sky.drizzle', icon: 'cloud-rain', wxIcon: 'wx-drizzle', tone: 'rain' };
+  if (code >= 61 && code <= 65) return { labelKey: 'trace.sky.rain', icon: 'cloud-showers-heavy', wxIcon: 'wx-rain', tone: 'rain' };
+  if (code === 66 || code === 67) return { labelKey: 'trace.sky.freezingRain', icon: 'cloud-rain', wxIcon: 'wx-sleet', tone: 'rain' };
+  if (code >= 71 && code <= 77) return { labelKey: 'trace.sky.snow', icon: 'snowflake', wxIcon: 'wx-snow', tone: 'cloud' };
+  if (code >= 80 && code <= 82) return { labelKey: 'trace.sky.showers', icon: 'cloud-showers-heavy', wxIcon: 'wx-heavy-rain', tone: 'rain' };
+  if (code === 85 || code === 86) return { labelKey: 'trace.sky.sleet', icon: 'snowflake', wxIcon: 'wx-sleet', tone: 'cloud' };
   // WMO chỉ có 95 · 96 · 99 cho dông — chặn TRẦN, không để `>= 95` nuốt mọi mã lạ
   // rồi báo "Dông" cho một con số vô nghĩa (đúng thứ bài kiểm đã bắt được).
-  if (code >= 95 && code <= 99) return { labelKey: 'trace.sky.storm', icon: 'cloud-bolt', tone: 'storm' };
-  return { labelKey: 'trace.sky.unknown', icon: 'cloud', tone: 'cloud' };
+  if (code >= 95 && code <= 99) return { labelKey: 'trace.sky.storm', icon: 'cloud-bolt', wxIcon: 'wx-storm', tone: 'storm' };
+  return { labelKey: 'trace.sky.unknown', icon: 'cloud', wxIcon: 'wx-unknown', tone: 'cloud' };
 }
 
 /**

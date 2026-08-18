@@ -46,10 +46,16 @@ export const BACKDROP_PHOTOS: Record<BackdropVariant, ImageSourcePropType | null
 };
 
 /**
- * Ảnh chìm tới mức nào. 0,18 là mức ảnh còn đọc ra được là cây cỏ mà chữ đen
- * trên nó vẫn đạt tương phản đọc-ngoài-nắng.
+ * Ảnh chìm tới mức nào.
+ *
+ * Hạ hẳn từ 0,45 xuống 0,10 khi đổi sang nền sáng: một tấm ảnh ở 45% biến nền
+ * "trắng ngả xanh biển" thành nền nâu-xám, tức đúng thứ vừa bỏ đi. Ở 0,10 ảnh
+ * chỉ còn là một gợn kết cấu — có thì hơn không, mà không cướp mất độ sáng.
+ *
+ * Muốn ảnh rõ hơn thì nâng số này, nhưng nâng quá 0,18 là mất luôn cảm giác
+ * sáng và bắt đầu ăn vào tương phản của chữ khi đọc ngoài nắng.
  */
-export const PHOTO_OPACITY = 0.45;
+export const PHOTO_OPACITY = 0.1;
 
 /** Có ảnh cho loại màn này chưa. */
 export const hasPhoto = (v: BackdropVariant): boolean => BACKDROP_PHOTOS[v] != null;

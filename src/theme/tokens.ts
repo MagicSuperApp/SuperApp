@@ -99,15 +99,23 @@ export const NEUTRAL_TOKENS = {
 // ── Brand palette mỗi module (nguồn: src/modules/<m>/theme/colors.ts) ──────
 // trace & chat dùng chung blue; work dùng Aladin green + cam accent.
 export const BRAND_TOKENS = {
+  /**
+   * Truy xuất — xanh lam-lục.
+   *
+   * Phải KHỚP `modules/trace/theme/depth.ts` (`TONE.primary` / `primaryDeep`).
+   * Hai bảng màu này nuôi hai chỗ khác nhau — brand nuôi HEADER và NAVBAR, còn
+   * `depth` nuôi mọi màn bên trong — nên lệch nhau là header xanh dương đội trên
+   * một module xanh lục, đúng lỗi đã gặp. Đổi một bên thì phải đổi bên kia.
+   */
   trace: {
     key: 'trace',
     name: 'Truy xuất',
-    primary:      '#3B6EA8',
-    primaryDeep:  '#264E7E',
-    primaryLight: '#B7CEE8',
-    primaryGlow:  'rgba(59, 110, 168, 0.10)',
+    primary:      '#0F8A6A',
+    primaryDeep:  '#0A6350',
+    primaryLight: '#7CC9B1',
+    primaryGlow:  'rgba(15, 138, 106, 0.10)',
     onPrimary:    '#FFFFFF',
-    gradient:     ['#4A86C2', '#264E7E'] as const,
+    gradient:     ['#12A17D', '#0A6350'] as const,
   },
   chat: {
     key: 'chat',

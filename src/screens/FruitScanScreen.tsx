@@ -37,8 +37,8 @@ import RemoteImage from '../components/RemoteImage';
 import { ORILIFE_BASE } from '../services/orilifeBase';
 import { getTrees, type TreeInfo } from '../services/treeReIDService';
 import {
-  identifyFruit, listFruits, fruitIdentifyVerdict,
-  type FruitDecision, type FruitStatus, type FruitVerdict,
+  identifyFruit, listFruits, fruitIdentifyVerdict, detectFruit,
+  type FruitDecision, type FruitStatus, type FruitVerdict, type FruitRegion,
 } from '../services/fruitReIDService';
 import { withPhotoSave } from '../services/mediaSavePermission';
 import {
@@ -165,10 +165,40 @@ const FruitScanScreen: React.FC = () => {
     setBusyNote('Đang soi quả…');
     setVerdictSent(null);
     try {
+      // KHOANH VÙNG TRƯỚC KHI SO — nếu biết cây thì hỏi máy chủ quả nằm đâu trong
+      // tấm ảnh, rồi gửi kèm khung đó.
+      //
+      // Vì sao cần: lúc ĐĂNG KÝ, `FruitCropperScreen` luôn gửi ảnh kèm khung
+      // (`enrollFruit(..., lastRegion)` :711, `addFruitView(..., region)` :603).
+      // Màn này trước đây gửi CẢ TẤM, không khung. Tức là đem một tấm toàn cảnh
+      // đi so với những bản mẫu đã cắt sát quả — lệch ngay ở đầu vào, trước khi
+      // bàn tới chuyện mô hình giỏi hay dở.
+      //
+      // Không có cây ghim thì `detectFruit` không gọi được (cửa đòi `tree_id`);
+      // ca đó giữ nguyên hành vi cũ. Detect hỏng cũng giữ nguyên — thà so bằng
+      // cả tấm còn hơn chặn người dùng lại.
+      let region: FruitRegion | undefined;
+      if (pinnedTreeId) {
+        setBusyNote('Đang tìm quả trong ảnh…');
+        const det = await detectFruit(BASE_URL, uri, pinnedTreeId).catch(() => null);
+        const dets = det?.ok && det.data?.ok ? (det.data.detections ?? []) : [];
+        if (dets.length) {
+          // Quả TO nhất trong khung — cùng luật chọn với màn khoanh vùng
+          // (`FruitCropperScreen`), để hai đường không cắt ra hai quả khác nhau.
+          const best = dets.reduce(
+            (m, d) => (d.bbox[2] * d.bbox[3] > m.bbox[2] * m.bbox[3] ? d : m),
+            dets[0],
+          );
+          region = { bbox: best.bbox };
+        }
+        setBusyNote('Đang soi quả…');
+      }
+
       const res = await identifyFruit(BASE_URL, uri, {
         treeId: pinnedTreeId,
         lat: here?.lat,
         lon: here?.lon,
+        region,
       });
       const data = res.data;
       const raw = data?.candidates ?? [];

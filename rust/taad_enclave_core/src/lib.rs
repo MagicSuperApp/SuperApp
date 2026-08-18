@@ -928,37 +928,50 @@ pub extern "C" fn taad_generate_controller_keypair() -> *mut c_char {
     string_to_c(json)
 }
 
-/// Ký một giao dịch MINT LAMP được uỷ quyền bởi controller key của OrgDID.
+/// Ký một giao dịch MINT LAMP theo cổng on-chain THẬT (bản B canonical,
+/// token-mint v2 — chốt 2026-07-06, xem `LAMP/SPEC/lamp-mint-core-adapter.md`).
 ///
-/// Ráp + ký tx mint LAMP dưới LAMP minting policy. Quyền mint được đọc ĐỘNG từ
-/// TAAD anchor UTxO của OrgDID — anchor đưa vào tx làm REFERENCE INPUT (đọc,
-/// KHÔNG tiêu). LAMP policy (param theo anchor NFT) hợp lệ hoá mint khi: tx có
-/// reference input mang anchor NFT + tx ký bởi controller_pkh + datum
-/// status=Active. Controller key (Ed25519) suy từ `master_kek_hex` qua
-/// `sign::derive_taad_seed` — KHÔNG cần vân tay ở tầng Rust (vân tay gate app
-/// mở Master_KEK).
+/// Ráp + ký tx mint LAMP dưới `lamp_mint` (route DistributionVest), gate qua BA
+/// validator ghép: `supply_state` (spend, cap) + `registry` (reference, WHO) +
+/// `lamp_mint` (mint, A-DEST). Authority mint được đọc TRỰC TIẾP từ RegistryDatum
+/// (decode raw inline datum — KHÔNG còn mô hình bản A đọc controller_pkh từ TAAD
+/// anchor). Toàn bộ Δ LAMP rót vào KHO (A-DEST), KHÔNG ra ví.
 ///
 /// Thứ tự tham số PHẢI khớp `mint_lamp::build_mint_lamp_via_did`:
-///   - `master_kek_hex`       64-hex Master_KEK (suy controller key). KHÔNG log.
-///   - `anchor_utxo_json`     JSON {tx_hash,index,amount_lovelace,assets[]} của
-///                            TAAD anchor UTxO → set làm reference input.
-///   - `lamp_policy_cbor_hex` Plutus V3 LAMP minting policy (CBOR hex); hash =
-///                            LAMP policy id.
-///   - `mint_json`            JSON {asset_name_hex,amount,recipient_address?}.
-///   - `utxos_json`           JSON array UtxoInput của VÍ (fee + collateral).
-///   - `protocol_params_json` Blockfrost /epochs/latest/parameters JSON.
-///   - `wallet_seed_hex`      64-hex seed ví CIP-1852 (trả phí + nhận change).
-///   - `network`              0=testnet (preprod/preview), 1=mainnet.
-///   - `current_slot`         slot tip (TTL = current_slot + 7200).
+///   - `authority_keks_json`      JSON array 64-hex Master_KEK — 1 cho SinglePkh,
+///                                ≥ threshold cho MultiSig. KHÔNG log.
+///   - `registry_utxo_json`      JSON {tx_hash,index,inline_datum_hex} — Registry
+///                                UTxO (reference input; datum decode tại Rust).
+///   - `token_tag_hex`           hex token_tag tra bảng registry (param bake vào
+///                                lamp_mint, vd `#"4c414d50746167"`).
+///   - `supply_state_utxo_json`  JSON {tx_hash,index,amount_lovelace,assets,
+///                                inline_datum_hex} — SupplyState UTxO (SPEND,
+///                                redeemer Advance; datum decode tại Rust).
+///   - `supply_state_script_cbor` Plutus V3 supply_state script (CBOR hex); hash
+///                                = địa chỉ SupplyState UTxO đang nằm.
+///   - `kho_utxo_json`           JSON {tx_hash,index,address} — KHO UTxO (reference
+///                                input mang KHO NFT); `address` = A-DEST output.
+///   - `lamp_policy_cbor_hex`    Plutus V3 lamp_mint script (CBOR hex); hash =
+///                                LAMP policy id (mint witness).
+///   - `mint_json`               JSON {token_name_hex,amount} — Δ oil (>0).
+///   - `utxos_json`              JSON array UtxoInput ví (fee + collateral pure-ADA).
+///   - `protocol_params_json`    Blockfrost /epochs/latest/parameters JSON.
+///   - `wallet_seed_hex`         64-hex seed ví CIP-1852 (trả phí + nhận change).
+///   - `network`                 0=testnet (preprod/preview), 1=mainnet.
+///   - `current_slot`            slot tip (TTL = current_slot + 7200).
 ///
 /// Trả hex signed tx CBOR (caller free bằng `taad_free_string`) hoặc null khi
-/// lỗi. Caller (super-app team) lo: fetch dữ liệu chuỗi, evaluate-then-patch
-/// ExUnits, và submit + neo CID.
+/// lỗi. Caller (super-app team) lo: fetch dữ liệu chuỗi (registry/supply_state/
+/// kho/ví), evaluate-then-patch ExUnits, và submit + neo CID.
 #[no_mangle]
 #[allow(clippy::too_many_arguments)]
 pub unsafe extern "C" fn taad_build_mint_lamp_via_did(
-    master_kek_hex: *const c_char,
-    anchor_utxo_json: *const c_char,
+    authority_keks_json: *const c_char,
+    registry_utxo_json: *const c_char,
+    token_tag_hex: *const c_char,
+    supply_state_utxo_json: *const c_char,
+    supply_state_script_cbor: *const c_char,
+    kho_utxo_json: *const c_char,
     lamp_policy_cbor_hex: *const c_char,
     mint_json: *const c_char,
     utxos_json: *const c_char,
@@ -967,8 +980,12 @@ pub unsafe extern "C" fn taad_build_mint_lamp_via_did(
     network: u8,
     current_slot: u64,
 ) -> *mut c_char {
-    let kek = match c_str_to_string(master_kek_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let anchor = match c_str_to_string(anchor_utxo_json) { Some(s) => s, None => return std::ptr::null_mut() };
+    let auth_keks = match c_str_to_string(authority_keks_json) { Some(s) => s, None => return std::ptr::null_mut() };
+    let registry = match c_str_to_string(registry_utxo_json) { Some(s) => s, None => return std::ptr::null_mut() };
+    let token_tag = match c_str_to_string(token_tag_hex) { Some(s) => s, None => return std::ptr::null_mut() };
+    let supply_state = match c_str_to_string(supply_state_utxo_json) { Some(s) => s, None => return std::ptr::null_mut() };
+    let ss_script = match c_str_to_string(supply_state_script_cbor) { Some(s) => s, None => return std::ptr::null_mut() };
+    let kho = match c_str_to_string(kho_utxo_json) { Some(s) => s, None => return std::ptr::null_mut() };
     let policy = match c_str_to_string(lamp_policy_cbor_hex) { Some(s) => s, None => return std::ptr::null_mut() };
     let mint = match c_str_to_string(mint_json) { Some(s) => s, None => return std::ptr::null_mut() };
     let utxos = match c_str_to_string(utxos_json) { Some(s) => s, None => return std::ptr::null_mut() };
@@ -976,7 +993,8 @@ pub unsafe extern "C" fn taad_build_mint_lamp_via_did(
     let seed = match c_str_to_string(wallet_seed_hex) { Some(s) => s, None => return std::ptr::null_mut() };
 
     match mint_lamp::build_mint_lamp_via_did(
-        &kek, &anchor, &policy, &mint, &utxos, &params, &seed, network, current_slot,
+        &auth_keks, &registry, &token_tag, &supply_state, &ss_script, &kho, &policy, &mint,
+        &utxos, &params, &seed, network, current_slot,
     ) {
         Ok(tx_hex) => string_to_c(tx_hex),
         Err(_) => std::ptr::null_mut(),
@@ -1215,23 +1233,23 @@ pub unsafe extern "C" fn taad_build_mint_via_registry(
     }
 }
 
-/// Genesis SupplyState: MINT SupplyState NFT one-shot (bound vào genesis
-/// OutputReference) + khoá `SupplyStateDatum{minted_total:0, lamp_policy,
-/// lamp_asset_name}` ở addr supply_state script. Genesis UTxO bị TIÊU (one-shot).
-/// KHÔNG cần controller ký (chỉ ví trả phí).
+/// Genesis SupplyState: MINT thread NFT one-shot ("SUPPLY", bound vào genesis
+/// OutputReference) qua `thread_nft` policy + khoá `SupplyState{dist_minted:0,
+/// reserve_minted:0, dist_cap, reserve_cap}` ở addr supply_state script. Genesis UTxO
+/// bị TIÊU (one-shot). KHÔNG cần controller ký (chỉ ví trả phí).
 ///
-/// THỨ TỰ DEPLOY (supply_state.ak): tính supply_state hash → tính did_token_mint
-/// hash (param theo supply_state hash) → genesis với `lamp_policy_hex` = hash
-/// did_token_mint (token-có-cap). Phá vòng phụ-thuộc-hash.
+/// THỨ TỰ DEPLOY (thread_nft.ak/lamp_mint.ak): thread_nft (param genesis_ref) →
+/// thread_nft_policy; lamp_mint (param thread_nft_policy + caps) → lamp_policy;
+/// supply_state (param lamp_policy + thread_nft_policy + token_name). Tuyến tính.
 ///
 /// Thứ tự tham số PHẢI khớp `registry_mint::build_genesis_supply_state`:
 ///   - `genesis_utxo_json`       JSON {tx_hash,index,amount_lovelace,assets?} bị TIÊU.
-///   - `state_name_hex`          hex asset-name NFT SupplyState (vd hex "LAMP-SUPPLY")
-///                               = `state_name` bake trong supply_state script.
-///   - `lamp_policy_hex`         28-byte policy-id token-được-đếm (= did_token_mint hash).
-///   - `lamp_asset_name_hex`     hex asset-name token-được-đếm (có thể rỗng).
-///   - `supply_state_script_cbor` Plutus V3 supply_state script (CBOR hex); hash =
-///                               addr + policy id SupplyState NFT.
+///   - `thread_nft_policy_cbor`  Plutus V3 thread_nft script (CBOR hex); hash = policy
+///                               id thread NFT. Mint +1 ("SUPPLY", qty 1) dưới nó.
+///   - `dist_cap` / `reserve_cap` caps (oil) bake vào lamp_mint đã deploy (LAMP:
+///                               26_370_000_000_000_000 / 9_630_000_000_000_000).
+///   - `supply_state_script_cbor` Plutus V3 supply_state script (CBOR hex); hash = addr
+///                               khoá SupplyState UTxO.
 ///   - `utxos_json`              JSON array UtxoInput ví (fee + collateral pure-ADA).
 ///   - `params_json`             protocol params JSON.
 ///   - `wallet_seed_hex`         64-hex seed ví.
@@ -1242,9 +1260,9 @@ pub unsafe extern "C" fn taad_build_mint_via_registry(
 #[allow(clippy::too_many_arguments)]
 pub unsafe extern "C" fn taad_build_genesis_supply_state(
     genesis_utxo_json: *const c_char,
-    state_name_hex: *const c_char,
-    lamp_policy_hex: *const c_char,
-    lamp_asset_name_hex: *const c_char,
+    thread_nft_policy_cbor: *const c_char,
+    dist_cap_str: *const c_char,
+    reserve_cap_str: *const c_char,
     supply_state_script_cbor: *const c_char,
     utxos_json: *const c_char,
     params_json: *const c_char,
@@ -1253,16 +1271,20 @@ pub unsafe extern "C" fn taad_build_genesis_supply_state(
     slot: u64,
 ) -> *mut c_char {
     let genesis = match c_str_to_string(genesis_utxo_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let state_name = match c_str_to_string(state_name_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let lamp_policy = match c_str_to_string(lamp_policy_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let lamp_name = match c_str_to_string(lamp_asset_name_hex) { Some(s) => s, None => return std::ptr::null_mut() };
+    let thread_policy = match c_str_to_string(thread_nft_policy_cbor) { Some(s) => s, None => return std::ptr::null_mut() };
+    let dist_cap_s = match c_str_to_string(dist_cap_str) { Some(s) => s, None => return std::ptr::null_mut() };
+    let reserve_cap_s = match c_str_to_string(reserve_cap_str) { Some(s) => s, None => return std::ptr::null_mut() };
     let ss_script = match c_str_to_string(supply_state_script_cbor) { Some(s) => s, None => return std::ptr::null_mut() };
     let utxos = match c_str_to_string(utxos_json) { Some(s) => s, None => return std::ptr::null_mut() };
     let params = match c_str_to_string(params_json) { Some(s) => s, None => return std::ptr::null_mut() };
     let seed = match c_str_to_string(wallet_seed_hex) { Some(s) => s, None => return std::ptr::null_mut() };
 
+    // caps passed as decimal strings (oil) — u128 exceeds C u64 semantics safely.
+    let dist_cap: u128 = match dist_cap_s.trim().parse() { Ok(v) => v, Err(_) => return std::ptr::null_mut() };
+    let reserve_cap: u128 = match reserve_cap_s.trim().parse() { Ok(v) => v, Err(_) => return std::ptr::null_mut() };
+
     match registry_mint::build_genesis_supply_state(
-        &genesis, &state_name, &lamp_policy, &lamp_name, &ss_script, &utxos, &params, &seed, network, slot,
+        &genesis, &thread_policy, dist_cap, reserve_cap, &ss_script, &utxos, &params, &seed, network, slot,
     ) {
         Ok(tx_hex) => string_to_c(tx_hex),
         Err(_) => std::ptr::null_mut(),

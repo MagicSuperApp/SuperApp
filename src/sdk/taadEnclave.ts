@@ -43,6 +43,14 @@ interface TaadEnclaveNativeBridge {
   ): Promise<string>;
   // Witness (ký) tx CBOR đã dựng sẵn (GetLAMP) → CBOR hex đã ký.
   witnessUnsignedTx(kekHex: string, account: number, unsignedTxCborHex: string, network: number): Promise<string>;
+  // Dựng + ký tx MINT LAMP bằng OrgDID (cổng Registry + SupplyState + A-DEST kho) → CBOR hex.
+  buildMintLampViaDid(
+    authorityKeksJson: string, registryUtxoJson: string, tokenTagHex: string,
+    supplyStateUtxoJson: string, supplyStateScriptCbor: string, khoUtxoJson: string,
+    lampPolicyCborHex: string, mintJson: string, utxosJson: string,
+    protocolParamsJson: string, walletSeedHex: string,
+    network: number, currentSlot: number,
+  ): Promise<string>;
   // 2FA DeviceKey opt-in: sinh Ed25519 ngẫu nhiên + ký canonical → JSON {publicKeyHex,signature,secretHex}.
   deviceKeyOptin(userDid: string, nonce: string): Promise<string>;
   // Wrapping primitives
@@ -78,6 +86,7 @@ const moduleNotAvailable = (): TaadEnclaveNativeBridge => {
     buildSignedTransfer: () => reject('buildSignedTransfer') as never,
     buildStakeDelegation: () => reject('buildStakeDelegation') as never,
     witnessUnsignedTx: () => reject('witnessUnsignedTx') as never,
+    buildMintLampViaDid: () => reject('buildMintLampViaDid') as never,
     deviceKeyOptin: () => reject('deviceKeyOptin') as never,
     generateSalt: () => reject('generateSalt') as never,
     pbkdf2Derive: () => reject('pbkdf2Derive') as never,
@@ -250,6 +259,73 @@ export const witnessUnsignedTx = async (
   return cbor;
 };
 
+/**
+ * Dựng + ký tx MINT LAMP bằng OrgDID — cổng on-chain THẬT (bản B): `supply_state`
+ * (spend, cap) + `registry` (reference, AI được mint) + `lamp_mint` (mint, A-DEST).
+ * Toàn bộ LAMP đúc ra rót vào KHO Distribution, **KHÔNG ra thẳng ví** — đưa về ví
+ * là bước claim/vesting-release riêng.
+ *
+ * ⚠️ `authorityKeksHex` là mảng Master_KEK. SinglePkh cần ĐÚNG 1 khoá; MultiSig cần
+ * đủ `threshold` khoá — nghĩa là **tất cả phải nằm trên chính máy này**. Mô hình m-of-n
+ * mà mỗi người giữ khoá trên máy riêng thì đường này KHÔNG dùng được: phải có tầng gom
+ * witness rời, chưa dựng. Đừng gọi hàm này cho ca đó rồi tưởng nó chạy.
+ *
+ * ⚠️ Master_KEK tương đương gốc-tin-cậy. Mảng này đi qua cầu RN dưới dạng chuỗi JSON —
+ * KHÔNG log, KHÔNG lưu, KHÔNG gửi đi đâu.
+ *
+ * `*Json` là JSON THÔ (giữ snake_case — đừng cho qua interceptor camelCase của axios).
+ * network: 0=preprod/preview, 1=mainnet. `currentSlot` = slot tip (TTL = slot + 7200).
+ *
+ * Ý nghĩa từng tham số: `rust/taad_enclave_core/src/lib.rs::taad_build_mint_lamp_via_did`.
+ */
+export const buildMintLampViaDid = async (args: {
+  authorityKeksHex: string[];
+  registryUtxoJson: string;
+  tokenTagHex: string;
+  supplyStateUtxoJson: string;
+  supplyStateScriptCbor: string;
+  khoUtxoJson: string;
+  lampPolicyCborHex: string;
+  mintJson: string;
+  utxosJson: string;
+  protocolParamsJson: string;
+  walletSeedHex: string;
+  network: number;
+  currentSlot: number;
+}): Promise<string> => {
+  if (!Array.isArray(args.authorityKeksHex) || args.authorityKeksHex.length === 0) {
+    throw new Error('buildMintLampViaDid: cần ít nhất 1 Master_KEK authority');
+  }
+  if (!Number.isInteger(args.currentSlot) || args.currentSlot < 0) {
+    throw new Error(`buildMintLampViaDid: currentSlot phải là số nguyên ≥ 0 (nhận ${args.currentSlot})`);
+  }
+
+  const cbor = await bridge.buildMintLampViaDid(
+    JSON.stringify(args.authorityKeksHex),
+    args.registryUtxoJson,
+    args.tokenTagHex,
+    args.supplyStateUtxoJson,
+    args.supplyStateScriptCbor,
+    args.khoUtxoJson,
+    args.lampPolicyCborHex,
+    args.mintJson,
+    args.utxosJson,
+    args.protocolParamsJson,
+    args.walletSeedHex,
+    args.network,
+    args.currentSlot,
+  );
+  if (!cbor) {
+    // Rust trả NULL cho MỌI lỗi, không kèm thông điệp. Đừng đoán nguyên nhân ở đây —
+    // liệt kê đúng những khả năng đã biết để người đọc log còn có chỗ bắt đầu.
+    throw new Error(
+      'buildMintLampViaDid: native trả rỗng — authority không khớp registry, ' +
+        'token_tag không có trong registry, vượt cap, hoặc thiếu UTxO/collateral',
+    );
+  }
+  return cbor;
+};
+
 export interface DeviceKeyOptInProof {
   /** Ed25519 raw pubkey 32 byte (64 hex) — gửi lên backend. */
   publicKeyHex: string;
@@ -328,6 +404,7 @@ export default {
   buildSignedTransfer,
   buildStakeDelegation,
   witnessUnsignedTx,
+  buildMintLampViaDid,
   deviceKeyOptin,
   generateSalt,
   pbkdf2Derive,

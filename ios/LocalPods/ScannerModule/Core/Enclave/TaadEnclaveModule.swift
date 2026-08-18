@@ -374,4 +374,53 @@ final class TaadEnclaveModule: NSObject {
         resolvePtr(out, resolve, reject, "E_MINT_LAMP",
                    "Không dựng được giao dịch mint LAMP")
     }
+
+    /// Mint token BẤT KỲ qua cổng Registry — bộ dựng tổng quát. Policy vào bằng
+    /// `tokenPolicyCbor`, policy-id suy từ hash của chính nó, nên không hàm nào ở
+    /// đây nhúng cứng một token cụ thể.
+    ///
+    /// Thứ tự tham số PHẢI khớp `taad_build_mint_via_registry` trong lib.rs.
+    ///
+    /// KHÔNG dùng cho LAMP: hàm này không dựng output KHO (A-DEST) mà nhánh
+    /// DistributionVest của `lamp_mint` đòi. Mint LAMP dùng `buildMintLampViaDid`.
+    ///
+    /// `supplyStateUtxoJson` rỗng = token KHÔNG có cap (bỏ qua SupplyState).
+    @objc(buildMintViaRegistry:registryUtxoJson:tokenPolicyCbor:mintJson:supplyStateUtxoJson:supplyStateScriptCbor:utxosJson:paramsJson:walletSeedHex:network:slot:resolver:rejecter:)
+    func buildMintViaRegistry(_ authorityKeksJson: String,
+                              registryUtxoJson: String,
+                              tokenPolicyCbor: String,
+                              mintJson: String,
+                              supplyStateUtxoJson: String,
+                              supplyStateScriptCbor: String,
+                              utxosJson: String,
+                              paramsJson: String,
+                              walletSeedHex: String,
+                              network: Int,
+                              slot: Double,
+                              resolver resolve: @escaping RCTPromiseResolveBlock,
+                              rejecter reject: @escaping RCTPromiseRejectBlock) {
+        guard slot >= 0, slot.rounded() == slot else {
+            reject("E_MINT_SLOT", "slot không hợp lệ: \(slot)", nil)
+            return
+        }
+
+        // 9 chuỗi — cấp phát một lượt rồi giải phóng bằng defer, như đường mint LAMP.
+        let inputs = [authorityKeksJson, registryUtxoJson, tokenPolicyCbor,
+                      mintJson, supplyStateUtxoJson, supplyStateScriptCbor,
+                      utxosJson, paramsJson, walletSeedHex]
+        var cs: [UnsafeMutablePointer<CChar>?] = []
+        cs.reserveCapacity(inputs.count)
+        for v in inputs { cs.append(strdup(v)) }
+        defer { for p in cs { free(p) } }
+        guard !cs.contains(where: { $0 == nil }) else {
+            reject("E_MINT_ALLOC", "Không cấp phát được vùng nhớ cho tham số mint", nil)
+            return
+        }
+
+        let out = taad_build_mint_via_registry(
+            cs[0], cs[1], cs[2], cs[3], cs[4], cs[5], cs[6], cs[7], cs[8],
+            UInt8(network), UInt64(slot))
+        resolvePtr(out, resolve, reject, "E_MINT_REGISTRY",
+                   "Không dựng được giao dịch mint qua Registry")
+    }
 }

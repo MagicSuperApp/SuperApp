@@ -3,6 +3,29 @@
 > Nguồn: handoff PhoenixKey `HANDOFF-SuperApp-orgdid-mint-2026-07-11.md`. Tuân [`Integration-Standard.md`](../Integration-Standard.md) (§1.3 silent/feature, §2.1 token, §5.1/§5.3 embed+enclave, §7.1/§7.3 nav+state, §8 checklist).
 > Trạng thái: **NO-GO ship** — chờ 4 blocker (mục 4). Đây là KẾ HOẠCH, chưa build.
 
+> ⚠️ **ĐÍNH CHÍNH 2026-08-18 — S1/S2 ĐÃ có bản dựng, đừng dựng lại từ 0.**
+> Thẻ `archive/superapp-orgdid-mint-banB` → `a0c1159` (11/07/2026, một ngày TRƯỚC khi
+> tệp này vào nhánh chính) chứa đúng S1+S2: rust `mint_lamp.rs`/`registry_mint.rs`
+> bản B (13 tham số, có Registry-gate), cầu `TaadEnclaveModule` Swift + Kotlin export
+> 7 hàm, `src/sdk/taadEnclave.ts`. Tổng 4642 dòng thêm.
+>
+> Đo trên nhánh chính hôm nay: `mint_lamp.rs` là **bản A** — `taad_build_mint_lamp_via_did`
+> ở `rust/taad_enclave_core/src/lib.rs:959` chỉ có **9 tham số** và cả tệp không nhắc
+> `registry` lần nào. Hai tệp đó **chưa bị sửa lần nào** kể từ điểm rẽ nhánh, nên ghép
+> bản B vào là thay tệp, không có xung đột nội dung.
+>
+> **Mắt xích thật đang thiếu là tầng CẦU, không phải Rust.** Đếm `mint_lamp_via_did`
+> trên nhánh chính: `lib.rs` 3 — `android_jni.rs` 0 — `TaadEnclaveModule.swift` 0 —
+> `.m` 0 — `.kt` 0 — `src/sdk/taadEnclave.ts` 0. Hàm có trong Rust nhưng JS không gọi
+> tới được. Đó là lý do `src/screens/OrgMintScreen.tsx:61` còn `buildAndSignTxStub`
+> ném `'Tính năng ký giao dịch sẽ mở ở bản sau.'`, và cũng là lý do mint OrgDID chưa
+> chạy được lần nào. Ở `a0c1159` cả 6 tầng đều có mặt (3/4/4/1/3/8).
+>
+> **Phần KHÔNG dùng lại từ `a0c1159`:** module `src/modules/phoenixOrgMint/` (4 màn,
+> gọi thẳng Blockfrost). Nhánh chính đã đi hướng khác — REST + SSE qua PhoenixKey,
+> m-of-n, mint vào KHO Distribution rồi claim-release riêng (`orgMintService.ts`).
+> Lấy phần Rust + cầu, bỏ phần UI.
+
 ## 1. PhoenixKey đã giao (phần silent — đã audit)
 - Builder Core (`_wt-core-mint-b`, `2c63ad7`, cargo 158/158): FFI `taad_build_mint_lamp_via_did` (13 tham số, thứ tự cố định) + `taad_build_create_child_taad_utxo_tx` (tạo OrgDID).
 - Validator LAMP (`_wt-lamp-mint-b`, `761bb7e`, aiken 118/118): `registry_write.ak` + `lamp_mint.ak` bản B.

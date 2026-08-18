@@ -8,7 +8,8 @@
  *  - Filter theo loài (chip ngang)
  *  - Mỗi item: tên, DID, loài, số ảnh
  *  - Long press → Action sheet: Đổi tên / Xoá (có confirmation dialog)
- *  - Empty state: icon + text + nút "Đăng ký cá thể đầu tiên"
+ *  - Empty state: icon + text + chỉ đường sang trang trại (KHÔNG có nút thêm —
+ *    thêm vật nuôi cần farm_id, xem `renderEmpty`)
  *  - Error state: icon + text + nút Thử lại
  */
 

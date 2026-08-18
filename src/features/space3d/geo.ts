@@ -12,6 +12,8 @@
  * File THUẦN TÍNH (không import three/react) → test được bằng jest.
  */
 
+import { isValidLatLon } from '../wayfind/wayfind';
+
 export interface LatLng { lat: number; lng: number }
 
 /** Điểm mặt đất trong hệ vườn (mét). y luôn = 0 nên không lưu. */
@@ -41,6 +43,47 @@ export function metersToLatLng(p: Vec2, origin: LatLng): LatLng {
     lat: origin.lat - p.z / (EARTH_R * D2R), // z âm là Bắc → lat tăng
     lng: origin.lng + p.x / (EARTH_R * D2R * (cos || 1e-12)),
   };
+}
+
+/**
+ * `{lat,lng}` này có PHẢI một chỗ có thật trên mặt đất không?
+ *
+ * Mượn nguyên luật của `wayfind.isValidLatLon` (chặn NaN, chặn ngoài
+ * [-90,90]×[-180,180], chặn 0/0) thay vì viết lại: hai màn cùng nói về một cây
+ * mà một bên nhận toạ-độ bên kia loại là kiểu lệch không ai đọc ra được. Ở đây
+ * chỉ đổi tên trường `lng` ⟶ `lon` cho khớp module kia.
+ *
+ * `Number.isFinite` một mình KHÔNG đủ: bản ghi rỗng của máy chủ về đúng
+ * `lat=0, lon=0` — số hữu hạn, nằm giữa Đại Tây Dương.
+ */
+export function isUsableLatLng(p: unknown): p is LatLng {
+  if (!p || typeof p !== 'object') return false;
+  const o = p as { lat?: unknown; lng?: unknown };
+  return isValidLatLon({ lat: o.lat as number, lon: o.lng as number });
+}
+
+/**
+ * Gốc toạ-độ SUY TỪ CHÍNH ĐÀN CÂY — dùng khi vườn chưa vẽ ranh giới.
+ *
+ * Vì sao cần: không có gốc thì `useSpaceData` phải vứt GPS thật của cây và rải
+ * chúng ngẫu-nhiên (`seededPointInRing`). Vườn mới lập, chủ vườn đã đăng ký cây
+ * có toạ-độ đàng hoàng, mà sơ đồ vẫn bày ra một mảnh vườn bịa — mất đúng thứ
+ * người ta vừa đi bộ ngoài nắng để ghi.
+ *
+ * Trung bình cộng các cây HỢP LỆ. Cây toạ-độ rác bị loại trước khi cộng: một
+ * bản ghi 0/0 lọt vào là kéo tâm vườn ra giữa Đại Tây Dương, và mọi cây còn lại
+ * văng ra ngoài cảnh.
+ *
+ * Không cây nào dùng được → `null`, để nơi gọi giữ nguyên đường cũ.
+ */
+export function originFromTrees(
+  points: ReadonlyArray<unknown> | null | undefined,
+): LatLng | null {
+  const pts: LatLng[] = [];
+  for (const p of points ?? []) {
+    if (isUsableLatLng(p)) pts.push({ lat: p.lat, lng: p.lng });
+  }
+  return pts.length ? centroidLatLng(pts) : null;
 }
 
 /** Trọng-tâm đơn giản (trung bình các đỉnh) — đủ dùng làm gốc toạ-độ. */
@@ -109,22 +152,34 @@ export function fallbackRing(treeCount: number): Vec2[] {
 /**
  * Ranh giới vườn → đa-giác mét + gốc lat/lng.
  * < 3 đỉnh (chưa vẽ ranh giới) → ô vuông mặc định, `hasBoundary = false`.
+ *
+ * `treeOrigin` (tuỳ chọn, lấy từ `originFromTrees`) là gốc DỰ PHÒNG cho đúng
+ * những lúc không có ranh giới dùng được. Luật: hễ `hasBoundary = false` thì
+ * vòng ranh giới là ô vuông BỊA, tâm nằm ở (0,0) — nên gốc phải là tâm đàn cây,
+ * có vậy cây mới rơi vào trong ô đó. Lấy gốc từ một hai đỉnh ranh giới vẽ dở là
+ * đẩy cả đàn cây lệch hẳn sang một góc.
+ *
+ * Ranh giới ĐỦ 3 đỉnh và có diện tích thật thì gốc vẫn là trọng-tâm ranh giới,
+ * không đổi — `treeGeo.farmOrigin` đang dựa vào đúng con số đó.
  */
 export function buildFarmRing(
   boundary: LatLng[] | undefined | null,
   treeCount: number,
+  treeOrigin?: LatLng | null,
 ): { ring: Vec2[]; origin: LatLng | null; hasBoundary: boolean } {
   const pts = (boundary ?? []).filter(
     (p) => p && Number.isFinite(p.lat) && Number.isFinite(p.lng),
   );
+  const spare = isUsableLatLng(treeOrigin) ? treeOrigin : null;
   if (pts.length < 3) {
-    return { ring: fallbackRing(treeCount), origin: pts.length ? centroidLatLng(pts) : null, hasBoundary: false };
+    const origin = spare ?? (pts.length ? centroidLatLng(pts) : null);
+    return { ring: fallbackRing(treeCount), origin, hasBoundary: false };
   }
   const origin = centroidLatLng(pts);
   const ring = pts.map((p) => latLngToMeters(p, origin));
   // Ranh giới suy biến (mọi đỉnh gần trùng nhau) → vẫn phải có chỗ đặt cây.
   if (ringArea(ring) < 4) {
-    return { ring: fallbackRing(treeCount), origin, hasBoundary: false };
+    return { ring: fallbackRing(treeCount), origin: spare ?? origin, hasBoundary: false };
   }
   return { ring, origin, hasBoundary: true };
 }

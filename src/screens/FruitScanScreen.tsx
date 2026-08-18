@@ -37,8 +37,8 @@ import RemoteImage from '../components/RemoteImage';
 import { ORILIFE_BASE } from '../services/orilifeBase';
 import { getTrees, type TreeInfo } from '../services/treeReIDService';
 import {
-  identifyFruit, listFruits, fruitIdentifyVerdict, detectFruit,
-  type FruitDecision, type FruitStatus, type FruitVerdict, type FruitRegion,
+  identifyFruit, listFruits, fruitIdentifyVerdict,
+  type FruitDecision, type FruitStatus, type FruitVerdict,
 } from '../services/fruitReIDService';
 import { withPhotoSave } from '../services/mediaSavePermission';
 import {
@@ -64,14 +64,18 @@ const STATUS_VI: Record<FruitStatus, string> = {
 const PHOTO_OPTIONS = {
   mediaType: 'photo' as const,
   quality: 0.9 as const,
-  // Không đặt maxWidth/maxHeight: máy chủ bôi trắng ngoài vòng khoanh rồi vứt
-  // ảnh gốc, nên ảnh vào càng nét thì phần so càng đúng. Đây cũng đúng cảnh báo
-  // OriLife nêu 14/08 về việc app co ảnh trước khi gửi.
+  // 1600 px — GIỐNG đường đăng ký (`FruitListScreen`) và đường video.
   //
-  // ⚠️ CHƯA GIẢI: `FruitListScreen` và `FruitVideoScreen` vẫn co về 1600 px, tức
-  // cùng một luồng quả đang gửi lên hai cỡ ảnh khác nhau. Chưa ai đo cỡ nào cho
-  // kết quả đối chiếu tốt hơn, nên KHÔNG tự chốt số ở bất kỳ đầu nào — đang chờ
-  // OriLife trả lời.
+  // Không phải vì 1600 là cỡ tối ưu: chưa ai đo 1600 với 4032. Là vì bản mẫu dựng
+  // từ ảnh đã co về 1600 mà truy vấn gửi nguyên 4032 thì hai đầu đi qua hai đường
+  // xử lý khác nhau, và phần chênh lệch đo được không còn phân biệt được "khác
+  // quả" với "khác đường nén". Đối xứng là điều kiện để con số có nghĩa, không
+  // phải một tinh chỉnh. (OriLife xác nhận 18/08.)
+  //
+  // Cỡ tối ưu đo được ngay khi cửa `fruit/identify` bắt đầu có lượt gọi thật —
+  // trước hôm nay nó có 0 lượt trên 1859 sự kiện, vì màn này không ai mở được.
+  maxWidth: 1600,
+  maxHeight: 1600,
   saveToPhotos: true,
 };
 
@@ -178,40 +182,21 @@ const FruitScanScreen: React.FC = () => {
     setBusyNote('Đang soi quả…');
     setVerdictSent(null);
     try {
-      // KHOANH VÙNG TRƯỚC KHI SO — nếu biết cây thì hỏi máy chủ quả nằm đâu trong
-      // tấm ảnh, rồi gửi kèm khung đó.
+      // KHÔNG gọi `fruit/detect` trước nữa — đo được là thừa một lượt mạng.
       //
-      // Vì sao cần: lúc ĐĂNG KÝ, `FruitCropperScreen` luôn gửi ảnh kèm khung
-      // (`enrollFruit(..., lastRegion)` :711, `addFruitView(..., region)` :603).
-      // Màn này trước đây gửi CẢ TẤM, không khung. Tức là đem một tấm toàn cảnh
-      // đi so với những bản mẫu đã cắt sát quả — lệch ngay ở đầu vào, trước khi
-      // bàn tới chuyện mô hình giỏi hay dở.
+      // Bản trước gọi `detect` lấy khung rồi gửi khung đó kèm `identify`, vì lúc
+      // ĐĂNG KÝ thì ảnh luôn có khung còn màn này gửi cả tấm. Ý đồ đúng, cách làm
+      // thừa: **không gửi khung thì chính cửa `identify` tự chạy đúng bộ dò đó**
+      // ngay trong cùng lượt (OriLife xác nhận 18/08). Gọi trước là làm lại việc
+      // máy chủ sắp làm — mất thêm một lượt mạng, giữa vườn sóng yếu.
       //
-      // Không có cây ghim thì `detectFruit` không gọi được (cửa đòi `tree_id`);
-      // ca đó giữ nguyên hành vi cũ. Detect hỏng cũng giữ nguyên — thà so bằng
-      // cả tấm còn hơn chặn người dùng lại.
-      let region: FruitRegion | undefined;
-      if (pinnedTreeId) {
-        setBusyNote('Đang tìm quả trong ảnh…');
-        const det = await detectFruit(BASE_URL, uri, pinnedTreeId).catch(() => null);
-        const dets = det?.ok && det.data?.ok ? (det.data.detections ?? []) : [];
-        if (dets.length) {
-          // Quả TO nhất trong khung — cùng luật chọn với màn khoanh vùng
-          // (`FruitCropperScreen`), để hai đường không cắt ra hai quả khác nhau.
-          const best = dets.reduce(
-            (m, d) => (d.bbox[2] * d.bbox[3] > m.bbox[2] * m.bbox[3] ? d : m),
-            dets[0],
-          );
-          region = { bbox: best.bbox };
-        }
-        setBusyNote('Đang soi quả…');
-      }
-
+      // Khung vẫn đáng gửi khi NGƯỜI dùng tự khoanh (màn khoanh vùng làm việc đó).
+      // Khung MÁY tự tìm thì chưa đủ tin: đo 18/08 trên một ảnh cả cây có sáu quả,
+      // bộ dò trả đúng một khung và khung đó là lá với trời.
       const res = await identifyFruit(BASE_URL, uri, {
         treeId: pinnedTreeId,
         lat: here?.lat,
         lon: here?.lon,
-        region,
       });
       const data = res.data;
       const raw = data?.candidates ?? [];

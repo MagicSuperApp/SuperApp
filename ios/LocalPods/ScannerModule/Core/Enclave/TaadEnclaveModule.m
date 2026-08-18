@@ -112,6 +112,24 @@ RCT_EXTERN_METHOD(secureDelete:(NSString *)key
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
+// Mint LAMP bằng OrgDID — thứ tự PHẢI khớp selector @objc bên Swift và
+// `taad_build_mint_lamp_via_did` trong lib.rs. Đây là ba chỗ phải sửa cùng lúc.
+RCT_EXTERN_METHOD(buildMintLampViaDid:(NSString *)authorityKeksJson
+                  registryUtxoJson:(NSString *)registryUtxoJson
+                  tokenTagHex:(NSString *)tokenTagHex
+                  supplyStateUtxoJson:(NSString *)supplyStateUtxoJson
+                  supplyStateScriptCbor:(NSString *)supplyStateScriptCbor
+                  khoUtxoJson:(NSString *)khoUtxoJson
+                  lampPolicyCborHex:(NSString *)lampPolicyCborHex
+                  mintJson:(NSString *)mintJson
+                  utxosJson:(NSString *)utxosJson
+                  protocolParamsJson:(NSString *)protocolParamsJson
+                  walletSeedHex:(NSString *)walletSeedHex
+                  network:(NSInteger)network
+                  currentSlot:(double)currentSlot
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
 + (BOOL)requiresMainQueueSetup {
   return NO;
 }

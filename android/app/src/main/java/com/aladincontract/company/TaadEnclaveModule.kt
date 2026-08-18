@@ -64,6 +64,20 @@ class TaadEnclaveModule(reactContext: ReactApplicationContext) :
     private external fun nativeSignEd25519(masterKekHex: String, message: String): String?
     /** 2FA DeviceKey opt-in: sinh Ed25519 ngẫu nhiên + ký canonical → JSON. */
     private external fun nativeDeviceKeyOptin(userDid: String, nonce: String): String?
+    /**
+     * Mint LAMP bằng OrgDID (bản B — cổng Registry + SupplyState + A-DEST kho).
+     * Thứ tự tham số PHẢI khớp `android_jni.rs::…nativeBuildMintLampViaDid` và
+     * `lib.rs::taad_build_mint_lamp_via_did` (nơi duy nhất giải thích từng cái).
+     * currentSlot là Long vì JNI nhận jlong; cầu RN chỉ đưa được Double nên chỗ
+     * gọi phải đổi kiểu — xem `buildMintLampViaDid` dưới.
+     */
+    private external fun nativeBuildMintLampViaDid(
+        authorityKeksJson: String, registryUtxoJson: String, tokenTagHex: String,
+        supplyStateUtxoJson: String, supplyStateScriptCbor: String, khoUtxoJson: String,
+        lampPolicyCborHex: String, mintJson: String, utxosJson: String,
+        protocolParamsJson: String, walletSeedHex: String,
+        network: Int, currentSlot: Long,
+    ): String?
 
     // ── RN methods ──────────────────────────────────────────────────────────
 
@@ -190,6 +204,39 @@ class TaadEnclaveModule(reactContext: ReactApplicationContext) :
         run(promise, "E_DEVICE_KEY", "Không sinh được khoá thiết bị 2FA") {
             nativeDeviceKeyOptin(userDid, nonce)
         }
+
+    /**
+     * Dựng + ký tx MINT LAMP bằng OrgDID.
+     *
+     * `authorityKeksJson` = JSON array Master_KEK 64-hex. SinglePkh cần ĐÚNG 1;
+     * MultiSig cần đủ threshold khoá — tức là **tất cả phải nằm trên máy này**.
+     * Ký rải trên nhiều máy thì đường này không dùng được.
+     */
+    @ReactMethod
+    fun buildMintLampViaDid(
+        authorityKeksJson: String, registryUtxoJson: String, tokenTagHex: String,
+        supplyStateUtxoJson: String, supplyStateScriptCbor: String, khoUtxoJson: String,
+        lampPolicyCborHex: String, mintJson: String, utxosJson: String,
+        protocolParamsJson: String, walletSeedHex: String,
+        network: Int, currentSlot: Double,
+        promise: Promise,
+    ) {
+        // Slot âm hoặc không nguyên = TTL rác. Chặn tại đây, đừng để thành tx chết
+        // trên chuỗi mà người dùng chỉ thấy "gửi thất bại".
+        if (currentSlot < 0 || currentSlot != Math.floor(currentSlot)) {
+            promise.reject("E_MINT_SLOT", "current_slot không hợp lệ: $currentSlot")
+            return
+        }
+        run(promise, "E_MINT_LAMP", "Không dựng được giao dịch mint LAMP") {
+            nativeBuildMintLampViaDid(
+                authorityKeksJson, registryUtxoJson, tokenTagHex,
+                supplyStateUtxoJson, supplyStateScriptCbor, khoUtxoJson,
+                lampPolicyCborHex, mintJson, utxosJson,
+                protocolParamsJson, walletSeedHex,
+                network, currentSlot.toLong(),
+            )
+        }
+    }
 
     @ReactMethod
     fun generateSalt(promise: Promise) =

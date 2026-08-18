@@ -615,6 +615,12 @@ const TreeIdentityScreen: React.FC = () => {
       identifyTree(BASE_URL, imagePaths, {
         lat: gpsRedux?.lat,
         lon: gpsRedux?.lng,
+        // Sai số GPS. Đường đăng ký gửi (`TreeEnrollScreen.tsx:592`), đường soi thì
+        // không — mà soi mới là chỗ toạ độ quyết định nhiều nhất (`EMPTY_BUCKET`,
+        // `MOVED`, `moved_distance_m`). Máy chủ biết toạ độ mà không biết sai số
+        // ±50m dưới tán thì không nới nổi bán kính, rồi báo "cây đã di chuyển"
+        // hoặc mời đăng ký mới cho một cây đã có.
+        acc: gpsRedux?.accuracy,
         heading: heading ?? undefined,
         pitch: pitch ?? undefined,
         // Hướng theo TỪNG ảnh — trước đây chỉ gửi một con số hiện-tại cho cả loạt,
@@ -681,16 +687,31 @@ const TreeIdentityScreen: React.FC = () => {
           : androidImageUris;
 
       const res = await verifyAddTree(BASE_URL, identResult.tree_id, imgs, {
+        // `farm_id` BẮT BUỘC. Thiếu nó máy chủ gán null và cây rơi khỏi bộ lọc
+        // `/api/trees?farm_id=X` (`treeReIDService.ts:795-797`) — bổ sung ảnh xong
+        // là cây biến mất khỏi vườn, người ta tưởng mất cây rồi đăng ký lại, sinh
+        // cây trùng. Đường đăng ký đã gửi từ lâu; đường này thì quên.
+        farmId,
         lat: gpsRedux?.lat,
         lon: gpsRedux?.lng,
+        acc: gpsRedux?.accuracy,
+        regions: TreeReIDBridge.isAvailable() ? autoTreeRegions(capturesRedux).regions : undefined,
         captures: TreeReIDBridge.isAvailable() ? toCaptureOrientations(capturesRedux) : undefined,
         headingRef: platformHeadingRef(),
       });
 
-      if (res.ok) {
+      // ĐỌC CỜ, ĐỪNG ĐỌC MỖI TẦNG VẬN CHUYỂN. `res.ok` chỉ nói HTTP 200. Máy chủ
+      // vẫn trả 200 kèm `{ok:false, added:false, reason:"ảnh không khớp cây này"}`
+      // (`treeReIDService.ts:165-177`). Bản trước báo "Vị trí mới đã được lưu"
+      // trong khi máy chủ chưa lưu gì — luật này chính file dịch vụ đã viết sẵn
+      // cho một cửa khác ở `:938-941`, chỗ này chưa áp.
+      if (res.ok && res.data?.ok !== false && res.data?.added !== false) {
         Alert.alert('Đã cập nhật', 'Vị trí mới của cây đã được lưu.');
       } else {
-        Alert.alert('Chưa cập nhật được', fieldErrorMessage(res.error));
+        Alert.alert(
+          'Chưa cập nhật được',
+          res.data?.reason ?? fieldErrorMessage(res.error),
+        );
       }
     } finally {
       setIsLoading(false);
@@ -717,16 +738,31 @@ const TreeIdentityScreen: React.FC = () => {
           : androidImageUris;
 
       const res = await verifyAddTree(BASE_URL, id, imgs, {
+        farmId,
         lat: gpsRedux?.lat,
         lon: gpsRedux?.lng,
+        acc: gpsRedux?.accuracy,
+        regions: TreeReIDBridge.isAvailable() ? autoTreeRegions(capturesRedux).regions : undefined,
         captures: TreeReIDBridge.isAvailable() ? toCaptureOrientations(capturesRedux) : undefined,
         headingRef: platformHeadingRef(),
       });
 
-      if (res.ok) {
-        Alert.alert('Đã xác nhận', `Góc nhìn mới đã thêm vào cây.\nĐã thêm: ${res.data?.n_added ?? 0} góc.`);
+      if (res.ok && res.data?.ok !== false && res.data?.added !== false) {
+        // `n_added` là trường TUỲ CHỌN. `?? 0` biến "máy chủ không khai" thành
+        // "đã lưu 0 góc" — nông dân đi vòng quanh cây chụp xong đọc "0 góc đã lưu"
+        // thì tưởng công đổ sông đổ biển và chụp lại từ đầu.
+        const n = res.data?.n_added;
+        Alert.alert(
+          'Đã xác nhận',
+          n == null
+            ? 'Góc nhìn mới đã thêm vào cây.'
+            : `Góc nhìn mới đã thêm vào cây.\nĐã thêm: ${n} góc.`,
+        );
       } else {
-        Alert.alert('Chưa thêm được góc', fieldErrorMessage(res.error));
+        Alert.alert(
+          'Chưa thêm được góc',
+          res.data?.reason ?? fieldErrorMessage(res.error),
+        );
       }
     } finally {
       setIsLoading(false);

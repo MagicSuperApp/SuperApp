@@ -472,18 +472,29 @@ const TreeEnrollScreen: React.FC = () => {
           lat: gps?.lat,
           lon: gps?.lng,
           acc: gps?.accuracy,
+          // Vùng khoanh cây — `treeRegions` đã tính sẵn cùng scope và đã gửi cho
+          // `enrollTree`, nhưng đường GỘP thì bỏ quên. Đúng ca mà việc khoanh cây
+          // sinh ra để chặn: hai cây liền nhau trong khung. Đăng ký thì cắt đúng
+          // cây, gộp thì nhồi cả khung vào cây cũ ⇒ chữ ký cây cũ nhiễm đặc trưng
+          // cây bên cạnh, vĩnh viễn, và hỏng dần chứ không hỏng ngay nên không ai thấy.
+          regions: treeRegions,
           captures: captureOrientations,
           headingRef: captureOrientations ? platformHeadingRef() : undefined,
         });
 
-        if (res.ok && res.data) {
+        // Máy chủ trả 200 kèm `{ok:false, added:false}` là "KHÔNG thêm được"
+        // (`treeReIDService.ts:165-177`). Bản trước chỉ đọc `res.ok` rồi báo "Đã gộp
+        // thành công" VÀ xoá nháp — ảnh mất, cây không nhận, không dấu vết.
+        if (res.ok && res.data && res.data.ok !== false && res.data.added !== false) {
           // Tích luỹ ảnh vừa chụp vào cây đã có để màn chi tiết hiển thị lại được.
           await appendTreeImages(treeId, imagePaths);
           // Gộp xong cũng là kết thúc phiên chụp → xoá bản nháp.
           clearTreeCaptureDraft(draftOwner);
           Alert.alert(
             'Đã gộp thành công',
-            `Đã thêm ${res.data.n_added ?? 0} góc nhìn vào cây đã có.`,
+            res.data.n_added == null
+              ? 'Đã thêm góc nhìn vào cây đã có.'
+              : `Đã thêm ${res.data.n_added} góc nhìn vào cây đã có.`,
             [
               {
                 text: 'OK',
@@ -495,7 +506,10 @@ const TreeEnrollScreen: React.FC = () => {
             ],
           );
         } else {
-          Alert.alert('Lỗi gộp cây', res.error?.detail ?? 'Không thể gộp. Thử lại.');
+          Alert.alert(
+            'Chưa gộp được',
+            res.data?.reason ?? res.error?.detail ?? 'Không thể gộp. Thử lại.',
+          );
         }
       } finally {
         setIsEnrolling(false);

@@ -47,6 +47,11 @@ import {
   type ResolvedCandidate, type ScanOutcome,
 } from '../features/fruitFind/fruitFind';
 import { formatDistanceVi, type LatLon } from '../features/wayfind/wayfind';
+import { buildCaptureMeta, serializeCaptureMeta } from '../services/captureMeta';
+import { TreeReIDBridge } from '../services/treeReIDNativeBridge';
+// `absUrl` ở nhờ màn danh sách quả (chỗ duy nhất từng có chốt URL tuyệt đối).
+// Một chiều, không vòng: `FruitListScreen` không import màn nào.
+import { absUrl } from './FruitListScreen';
 
 const BASE_URL = ORILIFE_BASE;
 
@@ -62,6 +67,11 @@ const PHOTO_OPTIONS = {
   // Không đặt maxWidth/maxHeight: máy chủ bôi trắng ngoài vòng khoanh rồi vứt
   // ảnh gốc, nên ảnh vào càng nét thì phần so càng đúng. Đây cũng đúng cảnh báo
   // OriLife nêu 14/08 về việc app co ảnh trước khi gửi.
+  //
+  // ⚠️ CHƯA GIẢI: `FruitListScreen` và `FruitVideoScreen` vẫn co về 1600 px, tức
+  // cùng một luồng quả đang gửi lên hai cỡ ảnh khác nhau. Chưa ai đo cỡ nào cho
+  // kết quả đối chiếu tốt hơn, nên KHÔNG tự chốt số ở bất kỳ đầu nào — đang chờ
+  // OriLife trả lời.
   saveToPhotos: true,
 };
 
@@ -90,7 +100,10 @@ const FruitScanScreen: React.FC = () => {
   // map ngược toạ-độ khung về px ảnh gốc bằng `imageW`/`imageH`, và khi thiếu nó
   // rơi về `|| 1` (`FruitCropperScreen.tsx:226-227`) ⇒ mọi bbox gửi lên máy chủ
   // thành rác mà không báo lỗi gì.
-  const [photo, setPhoto] = useState<{ uri: string; w: number; h: number } | null>(null);
+  // `capture` = khối siêu dữ liệu lúc bấm máy (heading/pitch/cỡ ảnh gốc/máy). Nó
+  // đi CÙNG tấm ảnh vì chỉ dựng lại được tại đúng thời điểm chụp — xem
+  // `captureMeta.ts` và `FruitCropperScreen` (màn đó nhận qua route param).
+  const [photo, setPhoto] = useState<{ uri: string; w: number; h: number; capture?: string } | null>(null);
   const photoUri = photo?.uri ?? null;
   const [outcome, setOutcome] = useState<ScanOutcome | null>(null);
   const [decision, setDecision] = useState<FruitDecision | undefined>(undefined);
@@ -219,7 +232,7 @@ const FruitScanScreen: React.FC = () => {
   }, [pinnedTreeId, here, buildIndex]);
 
   const takePhoto = useCallback(async () => {
-    launchCamera(await withPhotoSave(PHOTO_OPTIONS), (resp: any) => {
+    launchCamera(await withPhotoSave(PHOTO_OPTIONS), async (resp: any) => {
       if (resp.didCancel) return;
       if (resp.errorCode) {
         Alert.alert('Lỗi máy ảnh', resp.errorMessage ?? 'Không mở được máy ảnh. Kiểm tra quyền.');
@@ -233,7 +246,15 @@ const FruitScanScreen: React.FC = () => {
         Alert.alert('Ảnh thiếu kích thước', 'Máy không trả kích thước ảnh. Anh chụp lại giúp.');
         return;
       }
-      setPhoto({ uri: asset.uri, w: asset.width, h: asset.height });
+      // Dựng NGAY ĐÂY, không đợi tới lúc mở màn khoanh: heading/pitch là số đo
+      // tại thời điểm bấm máy, tới màn kia người ta đã xoay máy đi rồi và không
+      // dựng lại được (`FruitCropperScreen` nói rõ điều đó ở khối route param).
+      // Hỏng thì bỏ trống, không chặn luồng quét.
+      let capture: string | undefined;
+      try {
+        capture = serializeCaptureMeta(await buildCaptureMeta(asset, TreeReIDBridge));
+      } catch { capture = undefined; }
+      setPhoto({ uri: asset.uri, w: asset.width, h: asset.height, capture });
       setOutcome(null);
       setPicks([]);
       runScan(asset.uri);
@@ -257,6 +278,7 @@ const FruitScanScreen: React.FC = () => {
         imageUri: photo.uri,
         imageW: photo.w,
         imageH: photo.h,
+        capture: photo.capture,
         fruitId: c.fruitId,
         fruitName: c.name ?? undefined,
       });
@@ -286,6 +308,7 @@ const FruitScanScreen: React.FC = () => {
       imageUri: photo.uri,
       imageW: photo.w,
       imageH: photo.h,
+      capture: photo.capture,
     });
   }, [pinnedTreeId, trees, around, photo, navigation]);
 
@@ -342,7 +365,7 @@ const FruitScanScreen: React.FC = () => {
               <TouchableOpacity key={c.fruitId} style={styles.row} activeOpacity={0.75} onPress={() => choose(c)}>
                 <Text style={styles.rank}>{i + 1}</Text>
                 <RemoteImage
-                  uri={c.thumbnailUrl ? `${BASE_URL}${c.thumbnailUrl}` : null}
+                  uri={absUrl(c.thumbnailUrl)}
                   style={styles.thumb}
                   containerStyle={[styles.thumb, styles.thumbPh]}
                   resizeMode="cover"

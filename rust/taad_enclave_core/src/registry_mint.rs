@@ -52,6 +52,10 @@ use blake2::Digest;
 
 /// Conservative static ExUnits (mem) for registry ops — small all-conjunction
 /// predicates. Submit paths MUST evaluate-then-patch.
+/// Trần số khoá của một authority MultiSig — đối xứng `expect list.length(pkhs)
+/// <= 16` ở `LAMP/Genesis/onchain/lib/magiclamp/genesis/registry.ak:98`.
+const MAX_MULTISIG_PKHS: usize = 16;
+
 const REGISTRY_EX_UNITS_MEM: u64 = 2_000_000;
 /// Conservative static ExUnits (cpu steps) for registry ops.
 const REGISTRY_EX_UNITS_STEPS: u64 = 700_000_000;
@@ -137,12 +141,32 @@ fn encode_authorization(a: &AuthorizationJson) -> Result<(PlutusData, Vec<Vec<u8
             if pkhs.is_empty() {
                 return Err("multisig 'pkhs' must be non-empty".into());
             }
+            // Đối xứng `registry.ak:98` — on-chain `expect list.length(pkhs) <= 16`
+            // (chặn ExUnit DoS). Không chặn ở đây thì caller dựng được tx trông hợp
+            // lệ, submit mới hỏng phase-2 và mất collateral.
+            if pkhs.len() > MAX_MULTISIG_PKHS {
+                return Err(format!(
+                    "multisig 'pkhs' tối đa {} khoá (đối xứng registry.ak:98), nhận {}",
+                    MAX_MULTISIG_PKHS,
+                    pkhs.len()
+                ));
+            }
             let threshold = a
                 .threshold
                 .ok_or_else(|| "authorization kind 'multisig' requires field 'threshold'".to_string())?;
-            if threshold == 0 || threshold as usize > pkhs.len() {
+            // On-chain so threshold với danh sách ĐÃ DEDUPE (`list.unique` rồi
+            // `threshold <= list.length(uniq)`). So với `pkhs.len()` thô thì
+            // `[k1,k1,k1] threshold 3` lọt ở đây nhưng chết trên chuỗi.
+            let mut uniq: Vec<&String> = Vec::with_capacity(pkhs.len());
+            for p in pkhs.iter() {
+                if !uniq.iter().any(|u| u.eq_ignore_ascii_case(p)) {
+                    uniq.push(p);
+                }
+            }
+            if threshold == 0 || threshold as usize > uniq.len() {
                 return Err(format!(
-                    "multisig threshold must be 1..=N (N={}), got {}",
+                    "multisig threshold phải 1..=N với N = số pkh KHÁC NHAU (N={}, tổng {}), nhận {}",
+                    uniq.len(),
                     pkhs.len(),
                     threshold
                 ));
@@ -1888,12 +1912,54 @@ mod tests {
             kind: "multisig".into(), pkh: None,
             pkhs: Some(vec![pkh_a(), pkh_b()]), threshold: Some(3),
         };
-        assert!(encode_authorization(&too_big).unwrap_err().contains("threshold must be"));
+        assert!(encode_authorization(&too_big).unwrap_err().contains("threshold phải 1..=N"));
         let zero = AuthorizationJson {
             kind: "multisig".into(), pkh: None,
             pkhs: Some(vec![pkh_a()]), threshold: Some(0),
         };
-        assert!(encode_authorization(&zero).unwrap_err().contains("threshold must be"));
+        assert!(encode_authorization(&zero).unwrap_err().contains("threshold phải 1..=N"));
+    }
+
+    /// Đối xứng `registry.ak:98` — quá 16 khoá thì on-chain `expect` fail, nên
+    /// bộ dựng phải chặn TRƯỚC khi phát ra tx (nếu không caller mất collateral).
+    #[test]
+    fn encode_authorization_multisig_rejects_qua_16_khoa() {
+        let pkhs: Vec<String> = (0u8..17).map(|i| hex::encode([i; 28])).collect();
+        let qua_tran = AuthorizationJson {
+            kind: "multisig".into(), pkh: None,
+            pkhs: Some(pkhs), threshold: Some(2),
+        };
+        let e = encode_authorization(&qua_tran).unwrap_err();
+        assert!(e.contains("tối đa 16 khoá"), "nhận: {}", e);
+
+        // Đúng 16 thì phải qua — biên là ĐƯỢC PHÉP, khớp `<= 16`.
+        let vua_du: Vec<String> = (0u8..16).map(|i| hex::encode([i; 28])).collect();
+        let biên = AuthorizationJson {
+            kind: "multisig".into(), pkh: None,
+            pkhs: Some(vua_du), threshold: Some(16),
+        };
+        assert!(encode_authorization(&biên).is_ok());
+    }
+
+    /// On-chain so threshold với danh sách ĐÃ dedupe (`list.unique`). Danh sách
+    /// trùng lặp phải bị chặn ở đây, không được để lọt xuống chuỗi.
+    #[test]
+    fn encode_authorization_multisig_dedupe_truoc_khi_so_threshold() {
+        // [k1, k1, k1] threshold 3: thô N=3 nên luật cũ cho qua, nhưng uniq N=1
+        // ⇒ on-chain `threshold <= list.length(uniq)` fail.
+        let trung = AuthorizationJson {
+            kind: "multisig".into(), pkh: None,
+            pkhs: Some(vec![pkh_a(), pkh_a(), pkh_a()]), threshold: Some(3),
+        };
+        let e = encode_authorization(&trung).unwrap_err();
+        assert!(e.contains("pkh KHÁC NHAU"), "nhận: {}", e);
+
+        // Cùng danh sách trùng nhưng threshold 1 thì hợp lệ cả hai phía.
+        let ok = AuthorizationJson {
+            kind: "multisig".into(), pkh: None,
+            pkhs: Some(vec![pkh_a(), pkh_a()]), threshold: Some(1),
+        };
+        assert!(encode_authorization(&ok).is_ok());
     }
 
     // ─── DEPLOY ────────────────────────────────────────────────────

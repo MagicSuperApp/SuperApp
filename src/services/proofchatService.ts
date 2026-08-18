@@ -23,7 +23,7 @@ import { proofChatApi, isProofChatBackendEnabled } from './proofchat-api';
 import { connectProofChat } from './proofchatAuthBridge';
 import { assembleOutgoing, processIncoming, needsMerkleVerification } from './proofchatMessage';
 import { getDid, getMerkleSession } from './proofchatIdentity';
-import type { ConversationType } from '../modules/proofchat/features/chat/types';
+import type { ConversationType } from '../modules/chat/features/chat/types';
 
 const CIPHERSUITE = 'MLS_128_DHKEMP256_AES128GCM_SHA256_P256';
 const DEVICE_ID = '1'; // MVP 1 thiết bị/tài khoản (như web MLSContext deviceId='1')

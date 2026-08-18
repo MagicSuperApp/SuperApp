@@ -20,7 +20,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSelector } from 'react-redux';
 import { saveActivity } from '../store/farmSlice';
 import { Activity } from '../types';
-import { updateCredits, selectChainWallet } from '../../../store/userSlice';
+import { selectChainWallet } from '../../../store/userSlice';
 import { syncService } from '../../../services/syncService';
 import { COLORS } from '../../../constants';
 // Nen huu co dung chung cua module (tong dat/la) - xem theme/depth.ts
@@ -82,17 +82,22 @@ const ACTIVITIES = [
 
 // ── Step config for LampNet progress ─────────────────────────────────────────
 /**
- * Bon buoc cat du lieu, hien tren vach tien do.
+ * Các bước THẬT của việc lưu, hiện trên vạch tiến độ.
  *
- * Ban cu doi chieu bang CHUOI: moi buoc mang mot `keyword` tieng Viet, roi do
- * xem cau trang thai dang hien co chua tu do khong. Ma hai dau cua phep doi
- * chieu ay deu nam trong CHINH tep nay — chi can sua mot dau cau la vach tien
- * do dung yen suot qua trinh luu, ma khong bao loi gi. Nay dem so buoc thang.
+ * Bản trước có bốn bước — "Khoá hình ảnh · Chia nhỏ dữ liệu · Cất nhiều bản sao
+ * · Ghi vào sổ chung" — chạy bằng bốn lần `setTimeout(1100)` rồi thêm 500ms
+ * nữa. Không có mã hoá, không có chia mảnh, không có bản sao, không có lần ghi
+ * sổ nào; 4,9 giây đó là màn kịch, và nó nói với nông dân rằng bằng chứng của
+ * họ đã lên sổ chung trong khi tệp còn nằm nguyên trong máy.
+ *
+ * Hai bước dưới đây neo vào việc thật, và `setSyncStep` chỉ nhích khi việc đó
+ * xong: (0) ghi vào máy, (1) xếp vào hàng gửi máy chủ. Việc gửi lên
+ * `POST /api/farm/{id}/event` chạy nền theo hàng đợi — có thể vài giây, có thể
+ * ngày mai mới có sóng — nên màn KHÔNG hứa nó đã lên tới nơi.
  */
-const SYNC_STEPS = ['trace.activity.step1', 'trace.activity.step2',
-  'trace.activity.step3', 'trace.activity.step4'];
+const SYNC_STEPS = ['trace.activity.stepSave', 'trace.activity.stepQueue'];
 
-/** -1 = chua bat dau · 0..3 = dang o buoc do · 4 = xong. */
+/** -1 = chưa bắt đầu · 0..1 = đang ở bước đó · 2 = xong. */
 const STEP_DONE = SYNC_STEPS.length;
 
 // ── LampNet Sync Modal ────────────────────────────────────────────────────────
@@ -300,13 +305,6 @@ const ActivityScreen = () => {
 
     setSaving(true);
     try {
-      for (let i = 0; i < SYNC_STEPS.length; i++) {
-        setSyncStep(i);
-        await new Promise<void>(r => setTimeout(() => r(), 1100));
-      }
-      setSyncStep(STEP_DONE);
-      await new Promise<void>(r => setTimeout(() => r(), 500));
-
       const activityData = {
         id: `activity_${Date.now()}`,
         type: selected,
@@ -319,12 +317,23 @@ const ActivityScreen = () => {
 
       // activityData is the persistence/sync shape (string timestamp, materials,
       // thumbnailPath) which intentionally diverges from the in-memory Activity type.
+      setSyncStep(0);
       await dispatch(saveActivity(activityData as unknown as Activity));
-      dispatch(updateCredits({ magic: -selectedActivity.credits, lamp: 0, ada: 0 }));
-      // Đính kèm clip đã quay để sync/upload (trước đây truyền [] → mất bằng chứng media).
-      await syncService.addSyncItem('activity', { activity: activityData, farmName: farm.name }, scannedFiles);
 
-      showSuccess(tk('trace.activity.savedTitle'), tk('trace.activity.savedBody', { n: selectedActivity.credits }));
+      // KHÔNG trừ MAGIC tại máy. Bản trước gọi
+      //   dispatch(updateCredits({ magic: -selectedActivity.credits, ... }))
+      // mà `updateCredits` (`store/userSlice.ts:312-323`) ghi thẳng vào
+      // `state.wallet.magicBalance` — đúng con số mà dòng :257 ngay trên đây
+      // tuyên bố "Chỉ tin số dư đến TỪ CHAIN". Kết quả: số dư trên màn tụt sau
+      // mỗi lần ghi việc, rồi nhảy về nguyên giá trị cũ ở lần đồng bộ sau, vì
+      // chẳng có nơi nào trừ thật. Phí (nếu thu) là việc của máy chủ; app gửi
+      // kèm `quoted_magic` trong sự kiện và ĐỌC lại số dư từ chain.
+      // Đính kèm clip đã quay để sync/upload (trước đây truyền [] → mất bằng chứng media).
+      setSyncStep(1);
+      await syncService.addSyncItem('activity', { activity: activityData, farmName: farm.name }, scannedFiles);
+      setSyncStep(STEP_DONE);
+
+      showSuccess(tk('trace.activity.savedTitle'), tk('trace.activity.savedBody'));
       navigation.goBack();
     } catch (_) {
       showError(tk('trace.activity.saveFail'), tk('trace.activity.saveFailBody'));

@@ -1117,6 +1117,24 @@ const FarmDetailMode = ({
             <Text style={styles.headerTitle} numberOfLines={1}>{farm?.name}</Text>
           </TouchableOpacity>
         </View>
+        {/* Chia sẻ dữ liệu riêng của CẢ vườn (`scope_type=farm`). Chỉ hiện khi đã
+            biết mã vườn: mở màn chia sẻ với `scopeId` rỗng thì danh sách lọc ra
+            rỗng — màn báo "chưa chia sẻ cho ai" trong khi thật ra chưa hỏi được
+            ai cả, và nút cấp quyền sẽ tạo một lượt cấp không gắn vào vườn nào. */}
+        {farm?.id ? (
+          <TouchableOpacity
+            style={[styles.activityBtn, { marginRight: 8 }]}
+            onPress={() =>
+              (navigation as any).navigate('TreeShare', {
+                scopeType: 'farm',
+                scopeId: String(farm.id),
+                scopeName: farm?.name,
+              })
+            }
+          >
+            <Icon name="share-nodes" size={20} color={COLORS.accent} />
+          </TouchableOpacity>
+        ) : null}
         <TouchableOpacity style={styles.activityBtn} onPress={onActivityUpdate}>
           <Icon name="file-pen" size={20} color={COLORS.accent} />
         </TouchableOpacity>

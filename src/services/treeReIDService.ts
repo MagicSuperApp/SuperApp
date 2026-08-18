@@ -505,6 +505,11 @@ export interface IdentifyOptions {
   /** Khi true: bỏ qua kiểm tra trùng lặp, tạo cây mới bất kể. Dùng cho handleForceEnroll. */
   force?: boolean;
   /**
+   * Vùng khoanh THEO TỪNG ảnh, song song `files[]` — cho khung có hai cây liền nhau.
+   * Phần tử `null` = ảnh đó embed cả khung. Xem `buildTreeRegions`.
+   */
+  regions?: Array<TreeRegion | null | undefined>;
+  /**
    * ADDITIVE (PoC-Tree §4 M4): ép matcher vỏ-thân (sift|xfeat|loftr) qua
    * ?matcher=. Mặc-định KHÔNG gửi → backend dùng đường ENV. Chỉ tester bật.
    */
@@ -579,6 +584,130 @@ export function platformHeadingRef(): HeadingRef {
   return Platform.OS === 'ios' ? 'ios_true_or_magnetic' : 'android_magnetic';
 }
 
+// ---------------------------------------------------------------------------
+// KHOANH-CÂY — vùng khoanh THEO TỪNG ảnh (khung có hai cây liền nhau)
+// ---------------------------------------------------------------------------
+
+export type TreeRegionShape = 'rect' | 'ellipse' | 'poly';
+
+/**
+ * Vùng người dùng khoanh trên MỘT ảnh.
+ *
+ * HỆ TOẠ ĐỘ (hợp đồng máy chủ, mục ⚠️5): pixel của ảnh **HIỂN THỊ** = ảnh full-res
+ * SAU khi đã áp EXIF orientation. Không phải toạ độ chuẩn hoá 0–1, không phải toạ
+ * độ của ảnh đã thu nhỏ để hiện lên màn. Đo ở đâu thì khai đúng `imgW`/`imgH` ở đó.
+ */
+export interface TreeRegion {
+  /** Đa giác khoanh `[[x,y],...]`. Dưới 3 đỉnh coi như không có. */
+  points?: Array<[number, number]>;
+  /** `[x, y, w, h]`, cùng hệ toạ độ với `points`. */
+  bbox?: [number, number, number, number];
+  shape?: TreeRegionShape;
+  /** Kích thước ảnh mà toạ độ trên được đo. Thiếu hoặc ≤ 0 ⟹ vùng bị bỏ. */
+  imgW: number;
+  imgH: number;
+}
+
+/** Dạng đã sẵn sàng lên dây: `regions` JSON + cặp `img_w`/`img_h` quy chiếu. */
+export interface TreeRegionsForm {
+  regions: string;
+  img_w: string;
+  img_h: string;
+}
+
+const _fin = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
+
+/** Một phần tử `regions` đã vệ sinh, hoặc `null` = ảnh đó embed CẢ khung. */
+function _cleanRegion(r: TreeRegion | null | undefined) {
+  if (!r || !_fin(r.imgW) || !_fin(r.imgH) || r.imgW <= 0 || r.imgH <= 0) return null;
+
+  const pts = Array.isArray(r.points)
+    ? r.points.filter(p => Array.isArray(p) && p.length >= 2 && _fin(p[0]) && _fin(p[1]))
+    : [];
+  // Dưới 3 đỉnh không thành đa giác. Gửi lên thì `_clean_points` phía máy chủ vứt,
+  // rồi rơi về bbox — nhưng rơi ÂM THẦM. Loại ngay ở đây để hành vi khai ở một chỗ.
+  const usablePts = pts.length >= 3 ? (pts as Array<[number, number]>) : null;
+
+  const b = r.bbox;
+  const usableBbox =
+    Array.isArray(b) && b.length >= 4 && b.every(_fin) && b[2] > 0 && b[3] > 0
+      ? ([b[0], b[1], b[2], b[3]] as [number, number, number, number])
+      : null;
+
+  if (!usablePts && !usableBbox) return null;
+  return { pts: usablePts, bbox: usableBbox, shape: r.shape, imgW: r.imgW, imgH: r.imgH };
+}
+
+/**
+ * Dựng `regions` + `img_w`/`img_h` cho một lượt gửi NHIỀU ảnh. `null` = không gửi
+ * trường nào cả.
+ *
+ * Ba luật ở đây đều là **vá một lỗi im lặng có thật của máy chủ**, không phải cho đẹp:
+ *
+ * 1. **Không ảnh nào được khoanh ⟹ trả `null`, tuyệt đối không gửi `regions: '[]'`.**
+ *    `_parse_regions` coi `[]` là "không gửi" rồi rơi về `points`/`bbox_*` cấp form
+ *    — tức mảng rỗng KHÔNG tắt được vùng khoanh, nó chỉ mở lại đúng đường cũ mà
+ *    một vùng áp cho MỌI ảnh.
+ *
+ * 2. **Mỗi phần tử luôn ghi `shape` tường minh.** Phần tử thiếu `shape` KẾ THỪA
+ *    `shape` cấp form (footgun #127 trong mã máy chủ). Nên `[{points}]` gửi kèm
+ *    `shape='rect'` cấp trên sẽ cắt hình chữ nhật thay vì cắt theo đa giác —
+ *    mất che nền và cây bên cạnh, mà không có một lỗi nào báo.
+ *
+ * 3. **Quy mọi ảnh về MỘT hệ toạ độ.** Máy chủ chỉ nhận đúng một cặp
+ *    `img_w`/`img_h` cho cả lượt gửi, rồi lấy nó chia tỉ lệ cho từng ảnh. Ảnh nào
+ *    đo ở kích thước khác cặp đó thì vùng khoanh trượt đi — đúng vào ca mà tính
+ *    năng này sinh ra để chặn: trượt sang cây bên cạnh. Nên các ảnh lệch kích
+ *    thước được nhân tỉ lệ về hệ của ảnh được khoanh ĐẦU TIÊN trước khi gửi.
+ *
+ * Phần tử `null` giữ nguyên vị trí trong mảng: máy chủ đọc `regions` SONG SONG
+ * `files[]`, bỏ phần tử đi là đẩy vùng của ảnh này sang ảnh khác.
+ */
+export function buildTreeRegions(
+  regions: Array<TreeRegion | null | undefined>,
+): TreeRegionsForm | null {
+  if (!Array.isArray(regions) || regions.length === 0) return null;
+
+  const cleaned = regions.map(_cleanRegion);
+  const first = cleaned.find(c => c !== null);
+  if (!first) return null; // luật 1
+
+  const refW = first.imgW;
+  const refH = first.imgH;
+
+  const items = cleaned.map(c => {
+    if (!c) return null;
+    const sx = refW / c.imgW;
+    const sy = refH / c.imgH;
+    const out: Record<string, unknown> = {
+      // luật 2 — `shape` luôn có mặt, không bao giờ để kế thừa.
+      shape: c.shape ?? (c.pts ? 'poly' : 'rect'),
+    };
+    if (c.pts) out.points = c.pts.map(([x, y]) => [x * sx, y * sy]); // luật 3
+    if (c.bbox) out.bbox = [c.bbox[0] * sx, c.bbox[1] * sy, c.bbox[2] * sx, c.bbox[3] * sy];
+    return out;
+  });
+
+  return { regions: JSON.stringify(items), img_w: String(refW), img_h: String(refH) };
+}
+
+/**
+ * Gắn vùng khoanh vào form. KHÔNG gửi `points`/`bbox_*` cấp form kèm theo: hai
+ * đường cùng lúc là cách nhanh nhất để một thay đổi ở `regions` bị đường cũ ghi đè
+ * mà không ai thấy.
+ */
+export function appendTreeRegions(
+  form: FormData,
+  regions?: Array<TreeRegion | null | undefined>,
+): void {
+  if (!regions?.length) return;
+  const built = buildTreeRegions(regions);
+  if (!built) return;
+  form.append('regions', built.regions);
+  form.append('img_w', built.img_w);
+  form.append('img_h', built.img_h);
+}
+
 export async function identifyTree(
   baseUrl: string,
   imagePaths: string[],
@@ -591,6 +720,7 @@ export async function identifyTree(
   }
 
   appendGeoAndOrientation(form, options);
+  appendTreeRegions(form, options.regions);
   form.append('source', 'phone');
 
   // M4: chỉ nối ?matcher= khi tester ép — mặc-định để backend dùng ENV.
@@ -638,6 +768,7 @@ export async function enrollTree(
   }
 
   appendGeoAndOrientation(form, options);
+  appendTreeRegions(form, options.regions);
   // Gửi CẢ HAI tên trường: `dup` là hợp-đồng sạch OriLife chốt ở #235
   // (`_Agents/inbox/_done/OriLife-to-SuperApp-fieldtest-12-fixes-API-handoff-2026-07-26.md` mục 1),
   // `force` là bí danh backend bắc cầu cho bản app cũ. Gửi cả hai để app chạy đúng
@@ -768,4 +899,92 @@ export async function buildTree3D(
     return { ok: !!result.data.ok, building: result.data.building };
   }
   return { ok: false, noProvenance: result.error?.http_status === 404, error: result.error };
+}
+
+/**
+ * setTreeFarm — GÁN/ĐỔI vườn cho cây ĐÃ đăng ký. `POST /api/tree/set_farm`.
+ *
+ * Đây là đường vá lỗi thực địa 11/07 "tạo vườn nhưng cây không vào vườn": sửa
+ * link SAU khi enroll, thay vì phải xoá cây rồi tạo lại. Máy chủ có đường này từ
+ * lúc đó; app chưa từng gọi.
+ *
+ * `farmId` rỗng/`null` → GỠ cây khỏi vườn (về mồ côi). Cây vẫn truy được bình
+ * thường — đây là hành vi cố ý, không phải mất dữ liệu.
+ *
+ * Hai mã lỗi có nghĩa khác nhau, đừng gộp:
+ *   `403` — cây không thuộc chủ (chống IDOR).
+ *   `404` — vườn không tồn tại **hoặc** không thuộc tài khoản này. Máy chủ CỐ Ý
+ *           gộp hai ca vào một mã để không lộ sự tồn tại vườn của người khác, nên
+ *           app cũng không được đoán ra ca nào.
+ *
+ * Máy chủ nói rõ vì sao cửa này báo lỗi tường minh thay vì bỏ qua âm thầm như
+ * `enroll`: đây là cửa SỬA LINK chuyên trách — gán hụt mà im lặng thì việc vá vô nghĩa.
+ */
+export async function setTreeFarm(
+  baseUrl: string,
+  treeId: string,
+  farmId: string | null,
+): Promise<{ ok: boolean; farmId?: string | null; notOwner?: boolean; farmNotFound?: boolean; error?: APIError }> {
+  const form = new FormData();
+  form.append('tree_id', treeId);
+  // Gửi chuỗi rỗng = gỡ khỏi vườn (`Form(None)` phía máy chủ nhận rỗng → mồ côi).
+  form.append('farm_id', farmId ?? '');
+
+  const result = await _apiCall<{ ok: boolean; tree_id?: string; farm_id?: string | null }>(
+    `${baseUrl}/api/tree/set_farm`,
+    'POST',
+    form,
+  );
+  if (result.ok && result.data) {
+    // `data.ok === false` là máy chủ nói KHÔNG gán được (cây không có trong kho ảnh)
+    // — HTTP vẫn 200. Đọc cờ, đừng đọc mỗi tầng vận chuyển.
+    return { ok: result.data.ok === true, farmId: result.data.farm_id ?? null };
+  }
+  return {
+    ok: false,
+    notOwner: result.error?.http_status === 403,
+    farmNotFound: result.error?.http_status === 404,
+    error: result.error,
+  };
+}
+
+/**
+ * removeTreeViews — XOÁ các góc ảnh đã chụp nhầm. `POST /api/remove_views`.
+ *
+ * Đây chính là nút mà `capture/plan` trỏ tới khi trả `next.action = "recheck"`.
+ * Không có nó thì `recheck` là một lời khuyên **không làm được**, và một tấm chụp
+ * nhầm cây bên cạnh nằm lại trong chữ ký cây vĩnh viễn.
+ *
+ * `indices` là VỊ TRÍ trong danh sách góc của cây (`/api/tree_views`), không phải
+ * id. ⚠ Xoá xong thì các vị trí phía sau DỒN LÊN — gọi lại `/api/tree_views` sau
+ * mỗi lượt xoá, đừng xoá nhiều lượt liên tiếp theo một danh sách vị trí cũ.
+ *
+ * Máy chủ bỏ qua vị trí không phải số và trả `removed` = số ảnh THẬT SỰ bị xoá.
+ * Đọc `removed`, đừng suy từ `indices.length`: hai số đó lệch nhau là dấu hiệu
+ * app đang đếm theo một danh sách đã cũ.
+ */
+export async function removeTreeViews(
+  baseUrl: string,
+  treeId: string,
+  indices: number[],
+): Promise<{ ok: boolean; removed?: number; notOwner?: boolean; error?: APIError }> {
+  const clean = indices.filter((i) => Number.isInteger(i) && i >= 0);
+  if (clean.length === 0) {
+    // Không gọi máy chủ với danh sách rỗng: `indices` là `Form(...)` bắt buộc, gửi
+    // rỗng ra 422 — một lỗi do app tự tạo, không phải lỗi của người dùng.
+    return { ok: false, removed: 0, error: { type: 'validation_error', detail: 'Chưa chọn ảnh nào để xoá', http_status: 0 } };
+  }
+  const form = new FormData();
+  form.append('tree_id', treeId);
+  form.append('indices', clean.join(','));
+
+  const result = await _apiCall<{ ok: boolean; removed?: number }>(
+    `${baseUrl}/api/remove_views`,
+    'POST',
+    form,
+  );
+  if (result.ok && result.data) {
+    return { ok: result.data.ok === true, removed: result.data.removed ?? 0 };
+  }
+  return { ok: false, notOwner: result.error?.http_status === 403, error: result.error };
 }

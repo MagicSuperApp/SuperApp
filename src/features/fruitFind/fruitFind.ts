@@ -119,6 +119,14 @@ export interface ResolvedCandidate {
  * Gắn cây vào từng ứng viên: ưu tiên cây MÁY CHỦ trả, thiếu thì tra bảng cây gần
  * đó, vẫn thiếu thì để `unknown` — KHÔNG suy ra cây gần nhất rồi gán bừa. Gán sai
  * một lần là hồ sơ quả sai vĩnh viễn, mà người dùng không có cách nào biết.
+ *
+ * 15/08: OriLife xác nhận `identify` LUÔN trả `tree_id` (`server.py:6534-6536`),
+ * nên nhánh `nearby_index` nay là lưới cho ca máy chủ tụt bản, không phải đường
+ * chính. Lý do giữ thay vì xoá: xem chú thích ở `FruitScanScreen.tsx` (`buildIndex`).
+ *
+ * Kèm theo đó, nỗi lo cũ "quả ở cây ngoài 60 m, người mua quét ngoài chợ" tự tan:
+ * máy chủ xếp hạng trên TOÀN kho của chủ sở hữu, không theo bán kính nào — thứ mà
+ * bảng tra theo chỗ đứng không bao giờ có.
  */
 export function resolveCandidates(
   candidates: readonly IdentifiedFruitCandidate[],

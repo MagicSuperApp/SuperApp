@@ -1,0 +1,29 @@
+{
+  "$schema": "../manifest.schema.json",
+  "schemaVersion": "1.0",
+  "moduleId": "magiclamp.chat",
+  "version": "1.0.0",
+  "displayName": { "vi": "Trò chuyện", "en": "Chat" },
+  "integrationKind": "feature",
+
+  "entrypoint": "ChatHome",
+  "route": "ChatHome",
+  "icon": { "name": "chat-processing", "colorToken": "brand.chat.primary" },
+  "navSlot": "tab",
+  "routes": ["ChatHome", "ChatRoom"],
+
+  "capabilities": {
+    "data": ["read:profile", "read:chat.message", "write:chat.message"],
+    "network": ["fabric.api"]
+  },
+
+  "mergePolicy": "per-field-crdt",
+  "mergePolicyNote": "Tin nhắn nhiều thiết bị, gửi offline rồi đồng bộ; per-field-crdt giữ thứ tự hội thoại + không mất tin (INV-1). Chữ ký xác thực mỗi tin neo commitment qua fabric. CHAT KHÔNG escrow/ví (anh Aladin chốt: nhắn tin miễn phí) — KHÔNG khai route/capability ví; ví = module SG5 riêng sau.",
+
+  "configSchemaRef": "./config.schema.json",
+  "billingHooks": [],
+  "billingHooksRef": "./billing.hooks.json",
+
+  "trustTier": 0,
+  "stakeBondLamp": "0"
+}

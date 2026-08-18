@@ -78,32 +78,9 @@ type EventItem = {
   subtitle: string;
 };
 
-const EVENTS: EventItem[] = [
-  {
-    id: 'e1',
-    badge: 'NEW',
-    badgeColor: '#2B7A39',
-    icon: 'message-badge-outline',
-    title: 'Aladin Chat — phiên bản mới',
-    subtitle: 'Tin nhắn ký số · Escrow tích hợp',
-  },
-  {
-    id: 'e2',
-    badge: 'HOT',
-    badgeColor: '#E08C3A',
-    icon: 'gift-outline',
-    title: 'Đăng ký thợ — nhận 100 MAGIC',
-    subtitle: 'Ưu đãi cho người mới đến 30/04',
-  },
-  {
-    id: 'e3',
-    badge: 'EVENT',
-    badgeColor: '#3D7A5E',
-    icon: 'calendar-star',
-    title: 'Aladin Day 30/04',
-    subtitle: 'Sự kiện cộng đồng & airdrop',
-  },
-];
+// Mảng `EVENTS` viết cứng ĐÃ GỠ (2026-08-15) — xem lý do ở chỗ dựng khu này bên
+// dưới. Giữ lại kiểu `EventItem` và thành phần `EventCard`: có API tin tức thật thì
+// chỉ cần đổ dữ liệu vào là dựng lại được, KHÔNG viết cứng mốc thời gian lần nữa.
 
 // ── Component ───────────────────────────────────────────────────────────────
 const LoginScreen = () => {
@@ -554,30 +531,13 @@ const LoginScreen = () => {
           <Icon name="arrow-right" size={18} color={BLUE.primary} />
         </TouchableOpacity>
 
-        {/* Events */}
-        <View style={styles.eventsHeader}>
-          <View style={styles.eventsTitleRow}>
-            <View style={styles.eventsDot} />
-            <Text style={styles.eventsTitle} allowFontScaling={false}>
-              TIN MỚI · SỰ KIỆN
-            </Text>
-          </View>
-          <TouchableOpacity hitSlop={6}>
-            <Text style={styles.eventsMore} allowFontScaling={false}>Xem tất cả</Text>
-          </TouchableOpacity>
-        </View>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.eventsList}
-          decelerationRate="fast"
-          snapToInterval={SCREEN_W * 0.78 + 12}
-        >
-          {EVENTS.map((ev, i) => (
-            <EventCard key={ev.id} event={ev} index={i} fadeAnim={fadeAnim} />
-          ))}
-        </ScrollView>
+        {/* Khu "TIN MỚI · SỰ KIỆN" ĐÃ GỠ (2026-08-15).
+            Ba thẻ ở đây là dữ liệu viết cứng, và tới lúc phát hành thì hai thẻ đã
+            quá hạn 3,5 tháng: "Đăng ký thợ — nhận 100 MAGIC · ưu đãi đến 30/04" và
+            "Aladin Day 30/04 · airdrop". Đó là màn ĐẦU TIÊN người mới nhìn thấy —
+            hứa MAGIC và airdrop không có thật, còn nút "Xem tất cả" thì bấm không
+            ra gì. Không có API tin tức nào để nối vào, nên gỡ hẳn thay vì để chờ.
+            Có API thật thì dựng lại từ `EventCard` (còn nguyên bên dưới). */}
 
         {/* Footer */}
         <View style={styles.footer}>

@@ -25,7 +25,7 @@ import {
 } from './resolveVisibleTabs';
 import {
   COLORS,
-  PROOFCHAT_THEME,
+  CHAT_THEME,
   TRACE_THEME,
   WORK_THEME,
   LAMPNET_THEME,
@@ -70,9 +70,9 @@ const SUB_ACTIONS: Record<string, Omit<GateSubItem, 'key'>[]> = {
   ],
   // Chat (proofchat): thông báo.
   // KHÔNG có mục ví. `module.manifest.json` của proofchat ghi rõ chat KHÔNG
-  // escrow/ví và `routes` chỉ khai ["ProofChatHome","ProofChatRoom"] — mục
+  // escrow/ví và `routes` chỉ khai ["ChatHome","ChatRoom"] — mục
   // 'Mở ví' → 'ProofChatWallet' ở đây là lối vào trái quyết định đó (issue #110).
-  ProofChatHome: [
+  ChatHome: [
     { icon: 'bell', label: 'Thông báo', route: 'Notifications' },
   ],
 };
@@ -80,7 +80,7 @@ const SUB_ACTIONS: Record<string, Omit<GateSubItem, 'key'>[]> = {
 // route service → màu thương hiệu (brand token). Host (Home) dùng accent nền.
 const SERVICE_TINT: Record<string, string> = {
   [NEO_CENTER]: COLORS.accent,        // Home
-  [NEO_LEFT]: PROOFCHAT_THEME.primary, // Chat
+  [NEO_LEFT]: CHAT_THEME.primary, // Chat
   Farms: TRACE_THEME.primary,          // Farm
   WorkHome: WORK_THEME.primary,        // Work
   JoinHome: LAMPNET_THEME.primary,     // Join

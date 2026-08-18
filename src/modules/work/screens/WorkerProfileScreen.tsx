@@ -238,7 +238,7 @@ const WorkerProfileScreen: React.FC = () => {
 
       <View style={styles.bottomBar}>
         <TouchableOpacity
-          onPress={() => navigation.navigate('ProofChatRoom', { roomId: `worker-${worker.did}` })}
+          onPress={() => navigation.navigate('ChatRoom', { roomId: `worker-${worker.did}` })}
           style={styles.chatBtn}
         >
           <Icon name="message-outline" size={20} color={WORK_THEME.primary} />

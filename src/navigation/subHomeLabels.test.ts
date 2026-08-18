@@ -11,7 +11,7 @@ import {
   type SubTab,
 } from './subHomeLabels';
 
-const CHAT = SUBHOME_FRAME.ProofChatHome;
+const CHAT = SUBHOME_FRAME.ChatHome;
 const FARM = SUBHOME_FRAME.Farms;
 const keys = (tabs: SubTab[]) => tabs.map((t) => t.key);
 

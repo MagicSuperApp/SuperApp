@@ -28,6 +28,7 @@ import RootErrorBoundary from '../components/RootErrorBoundary';
 import { COLORS, ACTION_COLORS } from '../theme';
 import { syncService } from '../services/syncService';
 import { flushVideoUploadQueue } from '../services/videoUploadQueue';
+import { maybeReconcileOnNetChange } from '../services/videoProofReconcile';
 import AppHeader, { AppHeaderProvider } from '../components/AppHeader';
 import { NAV_FRAME, navNational, navIcon } from './navLabels';
 import { hasChosenLanguage, whenLanguageReady } from '../i18n';
@@ -41,6 +42,12 @@ import { TRACE_SCAN_ROUTE_NAME } from './traceScan';
 import LoginScreen from '../screens/LoginScreen';
 // Màn hỏi ngôn ngữ LẦN ĐẦU (máy vừa cài) — đứng TRƯỚC Login trong luồng khởi động.
 import LanguageSelectScreen from '../screens/LanguageSelectScreen';
+// Màn CHÀO (hỏi-một-lần) — đứng giữa Chọn ngôn ngữ và Đăng nhập. App lên hai cửa
+// hàng từ v1.0 mà chưa có chỗ nào nói Aladin là gì; xem đầu OnboardingScreen.tsx.
+import OnboardingScreen from '../screens/OnboardingScreen';
+// Mở trang aladin.work TRONG app (danh sách trang cho phép ở utils/webLink.ts).
+import WebPageScreen from '../screens/WebPageScreen';
+import { hasSeenOnboarding } from '../utils/onboardingFlag';
 import ActivationScreen from '../screens/ActivationScreen';
 import HomeScreen from '../screens/HomeScreen';
 import SignUpBiometricScreen from '../features/auth/screens/SignUpBiometricScreen';
@@ -87,12 +94,15 @@ import OrgAuthorityScreen from '../screens/OrgAuthorityScreen';
 import OrgMintScreen from '../screens/OrgMintScreen';
 import WebLoginScanScreen from '../screens/WebLoginScanScreen';
 import TraceScanScreen from '../screens/TraceScanScreen';
+import TraceResultScreen from '../screens/TraceResultScreen';
+import TreeDriftScreen from '../screens/TreeDriftScreen';
+import TreeShareScreen from '../screens/TreeShareScreen';
 import ExportIdentityScreen from '../screens/ExportIdentityScreen';
 import UsernameScreen from '../screens/UsernameScreen';
 // ProofChat wallet/escrow: hiện vẫn đăng ký ở host stack (chưa khai trong manifest
 // proofchat — anh Aladin chốt chat KHÔNG ví/escrow; giữ route để không vỡ màn cũ).
-import ProofChatWalletScreen from '../modules/proofchat/features/wallet/screens/WalletScreen';
-import ProofChatEscrowScreen from '../modules/proofchat/features/escrow/screens/EscrowScreen';
+import ChatWalletScreen from '../modules/chat/features/wallet/screens/WalletScreen';
+import ChatEscrowScreen from '../modules/chat/features/escrow/screens/EscrowScreen';
 // Wrapper Native gọi FarmDetail trực tiếp (giữ nguyên hành vi cũ).
 import FarmDetailScreen from '../modules/trace/screens/FarmDetailScreen';
 
@@ -139,7 +149,8 @@ const HOST_TAB_SCREENS: Record<string, React.ComponentType<any>> = {
   Account: AccountScreen,
 };
 // Nhãn/icon tab DẪN XUẤT từ NAV_FRAME (navLabels.ts) — nguồn DUY NHẤT. Nhãn tab
-// khác displayName module (module 'proofchat' tên "ProofChat"; nav ngắn = "Chat").
+// CÓ THỂ khác displayName module; hiện module 'chat' khai displayName "Trò
+// chuyện"/"Chat" nên hai bên trùng nhau, nhưng vẫn giữ hai tầng tách rời.
 // Đây là quyết định của INSTANCE (experience layer), sống ở tầng nav — không nhét
 // vào manifest. Tiêu đề đơn-dòng (header/screen title) lấy nhãn NGÔN NGỮ QUỐC GIA;
 // còn thanh tab dưới vẽ song ngữ qua NavItemFrame.
@@ -1619,6 +1630,14 @@ const HOST_STACK_SCREENS: Array<{
     component: LanguageSelectScreen,
     options: { headerShown: false, gestureEnabled: false },
   },
+  // Màn chào. Cũng KHÔNG gestureEnabled: nó là initialRoute ở lần mở đầu tiên sau
+  // khi đã chọn ngôn ngữ, vuốt-back sẽ để trống ngăn xếp.
+  {
+    name: 'Onboarding',
+    component: OnboardingScreen,
+    options: { headerShown: false, gestureEnabled: false },
+  },
+  { name: 'WebPage', component: WebPageScreen, options: { headerShown: false } },
   { name: 'Activation', component: ActivationScreen },
   { name: 'BiometricSettings', component: BiometricSettings },
   // Xoá tài khoản — bắt buộc bởi Apple 5.1.1(v) + Google Play (issue #144). Vào từ màn Tôi.
@@ -1636,8 +1655,8 @@ const HOST_STACK_SCREENS: Array<{
   // phủ TRÙM lên Main → che mất AppHeader (header sống ở ProtectedMain, TRÊN các
   // tab). Header (nút Tài khoản) mở qua navigate('Main', { screen: 'Account' }).
   // ProofChat ví/escrow — chưa khai manifest, giữ ở host stack.
-  { name: 'ProofChatWallet', component: ProofChatWalletScreen, options: { headerShown: false } },
-  { name: 'ProofChatEscrow', component: ProofChatEscrowScreen, options: { headerShown: false } },
+  { name: 'ProofChatWallet', component: ChatWalletScreen, options: { headerShown: false } },
+  { name: 'ProofChatEscrow', component: ChatEscrowScreen, options: { headerShown: false } },
   // Auth flow.
   { name: 'SignUpBiometric', component: SignUpBiometricScreen, options: { headerShown: false } },
   { name: 'SignUpComplete', component: SignUpCompleteScreen, options: { headerShown: false, gestureEnabled: false } },
@@ -1689,6 +1708,15 @@ const HOST_STACK_SCREENS: Array<{
   // SG9 §3 — Quét truy xuất (consumer): host stack, full-bleed, KHÔNG lên tabs[]
   // (immersive-by-omission). Tới được qua nút Home header + cổng §4 + deep-link.
   { name: 'TraceScan', component: TraceScanScreen, options: { headerShown: false } },
+  // Kết quả tra mã — góc NGƯỜI MUA, không đăng nhập. Tách khỏi `TreeDetail` vì màn
+  // đó tra cây trong Redux `state.farm.trees` (vườn của chính người đăng nhập), nên
+  // người mua quét mã lạ luôn ra "không tìm thấy" dù máy chủ đã trả đủ hồ sơ.
+  { name: 'TraceResult', component: TraceResultScreen, options: { headerShown: false } },
+  // Biến thiên của cây + chia sẻ dữ liệu riêng. Route HOST, KHÔNG thêm vào
+  // `buildLinking()`: cả hai đọc/ghi dữ liệu RIÊNG của vườn, không nên mở được
+  // bằng một đường dẫn từ bên ngoài — cùng lý do với `WakeMe` ở trên.
+  { name: 'TreeDrift', component: TreeDriftScreen, options: { headerShown: false } },
+  { name: 'TreeShare', component: TreeShareScreen, options: { headerShown: false } },
   { name: 'ExportIdentity', component: ExportIdentityScreen, options: { headerShown: false } },
   { name: 'Username', component: UsernameScreen, options: { headerShown: false } },
 ];
@@ -1698,15 +1726,21 @@ const HOST_STACK_SCREENS: Array<{
 // kể cả route đã là tab — RN cho phép trùng tên giữa Tab và Stack vì khác navigator.
 const MODULE_STACK_SCREENS = collectModuleScreens(DEFAULT_INSTANCE.enabledModules);
 
-// --- Deep-link: magiclamp://<module>/<route> -------------------------------
-// Map mỗi route module sang path 'magiclamp://<moduleId>/<route>'. Host route
+// --- Deep-link: lamp://<module>/<route> -------------------------------
+// Map mỗi route module sang path 'lamp://<moduleId>/<route>'. Host route
 // không khai (truy cập qua điều hướng nội bộ). Rẻ + declarative — bật luôn.
+//
+// ⚠️ SEAM NGỦ, đo 2026-08-17. `prefixes` dưới đây chỉ dạy React Navigation cách ĐỌC
+// một URL ĐÃ tới tay app. Nó KHÔNG đăng ký scheme với hệ điều hành — việc đó nằm ở
+// `Info.plist` (CFBundleURLTypes) và `AndroidManifest.xml` (`<data android:scheme>`),
+// và hôm nay CẢ HAI đều không khai `lamp`. Nghĩa là chưa URL nào từ ngoài vào được.
+// Đừng đọc khối này thành "deep-link đã chạy"; muốn chạy thì phải khai phần native.
 const buildLinking = () => {
   const screens: Record<string, string> = { Main: 'main' };
   MODULE_STACK_SCREENS.forEach(({ moduleId, route }) => {
     screens[route] = `${moduleId}/${route}`;
   });
-  // SG9 §3 — mở màn quét truy xuất qua deep-link `magiclamp://trace-scan` (quét từ
+  // SG9 §3 — mở màn quét truy xuất qua deep-link `lamp://trace-scan` (quét từ
   // platform khác). Màn CHI TIẾT (TreeDetail…) đã deep-link-được qua map module ở
   // trên → sản phẩm Aladin quét ngoài app mở thẳng màn kết quả.
   screens[TRACE_SCAN_ROUTE_NAME] = 'trace-scan';
@@ -1714,7 +1748,7 @@ const buildLinking = () => {
   // → không có route để deep-link tới. Màn `LanguageSelect` chỉ chạy lần đầu cài.
   screens.LanguageSelect = 'language';
   return {
-    prefixes: ['magiclamp://'],
+    prefixes: ['lamp://'],
     config: { screens },
   };
 };
@@ -1738,10 +1772,19 @@ const AppNavigator = () => {
       // rồi mới tới Đăng nhập. Đọc AsyncStorage là bất đồng bộ nên phải chờ ở đây;
       // quyết định trước khi dựng Stack để không thấy Login nhấp nháy rồi mới nhảy.
       // Lỗi đọc storage → coi như đã chọn (vào thẳng Login), KHÔNG chặn app.
+      //
+      // Ba đích có thể: Chọn ngôn ngữ → Chào → Đăng nhập.
+      //   · máy vừa cài            → LanguageSelect (màn đó tự chuyển sang Onboarding)
+      //   · đã chọn ngôn ngữ, chưa xem màn chào → Onboarding
+      //   · còn lại                → Login
+      // Người đã cài bản cũ (v1.0 lên cửa hàng từ trước, chưa hề có màn chào) rơi
+      // vào nhánh giữa: họ thấy màn chào ĐÚNG MỘT LẦN rồi thôi. Cố ý — đó chính là
+      // nhóm chưa từng được nói cho biết Aladin là gì.
       let firstRoute = 'Login';
       try {
         await whenLanguageReady();
         if (!hasChosenLanguage()) firstRoute = 'LanguageSelect';
+        else if (!(await hasSeenOnboarding())) firstRoute = 'Onboarding';
       } catch (e) {
         console.warn('[Navigation] Không đọc được ngôn ngữ đã lưu:', e);
       }
@@ -1754,9 +1797,9 @@ const AppNavigator = () => {
         console.log('[Navigation] Initializing sync service');
         syncService.start();
       } finally {
-        // Bỏ 3 màn welcome/onboarding — vào thẳng Login (hoặc Chọn ngôn ngữ ở lần
-        // mở đầu tiên). Người dùng luôn phải xác thực sinh trắc mỗi phiên; KHÔNG
-        // auto-login vào Main.
+        // Ba màn welcome/onboarding CŨ đã bỏ; nay có MỘT màn chào bỏ-qua-được
+        // (`Onboarding`), chỉ hiện một lần. Người dùng luôn phải xác thực sinh trắc
+        // mỗi phiên; KHÔNG auto-login vào Main.
         // finally: đây là điểm DUY NHẤT thoát spinner initialRoute=null. Nếu bất kỳ
         // init nào ở trên ném thì vẫn PHẢI mở khoá UI — nếu không app kẹt spinner câm.
         setInitialRoute(firstRoute);
@@ -1780,6 +1823,14 @@ const AppNavigator = () => {
         );
       }
       wasConnected = isConnected;
+
+      // Đối chiếu bằng chứng video đã "lưu" với LampNet thật (H-34: vòng eviction
+      // của daemon từng xoá 22 tài liệu, có cả video cây/quả). Dịch vụ này viết từ
+      // 2026-08-10 kèm bài kiểm, nhưng KHÔNG chỗ nào trong mã chạy gọi tới — nên
+      // tới bản này việc dò CID mồ côi chưa từng chạy một lần trên máy người dùng.
+      // Tự nó chỉ chạy khi WIFI, tối đa 1 lượt/30 phút, và chỉ báo NGƯỜI TRỰC MÁY
+      // CHỦ qua remoteLogger — nông dân không thấy gì, vì họ không sửa được.
+      maybeReconcileOnNetChange(state);
     });
 
     // Cleanup on unmount

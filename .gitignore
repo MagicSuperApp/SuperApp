@@ -86,10 +86,29 @@ replay_pid*
 # === Misc tooling ===
 .serena
 .mcp.json
-.claude/settings.local.json
 
 # === Agent state (nội bộ, KHÔNG public) ===
+# `_Agents/` đã chặn từ trước. Phần dưới bổ sung 2026-08-14, sửa lại 15/08.
+#
+# `CLAUDE.md` CỐ Ý KHÔNG chặn. Bản vá đầu có chặn, và đó là sai hướng: `CLAUDE.md`
+# ở gốc kho là tài liệu ranh giới của dự án, và chính nó ghi rằng bản trước biến
+# mất 07–08/08/2026 vì KHÔNG CÓ BẢN TRONG GIT. Chặn nó khỏi git là lặp lại đúng cơ
+# chế đã làm mất nó, chỉ khác là lần này vĩnh viễn. Giá đã trả là MẤT tệp, không
+# phải LỘ tệp. Thêm nữa mẫu trần `CLAUDE.md` khớp mọi cấp thư mục, nên
+# `src/modules/*/CLAUDE.md` cũng chết theo.
+#
+# `.claude/` thì chặn CẢ thư mục chứ không chỉ `settings.local.json`: nó còn chứa
+# `worktrees/` — mỗi worktree là một bản chép đầy đủ của kho (đo 14/08: 3 bản,
+# 4.023 tệp, 146 MB). Không tệp nào dưới `.claude/` đang được track
+# (`git ls-files .claude/` rỗng), nên chặn cả thư mục không làm mất gì.
+#
+# `CLAUDE.local.md` là tên quy ước sẵn cho ghi chú RIÊNG của từng máy — đúng thứ
+# cần chặn. Mẫu cũ không bắt nó. `.claude.json` cũng vậy: nó là tệp, không nằm
+# trong thư mục `.claude/`, nên dòng trên không phủ.
 _Agents/
+.claude/
+CLAUDE.local.md
+.claude.json
 
 
 # Expo

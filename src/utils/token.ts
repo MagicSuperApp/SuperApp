@@ -63,6 +63,13 @@ export const ADA_DECIMALS = 6;
  * CarpetMint 14/08: **chưa kiểm trên mainnet**, và cặp `(policy_id, asset_name)`
  * canonical chưa có. Khi họ gửi cặp đó thì kiểm lại `sub_unit_scale` mainnet trước
  * khi tin hằng này.
+ *
+ * CarpetMint 16/08 nói rõ thêm vì sao con số này NEO ĐƯỢC mà chỗ đọc nó thì không:
+ * `sub_unit_scale` là apply-param của Θ, đóng băng lúc compile ⇒ 1-1 và bất biến
+ * với `policy_id` (đổi nó là đổi `policy_id`, tức instance khác hẳn, không phải
+ * "cùng đồng với decimals mới"). Nên hằng viết tay ở đây chỉ đúng chừng nào chưa
+ * có instance THỨ HAI chạm vào app — ngày đó tới thì ba màn chỉ lệch một bội của
+ * 10, không có gì đỏ lên, và người dùng là bên phát hiện.
  */
 export const CARP_DECIMALS = 9;
 

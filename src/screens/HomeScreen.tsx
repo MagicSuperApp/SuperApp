@@ -74,7 +74,12 @@ const QUICK_ITEM_W = (width - H_PADDING * 2 - QUICK_GAP * 3) / 4;
 const formatToken = (n: number): string =>
   Number.isFinite(n) ? Math.round(n).toLocaleString('vi-VN') : '0';
 
-// ── Mock data (sẽ thay bằng API thật khi module có) ────────────────────────
+// ── Băng giới thiệu tính năng (nội dung viết cứng, KHÔNG phải dữ liệu giả) ──
+// Chú thích cũ ghi "Mock data" nên đợt rà 15/08 suýt gỡ nhầm cả khu. Ba tấm này
+// mô tả đúng tính năng đang có: truy xuất tới từng trái (chạy thật), Trò chuyện
+// ("sắp ra mắt" — đúng, ProofChat còn sau cổng), Việc làm (có thật). Không tấm nào
+// hứa khuyến mãi hay mốc thời gian, nên không quá hạn được. Đổi nội dung khi tính
+// năng đổi; đừng nối API tin tức vào đây.
 const BANNERS = [
   {
     id: 'b1',
@@ -501,7 +506,7 @@ const HomeScreen: React.FC = () => {
   //  - ProofChat: tổng tin chưa đọc từ CHÍNH store màn Chat dùng (rẻ, không mock).
   //  - Work: chưa có nguồn thật → KHÔNG hiện số bịa (bỏ stat + badge, xem dưới).
   const proofChatUnread = useSelector((s: RootState) =>
-    s.proofchat.rooms.reduce((n, r) => n + (r.unreadCount ?? 0), 0),
+    s.chat.rooms.reduce((n, r) => n + (r.unreadCount ?? 0), 0),
   );
   // Trạng thái VÍ thật: chỉ số ĐẾN TỪ CHAIN (selectChainWallet trả null khi chưa
   // đồng bộ → hiển thị "Chưa đồng bộ", KHÔNG số cũ/bịa).
@@ -810,7 +815,7 @@ const HomeScreen: React.FC = () => {
               label="Tin nhắn ProofChat"
               value={proofChatUnread > 0 ? `${proofChatUnread} new messages` : 'No new messages'}
               color={COLORS.accent}
-              onPress={() => navigation.navigate('ProofChatHome' as never)}
+              onPress={() => navigation.navigate('ChatHome' as never)}
             />
           </View>
         </View>

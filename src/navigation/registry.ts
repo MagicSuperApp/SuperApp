@@ -20,7 +20,7 @@ import type { ComponentType } from 'react';
 
 // --- Manifests (declarative, import tĩnh) ---------------------------------
 import traceManifest from '../modules/trace/module.manifest.json';
-import proofchatManifest from '../modules/proofchat/module.manifest.json';
+import chatManifest from '../modules/chat/module.manifest.json';
 import workManifest from '../modules/work/module.manifest.json';
 import joinManifest from '../modules/join/module.manifest.json';
 
@@ -32,8 +32,8 @@ import TreeDetailScreen from '../modules/trace/screens/TreeDetailScreen';
 import ActivityScreen from '../modules/trace/screens/ActivityScreen';
 
 // --- ProofChat screens ----------------------------------------------------
-import ProofChatHomeScreen from '../modules/proofchat/features/chat/screens/ProofChatHomeScreen';
-import ProofChatRoomScreen from '../modules/proofchat/features/chat/screens/ChatScreen';
+import ChatHomeScreen from '../modules/chat/features/chat/screens/ChatHomeScreen';
+import ChatRoomScreen from '../modules/chat/features/chat/screens/ChatScreen';
 
 // --- Work screens ---------------------------------------------------------
 import WorkHomeScreen from '../modules/work/screens/WorkHomeScreen';
@@ -77,7 +77,7 @@ export interface RegistryEntry {
 
 // moduleId nội bộ (ngắn gọn cho instance.config) — KHÁC moduleId reverse-DNS
 // trong manifest (magiclamp.trace). Map id ngắn ↔ entry.
-export type ModuleId = 'trace' | 'proofchat' | 'work' | 'join';
+export type ModuleId = 'trace' | 'chat' | 'work' | 'join';
 
 export const MODULE_REGISTRY: Record<ModuleId, RegistryEntry> = {
   trace: {
@@ -88,19 +88,19 @@ export const MODULE_REGISTRY: Record<ModuleId, RegistryEntry> = {
       // → mở từ nút "Truy xuất"/tab Farm vẫn GIỮ navbar (là tab, không phủ Main).
       // Danh sách vườn tách ra route 'FarmList' = màn con (drill-down từ Dashboard).
       Farms: DashboardScreen,
-      Dashboard: DashboardScreen, // giữ route cũ cho deep-link magiclamp://trace/Dashboard
+      Dashboard: DashboardScreen, // giữ route cũ cho deep-link lamp://trace/Dashboard
       FarmList: FarmListScreen,
       FarmDetail: FarmDetailScreen,
       TreeDetail: TreeDetailScreen,
       Activity: ActivityScreen,
     },
   },
-  proofchat: {
-    manifest: proofchatManifest as ModuleManifest,
+  chat: {
+    manifest: chatManifest as ModuleManifest,
     screens: {
-      // manifest.routes: ["ProofChatHome","ProofChatRoom"]
-      ProofChatHome: ProofChatHomeScreen,
-      ProofChatRoom: ProofChatRoomScreen,
+      // manifest.routes: ["ChatHome","ChatRoom"]
+      ChatHome: ChatHomeScreen,
+      ChatRoom: ChatRoomScreen,
     },
   },
   work: {

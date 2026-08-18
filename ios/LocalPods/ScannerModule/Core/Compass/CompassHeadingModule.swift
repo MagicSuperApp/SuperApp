@@ -1,5 +1,19 @@
 import Foundation
 import CoreLocation
+// BẮT BUỘC — `RCTEventEmitter`, `RCTPromiseResolveBlock`, `RCTPromiseRejectBlock` đều
+// nằm ở đây. Thiếu dòng này thì archive iOS gãy với 10 lỗi đổ theo nhau, mà lỗi đầu
+// (`cannot find type 'RCTEventEmitter' in scope`) đọc như hỏng cấu hình pod chứ không
+// như thiếu một dòng import. Swift KHÔNG chia sẻ import giữa các file cùng module:
+// `TreeReIDBridgeModule.swift` cũng kế thừa `RCTEventEmitter` và vẫn biên dịch sạch
+// trong ĐÚNG lượt đó, chỉ vì nó tự khai `import React` ở dòng 2 của nó.
+//
+// Đừng để cảnh báo `umbrella header for module 'React' does not include header
+// 'RCTEventEmitter.h'` trong log đánh lạc hướng: cảnh báo đó có sẵn từ trước và vô
+// hại — cùng lượt dựng ấy `TreeReIDBridgeModule` vẫn kế thừa được lớp này.
+//
+// Cầu Obj-C `CompassHeading.m` đã tự `#import <React/RCTEventEmitter.h>` nên phía đó
+// không dính; chỉ phía Swift thiếu.
+import React
 
 /// CompassHeading (iOS) — LA BÀN dùng chung, cho màn Dẫn đường.
 ///

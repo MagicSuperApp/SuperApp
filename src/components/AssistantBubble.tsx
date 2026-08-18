@@ -36,6 +36,7 @@ import {
 import { COLORS } from '../constants';
 import {
   streamChat,
+  chatEnabled,
   StreamChatHandle,
   ChatHistoryEntry,
 } from '../services/aladinChat';
@@ -295,8 +296,12 @@ const AssistantBubble: React.FC = () => {
     });
   };
 
-  // Chỉ hiện bong bóng khi đã đăng nhập + đang bật.
-  const visible = isLoggedIn && enabled;
+  // Chỉ hiện bong bóng khi đã đăng nhập + đang bật + CÓ endpoint để gọi.
+  // `chatEnabled()` là điều kiện mới: bản phát hành không cấu hình `ALADIN_CHAT_URL`
+  // thì trợ lý không có nơi nào để hỏi. Trước đây địa chỉ viết cứng là một tunnel tạm
+  // (xem `services/aladinChat.ts`) — bong bóng vẫn hiện, người dùng vẫn gõ câu hỏi, và
+  // hoặc là câu hỏi bay tới máy lạ, hoặc là quay tròn rồi báo lỗi. Cả hai đều tệ hơn ẩn.
+  const visible = isLoggedIn && enabled && chatEnabled();
 
   return (
     <>

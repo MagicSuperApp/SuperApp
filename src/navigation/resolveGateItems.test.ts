@@ -12,14 +12,14 @@ describe('resolveGateItems', () => {
   // Điều chỉnh menu arc (Aladin chốt, #53): BỎ 'Home' khỏi cung (nhấn nút giữa đã về
   // Home → mục Home thừa). Cung = Chat · [slot persona], Trace-quét chèn CHÍNH GIỮA.
   it('user mới / nông dân: Chat · Farm · [Trace giữa] · Work · Join', () => {
-    const expected = ['ProofChatHome', 'Farms', 'TraceScan', 'WorkHome', 'JoinHome'];
+    const expected = ['ChatHome', 'Farms', 'TraceScan', 'WorkHome', 'JoinHome'];
     expect(routes(resolveGateItems(NO_FARM))).toEqual(expected);
     expect(routes(resolveGateItems({ farms: 2, trees: 9, fruits: 0 }))).toEqual(expected);
   });
 
   it('shipper (Work usage, không farm): Work/Join lên trước, Farm lùi; Trace vẫn giữa', () => {
     expect(routes(resolveGateItems(NO_FARM, { WorkHome: 8 }))).toEqual([
-      'ProofChatHome', 'WorkHome', 'TraceScan', 'JoinHome', 'Farms',
+      'ChatHome', 'WorkHome', 'TraceScan', 'JoinHome', 'Farms',
     ]);
   });
 
@@ -45,7 +45,7 @@ describe('resolveGateItems', () => {
     // Route đích KHÁC route module (không mở lại màn module).
     for (const a of farm) expect(a.route).not.toBe('Farms');
 
-    const chat = byRoute.ProofChatHome.subActions ?? [];
+    const chat = byRoute.ChatHome.subActions ?? [];
     // KHÔNG có 'ProofChatWallet': chat không có ví (module.manifest.json của
     // proofchat, issue #110). Test này giữ lối vào đó khỏi quay lại.
     expect(chat.map((a) => a.route)).toEqual(['Notifications']);

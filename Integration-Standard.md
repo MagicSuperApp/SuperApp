@@ -61,7 +61,7 @@ Mỗi module khai báo bằng MỘT file `module.manifest.json`, validate bằng
   "embed": {
     "channels": ["zalo-miniapp", "web-iframe"],
     "surface": "thin-funnel",              // "thin-funnel" | "full" — full chỉ cho kênh ta sở hữu
-    "deepLinkNative": "magiclamp://trace"  // handoff sang app native cho thao tác nặng
+    "deepLinkNative": "lamp://trace"  // handoff sang app native cho thao tác nặng
   },
 
   // --- trust & governance ---
@@ -217,7 +217,7 @@ Ví dụ `config.schema.json`:
 
 - MỘT framework điều hướng (sở hữu SG4). Module feature chỉ đăng ký `route` + `navSlot` (`primary`/`secondary`/`contextual`), KHÔNG tự dựng navigator riêng.
 - Nav **registry config-driven** (QĐ-1): nav bind theo config instance, giữ default bundle nhúng binary làm fallback offline. (YC-3 ĐÃ refactor từ hard-import → config-driven, xem `src/modules/index.ts` + `src/navigation/registry.ts`.)
-- Back/forward, deep-link (`magiclamp://<module>`), và handoff native theo một grammar chung xuyên mọi instance + kênh nhúng.
+- Back/forward, deep-link (`lamp://<module>`), và handoff native theo một grammar chung xuyên mọi instance + kênh nhúng.
 
 ### 7.2 Adaptive 2 cực (token-driven, override 2 cấp)
 

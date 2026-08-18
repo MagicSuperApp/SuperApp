@@ -80,7 +80,7 @@ export const COLORS = activeTheme.app;
 export const NEUTRAL = activeTheme.neutral;
 export const NAV = activeTheme.nav;
 export const TRACE_THEME = activeTheme.brand.trace;
-export const PROOFCHAT_THEME = activeTheme.brand.proofchat;
+export const CHAT_THEME = activeTheme.brand.chat;
 export const WORK_THEME = activeTheme.brand.work;
 export const LAMPNET_THEME = activeTheme.brand.lampnet;
 

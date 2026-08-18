@@ -36,7 +36,13 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
+import { launchCamera } from 'react-native-image-picker';
+
 import { ORILIFE_BASE } from '../services/orilifeBase';
+import { withPhotoSave } from '../services/mediaSavePermission';
+import { buildCaptureMeta, serializeCaptureMeta } from '../services/captureMeta';
+import { TreeReIDBridge } from '../services/treeReIDNativeBridge';
+import { nextShotAsk } from '../features/fruitCapture/nextShot';
 
 import { Icon } from '../components/Icon';
 import { COLORS } from '../constants';
@@ -83,6 +89,23 @@ const RING_COLOR = '#FFD166';
  * vốn đã toàn lá xanh sẫm — thì chìm nghỉm, đúng thứ nút này không được phép.
  */
 const DETECT_GREEN = '#22C55E';
+
+/**
+ * Tuỳ chọn máy ảnh cho vòng "chụp tiếp" — GIỮ ĐÚNG BẰNG `FruitScanScreen.tsx:64`
+ * và đường đăng ký ở `FruitListScreen`.
+ *
+ * 1600 px không phải cỡ tối ưu (chưa ai đo 1600 với 4032). Nó là cỡ để hai đầu —
+ * ảnh dựng bản mẫu và ảnh truy vấn — đi qua CÙNG một đường nén; lệch cỡ thì phần
+ * chênh đo được không còn phân biệt "khác quả" với "khác đường nén" nữa. Đổi số ở
+ * đây mà không đổi hai chỗ kia là làm hỏng chính phép so sánh.
+ */
+const PHOTO_OPTIONS = {
+  mediaType: 'photo' as const,
+  quality: 0.9 as const,
+  maxWidth: 1600,
+  maxHeight: 1600,
+  saveToPhotos: true,
+};
 
 interface RouteParams {
   treeId: string;
@@ -276,7 +299,15 @@ const FruitCropperScreen: React.FC = () => {
    * `message` tiếng Việt và một cờ (`warn` hoặc `duplicate`). Ô này giữ câu đó
    * cùng nút "vẫn làm" — vì người đứng tại vườn đúng nhiều hơn máy.
    */
-  const [serverAsk, setServerAsk] = useState<{ message: string; yesLabel: string; onYes: () => void } | null>(null);
+  const [serverAsk, setServerAsk] = useState<{
+    message: string;
+    yesLabel: string;
+    onYes: () => void;
+    /** Chữ trên nút TỪ CHỐI. Vắng → 'Để xem lại' (ca hỏi-lại của máy chủ). */
+    noLabel?: string;
+    /** Việc khi từ chối. Vắng → chỉ đóng hộp. */
+    onNo?: () => void;
+  } | null>(null);
 
   /**
    * MẶT nào của quả đang chụp. Máy chủ cần trường này để thôi đem mặt đáy so với
@@ -469,15 +500,19 @@ const FruitCropperScreen: React.FC = () => {
    * thiếu mặt nào. Hỏng thì KHÔNG làm gì: giữ nguyên `side` và không hiện dòng
    * hướng dẫn nào, thay vì bịa ra một câu nghe như của máy chủ.
    */
-  const loadPlan = useCallback(async (afterReject?: null) => {
-    if (!fruitId) return;
+  // TRẢ VỀ kế hoạch vừa lấy, không chỉ đặt vào state: chỗ gọi ngay sau khi lưu
+  // xong một góc cần đọc kế hoạch MỚI để quyết "mời chụp tiếp hay thoát", mà
+  // `setPlan` thì phải chờ render kế tiếp mới thấy.
+  const loadPlan = useCallback(async (afterReject?: null): Promise<CapturePlan | null> => {
+    if (!fruitId) return null;
     const r = await getCapturePlan(BASE_URL, 'fruit', fruitId, { afterReject: afterReject ?? null })
       .catch(() => null);
-    if (!r?.ok || !r.data?.ok) return;
+    if (!r?.ok || !r.data?.ok) return null;
     setPlan(r.data);
     // Người dùng đã tự chọn mặt thì thôi — họ đang cầm quả trên tay.
     const face = suggestedFace(r.data);
     if (face && !faceTouched.current) setViewType(face);
+    return r.data;
   }, [fruitId]);
 
   useEffect(() => { void loadPlan(); }, [loadPlan]);
@@ -605,6 +640,52 @@ const FruitCropperScreen: React.FC = () => {
    *                             (đừng tự dịch) + nút ép thêm `allow_mismatch`.
    *   3. còn lại              → thật sự xong.
    */
+  /**
+   * Chụp NGAY tấm kế tiếp cho ĐÚNG quả này, không thoát ra màn quét.
+   *
+   * `replace` chứ không `navigate`: mỗi tấm thêm một màn khoanh vào ngăn xếp thì
+   * chụp đủ 9 tấm là 9 màn chồng lên nhau, và nút Quay lại của người dùng phải
+   * bấm 9 lần mới ra khỏi. Thay tại chỗ giữ ngăn xếp đúng một tầng.
+   *
+   * Mang theo `fruitId` nên vòng sau vào thẳng đường THÊM GÓC — bỏ hẳn bước dò
+   * ứng viên và bước chọn đúng quả trong danh sách, hai bước tốn nhiều thao tác
+   * nhất mà lại chỉ để trả lời một câu app đã biết sẵn.
+   */
+  const shootNext = useCallback(async (targetFruitId: string) => {
+    launchCamera(await withPhotoSave(PHOTO_OPTIONS), async (resp: any) => {
+      if (resp.didCancel) return;
+      if (resp.errorCode) {
+        setErrMsg(resp.errorMessage ?? 'Không mở được máy ảnh. Kiểm tra quyền.');
+        return;
+      }
+      const asset = resp.assets?.[0];
+      if (!asset?.uri) return;
+      if (!asset.width || !asset.height) {
+        // Thiếu kích thước thì map-ngược vùng khoanh về pixel gốc sai — nói ra tại
+        // đây, đừng để một bbox rác lặng lẽ vào kho.
+        setErrMsg('Máy không trả kích thước ảnh. Anh chụp lại giúp.');
+        return;
+      }
+      // Dựng NGAY lúc bấm máy: heading/pitch là số đo tại thời điểm đó, sang màn
+      // sau người ta đã xoay máy và không dựng lại được.
+      let cap: string | undefined;
+      try {
+        cap = serializeCaptureMeta(await buildCaptureMeta(asset, TreeReIDBridge));
+      } catch { cap = undefined; }
+      navigation.replace('FruitCropper', {
+        treeId,
+        treeName,
+        imageUri: asset.uri,
+        imageW: asset.width,
+        imageH: asset.height,
+        capture: cap,
+        fruitId: targetFruitId,
+        fruitName,
+        zone: zoneParam,
+      });
+    });
+  }, [navigation, treeId, treeName, fruitName, zoneParam]);
+
   const runAddView = useCallback(async (
     targetFruitId: string,
     region: FruitRegion,
@@ -648,8 +729,29 @@ const FruitCropperScreen: React.FC = () => {
       return;
     }
 
+    // ── Lưu xong MỘT tấm. Còn thiếu thì mời chụp tiếp ngay tại đây ───────────
+    // Máy chủ đòi 3 mặt × 3 tấm cho một quả. Thoát ra sau mỗi tấm nghĩa là bắt
+    // đi trọn vòng "về màn quét → mở máy ảnh → dò → chọn đúng quả trong danh
+    // sách" chín lần cho một quả. Kế hoạch máy chủ đã nói sẵn còn thiếu mặt nào
+    // và mấy tấm; dùng chính câu đó làm lời mời.
+    //
+    // Không lấy được kế hoạch → thoát như cũ. Không biết còn thiếu gì thì không
+    // được dựng một lời mời nghe như của máy chủ (`nextShot.ts`).
+    const fresh = await loadPlan();
+    const ask = nextShotAsk(fresh);
+    if (ask) {
+      setServerAsk({
+        message: ask.message,
+        yesLabel: ask.yesLabel,
+        onYes: () => { setServerAsk(null); void shootNext(targetFruitId); },
+        noLabel: 'Xong quả này',
+        onNo: () => { setServerAsk(null); navigation.goBack(); },
+      });
+      return;
+    }
+
     navigation.goBack();
-  }, [imageUri, zone, viewType, coord, zPlaced, capture, navigation, loadPlan]);
+  }, [imageUri, zone, viewType, coord, zPlaced, capture, navigation, loadPlan, shootNext]);
 
   const openPlacer = useCallback(() => {
     navigation.navigate('FruitPlace3D', {
@@ -1240,7 +1342,10 @@ const ErrLine: React.FC<{ text: string }> = ({ text }) => (
  * mà chỉ gom nổi 2 góc.
  */
 const ServerAsk: React.FC<{
-  ask: { message: string; yesLabel: string; onYes: () => void } | null;
+  ask: {
+    message: string; yesLabel: string; onYes: () => void;
+    noLabel?: string; onNo?: () => void;
+  } | null;
   busy: boolean;
   onDismiss: () => void;
 }> = ({ ask, busy, onDismiss }) => {
@@ -1255,10 +1360,10 @@ const ServerAsk: React.FC<{
         <TouchableOpacity
           style={[styles.askGhost, busy && styles.disabled]}
           disabled={busy}
-          onPress={onDismiss}
+          onPress={ask.onNo ?? onDismiss}
           activeOpacity={0.8}
         >
-          <Text style={styles.askGhostTxt}>Để xem lại</Text>
+          <Text style={styles.askGhostTxt}>{ask.noLabel ?? 'Để xem lại'}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.askYes, busy && styles.disabled]}

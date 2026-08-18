@@ -36,6 +36,7 @@ import NavItemFrame from './NavItemFrame';
 import { useVisibleTabs } from './useVisibleTabs';
 import { NEO_CENTER, NEO_RIGHT } from './resolveVisibleTabs';
 import { resolveGateItems, type GateItem } from './resolveGateItems';
+import { stickyTapAction } from './stickyTap';
 import { TRACE_SCAN_ROUTE_NAME } from './traceScan';
 
 // --- Host shell screens (KHÔNG thuộc module — vỏ giữ tĩnh) ------------------
@@ -416,6 +417,13 @@ const RadialMenuContext = React.createContext<{
   setRipple: React.Dispatch<React.SetStateAction<RippleState | null>>;
   // Runner hành động (do CurvedTabBar gán) để overlay chạy khi CHẠM mục ở chế độ dính.
   actionRef: React.MutableRefObject<(key: RadialKey) => void>;
+  // Hai runner cho TẦNG 2 ở chế độ dính (cũng do CurvedTabBar gán):
+  //   subOpenRef — bung arc con của mục thứ `idx`, GIỮ nguyên `sticky`.
+  //   subRunRef  — chạy một hành động nhanh (route đích thật).
+  // Trước bản này overlay chỉ có `actionRef`, nên chạm chỉ mở được module — tầng 2
+  // hoàn toàn không có đường vào bằng chạm. Xem `navigation/stickyTap.ts`.
+  subOpenRef: React.MutableRefObject<(idx: number) => void>;
+  subRunRef: React.MutableRefObject<(route: string, params?: Record<string, unknown>) => void>;
 } | null>(null);
 
 const RadialMenuProvider = ({ children }: { children: React.ReactNode }) => {
@@ -423,6 +431,8 @@ const RadialMenuProvider = ({ children }: { children: React.ReactNode }) => {
   const [defaultKey, setDefaultKeyState] = React.useState<RadialKey | null>(null);
   const [ripple, setRipple] = React.useState<RippleState | null>(null);
   const actionRef = React.useRef<(key: RadialKey) => void>(() => {});
+  const subOpenRef = React.useRef<(idx: number) => void>(() => {});
+  const subRunRef = React.useRef<(route: string, params?: Record<string, unknown>) => void>(() => {});
 
   // Khôi phục lựa chọn mặc định giữa các phiên. Khoá là ActionDef.key động —
   // chấp nhận mọi chuỗi; nếu không khớp hành động hiện tại, CurvedTabBar sẽ coi
@@ -441,7 +451,7 @@ const RadialMenuProvider = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   return (
-    <RadialMenuContext.Provider value={{ menu, setMenu, defaultKey, setDefaultKey, ripple, setRipple, actionRef }}>
+    <RadialMenuContext.Provider value={{ menu, setMenu, defaultKey, setDefaultKey, ripple, setRipple, actionRef, subOpenRef, subRunRef }}>
       {children}
     </RadialMenuContext.Provider>
   );
@@ -614,6 +624,19 @@ const CurvedTabBar = ({ state, navigation }: BottomTabBarProps) => {
   };
   // Cho overlay (chế độ dính) gọi hành động khi CHẠM mục.
   if (radial?.actionRef) radial.actionRef.current = (k: RadialKey) => runActionRef.current(k);
+  // Tầng 2 ở chế độ DÍNH. KHÔNG dùng lại `openSub` của nhánh kéo: hàm đó còn đặt
+  // `levelRef/parentRef/subActiveRef` — trạng thái riêng của PanResponder. Chạm và
+  // kéo là hai đường khác nhau; trộn state của chúng thì cú kéo kế tiếp thừa hưởng
+  // một tầng-2 không ai mở.
+  if (radial?.subOpenRef) {
+    radial.subOpenRef.current = (idx: number) => {
+      const metas = subMetaByIndex?.[idx] ?? [];
+      if (!metas.length) return;
+      const subItems = computeSubItems(metas);
+      radial.setMenu((m) => (m ? { ...m, active: idx, level: 2, parent: idx, subItems, subActive: -1 } : m));
+    };
+  }
+  if (radial?.subRunRef) radial.subRunRef.current = (route, params) => runSubRef.current(route, params);
 
   const rippleNonceRef = React.useRef(0);
   const assignRef = React.useRef<(i: number) => void>(() => {});
@@ -1129,12 +1152,18 @@ const HomeRadialOverlay = () => {
       {menu && (
         <View pointerEvents="none" style={[radialStyles.guideWrap, { top: height * 0.3 }]}>
           <Text style={radialStyles.guideTitle}>
-            {sticky ? 'Chạm một dịch vụ để mở' : 'Kéo tới một dịch vụ rồi thả để mở'}
+            {!sticky
+              ? 'Kéo tới một dịch vụ rồi thả để mở'
+              : menu.level === 2
+                ? 'Chạm một việc để làm ngay'
+                : 'Chạm một dịch vụ để mở'}
           </Text>
           <Text style={radialStyles.guideSub}>
-            {sticky
-              ? 'Chạm ra ngoài để đóng · nhấn giữ 2 giây (khi kéo) để đặt mặc định'
-              : 'Kéo tiếp RA XA để mở mục con · giữ 2 giây trên dịch vụ để đặt mặc định'}
+            {!sticky
+              ? 'Kéo tiếp RA XA để mở mục con · giữ 2 giây trên dịch vụ để đặt mặc định'
+              : menu.level === 2
+                ? 'Chạm lại vòng trong để mở cả dịch vụ · chạm ra ngoài để đóng'
+                : 'Chạm ra ngoài để đóng · nhấn giữ 2 giây (khi kéo) để đặt mặc định'}
           </Text>
         </View>
       )}
@@ -1340,7 +1369,11 @@ const HomeRadialOverlay = () => {
           );
         })()}
 
-      {/* Vùng chạm từng mục — CHỈ ở chế độ dính (tap để chọn) */}
+      {/* Vùng chạm từng mục — CHỈ ở chế độ dính (tap để chọn).
+
+          Mục CÓ arc con thì chạm là BUNG TẦNG 2 chứ không mở module ngay; chạm lại
+          đúng mục đó mới mở module. Quy tắc nằm ở `navigation/stickyTap.ts` (có
+          test) — sửa ở đây mà quên sửa bên đó là hai bên nói hai đằng. */}
       {menu &&
         sticky &&
         menu.items.map((it, i) => (
@@ -1354,11 +1387,46 @@ const HomeRadialOverlay = () => {
               height: RADIAL_HITBOX,
               borderRadius: RADIAL_HITBOX / 2,
             }}
+            accessibilityRole="button"
+            accessibilityLabel={it.label}
             onPressIn={() => radial?.setMenu((m) => (m ? { ...m, active: i } : m))}
             onPress={() => {
+              const decided = stickyTapAction(it, i, menu.level, menu.parent);
+              if (decided.kind === 'openSub') {
+                radial?.subOpenRef.current?.(i);
+                return;
+              }
               const key = it.key;
               radial?.setMenu(null);
               radial?.actionRef.current?.(key);
+            }}
+          />
+        ))}
+
+      {/* Vùng chạm ARC CON — chỉ ở chế độ dính, khi tầng 2 đang mở. Đây là thứ
+          làm cho "Quét cây" / "Quét con vật" / "Quét nhãn thuốc" tới được mà
+          KHÔNG cần cử chỉ kéo hai chặng. */}
+      {menu &&
+        sticky &&
+        menu.level === 2 &&
+        menu.subItems.map((sub, j) => (
+          <Pressable
+            key={`subhit-${sub.key}`}
+            style={{
+              position: 'absolute',
+              left: sub.x - RADIAL_HITBOX / 2,
+              top: sub.y - RADIAL_HITBOX / 2,
+              width: RADIAL_HITBOX,
+              height: RADIAL_HITBOX,
+              borderRadius: RADIAL_HITBOX / 2,
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={sub.label}
+            onPressIn={() => radial?.setMenu((m) => (m ? { ...m, subActive: j } : m))}
+            onPress={() => {
+              const { route, params } = sub;
+              radial?.setMenu(null);
+              radial?.subRunRef.current?.(route, params);
             }}
           />
         ))}

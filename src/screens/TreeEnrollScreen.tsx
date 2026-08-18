@@ -51,8 +51,10 @@ import {
   toCaptureOrientations,
   platformHeadingRef,
   enrollWarningMessages,
+  getTrees,
   type EnrollResponse,
 } from '../services/treeReIDService';
+import { suggestTreeName } from '../utils/suggestTreeName';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import type { RootState } from '../store';
 import { loadFarms } from '../modules/trace/store/farmSlice';
@@ -166,6 +168,16 @@ const TreeEnrollScreen: React.FC = () => {
 
   // ── Local state ───────────────────────────────────────────────────────────
   const [name, setName] = useState('');
+  /**
+   * Người dùng (hoặc bản nháp khôi phục) đã đặt tên rồi → tên gợi ý KHÔNG được
+   * ghi đè nữa. Cùng lối `faceTouched` ở `FruitCropperScreen`: máy chỉ điền vào
+   * chỗ trống, không giành quyền với người đang đứng tại vườn.
+   */
+  const nameTouchedRef = useRef(false);
+  const setNameByUser = useCallback((v: string) => {
+    nameTouchedRef.current = true;
+    setName(v);
+  }, []);
   const [isEnrolling, setIsEnrolling] = useState(false);
   const [enrollResult, setEnrollResult] = useState<EnrollResponse | null>(null);
 
@@ -269,7 +281,7 @@ const TreeEnrollScreen: React.FC = () => {
                 setRestoredAndroidPaths(draft.androidImagePaths);
               }
               if (draft.gps) dispatch(setGPS(draft.gps));
-              if (draft.name) setName(draft.name);
+              if (draft.name) { nameTouchedRef.current = true; setName(draft.name); }
               if (draft.farmId) setSelectedFarmId(draft.farmId);
             },
           },
@@ -295,6 +307,35 @@ const TreeEnrollScreen: React.FC = () => {
       farmId,
     });
   }, [draftOwner, captures, restoredAndroidPaths, gps, name, farmId, route.params?.androidImagePaths]);
+
+  // ── Tên gợi ý: "Cây {n}" — bỏ một lần gõ bàn phím cho mỗi cây ──────────────
+  //
+  // Tên là MỘT trong ba thứ chặn nút "Đăng ký", và là thứ duy nhất trong ba thứ
+  // đó bắt mở bàn phím. Đường QUẢ đã điền sẵn "Quả {n+1}" từ lâu
+  // (`FruitCropperScreen.tsx:270`); đường CÂY thì chưa, không vì lý do gì.
+  //
+  // Hỏng mạng thì KHÔNG đoán bừa một con số: không có danh sách cây thì không
+  // biết số nào đang trống, mà đặt trùng tên hai cây trong một vườn là làm hỏng
+  // đúng thứ hồ sơ truy xuất dùng để chỉ cây. Để trống còn hơn — ô tên vẫn hiện
+  // và người dùng gõ như cũ.
+  useEffect(() => {
+    if (!farmValid || !farmId) return;
+    if (nameTouchedRef.current || name.trim()) return;
+    let alive = true;
+    (async () => {
+      const res = await getTrees(BASE_URL, farmId).catch(() => null);
+      if (!alive || !res?.ok || !res.trees) return;
+      // Đọc lại NGAY trước khi ghi: mạng chậm thì người dùng đã kịp gõ xong tên
+      // trong lúc chờ, và ghi đè lên tên họ vừa gõ là lỗi tệ hơn hẳn việc không
+      // gợi ý gì.
+      if (nameTouchedRef.current) return;
+      setName(suggestTreeName(res.trees.map((t) => t.name)));
+    })();
+    return () => { alive = false; };
+    // `name` cố ý KHÔNG nằm trong deps: nó đổi mỗi lần gõ một chữ, và effect này
+    // chỉ cần chạy khi ĐỔI VƯỜN. Chốt chặn thật là `nameTouchedRef`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [farmId, farmValid]);
 
   // Android không dispatch vào Redux captures — lấy paths từ route params (hoặc nháp
   // khôi phục sau khi app khởi động lại). iOS dùng Redux captures như bình thường.
@@ -854,7 +895,7 @@ const TreeEnrollScreen: React.FC = () => {
           <TextInput
             style={styles.input}
             value={name}
-            onChangeText={setName}
+            onChangeText={setNameByUser}
             placeholder="Ví dụ: Mít số 3, Xoài đầu vườn..."
             placeholderTextColor={NEUTRAL.textMuted}
             returnKeyType="done"

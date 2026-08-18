@@ -54,14 +54,28 @@ workflows:
         ARCHIVE_PATH: $CM_BUILD_DIR/build/ios/OriLife.xcarchive
         IPA_OUTPUT_DIR: $CM_BUILD_DIR/build/ios/ipa
 
+    # GỠ KHỎI `main` VÀ `develop` (2026-08-18). Workflow này cho ra IPA KHÔNG KÝ để cài
+    # tay qua AltStore/Sideloadly — hữu ích trên nhánh đang làm dở, thừa trên hai nhánh
+    # đã có đường TestFlight thật.
+    #
+    # Vì sao gỡ, chứ không phải "dọn cho gọn": mỗi lượt đẩy `develop` trước đây khởi BA
+    # bản dựng, trong đó HAI là iOS trên cùng `mac_mini_m2`. Số bản dựng chạy song song
+    # mà gói Codemagic cho phép thì bên này KHÔNG đo được (không có khoá API), nên đây
+    # là nghi phạm hàng đầu cho việc gộp #181 (15:37 giờ VN 18/08) và #183 (16:38) mà
+    # tới 20:10 vẫn không có bản nào lên TestFlight — trong khi nếp trước đó là 15–22
+    # phút (ba cặp khớp, đo qua App Store Connect API).
+    #
+    # Cái MẤT: kênh cài tay bản không ký từ `main`/`develop`. Grep toàn kho + toàn bộ
+    # thư giữa các nhà: KHÔNG chỗ nào ghi nhận người thật đang dùng kênh đó. Đó là
+    # "không tìm thấy bằng chứng", không phải "chứng minh không ai dùng" — có người báo
+    # thiếu thì thêm lại hai dòng `branch_patterns`, một commit, không đụng dữ liệu nào.
+    #
+    # Và nếu gỡ rồi mà kiểu sự cố "gộp xong không thấy bản mới" VẪN tái diễn thì giả
+    # thuyết này sai — đừng coi việc gỡ ở đây là đã sửa xong.
     triggering:
       events:
         - push
       branch_patterns:
-        - pattern: main
-          include: true
-        - pattern: develop
-          include: true
         - pattern: 'feat/foundation'
           include: true
         - pattern: 'feat/*'
@@ -174,7 +188,7 @@ workflows:
           # ngược được đúng commit. Codemagic đặt sẵn CM_COMMIT/CM_BRANCH/CM_BUILD_ID.
           # Sửa ở đây thì sửa CẢ `.github/actions/rn-env/action.yml` (hai đường build
           # lệch nhau là quay lại đúng lỗi mà tệp action đó đang chống).
-          BUILD_COMMIT=${CM_COMMIT:-}
+          BUILD_COMMIT=${CM_COMMIT:0:12}
           BUILD_BRANCH=${CM_BRANCH:-}
           BUILD_ID=${CM_BUILD_ID:-}
           EOF
@@ -417,6 +431,12 @@ workflows:
   # ============================================================
   # Workflow 2: iOS App Store (Signed)
   # ============================================================
+  # ⚠ BA KHỐI DƯỚI ĐÂY (`environment`, `scripts`, `artifacts`) MANG MỎ NEO YAML và
+  # được `ios-production` — đường NỘP APP STORE THẬT — dùng lại nguyên vẹn. Sửa bất kỳ
+  # bước nào ở đây là sửa CẢ đường phát hành cho người dùng phổ thông, dù diff chỉ hiện
+  # thay đổi trong khối `ios-appstore`. Đây là đánh đổi có chủ ý: một nguồn duy nhất để
+  # hai bản dựng không bao giờ lệch nhau, đổi lấy việc người sửa phải nhớ điều này.
+  # Muốn đổi hành vi của RIÊNG đường thử thì tách bước đó ra khỏi mỏ neo trước đã.
   ios-appstore:
     name: iOS TestFlight (nhánh develop — nhóm thử nội bộ)
     max_build_duration: 120
@@ -564,7 +584,7 @@ workflows:
           REMOTE_LOG_URL=${REMOTE_LOG_URL:-}
           ALADIN_CHAT_URL=${ALADIN_CHAT_URL:-}
           # Truy vết bản dựng — xem lời dẫn dài ở khối `ios-adhoc-ipa` phía trên.
-          BUILD_COMMIT=${CM_COMMIT:-}
+          BUILD_COMMIT=${CM_COMMIT:0:12}
           BUILD_BRANCH=${CM_BRANCH:-}
           BUILD_ID=${CM_BUILD_ID:-}
           EOF
@@ -716,6 +736,14 @@ workflows:
       # ExportOptions.plist đã được "Apply provisioning profiles" tự sinh ở trên
       # (khớp đúng profile Codemagic cài) → KHÔNG hardcode nữa.
 
+      # ⚠ ĐUA SỐ BUILD giữa hai workflow. `ios-appstore` (develop) và `ios-production`
+      # (main) là hai workflow tách riêng, `cancel_previous_builds` KHÔNG huỷ chéo. Cả
+      # hai chạy chính bước này trên cùng một app. Gộp `develop` vào `main` thường xảy
+      # ra ngay sau một lượt đẩy `develop`, nên hai bản dựng có thể đọc cùng một số
+      # "mới nhất" trước khi bên nào kịp tăng.
+      # Triệu chứng khi trúng: App Store Connect từ chối số build trùng, bản dựng SAU
+      # đỏ ở bước tải lên — KHÔNG mất gì, dựng lại là qua. Ghi ra đây để lần sau ai gặp
+      # đỏ dạng đó thì biết ngay là đua số, không phải khoá ký hỏng.
       - name: Bump build number (TestFlight latest + 1)
         script: |
           set -e
@@ -971,7 +999,7 @@ workflows:
           REMOTE_LOG_URL=${REMOTE_LOG_URL:-}
           ALADIN_CHAT_URL=${ALADIN_CHAT_URL:-}
           # Truy vết bản dựng — xem lời dẫn dài ở khối `ios-adhoc-ipa` phía trên.
-          BUILD_COMMIT=${CM_COMMIT:-}
+          BUILD_COMMIT=${CM_COMMIT:0:12}
           BUILD_BRANCH=${CM_BRANCH:-}
           BUILD_ID=${CM_BUILD_ID:-}
           EOF
@@ -1122,18 +1150,17 @@ workflows:
       vars:
         AAB_OUTPUT: $CM_BUILD_DIR/android/app/build/outputs/bundle/release
 
-    # CHỈ `main`. Lý do không bắt luôn `develop`: nhóm thử nội bộ đang nhận bản qua
-    # TestFlight (iOS), còn đường Android nội bộ phải qua Play internal track — mà
-    # track đó CHƯA nối được (thiếu service account, xem khối `publishing` cuối tệp).
-    # Dựng AAB tự động mỗi lần đẩy `develop` khi chưa ai tải lên được thì chỉ tốn phút
-    # dựng. Có service account rồi thì thêm `develop` vào đây là xong.
+    # VẪN CHỈ CHẠY TAY — và đây là kết luận sau khi ĐO, không phải giữ nguyên vì ngại
+    # đụng. Đường GitHub ĐÃ dựng AAB đã ký trên `main` rồi
+    # (`.github/workflows/android-aab.yml`, `on: push: branches: [main]`), chạy trên
+    # `ubuntu-latest` — rẻ hơn `mac_mini_m2` ở đây, và lịch sử lượt dựng lưu sẵn trong
+    # tab Actions của kho. Bật thêm cửa này trên `main` chỉ được hai thứ: một tệp AAB
+    # thứ hai không ai dùng, và một bản ĐÃ KÝ bằng khoá tải lên thật được sinh ra sau
+    # MỖI lượt đẩy thay vì khi có người chủ ý cần.
+    #
+    # Chú thích cũ ở đây ("tránh build signed ngoài ý muốn") vẫn còn đúng nguyên.
     triggering:
-      events:
-        - push
-      branch_patterns:
-        - pattern: main
-          include: true
-      cancel_previous_builds: true
+      events: []
 
     scripts:
       # CỔNG SOÁT — đứng TRƯỚC mọi bước dựng. Đường GitHub đã có cổng tương đương
@@ -1226,7 +1253,7 @@ workflows:
           REMOTE_LOG_URL=${REMOTE_LOG_URL:-}
           ALADIN_CHAT_URL=${ALADIN_CHAT_URL:-}
           # Truy vết bản dựng — xem lời dẫn dài ở khối `ios-adhoc-ipa` phía trên.
-          BUILD_COMMIT=${CM_COMMIT:-}
+          BUILD_COMMIT=${CM_COMMIT:0:12}
           BUILD_BRANCH=${CM_BRANCH:-}
           BUILD_ID=${CM_BUILD_ID:-}
           EOF

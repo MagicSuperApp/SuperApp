@@ -136,7 +136,7 @@ runs:
         # (`src/screens/AccountScreen.tsx`) để một ảnh chụp màn của người thử truy
         # ngược được đúng commit. Phải TRÙNG codemagic.yaml (BUILD_COMMIT/BUILD_BRANCH/
         # BUILD_ID), chỉ khác nguồn: GitHub đặt GITHUB_SHA/GITHUB_REF_NAME/GITHUB_RUN_ID.
-        BUILD_COMMIT=${GITHUB_SHA}
+        BUILD_COMMIT=${GITHUB_SHA:0:12}
         BUILD_BRANCH=${GITHUB_REF_NAME}
         BUILD_ID=${GITHUB_RUN_ID}
         EOF

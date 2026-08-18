@@ -10,6 +10,7 @@
  *      tưởng mình đang hiện câu gỡ đúng cái vừa chặn.
  */
 import {
+  captureHint,
   coverageOf,
   facesOf,
   isPermanentPlanError,
@@ -147,5 +148,36 @@ describe('isPermanentPlanError — thử lại vô ích vs thử lại có ích'
 
   it('không có lỗi → không phải lỗi vĩnh viễn', () => {
     expect(isPermanentPlanError(undefined)).toBe(false);
+  });
+});
+
+describe('captureHint — dùng chung cho CẢ cây lẫn quả', () => {
+  it('trả đúng câu máy chủ viết, không viết lại', () => {
+    expect(captureHint(TREE_PLAN)).toBe('Chụp thêm quanh gốc.');
+    expect(captureHint(FRUIT_PLAN)).toBe('Chụp thêm 2 tấm mặt đáy.');
+  });
+
+  it("action 'done' → null: đủ rồi thì đừng giục chụp nữa", () => {
+    expect(captureHint({ ...TREE_PLAN, next: { action: 'done', text_vi: 'Đủ ảnh rồi.' } })).toBeNull();
+  });
+
+  it('chưa có kế hoạch / ok:false / thiếu next → null, KHÔNG bịa câu', () => {
+    expect(captureHint(null)).toBeNull();
+    expect(captureHint(undefined)).toBeNull();
+    expect(captureHint({ ok: true })).toBeNull();
+    expect(captureHint({ ...TREE_PLAN, ok: false })).toBeNull();
+  });
+
+  it('text_vi rỗng hoặc chỉ khoảng trắng → null, không hiện dòng trống', () => {
+    expect(captureHint({ ...TREE_PLAN, next: { action: 'rotate', text_vi: '   ' } })).toBeNull();
+    expect(captureHint({ ...TREE_PLAN, next: { action: 'rotate' } })).toBeNull();
+  });
+
+  it("giữ lại các action chỉ có sau một lượt bị từ chối ('wait' · 'need_light')", () => {
+    // Ba action đó cũng là việc phải làm ngay, máy chủ đã viết sẵn câu cho từng cái.
+    expect(captureHint({ ...TREE_PLAN, next: { action: 'wait', eta_seconds: 30, text_vi: 'Chờ 30 giây.' } }))
+      .toBe('Chờ 30 giây.');
+    expect(captureHint({ ...TREE_PLAN, next: { action: 'need_light', text_vi: 'Ra chỗ sáng hơn.' } }))
+      .toBe('Ra chỗ sáng hơn.');
   });
 });

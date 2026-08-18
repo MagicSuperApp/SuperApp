@@ -503,9 +503,15 @@ const FruitCropperScreen: React.FC = () => {
   // TRẢ VỀ kế hoạch vừa lấy, không chỉ đặt vào state: chỗ gọi ngay sau khi lưu
   // xong một góc cần đọc kế hoạch MỚI để quyết "mời chụp tiếp hay thoát", mà
   // `setPlan` thì phải chờ render kế tiếp mới thấy.
-  const loadPlan = useCallback(async (afterReject?: null): Promise<CapturePlan | null> => {
-    if (!fruitId) return null;
-    const r = await getCapturePlan(BASE_URL, 'fruit', fruitId, { afterReject: afterReject ?? null })
+  // NHẬN mã quả làm tham số chứ không đọc `fruitId` của route: quả VỪA ĐĂNG KÝ
+  // xong có mã máy chủ mới cấp, mã đó chưa nằm trong route params nào cả. Bản
+  // trước chỉ đọc route nên quả mới — đúng lúc thiếu 8/9 tấm — là ca DUY NHẤT
+  // không nhận được câu hướng dẫn nào.
+  const fetchPlanFor = useCallback(async (
+    targetId: string,
+    afterReject?: null,
+  ): Promise<CapturePlan | null> => {
+    const r = await getCapturePlan(BASE_URL, 'fruit', targetId, { afterReject: afterReject ?? null })
       .catch(() => null);
     if (!r?.ok || !r.data?.ok) return null;
     setPlan(r.data);
@@ -513,7 +519,12 @@ const FruitCropperScreen: React.FC = () => {
     const face = suggestedFace(r.data);
     if (face && !faceTouched.current) setViewType(face);
     return r.data;
-  }, [fruitId]);
+  }, []);
+
+  const loadPlan = useCallback(async (afterReject?: null): Promise<CapturePlan | null> => {
+    if (!fruitId) return null;
+    return fetchPlanFor(fruitId, afterReject);
+  }, [fruitId, fetchPlanFor]);
 
   useEffect(() => { void loadPlan(); }, [loadPlan]);
 
@@ -651,7 +662,7 @@ const FruitCropperScreen: React.FC = () => {
    * ứng viên và bước chọn đúng quả trong danh sách, hai bước tốn nhiều thao tác
    * nhất mà lại chỉ để trả lời một câu app đã biết sẵn.
    */
-  const shootNext = useCallback(async (targetFruitId: string) => {
+  const shootNext = useCallback(async (targetFruitId: string, nameOverride?: string) => {
     launchCamera(await withPhotoSave(PHOTO_OPTIONS), async (resp: any) => {
       if (resp.didCancel) return;
       if (resp.errorCode) {
@@ -680,7 +691,9 @@ const FruitCropperScreen: React.FC = () => {
         imageH: asset.height,
         capture: cap,
         fruitId: targetFruitId,
-        fruitName,
+        // Quả vừa đăng ký chưa có tên trong route — lấy tên người dùng vừa gõ,
+        // không thì thanh tiêu-đề vòng sau chỉ ghi trống trơn "Quả".
+        fruitName: nameOverride ?? fruitName,
         zone: zoneParam,
       });
     });
@@ -875,9 +888,33 @@ const FruitCropperScreen: React.FC = () => {
 
     // Máy chủ đã giữ đủ 3 chiều; bản cục bộ chỉ còn là bộ nhớ đệm cho máy này
     // (và là chỗ duy nhất giữ được chỉnh-sửa từ FruitPlace3D — xem màn đó).
-    if (r.data?.fruit_id) await saveFruitCoord(r.data.fruit_id, coord);
+    const newFruitId = r.data?.fruit_id;
+    if (newFruitId) await saveFruitCoord(newFruitId, coord);
+
+    // ── Quả MỚI = quả thiếu nhiều ảnh nhất, đừng thả người ta ra ở đây ───────
+    // Đăng ký xong mới có một tấm; máy chủ đòi 3 mặt × 3 tấm. Bản trước thoát
+    // thẳng, nên đúng cái quả trống nhất lại là quả DUY NHẤT không được mời chụp
+    // tiếp — đường bồi góc thì có, đường đăng ký thì không.
+    //
+    // Hỏi kế hoạch bằng mã máy chủ VỪA cấp. Không lấy được (mạng hỏng, máy chủ
+    // chưa kịp lập chỉ mục) → thoát như cũ, không bịa lời mời.
+    if (newFruitId) {
+      const fresh = await fetchPlanFor(newFruitId);
+      const ask = nextShotAsk(fresh);
+      if (ask) {
+        setServerAsk({
+          message: ask.message,
+          yesLabel: ask.yesLabel,
+          onYes: () => { setServerAsk(null); void shootNext(newFruitId, name); },
+          noLabel: 'Xong quả này',
+          onNo: () => { setServerAsk(null); navigation.goBack(); },
+        });
+        return;
+      }
+    }
+
     navigation.goBack();
-  }, [lastRegion, nameInput, coord, zPlaced, treeId, imageUri, viewType, capture, navigation]);
+  }, [lastRegion, nameInput, coord, zPlaced, treeId, imageUri, viewType, capture, navigation, fetchPlanFor, shootNext]);
 
   // ── Quay lại bước crop để khoanh vùng khác ─────────────────────────────────
   const recrop = useCallback(() => { setErrMsg(null); setStep('crop'); }, []);

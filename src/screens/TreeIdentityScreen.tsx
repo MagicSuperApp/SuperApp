@@ -54,6 +54,7 @@ import {
   type CapturedImage,
 } from '../services/treeReIDNativeBridge';
 import { autoTreeRegions } from '../services/treeRegionAuto';
+import { getCapturePlan, captureHint } from '../services/capturePlanService';
 import {
   toCaptureOrientations,
   platformHeadingRef,
@@ -672,6 +673,25 @@ const TreeIdentityScreen: React.FC = () => {
     }
   };
 
+  /**
+   * "Bồi ảnh xong rồi thì còn thiếu gì" — `GET /api/capture/plan` nhánh CÂY.
+   *
+   * Máy chủ có sẵn nhánh cây từ lâu (`shoot_around` · `shoot_bark` · `rotate`,
+   * `capturePlanService.ts`), nhưng màn này chưa từng gọi. Nên sau khi thêm góc,
+   * câu duy nhất người chụp đọc được là "Đã thêm: 3 góc" — một con số không nói
+   * được là đủ hay chưa, và họ đứng ngay cạnh gốc cây lúc đó.
+   *
+   * `null` = im lặng: mạng hỏng, hoặc máy chủ nói đủ rồi. KHÔNG tự viết câu thay.
+   */
+  const treeCaptureHint = async (id: string): Promise<string | null> => {
+    const r = await getCapturePlan(BASE_URL, 'tree', id).catch(() => null);
+    return r?.ok ? captureHint(r.data) : null;
+  };
+
+  /** Ghép câu báo của app với câu hướng dẫn của máy chủ — bỏ vế nào không có. */
+  const withHint = (body: string, hint: string | null): string =>
+    hint ? `${body}\n\n${hint}` : body;
+
   // ── MATCH: cập nhật vị trí MOVED ──────────────────────────────────────────
   const handleUpdateLocation = async () => {
     if (!identResult?.tree_id || !gpsRedux) {
@@ -706,7 +726,8 @@ const TreeIdentityScreen: React.FC = () => {
       // trong khi máy chủ chưa lưu gì — luật này chính file dịch vụ đã viết sẵn
       // cho một cửa khác ở `:938-941`, chỗ này chưa áp.
       if (res.ok && res.data?.ok !== false && res.data?.added !== false) {
-        Alert.alert('Đã cập nhật', 'Vị trí mới của cây đã được lưu.');
+        const hint = await treeCaptureHint(identResult.tree_id);
+        Alert.alert('Đã cập nhật', withHint('Vị trí mới của cây đã được lưu.', hint));
       } else {
         Alert.alert(
           'Chưa cập nhật được',
@@ -752,11 +773,15 @@ const TreeIdentityScreen: React.FC = () => {
         // "đã lưu 0 góc" — nông dân đi vòng quanh cây chụp xong đọc "0 góc đã lưu"
         // thì tưởng công đổ sông đổ biển và chụp lại từ đầu.
         const n = res.data?.n_added;
+        const hint = await treeCaptureHint(id);
         Alert.alert(
           'Đã xác nhận',
-          n == null
-            ? 'Góc nhìn mới đã thêm vào cây.'
-            : `Góc nhìn mới đã thêm vào cây.\nĐã thêm: ${n} góc.`,
+          withHint(
+            n == null
+              ? 'Góc nhìn mới đã thêm vào cây.'
+              : `Góc nhìn mới đã thêm vào cây.\nĐã thêm: ${n} góc.`,
+            hint,
+          ),
         );
       } else {
         Alert.alert(

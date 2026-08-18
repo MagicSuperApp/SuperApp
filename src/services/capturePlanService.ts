@@ -151,6 +151,26 @@ export function suggestedFace(plan?: CapturePlan | null): Exclude<FaceType, 'unk
   return v === 'bottom' || v === 'stem' || v === 'side' ? v : null;
 }
 
+/**
+ * Câu hướng dẫn DUY NHẤT nên hiện to — chính chữ máy chủ đã viết sẵn
+ * (`next.text_vi`), dùng được cho CẢ cây lẫn quả.
+ *
+ * `null` = KHÔNG có gì để nói, và màn phải im: chưa lấy được kế hoạch (mạng hỏng,
+ * đối tượng chưa tồn tại), hoặc `action: 'done'` — máy chủ nói đủ rồi. Chỗ gọi
+ * TUYỆT ĐỐI không được thay `null` bằng một câu tự viết: câu tự viết trông y hệt
+ * câu của máy chủ nhưng không dựa trên số ảnh thật, nên nó sai mà không ai biết.
+ *
+ * Không lọc theo `action` nào khác `done`: `wait`/`need_light`/`blocked_wrong_target`
+ * đều là việc người chụp phải làm ngay, và máy chủ đã viết sẵn câu cho từng cái.
+ */
+export function captureHint(plan?: CapturePlan | null): string | null {
+  const next = plan?.next;
+  if (!plan?.ok || !next) return null;
+  if (next.action === 'done') return null;
+  const text = (next.text_vi ?? '').trim();
+  return text || null;
+}
+
 // ---------------------------------------------------------------------------
 // Rút mã từ chối từ thân trả về — ba nguồn, ba chỗ đọc
 // ---------------------------------------------------------------------------

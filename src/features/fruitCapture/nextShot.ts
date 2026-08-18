@@ -20,7 +20,7 @@
  * thì bỏ dở. Khoá bằng bảng số rẻ hơn nhiều so với đi thử ngoài vườn.
  */
 
-import type { CapturePlan } from '../../services/capturePlanService';
+import { captureHint, type CapturePlan } from '../../services/capturePlanService';
 
 export interface NextShotAsk {
   /** Câu của MÁY CHỦ (`next.text_vi`) — hiện thẳng, đừng viết lại. */
@@ -36,10 +36,10 @@ export interface NextShotAsk {
  *   - `action: 'done'` → máy chủ nói đủ rồi.
  */
 export function nextShotAsk(plan: CapturePlan | null | undefined): NextShotAsk | null {
-  const next = plan?.next;
-  if (!plan?.ok || !next) return null;
-  if (next.action === 'done') return null;
-  const message = (next.text_vi ?? '').trim();
+  // Cùng một phép đọc kế hoạch với dòng hướng dẫn của đường CÂY (`captureHint`).
+  // Tách đôi ra hai chỗ thì hai đường sẽ trôi khác nhau đúng vào những ca hiếm —
+  // `wait`, `need_light` — mà không ai chạy tay để thấy.
+  const message = captureHint(plan);
   if (!message) return null;
   return { message, yesLabel: 'Chụp tiếp' };
 }

@@ -117,6 +117,40 @@ Hệ quả, nói đúng chữ để không hứa suông:
 Registry, (ii) gộp PR #25, (iii) chủ dự án chốt. Câu đúng để nói với người dùng là *"chưa nối
 được, vì thiếu một mắt xích on-chain chưa ai viết"* — **không phải** *"sắp có"*.
 
+### Bên thứ ba đúc LAMP: HAI cửa, và một cửa không phải xin ai
+
+Chủ sở hữu chốt 2026-08-18: **đường Grant, mint đi qua MagicLamp, SuperApp chỉ là một trong các
+bên**. Nhà LAMP đối chiếu và xác nhận không lệch với câu họ nhận trực tiếp ("ai cũng đúc được,
+nhưng phải thông qua một cổng tất định") — cùng nghĩa: **không độc quyền, nhưng một đường duy
+nhất**. `Treasury/CONTRACT.md §12.1` giữ nguyên.
+
+Giả định ngầm cần gỡ: KHÔNG phải mọi lượt mint đều phải xin ai đó. Trên bản 12 tham số có hai cửa.
+
+| Cửa | Xin gì | Của ai |
+|---|---|---|
+| `ReserveDraw` | **không xin gì** | không của ai — chỉ cần dựng đúng tx |
+| `DistributionVest` | một mục trong `RegistryDatum` | **CHƯA QUYẾT** |
+
+`ReserveDraw` (`Genesis/onchain/validators/lamp_mint.ak:170-174`) **không kiểm chữ ký**. Nó ép tx
+tiêu đúng 1 UTxO mang meter NFT, nên `reserve_draw.spend` bắt buộc chạy và số nhả bị một hàm tất
+định chặn theo nhịp — không keyholder nào quyết được con số đó.
+
+`DistributionVest` đi qua Registry NFT: mục phải thoả `authority_satisfied`
+(`registry.ak:93-105`) — `SinglePkh` (đúng một chữ ký) · `MultiSig` (M trong N, `1 <= threshold <=
+số khoá`) · `Revoked` (chết, không mở lại được trong cùng mục). Sổ đăng ký do **script** quản chứ
+không phải một cái ví: `find_registry_datum` (`registry.ak:139-146`) đòi UTxO mang đúng 1 registry
+NFT **và** nằm ở địa chỉ `Script(policy)`. Chỗ này hay bị hiểu nhầm thành "gửi NFT vào ví ban
+quản trị".
+
+**Ai quản sổ đăng ký và theo tiêu chí nào: chưa quyết.** Đây là quyết định của chủ sở hữu, chưa
+có. Ghi đúng chữ "chưa quyết" — đừng ghi phỏng đoán.
+
+⚠️ **Cả hai cửa hôm nay đều chưa chạy được.** Validator quản `RegistryDatum` chưa ai viết (mục
+ngay dưới), và cửa registry chỉ tồn tại ở bản 12 tham số — bản đó chưa đúc. Policy đang chạy
+mainnet có 8 tham số, trong đó **không có tham số registry nào**; WHO-gate của nó là danh sách pkh
+nướng cứng, ngưỡng 1-of-1. Trên policy hiện hành, bên thứ ba **không bao giờ** đúc được — không
+phải "chưa nối", mà là không có cửa.
+
 ### Mainnet hôm nay chạy bản MỒI 8 tham số
 
 Policy-id `55d3e01b…180f0` (`LAMP/Genesis/offchain/src/deployed.ts:63`, byte khớp 2121/2121).

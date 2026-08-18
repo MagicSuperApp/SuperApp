@@ -43,13 +43,16 @@ import { ORILIFE_BASE } from '../services/orilifeBase';
 import { NEUTRAL } from '../shared/theme';
 import { COLORS } from '../constants';
 import ResultBadge from '../components/reid/ResultBadge';
-import ReidConfirmDialog from '../components/reid/ReidConfirmDialog';
+import ReidConfirmDialog, { type ReidCandidate } from '../components/reid/ReidConfirmDialog';
 import {
   identifyAnimal,
   type AnimalIdentifyResponse,
   type AnimalCandidate,
 } from '../services/animalReIDService';
 import { withPhotoSave } from '../services/mediaSavePermission';
+import { useAppDispatch, useAppSelector } from '../store/hooks';
+import type { RootState } from '../store';
+import { loadFarms } from '../modules/trace/store/farmSlice';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -73,6 +76,34 @@ function speciesLabel(s: string): string {
   return SPECIES_LABELS[s.toLowerCase()] ?? s;
 }
 
+// Thứ tự chip chọn loài khi màn được mở KHÔNG kèm loài (từ cổng xoè).
+const SPECIES_KEYS = Object.keys(SPECIES_LABELS);
+
+/**
+ * AnimalCandidate (máy chủ) → ReidCandidate (hộp thoại chọn cá thể).
+ *
+ * XUẤT RA để test khoá được — chỗ này từng hỏng câm. Bản cũ ghi khoá `tree_id`
+ * trong khi hộp thoại đọc `candidate.id` (ReidConfirmDialog.tsx:25 · :191 · :193),
+ * lại bị `candidates={… as any}` che nên TypeScript không gác nổi. Hệ quả: bấm một
+ * ứng viên thì `onSelect` nhận `undefined` → mở hồ sơ rỗng. Bản cũ cũng bỏ luôn
+ * `sim` dù máy chủ có trả (animalReIDService.ts:21) → mất huy hiệu % giống.
+ *
+ * Chú kiểu trả về `ReidCandidate` chính là cái gác: đổi tên khoá là `tsc` đỏ ngay.
+ */
+export function toReidCandidates(list?: AnimalCandidate[]): ReidCandidate[] {
+  return (list ?? []).map(
+    (c): ReidCandidate => ({
+      id: c.animal_did,
+      name: c.name ?? '',
+      sim: c.sim,
+      species: c.species,
+      code: c.species ? speciesLabel(c.species) : undefined,
+      near_prev: c.near_prev,
+      n_views: c.n_views,
+    }),
+  );
+}
+
 // Camera options (dùng khi react-native-image-picker đã cài)
 const CAMERA_OPTIONS = {
   mediaType: 'photo' as const,
@@ -87,10 +118,13 @@ const CAMERA_OPTIONS = {
 // Navigation types
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Params TUỲ CHỌN: cổng xoè (resolveGateItems) mở màn này mà KHÔNG biết vườn nào —
+// nó chỉ có số đếm vườn/cây, không có mã vườn. Trước đây thiếu params là màn tự
+// goBack() ⇒ lối vào nào cũng chết. Nay màn tự hỏi loài + tự chọn vườn.
 type AnimalIdentityRouteParams = {
   AnimalIdentity: {
-    species: string;
-    farmId: string;
+    species?: string;
+    farmId?: string;
   };
 };
 
@@ -102,21 +136,41 @@ const AnimalIdentityScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<AnimalIdentityRouteParams, 'AnimalIdentity'>>();
 
-  const species = route.params?.species ?? '';
-  const farmId = route.params?.farmId ?? '';
+  const [species, setSpecies] = useState<string>(route.params?.species ?? '');
+  const [farmId, setFarmId] = useState<string>(route.params?.farmId ?? '');
 
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [isIdentifying, setIsIdentifying] = useState(false);
   const [result, setResult] = useState<AnimalIdentifyResponse | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
 
-  // Guard: params có thể thiếu khi deeplink hoặc caller lỗi — goBack sau mount
+  // ── Chọn vườn (mẫu của TreeEnrollScreen:186-215) ──────────────────────────
+  // Vật nuôi PHẢI thuộc một vườn thật: máy chủ nhận `farm_id` và mọi màn đọc lại
+  // đều lọc theo mã vườn thật. KHÔNG BAO GIỜ gửi rỗng hay chuỗi bịa `'default'` —
+  // ghi dưới mã không thuộc về ai là ghi xong biến mất.
+  const dispatch = useAppDispatch();
+  const farms = useAppSelector((s: RootState) => s.farm.farms);
+  const currentUser = useAppSelector((s: RootState) => s.user.currentUser);
+
   useEffect(() => {
-    if (!route.params?.species || !route.params?.farmId) {
-      navigation.goBack();
-    }
+    if (currentUser?.id && farms.length === 0) dispatch(loadFarms(currentUser.id));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [currentUser?.id]);
+
+  // Mã vườn đang giữ không nằm trong danh sách đã tải (vườn bị xoá, hoặc chuỗi bịa
+  // lọt từ một cổng cũ) → bỏ chọn để buộc chọn lại, khỏi gửi mã chết lên máy chủ.
+  useEffect(() => {
+    if (farmId && farms.length > 0 && !farms.some(f => f.id === farmId)) {
+      setFarmId('');
+    }
+  }, [farms, farmId]);
+
+  // Đúng 1 vườn → tự chọn (không thêm ma sát). Nhiều vườn → để người dùng chọn.
+  useEffect(() => {
+    if (!farmId && farms.length === 1) setFarmId(farms[0].id);
+  }, [farms, farmId]);
+
+  const needsSetup = !species || !farmId;
 
   // ── Chụp ảnh ──────────────────────────────────────────────────────────────
   const handleCapture = useCallback(async () => {
@@ -152,7 +206,9 @@ const AnimalIdentityScreen: React.FC = () => {
 
   // ── Gọi API nhận diện ─────────────────────────────────────────────────────
   const handleIdentify = useCallback(async () => {
-    if (!imageUri) return;
+    // Thiếu loài hoặc vườn thì KHÔNG gọi: máy chủ nhận cả hai trong form
+    // (animalReIDService.ts:168-172), gửi rỗng là ghi vào chỗ không ai đọc lại được.
+    if (!imageUri || !species || !farmId) return;
     setIsIdentifying(true);
     setResult(null);
 
@@ -185,16 +241,8 @@ const AnimalIdentityScreen: React.FC = () => {
     [navigation, species, farmId],
   );
 
-  // ── Adapter: AnimalCandidate → TreeCandidate shape cho ReidConfirmDialog ──
-  const candidatesForDialog = (result?.candidates ?? []).map(c => ({
-    tree_id: c.animal_did,
-    name: c.name ?? null,
-    code: c.species ? speciesLabel(c.species) : null,
-    has3d: false,
-    anchor: null,
-    near_prev: false,
-    n_views: c.n_views,
-  }));
+  // ── Adapter: AnimalCandidate → ReidCandidate cho ReidConfirmDialog ────────
+  const candidatesForDialog = toReidCandidates(result?.candidates);
 
   // ── Render kết quả ────────────────────────────────────────────────────────
   const renderResult = () => {
@@ -267,6 +315,32 @@ const AnimalIdentityScreen: React.FC = () => {
             </TouchableOpacity>
           )}
 
+          {/* UNCERTAIN — trước đây KHÔNG có nhánh nào ở đây: đóng hộp thoại là kẹt
+              cứng (nút "Nhận diện" bị `!result` chặn, lối ra duy nhất là chạm ảnh
+              mà không nhãn nào nói vậy). Nay có đường mở lại danh sách. */}
+          {decision === 'UNCERTAIN' && (
+            <View style={styles.actionRow}>
+              {(result.candidates?.length ?? 0) > 0 && (
+                <TouchableOpacity
+                  style={[styles.btn, styles.btnPrimary]}
+                  onPress={() => setShowConfirm(true)}
+                  activeOpacity={0.8}
+                >
+                  <Icon name="format-list-checks" size={18} color={NEUTRAL.white} />
+                  <Text style={styles.btnPrimaryText}>Chọn lại từ danh sách</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={[styles.btn, styles.btnSecondary]}
+                onPress={handleCapture}
+                activeOpacity={0.8}
+              >
+                <Icon name="camera-retake" size={18} color={COLORS.accent} />
+                <Text style={styles.btnSecondaryText}>Chụp lại</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
           {decision === 'MOVED' && animal_did && (
             <TouchableOpacity
               style={[styles.btn, styles.btnInfo, styles.btnFull]}
@@ -307,7 +381,7 @@ const AnimalIdentityScreen: React.FC = () => {
         <View style={styles.headerCenter}>
           <Icon name="paw" size={20} color={NEUTRAL.white} />
           <Text style={styles.headerTitle}>
-            Nhận diện {speciesLabel(species)}
+            {species ? `Nhận diện ${speciesLabel(species)}` : 'Nhận diện vật nuôi'}
           </Text>
         </View>
         <View style={styles.headerSpacer} />
@@ -318,6 +392,66 @@ const AnimalIdentityScreen: React.FC = () => {
         contentContainerStyle={styles.bodyContent}
         keyboardShouldPersistTaps="handled"
       >
+        {/* ── Bước chuẩn bị: loài + vườn ──────────────────────────────────────
+            Chỉ hiện khi còn thiếu. Vào từ trong một vườn (đã có đủ params) thì
+            khối này không xuất hiện, luồng y như cũ. */}
+        {needsSetup && (
+          <View style={styles.setupBox}>
+            <Text style={styles.setupTitle}>Trước khi chụp, cho biết:</Text>
+
+            {/* Loài */}
+            <Text style={styles.setupLabel}>Con gì?</Text>
+            <View style={styles.chipRow}>
+              {SPECIES_KEYS.map(k => (
+                <TouchableOpacity
+                  key={k}
+                  style={[styles.chip, species === k && styles.chipActive]}
+                  onPress={() => setSpecies(k)}
+                  activeOpacity={0.75}
+                >
+                  <Text style={[styles.chipText, species === k && styles.chipTextActive]}>
+                    {SPECIES_LABELS[k]}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Vườn — chỉ hỏi khi có từ 2 vườn trở lên (1 vườn đã tự chọn) */}
+            <Text style={styles.setupLabel}>Ở vườn nào?</Text>
+            {farms.length === 0 ? (
+              <View>
+                <Text style={styles.setupHint}>
+                  Chưa có vườn nào. Vật nuôi phải thuộc một vườn thật thì hồ sơ mới
+                  tra lại được — tạo vườn trước rồi quay lại đây.
+                </Text>
+                <TouchableOpacity
+                  style={[styles.btn, styles.btnSecondary, styles.btnFull]}
+                  onPress={() => navigation.navigate('Farms')}
+                  activeOpacity={0.8}
+                >
+                  <Icon name="warehouse" size={18} color={COLORS.accent} />
+                  <Text style={styles.btnSecondaryText}>Mở trang trại</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={styles.chipRow}>
+                {farms.map(f => (
+                  <TouchableOpacity
+                    key={f.id}
+                    style={[styles.chip, farmId === f.id && styles.chipActive]}
+                    onPress={() => setFarmId(f.id)}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={[styles.chipText, farmId === f.id && styles.chipTextActive]}>
+                      {f.name || f.id}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
+        )}
+
         {/* Preview ảnh hoặc placeholder chụp */}
         {imageUri ? (
           <TouchableOpacity
@@ -339,7 +473,7 @@ const AnimalIdentityScreen: React.FC = () => {
           >
             <Icon name="camera-plus" size={56} color={NEUTRAL.textMuted} />
             <Text style={styles.capturePlaceholderText}>
-              Chụp ảnh {speciesLabel(species)}
+              {species ? `Chụp ảnh ${speciesLabel(species)}` : 'Chụp ảnh con vật'}
             </Text>
             <Text style={styles.capturePlaceholderSub}>
               Lấy rõ mặt, đặc điểm nhận dạng — 1 ảnh đủ
@@ -350,9 +484,12 @@ const AnimalIdentityScreen: React.FC = () => {
         {/* Nút nhận diện */}
         {imageUri && !result && (
           <TouchableOpacity
-            style={[styles.btn, styles.btnPrimary, styles.btnFull, isIdentifying && styles.btnDisabled]}
+            style={[
+              styles.btn, styles.btnPrimary, styles.btnFull,
+              (isIdentifying || needsSetup) && styles.btnDisabled,
+            ]}
             onPress={handleIdentify}
-            disabled={isIdentifying}
+            disabled={isIdentifying || needsSetup}
             activeOpacity={0.85}
           >
             {isIdentifying ? (
@@ -377,7 +514,7 @@ const AnimalIdentityScreen: React.FC = () => {
       <ReidConfirmDialog
         visible={showConfirm}
         context="animal"
-        candidates={candidatesForDialog as any}
+        candidates={candidatesForDialog}
         onSelect={handleConfirmSelect}
         onDismiss={() => setShowConfirm(false)}
       />
@@ -461,6 +598,31 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: 24,
   },
+
+  // ── Bước chuẩn bị (loài + vườn) ──
+  setupBox: {
+    backgroundColor: NEUTRAL.card,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: NEUTRAL.border,
+    gap: 8,
+  },
+  setupTitle: { fontSize: 15, fontWeight: '700', color: NEUTRAL.text },
+  setupLabel: { fontSize: 13, color: NEUTRAL.textSub, marginTop: 4 },
+  setupHint: { fontSize: 13, color: NEUTRAL.textMuted, lineHeight: 19, marginBottom: 10 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: NEUTRAL.border,
+    backgroundColor: NEUTRAL.bgSoft,
+  },
+  chipActive: { backgroundColor: HEADER_BG, borderColor: HEADER_BG },
+  chipText: { fontSize: 13, color: NEUTRAL.textSub, fontWeight: '600' },
+  chipTextActive: { color: NEUTRAL.white },
 
   // ── Kết quả ──
   resultSection: {

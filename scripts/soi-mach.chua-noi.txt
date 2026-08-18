@@ -12,7 +12,6 @@ taad_build_deploy_mint_registry
 taad_build_finalize_recovery_tx
 taad_build_genesis_supply_state
 taad_build_init_recovery_tx
-taad_build_mint_via_registry
 taad_build_multi_pool_delegation_tx
 taad_build_rotate_taad_tx
 taad_build_signed_transfer

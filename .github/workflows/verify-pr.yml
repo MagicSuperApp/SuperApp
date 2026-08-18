@@ -73,6 +73,14 @@ jobs:
       - name: Typecheck (tsc --noEmit)
         run: npx tsc --noEmit -p tsconfig.json
 
+      # Cổng này soi KHE GIỮA các tầng — chỗ mà mọi cổng khác trong tệp này không nhìn
+      # tới. `tsc`/`jest` chỉ chứng minh phía TS; `cargo test` chỉ chứng minh phía Rust.
+      # Một hàm Rust không có cầu thì cả hai vẫn xanh, và nó chết lặng. Đã xảy ra thật:
+      # commit 5ab0635 (25/06/2026) đổ 46 hàm Rust vào repo với đúng 3 cây cầu, và không
+      # ai biết trong gần hai tháng. Không cần cài gì — chỉ đọc tệp nguồn, chạy vài giây.
+      - name: Soi mạch dọc (cầu native không được đứt)
+        run: node scripts/soi-mach.js
+
       # `--forceExit`: test xanh rồi mà jest vẫn treo thì đó là handle còn mở, KHÔNG
       # phải mã sai — nhưng runner cứ chạy tiếp tới lúc hết bộ nhớ và báo đỏ (đã xảy
       # ra: treo ~19 phút rồi exit 134). Nguyên nhân gốc là bộ đếm giờ rò trong

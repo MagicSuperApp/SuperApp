@@ -9,6 +9,7 @@
     "start": "react-native start",
     "test": "jest",
     "icons": "node scripts/icons.js",
+    "soi-mach": "node scripts/soi-mach.js",
     "postinstall": "patch-package"
   },
   "dependencies": {

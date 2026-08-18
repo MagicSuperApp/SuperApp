@@ -55,11 +55,13 @@ inputs:
     default: ''
   proofchat-backend-enabled:
     description: >
-      Mặc định `off` CỐ Ý. Máy chủ ProofChat đã sống lại (api.proofchat.me/api/v1/health
-      → 200, đo 2026-08-11), nên nếu để trống thì cổng runtime tự bật module — trong khi
-      chốt chặn của chính nó chưa gỡ (proofchat-api.ts:88-93: token phải nằm
-      Keychain/Keystore, nay còn ở AsyncStorage chưa mã hoá). Bật là quyết định của
-      người phát hành, không phải hệ quả phụ của việc máy chủ hồi sinh.
+      Mặc định `off` CỐ Ý. Máy chủ ProofChat sống (api.proofchat.me/api/v1/health → 200,
+      đo lại 2026-08-18), nên để trống thì cổng runtime tự bật module. Bật là quyết định
+      của người phát hành, không phải hệ quả phụ của việc máy chủ hồi sinh.
+      ĐÍNH CHÍNH 2026-08-18: lý do cũ ("token còn ở AsyncStorage chưa mã hoá") đã hết
+      hiệu lực — commit 48efb57 chuyển token phiên sang Keychain/Keystore. Chặn còn lại
+      nằm ở phía ProofChat: GET /api/v1/users/search → 404, cửa tìm người để mở hội
+      thoại vẫn đóng (proofchat-api.ts:465).
     required: false
     default: 'off'
 
@@ -129,6 +131,14 @@ runs:
         # Có endpoint phát hành thật thì điền vào đây, ĐỪNG điền lại ngrok.
         REMOTE_LOG_URL=
         ALADIN_CHAT_URL=
+
+        # Truy vết bản dựng — app in ba giá trị này ở màn "Phiên bản ứng dụng"
+        # (`src/screens/AccountScreen.tsx`) để một ảnh chụp màn của người thử truy
+        # ngược được đúng commit. Phải TRÙNG codemagic.yaml (BUILD_COMMIT/BUILD_BRANCH/
+        # BUILD_ID), chỉ khác nguồn: GitHub đặt GITHUB_SHA/GITHUB_REF_NAME/GITHUB_RUN_ID.
+        BUILD_COMMIT=${GITHUB_SHA:0:12}
+        BUILD_BRANCH=${GITHUB_REF_NAME}
+        BUILD_ID=${GITHUB_RUN_ID}
         EOF
         # Cắt khoảng trắng lạc sau '=' và cuối dòng: một URL dính tab đầu chuỗi sẽ
         # làm fetch ném "Network request failed" trên máy thật, và lỗi đó đọc như

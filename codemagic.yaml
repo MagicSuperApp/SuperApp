@@ -54,19 +54,34 @@ workflows:
         ARCHIVE_PATH: $CM_BUILD_DIR/build/ios/OriLife.xcarchive
         IPA_OUTPUT_DIR: $CM_BUILD_DIR/build/ios/ipa
 
+    # GỠ KHỎI `main` VÀ `develop` (2026-08-18). Workflow này cho ra IPA KHÔNG KÝ để cài
+    # tay qua AltStore/Sideloadly — hữu ích trên nhánh đang làm dở, thừa trên hai nhánh
+    # đã có đường TestFlight thật.
+    #
+    # Vì sao gỡ, chứ không phải "dọn cho gọn": mỗi lượt đẩy `develop` trước đây khởi BA
+    # bản dựng, trong đó HAI là iOS trên cùng `mac_mini_m2`. Số bản dựng chạy song song
+    # mà gói Codemagic cho phép thì bên này KHÔNG đo được (không có khoá API), nên đây
+    # là nghi phạm hàng đầu cho việc gộp #181 (15:37 giờ VN 18/08) và #183 (16:38) mà
+    # tới 20:10 vẫn không có bản nào lên TestFlight — trong khi nếp trước đó là 15–22
+    # phút (ba cặp khớp, đo qua App Store Connect API).
+    #
+    # Cái MẤT: kênh cài tay bản không ký từ `main`/`develop`. Grep toàn kho + toàn bộ
+    # thư giữa các nhà: KHÔNG chỗ nào ghi nhận người thật đang dùng kênh đó. Đó là
+    # "không tìm thấy bằng chứng", không phải "chứng minh không ai dùng" — có người báo
+    # thiếu thì thêm lại hai dòng `branch_patterns`, một commit, không đụng dữ liệu nào.
+    #
+    # Và nếu gỡ rồi mà kiểu sự cố "gộp xong không thấy bản mới" VẪN tái diễn thì giả
+    # thuyết này sai — đừng coi việc gỡ ở đây là đã sửa xong.
+    #
+    # Còn `feat/*` thì KHÔNG giữ lại, vì nó chưa từng khớp gì. Quy ước nhánh của kho là
+    # `feature/*`, `fix/*`, `claude/*` (`.github/workflows/branch-policy.yml:4`), và
+    # danh sách nhánh thật trên remote hôm nay chỉ có tiền tố `claude/`, `develop`,
+    # `main`. Đổi `feat/*` thành `claude/*` thì mỗi lượt đẩy nhánh làm việc lại khởi một
+    # bản dựng mac — đắt hơn hẳn thứ nó đem lại. Nên: CHẠY TAY.
+    # Đây vẫn là công cụ chẩn đoán có giá trị (bản không ký nạp được ExpoModulesJSI,
+    # bản ký thì không) — thứ cần khi đang truy lỗi, không phải mỗi lượt đẩy.
     triggering:
-      events:
-        - push
-      branch_patterns:
-        - pattern: main
-          include: true
-        - pattern: develop
-          include: true
-        - pattern: 'feat/foundation'
-          include: true
-        - pattern: 'feat/*'
-          include: true
-      cancel_previous_builds: true
+      events: []
 
     scripts:
 
@@ -129,12 +144,18 @@ workflows:
           # rơi về rỗng DÙ máy chủ sống (đo 05/08: api.aladin.work/api/v1/health = 200).
           WORK_API_URL=${WORK_API_URL:-https://api.aladin.work/api/v1}
 
-          # ProofChat. Ghi sẵn URL để khi máy chủ sống lại chỉ phải bật MỘT biến, không
-          # phải sửa cấu hình. Nhưng cờ mặc định là `off`, CỐ Ý: nếu để `true` thì cửa
-          # duy nhất còn lại là phép thử /health — máy chủ sống lại là module tự bật,
-          # trong khi chốt chặn bảo mật của chính nó chưa gỡ (proofchat-api.ts:88-93:
-          # token production PHẢI ở Keychain/Keystore, nay còn nằm AsyncStorage chưa mã
-          # hoá). Bật là quyết định của người phát hành, không phải hệ quả phụ.
+          # ProofChat. Cờ mặc định `off` = MỌI bản phát hành chạy dữ liệu giả, dù máy
+          # chủ sống. Bật là quyết định của người phát hành, không phải hệ quả phụ của
+          # việc máy chủ hồi sinh.
+          #
+          # ĐÍNH CHÍNH 2026-08-18: lý do cũ ghi ở đây ("token production còn nằm trần
+          # trong AsyncStorage") ĐÃ HẾT HIỆU LỰC — commit 48efb57 chuyển token phiên
+          # sang Keychain/Keystore qua `taad.secureStore` (`proofchat-api.ts`).
+          # Còn lại một chặn THẬT, đo 2026-08-18 và nằm ở phía ProofChat chứ không
+          # phải ở app: `GET https://api.proofchat.me/api/v1/users/search` → 404
+          # ("Cannot GET"), tức cửa TÌM NGƯỜI để mở hội thoại vẫn đóng
+          # (`proofchat-api.ts:465` đã ghi: khối `@Get('search')` bị bình luận ở BE).
+          # Bật cờ lúc này chỉ đổi "chat giả" thành "chat thật nhưng không tìm được ai".
           PROOFCHAT_API_URL=${PROOFCHAT_API_URL:-https://api.proofchat.me/api/v1}
           PROOFCHAT_WS_URL=${PROOFCHAT_WS_URL:-https://api.proofchat.me}
           PROOFCHAT_WS_PATH=${PROOFCHAT_WS_PATH:-/socket.io}
@@ -159,6 +180,18 @@ workflows:
           # Trống = TẮT hẳn. ĐỪNG điền tunnel ngrok — xem remoteLogger.ts, aladinChat.ts.
           REMOTE_LOG_URL=${REMOTE_LOG_URL:-}
           ALADIN_CHAT_URL=${ALADIN_CHAT_URL:-}
+          # ── Truy vết bản dựng ────────────────────────────────────────────────
+          # Báo cáo thực địa trước nay chỉ có "2.0 (86)". Số đó KHÔNG chỉ về commit
+          # nào: `main` và `develop` cùng đẩy lên MỘT luồng TestFlight, và số build
+          # do App Store Connect cấp chứ không do kho sinh. Ba biến dưới được nướng
+          # vào bundle và app in ra ở màn "Phiên bản ứng dụng"
+          # (`src/screens/AccountScreen.tsx`) → ảnh chụp màn của người thử là truy
+          # ngược được đúng commit. Codemagic đặt sẵn CM_COMMIT/CM_BRANCH/CM_BUILD_ID.
+          # Sửa ở đây thì sửa CẢ `.github/actions/rn-env/action.yml` (hai đường build
+          # lệch nhau là quay lại đúng lỗi mà tệp action đó đang chống).
+          BUILD_COMMIT=${CM_COMMIT:0:12}
+          BUILD_BRANCH=${CM_BRANCH:-}
+          BUILD_ID=${CM_BUILD_ID:-}
           EOF
           # Dọn whitespace lạc (tab/space) mà biến môi trường Codemagic có thể dính
           # vào value khi paste — nếu không, URL như "\thttps://..." sẽ làm fetch ném
@@ -399,12 +432,18 @@ workflows:
   # ============================================================
   # Workflow 2: iOS App Store (Signed)
   # ============================================================
+  # ⚠ BA KHỐI DƯỚI ĐÂY (`environment`, `scripts`, `artifacts`) MANG MỎ NEO YAML và
+  # được `ios-production` — đường NỘP APP STORE THẬT — dùng lại nguyên vẹn. Sửa bất kỳ
+  # bước nào ở đây là sửa CẢ đường phát hành cho người dùng phổ thông, dù diff chỉ hiện
+  # thay đổi trong khối `ios-appstore`. Đây là đánh đổi có chủ ý: một nguồn duy nhất để
+  # hai bản dựng không bao giờ lệch nhau, đổi lấy việc người sửa phải nhớ điều này.
+  # Muốn đổi hành vi của RIÊNG đường thử thì tách bước đó ra khỏi mỏ neo trước đã.
   ios-appstore:
-    name: iOS App Store Build (Signed)
+    name: iOS TestFlight (nhánh develop — nhóm thử nội bộ)
     max_build_duration: 120
     instance_type: mac_mini_m2
 
-    environment:
+    environment: &ios_release_environment
       node: 22.11.0
       xcode: 26.4  # PIN 26.4 CỤ THỂ — KHÔNG để `26` (resolve = 26.0 = Swift < 6.2) hay
                    # `latest` (trôi về 26.0). expo-modules-jsi (expo 56) dùng `weak let`
@@ -424,21 +463,20 @@ workflows:
         distribution_type: app_store
         bundle_identifier: vn.aladinapp
 
+    # CHỈ `develop`. Trước 18/08 workflow này ăn cả `main` lẫn `develop` và cả hai
+    # cùng đổ vào MỘT luồng TestFlight — nên không ai phân biệt được bản người thử
+    # đang cầm là bản thử hay bản phát hành, và số build ("86") thì do App Store
+    # Connect cấp chứ không chỉ về nhánh nào. Nay tách: `develop` → TestFlight ở
+    # đây; `main` → `ios-production` bên dưới (cùng script, khác cửa phát hành).
     triggering:
       events:
         - push
       branch_patterns:
-        - pattern: main
-          include: true
-        # develop cũng ra bản TestFlight (issue #144 mục 2.2) — trước đây chỉ `main` nên
-        # build từ develop chỉ ra IPA unsigned, không bao giờ tới người thử. App Store
-        # review KHÔNG tự nộp (submit_to_app_store: false ở publishing), nên push develop
-        # chỉ phát TestFlight, an toàn.
         - pattern: develop
           include: true
       cancel_previous_builds: true
 
-    scripts:
+    scripts: &ios_release_scripts
 
       # CỔNG SOÁT — cùng lý do với `android-appstore-aab` (đọc chú thích dài ở đó).
       # Workflow này bắn thẳng lên TestFlight (`publishing.app_store_connect`) nên
@@ -510,12 +548,18 @@ workflows:
           # rơi về rỗng DÙ máy chủ sống (đo 05/08: api.aladin.work/api/v1/health = 200).
           WORK_API_URL=${WORK_API_URL:-https://api.aladin.work/api/v1}
 
-          # ProofChat. Ghi sẵn URL để khi máy chủ sống lại chỉ phải bật MỘT biến, không
-          # phải sửa cấu hình. Nhưng cờ mặc định là `off`, CỐ Ý: nếu để `true` thì cửa
-          # duy nhất còn lại là phép thử /health — máy chủ sống lại là module tự bật,
-          # trong khi chốt chặn bảo mật của chính nó chưa gỡ (proofchat-api.ts:88-93:
-          # token production PHẢI ở Keychain/Keystore, nay còn nằm AsyncStorage chưa mã
-          # hoá). Bật là quyết định của người phát hành, không phải hệ quả phụ.
+          # ProofChat. Cờ mặc định `off` = MỌI bản phát hành chạy dữ liệu giả, dù máy
+          # chủ sống. Bật là quyết định của người phát hành, không phải hệ quả phụ của
+          # việc máy chủ hồi sinh.
+          #
+          # ĐÍNH CHÍNH 2026-08-18: lý do cũ ghi ở đây ("token production còn nằm trần
+          # trong AsyncStorage") ĐÃ HẾT HIỆU LỰC — commit 48efb57 chuyển token phiên
+          # sang Keychain/Keystore qua `taad.secureStore` (`proofchat-api.ts`).
+          # Còn lại một chặn THẬT, đo 2026-08-18 và nằm ở phía ProofChat chứ không
+          # phải ở app: `GET https://api.proofchat.me/api/v1/users/search` → 404
+          # ("Cannot GET"), tức cửa TÌM NGƯỜI để mở hội thoại vẫn đóng
+          # (`proofchat-api.ts:465` đã ghi: khối `@Get('search')` bị bình luận ở BE).
+          # Bật cờ lúc này chỉ đổi "chat giả" thành "chat thật nhưng không tìm được ai".
           PROOFCHAT_API_URL=${PROOFCHAT_API_URL:-https://api.proofchat.me/api/v1}
           PROOFCHAT_WS_URL=${PROOFCHAT_WS_URL:-https://api.proofchat.me}
           PROOFCHAT_WS_PATH=${PROOFCHAT_WS_PATH:-/socket.io}
@@ -540,6 +584,10 @@ workflows:
           # Trống = TẮT hẳn. ĐỪNG điền tunnel ngrok — xem remoteLogger.ts, aladinChat.ts.
           REMOTE_LOG_URL=${REMOTE_LOG_URL:-}
           ALADIN_CHAT_URL=${ALADIN_CHAT_URL:-}
+          # Truy vết bản dựng — xem lời dẫn dài ở khối `ios-adhoc-ipa` phía trên.
+          BUILD_COMMIT=${CM_COMMIT:0:12}
+          BUILD_BRANCH=${CM_BRANCH:-}
+          BUILD_ID=${CM_BUILD_ID:-}
           EOF
           # Dọn whitespace lạc (tab/space) trong value biến môi trường Codemagic.
           perl -i -pe 's/^(\w+)=[ \t]+/$1=/; s/[ \t]+$//' .env
@@ -689,6 +737,14 @@ workflows:
       # ExportOptions.plist đã được "Apply provisioning profiles" tự sinh ở trên
       # (khớp đúng profile Codemagic cài) → KHÔNG hardcode nữa.
 
+      # ⚠ ĐUA SỐ BUILD giữa hai workflow. `ios-appstore` (develop) và `ios-production`
+      # (main) là hai workflow tách riêng, `cancel_previous_builds` KHÔNG huỷ chéo. Cả
+      # hai chạy chính bước này trên cùng một app. Gộp `develop` vào `main` thường xảy
+      # ra ngay sau một lượt đẩy `develop`, nên hai bản dựng có thể đọc cùng một số
+      # "mới nhất" trước khi bên nào kịp tăng.
+      # Triệu chứng khi trúng: App Store Connect từ chối số build trùng, bản dựng SAU
+      # đỏ ở bước tải lên — KHÔNG mất gì, dựng lại là qua. Ghi ra đây để lần sau ai gặp
+      # đỏ dạng đó thì biết ngay là đua số, không phải khoá ký hỏng.
       - name: Bump build number (TestFlight latest + 1)
         script: |
           set -e
@@ -783,7 +839,7 @@ workflows:
             exit $EXPORT_EXIT
           fi
 
-    artifacts:
+    artifacts: &ios_release_artifacts
       - build/ios/ipa/*.ipa
       - build/ios/OriLife.xcarchive/dSYMs/*.dSYM
       # Sourcemap + bundle JS để de-minify stack crash (tải về gửi lại để giải frame).
@@ -803,11 +859,59 @@ workflows:
         submit_to_testflight: true
         beta_groups:
           - OriLife Testing
-        # submit_to_app_store: false — KHÔNG tự nộp App Store review mỗi lần build. Nay
-        # workflow này chạy cả trên develop (issue #144 mục 2.2), auto-nộp review mỗi push
-        # là sai; nộp App Store là hành động RELEASE làm tay trên App Store Connect khi
-        # thật sự phát hành. TestFlight (ở trên) vẫn tự động để người thử nhận build.
+        # false ở ĐÂY là đúng: workflow này chỉ chạy trên `develop` — bản cho nhóm thử,
+        # không phải bản phát hành. Đường nộp App Store nằm ở `ios-production` bên dưới.
         submit_to_app_store: false
+
+  # ============================================================
+  # Workflow 2b: iOS Production — nhánh main, nộp App Store review
+  # ============================================================
+  # Dùng LẠI nguyên environment + scripts + artifacts của `ios-appstore` bằng mỏ neo
+  # YAML (`*ios_release_*`): hai bản dựng phải giống nhau từng bước, chỉ khác cửa phát
+  # hành. Sao chép tay 350 dòng thì sớm muộn hai bên lệch nhau và bản người dùng phổ
+  # thông nhận KHÁC bản nhóm thử đã duyệt — đúng thứ quy trình này sinh ra để tránh.
+  ios-production:
+    name: iOS App Store (nhánh main — người dùng phổ thông)
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+
+    environment: *ios_release_environment
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+      cancel_previous_builds: true
+
+    scripts: *ios_release_scripts
+
+    artifacts: *ios_release_artifacts
+
+    publishing:
+      app_store_connect:
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        key_id: 5JA4K7A7JD
+        issuer_id: e56d98f1-e6f0-4e46-9ca8-29b30c2a9a7b
+        # Vẫn phát TestFlight: bản sắp lên store phải có người bấm thử trước, và nếu
+        # Apple từ chối thì bản đó vẫn còn đường tới người thử.
+        submit_to_testflight: true
+        beta_groups:
+          - OriLife Testing
+        # KHÁC BIỆT DUY NHẤT so với `ios-appstore`: mỗi lần đẩy `main` là tự NỘP App
+        # Store review.
+        #
+        # Nộp không phải là phát hành. Sau khi Apple duyệt, bản có ra tay người dùng
+        # ngay hay không do App Store Connect → phiên bản → "Version Release" quyết
+        # (đặt "Manually release this version" thì vẫn phải bấm tay). Cố ý KHÔNG khai
+        # thêm khoá nào ở đây để không đặt cược cả tệp cấu hình vào một tên khoá chưa
+        # kiểm được.
+        #
+        # ⚠ Lần đầu bật: siêu dữ liệu bản mới (ảnh chụp màn, "Có gì mới", phân loại độ
+        # tuổi) phải điền xong bên App Store Connect, nếu không bước nộp đỏ. Đỏ ở bước
+        # này KHÔNG mất gì: IPA đã lên TestFlight ở bước trên, nộp tay vẫn được.
+        submit_to_app_store: true
 
   # ============================================================
   # Workflow 3: Android Debug APK — Demo / Direct Install
@@ -825,19 +929,17 @@ workflows:
       vars:
         APK_OUTPUT: $CM_BUILD_DIR/android/app/build/outputs/apk/debug
 
+    # CHẠY TAY (2026-08-18). Đường GitHub đã dựng APK debug trên `develop`
+    # (`.github/workflows/debug-apk.yml`) — chạy trên `ubuntu-latest` thay vì
+    # `mac_mini_m2`, và MẠNH HƠN bản này: nó soi chính tệp APK vừa ra (đủ `.so` cho mọi
+    # lát ABI, đúng host trong bản đã đóng gói), còn bản ở đây chỉ soi vật liệu đầu vào.
+    # Chạy gradle trên máy Mac để ra một tệp APK thứ hai không ai tải là trả giá đắt cho
+    # việc rẻ.
+    #
+    # Cái mất: bản 4 lát ABI (bản GitHub cố ý chỉ 2 lát vì runner hết đĩa), và APK debug
+    # từ `main`. Cần máy ảo x86 thì bấm chạy tay workflow này.
     triggering:
-      events:
-        - push
-      branch_patterns:
-        - pattern: main
-          include: true
-        - pattern: develop
-          include: true
-        - pattern: 'feat/foundation'
-          include: true
-        - pattern: 'feat/*'
-          include: true
-      cancel_previous_builds: true
+      events: []
 
     scripts:
       - name: Create .env for React Native
@@ -859,12 +961,18 @@ workflows:
           # rơi về rỗng DÙ máy chủ sống (đo 05/08: api.aladin.work/api/v1/health = 200).
           WORK_API_URL=${WORK_API_URL:-https://api.aladin.work/api/v1}
 
-          # ProofChat. Ghi sẵn URL để khi máy chủ sống lại chỉ phải bật MỘT biến, không
-          # phải sửa cấu hình. Nhưng cờ mặc định là `off`, CỐ Ý: nếu để `true` thì cửa
-          # duy nhất còn lại là phép thử /health — máy chủ sống lại là module tự bật,
-          # trong khi chốt chặn bảo mật của chính nó chưa gỡ (proofchat-api.ts:88-93:
-          # token production PHẢI ở Keychain/Keystore, nay còn nằm AsyncStorage chưa mã
-          # hoá). Bật là quyết định của người phát hành, không phải hệ quả phụ.
+          # ProofChat. Cờ mặc định `off` = MỌI bản phát hành chạy dữ liệu giả, dù máy
+          # chủ sống. Bật là quyết định của người phát hành, không phải hệ quả phụ của
+          # việc máy chủ hồi sinh.
+          #
+          # ĐÍNH CHÍNH 2026-08-18: lý do cũ ghi ở đây ("token production còn nằm trần
+          # trong AsyncStorage") ĐÃ HẾT HIỆU LỰC — commit 48efb57 chuyển token phiên
+          # sang Keychain/Keystore qua `taad.secureStore` (`proofchat-api.ts`).
+          # Còn lại một chặn THẬT, đo 2026-08-18 và nằm ở phía ProofChat chứ không
+          # phải ở app: `GET https://api.proofchat.me/api/v1/users/search` → 404
+          # ("Cannot GET"), tức cửa TÌM NGƯỜI để mở hội thoại vẫn đóng
+          # (`proofchat-api.ts:465` đã ghi: khối `@Get('search')` bị bình luận ở BE).
+          # Bật cờ lúc này chỉ đổi "chat giả" thành "chat thật nhưng không tìm được ai".
           PROOFCHAT_API_URL=${PROOFCHAT_API_URL:-https://api.proofchat.me/api/v1}
           PROOFCHAT_WS_URL=${PROOFCHAT_WS_URL:-https://api.proofchat.me}
           PROOFCHAT_WS_PATH=${PROOFCHAT_WS_PATH:-/socket.io}
@@ -889,6 +997,10 @@ workflows:
           # Trống = TẮT hẳn. ĐỪNG điền tunnel ngrok — xem remoteLogger.ts, aladinChat.ts.
           REMOTE_LOG_URL=${REMOTE_LOG_URL:-}
           ALADIN_CHAT_URL=${ALADIN_CHAT_URL:-}
+          # Truy vết bản dựng — xem lời dẫn dài ở khối `ios-adhoc-ipa` phía trên.
+          BUILD_COMMIT=${CM_COMMIT:0:12}
+          BUILD_BRANCH=${CM_BRANCH:-}
+          BUILD_ID=${CM_BUILD_ID:-}
           EOF
           # Dọn whitespace lạc (tab/space) trong value biến môi trường Codemagic.
           perl -i -pe 's/^(\w+)=[ \t]+/$1=/; s/[ \t]+$//' .env
@@ -1037,8 +1149,17 @@ workflows:
       vars:
         AAB_OUTPUT: $CM_BUILD_DIR/android/app/build/outputs/bundle/release
 
+    # VẪN CHỈ CHẠY TAY — và đây là kết luận sau khi ĐO, không phải giữ nguyên vì ngại
+    # đụng. Đường GitHub ĐÃ dựng AAB đã ký trên `main` rồi
+    # (`.github/workflows/android-aab.yml`, `on: push: branches: [main]`), chạy trên
+    # `ubuntu-latest` — rẻ hơn `mac_mini_m2` ở đây, và lịch sử lượt dựng lưu sẵn trong
+    # tab Actions của kho. Bật thêm cửa này trên `main` chỉ được hai thứ: một tệp AAB
+    # thứ hai không ai dùng, và một bản ĐÃ KÝ bằng khoá tải lên thật được sinh ra sau
+    # MỖI lượt đẩy thay vì khi có người chủ ý cần.
+    #
+    # Chú thích cũ ở đây ("tránh build signed ngoài ý muốn") vẫn còn đúng nguyên.
     triggering:
-      events: []  # Manual only — tránh build signed ngoài ý muốn
+      events: []
 
     scripts:
       # CỔNG SOÁT — đứng TRƯỚC mọi bước dựng. Đường GitHub đã có cổng tương đương
@@ -1094,12 +1215,18 @@ workflows:
           # rơi về rỗng DÙ máy chủ sống (đo 05/08: api.aladin.work/api/v1/health = 200).
           WORK_API_URL=${WORK_API_URL:-https://api.aladin.work/api/v1}
 
-          # ProofChat. Ghi sẵn URL để khi máy chủ sống lại chỉ phải bật MỘT biến, không
-          # phải sửa cấu hình. Nhưng cờ mặc định là `off`, CỐ Ý: nếu để `true` thì cửa
-          # duy nhất còn lại là phép thử /health — máy chủ sống lại là module tự bật,
-          # trong khi chốt chặn bảo mật của chính nó chưa gỡ (proofchat-api.ts:88-93:
-          # token production PHẢI ở Keychain/Keystore, nay còn nằm AsyncStorage chưa mã
-          # hoá). Bật là quyết định của người phát hành, không phải hệ quả phụ.
+          # ProofChat. Cờ mặc định `off` = MỌI bản phát hành chạy dữ liệu giả, dù máy
+          # chủ sống. Bật là quyết định của người phát hành, không phải hệ quả phụ của
+          # việc máy chủ hồi sinh.
+          #
+          # ĐÍNH CHÍNH 2026-08-18: lý do cũ ghi ở đây ("token production còn nằm trần
+          # trong AsyncStorage") ĐÃ HẾT HIỆU LỰC — commit 48efb57 chuyển token phiên
+          # sang Keychain/Keystore qua `taad.secureStore` (`proofchat-api.ts`).
+          # Còn lại một chặn THẬT, đo 2026-08-18 và nằm ở phía ProofChat chứ không
+          # phải ở app: `GET https://api.proofchat.me/api/v1/users/search` → 404
+          # ("Cannot GET"), tức cửa TÌM NGƯỜI để mở hội thoại vẫn đóng
+          # (`proofchat-api.ts:465` đã ghi: khối `@Get('search')` bị bình luận ở BE).
+          # Bật cờ lúc này chỉ đổi "chat giả" thành "chat thật nhưng không tìm được ai".
           PROOFCHAT_API_URL=${PROOFCHAT_API_URL:-https://api.proofchat.me/api/v1}
           PROOFCHAT_WS_URL=${PROOFCHAT_WS_URL:-https://api.proofchat.me}
           PROOFCHAT_WS_PATH=${PROOFCHAT_WS_PATH:-/socket.io}
@@ -1124,6 +1251,10 @@ workflows:
           # Trống = TẮT hẳn. ĐỪNG điền tunnel ngrok — xem remoteLogger.ts, aladinChat.ts.
           REMOTE_LOG_URL=${REMOTE_LOG_URL:-}
           ALADIN_CHAT_URL=${ALADIN_CHAT_URL:-}
+          # Truy vết bản dựng — xem lời dẫn dài ở khối `ios-adhoc-ipa` phía trên.
+          BUILD_COMMIT=${CM_COMMIT:0:12}
+          BUILD_BRANCH=${CM_BRANCH:-}
+          BUILD_ID=${CM_BUILD_ID:-}
           EOF
           # Dọn whitespace lạc (tab/space) trong value biến môi trường Codemagic.
           perl -i -pe 's/^(\w+)=[ \t]+/$1=/; s/[ \t]+$//' .env
@@ -1243,7 +1374,18 @@ workflows:
           # credentials, không bao giờ trùng. Luôn > base (70) trên Play.
           BASE=$(grep -m1 -E "versionCode [0-9]+" android/app/build.gradle | grep -oE "[0-9]+")
           NEW=$(( BASE + ${BUILD_NUMBER:-1} ))
-          sed -i -E "s/versionCode [0-9]+/versionCode ${NEW}/" android/app/build.gradle
+          # `sed -i '' -E` chứ KHÔNG phải `sed -i -E`. Workflow này chạy trên
+          # `mac_mini_m2`, tức BSD sed: ở đó `-i` ĂN đối số ngay sau nó làm đuôi tệp sao
+          # lưu, nên `-E` bị nuốt mất, phần thay thế rơi về biểu thức chính quy cơ bản và
+          # `[0-9]+` thành dấu cộng theo nghĩa đen ⇒ KHÔNG thay gì cả, thoát 0, vẫn in
+          # dòng "✅ Android versionCode → N".
+          # Đo trên chính máy Mac này 2026-08-18: `sed -i -E` để nguyên `versionCode 70`
+          # và đẻ ra một tệp rác `build.gradle-E`; `sed -i '' -E` sửa đúng thành 99.
+          # Hệ quả nếu không vá: mọi AAB dựng từ Codemagic mang versionCode committed
+          # (70), Play từ chối vì trùng — mà nhật ký bản dựng thì báo xanh.
+          # Chỗ iOS trong chính tệp này đã viết đúng kiểu macOS từ đầu; chỉ chỗ này lệch.
+          sed -i '' -E "s/versionCode [0-9]+/versionCode ${NEW}/" android/app/build.gradle
+          echo "   đối chiếu lại từ chính tệp: $(grep -m1 -E 'versionCode [0-9]+' android/app/build.gradle)"
           echo "✅ Android versionCode → ${NEW} (base=${BASE}, BUILD_NUMBER=${BUILD_NUMBER:-1})"
 
       - name: Build signed AAB
@@ -1276,12 +1418,32 @@ workflows:
       - dist/aladin-release.aab
       - android-release.log
 
-    # Publishing lên Google Play TẠM TẮT — service account credentials
-    # ($GCLOUD_SERVICE_ACCOUNT_CREDENTIALS) chưa cấu hình (JSON rỗng → build fail ở
-    # bước prep). AAB đã sign vẫn có trong artifacts để tải/upload tay.
-    # Bật lại khi có credentials hợp lệ: bỏ comment block dưới.
+    # ── Vì sao Android CHƯA tự lên Google Play ───────────────────────────────────
+    # Đường iOS tự lên được vì khoá App Store Connect đã nằm trong Codemagic
+    # (`APP_STORE_CONNECT_PRIVATE_KEY`, dùng ở bước "Bump build number"). Đường
+    # Android thì THIẾU đúng một thứ: service account của Google Play. Biến
+    # `$GCLOUD_SERVICE_ACCOUNT_CREDENTIALS` chưa có giá trị, mà JSON rỗng làm bước
+    # chuẩn bị publish đỏ NGAY — nên bật khối dưới lúc này chỉ đổi "không tự lên
+    # store" thành "mọi lần dựng đều đỏ".
+    #
+    # AAB đã ký vẫn nằm trong `artifacts` để tải về nộp tay, nên không có gì kẹt.
+    #
+    # BỎ CHẶN cần đúng ba việc, đều ở phía tài khoản (agent không đặt secret hộ):
+    #   1. Google Play Console → Users and permissions → mời service account, cho
+    #      quyền "Release to testing tracks" + "Release to production".
+    #   2. Google Cloud → tải tệp JSON khoá của service account đó.
+    #   3. Codemagic → Environment variables → nhóm `android_signing` → thêm biến
+    #      `GCLOUD_SERVICE_ACCOUNT_CREDENTIALS`, dán nguyên nội dung JSON, đánh dấu
+    #      Secure.
+    # Xong ba việc đó thì bỏ dấu `#` ở khối dưới là Android chạy y như iOS.
+    #
+    # `track: production` vì workflow này chỉ chạy trên `main`. Khi thêm `develop`
+    # vào `triggering` thì phải TÁCH thành hai workflow (develop → `internal`,
+    # main → `production`) đúng như cặp `ios-appstore` / `ios-production` ở trên —
+    # một workflow không thể trỏ hai track khác nhau theo nhánh.
+    # `submit_as_draft: true` = bản lên Play ở dạng nháp, người thật bấm phát hành.
     # publishing:
     #   google_play:
     #     credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
-    #     track: internal
+    #     track: production
     #     submit_as_draft: true

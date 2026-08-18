@@ -41,17 +41,35 @@ import taad from '../sdk/taadEnclave';
 import { getStoredMasterKek } from '../services/masterKekStore';
 import LanguagePickerModal from '../components/LanguagePickerModal';
 import { LANGUAGES, useLanguage } from '../i18n';
+import { BUILD_COMMIT, BUILD_BRANCH, BUILD_ID } from '@env';
 
 // 0 = preprod (testnet), khớp WALLET_NETWORK bên register + PhoenixWalletScreen.
 const WALLET_NETWORK = 0;
 
 // Version THẬT đọc từ bundle (CFBundleShortVersionString / versionName + build number).
 // Thay chuỗi hard-code "Aladin v1.0.0" (Lỗi field #4) — để field biết đúng build đang chạy.
-const APP_VERSION_LABEL = `Aladin v${getVersion()} (${getBuildNumber()})`;
+const APP_VERSION_BASE = `Aladin v${getVersion()} (${getBuildNumber()})`;
+
+// Mã commit đã dựng ra bản này. VÌ SAO cần: số build ("86") do App Store Connect cấp
+// và tăng dần theo mỗi lần nộp, KHÔNG chỉ về commit nào; hơn nữa `main` và `develop`
+// cùng đẩy lên một luồng TestFlight nên hai nhánh khác nhau vẫn ra số liền nhau. Kết
+// quả: người thử báo lỗi kèm "2.0 (86)" mà không ai truy được bản đó gồm những vá nào.
+// CI ghi BUILD_COMMIT vào bundle (codemagic.yaml, .github/actions/rn-env). Build tay ở
+// máy lập trình viên thì biến trống → giấu hẳn, KHÔNG in "()" rỗng hay chữ "unknown".
+const COMMIT_SHORT = (BUILD_COMMIT ?? '').trim().slice(0, 7);
+const APP_VERSION_LABEL = COMMIT_SHORT
+    ? `${APP_VERSION_BASE} · ${COMMIT_SHORT}`
+    : APP_VERSION_BASE;
 
 // Chi tiết debug (tap version 5 lần): version + server API đang trỏ → field tự soi
 // máy có chạy đúng build + đúng server không (chẩn đoán 404 farm — Lỗi field #5).
-const APP_DEBUG_INFO = `${APP_VERSION_LABEL}\n\nMáy chủ: ${ORILIFE_BASE}\nNền: ${Platform.OS}`;
+const BUILD_TRACE_LINES = [
+    COMMIT_SHORT ? `Commit: ${COMMIT_SHORT}` : 'Commit: (bản dựng tay, CI không ghi)',
+    (BUILD_BRANCH ?? '').trim() ? `Nhánh: ${BUILD_BRANCH.trim()}` : null,
+    (BUILD_ID ?? '').trim() ? `Mã lượt dựng: ${BUILD_ID.trim()}` : null,
+].filter(Boolean).join('\n');
+
+const APP_DEBUG_INFO = `${APP_VERSION_BASE}\n\n${BUILD_TRACE_LINES}\n\nMáy chủ: ${ORILIFE_BASE}\nNền: ${Platform.OS}`;
 import { Switch } from 'react-native';
 const { width } = Dimensions.get('window');
 

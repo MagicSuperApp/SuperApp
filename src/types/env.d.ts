@@ -16,6 +16,12 @@ declare module '@env' {
   export const PROOFCHAT_BACKEND_ENABLED: string;
   export const ANALYTICS_API_URL: string;
   export const ANALYTICS_API_KEY: string;
+  // Truy vết bản dựng. CI ghi ba biến này (codemagic.yaml + .github/actions/rn-env);
+  // build tay ở máy lập trình viên thì trống → app tự giấu phần này đi, không in
+  // chuỗi rỗng ra màn hình.
+  export const BUILD_COMMIT: string;
+  export const BUILD_BRANCH: string;
+  export const BUILD_ID: string;
   // Hai biến dưới đây CỐ Ý để trống ở bản phát hành. Xem lời dẫn ở
   // `src/services/remoteLogger.ts` và `src/services/aladinChat.ts`:
   // trống = tính năng tắt hẳn, KHÔNG phải lui về một địa chỉ mặc định nào.

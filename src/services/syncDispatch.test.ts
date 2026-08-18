@@ -184,10 +184,11 @@ describe('classifySyncItem — activity ghi vào dòng thời gian THẬT', () =
     expect(mockAddTimelineEvent.mock.calls[0][3].kind).toBe('observe');
   });
 
-  // Người dùng vào màn hoạt động TỪ một cây rồi ghi việc tưới. Nơi duy nhất app
-  // vẽ dòng thời gian của cây là `TreeDetailScreen`. Ghi vào vườn = ghi vào chỗ
-  // không màn nào đọc — đúng, đồng bộ xong, và vô hình với người vừa ghi.
-  it('có treeId → ghi vào dòng của CÂY, không phải của vườn', async () => {
+  // Nhà OriLife đo lại và chốt: một lần phun cả vườn là MỘT sự việc, không phải N
+  // sự việc trên N cây. Ba ca dưới khoá điều đó lại, để lần sau ai thấy "ghi việc
+  // cho cây mà mở cây ra không thấy" thì không sửa nhầm sang ghi xuống từng cây —
+  // chỗ hỏng nằm ở đầu ĐỌC (dòng vườn chưa ai vẽ; dòng cây chưa kế thừa việc vườn).
+  it('có treeId vẫn ghi vào dòng của VƯỜN, KHÔNG tách xuống từng cây', async () => {
     const d = classifySyncItem({
       type: 'activity',
       data: { activity: { ...act, treeId: 'tree-7' } },
@@ -195,11 +196,11 @@ describe('classifySyncItem — activity ghi vào dòng thời gian THẬT', () =
     if (d.kind !== 'api') throw new Error('expected api');
     await d.run();
     const [, entityType, entityId] = mockAddTimelineEvent.mock.calls[0];
-    expect(entityType).toBe('tree');
-    expect(entityId).toBe('tree-7');
+    expect(entityType).toBe('farm');
+    expect(entityId).toBe('farm-9');
   });
 
-  it('có treeId → payload vẫn kèm cả farm_id lẫn tree_id', async () => {
+  it('payload kèm cả farm_id lẫn tree_id — cây đang đứng trước là dữ kiện có thật', async () => {
     const d = classifySyncItem({
       type: 'activity',
       data: { activity: { ...act, treeId: 'tree-7' } },
@@ -211,20 +212,11 @@ describe('classifySyncItem — activity ghi vào dòng thời gian THẬT', () =
     expect(body.payload.tree_id).toBe('tree-7');
   });
 
-  it('chỉ có treeId, không có farmId → vẫn ghi được vào cây', async () => {
+  it('chỉ có treeId, không có farmId → unsupported, KHÔNG gọi mạng', () => {
     const d = classifySyncItem({
       type: 'activity',
       data: { activity: { type: 'watering', treeId: 'tree-7', timestamp: act.timestamp } },
     });
-    if (d.kind !== 'api') throw new Error('expected api');
-    await d.run();
-    const [, entityType, entityId] = mockAddTimelineEvent.mock.calls[0];
-    expect(entityType).toBe('tree');
-    expect(entityId).toBe('tree-7');
-  });
-
-  it('không có cả treeId lẫn farmId → unsupported, KHÔNG gọi mạng', () => {
-    const d = classifySyncItem({ type: 'activity', data: { activity: { type: 'watering' } } });
     expect(d.kind).toBe('unsupported');
     expect(mockAddTimelineEvent).not.toHaveBeenCalled();
   });
@@ -236,8 +228,7 @@ describe('classifySyncItem — activity ghi vào dòng thời gian THẬT', () =
     });
     if (d.kind !== 'api') throw new Error('expected api');
     await d.run();
-    expect(mockAddTimelineEvent.mock.calls[0][1]).toBe('tree');
-    expect(mockAddTimelineEvent.mock.calls[0][2]).toBe('tree-8');
+    expect(mockAddTimelineEvent.mock.calls[0][3].payload.tree_id).toBe('tree-8');
   });
 });
 

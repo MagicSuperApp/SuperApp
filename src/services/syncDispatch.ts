@@ -160,25 +160,36 @@ export function classifySyncItem(envelope: SyncEnvelope): DispatchClass {
       const act = data.activity ?? data;
       const farmId = act.farmId ?? act.farm_id;
       const treeId = act.treeId ?? act.tree_id;
-      if (!act.type || (!farmId && !treeId)) {
+      if (!act.type || !farmId) {
         return {
           kind: 'unsupported',
-          reason: 'activity thiếu type và cả treeId lẫn farmId — không đủ field cho POST /{entity}/{id}/event',
+          reason: 'activity thiếu type/farmId — không đủ field cho POST /{entity}/{id}/event',
         };
       }
-      // GHI VÀO ĐÚNG THỰC THỂ NGƯỜI DÙNG ĐANG ĐỨNG TRƯỚC.
+      // GHI VÀO VƯỜN — và đây là chỗ đã suýt sửa sai, ghi lại để đừng sửa lần nữa.
       //
-      // Bản trước ghi CỨNG vào `farm`. Nhưng nơi duy nhất trong app đọc dòng thời
-      // gian là `TreeDetailScreen.tsx:1109` — và nó đọc dòng của CÂY. Người ghi
-      // việc tưới cho một cây rồi mở đúng cây đó ra xem thì không thấy gì, vì bản
-      // ghi nằm ở dòng của VƯỜN, mà không màn nào vẽ dòng của vườn. Ghi thành
-      // công, đồng bộ thành công, và biến mất — đúng kiểu hỏng không có tín hiệu.
+      // Triệu chứng thật ngoài đồng: ghi việc tưới cho một cây, mở đúng cây đó ra
+      // thì không thấy gì. Nhà này đọc ra "ghi nhầm thực thể" và đã đổi sang ghi
+      // vào `tree`. SAI. Nhà OriLife đo lại và chỉ ra mô hình đúng của họ: một lần
+      // phun cả vườn là MỘT sự việc, không phải N sự việc trên N cây. Ghi xuống
+      // từng cây là nhân bản một sự việc có thật thành nhiều bản ghi không có thật.
       //
-      // Nay: có cây thì ghi vào cây (người dùng vào màn này TỪ một cây), không có
-      // thì ghi vào vườn. `farm_id` luôn đi kèm trong payload để bên máy chủ và
-      // màn vườn còn gom được.
-      const entityType = treeId ? 'tree' : 'farm';
-      const entityId = String(treeId ?? farmId);
+      // Chỗ hỏng nằm ở ĐẦU ĐỌC, không ở đầu ghi: app không có màn nào vẽ dòng thời
+      // gian của vườn (nay đã thêm ở `FarmDetailScreen`), và dòng của CÂY chưa kế
+      // thừa việc chăm sóc của vườn bao ngoài — bên OriLife đang sửa ở PR #379,
+      // mỗi bản kế thừa mang `inherited_from` để app hiện đúng chữ "phun cả vườn".
+      //
+      // Vẫn gửi kèm `tree_id` trong payload: nó ghi lại NGƯỜI DÙNG ĐANG ĐỨNG TRƯỚC
+      // CÂY NÀO lúc ghi việc — một dữ kiện có thật, không mất gì khi gửi, và bên
+      // máy chủ dùng được nếu sau này cần quy trách nhiệm hẹp hơn.
+      const entityType = 'farm';
+      const entityId = String(farmId ?? '');
+      if (!farmId) {
+        return {
+          kind: 'unsupported',
+          reason: 'activity thiếu farmId — sự việc đồng áng ghi ở dòng thời gian VƯỜN',
+        };
+      }
       return {
         kind: 'api',
         run: async () => {

@@ -8,7 +8,7 @@ const NOW = 1_700_000_000_000;
 const H = 3600_000;
 
 const price: CommodityPrice = {
-  key: 'coffee', nameKey: 'trace.price.coffee', unitKey: 'trace.price.perKg',
+  key: 'coffee', scope: 'domestic', nameKey: 'trace.price.coffee', unitKey: 'trace.price.perKg',
   priceVnd: 95_300, atMs: NOW, source: 'test',
 };
 const move = (percent: number | null, dir: 'up' | 'down' | 'flat' = 'up'): PriceMove => ({

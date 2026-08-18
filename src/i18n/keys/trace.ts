@@ -475,13 +475,47 @@ export const TRACE_STRINGS = {
     zh: '暂时无法获取价格。来源页面可能繁忙或已更改版式。',
     ja: '現在価格を取得できません。参照元が混雑しているか、表示が変わった可能性があります。',
   },
-  'trace.price.vsLast': {
-    vi: 'So với lần bạn mở app gần nhất, không phải so với hôm qua.',
-    en: 'Compared with the last time you opened the app, not with yesterday.',
-    zh: '与你上次打开应用时相比，而非与昨天相比。',
-    ja: '前回アプリを開いた時点との比較で、昨日との比較ではありません。',
+  'trace.price.domestic': { vi: 'Trong nước', en: 'Domestic', zh: '国内', ja: '国内' },
+  'trace.price.global': { vi: 'Thế giới', en: 'International', zh: '国际', ja: '海外' },
+  'trace.price.vsHours': {
+    vi: 'So với {n} giờ trước.', en: 'Compared with {n} hours ago.',
+    zh: '与 {n} 小时前相比。', ja: '{n} 時間前との比較です。',
   },
-  'trace.price.coffee': { vi: 'Cà phê', en: 'Coffee', zh: '咖啡', ja: 'コーヒー' },
+  'trace.price.firstRead': {
+    vi: 'Lần đọc đầu tiên — chưa có mốc nào để so.',
+    en: 'First reading — nothing to compare with yet.',
+    zh: '首次读取——暂无可比较的基准。',
+    ja: '初回の取得です。比較できる基準がまだありません。',
+  },
+  'trace.price.noneDomestic': {
+    vi: 'Chưa lấy được giá trong nước lúc này.',
+    en: 'No domestic prices right now.',
+    zh: '暂时无法获取国内价格。',
+    ja: '現在、国内価格を取得できません。',
+  },
+  'trace.price.noneGlobal': {
+    vi: 'Chưa nối nguồn giá thế giới nào.',
+    en: 'No international price source connected yet.',
+    zh: '尚未接入国际价格数据源。',
+    ja: '海外価格のデータ源はまだ接続されていません。',
+  },
+  'trace.price.coffee': { vi: 'Cà phê nhân', en: 'Green coffee', zh: '咖啡豆', ja: 'コーヒー生豆' },
+  'trace.price.durian': { vi: 'Sầu riêng Ri6', en: 'Ri6 durian', zh: 'Ri6 榴莲', ja: 'Ri6 ドリアン' },
+  'trace.price.coffeeBrazil': { vi: 'Cà phê · Brazil', en: 'Coffee · Brazil', zh: '咖啡 · 巴西', ja: 'コーヒー · ブラジル' },
+  'trace.price.coffeeIndonesia': { vi: 'Cà phê · Indonesia', en: 'Coffee · Indonesia', zh: '咖啡 · 印尼', ja: 'コーヒー · インドネシア' },
+  'trace.price.index': { vi: 'điểm', en: 'index', zh: '指数', ja: '指数' },
+  'trace.price.vsPrevDay': {
+    vi: 'So với ngày có giá gần nhất trước đó.',
+    en: 'Compared with the previous day that had a price.',
+    zh: '与此前最近一个有报价的日期相比。',
+    ja: '直前に価格があった日との比較です。',
+  },
+  'trace.price.vsPrevMonth': {
+    vi: 'Chỉ số giá sản xuất, so với tháng liền trước. Số liệu FAO chậm hơn thực tế.',
+    en: 'Producer price index vs the previous month. FAO data lags real time.',
+    zh: '生产者价格指数，与上月相比。FAO 数据滞后于实时。',
+    ja: '生産者価格指数の前月比。FAO のデータは実時間より遅れます。',
+  },
   'trace.price.perKg': { vi: 'đ/kg', en: 'đ/kg', zh: '越南盾/公斤', ja: 'ドン/kg' },
 
   // ── Cảnh báo đẩy ──────────────────────────────────────────────────────────

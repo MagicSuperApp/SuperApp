@@ -37,8 +37,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useSelector } from 'react-redux';
 
-import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
-
 import Icon, { type IconName } from '../../../components/Icon';
 import { openAssistant } from '../../../components/assistantBus';
 import StateView from '../../../components/state/StateView';
@@ -59,10 +57,13 @@ import {
 } from '../../../services/weatherService';
 import { fetchAgriNews, hotNews, timeAgoVi, type NewsItem } from '../../../services/agriNewsService';
 import {
-  fetchAllPrices, formatVnd, priceMove, type CommodityPrice, type PriceMove,
+  formatVnd, priceMove, type CommodityPrice, type PriceMove,
 } from '../../../services/agriPriceService';
-import { loadPrevPrices, savePrices } from '../../../services/priceStore';
-import { COLORS } from '../../../theme';
+import { fetchAgroPrices } from '../../../services/agroPriceService';
+import { fetchWorldPrices } from '../../../services/worldPriceService';
+import {
+  historyOf, hourBucket, hoursBetween, previousPoint, recordPrice,
+} from '../../../services/priceHistoryDb';
 
 const ICON = {
   farm: 'tractor',
@@ -151,7 +152,7 @@ const DashboardScreen: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [weather, setWeather] = useState<WeatherReport | null>(null);
   const [weatherLoading, setWeatherLoading] = useState(true);
-  const [prices, setPrices] = useState<PriceMove[]>([]);
+  const [prices, setPrices] = useState<Array<PriceMove & { agoH: number }>>([]);
   const [priceLoading, setPriceLoading] = useState(true);
   const [news, setNews] = useState<NewsItem[]>([]);
   const [newsLoading, setNewsLoading] = useState(true);
@@ -167,14 +168,41 @@ const DashboardScreen: React.FC = () => {
   const hot = useMemo(() => hotNews(news, { now: Date.now(), limit: 3 }), [news]);
 
   /**
-   * Nạp giá nông sản. Mức biến động so với LẦN ĐỌC TRƯỚC lưu trong máy — trang
-   * nguồn chỉ cho giá hôm nay, không cho lịch sử.
+   * Nạp giá nông sản, rồi tính biến động THEO GIỜ.
+   *
+   * Ghi giá đọc được vào ô của giờ hiện tại, và so với ô gần nhất trước đó. Nhờ
+   * vậy con số biến động không còn phụ thuộc vào việc người dùng mở app thưa hay
+   * dày — xem `priceHistoryDb`.
    */
   const loadPrices = useCallback(async () => {
-    const [got, prev] = await Promise.all([fetchAllPrices(), loadPrevPrices()]);
-    setPrices(got.map((c: CommodityPrice) => priceMove(c, prev[c.key] ?? null)));
+    // Hai nguồn chạy song song; nguồn nào hỏng thì vắng mặt, không kéo nguồn kia.
+    const [domestic, world] = await Promise.all([
+      fetchAgroPrices().catch(() => []),
+      fetchWorldPrices().catch(() => []),
+    ]);
+    const now = Date.now();
+    const bucket = hourBucket(now);
+
+    const rows = await Promise.all([...domestic, ...world].map(async (c: CommodityPrice) => {
+      // Nguồn tự mang chuỗi ngày/tháng → so bằng chính chuỗi đó. Đây là chuyển
+      // động THẬT của thị trường, không phụ thuộc lúc người dùng mở app.
+      if (c.prevVnd != null) {
+        return { ...priceMove(c, c.prevVnd), agoH: 0 };
+      }
+      // Nguồn chỉ cho một giá trần → mới lùi về ô giờ đã lưu trong máy.
+      const past = await historyOf(c.key);
+      const prev = previousPoint(past, bucket);
+      // Ghi SAU khi đã đọc ô trước — ghi trước thì ô hiện tại chính là ô vừa ghi
+      // và mọi mặt hàng đều hiện "0%".
+      await recordPrice(c.key, c.priceVnd, now);
+      return {
+        ...priceMove(c, prev?.priceVnd ?? null),
+        agoH: prev ? hoursBetween(bucket, prev.hourBucket) : 0,
+      };
+    }));
+
+    setPrices(rows);
     setPriceLoading(false);
-    if (got.length) savePrices(got);
   }, []);
 
   useEffect(() => { loadPrices(); }, [loadPrices]);
@@ -325,7 +353,7 @@ const DashboardScreen: React.FC = () => {
             <Tile icon={ICON.fruit} value={fruits.length} label={tk('trace.label.fruits')} />
           </View>
 
-          <View style={{ paddingHorizontal: 16 }}>
+          <View style={styles.pagePad}>
             <Pressable
               style={({ pressed }) => [styles.primaryBtn, pressed && styles.pressed]}
               onPress={() => (hasData
@@ -337,8 +365,7 @@ const DashboardScreen: React.FC = () => {
               </Text>
             </Pressable>
 
-            {/* Thanh hỏi trợ lý. Nền chuyển sắc NHẸ — đủ để mắt đọc ra "chỗ này là
-              AI, khác với mọi ô nhập khác trên màn", chưa tới mức thành quảng cáo. */}
+          
             <Pressable
               style={({ pressed }) => [styles.askBar, pressed && styles.pressed]}
               onPress={() => openAssistant()}
@@ -454,19 +481,24 @@ const DashboardScreen: React.FC = () => {
               <Text style={[TYPE.caption, styles.priceNote]}>{tk('trace.price.none')}</Text>
             </View>
           ) : (
-            <View style={styles.priceCard}>
-              {prices.map(m => (
-                <PriceRow
-                  key={m.price.key}
-                  move={m}
-                  label={tk(m.price.nameKey)}
-                  unit={tk(m.price.unitKey)}
-                />
-              ))}
-              {/* Nói rõ mốc so sánh. "Tăng 6%" mà không nói so với cái gì thì
-                  người đọc tự hiểu là so với hôm qua — mà không phải. */}
-              <Text style={styles.priceNote}>{tk('trace.price.vsLast')}</Text>
-            </View>
+            /* Hai cụm RIÊNG: giá trong nước và giá thế giới khác đơn vị, khác
+               sàn, khác đồng tiền — trộn một danh sách là mời người đọc so hai
+               con số không so được với nhau. */
+            <>
+              <PriceGroup
+                title={tk('trace.price.domestic')}
+                rows={prices.filter(m => m.price.scope === 'domestic')}
+                emptyText={tk('trace.price.noneDomestic')}
+                tk={tk}
+              />
+              <View style={styles.priceGap} />
+              <PriceGroup
+                title={tk('trace.price.global')}
+                rows={prices.filter(m => m.price.scope === 'global')}
+                emptyText={tk('trace.price.noneGlobal')}
+                tk={tk}
+              />
+            </>
           )}
 
           {/* ══ MỤC 4 — TIN NHÀ NÔNG ══════════════════════════════════════ */}
@@ -544,6 +576,58 @@ const Tile: React.FC<{
   );
 };
 
+/** `1723...` → `13/08/2026`. Mốc 0 (nguồn không ghi ngày) → chuỗi rỗng. */
+function shortDate(ms: number): string {
+  if (!ms) return '';
+  const d = new Date(ms);
+  const p = (x: number) => String(x).padStart(2, '0');
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`;
+}
+
+/** Câu nói rõ con số biến động đang so với cái gì. */
+function basisNote(
+  row: PriceMove & { agoH: number },
+  tk: (k: string, v?: Record<string, string | number>) => string,
+): string {
+  if (row.percent == null) return tk('trace.price.firstRead');
+  const c = row.price.cadence;
+  if (c === 'daily') return tk('trace.price.vsPrevDay');
+  if (c === 'monthly') return tk('trace.price.vsPrevMonth');
+  return row.agoH > 0 ? tk('trace.price.vsHours', { n: row.agoH }) : tk('trace.price.firstRead');
+}
+
+/** Một cụm giá (trong nước / thế giới). Cụm rỗng vẫn hiện, kèm lời giải thích. */
+const PriceGroup: React.FC<{
+  title: string;
+  rows: Array<PriceMove & { agoH: number }>;
+  emptyText: string;
+  tk: (k: string, v?: Record<string, string | number>) => string;
+}> = ({ title, rows, emptyText, tk }) => (
+  <View style={styles.priceCard}>
+    <Text style={styles.priceGroupHead}>{title}</Text>
+    {rows.length === 0 ? (
+      <Text style={styles.priceNote}>{emptyText}</Text>
+    ) : (
+      <>
+        {rows.map(m => (
+          <PriceRow
+            key={m.price.key}
+            move={m}
+            label={tk(m.price.nameKey)}
+            unit={tk(m.price.unitKey)}
+          />
+        ))}
+        {/* Nói rõ mốc so sánh. "Tăng 6%" mà không nói so với cái gì thì người
+            đọc tự hiểu là so với hôm qua — mà không phải. */}
+        {/* Mốc so sánh nói theo NHỊP của chính nguồn. Nguồn theo ngày không
+            được nói "so với 1 giờ trước"; nguồn theo tháng không được nói
+            "hôm qua". Nói sai mốc là làm hỏng ý nghĩa của con số. */}
+        <Text style={styles.priceNote}>{basisNote(rows[0], tk)}</Text>
+      </>
+    )}
+  </View>
+);
+
 /** Một dòng giá: tên · giá · mức biến động. */
 const PriceRow: React.FC<{ move: PriceMove; label: string; unit: string }> = ({
   move, label, unit,
@@ -554,7 +638,11 @@ const PriceRow: React.FC<{ move: PriceMove; label: string; unit: string }> = ({
     <View style={styles.priceRow}>
       <View style={styles.priceLeft}>
         <Text style={styles.priceName} numberOfLines={1}>{label}</Text>
-        <Text style={styles.priceSrc} numberOfLines={1}>{move.price.source}</Text>
+        {/* Ghi rõ SỐ LIỆU CỦA NGÀY NÀO. Nguồn thế giới chậm hơn một năm; để
+            trống chỗ này là mời người đọc tưởng đó là giá hôm nay. */}
+        <Text style={styles.priceSrc} numberOfLines={1}>
+          {move.price.source}{move.price.atMs ? ` · ${shortDate(move.price.atMs)}` : ''}
+        </Text>
       </View>
       <View style={styles.priceRight}>
         <Text style={styles.priceVal}>
@@ -663,7 +751,8 @@ const styles = StyleSheet.create({
   retryTxt: { fontSize: 16, fontWeight: '700', color: TONE.primaryDeep },
 
   // ── Lưới Bento của mục Vườn
-  bento: { flexDirection: 'row', gap: SPACE.sm, paddingHorizontal: 16 },
+  pagePad: { paddingHorizontal: SPACE.page },
+  bento: { flexDirection: 'row', gap: SPACE.sm, paddingHorizontal: SPACE.page },
   tile: {
     flex: 1,
     backgroundColor: SURFACE.raised, ...ORGANIC_CARD,
@@ -680,6 +769,11 @@ const styles = StyleSheet.create({
     backgroundColor: SURFACE.raised, ...ORGANIC_CARD,
     borderWidth: 1, borderColor: TONE.border,
     paddingHorizontal: SPACE.lg,
+  },
+  priceGap: { height: SPACE.sm },
+  priceGroupHead: {
+    fontSize: 13, fontWeight: '700', color: NATURE.barkSoft,
+    paddingTop: SPACE.md,
   },
   priceRow: {
     flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
@@ -700,6 +794,11 @@ const styles = StyleSheet.create({
   },
 
   // ── Thanh hỏi trợ lý
+  askTintRight: {
+    position: 'absolute', top: 0, bottom: 0, right: 0, left: '45%',
+    backgroundColor: AI_TINT, opacity: 0.75,
+    borderTopRightRadius: RADIUS.card, borderBottomRightRadius: RADIUS.card,
+  },
   askBar: {
     flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
     minHeight: 56, paddingHorizontal: SPACE.lg,

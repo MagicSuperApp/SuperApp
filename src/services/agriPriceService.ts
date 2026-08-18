@@ -29,9 +29,19 @@ const TIMEOUT_MS = 15_000;
 
 export type PriceDirection = 'up' | 'down' | 'flat';
 
+/**
+ * Giá TRONG NƯỚC hay NGOÀI NƯỚC.
+ *
+ * Hai nhóm này không so sánh trực tiếp được với nhau — khác đơn vị, khác sàn,
+ * khác đồng tiền — nên màn bày riêng hai cụm chứ không trộn một danh sách. Nhà
+ * vườn đọc giá trong nước để quyết định bán; đọc giá thế giới để đoán tuần sau.
+ */
+export type PriceScope = 'domestic' | 'global';
+
 export interface CommodityPrice {
   /** Mã mặt hàng, dùng làm khoá lưu — không hiện lên màn. */
   key: string;
+  scope: PriceScope;
   /** Khoá chữ của tên mặt hàng. */
   nameKey: string;
   /** Giá, đơn vị đồng. */
@@ -41,6 +51,20 @@ export interface CommodityPrice {
   /** Mốc đọc được (ms). 0 = trang không ghi ngày. */
   atMs: number;
   source: string;
+  /**
+   * Giá KỲ TRƯỚC lấy từ CHÍNH NGUỒN, khi nguồn có kèm chuỗi ngày/tháng.
+   *
+   * Có nó thì biến động là chuyển động THẬT của thị trường. Không có thì mới lùi
+   * về so với ô giờ đã lưu trong máy — con số ấy phụ thuộc vào lúc app chạy, nên
+   * chỉ dùng khi không còn cách nào tốt hơn.
+   */
+  prevVnd?: number | null;
+  prevAtMs?: number | null;
+  /**
+   * Nguồn đổi giá theo nhịp nào. Quyết định CÂU CHỮ trên màn: nguồn theo ngày
+   * không được nói "so với 1 giờ trước", nguồn theo tháng không được nói "hôm qua".
+   */
+  cadence?: 'daily' | 'monthly' | 'spot';
 }
 
 export interface PriceMove {
@@ -52,8 +76,9 @@ export interface PriceMove {
   direction: PriceDirection;
 }
 
-interface SourceDef {
+export interface SourceDef {
   key: string;
+  scope: PriceScope;
   nameKey: string;
   unitKey: string;
   url: string;
@@ -68,54 +93,14 @@ interface SourceDef {
 }
 
 /**
- * Tiêu đề trang có dạng:
- *   "Giá cà phê hôm nay 18/08/2026 cao nhất 95,300 vnđ/kg"
+ * Bảng nguồn cho các nguồn kiểu "một trang, một con số".
  *
- * Bắt ĐÚNG khuôn đó, kể cả ngày, chứ không quét số bừa trong trang: trang giá
- * nào cũng đầy số (số điện thoại, năm, mã bài) và lấy nhầm là chuyện chắc chắn
- * xảy ra chứ không phải rủi ro.
+ * Hiện TRỐNG: nguồn trong nước đã chuyển sang `agroPriceService` (bảng của Bộ
+ * Nông nghiệp — có sầu riêng, có ngày, có vùng), nguồn ngoài nước sang
+ * `faostatService`. Giữ lại cơ chế này cho nguồn nào sau này chỉ cho một con số
+ * trần không kèm ngày.
  */
-function parseTitlePrice(html: string): { priceVnd: number; atMs: number } | null {
-  const title = html.match(/<title>([^<]{5,200})<\/title>/i)?.[1];
-  if (!title) return null;
-
-  const m = title.match(
-    /(\d{1,2})\/(\d{1,2})\/(\d{4})[^\d]{0,40}?([\d.,]{3,12})\s*(?:vn)?đ|VNĐ/i,
-  );
-  const priceRaw = m?.[4] ?? title.match(/([\d.,]{4,12})\s*(?:vn)?đ/i)?.[1];
-  if (!priceRaw) return null;
-
-  // "95,300" và "95.300" đều là chín mươi lăm nghìn ba trăm ở cách viết Việt Nam.
-  // Bỏ hết dấu phân cách rồi mới đọc số — đừng để `parseFloat` hiểu "95,300" là 95,3.
-  const priceVnd = Number(priceRaw.replace(/[.,]/g, ''));
-  if (!Number.isFinite(priceVnd)) return null;
-
-  let atMs = 0;
-  if (m?.[1] && m?.[2] && m?.[3]) {
-    const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
-    if (!Number.isNaN(d.getTime())) atMs = d.getTime();
-  }
-  return { priceVnd, atMs };
-}
-
-/**
- * Bảng nguồn. Thêm mặt hàng = thêm một dòng ở đây, không sửa chỗ nào khác.
- *
- * Hiện chỉ có cà phê vì đó là mặt hàng duy nhất tìm được trang công khai đọc
- * được ổn định. Sầu riêng — mặt hàng chính của app — CHƯA có nguồn miễn phí nào
- * đăng giá theo ngày dưới dạng máy đọc được; xem chú thích đầu tệp.
- */
-export const PRICE_SOURCES: SourceDef[] = [
-  {
-    key: 'coffee',
-    nameKey: 'trace.price.coffee',
-    unitKey: 'trace.price.perKg',
-    url: 'https://giacaphe.com/gia-ca-phe-noi-dia/',
-    source: 'giacaphe.com',
-    sane: [10_000, 500_000],
-    parse: parseTitlePrice,
-  },
-];
+export const PRICE_SOURCES: SourceDef[] = [];
 
 /** Đọc một nguồn. Không bao giờ ném; hỏng thì `null`. */
 export async function fetchPrice(def: SourceDef): Promise<CommodityPrice | null> {
@@ -145,12 +130,18 @@ export function toPrice(def: SourceDef, html: string): CommodityPrice | null {
   if (got.priceVnd < lo || got.priceVnd > hi) return null;
   return {
     key: def.key,
+    scope: def.scope,
     nameKey: def.nameKey,
     unitKey: def.unitKey,
     priceVnd: got.priceVnd,
     atMs: got.atMs,
     source: def.source,
   };
+}
+
+/** Các nguồn thuộc một cụm. Cụm chưa có nguồn nào → mảng rỗng, màn nói rõ. */
+export function sourcesIn(scope: PriceScope): SourceDef[] {
+  return PRICE_SOURCES.filter(d => d.scope === scope);
 }
 
 /** Đọc mọi nguồn. Nguồn nào hỏng thì vắng mặt, không làm hỏng nguồn khác. */

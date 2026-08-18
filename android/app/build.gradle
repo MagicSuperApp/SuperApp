@@ -124,19 +124,7 @@ def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
         // Build 75 (2026-07-10): tự phát hiện DID mồ côi + nút đăng-ký-lại khi server reset.
         // Build 76 (2026-07-13): hiện 2 ví (Standard+Phoenix) + stake_address CIP-1852;
         // fix "Phiên hết hạn" khi tạo vườn (tự lấy token field-reid); gộp fix cây + P0 nhiệt.
-<<<<<<< HEAD
         versionCode 89
-=======
-        // Build 88 (2026-08-15): số 87 ĐÃ BỊ TIÊU THỤ bởi một bản `app-release.aab` dựng
-        // tay (Telegram 15/08 00:24) — bản đó thiếu libtaad_enclave_core.so và
-        // libchat_mls.so vì không đi qua đường dựng có bước Rust. Giữ 87 ở đây nghĩa là
-        // bản dựng đúng tiếp theo mang CÙNG số với bản hỏng đó.
-        // ⚠ Hai đường dựng cộng thêm số đếm RIÊNG lên số này: Codemagic
-        // `codemagic.yaml:1116` cộng BUILD_NUMBER; `.github/workflows/android-aab.yml`
-        // KHÔNG cộng gì (chỉ in ra ở dòng 227). Nên hai bản GitHub liên tiếp ra cùng một
-        // versionCode và Play sẽ từ chối bản thứ hai — hỏng TO và rõ, không im lặng.
-        versionCode 88
->>>>>>> 3056c4835a4c221ec0388887b1259fce0c934df0
         versionName "2.0"
 
         // ✅ Support 16KB page size (required by Google Play Store 2024)

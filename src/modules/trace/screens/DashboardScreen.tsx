@@ -44,7 +44,8 @@ import { useOffline } from '../../../hooks/useOffline';
 import { useTk } from '../../../i18n/keys';
 import { RootState } from '../../../store';
 import { useAppDispatch } from '../../../store/hooks';
-import { loadActivities, loadFarms, loadTrees } from '../store/farmSlice';
+import { loadActivities, loadFarms, loadTrees, syncFarmsFromBackend } from '../store/farmSlice';
+import FarmsMapCard from '../components/FarmsMap';
 import { showError } from '../../../utils/alert';
 import { Card, Ground, SectionHeader } from '../components/layered/Surface';
 import {
@@ -56,6 +57,7 @@ import {
   type WeatherReport,
 } from '../../../services/weatherService';
 import { fetchAgriNews, hotNews, timeAgoVi, type NewsItem } from '../../../services/agriNewsService';
+import { runAlertCheck } from '../../../services/alertDispatcher';
 import {
   formatVnd, priceMove, type CommodityPrice, type PriceMove,
 } from '../../../services/agriPriceService';
@@ -150,6 +152,14 @@ const DashboardScreen: React.FC = () => {
 
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  /**
+   * Thẻ đang mở của mục Vườn. Mặc định là DANH SÁCH, không phải bản đồ.
+   *
+   * Bản đồ tốn một bề mặt OpenGL và một loạt lượt tải ô ảnh; mở nó cho mọi người
+   * ở mọi lần vào app là bắt máy yếu và gói 3G trả giá cho một thứ chỉ thỉnh
+   * thoảng mới cần. Ai cần thì bấm một cái là có.
+   */
+  const [gardenTab, setGardenTab] = useState<'list' | 'map'>('list');
   const [weather, setWeather] = useState<WeatherReport | null>(null);
   const [weatherLoading, setWeatherLoading] = useState(true);
   const [prices, setPrices] = useState<Array<PriceMove & { agoH: number }>>([]);
@@ -213,13 +223,35 @@ const DashboardScreen: React.FC = () => {
   }, [fade]);
 
   // ── Vườn ──────────────────────────────────────────────────────────────────
+  /**
+   * Cache TRƯỚC, máy chủ SAU — và không nạp lại cache sau khi đồng bộ.
+   *
+   * Bước 1 đọc SQLite nên danh sách hiện ngay cả khi mất sóng. Bước 2 thay bằng
+   * bản của máy chủ, vốn mang thêm TÂM VƯỜN, CÁCH LẤY RANH, SAI SỐ RANH và SỐ
+   * CÂY/CON VẬT — chính mấy trường thẻ "Bản đồ" cần để vẽ vùng vườn và bày thông
+   * tin khi chạm vào.
+   *
+   * ⚠ Không gọi `loadFarms` lần nữa sau bước 2. Bảng `farms` trong SQLite chỉ có
+   * bốn cột (`id · name · coordinates · user_id`), nên nạp lại cache là ném đi
+   * đúng những trường vừa lấy về — thẻ Bản đồ sẽ im lặng mất tâm vườn và số cây
+   * mà không có gì báo. (Màn Danh sách vườn đang làm ngược thứ tự này; ở đó
+   * không hại vì nó chỉ cần tên và ranh.)
+   */
   const loadGarden = useCallback(async () => {
     try {
       if (!user) return;
-      const loaded = await dispatch(loadFarms(user.id)).unwrap();
-      if (loaded.length > 0) {
-        for (const farm of loaded) await dispatch(loadTrees(farm.id));
-        await dispatch(loadActivities(loaded[0].id));
+      const cached = await dispatch(loadFarms(user.id)).unwrap();
+      let list = cached;
+      try {
+        const fresh = await dispatch(syncFarmsFromBackend(user.id)).unwrap();
+        if (Array.isArray(fresh) && fresh.length > 0) list = fresh;
+      } catch {
+        // Máy chủ hỏng → giữ nguyên cache. `syncFarmsFromBackend` tự nuốt lỗi
+        // mạng, nên tới đây là ca hiếm; vẫn bắt để không kéo đổ cả màn.
+      }
+      if (list.length > 0) {
+        for (const farm of list) await dispatch(loadTrees(farm.id));
+        await dispatch(loadActivities(list[0].id));
       }
     } catch {
       showError(tk('trace.error.loadTitle'), tk('trace.error.loadBody'));
@@ -254,6 +286,31 @@ const DashboardScreen: React.FC = () => {
   }, []);
 
   useEffect(() => { loadNews(); }, [loadNews]);
+
+  /**
+   * XÉT CẢNH BÁO — dông, gió giật, mưa to, và tin nhiều báo cùng đưa.
+   *
+   * Chạy ở ĐÂY vì trang này vốn đã tải thời tiết và tin để vẽ màn; bắt bộ cảnh
+   * báo tự tải lại là nhân đôi lượt mạng của người dùng cho cùng một dữ liệu.
+   *
+   * ⚠ Hệ quả phải biết: cảnh báo chỉ được xét khi trang Tổng quan có dữ liệu
+   * mới, tức lúc mở app hoặc quay lại app. **App đóng hẳn thì không có cảnh
+   * báo** — muốn báo lúc nửa đêm thì phải để máy chủ đẩy push. Xem đầu
+   * `services/localNotify.ts`.
+   *
+   * Chờ cả hai nguồn tải xong mới xét: chạy khi tin còn rỗng thì luật "nhiều báo
+   * cùng đưa một chuyện" không bao giờ đủ nguồn để đếm, và ta khoá mất 30 phút
+   * nhịp tối thiểu cho một lượt xét nửa vời.
+   */
+  useEffect(() => {
+    if (weatherLoading || newsLoading) return;
+    // Không cần cờ `alive`: `runAlertCheck` không đặt state của màn này, nó chỉ
+    // đọc/ghi AsyncStorage và gọi notifee. Màn tháo giữa chừng thì lượt xét cứ
+    // chạy nốt — và đó là điều ĐÚNG, vì cảnh báo không thuộc về màn hình nào.
+    runAlertCheck({ now: Date.now(), weather, news }).catch(() => {
+      // Cảnh báo là phần THÊM. Hỏng nó không được làm hỏng trang Tổng quan.
+    });
+  }, [weatherLoading, newsLoading, weather, news]);
 
   /**
    * Cuộn gần tới đáy thì hiện thêm tin. Không nút, không "trang 2".
@@ -336,36 +393,67 @@ const DashboardScreen: React.FC = () => {
             actionLabel={hasData ? tk('trace.button.viewGardens') : undefined}
             onAction={hasData ? () => navigation.navigate('FarmList') : undefined}
           />
-          {/* Lưới BENTO: ba ô số, không viền chung, không icon.
-              Bản trước là một thẻ to bọc ba cụm icon-trên-số, ngăn nhau bằng hai
-              vạch dọc — đúng lối bảng biểu những năm 2010. Bỏ icon vì ở đây icon
-              không thêm nghĩa nào: "Vườn", "Cây", "Quả" đã là ba chữ ai cũng đọc
-              được, còn ba icon xanh-vàng chỉ tranh chỗ với chính con số. */}
-          {/* Thu gọn còn một HÀNG NGANG ba ô, thay cho lưới hai hàng.
-              Ba con số này là thứ liếc qua chứ không phải thứ đọc kỹ — chiếm hơn
-              một phần ba màn hình cho chúng là lấy mất chỗ của thời tiết và giá,
-              hai thứ người ta mở app để xem. Icon nhỏ cạnh nhãn thay cho ô icon
-              to: vẫn nhận ra nhanh, mà chỉ tốn 14 px. */}
-          <View style={styles.bento}>
-            <Tile icon={ICON.farm} value={farms.length} label={tk('trace.label.gardens')}
-              onPress={() => navigation.navigate('FarmList')} />
-            <Tile icon={ICON.tree} value={trees.length} label={tk('trace.label.trees')} />
-            <Tile icon={ICON.fruit} value={fruits.length} label={tk('trace.label.fruits')} />
+          {/* HAI THẺ: con số và bản đồ.
+              Cùng một mục "Vườn của tôi" nhưng hai câu hỏi khác nhau — "tôi có
+              bao nhiêu" và "chúng nằm ở đâu". Nhồi cả hai vào một khung dọc thì
+              bản đồ đẩy thời tiết và giá xuống dưới nếp gấp, mà đó mới là thứ
+              người ta mở app buổi sáng để xem. Thẻ giữ bản đồ ở đúng một khoảng
+              cao 260 px, ai cần nhìn kỹ thì bấm nút mở toàn màn hình. */}
+          <View style={styles.tabBar}>
+            <GardenTab
+              icon="list-check"
+              label={tk('trace.tab.list')}
+              active={gardenTab === 'list'}
+              onPress={() => setGardenTab('list')}
+            />
+            <GardenTab
+              icon="map-location-dot"
+              label={tk('trace.tab.map')}
+              active={gardenTab === 'map'}
+              onPress={() => setGardenTab('map')}
+            />
           </View>
 
-          <View style={styles.pagePad}>
-            <Pressable
-              style={({ pressed }) => [styles.primaryBtn, pressed && styles.pressed]}
-              onPress={() => (hasData
-                ? navigation.navigate('FarmDetail', { farm_id: farms[0].id })
-                : navigation.navigate('FarmList'))}
-            >
-              <Text style={styles.primaryBtnTxt}>
-                {tk(hasData ? 'trace.button.addTree' : 'trace.button.createFirstGarden')}
-              </Text>
-            </Pressable>
+          {gardenTab === 'list' ? (
+            <>
+              {/* Lưới BENTO: ba ô số, không viền chung, không icon.
+                  Bản trước là một thẻ to bọc ba cụm icon-trên-số, ngăn nhau bằng hai
+                  vạch dọc — đúng lối bảng biểu những năm 2010. Bỏ icon vì ở đây icon
+                  không thêm nghĩa nào: "Vườn", "Cây", "Quả" đã là ba chữ ai cũng đọc
+                  được, còn ba icon xanh-vàng chỉ tranh chỗ với chính con số. */}
+              {/* Thu gọn còn một HÀNG NGANG ba ô, thay cho lưới hai hàng.
+                  Ba con số này là thứ liếc qua chứ không phải thứ đọc kỹ — chiếm hơn
+                  một phần ba màn hình cho chúng là lấy mất chỗ của thời tiết và giá,
+                  hai thứ người ta mở app để xem. Icon nhỏ cạnh nhãn thay cho ô icon
+                  to: vẫn nhận ra nhanh, mà chỉ tốn 14 px. */}
+              <View style={styles.bento}>
+                <Tile icon={ICON.farm} value={farms.length} label={tk('trace.label.gardens')}
+                  onPress={() => navigation.navigate('FarmList')} />
+                <Tile icon={ICON.tree} value={trees.length} label={tk('trace.label.trees')} />
+                <Tile icon={ICON.fruit} value={fruits.length} label={tk('trace.label.fruits')} />
+              </View>
 
-          
+              <View style={styles.pagePad}>
+                <Pressable
+                  style={({ pressed }) => [styles.primaryBtn, pressed && styles.pressed]}
+                  onPress={() => (hasData
+                    ? navigation.navigate('FarmDetail', { farm_id: farms[0].id })
+                    : navigation.navigate('FarmList'))}
+                >
+                  <Text style={styles.primaryBtnTxt}>
+                    {tk(hasData ? 'trace.button.addTree' : 'trace.button.createFirstGarden')}
+                  </Text>
+                </Pressable>
+              </View>
+            </>
+          ) : (
+            <FarmsMapCard
+              farms={farms}
+              onOpenFarm={(farmId) => navigation.navigate('FarmDetail', { farm_id: farmId })}
+            />
+          )}
+
+          <View style={styles.pagePad}>
             <Pressable
               style={({ pressed }) => [styles.askBar, pressed && styles.pressed]}
               onPress={() => openAssistant()}
@@ -545,6 +633,27 @@ const DashboardScreen: React.FC = () => {
 
 // ── Mảnh nhỏ ────────────────────────────────────────────────────────────────
 
+/**
+ * Một thẻ của mục Vườn ("Vườn của tôi" · "Bản đồ").
+ *
+ * Thẻ đang mở được tô nền chứ không chỉ gạch chân: gạch chân mảnh 2 px là thứ
+ * người trên 40 tuổi cầm máy giữa nắng nhìn không ra, và cả hai thẻ trông giống
+ * hệt nhau thì không ai biết mình đang ở đâu.
+ */
+const GardenTab: React.FC<{
+  icon: IconName; label: string; active: boolean; onPress: () => void;
+}> = ({ icon, label, active, onPress }) => (
+  <Pressable
+    onPress={onPress}
+    style={({ pressed }) => [styles.tab, active && styles.tabOn, pressed && styles.pressed]}
+    accessibilityRole="tab"
+    accessibilityState={{ selected: active }}
+    accessibilityLabel={label}
+  >
+    <Icon name={icon} size={14} color={active ? NATURE.paper : NATURE.barkSoft} />
+    <Text style={[styles.tabTxt, active && styles.tabTxtOn]} numberOfLines={1}>{label}</Text>
+  </Pressable>
+);
 
 /**
  * Một ô số trong lưới Bento.
@@ -752,6 +861,22 @@ const styles = StyleSheet.create({
 
   // ── Lưới Bento của mục Vườn
   pagePad: { paddingHorizontal: SPACE.page },
+
+  // Hai thẻ của mục Vườn
+  tabBar: {
+    flexDirection: 'row', gap: SPACE.sm,
+    paddingHorizontal: SPACE.page, marginBottom: SPACE.md,
+  },
+  tab: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    minHeight: 40, borderRadius: RADIUS.chip,
+    backgroundColor: SURFACE.raised,
+    borderWidth: 1, borderColor: TONE.border,
+  },
+  tabOn: { backgroundColor: TONE.primary, borderColor: TONE.primaryDeep },
+  tabTxt: { fontSize: 14.5, fontWeight: '700', color: NATURE.barkSoft },
+  tabTxtOn: { color: NATURE.paper },
+
   bento: { flexDirection: 'row', gap: SPACE.sm, paddingHorizontal: SPACE.page },
   tile: {
     flex: 1,

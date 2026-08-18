@@ -36,6 +36,95 @@ export const TRACE_STRINGS = {
   'trace.button.createFirstGarden': { vi: 'Tạo vườn đầu tiên', en: 'Create your first garden', zh: '创建第一个果园', ja: '最初の果樹園を作る' },
   'trace.empty.noGarden': { vi: 'Chưa có vườn nào', en: 'No gardens yet', zh: '还没有果园', ja: 'まだ果樹園がありません' },
 
+  // ── Mục 1 — hai thẻ: danh sách và bản đồ ──────────────────────────────────
+  'trace.tab.list': { vi: 'Vườn của tôi', en: 'My gardens', zh: '我的果园', ja: 'マイ果樹園' },
+  'trace.tab.map': { vi: 'Bản đồ', en: 'Map', zh: '地图', ja: '地図' },
+
+  // ── Bản đồ vườn ───────────────────────────────────────────────────────────
+  'trace.farmMap.search': { vi: 'Tìm vườn…', en: 'Find a garden…', zh: '查找果园…', ja: '果樹園を探す…' },
+  'trace.farmMap.noResult': { vi: 'Không có vườn nào khớp', en: 'No garden matches', zh: '没有匹配的果园', ja: '一致する果樹園がありません' },
+  'trace.farmMap.loading': { vi: 'Đang mở bản đồ…', en: 'Opening the map…', zh: '正在打开地图…', ja: '地図を開いています…' },
+  'trace.farmMap.failTitle': { vi: 'Chưa mở được bản đồ', en: 'Could not open the map', zh: '无法打开地图', ja: '地図を開けませんでした' },
+  'trace.farmMap.retry': { vi: 'Thử lại', en: 'Try again', zh: '重试', ja: 'もう一度' },
+  'trace.farmMap.unavailable': {
+    vi: 'Máy này chưa mở được bản đồ. Bạn xem danh sách vườn ở thẻ bên cạnh nhé.',
+    en: 'The map is unavailable on this device. Use the list tab instead.',
+    zh: '此设备无法显示地图，请改用旁边的列表。',
+    ja: 'この端末では地図を表示できません。隣のリストをご利用ください。',
+  },
+  'trace.farmMap.empty': {
+    vi: 'Chưa có vườn nào để đặt lên bản đồ',
+    en: 'No gardens to put on the map yet',
+    zh: '还没有果园可以放到地图上',
+    ja: '地図に置ける果樹園がまだありません',
+  },
+  'trace.farmMap.noCoords': {
+    vi: '{n} vườn chưa có toạ độ nên không hiện trên bản đồ',
+    en: '{n} gardens have no coordinates, so they are not on the map',
+    zh: '{n} 个果园还没有坐标，因此不显示在地图上',
+    ja: '{n} 件の果樹園は座標がないため地図に出ません',
+  },
+  'trace.farmMap.zoomHint': {
+    vi: 'Phóng to để thấy ranh vườn',
+    en: 'Zoom in to see the boundaries',
+    zh: '放大以查看园界',
+    ja: '拡大すると境界が見えます',
+  },
+  'trace.farmMap.satellite': { vi: 'Vệ tinh', en: 'Satellite', zh: '卫星', ja: '衛星' },
+  'trace.farmMap.street': { vi: 'Bản đồ', en: 'Map', zh: '地图', ja: '地図' },
+  'trace.farmMap.fullscreen': { vi: 'Toàn màn hình', en: 'Full screen', zh: '全屏', ja: '全画面' },
+  'trace.farmMap.close': { vi: 'Đóng', en: 'Close', zh: '关闭', ja: '閉じる' },
+  'trace.farmMap.fitAll': { vi: 'Xem hết vườn', en: 'Fit all gardens', zh: '显示全部果园', ja: 'すべての果樹園を表示' },
+  'trace.farmMap.inFullscreen': {
+    vi: 'Bản đồ đang mở toàn màn hình',
+    en: 'The map is open full screen',
+    zh: '地图正在全屏显示',
+    ja: '地図は全画面で開いています',
+  },
+  'trace.farmMap.owner': { vi: 'Chủ vườn', en: 'Owner', zh: '园主', ja: '所有者' },
+  'trace.farmMap.area': { vi: 'Diện tích', en: 'Area', zh: '面积', ja: '面積' },
+  'trace.farmMap.animals': { vi: 'Con vật', en: 'Animals', zh: '牲畜', ja: '動物' },
+  'trace.farmMap.unknown': { vi: '—', en: '—', zh: '—', ja: '—' },
+  'trace.farmMap.openFarm': { vi: 'Mở vườn', en: 'Open garden', zh: '打开果园', ja: '果樹園を開く' },
+  'trace.farmMap.noPhoto': { vi: 'Chưa có ảnh vườn', en: 'No garden photo yet', zh: '还没有果园照片', ja: '果樹園の写真がまだありません' },
+  'trace.farmMap.boundaryWalk': {
+    vi: 'Ranh ghi khi đi vòng quanh vườn',
+    en: 'Boundary recorded by walking the perimeter',
+    zh: '沿园界步行记录的边界',
+    ja: '外周を歩いて記録した境界',
+  },
+  'trace.farmMap.boundaryManual': {
+    vi: 'Ranh chấm tay trên bản đồ',
+    en: 'Boundary tapped by hand on the map',
+    zh: '在地图上手动点选的边界',
+    ja: '地図上で手作業で指定した境界',
+  },
+  'trace.farmMap.boundaryMixed': {
+    vi: 'Ranh GPS có chỉnh tay',
+    en: 'GPS boundary, hand-adjusted',
+    zh: 'GPS 边界，经手动调整',
+    ja: 'GPS 境界を手で調整',
+  },
+  'trace.farmMap.methodUnverified': {
+    vi: 'máy chủ chưa xác nhận cách đo',
+    en: 'method not confirmed by the server',
+    zh: '服务器未确认测量方式',
+    ja: '測定方法はサーバー未確認',
+  },
+  'trace.farmMap.boundaryAcc': { vi: 'sai số ~{n} m', en: 'accuracy ~{n} m', zh: '误差约 {n} 米', ja: '誤差 約{n} m' },
+  'trace.farmMap.boundaryAccUnknown': {
+    vi: 'chưa rõ sai số',
+    en: 'accuracy unknown',
+    zh: '误差未知',
+    ja: '誤差不明',
+  },
+  'trace.farmMap.noBoundary': {
+    vi: 'Vườn này chưa đi ranh — chỉ có một điểm trên bản đồ',
+    en: 'This garden has no boundary yet — only a point on the map',
+    zh: '该果园还没有边界，地图上只有一个点',
+    ja: 'この果樹園はまだ境界がなく、地図上では点だけです',
+  },
+
   // ── Mục 2 — Thời tiết ─────────────────────────────────────────────────────
   'trace.section.weather': { vi: 'Thời tiết', en: 'Weather', zh: '天气', ja: '天気' },
   'trace.weather.hint': { vi: 'Hôm nay và 5 ngày tới', en: 'Today and the next 5 days', zh: '今天与未来 5 天', ja: '今日と 5 日間' },
@@ -522,6 +611,47 @@ export const TRACE_STRINGS = {
   'trace.alert.priceUp': { vi: 'Giá {name} tăng {pct}%', en: '{name} price up {pct}%', zh: '{name} 价格上涨 {pct}%', ja: '{name} が {pct}% 上昇' },
   'trace.alert.priceDown': { vi: 'Giá {name} giảm {pct}%', en: '{name} price down {pct}%', zh: '{name} 价格下跌 {pct}%', ja: '{name} が {pct}% 下落' },
   'trace.alert.trending': { vi: '{n} báo cùng đưa một tin', en: '{n} outlets are running the same story', zh: '{n} 家媒体报道同一件事', ja: '{n} 社が同じ話題を報じています' },
+
+  // ── Cảnh báo thời tiết dữ ─────────────────────────────────────────────────
+  // Chữ ở đây CỐ Ý không có từ "bão": nguồn dữ liệu là mô hình dự báo toàn cầu,
+  // nó đo được GIÓ và DÔNG, không biết cơn bão nào đang có tên. Người đọc chữ
+  // "bão" sẽ đi chằng nhà — một việc lớn — dựa trên thứ ta không đo được.
+  // Xem chú thích `weatherAlerts` ở `services/alertRules.ts`.
+  'trace.alert.stormNow': { vi: 'Vườn đang có dông', en: 'Thunderstorm over your garden', zh: '果园正在打雷下雨', ja: '果樹園は雷雨です' },
+  'trace.alert.stormNow.body': {
+    vi: 'Dừng việc ngoài vườn, cất máy móc vào chỗ khô, tránh xa cây cao.',
+    en: 'Stop outdoor work, move equipment somewhere dry, keep away from tall trees.',
+    zh: '暂停户外作业，把机具收到干燥处，远离高树。',
+    ja: '屋外作業を中断し、機材を乾いた場所へ、高い木から離れてください。',
+  },
+  'trace.alert.stormSoon': { vi: 'Khoảng {h} giờ nữa có dông', en: 'Thunderstorm in about {h}h', zh: '约 {h} 小时后有雷雨', ja: '約 {h} 時間後に雷雨' },
+  'trace.alert.stormSoon.body': {
+    vi: 'Thu đồ, chằng lại giàn lưới, hoãn phun thuốc — thuốc gặp mưa là trôi hết.',
+    en: 'Bring things in, secure the netting, hold off spraying — rain washes it straight off.',
+    zh: '收好物品、加固网架、暂缓打药 — 遇雨会被冲掉。',
+    ja: '物を片付け、ネットを固定し、散布は見送りを — 雨で流れます。',
+  },
+  'trace.alert.gustSevere': { vi: 'Gió rất mạnh — giật tới {kph} km/h', en: 'Very strong wind — gusts to {kph} km/h', zh: '大风 — 阵风达 {kph} 公里/小时', ja: '非常に強い風 — 最大瞬間 {kph} km/h' },
+  'trace.alert.gustSevere.body': {
+    vi: 'Mức này gãy cành và bật gốc cây non. Chằng giàn, buộc cây mới trồng, không trèo cao.',
+    en: 'This level snaps branches and uproots young trees. Secure frames, tie new plantings, do not climb.',
+    zh: '这种风力会折断枝条、吹倒幼树。请加固棚架、绑扎新栽树，不要爬高。',
+    ja: 'この強さは枝を折り、若木を倒します。棚を固定し、新植樹を結束し、高所作業はやめてください。',
+  },
+  'trace.alert.gust': { vi: 'Gió giật {kph} km/h', en: 'Wind gusts {kph} km/h', zh: '阵风 {kph} 公里/小时', ja: '突風 {kph} km/h' },
+  'trace.alert.gust.body': {
+    vi: 'Cất bạt, lưới, thùng nhẹ. Hoãn phun thuốc — gió tạt thì thuốc không tới lá.',
+    en: 'Put away tarps, netting and light crates. Hold off spraying — wind blows it off the leaves.',
+    zh: '收好篷布、网和轻箱。暂缓打药 — 风一吹药就打不到叶面。',
+    ja: 'シート・ネット・軽い箱を片付けを。散布は見送りを — 風で葉に届きません。',
+  },
+  'trace.alert.heavyRain': { vi: 'Khoảng {h} giờ nữa mưa to', en: 'Heavy rain in about {h}h', zh: '约 {h} 小时后有大雨', ja: '約 {h} 時間後に大雨' },
+  'trace.alert.heavyRain.body': {
+    vi: 'Khơi rãnh thoát nước, hoãn bón phân — phân gặp mưa to là trôi theo nước.',
+    en: 'Clear the drainage ditches, hold off fertilising — heavy rain washes it away.',
+    zh: '清理排水沟，暂缓施肥 — 大雨会把肥料冲走。',
+    ja: '排水路を確保し、施肥は見送りを — 大雨で流されます。',
+  },
 
   // ── Bầu trời (mã WMO → chữ, xem `describeWeather`) ────────────────────────
   'trace.sky.clear': { vi: 'Trời quang', en: 'Clear sky', zh: '晴朗', ja: '快晴' },

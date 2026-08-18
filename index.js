@@ -2,6 +2,14 @@
  * @format
  */
 
+// MẠNG — PHẢI đầu tiên, trước cả crash reporter (nó cũng gọi fetch).
+// `expo/metro-config` cho `expo/src/winter` chạy TRƯỚC tệp này và thay
+// `globalThis.fetch` bằng `expo/fetch`; bản đó nổ `ReferenceError:
+// Property 'ReadableStream' doesn't exist` với mọi thân FormData, và kể cả vá
+// được thì nó cũng không đọc nổi tệp kiểu `{uri}` của React Native.
+// Đọc `src/config/networkFetch.ts` để biết đường đi đầy đủ của lỗi.
+import './src/config/networkFetch';
+
 // CRASH REPORTER — PHẢI đầu tiên: gắn global JS error handler + ping "app_boot"
 // về remoteLogger. Nếu "app_boot" TỚI server = JS bundle ĐÃ nạp & chạy.
 import './src/config/crashReporter';

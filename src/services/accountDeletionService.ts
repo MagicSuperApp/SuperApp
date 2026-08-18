@@ -22,6 +22,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { clearMasterKek } from './masterKekStore';
+import { wipeIdentity } from '../sdk/phoenixKey';
 import { clearOrilifeToken } from './orilifeDidAuth';
 import rLog from './remoteLogger';
 
@@ -57,6 +58,19 @@ export async function requestRemoteDeletion(did: string | null | undefined): Pro
  * Gọi SAU `dispatch(logoutUser())` (đóng DB per-user + xoá phiên xuyên module + nháp).
  */
 export async function wipeLocalIdentity(): Promise<void> {
+  // KHOÁ CHỦ TRONG CHIP PHẢI XOÁ TRƯỚC, và phải xoá ở đây chứ không chỗ nào khác.
+  //
+  // `clearMasterKek()` chỉ xoá KEK ví — nó nói thẳng "KHÔNG đụng khoá HW/DID"
+  // (`masterKekStore.ts`). Trước bản này, xoá tài khoản để lại nguyên khoá owner
+  // trong Secure Enclave/Keystore, nên lần đăng ký sau `isKeypairEnrolled()` vẫn
+  // trả TRUE trong khi DID đã bị xoá khỏi máy ⇒ app rơi vào đường khôi phục, đăng
+  // ký lại đúng khoá cũ, và người dùng nhận câu "máy đã có khoá nhưng chưa khôi
+  // phục được danh tính" — kẹt cứng, không đăng ký mới được nữa.
+  //
+  // Phải chạy TRƯỚC `AsyncStorage.clear()`: `wipeIdentity()` đọc con trỏ alias
+  // (`phoenixkey_owner_alias`) từ AsyncStorage mới biết khoá nào cần xoá. Xoá kho
+  // trước thì khoá đã xoay (`_v2`, `_v3`…) thành khoá mồ côi, không ai xoá được nữa.
+  try { await wipeIdentity(); } catch (e) { console.warn('[deleteAccount] wipeIdentity:', e); }
   try { await clearMasterKek(); } catch (e) { console.warn('[deleteAccount] clearMasterKek:', e); }
   try { await clearOrilifeToken(); } catch (e) { console.warn('[deleteAccount] clearOrilifeToken:', e); }
   // Dọn mọi khoá còn lại: DID, cache ảnh, sổ bằng chứng, ngôn ngữ, cờ onboarding…

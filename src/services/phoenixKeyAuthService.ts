@@ -6,6 +6,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BiometryTypes } from 'react-native-biometrics';
+import rLog from './remoteLogger';
 
 export type BiometricKind = 'face' | 'fingerprint' | 'strong';
 
@@ -141,10 +142,13 @@ export const registerIdentity = async (
     // Nếu keypair đã tồn tại nhưng JS storage bị mất (reinstall/update/cache clear),
     // đừng bắt user đăng xuất/tạo mới. Khôi phục local identity từ native key.
     const existing = await recoverLocalIdentityFromKey(biometricKind);
-    if (existing) return existing;
+    if (existing.ok) return existing.value;
 
+    // Nói ra LÝ DO. Câu cũ đúng nhưng rỗng — người dùng không biết nên thử lại
+    // vân tay, đợi sóng, hay thật sự phải gọi hỗ trợ; và người nhận báo lỗi thực
+    // địa cũng không lần ngược được về đâu.
     throw new Error(
-      'Thiết bị đã có khoá nhưng chưa khôi phục được danh tính. Vui lòng thử đăng nhập lại hoặc liên hệ hỗ trợ.',
+      RECOVER_FAIL_MESSAGE[existing.reason] ?? RECOVER_FAIL_MESSAGE.khong_ro,
     );
   }
 
@@ -198,7 +202,7 @@ export const unlockExistingIdentity = async (): Promise<AuthUser | null> => {
   if (!isSupportedBackendDid(did)) {
     if (isMalformedPhoenixDid(did)) {
       const recovered = await recoverLocalIdentityFromKey('strong');
-      if (recovered) return recovered.user;
+      if (recovered.ok) return recovered.value.user;
     }
     console.warn('[PhoenixKey unlock] invalid stored DID, refusing local unlock:', did);
     return null;
@@ -272,9 +276,23 @@ export const phoenixKeyAuth = {
   storageUserDid: STORAGE_USER_DID,
 };
 
+/**
+ * Kết quả khôi phục — có LÝ DO khi hỏng.
+ *
+ * Vì sao không trả `null` như trước: ngoài vườn người dùng chỉ thấy đúng một câu
+ * "Thiết bị đã có khoá nhưng chưa khôi phục được danh tính", còn lý do thật thì
+ * nằm trong `console.warn` — thứ không ai đọc được trên máy đã cài qua TestFlight.
+ * Ba nguyên nhân rất khác nhau (người dùng huỷ vân tay · máy chủ từ chối đăng ký
+ * lại khoá cũ · DID máy chủ trả về sai định dạng) đều cho CÙNG một câu, nên báo
+ * lỗi thực địa không lần ngược được. Nay lý do đi theo kết quả.
+ */
+type RecoverOutcome =
+  | { ok: true; value: GenesisResult }
+  | { ok: false; reason: string };
+
 const recoverLocalIdentityFromKey = async (
   biometricKind: BiometricKind,
-): Promise<GenesisResult | null> => {
+): Promise<RecoverOutcome> => {
   try {
     const publicKeyHex = await ownerPublicKey();
     const genesisMessage = `PHOENIXKEY_GENESIS:${publicKeyHex}`;
@@ -303,11 +321,51 @@ const recoverLocalIdentityFromKey = async (
 
     await migrateLegacyDidStores(userDid, user, biometricKind);
 
-    return { user, txHash: res.txHash };
+    return { ok: true, value: { user, txHash: res.txHash } };
   } catch (err) {
+    const reason = describeRecoverFailure(err);
     console.warn('[PhoenixKey recover] failed:', err);
-    return null;
+    rLog.error('identity_recover_failed', { reason, raw: String(err).slice(0, 300) });
+    return { ok: false, reason };
   }
+};
+
+/**
+ * Rút một câu NGẮN, người ngoài đọc được, từ lỗi thô — để đưa thẳng lên màn hình.
+ *
+ * Không dán nguyên `String(err)` lên màn: chuỗi lỗi mạng thường kèm URL và mã nội
+ * bộ, người dùng đọc xong vẫn không biết phải làm gì. Nhưng cũng không nuốt: câu
+ * thô vẫn đi vào `rLog` ở trên.
+ */
+const describeRecoverFailure = (err: unknown): string => {
+  const m = String((err as { message?: string })?.message ?? err ?? '');
+  if (/cancel|user_cancel|huỷ|huy/i.test(m)) return 'chua_xac_thuc';
+  if (/network|timeout|ECONN|Network Error/i.test(m)) return 'mat_mang';
+  if (/409|exist|registered|duplicate/i.test(m)) return 'may_chu_tu_choi';
+  if (/did/i.test(m)) return 'did_sai_dinh_dang';
+  return 'khong_ro';
+};
+
+/**
+ * Mỗi lý do → MỘT câu hoàn chỉnh, vì từ điển tra theo NGUYÊN chuỗi
+ * (`src/i18n/translate.ts`). Ghép chuỗi lúc chạy thì không câu nào khớp từ điển
+ * và người dùng tiếng Anh/Trung/Nhật lãnh nguyên tiếng Việt. Năm câu dưới đây
+ * đều có bản dịch ở `src/i18n/phrases/errors.ts`.
+ *
+ * Câu nào cũng phải nói được BƯỚC TIẾP THEO — "liên hệ hỗ trợ" một mình là câu
+ * cụt, ngoài vườn không ai gọi được ai.
+ */
+const RECOVER_FAIL_MESSAGE: Record<string, string> = {
+  chua_xac_thuc:
+    'Chưa xác thực được vân tay hoặc khuôn mặt nên không mở lại được danh tính trên máy này. Thử lại và giữ ngón tay tới khi máy báo xong.',
+  mat_mang:
+    'Máy này đã có khoá, nhưng chưa liên lạc được máy chủ danh tính để mở lại. Kiểm tra sóng rồi thử lại.',
+  may_chu_tu_choi:
+    'Máy chủ từ chối mở lại danh tính cho khoá đã có trên máy này. Đây là lỗi phía máy chủ — chụp màn hình này gửi hỗ trợ.',
+  did_sai_dinh_dang:
+    'Máy chủ trả về một mã danh tính app chưa hiểu được. Đây là lỗi phía máy chủ — chụp màn hình này gửi hỗ trợ.',
+  khong_ro:
+    'Máy này đã có khoá nhưng chưa mở lại được danh tính, chưa rõ vì sao. Thử lại một lần; nếu vẫn vậy, chụp màn hình này gửi hỗ trợ.',
 };
 
 const friendlyRegisterError = (err: unknown): string => {

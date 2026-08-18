@@ -60,6 +60,9 @@ import {
 } from '../features/space3d/treeFrame';
 import { saveFruitCoord } from '../features/space3d/positionStore';
 import RemoteImage from '../components/RemoteImage';
+// `absUrl` ở nhờ màn danh sách quả (chỗ duy nhất từng có chốt URL tuyệt đối).
+// Một chiều, không vòng: `FruitListScreen` không import màn nào.
+import { absUrl } from './FruitListScreen';
 
 const BASE_URL = ORILIFE_BASE;
 
@@ -251,6 +254,17 @@ const FruitCropperScreen: React.FC = () => {
   const [busy, setBusy] = useState(false);
   const [errMsg, setErrMsg] = useState<string | null>(null);
   const [cands, setCands] = useState<FruitCandidate[]>([]);
+
+  /**
+   * Lượt đối chiếu VỪA RỒI có soi được không.
+   *
+   * "Không có quả nào giống" và "chưa hỏi được máy chủ" là hai chuyện khác hẳn,
+   * mà danh sách rỗng thì trông y như nhau. Bản cũ gộp chúng lại nên mất mạng
+   * cũng ra câu "Cây chưa có quả nào để đối chiếu — đặt tên để lưu quả mới":
+   * nông dân đặt tên mới cho một quả kho đã có, và không ai gộp hai hồ sơ lại
+   * được nữa. `true` ở đây thì màn KHÔNG mời tạo quả mới, chỉ mời thử lại.
+   */
+  const [candFailed, setCandFailed] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [lastRegion, setLastRegion] = useState<FruitRegion | null>(null);
   const [nameInput, setNameInput] = useState(
@@ -635,7 +649,7 @@ const FruitCropperScreen: React.FC = () => {
     }
 
     navigation.goBack();
-  }, [imageUri, zone, viewType, coord, zPlaced, navigation, loadPlan]);
+  }, [imageUri, zone, viewType, coord, zPlaced, capture, navigation, loadPlan]);
 
   const openPlacer = useCallback(() => {
     navigation.navigate('FruitPlace3D', {
@@ -647,7 +661,38 @@ const FruitCropperScreen: React.FC = () => {
     });
   }, [navigation, treeId, treeName, nameInput, coord]);
 
-  // ── "Dùng vùng này" → chốt vùng → candidates (hoặc add_view nếu có fruitId) ─
+  /**
+   * Hỏi máy chủ "cây này đã có quả nào giống vùng vừa khoanh chưa".
+   *
+   * Tách riêng khỏi `useRegion` để nút "Thử lại" ở bước đối chiếu gọi lại được
+   * đúng lượt hỏi đó mà không bắt người dùng khoanh lại từ đầu.
+   *
+   * Đọc kết cục bằng `outcomeOf`, KHÔNG bằng `r.ok`: `r.ok` là tầng vận chuyển,
+   * mọi HTTP 200 đều xanh, kể cả lượt máy chủ trả `{ok:false}`.
+   */
+  const runCandidates = useCallback(async (reg: FruitRegion) => {
+    setBusy(true);
+    const r = await fruitCandidates(BASE_URL, treeId, imageUri, reg);
+    setBusy(false);
+    const failed = outcomeOf(r) !== 'ok';
+    setCandFailed(failed);
+    setCands(failed ? [] : (r.data?.candidates ?? []));
+    setExpanded(false);
+    setStep('candidates');
+  }, [treeId, imageUri]);
+
+  /**
+   * "Dùng vùng này" → chốt vùng → candidates (hoặc add_view nếu có fruitId).
+   *
+   * ⚠️ `runAddView` PHẢI nằm trong danh sách phụ-thuộc. Nó được dựng lại mỗi khi
+   * `viewType` đổi; thiếu nó ở đây là hàm này ôm mãi bản `runAddView` của lần
+   * render đầu, tức mặt quả gửi lên luôn là `'side'` — giá trị đỗ tạm — dù người
+   * dùng đã chọn "Đít quả", hoặc `/api/capture/plan` đã bảo chụp mặt khác.
+   *
+   * Lỗi đó chỉ nổ THEO THỨ TỰ THAO TÁC: chọn mặt rồi bấm ngay là sai; chọn mặt
+   * rồi kéo/phóng ảnh (đổi `regionToOrig`) rồi mới bấm thì lại đúng. Nên có test
+   * khoá lại ở `FruitCropperScreen.viewType.test.tsx` — đừng gỡ dep này ra.
+   */
   const useRegion = useCallback(async () => {
     const reg = regionToOrig();
     if (reg.bbox[2] < 8 || reg.bbox[3] < 8) {
@@ -670,13 +715,8 @@ const FruitCropperScreen: React.FC = () => {
       return;
     }
 
-    const r = await fruitCandidates(BASE_URL, treeId, imageUri, reg);
-    setBusy(false);
-    if (r.ok && r.data) { setCands(r.data.candidates ?? []); }
-    else { setCands([]); } // mạng yếu / lỗi → vẫn cho lưu quả mới
-    setExpanded(false);
-    setStep('candidates');
-  }, [regionToOrig, fruitId, posFromBox, zone, coord, zPlaced, imageUri, treeId, navigation]);
+    await runCandidates(reg);
+  }, [regionToOrig, fruitId, posFromBox, runAddView, runCandidates]);
 
   // ── Chọn 1 quả-đã-có → THÊM GÓC (add_view) ─────────────────────────────────
   const pickCandidate = useCallback(async (cand: FruitCandidate) => {
@@ -735,7 +775,7 @@ const FruitCropperScreen: React.FC = () => {
     // (và là chỗ duy nhất giữ được chỉnh-sửa từ FruitPlace3D — xem màn đó).
     if (r.data?.fruit_id) await saveFruitCoord(r.data.fruit_id, coord);
     navigation.goBack();
-  }, [lastRegion, nameInput, coord, zPlaced, treeId, imageUri, viewType, navigation]);
+  }, [lastRegion, nameInput, coord, zPlaced, treeId, imageUri, viewType, capture, navigation]);
 
   // ── Quay lại bước crop để khoanh vùng khác ─────────────────────────────────
   const recrop = useCallback(() => { setErrMsg(null); setStep('crop'); }, []);
@@ -966,7 +1006,7 @@ const FruitCropperScreen: React.FC = () => {
           theo mỗi cái tên "(chưa đặt tên)". */}
       <View style={styles.cThumb}>
         <RemoteImage
-          uri={c.thumbnail_url ? `${BASE_URL}${c.thumbnail_url}` : null}
+          uri={absUrl(c.thumbnail_url)}
           style={styles.cThumbImg}
           containerStyle={styles.cThumbImg}
           resizeMode="cover"
@@ -1001,15 +1041,19 @@ const FruitCropperScreen: React.FC = () => {
 
         {top ? candRow(top, true) : null}
 
-        <TouchableOpacity
-          style={styles.candNew}
-          disabled={busy}
-          onPress={() => setStep('naming')}
-          activeOpacity={0.85}
-        >
-          <Icon name="circle-plus" size={15} color={COLORS.white} />
-          <Text style={styles.candNewTxt}>{tk('trace.crop.isNew')}</Text>
-        </TouchableOpacity>
+        {/* Chưa soi được thì KHÔNG mời tạo quả mới: lúc này app không biết cây đã
+            có quả này chưa, mà tạo trùng là hỏng hồ sơ vĩnh viễn. Chỉ mời thử lại. */}
+        {candFailed ? null : (
+          <TouchableOpacity
+            style={styles.candNew}
+            disabled={busy}
+            onPress={() => setStep('naming')}
+            activeOpacity={0.85}
+          >
+            <Icon name="circle-plus" size={15} color={COLORS.white} />
+            <Text style={styles.candNewTxt}>{tk('trace.crop.isNew')}</Text>
+          </TouchableOpacity>
+        )}
 
         {others.length > 0 && !expanded ? (
           <TouchableOpacity style={styles.linkBtn} onPress={() => setExpanded(true)} activeOpacity={0.7}>
@@ -1029,7 +1073,20 @@ const FruitCropperScreen: React.FC = () => {
           </>
         ) : null}
 
-        {!cands.length ? (
+        {candFailed ? (
+          <>
+            <Text style={styles.muted}>{tk('trace.crop.matchFailed')}</Text>
+            <TouchableOpacity
+              style={styles.candNew}
+              disabled={busy || !lastRegion}
+              onPress={() => { if (lastRegion) void runCandidates(lastRegion); }}
+              activeOpacity={0.85}
+            >
+              <Icon name="arrow-rotate-left" size={15} color={COLORS.white} />
+              <Text style={styles.candNewTxt}>{tk('trace.crop.matchRetry')}</Text>
+            </TouchableOpacity>
+          </>
+        ) : !cands.length ? (
           <Text style={styles.muted}>{tk('trace.crop.nothingToMatch')}</Text>
         ) : null}
 

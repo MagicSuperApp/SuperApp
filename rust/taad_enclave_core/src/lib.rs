@@ -1181,16 +1181,26 @@ pub unsafe extern "C" fn taad_build_update_mint_registry(
 /// làm REFERENCE input + thoả authorization của action_tag. Thêm mỗi authorization
 /// key làm required signer + ký bằng tất cả (single hoặc multisig M-of-N).
 ///
-/// Thứ tự tham số PHẢI khớp `registry_mint::build_mint_via_registry`:
+/// Thứ tự tham số PHẢI khớp `registry_mint::build_mint_via_registry`. Tên trường
+/// dưới đây đọc THẲNG từ struct `Deserialize` trong `registry_mint.rs` — trường
+/// nào không ghi `#[serde(default)]` là BẮT BUỘC, thiếu thì hàm trả null:
 ///   - `authority_keks_json`   JSON array hex Master_KEK — 1 (SinglePkh) hoặc M..N
 ///                             (MultiSig). Mỗi cái suy 1 khoá ký + required signer.
-///   - `registry_utxo_json`    JSON {tx_hash,index,...} — registry (reference input).
+///   - `registry_utxo_json`    `RefUtxo` (registry_mint.rs:535) — registry làm
+///                             REFERENCE input. {tx_hash, index} bắt buộc;
+///                             {amount_lovelace, assets} có mặc định.
 ///   - `token_policy_cbor`     Plutus V3 token mint policy (CBOR hex); hash = policy id.
-///   - `mint_json`             JSON {asset_name_hex, amount, recipient?}.
-///   - `supply_state_utxo_json` JSON {tx_hash,index,amount_lovelace,assets,
-///                             supply_state_nft_policy_hex, supply_state_nft_name_hex,
-///                             minted_total, lamp_policy_hex, lamp_asset_name_hex} —
+///   - `mint_json`             `TokenMintInstruction` (registry_mint.rs:607) —
+///                             {amount} bắt buộc; {asset_name_hex, recipient,
+///                             route} có mặc định. `route` = "distribution"
+///                             (mặc định) | "reserve", chỉ dùng khi token CÓ cap.
+///   - `supply_state_utxo_json` `SupplyStateSpendUtxo` (registry_mint.rs:576) —
 ///                             UTxO SupplyState bị SPEND (token CÓ cap, vd LAMP).
+///                             BẮT BUỘC: {tx_hash, index, amount_lovelace,
+///                             dist_minted, dist_cap, reserve_cap}. Có mặc định:
+///                             {assets, reserve_minted, supply_state_nft_policy_hex,
+///                             supply_state_nft_name_hex}. Đơn vị minted/cap là
+///                             OIL, đọc từ inline datum CŨ.
 ///                             "" (rỗng) = token KHÔNG cap (giữ đường reference cũ).
 ///   - `supply_state_script_cbor` Plutus V3 supply_state script (CBOR hex); bỏ qua
 ///                             khi `supply_state_utxo_json` rỗng.

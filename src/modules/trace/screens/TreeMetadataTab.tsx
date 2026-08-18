@@ -39,6 +39,9 @@ import {
 } from '../types';
 import { saveTreeMetadata } from '../store/farmSlice';
 import VoiceMemoButton from '../components/VoiceMemoButton';
+// Bật công khai + mã/QR truy xuất. Xem đầu tệp component về vì sao hai việc đó
+// nằm chung một thẻ: mã chỉ có nghĩa khi cây đã công khai.
+import TreePublicCard from '../components/TreePublicCard';
 
 interface Props {
   tree: Tree;
@@ -216,6 +219,16 @@ const TreeMetadataTab: React.FC<Props> = ({ tree }) => {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
+        {/* Công khai & mã truy xuất — đặt TRÊN CÙNG có chủ ý: đây là điều kiện để
+            quả của cây lọt vào tầm tra cứu của người mua, mà trước bản này app
+            không có chỗ nào bấm được. Chôn nó xuống cuối trang là giữ nguyên
+            tình trạng "0/139 cây công khai" đo được trên kho sản xuất. */}
+        {!!tree?.id && (
+          <View style={styles.section}>
+            <TreePublicCard treeId={tree.id} />
+          </View>
+        )}
+
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <View style={styles.sectionDot} />

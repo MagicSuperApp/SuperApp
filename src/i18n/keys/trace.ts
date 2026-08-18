@@ -396,6 +396,14 @@ export const TRACE_STRINGS = {
     zh: '下次移动慢一点会更清楚。园主稍后确认。',
     ja: '次はもう少しゆっくり動かすと鮮明です。所有者があとで確認します。',
   },
+  // Máy chủ chưa cho biết số khung. Nói đúng "chưa biết" — đừng mượn câu
+  // `doneSlower`, câu đó ngụ ý người ta quay quá nhanh.
+  'trace.fruitVideo.doneFramesUnknown': {
+    vi: 'Máy chủ chưa cho biết số khung hình. Chủ vườn xác nhận sau.',
+    en: 'The server has not reported the frame count yet. The owner will confirm later.',
+    zh: '服务器尚未返回帧数。园主稍后确认。',
+    ja: 'サーバーからフレーム数がまだ届いていません。所有者があとで確認します。',
+  },
   'trace.fruitVideo.storedCid': { vi: 'Đã cất vào kho an toàn · {cid}', en: 'Stored safely · {cid}', zh: '已安全存储 · {cid}', ja: '安全に保管 · {cid}' },
   'trace.fruitVideo.another': { vi: 'Quay clip khác', en: 'Record another', zh: '再拍一段', ja: 'もう一本撮る' },
   'trace.fruitVideo.finish': { vi: 'Xong', en: 'Done', zh: '完成', ja: '完了' },
@@ -403,6 +411,7 @@ export const TRACE_STRINGS = {
   'trace.weather.today': { vi: 'Hôm nay', en: 'Today', zh: '今天', ja: '今日' },
 
   // ── Màn QUẢ TRÊN CÂY ─────────────────────────────────────────
+  'trace.fruitList.identify': { vi: 'Quả này là quả nào?', en: 'Which fruit is this?', zh: '这是哪个果实？', ja: 'どの果実ですか？' },
   'trace.fruitList.title': { vi: 'Quả trên cây', en: 'Fruit on the tree', zh: '树上的果实', ja: '木になる果実' },
   'trace.fruitList.loading': { vi: 'Đang tải quả…', en: 'Loading fruit…', zh: '正在加载果实…', ja: '果実を読み込み中…' },
   'trace.fruitList.statAll': { vi: 'Tất cả', en: 'All', zh: '全部', ja: 'すべて' },
@@ -424,6 +433,18 @@ export const TRACE_STRINGS = {
     en: 'Species unknown — pick one so we know whether this tree bears fruit',
     zh: '树种未知——请选择，以便判断该树是否结果',
     ja: '樹種が不明です。実がなるか判断するため選んでください',
+  },
+  'trace.fruitList.speciesLoadFail': {
+    vi: 'Chưa tải được danh sách giống cây — kiểm tra mạng rồi kéo xuống để tải lại.',
+    en: 'Could not load the species list — check your connection and pull down to refresh.',
+    zh: '无法加载树种列表 — 请检查网络后下拉刷新。',
+    ja: '樹種の一覧を読み込めませんでした — 通信を確認して引き下げて再読み込みしてください。',
+  },
+  'trace.fruitList.speciesSaveFail': {
+    vi: 'Chưa gán được giống cho cây này. Thử lại giúp.',
+    en: 'Could not set the species for this tree. Please try again.',
+    zh: '未能为这棵树设置树种，请重试。',
+    ja: 'この木の樹種を設定できませんでした。もう一度お試しください。',
   },
   'trace.fruitList.speciesNoFruit': { vi: 'Giống này không cho quả', en: 'This species bears no fruit', zh: '该树种不结果', ja: 'この樹種は実をつけません' },
   'trace.fruitList.speciesNoFruitBody': {
@@ -504,6 +525,16 @@ export const TRACE_STRINGS = {
   'trace.crop.collapse': { vi: 'Thu gọn', en: 'Collapse', zh: '收起', ja: '折りたたむ' },
   'trace.crop.allFruits': { vi: 'Tất cả quả của cây', en: 'Every fruit on this tree', zh: '这棵树的全部果实', ja: 'この木のすべての果実' },
   'trace.crop.nothingToMatch': { vi: 'Cây chưa có quả nào để đối chiếu — đặt tên để lưu quả mới.', en: 'Nothing to match against yet — name it to save a new fruit.', zh: '还没有可比对的果实——命名后保存为新果实。', ja: '照合できる果実がまだありません。名前を付けて新規保存します。' },
+  // Hai câu dưới CHỈ dùng khi lượt đối chiếu HỎNG. Tách hẳn khỏi `nothingToMatch`
+  // vì câu kia mời đặt tên quả mới — mời như vậy lúc chưa hỏi được máy chủ là đẩy
+  // người dùng tạo hồ sơ trùng cho một quả kho đã có.
+  'trace.crop.matchFailed': {
+    vi: 'Chưa soi được — mạng hoặc máy chủ đang trục trặc. Chưa biết cây đã có quả này chưa, nên thử lại rồi hãy đặt tên.',
+    en: 'Could not check — the network or the server is having trouble. We do not know yet whether this fruit already exists, so retry before naming it.',
+    zh: '暂时无法比对 — 网络或服务器出问题。目前还不知道这个果实是否已存在，请先重试再命名。',
+    ja: '照合できませんでした — ネットワークかサーバーに問題があります。この果実が既にあるか不明なので、再試行してから名前を付けてください。',
+  },
+  'trace.crop.matchRetry': { vi: 'Thử lại', en: 'Try again', zh: '重试', ja: '再試行' },
   'trace.crop.recrop': { vi: 'Khoanh lại vùng khác', en: 'Circle a different area', zh: '重新圈选', ja: '別の範囲を囲む' },
   'trace.crop.newFruit': { vi: 'Quả mới', en: 'New fruit', zh: '新果实', ja: '新しい果実' },
   'trace.crop.saveOnTree': { vi: 'Lưu thành quả mới trên cây {name}.', en: 'Save as a new fruit on {name}.', zh: '保存为 {name} 上的新果实。', ja: '{name} の新しい果実として保存します。' },

@@ -79,6 +79,22 @@ class TaadEnclaveModule(reactContext: ReactApplicationContext) :
         network: Int, currentSlot: Long,
     ): String?
 
+    /**
+     * Mint token BẤT KỲ qua cổng Registry (bộ dựng tổng quát).
+     * Thứ tự tham số PHẢI khớp `android_jni.rs::…nativeBuildMintViaRegistry` và
+     * `lib.rs::taad_build_mint_via_registry`.
+     *
+     * KHÔNG dùng cho LAMP: hàm này không dựng output KHO (A-DEST) mà nhánh
+     * DistributionVest của `lamp_mint` đòi — truyền policy LAMP vào đây sẽ ra tx
+     * bị chuỗi bác ở phase-2. Mint LAMP dùng `nativeBuildMintLampViaDid`.
+     */
+    private external fun nativeBuildMintViaRegistry(
+        authorityKeksJson: String, registryUtxoJson: String, tokenPolicyCbor: String,
+        mintJson: String, supplyStateUtxoJson: String, supplyStateScriptCbor: String,
+        utxosJson: String, paramsJson: String, walletSeedHex: String,
+        network: Int, slot: Long,
+    ): String?
+
     // ── RN methods ──────────────────────────────────────────────────────────
 
     /** Gói chung: chạy native fn, reject nếu null/rỗng hoặc throw. */
@@ -234,6 +250,40 @@ class TaadEnclaveModule(reactContext: ReactApplicationContext) :
                 lampPolicyCborHex, mintJson, utxosJson,
                 protocolParamsJson, walletSeedHex,
                 network, currentSlot.toLong(),
+            )
+        }
+    }
+
+    /**
+     * Mint token qua Registry — bộ dựng tổng quát, dùng được cho token bất kỳ có
+     * cổng Registry. Policy vào bằng `tokenPolicyCbor`, policy-id suy từ hash của
+     * chính nó, nên không nhúng cứng token nào.
+     *
+     * `supplyStateUtxoJson` rỗng = token KHÔNG có cap (bỏ qua SupplyState).
+     *
+     * Cảnh báo: hàm này KHÔNG đối chiếu authority với RegistryDatum trước khi
+     * dựng (khác `buildMintLampViaDid`). Khoá sai thì tx vẫn dựng ra, chuỗi mới
+     * bác — mất phí và có thể mất collateral.
+     */
+    @ReactMethod
+    fun buildMintViaRegistry(
+        authorityKeksJson: String, registryUtxoJson: String, tokenPolicyCbor: String,
+        mintJson: String, supplyStateUtxoJson: String, supplyStateScriptCbor: String,
+        utxosJson: String, paramsJson: String, walletSeedHex: String,
+        network: Int, slot: Double,
+        promise: Promise,
+    ) {
+        // Slot âm hoặc không nguyên = TTL rác. Chặn tại đây.
+        if (slot < 0 || slot != Math.floor(slot)) {
+            promise.reject("E_MINT_SLOT", "slot không hợp lệ: $slot")
+            return
+        }
+        run(promise, "E_MINT_REGISTRY", "Không dựng được giao dịch mint qua Registry") {
+            nativeBuildMintViaRegistry(
+                authorityKeksJson, registryUtxoJson, tokenPolicyCbor,
+                mintJson, supplyStateUtxoJson, supplyStateScriptCbor,
+                utxosJson, paramsJson, walletSeedHex,
+                network, slot.toLong(),
             )
         }
     }

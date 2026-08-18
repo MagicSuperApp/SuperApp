@@ -51,6 +51,13 @@ interface TaadEnclaveNativeBridge {
     protocolParamsJson: string, walletSeedHex: string,
     network: number, currentSlot: number,
   ): Promise<string>;
+  // Dựng + ký tx MINT token BẤT KỲ qua cổng Registry (bộ dựng tổng quát) → CBOR hex.
+  buildMintViaRegistry(
+    authorityKeksJson: string, registryUtxoJson: string, tokenPolicyCbor: string,
+    mintJson: string, supplyStateUtxoJson: string, supplyStateScriptCbor: string,
+    utxosJson: string, paramsJson: string, walletSeedHex: string,
+    network: number, slot: number,
+  ): Promise<string>;
   // 2FA DeviceKey opt-in: sinh Ed25519 ngẫu nhiên + ký canonical → JSON {publicKeyHex,signature,secretHex}.
   deviceKeyOptin(userDid: string, nonce: string): Promise<string>;
   // Wrapping primitives
@@ -87,6 +94,7 @@ const moduleNotAvailable = (): TaadEnclaveNativeBridge => {
     buildStakeDelegation: () => reject('buildStakeDelegation') as never,
     witnessUnsignedTx: () => reject('witnessUnsignedTx') as never,
     buildMintLampViaDid: () => reject('buildMintLampViaDid') as never,
+    buildMintViaRegistry: () => reject('buildMintViaRegistry') as never,
     deviceKeyOptin: () => reject('deviceKeyOptin') as never,
     generateSalt: () => reject('generateSalt') as never,
     pbkdf2Derive: () => reject('pbkdf2Derive') as never,
@@ -326,6 +334,71 @@ export const buildMintLampViaDid = async (args: {
   return cbor;
 };
 
+/**
+ * Dựng + ký giao dịch MINT token qua cổng Registry — bộ dựng TỔNG QUÁT.
+ *
+ * Policy vào bằng `tokenPolicyCbor`; policy-id suy ra từ hash của chính nó. Không
+ * chỗ nào trong đường này nhúng cứng một token cụ thể, nên bất kỳ ai dựng đúng
+ * chuẩn đều dùng được — kể cả app ngoài SuperApp.
+ *
+ * ⚠️ KHÔNG dùng để mint LAMP. Nhánh `DistributionVest` của `lamp_mint` đòi rót
+ * toàn bộ lượng đúc vào KHO (A-DEST), mà hàm này không dựng output đó. Truyền
+ * policy LAMP vào đây sẽ ra tx bị chuỗi bác ở phase-2 — mất phí, có thể mất
+ * collateral. Mint LAMP dùng `buildMintLampViaDid`.
+ *
+ * ⚠️ Hàm này KHÔNG đối chiếu authority với RegistryDatum trước khi dựng (khác
+ * `buildMintLampViaDid` vốn fail-fast). Khoá không có trong bảng authority thì tx
+ * vẫn dựng ra bình thường, chuỗi mới bác.
+ *
+ * `supplyStateUtxoJson` rỗng = token KHÔNG có cap (bỏ qua SupplyState).
+ *
+ * Ý nghĩa từng tham số: `rust/taad_enclave_core/src/lib.rs::taad_build_mint_via_registry`.
+ */
+export const buildMintViaRegistry = async (args: {
+  authorityKeksHex: string[];
+  registryUtxoJson: string;
+  tokenPolicyCbor: string;
+  mintJson: string;
+  /** Rỗng = token không có cap. */
+  supplyStateUtxoJson: string;
+  supplyStateScriptCbor: string;
+  utxosJson: string;
+  paramsJson: string;
+  walletSeedHex: string;
+  network: number;
+  slot: number;
+}): Promise<string> => {
+  if (!Array.isArray(args.authorityKeksHex) || args.authorityKeksHex.length === 0) {
+    throw new Error('buildMintViaRegistry: cần ít nhất 1 Master_KEK authority');
+  }
+  if (!Number.isInteger(args.slot) || args.slot < 0) {
+    throw new Error(`buildMintViaRegistry: slot phải là số nguyên ≥ 0 (nhận ${args.slot})`);
+  }
+
+  const cbor = await bridge.buildMintViaRegistry(
+    JSON.stringify(args.authorityKeksHex),
+    args.registryUtxoJson,
+    args.tokenPolicyCbor,
+    args.mintJson,
+    args.supplyStateUtxoJson,
+    args.supplyStateScriptCbor,
+    args.utxosJson,
+    args.paramsJson,
+    args.walletSeedHex,
+    args.network,
+    args.slot,
+  );
+  if (!cbor) {
+    // Rust trả NULL cho MỌI lỗi, không kèm thông điệp. Liệt kê đúng những khả năng
+    // đã biết để người đọc log còn có chỗ bắt đầu.
+    throw new Error(
+      'buildMintViaRegistry: native trả rỗng — policy CBOR sai, mint_json sai, ' +
+        'vượt cap SupplyState, hoặc thiếu UTxO/collateral pure-ADA',
+    );
+  }
+  return cbor;
+};
+
 export interface DeviceKeyOptInProof {
   /** Ed25519 raw pubkey 32 byte (64 hex) — gửi lên backend. */
   publicKeyHex: string;
@@ -405,6 +478,7 @@ export default {
   buildStakeDelegation,
   witnessUnsignedTx,
   buildMintLampViaDid,
+  buildMintViaRegistry,
   deviceKeyOptin,
   generateSalt,
   pbkdf2Derive,

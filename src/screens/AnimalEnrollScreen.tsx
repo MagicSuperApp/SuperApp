@@ -18,7 +18,7 @@
  * Ảnh quản lý hoàn toàn bằng local state.
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -95,8 +95,8 @@ const imagePicker = (() => {
 
 type RouteParams = {
   AnimalEnroll: {
-    species: string;
-    farmId: string;
+    species?: string;
+    farmId?: string;
   };
 };
 
@@ -113,7 +113,16 @@ const AnimalEnrollScreen: React.FC = () => {
   const bottomPad = useBottomActionPadding();
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<RouteParams, 'AnimalEnroll'>>();
-  const { species, farmId } = route.params;
+  // Guard cùng mẫu với AnimalIdentityScreen: `route.params` có thể vắng (deep-link
+  // hoặc caller quên truyền). Bóc thẳng là `TypeError` ⇒ màn TRẮNG, không một dòng
+  // nói vì sao. Đăng ký KHÔNG tự đoán loài/vườn được nên thiếu là quay lại.
+  const species = route.params?.species ?? '';
+  const farmId = route.params?.farmId ?? '';
+
+  useEffect(() => {
+    if (!species || !farmId) navigation.goBack();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Local state ───────────────────────────────────────────────────────────
   const [photos, setPhotos] = useState<CapturedPhoto[]>([]);
@@ -205,16 +214,33 @@ const AnimalEnrollScreen: React.FC = () => {
         const detail = res.error?.detail ?? 'Lỗi không xác định';
 
         if (status === 409) {
+          // Nút cũ ở đây là "Đăng ký mới" gọi lại `doEnroll()` với ĐÚNG nguyên gói cũ
+          // ⇒ 409 lần nữa, hộp thoại y hệt, vòng lặp kín, mà "Huỷ" thì mất công 5 ảnh.
+          //
+          // Máy chủ CÓ trả mã con trùng — trong `detail` dạng object, trường
+          // `similar_animal_did` (OriLife xác nhận 18/08). Trước đây app đọc hụt nên
+          // tưởng không có. Có mã thì mở thẳng hồ sơ con đó: người dùng nhìn ảnh là
+          // biết ngay có phải con mình đang cầm không, nhanh hơn hẳn việc dò trong sổ.
+          //
+          // Chưa nối cờ ép tạo (`force`) — cửa đó vừa mở phía máy chủ, chờ bản của họ
+          // lên rồi mới nối, và khi nối thì cho xem con trùng TRƯỚC rồi mới cho ép.
+          const similar = res.error?.similarAnimalDid;
           Alert.alert(
             'Cá thể có thể đã tồn tại',
-            `${detail}\n\nBạn có muốn đăng ký mới không?`,
+            `${detail}\n\n${similar
+              ? 'Mở hồ sơ con máy chủ cho là trùng để đối chiếu.'
+              : 'Mở sổ vật nuôi của vườn này để xem con đó đã có chưa.'} Ảnh vừa chụp vẫn giữ nguyên.`,
             [
-              { text: 'Huỷ', style: 'cancel' },
-              {
-                text: 'Đăng ký mới',
-                style: 'destructive',
-                onPress: () => doEnroll(),
-              },
+              { text: 'Để sau', style: 'cancel' },
+              similar
+                ? {
+                    text: 'Xem con trùng',
+                    onPress: () => navigation.navigate('AnimalDetail', { animalDid: similar }),
+                  }
+                : {
+                    text: 'Mở sổ vật nuôi',
+                    onPress: () => navigation.navigate('AnimalManagement', { farmId }),
+                  },
             ],
           );
           return;
@@ -248,7 +274,7 @@ const AnimalEnrollScreen: React.FC = () => {
         setIsEnrolling(false);
       }
     },
-    [photos, species, farmId, name, handleSuccess],
+    [photos, species, farmId, name, handleSuccess, navigation],
   );
 
   const handleEnroll = useCallback(() => {

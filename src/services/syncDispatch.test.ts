@@ -183,6 +183,53 @@ describe('classifySyncItem — activity ghi vào dòng thời gian THẬT', () =
     await d.run();
     expect(mockAddTimelineEvent.mock.calls[0][3].kind).toBe('observe');
   });
+
+  // Nhà OriLife đo lại và chốt: một lần phun cả vườn là MỘT sự việc, không phải N
+  // sự việc trên N cây. Ba ca dưới khoá điều đó lại, để lần sau ai thấy "ghi việc
+  // cho cây mà mở cây ra không thấy" thì không sửa nhầm sang ghi xuống từng cây —
+  // chỗ hỏng nằm ở đầu ĐỌC (dòng vườn chưa ai vẽ; dòng cây chưa kế thừa việc vườn).
+  it('có treeId vẫn ghi vào dòng của VƯỜN, KHÔNG tách xuống từng cây', async () => {
+    const d = classifySyncItem({
+      type: 'activity',
+      data: { activity: { ...act, treeId: 'tree-7' } },
+    });
+    if (d.kind !== 'api') throw new Error('expected api');
+    await d.run();
+    const [, entityType, entityId] = mockAddTimelineEvent.mock.calls[0];
+    expect(entityType).toBe('farm');
+    expect(entityId).toBe('farm-9');
+  });
+
+  it('payload kèm cả farm_id lẫn tree_id — cây đang đứng trước là dữ kiện có thật', async () => {
+    const d = classifySyncItem({
+      type: 'activity',
+      data: { activity: { ...act, treeId: 'tree-7' } },
+    });
+    if (d.kind !== 'api') throw new Error('expected api');
+    await d.run();
+    const body = mockAddTimelineEvent.mock.calls[0][3];
+    expect(body.payload.farm_id).toBe('farm-9');
+    expect(body.payload.tree_id).toBe('tree-7');
+  });
+
+  it('chỉ có treeId, không có farmId → unsupported, KHÔNG gọi mạng', () => {
+    const d = classifySyncItem({
+      type: 'activity',
+      data: { activity: { type: 'watering', treeId: 'tree-7', timestamp: act.timestamp } },
+    });
+    expect(d.kind).toBe('unsupported');
+    expect(mockAddTimelineEvent).not.toHaveBeenCalled();
+  });
+
+  it('chấp nhận cả dạng rắn `tree_id` (payload từ bản cũ / máy chủ)', async () => {
+    const d = classifySyncItem({
+      type: 'activity',
+      data: { activity: { ...act, tree_id: 'tree-8' } },
+    });
+    if (d.kind !== 'api') throw new Error('expected api');
+    await d.run();
+    expect(mockAddTimelineEvent.mock.calls[0][3].payload.tree_id).toBe('tree-8');
+  });
 });
 
 describe('isRetryableError', () => {

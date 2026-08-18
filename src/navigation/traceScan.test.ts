@@ -24,10 +24,17 @@ describe('parseTraceCode', () => {
     expect(parseTraceCode('lamp://trace/TreeDetail')).toEqual({ route: 'TreeDetail' });
   });
 
-  it('nhiều params + giải mã %', () => {
-    expect(parseTraceCode('lamp://AnimalDetail?id=a1&name=B%C3%B2')).toEqual({
+  // ⚠️ KHOÁ TÊN KHOÁ, không chỉ khoá bộ phân giải. Ca này trước đây viết
+  // `?id=a1` — bộ phân giải trả `params.id` đúng như khai, test XANH, mà
+  // `AnimalDetailScreen` đọc `route.params.animalDid` ⇒ `undefined`, màn hiện
+  // "Không có dữ liệu cá thể". Đúng mẫu "test xanh trên đường không ai đi được".
+  // Khoá CHÍNH THỨC là `animalDid`, khớp lệ TreeDetail (`treeId`) / FarmDetail
+  // (`farmId`): tên khoá trong QR phải TRÙNG thứ màn đích đọc.
+  // Đầu đọc phía màn có test riêng: `screens/AnimalDetailScreen.test.tsx`.
+  it('nhiều params + giải mã % — khoá vật nuôi là `animalDid`, khớp màn đích', () => {
+    expect(parseTraceCode('lamp://AnimalDetail?animalDid=a1&name=B%C3%B2')).toEqual({
       route: 'AnimalDetail',
-      params: { id: 'a1', name: 'Bò' },
+      params: { animalDid: 'a1', name: 'Bò' },
     });
   });
 

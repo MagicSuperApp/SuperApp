@@ -19,8 +19,14 @@ function keyFor(treeId: string): string {
   return `${KEY_PREFIX}${treeId}`;
 }
 
-/** Chuẩn-hoá về dạng có scheme để <Image source={{uri}}> đọc được. */
-function normalizeUri(uri: string): string {
+/**
+ * Chuẩn-hoá về dạng có scheme để <Image source={{uri}}> đọc được.
+ *
+ * Xuất ra vì MỐC VƯỜN (`space3d/markerStore`) cũng chỉ giữ đường dẫn ảnh do
+ * native ghi ra đĩa, y hệt ở đây. Hai chỗ tự chuẩn-hoá theo hai luật là một chỗ
+ * hiện được ảnh còn chỗ kia ra ô trắng, mà nhìn mã thì thấy giống nhau.
+ */
+export function normalizeUri(uri: string): string {
   if (!uri) return uri;
   if (uri.startsWith('file://') || uri.startsWith('content://') || uri.startsWith('http')) {
     return uri;

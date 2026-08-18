@@ -1289,21 +1289,29 @@ const FarmDetailMode = ({
           <View>
             {/*
               DÒNG THỜI GIAN CỦA VƯỜN — chỗ việc đồng áng thật sự được ghi.
+
               Một lần phun cả vườn là MỘT sự việc, và máy chủ ghi nó ở ĐÂY, không
               ghi xuống từng cây (ghi xuống cây là nhân một sự việc có thật thành
               N bản ghi không có thật). Màn chi tiết cây chỉ thấy bản KẾ THỪA của
-              nó, có nhãn "cả vườn".
-              Trước bản này màn vườn không có chỗ nào đọc dòng thời gian, nên
-              chính bản ghi GỐC là thứ không ai xem được.
+              nó, mang nhãn "cả vườn". Trước bản này app không có chỗ nào vẽ dòng
+              của vườn — tức chính bản ghi GỐC là thứ không ai xem được: ghi xong
+              là biến mất khỏi tầm mắt người vừa ghi.
+
+              Vẽ NGOÀI nhánh `filteredTrees.length > 0`, và đó là chủ ý: việc đồng
+              áng không đợi có cây mới ghi được, nên vườn chưa có cây nào vẫn phải
+              thấy được nhật ký của nó.
+
+              Đặt TRÊN danh sách cây: dòng thời gian trả lời "vườn này đã trải qua
+              gì", danh sách cây là bản kiểm kê. Người mở màn vườn hỏi câu đầu
+              trước — còn danh sách thì đã có phân trang riêng bên dưới.
             */}
             {!!farm?.id && (
-              <View style={{ paddingHorizontal: 16, paddingTop: 4 }}>
+              <View style={styles.farmTimelineWrap}>
                 <EntityTimeline entityType="farm" entityId={String(farm.id)} limit={5} />
               </View>
             )}
             {filteredTrees.length > 0 ? (
-              <>
-              {/* Pagination */}
+              /* Pagination */
               <PaginationControls
                 currentPage={currentPage}
                 totalPages={totalPages}
@@ -1313,7 +1321,6 @@ const FarmDetailMode = ({
                 onPreviousPage={handlePreviousPage}
                 onNextPage={handleNextPage}
               />
-              </>
             ) : null}
             {/* Chừa chỗ cho thanh hành động nổi ở đáy (2 nút). */}
             <View style={{ height: 86 }} />
@@ -2520,6 +2527,9 @@ const styles = StyleSheet.create({
   },
 
   // Bottom bar
+  /** Khối dòng thời gian của vườn nằm trong footer của FlatList — cần lề riêng
+   *  vì các hàng cây đã có lề của chúng. */
+  farmTimelineWrap: { paddingHorizontal: 16, paddingTop: 4 },
   bottomBar: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     paddingHorizontal: 20,

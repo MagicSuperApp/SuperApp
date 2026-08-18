@@ -80,18 +80,94 @@ số tham số với `plutus.json` trước khi apply**. Phía LAMP đã chốt 
 
 **Còn chặn, KHÔNG phải việc của LAMP:**
 
-1. **`codemagic.yaml` không đặt `ORG_MINT_ENABLED` ở đâu cả** (grep 0). Biến vắng →
-   `undefined` → `'' !== 'true'` → `false`. Kết quả trùng ý định nhưng là **do vô tình**:
-   đặt `ORG_MINT_ENABLED=true` trên giao diện Codemagic **không có tác dụng gì**. Muốn bật
-   thật thì phải sửa `codemagic.yaml` trước.
-2. `OrgMintScreen.tsx:61-65` — bước ký còn là stub ném lỗi.
+1. ~~`codemagic.yaml` không đặt `ORG_MINT_ENABLED` ở đâu cả~~ — **ĐÃ XONG, câu cũ nay SAI.**
+   `ORG_MINT_ENABLED=${ORG_MINT_ENABLED:-false}` có mặt ở `codemagic.yaml:156,537,886,1121`
+   (thêm ở `ed05f21`). Đặt biến trên giao diện Codemagic **có tác dụng thật**. Ai đọc câu cũ
+   rồi tưởng bật không ăn thì sẽ bật nhầm mà không biết.
+2. ~~`OrgMintScreen.tsx` bước ký còn là stub~~ — **ĐÃ NỐI** (`#176`). Còn lại ba resolver
+   `chuaCoNguon` ở `OrgMintScreen.tsx:68`: tầng màn hình chưa có chỗ mở Master_KEK và chưa có
+   nguồn slot tip. Có rào `ORG_MINT_CHAIN == null` nên không bao giờ chạy tới.
 3. `orgMint-api.ts` — sai hình dạng: gửi `{orgDid, amount}` + chờ SSE, trong khi `mint-lamp`
    là **Grant uỷ quyền** (8 trường, ký Ed25519 khoá thiết bị, 200 trả thẳng Grant, **không
    SSE**). `mint-lamp/submit-tx` sẽ không bao giờ tồn tại. — việc của PhoenixKey + app.
 4. Ô nhập nhãn "Số lượng LAMP" ↔ dây oildrop (mục 0).
 
-➜ **Giữ `ORG_MINT_ENABLED=false`** cho tới khi PR #23 gộp **và** 4 mục trên xong. Bật sớm là
-mở đường cho một tính năng đúc token thật mà chưa chạy được lần nào.
+➜ **Giữ `ORG_MINT_ENABLED=false`.** Nhà LAMP xác nhận cùng kết luận (thư 2026-08-18).
+
+### ⛔ Mắt xích on-chain còn thiếu — đo 2026-08-18, hai nhà độc lập cùng kết quả
+
+Không phải "chưa tới lượt". **Chưa ai viết.**
+
+`LAMP/Genesis/onchain/validators/` có đúng 5 validator — `lock_vault`, `thread_nft`,
+`dist_treasury`, `supply_state`, `lamp_mint` — **không cái nào quản `RegistryDatum`**.
+`registry.ak` không có khối `validator` nào, chỉ là thư viện đọc (`validate_mint`,
+`authority_satisfied`, `find_registry_datum`). `did_token_mint` grep toàn kho LAMP = 0.
+
+Hệ quả, nói đúng chữ để không hứa suông:
+
+- Không tạo được Registry UTxO ⇒ `find_registry_datum` trả `None` ⇒ cổng Registry của
+  `lamp_mint` bản 12 tham số **không bao giờ đóng**.
+- `taad_build_deploy_mint_registry` / `taad_build_update_mint_registry` có sẵn phía Rust nhưng
+  **chưa nối cầu, và cố ý không nối** — không có đầu bên kia.
+- `taad_build_mint_via_registry` **đã nối đủ 5 tầng** (đường ĐỌC, sống ngay khi Registry UTxO
+  có mặt). Nhưng nó **không dùng để mint LAMP**: không dựng output KHO (A-DEST) mà nhánh
+  `DistributionVest` đòi.
+
+**Mốc thời gian: chưa có.** LAMP không đặt mốc suông; việc xếp sau (i) viết + audit validator
+Registry, (ii) gộp PR #25, (iii) chủ dự án chốt. Câu đúng để nói với người dùng là *"chưa nối
+được, vì thiếu một mắt xích on-chain chưa ai viết"* — **không phải** *"sắp có"*.
+
+### Bên thứ ba đúc LAMP: HAI cửa, và một cửa không phải xin ai
+
+Chủ sở hữu chốt 2026-08-18: **đường Grant, mint đi qua MagicLamp, SuperApp chỉ là một trong các
+bên**. Nhà LAMP đối chiếu và xác nhận không lệch với câu họ nhận trực tiếp ("ai cũng đúc được,
+nhưng phải thông qua một cổng tất định") — cùng nghĩa: **không độc quyền, nhưng một đường duy
+nhất**. `Treasury/CONTRACT.md §12.1` giữ nguyên.
+
+Giả định ngầm cần gỡ: KHÔNG phải mọi lượt mint đều phải xin ai đó. Trên bản 12 tham số có hai cửa.
+
+| Cửa | Xin gì | Của ai |
+|---|---|---|
+| `ReserveDraw` | **không xin gì** | không của ai — chỉ cần dựng đúng tx |
+| `DistributionVest` | một mục trong `RegistryDatum` | **CHƯA QUYẾT** |
+
+`ReserveDraw` (`Genesis/onchain/validators/lamp_mint.ak:170-174`) **không kiểm chữ ký**. Nó ép tx
+tiêu đúng 1 UTxO mang meter NFT, nên `reserve_draw.spend` bắt buộc chạy và số nhả bị một hàm tất
+định chặn theo nhịp — không keyholder nào quyết được con số đó.
+
+`DistributionVest` đi qua Registry NFT: mục phải thoả `authority_satisfied`
+(`registry.ak:93-105`) — `SinglePkh` (đúng một chữ ký) · `MultiSig` (M trong N, `1 <= threshold <=
+số khoá`) · `Revoked` (chết, không mở lại được trong cùng mục). Sổ đăng ký do **script** quản chứ
+không phải một cái ví: `find_registry_datum` (`registry.ak:139-146`) đòi UTxO mang đúng 1 registry
+NFT **và** nằm ở địa chỉ `Script(policy)`. Chỗ này hay bị hiểu nhầm thành "gửi NFT vào ví ban
+quản trị".
+
+**Ai quản sổ đăng ký và theo tiêu chí nào: chưa quyết.** Đây là quyết định của chủ sở hữu, chưa
+có. Ghi đúng chữ "chưa quyết" — đừng ghi phỏng đoán.
+
+⚠️ **Cả hai cửa hôm nay đều chưa chạy được.** Validator quản `RegistryDatum` chưa ai viết (mục
+ngay dưới), và cửa registry chỉ tồn tại ở bản 12 tham số — bản đó chưa đúc. Policy đang chạy
+mainnet có 8 tham số, trong đó **không có tham số registry nào**; WHO-gate của nó là danh sách pkh
+nướng cứng, ngưỡng 1-of-1. Trên policy hiện hành, bên thứ ba **không bao giờ** đúc được — không
+phải "chưa nối", mà là không có cửa.
+
+### Mainnet hôm nay chạy bản MỒI 8 tham số
+
+Policy-id `55d3e01b…180f0` (`LAMP/Genesis/offchain/src/deployed.ts:63`, byte khớp 2121/2121).
+Bản mồi **không đọc registry, không đọc DID, không cần reference input**; cổng đúc là
+`dist_authority` một pkh + `auth_threshold = 1`. Bản 12 tham số sẽ có **policy-id KHÁC**
+(`deployed.ts:17,111`) — một lần phát hành token mới, không phải nâng cấp.
+
+Đính chính một điều dễ chép nhầm: bất biến one-shot của `kho_nft_policy` **không áp cho mainnet
+hôm nay** — bản 8 tham số không có tham số đó, nó nướng thẳng `dist_dest` là script hash kho
+(`deployed.ts:90`). Bất biến đó chỉ áp cho bản 12 tham số, tức chưa có gì để xác nhận hay bác.
+
+### Trần thông lượng — thứ duy nhất không mua được bằng phí
+
+`lamp_mint.ak:78-80` đòi đúng 1 input mang thread NFT và đúng 1 output mang lại nó. Mọi lượt
+mint toàn hệ đi qua **một** UTxO SupplyState ⇒ trần **1 lượt mint / block** (≈4.320/ngày), bất
+kể bao nhiêu app cùng dựng, không tăng được bằng cách trả thêm phí. Bên tích hợp thứ ba phải
+biết trước con số này.
 
 ## 3. Grant — nghĩa vụ phía tiêu thụ
 

@@ -47,6 +47,11 @@ import {
   type ResolvedCandidate, type ScanOutcome,
 } from '../features/fruitFind/fruitFind';
 import { formatDistanceVi, type LatLon } from '../features/wayfind/wayfind';
+import { buildCaptureMeta, serializeCaptureMeta } from '../services/captureMeta';
+import { TreeReIDBridge } from '../services/treeReIDNativeBridge';
+// `absUrl` ở nhờ màn danh sách quả (chỗ duy nhất từng có chốt URL tuyệt đối).
+// Một chiều, không vòng: `FruitListScreen` không import màn nào.
+import { absUrl } from './FruitListScreen';
 
 const BASE_URL = ORILIFE_BASE;
 
@@ -59,9 +64,18 @@ const STATUS_VI: Record<FruitStatus, string> = {
 const PHOTO_OPTIONS = {
   mediaType: 'photo' as const,
   quality: 0.9 as const,
-  // Không đặt maxWidth/maxHeight: máy chủ bôi trắng ngoài vòng khoanh rồi vứt
-  // ảnh gốc, nên ảnh vào càng nét thì phần so càng đúng. Đây cũng đúng cảnh báo
-  // OriLife nêu 14/08 về việc app co ảnh trước khi gửi.
+  // 1600 px — GIỐNG đường đăng ký (`FruitListScreen`) và đường video.
+  //
+  // Không phải vì 1600 là cỡ tối ưu: chưa ai đo 1600 với 4032. Là vì bản mẫu dựng
+  // từ ảnh đã co về 1600 mà truy vấn gửi nguyên 4032 thì hai đầu đi qua hai đường
+  // xử lý khác nhau, và phần chênh lệch đo được không còn phân biệt được "khác
+  // quả" với "khác đường nén". Đối xứng là điều kiện để con số có nghĩa, không
+  // phải một tinh chỉnh. (OriLife xác nhận 18/08.)
+  //
+  // Cỡ tối ưu đo được ngay khi cửa `fruit/identify` bắt đầu có lượt gọi thật —
+  // trước hôm nay nó có 0 lượt trên 1859 sự kiện, vì màn này không ai mở được.
+  maxWidth: 1600,
+  maxHeight: 1600,
   saveToPhotos: true,
 };
 
@@ -90,7 +104,10 @@ const FruitScanScreen: React.FC = () => {
   // map ngược toạ-độ khung về px ảnh gốc bằng `imageW`/`imageH`, và khi thiếu nó
   // rơi về `|| 1` (`FruitCropperScreen.tsx:226-227`) ⇒ mọi bbox gửi lên máy chủ
   // thành rác mà không báo lỗi gì.
-  const [photo, setPhoto] = useState<{ uri: string; w: number; h: number } | null>(null);
+  // `capture` = khối siêu dữ liệu lúc bấm máy (heading/pitch/cỡ ảnh gốc/máy). Nó
+  // đi CÙNG tấm ảnh vì chỉ dựng lại được tại đúng thời điểm chụp — xem
+  // `captureMeta.ts` và `FruitCropperScreen` (màn đó nhận qua route param).
+  const [photo, setPhoto] = useState<{ uri: string; w: number; h: number; capture?: string } | null>(null);
   const photoUri = photo?.uri ?? null;
   const [outcome, setOutcome] = useState<ScanOutcome | null>(null);
   const [decision, setDecision] = useState<FruitDecision | undefined>(undefined);
@@ -165,6 +182,17 @@ const FruitScanScreen: React.FC = () => {
     setBusyNote('Đang soi quả…');
     setVerdictSent(null);
     try {
+      // KHÔNG gọi `fruit/detect` trước nữa — đo được là thừa một lượt mạng.
+      //
+      // Bản trước gọi `detect` lấy khung rồi gửi khung đó kèm `identify`, vì lúc
+      // ĐĂNG KÝ thì ảnh luôn có khung còn màn này gửi cả tấm. Ý đồ đúng, cách làm
+      // thừa: **không gửi khung thì chính cửa `identify` tự chạy đúng bộ dò đó**
+      // ngay trong cùng lượt (OriLife xác nhận 18/08). Gọi trước là làm lại việc
+      // máy chủ sắp làm — mất thêm một lượt mạng, giữa vườn sóng yếu.
+      //
+      // Khung vẫn đáng gửi khi NGƯỜI dùng tự khoanh (màn khoanh vùng làm việc đó).
+      // Khung MÁY tự tìm thì chưa đủ tin: đo 18/08 trên một ảnh cả cây có sáu quả,
+      // bộ dò trả đúng một khung và khung đó là lá với trời.
       const res = await identifyFruit(BASE_URL, uri, {
         treeId: pinnedTreeId,
         lat: here?.lat,
@@ -189,7 +217,7 @@ const FruitScanScreen: React.FC = () => {
   }, [pinnedTreeId, here, buildIndex]);
 
   const takePhoto = useCallback(async () => {
-    launchCamera(await withPhotoSave(PHOTO_OPTIONS), (resp: any) => {
+    launchCamera(await withPhotoSave(PHOTO_OPTIONS), async (resp: any) => {
       if (resp.didCancel) return;
       if (resp.errorCode) {
         Alert.alert('Lỗi máy ảnh', resp.errorMessage ?? 'Không mở được máy ảnh. Kiểm tra quyền.');
@@ -203,7 +231,15 @@ const FruitScanScreen: React.FC = () => {
         Alert.alert('Ảnh thiếu kích thước', 'Máy không trả kích thước ảnh. Anh chụp lại giúp.');
         return;
       }
-      setPhoto({ uri: asset.uri, w: asset.width, h: asset.height });
+      // Dựng NGAY ĐÂY, không đợi tới lúc mở màn khoanh: heading/pitch là số đo
+      // tại thời điểm bấm máy, tới màn kia người ta đã xoay máy đi rồi và không
+      // dựng lại được (`FruitCropperScreen` nói rõ điều đó ở khối route param).
+      // Hỏng thì bỏ trống, không chặn luồng quét.
+      let capture: string | undefined;
+      try {
+        capture = serializeCaptureMeta(await buildCaptureMeta(asset, TreeReIDBridge));
+      } catch { capture = undefined; }
+      setPhoto({ uri: asset.uri, w: asset.width, h: asset.height, capture });
       setOutcome(null);
       setPicks([]);
       runScan(asset.uri);
@@ -227,6 +263,7 @@ const FruitScanScreen: React.FC = () => {
         imageUri: photo.uri,
         imageW: photo.w,
         imageH: photo.h,
+        capture: photo.capture,
         fruitId: c.fruitId,
         fruitName: c.name ?? undefined,
       });
@@ -256,6 +293,7 @@ const FruitScanScreen: React.FC = () => {
       imageUri: photo.uri,
       imageW: photo.w,
       imageH: photo.h,
+      capture: photo.capture,
     });
   }, [pinnedTreeId, trees, around, photo, navigation]);
 
@@ -312,7 +350,7 @@ const FruitScanScreen: React.FC = () => {
               <TouchableOpacity key={c.fruitId} style={styles.row} activeOpacity={0.75} onPress={() => choose(c)}>
                 <Text style={styles.rank}>{i + 1}</Text>
                 <RemoteImage
-                  uri={c.thumbnailUrl ? `${BASE_URL}${c.thumbnailUrl}` : null}
+                  uri={absUrl(c.thumbnailUrl)}
                   style={styles.thumb}
                   containerStyle={[styles.thumb, styles.thumbPh]}
                   resizeMode="cover"

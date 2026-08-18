@@ -130,6 +130,22 @@ RCT_EXTERN_METHOD(buildMintLampViaDid:(NSString *)authorityKeksJson
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
+// Mint token qua Registry (bộ dựng tổng quát) — thứ tự PHẢI khớp selector @objc
+// bên Swift và `taad_build_mint_via_registry` trong lib.rs. Ba chỗ sửa cùng lúc.
+RCT_EXTERN_METHOD(buildMintViaRegistry:(NSString *)authorityKeksJson
+                  registryUtxoJson:(NSString *)registryUtxoJson
+                  tokenPolicyCbor:(NSString *)tokenPolicyCbor
+                  mintJson:(NSString *)mintJson
+                  supplyStateUtxoJson:(NSString *)supplyStateUtxoJson
+                  supplyStateScriptCbor:(NSString *)supplyStateScriptCbor
+                  utxosJson:(NSString *)utxosJson
+                  paramsJson:(NSString *)paramsJson
+                  walletSeedHex:(NSString *)walletSeedHex
+                  network:(NSInteger)network
+                  slot:(double)slot
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
 + (BOOL)requiresMainQueueSetup {
   return NO;
 }

@@ -11,6 +11,7 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ensureOrilifeToken } from './orilifeDidAuth';
 
 export type AnimalDecision = 'MATCH' | 'UNCERTAIN' | 'NO_MATCH' | 'EMPTY_FARM' | 'MOVED';
 
@@ -78,6 +79,17 @@ export interface APIError {
   detail: string;
   http_status: number;
   retry_after_seconds?: number;
+  /**
+   * Mã cá thể mà máy chủ cho là TRÙNG với con đang đăng ký (ca 409).
+   *
+   * Máy chủ trả nó trong `detail` dưới dạng OBJECT — `{error, duplicate: true,
+   * similar_animal_did}` — chứ không phải chuỗi. Bản trước gán thẳng object đó vào
+   * `detail: string` nên màn hình hiện "[object Object]" cho nông dân, và mã con
+   * trùng thì rơi mất dù máy chủ vẫn gửi. Tên trường là `similar_animal_did`, KHÔNG
+   * phải `existing_animal_did` — OriLife cố ý không đặt bí danh, vì hai tên cho một
+   * thứ thì tên nào cũng thành nửa đúng.
+   */
+  similarAnimalDid?: string;
 }
 
 const AUTH_TOKEN_KEY = 'auth_token';
@@ -92,12 +104,22 @@ async function _getAuthHeader(): Promise<string | null> {
   }
 }
 
+/** Cắt phần gốc (https://host) khỏi URL đầy đủ để truyền cho ensureOrilifeToken. */
+function _baseOf(url: string): string {
+  const i = url.indexOf('/api/');
+  return i > 0 ? url.slice(0, i) : url;
+}
+
 async function _apiCall<T>(
   url: string,
   method: 'GET' | 'POST' | 'DELETE',
   body?: FormData,
   attempt = 0,
 ): Promise<{ ok: boolean; data?: T; error?: APIError }> {
+  // Ký DID TRƯỚC mỗi lệnh (khớp treeReIDService:315). Vì sao: `auth_token` chỉ do
+  // orilifeDidAuth ghi. Ai mở app vào thẳng "Quét con vật" mà chưa chạm luồng
+  // cây/vườn thì chưa có ai ký → 401 oan ngay giữa ruộng.
+  await ensureOrilifeToken(_baseOf(url));
   const authHeader = await _getAuthHeader();
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (authHeader) headers['Authorization'] = authHeader;
@@ -110,6 +132,12 @@ async function _apiCall<T>(
     clearTimeout(timeoutHandle);
 
     if (resp.status === 401) {
+      // Token hết hạn GIỮA BUỔI → ký lại bằng DID ĐÚNG MỘT lần rồi thử lại (khớp
+      // treeReIDService:336). Trước đây trả thẳng auth_error: nút "Thử lại" ở màn
+      // quản lý gọi lại đúng đường cũ nên lặp lại đúng lỗi đó vĩnh viễn.
+      if (attempt === 0 && (await ensureOrilifeToken(_baseOf(url), { force: true }))) {
+        return _apiCall<T>(url, method, body, 1);
+      }
       return { ok: false, error: { type: 'auth_error', detail: 'Token hết hạn hoặc không hợp lệ', http_status: 401 } };
     }
     if (resp.status === 429) {
@@ -117,9 +145,20 @@ async function _apiCall<T>(
       return { ok: false, error: { type: 'rate_limited', detail: 'Quá nhiều yêu cầu', http_status: 429, retry_after_seconds: retryAfter ? parseInt(retryAfter, 10) : 60 } };
     }
     if (resp.status === 409) {
+      // `detail` ở ca này là OBJECT, không phải chuỗi — xem chú thích ở `APIError`.
       let detail = 'Trùng lặp';
-      try { detail = (await resp.json()).detail ?? detail; } catch { /* bỏ qua */ }
-      return { ok: false, error: { type: 'duplicate', detail, http_status: 409 } };
+      let similarAnimalDid: string | undefined;
+      try {
+        const raw = (await resp.json())?.detail;
+        if (typeof raw === 'string') {
+          detail = raw;
+        } else if (raw && typeof raw === 'object') {
+          detail = typeof raw.error === 'string' ? raw.error : detail;
+          similarAnimalDid =
+            typeof raw.similar_animal_did === 'string' ? raw.similar_animal_did : undefined;
+        }
+      } catch { /* bỏ qua */ }
+      return { ok: false, error: { type: 'duplicate', detail, http_status: 409, similarAnimalDid } };
     }
     if (resp.status === 422) {
       let detail = 'Dữ liệu không hợp lệ';

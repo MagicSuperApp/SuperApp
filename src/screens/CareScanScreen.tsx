@@ -111,8 +111,21 @@ const CareScanScreen: React.FC = () => {
   }, [imageUri]);
 
   const handleLog = useCallback(async (product: CareProduct) => {
-    if (!targetId) {
-      Alert.alert('Thiếu đối-tượng', 'Không xác định được cây/vườn để ghi.');
+    // `'default'` KHÔNG phải mã vườn — nó là chuỗi cổng xoè tự điền khi người dùng
+    // vào thẳng "Quét nhãn thuốc" mà chưa qua một vườn nào
+    // (`src/navigation/resolveGateItems.ts:68`). Bản trước chỉ chặn `targetId` RỖNG,
+    // mà `'default'` có nội dung nên lọt, rồi `logCare` POST thật lên máy chủ với
+    // `target_id=default`. Nhật ký cách ly ghi dưới một mã không thuộc về ai: không
+    // màn nào đọc lại được (mọi màn đọc theo `farm.id`/`tree.id` thật), tức là ghi
+    // xong biến mất — cùng đúng một lớp lỗi với việc đồng áng ghi nhầm chỗ.
+    // Cách ly là thứ chặn thu hoạch và chặn bán; ghi hụt ở đây đắt hơn nhiều so với
+    // việc bắt người dùng chọn vườn trước.
+    if (!targetId || targetId === 'default') {
+      Alert.alert(
+        'Chưa chọn cây hoặc vườn',
+        'Nhật ký thuốc phải gắn vào một cây hoặc một vườn cụ thể thì sau này mới tra '
+        + 'lại được. Anh/chị mở đúng cây (hoặc vườn) rồi bấm "Quét nhãn thuốc" từ đó.',
+      );
       return;
     }
     setLogging(true);

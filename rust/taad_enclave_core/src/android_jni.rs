@@ -345,3 +345,54 @@ pub extern "system" fn Java_com_aladincontract_company_TaadEnclaveModule_nativeB
         Err(_) => null_jstring(),
     }
 }
+
+// ─── Mint token qua Registry (bộ dựng tổng quát) ───────────────────────────
+//
+// Khớp 1:1 `registry_mint::build_mint_via_registry` và
+// `lib.rs::taad_build_mint_via_registry` (iOS đi đường C ABI đó). Ý nghĩa từng
+// tham số xem doc-comment ở lib.rs.
+//
+// Khác `nativeBuildMintLampViaDid` ở hai chỗ, đừng nhầm hai hàm:
+//   • Ở đây policy vào bằng `token_policy_cbor` (policy-id = hash của chính nó),
+//     nên dùng được cho token BẤT KỲ có cổng Registry, không riêng LAMP.
+//   • Ở đây KHÔNG dựng output KHO (A-DEST). Nhánh `DistributionVest` của
+//     `lamp_mint` đòi rót vào KHO, nên truyền policy LAMP vào hàm này sẽ dựng ra
+//     tx bị chuỗi bác ở phase-2. Mint LAMP thì dùng `nativeBuildMintLampViaDid`.
+//
+// Trả null khi bất kỳ khâu nào hỏng. Rust KHÔNG trả thông điệp lỗi qua JNI.
+
+#[no_mangle]
+#[allow(clippy::too_many_arguments)]
+pub extern "system" fn Java_com_aladincontract_company_TaadEnclaveModule_nativeBuildMintViaRegistry<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    authority_keks_json: JString<'local>,
+    registry_utxo_json: JString<'local>,
+    token_policy_cbor: JString<'local>,
+    mint_json: JString<'local>,
+    supply_state_utxo_json: JString<'local>,
+    supply_state_script_cbor: JString<'local>,
+    utxos_json: JString<'local>,
+    params_json: JString<'local>,
+    wallet_seed_hex: JString<'local>,
+    network: jint,
+    slot: jlong,
+) -> jstring {
+    let auth_keks = match jstr(&mut env, &authority_keks_json) { Some(s) => s, None => return null_jstring() };
+    let registry = match jstr(&mut env, &registry_utxo_json) { Some(s) => s, None => return null_jstring() };
+    let policy = match jstr(&mut env, &token_policy_cbor) { Some(s) => s, None => return null_jstring() };
+    let mint = match jstr(&mut env, &mint_json) { Some(s) => s, None => return null_jstring() };
+    let supply_state = match jstr(&mut env, &supply_state_utxo_json) { Some(s) => s, None => return null_jstring() };
+    let ss_script = match jstr(&mut env, &supply_state_script_cbor) { Some(s) => s, None => return null_jstring() };
+    let utxos = match jstr(&mut env, &utxos_json) { Some(s) => s, None => return null_jstring() };
+    let params = match jstr(&mut env, &params_json) { Some(s) => s, None => return null_jstring() };
+    let seed = match jstr(&mut env, &wallet_seed_hex) { Some(s) => s, None => return null_jstring() };
+
+    match crate::registry_mint::build_mint_via_registry(
+        &auth_keks, &registry, &policy, &mint, &supply_state, &ss_script,
+        &utxos, &params, &seed, network as u8, slot as u64,
+    ) {
+        Ok(tx_hex) => ret(&env, tx_hex),
+        Err(_) => null_jstring(),
+    }
+}

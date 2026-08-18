@@ -115,18 +115,48 @@ jobs:
       # (đo 2026-08-11) — tức máy chủ CÓ kiểm khoá. Nướng khoá giả vào bản lên Play
       # Store nghĩa là mọi người dùng đồng bộ hỏng, và hỏng theo kiểu 401 im lặng.
       # Bản debug thì vẫn rơi về khoá giả — chỗ đó chấp nhận được, đây thì không.
+      # ĐÍNH CHÍNH 2026-08-18 — bước này CHẶN CỨNG mọi lượt dựng AAB trên `main` kể từ
+      # khi nó ra đời, bằng một hệ quả chưa ai đo. Đo được:
+      #   * `gh api .../actions/workflows/android-aab.yml/runs` → lượt 17/08 và lượt
+      #     16/08 đều `failure`, và bước hỏng đúng là bước này. Tức nhánh RA PLAY STORE
+      #     chưa từng cho ra một tệp AAB nào kể từ đó.
+      #   * Câu cũ ở đây ("đồng bộ hỏng 401 trên máy mọi người dùng") sai: mã máy chủ
+      #     OriLife không có chỗ nào đọc header `X-API-Key`, và hai cửa ĐỌC công khai
+      #     trả lời bình thường khi không gửi khoá (`GET /api/health` → 200,
+      #     `GET /api/tree_by_code/<mã>` → 404 đúng hợp đồng, không 401).
+      #   * `codemagic.yaml` đã sửa cùng lý do từ 17/08 và có đường đi tiếp
+      #     (`ALLOW_NO_API_KEY=1`); đường GitHub thì không, nên hai đường lệch nhau.
+      #
+      # Cổng vẫn ĐỨNG, vì cửa GHI (`POST /farms`, `POST /trees`) chưa đo được — chưa đo
+      # thì chưa được tuyên là an toàn. Nhưng nay chặn có đường đi tiếp CÓ CHỦ Ý, đúng
+      # bằng hình của `codemagic.yaml`, thay vì một bức tường không ai qua được.
+      #
+      # Cách gỡ, chọn một:
+      #   1. Nạp khoá: `gh secret set ALADIN_API_KEY --repo <kho>` (Codemagic ĐÃ có khoá
+      #      này trong nhóm `scanner_secrets` — chép sang là hai đường dựng khớp nhau).
+      #   2. Hoặc chốt là bản này không cần: đặt biến kho `ALLOW_NO_API_KEY` = `1`
+      #      (Settings → Secrets and variables → Actions → Variables).
       - name: Chặn bản phát hành thiếu khoá API
         env:
           ALADIN_API_KEY: ${{ secrets.ALADIN_API_KEY }}
+          ALLOW_NO_API_KEY: ${{ vars.ALLOW_NO_API_KEY }}
         run: |
-          if [ -z "$ALADIN_API_KEY" ]; then
-            echo "::error::Thiếu secret ALADIN_API_KEY — bản phát hành sẽ nướng khoá giả 'mock-local-api-key'."
-            echo "Nạp: gh secret set ALADIN_API_KEY --repo ${{ github.repository }}"
-            echo "Đây là quyết định có thể đảo: muốn cho qua thì gỡ bước này, nhưng bản"
-            echo "phát hành sẽ đồng bộ hỏng 401 trên máy mọi người dùng."
+          if [ -n "$ALADIN_API_KEY" ]; then
+            echo "ALADIN_API_KEY có mặt (${#ALADIN_API_KEY} ký tự)."
+          elif [ "$ALLOW_NO_API_KEY" = "1" ]; then
+            echo "::warning::Không có ALADIN_API_KEY — dựng tiếp vì biến kho ALLOW_NO_API_KEY=1."
+            echo "Bản này nướng 'mock-local-api-key' vào header X-API-Key (aladin-api.ts:75)."
+            echo "Chỉ chạm client aladin-api (ĐÃ deprecated); farmService / treeReIDService /"
+            echo "provenanceService KHÔNG gửi header này."
+          else
+            echo "::error::Thiếu secret ALADIN_API_KEY và chưa đặt biến kho ALLOW_NO_API_KEY=1."
+            echo "Nạp khoá : gh secret set ALADIN_API_KEY --repo ${{ github.repository }}"
+            echo "Hoặc mở  : đặt biến kho ALLOW_NO_API_KEY=1 nếu chốt là bản này không cần khoá."
+            echo "Đo 2026-08-17 trước khi quyết: máy chủ OriLife KHÔNG đọc header X-API-Key,"
+            echo "hai cửa ĐỌC công khai trả lời bình thường khi không gửi khoá. Cửa GHI thì"
+            echo "CHƯA đo được — đó là lý do cổng này còn đứng thay vì bỏ hẳn."
             exit 1
           fi
-          echo "ALADIN_API_KEY có mặt (${#ALADIN_API_KEY} ký tự)."
 
       # PHẢI trước gradle — lý do đầy đủ ở .github/actions/rn-env/action.yml.
       - name: Sinh biến môi trường React Native

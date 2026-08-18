@@ -7,10 +7,15 @@
  *  - Load thêm khi cuộn đến cuối (load more / infinite scroll)
  *  - Filter theo loài (chip ngang)
  *  - Mỗi item: tên, DID, loài, số ảnh
- *  - Long press → Action sheet: Đổi tên / Xoá (có confirmation dialog)
- *  - Empty state: icon + text + chỉ đường sang trang trại (KHÔNG có nút thêm —
- *    thêm vật nuôi cần farm_id, xem `renderEmpty`)
+ *  - Long press → Action sheet: Xoá (có confirmation dialog)
+ *  - Empty state: icon + text + lối vào nhận diện khi biết vườn
  *  - Error state: icon + text + nút Thử lại
+ *
+ * ĐÃ BỎ "Đổi tên" (2026-08-18): máy chủ KHÔNG có cửa đổi tên
+ * (`animalReIDService.ts` không có hàm nào), nên nút cũ chỉ ghi vào state
+ * `pendingRename` mà không nơi nào đọc và không nơi nào gửi. Thẻ đổi tên ngay,
+ * kéo làm mới là tên cũ trở lại, không một dòng báo — nông dân đặt tên cả đàn rồi
+ * mất trắng. Thà không có nút còn hơn có nút nói dối. Mở lại khi OriLife có cửa.
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -24,12 +29,10 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
-  TextInput,
-  Modal,
   ScrollView,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 
 import { COLORS } from '../constants';
 import { NEUTRAL } from '../shared/theme';
@@ -80,80 +83,24 @@ function speciesLabel(s: string): string {
 
 type AnimalItem = AnimalInfo;
 
-// ---------------------------------------------------------------------------
-// Sub-component: Rename Modal
-// ---------------------------------------------------------------------------
-
-interface RenameModalProps {
-  visible: boolean;
-  currentName: string;
-  onConfirm: (newName: string) => void;
-  onDismiss: () => void;
-}
-
-const RenameModal: React.FC<RenameModalProps> = ({
-  visible,
-  currentName,
-  onConfirm,
-  onDismiss,
-}) => {
-  const [value, setValue] = useState(currentName);
-
-  useEffect(() => {
-    if (visible) setValue(currentName);
-  }, [visible, currentName]);
-
-  return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onDismiss}
-    >
-      <View style={modal.overlay}>
-        <View style={modal.dialog}>
-          <Text style={modal.title}>Đổi tên cá thể</Text>
-          <TextInput
-            style={modal.input}
-            value={value}
-            onChangeText={setValue}
-            placeholder="Nhập tên mới..."
-            placeholderTextColor={NEUTRAL.textMuted}
-            autoFocus
-            maxLength={80}
-            returnKeyType="done"
-            onSubmitEditing={() => {
-              if (value.trim()) onConfirm(value.trim());
-            }}
-          />
-          <View style={modal.actions}>
-            <TouchableOpacity
-              style={[modal.btn, modal.btnCancel]}
-              onPress={onDismiss}
-              activeOpacity={0.8}
-            >
-              <Text style={modal.btnCancelText}>Huỷ</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                modal.btn,
-                modal.btnConfirm,
-                !value.trim() && modal.btnDisabled,
-              ]}
-              onPress={() => {
-                if (value.trim()) onConfirm(value.trim());
-              }}
-              disabled={!value.trim()}
-              activeOpacity={0.8}
-            >
-              <Text style={modal.btnConfirmText}>Lưu</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
+type AnimalManagementRouteParams = {
+  AnimalManagement: {
+    /** Mã vườn THẬT. Chuỗi `'default'` là mã bịa của một cổng cũ — coi như không có. */
+    farmId?: string;
+  };
 };
+
+/**
+ * Mã vườn dùng được, hoặc `undefined`. XUẤT RA để test khoá được.
+ *
+ * Vì sao phải lọc: cổng xoè từng khai `params: { farmId: 'default' }`. `'default'`
+ * không phải mã vườn của ai cả — lọc danh sách theo nó thì luôn rỗng, mà tệ hơn là
+ * nó tạo cảm giác "hợp đồng tham số có thật" trong khi màn đích vứt sạch.
+ */
+export function realFarmId(raw?: string): string | undefined {
+  const v = (raw ?? '').trim();
+  return v && v !== 'default' ? v : undefined;
+}
 
 // ---------------------------------------------------------------------------
 // Sub-component: Animal card
@@ -214,6 +161,10 @@ const AnimalCard: React.FC<AnimalCardProps> = ({ item, onPress, onLongPress }) =
 
 const AnimalManagementScreen: React.FC = () => {
   const navigation = useNavigation<any>();
+  const route = useRoute<RouteProp<AnimalManagementRouteParams, 'AnimalManagement'>>();
+  // Trước đây màn KHÔNG đọc params: cả 3 cửa gọi đều truyền `farmId` mà `listAnimals`
+  // nhận cứng `undefined` ⇒ vào từ trong một vườn vẫn thấy vật nuôi của MỌI vườn.
+  const farmId = realFarmId(route.params?.farmId);
 
   const [animals, setAnimals] = useState<AnimalItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -223,10 +174,6 @@ const AnimalManagementScreen: React.FC = () => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedSpecies, setSelectedSpecies] = useState('');
   const offsetRef = useRef(0);
-
-  // Rename state
-  const [renameTarget, setRenameTarget] = useState<AnimalItem | null>(null);
-  const [pendingRename, setPendingRename] = useState<Record<string, string>>({});
 
   // Tránh double-call khi unmount
   const mountedRef = useRef(true);
@@ -257,7 +204,7 @@ const AnimalManagementScreen: React.FC = () => {
       setLoadError(null);
 
       const currentOffset = loadMore ? offsetRef.current : 0;
-      const res = await listAnimals(BASE_URL, undefined, species || undefined, PAGE_SIZE, currentOffset);
+      const res = await listAnimals(BASE_URL, farmId, species || undefined, PAGE_SIZE, currentOffset);
 
       if (!mountedRef.current) return;
 
@@ -284,7 +231,7 @@ const AnimalManagementScreen: React.FC = () => {
         setIsLoadingMore(false);
       }
     }
-  }, [selectedSpecies, hasMore]);
+  }, [selectedSpecies, hasMore, farmId]);
 
   useEffect(() => {
     loadAnimals();
@@ -300,7 +247,7 @@ const AnimalManagementScreen: React.FC = () => {
     setLoadError(null);
     setIsLoading(true);
 
-    listAnimals(BASE_URL, undefined, key || undefined, PAGE_SIZE, 0).then(res => {
+    listAnimals(BASE_URL, farmId, key || undefined, PAGE_SIZE, 0).then(res => {
       if (!mountedRef.current) return;
       if (res.ok && res.animals) {
         setAnimals(res.animals);
@@ -316,20 +263,7 @@ const AnimalManagementScreen: React.FC = () => {
         setIsLoading(false);
       }
     });
-  }, []);
-
-  // ── Rename (local optimistic — không có rename endpoint, lưu vào pendingRename)
-  const handleRenameConfirm = (newName: string) => {
-    if (!renameTarget) return;
-    // Optimistic update local
-    setAnimals(prev =>
-      prev.map(a =>
-        a.animal_did === renameTarget.animal_did ? { ...a, name: newName } : a,
-      ),
-    );
-    setPendingRename(prev => ({ ...prev, [renameTarget.animal_did]: newName }));
-    setRenameTarget(null);
-  };
+  }, [farmId]);
 
   // ── Delete ────────────────────────────────────────────────────────────────
   const handleDelete = (item: AnimalItem) => {
@@ -365,10 +299,7 @@ const AnimalManagementScreen: React.FC = () => {
       'Chọn hành động:',
       [
         { text: 'Huỷ', style: 'cancel' },
-        {
-          text: 'Đổi tên',
-          onPress: () => setRenameTarget(item),
-        },
+        // KHÔNG có "Đổi tên": máy chủ chưa có cửa đổi tên (xem chú đầu tệp).
         {
           text: 'Xoá',
           style: 'destructive',
@@ -398,11 +329,17 @@ const AnimalManagementScreen: React.FC = () => {
           ? `Chưa có ${speciesLabel(selectedSpecies).toLowerCase()} nào được đăng ký`
           : 'Chưa có vật nuôi nào'}
       </Text>
-      {/* Thêm/nhận diện vật nuôi cần ngữ cảnh trang trại (backend bắt buộc farm_id).
-          Màn này liệt kê mọi farm nên KHÔNG có nút thêm — vào từng trang trại để thêm. */}
-      <Text style={styles.emptySubtitle}>
-        Để thêm vật nuôi, hãy mở trang trại tương ứng rồi đăng ký từ trong đó.
-      </Text>
+      {/* Câu cũ ở đây bảo "mở trang trại tương ứng rồi đăng ký từ trong đó" —
+          chỉ dẫn dẫn tới hư không: FarmDetailScreen KHÔNG có lối vào vật nuôi nào.
+          Nay đưa thẳng nút mở màn nhận diện; màn đó tự hỏi loài và tự chọn vườn. */}
+      <TouchableOpacity
+        style={styles.emptyCta}
+        onPress={() => navigation.navigate('AnimalIdentity', farmId ? { farmId } : undefined)}
+        activeOpacity={0.85}
+      >
+        <Icon name="camera-plus" size={18} color={NEUTRAL.white} />
+        <Text style={styles.emptyCtaText}>Nhận diện / đăng ký con vật</Text>
+      </TouchableOpacity>
     </View>
   );
 
@@ -443,9 +380,19 @@ const AnimalManagementScreen: React.FC = () => {
             </View>
           )}
         </View>
-        {/* Bỏ nút "+" thêm ở màn toàn cục: thêm vật nuôi cần ngữ cảnh trang trại
-            (backend bắt buộc farm_id). Giữ View rỗng để cân header. */}
-        <View style={styles.addBtn} />
+        {/* Lối vào ĐĂNG KÝ. Trước đây chỗ này là View rỗng vì "thêm vật nuôi cần
+            farm_id" — nhưng bỏ nút đi thì không cửa nào còn dẫn tới luồng đăng ký.
+            Nay mở màn nhận diện: nó tự hỏi loài + tự chọn vườn, và KHÔNG gửi mã
+            vườn bịa. Có ngữ cảnh vườn thì chuyển tiếp mã vườn thật. */}
+        <TouchableOpacity
+          style={styles.addBtn}
+          onPress={() => navigation.navigate('AnimalIdentity', farmId ? { farmId } : undefined)}
+          activeOpacity={0.7}
+          accessibilityLabel="Nhận diện hoặc đăng ký con vật"
+          accessibilityRole="button"
+        >
+          <Icon name="camera-plus" size={22} color={NEUTRAL.white} />
+        </TouchableOpacity>
       </View>
 
       {/* Species filter chips */}
@@ -525,14 +472,6 @@ const AnimalManagementScreen: React.FC = () => {
           showsVerticalScrollIndicator={false}
         />
       )}
-
-      {/* Rename modal */}
-      <RenameModal
-        visible={renameTarget !== null}
-        currentName={renameTarget?.name ?? ''}
-        onConfirm={handleRenameConfirm}
-        onDismiss={() => setRenameTarget(null)}
-      />
     </View>
   );
 };
@@ -545,6 +484,17 @@ const HEADER_BG = '#5d4037';
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: NEUTRAL.bg },
+  emptyCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: HEADER_BG,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginTop: 14,
+  },
+  emptyCtaText: { color: NEUTRAL.white, fontSize: 15, fontWeight: '600' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -737,74 +687,6 @@ const styles = StyleSheet.create({
     paddingVertical: 18,
     alignItems: 'center',
   },
-});
-
-// ─── Rename modal styles ───────────────────────────────────────────────────
-const modal = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  dialog: {
-    width: '100%',
-    maxWidth: 400,
-    backgroundColor: NEUTRAL.bg,
-    borderRadius: 18,
-    padding: 22,
-    gap: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 24,
-    elevation: 10,
-  },
-  title: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: NEUTRAL.text,
-    textAlign: 'center',
-  },
-  input: {
-    backgroundColor: NEUTRAL.bgSoft,
-    borderWidth: 1,
-    borderColor: NEUTRAL.border,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-    color: NEUTRAL.text,
-  },
-  actions: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  btn: {
-    flex: 1,
-    paddingVertical: 13,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  btnCancel: {
-    backgroundColor: NEUTRAL.bgSoft,
-    borderWidth: 1,
-    borderColor: NEUTRAL.border,
-  },
-  btnCancelText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: NEUTRAL.textSub,
-  },
-  btnConfirm: { backgroundColor: HEADER_BG },
-  btnConfirmText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: NEUTRAL.white,
-  },
-  btnDisabled: { opacity: 0.45 },
 });
 
 export default AnimalManagementScreen;

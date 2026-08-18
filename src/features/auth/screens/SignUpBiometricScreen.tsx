@@ -171,9 +171,14 @@ const SignUpBiometricScreen: React.FC = () => {
       // Loại sinh-trắc suy từ CẢM BIẾN THẬT, không từ nút. `hasFaceId ? 'face' :
       // 'fingerprint'` cũ gán nhầm 'fingerprint' cho máy Android chỉ báo
       // `Biometrics` (đúng ra là 'strong') — nhãn khoá sai so với thứ đã xảy ra.
+      // Tên đăng nhập đi kèm CÓ Ý: khi máy đã có khoá cũ, đường khôi phục cần nó để
+      // tra DID (`resolveUsername` → `getPubkey` → so khoá trong chip). Đăng ký lại
+      // bằng chính khoá cũ thì máy chủ chặn cứng (`KEY_ALREADY_REGISTERED`), nên
+      // không có tên đăng nhập là không còn đường nào.
       const { user } = await phoenixKeyAuth.registerIdentity(
         biometricKindFromType(biometryType),
         intent,
+        usernameTrim,
       );
       const newEntry = { username: usernameTrim, did: user.did, createdAt: Date.now() };
       const raw = await AsyncStorage.getItem(PHOENIX_USERS_KEY);

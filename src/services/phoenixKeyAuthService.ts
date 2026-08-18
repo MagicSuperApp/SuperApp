@@ -6,6 +6,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BiometryTypes } from 'react-native-biometrics';
+import rLog from './remoteLogger';
 
 export type BiometricKind = 'face' | 'fingerprint' | 'strong';
 
@@ -134,17 +135,21 @@ export type RegisterIntent = 'resume' | 'new-person';
 export const registerIdentity = async (
   biometricKind: BiometricKind,
   intent: RegisterIntent = 'resume',
+  username?: string,
 ): Promise<GenesisResult> => {
   if (await isKeypairEnrolled()) {
     if (intent === 'new-person') throw new DeviceHasOwnerKeyError();
 
     // Nếu keypair đã tồn tại nhưng JS storage bị mất (reinstall/update/cache clear),
     // đừng bắt user đăng xuất/tạo mới. Khôi phục local identity từ native key.
-    const existing = await recoverLocalIdentityFromKey(biometricKind);
-    if (existing) return existing;
+    const existing = await recoverLocalIdentityFromKey(biometricKind, username);
+    if (existing.ok) return existing.value;
 
+    // Nói ra LÝ DO. Câu cũ đúng nhưng rỗng — người dùng không biết nên thử lại
+    // vân tay, đợi sóng, hay thật sự phải gọi hỗ trợ; và người nhận báo lỗi thực
+    // địa cũng không lần ngược được về đâu.
     throw new Error(
-      'Thiết bị đã có khoá nhưng chưa khôi phục được danh tính. Vui lòng thử đăng nhập lại hoặc liên hệ hỗ trợ.',
+      RECOVER_FAIL_MESSAGE[existing.reason] ?? RECOVER_FAIL_MESSAGE.khong_ro,
     );
   }
 
@@ -198,7 +203,7 @@ export const unlockExistingIdentity = async (): Promise<AuthUser | null> => {
   if (!isSupportedBackendDid(did)) {
     if (isMalformedPhoenixDid(did)) {
       const recovered = await recoverLocalIdentityFromKey('strong');
-      if (recovered) return recovered.user;
+      if (recovered.ok) return recovered.value.user;
     }
     console.warn('[PhoenixKey unlock] invalid stored DID, refusing local unlock:', did);
     return null;
@@ -272,9 +277,65 @@ export const phoenixKeyAuth = {
   storageUserDid: STORAGE_USER_DID,
 };
 
+/**
+ * Kết quả khôi phục — có LÝ DO khi hỏng.
+ *
+ * Vì sao không trả `null` như trước: ngoài vườn người dùng chỉ thấy đúng một câu
+ * "Thiết bị đã có khoá nhưng chưa khôi phục được danh tính", còn lý do thật thì
+ * nằm trong `console.warn` — thứ không ai đọc được trên máy đã cài qua TestFlight.
+ * Ba nguyên nhân rất khác nhau (người dùng huỷ vân tay · máy chủ từ chối đăng ký
+ * lại khoá cũ · DID máy chủ trả về sai định dạng) đều cho CÙNG một câu, nên báo
+ * lỗi thực địa không lần ngược được. Nay lý do đi theo kết quả.
+ */
+type RecoverOutcome =
+  | { ok: true; value: GenesisResult }
+  | { ok: false; reason: string };
+
 const recoverLocalIdentityFromKey = async (
   biometricKind: BiometricKind,
-): Promise<GenesisResult | null> => {
+  username?: string,
+): Promise<RecoverOutcome> => {
+  // ĐƯỜNG 1 — tra DID qua TÊN ĐĂNG NHẬP rồi đối chiếu khoá.
+  //
+  // Phải thử đường này TRƯỚC, vì đường 2 (đăng ký lại) đã đo được là KHÔNG BAO GIỜ
+  // chạy: máy chủ chặn cứng khoá đã đăng ký
+  // (`IdentityServiceImpl.java:88-94`, `ErrorCode.KEY_ALREADY_REGISTERED`), và cổng
+  // đó KHÔNG nên bỏ — nó chặn một máy khác cướp khoá của DID khác.
+  //
+  // Đây là đường TẠM. Cửa đúng là `POST /identity/lookup` có ký challenge
+  // (PhoenixKey-Database#192, tầng dữ liệu đã có sẵn `findByPublicKeyHex`). Ngày cửa
+  // đó lên thì bỏ khối này — nó bắt người dùng phải nhớ tên đăng nhập, dở hơn hẳn.
+  // Nhưng chờ cửa mới thì người dùng kẹt thật, nên dựng tạm.
+  //
+  // KHÔNG hỏi sinh trắc lại ở đây: màn gọi tới đã hỏi ngay trước đó, và việc so khoá
+  // này chỉ đọc khoá CÔNG KHAI trong chip — không mở gì, không ký gì.
+  if (username && username.trim()) {
+    try {
+      const mine = (await ownerPublicKey()).toLowerCase();
+      const { userDid } = await phoenixKeyApi.identity.resolveUsername(username.trim());
+      const did = assertSupportedBackendDid(userDid, 'PhoenixKey lookup userDid');
+      const { publicKeyHex: theirs } = await phoenixKeyApi.identity.getPubkey(did);
+
+      // Khoá trên máy KHÁC khoá của tên đăng nhập đó ⇒ người đang cầm máy gõ tên của
+      // người khác. Nói riêng, đừng gộp vào "không rõ nguyên nhân": hai việc phải làm
+      // khác hẳn nhau.
+      if (!theirs || theirs.toLowerCase() !== mine) return { ok: false, reason: 'ten_khong_khop_khoa' };
+
+      const user: AuthUser = { id: did, did, createdAt: Date.now(), updatedAt: Date.now() };
+      await migrateLegacyDidStores(did, user, biometricKind);
+      // `txHash` rỗng CÓ Ý: đường này không ghi gì lên chuỗi, chỉ nhận lại DID đã có.
+      // Bịa một mã giao dịch ở đây là nói dối về một việc chưa xảy ra.
+      return { ok: true, value: { user, txHash: '' } };
+    } catch (err) {
+      // Tên chưa đăng ký (404) hay mất sóng thì rơi xuống đường 2 — nó sẽ trả về lý
+      // do đúng của chính nó. Ghi lại để lần sau lần ngược được.
+      rLog.info('identity_lookup_by_username_failed', { raw: String(err).slice(0, 200) });
+    }
+  }
+
+  // ĐƯỜNG 2 — đăng ký lại bằng chính khoá cũ. Giữ lại cho ca máy có khoá mà khoá đó
+  // CHƯA từng đăng ký lên máy chủ (sinh khoá xong thì mất mạng giữa chừng). Với khoá
+  // đã đăng ký thì đường này chắc chắn trả lỗi, và nay lỗi đó có câu riêng.
   try {
     const publicKeyHex = await ownerPublicKey();
     const genesisMessage = `PHOENIXKEY_GENESIS:${publicKeyHex}`;
@@ -303,11 +364,59 @@ const recoverLocalIdentityFromKey = async (
 
     await migrateLegacyDidStores(userDid, user, biometricKind);
 
-    return { user, txHash: res.txHash };
+    return { ok: true, value: { user, txHash: res.txHash } };
   } catch (err) {
+    const reason = describeRecoverFailure(err);
     console.warn('[PhoenixKey recover] failed:', err);
-    return null;
+    rLog.error('identity_recover_failed', { reason, raw: String(err).slice(0, 300) });
+    return { ok: false, reason };
   }
+};
+
+/**
+ * Rút một câu NGẮN, người ngoài đọc được, từ lỗi thô — để đưa thẳng lên màn hình.
+ *
+ * Không dán nguyên `String(err)` lên màn: chuỗi lỗi mạng thường kèm URL và mã nội
+ * bộ, người dùng đọc xong vẫn không biết phải làm gì. Nhưng cũng không nuốt: câu
+ * thô vẫn đi vào `rLog` ở trên.
+ */
+const describeRecoverFailure = (err: unknown): string => {
+  const m = String((err as { message?: string })?.message ?? err ?? '');
+  if (/cancel|user_cancel|huỷ|huy/i.test(m)) return 'chua_xac_thuc';
+  if (/network|timeout|ECONN|Network Error/i.test(m)) return 'mat_mang';
+  // `KEY_ALREADY_REGISTERED` là mã máy chủ trả khi đăng ký lại đúng khoá cũ
+  // (`IdentityServiceImpl.java:88-94`). Ca này KHÔNG phải lỗi lạ — nó là hành vi đã
+  // biết, và cách thoát là tra DID qua tên đăng nhập ở đường 1.
+  if (/KEY_ALREADY_REGISTERED/i.test(m)) return 'can_ten_dang_nhap';
+  if (/409|exist|registered|duplicate/i.test(m)) return 'may_chu_tu_choi';
+  if (/did/i.test(m)) return 'did_sai_dinh_dang';
+  return 'khong_ro';
+};
+
+/**
+ * Mỗi lý do → MỘT câu hoàn chỉnh, vì từ điển tra theo NGUYÊN chuỗi
+ * (`src/i18n/translate.ts`). Ghép chuỗi lúc chạy thì không câu nào khớp từ điển
+ * và người dùng tiếng Anh/Trung/Nhật lãnh nguyên tiếng Việt. Năm câu dưới đây
+ * đều có bản dịch ở `src/i18n/phrases/errors.ts`.
+ *
+ * Câu nào cũng phải nói được BƯỚC TIẾP THEO — "liên hệ hỗ trợ" một mình là câu
+ * cụt, ngoài vườn không ai gọi được ai.
+ */
+const RECOVER_FAIL_MESSAGE: Record<string, string> = {
+  chua_xac_thuc:
+    'Chưa xác thực được vân tay hoặc khuôn mặt nên không mở lại được danh tính trên máy này. Thử lại và giữ ngón tay tới khi máy báo xong.',
+  mat_mang:
+    'Máy này đã có khoá, nhưng chưa liên lạc được máy chủ danh tính để mở lại. Kiểm tra sóng rồi thử lại.',
+  may_chu_tu_choi:
+    'Máy chủ từ chối mở lại danh tính cho khoá đã có trên máy này. Đây là lỗi phía máy chủ — chụp màn hình này gửi hỗ trợ.',
+  did_sai_dinh_dang:
+    'Máy chủ trả về một mã danh tính app chưa hiểu được. Đây là lỗi phía máy chủ — chụp màn hình này gửi hỗ trợ.',
+  can_ten_dang_nhap:
+    'Máy này đã có khoá của một danh tính đã tạo trước đó. Nhập lại đúng tên đăng nhập của danh tính đó để mở lại trên máy này.',
+  ten_khong_khop_khoa:
+    'Tên đăng nhập này thuộc về một danh tính khác, không phải danh tính đang có khoá trên máy. Kiểm tra lại tên, hoặc dùng máy đã tạo danh tính đó.',
+  khong_ro:
+    'Máy này đã có khoá nhưng chưa mở lại được danh tính, chưa rõ vì sao. Thử lại một lần; nếu vẫn vậy, chụp màn hình này gửi hỗ trợ.',
 };
 
 const friendlyRegisterError = (err: unknown): string => {

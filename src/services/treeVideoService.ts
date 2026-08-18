@@ -6,6 +6,19 @@
  *     file   = clip .mp4 (bắt buộc) — full-res, KHÔNG crop client
  *     lat/lon = GPS lúc quay (tuỳ)
  *     source = "phone" (tuỳ, mặc định "phone")
+ *     note   = ghi chú (tuỳ)
+ *
+ * ⛔ ĐÃ ĐO 2026-08-18 — ĐỪNG THÊM LẠI `farm_id` / `client_event_id` VÀO ROUTE NÀY.
+ * Một bản trước đã gửi kèm hai trường đó theo nếp chung của các cửa ghi khác
+ * (`enroll`, `verify_add`, `tree/set_farm`, `care`). Đo trên máy chủ thật: route
+ * video cây KHÔNG khai `farm_id`, và chuỗi `client_event_id` KHÔNG tồn tại ở bất
+ * kỳ đâu trong mã máy chủ. Gửi hai trường đó là gửi vào hư không.
+ *   · `farm_id` ở cửa này còn THỪA về mặt thiết kế: video gắn vào cây, mà cây đã
+ *     thuộc vườn rồi — không như `enroll`, nơi cây chưa có vườn nào.
+ *   · `client_event_id` thì lý lẽ đúng (gửi lại sau khi mất sóng không khử trùng
+ *     được là một lỗi thật) nhưng máy chủ chưa có cơ chế nào, chưa có thiết kế,
+ *     nên chưa hứa. Ngày có thì nối, và nối cả `videoUploadQueue` (nó đã sẵn có
+ *     `job.clientEventId` mà nhánh cây bỏ không truyền — nhánh quả thì có).
  *
  * Server: chắt-lọc khung-hình đại-diện (video_ingest, tự DOWNSCALE) → mỗi khung jpeg đẩy qua
  * ĐÚNG đường embed + verify_add ẢNH CŨ (bổ-sung góc cho cây, KHÔNG enroll-mới, chống nhiễm
@@ -117,6 +130,8 @@ export async function uploadTreeVideo(
   if (opts.lat != null) form.append('lat', String(opts.lat));
   if (opts.lon != null) form.append('lon', String(opts.lon));
   form.append('source', opts.source ?? 'phone');
+  // Chỉ gửi khi CÓ: gửi chuỗi rỗng là nói với máy chủ "cây này không thuộc vườn
+  // nào", khác hẳn với "lần gửi này không biết vườn".
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);

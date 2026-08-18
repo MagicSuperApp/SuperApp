@@ -67,27 +67,183 @@ const unsub: Array<() => void> = [];
 const PENDING_EPOCH_KEY = 'chat_mls_pending_epoch';
 /** Hội thoại mà máy này ĐANG có nhóm MLS — quyết định Welcome hay Commit khi đồng bộ. */
 const JOINED_KEY = 'chat_mls_joined_groups';
+/** Sổ các bản đã RỜI hàng chờ mà chưa lên được server — để UI còn nói ra được. */
+const DROPPED_EPOCH_KEY = 'chat_mls_dropped_epoch';
 
-interface PendingEpoch {
+// ── Trần của hàng chờ ────────────────────────────────────────────────────────
+//
+// VÌ SAO PHẢI CÓ TRẦN: trước đây bản ghi chỉ rời hàng chờ khi đẩy THÀNH CÔNG.
+// Một bản mà server từ chối vĩnh viễn (hội thoại đã xoá, epoch trùng, payload
+// hỏng) thì ở lại mãi, và `flushPendingEpochs()` chạy ở MỌI lần init chat nên
+// nó bị gọi lại mỗi lần mở chat, mãi mãi. Hàng chờ cũng không có trần kích
+// thước: mất mạng dài ngày thì mảng phình, mà cả mảng được `JSON.stringify`
+// vào secure store ở mỗi lượt lưu.
+//
+// Ba trần dưới đây độc lập nhau; chạm trần nào cũng CHỈ đưa bản ghi sang sổ
+// `droppedEpochs` — KHÔNG xoá không dấu vết. Màn hình đọc `getEpochQueueStats()`
+// để nói "N bản không gửi được".
+const MAX_EPOCH_ATTEMPTS = 8;
+const PENDING_EPOCH_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 ngày
+const MAX_PENDING_EPOCHS = 50;
+/** Sổ bản hỏng cũng phải có trần, nếu không nó thành chỗ phình mới. */
+const MAX_DROPPED_EPOCHS = 50;
+
+/** Phần ĐI LÊN SERVER — đúng những trường `createEpochSync` nhận. */
+interface EpochRecord {
   conversationId: string;
   epoch: number;
   commitMessage: string;
   welcomeMessage: string;
 }
 
+/** Bản ghi trong hàng chờ = phần đi lên server + sổ theo dõi lần thử/tuổi. */
+interface PendingEpoch extends EpochRecord {
+  /** Số lần đã thử đẩy và TRƯỢT. Bản ghi cũ thiếu trường → coi là 0. */
+  attempts: number;
+  /** Mốc vào hàng chờ (ms). Bản ghi cũ thiếu trường → gán lúc đọc (không tự hết hạn). */
+  firstQueuedAt: number;
+  /** Mốc thử gần nhất (ms). */
+  lastAttemptAt: number;
+}
+
+export type EpochDropReason = 'attempts' | 'expired' | 'overflow';
+
+/** Một bản đã rời hàng chờ mà chưa lên server. Giữ lại để ĐẾM ĐƯỢC. */
+export interface DroppedEpoch {
+  conversationId: string;
+  epoch: number;
+  attempts: number;
+  firstQueuedAt: number;
+  droppedAt: number;
+  reason: EpochDropReason;
+}
+
 let pendingEpochs: PendingEpoch[] = [];
+let droppedEpochs: DroppedEpoch[] = [];
 let joinedGroups = new Set<string>();
 let stateLoaded = false;
+
+/** Chỉ lấy phần đi lên server — không đẩy trường sổ sách nội bộ ra API. */
+const wireOf = (r: EpochRecord): EpochRecord => ({
+  conversationId: r.conversationId,
+  epoch: r.epoch,
+  commitMessage: r.commitMessage,
+  welcomeMessage: r.welcomeMessage,
+});
+
+const sameEpoch = (a: EpochRecord, b: EpochRecord): boolean =>
+  a.conversationId === b.conversationId && a.epoch === b.epoch;
+
+/**
+ * Đọc một bản ghi đã lưu về đúng hình dạng mới. TƯƠNG THÍCH NGƯỢC: bản ghi lưu
+ * trước bản vá này KHÔNG có `attempts`/`firstQueuedAt`/`lastAttemptAt` — thiếu
+ * thì gán mặc định (0 lần thử, tuổi tính từ LÚC ĐỌC) chứ không loại bỏ, để bản
+ * cũ không bị hết hạn oan ngay lần mở chat đầu tiên sau khi cập nhật app.
+ */
+function normalizePending(x: any, now: number): PendingEpoch | null {
+  if (!x || typeof x.conversationId !== 'string') return null;
+  const num = (v: unknown, fallback: number): number =>
+    typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : fallback;
+  return {
+    conversationId: x.conversationId,
+    epoch: num(x.epoch, 0),
+    commitMessage: typeof x.commitMessage === 'string' ? x.commitMessage : '',
+    welcomeMessage: typeof x.welcomeMessage === 'string' ? x.welcomeMessage : '',
+    attempts: num(x.attempts, 0),
+    firstQueuedAt: num(x.firstQueuedAt, now),
+    lastAttemptAt: num(x.lastAttemptAt, now),
+  };
+}
+
+function normalizeDropped(x: any): DroppedEpoch | null {
+  if (!x || typeof x.conversationId !== 'string') return null;
+  const num = (v: unknown, fallback: number): number =>
+    typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : fallback;
+  const reason: EpochDropReason =
+    x.reason === 'attempts' || x.reason === 'expired' || x.reason === 'overflow'
+      ? x.reason
+      : 'attempts';
+  return {
+    conversationId: x.conversationId,
+    epoch: num(x.epoch, 0),
+    attempts: num(x.attempts, 0),
+    firstQueuedAt: num(x.firstQueuedAt, 0),
+    droppedAt: num(x.droppedAt, 0),
+    reason,
+  };
+}
+
+/** Chuyển 1 bản khỏi hàng chờ sang sổ hỏng. KHÔNG nuốt im: sổ này UI đọc được. */
+function dropPending(rec: PendingEpoch, reason: EpochDropReason, now: number): void {
+  droppedEpochs.push({
+    conversationId: rec.conversationId,
+    epoch: rec.epoch,
+    attempts: rec.attempts,
+    firstQueuedAt: rec.firstQueuedAt,
+    droppedAt: now,
+    reason,
+  });
+  if (droppedEpochs.length > MAX_DROPPED_EPOCHS) {
+    droppedEpochs = droppedEpochs.slice(-MAX_DROPPED_EPOCHS);
+  }
+  console.warn('[proofchat] bản epoch rời hàng chờ chưa lên được server', {
+    conversationId: rec.conversationId,
+    epoch: rec.epoch,
+    attempts: rec.attempts,
+    reason,
+  });
+}
+
+/**
+ * Áp cả ba trần lên hàng chờ. Gọi sau MỌI thay đổi hàng chờ và trước mỗi lượt
+ * đẩy lại. Trả về true nếu có bản bị loại (caller cần lưu lại state).
+ */
+function pruneQueue(now: number): boolean {
+  const before = pendingEpochs.length;
+  const kept: PendingEpoch[] = [];
+  for (const rec of pendingEpochs) {
+    if (rec.attempts >= MAX_EPOCH_ATTEMPTS) {
+      dropPending(rec, 'attempts', now);
+    } else if (now - rec.firstQueuedAt > PENDING_EPOCH_TTL_MS) {
+      dropPending(rec, 'expired', now);
+    } else {
+      kept.push(rec);
+    }
+  }
+  // Quá trần kích thước → bỏ bản VÀO SỚM NHẤT: nó đã có nhiều lượt thử nhất,
+  // còn bản vừa xếp hàng là nhóm người dùng đang chờ ngay trên màn hình.
+  while (kept.length > MAX_PENDING_EPOCHS) {
+    dropPending(kept.shift() as PendingEpoch, 'overflow', now);
+  }
+  pendingEpochs = kept;
+  return pendingEpochs.length !== before;
+}
 
 async function loadLocalState(): Promise<void> {
   if (stateLoaded) return;
   stateLoaded = true;
+  const now = Date.now();
   try {
     const raw = await taad.secureLoad(PENDING_EPOCH_KEY);
     const arr = raw ? JSON.parse(raw) : [];
-    if (Array.isArray(arr)) pendingEpochs = arr.filter((x: any) => x && typeof x.conversationId === 'string');
+    if (Array.isArray(arr)) {
+      pendingEpochs = arr
+        .map((x: any) => normalizePending(x, now))
+        .filter((x): x is PendingEpoch => x !== null);
+    }
   } catch {
     pendingEpochs = [];
+  }
+  try {
+    const raw = await taad.secureLoad(DROPPED_EPOCH_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    if (Array.isArray(arr)) {
+      droppedEpochs = arr
+        .map((x: any) => normalizeDropped(x))
+        .filter((x): x is DroppedEpoch => x !== null);
+    }
+  } catch {
+    droppedEpochs = [];
   }
   try {
     const raw = await taad.secureLoad(JOINED_KEY);
@@ -101,6 +257,7 @@ async function loadLocalState(): Promise<void> {
 async function saveLocalState(): Promise<void> {
   try {
     await taad.secureStore(PENDING_EPOCH_KEY, JSON.stringify(pendingEpochs));
+    await taad.secureStore(DROPPED_EPOCH_KEY, JSON.stringify(droppedEpochs));
     await taad.secureStore(JOINED_KEY, JSON.stringify(Array.from(joinedGroups)));
   } catch {
     /* không chặn luồng chat */
@@ -115,23 +272,32 @@ async function markJoined(conversationId: string): Promise<void> {
 }
 
 /**
- * Đẩy một bản epoch-sync lên server. Thất bại → xếp vào hàng chờ đẩy lại và trả
- * false (KHÔNG nuốt lỗi rồi báo "đã tạo nhóm").
+ * Đẩy một bản epoch-sync lên server. Thất bại → xếp vào hàng chờ đẩy lại (đếm
+ * lần thử) và trả false (KHÔNG nuốt lỗi rồi báo "đã tạo nhóm"). Chạm trần lần
+ * thử/tuổi/kích thước thì bản ghi rời hàng chờ nhưng vào sổ `droppedEpochs`.
  */
-async function publishEpoch(rec: PendingEpoch): Promise<boolean> {
+async function publishEpoch(rec: EpochRecord): Promise<boolean> {
   await loadLocalState();
+  const now = Date.now();
   try {
-    await proofChatApi.mls.createEpochSync(rec);
-    pendingEpochs = pendingEpochs.filter(
-      p => !(p.conversationId === rec.conversationId && p.epoch === rec.epoch),
-    );
+    await proofChatApi.mls.createEpochSync(wireOf(rec));
+    pendingEpochs = pendingEpochs.filter(p => !sameEpoch(p, rec));
     await saveLocalState();
     return true;
   } catch {
-    const dup = pendingEpochs.some(
-      p => p.conversationId === rec.conversationId && p.epoch === rec.epoch,
-    );
-    if (!dup) pendingEpochs.push(rec);
+    const existing = pendingEpochs.find(p => sameEpoch(p, rec));
+    if (existing) {
+      existing.attempts += 1;
+      existing.lastAttemptAt = now;
+    } else {
+      pendingEpochs.push({
+        ...wireOf(rec),
+        attempts: 1,
+        firstQueuedAt: now,
+        lastAttemptAt: now,
+      });
+    }
+    pruneQueue(now);
     await saveLocalState();
     return false;
   }
@@ -139,16 +305,31 @@ async function publishEpoch(rec: PendingEpoch): Promise<boolean> {
 
 /**
  * Đẩy lại mọi Welcome/Commit còn kẹt. Gọi lúc init (mỗi lần mở chat) và từ UI khi
- * người dùng bấm thử lại. Trả số bản còn kẹt sau lượt này.
+ * người dùng bấm thử lại.
+ *
+ * Trước khi thử, áp trần lên hàng chờ: bản quá hạn / quá số lần thử KHÔNG được
+ * gọi lại nữa (trước bản vá này chúng được gọi lại ở mọi lần mở chat, vĩnh viễn).
+ * `dropped` = số bản bị loại trong CHÍNH lượt này.
  */
-export async function flushPendingEpochs(): Promise<{ sent: number; remaining: number }> {
+export async function flushPendingEpochs(): Promise<{
+  sent: number;
+  remaining: number;
+  dropped: number;
+}> {
   await loadLocalState();
+  const droppedBefore = droppedEpochs.length;
+  if (pruneQueue(Date.now())) await saveLocalState();
+
   const snapshot = [...pendingEpochs];
   let sent = 0;
   for (const rec of snapshot) {
     if (await publishEpoch(rec)) sent += 1;
   }
-  return { sent, remaining: pendingEpochs.length };
+  return {
+    sent,
+    remaining: pendingEpochs.length,
+    dropped: droppedEpochs.length - droppedBefore,
+  };
 }
 
 /** Số Welcome/Commit đang kẹt (UI hiện cảnh báo "nhóm chưa mời được ai"). */
@@ -158,12 +339,39 @@ export async function getPendingEpochCount(): Promise<number> {
 }
 
 /**
+ * Số liệu hàng chờ cho UI: bao nhiêu bản còn đang thử lại, bao nhiêu bản đã BỎ
+ * CUỘC (kèm lý do + hội thoại nào) để màn hình nói được "N bản không gửi được"
+ * thay vì im lặng.
+ */
+export async function getEpochQueueStats(): Promise<{
+  pending: number;
+  dropped: number;
+  drops: DroppedEpoch[];
+}> {
+  await loadLocalState();
+  return {
+    pending: pendingEpochs.length,
+    dropped: droppedEpochs.length,
+    drops: [...droppedEpochs],
+  };
+}
+
+/** Người dùng đã đọc cảnh báo → xoá sổ bản hỏng (chỉ xoá SỔ, không đẩy lại gì). */
+export async function acknowledgeDroppedEpochs(): Promise<void> {
+  await loadLocalState();
+  if (droppedEpochs.length === 0) return;
+  droppedEpochs = [];
+  await saveLocalState();
+}
+
+/**
  * CHỈ dùng trong test: xoá state module (danh tính, hàng chờ Welcome, nhóm đã vào).
  * State module dùng chung giữa các ca test → không reset thì ca sau ăn theo ca trước.
  */
 export function _resetForTest(): void {
   currentIdentity = null;
   pendingEpochs = [];
+  droppedEpochs = [];
   joinedGroups = new Set();
   stateLoaded = false;
 }
@@ -483,4 +691,6 @@ export default {
   syncConversation,
   flushPendingEpochs,
   getPendingEpochCount,
+  getEpochQueueStats,
+  acknowledgeDroppedEpochs,
 };

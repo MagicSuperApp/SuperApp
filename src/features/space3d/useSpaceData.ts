@@ -13,6 +13,11 @@
  *   3. Ngẫu-nhiên ỔN-ĐỊNH trong ranh giới vườn (seed = tree_id) — mặc định.
  * Cây có GPS nhưng rơi NGOÀI ranh giới vẫn giữ nguyên chỗ thật (không kéo vào),
  * vì sai lệch đó là thông tin cho người dùng biết ranh giới hoặc GPS đang lệch.
+ *
+ * Bậc 3 chỉ còn dành cho CÂY chưa có GPS, không còn cho CẢ VƯỜN: vườn chưa vẽ
+ * ranh giới thì gốc toạ-độ suy từ chính đàn cây (`originFromTrees`). Trước đó
+ * thiếu ranh giới là `origin = null`, và mọi cây — kể cả cây vừa đăng ký ngoài
+ * nắng — bị rải ngẫu nhiên như thể chưa ai từng ghi toạ-độ.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -23,7 +28,8 @@ import { ORILIFE_BASE } from '../../services/orilifeBase';
 import { getTreeLayout, type TreeLayoutFruit } from '../../services/fruitReIDService';
 import { formatTreeName } from '../../utils/treeNameFormatter';
 import {
-  buildFarmRing, hashSeed, latLngToMeters, makeRng, seededPointInRing,
+  buildFarmRing, hashSeed, isUsableLatLng, latLngToMeters, makeRng,
+  originFromTrees, seededPointInRing,
   type LatLng, type Vec2,
 } from './geo';
 import { coordFromServer, hasServerZ, type FruitCoord } from './treeFrame';
@@ -111,9 +117,27 @@ export function useSpaceData(farmIdParam?: string, focusTreeId?: string): SpaceD
     [allTrees, farmId],
   );
 
+  /**
+   * Toạ-độ GPS của từng cây, dạng `{lat,lng}` — một chỗ duy nhất đọc hai lối đặt
+   * tên đang cùng tồn tại trong `Tree` (`latitude/longitude` và `location`).
+   */
+  const treeLatLngs = useMemo(
+    () => farmTrees.map((t: Tree) => ({
+      lat: t.latitude ?? t.location?.lat,
+      lng: t.longitude ?? t.location?.lng,
+    })),
+    [farmTrees],
+  );
+
+  /**
+   * Gốc dự phòng khi vườn CHƯA VẼ RANH GIỚI. Không có nó thì `origin = null`,
+   * và mọi cây — kể cả cây có GPS thật — bị rải ngẫu nhiên trong ô vuông bịa.
+   */
+  const treeOrigin = useMemo(() => originFromTrees(treeLatLngs), [treeLatLngs]);
+
   const { ring, origin, hasBoundary } = useMemo(
-    () => buildFarmRing(farm?.coordinates, farmTrees.length),
-    [farm?.coordinates, farmTrees.length],
+    () => buildFarmRing(farm?.coordinates, farmTrees.length, treeOrigin),
+    [farm?.coordinates, farmTrees.length, treeOrigin],
   );
 
   const [manualPos, setManualPos] = useState<Record<string, Vec2>>({});
@@ -157,10 +181,13 @@ export function useSpaceData(farmIdParam?: string, focusTreeId?: string): SpaceD
         pos = manual;
         posSource = 'manual';
       } else {
-        const lat = t.latitude ?? t.location?.lat;
-        const lng = t.longitude ?? t.location?.lng;
-        if (origin && Number.isFinite(lat) && Number.isFinite(lng)) {
-          pos = latLngToMeters({ lat: lat as number, lng: lng as number }, origin);
+        const gps = { lat: t.latitude ?? t.location?.lat, lng: t.longitude ?? t.location?.lng };
+        // `isUsableLatLng` chứ không `Number.isFinite`: bản ghi rỗng của máy chủ
+        // về đúng 0/0 — số hữu hạn, nên lối cũ nhận nó là "GPS thật" rồi ném cây
+        // ra cách vườn nửa vòng Trái Đất. Loại ở đây thì nó rơi về `auto`, tức
+        // nằm trong vườn cùng đám cây chưa có toạ-độ — đúng thứ nó đang là.
+        if (origin && isUsableLatLng(gps)) {
+          pos = latLngToMeters(gps, origin);
           posSource = 'gps';
         } else {
           pos = seededPointInRing(t.id, ring);
@@ -187,11 +214,24 @@ export function useSpaceData(farmIdParam?: string, focusTreeId?: string): SpaceD
 
   const reloadFruits = useCallback(() => setFruitNonce((n) => n + 1), []);
 
+  /** Cây mà danh sách `fruits` đang thuộc về. Dùng để biết khi nào phải xoá. */
+  const fruitsOfTreeRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (!focusTreeId) {
       setFruits([]);
       setFruitsError(null);
+      fruitsOfTreeRef.current = null;
       return;
+    }
+    // ĐỔI CÂY thì xoá danh sách cũ NGAY, trước khi hỏi máy chủ. Giữ lại là quả
+    // của cây A nằm dưới tên cây B trong lúc chờ — và nếu lượt hỏi hỏng thì nó
+    // nằm đó luôn, không dấu hiệu gì. Nạp lại CÙNG một cây (`reloadFruits`) thì
+    // không xoá, để danh sách khỏi nháy trắng.
+    if (fruitsOfTreeRef.current !== focusTreeId) {
+      setFruits([]);
+      setFruitsError(null);
+      fruitsOfTreeRef.current = focusTreeId;
     }
     let alive = true;
     setFruitsLoading(true);
@@ -218,6 +258,11 @@ export function useSpaceData(farmIdParam?: string, focusTreeId?: string): SpaceD
         })));
         setFruitsError(null);
       } else {
+        // Hỏi hỏng: xoá về rỗng + đặt cờ lỗi. Không xoá thì màn vẽ ra một danh
+        // sách quả CÓ THẬT nhưng của cây khác — sai mà trông y như đúng. Rỗng
+        // kèm cờ lỗi thì màn còn phân biệt được "cây chưa có quả" với "chưa hỏi
+        // được", và người dùng biết mình đang nhìn cái gì.
+        setFruits([]);
         setFruitsError(r.error?.detail ?? 'Không tải được quả của cây.');
       }
       setFruitsLoading(false);

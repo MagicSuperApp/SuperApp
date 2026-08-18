@@ -20,7 +20,7 @@
  *    hoặc goBack().
  */
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -39,6 +39,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 
 import { NEUTRAL } from '../shared/theme';
+import { autoTreeRegions } from '../services/treeRegionAuto';
 import {
   enrollTree,
   verifyAddTree,
@@ -307,6 +308,15 @@ const TreeEnrollScreen: React.FC = () => {
     ? undefined
     : toCaptureOrientations(captures);
 
+  // VÙNG CÂY theo TỪNG ảnh — suy từ box YOLO máy ĐÃ tính cho mỗi khung và ĐÃ vẽ
+  // lên preview lúc chụp. Nông dân không khoanh gì cả: bắt vẽ tay từng ảnh vừa
+  // chậm vừa cho vùng lệch nhau mỗi ảnh một kiểu. Đường Android-không-native lấy
+  // ảnh từ route params nên không có box → không gửi vùng, hành vi như cũ.
+  const { regions: treeRegions } = useMemo(
+    () => (usingAndroidPaths ? { regions: [], ambiguousAt: [] } : autoTreeRegions(captures)),
+    [usingAndroidPaths, captures],
+  );
+
   // Số ảnh hiệu dụng để kiểm tra MIN_CAPTURES
   const effectiveCaptureCount = usingAndroidPaths
     ? androidImagePaths!.length
@@ -474,6 +484,7 @@ const TreeEnrollScreen: React.FC = () => {
         acc: gps?.accuracy,
         captures: captureOrientations,
         headingRef: captureOrientations ? platformHeadingRef() : undefined,
+        regions: treeRegions,
         force: true,
       }, farmId);
 
@@ -490,7 +501,7 @@ const TreeEnrollScreen: React.FC = () => {
     } finally {
       setIsEnrolling(false);
     }
-  }, [name, imagePaths, captureOrientations, gps, handleSuccess, farmId, farmValid, draftOwner]);
+  }, [name, imagePaths, captureOrientations, treeRegions, gps, handleSuccess, farmId, farmValid, draftOwner]);
 
   // ── Main enroll ───────────────────────────────────────────────────────────
   const handleEnroll = async () => {
@@ -541,6 +552,7 @@ const TreeEnrollScreen: React.FC = () => {
         acc: gps?.accuracy,
         captures: captureOrientations,
         headingRef: captureOrientations ? platformHeadingRef() : undefined,
+        regions: treeRegions,
       }, farmId);
 
       if (res.ok && res.data) {

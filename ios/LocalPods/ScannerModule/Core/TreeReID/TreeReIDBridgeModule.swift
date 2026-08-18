@@ -38,6 +38,12 @@ final class TreeReIDBridgeModule: RCTEventEmitter {
         let capturedAt: Date
         let width: Int
         let height: Int
+        /// Box YOLO của khung ngay TRƯỚC lúc bấm. Toạ độ CHUẨN HOÁ 0–1 theo frame
+        /// PREVIEW, không phải theo ảnh đã lưu — hai cái có thể khác tỉ lệ. Kèm
+        /// `frameAspect` (w/h của frame preview) để phía JS quy về hệ của ảnh.
+        /// Rỗng = khung đó YOLO không thấy cây nào ⟹ ảnh này embed cả khung.
+        let boxes: [TreeReIDYolo.Box]
+        let frameAspect: Float
     }
 
     // MARK: - Properties
@@ -62,6 +68,17 @@ final class TreeReIDBridgeModule: RCTEventEmitter {
     /// Box YOLO gần nhất + tỉ-lệ frame (w/h) — cho overlay vẽ khung trên preview.
     func currentYoloBoxes() -> ([TreeReIDYolo.Box], Float) {
         return yolo.currentBoxes()
+    }
+
+    /// Box → payload cầu RN. Ép `Double` vì `Float` qua NSNumber hay lệch chữ số cuối.
+    private static func boxesPayload(_ boxes: [TreeReIDYolo.Box]) -> [[String: Any]] {
+        return boxes.map { b in
+            [
+                "x": Double(b.x), "y": Double(b.y),
+                "w": Double(b.w), "h": Double(b.h),
+                "conf": Double(b.conf)
+            ]
+        }
     }
 
     override static func moduleName() -> String! {
@@ -237,6 +254,11 @@ final class TreeReIDBridgeModule: RCTEventEmitter {
                 "fileURL": fileURL.lastPathComponent
             ])
 
+            // Box của khung vừa chạy qua gate — máy ĐÃ biết cây nằm đâu và đã vẽ
+            // khung đó lên preview. Trước đây chỗ này vứt đi, nên nông dân phải tự
+            // khoanh lại thứ máy vốn có sẵn.
+            let (yBoxes, yAspect) = yolo.currentBoxes()
+
             let capture = CapturedImage(
                 id: UUID().uuidString,
                 fileURL: fileURL,
@@ -246,7 +268,9 @@ final class TreeReIDBridgeModule: RCTEventEmitter {
                 round: currentSession.currentRound,
                 capturedAt: Date(),
                 width: processed.width,
-                height: processed.height
+                height: processed.height,
+                boxes: yBoxes,
+                frameAspect: yAspect
             )
 
             currentSession.captures.append(capture)
@@ -264,7 +288,9 @@ final class TreeReIDBridgeModule: RCTEventEmitter {
                     "round": capture.round.rawValue,
                     "totalCaptures": currentSession.captures.count,
                     "width": capture.width,
-                    "height": capture.height
+                    "height": capture.height,
+                    "boxes": TreeReIDBridgeModule.boxesPayload(capture.boxes),
+                    "frameAspect": Double(capture.frameAspect)
                 ])
             }
 
@@ -445,7 +471,9 @@ final class TreeReIDBridgeModule: RCTEventEmitter {
                 "round": capture.round.rawValue,
                 "capturedAt": capture.capturedAt.timeIntervalSince1970,
                 "width": capture.width,
-                "height": capture.height
+                "height": capture.height,
+                "boxes": TreeReIDBridgeModule.boxesPayload(capture.boxes),
+                "frameAspect": Double(capture.frameAspect)
             ]
         }
 
@@ -501,6 +529,8 @@ final class TreeReIDBridgeModule: RCTEventEmitter {
                 return
             }
 
+            let (yBoxes, yAspect) = yolo.currentBoxes()
+
             let capture = CapturedImage(
                 id: UUID().uuidString,
                 fileURL: fileURL,
@@ -510,7 +540,9 @@ final class TreeReIDBridgeModule: RCTEventEmitter {
                 round: currentSession.currentRound,
                 capturedAt: Date(),
                 width: processed.width,
-                height: processed.height
+                height: processed.height,
+                boxes: yBoxes,
+                frameAspect: yAspect
             )
 
             currentSession.captures.append(capture)
@@ -615,7 +647,9 @@ final class TreeReIDBridgeModule: RCTEventEmitter {
                 "round": capture.round.rawValue,
                 "capturedAt": capture.capturedAt.timeIntervalSince1970,
                 "width": capture.width,
-                "height": capture.height
+                "height": capture.height,
+                "boxes": TreeReIDBridgeModule.boxesPayload(capture.boxes),
+                "frameAspect": Double(capture.frameAspect)
             ]
         }
 

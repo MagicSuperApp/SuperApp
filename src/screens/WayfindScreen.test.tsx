@@ -20,7 +20,8 @@
 
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
-import { Text } from 'react-native';
+import { Text, TextInput } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Geolocation from 'react-native-geolocation-service';
 
 import { __resetLanguageForTest } from '../i18n/store';
@@ -168,5 +169,156 @@ describe('Cây quanh chỗ bạn đứng — hỏi máy chủ hỏng', () => {
     const txt = screenText(tree);
     expect(txt).toContain('Cây gần');
     expect(txt).not.toContain('Chưa hỏi được máy chủ');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Mốc vườn — thứ CHỈ nằm trong máy này
+// ---------------------------------------------------------------------------
+
+/** Nút bấm được, tìm theo câu chữ đang hiện trên nó. */
+function findButton(tree: renderer.ReactTestRenderer, label: string) {
+  return tree.root
+    .findAll(n => n.props?.accessibilityRole === 'button' && typeof n.props?.onPress === 'function')
+    .find(n => n.findAllByType(Text).some(t => String(t.props.children).includes(label)));
+}
+
+/** Bấm một nút theo chữ; không thấy nút thì ném lỗi rõ ràng, đừng lặng lẽ qua. */
+async function press(tree: renderer.ReactTestRenderer, label: string) {
+  const btn = findButton(tree, label);
+  if (!btn) throw new Error(`Không thấy nút "${label}"`);
+  await act(async () => { btn.props.onPress(); });
+  await act(async () => { await Promise.resolve(); });
+}
+
+/** Đặt một mốc từ đầu tới cuối, đúng thao tác người dùng làm trên màn. */
+async function datMoc(tree: renderer.ReactTestRenderer, name: string) {
+  await press(tree, 'Đặt mốc ở đây');
+  const input = tree.root.findByType(TextInput);
+  await act(async () => { input.props.onChangeText(name); });
+  await press(tree, 'Lưu mốc');
+}
+
+describe('Mốc vườn', () => {
+  beforeEach(async () => { await AsyncStorage.clear(); });
+
+  it('có nút đặt mốc, và ngay cạnh nút NÓI RÕ mốc chỉ nằm trong máy này', async () => {
+    const txt = screenText(await mount());
+
+    expect(txt).toContain('Đặt mốc ở đây');
+    // Máy chủ chưa có chỗ nhận toạ độ mốc — người dùng phải biết TRƯỚC khi đặt.
+    expect(txt).toContain('chỉ nằm trong máy này');
+    expect(txt).toContain('người khác trong nhà không thấy');
+  });
+
+  it('không có mã vườn thì KHÔNG mở lối đặt mốc (mốc phải thuộc về một vườn)', async () => {
+    mockRouteParams = { ...FARM, kind: 'farm', label: 'Vườn Bà Rịa' };
+    expect(screenText(await mount())).not.toContain('Đặt mốc ở đây');
+  });
+
+  it('đặt mốc xong, DỰNG LẠI màn thì mốc còn nguyên', async () => {
+    const lan1 = await mount();
+    expect(screenText(lan1)).toContain('Chưa có mốc nào');
+
+    await datMoc(lan1, 'Cổng vườn');
+    expect(screenText(lan1)).toContain('Cổng vườn');
+
+    // Thoát rồi mở lại — bản duy nhất của mốc nằm trong máy, nên đây đúng là
+    // phép đo "mất máy thì mất, còn máy thì còn".
+    await act(async () => { lan1.unmount(); });
+    const lan2 = await mount();
+    expect(screenText(lan2)).toContain('Cổng vườn');
+  });
+
+  it('mốc mang khoảng cách + hướng, tính bằng đúng toán của cây', async () => {
+    const tree = await mount();
+    await datMoc(tree, 'Máy bơm');
+
+    // Đặt tại chỗ đang đứng ⇒ khoảng cách 0 m, và hướng vẫn phải có một tên.
+    const txt = screenText(tree);
+    expect(txt).toContain('Máy bơm');
+    expect(txt).toContain('0 m');
+  });
+
+  it('mốc không tên thì KHÔNG lưu — đặt tên là việc duy nhất người dùng phải làm', async () => {
+    const tree = await mount();
+    await press(tree, 'Đặt mốc ở đây');
+    await press(tree, 'Lưu mốc');
+
+    // Hộp còn mở (chưa lưu) và danh sách vẫn trống.
+    expect(tree.root.findAllByType(TextInput)).toHaveLength(1);
+    expect(screenText(tree)).toContain('Chưa có mốc nào');
+  });
+
+  it('sai số GPS hiện thành SỐ ngay lúc đặt mốc', async () => {
+    // Dưới tán cây sai số 22 m là thường. Không nói ra thì người dùng tưởng mốc
+    // chính xác tới mét — hỏng đúng thứ mốc sinh ra để chữa.
+    (Geolocation.watchPosition as jest.Mock).mockImplementation((onOk: any) => {
+      onOk({ coords: { latitude: HERE.lat, longitude: HERE.lon, accuracy: 22, heading: null, speed: 0 } });
+      return 1;
+    });
+    let tree!: renderer.ReactTestRenderer;
+    await act(async () => { tree = renderer.create(<WayfindScreen />); });
+    await act(async () => { await Promise.resolve(); });
+
+    await press(tree, 'Đặt mốc ở đây');
+    expect(screenText(tree)).toContain('±22 m');
+  });
+
+  it('chưa bắt được vị trí thì nói ra, và không lưu mốc rỗng toạ độ', async () => {
+    (Geolocation.watchPosition as jest.Mock).mockImplementation(() => 1); // không bắn lượt nào
+    let tree!: renderer.ReactTestRenderer;
+    await act(async () => { tree = renderer.create(<WayfindScreen />); });
+    await act(async () => { await Promise.resolve(); });
+
+    await press(tree, 'Đặt mốc ở đây');
+    const txt = screenText(tree);
+    expect(txt).toContain('Chưa bắt được vị trí nên chưa đặt mốc được');
+    // Nút Lưu bị khoá, không phải "bấm được rồi mới báo lỗi".
+    expect(findButton(tree, 'Lưu mốc')?.props.disabled).toBe(true);
+  });
+});
+
+describe('Mốc vườn — trên mặt phẳng tìm cây (đã tới vườn)', () => {
+  beforeEach(async () => { await AsyncStorage.clear(); });
+
+  /** Đứng ĐÚNG chỗ vườn → màn đổi sang mặt phẳng tìm cây. */
+  async function mountTaiVuon(): Promise<renderer.ReactTestRenderer> {
+    (Geolocation.watchPosition as jest.Mock).mockImplementation((onOk: any) => {
+      onOk({ coords: { latitude: FARM.lat, longitude: FARM.lon, accuracy: 5, heading: null, speed: 0 } });
+      return 1;
+    });
+    let tree!: renderer.ReactTestRenderer;
+    await act(async () => { tree = renderer.create(<WayfindScreen />); });
+    await act(async () => { await Promise.resolve(); });
+    return tree;
+  }
+
+  it('mặt phẳng cũng có nút đặt mốc kèm câu "chỉ nằm trong máy này"', async () => {
+    const tree = await mountTaiVuon();
+    const txt = screenText(tree);
+
+    expect(txt).toContain('Đã tới');            // đúng là đang ở chế độ mặt phẳng
+    expect(txt).toContain('Đặt mốc ở đây');
+    expect(txt).toContain('chỉ nằm trong máy này');
+  });
+
+  it('đặt mốc xong thì mốc hiện trên mặt phẳng, và chạm vào là kim chỉ tới nó', async () => {
+    const tree = await mountTaiVuon();
+    await datMoc(tree, 'Chỗ để máy bơm');
+
+    expect(screenText(tree)).toContain('Chỗ để máy bơm');
+
+    // Chạm vào mốc → đầu màn đổi sang câu của MỐC, không phải câu của cây: hai
+    // loại đích khác nhau về bản chất (cây cả nhà thấy, mốc chỉ máy này thấy).
+    const chip = tree.root
+      .findAll(n => typeof n.props?.onPress === 'function' && typeof n.props?.onLongPress === 'function')
+      .find(n => n.findAllByType(Text).some(t => String(t.props.children).includes('Chỗ để máy bơm')));
+    if (!chip) throw new Error('Không thấy mốc trên mặt phẳng');
+
+    await act(async () => { chip.props.onPress(); });
+    const txt = screenText(tree);
+    expect(txt).toMatch(/mốc Chỗ để máy bơm/);
+    expect(txt).not.toContain('Đang tìm Chỗ để máy bơm'); // câu của CÂY
   });
 });

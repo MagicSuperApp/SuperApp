@@ -136,6 +136,81 @@ export const MAP_STRINGS = {
     ja: '半径 {n} m 以内に座標のある木はありません。',
   },
 
+  // ── Mốc vườn (cổng, máy bơm, gốc cây to…) ─────────────────────────────────
+  // Mốc CHỈ nằm trong máy này — máy chủ chưa có chỗ nhận toạ độ mốc. Câu
+  // `map.marker.localOnly` phải đứng ngay chỗ người dùng đặt mốc, không phải nằm
+  // trong một trang trợ giúp nào đó: người ta đi bộ ngoài nắng để đặt nó, phải
+  // biết trước là đổi máy thì mất.
+  'map.marker.add': { vi: 'Đặt mốc ở đây', en: 'Drop a marker here', zh: '在此放置标记', ja: 'ここに目印を置く' },
+  'map.marker.title': { vi: 'Mốc bạn tự đặt', en: 'Markers you placed', zh: '你放置的标记', ja: '自分で置いた目印' },
+  'map.marker.dialog': { vi: 'Đặt mốc tại chỗ bạn đang đứng', en: 'Place a marker where you stand', zh: '在你站立的位置放置标记', ja: '今いる場所に目印を置く' },
+  'map.marker.namePlaceholder': {
+    vi: 'Ví dụ: cổng vườn, chỗ để máy bơm',
+    en: 'e.g. farm gate, where the pump is',
+    zh: '例如：果园大门、水泵位置',
+    ja: '例：果樹園の門、ポンプの場所',
+  },
+  'map.marker.save': { vi: 'Lưu mốc', en: 'Save marker', zh: '保存标记', ja: '目印を保存' },
+  'map.marker.cancel': { vi: 'Huỷ', en: 'Cancel', zh: '取消', ja: 'キャンセル' },
+  'map.marker.photo': { vi: 'Chụp một ảnh (không bắt buộc)', en: 'Take a photo (optional)', zh: '拍一张照片（可选）', ja: '写真を撮る（任意）' },
+  'map.marker.photoDone': { vi: 'Đã có ảnh — chạm để chụp lại', en: 'Photo attached — tap to retake', zh: '已有照片——点按可重拍', ja: '写真あり — タップで撮り直し' },
+  'map.marker.localOnly': {
+    vi: 'Mốc chỉ nằm trong máy này. Máy chủ chưa có chỗ lưu mốc, nên đổi máy hay xoá app là mất, và người khác trong nhà không thấy mốc của bạn.',
+    en: 'Markers stay on this phone only. The server has no place to store them yet, so changing phone or deleting the app loses them, and nobody else in your household sees them.',
+    zh: '标记只保存在这台手机上。服务器还没有存放标记的地方，换手机或删除应用就会丢失，家里其他人也看不到你的标记。',
+    ja: '目印はこの端末にだけ残ります。サーバーに保存先がないため、機種変更やアプリ削除で消え、家族の他の人にも見えません。',
+  },
+  'map.marker.accuracy': {
+    vi: 'GPS đang sai số ±{n} m — mốc ghi ra lệch chừng đó. Muốn chính xác hơn thì ra chỗ thoáng rồi đặt lại.',
+    en: 'GPS accuracy is ±{n} m — the marker will be off by about that much. For a tighter fix, step into the open and place it again.',
+    zh: 'GPS 误差约 ±{n} 米——标记也会有这么大的偏差。想更准就到开阔处重新放置。',
+    ja: 'GPS 誤差は ±{n} m です。目印も同じくらいずれます。正確にしたい場合は開けた場所で置き直してください。',
+  },
+  'map.marker.accuracyUnknown': {
+    vi: 'Máy không báo sai số GPS, nên chưa biết mốc này chính xác tới đâu.',
+    en: 'The phone reports no GPS accuracy, so how precise this marker is remains unknown.',
+    zh: '手机未报告 GPS 误差，因此不清楚这个标记有多准。',
+    ja: '端末が GPS 誤差を返さないため、この目印の精度は不明です。',
+  },
+  'map.marker.noFix': {
+    vi: 'Chưa bắt được vị trí nên chưa đặt mốc được. Chờ máy bắt xong GPS rồi thử lại.',
+    en: 'No position yet, so no marker can be placed. Wait for a GPS fix and try again.',
+    zh: '尚未定位，无法放置标记。等待 GPS 定位后重试。',
+    ja: 'まだ測位できていないため目印を置けません。GPS が取れてから再試行してください。',
+  },
+  'map.marker.needName': { vi: 'Đặt cho mốc một cái tên đã.', en: 'Give the marker a name first.', zh: '请先给标记起个名字。', ja: 'まず目印に名前を付けてください。' },
+  'map.marker.empty': {
+    vi: 'Chưa có mốc nào. Đứng tại chỗ cần nhớ rồi bấm nút trên.',
+    en: 'No markers yet. Stand where you want to remember and tap the button above.',
+    zh: '还没有标记。站到想记住的位置，点上面的按钮。',
+    ja: 'まだ目印がありません。覚えたい場所に立って上のボタンを押してください。',
+  },
+  'map.marker.count': { vi: '{n} mốc', en: '{n} markers', zh: '{n} 个标记', ja: '目印 {n} 件' },
+  'map.marker.unnamed': { vi: 'Mốc không tên', en: 'Unnamed marker', zh: '未命名标记', ja: '名称なしの目印' },
+  'map.marker.saveFail': {
+    vi: 'Chưa lưu được mốc vào máy. Máy có thể đã hết chỗ trống.',
+    en: 'Could not save the marker to this phone. Storage may be full.',
+    zh: '无法把标记保存到手机。存储空间可能已满。',
+    ja: '目印を端末に保存できませんでした。空き容量が不足している可能性があります。',
+  },
+  'map.marker.cameraFail': {
+    vi: 'Chưa mở được máy ảnh. Mốc vẫn lưu được, chỉ là không có ảnh.',
+    en: 'Could not open the camera. The marker still saves, just without a photo.',
+    zh: '无法打开相机。标记仍可保存，只是没有照片。',
+    ja: 'カメラを開けませんでした。写真なしでも目印は保存できます。',
+  },
+  'map.marker.deleteTitle': { vi: 'Xoá mốc này?', en: 'Delete this marker?', zh: '删除这个标记？', ja: 'この目印を削除しますか？' },
+  'map.marker.deleteBody': {
+    vi: '"{name}" sẽ mất hẳn khỏi máy. Không có bản nào trên máy chủ để lấy lại.',
+    en: '“{name}” will be gone from this phone. There is no server copy to restore from.',
+    zh: '“{name}”将从手机中彻底删除。服务器上没有副本可恢复。',
+    ja: '「{name}」は端末から完全に消えます。サーバーに復元できる控えはありません。',
+  },
+  'map.marker.delete': { vi: 'Xoá', en: 'Delete', zh: '删除', ja: '削除' },
+  'map.marker.finding': { vi: 'Đang tìm mốc {name}', en: 'Finding marker {name}', zh: '正在寻找标记 {name}', ja: '目印 {name} を探しています' },
+  'map.marker.arrived': { vi: 'Tới mốc {name}', en: 'At marker {name}', zh: '已到标记 {name}', ja: '目印 {name} に到着' },
+  'map.marker.hint': { vi: 'Chạm giữ một mốc để xoá.', en: 'Press and hold a marker to delete it.', zh: '长按标记可删除。', ja: '目印を長押しすると削除できます。' },
+
   // ── Tra một CÂY khi kho trong máy chưa có ─────────────────────────────────
   // Ba câu này do `modules/trace/screens/TreeDetailScreen` dùng, nên chỗ đúng
   // của chúng là `keys/trace.ts` với tiền tố `trace.tree.*`. Đặt tạm ở đây vì

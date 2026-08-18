@@ -45,8 +45,8 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, Linking, PermissionsAndroid,
-  Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, View,
+  ActivityIndicator, Alert, Image, Linking, Modal, PermissionsAndroid,
+  Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, View,
   useWindowDimensions,
 } from 'react-native';
 import Svg, { Circle, Defs, G, Path, RadialGradient, Stop } from 'react-native-svg';
@@ -57,8 +57,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Icon from '../components/Icon';
 import { buzz } from '../utils/haptics';
-import { useTk } from '../i18n/keys';
+import { tk as tkNow, useTk } from '../i18n/keys';
 import { ORILIFE_BASE } from '../services/orilifeBase';
+import { withPhotoSave } from '../services/mediaSavePermission';
 import { getTrees, type TreeInfo } from '../services/treeReIDService';
 import {
   arrivalStateOf, compassPointVi, directionsUrl, formatDistanceVi,
@@ -71,11 +72,15 @@ import CompassNeedle from '../features/wayfind/CompassNeedle';
 import TreeRadar, { type RadarTree } from '../features/wayfind/TreeRadar';
 import { forTree, useOpenWayfind } from '../features/wayfind/WayfindButton';
 import { loadTreePositions } from '../features/space3d/positionStore';
+import {
+  loadFarmMarkers, newMarkerId, removeFarmMarker, saveFarmMarker,
+  type FarmMarker,
+} from '../features/space3d/markerStore';
 import { farmOrigin, treeGeoPoint } from '../features/space3d/treeGeo';
 import { courseFallback, useHeading } from '../features/wayfind/useHeading';
 import { GroundBackdrop } from '../modules/trace/components/layered/Organic';
 import {
-  ELEVATION, GLASS, NATURE, ORGANIC_CARD, ORGANIC_TILE, SPACE, SURFACE, TONE, TYPE,
+  ELEVATION, GLASS, NATURE, ORGANIC_CARD, ORGANIC_TILE, RADIUS, SPACE, SURFACE, TONE, TYPE,
 } from '../modules/trace/theme/depth';
 
 interface RouteParams {
@@ -123,6 +128,33 @@ const TREE_NEEDLE_RATIO = 1 / 3;
 
 /** Rung khi tới nơi: ba nhịp ngắn — khác hẳn nhịp thông báo của hệ điều hành. */
 const ARRIVE_BUZZ = [0, 90, 80, 90, 80, 160];
+
+/**
+ * Ảnh của mốc chỉ để NHẬN RA chỗ đó ("à, cái cổng sắt xanh"), không để nhận
+ * dạng máy — nên cạnh 1024 và chất lượng 0,8 là thừa đủ, mà đỡ chiếm bộ nhớ máy
+ * cho thứ chưa có đường đẩy lên máy chủ.
+ */
+const MARKER_PHOTO_OPTIONS = {
+  mediaType: 'photo' as const,
+  quality: 0.8,
+  maxWidth: 1024,
+  maxHeight: 1024,
+  saveToPhotos: false,
+  includeBase64: false,
+};
+
+/** Đích đang được chỉ tới: một CÂY của máy chủ, hay một MỐC chỉ máy này biết. */
+interface Picked {
+  kind: 'tree' | 'marker';
+  item: RadarTree;
+}
+
+/** Mốc → khuôn của mặt phẳng tìm cây, để dùng lại nguyên phép chiếu và toán. */
+const markerAsRadar = (m: FarmMarker): RadarTree => ({
+  id: m.id,
+  name: m.name || tkNow('map.marker.unnamed'),
+  pos: { lat: m.lat, lon: m.lon },
+});
 
 async function requestLocationPermission(
   strings: { title: string; body: string; allow: string; deny: string; later: string },
@@ -187,8 +219,8 @@ const WayfindScreen: React.FC = () => {
   const treeLabel = (t: TreeInfo) =>
     t.name || tk('map.nearby.unnamed', { code: t.tree_id.slice(0, 6) });
 
-  /** Cây đang được chỉ tới. `null` = đang xem cả vườn. */
-  const [pickedTree, setPickedTree] = useState<RadarTree | null>(null);
+  /** Đích đang được chỉ tới (cây hoặc mốc). `null` = đang xem cả vườn. */
+  const [picked, setPicked] = useState<Picked | null>(null);
   const [fix, setFix] = useState<Fix | null>(null);
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [denied, setDenied] = useState(false);
@@ -289,6 +321,73 @@ const WayfindScreen: React.FC = () => {
   /** Gốc hệ toạ độ vườn — cùng công thức với sơ đồ 3D (xem `treeGeo.ts`). */
   const origin = useMemo(() => farmOrigin(farmBoundary), [farmBoundary]);
 
+  // ── Mốc vườn (chỉ nằm trong máy này — xem `markerStore.ts`) ───────────────
+  const [markers, setMarkers] = useState<FarmMarker[]>([]);
+  const [markerOpen, setMarkerOpen] = useState(false);
+
+  /**
+   * Không có mã vườn thì KHÔNG mở lối đặt mốc: mốc phải thuộc về một vườn để
+   * lần sau còn liệt kê lại đúng chỗ. Mở màn từ chi tiết một cây (route không
+   * kèm `farmId`) là đúng tình huống đó.
+   */
+  const canMark = Boolean(params.farmId);
+
+  useEffect(() => {
+    let alive = true;
+    if (!params.farmId) { setMarkers([]); return; }
+    loadFarmMarkers(params.farmId).then(m => { if (alive) setMarkers(m); });
+    return () => { alive = false; };
+  }, [params.farmId]);
+
+  const radarMarkers = useMemo(() => markers.map(markerAsRadar), [markers]);
+
+  /**
+   * Ghi mốc. `saveFarmMarker` trả về danh sách SAU khi ghi, nên chỉ cần soi mốc
+   * mới có nằm trong đó không là biết ghi được hay không — không phải đoán.
+   */
+  const addMarker = useCallback(async (name: string, photoPath?: string) => {
+    if (!params.farmId || !fix) return;
+    const m: FarmMarker = {
+      id: newMarkerId(),
+      farmId: params.farmId,
+      name: name.trim(),
+      lat: fix.pos.lat,
+      lon: fix.pos.lon,
+      accuracyM: fix.accuracyM,
+      photoPath,
+      createdAt: Date.now(),
+    };
+    const next = await saveFarmMarker(params.farmId, m);
+    setMarkers(next);
+    setMarkerOpen(false);
+    if (!next.some(x => x.id === m.id)) {
+      Alert.alert(tk('map.marker.title'), tk('map.marker.saveFail'));
+    }
+  }, [params.farmId, fix, tk]);
+
+  const askRemoveMarker = useCallback((moc: RadarTree) => {
+    if (!params.farmId) return;
+    Alert.alert(
+      tk('map.marker.deleteTitle'),
+      tk('map.marker.deleteBody', { name: moc.name }),
+      [
+        { text: tk('map.marker.cancel'), style: 'cancel' },
+        {
+          text: tk('map.marker.delete'),
+          style: 'destructive',
+          onPress: () => {
+            removeFarmMarker(params.farmId as string, moc.id).then(rest => {
+              setMarkers(rest);
+              // Đang chỉ tới đúng mốc vừa xoá thì phải thả đích ra, không thì
+              // kim còn chỉ về một chỗ không còn tồn tại trong danh sách nào.
+              setPicked(p => (p?.kind === 'marker' && p.item.id === moc.id ? null : p));
+            });
+          },
+        },
+      ],
+    );
+  }, [params.farmId, tk]);
+
   // ── Cây quanh đây (nhảy sang cây khác mà không phải quay ra danh sách) ─────
   useEffect(() => {
     let alive = true;
@@ -346,16 +445,20 @@ const WayfindScreen: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nearbyTrees, placedPos, origin, tk]);
 
-  /** Số liệu tới CÂY đang chọn — cùng phép tính với vườn, chỉ khác đích. */
+  /**
+   * Số liệu tới ĐÍCH ĐANG CHỌN — cùng phép tính với vườn, chỉ khác đích. Mốc và
+   * cây dùng CHUNG khối này: đích nào cũng chỉ là một cặp lat/lon, và viết lại
+   * phép tính cho mốc là mở đường cho hai màn nói hai khoảng cách khác nhau.
+   */
   const treeNav = useMemo(() => {
-    if (!pickedTree || !fix) return null;
-    const distanceM = haversineMeters(fix.pos, pickedTree.pos);
+    if (!picked || !fix) return null;
+    const distanceM = haversineMeters(fix.pos, picked.item.pos);
     return {
       distanceM,
-      bearingDeg: initialBearingDeg(fix.pos, pickedTree.pos),
+      bearingDeg: initialBearingDeg(fix.pos, picked.item.pos),
       state: arrivalStateOf(distanceM, fix.accuracyM),
     };
-  }, [pickedTree, fix]);
+  }, [picked, fix]);
 
   const nearby = useMemo(() => {
     if (!fix) return [];
@@ -371,6 +474,26 @@ const WayfindScreen: React.FC = () => {
       { limit: NEARBY_LIMIT, maxMeters: NEARBY_MAX_M },
     );
   }, [fix, nearbyTrees, params.treeId, placedPos, origin]);
+
+  /**
+   * Mốc kèm khoảng cách + hướng, dùng ĐÚNG `nearestFixes` của cây. KHÔNG đặt
+   * trần khoảng cách như cây: mốc là thứ chính người dùng đặt cho vườn này, họ
+   * có quyền thấy đủ cả khi đang đứng ở nhà cách vườn 20 km.
+   */
+  const markerFixes = useMemo(() => {
+    if (!fix) return [];
+    return nearestFixes(fix.pos, markers, m => ({ lat: m.lat, lon: m.lon }));
+  }, [fix, markers]);
+
+  /**
+   * Thứ tự bày mốc: GẦN NHẤT trước khi đã biết chỗ đứng, MỚI NHẤT trước khi
+   * chưa biết. Không có chỗ đứng mà vẫn giả vờ xếp theo khoảng cách thì thứ tự
+   * đó là bịa.
+   */
+  const markerRows = useMemo(
+    () => (fix ? markerFixes.map(f => f.item) : markers),
+    [fix, markerFixes, markers],
+  );
 
   // ── Rung khi tới nơi, đúng MỘT lần cho mỗi lần tới ────────────────────────
   const buzzedRef = useRef(false);
@@ -450,14 +573,18 @@ const WayfindScreen: React.FC = () => {
             headingDeg={headingDeg}
             trees={radarTrees}
             boundary={farmBoundary}
-            onPickTree={setPickedTree}
+            onPickTree={(t) => setPicked({ kind: 'tree', item: t })}
+            markers={radarMarkers}
+            onPickMarker={(m) => setPicked({ kind: 'marker', item: m })}
+            onRemoveMarker={canMark ? askRemoveMarker : undefined}
+            onAddMarker={canMark ? () => setMarkerOpen(true) : undefined}
             insetTop={insets.top + 58}
             insetBottom={insets.bottom}
           />
 
           <View style={[styles.radarHead, { paddingTop: insets.top + SPACE.sm }]}>
             <Pressable
-              onPress={() => (pickedTree ? setPickedTree(null) : navigation.goBack())}
+              onPress={() => (picked ? setPicked(null) : navigation.goBack())}
               style={styles.backBtn}
               hitSlop={10}
             >
@@ -465,13 +592,17 @@ const WayfindScreen: React.FC = () => {
             </Pressable>
             <View style={styles.radarHeadText}>
               <Text style={styles.radarTitle} numberOfLines={1}>
-                {pickedTree
-                  ? tk(treeNav?.state === 'arrived' ? 'map.tree.arrived' : 'map.tree.finding',
-                    { name: pickedTree.name })
+                {picked
+                  ? tk(
+                    picked.kind === 'marker'
+                      ? (treeNav?.state === 'arrived' ? 'map.marker.arrived' : 'map.marker.finding')
+                      : (treeNav?.state === 'arrived' ? 'map.tree.arrived' : 'map.tree.finding'),
+                    { name: picked.item.name },
+                  )
                   : tk('map.nav.arrived', { name: label })}
               </Text>
               <Text style={styles.radarSub} numberOfLines={1}>
-                {pickedTree && treeNav
+                {picked && treeNav
                   ? formatDistanceVi(treeNav.distanceM)
                   : tk(headingSource ? 'map.radar.hint' : 'map.radar.northUp')}
               </Text>
@@ -501,7 +632,7 @@ const WayfindScreen: React.FC = () => {
 
           {/* Kim tìm CÂY — góc trên bên phải, rộng 1/3 màn. Đặt ở đó để nó không
               che phần giữa, chỗ mặt phẳng đang bày các cây khác. */}
-          {pickedTree && treeNav ? (
+          {picked && treeNav ? (
             <View
               style={[
                 styles.treeNeedleBox,
@@ -632,9 +763,75 @@ const WayfindScreen: React.FC = () => {
                 ) : null}
               </View>
             ) : null}
+
+            {/* ── Mốc vườn ──
+                Cũng có ở đây, không riêng mặt phẳng tìm cây: mặt phẳng chỉ bật
+                khi đã "tới nơi" (trong vòng vài chục mét quanh trọng tâm vườn),
+                mà cổng vườn thì thường nằm ngoài vòng đó. Bắt người ta đi vào
+                giữa vườn rồi mới cho đặt mốc cổng là hỏng đúng việc cần làm. */}
+            {canMark ? (
+              <View style={styles.glassCard}>
+                <Text style={styles.nearbyTitle}>{tk('map.marker.title')}</Text>
+
+                <Pressable
+                  onPress={() => setMarkerOpen(true)}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [styles.markerCta, pressed && styles.pressed]}
+                >
+                  <Icon name="location-crosshairs" size={17} color={NATURE.paper} />
+                  <Text style={styles.markerCtaTxt}>{tk('map.marker.add')}</Text>
+                </Pressable>
+                <Text style={styles.markerNote}>{tk('map.marker.localOnly')}</Text>
+
+                {/* Chưa biết mình đứng đâu thì VẪN liệt kê mốc, chỉ bỏ trống ô
+                    khoảng cách. Ẩn cả danh sách là người dùng tưởng mốc mình
+                    đặt hôm qua đã mất, trong khi màn mới chỉ chưa bắt được GPS. */}
+                {markerRows.map(m => {
+                  const f = markerFixes.find(x => x.item.id === m.id);
+                  return (
+                    <Pressable
+                      key={m.id}
+                      // Chỉ CHẠM GIỮ, không có việc gì cho cú chạm thường — nên
+                      // cũng không tô hiệu ứng bấm, đừng hứa một hành động không có.
+                      style={styles.nearbyRow}
+                      onLongPress={() => askRemoveMarker(markerAsRadar(m))}
+                    >
+                      <View style={styles.markerIcon}>
+                        <Icon name="location-crosshairs" size={15} color={TONE.sun} />
+                      </View>
+                      <Text style={styles.nearbyName} numberOfLines={1}>
+                        {m.name || tk('map.marker.unnamed')}
+                      </Text>
+                      <Text style={styles.nearbyDist}>
+                        {f ? formatDistanceVi(f.distanceM) : '—'}
+                      </Text>
+                      <Text style={styles.nearbyDir}>
+                        {f ? compassPointVi(f.bearingDeg) : ''}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+
+                {markers.length === 0 ? (
+                  <Text style={styles.nearbyNote}>{tk('map.marker.empty')}</Text>
+                ) : (
+                  <Text style={styles.markerNote}>{tk('map.marker.hint')}</Text>
+                )}
+              </View>
+            ) : null}
           </ScrollView>
         </>
       )}
+
+      {/* Hộp đặt mốc dựng LẠI mỗi lần mở (chỉ vẽ khi `markerOpen`) — nhờ vậy tên
+          và ảnh của lượt trước không còn nằm sẵn trong ô của lượt sau. */}
+      {markerOpen ? (
+        <MarkerDialog
+          fix={fix}
+          onCancel={() => setMarkerOpen(false)}
+          onSave={addMarker}
+        />
+      ) : null}
     </View>
   );
 };
@@ -713,6 +910,128 @@ const Header: React.FC<{ title: string; onBack: () => void; top: number }> = ({
     <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
   </View>
 );
+
+/**
+ * Hộp ĐẶT MỐC.
+ *
+ * Ba thứ bắt buộc phải nói ra ngay ở đây, không đẩy sang chỗ khác:
+ *   1. Mốc CHỈ nằm trong máy này (máy chủ chưa có chỗ nhận — xem `markerStore`).
+ *   2. SAI SỐ GPS đang là bao nhiêu. Dưới tán cây 15–25 m là thường; đặt mốc
+ *      "cổng vườn" với sai số 25 m rồi tưởng nó chính xác là hỏng đúng thứ mà
+ *      mốc sinh ra để chữa.
+ *   3. Chưa bắt được vị trí thì KHÔNG cho lưu — mốc không toạ độ là một cái tên
+ *      trôi nổi, tệ hơn là không có.
+ */
+const MarkerDialog: React.FC<{
+  fix: Fix | null;
+  onCancel: () => void;
+  onSave: (name: string, photoPath?: string) => void;
+}> = ({ fix, onCancel, onSave }) => {
+  const tk = useTk();
+  const [name, setName] = useState('');
+  const [photo, setPhoto] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const takePhoto = useCallback(async () => {
+    // Nạp MỀM đúng lối `AnimalEnrollScreen`: bản dựng thiếu mô-đun máy ảnh thì
+    // báo một câu rồi vẫn lưu được mốc, chứ không nổ giữa vườn.
+    let picker: { launchCamera?: (o: unknown, cb: (r: any) => void) => void } | null = null;
+    try { picker = require('react-native-image-picker'); } catch { picker = null; }
+    if (!picker?.launchCamera) {
+      Alert.alert(tk('map.marker.title'), tk('map.marker.cameraFail'));
+      return;
+    }
+    try {
+      picker.launchCamera(await withPhotoSave(MARKER_PHOTO_OPTIONS), (r: any) => {
+        if (r?.didCancel) return;
+        const uri = r?.assets?.[0]?.uri;
+        if (uri) setPhoto(uri);
+        else if (r?.errorCode) Alert.alert(tk('map.marker.title'), tk('map.marker.cameraFail'));
+      });
+    } catch {
+      Alert.alert(tk('map.marker.title'), tk('map.marker.cameraFail'));
+    }
+  }, [tk]);
+
+  const submit = useCallback(() => {
+    if (!fix) { Alert.alert(tk('map.marker.title'), tk('map.marker.noFix')); return; }
+    if (!name.trim()) { Alert.alert(tk('map.marker.title'), tk('map.marker.needName')); return; }
+    // Chặn bấm hai lần: mỗi lần bấm sinh một mã mốc mới, nên hai lần bấm là hai
+    // mốc trùng tên nằm chồng nhau trên mặt phẳng.
+    if (saving) return;
+    setSaving(true);
+    onSave(name, photo ?? undefined);
+  }, [fix, name, photo, saving, onSave, tk]);
+
+  return (
+    <Modal transparent animationType="fade" visible onRequestClose={onCancel}>
+      <View style={styles.dialogScrim}>
+        <View style={styles.dialog}>
+          <Text style={styles.dialogTitle}>{tk('map.marker.dialog')}</Text>
+
+          <TextInput
+            style={styles.input}
+            value={name}
+            onChangeText={setName}
+            placeholder={tk('map.marker.namePlaceholder')}
+            placeholderTextColor={NATURE.barkSoft}
+            maxLength={60}
+            autoFocus
+          />
+
+          {/* Sai số hiện NGAY, không giấu sau một dấu chấm hỏi. */}
+          {!fix ? (
+            <Text style={styles.dialogWarn}>{tk('map.marker.noFix')}</Text>
+          ) : fix.accuracyM == null ? (
+            <Text style={styles.dialogWarn}>{tk('map.marker.accuracyUnknown')}</Text>
+          ) : (
+            <Text style={fix.accuracyM > POOR_ACCURACY_M ? styles.dialogWarn : styles.dialogMuted}>
+              {tk('map.marker.accuracy', { n: Math.round(fix.accuracyM) })}
+            </Text>
+          )}
+
+          <Pressable
+            onPress={takePhoto}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.dialogGhost, pressed && styles.pressed]}
+          >
+            <Icon name="camera" size={17} color={TONE.primary} />
+            <Text style={styles.dialogGhostTxt}>
+              {photo ? tk('map.marker.photoDone') : tk('map.marker.photo')}
+            </Text>
+          </Pressable>
+          {photo ? <Image source={{ uri: photo }} style={styles.dialogPhoto} /> : null}
+
+          <Text style={styles.dialogMuted}>{tk('map.marker.localOnly')}</Text>
+
+          <View style={styles.dialogRow}>
+            <Pressable
+              onPress={onCancel}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.dialogBtn, pressed && styles.pressed]}
+            >
+              <Text style={styles.dialogBtnTxt}>{tk('map.marker.cancel')}</Text>
+            </Pressable>
+            <Pressable
+              onPress={submit}
+              accessibilityRole="button"
+              disabled={!fix || saving}
+              style={({ pressed }) => [
+                styles.dialogBtn, styles.dialogBtnMain,
+                (!fix || saving) && styles.dialogBtnOff,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={[styles.dialogBtnTxt, styles.dialogBtnMainTxt]}>
+                {tk('map.marker.save')}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
 
 const Notice: React.FC<{ icon: string; text: string }> = ({ icon, text }) => (
   <View style={styles.notice}>
@@ -818,6 +1137,56 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start', minHeight: 44, paddingRight: SPACE.sm,
   },
   nearbyRetryTxt: { fontSize: 14.5, fontWeight: '700', color: TONE.primary },
+
+  // ── Mốc vườn ──────────────────────────────────────────────────────────────
+  markerCta: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.sm,
+    alignSelf: 'stretch', minHeight: 50, marginTop: SPACE.xs,
+    backgroundColor: TONE.primary, ...ORGANIC_TILE,
+    paddingHorizontal: SPACE.md,
+  },
+  markerCtaTxt: { color: NATURE.paper, fontSize: 16, fontWeight: '700' },
+  markerNote: {
+    ...TYPE.caption, fontSize: 12.5, lineHeight: 18,
+    paddingHorizontal: SPACE.xs, marginTop: SPACE.sm,
+  },
+  markerIcon: {
+    width: 32, height: 32, ...ORGANIC_TILE,
+    backgroundColor: TONE.sunSoft, alignItems: 'center', justifyContent: 'center',
+  },
+
+  dialogScrim: {
+    flex: 1, backgroundColor: SURFACE.scrim,
+    justifyContent: 'center', paddingHorizontal: SPACE.page,
+  },
+  dialog: {
+    backgroundColor: SURFACE.raised, ...ORGANIC_CARD, ...ELEVATION.cardStrong,
+    padding: SPACE.lg, gap: SPACE.sm,
+  },
+  dialogTitle: { ...TYPE.section, fontSize: 18 },
+  input: {
+    ...ORGANIC_TILE, backgroundColor: SURFACE.sunken,
+    paddingHorizontal: SPACE.md, minHeight: 50,
+    fontSize: 16, color: NATURE.bark,
+  },
+  dialogMuted: { ...TYPE.caption, fontSize: 12.5, lineHeight: 18 },
+  dialogWarn: { fontSize: 13, lineHeight: 19, color: TONE.sun },
+  dialogGhost: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACE.sm,
+    minHeight: 46, paddingHorizontal: SPACE.md,
+    ...ORGANIC_TILE, backgroundColor: TONE.primarySoft,
+  },
+  dialogGhostTxt: { fontSize: 15, fontWeight: '600', color: TONE.primaryDeep },
+  dialogPhoto: { width: '100%', height: 132, borderRadius: RADIUS.card },
+  dialogRow: { flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.xs },
+  dialogBtn: {
+    flex: 1, minHeight: 50, alignItems: 'center', justifyContent: 'center',
+    ...ORGANIC_TILE, backgroundColor: SURFACE.sunken,
+  },
+  dialogBtnMain: { backgroundColor: TONE.primary },
+  dialogBtnOff: { opacity: 0.5 },
+  dialogBtnTxt: { fontSize: 16, fontWeight: '700', color: NATURE.bark },
+  dialogBtnMainTxt: { color: NATURE.paper },
 
   emptyIcon: {
     width: 68, height: 68, ...ORGANIC_TILE, marginBottom: SPACE.xs,

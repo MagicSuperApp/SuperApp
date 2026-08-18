@@ -1,0 +1,43 @@
+# Nợ mạch dọc — hàm Rust extern "C" chưa có đường gọi nào từ app.
+# Sinh lần đầu 2026-08-18 từ origin/develop 3056c48. Gốc: commit 5ab0635 (25/06/2026)
+# đổ 46 hàm Rust vào repo trong khi cầu chỉ có 3 — không cổng nào đỏ suốt gần 2 tháng.
+#
+# Nối được hàm nào thì XOÁ dòng đó. Thêm dòng mới = phải nói lý do trong commit.
+
+taad_build_cancel_recovery_tx
+taad_build_create_child_taad_utxo_tx
+taad_build_create_taad_utxo_tx
+taad_build_deactivate_taad_tx
+taad_build_deploy_mint_registry
+taad_build_finalize_recovery_tx
+taad_build_genesis_supply_state
+taad_build_init_recovery_tx
+taad_build_mint_lamp_via_did
+taad_build_mint_via_registry
+taad_build_multi_pool_delegation_tx
+taad_build_rotate_taad_tx
+taad_build_signed_transfer
+taad_build_stake_delegation_tx
+taad_build_stake_deregistration_tx
+taad_build_update_guardians_tx
+taad_build_update_mint_registry
+taad_build_vote_delegation_tx
+taad_build_withdraw_reward_tx
+taad_construct_did
+taad_derive_cardano_address
+taad_derive_cardano_address_account
+taad_derive_ed25519_public_key
+taad_derive_payment_xprv
+taad_derive_payment_xprv_account
+taad_enclave_core_free_string
+taad_enclave_core_sha256_hex
+taad_enclave_core_verify_p256_signature
+taad_generate_controller_keypair
+taad_hkdf_derive
+taad_lampnet_build_recover_request
+taad_lampnet_build_upload_request
+taad_lampnet_recover_decrypt
+taad_publish_did_tx
+taad_sha256_bytes_hex
+taad_sha256_hex
+taad_verify_p256_signature

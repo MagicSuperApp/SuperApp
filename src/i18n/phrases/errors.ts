@@ -158,6 +158,16 @@ export const ERRORS: PhraseMap = {
     zh: '服务器返回了应用无法识别的身份编码。这是服务器端故障 — 请将此画面截图发给支持。',
     ja: 'アプリが解釈できない本人情報コードがサーバーから返されました。サーバー側の不具合です — この画面のスクリーンショットをサポートにお送りください。',
   },
+  'Máy này đã có khoá của một danh tính đã tạo trước đó. Nhập lại đúng tên đăng nhập của danh tính đó để mở lại trên máy này.': {
+    en: 'This device already holds the key of an identity created earlier. Enter that identity\u2019s username again to reopen it on this device.',
+    zh: '本机已持有先前创建的某个身份的密钥。请重新输入该身份的用户名，以在本机重新打开它。',
+    ja: 'この端末には、以前作成された本人情報の鍵がすでにあります。その本人情報のユーザー名をもう一度入力して、この端末で開き直してください。',
+  },
+  'Tên đăng nhập này thuộc về một danh tính khác, không phải danh tính đang có khoá trên máy. Kiểm tra lại tên, hoặc dùng máy đã tạo danh tính đó.': {
+    en: 'This username belongs to a different identity, not the one whose key is on this device. Check the name, or use the device where that identity was created.',
+    zh: '该用户名属于另一个身份，并非本机持有密钥的那个身份。请核对用户名，或改用创建该身份的设备。',
+    ja: 'このユーザー名は別の本人情報のものであり、この端末に鍵がある本人情報ではありません。名前を確認するか、その本人情報を作成した端末をお使いください。',
+  },
   'Máy này đã có khoá nhưng chưa mở lại được danh tính, chưa rõ vì sao. Thử lại một lần; nếu vẫn vậy, chụp màn hình này gửi hỗ trợ.': {
     en: 'This device already has a key but the identity could not be reopened, and the reason is not yet clear. Try once more; if it repeats, send support a screenshot of this message.',
     zh: '本机已有密钥，但未能重新打开身份，原因尚不明确。请再试一次；若仍如此，请将此画面截图发给支持。',

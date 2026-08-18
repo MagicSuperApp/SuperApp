@@ -135,13 +135,14 @@ export type RegisterIntent = 'resume' | 'new-person';
 export const registerIdentity = async (
   biometricKind: BiometricKind,
   intent: RegisterIntent = 'resume',
+  username?: string,
 ): Promise<GenesisResult> => {
   if (await isKeypairEnrolled()) {
     if (intent === 'new-person') throw new DeviceHasOwnerKeyError();
 
     // Nếu keypair đã tồn tại nhưng JS storage bị mất (reinstall/update/cache clear),
     // đừng bắt user đăng xuất/tạo mới. Khôi phục local identity từ native key.
-    const existing = await recoverLocalIdentityFromKey(biometricKind);
+    const existing = await recoverLocalIdentityFromKey(biometricKind, username);
     if (existing.ok) return existing.value;
 
     // Nói ra LÝ DO. Câu cũ đúng nhưng rỗng — người dùng không biết nên thử lại
@@ -292,7 +293,49 @@ type RecoverOutcome =
 
 const recoverLocalIdentityFromKey = async (
   biometricKind: BiometricKind,
+  username?: string,
 ): Promise<RecoverOutcome> => {
+  // ĐƯỜNG 1 — tra DID qua TÊN ĐĂNG NHẬP rồi đối chiếu khoá.
+  //
+  // Phải thử đường này TRƯỚC, vì đường 2 (đăng ký lại) đã đo được là KHÔNG BAO GIỜ
+  // chạy: máy chủ chặn cứng khoá đã đăng ký
+  // (`IdentityServiceImpl.java:88-94`, `ErrorCode.KEY_ALREADY_REGISTERED`), và cổng
+  // đó KHÔNG nên bỏ — nó chặn một máy khác cướp khoá của DID khác.
+  //
+  // Đây là đường TẠM. Cửa đúng là `POST /identity/lookup` có ký challenge
+  // (PhoenixKey-Database#192, tầng dữ liệu đã có sẵn `findByPublicKeyHex`). Ngày cửa
+  // đó lên thì bỏ khối này — nó bắt người dùng phải nhớ tên đăng nhập, dở hơn hẳn.
+  // Nhưng chờ cửa mới thì người dùng kẹt thật, nên dựng tạm.
+  //
+  // KHÔNG hỏi sinh trắc lại ở đây: màn gọi tới đã hỏi ngay trước đó, và việc so khoá
+  // này chỉ đọc khoá CÔNG KHAI trong chip — không mở gì, không ký gì.
+  if (username && username.trim()) {
+    try {
+      const mine = (await ownerPublicKey()).toLowerCase();
+      const { userDid } = await phoenixKeyApi.identity.resolveUsername(username.trim());
+      const did = assertSupportedBackendDid(userDid, 'PhoenixKey lookup userDid');
+      const { publicKeyHex: theirs } = await phoenixKeyApi.identity.getPubkey(did);
+
+      // Khoá trên máy KHÁC khoá của tên đăng nhập đó ⇒ người đang cầm máy gõ tên của
+      // người khác. Nói riêng, đừng gộp vào "không rõ nguyên nhân": hai việc phải làm
+      // khác hẳn nhau.
+      if (!theirs || theirs.toLowerCase() !== mine) return { ok: false, reason: 'ten_khong_khop_khoa' };
+
+      const user: AuthUser = { id: did, did, createdAt: Date.now(), updatedAt: Date.now() };
+      await migrateLegacyDidStores(did, user, biometricKind);
+      // `txHash` rỗng CÓ Ý: đường này không ghi gì lên chuỗi, chỉ nhận lại DID đã có.
+      // Bịa một mã giao dịch ở đây là nói dối về một việc chưa xảy ra.
+      return { ok: true, value: { user, txHash: '' } };
+    } catch (err) {
+      // Tên chưa đăng ký (404) hay mất sóng thì rơi xuống đường 2 — nó sẽ trả về lý
+      // do đúng của chính nó. Ghi lại để lần sau lần ngược được.
+      rLog.info('identity_lookup_by_username_failed', { raw: String(err).slice(0, 200) });
+    }
+  }
+
+  // ĐƯỜNG 2 — đăng ký lại bằng chính khoá cũ. Giữ lại cho ca máy có khoá mà khoá đó
+  // CHƯA từng đăng ký lên máy chủ (sinh khoá xong thì mất mạng giữa chừng). Với khoá
+  // đã đăng ký thì đường này chắc chắn trả lỗi, và nay lỗi đó có câu riêng.
   try {
     const publicKeyHex = await ownerPublicKey();
     const genesisMessage = `PHOENIXKEY_GENESIS:${publicKeyHex}`;
@@ -341,6 +384,10 @@ const describeRecoverFailure = (err: unknown): string => {
   const m = String((err as { message?: string })?.message ?? err ?? '');
   if (/cancel|user_cancel|huỷ|huy/i.test(m)) return 'chua_xac_thuc';
   if (/network|timeout|ECONN|Network Error/i.test(m)) return 'mat_mang';
+  // `KEY_ALREADY_REGISTERED` là mã máy chủ trả khi đăng ký lại đúng khoá cũ
+  // (`IdentityServiceImpl.java:88-94`). Ca này KHÔNG phải lỗi lạ — nó là hành vi đã
+  // biết, và cách thoát là tra DID qua tên đăng nhập ở đường 1.
+  if (/KEY_ALREADY_REGISTERED/i.test(m)) return 'can_ten_dang_nhap';
   if (/409|exist|registered|duplicate/i.test(m)) return 'may_chu_tu_choi';
   if (/did/i.test(m)) return 'did_sai_dinh_dang';
   return 'khong_ro';
@@ -364,6 +411,10 @@ const RECOVER_FAIL_MESSAGE: Record<string, string> = {
     'Máy chủ từ chối mở lại danh tính cho khoá đã có trên máy này. Đây là lỗi phía máy chủ — chụp màn hình này gửi hỗ trợ.',
   did_sai_dinh_dang:
     'Máy chủ trả về một mã danh tính app chưa hiểu được. Đây là lỗi phía máy chủ — chụp màn hình này gửi hỗ trợ.',
+  can_ten_dang_nhap:
+    'Máy này đã có khoá của một danh tính đã tạo trước đó. Nhập lại đúng tên đăng nhập của danh tính đó để mở lại trên máy này.',
+  ten_khong_khop_khoa:
+    'Tên đăng nhập này thuộc về một danh tính khác, không phải danh tính đang có khoá trên máy. Kiểm tra lại tên, hoặc dùng máy đã tạo danh tính đó.',
   khong_ro:
     'Máy này đã có khoá nhưng chưa mở lại được danh tính, chưa rõ vì sao. Thử lại một lần; nếu vẫn vậy, chụp màn hình này gửi hỗ trợ.',
 };

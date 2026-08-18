@@ -26,6 +26,7 @@ import { DEFAULT_LANG, SOURCE_LANG, type LangCode } from '../types';
 import { TRACE_STRINGS } from './trace';
 import { MAP_STRINGS } from './map';
 import { ONBOARDING_STRINGS } from './onboarding';
+import { SCAN_STRINGS } from './scan';
 import React from 'react';
 
 /** Một khoá → bản dịch đủ 4 ngôn ngữ. Thiếu là `tsc` báo, không phải người dùng. */
@@ -37,12 +38,14 @@ const REGISTRY: KeyMap = {
   ...TRACE_STRINGS,
   ...MAP_STRINGS,
   ...ONBOARDING_STRINGS,
+  ...SCAN_STRINGS,
 };
 
 export type StringKey =
   | keyof typeof TRACE_STRINGS
   | keyof typeof MAP_STRINGS
-  | keyof typeof ONBOARDING_STRINGS;
+  | keyof typeof ONBOARDING_STRINGS
+  | keyof typeof SCAN_STRINGS;
 
 /**
  * Khoá → chữ theo ngôn ngữ đang chọn.

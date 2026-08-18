@@ -49,6 +49,7 @@ import StateView from '../../../components/state/StateView';
 import RemoteImage from '../../../components/RemoteImage';
 import TreeMetadataTab from './TreeMetadataTab';
 import EntityTimeline from '../components/EntityTimeline';
+import TreePublicSheet from '../components/TreePublicSheet';
 import { formatTreeName, shortTreeCode } from '../../../utils/treeNameFormatter';
 import { loadTreeImages } from '../../../services/treeImageStore';
 import { fetchTreeViews, treeViewImageUrls } from '../../../services/treeViewsService';
@@ -358,6 +359,8 @@ const TreeDetailScreen = () => {
   const btnScale = useRef(new Animated.Value(1)).current;
 
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab ?? 'overview');
+  /** Tấm trượt "Công khai & mã QR" — mở từ nút trên thanh dưới. */
+  const [publicOpen, setPublicOpen] = useState(false);
 
   // Quả của cây — lấy từ field-reid (xem chú thích đầu file).
   const [layout, setLayout] = useState<TreeLayoutResponse | null>(null);
@@ -1250,19 +1253,50 @@ const TreeDetailScreen = () => {
         {activeTab === 'info' && <TreeMetadataTab tree={tree} />}
       </View>
 
-      {/* Existing Activity navigation — preserved per spec */}
-      {activeTab === 'overview' && fruitItems.length > 0 && (
+      {/*
+        Thanh dưới của tab Tổng quan.
+
+        ⚠ Điều kiện dựng thanh này đổi: trước đây nó chỉ hiện khi cây ĐÃ CÓ QUẢ
+        (`fruitItems.length > 0`), vì trong thanh chỉ có nút thu hoạch. Nay nút
+        "Công khai & mã QR" cũng nằm đây, mà bật công khai KHÔNG đợi cây có quả —
+        nó là mắt xích ĐẦU của chuỗi truy xuất, phải bấm được từ ngày trồng. Nên
+        thanh hiện ở mọi cây; riêng nút thu hoạch vẫn giữ điều kiện cũ.
+      */}
+      {activeTab === 'overview' && (
         <View style={[styles.bottomBar, { paddingBottom: (Platform.OS === 'ios' ? 36 : 24) + insets.bottom }]}>
+          {/* Nút PHỤ, đặt trên nút chính: viền chứ không đặc, để hai nút không
+              tranh nhau làm nút chính của màn. */}
           <TouchableOpacity
-            style={styles.harvestBtn}
-            onPress={() => (navigation as any).navigate('Activity', { tree, farm: currentFarm ?? undefined })}
+            style={styles.publicBtn}
+            onPress={() => setPublicOpen(true)}
             activeOpacity={0.88}
+            accessibilityRole="button"
           >
-            <View style={styles.btnShine} />
-            <Icon name="basket-shopping" size={19} color={COLORS.white} />
-            <Text style={styles.harvestBtnText}>Thu hoạch quả</Text>
+            <Icon name="qrcode" size={18} color={COLORS.accent} />
+            <Text style={styles.publicBtnText}>Công khai</Text>
+            <Icon name="chevron-right" size={15} color={COLORS.accent} />
           </TouchableOpacity>
+
+          {fruitItems.length > 0 && (
+            <TouchableOpacity
+              style={styles.harvestBtn}
+              onPress={() => (navigation as any).navigate('Activity', { tree, farm: currentFarm ?? undefined })}
+              activeOpacity={0.88}
+            >
+              <View style={styles.btnShine} />
+              <Icon name="basket-shopping" size={19} color={COLORS.white} />
+              <Text style={styles.harvestBtnText}>Thu hoạch</Text>
+            </TouchableOpacity>
+          )}
         </View>
+      )}
+
+      {!!tree?.id && (
+        <TreePublicSheet
+          visible={publicOpen}
+          onClose={() => setPublicOpen(false)}
+          treeId={tree.id}
+        />
       )}
 
       {/* Lightbox ảnh cây */}
@@ -1785,14 +1819,23 @@ const styles = StyleSheet.create({
   bottomBar: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     paddingHorizontal: 20,
-    paddingBottom: Platform.OS === 'ios' ? 36 : 24,
+    paddingBottom: 24,
     paddingTop: 12,
     backgroundColor: ORG_SURFACE.ground,
     borderTopWidth: 1, borderTopColor: COLORS.border,
+    flexDirection: "row", gap: 12
   },
+  publicBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    paddingHorizontal: 13,
+    paddingVertical: 8,
+    borderRadius: 6,
+    borderWidth: 1.5, borderColor: COLORS.accent, flex: 1,
+  },
+  publicBtnText: { fontSize: 14.5, fontWeight: '700', color: COLORS.accent, letterSpacing: 0.2 },
   harvestBtn: {
     backgroundColor: COLORS.accent,
-    borderRadius: 14, paddingVertical: 16,
+    borderRadius: 6, paddingHorizontal: 14, paddingVertical: 8,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 10, overflow: 'hidden', position: 'relative',
     ...ORG_ELEV.cardStrong,

@@ -1,333 +1,651 @@
-// services/fruitLookupService.ts
-//
-// TRA CỨU QUẢ CHO NGƯỜI MUA — `POST /api/fruit/lookup`.
-//
-// ── Ba đường quả, đừng lẫn ───────────────────────────────────────────────────
-// Máy chủ khai ba cửa quả, mỗi cửa một PHẠM VI và một TIỀN ĐỀ khác hẳn
-// (`OriLife-Core/MassTreeIdentify/core/server.py:8311-8319`):
-//
-//   /api/fruit/identify  NÔNG DÂN · cần đăng nhập · pool khoá cứng theo `owner`.
-//                        Đường đọc nội bộ vườn mình → `fruitReIDService.ts`.
-//   /api/fruit/scan      KHÁCH HỘI CHỢ · không đăng nhập · phạm vi = một phiên
-//                        trưng bày; phiên đóng là mã chết.
-//   /api/fruit/lookup    NGƯỜI LẠ ·  không đăng nhập · phạm vi = quả thuộc cây
-//                        mà chính nông dân đã bật CÔNG KHAI.   ← TỆP NÀY
-//
-// Máy chủ ghi thẳng vào mã: *"TUYỆT ĐỐI KHÔNG nới `/api/fruit/identify` cho người
-// lạ — nới nó là biến kho thành máy tra-cứu-ngược toàn bộ quả của mọi chủ."*
-// Nên đừng bao giờ "gộp cho gọn" hai tệp service này lại.
-//
-// ── HAI THỨ KHÔNG ĐƯỢC GỬI, và vì sao ────────────────────────────────────────
-//  1. `Authorization`. Đây là cửa của NGƯỜI MUA — người chưa có tài khoản. Kèm
-//     token vào là (a) đổi ngữ cảnh phạm vi phía máy chủ, (b) buộc người mua phải
-//     đăng nhập mới tra được xuất xứ, tức khoá cửa trước mặt đúng người cửa này
-//     sinh ra để phục vụ. Bài kiểm khẳng định KHÔNG có header này.
-//  2. `lat`/`lon`. Route CỐ Ý không nhận (`server.py:8337`): *"vị trí NGƯỜI MUA
-//     không phải thứ hệ này cần, nên không thu"*. Đường nông dân thì ngược lại —
-//     ở đó toạ độ là tín hiệu thu hẹp mạnh nhất. Đừng chép nhầm chiều.
-//
-// ── Nó KHÔNG hứa gì về độ chính xác, và đó là cố ý ───────────────────────────
-// Số đo 04/08/2026 (`server.py:8321`): ở ngưỡng 0,72 có **73% (412/564)** cặp quả
-// KHÁC NHAU trên cùng một cây bị nhận nhầm là cùng quả; siết tới mức hết nhận
-// nhầm thì chỉ giữ 7,8% quả thật. *"Không có điểm hoạt động nào cứu được một đáp
-// án đơn"* ⟹ route trả DANH SÁCH để người mua tự đối chiếu.
-//
-// Vì vậy: giao diện tiêu thụ tệp này **không được** dựng dấu tích xanh, không tự
-// đi tiếp giùm người dùng, kể cả khi `verdict === 'SOLO'`. `SOLO` nghĩa là "chỉ
-// có một ứng viên trong tầm", KHÔNG phải "chắc chắn là quả này".
+/**
+ * fruitLookupService — NGƯỜI MUA chụp một quả, hỏi "quả này từ đâu ra".
+ *
+ *   POST /api/fruit/lookup   — KHÔNG cần đăng nhập
+ *
+ * ══ HỢP ĐỒNG ĐỌC TỪ ĐÂU ═══════════════════════════════════════════════════
+ * Từ **chính máy chủ đang chạy**: `https://api.orilife.io/openapi.json`, mục
+ * `/api/fruit/lookup` (đo 2026-08-18, 146 đường). Phần mô tả ở đó tự nhận là
+ * "nguồn sự thật của hợp đồng — không có tệp .md nào khác mô tả route này".
+ *
+ * ⚠ Bản ĐẦU của tệp này viết theo một bản tóm tắt bằng lời, và sai tên gần như
+ * mọi trường: đọc `detections` (thật ra là `regions`), đòi `fruit_id` (máy chủ
+ * CỐ Ý không trả — xem phòng thủ 3 bên dưới), đọc `thumbnail_url` (thật ra là
+ * `img_urls[]`), đọc `provenance` ở gốc thẻ (thật ra nằm trong `tree`). Hậu quả
+ * đo được: mọi ứng viên bị lọc sạch vì thiếu `fruit_id`, và mọi lỗi 400 rơi vào
+ * nhánh "không rõ". Ghi lại đây để lần sau đọc openapi TRƯỚC khi viết.
+ *
+ * ── VÀO (multipart, không `Authorization`) ─────────────────────────────────
+ *   file                        bắt buộc — JPEG/PNG, trần riêng 2MB
+ *   bbox_x/bbox_y/bbox_w/bbox_h khung quanh quả (pixel ảnh GỬI ĐI), tuỳ chọn
+ *   points + shape              khoanh đa giác thay cho bbox, tuỳ chọn
+ *   sess                        mã phiên do client tự sinh (xem `lookupSession`)
+ *   (KHÔNG nhận lat/lon — máy chủ nói thẳng là không thu vị trí người mua.)
+ *
+ * ── RA 200, hai dạng ───────────────────────────────────────────────────────
+ *   (a) { ok, need_region: true, regions: [{index, bbox}], message }
+ *   (b) { ok, lookup_id, verdict: CHOICES|SOLO|EMPTY_SCOPE, verdict_label,
+ *         message, candidates: [thẻ], fruit: thẻ|null, match, warnings,
+ *         warning_messages }
+ *       thẻ = { pick, name, status, enrolled_at, n_imgs, img_urls[],
+ *               tree: { name, code, gps, created_at, public_url,
+ *                       provenance: { anchored, status, network, explorer_url,
+ *                                     label, means } } }
+ *
+ * ── RA LỖI ─────────────────────────────────────────────────────────────────
+ *   400 {"error_code":"image_unusable"}  ảnh mờ/hỏng, không nhúng được
+ *   413                                  ảnh vượt trần
+ *   429 {"error_code":"rate_limited","retry_after":N}
+ *
+ * ══ BỐN ĐIỀU MÁY CHỦ CỐ Ý LÀM, ĐỪNG CHỐNG LẠI ═════════════════════════════
+ *
+ * 1. **Không có `fruit_id`.** Thẻ chỉ có `pick` — mã CHỌN của riêng lượt tra
+ *    này. Máy chủ gọi đây là "ẩn nội tạng": không điểm, không biên, không id,
+ *    không chủ. Client tuyệt đối không được suy ra id thật rồi đem đi tra cửa
+ *    khác — nó không tồn tại ở phía này.
+ * 2. **Không có ĐIỂM SỐ.** Nên màn hình KHÔNG thể xếp hạng hay đánh dấu "khớp
+ *    nhất", và đó là điều tốt: máy soi quả nhận nhầm 73% cặp quả khác nhau cùng
+ *    một cây (đo trên prod, thư OriLife 08/08 §1). Mắt người là trọng tài, và
+ *    máy chủ đã dựng cửa này để bắt buộc như vậy.
+ * 3. **Ảnh đi qua mã hết hạn** (`/api/fruit/lookup/img/{token}`) và **thu hồi
+ *    được**: nông dân hạ cây về riêng tư thì mọi ảnh đã phát tắt ngay. Nên
+ *    KHÔNG cache `img_urls` qua phiên, và ảnh vỡ không phải lỗi — có thể là chủ
+ *    vườn vừa rút công khai.
+ * 4. **GPS đã làm thô.** `tree.gps` là VÙNG, không phải vị trí cây.
+ *
+ * ══ HAI ĐIỀU PHÍA APP CỐ Ý LÀM ════════════════════════════════════════════
+ *
+ * · **Không có tham số nào nhận toạ độ.** Không phải "mặc định tắt" — không có
+ *   đường vào. Người mua chụp quả trong bếp nhà mình; đính toạ độ bếp vào một
+ *   yêu cầu không đăng nhập là theo dõi, không phải truy xuất.
+ * · **Cân ảnh TRƯỚC khi tải lên.** Để máy chủ trả 413 thì người dùng đã ngồi hết
+ *   một lượt tải 2G rồi mới nhận lỗi. Cân KHÔNG được thì vẫn gửi — chặn oan một
+ *   tấm hợp lệ tệ hơn nhận một 413.
+ *
+ * ══ BA ĐƯỜNG QUẢ, ĐỪNG LẪN ═══════════════════════════════════════════════
+ * (Gộp từ nhánh `develop` khi hai bên cùng dựng cửa này — phần dưới là dữ kiện
+ * bên kia đo được mà bên này chưa có.)
+ *
+ * Máy chủ khai BA cửa quả, mỗi cửa một PHẠM VI và một TIỀN ĐỀ khác hẳn:
+ *
+ *   /api/fruit/identify  NÔNG DÂN · cần đăng nhập · pool khoá cứng theo `owner`.
+ *                        Đường đọc nội bộ vườn mình → `fruitReIDService.ts`.
+ *   /api/fruit/scan      KHÁCH HỘI CHỢ · không đăng nhập · phạm vi = một phiên
+ *                        trưng bày; phiên đóng là mã chết.
+ *   /api/fruit/lookup    NGƯỜI LẠ · không đăng nhập · phạm vi = quả thuộc cây mà
+ *                        chính nông dân đã bật CÔNG KHAI.        ← TỆP NÀY
+ *
+ * Máy chủ ghi thẳng vào mã: *"TUYỆT ĐỐI KHÔNG nới `/api/fruit/identify` cho người
+ * lạ — nới nó là biến kho thành máy tra-cứu-ngược toàn bộ quả của mọi chủ."* Nên
+ * đừng bao giờ "gộp cho gọn" hai tệp service này lại.
+ *
+ * Tệp RIÊNG, không nhét vào `fruitReIDService`, cũng vì lẽ đó — và vì tệp kia ký
+ * DID ở mọi lượt gọi, còn người mua vừa bổ quả ra ăn thì không có DID nào cả.
+ *
+ * ══ `SOLO` KHÔNG CÓ NGHĨA LÀ "CHẮC CHẮN LÀ QUẢ NÀY" ══════════════════════════
+ * Đo trên máy chủ 04/08/2026 (`server.py:8321`): ở ngưỡng 0,72 có **73%
+ * (412/564)** cặp quả KHÁC NHAU trên cùng một cây bị nhận nhầm là cùng quả; siết
+ * tới mức hết nhận nhầm thì chỉ giữ 7,8% quả thật. Kết luận của chính nhà đó:
+ * *"Không có điểm hoạt động nào cứu được một đáp án đơn."*
+ *
+ * ⇒ `verdict === 'SOLO'` nghĩa là **"trong tầm chỉ có một ứng viên"**, KHÔNG phải
+ * "đúng là quả này". Màn hình tiêu thụ tệp này tuyệt đối không được dựng dấu tích
+ * xanh và không được tự đi tiếp giùm người dùng, kể cả ở ca SOLO.
+ */
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { APIError } from './fruitReIDService';
+
+// ---------------------------------------------------------------------------
+// Hằng số
+// ---------------------------------------------------------------------------
+
+/** Trần dung-lượng ảnh của lane khách (`OLT_SCAN_MAX_MB`). */
+export const LOOKUP_MAX_BYTES = 2 * 1024 * 1024;
+
+/** Số ứng viên nhiều nhất. Máy chủ hứa 5; app cắt lại cho chắc. */
+export const LOOKUP_MAX_CANDIDATES = 5;
 
 const REQUEST_TIMEOUT_MS = 45_000;
 
-/** Khoá lưu mã phiên. Máy chủ dùng nó cho lớp hạn tần suất CHẶT nhất (10 lượt/phút). */
-const LOOKUP_SESSION_KEY = 'fruit_lookup_sess_v1';
+/** Chờ lại bao lâu khi máy chủ chặn tần suất mà không nói rõ. */
+export const DEFAULT_RETRY_AFTER_SEC = 60;
 
-// ── Kiểu theo hợp đồng ở `server.py:8495` ───────────────────────────────────
-// Nguồn sự thật của hợp đồng này là docstring của chính route — không có tệp .md
-// nào mô tả nó. Trường nào máy chủ chưa chắc chắn thì để `?`, KHÔNG bịa mặc định.
+// ---------------------------------------------------------------------------
+// Kiểu
+// ---------------------------------------------------------------------------
 
-/** Neo chuỗi của cây mẹ. `anchored` là thứ người mua thật sự hỏi. */
+/** `[x, y, w, h]` theo pixel của tấm ảnh ĐÃ GỬI ĐI. */
+export type LookupBbox = [number, number, number, number];
+
+/**
+ * Chỉ đúng quả nào trong ảnh. Không gửi gì ⇒ ảnh phải chỉ có một quả.
+ *
+ * ⚠ HIỆN KHÔNG MÀN NÀO GỬI. `TraceScanScreen` gửi nguyên tấm ảnh và để máy chủ
+ * tự tìm quả; nó cố ý bỏ phần khoanh vùng phía app (xem đầu màn đó). Giữ kiểu
+ * này lại vì đây là hợp đồng THẬT của máy chủ, không phải một tính năng bỏ quên
+ * — ngày nào có màn cần chỉ đúng quả (cắt ảnh, chọn trong thư viện nhiều quả)
+ * thì đường đã sẵn và đã có bài kiểm.
+ */
+export interface LookupRegionInput {
+  bbox?: LookupBbox;
+  points?: Array<[number, number]>;
+  /** Máy chủ mặc định `rect`; gửi `polygon` khi dùng `points`. */
+  shape?: string;
+}
+
+/** Bằng chứng on-chain của CÂY MẸ. */
 export interface LookupProvenance {
+  /**
+   * `false` = CHƯA NEO (có thể đang chờ lô), KHÔNG phải "hàng giả".
+   * Vắng mặt = máy chủ không nói ⇒ chưa biết (xem `isAnchored`).
+   */
   anchored?: boolean;
   status?: string;
   network?: string;
-  explorer_url?: string;
+  explorer_url?: string | null;
+  /** Câu tiếng Việt máy chủ đặt sẵn. HIỆN THẲNG, đừng tự dịch lại. */
   label?: string;
+  /** Câu giải thích "điều đó nghĩa là gì". */
   means?: string;
+  [k: string]: unknown;
 }
 
-/** Thẻ CÂY MẸ đính trong mỗi ứng viên. `code` = mã `ORI-…` công khai. */
+/** Cây mẹ, ở góc nhìn CÔNG KHAI (đã lọc, GPS đã làm thô). */
 export interface LookupTree {
-  name?: string;
-  code?: string;
-  gps?: unknown;
-  created_at?: string;
-  public_url?: string;
-  provenance?: LookupProvenance;
+  name?: string | null;
+  /** Mã `ORI-…` — đường mở hồ sơ xuất xứ công khai. */
+  code?: string | null;
+  /** VÙNG, không phải vị trí cây. */
+  gps?: [number, number] | null;
+  created_at?: string | null;
+  public_url?: string | null;
+  provenance?: LookupProvenance | null;
+  [k: string]: unknown;
 }
 
 /**
- * Một ứng viên. CHÚ Ý phần máy chủ CỐ Ý giấu (`server.py` phòng thủ #3):
- * không điểm, không biên, không `fruit_id`, không `owner`. Đừng đi tìm chúng —
- * vắng mặt là thiết kế, không phải thiếu sót.
+ * Một quả ứng viên. `pick` là mã CHỌN của lượt này — KHÔNG phải `fruit_id`
+ * (máy chủ cố ý không trả, xem §1 đầu tệp).
  */
 export interface LookupCandidate {
-  /** Số thứ tự để người dùng chỉ ("quả số mấy"), KHÔNG phải `fruit_id`. */
-  pick?: number;
-  name?: string;
-  status?: string;
-  enrolled_at?: string;
+  pick: string;
+  name?: string | null;
+  status?: string | null;
+  enrolled_at?: string | null;
   n_imgs?: number;
-  /** Đường dẫn TƯƠNG ĐỐI, có mã hết hạn. Ghép bằng `lookupImageUrl`. */
-  img_urls?: string[];
-  tree?: LookupTree;
+  /** Đã quy về URL tuyệt đối. Mã có hạn và thu hồi được — đừng cache qua phiên. */
+  img_urls: string[];
+  tree?: LookupTree | null;
+  [k: string]: unknown;
 }
 
-export type LookupVerdict = 'CHOICES' | 'SOLO' | 'EMPTY_SCOPE';
-
-/** Vùng máy chủ gợi ý khi trong khung có nhiều quả. */
+/** Một quả máy chủ thấy trong ảnh, để mời người dùng chỉ đúng quả. */
 export interface LookupRegion {
   index: number;
-  bbox: [number, number, number, number];
+  bbox: LookupBbox;
 }
 
-export interface FruitLookupResponse {
-  ok?: boolean;
-  /** true ⟹ CHƯA có kết quả: phải mời người dùng chỉ đúng một quả rồi gửi lại. */
-  need_region?: boolean;
-  regions?: LookupRegion[];
-  lookup_id?: string;
-  verdict?: LookupVerdict;
-  verdict_label?: string;
-  message?: string;
-  candidates?: LookupCandidate[];
-  /** Chỉ khác null khi `verdict === 'SOLO'`. */
-  fruit?: LookupCandidate | null;
-  match?: Record<string, unknown>;
-  warnings?: string[];
-  /** Câu tiếng Việt sẵn để hiện — ưu tiên dùng cái này hơn tự viết lại. */
-  warning_messages?: string[];
-}
-
-export type LookupErrorKind =
-  | 'image_unusable'   // 400 — không nhúng được ảnh (mờ/hỏng)
-  | 'too_large'        // 413 — vượt trần riêng của lane khách (2 MB)
-  | 'rate_limited'     // 429 — quá tần suất HOẶC vượt trần đồng thời
-  | 'network'
-  | 'server';
-
-export interface LookupError {
-  kind: LookupErrorKind;
-  /** Câu CHO NGƯỜI ĐỌC. Ưu tiên câu của máy chủ nếu có. */
-  message: string;
-  http_status?: number;
-  /** Chỉ có với `rate_limited`. Giây. */
-  retry_after?: number;
-}
-
-export type LookupResult =
-  | { ok: true; data: FruitLookupResponse }
-  | { ok: false; error: LookupError };
-
-/** Khoanh vùng quả — cùng khuôn với đường nông dân để hai bên không lệch. */
-export interface LookupRegionInput {
-  bbox: [number, number, number, number];
-  shape?: 'rect' | 'poly';
-  points?: Array<[number, number]>;
-}
-
-/** Báo cáo cổng-trên-máy. Máy chủ CHỈ dùng để ĐO, không đổi kết quả. */
-export interface LookupGateReport {
-  coarse_class?: string;
-  frames_gated?: number;
-  gate_available?: boolean;
-}
-
-function trimBase(base: string): string {
-  return (base ?? '').trim().replace(/\/+$/, '');
-}
+/** Máy chủ tự đặt tên cho kết quả. Để `| string` vì bản sau có thể thêm. */
+export type LookupVerdict = 'CHOICES' | 'SOLO' | 'EMPTY_SCOPE' | string;
 
 /**
- * Mã phiên bền theo lần cài. Máy chủ nói rõ mã này GIẢ ĐƯỢC nên nó là lớp GIỮ
- * TRẢI NGHIỆM, không phải lớp an ninh — ta không cần bí mật, chỉ cần ỔN ĐỊNH:
- * đổi mã mỗi lượt thì lớp hạn tần suất chặt nhất (10/phút/phiên) mất tác dụng và
- * người dùng rơi thẳng xuống lớp địa chỉ gọi, nơi cả một quán cà phê sau NAT
- * dùng chung ngân sách.
+ * Kết quả một lượt tra. BẢY nhánh, và chỉ nhánh cuối là hỏng hóc không rõ.
+ *
+ * Tách nhỏ như vậy vì mỗi nhánh dẫn tới một hành động KHÁC nhau ở màn quét:
+ * `need_region` mời chạm chọn, `image_unusable` mời chụp lại gần hơn,
+ * `rate_limited` bắt buộc KHOÁ nút chụp, `empty_scope` là câu trả lời bình
+ * thường ("chưa có quả công khai nào giống"). Gộp chúng vào một câu "có trục
+ * trặc" là ném đi đúng thứ người dùng cần biết để làm tiếp.
  */
-export async function getLookupSession(): Promise<string> {
-  try {
-    const saved = await AsyncStorage.getItem(LOOKUP_SESSION_KEY);
-    if (saved) return saved;
-  } catch {
-    // Đọc hỏng → dùng mã tạm cho lượt này. KHÔNG chặn người mua vì một lần đọc đĩa.
+export type FruitLookupResult =
+  | {
+    kind: 'candidates';
+    candidates: LookupCandidate[];
+    /** Chỉ khác `null` khi `verdict === 'SOLO'`. */
+    solo: LookupCandidate | null;
+    verdict?: LookupVerdict;
+    /** Nhãn tiếng Việt của máy chủ cho verdict. */
+    verdictLabel?: string;
+    lookupId?: string;
+    message?: string;
+    /** `warning_messages` — câu tiếng Việt, hiện thẳng. */
+    warnings: string[];
   }
-  const fresh = `s${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
-  try {
-    await AsyncStorage.setItem(LOOKUP_SESSION_KEY, fresh);
-  } catch {
-    // Ghi hỏng cũng đi tiếp — mã tạm vẫn phục vụ được lượt này.
+  | { kind: 'need_region'; regions: LookupRegion[]; message?: string }
+  /** Không có quả CÔNG KHAI nào giống. Một câu trả lời, không phải lỗi. */
+  | { kind: 'empty_scope'; message?: string }
+  /** 400 — ảnh mờ/hỏng, máy chủ không nhúng được. Chụp lại là xong. */
+  | { kind: 'image_unusable'; message?: string }
+  /** Ảnh vượt trần 2MB. */
+  | { kind: 'too_large'; bytes: number; limit: number }
+  /** 429 — PHẢI khoá nút chụp tới hạn máy chủ đưa, không được thử lại ngay. */
+  | { kind: 'rate_limited'; retryAfterSec: number; message?: string }
+  | { kind: 'error'; error: APIError };
+
+// ---------------------------------------------------------------------------
+// Mã phiên
+// ---------------------------------------------------------------------------
+
+let _sess: string | null = null;
+
+/**
+ * Mã phiên gửi kèm mỗi lượt tra (`sess`).
+ *
+ * Máy chủ dùng nó cho lớp hạn tần suất CHẶT NHẤT, và tự nhận đây là lớp "GIỮ
+ * TRẢI NGHIỆM" chứ không phải lớp an ninh (giả được). Nên giá trị chỉ cần ổn
+ * định trong một lần chạy app: gửi mã ổn định thì mỗi người dùng có ngân sách
+ * riêng; KHÔNG gửi thì tất cả rơi chung vào lớp địa chỉ gọi — và ở một quán cà
+ * phê hay một hội chợ dùng chung wifi, người thứ hai bị khoá vì người thứ nhất.
+ *
+ * Sinh mới mỗi lần mở app, KHÔNG lưu xuống đĩa: đây không phải danh tính, và
+ * một mã theo máy vĩnh viễn thì đúng là thứ dùng để lần theo người mua.
+ *
+ * (Nhánh `develop` lưu mã này vào AsyncStorage. Đã cân nhắc và giữ bản không
+ * lưu: máy chủ tự nhận đây là lớp GIỮ TRẢI NGHIỆM chứ không phải lớp an ninh và
+ * "giả được", nên lưu xuống đĩa chẳng siết thêm được gì — chỉ đổi lấy một mã bền
+ * theo máy, tức đúng thứ dùng để lần theo một người mua không đăng nhập.)
+ */
+export function lookupSession(): string {
+  if (!_sess) {
+    _sess = `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
   }
-  return fresh;
+  return _sess;
 }
 
-/**
- * Ghép URL ảnh ứng viên. `img_urls` máy chủ trả là đường dẫn TƯƠNG ĐỐI kèm mã
- * hết hạn và thu hồi được (`/api/fruit/lookup/img/{token}`) — đừng tự dựng đường
- * khác, mã nằm trong chính chuỗi đó.
- */
-export function lookupImageUrl(base: string, relative: string): string | null {
-  const b = trimBase(base);
-  const r = (relative ?? '').trim();
-  if (!b || !r) return null;
-  // Máy chủ đã trả đường tuyệt đối (bản sau đổi ý) → dùng nguyên.
-  if (/^https?:\/\//i.test(r)) return r;
-  return `${b}${r.startsWith('/') ? '' : '/'}${r}`;
+/** Chỉ dùng cho test — trả mã phiên về trạng thái chưa sinh. */
+export function _resetLookupSession(): void {
+  _sess = null;
 }
 
-/**
- * `true` khi phản hồi là "chưa xong, hãy chỉ đúng một quả" — KHÔNG phải kết quả.
- * Tách thành hàm thuần để màn hình không phải tự đoán bằng cách dò trường.
- */
-export function needsRegionPick(r: FruitLookupResponse | undefined | null): boolean {
-  return !!r?.need_region;
-}
+// ---------------------------------------------------------------------------
+// Đọc kết quả — mấy câu hỏi màn hình hay hỏi
+// ---------------------------------------------------------------------------
 
 /**
- * Danh sách ứng viên đã chuẩn hoá — gộp `fruit` của ca `SOLO` vào cùng một mảng.
+ * Cây mẹ đã neo lên chuỗi chưa: `true` · `false` · `null` (KHÔNG BIẾT).
  *
- * Vì sao gộp: `SOLO` chỉ nghĩa là "trong tầm chỉ có một ứng viên", KHÔNG phải
- * "đúng là quả này". Trả về hai hình dạng khác nhau cho hai ca sẽ dụ màn hình
- * vẽ hai kiểu — rồi ca một-ứng-viên trông như một câu khẳng định. Một hình dạng,
- * một cách vẽ, người mua tự đối chiếu ở cả hai ca.
+ * Ba giá trị chứ không phải hai. Máy chủ không gửi `provenance` thì app không
+ * được kết luận "chưa neo" — nó chỉ được nói "chưa biết". Đọc chỗ vắng thành
+ * `false` là in một câu khẳng định mà không ai đo được.
  */
-export function lookupCandidates(r: FruitLookupResponse | undefined | null): LookupCandidate[] {
-  if (!r) return [];
-  const list = Array.isArray(r.candidates) ? r.candidates : [];
-  if (list.length > 0) return list;
-  return r.fruit ? [r.fruit] : [];
+export function isAnchored(p: LookupProvenance | null | undefined): boolean | null {
+  if (!p || typeof p !== 'object') return null;
+  if (typeof p.anchored === 'boolean') return p.anchored;
+  if (typeof p.status === 'string') {
+    if (p.status === 'anchored' || p.status === 'confirmed') return true;
+    if (p.status === 'pending' || p.status === 'none' || p.status === 'unanchored') return false;
+  }
+  return null;
+}
+
+/** Bằng chứng của một ứng viên nằm trong `tree`, không ở gốc thẻ. */
+export function provenanceOf(c: LookupCandidate | null | undefined): LookupProvenance | null {
+  const p = c?.tree?.provenance;
+  return p && typeof p === 'object' ? p : null;
 }
 
 /**
- * `EMPTY_SCOPE` = tầm tra cứu RỖNG, tức chưa nông dân nào bật công khai cây nào.
+ * URL trình duyệt chuỗi, ĐÃ LỌC. `null` = không có gì an toàn để mở.
  *
- * Đây KHÔNG phải "không tìm thấy quả". Phân biệt hai câu này là bắt buộc: đo trên
- * kho sản xuất 08/2026 (`server.py:8325`) là **139 cây — 54 riêng tư, 85 chưa
- * đặt, 0 công khai**, nên hôm nay đây là câu trả lời THƯỜNG GẶP NHẤT. Hiện nó
- * thành "không tìm thấy" là đổ lỗi cho người mua về một việc họ không làm được gì.
+ * ⚠ Chuỗi này do máy chủ gửi và app đem thẳng vào `Linking.openURL`. Không lọc
+ * thì một máy chủ bị chiếm (hoặc một bản thử cấu hình sai) đẩy được `javascript:`
+ * hay deep-link của app khác vào tay người dùng chỉ bằng một trường JSON.
  */
-export function isEmptyScope(r: FruitLookupResponse | undefined | null): boolean {
-  return r?.verdict === 'EMPTY_SCOPE';
+export function safeExplorerUrl(p: LookupProvenance | null | undefined): string | null {
+  return safeHttpUrl(typeof p?.explorer_url === 'string' ? p.explorer_url : null);
+}
+
+/** Cùng luật lọc, dùng chung cho `tree.public_url`. */
+export function safeHttpUrl(raw: string | null | undefined): string | null {
+  const s = typeof raw === 'string' ? raw.trim() : '';
+  if (!s) return null;
+  const lower = s.toLowerCase();
+  if (!lower.startsWith('http://') && !lower.startsWith('https://')) return null;
+  return s;
+}
+
+/** Ảnh đầu tiên của ứng viên. `null` khi thẻ chưa có ảnh nào dùng được. */
+export function candidateImageUrl(c: LookupCandidate | null | undefined): string | null {
+  const first = c?.img_urls?.find((u) => typeof u === 'string' && u.trim().length > 0);
+  return first ? first.trim() : null;
+}
+
+// ---------------------------------------------------------------------------
+// Đọc thân trả về — thuần, test được
+// ---------------------------------------------------------------------------
+
+function _num(v: unknown): number | undefined {
+  return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+}
+
+function _str(v: unknown): string | null {
+  return typeof v === 'string' && v.trim() ? v.trim() : null;
+}
+
+function _bbox(v: unknown): LookupBbox | null {
+  if (!Array.isArray(v) || v.length < 4) return null;
+  const four = v.slice(0, 4).map(_num);
+  if (four.some((n) => n === undefined)) return null;
+  return four as LookupBbox;
 }
 
 /**
- * Người lạ chụp một quả → tối đa 5 ứng viên kèm ảnh trong tập quả CÔNG KHAI.
+ * Ảnh của lane khách là đường tương đối (`/api/fruit/lookup/img/{token}`). Quy
+ * về tuyệt đối NGAY khi đọc, để không chỗ nào phía trên phải nhớ ghép base.
+ */
+function _absUrl(raw: unknown, baseUrl: string): string | null {
+  const s = _str(raw);
+  if (!s) return null;
+  if (/^https?:\/\//i.test(s)) return s;
+  const base = baseUrl.replace(/\/+$/, '');
+  return s.startsWith('/') ? `${base}${s}` : `${base}/${s}`;
+}
+
+function _card(raw: unknown, baseUrl: string): LookupCandidate | null {
+  const o = (raw ?? {}) as Record<string, unknown>;
+  const pick = _str(o.pick);
+  // Không có `pick` thì không chọn tiếp được gì — một dòng ảnh không bấm được là
+  // một dòng bày ra để làm người ta bấm hụt.
+  if (!pick) return null;
+
+  const imgs = Array.isArray(o.img_urls)
+    ? o.img_urls.map((u) => _absUrl(u, baseUrl)).filter((u): u is string => u !== null)
+    : [];
+
+  const treeRaw = (o.tree ?? null) as Record<string, unknown> | null;
+  const tree: LookupTree | null = treeRaw && typeof treeRaw === 'object'
+    ? {
+      ...treeRaw,
+      name: _str(treeRaw.name),
+      code: _str(treeRaw.code),
+      public_url: _str(treeRaw.public_url),
+      created_at: _str(treeRaw.created_at),
+      gps: Array.isArray(treeRaw.gps) && treeRaw.gps.length >= 2 &&
+        _num(treeRaw.gps[0]) !== undefined && _num(treeRaw.gps[1]) !== undefined
+        ? [treeRaw.gps[0] as number, treeRaw.gps[1] as number]
+        : null,
+      provenance: treeRaw.provenance && typeof treeRaw.provenance === 'object'
+        ? (treeRaw.provenance as LookupProvenance)
+        : null,
+    }
+    : null;
+
+  return {
+    ...o,
+    pick,
+    name: _str(o.name),
+    status: _str(o.status),
+    enrolled_at: _str(o.enrolled_at),
+    n_imgs: _num(o.n_imgs),
+    img_urls: imgs,
+    tree,
+  };
+}
+
+/**
+ * JSON máy chủ → `FruitLookupResult`. Tách khỏi `fetch` để test được không cần mạng.
  *
- * KHÔNG ném. Mọi lỗi về `{ ok: false, error }` — màn này phục vụ người đứng giữa
- * chợ, không có ai bên cạnh để đọc stack trace.
+ * Thứ tự xét CÓ CHỦ Ý: `need_region` xét TRƯỚC danh sách ứng viên. Máy chủ có thể
+ * trả kèm cả hai; ưu tiên ứng viên trong ca đó là bày danh sách của quả NÀO ĐÓ
+ * trong ảnh mà người mua tưởng là quả mình đang hỏi.
+ */
+export function parseLookupBody(body: unknown, baseUrl: string): FruitLookupResult {
+  const b = (body ?? {}) as Record<string, unknown>;
+
+  // Bẫy HAI TẦNG `ok` như mọi cửa khác của máy chủ này: `{"ok": false}` có thể về
+  // kèm HTTP 200. Chỉ đọc mã HTTP là bỏ sót.
+  if (b.ok === false && b.need_region !== true) {
+    return {
+      kind: 'error',
+      error: {
+        type: 'server_error',
+        detail: String(b.error ?? b.detail ?? b.message ?? 'Máy chủ từ chối'),
+        http_status: 200,
+      },
+    };
+  }
+
+  const message = _str(b.message) ?? undefined;
+
+  if (b.need_region === true) {
+    const raw = Array.isArray(b.regions) ? b.regions : [];
+    const regions: LookupRegion[] = [];
+    for (let i = 0; i < raw.length; i++) {
+      const o = (raw[i] ?? {}) as Record<string, unknown>;
+      const bbox = _bbox(o.bbox);
+      if (bbox) regions.push({ index: _num(o.index) ?? i, bbox });
+    }
+    return { kind: 'need_region', regions, message };
+  }
+
+  const verdict = _str(b.verdict) ?? undefined;
+  const solo = _card(b.fruit, baseUrl);
+
+  const cards: LookupCandidate[] = [];
+  for (const raw of Array.isArray(b.candidates) ? b.candidates : []) {
+    const c = _card(raw, baseUrl);
+    if (c) cards.push(c);
+    if (cards.length >= LOOKUP_MAX_CANDIDATES) break;
+  }
+  // Verdict SOLO có thể chỉ trả `fruit`; đưa nó vào danh sách để màn hình chỉ
+  // phải biết MỘT hình dạng.
+  if (cards.length === 0 && solo) cards.push(solo);
+
+  if (cards.length === 0) {
+    // Bao gồm cả `EMPTY_SCOPE` lẫn ca máy chủ trả danh sách rỗng không nói gì —
+    // với người mua thì hai ca đó là cùng một câu trả lời.
+    return { kind: 'empty_scope', message };
+  }
+
+  const warnings = Array.isArray(b.warning_messages)
+    ? b.warning_messages.map(_str).filter((s): s is string => s !== null)
+    : [];
+
+  return {
+    kind: 'candidates',
+    candidates: cards,
+    solo,
+    verdict,
+    verdictLabel: _str(b.verdict_label) ?? undefined,
+    lookupId: _str(b.lookup_id) ?? undefined,
+    message,
+    warnings,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Cân ảnh trước khi gửi
+// ---------------------------------------------------------------------------
+
+/**
+ * Dung-lượng tệp theo byte, hoặc `null` khi KHÔNG ĐO ĐƯỢC.
+ *
+ * `null` và `0` là hai chuyện khác nhau: `0` là tệp rỗng thật, `null` là "không
+ * cân được" (URI `content://`, thiếu `expo-file-system`, bản signed lỗi
+ * ExpoModulesCore…). Nơi gọi phải cho `null` đi tiếp — chặn oan một tấm ảnh hợp
+ * lệ tệ hơn là để máy chủ trả 413.
+ */
+export async function imageBytes(uri: string): Promise<number | null> {
+  if (!uri || !uri.startsWith('file://')) return null;
+  try {
+    // `legacy` vì `getInfoAsync` còn nằm ở đó trên SDK này — khớp `treeDraftStore`.
+    // `require` NÉM nếu ExpoModulesCore chưa cài; catch trả `null`.
+    const FileSystem = require('expo-file-system/legacy');
+    const info = await FileSystem.getInfoAsync(uri);
+    const size = info?.size;
+    return typeof size === 'number' && Number.isFinite(size) ? size : null;
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Cửa duy nhất
+// ---------------------------------------------------------------------------
+
+/** Đọc `retry_after` từ thân, rồi tới header, rồi mới tới mặc định. */
+function _retryAfter(body: unknown, header: string | null): number {
+  const b = (body ?? {}) as Record<string, unknown>;
+  const fromBody = _num(b.retry_after);
+  if (fromBody !== undefined && fromBody > 0) return Math.ceil(fromBody);
+  const fromHeader = header ? parseInt(header, 10) : NaN;
+  if (Number.isFinite(fromHeader) && fromHeader > 0) return fromHeader;
+  return DEFAULT_RETRY_AFTER_SEC;
+}
+
+/**
+ * Tra nguồn gốc một quả từ ảnh. KHÔNG cần đăng nhập.
+ *
+ * @param baseUrl    gốc máy chủ (`ORILIFE_BASE`)
+ * @param imagePath  URI ảnh JPEG/PNG trên máy
+ * @param region     bbox / points chỉ đúng quả cần hỏi (bỏ trống nếu ảnh chỉ 1 quả)
+ *
+ * KHÔNG có tham số vị trí, và sẽ không bao giờ có — xem đầu tệp.
+ * KHÔNG ném: mọi hỏng hóc gói vào một nhánh.
  */
 export async function lookupFruit(
   baseUrl: string,
   imagePath: string,
-  opts?: {
-    region?: LookupRegionInput;
-    sess?: string;
-    gate?: LookupGateReport;
-  },
-): Promise<LookupResult> {
-  const b = trimBase(baseUrl);
-  if (!b) {
-    return { ok: false, error: { kind: 'server', message: 'Chưa cấu hình máy chủ.' } };
+  region?: LookupRegionInput,
+): Promise<FruitLookupResult> {
+  const uri = (imagePath ?? '').trim();
+  if (!uri) {
+    return {
+      kind: 'error',
+      error: { type: 'validation_error', detail: 'Chưa có ảnh để tra', http_status: 0 },
+    };
+  }
+
+  const bytes = await imageBytes(uri);
+  if (bytes !== null && bytes > LOOKUP_MAX_BYTES) {
+    return { kind: 'too_large', bytes, limit: LOOKUP_MAX_BYTES };
   }
 
   const form = new FormData();
-  (form as unknown as { append: (k: string, v: unknown) => void }).append(
-    'file', { uri: imagePath, type: 'image/jpeg', name: 'fruit.jpg' });
-
-  const region = opts?.region;
-  if (region) {
+  const isPng = uri.toLowerCase().endsWith('.png');
+  (form as unknown as { append: (k: string, v: unknown) => void }).append('file', {
+    uri,
+    type: isPng ? 'image/png' : 'image/jpeg',
+    name: isPng ? 'lookup.png' : 'lookup.jpg',
+  });
+  if (region?.bbox) {
+    // Máy chủ khai bốn trường này là CHUỖI (openapi: type string) — gửi số thô
+    // qua FormData của RN cũng thành chuỗi, nhưng ép ở đây cho khỏi phụ thuộc.
     form.append('bbox_x', String(region.bbox[0]));
     form.append('bbox_y', String(region.bbox[1]));
     form.append('bbox_w', String(region.bbox[2]));
     form.append('bbox_h', String(region.bbox[3]));
-    if (region.shape) form.append('shape', region.shape);
-    if (region.points) form.append('points', JSON.stringify(region.points));
   }
+  if (region?.points && region.points.length > 0) {
+    form.append('points', JSON.stringify(region.points));
+    form.append('shape', region.shape ?? 'polygon');
+  } else if (region?.shape) {
+    form.append('shape', region.shape);
+  }
+  form.append('sess', lookupSession());
+  // Ở ĐÂY KHÔNG CÓ `lat`/`lon`. Ai định thêm: đọc đầu tệp trước.
 
-  const sess = opts?.sess ?? (await getLookupSession());
-  form.append('sess', sess);
-
-  const gate = opts?.gate;
-  if (gate?.coarse_class) form.append('coarse_class', gate.coarse_class);
-  if (gate?.frames_gated !== undefined) form.append('frames_gated', String(gate.frames_gated));
-  if (gate?.gate_available !== undefined) form.append('gate_available', gate.gate_available ? '1' : '0');
-
-  // KHÔNG `Authorization`, KHÔNG `lat`/`lon` — xem đầu tệp.
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const resp = await fetch(`${b}/api/fruit/lookup`, {
+    const resp = await fetch(`${baseUrl}/api/fruit/lookup`, {
       method: 'POST',
+      // KHÔNG `Authorization`: cửa công khai, người mua không có tài khoản.
       headers: { Accept: 'application/json' },
       body: form,
-      signal: ctrl.signal,
+      signal: controller.signal,
     });
-
-    if (resp.status === 413) {
-      return {
-        ok: false,
-        error: { kind: 'too_large', message: 'Ảnh quá lớn, chụp lại nhỏ hơn.', http_status: 413 },
-      };
-    }
-
-    if (resp.status === 429) {
-      // Máy chủ trả `retry_after` trong THÂN; header `Retry-After` là đường lui.
-      let retry: number | undefined;
-      let msg = 'Máy chủ đang bận, thử lại sau.';
-      try {
-        const body = await resp.json();
-        if (typeof body?.retry_after === 'number') retry = body.retry_after;
-        if (typeof body?.message === 'string' && body.message) msg = body.message;
-      } catch {
-        /* thân không đọc được → dùng header */
-      }
-      if (retry === undefined) {
-        const h = resp.headers.get('Retry-After');
-        if (h) retry = parseInt(h, 10);
-      }
-      return { ok: false, error: { kind: 'rate_limited', message: msg, http_status: 429, retry_after: retry } };
-    }
+    clearTimeout(timer);
 
     if (resp.status === 400) {
-      let msg = 'Ảnh không dùng được — chụp lại rõ hơn.';
-      try {
-        const body = await resp.json();
-        if (typeof body?.message === 'string' && body.message) msg = body.message;
-      } catch {
-        /* giữ câu mặc định */
+      // Hợp đồng: `image_unusable` — ảnh mờ/hỏng/không đọc được. ĐÂY LÀ CA HAY
+      // GẶP NHẤT ở đường chụp quả, và nó có cách xử rõ ràng (chụp lại gần hơn,
+      // đủ sáng) nên KHÔNG được gộp vào "lỗi không rõ".
+      const body = await resp.json().catch(() => null);
+      const code = _str((body as any)?.error_code);
+      if (code === 'image_unusable' || code === null) {
+        return { kind: 'image_unusable', message: _str((body as any)?.message) ?? undefined };
       }
-      return { ok: false, error: { kind: 'image_unusable', message: msg, http_status: 400 } };
+      return {
+        kind: 'error',
+        error: { type: 'validation_error', detail: code, http_status: 400 },
+      };
     }
-
+    if (resp.status === 413) {
+      // Máy chủ cân lại và từ chối — xảy ra khi phía app không cân được.
+      return { kind: 'too_large', bytes: bytes ?? -1, limit: LOOKUP_MAX_BYTES };
+    }
+    if (resp.status === 429) {
+      const body = await resp.json().catch(() => null);
+      return {
+        kind: 'rate_limited',
+        retryAfterSec: _retryAfter(body, resp.headers.get('Retry-After')),
+        message: _str((body as any)?.message) ?? undefined,
+      };
+    }
+    if (resp.status === 415) {
+      return {
+        kind: 'error',
+        error: {
+          type: 'validation_error',
+          detail: 'Máy chủ chỉ nhận ảnh JPEG hoặc PNG',
+          http_status: 415,
+        },
+      };
+    }
+    if (resp.status === 422) {
+      let detail = 'Ảnh không hợp lệ';
+      try {
+        const j = await resp.json();
+        // FastAPI trả `detail` là MẢNG lỗi từng trường; nối lại thay vì in
+        // "[object Object]" lên mặt người dùng.
+        detail = Array.isArray(j?.detail)
+          ? j.detail.map((d: any) => d?.msg ?? String(d)).join(' · ')
+          : String(j?.detail ?? detail);
+      } catch { /* giữ câu mặc định */ }
+      return { kind: 'error', error: { type: 'validation_error', detail, http_status: 422 } };
+    }
+    if (resp.status === 404) {
+      return {
+        kind: 'error',
+        error: {
+          type: 'validation_error',
+          detail: 'Máy chủ chưa bật tra nguồn gốc bằng ảnh',
+          http_status: 404,
+        },
+      };
+    }
+    if (resp.status >= 500) {
+      return {
+        kind: 'error',
+        error: { type: 'server_error', detail: `Lỗi máy chủ HTTP ${resp.status}`, http_status: resp.status },
+      };
+    }
     if (!resp.ok) {
       return {
-        ok: false,
-        error: { kind: 'server', message: `Máy chủ trả HTTP ${resp.status}.`, http_status: resp.status },
+        kind: 'error',
+        error: { type: 'server_error', detail: `HTTP ${resp.status}`, http_status: resp.status },
       };
     }
 
-    const data = (await resp.json()) as FruitLookupResponse;
-    return { ok: true, data };
-  } catch (e) {
-    const aborted = (e as Error)?.name === 'AbortError';
+    const body = await resp.json().catch(() => null);
+    if (body === null) {
+      return {
+        kind: 'error',
+        error: { type: 'server_error', detail: 'Máy chủ trả 200 nhưng thân không đọc được', http_status: 200 },
+      };
+    }
+    return parseLookupBody(body, baseUrl);
+  } catch (err: unknown) {
+    clearTimeout(timer);
+    const isTimeout = err instanceof Error && err.name === 'AbortError';
     return {
-      ok: false,
+      kind: 'error',
       error: {
-        kind: 'network',
-        message: aborted ? 'Quá hạn chờ máy chủ.' : 'Không nối được máy chủ.',
+        type: 'network_error',
+        detail: isTimeout ? 'Quá hạn chờ máy chủ' : String(err),
+        http_status: 0,
       },
     };
-  } finally {
-    clearTimeout(timer);
   }
 }

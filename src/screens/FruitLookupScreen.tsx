@@ -36,8 +36,8 @@ import { COLORS } from '../constants';
 import { ORILIFE_BASE } from '../services/orilifeBase';
 import { withPhotoSave } from '../services/mediaSavePermission';
 import {
-  lookupFruit, lookupCandidates, lookupImageUrl, needsRegionPick, isEmptyScope,
-  type FruitLookupResponse, type LookupCandidate, type LookupRegion,
+  candidateImageUrl, lookupFruit,
+  type FruitLookupResult, type LookupCandidate, type LookupRegion,
 } from '../services/fruitLookupService';
 
 /**
@@ -59,7 +59,15 @@ const FruitLookupScreen: React.FC = () => {
 
   const [photo, setPhoto] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [res, setRes] = useState<FruitLookupResponse | null>(null);
+  /**
+   * Kết quả của lượt tra gần nhất, ở dạng NHÁNH.
+   *
+   * Nhánh gộp lại khi hợp nhất với `feat/scan`: hai nhánh cùng dựng cửa này, và
+   * bản được giữ trả một union bảy nhánh thay cho `{ok, data, error}`. Đổi lại là
+   * mỗi ca (`need_region` · `empty_scope` · `image_unusable` · `rate_limited`)
+   * hiện ra một câu khác nhau mà không phải soi vào `error.code`.
+   */
+  const [res, setRes] = useState<FruitLookupResult | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [retryAfter, setRetryAfter] = useState<number | null>(null);
 
@@ -67,18 +75,28 @@ const FruitLookupScreen: React.FC = () => {
     setBusy(true);
     setErr(null);
     setRetryAfter(null);
-    const r = await lookupFruit(ORILIFE_BASE, uri, {
-      region: region ? { bbox: region.bbox, shape: 'rect' } : undefined,
-    });
+    const r = await lookupFruit(
+      ORILIFE_BASE,
+      uri,
+      region ? { bbox: region.bbox, shape: 'rect' } : undefined,
+    );
     setBusy(false);
+    setRes(r);
 
-    if (!r.ok) {
-      setRes(null);
-      setErr(r.error.message);
-      setRetryAfter(r.error.retry_after ?? null);
+    // Câu của MÁY CHỦ thắng câu app soạn — nó biết chuyện gì vừa xảy ra rõ hơn.
+    if (r.kind === 'error') { setErr(r.error.detail); return; }
+    if (r.kind === 'rate_limited') {
+      setErr(r.message ?? 'Máy chủ đang bận, chờ một chút rồi thử lại.');
+      setRetryAfter(r.retryAfterSec);
       return;
     }
-    setRes(r.data);
+    if (r.kind === 'too_large') {
+      setErr('Ảnh quá nặng để gửi đi. Chụp lại giúp.');
+      return;
+    }
+    if (r.kind === 'image_unusable') {
+      setErr(r.message ?? 'Ảnh chưa dùng được — lại gần hơn, đủ sáng, chụp lại giúp.');
+    }
   }, []);
 
   const takePhoto = useCallback(async () => {
@@ -96,9 +114,10 @@ const FruitLookupScreen: React.FC = () => {
     });
   }, [run]);
 
-  const cands = lookupCandidates(res);
-  const needRegion = needsRegionPick(res);
-  const emptyScope = isEmptyScope(res);
+  const cands: LookupCandidate[] = res?.kind === 'candidates' ? res.candidates : [];
+  const regions: LookupRegion[] = res?.kind === 'need_region' ? res.regions : [];
+  const needRegion = res?.kind === 'need_region';
+  const emptyScope = res?.kind === 'empty_scope';
 
   return (
     <View style={[s.root, { paddingTop: insets.top }]}>
@@ -151,7 +170,7 @@ const FruitLookupScreen: React.FC = () => {
             <Text style={s.blockTitle}>Trong ảnh có nhiều quả</Text>
             <Text style={s.muted}>Chọn quả bạn đang cầm:</Text>
             <View style={s.chips}>
-              {(res?.regions ?? []).map((rg) => (
+              {regions.map((rg) => (
                 <TouchableOpacity
                   key={rg.index}
                   style={s.chip}
@@ -198,7 +217,9 @@ const FruitLookupScreen: React.FC = () => {
 
 /** Một ứng viên. Máy chủ CỐ Ý không trả điểm/biên/fruit_id — đừng đi tìm chúng. */
 const CandidateCard: React.FC<{ c: LookupCandidate }> = ({ c }) => {
-  const img = c.img_urls?.[0] ? lookupImageUrl(ORILIFE_BASE, c.img_urls[0]) : null;
+  // `img_urls` đã được quy về URL tuyệt đối ngay lúc đọc thân trả về (xem
+  // `parseLookupBody`), nên ở đây không phải ghép base lần nữa.
+  const img = candidateImageUrl(c);
   const tree = c.tree;
   const anchored = tree?.provenance?.anchored;
 

@@ -44,18 +44,21 @@ import { useOffline } from '../../../hooks/useOffline';
 import { useTk } from '../../../i18n/keys';
 import { RootState } from '../../../store';
 import { useAppDispatch } from '../../../store/hooks';
-import { loadActivities, loadFarms, loadTrees } from '../store/farmSlice';
+import { loadActivities, loadFarms, loadTrees, syncFarmsFromBackend } from '../store/farmSlice';
+import FarmsMapCard from '../components/FarmsMap';
 import { showError } from '../../../utils/alert';
 import { Card, Ground, SectionHeader } from '../components/layered/Surface';
+import { Leaf } from '../components/layered/Organic';
 import {
-  AI_TINT, DARK_CARD, NATURE, ORGANIC_CARD, ORGANIC_TILE, RADIUS,
-  SPACE, SURFACE, TONE, TOUCH_MIN, TYPE,
+  AI_TINT, DARK_CARD, LIME_CARD, NATURE, ORGANIC_CARD, ORGANIC_TILE, RADIUS,
+  SPACE, SURFACE, TONE, TYPE,
 } from '../theme/depth';
 import {
   DEFAULT_COORD, centroidOf, describeWeather, farmAdviceKey, fetchWeather, weekdayVi,
   type WeatherReport,
 } from '../../../services/weatherService';
 import { fetchAgriNews, hotNews, timeAgoVi, type NewsItem } from '../../../services/agriNewsService';
+import { runAlertCheck } from '../../../services/alertDispatcher';
 import {
   formatVnd, priceMove, type CommodityPrice, type PriceMove,
 } from '../../../services/agriPriceService';
@@ -150,6 +153,14 @@ const DashboardScreen: React.FC = () => {
 
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  /**
+   * Thẻ đang mở của mục Vườn. Mặc định là DANH SÁCH, không phải bản đồ.
+   *
+   * Bản đồ tốn một bề mặt OpenGL và một loạt lượt tải ô ảnh; mở nó cho mọi người
+   * ở mọi lần vào app là bắt máy yếu và gói 3G trả giá cho một thứ chỉ thỉnh
+   * thoảng mới cần. Ai cần thì bấm một cái là có.
+   */
+  const [gardenTab, setGardenTab] = useState<'list' | 'map'>('list');
   const [weather, setWeather] = useState<WeatherReport | null>(null);
   const [weatherLoading, setWeatherLoading] = useState(true);
   const [prices, setPrices] = useState<Array<PriceMove & { agoH: number }>>([]);
@@ -213,13 +224,35 @@ const DashboardScreen: React.FC = () => {
   }, [fade]);
 
   // ── Vườn ──────────────────────────────────────────────────────────────────
+  /**
+   * Cache TRƯỚC, máy chủ SAU — và không nạp lại cache sau khi đồng bộ.
+   *
+   * Bước 1 đọc SQLite nên danh sách hiện ngay cả khi mất sóng. Bước 2 thay bằng
+   * bản của máy chủ, vốn mang thêm TÂM VƯỜN, CÁCH LẤY RANH, SAI SỐ RANH và SỐ
+   * CÂY/CON VẬT — chính mấy trường thẻ "Bản đồ" cần để vẽ vùng vườn và bày thông
+   * tin khi chạm vào.
+   *
+   * ⚠ Không gọi `loadFarms` lần nữa sau bước 2. Bảng `farms` trong SQLite chỉ có
+   * bốn cột (`id · name · coordinates · user_id`), nên nạp lại cache là ném đi
+   * đúng những trường vừa lấy về — thẻ Bản đồ sẽ im lặng mất tâm vườn và số cây
+   * mà không có gì báo. (Màn Danh sách vườn đang làm ngược thứ tự này; ở đó
+   * không hại vì nó chỉ cần tên và ranh.)
+   */
   const loadGarden = useCallback(async () => {
     try {
       if (!user) return;
-      const loaded = await dispatch(loadFarms(user.id)).unwrap();
-      if (loaded.length > 0) {
-        for (const farm of loaded) await dispatch(loadTrees(farm.id));
-        await dispatch(loadActivities(loaded[0].id));
+      const cached = await dispatch(loadFarms(user.id)).unwrap();
+      let list = cached;
+      try {
+        const fresh = await dispatch(syncFarmsFromBackend(user.id)).unwrap();
+        if (Array.isArray(fresh) && fresh.length > 0) list = fresh;
+      } catch {
+        // Máy chủ hỏng → giữ nguyên cache. `syncFarmsFromBackend` tự nuốt lỗi
+        // mạng, nên tới đây là ca hiếm; vẫn bắt để không kéo đổ cả màn.
+      }
+      if (list.length > 0) {
+        for (const farm of list) await dispatch(loadTrees(farm.id));
+        await dispatch(loadActivities(list[0].id));
       }
     } catch {
       showError(tk('trace.error.loadTitle'), tk('trace.error.loadBody'));
@@ -254,6 +287,31 @@ const DashboardScreen: React.FC = () => {
   }, []);
 
   useEffect(() => { loadNews(); }, [loadNews]);
+
+  /**
+   * XÉT CẢNH BÁO — dông, gió giật, mưa to, và tin nhiều báo cùng đưa.
+   *
+   * Chạy ở ĐÂY vì trang này vốn đã tải thời tiết và tin để vẽ màn; bắt bộ cảnh
+   * báo tự tải lại là nhân đôi lượt mạng của người dùng cho cùng một dữ liệu.
+   *
+   * ⚠ Hệ quả phải biết: cảnh báo chỉ được xét khi trang Tổng quan có dữ liệu
+   * mới, tức lúc mở app hoặc quay lại app. **App đóng hẳn thì không có cảnh
+   * báo** — muốn báo lúc nửa đêm thì phải để máy chủ đẩy push. Xem đầu
+   * `services/localNotify.ts`.
+   *
+   * Chờ cả hai nguồn tải xong mới xét: chạy khi tin còn rỗng thì luật "nhiều báo
+   * cùng đưa một chuyện" không bao giờ đủ nguồn để đếm, và ta khoá mất 30 phút
+   * nhịp tối thiểu cho một lượt xét nửa vời.
+   */
+  useEffect(() => {
+    if (weatherLoading || newsLoading) return;
+    // Không cần cờ `alive`: `runAlertCheck` không đặt state của màn này, nó chỉ
+    // đọc/ghi AsyncStorage và gọi notifee. Màn tháo giữa chừng thì lượt xét cứ
+    // chạy nốt — và đó là điều ĐÚNG, vì cảnh báo không thuộc về màn hình nào.
+    runAlertCheck({ now: Date.now(), weather, news }).catch(() => {
+      // Cảnh báo là phần THÊM. Hỏng nó không được làm hỏng trang Tổng quan.
+    });
+  }, [weatherLoading, newsLoading, weather, news]);
 
   /**
    * Cuộn gần tới đáy thì hiện thêm tin. Không nút, không "trang 2".
@@ -329,43 +387,132 @@ const DashboardScreen: React.FC = () => {
           </View>
 
           {/* ══ MỤC 1 — VƯỜN CỦA TÔI ══════════════════════════════════════ */}
+          {/* KHÔNG còn `hint` ở đây: tên vườn nay nằm trong chính thẻ bên dưới.
+              Để cả hai chỗ là in cùng một chuỗi hai lần cách nhau 40 px — người
+              đọc phải kiểm xem hai dòng đó có khác nhau không, rồi phát hiện là
+              không. */}
           <SectionHeader
             icon={ICON.farm}
             title={tk('trace.section.myGarden')}
-            hint={hasData ? spot.name : tk('trace.empty.noGarden')}
             actionLabel={hasData ? tk('trace.button.viewGardens') : undefined}
             onAction={hasData ? () => navigation.navigate('FarmList') : undefined}
           />
-          {/* Lưới BENTO: ba ô số, không viền chung, không icon.
-              Bản trước là một thẻ to bọc ba cụm icon-trên-số, ngăn nhau bằng hai
-              vạch dọc — đúng lối bảng biểu những năm 2010. Bỏ icon vì ở đây icon
-              không thêm nghĩa nào: "Vườn", "Cây", "Quả" đã là ba chữ ai cũng đọc
-              được, còn ba icon xanh-vàng chỉ tranh chỗ với chính con số. */}
-          {/* Thu gọn còn một HÀNG NGANG ba ô, thay cho lưới hai hàng.
-              Ba con số này là thứ liếc qua chứ không phải thứ đọc kỹ — chiếm hơn
-              một phần ba màn hình cho chúng là lấy mất chỗ của thời tiết và giá,
-              hai thứ người ta mở app để xem. Icon nhỏ cạnh nhãn thay cho ô icon
-              to: vẫn nhận ra nhanh, mà chỉ tốn 14 px. */}
-          <View style={styles.bento}>
-            <Tile icon={ICON.farm} value={farms.length} label={tk('trace.label.gardens')}
-              onPress={() => navigation.navigate('FarmList')} />
-            <Tile icon={ICON.tree} value={trees.length} label={tk('trace.label.trees')} />
-            <Tile icon={ICON.fruit} value={fruits.length} label={tk('trace.label.fruits')} />
+          {/* HAI THẺ: con số và bản đồ.
+              Cùng một mục "Vườn của tôi" nhưng hai câu hỏi khác nhau — "tôi có
+              bao nhiêu" và "chúng nằm ở đâu". Nhồi cả hai vào một khung dọc thì
+              bản đồ đẩy thời tiết và giá xuống dưới nếp gấp, mà đó mới là thứ
+              người ta mở app buổi sáng để xem. Thẻ giữ bản đồ ở đúng một khoảng
+              cao 260 px, ai cần nhìn kỹ thì bấm nút mở toàn màn hình. */}
+          <View style={styles.tabBar}>
+            <GardenTab
+              icon="list-check"
+              label={tk('trace.tab.list')}
+              active={gardenTab === 'list'}
+              onPress={() => setGardenTab('list')}
+            />
+            <GardenTab
+              icon="map-location-dot"
+              label={tk('trace.tab.map')}
+              active={gardenTab === 'map'}
+              onPress={() => setGardenTab('map')}
+            />
           </View>
 
-          <View style={styles.pagePad}>
-            <Pressable
-              style={({ pressed }) => [styles.primaryBtn, pressed && styles.pressed]}
-              onPress={() => (hasData
-                ? navigation.navigate('FarmDetail', { farm_id: farms[0].id })
-                : navigation.navigate('FarmList'))}
-            >
-              <Text style={styles.primaryBtnTxt}>
-                {tk(hasData ? 'trace.button.addTree' : 'trace.button.createFirstGarden')}
-              </Text>
-            </Pressable>
+          {gardenTab === 'list' ? (
+            <>
+              {/*
+                MỘT THẺ, không phải ba ô rời.
 
-          
+                Ba bản trước lần lượt là: thẻ to bọc ba cụm icon-trên-số ngăn bằng
+                vạch dọc (lối bảng biểu 2010) → lưới hai hàng → một hàng ba ô
+                trắng. Bản này gom lại thành MỘT mảng màu.
+
+                Vì sao đổi lần nữa: ba ô trắng trên nền trắng thì mắt phải đi tìm
+                chúng. Vườn · cây · quả là thứ liếc MỘT cái rồi đi tiếp — một mảng
+                màu đặc kéo mắt tới đúng chỗ nhanh hơn mọi cỡ chữ. Và nó chỉ hiệu
+                quả chừng nào trong trang CHỈ CÓ MỘT mảng như vậy; thêm cái thứ hai
+                là hai cái cùng mất tác dụng (xem `LIME_CARD` ở `theme/depth`).
+
+                HAI vùng chạm, KHÔNG lồng nhau: phần số bấm vào mở danh sách vườn,
+                nút bên dưới thêm cây. Lồng `Pressable` trong `Pressable` thì trên
+                Android chuyện "cú chạm này thuộc về ai" phụ thuộc thứ tự dựng và
+                vùng đè — thứ chỉ lộ ra trên máy thật, ở đúng cái nút quan trọng
+                nhất của trang. Tách phẳng thì không phải đoán.
+              */}
+              <View style={styles.gardenCard}>
+                {/*
+                  HOẠ TIẾT TÁN LÁ — góc dưới bên phải.
+
+                  Nằm DƯỚI chữ và `pointerEvents="none"`, nên không bao giờ ăn mất
+                  cú chạm. Ba lá lệch cỡ và lệch góc: xoay đều nhau thì ra hình do
+                  máy vẽ, lệch thì mắt đọc thành tán lá thật. Tràn ra ngoài mép và
+                  bị `overflow: hidden` cắt — lá bị cắt ở mép trông như tán lá còn
+                  tiếp diễn, lá nằm gọn trong khung thì trông như một cái tem dán.
+                */}
+                <View style={styles.gardenLeaves} pointerEvents="none">
+                  <Leaf size={132} color={LIME_CARD.leaf} opacity={0.20} rotate={-18} style={styles.leafA} />
+                  <Leaf size={92} color={LIME_CARD.leaf} opacity={0.28} rotate={34} style={styles.leafB} />
+                  <Leaf size={64} color={NATURE.paper} opacity={0.13} rotate={-52} style={styles.leafC} />
+                </View>
+
+                <Pressable
+                  onPress={() => navigation.navigate('FarmList')}
+                  style={({ pressed }) => [styles.gardenTop, pressed && styles.pressed]}
+                  accessibilityRole="button"
+                  accessibilityLabel={tk('trace.section.myGarden')}
+                >
+                  <View style={styles.gardenHead}>
+                    <Icon name={ICON.farm} size={13} color={LIME_CARD.textSoft} />
+                    <Text style={styles.gardenHeadTxt} numberOfLines={1}>
+                      {hasData ? spot.name : tk('trace.empty.noGarden')}
+                    </Text>
+                    <Icon name="chevron-right" size={12} color={LIME_CARD.textSoft} />
+                  </View>
+
+                  <View style={styles.gardenStats}>
+                    <GardenStat value={farms.length} label={tk('trace.label.gardens')} />
+                    <GardenStat value={trees.length} label={tk('trace.label.trees')} />
+                    <GardenStat value={fruits.length} label={tk('trace.label.fruits')} />
+                  </View>
+                </Pressable>
+
+                {/*
+                  NÚT TRONG THẺ — viền mảnh, nền trong suốt.
+
+                  Nút đặc màu xanh của trang (`TONE.primary`) đặt lên nền lá mạ là
+                  xanh-trên-xanh: hai mảng cùng họ màu chồng nhau thì mép nút biến
+                  mất, và cái duy nhất còn phân biệt được là bóng đổ — thứ bảng màu
+                  này đã bỏ. Nút VIỀN thì đường ranh do chính viền vẽ ra, không phụ
+                  thuộc vào việc hai màu có khác nhau đủ hay không.
+
+                  Không tô nền trắng: trắng đặc trên nền màu là mảng SÁNG NHẤT thẻ,
+                  nó sẽ kéo mắt về trước cả ba con số — mà ba con số mới là lý do
+                  thẻ này tồn tại. Nền chỉ là một lớp tối rất mỏng (LIME_CARD.wash),
+                  đủ để hoạ tiết lá chạy phía sau không làm chữ trắng lúc đậm lúc
+                  nhạt theo từng chữ cái.
+                */}
+                <Pressable
+                  style={({ pressed }) => [styles.gardenAction, pressed && styles.gardenActionOn]}
+                  onPress={() => (hasData
+                    ? navigation.navigate('FarmDetail', { farm_id: farms[0].id })
+                    : navigation.navigate('FarmList'))}
+                  accessibilityRole="button"
+                >
+                  <Icon name={ICON.add} size={15} color={LIME_CARD.text} />
+                  <Text style={styles.gardenActionTxt}>
+                    {tk(hasData ? 'trace.button.addTree' : 'trace.button.createFirstGarden')}
+                  </Text>
+                </Pressable>
+              </View>
+            </>
+          ) : (
+            <FarmsMapCard
+              farms={farms}
+              onOpenFarm={(farmId) => navigation.navigate('FarmDetail', { farm_id: farmId })}
+            />
+          )}
+
+          <View style={styles.pagePad}>
             <Pressable
               style={({ pressed }) => [styles.askBar, pressed && styles.pressed]}
               onPress={() => openAssistant()}
@@ -545,36 +692,41 @@ const DashboardScreen: React.FC = () => {
 
 // ── Mảnh nhỏ ────────────────────────────────────────────────────────────────
 
+/**
+ * Một thẻ của mục Vườn ("Vườn của tôi" · "Bản đồ").
+ *
+ * Thẻ đang mở được tô nền chứ không chỉ gạch chân: gạch chân mảnh 2 px là thứ
+ * người trên 40 tuổi cầm máy giữa nắng nhìn không ra, và cả hai thẻ trông giống
+ * hệt nhau thì không ai biết mình đang ở đâu.
+ */
+const GardenTab: React.FC<{
+  icon: IconName; label: string; active: boolean; onPress: () => void;
+}> = ({ icon, label, active, onPress }) => (
+  <Pressable
+    onPress={onPress}
+    style={({ pressed }) => [styles.tab, active && styles.tabOn, pressed && styles.pressed]}
+    accessibilityRole="tab"
+    accessibilityState={{ selected: active }}
+    accessibilityLabel={label}
+  >
+    <Icon name={icon} size={14} color={active ? NATURE.paper : NATURE.barkSoft} />
+    <Text style={[styles.tabTxt, active && styles.tabTxtOn]} numberOfLines={1}>{label}</Text>
+  </Pressable>
+);
 
 /**
- * Một ô số trong lưới Bento.
+ * Một con số trong thẻ vườn.
  *
- * `wide` chiếm nguyên hàng trên; hai ô còn lại chia đôi hàng dưới. Ô rộng dành
- * cho VƯỜN vì đó là thứ bấm vào được — cây và quả chỉ là con số đếm theo.
+ * Không icon cạnh nhãn: trên nền màu đặc, một icon nhỏ mờ đi thành vệt bẩn, còn
+ * đủ đậm thì nó tranh chỗ với chính con số. "Vườn" · "Cây" · "Quả" là ba chữ ai
+ * cũng đọc được — thêm hình vào là thêm thứ để nhìn chứ không thêm nghĩa.
  */
-const Tile: React.FC<{
-  icon: IconName; value: number; label: string; onPress?: () => void;
-}> = ({ icon, value, label, onPress }) => {
-  const body = (
-    <>
-      <Text style={styles.tileVal}>{value}</Text>
-      <View style={styles.tileLblRow}>
-        <Icon name={icon} size={12} color={NATURE.barkSoft} />
-        <Text style={styles.tileLbl} numberOfLines={1}>{label}</Text>
-      </View>
-    </>
-  );
-  return onPress ? (
-    <Pressable
-      style={({ pressed }) => [styles.tile, pressed && styles.tileOn]}
-      onPress={onPress}
-    >
-      {body}
-    </Pressable>
-  ) : (
-    <View style={styles.tile}>{body}</View>
-  );
-};
+const GardenStat: React.FC<{ value: number; label: string }> = ({ value, label }) => (
+  <View style={styles.gardenStat}>
+    <Text style={styles.gardenStatVal}>{value}</Text>
+    <Text style={styles.gardenStatLbl} numberOfLines={1}>{label}</Text>
+  </View>
+);
 
 /** `1723...` → `13/08/2026`. Mốc 0 (nguồn không ghi ngày) → chuỗi rỗng. */
 function shortDate(ms: number): string {
@@ -735,13 +887,6 @@ const styles = StyleSheet.create({
   // Mục 1
   metricLabel: { ...TYPE.caption, fontWeight: '600' },
 
-  primaryBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.sm,
-    minHeight: TOUCH_MIN, marginTop: SPACE.lg,
-    ...ORGANIC_CARD, backgroundColor: TONE.primary,
-  },
-  primaryBtnTxt: { fontSize: 17, fontWeight: '700', color: NATURE.paper },
-
   // Mục 2
   retryBtn: {
     alignSelf: 'flex-start', marginTop: SPACE.md,
@@ -752,17 +897,72 @@ const styles = StyleSheet.create({
 
   // ── Lưới Bento của mục Vườn
   pagePad: { paddingHorizontal: SPACE.page },
-  bento: { flexDirection: 'row', gap: SPACE.sm, paddingHorizontal: SPACE.page },
-  tile: {
-    flex: 1,
-    backgroundColor: SURFACE.raised, ...ORGANIC_CARD,
-    borderWidth: 1, borderColor: TONE.border,
-    paddingVertical: SPACE.md, paddingHorizontal: SPACE.md,
+
+  // Hai thẻ của mục Vườn
+  tabBar: {
+    flexDirection: 'row', gap: SPACE.sm,
+    paddingHorizontal: SPACE.page, marginBottom: SPACE.md,
   },
-  tileOn: { backgroundColor: TONE.primarySoft },
-  tileVal: { fontSize: 24, lineHeight: 28, fontWeight: '700', letterSpacing: -0.8, color: NATURE.bark },
-  tileLblRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 1 },
-  tileLbl: { fontSize: 12.5, color: NATURE.barkSoft, flexShrink: 1 },
+  tab: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    minHeight: 40, borderRadius: RADIUS.chip,
+    backgroundColor: SURFACE.raised,
+    borderWidth: 1, borderColor: TONE.border,
+  },
+  tabOn: { backgroundColor: TONE.primary, borderColor: TONE.primaryDeep },
+  tabTxt: { fontSize: 14.5, fontWeight: '700', color: NATURE.barkSoft },
+  tabTxtOn: { color: NATURE.paper },
+
+  // Thẻ vườn — mảng màu DUY NHẤT của trang
+  gardenCard: {
+    marginHorizontal: SPACE.page,
+    paddingHorizontal: SPACE.lg,
+    paddingTop: SPACE.md,
+    paddingBottom: SPACE.md,
+    backgroundColor: LIME_CARD.bg,
+    borderWidth: 1,
+    borderColor: LIME_CARD.border,
+    // `overflow: hidden` là thứ cắt hoạ tiết lá ở mép thẻ — bỏ nó thì lá tràn ra
+    // ngoài và đè lên phần bên dưới.
+    overflow: 'hidden',
+    ...ORGANIC_CARD,
+  },
+  gardenLeaves: { ...StyleSheet.absoluteFillObject },
+  leafA: { position: 'absolute', right: -34, bottom: -40 },
+  leafB: { position: 'absolute', right: 34, bottom: -30 },
+  leafC: { position: 'absolute', right: -8, bottom: 24 },
+
+  /** Vùng chạm thứ nhất: nhãn + ba con số → mở danh sách vườn. */
+  gardenTop: { paddingBottom: SPACE.md },
+  gardenHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  gardenHeadTxt: {
+    flex: 1, fontSize: 13, fontWeight: '600', color: LIME_CARD.textSoft,
+  },
+  gardenStats: { flexDirection: 'row', marginTop: SPACE.md },
+  gardenStat: { flex: 1 },
+  gardenStatVal: {
+    fontSize: 30, lineHeight: 34, fontWeight: '800',
+    letterSpacing: -1, color: LIME_CARD.text,
+  },
+  gardenStatLbl: { fontSize: 13, color: LIME_CARD.textSoft, marginTop: 1 },
+
+  /**
+   * Vùng chạm thứ hai: nút thêm cây.
+   *
+   * Cao 46 chứ không 56 như `TOUCH_MIN` của trang: đây là hành động PHỤ nằm trong
+   * một thẻ, không phải nút chính giữa màn trống. 46 vẫn trên ngưỡng 44 mà cả
+   * Android lẫn iOS đặt cho vùng chạm nhỏ nhất — vẫn bấm được bằng ngón tay đeo
+   * găng, mà không biến nửa dưới thẻ thành một cái nút.
+   */
+  gardenAction: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
+    minHeight: 46,
+    borderRadius: RADIUS.chip,
+    borderWidth: 1, borderColor: LIME_CARD.border,
+    backgroundColor: LIME_CARD.wash,
+  },
+  gardenActionOn: { backgroundColor: LIME_CARD.washOn },
+  gardenActionTxt: { fontSize: 15.5, fontWeight: '700', color: LIME_CARD.text },
 
   // ── Mục giá
   priceCard: {

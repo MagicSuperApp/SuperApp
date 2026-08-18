@@ -1,233 +1,341 @@
 /**
- * Tra cứu quả cho NGƯỜI MUA — `POST /api/fruit/lookup`.
+ * Bài kiểm viết theo HỢP ĐỒNG THẬT của máy chủ đang chạy — mục
+ * `/api/fruit/lookup` trong `https://api.orilife.io/openapi.json` (đo 2026-08-18),
+ * KHÔNG theo bản tóm tắt bằng lời.
  *
- * Bộ kiểm này khoá bốn thứ, cả bốn đều thuộc họ "hỏng mà không có gì báo":
- *
- *  1. **KHÔNG gửi `Authorization`.** Cửa này phục vụ người chưa có tài khoản.
- *     Kèm token vào là đổi phạm vi phía máy chủ VÀ khoá cửa trước mặt đúng người
- *     cửa này sinh ra để phục vụ. Lỗi kiểu này im hoàn toàn khi lập trình viên
- *     thử trên máy mình — vì máy mình lúc nào cũng đã đăng nhập.
- *
- *  2. **KHÔNG gửi `lat`/`lon`.** Route CỐ Ý không nhận (`server.py:8337`). Đường
- *     NÔNG DÂN thì ngược lại — ở đó toạ độ là tín hiệu thu hẹp mạnh nhất. Hai
- *     đường ngược chiều nhau nên chép nhầm là chuyện sẽ xảy ra; khoá lại ở đây.
- *
- *  3. **`EMPTY_SCOPE` ≠ "không tìm thấy".** Đo trên kho sản xuất 08/2026: 0 cây
- *     công khai ⟹ đây là câu trả lời THƯỜNG GẶP NHẤT hôm nay. Gộp nó vào "không
- *     tìm thấy" là đổ lỗi cho người mua về việc nông dân chưa bật công khai.
- *
- *  4. **`SOLO` phải ra CÙNG một hình dạng với `CHOICES`.** Trả hai hình dạng
- *     khác nhau sẽ dụ màn hình vẽ hai kiểu, rồi ca một-ứng-viên trông như một
- *     câu khẳng định — đúng thứ mà tỉ lệ nhận nhầm 73% cấm hứa.
+ * Bản trước của tệp này kiểm một hợp đồng tưởng tượng (`detections`, `fruit_id`,
+ * `thumbnail_url`) và xanh hết — đó là bài học: bài kiểm chỉ chắc bằng nguồn mà
+ * nó chép lại.
  */
 import {
+  LOOKUP_MAX_BYTES,
+  LOOKUP_MAX_CANDIDATES,
+  _resetLookupSession,
+  candidateImageUrl,
+  isAnchored,
   lookupFruit,
-  lookupCandidates,
-  lookupImageUrl,
-  needsRegionPick,
-  isEmptyScope,
-  getLookupSession,
+  lookupSession,
+  parseLookupBody,
+  provenanceOf,
+  safeExplorerUrl,
+  safeHttpUrl,
 } from './fruitLookupService';
 
-const BASE = 'https://api.orilife.io';
-const IMG = 'file:///tmp/qua.jpg';
+jest.mock(
+  'expo-file-system/legacy',
+  () => ({ getInfoAsync: jest.fn(async () => ({ exists: true, size: 1000 })) }),
+  { virtual: true },
+);
 
-const realFetch = globalThis.fetch;
+const BASE = 'https://api.test';
 
-/** Bắt lại request cuối để soi header + thân. */
-let lastInit: RequestInit | undefined;
-let lastUrl: string | undefined;
-
-function mockOnce(status: number, body: unknown, headers: Record<string, string> = {}) {
-  globalThis.fetch = jest.fn(async (url: unknown, init?: unknown) => {
-    lastUrl = String(url);
-    lastInit = init as RequestInit;
-    return {
-      ok: status >= 200 && status < 300,
-      status,
-      json: async () => body,
-      headers: { get: (k: string) => headers[k] ?? null },
-    };
-  }) as unknown as typeof fetch;
-}
-
-/**
- * Ghi lại từng trường nạp vào `FormData`.
- *
- * KHÔNG đọc `_parts`/`getParts()` của bản polyfill React Native: hai thứ đó có
- * thể vắng, và khi vắng thì bài kiểm "KHÔNG gửi lat/lon" hoá thành một bài LUÔN
- * XANH dù mã có gửi hay không — đúng cái vỏ im lặng mà tệp này đi khoá. Theo dõi
- * thẳng `append` thì không có đường nào lọt. Khuôn lấy từ `grantService.test.ts`.
- */
-const spyForm = () => {
-  const sent: Array<[string, unknown]> = [];
-  jest
-    .spyOn(FormData.prototype, 'append')
-    .mockImplementation(function (this: FormData, k: string, v: unknown) {
-      sent.push([k, v]);
-    } as never);
-  return sent;
-};
-
-/** Mảng cặp → bảng, cho `toMatchObject` đọc được. */
-function asObject(sent: Array<[string, unknown]>): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  sent.forEach(([k, v]) => { out[k] = v; });
-  return out;
-}
-
-afterEach(() => {
-  globalThis.fetch = realFetch;
-  jest.restoreAllMocks();
-  jest.clearAllMocks();
-  lastInit = undefined;
-  lastUrl = undefined;
+/** Thẻ đúng hình dạng máy chủ trả: `pick`, `img_urls`, `tree.provenance`. */
+const card = (over: Record<string, unknown> = {}) => ({
+  pick: 'p1',
+  name: 'Quả số 3',
+  status: 'on_tree',
+  enrolled_at: '2026-07-01T00:00:00Z',
+  n_imgs: 4,
+  img_urls: ['/api/fruit/lookup/img/tok1'],
+  tree: {
+    name: 'Cây đầu hàng',
+    code: 'ORI-w3gvdcs-AB12CD34',
+    gps: [10.03, 105.78],
+    public_url: 'https://orilife.io/t/ORI-w3gvdcs-AB12CD34',
+    provenance: {
+      anchored: true, status: 'anchored', network: 'cardano-mainnet',
+      explorer_url: 'https://cardanoscan.io/tx/ab', label: 'Đã ghi lên chuỗi',
+    },
+  },
+  ...over,
 });
 
-describe('lookupFruit — hợp đồng đường dây', () => {
-  it('KHÔNG gửi Authorization — người mua chưa có tài khoản', async () => {
-    mockOnce(200, { ok: true, verdict: 'CHOICES', candidates: [] });
-    await lookupFruit(BASE, IMG);
-
-    const headers = (lastInit?.headers ?? {}) as Record<string, string>;
-    const keys = Object.keys(headers).map((k) => k.toLowerCase());
-    expect(keys).not.toContain('authorization');
+describe('parseLookupBody — đọc đúng tên trường máy chủ dùng', () => {
+  it('dạng (b): candidates + lookup_id + verdict', () => {
+    const r = parseLookupBody({
+      ok: true, lookup_id: 'lk1', verdict: 'CHOICES', verdict_label: 'Chọn giúp',
+      message: 'Năm quả gần giống', candidates: [card()], fruit: null,
+    }, BASE);
+    expect(r.kind).toBe('candidates');
+    if (r.kind !== 'candidates') return;
+    expect(r.candidates).toHaveLength(1);
+    expect(r.lookupId).toBe('lk1');
+    expect(r.verdict).toBe('CHOICES');
+    expect(r.verdictLabel).toBe('Chọn giúp');
+    expect(r.solo).toBeNull();
   });
 
-  it('KHÔNG gửi lat/lon — vị trí người mua không phải thứ hệ này thu', async () => {
-    mockOnce(200, { ok: true, verdict: 'CHOICES', candidates: [] });
-    const sent = spyForm();
-    await lookupFruit(BASE, IMG);
-
-    const parts = asObject(sent);
-    expect(parts).not.toHaveProperty('lat');
-    expect(parts).not.toHaveProperty('lon');
+  it('KHÔNG đòi `fruit_id` — máy chủ cố ý không trả, khoá chọn là `pick`', () => {
+    const r = parseLookupBody({ candidates: [card()] }, BASE);
+    if (r.kind !== 'candidates') throw new Error('sai nhánh');
+    expect(r.candidates[0].pick).toBe('p1');
   });
 
-  it('gọi đúng đường và luôn kèm mã phiên cho lớp hạn tần suất chặt nhất', async () => {
-    mockOnce(200, { ok: true, verdict: 'CHOICES', candidates: [] });
-    const sent = spyForm();
-    await lookupFruit(BASE, IMG);
-
-    expect(lastUrl).toBe('https://api.orilife.io/api/fruit/lookup');
-    expect(asObject(sent).sess).toEqual(expect.any(String));
+  it('thẻ thiếu `pick` bị bỏ — một dòng không bấm được là một dòng bấm hụt', () => {
+    const r = parseLookupBody({ candidates: [{ name: 'không mã' }, card()] }, BASE);
+    if (r.kind !== 'candidates') throw new Error('sai nhánh');
+    expect(r.candidates).toHaveLength(1);
   });
 
-  it('gửi khung khoanh khi có, KHÔNG gửi khi không có', async () => {
-    mockOnce(200, { ok: true });
-    const withRegion = spyForm();
-    await lookupFruit(BASE, IMG, { region: { bbox: [1, 2, 3, 4], shape: 'rect' } });
-    expect(asObject(withRegion)).toMatchObject({
-      bbox_x: '1', bbox_y: '2', bbox_w: '3', bbox_h: '4', shape: 'rect',
-    });
-
-    jest.restoreAllMocks();
-    mockOnce(200, { ok: true });
-    const without = spyForm();
-    await lookupFruit(BASE, IMG);
-    expect(asObject(without)).not.toHaveProperty('bbox_x');
+  it('ảnh `img_urls` tương đối được quy về URL tuyệt đối ngay lúc đọc', () => {
+    const r = parseLookupBody({ candidates: [card()] }, BASE);
+    if (r.kind !== 'candidates') throw new Error('sai nhánh');
+    expect(r.candidates[0].img_urls).toEqual([`${BASE}/api/fruit/lookup/img/tok1`]);
+    expect(candidateImageUrl(r.candidates[0])).toBe(`${BASE}/api/fruit/lookup/img/tok1`);
   });
 
-  it('cắt dấu / cuối của base — không sinh đường //api', async () => {
-    mockOnce(200, { ok: true });
-    await lookupFruit('https://api.orilife.io/', IMG);
-    expect(lastUrl).toBe('https://api.orilife.io/api/fruit/lookup');
+  it('ảnh đã tuyệt đối thì giữ nguyên, không ghép hai lần', () => {
+    const r = parseLookupBody({ candidates: [card({ img_urls: ['https://cdn/x.jpg'] })] }, BASE);
+    if (r.kind !== 'candidates') throw new Error('sai nhánh');
+    expect(r.candidates[0].img_urls).toEqual(['https://cdn/x.jpg']);
+  });
+
+  it('verdict SOLO: `fruit` được đưa vào danh sách để màn chỉ biết MỘT hình dạng', () => {
+    const r = parseLookupBody({ verdict: 'SOLO', candidates: [], fruit: card() }, BASE);
+    expect(r.kind).toBe('candidates');
+    if (r.kind !== 'candidates') return;
+    expect(r.candidates).toHaveLength(1);
+    expect(r.solo?.pick).toBe('p1');
+  });
+
+  it('cắt lại 5 ứng viên dù máy chủ trả nhiều hơn', () => {
+    const many = Array.from({ length: 9 }, (_, i) => card({ pick: `p${i}` }));
+    const r = parseLookupBody({ candidates: many }, BASE);
+    if (r.kind !== 'candidates') throw new Error('sai nhánh');
+    expect(r.candidates).toHaveLength(LOOKUP_MAX_CANDIDATES);
+  });
+
+  it('`warning_messages` (câu tiếng Việt) được giữ, không phải mã `warnings`', () => {
+    const r = parseLookupBody({
+      candidates: [card()], warnings: ['low_light'], warning_messages: ['Ảnh hơi tối'],
+    }, BASE);
+    if (r.kind !== 'candidates') throw new Error('sai nhánh');
+    expect(r.warnings).toEqual(['Ảnh hơi tối']);
+  });
+
+  it('dạng (a): `regions` — KHÔNG phải `detections`', () => {
+    const r = parseLookupBody({
+      ok: true, need_region: true,
+      regions: [{ index: 0, bbox: [1, 2, 3, 4] }, { index: 1, bbox: 'rác' }],
+      message: 'Trong khung có nhiều quả',
+    }, BASE);
+    expect(r.kind).toBe('need_region');
+    if (r.kind !== 'need_region') return;
+    expect(r.regions).toEqual([{ index: 0, bbox: [1, 2, 3, 4] }]);
+    expect(r.message).toBe('Trong khung có nhiều quả');
+  });
+
+  it('`regions` thiếu `index` thì lấy theo thứ tự, không rơi mất hộp', () => {
+    const r = parseLookupBody({ need_region: true, regions: [{ bbox: [0, 0, 5, 5] }] }, BASE);
+    if (r.kind !== 'need_region') throw new Error('sai nhánh');
+    expect(r.regions[0].index).toBe(0);
+  });
+
+  it('need_region xét TRƯỚC candidates', () => {
+    const r = parseLookupBody({ need_region: true, regions: [], candidates: [card()] }, BASE);
+    expect(r.kind).toBe('need_region');
+  });
+
+  it('EMPTY_SCOPE / danh sách rỗng → empty_scope, một câu trả lời chứ không phải lỗi', () => {
+    expect(parseLookupBody({ verdict: 'EMPTY_SCOPE', candidates: [] }, BASE).kind).toBe('empty_scope');
+    expect(parseLookupBody({ ok: true, candidates: [] }, BASE).kind).toBe('empty_scope');
+    expect(parseLookupBody({}, BASE).kind).toBe('empty_scope');
+  });
+
+  it('bẫy hai tầng ok: {ok:false} kèm HTTP 200 vẫn là lỗi', () => {
+    const r = parseLookupBody({ ok: false, error: 'Ảnh mờ quá' }, BASE);
+    expect(r.kind).toBe('error');
+    if (r.kind !== 'error') return;
+    expect(r.error.detail).toBe('Ảnh mờ quá');
+  });
+
+  it('giữ nguyên trường lạ của máy chủ thay vì nuốt mất', () => {
+    const r = parseLookupBody({ candidates: [card({ grade: 'A' })] }, BASE);
+    if (r.kind !== 'candidates') throw new Error('sai nhánh');
+    expect(r.candidates[0].grade).toBe('A');
   });
 });
 
-describe('lookupFruit — ba mã lỗi của hợp đồng', () => {
-  it('400 → image_unusable, ưu tiên câu của máy chủ', async () => {
-    mockOnce(400, { error_code: 'image_unusable', message: 'Ảnh mờ quá.' });
-    const r = await lookupFruit(BASE, IMG);
-    expect(r.ok).toBe(false);
-    if (!r.ok) {
-      expect(r.error.kind).toBe('image_unusable');
-      expect(r.error.message).toBe('Ảnh mờ quá.');
-    }
+describe('provenanceOf — bằng chứng nằm trong `tree`, không ở gốc thẻ', () => {
+  it('lấy đúng chỗ', () => {
+    const r = parseLookupBody({ candidates: [card()] }, BASE);
+    if (r.kind !== 'candidates') throw new Error('sai nhánh');
+    expect(provenanceOf(r.candidates[0])?.network).toBe('cardano-mainnet');
+  });
+  it('thẻ không có cây → null, không nổ', () => {
+    expect(provenanceOf({ pick: 'x', img_urls: [] })).toBeNull();
+    expect(provenanceOf(null)).toBeNull();
+  });
+});
+
+describe('isAnchored — ba giá trị, vì "chưa biết" không phải "chưa neo"', () => {
+  it('máy chủ nói rõ thì theo lời máy chủ', () => {
+    expect(isAnchored({ anchored: true })).toBe(true);
+    expect(isAnchored({ anchored: false })).toBe(false);
+  });
+  it('suy từ status khi thiếu cờ anchored', () => {
+    expect(isAnchored({ status: 'anchored' })).toBe(true);
+    expect(isAnchored({ status: 'pending' })).toBe(false);
+  });
+  it('không có provenance / status lạ → null, không được kết luận', () => {
+    expect(isAnchored(null)).toBeNull();
+    expect(isAnchored({})).toBeNull();
+    expect(isAnchored({ status: 'đang-gộp-lô' })).toBeNull();
+  });
+});
+
+describe('safeExplorerUrl / safeHttpUrl — chỉ http(s) mới vào Linking.openURL', () => {
+  it('cho qua https và http', () => {
+    expect(safeExplorerUrl({ explorer_url: 'https://cardanoscan.io/tx/ab' })).toBe('https://cardanoscan.io/tx/ab');
+    expect(safeHttpUrl('http://x/t/ORI-1')).toBe('http://x/t/ORI-1');
+  });
+  it('chặn javascript:, deep-link app khác, và chuỗi rỗng', () => {
+    expect(safeExplorerUrl({ explorer_url: 'javascript:alert(1)' })).toBeNull();
+    expect(safeExplorerUrl({ explorer_url: 'JavaScript:alert(1)' })).toBeNull();
+    expect(safeHttpUrl('lamp://pay?to=kẻ-lạ')).toBeNull();
+    expect(safeHttpUrl('  ')).toBeNull();
+    expect(safeExplorerUrl(null)).toBeNull();
+  });
+});
+
+describe('lookupSession', () => {
+  it('ổn định trong một lần chạy — mỗi người một ngân sách hạn tần suất', () => {
+    _resetLookupSession();
+    const a = lookupSession();
+    expect(lookupSession()).toBe(a);
+    expect(a.length).toBeGreaterThan(6);
+  });
+});
+
+describe('lookupFruit — cửa công khai', () => {
+  const realFetch = global.fetch;
+  afterEach(() => { global.fetch = realFetch; jest.clearAllMocks(); });
+
+  const resp = (body: unknown, status = 200, headers: Record<string, string> = {}) => ({
+    ok: status >= 200 && status < 300,
+    status,
+    headers: { get: (k: string) => headers[k] ?? null },
+    json: async () => body,
   });
 
-  it('413 → too_large', async () => {
-    mockOnce(413, {});
-    const r = await lookupFruit(BASE, IMG);
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error.kind).toBe('too_large');
+  const formKeys = (spy: jest.Mock): string[] => {
+    const form = (spy.mock.calls[0] as any[])[1].body;
+    return form._parts ? form._parts.map((p: any[]) => p[0]) : Array.from(form.keys());
+  };
+
+  it('KHÔNG gửi Authorization — người mua không có tài khoản', async () => {
+    const spy = jest.fn(async () => resp({ candidates: [card()] }));
+    global.fetch = spy as any;
+    await lookupFruit(BASE, 'file:///a.jpg');
+    const headers = (spy.mock.calls[0] as any[])[1].headers;
+    expect(headers.Authorization).toBeUndefined();
+    expect(headers.authorization).toBeUndefined();
   });
 
-  it('429 → rate_limited, đọc retry_after từ THÂN', async () => {
-    mockOnce(429, { error_code: 'rate_limited', retry_after: 42 });
-    const r = await lookupFruit(BASE, IMG);
-    expect(r.ok).toBe(false);
-    if (!r.ok) {
-      expect(r.error.kind).toBe('rate_limited');
-      expect(r.error.retry_after).toBe(42);
-    }
+  it('KHÔNG có đường nào nhét lat/lon vào thân gửi đi', async () => {
+    const spy = jest.fn(async () => resp({ candidates: [card()] }));
+    global.fetch = spy as any;
+    await lookupFruit(BASE, 'file:///a.jpg', { bbox: [1, 2, 3, 4] });
+    const keys = formKeys(spy);
+    expect(keys).toContain('bbox_x');
+    expect(keys).not.toContain('lat');
+    expect(keys).not.toContain('lon');
+    expect(keys).not.toContain('gps');
   });
 
-  it('429 thiếu retry_after trong thân → lui về header Retry-After', async () => {
-    mockOnce(429, {}, { 'Retry-After': '7' });
-    const r = await lookupFruit(BASE, IMG);
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error.retry_after).toBe(7);
+  it('gửi `sess` — thiếu nó thì cả quán cà phê chung một ngân sách hạn tần suất', async () => {
+    const spy = jest.fn(async () => resp({ candidates: [card()] }));
+    global.fetch = spy as any;
+    await lookupFruit(BASE, 'file:///a.jpg');
+    expect(formKeys(spy)).toContain('sess');
   });
 
-  it('base rỗng → hỏng tại chỗ, KHÔNG bắn một request vô nghĩa', async () => {
+  it('gửi `points` thì kèm `shape` — máy chủ mặc định `rect`', async () => {
+    const spy = jest.fn(async () => resp({ candidates: [card()] }));
+    global.fetch = spy as any;
+    await lookupFruit(BASE, 'file:///a.jpg', { points: [[1, 2], [3, 4]] });
+    const keys = formKeys(spy);
+    expect(keys).toContain('points');
+    expect(keys).toContain('shape');
+  });
+
+  it('400 image_unusable là NHÁNH RIÊNG — có cách xử rõ ràng, không phải "lỗi không rõ"', async () => {
+    global.fetch = (async () => resp({ error_code: 'image_unusable' }, 400)) as any;
+    const r = await lookupFruit(BASE, 'file:///a.jpg');
+    expect(r.kind).toBe('image_unusable');
+  });
+
+  it('429 đọc `retry_after` TỪ THÂN trước, rồi mới tới header', async () => {
+    global.fetch = (async () => resp({ error_code: 'rate_limited', retry_after: 12 }, 429, { 'Retry-After': '99' })) as any;
+    const r = await lookupFruit(BASE, 'file:///a.jpg');
+    expect(r.kind).toBe('rate_limited');
+    if (r.kind !== 'rate_limited') return;
+    expect(r.retryAfterSec).toBe(12);
+  });
+
+  it('429 không nói gì → rơi về header, rồi mới tới mặc định', async () => {
+    global.fetch = (async () => resp({}, 429, { 'Retry-After': '30' })) as any;
+    const a = await lookupFruit(BASE, 'file:///a.jpg');
+    expect(a.kind === 'rate_limited' && a.retryAfterSec).toBe(30);
+
+    global.fetch = (async () => resp({}, 429)) as any;
+    const b = await lookupFruit(BASE, 'file:///a.jpg');
+    expect(b.kind === 'rate_limited' && b.retryAfterSec).toBeGreaterThan(0);
+  });
+
+  it('ảnh quá 2MB bị chặn TẠI MÁY — không tốn một byte tải lên', async () => {
+    const legacy = require('expo-file-system/legacy');
+    legacy.getInfoAsync.mockResolvedValueOnce({ exists: true, size: LOOKUP_MAX_BYTES + 1 });
     const spy = jest.fn();
-    globalThis.fetch = spy as unknown as typeof fetch;
-    const r = await lookupFruit('', IMG);
-    expect(r.ok).toBe(false);
+    global.fetch = spy as any;
+    const r = await lookupFruit(BASE, 'file:///big.jpg');
+    expect(r.kind).toBe('too_large');
     expect(spy).not.toHaveBeenCalled();
   });
-});
 
-describe('đọc phản hồi — chỗ dễ hiểu ngược nhất', () => {
-  it('need_region là "chưa xong", KHÔNG phải kết quả rỗng', () => {
-    const r = { ok: true, need_region: true, regions: [{ index: 0, bbox: [0, 0, 1, 1] as [number, number, number, number] }] };
-    expect(needsRegionPick(r)).toBe(true);
-    expect(lookupCandidates(r)).toEqual([]);
+  it('cân KHÔNG được thì vẫn gửi — thà để máy chủ nói không, còn hơn chặn oan', async () => {
+    const spy = jest.fn(async () => resp({ candidates: [card()] }));
+    global.fetch = spy as any;
+    const r = await lookupFruit(BASE, 'content://media/1');
+    expect(spy).toHaveBeenCalled();
+    expect(r.kind).toBe('candidates');
   });
 
-  it('SOLO gộp `fruit` vào cùng mảng ứng viên như CHOICES', () => {
-    const solo = { ok: true, verdict: 'SOLO' as const, fruit: { pick: 1, name: 'Quả 3' }, candidates: [] };
-    expect(lookupCandidates(solo)).toEqual([{ pick: 1, name: 'Quả 3' }]);
-
-    const choices = { ok: true, verdict: 'CHOICES' as const, candidates: [{ pick: 1 }, { pick: 2 }] };
-    expect(lookupCandidates(choices)).toHaveLength(2);
+  it('413 của máy chủ về chung nhánh too_large', async () => {
+    global.fetch = (async () => resp({}, 413)) as any;
+    expect((await lookupFruit(BASE, 'file:///a.jpg')).kind).toBe('too_large');
   });
 
-  it('EMPTY_SCOPE nhận ra được — hôm nay là câu trả lời thường gặp nhất', () => {
-    expect(isEmptyScope({ ok: true, verdict: 'EMPTY_SCOPE' })).toBe(true);
-    expect(isEmptyScope({ ok: true, verdict: 'CHOICES' })).toBe(false);
-    expect(isEmptyScope(null)).toBe(false);
+  it('422 của FastAPI trả `detail` là MẢNG — nối lại, đừng in [object Object]', async () => {
+    global.fetch = (async () => resp({ detail: [{ msg: 'field required' }, { msg: 'thiếu file' }] }, 422)) as any;
+    const r = await lookupFruit(BASE, 'file:///a.jpg');
+    expect(r.kind).toBe('error');
+    if (r.kind !== 'error') return;
+    expect(r.error.detail).toBe('field required · thiếu file');
   });
 
-  it('phản hồi rỗng/thiếu trường không làm ngã hàm đọc', () => {
-    expect(lookupCandidates(undefined)).toEqual([]);
-    expect(lookupCandidates({})).toEqual([]);
-    expect(needsRegionPick(undefined)).toBe(false);
-  });
-});
-
-describe('lookupImageUrl', () => {
-  it('ghép đường tương đối kèm mã hết hạn', () => {
-    expect(lookupImageUrl(BASE, '/api/fruit/lookup/img/abc123'))
-      .toBe('https://api.orilife.io/api/fruit/lookup/img/abc123');
+  it('404 = máy chủ CHƯA BẬT cửa này, khác hẳn "không tìm thấy quả nào"', async () => {
+    global.fetch = (async () => resp({}, 404)) as any;
+    const r = await lookupFruit(BASE, 'file:///a.jpg');
+    expect(r.kind).toBe('error');
+    if (r.kind !== 'error') return;
+    expect(r.error.http_status).toBe(404);
+    expect(r.error.detail).toMatch(/chưa bật/i);
   });
 
-  it('giữ nguyên khi máy chủ đã trả đường tuyệt đối', () => {
-    expect(lookupImageUrl(BASE, 'https://cdn.example/x.jpg')).toBe('https://cdn.example/x.jpg');
+  it('thiếu ảnh → lỗi ngay, không gọi mạng', async () => {
+    const spy = jest.fn();
+    global.fetch = spy as any;
+    expect((await lookupFruit(BASE, '  ')).kind).toBe('error');
+    expect(spy).not.toHaveBeenCalled();
   });
 
-  it('thiếu vế nào cũng trả null, không dựng đường cụt', () => {
-    expect(lookupImageUrl('', '/a')).toBeNull();
-    expect(lookupImageUrl(BASE, '')).toBeNull();
-  });
-});
-
-describe('mã phiên', () => {
-  it('BỀN giữa hai lượt — đổi mã mỗi lượt là vô hiệu hoá lớp hạn tần suất chặt nhất', async () => {
-    const a = await getLookupSession();
-    const b = await getLookupSession();
-    expect(a).toBe(b);
-    expect(a.length).toBeGreaterThan(4);
+  it('mạng hỏng → nhánh error KÈM câu lỗi thật, KHÔNG ném', async () => {
+    global.fetch = (async () => { throw new TypeError('Network request failed'); }) as any;
+    const r = await lookupFruit(BASE, 'file:///a.jpg');
+    expect(r.kind).toBe('error');
+    if (r.kind !== 'error') return;
+    expect(r.error.type).toBe('network_error');
+    expect(r.error.detail).toMatch(/Network request failed/);
   });
 });

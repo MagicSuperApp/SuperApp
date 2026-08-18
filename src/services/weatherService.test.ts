@@ -7,7 +7,7 @@
  */
 
 import {
-  centroidOf, describeWeather, farmAdviceKey, parseWeather, weekdayVi,
+  centroidOf, describeWeather, farmAdviceKey, hourEpoch, parseWeather, weekdayVi,
   type WeatherDay, type WeatherNow,
 } from './weatherService';
 
@@ -133,5 +133,76 @@ describe('weekdayVi', () => {
 
   it('ngày hỏng → chuỗi rỗng', () => {
     expect(weekdayVi('không-phải-ngày')).toBe('');
+  });
+});
+
+describe('hourEpoch — giờ địa phương của máy chủ → mốc thật', () => {
+  it('quy bằng utc_offset_seconds của MÁY CHỦ, không theo múi giờ của máy', () => {
+    // 14:00 giờ Việt Nam (UTC+7) = 07:00 UTC.
+    expect(hourEpoch('2026-08-18T14:00', 25200)).toBe(Date.parse('2026-08-18T07:00:00Z'));
+  });
+
+  it('lệch múi giờ khác vẫn đúng — đây chính là chỗ dễ sai 7 tiếng', () => {
+    expect(hourEpoch('2026-08-18T14:00', 0)).toBe(Date.parse('2026-08-18T14:00:00Z'));
+  });
+
+  it('chuỗi đã có giây thì không bù thêm', () => {
+    expect(hourEpoch('2026-08-18T14:00:30', 25200))
+      .toBe(Date.parse('2026-08-18T07:00:30Z'));
+  });
+
+  it('chuỗi rác → null, để nơi gọi bỏ ĐÚNG giờ đó chứ không bỏ cả mảng', () => {
+    expect(hourEpoch('hôm nay', 25200)).toBeNull();
+    expect(hourEpoch('', 25200)).toBeNull();
+    expect(hourEpoch(null as any, 25200)).toBeNull();
+  });
+
+  it('thiếu độ lệch → coi như UTC, không ra NaN', () => {
+    expect(hourEpoch('2026-08-18T14:00', NaN)).toBe(Date.parse('2026-08-18T14:00:00Z'));
+  });
+});
+
+describe('parseWeather — mảng giờ', () => {
+  const base = {
+    latitude: 10, longitude: 105, utc_offset_seconds: 25200,
+    current: { temperature_2m: 30, relative_humidity_2m: 80, precipitation: 0, weather_code: 0, wind_speed_10m: 9 },
+    daily: { time: ['2026-08-18'], weather_code: [0], temperature_2m_max: [33], temperature_2m_min: [25], precipitation_probability_max: [10] },
+  };
+
+  it('đọc code · khả năng mưa · gió GIẬT theo giờ', () => {
+    const r = parseWeather({
+      ...base,
+      hourly: {
+        time: ['2026-08-18T14:00', '2026-08-18T15:00'],
+        weather_code: [0, 95],
+        precipitation_probability: [10, 80],
+        wind_gusts_10m: [12, 64],
+      },
+    })!;
+    expect(r.hours).toHaveLength(2);
+    expect(r.hours[1]).toEqual({
+      at: Date.parse('2026-08-18T08:00:00Z'), code: 95, rainChance: 80, gustKph: 64,
+    });
+  });
+
+  it('một giờ hỏng thì bỏ ĐÚNG giờ đó, giữ phần còn lại', () => {
+    const r = parseWeather({
+      ...base,
+      hourly: { time: ['rác', '2026-08-18T15:00'], weather_code: [0, 0], precipitation_probability: [0, 0], wind_gusts_10m: [0, 0] },
+    })!;
+    expect(r.hours).toHaveLength(1);
+  });
+
+  it('máy chủ không trả hourly → mảng rỗng, KHÔNG phải undefined', () => {
+    const r = parseWeather(base)!;
+    expect(r.hours).toEqual([]);
+  });
+
+  it('giá trị null trong mảng → 0, không để NaN trườn xuống luật cảnh báo', () => {
+    const r = parseWeather({
+      ...base,
+      hourly: { time: ['2026-08-18T14:00'], weather_code: [null], precipitation_probability: [null], wind_gusts_10m: [null] },
+    })!;
+    expect(r.hours[0]).toMatchObject({ code: 0, rainChance: 0, gustKph: 0 });
   });
 });

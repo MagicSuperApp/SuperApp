@@ -22,11 +22,15 @@
 import React from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
 import Icon from '../../../components/Icon';
+import RemoteImage from '../../../components/RemoteImage';
 import { COLORS } from '../../../constants';
 import { ORILIFE_BASE } from '../../../services/orilifeBase';
 import {
+  inheritedFrom, mediaOverflow, mediaUrls, showsChainChip, summarise,
+} from '../utils/timelineView';
+import {
   fetchTimeline, sortNewestFirst, KIND_VI, KIND_ICON, KIND_FALLBACK_ICON,
-  type TimelineEntityType, type TimelineEvent, type TimelineResult,
+  type TimelineEntityType, type TimelineResult,
 } from '../../../services/timelineService';
 
 interface Props {
@@ -43,23 +47,6 @@ const fmtWhen = (iso: string): string => {
   const d = new Date(t);
   const p = (n: number) => String(n).padStart(2, '0');
   return `${p(d.getDate())}/${p(d.getMonth() + 1)} · ${p(d.getHours())}:${p(d.getMinutes())}`;
-};
-
-/**
- * Một dòng tóm tắt lấy từ `payload`. `payload` là tự do phía máy chủ nên KHÔNG
- * đoán khoá: chỉ lấy vài khoá có tên rõ nghĩa, còn lại bỏ qua. Thà trống còn hơn
- * hiện `[object Object]` cho nông dân.
- */
-const summarise = (ev: TimelineEvent): string | null => {
-  const p = ev.payload;
-  if (!p || typeof p !== 'object') return null;
-  for (const key of ['note', 'ghi_chu', 'text', 'message', 'summary']) {
-    const v = (p as Record<string, unknown>)[key];
-    if (typeof v === 'string' && v.trim()) return v.trim();
-  }
-  const nMedia = Array.isArray(ev.media) ? ev.media.length : 0;
-  if (nMedia > 0) return `${nMedia} tệp đính kèm`;
-  return null;
 };
 
 const EntityTimeline: React.FC<Props> = ({ entityType, entityId, limit = 0 }) => {
@@ -145,6 +132,15 @@ const EntityTimeline: React.FC<Props> = ({ entityType, entityId, limit = 0 }) =>
   const all = sortNewestFirst(data?.events ?? []);
   const shown = limit > 0 && !expanded ? all.slice(0, limit) : all;
   const hidden = all.length - shown.length;
+  /**
+   * Danh sách có mục KẾ THỪA từ vườn không.
+   *
+   * Cần biết vì chip ở đầu khối là lời máy chủ về chuỗi băm của CHÍNH thực thể
+   * này. Bản sao kế thừa không nằm trong chuỗi đó, nên nếu danh sách có lẫn
+   * chúng thì phải nói rõ — không thì chip trông như đang bảo đảm cho cả những
+   * dòng nó không bảo đảm.
+   */
+  const hasInherited = all.some(e => !showsChainChip(e));
 
   return (
     <View style={styles.box}>
@@ -167,6 +163,13 @@ const EntityTimeline: React.FC<Props> = ({ entityType, entityId, limit = 0 }) =>
         )}
       </View>
 
+      {data && hasInherited && (
+        <Text style={styles.inheritNote}>
+          Dòng ghi “cả vườn” là bản sao từ dòng thời gian của vườn — chuỗi thuộc về
+          bản ghi gốc bên đó, không thuộc bản sao này.
+        </Text>
+      )}
+
       {all.length === 0 && (
         <Text style={styles.dim}>
           Chưa có sự kiện nào được ghi cho {entityType === 'fruit' ? 'quả' : 'cây'} này.
@@ -177,17 +180,37 @@ const EntityTimeline: React.FC<Props> = ({ entityType, entityId, limit = 0 }) =>
         const isLast = i === shown.length - 1 && hidden === 0;
         const label = KIND_VI[ev.kind] ?? String(ev.kind);
         const note = summarise(ev);
+        const fromFarm = inheritedFrom(ev) !== null;
+        const photos = mediaUrls(ev.media, ORILIFE_BASE);
+        const morePhotos = mediaOverflow(ev.media);
         return (
           <View key={ev.event_id ?? `${ev.kind}-${ev.ts}-${i}`} style={styles.row}>
             <View style={styles.rail}>
-              <View style={styles.dot}>
-                <Icon name={KIND_ICON[ev.kind] ?? KIND_FALLBACK_ICON} size={11} color={COLORS.white} />
+              {/* Mục kế thừa dùng chấm RỖNG: liếc cột dọc là phân biệt được ngay
+                  đâu là việc riêng của cây, đâu là việc cả vườn — khỏi đọc nhãn. */}
+              <View style={[styles.dot, fromFarm && styles.dotInherited]}>
+                <Icon
+                  name={KIND_ICON[ev.kind] ?? KIND_FALLBACK_ICON}
+                  size={11}
+                  color={fromFarm ? COLORS.accent : COLORS.white}
+                />
               </View>
               {!isLast && <View style={styles.line} />}
             </View>
             <View style={styles.body}>
               <View style={styles.titleRow}>
                 <Text style={styles.title} numberOfLines={1}>{label}</Text>
+                {/*
+                  MỘT lần phun cả vườn là MỘT sự việc, không phải N sự việc trên N
+                  cây. Không ghi rõ thì nông dân đọc dòng thời gian của một cây
+                  thành "cây này được phun riêng 12 lần".
+                */}
+                {fromFarm && (
+                  <View style={styles.farmTag}>
+                    <Icon name="tractor" size={8} color={COLORS.accent} />
+                    <Text style={styles.farmTagText}>cả vườn</Text>
+                  </View>
+                )}
                 {/* Chỉ chủ mới thấy event riêng tư/chờ duyệt — đánh dấu để khỏi
                     tưởng người mua cũng nhìn thấy dòng này. */}
                 {ev.visibility === 'private' && (
@@ -199,6 +222,29 @@ const EntityTimeline: React.FC<Props> = ({ entityType, entityId, limit = 0 }) =>
               </View>
               <Text style={styles.when}>{fmtWhen(ev.ts)}</Text>
               {!!note && <Text style={styles.note} numberOfLines={2}>{note}</Text>}
+              {photos.length > 0 && (
+                <View style={styles.photoRow}>
+                  {photos.map((uri, k) => (
+                    <RemoteImage
+                      key={uri + k}
+                      uri={uri}
+                      style={styles.photo}
+                      resizeMode="cover"
+                      placeholder={
+                        <View style={styles.photoEmpty}>
+                          <Icon name="image" size={12} color={COLORS.textMuted} />
+                        </View>
+                      }
+                      accessibilityLabel={label}
+                    />
+                  ))}
+                  {morePhotos > 0 && (
+                    <View style={styles.photoMore}>
+                      <Text style={styles.photoMoreText}>+{morePhotos}</Text>
+                    </View>
+                  )}
+                </View>
+              )}
             </View>
           </View>
         );
@@ -226,16 +272,33 @@ const styles = StyleSheet.create({
   retryBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, marginLeft: 'auto' },
   retryText: { fontSize: 11, fontWeight: '700', color: COLORS.accent },
   dim: { fontSize: 12, color: COLORS.textSub, lineHeight: 18 },
+  inheritNote: { fontSize: 11, color: COLORS.textMuted, lineHeight: 16, marginBottom: 10 },
 
   row: { flexDirection: 'row', gap: 10 },
   rail: { width: 22, alignItems: 'center' },
   dot: { width: 22, height: 22, borderRadius: 11, backgroundColor: COLORS.accent, alignItems: 'center', justifyContent: 'center' },
+  dotInherited: { backgroundColor: COLORS.bg, borderWidth: 1.5, borderColor: COLORS.accent },
   line: { flex: 1, width: 2, backgroundColor: COLORS.divider, marginTop: 2, minHeight: 14 },
   body: { flex: 1, paddingBottom: 14 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
   title: { fontSize: 13, fontWeight: '800', color: COLORS.text, flexShrink: 1 },
   tag: { backgroundColor: COLORS.bg, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
   tagText: { fontSize: 9, fontWeight: '700', color: COLORS.textMuted },
+  farmTag: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2,
+    borderWidth: 1, borderColor: COLORS.accent,
+  },
+  farmTagText: { fontSize: 9, fontWeight: '800', color: COLORS.accent },
+
+  photoRow: { flexDirection: 'row', gap: 6, marginTop: 8, flexWrap: 'wrap' },
+  photo: { width: 54, height: 54, borderRadius: 8, backgroundColor: COLORS.bg },
+  photoEmpty: { width: 54, height: 54, borderRadius: 8, backgroundColor: COLORS.bg, alignItems: 'center', justifyContent: 'center' },
+  photoMore: {
+    width: 54, height: 54, borderRadius: 8, backgroundColor: COLORS.bg,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  photoMoreText: { fontSize: 12, fontWeight: '800', color: COLORS.textSub },
   when: { fontSize: 11, color: COLORS.textSub, marginTop: 2 },
   note: { fontSize: 12, color: COLORS.text, marginTop: 4, lineHeight: 17 },
 

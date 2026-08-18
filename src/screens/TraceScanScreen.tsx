@@ -38,6 +38,15 @@ const TraceScanScreen = () => {
     else navigation.navigate('Main');
   };
 
+  /**
+   * Sang đường ẢNH — cửa `/api/fruit/lookup` cho người mua.
+   *
+   * REPLACE chứ không PUSH: cả hai màn đều là "dùng-rồi-thoát" (§3), chồng chúng
+   * lên nhau thì nút back đưa người ta ngược về đúng cái khung quét vừa không
+   * giúp được gì.
+   */
+  const goLookup = () => navigation.replace('FruitLookup');
+
   const onReadCode = (event: any) => {
     if (handled.current) return;
     const raw = event?.nativeEvent?.codeStringValue;
@@ -91,6 +100,14 @@ const TraceScanScreen = () => {
           {Header}
           <View style={styles.scanBox} />
           <Text style={styles.scanHint}>Đưa mã QR trên sản phẩm vào khung để soi nguồn gốc</Text>
+          {/* Lối ra cho ca THƯỜNG GẶP NHẤT: cầm quả trên tay mà trên quả không có
+              mã nào cả. Quả được định danh bằng ẢNH, mã QR chỉ là lối tắt cấp SAU
+              cho CÂY — nên bắt người mua đi tìm một mã không tồn tại là dẫn họ vào
+              ngõ cụt. Xem `navigation/traceScan.ts:46`. */}
+          <TouchableOpacity style={styles.altBtn} onPress={goLookup}>
+            <Icon name="fruit-cherries" size={17} color="#fff" />
+            <Text style={styles.altBtnText}>Không có mã QR? Chụp quả</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -116,6 +133,13 @@ const TraceScanScreen = () => {
         <TouchableOpacity style={styles.primaryBtn} onPress={rescan}>
           <Icon name="reload" size={18} color="#fff" />
           <Text style={styles.primaryBtnText}>Quét lại</Text>
+        </TouchableOpacity>
+        {/* Đây là chỗ người mua rơi vào khi bao bì KHÔNG có mã Aladin — tức phần
+            lớn trường hợp hôm nay. Mời "quét lại" một mã không tồn tại là vòng
+            lặp vô nghĩa; đường ảnh mới là đường định danh thật. */}
+        <TouchableOpacity style={styles.altBtn} onPress={goLookup}>
+          <Icon name="fruit-cherries" size={17} color="#fff" />
+          <Text style={styles.altBtnText}>Chụp quả để tra cứu</Text>
         </TouchableOpacity>
         <TouchableOpacity onPress={safeBack}>
           <Text style={styles.linkText}>Đóng</Text>
@@ -158,6 +182,16 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   primaryBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  // Nút phụ: viền, không nền đặc — nó là LỐI RA thứ hai, không được cạnh tranh
+  // thị giác với hành động chính của từng màn (quét / quét lại).
+  altBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    borderRadius: 14, paddingVertical: 13, paddingHorizontal: 22, marginTop: 14,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.45)',
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    alignSelf: 'center',
+  },
+  altBtnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
   linkText: { color: COLORS.accentLight, fontSize: 14, marginTop: 4 },
 });
 

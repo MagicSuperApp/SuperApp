@@ -69,6 +69,10 @@ import FarmMap2DScreen from '../screens/FarmMap2DScreen';
 import WayfindScreen from '../screens/WayfindScreen';
 import TraceNewsScreen from '../modules/trace/screens/TraceNewsScreen';
 import FruitScanScreen from '../screens/FruitScanScreen';
+// Tra cứu quả cho NGƯỜI MUA (`/api/fruit/lookup`) — khác hẳn `FruitScan` của nông
+// dân: không cần đăng nhập, phạm vi là quả trên cây đã bật công khai. Xem
+// `services/fruitLookupService.ts` về ba đường quả và vì sao không gộp.
+import FruitLookupScreen from '../screens/FruitLookupScreen';
 // Space3D/FruitPlace3D nạp LAZY (định nghĩa gần HOST_STACK_SCREENS bên dưới) để expo
 // (expo-gl → expo-modules-core) KHÔNG chạy lúc startup. Xem chú thích tại chỗ định nghĩa.
 import GLErrorBoundary from '../components/GLErrorBoundary';
@@ -1666,6 +1670,9 @@ const HOST_STACK_SCREENS: Array<{
   // Quét QUẢ khi CHƯA biết cây: chụp quả → hỏi máy chủ quả nào của cây nào (soi
   // trên các cây gần chỗ đứng) → mở đúng cây. Xem đầu file FruitScanScreen.
   { name: 'FruitScan', component: FruitScanScreen, options: { headerShown: false } },
+  // Đường của NGƯỜI MUA. Vào từ màn "Quét truy xuất" (`TraceScanScreen`) — chỗ
+  // người ta tới khi cầm sản phẩm trên tay mà không có mã QR nào để quét.
+  { name: 'FruitLookup', component: FruitLookupScreen, options: { headerShown: false } },
   // Dẫn đường tới vườn / tới gốc cây (chặng xa giao bản đồ ngoài, chặng gần tự chỉ).
   { name: 'Wayfind', component: WayfindScreen, options: { headerShown: false } },
   { name: 'TraceNews', component: TraceNewsScreen, options: { headerShown: false } },

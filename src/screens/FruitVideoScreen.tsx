@@ -315,11 +315,23 @@ const FruitVideoScreen: React.FC = () => {
 
     // Hỏi máy chủ quả nằm đâu trong tấm ảnh. Không ra ô nào thì DỪNG — xem khối
     // chú thích chỗ `biggestBox` để biết vì sao không được lùi về ô đoán.
+    //
+    // HAI ca hỏng, hai câu khác nhau, vì hai việc phải làm khác hẳn nhau:
+    //   · `species_no_fruit` — giống cây này KHÔNG cho quả. Chụp lại bao nhiêu lần
+    //     cũng vậy; đường đi tiếp là luồng sản phẩm khác, không phải quả.
+    //   · không có ô nào — máy chưa nhận ra quả trong ẢNH NÀY. Chụp lại thì được.
+    // Gộp hai ca vào một câu là đẩy người dùng đi chụp lại một thứ không tồn tại.
+    //
+    // Ca `species_no_fruit` trả HTTP 200 kèm `ok:false` (nhóm §14.4 của hợp đồng
+    // OriLife: xét `ok`, đừng xét mã) — nên phải đọc `data.reason`, không đọc HTTP.
     let box: Bbox | null = null;
+    let noFruitSpecies = false;
     try {
       const det = await detectFruit(ORILIFE_BASE, coverUri, treeId);
-      if (det.ok && det.data?.detections?.length) box = biggestBox(det.data.detections);
+      if (det.ok && det.data?.reason === 'species_no_fruit') noFruitSpecies = true;
+      else if (det.ok && det.data?.detections?.length) box = biggestBox(det.data.detections);
     } catch { box = null; }
+    if (noFruitSpecies) return 'giống cây này không cho quả — clip vẫn lưu, nhưng không tạo được bản ghi quả';
     if (!box) return 'máy chưa nhận ra quả trong ảnh — hãy tự khoanh quả ở trang “Quả trên cây”';
 
     const res = await enrollFruit(

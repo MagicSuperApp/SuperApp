@@ -214,21 +214,33 @@ const AnimalEnrollScreen: React.FC = () => {
         const detail = res.error?.detail ?? 'Lỗi không xác định';
 
         if (status === 409) {
-          // Nút cũ ở đây là "Đăng ký mới" gọi lại `doEnroll()` với ĐÚNG nguyên gói
-          // cũ. `enrollAnimal` không có tham số `force`/`allow_duplicate` nào
-          // (animalReIDService.ts:175-190) ⇒ 409 lần nữa, hộp thoại y hệt, vòng lặp
-          // kín. Máy chủ cũng không trả mã cá thể trùng về tới đây (nhánh 409 chỉ
-          // giữ `detail`), nên KHÔNG mở thẳng hồ sơ trùng được — đừng bịa.
-          // Việc client làm được: mở sổ vật nuôi của đúng vườn để tự tìm.
+          // Nút cũ ở đây là "Đăng ký mới" gọi lại `doEnroll()` với ĐÚNG nguyên gói cũ
+          // ⇒ 409 lần nữa, hộp thoại y hệt, vòng lặp kín, mà "Huỷ" thì mất công 5 ảnh.
+          //
+          // Máy chủ CÓ trả mã con trùng — trong `detail` dạng object, trường
+          // `similar_animal_did` (OriLife xác nhận 18/08). Trước đây app đọc hụt nên
+          // tưởng không có. Có mã thì mở thẳng hồ sơ con đó: người dùng nhìn ảnh là
+          // biết ngay có phải con mình đang cầm không, nhanh hơn hẳn việc dò trong sổ.
+          //
+          // Chưa nối cờ ép tạo (`force`) — cửa đó vừa mở phía máy chủ, chờ bản của họ
+          // lên rồi mới nối, và khi nối thì cho xem con trùng TRƯỚC rồi mới cho ép.
+          const similar = res.error?.similarAnimalDid;
           Alert.alert(
             'Cá thể có thể đã tồn tại',
-            `${detail}\n\nMáy chủ chưa cho ép tạo bản trùng. Mở sổ vật nuôi của vườn này để xem con đó đã có chưa. Ảnh vừa chụp vẫn giữ nguyên.`,
+            `${detail}\n\n${similar
+              ? 'Mở hồ sơ con máy chủ cho là trùng để đối chiếu.'
+              : 'Mở sổ vật nuôi của vườn này để xem con đó đã có chưa.'} Ảnh vừa chụp vẫn giữ nguyên.`,
             [
               { text: 'Để sau', style: 'cancel' },
-              {
-                text: 'Mở sổ vật nuôi',
-                onPress: () => navigation.navigate('AnimalManagement', { farmId }),
-              },
+              similar
+                ? {
+                    text: 'Xem con trùng',
+                    onPress: () => navigation.navigate('AnimalDetail', { animalDid: similar }),
+                  }
+                : {
+                    text: 'Mở sổ vật nuôi',
+                    onPress: () => navigation.navigate('AnimalManagement', { farmId }),
+                  },
             ],
           );
           return;

@@ -79,6 +79,17 @@ export interface APIError {
   detail: string;
   http_status: number;
   retry_after_seconds?: number;
+  /**
+   * Mã cá thể mà máy chủ cho là TRÙNG với con đang đăng ký (ca 409).
+   *
+   * Máy chủ trả nó trong `detail` dưới dạng OBJECT — `{error, duplicate: true,
+   * similar_animal_did}` — chứ không phải chuỗi. Bản trước gán thẳng object đó vào
+   * `detail: string` nên màn hình hiện "[object Object]" cho nông dân, và mã con
+   * trùng thì rơi mất dù máy chủ vẫn gửi. Tên trường là `similar_animal_did`, KHÔNG
+   * phải `existing_animal_did` — OriLife cố ý không đặt bí danh, vì hai tên cho một
+   * thứ thì tên nào cũng thành nửa đúng.
+   */
+  similarAnimalDid?: string;
 }
 
 const AUTH_TOKEN_KEY = 'auth_token';
@@ -134,9 +145,20 @@ async function _apiCall<T>(
       return { ok: false, error: { type: 'rate_limited', detail: 'Quá nhiều yêu cầu', http_status: 429, retry_after_seconds: retryAfter ? parseInt(retryAfter, 10) : 60 } };
     }
     if (resp.status === 409) {
+      // `detail` ở ca này là OBJECT, không phải chuỗi — xem chú thích ở `APIError`.
       let detail = 'Trùng lặp';
-      try { detail = (await resp.json()).detail ?? detail; } catch { /* bỏ qua */ }
-      return { ok: false, error: { type: 'duplicate', detail, http_status: 409 } };
+      let similarAnimalDid: string | undefined;
+      try {
+        const raw = (await resp.json())?.detail;
+        if (typeof raw === 'string') {
+          detail = raw;
+        } else if (raw && typeof raw === 'object') {
+          detail = typeof raw.error === 'string' ? raw.error : detail;
+          similarAnimalDid =
+            typeof raw.similar_animal_did === 'string' ? raw.similar_animal_did : undefined;
+        }
+      } catch { /* bỏ qua */ }
+      return { ok: false, error: { type: 'duplicate', detail, http_status: 409, similarAnimalDid } };
     }
     if (resp.status === 422) {
       let detail = 'Dữ liệu không hợp lệ';

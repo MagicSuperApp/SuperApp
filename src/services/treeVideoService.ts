@@ -6,15 +6,19 @@
  *     file   = clip .mp4 (bắt buộc) — full-res, KHÔNG crop client
  *     lat/lon = GPS lúc quay (tuỳ)
  *     source = "phone" (tuỳ, mặc định "phone")
- *     farm_id = vườn của cây (tuỳ) — thiếu thì bản ghi rơi khỏi truy vấn theo vườn
- *     client_event_id = khoá khử-trùng của client (tuỳ) — thiếu thì gửi lại đẻ bản ghi thừa
+ *     note   = ghi chú (tuỳ)
  *
- * ⚠ CHƯA ĐO trên máy chủ thật: hai trường `farm_id` / `client_event_id` ở route NÀY.
- * Chúng là nếp CHUNG của các cửa ghi khác cùng máy chủ (`enroll`, `verify_add`,
- * `tree/set_farm`, `care`, và `fruit_video` cho `client_event_id`), nên gửi kèm là
- * đúng chiều; nhưng route video cây thì chưa ai gọi thử để xác nhận máy chủ ĐỌC.
- * Gửi kèm không rủi ro (multipart thừa trường thì FastAPI bỏ qua), chỉ là chưa được
- * tuyên là "đã có tác dụng". Ai đo được thì sửa dòng này.
+ * ⛔ ĐÃ ĐO 2026-08-18 — ĐỪNG THÊM LẠI `farm_id` / `client_event_id` VÀO ROUTE NÀY.
+ * Một bản trước đã gửi kèm hai trường đó theo nếp chung của các cửa ghi khác
+ * (`enroll`, `verify_add`, `tree/set_farm`, `care`). Đo trên máy chủ thật: route
+ * video cây KHÔNG khai `farm_id`, và chuỗi `client_event_id` KHÔNG tồn tại ở bất
+ * kỳ đâu trong mã máy chủ. Gửi hai trường đó là gửi vào hư không.
+ *   · `farm_id` ở cửa này còn THỪA về mặt thiết kế: video gắn vào cây, mà cây đã
+ *     thuộc vườn rồi — không như `enroll`, nơi cây chưa có vườn nào.
+ *   · `client_event_id` thì lý lẽ đúng (gửi lại sau khi mất sóng không khử trùng
+ *     được là một lỗi thật) nhưng máy chủ chưa có cơ chế nào, chưa có thiết kế,
+ *     nên chưa hứa. Ngày có thì nối, và nối cả `videoUploadQueue` (nó đã sẵn có
+ *     `job.clientEventId` mà nhánh cây bỏ không truyền — nhánh quả thì có).
  *
  * Server: chắt-lọc khung-hình đại-diện (video_ingest, tự DOWNSCALE) → mỗi khung jpeg đẩy qua
  * ĐÚNG đường embed + verify_add ẢNH CŨ (bổ-sung góc cho cây, KHÔNG enroll-mới, chống nhiễm
@@ -100,23 +104,6 @@ export interface TreeVideoOptions {
   lat?: number;
   lon?: number;
   source?: string;
-  /**
-   * Vườn của cây. Mọi đường GHI khác của cùng máy chủ đều gửi `farm_id`
-   * (`treeReIDService` enroll/verify_add/set_farm, `careService`), nên bản ghi
-   * từ đường video mà thiếu nó thì rơi khỏi truy vấn theo vườn: nông dân quay
-   * clip xong, mở vườn ra không thấy đâu. Nhà OriLife đã cảnh báo đúng hậu quả
-   * này cho cửa cây (xem chú thích `treeReIDService.ts:520`).
-   */
-  farmId?: string;
-  /**
-   * Khoá khử-trùng phía CLIENT, ỔN ĐỊNH theo clip (KHÔNG đổi qua các lần gửi
-   * lại). Cùng nếp với `fruitVideoService`: hàng đợi sinh id bằng
-   * `computeClientEventId(treeId, mốc-quay, kích-thước, uri)` — xem
-   * `videoUploadQueue.ts`. Thiếu nó thì gửi lại sau khi mất sóng đẻ ra nhiều
-   * bản ghi cho cùng một clip, vì máy chủ không có gì để khử trùng.
-   * Client chỉ bảo đảm gửi id KHÔNG đổi; dedup thật là việc của backend.
-   */
-  clientEventId?: string;
 }
 
 /**
@@ -145,8 +132,6 @@ export async function uploadTreeVideo(
   form.append('source', opts.source ?? 'phone');
   // Chỉ gửi khi CÓ: gửi chuỗi rỗng là nói với máy chủ "cây này không thuộc vườn
   // nào", khác hẳn với "lần gửi này không biết vườn".
-  if (opts.farmId) form.append('farm_id', opts.farmId);
-  if (opts.clientEventId) form.append('client_event_id', opts.clientEventId);
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);

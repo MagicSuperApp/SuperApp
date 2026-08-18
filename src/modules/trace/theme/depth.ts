@@ -1,33 +1,31 @@
 /**
- * depth — HỆ THIẾT KẾ của module Truy xuất: **nhiều lớp** + **hình khối tự nhiên**.
+ * depth — HỆ THIẾT KẾ của module Truy xuất.
  *
- * Hai thứ chồng lên nhau, không phải hai hệ:
- *   · THANG CHIỀU SÂU nói cái gì nằm trên cái gì (nền → thẻ → tấm trượt → hộp thoại).
- *   · PHONG CÁCH TỰ NHIÊN quyết định chúng TRÔNG như thế nào: màu đất, màu lá,
- *     góc bo không đều, mảng loang mềm ở nền, chữ nhẹ.
+ * ── Bản này đổi hướng: từ tông ĐẤT sang tông NƯỚC ───────────────────────────
+ * Bản trước dùng nền kem ngả nâu, thẻ bo góc lệch, bóng đổ mềm — đọc ra "mộc mạc,
+ * thủ công", nhưng đứng cạnh phần mềm 2026 thì đọc ra "cũ". Ba thứ gây cảm giác
+ * đó, và bản này sửa cả ba:
  *
- * ── Thang lớp ───────────────────────────────────────────────────────────────
- *   L0  NỀN          — màu đất ngả kem, KHÔNG trắng tinh; có mảng loang mờ phía sau.
- *   L1  NỘI DUNG     — chữ và hàng đặt thẳng trên nền.
- *   L2  THẺ NỔI      — đơn vị chính. Trắng ngà, bo góc KHÔNG ĐỀU, bóng mềm.
- *   L3  TẤM TRƯỢT    — kéo từ đáy lên.
- *   L4  HỘP THOẠI    — nổi cao nhất, giữa màn.
+ *   NỀN     kem #F5F1E8 → trắng ngả xanh biển. Nền ấm ngả vàng làm cả màn trông
+ *           như giấy ố; nền sáng ngả lam-lục cho cảm giác sạch và mới, mà vẫn
+ *           không phải trắng bệnh viện.
+ *   GÓC BO  bo lệch bốn góc → bo ĐỀU và NHẸ. Góc lệch là chữ ký của "hand-made";
+ *           góc đều 12–16 px là chữ ký của phần mềm hiện đại (Material, Fluent).
+ *   BÓNG    bóng mềm quanh mọi thẻ → gần như BỎ HẲN. Thẻ tách nhau bằng ĐƯỜNG
+ *           VIỀN TÓC và bằng nền, không bằng bóng. Bóng đổ nhiều là lối 2014.
  *
- * ── Vì sao bo góc không đều ─────────────────────────────────────────────────
- * Bo đều bốn góc cho ra hình do MÁY vẽ. Trong tự nhiên không có gì đối xứng
- * tuyệt đối: lá, đá cuội, vũng nước đều lệch. Lệch nhẹ 4–10 px giữa các góc là
- * đủ để mắt thấy "mềm" mà vẫn gọn gàng — đây là điểm khác Neumorphism, vốn dựa
- * vào bóng lồi/lõm để giả vật liệu nhựa.
+ * ── Ba hệ tham chiếu ────────────────────────────────────────────────────────
+ *   Material  thang khoảng cách 4, màu ngữ nghĩa, chạm có phản hồi rõ.
+ *   Fluent    bề mặt phẳng, phân tầng bằng SẮC ĐỘ nền chứ không bằng bóng.
+ *   Bento     lưới ô vuông vắn, mỗi ô một việc, không ô nào tranh chỗ ô nào.
  *
- * ── Màu ─────────────────────────────────────────────────────────────────────
- * Tông đất + xanh lá, lấy từ chính thứ người dùng nhìn thấy mỗi ngày: đất phù sa,
- * lá non, lá già, vỏ cây, nắng. KHÔNG dùng xanh dương thương hiệu cũ làm màu
- * chính nữa — xanh dương là màu của phần mềm, không phải màu của vườn.
+ * ── Vẫn giữ ─────────────────────────────────────────────────────────────────
+ * Cỡ chữ lớn và vùng chạm rộng. Người dùng là nhà vườn trên 40 tuổi, cầm máy
+ * giữa nắng, tay có thể ướt — thứ đó không đổi theo mốt thiết kế.
  *
- * ── Cỡ chữ cho người đọc ngoài ruộng ────────────────────────────────────────
- * Nông dân, phần lớn trên 40 tuổi, cầm máy giữa trời nắng, tay có thể ướt. Chữ
- * nền 16–17, số liệu to hẳn, KHÔNG dùng nhãn IN HOA cỡ nhỏ (in hoa xoá đường viền
- * trên/dưới của chữ nên đọc chậm hơn hẳn), và giãn dòng rộng cho dễ bám.
+ * MỌI TÊN TOKEN GIỮ NGUYÊN so với bản tông đất, chỉ đổi giá trị. Nhờ vậy hơn 20
+ * tệp đang dùng chúng đổi hình ngay mà không phải sửa, và không màn nào bị bỏ
+ * quên ở tông màu cũ.
  */
 
 import { Platform, type TextStyle, type ViewStyle } from 'react-native';
@@ -35,140 +33,130 @@ import { Platform, type TextStyle, type ViewStyle } from 'react-native';
 import { withAlpha } from '../../../theme';
 
 // ---------------------------------------------------------------------------
-// Bảng màu — tông đất & lá
-// ---------------------------------------------------------------------------
-
-export const NATURE = {
-  /** Lá non — màu chính, dùng cho nút và điểm nhấn. */
-  leaf: '#4A7C3F',
-  leafDeep: '#2F5A28',
-  leafSoft: '#EAF1E4',
-  /** Lá già / rêu — màu phụ. */
-  moss: '#6B8F5E',
-  /** Đất phù sa — nền trang. */
-  soil: '#ffffff',
-  soilDeep: '#E9E2D4',
-  /** Vỏ cây — chữ đậm, viền. */
-  bark: '#3D3528',
-  barkSoft: '#6B6153',
-  /** Nắng — số liệu ấm, quả chín. */
-  sun: '#D89B3C',
-  sunSoft: '#FBF0DC',
-  /** Nước mưa. */
-  water: '#4F8AA8',
-  waterSoft: '#E4EFF4',
-  /** Giấy — mặt thẻ. Trắng NGÀ, không phải trắng tinh. */
-  paper: '#FDFCF8',
-  clay: '#C97B4A',
-} as const;
-
-export const SURFACE = {
-  /** L0 — mặt đất của trang. */
-  ground: NATURE.soil,
-  /** L1 — mảng chìm nhẹ (ô nhập, hàng bị vô hiệu). */
-  sunken: NATURE.soilDeep,
-  /** L2/L3/L4 — mặt giấy nổi. */
-  raised: NATURE.paper,
-  /** Màn che sau tấm trượt / hộp thoại — ngả nâu, không phải xám máy móc. */
-  scrim: 'rgba(40, 34, 24, 0.42)',
-} as const;
-
-// ---------------------------------------------------------------------------
-// Bóng đổ theo lớp — iOS dùng shadow*, Android dùng elevation. Khai CẢ HAI.
+// Bảng màu — nước biển nông dưới nắng
 // ---------------------------------------------------------------------------
 
 /**
- * Công thức bóng — **toả rộng, rất nhạt, hạ thấp**.
- *
- * Bóng "hiện đại" không phải bóng ĐẬM, mà là bóng KHÓ THẤY: bán kính loang lớn
- * gấp 4–6 lần độ dời, độ đục dưới 0,07. Mắt không đọc ra "cái bóng", chỉ đọc ra
- * "tấm thẻ này nổi lên một chút". Bóng dày (dời 8, đục 0,12) là lối của giao diện
- * 2014 — nay nhìn ra ngay là cũ.
- *
- * Bóng ngả NÂU chứ không đen: đen trên nền kem cho ra vệt xám như vết bẩn.
- *
- * Android không có `shadowRadius` — chỉ có `elevation`, mà elevation vẽ bóng
- * riêng của hệ, đậm hơn iOS ở cùng một con số. Nên bậc Android luôn đặt THẤP hơn
- * bậc iOS tương ứng, chứ không map 1-1.
+ * Tên cũ (`leaf`, `soil`, `bark`…) giữ nguyên để không phải sửa nơi dùng, nhưng
+ * GIÁ TRỊ nay lấy từ nước và lá non thay vì đất và vỏ cây.
+ */
+export const NATURE = {
+  /** Xanh chủ đạo — lá non pha lam, tươi hơn hẳn xanh rêu cũ. */
+  leaf: '#166e43',
+  leafDeep: '#11563a',
+  leafSoft: '#DDF3EC',
+  /** Xanh phụ, dùng cho hạng hai. */
+  moss: '#4fa964',
+  /** "Đất" nay là NƯỚC: trắng ngả lam-lục, thật sáng. */
+  soil: '#F2F9FB',
+  soilDeep: '#E4EFF3',
+  /** Chữ: xanh-đen thay cho nâu vỏ cây — sắc lạnh hợp nền lạnh. */
+  bark: '#12262E',
+  barkSoft: '#5B7480',
+  /** Nắng — số liệu ấm, quả chín. */
+  sun: '#E08B2C',
+  sunSoft: '#FDF1DF',
+  /** Nước mưa. */
+  water: '#2C87C4',
+  waterSoft: '#E2F0FA',
+  /** Mặt thẻ — TRẮNG hẳn, để nổi trên nền ngả xanh. */
+  paper: '#FFFFFF',
+  clay: '#D2703F',
+} as const;
+
+export const SURFACE = {
+  /** L0 — nền trang: trắng pha lam-lục, thật sáng. */
+  ground: NATURE.soil,
+  /** L1 — mảng chìm nhẹ (ô nhập, hàng bị vô hiệu). */
+  sunken: NATURE.soilDeep,
+  /** L2/L3/L4 — mặt thẻ nổi. */
+  raised: NATURE.paper,
+  /** Màn che sau tấm trượt / hộp thoại. */
+  scrim: 'rgba(12, 32, 40, 0.45)',
+} as const;
+
+// ---------------------------------------------------------------------------
+// Chiều sâu — phân tầng bằng NỀN và VIỀN, gần như không dùng bóng
+// ---------------------------------------------------------------------------
+
+/**
+ * Công thức bóng còn giữ cho hai bậc trên cùng (tấm trượt, hộp thoại) — chúng
+ * che nội dung phía sau nên phải có ranh giới vật lý. Bậc thẻ thường thì KHÔNG
+ * còn bóng: một trang đầy thẻ có bóng là một trang trông bẩn và cũ.
  */
 const shadow = (y: number, blur: number, opacity: number, elevation: number): ViewStyle =>
   Platform.select<ViewStyle>({
     ios: {
-      shadowColor: '#4A3F2A',
+      shadowColor: '#0E2A35',
       shadowOffset: { width: 0, height: y },
       shadowOpacity: opacity,
       shadowRadius: blur,
     },
-    android: { elevation, shadowColor: '#4A3F2A' },
+    android: { elevation, shadowColor: '#0E2A35' },
     default: {},
   })!;
 
 export const ELEVATION = {
   content: {} as ViewStyle,
-  /** Thẻ thường — gần như chỉ là một hơi tối dưới mép. */
-  card: shadow(2, 14, 0.05, 1),
-  /** Thẻ chính / nút nổi — vẫn nhạt, chỉ loang rộng hơn. */
-  cardStrong: shadow(4, 20, 0.07, 3),
-  /** Tấm trượt — bóng hắt LÊN, tách nó khỏi trang bên dưới. */
-  sheet: shadow(-3, 28, 0.1, 8),
+  /** Thẻ thường — KHÔNG bóng. Tách khỏi nền bằng `TONE.border` và màu trắng. */
+  card: {} as ViewStyle,
+  /** Nút nổi / thẻ chính — một hơi tối, gần ngưỡng nhìn thấy. */
+  cardStrong: shadow(1, 6, 0.05, 1),
+  /** Tấm trượt — che nội dung nên cần ranh giới. */
+  sheet: shadow(-2, 18, 0.08, 6),
   /** Hộp thoại — bậc duy nhất được phép thấy rõ, vì nó chặn cả màn. */
-  modal: shadow(8, 36, 0.16, 16),
+  modal: shadow(6, 26, 0.14, 12),
 } as const;
 
 // ---------------------------------------------------------------------------
-// Bo góc — KHÔNG ĐỀU, theo lối hình tự nhiên
+// Bo góc — ĐỀU và NHẸ
 // ---------------------------------------------------------------------------
 
-/** Thẻ thường: lệch nhẹ, mắt thấy mềm mà không thấy méo. */
+/**
+ * Tên `ORGANIC_*` giữ lại vì hơn hai chục chỗ đang dùng, nhưng giá trị nay là bo
+ * ĐỀU. Góc lệch bốn bên là thứ làm giao diện đọc ra "thủ công / cũ"; góc đều vừa
+ * phải là ngôn ngữ của Material và Fluent.
+ */
 export const ORGANIC_CARD = {
-  borderTopLeftRadius: 26,
-  borderTopRightRadius: 20,
-  borderBottomRightRadius: 26,
-  borderBottomLeftRadius: 20,
+  borderRadius: 16,
 } as const;
 
-/** Thẻ chính của trang: lệch mạnh hơn, ra dáng viên cuội. */
+/** Thẻ chính của trang. */
 export const ORGANIC_HERO = {
-  borderTopLeftRadius: 34,
-  borderTopRightRadius: 24,
-  borderBottomRightRadius: 34,
-  borderBottomLeftRadius: 24,
+  borderRadius: 20,
 } as const;
 
-/** Ô nhỏ (icon, ảnh nhỏ) — lệch ít vì cỡ nhỏ, lệch nhiều là thành méo. */
+/** Ô nhỏ (icon, ảnh nhỏ). */
 export const ORGANIC_TILE = {
-  borderTopLeftRadius: 18,
-  borderTopRightRadius: 14,
-  borderBottomRightRadius: 18,
-  borderBottomLeftRadius: 14,
+  borderRadius: 12,
 } as const;
 
 export const RADIUS = {
   chip: 999,
-  field: 18,
-  card: 24,
-  sheet: 32,
-  modal: 28,
+  field: 12,
+  card: 16,
+  sheet: 24,
+  modal: 20,
 } as const;
 
 // ---------------------------------------------------------------------------
-// Khoảng cách — thang 4
+// Khoảng cách — thang 4 (Material)
 // ---------------------------------------------------------------------------
 
 export const SPACE = {
   xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 28,
-  page: 18,
-  section: 30,
+  page: 16,
+  section: 28,
 } as const;
 
 // ---------------------------------------------------------------------------
-// Chữ — mềm, giãn rộng
+// Chữ
 // ---------------------------------------------------------------------------
 
 export const TYPE = {
-  title: { fontSize: 27, fontWeight: '700', letterSpacing: -0.4, color: NATURE.bark } as TextStyle,
-  section: { fontSize: 19, fontWeight: '700', letterSpacing: -0.2, color: NATURE.bark } as TextStyle,
-  cardTitle: { fontSize: 17, fontWeight: '700', color: NATURE.bark } as TextStyle,
+  title: { fontSize: 27, fontWeight: '700', letterSpacing: -0.5, color: NATURE.bark } as TextStyle,
+  section: { fontSize: 19, fontWeight: '700', letterSpacing: -0.3, color: NATURE.bark } as TextStyle,
+  cardTitle: { fontSize: 17, fontWeight: '600', color: NATURE.bark } as TextStyle,
   body: { fontSize: 16, lineHeight: 24, color: NATURE.barkSoft } as TextStyle,
   caption: { fontSize: 14, lineHeight: 21, color: NATURE.barkSoft } as TextStyle,
   metric: { fontSize: 32, fontWeight: '700', letterSpacing: -1, color: NATURE.bark } as TextStyle,
@@ -179,31 +167,20 @@ export const TYPE = {
 export const TOUCH_MIN = 56;
 
 // ---------------------------------------------------------------------------
-// Màu ngữ nghĩa — tên theo VIỆC, không theo sắc độ
+// Lớp kính — giữ cho màn Dẫn đường (kính trên nền ảnh vườn)
 // ---------------------------------------------------------------------------
 
-/**
- * KÍNH MỜ — lớp trong suốt đặt trên nền ảnh vườn.
- *
- * Không dùng `BlurView` (cần mô-đun native app chưa cài). Dáng "kính" ở đây dựng
- * bằng các lớp trong suốt chồng nhau; nền phía sau vốn đã mờ nên mắt gần như
- * không phân biệt được với làm-mờ thật.
- *
- * Màu để ở ĐÂY chứ không rải trong màn: nó là màu của hệ thiết kế, và luật lint
- * cấm hex nằm trong tệp màn hình là đúng — chỗ của chúng là tệp này.
- */
 export const GLASS = {
-  /** Mặt kính chính — đủ đục để chữ đen trên nó vẫn đọc được ngoài nắng. */
-  film: 'rgba(255, 255, 255, 0.68)',
-  /** Lớp mỏng hơn, cho chip và nút phụ. */
-  filmSoft: 'rgba(255, 255, 255, 0.52)',
-  /** Viền sáng quanh mép kính. */
-  rim: 'rgba(255, 255, 255, 0.75)',
-  /** Vệt sáng hắt vào mặt kính (dùng cho gradient SVG). */
+  film: 'rgba(255, 255, 255, 0.82)',
+  filmSoft: 'rgba(255, 255, 255, 0.66)',
+  rim: 'rgba(255, 255, 255, 0.9)',
   sheen: '#FFFFFF',
-  /** Nền của dấu "đã tới" — trắng đặc hơn để dấu tích nổi hẳn. */
-  seal: 'rgba(255, 255, 255, 0.72)',
+  seal: 'rgba(255, 255, 255, 0.88)',
 } as const;
+
+// ---------------------------------------------------------------------------
+// Màu ngữ nghĩa — tên theo VIỆC, không theo sắc độ
+// ---------------------------------------------------------------------------
 
 export const TONE = {
   primary: NATURE.leaf,
@@ -216,6 +193,34 @@ export const TONE = {
   rain: NATURE.water,
   rainSoft: NATURE.waterSoft,
   soil: NATURE.clay,
-  danger: '#B5533C',
-  border: '#E6DFCF',
+  danger: '#D1483C',
+  /**
+   * Viền tóc. Nay là thứ TÁCH THẺ KHỎI NỀN — việc mà bóng đổ làm ở bản trước.
+   * Phải đủ nhạt để không thành lưới kẻ ô, đủ rõ để mép thẻ có thật.
+   */
+  border: '#DCE9EE',
+} as const;
+
+/**
+ * Thẻ tối — dùng cho khối THỜI TIẾT ở trang Tổng quan.
+ *
+ * Một ô tối giữa trang sáng là lối Bento quen thuộc: nó nói "khối này khác loại
+ * với các khối quanh nó" mà không cần viền dày hay tiêu đề to. Thời tiết đúng là
+ * khác loại — nó là thứ ĐỌC, không phải thứ bấm vào để làm việc gì.
+ */
+/**
+ * Sắc tím rất nhạt, CHỈ dùng cho thanh hỏi trợ lý.
+ *
+ * Tách khỏi `TONE` vì nó không mang nghĩa nào trong nghề vườn — nó là quy ước
+ * thị giác của phần mềm: tím nhạt = chỗ có máy trả lời. Để lẫn vào bảng màu
+ * ngữ nghĩa là mời người sau dùng nó cho một cái nút bình thường.
+ */
+export const AI_TINT = '#EDE7FB';
+
+export const DARK_CARD = {
+  bg: '#123A47',
+  bgSoft: '#1B4C5C',
+  text: '#F0F8FA',
+  textSoft: '#9FC0CC',
+  border: 'rgba(255, 255, 255, 0.1)',
 } as const;

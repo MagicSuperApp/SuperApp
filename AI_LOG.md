@@ -1,3 +1,36 @@
+## Tổng quan: vườn thu gọn · giá nông sản · thời tiết theo giờ · luật cảnh báo
+
+### Mục vườn thu gọn
+Lưới hai hàng → **một hàng ba ô**, số từ 34 xuống 24, icon nhỏ 12 px cạnh nhãn thay cho ô icon to. Ba con số này là thứ **liếc qua**, không phải thứ đọc kỹ — chiếm hơn một phần ba màn hình cho chúng là lấy mất chỗ của thời tiết và giá, hai thứ người ta mở app để xem.
+
+### Thời tiết đổi theo giờ
+`wxPalette(isDaytime())` — 6h–18h dùng tông sáng của trang, ngoài giờ đó dùng thẻ tối. Ban đêm mà thẻ trắng thì mở app lúc 4 giờ sáng đi thăm vườn là chói mắt; giữa trưa mà thẻ tối thì đó là chỗ khó đọc nhất trên màn. Tính lại mỗi lượt vẽ, không nhớ — mở lúc 17h55 rồi quay lại 18h05 phải thấy đã đổi.
+
+### Giá nông sản — và sự thật về nguồn
+**Không có API miễn phí chính thức nào của Việt Nam cho giá nông sản.** Đã dò: `nongsan.mard.gov.vn` không phân giải được tên miền; dịch vụ có dữ liệu đàng hoàng đều thu phí. Thứ lấy được là **trang web công khai**, và đọc giá từ trang web thì mong manh.
+
+Nên `agriPriceService` viết ngược với thói quen thường gặp:
+- không khớp đúng khuôn đã biết → **trả `null`**, không đoán, không lấy đại con số đầu tiên trong trang;
+- **chặn khoảng hợp lệ** — 9 đ/kg hay 95 triệu đ/kg là đọc sai, vẫn `null`;
+- `"95,300"` và `"95.300"` đều là chín-lăm-nghìn-ba-trăm (bẫy `parseFloat` ra 95,3).
+
+Một con số giá SAI tệ hơn hẳn ô trống: nhà vườn bán hay giữ hàng theo chính con số đó.
+
+Biến động so với **lần đọc trước** lưu trong máy, vì trang không có lịch sử — và màn nói rõ điều đó thay vì để người đọc tưởng là so với hôm qua. Lần đầu chạy hiện dấu gạch, **không** hiện mũi tên 0%.
+
+> Sầu riêng — mặt hàng chính của app — **chưa có nguồn miễn phí nào** đăng giá theo ngày dưới dạng máy đọc được. Bảng nguồn để thêm một dòng là xong khi tìm được.
+
+### Luật cảnh báo — có, nhưng chưa gửi đi được
+`alertRules.ts` (16 bài kiểm): giá đổi **≥5%** thì đáng cắt ngang; dưới mức đó là dao động thường ngày.
+
+Tin thì **không chấm điểm tiêu đề theo từ khoá** — đó là gán ý nghĩa cho thứ không đo được. Thứ đo được là **sự trùng hợp**: ≥3 **nguồn khác nhau** cùng viết một chuyện trong 6 giờ. Một báo đăng là một bài báo; bốn báo cùng đăng là một chuyện đang xảy ra. Có bài kiểm cho đúng bẫy "một trang đăng lại chính nó ba lần".
+
+Kèm `dropRecent` — cùng một cảnh báo không lặp trong 12 giờ, nếu không người dùng tắt hết thông báo trong hai ngày.
+
+**CHƯA gửi được về điện thoại.** App chỉ có `@react-native-firebase/messaging` (nhận push từ máy chủ), **không có thư viện hiện thông báo cục bộ** — `grep` cả `src/` không ra `notifee`/`displayNotification`. Cần một trong hai: cài `@notifee/react-native` rồi dựng lại app, hoặc để máy chủ đẩy push. Phần quyết định đã xong và kiểm được; chỉ thiếu đường ra.
+
+Kiểm: `tsc` sạch · **848/848 test xanh** (+28) · eslint 0 trên các tệp mới.
+
 # AI_LOG
 
 > Nhật ký thay đổi do AI thực hiện. **Đọc file này TRƯỚC khi làm việc** thay vì quét cả project.

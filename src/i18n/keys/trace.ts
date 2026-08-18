@@ -38,7 +38,7 @@ export const TRACE_STRINGS = {
 
   // ── Mục 2 — Thời tiết ─────────────────────────────────────────────────────
   'trace.section.weather': { vi: 'Thời tiết', en: 'Weather', zh: '天气', ja: '天気' },
-  'trace.weather.hint': { vi: 'Hôm nay và 7 ngày tới', en: 'Today and the next 7 days', zh: '今天与未来 7 天', ja: '今日と 7 日間' },
+  'trace.weather.hint': { vi: 'Hôm nay và 5 ngày tới', en: 'Today and the next 5 days', zh: '今天与未来 5 天', ja: '今日と 5 日間' },
   'trace.weather.loading': { vi: 'Đang xem thời tiết ở vườn của bạn…', en: 'Checking the weather at your garden…', zh: '正在查看你果园的天气…', ja: '果樹園の天気を確認しています…' },
   'trace.weather.failTitle': { vi: 'Chưa xem được thời tiết', en: 'Weather unavailable', zh: '暂时无法获取天气', ja: '天気を取得できません' },
   'trace.weather.failBody': {
@@ -450,6 +450,41 @@ export const TRACE_STRINGS = {
 
   'trace.farmList.wayfind': { vi: 'Dẫn đường tới {name}', en: 'Navigate to {name}', zh: '导航到 {name}', ja: '{name} への道案内' },
 
+
+  'trace.news.hot': { vi: 'Tin nóng', en: 'Breaking', zh: '最新热点', ja: '注目のニュース' },
+  'trace.news.older': { vi: 'Tin trước đó', en: 'Earlier', zh: '更早', ja: 'それ以前' },
+  'trace.news.seeAll': { vi: 'Xem tất cả tin', en: 'See all news', zh: '查看全部资讯', ja: 'すべてのニュース' },
+
+  'trace.ask.placeholder': {
+    vi: 'Hỏi Aladin về vườn của bạn…',
+    en: 'Ask Aladin about your garden…',
+    zh: '向 Aladin 询问你的果园…',
+    ja: '果樹園について Aladin に聞く…',
+  },
+
+  // ── Mục GIÁ NÔNG SẢN ──────────────────────────────────────────────────────
+  'trace.price.title': { vi: 'Giá nông sản', en: 'Commodity prices', zh: '农产品价格', ja: '農産物価格' },
+  'trace.price.hint': { vi: 'Biến động so với lần xem trước', en: 'Change since you last looked', zh: '与上次查看相比的变化', ja: '前回からの変動' },
+  'trace.price.loading': { vi: 'Đang lấy giá…', en: 'Fetching prices…', zh: '正在获取价格…', ja: '価格を取得中…' },
+  'trace.price.none': {
+    vi: 'Chưa lấy được giá lúc này. Trang nguồn có thể đang bận hoặc đã đổi cách hiển thị.',
+    en: 'No prices right now. The source page may be busy or may have changed its layout.',
+    zh: '暂时无法获取价格。来源页面可能繁忙或已更改版式。',
+    ja: '現在価格を取得できません。参照元が混雑しているか、表示が変わった可能性があります。',
+  },
+  'trace.price.vsLast': {
+    vi: 'So với lần bạn mở app gần nhất, không phải so với hôm qua.',
+    en: 'Compared with the last time you opened the app, not with yesterday.',
+    zh: '与你上次打开应用时相比，而非与昨天相比。',
+    ja: '前回アプリを開いた時点との比較で、昨日との比較ではありません。',
+  },
+  'trace.price.coffee': { vi: 'Cà phê', en: 'Coffee', zh: '咖啡', ja: 'コーヒー' },
+  'trace.price.perKg': { vi: 'đ/kg', en: 'đ/kg', zh: '越南盾/公斤', ja: 'ドン/kg' },
+
+  // ── Cảnh báo đẩy ──────────────────────────────────────────────────────────
+  'trace.alert.priceUp': { vi: 'Giá {name} tăng {pct}%', en: '{name} price up {pct}%', zh: '{name} 价格上涨 {pct}%', ja: '{name} が {pct}% 上昇' },
+  'trace.alert.priceDown': { vi: 'Giá {name} giảm {pct}%', en: '{name} price down {pct}%', zh: '{name} 价格下跌 {pct}%', ja: '{name} が {pct}% 下落' },
+  'trace.alert.trending': { vi: '{n} báo cùng đưa một tin', en: '{n} outlets are running the same story', zh: '{n} 家媒体报道同一件事', ja: '{n} 社が同じ話題を報じています' },
 
   // ── Bầu trời (mã WMO → chữ, xem `describeWeather`) ────────────────────────
   'trace.sky.clear': { vi: 'Trời quang', en: 'Clear sky', zh: '晴朗', ja: '快晴' },

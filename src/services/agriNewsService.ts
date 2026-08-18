@@ -168,3 +168,45 @@ export async function fetchAgriNews(): Promise<NewsItem[]> {
   const lists = await Promise.all(FEEDS.map(f => fetchFeed(f.url, f.source)));
   return mergeFeeds(lists);
 }
+
+// ---------------------------------------------------------------------------
+// Tin NÓNG
+// ---------------------------------------------------------------------------
+
+/** Trong bao nhiêu giờ thì còn tính là "nóng". */
+export const HOT_WINDOW_H = 24;
+
+/**
+ * Lọc TIN NÓNG cho trang Tổng quan.
+ *
+ * ── "Nóng" định nghĩa thế nào ───────────────────────────────────────────────
+ * Nguồn RSS không có cờ nào đánh dấu tin nóng, nên phải tự định nghĩa — và định
+ * nghĩa duy nhất trung thực với dữ liệu đang có là THỜI GIAN: tin trong vòng 24
+ * giờ. Bịa ra "độ nóng" bằng cách đoán từ tiêu đề (có chữ "giá", có chữ "dịch"…)
+ * là gán ý nghĩa cho thứ mình không đo được.
+ *
+ * ── Vì sao vẫn trả tin khi không có tin nào trong 24 giờ ───────────────────
+ * Ngày ít tin mà mục "Tin nóng" trống trơn thì người dùng đọc thành "app hỏng",
+ * không đọc thành "hôm nay không có tin". Nên hết tin trong khung giờ thì lấy
+ * các tin MỚI NHẤT bù vào — vẫn đúng thứ tự, chỉ là không còn nóng.
+ *
+ * `now` truyền vào chứ không gọi `Date.now()` bên trong: hàm thuần thì bài kiểm
+ * mới cố định được thời điểm.
+ */
+export function hotNews(
+  items: NewsItem[],
+  opts: { now: number; limit?: number; windowH?: number } = { now: 0 },
+): NewsItem[] {
+  const limit = opts.limit ?? 3;
+  const windowMs = (opts.windowH ?? HOT_WINDOW_H) * 3600_000;
+  const list = (items ?? []).filter(Boolean);
+  if (list.length === 0) return [];
+
+  // Mới nhất trước. Tin không đọc được ngày (`publishedAt = 0`) rơi xuống cuối,
+  // đúng chỗ của nó: không biết ngày thì không thể khẳng định là mới.
+  const sorted = [...list].sort((a, b) => (b.publishedAt || 0) - (a.publishedAt || 0));
+  const fresh = sorted.filter(
+    n => n.publishedAt > 0 && opts.now - n.publishedAt <= windowMs,
+  );
+  return (fresh.length > 0 ? fresh : sorted).slice(0, limit);
+}

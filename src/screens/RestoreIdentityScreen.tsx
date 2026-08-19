@@ -22,7 +22,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS } from '../constants';
 import { showWarning, showSuccess } from '../utils/alert';
 import taadEnclave from '../sdk/taadEnclave';
-import { restoreMasterKekFromMnemonic } from '../services/masterKekStore';
+import {
+  deriveMasterKekFromMnemonic,
+  getStoredMasterKek,
+  storeMasterKek,
+} from '../services/masterKekStore';
 import { phoenixKeyApi, PhoenixKeyApiError } from '../services/phoenixKey-api';
 import { enrollKeypair, ownerPublicKey, saveUserDid, currentUserDid } from '../sdk/phoenixKey';
 import { phoenixKeyAuth } from '../services/phoenixKeyAuthService';
@@ -33,11 +37,11 @@ const DID_RE = /^did:phoenix:[a-z2-7]{13}:[0-9a-f]{64}$/;
 // Registry {username, did} app lưu lúc đăng ký (SignUpBiometricScreen) — dùng để
 // TỰ tìm lại DID trên CÙNG máy, khôi phục chỉ bằng 24 từ (không cần gõ DID).
 const PHOENIX_USERS_KEY = '@phoenixkey/users';
-const genNonce = (): string => {
-  let s = '';
-  for (let i = 0; i < 32; i++) s += ((Math.random() * 16) | 0).toString(16);
-  return s;
-};
+// Nonce chống phát-lại cho cửa GẮN THIẾT BỊ MỚI vào DID — thứ này được ký bằng
+// khoá thật, nên nguồn ngẫu nhiên phải là CSPRNG. `Math.random` của Hermes là
+// xorshift: đoán được state từ vài đầu ra liên tiếp. Dự án đã có `generateSalt`
+// (CSPRNG bên Rust, dùng đúng ở `guardianService` và `keyRotateService`).
+const genNonce = (): Promise<string> => taadEnclave.generateSalt();
 
 const RestoreIdentityScreen = () => {
   const insets = useSafeAreaInsets();
@@ -69,11 +73,23 @@ const RestoreIdentityScreen = () => {
     }
     try {
       setLoading(true);
-      // Validate cụm từ → Master_KEK → LƯU vào secure storage (ghi đè KEK ví hiện
-      // có). Sau bước này SeedExport sẽ hiện đúng cụm này + ví derive nhất quán.
-      const kek = await restoreMasterKekFromMnemonic(cleanPhrase);
+      // Suy Master_KEK TRONG RAM. KHÔNG ghi vào máy ở đây.
+      //
+      // Bản trước ghi đè ngay dòng này, trước mọi phép kiểm. "Hợp lệ BIP39" chỉ nói
+      // cụm từ đúng dạng, không nói nó là cụm từ của người đang cầm máy — nên gõ
+      // nhầm cụm của ví khác là gốc ví trên máy bị thay, rồi mới báo "không tìm thấy
+      // tài khoản khớp". Lúc đó KEK cũ đã mất và LAMP trong ví cũ không lấy lại được.
+      // Nay: suy → đối chiếu với máy chủ → CHỈ KHI khớp mới ghi (xem cuối hàm).
+      const kek = await deriveMasterKekFromMnemonic(cleanPhrase);
       if (!kek || kek.length !== 64) {
         throw new Error('Master_KEK trả về không hợp lệ');
+      }
+      // Máy CHƯA có ví thì ghi ngay là an toàn — không có gì để mất. Máy ĐANG có ví
+      // thì phải chờ đối chiếu xong, vì ghi đè là thao tác không hoàn tác được.
+      const existingKek = await getStoredMasterKek();
+      const deviceHadWallet = existingKek != null && existingKek !== kek;
+      if (!deviceHadWallet) {
+        await storeMasterKek(kek);
       }
 
       // ── TỰ TÌM DID trên MÁY (KHÔNG đụng backend) → 24 từ là đủ trên cùng máy ──
@@ -104,7 +120,10 @@ const RestoreIdentityScreen = () => {
         // cần user nhập DID (máy không thể suy ra DID chỉ từ 24 từ + không gọi backend).
         showWarning(
           'Máy mới — cần nhập mã định danh',
-          'Đã lưu ví an toàn. Máy này chưa từng đăng nhập nên không có mã định danh để tự khôi phục. ' +
+          (deviceHadWallet
+            ? 'Ví đang có trên máy được GIỮ NGUYÊN, chưa thay gì cả. '
+            : 'Đã lưu ví an toàn. ') +
+            'Máy này chưa từng đăng nhập nên không có mã định danh để tự khôi phục. ' +
             'Nếu là máy MỚI, nhập mã định danh của bạn vào ô bên dưới.',
         );
         return;
@@ -122,7 +141,7 @@ const RestoreIdentityScreen = () => {
       // Thử từng DID ứng viên (ký bằng KEK — KHÔNG cần vân tay mỗi lần).
       let matchedDid: string | null = null;
       for (const cand of uniqueDids) {
-        const nonce = genNonce();
+        const nonce = await genNonce();
         const challenge = `PHOENIXKEY_RECOVER:${cand}:${newHwPub}:${nonce}`;
         const signature = await taadEnclave.signEd25519(kek, challenge);
         if (!signature) continue;
@@ -151,12 +170,19 @@ const RestoreIdentityScreen = () => {
       if (!matchedDid) {
         showWarning(
           typedDid ? 'Mã định danh không khớp cụm từ' : 'Không tìm thấy tài khoản khớp',
-          typedDid
+          (typedDid
             ? 'Mã định danh vừa nhập không khớp cụm 24 từ, hoặc không có trên máy chủ.'
             : 'Các tài khoản đã lưu trên máy đều không khớp cụm 24 từ này. Kiểm tra lại cụm từ, ' +
-              'hoặc nhập đúng mã định danh vào ô bên dưới nếu là máy mới.',
+              'hoặc nhập đúng mã định danh vào ô bên dưới nếu là máy mới.') +
+            (deviceHadWallet ? ' Ví đang có trên máy được GIỮ NGUYÊN.' : ''),
         );
         return;
+      }
+
+      // Tới đây máy chủ đã xác nhận cụm 24 từ này ký được cho DID `matchedDid` —
+      // tức nó ĐÚNG là cụm của người đang cầm máy. Giờ mới được phép ghi đè.
+      if (deviceHadWallet) {
+        await storeMasterKek(kek);
       }
 
       await saveUserDid(matchedDid);

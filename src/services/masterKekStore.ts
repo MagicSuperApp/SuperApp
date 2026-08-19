@@ -47,13 +47,29 @@ export async function getOrCreateMasterKek(): Promise<string> {
 }
 
 /**
- * Khôi phục ví từ cụm 24 từ: validate → Master_KEK → lưu (GHI ĐÈ KEK hiện có).
- * Trả KEK 64-hex. Ném nếu cụm từ không hợp lệ.
+ * Suy Master_KEK từ cụm 24 từ — CHỈ trong RAM, KHÔNG ghi vào máy.
+ * Trả KEK 64-hex. Ném nếu cụm từ không hợp lệ (checksum/wordlist sai).
+ *
+ * Tách khỏi việc GHI là có chủ ý. Hàm cũ (`restoreMasterKekFromMnemonic`) ghi đè
+ * ngay khi cụm từ hợp lệ BIP39 — mà "hợp lệ BIP39" chỉ nói cụm từ đúng dạng, KHÔNG
+ * nói nó là cụm từ của người đang cầm máy. Người dùng gõ nhầm cụm của ví khác, hoặc
+ * người thứ hai mượn máy gõ cụm của họ, là gốc ví trên máy bị thay trước khi có ai
+ * kiểm — rồi mới báo "không tìm thấy tài khoản khớp", lúc đó KEK cũ đã mất và LAMP
+ * trong ví cũ chỉ lấy lại được nếu còn giữ đúng 24 từ cũ.
+ *
+ * Luật: suy trong RAM → xác thực với máy chủ → CHỈ KHI khớp mới `storeMasterKek`.
+ * Xem `RestoreIdentityScreen.tsx`.
  */
-export async function restoreMasterKekFromMnemonic(words: string): Promise<string> {
-  const kek = await taad.mnemonicToMasterKek(words); // reject nếu checksum/wordlist sai
+export async function deriveMasterKekFromMnemonic(words: string): Promise<string> {
+  return taad.mnemonicToMasterKek(words); // reject nếu checksum/wordlist sai
+}
+
+/**
+ * Ghi Master_KEK vào secure storage (GHI ĐÈ nếu máy đang có KEK khác).
+ * CHỈ gọi sau khi đã xác thực cụm từ thuộc về đúng người — xem hàm trên.
+ */
+export async function storeMasterKek(kek: string): Promise<void> {
   await taad.secureStore(KEK_KEY, kek);
-  return kek;
 }
 
 /** Xoá Master_KEK ví khỏi thiết bị (vd wipe). KHÔNG đụng khoá HW/DID. */

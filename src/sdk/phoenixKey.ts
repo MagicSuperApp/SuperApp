@@ -199,8 +199,14 @@ export const enrollKeypair = async (): Promise<{
   alias: string;
   publicKeyHex: string;
 }> => {
+  // Sinh khoá TRƯỚC, chuyển con trỏ SAU. Thứ tự cũ (đặt con trỏ trước) làm mất
+  // danh tính khi bước sinh khoá hỏng: người đã "Xoay khoá" hai lần đang ở
+  // `_v3`, vào màn Khôi phục mà sinh trắc lỗi giữa chừng thì con trỏ đã nằm ở
+  // `_v1` vĩnh viễn — `signRaw`/`isKeypairEnrolled` trỏ vào alias trống, đăng
+  // xuất cứng, dù khoá `_v3` vẫn còn nguyên trong Secure Enclave.
+  const kp = await nativeGenerateKeypair(KEY_ALIAS_OWNER, true);
   await setOwnerAlias(KEY_ALIAS_OWNER);
-  return nativeGenerateKeypair(KEY_ALIAS_OWNER, true);
+  return kp;
 };
 
 export const ownerPublicKey = async (): Promise<string> =>

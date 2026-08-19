@@ -46,7 +46,13 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => mockSafeAreaInsets,
 }));
 
+// GIỮ nguyên phần THUẦN của module thật, chỉ thay đúng cửa mạng. Bản trước liệt
+// kê tay hai hàm, nên mọi hàm thuần thêm sau đó (ví dụ `captureHint`) biến mất
+// khỏi module trong test — màn gọi vào là `undefined is not a function`, mà lỗi
+// đó nổ ở một suite chẳng liên quan gì tới cái vừa thêm. Bản mô phỏng LỎNG hơn
+// bản thật là bẫy, kể cả khi nó đang xanh.
 jest.mock('../services/capturePlanService', () => ({
+  ...jest.requireActual('../services/capturePlanService'),
   // Không có kế hoạch ⇒ máy chủ KHÔNG gợi ý mặt nào, nên mặt gửi lên chỉ có thể
   // đến từ tay người dùng. Đó đúng là điều nhóm test đầu muốn đo.
   getCapturePlan: jest.fn(async () => ({ ok: false })),

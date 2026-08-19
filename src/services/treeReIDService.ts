@@ -152,6 +152,12 @@ export interface EnrollResponse {
    * mà không ai được báo — người dùng tưởng đăng ký hỏng và làm lại từ đầu.
    */
   farm_dropped?: boolean;
+  /**
+   * Máy chủ tự đoán loài cây ngay ở lượt đăng ký. CHỈ có khi app không gửi
+   * `species`. Hình dạng thô — đọc qua `parseSpeciesSuggest` (`speciesSuggest.ts`),
+   * đừng bóc tay: cổng là `confident`, không phải `confidence`.
+   */
+  species_suggest?: unknown;
   provenance?: {
     code?: string;
     has3d?: boolean;

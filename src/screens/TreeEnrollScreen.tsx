@@ -26,6 +26,7 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
+  Pressable,
   Platform,
   Alert,
   Linking,
@@ -55,6 +56,12 @@ import {
   getTrees,
   type EnrollResponse,
 } from '../services/treeReIDService';
+import {
+  parseSpeciesSuggest,
+  orderSpeciesForConfirm,
+  type SpeciesSuggest,
+} from '../services/speciesSuggest';
+import { getSpeciesCatalog, setTreeSpecies } from '../services/fruitReIDService';
 import { suggestTreeName } from '../utils/suggestTreeName';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import type { RootState } from '../store';
@@ -185,6 +192,18 @@ const TreeEnrollScreen: React.FC = () => {
   }, []);
   const [isEnrolling, setIsEnrolling] = useState(false);
   const [enrollResult, setEnrollResult] = useState<EnrollResponse | null>(null);
+
+  // ── Xác nhận loài cây sau khi đăng ký ────────────────────────────────────
+  // Máy chủ tự đoán loài ngay ở lượt đăng ký (`species_suggest`). Đây là màn
+  // XÁC NHẬN, không phải màn chọn: đoán của máy đứng đầu và ghi rõ là máy đoán,
+  // một chạm là xong. KHÔNG tích sẵn — máy chủ dùng chính cú chốt này làm nhãn,
+  // nên ô đã tích sẵn thì lượt "đồng ý" không còn là bằng chứng độc lập.
+  const [speciesSuggest, setSpeciesSuggest] = useState<SpeciesSuggest | null>(null);
+  const [speciesNames, setSpeciesNames] = useState<Record<string, string>>({});
+  const [speciesOrder, setSpeciesOrder] = useState<string[]>([]);
+  const [speciesSaving, setSpeciesSaving] = useState(false);
+  const [speciesChosen, setSpeciesChosen] = useState<string | null>(null);
+  const [speciesError, setSpeciesError] = useState<string | null>(null);
 
   // Ảnh đang xem chi tiết (modal)
   const [selectedPhoto, setSelectedPhoto] = useState<GridPhoto | null>(null);
@@ -486,6 +505,62 @@ const TreeEnrollScreen: React.FC = () => {
   const ungroupedPhotos = photos.filter(p => kindOf(p) === 'unknown');
 
   // ── Navigate sau thành công ───────────────────────────────────────────────
+  /**
+   * Đăng ký xong ⇒ đọc `species_suggest`, và CHỈ khi có đoán mới nạp danh mục.
+   *
+   * Không đoán được thì không nạp gì: bày một hàng chip trống ngay dưới thẻ
+   * "đã đăng ký thành công" là bắt người dùng làm một việc máy chưa hỏi. Đường
+   * chọn giống cũ ở màn danh sách quả vẫn còn nguyên cho ca đó.
+   */
+  useEffect(() => {
+    const suggest = parseSpeciesSuggest(enrollResult?.species_suggest);
+    setSpeciesSuggest(suggest);
+    setSpeciesChosen(null);
+    setSpeciesError(null);
+    if (!suggest) { setSpeciesOrder([]); return; }
+
+    let alive = true;
+    (async () => {
+      const r = await getSpeciesCatalog(ORILIFE_BASE);
+      if (!alive) return;
+      const list = r.ok && r.data?.species ? r.data.species : [];
+      if (!list.length) {
+        // Danh mục hỏng ⇒ không có tên tiếng Việt để bày. Im lặng bỏ khối này,
+        // KHÔNG hiện mã trần `durio_zibethinus` cho nhà vườn đọc.
+        setSpeciesOrder([]);
+        return;
+      }
+      const names: Record<string, string> = {};
+      for (const sp of list) names[sp.id] = sp.name_vi;
+      setSpeciesNames(names);
+      setSpeciesOrder(orderSpeciesForConfirm(list.map((sp) => sp.id), suggest));
+    })();
+    return () => { alive = false; };
+  }, [enrollResult]);
+
+  /**
+   * Người dùng chốt loài ⇒ GỌI `set_species`, kể cả khi trùng đoán của máy.
+   *
+   * Đây là chỗ DUY NHẤT sinh ra nhãn. Máy chủ ghép nó với sự kiện `species_guess`
+   * thành cặp *(máy đoán, người chốt)* để tự đo mình. Bỏ lần gọi này vì "máy đoán
+   * đúng rồi" là cắt đúng sợi dây làm bộ nhận loài khoẻ lên.
+   */
+  const confirmSpecies = useCallback(async (speciesId: string) => {
+    const treeId = enrollResult?.tree_id;
+    if (!treeId || speciesSaving) return;
+    setSpeciesSaving(true);
+    setSpeciesError(null);
+    const r = await setTreeSpecies(ORILIFE_BASE, treeId, speciesId);
+    setSpeciesSaving(false);
+    // Hỏng thì phải NÓI. Im lặng ở đây là người dùng bấm, không thấy gì đổi, rồi
+    // bấm tiếp — mỗi lần một lượt ghi hỏng nữa mà màn vẫn câm.
+    if (!r.ok || r.data?.ok === false) {
+      setSpeciesError(r.error?.detail ?? 'Chưa lưu được giống cây. Thử lại giúp.');
+      return;
+    }
+    setSpeciesChosen(speciesId);
+  }, [enrollResult, speciesSaving]);
+
   const handleSuccess = useCallback(
     (treeId: string, code: string) => {
       // Đăng ký xong → bản nháp hết vai trò, xoá để lần sau không hỏi khôi phục.
@@ -1063,6 +1138,45 @@ const TreeEnrollScreen: React.FC = () => {
                   danh sách cây của vườn để kiểm lại, đừng đăng ký lại lần nữa.
                 </Text>
               )}
+
+              {/* ── Xác nhận loài cây ─────────────────────────────────────────
+                  Máy đã đoán. Việc còn lại của người dùng là gật hoặc sửa, một
+                  chạm. Chip đầu tiên là đoán của máy và được ghi rõ như vậy —
+                  không tích sẵn, vì chính cú chạm này là nhãn máy chủ học theo. */}
+              {speciesChosen ? (
+                <Text style={styles.successHint}>
+                  Đã ghi giống: {speciesNames[speciesChosen] ?? speciesChosen}
+                </Text>
+              ) : speciesSuggest && speciesOrder.length > 0 ? (
+                <View style={styles.speciesConfirm}>
+                  <Text style={styles.speciesConfirmHint}>
+                    Máy đoán cây này là{' '}
+                    <Text style={styles.speciesConfirmGuess}>
+                      {speciesNames[speciesSuggest.species] ?? speciesSuggest.species}
+                    </Text>
+                    {'. '}Chạm để xác nhận, hoặc chọn đúng giống nếu máy đoán sai.
+                  </Text>
+                  <View style={styles.speciesConfirmRow}>
+                    {speciesOrder.map((id) => (
+                      <Pressable
+                        key={id}
+                        disabled={speciesSaving}
+                        style={({ pressed }) => [
+                          styles.speciesConfirmBtn,
+                          id === speciesSuggest.species && styles.speciesConfirmBtnGuess,
+                          pressed && { opacity: 0.6 },
+                        ]}
+                        onPress={() => confirmSpecies(id)}
+                      >
+                        <Text style={styles.speciesConfirmBtnTxt}>{speciesNames[id] ?? id}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  {!!speciesError && (
+                    <Text style={styles.successDupWarn}>⚠ {speciesError}</Text>
+                  )}
+                </View>
+              ) : null}
             </View>
           </View>
         )}
@@ -1457,6 +1571,17 @@ const styles = StyleSheet.create({
   // Cảnh-báo NHẸ (cam, không đỏ): cây vẫn đăng ký được, chỉ nhắc đối chiếu.
   successDupWarn: { fontSize: 12, color: '#e65100', marginTop: 4, lineHeight: 17 },
   successNote: { fontSize: 12, color: NEUTRAL.textSub, marginTop: 4, lineHeight: 17 },
+  speciesConfirm: { marginTop: 10 },
+  speciesConfirmHint: { fontSize: 12.5, color: NEUTRAL.textSub, lineHeight: 18 },
+  speciesConfirmGuess: { fontWeight: '700', color: '#1b5e20' },
+  speciesConfirmRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+  speciesConfirmBtn: {
+    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8,
+    borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: '#fff',
+  },
+  // Chip của máy đoán: nổi hơn, nhưng KHÔNG phải trạng thái "đã chọn".
+  speciesConfirmBtnGuess: { borderColor: '#1b5e20', backgroundColor: '#eef6ee' },
+  speciesConfirmBtnTxt: { fontSize: 13, color: NEUTRAL.text, fontWeight: '600' },
   successHint: { fontSize: 12.5, color: '#1b5e20', fontWeight: '600', marginTop: 4, lineHeight: 18 },
 
   missingBar: {

@@ -177,7 +177,11 @@ describe('mã 3005 KHÔNG được đọc thành "lỗi phía máy chủ"', () =
     // Lỗi phải ném từ ĐƯỜNG 3 (đăng ký lại), không phải từ lookup: lookup hỏng thì
     // đường 1 nuốt và đi tiếp — đúng thiết kế, vì máy chủ trả 404 giống nhau cho ba ca
     // khác hẳn nhau. Lý do cuối cùng người dùng thấy luôn đến từ đường 3.
-    mockLookupImpl = async () => { throw new PhoenixKeyApiError(404, 404, 'not found'); };
+    //
+    // Lookup hỏng vì MẠNG (httpStatus 0), cố ý KHÔNG dùng 404: 404 + 3005 là cặp suy
+    // ra "khoá đã bị thu hồi" (bài riêng phía dưới). Bài này chỉ khoá đúng một việc —
+    // 3005 không được đọc thành "lỗi phía máy chủ".
+    mockLookupImpl = async () => { throw new PhoenixKeyApiError(-1, 0, 'Network error'); };
     // Máy chủ trả ĐÚNG như thật: mã 3005, HTTP 409, câu TIẾNG ANH chứa "registered".
     // Chính chữ đó làm phép dò chuỗi cũ bắt nhầm sang nhánh "lỗi phía máy chủ".
     mockRegisterImpl = async () => { throw new PhoenixKeyApiError(3005, 409, 'Public key already registered'); };
@@ -189,5 +193,45 @@ describe('mã 3005 KHÔNG được đọc thành "lỗi phía máy chủ"', () =
     await expect(registerIdentity('strong', 'resume')).rejects.not.toThrow(
       /lỗi phía máy chủ/i,
     );
+  });
+});
+
+describe('suy ra "khoá đã bị thu hồi" — ngõ cụt cần một lối ra', () => {
+  /**
+   * Hai cửa máy chủ dùng hai truy vấn khác nhau trên CÙNG một chuỗi khoá:
+   *   lookup   findByPublicKeyHexAndStatus(hex, "active")  → rỗng ⟹ 404
+   *   register existsByPublicKeyHex(hex)  — không lọc status → có ⟹ 3005
+   * Một cửa không thấy, cửa kia thấy. Khác biệt duy nhất là `status` ⟹ khoá CÓ
+   * trong kho nhưng không còn active, tức đã bị thu hồi (Mode B `revokeOwnersByUserDid`).
+   */
+  it('lookup 404 + register 3005 → khoa_bi_thu_hoi, và câu chỉ đúng lối ra 24 từ', async () => {
+    mockLookupImpl = async () => { throw new PhoenixKeyApiError(404, 404, 'Không tìm thấy DID'); };
+    mockRegisterImpl = async () => { throw new PhoenixKeyApiError(3005, 409, 'This public key is already registered'); };
+
+    const { registerIdentity } = require('./phoenixKeyAuthService');
+    await expect(registerIdentity('strong', 'resume')).rejects.toThrow(/24 từ/);
+    // Phải nói thẳng cài lại app không cứu được — nếu không người dùng cài lần nữa.
+    await expect(registerIdentity('strong', 'resume')).rejects.toThrow(/[Cc]ài lại/);
+  });
+
+  it('gắn `reason` lên lỗi để màn hình mở đúng lối thoát, KHÔNG bắt nó dò chuỗi', async () => {
+    mockLookupImpl = async () => { throw new PhoenixKeyApiError(404, 404, 'Không tìm thấy DID'); };
+    mockRegisterImpl = async () => { throw new PhoenixKeyApiError(3005, 409, 'This public key is already registered'); };
+
+    const { registerIdentity } = require('./phoenixKeyAuthService');
+    const err = await registerIdentity('strong', 'resume').catch((e: any) => e);
+    expect(err.reason).toBe('khoa_bi_thu_hoi');
+  });
+
+  it('register 3005 mà lookup KHÔNG nói 404 → vẫn là can_ten_dang_nhap, không suy bừa', async () => {
+    // Lookup hỏng vì mạng (httpStatus 0) chứ không phải máy chủ bảo không thấy.
+    // Suy ra "bị thu hồi" ở đây là bịa một chẩn đoán từ một phép đo hỏng.
+    mockLookupImpl = async () => { throw new PhoenixKeyApiError(-1, 0, 'Network error'); };
+    mockRegisterImpl = async () => { throw new PhoenixKeyApiError(3005, 409, 'This public key is already registered'); };
+
+    const { registerIdentity } = require('./phoenixKeyAuthService');
+    const err = await registerIdentity('strong', 'resume').catch((e: any) => e);
+    expect(err.reason).toBe('can_ten_dang_nhap');
+    expect(String(err.message)).not.toMatch(/thu hồi/);
   });
 });

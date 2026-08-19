@@ -148,9 +148,15 @@ export const registerIdentity = async (
     // Nói ra LÝ DO. Câu cũ đúng nhưng rỗng — người dùng không biết nên thử lại
     // vân tay, đợi sóng, hay thật sự phải gọi hỗ trợ; và người nhận báo lỗi thực
     // địa cũng không lần ngược được về đâu.
-    throw new Error(
+    // Gắn `reason` LÊN lỗi. Màn hình cần nó để mở đúng lối thoát — với ca khoá bị
+    // thu hồi thì một câu chữ là chưa đủ: người dùng phải bấm được sang màn 24 từ
+    // ngay tại chỗ. Dò chuỗi tiếng Việt ở phía màn hình để đoán ra ca là cách làm
+    // vỡ ngay khi đổi câu hoặc đổi ngôn ngữ.
+    const failure = new Error(
       RECOVER_FAIL_MESSAGE[existing.reason] ?? RECOVER_FAIL_MESSAGE.khong_ro,
-    );
+    ) as Error & { reason?: string };
+    failure.reason = existing.reason;
+    throw failure;
   }
 
   const { publicKeyHex } = await enrollKeypair();
@@ -295,6 +301,15 @@ const recoverLocalIdentityFromKey = async (
   biometricKind: BiometricKind,
   username?: string,
 ): Promise<RecoverOutcome> => {
+  /**
+   * Đường 1 có trả lời "không thấy khoá này" không.
+   *
+   * Máy chủ CỐ Ý gộp ba ca vào cùng một 404 (chữ ký sai · chưa đăng ký · đã thu hồi)
+   * nên riêng nó không kết luận được. Nhưng ghép với đường 3 thì suy ra được đúng một
+   * ca — xem `khoa_bi_thu_hoi`.
+   */
+  let lookupSaidNotFound = false;
+
   // ĐƯỜNG 1 — tra DID theo CHÍNH KHOÁ trong chip. Không hỏi tên đăng nhập.
   //
   // Đây là cửa `POST /identity/lookup` (PhoenixKey-Database #192, lên 18/08/2026,
@@ -338,6 +353,10 @@ const recoverLocalIdentityFromKey = async (
     // chỉ ghi sổ rồi đi tiếp. Ca "khoá chưa từng đăng ký" là ca duy nhất đường 3 cứu
     // được, và nó cũng chính là ca hay gặp thứ hai (sinh khoá xong thì mất mạng).
     rLog.info('identity_lookup_by_key_failed', { raw: String(err).slice(0, 200) });
+    // GIỮ LẠI việc "lookup nói không thấy". Một mình nó không kết luận được gì (404
+    // gộp ba ca), nhưng ghép với câu trả lời của đường 3 thì SUY RA được — xem
+    // `describeRecoverFailure` và chú thích ở `khoa_bi_thu_hoi`.
+    if (err instanceof PhoenixKeyApiError && err.httpStatus === 404) lookupSaidNotFound = true;
   }
 
   // ĐƯỜNG 2 — tra DID qua TÊN ĐĂNG NHẬP rồi đối chiếu khoá.
@@ -409,9 +428,33 @@ const recoverLocalIdentityFromKey = async (
 
     return { ok: true, value: { user, txHash: res.txHash } };
   } catch (err) {
-    const reason = describeRecoverFailure(err);
+    let reason = describeRecoverFailure(err);
+
+    // ── SUY RA "KHOÁ ĐÃ BỊ THU HỒI" ──────────────────────────────────────────
+    // Hai cửa máy chủ dùng HAI truy vấn khác nhau trên cùng một chuỗi khoá:
+    //   lookup   `findByPublicKeyHexAndStatus(hex, "active")`  → rỗng ⟹ 404
+    //   register `existsByPublicKeyHex(hex)`  — KHÔNG lọc status → có ⟹ 3005
+    // Một cửa không thấy, cửa kia thấy. Khác biệt duy nhất là `status`. Nên cặp
+    // (404 ở lookup) + (3005 ở register) chỉ có một cách giải: khoá CÓ trong kho
+    // nhưng KHÔNG còn `active` — tức đã bị thu hồi.
+    //
+    // Thu hồi ở đâu ra: khôi phục bằng 24 từ (Mode B) gọi `revokeOwnersByUserDid`
+    // (`IdentityServiceImpl.java:337`), thu hồi TOÀN BỘ khoá owner cũ — kể cả khoá
+    // đang nằm trong Secure Enclave của chính máy này.
+    //
+    // Từ lúc đó máy này vào ngõ cụt: lookup từ chối vì không `active`, register từ
+    // chối vì khoá vẫn tồn tại. Xoá app cài lại KHÔNG gỡ được — khoá vẫn nguyên
+    // trong Keychain và vẫn đang bị thu hồi. Lối ra duy nhất là 24 từ.
+    //
+    // ⚠ Đây là phép SUY LUẬN, không phải máy chủ nói. Nếu chữ ký lookup hỏng vì lý
+    // do khác thì cũng ra 404 và rơi vào đây. Câu chữ vì thế nói "nhiều khả năng"
+    // và vẫn chừa đường thử lại, chứ không phán chắc.
+    if (reason === 'can_ten_dang_nhap' && lookupSaidNotFound) reason = 'khoa_bi_thu_hoi';
+
     console.warn('[PhoenixKey recover] failed:', err);
-    rLog.error('identity_recover_failed', { reason, raw: String(err).slice(0, 300) });
+    rLog.error('identity_recover_failed', {
+      reason, lookupSaidNotFound, raw: String(err).slice(0, 300),
+    });
     return { ok: false, reason };
   }
 };
@@ -482,6 +525,11 @@ const RECOVER_FAIL_MESSAGE: Record<string, string> = {
     'Máy chủ trả về một mã danh tính app chưa hiểu được. Đây là lỗi phía máy chủ — chụp màn hình này gửi hỗ trợ.',
   can_ten_dang_nhap:
     'Máy này đã có khoá của một danh tính đã tạo trước đó. Nhập lại đúng tên đăng nhập của danh tính đó để mở lại trên máy này.',
+  // Ca NGÕ CỤT: khoá còn trong máy nhưng máy chủ đã thu hồi nó, nên không cửa nào
+  // nhận. Xoá app cài lại KHÔNG gỡ được — phải nói thẳng, nếu không người dùng sẽ
+  // cài lại lần thứ ba, thứ tư. Lối ra duy nhất là 24 từ, và câu phải chỉ đúng nó.
+  khoa_bi_thu_hoi:
+    'Khoá trên máy này đã bị thu hồi, nhiều khả năng do trước đó có một lần khôi phục bằng 24 từ. Cài lại ứng dụng không mở lại được. Dùng 24 từ khôi phục của bạn để mở lại danh tính trên máy này.',
   ten_khong_khop_khoa:
     'Tên đăng nhập này thuộc về một danh tính khác, không phải danh tính đang có khoá trên máy. Kiểm tra lại tên, hoặc dùng máy đã tạo danh tính đó.',
   khong_ro:

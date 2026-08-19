@@ -200,6 +200,30 @@ const SignUpBiometricScreen: React.FC = () => {
         return;
       }
       console.log('[SignUp] PhoenixKey enrollment failed:', e);
+      // NGÕ CỤT có lối ra — đừng chỉ hiện chữ rồi để người dùng đứng đó.
+      //
+      // `khoa_bi_thu_hoi` nghĩa là khoá còn trong máy nhưng máy chủ đã thu hồi:
+      // lookup từ chối vì không còn `active`, đăng ký lại từ chối vì khoá vẫn tồn
+      // tại. Cài lại app KHÔNG gỡ được (Keychain giữ khoá qua lần cài lại). Lối ra
+      // duy nhất là 24 từ, nên phải đưa nút đi thẳng tới đó.
+      //
+      // Đọc `e.reason` chứ KHÔNG dò chuỗi tiếng Việt trong `e.message`: dò chuỗi
+      // vỡ ngay khi đổi câu chữ hoặc khi người dùng đang dùng ngôn ngữ khác.
+      if (e?.reason === 'khoa_bi_thu_hoi') {
+        setStage('idle');
+        Alert.alert(
+          'Khoá trên máy này đã bị thu hồi',
+          e?.message ?? '',
+          [
+            { text: 'Để sau', style: 'cancel' },
+            {
+              text: 'Dùng 24 từ khôi phục',
+              onPress: () => navigation.navigate('RestoreIdentity'),
+            },
+          ],
+        );
+        return;
+      }
       showError(e?.message || 'Không tạo được danh tính. Vui lòng thử lại.');
       setStage('idle');
     }
@@ -239,11 +263,16 @@ const SignUpBiometricScreen: React.FC = () => {
           },
         },
         {
-          text: 'Người khác — tôi có 24 từ',
+          // NHÃN CŨ ghi "Người khác — tôi có 24 từ", và đó là một cái bẫy: khi khoá
+          // trên máy đã bị máy chủ thu hồi thì ĐÂY là lối ra DUY NHẤT, kể cả cho
+          // chính chủ. Mà chính chủ đọc "Người khác" thì không bao giờ bấm — họ có
+          // phải người khác đâu. Nút này phục vụ CẢ HAI nhóm, nên nhãn phải nói về
+          // thứ người dùng ĐANG CẦM (24 từ), không nói về họ là ai.
+          text: 'Tôi có 24 từ khôi phục',
           onPress: () => navigation.navigate('RestoreIdentity'),
         },
         {
-          text: 'Người khác — chưa có',
+          text: 'Người khác — chưa có danh tính',
           style: 'destructive',
           onPress: () =>
             showError(

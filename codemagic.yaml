@@ -135,9 +135,17 @@ workflows:
           ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://api.orilife.io}
 
           # LampNet 3D
+          # HOST = `api.lampnet.cloud`, KHÔNG phải `lampnet.cloud`. Hai host hôm nay trỏ
+          # cùng một node (đo 12/08: cùng peer id) nhưng KHÔNG có cam kết nào giữ mãi thế.
+          # `joinService.ts:24-30` đã chọn `api.` làm mặc định vì đúng lý do đó, rồi bị
+          # chính bốn dòng này ghi đè ngược về — nên mặc định trong mã là mã CHẾT ở mọi
+          # bản dựng thật. `videoProofReconcile.ts:19` nói rõ vai trò hai host khác nhau:
+          # `api.` phục vụ put/inspect, còn `lampnet.cloud` là cổng XEM công khai theo CID.
+          # Ngày LampNet tách chúng ra, Kết đèn chết mà phần đối soát video vẫn chạy —
+          # đúng kiểu hỏng lệch pha khó truy nhất.
           MESHAPI_USE_MOCK=false
-          LAMPNET_BASE_URL=${LAMPNET_BASE_URL:-https://lampnet.cloud}
-          LAMPNET_UPLOAD_URL=${LAMPNET_UPLOAD_URL:-https://lampnet.cloud/mirage/put?mode=symmetric}
+          LAMPNET_BASE_URL=${LAMPNET_BASE_URL:-https://api.lampnet.cloud}
+          LAMPNET_UPLOAD_URL=${LAMPNET_UPLOAD_URL:-https://api.lampnet.cloud/mirage/put?mode=symmetric}
           CAPTURES_3D_URL=${CAPTURES_3D_URL:-https://api.orilife.io/captures/3d}
 
           # AladinWork (Việc làm). THIẾU biến này = cổng runtime tắt vĩnh viễn, module
@@ -541,8 +549,8 @@ workflows:
           ORILIFE_TREEID_URL=${ORILIFE_TREEID_URL:-https://api.orilife.io/TreeIdentity}
           ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://api.orilife.io}
           MESHAPI_USE_MOCK=false
-          LAMPNET_BASE_URL=${LAMPNET_BASE_URL:-https://lampnet.cloud}
-          LAMPNET_UPLOAD_URL=${LAMPNET_UPLOAD_URL:-https://lampnet.cloud/mirage/put?mode=symmetric}
+          LAMPNET_BASE_URL=${LAMPNET_BASE_URL:-https://api.lampnet.cloud}
+          LAMPNET_UPLOAD_URL=${LAMPNET_UPLOAD_URL:-https://api.lampnet.cloud/mirage/put?mode=symmetric}
           CAPTURES_3D_URL=${CAPTURES_3D_URL:-https://api.orilife.io/captures/3d}
           # AladinWork (Việc làm). THIẾU biến này = cổng runtime tắt vĩnh viễn, module
           # rơi về rỗng DÙ máy chủ sống (đo 05/08: api.aladin.work/api/v1/health = 200).
@@ -954,8 +962,8 @@ workflows:
           ORILIFE_TREEID_URL=${ORILIFE_TREEID_URL:-https://api.orilife.io/TreeIdentity}
           ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://api.orilife.io}
           MESHAPI_USE_MOCK=false
-          LAMPNET_BASE_URL=${LAMPNET_BASE_URL:-https://lampnet.cloud}
-          LAMPNET_UPLOAD_URL=${LAMPNET_UPLOAD_URL:-https://lampnet.cloud/mirage/put?mode=symmetric}
+          LAMPNET_BASE_URL=${LAMPNET_BASE_URL:-https://api.lampnet.cloud}
+          LAMPNET_UPLOAD_URL=${LAMPNET_UPLOAD_URL:-https://api.lampnet.cloud/mirage/put?mode=symmetric}
           CAPTURES_3D_URL=${CAPTURES_3D_URL:-https://api.orilife.io/captures/3d}
           # AladinWork (Việc làm). THIẾU biến này = cổng runtime tắt vĩnh viễn, module
           # rơi về rỗng DÙ máy chủ sống (đo 05/08: api.aladin.work/api/v1/health = 200).
@@ -1016,7 +1024,7 @@ workflows:
           set -e
           # secrets.properties (gitignored) — API cho orilifesdk. Từ group scanner_secrets.
           cat > android/app/secrets.properties <<EOF
-          TREE_DETECTION_API=${TREE_DETECTION_API:-https://api.orilife.io/evidences/ingest}
+          TREE_DETECTION_API=${TREE_DETECTION_API:-https://api.orilife.io}
           BASE_API_URL=${BASE_API_URL:-https://api.orilife.io}
           API_KEY=${API_KEY:-mock-local-api-key}
           REGION_CODE=${REGION_CODE:-vn-south-01}
@@ -1208,8 +1216,8 @@ workflows:
           ORILIFE_TREEID_URL=${ORILIFE_TREEID_URL:-https://api.orilife.io/TreeIdentity}
           ORILIFE_TREEID_BASE_URL=${ORILIFE_TREEID_BASE_URL:-https://api.orilife.io}
           MESHAPI_USE_MOCK=false
-          LAMPNET_BASE_URL=${LAMPNET_BASE_URL:-https://lampnet.cloud}
-          LAMPNET_UPLOAD_URL=${LAMPNET_UPLOAD_URL:-https://lampnet.cloud/mirage/put?mode=symmetric}
+          LAMPNET_BASE_URL=${LAMPNET_BASE_URL:-https://api.lampnet.cloud}
+          LAMPNET_UPLOAD_URL=${LAMPNET_UPLOAD_URL:-https://api.lampnet.cloud/mirage/put?mode=symmetric}
           CAPTURES_3D_URL=${CAPTURES_3D_URL:-https://api.orilife.io/captures/3d}
           # AladinWork (Việc làm). THIẾU biến này = cổng runtime tắt vĩnh viễn, module
           # rơi về rỗng DÙ máy chủ sống (đo 05/08: api.aladin.work/api/v1/health = 200).
@@ -1281,7 +1289,7 @@ workflows:
           set -e
           # secrets.properties (gitignored) — API cho orilifesdk. Từ group scanner_secrets.
           cat > android/app/secrets.properties <<EOF
-          TREE_DETECTION_API=${TREE_DETECTION_API:-https://api.orilife.io/evidences/ingest}
+          TREE_DETECTION_API=${TREE_DETECTION_API:-https://api.orilife.io}
           BASE_API_URL=${BASE_API_URL:-https://api.orilife.io}
           API_KEY=${API_KEY:-mock-local-api-key}
           REGION_CODE=${REGION_CODE:-vn-south-01}

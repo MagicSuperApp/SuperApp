@@ -6,7 +6,12 @@
 // uncaught handler). React là PREBUILT nên patch RCTTurboModule.mm vô tác dụng. Vì vậy
 // đặt `std::set_terminate` (chạy được cả với prebuilt) để lấy MESSAGE của jsi::JSError
 // mà RN throw — message dạng "Module.method raised an exception: <reason>" → biết ĐÚNG
-// module/method/lý do. POST về log server (event `native_terminate`).
+// module/method/lý do. Ghi ra nhật ký hệ thống (`NSLog`), KHÔNG gửi đi đâu.
+//
+// Bản trước POST thẳng về một tên miền ngrok tạm viết cứng ở đây, và nó ĐÃ đi vào bản
+// phát hành: đo được chuỗi đó trong nhị phân đã ký của bản 94. Ngrok miễn phí hết hạn
+// là ai cũng giành lại được tên miền, rồi nhận hết lý do crash của máy người dùng thật.
+// Cần đường gửi từ xa thì đi qua biến môi trường như `src/services/remoteLogger.ts`.
 //
 // Nằm trong ScannerModule (pod build từ source) để được biên dịch vào app. `+load`/
 // constructor chạy lúc framework nạp (sớm).
@@ -14,35 +19,6 @@
 #import <exception>
 
 static std::terminate_handler gAladinPrevTerminate = nullptr;
-
-static void aladinPostTerminate(NSString *msg) {
-  NSURL *url = [NSURL URLWithString:@"https://gutless-renovator-distaste.ngrok-free.dev/logs"];
-  if (url == nil) {
-    return;
-  }
-  NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
-  req.HTTPMethod = @"POST";
-  [req setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
-  [req setValue:@"true" forHTTPHeaderField:@"ngrok-skip-browser-warning"];
-  NSDictionary *payload = @{
-    @"event" : @"native_terminate",
-    @"device" : @"iOS RN",
-    @"osVersion" : @"",
-    @"appVersion" : @"",
-    @"stackTrace" : @"",
-    @"data" : @{@"message" : (msg ?: @"(nil)"), @"level" : @"error"},
-  };
-  req.HTTPBody = [NSJSONSerialization dataWithJSONObject:payload options:0 error:nil];
-  // Gửi ĐỒNG BỘ (chặn tối đa 3s) vì tiến trình sắp abort.
-  dispatch_semaphore_t sem = dispatch_semaphore_create(0);
-  NSURLSessionDataTask *task =
-      [[NSURLSession sharedSession] dataTaskWithRequest:req
-                                      completionHandler:^(NSData *d, NSURLResponse *r, NSError *e) {
-                                        dispatch_semaphore_signal(sem);
-                                      }];
-  [task resume];
-  dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)));
-}
 
 static void aladinTerminateHandler() {
   NSString *info = @"(no in-flight exception)";
@@ -59,7 +35,6 @@ static void aladinTerminateHandler() {
     info = @"unknown C++ exception";
   }
   NSLog(@"[ALADIN-TERMINATE] %@", info);
-  aladinPostTerminate(info);
   if (gAladinPrevTerminate != nullptr) {
     gAladinPrevTerminate();
   }

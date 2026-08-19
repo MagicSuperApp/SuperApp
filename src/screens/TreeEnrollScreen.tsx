@@ -204,6 +204,9 @@ const TreeEnrollScreen: React.FC = () => {
   const [speciesSaving, setSpeciesSaving] = useState(false);
   const [speciesChosen, setSpeciesChosen] = useState<string | null>(null);
   const [speciesError, setSpeciesError] = useState<string | null>(null);
+  // Hộp thoại "Đăng ký thành công" bị hoãn lại cho tới khi chốt xong giống cây.
+  const [pendingSuccess, setPendingSuccess] = useState<{ treeId: string; code: string } | null>(null);
+  const [catalogUnavailable, setCatalogUnavailable] = useState(false);
 
   // Ảnh đang xem chi tiết (modal)
   const [selectedPhoto, setSelectedPhoto] = useState<GridPhoto | null>(null);
@@ -517,6 +520,7 @@ const TreeEnrollScreen: React.FC = () => {
     setSpeciesSuggest(suggest);
     setSpeciesChosen(null);
     setSpeciesError(null);
+    setCatalogUnavailable(false);
     if (!suggest) { setSpeciesOrder([]); return; }
 
     let alive = true;
@@ -528,6 +532,9 @@ const TreeEnrollScreen: React.FC = () => {
         // Danh mục hỏng ⇒ không có tên tiếng Việt để bày. Im lặng bỏ khối này,
         // KHÔNG hiện mã trần `durio_zibethinus` cho nhà vườn đọc.
         setSpeciesOrder([]);
+        // ...nhưng KHÔNG được nuốt luôn hộp thoại đã hoãn, không thì người dùng
+        // đứng lại giữa màn không nút nào đi tiếp.
+        setCatalogUnavailable(true);
         return;
       }
       const names: Record<string, string> = {};
@@ -615,6 +622,21 @@ const TreeEnrollScreen: React.FC = () => {
     },
     [dispatch, navigation, draftOwner, name, farmId, gps],
   );
+
+  /** Bật hộp thoại thành công đã hoãn (sau khi chốt giống, hoặc khi bỏ qua). */
+  const finishAfterSpecies = useCallback(() => {
+    setPendingSuccess((p) => {
+      if (p) handleSuccess(p.treeId, p.code);
+      return null;
+    });
+  }, [handleSuccess]);
+
+  // Chốt giống xong ⇒ đi tiếp. Danh mục giống không tải được ⇒ cũng đi tiếp, vì
+  // lúc đó không có gì để chốt và người dùng sẽ không có nút nào khác.
+  useEffect(() => {
+    if (!pendingSuccess) return;
+    if (speciesChosen || catalogUnavailable) finishAfterSpecies();
+  }, [pendingSuccess, speciesChosen, catalogUnavailable, finishAfterSpecies]);
 
   // ── Gộp vào cây cũ (verify_add) ──────────────────────────────────────────
   const handleMergeToExisting = useCallback(
@@ -799,7 +821,19 @@ const TreeEnrollScreen: React.FC = () => {
         // Lưu ảnh local theo tree_id TRƯỚC clearAll để hiển thị lại ở màn chi tiết.
         await appendTreeImages(res.data.tree_id, imagePaths);
         setEnrollResult(res.data);
-        handleSuccess(res.data.tree_id, res.data.provenance?.code ?? res.data.tree_id);
+        const code = res.data.provenance?.code ?? res.data.tree_id;
+        // Máy có đoán được giống cây thì HOÃN hộp thoại thành công lại.
+        //
+        // Hộp thoại này `cancelable: false` và cả hai nút đều rời màn, nên bật nó
+        // ngay là đè mất hàng chip xác nhận giống ngay bên dưới — khối đó chưa
+        // từng đứng trước mặt ai trong luồng bình thường, và `set_species` (chỗ
+        // DUY NHẤT sinh nhãn) chưa từng được gọi. Nay: chốt giống trước, rồi mới
+        // hiện hộp thoại đi tiếp — xem `finishAfterSpecies`.
+        if (parseSpeciesSuggest(res.data.species_suggest)) {
+          setPendingSuccess({ treeId: res.data.tree_id, code });
+        } else {
+          handleSuccess(res.data.tree_id, code);
+        }
         return;
       }
 
@@ -1175,6 +1209,12 @@ const TreeEnrollScreen: React.FC = () => {
                   {!!speciesError && (
                     <Text style={styles.successDupWarn}>⚠ {speciesError}</Text>
                   )}
+                  {/* Lối ra. Không có nút này thì máy chủ ghi hỏng liên tục là
+                      người dùng kẹt lại giữa màn: hộp thoại đi tiếp đang bị hoãn,
+                      mà chip nào bấm cũng lỗi. */}
+                  <Pressable onPress={finishAfterSpecies} disabled={speciesSaving}>
+                    <Text style={styles.speciesConfirmSkip}>Để sau</Text>
+                  </Pressable>
                 </View>
               ) : null}
             </View>
@@ -1582,6 +1622,13 @@ const styles = StyleSheet.create({
   // Chip của máy đoán: nổi hơn, nhưng KHÔNG phải trạng thái "đã chọn".
   speciesConfirmBtnGuess: { borderColor: '#1b5e20', backgroundColor: '#eef6ee' },
   speciesConfirmBtnTxt: { fontSize: 13, color: NEUTRAL.text, fontWeight: '600' },
+  speciesConfirmSkip: {
+    fontSize: 12.5,
+    color: NEUTRAL.textSub,
+    textDecorationLine: 'underline',
+    marginTop: 10,
+    alignSelf: 'flex-start',
+  },
   successHint: { fontSize: 12.5, color: '#1b5e20', fontWeight: '600', marginTop: 4, lineHeight: 18 },
 
   missingBar: {

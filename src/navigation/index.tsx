@@ -55,6 +55,7 @@ import SignUpBiometricScreen from '../features/auth/screens/SignUpBiometricScree
 import SignUpCompleteScreen from '../features/auth/screens/SignUpCompleteScreen';
 import AccountScreen from '../screens/AccountScreen';
 import DeleteAccountScreen from '../screens/DeleteAccountScreen';
+import TermsScreen from '../screens/TermsScreen';
 import BiometricSettings from '../screens/BiometricSettings';
 import NotificationScreen from '../screens/NotificationScreen';
 // PhoenixKey — duyệt ký / guardian / nhật ký hoạt động.
@@ -1714,6 +1715,12 @@ const HOST_STACK_SCREENS: Array<{
   { name: 'BiometricSettings', component: BiometricSettings },
   // Xoá tài khoản — bắt buộc bởi Apple 5.1.1(v) + Google Play (issue #144). Vào từ màn Tôi.
   { name: 'DeleteAccount', component: DeleteAccountScreen, options: { headerShown: false } },
+  // Điều khoản + quyền riêng tư. HAI nút thật đã trỏ vào đây từ trước —
+  // `AccountScreen.tsx:876` và `SignUpBiometricScreen.tsx:465` — nhưng route chưa
+  // bao giờ được đăng ký, nên bấm là ném "NAVIGATE ... was not handled by any
+  // navigator". Không test nào bắt được: mọi test đều mock `useNavigation` bằng
+  // `navigate: jest.fn()`, và hai màn đó không có test render nào.
+  { name: 'Terms', component: TermsScreen, options: { headerShown: false } },
   // PhoenixKey feature screens.
   { name: 'SignRequest', component: SignRequestScreen, options: { headerShown: false } },
   { name: 'Guardian', component: GuardianScreen, options: { headerShown: false } },

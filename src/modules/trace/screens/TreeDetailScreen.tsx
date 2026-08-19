@@ -361,6 +361,8 @@ const TreeDetailScreen = () => {
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab ?? 'overview');
   /** Tấm trượt "Công khai & mã QR" — mở từ nút trên thanh dưới. */
   const [publicOpen, setPublicOpen] = useState(false);
+  // Tấm "Việc khác" — ba việc hiếm, mỗi việc một dòng CÓ TÊN ĐẦY ĐỦ.
+  const [moreOpen, setMoreOpen] = useState(false);
 
   // Quả của cây — lấy từ field-reid (xem chú thích đầu file).
   const [layout, setLayout] = useState<TreeLayoutResponse | null>(null);
@@ -723,40 +725,35 @@ const TreeDetailScreen = () => {
           <Text style={styles.headerSubtitle} numberOfLines={1}>{tk('trace.label.code')} {treeShortCode}</Text>
         ) : null}
       </View>
-      {/* Đặt vị-trí cây trong sơ đồ 3D bằng tay (tuỳ chọn — mặc định theo GPS
-          hoặc rải ngẫu nhiên ổn định trong ranh giới vườn). */}
-      <TouchableOpacity style={styles.headerActionBtn} onPress={handlePlaceInFarm}>
-        <Icon name="map-pin" size={20} color={COLORS.textSub} />
-      </TouchableOpacity>
+      {/* ── Hai việc thường xuyên ra ngoài KÈM CHỮ, ba việc hiếm vào tấm ───
+          Chỗ này từng là BỐN nút icon xám: `map-pin` (đặt vị trí 3D), `spray-can`
+          (nhật ký thuốc), `chart-line` (biến thiên), `share-nodes` (chia sẻ dữ
+          liệu). Cùng `size={20}`, cùng `COLORS.textSub`, không nút nào có chữ, và
+          cả bốn nằm sát nút quay-lại ở vùng ngón cái hay quét trúng. Bốn việc có
+          hệ quả hoàn toàn khác nhau — trong đó `share-nodes` là hành động RA
+          NGOÀI duy nhất — trông giống hệt nhau.
+          Nhà OriLife đo trên nhật ký máy chủ: `api/care` 0 dòng trong 14 ngày,
+          tệp kho `care_events.json` còn 28 byte từ 06/06. Nhật ký thuốc chạy
+          được; nó chỉ là cái bình xịt xám thứ hai từ trái. Nên nó là nút được
+          đưa ra ngoài kèm chữ. */}
       <TouchableOpacity
-        style={styles.headerActionBtn}
+        style={styles.headerCareBtn}
         onPress={() => tree && (navigation as any).navigate('CareScan', {
           targetType: 'tree', targetId: tree.id, treeName: (tree as any).name,
         })}
+        accessibilityRole="button"
       >
-        <Icon name="spray-can" size={20} color={COLORS.textSub} />
+        <Icon name="spray-can" size={16} color={ORG_TONE.primary} />
+        <Text style={styles.headerCareTxt}>{tk('trace.tree.actCare')}</Text>
       </TouchableOpacity>
-      {/* Biến thiên của cây — "cây thay lá rồi, máy còn nhận ra nó không?".
-          Máy chủ tính sẵn số này từ lâu; đây là chỗ đầu tiên app hỏi tới. */}
       <TouchableOpacity
         style={styles.headerActionBtn}
-        onPress={() => tree && (navigation as any).navigate('TreeDrift', {
-          treeId: tree.id, treeName: (tree as any).name,
-        })}
-        accessibilityLabel="Biến thiên của cây"
+        onPress={() => setMoreOpen(true)}
+        accessibilityRole="button"
+        accessibilityLabel={tk('trace.tree.moreActions')}
       >
-        <Icon name="chart-line" size={20} color={COLORS.textSub} />
-      </TouchableOpacity>
-      {/* Chia sẻ dữ liệu RIÊNG của đúng cây này cho một người — không phải mở
-          công khai, và không đụng tới cây khác. */}
-      <TouchableOpacity
-        style={styles.headerActionBtn}
-        onPress={() => tree && (navigation as any).navigate('TreeShare', {
-          scopeType: 'tree', scopeId: tree.id, scopeName: (tree as any).name,
-        })}
-        accessibilityLabel="Chia sẻ dữ liệu riêng của cây"
-      >
-        <Icon name="share-nodes" size={20} color={COLORS.textSub} />
+        <Icon name="ellipsis" size={20} color={COLORS.textSub} />
+        <Text style={styles.headerMoreTxt}>{tk('trace.tree.moreActions')}</Text>
       </TouchableOpacity>
     </Animated.View>
   );
@@ -1349,6 +1346,57 @@ const TreeDetailScreen = () => {
         </TouchableOpacity>
       </Modal>
 
+      {/* Ba việc hiếm, gọi đúng tên. Riêng "chia sẻ dữ liệu" phải đọc được hết
+          câu trước khi chạm — nó là việc đưa dữ liệu cho NGƯỜI KHÁC, không cùng
+          hạng với hai việc còn lại. */}
+      <Modal
+        visible={moreOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMoreOpen(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setMoreOpen(false)}
+        >
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{tk('trace.tree.moreActions')}</Text>
+            <TouchableOpacity
+              style={styles.modalOption}
+              onPress={() => { setMoreOpen(false); handlePlaceInFarm(); }}
+            >
+              <Icon name="map-pin" size={18} color={COLORS.textSub} />
+              <Text style={styles.modalOptionText}>{tk('trace.tree.actPlace')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.modalOption}
+              onPress={() => {
+                setMoreOpen(false);
+                tree && (navigation as any).navigate('TreeDrift', {
+                  treeId: tree.id, treeName: (tree as any).name,
+                });
+              }}
+            >
+              <Icon name="chart-line" size={18} color={COLORS.textSub} />
+              <Text style={styles.modalOptionText}>{tk('trace.tree.actDrift')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.modalOption}
+              onPress={() => {
+                setMoreOpen(false);
+                tree && (navigation as any).navigate('TreeShare', {
+                  scopeType: 'tree', scopeId: tree.id, scopeName: (tree as any).name,
+                });
+              }}
+            >
+              <Icon name="share-nodes" size={18} color={COLORS.textSub} />
+              <Text style={styles.modalOptionText}>{tk('trace.tree.actShare')}</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
       {/* Chọn vườn cho cây (`/api/tree/set_farm`). Có cả lối GỠ khỏi vườn vì máy
           chủ nhận `farm_id` rỗng có chủ đích — người dùng nhặt nhầm vườn phải có
           đường lùi, không thì cây kẹt trong vườn sai vĩnh viễn. */}
@@ -1476,11 +1524,21 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5, marginTop: 2,
   },
   headerActionBtn: {
-    width: 40, height: 40, borderRadius: 12,
+    minWidth: 44, paddingHorizontal: 6, paddingVertical: 5, borderRadius: 12,
     backgroundColor: ORG_SURFACE.raised,
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 1, borderColor: ORG_TONE.border,
   },
+  headerMoreTxt: { fontSize: 10, fontWeight: '700', color: COLORS.textSub, marginTop: 1 },
+  // Nút "Ghi thuốc" — việc hằng ngày, nên nó là nút DUY NHẤT ở đầu màn có nền
+  // nổi và chữ đầy đủ. Xem chú thích ở phần Header về vì sao đúng nút này.
+  headerCareBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12,
+    backgroundColor: ORG_SURFACE.raised,
+    borderWidth: 1, borderColor: ORG_TONE.primary,
+  },
+  headerCareTxt: { fontSize: 12.5, fontWeight: '800', color: ORG_TONE.primary },
 
   tabBar: {
     flexGrow: 0,

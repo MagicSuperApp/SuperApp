@@ -100,6 +100,7 @@ import {
 // Dùng @env (react-native-dotenv) — biến phải khai báo trong .env
 // Nếu chưa có → fallback staging
 import { ORILIFE_BASE } from '../services/orilifeBase';
+import { tk } from '../i18n/keys';
 const BASE_URL: string =
   ORILIFE_BASE;
 
@@ -126,7 +127,6 @@ const MIN_ROUND1 = 4;
 const MIN_ROUND2 = 2;
 
 const GUIDANCE = {
-  idle: 'Tap "Start" to identify the tree',
   round1: 'Đi vòng quanh cây, lia chậm để lấy đủ góc.',
   round2: 'Đứng SÁT GỐC, chĩa ống kính LÊN — lấy rõ vỏ gốc, sẹo, chạc cây.',
   needMore: 'Xoay thêm một chút nữa để lấy góc mới.',
@@ -143,6 +143,17 @@ type TreeIdentityRouteParams = {
   TreeIdentity: {
     /** Vườn hiện-hành — truyền tiếp xuống TreeEnroll để gắn cây vào vườn. */
     farmId?: string;
+    /**
+     * Mốc thời gian của một lượt CHỤP LẠI do màn đăng ký yêu cầu.
+     *
+     * Màn này giữ `identResult` trong state cục bộ, nên `goBack()` từ màn đăng ký
+     * để lại y nguyên bảng kết quả cũ kèm nút "Đăng ký cây mới" — kể cả sau khi
+     * cây đã đăng ký xong. Người dùng bấm tiếp thì sang màn đăng ký với `captures`
+     * rỗng, không hiểu, ra chụp lại từ đầu, và thành HAI bản ghi cho MỘT gốc cây.
+     * Dùng mốc thời gian chứ không phải cờ boolean: hai lượt chụp lại liên tiếp
+     * phải là hai giá trị khác nhau thì effect mới chạy lần thứ hai.
+     */
+    retake?: number;
   };
 };
 
@@ -366,7 +377,7 @@ const TreeIdentityScreen: React.FC = () => {
     if (identResult) return '';
     // Android KHÔNG có native → guidance chụp tay; có native thì dùng guidance theo round như iOS.
     if (Platform.OS === 'android' && !TreeReIDBridge.isAvailable()) return GUIDANCE.android;
-    if (!isCaptureActive) return GUIDANCE.idle;
+    if (!isCaptureActive) return tk('trace.identify.idleHint');
     if (totalCaptures === 0)
       return currentRoundLocal === 2 ? GUIDANCE.round2 : GUIDANCE.round1;
     if (shouldCapture) return GUIDANCE.needMore;
@@ -807,6 +818,15 @@ const TreeIdentityScreen: React.FC = () => {
     dispatch(clearAll());
   };
 
+  // Màn đăng ký gọi "Chụp lại"/"Ghi cây tiếp" → về đây SẠCH, không còn bảng kết quả cũ.
+  const retake = route.params?.retake;
+  useEffect(() => {
+    if (!retake) return;
+    handleReset();
+    (navigation as any).setParams({ retake: undefined });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [retake]);
+
   // ── M3: gửi phán-quyết (Đúng / Sai / Là-cây-khác) ─────────────────────────
   const sendVerdict = async (verdict: IdentifyVerdict, correctTid?: string) => {
     if (!queryId || verdictSent || isSendingVerdict) return;
@@ -1172,7 +1192,7 @@ const TreeIdentityScreen: React.FC = () => {
             ) : (
               <>
                 <Icon name="magnify" size={22} color="#000000" />
-                <Text style={styles.ctrlBtnText}>Identify</Text>
+                <Text style={styles.ctrlBtnText}>{tk('trace.identify.doIdentifyShort')}</Text>
               </>
             )}
           </TouchableOpacity>
@@ -1233,7 +1253,7 @@ const TreeIdentityScreen: React.FC = () => {
             <>
               <Icon name="check-circle" size={22} color="#000000" />
               <Text style={styles.ctrlBtnText}>
-                Identify ({totalCaptures} Directions)
+                {tk('trace.identify.doIdentify', { n: totalCaptures })}
               </Text>
             </>
           )}

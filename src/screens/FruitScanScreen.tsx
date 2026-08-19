@@ -53,6 +53,7 @@ import { TreeReIDBridge } from '../services/treeReIDNativeBridge';
 // Một chiều, không vòng: `FruitListScreen` không import màn nào.
 import { absUrl } from './FruitListScreen';
 
+import { tk } from '../i18n/keys';
 const BASE_URL = ORILIFE_BASE;
 
 interface RouteParams { farmId?: string; treeId?: string }
@@ -278,15 +279,8 @@ const FruitScanScreen: React.FC = () => {
     await fruitIdentifyVerdict(BASE_URL, queryId, v, { correctFruitId });
   }, [queryId]);
 
-  const enrollNew = useCallback(() => {
-    const tree = pinnedTreeId
-      ? trees.find(t => t.tree_id === pinnedTreeId)
-      : around[0]?.tree;
-    if (!tree || !photo) {
-      Alert.alert('Chưa chọn được cây', 'Anh chọn cây trước rồi đăng ký quả mới trên cây đó.');
-      navigation.navigate('TreeManagement');
-      return;
-    }
+  const goCrop = useCallback((tree: { tree_id: string; name?: string }) => {
+    if (!photo) return;
     navigation.navigate('FruitCropper', {
       treeId: tree.tree_id,
       treeName: tree.name,
@@ -295,7 +289,55 @@ const FruitScanScreen: React.FC = () => {
       imageH: photo.h,
       capture: photo.capture,
     });
-  }, [pinnedTreeId, trees, around, photo, navigation]);
+  }, [photo, navigation]);
+
+  /**
+   * Đăng ký quả MỚI.
+   *
+   * ── Vì sao có một hộp hỏi ở giữa ────────────────────────────────────────────
+   * Khi màn này mở từ ĐÚNG một cây (`pinnedTreeId`), không có gì phải hỏi.
+   * Nhưng mở từ cổng/Trang chủ thì `pinnedTreeId` rỗng, và bản cũ lặng lẽ lấy
+   * `around[0].tree` — CÂY GẦN NHẤT theo GPS trong bán kính 60 m
+   * (`fruitFind.ts:56`). Sầu riêng trồng cách nhau 8–10 m, còn sai số GPS dưới
+   * tán dày là 15–25 m và cộng dồn hai đầu (toạ độ cây cũng đo bằng GPS đó) —
+   * nên "gần nhất" thường xuyên không phải cây đang đứng cạnh.
+   * Chính tệp `fruitFind.ts:118-121` đã CẤM đúng việc này cho đường nhận-diện,
+   * nguyên văn: "KHÔNG suy ra cây gần nhất rồi gán bừa. Gán sai một lần là hồ sơ
+   * quả sai vĩnh viễn, mà người dùng không có cách nào biết." Đường đăng-ký nằm
+   * trong chính tệp GỌI nó lại đang làm điều bị cấm đó. Nay nó hỏi, và nói ra
+   * khoảng cách để người đứng tại chỗ tự phán được.
+   */
+  const enrollNew = useCallback(() => {
+    if (!photo) {
+      Alert.alert('Chưa có ảnh', 'Anh chụp quả trước đã.');
+      return;
+    }
+    if (pinnedTreeId) {
+      const pinned = trees.find(t => t.tree_id === pinnedTreeId);
+      if (pinned) { goCrop(pinned); return; }
+    }
+    const guess = around[0];
+    if (!guess) {
+      Alert.alert('Chưa chọn được cây', 'Anh chọn cây trước rồi đăng ký quả mới trên cây đó.');
+      navigation.navigate('TreeManagement');
+      return;
+    }
+    Alert.alert(
+      tk('trace.fruitScan.confirmTreeTitle'),
+      tk('trace.fruitScan.confirmTreeBody', {
+        name: guess.tree.name ?? '—',
+        m: Math.round(guess.distanceM),
+      }),
+      [
+        { text: 'Huỷ', style: 'cancel' },
+        {
+          text: tk('trace.fruitScan.confirmTreePick'),
+          onPress: () => navigation.navigate('TreeManagement'),
+        },
+        { text: tk('trace.fruitScan.confirmTreeYes'), onPress: () => goCrop(guess.tree) },
+      ],
+    );
+  }, [pinnedTreeId, trees, around, photo, navigation, goCrop]);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>

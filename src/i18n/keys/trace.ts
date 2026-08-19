@@ -735,4 +735,135 @@ export const TRACE_STRINGS = {
     zh: '天气干爽 — 适合打药和施肥。',
     ja: '乾いた天気です — 散布や施肥に向いています。',
   },
+
+  // ── Chữ cho NÚT, thay chỗ trước đây bỏ trống hoặc còn tiếng Anh ────────────
+  // Nông dân ngoài vườn đọc màn tiếng Việt mà gặp nút chính ghi "Identify
+  // (4 Directions)" thì không biết bấm gì. Bốn chuỗi dưới đây thay đúng bốn chỗ
+  // đó; đồng thời chuyển luôn sang lối khoá để lần sau đổi chữ không mất bản dịch.
+  'trace.identify.idleHint': {
+    vi: 'Bấm "Bắt đầu" để nhận diện cây',
+    en: 'Tap "Start" to identify the tree',
+    zh: '点击"开始"识别这棵树',
+    ja: '「開始」を押して木を識別します',
+  },
+  'trace.identify.doIdentify': {
+    vi: 'Nhận diện ({n} góc)', en: 'Identify ({n} angles)',
+    zh: '识别（{n} 个角度）', ja: '識別（アングル {n}）',
+  },
+  'trace.identify.doIdentifyShort': {
+    vi: 'Nhận diện', en: 'Identify', zh: '识别', ja: '識別',
+  },
+  'trace.enroll.picturesN': {
+    vi: 'Ảnh đã chụp ({n} góc)', en: 'Pictures ({n} angles)',
+    zh: '已拍照片（{n} 个角度）', ja: '撮影済み（アングル {n}）',
+  },
+  'trace.enroll.viewsN': {
+    vi: '{label} · {n} góc', en: '{label} · {n} angles',
+    zh: '{label} · {n} 个角度', ja: '{label} · アングル {n}',
+  },
+
+  // ── Nút "Đăng ký" bị làm mờ: nói RA còn thiếu gì ───────────────────────────
+  // Trước đây năm hộp thoại giải thích nằm trong `handleEnroll`, mà `handleEnroll`
+  // chỉ gọi được từ chính cái nút đang bị `disabled` — nên không ai đọc được câu
+  // nào. Nay câu đó hiện ngay dưới nút, không phải chờ bấm.
+  'trace.enroll.missingName': {
+    vi: 'Còn thiếu: tên cây', en: 'Still missing: tree name',
+    zh: '还缺：树名', ja: '未入力：木の名前',
+  },
+  'trace.enroll.missingFarm': {
+    vi: 'Còn thiếu: chọn vườn', en: 'Still missing: pick a garden',
+    zh: '还缺：选择果园', ja: '未選択：果樹園',
+  },
+  'trace.enroll.missingPhotos': {
+    vi: 'Còn thiếu: {n} góc ảnh nữa', en: 'Still missing: {n} more angles',
+    zh: '还缺：{n} 个角度', ja: 'あと {n} アングル必要です',
+  },
+  'trace.enroll.openSettings': {
+    vi: 'Mở Cài đặt', en: 'Open Settings', zh: '打开设置', ja: '設定を開く',
+  },
+  'trace.enroll.keptOnDevice': {
+    vi: 'Ảnh vẫn còn trong máy — bấm Đăng ký lại khi có sóng.',
+    en: 'The photos are still on the phone — tap Register again when you have signal.',
+    zh: '照片仍在手机里 — 有信号时再点"登记"。',
+    ja: '写真は端末に残っています — 電波が戻ったらもう一度「登録」を押してください。',
+  },
+  'trace.enroll.draftTitle': {
+    vi: 'Còn ảnh chụp dở buổi trước', en: 'Unfinished photos from last time',
+    zh: '上次还有没登记完的照片', ja: '前回の未登録の写真があります',
+  },
+  'trace.enroll.draftBodyNamed': {
+    vi: 'Cây "{name}" · {n} ảnh, chụp {when}. Chụp tiếp hay bỏ?',
+    en: 'Tree "{name}" · {n} photos taken {when}. Continue or discard?',
+    zh: '树"{name}" · {n} 张照片，{when}拍摄。继续还是丢弃？',
+    ja: '木「{name}」· 写真 {n} 枚（{when}）。続けますか、破棄しますか？',
+  },
+  'trace.enroll.draftBody': {
+    vi: '{n} ảnh chụp {when} nhưng chưa đăng ký. Chụp tiếp hay bỏ?',
+    en: '{n} photos taken {when} were never registered. Continue or discard?',
+    zh: '{n} 张{when}拍的照片还没登记。继续还是丢弃？',
+    ja: '{when}に撮った写真 {n} 枚が未登録です。続けますか、破棄しますか？',
+  },
+  'trace.enroll.draftKeep': {
+    vi: 'Chụp tiếp', en: 'Continue', zh: '继续', ja: '続ける',
+  },
+  'trace.enroll.draftDrop': {
+    vi: 'Bỏ {n} ảnh này', en: 'Discard these {n} photos',
+    zh: '丢弃这 {n} 张照片', ja: 'この {n} 枚を破棄',
+  },
+  'trace.enroll.whenToday': { vi: 'hôm nay', en: 'today', zh: '今天', ja: '今日' },
+  'trace.enroll.whenYesterday': { vi: 'hôm qua', en: 'yesterday', zh: '昨天', ja: '昨日' },
+  'trace.enroll.whenDaysAgo': {
+    vi: '{n} ngày trước', en: '{n} days ago', zh: '{n} 天前', ja: '{n} 日前',
+  },
+
+  // ── Nút hành động ở đầu màn CÂY ────────────────────────────────────────────
+  // Bốn nút icon xám cùng cỡ cùng màu, không nút nào có chữ — trong đó một nút
+  // là CHIA SẺ RA NGOÀI. Nay hai việc hằng ngày ra ngoài kèm chữ, hai việc hiếm
+  // vào tấm có tên đầy đủ.
+  'trace.tree.moreActions': { vi: 'Việc khác', en: 'More', zh: '更多', ja: 'その他' },
+  'trace.tree.actCare': { vi: 'Ghi thuốc', en: 'Log spray', zh: '记录用药', ja: '散布記録' },
+  'trace.tree.actDrift': {
+    vi: 'Biến thiên của cây', en: 'How much the tree has changed',
+    zh: '树的变化', ja: '木の変化',
+  },
+  'trace.tree.actPlace': {
+    vi: 'Đặt vị trí cây trong sơ đồ', en: 'Place this tree on the map',
+    zh: '在立体图中放置这棵树', ja: '立体図でこの木を配置',
+  },
+  'trace.tree.actShare': {
+    vi: 'Chia sẻ dữ liệu cây này cho người khác',
+    en: 'Share this tree’s data with someone',
+    zh: '把这棵树的数据分享给别人', ja: 'この木のデータを誰かに共有',
+  },
+
+  // ── Đăng ký quả mới khi vào từ ngoài (không qua màn cây) ───────────────────
+  // `enrollNew` chọn CÂY GẦN NHẤT theo GPS. Chính tệp `fruitFind.ts:118-121` cấm
+  // đúng việc đó cho đường nhận-diện ("gán sai một lần là hồ sơ quả sai vĩnh
+  // viễn"), nên đường đăng-ký phải HỎI trước khi gán.
+  'trace.fruitScan.confirmTreeTitle': {
+    vi: 'Quả này của cây nào?', en: 'Which tree is this fruit on?',
+    zh: '这个果实属于哪棵树？', ja: 'この果実はどの木のものですか？',
+  },
+  'trace.fruitScan.confirmTreeBody': {
+    vi: 'Máy đoán là cây "{name}", cách chỗ anh đứng khoảng {m} m. Đúng cây đó chứ?',
+    en: 'Best guess is tree "{name}", about {m} m from where you stand. Is that right?',
+    zh: '推测是树"{name}"，距您约 {m} 米。是这棵吗？',
+    ja: '推定は木「{name}」、現在地から約 {m} m です。これで合っていますか？',
+  },
+  'trace.fruitScan.confirmTreeYes': {
+    vi: 'Đúng cây này', en: 'Yes, this tree', zh: '就是这棵', ja: 'この木です',
+  },
+  'trace.fruitScan.confirmTreePick': {
+    vi: 'Chọn cây khác', en: 'Pick another tree', zh: '选别的树', ja: '別の木を選ぶ',
+  },
+
+  // ── Nhãn mục quét trên cổng xoè (trước đây là chuỗi rỗng) ──────────────────
+  'trace.gate.scan': { vi: 'Quét mã', en: 'Scan', zh: '扫码', ja: 'スキャン' },
+  'trace.enroll.nextTree': {
+    vi: 'Ghi cây tiếp', en: 'Register next tree', zh: '登记下一棵', ja: '次の木を登録',
+  },
+  'trace.enroll.retake': { vi: 'Chụp lại', en: 'Retake', zh: '重拍', ja: '撮り直す' },
+  'trace.enroll.viewDetail': {
+    vi: 'Xem chi tiết', en: 'View details', zh: '查看详情', ja: '詳細を見る',
+  },
 } satisfies KeyMap;

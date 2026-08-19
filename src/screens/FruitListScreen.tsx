@@ -375,40 +375,45 @@ const FruitListScreen: React.FC = () => {
           </Text>
           <Text style={styles.subtitle}>{tk('trace.fruitList.title')}</Text>
         </View>
-        {/* LỐI VÀO DUY NHẤT của màn nhận diện quả.
-            `FruitScanScreen` gọi `POST /api/fruit/identify` — cửa DUY NHẤT trả ra
-            kết luận (`decision` + `fruit_id` + `confidence`). Nó đã đăng ký route từ
-            lâu nhưng KHÔNG có nút nào mở, và hai cổng cùng trượt theo hai kiểu khác
-            nhau — phải đọc cả hai mới thấy:
-              · `src/navigation/actionRegistry.ts` CÓ khai ô "Quét quả" trỏ tới nó,
-                nhưng chính tệp đó là mã chết (`resolveActions` 0 nơi gọi).
-              · `src/navigation/resolveGateItems.ts` mới là cổng SỐNG
-                (`src/navigation/index.tsx:460`) — và nó KHÔNG có mục nào cho màn này.
-            Nhìn mỗi tệp đầu thì tưởng đã có lối vào; nhìn mỗi tệp sau thì tưởng chưa
-            ai định làm.
-            Nhà OriLife đo độc lập trên sổ sự kiện máy chủ: `fruit_identify` 0 lượt
-            trong 1.859 dòng từ tháng 6, trong khi `fruit_candidates` 123 lượt. Hai
-            tín hiệu trùng nhau. Đó là lý do thật của "đăng ký quả rồi mà quét lại
-            không nhận ra": app chưa từng gõ cửa có kết luận.
-            Truyền `treeId` để màn kia ghim đúng cây — có ghim thì nó mới khoanh vùng
-            được trước khi so, và mới thu hẹp kho so về một cây. */}
+      </View>
+
+      {/* ── Hai việc làm được với cây này — CÓ CHỮ ──────────────────────────
+          Trước đây đây là hai nút tròn chỉ có hình (bia ngắm, khối lập phương)
+          nhét ở góc phải đầu màn. Chữ cho chúng đã nằm sẵn trong từ điển đủ bốn
+          thứ tiếng (`trace.fruitList.identify`, `.place3d`) nhưng chỉ được gắn
+          vào `accessibilityLabel` — tức chỉ trình đọc màn hình nghe được, mắt
+          người không thấy gì.
+          Nút bia ngắm là LỐI VÀO DUY NHẤT của `POST /api/fruit/identify` — cửa
+          duy nhất trả ra kết luận (`decision` + `fruit_id` + `confidence`). Nhà
+          OriLife đếm trên sổ máy chủ: `fruit_identify` 0 lượt trong 1.859 dòng
+          từ tháng 6, trong khi `fruit_candidates` 123 lượt. Một tính năng chạy
+          được, có bài kiểm, không ai gọi — vì cửa vào của nó không có chữ.
+          Truyền `treeId` để màn kia ghim đúng cây: có ghim thì nó mới khoanh
+          vùng trước khi so, và mới thu kho so về một cây. */}
+      <View style={styles.treeActions}>
         <Pressable
-          style={styles.iconBtn}
-          accessibilityLabel={tk('trace.fruitList.identify')}
+          style={({ pressed }) => [styles.treeActionBtn, pressed && styles.pressed]}
+          accessibilityRole="button"
           onPress={() => navigation.navigate('FruitScan', {
             treeId, treeName: treeName || layout?.tree.name, farmId,
           })}
         >
-          <Icon name="bullseye" size={19} color={TONE.primary} />
+          <Icon name="bullseye" size={17} color={TONE.primary} />
+          <Text style={styles.treeActionTxt} numberOfLines={2}>
+            {tk('trace.fruitList.identify')}
+          </Text>
         </Pressable>
         <Pressable
-          style={styles.iconBtn}
-          accessibilityLabel={tk('trace.fruitList.place3d')}
+          style={({ pressed }) => [styles.treeActionBtn, pressed && styles.pressed]}
+          accessibilityRole="button"
           onPress={() => navigation.navigate('Space3D', {
             mode: 'tree', treeId, treeName: treeName || layout?.tree.name,
           })}
         >
-          <Icon name="cube" size={19} color={TONE.primary} />
+          <Icon name="cube" size={17} color={TONE.primary} />
+          <Text style={styles.treeActionTxt} numberOfLines={2}>
+            {tk('trace.fruitList.place3d')}
+          </Text>
         </Pressable>
       </View>
 
@@ -721,6 +726,16 @@ const styles = StyleSheet.create({
     backgroundColor: SURFACE.raised, alignItems: 'center', justifyContent: 'center',
   },
   headTitles: { flex: 1, minWidth: 0 },
+  treeActions: {
+    flexDirection: 'row', gap: SPACE.sm,
+    paddingHorizontal: SPACE.page, paddingBottom: SPACE.md,
+  },
+  treeActionBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', gap: 7,
+    paddingVertical: 11, paddingHorizontal: 12,
+    ...ORGANIC_TILE, ...ELEVATION.card, backgroundColor: SURFACE.raised,
+  },
+  treeActionTxt: { ...TYPE.caption, flex: 1, fontSize: 13, color: TONE.primary, fontWeight: '700' },
   title: { ...TYPE.title, fontSize: 23 },
   subtitle: { ...TYPE.caption, fontSize: 13.5 },
 

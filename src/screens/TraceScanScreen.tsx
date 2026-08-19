@@ -29,18 +29,23 @@
  * trần 2MB. Không dò quả, không khoanh vùng, không chấm điểm — tất cả nằm sau
  * `POST /api/fruit/lookup`, nơi có mô hình thật.
  *
- * ── Đã bỏ: khoanh vùng phía app ─────────────────────────────────────────────
- * Cửa `lookup` nhận `bbox`/`points` để chỉ đúng quả, và bản trước dùng nó: máy
- * chủ trả `need_region` thì màn vẽ hộp nhận diện lên khung xem, người dùng chạm
- * chọn, app gửi lại cùng tấm ảnh kèm `bbox`. Bỏ cả cụm đó cùng ba tệp dựng nên
- * nó (`previewBox` · `ScanBox` và bộ test). Lý do: nó bắt người mua học một thao
- * tác mới (chạm đúng một hộp trong mấy hộp nhấp nháy) để giải một bài mà **máy
- * chủ giải tốt hơn** — và mỗi hộp vẽ ra là một phép quy đổi toạ độ nữa có thể
- * lệch (ảnh 4:3 ↔ khung vuông ↔ tấm đã co).
+ * ── Khoanh vùng: máy chủ chỉ, người dùng chọn ───────────────────────────────
+ * Cửa `lookup` nhận `bbox` để chỉ đúng quả. Ảnh có nhiều quả thì máy chủ trả
+ * `need_region` **kèm `regions`** — đó là mô hình nhận diện của chính nó nói
+ * "tôi thấy quả ở những chỗ này, bạn hỏi quả nào?". Màn vẽ các vùng đó lên khung
+ * xem, người dùng chạm một cái, app gửi lại **CÙNG tấm ảnh** kèm `bbox`.
  *
- * Máy chủ vẫn có quyền trả `need_region` (ảnh nhiều quả, hoặc không thấy quả
- * nào). Lúc đó app KHÔNG im lặng và cũng KHÔNG tự đoán: nó nói thẳng "lại gần,
- * chụp riêng một quả thôi" — một câu người dùng làm theo được ngay.
+ * Một bản trước đã bỏ cụm này rồi khôi phục lại. Ghi lại vì sao khôi phục: bỏ nó
+ * thì ca "nhiều quả trong khung" thành ngõ cụt — app chỉ còn biết bảo người ta
+ * lại gần chụp lại, trong khi máy chủ ĐÃ chỉ ra sẵn từng quả. Vứt một câu trả
+ * lời đã có để bắt người dùng chụp lại là đắt hơn hẳn việc học một cú chạm.
+ *
+ * Ba hệ toạ độ trong đường này (ảnh gửi đi ↔ khung xem ↔ tấm đã cắt vuông) nằm
+ * gọn trong `previewBox`, có bài kiểm bám. Chúng là chỗ dễ sai, không phải chỗ
+ * không làm được.
+ *
+ * Máy chủ vẫn có quyền trả `need_region` với danh sách RỖNG (không thấy quả nào).
+ * Lúc đó không có gì để chạm, và app nói thẳng "lại gần, chụp riêng một quả".
  *
  * ── Phía máy cũng KHÔNG chấm điểm ảnh ──────────────────────────────────────
  * `react-native-camera-kit` không mở khung hình cho JS (không frame processor)
@@ -64,10 +69,11 @@
  * và app đã có sổ đăng ký SVG dựng sẵn.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator, Animated, Image, Linking, Modal, PermissionsAndroid, Platform, Pressable,
   ScrollView, StatusBar, StyleSheet, Text, View, useWindowDimensions,
+  type GestureResponderEvent,
 } from 'react-native';
 // @ts-ignore — react-native-camera-kit không kèm types cho prop scanBarcode
 import { Camera } from 'react-native-camera-kit';
@@ -82,15 +88,29 @@ import { TRACE_RESULT_ROUTE_NAME } from './TraceResultScreen';
 import { ORILIFE_BASE } from '../services/orilifeBase';
 import {
   candidateImageUrl, isAnchored, lookupFruit, provenanceOf, safeExplorerUrl, safeHttpUrl,
-  type LookupCandidate,
+  type LookupCandidate, type LookupRegion,
 } from '../services/fruitLookupService';
-import { prepareForLookup } from '../features/traceScan/prepareImage';
+import { prepareForLookup, type PreparedImage } from '../features/traceScan/prepareImage';
+import {
+  hitTest, imageBoxToPreview, matchSlots, padBbox, previewPointToImage,
+  type PixelBbox, type Rect,
+} from '../features/traceScan/previewBox';
+import ScanRegionBox from '../features/traceScan/ScanRegionBox';
+import CandidateDetailSheet from '../features/traceScan/CandidateDetailSheet';
 import {
   NATURE, ORGANIC_CARD, RADIUS, SPACE, SURFACE, TONE, TOUCH_MIN, TYPE,
 } from '../modules/trace/theme/depth';
 import { withAlpha } from '../theme/tokens';
 
 type Mode = 'qr' | 'fruit';
+
+/**
+ * Bao nhiêu vùng vẽ được cùng lúc. Bằng trần ứng viên của máy chủ.
+ *
+ * Ô vẽ SỐNG LÂU hơn từng lượt trả về — `matchSlots` gán hộp mới vào ô cũ gần nó
+ * nhất, nhờ vậy khung trượt tới chỗ mới thay vì biến mất rồi hiện lại.
+ */
+const BOX_SLOTS = 5;
 
 /** Ảnh lấy từ thư viện: co ngay lúc chọn, khỏi phải co lần nữa. */
 const LIBRARY_OPTIONS = {
@@ -104,6 +124,12 @@ const LIBRARY_OPTIONS = {
 /** Kết quả một lượt tra, ở dạng màn hình cần. */
 type Outcome =
   | { s: 'scanning' }
+  /**
+   * Máy chủ thấy nhiều quả và hỏi lại. Giữ CHÍNH tấm ảnh đã gửi, vì lượt sau
+   * phải gửi lại đúng tấm đó kèm `bbox` — chụp tấm mới thì quả đã xê dịch và hộp
+   * người dùng vừa chạm trỏ vào chỗ khác.
+   */
+  | { s: 'pick_region'; image: PreparedImage; regions: LookupRegion[] }
   | { s: 'candidates'; list: LookupCandidate[]; note?: string }
   /**
    * `text` là câu CỦA MÁY CHỦ (hoặc câu lỗi thật). Nó thắng `key`.
@@ -128,6 +154,17 @@ const TraceScanScreen: React.FC = () => {
   const [outcome, setOutcome] = useState<Outcome>({ s: 'scanning' });
   const [busy, setBusy] = useState(false);
   const [qrLocked, setQrLocked] = useState(false);
+  /** Năm ô vẽ vùng nhận diện. Ô sống lâu hơn từng lượt trả về — xem `BOX_SLOTS`. */
+  const [slots, setSlots] = useState<(Rect | null)[]>(() => new Array(BOX_SLOTS).fill(null));
+  /**
+   * Ứng viên đang mở hồ sơ. `null` = chưa chọn ai.
+   *
+   * Tách khỏi `outcome` vì hai thứ này chồng lên nhau chứ không thay nhau: hồ sơ
+   * mở ĐÈ lên danh sách năm quả, đóng lại là danh sách còn nguyên phía dưới. Nhét
+   * nó thành một nhánh của `outcome` thì đóng hồ sơ là mất luôn danh sách, và
+   * người mua phải chụp lại từ đầu chỉ vì bấm nhầm một hàng.
+   */
+  const [detail, setDetail] = useState<LookupCandidate | null>(null);
   /**
    * Mốc máy chủ bảo chờ tới (429 `retry_after`). `null` = không bị chặn.
    *
@@ -144,6 +181,7 @@ const TraceScanScreen: React.FC = () => {
   // Ô vuông giữa màn. Chặn theo cả bề ngang lẫn chiều cao để máy nhỏ không bị
   // khung đẩy mất hàng nút bên dưới.
   const frame = Math.round(Math.min(winW - SPACE.xl * 2, winH * 0.44));
+  const frameSize = useMemo(() => ({ w: frame, h: frame }), [frame]);
 
   useEffect(() => () => { alive.current = false; }, []);
 
@@ -184,32 +222,39 @@ const TraceScanScreen: React.FC = () => {
   }, [navigation]);
 
   // ── Một lượt tra ──────────────────────────────────────────────────────────
+  /** Xoá hết vùng đang vẽ. */
+  const clearBoxes = useCallback(() => {
+    setSlots(new Array(BOX_SLOTS).fill(null));
+  }, []);
+
   /**
-   * Gửi một tấm ảnh đi tra. `region` chỉ có khi người dùng vừa chạm chọn quả.
+   * Quy `regions` của máy chủ về khung xem rồi gán vào ô.
    *
-   * KHÔNG ném. Mọi nhánh kết thúc bằng một `Outcome` — kể cả nhánh hỏng, vì một
-   * màn quét đứng im không nói gì là màn quét mà người ta tắt đi.
+   * Gán qua `matchSlots` để mỗi khung trượt tới vùng GẦN NÓ NHẤT — máy chủ không
+   * hứa giữ thứ tự, và gán theo chỉ số thì hai khung bay chéo qua nhau giữa màn.
    */
+  const showRegions = useCallback((regions: LookupRegion[], image: PreparedImage) => {
+    const rects = regions
+      .map((d) => imageBoxToPreview(d.bbox, { w: image.width, h: image.height }, frameSize))
+      .filter((r): r is Rect => r !== null);
+    setSlots((prev) => matchSlots(prev, rects, BOX_SLOTS));
+  }, [frameSize]);
+
   /**
-   * Gửi NGUYÊN tấm ảnh đi tra. Không kèm vùng khoanh.
+   * Gửi một tấm ảnh đi tra. `region` chỉ có khi người dùng vừa chạm chọn một vùng.
    *
-   * Cửa `/api/fruit/lookup` nhận `bbox`/`points` để chỉ đúng quả, và bản trước
-   * dùng nó: máy chủ trả `need_region` thì màn vẽ hộp lên khung xem cho người
-   * dùng chạm chọn. Bỏ, và bỏ luôn cả bộ vẽ hộp — việc tìm quả trong ảnh là việc
-   * của MÁY CHỦ, nơi có mô hình thật. Phía app chỉ còn hai việc: gửi ảnh, và nói
-   * lại đúng lời máy chủ.
-   *
-   * Máy chủ vẫn có quyền trả `need_region` (ảnh nhiều quả, hoặc không thấy quả
-   * nào). Lúc đó app KHÔNG im lặng và cũng không tự đoán quả nào: nó nói thẳng
-   * hãy lại gần chụp riêng một quả — một câu người dùng làm theo được ngay, khác
-   * hẳn một màn hình đầy hộp mà không rõ phải chạm cái nào. Và ở ĐÚNG nhánh đó,
-   * câu của máy chủ bị bỏ qua — xem chú thích tại chỗ.
+   * KHÔNG ném. Mọi nhánh kết thúc bằng một `Outcome` — một màn quét đứng im
+   * không nói gì là màn quét mà người ta tắt đi.
    */
-  const runLookup = useCallback(async (uri: string) => {
-    const r = await lookupFruit(ORILIFE_BASE, uri);
+  const runLookup = useCallback(async (
+    image: PreparedImage,
+    region?: { bbox: PixelBbox },
+  ) => {
+    const r = await lookupFruit(ORILIFE_BASE, image.uri, region);
     if (!alive.current) return;
 
     if (r.kind === 'candidates') {
+      clearBoxes();
       // Câu của máy chủ (`verdict_label`, `message`, `warning_messages`) nói rõ
       // hơn bất cứ câu nào app tự soạn — nó biết vì sao nó xếp ra danh sách này.
       const note = [r.verdictLabel, r.message, ...r.warnings].filter(Boolean).join(' · ') || undefined;
@@ -217,25 +262,32 @@ const TraceScanScreen: React.FC = () => {
       return;
     }
     if (r.kind === 'need_region') {
-      // ⚠ NGOẠI LỆ của luật "câu máy chủ thắng câu app": ở nhánh này KHÔNG chuyển
-      // tiếp `r.message`. Câu của máy chủ là "mời chỉ đúng quả rồi gửi lại" — nó
-      // sai với app này, vì không còn hộp nào để chạm. Bảo người ta làm một việc
-      // màn hình không cho làm là cách chắc chắn nhất để họ nghĩ app hỏng.
+      // Có vùng để chạm ⇒ vẽ ra và mời chọn. KHÔNG có vùng nào (máy chủ không
+      // thấy quả nào) ⇒ không có gì để chạm, nói thẳng là chụp lại gần hơn.
       //
-      // Luật đúng: câu máy chủ thắng, TRỪ khi nó mô tả một thao tác client không
-      // có. Lúc đó app phải tự nói một câu người dùng làm theo được.
-      setOutcome({ s: 'message', key: 'scan.state.oneFruit', retry: true });
+      // Ở nhánh CÓ vùng thì câu của máy chủ ("mời chỉ đúng quả rồi gửi lại") lại
+      // đúng với app, nên chuyển tiếp nguyên văn.
+      if (r.regions.length === 0) {
+        clearBoxes();
+        setOutcome({ s: 'message', key: 'scan.state.oneFruit', retry: true });
+        return;
+      }
+      showRegions(r.regions, image);
+      setOutcome({ s: 'pick_region', image, regions: r.regions });
       return;
     }
     if (r.kind === 'empty_scope') {
+      clearBoxes();
       setOutcome({ s: 'message', key: 'scan.state.noMatch', text: r.message, retry: true });
       return;
     }
     if (r.kind === 'image_unusable') {
+      clearBoxes();
       setOutcome({ s: 'message', key: 'scan.state.imageUnusable', text: r.message, retry: true });
       return;
     }
     if (r.kind === 'rate_limited') {
+      clearBoxes();
       // Máy chủ đang tự bảo vệ. Khoá nút chụp tới hạn nó đưa — bấm lại ngay là
       // dập đúng cái cửa vừa xin mình chờ.
       setBlockedUntil(Date.now() + r.retryAfterSec * 1000);
@@ -249,14 +301,16 @@ const TraceScanScreen: React.FC = () => {
       return;
     }
     if (r.kind === 'too_large') {
+      clearBoxes();
       setOutcome({ s: 'message', key: 'scan.state.tooLarge', retry: true });
       return;
     }
+    clearBoxes();
     // Nhánh cuối: HIỆN câu lỗi thật (`error.detail`) chứ không nuốt nó. Câu ấy
     // phân biệt được "mất mạng" với "máy chủ chưa bật cửa này" với "ảnh sai định
     // dạng" — ba chuyện dẫn tới ba hành động khác nhau.
     setOutcome({ s: 'message', key: 'scan.error.generic', text: r.error.detail, retry: true });
-  }, []);
+  }, [clearBoxes, showRegions]);
 
   /**
    * Chụp một tấm từ khung xem rồi tra. Đường DUY NHẤT tạo ra một lượt gửi ảnh —
@@ -283,7 +337,7 @@ const TraceScanScreen: React.FC = () => {
         });
         return;
       }
-      await runLookup(prepared.image.uri);
+      await runLookup(prepared.image);
     } catch {
       if (alive.current) setOutcome({ s: 'message', key: 'scan.error.generic', retry: true });
     } finally {
@@ -302,7 +356,8 @@ const TraceScanScreen: React.FC = () => {
     handledCode.current = false;
     setQrLocked(false);
     setOutcome({ s: 'scanning' });
-  }, []);
+    clearBoxes();
+  }, [clearBoxes]);
 
   const rescan = useCallback(() => switchMode(mode), [switchMode, mode]);
 
@@ -327,6 +382,51 @@ const TraceScanScreen: React.FC = () => {
     }, 280);
   }, [mode, navigation]);
 
+  // ── Chạm chọn vùng khi máy chủ hỏi `need_region` ──────────────────────────
+  /**
+   * Ngón tay chạm lên khung xem → chọn một vùng → gửi lại CÙNG tấm ảnh kèm `bbox`.
+   *
+   * Hai đường tìm vùng, và đường thứ hai mới là đường hay dùng:
+   *   1. chạm TRÚNG một khung đang vẽ (`hitTest`, khung nhỏ nhất thắng);
+   *   2. chạm TRƯỢT ra ngoài khung — quy điểm chạm về pixel ảnh rồi tìm vùng nào
+   *      chứa nó. Ngón tay to hơn khung nhiều, và bắt người ta chạm lại cho trúng
+   *      là bắt họ chơi trò bấm nút.
+   */
+  const onFrameTap = useCallback((e: GestureResponderEvent) => {
+    if (outcome.s !== 'pick_region') return;
+    const { locationX, locationY } = e.nativeEvent;
+    const image = outcome.image;
+    const imgSize = { w: image.width, h: image.height };
+
+    let bbox: PixelBbox | null = null;
+    const idx = hitTest(slots, { x: locationX, y: locationY });
+    if (idx >= 0 && outcome.regions[idx]) {
+      bbox = outcome.regions[idx].bbox;
+    } else {
+      const pt = previewPointToImage({ x: locationX, y: locationY }, imgSize, frameSize);
+      if (pt) {
+        const hit = outcome.regions.find(
+          (d: LookupRegion) => pt.x >= d.bbox[0] && pt.x <= d.bbox[0] + d.bbox[2]
+            && pt.y >= d.bbox[1] && pt.y <= d.bbox[1] + d.bbox[3],
+        );
+        bbox = hit?.bbox ?? null;
+      }
+    }
+    // Chạm vào chỗ không có vùng nào: KHÔNG làm gì. Gửi bừa một vùng gần đó là
+    // trả lời một câu người dùng không hỏi.
+    if (!bbox) return;
+
+    setBusy(true);
+    busyRef.current = true;
+    setOutcome({ s: 'scanning' });
+    clearBoxes();
+    runLookup(image, { bbox: padBbox(bbox, imgSize) })
+      .finally(() => {
+        busyRef.current = false;
+        if (alive.current) setBusy(false);
+      });
+  }, [outcome, slots, frameSize, runLookup, clearBoxes]);
+
   // ── Ảnh có sẵn ────────────────────────────────────────────────────────────
   const pickFromLibrary = useCallback(() => {
     launchImageLibrary(LIBRARY_OPTIONS, async (resp: any) => {
@@ -336,6 +436,7 @@ const TraceScanScreen: React.FC = () => {
       setBusy(true);
       busyRef.current = true;
       setOutcome({ s: 'scanning' });
+      clearBoxes();
       try {
         // KHÔNG `square` ở đây: ảnh thư viện không đi qua khung ngắm nào, cắt là
         // tự ý xén ảnh của người ta.
@@ -349,7 +450,7 @@ const TraceScanScreen: React.FC = () => {
           });
           return;
         }
-        await runLookup(prepared.image.uri);
+        await runLookup(prepared.image);
       } catch {
         if (alive.current) setOutcome({ s: 'message', key: 'scan.error.generic', retry: true });
       } finally {
@@ -357,24 +458,29 @@ const TraceScanScreen: React.FC = () => {
         if (alive.current) setBusy(false);
       }
     });
-  }, [runLookup]);
+  }, [runLookup, clearBoxes]);
 
   // ── Chọn một ứng viên ─────────────────────────────────────────────────────
   /**
-   * Ba đường ra, xếp theo mức nói được nhiều nhất về nguồn gốc.
+   * Chạm vào một ứng viên → MỞ HỒ SƠ của nó, không nhảy màn.
    *
-   * ⚠ KHÔNG có `tree_id` để đi: máy chủ cố ý không trả id nào ở lane khách (xem
-   * "ẩn nội tạng" ở đầu `fruitLookupService`). Thứ đi được là `tree.code` — mã
-   * `ORI-…` công khai, và `TraceResultScreen` vốn đã nhận đúng tham số đó.
+   * Bản trước `navigation.replace` thẳng sang trang xuất xứ bằng `tree.code`.
+   * Hai chỗ hỏng: `code` có thể VẮNG (máy chủ không hứa nó luôn có giá trị) và
+   * lúc đó chạm vào một hàng thì **không có gì xảy ra**; còn những trường máy chủ
+   * ĐÃ trả — tên cây, ngày đăng ký, số góc ảnh, trạng thái neo — thì xin về rồi
+   * vứt đi, không hiện ở đâu.
+   *
+   * Nay hồ sơ bày hết những gì đã có, và đi tiếp sang trang xuất xứ là một NÚT
+   * trong đó. Thiếu `code` thì thiếu đúng cái nút ấy, phần còn lại vẫn đọc được.
    */
   const openCandidate = useCallback((c: LookupCandidate) => {
-    const code = c.tree?.code;
-    if (code) { navigation.replace(TRACE_RESULT_ROUTE_NAME, { code }); return; }
-    const page = safeHttpUrl(c.tree?.public_url);
-    if (page) { Linking.openURL(page).catch(() => { /* máy không mở được trình duyệt */ }); return; }
-    const chain = safeExplorerUrl(provenanceOf(c));
-    if (chain) { Linking.openURL(chain).catch(() => { /* máy không mở được trình duyệt */ }); return; }
-    setOutcome({ s: 'message', key: 'scan.result.noTree', retry: true });
+    setDetail(c);
+  }, []);
+
+  /** Từ hồ sơ đi tiếp sang trang xuất xứ công khai. */
+  const openTrace = useCallback((code: string) => {
+    setDetail(null);
+    navigation.replace(TRACE_RESULT_ROUTE_NAME, { code });
   }, [navigation]);
 
   // ── Câu hiện dưới khung ───────────────────────────────────────────────────
@@ -390,6 +496,7 @@ const TraceScanScreen: React.FC = () => {
   const statusKey = (() => {
     if (qrLocked) return 'scan.state.qrLocked';
     if (busy) return 'scan.state.sending';
+    if (outcome.s === 'pick_region') return 'scan.state.pickFruit';
     if (outcome.s === 'message') return outcome.key;
     if (mode === 'qr') return 'scan.hint.qr';
     return 'scan.hint.fruit';
@@ -440,10 +547,14 @@ const TraceScanScreen: React.FC = () => {
 
       {/* ── Khung xem VUÔNG giữa màn ──────────────────────────────────────── */}
       <View style={styles.stage}>
-        {/* Khung xem KHÔNG bấm được: không còn gì để chạm chọn trong đó. Bản
-            trước là `Pressable` để chạm vào hộp nhận diện; bỏ hộp thì bỏ luôn
-            cú chạm, đừng để một vùng nuốt chạm rồi không làm gì. */}
-        <View style={[styles.frame, { width: frame, height: frame }]}>
+        {/* Khung xem chỉ NHẬN CHẠM khi máy chủ đang hỏi chọn vùng. Ngoài lúc đó
+            thì để nguyên — một vùng nuốt cú chạm rồi không làm gì là một vùng
+            làm người ta tưởng app đơ. */}
+        <Pressable
+          style={[styles.frame, { width: frame, height: frame }]}
+          onPress={onFrameTap}
+          disabled={outcome.s !== 'pick_region'}
+        >
           {granted === null ? (
             <View style={styles.frameFill}><ActivityIndicator color={TONE.primary} /></View>
           ) : (
@@ -468,12 +579,26 @@ const TraceScanScreen: React.FC = () => {
             locked={qrLocked}
           />
 
+          {/* VÙNG NHẬN DIỆN — mảng xanh mờ, chấm bi, sóng quét chạy dọc.
+              Vẽ SAU bốn góc khung nên nằm trên; `pointerEvents="none"` bên trong
+              từng hộp nên cú chạm rơi xuống `Pressable` bọc ngoài, không bị hộp
+              nuốt mất. */}
+          {slots.map((rect, i) => (
+            <ScanRegionBox
+              key={i}
+              uid={`r${i}`}
+              rect={rect}
+              color={TONE.primary}
+              active={outcome.s === 'pick_region'}
+            />
+          ))}
+
           {busy ? (
             <View style={styles.busyVeil} pointerEvents="none">
               <ActivityIndicator color={NATURE.paper} />
             </View>
           ) : null}
-        </View>
+        </Pressable>
 
         <Text style={styles.status} numberOfLines={3}>
           {statusText || tk(statusKey, statusVars)}
@@ -536,6 +661,13 @@ const TraceScanScreen: React.FC = () => {
           </View>
         </View>
       </Modal>
+
+      {/* Hồ sơ một ứng viên — mở ĐÈ lên danh sách, đóng lại là danh sách còn đó. */}
+      <CandidateDetailSheet
+        candidate={detail}
+        onClose={() => setDetail(null)}
+        onOpenTrace={openTrace}
+      />
 
       {/* ── Năm quả ứng viên ──────────────────────────────────────────────── */}
       <Modal

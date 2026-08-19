@@ -38,6 +38,16 @@ interface Props {
   entityId: string;
   /** Số sự kiện hiện tối đa trước khi gộp lại. 0 = hiện hết. */
   limit?: number;
+  /**
+   * Câu thay cho "Phiên hết hạn" khi máy chủ trả 401.
+   *
+   * Cần vì cùng một mã 401 nghĩa hai điều khác hẳn nhau tuỳ chỗ gắn: ở màn của
+   * CHỦ VƯỜN nó là phiên hết hạn, đăng nhập lại là xong; ở màn nguồn gốc mà
+   * NGƯỜI MUA quét mã thì họ không có tài khoản nào để hết hạn, và bảo họ đăng
+   * nhập lại là gửi họ đi làm một việc vô nghĩa. Đo 2026-08-19: khách gọi
+   * `/api/tree/{id}/timeline` nhận `401 {"error":"Cần đăng nhập."}`.
+   */
+  authHint?: string;
 }
 
 /** `2026-08-09T03:12:00+00:00` → `09/08 · 10:12`. Chuỗi hỏng → trả nguyên văn. */
@@ -49,7 +59,7 @@ const fmtWhen = (iso: string): string => {
   return `${p(d.getDate())}/${p(d.getMonth() + 1)} · ${p(d.getHours())}:${p(d.getMinutes())}`;
 };
 
-const EntityTimeline: React.FC<Props> = ({ entityType, entityId, limit = 0 }) => {
+const EntityTimeline: React.FC<Props> = ({ entityType, entityId, limit = 0, authHint }) => {
   const [loading, setLoading] = React.useState(true);
   const [data, setData] = React.useState<TimelineResult | null>(null);
   const [errText, setErrText] = React.useState<string | null>(null);
@@ -109,6 +119,20 @@ const EntityTimeline: React.FC<Props> = ({ entityType, entityId, limit = 0 }) =>
         <Text style={styles.dim}>
           Bản máy chủ đang chạy chưa bật dòng thời gian. Đây không phải lỗi của cây này.
         </Text>
+      </View>
+    );
+  }
+
+  // 401 KHÔNG phải lỗi cần thử lại khi người xem vốn không có tài khoản. Chỗ gắn
+  // nói câu đúng với người của mình qua `authHint`; không truyền thì giữ câu cũ.
+  if (errKind === 'auth_error' && authHint) {
+    return (
+      <View style={styles.box}>
+        <View style={styles.headRow}>
+          <Icon name="clock-rotate-left" size={15} color={COLORS.textMuted} />
+          <Text style={[styles.headText, { color: COLORS.textMuted }]}>DÒNG THỜI GIAN</Text>
+        </View>
+        <Text style={styles.dim}>{authHint}</Text>
       </View>
     );
   }

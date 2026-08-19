@@ -52,9 +52,23 @@ use blake2::Digest;
 
 /// Conservative static ExUnits (mem) for registry ops — small all-conjunction
 /// predicates. Submit paths MUST evaluate-then-patch.
+/// Trần số khoá của một authority MultiSig — đối xứng `expect list.length(pkhs)
+/// <= 16` ở `LAMP/Genesis/onchain/lib/magiclamp/genesis/registry.ak:98`.
+///
+/// Đây là RÀO TIỆN LỢI, KHÔNG phải rào an ninh. Nguồn sự thật duy nhất là
+/// validator on-chain; rào ở đây chỉ để caller khỏi phát ra tx chắc chắn bị bác
+/// rồi mất phí và collateral. Ai bỏ qua bộ dựng này vẫn dựng tx được — và đúng
+/// ra là phải được, vì quyền mint không thuộc về một bộ dựng nào. Mô tả cổng
+/// offchain như cổng an ninh còn nguy hơn không có cổng.
+const MAX_MULTISIG_PKHS: usize = 16;
+
 const REGISTRY_EX_UNITS_MEM: u64 = 2_000_000;
 /// Conservative static ExUnits (cpu steps) for registry ops.
 const REGISTRY_EX_UNITS_STEPS: u64 = 700_000_000;
+
+/// Thread-NFT (SupplyState) asset name = "SUPPLY" (#"535550504c59"), khớp
+/// `constants.supply_name` on-chain (LAMP `magiclamp/genesis/constants.ak`).
+const SUPPLY_NAME: &[u8] = b"SUPPLY";
 
 // ─── Authorization / Entry — JSON shapes the caller passes in ──────
 //
@@ -133,12 +147,32 @@ fn encode_authorization(a: &AuthorizationJson) -> Result<(PlutusData, Vec<Vec<u8
             if pkhs.is_empty() {
                 return Err("multisig 'pkhs' must be non-empty".into());
             }
+            // Đối xứng `registry.ak:98` — on-chain `expect list.length(pkhs) <= 16`
+            // (chặn ExUnit DoS). Không chặn ở đây thì caller dựng được tx trông hợp
+            // lệ, submit mới hỏng phase-2 và mất collateral.
+            if pkhs.len() > MAX_MULTISIG_PKHS {
+                return Err(format!(
+                    "multisig 'pkhs' tối đa {} khoá (đối xứng registry.ak:98), nhận {}",
+                    MAX_MULTISIG_PKHS,
+                    pkhs.len()
+                ));
+            }
             let threshold = a
                 .threshold
                 .ok_or_else(|| "authorization kind 'multisig' requires field 'threshold'".to_string())?;
-            if threshold == 0 || threshold as usize > pkhs.len() {
+            // On-chain so threshold với danh sách ĐÃ DEDUPE (`list.unique` rồi
+            // `threshold <= list.length(uniq)`). So với `pkhs.len()` thô thì
+            // `[k1,k1,k1] threshold 3` lọt ở đây nhưng chết trên chuỗi.
+            let mut uniq: Vec<&String> = Vec::with_capacity(pkhs.len());
+            for p in pkhs.iter() {
+                if !uniq.iter().any(|u| u.eq_ignore_ascii_case(p)) {
+                    uniq.push(p);
+                }
+            }
+            if threshold == 0 || threshold as usize > uniq.len() {
                 return Err(format!(
-                    "multisig threshold must be 1..=N (N={}), got {}",
+                    "multisig threshold phải 1..=N với N = số pkh KHÁC NHAU (N={}, tổng {}), nhận {}",
+                    uniq.len(),
                     pkhs.len(),
                     threshold
                 ));
@@ -207,42 +241,76 @@ fn encode_registry_datum(governing_did: &str, entries: &[EntryJson]) -> Result<P
 
 // ─── SupplyState (cap LAMP) — datum + redeemer encoders ────────────
 //
-// Hợp đồng CBOR khớp `magiclamp/tokenomics/supply.ak`:
-//   SupplyStateDatum   = Constr 0 [ minted_total: Int,
-//                                    lamp_policy: Bytes(28),
-//                                    lamp_asset_name: Bytes ]
-//   SupplyStateNft     = MintSupplyState  → enum 1 biến thể → Constr 0 [] (genesis mint redeemer)
-//   SupplyStateRedeemer = CountMint       → enum 1 biến thể → Constr 0 [] (spend redeemer)
-// Thứ tự field datum: minted_total, lamp_policy, lamp_asset_name (2 field token-được-đếm
-// chèn CUỐI — xem header supply.ak về phá-vòng-phụ-thuộc-hash).
+// Hợp đồng CBOR khớp CỔNG on-chain THẬT đội LAMP đã cấp
+// (`LAMP/Genesis/onchain/lib/magiclamp/genesis/types.ak` + `supply_state.ak`,
+// đối chiếu offchain `datum.ts`). ĐÂY là schema canonical — KHÔNG dùng schema
+// cũ 3-field (minted_total/lamp_policy/lamp_asset_name) vốn KHÔNG khớp cổng thật:
+//
+//   SupplyState (types.ak §9)  = Constr 0 [ dist_minted: Int, reserve_minted: Int,
+//                                           dist_cap: Int, reserve_cap: Int ]
+//   TLampMintRedeemer          = DistributionVest = Constr 0 [] · ReserveDraw = Constr 1 []
+//   ThreadNftRedeemer.MintGenesis  = Constr 0 []   (genesis mint thread NFT)
+//   SupplyStateRedeemer.Advance    = Constr 0 []   (spend SupplyState)
+//
+// TRANSITION (lamp_mint §Luật 5): tx mint Δ LAMP theo 1 route:
+//   DistributionVest → dist_minted' = dist_minted + Δ, reserve_minted' == reserve_minted
+//   ReserveDraw      → reserve_minted' = reserve_minted + Δ, dist_minted' == dist_minted
+// dist_cap/reserve_cap BẤT BIẾN qua transition (Luật 4) và PHẢI == cap bake vào policy
+// (lamp_mint §D7-#1). Cap tổng 36 tỷ LAMP × 10^6 oil = dist_cap + reserve_cap (§D7-#2).
 
-/// Encode `SupplyStateDatum{minted_total, lamp_policy, lamp_asset_name}` (Constr 0).
-/// `lamp_policy_hex` = 28-byte policy-id hex (= did_token_mint hash); `lamp_asset_name`
-/// = raw asset-name bytes (AssetName, ≤32 byte). `minted_total` raw-unit oil.
-fn encode_supply_state_datum(
-    minted_total: u64,
-    lamp_policy_hex: &str,
-    lamp_asset_name: &AssetName,
-) -> Result<PlutusData, String> {
-    let policy_bytes = hex::decode(lamp_policy_hex)
-        .map_err(|e| format!("lamp_policy not valid hex: {}", e))?;
-    if policy_bytes.len() != 28 {
-        return Err(format!(
-            "lamp_policy must decode to 28 bytes (PolicyId), got {}",
-            policy_bytes.len()
-        ));
+/// Route mint LAMP — khóa quota (khớp `TLampMintRedeemer` types.ak §19).
+/// DistributionVest = đường Capped-Drop (đổ vào KHO); ReserveDraw = đường DAO (gate meter NFT).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MintRoute {
+    DistributionVest,
+    ReserveDraw,
+}
+
+impl MintRoute {
+    /// Parse từ JSON string caller truyền ("distribution" | "reserve").
+    fn parse(s: &str) -> Result<MintRoute, String> {
+        match s {
+            "distribution" | "DistributionVest" => Ok(MintRoute::DistributionVest),
+            "reserve" | "ReserveDraw" => Ok(MintRoute::ReserveDraw),
+            other => Err(format!(
+                "mint route '{}' không hợp lệ (dùng 'distribution' | 'reserve')",
+                other
+            )),
+        }
     }
-    let total_int = csl::BigInt::from_str(&minted_total.to_string())
-        .map_err(|_| "minted_total BigInt::from_str failed (unreachable)".to_string())?;
+    /// Constr index khớp types.ak: DistributionVest=0, ReserveDraw=1.
+    fn constr_index(self) -> u64 {
+        match self {
+            MintRoute::DistributionVest => 0,
+            MintRoute::ReserveDraw => 1,
+        }
+    }
+}
+
+/// Encode `SupplyState{dist_minted, reserve_minted, dist_cap, reserve_cap}` (Constr 0).
+/// 4 field Int (oil), thứ tự KHỚP types.ak §9. u128 cho phép giá trị vượt u64
+/// (cap tổng 36e15 oil < u64::MAX nhưng để u128 an toàn với biên số học).
+pub(crate) fn encode_supply_state_datum(
+    dist_minted: u128,
+    reserve_minted: u128,
+    dist_cap: u128,
+    reserve_cap: u128,
+) -> Result<PlutusData, String> {
+    let mk_int = |v: u128, name: &str| -> Result<PlutusData, String> {
+        let i = csl::BigInt::from_str(&v.to_string())
+            .map_err(|_| format!("{} BigInt::from_str failed (unreachable)", name))?;
+        Ok(PlutusData::new_integer(&i))
+    };
 
     let mut fields = PlutusList::new();
-    // 0: minted_total (Int).
-    fields.add(&PlutusData::new_integer(&total_int));
-    // 1: lamp_policy (Bytes 28).
-    fields.add(&PlutusData::new_bytes(policy_bytes));
-    // 2: lamp_asset_name (Bytes) — raw name bytes (AssetName::name() strips the
-    // CBOR wrapper, giving the on-chain asset-name bytes the validator compares).
-    fields.add(&PlutusData::new_bytes(lamp_asset_name.name()));
+    // 0: dist_minted (Int).
+    fields.add(&mk_int(dist_minted, "dist_minted")?);
+    // 1: reserve_minted (Int).
+    fields.add(&mk_int(reserve_minted, "reserve_minted")?);
+    // 2: dist_cap (Int) — bất biến.
+    fields.add(&mk_int(dist_cap, "dist_cap")?);
+    // 3: reserve_cap (Int) — bất biến.
+    fields.add(&mk_int(reserve_cap, "reserve_cap")?);
 
     Ok(PlutusData::new_constr_plutus_data(&ConstrPlutusData::new(
         &BigNum::from(0u64),
@@ -250,16 +318,211 @@ fn encode_supply_state_datum(
     )))
 }
 
-/// SupplyState mint redeemer (`SupplyStateNft::MintSupplyState`) — enum 1 biến thể
-/// → empty Constr 0. (genesis NFT mint)
-fn supply_state_mint_redeemer_data() -> PlutusData {
+/// Thread-NFT genesis mint redeemer (`ThreadNftRedeemer::MintGenesis`) — Constr 0 [].
+fn thread_nft_mint_redeemer_data() -> PlutusData {
     PlutusData::new_empty_constr_plutus_data(&BigNum::from(0u64))
 }
 
-/// SupplyState spend redeemer (`SupplyStateRedeemer::CountMint`) — enum 1 biến thể
-/// → empty Constr 0. (đếm mint qua bộ đếm)
-fn supply_state_spend_redeemer_data() -> PlutusData {
+/// SupplyState spend redeemer (`SupplyStateRedeemer::Advance`) — Constr 0 [].
+pub(crate) fn supply_state_spend_redeemer_data() -> PlutusData {
     PlutusData::new_empty_constr_plutus_data(&BigNum::from(0u64))
+}
+
+// ─── DECODE — RegistryDatum + SupplyState từ raw inline datum hex ──────────
+//
+// Dart/Flutter (mint_lamp_screen.dart) KHÔNG có thư viện decode CBOR/Plutus-Data
+// (không như Lucid/TS phía LAMP) — Blockfrost trả `inline_datum` dạng CBOR-hex
+// nguyên bản, và Rust là điểm decode DUY NHẤT. Đây là counterpart của
+// `encode_registry_datum`/`encode_supply_state_datum` ở trên — mirror byte-perfect
+// NGƯỢC LẠI, cùng schema (registry.ak / types.ak). `mint_lamp::build_mint_lamp_via_did`
+// dùng để đọc authority TỪ RegistryDatum + state hiện tại TỪ SupplyState, thay vì tin
+// caller tự khai báo (caller không decode được để mà khai đúng).
+
+/// Authority đã decode (khớp `Authority` registry.ak / `AuthorizationJson` ở trên).
+#[derive(Debug)]
+pub(crate) enum DecodedAuthority {
+    SinglePkh(Vec<u8>),
+    MultiSig { pkhs: Vec<Vec<u8>>, threshold: u64 },
+    Revoked,
+}
+
+pub(crate) struct DecodedRegistryEntry {
+    pub(crate) token_tag: Vec<u8>,
+    pub(crate) authority: DecodedAuthority,
+}
+
+pub(crate) struct DecodedRegistryDatum {
+    #[allow(dead_code)]
+    pub(crate) governing_did: String,
+    pub(crate) entries: Vec<DecodedRegistryEntry>,
+}
+
+/// Decode `RegistryDatum = Constr 0 [governing_did: Bytes, entries: List<Entry>]`,
+/// `Entry = Constr 0 [token_tag: Bytes, authority: Authority]` từ inline datum hex
+/// thô (Blockfrost `inline_datum`). Mirror byte-perfect `encode_registry_datum` +
+/// `registry.ak` (LAMP onchain) — lệch field/constr ở đây = gate SAI ở caller.
+pub(crate) fn decode_registry_datum(inline_datum_hex: &str) -> Result<DecodedRegistryDatum, String> {
+    let datum = PlutusData::from_hex(inline_datum_hex)
+        .map_err(|e| format!("registry inline_datum_hex không phải Plutus Data hex hợp lệ: {:?}", e))?;
+    let constr = datum
+        .as_constr_plutus_data()
+        .ok_or_else(|| "RegistryDatum không phải ConstrPlutusData".to_string())?;
+    if constr.alternative() != BigNum::from(0u64) {
+        return Err("RegistryDatum constructor index phải = 0".into());
+    }
+    let fields = constr.data();
+    if fields.len() != 2 {
+        return Err(format!("RegistryDatum phải có 2 field, nhận {}", fields.len()));
+    }
+    let did_bytes = fields
+        .get(0)
+        .as_bytes()
+        .ok_or_else(|| "RegistryDatum.governing_did không phải ByteArray".to_string())?;
+    let governing_did = String::from_utf8(did_bytes)
+        .map_err(|_| "RegistryDatum.governing_did không phải UTF-8 hợp lệ".to_string())?;
+
+    let entry_list = fields
+        .get(1)
+        .as_list()
+        .ok_or_else(|| "RegistryDatum.entries không phải List".to_string())?;
+    let mut entries = Vec::with_capacity(entry_list.len());
+    for i in 0..entry_list.len() {
+        let e_constr = entry_list
+            .get(i)
+            .as_constr_plutus_data()
+            .ok_or_else(|| "RegistryEntry không phải ConstrPlutusData".to_string())?;
+        if e_constr.alternative() != BigNum::from(0u64) {
+            return Err("RegistryEntry constructor index phải = 0".into());
+        }
+        let e_fields = e_constr.data();
+        if e_fields.len() != 2 {
+            return Err(format!("RegistryEntry phải có 2 field, nhận {}", e_fields.len()));
+        }
+        let token_tag = e_fields
+            .get(0)
+            .as_bytes()
+            .ok_or_else(|| "RegistryEntry.token_tag không phải ByteArray".to_string())?;
+        let auth_constr = e_fields
+            .get(1)
+            .as_constr_plutus_data()
+            .ok_or_else(|| "RegistryEntry.authority không phải ConstrPlutusData".to_string())?;
+        let alt = auth_constr.alternative();
+        let authority = if alt == BigNum::from(0u64) {
+            let a_fields = auth_constr.data();
+            if a_fields.len() != 1 {
+                return Err("SinglePkh phải có đúng 1 field".into());
+            }
+            let pkh = a_fields
+                .get(0)
+                .as_bytes()
+                .ok_or_else(|| "SinglePkh.pkh không phải ByteArray".to_string())?;
+            if pkh.len() != 28 {
+                return Err(format!("SinglePkh.pkh phải 28 byte, nhận {}", pkh.len()));
+            }
+            DecodedAuthority::SinglePkh(pkh)
+        } else if alt == BigNum::from(1u64) {
+            let a_fields = auth_constr.data();
+            if a_fields.len() != 2 {
+                return Err("MultiSig phải có đúng 2 field".into());
+            }
+            let pkh_list = a_fields
+                .get(0)
+                .as_list()
+                .ok_or_else(|| "MultiSig.pkhs không phải List".to_string())?;
+            let mut pkhs = Vec::with_capacity(pkh_list.len());
+            for j in 0..pkh_list.len() {
+                let p = pkh_list
+                    .get(j)
+                    .as_bytes()
+                    .ok_or_else(|| "MultiSig pkh entry không phải ByteArray".to_string())?;
+                if p.len() != 28 {
+                    return Err(format!("MultiSig pkh entry phải 28 byte, nhận {}", p.len()));
+                }
+                pkhs.push(p);
+            }
+            let thr_int = a_fields
+                .get(1)
+                .as_integer()
+                .ok_or_else(|| "MultiSig.threshold không phải Int".to_string())?;
+            let threshold: u64 = thr_int
+                .to_str()
+                .parse()
+                .map_err(|_| "MultiSig.threshold ngoài phạm vi u64".to_string())?;
+            DecodedAuthority::MultiSig { pkhs, threshold }
+        } else if alt == BigNum::from(2u64) {
+            DecodedAuthority::Revoked
+        } else {
+            return Err(format!("Authority constructor index lạ: {}", alt.to_str()));
+        };
+        entries.push(DecodedRegistryEntry { token_tag, authority });
+    }
+    Ok(DecodedRegistryDatum { governing_did, entries })
+}
+
+/// Tra ĐÚNG-1 entry theo `token_tag` (fail-closed, KHÔNG first-match) — khớp
+/// canonical read-side defense `registry.ak::validate_mint` (0 entry = chưa cấp
+/// quyền; ≥2 entry trùng tag = datum mơ hồ/độc → từ chối).
+pub(crate) fn find_registry_authority<'a>(
+    datum: &'a DecodedRegistryDatum,
+    token_tag: &[u8],
+) -> Result<&'a DecodedAuthority, String> {
+    let matches: Vec<&DecodedRegistryEntry> =
+        datum.entries.iter().filter(|e| e.token_tag == token_tag).collect();
+    match matches.as_slice() {
+        [entry] => Ok(&entry.authority),
+        [] => Err(format!(
+            "registry: không tìm thấy entry cho token_tag {} (chưa cấp quyền mint)",
+            hex::encode(token_tag)
+        )),
+        _ => Err(format!(
+            "registry: {} entry TRÙNG token_tag {} trong datum (mơ hồ — từ chối, không first-match)",
+            matches.len(),
+            hex::encode(token_tag)
+        )),
+    }
+}
+
+/// SupplyState đã decode (khớp `SupplyState` types.ak §9 — 4 field).
+#[derive(Debug)]
+pub(crate) struct DecodedSupplyState {
+    pub(crate) dist_minted: u128,
+    pub(crate) reserve_minted: u128,
+    pub(crate) dist_cap: u128,
+    pub(crate) reserve_cap: u128,
+}
+
+/// Decode `SupplyState = Constr 0 [dist_minted, reserve_minted, dist_cap, reserve_cap]`
+/// từ inline datum hex thô. Mirror byte-perfect `encode_supply_state_datum` ở trên.
+pub(crate) fn decode_supply_state_datum(inline_datum_hex: &str) -> Result<DecodedSupplyState, String> {
+    let datum = PlutusData::from_hex(inline_datum_hex)
+        .map_err(|e| format!("SupplyState inline_datum_hex không phải Plutus Data hex hợp lệ: {:?}", e))?;
+    let constr = datum
+        .as_constr_plutus_data()
+        .ok_or_else(|| "SupplyState datum không phải ConstrPlutusData".to_string())?;
+    if constr.alternative() != BigNum::from(0u64) {
+        return Err("SupplyState constructor index phải = 0".into());
+    }
+    let fields = constr.data();
+    if fields.len() != 4 {
+        return Err(format!("SupplyState phải có 4 field, nhận {}", fields.len()));
+    }
+    let get_u128 = |i: usize, name: &str| -> Result<u128, String> {
+        let bi = fields
+            .get(i)
+            .as_integer()
+            .ok_or_else(|| format!("SupplyState.{} không phải Int", name))?;
+        // `to_str()` render dạng thập phân có dấu ("-123"/"123") — u128::parse tự
+        // reject dấu trừ, nên chỉ cần bắt lỗi parse (đủ để chặn âm + tràn).
+        bi.to_str()
+            .parse::<u128>()
+            .map_err(|_| format!("SupplyState.{} âm hoặc ngoài phạm vi u128", name))
+    };
+    Ok(DecodedSupplyState {
+        dist_minted: get_u128(0, "dist_minted")?,
+        reserve_minted: get_u128(1, "reserve_minted")?,
+        dist_cap: get_u128(2, "dist_cap")?,
+        reserve_cap: get_u128(3, "reserve_cap")?,
+    })
 }
 
 /// Registry-NFT asset name = blake2b_256(governing_did) (same A-1 binding the
@@ -275,7 +538,7 @@ fn registry_nft_asset_name(governing_did: &str) -> Result<AssetName, String> {
 /// Derive the controller signing key (Ed25519) from a controller Master_KEK via
 /// the SAME single-source-of-truth helper genesis/rotate/mint use. Returns the
 /// private key + its 28-byte keyhash (controller_pkh).
-fn derive_controller(
+pub(crate) fn derive_controller(
     controller_kek_hex: &str,
 ) -> Result<(csl::PrivateKey, csl::Ed25519KeyHash), String> {
     let kek_bytes = hex::decode(controller_kek_hex)
@@ -335,48 +598,60 @@ struct GenesisUtxo {
 }
 
 /// The SupplyState UTxO being SPENT (cap path of `build_mint_via_registry`):
-/// outpoint + value (lovelace + the SupplyState NFT) + the OLD inline datum so
-/// the builder can read `minted_total` and recompute `minted_total'`. The
-/// continuing output preserves the same value (NFT) at the supply_state script
-/// address with the bumped datum.
+/// outpoint + value (lovelace + the thread NFT "SUPPLY") + the OLD 4-field inline
+/// datum (`dist_minted, reserve_minted, dist_cap, reserve_cap`) so the builder can
+/// bump the right quota by Δ per route and re-emit caps unchanged. The continuing
+/// output preserves the same value (thread NFT) at the supply_state script address.
 #[derive(Deserialize, Debug, Clone)]
 struct SupplyStateSpendUtxo {
     tx_hash: String,
     index: u32,
     amount_lovelace: u64,
     /// All multi-asset entries currently in the SupplyState UTxO (must include the
-    /// SupplyState NFT). Preserved on the continuing output (value preservation).
+    /// thread NFT `(thread_nft_policy, "SUPPLY")`). Preserved on the continuing output.
     #[serde(default)]
     assets: Vec<UtxoAsset>,
-    /// SupplyState NFT policy-id hex (= supply_state script hash). Identifies the
-    /// NFT within `assets` so the builder can rebuild the canonical continuing value.
-    supply_state_nft_policy_hex: String,
-    /// SupplyState NFT asset-name hex (e.g. hex of "LAMP-SUPPLY").
-    supply_state_nft_name_hex: String,
-    /// Current `minted_total` (raw-unit oil) read from the OLD inline datum.
-    minted_total: u64,
-    /// Token-được-đếm policy-id hex baked into the datum (= did_token_mint hash).
-    /// Preserved UNCHANGED on the continuing datum (validator s8).
-    lamp_policy_hex: String,
-    /// Token-được-đếm asset-name hex baked into the datum. Preserved unchanged.
+    /// Thread-NFT policy-id hex (= thread_nft script hash). Ghim NFT thật trong
+    /// `assets` (khớp lamp_mint §Luật 1: đúng 1 input mang thread NFT).
     #[serde(default)]
-    lamp_asset_name_hex: String,
+    #[allow(dead_code)]
+    supply_state_nft_policy_hex: String,
+    /// Thread-NFT asset-name hex — luôn là "SUPPLY" (#"535550504c59"), khớp
+    /// `constants.supply_name`. Parse cho caller symmetry.
+    #[serde(default)]
+    #[allow(dead_code)]
+    supply_state_nft_name_hex: String,
+    /// `dist_minted` HIỆN TẠI (oil) đọc từ inline datum CŨ.
+    dist_minted: u128,
+    /// `reserve_minted` HIỆN TẠI (oil) đọc từ inline datum CŨ.
+    #[serde(default)]
+    reserve_minted: u128,
+    /// `dist_cap` (oil) trong datum CŨ — bất biến, tái tạo y nguyên trên continuing datum.
+    dist_cap: u128,
+    /// `reserve_cap` (oil) trong datum CŨ — bất biến, tái tạo y nguyên.
+    reserve_cap: u128,
 }
 
 /// The mint instruction for `build_mint_via_registry`.
 #[derive(Deserialize, Debug, Clone)]
 struct TokenMintInstruction {
     /// Token asset name in hex (may be empty for a no-name asset). Must match the
-    /// `token_asset_name` baked into the token policy params on-chain.
+    /// `token_asset_name` baked into the token policy params on-chain. For LAMP this
+    /// is `token_name` — "tLAMP" (#"744c414d50") testnet / "LAMP" (#"4c414d50") mainnet.
     #[serde(default)]
     asset_name_hex: String,
     amount: u64,
     #[serde(default)]
     recipient: Option<String>,
+    /// Route mint LAMP khi token CÓ cap (SupplyState): "distribution" (DistributionVest,
+    /// mặc định) hoặc "reserve" (ReserveDraw). Lái CẢ redeemer mint (`TLampMintRedeemer`
+    /// Constr 0/1) LẪN quota bump trên SupplyState datum. Bỏ qua khi token KHÔNG cap.
+    #[serde(default)]
+    route: Option<String>,
 }
 
 /// Reconstruct a `Value` (lovelace + multi-asset) from amount + parsed assets.
-fn rebuild_value(amount_lovelace: u64, assets: &[UtxoAsset]) -> Result<Value, String> {
+pub(crate) fn rebuild_value(amount_lovelace: u64, assets: &[UtxoAsset]) -> Result<Value, String> {
     if assets.is_empty() {
         return Ok(Value::new(&BigNum::from(amount_lovelace)));
     }
@@ -854,33 +1129,35 @@ pub fn build_update_mint_registry(
 // 2b. GENESIS SUPPLY STATE — mint SupplyState NFT one-shot + lock datum
 // ═══════════════════════════════════════════════════════════════════
 
-/// Build + sign the SupplyState genesis tx. MINTS the SupplyState NFT (one-shot,
-/// bound to `genesis_utxo`) under the supply_state script policy and locks a fresh
-/// `SupplyStateDatum{minted_total:0, lamp_policy, lamp_asset_name}` at the
+/// Build + sign the SupplyState genesis tx. MINTS the thread NFT (one-shot, bound to
+/// `genesis_utxo`, asset name = "SUPPLY") under the `thread_nft` policy and locks a
+/// fresh `SupplyState{dist_minted:0, reserve_minted:0, dist_cap, reserve_cap}` at the
 /// supply_state script address.
 ///
-/// On-chain (`supply.validate_genesis`): the genesis UTxO MUST be SPENT (one-shot),
-/// exactly +1 NFT of `state_name` is minted under own_policy, that NFT lands at
-/// ONE output at Script(own_policy), and that output's inline datum has
-/// `minted_total == 0`. The mint redeemer is `SupplyStateNft::MintSupplyState`
-/// (empty Constr 0).
+/// On-chain (`thread_nft.ak`): the genesis UTxO MUST be SPENT (one-shot), exactly +1
+/// NFT of asset-name `constants.supply_name` ("SUPPLY", #"535550504c59") is minted
+/// under own_policy, qty==1 (no burn, no extra name). The mint redeemer is
+/// `ThreadNftRedeemer::MintGenesis` (empty Constr 0). `thread_nft` does NOT pin the
+/// output datum (it dropped datum-pinning to break the hash cycle) — safety comes from
+/// the one-shot NFT + `lamp_mint`'s §D7-#1 (cap == policy-baked cap); so the genesis
+/// datum MUST carry the caps that were baked into the deployed `lamp_mint`.
 ///
-/// DEPLOY ORDER (xem supply_state.ak header): supply_state hash KHÔNG phụ thuộc
-/// lamp_policy → tính trước; did_token_mint hash param theo supply_state hash →
-/// tính sau; rồi genesis với `lamp_policy_hex = did_token_mint hash`. Caller PHẢI
-/// truyền `lamp_policy_hex` = hash của did_token_mint (token-có-cap) đã tính ở
-/// bước 2, KHÔNG phải hash của supply_state script.
+/// DEPLOY ORDER (xem `supply_state.ak`/`lamp_mint.ak` headers): thread_nft (param
+/// genesis_ref) → thread_nft_policy; lamp_mint (param thread_nft_policy + caps + …) →
+/// lamp_policy; supply_state (param lamp_policy + thread_nft_policy + token_name).
+/// Tuyến tính, KHÔNG vòng. Genesis tx dùng `thread_nft` policy CBOR để mint NFT, khoá
+/// datum tại địa chỉ `supply_state` script.
 ///
 /// # Inputs
-/// * `genesis_utxo_json`       — JSON [`GenesisUtxo`]: the outpoint the one-shot
+/// * `genesis_utxo_json`       — JSON [`GenesisUtxo`]: outpoint the one-shot thread_nft
 ///   policy is bound to. SPENT in this tx.
-/// * `state_name_hex`          — SupplyState NFT asset-name bytes hex (e.g. hex of
-///   "LAMP-SUPPLY"); must equal the `state_name` baked into the supply_state script.
-/// * `lamp_policy_hex`         — 28-byte policy-id hex of the COUNTED token
-///   (= did_token_mint hash). Baked into the genesis datum, immutable thereafter.
-/// * `lamp_asset_name_hex`     — counted-token asset-name bytes hex (may be empty).
-/// * `supply_state_script_cbor`— compiled Plutus V3 supply_state script (CBOR hex).
-///   Its hash = the supply_state script address AND the SupplyState NFT policy id.
+/// * `thread_nft_policy_cbor`  — compiled Plutus V3 `thread_nft` script (CBOR hex).
+///   Its hash = the thread-NFT policy id. Mint +1 ("SUPPLY", qty 1) under it.
+/// * `dist_cap` / `reserve_cap`— caps (oil) baked into the deployed `lamp_mint`
+///   (LAMP: 26_370_000_000_000_000 / 9_630_000_000_000_000). Written into the genesis
+///   datum, immutable thereafter (lamp_mint §Luật 4 + §D7-#1).
+/// * `supply_state_script_cbor`— compiled Plutus V3 `supply_state` script (CBOR hex).
+///   Its hash = the supply_state script ADDRESS where the SupplyState UTxO is locked.
 /// * `utxos_json`              — JSON array of [`UtxoInput`] for the WALLET (fee +
 ///   collateral; collateral must be pure-ADA).
 /// * `params_json`             — protocol params JSON.
@@ -889,9 +1166,9 @@ pub fn build_update_mint_registry(
 #[allow(clippy::too_many_arguments)]
 pub fn build_genesis_supply_state(
     genesis_utxo_json: &str,
-    state_name_hex: &str,
-    lamp_policy_hex: &str,
-    lamp_asset_name_hex: &str,
+    thread_nft_policy_cbor: &str,
+    dist_cap: u128,
+    reserve_cap: u128,
     supply_state_script_cbor: &str,
     utxos_json: &str,
     params_json: &str,
@@ -915,18 +1192,9 @@ pub fn build_genesis_supply_state(
         return Err("genesis_utxo_json.amount_lovelace must be > 0".into());
     }
 
-    let state_name_bytes = hex::decode(state_name_hex)
-        .map_err(|e| format!("state_name_hex not valid hex: {}", e))?;
-    let state_name = AssetName::new(state_name_bytes)
-        .map_err(|_| "state_name_hex too long (>32 bytes)".to_string())?;
-
-    let lamp_asset_name = if lamp_asset_name_hex.is_empty() {
-        AssetName::new(Vec::new()).map_err(|_| "empty lamp asset name failed (unreachable)".to_string())?
-    } else {
-        let b = hex::decode(lamp_asset_name_hex)
-            .map_err(|e| format!("lamp_asset_name_hex not valid hex: {}", e))?;
-        AssetName::new(b).map_err(|_| "lamp_asset_name_hex too long (>32 bytes)".to_string())?
-    };
+    // Thread NFT asset name = constants.supply_name ("SUPPLY", #"535550504c59").
+    let state_name = AssetName::new(SUPPLY_NAME.to_vec())
+        .map_err(|_| "supply_name AssetName::new failed (unreachable)".to_string())?;
 
     let utxos: Vec<UtxoInput> = serde_json::from_str(utxos_json)
         .map_err(|e| format!("utxos_json invalid: {}", e))?;
@@ -937,14 +1205,17 @@ pub fn build_genesis_supply_state(
     let params: JsonValue = serde_json::from_str(params_json)
         .map_err(|e| format!("params_json invalid: {}", e))?;
 
-    // ─── 2. supply_state script addr + hash; SupplyState NFT name/policy ─
-    let (script_addr, script_hash) =
+    // ─── 2. supply_state script addr (nơi khoá SupplyState); thread NFT policy ─
+    // NFT được mint dưới thread_nft policy; datum khoá tại supply_state script ADDRESS.
+    let (script_addr, _ss_hash) =
         derive_taad_script_address(supply_state_script_cbor, network).map_err(|e| e.to_string())?;
+    let (_thread_addr, thread_policy_hash) =
+        derive_taad_script_address(thread_nft_policy_cbor, network).map_err(|e| e.to_string())?;
     let mut nft_ma = MultiAsset::new();
-    nft_ma.set_asset(&script_hash, &state_name, &BigNum::from(1u64));
+    nft_ma.set_asset(&thread_policy_hash, &state_name, &BigNum::from(1u64));
 
-    // ─── 3. Fresh SupplyStateDatum{minted_total:0, lamp_policy, lamp_name} ─
-    let datum = encode_supply_state_datum(0, lamp_policy_hex, &lamp_asset_name)?;
+    // ─── 3. Fresh SupplyState{0, 0, dist_cap, reserve_cap} ─────────────
+    let datum = encode_supply_state_datum(0, 0, dist_cap, reserve_cap)?;
 
     // ─── 4. Wallet + builder ───────────────────────────────────────
     let (wallet_addr, payment_xprv) = derive_wallet(&wallet_seed, network).map_err(|e| e.to_string())?;
@@ -1004,18 +1275,18 @@ pub fn build_genesis_supply_state(
         .map_err(|e| format!("add collateral input: {:?}", e))?;
     tb.set_collateral(&collateral);
 
-    // ─── 7. Mint witness: +1 SupplyState NFT under the supply_state policy ─
-    if hex::decode(supply_state_script_cbor).is_err() {
-        return Err("supply_state_script_cbor is not valid Plutus V3 script CBOR hex (bad hex)".into());
+    // ─── 7. Mint witness: +1 thread NFT ("SUPPLY") under the thread_nft policy ─
+    if hex::decode(thread_nft_policy_cbor).is_err() {
+        return Err("thread_nft_policy_cbor is not valid Plutus V3 script CBOR hex (bad hex)".into());
     }
     let script = csl::PlutusScript::from_hex_with_version(
-        supply_state_script_cbor,
+        thread_nft_policy_cbor,
         &csl::Language::new_plutus_v3(),
     )
-    .map_err(|_| "supply_state_script_cbor is not valid Plutus V3 script CBOR hex".to_string())?;
+    .map_err(|_| "thread_nft_policy_cbor is not valid Plutus V3 script CBOR hex".to_string())?;
     let script_source = csl::PlutusScriptSource::new(&script);
 
-    // Genesis mint redeemer = SupplyStateNft::MintSupplyState (empty Constr 0).
+    // Genesis mint redeemer = ThreadNftRedeemer::MintGenesis (empty Constr 0).
     let ex_units = csl::ExUnits::new(
         &BigNum::from(REGISTRY_EX_UNITS_MEM),
         &BigNum::from(REGISTRY_EX_UNITS_STEPS),
@@ -1023,7 +1294,7 @@ pub fn build_genesis_supply_state(
     let mint_redeemer = csl::Redeemer::new(
         &csl::RedeemerTag::new_mint(),
         &BigNum::zero(),
-        &supply_state_mint_redeemer_data(),
+        &thread_nft_mint_redeemer_data(),
         &ex_units,
     );
     let mint_witness = csl::MintWitness::new_plutus_script(&script_source, &mint_redeemer);
@@ -1105,24 +1376,34 @@ pub fn build_genesis_supply_state(
 /// * `wallet_seed_hex`       — 32-byte CIP-1852 entropy for fee/change.
 /// * `network` / `slot`      — as deploy.
 ///
-/// ─── CAP (token opt-in supply state) ──────────────────────────────
-/// For a CAPPED token (the on-chain `did_token_mint` baked with
-/// `require_supply_state = True`, like LAMP), the mint policy REQUIRES exactly 1
-/// input carrying the SupplyState NFT, which triggers `supply_state.spend` to count
-/// `minted_total' = minted_total + qty(mint) ≤ cap`. Pass:
+/// ─── CAP (token opt-in supply state) — LAMP ───────────────────────
+/// For a CAPPED token (LAMP), the on-chain `lamp_mint` policy REQUIRES exactly 1
+/// input + 1 output carrying the thread NFT ("SUPPLY"), and `supply_state.spend`
+/// requires Δ>0 mint. The transition (quota/cap/monotonic) is enforced by `lamp_mint`
+/// §Luật 5/7. Pass:
+/// * `mint_json.route`        — "distribution" (DistributionVest, default) | "reserve"
+///   (ReserveDraw). Drives BOTH the LAMP mint redeemer (`TLampMintRedeemer` Constr
+///   0/1) AND which quota field is bumped by Δ.
 /// * `supply_state_utxo_json` — JSON [`SupplyStateSpendUtxo`]: the SupplyState UTxO
-///   to SPEND (outpoint + value incl. the SupplyState NFT + old `minted_total` +
-///   `lamp_policy`/`lamp_asset_name` from the old inline datum). Pass `""` (empty)
-///   for an UNCAPPED token — the old reference-only path is kept unchanged.
+///   to SPEND (outpoint + value incl. the thread NFT + old 4-field state
+///   `dist_minted, reserve_minted, dist_cap, reserve_cap`). Pass `""` (empty) for an
+///   UNCAPPED token — the old reference-only path is kept unchanged.
 /// * `supply_state_script_cbor` — compiled Plutus V3 supply_state script (CBOR hex);
 ///   ignored when `supply_state_utxo_json` is empty.
 ///
-/// When capped, the builder: SPENDS the SupplyState UTxO (spend redeemer
-/// `CountMint` = empty Constr 0), re-creates a continuing output at the
-/// supply_state script address with `minted_total' = minted_total + amount` and the
-/// SAME `lamp_policy`/`lamp_asset_name` (validator s8), and adds the supply_state
-/// PlutusScript spend witness. The registry stays a REFERENCE input; authority
-/// signers + the did_token_mint mint witness are unchanged.
+/// When capped, the builder: SPENDS the SupplyState UTxO (spend redeemer `Advance` =
+/// empty Constr 0), re-creates a continuing output at the supply_state script address
+/// with the route-bumped quota (`dist_minted'` or `reserve_minted'` += Δ) and the caps
+/// PRESERVED unchanged (§Luật 4), and adds the supply_state PlutusScript spend witness.
+/// The builder ENFORCES the cap fail-fast (rejects Δ that overflows dist/reserve/total
+/// cap) so it never emits a tx the validator would reject. The registry stays a
+/// REFERENCE input; authority signers + the LAMP mint witness are unchanged.
+///
+/// ⚠ BLOCKER LIÊN-REPO (DistributionVest A-DEST + ReserveDraw meter): `lamp_mint`
+/// §Luật 8 còn đòi (DistributionVest) 1 kho ref-input + toàn bộ Δ rót về kho, và
+/// (ReserveDraw) 1 input mang meter NFT. Builder Lucid LAMP (`mintBuilder.ts`) cũng
+/// CHƯA wire các ràng buộc này (để integration phase) và LAMP chưa cấp địa chỉ/policy
+/// kho + meter NFT. Phần đó là follow-up khi LAMP cấp deploy artifacts — xem báo cáo.
 #[allow(clippy::too_many_arguments)]
 pub fn build_mint_via_registry(
     authority_keks_json: &str,
@@ -1219,27 +1500,65 @@ pub fn build_mint_via_registry(
                 "utxos_json fee UTxO must be distinct from the SupplyState UTxO".into(),
             );
         }
-        // supply_state script addr (= NFT policy id). The continuing output re-locks
-        // the SAME value (NFT preserved) with minted_total' = minted_total + amount.
+        // supply_state script addr (= thread NFT được giữ ở đây). Continuing output
+        // re-lock CÙNG value (thread NFT preserved) với quota bump theo route.
         let (ss_script_addr, _ss_hash) =
             derive_taad_script_address(supply_state_script_cbor, network).map_err(|e| e.to_string())?;
-        let minted_total_new = ss
-            .minted_total
-            .checked_add(mint.amount)
-            .ok_or_else(|| "minted_total + amount overflows u64 (impossible cap)".to_string())?;
-        let lamp_asset_name = if ss.lamp_asset_name_hex.is_empty() {
-            AssetName::new(Vec::new()).map_err(|_| "empty lamp asset name failed (unreachable)".to_string())?
-        } else {
-            let b = hex::decode(&ss.lamp_asset_name_hex)
-                .map_err(|e| format!("supply_state lamp_asset_name_hex not valid hex: {}", e))?;
-            AssetName::new(b).map_err(|_| "supply_state lamp_asset_name_hex too long (>32 bytes)".to_string())?
+
+        // ── Compose SupplyState theo route (khớp lamp_mint §Luật 5 + §Luật 7) ──
+        // DistributionVest → dist_minted' = dist_minted + Δ (reserve KHÔNG đổi).
+        // ReserveDraw      → reserve_minted' = reserve_minted + Δ (dist KHÔNG đổi).
+        // Builder TỰ ép cap TRƯỚC khi dựng tx (fail-fast, tránh tốn phí cho tx sẽ bị
+        // validator reject). cap tổng = dist_cap + reserve_cap (§D7-#2, 36e15 oil LAMP).
+        let route = MintRoute::parse(mint.route.as_deref().unwrap_or("distribution"))?;
+        let delta = mint.amount as u128;
+        let (dist_new, reserve_new) = match route {
+            MintRoute::DistributionVest => {
+                let d = ss
+                    .dist_minted
+                    .checked_add(delta)
+                    .ok_or_else(|| "dist_minted + Δ tràn u128 (không thể)".to_string())?;
+                if d > ss.dist_cap {
+                    return Err(format!(
+                        "DistributionVest vượt cap: dist_minted' = {} > dist_cap = {} (oil)",
+                        d, ss.dist_cap
+                    ));
+                }
+                (d, ss.reserve_minted)
+            }
+            MintRoute::ReserveDraw => {
+                let r = ss
+                    .reserve_minted
+                    .checked_add(delta)
+                    .ok_or_else(|| "reserve_minted + Δ tràn u128 (không thể)".to_string())?;
+                if r > ss.reserve_cap {
+                    return Err(format!(
+                        "ReserveDraw vượt cap: reserve_minted' = {} > reserve_cap = {} (oil)",
+                        r, ss.reserve_cap
+                    ));
+                }
+                (ss.dist_minted, r)
+            }
         };
+        // Trần tổng tuyệt đối (§D7-#2): tổng phát hành lịch sử ≤ dist_cap + reserve_cap.
+        let total_cap = ss
+            .dist_cap
+            .checked_add(ss.reserve_cap)
+            .ok_or_else(|| "dist_cap + reserve_cap tràn u128 (không thể)".to_string())?;
+        if dist_new + reserve_new > total_cap {
+            return Err(format!(
+                "vượt trần tổng: dist_minted' + reserve_minted' = {} > {} (36 tỷ LAMP oil)",
+                dist_new + reserve_new,
+                total_cap
+            ));
+        }
+        // Caps BẤT BIẾN qua transition (§Luật 4): tái tạo y nguyên dist_cap/reserve_cap.
         let new_datum =
-            encode_supply_state_datum(minted_total_new, &ss.lamp_policy_hex, &lamp_asset_name)?;
+            encode_supply_state_datum(dist_new, reserve_new, ss.dist_cap, ss.reserve_cap)?;
         let continuing_value = rebuild_value(ss.amount_lovelace, &ss.assets)?;
 
-        // Plutus V3 spend witness for the supply_state script (CountMint redeemer,
-        // empty Constr 0). Inline-datum spend → witness MUST NOT re-supply the datum.
+        // Plutus V3 spend witness cho supply_state script (redeemer `Advance` = Constr 0).
+        // Inline-datum spend → witness MUST NOT re-supply the datum.
         let ss_script = csl::PlutusScript::from_hex_with_version(
             supply_state_script_cbor,
             &csl::Language::new_plutus_v3(),
@@ -1338,8 +1657,20 @@ pub fn build_mint_via_registry(
     let token_policy_id = token_script.hash();
     let token_script_source = csl::PlutusScriptSource::new(&token_script);
 
-    // Mint redeemer SHAPE = empty constr (index 0) = conventional "Mint" action.
-    let mint_redeemer_data = PlutusData::new_empty_constr_plutus_data(&BigNum::from(0u64));
+    // Mint redeemer SHAPE:
+    //   • Token CÓ cap (SupplyState) = `TLampMintRedeemer` theo route (types.ak §19):
+    //     DistributionVest = Constr 0 [], ReserveDraw = Constr 1 []. Redeemer PHẢI
+    //     KHỚP quota bump ở SupplyState datum (lamp_mint §Luật 5 đọc cùng redeemer `r`).
+    //   • Token KHÔNG cap = empty constr (index 0) = "Mint" quy ước (đường registry cũ).
+    let mint_redeemer_data = if let Some(ss) = &supply_state {
+        let route = MintRoute::parse(mint.route.as_deref().unwrap_or("distribution"))?;
+        // Bảo hiểm: cap trên datum CŨ phải khớp cap route đang dùng (bắt lỗi caller
+        // truyền cap=0 cho route đang bump — datum sẽ vượt cap ngay). Nhẹ, không tốn.
+        let _ = ss; // ss dùng lại ở khối compose phía trên; ở đây chỉ cần route.
+        PlutusData::new_empty_constr_plutus_data(&BigNum::from(route.constr_index()))
+    } else {
+        PlutusData::new_empty_constr_plutus_data(&BigNum::from(0u64))
+    };
     let ex_units = csl::ExUnits::new(
         &BigNum::from(REGISTRY_EX_UNITS_MEM),
         &BigNum::from(REGISTRY_EX_UNITS_STEPS),
@@ -1381,9 +1712,9 @@ pub fn build_mint_via_registry(
         .map_err(|e| format!("add_output failed: {:?}", e))?;
 
     // ─── 7b. SupplyState continuing output (capped path only) ──────
-    // Re-lock the SupplyState NFT + bumped datum at the supply_state script addr so
-    // `supply_state.spend` sees exactly 1 continuing NFT output (s3) with
-    // minted_total' = minted_total + amount (s6).
+    // Re-lock the thread NFT ("SUPPLY") + route-bumped datum at the supply_state script
+    // addr so `lamp_mint` §Luật 1 sees exactly 1 continuing thread-NFT output, with the
+    // route quota bumped by Δ (§Luật 5) and caps preserved (§Luật 4).
     if let Some(continuing) = supply_state_continuing {
         tb.add_output(&continuing)
             .map_err(|e| format!("add supply_state continuing output: {:?}", e))?;
@@ -1587,12 +1918,54 @@ mod tests {
             kind: "multisig".into(), pkh: None,
             pkhs: Some(vec![pkh_a(), pkh_b()]), threshold: Some(3),
         };
-        assert!(encode_authorization(&too_big).unwrap_err().contains("threshold must be"));
+        assert!(encode_authorization(&too_big).unwrap_err().contains("threshold phải 1..=N"));
         let zero = AuthorizationJson {
             kind: "multisig".into(), pkh: None,
             pkhs: Some(vec![pkh_a()]), threshold: Some(0),
         };
-        assert!(encode_authorization(&zero).unwrap_err().contains("threshold must be"));
+        assert!(encode_authorization(&zero).unwrap_err().contains("threshold phải 1..=N"));
+    }
+
+    /// Đối xứng `registry.ak:98` — quá 16 khoá thì on-chain `expect` fail, nên
+    /// bộ dựng phải chặn TRƯỚC khi phát ra tx (nếu không caller mất collateral).
+    #[test]
+    fn encode_authorization_multisig_rejects_qua_16_khoa() {
+        let pkhs: Vec<String> = (0u8..17).map(|i| hex::encode([i; 28])).collect();
+        let qua_tran = AuthorizationJson {
+            kind: "multisig".into(), pkh: None,
+            pkhs: Some(pkhs), threshold: Some(2),
+        };
+        let e = encode_authorization(&qua_tran).unwrap_err();
+        assert!(e.contains("tối đa 16 khoá"), "nhận: {}", e);
+
+        // Đúng 16 thì phải qua — biên là ĐƯỢC PHÉP, khớp `<= 16`.
+        let vua_du: Vec<String> = (0u8..16).map(|i| hex::encode([i; 28])).collect();
+        let biên = AuthorizationJson {
+            kind: "multisig".into(), pkh: None,
+            pkhs: Some(vua_du), threshold: Some(16),
+        };
+        assert!(encode_authorization(&biên).is_ok());
+    }
+
+    /// On-chain so threshold với danh sách ĐÃ dedupe (`list.unique`). Danh sách
+    /// trùng lặp phải bị chặn ở đây, không được để lọt xuống chuỗi.
+    #[test]
+    fn encode_authorization_multisig_dedupe_truoc_khi_so_threshold() {
+        // [k1, k1, k1] threshold 3: thô N=3 nên luật cũ cho qua, nhưng uniq N=1
+        // ⇒ on-chain `threshold <= list.length(uniq)` fail.
+        let trung = AuthorizationJson {
+            kind: "multisig".into(), pkh: None,
+            pkhs: Some(vec![pkh_a(), pkh_a(), pkh_a()]), threshold: Some(3),
+        };
+        let e = encode_authorization(&trung).unwrap_err();
+        assert!(e.contains("pkh KHÁC NHAU"), "nhận: {}", e);
+
+        // Cùng danh sách trùng nhưng threshold 1 thì hợp lệ cả hai phía.
+        let ok = AuthorizationJson {
+            kind: "multisig".into(), pkh: None,
+            pkhs: Some(vec![pkh_a(), pkh_a()]), threshold: Some(1),
+        };
+        assert!(encode_authorization(&ok).is_ok());
     }
 
     // ─── DEPLOY ────────────────────────────────────────────────────
@@ -1889,69 +2262,87 @@ mod tests {
         assert!(err.contains("amount must be > 0"), "got: {err}");
     }
 
-    // ─── SUPPLY STATE — encode + genesis + capped mint ─────────────
+    // ─── SUPPLY STATE — encode + genesis + capped mint (khớp CỔNG on-chain thật) ─
+    //
+    // Schema canonical = LAMP `magiclamp/genesis/types.ak`:
+    //   SupplyState = Constr 0 [dist_minted, reserve_minted, dist_cap, reserve_cap]
+    // Route redeemer = TLampMintRedeemer: DistributionVest=0, ReserveDraw=1.
+    // Genesis NFT = thread_nft policy, name "SUPPLY" (#"535550504c59").
 
-    /// A fourth distinct minimal V3 script standing in as the supply_state
-    /// validator, so its hash (= SupplyState NFT policy) differs from token/registry.
+    /// A distinct minimal V3 script standing in as the supply_state validator (script
+    /// ADDRESS holding SupplyState); its hash differs from token/registry/thread.
     const MOCK_SUPPLY_STATE_SCRIPT: &str = "4e4d0100003322222005120012bbff";
+    /// A distinct minimal V3 script standing in as the thread_nft policy (mints SUPPLY).
+    const MOCK_THREAD_NFT_SCRIPT: &str = "4e4d0100003322222005120012ccff";
 
-    /// SupplyStateDatum = Constr 0 [Int minted_total, Bytes(28) lamp_policy,
-    /// Bytes lamp_asset_name] — decode + assert positional layout (contract w/ supply.ak).
+    /// Caps LAMP (oil) khớp `constants.ak`: dist 26,37 tỷ · reserve 9,63 tỷ · tổng 36 tỷ.
+    const DIST_CAP: u128 = 26_370_000_000_000_000;
+    const RESERVE_CAP: u128 = 9_630_000_000_000_000;
+
+    /// SupplyState = Constr 0 [Int dist_minted, Int reserve_minted, Int dist_cap,
+    /// Int reserve_cap] — decode + assert 4-field positional layout (contract w/ types.ak).
     #[test]
     fn encode_supply_state_datum_layout() {
-        let lamp_policy = "ab".repeat(28); // 28-byte policy hex
-        let lamp_name = AssetName::new(b"LAMP".to_vec()).unwrap();
-        let data = encode_supply_state_datum(0, &lamp_policy, &lamp_name).unwrap();
+        let data = encode_supply_state_datum(0, 0, DIST_CAP, RESERVE_CAP).unwrap();
 
         let constr = data.as_constr_plutus_data().expect("datum is constr");
-        assert_eq!(constr.alternative(), BigNum::from(0u64), "SupplyStateDatum = constr 0");
-        assert_eq!(constr.data().len(), 3, "3 fields: [minted_total, lamp_policy, lamp_asset_name]");
+        assert_eq!(constr.alternative(), BigNum::from(0u64), "SupplyState = constr 0");
+        assert_eq!(constr.data().len(), 4, "4 fields: [dist_minted, reserve_minted, dist_cap, reserve_cap]");
 
-        // Field 0: minted_total Int == 0.
-        let total = constr.data().get(0).as_integer().expect("field 0 is int");
-        assert_eq!(total, csl::BigInt::from_str("0").unwrap(), "minted_total = 0 at genesis");
-        // Field 1: lamp_policy Bytes(28).
-        let pol = constr.data().get(1).as_bytes().expect("field 1 is bytes");
-        assert_eq!(pol, hex::decode(&lamp_policy).unwrap());
-        assert_eq!(pol.len(), 28, "lamp_policy is a 28-byte PolicyId");
-        // Field 2: lamp_asset_name raw bytes == "LAMP".
-        let name = constr.data().get(2).as_bytes().expect("field 2 is bytes");
-        assert_eq!(name, b"LAMP".to_vec(), "lamp_asset_name = raw asset-name bytes");
+        assert_eq!(constr.data().get(0).as_integer().unwrap(), csl::BigInt::from_str("0").unwrap(), "dist_minted = 0 genesis");
+        assert_eq!(constr.data().get(1).as_integer().unwrap(), csl::BigInt::from_str("0").unwrap(), "reserve_minted = 0 genesis");
+        assert_eq!(constr.data().get(2).as_integer().unwrap(), csl::BigInt::from_str(&DIST_CAP.to_string()).unwrap(), "dist_cap");
+        assert_eq!(constr.data().get(3).as_integer().unwrap(), csl::BigInt::from_str(&RESERVE_CAP.to_string()).unwrap(), "reserve_cap");
     }
 
-    /// Non-zero minted_total encodes the right Int (used by the spend continuing datum).
+    /// GOLDEN CBOR: đối chiếu byte-perfect Plutus `Data` encode của SupplyState
+    /// {1_000_000, 0, dist_cap, reserve_cap}. Constr 0 tag = 121 (0xd879); mảng field
+    /// dùng INDEFINITE-length (0x9f … 0xff) — dạng CHUẨN Plutus (CSL + Lucid
+    /// `@lucid-evolution` Data.to đều xuất indefinite; Aiken `Data` decoder chấp nhận
+    /// cả definite/indefinite). Drift constr-index/field-order/số-field → byte lệch → bắt.
     #[test]
-    fn encode_supply_state_datum_nonzero_total() {
-        let lamp_policy = "cd".repeat(28);
-        let lamp_name = AssetName::new(b"LAMP".to_vec()).unwrap();
-        let data = encode_supply_state_datum(6_000_000, &lamp_policy, &lamp_name).unwrap();
+    fn supply_state_datum_golden_cbor() {
+        let data = encode_supply_state_datum(1_000_000, 0, DIST_CAP, RESERVE_CAP).unwrap();
+        let got = hex::encode(data.to_bytes());
+        // d879 = tag 121 (Constr 0); 9f = array(indefinite);
+        //   1a000f4240 = 1_000_000 (dist_minted); 00 = 0 (reserve_minted);
+        //   1b005daf6012ba2000 = 26_370_000_000_000_000 (dist_cap);
+        //   1b0022366f192fe000 =  9_630_000_000_000_000 (reserve_cap); ff = break.
+        let expected = "d8799f1a000f4240001b005daf6012ba20001b0022366f192fe000ff";
+        assert_eq!(got, expected, "SupplyState CBOR must match Plutus golden vector");
+        // Field hex round-trips to the exact caps (guards the literal itself).
+        assert_eq!(0x005daf6012ba2000u64 as u128, DIST_CAP);
+        assert_eq!(0x0022366f192fe000u64 as u128, RESERVE_CAP);
+    }
+
+    /// Route redeemer constr index KHỚP types.ak: DistributionVest=0, ReserveDraw=1.
+    #[test]
+    fn mint_route_constr_indices_match_types_ak() {
+        assert_eq!(MintRoute::parse("distribution").unwrap().constr_index(), 0);
+        assert_eq!(MintRoute::parse("DistributionVest").unwrap().constr_index(), 0);
+        assert_eq!(MintRoute::parse("reserve").unwrap().constr_index(), 1);
+        assert_eq!(MintRoute::parse("ReserveDraw").unwrap().constr_index(), 1);
+        assert!(MintRoute::parse("garbage").is_err(), "unknown route rejected");
+    }
+
+    /// Non-zero dist_minted encodes the right Int (continuing datum after DistributionVest).
+    #[test]
+    fn encode_supply_state_datum_nonzero_dist() {
+        let data = encode_supply_state_datum(6_000_000, 0, DIST_CAP, RESERVE_CAP).unwrap();
         let constr = data.as_constr_plutus_data().unwrap();
-        assert_eq!(
-            constr.data().get(0).as_integer().unwrap(),
-            csl::BigInt::from_str("6000000").unwrap()
-        );
+        assert_eq!(constr.data().get(0).as_integer().unwrap(), csl::BigInt::from_str("6000000").unwrap());
+        assert_eq!(constr.data().get(1).as_integer().unwrap(), csl::BigInt::from_str("0").unwrap(), "reserve untouched");
     }
 
-    /// Bad lamp_policy length is rejected.
+    /// Genesis: thread NFT ("SUPPLY") minted under the thread_nft policy (= its hash),
+    /// genesis UTxO SPENT (one-shot), output at supply_state script addr carries an
+    /// inline SupplyState datum {0,0,dist_cap,reserve_cap}.
     #[test]
-    fn encode_supply_state_datum_rejects_bad_policy() {
-        let lamp_name = AssetName::new(b"LAMP".to_vec()).unwrap();
-        let err = encode_supply_state_datum(0, &"ab".repeat(20), &lamp_name).unwrap_err();
-        assert!(err.contains("28 bytes"), "got: {err}");
-    }
-
-    /// Genesis supply_state: SupplyState NFT minted under the supply_state policy
-    /// (= script hash) with name = state_name, genesis UTxO SPENT (one-shot), output
-    /// at script addr carries an inline datum with minted_total == 0.
-    #[test]
-    fn genesis_supply_state_mints_nft_total_zero() {
+    fn genesis_supply_state_mints_thread_nft_state_zero() {
         let wallet_seed = "34".repeat(32);
-        let state_name_hex = hex::encode(b"LAMP-SUPPLY");
-        let lamp_policy = "ab".repeat(28);
-        let lamp_name_hex = hex::encode(b"LAMP");
 
         let tx_hex = build_genesis_supply_state(
-            mock_genesis_utxo(), &state_name_hex, &lamp_policy, &lamp_name_hex,
+            mock_genesis_utxo(), MOCK_THREAD_NFT_SCRIPT, DIST_CAP, RESERVE_CAP,
             MOCK_SUPPLY_STATE_SCRIPT, mock_wallet_utxos(), mock_params(), &wallet_seed, 0, 2000,
         )
         .expect("genesis supply_state must build a signed tx");
@@ -1960,21 +2351,21 @@ mod tests {
         let body = tx.body();
         let wit = tx.witness_set();
 
-        // SupplyState NFT minted under the supply_state policy = script hash, name = state_name.
-        let script = csl::PlutusScript::from_hex_with_version(MOCK_SUPPLY_STATE_SCRIPT, &csl::Language::new_plutus_v3()).unwrap();
-        let policy_id = script.hash();
-        let expected_name = AssetName::new(b"LAMP-SUPPLY".to_vec()).unwrap();
+        // Thread NFT minted under the thread_nft policy = its hash, name "SUPPLY", qty 1.
+        let thread_script = csl::PlutusScript::from_hex_with_version(MOCK_THREAD_NFT_SCRIPT, &csl::Language::new_plutus_v3()).unwrap();
+        let thread_policy = thread_script.hash();
+        let supply_name = AssetName::new(b"SUPPLY".to_vec()).unwrap();
         let mint = body.mint().expect("mint set");
-        let mints_assets = mint.get(&policy_id).expect("mint entry for supply_state policy");
+        let mints_assets = mint.get(&thread_policy).expect("mint entry for thread policy");
         let mut total: i128 = 0;
         for i in 0..mints_assets.len() {
-            if let Some(v) = mints_assets.get(i).unwrap().get(&expected_name) {
+            if let Some(v) = mints_assets.get(i).unwrap().get(&supply_name) {
                 total += v.as_i32_or_fail().unwrap() as i128;
             }
         }
-        assert_eq!(total, 1, "exactly +1 SupplyState NFT with state_name");
+        assert_eq!(total, 1, "exactly +1 thread NFT with name SUPPLY");
 
-        // Genesis UTxO must be SPENT (one-shot binding).
+        // Genesis UTxO SPENT (one-shot binding).
         let inputs = body.inputs();
         let mut genesis_spent = false;
         for i in 0..inputs.len() {
@@ -1984,7 +2375,7 @@ mod tests {
         }
         assert!(genesis_spent, "genesis UTxO must be consumed (one-shot)");
 
-        // Output at the supply_state script addr carries the NFT + inline datum minted_total=0.
+        // Output at the supply_state script addr carries the NFT + inline datum {0,0,caps}.
         let (script_addr, _) = derive_taad_script_address(MOCK_SUPPLY_STATE_SCRIPT, 0).unwrap();
         let outs = body.outputs();
         let mut found = false;
@@ -1992,19 +2383,20 @@ mod tests {
             let o = outs.get(i);
             if o.address().to_bech32(None).unwrap() != script_addr.to_bech32(None).unwrap() { continue; }
             let has_nft = o.amount().multiasset()
-                .and_then(|ma| ma.get(&policy_id))
-                .and_then(|a| a.get(&expected_name))
+                .and_then(|ma| ma.get(&thread_policy))
+                .and_then(|a| a.get(&supply_name))
                 .map(|q| q == BigNum::from(1u64)).unwrap_or(false);
             if !has_nft { continue; }
             let pd = o.plutus_data().expect("inline datum present");
             let constr = pd.as_constr_plutus_data().expect("datum is constr");
             assert_eq!(constr.alternative(), BigNum::from(0u64));
-            assert_eq!(constr.data().get(0).as_integer().unwrap(), csl::BigInt::from_str("0").unwrap(), "minted_total = 0");
-            // lamp_policy preserved.
-            assert_eq!(constr.data().get(1).as_bytes().unwrap(), hex::decode(&lamp_policy).unwrap());
+            assert_eq!(constr.data().len(), 4, "4-field SupplyState");
+            assert_eq!(constr.data().get(0).as_integer().unwrap(), csl::BigInt::from_str("0").unwrap(), "dist_minted = 0");
+            assert_eq!(constr.data().get(1).as_integer().unwrap(), csl::BigInt::from_str("0").unwrap(), "reserve_minted = 0");
+            assert_eq!(constr.data().get(2).as_integer().unwrap(), csl::BigInt::from_str(&DIST_CAP.to_string()).unwrap(), "dist_cap baked");
             found = true;
         }
-        assert!(found, "SupplyState output at script addr with NFT + datum(total=0) must exist");
+        assert!(found, "SupplyState output at script addr with NFT + datum{{0,0,caps}} must exist");
 
         // Plutus mint witness + script_data_hash present; wallet vkey signs.
         assert_eq!(wit.plutus_scripts().unwrap().len(), 1);
@@ -2012,63 +2404,60 @@ mod tests {
         assert_eq!(wit.vkeys().unwrap().len(), 1, "wallet signature");
     }
 
-    /// Build a SupplyState spend-UTxO JSON: outpoint + value (NFT) + old datum fields.
-    fn mock_supply_state_spend_utxo(minted_total: u64) -> String {
-        let (_addr, ss_hash) = derive_taad_script_address(MOCK_SUPPLY_STATE_SCRIPT, 0).unwrap();
-        let ss_policy_hex = hex::encode(ss_hash.to_bytes());
-        let ss_name_hex = hex::encode(b"LAMP-SUPPLY");
-        // The counted token = the MOCK_TOKEN_POLICY (= did_token_mint stand-in), name "LAMP".
-        let token_script = csl::PlutusScript::from_hex_with_version(MOCK_TOKEN_POLICY, &csl::Language::new_plutus_v3()).unwrap();
-        let lamp_policy_hex = hex::encode(token_script.hash().to_bytes());
-        let lamp_name_hex = hex::encode(b"LAMP");
+    /// Build a SupplyState spend-UTxO JSON: outpoint + value (thread NFT) + 4-field old state.
+    fn mock_supply_state_spend_utxo(dist_minted: u128, reserve_minted: u128) -> String {
+        let thread_script = csl::PlutusScript::from_hex_with_version(MOCK_THREAD_NFT_SCRIPT, &csl::Language::new_plutus_v3()).unwrap();
+        let thread_policy_hex = hex::encode(thread_script.hash().to_bytes());
+        let supply_name_hex = hex::encode(b"SUPPLY");
         format!(
             r#"{{"tx_hash":"4444444444444444444444444444444444444444444444444444444444444444",
                  "index":0,"amount_lovelace":2000000,
-                 "assets":[{{"policy_id":"{ss_policy_hex}","asset_name_hex":"{ss_name_hex}","quantity":1}}],
-                 "supply_state_nft_policy_hex":"{ss_policy_hex}",
-                 "supply_state_nft_name_hex":"{ss_name_hex}",
-                 "minted_total":{minted_total},
-                 "lamp_policy_hex":"{lamp_policy_hex}",
-                 "lamp_asset_name_hex":"{lamp_name_hex}"}}"#
+                 "assets":[{{"policy_id":"{thread_policy_hex}","asset_name_hex":"{supply_name_hex}","quantity":1}}],
+                 "supply_state_nft_policy_hex":"{thread_policy_hex}",
+                 "supply_state_nft_name_hex":"{supply_name_hex}",
+                 "dist_minted":{dist_minted},
+                 "reserve_minted":{reserve_minted},
+                 "dist_cap":{DIST_CAP},
+                 "reserve_cap":{RESERVE_CAP}}}"#
         )
     }
 
-    /// Capped mint: SupplyState is SPENT (not referenced), continuing output bumps
-    /// minted_total by the mint amount, registry stays a reference input, the token
-    /// mint witness + authority signer are present, and the lamp_policy is preserved.
+    /// Capped mint (DistributionVest): SupplyState SPENT (not referenced), continuing
+    /// output bumps dist_minted by Δ (reserve untouched), caps preserved, registry stays
+    /// a reference input, mint redeemer = DistributionVest (Constr 0), token minted = Δ.
     #[test]
-    fn mint_via_registry_capped_spends_supply_state_and_bumps_total() {
+    fn mint_via_registry_capped_distribution_bumps_dist_minted() {
         let auth_kek = "7a".repeat(32);
         let wallet_seed = "34".repeat(32);
         let keks = format!(r#"["{}"]"#, auth_kek);
-        let amount: u64 = 5_000_000;
-        let mint_json = format!(r#"{{"asset_name_hex":"{}","amount":{}}}"#, hex::encode(b"LAMP"), amount);
-        let old_total: u64 = 1_000_000;
-        let ss_json = mock_supply_state_spend_utxo(old_total);
+        let amount: u128 = 5_000_000;
+        let mint_json = format!(
+            r#"{{"asset_name_hex":"{}","amount":{},"route":"distribution"}}"#,
+            hex::encode(b"tLAMP"), amount
+        );
+        let old_dist: u128 = 1_000_000;
+        let ss_json = mock_supply_state_spend_utxo(old_dist, 0);
 
         let tx_hex = build_mint_via_registry(
             &keks, mock_registry_ref_utxo(), MOCK_TOKEN_POLICY, &mint_json,
             &ss_json, MOCK_SUPPLY_STATE_SCRIPT,
             mock_wallet_utxos(), mock_params(), &wallet_seed, 0, 2000,
         )
-        .expect("capped mint must build a signed tx");
+        .expect("capped distribution mint must build a signed tx");
 
         let tx = Transaction::from_hex(&tx_hex).unwrap();
         let body = tx.body();
         let wit = tx.witness_set();
 
-        // Registry is a REFERENCE input; SupplyState is NOT referenced.
+        // Registry is a REFERENCE input; SupplyState is a SPEND input (not referenced).
         let ref_inputs = body.reference_inputs().expect("reference inputs set");
         let mut registry_ref = false;
         for i in 0..ref_inputs.len() {
             let h = hex::encode(ref_inputs.get(i).transaction_id().to_bytes());
-            assert_ne!(h, "4444444444444444444444444444444444444444444444444444444444444444",
-                "SupplyState must be SPENT, never referenced");
+            assert_ne!(h, "4444444444444444444444444444444444444444444444444444444444444444", "SupplyState must be SPENT, never referenced");
             if h == "3333333333333333333333333333333333333333333333333333333333333333" { registry_ref = true; }
         }
         assert!(registry_ref, "registry must be a reference input");
-
-        // SupplyState UTxO is a SPEND input.
         let spend_inputs = body.inputs();
         let mut ss_spent = false;
         for i in 0..spend_inputs.len() {
@@ -2078,62 +2467,62 @@ mod tests {
         }
         assert!(ss_spent, "SupplyState UTxO must be a spend input");
 
-        // A spend redeemer is present (the CountMint for supply_state).
+        // Both a spend (Advance) and a mint (DistributionVest) redeemer present.
         let redeemers = wit.redeemers().expect("redeemers present");
         let mut has_spend = false;
-        let mut has_mint = false;
+        let mut mint_redeemer_data: Option<PlutusData> = None;
         for i in 0..redeemers.len() {
-            match redeemers.get(i).tag() {
-                t if t == csl::RedeemerTag::new_spend() => has_spend = true,
-                t if t == csl::RedeemerTag::new_mint() => has_mint = true,
-                _ => {}
-            }
+            let r = redeemers.get(i);
+            if r.tag() == csl::RedeemerTag::new_spend() { has_spend = true; }
+            if r.tag() == csl::RedeemerTag::new_mint() { mint_redeemer_data = Some(r.data()); }
         }
-        assert!(has_spend, "supply_state spend (CountMint) redeemer present");
-        assert!(has_mint, "did_token_mint mint redeemer present");
+        assert!(has_spend, "supply_state spend (Advance) redeemer present");
+        let mrd = mint_redeemer_data.expect("mint redeemer present");
+        assert_eq!(mrd.as_constr_plutus_data().unwrap().alternative(), BigNum::from(0u64), "mint redeemer = DistributionVest (Constr 0)");
 
-        // Token minted = amount under the token policy.
+        // Token minted = Δ under the token policy.
         let token_script = csl::PlutusScript::from_hex_with_version(MOCK_TOKEN_POLICY, &csl::Language::new_plutus_v3()).unwrap();
         let token_policy = token_script.hash();
-        let lamp_name = AssetName::new(b"LAMP".to_vec()).unwrap();
+        let tlamp_name = AssetName::new(b"tLAMP".to_vec()).unwrap();
         let mint = body.mint().expect("mint set");
         let mints_assets = mint.get(&token_policy).expect("mint entry for token policy");
         let mut minted: i128 = 0;
         for i in 0..mints_assets.len() {
-            if let Some(v) = mints_assets.get(i).unwrap().get(&lamp_name) {
+            if let Some(v) = mints_assets.get(i).unwrap().get(&tlamp_name) {
                 minted += v.as_i32_or_fail().unwrap() as i128;
             }
         }
-        assert_eq!(minted, amount as i128, "minted exactly `amount` LAMP");
+        assert_eq!(minted, amount as i128, "minted exactly Δ tLAMP");
 
-        // Continuing SupplyState output at the supply_state script addr: NFT preserved,
-        // datum minted_total' = old_total + amount, lamp_policy preserved.
-        let (ss_addr, ss_hash) = derive_taad_script_address(MOCK_SUPPLY_STATE_SCRIPT, 0).unwrap();
-        let ss_name = AssetName::new(b"LAMP-SUPPLY".to_vec()).unwrap();
+        // Continuing SupplyState output: thread NFT preserved, dist_minted' = old + Δ,
+        // reserve untouched, caps preserved.
+        let (ss_addr, _) = derive_taad_script_address(MOCK_SUPPLY_STATE_SCRIPT, 0).unwrap();
+        let thread_script = csl::PlutusScript::from_hex_with_version(MOCK_THREAD_NFT_SCRIPT, &csl::Language::new_plutus_v3()).unwrap();
+        let thread_policy = thread_script.hash();
+        let supply_name = AssetName::new(b"SUPPLY".to_vec()).unwrap();
         let outs = body.outputs();
         let mut found_continuing = false;
         for i in 0..outs.len() {
             let o = outs.get(i);
             if o.address().to_bech32(None).unwrap() != ss_addr.to_bech32(None).unwrap() { continue; }
+            // The thread NFT ("SUPPLY") MUST be preserved on the continuing output
+            // (lamp_mint §Luật 1 output_holding_nft; value preservation via rebuild_value).
             let has_nft = o.amount().multiasset()
-                .and_then(|ma| ma.get(&ss_hash))
-                .and_then(|a| a.get(&ss_name))
+                .and_then(|ma| ma.get(&thread_policy))
+                .and_then(|a| a.get(&supply_name))
                 .map(|q| q == BigNum::from(1u64)).unwrap_or(false);
-            if !has_nft { continue; }
-            let pd = o.plutus_data().expect("inline datum present on continuing output");
+            assert!(has_nft, "continuing SupplyState output must keep the thread NFT");
+            let pd = o.plutus_data().expect("inline datum on continuing output");
             let constr = pd.as_constr_plutus_data().unwrap();
+            assert_eq!(constr.data().len(), 4, "continuing datum is 4-field SupplyState");
             assert_eq!(
                 constr.data().get(0).as_integer().unwrap(),
-                csl::BigInt::from_str(&(old_total + amount).to_string()).unwrap(),
-                "minted_total' = old_total + amount"
+                csl::BigInt::from_str(&(old_dist + amount).to_string()).unwrap(),
+                "dist_minted' = old_dist + Δ"
             );
-            let lamp_policy_hex = hex::encode(token_policy.to_bytes());
-            assert_eq!(
-                constr.data().get(1).as_bytes().unwrap(),
-                hex::decode(&lamp_policy_hex).unwrap(),
-                "lamp_policy preserved (s8)"
-            );
-            assert_eq!(constr.data().get(2).as_bytes().unwrap(), b"LAMP".to_vec(), "lamp_asset_name preserved (s8)");
+            assert_eq!(constr.data().get(1).as_integer().unwrap(), csl::BigInt::from_str("0").unwrap(), "reserve_minted untouched");
+            assert_eq!(constr.data().get(2).as_integer().unwrap(), csl::BigInt::from_str(&DIST_CAP.to_string()).unwrap(), "dist_cap preserved (Luật 4)");
+            assert_eq!(constr.data().get(3).as_integer().unwrap(), csl::BigInt::from_str(&RESERVE_CAP.to_string()).unwrap(), "reserve_cap preserved");
             found_continuing = true;
         }
         assert!(found_continuing, "continuing SupplyState output with bumped datum must exist");
@@ -2141,7 +2530,247 @@ mod tests {
         // Authority required signer present.
         let (_, auth_keyhash) = derive_controller(&auth_kek).unwrap();
         let req = body.required_signers().expect("required signers set");
-        assert!((0..req.len()).any(|i| req.get(i).to_bytes() == auth_keyhash.to_bytes()),
-            "authority is a required signer");
+        assert!((0..req.len()).any(|i| req.get(i).to_bytes() == auth_keyhash.to_bytes()), "authority is a required signer");
+    }
+
+    /// Capped mint (ReserveDraw): bumps reserve_minted by Δ (dist untouched), mint
+    /// redeemer = ReserveDraw (Constr 1).
+    #[test]
+    fn mint_via_registry_capped_reserve_bumps_reserve_minted() {
+        let keks = format!(r#"["{}"]"#, "7a".repeat(32));
+        let amount: u128 = 3_000_000;
+        let mint_json = format!(
+            r#"{{"asset_name_hex":"{}","amount":{},"route":"reserve"}}"#,
+            hex::encode(b"tLAMP"), amount
+        );
+        let ss_json = mock_supply_state_spend_utxo(0, 500_000);
+
+        let tx_hex = build_mint_via_registry(
+            &keks, mock_registry_ref_utxo(), MOCK_TOKEN_POLICY, &mint_json,
+            &ss_json, MOCK_SUPPLY_STATE_SCRIPT,
+            mock_wallet_utxos(), mock_params(), &"34".repeat(32), 0, 2000,
+        )
+        .expect("capped reserve mint must build a signed tx");
+
+        let tx = Transaction::from_hex(&tx_hex).unwrap();
+        let body = tx.body();
+        let wit = tx.witness_set();
+
+        // Mint redeemer = ReserveDraw (Constr 1).
+        let redeemers = wit.redeemers().expect("redeemers present");
+        let mut mint_idx: Option<BigNum> = None;
+        for i in 0..redeemers.len() {
+            let r = redeemers.get(i);
+            if r.tag() == csl::RedeemerTag::new_mint() { mint_idx = Some(r.data().as_constr_plutus_data().unwrap().alternative()); }
+        }
+        assert_eq!(mint_idx.unwrap(), BigNum::from(1u64), "mint redeemer = ReserveDraw (Constr 1)");
+
+        // Continuing datum: reserve_minted' = 500_000 + Δ, dist untouched.
+        let (ss_addr, _) = derive_taad_script_address(MOCK_SUPPLY_STATE_SCRIPT, 0).unwrap();
+        let outs = body.outputs();
+        let mut found = false;
+        for i in 0..outs.len() {
+            let o = outs.get(i);
+            if o.address().to_bech32(None).unwrap() != ss_addr.to_bech32(None).unwrap() { continue; }
+            let pd = match o.plutus_data() { Some(p) => p, None => continue };
+            let constr = pd.as_constr_plutus_data().unwrap();
+            if constr.data().len() != 4 { continue; }
+            assert_eq!(constr.data().get(0).as_integer().unwrap(), csl::BigInt::from_str("0").unwrap(), "dist untouched");
+            assert_eq!(
+                constr.data().get(1).as_integer().unwrap(),
+                csl::BigInt::from_str(&(500_000u128 + amount).to_string()).unwrap(),
+                "reserve_minted' = 500k + Δ"
+            );
+            found = true;
+        }
+        assert!(found, "continuing SupplyState with bumped reserve must exist");
+    }
+
+    /// Δ pushing dist_minted over dist_cap is REJECTED by the builder (fail-fast before fees).
+    #[test]
+    fn mint_via_registry_capped_rejects_over_dist_cap() {
+        let keks = format!(r#"["{}"]"#, "7a".repeat(32));
+        // old dist_minted just below cap; Δ tips it over.
+        let old_dist = DIST_CAP - 10;
+        let mint_json = format!(
+            r#"{{"asset_name_hex":"{}","amount":{},"route":"distribution"}}"#,
+            hex::encode(b"tLAMP"), 100u64
+        );
+        let ss_json = mock_supply_state_spend_utxo(old_dist, 0);
+
+        let err = build_mint_via_registry(
+            &keks, mock_registry_ref_utxo(), MOCK_TOKEN_POLICY, &mint_json,
+            &ss_json, MOCK_SUPPLY_STATE_SCRIPT,
+            mock_wallet_utxos(), mock_params(), &"34".repeat(32), 0, 2000,
+        )
+        .expect_err("Δ over dist_cap must be rejected");
+        assert!(err.contains("vượt cap"), "got: {err}");
+    }
+
+    /// Δ pushing reserve_minted over reserve_cap is REJECTED.
+    #[test]
+    fn mint_via_registry_capped_rejects_over_reserve_cap() {
+        let keks = format!(r#"["{}"]"#, "7a".repeat(32));
+        let old_reserve = RESERVE_CAP - 5;
+        let mint_json = format!(
+            r#"{{"asset_name_hex":"{}","amount":{},"route":"reserve"}}"#,
+            hex::encode(b"tLAMP"), 100u64
+        );
+        let ss_json = mock_supply_state_spend_utxo(0, old_reserve);
+
+        let err = build_mint_via_registry(
+            &keks, mock_registry_ref_utxo(), MOCK_TOKEN_POLICY, &mint_json,
+            &ss_json, MOCK_SUPPLY_STATE_SCRIPT,
+            mock_wallet_utxos(), mock_params(), &"34".repeat(32), 0, 2000,
+        )
+        .expect_err("Δ over reserve_cap must be rejected");
+        assert!(err.contains("vượt cap"), "got: {err}");
+    }
+
+    /// Δ exactly hitting the cap (boundary) is ACCEPTED.
+    #[test]
+    fn mint_via_registry_capped_accepts_exact_cap_boundary() {
+        let keks = format!(r#"["{}"]"#, "7a".repeat(32));
+        let old_dist = DIST_CAP - 100;
+        let mint_json = format!(
+            r#"{{"asset_name_hex":"{}","amount":{},"route":"distribution"}}"#,
+            hex::encode(b"tLAMP"), 100u64
+        );
+        let ss_json = mock_supply_state_spend_utxo(old_dist, 0);
+
+        let tx_hex = build_mint_via_registry(
+            &keks, mock_registry_ref_utxo(), MOCK_TOKEN_POLICY, &mint_json,
+            &ss_json, MOCK_SUPPLY_STATE_SCRIPT,
+            mock_wallet_utxos(), mock_params(), &"34".repeat(32), 0, 2000,
+        )
+        .expect("Δ hitting cap exactly must be accepted (dist_minted' == dist_cap)");
+        let tx = Transaction::from_hex(&tx_hex).unwrap();
+        let (ss_addr, _) = derive_taad_script_address(MOCK_SUPPLY_STATE_SCRIPT, 0).unwrap();
+        let outs = tx.body().outputs();
+        let mut ok = false;
+        for i in 0..outs.len() {
+            let o = outs.get(i);
+            if o.address().to_bech32(None).unwrap() != ss_addr.to_bech32(None).unwrap() { continue; }
+            let pd = match o.plutus_data() { Some(p) => p, None => continue };
+            let constr = pd.as_constr_plutus_data().unwrap();
+            if constr.data().len() != 4 { continue; }
+            assert_eq!(constr.data().get(0).as_integer().unwrap(), csl::BigInt::from_str(&DIST_CAP.to_string()).unwrap(), "dist_minted' == dist_cap at boundary");
+            ok = true;
+        }
+        assert!(ok, "boundary continuing datum present");
+    }
+
+    /// qty == 0 rejected even on the capped path (nothing to mint).
+    #[test]
+    fn mint_via_registry_capped_rejects_zero_amount() {
+        let keks = format!(r#"["{}"]"#, "7a".repeat(32));
+        let mint_json = format!(r#"{{"asset_name_hex":"{}","amount":0,"route":"distribution"}}"#, hex::encode(b"tLAMP"));
+        let ss_json = mock_supply_state_spend_utxo(0, 0);
+        let err = build_mint_via_registry(
+            &keks, mock_registry_ref_utxo(), MOCK_TOKEN_POLICY, &mint_json,
+            &ss_json, MOCK_SUPPLY_STATE_SCRIPT,
+            mock_wallet_utxos(), mock_params(), &"34".repeat(32), 0, 2000,
+        )
+        .expect_err("zero amount must be rejected");
+        assert!(err.contains("amount must be > 0"), "got: {err}");
+    }
+
+    // ─── DECODE round-trip — guards encode/decode symmetry ─────────────
+    // `mint_lamp::build_mint_lamp_via_did` decodes RAW inline_datum_hex fetched
+    // from chain (Dart has no CBOR/Plutus-Data decoder). These prove the decoder
+    // is the exact inverse of the encoder used to WRITE the datum on-chain — any
+    // drift here means the LAMP builder would misread real chain data.
+
+    #[test]
+    fn decode_registry_datum_round_trips_single_and_multisig() {
+        let entries = vec![
+            EntryJson {
+                action_tag_hex: hex::encode(b"LAMPtag"),
+                authorization: AuthorizationJson { kind: "single".into(), pkh: Some(pkh_a()), pkhs: None, threshold: None },
+            },
+            EntryJson {
+                action_tag_hex: hex::encode(b"PARTNER"),
+                authorization: AuthorizationJson { kind: "multisig".into(), pkh: None, pkhs: Some(vec![pkh_a(), pkh_b()]), threshold: Some(2) },
+            },
+            EntryJson {
+                action_tag_hex: hex::encode(b"OLD"),
+                authorization: AuthorizationJson { kind: "revoked".into(), pkh: None, pkhs: None, threshold: None },
+            },
+        ];
+        let encoded = encode_registry_datum(GOVERNING_DID, &entries).unwrap();
+        let hex_str = hex::encode(encoded.to_bytes());
+
+        let decoded = decode_registry_datum(&hex_str).unwrap();
+        assert_eq!(decoded.governing_did, GOVERNING_DID);
+        assert_eq!(decoded.entries.len(), 3);
+
+        assert_eq!(decoded.entries[0].token_tag, b"LAMPtag".to_vec());
+        match &decoded.entries[0].authority {
+            DecodedAuthority::SinglePkh(pkh) => assert_eq!(*pkh, hex::decode(pkh_a()).unwrap()),
+            _ => panic!("entry 0 must decode as SinglePkh"),
+        }
+
+        assert_eq!(decoded.entries[1].token_tag, b"PARTNER".to_vec());
+        match &decoded.entries[1].authority {
+            DecodedAuthority::MultiSig { pkhs, threshold } => {
+                assert_eq!(*threshold, 2);
+                assert_eq!(pkhs.len(), 2);
+                assert_eq!(pkhs[0], hex::decode(pkh_a()).unwrap());
+                assert_eq!(pkhs[1], hex::decode(pkh_b()).unwrap());
+            }
+            _ => panic!("entry 1 must decode as MultiSig"),
+        }
+
+        assert_eq!(decoded.entries[2].token_tag, b"OLD".to_vec());
+        assert!(matches!(decoded.entries[2].authority, DecodedAuthority::Revoked));
+    }
+
+    #[test]
+    fn find_registry_authority_exact_one_match_ok_zero_or_dup_reject() {
+        let entries = vec![EntryJson {
+            action_tag_hex: hex::encode(b"LAMPtag"),
+            authorization: AuthorizationJson { kind: "single".into(), pkh: Some(pkh_a()), pkhs: None, threshold: None },
+        }];
+        let hex_str = hex::encode(encode_registry_datum(GOVERNING_DID, &entries).unwrap().to_bytes());
+        let decoded = decode_registry_datum(&hex_str).unwrap();
+
+        // Found.
+        assert!(find_registry_authority(&decoded, b"LAMPtag").is_ok());
+        // Not found → Err (0 entries match).
+        let err = find_registry_authority(&decoded, b"WRONG").unwrap_err();
+        assert!(err.contains("không tìm thấy"), "got: {err}");
+
+        // Duplicate tag in datum → fail-closed (no first-match).
+        let dup_entries = vec![
+            EntryJson { action_tag_hex: hex::encode(b"LAMPtag"), authorization: AuthorizationJson { kind: "single".into(), pkh: Some(pkh_a()), pkhs: None, threshold: None } },
+            EntryJson { action_tag_hex: hex::encode(b"LAMPtag"), authorization: AuthorizationJson { kind: "single".into(), pkh: Some(pkh_b()), pkhs: None, threshold: None } },
+        ];
+        let dup_hex = hex::encode(encode_registry_datum(GOVERNING_DID, &dup_entries).unwrap().to_bytes());
+        let dup_decoded = decode_registry_datum(&dup_hex).unwrap();
+        let dup_err = find_registry_authority(&dup_decoded, b"LAMPtag").unwrap_err();
+        assert!(dup_err.contains("TRÙNG"), "got: {dup_err}");
+    }
+
+    #[test]
+    fn decode_supply_state_datum_round_trips() {
+        let encoded = encode_supply_state_datum(DIST_CAP - 100, 42, DIST_CAP, RESERVE_CAP).unwrap();
+        let hex_str = hex::encode(encoded.to_bytes());
+        let decoded = decode_supply_state_datum(&hex_str).unwrap();
+        assert_eq!(decoded.dist_minted, DIST_CAP - 100);
+        assert_eq!(decoded.reserve_minted, 42);
+        assert_eq!(decoded.dist_cap, DIST_CAP);
+        assert_eq!(decoded.reserve_cap, RESERVE_CAP);
+    }
+
+    #[test]
+    fn decode_supply_state_datum_rejects_wrong_field_count() {
+        // 3-field datum (old schema drift) must be rejected, not silently misread.
+        let mut fields = PlutusList::new();
+        fields.add(&PlutusData::new_integer(&csl::BigInt::from_str("1").unwrap()));
+        fields.add(&PlutusData::new_integer(&csl::BigInt::from_str("2").unwrap()));
+        fields.add(&PlutusData::new_integer(&csl::BigInt::from_str("3").unwrap()));
+        let bad = PlutusData::new_constr_plutus_data(&ConstrPlutusData::new(&BigNum::from(0u64), &fields));
+        let err = decode_supply_state_datum(&hex::encode(bad.to_bytes())).unwrap_err();
+        assert!(err.contains("4 field"), "got: {err}");
     }
 }

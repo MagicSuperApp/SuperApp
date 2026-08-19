@@ -10,9 +10,9 @@
 //   BƯỚC 2 — CLAIM-RELEASE VỀ VÍ: đưa LAMP từ kho về ví user. Endpoint PhoenixKey
 //     CHƯA cấp → nút DISABLED + ghi "chờ endpoint release". KHÔNG bịa path.
 //
-// Cap/authority + m-of-n để CHỖ (chờ LAMP). Phần dựng+ký CBOR = Enclave native
-// (Thư) — màn nhận buildAndSignTx qua service; hiện để STUB rõ ràng, ném lỗi tới
-// khi native ráp. Đủ 4 trạng-thái. Màu token-driven (COLORS), snake_case ở wire.
+// Phần dựng+ký CBOR đã nối tới Enclave native (orgMintTxBuilder → Rust). Cái còn
+// thiếu là SỐ LIỆU chuỗi, khai ở config/orgMintChain.ts — thiếu thì buildAndSignTx
+// ném lỗi NÊU TÊN từng thứ. Đủ 4 trạng-thái. Màu token-driven (COLORS), wire snake_case.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -44,6 +44,8 @@ import {
   type WaitSignedHandle,
 } from '../services/orgMintService';
 import { PhoenixKeyApiError } from '../services/phoenixKey-api';
+import { makeBuildAndSignMintTx } from '../services/orgMintTxBuilder';
+import { ORG_MINT_CHAIN, ORG_MINT_NETWORK } from '../config/orgMintChain';
 
 // Tham số điều-hướng từ màn OrgDID.
 type OrgMintRoute = RouteProp<
@@ -54,15 +56,27 @@ type OrgMintRoute = RouteProp<
 // Pha của bước 1 (để hiện tiến-trình + đúng trạng-thái loading/error).
 type MintPhase = 'idle' | 'requesting' | 'waiting_sign' | 'submitting' | 'done' | 'error';
 
-// ── STUB Enclave native (Thư) ─────────────────────────────────────────────────
-// TODO(Thư): thay bằng hàm dựng+ký CBOR thật từ module Enclave. Nhận {orgDid,
-// requestId}, trả {signedTxCbor}. m-of-n: gom đủ m chữ ký trước khi trả (single=1).
-// Hiện ném lỗi để KHÔNG giả-lập submit khi native chưa sẵn.
-const buildAndSignTxStub: BuildAndSignMintTx = async () => {
-  throw new Error(
-    'Tính năng ký giao dịch sẽ mở ở bản sau.',
-  );
+// ── Nối Enclave native ────────────────────────────────────────────────────────
+// Đường dựng+ký CBOR đã thông tới Rust (`orgMintTxBuilder` → cầu native →
+// `taad_build_mint_lamp_via_did`). Còn thiếu SỐ LIỆU chuỗi, không thiếu mã: xem
+// `config/orgMintChain.ts`. Khi thiếu, hàm dưới ném lỗi NÊU TÊN từng thứ còn
+// thiếu — đừng thay bằng câu chung chung, người đọc log cần biết chờ cái gì.
+//
+// Ba `resolve*` dưới đây cũng chưa có nguồn thật (app chưa có chỗ mở Master_KEK
+// ở tầng màn, chưa có endpoint trả slot tip). Chúng KHÔNG bao giờ chạy khi
+// ORG_MINT_CHAIN còn null, nên để chúng ném thẳng còn hơn trả số giả.
+const chuaCoNguon = (ten: string) => async (): Promise<never> => {
+  throw new Error(`Chưa có nguồn dữ liệu: ${ten}`);
 };
+
+const buildAndSignTx: BuildAndSignMintTx = makeBuildAndSignMintTx({
+  chain: ORG_MINT_CHAIN,
+  network: ORG_MINT_NETWORK,
+  resolveAuthorityKeks: chuaCoNguon('Master_KEK của authority tổ chức'),
+  resolveWallet: chuaCoNguon('UTxO + seed ví trả phí'),
+  resolveTipSlot: chuaCoNguon('slot tip của chuỗi'),
+  resolveMint: chuaCoNguon('số LAMP + tên token'),
+});
 
 const OrgMintScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
@@ -132,7 +146,7 @@ const OrgMintScreen: React.FC = () => {
       const result = await submitMintTx({
         orgDid,
         requestId: intent.requestId,
-        buildAndSignTx: buildAndSignTxStub, // TODO(Thư): thay bằng hàm native thật
+        buildAndSignTx,
       });
 
       setTxHash(result.txHash);

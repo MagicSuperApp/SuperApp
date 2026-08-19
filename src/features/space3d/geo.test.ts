@@ -1,6 +1,7 @@
 import {
-  buildFarmRing, centroidLatLng, fallbackRing, hashSeed, latLngToMeters,
-  makeRng, pointInRing, ringArea, ringBounds, ringRadius, seededPointInRing,
+  buildFarmRing, centroidLatLng, fallbackRing, hashSeed, isUsableLatLng,
+  latLngToMeters, makeRng, originFromTrees, pointInRing, ringArea, ringBounds,
+  ringRadius, seededPointInRing,
 } from './geo';
 
 describe('latLngToMeters', () => {
@@ -181,5 +182,94 @@ describe('centroidLatLng', () => {
 
   it('mảng rỗng không nổ', () => {
     expect(centroidLatLng([])).toEqual({ lat: 0, lng: 0 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Gốc toạ-độ suy từ ĐÀN CÂY — dùng khi vườn chưa vẽ ranh giới
+// ---------------------------------------------------------------------------
+
+describe('originFromTrees', () => {
+  it('trung bình các cây có GPS hợp lệ', () => {
+    const o = originFromTrees([
+      { lat: 10, lng: 106 },
+      { lat: 12, lng: 108 },
+    ]);
+    expect(o?.lat).toBeCloseTo(11, 9);
+    expect(o?.lng).toBeCloseTo(107, 9);
+  });
+
+  it('LOẠI toạ-độ 0/0 trước khi cộng — nó kéo tâm vườn ra giữa Đại Tây Dương', () => {
+    const o = originFromTrees([
+      { lat: 10.5, lng: 105.5 },
+      { lat: 0, lng: 0 },
+    ]);
+    // Lọt vào thì trung bình ra 5.25/52.75, tức ngoài khơi Tây Phi.
+    expect(o?.lat).toBeCloseTo(10.5, 9);
+    expect(o?.lng).toBeCloseTo(105.5, 9);
+  });
+
+  it('loại NaN, null, và số ngoài khoảng vĩ/kinh độ', () => {
+    const o = originFromTrees([
+      null,
+      undefined,
+      { lat: NaN, lng: 105 },
+      { lat: 91, lng: 105 },
+      { lat: 10, lng: 181 },
+      { lat: '10', lng: '105' },
+      { lat: 10.5, lng: 105.5 },
+    ]);
+    expect(o).toEqual({ lat: 10.5, lng: 105.5 });
+  });
+
+  it('không cây nào dùng được → null (KHÔNG bịa số 0/0)', () => {
+    expect(originFromTrees([])).toBeNull();
+    expect(originFromTrees(null)).toBeNull();
+    expect(originFromTrees([{ lat: 0, lng: 0 }])).toBeNull();
+  });
+});
+
+describe('buildFarmRing — gốc dự phòng từ đàn cây', () => {
+  const TREE_ORIGIN = { lat: 10.5, lng: 105.5 };
+  const SQUARE = [
+    { lat: 10.0, lng: 106.0 }, { lat: 10.001, lng: 106.0 },
+    { lat: 10.001, lng: 106.001 }, { lat: 10.0, lng: 106.001 },
+  ];
+
+  it('CHƯA vẽ ranh giới mà có cây có GPS → vẫn có gốc, không còn null', () => {
+    const cu = buildFarmRing([], 5);
+    expect(cu.origin).toBeNull(); // đường cũ: không gốc ⇒ cây bị rải ngẫu nhiên
+
+    const moi = buildFarmRing([], 5, TREE_ORIGIN);
+    expect(moi.origin).toEqual(TREE_ORIGIN);
+    expect(moi.hasBoundary).toBe(false);
+  });
+
+  it('ranh giới vẽ DỞ (1–2 đỉnh) cũng nhường gốc cho đàn cây', () => {
+    // Ô vuông dự phòng có tâm ở (0,0), nên gốc phải là tâm đàn cây thì cây mới
+    // rơi vào trong ô; lấy một đỉnh vẽ dở là đẩy cả đàn lệch sang một góc.
+    const r = buildFarmRing([{ lat: 20, lng: 100 }], 3, TREE_ORIGIN);
+    expect(r.origin).toEqual(TREE_ORIGIN);
+  });
+
+  it('ranh giới ĐỦ 3 đỉnh có diện tích thật → gốc KHÔNG đổi', () => {
+    const r = buildFarmRing(SQUARE, 3, TREE_ORIGIN);
+    expect(r.hasBoundary).toBe(true);
+    expect(r.origin).toEqual(centroidLatLng(SQUARE));
+  });
+
+  it('gốc dự phòng rác (0/0) bị bỏ qua, không thay được null', () => {
+    expect(buildFarmRing([], 3, { lat: 0, lng: 0 }).origin).toBeNull();
+    expect(buildFarmRing([], 3, null).origin).toBeNull();
+  });
+});
+
+describe('isUsableLatLng', () => {
+  it('nhận toạ-độ thật, chặn 0/0 và số vô nghĩa', () => {
+    expect(isUsableLatLng({ lat: 10.5, lng: 105.5 })).toBe(true);
+    expect(isUsableLatLng({ lat: 0, lng: 0 })).toBe(false);
+    expect(isUsableLatLng({ lat: 10.5 })).toBe(false);
+    expect(isUsableLatLng(null)).toBe(false);
+    expect(isUsableLatLng('10,105')).toBe(false);
   });
 });

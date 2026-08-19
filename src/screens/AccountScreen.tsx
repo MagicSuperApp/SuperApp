@@ -41,17 +41,35 @@ import taad from '../sdk/taadEnclave';
 import { getStoredMasterKek } from '../services/masterKekStore';
 import LanguagePickerModal from '../components/LanguagePickerModal';
 import { LANGUAGES, useLanguage } from '../i18n';
+import { BUILD_COMMIT, BUILD_BRANCH, BUILD_ID } from '@env';
 
 // 0 = preprod (testnet), khớp WALLET_NETWORK bên register + PhoenixWalletScreen.
 const WALLET_NETWORK = 0;
 
 // Version THẬT đọc từ bundle (CFBundleShortVersionString / versionName + build number).
 // Thay chuỗi hard-code "Aladin v1.0.0" (Lỗi field #4) — để field biết đúng build đang chạy.
-const APP_VERSION_LABEL = `Aladin v${getVersion()} (${getBuildNumber()})`;
+const APP_VERSION_BASE = `Aladin v${getVersion()} (${getBuildNumber()})`;
+
+// Mã commit đã dựng ra bản này. VÌ SAO cần: số build ("86") do App Store Connect cấp
+// và tăng dần theo mỗi lần nộp, KHÔNG chỉ về commit nào; hơn nữa `main` và `develop`
+// cùng đẩy lên một luồng TestFlight nên hai nhánh khác nhau vẫn ra số liền nhau. Kết
+// quả: người thử báo lỗi kèm "2.0 (86)" mà không ai truy được bản đó gồm những vá nào.
+// CI ghi BUILD_COMMIT vào bundle (codemagic.yaml, .github/actions/rn-env). Build tay ở
+// máy lập trình viên thì biến trống → giấu hẳn, KHÔNG in "()" rỗng hay chữ "unknown".
+const COMMIT_SHORT = (BUILD_COMMIT ?? '').trim().slice(0, 7);
+const APP_VERSION_LABEL = COMMIT_SHORT
+    ? `${APP_VERSION_BASE} · ${COMMIT_SHORT}`
+    : APP_VERSION_BASE;
 
 // Chi tiết debug (tap version 5 lần): version + server API đang trỏ → field tự soi
 // máy có chạy đúng build + đúng server không (chẩn đoán 404 farm — Lỗi field #5).
-const APP_DEBUG_INFO = `${APP_VERSION_LABEL}\n\nMáy chủ: ${ORILIFE_BASE}\nNền: ${Platform.OS}`;
+const BUILD_TRACE_LINES = [
+    COMMIT_SHORT ? `Commit: ${COMMIT_SHORT}` : 'Commit: (bản dựng tay, CI không ghi)',
+    (BUILD_BRANCH ?? '').trim() ? `Nhánh: ${BUILD_BRANCH.trim()}` : null,
+    (BUILD_ID ?? '').trim() ? `Mã lượt dựng: ${BUILD_ID.trim()}` : null,
+].filter(Boolean).join('\n');
+
+const APP_DEBUG_INFO = `${APP_VERSION_BASE}\n\n${BUILD_TRACE_LINES}\n\nMáy chủ: ${ORILIFE_BASE}\nNền: ${Platform.OS}`;
 import { Switch } from 'react-native';
 const { width } = Dimensions.get('window');
 
@@ -870,7 +888,21 @@ const AccountScreen = () => {
 
                 {/* ── Nạp tín dụng ── */}
                 <Animated.View style={{ opacity: fadeAnim, marginHorizontal: 20, marginBottom: 12 }}>
-                    <TouchableOpacity style={styles.topupBtn} activeOpacity={0.88}>
+                    {/* Nút này TRƯỚC ĐÂY không có `onPress` — bấm vào không xảy ra gì, không một
+                        dòng báo. Kho chưa có màn nạp tín dụng nào (grep navigator: không route),
+                        nên chưa thể nối đích thật. Trong lúc chờ, nói thẳng là chưa mở còn hơn
+                        để người dùng bấm mãi tưởng máy treo — và nút chết cũng là thứ kho ứng
+                        dụng đánh trượt khi xét bản phát hành. */}
+                    <TouchableOpacity
+                        style={styles.topupBtn}
+                        activeOpacity={0.88}
+                        onPress={() =>
+                            Alert.alert(
+                                'Chưa mở nạp tín dụng',
+                                'Đường nạp tín dụng MAGIC chưa mở trong bản này. Khi mở, nút này sẽ dẫn thẳng tới màn nạp.',
+                            )
+                        }
+                    >
                         <View style={styles.btnShine} />
                         <Icon name="lightning-bolt" size={19} color={COLORS.white} />
                         <View>

@@ -1,4 +1,7 @@
-import { fetchTimeline, sortNewestFirst, KIND_VI, KIND_ICON, KIND_FALLBACK_ICON, type TimelineEvent } from './timelineService';
+import {
+  anchorEvent, anchorState, fetchEventProof, fetchTimeline, safeExplorerUrl, sortNewestFirst,
+  KIND_VI, KIND_ICON, KIND_FALLBACK_ICON, type TimelineEvent,
+} from './timelineService';
 
 const BASE = 'https://api.orilife.io';
 const TREE = 'tree-abc-123';
@@ -165,5 +168,122 @@ describe('KIND_ICON', () => {
 
   it('phủ đúng 9 loại máy chủ khai', () => {
     expect(Object.keys(KIND_ICON).sort()).toEqual(Object.keys(KIND_VI).sort());
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BẰNG CHỨNG: proof + anchor
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('anchorState — ba giá trị, vì "chưa biết" không phải "chưa neo"', () => {
+  it('có tx_hash là đã neo, dù status viết gì', () => {
+    expect(anchorState({ tx_hash: 'ab12', status: 'pending' })).toBe(true);
+  });
+  it('suy từ status khi chưa có tx_hash', () => {
+    expect(anchorState({ status: 'anchored' })).toBe(true);
+    expect(anchorState({ status: 'pending' })).toBe(false);
+  });
+  it('không có anchor / status lạ → null, không được kết luận', () => {
+    expect(anchorState(null)).toBeNull();
+    expect(anchorState({})).toBeNull();
+    expect(anchorState({ status: 'đang-gộp-lô' })).toBeNull();
+    expect(anchorState({ tx_hash: '   ' })).toBeNull();
+  });
+});
+
+describe('safeExplorerUrl — chỉ http/https mới được vào Linking.openURL', () => {
+  it('cho qua https', () => {
+    expect(safeExplorerUrl({ explorer_url: 'https://cardanoscan.io/tx/ab' }))
+      .toBe('https://cardanoscan.io/tx/ab');
+  });
+  it('chặn javascript: và deep-link app khác', () => {
+    expect(safeExplorerUrl({ explorer_url: 'javascript:alert(1)' })).toBeNull();
+    expect(safeExplorerUrl({ explorer_url: 'lamp://pay' })).toBeNull();
+    expect(safeExplorerUrl(null)).toBeNull();
+  });
+});
+
+describe('fetchEventProof', () => {
+  it('đọc được thân gói trong `proof`', async () => {
+    mockFetch(200, { ok: true, proof: { event_id: 'e1', merkle_root: 'root', anchor: { tx_hash: 'tx1' } } });
+    const r = await fetchEventProof(BASE, 'tree', TREE, 'e1');
+    expect(r.ok).toBe(true);
+    expect(r.data?.merkle_root).toBe('root');
+    expect(anchorState(r.data?.anchor)).toBe(true);
+  });
+
+  it('đọc được thân TRẢI PHẲNG (không có khoá `proof`)', async () => {
+    mockFetch(200, { ok: true, event_id: 'e1', leaf_hash: 'leaf' });
+    const r = await fetchEventProof(BASE, 'tree', TREE, 'e1');
+    expect(r.data?.leaf_hash).toBe('leaf');
+  });
+
+  it('thiếu `path` → undefined, KHÔNG dựng mảng rỗng trông như đã kiểm', async () => {
+    mockFetch(200, { ok: true, event_id: 'e1' });
+    const r = await fetchEventProof(BASE, 'tree', TREE, 'e1');
+    expect(r.data?.path).toBeUndefined();
+    expect(r.data?.anchor).toBeNull();
+  });
+
+  it('bẫy hai tầng ok: {ok:false} kèm HTTP 200 vẫn là lỗi', async () => {
+    mockFetch(200, { ok: false, error: 'Không có quyền' });
+    const r = await fetchEventProof(BASE, 'tree', TREE, 'e1');
+    expect(r.ok).toBe(false);
+    expect(r.error?.detail).toBe('Không có quyền');
+  });
+
+  it('404 không khẳng định sự kiện không tồn tại', async () => {
+    mockFetch(404, {});
+    const r = await fetchEventProof(BASE, 'tree', TREE, 'e1');
+    expect(r.error?.error_code).toBe('proof_not_available');
+    expect(r.error?.detail).not.toMatch(/không tồn tại/i);
+  });
+
+  it('thiếu mã sự kiện → lỗi ngay, không gọi mạng', async () => {
+    const spy = jest.fn();
+    globalThis.fetch = spy as any;
+    const r = await fetchEventProof(BASE, 'tree', TREE, '  ');
+    expect(r.ok).toBe(false);
+    expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+describe('anchorEvent', () => {
+  it('chưa đăng nhập → chặn TẠI MÁY, không đụng tới mạng (neo là việc tốn tiền)', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.removeItem('auth_token');
+    const spy = jest.fn();
+    globalThis.fetch = spy as any;
+    const r = await anchorEvent(BASE, 'tree', TREE, 'e1');
+    expect(r.error?.type).toBe('auth_error');
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('409 "đã neo rồi" là THÀNH CÔNG kèm cờ, không phải lỗi đỏ', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.setItem('auth_token', 'tok');
+    mockFetch(409, { anchor: { status: 'anchored', tx_hash: 'tx9' } });
+    const r = await anchorEvent(BASE, 'tree', TREE, 'e1');
+    expect(r.ok).toBe(true);
+    expect(r.data?.already_anchored).toBe(true);
+    expect(r.data?.tx_hash).toBe('tx9');
+  });
+
+  it('403 nói đúng chuyện: không phải chủ', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.setItem('auth_token', 'tok');
+    mockFetch(403, {});
+    const r = await anchorEvent(BASE, 'tree', TREE, 'e1');
+    expect(r.error?.error_code).toBe('not_owner');
+  });
+
+  it('lượt neo mới thường về `pending`, và đó KHÔNG phải lỗi', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    await AsyncStorage.setItem('auth_token', 'tok');
+    mockFetch(200, { ok: true, anchor: { status: 'pending', network: 'cardano-preprod' } });
+    const r = await anchorEvent(BASE, 'tree', TREE, 'e1');
+    expect(r.ok).toBe(true);
+    expect(r.data?.already_anchored).toBe(false);
+    expect(anchorState(r.data)).toBe(false);
   });
 });

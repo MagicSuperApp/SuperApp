@@ -19,12 +19,27 @@ const https = require('https');
 const ROOT = path.resolve(__dirname, '..');
 const ICONS_DIR = path.join(ROOT, 'assets', 'icons');
 const OUT_FILE = path.join(ROOT, 'src', 'components', 'Icon', 'icons.generated.ts');
-const API = name => `https://api.iconify.design/fa6-solid/${name}.svg`;
+/**
+ * Iconify cho phép lấy icon từ NHIỀU bộ. Mặc định là Font Awesome Solid; muốn bộ
+ * khác thì viết `bo:ten` — ví dụ `meteocons:clear-day-fill`.
+ *
+ * Tên tệp lưu lại KHÔNG mang tiền tố bộ, mà thêm tiền tố ngắn do người gọi đặt
+ * (xem `--as=`), vì `<Icon name="...">` tra theo tên tệp. Bộ thời tiết dùng tiền
+ * tố `wx-` để nhìn là biết ngay nó không phải icon giao diện thường.
+ */
+const API = (name, set) => `https://api.iconify.design/${set || 'fa6-solid'}/${name}.svg`;
 
-function download(name) {
+function download(spec) {
+  // `bo:ten` → lấy từ bộ `bo`; `ten` → Font Awesome Solid. `bo:ten=tenluu` để
+  // đổi tên tệp lưu (icon thời tiết lưu thành `wx-*`).
+  const [source, saveAsRaw] = spec.split('=');
+  const hasSet = source.includes(':');
+  const set = hasSet ? source.split(':')[0] : null;
+  const name = hasSet ? source.split(':')[1] : source;
+  const saveAs = saveAsRaw || name;
   return new Promise((resolve, reject) => {
     https
-      .get(API(name), res => {
+      .get(API(name, set), res => {
         if (res.statusCode !== 200) {
           res.resume();
           return reject(new Error(`HTTP ${res.statusCode} for ${name}`));
@@ -33,8 +48,8 @@ function download(name) {
         res.on('data', c => (data += c));
         res.on('end', () => {
           if (!data.includes('<svg')) return reject(new Error(`No SVG for ${name}`));
-          fs.writeFileSync(path.join(ICONS_DIR, `${name}.svg`), data);
-          resolve(name);
+          fs.writeFileSync(path.join(ICONS_DIR, `${saveAs}.svg`), data);
+          resolve(saveAs);
         });
       })
       .on('error', reject);

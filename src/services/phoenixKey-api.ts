@@ -366,6 +366,29 @@ export const identity = {
     ),
 
   /**
+   * Tra DID theo KHOÁ phần cứng — cứu ca CÀI LẠI APP (PhoenixKey-Database #192,
+   * `IdentityLookupDtos.java`). CÔNG KHAI, KHÔNG cần Bearer.
+   *
+   * Cài lại app / xoá dữ liệu app ⟹ DID mất khỏi storage nhưng khoá HW còn nguyên
+   * trong Secure Enclave. Đây là chiều NGƯỢC của `getPubkey` (did→khoá).
+   *
+   * VÌ SAO BẮT KÝ chứ không làm cửa GET trần — DTO nói thẳng: `GET /{did}/pubkey`
+   * đã công khai chiều xuôi, mở chiều ngược mà không ký thì "ai nhặt được một khoá
+   * công khai ở đâu đó cũng tra ra danh tính chủ". Bắt ký challenge ⟹ chỉ người
+   * ĐANG GIỮ khoá tra được — mà giữ khoá nghĩa là mở được bằng vân tay/khuôn mặt.
+   *
+   * ⚠ MIỀN KÝ RIÊNG: `PHOENIXKEY_LOOKUP:` — KHÁC `PHOENIXKEY_GENESIS:` của
+   * `register`. DTO đặt nhãn riêng để chống ký nhầm miền; chép nhầm tiền tố thì
+   * máy chủ trả 404 và không có gì nói cho biết vì sao.
+   *
+   * ⚠ MỌI ca hỏng đều 404 — chữ ký sai · khoá chưa đăng ký · khoá đã thu hồi, ba
+   * thứ trả về giống hệt nhau, CỐ Ý để không rò rỉ. Nên chỗ gọi KHÔNG được dịch
+   * 404 thành một nguyên nhân cụ thể nào.
+   */
+  lookupByKey: (body: { publicKeyHex: string; nonce: string; signatureHex: string }) =>
+    unwrap<{ userDid: string }>(client.post('/identity/lookup', body)),
+
+  /**
    * Khôi-phục mất-máy (Mode B): gắn HW_Key MỚI (thiết bị này) vào DID đã có, sau khi
    * user khôi phục Master_KEK từ 24 từ. `signature` = Ed25519 của TAAD_Key khôi phục
    * ký lên challenge (bind userDid+newHwPublicKeyHex+nonce). Backend verify với

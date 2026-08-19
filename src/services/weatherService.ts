@@ -40,9 +40,26 @@ export interface WeatherDay {
   rainChance: number;
 }
 
+/**
+ * MỘT GIỜ trong dự báo. Có mảng này thì mới cảnh báo được "sắp có dông" — còn
+ * số theo NGÀY chỉ nói được "hôm nay có lúc mưa", tức đúng nhưng vô dụng: nhà
+ * vườn cần biết là còn hai tiếng nữa hay tối mới mưa.
+ */
+export interface WeatherHour {
+  /** Mốc thời gian THẬT (epoch ms), đã quy từ giờ địa phương của máy chủ. */
+  at: number;
+  code: number;
+  /** Khả năng mưa trong giờ đó (%). */
+  rainChance: number;
+  /** Gió GIẬT (km/h) — số đo gần nhất với "lốc". Gió trung bình không nói được. */
+  gustKph: number;
+}
+
 export interface WeatherReport {
   now: WeatherNow;
   days: WeatherDay[];
+  /** Dự báo theo GIỜ, sớm nhất trước. Rỗng khi máy chủ không trả. */
+  hours: WeatherHour[];
   /** Toạ-độ máy chủ thực sự đã tra (có thể lệch vài km so với điểm gửi đi). */
   at: { lat: number; lon: number };
 }
@@ -73,26 +90,35 @@ export function centroidOf(points: Array<{ lat: number; lng: number }>): { lat: 
  */
 export interface WeatherLook {
   labelKey: string;
+  /** Icon giao diện đơn sắc (Font Awesome) — dùng ở chỗ chật, cần theo màu chữ. */
   icon: string;
+  /**
+   * Icon THỜI TIẾT nhiều màu (bộ meteocons, tiền tố `wx-`).
+   *
+   * Dùng bộ riêng vì icon giao diện đơn sắc không phân biệt nổi "mưa nhỏ" với
+   * "mưa to" khi chỉ còn 20 px — cả hai đều ra một đám mây có mấy vạch. Bộ thời
+   * tiết có màu và hình riêng cho từng hiện tượng, đọc được ở cỡ nhỏ.
+   */
+  wxIcon: string;
   tone: 'sun' | 'cloud' | 'rain' | 'storm';
 }
 
 export function describeWeather(code: number): WeatherLook {
-  if (code === 0) return { labelKey: 'trace.sky.clear', icon: 'sun', tone: 'sun' };
-  if (code === 1) return { labelKey: 'trace.sky.mostlyClear', icon: 'sun', tone: 'sun' };
-  if (code === 2) return { labelKey: 'trace.sky.partlyCloudy', icon: 'cloud-sun', tone: 'cloud' };
-  if (code === 3) return { labelKey: 'trace.sky.cloudy', icon: 'cloud', tone: 'cloud' };
-  if (code === 45 || code === 48) return { labelKey: 'trace.sky.fog', icon: 'smog', tone: 'cloud' };
-  if (code >= 51 && code <= 57) return { labelKey: 'trace.sky.drizzle', icon: 'cloud-rain', tone: 'rain' };
-  if (code >= 61 && code <= 65) return { labelKey: 'trace.sky.rain', icon: 'cloud-showers-heavy', tone: 'rain' };
-  if (code === 66 || code === 67) return { labelKey: 'trace.sky.freezingRain', icon: 'cloud-rain', tone: 'rain' };
-  if (code >= 71 && code <= 77) return { labelKey: 'trace.sky.snow', icon: 'snowflake', tone: 'cloud' };
-  if (code >= 80 && code <= 82) return { labelKey: 'trace.sky.showers', icon: 'cloud-showers-heavy', tone: 'rain' };
-  if (code === 85 || code === 86) return { labelKey: 'trace.sky.sleet', icon: 'snowflake', tone: 'cloud' };
+  if (code === 0) return { labelKey: 'trace.sky.clear', icon: 'sun', wxIcon: 'wx-clear', tone: 'sun' };
+  if (code === 1) return { labelKey: 'trace.sky.mostlyClear', icon: 'sun', wxIcon: 'wx-clear', tone: 'sun' };
+  if (code === 2) return { labelKey: 'trace.sky.partlyCloudy', icon: 'cloud-sun', wxIcon: 'wx-partly', tone: 'cloud' };
+  if (code === 3) return { labelKey: 'trace.sky.cloudy', icon: 'cloud', wxIcon: 'wx-cloudy', tone: 'cloud' };
+  if (code === 45 || code === 48) return { labelKey: 'trace.sky.fog', icon: 'smog', wxIcon: 'wx-fog', tone: 'cloud' };
+  if (code >= 51 && code <= 57) return { labelKey: 'trace.sky.drizzle', icon: 'cloud-rain', wxIcon: 'wx-drizzle', tone: 'rain' };
+  if (code >= 61 && code <= 65) return { labelKey: 'trace.sky.rain', icon: 'cloud-showers-heavy', wxIcon: 'wx-rain', tone: 'rain' };
+  if (code === 66 || code === 67) return { labelKey: 'trace.sky.freezingRain', icon: 'cloud-rain', wxIcon: 'wx-sleet', tone: 'rain' };
+  if (code >= 71 && code <= 77) return { labelKey: 'trace.sky.snow', icon: 'snowflake', wxIcon: 'wx-snow', tone: 'cloud' };
+  if (code >= 80 && code <= 82) return { labelKey: 'trace.sky.showers', icon: 'cloud-showers-heavy', wxIcon: 'wx-heavy-rain', tone: 'rain' };
+  if (code === 85 || code === 86) return { labelKey: 'trace.sky.sleet', icon: 'snowflake', wxIcon: 'wx-sleet', tone: 'cloud' };
   // WMO chỉ có 95 · 96 · 99 cho dông — chặn TRẦN, không để `>= 95` nuốt mọi mã lạ
   // rồi báo "Dông" cho một con số vô nghĩa (đúng thứ bài kiểm đã bắt được).
-  if (code >= 95 && code <= 99) return { labelKey: 'trace.sky.storm', icon: 'cloud-bolt', tone: 'storm' };
-  return { labelKey: 'trace.sky.unknown', icon: 'cloud', tone: 'cloud' };
+  if (code >= 95 && code <= 99) return { labelKey: 'trace.sky.storm', icon: 'cloud-bolt', wxIcon: 'wx-storm', tone: 'storm' };
+  return { labelKey: 'trace.sky.unknown', icon: 'cloud', wxIcon: 'wx-unknown', tone: 'cloud' };
 }
 
 /**
@@ -135,6 +161,10 @@ export async function fetchWeather(lat: number, lon: number): Promise<WeatherRep
     `${BASE}?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}` +
     '&current=temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m' +
     '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max' +
+    // Theo GIỜ — để cảnh báo được "sắp có dông" chứ không chỉ "hôm nay có mưa".
+    // `wind_gusts_10m` chứ không phải `wind_speed_10m`: lốc là GIẬT, và gió trung
+    // bình 20 km/h có thể giấu một cú giật 70 km/h thổi bay giàn lưới.
+    '&hourly=weather_code,precipitation_probability,wind_gusts_10m' +
     '&timezone=Asia%2FBangkok&forecast_days=7';
 
   const ctrl = new AbortController();
@@ -150,12 +180,36 @@ export async function fetchWeather(lat: number, lon: number): Promise<WeatherRep
   }
 }
 
+/**
+ * Chuỗi giờ địa phương của Open-Meteo → epoch ms THẬT.
+ *
+ * ⚠ Máy chủ trả `"2026-08-18T14:00"` KHÔNG kèm múi giờ, và đó là giờ của
+ * `Asia/Bangkok` (ta xin như vậy trong URL). `Date.parse` chuỗi đó sẽ hiểu theo
+ * múi giờ CỦA MÁY — đúng khi máy để giờ Việt Nam, và lệch đúng bằng chênh lệch
+ * múi giờ khi không. Một cảnh báo "dông trong 2 giờ tới" lệch 7 tiếng thì tệ hơn
+ * là không có cảnh báo.
+ *
+ * Nên quy bằng `utc_offset_seconds` mà chính máy chủ gửi kèm: đọc chuỗi như giờ
+ * UTC rồi trừ đi độ lệch. Không đoán theo máy.
+ */
+export function hourEpoch(local: string, utcOffsetSec: number): number | null {
+  if (typeof local !== 'string' || !local) return null;
+  // Bù giây nếu máy chủ chỉ gửi tới phút.
+  const withSec = local.length === 16 ? `${local}:00` : local;
+  const ms = Date.parse(`${withSec}Z`);
+  if (Number.isNaN(ms)) return null;
+  const off = Number.isFinite(utcOffsetSec) ? utcOffsetSec : 0;
+  return ms - off * 1000;
+}
+
 /** Tách riêng khỏi `fetch` để kiểm được bằng test mà không cần mạng. */
 export function parseWeather(raw: unknown): WeatherReport | null {
   const r = raw as {
     latitude?: number; longitude?: number;
+    utc_offset_seconds?: number;
     current?: Record<string, number>;
     daily?: Record<string, unknown>;
+    hourly?: Record<string, unknown>;
   } | null;
   const cur = r?.current;
   const daily = r?.daily as {
@@ -182,6 +236,28 @@ export function parseWeather(raw: unknown): WeatherReport | null {
     });
   }
 
+  const hourly = r?.hourly as {
+    time?: string[];
+    weather_code?: Array<number | null>;
+    precipitation_probability?: Array<number | null>;
+    wind_gusts_10m?: Array<number | null>;
+  } | undefined;
+  const utcOffset = Number(r?.utc_offset_seconds ?? 0);
+  const hours: WeatherHour[] = [];
+  const hourTimes = hourly?.time ?? [];
+  for (let i = 0; i < hourTimes.length; i++) {
+    const at = hourEpoch(hourTimes[i], utcOffset);
+    // Giờ không đọc được thì BỎ giờ đó, đừng bỏ cả mảng: dự báo thiếu một giờ
+    // vẫn cảnh báo được, còn mảng rỗng thì im lặng.
+    if (at === null) continue;
+    hours.push({
+      at,
+      code: Number(hourly?.weather_code?.[i] ?? 0) || 0,
+      rainChance: Math.round(Number(hourly?.precipitation_probability?.[i] ?? 0) || 0),
+      gustKph: Math.round(Number(hourly?.wind_gusts_10m?.[i] ?? 0) || 0),
+    });
+  }
+
   return {
     now: {
       tempC: Math.round(cur.temperature_2m),
@@ -191,6 +267,7 @@ export function parseWeather(raw: unknown): WeatherReport | null {
       code: Number(cur.weather_code ?? 0),
     },
     days,
+    hours,
     at: { lat: Number(r?.latitude ?? 0), lon: Number(r?.longitude ?? 0) },
   };
 }

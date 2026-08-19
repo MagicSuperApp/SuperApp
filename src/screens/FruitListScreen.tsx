@@ -53,6 +53,22 @@ import {
 
 const BASE_URL = ORILIFE_BASE;
 
+/**
+ * Đường ảnh máy chủ trả → URL tải được.
+ *
+ * Máy chủ trả khi thì đường tương đối (`/media/…`), khi thì URL tuyệt đối (ảnh
+ * đã đẩy sang kho ngoài). Nối thẳng `BASE_URL` vào một URL tuyệt đối ra chuỗi
+ * `https://api…https://cdn…` — ảnh không hiện, mà không có lỗi nào nổ, nên chỗ
+ * hỏng nằm im cho tới khi có người mở đúng quả đó.
+ *
+ * Chốt này vốn CHỈ có ở một trong bốn chỗ nối trong luồng quả. Xuất ra để ba màn
+ * kia dùng chung — thêm một chỗ nối mới thì gọi hàm này, đừng viết lại điều kiện.
+ */
+export function absUrl(path: string | null | undefined, base: string = BASE_URL): string | null {
+  if (!path) return null;
+  return /^https?:\/\//i.test(path) ? path : `${base}${path}`;
+}
+
 const STATUS_KEY: Record<FruitStatus, string> = {
   on_tree: 'trace.fruit.onTree',
   harvested: 'trace.fruit.harvested',
@@ -98,6 +114,8 @@ const FruitListScreen: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Lỗi RIÊNG của danh mục giống — xem chú thích trong `load()`. */
+  const [catalogError, setCatalogError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [filter, setFilter] = useState<FruitStatus | null>(null);
 
@@ -110,14 +128,21 @@ const FruitListScreen: React.FC = () => {
 
   const load = useCallback(async () => {
     setError(null);
+    setCatalogError(null);
     const [lay, cat] = await Promise.all([
       getTreeLayout(BASE_URL, treeId),
       getSpeciesCatalog(BASE_URL),
     ]);
     if (lay.ok && lay.data) setLayout(lay.data);
     else setError(lay.error?.detail ?? 'Không tải được dữ liệu cây.');
+    // Lỗi danh mục giống đi RIÊNG, không trộn vào `error`. Hai thứ hỏng theo hai
+    // cách khác nhau và người dùng làm hai việc khác nhau: cây hỏng thì cả màn
+    // trống, còn danh mục hỏng thì màn vẫn dùng được, chỉ mất khối chọn giống.
+    // Bản cũ nuốt hẳn lỗi này ⇒ khối chọn giống biến mất không một chữ, người
+    // dùng tưởng cây đã có giống rồi.
     if (cat.ok && cat.data) setCatalog(cat.data);
-  }, [treeId]);
+    else setCatalogError(cat.error?.detail ?? tk('trace.fruitList.speciesLoadFail'));
+  }, [treeId, tk]);
 
   // Nạp lần đầu (có spinner) + nạp-lại IM LẶNG mỗi lần màn được focus lại
   // (sau khi khoanh quả ở cropper quay về → quả mới hiện ngay, không phải kéo refresh).
@@ -139,10 +164,14 @@ const FruitListScreen: React.FC = () => {
 
   const pickSpecies = useCallback(async (speciesId: string) => {
     setSaving(true);
+    setError(null);
     const r = await setTreeSpecies(BASE_URL, treeId, speciesId);
     setSaving(false);
-    if (r.ok) await load();
-  }, [treeId, load]);
+    // Hỏng thì phải NÓI. Bản cũ im hoàn toàn: người dùng bấm tên giống, không có
+    // gì đổi, nên họ bấm lại — mỗi lần một lượt ghi hỏng nữa, mà màn vẫn câm.
+    if (!r.ok) { setError(r.error?.detail ?? tk('trace.fruitList.speciesSaveFail')); return; }
+    await load();
+  }, [treeId, load, tk]);
 
   // Xin quyền Camera (Android). iOS xin lúc launchCamera.
   const requestCameraPermission = useCallback(async (): Promise<boolean> => {
@@ -165,6 +194,10 @@ const FruitListScreen: React.FC = () => {
   // (asset.width/height đã theo maxWidth/maxHeight) → map-ngược vùng khung chuẩn.
   // `forFruitId` có → mở cropper ở chế độ THÊM GÓC cho quả đó.
   const openCropper = useCallback(async (fromCamera: boolean, forFruitId?: string, forFruitName?: string) => {
+    // ⚠️ CHƯA GIẢI: hai màn co ảnh khác nhau. Chỗ này và `FruitVideoScreen` co về
+    // 1600 px; `FruitScanScreen` CỐ Ý không co, dẫn cảnh báo OriLife 14/08 rằng
+    // app co ảnh trước khi gửi. Chưa ai đo cỡ nào cho kết quả đối chiếu tốt hơn,
+    // nên KHÔNG đổi số ở đây theo cảm tính — đang chờ OriLife trả lời.
     const opts: CameraOptions = { mediaType: 'photo', quality: 0.8, maxWidth: 1600, maxHeight: 1600, saveToPhotos: true };
     const cb = async (res: any) => {
       if (res.didCancel) return;
@@ -188,7 +221,12 @@ const FruitListScreen: React.FC = () => {
         // Để màn khoanh đặt sẵn tên "Quả {n+1}". Nông dân nhắm 50–100 quả/người:
         // bắt họ tự nghĩ ra ngần ấy tên phân biệt được, gõ trên điện thoại giữa
         // vườn, là chỗ người ta bỏ cuộc — không phải chỗ nhận-diện sai.
-        fruitCount: layout?.fruits?.length ?? 0,
+        //
+        // Sơ đồ cây chưa tải được ⇒ `undefined`, KHÔNG phải 0. Đọc `?? 0` là khai
+        // "cây chưa có quả nào" cho một cây có thể đã có 12 quả, và màn khoanh sẽ
+        // đặt sẵn tên "Quả 1" trùng với quả đầu tiên. Màn khoanh đã xử đúng ca
+        // `undefined` (để ô tên trống).
+        fruitCount: layout ? (layout.fruits?.length ?? 0) : undefined,
       });
     };
     if (fromCamera) { if (await requestCameraPermission()) launchCamera(await withPhotoSave(opts), cb); }
@@ -262,7 +300,7 @@ const FruitListScreen: React.FC = () => {
         onPress={() => openDetail(item)}
       >
         <RemoteImage
-          uri={item.thumbnail_url ? `${BASE_URL}${item.thumbnail_url}` : undefined}
+          uri={absUrl(item.thumbnail_url) ?? undefined}
           style={styles.thumb}
           containerStyle={[styles.thumb, styles.thumbPh]}
           resizeMode="cover"
@@ -337,14 +375,45 @@ const FruitListScreen: React.FC = () => {
           </Text>
           <Text style={styles.subtitle}>{tk('trace.fruitList.title')}</Text>
         </View>
+      </View>
+
+      {/* ── Hai việc làm được với cây này — CÓ CHỮ ──────────────────────────
+          Trước đây đây là hai nút tròn chỉ có hình (bia ngắm, khối lập phương)
+          nhét ở góc phải đầu màn. Chữ cho chúng đã nằm sẵn trong từ điển đủ bốn
+          thứ tiếng (`trace.fruitList.identify`, `.place3d`) nhưng chỉ được gắn
+          vào `accessibilityLabel` — tức chỉ trình đọc màn hình nghe được, mắt
+          người không thấy gì.
+          Nút bia ngắm là LỐI VÀO DUY NHẤT của `POST /api/fruit/identify` — cửa
+          duy nhất trả ra kết luận (`decision` + `fruit_id` + `confidence`). Nhà
+          OriLife đếm trên sổ máy chủ: `fruit_identify` 0 lượt trong 1.859 dòng
+          từ tháng 6, trong khi `fruit_candidates` 123 lượt. Một tính năng chạy
+          được, có bài kiểm, không ai gọi — vì cửa vào của nó không có chữ.
+          Truyền `treeId` để màn kia ghim đúng cây: có ghim thì nó mới khoanh
+          vùng trước khi so, và mới thu kho so về một cây. */}
+      <View style={styles.treeActions}>
         <Pressable
-          style={styles.iconBtn}
-          accessibilityLabel={tk('trace.fruitList.place3d')}
+          style={({ pressed }) => [styles.treeActionBtn, pressed && styles.pressed]}
+          accessibilityRole="button"
+          onPress={() => navigation.navigate('FruitScan', {
+            treeId, treeName: treeName || layout?.tree.name, farmId,
+          })}
+        >
+          <Icon name="bullseye" size={17} color={TONE.primary} />
+          <Text style={styles.treeActionTxt} numberOfLines={2}>
+            {tk('trace.fruitList.identify')}
+          </Text>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.treeActionBtn, pressed && styles.pressed]}
+          accessibilityRole="button"
           onPress={() => navigation.navigate('Space3D', {
             mode: 'tree', treeId, treeName: treeName || layout?.tree.name,
           })}
         >
-          <Icon name="cube" size={19} color={TONE.primary} />
+          <Icon name="cube" size={17} color={TONE.primary} />
+          <Text style={styles.treeActionTxt} numberOfLines={2}>
+            {tk('trace.fruitList.place3d')}
+          </Text>
         </Pressable>
       </View>
 
@@ -371,6 +440,12 @@ const FruitListScreen: React.FC = () => {
               </Pressable>
             ))}
           </ScrollView>
+        </View>
+      ) : catalogError ? (
+        // Không có danh mục ⇒ không chọn giống được. Nói ra chỗ này, đừng để khối
+        // chọn giống lặng lẽ vắng mặt.
+        <View style={styles.speciesPick}>
+          <Text style={styles.speciesHint}>{catalogError}</Text>
         </View>
       ) : null}
 
@@ -514,7 +589,7 @@ const FruitListScreen: React.FC = () => {
           <>
             <View style={styles.dHead}>
               <RemoteImage
-                uri={detail.thumbnail_url ? `${BASE_URL}${detail.thumbnail_url}` : null}
+                uri={absUrl(detail.thumbnail_url)}
                 style={styles.dThumb}
                 containerStyle={[styles.dThumb, styles.thumbPh]}
                 resizeMode="cover"
@@ -559,7 +634,7 @@ const FruitListScreen: React.FC = () => {
                   v.url ? (
                     <RemoteImage
                       key={`${v.url}-${i}`}
-                      uri={/^https?:\/\//i.test(v.url) ? v.url : `${BASE_URL}${v.url}`}
+                      uri={absUrl(v.url)}
                       style={styles.dShot}
                       containerStyle={[styles.dShot, styles.thumbPh]}
                       resizeMode="cover"
@@ -651,6 +726,16 @@ const styles = StyleSheet.create({
     backgroundColor: SURFACE.raised, alignItems: 'center', justifyContent: 'center',
   },
   headTitles: { flex: 1, minWidth: 0 },
+  treeActions: {
+    flexDirection: 'row', gap: SPACE.sm,
+    paddingHorizontal: SPACE.page, paddingBottom: SPACE.md,
+  },
+  treeActionBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', gap: 7,
+    paddingVertical: 11, paddingHorizontal: 12,
+    ...ORGANIC_TILE, ...ELEVATION.card, backgroundColor: SURFACE.raised,
+  },
+  treeActionTxt: { ...TYPE.caption, flex: 1, fontSize: 13, color: TONE.primary, fontWeight: '700' },
   title: { ...TYPE.title, fontSize: 23 },
   subtitle: { ...TYPE.caption, fontSize: 13.5 },
 

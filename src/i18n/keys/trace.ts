@@ -36,9 +36,98 @@ export const TRACE_STRINGS = {
   'trace.button.createFirstGarden': { vi: 'Tạo vườn đầu tiên', en: 'Create your first garden', zh: '创建第一个果园', ja: '最初の果樹園を作る' },
   'trace.empty.noGarden': { vi: 'Chưa có vườn nào', en: 'No gardens yet', zh: '还没有果园', ja: 'まだ果樹園がありません' },
 
+  // ── Mục 1 — hai thẻ: danh sách và bản đồ ──────────────────────────────────
+  'trace.tab.list': { vi: 'Vườn của tôi', en: 'My gardens', zh: '我的果园', ja: 'マイ果樹園' },
+  'trace.tab.map': { vi: 'Bản đồ', en: 'Map', zh: '地图', ja: '地図' },
+
+  // ── Bản đồ vườn ───────────────────────────────────────────────────────────
+  'trace.farmMap.search': { vi: 'Tìm vườn…', en: 'Find a garden…', zh: '查找果园…', ja: '果樹園を探す…' },
+  'trace.farmMap.noResult': { vi: 'Không có vườn nào khớp', en: 'No garden matches', zh: '没有匹配的果园', ja: '一致する果樹園がありません' },
+  'trace.farmMap.loading': { vi: 'Đang mở bản đồ…', en: 'Opening the map…', zh: '正在打开地图…', ja: '地図を開いています…' },
+  'trace.farmMap.failTitle': { vi: 'Chưa mở được bản đồ', en: 'Could not open the map', zh: '无法打开地图', ja: '地図を開けませんでした' },
+  'trace.farmMap.retry': { vi: 'Thử lại', en: 'Try again', zh: '重试', ja: 'もう一度' },
+  'trace.farmMap.unavailable': {
+    vi: 'Máy này chưa mở được bản đồ. Bạn xem danh sách vườn ở thẻ bên cạnh nhé.',
+    en: 'The map is unavailable on this device. Use the list tab instead.',
+    zh: '此设备无法显示地图，请改用旁边的列表。',
+    ja: 'この端末では地図を表示できません。隣のリストをご利用ください。',
+  },
+  'trace.farmMap.empty': {
+    vi: 'Chưa có vườn nào để đặt lên bản đồ',
+    en: 'No gardens to put on the map yet',
+    zh: '还没有果园可以放到地图上',
+    ja: '地図に置ける果樹園がまだありません',
+  },
+  'trace.farmMap.noCoords': {
+    vi: '{n} vườn chưa có toạ độ nên không hiện trên bản đồ',
+    en: '{n} gardens have no coordinates, so they are not on the map',
+    zh: '{n} 个果园还没有坐标，因此不显示在地图上',
+    ja: '{n} 件の果樹園は座標がないため地図に出ません',
+  },
+  'trace.farmMap.zoomHint': {
+    vi: 'Phóng to để thấy ranh vườn',
+    en: 'Zoom in to see the boundaries',
+    zh: '放大以查看园界',
+    ja: '拡大すると境界が見えます',
+  },
+  'trace.farmMap.satellite': { vi: 'Vệ tinh', en: 'Satellite', zh: '卫星', ja: '衛星' },
+  'trace.farmMap.street': { vi: 'Bản đồ', en: 'Map', zh: '地图', ja: '地図' },
+  'trace.farmMap.fullscreen': { vi: 'Toàn màn hình', en: 'Full screen', zh: '全屏', ja: '全画面' },
+  'trace.farmMap.close': { vi: 'Đóng', en: 'Close', zh: '关闭', ja: '閉じる' },
+  'trace.farmMap.fitAll': { vi: 'Xem hết vườn', en: 'Fit all gardens', zh: '显示全部果园', ja: 'すべての果樹園を表示' },
+  'trace.farmMap.inFullscreen': {
+    vi: 'Bản đồ đang mở toàn màn hình',
+    en: 'The map is open full screen',
+    zh: '地图正在全屏显示',
+    ja: '地図は全画面で開いています',
+  },
+  'trace.farmMap.owner': { vi: 'Chủ vườn', en: 'Owner', zh: '园主', ja: '所有者' },
+  'trace.farmMap.area': { vi: 'Diện tích', en: 'Area', zh: '面积', ja: '面積' },
+  'trace.farmMap.animals': { vi: 'Con vật', en: 'Animals', zh: '牲畜', ja: '動物' },
+  'trace.farmMap.unknown': { vi: '—', en: '—', zh: '—', ja: '—' },
+  'trace.farmMap.openFarm': { vi: 'Mở vườn', en: 'Open garden', zh: '打开果园', ja: '果樹園を開く' },
+  'trace.farmMap.noPhoto': { vi: 'Chưa có ảnh vườn', en: 'No garden photo yet', zh: '还没有果园照片', ja: '果樹園の写真がまだありません' },
+  'trace.farmMap.boundaryWalk': {
+    vi: 'Ranh ghi khi đi vòng quanh vườn',
+    en: 'Boundary recorded by walking the perimeter',
+    zh: '沿园界步行记录的边界',
+    ja: '外周を歩いて記録した境界',
+  },
+  'trace.farmMap.boundaryManual': {
+    vi: 'Ranh chấm tay trên bản đồ',
+    en: 'Boundary tapped by hand on the map',
+    zh: '在地图上手动点选的边界',
+    ja: '地図上で手作業で指定した境界',
+  },
+  'trace.farmMap.boundaryMixed': {
+    vi: 'Ranh GPS có chỉnh tay',
+    en: 'GPS boundary, hand-adjusted',
+    zh: 'GPS 边界，经手动调整',
+    ja: 'GPS 境界を手で調整',
+  },
+  'trace.farmMap.methodUnverified': {
+    vi: 'máy chủ chưa xác nhận cách đo',
+    en: 'method not confirmed by the server',
+    zh: '服务器未确认测量方式',
+    ja: '測定方法はサーバー未確認',
+  },
+  'trace.farmMap.boundaryAcc': { vi: 'sai số ~{n} m', en: 'accuracy ~{n} m', zh: '误差约 {n} 米', ja: '誤差 約{n} m' },
+  'trace.farmMap.boundaryAccUnknown': {
+    vi: 'chưa rõ sai số',
+    en: 'accuracy unknown',
+    zh: '误差未知',
+    ja: '誤差不明',
+  },
+  'trace.farmMap.noBoundary': {
+    vi: 'Vườn này chưa đi ranh — chỉ có một điểm trên bản đồ',
+    en: 'This garden has no boundary yet — only a point on the map',
+    zh: '该果园还没有边界，地图上只有一个点',
+    ja: 'この果樹園はまだ境界がなく、地図上では点だけです',
+  },
+
   // ── Mục 2 — Thời tiết ─────────────────────────────────────────────────────
   'trace.section.weather': { vi: 'Thời tiết', en: 'Weather', zh: '天气', ja: '天気' },
-  'trace.weather.hint': { vi: 'Hôm nay và 7 ngày tới', en: 'Today and the next 7 days', zh: '今天与未来 7 天', ja: '今日と 7 日間' },
+  'trace.weather.hint': { vi: 'Hôm nay và 5 ngày tới', en: 'Today and the next 5 days', zh: '今天与未来 5 天', ja: '今日と 5 日間' },
   'trace.weather.loading': { vi: 'Đang xem thời tiết ở vườn của bạn…', en: 'Checking the weather at your garden…', zh: '正在查看你果园的天气…', ja: '果樹園の天気を確認しています…' },
   'trace.weather.failTitle': { vi: 'Chưa xem được thời tiết', en: 'Weather unavailable', zh: '暂时无法获取天气', ja: '天気を取得できません' },
   'trace.weather.failBody': {
@@ -307,6 +396,14 @@ export const TRACE_STRINGS = {
     zh: '下次移动慢一点会更清楚。园主稍后确认。',
     ja: '次はもう少しゆっくり動かすと鮮明です。所有者があとで確認します。',
   },
+  // Máy chủ chưa cho biết số khung. Nói đúng "chưa biết" — đừng mượn câu
+  // `doneSlower`, câu đó ngụ ý người ta quay quá nhanh.
+  'trace.fruitVideo.doneFramesUnknown': {
+    vi: 'Máy chủ chưa cho biết số khung hình. Chủ vườn xác nhận sau.',
+    en: 'The server has not reported the frame count yet. The owner will confirm later.',
+    zh: '服务器尚未返回帧数。园主稍后确认。',
+    ja: 'サーバーからフレーム数がまだ届いていません。所有者があとで確認します。',
+  },
   'trace.fruitVideo.storedCid': { vi: 'Đã cất vào kho an toàn · {cid}', en: 'Stored safely · {cid}', zh: '已安全存储 · {cid}', ja: '安全に保管 · {cid}' },
   'trace.fruitVideo.another': { vi: 'Quay clip khác', en: 'Record another', zh: '再拍一段', ja: 'もう一本撮る' },
   'trace.fruitVideo.finish': { vi: 'Xong', en: 'Done', zh: '完成', ja: '完了' },
@@ -314,6 +411,7 @@ export const TRACE_STRINGS = {
   'trace.weather.today': { vi: 'Hôm nay', en: 'Today', zh: '今天', ja: '今日' },
 
   // ── Màn QUẢ TRÊN CÂY ─────────────────────────────────────────
+  'trace.fruitList.identify': { vi: 'Quả này là quả nào?', en: 'Which fruit is this?', zh: '这是哪个果实？', ja: 'どの果実ですか？' },
   'trace.fruitList.title': { vi: 'Quả trên cây', en: 'Fruit on the tree', zh: '树上的果实', ja: '木になる果実' },
   'trace.fruitList.loading': { vi: 'Đang tải quả…', en: 'Loading fruit…', zh: '正在加载果实…', ja: '果実を読み込み中…' },
   'trace.fruitList.statAll': { vi: 'Tất cả', en: 'All', zh: '全部', ja: 'すべて' },
@@ -335,6 +433,18 @@ export const TRACE_STRINGS = {
     en: 'Species unknown — pick one so we know whether this tree bears fruit',
     zh: '树种未知——请选择，以便判断该树是否结果',
     ja: '樹種が不明です。実がなるか判断するため選んでください',
+  },
+  'trace.fruitList.speciesLoadFail': {
+    vi: 'Chưa tải được danh sách giống cây — kiểm tra mạng rồi kéo xuống để tải lại.',
+    en: 'Could not load the species list — check your connection and pull down to refresh.',
+    zh: '无法加载树种列表 — 请检查网络后下拉刷新。',
+    ja: '樹種の一覧を読み込めませんでした — 通信を確認して引き下げて再読み込みしてください。',
+  },
+  'trace.fruitList.speciesSaveFail': {
+    vi: 'Chưa gán được giống cho cây này. Thử lại giúp.',
+    en: 'Could not set the species for this tree. Please try again.',
+    zh: '未能为这棵树设置树种，请重试。',
+    ja: 'この木の樹種を設定できませんでした。もう一度お試しください。',
   },
   'trace.fruitList.speciesNoFruit': { vi: 'Giống này không cho quả', en: 'This species bears no fruit', zh: '该树种不结果', ja: 'この樹種は実をつけません' },
   'trace.fruitList.speciesNoFruitBody': {
@@ -415,6 +525,16 @@ export const TRACE_STRINGS = {
   'trace.crop.collapse': { vi: 'Thu gọn', en: 'Collapse', zh: '收起', ja: '折りたたむ' },
   'trace.crop.allFruits': { vi: 'Tất cả quả của cây', en: 'Every fruit on this tree', zh: '这棵树的全部果实', ja: 'この木のすべての果実' },
   'trace.crop.nothingToMatch': { vi: 'Cây chưa có quả nào để đối chiếu — đặt tên để lưu quả mới.', en: 'Nothing to match against yet — name it to save a new fruit.', zh: '还没有可比对的果实——命名后保存为新果实。', ja: '照合できる果実がまだありません。名前を付けて新規保存します。' },
+  // Hai câu dưới CHỈ dùng khi lượt đối chiếu HỎNG. Tách hẳn khỏi `nothingToMatch`
+  // vì câu kia mời đặt tên quả mới — mời như vậy lúc chưa hỏi được máy chủ là đẩy
+  // người dùng tạo hồ sơ trùng cho một quả kho đã có.
+  'trace.crop.matchFailed': {
+    vi: 'Chưa soi được — mạng hoặc máy chủ đang trục trặc. Chưa biết cây đã có quả này chưa, nên thử lại rồi hãy đặt tên.',
+    en: 'Could not check — the network or the server is having trouble. We do not know yet whether this fruit already exists, so retry before naming it.',
+    zh: '暂时无法比对 — 网络或服务器出问题。目前还不知道这个果实是否已存在，请先重试再命名。',
+    ja: '照合できませんでした — ネットワークかサーバーに問題があります。この果実が既にあるか不明なので、再試行してから名前を付けてください。',
+  },
+  'trace.crop.matchRetry': { vi: 'Thử lại', en: 'Try again', zh: '重试', ja: '再試行' },
   'trace.crop.recrop': { vi: 'Khoanh lại vùng khác', en: 'Circle a different area', zh: '重新圈选', ja: '別の範囲を囲む' },
   'trace.crop.newFruit': { vi: 'Quả mới', en: 'New fruit', zh: '新果实', ja: '新しい果実' },
   'trace.crop.saveOnTree': { vi: 'Lưu thành quả mới trên cây {name}.', en: 'Save as a new fruit on {name}.', zh: '保存为 {name} 上的新果实。', ja: '{name} の新しい果実として保存します。' },
@@ -453,6 +573,116 @@ export const TRACE_STRINGS = {
 
   'trace.farmList.wayfind': { vi: 'Dẫn đường tới {name}', en: 'Navigate to {name}', zh: '导航到 {name}', ja: '{name} への道案内' },
 
+
+  'trace.news.hot': { vi: 'Tin nóng', en: 'Breaking', zh: '最新热点', ja: '注目のニュース' },
+  'trace.news.older': { vi: 'Tin trước đó', en: 'Earlier', zh: '更早', ja: 'それ以前' },
+  'trace.news.seeAll': { vi: 'Xem tất cả tin', en: 'See all news', zh: '查看全部资讯', ja: 'すべてのニュース' },
+
+  'trace.ask.placeholder': {
+    vi: 'Hỏi Aladin về vườn của bạn…',
+    en: 'Ask Aladin about your garden…',
+    zh: '向 Aladin 询问你的果园…',
+    ja: '果樹園について Aladin に聞く…',
+  },
+
+  // ── Mục GIÁ NÔNG SẢN ──────────────────────────────────────────────────────
+  'trace.price.title': { vi: 'Giá nông sản', en: 'Commodity prices', zh: '农产品价格', ja: '農産物価格' },
+  'trace.price.hint': { vi: 'Biến động so với lần xem trước', en: 'Change since you last looked', zh: '与上次查看相比的变化', ja: '前回からの変動' },
+  'trace.price.loading': { vi: 'Đang lấy giá…', en: 'Fetching prices…', zh: '正在获取价格…', ja: '価格を取得中…' },
+  'trace.price.none': {
+    vi: 'Chưa lấy được giá lúc này. Trang nguồn có thể đang bận hoặc đã đổi cách hiển thị.',
+    en: 'No prices right now. The source page may be busy or may have changed its layout.',
+    zh: '暂时无法获取价格。来源页面可能繁忙或已更改版式。',
+    ja: '現在価格を取得できません。参照元が混雑しているか、表示が変わった可能性があります。',
+  },
+  'trace.price.domestic': { vi: 'Trong nước', en: 'Domestic', zh: '国内', ja: '国内' },
+  'trace.price.global': { vi: 'Thế giới', en: 'International', zh: '国际', ja: '海外' },
+  'trace.price.vsHours': {
+    vi: 'So với {n} giờ trước.', en: 'Compared with {n} hours ago.',
+    zh: '与 {n} 小时前相比。', ja: '{n} 時間前との比較です。',
+  },
+  'trace.price.firstRead': {
+    vi: 'Lần đọc đầu tiên — chưa có mốc nào để so.',
+    en: 'First reading — nothing to compare with yet.',
+    zh: '首次读取——暂无可比较的基准。',
+    ja: '初回の取得です。比較できる基準がまだありません。',
+  },
+  'trace.price.noneDomestic': {
+    vi: 'Chưa lấy được giá trong nước lúc này.',
+    en: 'No domestic prices right now.',
+    zh: '暂时无法获取国内价格。',
+    ja: '現在、国内価格を取得できません。',
+  },
+  'trace.price.noneGlobal': {
+    vi: 'Chưa nối nguồn giá thế giới nào.',
+    en: 'No international price source connected yet.',
+    zh: '尚未接入国际价格数据源。',
+    ja: '海外価格のデータ源はまだ接続されていません。',
+  },
+  'trace.price.coffee': { vi: 'Cà phê nhân', en: 'Green coffee', zh: '咖啡豆', ja: 'コーヒー生豆' },
+  'trace.price.durian': { vi: 'Sầu riêng Ri6', en: 'Ri6 durian', zh: 'Ri6 榴莲', ja: 'Ri6 ドリアン' },
+  'trace.price.coffeeBrazil': { vi: 'Cà phê · Brazil', en: 'Coffee · Brazil', zh: '咖啡 · 巴西', ja: 'コーヒー · ブラジル' },
+  'trace.price.coffeeIndonesia': { vi: 'Cà phê · Indonesia', en: 'Coffee · Indonesia', zh: '咖啡 · 印尼', ja: 'コーヒー · インドネシア' },
+  'trace.price.index': { vi: 'điểm', en: 'index', zh: '指数', ja: '指数' },
+  'trace.price.vsPrevDay': {
+    vi: 'So với ngày có giá gần nhất trước đó.',
+    en: 'Compared with the previous day that had a price.',
+    zh: '与此前最近一个有报价的日期相比。',
+    ja: '直前に価格があった日との比較です。',
+  },
+  'trace.price.vsPrevMonth': {
+    vi: 'Chỉ số giá sản xuất, so với tháng liền trước. Số liệu FAO chậm hơn thực tế.',
+    en: 'Producer price index vs the previous month. FAO data lags real time.',
+    zh: '生产者价格指数，与上月相比。FAO 数据滞后于实时。',
+    ja: '生産者価格指数の前月比。FAO のデータは実時間より遅れます。',
+  },
+  'trace.price.perKg': { vi: 'đ/kg', en: 'đ/kg', zh: '越南盾/公斤', ja: 'ドン/kg' },
+
+  // ── Cảnh báo đẩy ──────────────────────────────────────────────────────────
+  'trace.alert.priceUp': { vi: 'Giá {name} tăng {pct}%', en: '{name} price up {pct}%', zh: '{name} 价格上涨 {pct}%', ja: '{name} が {pct}% 上昇' },
+  'trace.alert.priceDown': { vi: 'Giá {name} giảm {pct}%', en: '{name} price down {pct}%', zh: '{name} 价格下跌 {pct}%', ja: '{name} が {pct}% 下落' },
+  'trace.alert.trending': { vi: '{n} báo cùng đưa một tin', en: '{n} outlets are running the same story', zh: '{n} 家媒体报道同一件事', ja: '{n} 社が同じ話題を報じています' },
+
+  // ── Cảnh báo thời tiết dữ ─────────────────────────────────────────────────
+  // Chữ ở đây CỐ Ý không có từ "bão": nguồn dữ liệu là mô hình dự báo toàn cầu,
+  // nó đo được GIÓ và DÔNG, không biết cơn bão nào đang có tên. Người đọc chữ
+  // "bão" sẽ đi chằng nhà — một việc lớn — dựa trên thứ ta không đo được.
+  // Xem chú thích `weatherAlerts` ở `services/alertRules.ts`.
+  'trace.alert.stormNow': { vi: 'Vườn đang có dông', en: 'Thunderstorm over your garden', zh: '果园正在打雷下雨', ja: '果樹園は雷雨です' },
+  'trace.alert.stormNow.body': {
+    vi: 'Dừng việc ngoài vườn, cất máy móc vào chỗ khô, tránh xa cây cao.',
+    en: 'Stop outdoor work, move equipment somewhere dry, keep away from tall trees.',
+    zh: '暂停户外作业，把机具收到干燥处，远离高树。',
+    ja: '屋外作業を中断し、機材を乾いた場所へ、高い木から離れてください。',
+  },
+  'trace.alert.stormSoon': { vi: 'Khoảng {h} giờ nữa có dông', en: 'Thunderstorm in about {h}h', zh: '约 {h} 小时后有雷雨', ja: '約 {h} 時間後に雷雨' },
+  'trace.alert.stormSoon.body': {
+    vi: 'Thu đồ, chằng lại giàn lưới, hoãn phun thuốc — thuốc gặp mưa là trôi hết.',
+    en: 'Bring things in, secure the netting, hold off spraying — rain washes it straight off.',
+    zh: '收好物品、加固网架、暂缓打药 — 遇雨会被冲掉。',
+    ja: '物を片付け、ネットを固定し、散布は見送りを — 雨で流れます。',
+  },
+  'trace.alert.gustSevere': { vi: 'Gió rất mạnh — giật tới {kph} km/h', en: 'Very strong wind — gusts to {kph} km/h', zh: '大风 — 阵风达 {kph} 公里/小时', ja: '非常に強い風 — 最大瞬間 {kph} km/h' },
+  'trace.alert.gustSevere.body': {
+    vi: 'Mức này gãy cành và bật gốc cây non. Chằng giàn, buộc cây mới trồng, không trèo cao.',
+    en: 'This level snaps branches and uproots young trees. Secure frames, tie new plantings, do not climb.',
+    zh: '这种风力会折断枝条、吹倒幼树。请加固棚架、绑扎新栽树，不要爬高。',
+    ja: 'この強さは枝を折り、若木を倒します。棚を固定し、新植樹を結束し、高所作業はやめてください。',
+  },
+  'trace.alert.gust': { vi: 'Gió giật {kph} km/h', en: 'Wind gusts {kph} km/h', zh: '阵风 {kph} 公里/小时', ja: '突風 {kph} km/h' },
+  'trace.alert.gust.body': {
+    vi: 'Cất bạt, lưới, thùng nhẹ. Hoãn phun thuốc — gió tạt thì thuốc không tới lá.',
+    en: 'Put away tarps, netting and light crates. Hold off spraying — wind blows it off the leaves.',
+    zh: '收好篷布、网和轻箱。暂缓打药 — 风一吹药就打不到叶面。',
+    ja: 'シート・ネット・軽い箱を片付けを。散布は見送りを — 風で葉に届きません。',
+  },
+  'trace.alert.heavyRain': { vi: 'Khoảng {h} giờ nữa mưa to', en: 'Heavy rain in about {h}h', zh: '约 {h} 小时后有大雨', ja: '約 {h} 時間後に大雨' },
+  'trace.alert.heavyRain.body': {
+    vi: 'Khơi rãnh thoát nước, hoãn bón phân — phân gặp mưa to là trôi theo nước.',
+    en: 'Clear the drainage ditches, hold off fertilising — heavy rain washes it away.',
+    zh: '清理排水沟，暂缓施肥 — 大雨会把肥料冲走。',
+    ja: '排水路を確保し、施肥は見送りを — 大雨で流されます。',
+  },
 
   // ── Bầu trời (mã WMO → chữ, xem `describeWeather`) ────────────────────────
   'trace.sky.clear': { vi: 'Trời quang', en: 'Clear sky', zh: '晴朗', ja: '快晴' },
@@ -504,5 +734,136 @@ export const TRACE_STRINGS = {
     en: 'Dry weather — a good window for spraying and fertilising.',
     zh: '天气干爽 — 适合打药和施肥。',
     ja: '乾いた天気です — 散布や施肥に向いています。',
+  },
+
+  // ── Chữ cho NÚT, thay chỗ trước đây bỏ trống hoặc còn tiếng Anh ────────────
+  // Nông dân ngoài vườn đọc màn tiếng Việt mà gặp nút chính ghi "Identify
+  // (4 Directions)" thì không biết bấm gì. Bốn chuỗi dưới đây thay đúng bốn chỗ
+  // đó; đồng thời chuyển luôn sang lối khoá để lần sau đổi chữ không mất bản dịch.
+  'trace.identify.idleHint': {
+    vi: 'Bấm "Bắt đầu" để nhận diện cây',
+    en: 'Tap "Start" to identify the tree',
+    zh: '点击"开始"识别这棵树',
+    ja: '「開始」を押して木を識別します',
+  },
+  'trace.identify.doIdentify': {
+    vi: 'Nhận diện ({n} góc)', en: 'Identify ({n} angles)',
+    zh: '识别（{n} 个角度）', ja: '識別（アングル {n}）',
+  },
+  'trace.identify.doIdentifyShort': {
+    vi: 'Nhận diện', en: 'Identify', zh: '识别', ja: '識別',
+  },
+  'trace.enroll.picturesN': {
+    vi: 'Ảnh đã chụp ({n} góc)', en: 'Pictures ({n} angles)',
+    zh: '已拍照片（{n} 个角度）', ja: '撮影済み（アングル {n}）',
+  },
+  'trace.enroll.viewsN': {
+    vi: '{label} · {n} góc', en: '{label} · {n} angles',
+    zh: '{label} · {n} 个角度', ja: '{label} · アングル {n}',
+  },
+
+  // ── Nút "Đăng ký" bị làm mờ: nói RA còn thiếu gì ───────────────────────────
+  // Trước đây năm hộp thoại giải thích nằm trong `handleEnroll`, mà `handleEnroll`
+  // chỉ gọi được từ chính cái nút đang bị `disabled` — nên không ai đọc được câu
+  // nào. Nay câu đó hiện ngay dưới nút, không phải chờ bấm.
+  'trace.enroll.missingName': {
+    vi: 'Còn thiếu: tên cây', en: 'Still missing: tree name',
+    zh: '还缺：树名', ja: '未入力：木の名前',
+  },
+  'trace.enroll.missingFarm': {
+    vi: 'Còn thiếu: chọn vườn', en: 'Still missing: pick a garden',
+    zh: '还缺：选择果园', ja: '未選択：果樹園',
+  },
+  'trace.enroll.missingPhotos': {
+    vi: 'Còn thiếu: {n} góc ảnh nữa', en: 'Still missing: {n} more angles',
+    zh: '还缺：{n} 个角度', ja: 'あと {n} アングル必要です',
+  },
+  'trace.enroll.openSettings': {
+    vi: 'Mở Cài đặt', en: 'Open Settings', zh: '打开设置', ja: '設定を開く',
+  },
+  'trace.enroll.keptOnDevice': {
+    vi: 'Ảnh vẫn còn trong máy — bấm Đăng ký lại khi có sóng.',
+    en: 'The photos are still on the phone — tap Register again when you have signal.',
+    zh: '照片仍在手机里 — 有信号时再点"登记"。',
+    ja: '写真は端末に残っています — 電波が戻ったらもう一度「登録」を押してください。',
+  },
+  'trace.enroll.draftTitle': {
+    vi: 'Còn ảnh chụp dở buổi trước', en: 'Unfinished photos from last time',
+    zh: '上次还有没登记完的照片', ja: '前回の未登録の写真があります',
+  },
+  'trace.enroll.draftBodyNamed': {
+    vi: 'Cây "{name}" · {n} ảnh, chụp {when}. Chụp tiếp hay bỏ?',
+    en: 'Tree "{name}" · {n} photos taken {when}. Continue or discard?',
+    zh: '树"{name}" · {n} 张照片，{when}拍摄。继续还是丢弃？',
+    ja: '木「{name}」· 写真 {n} 枚（{when}）。続けますか、破棄しますか？',
+  },
+  'trace.enroll.draftBody': {
+    vi: '{n} ảnh chụp {when} nhưng chưa đăng ký. Chụp tiếp hay bỏ?',
+    en: '{n} photos taken {when} were never registered. Continue or discard?',
+    zh: '{n} 张{when}拍的照片还没登记。继续还是丢弃？',
+    ja: '{when}に撮った写真 {n} 枚が未登録です。続けますか、破棄しますか？',
+  },
+  'trace.enroll.draftKeep': {
+    vi: 'Chụp tiếp', en: 'Continue', zh: '继续', ja: '続ける',
+  },
+  'trace.enroll.draftDrop': {
+    vi: 'Bỏ {n} ảnh này', en: 'Discard these {n} photos',
+    zh: '丢弃这 {n} 张照片', ja: 'この {n} 枚を破棄',
+  },
+  'trace.enroll.whenToday': { vi: 'hôm nay', en: 'today', zh: '今天', ja: '今日' },
+  'trace.enroll.whenYesterday': { vi: 'hôm qua', en: 'yesterday', zh: '昨天', ja: '昨日' },
+  'trace.enroll.whenDaysAgo': {
+    vi: '{n} ngày trước', en: '{n} days ago', zh: '{n} 天前', ja: '{n} 日前',
+  },
+
+  // ── Nút hành động ở đầu màn CÂY ────────────────────────────────────────────
+  // Bốn nút icon xám cùng cỡ cùng màu, không nút nào có chữ — trong đó một nút
+  // là CHIA SẺ RA NGOÀI. Nay hai việc hằng ngày ra ngoài kèm chữ, hai việc hiếm
+  // vào tấm có tên đầy đủ.
+  'trace.tree.moreActions': { vi: 'Việc khác', en: 'More', zh: '更多', ja: 'その他' },
+  'trace.tree.actCare': { vi: 'Ghi thuốc', en: 'Log spray', zh: '记录用药', ja: '散布記録' },
+  'trace.tree.actDrift': {
+    vi: 'Biến thiên của cây', en: 'How much the tree has changed',
+    zh: '树的变化', ja: '木の変化',
+  },
+  'trace.tree.actPlace': {
+    vi: 'Đặt vị trí cây trong sơ đồ', en: 'Place this tree on the map',
+    zh: '在立体图中放置这棵树', ja: '立体図でこの木を配置',
+  },
+  'trace.tree.actShare': {
+    vi: 'Chia sẻ dữ liệu cây này cho người khác',
+    en: 'Share this tree’s data with someone',
+    zh: '把这棵树的数据分享给别人', ja: 'この木のデータを誰かに共有',
+  },
+
+  // ── Đăng ký quả mới khi vào từ ngoài (không qua màn cây) ───────────────────
+  // `enrollNew` chọn CÂY GẦN NHẤT theo GPS. Chính tệp `fruitFind.ts:118-121` cấm
+  // đúng việc đó cho đường nhận-diện ("gán sai một lần là hồ sơ quả sai vĩnh
+  // viễn"), nên đường đăng-ký phải HỎI trước khi gán.
+  'trace.fruitScan.confirmTreeTitle': {
+    vi: 'Quả này của cây nào?', en: 'Which tree is this fruit on?',
+    zh: '这个果实属于哪棵树？', ja: 'この果実はどの木のものですか？',
+  },
+  'trace.fruitScan.confirmTreeBody': {
+    vi: 'Máy đoán là cây "{name}", cách chỗ anh đứng khoảng {m} m. Đúng cây đó chứ?',
+    en: 'Best guess is tree "{name}", about {m} m from where you stand. Is that right?',
+    zh: '推测是树"{name}"，距您约 {m} 米。是这棵吗？',
+    ja: '推定は木「{name}」、現在地から約 {m} m です。これで合っていますか？',
+  },
+  'trace.fruitScan.confirmTreeYes': {
+    vi: 'Đúng cây này', en: 'Yes, this tree', zh: '就是这棵', ja: 'この木です',
+  },
+  'trace.fruitScan.confirmTreePick': {
+    vi: 'Chọn cây khác', en: 'Pick another tree', zh: '选别的树', ja: '別の木を選ぶ',
+  },
+
+  // ── Nhãn mục quét trên cổng xoè (trước đây là chuỗi rỗng) ──────────────────
+  'trace.gate.scan': { vi: 'Quét mã', en: 'Scan', zh: '扫码', ja: 'スキャン' },
+  'trace.enroll.nextTree': {
+    vi: 'Ghi cây tiếp', en: 'Register next tree', zh: '登记下一棵', ja: '次の木を登録',
+  },
+  'trace.enroll.retake': { vi: 'Chụp lại', en: 'Retake', zh: '重拍', ja: '撮り直す' },
+  'trace.enroll.viewDetail': {
+    vi: 'Xem chi tiết', en: 'View details', zh: '查看详情', ja: '詳細を見る',
   },
 } satisfies KeyMap;

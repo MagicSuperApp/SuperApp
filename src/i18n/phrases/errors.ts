@@ -133,10 +133,45 @@ export const ERRORS: PhraseMap = {
   'App phiên bản cũ. Cập nhật rồi thử lại.': { en: 'App version is out of date. Update and try again.', zh: '应用版本过旧，请更新后重试。', ja: 'アプリのバージョンが古いです。更新してからお試しください。' },
   'Tạo danh tính thất bại. Thử lại.': { en: 'Identity creation failed. Try again.', zh: '创建身份失败，请重试。', ja: '本人情報の作成に失敗しました。もう一度お試しください。' },
   'Không tạo được danh tính. Vui lòng thử lại.': { en: 'Could not create the identity. Please try again.', zh: '无法创建身份，请重试。', ja: '本人情報を作成できません。もう一度お試しください。' },
-  'Thiết bị đã có khoá nhưng chưa khôi phục được danh tính. Vui lòng thử đăng nhập lại hoặc liên hệ hỗ trợ.': {
-    en: 'This device already has a key but the identity could not be restored. Please try signing in again or contact support.',
-    zh: '本机已有密钥，但未能恢复身份。请重新登录或联系支持。',
-    ja: 'この端末には鍵がありますが、本人情報を復旧できませんでした。もう一度ログインするか、サポートにご連絡ください。',
+  // Năm câu dưới thay cho MỘT câu cũ "Thiết bị đã có khoá nhưng chưa khôi phục được
+  // danh tính…". Câu cũ đúng nhưng gộp năm nguyên nhân rất khác nhau vào một chỗ, nên
+  // người dùng không biết nên thử lại vân tay, đợi sóng hay thật sự phải gọi hỗ trợ —
+  // và báo lỗi ngoài thực địa không lần ngược về đâu được. Xem
+  // `src/services/phoenixKeyAuthService.ts` (RECOVER_FAIL_MESSAGE).
+  'Chưa xác thực được vân tay hoặc khuôn mặt nên không mở lại được danh tính trên máy này. Thử lại và giữ ngón tay tới khi máy báo xong.': {
+    en: 'Fingerprint or face check did not go through, so the identity on this device could not be reopened. Try again and hold still until the device confirms.',
+    zh: '指纹或人脸未通过验证，无法在本机重新打开身份。请重试，并保持不动直至设备确认。',
+    ja: '指紋または顔の認証が通らず、この端末の本人情報を開き直せませんでした。もう一度、端末が確認を終えるまで動かさずにお試しください。',
+  },
+  'Máy này đã có khoá, nhưng chưa liên lạc được máy chủ danh tính để mở lại. Kiểm tra sóng rồi thử lại.': {
+    en: 'This device already has a key, but the identity server could not be reached to reopen it. Check your signal and try again.',
+    zh: '本机已有密钥，但无法连接身份服务器以重新打开。请检查网络后重试。',
+    ja: 'この端末には鍵がありますが、本人情報サーバーに接続できず開き直せませんでした。電波を確認してからお試しください。',
+  },
+  'Máy chủ từ chối mở lại danh tính cho khoá đã có trên máy này. Đây là lỗi phía máy chủ — chụp màn hình này gửi hỗ trợ.': {
+    en: 'The server refused to reopen an identity for the key already on this device. This is a server-side fault — send support a screenshot of this message.',
+    zh: '服务器拒绝为本机已有的密钥重新打开身份。这是服务器端故障 — 请将此画面截图发给支持。',
+    ja: 'この端末にある鍵に対して、サーバーが本人情報の再開を拒否しました。サーバー側の不具合です — この画面のスクリーンショットをサポートにお送りください。',
+  },
+  'Máy chủ trả về một mã danh tính app chưa hiểu được. Đây là lỗi phía máy chủ — chụp màn hình này gửi hỗ trợ.': {
+    en: 'The server returned an identity code the app does not understand. This is a server-side fault — send support a screenshot of this message.',
+    zh: '服务器返回了应用无法识别的身份编码。这是服务器端故障 — 请将此画面截图发给支持。',
+    ja: 'アプリが解釈できない本人情報コードがサーバーから返されました。サーバー側の不具合です — この画面のスクリーンショットをサポートにお送りください。',
+  },
+  'Máy này đã có khoá của một danh tính đã tạo trước đó. Nhập lại đúng tên đăng nhập của danh tính đó để mở lại trên máy này.': {
+    en: 'This device already holds the key of an identity created earlier. Enter that identity\u2019s username again to reopen it on this device.',
+    zh: '本机已持有先前创建的某个身份的密钥。请重新输入该身份的用户名，以在本机重新打开它。',
+    ja: 'この端末には、以前作成された本人情報の鍵がすでにあります。その本人情報のユーザー名をもう一度入力して、この端末で開き直してください。',
+  },
+  'Tên đăng nhập này thuộc về một danh tính khác, không phải danh tính đang có khoá trên máy. Kiểm tra lại tên, hoặc dùng máy đã tạo danh tính đó.': {
+    en: 'This username belongs to a different identity, not the one whose key is on this device. Check the name, or use the device where that identity was created.',
+    zh: '该用户名属于另一个身份，并非本机持有密钥的那个身份。请核对用户名，或改用创建该身份的设备。',
+    ja: 'このユーザー名は別の本人情報のものであり、この端末に鍵がある本人情報ではありません。名前を確認するか、その本人情報を作成した端末をお使いください。',
+  },
+  'Máy này đã có khoá nhưng chưa mở lại được danh tính, chưa rõ vì sao. Thử lại một lần; nếu vẫn vậy, chụp màn hình này gửi hỗ trợ.': {
+    en: 'This device already has a key but the identity could not be reopened, and the reason is not yet clear. Try once more; if it repeats, send support a screenshot of this message.',
+    zh: '本机已有密钥，但未能重新打开身份，原因尚不明确。请再试一次；若仍如此，请将此画面截图发给支持。',
+    ja: 'この端末には鍵がありますが本人情報を開き直せず、原因はまだ不明です。もう一度お試しください。それでも同じ場合は、この画面のスクリーンショットをサポートにお送りください。',
   },
   'Thiết bị chưa có danh tính.': {
     en: 'This device has no identity yet.',

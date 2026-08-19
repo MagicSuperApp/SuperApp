@@ -505,6 +505,11 @@ export interface IdentifyOptions {
   /** Khi true: bỏ qua kiểm tra trùng lặp, tạo cây mới bất kể. Dùng cho handleForceEnroll. */
   force?: boolean;
   /**
+   * Vùng khoanh THEO TỪNG ảnh, song song `files[]` — cho khung có hai cây liền nhau.
+   * Phần tử `null` = ảnh đó embed cả khung. Xem `buildTreeRegions`.
+   */
+  regions?: Array<TreeRegion | null | undefined>;
+  /**
    * ADDITIVE (PoC-Tree §4 M4): ép matcher vỏ-thân (sift|xfeat|loftr) qua
    * ?matcher=. Mặc-định KHÔNG gửi → backend dùng đường ENV. Chỉ tester bật.
    */
@@ -579,6 +584,130 @@ export function platformHeadingRef(): HeadingRef {
   return Platform.OS === 'ios' ? 'ios_true_or_magnetic' : 'android_magnetic';
 }
 
+// ---------------------------------------------------------------------------
+// KHOANH-CÂY — vùng khoanh THEO TỪNG ảnh (khung có hai cây liền nhau)
+// ---------------------------------------------------------------------------
+
+export type TreeRegionShape = 'rect' | 'ellipse' | 'poly';
+
+/**
+ * Vùng người dùng khoanh trên MỘT ảnh.
+ *
+ * HỆ TOẠ ĐỘ (hợp đồng máy chủ, mục ⚠️5): pixel của ảnh **HIỂN THỊ** = ảnh full-res
+ * SAU khi đã áp EXIF orientation. Không phải toạ độ chuẩn hoá 0–1, không phải toạ
+ * độ của ảnh đã thu nhỏ để hiện lên màn. Đo ở đâu thì khai đúng `imgW`/`imgH` ở đó.
+ */
+export interface TreeRegion {
+  /** Đa giác khoanh `[[x,y],...]`. Dưới 3 đỉnh coi như không có. */
+  points?: Array<[number, number]>;
+  /** `[x, y, w, h]`, cùng hệ toạ độ với `points`. */
+  bbox?: [number, number, number, number];
+  shape?: TreeRegionShape;
+  /** Kích thước ảnh mà toạ độ trên được đo. Thiếu hoặc ≤ 0 ⟹ vùng bị bỏ. */
+  imgW: number;
+  imgH: number;
+}
+
+/** Dạng đã sẵn sàng lên dây: `regions` JSON + cặp `img_w`/`img_h` quy chiếu. */
+export interface TreeRegionsForm {
+  regions: string;
+  img_w: string;
+  img_h: string;
+}
+
+const _fin = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
+
+/** Một phần tử `regions` đã vệ sinh, hoặc `null` = ảnh đó embed CẢ khung. */
+function _cleanRegion(r: TreeRegion | null | undefined) {
+  if (!r || !_fin(r.imgW) || !_fin(r.imgH) || r.imgW <= 0 || r.imgH <= 0) return null;
+
+  const pts = Array.isArray(r.points)
+    ? r.points.filter(p => Array.isArray(p) && p.length >= 2 && _fin(p[0]) && _fin(p[1]))
+    : [];
+  // Dưới 3 đỉnh không thành đa giác. Gửi lên thì `_clean_points` phía máy chủ vứt,
+  // rồi rơi về bbox — nhưng rơi ÂM THẦM. Loại ngay ở đây để hành vi khai ở một chỗ.
+  const usablePts = pts.length >= 3 ? (pts as Array<[number, number]>) : null;
+
+  const b = r.bbox;
+  const usableBbox =
+    Array.isArray(b) && b.length >= 4 && b.every(_fin) && b[2] > 0 && b[3] > 0
+      ? ([b[0], b[1], b[2], b[3]] as [number, number, number, number])
+      : null;
+
+  if (!usablePts && !usableBbox) return null;
+  return { pts: usablePts, bbox: usableBbox, shape: r.shape, imgW: r.imgW, imgH: r.imgH };
+}
+
+/**
+ * Dựng `regions` + `img_w`/`img_h` cho một lượt gửi NHIỀU ảnh. `null` = không gửi
+ * trường nào cả.
+ *
+ * Ba luật ở đây đều là **vá một lỗi im lặng có thật của máy chủ**, không phải cho đẹp:
+ *
+ * 1. **Không ảnh nào được khoanh ⟹ trả `null`, tuyệt đối không gửi `regions: '[]'`.**
+ *    `_parse_regions` coi `[]` là "không gửi" rồi rơi về `points`/`bbox_*` cấp form
+ *    — tức mảng rỗng KHÔNG tắt được vùng khoanh, nó chỉ mở lại đúng đường cũ mà
+ *    một vùng áp cho MỌI ảnh.
+ *
+ * 2. **Mỗi phần tử luôn ghi `shape` tường minh.** Phần tử thiếu `shape` KẾ THỪA
+ *    `shape` cấp form (footgun #127 trong mã máy chủ). Nên `[{points}]` gửi kèm
+ *    `shape='rect'` cấp trên sẽ cắt hình chữ nhật thay vì cắt theo đa giác —
+ *    mất che nền và cây bên cạnh, mà không có một lỗi nào báo.
+ *
+ * 3. **Quy mọi ảnh về MỘT hệ toạ độ.** Máy chủ chỉ nhận đúng một cặp
+ *    `img_w`/`img_h` cho cả lượt gửi, rồi lấy nó chia tỉ lệ cho từng ảnh. Ảnh nào
+ *    đo ở kích thước khác cặp đó thì vùng khoanh trượt đi — đúng vào ca mà tính
+ *    năng này sinh ra để chặn: trượt sang cây bên cạnh. Nên các ảnh lệch kích
+ *    thước được nhân tỉ lệ về hệ của ảnh được khoanh ĐẦU TIÊN trước khi gửi.
+ *
+ * Phần tử `null` giữ nguyên vị trí trong mảng: máy chủ đọc `regions` SONG SONG
+ * `files[]`, bỏ phần tử đi là đẩy vùng của ảnh này sang ảnh khác.
+ */
+export function buildTreeRegions(
+  regions: Array<TreeRegion | null | undefined>,
+): TreeRegionsForm | null {
+  if (!Array.isArray(regions) || regions.length === 0) return null;
+
+  const cleaned = regions.map(_cleanRegion);
+  const first = cleaned.find(c => c !== null);
+  if (!first) return null; // luật 1
+
+  const refW = first.imgW;
+  const refH = first.imgH;
+
+  const items = cleaned.map(c => {
+    if (!c) return null;
+    const sx = refW / c.imgW;
+    const sy = refH / c.imgH;
+    const out: Record<string, unknown> = {
+      // luật 2 — `shape` luôn có mặt, không bao giờ để kế thừa.
+      shape: c.shape ?? (c.pts ? 'poly' : 'rect'),
+    };
+    if (c.pts) out.points = c.pts.map(([x, y]) => [x * sx, y * sy]); // luật 3
+    if (c.bbox) out.bbox = [c.bbox[0] * sx, c.bbox[1] * sy, c.bbox[2] * sx, c.bbox[3] * sy];
+    return out;
+  });
+
+  return { regions: JSON.stringify(items), img_w: String(refW), img_h: String(refH) };
+}
+
+/**
+ * Gắn vùng khoanh vào form. KHÔNG gửi `points`/`bbox_*` cấp form kèm theo: hai
+ * đường cùng lúc là cách nhanh nhất để một thay đổi ở `regions` bị đường cũ ghi đè
+ * mà không ai thấy.
+ */
+export function appendTreeRegions(
+  form: FormData,
+  regions?: Array<TreeRegion | null | undefined>,
+): void {
+  if (!regions?.length) return;
+  const built = buildTreeRegions(regions);
+  if (!built) return;
+  form.append('regions', built.regions);
+  form.append('img_w', built.img_w);
+  form.append('img_h', built.img_h);
+}
+
 export async function identifyTree(
   baseUrl: string,
   imagePaths: string[],
@@ -591,6 +720,7 @@ export async function identifyTree(
   }
 
   appendGeoAndOrientation(form, options);
+  appendTreeRegions(form, options.regions);
   form.append('source', 'phone');
 
   // M4: chỉ nối ?matcher= khi tester ép — mặc-định để backend dùng ENV.
@@ -638,6 +768,7 @@ export async function enrollTree(
   }
 
   appendGeoAndOrientation(form, options);
+  appendTreeRegions(form, options.regions);
   // Gửi CẢ HAI tên trường: `dup` là hợp-đồng sạch OriLife chốt ở #235
   // (`_Agents/inbox/_done/OriLife-to-SuperApp-fieldtest-12-fixes-API-handoff-2026-07-26.md` mục 1),
   // `force` là bí danh backend bắc cầu cho bản app cũ. Gửi cả hai để app chạy đúng
@@ -672,6 +803,16 @@ export async function verifyAddTree(
   // verify_add cũng nhận heading/pitch/roll (`server.py:1941`) — gộp ảnh vào cây đã
   // có mà không gửi hướng thì ảnh mới kém giá trị hơn ảnh cũ.
   appendGeoAndOrientation(form, options);
+
+  // KHOANH VÙNG — cùng một lớp lỗi vừa bắt được ở quả, ở đây là cây.
+  //
+  // `enrollTree` gửi `regions` (`:771`) và `identifyTree` cũng gửi (`:723`), nhưng
+  // hàm này thì không. Nghĩa là: lúc lập hồ sơ cây và lúc soi cây thì ảnh được cắt
+  // đúng thân cây, còn lúc BỒI THÊM GÓC vào cây đã có — việc nông dân làm nhiều
+  // nhất — lại gửi cả khung. Hai cây đứng sát nhau thì ảnh bồi kéo luôn cây hàng
+  // xóm vào chữ ký của cây này, và hỏng dần theo từng lượt bồi chứ không hỏng ngay,
+  // nên không ai thấy.
+  appendTreeRegions(form, options.regions);
 
   return _apiCall<VerifyAddResponse>(`${baseUrl}/api/verify_add`, 'POST', form, IMAGE_REQUEST_TIMEOUT_MS);
 }

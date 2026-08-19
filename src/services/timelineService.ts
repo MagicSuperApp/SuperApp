@@ -298,3 +298,330 @@ export function sortNewestFirst(events: TimelineEvent[]): TimelineEvent[] {
   };
   return [...events].sort((a, b) => at(b) - at(a));
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BẰNG CHỨNG của một sự kiện — hai cửa còn lại của bộ dòng thời gian
+// ═══════════════════════════════════════════════════════════════════════════
+//
+//   GET  /api/{entity_type}/{entity_id}/proof/{event_id}
+//   POST /api/{entity_type}/{entity_id}/event/{event_id}/anchor
+//
+// Hai cửa này bù nốt chỗ hổng của `fetchTimeline`: dòng thời gian nói ĐÃ CÓ
+// những gì, còn hai cửa dưới nói LẤY GÌ CHỨNG MINH. Chúng dùng chung đúng bộ
+// `entity_type` (`tree · fruit · farm · animal · plot`) với timeline — nên nếu
+// máy chủ thêm loại thực thể mới thì cả ba cửa nhận được cùng lúc.
+
+/** Một mắt trên đường Merkle: băm anh em + nó nằm bên nào. */
+export interface ProofPathNode {
+  hash: string;
+  /** `left`/`right` — thiếu thì KHÔNG tự đoán, xem chú thích `EventProof.path`. */
+  side?: 'left' | 'right' | string;
+}
+
+/** Neo on-chain của một sự kiện (hoặc của lô chứa nó). */
+export interface EventAnchor {
+  /** `anchored` · `pending` · `none` — tên do máy chủ đặt, đừng ép về boolean. */
+  status?: string;
+  network?: string;
+  tx_hash?: string;
+  block_height?: number;
+  /** Thời điểm neo, chuỗi ISO. */
+  ts?: string;
+  /** Đường xem giao dịch. CHỈ mở qua `safeExplorerUrl()`. */
+  explorer_url?: string | null;
+  [k: string]: unknown;
+}
+
+/**
+ * Bằng chứng của MỘT sự kiện.
+ *
+ * ⚠ `path` có thể vắng hoặc rỗng ở hai ca RẤT khác nhau: sự kiện chưa vào lô nào
+ * (chưa có cây Merkle để đi), và máy chủ lược bớt cho khách (cùng luật rọc-phách
+ * đã lược `prev_hash`/`leaf_hash` ở `fetchTimeline`). App KHÔNG phân biệt được
+ * hai ca đó, nên đừng viết câu nào hàm ý "sự kiện này không có bằng chứng" —
+ * câu đúng là "chưa lấy được đường chứng minh".
+ *
+ * ⚠ Và app KHÔNG tự kiểm lại được cây Merkle: `leaf_hash` do chính máy chủ băm,
+ * còn app không giữ nội dung gốc của sự kiện dưới dạng chuẩn hoá byte-cho-byte.
+ * Thứ duy nhất kiểm được ĐỘC LẬP là `tx_hash` trên trình duyệt chuỗi — vì vậy
+ * `explorer_url` mới là nút quan trọng nhất của màn bằng chứng, không phải bảng
+ * băm dài loằng ngoằng.
+ */
+export interface EventProof {
+  event_id: string;
+  entity_type?: string;
+  entity_id?: string;
+  leaf_hash?: string;
+  prev_hash?: string;
+  merkle_root?: string;
+  path?: ProofPathNode[];
+  anchor?: EventAnchor | null;
+  /** Máy chủ tự kiểm chuỗi băm. LỜI CỦA MÁY CHỦ — app không kiểm lại được. */
+  chain_ok?: boolean;
+  [k: string]: unknown;
+}
+
+/**
+ * Kết quả xin neo. `already_anchored` KHÔNG phải lỗi.
+ *
+ * Máy chủ trả 409 khi sự kiện đã neo rồi. Với người dùng thì đó là chuyện tốt
+ * ("xong rồi"), nên gói nó vào nhánh thành công kèm cờ, thay vì đẩy ra `error` để
+ * màn hình hiện chữ đỏ cho một việc đã hoàn tất.
+ */
+export interface AnchorResult extends EventAnchor {
+  already_anchored?: boolean;
+}
+
+/**
+ * URL trình duyệt chuỗi, ĐÃ LỌC. `null` = không có gì an toàn để mở.
+ *
+ * Cùng lý do như ở `fruitLookupService.safeExplorerUrl`: chuỗi này do máy chủ gửi
+ * và đi thẳng vào `Linking.openURL`. Chỉ `http`/`https` được qua.
+ */
+export function safeExplorerUrl(a: EventAnchor | null | undefined): string | null {
+  const raw = typeof a?.explorer_url === 'string' ? a.explorer_url.trim() : '';
+  if (!raw) return null;
+  const lower = raw.toLowerCase();
+  if (!lower.startsWith('http://') && !lower.startsWith('https://')) return null;
+  return raw;
+}
+
+/**
+ * Sự kiện này đã neo chưa: `true` · `false` · `null` (CHƯA BIẾT).
+ *
+ * Ba giá trị, cùng luật với `provenanceService.isAnchored`. Có `tx_hash` là đã
+ * neo, dù `status` viết gì; không có `anchor` thì không kết luận.
+ */
+export function anchorState(a: EventAnchor | null | undefined): boolean | null {
+  if (!a || typeof a !== 'object') return null;
+  if (typeof a.tx_hash === 'string' && a.tx_hash.trim().length > 0) return true;
+  if (typeof a.status === 'string') {
+    if (a.status === 'anchored' || a.status === 'confirmed') return true;
+    if (a.status === 'pending' || a.status === 'none' || a.status === 'unanchored') return false;
+  }
+  return null;
+}
+
+function _proofUrl(
+  baseUrl: string,
+  entityType: TimelineEntityType,
+  entityId: string,
+  eventId: string,
+): string {
+  return (
+    `${baseUrl}/api/${encodeURIComponent(entityType)}` +
+    `/${encodeURIComponent(entityId)}/proof/${encodeURIComponent(eventId)}`
+  );
+}
+
+/**
+ * Lấy bằng chứng của MỘT sự kiện.
+ *
+ * Gửi Bearer NẾU CÓ, nhưng không đòi: người mua quét mã trên thùng hàng phải xem
+ * được bằng chứng của sự kiện công khai mà không cần tài khoản — cùng lý lẽ với
+ * hai cửa công khai ở `provenanceService`. Chưa đăng nhập mà máy chủ vẫn chặn thì
+ * nó trả 401/403 và câu lỗi là của máy chủ, không phải của app đoán trước.
+ *
+ * KHÔNG ném.
+ */
+export async function fetchEventProof(
+  baseUrl: string,
+  entityType: TimelineEntityType,
+  entityId: string,
+  eventId: string,
+): Promise<{ ok: boolean; data?: EventProof; error?: APIError }> {
+  const id = (eventId ?? '').trim();
+  if (!id) {
+    return { ok: false, error: { type: 'validation_error', detail: 'Thiếu mã sự kiện', http_status: 0 } };
+  }
+
+  const authHeader = await _authHeader();
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (authHeader) headers.Authorization = authHeader;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const resp = await fetch(_proofUrl(baseUrl, entityType, entityId, id), {
+      method: 'GET',
+      headers,
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (resp.status === 401 || resp.status === 403) {
+      return {
+        ok: false,
+        error: {
+          type: 'auth_error',
+          detail: 'Bằng chứng này không công khai',
+          http_status: resp.status,
+        },
+      };
+    }
+    if (resp.status === 404) {
+      // Gộp đúng hai ca máy chủ cố ý gộp: không có sự kiện đó, và có nhưng không
+      // cho xem. App không tách được — nên câu hiện lên phải KHÔNG khẳng định sự
+      // kiện không tồn tại.
+      return {
+        ok: false,
+        error: {
+          type: 'validation_error',
+          detail: 'Không lấy được bằng chứng của sự kiện này',
+          http_status: 404,
+          error_code: 'proof_not_available',
+        },
+      };
+    }
+    if (resp.status >= 500) {
+      return { ok: false, error: { type: 'server_error', detail: `Lỗi máy chủ: HTTP ${resp.status}`, http_status: resp.status } };
+    }
+    if (!resp.ok) {
+      return { ok: false, error: { type: 'server_error', detail: `HTTP ${resp.status}`, http_status: resp.status } };
+    }
+
+    const body = await resp.json().catch(() => ({} as any));
+    if (body?.ok === false) {
+      return {
+        ok: false,
+        error: { type: 'server_error', detail: String(body?.error ?? body?.detail ?? 'Máy chủ từ chối'), http_status: resp.status },
+      };
+    }
+
+    // Máy chủ có thể gói dưới `proof` hoặc trải phẳng — nhận cả hai, vì đoán sai
+    // chỗ này thì màn bằng chứng trống trơn mà không có gì báo.
+    const p = (body?.proof && typeof body.proof === 'object' ? body.proof : body) as Record<string, unknown>;
+    return {
+      ok: true,
+      data: {
+        ...p,
+        event_id: typeof p?.event_id === 'string' ? p.event_id : id,
+        entity_type: typeof p?.entity_type === 'string' ? p.entity_type : entityType,
+        entity_id: typeof p?.entity_id === 'string' ? p.entity_id : entityId,
+        path: Array.isArray(p?.path) ? (p.path as ProofPathNode[]) : undefined,
+        anchor: p?.anchor && typeof p.anchor === 'object' ? (p.anchor as EventAnchor) : null,
+      },
+    };
+  } catch (err: unknown) {
+    clearTimeout(timeout);
+    return { ok: false, error: { type: 'network_error', detail: String(err), http_status: 0 } };
+  }
+}
+
+/**
+ * Xin NEO một sự kiện lên chuỗi. CẦN đăng nhập, và chỉ chủ mới neo được.
+ *
+ * ── Ba điều phải biết trước khi gọi ─────────────────────────────────────────
+ *
+ * 1. **Neo là việc TỐN TIỀN và KHÔNG hoàn tác.** Mỗi lượt là một giao dịch trên
+ *    chuỗi. Đừng gọi tự động sau khi ghi sự kiện, và đừng thử lại trong vòng lặp
+ *    khi mạng chập chờn: một lượt gọi hỏng giữa chừng có thể ĐÃ vào hàng đợi phía
+ *    máy chủ, gọi lại là nguy cơ trả tiền hai lần cho một sự kiện.
+ *
+ * 2. **Trả về thường là `pending`, không phải `anchored`.** Chuỗi cần thời gian
+ *    xác nhận. Màn hình phải hiện "đang neo" và để người dùng quay lại xem sau
+ *    bằng `fetchEventProof`, chứ không đứng chờ quay vòng.
+ *
+ * 3. **409 = đã neo rồi** → trả `{ ok: true, already_anchored: true }`. Với người
+ *    dùng đó là việc đã xong, không phải lỗi.
+ *
+ * KHÔNG ném.
+ */
+export async function anchorEvent(
+  baseUrl: string,
+  entityType: TimelineEntityType,
+  entityId: string,
+  eventId: string,
+): Promise<{ ok: boolean; data?: AnchorResult; error?: APIError }> {
+  const id = (eventId ?? '').trim();
+  if (!id) {
+    return { ok: false, error: { type: 'validation_error', detail: 'Thiếu mã sự kiện', http_status: 0 } };
+  }
+
+  const authHeader = await _authHeader();
+  if (!authHeader) {
+    return { ok: false, error: { type: 'auth_error', detail: 'Chưa đăng nhập', http_status: 401 } };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const url =
+      `${baseUrl}/api/${encodeURIComponent(entityType)}` +
+      `/${encodeURIComponent(entityId)}/event/${encodeURIComponent(id)}/anchor`;
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { Accept: 'application/json', Authorization: authHeader },
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (resp.status === 401) {
+      return { ok: false, error: { type: 'auth_error', detail: 'Phiên hết hạn', http_status: 401 } };
+    }
+    if (resp.status === 403) {
+      return {
+        ok: false,
+        error: {
+          type: 'validation_error',
+          detail: 'Chỉ chủ của thực thể này mới neo được',
+          http_status: 403,
+          error_code: 'not_owner',
+        },
+      };
+    }
+    if (resp.status === 409) {
+      const body = await resp.json().catch(() => ({} as any));
+      const a = (body?.anchor && typeof body.anchor === 'object' ? body.anchor : body) as EventAnchor;
+      return { ok: true, data: { ...a, already_anchored: true } };
+    }
+    if (resp.status === 402) {
+      // Hết hạn mức / ví không đủ. Câu của máy chủ nói rõ hơn bất cứ câu nào app
+      // tự soạn (nó biết còn bao nhiêu lượt), nên giữ nguyên.
+      let detail = 'Không đủ hạn mức để neo';
+      try { detail = String((await resp.json())?.detail ?? detail); } catch { /* bỏ qua */ }
+      return { ok: false, error: { type: 'validation_error', detail, http_status: 402, error_code: 'insufficient_funds' } };
+    }
+    if (resp.status === 404) {
+      return {
+        ok: false,
+        error: { type: 'validation_error', detail: 'Máy chủ chưa bật neo sự kiện', http_status: 404, error_code: 'anchor_off' },
+      };
+    }
+    if (resp.status === 429) {
+      const ra = resp.headers.get('Retry-After');
+      return {
+        ok: false,
+        error: {
+          type: 'rate_limited',
+          detail: 'Quá nhiều lượt neo',
+          http_status: 429,
+          retry_after_seconds: ra ? parseInt(ra, 10) : 60,
+        },
+      };
+    }
+    if (!resp.ok) {
+      return {
+        ok: false,
+        error: {
+          type: resp.status >= 500 ? 'server_error' : 'validation_error',
+          detail: `HTTP ${resp.status}`,
+          http_status: resp.status,
+        },
+      };
+    }
+
+    const body = await resp.json().catch(() => ({} as any));
+    if (body?.ok === false) {
+      return {
+        ok: false,
+        error: { type: 'server_error', detail: String(body?.error ?? body?.detail ?? 'Máy chủ từ chối'), http_status: resp.status },
+      };
+    }
+    const a = (body?.anchor && typeof body.anchor === 'object' ? body.anchor : body) as EventAnchor;
+    return { ok: true, data: { ...a, already_anchored: false } };
+  } catch (err: unknown) {
+    clearTimeout(timeout);
+    return { ok: false, error: { type: 'network_error', detail: String(err), http_status: 0 } };
+  }
+}

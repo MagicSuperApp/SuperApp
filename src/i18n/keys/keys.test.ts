@@ -29,13 +29,13 @@ describe('bộ khoá', () => {
   });
 
   it('khoá đặt đúng nếp <khonggian>.<nhóm>.<tên>', () => {
-    // Bon khong gian ten dang dung: `trace.`, `map.`, `onboarding.`, `web.`.
+    // Nam khong gian ten dang dung: `trace.`, `map.`, `onboarding.`, `web.`, `scan.`.
     // Moi doan deu camelCase,
     // cho chu so (`trace.place3d.step`, `trace.label.has3d`), va cho ca khoa hai
     // tang (`map.openmap`) lan ba tang (`map.openmap.note`).
     // Cam chu HOA dan dau va dau gach: khoa la thu doc bang mat trong ma nguon.
     const sai = allKeys().filter(
-      k => !/^(trace|map|onboarding|web)(\.[a-z][a-zA-Z0-9]*)+$/.test(k),
+      k => !/^(trace|map|onboarding|web|scan)(\.[a-z][a-zA-Z0-9]*)+$/.test(k),
     );
     expect(sai).toEqual([]);
   });

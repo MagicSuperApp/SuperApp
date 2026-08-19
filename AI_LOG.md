@@ -1,3 +1,482 @@
+## SỬA: nút "Tải ảnh mã QR" gửi MÃ DẠNG CHỮ thay vì ảnh
+
+### Nguyên nhân, đọc từ mã React Native
+Bản trước gọi `Share.share({ url: dataUrl, message: code })`. Trên Android, `Share` của RN **vứt bỏ `url`**: nó chỉ dựng lại `{ title, message }` rồi gửi đi.
+
+```js
+// react-native/Libraries/Share/Share.js:112-115
+const newContent = {
+  title: content.title,
+  message: typeof content.message === 'string' ? content.message : undefined,
+};
+```
+
+Nên nó gửi đúng cái `message: code` tôi truyền vào. Comment tôi viết trong bản trước — *"ở Android ta chia sẻ chuỗi `data:`"* — là **sai**: nhánh Android không đọc `url` dưới bất kỳ dạng nào.
+
+### Đây là loại hỏng tệ nhất
+Nó **không báo lỗi**. Một việc khác đã xảy ra, và báo thành công. Người dùng bấm "tải ảnh", nhận được chữ, và không có gì trên màn nói rằng có chuyện gì sai.
+
+Nên luật của tệp đó bây giờ là: **không có đường lùi nào gửi chữ thay cho ảnh.** Không xuất được ảnh thì nói không xuất được ảnh.
+
+### Đường đúng
+Thêm `expo-sharing` (~56.0.23, khớp SDK) — nó chia sẻ được TỆP trên cả hai nền, và trên Android tự dựng `content://` qua FileProvider của chính nó, thứ mà `Share` của RN không làm còn app này thì chưa khai FileProvider nào.
+
+Đường đi: PNG base64 → ghi tệp tạm → `Sharing.shareAsync(uri, { mimeType: 'image/png' })`.
+
+Đường lùi **chỉ trên iOS**, và chỉ với `url` là `file://` — ở đó nhánh `ios` của `Share.js` thật sự đọc `url`. Android **không có đường lùi**, và đó là câu trả lời đúng chứ không phải thiếu sót.
+
+### Bài kiểm khoá đúng lỗi này
+`saveQrImage.test.ts` không chỉ kiểm "có gọi chia sẻ không". Nó kiểm rằng không đường nào gửi chữ:
+- expo-sharing dùng được ⇒ **không đụng** tới `Share` của RN;
+- ghi tệp hỏng ⇒ `unavailable`, `Share` không được gọi;
+- Android + expo-sharing báo không hỗ trợ ⇒ `unavailable`, `Share` không được gọi (đây chính là ca đã hỏng);
+- ngay cả đường lùi iOS cũng **không** truyền `message`.
+
+### Câu lỗi tách làm hai
+`unavailable` (chưa dựng lại app sau khi thêm gói) nói *"cần cập nhật ứng dụng"*; `failed` nói *"thử lại giúp"*. Gộp lại thì người dùng bấm mãi một nút không bao giờ chạy được trên bản app họ đang cầm.
+
+Kiểm: `tsc` sạch · **1.478/1.478 test xanh** (+11) · eslint 0 lỗi.
+
+## Mã QR công khai: chấm tròn trên nền logo, và một tấm trượt để bật
+
+### Vì sao phải tự dựng lưới, không dùng ảnh của máy chủ
+`GET /qr/{code}` trả một tấm SVG **đã vẽ xong** — ô vuông đen, nền trắng, không có chỗ chen vào. Muốn cái nhìn khác thì phải có **LƯỚI**, không phải có **ẢNH**. Nên thêm `qrcode-generator` (thuần JS, không native, không cần dựng lại app) và app tự sinh lưới ở `features/treeQr/qrMatrix.ts`.
+
+Tự sinh mã an toàn ở đây vì thứ nhúng vào QR là URL công khai do chính app dựng (`publicTraceUrl`) — không phải bí mật nào của máy chủ, và hai bên ra cùng một chuỗi.
+
+### Ba chốt giữ cho mã còn quét được
+Ảnh nền + chấm tròn đều ăn vào phần "sạch" của mã. Ba thứ bù lại, đừng gỡ cái nào:
+
+1. **Ô SÁNG cũng phải vẽ** (chấm màu nền, đục). Bỏ chúng thì logo lộ nguyên mảng và độ tương phản sáng/tối biến mất — mã trông đẹp hơn và chết hẳn. Logo lộ ra qua **bốn góc nhỏ** mà chấm tròn chừa lại ở mỗi ô; máy quét lấy mẫu ở TÂM ô, nơi luôn là màu đặc.
+2. **Ba ô định vị vẽ VUÔNG, trên nền trơn.** Máy quét tìm mã bằng tỉ lệ 1:1:3:1:1 của ba ô đó. Bo tròn hoặc cho logo chạy qua là phá đúng cái mốc dùng để tìm mã. Bản mẫu web cũng giữ vuông — nhưng nó dùng `zone = 11` (quét cả vùng canh giờ), ở đây dùng đúng 7×7 rồi lót thêm một ô trắng mỗi phía.
+3. **Mức sửa lỗi H (~30%)**, không phải mặc định M. Cái giá là lưới dày hơn ⇒ ô nhỏ đi — đánh đổi đúng cho một cái tem đem dán ngoài vườn.
+
+Thêm một chốt bản mẫu web không có: **lề trắng 4 ô** theo chuẩn. Nhiều thư viện rút xuống 1–2 cho gọn, và đó là lý do quen thuộc khiến một mã "đẹp" không quét được khi dán sát mép nhãn.
+
+### Tải ảnh: bảng chia sẻ, KHÔNG phải lưu thẳng vào thư viện
+`react-native-svg` có sẵn `toDataURL` trên ref → PNG base64. Lưu thẳng vào thư viện ảnh cần `expo-media-library`/CameraRoll — dự án không có, và thêm mô-đun native nghĩa là phải dựng lại app trước khi nút sống. Bảng chia sẻ thì có sẵn và làm được nhiều hơn: chọn *Lưu ảnh*, hoặc **gửi thẳng cho thợ in** — với một cái tem cần đem đi in thì việc sau hay xảy ra hơn.
+
+Hai bẫy đã tránh: Android **không nhận `file://`** qua `Share` (đòi `content://` + FileProvider) nên ở đó chia sẻ chuỗi `data:`; và tên tệp mang **mã cây**, không phải `qr.png` — xuất mã cho mười cây rồi mở thư mục Tải về mà nhìn thấy mười tệp `qr.png` thì coi như hỏng.
+
+### Nút bật công khai ra khỏi chỗ khuất
+Trước đây đây là NƠI DUY NHẤT bật được công khai, và nó là một thẻ nằm trong tab thứ ba. Đo trên kho sản xuất 08/2026: **139 cây — 54 riêng tư, 85 chưa đặt, 0 công khai.** Không phải nông dân không muốn; là không ai tìm ra chỗ bấm.
+
+Nay: nút **ngay trên nút "Thu hoạch quả"**, mở một tấm trượt (`TreePublicSheet`). Nút phụ vẽ **viền** chứ không đặc, để hai nút không tranh nhau làm nút chính của màn.
+
+⚠ Điều kiện dựng thanh dưới đã đổi: trước nó chỉ hiện khi cây **đã có quả**, vì trong thanh chỉ có nút thu hoạch. Bật công khai thì không đợi cây có quả — nó là mắt xích đầu của chuỗi truy xuất, phải bấm được từ ngày trồng. Nên thanh hiện ở mọi cây; riêng nút thu hoạch giữ điều kiện cũ.
+
+`TreePublicCard` (tab Thông tin) rút về đúng vai: một dòng cho biết trạng thái + lối đi tới cùng tấm trượt đó. Giữ cả hai bản giao diện thì thành hai màn cùng làm một việc, và sớm muộn hai bản lệch nhau.
+
+Kiểm: `tsc` sạch · **1.467/1.467 test xanh** (+16) · eslint 0 lỗi trên tệp mới (TreeDetailScreen giữ đúng 6 lỗi có sẵn).
+
+## Thẻ vườn ở trang Tổng quan: một mảng xanh lá mạ, có tán lá ở góc
+
+Thẻ "Vườn của tôi" (tab thông tin) từ **ba ô trắng rời** thành **một thẻ màu**.
+
+### Vì sao đổi lần thứ tư
+Ba bản trước: thẻ to bọc ba cụm icon-trên-số ngăn bằng vạch dọc (lối bảng biểu 2010) → lưới hai hàng → một hàng ba ô trắng. Vấn đề còn lại của bản ba: **ba ô trắng trên nền trắng thì mắt phải đi tìm chúng**. Vườn · cây · quả là thứ liếc MỘT cái rồi đi tiếp — một mảng màu đặc kéo mắt tới đúng chỗ nhanh hơn mọi cỡ chữ.
+
+Và nó chỉ hiệu quả chừng nào **trong trang chỉ có MỘT** mảng như vậy. Thêm cái thứ hai là hai cái cùng mất tác dụng — ghi thẳng vào chú thích của `LIME_CARD` để bản sau không rải màu ra khắp trang.
+
+### Màu: lá mạ, hạ tối vừa đủ để chữ trắng đọc được
+`#4F7D22`. "Lá mạ" là xanh ngả vàng của mạ non, không phải xanh lá cây già. Với chữ trắng cho tỉ lệ tương phản **~5,4:1** — qua mức AA (4,5) cho cả cỡ chữ nhỏ, mà vẫn còn ra màu mạ chứ chưa thành màu rêu. Đặt trong `theme/depth.ts` chứ không viết thẳng vào màn: eslint của dự án cấm hex trong component, và đúng ra là vậy.
+
+### Hoạ tiết tán lá — góc dưới bên phải
+Dùng lại `<Leaf>` sẵn có ở `components/layered/Organic` (phiến lá + gân giữa), ba lá **lệch cỡ và lệch góc**: xoay đều nhau thì ra hình do máy vẽ, lệch thì mắt đọc thành tán lá thật.
+
+Hai chi tiết có chủ ý:
+- Lá **tràn ra ngoài mép** và bị `overflow: hidden` cắt. Lá bị cắt ở mép trông như tán còn tiếp diễn; lá nằm gọn trong khung trông như một cái tem dán.
+- Lớp lá `pointerEvents="none"` và nằm DƯỚI chữ — không bao giờ ăn mất cú chạm.
+
+### Hai thứ dọn theo
+- **Cả thẻ bấm được** (mở danh sách vườn). Bản trước chỉ ô "Vườn" bấm được, tức hai phần ba mảng là vùng chết mà nhìn y hệt phần sống.
+- **Bỏ `hint` ở SectionHeader.** Tên vườn nay nằm trong chính thẻ; để cả hai chỗ là in cùng một chuỗi hai lần cách nhau 40 px, người đọc phải kiểm xem hai dòng có khác nhau không rồi phát hiện là không.
+- Xoá hẳn `Tile` và năm khoá kiểu của nó — không ai gọi nữa.
+
+Kiểm: `tsc` sạch · **1.451/1.451 test xanh** · eslint 0 lỗi.
+
+## Gộp develop vào feat/scan — hai nhánh cùng dựng cửa tra quả
+
+Bốn tệp xung đột, và không phải xung đột vặt: nhánh `develop` (PR #184) và nhánh này **dựng trùng nhau** cửa `POST /api/fruit/lookup` — hai service, hai màn hình, cùng một endpoint.
+
+### Điều đáng mừng: hai bên độc lập đọc ra CÙNG một hợp đồng
+Bản của develop cũng dùng `pick` · `regions` · `img_urls` · `lookup_id` · `verdict`/`EMPTY_SCOPE` · `image_unusable` · `rate_limited` · `sess`. Tức cả hai đã đọc từ máy chủ thật, không ai đoán. Xung đột là về **hình dạng API phía app**, không phải về sự thật.
+
+### Chọn gì, và vì sao
+
+| tệp | giữ | lý do |
+|---|---|---|
+| `TraceScanScreen.tsx` | bản này | ba lượt quyết định của anh nằm ở đây: bỏ tự chụp, bỏ khoanh vùng, cắt vuông theo khung ngắm. Bản develop là màn QR cũ 198 dòng, chưa có gì trong số đó. |
+| `fruitLookupService.ts` | bản này | có `imageBytes` (`prepareImage` cần), chốt 2MB tại máy, `safeExplorerUrl`/`safeHttpUrl`, và 36 bài kiểm bám theo. |
+| `fruitLookupService.test.ts` | bản này | đi kèm service trên. |
+| `FarmDetailScreen.tsx` | gộp tay | **cả hai bên đều thêm khối dòng thời gian vườn** — cùng một kết luận, khác chỗ đặt. Giữ vị trí TRÊN danh sách cây, và giữ lập luận của develop: vẽ cả khi vườn chưa có cây nào, vì việc đồng áng không đợi có cây mới ghi được. |
+
+### Không vứt cái của người khác
+Ba thứ develop đo được mà bên này chưa có, đã chép vào đầu `fruitLookupService`:
+
+- **Ba đường quả** — `identify` (nông dân, cần đăng nhập, pool theo owner) · `scan` (khách hội chợ, theo phiên trưng bày) · `lookup` (người lạ, theo cây công khai). Kèm cảnh báo của chính máy chủ: *"TUYỆT ĐỐI KHÔNG nới /api/fruit/identify cho người lạ — nới nó là biến kho thành máy tra-cứu-ngược toàn bộ quả của mọi chủ."*
+- **`SOLO` không có nghĩa "chắc chắn là quả này"** — nó nghĩa là "trong tầm chỉ có một ứng viên". Ở ngưỡng 0,72 có 73% (412/564) cặp quả khác nhau cùng cây bị nhận nhầm; siết hết nhận nhầm thì chỉ giữ 7,8% quả thật.
+- Số đo `server.py:8321` làm căn cứ cho việc màn hình không được có dấu tích xanh.
+
+Một chỗ CỐ Ý không theo develop: mã phiên `sess` **không lưu xuống đĩa**. Máy chủ tự nhận đây là lớp giữ trải nghiệm chứ không phải lớp an ninh và "giả được", nên lưu chẳng siết thêm gì — chỉ đổi lấy một mã bền theo máy, đúng thứ dùng để lần theo một người mua không đăng nhập.
+
+### Việc phải làm thêm mà danh sách xung đột KHÔNG báo
+`FruitLookupScreen.tsx` của develop (màn riêng, route `FruitLookup`) không nằm trong bốn tệp xung đột, nhưng nó gọi API của service vừa bị thay ⇒ vỡ lúc dịch. Đã chuyển nó sang union bảy nhánh.
+
+Bài học: git chỉ báo tệp **cả hai bên cùng sửa**. Tệp chỉ MỘT bên sửa mà phụ thuộc vào bên kia thì nó im — `tsc` mới là thứ tìm ra.
+
+Kiểm sau gộp: `tsc` sạch · **1.451/1.451 test xanh** (92 bộ) · eslint 0 lỗi mới (FarmDetailScreen giữ đúng 30 lỗi có sẵn từ trước, không thêm bớt).
+
+## Thông báo: tin nhiều báo cùng đưa · dông · gió giật · mưa to
+
+Luật cảnh báo (`alertRules`) đã có từ trước nhưng **chưa có đường ra** — nó quyết định cái gì đáng báo rồi không có gì đưa nó khỏi app. Nay nối xong, và thêm nhánh thời tiết.
+
+### Thời tiết theo GIỜ, không theo ngày
+`weatherService` nay xin thêm `hourly=weather_code,precipitation_probability,wind_gusts_10m`. Không có mảng giờ thì chỉ nói được "hôm nay có lúc mưa" — đúng nhưng vô dụng: nhà vườn cần biết còn hai tiếng nữa hay tối mới mưa.
+
+`wind_gusts_10m` chứ không phải `wind_speed_10m`: **lốc là GIẬT**, và gió trung bình 20 km/h có thể giấu một cú giật 70 km/h thổi bay giàn lưới.
+
+**Một cái bẫy múi giờ đã vá trước khi nó cắn.** Open-Meteo trả `"2026-08-18T14:00"` không kèm múi giờ. `Date.parse` chuỗi đó hiểu theo múi giờ CỦA MÁY — đúng khi máy để giờ Việt Nam, lệch đúng 7 tiếng khi không. Một cảnh báo "dông trong 2 giờ nữa" lệch 7 tiếng thì tệ hơn không có cảnh báo. Nên `hourEpoch()` quy bằng `utc_offset_seconds` mà chính máy chủ gửi kèm, không đoán theo máy.
+
+### Nói đúng cái đo được: KHÔNG có chữ "bão"
+Nguồn là mô hình dự báo toàn cầu. Từ đó suy ra được **dông** (WMO 95·96·99), **gió giật** (km/h), **mưa to** (WMO 65·82).
+
+Không suy ra được, và app không được nói như thể biết:
+- **Bão có tên** (Yagi, Trà Mi…) — cảnh báo bão ở Việt Nam do Trung tâm Dự báo KTTV Quốc gia phát; Open-Meteo không có cờ nào cho nó. Nên chữ trong app nói **"gió rất mạnh"**, không nói "bão": người đọc chữ "bão" sẽ đi chằng nhà — một việc lớn — dựa trên thứ ta chỉ đo được bằng km/h.
+- **Lốc/vòi rồng** — hiện tượng cục bộ vài trăm mét, lưới mô hình ~10 km không thấy. Thứ đo được là gió giật, và đó là điều app nói.
+
+Ngưỡng lấy từ thang **Beaufort** (thang chính thức trong bản tin KTTV): 50 km/h ở ranh cấp 6→7 ("cất đồ"), 75 km/h ở ranh cấp 8→9 ("gãy cành, bật gốc"). Không bịa số tròn cho đẹp.
+
+### Một cơn = MỘT cảnh báo
+Dông thường kèm gió giật và mưa to. Báo ba cái cho một cơn là dạy người ta tắt thông báo. `weatherAlerts` trả **nhiều nhất một** cảnh báo mỗi lượt, chọn theo mức nặng: đang dông > sắp dông > gió giật nguy hiểm > gió giật mạnh > mưa to.
+
+"Đang dông" vẫn đáng báo dù nghe có vẻ thừa: người có vườn không phải lúc nào cũng đứng trong vườn. Toạ độ tra thời tiết là toạ độ **vườn**, không phải chỗ họ đang đứng.
+
+### Đường ra: `localNotify` (notifee)
+`@notifee/react-native` đã có trong `package.json` nhưng chưa nơi nào dùng. Nay có, nạp kiểu **`require` mềm** như mọi mô-đun native khác trong repo: máy chưa dựng lại thì trả `false`, không ném.
+
+Thời tiết dữ đi kênh **ưu tiên cao** (kêu, hiện đè lên màn); tin tức thì im, chỉ nằm trên khay — một tin nông sản rung máy giữa đêm là cách nhanh nhất để bị tắt thông báo.
+
+Không khai `smallIcon`: dự án **chưa có** drawable `ic_notification`, và khai một tên không tồn tại thì notifee ném "Icon not found" — mất luôn thông báo. **Việc còn thiếu**: Android vẽ icon thông báo dưới dạng mặt nạ đơn sắc, nên icon ứng dụng nhiều màu sẽ ra một ô trắng trên thanh trạng thái. Cần một drawable trắng-trên-nền-trong.
+
+### `alertDispatcher`: hai cái chốt, cần cả hai
+1. `dropRecent` — cùng MỘT chuyện không báo lại trong 12 giờ.
+2. `MIN_RUN_GAP_MS` (30 phút) — cả LƯỢT XÉT cũng có nhịp tối thiểu.
+
+Chốt 1 không thay được chốt 2: mở app 20 lần buổi sáng thì chốt 1 vẫn im, nhưng đã chạy 20 lượt đọc/ghi AsyncStorage cho không. Chốt 2 không thay được chốt 1: qua 30 phút được xét lại, nhưng cơn dông vẫn là cơn dông cũ.
+
+**Ghi sổ SAU khi thông báo hiện thành công.** Ghi trước là tự khoá mình: một lượt gửi hỏng (thiếu quyền, chưa dựng native) vẫn tính là "đã báo", và cơn dông đó im lặng suốt 12 giờ. Có bài kiểm canh đúng chỗ này.
+
+Sổ `sentAt` tự **quên sau 7 ngày** — không thì nó chỉ có lớn lên, và sau một năm là vài chục KB đọc/ghi mỗi lần mở app.
+
+### Chạy ở đâu, và giới hạn phải nói thẳng
+Gọi từ trang Tổng quan, **sau khi** thời tiết và tin đã tải xong — trang đó vốn đã tải cả hai để vẽ màn, bắt bộ cảnh báo tải lại là nhân đôi lượt mạng của người dùng cho cùng một dữ liệu.
+
+⚠ **App đóng hẳn thì KHÔNG có cảnh báo.** Thông báo cục bộ chỉ hiện được khi mã JS có chạy, tức lúc mở app hoặc quay lại app. Không có cảnh báo lúc 3 giờ sáng. Muốn có thì phải để **máy chủ đẩy push** (FCM đã nhận sẵn ở `pushHandler`) hoặc dựng tác vụ nền. Đừng viết trong màn Cài đặt câu "bật để nhận cảnh báo bão" như thể nó chạy 24/7.
+
+Kiểm: `tsc` sạch · **1.302/1.302 test xanh** (+49) · eslint 0 lỗi.
+
+## "Ảnh có nhiều quả" KHÔNG phải do mô hình trên máy — do khung ngắm nói dối
+
+### Đo trước, sửa sau
+Báo cáo: màn truy xuất vẫn hiện *"trong ảnh có nhiều quả — chạm vào đúng quả muốn tra"*, nghi do mô hình nhận diện trong máy.
+
+**Không có mô hình nào chạy ở luồng này.** `grep` cả màn quét và `features/traceScan`: không `TreeReIDYolo`, không `detectFruit`, không cầu native nào. Mô hình trên máy (`yolov26seg.tflite`) chỉ nạp bên trong phiên chụp của `TreeReIDBridge` — luồng đăng ký CÂY, không dính gì tới đây. Và chuỗi chữ cũ (`scan.state.pickFruit`) đã bị xoá khỏi mã.
+
+Câu đó là **của MÁY CHỦ**: nhánh `need_region` trả kèm `message`, và màn hình đang cho câu máy chủ thắng câu app.
+
+### Nguyên nhân THẬT: gửi rộng hơn thứ người dùng ngắm
+Khung ngắm trên màn là ô **VUÔNG**, nhưng `capture()` trả **trọn khung máy ảnh — 4:3**. Hai mép trái/phải là phần người dùng KHÔNG nhìn thấy và không chọn.
+
+Nên chuyện xảy ra đúng như vậy: người mua cẩn thận đưa **một** quả vào giữa khung, tấm gửi lên lại có thêm mấy quả ở hai mép, máy chủ đếm được nhiều quả và trả `need_region`. App trách người dùng vì một việc họ đã làm đúng.
+
+### Hai sửa
+**1. Cắt về ô vuông giữa ảnh trước khi gửi** (`prepareForLookup(..., { square: true })`). Với `resizeMode="cover"` trên khung vuông, ô vuông giữa CHÍNH LÀ vùng đang hiện trên màn — không hơn, không kém. Đây **không phải nhận diện**: không dò quả, không đoán gì, chỉ là gửi đúng thứ người ta đã ngắm.
+
+Ba chi tiết dễ sai, đã khoá bằng test:
+- **Cắt TRƯỚC, co SAU** — `crop` đo bằng pixel ảnh gốc; co trước là cắt vào một toạ độ không còn tồn tại.
+- **Thang co đo trên cỡ ĐÃ CẮT** — 4032×3024 cắt còn 3024×3024 mà vẫn đo theo 4032 là co quá tay.
+- **Ảnh nhẹ vẫn phải cắt.** Đường tắt "đã dưới trần thì gửi nguyên" phải nhường khi có yêu cầu cắt, nếu không tấm nhẹ lại lọt nguyên khung 4:3.
+
+Ảnh chọn từ **thư viện** thì KHÔNG cắt: ở đó không có khung ngắm nào, cắt là tự ý xén ảnh của người ta.
+
+**2. Nhánh `need_region` KHÔNG chuyển tiếp câu của máy chủ.** Câu ấy là "mời chỉ đúng quả rồi gửi lại" — sai với app này, vì không còn hộp nào để chạm. Bảo người ta làm một việc màn hình không cho làm là cách chắc nhất để họ nghĩ app hỏng.
+
+Luật đúng, nay ghi vào mã: **câu máy chủ thắng, TRỪ khi nó mô tả một thao tác client không có.** Lúc đó app phải tự nói một câu người dùng làm theo được — ở đây là *"lại gần, chụp riêng MỘT quả thôi"*.
+
+### Một lỗ hổng test bắt được
+Khi mô-đun co ảnh ném ở **mọi** bậc mà tấm gốc vẫn dưới 2MB, bản trước trả `too_large` — từ chối một tấm gửi được. Nay lùi về tấm gốc: mất phần cắt vuông, được phần tra cứu.
+
+Kiểm: `tsc` sạch · **1.263/1.263 test xanh** (+10) · eslint 0 lỗi.
+
+## BỎ phần khoanh vùng quả ở màn truy xuất — gửi nguyên tấm ảnh
+
+Màn quét nay **gửi nguyên tấm ảnh** cho máy chủ và không làm gì với nó ngoài việc co cho lọt trần 2MB. Không dò quả, không vẽ hộp, không chấm điểm.
+
+### Đã bỏ những gì
+Cửa `/api/fruit/lookup` nhận `bbox`/`points` để chỉ đúng quả, và bản trước dùng nó: máy chủ trả `need_region` → màn vẽ hộp nhận diện lên khung xem → người dùng chạm chọn → app gửi lại **cùng tấm ảnh** kèm `bbox`.
+
+Xoá cả cụm đó cùng ba tệp dựng nên nó: `previewBox.ts` · `previewBox.test.ts` · `ScanBox.tsx`. Kéo theo: `Outcome.pick_region`, `onFrameTap`, năm ô vẽ `slots`, `matchSlots`/`hitTest`/`padBbox`/`imageBoxToPreview`/`previewPointToImage`, và khoá chữ `scan.state.pickFruit`.
+
+**Lý do**: nó bắt người mua học một thao tác mới — chạm đúng một hộp trong mấy hộp vừa hiện ra — để giải một bài mà **máy chủ giải tốt hơn**. Và mỗi hộp vẽ ra là thêm một phép quy đổi toạ độ có thể lệch: ảnh 4:3 ↔ khung xem vuông ↔ tấm đã co xuống 1600px. Ba hệ toạ độ cho một tính năng phụ.
+
+### `need_region` vẫn phải trả lời tử tế
+Máy chủ giữ nguyên quyền trả `need_region` (ảnh nhiều quả, hoặc không thấy quả nào). App **không im lặng** và cũng **không tự đoán quả nào**: nó nói thẳng *"máy chủ chưa chắc bạn hỏi quả nào — lại gần, chụp riêng MỘT quả thôi"*. Một câu người dùng làm theo được ngay, khác hẳn một màn hình đầy hộp mà không rõ phải chạm cái nào.
+
+Khung xem cũng thôi làm `Pressable`: không còn gì để chạm trong đó, và một vùng nuốt cú chạm rồi không làm gì là một vùng làm người ta tưởng app đơ.
+
+### Giữ lại có chủ ý
+`LookupRegionInput` ở `fruitLookupService` **vẫn còn**, kèm ghi chú rằng hiện không màn nào gửi. Đó là hợp đồng thật của máy chủ, không phải tính năng bỏ quên — ngày nào có màn cần chỉ đúng quả (cắt ảnh, chọn từ thư viện ảnh nhiều quả) thì đường đã sẵn và đã có bài kiểm.
+
+Còn `prepareImage` (co ảnh xuống dưới 2MB) — vẫn cần, vì camera chụp ở độ phân giải tối đa.
+
+Kiểm: `tsc` sạch · **1.253/1.253 test xanh** (−21, đúng bằng bộ test của mã đã xoá) · eslint 0 lỗi.
+
+## BỎ vòng tự chụp ở màn quét — người dùng bấm nút
+
+### Vì sao bỏ
+Bản trước tự bấm máy khi thấy điện thoại đứng yên đủ lâu. Nó làm màn hình khó hiểu và khó gỡ lỗi:
+
+- **Không ai biết máy đang làm gì.** Ảnh tự gửi đi mà người dùng không bấm gì; câu dưới khung đổi liên tục (đang lấy nét → giữ yên → đang gửi → chưa tìm thấy → …). Nhìn vào chỉ thấy màn hình tự nhấp nháy.
+- **Không tái hiện được lỗi.** Một lượt hỏng thì không biết tấm nào đã gửi, gửi lúc nào, vì cái gì. Bấm tay thì mỗi lỗi ứng với đúng một cú bấm.
+- **Chốt "đứng yên" là một phép đo YẾU.** Nó chỉ đo góc xoay của la bàn, và im lặng tắt hẳn trên máy thiếu từ kế hoặc trên iOS. Một cái chốt lúc có lúc không thì không phải cái chốt.
+- **Tốn mạng của người khác.** Vòng lặp gửi ảnh 3G mà người dùng không chủ động yêu cầu lượt nào.
+
+Nay: **một cú bấm = một lượt gửi**. Muốn thử lại thì bấm lại.
+
+### Đã xoá hẳn, không để lại mã chết
+`features/traceScan/autoShot.ts` · `autoShot.test.ts` · `useShakeMeter.ts` — xoá. Cùng với chúng là bốn khoá chữ chỉ phục vụ vòng lặp (`scan.state.warmingUp` · `ready` · `moving` · `budget`). Giữ lại một bộ máy quyết-định-khi-nào-chụp mà không ai gọi là để dành một cái bẫy cho người đọc sau.
+
+Còn nguyên vì vẫn dùng thật: `previewBox` (quy hộp máy chủ về khung xem, chạm chọn quả), `prepareImage` (co ảnh xuống dưới 2MB), `ScanBox` (khung trượt mượt).
+
+### Hai chỗ phải sửa theo, không hiển nhiên
+1. **`image_unusable` và `empty_scope` nay nói NGAY.** Trước đây hai nhánh này im lặng vài lượt để vòng tự chụp thử tấm khác — tức người dùng nhìn màn hình đứng im trong khi máy đã biết ảnh không dùng được. Bỏ vòng thì im lặng không còn nghĩa gì.
+2. **Lệnh chờ 429 phải có HẸN GIỜ tường minh.** Vòng tự chụp vẽ lại màn mỗi 350ms, nên nút chụp "sống lại" đúng lúc một cách tình cờ. Bỏ vòng mà không hẹn giờ thì `blockedUntil` qua hạn vẫn nằm đó và nút chết cho tới khi có việc khác làm màn vẽ lại — người dùng chịu phạt lâu hơn thời gian máy chủ thật sự xin.
+
+Máy chủ vẫn giữ quyền bảo chờ, và nút chụp vẫn tôn trọng lệnh đó — chừa một cửa "bấm tay không tính" là chừa đúng cái cửa người sốt ruột sẽ bấm liên tục.
+
+Kiểm: `tsc` sạch · **1.274/1.274 test xanh** (−20, đúng bằng bộ test của mã đã xoá) · eslint 0 lỗi.
+
+## SỬA: `ReadableStream doesn't exist` — expo âm thầm thay `fetch` của cả app
+
+### Triệu chứng
+Chụp quả xong thì nổ `ReferenceError: Property 'ReadableStream' doesn't exist`.
+
+### Đường đi của lỗi (đo trên chính cây `node_modules` này)
+1. `metro.config.js` dùng `expo/metro-config` — **bắt buộc**, vì `export:embed` cần serializer của expo. Cấu hình đó khai `getModulesRunBeforeMainModule`, và danh sách trả về gồm **`expo/src/winter/index.ts`**. Tức mã của expo chạy **trước `index.js`**, dù không tệp nào trong `src/` import `expo`. (Kiểm được: `node -e "require('./metro.config.js').serializer.getModulesRunBeforeMainModule({platform:'android'})"`.)
+2. `expo/src/winter/runtime.native.ts` **thay `globalThis.fetch`** bằng `expo/fetch`, trừ khi `process.env.EXPO_PUBLIC_USE_RN_FETCH === '1'`. Biến đó ở đây **luôn `undefined`**: nó chỉ được nội-suy lúc dịch bởi `babel-preset-expo`, mà `babel.config.js` cố ý giữ `@react-native/babel-preset` (bare RN). Nhánh thay fetch luôn chạy.
+3. `expo/fetch` chuẩn hoá thân yêu cầu ở `winter/fetch/RequestUtils.ts:83`: `if (body instanceof ReadableStream)` — **tham chiếu trần** tới một global Hermes không có. Chính expo ghi trong `runtime.native.ts` rằng "ReadableStream is injected by Metro as a global", nhưng bộ polyfill thật sự nạp ở đây là `@react-native/js-polyfills`, và nó **chỉ có `console` với `error-guard`**.
+4. Nhánh đó nằm **TRƯỚC** nhánh `FormData`. Nên đây **không phải lỗi của màn quét**: mọi yêu cầu có thân FormData đi cùng một cửa — đăng ký cây, đăng ký quả, tạo vườn, tải clip, `careService`, `grantService`, `animalReIDService`… **chín tệp service**.
+
+### Vì sao KHÔNG polyfill `ReadableStream` cho xong
+Vá được lỗi này thì lộ ra lỗi nặng hơn ngay sau đó. Chính `winter/fetch/convertFormData.ts` ghi ở đầu hàm:
+
+> "`uri` is not supported for React Native's FormData."
+
+Mà **toàn bộ** app đính tệp theo đúng kiểu RN — `{ uri, type, name }`. Cho `expo/fetch` dựng thân multipart nghĩa là nó ghi vào thân một **object** thay vì byte của tấm ảnh: yêu cầu đi được, máy chủ trả 200, **và ảnh thì rỗng**. Hỏng-mà-không-ai-báo, tệ hơn hẳn một ReferenceError nổ thẳng vào mặt.
+
+`fetch` của React Native đẩy `FormData` xuống tầng mạng **native**, nơi `{uri}` được đọc thành tệp thật. Đó là bản mọi service trong repo được viết dựa trên, và là bản đã chạy ngoài thực địa.
+
+### Đã sửa
+`src/config/networkFetch.ts`, nạp **dòng đầu tiên** của `index.js` (trước cả crash reporter — nó cũng gọi fetch). Nó trả `fetch` · `Headers` · `Request` · `Response` về bản `whatwg-fetch` mà `Libraries/Core/setUpXHR.js` vẫn cài.
+
+Ba chi tiết có chủ ý:
+- **Nhận diện bằng DẤU, không bằng tên hàm.** `expo/winter/installGlobal` đóng `Symbol.for('expo.builtin')` lên mọi global nó cài, và tự khai đó là cách để phát hiện. Tên hàm đổi theo bản; dấu thì là hợp đồng.
+- **Không giành quyền quản `fetch`.** Global nào không mang dấu expo thì để yên — bộ giả lập test, công cụ ghi log, hay một bản ai đó cố ý cài đều đi qua bình thường.
+- **Thay cả bốn**, không riêng `fetch`: bên trong `whatwg-fetch` có `instanceof Headers`/`Request`. Trộn `fetch` bản này với `Headers` bản kia là dựng bẫy cho người sửa lỗi sau.
+
+Cái giá: mất khả năng đọc thân trả về theo dòng. App không có chỗ nào đọc theo dòng — mọi cửa đều `resp.json()`. Ngày nào cần thật thì `import { fetch } from 'expo/fetch'` ở đúng chỗ đó, **đừng đổi global lại**.
+
+### Bài học
+Một gói phụ thay global của cả app, ở một tệp không ai import, qua một móc của bundler. Không có gì trong `src/` chỉ ra điều đó. Đường duy nhất tìm ra là **đọc `getModulesRunBeforeMainModule` thật sự trả về gì**.
+
+Kiểm: `tsc` sạch · **1.294/1.294 test xanh** (+7) · eslint 0 lỗi.
+
+## SỬA: client tra quả viết sai hợp đồng — đọc openapi rồi viết lại
+
+### Triệu chứng và nguyên nhân
+Màn quét báo **"Có trục trặc khi tra. Thử lại nhé"**. Câu đó là của app, và nó là **hai lỗi chồng nhau**:
+
+**1. Client viết theo lời kể, không theo hợp đồng.** Đã tra `https://api.orilife.io/openapi.json` (146 đường): `POST /api/fruit/lookup` **có thật và đang sống**, kèm mô tả tự nhận là "nguồn sự thật của hợp đồng — không có tệp .md nào khác mô tả route này". Đối chiếu ra bốn chỗ sai tên:
+
+| client viết | máy chủ thật |
+|---|---|
+| `detections[]` | **`regions[]`** |
+| `fruit_id` | **`pick`** — máy chủ **cố ý không trả id** ("ẩn nội tạng": không điểm, không biên, không id, không chủ) |
+| `thumbnail_url` / `image_url` | **`img_urls[]`** (đường tương đối, qua mã có hạn `/api/fruit/lookup/img/{token}`) |
+| `provenance` ở gốc thẻ | **`tree.provenance`** |
+| `query_id` | **`lookup_id`** |
+
+Hậu quả nặng nhất: bộ đọc **lọc bỏ mọi thẻ thiếu `fruit_id`** — mà máy chủ không bao giờ trả trường đó — nên danh sách ứng viên **luôn rỗng**. Và `openCandidate` đi theo `tree_id` (không tồn tại) nên có chọn được cũng không mở được gì.
+
+**2. Câu lỗi nuốt mất nguyên nhân.** `runLookup` gộp **mọi** nhánh lỗi vào một câu và ném đi `error.detail`. Máy chủ trả `400 {"error_code":"image_unusable"}` cho ảnh mờ — ca **hay gặp nhất** ở đường tự chụp, và có cách xử rõ ràng (lại gần, đủ sáng) — nhưng người dùng chỉ thấy "có trục trặc". Đúng thứ mà cả kho mã này cảnh báo suốt: gộp mấy nguyên nhân khác nhau vào một câu là ném đi thứ người ta cần để làm tiếp.
+
+### Đã sửa
+`fruitLookupService` viết lại theo hợp đồng thật. Bảy nhánh kết quả thay cho năm, vì mỗi nhánh dẫn tới một **hành động khác nhau**:
+- `candidates` · `need_region` · `empty_scope` (câu trả lời bình thường)
+- **`image_unusable`** (400) — vòng tự chụp cứ thử tiếp, đó chính là việc của nó
+- **`rate_limited`** (429) — **DỪNG** vòng tự chụp tới hạn máy chủ đưa
+- `too_large` · `error` (kèm `detail` thật)
+
+Màn hình nay **hiện câu của máy chủ** khi có (`message`, `verdict_label`, `warning_messages`, `provenance.label`) và chỉ tự soạn khi máy chủ im. Máy chủ biết chuyện gì vừa xảy ra rõ hơn app, và câu của nó đổi theo máy chủ chứ không kẹt ở bản dịch cũ.
+
+**429 vào thẳng `decideShot`** qua `blockedUntil`, không nằm riêng ở màn hình: đó là nơi giữ mọi trần của vòng tự chụp, rải ra chỗ khác là mở đường cho một nhánh quên hỏi — mà quên ở đây nghĩa là app dập đúng cái cửa vừa xin mình chờ. Lệnh chờ **thắng cả trần lượt của app**, **khoá luôn nút bấm tay**, và **không bị "quét lại" xoá** — lệnh là của máy chủ, bấm hai cái không huỷ được nó. `retry_after` đọc **từ thân trước**, rồi mới tới header.
+
+Thêm `sess` (mã phiên client tự sinh) — máy chủ dùng nó cho lớp hạn tần suất chặt nhất. Không gửi thì mọi người rơi chung vào lớp địa chỉ gọi, và ở một quán cà phê dùng chung wifi thì người thứ hai bị khoá vì người thứ nhất. Sinh mới mỗi lần mở app, **không lưu xuống đĩa**: đây không phải danh tính, và một mã theo máy vĩnh viễn đúng là thứ dùng để lần theo người mua.
+
+Đường mở kết quả nay đi theo **`tree.code`** (mã `ORI-…` công khai) → `TraceResultScreen` vốn đã nhận đúng tham số đó; rơi tiếp về `tree.public_url`, rồi `explorer_url`. 422 của FastAPI trả `detail` là **mảng** — nối lại thay vì in `[object Object]` lên mặt người dùng.
+
+### Bài học ghi lại
+Bài kiểm bản trước **xanh hết** trong khi client sai gần như mọi tên trường — vì nó chép lại đúng cái hợp đồng tưởng tượng mà client dựng lên. Bài kiểm chỉ chắc bằng nguồn mà nó chép. Lần sau: **đọc `openapi.json` của bản đang chạy TRƯỚC khi viết**, không viết theo lời kể.
+
+### Soi luôn ba bộ API kia — và `boundary_method` cũng sai
+Cùng một lỗi (viết theo lời kể) nên đã đối chiếu nốt openapi cho timeline/proof/anchor và farm.
+
+**Timeline · proof · anchor: khớp.** Bốn đường đều có thật. Mô tả proof xác nhận đúng những gì `timelineService` đang làm: 404 gộp "không có" với "riêng-tư" (không lộ tồn-tại event ẩn), `anchor: {tx_hash, explorer_url, status}` chỉ có khi root đã lên chain, và `n`/`index` chỉ cấp cho CHỦ. Anchor thì "neo TRỌN chuỗi", `event_id` ở path chỉ là mốc user bấm chốt.
+
+**Farm: SAI tự vựng.** Máy chủ nhận `boundary_method ∈ {gps_walk, map_draw, mixed}`, **giá trị lạ → `unknown`**. Bản trước gửi `walk`/`manual` theo `drawMode` của màn vẽ ranh ⇒ máy chủ **lặng lẽ ghi `unknown`**, lời khai nguồn-gốc ranh biến mất và VeData chấm độ-tin mảnh vườn như thể chưa ai nói gì. Không 422, không cảnh báo — đúng loại hỏng chỉ đọc hợp đồng mới thấy. Đã đổi sang đúng ba giá trị.
+
+Đồng thời nhận thêm mấy trường **máy chủ tự tính** mà bản trước bỏ qua: `area_sqm`, `perimeter_m`, `boundary_warnings`, và `method_verified` — máy chủ **đo hình dạng ranh rồi chấm lại lời khai `boundary_method`**. Thẻ thông tin vườn nay ưu tiên diện tích của máy chủ (hai bên tự tính ra hai số thì không ai biết tin cái nào) và **hiện ra khi máy chủ nói cách đo chưa được xác nhận** — giấu đi là để một lời khai sai đứng yên trong hồ sơ truy xuất.
+
+Ghi thêm cảnh báo ở `updateFarm`: đổi `boundary_json` mà **không** gửi kèm method thì máy chủ **reset nguồn-gốc ranh về `unknown` và xoá sai số**. Sửa tên vườn kèm ranh là mất sạch lời khai đo đạc, im lặng.
+
+Kiểm: `tsc` sạch · **1.287/1.287 test xanh** (+15) · eslint 0 lỗi.
+
+## Màn quét truy xuất: thêm đường CHỤP QUẢ, và nói thật về mô hình nhận diện
+
+### Mô hình nhận quả nằm ở MÁY CHỦ, không ở máy
+Đây là chỗ dễ hiểu ngược nhất, nên ghi trước.
+
+Máy **có** một mô hình trên thiết bị — `yolov26seg.tflite` — nhưng nó là mô hình **một lớp** dùng gác khung có-cây-hay-không cho luồng đăng ký cây, và bị khoá trong phiên chụp của `TreeReIDBridge`. Đầu ra 38 giá trị = 4 hộp + 1 conf + **1 lớp** + 32 hệ số mask (`TreeReIDYolo.kt:38-42`). Đem nó ra nhận QUẢ là khai một điều chưa ai đo.
+
+Bộ nhận quả thật là `POST /api/fruit/lookup`: nó trả `need_region` **kèm `detections`** khi thấy nhiều quả. Đó chính là hộp nhận diện, chỉ ở đầu bên kia dây mạng. Nên **mọi khung xanh trên màn này đều là hộp máy chủ trả về** — không có khung nào được vẽ mà không có phép đo đỡ nó.
+
+### "Ảnh rõ nét, quả sáng sủa" — đo được tới đâu thì gác tới đó
+Ba vế của yêu cầu, và sự thật về từng vế:
+- **Có quả trong khung** → máy chủ phán (xem trên).
+- **Ảnh rõ nét** → `react-native-camera-kit` **không mở khung hình cho JS** (không frame processor), và không thư viện nào trong máy đọc được pixel của tấm JPEG vừa chụp. **Không đo trực tiếp được.**
+- **Sáng sủa** → cũng vậy.
+
+Nên `autoShot.ts` gác bằng thứ đo được thật: **máy có đang đứng yên không**. Rung tay là nguồn nhoè áp đảo trên điện thoại; lấy nét tự động lo phần còn lại. Số đo lấy từ `CompassHeadingModule` của chính dự án. Máy thiếu la bàn (hoặc iOS) → `motionDegPerSec` trả **`null`** và chốt đứng-yên **tự tắt** — không bịa một ngưỡng cho một phép đo không tồn tại.
+
+`useShakeMeter` **không** dùng lại `features/wayfind/useHeading`: hook kia làm-mượt α=0,15 để vẽ kim không rung, tức nó vứt đúng thứ ta cần đo. Lọc rung rồi đo rung là đo cái bóng của mình. Và nó trả hàm `read()` chứ không trả state — la bàn bắn ~20 lần/giây, đưa vào `useState` là vẽ lại cả màn có camera ngần ấy lần.
+
+Đo tốc độ xoay lấy **cú giật tệ nhất** trong cửa sổ 700ms, không lấy trung bình: một cú giật vẫn làm nhoè cả tấm, mà trung bình thì làm nó biến mất. Có `angleDelta` vì la bàn quấn vòng — 359°→1° là nhích 2°, trừ thẳng ra 358 và mỗi lần người dùng ngắm về hướng Bắc là máy tưởng họ vừa quay một vòng.
+
+**Trần 6 lượt tự chụp** rồi dừng, mời bấm tay. Vòng tự chụp là vòng lặp gửi ảnh 3G của người khác lên mạng; không có trần thì một cái điện thoại úp mặt bàn cũng tốn hết dung lượng.
+
+### Ảnh phải co lại, và đó là lý do thêm một gói
+`camera-kit` chụp ở **độ phân giải tối đa** và không có tham số nào hạ xuống (`ImageCapture.Builder()` chỉ đặt tỉ lệ — `CKCamera.kt:343-351`; `capture()` phía JS không nhận tuỳ chọn). Máy 12MP ra tấm 2,5–5MB ⇒ **phần lớn** máy vượt trần 2MB nếu gửi thẳng. Nên thêm `expo-image-manipulator` (~56.0.23, khớp SDK đang dùng).
+
+`prepareImage.ts` co theo một cái **thang** (1600/0.82 → 1280/0.7 → 1024/0.6) chứ không một lần: ảnh cùng số điểm ảnh nhưng khác nội dung thì nặng khác nhau vài lần — tán lá rậm nén tệ hơn quả trên nền trời. Dừng ngay khi lọt trần. Không hạ dưới bậc cuối: một tấm lọt trần mà máy chủ không đọc nổi **tệ hơn** một tấm bị từ chối, vì nó trả "không tìm thấy quả nào" và người ta tưởng quả mình chưa từng được đăng ký.
+
+Gói là mô-đun native ⇒ `require` trong `try`. Thiếu (chưa dựng lại app) thì vẫn gửi tấm gốc; nếu tấm gốc quá nặng thì trả cờ `noResizer` để màn nói đúng nguyên nhân ("cần cập nhật ứng dụng") thay vì đổ cho người dùng chụp ảnh nặng. **Cần build lại native** trước khi đường co ảnh sống.
+
+### Khung nhận diện trượt mượt
+`ScanBox` là **ô sống lâu**, không phải View dựng mới mỗi lượt: dựng mới thì mỗi View sinh ra đúng chỗ nó cần và **không có gì để trượt** — hoạt ảnh biến mất, khung nhấp nháy theo nhịp mạng.
+
+`matchSlots` gán hộp mới vào ô theo **tâm gần nhất**, không theo chỉ số mảng: máy chủ không hứa giữ thứ tự `detections`, và gán theo chỉ số thì hai khung **bay chéo qua nhau** giữa màn hình đúng lúc người ta đang cố chạm vào một quả.
+
+Lần đầu một ô nhận hộp thì **đặt thẳng**, không chạy hoạt ảnh — nếu không nó bay từ góc trên trái (0,0) tới quả, trông như lỗi vẽ.
+
+**QR thì KHÔNG có hộp.** `camera-kit` chỉ trả chuỗi mã, không trả toạ độ (`OnReadCodeData = { codeStringValue, codeFormat }`). Vẽ một hộp "quanh mã" là vẽ một vị trí không đo được — đúng chừng nào người dùng đặt mã vào giữa, sai lặng lẽ mọi lúc khác. Thay vào đó **bốn góc khung thít vào** và đổi màu: nói đúng điều đã biết ("đọc được rồi"), không nói sai điều chưa biết ("mã nằm ở đây").
+
+### `need_region` dùng đúng như nó được thiết kế
+Nhiều quả trong ảnh → **dừng vòng tự chụp**, vẽ hộp, mời chạm chọn quả. Chạm xong gửi lại **CHÍNH tấm ảnh đó** kèm `bbox` (đã nới 6% để giữ rìa — cuống, vết sẹo, đường gân là chỗ phân biệt hai quả cùng cây). Chụp tấm mới thì quả đã xê dịch và hộp vừa chạm trỏ vào chỗ khác.
+
+Chạm ra ngoài mọi hộp vẫn dùng được: quy điểm chạm về pixel ảnh rồi tìm hộp chứa nó. Ngón tay to hơn khung, bắt chạm cho trúng là bắt người ta chơi trò bấm nút.
+
+### Giao diện
+Nền **sáng** (bản trước nền đen) — người mua mở màn này giữa chợ hoặc trong bếp, nền đen giữa ban ngày là nền chói nhất có thể chọn. Khung xem **vuông, giữa màn**. Thêm nút **đèn** và **ảnh có sẵn**; nút chụp tay ở giữa. Biểu tượng lấy từ bộ Iconify riêng của dự án (`components/Icon`, thêm `lightbulb` · `bolt-lightning` · `crosshairs`), bỏ `react-native-vector-icons`.
+
+Chữ đi qua khoá `scan.*` (28 khoá × 4 thứ tiếng) thay cho chuỗi tiếng Việt viết thẳng trong mã.
+
+Bộ chọn ứng viên **không có dấu tích xanh** cho quả điểm cao nhất — máy soi quả nhận nhầm 73% cặp quả khác nhau cùng một cây. Mỗi hàng nói trước nó sẽ đưa đi đâu (hồ sơ xuất xứ / bằng chứng trên chuỗi), và trạng thái neo có **ba** giá trị: máy chủ không nói thì hiện "chưa rõ", không hiện "chưa lên chuỗi".
+
+**Không xin quyền vị trí, không gửi toạ độ.** Người mua chụp quả trong bếp nhà mình.
+
+Kiểm: `tsc` sạch · **1.272/1.272 test xanh** (+49) · eslint 0 lỗi trên các tệp mới.
+
+## Bốn API mới, và mục Vườn tách làm hai thẻ
+
+### `POST /api/fruit/lookup` — người mua hỏi, không cần tài khoản
+`fruitLookupService.ts` là tệp RIÊNG, không nhét vào `fruitReIDService`, vì tệp kia ký DID ở **mọi** lượt gọi. Người mua vừa bổ quả ra ăn thì không có DID nào cả — bắt họ đăng nhập là khoá cửa ngay trước mặt đúng người cửa này sinh ra để phục vụ.
+
+Bốn chỗ làm khác thói quen:
+- **Không có tham số nào nhận toạ độ.** Không phải "mặc định tắt" — là không có đường vào. Chụp quả trong bếp nhà mình mà app lặng lẽ đính toạ độ bếp vào một yêu cầu không đăng nhập thì đó là theo dõi.
+- **Cân ảnh trước khi gửi** (trần 2MB). Để máy chủ từ chối thì người dùng đã ngồi hết một lượt tải 2G. Cân KHÔNG được (`content://`, thiếu expo-file-system) thì **vẫn gửi** — chặn oan một tấm ảnh hợp lệ tệ hơn nhận một 413.
+- **`need_region` là câu trả lời**, không phải lỗi. Nhiều quả trong ảnh thì máy chủ mời khoanh vùng, và nó được xét **trước** danh sách ứng viên — trả ứng viên ở ca đó là bày danh sách của quả nào đó trong ảnh mà người mua tưởng là quả mình hỏi.
+- **Cắt lại 5 ứng viên** ở phía app. Máy soi quả nhận nhầm 73% cặp quả khác nhau cùng cây, nên câu trả lời cuối phải do mắt người đưa ra — và một cuộn dài tám ảnh thì người ta chọn bừa.
+
+`explorer_url` do máy chủ gửi mà đi thẳng vào `Linking.openURL`, nên qua `safeExplorerUrl()`: chỉ `http`/`https`. Không lọc thì một trường JSON đẩy được `javascript:` vào tay người dùng.
+
+`anchored=false` KHÔNG phải "quả giả" — là chưa lên chuỗi, có thể đang chờ gộp lô. `isAnchored()` trả **ba** giá trị vì "chưa biết" không phải "chưa neo".
+
+### Proof + anchor cho dòng thời gian
+`timelineService` nay có `fetchEventProof` và `anchorEvent`.
+
+App **không tự kiểm lại được** cây Merkle: `leaf_hash` do chính máy chủ băm, còn app không giữ nội dung gốc dưới dạng chuẩn hoá byte-cho-byte. Thứ kiểm được độc lập là `tx_hash` trên trình duyệt chuỗi — nên `explorer_url` mới là nút quan trọng nhất của màn bằng chứng, không phải bảng băm dài.
+
+Neo là việc **tốn tiền và không hoàn tác**: mỗi lượt là một giao dịch. Không gọi tự động sau khi ghi sự kiện, không thử lại trong vòng lặp — một lượt hỏng giữa chừng có thể ĐÃ vào hàng đợi. 409 "đã neo rồi" trả về nhánh **thành công** kèm cờ: với người dùng đó là việc đã xong, không phải chữ đỏ.
+
+### Ranh vườn: ba trường đi cùng nhau
+`boundary` (các điểm nối) nay đi kèm `boundary_method` và `boundary_acc_m`. Vẽ vùng vườn mà bỏ hai trường này là **vẽ một đường sắc nét cho một số liệu mờ** — ranh chấm tay và ranh đi bộ đo GPS lệch nhau cả chục mét mà trên bản đồ trông y hệt.
+
+Màn tạo vườn nay gửi cả hai. Sai số lấy **con tệ nhất trong cả vòng đi**, không phải lần đọc cuối: người ta hay dừng ở chỗ thoáng để bấm Lưu, nên lần đọc cuối là lần đẹp nhất buổi — lấy nó là khai thấp đi đúng chỗ nó tệ nhất, dưới tán cây. Ranh chấm tay gửi `null`, **không gửi 0**: 0 là lời khai "chính xác tuyệt đối".
+
+Đường thử-lại-khi-401 lúc trước gửi thiếu hai trường này — vườn nào tạo trúng lúc token hết hạn sẽ mất metadata, im lặng và không lấy lại được. Đã vá.
+
+### Mục Vườn ở trang Tổng quan: hai thẻ
+**Vườn của tôi** (ba con số, như cũ) · **Bản đồ**. Cùng một mục nhưng hai câu hỏi: "tôi có bao nhiêu" và "chúng nằm ở đâu". Nhồi cả hai vào một khung dọc thì bản đồ đẩy thời tiết và giá xuống dưới nếp gấp.
+
+Mặc định mở thẻ DANH SÁCH. Bản đồ tốn một bề mặt OpenGL và một loạt lượt tải ô ảnh — mở nó cho mọi người ở mọi lần vào app là bắt máy yếu và gói 3G trả giá cho thứ thỉnh thoảng mới cần.
+
+Bản đồ (`components/FarmsMap.tsx` + `utils/farmMapGeo.ts`, nền OSM, đổi được sang vệ tinh):
+- **Ghim là `MarkerView`, không phải `SymbolLayer`.** SymbolLayer vẽ chữ bằng glyph, mà style ở đây là raster thuần nên **không có nguồn glyph** — `textField` ra rỗng và ta được một hàng chấm không tên. Vườn của một người đếm bằng đầu ngón tay, chi phí MarkerView chấp nhận được.
+- **Vùng vườn chỉ hiện từ zoom 13.** Ở mức nhìn cả tỉnh, mảnh vườn 2 ha nhỏ hơn đầu ghim — vẽ ra chỉ là một chấm màu thứ hai chồng lên ghim.
+- **Ranh dưới 3 điểm không thành vùng.** Hai điểm là một đoạn thẳng; ép thành đa giác là bịa ra mảnh đất chưa ai đo.
+- **Kéo một ngón chỉ bật khi toàn màn hình.** Thẻ gọn nằm trong trang cuộn dọc: kéo bản đồ và cuộn trang là cùng một cử chỉ, ai thắng cũng sai với một nửa số lần. Chụm hai ngón không đụng gì tới cuộn, nên phóng-to-thấy-ranh vẫn chạy ở thẻ gọn.
+- **Tìm vườn bỏ dấu** — gõ "vuon ba tu" ra "Vườn Bà Tư". Không dùng `String.normalize('NFD')`: Hermes chỉ có nó khi bản dựng bật ICU, thiếu thì ô tìm kiếm ngừng khớp chữ có dấu mà không ai thấy lỗi. Dùng bảng tra.
+- Thiếu số liệu thì hiện **"—", không hiện 0**: vườn đọc từ cache lúc mất mạng không mang số đếm của máy chủ, mà "0 cây" đọc ra là dữ liệu đã bay mất.
+- Dòng ghi nguồn OpenStreetMap là nghĩa vụ giấy phép ODbL, không phải trang trí — nên mép dưới xếp thành **một cột chồng** thay vì mấy lớp cùng neo vào đáy (neo riêng thì thẻ thông tin đè lên nó).
+
+Trang Tổng quan nay nạp **cache trước, máy chủ sau, và KHÔNG nạp lại cache**: bảng `farms` trong SQLite chỉ có bốn cột, nạp lại là ném đi đúng tâm vườn và số cây vừa lấy về.
+
+Kiểm: `tsc` sạch · **1.223/1.223 test xanh** (+60) · eslint 0 lỗi mới trên các tệp đụng tới.
+
+## Tổng quan: vườn thu gọn · giá nông sản · thời tiết theo giờ · luật cảnh báo
+
+### Mục vườn thu gọn
+Lưới hai hàng → **một hàng ba ô**, số từ 34 xuống 24, icon nhỏ 12 px cạnh nhãn thay cho ô icon to. Ba con số này là thứ **liếc qua**, không phải thứ đọc kỹ — chiếm hơn một phần ba màn hình cho chúng là lấy mất chỗ của thời tiết và giá, hai thứ người ta mở app để xem.
+
+### Thời tiết đổi theo giờ
+`wxPalette(isDaytime())` — 6h–18h dùng tông sáng của trang, ngoài giờ đó dùng thẻ tối. Ban đêm mà thẻ trắng thì mở app lúc 4 giờ sáng đi thăm vườn là chói mắt; giữa trưa mà thẻ tối thì đó là chỗ khó đọc nhất trên màn. Tính lại mỗi lượt vẽ, không nhớ — mở lúc 17h55 rồi quay lại 18h05 phải thấy đã đổi.
+
+### Giá nông sản — và sự thật về nguồn
+**Không có API miễn phí chính thức nào của Việt Nam cho giá nông sản.** Đã dò: `nongsan.mard.gov.vn` không phân giải được tên miền; dịch vụ có dữ liệu đàng hoàng đều thu phí. Thứ lấy được là **trang web công khai**, và đọc giá từ trang web thì mong manh.
+
+Nên `agriPriceService` viết ngược với thói quen thường gặp:
+- không khớp đúng khuôn đã biết → **trả `null`**, không đoán, không lấy đại con số đầu tiên trong trang;
+- **chặn khoảng hợp lệ** — 9 đ/kg hay 95 triệu đ/kg là đọc sai, vẫn `null`;
+- `"95,300"` và `"95.300"` đều là chín-lăm-nghìn-ba-trăm (bẫy `parseFloat` ra 95,3).
+
+Một con số giá SAI tệ hơn hẳn ô trống: nhà vườn bán hay giữ hàng theo chính con số đó.
+
+Biến động so với **lần đọc trước** lưu trong máy, vì trang không có lịch sử — và màn nói rõ điều đó thay vì để người đọc tưởng là so với hôm qua. Lần đầu chạy hiện dấu gạch, **không** hiện mũi tên 0%.
+
+> Sầu riêng — mặt hàng chính của app — **chưa có nguồn miễn phí nào** đăng giá theo ngày dưới dạng máy đọc được. Bảng nguồn để thêm một dòng là xong khi tìm được.
+
+### Luật cảnh báo — có, nhưng chưa gửi đi được
+`alertRules.ts` (16 bài kiểm): giá đổi **≥5%** thì đáng cắt ngang; dưới mức đó là dao động thường ngày.
+
+Tin thì **không chấm điểm tiêu đề theo từ khoá** — đó là gán ý nghĩa cho thứ không đo được. Thứ đo được là **sự trùng hợp**: ≥3 **nguồn khác nhau** cùng viết một chuyện trong 6 giờ. Một báo đăng là một bài báo; bốn báo cùng đăng là một chuyện đang xảy ra. Có bài kiểm cho đúng bẫy "một trang đăng lại chính nó ba lần".
+
+Kèm `dropRecent` — cùng một cảnh báo không lặp trong 12 giờ, nếu không người dùng tắt hết thông báo trong hai ngày.
+
+**CHƯA gửi được về điện thoại.** App chỉ có `@react-native-firebase/messaging` (nhận push từ máy chủ), **không có thư viện hiện thông báo cục bộ** — `grep` cả `src/` không ra `notifee`/`displayNotification`. Cần một trong hai: cài `@notifee/react-native` rồi dựng lại app, hoặc để máy chủ đẩy push. Phần quyết định đã xong và kiểm được; chỉ thiếu đường ra.
+
+Kiểm: `tsc` sạch · **848/848 test xanh** (+28) · eslint 0 trên các tệp mới.
+
 # AI_LOG
 
 > Nhật ký thay đổi do AI thực hiện. **Đọc file này TRƯỚC khi làm việc** thay vì quét cả project.

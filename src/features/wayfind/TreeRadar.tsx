@@ -30,6 +30,12 @@
  * Chấm hợp để thấy "quanh đây có gì", nhưng dở khi cần chọn: hai cây cách nhau
  * một mét thì hai chấm chồng lên nhau. Nên bên dưới còn danh sách chia theo tầm
  * với — chạm vào một cây là chuyển sang chỉ đường tới đúng cây đó.
+ *
+ * ── Mốc vườn ────────────────────────────────────────────────────────────────
+ * Mốc ("cổng vườn", "chỗ để máy bơm") vẽ bằng chấm MÀU NẮNG, khác hẳn chấm cây
+ * màu lá. Cùng màu thì mặt phẳng nói dối rằng chúng cùng loại: cây là thứ máy
+ * chủ biết và cả nhà cùng thấy, mốc là thứ chỉ máy này biết. Người dùng phải
+ * phân biệt được bằng mắt trước khi đọc chữ.
  */
 
 import React, { useMemo, useState } from 'react';
@@ -66,10 +72,20 @@ const TreeRadar: React.FC<{
   /** Các điểm ranh giới vườn (`{lat, lng}` hoặc `{lat, lon}`). Rỗng → không vẽ. */
   boundary?: unknown[];
   onPickTree: (tree: RadarTree) => void;
+  /** Mốc người dùng tự đặt — cùng khuôn dữ liệu với cây, khác màu khi vẽ. */
+  markers?: RadarTree[];
+  onPickMarker?: (marker: RadarTree) => void;
+  onRemoveMarker?: (marker: RadarTree) => void;
+  /** Không truyền → không hiện khối đặt mốc (chưa biết mốc thuộc vườn nào). */
+  onAddMarker?: () => void;
   /** Chừa chỗ cho đầu màn và thanh dưới — chấm không chui xuống dưới chúng. */
   insetTop: number;
   insetBottom: number;
-}> = ({ origin, headingDeg, trees, boundary, onPickTree, insetTop, insetBottom }) => {
+}> = ({
+  origin, headingDeg, trees, boundary, onPickTree,
+  markers, onPickMarker, onRemoveMarker, onAddMarker,
+  insetTop, insetBottom,
+}) => {
   const { width, height } = useWindowDimensions();
   const [listOpen, setListOpen] = useState(true);
 
@@ -86,6 +102,22 @@ const TreeRadar: React.FC<{
     // `center`/`pxPerM` dựng lại mỗi lần vẽ nên đưa từng số vào, không đưa cả object.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [trees, origin.lat, origin.lon, headingDeg, pxPerM, center.x, center.y],
+  );
+
+  /** Mốc chiếu bằng ĐÚNG phép chiếu của cây — hai lớp phải cùng một hệ toạ độ. */
+  const markerPoints = useMemo(
+    () => (markers ?? []).map(m => ({
+      marker: m,
+      ...radarPoint(origin, m.pos, { headingDeg, pxPerM, center, radiusM: RADAR_RADIUS_M }),
+    })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [markers, origin.lat, origin.lon, headingDeg, pxPerM, center.x, center.y],
+  );
+
+  /** Mốc XA hơn tầm nhìn 20 m vẫn phải liệt kê — "cổng vườn" hay ở ngoài tầm đó. */
+  const markerList = useMemo(
+    () => [...markerPoints].sort((a, b) => a.distanceM - b.distanceM),
+    [markerPoints],
   );
 
   /**
@@ -163,6 +195,20 @@ const TreeRadar: React.FC<{
             <Text style={styles.dotLabel} numberOfLines={1}>{p.tree.name}</Text>
           </Pressable>
         ))}
+
+        {/* Mốc nằm TRÊN chấm cây: nó ít hơn hẳn, và là thứ người dùng tự đặt nên
+            khi hai thứ chồng nhau thì cái của họ phải là cái chạm được. */}
+        {markerPoints.filter(p => p.inRange).map(p => (
+          <Pressable
+            key={p.marker.id}
+            style={[styles.dotHit, { left: p.x - 34, top: p.y - insetTop - 34 }]}
+            onPress={() => onPickMarker?.(p.marker)}
+            hitSlop={6}
+          >
+            <View style={styles.markerDot} />
+            <Text style={styles.dotLabel} numberOfLines={1}>{p.marker.name}</Text>
+          </Pressable>
+        ))}
       </View>
 
       {/* ── Cụm cây ── */}
@@ -205,6 +251,55 @@ const TreeRadar: React.FC<{
             })}
             {trees.length === 0 ? (
               <Text style={styles.empty}>{tk('map.zone.empty')}</Text>
+            ) : null}
+
+            {/* ── Mốc vườn ──
+                Chỉ hiện khi nơi gọi biết mốc thuộc VƯỜN nào. Câu "chỉ nằm trong
+                máy này" đứng ngay dưới nút, không nằm ở trang trợ giúp nào cả:
+                người ta đi bộ ngoài nắng để đặt mốc, phải biết trước là đổi máy
+                thì mất. */}
+            {onAddMarker ? (
+              <View style={styles.zone}>
+                <View style={styles.zoneHead}>
+                  <Icon name="location-crosshairs" size={13} color={NATURE.barkSoft} />
+                  <Text style={styles.zoneLabel}>{tk('map.marker.title')}</Text>
+                  <Text style={styles.zoneCount}>{markerList.length}</Text>
+                </View>
+
+                <Pressable
+                  onPress={onAddMarker}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [styles.addMarker, pressed && styles.pressed]}
+                >
+                  <Icon name="location-crosshairs" size={16} color={NATURE.paper} />
+                  <Text style={styles.addMarkerTxt}>{tk('map.marker.add')}</Text>
+                </Pressable>
+                <Text style={styles.markerNote}>{tk('map.marker.localOnly')}</Text>
+
+                {markerList.length === 0 ? (
+                  <Text style={styles.empty}>{tk('map.marker.empty')}</Text>
+                ) : (
+                  <>
+                    <View style={styles.chipWrap}>
+                      {markerList.map(p => (
+                        <Pressable
+                          key={p.marker.id}
+                          style={({ pressed }) => [styles.markerChip, pressed && styles.pressed]}
+                          onPress={() => onPickMarker?.(p.marker)}
+                          onLongPress={() => onRemoveMarker?.(p.marker)}
+                        >
+                          <View style={styles.markerChipDot} />
+                          <Text style={styles.chipName} numberOfLines={1}>{p.marker.name}</Text>
+                          <Text style={styles.chipDist}>{formatDistanceVi(p.distanceM)}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                    {onRemoveMarker ? (
+                      <Text style={styles.markerNote}>{tk('map.marker.hint')}</Text>
+                    ) : null}
+                  </>
+                )}
+              </View>
             ) : null}
           </ScrollView>
         ) : null}
@@ -266,6 +361,28 @@ const styles = StyleSheet.create({
   chipDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: TONE.primary },
   chipName: { fontSize: 14.5, fontWeight: '600', color: NATURE.bark, maxWidth: 128 },
   chipDist: { fontSize: 12.5, color: NATURE.barkSoft },
+
+  // Mốc: màu NẮNG, hình vuông bo góc — khác chấm cây cả về màu lẫn dáng, để
+  // người phân biệt được cả khi màn chói nắng hoặc mắt kém phân biệt màu.
+  markerDot: {
+    width: 16, height: 16, borderRadius: 4,
+    backgroundColor: TONE.sun,
+    borderWidth: 2.5, borderColor: NATURE.paper,
+  },
+  markerChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: TONE.sunSoft, ...ORGANIC_TILE, ...ELEVATION.card,
+    paddingHorizontal: 12, paddingVertical: 9,
+  },
+  markerChipDot: { width: 9, height: 9, borderRadius: 2, backgroundColor: TONE.sun },
+  addMarker: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.sm,
+    alignSelf: 'stretch', minHeight: 48,
+    backgroundColor: TONE.primary, ...ORGANIC_TILE,
+    paddingHorizontal: SPACE.md,
+  },
+  addMarkerTxt: { color: NATURE.paper, fontSize: 15.5, fontWeight: '700' },
+  markerNote: { ...TYPE.caption, fontSize: 12.5, lineHeight: 18, marginTop: SPACE.sm },
 
   empty: { ...TYPE.caption, textAlign: 'center', paddingVertical: SPACE.lg },
 });

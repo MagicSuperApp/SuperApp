@@ -53,9 +53,12 @@ import {
   type RoundComplete,
   type CapturedImage,
 } from '../services/treeReIDNativeBridge';
+import { autoTreeRegions } from '../services/treeRegionAuto';
+import { getCapturePlan, captureHint } from '../services/capturePlanService';
 import {
   toCaptureOrientations,
   platformHeadingRef,
+  type TreeRegion,
   type CaptureOrientation,
   identifyTree,
   verifyAddTree,
@@ -98,6 +101,7 @@ import {
 // Dùng @env (react-native-dotenv) — biến phải khai báo trong .env
 // Nếu chưa có → fallback staging
 import { ORILIFE_BASE } from '../services/orilifeBase';
+import { tk } from '../i18n/keys';
 const BASE_URL: string =
   ORILIFE_BASE;
 
@@ -124,7 +128,6 @@ const MIN_ROUND1 = 4;
 const MIN_ROUND2 = 2;
 
 const GUIDANCE = {
-  idle: 'Tap "Start" to identify the tree',
   round1: 'Đi vòng quanh cây, lia chậm để lấy đủ góc.',
   round2: 'Đứng SÁT GỐC, chĩa ống kính LÊN — lấy rõ vỏ gốc, sẹo, chạc cây.',
   needMore: 'Xoay thêm một chút nữa để lấy góc mới.',
@@ -141,6 +144,17 @@ type TreeIdentityRouteParams = {
   TreeIdentity: {
     /** Vườn hiện-hành — truyền tiếp xuống TreeEnroll để gắn cây vào vườn. */
     farmId?: string;
+    /**
+     * Mốc thời gian của một lượt CHỤP LẠI do màn đăng ký yêu cầu.
+     *
+     * Màn này giữ `identResult` trong state cục bộ, nên `goBack()` từ màn đăng ký
+     * để lại y nguyên bảng kết quả cũ kèm nút "Đăng ký cây mới" — kể cả sau khi
+     * cây đã đăng ký xong. Người dùng bấm tiếp thì sang màn đăng ký với `captures`
+     * rỗng, không hiểu, ra chụp lại từ đầu, và thành HAI bản ghi cho MỘT gốc cây.
+     * Dùng mốc thời gian chứ không phải cờ boolean: hai lượt chụp lại liên tiếp
+     * phải là hai giá trị khác nhau thì effect mới chạy lần thứ hai.
+     */
+    retake?: number;
   };
 };
 
@@ -364,7 +378,7 @@ const TreeIdentityScreen: React.FC = () => {
     if (identResult) return '';
     // Android KHÔNG có native → guidance chụp tay; có native thì dùng guidance theo round như iOS.
     if (Platform.OS === 'android' && !TreeReIDBridge.isAvailable()) return GUIDANCE.android;
-    if (!isCaptureActive) return GUIDANCE.idle;
+    if (!isCaptureActive) return tk('trace.identify.idleHint');
     if (totalCaptures === 0)
       return currentRoundLocal === 2 ? GUIDANCE.round2 : GUIDANCE.round1;
     if (shouldCapture) return GUIDANCE.needMore;
@@ -491,6 +505,7 @@ const TreeIdentityScreen: React.FC = () => {
       await runIdentify(
         stopResult.captures.map(c => `file://${c.fileURL}`),
         toCaptureOrientations(stopResult.captures),
+        autoTreeRegions(stopResult.captures).regions,
       );
     } catch (e: any) {
       rLog.nativeBridge.bridgeError('stopCaptureSession', e?.message ?? String(e));
@@ -565,7 +580,13 @@ const TreeIdentityScreen: React.FC = () => {
   };
 
   // ── Core: Gọi API identify ────────────────────────────────────────────────
-  const runIdentify = async (imagePaths: string[], orientations?: CaptureOrientation[]) => {
+  const runIdentify = async (
+    imagePaths: string[],
+    orientations?: CaptureOrientation[],
+    // Vùng cây theo TỪNG ảnh, suy từ box YOLO máy đã tính sẵn cho mỗi khung.
+    // Bỏ trống ⟹ không gửi trường nào, máy chủ embed cả khung như trước.
+    regions?: Array<TreeRegion | null>,
+  ) => {
     setIsIdentifyingLocal(true);
     // Mỗi lần identify mới → xoá phán-quyết cũ.
     setQueryId(null);
@@ -606,11 +627,18 @@ const TreeIdentityScreen: React.FC = () => {
       identifyTree(BASE_URL, imagePaths, {
         lat: gpsRedux?.lat,
         lon: gpsRedux?.lng,
+        // Sai số GPS. Đường đăng ký gửi (`TreeEnrollScreen.tsx:592`), đường soi thì
+        // không — mà soi mới là chỗ toạ độ quyết định nhiều nhất (`EMPTY_BUCKET`,
+        // `MOVED`, `moved_distance_m`). Máy chủ biết toạ độ mà không biết sai số
+        // ±50m dưới tán thì không nới nổi bán kính, rồi báo "cây đã di chuyển"
+        // hoặc mời đăng ký mới cho một cây đã có.
+        acc: gpsRedux?.accuracy,
         heading: heading ?? undefined,
         pitch: pitch ?? undefined,
         // Hướng theo TỪNG ảnh — trước đây chỉ gửi một con số hiện-tại cho cả loạt,
         // tức mọi ảnh trông như chụp từ cùng một chỗ.
         captures: orientations,
+        regions,
         headingRef: platformHeadingRef(),
         // M4: chỉ gửi khi tester đã bật toggle.
         matcher: matcher ?? undefined,
@@ -656,6 +684,25 @@ const TreeIdentityScreen: React.FC = () => {
     }
   };
 
+  /**
+   * "Bồi ảnh xong rồi thì còn thiếu gì" — `GET /api/capture/plan` nhánh CÂY.
+   *
+   * Máy chủ có sẵn nhánh cây từ lâu (`shoot_around` · `shoot_bark` · `rotate`,
+   * `capturePlanService.ts`), nhưng màn này chưa từng gọi. Nên sau khi thêm góc,
+   * câu duy nhất người chụp đọc được là "Đã thêm: 3 góc" — một con số không nói
+   * được là đủ hay chưa, và họ đứng ngay cạnh gốc cây lúc đó.
+   *
+   * `null` = im lặng: mạng hỏng, hoặc máy chủ nói đủ rồi. KHÔNG tự viết câu thay.
+   */
+  const treeCaptureHint = async (id: string): Promise<string | null> => {
+    const r = await getCapturePlan(BASE_URL, 'tree', id).catch(() => null);
+    return r?.ok ? captureHint(r.data) : null;
+  };
+
+  /** Ghép câu báo của app với câu hướng dẫn của máy chủ — bỏ vế nào không có. */
+  const withHint = (body: string, hint: string | null): string =>
+    hint ? `${body}\n\n${hint}` : body;
+
   // ── MATCH: cập nhật vị trí MOVED ──────────────────────────────────────────
   const handleUpdateLocation = async () => {
     if (!identResult?.tree_id || !gpsRedux) {
@@ -671,16 +718,32 @@ const TreeIdentityScreen: React.FC = () => {
           : androidImageUris;
 
       const res = await verifyAddTree(BASE_URL, identResult.tree_id, imgs, {
+        // `farm_id` BẮT BUỘC. Thiếu nó máy chủ gán null và cây rơi khỏi bộ lọc
+        // `/api/trees?farm_id=X` (`treeReIDService.ts:795-797`) — bổ sung ảnh xong
+        // là cây biến mất khỏi vườn, người ta tưởng mất cây rồi đăng ký lại, sinh
+        // cây trùng. Đường đăng ký đã gửi từ lâu; đường này thì quên.
+        farmId,
         lat: gpsRedux?.lat,
         lon: gpsRedux?.lng,
+        acc: gpsRedux?.accuracy,
+        regions: TreeReIDBridge.isAvailable() ? autoTreeRegions(capturesRedux).regions : undefined,
         captures: TreeReIDBridge.isAvailable() ? toCaptureOrientations(capturesRedux) : undefined,
         headingRef: platformHeadingRef(),
       });
 
-      if (res.ok) {
-        Alert.alert('Đã cập nhật', 'Vị trí mới của cây đã được lưu.');
+      // ĐỌC CỜ, ĐỪNG ĐỌC MỖI TẦNG VẬN CHUYỂN. `res.ok` chỉ nói HTTP 200. Máy chủ
+      // vẫn trả 200 kèm `{ok:false, added:false, reason:"ảnh không khớp cây này"}`
+      // (`treeReIDService.ts:165-177`). Bản trước báo "Vị trí mới đã được lưu"
+      // trong khi máy chủ chưa lưu gì — luật này chính file dịch vụ đã viết sẵn
+      // cho một cửa khác ở `:938-941`, chỗ này chưa áp.
+      if (res.ok && res.data?.ok !== false && res.data?.added !== false) {
+        const hint = await treeCaptureHint(identResult.tree_id);
+        Alert.alert('Đã cập nhật', withHint('Vị trí mới của cây đã được lưu.', hint));
       } else {
-        Alert.alert('Chưa cập nhật được', fieldErrorMessage(res.error));
+        Alert.alert(
+          'Chưa cập nhật được',
+          res.data?.reason ?? fieldErrorMessage(res.error),
+        );
       }
     } finally {
       setIsLoading(false);
@@ -707,16 +770,35 @@ const TreeIdentityScreen: React.FC = () => {
           : androidImageUris;
 
       const res = await verifyAddTree(BASE_URL, id, imgs, {
+        farmId,
         lat: gpsRedux?.lat,
         lon: gpsRedux?.lng,
+        acc: gpsRedux?.accuracy,
+        regions: TreeReIDBridge.isAvailable() ? autoTreeRegions(capturesRedux).regions : undefined,
         captures: TreeReIDBridge.isAvailable() ? toCaptureOrientations(capturesRedux) : undefined,
         headingRef: platformHeadingRef(),
       });
 
-      if (res.ok) {
-        Alert.alert('Đã xác nhận', `Góc nhìn mới đã thêm vào cây.\nĐã thêm: ${res.data?.n_added ?? 0} góc.`);
+      if (res.ok && res.data?.ok !== false && res.data?.added !== false) {
+        // `n_added` là trường TUỲ CHỌN. `?? 0` biến "máy chủ không khai" thành
+        // "đã lưu 0 góc" — nông dân đi vòng quanh cây chụp xong đọc "0 góc đã lưu"
+        // thì tưởng công đổ sông đổ biển và chụp lại từ đầu.
+        const n = res.data?.n_added;
+        const hint = await treeCaptureHint(id);
+        Alert.alert(
+          'Đã xác nhận',
+          withHint(
+            n == null
+              ? 'Góc nhìn mới đã thêm vào cây.'
+              : `Góc nhìn mới đã thêm vào cây.\nĐã thêm: ${n} góc.`,
+            hint,
+          ),
+        );
       } else {
-        Alert.alert('Chưa thêm được góc', fieldErrorMessage(res.error));
+        Alert.alert(
+          'Chưa thêm được góc',
+          res.data?.reason ?? fieldErrorMessage(res.error),
+        );
       }
     } finally {
       setIsLoading(false);
@@ -760,6 +842,15 @@ const TreeIdentityScreen: React.FC = () => {
     setShowTreePicker(false);
     dispatch(clearAll());
   };
+
+  // Màn đăng ký gọi "Chụp lại"/"Ghi cây tiếp" → về đây SẠCH, không còn bảng kết quả cũ.
+  const retake = route.params?.retake;
+  useEffect(() => {
+    if (!retake) return;
+    handleReset();
+    (navigation as any).setParams({ retake: undefined });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [retake]);
 
   // ── M3: gửi phán-quyết (Đúng / Sai / Là-cây-khác) ─────────────────────────
   const sendVerdict = async (verdict: IdentifyVerdict, correctTid?: string) => {
@@ -1126,7 +1217,7 @@ const TreeIdentityScreen: React.FC = () => {
             ) : (
               <>
                 <Icon name="magnify" size={22} color="#000000" />
-                <Text style={styles.ctrlBtnText}>Identify</Text>
+                <Text style={styles.ctrlBtnText}>{tk('trace.identify.doIdentifyShort')}</Text>
               </>
             )}
           </TouchableOpacity>
@@ -1187,7 +1278,7 @@ const TreeIdentityScreen: React.FC = () => {
             <>
               <Icon name="check-circle" size={22} color="#000000" />
               <Text style={styles.ctrlBtnText}>
-                Identify ({totalCaptures} Directions)
+                {tk('trace.identify.doIdentify', { n: totalCaptures })}
               </Text>
             </>
           )}

@@ -44,6 +44,11 @@ object TreeReIDCamera {
     /** Callback box realtime cho overlay: (boxes chuẩn-hoá theo portrait, tỉ-lệ frame w/h). */
     @Volatile var onBoxes: ((List<TreeReIDYolo.Box>, Float) -> Unit)? = null
 
+    /** Tỉ-lệ w/h của frame ĐÃ xoay về portrait — hệ quy chiếu của `TreeReIDYolo.latestBoxes`.
+     *  Ảnh chụp ra có thể khác tỉ-lệ này, nên phải gửi kèm để quy về hệ ảnh. 0 = chưa có. */
+    @Volatile var latestFrameAspect = 0f
+        private set
+
     /** (confidence gần nhất, tuổi ms). confidence < 0 = detector chưa sẵn sàng. */
     fun latestTargetConfidence(): Pair<Float, Long> =
         Pair(lastConf, System.currentTimeMillis() - lastConfAtMs)
@@ -60,7 +65,9 @@ object TreeReIDCamera {
                 val bmp = if (rot != 0) rotate(raw, rot).also { raw.recycle() } else raw
                 lastConf = TreeReIDYolo.detect(bmp)
                 lastConfAtMs = now
-                onBoxes?.invoke(TreeReIDYolo.latestBoxes, bmp.width.toFloat() / bmp.height.toFloat())
+                val aspect = bmp.width.toFloat() / bmp.height.toFloat()
+                latestFrameAspect = aspect
+                onBoxes?.invoke(TreeReIDYolo.latestBoxes, aspect)
                 bmp.recycle()
             }
         } catch (_: Throwable) {

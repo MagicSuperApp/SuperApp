@@ -25,7 +25,7 @@ import {
   Modal,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 
 import { COLORS } from '../constants';
 import { NEUTRAL } from '../shared/theme';
@@ -50,6 +50,20 @@ const BASE_URL: string =
 // ---------------------------------------------------------------------------
 
 type TreeItem = TreeInfo;
+
+/**
+ * Tham số màn. `farmId` là TUỲ CHỌN và hiện chưa nơi gọi nào truyền — màn này
+ * vốn liệt kê cây của MỌI vườn.
+ *
+ * Vì sao vẫn nhận: `TreeInfo` (`services/treeReIDService.ts`) KHÔNG có trường
+ * vườn nào, nên cây trong danh sách này không tự khai được nó thuộc vườn nào.
+ * Không có mã vườn thì màn Dẫn đường mở ra từ đây mất ranh giới vườn và phải
+ * kéo cây của mọi vườn về. Nơi nào biết mình đang đứng trong một vườn thì
+ * truyền `farmId` vào là cả danh sách lẫn đường dẫn đường đều thu đúng vườn đó.
+ */
+interface RouteParams {
+  farmId?: string;
+}
 
 // ---------------------------------------------------------------------------
 // Sub-component: Rename Modal
@@ -219,8 +233,10 @@ const TreeCard: React.FC<TreeCardProps> = ({ item, onPress, onLongPress, onFruit
 
 const TreeManagementScreen: React.FC = () => {
   const navigation = useNavigation<any>();
+  const route = useRoute();
   // Đường vào màn Dẫn đường đi qua cửa chung — xem `features/wayfind/WayfindButton`.
   const openWayfind = useOpenWayfind();
+  const farmId = (route.params as RouteParams | undefined)?.farmId;
 
   const [trees, setTrees] = useState<TreeItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -250,7 +266,9 @@ const TreeManagementScreen: React.FC = () => {
       }
       setLoadError(null);
 
-      const res = await getTrees(BASE_URL);
+      // Có mã vườn thì lọc luôn ở máy chủ: danh sách và màn Dẫn đường mở ra từ
+      // nó phải nói về CÙNG một vườn, không thì hai chỗ đếm cây khác nhau.
+      const res = await getTrees(BASE_URL, farmId);
 
       if (!mountedRef.current) return;
 
@@ -269,7 +287,9 @@ const TreeManagementScreen: React.FC = () => {
         setIsRefreshing(false);
       }
     }
-  }, []);
+    // `farmId` nằm trong deps: đổi vườn thì phải hỏi lại máy chủ, không thì
+    // danh sách còn là của vườn cũ mà đầu màn đã nói vườn mới.
+  }, [farmId]);
 
   useEffect(() => {
     loadTrees();
@@ -422,7 +442,14 @@ const TreeManagementScreen: React.FC = () => {
           keyExtractor={item => item.tree_id}
           renderItem={({ item }) => {
             // Cây chưa có toạ độ → `forTree` trả null → thẻ tự giấu nút.
-            const target = forTree(item);
+            //
+            // Mã vườn phải truyền TAY: `TreeInfo` không có `farmId` lẫn
+            // `farm_id`, nên đường lùi trong `forTree` không vớt được gì và
+            // đích sẽ đi với `farmId: undefined`. Khi đó màn Dẫn đường mất
+            // ranh giới vườn và gọi `getTrees` không lọc — chủ hai vườn cách
+            // nhau 30 km sẽ thấy cây vườn kia trong "Cây quanh chỗ bạn đứng".
+            // Lỗi này đã xảy ra một lần trước khi gom về `WayfindButton`.
+            const target = forTree(item, farmId);
             return (
               <TreeCard
                 item={item}

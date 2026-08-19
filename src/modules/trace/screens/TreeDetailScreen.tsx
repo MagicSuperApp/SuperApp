@@ -49,6 +49,7 @@ import StateView from '../../../components/state/StateView';
 import RemoteImage from '../../../components/RemoteImage';
 import TreeMetadataTab from './TreeMetadataTab';
 import EntityTimeline from '../components/EntityTimeline';
+import TreePublicSheet from '../components/TreePublicSheet';
 import { formatTreeName, shortTreeCode } from '../../../utils/treeNameFormatter';
 import { loadTreeImages } from '../../../services/treeImageStore';
 import { fetchTreeViews, treeViewImageUrls } from '../../../services/treeViewsService';
@@ -60,7 +61,7 @@ import {
   type TreeLayoutResponse, type TreeLayoutFruit,
   type FruitStatus, type TreeZone,
 } from '../../../services/fruitReIDService';
-import { removeTreeViews, setTreeFarm } from '../../../services/treeReIDService';
+import { getTrees, mapTreeInfoToUI, removeTreeViews, setTreeFarm } from '../../../services/treeReIDService';
 import { useSelector } from 'react-redux';
 
 const { width } = Dimensions.get('window');
@@ -261,6 +262,17 @@ const SegmentedTabBar: React.FC<{
   );
 };
 
+/** Kiểu riêng cho màn "chưa có cây" (đang tải / hỏi hỏng / không có). */
+const noTreeStyles = StyleSheet.create({
+  body: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 },
+  line: { marginTop: 16, fontSize: 16, color: COLORS.text, textAlign: 'center' },
+  retry: {
+    marginTop: 20, paddingHorizontal: 20, paddingVertical: 12,
+    backgroundColor: COLORS.accent, borderRadius: 8,
+  },
+  retryTxt: { color: COLORS.white, fontWeight: '600' },
+});
+
 // ── Main Screen ───────────────────────────────────────────────────────────────
 const TreeDetailScreen = () => {
   const tk = useTk();
@@ -271,9 +283,8 @@ const TreeDetailScreen = () => {
   const treesInStore = useSelector((state: RootState) => state.farm.trees);
   // Chấp nhận cả {tree} (object) lẫn {treeId} (string). Caller cũ TreeEnroll /
   // TreeManagement chỉ truyền treeId → tra cây từ store theo id hoặc tree_id.
-  // Chỉ dùng cây TÌM THẤY (đúng shape) nên không rủi ro sai ID; không thấy →
-  // rơi về màn not-found sẵn có bên dưới.
-  const tree = useMemo(() => {
+  // Chỉ dùng cây TÌM THẤY (đúng shape) nên không rủi ro sai ID.
+  const treeFromStore = useMemo(() => {
     if (params?.tree) return params.tree;
     const id = params?.treeId;
     if (!id) return undefined;
@@ -281,13 +292,65 @@ const TreeDetailScreen = () => {
   }, [params?.tree, params?.treeId, treesInStore]);
   const initialTab = params?.initialTab;
 
-  // Safety check: if no tree data, go back
+  /**
+   * ĐƯỜNG LÙI VỀ MÁY CHỦ khi Redux chưa có cây.
+   *
+   * Đo được: vào đây từ `TreeManagement` thì màn bật ngược trở ra. Danh sách ở
+   * `TreeManagement` lấy THẲNG từ máy chủ (`GET /api/trees`) và không đổ vào
+   * Redux, còn màn này chỉ tra Redux — nên cây vừa bấm không có trong store,
+   * `tree` là `undefined`, và effect an-toàn cũ gọi `goBack()` ngay. Người dùng
+   * thấy màn nhấp nháy rồi văng về, không một chữ giải thích.
+   *
+   * Nay: Redux không có thì HỎI MÁY CHỦ. Máy chủ chưa có cửa lấy MỘT cây
+   * (`treeReIDService` chỉ mở `GET /api/trees`, xem danh sách endpoint đầu tệp
+   * đó), nên hỏi cả danh sách rồi lọc theo `tree_id` — không bịa cửa mới.
+   * Dựng đúng bằng `mapTreeInfoToUI`, cùng hàm store dùng, để cây đến từ hai
+   * đường có CÙNG một hình dạng; hai hình dạng khác nhau là chỗ đẻ lỗi sau này.
+   */
+  const [fetchedTree, setFetchedTree] = useState<any>(null);
+  /** Đang hỏi máy chủ. Khác hẳn "không có cây" — màn phải nói ra là đang chờ. */
+  const [treeLoading, setTreeLoading] = useState(false);
+  /** Hỏi hỏng (mạng/máy chủ). Còn cây hay không thì CHƯA BIẾT. */
+  const [treeError, setTreeError] = useState<string | null>(null);
+  /** Máy chủ trả lời rõ ràng là KHÔNG có cây này. Chỉ lúc đó mới được bật ra. */
+  const [treeMissing, setTreeMissing] = useState(false);
+  const [treeNonce, setTreeNonce] = useState(0);
+  const retryTree = useCallback(() => {
+    setTreeError(null);
+    setTreeNonce(n => n + 1);
+  }, []);
+
+  const tree = treeFromStore ?? fetchedTree ?? undefined;
+
   useEffect(() => {
-    if (!tree) {
-      console.error('[TreeDetailScreen] No tree data provided, going back');
-      navigation.goBack();
-    }
-  }, [tree, navigation]);
+    const id = params?.treeId;
+    // Đã có cây (tham số hoặc store) thì khỏi hỏi — đừng bắn thêm một lượt mạng
+    // giữa vườn chỉ để lấy thứ đang cầm trong tay.
+    if (treeFromStore || !id) return;
+    let alive = true;
+    setTreeLoading(true);
+    setTreeError(null);
+    setTreeMissing(false);
+    (async () => {
+      const res = await getTrees(ORILIFE_BASE, params?.farmId);
+      if (!alive) return;
+      if (!res.ok || !res.trees) {
+        setTreeError(res.error?.detail || tk('map.tree.loadFail'));
+      } else {
+        const hit = res.trees.find(t => t.tree_id === id);
+        if (hit) setFetchedTree(mapTreeInfoToUI(hit, params?.farmId ?? ''));
+        else setTreeMissing(true);
+      }
+      setTreeLoading(false);
+    })();
+    return () => { alive = false; };
+  }, [treeFromStore, params?.treeId, params?.farmId, treeNonce, tk]);
+
+  // Bật ra CHỈ khi máy chủ cũng nói không có. Mạng hỏng thì ở lại và hỏi lại —
+  // bật ra lúc chưa biết là biến một trục trặc mạng thành "cây này không tồn tại".
+  useEffect(() => {
+    if (treeMissing) navigation.goBack();
+  }, [treeMissing, navigation]);
 
   const farms = useSelector((state: RootState) => state.farm.farms);
 
@@ -296,6 +359,10 @@ const TreeDetailScreen = () => {
   const btnScale = useRef(new Animated.Value(1)).current;
 
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab ?? 'overview');
+  /** Tấm trượt "Công khai & mã QR" — mở từ nút trên thanh dưới. */
+  const [publicOpen, setPublicOpen] = useState(false);
+  // Tấm "Việc khác" — ba việc hiếm, mỗi việc một dòng CÓ TÊN ĐẦY ĐỦ.
+  const [moreOpen, setMoreOpen] = useState(false);
 
   // Quả của cây — lấy từ field-reid (xem chú thích đầu file).
   const [layout, setLayout] = useState<TreeLayoutResponse | null>(null);
@@ -498,7 +565,9 @@ const TreeDetailScreen = () => {
     firstFruitLoad.current = false;
   }, [fetchFruits]));
 
-  // Early return if no tree data to prevent crashes
+  // Chưa có cây thì màn phải nói ĐANG Ở ĐÂU trong ba tình huống khác hẳn nhau:
+  // đang hỏi máy chủ / hỏi hỏng (chưa biết) / máy chủ nói không có. Trước bản
+  // này cả ba đều bị effect an-toàn nuốt thành một cú `goBack()` im lặng.
   if (!tree) {
     return (
       <View style={styles.root}>
@@ -507,19 +576,27 @@ const TreeDetailScreen = () => {
           <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
             <Icon name="arrow-left" size={22} color={COLORS.text} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Lỗi</Text>
+          <Text style={styles.headerTitle}>{tk('trace.tree.title')}</Text>
         </View>
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <Icon name="circle-exclamation" size={48} color={COLORS.error} />
-          <Text style={{ marginTop: 16, fontSize: 16, color: COLORS.text, textAlign: 'center' }}>
-            Không tìm thấy thông tin cây
-          </Text>
-          <TouchableOpacity
-            style={{ marginTop: 20, paddingHorizontal: 20, paddingVertical: 12, backgroundColor: COLORS.accent, borderRadius: 8 }}
-            onPress={() => navigation.goBack()}
-          >
-            <Text style={{ color: COLORS.white, fontWeight: '600' }}>Quay lại</Text>
-          </TouchableOpacity>
+        <View style={noTreeStyles.body}>
+          {treeLoading ? (
+            <>
+              <ActivityIndicator size="large" color={COLORS.accent} />
+              <Text style={noTreeStyles.line}>{tk('map.tree.loading')}</Text>
+            </>
+          ) : (
+            <>
+              <Icon name="circle-exclamation" size={48} color={COLORS.error} />
+              <Text style={noTreeStyles.line}>{treeError ?? tk('map.tree.notFound')}</Text>
+              {/* Nút hỏi lại CHỈ hiện khi lỗi là do hỏi hỏng. Máy chủ đã nói
+                  không có cây thì hỏi lại chẳng đổi được gì. */}
+              {treeError ? (
+                <TouchableOpacity style={noTreeStyles.retry} onPress={retryTree}>
+                  <Text style={noTreeStyles.retryTxt}>{tk('trace.button.retry')}</Text>
+                </TouchableOpacity>
+              ) : null}
+            </>
+          )}
         </View>
       </View>
     );
@@ -648,40 +725,35 @@ const TreeDetailScreen = () => {
           <Text style={styles.headerSubtitle} numberOfLines={1}>{tk('trace.label.code')} {treeShortCode}</Text>
         ) : null}
       </View>
-      {/* Đặt vị-trí cây trong sơ đồ 3D bằng tay (tuỳ chọn — mặc định theo GPS
-          hoặc rải ngẫu nhiên ổn định trong ranh giới vườn). */}
-      <TouchableOpacity style={styles.headerActionBtn} onPress={handlePlaceInFarm}>
-        <Icon name="map-pin" size={20} color={COLORS.textSub} />
-      </TouchableOpacity>
+      {/* ── Hai việc thường xuyên ra ngoài KÈM CHỮ, ba việc hiếm vào tấm ───
+          Chỗ này từng là BỐN nút icon xám: `map-pin` (đặt vị trí 3D), `spray-can`
+          (nhật ký thuốc), `chart-line` (biến thiên), `share-nodes` (chia sẻ dữ
+          liệu). Cùng `size={20}`, cùng `COLORS.textSub`, không nút nào có chữ, và
+          cả bốn nằm sát nút quay-lại ở vùng ngón cái hay quét trúng. Bốn việc có
+          hệ quả hoàn toàn khác nhau — trong đó `share-nodes` là hành động RA
+          NGOÀI duy nhất — trông giống hệt nhau.
+          Nhà OriLife đo trên nhật ký máy chủ: `api/care` 0 dòng trong 14 ngày,
+          tệp kho `care_events.json` còn 28 byte từ 06/06. Nhật ký thuốc chạy
+          được; nó chỉ là cái bình xịt xám thứ hai từ trái. Nên nó là nút được
+          đưa ra ngoài kèm chữ. */}
       <TouchableOpacity
-        style={styles.headerActionBtn}
+        style={styles.headerCareBtn}
         onPress={() => tree && (navigation as any).navigate('CareScan', {
           targetType: 'tree', targetId: tree.id, treeName: (tree as any).name,
         })}
+        accessibilityRole="button"
       >
-        <Icon name="spray-can" size={20} color={COLORS.textSub} />
+        <Icon name="spray-can" size={16} color={ORG_TONE.primary} />
+        <Text style={styles.headerCareTxt}>{tk('trace.tree.actCare')}</Text>
       </TouchableOpacity>
-      {/* Biến thiên của cây — "cây thay lá rồi, máy còn nhận ra nó không?".
-          Máy chủ tính sẵn số này từ lâu; đây là chỗ đầu tiên app hỏi tới. */}
       <TouchableOpacity
         style={styles.headerActionBtn}
-        onPress={() => tree && (navigation as any).navigate('TreeDrift', {
-          treeId: tree.id, treeName: (tree as any).name,
-        })}
-        accessibilityLabel="Biến thiên của cây"
+        onPress={() => setMoreOpen(true)}
+        accessibilityRole="button"
+        accessibilityLabel={tk('trace.tree.moreActions')}
       >
-        <Icon name="chart-line" size={20} color={COLORS.textSub} />
-      </TouchableOpacity>
-      {/* Chia sẻ dữ liệu RIÊNG của đúng cây này cho một người — không phải mở
-          công khai, và không đụng tới cây khác. */}
-      <TouchableOpacity
-        style={styles.headerActionBtn}
-        onPress={() => tree && (navigation as any).navigate('TreeShare', {
-          scopeType: 'tree', scopeId: tree.id, scopeName: (tree as any).name,
-        })}
-        accessibilityLabel="Chia sẻ dữ liệu riêng của cây"
-      >
-        <Icon name="share-nodes" size={20} color={COLORS.textSub} />
+        <Icon name="ellipsis" size={20} color={COLORS.textSub} />
+        <Text style={styles.headerMoreTxt}>{tk('trace.tree.moreActions')}</Text>
       </TouchableOpacity>
     </Animated.View>
   );
@@ -1178,19 +1250,50 @@ const TreeDetailScreen = () => {
         {activeTab === 'info' && <TreeMetadataTab tree={tree} />}
       </View>
 
-      {/* Existing Activity navigation — preserved per spec */}
-      {activeTab === 'overview' && fruitItems.length > 0 && (
+      {/*
+        Thanh dưới của tab Tổng quan.
+
+        ⚠ Điều kiện dựng thanh này đổi: trước đây nó chỉ hiện khi cây ĐÃ CÓ QUẢ
+        (`fruitItems.length > 0`), vì trong thanh chỉ có nút thu hoạch. Nay nút
+        "Công khai & mã QR" cũng nằm đây, mà bật công khai KHÔNG đợi cây có quả —
+        nó là mắt xích ĐẦU của chuỗi truy xuất, phải bấm được từ ngày trồng. Nên
+        thanh hiện ở mọi cây; riêng nút thu hoạch vẫn giữ điều kiện cũ.
+      */}
+      {activeTab === 'overview' && (
         <View style={[styles.bottomBar, { paddingBottom: (Platform.OS === 'ios' ? 36 : 24) + insets.bottom }]}>
+          {/* Nút PHỤ, đặt trên nút chính: viền chứ không đặc, để hai nút không
+              tranh nhau làm nút chính của màn. */}
           <TouchableOpacity
-            style={styles.harvestBtn}
-            onPress={() => (navigation as any).navigate('Activity', { tree, farm: currentFarm ?? undefined })}
+            style={styles.publicBtn}
+            onPress={() => setPublicOpen(true)}
             activeOpacity={0.88}
+            accessibilityRole="button"
           >
-            <View style={styles.btnShine} />
-            <Icon name="basket-shopping" size={19} color={COLORS.white} />
-            <Text style={styles.harvestBtnText}>Thu hoạch quả</Text>
+            <Icon name="qrcode" size={18} color={COLORS.accent} />
+            <Text style={styles.publicBtnText}>Công khai</Text>
+            <Icon name="chevron-right" size={15} color={COLORS.accent} />
           </TouchableOpacity>
+
+          {fruitItems.length > 0 && (
+            <TouchableOpacity
+              style={styles.harvestBtn}
+              onPress={() => (navigation as any).navigate('Activity', { tree, farm: currentFarm ?? undefined })}
+              activeOpacity={0.88}
+            >
+              <View style={styles.btnShine} />
+              <Icon name="basket-shopping" size={19} color={COLORS.white} />
+              <Text style={styles.harvestBtnText}>Thu hoạch</Text>
+            </TouchableOpacity>
+          )}
         </View>
+      )}
+
+      {!!tree?.id && (
+        <TreePublicSheet
+          visible={publicOpen}
+          onClose={() => setPublicOpen(false)}
+          treeId={tree.id}
+        />
       )}
 
       {/* Lightbox ảnh cây */}
@@ -1240,6 +1343,57 @@ const TreeDetailScreen = () => {
           >
             <Icon name="xmark" size={24} color={COLORS.white} />
           </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Ba việc hiếm, gọi đúng tên. Riêng "chia sẻ dữ liệu" phải đọc được hết
+          câu trước khi chạm — nó là việc đưa dữ liệu cho NGƯỜI KHÁC, không cùng
+          hạng với hai việc còn lại. */}
+      <Modal
+        visible={moreOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMoreOpen(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setMoreOpen(false)}
+        >
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{tk('trace.tree.moreActions')}</Text>
+            <TouchableOpacity
+              style={styles.modalOption}
+              onPress={() => { setMoreOpen(false); handlePlaceInFarm(); }}
+            >
+              <Icon name="map-pin" size={18} color={COLORS.textSub} />
+              <Text style={styles.modalOptionText}>{tk('trace.tree.actPlace')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.modalOption}
+              onPress={() => {
+                setMoreOpen(false);
+                tree && (navigation as any).navigate('TreeDrift', {
+                  treeId: tree.id, treeName: (tree as any).name,
+                });
+              }}
+            >
+              <Icon name="chart-line" size={18} color={COLORS.textSub} />
+              <Text style={styles.modalOptionText}>{tk('trace.tree.actDrift')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.modalOption}
+              onPress={() => {
+                setMoreOpen(false);
+                tree && (navigation as any).navigate('TreeShare', {
+                  scopeType: 'tree', scopeId: tree.id, scopeName: (tree as any).name,
+                });
+              }}
+            >
+              <Icon name="share-nodes" size={18} color={COLORS.textSub} />
+              <Text style={styles.modalOptionText}>{tk('trace.tree.actShare')}</Text>
+            </TouchableOpacity>
+          </View>
         </TouchableOpacity>
       </Modal>
 
@@ -1370,11 +1524,21 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5, marginTop: 2,
   },
   headerActionBtn: {
-    width: 40, height: 40, borderRadius: 12,
+    minWidth: 44, paddingHorizontal: 6, paddingVertical: 5, borderRadius: 12,
     backgroundColor: ORG_SURFACE.raised,
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 1, borderColor: ORG_TONE.border,
   },
+  headerMoreTxt: { fontSize: 10, fontWeight: '700', color: COLORS.textSub, marginTop: 1 },
+  // Nút "Ghi thuốc" — việc hằng ngày, nên nó là nút DUY NHẤT ở đầu màn có nền
+  // nổi và chữ đầy đủ. Xem chú thích ở phần Header về vì sao đúng nút này.
+  headerCareBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12,
+    backgroundColor: ORG_SURFACE.raised,
+    borderWidth: 1, borderColor: ORG_TONE.primary,
+  },
+  headerCareTxt: { fontSize: 12.5, fontWeight: '800', color: ORG_TONE.primary },
 
   tabBar: {
     flexGrow: 0,
@@ -1713,14 +1877,23 @@ const styles = StyleSheet.create({
   bottomBar: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     paddingHorizontal: 20,
-    paddingBottom: Platform.OS === 'ios' ? 36 : 24,
+    paddingBottom: 24,
     paddingTop: 12,
     backgroundColor: ORG_SURFACE.ground,
     borderTopWidth: 1, borderTopColor: COLORS.border,
+    flexDirection: "row", gap: 12
   },
+  publicBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    paddingHorizontal: 13,
+    paddingVertical: 8,
+    borderRadius: 6,
+    borderWidth: 1.5, borderColor: COLORS.accent, flex: 1,
+  },
+  publicBtnText: { fontSize: 14.5, fontWeight: '700', color: COLORS.accent, letterSpacing: 0.2 },
   harvestBtn: {
     backgroundColor: COLORS.accent,
-    borderRadius: 14, paddingVertical: 16,
+    borderRadius: 6, paddingHorizontal: 14, paddingVertical: 8,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 10, overflow: 'hidden', position: 'relative',
     ...ORG_ELEV.cardStrong,

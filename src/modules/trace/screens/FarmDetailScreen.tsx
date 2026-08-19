@@ -40,7 +40,7 @@ import { GroundBackdrop } from '../components/layered/Organic';
 import { useTk } from '../../../i18n/keys';
 // B2: tạo vườn QUA field-reid (server sinh farm_id uuid THẬT) — bỏ aladinAPI
 // (backend Lợi deprecated + client tự sinh `farm-<ts>` = gốc B2). INV-1 §3.2.
-import { createFarm as createReidFarm } from '../../../services/farmService';
+import { BOUNDARY_METHOD, createFarm as createReidFarm } from '../../../services/farmService';
 import { ensureOrilifeToken } from '../../../services/orilifeDidAuth';
 import { ORILIFE_BASE } from '../../../services/orilifeBase';
 import { fieldErrorMessage } from '../../../services/treeReIDService';
@@ -50,6 +50,7 @@ import { fieldErrorMessage } from '../../../services/treeReIDService';
 let MapLibreGL: any = null;
 
 import PaginationControls from '../components/PaginationControls';
+import EntityTimeline from '../components/EntityTimeline';
 import CommonPopup from '../components/CommonPopup';
 import StateView from '../../../components/state/StateView';
 import { useAppDispatch } from '../../../store/hooks';
@@ -397,6 +398,18 @@ const DraggableVertex = ({
 
 const DEFAULT_CENTER: [number, number] = [106.660172, 10.762622];
 
+/** Ranh này lấy bằng cách nào, và sai số bao nhiêu mét. */
+interface BoundaryMeta {
+  /** `BOUNDARY_METHOD.gpsWalk` khi đi vòng quanh vườn, `.mapDraw` khi chấm tay. */
+  method: string;
+  /**
+   * Sai số GPS, mét. `null` = KHÔNG ĐO ĐƯỢC, và đó là ca đúng cho ranh chấm
+   * tay: điểm chấm lên bản đồ không có sai số GPS nào cả. Gửi 0 ở đó là khai
+   * với máy chủ rằng ranh này chính xác tuyệt đối.
+   */
+  accM: number | null;
+}
+
 const AddFarmMode = ({
   coordinates,
   setCoordinates,
@@ -425,7 +438,13 @@ const AddFarmMode = ({
   editHistoryLength: number;
   onPointCandidate: (lat: number, lng: number, accuracy: number | null) => void;
   onCaptureNow: () => Promise<void>;
-  onFinish: () => void;
+  /**
+   * Lưu vườn. Kèm theo CÁCH LẤY RANH và SAI SỐ để máy chủ ghi lại — xem
+   * `BoundaryMeta`. Không có hai thứ đó thì một đường viền chấm tay và một
+   * đường viền đi bộ đo GPS trông y hệt nhau về sau, mà chúng lệch nhau cả chục
+   * mét.
+   */
+  onFinish: (meta: BoundaryMeta) => void;
   onBack: () => void;
   rejectReason?: string | null;
   farmName: string;
@@ -448,6 +467,16 @@ const AddFarmMode = ({
   const [drawMode, setDrawMode] = useState<'auto' | 'manual'>('auto');
   const [isAutoRecording, setIsAutoRecording] = useState(false);
   const [lastAccuracy, setLastAccuracy] = useState<number | null>(null);
+  /**
+   * Sai số GPS TỆ NHẤT gặp trong lúc đi vòng — con số đại diện cho cả vòng ranh.
+   *
+   * Không dùng `lastAccuracy` (số của lần đọc cuối): người ta thường dừng lại ở
+   * chỗ thoáng để bấm Lưu, nên lần đọc cuối hay là lần đẹp nhất cả buổi — lấy nó
+   * làm sai số của cả vòng là khai thấp đi đúng chỗ nó tệ nhất, dưới tán cây.
+   * Ref chứ không state: nó không vẽ ra gì, đổi mỗi giây một lần thì vẽ lại cả
+   * bản đồ là phí.
+   */
+  const worstAccRef = useRef<number | null>(null);
   // Loại bản đồ: 'normal' (OSM đường phố) mặc định · 'satellite' (ảnh vệ tinh Esri).
   const [mapType, setMapType] = useState<'normal' | 'satellite'>('normal');
   // Popup chi tiết điểm (index) khi user nhấn vào một marker.
@@ -543,6 +572,10 @@ const AddFarmMode = ({
           setLastAccuracy(accuracy ?? null);
           // Chỉ auto-tracking khi user đang "đi vòng" ở chế độ tự động.
           if (isAutoRecordingRef.current) {
+            if (typeof accuracy === 'number' && Number.isFinite(accuracy)) {
+              const worst = worstAccRef.current;
+              if (worst === null || accuracy > worst) worstAccRef.current = accuracy;
+            }
             onPointCandidateRef.current(latitude, longitude, accuracy ?? null);
           }
         },
@@ -933,7 +966,12 @@ const AddFarmMode = ({
 
             <TouchableOpacity
               style={[styles.saveBtn, (!canSave || isSaving) && styles.btnDisabled]}
-              onPress={onFinish}
+              onPress={() => onFinish(
+                drawMode === 'auto'
+                  ? { method: BOUNDARY_METHOD.gpsWalk, accM: worstAccRef.current }
+                  // Chấm tay: KHÔNG có sai số GPS để khai (xem `BoundaryMeta.accM`).
+                  : { method: BOUNDARY_METHOD.mapDraw, accM: null },
+              )}
               disabled={!canSave || isSaving}
               activeOpacity={0.9}
             >
@@ -1117,6 +1155,24 @@ const FarmDetailMode = ({
             <Text style={styles.headerTitle} numberOfLines={1}>{farm?.name}</Text>
           </TouchableOpacity>
         </View>
+        {/* Chia sẻ dữ liệu riêng của CẢ vườn (`scope_type=farm`). Chỉ hiện khi đã
+            biết mã vườn: mở màn chia sẻ với `scopeId` rỗng thì danh sách lọc ra
+            rỗng — màn báo "chưa chia sẻ cho ai" trong khi thật ra chưa hỏi được
+            ai cả, và nút cấp quyền sẽ tạo một lượt cấp không gắn vào vườn nào. */}
+        {farm?.id ? (
+          <TouchableOpacity
+            style={[styles.activityBtn, { marginRight: 8 }]}
+            onPress={() =>
+              (navigation as any).navigate('TreeShare', {
+                scopeType: 'farm',
+                scopeId: String(farm.id),
+                scopeName: farm?.name,
+              })
+            }
+          >
+            <Icon name="share-nodes" size={20} color={COLORS.accent} />
+          </TouchableOpacity>
+        ) : null}
         <TouchableOpacity style={styles.activityBtn} onPress={onActivityUpdate}>
           <Icon name="file-pen" size={20} color={COLORS.accent} />
         </TouchableOpacity>
@@ -1230,9 +1286,32 @@ const FarmDetailMode = ({
           />
         )}
         ListFooterComponent={
-          filteredTrees.length > 0 ? (
-            <View>
-              {/* Pagination */}
+          <View>
+            {/*
+              DÒNG THỜI GIAN CỦA VƯỜN — chỗ việc đồng áng thật sự được ghi.
+
+              Một lần phun cả vườn là MỘT sự việc, và máy chủ ghi nó ở ĐÂY, không
+              ghi xuống từng cây (ghi xuống cây là nhân một sự việc có thật thành
+              N bản ghi không có thật). Màn chi tiết cây chỉ thấy bản KẾ THỪA của
+              nó, mang nhãn "cả vườn". Trước bản này app không có chỗ nào vẽ dòng
+              của vườn — tức chính bản ghi GỐC là thứ không ai xem được: ghi xong
+              là biến mất khỏi tầm mắt người vừa ghi.
+
+              Vẽ NGOÀI nhánh `filteredTrees.length > 0`, và đó là chủ ý: việc đồng
+              áng không đợi có cây mới ghi được, nên vườn chưa có cây nào vẫn phải
+              thấy được nhật ký của nó.
+
+              Đặt TRÊN danh sách cây: dòng thời gian trả lời "vườn này đã trải qua
+              gì", danh sách cây là bản kiểm kê. Người mở màn vườn hỏi câu đầu
+              trước — còn danh sách thì đã có phân trang riêng bên dưới.
+            */}
+            {!!farm?.id && (
+              <View style={styles.farmTimelineWrap}>
+                <EntityTimeline entityType="farm" entityId={String(farm.id)} limit={5} />
+              </View>
+            )}
+            {filteredTrees.length > 0 ? (
+              /* Pagination */
               <PaginationControls
                 currentPage={currentPage}
                 totalPages={totalPages}
@@ -1242,10 +1321,10 @@ const FarmDetailMode = ({
                 onPreviousPage={handlePreviousPage}
                 onNextPage={handleNextPage}
               />
-              {/* Chừa chỗ cho thanh hành động nổi ở đáy (2 nút). */}
-              <View style={{ height: 86 }} />
-            </View>
-          ) : null
+            ) : null}
+            {/* Chừa chỗ cho thanh hành động nổi ở đáy (2 nút). */}
+            <View style={{ height: 86 }} />
+          </View>
         }
       />
 
@@ -1649,7 +1728,7 @@ const FarmDetailScreen = () => {
    *   5. Both alert + toast feedback (CPO V4 decision #9)
    *   6. Reset state + navigate
    */
-  const handleAddFarm = async () => {
+  const handleAddFarm = async (boundaryMeta: BoundaryMeta) => {
     if (!user) {
       Alert.alert(
         'Cần đăng nhập · Login required',
@@ -1711,14 +1790,21 @@ const FarmDetailScreen = () => {
           created = await createReidFarm(ORILIFE_BASE, {
             name: farmName,
             boundary: coordinates,
+            boundaryMethod: boundaryMeta.method,
+            boundaryAccM: boundaryMeta.accM,
           });
           // Token vừa hết hạn giữa chừng (401) → làm mới 1 lần rồi thử lại.
           if (!created.ok && created.error?.type === 'auth_error') {
             const relog = await ensureOrilifeToken(ORILIFE_BASE, { force: true });
             if (relog) {
+              // Lượt thử lại phải gửi ĐÚNG những gì lượt đầu gửi. Thiếu hai
+              // trường ranh ở đây thì vườn nào tạo trúng lúc token hết hạn sẽ
+              // mất cách-lấy-ranh và sai số — im lặng, và không lấy lại được.
               created = await createReidFarm(ORILIFE_BASE, {
                 name: farmName,
                 boundary: coordinates,
+                boundaryMethod: boundaryMeta.method,
+                boundaryAccM: boundaryMeta.accM,
               });
             }
           }
@@ -2441,6 +2527,9 @@ const styles = StyleSheet.create({
   },
 
   // Bottom bar
+  /** Khối dòng thời gian của vườn nằm trong footer của FlatList — cần lề riêng
+   *  vì các hàng cây đã có lề của chúng. */
+  farmTimelineWrap: { paddingHorizontal: 16, paddingTop: 4 },
   bottomBar: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     paddingHorizontal: 20,

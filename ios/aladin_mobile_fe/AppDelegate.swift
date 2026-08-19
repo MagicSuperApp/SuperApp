@@ -9,26 +9,19 @@ import FirebaseAnalytics
 // ── Bắt uncaught ObjC exception (native) ─────────────────────────────────────
 // Bản signed crash EXC_CRASH/SIGABRT do NSException không bắt (ObjCTurboModule
 // performVoidMethodInvocation rethrow) — crash log .ips KHÔNG ghi reason. Hàm này
-// POST name+reason+stack về log server TRƯỚC khi app chết để biết ĐÚNG module/lý do.
-// (_objc_terminate gọi handler này cho ObjC exception trước khi abort.)
+// ghi name+reason+stack ra nhật ký hệ thống TRƯỚC khi app chết, để biết ĐÚNG
+// module/lý do. (_objc_terminate gọi handler này cho ObjC exception trước abort.)
+//
+// KHÔNG gửi đi đâu cả. Bản trước POST thẳng về một tên miền ngrok tạm viết cứng
+// trong mã: đo được chuỗi đó nằm trong nhị phân bản phát hành 94 (`strings` trên
+// chính tệp .app đã ký). Tên miền ngrok miễn phí hết hạn là ai cũng giành lại
+// được, và từ giây đó mọi tên module + lý do lỗi + dấu vết ngăn xếp của máy người
+// dùng thật chảy về tay người lạ — không cờ tắt, không ai đồng ý.
+//
+// Cần lại đường gửi từ xa thì đi qua `REMOTE_LOG_URL` (biến môi trường, mặc định
+// rỗng = tắt) như `src/services/remoteLogger.ts` đã làm — đừng viết cứng lần nữa.
 private func aladinReportNativeException(_ name: String, _ reason: String, _ stack: [String]) {
-  let joined = stack.prefix(40).joined(separator: " || ")
   NSLog("[NATIVE-CRASH] %@: %@\n%@", name, reason, stack.prefix(40).joined(separator: "\n"))
-  guard let url = URL(string: "https://gutless-renovator-distaste.ngrok-free.dev/logs") else { return }
-  var req = URLRequest(url: url)
-  req.httpMethod = "POST"
-  req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-  req.setValue("true", forHTTPHeaderField: "ngrok-skip-browser-warning")
-  let payload: [String: Any] = [
-    "event": "native_uncaught_exception",
-    "device": "iOS RN", "osVersion": "", "appVersion": "", "stackTrace": joined,
-    "data": ["message": "\(name): \(reason)", "stack": joined, "level": "error"],
-  ]
-  req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
-  // Gửi ĐỒNG BỘ (chặn tối đa 3s) vì tiến trình sắp abort.
-  let sem = DispatchSemaphore(value: 0)
-  URLSession.shared.dataTask(with: req) { _, _, _ in sem.signal() }.resume()
-  _ = sem.wait(timeout: .now() + 3)
 }
 
 @main

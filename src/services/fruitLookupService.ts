@@ -343,7 +343,16 @@ function _absUrl(raw: unknown, baseUrl: string): string | null {
 
 function _card(raw: unknown, baseUrl: string): LookupCandidate | null {
   const o = (raw ?? {}) as Record<string, unknown>;
-  const pick = _str(o.pick);
+  // `pick` về dạng SỐ, không phải chuỗi. Đo trên máy chủ đang chạy (`api.orilife.io`,
+  // commit `e5ffa3d`, 19/08/2026): `{"pick":1,"name":"Quả 111",...}`. Bản trước chỉ
+  // nhận chuỗi nên MỌI thẻ bị bỏ, `cards.length` về 0, và cả lượt tra rơi xuống
+  // nhánh `empty_scope` — người mua thấy đúng câu "đây là những quả giống nhất"
+  // của máy chủ mà KHÔNG thấy quả nào, kèm nút "Quét lại" dẫn về chỗ cũ.
+  // Mẫu thử trong `fruitLookupService.test.ts` viết `pick: 'p1'` nên test vẫn xanh.
+  // Nhận cả hai kiểu, và giữ chuỗi làm dạng chuẩn trong app (nó chỉ là khoá chọn).
+  const pick = _str(o.pick) ?? (typeof o.pick === 'number' && Number.isFinite(o.pick)
+    ? String(o.pick)
+    : null);
   // Không có `pick` thì không chọn tiếp được gì — một dòng ảnh không bấm được là
   // một dòng bày ra để làm người ta bấm hụt.
   if (!pick) return null;

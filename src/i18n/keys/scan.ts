@@ -32,6 +32,12 @@ export const SCAN_STRINGS = {
 
   // ── Trạng thái một lượt tra ───────────────────────────────────────────────
   'scan.state.sending': { vi: 'Đang định vị quả...', en: 'Sending the photo…', zh: '正在发送照片…', ja: '写真を送信中…' },
+  'scan.state.pickFruit': {
+    vi: 'Máy chủ thấy nhiều quả — chạm vào vùng xanh của quả bạn muốn tra',
+    en: 'Several fruits found — tap the green area of the one you mean',
+    zh: '发现多个水果 — 点击你要查的那个绿色区域',
+    ja: '果実が複数見つかりました — 調べたいものの緑の範囲をタップ',
+  },
   'scan.state.oneFruit': {
     vi: 'Máy chủ chưa chắc bạn hỏi quả nào — lại gần, chụp riêng MỘT quả thôi',
     en: 'The server cannot tell which fruit you mean — get closer and shoot just ONE',

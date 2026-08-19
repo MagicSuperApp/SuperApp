@@ -1,3 +1,83 @@
+## Vị trí cây: có toạ độ thì CẮM GHIM và chỉ đường được, thôi hiện "máy chủ chưa cho biết"
+
+### Câu cũ trả lời sai người
+Bản trước, dòng "nơi trồng" là `gpsPrecisionLabelVi('unknown')` — *"Máy chủ chưa cho biết vị trí này chính xác tới đâu"*. Câu đó nói về **sự thiếu của máy chủ**, không trả lời câu hỏi của người mua. Mà trong tay đã có `gps: [20.989, 105.944]`: một chỗ có thật, đi tới được.
+
+### Ba việc đổi
+**1. Tra ngược toạ độ ra địa chỉ.** Nền bản đồ đang dùng vốn đã có dữ liệu hành chính của chỗ đó, nên lấy ngay từ đấy — `reverseGeocode.ts`, Nominatim/OSM. Đo thật với đúng toạ độ cây mẫu:
+
+```
+GET nominatim.openstreetmap.org/reverse?format=jsonv2&lat=20.989&lon=105.944&zoom=16&accept-language=vi
+→ display_name: "Vinhomes Ocean Park, Xã Gia Lâm, Hà Nội, 17710, Việt Nam"
+```
+
+Không dùng thẳng `display_name`: mã bưu chính và tên nước đẩy phần có nghĩa ra khỏi dòng trên máy hẹp. `shortAddressVi` gắp lại theo **bốn bậc hành chính Việt Nam** — thôn/khu → xã/phường → huyện/quận → tỉnh — rồi cắt còn ba mẩu. Gộp bậc xã với bậc huyện làm một (bản đầu tôi viết thế, test bắt được) làm ca nông thôn `village + county + state` mất hẳn cấp huyện: ra *"Xã Cẩm Sơn, Tiền Giang"*, mà một tỉnh có nhiều xã trùng tên.
+
+Ba tầng lùi ở dòng "nơi trồng": địa chỉ tra được → toạ độ thô (vẫn chép dán sang bản đồ khác được) → mới đến "chưa có thông tin vị trí".
+
+**2. Bản đồ luôn cắm ghim, và ghim có nhãn tên cây.** Một cái chấm không tên không nói được nó đang chỉ cái gì.
+
+**3. Nút "Chỉ đường"** mở `https://www.google.com/maps/dir/?api=1&destination=lat,lon` — đường universal, máy có app Google Maps thì hệ điều hành bắt lấy mở thẳng app. Không dùng `geo:` vì iOS không có gì nhận. Đây là lý do tồn tại của cái ghim: không có nút này thì toạ độ vẫn chỉ là hai con số, chỉ khác là có một chấm đè lên.
+
+### Vòng ước lượng: giữ, nhưng thu hẹp điều kiện
+Vòng chỉ vẽ khi máy chủ **tự khai** `gps_precision='coarse'` kèm `gps_precision_m` — lúc đó mới biết chắc bán kính. Không khai gì thì không vẽ. `UNKNOWN_RADIUS_M = 250` của bản trước đã **xoá**: vẽ một vòng bịa bán kính còn tệ hơn không vẽ, vì nó trông y như một phép đo.
+
+### Giữ Nominatim sống được
+Họ cho 1 lượt/giây và đòi khai `User-Agent` — thiếu là chặn IP, mà chặn thì **mọi máy** mất dòng địa chỉ cùng lúc, im lặng. Nên: mỗi toạ độ hỏi đúng một lần (đệm bộ nhớ + đĩa 30 ngày, khoá làm tròn 4 chữ số ≈ 11m), hai lượt hỏi song song dùng chung một lời hứa. Đệm đĩa **chỉ ghi ca thành công** — ghi cả ca hỏng là khoá một toạ độ vào trạng thái "không có địa chỉ" chỉ vì một lần mất sóng.
+
+Đây là lượt gọi duy nhất của màn đi ra ngoài hệ thống, nên nó chỉ mang hai con số máy chủ đã công khai: không mã cây, không token. Có test khoá đúng điều đó.
+
+### Một cái bẫy trong chính bộ test
+Bốn ca đầu xanh giả: bản giả của `AsyncStorage` **lưu thật**, nên ca đầu ghi địa chỉ vào đĩa và mọi ca sau đọc lại — `fetch` giả không được gọi lần nào, và cả nhóm hoá ra chỉ đang kiểm bộ đệm. Thêm `AsyncStorage.clear()` vào `beforeEach`.
+
+### Đo lại
+`tsc` 0 lỗi · eslint 0 lỗi · **105 bộ / 1 590 test** xanh (17 test mới cho `reverseGeocode`).
+
+## Màn "Nguồn gốc" dựng lại theo mắt NGƯỜI MUA — ảnh, danh tính, nhật ký trước; bản đồ, 3D, chuỗi khối sau
+
+### Bố cục cũ hỏng ở đâu
+Bản trước xếp một ô ảnh cao 200px, rồi một thẻ bốn dòng ngang hàng nhau: *Ghi nhận · Vị trí · Góc chụp lúc đăng ký · Neo lên chuỗi*. Bốn dòng ấy đều đúng, nhưng chúng là bốn câu trả lời cho câu hỏi **"chứng minh đi"** — mà đó không phải câu hỏi đầu tiên của người đang cầm quả ở sạp.
+
+Người mua hỏi theo thứ tự: *trông nó thế nào → cây gì, của ai → ở đâu → đã trải qua gì*. Nay màn xếp đúng thứ tự đó, và ba khối "chứng minh" (bản đồ, khối 3D, neo chuỗi) rơi xuống các mục **gập, đóng sẵn** ở cuối.
+
+Gập không chỉ để gọn. Bản đồ MapLibre và `<Canvas>` 3D **mỗi thứ là một bề mặt GL**; mount cả hai cho một người chỉ nhìn được một là làm máy yếu nóng lên đúng lúc họ đang xem kỹ. Vì vậy `Fold` nhận `render: () => ReactNode` chứ không nhận node — đóng nghĩa là **chưa gọi**, tức chưa tốn gì.
+
+### Hai chỗ máy chủ KHÔNG trả lời, và màn phải nói ra
+Đo thân thật 19/08 (`GET /api/tree_by_code/ORI-w7er6uf-Z9MMB2PS`):
+
+**1. Không có trường nào về chủ vườn.** Allowlist `_public_prov` trả đúng 15 khoá: `anchor · code · created_at · embedding_hash · gps · images · lampnet_base · lampnet_pending · lampnet_view · model3d · n_views · name · record_cid · record_hash · tree_id`. Đã dò thêm `/api/booth/public/{code}` — khác không gian mã, trả 404 với mã cây.
+
+Người mua hỏi "của ai" **trước tiên**. Nên ô đó vẫn đứng đầu thẻ, và nó nói thẳng *"Hồ sơ công khai chưa kèm tên chủ vườn"* — không bỏ hẳn dòng (là giấu mất câu hỏi của họ), không đắp `author_did` vào (một chuỗi băm không phải tên người).
+
+`ownerLine()` vẫn đọc `owner_name`/`owner`/`farm_name`/`farm` để ngày máy chủ mở thêm thì hiện ra ngay, không phải chờ bản app mới.
+
+**2. Dòng thời gian đòi phiên đăng nhập.** `GET /api/tree/{id}/timeline` trả `401 {"error":"Cần đăng nhập."}` cho khách. Bản trước `EntityTimeline` hiện "Phiên hết hạn" — với người mua thì đó là câu vô nghĩa: họ không có tài khoản nào để hết hạn, và câu ấy sai bảo họ đi làm một việc không làm được.
+
+Nay `EntityTimeline` nhận `authHint`, và màn nguồn gốc truyền câu đúng với người của nó. Bên cạnh đó, `milestones()` dựng **hai mốc đọc được từ chính hồ sơ** — ngày đăng ký, lượt neo chuỗi — xếp **cũ trước** (đây là tiểu sử, không phải bảng tin), kèm một dòng nói rõ chúng đến từ hồ sơ xuất xứ chứ không phải nhật ký chăm sóc.
+
+### Bản đồ: VÒNG, không phải ghim
+Thân thật **không có `gps_precision`** ⇒ `gpsPrecision()` trả `'unknown'` ⇒ `canPinExactly()` = false. Cắm ghim nhọn lên một toạ độ đã qua `_coarsen_public_gps` là **nói dối bằng đồ hoạ**.
+
+`circleGeo.ts` dựng vòng bằng **đa giác theo toạ độ**, không dùng `CircleLayer` (vẽ theo *pixel*, nên phóng to thu nhỏ là mất hết nghĩa về khoảng cách). Vòng nhân `cos(lat)` cho chiều đông-tây — bỏ nó thì ở vĩ độ 21 vòng dẹt mất ~7%, nhìn ra ngay là hình bầu dục; có test đo lại bằng Haversine. Chưa biết bán kính thì vẽ `UNKNOWN_RADIUS_M = 250` **nét đứt**, và chữ dưới bản đồ là `gpsPrecisionLabelVi('unknown')`, không mượn câu của `coarse` (câu đó ngụ ý đã đo).
+
+### Khối 3D
+`https://lampnet.cloud/ln1q_7da38f774a97ca3a_file` → 200, **`text/plain`**, 73 953 byte, `ply / format ascii 1.0 / element vertex 2048`, có `red green blue`.
+
+Ba điều rút ra vào mã:
+- `Content-Type` là `text/plain` cho **mọi** tệp trong kho ⇒ đừng lọc theo MIME để đoán ascii/nhị phân; đưa `ArrayBuffer` cho `PLYLoader.parse` là nó tự đọc dòng `format`.
+- Điểm **có màu** ⇒ `vertexColors: true`, không thì mọi model trông y hệt nhau.
+- Không dùng `PLYLoader.load(url)`: nó đi qua XHR và lỗi chui ra không mang mã HTTP, nên không tách được "404 chưa dựng model" khỏi "mất sóng". Dùng `fetch` thì bốn nhánh hỏng ra bốn câu khác nhau — và chỉ **một** trong bốn đáng hiện nút "Thử lại".
+
+`coverage.advice` của máy chủ (*"Mới chụp ~60° (một phía cây)…"*) hiện **nguyên văn** dưới ô. Không có nó thì người mua nhìn một khối lỗ chỗ rồi kết luận hồ sơ dối, trong khi sự thật chỉ là chưa chụp đủ vòng. Số điểm lấy số **đọc được từ tệp**, không lấy số máy chủ khai — hai số lệch nhau là dấu hiệu tệp bị cắt, ưu tiên số khai sẽ giấu nó đi.
+
+### Một dòng gỡ mìn
+`TraceResultScreen` cũ có `Clipboard.setString(JSON.stringify(p))` **chạy trong thân render** — một dòng gỡ lỗi bỏ quên, và nó cướp bảng nháp của người dùng mỗi lần màn vẽ lại. Đã xoá; chép mã cây nay là một nút có chủ đích, có phản hồi "đã chép".
+
+### Đo lại
+`jest.config.js` thêm `three` vào `transformIgnorePatterns`: `three/examples/jsm/**` là ESM thuần (lõi `three` có bản CJS nên vẫn nạp được, các loader thì không), nên trước bản này **bất kỳ** test nào chạm tới `GLTFLoader`/`PLYLoader` đều chết ở dòng `import` đầu tiên.
+
+`tsc` 0 lỗi · eslint 0 lỗi · **104 bộ / 1 573 test** xanh (42 test mới cho `provenanceView`, `circleGeo`, `plyPointCloud`).
+
 ## SỬA: nút "Tải ảnh mã QR" gửi MÃ DẠNG CHỮ thay vì ảnh
 
 ### Nguyên nhân, đọc từ mã React Native

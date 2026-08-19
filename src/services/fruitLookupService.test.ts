@@ -71,6 +71,55 @@ describe('parseLookupBody — đọc đúng tên trường máy chủ dùng', ()
     expect(r.candidates[0].pick).toBe('p1');
   });
 
+  /**
+   * Mẫu thử ở trên viết `pick: 'p1'` — máy chủ THẬT trả `"pick": 1`, một con SỐ.
+   * Chép nguyên một thẻ đo được từ `POST https://api.orilife.io/api/fruit/lookup`
+   * (commit máy chủ `e5ffa3d`, 19/08/2026) để mẫu không còn lỏng hơn thật.
+   */
+  const cardFromServer = {
+    pick: 1,
+    name: 'Quả 111',
+    status: 'on_tree',
+    enrolled_at: '2026-08-18T13:01:56.339239+00:00',
+    n_imgs: 1,
+    img_urls: ['/api/fruit/lookup/img/8uHeY0whPRqjGLJC'],
+    tree: {
+      name: 'Cây',
+      code: 'ORI-w7er6vb-953ZAZMN',
+      gps: [20.994, 105.942],
+      created_at: '2026-08-18T13:00:56.080213+00:00',
+      public_url: '/t/ORI-w7er6vb-953ZAZMN',
+      provenance: { anchored: true, status: 'confirmed', network: 'preview' },
+    },
+  };
+
+  it('`pick` dạng SỐ vẫn nhận — đây là hình dạng máy chủ đang trả', () => {
+    const r = parseLookupBody({ candidates: [cardFromServer] }, BASE);
+    if (r.kind !== 'candidates') throw new Error('sai nhánh');
+    expect(r.candidates).toHaveLength(1);
+    expect(r.candidates[0].pick).toBe('1');
+  });
+
+  it('CHOICES đủ thẻ KHÔNG được rơi xuống `empty_scope` — lỗi người mua gặp thật', () => {
+    const r = parseLookupBody({
+      ok: true,
+      lookup_id: '7f44523148244413b6ebaddbd103da59',
+      verdict: 'CHOICES',
+      verdict_label: 'Mời bạn đối chiếu',
+      message: 'Đây là những quả ĐÃ ĐĂNG KÝ CÔNG KHAI giống ảnh bạn vừa chụp nhất.',
+      candidates: [cardFromServer, { ...cardFromServer, pick: 2, name: 'hrt' }],
+    }, BASE);
+    expect(r.kind).toBe('candidates');
+    if (r.kind !== 'candidates') return;
+    expect(r.candidates.map((c) => c.pick)).toEqual(['1', '2']);
+  });
+
+  it('`pick: 0` là mã hợp lệ, không phải "thiếu" — chớ để rơi vào bẫy giá trị giả', () => {
+    const r = parseLookupBody({ candidates: [{ ...cardFromServer, pick: 0 }] }, BASE);
+    if (r.kind !== 'candidates') throw new Error('sai nhánh');
+    expect(r.candidates[0].pick).toBe('0');
+  });
+
   it('thẻ thiếu `pick` bị bỏ — một dòng không bấm được là một dòng bấm hụt', () => {
     const r = parseLookupBody({ candidates: [{ name: 'không mã' }, card()] }, BASE);
     if (r.kind !== 'candidates') throw new Error('sai nhánh');

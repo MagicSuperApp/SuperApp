@@ -7,6 +7,7 @@ interface AlertConfig {
   onConfirm?: () => void;
   confirmText?: string;
   cancelText?: string;
+  hideCancel?: boolean;
 }
 
 class AlertManager {
@@ -55,6 +56,7 @@ export const showAlert = (
     onConfirm?: () => void;
     confirmText?: string;
     cancelText?: string;
+    hideCancel?: boolean;
   }
 ) => {
   alertManager.show({
@@ -64,23 +66,24 @@ export const showAlert = (
     onConfirm: options?.onConfirm,
     confirmText: options?.confirmText,
     cancelText: options?.cancelText,
+    hideCancel: options?.hideCancel,
   });
 };
 
 // Convenience methods
-export const showError = (title: string, message?: string, options?: { onConfirm?: () => void; confirmText?: string }) => {
+export const showError = (title: string, message?: string, options?: { onConfirm?: () => void; confirmText?: string; cancelText?: string; hideCancel?: boolean }) => {
   showAlert('error', title, message || 'Đã xảy ra lỗi.', options);
 };
 
-export const showSuccess = (title: string, message?: string, options?: { onConfirm?: () => void; confirmText?: string }) => {
+export const showSuccess = (title: string, message?: string, options?: { onConfirm?: () => void; confirmText?: string; cancelText?: string; hideCancel?: boolean }) => {
   showAlert('success', title, message || 'Thao tác thành công.', options);
 };
 
-export const showWarning = (title: string, message?: string, options?: { onConfirm?: () => void; confirmText?: string; cancelText?: string }) => {
+export const showWarning = (title: string, message?: string, options?: { onConfirm?: () => void; confirmText?: string; cancelText?: string; hideCancel?: boolean }) => {
   showAlert('warning', title, message || 'Cảnh báo.', options);
 };
 
-export const showInfo = (title: string, message?: string, options?: { onConfirm?: () => void; confirmText?: string }) => {
+export const showInfo = (title: string, message?: string, options?: { onConfirm?: () => void; confirmText?: string; cancelText?: string; hideCancel?: boolean }) => {
   showAlert('info', title, message || 'Thông tin.', options);
 };
 

@@ -45,10 +45,75 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 /**
  * Mặt hàng cần lấy. Giá trị gửi đi là **chính chuỗi hiển thị** trong ô chọn,
  * không phải mã số — đã kiểm bằng cách đọc `<option>` của trang.
+ *
+ * ── Vì sao đúng SÁU mặt hàng, không phải hai, và cũng không phải 230 ────────
+ * Ô chọn của trang có **230 mục**, nhưng phần lớn đã chết từ lâu. Dò thật ngày
+ * 19/08/2026 — POST từng mục, cửa sổ 400 ngày, thử cả ba nhịp ngày/tuần/tháng —
+ * chỉ SÁU mục còn số liệu của hôm qua (18-08-2026):
+ *
+ *   Sầu riêng Ri6 đẹp        53.000 đ/kg     Tây Nguyên
+ *   Cà phê nhân              96.800 đ/kg     Đắk Lăk
+ *   Hạt tiêu đen trong nước 138.000 đ/kg     Đắk Lắk
+ *   Heo hơi trại             57.000 đ/kg     Bắc Ninh
+ *   Cà phê Robusta            3.769 USD/tấn  London      (sàn)
+ *   Cà phê Arabica              345,1 c/lb   New York    (sàn)
+ *
+ * Mục gần nhất còn thoi thóp là `Hạt điều tươi` (06-01-2026) và
+ * `Phân đạm Urê Phú mỹ` (22-12-2025) — quá cũ để bày cạnh giá hôm qua, nên
+ * KHÔNG đưa vào. Toàn bộ nhóm gạo/lúa, thuỷ sản, trái cây khác (thanh long,
+ * xoài, cam) đều trả bảng rỗng, kể cả ở nhịp tháng.
+ *
+ * Đừng thêm mục chỉ vì thấy tên nó trong ô chọn: một mục chết làm mục giá dài
+ * thêm một dòng "—" chẳng nói gì, và che mất những dòng đang sống.
+ *
+ * ── Hai mục cuối là giá SÀN THẾ GIỚI ───────────────────────────────────────
+ * London và New York không phải "trong nước", và không tính bằng đồng. Chúng đi
+ * vào cụm **Thế giới** — cụm mà trước bản này luôn trống, vì nguồn duy nhất của
+ * nó (FAOSTAT) đòi một token sống 60 phút, không nhúng vào app được
+ * (`config/faostat.ts`). Hai dòng này lấp đúng chỗ trống ấy bằng số liệu HÔM QUA
+ * thay vì số liệu năm 2024.
  */
 export const AGRO_ITEMS = [
-  { key: 'durian', label: 'Sầu riêng Ri6 đẹp', nameKey: 'trace.price.durian', sane: [5_000, 400_000] as [number, number] },
-  { key: 'coffee', label: 'Cà phê nhân', nameKey: 'trace.price.coffee', sane: [10_000, 500_000] as [number, number] },
+  {
+    key: 'durian', label: 'Sầu riêng Ri6 đẹp', nameKey: 'trace.price.durian',
+    scope: 'domestic' as const, unitKey: 'trace.price.perKg', decimals: 0,
+    sane: [5_000, 400_000] as [number, number],
+  },
+  {
+    key: 'coffee', label: 'Cà phê nhân', nameKey: 'trace.price.coffee',
+    scope: 'domestic' as const, unitKey: 'trace.price.perKg', decimals: 0,
+    sane: [10_000, 500_000] as [number, number],
+  },
+  {
+    key: 'pepper', label: 'Hạt tiêu đen trong nước|Black pepper (Domestic)',
+    nameKey: 'trace.price.pepper',
+    scope: 'domestic' as const, unitKey: 'trace.price.perKg', decimals: 0,
+    sane: [20_000, 600_000] as [number, number],
+  },
+  {
+    // ⚠ Chuỗi này có DẤU CÁCH THỪA ở hai chỗ (`trại `, `hog `) — đúng như trang
+    // ghi trong `<option>`. Gõ lại cho "sạch" là gửi một giá trị không có trong
+    // ô chọn, và WebForms trả 200 kèm bảng rỗng, không lỗi nào để lần ra.
+    key: 'hog', label: 'Heo hơi trại |Live hog ', nameKey: 'trace.price.hog',
+    scope: 'domestic' as const, unitKey: 'trace.price.perKg', decimals: 0,
+    sane: [20_000, 200_000] as [number, number],
+  },
+  {
+    key: 'robustaLondon', label: 'Cà phê Robusta|Robusta Coffee',
+    nameKey: 'trace.price.robustaLondon',
+    scope: 'global' as const, unitKey: 'trace.price.usdPerTon', decimals: 0,
+    // Robusta quanh 3.700 USD/tấn. Trần 15.000 loại được đúng con số hỏng đã đo
+    // được ở nguồn: ngày 18-08 trang ghi `36700` trong khi hai phiên liền trước
+    // là `3769` và `3810` — nguồn rơi mất dấu thập phân.
+    sane: [500, 15_000] as [number, number],
+  },
+  {
+    key: 'arabicaNy', label: 'Cà phê Arabica|Arabica Coffee',
+    nameKey: 'trace.price.arabicaNy',
+    // Sàn New York yết bằng US cent/pound, và có PHẦN THẬP PHÂN (`345.1`).
+    scope: 'global' as const, unitKey: 'trace.price.centPerLb', decimals: 1,
+    sane: [50, 1_000] as [number, number],
+  },
 ];
 
 export interface AgroRow {
@@ -70,6 +135,48 @@ export function decodeEntities(s: string): string {
     .replace(/&nbsp;/gi, ' ')
     .replace(/&amp;/gi, '&')
     .trim();
+}
+
+/**
+ * Ô giá → số. `null` khi không đọc được, và dòng đó bị bỏ.
+ *
+ * ⚠ ĐÂY LÀ CHỖ BẢN TRƯỚC SAI. Nó làm `String(cell).replace(/[.,\s]/g, '')` —
+ * vứt SẠCH mọi dấu chấm và phẩy. Với `138.000` thì đúng (dấu phân nhóm nghìn
+ * kiểu Việt Nam), nhưng với `345.1` — giá Arabica ở New York, cent/pound — thì
+ * nó ra **3451**, tức gấp mười lần. Không có gì báo: 3451 vẫn là một con số hợp
+ * lệ, vẫn lọt mọi khoảng hợp lý, và vẫn được vẽ lên màn.
+ *
+ * Lỗi chưa cắn ai vì hai mặt hàng cũ đều là số đồng tròn. Nó cắn ngay ngày thêm
+ * mặt hàng đầu tiên có phần thập phân — tức là bản này.
+ *
+ * Luật đọc, theo đúng thứ tự:
+ *   · mọi nhóm đều ĐÚNG BA chữ số (`138.000`, `1.234.567`) ⇒ dấu phân NHÓM;
+ *   · đuôi một–hai chữ số (`345.1`, `57,25`)               ⇒ dấu THẬP PHÂN;
+ *   · còn lại                                               ⇒ vứt hết, đọc thô.
+ *
+ * Nhập nhằng còn lại: `3.769` đọc thành 3769 chứ không phải 3,769. Đó là lựa
+ * chọn có chủ ý — nguồn này là trang Việt Nam và viết theo lối Việt Nam; mà một
+ * giá 3,769 đồng hay 3,769 USD/tấn thì cũng không tồn tại.
+ */
+export function parseAgroNumber(raw: string | number | null | undefined): number | null {
+  if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null;
+  const s = String(raw ?? '').replace(/[\s ]/g, '');
+  if (!/^\d$|^\d[\d.,]*\d$/.test(s)) return null;
+
+  const lastSep = Math.max(s.lastIndexOf('.'), s.lastIndexOf(','));
+  const asNumber = (v: string): number | null => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  if (lastSep < 0) return asNumber(s);
+
+  if (/^\d{1,3}([.,]\d{3})+$/.test(s)) return asNumber(s.replace(/[.,]/g, ''));
+
+  const tail = s.slice(lastSep + 1);
+  if (tail.length >= 1 && tail.length <= 2) {
+    return asNumber(`${s.slice(0, lastSep).replace(/[.,]/g, '')}.${tail}`);
+  }
+  return asNumber(s.replace(/[.,]/g, ''));
 }
 
 /** `13-08-2026` → mốc ms. Chuỗi lạ → 0, và dòng đó bị bỏ. */
@@ -96,8 +203,8 @@ export function parseAgroTable(html: string): AgroRow[] {
     if (cells.length < 4) continue;
 
     const atMs = parseDate(cells[2]);
-    const priceVnd = Number(String(cells[3]).replace(/[.,\s]/g, ''));
-    if (!atMs || !Number.isFinite(priceVnd) || priceVnd <= 0) continue;
+    const priceVnd = parseAgroNumber(cells[3]);
+    if (!atMs || priceVnd === null || priceVnd <= 0) continue;
 
     out.push({ item: cells[0], region: cells[1], atMs, priceVnd });
   }
@@ -124,7 +231,10 @@ export function latestAndPrevious(rows: AgroRow[]): {
   const days = [...byDay.entries()]
     .map(([atMs, list]) => ({
       atMs,
-      priceVnd: Math.round(list.reduce((s, v) => s + v, 0) / list.length),
+      // KHÔNG làm tròn về số nguyên ở đây: sàn New York yết cent/pound với một
+      // chữ số thập phân, và làm tròn tại chỗ này là vứt nó đi trước khi màn kịp
+      // biết mặt hàng ấy có mấy chữ số. Việc làm tròn để HIỆN là việc của màn.
+      priceVnd: Math.round((list.reduce((s, v) => s + v, 0) / list.length) * 100) / 100,
     }))
     .sort((a, b) => b.atMs - a.atMs);
 
@@ -195,19 +305,26 @@ export async function fetchAgroPrice(
     });
     if (!resp.ok) return null;
 
-    const rows = parseAgroTable(await resp.text());
+    const [lo, hi] = item.sane;
+    // Lọc theo khoảng hợp lý ở mức TỪNG DÒNG, trước khi chọn ngày mới nhất.
+    //
+    // Bản trước lọc SAU: lấy ngày mới nhất rồi mới xét, nên một phiên hỏng ở
+    // nguồn làm cả mặt hàng biến mất khỏi màn. Đã gặp thật — Robusta ngày
+    // 18-08-2026 ghi `36700` giữa hai phiên `3769` và `3810`. Lọc theo dòng thì
+    // phiên hỏng bị bỏ và người dùng vẫn thấy giá của phiên liền trước, kèm đúng
+    // ngày của nó.
+    const rows = parseAgroTable(await resp.text())
+      .filter(r => r.priceVnd >= lo && r.priceVnd <= hi);
     const { latest, prev } = latestAndPrevious(rows);
     if (!latest) return null;
 
-    const [lo, hi] = item.sane;
-    if (latest.priceVnd < lo || latest.priceVnd > hi) return null;
-
     return {
       key: item.key,
-      scope: 'domestic',
+      scope: item.scope,
       nameKey: item.nameKey,
-      unitKey: 'trace.price.perKg',
+      unitKey: item.unitKey,
       priceVnd: latest.priceVnd,
+      decimals: item.decimals,
       atMs: latest.atMs,
       source: 'agro.gov.vn',
       prevVnd: prev?.priceVnd ?? null,

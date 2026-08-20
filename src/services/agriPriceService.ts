@@ -48,6 +48,14 @@ export interface CommodityPrice {
   priceVnd: number;
   /** Khoá chữ của đơn vị ('đ/kg'…). */
   unitKey: string;
+  /**
+   * Số chữ số thập phân khi HIỆN. Vắng ⇒ 0.
+   *
+   * Cần vì không phải mặt hàng nào cũng là số đồng tròn: sàn New York yết cà phê
+   * Arabica bằng US cent/pound với một chữ số (`345,1`). Làm tròn nó về `345` là
+   * bỏ mất chuyển động nhỏ nhất mà sàn ấy giao dịch được.
+   */
+  decimals?: number;
   /** Mốc đọc được (ms). 0 = trang không ghi ngày. */
   atMs: number;
   source: string;
@@ -171,4 +179,17 @@ export function priceMove(price: CommodityPrice, prevVnd: number | null): PriceM
 export function formatVnd(n: number): string {
   if (!Number.isFinite(n)) return '—';
   return Math.round(n).toLocaleString('vi-VN');
+}
+
+/**
+ * Giá → chuỗi hiện lên màn, giữ đúng số chữ số thập phân của mặt hàng.
+ *
+ * `formatVnd` vẫn còn vì nhiều chỗ chỉ có số đồng tròn, nhưng mục giá đi qua hàm
+ * này: một mặt hàng yết `345,1` mà hiện `345` là bỏ mất chuyển động nhỏ nhất sàn
+ * ấy giao dịch được, và người đọc thấy giá "đứng im" trong khi nó đang chạy.
+ */
+export function formatPriceValue(n: number, decimals = 0): string {
+  if (!Number.isFinite(n)) return '—';
+  const d = Number.isFinite(decimals) ? Math.min(4, Math.max(0, Math.trunc(decimals))) : 0;
+  return n.toLocaleString('vi-VN', { minimumFractionDigits: d, maximumFractionDigits: d });
 }

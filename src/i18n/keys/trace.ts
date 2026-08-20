@@ -621,6 +621,14 @@ export const TRACE_STRINGS = {
   },
   'trace.price.coffee': { vi: 'Cà phê nhân', en: 'Green coffee', zh: '咖啡豆', ja: 'コーヒー生豆' },
   'trace.price.durian': { vi: 'Sầu riêng Ri6', en: 'Ri6 durian', zh: 'Ri6 榴莲', ja: 'Ri6 ドリアン' },
+  'trace.price.pepper': { vi: 'Hạt tiêu đen', en: 'Black pepper', zh: '黑胡椒', ja: '黒コショウ' },
+  'trace.price.hog': { vi: 'Heo hơi', en: 'Live hog', zh: '生猪', ja: '生体豚' },
+  // Ghi rõ SÀN trong tên: hai dòng này là giá kỳ hạn ở London và New York, không
+  // phải giá bán tại vườn. Bỏ tên sàn đi là mời người đọc so nhầm với giá thu mua.
+  'trace.price.robustaLondon': { vi: 'Cà phê Robusta · London', en: 'Robusta coffee · London', zh: '罗布斯塔咖啡 · 伦敦', ja: 'ロブスタコーヒー · ロンドン' },
+  'trace.price.arabicaNy': { vi: 'Cà phê Arabica · New York', en: 'Arabica coffee · New York', zh: '阿拉比卡咖啡 · 纽约', ja: 'アラビカコーヒー · ニューヨーク' },
+  'trace.price.usdPerTon': { vi: 'USD/tấn', en: 'USD/tonne', zh: '美元/吨', ja: 'ドル/トン' },
+  'trace.price.centPerLb': { vi: 'cent/pound', en: 'cents/lb', zh: '美分/磅', ja: 'セント/ポンド' },
   'trace.price.coffeeBrazil': { vi: 'Cà phê · Brazil', en: 'Coffee · Brazil', zh: '咖啡 · 巴西', ja: 'コーヒー · ブラジル' },
   'trace.price.coffeeIndonesia': { vi: 'Cà phê · Indonesia', en: 'Coffee · Indonesia', zh: '咖啡 · 印尼', ja: 'コーヒー · インドネシア' },
   'trace.price.index': { vi: 'điểm', en: 'index', zh: '指数', ja: '指数' },

@@ -1,3 +1,44 @@
+## Giá nông sản: từ 2 mặt hàng lên 6, và một lỗi đọc số nhân giá lên gấp mười
+
+### Vì sao chỉ có hai
+`AGRO_ITEMS` trong `agroPriceService.ts` đóng cứng đúng hai dòng: sầu riêng và cà phê nhân. Không phải nguồn nghèo — ô chọn của agro.gov.vn có **230 mục**.
+
+Nhưng phần lớn 230 mục ấy đã chết. Đã dò thật ngày 19/08: POST từng mục, cửa sổ 400 ngày, thử cả ba nhịp *ngày/tuần/tháng*. Chỉ **sáu** mục còn số liệu của hôm qua (18-08-2026):
+
+| mặt hàng | giá | thị trường |
+|---|---|---|
+| Sầu riêng Ri6 đẹp | 53.000 đ/kg | Tây Nguyên |
+| Cà phê nhân | 96.800 đ/kg | Đắk Lăk |
+| **Hạt tiêu đen trong nước** | 138.000 đ/kg | Đắk Lắk |
+| **Heo hơi trại** | 57.000 đ/kg | Bắc Ninh |
+| **Cà phê Robusta** | 3.769 USD/tấn | London |
+| **Cà phê Arabica** | 345,1 cent/lb | New York |
+
+Mục thoi thóp gần nhất là `Hạt điều tươi` (06-01-2026) và `Phân đạm Urê Phú mỹ` (22-12-2025) — quá cũ để bày cạnh giá hôm qua, nên **không** đưa vào. Toàn bộ nhóm gạo/lúa, thuỷ sản, trái cây khác (thanh long, xoài, cam) trả bảng rỗng ở cả ba nhịp.
+
+Đừng thêm mục chỉ vì thấy tên trong ô chọn: một mục chết làm mục giá dài thêm một dòng "—" chẳng nói gì, và đẩy những dòng đang sống xuống dưới.
+
+### Cụm "Thế giới" hết trống
+London và New York không phải trong nước, nên chúng đi vào cụm **Thế giới** — cụm mà trước bản này **luôn trống**, vì nguồn duy nhất của nó (FAOSTAT) đòi một token Cognito sống 60 phút, không nhúng vào app được (`config/faostat.ts` đã ghi rõ, và `FAOSTAT_TOKEN` vẫn là `null`). Hai dòng sàn lấp đúng chỗ ấy bằng số liệu **hôm qua** thay vì số liệu 2024.
+
+### Lỗi đọc số: `345.1` thành `3451`
+Bản trước đọc ô giá bằng `String(cell).replace(/[.,\s]/g, '')` — vứt sạch mọi dấu chấm và phẩy. Với `138.000` (phân nhóm nghìn kiểu Việt) thì đúng. Với `345.1` — Arabica, cent/pound — nó ra **3451**, tức **gấp mười lần**.
+
+Đây là loại hỏng tệ nhất: 3451 vẫn là số hợp lệ, vẫn lọt mọi khoảng hợp lý, vẫn được vẽ lên màn. Lỗi chưa cắn ai chỉ vì hai mặt hàng cũ đều là số đồng tròn — nó cắn ngay ngày thêm mặt hàng đầu tiên có phần thập phân, tức là hôm nay.
+
+`parseAgroNumber` đọc theo ba luật, đúng thứ tự: mọi nhóm đúng ba chữ số ⇒ phân nhóm; đuôi một–hai chữ số ⇒ thập phân; còn lại ⇒ đọc thô. Nhập nhằng còn lại (`3.769`) giải theo lối Việt Nam — mà một giá 3,769 đồng cũng không tồn tại.
+
+Kéo theo hai chỗ nữa: `latestAndPrevious` thôi `Math.round` khi gộp trung bình các vùng, và màn dùng `formatPriceValue(n, decimals)` thay `formatVnd` để giữ đúng số chữ số của từng mặt hàng.
+
+### Lọc khoảng hợp lý: theo DÒNG, không theo mặt hàng
+Bản trước lấy ngày mới nhất rồi mới xét khoảng — nên một phiên hỏng ở nguồn làm **cả mặt hàng biến mất**. Đã gặp thật: Robusta ngày 18-08-2026 trang ghi `36700` giữa hai phiên `3769` và `3810` (nguồn tự rơi mất dấu thập phân). Nay lọc ở mức từng dòng, trước khi chọn ngày mới nhất: phiên hỏng bị bỏ, người dùng vẫn thấy giá phiên liền trước kèm đúng ngày của nó.
+
+### Một chỗ dễ "sửa cho sạch" rồi hỏng
+Nhãn gửi đi phải là **chính chuỗi** trong `<option>`, kể cả dấu cách thừa: `'Heo hơi trại |Live hog '`. Gõ lại cho gọn thì WebForms trả 200 kèm bảng **rỗng** — không lỗi nào để lần ra. Có test khoá đúng chuỗi này.
+
+### Đo lại
+`tsc` 0 lỗi · eslint 0 lỗi · **106 bộ / 1 610 test** xanh (20 test mới). Bốn khoá tên và hai khoá đơn vị mới, đủ cả bốn ngôn ngữ.
+
 ## Vị trí cây: có toạ độ thì CẮM GHIM và chỉ đường được, thôi hiện "máy chủ chưa cho biết"
 
 ### Câu cũ trả lời sai người

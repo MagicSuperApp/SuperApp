@@ -25,6 +25,8 @@ import { buzz } from '../../../utils/haptics';
 // Thêm icon mới: `node scripts/icons.js <tên-fa6-solid>`.
 import Icon from '../../../components/Icon';
 import { COLORS } from '../../../constants';
+import { showError, showWarning } from '../../../utils/alert';
+import { t } from '../../../i18n';
 
 type VoiceMemoNative = {
   startRecording(treeId: string): Promise<{ uri: string; max_duration_s: number; treeId: string }>;
@@ -130,7 +132,7 @@ const VoiceMemoButton: React.FC<Props> = ({
 
   const ensureNative = (): VoiceMemoNative | null => {
     if (!VoiceMemo) {
-      Alert.alert('Chưa hỗ trợ', Platform.OS === 'android'
+      showError('Chưa hỗ trợ', Platform.OS === 'android'
         ? 'Ghi âm sẽ có trong bản Android sắp tới.'
         : 'Tính năng ghi âm chưa sẵn sàng. Vui lòng cập nhật ứng dụng.');
       return null;
@@ -153,12 +155,12 @@ const VoiceMemoButton: React.FC<Props> = ({
         const msg = e?.message ?? 'Không thể bắt đầu ghi âm.';
         if (msg.includes('Quyền micro') || msg.includes('permission')) {
           Alert.alert(
-            'Cần quyền micro',
-            'Vui lòng vào Cài đặt → Aladin → Micro để cho phép ghi âm.',
-            [{ text: 'Đã hiểu' }]
+            t('Cần quyền micro'),
+            t('Vui lòng vào Cài đặt → Aladin → Micro để cho phép ghi âm.'),
+            [{ text: t('Đã hiểu') }]
           );
         } else {
-          Alert.alert('Lỗi ghi âm', msg);
+          showError('Lỗi ghi âm', msg);
         }
       } finally {
         setBusy(false);
@@ -167,14 +169,11 @@ const VoiceMemoButton: React.FC<Props> = ({
 
     // If a memo already exists, confirm overwrite (Q5 — single memo per tree).
     if (existingPath) {
-      Alert.alert(
-        'Ghi âm lại?',
-        'Đã có ghi âm cho cây này, ghi lại sẽ thay thế cái cũ?',
-        [
-          { text: 'Huỷ', style: 'cancel' },
-          { text: 'Ghi lại', style: 'destructive', onPress: () => { void start(); } },
-        ],
-      );
+      showWarning('Ghi âm lại?', 'Đã có ghi âm cho cây này, ghi lại sẽ thay thế cái cũ?', {
+          confirmText: 'Ghi lại',
+          cancelText: 'Huỷ',
+          onConfirm: () => { void start(); },
+      });
       return;
     }
     await start();
@@ -188,7 +187,7 @@ const VoiceMemoButton: React.FC<Props> = ({
       const { uri, duration_s } = await native.stopRecording();
       onRecorded(uri, duration_s);
     } catch (e: any) {
-      if (!auto) Alert.alert('Lỗi', e?.message ?? 'Không thể dừng ghi âm.');
+      if (!auto) showError('Lỗi', e?.message ?? 'Không thể dừng ghi âm.');
     } finally {
       setRecording(false);
       setElapsed(0);
@@ -219,33 +218,27 @@ const VoiceMemoButton: React.FC<Props> = ({
       const ms = Math.max(500, (duration_s || existingDurationS || 0) * 1000 + 200);
       playbackTimeoutRef.current = setTimeout(() => setPlaying(false), ms);
     } catch (e: any) {
-      Alert.alert('Lỗi phát lại', e?.message ?? 'Không phát được.');
+      showError('Lỗi phát lại', e?.message ?? 'Không phát được.');
     }
   };
 
   const handleDelete = () => {
     const native = ensureNative();
     if (!native) return;
-    Alert.alert(
-      'Xoá ghi âm?',
-      'Bản ghi âm hiện tại sẽ bị xoá khỏi máy.',
-      [
-        { text: 'Huỷ', style: 'cancel' },
-        {
-          text: 'Xoá', style: 'destructive',
-          onPress: async () => {
+    showWarning('Xoá ghi âm?', 'Bản ghi âm hiện tại sẽ bị xoá khỏi máy.', {
+        confirmText: 'Xoá',
+        cancelText: 'Huỷ',
+        onConfirm: async () => {
             try {
               if (playing) await native.stopPlayback();
               await native.deleteRecording(treeId);
               setPlaying(false);
               onDeleted();
             } catch (e: any) {
-              Alert.alert('Lỗi', e?.message ?? 'Không xoá được.');
+              Alert.alert(t('Lỗi'), e?.message ?? t('Không xoá được.'));
             }
           },
-        },
-      ],
-    );
+    });
   };
 
   // ── Render ────────────────────────────────────────────────────────────────

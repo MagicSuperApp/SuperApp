@@ -37,9 +37,8 @@ import { useCoachMark } from '../onboarding/CoachMarkContext';
 import { resetTutorial } from '../utils/tutorialStorage';
 import { COLORS } from '../constants';
 import StateView from '../components/state/StateView';
-import { showInfo } from '../utils/alert';
+import { showInfo, showWarning } from '../utils/alert';
 import { useNavigation } from '@react-navigation/native';
-import { showWarning } from '../utils/alert';
 import { getVersion, getBuildNumber } from 'react-native-device-info';
 // Debug host = backend field-reid THẬT app đang dùng (ORILIFE_BASE), không phải
 // aladin-api (backend Lợi deprecated) — để field soi đúng server (Lỗi field #5).

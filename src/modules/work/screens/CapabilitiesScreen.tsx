@@ -15,6 +15,7 @@ import { useTemplates } from '../hooks/useTemplates';
 import { useCapabilities } from '../hooks/useCapabilities';
 import StateView from '../../../components/state/StateView';
 import type { JobType, Credential } from '../services/types';
+import { showError, showInfo } from '../../../utils/alert';
 
 const TIER_COLOR: Record<string, string> = { A: '#2E7D46', B: '#3B6EA8', C: '#C7862E', D: '#8A8F98' };
 
@@ -31,7 +32,7 @@ const CapabilitiesScreen: React.FC = () => {
   const setM = (k: string, v: string) => setMetric(m => ({ ...m, [k]: v }));
 
   const onCreate = async () => {
-    if (!templateKey) { Alert.alert('Thiếu mẫu', 'Chọn loại việc (mẫu năng lực) trước.'); return; }
+    if (!templateKey) { showInfo('Thiếu mẫu', 'Chọn loại việc (mẫu năng lực) trước.'); return; }
     // Chỉ gửi metric số hợp lệ theo mẫu.
     const num: Record<string, number> = {};
     for (const mt of selected?.metrics ?? []) {
@@ -42,9 +43,9 @@ const CapabilitiesScreen: React.FC = () => {
     if (res) {
       setCredential(res);
     } else if (errorCode === 'BACKEND_DISABLED') {
-      Alert.alert('Chưa kết nối máy chủ', 'Cần máy chủ AladinWork để khai năng lực.');
+      showError('Chưa kết nối máy chủ', 'Cần máy chủ AladinWork để khai năng lực.');
     } else {
-      Alert.alert('Không tạo được', errorCode === 'BAD_INPUT'
+      showError('Không tạo được', errorCode === 'BAD_INPUT'
         ? 'Chỉ số chưa hợp lệ theo mẫu — kiểm tra lại.'
         : `Lỗi máy chủ${errorCode ? ` (${errorCode})` : ''}.`);
     }
@@ -55,16 +56,14 @@ const CapabilitiesScreen: React.FC = () => {
     const res = await verify(credential.id, templateKey);
     if (res) {
       setCredential(res.credential);
-      Alert.alert(
-        res.verified ? 'Đã xác minh' : 'Chưa đạt',
+      showInfo(res.verified ? 'Đã xác minh' : 'Chưa đạt',
         res.verified
           ? `Chứng chỉ được duyệt — hạng ${res.credential.quality_tier ?? '?'}.`
-          : 'Chứng chỉ này chưa được duyệt. Xem lại chỉ số và bằng chứng.',
-      );
+          : 'Chứng chỉ này chưa được duyệt. Xem lại chỉ số và bằng chứng.');
     } else if (errorCode === 'BACKEND_DISABLED') {
-      Alert.alert('Chưa kết nối máy chủ', 'Cần máy chủ để xác minh.');
+      showError('Chưa kết nối máy chủ', 'Cần máy chủ để xác minh.');
     } else {
-      Alert.alert('Không xác minh được', `Lỗi${errorCode ? ` (${errorCode})` : ''}. Thử lại sau.`);
+      showError('Không xác minh được', `Lỗi${errorCode ? ` (${errorCode})` : ''}. Thử lại sau.`);
     }
   };
 

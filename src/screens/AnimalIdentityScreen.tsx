@@ -53,6 +53,8 @@ import { withPhotoSave } from '../services/mediaSavePermission';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import type { RootState } from '../store';
 import { loadFarms } from '../modules/trace/store/farmSlice';
+import { showError } from '../utils/alert';
+import { t } from '../i18n';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -180,10 +182,8 @@ const AnimalIdentityScreen: React.FC = () => {
     if (!imagePicker?.launchCamera) {
       // Fallback: react-native-image-picker chưa cài
       // npm install react-native-image-picker && npx pod-install
-      Alert.alert(
-        'Chưa mở được máy ảnh',
-        'Bản app này chưa mở được máy ảnh. Vui lòng cập nhật app rồi thử lại.',
-      );
+      showError('Chưa mở được máy ảnh',
+        'Bản app này chưa mở được máy ảnh. Vui lòng cập nhật app rồi thử lại.');
       return;
     }
 
@@ -191,8 +191,8 @@ const AnimalIdentityScreen: React.FC = () => {
       if (response.didCancel) return;
       if (response.errorCode) {
         Alert.alert(
-          'Lỗi camera',
-          response.errorMessage ?? 'Không thể mở camera. Kiểm tra quyền trong Cài đặt.',
+          t('Lỗi camera'),
+          response.errorMessage ?? t('Không thể mở camera. Kiểm tra quyền trong Cài đặt.'),
           [{ text: 'OK' }],
         );
         return;
@@ -220,7 +220,7 @@ const AnimalIdentityScreen: React.FC = () => {
           setShowConfirm(true);
         }
       } else {
-        Alert.alert('Lỗi', res.error?.detail ?? 'Nhận diện thất bại. Vui lòng thử lại.');
+        showError('Lỗi', res.error?.detail ?? 'Nhận diện thất bại. Vui lòng thử lại.');
       }
     } finally {
       setIsIdentifying(false);

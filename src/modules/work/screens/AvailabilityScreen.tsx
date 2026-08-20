@@ -12,6 +12,7 @@ import { COLORS } from '../../../constants';
 import { WORK_THEME } from '../theme/colors';
 import { useAvailability, isAvailable } from '../hooks/useAvailability';
 import StateView from '../../../components/state/StateView';
+import { showError, showSuccess, showWarning } from '../../../utils/alert';
 
 const DAY = 86_400_000;
 const fmtDate = (ms: number) => new Date(ms).toLocaleDateString('vi-VN');
@@ -39,15 +40,16 @@ const AvailabilityScreen: React.FC = () => {
   const onSet = (days: number) => {
     const from = Date.now();
     save({ availableFrom: from, availableUntil: from + days * DAY })
-      .then(() => Alert.alert('Đã khai', `Bạn nhận việc trong ${days} ngày tới.`))
-      .catch(() => Alert.alert('Lỗi', 'Không lưu được lịch, thử lại.'));
+      .then(() => showSuccess('Đã khai', `Bạn nhận việc trong ${days} ngày tới.`))
+      .catch(() => showError('Lỗi', 'Không lưu được lịch, thử lại.'));
   };
 
   const onClear = () => {
-    Alert.alert('Ngừng nhận việc', 'Bạn sẽ không hiện trong danh sách ứng viên rảnh cho tới khi khai lại.', [
-      { text: 'Huỷ', style: 'cancel' },
-      { text: 'Ngừng', style: 'destructive', onPress: () => clear() },
-    ]);
+    showWarning('Ngừng nhận việc', 'Bạn sẽ không hiện trong danh sách ứng viên rảnh cho tới khi khai lại.', {
+        confirmText: 'Ngừng',
+        cancelText: 'Huỷ',
+        onConfirm: () => clear(),
+    });
   };
 
   return (

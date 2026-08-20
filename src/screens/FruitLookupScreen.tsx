@@ -39,6 +39,7 @@ import {
   candidateImageUrl, lookupFruit,
   type FruitLookupResult, type LookupCandidate, type LookupRegion,
 } from '../services/fruitLookupService';
+import { showError } from '../utils/alert';
 
 /**
  * Co ảnh để nằm dưới trần 2 MB của lane khách. 1600 px cạnh dài + chất lượng
@@ -103,7 +104,7 @@ const FruitLookupScreen: React.FC = () => {
     launchCamera(await withPhotoSave(PHOTO_OPTIONS), (resp: any) => {
       if (resp.didCancel) return;
       if (resp.errorCode) {
-        Alert.alert('Lỗi máy ảnh', resp.errorMessage ?? 'Không mở được máy ảnh. Kiểm tra quyền.');
+        showError('Lỗi máy ảnh', resp.errorMessage ?? 'Không mở được máy ảnh. Kiểm tra quyền.');
         return;
       }
       const uri = resp.assets?.[0]?.uri;

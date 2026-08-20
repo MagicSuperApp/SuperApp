@@ -35,6 +35,7 @@ import {
 import type { Message, ConversationType } from '../types';
 import { isProofChatBackendEnabled } from '../../../../../services/proofchat-api';
 import { sendText, syncConversation } from '../../../../../services/proofchatService';
+import { showError } from '../../../../../utils/alert';
 
 const ChatScreen: React.FC = () => {
   const navigation = useNavigation<any>();
@@ -105,9 +106,9 @@ const ChatScreen: React.FC = () => {
     if (backendEnabled) {
       sendText(roomId, text, convType)
         .then(ack => {
-          if (!ack.ok) Alert.alert('Không gửi được', ack.error ?? 'Vui lòng thử lại.');
+          if (!ack.ok) showError('Không gửi được', ack.error ?? 'Vui lòng thử lại.');
         })
-        .catch(() => Alert.alert('Không gửi được', 'Mất kết nối, thử lại.'));
+        .catch(() => showError('Không gửi được', 'Mất kết nối, thử lại.'));
       return;
     }
 

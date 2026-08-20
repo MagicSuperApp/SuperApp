@@ -15,6 +15,7 @@ import { useTaskers } from '../hooks/useTaskers';
 import { useCreateContract } from '../hooks/useContracts';
 import StateView from '../../../components/state/StateView';
 import type { Tasker, TaskerOffering } from '../services/types';
+import { showError } from '../../../utils/alert';
 
 const TaskersScreen: React.FC = () => {
   const navigation = useNavigation<any>();
@@ -30,12 +31,10 @@ const TaskersScreen: React.FC = () => {
     if (contract) {
       navigation.navigate('ContractDetail', { contractId: contract.id });
     } else {
-      Alert.alert(
-        'Chưa đặt được',
+      showError('Chưa đặt được',
         errorCode === 'BACKEND_DISABLED'
           ? 'Cần máy chủ AladinWork để tạo hợp đồng. Thử lại khi dịch vụ sống.'
-          : `Không tạo được hợp đồng${errorCode ? ` (${errorCode})` : ''}. Thử lại sau.`,
-      );
+          : `Không tạo được hợp đồng${errorCode ? ` (${errorCode})` : ''}. Thử lại sau.`);
     }
   };
 

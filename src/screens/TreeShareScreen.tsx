@@ -46,6 +46,8 @@ import {
 import {
   NATURE, SURFACE, TONE, TYPE, SPACE, RADIUS, ELEVATION, ORGANIC_CARD, TOUCH_MIN,
 } from '../modules/trace/theme/depth';
+import { showError, showInfo, showWarning } from '../utils/alert';
+import { t } from '../i18n';
 
 export const TREE_SHARE_ROUTE_NAME = 'TreeShare';
 
@@ -182,7 +184,7 @@ const TreeShareScreen: React.FC = () => {
     if (lookup.kind !== 'found') return;
     const ttl = ttlDays.trim() ? Number(ttlDays.trim()) : null;
     if (ttlDays.trim() && (!Number.isFinite(ttl!) || ttl! < 1)) {
-      Alert.alert('Số ngày không hợp lệ', 'Bỏ trống nếu muốn chia sẻ không hết hạn.');
+      showInfo('Số ngày không hợp lệ', 'Bỏ trống nếu muốn chia sẻ không hết hạn.');
       return;
     }
     setSharing(true);
@@ -195,7 +197,7 @@ const TreeShareScreen: React.FC = () => {
     });
     setSharing(false);
     if (!r.ok) {
-      Alert.alert('Chưa chia sẻ được', r.error?.detail ?? 'Máy chủ từ chối.');
+      showError('Chưa chia sẻ được', r.error?.detail ?? 'Máy chủ từ chối.');
       return;
     }
     setUsername('');
@@ -205,26 +207,19 @@ const TreeShareScreen: React.FC = () => {
   };
 
   const doRevoke = (g: Grant) => {
-    Alert.alert(
-      'Thu hồi chia sẻ?',
-      `${grantLabel(g.grantee_label) ?? g.grantee} sẽ không xem được dữ liệu riêng của ${SCOPE_WORD[g.scope_type]} này nữa.`,
-      [
-        { text: 'Huỷ', style: 'cancel' },
-        {
-          text: 'Thu hồi',
-          style: 'destructive',
-          onPress: async () => {
+    showWarning('Thu hồi chia sẻ?', `${grantLabel(g.grantee_label) ?? g.grantee} sẽ không xem được dữ liệu riêng của ${SCOPE_WORD[g.scope_type]} này nữa.`, {
+        confirmText: 'Thu hồi',
+        cancelText: 'Huỷ',
+        onConfirm: async () => {
             setBusyId(g.grant_id);
             const r = await revokeGrant(ORILIFE_BASE, g.grant_id);
             setBusyId(null);
             // 404 ở đây KHÔNG dịch thành "đã bị xoá rồi": máy chủ cố ý không phân
             // biệt "không có grant đó" với "grant đó không phải của bạn".
-            if (!r.ok) Alert.alert('Chưa thu hồi được', r.error?.detail ?? 'Máy chủ từ chối.');
+            if (!r.ok) Alert.alert(t('Chưa thu hồi được'), r.error?.detail ?? t('Máy chủ từ chối.'));
             load();
           },
-        },
-      ],
-    );
+    });
   };
 
   const safeBack = () => {

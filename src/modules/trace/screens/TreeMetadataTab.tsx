@@ -42,6 +42,7 @@ import VoiceMemoButton from '../components/VoiceMemoButton';
 // Bật công khai + mã/QR truy xuất. Xem đầu tệp component về vì sao hai việc đó
 // nằm chung một thẻ: mã chỉ có nghĩa khi cây đã công khai.
 import TreePublicCard from '../components/TreePublicCard';
+import { showSuccess, showWarning } from '../../../utils/alert';
 
 interface Props {
   tree: Tree;
@@ -192,9 +193,9 @@ const TreeMetadataTab: React.FC<Props> = ({ tree }) => {
 
       await dispatch(saveTreeMetadata({ treeId: tree.id, metadata })).unwrap();
       setDirty(false);
-      Alert.alert(tk('trace.meta.saved'), tk('trace.meta.savedBody'));
+      showSuccess(tk('trace.meta.saved'), tk('trace.meta.savedBody'));
     } catch (e: any) {
-      Alert.alert(tk('trace.meta.saveFail'), e?.message ?? tk('trace.meta.saveFailBody'));
+      showWarning(tk('trace.meta.saveFail'), e?.message ?? tk('trace.meta.saveFailBody'));
     } finally {
       setSaving(false);
     }

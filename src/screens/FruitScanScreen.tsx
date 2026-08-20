@@ -54,6 +54,8 @@ import { TreeReIDBridge } from '../services/treeReIDNativeBridge';
 import { absUrl } from './FruitListScreen';
 
 import { tk } from '../i18n/keys';
+import { showError, showInfo } from '../utils/alert';
+import { t } from '../i18n';
 const BASE_URL = ORILIFE_BASE;
 
 interface RouteParams { farmId?: string; treeId?: string }
@@ -221,7 +223,7 @@ const FruitScanScreen: React.FC = () => {
     launchCamera(await withPhotoSave(PHOTO_OPTIONS), async (resp: any) => {
       if (resp.didCancel) return;
       if (resp.errorCode) {
-        Alert.alert('Lỗi máy ảnh', resp.errorMessage ?? 'Không mở được máy ảnh. Kiểm tra quyền.');
+        showError('Lỗi máy ảnh', resp.errorMessage ?? 'Không mở được máy ảnh. Kiểm tra quyền.');
         return;
       }
       const asset = resp.assets?.[0];
@@ -229,7 +231,7 @@ const FruitScanScreen: React.FC = () => {
       if (!asset.width || !asset.height) {
         // Không có kích thước thì màn khoanh vùng phía sau không map ngược được;
         // nói ra tại đây còn hơn để bbox rác lặng lẽ vào kho.
-        Alert.alert('Ảnh thiếu kích thước', 'Máy không trả kích thước ảnh. Anh chụp lại giúp.');
+        showInfo('Ảnh thiếu kích thước', 'Máy không trả kích thước ảnh. Anh chụp lại giúp.');
         return;
       }
       // Dựng NGAY ĐÂY, không đợi tới lúc mở màn khoanh: heading/pitch là số đo
@@ -250,11 +252,9 @@ const FruitScanScreen: React.FC = () => {
   // ── Chọn 1 quả → mở màn khoanh vùng để bồi góc cho ĐÚNG quả đó ─────────────
   const choose = useCallback((c: ResolvedCandidate) => {
     if (!c.treeId) {
-      Alert.alert(
-        'Chưa biết quả này ở cây nào',
+      showError('Chưa biết quả này ở cây nào',
         'Máy chủ chưa cho biết cây của quả này, và nó không nằm trong các cây quanh chỗ anh đứng. '
-        + 'Anh chọn cây thủ công rồi mở lại quả đó.',
-      );
+        + 'Anh chọn cây thủ công rồi mở lại quả đó.');
       return;
     }
     if (photo) {
@@ -309,7 +309,7 @@ const FruitScanScreen: React.FC = () => {
    */
   const enrollNew = useCallback(() => {
     if (!photo) {
-      Alert.alert('Chưa có ảnh', 'Anh chụp quả trước đã.');
+      showError('Chưa có ảnh', 'Anh chụp quả trước đã.');
       return;
     }
     if (pinnedTreeId) {
@@ -318,7 +318,7 @@ const FruitScanScreen: React.FC = () => {
     }
     const guess = around[0];
     if (!guess) {
-      Alert.alert('Chưa chọn được cây', 'Anh chọn cây trước rồi đăng ký quả mới trên cây đó.');
+      showError('Chưa chọn được cây', 'Anh chọn cây trước rồi đăng ký quả mới trên cây đó.');
       navigation.navigate('TreeManagement');
       return;
     }
@@ -329,7 +329,7 @@ const FruitScanScreen: React.FC = () => {
         m: Math.round(guess.distanceM),
       }),
       [
-        { text: 'Huỷ', style: 'cancel' },
+        { text: t('Huỷ'), style: 'cancel' },
         {
           text: tk('trace.fruitScan.confirmTreePick'),
           onPress: () => navigation.navigate('TreeManagement'),

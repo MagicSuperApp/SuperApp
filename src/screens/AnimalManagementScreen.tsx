@@ -47,6 +47,8 @@ import {
 // ---------------------------------------------------------------------------
 
 import { ORILIFE_BASE } from '../services/orilifeBase';
+import { showWarning } from '../utils/alert';
+import { t } from '../i18n';
 const BASE_URL: string =
   ORILIFE_BASE;
 
@@ -267,41 +269,34 @@ const AnimalManagementScreen: React.FC = () => {
 
   // ── Delete ────────────────────────────────────────────────────────────────
   const handleDelete = (item: AnimalItem) => {
-    Alert.alert(
-      'Xoá cá thể?',
-      `Cá thể "${item.name || item.animal_did}" sẽ bị xoá khỏi hệ thống. Không thể hoàn tác.`,
-      [
-        { text: 'Huỷ', style: 'cancel' },
-        {
-          text: 'Xoá',
-          style: 'destructive',
-          onPress: async () => {
+    showWarning('Xoá cá thể?', `Cá thể "${item.name || item.animal_did}" sẽ bị xoá khỏi hệ thống. Không thể hoàn tác.`, {
+        confirmText: 'Xoá',
+        cancelText: 'Huỷ',
+        onConfirm: async () => {
             try {
               const res = await deleteAnimal(BASE_URL, item.animal_did);
               if (res.ok) {
                 setAnimals(prev => prev.filter(a => a.animal_did !== item.animal_did));
               } else {
-                Alert.alert('Xoá thất bại', res.error?.detail ?? 'Thử lại.');
+                Alert.alert(t('Xoá thất bại'), res.error?.detail ?? t('Thử lại.'));
               }
             } catch {
-              Alert.alert('Lỗi mạng', 'Không thể xoá. Kiểm tra kết nối và thử lại.');
+              Alert.alert(t('Lỗi mạng'), t('Không thể xoá. Kiểm tra kết nối và thử lại.'));
             }
           },
-        },
-      ],
-    );
+    });
   };
 
   // ── Action sheet (long press) ─────────────────────────────────────────────
   const handleLongPress = (item: AnimalItem) => {
     Alert.alert(
-      item.name || item.animal_did || 'Cá thể chưa đặt tên',
-      'Chọn hành động:',
+      item.name || item.animal_did || t('Cá thể chưa đặt tên'),
+      t('Chọn hành động:'),
       [
-        { text: 'Huỷ', style: 'cancel' },
+        { text: t('Huỷ'), style: 'cancel' },
         // KHÔNG có "Đổi tên": máy chủ chưa có cửa đổi tên (xem chú đầu tệp).
         {
-          text: 'Xoá',
+          text: t('Xoá'),
           style: 'destructive',
           onPress: () => handleDelete(item),
         },

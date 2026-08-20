@@ -19,6 +19,8 @@ import {
 } from './contractState';
 import StateView from '../../../components/state/StateView';
 import type { ContractParty } from '../services/types';
+import { showError, showInfo, showWarning } from '../../../utils/alert';
+import { t } from '../../../i18n';
 
 type RouteParams = { ContractDetail: { contractId: string } };
 
@@ -60,41 +62,38 @@ const ContractDetailScreen: React.FC = () => {
       btn.action === 'dispute' ? 'Mở tranh chấp hợp đồng này?'
       : btn.action === 'lockPledge' ? `Khoá ${contract.parties[contract.myRole ?? 'aladin']?.pledgeAsk} MAGIC làm cọc? Số CARP tương ứng sẽ bị giữ.`
       : `Xác nhận: ${btn.label}?`;
-    Alert.alert('Xác nhận', confirmMsg, [
-      { text: 'Huỷ', style: 'cancel' },
-      {
-        text: 'Đồng ý',
-        style: btn.tone === 'danger' ? 'destructive' : 'default',
-        onPress: async () => {
+    showWarning('Xác nhận', confirmMsg, {
+        confirmText: 'Đồng ý',
+        cancelText: 'Huỷ',
+        onConfirm: async () => {
           try {
             // Truyền version đang cầm → header If-Version chặn double-apply (409).
             const updated = await run(contract.id, btn.action, btn.body, contract.version);
             if (updated) setContract(updated);
             if (isWorkBackendEnabled()) reload();
-            else Alert.alert('Chế độ demo', 'Cần backend AladinWork để thực thi bước này.');
+            else Alert.alert(t('Chế độ demo'), t('Cần backend AladinWork để thực thi bước này.'));
           } catch (err) {
-            Alert.alert('Không thực hiện được', pledgeErrorMessage(err));
+            Alert.alert(t('Không thực hiện được'), pledgeErrorMessage(err));
           }
         },
-      },
-    ]);
+    });
   };
 
   const onOpenChat = async () => {
     if (!isWorkBackendEnabled()) {
-      Alert.alert('Chế độ demo', 'Cần backend để mở phòng chat của hợp đồng.');
+      showInfo('Chế độ demo', 'Cần backend để mở phòng chat của hợp đồng.');
       return;
     }
     setOpeningChat(true);
     try {
       const conv = await openConversation(contract.id);
       if (!conv.conversationId || conv.status === 'unconfigured') {
-        Alert.alert('Chat chưa sẵn sàng', 'ProofChat chưa được cấu hình cho hợp đồng này. Bạn có thể nối lại sau.');
+        showInfo('Chat chưa sẵn sàng', 'ProofChat chưa được cấu hình cho hợp đồng này. Bạn có thể nối lại sau.');
         return;
       }
       navigation.navigate('ChatRoom', { roomId: conv.conversationId });
     } catch {
-      Alert.alert('Lỗi', 'Không mở được phòng chat, thử lại.');
+      showError('Lỗi', 'Không mở được phòng chat, thử lại.');
     } finally {
       setOpeningChat(false);
     }

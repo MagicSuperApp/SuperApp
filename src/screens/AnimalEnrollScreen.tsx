@@ -43,6 +43,8 @@ import {
 } from '../services/animalReIDService';
 import { withPhotoSave } from '../services/mediaSavePermission';
 import { useBottomActionPadding } from '../hooks/useBottomActionPadding';
+import { showError, showInfo, showWarning } from '../utils/alert';
+import { t } from '../i18n';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -139,20 +141,16 @@ const AnimalEnrollScreen: React.FC = () => {
     if (!canAddMore) return;
 
     if (!imagePicker?.launchCamera) {
-      Alert.alert(
-        'Chưa mở được máy ảnh',
-        'Bản app này chưa mở được máy ảnh. Vui lòng cập nhật app rồi thử lại.',
-      );
+      showError('Chưa mở được máy ảnh',
+        'Bản app này chưa mở được máy ảnh. Vui lòng cập nhật app rồi thử lại.');
       return;
     }
 
     imagePicker.launchCamera(await withPhotoSave(CAMERA_OPTIONS), (response: any) => {
       if (response.didCancel) return;
       if (response.errorCode) {
-        Alert.alert(
-          'Lỗi camera',
-          response.errorMessage ?? 'Không thể mở camera. Kiểm tra quyền trong Cài đặt.',
-        );
+        showError('Lỗi camera',
+          response.errorMessage ?? 'Không thể mở camera. Kiểm tra quyền trong Cài đặt.');
         return;
       }
       const asset = response.assets?.[0];
@@ -171,11 +169,11 @@ const AnimalEnrollScreen: React.FC = () => {
   const handleSuccess = useCallback(
     (animalDid: string) => {
       Alert.alert(
-        'Đăng ký thành công',
+        t('Đăng ký thành công'),
         `Đã đăng ký ${speciesLabel(species)} vào hệ thống.`,
         [
           {
-            text: 'Xem hồ sơ',
+            text: t('Xem hồ sơ'),
             onPress: () => navigation.navigate('AnimalDetail', { animalDid }),
           },
           {
@@ -226,19 +224,19 @@ const AnimalEnrollScreen: React.FC = () => {
           // lên rồi mới nối, và khi nối thì cho xem con trùng TRƯỚC rồi mới cho ép.
           const similar = res.error?.similarAnimalDid;
           Alert.alert(
-            'Cá thể có thể đã tồn tại',
+            t('Cá thể có thể đã tồn tại'),
             `${detail}\n\n${similar
-              ? 'Mở hồ sơ con máy chủ cho là trùng để đối chiếu.'
-              : 'Mở sổ vật nuôi của vườn này để xem con đó đã có chưa.'} Ảnh vừa chụp vẫn giữ nguyên.`,
+              ? t('Mở hồ sơ con máy chủ cho là trùng để đối chiếu.')
+              : t('Mở sổ vật nuôi của vườn này để xem con đó đã có chưa.')} Ảnh vừa chụp vẫn giữ nguyên.`,
             [
-              { text: 'Để sau', style: 'cancel' },
+              { text: t('Để sau'), style: 'cancel' },
               similar
                 ? {
-                    text: 'Xem con trùng',
+                    text: t('Xem con trùng'),
                     onPress: () => navigation.navigate('AnimalDetail', { animalDid: similar }),
                   }
                 : {
-                    text: 'Mở sổ vật nuôi',
+                    text: t('Mở sổ vật nuôi'),
                     onPress: () => navigation.navigate('AnimalManagement', { farmId }),
                   },
             ],
@@ -247,29 +245,26 @@ const AnimalEnrollScreen: React.FC = () => {
         }
 
         if (status === 400) {
-          Alert.alert('Dữ liệu không hợp lệ', detail);
+          showInfo('Dữ liệu không hợp lệ', detail);
           return;
         }
 
         if (status === 422) {
-          Alert.alert('Lỗi định dạng', detail);
+          showError('Lỗi định dạng', detail);
           return;
         }
 
         if (status === 0) {
           // Lỗi mạng
-          Alert.alert(
-            'Mất kết nối',
-            detail,
-            [
-              { text: 'Thử lại', onPress: () => doEnroll() },
-              { text: 'Huỷ', style: 'cancel' },
-            ],
-          );
+          showWarning('Mất kết nối', detail, {
+              confirmText: 'Thử lại',
+              cancelText: 'Huỷ',
+              onConfirm: () => doEnroll(),
+          });
           return;
         }
 
-        Alert.alert('Lỗi đăng ký', detail);
+        showError('Lỗi đăng ký', detail);
       } finally {
         setIsEnrolling(false);
       }
@@ -279,10 +274,8 @@ const AnimalEnrollScreen: React.FC = () => {
 
   const handleEnroll = useCallback(() => {
     if (photos.length < MIN_PHOTOS) {
-      Alert.alert(
-        'Chưa đủ ảnh',
-        `Cần ít nhất ${MIN_PHOTOS} ảnh. Hiện có ${photos.length} ảnh.\nChụp thêm rồi thử lại.`,
-      );
+      showError('Chưa đủ ảnh',
+        `Cần ít nhất ${MIN_PHOTOS} ảnh. Hiện có ${photos.length} ảnh.\nChụp thêm rồi thử lại.`);
       return;
     }
     doEnroll();

@@ -31,6 +31,7 @@ import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 import { useAppDispatch } from '../store/hooks';
 import { loadFarms, loadTrees } from '../modules/trace/store/farmSlice';
+import { tf } from '../i18n';
 import { selectChainWallet } from '../store/userSlice';
 import { NEUTRAL, withAlpha } from '../shared/theme';
 import { MODULES, type ModuleEntry } from '../modules';
@@ -619,11 +620,26 @@ const HomeScreen: React.FC = () => {
     navigation.navigate(entry.routeName as never);
   };
 
-  const handleRefresh = async () => {
+  // Kéo-để-làm-mới THẬT. Bản cũ chỉ `setTimeout(800)` rồi tắt vòng xoay: người
+  // dùng thấy đúng hiệu ứng của một lượt nạp, nhưng không có gì được nạp cả. Số
+  // trang trại / số cây / tin chưa đọc vẫn y nguyên, nên khi số liệu sai thì
+  // thao tác duy nhất họ biết làm lại KHÔNG sửa được gì.
+  // Dùng allSettled: một nhánh hỏng không được nuốt mất nhánh còn lại.
+  const handleRefresh = React.useCallback(async () => {
+    const uid = user?.id;
     setRefreshing(true);
-    await new Promise<void>((r) => setTimeout(() => r(), 800));
-    setRefreshing(false);
-  };
+    try {
+      refreshQuickActions();
+      if (uid) {
+        const loaded = await dispatch(loadFarms(uid)).unwrap();
+        await Promise.allSettled(loaded.map((f) => dispatch(loadTrees(f.id)).unwrap()));
+      }
+    } catch (_) {
+      // Nạp hỏng → giữ nguyên số cũ. Dashboard là chỗ hiện trạng thái lỗi.
+    } finally {
+      setRefreshing(false);
+    }
+  }, [user?.id, dispatch, refreshQuickActions]);
 
   return (
     <View style={styles.root}>
@@ -803,7 +819,7 @@ const HomeScreen: React.FC = () => {
               index={1}
               icon="pine-tree"
               label="Trang trại đang theo dõi"
-              value={`${farms.length} Farm · ${trees.length} Tree`}
+              value={tf('{farms} vườn · {trees} cây', { farms: farms.length, trees: trees.length })}
               color={COLORS.accent}
               onPress={() => navigation.navigate('Farms' as never)}
             />
@@ -813,7 +829,11 @@ const HomeScreen: React.FC = () => {
               index={2}
               icon="message-text-outline"
               label="Tin nhắn ProofChat"
-              value={proofChatUnread > 0 ? `${proofChatUnread} new messages` : 'No new messages'}
+              value={
+                proofChatUnread > 0
+                  ? tf('{n} tin chưa đọc', { n: proofChatUnread })
+                  : 'Không có tin mới'
+              }
               color={COLORS.accent}
               onPress={() => navigation.navigate('ChatHome' as never)}
             />

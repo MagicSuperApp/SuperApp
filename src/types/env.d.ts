@@ -27,6 +27,9 @@ declare module '@env' {
   // trống = tính năng tắt hẳn, KHÔNG phải lui về một địa chỉ mặc định nào.
   export const REMOTE_LOG_URL: string;
   export const ALADIN_CHAT_URL: string;
+  // Chuỗi Cardano app nói chuyện. '1'/'mainnet' = tiền thật; mọi giá trị khác
+  // (kể cả rỗng) = chuỗi thử. Nguồn duy nhất: `src/config/cardanoNetwork.ts`.
+  export const CARDANO_NETWORK: string;
 }
 
 // Optional native module used by src/services/storageQueue.ts. Ships no bundled

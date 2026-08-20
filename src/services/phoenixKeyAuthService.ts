@@ -68,7 +68,7 @@ const BIOMETRIC_DID_KEY = 'biometric_did_map';
 
 // Mạng Cardano cho địa chỉ ví derive từ Master_KEK. 0 = preprod (testnet, mặc
 // định giai đoạn test, khớp Enclave), 1 = mainnet. Đổi khi lên production.
-const WALLET_NETWORK = 0;
+import { CARDANO_NETWORK as WALLET_NETWORK } from '../config/cardanoNetwork';
 
 /**
  * Trường ví Master_KEK gắn kèm register (ADDITIVE). Lấy/sinh KEK → derive

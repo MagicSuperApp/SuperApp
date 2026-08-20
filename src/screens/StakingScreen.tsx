@@ -23,7 +23,7 @@ import {
 import type { DelegationStatus, PoolDetail } from '../services/phoenixKey-api';
 
 const PRIMARY = '#0033AD'; // Cardano blue
-const NETWORK = 0;         // preprod, khớp WALLET_NETWORK
+import { CARDANO_NETWORK as NETWORK } from '../config/cardanoNetwork';
 const ACCOUNT = 0;         // ví cố định (stake key đã đăng ký)
 
 // `fmtAda` bản riêng của màn này đã gỡ 2026-08-14: nó là bản thứ hai của một hàm

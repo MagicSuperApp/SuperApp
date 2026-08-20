@@ -415,7 +415,7 @@ const LoginScreen = () => {
             >
               <Icon name="account-switch-outline" size={12} color={BLUE.white} />
               <Text style={styles.switchUserText}>
-                Đổi tài khoản ({allUsers.length})
+                {tf('Đổi tài khoản ({n})', { n: allUsers.length })}
               </Text>
             </TouchableOpacity>
           )}
@@ -552,7 +552,7 @@ const LoginScreen = () => {
           reset về Main. */}
       <LoginSuccessOverlay
         visible={showSuccess}
-        username={activeUser?.username ?? 'bạn'}
+        username={activeUser?.username ?? t('bạn')}
         onDone={() => navigation.reset({ index: 0, routes: [{ name: 'Main' as never }] })}
       />
 

@@ -493,4 +493,150 @@ export const ACCOUNT: PhraseMap = {
     zh: '无法删除。请在网络良好时重试。',
     ja: '削除できませんでした。通信状態の良いときに再試行してください。',
   },
+
+  // ── Trạng thái ĐO ĐƯỢC trên màn Tài khoản ──────────────────────────────────
+  // Ba chuỗi mạng thay cho một chữ "Đang xác định" cũ. Chúng nói ba việc KHÁC
+  // nhau nên phải dịch riêng: đang chạy / đã hỏng, kéo xuống thử lại / chưa chạy.
+  'Mã định danh': { en: 'Identity code', zh: '身份代码', ja: '識別コード' },
+  'Đang kiểm tra…': { en: 'Checking…', zh: '正在检查…', ja: '確認中…' },
+  'Chưa kiểm được — kéo xuống để thử lại': {
+    en: 'Could not check — pull down to retry',
+    zh: '无法检查 — 下拉重试',
+    ja: '確認できません — 下に引いて再試行',
+  },
+  'Chưa kiểm': { en: 'Not checked', zh: '未检查', ja: '未確認' },
+  'Chưa lập ví trên máy này': {
+    en: 'No wallet set up on this device',
+    zh: '此设备尚未建立钱包',
+    ja: 'この端末にウォレットはまだありません',
+  },
+  'Chưa đọc được — kéo xuống để thử lại': {
+    en: 'Could not read — pull down to retry',
+    zh: '无法读取 — 下拉重试',
+    ja: '読み取れません — 下に引いて再試行',
+  },
+
+  // Chỗ này trước ghi "Khoá phần cứng v1" — một câu app KHÔNG hề đo, kèm số
+  // phiên bản nội bộ. Nay ba chuỗi dưới đúng bằng cái đo được.
+  'Khoá bảo vệ': { en: 'Protection key', zh: '保护密钥', ja: '保護キー' },
+  'Khoá nằm trong chip bảo mật của máy': {
+    en: 'Key is held in this device’s secure chip',
+    zh: '密钥保存在本机安全芯片中',
+    ja: '鍵は本体のセキュアチップ内にあります',
+  },
+  'Chưa có khoá trên máy này': {
+    en: 'No key on this device yet',
+    zh: '此设备上尚无密钥',
+    ja: 'この端末にはまだ鍵がありません',
+  },
+
+  // ── LAMPNET ────────────────────────────────────────────────────────────────
+  'Nhận LAMP (Wakeme)': { en: 'Claim LAMP (Wakeme)', zh: '领取 LAMP (Wakeme)', ja: 'LAMP を受け取る (Wakeme)' },
+  'Nhận phần LAMP khởi tạo vào vault của bạn': {
+    en: 'Claim your initial LAMP into your vault',
+    zh: '将初始 LAMP 领取到您的金库',
+    ja: '初期 LAMP をご自身の保管庫に受け取ります',
+  },
+  'Tổ chức (OrgDID)': { en: 'Organization (OrgDID)', zh: '组织 (OrgDID)', ja: '組織 (OrgDID)' },
+  'Tạo danh tính tổ chức và mint LAMP vào kho Distribution': {
+    en: 'Create an organization identity and mint LAMP into the Distribution treasury',
+    zh: '创建组织身份并将 LAMP 铸入 Distribution 库',
+    ja: '組織の識別情報を作成し、LAMP を Distribution 金庫に発行します',
+  },
+  'Chưa mở nạp tín dụng': { en: 'Top-up not open yet', zh: '尚未开放充值', ja: 'チャージは未開放です' },
+  'Đường nạp tín dụng MAGIC chưa mở trong bản này. Khi mở, nút này sẽ dẫn thẳng tới màn nạp.': {
+    en: 'MAGIC credit top-up is not open in this build. Once it is, this button will lead straight to the top-up screen.',
+    zh: '本版本尚未开放 MAGIC 额度充值。开放后，此按钮将直接进入充值页面。',
+    ja: 'このビルドでは MAGIC クレジットのチャージは未開放です。開放後、このボタンからチャージ画面へ直接進めます。',
+  },
+
+  // ── Popup chia LAMP (bấm vào thẻ LAMP) ─────────────────────────────────────
+  'Tổng cộng': { en: 'Total', zh: '合计', ja: '合計' },
+  'Gồm cả phần còn khoá trong vault': {
+    en: 'Includes the portion still locked in the vault',
+    zh: '含仍锁定在金库中的部分',
+    ja: '保管庫にロック中の分を含みます',
+  },
+  'LAMP của bạn': { en: 'Your LAMP', zh: '您的 LAMP', ja: 'あなたの LAMP' },
+  'Nằm trong ví, dùng được ngay': {
+    en: 'In your wallet, usable right away',
+    zh: '在钱包中，可立即使用',
+    ja: 'ウォレット内にあり、すぐ使えます',
+  },
+  'LAMP của Wakeme': { en: 'Wakeme LAMP', zh: 'Wakeme 的 LAMP', ja: 'Wakeme の LAMP' },
+  'Đang hỏi máy chủ…': { en: 'Asking the server…', zh: '正在询问服务器…', ja: 'サーバーに問い合わせ中…' },
+  'Trong vault, mở khoá dần theo ngày': {
+    en: 'In the vault, unlocking day by day',
+    zh: '在金库中，按日逐步解锁',
+    ja: '保管庫内で、日ごとに解除されます',
+  },
+  'Chưa nhận': { en: 'Not claimed yet', zh: '尚未领取', ja: '未受け取り' },
+  'Mỗi người chỉ nhận một lần': {
+    en: 'One claim per person',
+    zh: '每人仅可领取一次',
+    ja: 'お一人につき一度だけ',
+  },
+  'LAMP trong vault Wakeme mở khoá dần theo ngày. Con số chưa hiện nghĩa là máy chủ chưa cho biết — app không tự điền.': {
+    en: 'LAMP in the Wakeme vault unlocks day by day. A blank figure means the server has not said — the app does not fill it in.',
+    zh: 'Wakeme 金库中的 LAMP 按日逐步解锁。数字为空表示服务器尚未告知 — 应用不会自行填写。',
+    ja: 'Wakeme 保管庫の LAMP は日ごとに解除されます。数値が空欄なのはサーバーが未回答という意味で、アプリが勝手に補うことはありません。',
+  },
+
+  // ── Ví Phượng Hoàng: câu có giá trị động ───────────────────────────────────
+  // Chuỗi có số/mã chèn vào thì tra-nguyên-chuỗi KHÔNG BAO GIỜ trúng khoá — mỗi
+  // lần chạy sinh một chuỗi khác. Phải tách khung ra khoá riêng rồi mới chèn.
+  'Khoá mới đã kích hoạt.\nTx: {tx}…': {
+    en: 'The new key is active.\nTx: {tx}…',
+    zh: '新密钥已启用。\n交易: {tx}…',
+    ja: '新しい鍵が有効になりました。\nTx: {tx}…',
+  },
+  'Ví hoạt động đời #{n}. Cùng cụm 24 từ vẫn khôi phục mọi ví.': {
+    en: 'Active wallet generation #{n}. The same 24-word phrase still recovers every wallet.',
+    zh: '活动钱包第 {n} 代。同一组 24 词短语仍可恢复所有钱包。',
+    ja: 'アクティブウォレット第 {n} 世代。同じ 24 語ですべてのウォレットを復元できます。',
+  },
+  'Tạo ví hoạt động mới (account {n}) từ cùng cụm 24 từ. Ví cố định (account 0) giữ nguyên. Dùng khi muốn địa chỉ nhận mới. KHÔNG mất tài sản ở ví cũ.': {
+    en: 'Creates a new active wallet (account {n}) from the same 24-word phrase. The fixed wallet (account 0) is unchanged. Use this when you want a fresh receiving address. Nothing in the old wallet is lost.',
+    zh: '从同一组 24 词短语创建新的活动钱包 (account {n})。固定钱包 (account 0) 保持不变。需要新的收款地址时使用。旧钱包中的资产不会丢失。',
+    ja: '同じ 24 語から新しいアクティブウォレット (account {n}) を作成します。固定ウォレット (account 0) は変わりません。新しい受取アドレスが必要なときに使います。旧ウォレットの資産が失われることはありません。',
+  },
+  'VÍ HOẠT ĐỘNG (ĐỜI #{n})': { en: 'ACTIVE WALLET (GEN #{n})', zh: '活动钱包 (第 {n} 代)', ja: 'アクティブウォレット (第 {n} 世代)' },
+
+  // ── Màn Wakeme (nhận LAMP khởi tạo) ────────────────────────────────────────
+  'Tính năng chưa mở': { en: 'Not open yet', zh: '功能尚未开放', ja: 'この機能は未開放です' },
+  'Máy chủ chưa bật phần nhận LAMP. Chưa cần làm gì — quay lại sau.': {
+    en: 'The server has not switched on LAMP claiming. Nothing to do yet — come back later.',
+    zh: '服务器尚未开启 LAMP 领取功能。暂时无需操作 — 请稍后再来。',
+    ja: 'サーバー側で LAMP の受け取りがまだ有効になっていません。今は何もする必要はありません — 後ほどお越しください。',
+  },
+  'Danh tính chưa có khoá trên chuỗi': {
+    en: 'Your identity has no on-chain key yet',
+    zh: '您的身份尚无链上密钥',
+    ja: 'この識別情報にはまだオンチェーン鍵がありません',
+  },
+  'Bạn cần thiết lập ví (cụm 24 từ) trước, để danh tính có khoá neo trên chuỗi.': {
+    en: 'Set up your wallet (the 24-word phrase) first, so your identity has a key anchored on chain.',
+    zh: '请先设置钱包（24 词短语），让您的身份在链上拥有锚定密钥。',
+    ja: '先にウォレット（24 語）を設定し、識別情報の鍵をチェーン上に固定してください。',
+  },
+  'Danh tính đang bị khoá': { en: 'This identity is locked', zh: '此身份已被锁定', ja: 'この識別情報はロックされています' },
+  'Liên hệ hỗ trợ để mở lại.': { en: 'Contact support to unlock it.', zh: '请联系支持以解锁。', ja: 'サポートに連絡して解除してください。' },
+  'Kho LAMP tạm hết': { en: 'The LAMP pot is empty for now', zh: 'LAMP 储备暂时用尽', ja: 'LAMP のプールが一時的に空です' },
+  'Kho sẽ được nạp lại. Quay lại sau.': {
+    en: 'The pot will be topped up. Come back later.',
+    zh: '储备将会补充。请稍后再来。',
+    ja: 'プールは補充されます。後ほどお越しください。',
+  },
+  'Đăng nhập lại rồi thử lại.': { en: 'Sign in again, then retry.', zh: '请重新登录后再试。', ja: '再度ログインしてからお試しください。' },
+  'Không nối được mạng Cardano': { en: 'Cannot reach the Cardano network', zh: '无法连接 Cardano 网络', ja: 'Cardano ネットワークに接続できません' },
+  'Mạng chuỗi đang trục trặc. Thử lại sau.': {
+    en: 'The chain network is having trouble. Try again later.',
+    zh: '链上网络出现故障。请稍后再试。',
+    ja: 'チェーンネットワークに不具合が出ています。後ほど再試行してください。',
+  },
+  'Kiểm tra kết nối rồi thử lại.': { en: 'Check your connection, then retry.', zh: '请检查网络连接后再试。', ja: '接続を確認してから再試行してください。' },
+  'Chưa lấy được thông tin': { en: 'Could not fetch the information', zh: '无法获取信息', ja: '情報を取得できませんでした' },
+  'Chưa kết nối được máy chủ': { en: 'Could not reach the server', zh: '无法连接服务器', ja: 'サーバーに接続できませんでした' },
+  'Kiểm tra mạng rồi thử lại.': { en: 'Check your network, then retry.', zh: '请检查网络后再试。', ja: 'ネットワークを確認してから再試行してください。' },
+  'Kho còn': { en: 'Pot remaining', zh: '储备余量', ja: 'プール残量' },
 };

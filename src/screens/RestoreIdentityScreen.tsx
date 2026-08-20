@@ -32,6 +32,7 @@ import { enrollKeypair, ownerPublicKey, saveUserDid, currentUserDid } from '../s
 import { phoenixKeyAuth } from '../services/phoenixKeyAuthService';
 import { loginUser } from '../store/userSlice';
 import { countMnemonicWords, normalizeMnemonic } from '../utils/mnemonic';
+import { t, tf } from '../i18n';
 
 const DID_RE = /^did:phoenix:[a-z2-7]{13}:[0-9a-f]{64}$/;
 // Registry {username, did} app lưu lúc đăng ký (SignUpBiometricScreen) — dùng để
@@ -68,7 +69,7 @@ const RestoreIdentityScreen = () => {
       return;
     }
     if (!countOk) {
-      showWarning('Chưa đủ', `Cần đúng 24 từ — hiện có ${wordCount}.`);
+      showWarning('Chưa đủ', tf('Cần đúng 24 từ — hiện có {n}.', { n: wordCount }));
       return;
     }
     try {
@@ -121,10 +122,10 @@ const RestoreIdentityScreen = () => {
         showWarning(
           'Máy mới — cần nhập mã định danh',
           (deviceHadWallet
-            ? 'Ví đang có trên máy được GIỮ NGUYÊN, chưa thay gì cả. '
-            : 'Đã lưu ví an toàn. ') +
-            'Máy này chưa từng đăng nhập nên không có mã định danh để tự khôi phục. ' +
-            'Nếu là máy MỚI, nhập mã định danh của bạn vào ô bên dưới.',
+            ? t('Ví đang có trên máy được GIỮ NGUYÊN, chưa thay gì cả.')
+            : t('Đã lưu ví an toàn.')) + ' ' +
+            t('Máy này chưa từng đăng nhập nên không có mã định danh để tự khôi phục.') + ' ' +
+            t('Nếu là máy MỚI, nhập mã định danh của bạn vào ô bên dưới.'),
         );
         return;
       }
@@ -171,10 +172,9 @@ const RestoreIdentityScreen = () => {
         showWarning(
           typedDid ? 'Mã định danh không khớp cụm từ' : 'Không tìm thấy tài khoản khớp',
           (typedDid
-            ? 'Mã định danh vừa nhập không khớp cụm 24 từ, hoặc không có trên máy chủ.'
-            : 'Các tài khoản đã lưu trên máy đều không khớp cụm 24 từ này. Kiểm tra lại cụm từ, ' +
-              'hoặc nhập đúng mã định danh vào ô bên dưới nếu là máy mới.') +
-            (deviceHadWallet ? ' Ví đang có trên máy được GIỮ NGUYÊN.' : ''),
+            ? t('Mã định danh vừa nhập không khớp cụm 24 từ, hoặc không có trên máy chủ.')
+            : t('Các tài khoản đã lưu trên máy đều không khớp cụm 24 từ này. Kiểm tra lại cụm từ, hoặc nhập đúng mã định danh vào ô bên dưới nếu là máy mới.')) +
+            (deviceHadWallet ? ' ' + t('Ví đang có trên máy được GIỮ NGUYÊN.') : ''),
         );
         return;
       }
@@ -253,7 +253,7 @@ const RestoreIdentityScreen = () => {
             color={countOk ? COLORS.success : COLORS.textMuted}
           />
           <Text style={[styles.countText, countOk && { color: COLORS.success }]}>
-            {wordCount}/24 từ
+            {tf('{n}/24 từ', { n: wordCount })}
           </Text>
         </View>
 
@@ -265,7 +265,7 @@ const RestoreIdentityScreen = () => {
             style={styles.didInput}
             value={did}
             onChangeText={setDid}
-            placeholder="did:phoenix:…  (để trống nếu khôi phục trên máy cũ)"
+            placeholder="did:phoenix:… (để trống nếu khôi phục trên máy cũ)"
             placeholderTextColor={COLORS.textMuted}
             autoCapitalize="none"
             autoCorrect={false}

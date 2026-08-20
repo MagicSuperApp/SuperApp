@@ -13,7 +13,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  StatusBar, ActivityIndicator, Clipboard, RefreshControl, Alert,
+  StatusBar, ActivityIndicator, Clipboard, RefreshControl,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -29,7 +29,8 @@ import { phoenixKeyApi, summarizeWalletAll } from '../services/phoenixKey-api';
 import { fmtAda, fmtLamp } from '../utils/token';
 
 // 0 = preprod (testnet, khớp register WALLET_NETWORK), 1 = mainnet.
-const WALLET_NETWORK = 0;
+import { CARDANO_NETWORK as WALLET_NETWORK } from '../config/cardanoNetwork';
+import { tf } from '../i18n';
 
 // Số dư từ Phoenix là ĐƠN VỊ THÔ trên chuỗi (lovelace / oildrop) — chia ở đây,
 // tầng hiển thị, bằng BigInt. Xem `src/utils/token.ts` để biết vì sao.
@@ -41,46 +42,44 @@ const PhoenixWalletScreen = () => {
 
   // Bật 2-Factor DeviceKey (Issue #28): sinh khoá thiết bị + đăng ký backend.
   const handleEnable2fa = useCallback(() => {
-    Alert.alert(
+    // showWarning, KHÔNG phải Alert.alert gốc: hộp thoại native của hệ điều hành
+    // không đi qua lớp dịch, nên tiêu đề, nội dung và cả hai nút đều lộ nguyên
+    // tiếng Việt với người đang chọn ngôn ngữ khác.
+    showWarning(
       'Bảo mật 2 lớp (DeviceKey)',
       'Sinh khoá thiết bị để tăng bảo vệ khi ký giao dịch. Khoá lưu an toàn trên máy này.',
-      [
-        { text: 'Huỷ', style: 'cancel' },
-        {
-          text: 'Bật',
-          onPress: async () => {
-            try {
-              await enableDeviceKey();
-              showSuccess('Đã bật', 'Bảo mật 2 lớp đã kích hoạt trên máy này.');
-            } catch (e: any) {
-              showError('Không bật được', e?.message ?? 'Thử lại sau (cần cập nhật app + máy chủ hỗ trợ).');
-            }
-          },
+      {
+        confirmText: 'Bật',
+        cancelText: 'Huỷ',
+        onConfirm: async () => {
+          try {
+            await enableDeviceKey();
+            showSuccess('Đã bật', 'Bảo mật 2 lớp đã kích hoạt trên máy này.');
+          } catch (e: any) {
+            showError('Không bật được', e?.message ?? 'Thử lại sau (cần cập nhật app + máy chủ hỗ trợ).');
+          }
         },
-      ],
+      },
     );
   }, []);
 
   // Xoay khoá owner DID (sinh khoá mới + ký bằng khoá cũ + publish updateDID).
   const handleRotateKey = useCallback(() => {
-    Alert.alert(
+    showWarning(
       'Xoay khoá bảo mật',
       'Sinh khoá mới thay khoá hiện tại (nghi lộ hoặc định kỳ). Cần xác nhận sinh trắc bằng khoá cũ. Danh tính của bạn không đổi.',
-      [
-        { text: 'Huỷ', style: 'cancel' },
-        {
-          text: 'Xoay khoá',
-          style: 'destructive',
-          onPress: async () => {
+      {
+        confirmText: 'Xoay khoá',
+        cancelText: 'Huỷ',
+        onConfirm: async () => {
             try {
               const { txHash } = await rotateOwnerKey();
-              showSuccess('Đã xoay khoá', `Khoá mới đã kích hoạt.\nTx: ${txHash.slice(0, 16)}…`);
+              showSuccess('Đã xoay khoá', tf('Khoá mới đã kích hoạt.\nTx: {tx}…', { tx: txHash.slice(0, 16) }));
             } catch (e: any) {
               showError('Xoay khoá thất bại', e?.message ?? 'Đã giữ nguyên khoá cũ, thử lại sau.');
             }
-          },
         },
-      ],
+      },
     );
   }, []);
 
@@ -150,7 +149,7 @@ const PhoenixWalletScreen = () => {
       setActiveIdx(next);
       const a = await taad.deriveWalletAddress(kek, next, WALLET_NETWORK);
       setActiveAddr(a || null);
-      showInfo('Đã xoay ví', `Ví hoạt động đời #${next}. Cùng cụm 24 từ vẫn khôi phục mọi ví.`);
+      showInfo('Đã xoay ví', tf('Ví hoạt động đời #{n}. Cùng cụm 24 từ vẫn khôi phục mọi ví.', { n: next }));
     } catch (e: any) {
       showWarning('Lỗi', e?.message ?? 'Không xoay được ví.');
     } finally {
@@ -161,8 +160,10 @@ const PhoenixWalletScreen = () => {
   const handleRotate = () => {
     showWarning(
       'Xoay ví hoạt động?',
-      `Tạo ví hoạt động mới (account ${activeIdx + 1}) từ cùng cụm 24 từ. Ví cố định ` +
-        '(account 0) giữ nguyên. Dùng khi muốn địa chỉ nhận mới. KHÔNG mất tài sản ở ví cũ.',
+      tf(
+        'Tạo ví hoạt động mới (account {n}) từ cùng cụm 24 từ. Ví cố định (account 0) giữ nguyên. Dùng khi muốn địa chỉ nhận mới. KHÔNG mất tài sản ở ví cũ.',
+        { n: activeIdx + 1 },
+      ),
       { confirmText: 'Xoay ví', onConfirm: doRotate },
     );
   };
@@ -252,7 +253,7 @@ const PhoenixWalletScreen = () => {
         <View style={styles.sectionWrap}>
           <View style={styles.sectionHeaderRow}>
             <View style={styles.sectionDot} />
-            <Text style={styles.sectionTitle}>VÍ HOẠT ĐỘNG (ĐỜI #{activeIdx})</Text>
+            <Text style={styles.sectionTitle}>{tf('VÍ HOẠT ĐỘNG (ĐỜI #{n})', { n: activeIdx })}</Text>
           </View>
           <View style={styles.addrCard}>
             <Text style={styles.addrText} numberOfLines={3}>

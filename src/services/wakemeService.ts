@@ -24,6 +24,17 @@ import {
 /** Mã lỗi backend: tính năng chưa cấu hình trên máy chủ (HTTP 501). */
 export const WAKEME_NOT_CONFIGURED = 9501;
 
+/**
+ * Luồng NHẬN LAMP đã chạy được tới cuối chưa.
+ *
+ * `false` vì lý do ghi ở `getLamp()` bên dưới: máy chủ đòi hai chữ ký bắt buộc
+ * (`controller_pkh` + `device_pkh`) mà cầu nối native chưa tạo được. Đây là NGUỒN
+ * DUY NHẤT cho câu hỏi đó — màn Wakeme và lối vào ở màn Tài khoản đều đọc cờ này,
+ * để khi hai hàm FFI Rust xong thì mở lại bằng cách sửa ĐÚNG một dòng, không phải
+ * đi tìm từng chỗ đã vẽ nút.
+ */
+export const WAKEME_CLAIM_READY = false;
+
 /** Sức khoẻ pot (công khai, không cần đăng nhập). */
 export async function getPot(): Promise<PotStatusResponse> {
   return phoenixKeyApi.wakeme.pot();

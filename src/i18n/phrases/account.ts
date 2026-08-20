@@ -639,4 +639,11 @@ export const ACCOUNT: PhraseMap = {
   'Chưa kết nối được máy chủ': { en: 'Could not reach the server', zh: '无法连接服务器', ja: 'サーバーに接続できませんでした' },
   'Kiểm tra mạng rồi thử lại.': { en: 'Check your network, then retry.', zh: '请检查网络后再试。', ja: 'ネットワークを確認してから再試行してください。' },
   'Kho còn': { en: 'Pot remaining', zh: '储备余量', ja: 'プール残量' },
+
+  'Nhận LAMP (Wakeme): tính năng chưa mở': {
+    en: 'Claim LAMP (Wakeme): not open yet',
+    zh: '领取 LAMP (Wakeme)：功能尚未开放',
+    ja: 'LAMP を受け取る (Wakeme): 未開放です',
+  },
+  'Xem chi tiết ›': { en: 'See details ›', zh: '查看详情 ›', ja: '詳細を見る ›' },
 };

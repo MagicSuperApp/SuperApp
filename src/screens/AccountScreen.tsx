@@ -45,7 +45,7 @@ import { getVersion, getBuildNumber } from 'react-native-device-info';
 // aladin-api (backend Lợi deprecated) — để field soi đúng server (Lỗi field #5).
 import { ORILIFE_BASE } from '../services/orilifeBase';
 import { fmtLamp, fmtCarp } from '../utils/token';
-import { getVaultStatus } from '../services/wakemeService';
+import { getVaultStatus, WAKEME_CLAIM_READY } from '../services/wakemeService';
 import type { VaultStatusResponse } from '../services/phoenixKey-api';
 import taad from '../sdk/taadEnclave';
 import { getStoredMasterKek } from '../services/masterKekStore';
@@ -793,7 +793,7 @@ const AccountScreen = () => {
                                     <Text style={styles.lampRowVal}>{lampWakemeText}</Text>
                                 </View>
 
-                                {vaultState !== 'ok' && (
+                                {vaultState !== 'ok' && (WAKEME_CLAIM_READY ? (
                                     <TouchableOpacity
                                         style={styles.lampClaimBtn}
                                         activeOpacity={0.88}
@@ -802,7 +802,23 @@ const AccountScreen = () => {
                                         <Text style={styles.lampClaimTxt}>Nhận LAMP (Wakeme)</Text>
                                         <Text style={styles.lampClaimSub}>Mỗi người chỉ nhận một lần</Text>
                                     </TouchableOpacity>
-                                )}
+                                ) : (
+                                    /* Luồng nhận chưa ký được tới cuối. Vẽ một nút sáng mời bấm
+                                       là hứa một việc app chưa làm được: người dùng bấm, ký, rồi
+                                       chuỗi từ chối ở bước cuối — hỏng SAU khi đã hứa. Nói trước
+                                       thì họ mất 2 giây; hứa hão thì họ mất niềm tin. */
+                                    <TouchableOpacity
+                                        style={styles.lampNoticeBtn}
+                                        activeOpacity={0.88}
+                                        onPress={() => { setLampOpen(false); navigation.navigate('Wakeme'); }}
+                                    >
+                                        <Icon name="information-outline" size={16} color={COLORS.textMuted} />
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.lampNoticeTxt}>Nhận LAMP (Wakeme): tính năng chưa mở</Text>
+                                            <Text style={styles.lampNoticeSub}>Xem chi tiết ›</Text>
+                                        </View>
+                                    </TouchableOpacity>
+                                ))}
 
                                 <Text style={styles.lampNote}>
                                     LAMP trong vault Wakeme mở khoá dần theo ngày. Con số chưa hiện nghĩa là máy chủ chưa cho biết — app không tự điền.
@@ -1298,6 +1314,13 @@ const styles = StyleSheet.create({
     lampClaimBtn: { marginTop: 16, backgroundColor: COLORS.accent, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
     lampClaimTxt: { fontSize: 15, fontWeight: '800', color: '#fff' },
     lampClaimSub: { fontSize: 11, color: 'rgba(255,255,255,0.85)', marginTop: 2 },
+    lampNoticeBtn: {
+        marginTop: 16, flexDirection: 'row', alignItems: 'center', gap: 10,
+        backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border,
+        borderRadius: 14, paddingVertical: 13, paddingHorizontal: 14,
+    },
+    lampNoticeTxt: { fontSize: 14, fontWeight: '700', color: COLORS.text },
+    lampNoticeSub: { fontSize: 11.5, color: COLORS.textMuted, marginTop: 2 },
     lampNote: { fontSize: 12, color: COLORS.textMuted, marginTop: 12, lineHeight: 18 },
     assetSheet: { backgroundColor: COLORS.bg, borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: 18, paddingBottom: 28 },
     assetSheetTitle: { fontSize: 16, fontWeight: '800', color: COLORS.text, marginBottom: 8 },

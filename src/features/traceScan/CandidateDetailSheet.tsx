@@ -30,7 +30,7 @@
 
 import React from 'react';
 import {
-  Image, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View,
+  Image, Linking, Pressable, ScrollView, StyleSheet, Text, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -96,14 +96,16 @@ const CandidateDetailSheet: React.FC<CandidateDetailSheetProps> = ({
     ? `${tree.gps[0].toFixed(3)}, ${tree.gps[1].toFixed(3)}`
     : null;
 
+  // KHÔNG dùng `<Modal>` ở đây, và đây là chỗ dễ dựng lại nhất — xem đầu tệp.
+  // Component này được vẽ BÊN TRONG Modal danh sách ứng viên của `TraceScanScreen`.
+  // Trên iOS, Modal là một view controller trình bày THẬT: không present được cái
+  // thứ hai khi cái thứ nhất đang present từ cùng một VC, nên nó âm thầm không hiện
+  // — không lỗi, không màn mới. Android thì Modal chỉ là View trong cây nên chạy
+  // tốt, và đó là lý do lỗi này chỉ lộ ra trên iOS.
+  if (c === null) return null;
+
   return (
-    <Modal
-      visible={c !== null}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-      statusBarTranslucent
-    >
+    <View style={StyleSheet.absoluteFill}>
       <Pressable style={s.scrim} onPress={onClose} accessibilityLabel="Đóng" />
       <View style={[s.sheet, { paddingBottom: Math.max(insets.bottom, SPACE.lg) }]}>
         <View style={s.grabber} />
@@ -223,7 +225,7 @@ const CandidateDetailSheet: React.FC<CandidateDetailSheetProps> = ({
           )}
         </ScrollView>
       </View>
-    </Modal>
+    </View>
   );
 };
 

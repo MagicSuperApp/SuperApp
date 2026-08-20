@@ -524,6 +524,23 @@ const TraceScanScreen: React.FC = () => {
     );
   }
 
+  /**
+   * Sheet đang PHỦ KÍN camera ⟹ THÁO hẳn `<Camera>`, đừng chỉ để nó chạy sau lưng.
+   *
+   * Đo ở thực địa 19/08: iOS lag rõ ở màn này còn Android thì không. Lý do là phía
+   * sau sheet vẫn có một `AVCaptureSession` chạy đủ tốc độ, mà sheet lại `transparent`
+   * nên hệ phải hợp thành từng khung hình ĐÈ LÊN lớp camera sống. Android nhẹ hơn vì
+   * Modal chỉ là View trong cùng cây, không có hai tầng hợp thành như vậy.
+   *
+   * CHỈ hai trạng thái này che kín: `candidates` và `unknown_code` (hai `<Modal>` ở
+   * cuối tệp). `message` là chữ vẽ THẲNG trên màn và `pick_region` thì người dùng
+   * đang chạm vào chính khung xem — tháo camera ở hai ca đó là làm hỏng màn.
+   *
+   * Đánh đổi đã chấp nhận: đóng sheet thì camera dựng lại, mất chừng 200–400 ms. Người
+   * đang đọc kết quả không nhìn camera, còn pin giữa chợ thì đáng giá hơn khoảng đó.
+   */
+  const sheetCoversCamera = outcome.s === 'candidates' || outcome.s === 'unknown_code';
+
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
       <StatusBar barStyle="dark-content" backgroundColor={SURFACE.ground} />
@@ -555,8 +572,10 @@ const TraceScanScreen: React.FC = () => {
           onPress={onFrameTap}
           disabled={outcome.s !== 'pick_region'}
         >
-          {granted === null ? (
-            <View style={styles.frameFill}><ActivityIndicator color={TONE.primary} /></View>
+          {granted === null || sheetCoversCamera ? (
+            <View style={styles.frameFill}>
+              {granted === null ? <ActivityIndicator color={TONE.primary} /> : null}
+            </View>
           ) : (
             <Camera
               ref={cameraRef}
@@ -662,13 +681,6 @@ const TraceScanScreen: React.FC = () => {
         </View>
       </Modal>
 
-      {/* Hồ sơ một ứng viên — mở ĐÈ lên danh sách, đóng lại là danh sách còn đó. */}
-      <CandidateDetailSheet
-        candidate={detail}
-        onClose={() => setDetail(null)}
-        onOpenTrace={openTrace}
-      />
-
       {/* ── Năm quả ứng viên ──────────────────────────────────────────────── */}
       <Modal
         visible={outcome.s === 'candidates'}
@@ -695,6 +707,19 @@ const TraceScanScreen: React.FC = () => {
             </Pressable>
           </View>
         </View>
+
+        {/* Hồ sơ một ứng viên — mở ĐÈ lên danh sách, đóng lại là danh sách còn đó.
+            PHẢI nằm TRONG Modal này, không được đưa ra ngoài làm Modal anh em: trên
+            iOS, Modal là view controller trình bày thật nên cái thứ hai KHÔNG present
+            được khi cái thứ nhất đang present — bấm một dòng quả sẽ không ra gì, âm
+            thầm, không lỗi. Android thì Modal chỉ là View nên chạy tốt, và đó là lý
+            do lỗi này chỉ lộ trên iOS. `CandidateDetailSheet` nay là lớp phủ tuyệt
+            đối, không còn Modal riêng. */}
+        <CandidateDetailSheet
+          candidate={detail}
+          onClose={() => setDetail(null)}
+          onOpenTrace={openTrace}
+        />
       </Modal>
     </View>
   );

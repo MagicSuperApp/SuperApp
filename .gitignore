@@ -115,3 +115,11 @@ CLAUDE.local.md
 .expo
 dist/
 web-build/
+
+# Nhật ký của scripts/build-aab.ps1 — sinh ra ở gốc kho mỗi lượt dựng.
+build-aab.log
+
+# Lõi Rust do `cargo ndk` dựng trước mỗi lượt gradle. SẢN PHẨM DỰNG, không phải
+# nguồn: hàng chục MB, và khác nhau theo bản NDK của từng máy. Đưa vào git là biến
+# bản dựng của một máy thành thứ mọi người khác dùng lại mà không biết.
+android/app/src/main/jniLibs/

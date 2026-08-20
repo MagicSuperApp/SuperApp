@@ -63,11 +63,16 @@ fi
 echo "── Lát ABI CÓ THẬT trong gói ────────────────────────────────────────"
 ls "$LIBROOT"
 echo
-# Duyệt theo lát có thật, KHÔNG theo danh sách viết tay: `android/gradle.properties:11`
-# vẫn khai `x86` trong `reactNativeArchitectures`, chỉ `android/app/build.gradle`
-# abiFilters mới cắt nó. Ai gỡ dòng abiFilters đó thì lát `x86` quay lại — mà Rust CỐ Ý
-# không dựng cho x86 (`.github/actions/rust-android/action.yml:35,76`), nên lát ấy sẽ
-# thiếu cả hai `.so`. Danh sách viết tay không nhìn thấy lát nó không biết.
+# Duyệt theo lát có thật, KHÔNG theo danh sách viết tay — và ĐÍNH CHÍNH 20/08 về lý
+# do: bản trước ghi "chỉ `android/app/build.gradle` abiFilters mới cắt x86". SAI.
+# Dựng thật 20/08 với abiFilters KHÔNG có x86 mà `reactNativeArchitectures` CÒN x86:
+# .aab ra vẫn có `base/lib/x86/` 25 tệp (ba lát kia 28), thiếu đúng
+# libtaad_enclave_core.so, libchat_mls.so, libcardano_serialization_lib. Plugin
+# `com.facebook.react` đọc `reactNativeArchitectures` và ghi đè abiFilters.
+# Chỗ thật sự cắt lát là `android/gradle.properties`. Ai khai lại `x86` ở ĐÓ thì lát
+# hỏng quay lại — mà Rust cố ý không dựng cho x86
+# (`.github/actions/rust-android/action.yml:35,76`). Danh sách viết tay không nhìn
+# thấy lát nó không biết, nên vòng dưới đây duyệt theo lát CÓ THẬT trong gói.
 for D in "$LIBROOT"/*/; do
   ABI=$(basename "$D")
   for L in libtaad_enclave_core.so libchat_mls.so; do

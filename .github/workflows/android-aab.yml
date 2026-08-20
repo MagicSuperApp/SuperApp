@@ -176,7 +176,12 @@ jobs:
           cat > android/gradle.properties << 'EOF'
           org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m
           android.useAndroidX=true
-          reactNativeArchitectures=armeabi-v7a,arm64-v8a,x86,x86_64
+          # ĐO 2026-08-20: dòng NÀY mới cắt lát ABI, không phải `abiFilters`.
+          # Dựng thật với `x86` ở đây + abiFilters KHÔNG có x86 ⇒ .aab vẫn ra lát
+          # base/lib/x86 25 tệp (ba lát kia 28), thiếu đúng libtaad_enclave_core.so,
+          # libchat_mls.so, libcardano_serialization_lib. Plugin com.facebook.react
+          # đọc dòng này và ghi đè abiFilters viết tay. Đó là dạng hỏng của bản 87.
+          reactNativeArchitectures=armeabi-v7a,arm64-v8a,x86_64
           newArchEnabled=true
           hermesEnabled=true
           edgeToEdgeEnabled=false
@@ -304,9 +309,12 @@ jobs:
           ls "$WORK/base/lib/" || true
           FAIL=0
           # Duyệt theo lát ABI CÓ THẬT trong gói, không theo danh sách viết tay.
-          # Lý do: `gradle.properties:28` vẫn khai `x86` trong reactNativeArchitectures,
-          # chỉ có `android/app/build.gradle:147` abiFilters mới cắt nó. Ai gỡ dòng
-          # abiFilters đó thì lát `x86` quay lại — mà Rust CỐ Ý không dựng cho x86
+          # ĐÍNH CHÍNH 20/08: bản trước ghi "chỉ abiFilters mới cắt x86" — SAI. Dựng
+          # thật với abiFilters KHÔNG có x86 mà reactNativeArchitectures CÒN x86 thì
+          # .aab vẫn ra lát `base/lib/x86` 25 tệp (ba lát kia 28). Plugin
+          # com.facebook.react đọc reactNativeArchitectures rồi ghi đè abiFilters, nên
+          # chỗ cắt lát THẬT là dòng đó trong gradle.properties (heredoc trên đã bỏ
+          # x86). Ai khai lại `x86` ở đó thì lát hỏng quay lại — Rust CỐ Ý không dựng cho x86
           # (`.github/actions/rust-android/action.yml:71,76,89`) nên lát ấy thiếu cả
           # hai `.so`. Danh sách viết tay sẽ không thấy, vì nó chỉ soi 3 lát nó biết.
           for ABIDIR in "$WORK"/base/lib/*/; do

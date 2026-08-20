@@ -55,6 +55,12 @@ $JNI = 'android/app/src/main/jniLibs'
 function Step($n, $t) { Write-Host "`n=== [$n] $t ===" -ForegroundColor Cyan }
 function Ok($m)   { Write-Host "  ok  $m" -ForegroundColor Green }
 function Warn($m) { Write-Host "  !   $m" -ForegroundColor Yellow }
+# ⚠ GỌI `Die` PHẢI BỌC NGOẶC quanh biểu thức nối chuỗi: `Die ("a" + $b)`, KHÔNG
+# phải `Die "a" + $b`. PowerShell gọi hàm ở CHẾ ĐỘ ĐỐI SỐ, nên dạng thứ hai truyền
+# BA đối số ("a", "+", $b) và `Die` chỉ nhận cái đầu — phần liệt kê lỗi biến mất.
+# Đã vấp thật: cổng bắt đúng một lát ABI lạ nhưng in ra "Tệp .aab KHÔNG đầy đủ:"
+# rồi một dòng trống. Một cổng bắt được lỗi mà không nói được lỗi gì thì gần như
+# vô dụng — mất thêm một lượt dựng 12 phút chỉ để biết nó đang phàn nàn cái gì.
 function Die($m)  { Write-Host "`nDỪNG: $m" -ForegroundColor Red; exit 1 }
 
 # ───────────────────────────────────────────────────────────────────────────
@@ -162,6 +168,40 @@ Cài một lần:
     }
     Ok (cargo --version)
 
+    # ── Bản Rust host GNU còn thiếu `dlltool` ────────────────────────────────
+    # Chỉ hỏi khi host là `*-windows-gnu`. Bản host MSVC không cần `dlltool`.
+    #
+    # Vì sao ca này có thật: máy không có trình liên kết của Visual Studio, và cài
+    # bộ đó tốn 3-7 GB — nên bản Rust ở đây là host GNU. Bộ mingw "tự chứa" mà
+    # rustup kèm theo đủ để LIÊN KẾT (cargo-ndk dựng được), nhưng KHÔNG có
+    # `dlltool.exe`. Mà `windows-sys` — phụ thuộc dựng của một crate trong cây,
+    # biên dịch cho HOST chứ không phải cho Android — lại cần đúng công cụ đó:
+    #
+    #   error: error calling dlltool 'dlltool.exe': program not found
+    #   error: could not compile `windows-sys` (lib)
+    #
+    # Thông báo của cargo dẫn nhầm hướng ("If the build failed due to a missing
+    # target, run rustup target install aarch64-linux-android") — target KHÔNG
+    # thiếu, và chạy theo lời khuyên đó không sửa được gì.
+    $hostTriple = (& rustc -vV | Select-String '^host:').ToString().Split(' ')[1]
+    if ($hostTriple -like '*windows-gnu*' -and -not (Get-Command dlltool -ErrorAction SilentlyContinue)) {
+        $llvmDlltool = Join-Path $ndkHome 'toolchains/llvm/prebuilt/windows-x86_64/bin/llvm-dlltool.exe'
+        Die @"
+Bản Rust host là $hostTriple nhưng không có ``dlltool.exe`` trên PATH.
+
+Chọn MỘT trong hai:
+
+  a) Mượn của NDK (0 byte tải về) — ``llvm-dlltool`` nhận đúng cờ mà rustc truyền:
+       New-Item -ItemType Directory -Force -Path D:ustin
+       Copy-Item '$llvmDlltool' D:ustin\dlltool.exe
+     rồi thêm D:ustin vào PATH.
+
+  b) Cài mingw-w64 đầy đủ:
+       scoop install mingw
+"@
+    }
+    Ok "dlltool: $((Get-Command dlltool).Source)"
+
     rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
     if ($LASTEXITCODE -ne 0) { Die 'rustup target add hỏng.' }
 
@@ -191,7 +231,7 @@ foreach ($abi in $ABIS) {
         if (Test-Path $f) { Ok "$f ($((Get-Item $f).Length) byte)" } else { $missing += $f }
     }
 }
-if ($missing.Count -gt 0) { Die "Thiếu .so:`n  " + ($missing -join "`n  ") }
+if ($missing.Count -gt 0) { Die ("Thiếu .so:`n  " + ($missing -join "`n  ")) }
 
 # ───────────────────────────────────────────────────────────────────────────
 Step 5 'Gradle bundleRelease'
@@ -245,7 +285,7 @@ foreach ($abi in $abisInAab) {
 }
 Ok "ABI trong tệp: $($abisInAab -join ', ')"
 
-if ($bad.Count -gt 0) { Die "Tệp .aab KHÔNG đầy đủ:`n  " + ($bad -join "`n  ") }
+if ($bad.Count -gt 0) { Die ("Tệp .aab KHÔNG đầy đủ:`n  " + ($bad -join "`n  ")) }
 
 $sha = (Get-FileHash $aab.FullName -Algorithm SHA256).Hash
 Write-Host "`n══════════════════════════════════════════════════════════" -ForegroundColor Green

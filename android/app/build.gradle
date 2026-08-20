@@ -128,6 +128,18 @@ def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
         versionName "2.0"
 
         // ✅ Support 16KB page size (required by Google Play Store 2024)
+        // ⚠ ĐÍNH CHÍNH 2026-08-20 — `abiFilters` ở đây KHÔNG cắt được lát nào.
+        //
+        // Chú thích cũ (giữ nguyên bên dưới) tin rằng bỏ 'x86' khỏi danh sách này là
+        // đủ để lát x86 không vào gói. Dựng thật hôm nay chứng minh ngược lại: với
+        // đúng dòng `abiFilters` dưới đây (không có x86) mà `gradle.properties` còn
+        // khai `reactNativeArchitectures=...,x86,...`, tệp .aab ra vẫn có
+        // `base/lib/x86/` với 25 tệp — trong khi ba lát kia 28 — thiếu đúng
+        // libtaad_enclave_core.so, libchat_mls.so và libcardano_serialization_lib.
+        // Plugin `com.facebook.react` đọc `reactNativeArchitectures` và ghi đè khối
+        // này. Nên chỗ THẬT SỰ cắt lát là `android/gradle.properties`, và hai nơi
+        // phải khớp nhau. Giữ `abiFilters` vì nó vẫn là lời khai đúng ý định.
+        //
         // Bỏ 'x86' (32-bit) từ 2026-08-15. Lý do: `.github/actions/rust-android/action.yml:71,76,89`
         // và `codemagic.yaml` CỐ Ý không dựng Rust cho x86 (máy thật không dùng nó).
         // Nhưng gradle vẫn đóng gói theo danh sách NÀY, nên bản dựng ĐÚNG vẫn đẻ ra một

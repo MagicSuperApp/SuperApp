@@ -1,3 +1,54 @@
+## Lát `x86` hỏng vẫn vào AAB — `abiFilters` KHÔNG cắt được nó
+
+### Đo được, không suy
+Dựng thật `bundleRelease` hôm nay với đúng cấu hình đang có trong kho — `android/app/build.gradle` khai `abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86_64'` (không có x86) — tệp `.aab` ra vẫn chứa:
+
+| lát | số tệp |
+|---|---|
+| arm64-v8a | 28 |
+| armeabi-v7a | 28 |
+| **x86** | **25** |
+| x86_64 | 28 |
+
+Ba tệp thiếu ở lát `x86`: `libtaad_enclave_core.so`, `libchat_mls.so`, `libcardano_serialization_lib`. Đúng ba thư viện gốc của tầng danh tính PhoenixKey — **cùng dạng hỏng với bản 87**.
+
+Plugin `com.facebook.react` đọc `reactNativeArchitectures` trong `gradle.properties` rồi **ghi đè** `abiFilters` viết tay. Chỗ thật sự cắt lát là dòng đó, không phải khối `ndk {}`.
+
+### Ba chú thích trong kho đều tin sai
+`android/app/build.gradle:131`, `scripts/soi-aab.sh:67`, `.github/workflows/android-aab.yml:307` — cả ba đều ghi *"chỉ `abiFilters` mới cắt x86"*. Đã đính chính cả ba tại chỗ, kèm số liệu đo được, chứ không xoá dòng cũ đi.
+
+### Sửa bốn nơi khai `reactNativeArchitectures`
+`armeabi-v7a,arm64-v8a,x86,x86_64` → `armeabi-v7a,arm64-v8a,x86_64`:
+
+* `android/gradle.properties` (bị gitignore — chỉ sửa được ở máy này)
+* `.github/workflows/android-aab.yml:179` — heredoc tự sinh gradle.properties
+* `codemagic.yaml:1037` và `:1302`
+
+⚠ Hai đường CI cũng đang khai `x86`, nghĩa là **mọi AAB ra từ CI trước bản này đều mang lát x86 hỏng**. `debug-apk.yml` thì không dính (nó vốn chỉ khai hai ABI).
+
+⚠ `android/gradle.properties` nằm trong `.gitignore`, nên máy của người khác vẫn còn `x86` cho tới khi họ tự sửa. Không có tệp mẫu nào trong kho để vá chỗ này.
+
+Đo lại sau khi sửa: `ABI trong tệp: arm64-v8a, armeabi-v7a, x86_64`, sáu `.so` Rust đủ ba lát, và tệp **giảm từ 110,5 MB xuống 92,4 MB** — 18 MB kia là lát không máy nào cài được đúng.
+
+### Cổng bắt được lỗi nhưng không nói được lỗi gì
+`scripts/build-aab.ps1` bắt đúng lát lạ, rồi in ra `DỪNG: Tệp .aab KHÔNG đầy đủ:` và **một dòng trống**.
+
+Nguyên nhân: PowerShell gọi hàm ở **chế độ đối số**, nên `Die "a" + $b` truyền **ba** đối số (`"a"`, `"+"`, `$b`) và `Die` chỉ nhận cái đầu. Phải viết `Die ("a" + $b)`. Đã vá cả hai chỗ và ghi lý do ngay trên định nghĩa `Die` — mất thêm một lượt dựng 12 phút chỉ để biết nó đang phàn nàn cái gì.
+
+### `dlltool` — chuỗi biên dịch Windows, không phải lỗi dự án
+Bản Rust host GNU (chọn vì máy không có trình liên kết Visual Studio, và ổ C: chỉ còn 7,3 GB) thiếu `dlltool.exe`, nên `windows-sys` — phụ thuộc dựng cho **host**, không phải cho Android — không biên dịch được:
+
+```
+error: error calling dlltool 'dlltool.exe': program not found
+```
+
+Gợi ý cargo in kèm (`rustup target install aarch64-linux-android`) **dẫn sai hướng** — target không hề thiếu.
+
+Vá bằng `llvm-dlltool.exe` có sẵn trong NDK, không tải thêm gì. Đã thêm bước soát vào script: chỉ hỏi khi host là `*-windows-gnu`, và in sẵn đường dẫn `llvm-dlltool` tính từ chính NDK script vừa dò ra.
+
+### `.gitignore`
+Thêm `build-aab.log` và `android/app/src/main/jniLibs/` — thư mục sau là sản phẩm `cargo ndk`, hàng chục MB, khác nhau theo bản NDK từng máy.
+
 ## Cổng jest đỏ GIẢ ở bản dựng AAB — hai bộ test bị bỏ đói, không phải chậm
 
 `npm run build:aab` dừng ở bước 3 với hai bộ đỏ:

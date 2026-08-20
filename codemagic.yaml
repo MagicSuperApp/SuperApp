@@ -1034,7 +1034,12 @@ workflows:
           cat > android/gradle.properties <<EOF
           org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m
           android.useAndroidX=true
-          reactNativeArchitectures=armeabi-v7a,arm64-v8a,x86,x86_64
+          # ĐO 2026-08-20: dòng NÀY mới cắt lát ABI, không phải `abiFilters`.
+          # Dựng thật với `x86` ở đây + abiFilters KHÔNG có x86 ⇒ .aab vẫn ra lát
+          # base/lib/x86 25 tệp (ba lát kia 28), thiếu đúng libtaad_enclave_core.so,
+          # libchat_mls.so, libcardano_serialization_lib. Plugin com.facebook.react
+          # đọc dòng này và ghi đè abiFilters viết tay. Đó là dạng hỏng của bản 87.
+          reactNativeArchitectures=armeabi-v7a,arm64-v8a,x86_64
           newArchEnabled=true
           hermesEnabled=true
           edgeToEdgeEnabled=false
@@ -1299,7 +1304,12 @@ workflows:
           cat > android/gradle.properties <<EOF
           org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m
           android.useAndroidX=true
-          reactNativeArchitectures=armeabi-v7a,arm64-v8a,x86,x86_64
+          # ĐO 2026-08-20: dòng NÀY mới cắt lát ABI, không phải `abiFilters`.
+          # Dựng thật với `x86` ở đây + abiFilters KHÔNG có x86 ⇒ .aab vẫn ra lát
+          # base/lib/x86 25 tệp (ba lát kia 28), thiếu đúng libtaad_enclave_core.so,
+          # libchat_mls.so, libcardano_serialization_lib. Plugin com.facebook.react
+          # đọc dòng này và ghi đè abiFilters viết tay. Đó là dạng hỏng của bản 87.
+          reactNativeArchitectures=armeabi-v7a,arm64-v8a,x86_64
           newArchEnabled=true
           hermesEnabled=true
           edgeToEdgeEnabled=false

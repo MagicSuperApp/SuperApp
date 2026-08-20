@@ -1,8 +1,8 @@
 /**
- * wakemeService — WakeMe / Activation Vault 2 pha (trước đây gọi là GetLAMP).
+ * wakemeService — Wakeme / Activation Vault 2 pha (trước đây gọi là GetLAMP).
  *
  * ĐỌC (dùng được ngay):
- *   - `getPot()`         : D một người mới sẽ nhận nếu WakeMe bây giờ.
+ *   - `getPot()`         : D một người mới sẽ nhận nếu Wakeme bây giờ.
  *   - `isFeatureOpen()`  : tính năng đã mở trên máy chủ chưa (đầu dò tầng 2).
  *   - `getVaultStatus()` : bảng vault — máy chủ hiện ném 501 vô điều kiện.
  *
@@ -18,7 +18,7 @@ import {
   PhoenixKeyApiError,
   type PotStatusResponse,
   type VaultStatusResponse,
-  type WakeMeSubmitResponse,
+  type WakemeSubmitResponse,
 } from './phoenixKey-api';
 
 /** Mã lỗi backend: tính năng chưa cấu hình trên máy chủ (HTTP 501). */
@@ -89,9 +89,9 @@ export async function getLamp(args: {
   account: number;
   walletAddress: string;
   network: number;
-}): Promise<WakeMeSubmitResponse> {
+}): Promise<WakemeSubmitResponse> {
   throw new Error(
-    'WakeMe chưa nhận được: bản ứng dụng này chưa ký được bằng khoá TAAD và khoá thiết bị. '
+    'Wakeme chưa nhận được: bản ứng dụng này chưa ký được bằng khoá TAAD và khoá thiết bị. '
     + 'Chờ bản cập nhật.',
   );
 

@@ -1,4 +1,4 @@
-// Khoá TÊN TRƯỜNG trên dây của cụm WakeMe.
+// Khoá TÊN TRƯỜNG trên dây của cụm Wakeme.
 //
 // VÌ SAO CÓ TỆP NÀY — hai bên đổi tên theo hai luật khác nhau, và chỗ lệch KHÔNG
 // BAO GIỜ báo lỗi: đọc một trường không tồn tại trong JS chỉ ra `undefined`.
@@ -19,7 +19,7 @@ import { toCamelCase, toSnakeCase } from './phoenixKey-api';
 const jacksonSnake = (s: string): string =>
   s.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
 
-describe('WakeMe — tên trường trên dây', () => {
+describe('Wakeme — tên trường trên dây', () => {
   it('Jackson gộp hai chữ hoa liền nhau thành một gạch dưới', () => {
     expect(jacksonSnake('initialDLamp')).toBe('initial_dlamp');
     expect(jacksonSnake('currentDLamp')).toBe('current_dlamp');
@@ -38,7 +38,7 @@ describe('WakeMe — tên trường trên dây', () => {
     expect(toSnakeCase('currentDLamp')).not.toBe('current_dlamp');
   });
 
-  it('các tên còn lại của cụm WakeMe đi qua được cả hai chiều', () => {
+  it('các tên còn lại của cụm Wakeme đi qua được cả hai chiều', () => {
     const roundTrip = ['walletAddress', 'didCommit', 'signedTxCbor', 'unsignedTxCbor',
       'requiredSignerKeyHash', 'vaultAddress', 'potBalanceLamp', 'vestStartSlot',
       'phase1Days', 'ttlSlot', 'cardanoTxHash', 'daysToPhase2', 'conditionalLamp',

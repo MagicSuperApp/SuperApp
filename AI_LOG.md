@@ -1,3 +1,32 @@
+## Cổng jest đỏ GIẢ ở bản dựng AAB — hai bộ test bị bỏ đói, không phải chậm
+
+`npm run build:aab` dừng ở bước 3 với hai bộ đỏ:
+
+```
+TreeManagementScreen › mang MÃ VƯỜN của màn danh sách sang màn Dẫn đường
+WayfindScreen        › bỏ cây của vườn khác cách 30 km, giữ cây trong tầm đi bộ
+   thrown: "Exceeded timeout of 5000 ms for a test."
+```
+
+Chạy RIÊNG hai bộ đó: **xanh, 4,4 giây cả hai cộng lại.** Vậy không phải mã màn chậm.
+
+### Đo được nguyên nhân
+Máy dựng có **16 nhân** ⇒ jest mở ~15 tiến trình con, mỗi tiến trình nạp trọn đồ thị module RN. Lúc dựng, máy còn **0,8 GB RAM trống**. Chúng tranh nhau bộ nhớ và bị hoán trang, nên các bộ dựng NGUYÊN một màn RN không kịp xong trong 5 giây — bị **bỏ đói CPU**, không phải chậm về logic.
+
+Kèm theo là hai dấu hiệu của cùng một gốc, trước đây đọc như lỗi riêng:
+`A worker process has failed to exit gracefully` và `You are trying to import a file after the Jest environment has been torn down` — cả hai là *hậu quả* của việc test bị cắt giữa chừng rồi phần async của nó chạy tiếp sau khi môi trường đã dọn.
+
+### Sửa hai chỗ
+* `jest.config.js` — thêm `testTimeout: 30_000`. 5000ms là **mặc định của Jest**, không phải con số ai đó đo cho kho này, và nó quá chật cho bộ test dựng nguyên màn.
+* `scripts/build-aab.ps1` — cổng chạy `--maxWorkers=50%`. Đây mới là chỗ chạm vào gốc: nửa số nhân thì không còn hoán trang.
+
+Đo lại sau khi sửa: **109 bộ / 1 639 test xanh trong 8,4 giây** — nhanh hơn hẳn 34,7 giây của lượt đỏ. Ít tiến trình hơn mà nhanh hơn, đúng dấu hiệu của thiếu bộ nhớ chứ không thiếu CPU.
+
+CI (ubuntu runner, máy trống) vẫn dùng số worker mặc định — không đụng tới.
+
+### Vì sao đáng sửa chứ không "chạy lại cho xanh"
+Một cổng đỏ giả tệ hơn một cổng chậm: nó dạy người ta bấm chạy lại tới khi xanh, và thói quen ấy sẽ nuốt luôn ngày có một test đỏ THẬT.
+
 ## `gradlew bundleRelease` gõ tay đang ra bản THIẾU ví · DID · chat mã hoá
 
 ### Lỗ

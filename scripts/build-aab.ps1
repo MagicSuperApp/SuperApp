@@ -132,7 +132,13 @@ if (-not $SkipTests) {
     npx tsc --noEmit -p tsconfig.json
     if ($LASTEXITCODE -ne 0) { Die 'tsc có lỗi.' }
     Ok 'tsc sạch'
-    npx jest --ci --forceExit --silent
+    # `--maxWorkers=50%`: máy dựng có 16 nhân nên jest mở ~15 tiến trình con, mỗi
+    # cái nạp trọn đồ thị module RN. Đo trên chính máy này lúc dựng: còn 0,8 GB RAM
+    # trống ⇒ chúng hoán trang và các bộ test dựng nguyên màn bị bỏ đói tới mức quá
+    # hạn. Nửa số nhân chạy CHẬM HƠN vài giây nhưng KHÔNG đỏ giả — mà một cổng đỏ
+    # giả thì tệ hơn một cổng chậm: nó dạy người ta chạy lại cho tới khi xanh.
+    # CI (ubuntu runner, máy trống) vẫn dùng mặc định, không đụng tới.
+    npx jest --ci --forceExit --silent --maxWorkers=50%
     if ($LASTEXITCODE -ne 0) { Die 'jest có test đỏ.' }
     Ok 'jest xanh'
 } else { Step 3 'Cổng chất lượng — BỎ QUA (-SkipTests)' }

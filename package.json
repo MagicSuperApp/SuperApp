@@ -10,6 +10,7 @@
     "test": "jest",
     "icons": "node scripts/icons.js",
     "soi-mach": "node scripts/soi-mach.js",
+    "build:aab": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-aab.ps1",
     "postinstall": "patch-package"
   },
   "dependencies": {

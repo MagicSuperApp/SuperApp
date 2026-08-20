@@ -1,3 +1,47 @@
+## `gradlew bundleRelease` gõ tay đang ra bản THIẾU ví · DID · chat mã hoá
+
+### Lỗ
+Hai module Kotlin nạp thư viện native lúc lớp khởi tạo:
+
+```
+TaadEnclaveModule.kt:392   System.loadLibrary("taad_enclave_core")
+ChatMlsModule.kt:168       System.loadLibrary("chat_mls")
+```
+
+Cả hai `.so` **không có trong git** (`git ls-files android/app/src/main/jniLibs` → rỗng; thư mục ấy còn không tồn tại trên máy này), và `android/app/build.gradle` **không có** cargo/rust/externalNativeBuild nào — gradle không biết chúng tồn tại. Chúng do một bước RIÊNG dựng, chạy TRƯỚC gradle: `.github/actions/rust-android/action.yml` và `codemagic.yaml:1054`.
+
+Gõ thẳng `.\gradlew bundleRelease` bỏ mất bước ấy. Kết quả:
+
+* gradle dựng **xanh**;
+* AAB ký đúng, Play nhận;
+* app mở được — hai module có `try/catch`, đặt `libLoaded=false` rồi reject mọi method;
+* và toàn bộ tầng danh tính PhoenixKey (ví · DID · Master_KEK · cụm 24 từ · uỷ thác) cùng chat đầu-cuối **im lặng không dùng được**.
+
+Xanh ở máy dựng, hỏng ở tay người dùng. Đo thêm: máy này **chưa cài `cargo`** — nên mọi bản AAB từng dựng tay ở đây đều thiếu hai thư viện đó.
+
+### `scripts/build-aab.ps1`
+Dựng lại đúng thứ tự của CI, trên Windows, dừng ở lỗi đầu tiên:
+
+1. soát công cụ + tệp bí mật — node · Java · SDK · **NDK đúng bản `rootProject.ext.ndkVersion`** · `.env` · `keySigning.bin` · đủ **bốn** khoá `ORILIFE_UPLOAD_*`;
+2. `npm install --legacy-peer-deps` (kéo theo `patch-package`);
+3. cổng `tsc` + `jest --ci --forceExit`;
+4. `cargo ndk` hai crate × ba ABI → `jniLibs`, rồi kiểm **cả sáu** tệp;
+5. `gradlew bundleRelease --no-daemon`;
+6. **mở tệp `.aab` ra đọc danh sách mục.**
+
+Bước 6 là bước đáng giá nhất: nó kiểm **thành phẩm**, không kiểm "các bước đã chạy". Ba thứ phải có mặt — `base/assets/index.android.bundle`, `base/lib/{arm64-v8a,armeabi-v7a,x86_64}/lib{taad_enclave_core,chat_mls}.so` — và **không** được có lát ABI nào khác. Một lát `x86` lọt vào là một lát chắc chắn thiếu `.so` Rust (Rust cố ý không dựng cho x86), và Play sẽ giao đúng lát đó cho thiết bị x86: chính là lỗi bản 87.
+
+### Bốn chỗ khác đã soát ra
+* **NDK**: CI lấy "bản mới nhất đang cài" — đúng ở runner (chỉ một bản), **sai ở máy này** (đang có 5 bản). Script lấy đúng bản `android/build.gradle` khai, nếu không thì Rust và gradle dựng bằng hai NDK khác nhau trong cùng một tệp.
+* **`reactNativeArchitectures`** trong `android/gradle.properties` vẫn còn `x86`, trong khi `abiFilters` đã bỏ từ 15/08. Không sai kết quả (abiFilters lọc lát ra), chỉ tốn thời gian dựng RN native cho một ABI rồi vứt đi. Sửa được bằng một dòng — tệp đó bị gitignore nên nằm ngoài commit.
+* **`versionCode` = 92**, cố định trong `build.gradle`. Play từ chối tệp trùng versionCode; script cảnh báo trước khi dựng.
+* **Java**: máy này 21, CI dựng bằng **17**. Cảnh báo mềm chứ không chặn — chưa đo được 21 gãy, nhưng bản ra Play nên khớp bản đã đo.
+
+### Một cái bẫy của chính script
+Windows PowerShell 5.1 đọc `.ps1` theo bảng mã ANSI nếu tệp **không có BOM UTF-8** — mọi chú thích tiếng Việt thành rác, và rác đó chứa ký tự bộ phân tích đọc thành dấu nháy: 19 lỗi cú pháp ở một tệp viết đúng. Và `2>&1` trên một `.exe` dưới `$ErrorActionPreference='Stop'` bọc từng dòng stderr thành ErrorRecord rồi ném — mà `java -version` in ra stderr theo thiết kế. Cả hai đã vấp và đã sửa.
+
+Thêm `npm run build:aab`.
+
 ## Giá nông sản: từ 2 mặt hàng lên 6, và một lỗi đọc số nhân giá lên gấp mười
 
 ### Vì sao chỉ có hai

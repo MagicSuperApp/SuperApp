@@ -183,6 +183,9 @@ workflows:
           # (.github/actions/rn-env/action.yml) bắt được; đường Codemagic thì không,
           # nên phải ghi tay và giữ đồng bộ. Giá trị đặt đúng bằng bản GitHub ghi.
           ORG_MINT_ENABLED=${ORG_MINT_ENABLED:-false}
+          # 0 = preprod (chuỗi thử) · 1 = mainnet (tiền thật). Lên mainnet thì đặt
+          # CARDANO_NETWORK=1 ở nhóm biến Codemagic, không sửa dòng này.
+          CARDANO_NETWORK=${CARDANO_NETWORK:-0}
           # Trống = để cổng runtime /health quyết (config.ts:38 chỉ chặn khi đúng 'off').
           WORK_BACKEND_ENABLED=${WORK_BACKEND_ENABLED:-}
           # Trống = TẮT hẳn. ĐỪNG điền tunnel ngrok — xem remoteLogger.ts, aladinChat.ts.
@@ -587,6 +590,9 @@ workflows:
           # (.github/actions/rn-env/action.yml) bắt được; đường Codemagic thì không,
           # nên phải ghi tay và giữ đồng bộ. Giá trị đặt đúng bằng bản GitHub ghi.
           ORG_MINT_ENABLED=${ORG_MINT_ENABLED:-false}
+          # 0 = preprod (chuỗi thử) · 1 = mainnet (tiền thật). Lên mainnet thì đặt
+          # CARDANO_NETWORK=1 ở nhóm biến Codemagic, không sửa dòng này.
+          CARDANO_NETWORK=${CARDANO_NETWORK:-0}
           # Trống = để cổng runtime /health quyết (config.ts:38 chỉ chặn khi đúng 'off').
           WORK_BACKEND_ENABLED=${WORK_BACKEND_ENABLED:-}
           # Trống = TẮT hẳn. ĐỪNG điền tunnel ngrok — xem remoteLogger.ts, aladinChat.ts.
@@ -1000,6 +1006,9 @@ workflows:
           # (.github/actions/rn-env/action.yml) bắt được; đường Codemagic thì không,
           # nên phải ghi tay và giữ đồng bộ. Giá trị đặt đúng bằng bản GitHub ghi.
           ORG_MINT_ENABLED=${ORG_MINT_ENABLED:-false}
+          # 0 = preprod (chuỗi thử) · 1 = mainnet (tiền thật). Lên mainnet thì đặt
+          # CARDANO_NETWORK=1 ở nhóm biến Codemagic, không sửa dòng này.
+          CARDANO_NETWORK=${CARDANO_NETWORK:-0}
           # Trống = để cổng runtime /health quyết (config.ts:38 chỉ chặn khi đúng 'off').
           WORK_BACKEND_ENABLED=${WORK_BACKEND_ENABLED:-}
           # Trống = TẮT hẳn. ĐỪNG điền tunnel ngrok — xem remoteLogger.ts, aladinChat.ts.
@@ -1259,6 +1268,9 @@ workflows:
           # (.github/actions/rn-env/action.yml) bắt được; đường Codemagic thì không,
           # nên phải ghi tay và giữ đồng bộ. Giá trị đặt đúng bằng bản GitHub ghi.
           ORG_MINT_ENABLED=${ORG_MINT_ENABLED:-false}
+          # 0 = preprod (chuỗi thử) · 1 = mainnet (tiền thật). Lên mainnet thì đặt
+          # CARDANO_NETWORK=1 ở nhóm biến Codemagic, không sửa dòng này.
+          CARDANO_NETWORK=${CARDANO_NETWORK:-0}
           # Trống = để cổng runtime /health quyết (config.ts:38 chỉ chặn khi đúng 'off').
           WORK_BACKEND_ENABLED=${WORK_BACKEND_ENABLED:-}
           # Trống = TẮT hẳn. ĐỪNG điền tunnel ngrok — xem remoteLogger.ts, aladinChat.ts.

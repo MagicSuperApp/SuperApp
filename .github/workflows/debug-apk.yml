@@ -129,6 +129,7 @@ jobs:
         uses: ./.github/actions/rn-env
         with:
           aladin-api-key: ${{ secrets.ALADIN_API_KEY }}
+          cardano-network: ${{ vars.CARDANO_NETWORK || '0' }}
 
       - name: Create android/gradle.properties
         run: |

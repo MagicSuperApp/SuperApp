@@ -171,6 +171,8 @@ const AnimalManagementScreen: React.FC = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
+  /** Tổng đàn khớp bộ lọc, do máy chủ trả. `undefined` = máy chủ đời cũ chưa gửi. */
+  const [totalCount, setTotalCount] = useState<number | undefined>(undefined);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedSpecies, setSelectedSpecies] = useState('');
   const offsetRef = useRef(0);
@@ -217,6 +219,7 @@ const AnimalManagementScreen: React.FC = () => {
         }
         offsetRef.current = currentOffset + fetched.length;
         setHasMore(fetched.length === PAGE_SIZE);
+        setTotalCount(res.total);
       } else {
         setLoadError(res.error?.detail ?? 'Không thể tải danh sách cá thể.');
       }
@@ -376,7 +379,13 @@ const AnimalManagementScreen: React.FC = () => {
           <Text style={styles.headerTitle}>Quản lý vật nuôi</Text>
           {animals.length > 0 && (
             <View style={styles.countBadge}>
-              <Text style={styles.countBadgeText}>{animals.length}</Text>
+              {/* `animals.length` là số cá thể ĐÃ TẢI, trần PAGE_SIZE — không phải tổng
+                  đàn. Bày nó trần trụi ở huy hiệu là nói với chủ vườn rằng đàn có 20 con
+                  trong khi còn trang sau. Dùng `total` của máy chủ khi có; máy chủ đời cũ
+                  không gửi thì thêm dấu `+` để con số thôi tự nhận là tổng. */}
+              <Text style={styles.countBadgeText}>
+                {totalCount != null ? totalCount : `${animals.length}${hasMore ? '+' : ''}`}
+              </Text>
             </View>
           )}
         </View>

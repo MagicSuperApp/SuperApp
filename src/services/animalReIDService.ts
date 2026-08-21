@@ -245,7 +245,7 @@ export async function listAnimals(
   species?: string,
   limit = 20,
   offset = 0,
-): Promise<{ ok: boolean; animals?: AnimalInfo[]; error?: APIError }> {
+): Promise<{ ok: boolean; animals?: AnimalInfo[]; total?: number; error?: APIError }> {
   const params = new URLSearchParams();
   if (farmId) params.append('farm_id', farmId);
   if (species) params.append('species', normalizeSpecies(species));
@@ -254,7 +254,11 @@ export async function listAnimals(
 
   const result = await _apiCall<AnimalListResponse>(`${baseUrl}/api/animal/list?${params.toString()}`, 'GET');
   if (result.ok && result.data) {
-    return { ok: true, animals: result.data.animals };
+    // `total` là TỔNG đàn khớp bộ lọc, khác hẳn `animals.length` (số của MỘT trang).
+    // Trả nó ra thay vì vứt: chỗ gọi đang bày `animals.length` như tổng đàn, và con số
+    // đó bị PAGE_SIZE chặn trần. Máy chủ đời cũ không gửi `total` ⇒ `undefined`, và chỗ
+    // gọi phải xử ca đó chứ không được coi là 0.
+    return { ok: true, animals: result.data.animals, total: result.data.total };
   }
   return { ok: false, error: result.error };
 }

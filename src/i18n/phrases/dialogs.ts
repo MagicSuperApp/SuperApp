@@ -134,4 +134,33 @@ export const DIALOGS: PhraseMap = {
     ja: '語句を書き出す必要はありません。それでも行う場合は、画面を誰にも見られないようにしてください。',
   },
   'Vẫn hiện cụm 24 từ': { en: 'Show the 24 words anyway', zh: '仍然显示这 24 个词', ja: 'それでも 24 語を表示する' },
+
+  // ── Câu có giá trị chèn vào ────────────────────────────────────────────────
+  // Tra từ điển khớp NGUYÊN chuỗi, nên `` `${n} …` `` không bao giờ trúng khoá —
+  // mỗi lần chạy sinh một chuỗi khác. Tách khung ra khoá riêng rồi mới chèn.
+  'Đã đăng ký {loai} vào hệ thống.': {
+    en: 'Registered {loai} in the system.',
+    zh: '已将{loai}登记入系统。',
+    ja: '{loai}をシステムに登録しました。',
+  },
+  'Ảnh vừa chụp vẫn giữ nguyên.': {
+    en: 'The photo you just took is kept.',
+    zh: '刚拍摄的照片仍保留。',
+    ja: '撮影した写真はそのまま残ります。',
+  },
+  'Mã cây: {ma}': { en: 'Tree code: {ma}', zh: '树木编号：{ma}', ja: '樹木コード: {ma}' },
+  'Bạn muốn làm gì?': { en: 'What would you like to do?', zh: '您想怎么做？', ja: 'どうしますか？' },
+  'Nếu chắc đây là một cây KHÁC, chọn "Tạo cây mới".': {
+    en: 'If you are sure this is a DIFFERENT tree, choose “Create new tree”.',
+    zh: '如果确定这是另一棵树，请选择“新建树木”。',
+    ja: 'これが別の樹木だと確信できる場合は「新しい樹木を作成」を選んでください。',
+  },
+  'Tx: {tx}…\nMất vài phút để lên chuỗi.': {
+    en: 'Tx: {tx}…\nIt takes a few minutes to reach the chain.',
+    zh: '交易: {tx}…\n上链需要几分钟。',
+    ja: 'Tx: {tx}…\nチェーンに載るまで数分かかります。',
+  },
+
+  // ── Danh mục loài vật nuôi ─────────────────────────────────────────────────
+  'Loài chưa rõ': { en: 'Unknown species', zh: '物种未知', ja: '種別不明' },
 };

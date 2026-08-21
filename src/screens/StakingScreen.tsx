@@ -25,7 +25,7 @@ import type { DelegationStatus, PoolDetail } from '../services/phoenixKey-api';
 const PRIMARY = '#0033AD'; // Cardano blue
 import { CARDANO_NETWORK as NETWORK } from '../config/cardanoNetwork';
 import { showError, showWarning } from '../utils/alert';
-import { t } from '../i18n';
+import { t, tf } from '../i18n';
 const ACCOUNT = 0;         // ví cố định (stake key đã đăng ký)
 
 // `fmtAda` bản riêng của màn này đã gỡ 2026-08-14: nó là bản thứ hai của một hàm
@@ -83,7 +83,10 @@ const StakingScreen: React.FC = () => {
               const { txHash } = await delegateToPool({
                 kekHex: kek, account: ACCOUNT, poolBech32: poolDetail.poolId, network: NETWORK,
               });
-              Alert.alert(t('Đã gửi uỷ thác'), `Tx: ${txHash.slice(0, 16)}…\nMất vài phút để lên chuỗi.`);
+              Alert.alert(
+                t('Đã gửi uỷ thác'),
+                tf('Tx: {tx}…\nMất vài phút để lên chuỗi.', { tx: txHash.slice(0, 16) }),
+              );
               load();
             } catch (e: any) {
               Alert.alert(t('Uỷ thác thất bại'), e?.message ?? t('Thử lại nơi sóng tốt.'));

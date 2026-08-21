@@ -44,7 +44,8 @@ import {
 import { withPhotoSave } from '../services/mediaSavePermission';
 import { useBottomActionPadding } from '../hooks/useBottomActionPadding';
 import { showError, showInfo, showWarning } from '../utils/alert';
-import { t } from '../i18n';
+import { t, tf } from '../i18n';
+import { speciesLabel } from '../constants/animalSpecies';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -66,21 +67,6 @@ const CAMERA_OPTIONS = {
   includeBase64: false,
 };
 
-// Nhãn tiếng Việt theo loài
-const SPECIES_LABELS: Record<string, string> = {
-  ga:    'Gà',
-  lon:   'Lợn',
-  de:    'Dê',
-  bo:    'Bò',
-  vit:   'Vịt',
-  ngong: 'Ngỗng',
-  cho:   'Chó',
-  meo:   'Mèo',
-};
-
-function speciesLabel(s: string): string {
-  return SPECIES_LABELS[s.toLowerCase()] ?? s;
-}
 
 // ---------------------------------------------------------------------------
 // image-picker lazy load (như AnimalIdentityScreen)
@@ -170,7 +156,7 @@ const AnimalEnrollScreen: React.FC = () => {
     (animalDid: string) => {
       Alert.alert(
         t('Đăng ký thành công'),
-        `Đã đăng ký ${speciesLabel(species)} vào hệ thống.`,
+        tf('Đã đăng ký {loai} vào hệ thống.', { loai: speciesLabel(species) }),
         [
           {
             text: t('Xem hồ sơ'),
@@ -225,9 +211,10 @@ const AnimalEnrollScreen: React.FC = () => {
           const similar = res.error?.similarAnimalDid;
           Alert.alert(
             t('Cá thể có thể đã tồn tại'),
-            `${detail}\n\n${similar
+            detail + '\n\n' + (similar
               ? t('Mở hồ sơ con máy chủ cho là trùng để đối chiếu.')
-              : t('Mở sổ vật nuôi của vườn này để xem con đó đã có chưa.')} Ảnh vừa chụp vẫn giữ nguyên.`,
+              : t('Mở sổ vật nuôi của vườn này để xem con đó đã có chưa.'))
+              + ' ' + t('Ảnh vừa chụp vẫn giữ nguyên.'),
             [
               { text: t('Để sau'), style: 'cancel' },
               similar

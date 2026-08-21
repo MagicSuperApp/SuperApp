@@ -92,7 +92,7 @@ import { useBottomActionPadding } from '../hooks/useBottomActionPadding';
 import { tk } from '../i18n/keys';
 import { whenLabel } from '../utils/whenLabel';
 import { showError, showInfo, showSuccess, showWarning } from '../utils/alert';
-import { t } from '../i18n';
+import { t, tf } from '../i18n';
 const BASE_URL: string =
   ORILIFE_BASE;
 
@@ -598,7 +598,7 @@ const TreeEnrollScreen: React.FC = () => {
       };
       Alert.alert(
         t('Đăng ký thành công'),
-        `Mã cây: ${code}`,
+        tf('Mã cây: {ma}', { ma: code }),
         [
           {
             text: tk('trace.enroll.viewDetail'),
@@ -838,7 +838,7 @@ const TreeEnrollScreen: React.FC = () => {
           const foundId = fromBody ?? (regexMatch ? regexMatch[1] : null);
           Alert.alert(
             t('Trùng cây đã có'),
-            `${detail}\n\nBạn muốn làm gì?`,
+            detail + '\n\n' + t('Bạn muốn làm gì?'),
             [
               { text: t('Huỷ'), style: 'cancel' },
               // Nút gộp CHỈ hiện khi biết gộp vào cây nào. Bản cũ luôn hiện nút,
@@ -896,7 +896,7 @@ const TreeEnrollScreen: React.FC = () => {
         // hành động mà nhánh 'duplicate' cho, chỉ khác là không dám đoán lý do.
         Alert.alert(
           t('Máy chủ từ chối đăng ký'),
-          `${detail}\n\nNếu chắc đây là một cây KHÁC, chọn "Tạo cây mới".`,
+          detail + '\n\n' + t('Nếu chắc đây là một cây KHÁC, chọn "Tạo cây mới".'),
           [
             { text: t('Huỷ'), style: 'cancel' },
             { text: tk('trace.enroll.retake'), onPress: goRetake },

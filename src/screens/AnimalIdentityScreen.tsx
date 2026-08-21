@@ -55,6 +55,7 @@ import type { RootState } from '../store';
 import { loadFarms } from '../modules/trace/store/farmSlice';
 import { showError } from '../utils/alert';
 import { t } from '../i18n';
+import { SPECIES_KEYS, SPECIES_OPTIONS, speciesLabel } from '../constants/animalSpecies';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -63,23 +64,6 @@ import { t } from '../i18n';
 const BASE_URL: string = ORILIFE_BASE;
 
 // Nhãn tiếng Việt theo loài
-const SPECIES_LABELS: Record<string, string> = {
-  ga:   'Gà',
-  lon:  'Lợn',
-  de:   'Dê',
-  bo:   'Bò',
-  vit:  'Vịt',
-  ngong: 'Ngỗng',
-  cho:  'Chó',
-  meo:  'Mèo',
-};
-
-function speciesLabel(s: string): string {
-  return SPECIES_LABELS[s.toLowerCase()] ?? s;
-}
-
-// Thứ tự chip chọn loài khi màn được mở KHÔNG kèm loài (từ cổng xoè).
-const SPECIES_KEYS = Object.keys(SPECIES_LABELS);
 
 /**
  * AnimalCandidate (máy chủ) → ReidCandidate (hộp thoại chọn cá thể).
@@ -410,7 +394,7 @@ const AnimalIdentityScreen: React.FC = () => {
                   activeOpacity={0.75}
                 >
                   <Text style={[styles.chipText, species === k && styles.chipTextActive]}>
-                    {SPECIES_LABELS[k]}
+                    {speciesLabel(k)}
                   </Text>
                 </TouchableOpacity>
               ))}

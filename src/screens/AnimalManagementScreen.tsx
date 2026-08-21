@@ -49,6 +49,12 @@ import {
 import { ORILIFE_BASE } from '../services/orilifeBase';
 import { showWarning } from '../utils/alert';
 import { t } from '../i18n';
+import { SPECIES_OPTIONS, speciesLabel } from '../constants/animalSpecies';
+
+const FILTER_OPTIONS: Array<{ key: string; label: string; icon: string }> = [
+  { key: '', label: 'Tất cả', icon: 'paw' },
+  ...SPECIES_OPTIONS,
+];
 const BASE_URL: string =
   ORILIFE_BASE;
 
@@ -58,26 +64,6 @@ const PAGE_SIZE = 20;
 // Species filter
 // ---------------------------------------------------------------------------
 
-const SPECIES_OPTIONS: Array<{ key: string; label: string; icon: string }> = [
-  { key: '',      label: 'Tất cả',  icon: 'paw'           },
-  { key: 'ga',    label: 'Gà',      icon: 'bird'          },
-  { key: 'lon',   label: 'Lợn',     icon: 'pig'           },
-  { key: 'de',    label: 'Dê',      icon: 'cow'           },
-  { key: 'bo',    label: 'Bò',      icon: 'cow'           },
-  { key: 'vit',   label: 'Vịt',     icon: 'bird'          },
-  { key: 'ngong', label: 'Ngỗng',   icon: 'bird'          },
-  { key: 'cho',   label: 'Chó',     icon: 'dog'           },
-  { key: 'meo',   label: 'Mèo',     icon: 'cat'           },
-];
-
-const SPECIES_LABELS: Record<string, string> = SPECIES_OPTIONS.reduce<Record<string, string>>(
-  (acc, s) => { if (s.key) acc[s.key] = s.label; return acc; },
-  {},
-);
-
-function speciesLabel(s: string): string {
-  return SPECIES_LABELS[s.toLowerCase()] ?? s;
-}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -397,7 +383,10 @@ const AnimalManagementScreen: React.FC = () => {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.filterContent}
         >
-          {SPECIES_OPTIONS.map(opt => (
+          {/* "Tất cả" là mục của BỘ LỌC, không phải một loài — nó không nằm trong
+              danh mục máy chủ nên khai tại chỗ, đừng nhét vào nguồn chung. Thiếu
+              nó thì người dùng lọc rồi không bỏ lọc lại được. */}
+          {FILTER_OPTIONS.map(opt => (
             <TouchableOpacity
               key={opt.key}
               style={[

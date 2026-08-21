@@ -1,8 +1,8 @@
 /**
- * wakemeService — WakeMe / Activation Vault 2 pha (trước đây gọi là GetLAMP).
+ * wakemeService — Wakeme / Activation Vault 2 pha (trước đây gọi là GetLAMP).
  *
  * ĐỌC (dùng được ngay):
- *   - `getPot()`         : D một người mới sẽ nhận nếu WakeMe bây giờ.
+ *   - `getPot()`         : D một người mới sẽ nhận nếu Wakeme bây giờ.
  *   - `isFeatureOpen()`  : tính năng đã mở trên máy chủ chưa (đầu dò tầng 2).
  *   - `getVaultStatus()` : bảng vault — máy chủ hiện ném 501 vô điều kiện.
  *
@@ -18,11 +18,22 @@ import {
   PhoenixKeyApiError,
   type PotStatusResponse,
   type VaultStatusResponse,
-  type WakeMeSubmitResponse,
+  type WakemeSubmitResponse,
 } from './phoenixKey-api';
 
 /** Mã lỗi backend: tính năng chưa cấu hình trên máy chủ (HTTP 501). */
 export const WAKEME_NOT_CONFIGURED = 9501;
+
+/**
+ * Luồng NHẬN LAMP đã chạy được tới cuối chưa.
+ *
+ * `false` vì lý do ghi ở `getLamp()` bên dưới: máy chủ đòi hai chữ ký bắt buộc
+ * (`controller_pkh` + `device_pkh`) mà cầu nối native chưa tạo được. Đây là NGUỒN
+ * DUY NHẤT cho câu hỏi đó — màn Wakeme và lối vào ở màn Tài khoản đều đọc cờ này,
+ * để khi hai hàm FFI Rust xong thì mở lại bằng cách sửa ĐÚNG một dòng, không phải
+ * đi tìm từng chỗ đã vẽ nút.
+ */
+export const WAKEME_CLAIM_READY = false;
 
 /** Sức khoẻ pot (công khai, không cần đăng nhập). */
 export async function getPot(): Promise<PotStatusResponse> {
@@ -89,9 +100,9 @@ export async function getLamp(args: {
   account: number;
   walletAddress: string;
   network: number;
-}): Promise<WakeMeSubmitResponse> {
+}): Promise<WakemeSubmitResponse> {
   throw new Error(
-    'WakeMe chưa nhận được: bản ứng dụng này chưa ký được bằng khoá TAAD và khoá thiết bị. '
+    'Wakeme chưa nhận được: bản ứng dụng này chưa ký được bằng khoá TAAD và khoá thiết bị. '
     + 'Chờ bản cập nhật.',
   );
 

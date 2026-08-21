@@ -44,5 +44,5 @@ import type { OrgMintChainInputs } from '../services/orgMintTxBuilder';
 
 export const ORG_MINT_CHAIN: Partial<OrgMintChainInputs> | null = null;
 
-/** 0 = preprod/preview, 1 = mainnet. Đổi cùng lúc với bộ số ở trên. */
-export const ORG_MINT_NETWORK = 0;
+/** Mạng đúc token tổ chức — theo nguồn duy nhất, không còn số rời ở đây. */
+export { CARDANO_NETWORK as ORG_MINT_NETWORK } from './cardanoNetwork';

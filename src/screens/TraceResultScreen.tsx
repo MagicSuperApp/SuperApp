@@ -80,6 +80,7 @@ import {
   ownerLine, trustBadge,
 } from '../features/traceResult/provenanceView';
 import { formatLatLon, reverseGeocode } from '../features/traceResult/reverseGeocode';
+import { t, tf } from '../i18n';
 
 export const TRACE_RESULT_ROUTE_NAME = 'TraceResult';
 
@@ -243,7 +244,7 @@ const TraceResultScreen = () => {
 
   const Header = (
     <View style={[styles.header, { paddingTop: insets.top + SPACE.sm }]}>
-      <Pressable onPress={safeBack} style={styles.backBtn} hitSlop={10} accessibilityLabel="Đóng">
+      <Pressable onPress={safeBack} style={styles.backBtn} hitSlop={10} accessibilityLabel={t('Đóng')}>
         <Icon name="chevron-left" size={20} color={NATURE.bark} />
       </Pressable>
       <Text style={styles.headerTitle}>Nguồn gốc</Text>
@@ -470,7 +471,7 @@ const TraceResultScreen = () => {
               title="Không gian ba chiều của cây"
               hint={
                 typeof v.model?.n_points === 'number'
-                  ? `${v.model.n_points.toLocaleString('vi-VN')} điểm`
+                  ? tf('{n} điểm', { n: v.model.n_points.toLocaleString('vi-VN') })
                   : null
               }
               render={() => (
@@ -513,14 +514,14 @@ const TraceResultScreen = () => {
           <Fold
             icon="images"
             title="Góc chụp lúc đăng ký"
-            hint={v.images.length ? `${v.images.length} ảnh` : null}
+            hint={v.images.length ? tf('{n} ảnh', { n: v.images.length }) : null}
             render={() => (
               <Text style={[TYPE.caption]}>
                 {/* Tên đúng của con số: đây là số GÓC lúc đăng ký, KHÔNG phải số
                     bằng chứng tích luỹ. Gọi sai tên là làm hồ sơ trông dày hơn
                     thực tế. Xem thư OriLife 17/08 §2. */}
                 {v.images.length
-                  ? `Cây được chụp ${v.images.length} góc lúc đăng ký. Đây là tập ảnh máy dùng để nhận lại cây, không phải toàn bộ ảnh đã chụp về sau.`
+                  ? tf('Cây được chụp {n} góc lúc đăng ký. Đây là tập ảnh máy dùng để nhận lại cây, không phải toàn bộ ảnh đã chụp về sau.', { n: v.images.length })
                   : 'Hồ sơ này chưa kèm ảnh đăng ký nào.'}
               </Text>
             )}

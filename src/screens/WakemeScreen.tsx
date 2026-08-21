@@ -1,5 +1,5 @@
 /**
- * WakeMeScreen — nhận phần LAMP khởi tạo vào vault của mình (WakeMe / Activation Vault).
+ * WakemeScreen — nhận phần LAMP khởi tạo vào vault của mình (Wakeme / Activation Vault).
  *
  * NGUYÊN TẮC CỦA MÀN NÀY: KHÔNG BAO GIỜ VẼ MỘT CON SỐ MÌNH KHÔNG CÓ.
  * Khi máy chủ chưa mở tính năng, màn hiện đúng câu "chưa mở" và KHÔNG vẽ ô số nào —
@@ -65,7 +65,7 @@ function explain(code: number, raw: string): { title: string; body: string } {
   }
 }
 
-const WakeMeScreen = () => {
+const WakemeScreen = () => {
   const insets = useSafeAreaInsets();
   const navigation: any = useNavigation();
   const phoenixLive = useCapabilityLive('phoenix');
@@ -233,4 +233,4 @@ const styles = StyleSheet.create({
   btnHint: { fontSize: 12, color: COLORS.textMuted, textAlign: 'center', marginTop: 10, lineHeight: 18 },
 });
 
-export default WakeMeScreen;
+export default WakemeScreen;

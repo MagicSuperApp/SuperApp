@@ -93,7 +93,7 @@ import CareScanScreen from '../screens/CareScanScreen';
 import SeedExportScreen from '../screens/SeedExportScreen';
 import RestoreIdentityScreen from '../screens/RestoreIdentityScreen';
 import PhoenixWalletScreen from '../screens/PhoenixWalletScreen';
-import WakeMeScreen from '../screens/WakeMeScreen';
+import WakemeScreen from '../screens/WakemeScreen';
 import StakingScreen from '../screens/StakingScreen';
 import OrgDidScreen from '../screens/OrgDidScreen';
 import OrgAuthorityScreen from '../screens/OrgAuthorityScreen';
@@ -1776,9 +1776,9 @@ const HOST_STACK_SCREENS: Array<{
   { name: 'SeedExport', component: SeedExportScreen, options: { headerShown: false } },
   { name: 'RestoreIdentity', component: RestoreIdentityScreen, options: { headerShown: false } },
   { name: 'PhoenixWallet', component: PhoenixWalletScreen, options: { headerShown: false } },
-  // WakeMe — nhận phần LAMP khởi tạo. Route HOST, KHÔNG thêm vào `buildLinking()`:
+  // Wakeme — nhận phần LAMP khởi tạo. Route HOST, KHÔNG thêm vào `buildLinking()`:
   // màn này chuyển LAMP thật, không nên mở được bằng một đường dẫn từ bên ngoài.
-  { name: 'WakeMe', component: WakeMeScreen, options: { headerShown: false } },
+  { name: 'Wakeme', component: WakemeScreen, options: { headerShown: false } },
   { name: 'Staking', component: StakingScreen, options: { headerShown: false } },
   // Ví tổ chức — tạo OrgDID + mint LAMP bằng OrgDID (2 bước: mint kho → claim-release).
   { name: 'OrgDid', component: OrgDidScreen, options: { headerShown: false } },
@@ -1796,7 +1796,7 @@ const HOST_STACK_SCREENS: Array<{
   { name: 'TraceResult', component: TraceResultScreen, options: { headerShown: false } },
   // Biến thiên của cây + chia sẻ dữ liệu riêng. Route HOST, KHÔNG thêm vào
   // `buildLinking()`: cả hai đọc/ghi dữ liệu RIÊNG của vườn, không nên mở được
-  // bằng một đường dẫn từ bên ngoài — cùng lý do với `WakeMe` ở trên.
+  // bằng một đường dẫn từ bên ngoài — cùng lý do với `Wakeme` ở trên.
   { name: 'TreeDrift', component: TreeDriftScreen, options: { headerShown: false } },
   { name: 'TreeShare', component: TreeShareScreen, options: { headerShown: false } },
   { name: 'ExportIdentity', component: ExportIdentityScreen, options: { headerShown: false } },

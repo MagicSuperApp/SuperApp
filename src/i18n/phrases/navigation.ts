@@ -332,4 +332,15 @@ export const NAVIGATION: PhraseMap = {
     ja: '例：'
   },
   'ĐẶT VỊ TRÍ QUẢ': { en: 'SET FRUIT LOCATION', zh: '设置果实位置', ja: '果実の位置を設定' },
+
+  // ── Home: ô số liệu nhanh ──────────────────────────────────────────────────
+  // Ba chuỗi này trước viết CỨNG bằng tiếng Anh trong HomeScreen ("2 Farm · 30
+  // Tree", "5 new messages", "No new messages") nên người chọn tiếng Việt vẫn
+  // đọc tiếng Anh. Nay nguồn là tiếng Việt như mọi chuỗi khác trong app.
+  '{farms} vườn · {trees} cây': {
+    en: '{farms} farms · {trees} trees',
+    zh: '{farms} 个农场 · {trees} 棵树',
+    ja: '農園 {farms} · 樹木 {trees}',
+  },
+  '{n} tin chưa đọc': { en: '{n} unread', zh: '{n} 条未读', ja: '未読 {n} 件' },
 };

@@ -21,7 +21,7 @@
 // nguyên: trong một màn có chữ "ví" và một con số, bấm một nút mà không có gì xảy ra
 // KHÔNG đọc ra là "chưa làm" — nó đọc ra là tiền vừa đi đâu mất.
 //
-// ĐƯỜNG THẬT nay là `WakeMeScreen` ("Nhận LAMP"), vào từ màn Tôi
+// ĐƯỜNG THẬT nay là `WakemeScreen` ("Nhận LAMP"), vào từ màn Tôi
 // (`AccountScreen.tsx:753`). Màn đó làm đúng thứ màn này giả vờ làm, và làm ngược
 // lại về nguyên tắc: hai tầng cổng thật (`useCapabilityLive('phoenix')` +
 // `GET /wakeme/pot`), không vẽ ô số nào khi máy chủ chưa mở, và nút "Nhận LAMP" mờ
@@ -51,7 +51,7 @@ const ActivationScreen: React.FC = () => {
 
         <TouchableOpacity
           style={styles.btn}
-          onPress={() => navigation.navigate('WakeMe')}
+          onPress={() => navigation.navigate('Wakeme')}
           accessibilityRole="button"
           accessibilityLabel="Mở màn Nhận LAMP"
         >

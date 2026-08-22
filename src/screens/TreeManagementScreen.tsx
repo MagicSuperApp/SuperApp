@@ -21,14 +21,13 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
-  TextInput,
-  Modal,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 
 import { COLORS } from '../constants';
 import { NEUTRAL } from '../shared/theme';
+import RenameModal from '../components/RenameModal';
 import {
   getTrees,
   deleteTree,
@@ -64,82 +63,6 @@ type TreeItem = TreeInfo;
 interface RouteParams {
   farmId?: string;
 }
-
-// ---------------------------------------------------------------------------
-// Sub-component: Rename Modal
-// ---------------------------------------------------------------------------
-
-interface RenameModalProps {
-  visible: boolean;
-  currentName: string;
-  onConfirm: (newName: string) => void;
-  onDismiss: () => void;
-}
-
-const RenameModal: React.FC<RenameModalProps> = ({
-  visible,
-  currentName,
-  onConfirm,
-  onDismiss,
-}) => {
-  const [value, setValue] = useState(currentName);
-
-  // Reset khi mở lại với tên khác
-  useEffect(() => {
-    if (visible) setValue(currentName);
-  }, [visible, currentName]);
-
-  return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onDismiss}
-    >
-      <View style={modal.overlay}>
-        <View style={modal.dialog}>
-          <Text style={modal.title}>Đổi tên cây</Text>
-          <TextInput
-            style={modal.input}
-            value={value}
-            onChangeText={setValue}
-            placeholder="Nhập tên mới..."
-            placeholderTextColor={NEUTRAL.textMuted}
-            autoFocus
-            maxLength={80}
-            returnKeyType="done"
-            onSubmitEditing={() => {
-              if (value.trim()) onConfirm(value.trim());
-            }}
-          />
-          <View style={modal.actions}>
-            <TouchableOpacity
-              style={[modal.btn, modal.btnCancel]}
-              onPress={onDismiss}
-              activeOpacity={0.8}
-            >
-              <Text style={modal.btnCancelText}>Huỷ</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                modal.btn,
-                modal.btnConfirm,
-                !value.trim() && modal.btnDisabled,
-              ]}
-              onPress={() => {
-                if (value.trim()) onConfirm(value.trim());
-              }}
-              disabled={!value.trim()}
-              activeOpacity={0.8}
-            >
-              <Text style={modal.btnConfirmText}>Lưu</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-};
 
 // ---------------------------------------------------------------------------
 // Sub-component: Tree card
@@ -481,6 +404,8 @@ const TreeManagementScreen: React.FC = () => {
       <RenameModal
         visible={renameTarget !== null}
         currentName={renameTarget?.name ?? ''}
+        title="Đổi tên cây"
+        confirmColor={HEADER_BG}
         onConfirm={handleRenameConfirm}
         onDismiss={() => setRenameTarget(null)}
       />
@@ -700,71 +625,4 @@ const styles = StyleSheet.create({
 });
 
 // ─── Rename modal styles ───────────────────────────────────────────────────
-const modal = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  dialog: {
-    width: '100%',
-    maxWidth: 400,
-    backgroundColor: NEUTRAL.bg,
-    borderRadius: 18,
-    padding: 22,
-    gap: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 24,
-    elevation: 10,
-  },
-  title: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: NEUTRAL.text,
-    textAlign: 'center',
-  },
-  input: {
-    backgroundColor: NEUTRAL.bgSoft,
-    borderWidth: 1,
-    borderColor: NEUTRAL.border,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-    color: NEUTRAL.text,
-  },
-  actions: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  btn: {
-    flex: 1,
-    paddingVertical: 13,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  btnCancel: {
-    backgroundColor: NEUTRAL.bgSoft,
-    borderWidth: 1,
-    borderColor: NEUTRAL.border,
-  },
-  btnCancelText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: NEUTRAL.textSub,
-  },
-  btnConfirm: { backgroundColor: HEADER_BG },
-  btnConfirmText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: NEUTRAL.white,
-  },
-  btnDisabled: { opacity: 0.45 },
-});
-
 export default TreeManagementScreen;

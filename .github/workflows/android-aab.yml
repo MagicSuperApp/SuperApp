@@ -65,6 +65,31 @@ jobs:
     timeout-minutes: 90
 
     steps:
+      # ⛔ CỔNG NHÁNH — job này KÝ bằng khoá phát hành thật, nên chỉ `main` được vào.
+      # `workflow_dispatch` ở đầu tệp cho phép bấm chạy từ BẤT KỲ nhánh nào, và GitHub
+      # KHÔNG có cách khai "chỉ hiện nút này trên main". Không có cổng này thì một nhánh
+      # nháp bất kỳ cũng ra được tệp `.aab` ký đúng chữ ký Play Store — và tệp đó không
+      # mang dấu vết nào cho biết nó dựng từ nhánh nào, nên người cầm tệp không phân biệt
+      # được với bản phát hành thật. Đó là cách hai tệp cùng mang `versionCode 92` có thể
+      # cùng tồn tại mà không ai truy được cái nào từ đâu.
+      #
+      # Dùng bước CHẶN (`exit 1`) chứ KHÔNG dùng `if:` cấp job: `if:` sai điều kiện thì
+      # job bị BỎ QUA và cả lượt chạy vẫn XANH — đúng dạng hỏng câm kho này đã dính nhiều
+      # lần (nhãn `cancelled` năm ngày không ai thấy). Cổng phải kêu thành tiếng.
+      - name: Cổng nhánh — chỉ `main` được ký bản phát hành
+        run: |
+          echo "ref        = ${{ github.ref }}"
+          echo "sự kiện    = ${{ github.event_name }}"
+          echo "người bấm  = ${{ github.actor }}"
+          if [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "::error::Nhánh này KHÔNG phải main — dừng TRƯỚC khi chạm khoá ký."
+            echo "Job này ký bằng ORILIFE_UPLOAD_* — khoá ra Play Store. Chỉ main mới"
+            echo "được cho ra một tệp .aab ký thật."
+            echo "Cần bản để thử? Chạy workflow 'Debug APK' — nó không chạm khoá ký."
+            exit 1
+          fi
+          echo "OK — main."
+
       - name: Checkout repository
         uses: actions/checkout@v4
 

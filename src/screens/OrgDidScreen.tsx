@@ -40,6 +40,7 @@ import {
   type Org,
 } from '../services/orgMintService';
 import { PhoenixKeyApiError } from '../services/phoenixKey-api';
+import { showError, showSuccess } from '../utils/alert';
 
 const ORG_CACHE_KEY = '@orgmint/orgs_cache';
 
@@ -139,7 +140,7 @@ const OrgDidScreen: React.FC = () => {
   const handleCreate = async () => {
     if (!canCreate) return;
     if (!ownerDid) {
-      Alert.alert('Chưa có danh tính', 'Vui lòng kích hoạt danh tính trước khi tạo tổ chức.');
+      showError('Chưa có danh tính', 'Vui lòng kích hoạt danh tính trước khi tạo tổ chức.');
       return;
     }
     setCreating(true);
@@ -162,13 +163,13 @@ const OrgDidScreen: React.FC = () => {
       setLoadState('ready');
       setOrgName('');
       setOrgRegNo('');
-      Alert.alert('Đã tạo tổ chức', `OrgDID: ${created.orgDid}`);
+      showSuccess('Đã tạo tổ chức', `OrgDID: ${created.orgDid}`);
     } catch (err) {
       const msg =
         err instanceof PhoenixKeyApiError
           ? err.message
           : 'Không tạo được tổ chức. Vui lòng thử lại.';
-      Alert.alert('Lỗi', msg);
+      showError('Lỗi', msg);
     } finally {
       setCreating(false);
     }

@@ -42,6 +42,7 @@ import { shareQrImage } from '../../../features/treeQr/saveQrImage';
 import {
   ELEVATION, NATURE, RADIUS, SPACE, SURFACE, TONE, TOUCH_MIN, TYPE,
 } from '../theme/depth';
+import { showError, showWarning } from '../../../utils/alert';
 
 /**
  * Cạnh tấm QR khi vẽ. 260 dp là cỡ nhìn rõ trên màn, VÀ là cỡ ảnh xuất ra —
@@ -116,7 +117,7 @@ const TreePublicSheet: React.FC<TreePublicSheetProps> = ({ visible, onClose, tre
     if (!r.ok) {
       // Câu của tầng dịch vụ đã phân biệt "hết suất 24 giờ" với "máy chủ bận" —
       // hiện nguyên câu đó, đừng thay bằng câu chung của app.
-      Alert.alert('Chưa đổi được', r.error.message);
+      showError('Chưa đổi được', r.error.message);
       return;
     }
     setChosen(v);
@@ -125,15 +126,12 @@ const TreePublicSheet: React.FC<TreePublicSheetProps> = ({ visible, onClose, tre
 
   const choose = useCallback((v: TreeVisibility) => {
     if (v === 'private') { apply(v); return; }
-    Alert.alert(
-      'Bật công khai cây này?',
-      'Người mua sẽ tra được xuất xứ cây, và ẢNH QUẢ của cây này lọt vào tầm so khớp '
-      + 'của mọi người lạ dùng chức năng tra cứu. Bạn tắt lại được bất cứ lúc nào.',
-      [
-        { text: 'Thôi', style: 'cancel' },
-        { text: 'Bật công khai', onPress: () => apply(v) },
-      ],
-    );
+    showWarning('Bật công khai cây này?', 'Người mua sẽ tra được xuất xứ cây, và ẢNH QUẢ của cây này lọt vào tầm so khớp '
+      + 'của mọi người lạ dùng chức năng tra cứu. Bạn tắt lại được bất cứ lúc nào.', {
+        confirmText: 'Bật công khai',
+        cancelText: 'Thôi',
+        onConfirm: () => apply(v),
+    });
   }, [apply]);
 
   const copyCode = useCallback(() => {
@@ -154,12 +152,10 @@ const TreePublicSheet: React.FC<TreePublicSheetProps> = ({ visible, onClose, tre
     if (r.ok || r.reason === 'dismissed') return;
     // Ba nguyên nhân, hai cách xử khác nhau — gộp lại thì người dùng bấm lại mãi
     // một nút không bao giờ chạy được trên bản app họ đang cầm.
-    Alert.alert(
-      'Chưa xuất được ảnh',
+    showError('Chưa xuất được ảnh',
       r.reason === 'unavailable'
         ? 'Bản ứng dụng này chưa xuất được ảnh. Hãy cập nhật ứng dụng, hoặc tạm thời chụp màn hình tấm mã.'
-        : 'Thử lại giúp, hoặc chụp màn hình tấm mã.',
-    );
+        : 'Thử lại giúp, hoặc chụp màn hình tấm mã.');
   }, [code]);
 
   const traceUrl = code ? publicTraceUrl(ORILIFE_BASE, code) : null;

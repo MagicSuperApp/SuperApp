@@ -22,6 +22,7 @@ import {
   buildFoundingChallenge, buildUpgradeChallenge, signSharedOrgChallenge,
   foundOrg, upgradeAuthority, type FounderSig,
 } from '../services/orgMintService';
+import { showError, showInfo, showSuccess } from '../utils/alert';
 
 const PRIMARY = '#5B3FA8';
 type Mode = 'founding' | 'upgrade' | 'cosign';
@@ -60,17 +61,17 @@ const OrgAuthorityScreen: React.FC = () => {
   const th = parseInt(threshold, 10) || 0;
   const allSigned = uniqueDids.length > 0 && uniqueDids.every(d => sigs[d]);
 
-  const copy = (s: string, what: string) => { Clipboard.setString(s); Alert.alert('Đã sao chép', what); };
+  const copy = (s: string, what: string) => { Clipboard.setString(s); showSuccess('Đã sao chép', what); };
 
   // Initiator: dựng challenge + ký phần mình → khoá.
   const handlePrepare = useCallback(async () => {
-    if (!selfDid) { Alert.alert('Thiếu danh tính', 'Máy này chưa có danh tính.'); return; }
+    if (!selfDid) { showInfo('Thiếu danh tính', 'Máy này chưa có danh tính.'); return; }
     const members = memberDids.map(d => d.trim()).filter(Boolean);
-    if (mode === 'founding' && !name.trim()) { Alert.alert('Thiếu tên', 'Nhập tên tổ chức.'); return; }
-    if (mode === 'upgrade' && !orgDid.trim()) { Alert.alert('Thiếu mã định danh tổ chức', 'Nhập OrgDID cần nâng quyền.'); return; }
-    if (members.length < 1) { Alert.alert('Thiếu thành viên', 'Cần ≥ 1 đồng-sáng-lập/thành-viên khác.'); return; }
+    if (mode === 'founding' && !name.trim()) { showInfo('Thiếu tên', 'Nhập tên tổ chức.'); return; }
+    if (mode === 'upgrade' && !orgDid.trim()) { showInfo('Thiếu mã định danh tổ chức', 'Nhập OrgDID cần nâng quyền.'); return; }
+    if (members.length < 1) { showInfo('Thiếu thành viên', 'Cần ≥ 1 đồng-sáng-lập/thành-viên khác.'); return; }
     const total = mode === 'upgrade' ? 1 + members.length : 1 + members.length;
-    if (th < 2 || th > total) { Alert.alert('Ngưỡng không hợp lệ', `Ngưỡng phải từ 2 đến ${total}.`); return; }
+    if (th < 2 || th > total) { showInfo('Ngưỡng không hợp lệ', `Ngưỡng phải từ 2 đến ${total}.`); return; }
 
     setBusy(true);
     try {
@@ -83,7 +84,7 @@ const OrgAuthorityScreen: React.FC = () => {
       setNonce(n); setChallenge(ch); setLocked(true);
       setSigs({ [mine.ownerDid]: mine.ownerSignature });
     } catch (e: any) {
-      Alert.alert('Lỗi', e?.message ?? 'Không tạo được challenge.');
+      showError('Lỗi', e?.message ?? 'Không tạo được challenge.');
     } finally { setBusy(false); }
   }, [selfDid, memberDids, mode, name, orgDid, th]);
 
@@ -95,7 +96,11 @@ const OrgAuthorityScreen: React.FC = () => {
         const { orgDid: newOrg } = await foundOrg({
           name, registrationNumber: regNo, threshold: th, founders, nonce,
         });
-        Alert.alert('Đã tạo tổ chức m/n', `OrgDID: ${newOrg}`, [{ text: 'OK', onPress: () => navigation.goBack() }]);
+        showSuccess('Đã tạo tổ chức m/n', `OrgDID: ${newOrg}`, {
+            confirmText: 'OK',
+            hideCancel: true,
+            onConfirm: () => navigation.goBack(),
+        });
       } else {
         const members = memberDids.map(d => d.trim()).filter(Boolean);
         const newMembers: FounderSig[] = members.map(d => ({ ownerDid: d, ownerSignature: sigs[d] }));
@@ -104,21 +109,25 @@ const OrgAuthorityScreen: React.FC = () => {
           currentOwner: { ownerDid: selfDid, ownerSignature: sigs[selfDid] },
           newMembers, newThreshold: th, nonce,
         });
-        Alert.alert('Đã nâng quyền', `Ngưỡng mới: ${newTh ?? th}`, [{ text: 'OK', onPress: () => navigation.goBack() }]);
+        showSuccess('Đã nâng quyền', `Ngưỡng mới: ${newTh ?? th}`, {
+            confirmText: 'OK',
+            hideCancel: true,
+            onConfirm: () => navigation.goBack(),
+        });
       }
     } catch (e: any) {
-      Alert.alert('Thất bại', e?.message ?? 'Kiểm tra chữ ký các thành viên rồi thử lại.');
+      showError('Thất bại', e?.message ?? 'Kiểm tra chữ ký các thành viên rồi thử lại.');
     } finally { setBusy(false); }
   }, [mode, uniqueDids, sigs, name, regNo, th, nonce, memberDids, orgDid, selfDid, navigation]);
 
   const handleCosign = useCallback(async () => {
     const ch = pasted.trim();
-    if (!ch.startsWith('PHOENIXKEY_ORG_')) { Alert.alert('Sai challenge', 'Chuỗi phải bắt đầu PHOENIXKEY_ORG_…'); return; }
+    if (!ch.startsWith('PHOENIXKEY_ORG_')) { showInfo('Sai challenge', 'Chuỗi phải bắt đầu PHOENIXKEY_ORG_…'); return; }
     setBusy(true);
     try {
       setCosign(await signSharedOrgChallenge(ch));
     } catch (e: any) {
-      Alert.alert('Lỗi', e?.message ?? 'Không ký được.');
+      showError('Lỗi', e?.message ?? 'Không ký được.');
     } finally { setBusy(false); }
   }, [pasted]);
 

@@ -20,7 +20,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useDispatch } from 'react-redux';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS } from '../constants';
-import { showWarning, showSuccess } from '../utils/alert';
+import { showSuccess, showWarning } from '../utils/alert';
 import taadEnclave from '../sdk/taadEnclave';
 import {
   deriveMasterKekFromMnemonic,

@@ -27,6 +27,7 @@ import {
   uploadTreeVideo, MAX_TREE_VIDEO_BYTES, type TreeVideoResult,
 } from '../services/treeVideoService';
 import { withPhotoSave } from '../services/mediaSavePermission';
+import { showError, showInfo, showSuccess } from '../utils/alert';
 
 // image-picker nạp mềm (giống FruitVideo/AnimalEnroll) — máy chưa cài thì báo rõ, không crash.
 const imagePicker = (() => {
@@ -100,20 +101,20 @@ const TreeVideoScreen: React.FC = () => {
   // ── Quay video ────────────────────────────────────────────────────────────
   const handleRecord = useCallback(async () => {
     if (!imagePicker?.launchCamera) {
-      Alert.alert('Chưa mở được máy ảnh', 'Bản app này chưa mở được máy ảnh. Vui lòng cập nhật app rồi thử lại.');
+      showError('Chưa mở được máy ảnh', 'Bản app này chưa mở được máy ảnh. Vui lòng cập nhật app rồi thử lại.');
       return;
     }
     imagePicker.launchCamera(await withPhotoSave(VIDEO_OPTIONS), (response: any) => {
       if (response.didCancel) return;
       if (response.errorCode) {
-        Alert.alert('Lỗi camera', response.errorMessage ?? 'Không mở được camera. Kiểm tra quyền.');
+        showError('Lỗi camera', response.errorMessage ?? 'Không mở được camera. Kiểm tra quyền.');
         return;
       }
       const asset = response.assets?.[0];
       if (!asset?.uri) return;
       const size = asset.fileSize ?? null;
       if (size && size > MAX_TREE_VIDEO_BYTES) {
-        Alert.alert('Video quá nặng', 'Clip vượt 80MB — hãy quay ngắn hơn.');
+        showInfo('Video quá nặng', 'Clip vượt 80MB — hãy quay ngắn hơn.');
         return;
       }
       setVideoUri(asset.uri);
@@ -126,7 +127,7 @@ const TreeVideoScreen: React.FC = () => {
   const handleUpload = useCallback(async () => {
     if (!videoUri) return;
     if (!selectedTreeId) {
-      Alert.alert('Chọn cây', 'Hãy chọn cây cần bổ sung góc nhìn.');
+      showInfo('Chọn cây', 'Hãy chọn cây cần bổ sung góc nhìn.');
       return;
     }
     setUploading(true);
@@ -134,7 +135,7 @@ const TreeVideoScreen: React.FC = () => {
       // Token field-reid (DID challenge-sign) — như luồng nhận-diện/tạo-vườn.
       const tokenOk = await ensureOrilifeToken(ORILIFE_BASE);
       if (!tokenOk) {
-        Alert.alert('Chưa xác thực', 'Không lấy được phiên máy chủ. Kiểm tra mạng/danh tính rồi thử lại.');
+        showError('Chưa xác thực', 'Không lấy được phiên máy chủ. Kiểm tra mạng/danh tính rồi thử lại.');
         return;
       }
       let res = await uploadTreeVideo(ORILIFE_BASE, selectedTreeId, videoUri, {
@@ -171,12 +172,10 @@ const TreeVideoScreen: React.FC = () => {
         setResult(res);
       } else if (res.error?.type === 'no_usable_frames') {
         // 422 — clip đọc được nhưng không khung đẹp: hướng-dẫn quay lại, KHÔNG coi là lỗi hệ-thống.
-        Alert.alert(
-          'Chưa dùng được clip',
-          'Chưa lấy được khung rõ từ video. Quay chậm hơn, đủ sáng, giữ chắc tay rồi thử lại.',
-        );
+        showError('Chưa dùng được clip',
+          'Chưa lấy được khung rõ từ video. Quay chậm hơn, đủ sáng, giữ chắc tay rồi thử lại.');
       } else {
-        Alert.alert('Chưa gửi được', res.error?.detail ?? 'Thử lại nơi sóng tốt.');
+        showError('Chưa gửi được', res.error?.detail ?? 'Thử lại nơi sóng tốt.');
       }
     } finally {
       setUploading(false);
@@ -228,7 +227,7 @@ const TreeVideoScreen: React.FC = () => {
               activeOpacity={0.7}
               onPress={() => {
                 Clipboard.setString(result.video_cid!);
-                Alert.alert('Đã sao chép', 'Mã tra cứu đã vào bộ nhớ tạm.');
+                showSuccess('Đã sao chép', 'Mã tra cứu đã vào bộ nhớ tạm.');
               }}
             >
               <Icon name="shield-check" size={15} color="#1b5e20" />

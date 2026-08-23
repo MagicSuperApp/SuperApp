@@ -102,6 +102,7 @@ import {
 // Nếu chưa có → fallback staging
 import { ORILIFE_BASE } from '../services/orilifeBase';
 import { tk } from '../i18n/keys';
+import { showError, showSuccess, showWarning } from '../utils/alert';
 const BASE_URL: string =
   ORILIFE_BASE;
 
@@ -295,10 +296,11 @@ const TreeIdentityScreen: React.FC = () => {
       },
     );
     if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
-      Alert.alert('Cần quyền Camera', 'Vui lòng bật Camera trong Cài đặt.', [
-        { text: 'Huỷ', style: 'cancel' },
-        { text: 'Mở Cài đặt', onPress: () => Linking.openSettings() },
-      ]);
+      showWarning('Cần quyền Camera', 'Vui lòng bật Camera trong Cài đặt.', {
+          confirmText: 'Mở Cài đặt',
+          cancelText: 'Huỷ',
+          onConfirm: () => Linking.openSettings(),
+      });
       return false;
     }
     return true;
@@ -390,7 +392,7 @@ const TreeIdentityScreen: React.FC = () => {
   // ── Start capture session (iOS + Android native) ──────────────────────────
   const handleStartCapture = async () => {
     if (!TreeReIDBridge.isAvailable()) {
-      Alert.alert('Lỗi', 'Native module chưa sẵn sàng. Vui lòng cập nhật app.');
+      showError('Lỗi', 'Native module chưa sẵn sàng. Vui lòng cập nhật app.');
       return;
     }
     // Android: xin quyền Camera trước (iOS module tự xin trong startCaptureSession).
@@ -413,7 +415,7 @@ const TreeIdentityScreen: React.FC = () => {
       setIdentResult(null);
     } catch (e: any) {
       rLog.nativeBridge.bridgeError('startCaptureSession', e?.message ?? String(e));
-      Alert.alert('Lỗi', 'Không thể bắt đầu chụp. Vui lòng thử lại.');
+      showError('Lỗi', 'Không thể bắt đầu chụp. Vui lòng thử lại.');
     } finally {
       setIsLoading(false);
     }
@@ -488,10 +490,8 @@ const TreeIdentityScreen: React.FC = () => {
       rLog.treeIdentity.stopSessionResult(captureCount >= MIN_ROUND1, captureCount);
 
       if (!stopResult || captureCount < MIN_ROUND1) {
-        Alert.alert(
-          'Chưa đủ góc',
-          `Cần ít nhất ${MIN_ROUND1} góc chụp. Hiện có ${captureCount} góc.`,
-        );
+        showError('Chưa đủ góc',
+          `Cần ít nhất ${MIN_ROUND1} góc chụp. Hiện có ${captureCount} góc.`);
         return;
       }
 
@@ -509,7 +509,7 @@ const TreeIdentityScreen: React.FC = () => {
       );
     } catch (e: any) {
       rLog.nativeBridge.bridgeError('stopCaptureSession', e?.message ?? String(e));
-      Alert.alert('Lỗi', 'Không thể dừng chụp. Vui lòng thử lại.');
+      showError('Lỗi', 'Không thể dừng chụp. Vui lòng thử lại.');
     } finally {
       setIsLoading(false);
     }
@@ -530,7 +530,7 @@ const TreeIdentityScreen: React.FC = () => {
       }));
       if (res.didCancel) return;
       if (res.errorCode) {
-        Alert.alert('Lỗi camera', res.errorMessage || 'Không mở được camera.');
+        showError('Lỗi camera', res.errorMessage || 'Không mở được camera.');
         return;
       }
       const uri = res.assets?.[0]?.uri;
@@ -538,17 +538,15 @@ const TreeIdentityScreen: React.FC = () => {
         setAndroidImageUris(prev => [...prev, uri]);
       }
     } catch (e: any) {
-      Alert.alert('Lỗi', e?.message || 'Không chụp được ảnh.');
+      showError('Lỗi', e?.message || 'Không chụp được ảnh.');
     }
   };
 
   // ── Android: Identify với ảnh picker ──────────────────────────────────────
   const handleAndroidIdentify = async () => {
     if (androidImageUris.length < MIN_ROUND1) {
-      Alert.alert(
-        'Chưa đủ ảnh',
-        `Cần ít nhất ${MIN_ROUND1} ảnh. Hiện có ${androidImageUris.length} ảnh.`,
-      );
+      showError('Chưa đủ ảnh',
+        `Cần ít nhất ${MIN_ROUND1} ảnh. Hiện có ${androidImageUris.length} ảnh.`);
       return;
     }
     await runIdentify(androidImageUris);
@@ -575,7 +573,7 @@ const TreeIdentityScreen: React.FC = () => {
       await runIdentify(imagePaths);
     } catch (e: any) {
       setIsIdentifyingLocal(false);
-      Alert.alert('Đăng ký lại thất bại', e?.message || 'Vui lòng thử lại.');
+      showError('Đăng ký lại thất bại', e?.message || 'Vui lòng thử lại.');
     }
   };
 
@@ -605,20 +603,15 @@ const TreeIdentityScreen: React.FC = () => {
       // khi probe trả 404 chắc-chắn — tránh bắt user đăng-ký oan khi chỉ mất mạng.
       const registered = await phoenixKeyAuth.isIdentityRegisteredOnServer();
       if (registered === false) {
-        Alert.alert(
-          'Danh tính chưa có trên máy chủ',
-          'Máy chủ nhận diện đã được làm mới nên danh tính cũ trên máy không còn hiệu lực. ' +
-            'Đăng ký lại danh tính để tiếp tục nhận diện?',
-          [
-            { text: 'Huỷ', style: 'cancel' },
-            { text: 'Đăng ký lại', onPress: () => reRegisterThenIdentify(imagePaths) },
-          ],
-        );
+        showWarning('Danh tính chưa có trên máy chủ', 'Máy chủ nhận diện đã được làm mới nên danh tính cũ trên máy không còn hiệu lực. ' +
+            'Đăng ký lại danh tính để tiếp tục nhận diện?', {
+            confirmText: 'Đăng ký lại',
+            cancelText: 'Huỷ',
+            onConfirm: () => reRegisterThenIdentify(imagePaths),
+        });
       } else {
-        Alert.alert(
-          'Chưa nhận diện được',
-          'Máy chủ nhận diện đang bận hoặc mạng chập chờn. Vui lòng thử lại sau ít phút.',
-        );
+        showError('Chưa nhận diện được',
+          'Máy chủ nhận diện đang bận hoặc mạng chập chờn. Vui lòng thử lại sau ít phút.');
       }
       return;
     }
@@ -674,11 +667,11 @@ const TreeIdentityScreen: React.FC = () => {
       } else {
         rLog.treeIdentity.apiError(result.error?.detail ?? 'unknown', imagePaths.length);
         // Hiện câu gợi ý rõ ràng (flat/heterogeneous/need_gps...) thay vì "lỗi" chung (Lỗi field #3).
-        Alert.alert('Chưa tạo được cây', fieldErrorMessage(result.error));
+        showError('Chưa tạo được cây', fieldErrorMessage(result.error));
       }
     } catch (e: any) {
       rLog.treeIdentity.apiError(e?.message ?? String(e), imagePaths.length);
-      Alert.alert('Lỗi nhận diện', 'Lỗi kết nối. Thử lại.');
+      showError('Lỗi nhận diện', 'Lỗi kết nối. Thử lại.');
     } finally {
       setIsIdentifyingLocal(false);
     }
@@ -706,7 +699,7 @@ const TreeIdentityScreen: React.FC = () => {
   // ── MATCH: cập nhật vị trí MOVED ──────────────────────────────────────────
   const handleUpdateLocation = async () => {
     if (!identResult?.tree_id || !gpsRedux) {
-      Alert.alert('Lỗi', 'Không có GPS hoặc mã cây để cập nhật vị trí.');
+      showError('Lỗi', 'Không có GPS hoặc mã cây để cập nhật vị trí.');
       return;
     }
     try {
@@ -738,12 +731,10 @@ const TreeIdentityScreen: React.FC = () => {
       // cho một cửa khác ở `:938-941`, chỗ này chưa áp.
       if (res.ok && res.data?.ok !== false && res.data?.added !== false) {
         const hint = await treeCaptureHint(identResult.tree_id);
-        Alert.alert('Đã cập nhật', withHint('Vị trí mới của cây đã được lưu.', hint));
+        showSuccess('Đã cập nhật', withHint('Vị trí mới của cây đã được lưu.', hint));
       } else {
-        Alert.alert(
-          'Chưa cập nhật được',
-          res.data?.reason ?? fieldErrorMessage(res.error),
-        );
+        showError('Chưa cập nhật được',
+          res.data?.reason ?? fieldErrorMessage(res.error));
       }
     } finally {
       setIsLoading(false);
@@ -785,20 +776,16 @@ const TreeIdentityScreen: React.FC = () => {
         // thì tưởng công đổ sông đổ biển và chụp lại từ đầu.
         const n = res.data?.n_added;
         const hint = await treeCaptureHint(id);
-        Alert.alert(
-          'Đã xác nhận',
+        showSuccess('Đã xác nhận',
           withHint(
             n == null
               ? 'Góc nhìn mới đã thêm vào cây.'
               : `Góc nhìn mới đã thêm vào cây.\nĐã thêm: ${n} góc.`,
             hint,
-          ),
-        );
+          ));
       } else {
-        Alert.alert(
-          'Chưa thêm được góc',
-          res.data?.reason ?? fieldErrorMessage(res.error),
-        );
+        showError('Chưa thêm được góc',
+          res.data?.reason ?? fieldErrorMessage(res.error));
       }
     } finally {
       setIsLoading(false);
@@ -868,7 +855,7 @@ const TreeIdentityScreen: React.FC = () => {
         setVerdictSent(verdict);
       } else {
         rLog.treeIdentity.verdictResult(false, res.error?.detail ?? 'unknown');
-        Alert.alert('Lỗi', res.error?.detail ?? 'Không gửi được phản hồi. Thử lại.');
+        showError('Lỗi', res.error?.detail ?? 'Không gửi được phản hồi. Thử lại.');
       }
     } finally {
       setIsSendingVerdict(false);

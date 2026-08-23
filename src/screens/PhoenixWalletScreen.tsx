@@ -19,7 +19,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { COLORS } from '../constants';
-import { showInfo, showWarning, showSuccess, showError } from '../utils/alert';
+import { showError, showInfo, showSuccess, showWarning } from '../utils/alert';
 import { enableDeviceKey } from '../services/deviceKeyService';
 import { rotateOwnerKey } from '../services/keyRotateService';
 import taad from '../sdk/taadEnclave';

@@ -17,6 +17,7 @@ import { useOfferingMutations } from '../hooks/useOfferings';
 import StateView from '../../../components/state/StateView';
 import type { JobType, JobTypeField } from '../services/types';
 import type { CreateOfferingBody } from '../services/workApi';
+import { showError, showInfo, showSuccess } from '../../../utils/alert';
 
 const MODES: Array<{ key: 'online' | 'offline' | 'ca-hai'; label: string }> = [
   { key: 'online', label: 'Trực tuyến' },
@@ -45,7 +46,7 @@ const CreateOfferingScreen: React.FC = () => {
   const canSubmit = !!templateKey && !submitting;
 
   const onSubmit = async () => {
-    if (!templateKey) { Alert.alert('Thiếu mẫu', 'Chọn loại dịch vụ (mẫu việc) trước.'); return; }
+    if (!templateKey) { showInfo('Thiếu mẫu', 'Chọn loại dịch vụ (mẫu việc) trước.'); return; }
     const body: CreateOfferingBody = {
       templateKey,
       name: name.trim() || undefined,
@@ -59,13 +60,15 @@ const CreateOfferingScreen: React.FC = () => {
     };
     const res = await create(body);
     if (res) {
-      Alert.alert('Đã chào dịch vụ', 'Dịch vụ của bạn đã lên chợ.', [
-        { text: 'OK', onPress: () => navigation.goBack() },
-      ]);
+      showSuccess('Đã chào dịch vụ', 'Dịch vụ của bạn đã lên chợ.', {
+          confirmText: 'OK',
+          hideCancel: true,
+          onConfirm: () => navigation.goBack(),
+      });
     } else if (errorCode === 'BACKEND_DISABLED') {
-      Alert.alert('Chưa kết nối máy chủ', 'Cần máy chủ AladinWork để chào dịch vụ. Thử lại khi dịch vụ sống.');
+      showError('Chưa kết nối máy chủ', 'Cần máy chủ AladinWork để chào dịch vụ. Thử lại khi dịch vụ sống.');
     } else {
-      Alert.alert('Không tạo được', errorCode === 'BAD_INPUT'
+      showError('Không tạo được', errorCode === 'BAD_INPUT'
         ? 'Dữ liệu chưa hợp lệ — kiểm tra lại giá / các trường theo mẫu.'
         : `Lỗi máy chủ${errorCode ? ` (${errorCode})` : ''}. Thử lại sau.`);
     }

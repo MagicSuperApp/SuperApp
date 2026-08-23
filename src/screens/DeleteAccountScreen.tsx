@@ -23,6 +23,7 @@ import { t } from '../i18n';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { logoutUser } from '../store/userSlice';
 import { requestRemoteDeletion, wipeLocalIdentity } from '../services/accountDeletionService';
+import { showInfo } from '../utils/alert';
 
 // Từ xác nhận chấp nhận theo NGÔN NGỮ đang hiện (hướng dẫn 'Nhập XOÁ' dịch theo lang, nên
 // nhận cả DELETE/删除/削除). So sau khi bỏ dấu-cách + viết hoa.
@@ -53,13 +54,13 @@ const DeleteAccountScreen: React.FC = () => {
       // 3) Xoá sạch khoá/DID/token/cache trên máy — non-custodial: xoá khoá = xoá tài khoản.
       await wipeLocalIdentity();
       Alert.alert(
-        t('Đã xoá tài khoản'),
-        t('Dữ liệu trên máy này đã được xoá. Yêu cầu xoá phía máy chủ đã được ghi nhận và sẽ được xử lý.'),
-        [{ text: t('Đã hiểu'), onPress: () => navigation.reset({ index: 0, routes: [{ name: 'Login' }] }) }],
+        t(t('Đã xoá tài khoản')),
+        t(t('Dữ liệu trên máy này đã được xoá. Yêu cầu xoá phía máy chủ đã được ghi nhận và sẽ được xử lý.')),
+        [{ text: t(t('Đã hiểu')), onPress: () => navigation.reset({ index: 0, routes: [{ name: 'Login' }] }) }],
       );
     } catch (e) {
       console.warn('[DeleteAccount] lỗi:', e);
-      Alert.alert(t('Chưa xoá được. Thử lại khi có mạng tốt.'));
+      showInfo(t('Chưa xoá được. Thử lại khi có mạng tốt.'));
       setDeleting(false);
     }
   };

@@ -4,7 +4,7 @@
  * nên phép chia bằng Number sẽ sai âm thầm — test này chốt là ta không dùng Number.
  */
 
-import { fmtToken, fmtLamp, fmtAda, fmtCarp, hasAnyLamp, LAMP_DECIMALS, CARP_DECIMALS, fmtAdaLabel } from './token';
+import { fmtToken, fmtLamp, fmtAda, fmtCarp, hasAnyLamp, LAMP_DECIMALS, CARP_DECIMALS, fmtAdaLabel, fmtLampWhole, lampWholeToOildrop } from './token';
 
 describe('fmtToken', () => {
   it('đổi oildrop sang LAMP theo decimals 6', () => {
@@ -110,5 +110,56 @@ describe('fmtAdaLabel — gộp bản sao từ StakingScreen', () => {
 
   it('số 0 thật vẫn là 0, không thành dấu gạch', () => {
     expect(fmtAdaLabel(0)).toBe('0 ₳');
+  });
+});
+
+/**
+ * Hai đơn vị LAMP — khoá lại vì lỗi ở đây KHÔNG ném, KHÔNG đỏ kiểu, và con số
+ * sai đi đúng một triệu lần thì trông vẫn như một con số hợp lý.
+ * Ca thật đã xảy ra: màn Tài khoản đưa `initialDlamp` (LAMP nguyên) qua
+ * `fmtLamp` ⇒ 1001 LAMP hiện ra "0.001001".
+ */
+describe('lampWholeToOildrop', () => {
+  it('1001 LAMP nguyên → 1_001_000_000 oildrop', () => {
+    expect(lampWholeToOildrop(1001)).toBe(1_001_000_000n);
+  });
+
+  it('0 là 0 thật, KHÔNG phải "chưa biết"', () => {
+    expect(lampWholeToOildrop(0)).toBe(0n);
+  });
+
+  it('null/undefined → null, để chỗ gọi không lỡ cộng 0 vào tổng', () => {
+    expect(lampWholeToOildrop(null)).toBeNull();
+    expect(lampWholeToOildrop(undefined)).toBeNull();
+  });
+
+  it('NaN → null chứ không ném, và không thành 0', () => {
+    expect(lampWholeToOildrop(Number.NaN)).toBeNull();
+  });
+
+  it('cộng được với số dư ví (oildrop) mà không lệch đơn vị', () => {
+    const walletOildrop = 2_500_000n;              // 2,5 LAMP trong ví
+    const vested = lampWholeToOildrop(3)!;         // 3 LAMP đã mở khoá
+    expect(fmtToken(walletOildrop + vested, 6)).toBe('5.5');
+  });
+});
+
+describe('fmtLampWhole', () => {
+  it('in THẲNG số LAMP nguyên, không chia 10⁶', () => {
+    expect(fmtLampWhole(1001)).toBe('1,001');
+  });
+
+  it('KHÔNG lẫn với fmtLamp — cùng đầu vào phải ra hai kết quả khác nhau', () => {
+    expect(fmtLampWhole(1001)).toBe('1,001');
+    expect(fmtLamp(1001)).not.toBe('1,001');
+  });
+
+  it('thiếu số trả dấu gạch, KHÔNG trả 0', () => {
+    expect(fmtLampWhole(null)).toBe('—');
+    expect(fmtLampWhole(undefined)).toBe('—');
+  });
+
+  it('0 thật vẫn in 0', () => {
+    expect(fmtLampWhole(0)).toBe('0');
   });
 });

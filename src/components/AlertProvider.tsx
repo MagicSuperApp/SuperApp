@@ -21,6 +21,7 @@ const AlertProvider: React.FC<{ children: React.ReactNode }> = ({ children }) =>
           } : undefined}
           confirmText={currentAlert.confirmText}
           cancelText={currentAlert.cancelText}
+          hideCancel={currentAlert.hideCancel}
         />
       )}
     </>

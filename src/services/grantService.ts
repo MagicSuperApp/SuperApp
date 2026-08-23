@@ -12,13 +12,18 @@
  * vào khoảng giữa đó.
  *
  * ⚠️ CHỈ MỘT QUYỀN LÀ THẬT. Chú thích của route nhắc `read_private/moderate/
- * contribute`, nhưng kho grant khai `VALID_PERMS = {"read_private"}`
- * (`grant_store.py:32`) và `create()` LỌC ÂM THẦM mọi quyền ngoài tập đó
- * (`:146`). Gửi `moderate` ⟹ danh sách quyền rỗng ⟹ `create` trả `None` ⟹ HTTP
- * 400 "Grant không hợp-lệ" — một câu không hề nhắc tới quyền nào sai. Vì vậy hàm
- * ở đây **từ chối tại chỗ** thay vì gửi đi rồi đọc một câu lỗi lạc đề. Ngày máy
- * chủ mở thêm quyền thì sửa đúng `GRANT_PERMS` dưới đây, và bài kiểm sẽ đỏ nếu
- * ai đó nới ở chỗ khác.
+ * contribute`, nhưng kho grant khai `VALID_PERMS = {"read_private"}`.
+ * `moderate`/`contribute` thuộc lớp đóng góp §17 CHƯA dựng — máy chủ cố ý bỏ
+ * khỏi tập hợp lệ để app không dựng nút cho một quyền không có tác dụng.
+ *
+ * Hàm ở đây vẫn **từ chối tại chỗ**, nhưng KHÔNG còn vì lý do cũ. Lý do cũ ghi ở
+ * đây — "`create()` LỌC ÂM THẦM rồi trả câu lỗi lạc đề" — đã LẠC HẬU; nhà OriLife
+ * đo lại trên `ad55d73` 19/08: cửa `POST /api/grant` kiểm TRƯỚC khi gọi kho và
+ * trả **400 kèm đúng tên quyền sai** (`server.py:5594`, hàm `unknown_perms`). Nhánh im lặng trong
+ * `create()` còn đó nhưng chỉ có một nơi gọi, và nơi đó đổi `None` thành 400 ngay.
+ * Giữ phép từ chối tại chỗ vì nó tiết kiệm một vòng mạng giữa vườn, không phải vì
+ * máy chủ nuốt lỗi. Ngày máy chủ mở thêm quyền thì sửa đúng `GRANT_PERMS` dưới
+ * đây, và bài kiểm sẽ đỏ nếu ai đó nới ở chỗ khác.
  *
  * ⚠️ `grantee` KHÔNG phải tên người. Nó là `owner-ref` đục — `acct:<id>` hoặc
  * DID (`grant_store.py:45`). Người dùng gõ TÊN, app phải đổi tên → owner-ref qua

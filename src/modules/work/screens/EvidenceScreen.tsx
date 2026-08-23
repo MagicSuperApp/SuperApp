@@ -14,6 +14,7 @@ import { WORK_THEME } from '../theme/colors';
 import { useEvidence } from '../hooks/useEvidence';
 import StateView from '../../../components/state/StateView';
 import type { EvidenceItem } from '../services/workApi';
+import { showError, showSuccess } from '../../../utils/alert';
 
 type RouteParams = { WorkEvidence: { contractId: string } };
 
@@ -37,15 +38,15 @@ const EvidenceScreen: React.FC = () => {
   const removeDraft = (i: number) => setDrafts(d => d.filter((_, idx) => idx !== i));
 
   const onSubmit = async () => {
-    if (drafts.length === 0) { Alert.alert('Chưa có mục', 'Thêm ít nhất 1 mục bằng chứng.'); return; }
+    if (drafts.length === 0) { showError('Chưa có mục', 'Thêm ít nhất 1 mục bằng chứng.'); return; }
     const ok = await register(drafts);
     if (ok) {
       setDrafts([]);
-      Alert.alert('Đã đăng', 'Bằng chứng đã lưu. Bạn có thể quay lại giao việc.');
+      showSuccess('Đã đăng', 'Bằng chứng đã lưu. Bạn có thể quay lại giao việc.');
     } else if (errorCode === 'BACKEND_DISABLED') {
-      Alert.alert('Chưa kết nối máy chủ', 'Cần máy chủ AladinWork để đăng bằng chứng.');
+      showError('Chưa kết nối máy chủ', 'Cần máy chủ AladinWork để đăng bằng chứng.');
     } else {
-      Alert.alert('Không đăng được', errorCode === 'EVIDENCE_SHORT'
+      showError('Không đăng được', errorCode === 'EVIDENCE_SHORT'
         ? 'Bằng chứng chưa đủ — thêm mô tả/liên kết cụ thể hơn.'
         : `Lỗi${errorCode ? ` (${errorCode})` : ''}. Thử lại sau.`);
     }

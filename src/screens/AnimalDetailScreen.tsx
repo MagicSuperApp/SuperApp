@@ -30,6 +30,7 @@ import { COLORS } from '../constants';
 import { ORILIFE_BASE } from '../services/orilifeBase';
 import { getAnimal, type AnimalInfo } from '../services/animalReIDService';
 import EntityTimeline from '../modules/trace/components/EntityTimeline';
+import { speciesLabel } from '../constants/animalSpecies';
 
 type AnimalDetailRouteParams = {
   AnimalDetail: {
@@ -42,15 +43,6 @@ type AnimalDetailRouteParams = {
 const HEADER_BG = '#5d4037';
 const BASE_URL: string = ORILIFE_BASE;
 
-const SPECIES_LABELS: Record<string, string> = {
-  ga: 'Gà', lon: 'Lợn', de: 'Dê', bo: 'Bò',
-  vit: 'Vịt', ngong: 'Ngỗng', cho: 'Chó', meo: 'Mèo',
-};
-
-function speciesLabel(s?: string): string {
-  if (!s) return 'chưa rõ loài';
-  return SPECIES_LABELS[s.toLowerCase()] ?? s;
-}
 
 /** `2026-08-18T03:12:00+00:00` → `18/08/2026`. Chuỗi hỏng → trả nguyên văn. */
 function fmtDate(iso?: string): string | null {

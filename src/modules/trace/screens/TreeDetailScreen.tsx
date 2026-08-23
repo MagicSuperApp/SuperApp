@@ -63,6 +63,8 @@ import {
 } from '../../../services/fruitReIDService';
 import { getTrees, mapTreeInfoToUI, removeTreeViews, setTreeFarm } from '../../../services/treeReIDService';
 import { useSelector } from 'react-redux';
+import { showError, showWarning } from '../../../utils/alert';
+import { t } from '../../../i18n';
 
 const { width } = Dimensions.get('window');
 const ITEMS_PER_PAGE = 20;
@@ -479,14 +481,12 @@ const TreeDetailScreen = () => {
     if (r.ok) { setFarmOverride(r.farmId ?? null); return; }
     // 404 của máy chủ GỘP "vườn không tồn tại" với "vườn của người khác" — cố ý,
     // để không lộ sự tồn tại vườn người khác. App không được đoán ra một trong hai.
-    Alert.alert(
-      'Chưa đổi được vườn',
+    showError('Chưa đổi được vườn',
       r.notOwner
         ? 'Cây này không thuộc tài khoản đang đăng nhập.'
         : r.farmNotFound
           ? 'Không mở được vườn vừa chọn. Nạp lại danh sách vườn rồi thử lại.'
-          : r.error?.detail ?? 'Không gọi được máy chủ. Thử lại khi có mạng.',
-    );
+          : r.error?.detail ?? 'Không gọi được máy chủ. Thử lại khi có mạng.');
   }, [tree?.id]);
 
   // Xoá một góc ảnh hỏng — `POST /api/remove_views`.
@@ -497,24 +497,19 @@ const TreeDetailScreen = () => {
   const handleDeleteView = useCallback((idx: number) => {
     const id = tree?.id;
     if (!id) return;
-    Alert.alert(
-      'Xoá góc ảnh này?',
-      'Cây sẽ còn ít góc nhận dạng hơn. Chỉ nên xoá ảnh chụp hỏng hoặc chụp nhầm cây.',
-      [
-        { text: 'Thôi', style: 'cancel' },
-        {
-          text: 'Xoá',
-          style: 'destructive',
-          onPress: async () => {
+    showWarning('Xoá góc ảnh này?', 'Cây sẽ còn ít góc nhận dạng hơn. Chỉ nên xoá ảnh chụp hỏng hoặc chụp nhầm cây.', {
+        confirmText: 'Xoá',
+        cancelText: 'Thôi',
+        onConfirm: async () => {
             setDeletingIdx(idx);
             const r = await removeTreeViews(ORILIFE_BASE, id, [idx]);
             setDeletingIdx(null);
             if (!r.ok) {
               Alert.alert(
-                'Chưa xoá được',
+                t('Chưa xoá được'),
                 r.notOwner
-                  ? 'Cây này không thuộc tài khoản đang đăng nhập.'
-                  : r.error?.detail ?? 'Không gọi được máy chủ. Thử lại khi có mạng.',
+                  ? t('Cây này không thuộc tài khoản đang đăng nhập.')
+                  : r.error?.detail ?? t('Không gọi được máy chủ. Thử lại khi có mạng.'),
               );
               return;
             }
@@ -522,13 +517,11 @@ const TreeDetailScreen = () => {
             // số ngoài phạm vi) — im lặng ở đây thì người dùng thấy ảnh vẫn còn và
             // tưởng app đơ.
             if ((r.removed ?? 0) === 0) {
-              Alert.alert('Máy chủ không xoá góc nào', 'Danh sách ảnh vừa đổi. Nạp lại rồi chọn lại ảnh cần xoá.');
+              Alert.alert(t('Máy chủ không xoá góc nào'), t('Danh sách ảnh vừa đổi. Nạp lại rồi chọn lại ảnh cần xoá.'));
             }
             await loadImages().catch(() => undefined);
           },
-        },
-      ],
-    );
+    });
   }, [tree?.id, loadImages]);
 
   useEffect(() => {

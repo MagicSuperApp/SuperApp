@@ -40,6 +40,7 @@ import {
   type Org,
 } from '../services/orgMintService';
 import { PhoenixKeyApiError } from '../services/phoenixKey-api';
+import { showError, showSuccess } from '../utils/alert';
 
 const ORG_CACHE_KEY = '@orgmint/orgs_cache';
 
@@ -151,7 +152,7 @@ const OrgDidScreen: React.FC = () => {
   const handleCreate = async () => {
     if (!canCreate) return;
     if (!ownerDid) {
-      Alert.alert('Chưa có danh tính', 'Vui lòng kích hoạt danh tính trước khi tạo tổ chức.');
+      showError('Chưa có danh tính', 'Vui lòng kích hoạt danh tính trước khi tạo tổ chức.');
       return;
     }
     setCreating(true);
@@ -174,7 +175,7 @@ const OrgDidScreen: React.FC = () => {
       setLoadState('ready');
       setOrgName('');
       setOrgRegNo('');
-      Alert.alert('Đã tạo tổ chức', `OrgDID: ${created.orgDid}`);
+      showSuccess('Đã tạo tổ chức', `OrgDID: ${created.orgDid}`);
     } catch (err) {
       // Nhánh cũ nuốt MỌI lỗi không phải PhoenixKeyApiError vào một câu duy nhất
       // ("Vui lòng thử lại"). Ba nguyên nhân hay gặp nhất — module native vắng,
@@ -182,9 +183,9 @@ const OrgDidScreen: React.FC = () => {
       // không chữa được cái nào trong ba.
       const msg =
         err instanceof PhoenixKeyApiError
-          ? `${err.message} (mã ${err.code})`
-          : (err as Error)?.message || 'Không tạo được tổ chức. Vui lòng thử lại.';
-      Alert.alert('Lỗi', msg);
+          ? err.message
+          : 'Không tạo được tổ chức. Vui lòng thử lại.';
+      showError('Lỗi', msg);
     } finally {
       setCreating(false);
     }

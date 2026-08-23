@@ -19,7 +19,10 @@
  */
 
 import React from 'react';
-import { Alert } from 'react-native';
+// Màn này báo cho người dùng qua `showWarning` (hộp thoại tự vẽ của app), KHÔNG
+// qua `Alert.alert` gốc — hộp thoại native không đi qua lớp dịch nên chuỗi tiếng
+// Việt lộ nguyên với người chọn ngôn ngữ khác. Test theo dõi đúng cửa đang dùng.
+import * as appAlert from '../utils/alert';
 import renderer, { act, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
 
 // ── Lớp cầu ngoài ───────────────────────────────────────────────────────────
@@ -170,7 +173,7 @@ const DETECTED_BOX: [number, number, number, number] = [100, 120, 300, 320];
 
 beforeEach(() => {
   jest.clearAllMocks();
-  jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  jest.spyOn(appAlert, 'showWarning').mockImplementation(() => {});
   mockDetect.mockResolvedValue({ ok: true, data: { ok: true, detections: [{ bbox: DETECTED_BOX }] } });
   mockEnroll.mockResolvedValue({ ok: true, data: { ok: true, fruit_id: 'qua-01' } });
 });
@@ -203,7 +206,7 @@ describe('chip "đã lưu thành quả" chỉ được hiện khi kho THẬT S�
     await press(tree, SEND);
 
     expect(screenText(tree)).not.toContain(savedChip('Quả ngọn phía đông'));
-    expect(Alert.alert).toHaveBeenCalledWith(
+    expect(appAlert.showWarning).toHaveBeenCalledWith(
       tk('trace.fruitVideo.fruitFailTitle'),
       expect.stringContaining('Ảnh này giống quả «Quả 2» hơn.'),
     );
@@ -269,7 +272,7 @@ describe('máy chủ không thấy quả nào thì không được gửi ô bị
     await press(tree, SEND);
 
     expect(mockEnroll).not.toHaveBeenCalled();
-    expect(Alert.alert).toHaveBeenCalledWith(
+    expect(appAlert.showWarning).toHaveBeenCalledWith(
       tk('trace.fruitVideo.fruitFailTitle'),
       expect.stringContaining('chưa nhận ra quả'),
     );

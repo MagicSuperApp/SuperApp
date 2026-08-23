@@ -20,6 +20,7 @@ import { formatVND } from '../data/mockData';
 import { useJobDetail } from '../hooks/useJobs';
 import StateView from '../../../components/state/StateView';
 import PosterAvatar from '../components/PosterAvatar';
+import { showError } from '../../../utils/alert';
 
 type RouteParams = { JobDetail: { jobId: string } };
 
@@ -87,11 +88,9 @@ const JobDetailScreen: React.FC = () => {
    * định đã gửi đi, mà chưa gửi gì cả.
    */
   const handleApply = () => {
-    Alert.alert(
-      'Chưa mở ứng tuyển trong ứng dụng',
+    showError('Chưa mở ứng tuyển trong ứng dụng',
       'Bản này chưa gửi được hồ sơ ứng tuyển tới người đăng tin. Đường ứng tuyển đang được nối; ' +
-        'trong lúc chờ, tin vẫn xem và lưu lại được.',
-    );
+        'trong lúc chờ, tin vẫn xem và lưu lại được.');
   };
 
   return (

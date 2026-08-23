@@ -7,15 +7,23 @@
  *  - Load thêm khi cuộn đến cuối (load more / infinite scroll)
  *  - Filter theo loài (chip ngang)
  *  - Mỗi item: tên, DID, loài, số ảnh
- *  - Long press → Action sheet: Xoá (có confirmation dialog)
+ *  - Long press → Action sheet: Đổi tên · Xoá (đều có hộp thoại xác nhận)
  *  - Empty state: icon + text + lối vào nhận diện khi biết vườn
  *  - Error state: icon + text + nút Thử lại
  *
- * ĐÃ BỎ "Đổi tên" (2026-08-18): máy chủ KHÔNG có cửa đổi tên
- * (`animalReIDService.ts` không có hàm nào), nên nút cũ chỉ ghi vào state
- * `pendingRename` mà không nơi nào đọc và không nơi nào gửi. Thẻ đổi tên ngay,
- * kéo làm mới là tên cũ trở lại, không một dòng báo — nông dân đặt tên cả đàn rồi
- * mất trắng. Thà không có nút còn hơn có nút nói dối. Mở lại khi OriLife có cửa.
+ * LỊCH SỬ CỦA NÚT "ĐỔI TÊN" — đọc trước khi động vào.
+ *
+ * 18/08 nút bị BỎ, đúng lý do: nó chỉ ghi vào state `pendingRename` mà không nơi
+ * nào đọc và không nơi nào gửi. Thẻ đổi tên ngay, kéo làm mới là tên cũ trở lại,
+ * không một dòng báo — nông dân đặt tên cả đàn rồi mất trắng. Bỏ một nút nói dối
+ * là quyết định đúng.
+ *
+ * Nhưng LÝ DO ghi kèm thì sai: "máy chủ KHÔNG có cửa đổi tên". Cửa có thật —
+ * `POST /api/animal/rename` (`animal_server_ext.py:911-935`), và docstring của
+ * chính nó mô tả đúng cái hỏng ở trên. Câu sai đó biến một việc "nối một cửa"
+ * thành một việc "chờ nhà khác", và nó chờ như vậy vì không ai mở kho bên kia ra
+ * xem. Nay nút trở lại, có gửi thật, và đọc `data.ok` chứ không đọc cờ vận
+ * chuyển — xem `renameAnimal`.
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -39,14 +47,24 @@ import { NEUTRAL } from '../shared/theme';
 import {
   listAnimals,
   deleteAnimal,
+  renameAnimal,
   type AnimalInfo,
 } from '../services/animalReIDService';
+import RenameModal from '../components/RenameModal';
 
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
 
 import { ORILIFE_BASE } from '../services/orilifeBase';
+import { showWarning } from '../utils/alert';
+import { t } from '../i18n';
+import { SPECIES_OPTIONS, speciesLabel } from '../constants/animalSpecies';
+
+const FILTER_OPTIONS: Array<{ key: string; label: string; icon: string }> = [
+  { key: '', label: 'Tất cả', icon: 'paw' },
+  ...SPECIES_OPTIONS,
+];
 const BASE_URL: string =
   ORILIFE_BASE;
 
@@ -56,26 +74,6 @@ const PAGE_SIZE = 20;
 // Species filter
 // ---------------------------------------------------------------------------
 
-const SPECIES_OPTIONS: Array<{ key: string; label: string; icon: string }> = [
-  { key: '',      label: 'Tất cả',  icon: 'paw'           },
-  { key: 'ga',    label: 'Gà',      icon: 'bird'          },
-  { key: 'lon',   label: 'Lợn',     icon: 'pig'           },
-  { key: 'de',    label: 'Dê',      icon: 'cow'           },
-  { key: 'bo',    label: 'Bò',      icon: 'cow'           },
-  { key: 'vit',   label: 'Vịt',     icon: 'bird'          },
-  { key: 'ngong', label: 'Ngỗng',   icon: 'bird'          },
-  { key: 'cho',   label: 'Chó',     icon: 'dog'           },
-  { key: 'meo',   label: 'Mèo',     icon: 'cat'           },
-];
-
-const SPECIES_LABELS: Record<string, string> = SPECIES_OPTIONS.reduce<Record<string, string>>(
-  (acc, s) => { if (s.key) acc[s.key] = s.label; return acc; },
-  {},
-);
-
-function speciesLabel(s: string): string {
-  return SPECIES_LABELS[s.toLowerCase()] ?? s;
-}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -171,8 +169,12 @@ const AnimalManagementScreen: React.FC = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
+  /** Tổng đàn khớp bộ lọc, do máy chủ trả. `undefined` = máy chủ đời cũ chưa gửi. */
+  const [totalCount, setTotalCount] = useState<number | undefined>(undefined);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedSpecies, setSelectedSpecies] = useState('');
+  const [renameTarget, setRenameTarget] = useState<AnimalItem | null>(null);
+  const [isRenaming, setIsRenaming] = useState(false);
   const offsetRef = useRef(0);
 
   // Tránh double-call khi unmount
@@ -217,6 +219,7 @@ const AnimalManagementScreen: React.FC = () => {
         }
         offsetRef.current = currentOffset + fetched.length;
         setHasMore(fetched.length === PAGE_SIZE);
+        setTotalCount(res.total);
       } else {
         setLoadError(res.error?.detail ?? 'Không thể tải danh sách cá thể.');
       }
@@ -266,42 +269,62 @@ const AnimalManagementScreen: React.FC = () => {
   }, [farmId]);
 
   // ── Delete ────────────────────────────────────────────────────────────────
+  // ── Đổi tên ───────────────────────────────────────────────────────────────
+  const handleRenameConfirm = async (newName: string) => {
+    if (!renameTarget) return;
+    setIsRenaming(true);
+    try {
+      const res = await renameAnimal(BASE_URL, renameTarget.animal_did, newName);
+      if (res.ok) {
+        // Dùng tên máy chủ TRẢ VỀ, không dùng chuỗi vừa gõ: máy chủ vệ sinh tên
+        // trước khi ghi, nên hai chuỗi có thể khác nhau và bày chuỗi của mình là
+        // bày một thứ chưa từng được lưu.
+        const saved = res.name ?? newName;
+        setAnimals(prev =>
+          prev.map(a =>
+            a.animal_did === renameTarget.animal_did ? { ...a, name: saved } : a,
+          ),
+        );
+        setRenameTarget(null);
+      } else {
+        Alert.alert('Đổi tên thất bại', res.error?.detail ?? 'Thử lại.');
+      }
+    } catch {
+      Alert.alert('Lỗi mạng', 'Không đổi được tên. Kiểm tra kết nối và thử lại.');
+    } finally {
+      setIsRenaming(false);
+    }
+  };
+
   const handleDelete = (item: AnimalItem) => {
-    Alert.alert(
-      'Xoá cá thể?',
-      `Cá thể "${item.name || item.animal_did}" sẽ bị xoá khỏi hệ thống. Không thể hoàn tác.`,
-      [
-        { text: 'Huỷ', style: 'cancel' },
-        {
-          text: 'Xoá',
-          style: 'destructive',
-          onPress: async () => {
+    showWarning('Xoá cá thể?', `Cá thể "${item.name || item.animal_did}" sẽ bị xoá khỏi hệ thống. Không thể hoàn tác.`, {
+        confirmText: 'Xoá',
+        cancelText: 'Huỷ',
+        onConfirm: async () => {
             try {
               const res = await deleteAnimal(BASE_URL, item.animal_did);
               if (res.ok) {
                 setAnimals(prev => prev.filter(a => a.animal_did !== item.animal_did));
               } else {
-                Alert.alert('Xoá thất bại', res.error?.detail ?? 'Thử lại.');
+                Alert.alert(t('Xoá thất bại'), res.error?.detail ?? t('Thử lại.'));
               }
             } catch {
-              Alert.alert('Lỗi mạng', 'Không thể xoá. Kiểm tra kết nối và thử lại.');
+              Alert.alert(t('Lỗi mạng'), t('Không thể xoá. Kiểm tra kết nối và thử lại.'));
             }
           },
-        },
-      ],
-    );
+    });
   };
 
   // ── Action sheet (long press) ─────────────────────────────────────────────
   const handleLongPress = (item: AnimalItem) => {
     Alert.alert(
-      item.name || item.animal_did || 'Cá thể chưa đặt tên',
-      'Chọn hành động:',
+      item.name || item.animal_did || t('Cá thể chưa đặt tên'),
+      t('Chọn hành động:'),
       [
-        { text: 'Huỷ', style: 'cancel' },
+        { text: t('Huỷ'), style: 'cancel' },
         // KHÔNG có "Đổi tên": máy chủ chưa có cửa đổi tên (xem chú đầu tệp).
         {
-          text: 'Xoá',
+          text: t('Xoá'),
           style: 'destructive',
           onPress: () => handleDelete(item),
         },
@@ -376,7 +399,13 @@ const AnimalManagementScreen: React.FC = () => {
           <Text style={styles.headerTitle}>Quản lý vật nuôi</Text>
           {animals.length > 0 && (
             <View style={styles.countBadge}>
-              <Text style={styles.countBadgeText}>{animals.length}</Text>
+              {/* `animals.length` là số cá thể ĐÃ TẢI, trần PAGE_SIZE — không phải tổng
+                  đàn. Bày nó trần trụi ở huy hiệu là nói với chủ vườn rằng đàn có 20 con
+                  trong khi còn trang sau. Dùng `total` của máy chủ khi có; máy chủ đời cũ
+                  không gửi thì thêm dấu `+` để con số thôi tự nhận là tổng. */}
+              <Text style={styles.countBadgeText}>
+                {totalCount != null ? totalCount : `${animals.length}${hasMore ? '+' : ''}`}
+              </Text>
             </View>
           )}
         </View>
@@ -402,7 +431,10 @@ const AnimalManagementScreen: React.FC = () => {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.filterContent}
         >
-          {SPECIES_OPTIONS.map(opt => (
+          {/* "Tất cả" là mục của BỘ LỌC, không phải một loài — nó không nằm trong
+              danh mục máy chủ nên khai tại chỗ, đừng nhét vào nguồn chung. Thiếu
+              nó thì người dùng lọc rồi không bỏ lọc lại được. */}
+          {FILTER_OPTIONS.map(opt => (
             <TouchableOpacity
               key={opt.key}
               style={[
@@ -471,6 +503,22 @@ const AnimalManagementScreen: React.FC = () => {
           ItemSeparatorComponent={() => <View style={styles.separator} />}
           showsVerticalScrollIndicator={false}
         />
+      )}
+
+      <RenameModal
+        visible={renameTarget !== null}
+        currentName={renameTarget?.name ?? ''}
+        title="Đổi tên cá thể"
+        confirmColor={HEADER_BG}
+        onConfirm={handleRenameConfirm}
+        onDismiss={() => setRenameTarget(null)}
+      />
+
+      {isRenaming && (
+        <View style={styles.renameOverlay}>
+          <ActivityIndicator size="large" color={COLORS.accent} />
+          <Text style={styles.renameOverlayText}>Đang đổi tên…</Text>
+        </View>
       )}
     </View>
   );
@@ -652,6 +700,15 @@ const styles = StyleSheet.create({
   metaPillText: { fontSize: 11, color: NEUTRAL.textMuted },
 
   separator: { height: 10 },
+
+  renameOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  renameOverlayText: { color: NEUTRAL.white, fontSize: 14, fontWeight: '600' },
 
   emptyContainer: {
     flex: 1,

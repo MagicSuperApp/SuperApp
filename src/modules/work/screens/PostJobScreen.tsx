@@ -20,6 +20,7 @@ import { COLORS } from '../../../constants';
 import { WORK_THEME } from '../theme/colors';
 import { CATEGORIES } from '../data/mockData';
 import { usePostJob } from '../hooks/usePostJob';
+import { showError, showInfo, showSuccess } from '../../../utils/alert';
 
 const PostJobScreen: React.FC = () => {
   const navigation = useNavigation<any>();
@@ -38,7 +39,7 @@ const PostJobScreen: React.FC = () => {
 
   const handleSubmit = async () => {
     if (!canSubmit || !category) {
-      Alert.alert('Thiếu thông tin', 'Vui lòng điền đầy đủ các ô bắt buộc.');
+      showInfo('Thiếu thông tin', 'Vui lòng điền đầy đủ các ô bắt buộc.');
       return;
     }
     // Map form → body backend. LƯU Ý: form chưa có bước chọn JobType riêng →
@@ -53,16 +54,14 @@ const PostJobScreen: React.FC = () => {
     });
 
     if (ok) {
-      Alert.alert(
-        'Đăng tin thành công',
-        'Tin của bạn đã được ký số và đăng lên Aladin Work.\n\nThợ phù hợp sẽ liên hệ qua Aladin Chat trong vài phút.',
-        [{ text: 'OK', onPress: () => navigation.goBack() }],
-      );
+      showSuccess('Đăng tin thành công', 'Tin của bạn đã được ký số và đăng lên Aladin Work.\n\nThợ phù hợp sẽ liên hệ qua Aladin Chat trong vài phút.', {
+          confirmText: 'OK',
+          hideCancel: true,
+          onConfirm: () => navigation.goBack(),
+      });
     } else {
-      Alert.alert(
-        'Chưa đăng được tin',
-        'Không gửi được tin lúc này. Kiểm tra kết nối, đăng nhập và loại việc rồi thử lại.',
-      );
+      showError('Chưa đăng được tin',
+        'Không gửi được tin lúc này. Kiểm tra kết nối, đăng nhập và loại việc rồi thử lại.');
     }
   };
 

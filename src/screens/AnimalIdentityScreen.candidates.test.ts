@@ -20,7 +20,7 @@ import type { AnimalCandidate } from '../services/animalReIDService';
 const C: AnimalCandidate = {
   animal_did: 'did:ori:animal:abc123',
   name: 'Bò số 3',
-  species: 'bo',
+  species: 'cattle',   // khoá của MÁY CHỦ (animal_config.py), không phải 'bo'
   sim: 0.82,
   near_prev: true,
   n_views: 7,
@@ -55,9 +55,21 @@ describe('toReidCandidates', () => {
     expect(got.n_views).toBe(7);
   });
 
-  it('`code` là nhãn tiếng Việt của loài; loài lạ thì giữ nguyên văn', () => {
+  // Bài này trước khoá đúng hành vi CŨ: khoá tiếng Việt bỏ dấu (`bo`), và loài lạ
+  // thì in nguyên khoá thô ra màn hình. Cả hai đều sai.
+  //
+  // Máy chủ trả khoá TIẾNG ANH (`animal_config.py:45-54`); giao với bộ khoá cũ của
+  // app là RỖNG, nên nhánh "giữ nguyên văn" là nhánh chạy 100% số lần — màn hình
+  // hiện "cattle", "chicken" cho nông dân, và không có gì đỏ lên vì `?? s` nuốt hết.
+  // Nay khoá lạ hiện "Loài chưa rõ": trượt phải nhìn thấy được thì mới có người sửa.
+  it('`code` là nhãn tiếng Việt, tra theo khoá MÁY CHỦ; loài lạ nói thật là chưa rõ', () => {
     expect(toReidCandidates([C])[0].code).toBe('Bò');
-    expect(toReidCandidates([{ ...C, species: 'ngua' }])[0].code).toBe('ngua');
+    expect(toReidCandidates([{ ...C, species: 'chicken' }])[0].code).toBe('Gà');
+    // Bí danh máy chủ tự quy đổi (`animal_server_ext.py:86`) — app hiểu để hiện đúng.
+    expect(toReidCandidates([{ ...C, species: 'buffalo' }])[0].code).toBe('Bò');
+    // Khoá cũ của app nay là loài LẠ — đúng như nó vốn vậy với máy chủ.
+    expect(toReidCandidates([{ ...C, species: 'bo' }])[0].code).toBe('Loài chưa rõ');
+    expect(toReidCandidates([{ ...C, species: 'ngua' }])[0].code).toBe('Loài chưa rõ');
     expect(toReidCandidates([{ ...C, species: undefined }])[0].code).toBeUndefined();
   });
 

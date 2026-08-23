@@ -245,7 +245,7 @@ export async function listAnimals(
   species?: string,
   limit = 20,
   offset = 0,
-): Promise<{ ok: boolean; animals?: AnimalInfo[]; error?: APIError }> {
+): Promise<{ ok: boolean; animals?: AnimalInfo[]; total?: number; error?: APIError }> {
   const params = new URLSearchParams();
   if (farmId) params.append('farm_id', farmId);
   if (species) params.append('species', normalizeSpecies(species));
@@ -254,7 +254,11 @@ export async function listAnimals(
 
   const result = await _apiCall<AnimalListResponse>(`${baseUrl}/api/animal/list?${params.toString()}`, 'GET');
   if (result.ok && result.data) {
-    return { ok: true, animals: result.data.animals };
+    // `total` là TỔNG đàn khớp bộ lọc, khác hẳn `animals.length` (số của MỘT trang).
+    // Trả nó ra thay vì vứt: chỗ gọi đang bày `animals.length` như tổng đàn, và con số
+    // đó bị PAGE_SIZE chặn trần. Máy chủ đời cũ không gửi `total` ⇒ `undefined`, và chỗ
+    // gọi phải xử ca đó chứ không được coi là 0.
+    return { ok: true, animals: result.data.animals, total: result.data.total };
   }
   return { ok: false, error: result.error };
 }
@@ -264,6 +268,48 @@ export async function getAnimal(
   animalDid: string,
 ): Promise<{ ok: boolean; data?: AnimalInfo; error?: APIError }> {
   return _apiCall<AnimalInfo>(`${baseUrl}/api/animal/${encodeURIComponent(animalDid)}`, 'GET');
+}
+
+/**
+ * Đổi tên một cá thể. `POST /api/animal/rename` (`animal_server_ext.py:911-935`).
+ *
+ * ⚠️ Cửa này trả `200` kèm `ok:false` khi tên sau vệ sinh còn rỗng — CÙNG khuôn
+ * với `POST /api/rename` của cây. Nên phải đọc `data.ok`, không đọc cờ vận
+ * chuyển của `_apiCall`. Đọc nhầm tầng nghĩa là app ghi tên mới vào danh sách
+ * trên máy trong khi máy chủ giữ tên cũ, và tên cũ quay về ở lần làm mới sau —
+ * đúng cái hỏng mà docstring của chính cửa này mô tả.
+ *
+ * Máy chủ trả kèm `name` (tên sau vệ sinh) — trả lên để màn dùng ĐÚNG chuỗi máy
+ * chủ đã ghi, thay vì chuỗi người dùng vừa gõ. Hai cái có thể khác nhau.
+ */
+export async function renameAnimal(
+  baseUrl: string,
+  animalDid: string,
+  name: string,
+): Promise<{ ok: boolean; name?: string; error?: APIError }> {
+  const form = new FormData();
+  form.append('animal_did', animalDid);
+  form.append('name', name);
+
+  const result = await _apiCall<{ ok: boolean; name?: string; error?: string }>(
+    `${baseUrl}/api/animal/rename`,
+    'POST',
+    form,
+  );
+  if (!result.ok) return { ok: false, error: result.error };
+
+  if (result.data?.ok !== true) {
+    return {
+      ok: false,
+      error: {
+        type: 'validation_error',
+        // Máy chủ soạn sẵn câu ("Tên không được để trống.") — hiện nguyên văn.
+        detail: result.data?.error ?? 'Máy chủ không đổi được tên.',
+        http_status: 200,
+      },
+    };
+  }
+  return { ok: true, name: result.data?.name };
 }
 
 export async function deleteAnimal(

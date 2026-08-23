@@ -889,7 +889,33 @@ export async function renameTree(
   form.append('name', name);
 
   const result = await _apiCall<{ ok: boolean }>(`${baseUrl}/api/rename`, 'POST', form);
-  return { ok: result.ok, error: result.error };
+  if (!result.ok) return { ok: false, error: result.error };
+
+  // ⚠️ HAI cờ `ok` khác nhau, và nhầm chúng là báo thành công cho một việc máy
+  // chủ đã từ chối.
+  //   · `result.ok`      — cờ VẬN CHUYỂN do `_apiCall` đặt: có nối được và HTTP
+  //                        không lỗi. Nó luôn `true` ở đây vì vừa lọc ở trên.
+  //   · `result.data.ok` — CÂU TRẢ LỜI của máy chủ.
+  // `/api/rename` trả `200 {"ok": false}` (`server.py:5688-5698`) ở hai ca: tên
+  // sau khi vệ sinh còn rỗng (`_vname` → `None`), và cây không có trong kho. Cả
+  // hai đều là "không đổi được tên", đều đi qua HTTP 200.
+  //
+  // Bản cũ trả thẳng `result.ok`, nên màn quản lý cây ghi tên mới vào danh sách
+  // trên máy trong khi máy chủ vẫn giữ tên cũ. Mở lại màn là tên cũ quay về, và
+  // không một dòng nào báo đã có chuyện gì.
+  if (result.data?.ok !== true) {
+    return {
+      ok: false,
+      error: {
+        type: 'validation_error',
+        detail:
+          'Máy chủ không đổi được tên. Thường là do tên chỉ còn khoảng trắng hoặc ' +
+          'ký tự bị loại sau khi vệ sinh — thử một tên khác có chữ.',
+        http_status: 200,
+      },
+    };
+  }
+  return { ok: true };
 }
 
 /**

@@ -21,6 +21,16 @@ interface AlertPopupProps {
   onConfirm?: () => void;
   confirmText?: string;
   cancelText?: string;
+  /**
+   * Ẩn nút Huỷ dù có `onConfirm`.
+   *
+   * Hộp thoại native cho phép MỘT nút mà nút đó vẫn chạy việc. Ở đây `onConfirm`
+   * vừa nghĩa là "có việc để chạy" vừa nghĩa là "có hai lựa chọn" — hai việc khác
+   * nhau bị buộc vào một cờ. Chuyển một hộp thoại một-nút-có-việc sang đây mà
+   * không có cờ này thì tự dưng mọc thêm nút Huỷ, và người dùng phải chọn giữa hai
+   * thứ mà bản gốc không cho họ chọn.
+   */
+  hideCancel?: boolean;
 }
 
 const AlertPopup: React.FC<AlertPopupProps> = ({
@@ -32,6 +42,7 @@ const AlertPopup: React.FC<AlertPopupProps> = ({
   onConfirm,
   confirmText = 'OK',
   cancelText = 'Hủy',
+  hideCancel = false,
 }) => {
   const getAlertConfig = (alertType: AlertType) => {
     switch (alertType) {
@@ -109,7 +120,7 @@ const AlertPopup: React.FC<AlertPopupProps> = ({
 
           {/* Actions */}
           <View style={styles.actions}>
-            {onConfirm && (
+            {onConfirm && !hideCancel && (
               <TouchableOpacity
                 style={styles.cancelBtn}
                 onPress={handleCancel}

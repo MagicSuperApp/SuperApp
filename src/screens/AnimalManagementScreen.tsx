@@ -7,15 +7,23 @@
  *  - Load thêm khi cuộn đến cuối (load more / infinite scroll)
  *  - Filter theo loài (chip ngang)
  *  - Mỗi item: tên, DID, loài, số ảnh
- *  - Long press → Action sheet: Xoá (có confirmation dialog)
+ *  - Long press → Action sheet: Đổi tên · Xoá (đều có hộp thoại xác nhận)
  *  - Empty state: icon + text + lối vào nhận diện khi biết vườn
  *  - Error state: icon + text + nút Thử lại
  *
- * ĐÃ BỎ "Đổi tên" (2026-08-18): máy chủ KHÔNG có cửa đổi tên
- * (`animalReIDService.ts` không có hàm nào), nên nút cũ chỉ ghi vào state
- * `pendingRename` mà không nơi nào đọc và không nơi nào gửi. Thẻ đổi tên ngay,
- * kéo làm mới là tên cũ trở lại, không một dòng báo — nông dân đặt tên cả đàn rồi
- * mất trắng. Thà không có nút còn hơn có nút nói dối. Mở lại khi OriLife có cửa.
+ * LỊCH SỬ CỦA NÚT "ĐỔI TÊN" — đọc trước khi động vào.
+ *
+ * 18/08 nút bị BỎ, đúng lý do: nó chỉ ghi vào state `pendingRename` mà không nơi
+ * nào đọc và không nơi nào gửi. Thẻ đổi tên ngay, kéo làm mới là tên cũ trở lại,
+ * không một dòng báo — nông dân đặt tên cả đàn rồi mất trắng. Bỏ một nút nói dối
+ * là quyết định đúng.
+ *
+ * Nhưng LÝ DO ghi kèm thì sai: "máy chủ KHÔNG có cửa đổi tên". Cửa có thật —
+ * `POST /api/animal/rename` (`animal_server_ext.py:911-935`), và docstring của
+ * chính nó mô tả đúng cái hỏng ở trên. Câu sai đó biến một việc "nối một cửa"
+ * thành một việc "chờ nhà khác", và nó chờ như vậy vì không ai mở kho bên kia ra
+ * xem. Nay nút trở lại, có gửi thật, và đọc `data.ok` chứ không đọc cờ vận
+ * chuyển — xem `renameAnimal`.
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -39,8 +47,10 @@ import { NEUTRAL } from '../shared/theme';
 import {
   listAnimals,
   deleteAnimal,
+  renameAnimal,
   type AnimalInfo,
 } from '../services/animalReIDService';
+import RenameModal from '../components/RenameModal';
 
 // ---------------------------------------------------------------------------
 // Config
@@ -163,6 +173,8 @@ const AnimalManagementScreen: React.FC = () => {
   const [totalCount, setTotalCount] = useState<number | undefined>(undefined);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedSpecies, setSelectedSpecies] = useState('');
+  const [renameTarget, setRenameTarget] = useState<AnimalItem | null>(null);
+  const [isRenaming, setIsRenaming] = useState(false);
   const offsetRef = useRef(0);
 
   // Tránh double-call khi unmount
@@ -257,6 +269,33 @@ const AnimalManagementScreen: React.FC = () => {
   }, [farmId]);
 
   // ── Delete ────────────────────────────────────────────────────────────────
+  // ── Đổi tên ───────────────────────────────────────────────────────────────
+  const handleRenameConfirm = async (newName: string) => {
+    if (!renameTarget) return;
+    setIsRenaming(true);
+    try {
+      const res = await renameAnimal(BASE_URL, renameTarget.animal_did, newName);
+      if (res.ok) {
+        // Dùng tên máy chủ TRẢ VỀ, không dùng chuỗi vừa gõ: máy chủ vệ sinh tên
+        // trước khi ghi, nên hai chuỗi có thể khác nhau và bày chuỗi của mình là
+        // bày một thứ chưa từng được lưu.
+        const saved = res.name ?? newName;
+        setAnimals(prev =>
+          prev.map(a =>
+            a.animal_did === renameTarget.animal_did ? { ...a, name: saved } : a,
+          ),
+        );
+        setRenameTarget(null);
+      } else {
+        Alert.alert('Đổi tên thất bại', res.error?.detail ?? 'Thử lại.');
+      }
+    } catch {
+      Alert.alert('Lỗi mạng', 'Không đổi được tên. Kiểm tra kết nối và thử lại.');
+    } finally {
+      setIsRenaming(false);
+    }
+  };
+
   const handleDelete = (item: AnimalItem) => {
     showWarning('Xoá cá thể?', `Cá thể "${item.name || item.animal_did}" sẽ bị xoá khỏi hệ thống. Không thể hoàn tác.`, {
         confirmText: 'Xoá',
@@ -465,6 +504,22 @@ const AnimalManagementScreen: React.FC = () => {
           showsVerticalScrollIndicator={false}
         />
       )}
+
+      <RenameModal
+        visible={renameTarget !== null}
+        currentName={renameTarget?.name ?? ''}
+        title="Đổi tên cá thể"
+        confirmColor={HEADER_BG}
+        onConfirm={handleRenameConfirm}
+        onDismiss={() => setRenameTarget(null)}
+      />
+
+      {isRenaming && (
+        <View style={styles.renameOverlay}>
+          <ActivityIndicator size="large" color={COLORS.accent} />
+          <Text style={styles.renameOverlayText}>Đang đổi tên…</Text>
+        </View>
+      )}
     </View>
   );
 };
@@ -645,6 +700,15 @@ const styles = StyleSheet.create({
   metaPillText: { fontSize: 11, color: NEUTRAL.textMuted },
 
   separator: { height: 10 },
+
+  renameOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  renameOverlayText: { color: NEUTRAL.white, fontSize: 14, fontWeight: '600' },
 
   emptyContainer: {
     flex: 1,

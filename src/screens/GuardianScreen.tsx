@@ -12,6 +12,8 @@ import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS } from '../constants';
 import { addGuardian, removeGuardian } from '../services/guardianService';
+import { showError, showInfo, showSuccess, showWarning } from '../utils/alert';
+import { t } from '../i18n';
 
 const PRIMARY = '#4A55C7';
 const DID_RE = /^did:phoenix:[a-z2-7]{13}:[0-9a-f]{64}$/;
@@ -42,34 +44,32 @@ const GuardianScreen: React.FC = () => {
   const onAdd = async () => {
     const did = gDid.trim();
     const name = gName.trim();
-    if (!DID_RE.test(did)) { Alert.alert('Mã định danh chưa đúng', 'Nhập mã định danh của người giám hộ.'); return; }
-    if (!name) { Alert.alert('Thiếu tên', 'Nhập tên hiển thị cho guardian.'); return; }
-    if (list.some((g) => g.did === did)) { Alert.alert('Đã có', 'Guardian này đã trong danh sách.'); return; }
+    if (!DID_RE.test(did)) { showInfo('Mã định danh chưa đúng', 'Nhập mã định danh của người giám hộ.'); return; }
+    if (!name) { showInfo('Thiếu tên', 'Nhập tên hiển thị cho guardian.'); return; }
+    if (list.some((g) => g.did === did)) { showSuccess('Đã có', 'Guardian này đã trong danh sách.'); return; }
     setBusy(true);
     try {
       await addGuardian(did);
       await persist([...list, { did, name }]);
       setGDid(''); setGName('');
     } catch (e) {
-      Alert.alert('Thêm thất bại', e instanceof Error ? e.message : 'Thử lại.');
+      showError('Thêm thất bại', e instanceof Error ? e.message : 'Thử lại.');
     } finally { setBusy(false); }
   };
 
   const onRemove = (g: LocalGuardian) => {
-    Alert.alert('Bớt guardian', `Gỡ ${g.name} khỏi danh sách khôi phục?`, [
-      { text: 'Huỷ', style: 'cancel' },
-      {
-        text: 'Gỡ', style: 'destructive',
-        onPress: async () => {
+    showWarning('Bớt guardian', `Gỡ ${g.name} khỏi danh sách khôi phục?`, {
+        confirmText: 'Gỡ',
+        cancelText: 'Huỷ',
+        onConfirm: async () => {
           try {
             await removeGuardian(g.did);
             await persist(list.filter((x) => x.did !== g.did));
           } catch (e) {
-            Alert.alert('Gỡ thất bại', e instanceof Error ? e.message : 'Thử lại.');
+            Alert.alert(t('Gỡ thất bại'), e instanceof Error ? e.message : t('Thử lại.'));
           }
         },
-      },
-    ]);
+    });
   };
 
   return (

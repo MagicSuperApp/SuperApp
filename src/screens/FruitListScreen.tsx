@@ -50,6 +50,7 @@ import { GroundBackdrop } from '../modules/trace/components/layered/Organic';
 import {
   ELEVATION, NATURE, ORGANIC_CARD, ORGANIC_TILE, RADIUS, SPACE, SURFACE, TONE, TYPE,
 } from '../modules/trace/theme/depth';
+import { showError, showWarning } from '../utils/alert';
 
 const BASE_URL = ORILIFE_BASE;
 
@@ -181,10 +182,11 @@ const FruitListScreen: React.FC = () => {
       { title: 'Quyền Camera', message: 'Aladin cần Camera để chụp ảnh quả.', buttonPositive: 'Cho phép', buttonNegative: 'Từ chối' },
     );
     if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
-      Alert.alert('Cần quyền Camera', 'Vui lòng bật Camera trong Cài đặt.', [
-        { text: 'Huỷ', style: 'cancel' },
-        { text: 'Mở Cài đặt', onPress: () => Linking.openSettings() },
-      ]);
+      showWarning('Cần quyền Camera', 'Vui lòng bật Camera trong Cài đặt.', {
+          confirmText: 'Mở Cài đặt',
+          cancelText: 'Huỷ',
+          onConfirm: () => Linking.openSettings(),
+      });
       return false;
     }
     return true;
@@ -201,9 +203,9 @@ const FruitListScreen: React.FC = () => {
     const opts: CameraOptions = { mediaType: 'photo', quality: 0.8, maxWidth: 1600, maxHeight: 1600, saveToPhotos: true };
     const cb = async (res: any) => {
       if (res.didCancel) return;
-      if (res.errorCode) { Alert.alert('Lỗi ảnh', res.errorMessage || 'Không lấy được ảnh.'); return; }
+      if (res.errorCode) { showError('Lỗi ảnh', res.errorMessage || 'Không lấy được ảnh.'); return; }
       const a = res.assets?.[0];
-      if (!a?.uri || !a.width || !a.height) { Alert.alert('Lỗi ảnh', 'Không đọc được kích thước ảnh — thử ảnh khác.'); return; }
+      if (!a?.uri || !a.width || !a.height) { showError('Lỗi ảnh', 'Không đọc được kích thước ảnh — thử ảnh khác.'); return; }
       // Siêu dữ liệu đọc NGAY ĐÂY, không đợi lúc tải lên: heading/pitch là số đo
       // tại thời điểm bấm máy. Đọc muộn thì người ta đã xoay máy đi rồi, và một
       // góc sai tệ hơn không có góc. Hỏng thì bỏ trống, không chặn luồng chụp —

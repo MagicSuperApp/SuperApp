@@ -82,6 +82,7 @@ import { GroundBackdrop } from '../modules/trace/components/layered/Organic';
 import {
   ELEVATION, GLASS, NATURE, ORGANIC_CARD, ORGANIC_TILE, RADIUS, SPACE, SURFACE, TONE, TYPE,
 } from '../modules/trace/theme/depth';
+import { showInfo, showWarning } from '../utils/alert';
 
 interface RouteParams {
   lat?: number;
@@ -361,7 +362,7 @@ const WayfindScreen: React.FC = () => {
     setMarkers(next);
     setMarkerOpen(false);
     if (!next.some(x => x.id === m.id)) {
-      Alert.alert(tk('map.marker.title'), tk('map.marker.saveFail'));
+      showWarning(tk('map.marker.title'), tk('map.marker.saveFail'));
     }
   }, [params.farmId, fix, tk]);
 
@@ -524,7 +525,7 @@ const WayfindScreen: React.FC = () => {
     try {
       await Linking.openURL(geoUri(target, label));
     } catch {
-      Alert.alert(tk('map.openmap.failTitle'), tk('map.openmap.failBody'));
+      showWarning(tk('map.openmap.failTitle'), tk('map.openmap.failBody'));
     }
   }, [target, label, tk]);
 
@@ -938,7 +939,7 @@ const MarkerDialog: React.FC<{
     let picker: { launchCamera?: (o: unknown, cb: (r: any) => void) => void } | null = null;
     try { picker = require('react-native-image-picker'); } catch { picker = null; }
     if (!picker?.launchCamera) {
-      Alert.alert(tk('map.marker.title'), tk('map.marker.cameraFail'));
+      showWarning(tk('map.marker.title'), tk('map.marker.cameraFail'));
       return;
     }
     try {
@@ -946,16 +947,16 @@ const MarkerDialog: React.FC<{
         if (r?.didCancel) return;
         const uri = r?.assets?.[0]?.uri;
         if (uri) setPhoto(uri);
-        else if (r?.errorCode) Alert.alert(tk('map.marker.title'), tk('map.marker.cameraFail'));
+        else if (r?.errorCode) showWarning(tk('map.marker.title'), tk('map.marker.cameraFail'));
       });
     } catch {
-      Alert.alert(tk('map.marker.title'), tk('map.marker.cameraFail'));
+      showWarning(tk('map.marker.title'), tk('map.marker.cameraFail'));
     }
   }, [tk]);
 
   const submit = useCallback(() => {
-    if (!fix) { Alert.alert(tk('map.marker.title'), tk('map.marker.noFix')); return; }
-    if (!name.trim()) { Alert.alert(tk('map.marker.title'), tk('map.marker.needName')); return; }
+    if (!fix) { showWarning(tk('map.marker.title'), tk('map.marker.noFix')); return; }
+    if (!name.trim()) { showWarning(tk('map.marker.title'), tk('map.marker.needName')); return; }
     // Chặn bấm hai lần: mỗi lần bấm sinh một mã mốc mới, nên hai lần bấm là hai
     // mốc trùng tên nằm chồng nhau trên mặt phẳng.
     if (saving) return;

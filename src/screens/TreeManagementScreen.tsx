@@ -41,6 +41,8 @@ import {
 
 import { ORILIFE_BASE } from '../services/orilifeBase';
 import { forTree, useOpenWayfind } from '../features/wayfind/WayfindButton';
+import { showError, showWarning } from '../utils/alert';
+import { t } from '../i18n';
 const BASE_URL: string =
   ORILIFE_BASE;
 
@@ -232,7 +234,7 @@ const TreeManagementScreen: React.FC = () => {
         );
         setRenameTarget(null);
       } else {
-        Alert.alert('Đổi tên thất bại', res.error?.detail ?? 'Thử lại.');
+        showError('Đổi tên thất bại', res.error?.detail ?? 'Thử lại.');
       }
     } finally {
       setIsRenaming(false);
@@ -241,44 +243,37 @@ const TreeManagementScreen: React.FC = () => {
 
   // ── Delete ───────────────────────────────────────────────────────────────
   const handleDelete = (item: TreeItem) => {
-    Alert.alert(
-      'Xoá cây?',
-      `Cây "${item.name || item.tree_id}" sẽ bị xoá khỏi hệ thống. Không thể hoàn tác.`,
-      [
-        { text: 'Huỷ', style: 'cancel' },
-        {
-          text: 'Xoá',
-          style: 'destructive',
-          onPress: async () => {
+    showWarning('Xoá cây?', `Cây "${item.name || item.tree_id}" sẽ bị xoá khỏi hệ thống. Không thể hoàn tác.`, {
+        confirmText: 'Xoá',
+        cancelText: 'Huỷ',
+        onConfirm: async () => {
             try {
               const res = await deleteTree(BASE_URL, item.tree_id);
               if (res.ok) {
                 setTrees(prev => prev.filter(t => t.tree_id !== item.tree_id));
               } else {
-                Alert.alert('Xoá thất bại', res.error?.detail ?? 'Thử lại.');
+                Alert.alert(t('Xoá thất bại'), res.error?.detail ?? t('Thử lại.'));
               }
             } catch {
-              Alert.alert('Lỗi mạng', 'Không thể xoá cây. Kiểm tra kết nối và thử lại.');
+              Alert.alert(t('Lỗi mạng'), t('Không thể xoá cây. Kiểm tra kết nối và thử lại.'));
             }
           },
-        },
-      ],
-    );
+    });
   };
 
   // ── Action sheet (long press) ─────────────────────────────────────────────
   const handleLongPress = (item: TreeItem) => {
     Alert.alert(
-      item.name || item.tree_id || 'Cây chưa đặt tên',
-      'Chọn hành động:',
+      item.name || item.tree_id || t('Cây chưa đặt tên'),
+      t('Chọn hành động:'),
       [
-        { text: 'Huỷ', style: 'cancel' },
+        { text: t('Huỷ'), style: 'cancel' },
         {
-          text: 'Đổi tên',
+          text: t('Đổi tên'),
           onPress: () => setRenameTarget(item),
         },
         {
-          text: 'Xoá',
+          text: t('Xoá'),
           style: 'destructive',
           onPress: () => handleDelete(item),
         },

@@ -91,6 +91,8 @@ import { classify409 } from '../services/treeEnrollConflict';
 import { useBottomActionPadding } from '../hooks/useBottomActionPadding';
 import { tk } from '../i18n/keys';
 import { whenLabel } from '../utils/whenLabel';
+import { showError, showInfo, showSuccess, showWarning } from '../utils/alert';
+import { t, tf } from '../i18n';
 const BASE_URL: string =
   ORILIFE_BASE;
 
@@ -595,8 +597,8 @@ const TreeEnrollScreen: React.FC = () => {
         n_views: 0,
       };
       Alert.alert(
-        'Đăng ký thành công',
-        `Mã cây: ${code}`,
+        t('Đăng ký thành công'),
+        tf('Mã cây: {ma}', { ma: code }),
         [
           {
             text: tk('trace.enroll.viewDetail'),
@@ -666,26 +668,19 @@ const TreeEnrollScreen: React.FC = () => {
           await appendTreeImages(treeId, imagePaths);
           // Gộp xong cũng là kết thúc phiên chụp → xoá bản nháp.
           clearTreeCaptureDraft(draftOwner);
-          Alert.alert(
-            'Đã gộp thành công',
-            res.data.n_added == null
+          showSuccess('Đã gộp thành công', res.data.n_added == null
               ? 'Đã thêm góc nhìn vào cây đã có.'
-              : `Đã thêm ${res.data.n_added} góc nhìn vào cây đã có.`,
-            [
-              {
-                text: 'OK',
-                onPress: () => {
+              : `Đã thêm ${res.data.n_added} góc nhìn vào cây đã có.`, {
+              confirmText: 'OK',
+              hideCancel: true,
+              onConfirm: () => {
                   dispatch(clearAll());
                   navigation.navigate('TreeDetail', { treeId });
                 },
-              },
-            ],
-          );
+          });
         } else {
-          Alert.alert(
-            'Chưa gộp được',
-            res.data?.reason ?? res.error?.detail ?? 'Không thể gộp. Thử lại.',
-          );
+          showError('Chưa gộp được',
+            res.data?.reason ?? res.error?.detail ?? 'Không thể gộp. Thử lại.');
         }
       } finally {
         setIsEnrolling(false);
@@ -700,7 +695,7 @@ const TreeEnrollScreen: React.FC = () => {
     // Vườn phải HỢP LỆ (còn tồn tại) — nhánh "Tạo cây mới" cũng không được tạo cây
     // mồ côi gắn vào vườn đã xoá / id nháp chết.
     if (!farmValid) {
-      Alert.alert('Chọn vườn', 'Hãy chọn một vườn còn hiệu lực trước khi tạo cây mới.');
+      showInfo('Chọn vườn', 'Hãy chọn một vườn còn hiệu lực trước khi tạo cây mới.');
       return;
     }
     setIsEnrolling(true);
@@ -723,7 +718,7 @@ const TreeEnrollScreen: React.FC = () => {
         setEnrollResult(res.data);
         handleSuccess(res.data.tree_id, res.data.provenance?.code ?? res.data.tree_id);
       } else {
-        Alert.alert('Lỗi', res.error?.detail ?? 'Tạo cây mới thất bại.');
+        showError('Lỗi', res.error?.detail ?? 'Tạo cây mới thất bại.');
       }
     } finally {
       setIsEnrolling(false);
@@ -768,41 +763,33 @@ const TreeEnrollScreen: React.FC = () => {
 
   const runEnroll = async () => {
     if (!name.trim()) {
-      Alert.alert('Thiếu tên', 'Vui lòng nhập tên cây trước khi đăng ký.');
+      showInfo('Thiếu tên', 'Vui lòng nhập tên cây trước khi đăng ký.');
       return;
     }
 
     // Chặn cây mồ côi — không cho đăng ký khi chưa gắn vào vườn nào.
     if (!farmId) {
       if (noFarms) {
-        Alert.alert(
-          'Chưa có vườn',
-          'Cây phải thuộc một vườn. Hãy tạo vườn trước rồi đăng ký cây.',
-          [
-            { text: 'Huỷ', style: 'cancel' },
-            {
-              text: 'Tạo vườn',
-              onPress: () =>
+        showWarning('Chưa có vườn', 'Cây phải thuộc một vườn. Hãy tạo vườn trước rồi đăng ký cây.', {
+            confirmText: 'Tạo vườn',
+            cancelText: 'Huỷ',
+            onConfirm: () =>
                 (navigation as any).navigate('FarmDetail', { farm_id: null }),
-            },
-          ],
-        );
+        });
       } else {
-        Alert.alert('Chọn vườn', 'Vui lòng chọn vườn để gắn cây trước khi đăng ký.');
+        showInfo('Chọn vườn', 'Vui lòng chọn vườn để gắn cây trước khi đăng ký.');
       }
       return;
     }
 
     if (effectiveCaptureCount < MIN_CAPTURES) {
-      Alert.alert(
-        'Chưa đủ ảnh',
-        `Cần ít nhất ${MIN_CAPTURES} góc chụp. Hiện có ${effectiveCaptureCount} góc.\nQuay lại và chụp thêm.`,
-      );
+      showError('Chưa đủ ảnh',
+        `Cần ít nhất ${MIN_CAPTURES} góc chụp. Hiện có ${effectiveCaptureCount} góc.\nQuay lại và chụp thêm.`);
       return;
     }
 
     if (!farmValid) {
-      Alert.alert('Chọn vườn', 'Hãy chọn một vườn còn hiệu lực để cây hiện đúng trong trang trại.');
+      showInfo('Chọn vườn', 'Hãy chọn một vườn còn hiệu lực để cây hiện đúng trong trang trại.');
       return;
     }
 
@@ -850,10 +837,10 @@ const TreeEnrollScreen: React.FC = () => {
           const regexMatch = detail.match(/tree[-_]?([0-9a-f-]{8,})/i);
           const foundId = fromBody ?? (regexMatch ? regexMatch[1] : null);
           Alert.alert(
-            'Trùng cây đã có',
-            `${detail}\n\nBạn muốn làm gì?`,
+            t('Trùng cây đã có'),
+            detail + '\n\n' + t('Bạn muốn làm gì?'),
             [
-              { text: 'Huỷ', style: 'cancel' },
+              { text: t('Huỷ'), style: 'cancel' },
               // Nút gộp CHỈ hiện khi biết gộp vào cây nào. Bản cũ luôn hiện nút,
               // rồi khi `foundId` rỗng thì bật một hộp thoại thứ hai bảo "chụp lại
               // và thử nhận diện trước" — trong khi người dùng VỪA nhận diện xong,
@@ -861,12 +848,12 @@ const TreeEnrollScreen: React.FC = () => {
               // thà không mời.
               ...(foundId
                 ? [{
-                  text: 'Gộp vào cây cũ',
+                  text: t('Gộp vào cây cũ'),
                   onPress: () => handleMergeToExisting(foundId),
                 }]
                 : []),
               {
-                text: 'Tạo cây mới',
+                text: t('Tạo cây mới'),
                 style: 'destructive',
                 onPress: handleForceEnroll,
               },
@@ -877,11 +864,11 @@ const TreeEnrollScreen: React.FC = () => {
 
         if (kind === 'heterogeneous') {
           Alert.alert(
-            'Nhiều cây trong ảnh',
-            'Hệ thống phát hiện ảnh chứa nhiều cây khác nhau. '
-              + 'Vui lòng chỉ chụp một cây duy nhất trong khung hình.',
+            t('Nhiều cây trong ảnh'),
+            t('Hệ thống phát hiện ảnh chứa nhiều cây khác nhau. ')
+              + t('Vui lòng chỉ chụp một cây duy nhất trong khung hình.'),
             [
-              { text: 'Huỷ', style: 'cancel' },
+              { text: t('Huỷ'), style: 'cancel' },
               { text: tk('trace.enroll.retake'), onPress: goRetake },
             ],
           );
@@ -890,11 +877,11 @@ const TreeEnrollScreen: React.FC = () => {
 
         if (kind === 'flat') {
           Alert.alert(
-            'Ảnh phẳng hoặc lặp góc',
-            'Các ảnh quá giống nhau hoặc chỉ nhìn từ một góc. '
-              + 'Hãy đi vòng quanh cây và chụp từ nhiều hướng đa dạng hơn.',
+            t('Ảnh phẳng hoặc lặp góc'),
+            t('Các ảnh quá giống nhau hoặc chỉ nhìn từ một góc. ')
+              + t('Hãy đi vòng quanh cây và chụp từ nhiều hướng đa dạng hơn.'),
             [
-              { text: 'Huỷ', style: 'cancel' },
+              { text: t('Huỷ'), style: 'cancel' },
               { text: tk('trace.enroll.retake'), onPress: goRetake },
             ],
           );
@@ -908,12 +895,12 @@ const TreeEnrollScreen: React.FC = () => {
         // việc phân loại đúng. Nhánh này giờ mở thẳng nút "Tạo cây mới" — cùng
         // hành động mà nhánh 'duplicate' cho, chỉ khác là không dám đoán lý do.
         Alert.alert(
-          'Máy chủ từ chối đăng ký',
-          `${detail}\n\nNếu chắc đây là một cây KHÁC, chọn "Tạo cây mới".`,
+          t('Máy chủ từ chối đăng ký'),
+          detail + '\n\n' + t('Nếu chắc đây là một cây KHÁC, chọn "Tạo cây mới".'),
           [
-            { text: 'Huỷ', style: 'cancel' },
+            { text: t('Huỷ'), style: 'cancel' },
             { text: tk('trace.enroll.retake'), onPress: goRetake },
-            { text: 'Tạo cây mới', style: 'destructive', onPress: handleForceEnroll },
+            { text: t('Tạo cây mới'), style: 'destructive', onPress: handleForceEnroll },
           ],
         );
         return;
@@ -922,24 +909,24 @@ const TreeEnrollScreen: React.FC = () => {
       if (status === 400) {
         if (detail.toLowerCase().includes('gps') || detail.toLowerCase().includes('location')) {
           Alert.alert(
-            'Cần bật GPS',
-            'Đăng ký cây yêu cầu thông tin vị trí. Vui lòng bật GPS và thử lại.',
+            t('Cần bật GPS'),
+            t('Đăng ký cây yêu cầu thông tin vị trí. Vui lòng bật GPS và thử lại.'),
             [
               // "Thử lại" một mình là vòng lặp kín: không có gì bật được GPS nên
               // lần nào cũng về đúng hộp thoại này. Mẫu mở Cài đặt đã có ở
               // `TreeIdentityScreen` (quyền camera) — dùng lại đúng mẫu đó.
               { text: tk('trace.enroll.openSettings'), onPress: () => { Linking.openSettings(); } },
-              { text: 'Thử lại', onPress: handleEnroll },
-              { text: 'Huỷ', style: 'cancel' },
+              { text: t('Thử lại'), onPress: handleEnroll },
+              { text: t('Huỷ'), style: 'cancel' },
             ],
           );
           return;
         }
-        Alert.alert('Lỗi', detail);
+        showError('Lỗi', detail);
         return;
       }
 
-      Alert.alert('Lỗi đăng ký', detail);
+      showError('Lỗi đăng ký', detail);
     } finally {
       setIsEnrolling(false);
     }

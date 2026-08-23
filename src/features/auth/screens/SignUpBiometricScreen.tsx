@@ -17,7 +17,7 @@ import ReactNativeBiometrics, { BiometryTypes } from 'react-native-biometrics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AUTH_BLUE } from '../theme';
 import StepIndicator from '../components/StepIndicator';
-import { showError } from '../../../utils/alert';
+import { showError, showWarning } from '../../../utils/alert';
 import {
   biometricKindFromType,
   phoenixKeyAuth,
@@ -26,6 +26,7 @@ import {
 import { loginUser } from '../../../store/userSlice';
 import { useDispatch } from 'react-redux';
 import { useBottomActionPadding } from '../../../hooks/useBottomActionPadding';
+import { t } from '../../../i18n';
 
 // PhoenixUser local registry — sẽ sync lên api.phoenixkey.me khi backend production sẵn sàng.
 // Mỗi entry: { username, did, createdAt }.
@@ -211,17 +212,11 @@ const SignUpBiometricScreen: React.FC = () => {
       // vỡ ngay khi đổi câu chữ hoặc khi người dùng đang dùng ngôn ngữ khác.
       if (e?.reason === 'khoa_bi_thu_hoi') {
         setStage('idle');
-        Alert.alert(
-          'Khoá trên máy này đã bị thu hồi',
-          e?.message ?? '',
-          [
-            { text: 'Để sau', style: 'cancel' },
-            {
-              text: 'Dùng 24 từ khôi phục',
-              onPress: () => navigation.navigate('RestoreIdentity'),
-            },
-          ],
-        );
+        showWarning('Khoá trên máy này đã bị thu hồi', e?.message ?? '', {
+            confirmText: 'Dùng 24 từ khôi phục',
+            cancelText: 'Để sau',
+            onConfirm: () => navigation.navigate('RestoreIdentity'),
+        });
         return;
       }
       showError(e?.message || 'Không tạo được danh tính. Vui lòng thử lại.');
@@ -252,11 +247,11 @@ const SignUpBiometricScreen: React.FC = () => {
    */
   const askWhoIsHoldingThePhone = () => {
     Alert.alert(
-      'Máy này đã có một danh tính',
-      'Một danh tính đã được tạo trên máy này trước đó. Bạn là ai?',
+      t('Máy này đã có một danh tính'),
+      t('Một danh tính đã được tạo trên máy này trước đó. Bạn là ai?'),
       [
         {
-          text: 'Tôi là chủ danh tính đó',
+          text: t('Tôi là chủ danh tính đó'),
           onPress: () => {
             setStage('generating');
             void completeSignUp('resume');
@@ -268,20 +263,20 @@ const SignUpBiometricScreen: React.FC = () => {
           // chính chủ. Mà chính chủ đọc "Người khác" thì không bao giờ bấm — họ có
           // phải người khác đâu. Nút này phục vụ CẢ HAI nhóm, nên nhãn phải nói về
           // thứ người dùng ĐANG CẦM (24 từ), không nói về họ là ai.
-          text: 'Tôi có 24 từ khôi phục',
+          text: t('Tôi có 24 từ khôi phục'),
           onPress: () => navigation.navigate('RestoreIdentity'),
         },
         {
-          text: 'Người khác — chưa có danh tính',
+          text: t('Người khác — chưa có danh tính'),
           style: 'destructive',
           onPress: () =>
             showError(
-              'Bản ứng dụng này chưa giữ được hai danh tính trên cùng một máy — tạo danh tính '
-              + 'mới ở đây sẽ xoá vĩnh viễn khoá của người đang dùng máy. Bản cập nhật tới mở '
-              + 'được việc đó. Trong lúc chờ, bạn hãy tạo danh tính trên máy của mình.',
+              t('Bản ứng dụng này chưa giữ được hai danh tính trên cùng một máy — tạo danh tính ')
+              + t('mới ở đây sẽ xoá vĩnh viễn khoá của người đang dùng máy. Bản cập nhật tới mở ')
+              + t('được việc đó. Trong lúc chờ, bạn hãy tạo danh tính trên máy của mình.'),
             ),
         },
-        { text: 'Huỷ', style: 'cancel' },
+        { text: t('Huỷ'), style: 'cancel' },
       ],
     );
   };

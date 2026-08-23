@@ -3,7 +3,7 @@
  * `null` = CHƯA XÁC ĐỊNH, KHÔNG phải an-toàn. Đây là mục có hậu-quả ngoài phần-mềm:
  * nói "an-toàn" khi hệ không biết là bảo nông-dân cứ hái, nông-sản đó ra chợ.
  */
-import { getWithdrawalStatus, safeStateOf } from './careService';
+import { getWithdrawalStatus, safeStateOf, type CareMatchResponse, type CareProduct } from './careService';
 
 describe('safeStateOf — ba nhánh tường minh', () => {
   it('false → blocked (đang trong thời-gian cách-ly)', () => {
@@ -108,5 +108,46 @@ describe('getWithdrawalStatus — cửa DUY NHẤT có cờ an toàn', () => {
     expect(safeStateOf(res.data?.safe)).toBe('safe');
     expect(res.data?.eggmilk).toBeDefined();
     expect(res.data?.eggmilk_safe).toBe(false);
+  });
+});
+
+/**
+ * ── `reason` phải đi ra tới màn hình ────────────────────────────────────────────
+ *
+ * `CareMatchResponse` cũ chỉ khai `{ ok, candidates? }`, nên `reason` bị nuốt ngay ở
+ * lớp kiểu và màn quét buộc phải suy lý do từ ĐỘ DÀI MẢNG. Máy chủ tách sẵn ba ca đòi
+ * ba hành động ngược nhau (`care_router.py:164-171`), trong đó ca đang xảy ra 100% hôm
+ * nay — `ocr_unavailable` — là ca mà chụp lại hoàn toàn vô ích.
+ *
+ * Bài kiểm này khoá đúng chỗ đã rơi: hình dạng kiểu phải CHỞ được `reason`.
+ */
+describe('CareMatchResponse — chở được `reason`, không nuốt', () => {
+  it('ba ca cùng cho mảng rỗng vẫn phân biệt được bằng `reason`', () => {
+    const khongOcr: CareMatchResponse = { ok: true, candidates: [], reason: 'ocr_unavailable' };
+    const khongChu: CareMatchResponse = { ok: true, candidates: [], reason: 'ocr_no_text' };
+    const khongKhop: CareMatchResponse = { ok: true, candidates: [], reason: 'no_match' };
+
+    // Cùng độ dài mảng — thứ duy nhất tách được ba ca là `reason`.
+    expect(khongOcr.candidates).toHaveLength(0);
+    expect(khongChu.candidates).toHaveLength(0);
+    expect(khongKhop.candidates).toHaveLength(0);
+    expect(new Set([khongOcr.reason, khongChu.reason, khongKhop.reason]).size).toBe(3);
+  });
+
+  it('ca nhập nhằng chở được cả cờ lẫn câu soạn sẵn của máy chủ', () => {
+    const r: CareMatchResponse = {
+      ok: true,
+      candidates: [{ product_id: 'p1', name: 'A' } as CareProduct],
+      reason: 'ambiguous',
+      ambiguous: true,
+      message: 'Chữ đọc được trên bao khớp với nhiều loại thuốc có số ngày cách ly khác nhau.',
+    };
+    expect(r.ambiguous).toBe(true);
+    expect(r.message).toContain('số ngày cách ly khác nhau');
+  });
+
+  it('máy chủ trả lý do app chưa biết thì kiểu vẫn nhận — để app nói "chưa rõ", không vỡ', () => {
+    const r: CareMatchResponse = { ok: true, candidates: [], reason: 'banned_not_in_catalog' };
+    expect(r.reason).toBe('banned_not_in_catalog');
   });
 });

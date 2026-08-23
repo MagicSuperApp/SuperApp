@@ -19,7 +19,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 import { COLORS } from '../constants';
-import { showError, showSuccess } from '../utils/alert';
+import { showError, showSuccess, showWarning } from '../utils/alert';
 import { currentUserDid } from '../sdk/phoenixKey';
 import { biometricKindFromType } from '../services/phoenixKeyAuthService';
 
@@ -160,21 +160,14 @@ const BiometricSettings = () => {
         showError('Thiết lập thất bại');
       }
     } else {
-      Alert.alert(
-        'Tắt xác thực sinh trắc học',
-        'Bạn có chắc muốn tắt tính năng này?',
-        [
-          { text: 'Huỷ', style: 'cancel' },
-          {
-            text: 'Tắt',
-            style: 'destructive',
-            onPress: async () => {
+      showWarning('Tắt xác thực sinh trắc học', 'Bạn có chắc muốn tắt tính năng này?', {
+          confirmText: 'Tắt',
+          cancelText: 'Huỷ',
+          onConfirm: async () => {
               await disableBiometricForDid(did);
               showSuccess('Đã tắt xác thực sinh trắc học');
             },
-          },
-        ]
-      );
+      });
     }
   };
 

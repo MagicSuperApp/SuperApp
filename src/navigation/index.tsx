@@ -1815,8 +1815,27 @@ const MODULE_STACK_SCREENS = collectModuleScreens(DEFAULT_INSTANCE.enabledModule
 // ⚠️ SEAM NGỦ, đo 2026-08-17. `prefixes` dưới đây chỉ dạy React Navigation cách ĐỌC
 // một URL ĐÃ tới tay app. Nó KHÔNG đăng ký scheme với hệ điều hành — việc đó nằm ở
 // `Info.plist` (CFBundleURLTypes) và `AndroidManifest.xml` (`<data android:scheme>`),
-// và hôm nay CẢ HAI đều không khai `lamp`. Nghĩa là chưa URL nào từ ngoài vào được.
-// Đừng đọc khối này thành "deep-link đã chạy"; muốn chạy thì phải khai phần native.
+// và hôm nay CẢ HAI đều không khai `lamp`.
+//
+// ⛔ ĐÍNH CHÍNH 2026-08-21 — câu tiếp theo của khối này từng viết "nghĩa là chưa URL
+// nào từ ngoài vào được". **Sai, và sai đúng ở phía có bảo mật.** Nó chỉ đúng với
+// intent NGẦM (implicit). Với intent TƯỜNG MINH thì Android bỏ qua hẳn bước đối chiếu
+// intent-filter:
+//
+//   AndroidManifest.xml:54-65   MainActivity android:exported="true"
+//                               (chỉ có MAIN/LAUNCHER, không <data android:scheme>)
+//   RN IntentModule.kt:61-67    trả intent.data chỉ cần action == ACTION_VIEW —
+//                               KHÔNG kiểm gói gọi, KHÔNG kiểm intent-filter
+//
+// Nên một app bất kỳ trên cùng máy gửi `ACTION_VIEW` + `-n <gói>/.MainActivity` kèm
+// `lamp://<module>/<route>` thì URL đó ĐI TỚI `buildLinking` hôm nay. Và map dưới đây
+// không có whitelist: nó phơi TOÀN BỘ route module (`MODULE_STACK_SCREENS`) cộng
+// `Main`. Whitelist 3 route ở `traceScan.ts:33-37` KHÔNG áp cho đường này — nó chỉ
+// gác bộ đọc QR trong app.
+//
+// Chưa sửa hành vi: chọn route nào được mở từ ngoài là quyết định sản phẩm, không
+// phải việc sửa lặng lẽ trong một lượt rà. Nhưng câu khẳng định cũ phải đi, vì nó là
+// thứ khiến người đọc sau thôi không kiểm.
 const buildLinking = () => {
   const screens: Record<string, string> = { Main: 'main' };
   MODULE_STACK_SCREENS.forEach(({ moduleId, route }) => {

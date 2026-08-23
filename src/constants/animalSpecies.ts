@@ -16,7 +16,7 @@
  * hình chỉ lặng lẽ hiện "chicken", "cattle" cho nông dân. Không lỗi nào nổ ra, nên
  * nó sống được rất lâu.
  *
- * Ba dòng `bo`, `vit`, `ngong`, `cho`, `meo` cũng không thuộc danh mục nào của máy
+ * Năm dòng `bo`, `vit`, `ngong`, `cho`, `meo` cũng không thuộc danh mục nào của máy
  * chủ — chúng là danh sách tự viết, không phải bản sao lệch của một gốc có thật.
  * Nên tệp này viết lại THẲNG từ sáu khoá của máy chủ, không đối chiếu bảng cũ.
  *

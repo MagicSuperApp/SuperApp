@@ -543,12 +543,24 @@ const AccountScreen = () => {
         if (own == null) return '—';
         if (vaultState === 'loading') return '…';
         if (vestedOildrop == null) return fmtLamp(own);
-        return fmtLamp(BigInt(own as any) + vestedOildrop);
+        // `Math.trunc` chứ không `BigInt(own as any)`: `lampBalance` khai là `number`
+        // (`userSlice.ts:34`), và `BigInt()` NÉM khi số có phần lẻ. Ném ở đây là ném
+        // giữa lượt dựng màn Tài khoản — người dùng thấy màn trắng, không thấy lỗi.
+        // Bỏ luôn `as any`: ép kiểu đi qua chính là thứ đã che lỗi đơn vị ở khối trên.
+        return fmtLamp(BigInt(Math.trunc(own)) + vestedOildrop);
     })();
-    /** Nói thẳng con số trên đang gồm những gì — đừng để người đọc tự đoán. */
-    const lampOwnedSub = vestedOildrop == null
-        ? 'Mới tính phần trong ví — chưa hỏi được phần Wakeme'
-        : 'Trong ví + phần Wakeme đã mở khoá thành sở hữu';
+    /**
+     * Nói thẳng con số trên đang gồm những gì — đừng để người đọc tự đoán.
+     *
+     * BA ca, không phải hai. "đang hỏi" khác "hỏi hỏng": gộp chúng lại là in câu
+     * "chưa hỏi được phần Wakeme" ngay trong lúc còn đang hỏi — một KHẲNG ĐỊNH về
+     * thất bại chưa xảy ra, đặt ngay cạnh con số đang hiện `…`.
+     */
+    const lampOwnedSub = vestedOildrop != null
+        ? 'Trong ví + phần Wakeme đã mở khoá thành sở hữu'
+        : vaultState === 'loading'
+            ? 'Đang hỏi phần Wakeme…'
+            : 'Mới tính phần trong ví — chưa hỏi được phần Wakeme';
     // Popup chọn ngôn ngữ (Việt · Anh · Trung). `useLanguage` để dòng phụ của mục
     // "Ngôn ngữ" đổi ngay khi người dùng chọn xong.
     const [langOpen, setLangOpen] = useState(false);

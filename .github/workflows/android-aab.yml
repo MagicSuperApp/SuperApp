@@ -195,6 +195,7 @@ jobs:
           aladin-api-key: ${{ secrets.ALADIN_API_KEY }}
           analytics-api-url: ${{ secrets.ANALYTICS_API_URL }}
           analytics-api-key: ${{ secrets.ANALYTICS_API_KEY }}
+          cardano-network: ${{ vars.CARDANO_NETWORK || '0' }}
 
       - name: Create android/gradle.properties
         run: |

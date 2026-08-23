@@ -43,7 +43,7 @@ import { getVersion, getBuildNumber } from 'react-native-device-info';
 // Debug host = backend field-reid THẬT app đang dùng (ORILIFE_BASE), không phải
 // aladin-api (backend Lợi deprecated) — để field soi đúng server (Lỗi field #5).
 import { ORILIFE_BASE } from '../services/orilifeBase';
-import { fmtLamp, fmtCarp } from '../utils/token';
+import { fmtLamp, fmtCarp, fmtLampWhole, lampWholeToOildrop } from '../utils/token';
 import { getVaultStatus, WAKEME_CLAIM_READY } from '../services/wakemeService';
 import type { VaultStatusResponse } from '../services/phoenixKey-api';
 import taad from '../sdk/taadEnclave';
@@ -518,15 +518,37 @@ const AccountScreen = () => {
 
     // KHÔNG in 0 khi chưa biết. "0 LAMP" và "chưa hỏi được máy chủ" là hai việc
     // khác hẳn nhau, mà chỉ một trong hai đáng để người dùng đi khiếu nại.
-    const lampWakemeText = vaultState === 'ok' && vault
-        ? fmtLamp(vault.initialDlamp)
-        : vaultState === 'loading' ? '…' : '—';
-    const lampTotalText = (() => {
+    //
+    // ── Vì sao khối này được viết lại (nhà LAMP báo 21/08) ───────────────────
+    // Wakeme là **CHO MƯỢN để tiêu dịch vụ**, KHÔNG phải tặng
+    // (`Papers/pot-catalog.md:88`). LAMP rời vault đi đúng một trong hai đích
+    // (`:43-64`, chủ dự án chốt 12/08): về **pot** — ngày nào không dùng thì thu
+    // 1 LAMP — hoặc thành **sở hữu** sau khi qua `OwnEpoch`. Nên tài sản thật chỉ
+    // gồm số dư ví + `vestedUnlocked`.
+    //
+    // Bản cũ sai HAI lần, và lỗi thứ nhất che lỗi thứ hai:
+    //   1. ĐƠN VỊ — `initialDlamp` là LAMP NGUYÊN, `lampBalance` là oildrop
+    //      (1 LAMP = 10⁶ oildrop). `fmtLamp(vault.initialDlamp)` chia LAMP nguyên
+    //      cho 10⁶ ⇒ 1001 LAMP hiện ra `0.001001`; và `BigInt(own) +
+    //      BigInt(vault.initialDlamp)` cộng thẳng hai đơn vị lệch nhau 10⁶.
+    //   2. NGHĨA — `initialDlamp` là số BAN ĐẦU, **không giảm** khi LAMP bị thu về
+    //      pot. Bỏ không dùng 30 ngày thì 30 LAMP đã về pot mà con số vẫn nguyên:
+    //      độ lệch lớn dần mỗi đêm, và luôn lệch về phía có lợi cho con số.
+    //   Vì (1) làm số nhỏ đi một triệu lần nên (2) không ai nhìn ra.
+    const vaultOk = vaultState === 'ok' && vault ? vault : null;
+    const vestedOildrop = lampWholeToOildrop(vaultOk?.vestedUnlocked);
+    /** Tài sản THẬT: ví + phần Wakeme đã mở khoá. Không gồm phần đang mượn. */
+    const lampOwnedText = (() => {
         const own = chainWallet?.lampBalance;
         if (own == null) return '—';
-        if (vaultState !== 'ok' || !vault) return fmtLamp(own);
-        return fmtLamp(BigInt(own as any) + BigInt(vault.initialDlamp));
+        if (vaultState === 'loading') return '…';
+        if (vestedOildrop == null) return fmtLamp(own);
+        return fmtLamp(BigInt(own as any) + vestedOildrop);
     })();
+    /** Nói thẳng con số trên đang gồm những gì — đừng để người đọc tự đoán. */
+    const lampOwnedSub = vestedOildrop == null
+        ? 'Mới tính phần trong ví — chưa hỏi được phần Wakeme'
+        : 'Trong ví + phần Wakeme đã mở khoá thành sở hữu';
     // Popup chọn ngôn ngữ (Việt · Anh · Trung). `useLanguage` để dòng phụ của mục
     // "Ngôn ngữ" đổi ngay khi người dùng chọn xong.
     const [langOpen, setLangOpen] = useState(false);
@@ -761,36 +783,76 @@ const AccountScreen = () => {
                             <View style={styles.assetSheet}>
                                 <Text style={styles.assetSheetTitle}>LAMP</Text>
 
+                                {/* Dòng đầu là TÀI SẢN, không phải tổng gộp. Phần đang mượn
+                                    nằm riêng bên dưới — đặt nó dưới chữ "Tổng cộng" là mời
+                                    người dùng coi khoản mượn như thứ bán được, đúng điều
+                                    pot này cấm (`Papers/pot-catalog.md:88`). */}
                                 <View style={styles.lampRow}>
                                     <Icon name="lightning-bolt" size={18} color={COLORS.accent} />
                                     <View style={{ flex: 1 }}>
-                                        <Text style={styles.lampRowName}>Tổng cộng</Text>
-                                        <Text style={styles.lampRowSub}>Gồm cả phần còn khoá trong vault</Text>
+                                        <Text style={styles.lampRowName}>LAMP của bạn</Text>
+                                        <Text style={styles.lampRowSub}>{lampOwnedSub}</Text>
                                     </View>
-                                    <Text style={styles.lampTotalVal}>{lampTotalText}</Text>
+                                    <Text style={styles.lampTotalVal}>{lampOwnedText}</Text>
                                 </View>
 
                                 <View style={styles.lampRow}>
                                     <Icon name="wallet-outline" size={18} color={COLORS.accent} />
                                     <View style={{ flex: 1 }}>
-                                        <Text style={styles.lampRowName}>LAMP của bạn</Text>
-                                        <Text style={styles.lampRowSub}>Nằm trong ví, dùng được ngay</Text>
+                                        <Text style={styles.lampRowName}>Trong ví</Text>
+                                        <Text style={styles.lampRowSub}>Dùng được ngay</Text>
                                     </View>
                                     <Text style={styles.lampRowVal}>{fmtLamp(chainWallet?.lampBalance)}</Text>
                                 </View>
 
-                                <View style={styles.lampRow}>
-                                    <Icon name="lightbulb-on-outline" size={18} color={COLORS.accent} />
-                                    <View style={{ flex: 1 }}>
-                                        <Text style={styles.lampRowName}>LAMP của Wakeme</Text>
-                                        <Text style={styles.lampRowSub}>
-                                            {vaultState === 'loading' ? 'Đang hỏi máy chủ…'
-                                                : vaultState === 'ok' ? 'Trong vault, mở khoá dần theo ngày'
-                                                    : 'Chưa nhận'}
+                                {!vaultOk ? (
+                                    <View style={styles.lampRow}>
+                                        <Icon name="lightbulb-on-outline" size={18} color={COLORS.accent} />
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.lampRowName}>Wakeme</Text>
+                                            <Text style={styles.lampRowSub}>
+                                                {vaultState === 'loading' ? 'Đang hỏi máy chủ…' : 'Chưa nhận'}
+                                            </Text>
+                                        </View>
+                                        <Text style={styles.lampRowVal}>
+                                            {vaultState === 'loading' ? '…' : '—'}
                                         </Text>
                                     </View>
-                                    <Text style={styles.lampRowVal}>{lampWakemeText}</Text>
-                                </View>
+                                ) : (<>
+                                    <View style={styles.lampRow}>
+                                        <Icon name="lock-open-variant-outline" size={18} color={COLORS.accent} />
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.lampRowName}>Wakeme đã mở khoá</Text>
+                                            <Text style={styles.lampRowSub}>Đã thành sở hữu của bạn</Text>
+                                        </View>
+                                        <Text style={styles.lampRowVal}>{fmtLampWhole(vaultOk.vestedUnlocked)}</Text>
+                                    </View>
+
+                                    <View style={styles.lampRow}>
+                                        <Icon name="hand-coin-outline" size={18} color={COLORS.accent} />
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.lampRowName}>Wakeme đang mượn</Text>
+                                            <Text style={styles.lampRowSub}>
+                                                Tiêu dịch vụ được, KHÔNG bán được. Ngày nào không dùng thì bị thu 1 LAMP về pot.
+                                            </Text>
+                                        </View>
+                                        <Text style={styles.lampRowVal}>{fmtLampWhole(vaultOk.conditionalLamp)}</Text>
+                                    </View>
+
+                                    {/* Chỉ hiện khi ĐÃ có phần bị thu — đây là dòng giải thích
+                                        vì sao số của người dùng giảm đi. Ẩn nó thì con số tụt
+                                        mà không ai nói vì sao. */}
+                                    {vaultOk.reclaimedToPotLamp > 0 && (
+                                        <View style={styles.lampRow}>
+                                            <Icon name="arrow-u-left-top" size={18} color={COLORS.textMuted} />
+                                            <View style={{ flex: 1 }}>
+                                                <Text style={styles.lampRowName}>Đã thu về pot</Text>
+                                                <Text style={styles.lampRowSub}>Phần bỏ không dùng, đã trả lại pot</Text>
+                                            </View>
+                                            <Text style={styles.lampRowVal}>{fmtLampWhole(vaultOk.reclaimedToPotLamp)}</Text>
+                                        </View>
+                                    )}
+                                </>)}
 
                                 {vaultState !== 'ok' && (WAKEME_CLAIM_READY ? (
                                     <TouchableOpacity

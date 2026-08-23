@@ -111,14 +111,31 @@ export interface UpgradeAuthorityResult {
   authority_model?: string;
 }
 
-/** Một OrgDID user điều-khiển (dùng cho màn danh sách, nếu backend có list). */
+/**
+ * Một OrgDID user điều-khiển. Hình dạng WIRE, trích từ hợp đồng máy chủ
+ * `PhoenixKey-Database/API.md:283-299` và bản ghi `OrgListResponse.OrgSummary`.
+ *
+ * ⚠️ Tên hiển thị là `name`, KHÔNG phải `org_name`. Bản khai cũ dùng `org_name`
+ * và máy chủ chưa bao giờ gửi trường đó — mọi tổ chức đều hiện chữ mặc định.
+ *
+ * `registration_number` (MST) CỐ Ý vắng ở cửa danh sách: máy chủ giữ nó mã hoá
+ * at-rest và không đưa lên dây ở mỗi lượt mở màn. Cần thì phải hỏi từng org.
+ */
 export interface OrgSummary {
   org_did: string;
-  org_name?: string;
-  /** Vai người gọi trong org: owner | manager | viewer. */
+  name: string;
+  /** `single` | `threshold`. */
+  authority_model?: string;
+  /** m trong m-of-n; `null` khi `authority_model = single`. */
+  threshold?: number | null;
+  /** Vai người gọi trong org: `owner` | `member`. */
   role?: string;
-  /** Ngưỡng m-of-n (single = 1). */
-  threshold?: number;
+  created_at?: string;
+}
+
+/** Thân `result` của `GET /identity/org` — một OBJECT bọc, không phải mảng trần. */
+export interface OrgListResult {
+  orgs: OrgSummary[];
 }
 
 /**
@@ -434,11 +451,18 @@ export const orgMintApi = {
 
   /**
    * Danh sách OrgDID người gọi điều-khiển.
-   * [CHỜ PhoenixKey xác nhận có endpoint list] — nếu chưa có, màn OrgDID rơi về
-   * lưu local (xem orgMintService.listOrgs). Path dự-kiến, gắn cờ.
+   *
+   * ⚠️ `result` là `{ orgs: [...] }` — một OBJECT bọc, KHÔNG phải mảng trần
+   * (`API.md:283-299`; bản ghi Java `OrgListResponse(List<OrgSummary> orgs)`).
+   * Bản khai cũ ghi `unwrap<OrgSummary[]>`, và phía service có một nhánh
+   * `Array.isArray(rows) ? rows : []` nuốt trọn lần trượt ⇒ danh sách tổ chức
+   * từ máy chủ LUÔN rỗng, không một dòng lỗi nào.
+   *
+   * Chú thích cũ còn ghi "[CHỜ PhoenixKey xác nhận có endpoint list]" — cửa này
+   * đã có tài liệu và đã chạy; câu chờ đó cũng đã hết hạn.
    */
   listOrgs: () =>
-    unwrap<OrgSummary[]>(
+    unwrap<OrgListResult>(
       client.get('/identity/org', { needsAuth: true } as AxiosRequestConfig),
     ),
 

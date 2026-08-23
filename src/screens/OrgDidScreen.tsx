@@ -82,6 +82,12 @@ const OrgDidScreen: React.FC = () => {
   const [orgName, setOrgName] = useState('');
   const [orgRegNo, setOrgRegNo] = useState('');
   const [creating, setCreating] = useState(false);
+  /**
+   * Câu lỗi THẬT của lượt nạp gần nhất. Trước đây mọi lần trượt đều bị đổi thành
+   * trạng thái "chưa có tổ chức nào" — câu đó bảo người dùng đi tạo một tổ chức
+   * họ đã có, và máy chủ cho phép trùng tên nên họ đúc được cái thứ hai.
+   */
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -98,6 +104,7 @@ const OrgDidScreen: React.FC = () => {
   // Nạp danh sách org: thử backend → fallback cache local. Lỗi mạng → offline.
   const load = useCallback(async () => {
     setLoadState('loading');
+    setLoadError(null);
     const cached = await readCachedOrgs();
 
     const net = await NetInfo.fetch();
@@ -116,14 +123,19 @@ const OrgDidScreen: React.FC = () => {
       await writeCachedOrgs(merged);
       setLoadState(merged.length ? 'ready' : 'empty');
     } catch (err) {
-      // Endpoint list chưa có / lỗi → dùng cache local (không chặn tạo org).
-      if (err instanceof PhoenixKeyApiError) {
-        setOrgs(cached);
-        setLoadState(cached.length ? 'ready' : 'empty');
-      } else {
-        setOrgs(cached);
-        setLoadState(cached.length ? 'ready' : 'error');
-      }
+      // KHÔNG đổi lỗi thành 'empty'. `empty` là một KHẲNG ĐỊNH — "máy chủ nói bạn
+      // không có tổ chức nào" — và ta chỉ được nói câu đó khi máy chủ thật sự trả
+      // danh sách rỗng. Nhánh cũ gộp cả `PhoenixKeyApiError` (gồm 401 hết phiên)
+      // vào đó, nên hết phiên đăng nhập trông y hệt chưa từng tạo gì.
+      const msg =
+        err instanceof PhoenixKeyApiError
+          ? `${err.message} (mã ${err.code})`
+          : (err as Error)?.message || 'Không nạp được danh sách tổ chức.';
+      setOrgs(cached);
+      setLoadError(msg);
+      // Còn bản lưu trên máy thì vẫn bày ra — nhưng bày kèm dải cảnh báo bên dưới,
+      // không bày như thể vừa đọc được từ máy chủ.
+      setLoadState(cached.length ? 'ready' : 'error');
     }
   }, []);
 
@@ -165,6 +177,10 @@ const OrgDidScreen: React.FC = () => {
       setOrgRegNo('');
       showSuccess('Đã tạo tổ chức', `OrgDID: ${created.orgDid}`);
     } catch (err) {
+      // Nhánh cũ nuốt MỌI lỗi không phải PhoenixKeyApiError vào một câu duy nhất
+      // ("Vui lòng thử lại"). Ba nguyên nhân hay gặp nhất — module native vắng,
+      // người dùng huỷ sinh trắc, DID sai dạng — đều rơi vào đó, và "thử lại"
+      // không chữa được cái nào trong ba.
       const msg =
         err instanceof PhoenixKeyApiError
           ? err.message
@@ -203,7 +219,9 @@ const OrgDidScreen: React.FC = () => {
         return (
           <View style={styles.stateBox}>
             <Icon name="alert-circle-outline" size={28} color={COLORS.error} />
-            <Text style={styles.stateText}>Lỗi nạp danh sách tổ chức.</Text>
+            <Text style={styles.stateText}>
+              {loadError || 'Lỗi nạp danh sách tổ chức.'}
+            </Text>
             <TouchableOpacity style={styles.retryBtn} onPress={load}>
               <Text style={styles.retryText}>Thử lại</Text>
             </TouchableOpacity>
@@ -229,6 +247,17 @@ const OrgDidScreen: React.FC = () => {
       default:
         return (
           <View style={styles.list}>
+            {/* Danh sách đang là bản lưu trên máy, không phải bản vừa đọc từ máy
+                chủ. Nói ra, vì thiếu câu này thì một danh sách cũ trông y hệt một
+                danh sách mới. */}
+            {!!loadError && (
+              <View style={styles.staleCard}>
+                <Icon name="cloud-off-outline" size={16} color={COLORS.warning} />
+                <Text style={styles.staleText}>
+                  Đang hiện bản lưu trên máy — chưa hỏi được máy chủ. {loadError}
+                </Text>
+              </View>
+            )}
             <TouchableOpacity
               style={styles.mofnBtn}
               onPress={() => navigation.navigate('OrgAuthority', { mode: 'founding' })}
@@ -307,8 +336,10 @@ const OrgDidScreen: React.FC = () => {
               <View style={styles.noticeCard}>
                 <Icon name="information-outline" size={18} color={COLORS.warning} />
                 <Text style={styles.noticeText}>
-                  Tính năng phát hành đang ở chế độ xem trước — chưa chạy thật,
-                  sẽ mở ở bản sau.
+                  Phần <Text style={{ fontWeight: '700' }}>phát hành LAMP</Text> đang ở
+                  chế độ xem trước — chưa chạy thật, sẽ mở ở bản sau. Việc{' '}
+                  <Text style={{ fontWeight: '700' }}>tạo tổ chức</Text> bên dưới thì
+                  chạy thật và ghi lên máy chủ ngay.
                 </Text>
               </View>
             )}
@@ -413,6 +444,19 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   noticeText: { flex: 1, fontSize: 12.5, color: COLORS.textSub, lineHeight: 18 },
+
+  staleCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: `${COLORS.warning}12`,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: `${COLORS.warning}40`,
+    padding: 10,
+    marginBottom: 12,
+  },
+  staleText: { flex: 1, fontSize: 11.5, color: COLORS.textSub, lineHeight: 16 },
 
   sectionWrap: { marginBottom: 20 },
   sectionLabel: {

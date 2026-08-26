@@ -53,6 +53,13 @@ inputs:
   analytics-api-key:
     required: false
     default: ''
+  app-instance:
+    description: >
+      App nào được dựng từ nền mã này: `aladin` | `checkfarm`. Mặc định `aladin`
+      giữ đúng hành vi cũ. Giá trị LẠ thì app NÉM ngay lúc nạp module — cố ý,
+      vì rơi sạch ở đó nghĩa là dựng ra app này rồi nộp cửa hàng dưới tên app kia.
+    required: false
+    default: 'aladin'
   cardano-network:
     description: >
       0 = preprod (chuỗi thử) · 1 = mainnet (tiền thật). Mặc định `0` là fail-safe cố ý,
@@ -86,6 +93,7 @@ runs:
         IN_ANALYTICS_API_KEY: ${{ inputs.analytics-api-key }}
         IN_PROOFCHAT_ENABLED: ${{ inputs.proofchat-backend-enabled }}
         IN_CARDANO_NETWORK: ${{ inputs.cardano-network }}
+        IN_APP_INSTANCE: ${{ inputs.app-instance }}
       run: |
         set -eo pipefail
         ENV_FILE=".env"
@@ -108,6 +116,8 @@ runs:
         # cardanoNetwork.ts:33-38 rơi về preprod — fail-safe cố ý, vì đoán nhầm
         # sang mainnet là app ký giao dịch bằng tiền thật.
         CARDANO_NETWORK=${IN_CARDANO_NETWORK:-0}
+        # `aladin` | `checkfarm` — chọn app lúc DỰNG. Xem config/instance.config.ts.
+        APP_INSTANCE=${IN_APP_INSTANCE:-aladin}
         # Module Pool đang được gỡ (PR #130 — bản thứ hai của cùng một việc, không
         # màn nào mở được). Giữ dòng này tới khi #130 vào develop, vì poolService.ts
         # còn import nó và bước đối chiếu bên dưới sẽ đỏ nếu thiếu.

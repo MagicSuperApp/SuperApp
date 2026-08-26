@@ -14,6 +14,22 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ensureOrilifeToken } from './orilifeDidAuth';
+import { canResendAfterNetworkError } from './resendPolicy';
+
+/**
+ * Cửa POST GỬI LẠI ĐƯỢC sau lỗi mạng. Luật + lý do đầy đủ ở `resendPolicy.ts`.
+ *
+ * Vắng mặt CỐ Ý: `/api/fruit/enroll` (TẠO quả) và `/api/fruit/add_view` (bổ-sung
+ * góc cho quả). Đường quả nhạy hơn đường cây: ở ngưỡng đang chạy, hai quả KHÁC
+ * NHAU trên cùng một cây bị nhận là một tới 73% số cặp — thêm một bản ghi thừa vào
+ * đó là làm hỏng chính chữ ký đang dùng để phân biệt chúng.
+ */
+export const RESENDABLE_POST = [
+  '/api/fruit/detect',            // đọc — dò vùng quả trong ảnh
+  '/api/fruit/candidates',        // đọc — so khớp
+  '/api/fruit/identify',          // đọc — so khớp
+  '/api/fruit/identify_verdict',  // nhãn đo, khoá theo `query_id`
+] as const;
 
 // ---------------------------------------------------------------------------
 // Types — khớp ĐÚNG response field-reid (server.py)
@@ -303,7 +319,9 @@ async function _apiCall<T>(
     clearTimeout(timer);
     const isTimeout = err instanceof Error && err.name === 'AbortError';
     const isConn = err instanceof TypeError && !isTimeout;
-    if (isConn && attempt === 0) return _apiCall<T>(url, method, body, 1);
+    if (isConn && attempt === 0 && canResendAfterNetworkError(url, method, RESENDABLE_POST)) {
+      return _apiCall<T>(url, method, body, 1);
+    }
     return { ok: false, error: { type: 'network_error', detail: String(err), http_status: 0 } };
   }
 }

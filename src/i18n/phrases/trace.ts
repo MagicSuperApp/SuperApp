@@ -868,4 +868,15 @@ export const TRACE: PhraseMap = {
     zh: '档案由 OriLife 服务器提供。留空的字段表示服务器尚未告知 — 应用不会自行填写。',
     ja: 'この記録は OriLife サーバーから提供されます。空欄はサーバーが未報告の項目であり、アプリが補完することはありません。',
   },
+  // Hộp thoại Đổi tên — hai chuỗi này ra đời cùng nút Đổi tên vật nuôi. Phần còn
+  // lại của hộp thoại ('Huỷ' · 'Lưu' · 'Nhập tên mới...' · 'Đổi tên thất bại' ·
+  // 'Đang đổi tên...' ở `screens.ts:500`) đã có sẵn từ trước nhưng CHƯA chỗ nào
+  // gọi `t()` — nay gọi rồi. KHÔNG thêm khoá mới cho những chuỗi đó: một khoá chỉ
+  // khác nhau ở dấu ba chấm là hai mục từ điển rời nhau, và bài kiểm trùng khoá
+  // hiện có chỉ bắt được khoá GIỐNG HỆT.
+  'Không đổi được tên. Kiểm tra kết nối và thử lại.': {
+    en: 'Could not rename. Check your connection and try again.',
+    zh: '无法重命名，请检查网络后重试。',
+    ja: '名前を変更できません。通信状態を確認してからお試しください。',
+  },
 };

@@ -10,16 +10,31 @@
  * máy chủ có nhận tên đó hay không là việc của tầng gọi, và tầng gọi phải đọc
  * câu trả lời THẬT của máy chủ — cả hai cửa `POST /api/rename` (cây) và
  * `POST /api/animal/rename` (vật nuôi) đều trả `200` kèm `ok:false` khi từ chối.
+ *
+ * ── Chữ trong hộp thoại đi qua `t()` ─────────────────────────────────────────
+ * Bốn chuỗi ở đây ('Huỷ' · 'Lưu' · 'Nhập tên mới...' · tiêu đề) ĐÃ nằm sẵn trong
+ * từ điển với đủ en/zh/ja, nhưng bản nằm trong màn hình trước đây in thẳng nên
+ * không chuỗi nào từng được dùng — người chọn tiếng Anh mở hộp thoại vẫn thấy
+ * tiếng Việt. Mục từ điển có sẵn mà không ai gọi thì không có bài kiểm nào đỏ:
+ * độ phủ từ điển đo ở phía TỪ ĐIỂN, không đo ở phía chỗ gọi.
+ *
+ * `t()` đặt Ở TRONG hộp thoại chứ không ở chỗ gọi: gom về một chỗ thì màn thứ ba
+ * dùng lại hộp thoại này không thể quên.
  */
 import React, { useState, useEffect } from 'react';
 import { Modal, View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import { NEUTRAL } from '../shared/theme';
+import { t } from '../i18n';
 
 export interface RenameModalProps {
   visible: boolean;
   /** Tên đang có — ô nhập mở sẵn với chữ này. */
   currentName: string;
-  /** Tiêu đề hộp thoại, vd "Đổi tên cây" / "Đổi tên cá thể". */
+  /**
+   * Tiêu đề hộp thoại, vd "Đổi tên cây" / "Đổi tên cá thể".
+   * Truyền chuỗi NGUỒN tiếng Việt — hộp thoại tự gọi `t()`, nên chỗ gọi không
+   * phải nhớ. Một chỗ dịch thì không có chỗ nào quên.
+   */
   title: string;
   placeholder?: string;
   /** Trần ký tự. Mặc định 80 — khớp trần của cả hai cửa máy chủ. */
@@ -55,12 +70,12 @@ const RenameModal: React.FC<RenameModalProps> = ({
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onDismiss}>
       <View style={s.overlay}>
         <View style={s.dialog}>
-          <Text style={s.title}>{title}</Text>
+          <Text style={s.title}>{t(title)}</Text>
           <TextInput
             style={s.input}
             value={value}
             onChangeText={setValue}
-            placeholder={placeholder}
+            placeholder={t(placeholder)}
             placeholderTextColor={NEUTRAL.textMuted}
             autoFocus
             maxLength={maxLength}
@@ -73,7 +88,7 @@ const RenameModal: React.FC<RenameModalProps> = ({
               onPress={onDismiss}
               activeOpacity={0.8}
             >
-              <Text style={s.btnCancelText}>Huỷ</Text>
+              <Text style={s.btnCancelText}>{t('Huỷ')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[
@@ -85,7 +100,7 @@ const RenameModal: React.FC<RenameModalProps> = ({
               disabled={!value.trim()}
               activeOpacity={0.8}
             >
-              <Text style={s.btnConfirmText}>Lưu</Text>
+              <Text style={s.btnConfirmText}>{t('Lưu')}</Text>
             </TouchableOpacity>
           </View>
         </View>

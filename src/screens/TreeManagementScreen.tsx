@@ -409,7 +409,7 @@ const TreeManagementScreen: React.FC = () => {
       {isRenaming && (
         <View style={styles.overlay}>
           <ActivityIndicator size="large" color={COLORS.accent} />
-          <Text style={styles.overlayText}>Đang đổi tên...</Text>
+          <Text style={styles.overlayText}>{t('Đang đổi tên...')}</Text>
         </View>
       )}
     </View>

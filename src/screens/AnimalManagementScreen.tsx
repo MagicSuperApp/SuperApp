@@ -287,10 +287,10 @@ const AnimalManagementScreen: React.FC = () => {
         );
         setRenameTarget(null);
       } else {
-        Alert.alert('Đổi tên thất bại', res.error?.detail ?? 'Thử lại.');
+        Alert.alert(t('Đổi tên thất bại'), res.error?.detail ?? t('Thử lại.'));
       }
     } catch {
-      Alert.alert('Lỗi mạng', 'Không đổi được tên. Kiểm tra kết nối và thử lại.');
+      Alert.alert(t('Lỗi mạng'), t('Không đổi được tên. Kiểm tra kết nối và thử lại.'));
     } finally {
       setIsRenaming(false);
     }
@@ -517,7 +517,7 @@ const AnimalManagementScreen: React.FC = () => {
       {isRenaming && (
         <View style={styles.renameOverlay}>
           <ActivityIndicator size="large" color={COLORS.accent} />
-          <Text style={styles.renameOverlayText}>Đang đổi tên…</Text>
+          <Text style={styles.renameOverlayText}>{t('Đang đổi tên...')}</Text>
         </View>
       )}
     </View>

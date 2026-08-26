@@ -76,12 +76,21 @@ jobs:
       # Dùng bước CHẶN (`exit 1`) chứ KHÔNG dùng `if:` cấp job: `if:` sai điều kiện thì
       # job bị BỎ QUA và cả lượt chạy vẫn XANH — đúng dạng hỏng câm kho này đã dính nhiều
       # lần (nhãn `cancelled` năm ngày không ai thấy). Cổng phải kêu thành tiếng.
+      #
+      # Ba giá trị ngữ cảnh đi qua `env:` chứ KHÔNG nội suy `${{ }}` thẳng vào thân
+      # `run:`. Nội suy thẳng là dán chuỗi vào mã shell TRƯỚC khi shell chạy, nên một
+      # nhánh đặt tên có `$(...)` hay dấu nháy ngược biến thành lệnh chạy ngay trong
+      # job cầm khoá ký. Qua `env:` thì chúng chỉ còn là giá trị biến, không còn là mã.
       - name: Cổng nhánh — chỉ `main` được ký bản phát hành
+        env:
+          REF: ${{ github.ref }}
+          SU_KIEN: ${{ github.event_name }}
+          NGUOI_BAM: ${{ github.actor }}
         run: |
-          echo "ref        = ${{ github.ref }}"
-          echo "sự kiện    = ${{ github.event_name }}"
-          echo "người bấm  = ${{ github.actor }}"
-          if [ "${{ github.ref }}" != "refs/heads/main" ]; then
+          echo "ref        = $REF"
+          echo "sự kiện    = $SU_KIEN"
+          echo "người bấm  = $NGUOI_BAM"
+          if [ "$REF" != "refs/heads/main" ]; then
             echo "::error::Nhánh này KHÔNG phải main — dừng TRƯỚC khi chạm khoá ký."
             echo "Job này ký bằng ORILIFE_UPLOAD_* — khoá ra Play Store. Chỉ main mới"
             echo "được cho ra một tệp .aab ký thật."

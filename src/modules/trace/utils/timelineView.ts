@@ -162,21 +162,45 @@ export const MEDIA_PREVIEW_MAX = 4;
 /**
  * `media[]` → danh sách URL ĐẦY ĐỦ, sẵn sàng đưa vào `<RemoteImage>`.
  *
- * Nhận cả hai dạng mà không cần biết trước máy chủ trả dạng nào:
- *   · `"https://…"` hoặc `"file://…"` → giữ nguyên;
- *   · `"/gimg/abc"` → ghép base;
- *   · `{ url | uri | src | path | href: … }` → lấy khoá đầu tiên đọc được;
- *   · `{ cid: … }` → ghép `{base}/gimg/{cid}` (đường ảnh theo CID của OriLife).
+ * ⚠ HAI KHO ẢNH KHÁC NHAU — đừng ghép chung một luật.
  *
- * Phần tử không đọc được thì BỎ, không dựng một URL hỏng để rồi màn hiện ô vỡ.
+ * Bản trước ghép `{cid}` thành `{base}/gimg/{cid}`. Sai, và sai câm: `/gimg` là
+ * `app.mount("/gimg", StaticFiles(directory=STORE))` (`server.py:8662`) — nó phục
+ * vụ TỆP TRÊN ĐĨA máy chủ OriLife, đánh theo đường dẫn `{tree_id}/imgs/…`
+ * (`server.py:3455`). Còn `cid` trong `media[]` là CID LAMPNET: `media_attach.py`
+ * BẮT BUỘC mỗi phần tử phải có `cid`+`sha256` của byte "đã lưu được ở LampNet"
+ * (`_norm_media`, `media_attach.py:72-88`), và nơi gọi truyền thẳng `put["cid"]`
+ * trả về từ lượt đẩy LampNet (`server.py:4866`). Hai không gian tên khác nhau ⇒
+ * `{base}/gimg/ln1q_…_file` không bao giờ là một tệp có thật ⇒ 404 ⇒ ô ảnh vỡ ở
+ * MỌI sự kiện có media. Chú thích ngay dưới đây đã nói đúng luật rồi — "ghép bừa
+ * vào base là dựng một URL sai trông y như URL đúng" — chỉ là nhánh `cid` không
+ * theo.
+ *
+ * Luật đúng đã có sẵn trong chính app này: `{lampnet_view}/{cid}`
+ * (`features/traceResult/provenanceView.ts:6-17`, đo thân thật 19/08). `lampnet_view`
+ * là trường MÁY CHỦ gửi (`server.py:1072`, `:3870`) — không đóng cứng
+ * `https://lampnet.cloud` ở đây, ngày nó trỏ sang cổng riêng của một tổ chức thì
+ * mọi ảnh phải đi theo, không phải một nửa.
+ *
+ * Nhận các dạng:
+ *   · `"https://…"` / `"file://…"` / `"data:…"` → giữ nguyên;
+ *   · `"/gimg/abc"` (đường dẫn tuyệt đối) → ghép `baseUrl` — đây là ảnh đĩa OriLife;
+ *   · `{ url | uri | src | path | href: … }` → lấy khoá đầu tiên đọc được;
+ *   · `{ cid: … }` → ghép `{viewBase}/{cid}`.
+ *
+ * `viewBase` rỗng/không biết ⇒ phần tử `cid` bị **BỎ**, không dựng URL đoán. Ô
+ * trống nói "chưa lấy được" một cách trung thực; một URL sai thì nói "ảnh của bạn
+ * hỏng".
  */
 export function mediaUrls(
   media: unknown,
   baseUrl: string,
+  viewBase?: string | null,
   max: number = MEDIA_PREVIEW_MAX,
 ): string[] {
   if (!Array.isArray(media)) return [];
   const base = (baseUrl ?? '').replace(/\/+$/, '');
+  const view = (viewBase ?? '').trim().replace(/\/+$/, '');
   const out: string[] = [];
 
   for (const m of media) {
@@ -189,7 +213,9 @@ export function mediaUrls(
       raw = firstString(o, MEDIA_URL_KEYS);
       if (!raw) {
         const cid = firstString(o, ['cid']);
-        if (cid) raw = `/gimg/${cid}`;
+        // CID mà chưa biết cổng xem → BỎ. Xem khối chú thích trên.
+        if (cid && view) { out.push(`${view}/${cid}`); continue; }
+        if (cid) continue;
       }
     }
     if (!raw) continue;

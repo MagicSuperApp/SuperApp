@@ -200,7 +200,14 @@ const TreeVideoScreen: React.FC = () => {
     return (
       <View style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor={HEADER_BG} />
-        <Header title="Đã lưu video cây" onBack={() => navigation.goBack()} />
+        {/* Tiêu đề PHẢI theo trạng thái thật. Bản trước đóng cứng "Đã lưu video cây"
+            và vẽ nó ở MỌI ca, kể cả ca mà thân màn ngay bên dưới đang viết "CHƯA cất
+            giữ được… đừng xoá". Hai câu ngược nhau trên một màn, và câu to hơn là câu
+            sai — người đọc lướt tiêu đề rồi xoá clip trong máy. */}
+        <Header
+          title={savedToLampNet ? 'Đã lưu video cây' : 'Đã nhận video cây'}
+          onBack={() => navigation.goBack()}
+        />
         <View style={styles.resultBody}>
           <Icon
             name={added ? 'check-circle' : 'information'}

@@ -5,6 +5,8 @@ import {
 import type { TimelineEvent } from '../../../services/timelineService';
 
 const BASE = 'https://api.orilife.io';
+/** Cổng xem tệp theo CID — trường `lampnet_view` của máy chủ (`server.py:3870`). */
+const VIEW = 'https://lampnet.cloud';
 
 const ev = (over: Partial<TimelineEvent> & Record<string, unknown> = {}): TimelineEvent => ({
   event_id: 'e1', kind: 'care', ts: '2026-08-18T03:00:00+00:00', ...over,
@@ -100,8 +102,34 @@ describe('mediaUrls — nhận CẢ HAI dạng, khỏi phải chờ ai dán thâ
       .toEqual([`${BASE}/gimg/a`, 'https://c/b.jpg']);
   });
 
-  it('chỉ có `cid` → dựng đường ảnh theo CID', () => {
-    expect(mediaUrls([{ cid: 'bafy123' }], BASE)).toEqual([`${BASE}/gimg/bafy123`]);
+  it('chỉ có `cid` → ghép với CỔNG XEM, không ghép với base OriLife', () => {
+    // `cid` trong `media[]` là CID LampNet (`media_attach.py:72-88` ép cid+sha256 của
+    // byte đã lưu ở LampNet). `/gimg` phục vụ TỆP TRÊN ĐĨA OriLife theo đường dẫn
+    // `{tree_id}/imgs/…` (`server.py:8662` + `:3455`) — hai không gian tên khác nhau.
+    expect(mediaUrls([{ cid: 'ln1q_abc_file' }], BASE, VIEW))
+      .toEqual([`${VIEW}/ln1q_abc_file`]);
+  });
+
+  it('cổng xem có gạch chéo cuối cũng không ra hai gạch', () => {
+    expect(mediaUrls([{ cid: 'x' }], BASE, `${VIEW}/`)).toEqual([`${VIEW}/x`]);
+  });
+
+  it('CHƯA BIẾT cổng xem → BỎ phần tử `cid`, KHÔNG đoán ra một URL', () => {
+    // Đây là ca hồi quy của lỗi cũ: ghép `{base}/gimg/{cid}` cho ra một URL trông
+    // đúng mà 404 ở mọi sự kiện có media. Thà không có ảnh còn hơn có ô vỡ.
+    expect(mediaUrls([{ cid: 'ln1q_abc_file' }], BASE, null)).toEqual([]);
+    expect(mediaUrls([{ cid: 'ln1q_abc_file' }], BASE)).toEqual([]);
+    expect(mediaUrls([{ cid: 'ln1q_abc_file' }], BASE, '  ')).toEqual([]);
+  });
+
+  it('không biết cổng xem thì phần tử `cid` bị bỏ nhưng phần tử có URL vẫn giữ', () => {
+    expect(mediaUrls([{ cid: 'ln1q_a_file' }, { url: 'https://c/b.jpg' }], BASE, null))
+      .toEqual(['https://c/b.jpg']);
+  });
+
+  it('`url` trong object vẫn thắng `cid` — máy chủ nói thẳng thì nghe thẳng', () => {
+    expect(mediaUrls([{ cid: 'ln1q_a_file', url: '/gimg/real.jpg' }], BASE, VIEW))
+      .toEqual([`${BASE}/gimg/real.jpg`]);
   });
 
   it('file:// và data: giữ nguyên', () => {

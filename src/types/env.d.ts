@@ -30,6 +30,18 @@ declare module '@env' {
   // Chuỗi Cardano app nói chuyện. '1'/'mainnet' = tiền thật; mọi giá trị khác
   // (kể cả rỗng) = chuỗi thử. Nguồn duy nhất: `src/config/cardanoNetwork.ts`.
   export const CARDANO_NETWORK: string;
+  /**
+   * App nào được dựng ra từ nền mã này: `aladin` | `checkfarm`.
+   *
+   * Chốt lúc DỰNG, không đổi được lúc chạy. Rỗng ⇒ `aladin` (máy lập trình viên
+   * chưa dựng lại tệp biến); giá trị LẠ ⇒ ném ngay lúc nạp module, vì rơi sạch ở
+   * đây nghĩa là dựng ra app này rồi đem nộp cửa hàng dưới tên app kia.
+   *
+   * Đường dựng không rơi vào ca rỗng được: bước đối chiếu ở
+   * `.github/actions/rn-env/action.yml` so mọi `import … from '@env'` trong
+   * `src/` với các biến vừa ghi, nên thiếu biến này là bản dựng ĐỎ.
+   */
+  export const APP_INSTANCE: string;
 }
 
 // Optional native module used by src/services/storageQueue.ts. Ships no bundled

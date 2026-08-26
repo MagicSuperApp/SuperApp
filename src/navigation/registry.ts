@@ -77,7 +77,14 @@ export interface RegistryEntry {
 
 // moduleId nội bộ (ngắn gọn cho instance.config) — KHÁC moduleId reverse-DNS
 // trong manifest (magiclamp.trace). Map id ngắn ↔ entry.
-export type ModuleId = 'trace' | 'chat' | 'work' | 'join';
+//
+// Danh sách id nằm ở `moduleIds.ts` (một tệp riêng, KHÔNG kéo theo component):
+// tệp này import tĩnh mọi màn, nên chạm vào nó là chạm module native, và bài
+// kiểm nào chỉ cần biết "có những module nào" sẽ chết ở đó. `Record<ModuleId,…>`
+// bên dưới khiến `tsc` canh hai bên khỏi lệch.
+export type { ModuleId } from './moduleIds';
+export { MODULE_IDS } from './moduleIds';
+import type { ModuleId } from './moduleIds';
 
 export const MODULE_REGISTRY: Record<ModuleId, RegistryEntry> = {
   trace: {

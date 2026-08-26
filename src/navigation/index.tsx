@@ -137,7 +137,7 @@ import {
   getModuleEntrypoint,
   assertRouteParity,
 } from './registry';
-import { DEFAULT_INSTANCE } from '../config/instance.config';
+import { DEFAULT_INSTANCE, ENABLED_MODULES } from '../config/instance.config';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -222,7 +222,7 @@ function buildTabs(): BuiltTab[] {
       });
     } else {
       // Tab module: chỉ dựng nếu module đó được BẬT (an toàn — tránh tab mồ côi).
-      if (!DEFAULT_INSTANCE.enabledModules.includes(tab.moduleId)) {
+      if (!ENABLED_MODULES.includes(tab.moduleId)) {
         console.warn(`[nav] tab module '${tab.moduleId}' không nằm trong enabledModules — bỏ qua.`);
         return;
       }
@@ -1806,7 +1806,7 @@ const HOST_STACK_SCREENS: Array<{
 // --- Module stack screens (config-driven) ----------------------------------
 // Mọi route của module BẬT đều đăng ký vào stack (tới được qua navigate/deep-link),
 // kể cả route đã là tab — RN cho phép trùng tên giữa Tab và Stack vì khác navigator.
-const MODULE_STACK_SCREENS = collectModuleScreens(DEFAULT_INSTANCE.enabledModules);
+const MODULE_STACK_SCREENS = collectModuleScreens(ENABLED_MODULES);
 
 // --- Deep-link: lamp://<module>/<route> -------------------------------
 // Map mỗi route module sang path 'lamp://<moduleId>/<route>'. Host route

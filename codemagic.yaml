@@ -186,6 +186,10 @@ workflows:
           # 0 = preprod (chuỗi thử) · 1 = mainnet (tiền thật). Lên mainnet thì đặt
           # CARDANO_NETWORK=1 ở nhóm biến Codemagic, không sửa dòng này.
           CARDANO_NETWORK=${CARDANO_NETWORK:-0}
+          # `aladin` | `checkfarm` — app nào được dựng ra từ nền mã này. Đặt ở
+          # nhóm biến của TỪNG workflow, không sửa dòng này. Giá trị lạ ⇒ app ném
+          # ngay lúc nạp module (config/instance.config.ts), cố ý không rơi sạch.
+          APP_INSTANCE=${APP_INSTANCE:-aladin}
           # Trống = để cổng runtime /health quyết (config.ts:38 chỉ chặn khi đúng 'off').
           WORK_BACKEND_ENABLED=${WORK_BACKEND_ENABLED:-}
           # Trống = TẮT hẳn. ĐỪNG điền tunnel ngrok — xem remoteLogger.ts, aladinChat.ts.
@@ -593,6 +597,10 @@ workflows:
           # 0 = preprod (chuỗi thử) · 1 = mainnet (tiền thật). Lên mainnet thì đặt
           # CARDANO_NETWORK=1 ở nhóm biến Codemagic, không sửa dòng này.
           CARDANO_NETWORK=${CARDANO_NETWORK:-0}
+          # `aladin` | `checkfarm` — app nào được dựng ra từ nền mã này. Đặt ở
+          # nhóm biến của TỪNG workflow, không sửa dòng này. Giá trị lạ ⇒ app ném
+          # ngay lúc nạp module (config/instance.config.ts), cố ý không rơi sạch.
+          APP_INSTANCE=${APP_INSTANCE:-aladin}
           # Trống = để cổng runtime /health quyết (config.ts:38 chỉ chặn khi đúng 'off').
           WORK_BACKEND_ENABLED=${WORK_BACKEND_ENABLED:-}
           # Trống = TẮT hẳn. ĐỪNG điền tunnel ngrok — xem remoteLogger.ts, aladinChat.ts.
@@ -1009,6 +1017,10 @@ workflows:
           # 0 = preprod (chuỗi thử) · 1 = mainnet (tiền thật). Lên mainnet thì đặt
           # CARDANO_NETWORK=1 ở nhóm biến Codemagic, không sửa dòng này.
           CARDANO_NETWORK=${CARDANO_NETWORK:-0}
+          # `aladin` | `checkfarm` — app nào được dựng ra từ nền mã này. Đặt ở
+          # nhóm biến của TỪNG workflow, không sửa dòng này. Giá trị lạ ⇒ app ném
+          # ngay lúc nạp module (config/instance.config.ts), cố ý không rơi sạch.
+          APP_INSTANCE=${APP_INSTANCE:-aladin}
           # Trống = để cổng runtime /health quyết (config.ts:38 chỉ chặn khi đúng 'off').
           WORK_BACKEND_ENABLED=${WORK_BACKEND_ENABLED:-}
           # Trống = TẮT hẳn. ĐỪNG điền tunnel ngrok — xem remoteLogger.ts, aladinChat.ts.
@@ -1271,6 +1283,10 @@ workflows:
           # 0 = preprod (chuỗi thử) · 1 = mainnet (tiền thật). Lên mainnet thì đặt
           # CARDANO_NETWORK=1 ở nhóm biến Codemagic, không sửa dòng này.
           CARDANO_NETWORK=${CARDANO_NETWORK:-0}
+          # `aladin` | `checkfarm` — app nào được dựng ra từ nền mã này. Đặt ở
+          # nhóm biến của TỪNG workflow, không sửa dòng này. Giá trị lạ ⇒ app ném
+          # ngay lúc nạp module (config/instance.config.ts), cố ý không rơi sạch.
+          APP_INSTANCE=${APP_INSTANCE:-aladin}
           # Trống = để cổng runtime /health quyết (config.ts:38 chỉ chặn khi đúng 'off').
           WORK_BACKEND_ENABLED=${WORK_BACKEND_ENABLED:-}
           # Trống = TẮT hẳn. ĐỪNG điền tunnel ngrok — xem remoteLogger.ts, aladinChat.ts.

@@ -47,7 +47,39 @@ export type PointCloudResult =
   | { kind: 'not_found' }
   | { kind: 'too_large'; bytes: number }
   | { kind: 'unreadable'; detail: string }
+  /**
+   * Cổng trả `200` nhưng thân là TRANG GIAO DIỆN của cổng, không phải tệp.
+   * Tách riêng khỏi `unreadable` vì hai ca đòi hai câu ngược nhau: `unreadable`
+   * là "tệp có nhưng đọc không ra"; ca này là "tệp KHÔNG còn được phục vụ" —
+   * bấm thử lại bao nhiêu lần cũng ra đúng trang đó.
+   */
+  | { kind: 'gone' }
   | { kind: 'error'; detail: string };
+
+/**
+ * Cổng nội dung có đang trả trang giao diện thay cho tệp không?
+ *
+ * ── Vì sao phải có phép thử này ─────────────────────────────────────────────
+ * Nhà LampNet đo ngày 2026-08-24 và báo sang: lớp phục vụ tĩnh trước các nút
+ * đang NUỐT `404` và thay bằng `index.html`. Hỏi một CID không còn mảnh nào —
+ * kể cả một CID bịa hoàn toàn — thì nhận:
+ *
+ *     200  text/html  13855 byte
+ *
+ * Nút gốc trả `404` đúng chuẩn; chỉ lớp phía trước nói dối. Nên MỌI chỗ chỉ
+ * kiểm `resp.ok` hay `status === 200` đều nhận trang HTML đó và coi là tải
+ * thành công. Trong 60 tài liệu trên máy sản xuất, 11 tài liệu rơi vào ca này.
+ *
+ * Phép thử đúng là `content-type`, KHÔNG phải mã trạng thái. Và nó phải là
+ * `startsWith('text/html')` chứ không phải so bằng: cổng gắn kèm charset.
+ *
+ * ⚠️ KHÔNG lọc theo `text/plain` — kho này gắn `text/plain` cho MỌI tệp trong
+ * nó, kể cả PLY nhị phân (xem khối đầu tệp). Lọc rộng hơn `text/html` là chặn
+ * nhầm chính đường đang chạy tốt.
+ */
+export function isGatewayPlaceholder(contentType: string | null | undefined): boolean {
+  return (contentType ?? '').toLowerCase().trimStart().startsWith('text/html');
+}
 
 /**
  * Cỡ điểm vẽ ra, theo đơn vị của model.
@@ -105,6 +137,13 @@ export async function loadPointCloud(url: string): Promise<PointCloudResult> {
 
     if (resp.status === 404) return { kind: 'not_found' };
     if (!resp.ok) return { kind: 'error', detail: `HTTP ${resp.status}` };
+
+    // Đặt TRƯỚC `arrayBuffer()`: đọc 13 KB HTML về rồi mới loại là tốn sóng của
+    // người đang đứng giữa vườn, và `PLYLoader` ném ra câu "unexpected token"
+    // vô nghĩa với người đọc.
+    if (isGatewayPlaceholder(resp.headers?.get?.('content-type'))) {
+      return { kind: 'gone' };
+    }
 
     const buf = await resp.arrayBuffer();
     if (buf.byteLength > MAX_MODEL_BYTES) {

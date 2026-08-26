@@ -148,13 +148,26 @@ const TreePointCloudView: React.FC<TreePointCloudViewProps> = ({
       );
     }
 
-    // Bốn nhánh hỏng, bốn câu khác nhau — và chỉ hai trong bốn ca là đáng thử lại.
+    // Năm nhánh hỏng, năm câu khác nhau — và chỉ MỘT ca là đáng thử lại.
+    //
+    // `gone` là ca mới, và nó là ca phải cẩn thận nhất về câu chữ. Cổng nội dung
+    // trả `200` kèm trang giao diện thay cho tệp, nghĩa là tệp không còn được
+    // phục vụ. Nhà LampNet đo và báo: với nhóm này, tổng mảnh trên TOÀN mạng đã
+    // dưới ngưỡng ghép lại được — nối lại mạng cũng không cứu. Nên ở đây tuyệt
+    // đối KHÔNG bày nút "Thử lại": mời người ta bấm một việc đã hỏng vĩnh viễn
+    // là để họ đứng giữa vườn bấm mãi rồi tự kết luận app hỏng.
+    //
+    // Cũng KHÔNG viết "mất ảnh của bạn": app chưa đối chiếu được cây này có bản
+    // gốc trong máy hay không, mà đó mới là đường cứu duy nhất còn lại. Câu ở
+    // đây chỉ nói đúng phần đã đo: khối 3D không mở được, và vì sao vô ích khi
+    // thử lại.
     const retryable = result.kind === 'error';
     const msg =
       result.kind === 'not_found' ? 'Máy chủ chưa dựng xong khối 3D cho cây này.'
         : result.kind === 'too_large' ? 'Tệp model quá lớn để mở trên điện thoại.'
-          : result.kind === 'unreadable' ? `Không đọc được tệp model. ${result.detail}`
-            : `Chưa tải được model. ${result.detail}`;
+          : result.kind === 'gone' ? 'Kho lưu trữ không còn phục vụ tệp khối 3D của cây này. Thử lại cũng không đổi kết quả — ảnh chụp gốc trong máy vẫn là bản còn dùng được.'
+            : result.kind === 'unreadable' ? `Không đọc được tệp model. ${result.detail}`
+              : `Chưa tải được model. ${result.detail}`;
 
     return (
       <View style={styles.center}>

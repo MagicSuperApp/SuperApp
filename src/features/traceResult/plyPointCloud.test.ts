@@ -6,7 +6,7 @@
  * `x y z` float cộng `red green blue` uchar. Chỉ rút số đỉnh xuống cho gọn.
  */
 
-import { MAX_MODEL_BYTES, loadPointCloud, pointsFromGeometry } from './plyPointCloud';
+import { MAX_MODEL_BYTES, loadPointCloud, pointsFromGeometry, isGatewayPlaceholder } from './plyPointCloud';
 import * as THREE from 'three';
 
 const ASCII_PLY = [
@@ -113,5 +113,50 @@ describe('pointsFromGeometry', () => {
     g.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 1, 1, 1], 3));
     const m = pointsFromGeometry(g).material as THREE.PointsMaterial;
     expect(m.vertexColors).toBe(false);
+  });
+});
+
+/**
+ * Cổng nội dung trả `200` + trang giao diện thay cho tệp.
+ *
+ * Nhà LampNet đo 2026-08-24: lớp phục vụ tĩnh nuốt `404` và thay bằng
+ * `index.html` (13 855 byte). Một CID bịa hoàn toàn cũng trả đúng như vậy. Với
+ * 60 tài liệu trên máy sản xuất, 11 tài liệu rơi vào ca này — tức mất tệp nhưng
+ * báo thành công.
+ *
+ * Vì sao phải khoá bằng bài kiểm: ca này KHÔNG có triệu chứng nào ở tầng mã
+ * trạng thái. Đường duy nhất nhận ra nó là `content-type`.
+ */
+describe('cổng trả trang giao diện thay cho tệp', () => {
+  const GATEWAY_HTML = '<!doctype html><html><body>LampNet</body></html>';
+
+  /** Phản hồi CÓ `headers` — `fetch` thật luôn có, mock cũ trong tệp này thì không. */
+  const respond = (contentType: string, body: string) => ({
+    ok: true,
+    status: 200,
+    headers: { get: (k: string) => (k.toLowerCase() === 'content-type' ? contentType : null) },
+    arrayBuffer: async () => new TextEncoder().encode(body).buffer,
+  });
+
+  it('`200 text/html` → `gone`, KHÔNG phải `unreadable`', async () => {
+    mockFetch(async () => respond('text/html; charset=utf-8', GATEWAY_HTML));
+    expect((await loadPointCloud('https://lampnet.cloud/ln1q_x')).kind).toBe('gone');
+  });
+
+  // Kho này gắn `text/plain` cho MỌI tệp, kể cả PLY nhị phân. Lọc rộng hơn
+  // `text/html` là chặn nhầm chính đường đang chạy tốt — nên phải có bài này.
+  it('`text/plain` KHÔNG bị coi là trang giao diện', () => {
+    expect(isGatewayPlaceholder('text/plain')).toBe(false);
+    expect(isGatewayPlaceholder('application/octet-stream')).toBe(false);
+  });
+
+  it('có kèm charset, khoảng trắng đầu, hoa thường lẫn lộn vẫn nhận ra', () => {
+    expect(isGatewayPlaceholder(' text/html;charset=UTF-8')).toBe(true);
+    expect(isGatewayPlaceholder('TEXT/HTML')).toBe(true);
+  });
+
+  it('thiếu hẳn `content-type` thì KHÔNG kết luận là trang giao diện', () => {
+    expect(isGatewayPlaceholder(null)).toBe(false);
+    expect(isGatewayPlaceholder(undefined)).toBe(false);
   });
 });

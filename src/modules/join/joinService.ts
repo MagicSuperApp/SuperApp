@@ -19,6 +19,7 @@
  */
 
 import { LAMPNET_BASE_URL } from '@env';
+import { PHOENIX_DID_RE } from '../../services/phoenixDid';
 
 // ── Base URL ─────────────────────────────────────────────────────────
 // LAMPNET_BASE_URL đã có sẵn trong .env (dùng chung với upload Mirage).
@@ -409,14 +410,87 @@ export const getDeviceRewards = (
  * Thưởng theo thiết bị thì dùng `getDeviceRewards` (đường `/v1/mobile/*`, không đòi sig P2P).
  */
 
-// ── DID adapter (spec §6 — cô lập did:cardano sau 1 lớp, INV-2) ───────
-// UI/logic KHÔNG đọc thẳng did:cardano. Bản sau ép did:phoenix → CHỈ đổi hàm này,
-// KHÔNG đụng màn. Nay: nhận DID từ store user và trả nguyên (bản NÀY chấp cả hai).
-// TODO(§6): khi PhoenixKey lên, map did:cardano → did:phoenix ở ĐÂY.
+// ══ CỔNG DANH TÍNH — `did:phoenix` là dạng DUY NHẤT ══════════════════════════
+//
+// Chủ sở hữu hệ thống chốt 2026-08-27: `did:cardano` **bị bãi bỏ** — không còn là
+// dạng chuyển tiếp, không còn là phương án song song, không còn được chấp nhận ở
+// tầng nào. Nhà Join chuyển phán quyết và chỉ đúng chỗ đặt cổng: hàm này là **điểm
+// cô lập duy nhất** của nơi cấp danh tính trong toàn luồng Góp máy.
+//
+// Bản trước trả nguyên chuỗi vào, không kiểm gì — chú thích cũ còn ghi "bản NÀY
+// chấp cả hai". Nay không chấp nữa.
+//
+// ── VÌ SAO KHÔNG GHIM KHUÔN CHI TIẾT ───────────────────────────────────────────
+// Nhà Join đề nghị chặn bằng `/^did:phoenix:[a-z2-7]{13}:[0-9a-f]{64}$/`. Cổng ở
+// đây CỐ Ý không dùng khuôn đó, và đây là lý do — đã báo lại nhà Join:
+//
+//   · Nhà PhoenixKey đo và báo (2026-08-26): khuôn `did:phoenix` đang được chốt
+//     lại. Bản khớp byte với cổng mint on-chain (`DidPopBindGenerator`) render
+//     **đoạn giữa bằng THẬP PHÂN**; mã đã có, nằm sau công tắc mặc định tắt. Ngày
+//     công tắc bật, `[a-z2-7]` từ chối một DID hoàn toàn hợp lệ.
+//   · Chính đề nghị của nhà Join tự mâu thuẫn với khuôn đó: dạng tạm
+//     `did:phoenix:tmp:<device_id>` mà họ yêu cầu nhận **trượt** `[a-z2-7]{13}`.
+//
+// Nên cổng dùng `PHOENIX_DID_RE` — khuôn LỎNG dùng chung toàn kho: tiền tố
+// `did:phoenix:` + đúng HAI đoạn không rỗng. Nó nhận cả khuôn hiện hành, cả khuôn
+// thập phân sắp tới, cả `did:phoenix:tmp:<device_id>`; và vẫn chặn `did:cardano:*`
+// lẫn các chuỗi ba đoạn kiểu `did:phoenix:pending:tree:<uuid>`.
+//
+// ⚠ Cổng này là cổng DẠNG CHUỖI, chưa phải cổng danh tính thật. Nhà Join đo
+// (`Specs/_shared/Readiness-Phone-Join.md:38`): lớp sinh trắc thật CHƯA tồn tại,
+// `did:phoenix` trong luồng này còn là chuỗi tự khai. Đừng viết màn nào ngụ ý người
+// dùng đã được xác thực sinh trắc.
+
+/** Vì sao một chuỗi bị cổng danh tính từ chối. */
+export type PersonDidReject = 'thieu' | 'did-cardano' | 'khong-phai-phoenix';
+
+export type PersonDidCheck =
+  | { ok: true; did: string }
+  /** `message` là câu cho NGƯỜI ĐỌC, không phải mã lỗi — màn hiện thẳng. */
+  | { ok: false; reason: PersonDidReject; message: string };
+
+/**
+ * Chuỗi này có dùng làm danh tính người trong luồng Góp máy được không.
+ *
+ * Từ chối tại đây, **không ánh xạ, không đoán, không đẩy tiếp xuống dưới**.
+ */
+export function checkPersonDid(rawDid: string | null | undefined): PersonDidCheck {
+  const did = typeof rawDid === 'string' ? rawDid.trim() : '';
+  if (!did) {
+    return {
+      ok: false,
+      reason: 'thieu',
+      message: 'Máy này chưa có danh tính. Hãy tạo danh tính trong mục Tài khoản trước khi góp máy.',
+    };
+  }
+  if (did.startsWith('did:cardano:')) {
+    return {
+      ok: false,
+      reason: 'did-cardano',
+      message: 'Danh tính trên máy này thuộc dạng cũ và không còn được dùng nữa. '
+        + 'Hãy tạo lại danh tính trong mục Tài khoản — dữ liệu góp máy trước đó không mất.',
+    };
+  }
+  if (!PHOENIX_DID_RE.test(did)) {
+    return {
+      ok: false,
+      reason: 'khong-phai-phoenix',
+      message: 'Danh tính trên máy này không đúng dạng hệ thống đang dùng. '
+        + 'Hãy tạo lại danh tính trong mục Tài khoản.',
+    };
+  }
+  return { ok: true, did };
+}
+
+/**
+ * DID người dùng cho luồng Góp máy, hoặc `null` khi không dùng được.
+ *
+ * Giữ nguyên chữ ký cũ để nơi gọi không phải đổi. Cần biết LÝ DO từ chối để nói
+ * với người dùng thì gọi `checkPersonDid`.
+ */
 export function resolvePersonDid(rawDid: string | null | undefined): string | null {
-  if (typeof rawDid !== 'string' || !rawDid) return null;
-  // Bản NÀY: truyền nguyên. Bản sau: chèn bước resolve issuer PhoenixKey tại đây.
-  return rawDid;
+  const r = checkPersonDid(rawDid);
+  return r.ok ? r.did : null;
 }
 
 // ── FFI native — CHỖ CHỜ THƯ (spec §1/§3) ────────────────────────────

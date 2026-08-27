@@ -12,7 +12,9 @@ jest.mock('@env', () => ({ LAMPNET_BASE_URL: 'https://api.lampnet.cloud' }), {
   virtual: true,
 });
 
-import { activateWallet, JoinApiError, getNodeStats } from './joinService';
+import {
+  activateWallet, JoinApiError, getNodeStats, checkPersonDid, resolvePersonDid,
+} from './joinService';
 
 const mockFetch = jest.fn();
 (global as unknown as { fetch: jest.Mock }).fetch = mockFetch;
@@ -108,5 +110,77 @@ describe('đường thành công không đổi', () => {
       reputation_score: 46.3,
       reputation_threshold: 50,
     });
+  });
+});
+
+
+/**
+ * CỔNG DANH TÍNH — chủ sở hữu hệ thống chốt 2026-08-27: `did:phoenix` là dạng DUY
+ * NHẤT, `did:cardano` bị bãi bỏ ở mọi tầng. `resolvePersonDid` là điểm cô lập duy
+ * nhất của nơi cấp danh tính trong luồng Góp máy, nên cổng đứng ở đó.
+ */
+describe('checkPersonDid — did:phoenix là dạng duy nhất', () => {
+  const HEX64 = 'a'.repeat(64);
+  const BASE32_13 = 'abcdefghijkmn';
+
+  it('nhận khuôn did:phoenix hiện hành', () => {
+    const did = `did:phoenix:${BASE32_13}:${HEX64}`;
+    expect(checkPersonDid(did)).toEqual({ ok: true, did });
+    expect(resolvePersonDid(did)).toBe(did);
+  });
+
+  // Nhà Join đề nghị chặn bằng `[a-z2-7]{13}:[0-9a-f]{64}`. Cổng CỐ Ý không dùng
+  // khuôn đó — hai bài dưới đây là lý do, và chúng đứng ngay cạnh nhau để người sửa
+  // sau không siết lại khuôn rồi làm hỏng một trong hai.
+  it('nhận dạng TẠM `did:phoenix:tmp:<device_id>` — chính nhà Join yêu cầu nhận', () => {
+    const did = 'did:phoenix:tmp:pixel-7a-2f9c';
+    expect(checkPersonDid(did).ok).toBe(true);
+  });
+
+  it('nhận khuôn đoạn giữa THẬP PHÂN — bản khớp cổng mint on-chain, đã có mã', () => {
+    expect(checkPersonDid(`did:phoenix:1734567890123:${HEX64}`).ok).toBe(true);
+  });
+
+  it('TỪ CHỐI did:cardano, và nói người dùng phải TẠO LẠI chứ không phải thử lại', () => {
+    const r = checkPersonDid(`did:cardano:preprod:${HEX64}`);
+    expect(r.ok).toBe(false);
+    if (r.ok) throw new Error('không tới đây');
+    expect(r.reason).toBe('did-cardano');
+    expect(r.message).toMatch(/tạo lại danh tính/i);
+    // Không được rò chuỗi thô ra câu cho người đọc.
+    expect(r.message).not.toContain('did:cardano');
+    expect(resolvePersonDid(`did:cardano:preprod:${HEX64}`)).toBeNull();
+  });
+
+  it('TỪ CHỐI chuỗi ba đoạn mà máy chủ OriLife trả dưới tên `entity_did`', () => {
+    const r = checkPersonDid('did:phoenix:pending:tree:0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe('khong-phai-phoenix');
+  });
+
+  it.each([
+    ['peer id libp2p', '12D3KooWABCDEF'],
+    ['did phương thức khác', `did:key:z6Mk${HEX64}`],
+    ['chuỗi trần', 'nguoi-dung-123'],
+  ])('TỪ CHỐI %s — không ánh xạ, không đoán', (_ten, bad) => {
+    expect(checkPersonDid(bad).ok).toBe(false);
+    expect(resolvePersonDid(bad)).toBeNull();
+  });
+
+  it.each([null, undefined, '', '   '])('rỗng (%p) → lý do "thiếu", câu bảo đi TẠO', (bad) => {
+    const r = checkPersonDid(bad as string | null | undefined);
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.reason).toBe('thieu');
+      expect(r.message).toMatch(/chưa có danh tính/i);
+    }
+  });
+
+  it('ba lý do cho ba câu KHÁC NHAU — gộp làm một là bảo người dùng làm sai việc', () => {
+    const cauThieu = checkPersonDid('');
+    const cauCu = checkPersonDid(`did:cardano:preprod:${HEX64}`);
+    const cauLa = checkPersonDid('12D3KooW');
+    const cau = [cauThieu, cauCu, cauLa].map((r) => (r.ok ? '' : r.message));
+    expect(new Set(cau).size).toBe(3);
   });
 });

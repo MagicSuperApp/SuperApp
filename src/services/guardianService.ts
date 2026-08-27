@@ -2,10 +2,36 @@
  * Guardian (khôi-phục xã-hội) — dựng proof_signature + gọi API.md §6
  * `POST /guardians/add · /guardians/remove`.
  *
- * ✅ ĐÃ ĐỐI-CHIẾU backend GuardianServiceImpl.java (2026-07-27):
- *   message = "PHOENIXKEY_GUARDIAN_ADD:" + userDid + ":" + guardianDid + ":" + nonce
- *             (remove dùng "PHOENIXKEY_GUARDIAN_REMOVE:"), verify bằng owner-key ACTIVE
- *   qua verifyEcdsa (SHA256withECDSA secp256r1) — KHỚP đúng cách dựng dưới đây.
+ * ⛔ CHƯA KIỂM LẠI — CHUỖI KÝ DƯỚI ĐÂY GẦN CHẮC KHÔNG CÒN VERIFY ĐƯỢC.
+ *
+ * Chú thích cũ ở đây ghi "✅ ĐÃ ĐỐI-CHIẾU backend GuardianServiceImpl.java
+ * (2026-07-27) … KHỚP đúng cách dựng dưới đây". Nhãn đó ĐÚNG vào ngày viết và
+ * SAI từ lúc máy chủ đổi, mà không có gì trong kho này bật lên khi nó hết đúng.
+ *
+ * Nhà PhoenixKey báo 2026-08-27 (thư `ma:pk-canon-len`), dẫn `GuardianServiceImpl
+ * .java:84`, rằng máy chủ đã đổi từ **V30**:
+ *
+ *   CanonicalMessage.build(GUARDIAN_ADD_PREFIX, userDid, guardianDid, nonce,
+ *                          String.valueOf(opSeq))
+ *
+ * Lệch HAI chỗ, không phải một:
+ *   1. đóng khung theo độ dài (`canonicalMessage.ts`) thay cho nối `':'`;
+ *   2. có thêm field THỨ TƯ `opSeq` — watermark chống phát lại.
+ *
+ * ══ Vì sao KHÔNG tự đổi một phía ngay tại đây ═════════════════════════════════
+ * Phần (1) app dựng được rồi (`buildCanonicalHex`). Phần (2) thì KHÔNG: `opSeq`
+ * không tồn tại ở bất cứ đâu trong kho này (`grep -rn "opSeq\|op_seq" src/` ⇒ 0),
+ * và app cũng không có cửa nào ĐỌC ra nó — cụm `guardians` chỉ có `add`/`remove`,
+ * không có đường đọc danh sách. Đổi nửa vời sang đóng khung mà thiếu field thứ tư
+ * thì chữ ký vẫn không verify, nhưng mã lại TRÔNG như đã sửa xong — đắt hơn hẳn
+ * so với để nguyên kèm lời khai này.
+ *
+ * ══ Mức chắc của chính lời khai này ══════════════════════════════════════════
+ * Nhà này CHƯA tự chạy luồng guardian trên máy chủ thật lần nào. Bằng chứng ở đây
+ * là trích dẫn mã nguồn của nhà PhoenixKey, không phải phép đo của nhà này. Chính
+ * họ cũng viết: "Nếu bên đó đã chạy thật được luồng này thì nói lại, vì khi ấy
+ * phép đo của bên này sai." Đã hỏi lại `opSeq` lấy ở đâu; chưa có đáp.
+ *
  * Body { user_did, guardian_did, nonce, proof_signature }. Nonce TTL 5' (validateAndConsume).
  */
 
@@ -13,7 +39,7 @@ import taad from '../sdk/taadEnclave';
 import { signRaw, currentUserDid } from '../sdk/phoenixKey';
 import { phoenixKeyApi, GuardianMutateRequest } from './phoenixKey-api';
 
-// Khớp GUARDIAN_ADD_PREFIX/REMOVE_PREFIX trong GuardianServiceImpl.java (đã đối-chiếu).
+// Tên tiền tố vẫn khớp GUARDIAN_ADD_PREFIX/REMOVE_PREFIX; cách GHÉP thì không — xem đầu tệp.
 const CHALLENGE_ADD = 'PHOENIXKEY_GUARDIAN_ADD';
 const CHALLENGE_REMOVE = 'PHOENIXKEY_GUARDIAN_REMOVE';
 

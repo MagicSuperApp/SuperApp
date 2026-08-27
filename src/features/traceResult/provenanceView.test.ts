@@ -143,9 +143,14 @@ describe('coverageLine', () => {
     );
   });
 
-  it('máy chủ không khuyên gì thì mới tự ghép số độ phủ', () => {
+  it('máy chủ không khuyên gì thì mới tự ghép số độ phủ — và câu ghép ĐI QUA lớp dịch', () => {
+    // Câu này trước đây là một chuỗi mẫu nối tay, nên nó KHÔNG tra được từ điển:
+    // người chọn tiếng khác vẫn đọc tiếng Việt, im lặng, không lỗi nào bật. Nay nó
+    // qua `tf`, và bài kiểm chạy dưới ngôn ngữ mặc định `en` nên thấy bản tiếng
+    // Anh — chính đó là bằng chứng chỗ rò đã bịt. Đổi lại thành tiếng Việt là
+    // dựng lại chỗ rò rồi khoá nó bằng một bài kiểm xanh.
     const p = { ...REAL, model3d: { format: 'ply', coverage: { covered_deg: 130 } } };
-    expect(coverageLine(p)).toBe('Đã chụp khoảng 130° quanh cây.');
+    expect(coverageLine(p)).toBe('About 130° around the tree has been photographed.');
   });
 
   it('không có coverage ⇒ null, không bịa một câu trấn an', () => {

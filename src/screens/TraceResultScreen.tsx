@@ -76,7 +76,7 @@ import TreeGallery from '../features/traceResult/TreeGallery';
 import TreeLocationMap from '../features/traceResult/TreeLocationMap';
 import TreePointCloudView from '../features/traceResult/TreePointCloudView';
 import {
-  anchorView, coverageLine, galleryUrls, gpsPoint, milestones, model3dOf, model3dUrl,
+  anchorView, coverageLine, galleryUrls, gpsPoint, lowConfidenceOf, milestones, model3dOf, model3dUrl,
   ownerLine, trustBadge,
 } from '../features/traceResult/provenanceView';
 import { formatLatLon, reverseGeocode } from '../features/traceResult/reverseGeocode';
@@ -236,6 +236,7 @@ const TraceResultScreen = () => {
       modelUrl: model3dUrl(prov),
       model: model3dOf(prov),
       advice: coverageLine(prov),
+      lowConfidence: lowConfidenceOf(prov),
       planted: formatVi(prov.created_at),
     };
   }, [prov]);
@@ -478,6 +479,7 @@ const TraceResultScreen = () => {
                 <TreePointCloudView
                   url={v.modelUrl!}
                   advice={v.advice}
+                  lowConfidence={v.lowConfidence}
                   declaredPoints={typeof v.model?.n_points === 'number' ? v.model.n_points : null}
                 />
               )}

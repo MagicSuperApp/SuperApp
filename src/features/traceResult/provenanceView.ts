@@ -17,6 +17,7 @@
  * ảnh phải đi theo, không phải một nửa.
  */
 
+import { tf } from '../../i18n';
 import { imageViewUrl, type Provenance } from '../../services/provenanceService';
 
 /** Model 3D trong hồ sơ. Trường đọc từ thân thật, đo 2026-08-19. */
@@ -31,6 +32,20 @@ export interface Model3d {
     full?: boolean;
     /** Câu tiếng Việt của MÁY CHỦ. Hiện thẳng, đừng tự soạn lại. */
     advice?: string;
+  };
+  /**
+   * Phán quyết của máy chủ về đám mây điểm (OriLife PR #445, CHƯA gộp lúc viết).
+   *
+   * `low_confidence` — có bản dựng thì LUÔN có phán quyết; 0 điểm là fail-closed
+   * `true`. Trường VẮNG = máy chủ bản cũ, và vắng KHÔNG có nghĩa là "đáng tin".
+   *
+   * ⛔ `n_points_scene` CỐ Ý không khai ở đây. OriLife nói rõ nó có thể là `null`
+   * = KHÔNG BIẾT, và làn cây không đo số này lần nào. Khai ra là mời người sau
+   * dựng tỉ lệ `n_points / n_points_scene` — tỉ lệ đó ra 1,00 ("tách nền hoàn
+   * hảo") cho đúng cái làn không lọc nền một lần nào.
+   */
+  trust?: {
+    low_confidence?: boolean;
   };
   [k: string]: unknown;
 }
@@ -94,9 +109,21 @@ export function coverageLine(p: Provenance | null | undefined): string | null {
   if (advice) return advice;
   const deg = cov.covered_deg;
   if (typeof deg === 'number' && Number.isFinite(deg)) {
-    return `Đã chụp khoảng ${Math.round(deg)}° quanh cây.`;
+    return tf('Đã chụp khoảng {deg}° quanh cây.', { deg: Math.round(deg) });
   }
   return null;
+}
+
+/**
+ * Máy chủ có tự khai đám mây điểm này thưa không.
+ *
+ * Ba giá trị, không phải hai: `true` (máy chủ khai thưa) · `false` (máy chủ khai
+ * đủ dày) · `null` (máy chủ KHÔNG nói). Gộp `null` vào `false` là biến "chưa biết"
+ * thành một lời trấn an mà không ai phát ra.
+ */
+export function lowConfidenceOf(p: Provenance | null | undefined): boolean | null {
+  const v = model3dOf(p)?.trust?.low_confidence;
+  return typeof v === 'boolean' ? v : null;
 }
 
 export interface AnchorView {

@@ -332,7 +332,40 @@ export const clearSessionToken = (): Promise<void> =>
 export const getSessionToken = (): Promise<string | null> =>
   AsyncStorage.getItem(SESSION_TOKEN_KEY);
 
+/**
+ * `GET /identity/health` — sức khoẻ danh tính CỦA NGƯỜI ĐANG ĐĂNG NHẬP.
+ *
+ * Đối chiếu `IdentityController.java:573-578` + `IdentityServiceImpl.java:246-262`
+ * + `IdentityHealthResponse.java`. Per-user, đòi phiên (`userDidFromBearer`), trả
+ * `403` khi token hỏng — KHÔNG nhận `did` làm tham số.
+ *
+ * `requiresDeviceCosign` được TÍNH thật (`IdentityServiceImpl.java:258-259`:
+ * `hasDeviceKey && keyVersion >= 1`), không phải hằng — bản ghi này sửa lại một
+ * phép đo cũ nói ngược.
+ */
+export interface IdentityHealthResponse {
+  seedExported: boolean;
+  exportedAt?: string | null;
+  activeKeyCount: number;
+  /** Số guardian ĐANG hoạt động (`guardianRepository.countActiveByUserId`). */
+  guardianCount: number;
+  /** `device_pkh != null` — máy này đã bật khoá thiết bị chưa. */
+  hasDeviceKey: boolean;
+  requiresDeviceCosign: boolean;
+}
+
 export const identity = {
+  /**
+   * Sức khoẻ danh tính của chính người đang đăng nhập. Đòi phiên.
+   *
+   * Dùng để nhận ra diện `hasDeviceKey && guardianCount === 0` — người đã bật khoá
+   * thiết bị mà chưa có ai khôi phục hộ. Xem `services/deviceKeyRisk.ts`.
+   */
+  getHealth: () =>
+    unwrap<IdentityHealthResponse>(
+      client.get('/identity/health', { needsAuth: true } as AxiosRequestConfig),
+    ),
+
   register: (body: RegisterRequest) =>
     unwrap<RegisterResponse>(client.post('/identity/register', body)),
 

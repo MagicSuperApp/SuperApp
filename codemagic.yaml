@@ -1255,9 +1255,8 @@ workflows:
         script: |
           cd android
           chmod +x gradlew
-          # Flavor TƯỜNG MINH. `assembleDebug` dựng CẢ HAI app; bản CheckFarm còn
-          # thiếu `src/checkfarm/google-services.json` nên nó đỏ — lệnh cũ sẽ kéo
-          # đường dựng Aladin đang chạy tốt đỏ theo.
+          # Flavor TƯỜNG MINH. `assembleDebug` dựng CẢ HAI app rồi đổ gói vào hai
+          # thư mục khác nhau, trong khi bước dò tệp bên dưới chỉ lấy một.
           ./gradlew "assemble${ANDROID_FLAVOR_CAP}Debug" --no-daemon 2>&1 | tee "$CM_BUILD_DIR/android-debug.log"
           BUILD_EXIT=${PIPESTATUS[0]}
           if [ $BUILD_EXIT -ne 0 ]; then

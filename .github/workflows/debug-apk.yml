@@ -172,10 +172,32 @@ jobs:
           set -eo pipefail
           cd android
           chmod +x gradlew
-          # Flavor TƯỜNG MINH. `assembleDebug` (không flavor) dựng CẢ HAI app, và
-          # bản CheckFarm còn thiếu `src/checkfarm/google-services.json` nên nó đỏ —
-          # tức lệnh cũ sẽ làm đỏ đường dựng Aladin đang chạy tốt.
+          # Flavor TƯỜNG MINH. `assembleDebug` (không flavor) dựng CẢ HAI app rồi
+          # đổ gói vào hai thư mục khác nhau — bước "Locate APK" bên dưới chỉ lấy
+          # một, nên để nó dựng cả hai là tốn thời gian mà không dùng tới.
           ./gradlew assembleAladinDebug --no-daemon --stacktrace 2>&1 | tee android-debug.log
+
+      # Dựng luôn bản CheckFarm — KHÔNG để giao ra, mà để CHỨNG MINH nó dựng được.
+      #
+      # CheckFarm cố ý không có `src/checkfarm/google-services.json`: app này chưa
+      # đẩy tin nền nên không có lý do mở tài khoản Firebase trước khi dựng được
+      # (xem khối "Firebase: CÓ ĐIỀU KIỆN" trong `android/app/build.gradle`). Cách
+      # duy nhất để lời khẳng định đó không thành lời hứa suông là CI dựng thật.
+      #
+      # Bước này đỏ = một trong hai điều đã hỏng: hoặc bước tắt Firebase theo flavor
+      # không còn chạy, hoặc CheckFarm đã có tệp cấu hình mà nó sai gói.
+      - name: Dựng bản CheckFarm — chứng minh dựng được khi KHÔNG có Firebase
+        run: |
+          set -eo pipefail
+          cd android
+          ./gradlew assembleCheckfarmDebug --no-daemon --stacktrace 2>&1 | tee android-checkfarm.log
+          CF=$(find app/build/outputs/apk/checkfarm/debug -name "*.apk" | head -1)
+          if [ -z "$CF" ]; then
+            echo "::error::CheckFarm APK không thấy"
+            find app/build/outputs -type f | head -20
+            exit 1
+          fi
+          echo "✅ CheckFarm APK: $CF ($(stat -c%s "$CF") bytes)"
 
       - name: Locate APK
         id: apk-info

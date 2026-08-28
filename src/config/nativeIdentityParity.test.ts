@@ -168,11 +168,20 @@ describe('cổng CI GitHub cũng gọi flavor tường minh', () => {
   });
 });
 
-describe('Firebase — chỗ chặn còn lại, và cái bẫy đi kèm', () => {
+describe('Firebase — có điều kiện theo app, và cái bẫy đi kèm', () => {
   const RIENG = 'android/app/src/checkfarm/google-services.json';
+  const CUA_ALADIN = 'android/app/src/aladin/google-services.json';
+
+  // Gốc `app/` nằm trong đường tìm của MỌI variant. Để tệp Aladin ở đó thì dựng
+  // CheckFarm sẽ nhặt đúng tệp ấy rồi đỏ vì sai gói — nên nó phải nằm trong
+  // đường tìm RIÊNG của flavor aladin.
+  it('tệp Firebase của Aladin nằm trong src/aladin, KHÔNG ở gốc app', () => {
+    expect(existsSync(join(GOC, CUA_ALADIN))).toBe(true);
+    expect(existsSync(join(GOC, 'android/app/google-services.json'))).toBe(false);
+  });
 
   it('tệp Firebase của Aladin chỉ khai gói Aladin', () => {
-    const j = JSON.parse(doc('android/app/google-services.json'));
+    const j = JSON.parse(doc(CUA_ALADIN));
     const goi = j.client.map((c: any) => c.client_info.android_client_info.package_name);
     expect(goi).toContain(FLAVORS.aladin.applicationId);
     // Khai thêm gói CheckFarm vào ĐÂY là sai chỗ: nó trỏ thông báo đẩy và số
@@ -180,17 +189,41 @@ describe('Firebase — chỗ chặn còn lại, và cái bẫy đi kèm', () => 
     expect(goi).not.toContain(FLAVORS.checkfarm.applicationId);
   });
 
+  it('gradle tắt bước Firebase cho flavor không có tệp cấu hình của chính nó', () => {
+    const g = doc('android/app/build.gradle');
+    expect(g).toContain('android.applicationVariants.all');
+    expect(g).toContain('src/${flavor}/google-services.json');
+    expect(g).toContain('GoogleServices');
+    expect(g).toContain('enabled = false');
+  });
+
+  it('CheckFarm gỡ FirebaseInitProvider — không có gì tự khởi Firebase', () => {
+    const m = doc('android/app/src/checkfarm/AndroidManifest.xml');
+    expect(m).toContain('com.google.firebase.provider.FirebaseInitProvider');
+    expect(m).toContain('tools:node="remove"');
+  });
+
+  // Hai nửa phải đi cùng nhau. Có tệp cấu hình mà vẫn gỡ provider thì Firebase
+  // im lặng không chạy — dựng xanh, cài được, và tin đẩy không bao giờ tới.
+  it('có tệp cấu hình CheckFarm thì phải BỎ manifest gỡ provider', () => {
+    const coCauHinh = existsSync(join(GOC, RIENG));
+    const coManifest = existsSync(join(GOC, 'android/app/src/checkfarm/AndroidManifest.xml'));
+    if (coCauHinh) expect(coManifest).toBe(false);
+  });
+
   it('nếu đã có tệp Firebase riêng thì nó phải khai ĐÚNG gói CheckFarm', () => {
     // Bẫy nguy hiểm nhất: chép tệp của Aladin sang thư mục checkfarm. Mọi thứ
     // dựng được, chạy được, và dữ liệu của CheckFarm chảy vào nhà người khác.
-    if (!existsSync(join(GOC, RIENG))) {
-      // Chưa có là trạng thái ĐÃ BIẾT, ghi ở `android/app/src/checkfarm/README.md`.
-      expect(doc('android/app/src/checkfarm/README.md')).toContain('google-services.json');
-      return;
-    }
+    if (!existsSync(join(GOC, RIENG))) return;
     const j = JSON.parse(doc(RIENG));
     const goi = j.client.map((c: any) => c.client_info.android_client_info.package_name);
     expect(goi).toContain(FLAVORS.checkfarm.applicationId);
     expect(goi).not.toContain(FLAVORS.aladin.applicationId);
+  });
+
+  // Lời khẳng định "CheckFarm dựng được khi KHÔNG có Firebase" chỉ đáng tin nếu
+  // có chỗ dựng thật. Không có bước này thì nó là lời hứa, không phải phép đo.
+  it('CI dựng THẬT bản CheckFarm', () => {
+    expect(doc('.github/workflows/debug-apk.yml')).toContain('assembleCheckfarmDebug');
   });
 });

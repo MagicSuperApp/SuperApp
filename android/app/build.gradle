@@ -249,4 +249,37 @@ dependencies {
     implementation 'com.google.firebase:firebase-analytics-ktx'
 }
 
+// ── Firebase: CÓ ĐIỀU KIỆN, theo từng app ───────────────────────────────────
+//
+// Bản trước áp thẳng plugin này cho MỌI flavor, và `google-services.json` nằm ở
+// gốc `app/` — mà gốc `app/` nằm trong đường tìm của MỌI variant. Hệ quả: dựng
+// CheckFarm thì plugin nhặt đúng tệp của Aladin rồi đỏ ngay:
+//
+//     No matching client found for package name 'com.checkfarm.app'
+//
+// Nên tệp của Aladin chuyển vào `src/aladin/` — đường tìm của riêng nó — và
+// flavor nào KHÔNG có tệp của chính mình thì tắt bước xử lý Firebase cho flavor
+// đó, thay vì để nó nhặt nhầm tệp của app khác.
+//
+// Vì sao đây là hướng đúng chứ không phải đường tạm: Firebase trong app này chỉ
+// phục vụ MỘT việc — đánh thức app khi bị tắt, cho hai loại tin `sign_request`
+// và `activation`. Cả hai đều là luồng danh tính PhoenixKey. `pushHandler.ts`
+// nạp module bằng `await import(...)` trong `try` và trả `null` khi không có,
+// nên phía JS chịu được việc vắng Firebase mà không cần đổi một dòng nào. Một
+// app chưa cần đẩy tin nền thì không có lý do gì phải mở tài khoản ở bên thứ ba
+// trước khi dựng được.
+//
+// Ngày CheckFarm cần đẩy tin nền: bỏ `google-services.json` của dự án Firebase
+// ĐỨNG TÊN pháp nhân CheckFarm vào `src/checkfarm/` là plugin tự bật lại — không
+// phải sửa dòng nào ở đây.
 apply plugin: 'com.google.gms.google-services'
+
+android.applicationVariants.all { variant ->
+    def flavor = variant.flavorName
+    def coCauHinh = file("src/${flavor}/google-services.json").exists()
+    if (!coCauHinh) {
+        def ten = "process${variant.name.capitalize()}GoogleServices"
+        tasks.matching { it.name == ten }.configureEach { it.enabled = false }
+        logger.lifecycle("[firebase] ${flavor}: không có google-services.json → tắt ${ten}")
+    }
+}

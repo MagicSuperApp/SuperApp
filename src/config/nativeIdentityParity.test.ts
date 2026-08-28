@@ -1,0 +1,196 @@
+/**
+ * BẤT BIẾN TẦNG NATIVE — bịt đúng lỗ mà `instanceParity.test.ts` tự khai là
+ * không đo được:
+ *
+ *   > **Tầng native**: tên app, biểu tượng, mã gói, scheme. Không mã JS nào đo được.
+ *
+ * Không mã JS nào đo được **giá trị lúc chạy**, đúng. Nhưng đo được **sự khớp
+ * nhau giữa các tệp khai báo** — và đó mới là chỗ hai app trôi khỏi nhau.
+ *
+ * ── Vì sao cần ──────────────────────────────────────────────────────────────
+ * Danh tính một app nằm ở BỐN tệp khác nhau, ba ngôn ngữ khác nhau:
+ *
+ *     src/config/instance.config.ts     instanceId, displayName   (TypeScript)
+ *     android/app/build.gradle          applicationId, app_name   (Groovy)
+ *     ios/.../project.pbxproj           PRODUCT_BUNDLE_IDENTIFIER (định dạng riêng)
+ *     codemagic.yaml                    BUNDLE_ID, ANDROID_FLAVOR (YAML)
+ *
+ * Không trình biên dịch nào canh bốn tệp đó khớp nhau. Sửa một chỗ quên ba chỗ
+ * thì bản dựng vẫn XANH — nó ra một gói mang vỏ app này và chữ của app kia, và
+ * chỗ đó chỉ lộ khi có người mở app ra nhìn.
+ *
+ * ── Nó vẫn KHÔNG đo được gì ─────────────────────────────────────────────────
+ *  · Bản dựng có chạy không. Đây là phép đối chiếu văn bản, không phải lượt dựng.
+ *  · Biểu tượng có đúng không. Ảnh thì jest không nhìn.
+ *  · Khoá ký thuộc pháp nhân nào. Khoá không nằm trong kho.
+ */
+import { readFileSync, existsSync } from 'fs';
+import { join } from 'path';
+
+import { INSTANCES } from './instance.config';
+
+const GOC = join(__dirname, '..', '..');
+const doc = (p: string) => readFileSync(join(GOC, p), 'utf8');
+
+const GRADLE = doc('android/app/build.gradle');
+const CODEMAGIC = doc('codemagic.yaml');
+const PBXPROJ = doc('ios/aladin_mobile_fe.xcodeproj/project.pbxproj');
+const INFO_PLIST = doc('ios/aladin_mobile_fe/Info.plist');
+
+/** Bóc `productFlavors { ten { applicationId "..." ; resValue ... "app_name", "..." } }`. */
+function docFlavors(): Record<string, { applicationId: string; appName: string }> {
+  const khoi = GRADLE.match(/productFlavors\s*\{([\s\S]*?)\n    \}/);
+  if (!khoi) return {};
+  const ra: Record<string, { applicationId: string; appName: string }> = {};
+  const re = /(\w+)\s*\{\s*dimension\s+"app"\s*applicationId\s+"([^"]+)"\s*resValue\s+"string",\s*"app_name",\s*"([^"]+)"/g;
+  for (const m of khoi[1].matchAll(re)) {
+    ra[m[1]] = { applicationId: m[2], appName: m[3] };
+  }
+  return ra;
+}
+
+const FLAVORS = docFlavors();
+
+describe('mỗi instance JS có một flavor Android tương ứng', () => {
+  it('đọc được flavor từ build.gradle (nếu phép bóc hỏng thì mọi bài dưới xanh giả)', () => {
+    expect(Object.keys(FLAVORS).sort()).toEqual(['aladin', 'checkfarm']);
+  });
+
+  it('không instance nào thiếu flavor', () => {
+    const thieu = Object.keys(INSTANCES).filter((id) => !FLAVORS[id]);
+    expect(thieu).toEqual([]);
+  });
+
+  it('không flavor nào thừa ra ngoài bảng instance', () => {
+    const thua = Object.keys(FLAVORS).filter((f) => !INSTANCES[f]);
+    expect(thua).toEqual([]);
+  });
+
+  it('tên hiện dưới biểu tượng khớp displayName của instance', () => {
+    for (const [id, inst] of Object.entries(INSTANCES)) {
+      expect(`${id}:${FLAVORS[id]?.appName}`).toBe(`${id}:${inst.displayName}`);
+    }
+  });
+
+  it('hai app KHÔNG dùng chung một mã gói', () => {
+    const ids = Object.values(FLAVORS).map((f) => f.applicationId);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('mã gói CheckFarm đúng cái đã chốt và không đổi được sau lần tải đầu', () => {
+    expect(FLAVORS.checkfarm.applicationId).toBe('com.checkfarm.app');
+  });
+
+  it('defaultConfig KHÔNG còn applicationId — không có đường rơi câm', () => {
+    // Còn một giá trị ở `defaultConfig` thì flavor nào quên khai sẽ lặng lẽ
+    // nhận mã gói của app kia.
+    const dc = GRADLE.match(/defaultConfig\s*\{([\s\S]*?)\n    \}/);
+    expect(dc).not.toBeNull();
+    expect(dc![1]).not.toMatch(/^\s*applicationId\s/m);
+  });
+
+  it('strings.xml KHÔNG khai lại app_name (trùng resource là đỏ lúc dựng)', () => {
+    expect(doc('android/app/src/main/res/values/strings.xml')).not.toMatch(
+      /<string name="app_name">/,
+    );
+  });
+});
+
+describe('iOS — danh tính đến từ biến dựng, không ghi cứng', () => {
+  it('CFBundleDisplayName là biến, không phải chuỗi cứng', () => {
+    expect(INFO_PLIST).toContain('<string>$(APP_DISPLAY_NAME)</string>');
+    expect(INFO_PLIST).not.toMatch(/<key>CFBundleDisplayName<\/key>\s*<string>Aladin<\/string>/);
+  });
+
+  it('project.pbxproj khai APP_DISPLAY_NAME cho CẢ HAI cấu hình', () => {
+    expect((PBXPROJ.match(/APP_DISPLAY_NAME = /g) || []).length).toBe(2);
+    expect((PBXPROJ.match(/PRODUCT_BUNDLE_IDENTIFIER = /g) || []).length).toBe(2);
+  });
+});
+
+describe('codemagic — không luồng nào dựng vỏ app này với chữ app kia', () => {
+  it('mọi ANDROID_FLAVOR khai trong tệp đều là flavor có thật', () => {
+    const khai = [...CODEMAGIC.matchAll(/^\s*ANDROID_FLAVOR:\s*(\S+)/gm)].map((m) => m[1]);
+    expect(khai.length).toBeGreaterThan(0);
+    expect(khai.filter((f) => !FLAVORS[f])).toEqual([]);
+  });
+
+  it('mọi APP_INSTANCE khai trong tệp đều có trong bảng INSTANCES', () => {
+    const khai = [...CODEMAGIC.matchAll(/^\s*APP_INSTANCE:\s*(\S+)/gm)].map((m) => m[1]);
+    expect(khai.length).toBeGreaterThan(0);
+    expect(khai.filter((i) => !INSTANCES[i])).toEqual([]);
+  });
+
+  it('ANDROID_FLAVOR và ANDROID_FLAVOR_CAP luôn đi thành cặp khớp nhau', () => {
+    const hoa = (s: string) => s[0].toUpperCase() + s.slice(1);
+    const cap = [...CODEMAGIC.matchAll(/ANDROID_FLAVOR:\s*(\S+)\n\s*ANDROID_FLAVOR_CAP:\s*(\S+)/g)];
+    expect(cap.length).toBeGreaterThan(0);
+    for (const m of cap) expect(m[2]).toBe(hoa(m[1]));
+  });
+
+  it('mọi BUNDLE_ID khai trong tệp đều là mã gói của một app có thật', () => {
+    const hopLe = new Set([
+      ...Object.values(FLAVORS).map((f) => f.applicationId),
+      'vn.aladinapp', // mã gói iOS của Aladin — khác Android, đã lên cửa hàng từ v1.0
+    ]);
+    const khai = [...CODEMAGIC.matchAll(/^\s*BUNDLE_ID:\s*(\S+)/gm)].map((m) => m[1]);
+    expect(khai.length).toBeGreaterThan(0);
+    expect(khai.filter((b) => !hopLe.has(b))).toEqual([]);
+  });
+
+  it('lệnh gradle luôn gọi flavor tường minh', () => {
+    // `assembleDebug` / `bundleRelease` (không flavor) dựng CẢ HAI app.
+    expect(CODEMAGIC).not.toMatch(/gradlew\s+assembleDebug\b/);
+    expect(CODEMAGIC).not.toMatch(/gradlew\s+bundleRelease\b/);
+  });
+
+  it('không chỗ nào dò tệp ra bằng đường dẫn KHÔNG có flavor', () => {
+    // Đường cũ `outputs/apk/debug` nay không tồn tại; `outputs/apk` kèm head -1
+    // thì nhặt gói của app đứng trước theo thứ tự chữ cái.
+    expect(CODEMAGIC).not.toContain('outputs/bundle/release');
+    expect(CODEMAGIC).not.toMatch(/find\s+android\/app\/build\/outputs\/apk\s/);
+  });
+});
+
+describe('cổng CI GitHub cũng gọi flavor tường minh', () => {
+  it('debug-apk.yml', () => {
+    const y = doc('.github/workflows/debug-apk.yml');
+    expect(y).not.toMatch(/gradlew\s+assembleDebug\b/);
+    expect(y).toContain('assembleAladinDebug');
+    expect(y).toContain('outputs/apk/aladin/debug');
+  });
+
+  it('android-aab.yml', () => {
+    const y = doc('.github/workflows/android-aab.yml');
+    expect(y).not.toMatch(/gradlew\s+bundleRelease\b/);
+    expect(y).toContain('bundleAladinRelease');
+    expect(y).toContain('outputs/bundle/aladinRelease');
+  });
+});
+
+describe('Firebase — chỗ chặn còn lại, và cái bẫy đi kèm', () => {
+  const RIENG = 'android/app/src/checkfarm/google-services.json';
+
+  it('tệp Firebase của Aladin chỉ khai gói Aladin', () => {
+    const j = JSON.parse(doc('android/app/google-services.json'));
+    const goi = j.client.map((c: any) => c.client_info.android_client_info.package_name);
+    expect(goi).toContain(FLAVORS.aladin.applicationId);
+    // Khai thêm gói CheckFarm vào ĐÂY là sai chỗ: nó trỏ thông báo đẩy và số
+    // liệu của CheckFarm về dự án Firebase của pháp nhân Aladin.
+    expect(goi).not.toContain(FLAVORS.checkfarm.applicationId);
+  });
+
+  it('nếu đã có tệp Firebase riêng thì nó phải khai ĐÚNG gói CheckFarm', () => {
+    // Bẫy nguy hiểm nhất: chép tệp của Aladin sang thư mục checkfarm. Mọi thứ
+    // dựng được, chạy được, và dữ liệu của CheckFarm chảy vào nhà người khác.
+    if (!existsSync(join(GOC, RIENG))) {
+      // Chưa có là trạng thái ĐÃ BIẾT, ghi ở `android/app/src/checkfarm/README.md`.
+      expect(doc('android/app/src/checkfarm/README.md')).toContain('google-services.json');
+      return;
+    }
+    const j = JSON.parse(doc(RIENG));
+    const goi = j.client.map((c: any) => c.client_info.android_client_info.package_name);
+    expect(goi).toContain(FLAVORS.checkfarm.applicationId);
+    expect(goi).not.toContain(FLAVORS.aladin.applicationId);
+  });
+});

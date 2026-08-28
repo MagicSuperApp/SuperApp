@@ -48,7 +48,17 @@ workflows:
       groups:
         - scanner_secrets
       vars:
+        # ── HAI APP ─────────────────────────────────────────────────────────
+        # `BUNDLE_ID` trước bản này là biến CHẾT: khai ở đây, 0 chỗ đọc, còn
+        # mã gói thật ghi cứng trong `project.pbxproj:298,331`. Nay nó được
+        # truyền thẳng vào `xcodebuild` nên đổi ở đây là đổi thật.
+        # `CFBundleDisplayName` trong `Info.plist` nay là `$(APP_DISPLAY_NAME)`.
+        # Bản CheckFarm: BUNDLE_ID=com.checkfarm.app, APP_DISPLAY_NAME=CheckFarm,
+        # APP_INSTANCE=checkfarm — và khoá ký PHẢI là khoá của Công ty Cổ phần
+        # CheckFarm, không dùng chung khoá Aladin (hai pháp nhân).
         BUNDLE_ID: vn.aladinapp
+        APP_DISPLAY_NAME: Aladin
+        APP_INSTANCE: aladin
         XCODE_WORKSPACE: ios/aladin_mobile_fe.xcworkspace
         XCODE_SCHEME: aladin_mobile_fe
         ARCHIVE_PATH: $CM_BUILD_DIR/build/ios/OriLife.xcarchive
@@ -373,6 +383,33 @@ workflows:
             2>&1 | tail -20 || echo "⚠️ export sourcemap lỗi (không chặn build)"
           ls -lh "$CM_BUILD_DIR/build/jsmap/" 2>/dev/null || true
 
+      # ── CHỐT MÃ GÓI iOS ─────────────────────────────────────────────────
+      # Vì sao KHÔNG truyền `PRODUCT_BUNDLE_IDENTIFIER=` trên dòng lệnh
+      # `xcodebuild`: setting truyền kiểu đó áp cho MỌI target trong workspace,
+      # kể cả các bundle tài nguyên do CocoaPods sinh. Chúng sẽ mang chung một
+      # mã gói, và chỗ đó KHÔNG đỏ lúc dựng — nó đỏ lúc Apple soát gói đã nộp.
+      #
+      # Nên sửa đúng hai dòng của target ứng dụng trong `project.pbxproj`, rồi
+      # ĐỌC LẠI để chứng minh đã đổi. Không đổi được thì DỪNG: dựng tiếp là ra
+      # một tệp mang mã gói của app kia, không dấu hiệu nào cho tới lúc nộp.
+      #
+      # (`APP_DISPLAY_NAME` thì vẫn truyền trên dòng lệnh được — đó là setting
+      # do mình đặt, chỉ `Info.plist` của app này đọc, không target nào khác.)
+      - name: Chốt mã gói iOS
+        script: |
+          set -eu
+          PBX=ios/aladin_mobile_fe.xcodeproj/project.pbxproj
+          : "${BUNDLE_ID:?BUNDLE_ID rỗng — không đoán mã gói}"
+          echo "→ đặt PRODUCT_BUNDLE_IDENTIFIER = $BUNDLE_ID"
+          /usr/bin/sed -i '' -E "s/PRODUCT_BUNDLE_IDENTIFIER = [^;]+;/PRODUCT_BUNDLE_IDENTIFIER = ${BUNDLE_ID};/g" "$PBX"
+          GOT=$(grep -c "PRODUCT_BUNDLE_IDENTIFIER = ${BUNDLE_ID};" "$PBX" || true)
+          if [ "$GOT" -ne 2 ]; then
+            echo "❌ chờ 2 dòng mang '$BUNDLE_ID', đếm được $GOT"
+            grep -n "PRODUCT_BUNDLE_IDENTIFIER" "$PBX" || true
+            exit 1
+          fi
+          echo "✅ mã gói iOS = $BUNDLE_ID (2/2 cấu hình)"
+
       - name: Build iOS Archive (unsigned)
         script: |
           mkdir -p "$(dirname "$ARCHIVE_PATH")"
@@ -396,6 +433,7 @@ workflows:
             -destination 'generic/platform=iOS' \
             -archivePath "$ARCHIVE_PATH" \
             archive \
+            APP_DISPLAY_NAME="$APP_DISPLAY_NAME" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
@@ -469,7 +507,17 @@ workflows:
       groups:
         - scanner_secrets
       vars:
+        # ── HAI APP ─────────────────────────────────────────────────────────
+        # `BUNDLE_ID` trước bản này là biến CHẾT: khai ở đây, 0 chỗ đọc, còn
+        # mã gói thật ghi cứng trong `project.pbxproj:298,331`. Nay nó được
+        # truyền thẳng vào `xcodebuild` nên đổi ở đây là đổi thật.
+        # `CFBundleDisplayName` trong `Info.plist` nay là `$(APP_DISPLAY_NAME)`.
+        # Bản CheckFarm: BUNDLE_ID=com.checkfarm.app, APP_DISPLAY_NAME=CheckFarm,
+        # APP_INSTANCE=checkfarm — và khoá ký PHẢI là khoá của Công ty Cổ phần
+        # CheckFarm, không dùng chung khoá Aladin (hai pháp nhân).
         BUNDLE_ID: vn.aladinapp
+        APP_DISPLAY_NAME: Aladin
+        APP_INSTANCE: aladin
         XCODE_SCHEME: aladin_mobile_fe
         ARCHIVE_PATH: build/ios/OriLife.xcarchive
         IPA_OUTPUT_DIR: build/ios/ipa
@@ -515,6 +563,33 @@ workflows:
             echo "   Cửa GHI thì CHƯA đo được — đó là lý do cổng này còn đứng thay vì bỏ hẳn."
             exit 1
           fi
+
+      # ── CHỐT MÃ GÓI iOS ─────────────────────────────────────────────────
+      # Vì sao KHÔNG truyền `PRODUCT_BUNDLE_IDENTIFIER=` trên dòng lệnh
+      # `xcodebuild`: setting truyền kiểu đó áp cho MỌI target trong workspace,
+      # kể cả các bundle tài nguyên do CocoaPods sinh. Chúng sẽ mang chung một
+      # mã gói, và chỗ đó KHÔNG đỏ lúc dựng — nó đỏ lúc Apple soát gói đã nộp.
+      #
+      # Nên sửa đúng hai dòng của target ứng dụng trong `project.pbxproj`, rồi
+      # ĐỌC LẠI để chứng minh đã đổi. Không đổi được thì DỪNG: dựng tiếp là ra
+      # một tệp mang mã gói của app kia, không dấu hiệu nào cho tới lúc nộp.
+      #
+      # (`APP_DISPLAY_NAME` thì vẫn truyền trên dòng lệnh được — đó là setting
+      # do mình đặt, chỉ `Info.plist` của app này đọc, không target nào khác.)
+      - name: Chốt mã gói iOS
+        script: |
+          set -eu
+          PBX=ios/aladin_mobile_fe.xcodeproj/project.pbxproj
+          : "${BUNDLE_ID:?BUNDLE_ID rỗng — không đoán mã gói}"
+          echo "→ đặt PRODUCT_BUNDLE_IDENTIFIER = $BUNDLE_ID"
+          /usr/bin/sed -i '' -E "s/PRODUCT_BUNDLE_IDENTIFIER = [^;]+;/PRODUCT_BUNDLE_IDENTIFIER = ${BUNDLE_ID};/g" "$PBX"
+          GOT=$(grep -c "PRODUCT_BUNDLE_IDENTIFIER = ${BUNDLE_ID};" "$PBX" || true)
+          if [ "$GOT" -ne 2 ]; then
+            echo "❌ chờ 2 dòng mang '$BUNDLE_ID', đếm được $GOT"
+            grep -n "PRODUCT_BUNDLE_IDENTIFIER" "$PBX" || true
+            exit 1
+          fi
+          echo "✅ mã gói iOS = $BUNDLE_ID (2/2 cấu hình)"
 
       - name: Set up code signing
         script: |
@@ -824,6 +899,7 @@ workflows:
             -skipPackagePluginValidation \
             archive \
             -allowProvisioningUpdates \
+            APP_DISPLAY_NAME="$APP_DISPLAY_NAME" \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="iPhone Distribution" \
@@ -949,7 +1025,16 @@ workflows:
       groups:
         - scanner_secrets
       vars:
-        APK_OUTPUT: $CM_BUILD_DIR/android/app/build/outputs/apk/debug
+        APK_OUTPUT: $CM_BUILD_DIR/android/app/build/outputs/apk/$ANDROID_FLAVOR/debug
+        # ── HAI APP ─────────────────────────────────────────────────────────
+        # `ANDROID_FLAVOR` chọn app nào được dựng. Đổi ở đây (hoặc đặt đè khi
+        # chạy tay trên Codemagic) là đủ; KHÔNG có đường nào rơi về mặc định —
+        # bước "Chốt flavor" bên dưới dừng hẳn nếu biến rỗng hoặc lạ.
+        # `..._CAP` là cùng giá trị, viết hoa chữ đầu, vì tên tác vụ Gradle là
+        # `assembleAladinDebug` chứ không phải `assemblealadinDebug`.
+        ANDROID_FLAVOR: aladin
+        ANDROID_FLAVOR_CAP: Aladin
+        APP_INSTANCE: aladin
 
     # CHẠY TAY (2026-08-18). Đường GitHub đã dựng APK debug trên `develop`
     # (`.github/workflows/debug-apk.yml`) — chạy trên `ubuntu-latest` thay vì
@@ -964,6 +1049,37 @@ workflows:
       events: []
 
     scripts:
+      # ── CHỐT FLAVOR ─────────────────────────────────────────────────────
+      # Đứng TRƯỚC mọi bước dựng. `ANDROID_FLAVOR` rỗng thì `assemble${...}Debug`
+      # co lại thành `assembleDebug` — tác vụ đó CÓ THẬT và nó dựng CẢ HAI app,
+      # nên lượt dựng vẫn chạy rồi hỏng ở chỗ khác. Rỗng phải dừng ở đây.
+      #
+      # Kiểm luôn hai biến CÓ KHỚP NHAU không: đặt `ANDROID_FLAVOR=checkfarm` mà
+      # quên đổi `..._CAP` thì Gradle dựng Aladin còn `find` đi tìm thư mục
+      # checkfarm — bước dò tệp đỏ, và người đọc log sẽ đi tìm nhầm chỗ.
+      - name: Chốt flavor Android
+        script: |
+          set -eu
+          case "${ANDROID_FLAVOR:-}" in
+            aladin|checkfarm) ;;
+            "") echo "❌ ANDROID_FLAVOR rỗng. Giá trị hợp lệ: aladin | checkfarm"; exit 1 ;;
+            *)  echo "❌ ANDROID_FLAVOR='$ANDROID_FLAVOR' lạ. Hợp lệ: aladin | checkfarm"; exit 1 ;;
+          esac
+          case "$ANDROID_FLAVOR" in
+            aladin)    EXPECT=Aladin ;;
+            checkfarm) EXPECT=Checkfarm ;;
+          esac
+          if [ "${ANDROID_FLAVOR_CAP:-}" != "$EXPECT" ]; then
+            echo "❌ ANDROID_FLAVOR_CAP='${ANDROID_FLAVOR_CAP:-}' không khớp ANDROID_FLAVOR='$ANDROID_FLAVOR' (chờ '$EXPECT')"
+            exit 1
+          fi
+          if [ "${APP_INSTANCE:-}" != "$ANDROID_FLAVOR" ]; then
+            echo "❌ APP_INSTANCE='${APP_INSTANCE:-}' khác ANDROID_FLAVOR='$ANDROID_FLAVOR'."
+            echo "   Lệch hai biến này là dựng vỏ app này với chữ của app kia."
+            exit 1
+          fi
+          echo "✅ flavor=$ANDROID_FLAVOR cap=$ANDROID_FLAVOR_CAP instance=$APP_INSTANCE"
+
       - name: Create .env for React Native
         script: |
           cat > .env <<EOF
@@ -1139,7 +1255,10 @@ workflows:
         script: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon 2>&1 | tee "$CM_BUILD_DIR/android-debug.log"
+          # Flavor TƯỜNG MINH. `assembleDebug` dựng CẢ HAI app; bản CheckFarm còn
+          # thiếu `src/checkfarm/google-services.json` nên nó đỏ — lệnh cũ sẽ kéo
+          # đường dựng Aladin đang chạy tốt đỏ theo.
+          ./gradlew "assemble${ANDROID_FLAVOR_CAP}Debug" --no-daemon 2>&1 | tee "$CM_BUILD_DIR/android-debug.log"
           BUILD_EXIT=${PIPESTATUS[0]}
           if [ $BUILD_EXIT -ne 0 ]; then
             echo "❌ Debug APK failed — last 60 lines:"
@@ -1149,7 +1268,10 @@ workflows:
 
       - name: Locate + rename APK
         script: |
-          APK_FILE=$(find android/app/build/outputs/apk -name "*.apk" | head -1)
+          # ĐƯỜNG DẪN CÓ FLAVOR. Dò ở thư mục cha kèm `head -1` là để `find` nhặt
+          # gói của app nào đứng trước theo thứ tự chữ cái — bản dựng vẫn xanh,
+          # tệp giao ra là của app kia. Không có triệu chứng nào.
+          APK_FILE=$(find "android/app/build/outputs/apk/${ANDROID_FLAVOR}/debug" -name "*.apk" | head -1)
           if [ -z "$APK_FILE" ]; then
             echo "❌ APK not found"
             find android/app/build/outputs -type f
@@ -1181,7 +1303,16 @@ workflows:
         - scanner_secrets
         - android_signing  # ORILIFE_UPLOAD_STORE_FILE_B64, passwords
       vars:
-        AAB_OUTPUT: $CM_BUILD_DIR/android/app/build/outputs/bundle/release
+        AAB_OUTPUT: $CM_BUILD_DIR/android/app/build/outputs/bundle/${ANDROID_FLAVOR}Release
+        # ── HAI APP ─────────────────────────────────────────────────────────
+        # `ANDROID_FLAVOR` chọn app nào được dựng. Đổi ở đây (hoặc đặt đè khi
+        # chạy tay trên Codemagic) là đủ; KHÔNG có đường nào rơi về mặc định —
+        # bước "Chốt flavor" bên dưới dừng hẳn nếu biến rỗng hoặc lạ.
+        # `..._CAP` là cùng giá trị, viết hoa chữ đầu, vì tên tác vụ Gradle là
+        # `assembleAladinDebug` chứ không phải `assemblealadinDebug`.
+        ANDROID_FLAVOR: aladin
+        ANDROID_FLAVOR_CAP: Aladin
+        APP_INSTANCE: aladin
 
     # VẪN CHỈ CHẠY TAY — và đây là kết luận sau khi ĐO, không phải giữ nguyên vì ngại
     # đụng. Đường GitHub ĐÃ dựng AAB đã ký trên `main` rồi
@@ -1196,6 +1327,37 @@ workflows:
       events: []
 
     scripts:
+      # ── CHỐT FLAVOR ─────────────────────────────────────────────────────
+      # Đứng TRƯỚC mọi bước dựng. `ANDROID_FLAVOR` rỗng thì `assemble${...}Debug`
+      # co lại thành `assembleDebug` — tác vụ đó CÓ THẬT và nó dựng CẢ HAI app,
+      # nên lượt dựng vẫn chạy rồi hỏng ở chỗ khác. Rỗng phải dừng ở đây.
+      #
+      # Kiểm luôn hai biến CÓ KHỚP NHAU không: đặt `ANDROID_FLAVOR=checkfarm` mà
+      # quên đổi `..._CAP` thì Gradle dựng Aladin còn `find` đi tìm thư mục
+      # checkfarm — bước dò tệp đỏ, và người đọc log sẽ đi tìm nhầm chỗ.
+      - name: Chốt flavor Android
+        script: |
+          set -eu
+          case "${ANDROID_FLAVOR:-}" in
+            aladin|checkfarm) ;;
+            "") echo "❌ ANDROID_FLAVOR rỗng. Giá trị hợp lệ: aladin | checkfarm"; exit 1 ;;
+            *)  echo "❌ ANDROID_FLAVOR='$ANDROID_FLAVOR' lạ. Hợp lệ: aladin | checkfarm"; exit 1 ;;
+          esac
+          case "$ANDROID_FLAVOR" in
+            aladin)    EXPECT=Aladin ;;
+            checkfarm) EXPECT=Checkfarm ;;
+          esac
+          if [ "${ANDROID_FLAVOR_CAP:-}" != "$EXPECT" ]; then
+            echo "❌ ANDROID_FLAVOR_CAP='${ANDROID_FLAVOR_CAP:-}' không khớp ANDROID_FLAVOR='$ANDROID_FLAVOR' (chờ '$EXPECT')"
+            exit 1
+          fi
+          if [ "${APP_INSTANCE:-}" != "$ANDROID_FLAVOR" ]; then
+            echo "❌ APP_INSTANCE='${APP_INSTANCE:-}' khác ANDROID_FLAVOR='$ANDROID_FLAVOR'."
+            echo "   Lệch hai biến này là dựng vỏ app này với chữ của app kia."
+            exit 1
+          fi
+          echo "✅ flavor=$ANDROID_FLAVOR cap=$ANDROID_FLAVOR_CAP instance=$APP_INSTANCE"
+
       # CỔNG SOÁT — đứng TRƯỚC mọi bước dựng. Đường GitHub đã có cổng tương đương
       # (`android-aab.yml`); đường Codemagic thì chưa, nên một bản PHÁT HÀNH thiếu
       # `API_KEY` vẫn dựng XANH và nướng `mock-local-api-key` vào header `X-API-Key`
@@ -1438,7 +1600,7 @@ workflows:
         script: |
           cd android
           chmod +x gradlew
-          ./gradlew bundleRelease --no-daemon 2>&1 | tee "$CM_BUILD_DIR/android-release.log"
+          ./gradlew "bundle${ANDROID_FLAVOR_CAP}Release" --no-daemon 2>&1 | tee "$CM_BUILD_DIR/android-release.log"
           BUILD_EXIT=${PIPESTATUS[0]}
           if [ $BUILD_EXIT -ne 0 ]; then
             echo "❌ AAB failed — last 60 lines:"
@@ -1448,7 +1610,8 @@ workflows:
 
       - name: Locate + verify AAB
         script: |
-          AAB_FILE=$(find android/app/build/outputs/bundle/release -name "*.aab" | head -1)
+          # `bundle/release` KHÔNG còn tồn tại sau khi có flavor.
+          AAB_FILE=$(find "android/app/build/outputs/bundle/${ANDROID_FLAVOR}Release" -name "*.aab" | head -1)
           if [ -z "$AAB_FILE" ]; then
             echo "❌ AAB not found"
             find android/app/build/outputs -type f

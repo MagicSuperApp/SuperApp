@@ -286,7 +286,8 @@ jobs:
           set -eo pipefail   # fail fast if gradle exit != 0 (don't let tee mask it)
           cd android
           chmod +x gradlew
-          ./gradlew bundleRelease \
+          # Flavor TƯỜNG MINH — xem chú thích cùng loại ở debug-apk.yml.
+          ./gradlew bundleAladinRelease \
             -PORILIFE_UPLOAD_STORE_FILE=keySigning.bin \
             -PORILIFE_UPLOAD_KEY_ALIAS="$ORILIFE_UPLOAD_KEY_ALIAS" \
             -PORILIFE_UPLOAD_STORE_PASSWORD="$ORILIFE_UPLOAD_STORE_PASSWORD" \
@@ -298,7 +299,10 @@ jobs:
       - name: Locate AAB + Generate SHA256
         id: aab-info
         run: |
-          AAB_FILE=$(find android/app/build/outputs/bundle/release -name "*.aab" | head -1)
+          # `bundle/release` KHÔNG còn tồn tại sau khi có flavor — đường đúng là
+          # `bundle/aladinRelease`. Giữ đường cũ thì `find` trả rỗng và bước này
+          # đỏ ở chỗ khó đoán ra nguyên nhân.
+          AAB_FILE=$(find android/app/build/outputs/bundle/aladinRelease -name "*.aab" | head -1)
           if [ -z "$AAB_FILE" ]; then
             echo "::error::AAB not found in expected directory"
             find android/app/build/outputs -type f | head -20

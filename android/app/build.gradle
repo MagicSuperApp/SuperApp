@@ -110,8 +110,36 @@ def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
     compileSdk rootProject.ext.compileSdkVersion
 
     namespace "com.aladincontract.company"
+
+    // ── HAI APP TỪ MỘT NỀN MÃ ────────────────────────────────────────────────
+    // `APP_INSTANCE` ở tầng JS (`src/config/instance.config.ts`) chỉ đổi được
+    // CHỮ trong app. Mã gói, tên hiện dưới biểu tượng và khoá ký nằm ở tầng
+    // này — nên trước bản này, dựng với `APP_INSTANCE=checkfarm` vẫn ra một gói
+    // mang `com.aladincontract.company`, tức ra app Aladin đội tên CheckFarm.
+    //
+    // Hai pháp nhân RIÊNG (Aladin Contract và Công ty Cổ phần CheckFarm) ⇒ hai
+    // mã gói riêng, hai khoá ký riêng. Không dùng chung.
+    //
+    // ⛔ `com.checkfarm.app` KHÔNG ĐỔI ĐƯỢC sau lần tải bản dựng đầu tiên lên
+    //    Google Play. Sửa dòng đó sau đó là mất luôn chỗ đứng của ứng dụng.
+    flavorDimensions "app"
+    productFlavors {
+        aladin {
+            dimension "app"
+            applicationId "com.aladincontract.company"
+            resValue "string", "app_name", "Aladin"
+        }
+        checkfarm {
+            dimension "app"
+            applicationId "com.checkfarm.app"
+            resValue "string", "app_name", "CheckFarm"
+        }
+    }
+
     defaultConfig {
-        applicationId "com.aladincontract.company"
+        // KHÔNG khai `applicationId` ở đây: mỗi flavor tự khai. Để lại một giá
+        // trị mặc định ở đây là dựng sẵn một đường rơi câm cho flavor nào quên
+        // khai — và cái rơi đó ra đúng mã gói của app kia.
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         // Build 52 (2026-05-18): bumped 25 → 52 for parity with iOS CFBundleVersion=52.

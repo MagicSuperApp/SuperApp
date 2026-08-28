@@ -172,12 +172,18 @@ jobs:
           set -eo pipefail
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee android-debug.log
+          # Flavor TƯỜNG MINH. `assembleDebug` (không flavor) dựng CẢ HAI app, và
+          # bản CheckFarm còn thiếu `src/checkfarm/google-services.json` nên nó đỏ —
+          # tức lệnh cũ sẽ làm đỏ đường dựng Aladin đang chạy tốt.
+          ./gradlew assembleAladinDebug --no-daemon --stacktrace 2>&1 | tee android-debug.log
 
       - name: Locate APK
         id: apk-info
         run: |
-          APK_FILE=$(find android/app/build/outputs/apk/debug -name "*.apk" | head -1)
+          # Đường dẫn nay có tên flavor. Dò ở thư mục cha kèm `head -1` là để
+          # `find` nhặt gói của app nào đứng trước theo thứ tự chữ cái — đúng loại
+          # hỏng câm: bản dựng xanh, tệp giao ra là của app kia.
+          APK_FILE=$(find android/app/build/outputs/apk/aladin/debug -name "*.apk" | head -1)
           if [ -z "$APK_FILE" ]; then
             echo "::error::APK not found"
             find android/app/build/outputs -type f | head -20

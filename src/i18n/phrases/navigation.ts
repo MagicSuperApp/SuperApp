@@ -289,17 +289,45 @@ export const NAVIGATION: PhraseMap = {
     zh: '公钥被写入允许密钥列表',
     ja: '公開鍵が許可鍵リストに書き込まれます',
   },
-  'Mã hoá dữ liệu khôi phục': { en: 'Encrypt recovery data', zh: '加密恢复数据', ja: '復旧データを暗号化' },
-  'Mã hoá mạnh bằng khoá lấy từ thiết bị của bạn': {
-    en: 'Strong encryption with a key derived from your device',
-    zh: '使用源自你设备的密钥进行强加密',
-    ja: 'あなたの端末から得た鍵で強力に暗号化します',
+  // ⛔ GỠ 2026-08-28 — bốn khoá cũ ở đây dịch bốn câu KHÔNG ĐÚNG SỰ THẬT:
+  //   'Mã hoá dữ liệu khôi phục' · 'Mã hoá mạnh bằng khoá lấy từ thiết bị của bạn'
+  //   'Chia nhỏ & lưu trên nhiều thiết bị' · 'Lưu trên ít nhất 12 thiết bị …'
+  // Màn `SignUpCompleteScreen` không mã hoá gì và không gọi mạng lần nào; cơ chế
+  // "12 node" không tồn tại trong `src/`. Dịch một câu sai sang bốn thứ tiếng là
+  // nhân cái sai lên bốn lần. Xem đầu tệp màn đó.
+  //
+  // ⛔ ĐỪNG thêm lại. Muốn có bốn khoá này thì phải có đoạn mã làm đúng việc chúng nói.
+  'Khoá riêng nằm trong chip bảo mật': {
+    en: 'Your private key lives in the secure chip',
+    zh: '私钥存放在安全芯片中',
+    ja: '秘密鍵はセキュリティチップの中にあります',
   },
-  'Chia nhỏ & lưu trên nhiều thiết bị': { en: 'Split and store across many devices', zh: '分片并存储在多台设备上', ja: '分割して複数の端末に保存' },
-  'Lưu trên ít nhất 12 thiết bị — không có bản sao tập trung': {
-    en: 'Stored on at least 12 devices — no central copy',
-    zh: '存储于至少 12 台设备 — 无集中副本',
-    ja: '12 台以上の端末に保存されます — 中央に控えは置きません',
+  'Khoá không rời khỏi máy, và không xuất ra được': {
+    en: 'It never leaves this device, and cannot be exported',
+    zh: '它不会离开本机，也无法导出',
+    ja: 'この端末から出ることはなく、取り出すこともできません',
+  },
+  'Danh tính đã được tạo': {
+    en: 'Your identity has been created',
+    zh: '身份已创建',
+    ja: '本人情報を作成しました',
+  },
+  'Khoá công khai đã ghi vào danh sách khoá được phép': {
+    en: 'The public key has been written to the allowed-key list',
+    zh: '公钥已写入允许密钥列表',
+    ja: '公開鍵を許可鍵リストに書き込みました',
+  },
+  'Khoá riêng không bao giờ rời thiết bị này.': {
+    en: 'Your private key never leaves this device.',
+    zh: '私钥永远不会离开本机。',
+    ja: '秘密鍵がこの端末から出ることはありません。',
+  },
+  // Câu này CỐ Ý nói rõ mặt trái của việc không có máy chủ trung tâm. Dịch giữ
+  // nguyên vế sau — bỏ nó đi là quay lại đúng chỗ hỏng vừa sửa.
+  'Tài khoản của bạn không phụ thuộc vào bất kỳ máy chủ trung tâm nào — nên cũng không có máy chủ nào khôi phục hộ bạn được. Đường khôi phục duy nhất là thứ chính bạn lưu lại.': {
+    en: 'Your account depends on no central server — which also means no server can recover it for you. The only way back in is what you save yourself.',
+    zh: '你的账户不依赖任何中心服务器 — 也就是说没有任何服务器能替你恢复。唯一的恢复途径是你自己保存的东西。',
+    ja: 'あなたのアカウントは中央サーバーに依存しません — つまり、どのサーバーもあなたの代わりに復旧できません。戻る道は、あなた自身が保存したものだけです。',
   },
   'Vào ứng dụng': { en: 'Enter the app', zh: '进入应用', ja: 'アプリを始める' },
 

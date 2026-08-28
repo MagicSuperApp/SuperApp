@@ -12,6 +12,18 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { canResendAfterNetworkError } from './resendPolicy';
+
+/**
+ * Cửa POST GỬI LẠI ĐƯỢC sau lỗi mạng. Luật + lý do đầy đủ ở `resendPolicy.ts`.
+ *
+ * Vắng mặt CỐ Ý: `/api/care/log` — GHI một lần chăm sóc. Gửi lại mù là ghi hai lần
+ * phun cùng một thuốc cùng một ngày, mà nhật ký chăm sóc chính là thứ dùng để tính
+ * ngày cách ly trước thu hoạch. Đếm thừa một lượt phun là dịch sai ngày được bán.
+ */
+export const RESENDABLE_POST = [
+  '/api/care/match',  // đọc — nhận nhãn thuốc từ ảnh
+] as const;
 
 /**
  * Một sản phẩm thuốc/phân như MÁY CHỦ trả về.
@@ -213,7 +225,7 @@ async function _apiCall<T>(
     const isNetworkErr =
       (err instanceof TypeError && err.name !== 'AbortError') ||
       (err instanceof Error && err.message.includes('network'));
-    if (isNetworkErr && attempt === 0) {
+    if (isNetworkErr && attempt === 0 && canResendAfterNetworkError(url, method, RESENDABLE_POST)) {
       return _apiCall<T>(url, method, body, 1);
     }
     return { ok: false, error: { type: 'network_error', detail: 'Không kết nối được máy chủ. Kiểm tra mạng và thử lại.', http_status: 0 } };

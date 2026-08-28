@@ -44,6 +44,25 @@ export interface IdentifyFactors {
 
 // Báo giá phí 3-bucket cho tác vụ identify — khai tập trung ở types/fee.ts.
 import type { FeeQuote } from '../types/fee';
+import { canResendAfterNetworkError } from './resendPolicy';
+
+/**
+ * Cửa POST GỬI LẠI ĐƯỢC sau lỗi mạng. Luật + lý do đầy đủ ở `resendPolicy.ts`.
+ *
+ * Vắng mặt CỐ Ý:
+ *   · `/api/enroll` — TẠO cây, sinh `uuid4` mới mỗi lượt;
+ *   · `/api/verify_add` — bổ-sung góc, gửi lại là nhân đôi số ảnh của cây;
+ *   · `/api/remove_views` — xoá theo CHỈ SỐ, mà chỉ số dịch sau lượt xoá đầu, nên
+ *     lượt thứ hai xoá đúng những góc KHÁC.
+ */
+export const RESENDABLE_POST = [
+  '/api/identify',          // đọc — so khớp, không đổi hồ sơ cây nào
+  '/api/identify_verdict',  // nhãn đo, khoá theo `query_id` nên trùng khử được
+  '/api/delete',            // xoá cùng một cây hai lần vẫn ra một kết quả
+  '/api/rename',            // đặt cùng một tên hai lần vẫn ra một kết quả
+  '/api/tree/set_farm',     // gán cùng một vườn hai lần vẫn ra một kết quả
+  '/api/build3d/*',         // kích dựng lại — máy chủ tự gộp hàng đợi
+] as const;
 export type { FeeQuote };
 
 /** Băng tin-cậy THÔ (không lộ điểm số) — PoC-Tree §4 M2. */
@@ -431,7 +450,7 @@ async function _apiCall<T>(
     const isTimeoutErr = err instanceof Error && err.name === 'AbortError';
     const isConnErr = err instanceof TypeError && !isTimeoutErr;
 
-    if (isConnErr && attempt === 0) {
+    if (isConnErr && attempt === 0 && canResendAfterNetworkError(url, method, RESENDABLE_POST)) {
       return _apiCall<T>(url, method, body, timeoutMs, 1);
     }
 

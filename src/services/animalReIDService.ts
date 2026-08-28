@@ -12,6 +12,18 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ensureOrilifeToken } from './orilifeDidAuth';
+import { canResendAfterNetworkError } from './resendPolicy';
+
+/**
+ * Cửa POST GỬI LẠI ĐƯỢC sau lỗi mạng. Luật + lý do đầy đủ ở `resendPolicy.ts`.
+ *
+ * Vắng mặt CỐ Ý: `/api/animal/enroll` — TẠO con vật, sinh mã mới mỗi lượt.
+ */
+export const RESENDABLE_POST = [
+  '/api/animal/identify',  // đọc — so khớp
+  '/api/animal/verify',    // đọc — đối chiếu một con đã biết
+  '/api/animal/rename',    // đặt cùng một tên hai lần vẫn ra một kết quả
+] as const;
 
 export type AnimalDecision = 'MATCH' | 'UNCERTAIN' | 'NO_MATCH' | 'EMPTY_FARM' | 'MOVED';
 
@@ -186,7 +198,7 @@ async function _apiCall<T>(
       (err instanceof TypeError && err.name !== 'AbortError') ||
       (err instanceof Error && err.message.includes('network'));
 
-    if (isNetworkErr && attempt === 0) {
+    if (isNetworkErr && attempt === 0 && canResendAfterNetworkError(url, method, RESENDABLE_POST)) {
       return _apiCall<T>(url, method, body, 1);
     }
 

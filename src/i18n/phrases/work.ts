@@ -141,7 +141,13 @@ export const WORK: PhraseMap = {
     zh: '托管流程尚未到达此步骤 — 请重新加载后重试。',
     ja: 'エスクローの流れはまだこの手順に達していません — 読み込み直してからお試しください。',
   },
-  'Số dư CARP không đủ để khoá cọc.': { en: 'Not enough CARP to lock the deposit.', zh: 'CARP 余额不足以锁定保证金。', ja: '保証金をロックするには CARP の残高が足りません。' },
+  // Câu cũ chỉ nói "cọc". Từ `AladinWork/Core#65` phí thu tại `COMMITTED`, nên
+  // `NO_FUNDS` có thể là thiếu tiền trả PHÍ — xem `hooks/useContracts.ts`.
+  'Số dư CARP không đủ cho bước này (tiền cọc và phí nền tảng). Nạp thêm rồi thử lại — hợp đồng vẫn giữ nguyên.': {
+    en: 'Not enough CARP for this step (deposit plus platform fee). Top up and try again — the contract stays as it is.',
+    zh: 'CARP 余额不足以完成这一步（保证金与平台费）。充值后再试 — 合同保持原样。',
+    ja: 'このステップに必要な CARP が足りません（保証金と手数料）。追加してからもう一度お試しください — 契約はそのまま残ります。',
+  },
   'Cần đăng bằng chứng trước khi giao việc.': { en: 'Evidence must be posted before delivering.', zh: '交付前需要先提交证据。', ja: '納品の前に証拠を提出する必要があります。' },
   'Bạn không phải một trong hai bên của hợp đồng này.': {
     en: 'You are not a party to this contract.',

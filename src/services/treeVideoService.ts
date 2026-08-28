@@ -97,6 +97,17 @@ export interface TreeVideoResult {
   engine_verified?: boolean;
   /** "unconfirmed" khi mới gắn — chủ vườn/VeData xác nhận sau. */
   link_status?: string;
+  /**
+   * Byte clip CÒN trên máy chủ hay không (hàng đợi đĩa tính là còn).
+   *
+   * Đây là cờ máy chủ dùng làm `ok` của chính nó (`server.py:5015`). `false` ⇒ clip
+   * đã mất, phải gửi lại. Xem khối chú thích ở nhánh 200 bên dưới.
+   */
+  retained?: boolean;
+  /** Vì sao chưa cất được. Hàng đợi đọc để biết gửi lại có ích không. */
+  store_reason?: string | null;
+  /** Câu tiếng Việt CỦA MÁY CHỦ. Hiện thẳng, đừng tự soạn lại. */
+  message?: string;
   error?: { type: string; detail: string; http_status: number };
 }
 
@@ -198,6 +209,36 @@ export async function uploadTreeVideo(
       return {
         ok: false,
         error: { type: 'server_error', detail: body?.error ?? body?.detail ?? `HTTP ${resp.status}`, http_status: resp.status },
+        // Đọc `store_reason` Ở CẢ NHÁNH LỖI, cùng lý do đã ghi ở `fruitVideoService`:
+        // `empty_file` về dưới dạng 4xx, chỉ đọc ở nhánh 200 thì cờ "gửi lại vô ích"
+        // không bao giờ tới được nơi quyết định gửi lại.
+        store_reason: body?.store_reason ?? null,
+      };
+    }
+
+    // ══ HTTP 200 CHƯA PHẢI LÀ THÀNH CÔNG ═══════════════════════════════════
+    // Máy chủ đặt `ok = retained` chứ KHÔNG hằng `true` (`server.py:5015`), và chú
+    // thích ngay trên dòng đó cảnh báo đúng lỗi này: *"app kiểm `if (res.ok)` sẽ vào
+    // nhánh thành-công rồi bỏ qua chính câu 'vui lòng gửi lại' nằm cạnh"*. Bản trước
+    // của tệp này làm y như vậy — trả `ok:true` cho mọi 200 — nên khi clip KHÔNG
+    // được giữ, màn vẫn mở trang kết quả và nông dân yên tâm xoá clip trong máy.
+    //
+    // So sánh NGHIÊM NGẶT `=== false`: bản máy chủ cũ không trả trường này, và
+    // `undefined` phải giữ nghĩa cũ ("đã nhận") chứ không được đọc thành thất bại.
+    if (body?.ok === false) {
+      return {
+        ok: false,
+        tree_id: body?.tree_id ?? treeId,
+        retained: false,
+        stored: body?.stored,
+        store_reason: body?.store_reason ?? null,
+        message: body?.message,
+        error: {
+          type: 'not_retained',
+          // Câu Việt của máy chủ, không tự soạn lại: nó nói đúng việc phải làm tiếp.
+          detail: body?.error ?? body?.message ?? 'Chưa lưu được video — gửi lại giúp.',
+          http_status: resp.status,
+        },
       };
     }
 
@@ -215,6 +256,9 @@ export async function uploadTreeVideo(
       event_id: body?.event_id,
       engine_verified: body?.engine_verified,
       link_status: body?.link_status,
+      retained: body?.retained,
+      store_reason: body?.store_reason ?? null,
+      message: body?.message,
     };
   } catch (e: any) {
     clearTimeout(timeout);

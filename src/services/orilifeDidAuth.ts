@@ -27,7 +27,26 @@ import { currentUserDid, ownerPublicKey, signRaw, isKeypairEnrolled } from '../s
 import { isAvailable as phoenixKeyIsAvailable } from './phoenixKey-native';
 import rLog from './remoteLogger';
 
-const AUTH_TOKEN_KEY = 'auth_token';
+import { AUTH_TOKEN_KEY, resetOrilifeAuthHeaderCache } from './orilifeAuthHeader';
+
+/**
+ * DID đã đổi lấy `auth_token` đang nằm trong kho.
+ *
+ * ⛔ Vì sao khoá này phải có — lỗi đo được 2026-08-28:
+ *   `logoutUser` (store/userSlice.ts) xoá phiên Work, ngắt ProofChat, xoá nháp, đóng
+ *   CSDL per-user — nhưng KHÔNG xoá `auth_token`. Mà `ensureOrilifeToken` cũ chỉ hỏi
+ *   "có token không", không hỏi "của ai". Nên trên một máy dùng chung ngoài đồng:
+ *   người A đăng xuất → người B đăng nhập → lời gọi OriLife đầu tiên thấy token còn
+ *   đó và trả `true` ngay, KHÔNG ký lại. Từ đó 17 chỗ đọc `auth_token` (vườn, cây,
+ *   con, chăm sóc, dòng thời gian, truy xuất, video, trôi mẫu, ảnh…) đi ra máy chủ
+ *   MANG DANH NGƯỜI A, cho tới khi token hết hạn. Không màn nào báo gì.
+ *
+ * Nên từ nay token luôn đi kèm DID đã ký ra nó. Không khớp — hoặc không rõ của ai —
+ * là BỎ và ký lại. Mặc định ĐÓNG: token đời cũ (lưu trước bản này) không có khoá
+ * này, nên bị coi là vô chủ và người dùng ký lại MỘT lần sau khi cập nhật. Đó là
+ * cái giá cố ý: thà một lần hỏi sinh trắc còn hơn một lần gửi dữ liệu nhầm danh.
+ */
+const TOKEN_DID_KEY = 'orilife_token_did';
 
 /**
  * `owner-ref` của chính người đang đăng nhập (`acct:<id>` hoặc DID).
@@ -183,7 +202,17 @@ export async function loginOrilifeWithDid(baseUrl: string): Promise<DidLoginResu
     }
 
     // 4) Lưu token → mọi service ReID tự gắn Bearer.
+    //
+    // THỨ TỰ CÓ CHỦ Ý, đừng đảo: xoá dấu chủ TRƯỚC, ghi token, rồi mới ghi chủ mới.
+    // Máy tắt giữa chừng ở bất kỳ điểm nào cũng chỉ ra một trạng thái: token không
+    // rõ chủ → lần sau bị bỏ và ký lại. Ghi chủ trước rồi mới ghi token thì có một
+    // khoảnh khắc "chủ = B mà token vẫn của A" — đúng cái ca phải chặn.
+    await AsyncStorage.removeItem(TOKEN_DID_KEY).catch(() => {});
     await AsyncStorage.setItem(AUTH_TOKEN_KEY, vBody.token);
+    await AsyncStorage.setItem(TOKEN_DID_KEY, did);
+    // Đệm đầu đề ảnh giữ `Bearer` cũ tới 30 giây — đổi token mà không xoá đệm thì
+    // ảnh trong nửa phút đầu vẫn đi kèm token người trước.
+    resetOrilifeAuthHeaderCache();
     // Lưu luôn owner-ref (xem OWNER_REF_KEY). Best-effort: máy chủ không hứa
     // trường này, và thiếu nó thì màn chia sẻ nói "không rõ chiều" chứ không đoán.
     if (typeof vBody.owner === 'string' && vBody.owner.trim()) {
@@ -203,7 +232,13 @@ export async function loginOrilifeWithDid(baseUrl: string): Promise<DidLoginResu
   }
 }
 
-/** Có sẵn token field-reid trong AsyncStorage chưa. */
+/**
+ * Có sẵn token field-reid trong AsyncStorage chưa.
+ *
+ * ⚠ Câu hỏi này KHÔNG đủ để quyết định "khỏi ký lại" — nó không nói token của AI.
+ * Chỗ quyết định phải dùng `tokenMatchesCurrentDid()`. Giữ hàm này cho việc chẩn
+ * đoán/hiển thị trạng thái.
+ */
 export async function hasOrilifeToken(): Promise<boolean> {
   const t = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
   return !!t;
@@ -215,6 +250,10 @@ export async function clearOrilifeToken(): Promise<void> {
   // Xoá cùng lúc: owner-ref của phiên cũ mà còn sót lại thì màn chia sẻ tách
   // danh sách theo NGƯỜI KHÁC — sai chiều mà không có gì báo.
   await AsyncStorage.removeItem(OWNER_REF_KEY).catch(() => {});
+  await AsyncStorage.removeItem(TOKEN_DID_KEY).catch(() => {});
+  // Đệm trong BỘ NHỚ, không nằm trong kho — xoá kho mà quên nó thì 30 giây kế tiếp
+  // ảnh vẫn mang token vừa bị xoá.
+  resetOrilifeAuthHeaderCache();
 }
 
 /**
@@ -233,15 +272,54 @@ export async function currentOwnerRef(): Promise<string | null> {
   }
 }
 
+/** DID đã ký ra token đang lưu, hoặc `null` nếu không rõ (token đời cũ / không có). */
+export async function tokenOwnerDid(): Promise<string | null> {
+  try {
+    const v = await AsyncStorage.getItem(TOKEN_DID_KEY);
+    return v && v.trim() ? v.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Đảm bảo có token trước khi gọi API ReID. Nếu chưa có (hoặc force) → DID login.
- * Trả true nếu sau cùng có token dùng được.
+ * Token đang lưu có ĐÚNG là của danh tính đang dùng máy không.
+ *
+ * Trả `false` ở cả ba ca, và cả ba đều phải ký lại — không ca nào được nới:
+ *   · không có token;
+ *   · có token nhưng không rõ của ai (token lưu trước bản buộc-DID);
+ *   · có token, rõ của ai, nhưng người đó KHÔNG phải người đang dùng máy.
+ */
+export async function tokenMatchesCurrentDid(): Promise<boolean> {
+  const token = await AsyncStorage.getItem(AUTH_TOKEN_KEY).catch(() => null);
+  if (!token) return false;
+  const owner = await tokenOwnerDid();
+  if (!owner) return false;
+  const did = await currentUserDid().catch(() => null);
+  if (!did) return false;
+  return owner === did;
+}
+
+/**
+ * Đảm bảo có token CỦA ĐÚNG NGƯỜI ĐANG DÙNG MÁY trước khi gọi API ReID.
+ *
+ * Bản trước chỉ hỏi "có token không" (`hasOrilifeToken`). Trên máy dùng chung ngoài
+ * đồng đó là một lỗ: token người trước sống sót qua đăng xuất, và lời gọi đầu tiên
+ * của người sau trả `true` ngay mà không ký lại — xem ghi chú ở `TOKEN_DID_KEY`.
+ *
+ * Nay không khớp là XOÁ rồi ký lại. Xoá chứ không chỉ bỏ qua: 17 chỗ đọc thẳng
+ * `auth_token` từ kho mà KHÔNG đi qua hàm này (`RemoteImage`, các service ReID lúc
+ * gửi lại hàng đợi…), nên chừng nào token lạ còn nằm trong kho thì chừng đó còn
+ * đường cho nó ra khỏi máy.
  */
 export async function ensureOrilifeToken(
   baseUrl: string,
   opts: { force?: boolean } = {},
 ): Promise<boolean> {
-  if (!opts.force && (await hasOrilifeToken())) return true;
+  if (!opts.force) {
+    if (await tokenMatchesCurrentDid()) return true;
+    await clearOrilifeToken().catch(() => {});
+  }
   const res = await loginOrilifeWithDid(baseUrl);
   return res.ok;
 }

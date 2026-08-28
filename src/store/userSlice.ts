@@ -7,6 +7,7 @@ import { databaseManager } from '../services/databaseManager';
 import { phoenixKeyApi, summarizeWalletAll, type WalletEntry } from '../services/phoenixKey-api';
 import { parseDidNetwork } from '../services/phoenixDid';
 import { clearWorkSession } from '../modules/work/services/session';
+import { clearOrilifeToken } from '../services/orilifeDidAuth';
 import { disconnectProofChat } from '../services/proofchatAuthBridge';
 import { clearAllDrafts } from '../services/treeDraftStore';
 import { setVideoQueueOwner, flushVideoUploadQueue } from '../services/videoUploadQueue';
@@ -151,6 +152,17 @@ export const logoutUser = createAsyncThunk(
       await disconnectProofChat();
     } catch (error) {
       console.warn('[Redux] Logout: disconnectProofChat lỗi (bỏ qua):', error);
+    }
+    try {
+      // ⛔ Đường RÒ LỚN NHẤT, và là đường duy nhất trong khối này bị bỏ sót tới
+      // 2026-08-28: `auth_token` OriLife sống qua đăng xuất. 17 chỗ trong app đọc
+      // thẳng khoá đó — vườn, cây, con, chăm sóc, dòng thời gian, truy xuất, video,
+      // trôi mẫu, ảnh. Người sau đăng nhập trên cùng máy thì mọi lời gọi đó vẫn đi
+      // ra MANG DANH người trước, im lặng, cho tới khi token hết hạn.
+      // `clearOrilifeToken` xoá cả owner-ref, dấu chủ token, và đệm đầu đề ảnh.
+      await clearOrilifeToken();
+    } catch (error) {
+      console.warn('[Redux] Logout: clearOrilifeToken lỗi (bỏ qua):', error);
     }
     try {
       // Nháp chụp cây / video quả là dữ liệu PHIÊN. Tablet field dùng CHUNG → xoá sạch

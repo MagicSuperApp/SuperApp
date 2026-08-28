@@ -138,6 +138,7 @@ import {
   assertRouteParity,
 } from './registry';
 import { DEFAULT_INSTANCE, ENABLED_MODULES } from '../config/instance.config';
+import { gateScreen } from './authGate';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -1968,7 +1969,7 @@ const AppNavigator = () => {
             <Stack.Screen
               key={s.name}
               name={s.name}
-              component={s.component}
+              component={gateScreen(s.name, s.component)}
               options={s.options}
             />
           ))}
@@ -1977,7 +1978,7 @@ const AppNavigator = () => {
             <Stack.Screen
               key={route}
               name={route}
-              component={component}
+              component={gateScreen(route, component)}
               options={{ headerShown: false }}
             />
           ))}

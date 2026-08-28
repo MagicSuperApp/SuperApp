@@ -38,6 +38,7 @@ import { NEO_CENTER, NEO_RIGHT } from './resolveVisibleTabs';
 import { resolveGateItems, type GateItem } from './resolveGateItems';
 import { stickyTapAction } from './stickyTap';
 import { TRACE_SCAN_ROUTE_NAME } from './traceScan';
+import { buildDeepLinkScreens } from './deepLinkAllow';
 
 // --- Host shell screens (KHÔNG thuộc module — vỏ giữ tĩnh) ------------------
 import LoginScreen from '../screens/LoginScreen';
@@ -1828,31 +1829,26 @@ const MODULE_STACK_SCREENS = collectModuleScreens(ENABLED_MODULES);
 //                               KHÔNG kiểm gói gọi, KHÔNG kiểm intent-filter
 //
 // Nên một app bất kỳ trên cùng máy gửi `ACTION_VIEW` + `-n <gói>/.MainActivity` kèm
-// `lamp://<module>/<route>` thì URL đó ĐI TỚI `buildLinking` hôm nay. Và map dưới đây
-// không có whitelist: nó phơi TOÀN BỘ route module (`MODULE_STACK_SCREENS`) cộng
-// `Main`. Whitelist 3 route ở `traceScan.ts:33-37` KHÔNG áp cho đường này — nó chỉ
-// gác bộ đọc QR trong app.
+// `lamp://<module>/<route>` thì URL đó ĐI TỚI `buildLinking` hôm nay.
 //
-// Chưa sửa hành vi: chọn route nào được mở từ ngoài là quyết định sản phẩm, không
-// phải việc sửa lặng lẽ trong một lượt rà. Nhưng câu khẳng định cũ phải đi, vì nó là
-// thứ khiến người đọc sau thôi không kiểm.
-const buildLinking = () => {
-  const screens: Record<string, string> = { Main: 'main' };
-  MODULE_STACK_SCREENS.forEach(({ moduleId, route }) => {
-    screens[route] = `${moduleId}/${route}`;
-  });
-  // SG9 §3 — mở màn quét truy xuất qua deep-link `lamp://trace-scan` (quét từ
-  // platform khác). Màn CHI TIẾT (TreeDetail…) đã deep-link-được qua map module ở
-  // trên → sản phẩm Aladin quét ngoài app mở thẳng màn kết quả.
-  screens[TRACE_SCAN_ROUTE_NAME] = 'trace-scan';
-  // Đổi ngôn ngữ = popup mở tại chỗ (Cài đặt / màn Đăng nhập), KHÔNG còn màn riêng
-  // → không có route để deep-link tới. Màn `LanguageSelect` chỉ chạy lần đầu cài.
-  screens.LanguageSelect = 'language';
-  return {
-    prefixes: ['lamp://'],
-    config: { screens },
-  };
-};
+// ✅ ĐÃ SỬA 2026-08-27 — phần "map không có whitelist, phơi TOÀN BỘ route module" ở
+// đoạn trên KHÔNG còn đúng. Bảng nay đi qua danh sách trắng viết tay ở
+// `deepLinkAllow.ts`, và danh sách route module RỖNG ⇒ 25 route module (gồm
+// `ChatRoom`, `FarmDetail`, `TreeDetail`, `ContractDetail`) không mở được từ ngoài.
+// Route mới thêm sau này **mặc định ĐÓNG**.
+//
+// ⚠️ ĐỪNG đọc thành "lỗ đã đóng". Cái đóng là CỬA VÀO. Bảng đường dẫn bên trong vẫn
+// PHẲNG y như cũ: `ProtectedMain` bọc đúng route `Main`, còn `MODULE_STACK_SCREENS`
+// vẫn là anh em ruột của nó trong cùng một `Stack.Navigator`. Dựng lại để mọi route
+// module nằm DƯỚI cổng là việc còn nguyên, và nó đang chờ chủ dự án quyết — đó mới
+// là quyết định sản phẩm, không phải cái danh sách trắng này.
+const buildLinking = () => ({
+  prefixes: ['lamp://'],
+  // Bảng route mở-được-từ-ngoài nay đi qua DANH SÁCH TRẮNG viết tay, không còn là
+  // vòng lặp trên toàn bộ `MODULE_STACK_SCREENS`. Luật, lý do và điều kiện gỡ nằm
+  // ở `deepLinkAllow.ts`. Đừng đổ thẳng route module vào đây nữa.
+  config: { screens: buildDeepLinkScreens(MODULE_STACK_SCREENS, TRACE_SCAN_ROUTE_NAME) },
+});
 
 const AppNavigator = () => {
   // Build 52 (2026-05-17) — first-launch onboarding gate.

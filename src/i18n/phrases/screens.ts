@@ -69,11 +69,10 @@ export const SCREENS: PhraseMap = {
     zh: '请尽快在“账户”中设置监护人或保存助记词 — 这是设备丢失后唯一的恢复方式。',
     ja: 'できるだけ早く「アカウント」でガーディアンを設定するか、シードフレーズを保存してください — 端末を紛失したときに復旧できる唯一の方法です。',
   },
-  'Tài khoản của bạn không phụ thuộc vào bất kỳ máy chủ trung tâm nào. Dữ liệu khôi phục được phân tán an toàn trên mạng — chỉ bạn có thể giải mã.': {
-    en: 'Your account depends on no central server. Recovery data is distributed safely across the network — only you can decrypt it.',
-    zh: '你的账户不依赖任何中心服务器。恢复数据安全地分散在网络中 — 只有你能解密。',
-    ja: 'あなたのアカウントは中央サーバーに依存しません。復旧データはネットワーク上に安全に分散され、復号できるのはあなただけです。',
-  },
+  // ⛔ GỠ 2026-08-28 — khoá cũ ở đây dịch một câu KHÔNG ĐÚNG SỰ THẬT sang ba thứ
+  // tiếng: "Dữ liệu khôi phục được phân tán an toàn trên mạng — chỉ bạn có thể
+  // giải mã." Không có việc phân tán nào xảy ra. Câu thay thế nằm ở
+  // `phrases/navigation.ts`, và nó nói thẳng rằng không ai khôi phục hộ được.
 
   // ── Kích hoạt ──────────────────────────────────────────────────────────────
   'Đang chờ mã QR': { en: 'Waiting for a QR code', zh: '等待二维码', ja: 'QR コードを待っています' },

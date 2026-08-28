@@ -122,17 +122,69 @@ def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
     //
     // ⛔ `com.checkfarm.app` KHÔNG ĐỔI ĐƯỢC sau lần tải bản dựng đầu tiên lên
     //    Google Play. Sửa dòng đó sau đó là mất luôn chỗ đứng của ứng dụng.
+    // ── MỖI APP = MỘT THƯ MỤC TRONG `instances/` ────────────────────────────
+    //
+    // Trước đợt này, tên app + mã gói + biểu tượng nằm rải ở ba chỗ: khối
+    // `productFlavors` viết tay dưới đây, `strings.xml`, và `src/main/res/mipmap-*`.
+    // Hệ quả: đối tác muốn dựng app mang nhận diện của họ thì phải nhờ người sửa
+    // gradle hộ. Đó là chỗ nghẽn ở NGƯỜI, không phải ở kỹ thuật.
+    //
+    // Nay gradle ĐỌC thư mục. Thêm một app = thêm `instances/<mã>/instance.json`
+    // + một ảnh vuông 1024 ở `instances/<mã>/brand/icon-1024.png`, rồi chạy
+    // `python3 scripts/sinh-bieu-tuong.py <mã>`. KHÔNG sửa tệp này.
+    //
+    // Chi tiết + ví dụ đầy đủ: `instances/README.md`.
+    def thuMucApp = new File(rootDir, '../instances')
+    def cacApp = (thuMucApp.listFiles() ?: new File[0])
+            .findAll { it.isDirectory() && new File(it, 'instance.json').isFile() }
+            .sort { it.name }
+            .collect { thuMuc ->
+                def khai = new groovy.json.JsonSlurper().parse(new File(thuMuc, 'instance.json'))
+                // Sai ở đây phải NỔ, không được đoán: một `applicationId` rỗng lọt
+                // xuống dưới là dựng ra gói mang mã của app khác, và không có triệu
+                // chứng nào cho tới lúc nộp cửa hàng.
+                if (khai.id != thuMuc.name) {
+                    throw new GradleException("instances/${thuMuc.name}/instance.json khai id='${khai.id}' — phải trùng tên thư mục")
+                }
+                if (!(khai.id ==~ /^[a-z][a-z0-9]*$/)) {
+                    throw new GradleException("mã app '${khai.id}' phải là chữ thường + số, bắt đầu bằng chữ (gradle dùng nó làm tên flavor)")
+                }
+                if (!khai.android?.applicationId) {
+                    throw new GradleException("instances/${khai.id}/instance.json thiếu android.applicationId")
+                }
+                if (!khai.displayName) {
+                    throw new GradleException("instances/${khai.id}/instance.json thiếu displayName")
+                }
+                khai
+            }
+    if (cacApp.isEmpty()) {
+        throw new GradleException("Không thấy app nào trong ${thuMucApp} — mỗi app cần một thư mục chứa instance.json")
+    }
+    def trungMaGoi = cacApp.groupBy { it.android.applicationId }.findAll { it.value.size() > 1 }
+    if (trungMaGoi) {
+        throw new GradleException("Hai app dùng chung applicationId ${trungMaGoi.keySet()} — cửa hàng coi đó là MỘT app, bản sau đè bản trước")
+    }
+
     flavorDimensions "app"
     productFlavors {
-        aladin {
-            dimension "app"
-            applicationId "com.aladincontract.company"
-            resValue "string", "app_name", "Aladin"
+        cacApp.each { khai ->
+            create(khai.id) {
+                dimension "app"
+                applicationId khai.android.applicationId
+                resValue "string", "app_name", khai.displayName
+            }
         }
-        checkfarm {
-            dimension "app"
-            applicationId "com.checkfarm.app"
-            resValue "string", "app_name", "CheckFarm"
+    }
+
+    sourceSets {
+        cacApp.each { khai ->
+            getByName(khai.id) {
+                // Biểu tượng của app nằm trong thư mục của chính app đó, KHÔNG ở
+                // `src/main/res`. Cố ý: app mới quên bộ biểu tượng thì bản dựng ĐỎ
+                // ngay ("resource mipmap/ic_launcher not found"), thay vì lặng lẽ
+                // mượn biểu tượng của app đứng trước.
+                res.srcDirs += new File(thuMucApp, "${khai.id}/android/res")
+            }
         }
     }
 
@@ -249,4 +301,37 @@ dependencies {
     implementation 'com.google.firebase:firebase-analytics-ktx'
 }
 
+// ── Firebase: CÓ ĐIỀU KIỆN, theo từng app ───────────────────────────────────
+//
+// Bản trước áp thẳng plugin này cho MỌI flavor, và `google-services.json` nằm ở
+// gốc `app/` — mà gốc `app/` nằm trong đường tìm của MỌI variant. Hệ quả: dựng
+// CheckFarm thì plugin nhặt đúng tệp của Aladin rồi đỏ ngay:
+//
+//     No matching client found for package name 'com.checkfarm.app'
+//
+// Nên tệp của Aladin chuyển vào `src/aladin/` — đường tìm của riêng nó — và
+// flavor nào KHÔNG có tệp của chính mình thì tắt bước xử lý Firebase cho flavor
+// đó, thay vì để nó nhặt nhầm tệp của app khác.
+//
+// Vì sao đây là hướng đúng chứ không phải đường tạm: Firebase trong app này chỉ
+// phục vụ MỘT việc — đánh thức app khi bị tắt, cho hai loại tin `sign_request`
+// và `activation`. Cả hai đều là luồng danh tính PhoenixKey. `pushHandler.ts`
+// nạp module bằng `await import(...)` trong `try` và trả `null` khi không có,
+// nên phía JS chịu được việc vắng Firebase mà không cần đổi một dòng nào. Một
+// app chưa cần đẩy tin nền thì không có lý do gì phải mở tài khoản ở bên thứ ba
+// trước khi dựng được.
+//
+// Ngày CheckFarm cần đẩy tin nền: bỏ `google-services.json` của dự án Firebase
+// ĐỨNG TÊN pháp nhân CheckFarm vào `src/checkfarm/` là plugin tự bật lại — không
+// phải sửa dòng nào ở đây.
 apply plugin: 'com.google.gms.google-services'
+
+android.applicationVariants.all { variant ->
+    def flavor = variant.flavorName
+    def coCauHinh = file("src/${flavor}/google-services.json").exists()
+    if (!coCauHinh) {
+        def ten = "process${variant.name.capitalize()}GoogleServices"
+        tasks.matching { it.name == ten }.configureEach { it.enabled = false }
+        logger.lifecycle("[firebase] ${flavor}: không có google-services.json → tắt ${ten}")
+    }
+}

@@ -10,21 +10,26 @@
  * ── Vì sao cần ──────────────────────────────────────────────────────────────
  * Danh tính một app nằm ở BỐN tệp khác nhau, ba ngôn ngữ khác nhau:
  *
- *     src/config/instance.config.ts     instanceId, displayName   (TypeScript)
- *     android/app/build.gradle          applicationId, app_name   (Groovy)
- *     ios/.../project.pbxproj           PRODUCT_BUNDLE_IDENTIFIER (định dạng riêng)
- *     codemagic.yaml                    BUNDLE_ID, ANDROID_FLAVOR (YAML)
+ *     instances/<mã>/instance.json      applicationId, displayName (JSON — NGUỒN)
+ *     src/config/instance.config.ts     instanceId, displayName    (TypeScript)
+ *     ios/.../project.pbxproj           PRODUCT_BUNDLE_IDENTIFIER  (định dạng riêng)
+ *     codemagic.yaml                    BUNDLE_ID, ANDROID_FLAVOR  (YAML)
  *
  * Không trình biên dịch nào canh bốn tệp đó khớp nhau. Sửa một chỗ quên ba chỗ
  * thì bản dựng vẫn XANH — nó ra một gói mang vỏ app này và chữ của app kia, và
  * chỗ đó chỉ lộ khi có người mở app ra nhìn.
+ *
+ * ⚠ ĐỔI 2026-08-28: `android/app/build.gradle` KHÔNG còn khai flavor bằng tay —
+ * nó đọc `instances/<mã>/instance.json`. Nên bài kiểm này cũng đọc thẳng nguồn
+ * đó thay vì bóc gradle bằng biểu thức. Bóc gradle giờ chỉ còn để canh rằng
+ * gradle vẫn ĐỌC thư mục, chứ không có ai lén viết tay flavor trở lại.
  *
  * ── Nó vẫn KHÔNG đo được gì ─────────────────────────────────────────────────
  *  · Bản dựng có chạy không. Đây là phép đối chiếu văn bản, không phải lượt dựng.
  *  · Biểu tượng có đúng không. Ảnh thì jest không nhìn.
  *  · Khoá ký thuộc pháp nhân nào. Khoá không nằm trong kho.
  */
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, readdirSync } from 'fs';
 import { join } from 'path';
 
 import { INSTANCES } from './instance.config';
@@ -37,14 +42,16 @@ const CODEMAGIC = doc('codemagic.yaml');
 const PBXPROJ = doc('ios/aladin_mobile_fe.xcodeproj/project.pbxproj');
 const INFO_PLIST = doc('ios/aladin_mobile_fe/Info.plist');
 
-/** Bóc `productFlavors { ten { applicationId "..." ; resValue ... "app_name", "..." } }`. */
+const THU_MUC_APP = join(GOC, 'instances');
+
+/** Đọc `instances/<mã>/instance.json` — đúng nguồn mà gradle đọc. */
 function docFlavors(): Record<string, { applicationId: string; appName: string }> {
-  const khoi = GRADLE.match(/productFlavors\s*\{([\s\S]*?)\n    \}/);
-  if (!khoi) return {};
   const ra: Record<string, { applicationId: string; appName: string }> = {};
-  const re = /(\w+)\s*\{\s*dimension\s+"app"\s*applicationId\s+"([^"]+)"\s*resValue\s+"string",\s*"app_name",\s*"([^"]+)"/g;
-  for (const m of khoi[1].matchAll(re)) {
-    ra[m[1]] = { applicationId: m[2], appName: m[3] };
+  for (const ma of readdirSync(THU_MUC_APP)) {
+    const tep = join(THU_MUC_APP, ma, 'instance.json');
+    if (!existsSync(tep)) continue;
+    const khai = JSON.parse(readFileSync(tep, 'utf8'));
+    ra[khai.id] = { applicationId: khai.android.applicationId, appName: khai.displayName };
   }
   return ra;
 }
@@ -52,8 +59,16 @@ function docFlavors(): Record<string, { applicationId: string; appName: string }
 const FLAVORS = docFlavors();
 
 describe('mỗi instance JS có một flavor Android tương ứng', () => {
-  it('đọc được flavor từ build.gradle (nếu phép bóc hỏng thì mọi bài dưới xanh giả)', () => {
+  it('đọc được app từ instances/ (phép đọc hỏng thì mọi bài dưới xanh giả)', () => {
     expect(Object.keys(FLAVORS).sort()).toEqual(['aladin', 'checkfarm']);
+  });
+
+  // Nếu ai đó viết tay `aladin { ... }` trở lại vào gradle thì có HAI nguồn khai
+  // flavor, và bài kiểm này đọc nguồn kia — tức mọi bài dưới đo nhầm tệp.
+  it('gradle ĐỌC thư mục, không ai viết tay flavor trở lại', () => {
+    expect(GRADLE).toContain('instance.json');
+    expect(GRADLE).toContain('productFlavors');
+    expect(GRADLE).not.toMatch(/productFlavors\s*\{\s*\n\s*[a-z]+\s*\{\s*\n\s*dimension/);
   });
 
   it('không instance nào thiếu flavor', () => {
@@ -168,11 +183,20 @@ describe('cổng CI GitHub cũng gọi flavor tường minh', () => {
   });
 });
 
-describe('Firebase — chỗ chặn còn lại, và cái bẫy đi kèm', () => {
+describe('Firebase — có điều kiện theo app, và cái bẫy đi kèm', () => {
   const RIENG = 'android/app/src/checkfarm/google-services.json';
+  const CUA_ALADIN = 'android/app/src/aladin/google-services.json';
+
+  // Gốc `app/` nằm trong đường tìm của MỌI variant. Để tệp Aladin ở đó thì dựng
+  // CheckFarm sẽ nhặt đúng tệp ấy rồi đỏ vì sai gói — nên nó phải nằm trong
+  // đường tìm RIÊNG của flavor aladin.
+  it('tệp Firebase của Aladin nằm trong src/aladin, KHÔNG ở gốc app', () => {
+    expect(existsSync(join(GOC, CUA_ALADIN))).toBe(true);
+    expect(existsSync(join(GOC, 'android/app/google-services.json'))).toBe(false);
+  });
 
   it('tệp Firebase của Aladin chỉ khai gói Aladin', () => {
-    const j = JSON.parse(doc('android/app/google-services.json'));
+    const j = JSON.parse(doc(CUA_ALADIN));
     const goi = j.client.map((c: any) => c.client_info.android_client_info.package_name);
     expect(goi).toContain(FLAVORS.aladin.applicationId);
     // Khai thêm gói CheckFarm vào ĐÂY là sai chỗ: nó trỏ thông báo đẩy và số
@@ -180,17 +204,103 @@ describe('Firebase — chỗ chặn còn lại, và cái bẫy đi kèm', () => 
     expect(goi).not.toContain(FLAVORS.checkfarm.applicationId);
   });
 
+  it('gradle tắt bước Firebase cho flavor không có tệp cấu hình của chính nó', () => {
+    const g = doc('android/app/build.gradle');
+    expect(g).toContain('android.applicationVariants.all');
+    expect(g).toContain('src/${flavor}/google-services.json');
+    expect(g).toContain('GoogleServices');
+    expect(g).toContain('enabled = false');
+  });
+
+  it('CheckFarm gỡ FirebaseInitProvider — không có gì tự khởi Firebase', () => {
+    const m = doc('android/app/src/checkfarm/AndroidManifest.xml');
+    expect(m).toContain('com.google.firebase.provider.FirebaseInitProvider');
+    expect(m).toContain('tools:node="remove"');
+  });
+
+  // Hai nửa phải đi cùng nhau. Có tệp cấu hình mà vẫn gỡ provider thì Firebase
+  // im lặng không chạy — dựng xanh, cài được, và tin đẩy không bao giờ tới.
+  it('có tệp cấu hình CheckFarm thì phải BỎ manifest gỡ provider', () => {
+    const coCauHinh = existsSync(join(GOC, RIENG));
+    const coManifest = existsSync(join(GOC, 'android/app/src/checkfarm/AndroidManifest.xml'));
+    if (coCauHinh) expect(coManifest).toBe(false);
+  });
+
   it('nếu đã có tệp Firebase riêng thì nó phải khai ĐÚNG gói CheckFarm', () => {
     // Bẫy nguy hiểm nhất: chép tệp của Aladin sang thư mục checkfarm. Mọi thứ
     // dựng được, chạy được, và dữ liệu của CheckFarm chảy vào nhà người khác.
-    if (!existsSync(join(GOC, RIENG))) {
-      // Chưa có là trạng thái ĐÃ BIẾT, ghi ở `android/app/src/checkfarm/README.md`.
-      expect(doc('android/app/src/checkfarm/README.md')).toContain('google-services.json');
-      return;
-    }
+    if (!existsSync(join(GOC, RIENG))) return;
     const j = JSON.parse(doc(RIENG));
     const goi = j.client.map((c: any) => c.client_info.android_client_info.package_name);
     expect(goi).toContain(FLAVORS.checkfarm.applicationId);
     expect(goi).not.toContain(FLAVORS.aladin.applicationId);
+  });
+
+  // Lời khẳng định "CheckFarm dựng được khi KHÔNG có Firebase" chỉ đáng tin nếu
+  // có chỗ dựng thật. Không có bước này thì nó là lời hứa, không phải phép đo.
+  it('CI dựng THẬT bản CheckFarm', () => {
+    expect(doc('.github/workflows/debug-apk.yml')).toContain('assembleCheckfarmDebug');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Biểu tượng — thứ trước đây bài kiểm này tự khai là "ảnh thì jest không nhìn".
+//
+// Vẫn đúng: jest không nói được biểu tượng ĐẸP hay ĐÚNG nhận diện. Nhưng nói
+// được nó CÓ MẶT và ĐỦ MẬT ĐỘ — và đó mới là chỗ hỏng câm. Thiếu một mật độ thì
+// Android tự phóng to ảnh mật độ khác: biểu tượng rỗ, không ai đỏ.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('mỗi app tự mang bộ biểu tượng của mình', () => {
+  const MAT_DO = ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi'];
+  const TEP = ['ic_launcher.png', 'ic_launcher_round.png', 'ic_launcher_foreground.png'];
+
+  it.each(Object.keys(FLAVORS))('%s có đủ 5 mật độ × 3 tệp', (ma) => {
+    const thieu: string[] = [];
+    for (const md of MAT_DO) {
+      for (const t of TEP) {
+        const d = join(THU_MUC_APP, ma, 'android/res', `mipmap-${md}`, t);
+        if (!existsSync(d)) thieu.push(`mipmap-${md}/${t}`);
+      }
+    }
+    expect(thieu).toEqual([]);
+  });
+
+  it.each(Object.keys(FLAVORS))('%s có lớp thích ứng + màu nền', (ma) => {
+    const res = join(THU_MUC_APP, ma, 'android/res');
+    expect(existsSync(join(res, 'mipmap-anydpi-v26/ic_launcher.xml'))).toBe(true);
+    expect(existsSync(join(res, 'mipmap-anydpi-v26/ic_launcher_round.xml'))).toBe(true);
+    expect(existsSync(join(res, 'values/ic_launcher_background.xml'))).toBe(true);
+  });
+
+  it.each(Object.keys(FLAVORS))('%s giữ ảnh gốc 1024 để sinh lại được', (ma) => {
+    expect(existsSync(join(THU_MUC_APP, ma, 'brand/icon-1024.png'))).toBe(true);
+  });
+
+  // Chỗ này mới là cái bẫy thật. Còn một bộ `ic_launcher` trong `src/main/res`
+  // thì app mới quên biểu tượng KHÔNG đỏ — nó lặng lẽ mượn biểu tượng của app
+  // đứng trước rồi đi thẳng lên cửa hàng.
+  it('src/main/res KHÔNG còn bộ biểu tượng dùng chung', () => {
+    const con: string[] = [];
+    for (const md of [...MAT_DO, 'anydpi-v26']) {
+      for (const t of [...TEP, 'ic_launcher.xml', 'ic_launcher_round.xml']) {
+        const d = join(GOC, 'android/app/src/main/res', `mipmap-${md}`, t);
+        if (existsSync(d)) con.push(`mipmap-${md}/${t}`);
+      }
+    }
+    expect(con).toEqual([]);
+    expect(existsSync(join(GOC, 'android/app/src/main/res/values/ic_launcher_background.xml'))).toBe(false);
+  });
+
+  it('màu nền biểu tượng khớp instance.json', () => {
+    for (const ma of Object.keys(FLAVORS)) {
+      const khai = JSON.parse(readFileSync(join(THU_MUC_APP, ma, 'instance.json'), 'utf8'));
+      const xml = readFileSync(join(THU_MUC_APP, ma, 'android/res/values/ic_launcher_background.xml'), 'utf8');
+      expect(`${ma}:${xml.includes(khai.android.iconBackground)}`).toBe(`${ma}:true`);
+    }
+  });
+
+  it('bộ sinh biểu tượng có mặt — người thêm app không phải tự dựng', () => {
+    expect(existsSync(join(GOC, 'scripts/sinh-bieu-tuong.py'))).toBe(true);
+    expect(existsSync(join(GOC, 'instances/README.md'))).toBe(true);
   });
 });

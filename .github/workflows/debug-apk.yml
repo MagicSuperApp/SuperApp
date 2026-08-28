@@ -27,6 +27,22 @@ on:
       - 'rust/**'
       - '.github/actions/**'
       - '.github/workflows/debug-apk.yml'
+  # PR đụng tới tầng native: dựng TRƯỚC khi gộp, không phải sau.
+  #
+  # Vì sao thêm: đường `push` chỉ nghe `develop` và `feat/**`, nên một PR đổi
+  # `android/**` chỉ được dựng SAU khi đã vào `develop` — tức chỗ duy nhất chứng
+  # minh được "bản CheckFarm dựng được khi không có Firebase" lại nằm ở phía bên
+  # kia của lượt gộp. Cổng đặt sau cửa thì không phải cổng.
+  #
+  # Lọc `paths` giữ nguyên (khai một lần ở trên là áp cho cả hai sự kiện), nên PR
+  # chỉ đụng chữ nghĩa hay tài liệu KHÔNG kéo theo 60 phút dựng.
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - 'android/**'
+      - 'rust/**'
+      - '.github/actions/**'
+      - '.github/workflows/debug-apk.yml'
   workflow_dispatch:   # nút bấm build tay
 
 # Gộp 3 PR liên tiếp vào `develop` lúc 07:37-07:38 ngày 17/08 sinh BA lượt dựng APK
@@ -172,10 +188,37 @@ jobs:
           set -eo pipefail
           cd android
           chmod +x gradlew
-          # Flavor TƯỜNG MINH. `assembleDebug` (không flavor) dựng CẢ HAI app, và
-          # bản CheckFarm còn thiếu `src/checkfarm/google-services.json` nên nó đỏ —
-          # tức lệnh cũ sẽ làm đỏ đường dựng Aladin đang chạy tốt.
+          # Flavor TƯỜNG MINH. `assembleDebug` (không flavor) dựng CẢ HAI app rồi
+          # đổ gói vào hai thư mục khác nhau — bước "Locate APK" bên dưới chỉ lấy
+          # một, nên để nó dựng cả hai là tốn thời gian mà không dùng tới.
           ./gradlew assembleAladinDebug --no-daemon --stacktrace 2>&1 | tee android-debug.log
+
+      # Dựng luôn bản CheckFarm — KHÔNG để giao ra, mà để CHỨNG MINH nó dựng được.
+      #
+      # CheckFarm cố ý không có `src/checkfarm/google-services.json`: app này chưa
+      # đẩy tin nền nên không có lý do mở tài khoản Firebase trước khi dựng được
+      # (xem khối "Firebase: CÓ ĐIỀU KIỆN" trong `android/app/build.gradle`). Cách
+      # duy nhất để lời khẳng định đó không thành lời hứa suông là CI dựng thật.
+      #
+      # Bước này đỏ = một trong hai điều đã hỏng: hoặc bước tắt Firebase theo flavor
+      # không còn chạy, hoặc CheckFarm đã có tệp cấu hình mà nó sai gói.
+      - name: Dựng bản CheckFarm — chứng minh dựng được khi KHÔNG có Firebase
+        run: |
+          set -eo pipefail
+          cd android
+          ./gradlew assembleCheckfarmDebug --no-daemon --stacktrace 2>&1 | tee android-checkfarm.log
+          CF=$(find app/build/outputs/apk/checkfarm/debug -name "*.apk" | head -1)
+          if [ -z "$CF" ]; then
+            echo "::error::CheckFarm APK không thấy"
+            find app/build/outputs -type f | head -20
+            exit 1
+          fi
+          echo "✅ CheckFarm APK: $CF ($(stat -c%s "$CF") bytes)"
+          # Giao ra luôn, không chỉ chứng minh. Bản CheckFarm chưa có mục trên
+          # Google Play (cần Play Console của pháp nhân CheckFarm), nên đường duy
+          # nhất để người thử cầm được nó là tải tệp này về cài thẳng.
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          cp "$CF" "$GITHUB_WORKSPACE/dist/checkfarm-debug.apk"
 
       - name: Locate APK
         id: apk-info
@@ -245,7 +288,9 @@ jobs:
           name: superapp-debug-apk
           path: |
             dist/superapp-debug.apk
+            dist/checkfarm-debug.apk
             android-debug.log
+            android/android-checkfarm.log
           retention-days: 30
 
       - name: Build summary

@@ -27,6 +27,22 @@ on:
       - 'rust/**'
       - '.github/actions/**'
       - '.github/workflows/debug-apk.yml'
+  # PR đụng tới tầng native: dựng TRƯỚC khi gộp, không phải sau.
+  #
+  # Vì sao thêm: đường `push` chỉ nghe `develop` và `feat/**`, nên một PR đổi
+  # `android/**` chỉ được dựng SAU khi đã vào `develop` — tức chỗ duy nhất chứng
+  # minh được "bản CheckFarm dựng được khi không có Firebase" lại nằm ở phía bên
+  # kia của lượt gộp. Cổng đặt sau cửa thì không phải cổng.
+  #
+  # Lọc `paths` giữ nguyên (khai một lần ở trên là áp cho cả hai sự kiện), nên PR
+  # chỉ đụng chữ nghĩa hay tài liệu KHÔNG kéo theo 60 phút dựng.
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - 'android/**'
+      - 'rust/**'
+      - '.github/actions/**'
+      - '.github/workflows/debug-apk.yml'
   workflow_dispatch:   # nút bấm build tay
 
 # Gộp 3 PR liên tiếp vào `develop` lúc 07:37-07:38 ngày 17/08 sinh BA lượt dựng APK

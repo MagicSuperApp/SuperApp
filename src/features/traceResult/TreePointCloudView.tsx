@@ -25,6 +25,8 @@ import { Canvas, useFrame } from '@react-three/fiber/native';
 import * as THREE from 'three';
 
 import Icon from '../../components/Icon';
+import { tf } from '../../i18n';
+import { pointCloudMeta } from './pointCloudMeta';
 import { NATURE, RADIUS, SPACE, TYPE } from '../../modules/trace/theme/depth';
 import {
   POINT_CLOUD_BACKDROP, disposePoints, loadPointCloud, type PointCloudResult,
@@ -78,10 +80,15 @@ export interface TreePointCloudViewProps {
   advice?: string | null;
   /** Số điểm máy chủ khai. Chỉ để đối chiếu với số đọc được từ tệp. */
   declaredPoints?: number | null;
+  /**
+   * `model3d.trust.low_confidence` của máy chủ. `undefined` = máy chủ bản cũ
+   * không nói — KHÔNG suy ra "đáng tin". Xem `pointCloudMeta.ts`.
+   */
+  lowConfidence?: boolean | null;
 }
 
 const TreePointCloudView: React.FC<TreePointCloudViewProps> = ({
-  url, advice, declaredPoints,
+  url, advice, declaredPoints, lowConfidence,
 }) => {
   const [result, setResult] = useState<PointCloudResult | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -183,17 +190,40 @@ const TreePointCloudView: React.FC<TreePointCloudViewProps> = ({
     );
   })();
 
-  // Số điểm: ưu tiên số ĐỌC ĐƯỢC từ tệp, không phải số máy chủ khai. Hai số lệch
-  // nhau là một dấu hiệu thật (tệp bị cắt), và ưu tiên số khai sẽ giấu nó đi.
-  const count = result?.kind === 'ok' ? result.count : (declaredPoints ?? null);
+  // Dòng chữ dưới ô: xem `pointCloudMeta.ts`. Luật gọn lại một câu — chỉ khi ĐỌC
+  // ĐƯỢC tệp app mới được nói "dựng từ ảnh chụp thật"; chưa đọc được thì con số
+  // của máy chủ vẫn hiện nhưng mang nhãn KHAI.
+  const meta = pointCloudMeta({
+    state: result === null ? 'loading' : result.kind === 'ok' ? 'ok' : 'failed',
+    readCount: result?.kind === 'ok' ? result.count : null,
+    declared: declaredPoints,
+    advice,
+    lowConfidence,
+  });
 
   return (
     <View>
       <View style={styles.box}>{body}</View>
-      {count !== null ? (
-        <Text style={[TYPE.caption, styles.meta]}>{`${count.toLocaleString('vi-VN')} điểm dựng từ ảnh chụp thật`}</Text>
+      {meta.measuredPoints !== null ? (
+        <Text style={[TYPE.caption, styles.meta]}>
+          {tf('{n} điểm dựng từ ảnh chụp thật', {
+            n: meta.measuredPoints.toLocaleString('vi-VN'),
+          })}
+        </Text>
       ) : null}
-      {advice ? <Text style={[TYPE.caption, styles.meta]}>{advice}</Text> : null}
+      {meta.declaredPoints !== null ? (
+        <Text style={[TYPE.caption, styles.meta]}>
+          {tf('Máy chủ khai {n} điểm — app chưa đọc được tệp để đối chiếu.', {
+            n: meta.declaredPoints.toLocaleString('vi-VN'),
+          })}
+        </Text>
+      ) : null}
+      {meta.lowConfidence ? (
+        <Text style={[TYPE.caption, styles.meta]}>
+          Máy chủ tự khai đám mây điểm này thưa — hình dựng ra có thể chưa giống cây thật.
+        </Text>
+      ) : null}
+      {meta.advice ? <Text style={[TYPE.caption, styles.meta]}>{meta.advice}</Text> : null}
     </View>
   );
 };

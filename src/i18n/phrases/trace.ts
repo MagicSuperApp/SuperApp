@@ -845,6 +845,14 @@ export const TRACE: PhraseMap = {
   'Vị trí trên bản đồ': { en: 'Location on the map', zh: '地图上的位置', ja: '地図上の位置' },
   'Không gian ba chiều của cây': { en: 'The tree in three dimensions', zh: '树木的三维空间', ja: '樹木の三次元データ' },
   '{n} điểm': { en: '{n} points', zh: '{n} 个点', ja: '{n} 点' },
+  // ── Khối 3D: ĐO khác KHAI ──────────────────────────────────────────────────
+  // Hai câu này cố ý KHÁC nhau về mức chắc. Câu đầu là phép đo của app trên tệp
+  // đã tải; câu sau là lời máy chủ khai khi app chưa mở được tệp. Dịch gộp làm
+  // một là xoá đúng chỗ phân biệt mà chúng sinh ra để giữ.
+  '{n} điểm dựng từ ảnh chụp thật': { en: '{n} points built from real photos', zh: '由实拍照片生成的 {n} 个点', ja: '実写から生成した {n} 点' },
+  'Máy chủ khai {n} điểm — app chưa đọc được tệp để đối chiếu.': { en: 'The server reports {n} points — the app could not read the file to check.', zh: '服务器称有 {n} 个点 — 应用尚未读取文件核对。', ja: 'サーバーは {n} 点と申告 — アプリはファイルを読めず照合できていません。' },
+  'Máy chủ tự khai đám mây điểm này thưa — hình dựng ra có thể chưa giống cây thật.': { en: 'The server reports this point cloud is sparse — the render may not match the real tree.', zh: '服务器称该点云稀疏 — 渲染结果可能与真实树木不符。', ja: 'サーバーはこの点群が疎だと申告 — 描画が実際の木と異なる可能性があります。' },
+  'Đã chụp khoảng {deg}° quanh cây.': { en: 'About {deg}° around the tree has been photographed.', zh: '已拍摄树木周围约 {deg}°。', ja: '木の周囲およそ {deg}° を撮影済み。' },
   'Neo lên chuỗi khối': { en: 'Anchored to the blockchain', zh: '锚定到区块链', ja: 'ブロックチェーンへの記録' },
   'TRẠNG THÁI': { en: 'STATUS', zh: '状态', ja: '状態' },
   'MẠNG': { en: 'NETWORK', zh: '网络', ja: 'ネットワーク' },

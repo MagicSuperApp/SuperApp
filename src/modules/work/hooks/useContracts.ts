@@ -92,7 +92,20 @@ export const pledgeErrorMessage = (err: unknown): string => {
     case 'ESCROW_RULE':
       return 'Chưa tới bước này trong quy trình ký quỹ — tải lại rồi thử lại.';
     case 'NO_FUNDS':
-      return 'Số dư CARP không đủ để khoá cọc.';
+      // ⚠ ĐỪNG thu hẹp câu này lại thành "không đủ tiền đặt cọc". Từ bản
+      // `AladinWork/Core#65`, phí nền tảng được thu tại `COMMITTED` — tức ngay
+      // khi bên khoá cọc THỨ HAI gọi `lockPledge`, chứ không còn chờ tất toán.
+      // Nên `NO_FUNDS` ở lượt đó có thể là thiếu tiền trả PHÍ chứ không phải
+      // thiếu tiền cọc, và một câu chỉ nói "cọc" sẽ sai đúng những ca đó: người
+      // dùng nhìn số cọc thấy đủ, rồi không hiểu vì sao vẫn bị chặn.
+      //
+      // Hôm nay phí còn 0đ ở mọi mẫu việc (`GET /health` → platformFee =
+      // "CHƯA ĐẶT BIỂU PHÍ"), nên chưa ai gặp. Sửa trước khi bật, vì lúc bật là
+      // tiền thật của người thật.
+      //
+      // Hợp đồng ở lại `PENDING` sau lỗi này — nạp thêm rồi thử lại là chạy
+      // tiếp, KHÔNG phải dựng lại hợp đồng. Câu chữ nói rõ điều đó.
+      return 'Số dư CARP không đủ cho bước này (tiền cọc và phí nền tảng). Nạp thêm rồi thử lại — hợp đồng vẫn giữ nguyên.';
     case 'NO_EVIDENCE':
       return 'Cần đăng bằng chứng trước khi giao việc.';
     case 'FORBIDDEN':

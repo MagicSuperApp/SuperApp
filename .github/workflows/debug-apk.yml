@@ -214,6 +214,11 @@ jobs:
             exit 1
           fi
           echo "✅ CheckFarm APK: $CF ($(stat -c%s "$CF") bytes)"
+          # Giao ra luôn, không chỉ chứng minh. Bản CheckFarm chưa có mục trên
+          # Google Play (cần Play Console của pháp nhân CheckFarm), nên đường duy
+          # nhất để người thử cầm được nó là tải tệp này về cài thẳng.
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          cp "$CF" "$GITHUB_WORKSPACE/dist/checkfarm-debug.apk"
 
       - name: Locate APK
         id: apk-info
@@ -283,7 +288,9 @@ jobs:
           name: superapp-debug-apk
           path: |
             dist/superapp-debug.apk
+            dist/checkfarm-debug.apk
             android-debug.log
+            android/android-checkfarm.log
           retention-days: 30
 
       - name: Build summary

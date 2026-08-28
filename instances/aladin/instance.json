@@ -1,0 +1,11 @@
+{
+  "id": "aladin",
+  "displayName": "Aladin",
+  "android": {
+    "applicationId": "com.aladincontract.company",
+    "iconBackground": "#1F5C1F"
+  },
+  "ios": {
+    "bundleId": "vn.aladinapp"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "id": "checkfarm",
+  "displayName": "CheckFarm",
+  "android": {
+    "applicationId": "com.checkfarm.app",
+    "iconBackground": "#1F6B3A"
+  },
+  "ios": {
+    "bundleId": "com.checkfarm.app"
+  }
+}

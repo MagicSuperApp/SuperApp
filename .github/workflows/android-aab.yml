@@ -92,7 +92,7 @@ jobs:
           echo "người bấm  = $NGUOI_BAM"
           if [ "$REF" != "refs/heads/main" ]; then
             echo "::error::Nhánh này KHÔNG phải main — dừng TRƯỚC khi chạm khoá ký."
-            echo "Job này ký bằng ORILIFE_UPLOAD_* — khoá ra Play Store. Chỉ main mới"
+            echo "Job này ký bằng ALADIN_UPLOAD_* — khoá ra Play Store. Chỉ main mới"
             echo "được cho ra một tệp .aab ký thật."
             echo "Cần bản để thử? Chạy workflow 'Debug APK' — nó không chạm khoá ký."
             exit 1
@@ -249,25 +249,31 @@ jobs:
 
       - name: Restore keystore from secret
         env:
-          ORILIFE_UPLOAD_STORE_FILE_B64: ${{ secrets.ORILIFE_UPLOAD_STORE_FILE_B64 }}
+          ALADIN_UPLOAD_STORE_FILE_B64: ${{ secrets.ALADIN_UPLOAD_STORE_FILE_B64 }}
         run: |
-          if [ -z "$ORILIFE_UPLOAD_STORE_FILE_B64" ]; then
+          if [ -z "$ALADIN_UPLOAD_STORE_FILE_B64" ]; then
             echo "::error::Kho khoá ký chưa nạp — repo hiện có 0 secret."
             echo "Đo 2026-08-10 (kho khi đó còn ở AladinContract; nay là ${{ github.repository }}):"
             echo "               gh api repos/AladinContract/SuperApp/actions/secrets"
             echo "               → {\"total_count\":0,\"secrets\":[]}"
             echo ""
+            echo "⚠ TÊN BIẾN ĐÃ ĐỔI 2026-08-29: ORILIFE_UPLOAD_* → ALADIN_UPLOAD_*."
+            echo "  Khoá cũ ký ra app Aladin nhưng mang tên OriLife, và nay nền mã này"
+            echo "  dựng NHIỀU app nên tên khoá phải nói rõ nó ký cho app nào."
+            echo "  Secret đã nạp dưới tên cũ thì đổi tên, KHÔNG cần sinh khoá mới —"
+            echo "  sinh khoá mới là mất quyền cập nhật ứng dụng đã phát hành."
+            echo ""
             echo "Cần nạp ĐỦ BỐN cái, thiếu một cái là bước ký gãy:"
-            echo "  ORILIFE_UPLOAD_STORE_FILE_B64   (keystore .jks đã base64)"
-            echo "  ORILIFE_UPLOAD_KEY_ALIAS"
-            echo "  ORILIFE_UPLOAD_STORE_PASSWORD"
-            echo "  ORILIFE_UPLOAD_KEY_PASSWORD"
+            echo "  ALADIN_UPLOAD_STORE_FILE_B64   (keystore .jks đã base64)"
+            echo "  ALADIN_UPLOAD_KEY_ALIAS"
+            echo "  ALADIN_UPLOAD_STORE_PASSWORD"
+            echo "  ALADIN_UPLOAD_KEY_PASSWORD"
             echo ""
             echo "Chỉ CHỦ SỞ HỮU kho khoá nạp được — đây là khoá ký ra bản Play Store,"
             echo "mất là mất luôn quyền cập nhật ứng dụng đã phát hành."
             exit 1
           fi
-          echo "$ORILIFE_UPLOAD_STORE_FILE_B64" | base64 -d > android/app/keySigning.bin
+          echo "$ALADIN_UPLOAD_STORE_FILE_B64" | base64 -d > android/app/keySigning.bin
           ls -lh android/app/keySigning.bin
           echo "Keystore restored ($(stat -c%s android/app/keySigning.bin) bytes)"
 
@@ -279,19 +285,19 @@ jobs:
 
       - name: Build signed AAB
         env:
-          ORILIFE_UPLOAD_KEY_ALIAS: ${{ secrets.ORILIFE_UPLOAD_KEY_ALIAS }}
-          ORILIFE_UPLOAD_STORE_PASSWORD: ${{ secrets.ORILIFE_UPLOAD_STORE_PASSWORD }}
-          ORILIFE_UPLOAD_KEY_PASSWORD: ${{ secrets.ORILIFE_UPLOAD_KEY_PASSWORD }}
+          ALADIN_UPLOAD_KEY_ALIAS: ${{ secrets.ALADIN_UPLOAD_KEY_ALIAS }}
+          ALADIN_UPLOAD_STORE_PASSWORD: ${{ secrets.ALADIN_UPLOAD_STORE_PASSWORD }}
+          ALADIN_UPLOAD_KEY_PASSWORD: ${{ secrets.ALADIN_UPLOAD_KEY_PASSWORD }}
         run: |
           set -eo pipefail   # fail fast if gradle exit != 0 (don't let tee mask it)
           cd android
           chmod +x gradlew
           # Flavor TƯỜNG MINH — xem chú thích cùng loại ở debug-apk.yml.
           ./gradlew bundleAladinRelease \
-            -PORILIFE_UPLOAD_STORE_FILE=keySigning.bin \
-            -PORILIFE_UPLOAD_KEY_ALIAS="$ORILIFE_UPLOAD_KEY_ALIAS" \
-            -PORILIFE_UPLOAD_STORE_PASSWORD="$ORILIFE_UPLOAD_STORE_PASSWORD" \
-            -PORILIFE_UPLOAD_KEY_PASSWORD="$ORILIFE_UPLOAD_KEY_PASSWORD" \
+            -PALADIN_UPLOAD_STORE_FILE=keySigning.bin \
+            -PALADIN_UPLOAD_KEY_ALIAS="$ALADIN_UPLOAD_KEY_ALIAS" \
+            -PALADIN_UPLOAD_STORE_PASSWORD="$ALADIN_UPLOAD_STORE_PASSWORD" \
+            -PALADIN_UPLOAD_KEY_PASSWORD="$ALADIN_UPLOAD_KEY_PASSWORD" \
             --no-daemon \
             --stacktrace \
             2>&1 | tee android-release.log

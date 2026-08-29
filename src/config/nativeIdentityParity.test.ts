@@ -304,3 +304,114 @@ describe('mỗi app tự mang bộ biểu tượng của mình', () => {
     expect(existsSync(join(GOC, 'instances/README.md'))).toBe(true);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// KHOÁ KÝ — mỗi app một khoá, và không app nào mượn được khoá của app khác.
+//
+// Vì sao đây là nhóm bài kiểm đáng có: hỏng ở đây KHÔNG SỬA ĐƯỢC SAU. Khoá tải
+// lên gắn vĩnh viễn với mục ứng dụng trên Google Play kể từ bản đầu tiên. Một
+// bản CheckFarm trót ký bằng khoá Aladin rồi tải lên là một mục CheckFarm mà
+// pháp nhân CheckFarm không bao giờ nộp bản của họ lên được nữa, và cũng không
+// chuyển giao được. Bản dựng thì vẫn xanh — không có triệu chứng nào ở máy dựng.
+//
+// Trước 2026-08-29 lỗi này ĐANG SỐNG: một khối `signingConfigs.release` duy nhất
+// mang bốn biến `ORILIFE_UPLOAD_*`, và `buildTypes.release` gán nó cho MỌI flavor.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('khoá ký — mỗi app một bộ, không dùng chung', () => {
+  const AAB_CI = doc('.github/workflows/android-aab.yml');
+
+  it('buildTypes.release KHÔNG gán signingConfig — buildType đè flavor', () => {
+    // Đây là bài kiểm quan trọng nhất của nhóm. buildType có ĐỘ ƯU TIÊN CAO HƠN
+    // flavor, nên chỉ cần một dòng `signingConfig` sống lại ở đây là mọi app
+    // quay về ký chung một khoá, và bốn bài kiểm dưới vẫn xanh hết.
+    const khoiRelease = GRADLE.match(/buildTypes\s*\{[\s\S]*?\n        release \{([\s\S]*?)\n        \}/);
+    expect(khoiRelease).not.toBeNull();
+    expect(khoiRelease![1]).not.toMatch(/^\s*signingConfig\s/m);
+  });
+
+  it('tên biến khoá SUY từ mã app, không gõ cứng tên app nào', () => {
+    // `khai.id.toUpperCase() + '_UPLOAD_'` — đối tác thêm `instances/<mã>/` là có
+    // ngay vùng khoá riêng, không phải nhờ ai sửa gradle. Cùng lý do với việc
+    // gradle đọc thư mục thay vì khai tay flavor.
+    expect(GRADLE).toContain("toUpperCase() + '_UPLOAD_'");
+    expect(GRADLE).toMatch(/signingConfigs\s*\{[\s\S]*?cacApp\.each/);
+  });
+
+  it('KHÔNG còn khối signingConfig dùng chung mang tên OriLife', () => {
+    expect(GRADLE).not.toMatch(/hasProperty\(\s*'ORILIFE_UPLOAD_STORE_FILE'\s*\)/);
+    expect(GRADLE).not.toMatch(/^\s*storeFile file\(ORILIFE_UPLOAD_STORE_FILE\)/m);
+  });
+
+  it('mỗi flavor tự gắn khoá của chính nó', () => {
+    const khoiFlavor = GRADLE.match(/productFlavors\s*\{([\s\S]*?)\n    \}/);
+    expect(khoiFlavor).not.toBeNull();
+    expect(khoiFlavor![1]).toContain('signingConfigs.getByName(khai.id)');
+  });
+
+  it('thiếu khoá thì bản PHÁT HÀNH nổ, không ra gói không ký', () => {
+    // Không có cổng này, `assembleCheckfarmRelease` thiếu khoá vẫn chạy tới cùng
+    // và ra một gói KHÔNG KÝ — không lỗi ở máy dựng, chỉ lỗi ở cửa Play Console
+    // sau khi người ta đã tải lên và tưởng là xong.
+    expect(GRADLE).toContain('gradle.taskGraph.whenReady');
+    expect(GRADLE).toMatch(/assemble\|bundle\)\(\[A-Z\]\[A-Za-z0-9\]\*\)Release/);
+    expect(GRADLE).toMatch(/throw new GradleException\([\s\S]{0,400}KHÔNG có khoá ký của chính app đó/);
+  });
+
+  it('cổng chặn phải NÉM, không được chỉ cảnh báo rồi chạy tiếp', () => {
+    // Cảnh báo rồi chạy tiếp là đúng khuôn hỏng vừa gỡ: có vẻ đã canh, thật ra
+    // vẫn ra gói sai. Đo trên chính khối cổng.
+    const cong = GRADLE.match(/gradle\.taskGraph\.whenReady[\s\S]*$/);
+    expect(cong).not.toBeNull();
+    expect(cong![0]).toContain('throw new GradleException');
+    expect(cong![0]).not.toMatch(/logger\.(warn|lifecycle)\(/);
+  });
+
+  it('CI Android dựng flavor aladin và truyền đúng bộ biến ALADIN_UPLOAD_*', () => {
+    expect(AAB_CI).toContain('bundleAladinRelease');
+    for (const hau of ['STORE_FILE', 'STORE_PASSWORD', 'KEY_ALIAS', 'KEY_PASSWORD']) {
+      expect(AAB_CI).toContain(`ALADIN_UPLOAD_${hau}`);
+    }
+    // Đo việc DÙNG, không đo việc NHẮC TÊN: lời báo lỗi trong workflow có nhắc tên
+    // cũ để người đọc biết phải đổi tên secret nào, và đó là chỗ nhắc ĐÚNG.
+    expect(AAB_CI).not.toMatch(/secrets\.ORILIFE_UPLOAD/);
+    expect(AAB_CI).not.toMatch(/-PORILIFE_UPLOAD/);
+    expect(AAB_CI).not.toMatch(/\$ORILIFE_UPLOAD/);
+    expect(AAB_CI).not.toMatch(/^\s*ORILIFE_UPLOAD_[A-Z_]+:/m);
+  });
+
+  it('không luồng CI nào truyền khoá của app này cho bản dựng của app kia', () => {
+    // Đo trực tiếp: mọi dòng gradle có `-P<TÊN>_UPLOAD_` phải nằm cùng lệnh với
+    // flavor mang đúng tên đó. Bắt được cả trường hợp ai đó chép khối build của
+    // Aladin ra rồi chỉ đổi tên flavor mà quên đổi tên biến khoá.
+    for (const [ten, noiDung] of [['android-aab.yml', AAB_CI], ['codemagic.yaml', CODEMAGIC]] as const) {
+      const lenh = noiDung.match(/(?:assemble|bundle)([A-Z][A-Za-z0-9]*)Release[\s\S]{0,600}?(?=\n\s*\n|$)/g) ?? [];
+      for (const khoi of lenh) {
+        const flavor = /(?:assemble|bundle)([A-Z][A-Za-z0-9]*)Release/.exec(khoi)![1].toUpperCase();
+        const bienKhoa = khoi.match(/-P([A-Z][A-Z0-9]*)_UPLOAD_/g) ?? [];
+        for (const b of bienKhoa) {
+          const chuKhoa = /-P([A-Z][A-Z0-9]*)_UPLOAD_/.exec(b)![1];
+          expect(`${ten}: ${khoi.slice(0, 40)} → ${chuKhoa}`).toBe(`${ten}: ${khoi.slice(0, 40)} → ${flavor}`);
+        }
+      }
+    }
+  });
+
+  it('script sinh khoá tồn tại, và từ chối ghi đè kho khoá đã có', () => {
+    const sc = doc('scripts/tao-khoa-ky.sh');
+    expect(sc).toContain('ĐÃ TỒN TẠI. Không ghi đè');
+    expect(sc).toContain('keytool -genkeypair');
+    // Script KHÔNG được tự đặt mật khẩu: `-storepass`/`-keypass` trên dòng lệnh
+    // là ghi mật khẩu vào lịch sử shell và vào bảng tiến trình của máy.
+    expect(sc).not.toContain('-storepass');
+    expect(sc).not.toContain('-keypass');
+  });
+
+  it('.gitignore chặn kho khoá ở MỌI đường, không chỉ dưới android/app', () => {
+    // Script ghi ra thư mục gốc kho. Trước 2026-08-29 `.gitignore` chỉ chặn
+    // `android/app/*.jks`, nên một `git add` lỡ tay là đẩy khoá Play Store lên kho.
+    const gi = doc('.gitignore');
+    for (const duoi of ['*.jks', '*.p12', '*.p8']) {
+      expect(gi.split('\n')).toContain(duoi);
+    }
+  });
+});

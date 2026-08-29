@@ -18,6 +18,7 @@
  *   MOVED         → hiện khoảng cách + nút "Cập nhật vị trí"
  */
 
+import { t } from '../i18n';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { launchCamera } from 'react-native-image-picker';
 import {
@@ -235,7 +236,7 @@ const TreeIdentityScreen: React.FC = () => {
           PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
           {
             title: 'Quyền Vị trí',
-            message: 'Aladin cần GPS để nhận diện cây gần bạn.',
+            message: t('{brand} cần GPS để nhận diện cây gần bạn.'),
             buttonPositive: 'Cho phép',
             buttonNegative: 'Từ chối',
           },
@@ -290,7 +291,7 @@ const TreeIdentityScreen: React.FC = () => {
       PermissionsAndroid.PERMISSIONS.CAMERA,
       {
         title: 'Quyền Camera',
-        message: 'Aladin cần Camera để chụp ảnh cây.',
+        message: t('{brand} cần Camera để chụp ảnh cây.'),
         buttonPositive: 'Cho phép',
         buttonNegative: 'Từ chối',
       },

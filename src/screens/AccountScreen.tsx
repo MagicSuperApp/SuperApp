@@ -1,5 +1,6 @@
 // screens/AccountScreen.tsx
 
+import { DEFAULT_INSTANCE } from '../config/instance.config';
 import React, { useEffect, useRef, useState } from 'react';
 import {
     View,
@@ -58,7 +59,7 @@ import { CARDANO_NETWORK as WALLET_NETWORK } from '../config/cardanoNetwork';
 
 // Version THẬT đọc từ bundle (CFBundleShortVersionString / versionName + build number).
 // Thay chuỗi hard-code "Aladin v1.0.0" (Lỗi field #4) — để field biết đúng build đang chạy.
-const APP_VERSION_BASE = `Aladin v${getVersion()} (${getBuildNumber()})`;
+const APP_VERSION_BASE = `${DEFAULT_INSTANCE.displayName} v${getVersion()} (${getBuildNumber()})`;
 
 // Mã commit đã dựng ra bản này. VÌ SAO cần: số build ("86") do App Store Connect cấp
 // và tăng dần theo mỗi lần nộp, KHÔNG chỉ về commit nào; hơn nữa `main` và `develop`
@@ -594,7 +595,7 @@ const AccountScreen = () => {
         }, 1500);
         if (versionTapCount.current >= 5) {
             versionTapCount.current = 0;
-            showInfo('Aladin', APP_DEBUG_INFO);
+            showInfo(DEFAULT_INSTANCE.displayName, APP_DEBUG_INFO);
         }
     };
 

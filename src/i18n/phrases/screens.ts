@@ -93,7 +93,7 @@ export const SCREENS: PhraseMap = {
   'Quét mã QR': { en: 'Scan QR code', zh: '扫描二维码', ja: 'QR コードを読み取る' },
   'Bỏ qua': { en: 'Skip', zh: '跳过', ja: 'スキップ' },
   'Đang chờ xác nhận từ người hỗ trợ...': { en: 'Waiting for the helper to confirm...', zh: '等待协助人员确认...', ja: 'サポート担当者の確認を待っています...' },
-  'Bắt đầu sử dụng Aladin': { en: 'Start using Aladin', zh: '开始使用 Aladin', ja: 'Aladin を使い始める' },
+  'Bắt đầu sử dụng {brand}': { en: 'Start using {brand}', zh: '开始使用 {brand}', ja: '{brand} を使い始める' },
 
   // ── Sinh trắc học (màn cài đặt) ────────────────────────────────────────────
   'Bảo vệ tài khoản của bạn với xác thực sinh trắc học': {

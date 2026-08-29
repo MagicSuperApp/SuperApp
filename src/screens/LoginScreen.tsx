@@ -43,6 +43,7 @@ import { showError } from '../utils/alert';
 import LoginSuccessOverlay from '../components/LoginSuccessOverlay';
 import LanguagePickerModal from '../components/LanguagePickerModal';
 import { LANGUAGES, t, tf, useLanguage } from '../i18n';
+import { DEFAULT_INSTANCE } from '../config/instance.config';
 
 const PHOENIX_USERS_KEY = '@phoenixkey/users';
 const ACTIVE_USERNAME_KEY = '@phoenixkey/active_username';
@@ -390,7 +391,14 @@ const LoginScreen = () => {
               <Icon name="chevron-down" size={14} color={BLUE.white} />
             </TouchableOpacity>
           </View>
-          <Text allowFontScaling={false} style={styles.eyebrow}>ALADIN · DANH TÍNH SỐ</Text>
+          {/* Tên app lấy từ instance đang chạy, KHÔNG ghi cứng. Trước 2026-08-29
+              dòng này ghi thẳng `ALADIN · DANH TÍNH SỐ`, nên màn đăng nhập của
+              app CheckFarm cũng ghi ALADIN — người tải CheckFarm về mở lần đầu
+              thấy tên một công ty khác, và với người quen cảnh giác lừa đảo qua
+              app thì đó là dấu hiệu để gỡ ngay. */}
+          <Text allowFontScaling={false} style={styles.eyebrow}>
+            {`${DEFAULT_INSTANCE.displayName.toUpperCase()} · ${t('DANH TÍNH SỐ')}`}
+          </Text>
           <Text allowFontScaling={false} style={styles.title}>
             {/* `tf` giữ tên người ra NGOÀI khoá từ điển: nối chuỗi rồi mới dịch sẽ
                 không bao giờ khớp, còn khuôn '{name}' cho bản dịch tự đặt lại vị

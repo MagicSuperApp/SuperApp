@@ -92,7 +92,7 @@ const requestLocationPermission = async () => {
         PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
         {
           title: 'Quyền truy cập vị trí',
-          message: 'Aladin cần quyền truy cập vị trí để ghi nhận ranh giới nông trại.',
+          message: t('{brand} cần quyền truy cập vị trí để ghi nhận ranh giới nông trại.'),
           buttonNeutral: 'Hỏi lại sau',
           buttonNegative: 'Từ chối',
           buttonPositive: 'Cho phép',
@@ -940,7 +940,7 @@ const AddFarmMode = ({
                 disabled={!permissionGranted}
                 onPress={async () => {
                   if (!permissionGranted) {
-                    showInfo('Cần quyền vị trí', 'Cấp quyền GPS trong Cài đặt → Aladin.');
+                    showInfo(t('Cần quyền vị trí'), t('Cấp quyền GPS trong Cài đặt → {brand}.'));
                     return;
                   }
                   const willStart = !isAutoRecording;

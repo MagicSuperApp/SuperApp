@@ -5,6 +5,12 @@
     "rulesVersion": 1,
     "phoenixDid": null
   },
+  "operator": {
+    "name": "Aladin",
+    "address": "Số nhà 77, đường Chà Là 11, Khu đô thị Vinhomes Ocean Park 2, Xã Nghĩa Trụ, Tỉnh Hưng Yên, Việt Nam",
+    "addressEn": "No. 77, Cha La 11 Street, Vinhomes Ocean Park 2, Nghia Tru Commune, Hung Yen Province, Vietnam",
+    "contact": "aladincontract@gmail.com"
+  },
   "android": {
     "applicationId": "com.aladincontract.company",
     "iconBackground": "#1F5C1F"

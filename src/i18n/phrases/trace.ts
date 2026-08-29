@@ -32,10 +32,10 @@ export const TRACE: PhraseMap = {
 
   // ── Vườn / ranh giới GPS ───────────────────────────────────────────────────
   'Quyền truy cập vị trí': { en: 'Location permission', zh: '位置权限', ja: '位置情報の許可' },
-  'Aladin cần quyền truy cập vị trí để ghi nhận ranh giới nông trại.': {
-    en: 'Aladin needs location access to record the farm boundary.',
-    zh: 'Aladin 需要位置权限来记录农场边界。',
-    ja: '農場の境界を記録するため、Aladin は位置情報へのアクセスを必要とします。',
+  '{brand} cần quyền truy cập vị trí để ghi nhận ranh giới nông trại.': {
+    en: '{brand} needs location access to record the farm boundary.',
+    zh: '{brand} 需要位置权限来记录农场边界。',
+    ja: '農場の境界を記録するため、{brand} は位置情報へのアクセスを必要とします。',
   },
   'Chụp cây': { en: 'Photograph tree', zh: '拍摄树木', ja: '樹木を撮影' },
   'Thoát màn thêm vườn?': { en: 'Leave the add-garden screen?', zh: '离开添加果园页面？', ja: '果樹園の追加画面を閉じますか？' },
@@ -58,7 +58,7 @@ export const TRACE: PhraseMap = {
   'Cần quyền vị trí để hiển thị bản đồ.': { en: 'Location permission is required to show the map.', zh: '显示地图需要位置权限。', ja: '地図を表示するには位置情報の許可が必要です。' },
   'Tên vườn (tuỳ chọn)': { en: 'Garden name (optional)', zh: '果园名称（可选）', ja: '果樹園の名前（任意）' },
   'Cần quyền vị trí': { en: 'Location permission required', zh: '需要位置权限', ja: '位置情報の許可が必要です' },
-  'Cấp quyền GPS trong Cài đặt → Aladin.': { en: 'Grant GPS permission in Settings → Aladin.', zh: '请在 设置 → Aladin 中授予 GPS 权限。', ja: '設定 → Aladin から GPS を許可してください。' },
+  'Cấp quyền GPS trong Cài đặt → {brand}.': { en: 'Grant GPS permission in Settings → {brand}.', zh: '请在 设置 → {brand} 中授予 GPS 权限。', ja: '設定 → {brand} から GPS を許可してください。' },
   'Bắt đầu đi vòng': { en: 'Start walking', zh: '开始绕行', ja: '外周を歩き始める' },
   'Tiếp tục đi vòng': { en: 'Continue walking', zh: '继续绕行', ja: '外周の記録を続ける' },
   'cây': { en: 'trees', zh: '棵树', ja: '本' },
@@ -218,9 +218,9 @@ export const TRACE: PhraseMap = {
   'Quyền Vị trí': { en: 'Location permission', zh: '位置权限', ja: '位置情報の許可' },
   'Quyền Camera': { en: 'Camera permission', zh: '相机权限', ja: 'カメラの許可' },
   'Cần quyền Camera': { en: 'Camera permission required', zh: '需要相机权限', ja: 'カメラの許可が必要です' },
-  'Aladin cần GPS để nhận diện cây gần bạn.': { en: 'Aladin needs GPS to identify trees near you.', zh: 'Aladin 需要 GPS 来识别你附近的树木。', ja: '近くの樹木を識別するため、Aladin は GPS を必要とします。' },
-  'Aladin cần Camera để chụp ảnh cây.': { en: 'Aladin needs the camera to photograph trees.', zh: 'Aladin 需要相机来拍摄树木。', ja: '樹木を撮影するため、Aladin はカメラを必要とします。' },
-  'Aladin cần Camera để chụp ảnh quả.': { en: 'Aladin needs the camera to photograph fruit.', zh: 'Aladin 需要相机来拍摄果实。', ja: '果実を撮影するため、Aladin はカメラを必要とします。' },
+  '{brand} cần GPS để nhận diện cây gần bạn.': { en: '{brand} needs GPS to identify trees near you.', zh: '{brand} 需要 GPS 来识别你附近的树木。', ja: '近くの樹木を識別するため、{brand} は GPS を必要とします。' },
+  '{brand} cần Camera để chụp ảnh cây.': { en: '{brand} needs the camera to photograph trees.', zh: '{brand} 需要相机来拍摄树木。', ja: '樹木を撮影するため、{brand} はカメラを必要とします。' },
+  '{brand} cần Camera để chụp ảnh quả.': { en: '{brand} needs the camera to photograph fruit.', zh: '{brand} 需要相机来拍摄果实。', ja: '果実を撮影するため、{brand} はカメラを必要とします。' },
   'Vui lòng bật Camera trong Cài đặt.': { en: 'Please enable the camera in Settings.', zh: '请在设置中开启相机权限。', ja: '設定からカメラを有効にしてください。' },
   'Native module chưa sẵn sàng. Vui lòng cập nhật app.': {
     en: 'The native module is not ready. Please update the app.',
@@ -672,10 +672,10 @@ export const TRACE: PhraseMap = {
   'Không thể bắt đầu ghi âm.': { en: 'Could not start recording.', zh: '无法开始录音。', ja: '録音を開始できません。' },
   'Quyền micro': { en: 'Microphone permission', zh: '麦克风权限', ja: 'マイクの許可' },
   'Cần quyền micro': { en: 'Microphone permission required', zh: '需要麦克风权限', ja: 'マイクの許可が必要です' },
-  'Vui lòng vào Cài đặt → Aladin → Micro để cho phép ghi âm.': {
-    en: 'Go to Settings → Aladin → Microphone to allow recording.',
-    zh: '请前往 设置 → Aladin → 麦克风 以允许录音。',
-    ja: '設定 → Aladin → マイク から録音を許可してください。',
+  'Vui lòng vào Cài đặt → {brand} → Micro để cho phép ghi âm.': {
+    en: 'Go to Settings → {brand} → Microphone to allow recording.',
+    zh: '请前往 设置 → {brand} → 麦克风 以允许录音。',
+    ja: '設定 → {brand} → マイク から録音を許可してください。',
   },
   'Lỗi ghi âm': { en: 'Recording error', zh: '录音错误', ja: '録音のエラー' },
   'Ghi âm lại?': { en: 'Record again?', zh: '重新录音？', ja: '録音し直しますか？' },

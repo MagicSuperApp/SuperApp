@@ -24,6 +24,7 @@
  * lạc hẳn giữa các thẻ bo góc lệch ở đây.
  */
 
+import { t } from '../i18n';
 import React, { useState, useCallback, useMemo, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator,
@@ -179,7 +180,7 @@ const FruitListScreen: React.FC = () => {
     if (Platform.OS !== 'android') return true;
     const granted = await PermissionsAndroid.request(
       PermissionsAndroid.PERMISSIONS.CAMERA,
-      { title: 'Quyền Camera', message: 'Aladin cần Camera để chụp ảnh quả.', buttonPositive: 'Cho phép', buttonNegative: 'Từ chối' },
+      { title: 'Quyền Camera', message: t('{brand} cần Camera để chụp ảnh quả.'), buttonPositive: 'Cho phép', buttonNegative: 'Từ chối' },
     );
     if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
       showWarning('Cần quyền Camera', 'Vui lòng bật Camera trong Cài đặt.', {

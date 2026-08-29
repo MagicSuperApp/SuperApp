@@ -501,3 +501,70 @@ describe('Firebase iOS — không khởi bằng cấu hình của app khác', ()
     }
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PHÁP NHÂN VẬN HÀNH — khai ở HAI chỗ, nên phải có cổng canh hai chỗ không lệch.
+//
+// `instances/<mã>/instance.json` là bản đối tác sửa (không cần biết TypeScript).
+// `src/config/instance.config.ts` là bản mã chạy đọc. Lệch nhau thì bản đối tác
+// sửa không có tác dụng, và không có triệu chứng nào — họ sửa, dựng lại, và app
+// vẫn nói tên cũ.
+// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Bỏ chú thích, chỉ giữ MÃ CHẠY.
+ *
+ * Cổng cấm một chuỗi thì nó cấm luôn dòng chú thích giải thích vì sao cấm — và
+ * dòng chú thích đó lại là thứ đáng giữ nhất cho người sửa sau. Đo mã chạy thì
+ * cấm được cái đáng cấm mà không cấm nhầm lời giải thích.
+ */
+const maChay = (p: string) =>
+  doc(p)
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .split('\n')
+    .filter((l) => !l.trim().startsWith('//'))
+    .join('\n');
+
+describe('pháp nhân vận hành — tệp khai và mã chạy phải khớp', () => {
+  it('mỗi instance.json khai operator, và khớp bản trong instance.config.ts', () => {
+    for (const id of Object.keys(FLAVORS)) {
+      const khai = JSON.parse(readFileSync(join(THU_MUC_APP, id, 'instance.json'), 'utf8'));
+      const op = khai.operator as Record<string, unknown> | undefined;
+      expect(op ? `${id}: có operator` : `${id}: THIẾU operator`).toBe(`${id}: có operator`);
+      const ts = INSTANCES[id].operator;
+      expect(op!.name).toBe(ts.name);
+      expect(op!.address ?? null).toBe(ts.address);
+      expect(op!.addressEn ?? null).toBe(ts.addressEn);
+      expect(op!.contact ?? null).toBe(ts.contact);
+    }
+  });
+
+  it('policyContent KHÔNG còn hằng pháp nhân viết cứng', () => {
+    // Bài kiểm hàm thuần không bắt được ca này: `policyFor()` vẫn chạy đúng khi
+    // ai đó trả `OPERATOR` về thành hằng — nó chỉ in ra tên sai. Nên phải quét
+    // nguồn.
+    const pc = maChay('src/legal/policyContent.ts');
+    expect(pc).toContain('DEFAULT_INSTANCE.operator');
+    expect(pc).not.toMatch(/export const OPERATOR = \{/);
+    expect(pc).not.toContain("name: 'Aladin'");
+  });
+
+  it('tên app trên màn hình lấy từ instance, không ghi cứng', () => {
+    const login = maChay('src/screens/LoginScreen.tsx');
+    expect(login).toContain('DEFAULT_INSTANCE.displayName');
+    expect(login).not.toContain('ALADIN · DANH TÍNH SỐ');
+
+    const header = maChay('src/components/AppHeader.tsx');
+    expect(header).toContain('DEFAULT_INSTANCE.displayName');
+    expect(header).not.toMatch(/ctx\.title \?\? 'Aladin'/);
+
+    const onboard = maChay('src/screens/OnboardingScreen.tsx');
+    expect(onboard).toContain('DEFAULT_INSTANCE.displayName');
+    expect(onboard).not.toContain("tk('onboarding.title')");
+  });
+
+  it('mã kênh thông báo mang mã app, không ghi cứng aladin', () => {
+    const ln = maChay('src/services/localNotify.ts');
+    expect(ln).toContain('DEFAULT_INSTANCE.instanceId');
+    expect(ln).not.toContain("'aladin-farm-alerts'");
+  });
+});

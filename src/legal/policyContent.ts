@@ -20,6 +20,7 @@
 // tiếng Việt.
 
 import type { LangCode } from '../i18n/types';
+import { DEFAULT_INSTANCE } from '../config/instance.config';
 
 export interface PolicySection {
   heading: string;
@@ -38,20 +39,31 @@ export interface PolicyDoc {
 export const POLICY_EFFECTIVE_DATE = '2026-08-06';
 
 /**
- * Thông tin đơn vị vận hành.
+ * Đơn vị vận hành — lấy từ INSTANCE ĐANG CHẠY, không phải hằng viết cứng.
  *
- * `address` do chủ sở hữu cung cấp 06/08/2026.
- * `contact` đang dùng hòm thư tài khoản chính — chủ sở hữu xác nhận lại trước khi phát
- * hành nếu muốn dùng một hòm thư riêng cho việc bảo mật dữ liệu.
+ * ⛔ ĐỪNG khôi phục lại thành hằng. Trước 2026-08-29 chỗ này là một hằng ghi
+ *    `name: 'Aladin'` cùng địa chỉ nhà riêng và hòm thư cá nhân của chủ Aladin,
+ *    và `policyFor()` dùng nó cho MỌI app. Nghĩa là trang này TRONG app
+ *    CheckFarm nói rằng Aladin vận hành nó.
+ *
+ *    Người dùng CheckFarm muốn yêu cầu xoá dữ liệu của mình sẽ viết thư tới
+ *    pháp nhân không phát hành app họ đang cầm. Trang cửa hàng thì ghi nhà phát
+ *    hành là CheckFarm. Hai văn bản mâu thuẫn, mỗi văn bản ở một nơi người dùng
+ *    chỉ đọc được một — nên mâu thuẫn không lộ ra cho tới lúc có tranh chấp.
+ *
+ * Nguồn duy nhất nay là `instances/<mã>/instance.json` → `InstanceConfig.operator`.
  */
-export const OPERATOR = {
-  name: 'Aladin',
-  address:
-    'Số nhà 77, đường Chà Là 11, Khu đô thị Vinhomes Ocean Park 2, Xã Nghĩa Trụ, Tỉnh Hưng Yên, Việt Nam',
-  addressEn:
-    'No. 77, Cha La 11 Street, Vinhomes Ocean Park 2, Nghia Tru Commune, Hung Yen Province, Vietnam',
-  contact: 'aladincontract@gmail.com',
-} as const;
+export const OPERATOR = DEFAULT_INSTANCE.operator;
+
+/**
+ * Trường chưa có thì nói thẳng là chưa có.
+ *
+ * Pháp nhân đang thành lập thì chưa có địa chỉ đăng ký. Mượn địa chỉ của pháp
+ * nhân khác để lấp chỗ trống là đúng lỗi vừa gỡ. Để trống hẳn thì người đọc
+ * tưởng phần mềm hỏng. Nên nói ra.
+ */
+const CHUA_CO_VI = 'chưa công bố — pháp nhân đang hoàn tất thủ tục thành lập';
+const CHUA_CO_EN = 'not yet published — the legal entity is still being registered';
 
 const VI: PolicyDoc = {
   title: 'Điều khoản & Chính sách',
@@ -64,8 +76,8 @@ const VI: PolicyDoc = {
       heading: '1. Ai vận hành ứng dụng',
       body: [
         `${OPERATOR.name} vận hành ứng dụng này.`,
-        `Địa chỉ: ${OPERATOR.address}`,
-        `Liên hệ về dữ liệu cá nhân: ${OPERATOR.contact}`,
+        `Địa chỉ: ${OPERATOR.address ?? CHUA_CO_VI}`,
+        `Liên hệ về dữ liệu cá nhân: ${OPERATOR.contact ?? CHUA_CO_VI}`,
       ],
     },
     {
@@ -146,9 +158,9 @@ const EN: PolicyDoc = {
     {
       heading: '1. Who operates this app',
       body: [
-        `${OPERATOR.name} operates this app.`,
-        `Address: ${OPERATOR.addressEn}`,
-        `Data protection contact: ${OPERATOR.contact}`,
+        `${OPERATOR.nameEn ?? OPERATOR.name} operates this app.`,
+        `Address: ${OPERATOR.addressEn ?? CHUA_CO_EN}`,
+        `Data protection contact: ${OPERATOR.contact ?? CHUA_CO_EN}`,
       ],
     },
     {

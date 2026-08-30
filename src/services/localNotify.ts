@@ -20,8 +20,18 @@
  * báo còn hơn màn hình trắng. `available()` cho nơi gọi biết đường lùi.
  */
 
-/** Kênh Android. Tên hiện trong phần Cài đặt thông báo của máy, nên nói tiếng người. */
-export const CHANNEL_ID = 'aladin-farm-alerts';
+import { DEFAULT_INSTANCE } from '../config/instance.config';
+
+/**
+ * Kênh Android. Tên hiện trong phần Cài đặt thông báo của máy, nên nói tiếng người.
+ *
+ * Mã kênh mang mã app: trước 2026-08-29 nó ghi cứng `'aladin-farm-alerts'`, nên
+ * trên máy cài cả hai app, phần Cài đặt → Thông báo hiện hai mục mang cùng một
+ * mã dưới hai app trông giống nhau. Hệ điều hành phân vùng kênh theo mã gói nên
+ * không có tranh chấp kỹ thuật — nhưng ai đọc nhật ký máy để dò lỗi thông báo
+ * trên máy CheckFarm sẽ thấy nhãn "aladin" và đi sai đường ngay từ bước đầu.
+ */
+export const CHANNEL_ID = `${DEFAULT_INSTANCE.instanceId}-farm-alerts`;
 export const CHANNEL_NAME = 'Cảnh báo vườn';
 
 export interface NotifyInput {

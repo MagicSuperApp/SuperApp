@@ -15,6 +15,7 @@
 // Cơ chế thu/thả: theo HƯỚNG cuộn (không bám từng pixel) → chỉ animate 2 lần mỗi
 // thao tác, mượt. Ở gần đỉnh (offset ~0) luôn hiện lại.
 
+import { DEFAULT_INSTANCE } from '../config/instance.config';
 import React from 'react';
 import {
   View,
@@ -164,8 +165,10 @@ const AppHeader = () => {
     outputRange: [0, fullHeight],
   });
 
-  // Tên thương hiệu = "Aladin" (mặc định); màn có thể override qua ctx.setTitle.
-  const title = ctx.title ?? 'Aladin';
+  // Tên thương hiệu lấy từ instance đang chạy; màn có thể override qua ctx.setTitle.
+  // Trước 2026-08-29 dòng này ghi cứng 'Aladin', nên thanh đầu app CheckFarm
+  // cũng ghi Aladin ở mọi màn không tự đặt tiêu đề.
+  const title = ctx.title ?? DEFAULT_INSTANCE.displayName;
   // Lời chào dựng bằng `tf` chứ KHÔNG nối chuỗi: nối chuỗi tạo ra một chuỗi khác
   // nhau mỗi user nên không bao giờ khớp từ điển. `tf` dịch khuôn rồi mới thay tên.
   const greeting = tf('Xin chào {name}', { name: user?.name ?? t('bạn') });

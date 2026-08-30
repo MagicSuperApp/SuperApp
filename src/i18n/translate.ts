@@ -18,6 +18,7 @@
 // văn tiếng Việt vào giữa màn tiếng Nhật. Nấc cuối vẫn còn nguyên nên tên riêng &
 // thuật ngữ (không khai trong từ điển) vẫn tự động giữ nguyên như trước.
 
+import { DEFAULT_INSTANCE } from '../config/instance.config';
 import { DICTIONARY } from './dictionary';
 import { getLanguage } from './store';
 import { FALLBACK_LANG, SOURCE_LANG, type LangCode, type TargetLang } from './types';
@@ -60,6 +61,30 @@ function compute(src: string, lang: TargetLang): string {
  */
 export function t(src: string): string {
   if (!src) return src;
+  const out = tRaw(src);
+  return out.includes(BRAND_SLOT) ? out.split(BRAND_SLOT).join(BRAND) : out;
+}
+
+/**
+ * `{brand}` — chỗ thay TÊN APP trong mọi chuỗi hiển thị.
+ *
+ * Vì sao nó nằm ở đây chứ không ở từng chỗ gọi: một nền mã sinh nhiều app, và
+ * trước 2026-08-29 có 15 chuỗi ghi cứng "Aladin" trong từ điển — gồm cả những
+ * câu xin quyền ("Aladin cần Camera để chụp ảnh cây") và câu chỉ đường sửa
+ * quyền ("Cấp quyền GPS trong Cài đặt → Aladin"). Người dùng CheckFarm bị từ
+ * chối quyền sẽ được bảo đi tìm một mục tên "Aladin" trong Cài đặt máy — mục đó
+ * KHÔNG tồn tại trên máy họ. Họ kẹt ở đúng chỗ mà câu hướng dẫn lẽ ra gỡ.
+ *
+ * Đặt chỗ thay ở `t()` để chỗ gọi không phải đổi: viết `{brand}` trong từ điển
+ * là xong, kể cả những chuỗi chưa ai viết. Thay ở từng chỗ gọi thì mỗi chuỗi
+ * mới lại là một dịp quên.
+ *
+ * KHÔNG dịch tên app. Một app một tên, giống nhau ở cả bốn ngôn ngữ.
+ */
+const BRAND_SLOT = '{brand}';
+const BRAND = DEFAULT_INSTANCE.displayName;
+
+function tRaw(src: string): string {
   const lang = getLanguage();
   if (lang === SOURCE_LANG) return src;
 

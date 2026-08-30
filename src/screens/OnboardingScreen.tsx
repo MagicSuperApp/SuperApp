@@ -34,6 +34,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../theme';
 import { useTk } from '../i18n/keys';
+import { DEFAULT_INSTANCE } from '../config/instance.config';
 import { markOnboardingSeen } from '../utils/onboardingFlag';
 import { ALADIN_WEB_URL } from '../utils/webLink';
 
@@ -101,7 +102,7 @@ const OnboardingScreen: React.FC = () => {
               <Image source={require('../../assets/images/logo.png')} style={styles.logoImg} />
             </View>
           </View>
-          <Text allowFontScaling={false} style={styles.title}>{tk('onboarding.title')}</Text>
+          <Text allowFontScaling={false} style={styles.title}>{DEFAULT_INSTANCE.displayName}</Text>
           <Text style={styles.tagline}>{tk('onboarding.tagline')}</Text>
         </View>
 

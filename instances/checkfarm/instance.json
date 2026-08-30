@@ -5,6 +5,13 @@
     "rulesVersion": 1,
     "phoenixDid": null
   },
+  "operator": {
+    "name": "Công ty Cổ phần CheckFarm",
+    "nameEn": "CheckFarm Inc",
+    "address": null,
+    "addressEn": null,
+    "contact": null
+  },
   "android": {
     "applicationId": "com.checkfarm.app",
     "iconBackground": "#1F6B3A"

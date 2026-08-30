@@ -238,9 +238,9 @@ export const MAP_STRINGS = {
   // ── Xin quyền ─────────────────────────────────────────────────────────────
   'map.perm.title': { vi: 'Quyền truy cập vị trí', en: 'Location permission', zh: '定位权限', ja: '位置情報の許可' },
   'map.perm.body': {
-    vi: 'Aladin cần vị trí để chỉ đường tới vườn và tới đúng gốc cây.',
-    en: 'Aladin needs your location to guide you to the farm and to the right tree.',
-    zh: 'Aladin 需要你的位置，以便指引到果园和具体的果树。',
+    vi: '{brand} cần vị trí để chỉ đường tới vườn và tới đúng gốc cây.',
+    en: '{brand} needs your location to guide you to the farm and to the right tree.',
+    zh: '{brand} 需要你的位置，以便指引到果园和具体的果树。',
     ja: '果樹園と目的の木まで案内するために位置情報が必要です。',
   },
   'map.perm.allow': { vi: 'Cho phép', en: 'Allow', zh: '允许', ja: '許可' },

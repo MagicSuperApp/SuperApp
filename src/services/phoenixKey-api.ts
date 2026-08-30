@@ -687,6 +687,76 @@ export const delegation = {
     ),
 };
 
+/** Một thiết bị/khoá như máy chủ hiển thị cho chính chủ (`DeviceListResponse.DeviceView`). */
+export interface DeviceView {
+  keyId: string;
+  deviceName: string | null;
+  keyRole: string;
+  status: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+  /** Đúng cái máy đang cầm. Máy chủ tự chấm theo `keyId` trong phiên. */
+  current: boolean;
+}
+
+/**
+ * Vòng đời thiết bị tự-quản — `/keys/devices/**` (`DeviceLifecycleController`, V47).
+ *
+ * ⚠ KHÁC HẲN `keys.rotate`/`keys.revoke` bên dưới. `KeyController` là đường
+ * Zero-Trust: mọi thao tác kèm chữ ký ECDSA của owner-key, vì nó gọi được từ NGOÀI
+ * một phiên. Ba đường ở đây CHỈ dùng phiên, KHÔNG có tham số chữ ký nào — tiện ích
+ * tự-quản nhẹ cho người đã đăng nhập, không thay thế lớp kia.
+ *
+ * ⚠ CẢ BA đòi vai **OWNER** (`EndpointRolePolicy.OWNER_ONLY`, mẫu `/keys/devices/**`).
+ * Phiên vai `manager` gọi vào nhận **403 `KEY_ROLE_FORBIDDEN`** trước khi chạm
+ * service. Máy chủ nêu lý do: quản cả đội thiết bị là quyền của CHỦ DID — một khoá
+ * `manager` bị lộ không được dùng để do thám, cũng không được dùng để tự chống lại
+ * việc bị chủ đá ra.
+ *
+ * DID luôn lấy từ claim trong JWT, KHÔNG từ path/query/body — không có cách nào
+ * truyền DID người khác vào để đọc lịch sử đăng nhập của họ.
+ */
+export const deviceLifecycle = {
+  /**
+   * Danh sách thiết bị đang giữ khoá của chính mình.
+   *
+   * KHÔNG trả `publicKeyHex` — cố ý. Máy chủ ghi lý do: kho đã có một lỗ nghiêm
+   * trọng vì một giá trị vừa công khai vừa là khoá tra cứu (Issue #192 —
+   * `findByPublicKeyHexAndStatus` dùng pubkey làm khoá khôi phục DID). Nên đừng
+   * đi tìm pubkey ở đây để đối chiếu; muốn hỏi "khoá này còn hiệu lực không" thì
+   * dùng `identity.keyAuthorized`.
+   */
+  list: () =>
+    unwrap<{ devices: DeviceView[] }>(
+      client.get('/keys/devices', { needsAuth: true } as AxiosRequestConfig),
+    ),
+
+  /** Đặt tên máy. Máy chủ ép `@NotBlank` + tối đa 100 ký tự → cắt/chặn TRƯỚC khi gửi. */
+  rename: (keyId: string, deviceName: string) =>
+    unwrap<DeviceView>(
+      client.post(
+        `/keys/devices/${encodeURIComponent(keyId)}/name`,
+        { deviceName },
+        { needsAuth: true } as AxiosRequestConfig,
+      ),
+    ),
+
+  /**
+   * Đá một máy ra. Trả rỗng khi xong.
+   *
+   * Đây là đường DUY NHẤT đá được một máy mà KHÔNG đụng các máy còn lại — khác
+   * `identity.recoverDevice` (24 từ), vốn thu hồi TOÀN BỘ khoá owner cùng lúc.
+   */
+  revoke: (keyId: string) =>
+    unwrapVoid(
+      client.post(
+        `/keys/devices/${encodeURIComponent(keyId)}/revoke`,
+        {},
+        { needsAuth: true } as AxiosRequestConfig,
+      ),
+    ),
+};
+
 export const keys = {
   /**
    * Xoay khoá owner — thay khoá cũ bằng khoá mới qua Cardano updateDID.
@@ -936,6 +1006,8 @@ export const phoenixKeyApi = {
   /** Bí danh cũ của `wakeme` — giữ một đợt cho nơi gọi cũ. */
   getlamp,
   keys,
+  /** Vòng đời thiết bị tự-quản (`/keys/devices/**`) — KHÁC `keys`, xem chú thích ở đó. */
+  deviceLifecycle,
   activation,
   guardians,
   activityLogs,

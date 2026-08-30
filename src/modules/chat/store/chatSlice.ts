@@ -1,477 +1,472 @@
 // modules/chat/store/chatSlice.ts
 //
-// Slice tổng hợp cho module ProofChat. Mặc dù state được tổ chức theo feature
-// (chat / wallet / escrow), ta gộp vào 1 slice để giảm boilerplate cho MVP.
-// Proof System (features/proof/) KHÔNG có state — nó chỉ là pure functions/types.
+// Trạng-thái module Trò chuyện. TOÀN BỘ dữ-liệu ở đây đến từ máy chủ ProofChat.
+//
+// LÝ DO BẢN NÀY BỎ HẲN DỮ-LIỆU MẪU: bản trước nạp `MOCK_ROOMS`/`MOCK_MESSAGES`
+// vào `initialState`, nên khi máy chủ chưa mở hoặc gọi hỏng thì màn chat vẫn vẽ
+// đủ phòng, đủ tin, đủ số chưa-đọc. Người dùng nhắn vào đó rồi ngồi đợi trả lời.
+// Nay `initialState` RỖNG: chưa tải được thì màn hình nói chưa tải được.
+//
+// Bề mặt máy chủ dùng ở đây (`services/proofchat-api.ts`):
+//   conversations   list · get · join · leave · update · participants · pins
+//   memberRequests  pending · accept · decline · listForConversation · approve · reject · invite
+//   messages        react · unreact · save · unsave · remove
+//   readSignals     send        (báo đã-xem, KHÔNG kèm nội dung)
+//
+// NỘI DUNG tin không đi qua REST: gửi và nhận plaintext do `proofchatService` lo
+// (mã hoá + socket). Máy chủ chỉ giữ phần vỏ. Vì vậy một tin có thể ở trạng-thái
+// 'locked' — đã nhận nhưng máy này chưa mở được nội dung.
 
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import type {
-  ChatRoom,
   Conversation,
   ConversationType,
   Invitation,
   JoinRequest,
   Message,
+  Participant,
+  Reaction,
   SyncState,
 } from '../features/chat/types';
+import type { MessageState, TrustState } from '../features/proof/types';
 import {
   proofChatApi,
   isProofChatBackendEnabled,
   getDeviceId,
   type RemoteConversation,
+  type RemoteMemberRequest,
   type RemoteMessage,
+  type RemoteParticipant,
 } from '../../../services/proofchat-api';
-/**
- * Envelope tin đến từ realtime (ciphertext E2EE — server KHÔNG thấy plaintext).
- * Trước ở `proofchatWs.ts` (raw WS đã bỏ); giữ tại đây để reducer `receiveWsMessage`
- * dùng chung, độc lập transport. Đường thật hiện là socket.io (`chatSocket.ts`) →
- * `proofchatService`; khi nối UI vào service sẽ map `MessagePayload` về shape này.
- */
-export interface WsIncomingMessage {
-  id?: string;
-  conversationId: string;
-  senderId?: string;
-  senderDid?: string;
-  ciphertext?: string;
-  createdAt?: number | string;
-}
-import type {
-  Wallet,
-  WalletTransaction,
-  Identity,
-} from '../features/wallet/types';
-import type { EscrowStatus } from '../features/escrow/types';
-import type { MessageStage, VerificationStatus } from '../features/proof/types';
-import {
-  MOCK_ROOMS,
-  MOCK_MESSAGES,
-  MOCK_WALLET,
-  MOCK_IDENTITY,
-  MOCK_TRANSACTIONS,
-  MOCK_ME_ID,
-  MOCK_CONVERSATIONS,
-  MOCK_INVITATIONS,
-  MOCK_JOIN_REQUESTS,
-  MOCK_PUBLIC_CONVERSATION_IDS,
-} from '../features/chat/data/mock';
 
-/** Trạng thái tải dữ liệu THẬT (chỉ có ý nghĩa khi feature flag ON). */
-export type ProofChatLoadStatus = 'idle' | 'loading' | 'ready' | 'error';
+/** Trạng-thái tải của một danh sách. */
+export type LoadStatus = 'idle' | 'loading' | 'ready' | 'error';
 
-interface ProofChatState {
+interface ChatState {
+  /** Định danh của tôi phía máy chủ (did:phoenix). Rỗng khi chưa đăng nhập. */
   meId: string;
-  // chat
-  rooms: ChatRoom[];
-  messagesByRoom: Record<string, Message[]>;
-  sync: SyncState;
-  // conversation management
+
   conversations: Conversation[];
+  messagesByConversation: Record<string, Message[]>;
+
+  /** Lời mời người khác gửi cho tôi. */
   invitations: Invitation[];
-  joinRequests: JoinRequest[];
-  publicConversationIds: string[];
-  // wallet
-  wallet: Wallet;
-  identity: Identity;
-  transactions: WalletTransaction[];
-  // ── Backend thật (feature flag) ────────────────────────────────────
-  /** Nguồn dữ liệu đang dùng: 'mock' (flag OFF/fallback) | 'backend' (flag ON). */
-  source: 'mock' | 'backend';
-  /** Trạng thái tải danh sách hội thoại từ BE. */
-  roomsStatus: ProofChatLoadStatus;
-  /** Trạng thái tải tin nhắn theo phòng (conversationId → status). */
-  messagesStatus: Record<string, ProofChatLoadStatus>;
-  /** Thông điệp lỗi thân thiện (KHÔNG lộ chi tiết kỹ thuật ra UI). */
+  /** Yêu-cầu xin vào phòng, theo từng phòng tôi quản. */
+  joinRequestsByConversation: Record<string, JoinRequest[]>;
+
+  /** ID tin đã ghim, theo phòng. */
+  pinnedByConversation: Record<string, string[]>;
+  /** Ai đang gõ, theo phòng. */
+  typingByConversation: Record<string, string[]>;
+
+  sync: SyncState;
+
+  listStatus: LoadStatus;
+  messagesStatus: Record<string, LoadStatus>;
+  invitationsStatus: LoadStatus;
+  /** Câu báo lỗi viết cho người dùng — KHÔNG chứa mã lỗi hay tên endpoint. */
   loadError?: string;
 }
 
-const initialState: ProofChatState = {
-  meId: MOCK_ME_ID,
-  rooms: MOCK_ROOMS,
-  messagesByRoom: MOCK_MESSAGES,
+const initialState: ChatState = {
+  meId: '',
+  conversations: [],
+  messagesByConversation: {},
+  invitations: [],
+  joinRequestsByConversation: {},
+  pinnedByConversation: {},
+  typingByConversation: {},
   sync: { online: true, syncing: false, queuedCount: 0 },
-  conversations: MOCK_CONVERSATIONS,
-  invitations: MOCK_INVITATIONS,
-  joinRequests: MOCK_JOIN_REQUESTS,
-  publicConversationIds: MOCK_PUBLIC_CONVERSATION_IDS,
-  wallet: MOCK_WALLET,
-  identity: MOCK_IDENTITY,
-  transactions: MOCK_TRANSACTIONS,
-  source: 'mock',
-  roomsStatus: 'idle',
+  listStatus: 'idle',
   messagesStatus: {},
+  invitationsStatus: 'idle',
   loadError: undefined,
 };
 
-// ── Mappers: RemoteConversation/RemoteMessage → shape UI ─────────────
-// UI ChatRoom giàu trường (jobTitle, counterparty…) mà BE hội thoại thô chưa cấp.
-// Map an toàn: giữ id thật, đổ trường còn thiếu bằng giá trị trung tính (UI KHÔNG
-// vỡ). Khi BE bổ sung metadata job/participant, chỉ cần mở rộng mapper này.
+// ── Chuyển hình máy chủ → hình giao-diện ────────────────────────────────────
 
-const toEpoch = (v: number | string | undefined): number => {
+const toEpoch = (v: number | string | null | undefined): number => {
   if (typeof v === 'number') return v;
   if (typeof v === 'string') {
     const t = Date.parse(v);
-    return Number.isNaN(t) ? Date.now() : t;
+    return Number.isNaN(t) ? 0 : t;
   }
-  return Date.now();
+  return 0;
 };
 
-const remoteConvToRoom = (c: RemoteConversation): ChatRoom => ({
-  id: c.id,
-  jobTitle: c.title ?? 'Cuộc trò chuyện',
-  jobCategory: c.type ?? 'JOB_NEGOTIATION',
-  // Participants định danh bằng PhoenixKey DID (spec §6) — chưa có tên hiển thị
-  // từ BE hội thoại thô; để ownerId/DID làm định danh, UI hiển thị rút gọn.
-  counterpartyId: c.ownerId ?? c.id,
-  counterpartyName: c.title ?? 'Thành viên',
-  counterpartyAddress: c.ownerId ?? '',
-  counterpartyVerified: false,
-  online: false,
-  lastMessage: undefined,
-  lastMessageAt: c.createdAt ? toEpoch(c.createdAt) : undefined,
-  unreadCount: 0,
-});
+/** Rút gọn một định danh dài thành thứ đọc được khi máy chủ chưa cấp tên. */
+export const shortId = (id: string): string =>
+  id.length > 14 ? `${id.slice(0, 8)}…${id.slice(-4)}` : id;
 
-const remoteMsgToMessage = (
-  m: RemoteMessage,
-  roomId: string,
-  meId: string,
-): Message => {
-  const ciphertext = m.ciphertext ?? m.encryptedContent ?? '';
-  const sender = m.senderDid ?? m.senderId ?? 'peer';
+const toParticipant = (p: RemoteParticipant): Participant => {
+  const id = p.userId ?? p.userDid ?? '';
   return {
-    id: m.id,
-    roomId,
-    senderId: sender,
-    isMine: sender === meId,
-    timestamp: toEpoch(m.createdAt),
-    // Ciphertext E2EE — server KHÔNG thấy plaintext. text để trống tới khi crypto
-    // stack (MLS) giải mã (v2.1); UI hiển thị stage 'encrypted'.
-    text: undefined,
-    ciphertext,
-    proof: { hash: '', signature: '', merkleProof: '' },
-    verificationStatus: 'pending',
-    stage: 'encrypted',
+    id,
+    name: p.nickname?.trim() || p.displayName?.trim() || shortId(id),
+    avatar: p.avatar ?? undefined,
+    isAdmin: (p.role ?? '').toUpperCase() === 'ADMIN',
   };
 };
 
-// ── Async thunks: dữ liệu THẬT (chỉ chạy khi feature flag ON) ────────
-// Khi flag OFF → thunk trả về sớm với marker 'disabled'; reducer GIỮ mock, UI
-// không đổi. Khi ON nhưng chưa có phiên/BE lỗi → rejected, reducer giữ dữ liệu
-// hiện có + set trạng thái error (fallback mềm, KHÔNG vỡ UI).
+const CONVERSATION_TYPES: ConversationType[] = [
+  'DIRECT',
+  'GROUP',
+  'THREAD',
+  'JOB_NEGOTIATION',
+];
 
-interface LoadConversationsResult {
-  rooms: ChatRoom[];
-  conversations: Conversation[];
-}
+const toConversationType = (t?: string): ConversationType =>
+  CONVERSATION_TYPES.includes((t ?? '') as ConversationType)
+    ? (t as ConversationType)
+    : 'GROUP';
 
-/** Tải danh sách hội thoại thật từ BE ProofChat. */
-export const loadConversations = createAsyncThunk<
-  LoadConversationsResult | 'disabled'
->('proofchat/loadConversations', async () => {
-  if (!isProofChatBackendEnabled()) return 'disabled';
-  // `conversations.list` nay LUÔN trả mảng hoặc ném (`proofchat-api.ts` §unwrapList).
-  // Chốt `Array.isArray(...) ? ... : []` cũ đã gỡ: chính nó biến "gọi hỏng" thành
-  // "chưa có hội thoại" và giấu lỗi hai lớp bọc suốt thời gian qua.
-  const list = await proofChatApi.conversations.list({ take: 100 });
-  const rooms = list.map(remoteConvToRoom);
-  const conversations: Conversation[] = list.map((c) => ({
+/**
+ * Đặt tên cho phòng khi máy chủ không trả `title` — hay gặp ở phòng 1-1, vì tên
+ * phòng chính là tên người kia. Ghép từ danh sách thành viên, bỏ chính mình ra.
+ */
+const titleFor = (c: RemoteConversation, participants: Participant[], meId: string): string => {
+  const given = c.title?.trim();
+  if (given) return given;
+  const others = participants.filter((p) => p.id && p.id !== meId);
+  if (others.length === 0) return 'Cuộc trò chuyện';
+  if (others.length <= 3) return others.map((p) => p.name).join(', ');
+  return `${others.slice(0, 2).map((p) => p.name).join(', ')} và ${others.length - 2} người khác`;
+};
+
+const toConversation = (
+  c: RemoteConversation,
+  meId: string,
+  previous?: Conversation,
+): Conversation => {
+  const participants = (c.participants ?? []).map(toParticipant);
+  return {
     id: c.id,
-    title: c.title ?? 'Cuộc trò chuyện',
-    type: (c.type as ConversationType) ?? 'JOB_NEGOTIATION',
-    visibility: (c.visibility as 'public' | 'private') ?? 'private',
-    ownerId: c.ownerId ?? c.id,
-    memberCount: c.memberCount ?? 2,
-    createdAt: c.createdAt ? toEpoch(c.createdAt) : Date.now(),
-  }));
-  return { rooms, conversations };
-});
+    title: titleFor(c, participants, meId),
+    avatar: c.avatar ?? undefined,
+    type: toConversationType(c.type),
+    visibility: c.visibility === 'public' ? 'public' : 'private',
+    ownerId: c.ownerId ?? '',
+    memberCount: c.memberCount ?? participants.length,
+    createdAt: toEpoch(c.createdAt) || Date.now(),
+    participants: participants.length > 0 ? participants : previous?.participants ?? [],
+    iAmAdmin:
+      c.ownerId === meId ||
+      participants.some((p) => p.id === meId && p.isAdmin) ||
+      (participants.length === 0 && (previous?.iAmAdmin ?? false)),
+    // Tin gần nhất do tầng giải-mã đổ vào; máy chủ chỉ cấp mốc thời gian.
+    lastMessage: previous?.lastMessage,
+    lastMessageAt: toEpoch(c.lastMessageAt) || previous?.lastMessageAt || toEpoch(c.updatedAt) || undefined,
+    unreadCount: c.unreadCount ?? previous?.unreadCount ?? 0,
+  };
+};
 
-interface LoadMessagesResult {
-  roomId: string;
-  messages: Message[];
-}
-
-/** Tải tin nhắn (ciphertext E2EE) thật của 1 phòng. */
-export const loadRoomMessages = createAsyncThunk<
-  LoadMessagesResult | 'disabled',
-  { roomId: string; meId: string }
->('proofchat/loadRoomMessages', async ({ roomId, meId }) => {
-  if (!isProofChatBackendEnabled()) return 'disabled';
-  const deviceId = await getDeviceId();
-  const list = await proofChatApi.conversations.getMessages(roomId, deviceId, {
-    take: 200,
+const toReactions = (
+  raw: RemoteMessage['reactions'],
+  meId: string,
+): Reaction[] => {
+  if (!raw?.length) return [];
+  const byEmoji = new Map<string, Reaction>();
+  raw.forEach((r) => {
+    const cur = byEmoji.get(r.emoji) ?? { emoji: r.emoji, count: 0, mine: false };
+    cur.count += 1;
+    if (r.userId && r.userId === meId) cur.mine = true;
+    byEmoji.set(r.emoji, cur);
   });
-  const messages = list.map((m) => remoteMsgToMessage(m, roomId, meId));
-  return { roomId, messages };
+  return [...byEmoji.values()];
+};
+
+/**
+ * Tin từ REST luôn ở dạng chưa mở được: máy chủ chỉ giữ phần vỏ mã hoá. Nội dung
+ * thật tới sau qua `receiveDecryptedMessage`, khớp theo id.
+ */
+const toMessage = (m: RemoteMessage, conversationId: string, meId: string): Message => {
+  const sender = m.senderDid ?? m.senderId ?? '';
+  const deleted = !!m.deletedAt;
+  return {
+    id: m.id,
+    conversationId,
+    senderId: sender,
+    isMine: sender === meId,
+    timestamp: toEpoch(m.createdAt) || Date.now(),
+    text: undefined,
+    state: deleted ? 'delivered' : 'locked',
+    trust: 'unknown',
+    reactions: toReactions(m.reactions, meId),
+    pinned: !!m.isPinned,
+    saved: !!m.isSaved,
+    deleted,
+  };
+};
+
+const toInvitation = (r: RemoteMemberRequest): Invitation => ({
+  id: r.id,
+  conversationId: r.conversationId,
+  conversationTitle: r.conversationTitle?.trim() || 'Cuộc trò chuyện',
+  conversationType: toConversationType(undefined),
+  inviterId: r.initiatorId ?? '',
+  inviterName: r.initiatorName?.trim() || shortId(r.initiatorId ?? ''),
+  message: r.message?.trim() || undefined,
+  createdAt: toEpoch(r.createdAt) || Date.now(),
+  status: 'pending',
 });
+
+const toJoinRequest = (r: RemoteMemberRequest): JoinRequest => ({
+  id: r.id,
+  conversationId: r.conversationId,
+  conversationTitle: r.conversationTitle?.trim() || undefined,
+  requesterId: r.targetUserId ?? r.initiatorId,
+  requesterName:
+    r.initiatorName?.trim() || shortId(r.targetUserId ?? r.initiatorId ?? ''),
+  message: r.message?.trim() || undefined,
+  createdAt: toEpoch(r.createdAt) || Date.now(),
+  status: 'pending',
+});
+
+// ── Thunk ───────────────────────────────────────────────────────────────────
+// Mọi thunk đều tự kiểm cổng backend trước. Cổng đóng ⇒ trả 'disabled' và
+// reducer KHÔNG đụng vào state — không có nhánh nào dựng dữ-liệu thay thế.
+
+const OFF = 'disabled' as const;
+type Off = typeof OFF;
+
+/** Danh sách phòng của tôi. */
+export const loadConversations = createAsyncThunk<
+  { conversations: RemoteConversation[]; meId: string } | Off
+>('chat/loadConversations', async (_arg, { getState }) => {
+  if (!isProofChatBackendEnabled()) return OFF;
+  const meId = (getState() as { chat: ChatState }).chat.meId;
+  const list = await proofChatApi.conversations.list({ take: 100 });
+  return { conversations: list, meId };
+});
+
+/** Chi tiết 1 phòng — cần cho danh sách thành viên và quyền quản. */
+export const loadConversationDetail = createAsyncThunk<
+  RemoteConversation | Off,
+  string
+>('chat/loadConversationDetail', async (conversationId) => {
+  if (!isProofChatBackendEnabled()) return OFF;
+  return proofChatApi.conversations.get(conversationId);
+});
+
+/** Tin cũ của 1 phòng (phần vỏ; nội dung mở sau). */
+export const loadMessages = createAsyncThunk<
+  { conversationId: string; messages: RemoteMessage[] } | Off,
+  string
+>('chat/loadMessages', async (conversationId) => {
+  if (!isProofChatBackendEnabled()) return OFF;
+  const deviceId = await getDeviceId();
+  const messages = await proofChatApi.conversations.getMessages(
+    conversationId,
+    deviceId,
+    { take: 200 },
+  );
+  return { conversationId, messages };
+});
+
+/** Lời mời đang chờ tôi trả lời. */
+export const loadInvitations = createAsyncThunk<RemoteMemberRequest[] | Off>(
+  'chat/loadInvitations',
+  async () => {
+    if (!isProofChatBackendEnabled()) return OFF;
+    return proofChatApi.memberRequests.pending();
+  },
+);
+
+export const acceptInvitation = createAsyncThunk<string, string>(
+  'chat/acceptInvitation',
+  async (requestId) => {
+    await proofChatApi.memberRequests.accept(requestId);
+    return requestId;
+  },
+);
+
+export const declineInvitation = createAsyncThunk<string, string>(
+  'chat/declineInvitation',
+  async (requestId) => {
+    await proofChatApi.memberRequests.decline(requestId);
+    return requestId;
+  },
+);
+
+/** Yêu-cầu xin vào 1 phòng tôi quản. */
+export const loadJoinRequests = createAsyncThunk<
+  { conversationId: string; requests: RemoteMemberRequest[] } | Off,
+  string
+>('chat/loadJoinRequests', async (conversationId) => {
+  if (!isProofChatBackendEnabled()) return OFF;
+  const requests = await proofChatApi.memberRequests.listForConversation(conversationId);
+  return { conversationId, requests };
+});
+
+export const approveJoinRequest = createAsyncThunk<
+  { conversationId: string; requestId: string },
+  { conversationId: string; requestId: string }
+>('chat/approveJoinRequest', async ({ conversationId, requestId }) => {
+  await proofChatApi.memberRequests.approve(conversationId, requestId);
+  return { conversationId, requestId };
+});
+
+export const rejectJoinRequest = createAsyncThunk<
+  { conversationId: string; requestId: string },
+  { conversationId: string; requestId: string; reason?: string }
+>('chat/rejectJoinRequest', async ({ conversationId, requestId, reason }) => {
+  await proofChatApi.memberRequests.reject(conversationId, requestId, reason);
+  return { conversationId, requestId };
+});
+
+/**
+ * Vào một phòng theo ID. Phòng mở → vào ngay; phòng kín → thành yêu-cầu chờ duyệt.
+ * Máy chủ tự quyết, app KHÔNG đoán trước (bản cũ đoán bằng một danh sách ID mẫu).
+ */
+export const joinConversation = createAsyncThunk<
+  { action: string; conversationId: string },
+  { conversationId: string; message?: string }
+>('chat/joinConversation', async ({ conversationId, message }) => {
+  const res = await proofChatApi.conversations.join(conversationId, message);
+  return { action: res.action ?? 'REQUESTED', conversationId };
+});
+
+export const leaveConversation = createAsyncThunk<string, string>(
+  'chat/leaveConversation',
+  async (conversationId) => {
+    await proofChatApi.conversations.leave(conversationId);
+    return conversationId;
+  },
+);
+
+export const renameConversation = createAsyncThunk<
+  { conversationId: string; title: string },
+  { conversationId: string; title: string }
+>('chat/renameConversation', async ({ conversationId, title }) => {
+  await proofChatApi.conversations.update(conversationId, { title });
+  return { conversationId, title };
+});
+
+export const inviteMember = createAsyncThunk<
+  void,
+  { conversationId: string; userId: string; message?: string }
+>('chat/inviteMember', async ({ conversationId, userId, message }) => {
+  await proofChatApi.memberRequests.invite(conversationId, userId, message);
+});
+
+export const removeMember = createAsyncThunk<
+  { conversationId: string; userId: string },
+  { conversationId: string; userId: string }
+>('chat/removeMember', async ({ conversationId, userId }) => {
+  await proofChatApi.conversations.removeParticipant(conversationId, userId);
+  return { conversationId, userId };
+});
+
+/**
+ * Thả / gỡ cảm-xúc. Sửa ngay trên máy trước rồi mới gọi máy chủ (bấm là thấy);
+ * gọi hỏng thì `rejected` lật lại đúng trạng-thái cũ.
+ */
+export const toggleReaction = createAsyncThunk<
+  void,
+  { conversationId: string; messageId: string; emoji: string; had: boolean }
+>('chat/toggleReaction', async ({ messageId, emoji, had }) => {
+  if (had) await proofChatApi.messages.unreact(messageId, emoji);
+  else await proofChatApi.messages.react(messageId, emoji);
+});
+
+export const togglePin = createAsyncThunk<
+  void,
+  { conversationId: string; messageId: string; pinned: boolean }
+>('chat/togglePin', async ({ conversationId, messageId, pinned }) => {
+  if (pinned) await proofChatApi.conversations.unpin(conversationId, messageId);
+  else await proofChatApi.conversations.pin(conversationId, messageId);
+});
+
+export const toggleSave = createAsyncThunk<
+  void,
+  { conversationId: string; messageId: string; saved: boolean }
+>('chat/toggleSave', async ({ messageId, saved }) => {
+  if (saved) await proofChatApi.messages.unsave(messageId);
+  else await proofChatApi.messages.save(messageId);
+});
+
+export const deleteMessage = createAsyncThunk<
+  void,
+  { conversationId: string; messageId: string; forEveryone: boolean }
+>('chat/deleteMessage', async ({ messageId, forEveryone }) => {
+  await proofChatApi.messages.remove(messageId, forEveryone);
+});
+
+export const loadPins = createAsyncThunk<
+  { conversationId: string; messageIds: string[] } | Off,
+  string
+>('chat/loadPins', async (conversationId) => {
+  if (!isProofChatBackendEnabled()) return OFF;
+  const pins = await proofChatApi.conversations.listPins(conversationId);
+  return { conversationId, messageIds: pins.map((p) => p.messageId).filter(Boolean) };
+});
+
+/**
+ * Báo "đã xem" cho những tin vừa hiện trên màn. Gửi kèm mốc thời gian, KHÔNG kèm
+ * nội dung. Lỗi ở đây không được làm phiền người dùng — nuốt tại chỗ.
+ */
+export const reportSeen = createAsyncThunk<
+  string,
+  { conversationId: string; messageIds: string[] }
+>('chat/reportSeen', async ({ conversationId, messageIds }) => {
+  if (isProofChatBackendEnabled() && messageIds.length > 0) {
+    await proofChatApi.readSignals
+      .send(conversationId, messageIds.map((id) => ({ messageId: id })))
+      .catch(() => undefined);
+  }
+  return conversationId;
+});
+
+// ── Slice ───────────────────────────────────────────────────────────────────
+
+const findMessage = (
+  state: ChatState,
+  conversationId: string,
+  messageId: string,
+): Message | undefined =>
+  state.messagesByConversation[conversationId]?.find((m) => m.id === messageId);
+
+const touchConversation = (
+  state: ChatState,
+  conversationId: string,
+  patch: Partial<Conversation>,
+): void => {
+  const c = state.conversations.find((x) => x.id === conversationId);
+  if (c) Object.assign(c, patch);
+};
 
 const slice = createSlice({
   name: 'chat',
   initialState,
   reducers: {
-    // ── Chat ────────────────────────────────────────────────────────────────
-    sendMessage: (
-      state,
-      action: PayloadAction<{ roomId: string; text: string }>,
-    ) => {
-      const { roomId, text } = action.payload;
-      const list = state.messagesByRoom[roomId] ?? [];
-      const isOnline = state.sync.online;
-      const id = `m-${Date.now()}`;
-
-      const msg: Message = {
-        id,
-        roomId,
-        senderId: state.meId,
-        isMine: true,
-        timestamp: Date.now(),
-        text,
-        ciphertext: `enc:${id}:${Math.random().toString(16).slice(2, 18)}`,
-        proof: {
-          hash: `0x${id}_h`,
-          signature: `0xsig_${id}`,
-          merkleProof: `[…]`,
-        },
-        verificationStatus: 'pending',
-        stage: isOnline ? 'encrypting' : 'queued',
-      };
-
-      state.messagesByRoom[roomId] = [...list, msg];
-      const room = state.rooms.find(r => r.id === roomId);
-      if (room) {
-        room.lastMessage = text;
-        room.lastMessageAt = msg.timestamp;
-      }
-      if (!isOnline) state.sync.queuedCount += 1;
-    },
-
-    /** Cập nhật stage của 1 tin nhắn (do lifecycle simulator gọi). */
-    setMessageStage: (
-      state,
-      action: PayloadAction<{
-        roomId: string;
-        messageId: string;
-        stage: MessageStage;
-        verificationStatus?: VerificationStatus;
-      }>,
-    ) => {
-      const m = state.messagesByRoom[action.payload.roomId]?.find(
-        x => x.id === action.payload.messageId,
+    /** Định danh của tôi — đặt một lần khi phiên chat sẵn sàng. */
+    setMeId: (state, action: PayloadAction<string>) => {
+      if (state.meId === action.payload) return;
+      const me = action.payload;
+      state.meId = me;
+      // Ai là "tôi" đổi thì mọi tin phải tính lại phía nào của màn hình…
+      Object.values(state.messagesByConversation).forEach((list) =>
+        list.forEach((m) => {
+          m.isMine = m.senderId === me;
+        }),
       );
-      if (!m) return;
-      m.stage = action.payload.stage;
-      if (action.payload.verificationStatus) {
-        m.verificationStatus = action.payload.verificationStatus;
-      }
+      // …và mọi phòng phải tính lại tôi có quyền quản hay không. Bỏ bước này thì
+      // phòng nào nạp TRƯỚC lúc biết danh tính sẽ vĩnh viễn ẩn hết nút quản lý.
+      state.conversations.forEach((c) => {
+        c.iAmAdmin =
+          c.ownerId === me || c.participants.some((p) => p.id === me && p.isAdmin);
+      });
     },
 
-    /** Khi giải mã xong, gán plaintext + chuyển stage 'done'. */
-    decryptMessage: (
-      state,
-      action: PayloadAction<{
-        roomId: string;
-        messageId: string;
-        text: string;
-        verificationStatus?: VerificationStatus;
-      }>,
-    ) => {
-      const m = state.messagesByRoom[action.payload.roomId]?.find(
-        x => x.id === action.payload.messageId,
-      );
-      if (!m) return;
-      m.text = action.payload.text;
-      m.stage = 'done';
-      m.verificationStatus = action.payload.verificationStatus ?? 'verified';
-    },
-
-    markRoomRead: (state, action: PayloadAction<string>) => {
-      const room = state.rooms.find(r => r.id === action.payload);
-      if (room) room.unreadCount = 0;
-    },
-
-    // ── Sync ────────────────────────────────────────────────────────────────
     setSync: (state, action: PayloadAction<Partial<SyncState>>) => {
       state.sync = { ...state.sync, ...action.payload };
     },
 
-    flushQueue: (state) => {
-      state.sync.queuedCount = 0;
-      state.sync.syncing = false;
-      Object.values(state.messagesByRoom).forEach(list => {
-        list.forEach(m => {
-          if (m.stage === 'queued') m.stage = 'sending';
-        });
-      });
-    },
-
-    // ── Escrow ──────────────────────────────────────────────────────────────
-    setEscrowStatus: (
-      state,
-      action: PayloadAction<{ roomId: string; status: EscrowStatus }>,
-    ) => {
-      const room = state.rooms.find(r => r.id === action.payload.roomId);
-      if (room?.escrow) {
-        room.escrow.status = action.payload.status;
-        room.escrow.updatedAt = Date.now();
-      }
-    },
-
-    // ── Identity ────────────────────────────────────────────────────────────
-    expireSession: (state) => {
-      state.identity.sessionStatus = 'expired';
-    },
-    refreshSession: (state, action: PayloadAction<number | undefined>) => {
-      state.identity.sessionStatus = 'active';
-      state.identity.sessionExpiresAt =
-        action.payload ?? Date.now() + 12 * 60 * 60 * 1000;
-    },
-
-    // ── Conversation management ────────────────────────────────────────────
-    createConversation: (
-      state,
-      action: PayloadAction<{
-        title: string;
-        avatar?: string;
-        type: ConversationType;
-        visibility?: 'public' | 'private';
-      }>,
-    ) => {
-      const { title, avatar, type, visibility } = action.payload;
-      const id = `conv-${Date.now()}`;
-      const v =
-        visibility ??
-        (type === 'DIRECT' || type === 'JOB_NEGOTIATION' ? 'private' : 'public');
-      const conv: Conversation = {
-        id,
-        title: title.trim(),
-        avatar: avatar?.trim() || undefined,
-        type,
-        visibility: v,
-        ownerId: state.meId,
-        memberCount: 1,
-        createdAt: Date.now(),
-      };
-      state.conversations.unshift(conv);
-      if (v === 'public') state.publicConversationIds.push(id);
-    },
-
     /**
-     * Tham gia một conversation đã có sẵn theo ID.
-     * - Public → join ngay (memberCount += 1, push vào conversations nếu chưa có).
-     * - Private → tạo join request 'pending' chờ admin duyệt.
+     * Tin ĐÃ MỞ ĐƯỢC NỘI DUNG, từ `proofchatService`. Đây là nguồn DUY NHẤT của
+     * nội dung tin — kể cả tin của chính mình cũng quay về qua đường này, nên
+     * không có bản "gửi lạc quan" nào để nhân đôi.
      */
-    joinConversation: (
-      state,
-      action: PayloadAction<{ conversationId: string; message?: string }>,
-    ) => {
-      const { conversationId, message } = action.payload;
-      const isPublic = state.publicConversationIds.includes(conversationId);
-
-      if (isPublic) {
-        const existing = state.conversations.find(c => c.id === conversationId);
-        if (existing) {
-          existing.memberCount += 1;
-        } else {
-          state.conversations.unshift({
-            id: conversationId,
-            title: `Conversation ${conversationId}`,
-            type: 'GROUP',
-            visibility: 'public',
-            ownerId: 'unknown',
-            memberCount: 1,
-            createdAt: Date.now(),
-          });
-        }
-        return;
-      }
-
-      const dup = state.joinRequests.find(
-        r => r.conversationId === conversationId && r.status === 'pending',
-      );
-      if (dup) return;
-
-      state.joinRequests.unshift({
-        id: `jr-${Date.now()}`,
-        conversationId,
-        message: message?.trim() || undefined,
-        createdAt: Date.now(),
-        status: 'pending',
-      });
-    },
-
-    acceptInvitation: (state, action: PayloadAction<{ invitationId: string }>) => {
-      const inv = state.invitations.find(i => i.id === action.payload.invitationId);
-      if (!inv || inv.status !== 'pending') return;
-      inv.status = 'accepted';
-      const exists = state.conversations.some(c => c.id === inv.conversationId);
-      if (!exists) {
-        state.conversations.unshift({
-          id: inv.conversationId,
-          title: inv.conversationTitle,
-          avatar: inv.conversationAvatar,
-          type: inv.conversationType,
-          visibility: 'private',
-          ownerId: inv.inviterId,
-          memberCount: 2,
-          createdAt: Date.now(),
-        });
-      }
-    },
-
-    rejectInvitation: (state, action: PayloadAction<{ invitationId: string }>) => {
-      const inv = state.invitations.find(i => i.id === action.payload.invitationId);
-      if (!inv || inv.status !== 'pending') return;
-      inv.status = 'rejected';
-    },
-
-    dismissInvitation: (state, action: PayloadAction<{ invitationId: string }>) => {
-      state.invitations = state.invitations.filter(
-        i => i.id !== action.payload.invitationId,
-      );
-    },
-
-    // ── WS real-time: tin đến từ contract:message.send ──────────────────────
-    // Envelope ciphertext E2EE — server KHÔNG thấy plaintext. Chèn vào phòng ở
-    // stage 'encrypted' (chờ crypto stack giải mã v2.1). Chống trùng theo id.
-    receiveWsMessage: (state, action: PayloadAction<WsIncomingMessage>) => {
-      const { conversationId, id, senderId, senderDid, ciphertext, createdAt } =
-        action.payload;
-      if (!conversationId) return;
-      const list = state.messagesByRoom[conversationId] ?? [];
-      const msgId = id ?? `ws-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
-      if (list.some(m => m.id === msgId)) return; // đã có → bỏ qua
-      const sender = senderDid ?? senderId ?? 'peer';
-      const ts =
-        typeof createdAt === 'number'
-          ? createdAt
-          : typeof createdAt === 'string'
-          ? Date.parse(createdAt) || Date.now()
-          : Date.now();
-      const msg: Message = {
-        id: msgId,
-        roomId: conversationId,
-        senderId: sender,
-        isMine: sender === state.meId,
-        timestamp: ts,
-        text: undefined,
-        ciphertext: ciphertext ?? '',
-        proof: { hash: '', signature: '', merkleProof: '' },
-        verificationStatus: 'pending',
-        stage: 'encrypted',
-      };
-      state.messagesByRoom[conversationId] = [...list, msg];
-      const room = state.rooms.find(r => r.id === conversationId);
-      if (room) {
-        room.lastMessageAt = ts;
-        if (!msg.isMine) room.unreadCount += 1;
-      }
-    },
-
-    // ── Tin ĐÃ GIẢI MÃ từ proofchatService (MLS tầng-2 + Merkle tầng-3) ──────
-    // Khác receiveWsMessage (ciphertext thô): tin này đã có PLAINTEXT + kết-quả
-    // verify. Nguồn: onDecryptedMessage → dispatch. Chống trùng theo id (echo tin
-    // mình gửi cũng tới qua đây → 1 nguồn duy nhất, không optimistic để tránh nhân đôi).
     receiveDecryptedMessage: (
       state,
       action: PayloadAction<{
@@ -486,120 +481,292 @@ const slice = createSlice({
     ) => {
       const { id, conversationId, senderId, isMine, timestamp, plaintext, merkleVerified } =
         action.payload;
-      const list = state.messagesByRoom[conversationId] ?? [];
-      const verificationStatus: VerificationStatus =
-        merkleVerified === false ? 'failed' : 'verified';
-      const existing = list.find(m => m.id === id);
+      const trust: TrustState = merkleVerified === false ? 'broken' : merkleVerified === true ? 'ok' : 'unknown';
+      const list = state.messagesByConversation[conversationId] ?? [];
+      const existing = list.find((m) => m.id === id);
+
       if (existing) {
-        // Đã có (vd optimistic tương lai) → cập-nhật plaintext + verify, không nhân đôi.
         existing.text = plaintext;
-        existing.stage = 'delivered';
-        existing.verificationStatus = verificationStatus;
-        return;
+        existing.state = existing.isMine ? 'sent' : 'delivered';
+        existing.trust = trust;
+      } else {
+        list.push({
+          id,
+          conversationId,
+          senderId,
+          isMine,
+          timestamp,
+          text: plaintext,
+          state: isMine ? 'sent' : 'delivered',
+          trust,
+          reactions: [],
+          pinned: false,
+          saved: false,
+          deleted: false,
+        });
+        list.sort((a, b) => a.timestamp - b.timestamp);
+        state.messagesByConversation[conversationId] = list;
       }
-      const msg: Message = {
-        id,
-        roomId: conversationId,
-        senderId,
-        isMine,
-        timestamp,
-        text: plaintext,
-        ciphertext: '',
-        proof: { hash: '', signature: '', merkleProof: '' },
-        verificationStatus,
-        stage: 'delivered',
-      };
-      state.messagesByRoom[conversationId] = [...list, msg];
-      const room = state.rooms.find(r => r.id === conversationId);
-      if (room) {
-        room.lastMessage = plaintext;
-        room.lastMessageAt = timestamp;
-        if (!isMine) room.unreadCount += 1;
+
+      const c = state.conversations.find((x) => x.id === conversationId);
+      if (c) {
+        c.lastMessage = plaintext;
+        c.lastMessageAt = timestamp;
+        if (!isMine) c.unreadCount += 1;
       }
+    },
+
+    /** Ai đó đang gõ trong phòng. */
+    setTyping: (
+      state,
+      action: PayloadAction<{ conversationId: string; userId: string; isTyping: boolean }>,
+    ) => {
+      const { conversationId, userId, isTyping } = action.payload;
+      const cur = state.typingByConversation[conversationId] ?? [];
+      state.typingByConversation[conversationId] = isTyping
+        ? cur.includes(userId)
+          ? cur
+          : [...cur, userId]
+        : cur.filter((u) => u !== userId);
+    },
+
+    /** Xoá dấu chưa-đọc khi mở phòng (phần đối chiếu với máy chủ do `reportSeen` lo). */
+    markConversationRead: (state, action: PayloadAction<string>) => {
+      touchConversation(state, action.payload, { unreadCount: 0 });
+    },
+
+    clearError: (state) => {
+      state.loadError = undefined;
     },
   },
 
-  // ── extraReducers: kết quả thunk dữ liệu THẬT ─────────────────────────────
   extraReducers: (builder) => {
     builder
+      // ── Danh sách phòng ──
       .addCase(loadConversations.pending, (state) => {
-        if (!isProofChatBackendEnabled()) return;
-        state.roomsStatus = 'loading';
+        state.listStatus = 'loading';
         state.loadError = undefined;
       })
       .addCase(loadConversations.fulfilled, (state, action) => {
-        if (action.payload === 'disabled') {
-          // Flag OFF → giữ nguyên mock, không đổi gì.
-          state.source = 'mock';
-          state.roomsStatus = 'idle';
+        if (action.payload === OFF) {
+          state.listStatus = 'idle';
           return;
         }
-        state.source = 'backend';
-        state.roomsStatus = 'ready';
-        state.rooms = action.payload.rooms;
-        state.conversations = action.payload.conversations;
+        const { conversations, meId } = action.payload;
+        const previous = new Map(state.conversations.map((c) => [c.id, c]));
+        state.conversations = conversations.map((c) =>
+          toConversation(c, meId, previous.get(c.id)),
+        );
+        state.listStatus = 'ready';
         state.loadError = undefined;
       })
       .addCase(loadConversations.rejected, (state) => {
-        // THẤT BẠI PHẢI XOÁ, KHÔNG ĐƯỢC GIỮ.
-        //
-        // Bản cũ "giữ dữ liệu hiện có (fallback mềm)". Nghe thì hiền, nhưng dữ liệu
-        // "hiện có" lúc đó chính là MOCK trong `initialState` — nên mạng hỏng lại
-        // hiện ra một danh sách hội thoại đầy đủ, có tin nhắn, có tích đã-xác-minh.
-        // Người dùng KHÔNG có cách nào biết mình đang nhìn dữ liệu bịa:
-        //   · nhãn DEMO ở `ChatScreen.tsx:205` hỏi CỜ (`!isProofChatBackendEnabled()`),
-        //     mà cờ đang BẬT ⇒ nhãn không hiện;
-        //   · câu báo lỗi dưới đây nằm trong `ListEmptyComponent`
-        //     (`ChatHomeScreen.tsx:346`), mà mock giữ danh sách KHÔNG rỗng
-        //     ⇒ câu báo lỗi không bao giờ được vẽ.
-        // Tức là mock vừa giả làm thật, vừa bịt luôn lời cảnh báo về chính nó.
-        //
-        // Xoá rỗng thì `ListEmptyComponent` mới chạy và người dùng mới thấy sự thật.
-        // Chế độ demo (cờ TẮT) không đi qua đây — nhánh `fulfilled` trả 'disabled'.
-        state.rooms = [];
+        // Tải hỏng thì để TRỐNG. Giữ lại danh sách cũ ở đây chính là cái bẫy của
+        // bản trước: người dùng nhìn thấy phòng nhưng không có gì đang chạy.
         state.conversations = [];
-        state.messagesByRoom = {};
-        state.roomsStatus = 'error';
-        state.loadError = 'Không tải được danh sách trò chuyện. Kéo để thử lại.';
+        state.listStatus = 'error';
+        state.loadError = 'Chưa tải được danh sách trò chuyện. Kéo xuống để thử lại.';
       })
-      .addCase(loadRoomMessages.pending, (state, action) => {
-        if (!isProofChatBackendEnabled()) return;
-        state.messagesStatus[action.meta.arg.roomId] = 'loading';
+
+      // ── Chi tiết phòng ──
+      .addCase(loadConversationDetail.fulfilled, (state, action) => {
+        if (action.payload === OFF) return;
+        const remote = action.payload;
+        const idx = state.conversations.findIndex((c) => c.id === remote.id);
+        const mapped = toConversation(remote, state.meId, state.conversations[idx]);
+        if (idx >= 0) state.conversations[idx] = mapped;
+        else state.conversations.unshift(mapped);
       })
-      .addCase(loadRoomMessages.fulfilled, (state, action) => {
-        if (action.payload === 'disabled') return; // giữ mock
-        const { roomId, messages } = action.payload;
-        state.messagesStatus[roomId] = 'ready';
-        state.messagesByRoom[roomId] = messages;
+
+      // ── Tin nhắn ──
+      .addCase(loadMessages.pending, (state, action) => {
+        state.messagesStatus[action.meta.arg] = 'loading';
       })
-      .addCase(loadRoomMessages.rejected, (state, action) => {
-        // Cùng lý do như `loadConversations.rejected`: không xoá thì phòng chat hiện
-        // ra tin nhắn mock kèm tích "đã xác minh chữ ký" trong khi chưa hề tải được
-        // gì. Thà trống và báo lỗi còn hơn đầy và sai.
-        const { roomId } = action.meta.arg;
-        state.messagesByRoom[roomId] = [];
-        state.messagesStatus[roomId] = 'error';
+      .addCase(loadMessages.fulfilled, (state, action) => {
+        if (action.payload === OFF) return;
+        const { conversationId, messages } = action.payload;
+        // Giữ lại nội dung đã mở được ở lượt trước: REST chỉ trả phần vỏ, ghi đè
+        // thẳng sẽ làm cả phòng "đóng" lại mỗi lần mở màn.
+        const opened = new Map(
+          (state.messagesByConversation[conversationId] ?? [])
+            .filter((m) => m.text !== undefined)
+            .map((m) => [m.id, m]),
+        );
+        state.messagesByConversation[conversationId] = messages
+          .map((m) => {
+            const fresh = toMessage(m, conversationId, state.meId);
+            const known = opened.get(m.id);
+            return known
+              ? { ...fresh, text: known.text, state: known.state, trust: known.trust }
+              : fresh;
+          })
+          .sort((a, b) => a.timestamp - b.timestamp);
+        state.messagesStatus[conversationId] = 'ready';
+      })
+      .addCase(loadMessages.rejected, (state, action) => {
+        state.messagesByConversation[action.meta.arg] = [];
+        state.messagesStatus[action.meta.arg] = 'error';
+      })
+
+      // ── Lời mời tới tôi ──
+      .addCase(loadInvitations.pending, (state) => {
+        state.invitationsStatus = 'loading';
+      })
+      .addCase(loadInvitations.fulfilled, (state, action) => {
+        if (action.payload === OFF) {
+          state.invitationsStatus = 'idle';
+          return;
+        }
+        state.invitations = action.payload.map(toInvitation);
+        state.invitationsStatus = 'ready';
+      })
+      .addCase(loadInvitations.rejected, (state) => {
+        state.invitations = [];
+        state.invitationsStatus = 'error';
+      })
+      .addCase(acceptInvitation.fulfilled, (state, action) => {
+        state.invitations = state.invitations.filter((i) => i.id !== action.payload);
+      })
+      .addCase(declineInvitation.fulfilled, (state, action) => {
+        state.invitations = state.invitations.filter((i) => i.id !== action.payload);
+      })
+
+      // ── Yêu-cầu xin vào phòng ──
+      .addCase(loadJoinRequests.fulfilled, (state, action) => {
+        if (action.payload === OFF) return;
+        const { conversationId, requests } = action.payload;
+        state.joinRequestsByConversation[conversationId] = requests.map(toJoinRequest);
+      })
+      .addCase(approveJoinRequest.fulfilled, (state, action) => {
+        const { conversationId, requestId } = action.payload;
+        state.joinRequestsByConversation[conversationId] =
+          (state.joinRequestsByConversation[conversationId] ?? []).filter(
+            (r) => r.id !== requestId,
+          );
+      })
+      .addCase(rejectJoinRequest.fulfilled, (state, action) => {
+        const { conversationId, requestId } = action.payload;
+        state.joinRequestsByConversation[conversationId] =
+          (state.joinRequestsByConversation[conversationId] ?? []).filter(
+            (r) => r.id !== requestId,
+          );
+      })
+
+      // ── Vào / rời / đổi tên / thành viên ──
+      .addCase(leaveConversation.fulfilled, (state, action) => {
+        state.conversations = state.conversations.filter((c) => c.id !== action.payload);
+        delete state.messagesByConversation[action.payload];
+        delete state.messagesStatus[action.payload];
+      })
+      .addCase(renameConversation.fulfilled, (state, action) => {
+        touchConversation(state, action.payload.conversationId, {
+          title: action.payload.title,
+        });
+      })
+      .addCase(removeMember.fulfilled, (state, action) => {
+        const c = state.conversations.find((x) => x.id === action.payload.conversationId);
+        if (!c) return;
+        c.participants = c.participants.filter((p) => p.id !== action.payload.userId);
+        c.memberCount = Math.max(0, c.memberCount - 1);
+      })
+
+      // ── Cảm-xúc · ghim · lưu · thu hồi (sửa trước, lật lại nếu hỏng) ──
+      .addCase(toggleReaction.pending, (state, action) => {
+        const { conversationId, messageId, emoji, had } = action.meta.arg;
+        const m = findMessage(state, conversationId, messageId);
+        if (!m) return;
+        applyReaction(m, emoji, !had);
+      })
+      .addCase(toggleReaction.rejected, (state, action) => {
+        const { conversationId, messageId, emoji, had } = action.meta.arg;
+        const m = findMessage(state, conversationId, messageId);
+        if (!m) return;
+        applyReaction(m, emoji, had);
+      })
+      .addCase(togglePin.pending, (state, action) => {
+        const { conversationId, messageId, pinned } = action.meta.arg;
+        const m = findMessage(state, conversationId, messageId);
+        if (m) m.pinned = !pinned;
+        setPinList(state, conversationId, messageId, !pinned);
+      })
+      .addCase(togglePin.rejected, (state, action) => {
+        const { conversationId, messageId, pinned } = action.meta.arg;
+        const m = findMessage(state, conversationId, messageId);
+        if (m) m.pinned = pinned;
+        setPinList(state, conversationId, messageId, pinned);
+      })
+      .addCase(toggleSave.pending, (state, action) => {
+        const m = findMessage(state, action.meta.arg.conversationId, action.meta.arg.messageId);
+        if (m) m.saved = !action.meta.arg.saved;
+      })
+      .addCase(toggleSave.rejected, (state, action) => {
+        const m = findMessage(state, action.meta.arg.conversationId, action.meta.arg.messageId);
+        if (m) m.saved = action.meta.arg.saved;
+      })
+      .addCase(deleteMessage.fulfilled, (state, action) => {
+        const m = findMessage(state, action.meta.arg.conversationId, action.meta.arg.messageId);
+        if (!m) return;
+        m.deleted = true;
+        m.text = undefined;
+        m.reactions = [];
+      })
+
+      // ── Ghim ──
+      .addCase(loadPins.fulfilled, (state, action) => {
+        if (action.payload === OFF) return;
+        const { conversationId, messageIds } = action.payload;
+        state.pinnedByConversation[conversationId] = messageIds;
+        const list = state.messagesByConversation[conversationId];
+        if (list) {
+          const set = new Set(messageIds);
+          list.forEach((m) => {
+            m.pinned = set.has(m.id);
+          });
+        }
       });
   },
 });
 
+function applyReaction(m: Message, emoji: string, add: boolean): void {
+  const found = m.reactions.find((r) => r.emoji === emoji);
+  if (add) {
+    if (found) {
+      if (found.mine) return;
+      found.count += 1;
+      found.mine = true;
+    } else {
+      m.reactions.push({ emoji, count: 1, mine: true });
+    }
+    return;
+  }
+  if (!found) return;
+  found.count -= 1;
+  found.mine = false;
+  if (found.count <= 0) m.reactions = m.reactions.filter((r) => r.emoji !== emoji);
+}
+
+function setPinList(
+  state: ChatState,
+  conversationId: string,
+  messageId: string,
+  pinned: boolean,
+): void {
+  const cur = state.pinnedByConversation[conversationId] ?? [];
+  state.pinnedByConversation[conversationId] = pinned
+    ? cur.includes(messageId)
+      ? cur
+      : [...cur, messageId]
+    : cur.filter((id) => id !== messageId);
+}
+
 export const {
-  sendMessage,
-  receiveDecryptedMessage,
-  setMessageStage,
-  decryptMessage,
-  markRoomRead,
+  setMeId,
   setSync,
-  flushQueue,
-  setEscrowStatus,
-  expireSession,
-  refreshSession,
-  createConversation,
-  joinConversation,
-  acceptInvitation,
-  rejectInvitation,
-  dismissInvitation,
-  receiveWsMessage,
+  receiveDecryptedMessage,
+  setTyping,
+  markConversationRead,
+  clearError,
 } = slice.actions;
 
+export type { ChatState, MessageState };
 export default slice.reducer;

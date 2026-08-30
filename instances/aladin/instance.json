@@ -1,6 +1,10 @@
 {
   "id": "aladin",
   "displayName": "Aladin",
+  "superapp": {
+    "rulesVersion": 1,
+    "phoenixDid": null
+  },
   "android": {
     "applicationId": "com.aladincontract.company",
     "iconBackground": "#1F5C1F"

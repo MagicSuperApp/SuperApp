@@ -189,6 +189,48 @@ export const HEADER_TOKENS = {
   onBadge: '#FFFFFF',
 } as const;
 
+// ── Token bề mặt Fluent của module Trò chuyện ──────────────────────────────
+// Vật liệu Mica/Acrylic dựng ở `modules/chat/theme/fluent.ts`, nhưng giá trị màu
+// THÔ phải nằm ở đây theo YC-1 (nguồn token duy nhất). File bên module chỉ ghép
+// các giá trị này với brand `chat` thành lớp vật liệu.
+export const CHAT_SURFACE_TOKENS = {
+  /** Ba độ dày acrylic — trắng bán trong, đứng thay cho lớp blur GPU. */
+  acrylicBase:  'rgba(255,255,255,0.72)',
+  acrylicThin:  'rgba(255,255,255,0.55)',
+  acrylicThick: 'rgba(255,255,255,0.92)',
+  /** Nền mờ sau hộp thoại. */
+  scrim:        'rgba(20,28,38,0.32)',
+  /** Thẻ nội dung đặc + viền tóc bắt sáng ở mép. */
+  card:         'rgba(255,255,255,0.86)',
+  cardStrong:   'rgba(255,255,255,0.90)',
+  strokeLight:  'rgba(255,255,255,0.65)',
+
+  /** Dấu "đã xem" trên bong bóng tin của mình (nền là màu brand, cần sáng hơn). */
+  tickRead:     '#BFE3C6',
+  /** Dấu gửi hỏng, cùng vị trí. */
+  tickFailed:   '#FFC4B4',
+
+  /** Tin không khớp chữ ký người gửi — nền · viền · chữ. */
+  alertBg:      '#FFF3EF',
+  alertBorder:  '#E5A891',
+  alertText:    '#7E2F19',
+  alertIcon:    '#A63D24',
+} as const;
+
+/**
+ * Sáu sắc độ cho ảnh đại diện chữ-cái-đầu. Cùng một tên luôn ra cùng một màu,
+ * nên người dùng nhận ra phòng bằng màu trước cả khi đọc chữ. Đủ khác nhau để
+ * phân biệt, đủ gần nhau để không loè trên nền Mica nhạt.
+ */
+export const AVATAR_TONE_TOKENS = [
+  '#3B6EA8',
+  '#4E8C7D',
+  '#8A6BA8',
+  '#B0743A',
+  '#3F7FA8',
+  '#A85E6B',
+] as const;
+
 // ---------------------------------------------------------------------------
 // Bộ token nền hợp nhất — đây là default ThemeConfig sẽ phủ lên.
 // ---------------------------------------------------------------------------

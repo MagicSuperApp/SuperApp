@@ -3,9 +3,17 @@
 Kho này dựng ra **nhiều app** từ **một nền mã**. Aladin và CheckFarm dùng chung
 100% màn hình, module và logic; khác nhau ở lớp trình bày và ở danh tính native.
 
-Thư mục này là nơi khai **danh tính native**: tên app, mã gói, biểu tượng.
+Thư mục này là nơi khai **danh tính** của một app: tên, mã gói, biểu tượng — và
+nó tuân luật nào của SuperApp.
 
-## Thêm một app mới — ba bước, không sửa gradle, không sửa Xcode
+Hai tệp, hai vai:
+
+| tệp | vai |
+|---|---|
+| [`LUAT-SUPERAPP.md`](LUAT-SUPERAPP.md) | luật chung mọi app phải tuân, và chỗ nào có cổng cưỡng chế thật |
+| `<mã>/instance.json` | app đó là ai, và nó ký nhận phiên bản luật nào |
+
+## Thêm một app mới — bốn bước, không sửa gradle, không sửa Xcode
 
 ```
 1.  mkdir -p instances/<mã>/brand
@@ -29,6 +37,10 @@ tay. Thêm thư mục là có flavor.
 {
   "id": "checkfarm",
   "displayName": "CheckFarm",
+  "superapp": {
+    "rulesVersion": 1,
+    "phoenixDid": "did:phoenix:1:<64 ký tự hex>"
+  },
   "android": {
     "applicationId": "com.checkfarm.app",
     "iconBackground": "#1F6B3A"
@@ -43,9 +55,21 @@ tay. Thêm thư mục là có flavor.
 |---|---|---|
 | `id` | mã nội bộ. Phải **trùng tên thư mục**, chữ thường + số | không (là tên flavor) |
 | `displayName` | chữ hiện dưới biểu tượng trên máy người dùng | được |
+| `superapp.rulesVersion` | phiên bản `LUAT-SUPERAPP.md` mà app này ký nhận | phải nâng khi luật đổi |
+| `superapp.phoenixDid` | danh tính PhoenixKey **của chính app này** | không nên |
 | `android.applicationId` | mã gói trên Google Play | **KHÔNG BAO GIỜ** |
 | `android.iconBackground` | màu lớp nền của biểu tượng thích ứng | được |
 | `ios.bundleId` | mã gói trên App Store | **KHÔNG BAO GIỜ** |
+
+**Khối `superapp` là bắt buộc, và nó là chỗ app ký nhận luật.** Đọc
+[`LUAT-SUPERAPP.md`](LUAT-SUPERAPP.md) trước khi điền — `rulesVersion` khai sai
+số là gradle nổ, và nó cố ý nổ: luật không tự lan sang app đã có, người phải xác
+nhận.
+
+`phoenixDid` **không được bỏ trống** với app thêm mới. Hai app hiện có (`aladin`,
+`checkfarm`) đang để `null` vì chưa có đường cấp danh tính cho một *instance* —
+tên chúng ghi thẳng trong cổng ở `android/app/build.gradle` như một món **nợ**,
+không phải một mặc định. Danh sách đó chỉ được rút ngắn.
 
 Sai ở đây thì gradle **nổ ngay** kèm câu nói rõ sai chỗ nào — cố ý. Một
 `applicationId` rỗng lọt xuống dưới là dựng ra gói mang mã app khác, và không có
@@ -124,6 +148,46 @@ máy dựng, chỉ lỗi ở cửa Play Console.
 
 Bản `Debug` không đụng cổng này: nó ký bằng `debug.keystore` dùng chung, và bản debug
 không lên cửa hàng được.
+## Firebase — hai nền tảng, hai cơ chế, cùng một luật
+
+**Luật:** app chỉ khởi Firebase bằng cấu hình của **chính pháp nhân sở hữu app đó**.
+Không app nào mượn dự án Firebase của app khác. Mượn là đẩy thông báo đẩy, số liệu và
+Crashlytics của một pháp nhân vào console của pháp nhân khác — và hỏng đó **không có
+triệu chứng**: mọi thứ chạy, chỉ là chạy vào nhà người ta.
+
+| | Android | iOS |
+|---|---|---|
+| tệp cấu hình đặt ở | `android/app/src/<mã>/google-services.json` | trong gói ứng dụng |
+| thiếu tệp riêng thì | gradle **tắt** bước Firebase cho flavor đó | không khởi Firebase, app chạy bình thường |
+| cơ chế | theo flavor, lúc **dựng** | so mã gói, lúc **chạy** |
+
+Vì sao iOS khác: `ios/LocalPods/ScannerModule/ScannerModule.podspec` khai
+`GoogleService-Info.plist` trong `s.resources`, và `s.resources` chép vào gói của **mọi**
+bản dựng — podspec không có nhánh theo app, iOS không có cơ chế theo flavor tương đương.
+Nên cổng nằm ở `ios/aladin_mobile_fe/AppDelegate.swift` → `configureFirebaseIfOwned()`:
+nó so `BUNDLE_ID` trong tệp cấu hình với mã gói **thật** đang chạy, lệch thì không khởi.
+
+Cách đó bịt **mọi** đường tệp lọt vào gói, kể cả đường chưa ai nghĩ ra, vì nó đo thứ
+quyết định hành vi chứ không đo cách dựng.
+
+### Ngày app của bạn cần Firebase
+
+- **Android:** bỏ `google-services.json` của dự án đứng tên pháp nhân bạn vào
+  `android/app/src/<mã>/`. Plugin tự bật lại.
+- **iOS:** bỏ `GoogleService-Info.plist` của dự án đó vào gói, `BUNDLE_ID` phải khớp
+  `ios.bundleId` trong `instance.json`. Cổng tự nhận và khởi.
+
+Không sửa dòng mã nào ở cả hai nền tảng.
+
+⛔ **Đừng "tạm dùng" tệp của app khác cho Firebase chạy được.** Đó là mở lại đúng lỗ vừa
+vá, và lần này có một hàm tên `configureFirebaseIfOwned` đứng cạnh làm bằng chứng giả
+rằng đã canh.
+
+### Việc còn lại, nói thẳng
+
+Cổng chặn Firebase **khởi**, nhưng tệp cấu hình của Aladin vẫn **nằm trong gói** của mọi
+app iOS, vì `s.resources` chép vô điều kiện. Gỡ nó khỏi podspec là việc đúng tiếp theo,
+nhưng phải kèm một bản dựng iOS xanh mới giao được — chưa làm trong đợt này.
 
 ## Hai chỗ vẫn nằm ngoài thư mục này — nói rõ để không ai mất công tìm
 
@@ -142,8 +206,8 @@ thường, chỉ là không nhận tin đẩy khi app tắt. Xem
 thương hiệu trong app — những thứ đó là **hành vi**, không phải danh tính, và
 chúng nằm ở `src/config/instance.config.ts`. Thêm một app cần một entry ở đó nữa.
 
-Ranh giới: **thư mục này = app đó LÀ AI với hệ điều hành và cửa hàng.**
-`instance.config.ts` = **app đó TRÔNG NHƯ THẾ NÀO với người dùng.**
+Ranh giới: **thư mục này = app đó LÀ AI với hệ điều hành, cửa hàng, và hệ sinh
+thái.** `instance.config.ts` = **app đó TRÔNG NHƯ THẾ NÀO với người dùng.**
 
 `src/config/nativeIdentityParity.test.ts` canh hai bên khớp nhau — thư mục có mà
 bảng TS không có (hoặc ngược lại) là **đỏ**.

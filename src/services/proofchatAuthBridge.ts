@@ -8,12 +8,17 @@
  * Luồng: getSessionToken() (PhoenixKey, lưu sau QR-approve) → POST /auth/phoenixkey/login
  *        → lưu accessToken/refreshToken ProofChat.
  */
+import { currentUserDid } from '../sdk/phoenixKey';
+
 import { getSessionToken as getPhoenixSessionToken } from './phoenixKey-api';
 import { ensurePhoenixSession } from './phoenixSessionService';
 import {
   proofChatApi,
   isProofChatBackendEnabled,
   getAccessToken,
+  getTokenOwnerDid,
+  setTokenOwnerDid,
+  clearTokens,
   ProofChatApiError,
 } from './proofchat-api';
 
@@ -32,9 +37,22 @@ export const connectProofChat = async (): Promise<ConnectResult> => {
     return { status: 'disabled' };
   }
 
+  const did = await currentUserDid().catch(() => null);
+
   const existing = await getAccessToken();
   if (existing) {
-    return { status: 'connected', alreadyHadSession: true };
+    // "CÓ token" chưa đủ — phải là token CỦA NGƯỜI ĐANG DÙNG MÁY. Xem ghi chú ở
+    // `TOKEN_DID_KEY` (proofchat-api.ts): trên máy dùng chung, câu hỏi thiếu vế
+    // đó cho người sau chạy tiếp phiên chat của người trước.
+    const owner = await getTokenOwnerDid();
+    if (did && owner && owner === did) {
+      return { status: 'connected', alreadyHadSession: true };
+    }
+    // Không khớp, hoặc không rõ của ai → XOÁ rồi đăng nhập lại. Xoá chứ không chỉ
+    // bỏ qua: 42 phương thức trong `proofchat-api` đọc thẳng token từ kho qua
+    // interceptor, nên chừng nào token lạ còn nằm đó thì chừng đó còn đường cho
+    // nó ra khỏi máy.
+    await clearTokens();
   }
 
   let phoenixSession = await getPhoenixSessionToken();
@@ -49,6 +67,10 @@ export const connectProofChat = async (): Promise<ConnectResult> => {
 
   try {
     await proofChatApi.auth.phoenixKeyLogin(phoenixSession);
+    // Đóng dấu chủ NGAY sau khi có token. `did` null (chưa đọc được DID) thì
+    // KHÔNG đóng dấu bừa: lượt sau sẽ coi token là vô chủ và đăng nhập lại. Đăng
+    // nhập thừa một lượt rẻ hơn nhận nhầm token của người khác là của mình.
+    if (did) await setTokenOwnerDid(did);
     return { status: 'connected', alreadyHadSession: false };
   } catch (err) {
     const message =
@@ -57,9 +79,24 @@ export const connectProofChat = async (): Promise<ConnectResult> => {
   }
 };
 
-/** Ngắt phiên ProofChat (đăng xuất cục bộ). logout() tự xoá token ở finally. */
+/**
+ * Ngắt phiên ProofChat (đăng xuất cục bộ).
+ *
+ * ⛔ XOÁ TOKEN LÀ VIỆC KHÔNG ĐIỀU KIỆN. Bản trước thoát sớm khi cờ tính năng tắt
+ * (`if (!isProofChatBackendEnabled()) return;` đặt TRƯỚC mọi thứ), nên có một
+ * đường đi thật sự xảy ra: bật cờ → người A đăng nhập, token vào kho → tắt cờ →
+ * người A đăng xuất, `logoutUser` gọi hàm này và nó thoát ngay, token Ở LẠI →
+ * bật cờ lại → người B mở app và tiếp tục phiên chat của người A.
+ *
+ * Cờ tính năng quyết định có GỌI MÁY CHỦ hay không. Nó không được quyết định có
+ * dọn dữ liệu phiên trên máy này hay không.
+ */
 export const disconnectProofChat = async (): Promise<void> => {
-  if (!isProofChatBackendEnabled()) return;
-  // logout() đã clearTokens() trong finally dù mạng lỗi → không xoá lại ở đây.
-  await proofChatApi.auth.logout().catch(() => undefined);
+  if (isProofChatBackendEnabled()) {
+    // logout() đã clearTokens() trong finally dù mạng lỗi.
+    await proofChatApi.auth.logout().catch(() => undefined);
+  }
+  // Chạy cả khi cờ tắt, và cả khi logout() ở trên đã xoá — `clearTokens` là
+  // idempotent, và đây là đường duy nhất bảo đảm kho sạch sau khi đăng xuất.
+  await clearTokens().catch(() => undefined);
 };

@@ -13,7 +13,7 @@
 
 1. **Hào phòng thủ nằm ở DATA-FEDERATION, không ở UI hay app-factory.** INV-1 (1 DID = 1 nguồn dữ liệu xuyên mọi host) là thứ host walled-garden không thể clone. Mọi quyết định kỹ thuật phải bảo vệ điểm này trước.
 2. **Config là DECLARATIVE thuần, KHÔNG BAO GIỜ Turing-complete** (QĐ-1). Cần "logic riêng" = phải thành MODULE mới qua Registry (chịu gate bảo mật), KHÔNG lẻn vào tầng config/theme/billing.
-3. **Permissionless ĐĂNG KÝ ≠ permissionless TRUY CẬP** (QĐ-4). Đăng ký tự do; truy cập shared-data/wallet/biometric là default-deny, mở dần sau hậu kiểm + stake.
+3. **Permissionless ĐĂNG KÝ ≠ permissionless TRUY CẬP** (QĐ-4). Đăng ký tự do; truy cập shared-data/wallet/biometric là default-deny, mở dần sau hậu kiểm + stake. ⚠️ **Trạng thái ĐÍCH** — hôm nay `src/navigation/registry.ts` là sổ TĨNH, chưa có đường đăng ký nào để mà tự do hay không tự do.
 4. **Mọi host hostile-by-default** (QĐ-5). Credential/biometric/DID gốc KHÔNG BAO GIỜ vào WebView host ngoài.
 5. **B (nhúng host ngoài) = kênh ACQUISITION, không phải value-capture.** Value luôn ở fabric. Mỗi module phải sống được trên ≥3 kênh.
 
@@ -287,7 +287,7 @@ Một platform/module chỉ được coi là READY khi TẤT CẢ mục dưới 
   (đều chốt 2026-07-11, dạy sai so với canonical) vào `Legacy/`. Cất cây `MobileCore/` v0.2 (repo chủ
   đã lên v0.3, 0 importer trong `src/`) vào `Legacy/`. Sửa đường JWKS `/.well-known/jwks.json` →
   `/api/v1/.well-known/jwks.json` ở §5.1 (đường cũ trả 404 — đo 2026-08-05).
-- v0.2.1 (2026-07-12): Rà soát nhất quán — sửa Status header (v0.1→v0.2), path "Nguồn chốt" trỏ `Specs/`, gỡ ghi chú lỗi thời §7.1 (nav ĐÃ config-driven qua YC-3), cập nhật vị trí git token (§10.2, chuẩn mới `Projects/Agents/.env`), làm rõ CARP thanh toán = tầng mạng nội bộ (§10.4 nhất quán §4.2), thống nhất mô tả upstream (§10.1↔§11).
+- v0.2.1 (2026-07-12): Rà soát nhất quán — sửa Status header (v0.1→v0.2), path "Nguồn chốt" trỏ `Specs/`, gỡ ghi chú lỗi thời §7.1 (nav ĐÃ config-driven qua YC-3), cập nhật vị trí git token (§10.2, chuẩn mới `Agents/.env`), làm rõ CARP thanh toán = tầng mạng nội bộ (§10.4 nhất quán §4.2), thống nhất mô tả upstream (§10.1↔§11).
 - v0.2 (2026-07-12): Gộp về MỘT file duy nhất tại ROOT (`Integration-Standard.md`) — dời khỏi `Specs/` (references dùng tên "INTEGRATION-STANDARD §X" không đổi). Thêm §10 (vận hành: env/cờ/token UI) + §11 (danh mục platform) + thư mục `Integration/` chứa snapshot 5 nền tảng. Đây là nơi mọi agent/dev tham chiếu chuẩn tích hợp.
 - v0.1 (2026-06-17): Khởi tạo Integration Standard. Tổng hợp QĐ-1..QĐ-8 từ EXPANSION-ANALYSIS + INV-1/INV-2/INV-3. 8 mục: Manifest, Design token/brand, Identity/data, Config/billing, Embed-SDK, Registry/governance, Frontend consistency, Checklist.
 
@@ -295,7 +295,7 @@ Một platform/module chỉ được coi là READY khi TẤT CẢ mục dưới 
 
 ## 10. Vận hành tích hợp — Env · Feature Flag · Token UI (operational)
 
-> §0–§9 là CONTRACT trừu tượng (kiến trúc + bất biến). Mục này là quy ước VẬN HÀNH cụ thể để agent/dev cắm API THẬT của từng platform vào SuperApp. **App BUILD từ repo [`AladinContract/SuperApp`](https://github.com/AladinContract/SuperApp) — KHÔNG build từ repo platform.** Mọi giá trị SuperApp đọc đều nằm trong repo này.
+> §0–§9 là CONTRACT trừu tượng (kiến trúc + bất biến). Mục này là quy ước VẬN HÀNH cụ thể để agent/dev cắm API THẬT của từng platform vào SuperApp. **App BUILD từ repo [`MagicSuperApp/SuperApp`](https://github.com/MagicSuperApp/SuperApp) — KHÔNG build từ repo platform.** Mọi giá trị SuperApp đọc đều nằm trong repo này.
 
 ### 10.1 MỘT nguồn sự-thật — platform sở hữu, SuperApp THAM CHIẾU (Aladin chốt 2026-07-15)
 
@@ -315,7 +315,7 @@ Một platform/module chỉ được coi là READY khi TẤT CẢ mục dưới 
   thời vẫn là nguồn duy nhất — đánh dấu ⚠ ở §11. Khi họ publish xong → cất nốt bản ở đây.
 
 ### 10.2 Vị trí key / creds
-- **Git token (push/PR):** `.env` ở workspace cha NGOÀI repo (2026-07-12: chuẩn mới `Projects/Agents/.env`, cũ `Projects/.env`), biến `GH_TOKEN_<ACCOUNT>`. KHÔNG commit, KHÔNG dán giá trị, KHÔNG nhúng trong URL remote.
+- **Git token (push/PR):** `.env` ở workspace cha NGOÀI repo (2026-07-12: chuẩn mới `Agents/.env`, cũ `Projects/.env`), biến `GH_TOKEN_<ACCOUNT>`. KHÔNG commit, KHÔNG dán giá trị, KHÔNG nhúng trong URL remote.
 - **API host/key platform:** `.env` của SuperApp (gitignored; mẫu [`.env.example`](.env.example)). Quy ước biến: `<PLATFORM>_API_URL` · `<PLATFORM>_WS_URL`+`_WS_PATH` · `<PLATFORM>_API_KEY` · `<PLATFORM>_BACKEND_ENABLED`.
 - Platform dùng DID/session (OriLife/AladinWork/ProofChat) → KHÔNG static token; auth = PhoenixKey login → Bearer TTL (§3.1, §5.1).
 - **Token nhúng trong URL remote git = rò rỉ** — xoay vòng ngay, sửa `git remote set-url`.
@@ -355,8 +355,8 @@ Một platform/module chỉ được coi là READY khi TẤT CẢ mục dưới 
 
 | Platform | main HEAD | Base URL | Auth | Readiness |
 |---|---|---|---|---|
-| OriLife | `6e8210b` (07-08) | `api.orilife.io` | DID P-256, token 12h | 🟡 prod drift + B1/B2/B3 (issue [#20](https://github.com/AladinContract/SuperApp/issues/20)) |
-| PhoenixKey | `6c45962` (06-12) | `api.phoenixkey.me` | token-exchange ServiceDID + JWKS | Ví Standard 🟢 (đã nối, [#42](https://github.com/AladinContract/SuperApp/pull/42)) · Mint 🔴 |
+| OriLife | `6e8210b` (07-08) | `api.orilife.io` | DID P-256, token 12h | 🟡 prod drift + B1/B2/B3 (issue [#20](https://github.com/MagicSuperApp/SuperApp/issues/20)) |
+| PhoenixKey | `6c45962` (06-12) | `api.phoenixkey.me` | token-exchange ServiceDID + JWKS | Ví Standard 🟢 (đã nối, [#42](https://github.com/MagicSuperApp/SuperApp/pull/42)) · Mint 🔴 |
 | ProofChat | BE `52a41db` (07-04) | `api.proofchat.me` | login → accessToken | 🔴 502 (BE#58 chưa merge) |
 | AladinWork | `8040617` (07-07) v0.2.0 | `<host>:7040` chưa có | challenge/verify P-256 → session | 🟡 code sẵn, chưa host |
 | LampNet | hivemind `506c611` (07-11) | `lampnet.cloud` | join public · upload Bearer | 🟡 join/compute chạy · 🔴 reward dry-run |

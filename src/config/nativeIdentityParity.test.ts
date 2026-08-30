@@ -415,3 +415,89 @@ describe('khoá ký — mỗi app một bộ, không dùng chung', () => {
     }
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FIREBASE iOS — không app nào khởi Firebase bằng cấu hình của app khác.
+//
+// Đây là nửa iOS của việc đã làm bên Android. Android tắt bước Firebase cho
+// flavor không có `google-services.json` của chính nó. iOS KHÔNG có cơ chế theo
+// flavor tương đương: `ScannerModule.podspec` khai `GoogleService-Info.plist`
+// trong `s.resources`, mà `s.resources` chép vào gói của MỌI bản dựng.
+//
+// Nên iOS chặn ở tầng CHẠY: so mã gói trong tệp cấu hình với mã gói thật. Lệch
+// nghĩa là tệp thuộc app khác ⇒ không khởi. Cách đó bịt mọi đường tệp lọt vào
+// gói, kể cả đường chưa ai nghĩ ra.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Firebase iOS — không khởi bằng cấu hình của app khác', () => {
+  const APPDELEGATE = doc('ios/aladin_mobile_fe/AppDelegate.swift');
+
+  it('AppDelegate KHÔNG gọi thẳng FirebaseApp.configure', () => {
+    // Gọi thẳng là bỏ qua cổng. Đo trên mã chạy để không bắt nhầm chú thích.
+    const ma = APPDELEGATE.split('\n')
+      .filter((l) => !l.trim().startsWith('//'))
+      .join('\n');
+    const goiThang = ma.match(/FirebaseApp\.configure\(/g) ?? [];
+    // Đúng MỘT chỗ, và chỗ đó phải nằm trong hàm cổng.
+    expect(goiThang.length).toBe(1);
+    const trongCong = ma.slice(ma.indexOf('func configureFirebaseIfOwned'));
+    expect(trongCong).toContain('FirebaseApp.configure(');
+  });
+
+  it('cổng so mã gói của tệp cấu hình với mã gói THẬT', () => {
+    expect(APPDELEGATE).toContain('func configureFirebaseIfOwned');
+    expect(APPDELEGATE).toContain('Bundle.main.bundleIdentifier');
+    expect(APPDELEGATE).toMatch(/guard\s+cauHinh\.bundleID == maGoiThat else/);
+  });
+
+  it('lệch mã gói thì DỪNG, không phải chỉ ghi nhật ký rồi chạy tiếp', () => {
+    // Cảnh báo rồi chạy tiếp là đúng khuôn hỏng vừa gỡ: trông như đã canh, thật
+    // ra dữ liệu vẫn chảy sang dự án của pháp nhân khác.
+    const i = APPDELEGATE.indexOf('guard cauHinh.bundleID == maGoiThat else');
+    const j = APPDELEGATE.indexOf('FirebaseApp.configure(', i);
+    expect(i).toBeGreaterThan(-1);
+    expect(j).toBeGreaterThan(i);
+    expect(APPDELEGATE.slice(i, j)).toContain('return');
+  });
+
+  it('KHÔNG còn tệp khởi Firebase thứ hai không được biên dịch', () => {
+    // `FirebaseSetup.swift` từng tồn tại với một bản `FirebaseApp.configure`
+    // riêng, KHÔNG có trong `project.pbxproj` — tức chưa bao giờ được biên dịch.
+    // Hai lượt rà soát độc lập vẫn trích nó như một đường khởi Firebase đang
+    // chạy. Mã chết đọc giống hệt mã sống; giữ nó là giữ một đường dẫn sai cho
+    // mọi người đọc sau.
+    expect(existsSync(join(GOC, 'ios/aladin_mobile_fe/FirebaseSetup.swift'))).toBe(false);
+  });
+
+  it('mọi tệp Swift khởi Firebase đều PHẢI có trong project.pbxproj', () => {
+    // Bài kiểm tổng quát cho bài học trên: tệp Swift nào gọi
+    // `FirebaseApp.configure` mà không có trong dự án Xcode thì nó là mã chết
+    // đội lốt mã sống. Bắt mọi tệp, kể cả tệp chưa ai viết.
+    const PBX = doc('ios/aladin_mobile_fe.xcodeproj/project.pbxproj');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { readdirSync, statSync } = require('fs');
+    const quet = (d: string): string[] =>
+      readdirSync(d).flatMap((n: string) => {
+        const p = join(d, n);
+        return statSync(p).isDirectory() ? quet(p) : n.endsWith('.swift') ? [p] : [];
+      });
+    const chet: string[] = [];
+    for (const tep of quet(join(GOC, 'ios/aladin_mobile_fe'))) {
+      if (!readFileSync(tep, 'utf8').includes('FirebaseApp.configure(')) continue;
+      const ten = tep.split('/').pop()!;
+      if (!PBX.includes(ten)) chet.push(ten);
+    }
+    expect(chet).toEqual([]);
+  });
+
+  it('tệp Firebase đang có trong kho đúng là của Aladin, không phải app khác', () => {
+    // Đo để lời tuyên ở chú thích không trôi: tệp trong kho hôm nay khai mã gói
+    // của Aladin. Ngày ai đó bỏ tệp của app khác vào đây, bài này gọi tên ra.
+    for (const p of [
+      'ios/GoogleService-Info.plist',
+      'ios/LocalPods/ScannerModule/Resources/GoogleService-Info.plist',
+    ]) {
+      if (!existsSync(join(GOC, p))) continue;
+      expect(doc(p)).toContain('com.aladin.orilife');
+    }
+  });
+});

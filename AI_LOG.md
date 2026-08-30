@@ -1,3 +1,107 @@
+## Mỗi app ký nhận luật SuperApp, và có cổng nổ khi không ký
+
+### Cái thiếu, và vì sao nó không phải chuyện giấy tờ
+Kho này dựng nhiều app từ một nền mã. Câu "mỗi app phải có danh tính riêng và tuân luật SuperApp" cho tới nay **không có chỗ nào cưỡng chế**: `instances/<mã>/instance.json` có bốn khoá — `id`, `displayName`, `android`, `ios` — không DID, không neo vào luật nào. Thêm một thư mục là thành một app.
+
+### Luật viết ra, và nó tự nói chỗ chưa canh được
+`instances/LUAT-SUPERAPP.md`, bảy mục, mỗi mục ghi rõ có cổng thật hay chưa. §6 (khoá ký) và §7 (chia phần tiền giữa các app) tự khai **CHƯA CƯỠNG CHẾ**, và có bài kiểm giữ nguyên chữ đó — xoá chữ mà không dựng cổng là đỏ. Không có phép này thì một tệp luật dần đọc như thể cả bảy mục đã được canh.
+
+### Cổng ở hai chỗ, hai lý do khác nhau
+
+| chỗ | bắt được cái mà chỗ kia không bắt |
+|---|---|
+| `android/app/build.gradle` | bản dựng trên máy cá nhân, không qua CI |
+| `src/config/instanceRules.test.ts` | đỏ ngay trên máy không có Android SDK, không phải chờ 20 phút |
+
+Cổng đòi: khối `superapp` bắt buộc · `rulesVersion` khớp số ở đầu tệp luật · `phoenixDid` không `null` với app mới · hai app không dùng chung DID.
+
+**`rulesVersion` là chỗ đáng đọc kỹ.** Sửa luật ⇒ nâng số ⇒ **mọi app đỏ** cho tới khi có người đọc luật mới rồi ký nhận trong tệp của app mình. Cố ý làm phiền: không có bước này thì một ràng buộc mới thêm vào tài liệu sẽ đúng với app viết SAU nó và **im lặng sai** với mọi app viết TRƯỚC.
+
+### Hai app hiện có được miễn TẠM — và cái miễn đó là nợ
+`aladin` và `checkfarm` để `phoenixDid: null`, vì chưa có đường cấp DID cho một *instance* (khác DID của **người dùng**, thứ đã có sẵn). Tên hai app ghi thẳng trong cổng kèm ngày và lý do, và một bài kiểm chặn danh sách đó **dài thêm** — nó chỉ được rút ngắn. Cách khác là bắt cả hai có DID ngay, và hôm nay chỉ làm được bằng cách bịa một chuỗi trông giống DID: cổng xanh mà không có gì đứng sau.
+
+### Kiểm chứng bằng đột biến — 4/4
+thêm app thứ ba không DID · nâng phiên bản luật · hai app trùng DID · gỡ khối kiểm khỏi gradle.
+
+⚠ Cổng gradle **chưa chạy được ở máy soạn** (không có Java). Bài kiểm JS canh phần văn bản của cổng; việc gradle cấu hình trót lọt thì lượt CI đầu tiên mới nói được.
+
+### README viết lại — bản cũ sai ở đúng chỗ người mới sẽ tắc
+- `src/config/instances/myapp.config.ts` — **đường không tồn tại**;
+- `moduleList` khai theo từng app — trường đã gỡ, tập module nay là hằng dẫn xuất từ `moduleIds.ts`;
+- nhánh `dev` — **không tồn tại**, nhánh tích hợp là `develop`;
+- "INV-1 = mỗi module giữ dữ liệu riêng" — trái với `Integration-Standard.md:119` ("store DID là single source of truth; mọi host là CLIENT");
+- không nói rõ Codemagic **chỉ dựng Aladin** (cả hai luồng Android khai `ANDROID_FLAVOR: aladin`).
+
+Kèm `src/config/docLinks.test.ts`: quét mọi `.md` ở gốc kho + `instances/`, đỏ khi một liên kết tương đối trỏ vào tệp không có. Một liên kết chết không làm bản dựng đỏ, không làm bài kiểm nào đỏ, và nó sống được hàng tháng — đúng lớp lỗi vừa nêu.
+
+### Rà tiếp
+Tên kho cũ `AladinContract/SuperApp` còn ở 6 chỗ (gồm một câu hướng dẫn trong `android-aab.yml` bảo người đọc chạy `gh api` vào kho sai) → `MagicSuperApp/SuperApp`. Mục "PR đang mở" của `VersionChecklist.md` còn ba PR đã gộp từ tháng 7 → thay bằng năm PR mở thật. `CONTRIBUTING.md` đo lại thì đúng nguyên.
+
+---
+
+## Chat nối API ProofChat thật, gỡ hết dữ-liệu mẫu, dựng lại giao-diện theo Fluent
+
+### Cái đã gỡ, và vì sao nó nguy chứ không chỉ thừa
+`store/chatSlice.ts` cũ nạp `MOCK_ROOMS` / `MOCK_MESSAGES` / `MOCK_INVITATIONS` thẳng vào `initialState`. Hệ quả không phải "thiếu dữ liệu" mà là **dữ liệu bịa giả làm dữ liệu thật**: máy chủ chưa mở, hoặc gọi hỏng, thì màn chat vẫn vẽ đủ 5 phòng, đủ tin nhắn, đủ số chưa-đọc, đủ huy hiệu "Đã xác thực". Người dùng nhắn vào đó rồi ngồi đợi trả lời.
+
+Gỡ hẳn, cùng những thứ chỉ tồn tại để nuôi nó:
+
+| Tệp bỏ | Nó dựng ra cái gì |
+|---|---|
+| `features/chat/data/mock.ts` (370 dòng) | 5 phòng, 13 tin, 3 lời mời, 3 mã phòng "công khai", ví + 5 giao dịch |
+| `features/proof/lifecycle.ts` | 2 "đường ống bằng-chứng" chạy bằng `setTimeout` |
+| `features/proof/components/ProofPipelineIndicator.tsx` | hoạt-cảnh "đang mã hoá → đang ký → đang gửi" |
+| `features/proof/components/VerificationBadge.tsx` | huy hiệu "Đã xác thực" đeo dưới **mọi** tin |
+| `features/escrow/{types.ts,components/EscrowStatusCard.tsx}` | thẻ ký-quỹ kèm số tiền, trong một module manifest ghi rõ "CHAT KHÔNG escrow/ví" |
+| `features/wallet/{types.ts,components/IdentityCard.tsx}` | thẻ danh-tính + `TOKEN_SYMBOL`, không màn nào còn dùng |
+| `features/chat/components/JobRoomItem.tsx` | dòng danh sách bày `jobTitle`/`escrow` — máy chủ không cấp trường nào |
+
+Trong `ChatScreen.tsx`, `handleDecrypt` chọn nội dung "giải mã được" **theo id tin**: `m.id === 'm6'` → *"Em vừa kiểm tra lại — model anh sửa được…"*. Đó là một câu viết cứng trong mã nguồn, hiện ra sau một hoạt-cảnh bốn chặng có vẻ như đang làm mật mã.
+
+### Bề mặt API đã nối (`services/proofchat-api.ts`, +435 dòng)
+Trước bản này client chỉ có `auth` + `conversations.list/get/create/getMessages` + `users.search` + `mls`. Thêm, theo `docs/PROOFCHAT-APIS.md`:
+
+* **conversations** — `update` · `addParticipants` · `updateParticipant` · `removeParticipant` · `join` · `leave` · `listPins` · `pin` · `unpin`
+* **memberRequests** — `pending` · `accept` · `decline` · `listForConversation` · `invite` · `myStatus` · `approve` · `reject` · `cancel`
+* **messages** — `react` · `reactions` · `unreact` · `remove` · `save` · `unsave` · `saved`
+* **readSignals** — `send` (Trackmess `/trackmess/signals`)
+* **uploads** — `image` (multipart `/support/uploads`) + `absoluteUrl`
+
+Điểm phân vai giữ nguyên và được ghi lại ở đầu tệp: **REST chỉ chở phần vỏ và metadata** (danh sách phòng, cảm-xúc, ghim, đã-xem); **nội dung tin đi đường riêng** qua `proofchatService` (mã hoá MLS + socket). Nhờ vậy cảm-xúc/ghim/lưu dùng được ngay cả khi máy này chưa mở được nội dung — đó cũng là lý do có trạng-thái tin `'locked'`.
+
+### Ai quyết định — đã trả về đúng chỗ
+`JoinConversationModal` cũ giữ **trong máy** một danh sách ba mã phòng "công khai" (bịa trong mock) rồi tự đoán: mã có trong danh sách → báo *"Đã tham gia phòng"*, không có → báo *"Đã gửi yêu cầu"*. Cả hai câu đều có thể sai vì máy chủ mới biết phòng mở hay kín. Nay app gửi mã lên `POST /conversations/:id/join` và **đọc** `action`: `JOINED` → vào thẳng; khác → đang chờ duyệt.
+
+Cùng lớp lỗi, cùng cách sửa: lời mời nay là `GET /member-requests/pending` thật, nhận/từ chối gọi `accept`/`decline` thật — trước đó chỉ lật một cờ trong máy, bên kia không hề hay biết.
+
+### Giao-diện: Fluent, không thêm phụ-thuộc native
+`theme/fluent.ts` + `shared/components/Fluent.tsx` dựng bốn lớp đúng thứ tự Fluent: **Mica** (nền màn, hai vệt loang `RadialGradient` qua `react-native-svg` đã có sẵn), **Acrylic** ba độ dày (thanh đầu màn · pill · hộp thoại), **Layer** (thẻ đặc), **Stroke** (viền tóc bắt sáng), cộng `ELEVATION`/`RADIUS`/`SPACE`/`MOTION`.
+
+⚠ **Blur ở đây là blur giả.** Blur GPU thật trên React Native cần `@react-native-community/blur` hoặc `expo-blur` — kho chưa có, thêm vào là buộc dựng lại cả hai nền. Nên lớp vật-liệu dựng bằng nền chuyển sắc + phủ trắng bán trong + viền sáng. Ghi rõ trong `fluent.ts`: khi nào có mô-đun native thì chỉ cần bọc `ACRYLIC.*` bằng `<BlurView>`, bảng màu đã tính sẵn cho trường hợp đó.
+
+Màu thô **không** nằm trong module: theo YC-1, giá trị sống ở `theme/tokens.ts` (`CHAT_SURFACE_TOKENS`, `AVATAR_TONE_TOKENS`) và `modules/chat/theme/fluent.ts` chỉ ghép chúng với brand `chat`. `npx eslint src/modules/chat` nay còn **0 lỗi, 1 cảnh báo** (`>>>` trong hàm băm tên → màu avatar).
+
+### Chữ trên màn hình
+Bỏ khỏi giao-diện: *"End-to-end · Proof System"*, *"Đã xác thực / Đang xác thực"*, *"Tin nhắn đã mã hóa — chạm để giải mã"*, địa chỉ ví rút gọn `0x7a3f…e3f4` trên đầu phòng, `DIRECT/GROUP/THREAD/JOB_NEGOTIATION` in thẳng ra cho người đọc.
+
+Nguyên tắc thay thế: **im lặng nghĩa là ổn**. Tin bình thường không đeo huy hiệu nào; chỉ khi nội dung không khớp chữ ký người gửi mới lên tiếng, và lên tiếng bằng câu người ta làm được gì với nó — *"Nội dung không khớp với người gửi. Đừng làm theo tin này."* Dòng phụ trên đầu phòng đổi từ chuỗi băm sang thứ dùng được: bao nhiêu người trong phòng, hoặc ai đang gõ.
+
+### Hai lỗi thứ tự đã chặn trước khi nó thành lỗi báo cáo
+1. **Danh tính đến sau danh sách.** `iAmAdmin` và tên phòng 1-1 đều tính theo "tôi là ai". Tải danh sách trước khi `getDid()` trả lời thì mọi phòng nạp lúc đó **vĩnh viễn** thiếu nút quản lý. Chặn bằng `identityResolved` — hỏi danh tính xong mới tải; không có phiên vẫn mở khoá (xem được phòng, chỉ không nhận ra mình trong đó). `setMeId` đồng thời tính lại `iAmAdmin` cho phòng đã nạp.
+2. **`onTyping` đăng ký vào socket chưa tồn tại.** `chatSocket.onTyping` gọi `socket?.on(...)` — socket còn `null` thì nó **im lặng không làm gì**, chỉ báo "đang nhập" chết mà không có một dòng lỗi. Nay gắn sau khi `initProofChat()` đã `resolve`.
+
+Cùng tinh thần: `loadMessages.fulfilled` giữ lại nội dung đã mở được ở lượt trước. REST chỉ trả phần vỏ, ghi đè thẳng thì cả phòng "đóng" lại mỗi lần mở màn.
+
+### Còn thiếu, nói thẳng
+* **Ảnh đính kèm chưa nối vào phòng chat.** `uploads.image` đã có ở tầng API, nhưng `CreateMessageDto` phía máy chủ **không có trường đính kèm**, và `/support/uploads` theo tài liệu là đường của support chat. Chưa có khuôn dạng tin mang tệp thì không dựng nút — `ChatInput` ẩn hẳn nút kẹp tệp khi không truyền `onPickImage`, chứ không để một nút bấm-không-ra-gì.
+* **`GET /users/search` có thể vẫn tắt phía máy chủ.** `MemberPicker` phân biệt rõ hai câu: 404 → *"Máy chủ chưa mở phần tìm người. Chưa tra được — không phải là không có ai."*, khác 404 → *"Chưa tra cứu được lúc này."* Nuốt lỗi thành danh sách rỗng là bắt người dùng gõ lại mãi.
+* **Poll và tin hẹn giờ** (`/polls/*`, `/conversations/:id/scheduled`) có trong tài liệu nhưng chưa nối — chưa có chỗ nào trong luồng hiện tại cần tới.
+
+### Đo
+`npx tsc --noEmit` sạch · `npx jest` **115 suite / 1692 test** đều xanh · `npx eslint src/modules/chat` 0 lỗi. 18 tệp đổi, **+3013 / −3136** dòng.
+
+---
+
 ## Lát `x86` hỏng vẫn vào AAB — `abiFilters` KHÔNG cắt được nó
 
 ### Đo được, không suy

@@ -11,6 +11,8 @@ import {
   NAV_TOKENS,
   ACTION_TOKENS,
   HEADER_TOKENS,
+  CHAT_SURFACE_TOKENS,
+  AVATAR_TONE_TOKENS,
   withAlpha,
 } from './tokens';
 import type { ModuleTheme, BrandKey } from './tokens';
@@ -94,3 +96,8 @@ export const WORK_BG_SOFT = '#E9F4ED';
 // navigation/index.tsx + AppHeader tiêu thụ THAY cho hex hardcode.
 export const ACTION_COLORS = ACTION_TOKENS;
 export const HEADER_COLORS = HEADER_TOKENS;
+
+// Bề mặt Fluent của module Trò chuyện + bảng màu ảnh đại diện. Giá trị thô sống
+// ở tokens.ts (YC-1); `modules/chat/theme/fluent.ts` ghép chúng với brand `chat`.
+export const CHAT_SURFACE = CHAT_SURFACE_TOKENS;
+export const AVATAR_TONES = AVATAR_TONE_TOKENS;

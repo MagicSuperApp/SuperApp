@@ -1,8 +1,10 @@
 # SuperApp — Version Checklist (đường tới bản Production)
 
 > Mục tiêu: liệt kê MỌI thứ cần đạt để build production, thấy rõ còn gì phải hoàn thành.
-> App build từ `AladinContract/SuperApp` (Aladin = 1 instance của base SuperApp).
-> Cập nhật: 2026-07-13. Đây là tài liệu SỐNG — mỗi PR/quyết định cập nhật vào đây.
+> App build từ `MagicSuperApp/SuperApp`. Kho này nay dựng ra **hai** app từ cùng nền mã —
+> Aladin (việc làm) và CheckFarm (ngành nông). Xem `instances/README.md` và
+> `instances/LUAT-SUPERAPP.md`.
+> Cập nhật: 2026-08-30. Đây là tài liệu SỐNG — mỗi PR/quyết định cập nhật vào đây.
 
 **Ký hiệu:** ✅ xong (đã verify) · 🟡 đang làm/một phần · ⬜ chưa làm · ⛔ chặn (chờ blocker) · 🔮 tương lai (chưa cần cho v1) · ⚠ cần xác nhận
 **Chủ:** UI = Claude (thiết kế) + Tùng (frontend) · BE-OriLife = Thư/OriLife · PhoenixKey = Long/PhoenixKey · Wakeme = Wakeme agent
@@ -86,7 +88,7 @@
 ## 9. Bảo mật & Riêng tư
 | # | Hạng mục | TT | Ghi chú |
 |---|---|---|---|
-| 9.1 | Không hardcode secret/PAT trong repo | ✅ | đã gỡ PAT DucTiger khỏi remote Pinmez; secret ở `/Projects/Agents/.env` |
+| 9.1 | Không hardcode secret/PAT trong repo | ✅ | đã gỡ PAT DucTiger khỏi remote Pinmez; secret ở `/Agents/.env` |
 | 9.2 | `.gitignore` chặn `node_modules`/`.env`/`*.key` | ✅ | có |
 | 9.3 | Whitelist deep-link (traceScan) hẹp, chống điều hướng bừa | ✅ | thu về `*Detail` |
 | 9.4 | Seed/khoá ở Keystore native (không merge, INV-3) | ✅ | theo manifest |
@@ -98,11 +100,17 @@
 - [ ] VeData vs PhoenixKey: đích dữ liệu Capture (tài sản ↔ người) — chốt ranh giới.
 
 ## 11. PR đang mở (theo dõi)
-| PR | Nội dung | TT | Chờ |
-|---|---|---|---|
-| #44 | B2 sync + allow_enroll_new + bỏ ADA + fix CI | OPEN/CLEAN | anh merge |
-| #45 | Nav frame + SG9 + Tùng thi công | OPEN | thu whitelist ✅ done · Tùng merge |
-| #46 | Lens 0.5x + flash (Thư) | OPEN/UNSTABLE | CI đỏ do quota (không phải code); chạy lại |
+
+> Đo lại 2026-08-30. Ba PR ghi ở bảng cũ (#44, #45, #46) **đã gộp hết** — bảng đó đứng
+> yên trong lúc kho chạy tiếp, nên đọc nó là đọc trạng thái của tháng 7.
+
+| PR | Nội dung | Chờ |
+|---|---|---|
+| [#219](https://github.com/MagicSuperApp/SuperApp/pull/219) | nhắc lập người khôi phục cho ai đã bật khoá | tạm dừng |
+| [#229](https://github.com/MagicSuperApp/SuperApp/pull/229) | mỗi app một khoá ký riêng | chờ đổi tên secret ([#232](https://github.com/MagicSuperApp/SuperApp/issues/232)) |
+| [#230](https://github.com/MagicSuperApp/SuperApp/pull/230) | mỗi app tự xưng tên và tự khai pháp nhân | soát |
+| [#231](https://github.com/MagicSuperApp/SuperApp/pull/231) | app không khởi Firebase bằng cấu hình của app khác | soát |
+| [#239](https://github.com/MagicSuperApp/SuperApp/pull/239) | token phiên ProofChat mang danh người đang dùng máy | soát |
 
 ---
 ### Định nghĩa "sẵn sàng Production v1" (Definition of Done tối thiểu)

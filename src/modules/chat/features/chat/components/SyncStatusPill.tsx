@@ -1,10 +1,14 @@
 // modules/chat/features/chat/components/SyncStatusPill.tsx
+//
+// Một viên nhỏ báo tình trạng kết nối. Chỉ hiện khi CÓ CHUYỆN — mất mạng, đang
+// đồng bộ, hoặc còn tin nằm chờ. Kết nối bình thường thì không vẽ gì cả: một viên
+// xanh "Đã kết nối" đứng suốt ngày trên đầu phòng chat chỉ tốn chỗ và tốn mắt.
 
 import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Animated } from 'react-native';
+import { Text, StyleSheet, Animated } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { withAlpha } from '../../../../../shared/theme';
-import { CHAT_THEME } from '../../../theme/colors';
+import { NEUTRAL, withAlpha } from '../../../../../shared/theme';
+import { MOTION, RADIUS, SPACE } from '../../../theme/fluent';
 import type { SyncState } from '../types';
 
 interface Props {
@@ -12,77 +16,56 @@ interface Props {
 }
 
 const SyncStatusPill: React.FC<Props> = ({ state }) => {
-  const spin = useRef(new Animated.Value(0)).current;
+  const fade = useRef(new Animated.Value(0)).current;
+
+  const offline = !state.online;
+  const queued = state.queuedCount > 0;
+  const show = offline || state.syncing || queued;
 
   useEffect(() => {
-    if (!state.syncing) {
-      spin.stopAnimation();
-      spin.setValue(0);
-      return;
-    }
-    // Nhánh `else` dừng được vòng lặp khi cờ đổi, nhưng KHÔNG dừng khi cả thẻ bị gỡ
-    // trong lúc đang đồng bộ — effect không chạy lại, chỉ hàm dọn chạy.
-    const loop = Animated.loop(
-      Animated.timing(spin, {
-        toValue: 1,
-        duration: 1200,
-        useNativeDriver: true,
-      }),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [state.syncing]);
+    Animated.timing(fade, {
+      toValue: show ? 1 : 0,
+      duration: MOTION.normal,
+      useNativeDriver: true,
+    }).start();
+  }, [show, fade]);
 
-  if (!state.online) {
-    return (
-      <View style={[styles.wrap, styles.offline]}>
-        <Icon name="cloud-off-outline" size={11} color="#C0533A" />
-        <Text style={[styles.text, { color: '#C0533A' }]}>
-          Queued (offline){state.queuedCount > 0 ? ` · ${state.queuedCount}` : ''}
-        </Text>
-      </View>
-    );
-  }
+  if (!show) return null;
 
-  if (state.syncing) {
-    const rotate = spin.interpolate({
-      inputRange: [0, 1],
-      outputRange: ['0deg', '360deg'],
-    });
-    return (
-      <View style={[styles.wrap, styles.syncing]}>
-        <Animated.View style={{ transform: [{ rotate }] }}>
-          <Icon name="sync" size={11} color={CHAT_THEME.primary} />
-        </Animated.View>
-        <Text style={[styles.text, { color: CHAT_THEME.primary }]}>
-          Syncing…
-        </Text>
-      </View>
-    );
-  }
+  const cfg = offline
+    ? { icon: 'wifi-off', tint: NEUTRAL.warning, label: 'Đang ngoại tuyến — tin sẽ gửi khi có mạng' }
+    : queued
+    ? {
+        icon: 'clock-outline',
+        tint: NEUTRAL.warning,
+        label: `${state.queuedCount} tin đang chờ gửi`,
+      }
+    : { icon: 'sync', tint: NEUTRAL.info, label: 'Đang cập nhật…' };
 
   return (
-    <View style={[styles.wrap, styles.ok]}>
-      <Icon name="cloud-check-outline" size={11} color="#3D7A5E" />
-      <Text style={[styles.text, { color: '#3D7A5E' }]}>Sent</Text>
-    </View>
+    <Animated.View
+      style={[styles.pill, { opacity: fade, backgroundColor: withAlpha(cfg.tint, 0.12) }]}
+    >
+      <Icon name={cfg.icon} size={12} color={cfg.tint} />
+      <Text style={[styles.text, { color: cfg.tint }]} numberOfLines={1}>
+        {cfg.label}
+      </Text>
+    </Animated.View>
   );
 };
 
 const styles = StyleSheet.create({
-  wrap: {
+  pill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 10,
-    alignSelf: 'flex-start',
+    alignSelf: 'center',
+    marginVertical: SPACE.xs + 2,
+    paddingHorizontal: SPACE.md,
+    paddingVertical: 5,
+    borderRadius: RADIUS.pill,
   },
-  ok: { backgroundColor: withAlpha('#3D7A5E', 0.10) },
-  offline: { backgroundColor: withAlpha('#C0533A', 0.10) },
-  syncing: { backgroundColor: withAlpha(CHAT_THEME.primary, 0.10) },
-  text: { fontSize: 10, fontWeight: '700', letterSpacing: 0.4 },
+  text: { fontSize: 11.5, fontWeight: '600' },
 });
 
 export default SyncStatusPill;

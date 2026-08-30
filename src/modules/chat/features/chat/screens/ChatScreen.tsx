@@ -1,294 +1,417 @@
 // modules/chat/features/chat/screens/ChatScreen.tsx
 //
-// Application Layer: chat UI cho 1 phòng (1-1 only).
-// Khi user gửi: dispatch theo OUTGOING_PIPELINE → UI tự render stage.
-// Khi user tap decrypt: chạy INCOMING_PIPELINE → kết thúc bằng decryptMessage.
+// Một phòng chat.
+//
+// ĐÃ GỠ so với bản trước — tất cả đều là dàn-dựng, không phải trạng-thái thật:
+//   · `OUTGOING_PIPELINE` / `INCOMING_PIPELINE` chạy bằng setTimeout để tin của
+//     mình lần lượt "đang mã hoá → đang ký → đang gửi"
+//   · `handleDecrypt` — chạm vào tin thì hiện ra một câu viết cứng trong mã nguồn,
+//     chọn theo id tin ('m6' → "Em vừa kiểm tra lại…")
+//   · dải "End-to-end · Proof System" đứng thường trực trên đầu phòng
+//   · thẻ ký-quỹ + nút mở màn ký-quỹ (chat không giữ tiền — xem module.manifest.json)
+//
+// Máy chủ dùng ở màn này:
+//   GET  /conversations/:id/messages    tin cũ (phần vỏ)
+//   GET  /conversations/:id             thành viên + quyền quản
+//   GET  /conversations/:id/pins        tin đã ghim
+//   POST /trackmess/signals             báo đã-xem
+//   cảm-xúc · ghim · lưu · thu hồi      qua `messages.*` / `conversations.*`
+// Nội dung tin đi qua `proofchatService` (mã hoá + socket), không qua REST.
 
-import React, { useEffect, useMemo, useRef } from 'react';
-import {
-  View, Text, StyleSheet, FlatList, StatusBar, Alert,
-} from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { View, Text, StyleSheet, FlatList, StatusBar, Pressable } from 'react-native';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import Clipboard from '@react-native-clipboard/clipboard';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { useSelector, useDispatch, useStore } from 'react-redux';
-import { RootState } from '../../../../../store';
-import { NEUTRAL } from '../../../../../shared/theme';
+import { useSelector, useDispatch } from 'react-redux';
+import Toast from 'react-native-toast-message';
+import type { RootState, AppDispatch } from '../../../../../store';
+import { NEUTRAL, withAlpha } from '../../../../../shared/theme';
 import { CHAT_THEME } from '../../../theme/colors';
+import { ACRYLIC, RADIUS, SPACE, STROKE } from '../../../theme/fluent';
+import { MicaBackdrop } from '../../../shared/components/Fluent';
+import StateView from '../../../../../components/state/StateView';
 import ChatHeader from '../components/ChatHeader';
 import MessageBubble from '../components/MessageBubble';
 import ChatInput from '../components/ChatInput';
 import SyncStatusPill from '../components/SyncStatusPill';
-import EscrowStatusCard from '../../escrow/components/EscrowStatusCard';
-import StateView from '../../../../../components/state/StateView';
-import type { AppDispatch } from '../../../../../store';
+import MessageActionsSheet from '../components/MessageActionsSheet';
+import ConversationInfoSheet from '../components/ConversationInfoSheet';
 import {
-  sendMessage,
-  setMessageStage,
-  decryptMessage,
-  markRoomRead,
-  loadRoomMessages,
+  deleteMessage,
+  inviteMember,
+  leaveConversation,
+  loadConversationDetail,
+  loadJoinRequests,
+  loadMessages,
+  loadPins,
+  approveJoinRequest,
+  rejectJoinRequest,
+  markConversationRead,
+  removeMember,
+  renameConversation,
+  reportSeen,
+  togglePin,
+  toggleReaction,
+  toggleSave,
 } from '../../../store/chatSlice';
-import {
-  OUTGOING_PIPELINE,
-  INCOMING_PIPELINE,
-  finalStatusFor,
-} from '../../proof/lifecycle';
-import type { Message, ConversationType } from '../types';
+import type { Message } from '../types';
 import { isProofChatBackendEnabled } from '../../../../../services/proofchat-api';
 import { sendText, syncConversation } from '../../../../../services/proofchatService';
-import { showError } from '../../../../../utils/alert';
+import chatSocket from '../../../../../services/chatSocket';
+import { showWarning } from '../../../../../utils/alert';
 
 const ChatScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const dispatch = useDispatch<AppDispatch>();
-  const store = useStore<RootState>();
 
-  const roomId: string = route.params?.roomId;
-  const room = useSelector((s: RootState) =>
-    s.chat.rooms.find(r => r.id === roomId),
+  const conversationId: string = route.params?.roomId;
+
+  const conversation = useSelector((s: RootState) =>
+    s.chat.conversations.find((c) => c.id === conversationId),
   );
   const messages = useSelector(
-    (s: RootState) => s.chat.messagesByRoom[roomId] ?? [],
+    (s: RootState) => s.chat.messagesByConversation[conversationId] ?? [],
+  );
+  const messagesStatus = useSelector(
+    (s: RootState) => s.chat.messagesStatus[conversationId] ?? 'idle',
+  );
+  const joinRequests = useSelector(
+    (s: RootState) => s.chat.joinRequestsByConversation[conversationId] ?? [],
+  );
+  const typingIds = useSelector(
+    (s: RootState) => s.chat.typingByConversation[conversationId] ?? [],
   );
   const sync = useSelector((s: RootState) => s.chat.sync);
-  const identity = useSelector((s: RootState) => s.chat.identity);
   const meId = useSelector((s: RootState) => s.chat.meId);
-  // Loại hội thoại (DIRECT/GROUP/…) lấy từ `conversations` (ChatRoom không mang type).
-  // Quyết định có đính Merkle-leaf khi gửi. Không rõ → 'GROUP' (an toàn, không ép merkle).
-  const convType = useSelector(
-    (s: RootState): ConversationType =>
-      s.chat.conversations.find(c => c.id === roomId)?.type ?? 'GROUP',
-  );
 
   const listRef = useRef<FlatList>(null);
+  const seenRef = useRef<Set<string>>(new Set());
+  const [actionTarget, setActionTarget] = useState<Message | null>(null);
+  const [infoOpen, setInfoOpen] = useState(false);
+
+  const backendReady = isProofChatBackendEnabled();
+
+  // ── Nạp phòng ────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!backendReady || !conversationId) return;
+    dispatch(loadMessages(conversationId));
+    dispatch(loadConversationDetail(conversationId));
+    dispatch(loadPins(conversationId));
+    // Chuẩn bị khoá của phòng trước khi gửi được tin đầu tiên. Chạy nền, hỏng
+    // thì lần gửi sẽ báo lỗi cụ thể chứ không cần chặn màn ở đây.
+    syncConversation(conversationId).catch((err) =>
+      console.warn('[Chat] chuẩn bị phòng thất bại:', err),
+    );
+  }, [backendReady, conversationId, dispatch]);
 
   useEffect(() => {
-    if (room && room.unreadCount > 0) dispatch(markRoomRead(roomId));
-  }, [roomId]);
-
-  // ── Wiring dữ liệu THẬT (chỉ khi feature flag ON) ─────────────────────────
-  // Tải tin cũ (ciphertext E2EE) qua REST; realtime nhận tin đã giải mã đi qua
-  // proofchatService.onDecryptedMessage (đăng ký ở ChatHome) → store. Màn này
-  // GỬI qua proofchatService.sendText (H-15 đã nối). Raw WS cũ (ws.proofchat.app
-  // đã chết) đã gỡ. Realtime nhận: socket.io (chatSocket → proofchatService).
-  const backendEnabled = isProofChatBackendEnabled();
-  useEffect(() => {
-    if (!backendEnabled || !roomId) return;
-    dispatch(loadRoomMessages({ roomId, meId }));
-    // Đảm bảo phiên MLS của phòng (createGroup/join + epoch-sync) TRƯỚC khi gửi —
-    // sendText yêu cầu nhóm đã được thiết lập cho conversationId. Best-effort.
-    syncConversation(roomId).catch(err => console.warn('[ProofChat] sync failed:', err));
-  }, [backendEnabled, roomId, meId, dispatch]);
-
-  const sections = useMemo(() => groupByDate(messages), [messages]);
+    if (conversation?.iAmAdmin) dispatch(loadJoinRequests(conversationId));
+  }, [conversation?.iAmAdmin, conversationId, dispatch]);
 
   useEffect(() => {
-    const t = setTimeout(() => {
-      listRef.current?.scrollToEnd({ animated: true });
-    }, 50);
+    if (conversation && conversation.unreadCount > 0) {
+      dispatch(markConversationRead(conversationId));
+    }
+  }, [conversationId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const t = setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 60);
     return () => clearTimeout(t);
   }, [messages.length]);
 
-  if (!room) {
+  // ── Báo đã-xem ───────────────────────────────────────────────────────────
+  // Gom những tin của người khác vừa hiện lên màn, gửi một lần. `seenRef` chặn
+  // gửi lại cùng một tin mỗi lần cuộn qua.
+  const handleViewable = useRef(
+    ({ viewableItems }: { viewableItems: Array<{ item: Item }> }) => {
+      const fresh: string[] = [];
+      viewableItems.forEach((v) => {
+        if (v.item.type !== 'msg') return;
+        const m = v.item.message;
+        if (m.isMine || seenRef.current.has(m.id)) return;
+        seenRef.current.add(m.id);
+        fresh.push(m.id);
+      });
+      if (fresh.length > 0) {
+        dispatch(reportSeen({ conversationId, messageIds: fresh }));
+      }
+    },
+  ).current;
+
+  // ── Gửi ──────────────────────────────────────────────────────────────────
+  const handleSend = useCallback(
+    (text: string) => {
+      if (!backendReady) {
+        Toast.show({
+          type: 'error',
+          text1: 'Chưa kết nối',
+          text2: 'Máy chủ trò chuyện chưa sẵn sàng.',
+        });
+        return;
+      }
+      // Tin hiện lên khi máy chủ dội về đã giải mã — một nguồn duy nhất, nên
+      // không có bản tạm nào để nhân đôi khi mạng chậm.
+      sendText(conversationId, text, conversation?.type)
+        .then((ack) => {
+          if (!ack.ok) {
+            Toast.show({
+              type: 'error',
+              text1: 'Chưa gửi được',
+              text2: ack.error ?? 'Thử lại sau.',
+            });
+          }
+        })
+        .catch(() =>
+          Toast.show({ type: 'error', text1: 'Chưa gửi được', text2: 'Mất kết nối.' }),
+        );
+    },
+    [backendReady, conversationId, conversation?.type],
+  );
+
+  const handleTyping = useCallback(
+    (typing: boolean) => {
+      if (backendReady) chatSocket.sendTyping(conversationId, typing);
+    },
+    [backendReady, conversationId],
+  );
+
+  // ── Thao tác trên một tin ────────────────────────────────────────────────
+  const handleReact = (message: Message, emoji: string) => {
+    const had = message.reactions.some((r) => r.emoji === emoji && r.mine);
+    dispatch(toggleReaction({ conversationId, messageId: message.id, emoji, had }));
+  };
+
+  const closeActions = () => setActionTarget(null);
+
+  const handleDelete = () => {
+    const target = actionTarget;
+    if (!target) return;
+    closeActions();
+    showWarning(
+      'Thu hồi tin nhắn?',
+      'Tin sẽ biến mất với tất cả mọi người trong phòng.',
+      {
+        confirmText: 'Thu hồi',
+        onConfirm: () => {
+          dispatch(
+            deleteMessage({ conversationId, messageId: target.id, forEveryone: true }),
+          );
+        },
+      },
+    );
+  };
+
+  const handleLeave = () => {
+    setInfoOpen(false);
+    showWarning('Rời cuộc trò chuyện?', 'Bạn sẽ không nhận tin mới từ phòng này nữa.', {
+      confirmText: 'Rời phòng',
+      onConfirm: async () => {
+        try {
+          await dispatch(leaveConversation(conversationId)).unwrap();
+          navigation.goBack();
+        } catch {
+          Toast.show({ type: 'error', text1: 'Chưa rời được', text2: 'Thử lại sau.' });
+        }
+      },
+    });
+  };
+
+  const items = useMemo(() => groupByDate(messages, conversation?.type !== 'DIRECT'), [
+    messages,
+    conversation?.type,
+  ]);
+
+  const typingNames = useMemo(
+    () =>
+      typingIds
+        .filter((id) => id !== meId)
+        .map(
+          (id) => conversation?.participants.find((p) => p.id === id)?.name ?? 'Ai đó',
+        ),
+    [typingIds, meId, conversation?.participants],
+  );
+
+  const pinned = useMemo(
+    () => messages.filter((m) => m.pinned && !m.deleted),
+    [messages],
+  );
+
+  if (!conversation) {
     return (
-      <View style={[styles.root, styles.center]}>
-        <Text style={styles.notFound}>Không tìm thấy cuộc trò chuyện.</Text>
+      <View style={styles.root}>
+        <MicaBackdrop intensity={0.6} />
+        <StateView
+          status="empty"
+          title="Không mở được cuộc trò chuyện"
+          message="Quay lại danh sách rồi thử lần nữa."
+          onRetry={() => navigation.goBack()}
+        />
       </View>
     );
   }
 
-  // ── Outgoing pipeline simulator ────────────────────────────────────────────
-  // Đọc id của message vừa tạo từ store ngay sau khi dispatch sendMessage,
-  // rồi chuyển stage theo timeline đã định nghĩa trong OUTGOING_PIPELINE.
-  const handleSend = (text: string) => {
-    // ── Backend THẬT: mã hoá MLS + gửi socket. Tin hiện lên khi server echo về qua
-    // onDecryptedMessage (1 nguồn duy nhất → không nhân đôi). Thất bại → báo nhẹ.
-    if (backendEnabled) {
-      sendText(roomId, text, convType)
-        .then(ack => {
-          if (!ack.ok) showError('Không gửi được', ack.error ?? 'Vui lòng thử lại.');
-        })
-        .catch(() => showError('Không gửi được', 'Mất kết nối, thử lại.'));
-      return;
-    }
-
-    // ── Chế độ demo (mock): pipeline mô phỏng bằng setTimeout (giữ nguyên) ──
-    dispatch(sendMessage({ roomId, text }));
-    if (!sync.online) return;
-
-    const list = store.getState().chat.messagesByRoom[roomId] ?? [];
-    const newest = list[list.length - 1];
-    if (!newest || !newest.isMine) return;
-
-    let elapsed = 0;
-    OUTGOING_PIPELINE.slice(1).forEach(step => {
-      elapsed += step.delayMs;
-      setTimeout(() => {
-        dispatch(setMessageStage({
-          roomId,
-          messageId: newest.id,
-          stage: step.stage,
-          verificationStatus:
-            step.stage === 'sent' ? 'verified' : undefined,
-        }));
-      }, elapsed);
-    });
-
-    // Mô phỏng peer ack: sau ~2s → delivered
-    setTimeout(() => {
-      dispatch(setMessageStage({
-        roomId, messageId: newest.id, stage: 'delivered',
-      }));
-    }, elapsed + 800);
-  };
-
-  // ── Incoming pipeline simulator ────────────────────────────────────────────
-  const handleDecrypt = (m: Message) => {
-    if (m.stage !== 'encrypted') return;
-    let elapsed = 0;
-
-    // Stage 1: decrypting
-    dispatch(setMessageStage({
-      roomId, messageId: m.id, stage: 'decrypting',
-    }));
-
-    // Stage 2: verifying signature
-    elapsed += INCOMING_PIPELINE[1].delayMs;
-    setTimeout(() => {
-      dispatch(setMessageStage({
-        roomId, messageId: m.id, stage: 'verifying_signature',
-      }));
-    }, elapsed);
-
-    // Stage 3: checking integrity
-    elapsed += INCOMING_PIPELINE[2].delayMs;
-    setTimeout(() => {
-      dispatch(setMessageStage({
-        roomId, messageId: m.id, stage: 'checking_integrity',
-      }));
-    }, elapsed);
-
-    // Stage 4: done
-    elapsed += INCOMING_PIPELINE[3].delayMs;
-    setTimeout(() => {
-      const decrypted =
-        m.id === 'm6'
-          ? 'Em vừa kiểm tra lại — model anh sửa được, em chuẩn bị đồ nghề.'
-          : m.id === 'm33'
-          ? 'Mình báo giá 450 MAGIC cho 3 phương án logo + 1 vòng chỉnh sửa.'
-          : 'Tin nhắn đã giải mã thành công.';
-      dispatch(decryptMessage({
-        roomId,
-        messageId: m.id,
-        text: decrypted,
-        verificationStatus: finalStatusFor(m.id),
-      }));
-    }, elapsed);
-  };
-
-  const sessionExpired = identity.sessionStatus === 'expired';
-
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="dark-content" backgroundColor={NEUTRAL.bg} />
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+      <MicaBackdrop intensity={0.6} />
 
       <ChatHeader
-        room={room}
+        conversation={conversation}
+        typingNames={typingNames}
         onBack={() => navigation.goBack()}
-        onPressEscrow={() =>
-          navigation.navigate('ProofChatEscrow', { roomId })
-        }
-        onPressMore={() => {}}
+        onPressTitle={() => setInfoOpen(true)}
+        onPressInfo={() => setInfoOpen(true)}
       />
 
-      {/* DEMO banner — chat đang chạy mock: tin nhắn CHƯA gửi thật qua mạng.
-          Chữ ký/ciphertext là minh hoạ trong máy, không phải bằng chứng thật. */}
-      {!isProofChatBackendEnabled() && (
-        <View style={styles.demoBanner}>
-          <Text style={styles.demoText}>
-            DEMO — tin nhắn minh hoạ, CHƯA gửi thật qua mạng. Đang chờ máy chủ Aladin Chat.
+      {pinned.length > 0 && (
+        <Pressable
+          style={styles.pinnedBar}
+          onPress={() => setActionTarget(pinned[pinned.length - 1])}
+        >
+          <Icon name="pin" size={14} color={CHAT_THEME.primary} />
+          <Text style={styles.pinnedText} numberOfLines={1}>
+            {pinned[pinned.length - 1].text ?? 'Một tin đã được ghim'}
           </Text>
-        </View>
+          {pinned.length > 1 && (
+            <Text style={styles.pinnedCount}>+{pinned.length - 1}</Text>
+          )}
+        </Pressable>
       )}
 
-      {/* Session expired banner */}
-      {sessionExpired && (
-        <View style={styles.expiredBanner}>
-          <Text style={styles.expiredText}>
-            Phiên đăng nhập đã hết hạn — tin nhắn sẽ không được ký số. Đăng nhập lại để tiếp tục.
-          </Text>
-        </View>
-      )}
-
-      {/* Sync strip */}
-      <View style={styles.syncStrip}>
-        <SyncStatusPill state={sync} />
-        <View style={styles.protRow}>
-          <Text style={styles.protText}>End-to-end · Proof System</Text>
-        </View>
-      </View>
-
-      {/* Optional escrow strip */}
-      {room.escrow && (
-        <EscrowStatusCard
-          escrow={room.escrow}
-          jobTitle={room.jobTitle}
-          compact
-          onPress={() =>
-            navigation.navigate('ProofChatEscrow', { roomId })
-          }
-        />
-      )}
+      <SyncStatusPill state={sync} />
 
       <FlatList
         ref={listRef}
-        data={sections}
-        keyExtractor={item => item.key}
-        renderItem={({ item }) => {
-          if (item.type === 'sep') {
-            return (
-              <View style={styles.dateSep}>
-                <View style={styles.dateLine} />
-                <Text style={styles.dateText}>{item.label}</Text>
-                <View style={styles.dateLine} />
-              </View>
-            );
-          }
-          return (
+        data={items}
+        keyExtractor={(i) => i.key}
+        renderItem={({ item }) =>
+          item.type === 'sep' ? (
+            <View style={styles.dateSep}>
+              <Text style={styles.dateText}>{item.label}</Text>
+            </View>
+          ) : (
             <MessageBubble
               message={item.message}
               showTail={item.showTail}
-              onDecrypt={handleDecrypt}
+              showSender={item.showSender}
+              onLongPress={setActionTarget}
+              onPressReaction={handleReact}
             />
-          );
-        }}
+          )
+        }
+        onViewableItemsChanged={handleViewable}
+        viewabilityConfig={{ itemVisiblePercentThreshold: 60 }}
         contentContainerStyle={
-          sections.length === 0 ? styles.listEmpty : styles.listContent
+          items.length === 0 ? styles.listEmpty : styles.listContent
         }
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
-          <StateView
-            status="empty"
-            title="Chưa có tin nhắn"
-            message="Hãy gửi tin nhắn đầu tiên để bắt đầu trao đổi."
-          />
+          messagesStatus === 'loading' ? (
+            <StateView status="loading" loadingLines={4} />
+          ) : messagesStatus === 'error' ? (
+            <StateView
+              status="error"
+              title="Chưa tải được tin nhắn"
+              onRetry={() => dispatch(loadMessages(conversationId))}
+            />
+          ) : (
+            <StateView
+              status="empty"
+              title="Chưa có tin nhắn"
+              message="Gửi lời chào để bắt đầu."
+            />
+          )
         }
-        onContentSizeChange={() =>
-          listRef.current?.scrollToEnd({ animated: false })
-        }
+        onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
       />
 
-      <ChatInput onSend={handleSend} />
+      <ChatInput
+        onSend={handleSend}
+        onTypingChange={handleTyping}
+        disabled={!backendReady}
+        placeholder={backendReady ? 'Nhắn tin…' : 'Chưa kết nối máy chủ'}
+      />
+
+      <MessageActionsSheet
+        message={actionTarget}
+        canPin={conversation.iAmAdmin}
+        onClose={closeActions}
+        onReact={(emoji) => {
+          if (actionTarget) handleReact(actionTarget, emoji);
+          closeActions();
+        }}
+        onTogglePin={() => {
+          if (actionTarget) {
+            dispatch(
+              togglePin({
+                conversationId,
+                messageId: actionTarget.id,
+                pinned: actionTarget.pinned,
+              }),
+            );
+          }
+          closeActions();
+        }}
+        onToggleSave={() => {
+          if (actionTarget) {
+            dispatch(
+              toggleSave({
+                conversationId,
+                messageId: actionTarget.id,
+                saved: actionTarget.saved,
+              }),
+            );
+          }
+          closeActions();
+        }}
+        onCopy={() => {
+          if (actionTarget?.text) {
+            Clipboard.setString(actionTarget.text);
+            Toast.show({ type: 'success', text1: 'Đã sao chép' });
+          }
+          closeActions();
+        }}
+        onDelete={handleDelete}
+      />
+
+      <ConversationInfoSheet
+        visible={infoOpen}
+        conversation={conversation}
+        joinRequests={joinRequests}
+        meId={meId}
+        onClose={() => setInfoOpen(false)}
+        onRename={async (title) => {
+          await dispatch(renameConversation({ conversationId, title })).unwrap();
+        }}
+        onInvite={async (userId) => {
+          await dispatch(inviteMember({ conversationId, userId })).unwrap();
+          Toast.show({ type: 'success', text1: 'Đã gửi lời mời' });
+        }}
+        onRemoveMember={async (userId) => {
+          await dispatch(removeMember({ conversationId, userId })).unwrap();
+        }}
+        onApproveRequest={async (requestId) => {
+          await dispatch(approveJoinRequest({ conversationId, requestId })).unwrap();
+          dispatch(loadConversationDetail(conversationId));
+        }}
+        onRejectRequest={async (requestId) => {
+          await dispatch(rejectJoinRequest({ conversationId, requestId })).unwrap();
+        }}
+        onLeave={handleLeave}
+      />
     </View>
   );
 };
 
-// ── helpers ─────────────────────────────────────────────────────────────────
+// ── Gom tin theo ngày ───────────────────────────────────────────────────────
+
 type Item =
-  | { type: 'msg'; key: string; message: Message; showTail: boolean }
+  | { type: 'msg'; key: string; message: Message; showTail: boolean; showSender: boolean }
   | { type: 'sep'; key: string; label: string };
 
-function groupByDate(messages: Message[]): Item[] {
+function groupByDate(messages: Message[], group: boolean): Item[] {
   const out: Item[] = [];
   let prevDate = '';
   for (let i = 0; i < messages.length; i++) {
@@ -300,80 +423,62 @@ function groupByDate(messages: Message[]): Item[] {
       prevDate = dateKey;
     }
     const next = messages[i + 1];
-    const showTail = !next || next.isMine !== m.isMine;
-    out.push({ type: 'msg', key: m.id, message: m, showTail });
+    const prev = messages[i - 1];
+    out.push({
+      type: 'msg',
+      key: m.id,
+      message: m,
+      showTail: !next || next.isMine !== m.isMine,
+      // Tên người gửi chỉ hiện ở tin ĐẦU của mỗi lượt nói, trong phòng nhiều người.
+      showSender: group && !m.isMine && (!prev || prev.senderId !== m.senderId),
+    });
   }
   return out;
 }
 
-function humanDate(d: Date) {
+function humanDate(d: Date): string {
   const today = new Date();
   const yesterday = new Date(today);
   yesterday.setDate(today.getDate() - 1);
-  if (sameDay(d, today)) return 'Hôm nay';
-  if (sameDay(d, yesterday)) return 'Hôm qua';
+  if (d.toDateString() === today.toDateString()) return 'Hôm nay';
+  if (d.toDateString() === yesterday.toDateString()) return 'Hôm qua';
   return d.toLocaleDateString('vi-VN');
-}
-function sameDay(a: Date, b: Date) {
-  return a.toDateString() === b.toDateString();
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: NEUTRAL.bgSoft },
-  center: { alignItems: 'center', justifyContent: 'center' },
-  notFound: { color: NEUTRAL.textMuted, fontSize: 14 },
+  root: { flex: 1 },
 
-  expiredBanner: {
-    backgroundColor: '#FCE6DE',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E8B0A0',
-  },
-  expiredText: { fontSize: 11, color: '#8C3622', fontWeight: '600' },
-
-  demoBanner: {
-    backgroundColor: '#FFF4D6',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E8CE86',
-  },
-  demoText: { fontSize: 11, color: '#8A6D1B', fontWeight: '600' },
-
-  syncStrip: {
+  pinnedBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    backgroundColor: NEUTRAL.bg,
-    borderBottomWidth: 1,
-    borderBottomColor: NEUTRAL.borderSoft,
+    gap: SPACE.sm,
+    marginHorizontal: SPACE.md,
+    marginTop: SPACE.sm,
+    paddingHorizontal: SPACE.md,
+    paddingVertical: SPACE.sm,
+    borderRadius: RADIUS.md,
+    backgroundColor: withAlpha(CHAT_THEME.primary, 0.09),
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: withAlpha(CHAT_THEME.primary, 0.22),
   },
-  protRow: {
-    flex: 1,
-    backgroundColor: NEUTRAL.bgSoft,
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  protText: {
-    fontSize: 10, color: CHAT_THEME.primary,
-    fontWeight: '700', letterSpacing: 0.3,
-  },
+  pinnedText: { flex: 1, fontSize: 12.5, color: NEUTRAL.textSub, fontWeight: '500' },
+  pinnedCount: { fontSize: 11, fontWeight: '700', color: CHAT_THEME.primary },
 
-  listContent: { paddingVertical: 12 },
-  listEmpty: { flexGrow: 1 },
-  dateSep: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    marginVertical: 12, paddingHorizontal: 24,
-  },
-  dateLine: { flex: 1, height: 1, backgroundColor: NEUTRAL.borderSoft },
+  listContent: { paddingVertical: SPACE.md },
+  listEmpty: { flexGrow: 1, justifyContent: 'center' },
+
+  dateSep: { alignItems: 'center', marginVertical: SPACE.md },
   dateText: {
-    fontSize: 11, fontWeight: '700',
-    color: NEUTRAL.textMuted, letterSpacing: 0.5,
+    fontSize: 11,
+    fontWeight: '600',
+    color: NEUTRAL.textMuted,
+    paddingHorizontal: SPACE.md,
+    paddingVertical: 4,
+    borderRadius: RADIUS.pill,
+    backgroundColor: ACRYLIC.thin.fill,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: STROKE.base,
+    overflow: 'hidden',
   },
 });
 

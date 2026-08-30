@@ -254,7 +254,7 @@ jobs:
           if [ -z "$ALADIN_UPLOAD_STORE_FILE_B64" ]; then
             echo "::error::Kho khoá ký chưa nạp — repo hiện có 0 secret."
             echo "Đo 2026-08-10 (kho khi đó còn ở AladinContract; nay là ${{ github.repository }}):"
-            echo "               gh api repos/AladinContract/SuperApp/actions/secrets"
+            echo "               gh api repos/MagicSuperApp/SuperApp/actions/secrets"
             echo "               → {\"total_count\":0,\"secrets\":[]}"
             echo ""
             echo "⚠ TÊN BIẾN ĐÃ ĐỔI 2026-08-29: ORILIFE_UPLOAD_* → ALADIN_UPLOAD_*."

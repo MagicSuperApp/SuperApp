@@ -371,11 +371,20 @@ describe('connectProofChat — bridge', () => {
     expect(await getAccessToken()).toBe('AA');
   });
 
-  it('đã có access token → connected, không gọi login lại', async () => {
+  // ⚠ Bài này TRƯỚC ĐÂY viết là "có access token → connected, không gọi login lại"
+  // — tức nó khoá đúng cái lỗi: câu hỏi "CÓ token không" thiếu vế "của AI". Một
+  // token không rõ chủ nay bị coi là của người khác, và đường xử là XOÁ rồi đăng
+  // nhập lại. Ca "khớp DID thì dùng lại" nằm ở `proofchatTokenOwner.test.ts`, nơi
+  // có mock DID đầy đủ.
+  it('token không rõ chủ → KHÔNG dùng lại, xoá và đăng nhập lại', async () => {
     store['proofchat_access_token'] = 'EXIST';
+    mockGetPhoenixSession.mockResolvedValueOnce('phx-abc');
+    mockPost.mockResolvedValueOnce({
+      data: { data: { accessToken: 'MOI', refreshToken: 'RR' }, statusCode: 201 },
+    });
     const r = await connectProofChat();
-    expect(r).toEqual({ status: 'connected', alreadyHadSession: true });
-    expect(mockPost).not.toHaveBeenCalled();
+    expect(r).toEqual({ status: 'connected', alreadyHadSession: false });
+    expect(await getAccessToken()).toBe('MOI');
   });
 
   it('login lỗi → trạng thái error (không throw)', async () => {

@@ -415,7 +415,7 @@ Lưu ý chống over-claim (pitfall #8): KHÔNG được phát biểu "Thm 7.3 �
 
 - **Network**: drop, reorder, inject, replay message giữa thiết bị ↔ store ↔ host (KHÔNG kiểm soát chain finality — OA3).
 - **Computational**: PPT bounded; không phá EUF-CMA/IND-CCA2/collision-resistance trừ negl(λ).
-- **Registry**: A có thể đăng ký **module độc hại tuỳ ý** vào Registry permissionless (đăng ký tự do, DAO hậu kiểm) — module chạy trong sandbox.
+- **Registry**: A có thể đăng ký **module độc hại tuỳ ý** vào Registry permissionless (đăng ký tự do, DAO hậu kiểm) — module chạy trong sandbox. ⚠️ **Trạng thái ĐÍCH.** Hôm nay `src/navigation/registry.ts` là sổ TĨNH biên dịch sẵn (4 module, import tĩnh, không dynamic import) — chưa có đường đăng ký nào, nên chưa có bề mặt tấn công này.
 - **Host**: ở kênh 3 (Phase 2), host ngoài **hostile-by-default** (WebView có thể đọc/sửa nội dung nó render).
 - **Corruption**: A corrupt tới `f` thiết bị của user khác / tới một số DID (Sybil-bounded — §9.4).
 - **Economic**: ngân sách $X để mua LAMP / thuê người (phân tích ROI Sybil — §9.4).

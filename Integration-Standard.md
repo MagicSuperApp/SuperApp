@@ -13,7 +13,7 @@
 
 1. **Hào phòng thủ nằm ở DATA-FEDERATION, không ở UI hay app-factory.** INV-1 (1 DID = 1 nguồn dữ liệu xuyên mọi host) là thứ host walled-garden không thể clone. Mọi quyết định kỹ thuật phải bảo vệ điểm này trước.
 2. **Config là DECLARATIVE thuần, KHÔNG BAO GIỜ Turing-complete** (QĐ-1). Cần "logic riêng" = phải thành MODULE mới qua Registry (chịu gate bảo mật), KHÔNG lẻn vào tầng config/theme/billing.
-3. **Permissionless ĐĂNG KÝ ≠ permissionless TRUY CẬP** (QĐ-4). Đăng ký tự do; truy cập shared-data/wallet/biometric là default-deny, mở dần sau hậu kiểm + stake.
+3. **Permissionless ĐĂNG KÝ ≠ permissionless TRUY CẬP** (QĐ-4). Đăng ký tự do; truy cập shared-data/wallet/biometric là default-deny, mở dần sau hậu kiểm + stake. ⚠️ **Trạng thái ĐÍCH** — hôm nay `src/navigation/registry.ts` là sổ TĨNH, chưa có đường đăng ký nào để mà tự do hay không tự do.
 4. **Mọi host hostile-by-default** (QĐ-5). Credential/biometric/DID gốc KHÔNG BAO GIỜ vào WebView host ngoài.
 5. **B (nhúng host ngoài) = kênh ACQUISITION, không phải value-capture.** Value luôn ở fabric. Mỗi module phải sống được trên ≥3 kênh.
 

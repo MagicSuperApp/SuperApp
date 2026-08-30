@@ -77,6 +77,47 @@ thì Samsung cắt mất một góc mà máy khác thì không.
 (`resource mipmap/ic_launcher not found`), thay vì lặng lẽ mượn biểu tượng của
 app đứng trước rồi đi thẳng lên cửa hàng.
 
+## Firebase — hai nền tảng, hai cơ chế, cùng một luật
+
+**Luật:** app chỉ khởi Firebase bằng cấu hình của **chính pháp nhân sở hữu app đó**.
+Không app nào mượn dự án Firebase của app khác. Mượn là đẩy thông báo đẩy, số liệu và
+Crashlytics của một pháp nhân vào console của pháp nhân khác — và hỏng đó **không có
+triệu chứng**: mọi thứ chạy, chỉ là chạy vào nhà người ta.
+
+| | Android | iOS |
+|---|---|---|
+| tệp cấu hình đặt ở | `android/app/src/<mã>/google-services.json` | trong gói ứng dụng |
+| thiếu tệp riêng thì | gradle **tắt** bước Firebase cho flavor đó | không khởi Firebase, app chạy bình thường |
+| cơ chế | theo flavor, lúc **dựng** | so mã gói, lúc **chạy** |
+
+Vì sao iOS khác: `ios/LocalPods/ScannerModule/ScannerModule.podspec` khai
+`GoogleService-Info.plist` trong `s.resources`, và `s.resources` chép vào gói của **mọi**
+bản dựng — podspec không có nhánh theo app, iOS không có cơ chế theo flavor tương đương.
+Nên cổng nằm ở `ios/aladin_mobile_fe/AppDelegate.swift` → `configureFirebaseIfOwned()`:
+nó so `BUNDLE_ID` trong tệp cấu hình với mã gói **thật** đang chạy, lệch thì không khởi.
+
+Cách đó bịt **mọi** đường tệp lọt vào gói, kể cả đường chưa ai nghĩ ra, vì nó đo thứ
+quyết định hành vi chứ không đo cách dựng.
+
+### Ngày app của bạn cần Firebase
+
+- **Android:** bỏ `google-services.json` của dự án đứng tên pháp nhân bạn vào
+  `android/app/src/<mã>/`. Plugin tự bật lại.
+- **iOS:** bỏ `GoogleService-Info.plist` của dự án đó vào gói, `BUNDLE_ID` phải khớp
+  `ios.bundleId` trong `instance.json`. Cổng tự nhận và khởi.
+
+Không sửa dòng mã nào ở cả hai nền tảng.
+
+⛔ **Đừng "tạm dùng" tệp của app khác cho Firebase chạy được.** Đó là mở lại đúng lỗ vừa
+vá, và lần này có một hàm tên `configureFirebaseIfOwned` đứng cạnh làm bằng chứng giả
+rằng đã canh.
+
+### Việc còn lại, nói thẳng
+
+Cổng chặn Firebase **khởi**, nhưng tệp cấu hình của Aladin vẫn **nằm trong gói** của mọi
+app iOS, vì `s.resources` chép vô điều kiện. Gỡ nó khỏi podspec là việc đúng tiếp theo,
+nhưng phải kèm một bản dựng iOS xanh mới giao được — chưa làm trong đợt này.
+
 ## Hai chỗ vẫn nằm ngoài thư mục này — nói rõ để không ai mất công tìm
 
 **1. Firebase.** Plugin `com.google.gms.google-services` chỉ tìm ở các vị trí cố

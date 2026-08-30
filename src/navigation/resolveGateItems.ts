@@ -33,6 +33,9 @@ import {
 import { TRACE_SCAN_ROUTE_NAME } from './traceScan';
 
 import { tk } from '../i18n/keys';
+// An toàn về chiều phụ thuộc: tệp này đã đứng SAU `instance.config`, còn
+// `resolveVisibleTabs` thì không biết gì về instance — xem chú thích ở `slotPriority`.
+import { DEFAULT_INSTANCE } from '../config/instance.config';
 // Mục cổng — SHAPE tương thích bộ chạy của HomeRadialOverlay (key/icon/label/
 // route/params) + `tint` trực tiếp (thay `group` của ActionDef SG4).
 export interface GateItem {
@@ -140,7 +143,11 @@ export function resolveGateItems(farm: FarmSignal, usage: UsageMap = {}): GateIt
   const persona = resolvePersona(farm, usage);
   // Service lên cung (KHÔNG gồm Me VÀ KHÔNG gồm Home): Chat · 3 slot persona.
   // Bỏ Home khỏi cung vì NHẤN 1 lần vào nút giữa đã về Trang chủ → mục Home thừa.
-  const order = [NEO_LEFT, ...slotPriority(persona)];
+  // Rót bảng ưu tiên CỦA APP ĐANG CHẠY vào. Trước bản này `slotPriority` trả hằng
+  // của nền dùng chung, nên `InstanceConfig.slotPriority` có 0 người đọc: hai app
+  // khai thứ tự khác nhau mà ra CÙNG một thanh điều hướng — hỏng kiểu trông như
+  // đã cấu hình được, và không bài kiểm nào đỏ vì không có gì để đỏ.
+  const order = [NEO_LEFT, ...slotPriority(persona, DEFAULT_INSTANCE.slotPriority)];
   const items = order.map(serviceItem);
 
   if (TRACE_SCAN_ROUTE) {

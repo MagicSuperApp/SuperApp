@@ -135,6 +135,37 @@ def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
     //
     // Chi tiết + ví dụ đầy đủ: `instances/README.md`.
     def thuMucApp = new File(rootDir, '../instances')
+
+    // ── LUẬT SUPERAPP — phiên bản đọc từ chính tệp luật ─────────────────────
+    //
+    // Mỗi `instance.json` phải khai `superapp.rulesVersion` ĐÚNG số này. Sửa luật
+    // là nâng số ở `instances/LUAT-SUPERAPP.md`, và khi ấy mọi app đỏ cho tới khi
+    // có người đọc luật mới rồi ký nhận trong tệp của app mình.
+    //
+    // Cố ý làm phiền: luật không tự lan sang app đã có. Không có bước này thì một
+    // ràng buộc mới thêm vào tài liệu sẽ đúng với app viết SAU nó và im lặng sai
+    // với mọi app viết TRƯỚC — mà không ai đỏ.
+    def tepLuat = new File(thuMucApp, 'LUAT-SUPERAPP.md')
+    if (!tepLuat.isFile()) {
+        throw new GradleException("Không thấy ${tepLuat} — mọi app khai tuân luật SuperApp, mà tệp luật không còn")
+    }
+    def khopLuat = (tepLuat.text =~ /rulesVersion:\s*(\d+)/)
+    if (!khopLuat) {
+        throw new GradleException("${tepLuat} thiếu dòng `<!-- rulesVersion: N -->` ở đầu tệp")
+    }
+    def LUAT_HIEN_TAI = khopLuat[0][1] as int
+
+    // ── MIỄN TẠM DID — hai app có TRƯỚC khi luật §1 ra đời ──────────────────
+    //
+    // 2026-08-30: chưa có đường cấp DID cho một *instance* (khác DID của người
+    // dùng, thứ đã có sẵn). Hai app này ra đời trước ràng buộc đó nên được miễn
+    // TẠM, ghi thẳng tên ở đây để ai cũng thấy đó là NỢ chứ không phải mặc định.
+    //
+    // ⛔ KHÔNG thêm tên vào danh sách này để cho một app mới đi lọt. Danh sách chỉ
+    //    được RÚT NGẮN. App thứ ba trở đi phải có DID thật — đó là toàn bộ điểm
+    //    của luật §1, và nới ở đây là gỡ luôn cái cổng.
+    def MIEN_TAM_DID = ['aladin', 'checkfarm'] as Set
+
     def cacApp = (thuMucApp.listFiles() ?: new File[0])
             .findAll { it.isDirectory() && new File(it, 'instance.json').isFile() }
             .sort { it.name }
@@ -155,6 +186,29 @@ def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
                 if (!khai.displayName) {
                     throw new GradleException("instances/${khai.id}/instance.json thiếu displayName")
                 }
+                // ── Luật SuperApp (instances/LUAT-SUPERAPP.md) ──────────────
+                if (khai.superapp == null) {
+                    throw new GradleException(
+                        "instances/${khai.id}/instance.json thiếu khối `superapp`.\n" +
+                        "  Một app dựng từ kho này phải khai nó tuân luật nào. Đọc instances/LUAT-SUPERAPP.md rồi thêm:\n" +
+                        "    \"superapp\": { \"rulesVersion\": ${LUAT_HIEN_TAI}, \"phoenixDid\": \"did:...\" }")
+                }
+                if (khai.superapp.rulesVersion != LUAT_HIEN_TAI) {
+                    throw new GradleException(
+                        "instances/${khai.id}: khai rulesVersion=${khai.superapp.rulesVersion}, luật hiện hành là ${LUAT_HIEN_TAI}.\n" +
+                        "  Đọc instances/LUAT-SUPERAPP.md rồi sửa số — đừng sửa số mà không đọc.")
+                }
+                def did = khai.superapp.phoenixDid
+                if (did == null) {
+                    if (!MIEN_TAM_DID.contains(khai.id)) {
+                        throw new GradleException(
+                            "instances/${khai.id}: `superapp.phoenixDid` là null.\n" +
+                            "  Luật §1 — mỗi app một danh tính PhoenixKey riêng. Một app không có danh tính\n" +
+                            "  thì nó là một thư mục, không phải một app trong hệ sinh thái.")
+                    }
+                } else if (!(did ==~ /^did:[a-z0-9]+:[A-Za-z0-9._:-]+$/)) {
+                    throw new GradleException("instances/${khai.id}: `superapp.phoenixDid` = '${did}' không đúng hình một DID")
+                }
                 khai
             }
     if (cacApp.isEmpty()) {
@@ -163,6 +217,14 @@ def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
     def trungMaGoi = cacApp.groupBy { it.android.applicationId }.findAll { it.value.size() > 1 }
     if (trungMaGoi) {
         throw new GradleException("Hai app dùng chung applicationId ${trungMaGoi.keySet()} — cửa hàng coi đó là MỘT app, bản sau đè bản trước")
+    }
+
+    // Luật §1, nửa sau: "RIÊNG" nghĩa là không ai dùng chung. `null` không tính là
+    // trùng nhau — hai app cùng CHƯA có danh tính thì chưa vi phạm, chỉ là chưa có.
+    def trungDid = cacApp.findAll { it.superapp.phoenixDid != null }
+            .groupBy { it.superapp.phoenixDid }.findAll { it.value.size() > 1 }
+    if (trungDid) {
+        throw new GradleException("Hai app dùng chung phoenixDid ${trungDid.keySet()} — luật §1 đòi mỗi app một danh tính RIÊNG")
     }
 
     flavorDimensions "app"

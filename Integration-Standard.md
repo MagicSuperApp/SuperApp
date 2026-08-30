@@ -295,7 +295,7 @@ Một platform/module chỉ được coi là READY khi TẤT CẢ mục dưới 
 
 ## 10. Vận hành tích hợp — Env · Feature Flag · Token UI (operational)
 
-> §0–§9 là CONTRACT trừu tượng (kiến trúc + bất biến). Mục này là quy ước VẬN HÀNH cụ thể để agent/dev cắm API THẬT của từng platform vào SuperApp. **App BUILD từ repo [`AladinContract/SuperApp`](https://github.com/AladinContract/SuperApp) — KHÔNG build từ repo platform.** Mọi giá trị SuperApp đọc đều nằm trong repo này.
+> §0–§9 là CONTRACT trừu tượng (kiến trúc + bất biến). Mục này là quy ước VẬN HÀNH cụ thể để agent/dev cắm API THẬT của từng platform vào SuperApp. **App BUILD từ repo [`MagicSuperApp/SuperApp`](https://github.com/MagicSuperApp/SuperApp) — KHÔNG build từ repo platform.** Mọi giá trị SuperApp đọc đều nằm trong repo này.
 
 ### 10.1 MỘT nguồn sự-thật — platform sở hữu, SuperApp THAM CHIẾU (Aladin chốt 2026-07-15)
 
@@ -355,8 +355,8 @@ Một platform/module chỉ được coi là READY khi TẤT CẢ mục dưới 
 
 | Platform | main HEAD | Base URL | Auth | Readiness |
 |---|---|---|---|---|
-| OriLife | `6e8210b` (07-08) | `api.orilife.io` | DID P-256, token 12h | 🟡 prod drift + B1/B2/B3 (issue [#20](https://github.com/AladinContract/SuperApp/issues/20)) |
-| PhoenixKey | `6c45962` (06-12) | `api.phoenixkey.me` | token-exchange ServiceDID + JWKS | Ví Standard 🟢 (đã nối, [#42](https://github.com/AladinContract/SuperApp/pull/42)) · Mint 🔴 |
+| OriLife | `6e8210b` (07-08) | `api.orilife.io` | DID P-256, token 12h | 🟡 prod drift + B1/B2/B3 (issue [#20](https://github.com/MagicSuperApp/SuperApp/issues/20)) |
+| PhoenixKey | `6c45962` (06-12) | `api.phoenixkey.me` | token-exchange ServiceDID + JWKS | Ví Standard 🟢 (đã nối, [#42](https://github.com/MagicSuperApp/SuperApp/pull/42)) · Mint 🔴 |
 | ProofChat | BE `52a41db` (07-04) | `api.proofchat.me` | login → accessToken | 🔴 502 (BE#58 chưa merge) |
 | AladinWork | `8040617` (07-07) v0.2.0 | `<host>:7040` chưa có | challenge/verify P-256 → session | 🟡 code sẵn, chưa host |
 | LampNet | hivemind `506c611` (07-11) | `lampnet.cloud` | join public · upload Bearer | 🟡 join/compute chạy · 🔴 reward dry-run |

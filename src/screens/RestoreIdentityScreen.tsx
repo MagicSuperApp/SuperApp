@@ -60,16 +60,48 @@ const RestoreIdentityScreen = () => {
   const wordCount = useMemo(() => countMnemonicWords(phrase), [phrase]);
   const countOk = wordCount === 24;
 
-  const handleRestore = async () => {
+  // ── CỬA XÁC NHẬN — đặt TRƯỚC mọi thao tác, không phải sau ──────────────────
+  // Khôi phục bằng 24 từ gắn khoá phần cứng MỚI vào danh tính, và trên chuỗi mỗi
+  // danh tính chỉ có MỘT chỗ đặt khoá đó (`TAADDatum` field 3 `hw_key_pubkey`;
+  // spec phương thức DID §5.2 "exactly one key per purpose"). Nên gắn khoá mới =
+  // khoá cũ mất chỗ — kể cả khoá của một app KHÁC đang dùng cùng danh tính trên
+  // chính máy này.
+  //
+  // Và nó KHÔNG chỉ là chuyện chỗ đặt khoá trên máy. Máy chủ tăng `users.token_epoch`
+  // mỗi lần khôi phục, rồi bác MỌI phiên và MỌI token thiết-bị-liên-kết mang epoch cũ
+  // (`PhoenixKey-Database` V17__split_taad_keys_table.sql:15-19 — vá có chủ đích, ghi rõ
+  // là để đóng lỗ "thiết bị cũ vẫn dùng phiên 24h + token 30 ngày"). Nên phạm vi văng là
+  // MỌI máy, không riêng máy này: điện thoại kia, máy tính kia, đều mất phiên.
+  //
+  // Người dùng KHÔNG suy ra được điều đó từ hai chữ "Khôi phục ví". Máy cũng
+  // không tự biết: mỗi app có vùng khoá riêng theo mã gói, app này không thấy
+  // app kia. Nên đây là chỗ DUY NHẤT nói ra được, và nó phải nói trước khi làm.
+  const handleRestore = () => {
+    if (!countOk) {
+      showWarning('Chưa đủ', tf('Cần đúng 24 từ — hiện có {n}.', { n: wordCount }));
+      return;
+    }
+    showWarning(
+      t('Việc này sẽ đăng xuất mọi app và mọi máy khác'),
+      t('Khôi phục bằng 24 từ sẽ gắn danh tính của bạn vào ứng dụng này. Mọi ứng dụng khác đang dùng CÙNG danh tính đó sẽ bị đăng xuất — kể cả trên điện thoại khác hoặc máy tính khác, không riêng máy này.') +
+        ' ' +
+        t('Dữ liệu của bạn không mất — nhưng muốn dùng lại app kia thì phải nhập lại 24 từ ở đó, và khi ấy ứng dụng này lại bị đăng xuất.') +
+        ' ' +
+        t('Chỉ dùng đường này khi bạn đang cài lại máy hoặc đổi sang máy mới.'),
+      {
+        confirmText: t('Vẫn khôi phục'),
+        cancelText: t('Để sau'),
+        onConfirm: () => { void doRestore(); },
+      },
+    );
+  };
+
+  const doRestore = async () => {
     if (!taadEnclave.isAvailable()) {
       showWarning(
         'Chưa sẵn sàng',
         'Lõi bảo mật (Rust core) chưa được tích hợp trong bản build này.',
       );
-      return;
-    }
-    if (!countOk) {
-      showWarning('Chưa đủ', tf('Cần đúng 24 từ — hiện có {n}.', { n: wordCount }));
       return;
     }
     try {

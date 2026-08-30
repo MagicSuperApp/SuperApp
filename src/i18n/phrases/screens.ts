@@ -22,6 +22,30 @@ export const SCREENS: PhraseMap = {
     ja: '秘密鍵は端末内にとどまります · あなたのパスワードを保存するサーバーはありません。',
   },
   'Chưa có tài khoản?': { en: 'No account yet?', zh: '还没有账户？', ja: 'アカウントをお持ちでないですか？' },
+  // ── #233 · lối vào khi một người dùng NHIỀU app của cùng hệ ────────────────
+  // Hai app có hai mã gói nên vùng khoá tách hẳn: app này không thấy khoá app kia.
+  // Người đã có danh tính ở app khác phải đi lối "mở lại", không phải lối "tạo mới"
+  // — bấm nhầm là sinh DID thứ hai cho cùng một người, và dữ liệu chia đôi vĩnh viễn.
+  'Đã dùng một app khác của hệ này?': {
+    en: 'Already using another app in this system?',
+    zh: '已在本系统的其他应用中使用过？',
+    ja: 'このシステムの別のアプリを既にお使いですか？',
+  },
+  'Mở lại danh tính đã có bằng cụm 24 từ — vườn, cây và ví theo bạn sang đây': {
+    en: 'Reopen your existing identity with the 24-word phrase — your farms, trees and wallet come with you',
+    zh: '用 24 个助记词重新打开已有身份 — 你的农场、树木和钱包会一并带过来',
+    ja: '24 語のフレーズで既存の本人情報を開き直します — 農場・樹木・ウォレットはそのまま引き継がれます',
+  },
+  'Chưa từng có danh tính nào?': {
+    en: 'Never had an identity before?',
+    zh: '从未拥有过任何身份？',
+    ja: '本人情報をお持ちになったことがないですか？',
+  },
+  'Tạo một danh tính MỚI — khác với danh tính bạn dùng ở app kia': {
+    en: 'Create a NEW identity — different from the one you use in the other app',
+    zh: '创建一个全新身份 — 与你在另一个应用中使用的身份不同',
+    ja: '新しい本人情報を作成します — 別のアプリで使っているものとは別になります',
+  },
   'Tạo danh tính mới bằng sinh trắc học · 3 bước': {
     en: 'Create a new identity with biometrics · 3 steps',
     zh: '用生物识别创建新身份 · 3 步完成',

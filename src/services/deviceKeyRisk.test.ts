@@ -1,12 +1,38 @@
-jest.mock('./phoenixKey-api', () => ({ identity: { getHealth: jest.fn() } }));
+// Giả lập `phoenixKey-api` phải mang theo LỚP LỖI THẬT, không chỉ hàm.
+//
+// Bản đầu chỉ giả lập `identity.getHealth` rồi cho nó ném `{response:{status:401}}`
+// — hình dạng lỗi thô của axios. Bài XANH, mà đường đó không ai đi được: mọi lối
+// ra của `unwrap` đều ném `PhoenixKeyApiError`, và lớp ấy không có `response`.
+// Nên bài kiểm chứng nhận một phép phân biệt đang HỎNG.
+//
+// Lớp dưới đây giữ đúng chữ ký lớp thật `(code, httpStatus, message)`. Gán trường
+// trong thân hàm chứ không dùng tham số-thuộc-tính: babel biến tham số-thuộc-tính
+// thành tham chiếu ra ngoài phạm vi và nhà máy `jest.mock` từ chối.
+jest.mock('./phoenixKey-api', () => {
+  class PhoenixKeyApiError extends Error {
+    code: number;
+    httpStatus: number;
+    constructor(code: number, httpStatus: number, message: string) {
+      super(message);
+      this.code = code;
+      this.httpStatus = httpStatus;
+      this.name = 'PhoenixKeyApiError';
+    }
+  }
+  return { PhoenixKeyApiError, identity: { getHealth: jest.fn() } };
+});
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { identity } from './phoenixKey-api';
+import { identity, PhoenixKeyApiError } from './phoenixKey-api';
 import {
   checkDeviceKeyRisk, isRiskSnoozed, snoozeRisk, resetRiskSnooze,
 } from './deviceKeyRisk';
 
 const getHealth = identity.getHealth as jest.Mock;
+
+/** Dựng lỗi ĐÚNG như `unwrap` dựng nó. */
+const loi = (code: number, httpStatus: number, msg = 'loi') =>
+  new PhoenixKeyApiError(code, httpStatus, msg);
 
 const OK = {
   seedExported: true, exportedAt: '2026-08-01T00:00:00Z',
@@ -36,17 +62,48 @@ describe('checkDeviceKeyRisk — BA trạng thái, không phải hai', () => {
   // Ba bài dưới đây là phần đắt nhất: "chưa hỏi được" KHÔNG được rơi vào một
   // trong hai đầu kia.
   it('401 → unknown/no-session, KHÔNG phải at-risk và KHÔNG phải safe', async () => {
-    getHealth.mockRejectedValue({ response: { status: 401 } });
+    // `AuthRequiredInterceptor.java:164` ném UNAUTHORIZED(1304) + HTTP 401 khi
+    // thiếu Bearer; `unwrap` gói lại thành PhoenixKeyApiError(1304, 401, …).
+    getHealth.mockRejectedValue(loi(1304, 401, 'Missing Bearer token'));
+    await expect(checkDeviceKeyRisk()).resolves.toEqual({ state: 'unknown', why: 'no-session' });
+  });
+
+  it('403 → unknown/no-session', async () => {
+    getHealth.mockRejectedValue(loi(1304, 403, 'Invalid Bearer token'));
+    await expect(checkDeviceKeyRisk()).resolves.toEqual({ state: 'unknown', why: 'no-session' });
+  });
+
+  it('phong bì báo 1304 trên HTTP 200 vẫn là "chưa có phiên"', async () => {
+    // `unwrap` có một lối dựng lỗi với `httpStatus: 200` — khi HTTP là 200 mà
+    // phong bì mang `code !== 1000`. Ở lối đó chỉ còn mã nghiệp vụ đứng vững,
+    // nên phép đo không được chỉ dựa vào mã HTTP.
+    getHealth.mockRejectedValue(loi(1304, 200, 'Unauthorized'));
     await expect(checkDeviceKeyRisk()).resolves.toEqual({ state: 'unknown', why: 'no-session' });
   });
 
   it('500 → unknown/server', async () => {
-    getHealth.mockRejectedValue({ response: { status: 500 } });
+    getHealth.mockRejectedValue(loi(-1, 500, 'Internal error'));
     await expect(checkDeviceKeyRisk()).resolves.toEqual({ state: 'unknown', why: 'server' });
   });
 
-  it('mạng ném (không có status) → unknown/server, KHÔNG ném ra ngoài', async () => {
+  it('mạng rớt → unknown/server, KHÔNG ném ra ngoài', async () => {
+    // `unwrap` dựng `PhoenixKeyApiError(-1, 0, 'Network error')` cho lối này —
+    // KHÔNG phải để lọt một `TypeError` trần ra ngoài.
+    getHealth.mockRejectedValue(loi(-1, 0, 'Network error'));
+    await expect(checkDeviceKeyRisk()).resolves.toEqual({ state: 'unknown', why: 'server' });
+  });
+
+  it('lỗi lạ không phải PhoenixKeyApiError → unknown/server, vẫn không ném', async () => {
     getHealth.mockRejectedValue(new TypeError('Network request failed'));
+    await expect(checkDeviceKeyRisk()).resolves.toEqual({ state: 'unknown', why: 'server' });
+  });
+
+  it('hình dạng lỗi THÔ của axios KHÔNG còn được đọc thành "chưa có phiên"', async () => {
+    // Bài chốt lại chính lỗi đã sửa, theo chiều ngược. `{response:{status:401}}`
+    // là thứ `getHealth` KHÔNG BAO GIỜ ném ra. Nếu ai đó khôi phục lại phép đọc
+    // `response.status`, bài này đỏ và chỉ đúng vào chỗ sai — thay vì để một
+    // phép phân biệt hỏng nằm im dưới một bài xanh.
+    getHealth.mockRejectedValue({ response: { status: 401 } });
     await expect(checkDeviceKeyRisk()).resolves.toEqual({ state: 'unknown', why: 'server' });
   });
 

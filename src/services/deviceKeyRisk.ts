@@ -25,7 +25,7 @@
 // hơn không có mốc.
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { identity } from './phoenixKey-api';
+import { identity, PhoenixKeyApiError } from './phoenixKey-api';
 
 export type DeviceKeyRisk =
   /** Đã bật khoá thiết bị mà chưa có ai khôi phục hộ. */
@@ -62,9 +62,23 @@ export async function checkDeviceKeyRisk(): Promise<DeviceKeyRisk> {
   } catch (e: unknown) {
     // 401/403 = chưa có phiên. Đó không phải lỗi cần kêu — người chưa đăng nhập
     // thì cũng chưa có khoá thiết bị nào để mà lo.
-    const status = (e as { response?: { status?: number }; status?: number })?.response?.status
-      ?? (e as { status?: number })?.status;
-    return { state: 'unknown', why: status === 401 || status === 403 ? 'no-session' : 'server' };
+    //
+    // ĐỌC `httpStatus`, KHÔNG đọc `response.status`. `getHealth` đi qua `unwrap`,
+    // và MỌI lối ra của `unwrap` đều ném `PhoenixKeyApiError` — kể cả lối mạng
+    // rớt, kể cả lối phong bì có `code !== 1000`. Lớp đó mang `code` +
+    // `httpStatus`; nó KHÔNG có `response`, cũng KHÔNG có `status`. Đọc theo hình
+    // dạng lỗi thô của axios là đọc một thứ không bao giờ tới, nên mọi 401 rơi
+    // xuống nhánh 'server' — im lặng, không ngoại lệ, không dấu vết.
+    //
+    // Thêm `code === 1304` bên cạnh mã HTTP: `AuthRequiredInterceptor.java:164,177`
+    // ném `UNAUTHORIZED(1304)` cho cả "thiếu Bearer" lẫn "Bearer hỏng". Hôm nay nó
+    // kèm HTTP 401 nên hai phép đo trùng nhau; nhưng `unwrap` còn một lối dựng lỗi
+    // với `httpStatus: 200` khi phong bì báo hỏng trên một phản hồi 200, và mã
+    // nghiệp vụ mới là thứ đứng vững ở lối đó.
+    const code = e instanceof PhoenixKeyApiError ? e.code : undefined;
+    const status = e instanceof PhoenixKeyApiError ? e.httpStatus : undefined;
+    const chuaCoPhien = status === 401 || status === 403 || code === 1304;
+    return { state: 'unknown', why: chuaCoPhien ? 'no-session' : 'server' };
   }
 }
 

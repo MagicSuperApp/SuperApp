@@ -18,7 +18,7 @@
  */
 
 import React from 'react';
-import { TextInput } from 'react-native';
+import { Text, TextInput } from 'react-native';
 import renderer, { act, type ReactTestRenderer } from 'react-test-renderer';
 import * as appAlert from '../utils/alert';
 
@@ -71,10 +71,7 @@ const PHRASE_24 = Array(24).fill('abandon').join(' ');
 const pressRestore = async (tree: ReactTestRenderer) => {
   const btn = tree.root
     .findAll(n => typeof n.props?.onPress === 'function' && !n.props?.onLongPress)
-    .find(n => JSON.stringify(n.props?.style ?? '').length > 0 &&
-               n.findAllByType(require('react-native').Text)
-                .some((t: { props: { children: unknown } }) =>
-                  String(t.props.children).includes('Khôi phục')));
+    .find(n => n.findAllByType(Text).some(label => String(label.props.children).includes('Khôi phục')));
   if (!btn) throw new Error('không tìm thấy nút Khôi phục');
   await act(async () => { btn.props.onPress(); });
 };

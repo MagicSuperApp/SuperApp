@@ -12,6 +12,13 @@
 //     route/entrypoint/navSlot/icon; registry cung component cho từng route.
 //   - Offline: tất cả nhúng binary; dựng nav không phụ thuộc mạng.
 //
+// ĐÂY LÀ TRẠNG THÁI HÔM NAY, KHÔNG PHẢI TRẠNG THÁI ĐÍCH. Sổ này TĨNH: bốn module
+// biên dịch sẵn, không có đường đăng ký nào — không permissionless, cũng không có
+// cổng gác, vì không có gì để gác. `Specs/Platform-Math-Spec.md` §mô-hình-đe-doạ và
+// `Integration-Standard.md` §nguyên-tắc-3 tả một sổ ĐĂNG KÝ ĐƯỢC ở trạng thái đích;
+// hai chỗ đó KHÔNG mô tả tệp này. Ai đọc mô hình đe doạ rồi tìm cổng gác trong đây
+// sẽ không thấy, và cái không thấy đó đúng — chưa dựng.
+//
 // Manifest `routes` là DANH SÁCH route name của module; với mỗi route phải có
 // đúng một component trong `screens`. CONTRACT: keys(screens) === manifest.routes
 // (đối chiếu bằng assertRouteParity() khi DEV để bắt lệch sớm).

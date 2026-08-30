@@ -3,9 +3,17 @@
 Kho này dựng ra **nhiều app** từ **một nền mã**. Aladin và CheckFarm dùng chung
 100% màn hình, module và logic; khác nhau ở lớp trình bày và ở danh tính native.
 
-Thư mục này là nơi khai **danh tính native**: tên app, mã gói, biểu tượng.
+Thư mục này là nơi khai **danh tính** của một app: tên, mã gói, biểu tượng — và
+nó tuân luật nào của SuperApp.
 
-## Thêm một app mới — ba bước, không sửa gradle, không sửa Xcode
+Hai tệp, hai vai:
+
+| tệp | vai |
+|---|---|
+| [`LUAT-SUPERAPP.md`](LUAT-SUPERAPP.md) | luật chung mọi app phải tuân, và chỗ nào có cổng cưỡng chế thật |
+| `<mã>/instance.json` | app đó là ai, và nó ký nhận phiên bản luật nào |
+
+## Thêm một app mới — bốn bước, không sửa gradle, không sửa Xcode
 
 ```
 1.  mkdir -p instances/<mã>/brand
@@ -29,6 +37,10 @@ tay. Thêm thư mục là có flavor.
 {
   "id": "checkfarm",
   "displayName": "CheckFarm",
+  "superapp": {
+    "rulesVersion": 1,
+    "phoenixDid": "did:phoenix:1:<64 ký tự hex>"
+  },
   "android": {
     "applicationId": "com.checkfarm.app",
     "iconBackground": "#1F6B3A"
@@ -43,9 +55,21 @@ tay. Thêm thư mục là có flavor.
 |---|---|---|
 | `id` | mã nội bộ. Phải **trùng tên thư mục**, chữ thường + số | không (là tên flavor) |
 | `displayName` | chữ hiện dưới biểu tượng trên máy người dùng | được |
+| `superapp.rulesVersion` | phiên bản `LUAT-SUPERAPP.md` mà app này ký nhận | phải nâng khi luật đổi |
+| `superapp.phoenixDid` | danh tính PhoenixKey **của chính app này** | không nên |
 | `android.applicationId` | mã gói trên Google Play | **KHÔNG BAO GIỜ** |
 | `android.iconBackground` | màu lớp nền của biểu tượng thích ứng | được |
 | `ios.bundleId` | mã gói trên App Store | **KHÔNG BAO GIỜ** |
+
+**Khối `superapp` là bắt buộc, và nó là chỗ app ký nhận luật.** Đọc
+[`LUAT-SUPERAPP.md`](LUAT-SUPERAPP.md) trước khi điền — `rulesVersion` khai sai
+số là gradle nổ, và nó cố ý nổ: luật không tự lan sang app đã có, người phải xác
+nhận.
+
+`phoenixDid` **không được bỏ trống** với app thêm mới. Hai app hiện có (`aladin`,
+`checkfarm`) đang để `null` vì chưa có đường cấp danh tính cho một *instance* —
+tên chúng ghi thẳng trong cổng ở `android/app/build.gradle` như một món **nợ**,
+không phải một mặc định. Danh sách đó chỉ được rút ngắn.
 
 Sai ở đây thì gradle **nổ ngay** kèm câu nói rõ sai chỗ nào — cố ý. Một
 `applicationId` rỗng lọt xuống dưới là dựng ra gói mang mã app khác, và không có
@@ -135,8 +159,8 @@ thường, chỉ là không nhận tin đẩy khi app tắt. Xem
 thương hiệu trong app — những thứ đó là **hành vi**, không phải danh tính, và
 chúng nằm ở `src/config/instance.config.ts`. Thêm một app cần một entry ở đó nữa.
 
-Ranh giới: **thư mục này = app đó LÀ AI với hệ điều hành và cửa hàng.**
-`instance.config.ts` = **app đó TRÔNG NHƯ THẾ NÀO với người dùng.**
+Ranh giới: **thư mục này = app đó LÀ AI với hệ điều hành, cửa hàng, và hệ sinh
+thái.** `instance.config.ts` = **app đó TRÔNG NHƯ THẾ NÀO với người dùng.**
 
 `src/config/nativeIdentityParity.test.ts` canh hai bên khớp nhau — thư mục có mà
 bảng TS không có (hoặc ngược lại) là **đỏ**.

@@ -1,3 +1,44 @@
+## Mỗi app ký nhận luật SuperApp, và có cổng nổ khi không ký
+
+### Cái thiếu, và vì sao nó không phải chuyện giấy tờ
+Kho này dựng nhiều app từ một nền mã. Câu "mỗi app phải có danh tính riêng và tuân luật SuperApp" cho tới nay **không có chỗ nào cưỡng chế**: `instances/<mã>/instance.json` có bốn khoá — `id`, `displayName`, `android`, `ios` — không DID, không neo vào luật nào. Thêm một thư mục là thành một app.
+
+### Luật viết ra, và nó tự nói chỗ chưa canh được
+`instances/LUAT-SUPERAPP.md`, bảy mục, mỗi mục ghi rõ có cổng thật hay chưa. §6 (khoá ký) và §7 (chia phần tiền giữa các app) tự khai **CHƯA CƯỠNG CHẾ**, và có bài kiểm giữ nguyên chữ đó — xoá chữ mà không dựng cổng là đỏ. Không có phép này thì một tệp luật dần đọc như thể cả bảy mục đã được canh.
+
+### Cổng ở hai chỗ, hai lý do khác nhau
+
+| chỗ | bắt được cái mà chỗ kia không bắt |
+|---|---|
+| `android/app/build.gradle` | bản dựng trên máy cá nhân, không qua CI |
+| `src/config/instanceRules.test.ts` | đỏ ngay trên máy không có Android SDK, không phải chờ 20 phút |
+
+Cổng đòi: khối `superapp` bắt buộc · `rulesVersion` khớp số ở đầu tệp luật · `phoenixDid` không `null` với app mới · hai app không dùng chung DID.
+
+**`rulesVersion` là chỗ đáng đọc kỹ.** Sửa luật ⇒ nâng số ⇒ **mọi app đỏ** cho tới khi có người đọc luật mới rồi ký nhận trong tệp của app mình. Cố ý làm phiền: không có bước này thì một ràng buộc mới thêm vào tài liệu sẽ đúng với app viết SAU nó và **im lặng sai** với mọi app viết TRƯỚC.
+
+### Hai app hiện có được miễn TẠM — và cái miễn đó là nợ
+`aladin` và `checkfarm` để `phoenixDid: null`, vì chưa có đường cấp DID cho một *instance* (khác DID của **người dùng**, thứ đã có sẵn). Tên hai app ghi thẳng trong cổng kèm ngày và lý do, và một bài kiểm chặn danh sách đó **dài thêm** — nó chỉ được rút ngắn. Cách khác là bắt cả hai có DID ngay, và hôm nay chỉ làm được bằng cách bịa một chuỗi trông giống DID: cổng xanh mà không có gì đứng sau.
+
+### Kiểm chứng bằng đột biến — 4/4
+thêm app thứ ba không DID · nâng phiên bản luật · hai app trùng DID · gỡ khối kiểm khỏi gradle.
+
+⚠ Cổng gradle **chưa chạy được ở máy soạn** (không có Java). Bài kiểm JS canh phần văn bản của cổng; việc gradle cấu hình trót lọt thì lượt CI đầu tiên mới nói được.
+
+### README viết lại — bản cũ sai ở đúng chỗ người mới sẽ tắc
+- `src/config/instances/myapp.config.ts` — **đường không tồn tại**;
+- `moduleList` khai theo từng app — trường đã gỡ, tập module nay là hằng dẫn xuất từ `moduleIds.ts`;
+- nhánh `dev` — **không tồn tại**, nhánh tích hợp là `develop`;
+- "INV-1 = mỗi module giữ dữ liệu riêng" — trái với `Integration-Standard.md:119` ("store DID là single source of truth; mọi host là CLIENT");
+- không nói rõ Codemagic **chỉ dựng Aladin** (cả hai luồng Android khai `ANDROID_FLAVOR: aladin`).
+
+Kèm `src/config/docLinks.test.ts`: quét mọi `.md` ở gốc kho + `instances/`, đỏ khi một liên kết tương đối trỏ vào tệp không có. Một liên kết chết không làm bản dựng đỏ, không làm bài kiểm nào đỏ, và nó sống được hàng tháng — đúng lớp lỗi vừa nêu.
+
+### Rà tiếp
+Tên kho cũ `AladinContract/SuperApp` còn ở 6 chỗ (gồm một câu hướng dẫn trong `android-aab.yml` bảo người đọc chạy `gh api` vào kho sai) → `MagicSuperApp/SuperApp`. Mục "PR đang mở" của `VersionChecklist.md` còn ba PR đã gộp từ tháng 7 → thay bằng năm PR mở thật. `CONTRIBUTING.md` đo lại thì đúng nguyên.
+
+---
+
 ## Chat nối API ProofChat thật, gỡ hết dữ-liệu mẫu, dựng lại giao-diện theo Fluent
 
 ### Cái đã gỡ, và vì sao nó nguy chứ không chỉ thừa

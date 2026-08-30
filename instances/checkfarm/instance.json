@@ -1,6 +1,10 @@
 {
   "id": "checkfarm",
   "displayName": "CheckFarm",
+  "superapp": {
+    "rulesVersion": 1,
+    "phoenixDid": null
+  },
   "android": {
     "applicationId": "com.checkfarm.app",
     "iconBackground": "#1F6B3A"

@@ -51,6 +51,8 @@ import { GroundBackdrop } from '../modules/trace/components/layered/Organic';
 import {
   ELEVATION, NATURE, ORGANIC_CARD, ORGANIC_TILE, RADIUS, SPACE, SURFACE, TONE, TYPE,
 } from '../modules/trace/theme/depth';
+import { showError, showInfo, showSuccess, showWarning } from '../utils/alert';
+import { t } from '../i18n';
 
 // image-picker nạp mềm (giống AnimalEnroll) — máy chưa cài thì báo rõ, không crash.
 const imagePicker = (() => {
@@ -196,12 +198,12 @@ const FruitVideoScreen: React.FC = () => {
       const draft = await restoreFruitVideoDraft(draftOwner);
       if (!draft?.videoUri) return;
       Alert.alert(
-        'Khôi phục video dở?',
-        'Có video quả quay buổi trước nhưng chưa gửi. Khôi phục để gửi tiếp?',
+        t('Khôi phục video dở?'),
+        t('Có video quả quay buổi trước nhưng chưa gửi. Khôi phục để gửi tiếp?'),
         [
-          { text: 'Bỏ', style: 'destructive', onPress: () => { clearFruitVideoDraft(draftOwner); } },
+          { text: t('Bỏ'), style: 'destructive', onPress: () => { clearFruitVideoDraft(draftOwner); } },
           {
-            text: 'Khôi phục',
+            text: t('Khôi phục'),
             onPress: () => {
               // RE-CHECK: người dùng có thể đã quay clip mới trong lúc hộp thoại mở →
               // KHÔNG ghi đè phiên mới bằng clip nháp (chống gắn nhầm cây/hỏng provenance).
@@ -253,20 +255,20 @@ const FruitVideoScreen: React.FC = () => {
   // ── Quay video ────────────────────────────────────────────────────────────
   const handleRecord = useCallback(async () => {
     if (!imagePicker?.launchCamera) {
-      Alert.alert('Chưa mở được máy ảnh', 'Bản app này chưa mở được máy ảnh. Vui lòng cập nhật app rồi thử lại.');
+      showError('Chưa mở được máy ảnh', 'Bản app này chưa mở được máy ảnh. Vui lòng cập nhật app rồi thử lại.');
       return;
     }
     imagePicker.launchCamera(await withPhotoSave(VIDEO_OPTIONS), (response: any) => {
       if (response.didCancel) return;
       if (response.errorCode) {
-        Alert.alert('Lỗi camera', response.errorMessage ?? 'Không mở được camera. Kiểm tra quyền.');
+        showError('Lỗi camera', response.errorMessage ?? 'Không mở được camera. Kiểm tra quyền.');
         return;
       }
       const asset = response.assets?.[0];
       if (!asset?.uri) return;
       const size = asset.fileSize ?? null;
       if (size && size > MAX_VIDEO_BYTES) {
-        Alert.alert('Video quá nặng', 'Clip vượt 80MB — hãy quay ngắn hơn (dưới 20 giây).');
+        showInfo('Video quá nặng', 'Clip vượt 80MB — hãy quay ngắn hơn (dưới 20 giây).');
         return;
       }
       setVideoUri(asset.uri);
@@ -279,13 +281,13 @@ const FruitVideoScreen: React.FC = () => {
   /** Ảnh nhận dạng của quả — tấm mà `/api/fruit/enroll` sẽ học. */
   const handleCover = useCallback(async () => {
     if (!imagePicker?.launchCamera) {
-      Alert.alert(tk('trace.activity.noCamera'), tk('trace.activity.noCameraBody'));
+      showWarning(tk('trace.activity.noCamera'), tk('trace.activity.noCameraBody'));
       return;
     }
     imagePicker.launchCamera(await withPhotoSave(PHOTO_OPTIONS), async (response: any) => {
       if (response.didCancel) return;
       if (response.errorCode) {
-        Alert.alert(tk('trace.activity.cameraErr'), response.errorMessage ?? tk('trace.activity.cameraErrBody'));
+        showWarning(tk('trace.activity.cameraErr'), response.errorMessage ?? tk('trace.activity.cameraErrBody'));
         return;
       }
       const a = response.assets?.[0];
@@ -382,11 +384,9 @@ const FruitVideoScreen: React.FC = () => {
         owner: draftOwner || undefined,
       });
       if (enq.droppedOldest > 0) {
-        Alert.alert(
-          'Hàng đợi đầy',
+        showInfo('Hàng đợi đầy',
           `Đã bỏ ${enq.droppedOldest} clip cũ nhất chưa gửi được để nhường chỗ. `
-            + 'Hãy tới nơi sóng tốt để gửi bớt.',
-        );
+            + 'Hãy tới nơi sóng tốt để gửi bớt.');
       }
       // GHI XUỐNG ĐĨA HỎNG (máy hết dung lượng) → hàng đợi thật sự rỗng, sẽ không có
       // lần gửi nào. Dừng TẠI ĐÂY: không xoá nháp, không chạy tiếp xuống nhánh suy
@@ -394,11 +394,9 @@ const FruitVideoScreen: React.FC = () => {
       // một clip chưa bao giờ rời máy, mà nháp thì đã xoá mất.
       if (!enq.persisted) {
         setUploading(false);
-        Alert.alert(
-          'Máy hết dung lượng',
+        showInfo('Máy hết dung lượng',
           'Không ghi được clip vào hàng đợi nên chưa gửi đi được. Clip vẫn còn trong '
-            + 'máy — hãy xoá bớt ảnh/video cũ rồi bấm gửi lại.',
-        );
+            + 'máy — hãy xoá bớt ảnh/video cũ rồi bấm gửi lại.');
         return;
       }
 
@@ -426,10 +424,8 @@ const FruitVideoScreen: React.FC = () => {
         // rõ còn thiếu gì. Làm ngược lại sẽ để lại quả mồ côi không bằng chứng.
         const failReason = await enrollFromCover(selectedTreeId);
         if (failReason) {
-          Alert.alert(
-            tk('trace.fruitVideo.fruitFailTitle'),
-            tk('trace.fruitVideo.fruitFailBody', { reason: failReason }),
-          );
+          showWarning(tk('trace.fruitVideo.fruitFailTitle'),
+            tk('trace.fruitVideo.fruitFailBody', { reason: failReason }));
           setSavedFruitName(null);
         } else {
           setSavedFruitName(fruitName.trim());
@@ -452,18 +448,14 @@ const FruitVideoScreen: React.FC = () => {
         // Vẫn THỬ tạo quả: clip nằm lại hàng đợi có thể chỉ vì LampNet chưa nhận
         // byte, chứ mạng vẫn đi được — mà `enroll` là một đường khác hẳn.
         const failReason = await enrollFromCover(selectedTreeId);
-        Alert.alert(
-          'Đã lưu để gửi sau',
+        showSuccess('Đã lưu để gửi sau',
           'Mạng đang yếu. Clip đã vào hàng đợi và sẽ tự gửi lại khi có mạng — cứ quay tiếp, '
-            + 'hoặc bấm "Gửi lại" khi có sóng tốt.',
-        );
+            + 'hoặc bấm "Gửi lại" khi có sóng tốt.');
         // Chỉ dọn màn khi quả ĐÃ tạo xong. Còn thiếu quả mà xoá sạch ảnh với tên
         // là bắt người ta chụp lại từ đầu — giữ nguyên để bấm Gửi lần nữa là được.
         if (!failReason) resetForNext();
-        else Alert.alert(
-          tk('trace.fruitVideo.fruitFailTitle'),
-          tk('trace.fruitVideo.fruitFailBody', { reason: failReason }),
-        );
+        else showWarning(tk('trace.fruitVideo.fruitFailTitle'),
+          tk('trace.fruitVideo.fruitFailBody', { reason: failReason }));
       }
     } finally {
       setUploading(false);
@@ -533,7 +525,7 @@ const FruitVideoScreen: React.FC = () => {
               style={styles.cidBox}
               onPress={() => {
                 Clipboard.setString(result.video_cid!);
-                Alert.alert(tk('trace.tree.copied'), tk('trace.tree.copiedBody'));
+                showSuccess(tk('trace.tree.copied'), tk('trace.tree.copiedBody'));
               }}
             >
               <Icon name="shield-halved" size={15} color={TONE.primary} />

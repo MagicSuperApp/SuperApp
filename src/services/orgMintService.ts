@@ -102,6 +102,8 @@ export interface Org {
   orgName?: string;
   role?: string;
   threshold?: number;
+  /** `single` | `threshold` — máy chủ trả kèm ở cửa danh sách. */
+  authorityModel?: string;
 }
 
 export interface MintIntent {
@@ -174,14 +176,41 @@ export async function createOrg(args: {
 }
 
 /**
- * Danh sách OrgDID người dùng điều-khiển.
- * [CHỜ PhoenixKey xác nhận endpoint list] — nếu backend chưa có, gọi này ném
- * PhoenixKeyApiError (404/tương-đương); UI rơi về danh sách lưu local (màn OrgDID
- * tự cache org vừa tạo). Trả camelCase cho UI.
+ * Danh sách OrgDID người dùng điều-khiển. Trả camelCase cho UI.
+ *
+ * Máy chủ trả `{ orgs: [...] }` (`API.md:283-299`), và response interceptor đã
+ * đổi key sang camelCase trước khi tới đây — nên hình dạng thật là
+ * `{ orgs: [{ orgDid, name, authorityModel, threshold, role, createdAt }] }`.
+ *
+ * Hai chỗ từng sai cùng lúc, và cái sau che cái trước:
+ *   1. đọc thẳng giá trị trả về như một MẢNG (nó là object bọc);
+ *   2. `Array.isArray(rows) ? rows : []` — biến lần đọc trượt thành "không có
+ *      tổ chức nào". Không có nhánh đó thì lỗi (1) đã lộ ngay ngày đầu.
+ *
+ * Nên chỗ này KHÔNG rơi sạch nữa: hình dạng lạ thì NÉM. Danh sách rỗng giả là
+ * lỗi đắt — người dùng tưởng chưa tạo nên tạo lại, mà máy chủ cho phép trùng
+ * tên (`OrgCreateRequest`), tức đúc thêm một OrgDID lên chuỗi và mất phí thật.
  */
 export async function listOrgs(): Promise<Org[]> {
-  const rows = (await orgMintApi.listOrgs()) as unknown as Org[];
-  return Array.isArray(rows) ? rows : [];
+  const res = await orgMintApi.listOrgs();
+  const rows = (res as unknown as { orgs?: unknown })?.orgs;
+  if (!Array.isArray(rows)) {
+    throw new Error(
+      'GET /identity/org trả hình dạng lạ (chờ { orgs: [...] }): ' +
+        JSON.stringify(res).slice(0, 200),
+    );
+  }
+  return rows.map((r: any): Org => ({
+    orgDid: r.orgDid,
+    // Máy chủ khai `name`. `orgName` chỉ là tên gọi phía UI của app.
+    orgName: r.name,
+    role: r.role,
+    // Máy chủ trả `null` khi authorityModel = single. Kiểu phía app khai
+    // `number | undefined`, nên đổi `null` sang `undefined` ngay tại đây thay
+    // vì để lệch kiểu ngầm trôi xuống UI.
+    threshold: r.threshold ?? undefined,
+    authorityModel: r.authorityModel,
+  }));
 }
 
 // ── OrgDID m-of-n: founding + upgrade-authority ───────────────────────────────

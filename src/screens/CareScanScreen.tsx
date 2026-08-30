@@ -43,6 +43,7 @@ import {
   type CareWithdrawalResponse,
 } from '../services/careService';
 import { withPhotoSave } from '../services/mediaSavePermission';
+import { showError } from '../utils/alert';
 
 const BASE_URL: string = ORILIFE_BASE;
 const HEADER_BG = '#2F7D6B'; // xanh y-tế — thuốc/chăm-sóc
@@ -69,6 +70,10 @@ const CareScanScreen: React.FC = () => {
   const [matching, setMatching] = useState(false);
   const [logging, setLogging] = useState(false);
   const [candidates, setCandidates] = useState<CareProduct[] | null>(null);
+  /** Lý do máy chủ đưa khi không có ứng viên. `null` = chưa hỏi. */
+  const [matchReason, setMatchReason] = useState<string | null>(null);
+  /** Câu soạn sẵn của máy chủ cho ca khớp nhập nhằng. */
+  const [matchMessage, setMatchMessage] = useState<string | null>(null);
   const [logged, setLogged] = useState<CareLogResponse | null>(null);
   // Cờ an toàn KHÔNG nằm trong thân của `/api/care/log` — phải hỏi riêng
   // `/api/care/withdrawal`. `null` = chưa hỏi xong hoặc hỏi hỏng; hai ca đó đều
@@ -77,16 +82,18 @@ const CareScanScreen: React.FC = () => {
 
   const handleCapture = useCallback(async () => {
     setCandidates(null);
+    setMatchReason(null);
+    setMatchMessage(null);
     setLogged(null);
     setWd(null);
     if (!imagePicker?.launchCamera) {
-      Alert.alert('Chưa mở được máy ảnh', 'Bản app này chưa mở được máy ảnh. Vui lòng cập nhật app rồi thử lại.');
+      showError('Chưa mở được máy ảnh', 'Bản app này chưa mở được máy ảnh. Vui lòng cập nhật app rồi thử lại.');
       return;
     }
     imagePicker.launchCamera(await withPhotoSave(CAMERA_OPTIONS), (response: any) => {
       if (response.didCancel) return;
       if (response.errorCode) {
-        Alert.alert('Lỗi camera', response.errorMessage ?? 'Không thể mở camera. Kiểm tra quyền trong Cài đặt.');
+        showError('Lỗi camera', response.errorMessage ?? 'Không thể mở camera. Kiểm tra quyền trong Cài đặt.');
         return;
       }
       const asset = response.assets?.[0];
@@ -98,12 +105,16 @@ const CareScanScreen: React.FC = () => {
     if (!imageUri) return;
     setMatching(true);
     setCandidates(null);
+    setMatchReason(null);
+    setMatchMessage(null);
     try {
       const res = await matchCareLabel(BASE_URL, imageUri);
       if (res.ok && res.data) {
         setCandidates(res.data.candidates ?? []);
+        setMatchReason(res.data.reason ?? null);
+        setMatchMessage(res.data.ambiguous ? res.data.message ?? null : null);
       } else {
-        Alert.alert('Lỗi', res.error?.detail ?? 'Không nhận diện được nhãn. Thử chụp rõ hơn.');
+        showError('Lỗi', res.error?.detail ?? 'Không nhận diện được nhãn. Thử chụp rõ hơn.');
       }
     } finally {
       setMatching(false);
@@ -121,11 +132,9 @@ const CareScanScreen: React.FC = () => {
     // Cách ly là thứ chặn thu hoạch và chặn bán; ghi hụt ở đây đắt hơn nhiều so với
     // việc bắt người dùng chọn vườn trước.
     if (!targetId || targetId === 'default') {
-      Alert.alert(
-        'Chưa chọn cây hoặc vườn',
+      showError('Chưa chọn cây hoặc vườn',
         'Nhật ký thuốc phải gắn vào một cây hoặc một vườn cụ thể thì sau này mới tra '
-        + 'lại được. Anh/chị mở đúng cây (hoặc vườn) rồi bấm "Quét nhãn thuốc" từ đó.',
-      );
+        + 'lại được. Anh/chị mở đúng cây (hoặc vườn) rồi bấm "Quét nhãn thuốc" từ đó.');
       return;
     }
     setLogging(true);
@@ -147,7 +156,7 @@ const CareScanScreen: React.FC = () => {
         const w = await getWithdrawalStatus(BASE_URL, targetType, targetId);
         setWd(w.ok && w.data ? w.data : null);
       } else {
-        Alert.alert('Lỗi', res.error?.detail ?? 'Ghi nhật-ký thất bại. Vui lòng thử lại.');
+        showError('Lỗi', res.error?.detail ?? 'Ghi nhật-ký thất bại. Vui lòng thử lại.');
       }
     } finally {
       setLogging(false);
@@ -222,14 +231,43 @@ const CareScanScreen: React.FC = () => {
   const renderCandidates = () => {
     if (!candidates || logged) return null;
     if (candidates.length === 0) {
+      // Máy chủ đã tách sẵn ba ca đòi ba hành động NGƯỢC nhau (`care_router.py:164-171`).
+      // Câu cũ gộp cả ba thành "Chụp rõ nhãn hơn hoặc thử lại" — tức bảo người đang đứng
+      // giữa vườn chụp lại, trong khi hai trong ba ca chụp lại là vô ích, và ca đang
+      // xảy ra 100% hôm nay (máy chủ không có OCR) là ca vô ích nhất.
+      //
+      // Không câu nào ở đây chỉ tới một nút không tồn tại: app chưa có đường nhập tay
+      // (`getCareProducts` có 0 chỗ gọi, màn không có ô nhập), nên đừng hứa "ghi tay".
+      const empty: Record<string, string> = {
+        ocr_unavailable:
+          'Máy chủ hiện chưa đọc được chữ trên nhãn. Chụp lại cũng không giúp được — '
+          + 'đây là việc ở máy chủ, không phải do ảnh.',
+        ocr_no_text:
+          'Đọc được ảnh nhưng không thấy chữ nào. Chụp gần hơn vào phần tên trên bao.',
+        no_match:
+          'Đọc được chữ trên nhãn nhưng kho thuốc chưa có sản-phẩm này. Chụp lại cũng '
+          + 'không đổi kết quả.',
+        no_input: 'Chưa có ảnh hoặc chữ nào để tra.',
+      };
       return (
         <View style={styles.resultSection}>
-          <Text style={styles.emptyText}>Chưa nhận ra sản-phẩm. Chụp rõ nhãn hơn hoặc thử lại.</Text>
+          <Text style={styles.emptyText}>
+            {(matchReason && empty[matchReason])
+              // Máy chủ trả một lý do app chưa biết: nói thẳng là chưa rõ, kèm mã, thay vì
+              // đoán bừa sang một ca khác.
+              ?? (matchReason
+                ? `Chưa nhận ra sản-phẩm. Máy chủ báo lý do "${matchReason}" mà bản app này chưa biết.`
+                : 'Chưa nhận ra sản-phẩm.')}
+          </Text>
         </View>
       );
     }
     return (
       <View style={styles.resultSection}>
+        {/* Khớp nhập nhằng: máy chủ nói thẳng rằng thứ tự KHÔNG phải câu trả lời
+            (`care_router.py:385-392`). Không hiện câu đó thì màn bày hạng 1 như đã chắc,
+            mà số ngày cách ly giữa các ứng viên lại khác nhau. */}
+        {matchMessage ? <Text style={styles.emptyText}>{matchMessage}</Text> : null}
         <Text style={styles.sectionTitle}>Chọn sản-phẩm đã dùng:</Text>
         {candidates.map((p) => (
           <TouchableOpacity

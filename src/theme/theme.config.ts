@@ -34,8 +34,11 @@ export interface ThemeConfig {
 
 // ---------------------------------------------------------------------------
 // Default = giá trị app đang chạy (override rỗng → giữ nguyên BASE_TOKENS).
-// Aladin/TonFarm sau này thay object này (hoặc nạp qua config instance) để
-// white-label, KHÔNG cần sửa tokens.ts hay component.
+// `brandName` ở đây chỉ là ĐƯỜNG LÙI. Nguồn tên thật là
+// `InstanceConfig.displayName` (`config/instance.config.ts`) — mỗi instance tự
+// mang `brandName` bằng tên app của nó. Giá trị `'OriLife'` dưới đây là tên NỀN
+// nhận diện, không phải tên app nào; nó chỉ hiện ra nếu có ai dựng theme trần
+// mà quên đi qua instance.
 // ---------------------------------------------------------------------------
 export const DEFAULT_THEME_CONFIG: ThemeConfig = {
   brandName: 'OriLife',

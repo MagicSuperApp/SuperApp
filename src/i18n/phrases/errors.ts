@@ -158,6 +158,11 @@ export const ERRORS: PhraseMap = {
     zh: '服务器返回了应用无法识别的身份编码。这是服务器端故障 — 请将此画面截图发给支持。',
     ja: 'アプリが解釈できない本人情報コードがサーバーから返されました。サーバー側の不具合です — この画面のスクリーンショットをサポートにお送りください。',
   },
+  'Khoá trên máy này đã bị thu hồi, nhiều khả năng do trước đó có một lần khôi phục bằng 24 từ. Cài lại ứng dụng không mở lại được. Dùng 24 từ khôi phục của bạn để mở lại danh tính trên máy này.': {
+    en: 'The key on this device has been revoked, most likely because the identity was recovered from a 24-word phrase earlier. Reinstalling the app will not bring it back. Use your 24-word recovery phrase to reopen the identity on this device.',
+    zh: '本机的密钥已被吊销，很可能是此前用 24 个助记词恢复过身份。重新安装应用无法找回。请用你的 24 词助记词在本机重新打开该身份。',
+    ja: 'この端末の鍵は失効しています。以前に24単語で本人情報を復元したためと思われます。アプリを入れ直しても戻りません。24単語の復元フレーズを使って、この端末で本人情報を開き直してください。',
+  },
   'Máy này đã có khoá của một danh tính đã tạo trước đó. Nhập lại đúng tên đăng nhập của danh tính đó để mở lại trên máy này.': {
     en: 'This device already holds the key of an identity created earlier. Enter that identity\u2019s username again to reopen it on this device.',
     zh: '本机已持有先前创建的某个身份的密钥。请重新输入该身份的用户名，以在本机重新打开它。',

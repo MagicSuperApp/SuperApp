@@ -26,6 +26,7 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
+  Pressable,
   Platform,
   Alert,
   Linking,
@@ -55,6 +56,12 @@ import {
   getTrees,
   type EnrollResponse,
 } from '../services/treeReIDService';
+import {
+  parseSpeciesSuggest,
+  orderSpeciesForConfirm,
+  type SpeciesSuggest,
+} from '../services/speciesSuggest';
+import { getSpeciesCatalog, setTreeSpecies } from '../services/fruitReIDService';
 import { suggestTreeName } from '../utils/suggestTreeName';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import type { RootState } from '../store';
@@ -84,6 +91,8 @@ import { classify409 } from '../services/treeEnrollConflict';
 import { useBottomActionPadding } from '../hooks/useBottomActionPadding';
 import { tk } from '../i18n/keys';
 import { whenLabel } from '../utils/whenLabel';
+import { showError, showInfo, showSuccess, showWarning } from '../utils/alert';
+import { t, tf } from '../i18n';
 const BASE_URL: string =
   ORILIFE_BASE;
 
@@ -185,6 +194,21 @@ const TreeEnrollScreen: React.FC = () => {
   }, []);
   const [isEnrolling, setIsEnrolling] = useState(false);
   const [enrollResult, setEnrollResult] = useState<EnrollResponse | null>(null);
+
+  // ── Xác nhận loài cây sau khi đăng ký ────────────────────────────────────
+  // Máy chủ tự đoán loài ngay ở lượt đăng ký (`species_suggest`). Đây là màn
+  // XÁC NHẬN, không phải màn chọn: đoán của máy đứng đầu và ghi rõ là máy đoán,
+  // một chạm là xong. KHÔNG tích sẵn — máy chủ dùng chính cú chốt này làm nhãn,
+  // nên ô đã tích sẵn thì lượt "đồng ý" không còn là bằng chứng độc lập.
+  const [speciesSuggest, setSpeciesSuggest] = useState<SpeciesSuggest | null>(null);
+  const [speciesNames, setSpeciesNames] = useState<Record<string, string>>({});
+  const [speciesOrder, setSpeciesOrder] = useState<string[]>([]);
+  const [speciesSaving, setSpeciesSaving] = useState(false);
+  const [speciesChosen, setSpeciesChosen] = useState<string | null>(null);
+  const [speciesError, setSpeciesError] = useState<string | null>(null);
+  // Hộp thoại "Đăng ký thành công" bị hoãn lại cho tới khi chốt xong giống cây.
+  const [pendingSuccess, setPendingSuccess] = useState<{ treeId: string; code: string } | null>(null);
+  const [catalogUnavailable, setCatalogUnavailable] = useState(false);
 
   // Ảnh đang xem chi tiết (modal)
   const [selectedPhoto, setSelectedPhoto] = useState<GridPhoto | null>(null);
@@ -486,6 +510,66 @@ const TreeEnrollScreen: React.FC = () => {
   const ungroupedPhotos = photos.filter(p => kindOf(p) === 'unknown');
 
   // ── Navigate sau thành công ───────────────────────────────────────────────
+  /**
+   * Đăng ký xong ⇒ đọc `species_suggest`, và CHỈ khi có đoán mới nạp danh mục.
+   *
+   * Không đoán được thì không nạp gì: bày một hàng chip trống ngay dưới thẻ
+   * "đã đăng ký thành công" là bắt người dùng làm một việc máy chưa hỏi. Đường
+   * chọn giống cũ ở màn danh sách quả vẫn còn nguyên cho ca đó.
+   */
+  useEffect(() => {
+    const suggest = parseSpeciesSuggest(enrollResult?.species_suggest);
+    setSpeciesSuggest(suggest);
+    setSpeciesChosen(null);
+    setSpeciesError(null);
+    setCatalogUnavailable(false);
+    if (!suggest) { setSpeciesOrder([]); return; }
+
+    let alive = true;
+    (async () => {
+      const r = await getSpeciesCatalog(ORILIFE_BASE);
+      if (!alive) return;
+      const list = r.ok && r.data?.species ? r.data.species : [];
+      if (!list.length) {
+        // Danh mục hỏng ⇒ không có tên tiếng Việt để bày. Im lặng bỏ khối này,
+        // KHÔNG hiện mã trần `durio_zibethinus` cho nhà vườn đọc.
+        setSpeciesOrder([]);
+        // ...nhưng KHÔNG được nuốt luôn hộp thoại đã hoãn, không thì người dùng
+        // đứng lại giữa màn không nút nào đi tiếp.
+        setCatalogUnavailable(true);
+        return;
+      }
+      const names: Record<string, string> = {};
+      for (const sp of list) names[sp.id] = sp.name_vi;
+      setSpeciesNames(names);
+      setSpeciesOrder(orderSpeciesForConfirm(list.map((sp) => sp.id), suggest));
+    })();
+    return () => { alive = false; };
+  }, [enrollResult]);
+
+  /**
+   * Người dùng chốt loài ⇒ GỌI `set_species`, kể cả khi trùng đoán của máy.
+   *
+   * Đây là chỗ DUY NHẤT sinh ra nhãn. Máy chủ ghép nó với sự kiện `species_guess`
+   * thành cặp *(máy đoán, người chốt)* để tự đo mình. Bỏ lần gọi này vì "máy đoán
+   * đúng rồi" là cắt đúng sợi dây làm bộ nhận loài khoẻ lên.
+   */
+  const confirmSpecies = useCallback(async (speciesId: string) => {
+    const treeId = enrollResult?.tree_id;
+    if (!treeId || speciesSaving) return;
+    setSpeciesSaving(true);
+    setSpeciesError(null);
+    const r = await setTreeSpecies(ORILIFE_BASE, treeId, speciesId);
+    setSpeciesSaving(false);
+    // Hỏng thì phải NÓI. Im lặng ở đây là người dùng bấm, không thấy gì đổi, rồi
+    // bấm tiếp — mỗi lần một lượt ghi hỏng nữa mà màn vẫn câm.
+    if (!r.ok || r.data?.ok === false) {
+      setSpeciesError(r.error?.detail ?? 'Chưa lưu được giống cây. Thử lại giúp.');
+      return;
+    }
+    setSpeciesChosen(speciesId);
+  }, [enrollResult, speciesSaving]);
+
   const handleSuccess = useCallback(
     (treeId: string, code: string) => {
       // Đăng ký xong → bản nháp hết vai trò, xoá để lần sau không hỏi khôi phục.
@@ -513,8 +597,8 @@ const TreeEnrollScreen: React.FC = () => {
         n_views: 0,
       };
       Alert.alert(
-        'Đăng ký thành công',
-        `Mã cây: ${code}`,
+        t('Đăng ký thành công'),
+        tf('Mã cây: {ma}', { ma: code }),
         [
           {
             text: tk('trace.enroll.viewDetail'),
@@ -540,6 +624,21 @@ const TreeEnrollScreen: React.FC = () => {
     },
     [dispatch, navigation, draftOwner, name, farmId, gps],
   );
+
+  /** Bật hộp thoại thành công đã hoãn (sau khi chốt giống, hoặc khi bỏ qua). */
+  const finishAfterSpecies = useCallback(() => {
+    setPendingSuccess((p) => {
+      if (p) handleSuccess(p.treeId, p.code);
+      return null;
+    });
+  }, [handleSuccess]);
+
+  // Chốt giống xong ⇒ đi tiếp. Danh mục giống không tải được ⇒ cũng đi tiếp, vì
+  // lúc đó không có gì để chốt và người dùng sẽ không có nút nào khác.
+  useEffect(() => {
+    if (!pendingSuccess) return;
+    if (speciesChosen || catalogUnavailable) finishAfterSpecies();
+  }, [pendingSuccess, speciesChosen, catalogUnavailable, finishAfterSpecies]);
 
   // ── Gộp vào cây cũ (verify_add) ──────────────────────────────────────────
   const handleMergeToExisting = useCallback(
@@ -569,26 +668,19 @@ const TreeEnrollScreen: React.FC = () => {
           await appendTreeImages(treeId, imagePaths);
           // Gộp xong cũng là kết thúc phiên chụp → xoá bản nháp.
           clearTreeCaptureDraft(draftOwner);
-          Alert.alert(
-            'Đã gộp thành công',
-            res.data.n_added == null
+          showSuccess('Đã gộp thành công', res.data.n_added == null
               ? 'Đã thêm góc nhìn vào cây đã có.'
-              : `Đã thêm ${res.data.n_added} góc nhìn vào cây đã có.`,
-            [
-              {
-                text: 'OK',
-                onPress: () => {
+              : `Đã thêm ${res.data.n_added} góc nhìn vào cây đã có.`, {
+              confirmText: 'OK',
+              hideCancel: true,
+              onConfirm: () => {
                   dispatch(clearAll());
                   navigation.navigate('TreeDetail', { treeId });
                 },
-              },
-            ],
-          );
+          });
         } else {
-          Alert.alert(
-            'Chưa gộp được',
-            res.data?.reason ?? res.error?.detail ?? 'Không thể gộp. Thử lại.',
-          );
+          showError('Chưa gộp được',
+            res.data?.reason ?? res.error?.detail ?? 'Không thể gộp. Thử lại.');
         }
       } finally {
         setIsEnrolling(false);
@@ -603,7 +695,7 @@ const TreeEnrollScreen: React.FC = () => {
     // Vườn phải HỢP LỆ (còn tồn tại) — nhánh "Tạo cây mới" cũng không được tạo cây
     // mồ côi gắn vào vườn đã xoá / id nháp chết.
     if (!farmValid) {
-      Alert.alert('Chọn vườn', 'Hãy chọn một vườn còn hiệu lực trước khi tạo cây mới.');
+      showInfo('Chọn vườn', 'Hãy chọn một vườn còn hiệu lực trước khi tạo cây mới.');
       return;
     }
     setIsEnrolling(true);
@@ -626,7 +718,7 @@ const TreeEnrollScreen: React.FC = () => {
         setEnrollResult(res.data);
         handleSuccess(res.data.tree_id, res.data.provenance?.code ?? res.data.tree_id);
       } else {
-        Alert.alert('Lỗi', res.error?.detail ?? 'Tạo cây mới thất bại.');
+        showError('Lỗi', res.error?.detail ?? 'Tạo cây mới thất bại.');
       }
     } finally {
       setIsEnrolling(false);
@@ -671,41 +763,33 @@ const TreeEnrollScreen: React.FC = () => {
 
   const runEnroll = async () => {
     if (!name.trim()) {
-      Alert.alert('Thiếu tên', 'Vui lòng nhập tên cây trước khi đăng ký.');
+      showInfo('Thiếu tên', 'Vui lòng nhập tên cây trước khi đăng ký.');
       return;
     }
 
     // Chặn cây mồ côi — không cho đăng ký khi chưa gắn vào vườn nào.
     if (!farmId) {
       if (noFarms) {
-        Alert.alert(
-          'Chưa có vườn',
-          'Cây phải thuộc một vườn. Hãy tạo vườn trước rồi đăng ký cây.',
-          [
-            { text: 'Huỷ', style: 'cancel' },
-            {
-              text: 'Tạo vườn',
-              onPress: () =>
+        showWarning('Chưa có vườn', 'Cây phải thuộc một vườn. Hãy tạo vườn trước rồi đăng ký cây.', {
+            confirmText: 'Tạo vườn',
+            cancelText: 'Huỷ',
+            onConfirm: () =>
                 (navigation as any).navigate('FarmDetail', { farm_id: null }),
-            },
-          ],
-        );
+        });
       } else {
-        Alert.alert('Chọn vườn', 'Vui lòng chọn vườn để gắn cây trước khi đăng ký.');
+        showInfo('Chọn vườn', 'Vui lòng chọn vườn để gắn cây trước khi đăng ký.');
       }
       return;
     }
 
     if (effectiveCaptureCount < MIN_CAPTURES) {
-      Alert.alert(
-        'Chưa đủ ảnh',
-        `Cần ít nhất ${MIN_CAPTURES} góc chụp. Hiện có ${effectiveCaptureCount} góc.\nQuay lại và chụp thêm.`,
-      );
+      showError('Chưa đủ ảnh',
+        `Cần ít nhất ${MIN_CAPTURES} góc chụp. Hiện có ${effectiveCaptureCount} góc.\nQuay lại và chụp thêm.`);
       return;
     }
 
     if (!farmValid) {
-      Alert.alert('Chọn vườn', 'Hãy chọn một vườn còn hiệu lực để cây hiện đúng trong trang trại.');
+      showInfo('Chọn vườn', 'Hãy chọn một vườn còn hiệu lực để cây hiện đúng trong trang trại.');
       return;
     }
 
@@ -724,7 +808,19 @@ const TreeEnrollScreen: React.FC = () => {
         // Lưu ảnh local theo tree_id TRƯỚC clearAll để hiển thị lại ở màn chi tiết.
         await appendTreeImages(res.data.tree_id, imagePaths);
         setEnrollResult(res.data);
-        handleSuccess(res.data.tree_id, res.data.provenance?.code ?? res.data.tree_id);
+        const code = res.data.provenance?.code ?? res.data.tree_id;
+        // Máy có đoán được giống cây thì HOÃN hộp thoại thành công lại.
+        //
+        // Hộp thoại này `cancelable: false` và cả hai nút đều rời màn, nên bật nó
+        // ngay là đè mất hàng chip xác nhận giống ngay bên dưới — khối đó chưa
+        // từng đứng trước mặt ai trong luồng bình thường, và `set_species` (chỗ
+        // DUY NHẤT sinh nhãn) chưa từng được gọi. Nay: chốt giống trước, rồi mới
+        // hiện hộp thoại đi tiếp — xem `finishAfterSpecies`.
+        if (parseSpeciesSuggest(res.data.species_suggest)) {
+          setPendingSuccess({ treeId: res.data.tree_id, code });
+        } else {
+          handleSuccess(res.data.tree_id, code);
+        }
         return;
       }
 
@@ -741,10 +837,10 @@ const TreeEnrollScreen: React.FC = () => {
           const regexMatch = detail.match(/tree[-_]?([0-9a-f-]{8,})/i);
           const foundId = fromBody ?? (regexMatch ? regexMatch[1] : null);
           Alert.alert(
-            'Trùng cây đã có',
-            `${detail}\n\nBạn muốn làm gì?`,
+            t('Trùng cây đã có'),
+            detail + '\n\n' + t('Bạn muốn làm gì?'),
             [
-              { text: 'Huỷ', style: 'cancel' },
+              { text: t('Huỷ'), style: 'cancel' },
               // Nút gộp CHỈ hiện khi biết gộp vào cây nào. Bản cũ luôn hiện nút,
               // rồi khi `foundId` rỗng thì bật một hộp thoại thứ hai bảo "chụp lại
               // và thử nhận diện trước" — trong khi người dùng VỪA nhận diện xong,
@@ -752,12 +848,12 @@ const TreeEnrollScreen: React.FC = () => {
               // thà không mời.
               ...(foundId
                 ? [{
-                  text: 'Gộp vào cây cũ',
+                  text: t('Gộp vào cây cũ'),
                   onPress: () => handleMergeToExisting(foundId),
                 }]
                 : []),
               {
-                text: 'Tạo cây mới',
+                text: t('Tạo cây mới'),
                 style: 'destructive',
                 onPress: handleForceEnroll,
               },
@@ -768,11 +864,11 @@ const TreeEnrollScreen: React.FC = () => {
 
         if (kind === 'heterogeneous') {
           Alert.alert(
-            'Nhiều cây trong ảnh',
-            'Hệ thống phát hiện ảnh chứa nhiều cây khác nhau. '
-              + 'Vui lòng chỉ chụp một cây duy nhất trong khung hình.',
+            t('Nhiều cây trong ảnh'),
+            t('Hệ thống phát hiện ảnh chứa nhiều cây khác nhau. ')
+              + t('Vui lòng chỉ chụp một cây duy nhất trong khung hình.'),
             [
-              { text: 'Huỷ', style: 'cancel' },
+              { text: t('Huỷ'), style: 'cancel' },
               { text: tk('trace.enroll.retake'), onPress: goRetake },
             ],
           );
@@ -781,11 +877,11 @@ const TreeEnrollScreen: React.FC = () => {
 
         if (kind === 'flat') {
           Alert.alert(
-            'Ảnh phẳng hoặc lặp góc',
-            'Các ảnh quá giống nhau hoặc chỉ nhìn từ một góc. '
-              + 'Hãy đi vòng quanh cây và chụp từ nhiều hướng đa dạng hơn.',
+            t('Ảnh phẳng hoặc lặp góc'),
+            t('Các ảnh quá giống nhau hoặc chỉ nhìn từ một góc. ')
+              + t('Hãy đi vòng quanh cây và chụp từ nhiều hướng đa dạng hơn.'),
             [
-              { text: 'Huỷ', style: 'cancel' },
+              { text: t('Huỷ'), style: 'cancel' },
               { text: tk('trace.enroll.retake'), onPress: goRetake },
             ],
           );
@@ -799,12 +895,12 @@ const TreeEnrollScreen: React.FC = () => {
         // việc phân loại đúng. Nhánh này giờ mở thẳng nút "Tạo cây mới" — cùng
         // hành động mà nhánh 'duplicate' cho, chỉ khác là không dám đoán lý do.
         Alert.alert(
-          'Máy chủ từ chối đăng ký',
-          `${detail}\n\nNếu chắc đây là một cây KHÁC, chọn "Tạo cây mới".`,
+          t('Máy chủ từ chối đăng ký'),
+          detail + '\n\n' + t('Nếu chắc đây là một cây KHÁC, chọn "Tạo cây mới".'),
           [
-            { text: 'Huỷ', style: 'cancel' },
+            { text: t('Huỷ'), style: 'cancel' },
             { text: tk('trace.enroll.retake'), onPress: goRetake },
-            { text: 'Tạo cây mới', style: 'destructive', onPress: handleForceEnroll },
+            { text: t('Tạo cây mới'), style: 'destructive', onPress: handleForceEnroll },
           ],
         );
         return;
@@ -813,24 +909,24 @@ const TreeEnrollScreen: React.FC = () => {
       if (status === 400) {
         if (detail.toLowerCase().includes('gps') || detail.toLowerCase().includes('location')) {
           Alert.alert(
-            'Cần bật GPS',
-            'Đăng ký cây yêu cầu thông tin vị trí. Vui lòng bật GPS và thử lại.',
+            t('Cần bật GPS'),
+            t('Đăng ký cây yêu cầu thông tin vị trí. Vui lòng bật GPS và thử lại.'),
             [
               // "Thử lại" một mình là vòng lặp kín: không có gì bật được GPS nên
               // lần nào cũng về đúng hộp thoại này. Mẫu mở Cài đặt đã có ở
               // `TreeIdentityScreen` (quyền camera) — dùng lại đúng mẫu đó.
               { text: tk('trace.enroll.openSettings'), onPress: () => { Linking.openSettings(); } },
-              { text: 'Thử lại', onPress: handleEnroll },
-              { text: 'Huỷ', style: 'cancel' },
+              { text: t('Thử lại'), onPress: handleEnroll },
+              { text: t('Huỷ'), style: 'cancel' },
             ],
           );
           return;
         }
-        Alert.alert('Lỗi', detail);
+        showError('Lỗi', detail);
         return;
       }
 
-      Alert.alert('Lỗi đăng ký', detail);
+      showError('Lỗi đăng ký', detail);
     } finally {
       setIsEnrolling(false);
     }
@@ -1063,6 +1159,51 @@ const TreeEnrollScreen: React.FC = () => {
                   danh sách cây của vườn để kiểm lại, đừng đăng ký lại lần nữa.
                 </Text>
               )}
+
+              {/* ── Xác nhận loài cây ─────────────────────────────────────────
+                  Máy đã đoán. Việc còn lại của người dùng là gật hoặc sửa, một
+                  chạm. Chip đầu tiên là đoán của máy và được ghi rõ như vậy —
+                  không tích sẵn, vì chính cú chạm này là nhãn máy chủ học theo. */}
+              {speciesChosen ? (
+                <Text style={styles.successHint}>
+                  Đã ghi giống: {speciesNames[speciesChosen] ?? speciesChosen}
+                </Text>
+              ) : speciesSuggest && speciesOrder.length > 0 ? (
+                <View style={styles.speciesConfirm}>
+                  <Text style={styles.speciesConfirmHint}>
+                    Máy đoán cây này là{' '}
+                    <Text style={styles.speciesConfirmGuess}>
+                      {speciesNames[speciesSuggest.species] ?? speciesSuggest.species}
+                    </Text>
+                    {'. '}Chạm để xác nhận, hoặc chọn đúng giống nếu máy đoán sai.
+                  </Text>
+                  <View style={styles.speciesConfirmRow}>
+                    {speciesOrder.map((id) => (
+                      <Pressable
+                        key={id}
+                        disabled={speciesSaving}
+                        style={({ pressed }) => [
+                          styles.speciesConfirmBtn,
+                          id === speciesSuggest.species && styles.speciesConfirmBtnGuess,
+                          pressed && { opacity: 0.6 },
+                        ]}
+                        onPress={() => confirmSpecies(id)}
+                      >
+                        <Text style={styles.speciesConfirmBtnTxt}>{speciesNames[id] ?? id}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  {!!speciesError && (
+                    <Text style={styles.successDupWarn}>⚠ {speciesError}</Text>
+                  )}
+                  {/* Lối ra. Không có nút này thì máy chủ ghi hỏng liên tục là
+                      người dùng kẹt lại giữa màn: hộp thoại đi tiếp đang bị hoãn,
+                      mà chip nào bấm cũng lỗi. */}
+                  <Pressable onPress={finishAfterSpecies} disabled={speciesSaving}>
+                    <Text style={styles.speciesConfirmSkip}>Để sau</Text>
+                  </Pressable>
+                </View>
+              ) : null}
             </View>
           </View>
         )}
@@ -1457,6 +1598,24 @@ const styles = StyleSheet.create({
   // Cảnh-báo NHẸ (cam, không đỏ): cây vẫn đăng ký được, chỉ nhắc đối chiếu.
   successDupWarn: { fontSize: 12, color: '#e65100', marginTop: 4, lineHeight: 17 },
   successNote: { fontSize: 12, color: NEUTRAL.textSub, marginTop: 4, lineHeight: 17 },
+  speciesConfirm: { marginTop: 10 },
+  speciesConfirmHint: { fontSize: 12.5, color: NEUTRAL.textSub, lineHeight: 18 },
+  speciesConfirmGuess: { fontWeight: '700', color: '#1b5e20' },
+  speciesConfirmRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+  speciesConfirmBtn: {
+    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8,
+    borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: '#fff',
+  },
+  // Chip của máy đoán: nổi hơn, nhưng KHÔNG phải trạng thái "đã chọn".
+  speciesConfirmBtnGuess: { borderColor: '#1b5e20', backgroundColor: '#eef6ee' },
+  speciesConfirmBtnTxt: { fontSize: 13, color: NEUTRAL.text, fontWeight: '600' },
+  speciesConfirmSkip: {
+    fontSize: 12.5,
+    color: NEUTRAL.textSub,
+    textDecorationLine: 'underline',
+    marginTop: 10,
+    alignSelf: 'flex-start',
+  },
   successHint: { fontSize: 12.5, color: '#1b5e20', fontWeight: '600', marginTop: 4, lineHeight: 18 },
 
   missingBar: {

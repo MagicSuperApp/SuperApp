@@ -69,11 +69,10 @@ export const SCREENS: PhraseMap = {
     zh: '请尽快在“账户”中设置监护人或保存助记词 — 这是设备丢失后唯一的恢复方式。',
     ja: 'できるだけ早く「アカウント」でガーディアンを設定するか、シードフレーズを保存してください — 端末を紛失したときに復旧できる唯一の方法です。',
   },
-  'Tài khoản của bạn không phụ thuộc vào bất kỳ máy chủ trung tâm nào. Dữ liệu khôi phục được phân tán an toàn trên mạng — chỉ bạn có thể giải mã.': {
-    en: 'Your account depends on no central server. Recovery data is distributed safely across the network — only you can decrypt it.',
-    zh: '你的账户不依赖任何中心服务器。恢复数据安全地分散在网络中 — 只有你能解密。',
-    ja: 'あなたのアカウントは中央サーバーに依存しません。復旧データはネットワーク上に安全に分散され、復号できるのはあなただけです。',
-  },
+  // ⛔ GỠ 2026-08-28 — khoá cũ ở đây dịch một câu KHÔNG ĐÚNG SỰ THẬT sang ba thứ
+  // tiếng: "Dữ liệu khôi phục được phân tán an toàn trên mạng — chỉ bạn có thể
+  // giải mã." Không có việc phân tán nào xảy ra. Câu thay thế nằm ở
+  // `phrases/navigation.ts`, và nó nói thẳng rằng không ai khôi phục hộ được.
 
   // ── Kích hoạt ──────────────────────────────────────────────────────────────
   'Đang chờ mã QR': { en: 'Waiting for a QR code', zh: '等待二维码', ja: 'QR コードを待っています' },
@@ -1104,4 +1103,37 @@ export const SCREENS: PhraseMap = {
     zh: '暂时无法统计本机的奖励：需要包含设备贡献模块的版本。显示“—”表示尚未测得，并非没有记入你的贡献。',
     ja: 'この端末の報酬はまだ計測できません：端末貢献を含むビルドが必要です。「—」は未計測という意味で、記録されていないわけではありません。',
   },
+
+  // ── Khôi phục / Đăng nhập: mảnh câu và câu có số ────────────────────────────
+  // Mấy câu dưới trước được NỐI với nhau rồi mới đưa vào showWarning. Tra từ điển
+  // là khớp NGUYÊN chuỗi, nên chuỗi đã nối không khoá nào trúng — mỗi nhánh rẽ
+  // sinh một chuỗi khác nhau. Nay dịch từng mảnh rồi mới nối.
+  'Cần đúng 24 từ — hiện có {n}.': {
+    en: 'Exactly 24 words are needed — there are {n}.',
+    zh: '需要正好 24 个词 — 现有 {n} 个。',
+    ja: 'ちょうど 24 語が必要です — 現在 {n} 語です。',
+  },
+  '{n}/24 từ': { en: '{n}/24 words', zh: '{n}/24 个词', ja: '{n}/24 語' },
+  'Ví đang có trên máy được GIỮ NGUYÊN, chưa thay gì cả.': {
+    en: 'The wallet already on this device is LEFT UNTOUCHED; nothing has been replaced.',
+    zh: '本机上已有的钱包保持不变，尚未替换任何内容。',
+    ja: 'この端末にある既存のウォレットはそのまま保持され、何も置き換えられていません。',
+  },
+  'Ví đang có trên máy được GIỮ NGUYÊN.': {
+    en: 'The wallet already on this device is LEFT UNTOUCHED.',
+    zh: '本机上已有的钱包保持不变。',
+    ja: 'この端末にある既存のウォレットはそのまま保持されます。',
+  },
+  'Đã lưu ví an toàn.': { en: 'The wallet has been saved safely.', zh: '钱包已安全保存。', ja: 'ウォレットを安全に保存しました。' },
+  'Máy này chưa từng đăng nhập nên không có mã định danh để tự khôi phục.': {
+    en: 'This device has never signed in, so there is no identity code to recover from automatically.',
+    zh: '此设备从未登录过，因此没有可用于自动恢复的身份代码。',
+    ja: 'この端末は一度もログインしたことがないため、自動復旧に使える識別コードがありません。',
+  },
+  'Nếu là máy MỚI, nhập mã định danh của bạn vào ô bên dưới.': {
+    en: 'If this is a NEW device, enter your identity code in the field below.',
+    zh: '如果这是新设备，请在下方输入您的身份代码。',
+    ja: '新しい端末の場合は、下の欄にご自身の識別コードを入力してください。',
+  },
+  'Đổi tài khoản ({n})': { en: 'Switch account ({n})', zh: '切换账户 ({n})', ja: 'アカウントを切り替え ({n})' },
 };

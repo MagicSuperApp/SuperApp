@@ -60,7 +60,7 @@ import {
 import { fetchAgriNews, hotNews, timeAgoVi, type NewsItem } from '../../../services/agriNewsService';
 import { runAlertCheck } from '../../../services/alertDispatcher';
 import {
-  formatVnd, priceMove, type CommodityPrice, type PriceMove,
+  formatPriceValue, priceMove, type CommodityPrice, type PriceMove,
 } from '../../../services/agriPriceService';
 import { fetchAgroPrices } from '../../../services/agroPriceService';
 import { fetchWorldPrices } from '../../../services/worldPriceService';
@@ -798,7 +798,7 @@ const PriceRow: React.FC<{ move: PriceMove; label: string; unit: string }> = ({
       </View>
       <View style={styles.priceRight}>
         <Text style={styles.priceVal}>
-          {formatVnd(move.price.priceVnd)}<Text style={styles.priceUnit}> {unit}</Text>
+          {formatPriceValue(move.price.priceVnd, move.price.decimals)}<Text style={styles.priceUnit}> {unit}</Text>
         </Text>
         {/* `percent` là null nghĩa là CHƯA CÓ GÌ ĐỂ SO, không phải "không đổi" —
             nên hiện dấu gạch chứ không hiện mũi tên ngang kèm 0%. */}

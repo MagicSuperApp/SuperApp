@@ -12,6 +12,18 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { canResendAfterNetworkError } from './resendPolicy';
+
+/**
+ * Cửa POST GỬI LẠI ĐƯỢC sau lỗi mạng. Luật + lý do đầy đủ ở `resendPolicy.ts`.
+ *
+ * Vắng mặt CỐ Ý: `/api/care/log` — GHI một lần chăm sóc. Gửi lại mù là ghi hai lần
+ * phun cùng một thuốc cùng một ngày, mà nhật ký chăm sóc chính là thứ dùng để tính
+ * ngày cách ly trước thu hoạch. Đếm thừa một lượt phun là dịch sai ngày được bán.
+ */
+export const RESENDABLE_POST = [
+  '/api/care/match',  // đọc — nhận nhãn thuốc từ ảnh
+] as const;
 
 /**
  * Một sản phẩm thuốc/phân như MÁY CHỦ trả về.
@@ -42,9 +54,40 @@ export interface CareProduct {
   manufacturer?: string;
 }
 
+/**
+ * Vì sao `candidates: []` KHÔNG phải một tình huống mà là BA, và máy chủ đã tách sẵn.
+ *
+ * `care_router.py:164-171` ghi rõ ba ca đòi ba hành động NGƯỢC nhau:
+ *   · `ocr_unavailable` — máy chủ không có OCR. **Chụp lại là vô ích.** Đo trên máy
+ *     thật 17/08: prod không có nhị phân `tesseract` lẫn gói `pytesseract`, nên hôm
+ *     nay MỌI lượt quét ảnh rơi vào đúng ca này.
+ *   · `ocr_no_text`    — OCR chạy nhưng không ra chữ. Chụp gần hơn thì ăn.
+ *   · `no_match`       — đọc ra chữ mà kho thuốc chưa có nhãn đó. Chụp lại cũng vô ích.
+ * Cộng `no_input` (không có ảnh lẫn chữ) và `ambiguous` (khớp nhiều thuốc có số ngày
+ * cách ly khác nhau — `care_router.py:385-392`, có kèm `message` soạn sẵn).
+ *
+ * Khai kiểu cũ chỉ có `{ ok, candidates? }` nên `reason` bị nuốt ngay tại đây, và màn
+ * hình buộc phải tự bịa lý do từ độ dài mảng — đúng thứ chú thích của máy chủ cảnh báo.
+ *
+ * `reason` để mở (`| string`) CỐ Ý: máy chủ thêm giá trị mới thì app rơi vào nhánh
+ * "không rõ" chứ không vỡ kiểu, và cũng không im lặng nhận nhầm sang ca khác.
+ */
+export type CareMatchReason =
+  | 'ocr_unavailable'
+  | 'ocr_no_text'
+  | 'no_input'
+  | 'no_match'
+  | 'ambiguous'
+  | string;
+
 export interface CareMatchResponse {
   ok: boolean;
   candidates?: CareProduct[];
+  reason?: CareMatchReason;
+  /** `true` khi đầu bảng sát nhau mà số ngày cách ly khác nhau. */
+  ambiguous?: boolean;
+  /** Câu máy chủ soạn sẵn cho ca `ambiguous`. Hiện NGUYÊN VĂN, không diễn đạt lại. */
+  message?: string;
 }
 
 /**
@@ -182,7 +225,7 @@ async function _apiCall<T>(
     const isNetworkErr =
       (err instanceof TypeError && err.name !== 'AbortError') ||
       (err instanceof Error && err.message.includes('network'));
-    if (isNetworkErr && attempt === 0) {
+    if (isNetworkErr && attempt === 0 && canResendAfterNetworkError(url, method, RESENDABLE_POST)) {
       return _apiCall<T>(url, method, body, 1);
     }
     return { ok: false, error: { type: 'network_error', detail: 'Không kết nối được máy chủ. Kiểm tra mạng và thử lại.', http_status: 0 } };

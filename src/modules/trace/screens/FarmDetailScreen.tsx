@@ -76,6 +76,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
 import { KeyboardAvoidingView } from 'react-native';
 import WayfindButton, { forFarm } from '../../../features/wayfind/WayfindButton';
+import { showError, showInfo, showWarning } from '../../../utils/alert';
+import { t } from '../../../i18n';
 
 const { width, height } = Dimensions.get('window');
 
@@ -527,11 +529,11 @@ const AddFarmMode = ({
     const hasUnsaved = coordinates.length > 0 || farmName.trim().length > 0;
     if (!hasUnsaved) { onBack(); return; }
     Alert.alert(
-      'Thoát màn thêm vườn?',
-      'Bạn sẽ mất các điểm GPS và thông tin đã nhập. Bạn có chắc muốn thoát?',
+      t('Thoát màn thêm vườn?'),
+      t('Bạn sẽ mất các điểm GPS và thông tin đã nhập. Bạn có chắc muốn thoát?'),
       [
-        { text: 'Ở lại', style: 'cancel' },
-        { text: 'Thoát', style: 'destructive', onPress: () => onBack() },
+        { text: t('Ở lại'), style: 'cancel' },
+        { text: t('Thoát'), style: 'destructive', onPress: () => onBack() },
       ],
       { cancelable: true },
     );
@@ -938,7 +940,7 @@ const AddFarmMode = ({
                 disabled={!permissionGranted}
                 onPress={async () => {
                   if (!permissionGranted) {
-                    Alert.alert('Cần quyền vị trí', 'Cấp quyền GPS trong Cài đặt → Aladin.');
+                    showInfo('Cần quyền vị trí', 'Cấp quyền GPS trong Cài đặt → Aladin.');
                     return;
                   }
                   const willStart = !isAutoRecording;
@@ -1501,7 +1503,7 @@ const FarmDetailScreen = () => {
   const handleRecord = async () => {
     const hasPermission = await requestLocationPermission();
     if (!hasPermission) {
-      Alert.alert('Cần quyền vị trí', 'Vui lòng cấp quyền truy cập vị trí để ghi điểm.');
+      showInfo('Cần quyền vị trí', 'Vui lòng cấp quyền truy cập vị trí để ghi điểm.');
       return;
     }
 
@@ -1516,10 +1518,8 @@ const FarmDetailScreen = () => {
         // Build 51: Sync accuracy threshold với native LocationHelper.swift
         // targetAccuracy=10m. Reject nếu GPS accuracy quá kém (>10m).
         if (accuracy != null && accuracy > 10) {
-          Alert.alert(
-            'Tín hiệu GPS yếu',
-            `Sai số hiện tại ~${Math.round(accuracy)}m. Hãy ra chỗ thoáng (không che bởi tán cây/mái tôn) rồi thử lại.`,
-          );
+          showInfo('Tín hiệu GPS yếu',
+            `Sai số hiện tại ~${Math.round(accuracy)}m. Hãy ra chỗ thoáng (không che bởi tán cây/mái tôn) rồi thử lại.`);
           return;
         }
 
@@ -1529,10 +1529,8 @@ const FarmDetailScreen = () => {
           const last = prev[prev.length - 1];
           const d = haversineMeters(last.lat, last.lng, lat, lng);
           if (d < 3) {
-            Alert.alert(
-              'Điểm quá gần điểm trước',
-              `Cách điểm trước chỉ ${d.toFixed(1)}m. Hãy đi xa ra (ít nhất 3m) rồi ghi điểm tiếp.`,
-            );
+            showInfo('Điểm quá gần điểm trước',
+              `Cách điểm trước chỉ ${d.toFixed(1)}m. Hãy đi xa ra (ít nhất 3m) rồi ghi điểm tiếp.`);
             return;
           }
         }
@@ -1542,10 +1540,8 @@ const FarmDetailScreen = () => {
       },
       (err) => {
         console.log('Geolocation Error:', err);
-        Alert.alert(
-          'Không lấy được vị trí',
-          err.code === 3 ? 'GPS timeout — hãy ra chỗ thoáng.' : 'Vui lòng thử lại.',
-        );
+        showError('Không lấy được vị trí',
+          err.code === 3 ? 'GPS timeout — hãy ra chỗ thoáng.' : 'Vui lòng thử lại.');
       },
       {
         enableHighAccuracy: true,
@@ -1672,7 +1668,7 @@ const FarmDetailScreen = () => {
    */
   const handleCaptureNow = async (): Promise<void> => {
     if (!(await requestLocationPermission())) {
-      Alert.alert('Cần quyền vị trí', 'Vui lòng cấp quyền truy cập vị trí.');
+      showInfo('Cần quyền vị trí', 'Vui lòng cấp quyền truy cập vị trí.');
       return;
     }
     return new Promise(resolve => {
@@ -1680,10 +1676,8 @@ const FarmDetailScreen = () => {
         pos => {
           const { latitude: lat, longitude: lng, accuracy } = pos.coords;
           if (accuracy != null && accuracy > 15) {
-            Alert.alert(
-              'GPS tín hiệu yếu',
-              `Sai số ~${Math.round(accuracy)}m. Vẫn ghi điểm đầu tiên nhưng nên ra chỗ thoáng. Hãy bắt đầu đi vòng — các điểm sau sẽ ghi tự động.`,
-            );
+            showInfo('GPS tín hiệu yếu',
+              `Sai số ~${Math.round(accuracy)}m. Vẫn ghi điểm đầu tiên nhưng nên ra chỗ thoáng. Hãy bắt đầu đi vòng — các điểm sau sẽ ghi tự động.`);
           }
           setCoordinates(prev => {
             // Nếu prev đã có điểm và khoảng cách <3m thì skip (chống trùng khi user tap rồi tap lại)
@@ -1697,7 +1691,7 @@ const FarmDetailScreen = () => {
         },
         err => {
           console.log('[handleCaptureNow] error:', err);
-          Alert.alert('Không lấy được vị trí', 'Vui lòng thử lại.');
+          showError('Không lấy được vị trí', 'Vui lòng thử lại.');
           resolve();
         },
         { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
@@ -1730,10 +1724,8 @@ const FarmDetailScreen = () => {
    */
   const handleAddFarm = async (boundaryMeta: BoundaryMeta) => {
     if (!user) {
-      Alert.alert(
-        'Cần đăng nhập · Login required',
-        'Bạn cần đăng nhập (vân tay / Face ID) trước khi lưu nông trại.',
-      );
+      showInfo('Cần đăng nhập · Login required',
+        'Bạn cần đăng nhập (vân tay / Face ID) trước khi lưu nông trại.');
       return;
     }
 
@@ -1744,20 +1736,18 @@ const FarmDetailScreen = () => {
       const coordsForValidation: Coord[] = coordinates.map(c => ({ lat: c.lat, lng: c.lng }));
       const validation = validatePolygon(coordsForValidation);
       if (validation.blocking) {
-        Alert.alert(
-          'Ranh giới chưa hợp lệ',
-          validation.warnings.map(translateValidationKey).join('\n'),
-        );
+        showInfo('Ranh giới chưa hợp lệ',
+          validation.warnings.map(translateValidationKey).join('\n'));
         return;
       }
       if (validation.warnings.length > 0) {
         const proceed = await new Promise<boolean>(resolve => {
           Alert.alert(
-            'Cảnh báo ranh giới',
-            validation.warnings.map(translateValidationKey).join('\n') + '\n\nVẫn lưu?',
+            t('Cảnh báo ranh giới'),
+            validation.warnings.map(translateValidationKey).join('\n') + t('\n\nVẫn lưu?'),
             [
-              { text: 'Để sửa', style: 'cancel', onPress: () => resolve(false) },
-              { text: 'Vẫn lưu', style: 'destructive', onPress: () => resolve(true) },
+              { text: t('Để sửa'), style: 'cancel', onPress: () => resolve(false) },
+              { text: t('Vẫn lưu'), style: 'destructive', onPress: () => resolve(true) },
             ],
             { cancelable: false },
           );
@@ -1821,19 +1811,15 @@ const FarmDetailScreen = () => {
         // Phân biệt mạng ⟂ auth ⟂ server (§7.3). KHÔNG tạo bản ghi cục-bộ id-giả →
         // tránh cây mồ-côi. Giữ nguyên màn + điểm GPS để người dùng thử lại.
         if (err?.type === 'network_error') {
-          Alert.alert(
-            'Cần kết nối mạng',
-            'Tạo vườn cần mạng để máy chủ cấp mã vườn. Việc thêm cây (chụp ảnh) cũng cần mạng — hãy kết nối rồi thử lại. Các điểm GPS bạn đã ghi vẫn được giữ.',
-          );
+          showInfo('Cần kết nối mạng',
+            'Tạo vườn cần mạng để máy chủ cấp mã vườn. Việc thêm cây (chụp ảnh) cũng cần mạng — hãy kết nối rồi thử lại. Các điểm GPS bạn đã ghi vẫn được giữ.');
         } else if (err?.type === 'auth_error') {
           // App đã TỰ ký DID lấy token + thử lại 1 lần ở trên → vẫn auth_error nghĩa là
           // danh-tính chưa đăng-ký trên máy chủ (DID mồ côi) hoặc máy chủ đang trục-trặc.
-          Alert.alert(
-            'Chưa xác thực được với máy chủ',
-            'Không tạo được phiên với máy chủ nhận diện. Thử đăng xuất rồi đăng nhập lại; nếu vẫn lỗi, có thể danh tính chưa được đăng ký trên máy chủ.',
-          );
+          showError('Chưa xác thực được với máy chủ',
+            'Không tạo được phiên với máy chủ nhận diện. Thử đăng xuất rồi đăng nhập lại; nếu vẫn lỗi, có thể danh tính chưa được đăng ký trên máy chủ.');
         } else {
-          Alert.alert('Chưa lưu được vườn', fieldErrorMessage(err));
+          showError('Chưa lưu được vườn', fieldErrorMessage(err));
         }
         return;
       }
@@ -1864,10 +1850,8 @@ const FarmDetailScreen = () => {
       navigation.goBack();
     } catch (error: any) {
       console.error('[FarmDetailScreen] Unexpected error in handleAddFarm:', error);
-      Alert.alert(
-        'Lỗi không xác định',
-        error?.message ?? 'Vui lòng thử lại. Dữ liệu GPS của bạn vẫn an toàn.',
-      );
+      showError('Lỗi không xác định',
+        error?.message ?? 'Vui lòng thử lại. Dữ liệu GPS của bạn vẫn an toàn.');
     }
   };
 
@@ -1906,21 +1890,14 @@ const FarmDetailScreen = () => {
       });
       return;
     }
-    Alert.alert(
-      'Xoá điểm này? · Delete this point?',
-      `Điểm số ${index + 1}`,
-      [
-        { text: 'Huỷ · Cancel', style: 'cancel' },
-        {
-          text: 'Xoá · Delete',
-          style: 'destructive',
-          onPress: () => {
+    showWarning('Xoá điểm này? · Delete this point?', `Điểm số ${index + 1}`, {
+        confirmText: 'Xoá · Delete',
+        cancelText: 'Huỷ · Cancel',
+        onConfirm: () => {
             pushEditHistory(coordinatesRef.current);
             setCoordinates(prev => prev.filter((_, i) => i !== index));
           },
-        },
-      ],
-    );
+    });
   };
 
   const handleMapTapInsert = (tapLat: number, tapLng: number) => {
@@ -1960,24 +1937,17 @@ const FarmDetailScreen = () => {
   };
 
   const handleResetFromScratch = () => {
-    Alert.alert(
-      'Vẽ lại từ đầu? · Reset?',
-      'Xoá toàn bộ điểm hiện tại và bắt đầu lại?',
-      [
-        { text: 'Huỷ · Cancel', style: 'cancel' },
-        {
-          text: 'Vẽ lại · Reset',
-          style: 'destructive',
-          onPress: () => {
+    showWarning('Vẽ lại từ đầu? · Reset?', 'Xoá toàn bộ điểm hiện tại và bắt đầu lại?', {
+        confirmText: 'Vẽ lại · Reset',
+        cancelText: 'Huỷ · Cancel',
+        onConfirm: () => {
             setCoordinates([]);
             setEditHistory([]);
             setEditMode('recording');
             walkAwayStateRef.current = initWalkAwayState();
             lastPointTimestampRef.current = null;
           },
-        },
-      ],
-    );
+    });
   };
 
   const handleResumeRecording = () => {

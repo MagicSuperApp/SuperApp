@@ -798,4 +798,93 @@ export const TRACE: PhraseMap = {
   'quả': { en: 'fruit', zh: '果实', ja: '果実' },
   'Hiển thị': { en: 'Showing', zh: '显示', ja: '表示中' },
   'kết quả': { en: 'results', zh: '条结果', ja: '件の結果' },
+
+  // ── Màn Nguồn gốc (TraceResultScreen) ──────────────────────────────────────
+  // Cả màn này trước KHÔNG có một khoá nào: người chọn tiếng Anh mở hồ sơ truy
+  // xuất ra là đọc nguyên tiếng Việt từ đầu tới cuối. Mà đây đúng là màn dành
+  // cho người NGOÀI — người mua quét mã, không phải chủ vườn.
+  'Nguồn gốc': { en: 'Provenance', zh: '溯源', ja: '来歴' },
+  'Máy chủ chưa cho biết': { en: 'The server has not said', zh: '服务器尚未提供', ja: 'サーバーからの回答なし' },
+  'Thiếu mã cây': { en: 'Missing tree code', zh: '缺少树木编号', ja: '樹木コードがありません' },
+  'Đang tra máy chủ…': { en: 'Querying the server…', zh: '正在查询服务器…', ja: 'サーバーに照会中…' },
+  'Không xem được hồ sơ này': { en: 'This record cannot be viewed', zh: '无法查看此档案', ja: 'この記録は表示できません' },
+  'Mã có thể thuộc một cây chủ vườn để riêng tư, hoặc chưa có trong hệ thống. Máy chủ không phân biệt hai trường hợp này.': {
+    en: 'The code may belong to a tree its owner keeps private, or it may not be in the system at all. The server does not distinguish between the two.',
+    zh: '该编号可能属于园主设为私密的树木，也可能根本不在系统中。服务器不区分这两种情况。',
+    ja: 'このコードは所有者が非公開にしている樹木のものか、そもそもシステムに存在しないかのどちらかです。サーバーはこの二つを区別しません。',
+  },
+  'MÃ ĐÃ TRA': { en: 'CODE QUERIED', zh: '已查询编号', ja: '照会したコード' },
+  'Chưa tra được': { en: 'Could not query', zh: '无法查询', ja: '照会できませんでした' },
+  'Chưa hỏi được máy chủ nên chưa biết mã này có hồ sơ hay không.': {
+    en: 'The server could not be reached, so whether this code has a record is unknown.',
+    zh: '未能联系服务器，因此无法得知此编号是否有档案。',
+    ja: 'サーバーに問い合わせできなかったため、このコードに記録があるかどうかは不明です。',
+  },
+  'đã chép': { en: 'copied', zh: '已复制', ja: 'コピー済み' },
+  'CHỦ VƯỜN': { en: 'GROWER', zh: '园主', ja: '生産者' },
+  'Hồ sơ công khai chưa kèm tên chủ vườn': {
+    en: 'The public record does not include the grower’s name',
+    zh: '公开档案未附园主姓名',
+    ja: '公開記録に生産者名は含まれていません',
+  },
+  'NƠI TRỒNG': { en: 'PLANTED AT', zh: '种植地点', ja: '植栽地' },
+  'Chưa có thông tin vị trí': { en: 'No location information yet', zh: '暂无位置信息', ja: '位置情報はまだありません' },
+  'ĐĂNG KÝ TỪ': { en: 'REGISTERED SINCE', zh: '登记始于', ja: '登録日' },
+  'Nhật ký cây': { en: 'Tree log', zh: '树木日志', ja: '樹木の記録' },
+  'Hai mốc trên đọc từ hồ sơ xuất xứ, không phải từ nhật ký chăm sóc.': {
+    en: 'The two milestones above come from the provenance record, not from the care log.',
+    zh: '以上两个节点来自溯源档案，而非养护日志。',
+    ja: '上記の二つの節目は来歴記録によるもので、管理日誌からではありません。',
+  },
+  'Nhật ký chăm sóc chi tiết chỉ mở cho chủ vườn khi đã đăng nhập. Các mốc của hồ sơ xuất xứ ở trên thì ai cũng xem được.': {
+    en: 'The detailed care log opens only to the grower once signed in. The provenance milestones above are visible to anyone.',
+    zh: '详细养护日志仅在园主登录后开放。上方的溯源节点则任何人都可查看。',
+    ja: '詳細な管理日誌は生産者がログインした場合にのみ開きます。上記の来歴の節目は誰でも閲覧できます。',
+  },
+  'Xem kỹ hơn': { en: 'Look closer', zh: '深入查看', ja: 'さらに詳しく' },
+  'Vị trí trên bản đồ': { en: 'Location on the map', zh: '地图上的位置', ja: '地図上の位置' },
+  'Không gian ba chiều của cây': { en: 'The tree in three dimensions', zh: '树木的三维空间', ja: '樹木の三次元データ' },
+  '{n} điểm': { en: '{n} points', zh: '{n} 个点', ja: '{n} 点' },
+  // ── Khối 3D: ĐO khác KHAI ──────────────────────────────────────────────────
+  // Hai câu này cố ý KHÁC nhau về mức chắc. Câu đầu là phép đo của app trên tệp
+  // đã tải; câu sau là lời máy chủ khai khi app chưa mở được tệp. Dịch gộp làm
+  // một là xoá đúng chỗ phân biệt mà chúng sinh ra để giữ.
+  '{n} điểm dựng từ ảnh chụp thật': { en: '{n} points built from real photos', zh: '由实拍照片生成的 {n} 个点', ja: '実写から生成した {n} 点' },
+  'Máy chủ khai {n} điểm — app chưa đọc được tệp để đối chiếu.': { en: 'The server reports {n} points — the app could not read the file to check.', zh: '服务器称有 {n} 个点 — 应用尚未读取文件核对。', ja: 'サーバーは {n} 点と申告 — アプリはファイルを読めず照合できていません。' },
+  'Máy chủ tự khai đám mây điểm này thưa — hình dựng ra có thể chưa giống cây thật.': { en: 'The server reports this point cloud is sparse — the render may not match the real tree.', zh: '服务器称该点云稀疏 — 渲染结果可能与真实树木不符。', ja: 'サーバーはこの点群が疎だと申告 — 描画が実際の木と異なる可能性があります。' },
+  'Đã chụp khoảng {deg}° quanh cây.': { en: 'About {deg}° around the tree has been photographed.', zh: '已拍摄树木周围约 {deg}°。', ja: '木の周囲およそ {deg}° を撮影済み。' },
+  'Neo lên chuỗi khối': { en: 'Anchored to the blockchain', zh: '锚定到区块链', ja: 'ブロックチェーンへの記録' },
+  'TRẠNG THÁI': { en: 'STATUS', zh: '状态', ja: '状態' },
+  'MẠNG': { en: 'NETWORK', zh: '网络', ja: 'ネットワーク' },
+  'MÃ GIAO DỊCH': { en: 'TRANSACTION ID', zh: '交易编号', ja: 'トランザクション ID' },
+  'GỬI NEO LÚC': { en: 'ANCHORED AT', zh: '锚定时间', ja: '記録日時' },
+  'Mở trang tra chuỗi': { en: 'Open the chain explorer', zh: '打开链上浏览器', ja: 'チェーンエクスプローラを開く' },
+  'Góc chụp lúc đăng ký': { en: 'Angles captured at registration', zh: '登记时拍摄的角度', ja: '登録時の撮影アングル' },
+  '{n} ảnh': { en: '{n} photos', zh: '{n} 张照片', ja: '写真 {n} 枚' },
+  'Cây được chụp {n} góc lúc đăng ký. Đây là tập ảnh máy dùng để nhận lại cây, không phải toàn bộ ảnh đã chụp về sau.': {
+    en: 'The tree was photographed from {n} angles at registration. This is the set the system uses to recognise the tree again, not every photo taken since.',
+    zh: '登记时从 {n} 个角度拍摄了该树。这是系统用于再次识别该树的照片集，并非此后拍摄的全部照片。',
+    ja: '登録時に {n} 方向から撮影されています。これは樹木を再認識するために使う画像一式であり、その後に撮影した写真すべてではありません。',
+  },
+  'Hồ sơ này chưa kèm ảnh đăng ký nào.': {
+    en: 'This record includes no registration photos.',
+    zh: '此档案未附任何登记照片。',
+    ja: 'この記録には登録写真が含まれていません。',
+  },
+  'Hồ sơ do máy chủ OriLife cung cấp. Mục nào để trống là mục máy chủ chưa cho biết — app không tự điền.': {
+    en: 'The record is supplied by the OriLife server. A blank field is one the server has not reported — the app does not fill it in.',
+    zh: '档案由 OriLife 服务器提供。留空的字段表示服务器尚未告知 — 应用不会自行填写。',
+    ja: 'この記録は OriLife サーバーから提供されます。空欄はサーバーが未報告の項目であり、アプリが補完することはありません。',
+  },
+  // Hộp thoại Đổi tên — hai chuỗi này ra đời cùng nút Đổi tên vật nuôi. Phần còn
+  // lại của hộp thoại ('Huỷ' · 'Lưu' · 'Nhập tên mới...' · 'Đổi tên thất bại' ·
+  // 'Đang đổi tên...' ở `screens.ts:500`) đã có sẵn từ trước nhưng CHƯA chỗ nào
+  // gọi `t()` — nay gọi rồi. KHÔNG thêm khoá mới cho những chuỗi đó: một khoá chỉ
+  // khác nhau ở dấu ba chấm là hai mục từ điển rời nhau, và bài kiểm trùng khoá
+  // hiện có chỉ bắt được khoá GIỐNG HỆT.
+  'Không đổi được tên. Kiểm tra kết nối và thử lại.': {
+    en: 'Could not rename. Check your connection and try again.',
+    zh: '无法重命名，请检查网络后重试。',
+    ja: '名前を変更できません。通信状態を確認してからお試しください。',
+  },
 };

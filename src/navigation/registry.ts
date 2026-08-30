@@ -12,6 +12,13 @@
 //     route/entrypoint/navSlot/icon; registry cung component cho từng route.
 //   - Offline: tất cả nhúng binary; dựng nav không phụ thuộc mạng.
 //
+// ĐÂY LÀ TRẠNG THÁI HÔM NAY, KHÔNG PHẢI TRẠNG THÁI ĐÍCH. Sổ này TĨNH: bốn module
+// biên dịch sẵn, không có đường đăng ký nào — không permissionless, cũng không có
+// cổng gác, vì không có gì để gác. `Specs/Platform-Math-Spec.md` §mô-hình-đe-doạ và
+// `Integration-Standard.md` §nguyên-tắc-3 tả một sổ ĐĂNG KÝ ĐƯỢC ở trạng thái đích;
+// hai chỗ đó KHÔNG mô tả tệp này. Ai đọc mô hình đe doạ rồi tìm cổng gác trong đây
+// sẽ không thấy, và cái không thấy đó đúng — chưa dựng.
+//
 // Manifest `routes` là DANH SÁCH route name của module; với mỗi route phải có
 // đúng một component trong `screens`. CONTRACT: keys(screens) === manifest.routes
 // (đối chiếu bằng assertRouteParity() khi DEV để bắt lệch sớm).
@@ -77,7 +84,14 @@ export interface RegistryEntry {
 
 // moduleId nội bộ (ngắn gọn cho instance.config) — KHÁC moduleId reverse-DNS
 // trong manifest (magiclamp.trace). Map id ngắn ↔ entry.
-export type ModuleId = 'trace' | 'chat' | 'work' | 'join';
+//
+// Danh sách id nằm ở `moduleIds.ts` (một tệp riêng, KHÔNG kéo theo component):
+// tệp này import tĩnh mọi màn, nên chạm vào nó là chạm module native, và bài
+// kiểm nào chỉ cần biết "có những module nào" sẽ chết ở đó. `Record<ModuleId,…>`
+// bên dưới khiến `tsc` canh hai bên khỏi lệch.
+export type { ModuleId } from './moduleIds';
+export { MODULE_IDS } from './moduleIds';
+import type { ModuleId } from './moduleIds';
 
 export const MODULE_REGISTRY: Record<ModuleId, RegistryEntry> = {
   trace: {

@@ -14,6 +14,7 @@ import { useMatch } from '../hooks/useMatch';
 import { useCreateContract } from '../hooks/useContracts';
 import StateView from '../../../components/state/StateView';
 import type { MatchCandidate } from '../services/types';
+import { showError } from '../../../utils/alert';
 
 type RouteParams = { WorkMatch: { jobId: string } };
 
@@ -33,14 +34,12 @@ const MatchScreen: React.FC = () => {
     if (contract) {
       navigation.navigate('ContractDetail', { contractId: contract.id });
     } else {
-      Alert.alert(
-        'Chưa thuê được',
+      showError('Chưa thuê được',
         errorCode === 'BACKEND_DISABLED'
           ? 'Cần máy chủ AladinWork để tạo hợp đồng. Thử lại khi dịch vụ sống.'
           : errorCode === 'ALREADY'
           ? 'Đã có hợp đồng với ứng viên này cho tin việc.'
-          : `Không tạo được hợp đồng${errorCode ? ` (${errorCode})` : ''}. Thử lại sau.`,
-      );
+          : `Không tạo được hợp đồng${errorCode ? ` (${errorCode})` : ''}. Thử lại sau.`);
     }
   };
 

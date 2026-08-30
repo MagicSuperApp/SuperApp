@@ -14,6 +14,8 @@ import { phoenixKeyApi } from '../services/phoenixKey-api';
 import { getStoredMasterKek } from '../services/masterKekStore';
 import taad from '../sdk/taadEnclave';
 import StateView from '../components/state/StateView';
+import { showError, showSuccess, showWarning } from '../utils/alert';
+import { t } from '../i18n';
 
 type RouteParams = { SignRequest: { requestId: string } };
 
@@ -71,7 +73,7 @@ const SignRequestScreen: React.FC = () => {
     setBusy('approve');
     try {
       const kek = await getStoredMasterKek();
-      if (!kek) { Alert.alert('Chưa sẵn sàng', 'Không tìm thấy khoá — hãy đăng nhập lại.'); return; }
+      if (!kek) { showError('Chưa sẵn sàng', 'Không tìm thấy khoá — hãy đăng nhập lại.'); return; }
       const canonical = canonicalJson(data.intent);
       const taadPub = await taad.deriveTaadPubkey(kek);
       const signature = await taad.signEd25519(kek, canonical);
@@ -79,32 +81,32 @@ const SignRequestScreen: React.FC = () => {
         publicKeyHex: taadPub,
         signature,
       });
-      Alert.alert('Đã duyệt', 'Giao dịch đã được ký và gửi.', [
-        { text: 'Xong', onPress: () => navigation.goBack() },
-      ]);
+      showSuccess('Đã duyệt', 'Giao dịch đã được ký và gửi.', {
+          confirmText: 'Xong',
+          hideCancel: true,
+          onConfirm: () => navigation.goBack(),
+      });
     } catch (e) {
-      Alert.alert('Ký thất bại', e instanceof Error ? e.message : 'Thử lại.');
+      showError('Ký thất bại', e instanceof Error ? e.message : 'Thử lại.');
     } finally {
       setBusy(null);
     }
   };
 
   const onCancel = () => {
-    Alert.alert('Từ chối yêu cầu', 'Bạn chắc chắn từ chối ký giao dịch này?', [
-      { text: 'Huỷ', style: 'cancel' },
-      {
-        text: 'Từ chối', style: 'destructive',
-        onPress: async () => {
+    showWarning('Từ chối yêu cầu', 'Bạn chắc chắn từ chối ký giao dịch này?', {
+        confirmText: 'Từ chối',
+        cancelText: 'Huỷ',
+        onConfirm: async () => {
           setBusy('cancel');
           try {
             await phoenixKeyApi.signRequest.cancel(requestId);
             navigation.goBack();
           } catch {
-            Alert.alert('Lỗi', 'Không từ chối được, thử lại.');
+            Alert.alert(t('Lỗi'), t('Không từ chối được, thử lại.'));
           } finally { setBusy(null); }
         },
-      },
-    ]);
+    });
   };
 
   const header = (

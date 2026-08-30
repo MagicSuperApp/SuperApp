@@ -24,7 +24,7 @@ import taad from '../sdk/taadEnclave';
 import { currentUserDid, ownerPublicKey } from '../sdk/phoenixKey';
 import { getStoredMasterKek, getActiveAccountIndex } from '../services/masterKekStore';
 
-const WALLET_NETWORK = 0; // 0 = preprod (khớp register + ví)
+import { CARDANO_NETWORK as WALLET_NETWORK } from '../config/cardanoNetwork';
 
 const ExportIdentityScreen = () => {
   const insets = useSafeAreaInsets();

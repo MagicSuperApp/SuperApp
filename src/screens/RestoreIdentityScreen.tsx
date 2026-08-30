@@ -20,24 +20,29 @@ import { useNavigation } from '@react-navigation/native';
 import { useDispatch } from 'react-redux';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS } from '../constants';
-import { showWarning, showSuccess } from '../utils/alert';
+import { showSuccess, showWarning } from '../utils/alert';
 import taadEnclave from '../sdk/taadEnclave';
-import { restoreMasterKekFromMnemonic } from '../services/masterKekStore';
+import {
+  deriveMasterKekFromMnemonic,
+  getStoredMasterKek,
+  storeMasterKek,
+} from '../services/masterKekStore';
 import { phoenixKeyApi, PhoenixKeyApiError } from '../services/phoenixKey-api';
 import { enrollKeypair, ownerPublicKey, saveUserDid, currentUserDid } from '../sdk/phoenixKey';
 import { phoenixKeyAuth } from '../services/phoenixKeyAuthService';
 import { loginUser } from '../store/userSlice';
 import { countMnemonicWords, normalizeMnemonic } from '../utils/mnemonic';
+import { t, tf } from '../i18n';
 
 const DID_RE = /^did:phoenix:[a-z2-7]{13}:[0-9a-f]{64}$/;
 // Registry {username, did} app lưu lúc đăng ký (SignUpBiometricScreen) — dùng để
 // TỰ tìm lại DID trên CÙNG máy, khôi phục chỉ bằng 24 từ (không cần gõ DID).
 const PHOENIX_USERS_KEY = '@phoenixkey/users';
-const genNonce = (): string => {
-  let s = '';
-  for (let i = 0; i < 32; i++) s += ((Math.random() * 16) | 0).toString(16);
-  return s;
-};
+// Nonce chống phát-lại cho cửa GẮN THIẾT BỊ MỚI vào DID — thứ này được ký bằng
+// khoá thật, nên nguồn ngẫu nhiên phải là CSPRNG. `Math.random` của Hermes là
+// xorshift: đoán được state từ vài đầu ra liên tiếp. Dự án đã có `generateSalt`
+// (CSPRNG bên Rust, dùng đúng ở `guardianService` và `keyRotateService`).
+const genNonce = (): Promise<string> => taadEnclave.generateSalt();
 
 const RestoreIdentityScreen = () => {
   const insets = useSafeAreaInsets();
@@ -55,7 +60,43 @@ const RestoreIdentityScreen = () => {
   const wordCount = useMemo(() => countMnemonicWords(phrase), [phrase]);
   const countOk = wordCount === 24;
 
-  const handleRestore = async () => {
+  // ── CỬA XÁC NHẬN — đặt TRƯỚC mọi thao tác, không phải sau ──────────────────
+  // Khôi phục bằng 24 từ gắn khoá phần cứng MỚI vào danh tính, và trên chuỗi mỗi
+  // danh tính chỉ có MỘT chỗ đặt khoá đó (`TAADDatum` field 3 `hw_key_pubkey`;
+  // spec phương thức DID §5.2 "exactly one key per purpose"). Nên gắn khoá mới =
+  // khoá cũ mất chỗ — kể cả khoá của một app KHÁC đang dùng cùng danh tính trên
+  // chính máy này.
+  //
+  // Và nó KHÔNG chỉ là chuyện chỗ đặt khoá trên máy. Máy chủ tăng `users.token_epoch`
+  // mỗi lần khôi phục, rồi bác MỌI phiên và MỌI token thiết-bị-liên-kết mang epoch cũ
+  // (`PhoenixKey-Database` V17__split_taad_keys_table.sql:15-19 — vá có chủ đích, ghi rõ
+  // là để đóng lỗ "thiết bị cũ vẫn dùng phiên 24h + token 30 ngày"). Nên phạm vi văng là
+  // MỌI máy, không riêng máy này: điện thoại kia, máy tính kia, đều mất phiên.
+  //
+  // Người dùng KHÔNG suy ra được điều đó từ hai chữ "Khôi phục ví". Máy cũng
+  // không tự biết: mỗi app có vùng khoá riêng theo mã gói, app này không thấy
+  // app kia. Nên đây là chỗ DUY NHẤT nói ra được, và nó phải nói trước khi làm.
+  const handleRestore = () => {
+    if (!countOk) {
+      showWarning('Chưa đủ', tf('Cần đúng 24 từ — hiện có {n}.', { n: wordCount }));
+      return;
+    }
+    showWarning(
+      t('Việc này sẽ đăng xuất mọi app và mọi máy khác'),
+      t('Khôi phục bằng 24 từ sẽ gắn danh tính của bạn vào ứng dụng này. Mọi ứng dụng khác đang dùng CÙNG danh tính đó sẽ bị đăng xuất — kể cả trên điện thoại khác hoặc máy tính khác, không riêng máy này.') +
+        ' ' +
+        t('Dữ liệu của bạn không mất — nhưng muốn dùng lại app kia thì phải nhập lại 24 từ ở đó, và khi ấy ứng dụng này lại bị đăng xuất.') +
+        ' ' +
+        t('Chỉ dùng đường này khi bạn đang cài lại máy hoặc đổi sang máy mới.'),
+      {
+        confirmText: t('Vẫn khôi phục'),
+        cancelText: t('Để sau'),
+        onConfirm: () => { void doRestore(); },
+      },
+    );
+  };
+
+  const doRestore = async () => {
     if (!taadEnclave.isAvailable()) {
       showWarning(
         'Chưa sẵn sàng',
@@ -63,17 +104,25 @@ const RestoreIdentityScreen = () => {
       );
       return;
     }
-    if (!countOk) {
-      showWarning('Chưa đủ', `Cần đúng 24 từ — hiện có ${wordCount}.`);
-      return;
-    }
     try {
       setLoading(true);
-      // Validate cụm từ → Master_KEK → LƯU vào secure storage (ghi đè KEK ví hiện
-      // có). Sau bước này SeedExport sẽ hiện đúng cụm này + ví derive nhất quán.
-      const kek = await restoreMasterKekFromMnemonic(cleanPhrase);
+      // Suy Master_KEK TRONG RAM. KHÔNG ghi vào máy ở đây.
+      //
+      // Bản trước ghi đè ngay dòng này, trước mọi phép kiểm. "Hợp lệ BIP39" chỉ nói
+      // cụm từ đúng dạng, không nói nó là cụm từ của người đang cầm máy — nên gõ
+      // nhầm cụm của ví khác là gốc ví trên máy bị thay, rồi mới báo "không tìm thấy
+      // tài khoản khớp". Lúc đó KEK cũ đã mất và LAMP trong ví cũ không lấy lại được.
+      // Nay: suy → đối chiếu với máy chủ → CHỈ KHI khớp mới ghi (xem cuối hàm).
+      const kek = await deriveMasterKekFromMnemonic(cleanPhrase);
       if (!kek || kek.length !== 64) {
         throw new Error('Master_KEK trả về không hợp lệ');
+      }
+      // Máy CHƯA có ví thì ghi ngay là an toàn — không có gì để mất. Máy ĐANG có ví
+      // thì phải chờ đối chiếu xong, vì ghi đè là thao tác không hoàn tác được.
+      const existingKek = await getStoredMasterKek();
+      const deviceHadWallet = existingKek != null && existingKek !== kek;
+      if (!deviceHadWallet) {
+        await storeMasterKek(kek);
       }
 
       // ── TỰ TÌM DID trên MÁY (KHÔNG đụng backend) → 24 từ là đủ trên cùng máy ──
@@ -104,8 +153,11 @@ const RestoreIdentityScreen = () => {
         // cần user nhập DID (máy không thể suy ra DID chỉ từ 24 từ + không gọi backend).
         showWarning(
           'Máy mới — cần nhập mã định danh',
-          'Đã lưu ví an toàn. Máy này chưa từng đăng nhập nên không có mã định danh để tự khôi phục. ' +
-            'Nếu là máy MỚI, nhập mã định danh của bạn vào ô bên dưới.',
+          (deviceHadWallet
+            ? t('Ví đang có trên máy được GIỮ NGUYÊN, chưa thay gì cả.')
+            : t('Đã lưu ví an toàn.')) + ' ' +
+            t('Máy này chưa từng đăng nhập nên không có mã định danh để tự khôi phục.') + ' ' +
+            t('Nếu là máy MỚI, nhập mã định danh của bạn vào ô bên dưới.'),
         );
         return;
       }
@@ -122,7 +174,7 @@ const RestoreIdentityScreen = () => {
       // Thử từng DID ứng viên (ký bằng KEK — KHÔNG cần vân tay mỗi lần).
       let matchedDid: string | null = null;
       for (const cand of uniqueDids) {
-        const nonce = genNonce();
+        const nonce = await genNonce();
         const challenge = `PHOENIXKEY_RECOVER:${cand}:${newHwPub}:${nonce}`;
         const signature = await taadEnclave.signEd25519(kek, challenge);
         if (!signature) continue;
@@ -151,12 +203,18 @@ const RestoreIdentityScreen = () => {
       if (!matchedDid) {
         showWarning(
           typedDid ? 'Mã định danh không khớp cụm từ' : 'Không tìm thấy tài khoản khớp',
-          typedDid
-            ? 'Mã định danh vừa nhập không khớp cụm 24 từ, hoặc không có trên máy chủ.'
-            : 'Các tài khoản đã lưu trên máy đều không khớp cụm 24 từ này. Kiểm tra lại cụm từ, ' +
-              'hoặc nhập đúng mã định danh vào ô bên dưới nếu là máy mới.',
+          (typedDid
+            ? t('Mã định danh vừa nhập không khớp cụm 24 từ, hoặc không có trên máy chủ.')
+            : t('Các tài khoản đã lưu trên máy đều không khớp cụm 24 từ này. Kiểm tra lại cụm từ, hoặc nhập đúng mã định danh vào ô bên dưới nếu là máy mới.')) +
+            (deviceHadWallet ? ' ' + t('Ví đang có trên máy được GIỮ NGUYÊN.') : ''),
         );
         return;
+      }
+
+      // Tới đây máy chủ đã xác nhận cụm 24 từ này ký được cho DID `matchedDid` —
+      // tức nó ĐÚNG là cụm của người đang cầm máy. Giờ mới được phép ghi đè.
+      if (deviceHadWallet) {
+        await storeMasterKek(kek);
       }
 
       await saveUserDid(matchedDid);
@@ -227,7 +285,7 @@ const RestoreIdentityScreen = () => {
             color={countOk ? COLORS.success : COLORS.textMuted}
           />
           <Text style={[styles.countText, countOk && { color: COLORS.success }]}>
-            {wordCount}/24 từ
+            {tf('{n}/24 từ', { n: wordCount })}
           </Text>
         </View>
 
@@ -239,7 +297,7 @@ const RestoreIdentityScreen = () => {
             style={styles.didInput}
             value={did}
             onChangeText={setDid}
-            placeholder="did:phoenix:…  (để trống nếu khôi phục trên máy cũ)"
+            placeholder="did:phoenix:… (để trống nếu khôi phục trên máy cũ)"
             placeholderTextColor={COLORS.textMuted}
             autoCapitalize="none"
             autoCorrect={false}

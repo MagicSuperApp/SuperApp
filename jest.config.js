@@ -24,9 +24,29 @@ module.exports = {
   // ESM thuần (@react-navigation, react-native-*, redux ESM…) → Jest gặp `export` sẽ
   // ném "Unexpected token 'export'" và cả suite chết (App.test.tsx). Nới allowlist để
   // Babel transform luôn các gói đó. Thêm gói mới gây lỗi tương tự thì bổ sung vào đây.
+  // `three` nằm trong danh sách vì `three/examples/jsm/**` (GLTFLoader, PLYLoader…)
+  // là ESM thuần — phần lõi `three` có bản CJS nên vẫn nạp được, nhưng các loader
+  // thì không, và bất kỳ test nào chạm tới chúng sẽ chết ở dòng `import` đầu tiên.
   transformIgnorePatterns: [
-    'node_modules/(?!(?:jest-)?(?:@?react-native(?:-community)?|@react-native(?:-community)?/.*|@react-navigation/.*|react-native-.*|react-redux|redux-persist|@reduxjs/.*|immer|@react-native-async-storage/.*)/)',
+    'node_modules/(?!(?:jest-)?(?:@?react-native(?:-community)?|@react-native(?:-community)?/.*|@react-navigation/.*|react-native-.*|react-redux|redux-persist|@reduxjs/.*|immer|@react-native-async-storage/.*|three)/)',
   ],
+  // ── Hạn chờ mỗi test ──────────────────────────────────────────────────────
+  // 5000ms là MẶC ĐỊNH CỦA JEST, không phải một con số ai đó đo cho kho này. Và
+  // nó quá chật cho các bộ test dựng NGUYÊN một màn RN (`TreeManagementScreen`,
+  // `WayfindScreen`, `FruitCropperScreen`, `AnimalDetailScreen`): chạy riêng thì
+  // cả hai bộ đầu xong trong 4,4 GIÂY cộng lại, nhưng chạy cùng cả kho thì đỏ vì
+  // "Exceeded timeout of 5000 ms".
+  //
+  // Đo được nguyên nhân trên máy dựng: 16 nhân ⇒ jest mở ~15 tiến trình con, mỗi
+  // tiến trình nạp trọn đồ thị module RN, trong khi máy chỉ còn 0,8 GB RAM trống.
+  // Chúng tranh nhau bộ nhớ và bị hoán trang, nên test không CHẬM về logic — nó
+  // bị BỎ ĐÓI CPU. Nâng hạn chờ là nói đúng sự thật đó; sửa mã màn thì không sửa
+  // gì cả, vì mã màn không hề chậm.
+  //
+  // Con số đỏ giả này còn nguy hơn một test chậm: nó dạy người ta chạy lại cho
+  // tới khi xanh, và thói quen ấy sẽ nuốt luôn ngày một test đỏ THẬT.
+  testTimeout: 30_000,
+
   moduleNameMapper: {
     // Model 3D (.glb/.gltf): trong app do Metro biến `require()` thành id asset dạng
     // SỐ. Jest không có bước đó nên sẽ cố parse tệp nhị phân → nổ. Trả về một stub số

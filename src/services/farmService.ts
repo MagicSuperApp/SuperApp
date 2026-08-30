@@ -36,6 +36,19 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ORILIFE_BASE } from './orilifeBase';
 import type { Farm } from '../modules/trace/types';
 import type { APIError } from './treeReIDService';
+import { canResendAfterNetworkError } from './resendPolicy';
+
+/**
+ * Cửa POST GỬI LẠI ĐƯỢC sau lỗi mạng. Luật + lý do đầy đủ ở `resendPolicy.ts`.
+ *
+ * `POST /api/farm` (TẠO vườn) CỐ Ý vắng mặt: máy chủ sinh `uuid4().hex` mới mỗi
+ * lượt và không nhận khoá chống-trùng nào, nên gửi lại mù là ra hai vườn cùng tên
+ * cùng ranh, không cửa nào khử.
+ *
+ * Cửa POST duy nhất dưới tiền tố `/api/farm/` là `.../update` — ghi đè cùng một
+ * mã vườn bằng cùng một biểu mẫu, gửi lại bao nhiêu lần cũng ra một kết quả.
+ */
+export const RESENDABLE_POST = ['/api/farm/*'] as const;
 
 // ---------------------------------------------------------------------------
 // Base URL — đồng nhất với TreeEnrollScreen/fruitReIDService (field-reid duy nhất)
@@ -184,7 +197,7 @@ async function _apiCall<T>(
     const isTimeoutErr = err instanceof Error && err.name === 'AbortError';
     const isConnErr = err instanceof TypeError && !isTimeoutErr;
 
-    if (isConnErr && attempt === 0) {
+    if (isConnErr && attempt === 0 && canResendAfterNetworkError(url, method, RESENDABLE_POST)) {
       return _apiCall<T>(url, method, body, 1);
     }
 

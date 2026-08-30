@@ -1,8 +1,28 @@
 // features/auth/screens/SignUpCompleteScreen.tsx
 //
 // BƯỚC 3/3 — Hoàn tất.
-// Mô phỏng pipeline: sinh DID → mã hóa Recovery Blob → phân mảnh & phân tán
-// lên các node mạng (≥ 12 node). KHÔNG có bản sao tập trung trên cloud nào.
+//
+// ⛔ ĐÍNH CHÍNH 2026-08-28 — màn này từng NÓI MỘT VIỆC KHÔNG XẢY RA.
+//
+// Chú thích cũ ở đây viết: "Mô phỏng pipeline: sinh DID → mã hóa Recovery Blob →
+// phân mảnh & phân tán lên các node mạng (≥ 12 node)". Hai chữ "mô phỏng" là
+// thật, phần còn lại thì không: bốn bước hiện ra là hoạt hình chạy bằng đồng hồ
+// đếm (700/900/800/1200 ms). Trong tệp này có **0 lệnh mã hoá và 0 lời gọi
+// mạng** — đo bằng grep `encrypt|fetch|axios|shamir|split`: 0 kết quả. Và cơ chế
+// "12 node" không tồn tại ở bất kỳ đâu trong `src/`.
+//
+// Nặng nhất là hai câu từng nằm cách nhau mười hai dòng trên CÙNG màn hình:
+//   · cảnh báo: "Bạn chưa liên kết khôi phục"
+//   · chân trang: "Dữ liệu khôi phục được phân tán an toàn trên mạng"
+// Người dùng đọc câu dưới rồi rời màn hình tin rằng đã có đường khôi phục. Họ
+// CHƯA có. Mất máy là mất danh tính, và họ chỉ biết vào đúng lúc mất máy.
+//
+// Hai lối ra: làm thật việc màn hình đang diễn, hoặc sửa câu chữ cho khớp việc
+// thật. Không có lối thứ ba là để nguyên. Chọn lối thứ hai — "12 node" là một hệ
+// chưa ai xây, còn lời nói dối thì đang ở trên tay người dùng hôm nay.
+//
+// Nay màn chỉ nói hai việc CÓ THẬT (khoá sinh trong chip, danh tính đã tạo ở màn
+// trước), rồi nói thẳng rằng chưa có đường khôi phục nào.
 
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -26,30 +46,25 @@ interface Step {
   durationMs: number;
 }
 
+// Chỉ còn hai bước, và cả hai đều mô tả việc ĐÃ XẢY RA THẬT ở màn trước
+// (`SignUpBiometricScreen` → `phoenixKeyAuthService`), không phải việc màn này
+// làm. Nên lời của chúng ở thì hoàn thành, không phải thì đang diễn ra.
+//
+// ⛔ ĐỪNG thêm bước mới vào đây để màn "trông đầy đặn hơn". Mỗi dòng ở danh sách
+//    này là một lời khẳng định với người dùng về thứ bảo vệ danh tính của họ.
+//    Thêm một dòng thì phải chỉ ra được đoạn mã làm đúng việc dòng đó nói.
 const STEPS: Step[] = [
   {
     icon: 'shield-key-outline',
-    title: 'Sinh khóa phần cứng',
-    detail: 'Khóa riêng nằm trong chip bảo mật, không thể xuất',
+    title: 'Khoá riêng nằm trong chip bảo mật',
+    detail: 'Khoá không rời khỏi máy, và không xuất ra được',
     durationMs: 700,
   },
   {
     icon: 'identifier',
-    title: 'Tạo danh tính',
-    detail: 'Public key được ghi vào danh sách khóa được phép',
+    title: 'Danh tính đã được tạo',
+    detail: 'Khoá công khai đã ghi vào danh sách khoá được phép',
     durationMs: 900,
-  },
-  {
-    icon: 'lock-outline',
-    title: 'Mã hoá dữ liệu khôi phục',
-    detail: 'Mã hoá mạnh bằng khoá lấy từ thiết bị của bạn',
-    durationMs: 800,
-  },
-  {
-    icon: 'access-point-network',
-    title: 'Chia nhỏ & lưu trên nhiều thiết bị',
-    detail: 'Lưu trên ít nhất 12 thiết bị — không có bản sao tập trung',
-    durationMs: 1200,
   },
 ];
 
@@ -162,7 +177,7 @@ const SignUpCompleteScreen: React.FC = () => {
             <Animated.View style={{ opacity: successOpacity, alignItems: 'center' }}>
               <Text style={styles.heroTitle}>Tài khoản đã sẵn sàng</Text>
               <Text style={styles.heroSub}>
-                Danh tính của bạn đã được tạo và bảo vệ. Khóa riêng không bao giờ rời thiết bị.
+                Khoá riêng không bao giờ rời thiết bị này.
               </Text>
             </Animated.View>
           ) : (
@@ -203,10 +218,13 @@ const SignUpCompleteScreen: React.FC = () => {
           </View>
         )}
 
-        {/* Footnote */}
+        {/* Chân trang — chỉ nói việc đã xảy ra. Câu cũ ở đây ("Dữ liệu khôi
+            phục được phân tán an toàn trên mạng") mâu thuẫn thẳng với ô cảnh báo
+            ngay bên trên, và nó là câu người dùng tin rồi bỏ qua bước lưu. */}
         <Text style={styles.footnote}>
-          Tài khoản của bạn không phụ thuộc vào bất kỳ máy chủ trung tâm nào.
-          Dữ liệu khôi phục được phân tán an toàn trên mạng — chỉ bạn có thể giải mã.
+          Tài khoản của bạn không phụ thuộc vào bất kỳ máy chủ trung tâm nào — nên
+          cũng không có máy chủ nào khôi phục hộ bạn được. Đường khôi phục duy nhất
+          là thứ chính bạn lưu lại.
         </Text>
 
         <View style={{ height: 20 }} />

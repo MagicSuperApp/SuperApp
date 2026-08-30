@@ -21,14 +21,13 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
-  TextInput,
-  Modal,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 
 import { COLORS } from '../constants';
 import { NEUTRAL } from '../shared/theme';
+import RenameModal from '../components/RenameModal';
 import {
   getTrees,
   deleteTree,
@@ -42,6 +41,8 @@ import {
 
 import { ORILIFE_BASE } from '../services/orilifeBase';
 import { forTree, useOpenWayfind } from '../features/wayfind/WayfindButton';
+import { showError, showWarning } from '../utils/alert';
+import { t } from '../i18n';
 const BASE_URL: string =
   ORILIFE_BASE;
 
@@ -64,82 +65,6 @@ type TreeItem = TreeInfo;
 interface RouteParams {
   farmId?: string;
 }
-
-// ---------------------------------------------------------------------------
-// Sub-component: Rename Modal
-// ---------------------------------------------------------------------------
-
-interface RenameModalProps {
-  visible: boolean;
-  currentName: string;
-  onConfirm: (newName: string) => void;
-  onDismiss: () => void;
-}
-
-const RenameModal: React.FC<RenameModalProps> = ({
-  visible,
-  currentName,
-  onConfirm,
-  onDismiss,
-}) => {
-  const [value, setValue] = useState(currentName);
-
-  // Reset khi mở lại với tên khác
-  useEffect(() => {
-    if (visible) setValue(currentName);
-  }, [visible, currentName]);
-
-  return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onDismiss}
-    >
-      <View style={modal.overlay}>
-        <View style={modal.dialog}>
-          <Text style={modal.title}>Đổi tên cây</Text>
-          <TextInput
-            style={modal.input}
-            value={value}
-            onChangeText={setValue}
-            placeholder="Nhập tên mới..."
-            placeholderTextColor={NEUTRAL.textMuted}
-            autoFocus
-            maxLength={80}
-            returnKeyType="done"
-            onSubmitEditing={() => {
-              if (value.trim()) onConfirm(value.trim());
-            }}
-          />
-          <View style={modal.actions}>
-            <TouchableOpacity
-              style={[modal.btn, modal.btnCancel]}
-              onPress={onDismiss}
-              activeOpacity={0.8}
-            >
-              <Text style={modal.btnCancelText}>Huỷ</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                modal.btn,
-                modal.btnConfirm,
-                !value.trim() && modal.btnDisabled,
-              ]}
-              onPress={() => {
-                if (value.trim()) onConfirm(value.trim());
-              }}
-              disabled={!value.trim()}
-              activeOpacity={0.8}
-            >
-              <Text style={modal.btnConfirmText}>Lưu</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    </Modal>
-  );
-};
 
 // ---------------------------------------------------------------------------
 // Sub-component: Tree card
@@ -309,7 +234,7 @@ const TreeManagementScreen: React.FC = () => {
         );
         setRenameTarget(null);
       } else {
-        Alert.alert('Đổi tên thất bại', res.error?.detail ?? 'Thử lại.');
+        showError('Đổi tên thất bại', res.error?.detail ?? 'Thử lại.');
       }
     } finally {
       setIsRenaming(false);
@@ -318,44 +243,37 @@ const TreeManagementScreen: React.FC = () => {
 
   // ── Delete ───────────────────────────────────────────────────────────────
   const handleDelete = (item: TreeItem) => {
-    Alert.alert(
-      'Xoá cây?',
-      `Cây "${item.name || item.tree_id}" sẽ bị xoá khỏi hệ thống. Không thể hoàn tác.`,
-      [
-        { text: 'Huỷ', style: 'cancel' },
-        {
-          text: 'Xoá',
-          style: 'destructive',
-          onPress: async () => {
+    showWarning('Xoá cây?', `Cây "${item.name || item.tree_id}" sẽ bị xoá khỏi hệ thống. Không thể hoàn tác.`, {
+        confirmText: 'Xoá',
+        cancelText: 'Huỷ',
+        onConfirm: async () => {
             try {
               const res = await deleteTree(BASE_URL, item.tree_id);
               if (res.ok) {
                 setTrees(prev => prev.filter(t => t.tree_id !== item.tree_id));
               } else {
-                Alert.alert('Xoá thất bại', res.error?.detail ?? 'Thử lại.');
+                Alert.alert(t('Xoá thất bại'), res.error?.detail ?? t('Thử lại.'));
               }
             } catch {
-              Alert.alert('Lỗi mạng', 'Không thể xoá cây. Kiểm tra kết nối và thử lại.');
+              Alert.alert(t('Lỗi mạng'), t('Không thể xoá cây. Kiểm tra kết nối và thử lại.'));
             }
           },
-        },
-      ],
-    );
+    });
   };
 
   // ── Action sheet (long press) ─────────────────────────────────────────────
   const handleLongPress = (item: TreeItem) => {
     Alert.alert(
-      item.name || item.tree_id || 'Cây chưa đặt tên',
-      'Chọn hành động:',
+      item.name || item.tree_id || t('Cây chưa đặt tên'),
+      t('Chọn hành động:'),
       [
-        { text: 'Huỷ', style: 'cancel' },
+        { text: t('Huỷ'), style: 'cancel' },
         {
-          text: 'Đổi tên',
+          text: t('Đổi tên'),
           onPress: () => setRenameTarget(item),
         },
         {
-          text: 'Xoá',
+          text: t('Xoá'),
           style: 'destructive',
           onPress: () => handleDelete(item),
         },
@@ -481,6 +399,8 @@ const TreeManagementScreen: React.FC = () => {
       <RenameModal
         visible={renameTarget !== null}
         currentName={renameTarget?.name ?? ''}
+        title="Đổi tên cây"
+        confirmColor={HEADER_BG}
         onConfirm={handleRenameConfirm}
         onDismiss={() => setRenameTarget(null)}
       />
@@ -489,7 +409,7 @@ const TreeManagementScreen: React.FC = () => {
       {isRenaming && (
         <View style={styles.overlay}>
           <ActivityIndicator size="large" color={COLORS.accent} />
-          <Text style={styles.overlayText}>Đang đổi tên...</Text>
+          <Text style={styles.overlayText}>{t('Đang đổi tên...')}</Text>
         </View>
       )}
     </View>
@@ -700,71 +620,4 @@ const styles = StyleSheet.create({
 });
 
 // ─── Rename modal styles ───────────────────────────────────────────────────
-const modal = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  dialog: {
-    width: '100%',
-    maxWidth: 400,
-    backgroundColor: NEUTRAL.bg,
-    borderRadius: 18,
-    padding: 22,
-    gap: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 24,
-    elevation: 10,
-  },
-  title: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: NEUTRAL.text,
-    textAlign: 'center',
-  },
-  input: {
-    backgroundColor: NEUTRAL.bgSoft,
-    borderWidth: 1,
-    borderColor: NEUTRAL.border,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-    color: NEUTRAL.text,
-  },
-  actions: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  btn: {
-    flex: 1,
-    paddingVertical: 13,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  btnCancel: {
-    backgroundColor: NEUTRAL.bgSoft,
-    borderWidth: 1,
-    borderColor: NEUTRAL.border,
-  },
-  btnCancelText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: NEUTRAL.textSub,
-  },
-  btnConfirm: { backgroundColor: HEADER_BG },
-  btnConfirmText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: NEUTRAL.white,
-  },
-  btnDisabled: { opacity: 0.45 },
-});
-
 export default TreeManagementScreen;

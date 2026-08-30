@@ -13,6 +13,7 @@ import { WORK } from './phrases/work';
 import { CHAT } from './phrases/chat';
 import { ERRORS } from './phrases/errors';
 import { SCREENS } from './phrases/screens';
+import { DIALOGS } from './phrases/dialogs';
 
 const PARTS: Array<[string, PhraseMap]> = [
   ['common', COMMON],
@@ -23,6 +24,7 @@ const PARTS: Array<[string, PhraseMap]> = [
   ['chat', CHAT],
   ['errors', ERRORS],
   ['screens', SCREENS],
+  ['dialogs', DIALOGS],
 ];
 
 function build(): PhraseMap {

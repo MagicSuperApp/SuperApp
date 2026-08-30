@@ -38,6 +38,7 @@ import { NEO_CENTER, NEO_RIGHT } from './resolveVisibleTabs';
 import { resolveGateItems, type GateItem } from './resolveGateItems';
 import { stickyTapAction } from './stickyTap';
 import { TRACE_SCAN_ROUTE_NAME } from './traceScan';
+import { buildDeepLinkScreens } from './deepLinkAllow';
 
 // --- Host shell screens (KHÔNG thuộc module — vỏ giữ tĩnh) ------------------
 import LoginScreen from '../screens/LoginScreen';
@@ -55,6 +56,7 @@ import SignUpBiometricScreen from '../features/auth/screens/SignUpBiometricScree
 import SignUpCompleteScreen from '../features/auth/screens/SignUpCompleteScreen';
 import AccountScreen from '../screens/AccountScreen';
 import DeleteAccountScreen from '../screens/DeleteAccountScreen';
+import TermsScreen from '../screens/TermsScreen';
 import BiometricSettings from '../screens/BiometricSettings';
 import NotificationScreen from '../screens/NotificationScreen';
 // PhoenixKey — duyệt ký / guardian / nhật ký hoạt động.
@@ -92,7 +94,7 @@ import CareScanScreen from '../screens/CareScanScreen';
 import SeedExportScreen from '../screens/SeedExportScreen';
 import RestoreIdentityScreen from '../screens/RestoreIdentityScreen';
 import PhoenixWalletScreen from '../screens/PhoenixWalletScreen';
-import WakeMeScreen from '../screens/WakeMeScreen';
+import WakemeScreen from '../screens/WakemeScreen';
 import StakingScreen from '../screens/StakingScreen';
 import OrgDidScreen from '../screens/OrgDidScreen';
 import OrgAuthorityScreen from '../screens/OrgAuthorityScreen';
@@ -136,7 +138,8 @@ import {
   getModuleEntrypoint,
   assertRouteParity,
 } from './registry';
-import { DEFAULT_INSTANCE } from '../config/instance.config';
+import { DEFAULT_INSTANCE, ENABLED_MODULES } from '../config/instance.config';
+import { gateScreen } from './authGate';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -221,7 +224,7 @@ function buildTabs(): BuiltTab[] {
       });
     } else {
       // Tab module: chỉ dựng nếu module đó được BẬT (an toàn — tránh tab mồ côi).
-      if (!DEFAULT_INSTANCE.enabledModules.includes(tab.moduleId)) {
+      if (!ENABLED_MODULES.includes(tab.moduleId)) {
         console.warn(`[nav] tab module '${tab.moduleId}' không nằm trong enabledModules — bỏ qua.`);
         return;
       }
@@ -1714,6 +1717,12 @@ const HOST_STACK_SCREENS: Array<{
   { name: 'BiometricSettings', component: BiometricSettings },
   // Xoá tài khoản — bắt buộc bởi Apple 5.1.1(v) + Google Play (issue #144). Vào từ màn Tôi.
   { name: 'DeleteAccount', component: DeleteAccountScreen, options: { headerShown: false } },
+  // Điều khoản + quyền riêng tư. HAI nút thật đã trỏ vào đây từ trước —
+  // `AccountScreen.tsx:876` và `SignUpBiometricScreen.tsx:465` — nhưng route chưa
+  // bao giờ được đăng ký, nên bấm là ném "NAVIGATE ... was not handled by any
+  // navigator". Không test nào bắt được: mọi test đều mock `useNavigation` bằng
+  // `navigate: jest.fn()`, và hai màn đó không có test render nào.
+  { name: 'Terms', component: TermsScreen, options: { headerShown: false } },
   // PhoenixKey feature screens.
   { name: 'SignRequest', component: SignRequestScreen, options: { headerShown: false } },
   { name: 'Guardian', component: GuardianScreen, options: { headerShown: false } },
@@ -1769,9 +1778,9 @@ const HOST_STACK_SCREENS: Array<{
   { name: 'SeedExport', component: SeedExportScreen, options: { headerShown: false } },
   { name: 'RestoreIdentity', component: RestoreIdentityScreen, options: { headerShown: false } },
   { name: 'PhoenixWallet', component: PhoenixWalletScreen, options: { headerShown: false } },
-  // WakeMe — nhận phần LAMP khởi tạo. Route HOST, KHÔNG thêm vào `buildLinking()`:
+  // Wakeme — nhận phần LAMP khởi tạo. Route HOST, KHÔNG thêm vào `buildLinking()`:
   // màn này chuyển LAMP thật, không nên mở được bằng một đường dẫn từ bên ngoài.
-  { name: 'WakeMe', component: WakeMeScreen, options: { headerShown: false } },
+  { name: 'Wakeme', component: WakemeScreen, options: { headerShown: false } },
   { name: 'Staking', component: StakingScreen, options: { headerShown: false } },
   // Ví tổ chức — tạo OrgDID + mint LAMP bằng OrgDID (2 bước: mint kho → claim-release).
   { name: 'OrgDid', component: OrgDidScreen, options: { headerShown: false } },
@@ -1789,7 +1798,7 @@ const HOST_STACK_SCREENS: Array<{
   { name: 'TraceResult', component: TraceResultScreen, options: { headerShown: false } },
   // Biến thiên của cây + chia sẻ dữ liệu riêng. Route HOST, KHÔNG thêm vào
   // `buildLinking()`: cả hai đọc/ghi dữ liệu RIÊNG của vườn, không nên mở được
-  // bằng một đường dẫn từ bên ngoài — cùng lý do với `WakeMe` ở trên.
+  // bằng một đường dẫn từ bên ngoài — cùng lý do với `Wakeme` ở trên.
   { name: 'TreeDrift', component: TreeDriftScreen, options: { headerShown: false } },
   { name: 'TreeShare', component: TreeShareScreen, options: { headerShown: false } },
   { name: 'ExportIdentity', component: ExportIdentityScreen, options: { headerShown: false } },
@@ -1799,7 +1808,7 @@ const HOST_STACK_SCREENS: Array<{
 // --- Module stack screens (config-driven) ----------------------------------
 // Mọi route của module BẬT đều đăng ký vào stack (tới được qua navigate/deep-link),
 // kể cả route đã là tab — RN cho phép trùng tên giữa Tab và Stack vì khác navigator.
-const MODULE_STACK_SCREENS = collectModuleScreens(DEFAULT_INSTANCE.enabledModules);
+const MODULE_STACK_SCREENS = collectModuleScreens(ENABLED_MODULES);
 
 // --- Deep-link: lamp://<module>/<route> -------------------------------
 // Map mỗi route module sang path 'lamp://<moduleId>/<route>'. Host route
@@ -1808,25 +1817,39 @@ const MODULE_STACK_SCREENS = collectModuleScreens(DEFAULT_INSTANCE.enabledModule
 // ⚠️ SEAM NGỦ, đo 2026-08-17. `prefixes` dưới đây chỉ dạy React Navigation cách ĐỌC
 // một URL ĐÃ tới tay app. Nó KHÔNG đăng ký scheme với hệ điều hành — việc đó nằm ở
 // `Info.plist` (CFBundleURLTypes) và `AndroidManifest.xml` (`<data android:scheme>`),
-// và hôm nay CẢ HAI đều không khai `lamp`. Nghĩa là chưa URL nào từ ngoài vào được.
-// Đừng đọc khối này thành "deep-link đã chạy"; muốn chạy thì phải khai phần native.
-const buildLinking = () => {
-  const screens: Record<string, string> = { Main: 'main' };
-  MODULE_STACK_SCREENS.forEach(({ moduleId, route }) => {
-    screens[route] = `${moduleId}/${route}`;
-  });
-  // SG9 §3 — mở màn quét truy xuất qua deep-link `lamp://trace-scan` (quét từ
-  // platform khác). Màn CHI TIẾT (TreeDetail…) đã deep-link-được qua map module ở
-  // trên → sản phẩm Aladin quét ngoài app mở thẳng màn kết quả.
-  screens[TRACE_SCAN_ROUTE_NAME] = 'trace-scan';
-  // Đổi ngôn ngữ = popup mở tại chỗ (Cài đặt / màn Đăng nhập), KHÔNG còn màn riêng
-  // → không có route để deep-link tới. Màn `LanguageSelect` chỉ chạy lần đầu cài.
-  screens.LanguageSelect = 'language';
-  return {
-    prefixes: ['lamp://'],
-    config: { screens },
-  };
-};
+// và hôm nay CẢ HAI đều không khai `lamp`.
+//
+// ⛔ ĐÍNH CHÍNH 2026-08-21 — câu tiếp theo của khối này từng viết "nghĩa là chưa URL
+// nào từ ngoài vào được". **Sai, và sai đúng ở phía có bảo mật.** Nó chỉ đúng với
+// intent NGẦM (implicit). Với intent TƯỜNG MINH thì Android bỏ qua hẳn bước đối chiếu
+// intent-filter:
+//
+//   AndroidManifest.xml:54-65   MainActivity android:exported="true"
+//                               (chỉ có MAIN/LAUNCHER, không <data android:scheme>)
+//   RN IntentModule.kt:61-67    trả intent.data chỉ cần action == ACTION_VIEW —
+//                               KHÔNG kiểm gói gọi, KHÔNG kiểm intent-filter
+//
+// Nên một app bất kỳ trên cùng máy gửi `ACTION_VIEW` + `-n <gói>/.MainActivity` kèm
+// `lamp://<module>/<route>` thì URL đó ĐI TỚI `buildLinking` hôm nay.
+//
+// ✅ ĐÃ SỬA 2026-08-27 — phần "map không có whitelist, phơi TOÀN BỘ route module" ở
+// đoạn trên KHÔNG còn đúng. Bảng nay đi qua danh sách trắng viết tay ở
+// `deepLinkAllow.ts`, và danh sách route module RỖNG ⇒ 25 route module (gồm
+// `ChatRoom`, `FarmDetail`, `TreeDetail`, `ContractDetail`) không mở được từ ngoài.
+// Route mới thêm sau này **mặc định ĐÓNG**.
+//
+// ⚠️ ĐỪNG đọc thành "lỗ đã đóng". Cái đóng là CỬA VÀO. Bảng đường dẫn bên trong vẫn
+// PHẲNG y như cũ: `ProtectedMain` bọc đúng route `Main`, còn `MODULE_STACK_SCREENS`
+// vẫn là anh em ruột của nó trong cùng một `Stack.Navigator`. Dựng lại để mọi route
+// module nằm DƯỚI cổng là việc còn nguyên, và nó đang chờ chủ dự án quyết — đó mới
+// là quyết định sản phẩm, không phải cái danh sách trắng này.
+const buildLinking = () => ({
+  prefixes: ['lamp://'],
+  // Bảng route mở-được-từ-ngoài nay đi qua DANH SÁCH TRẮNG viết tay, không còn là
+  // vòng lặp trên toàn bộ `MODULE_STACK_SCREENS`. Luật, lý do và điều kiện gỡ nằm
+  // ở `deepLinkAllow.ts`. Đừng đổ thẳng route module vào đây nữa.
+  config: { screens: buildDeepLinkScreens(MODULE_STACK_SCREENS, TRACE_SCAN_ROUTE_NAME) },
+});
 
 const AppNavigator = () => {
   // Build 52 (2026-05-17) — first-launch onboarding gate.
@@ -1942,7 +1965,7 @@ const AppNavigator = () => {
             <Stack.Screen
               key={s.name}
               name={s.name}
-              component={s.component}
+              component={gateScreen(s.name, s.component)}
               options={s.options}
             />
           ))}
@@ -1951,7 +1974,7 @@ const AppNavigator = () => {
             <Stack.Screen
               key={route}
               name={route}
-              component={component}
+              component={gateScreen(route, component)}
               options={{ headerShown: false }}
             />
           ))}

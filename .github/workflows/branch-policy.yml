@@ -17,11 +17,17 @@ jobs:
     if: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     steps:
+      # HEAD_REF di qua `env:` chu KHONG noi-suy `${{ }}` thang vao than `run:`:
+      # ten nhanh la chuoi NGUOI KHAC dat, va noi-suy thang la dan no vao ma shell
+      # truoc khi shell chay. Mot nhanh dat ten co `$(...)` se chay duoc lenh ngay
+      # trong runner. Qua `env:` thi no chi con la gia-tri.
       - name: Chi cho develop vao main
         if: ${{ github.head_ref != 'develop' }}
+        env:
+          HEAD_REF: ${{ github.head_ref }}
         run: |
           echo "::error title=Sai nhanh dich::PR vao 'main' phai xuat-phat tu 'develop'."
-          echo "Nhanh nguon hien tai: '${{ github.head_ref }}'."
+          echo "Nhanh nguon hien tai: '$HEAD_REF'."
           echo "Quy-tac: feature/fix -> PR -> develop; chi 'develop' moi duoc PR vao 'main'."
           exit 1
       - name: Hop-le

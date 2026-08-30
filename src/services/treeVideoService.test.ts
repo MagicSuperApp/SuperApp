@@ -73,6 +73,55 @@ describe('uploadTreeVideo — map mã trả server /api/tree/{id}/video', () => 
     expect(r.engine_verified).toBe(true);
   });
 
+  // ══ 200 KÈM ok:false — máy chủ đặt `ok = retained` (`server.py:5015`) ══════
+  it('200 + ok:false (clip KHÔNG được giữ) → ok:false, mang nguyên câu của máy chủ', async () => {
+    // Đây là thân thật máy chủ dựng ở `server.py:5000-5024` cho ca `retained=False`.
+    mockFetch(200, {
+      ok: false, tree_id: TREE, n_kept: 0, n_parked: 0, n_rejected: 0,
+      status: 'ok', rejected: [], stored: false, retained: false,
+      store_reason: 'lampnet_down',
+      error: 'Chưa lưu được video lên hệ thống — vui lòng gửi lại.',
+      message: 'Chưa lưu được video lên hệ thống — vui lòng gửi lại.',
+    });
+    const r = await uploadTreeVideo(BASE, TREE, URI);
+    expect(r.ok).toBe(false);
+    expect(r.error?.type).toBe('not_retained');
+    // Câu Việt của máy chủ phải tới được người dùng, không bị thay bằng câu tự soạn.
+    expect(r.error?.detail).toBe('Chưa lưu được video lên hệ thống — vui lòng gửi lại.');
+    expect(r.retained).toBe(false);
+    expect(r.store_reason).toBe('lampnet_down');
+    // KHÔNG được lộ `video_cid` ra ngoài ở ca này: mã lúc đó tra không ra gì.
+    expect(r.video_cid).toBeUndefined();
+  });
+
+  it('200 KHÔNG có trường `ok` (bản máy chủ cũ) → vẫn ok:true, không đọc thành thất bại', async () => {
+    mockFetch(200, { tree_id: TREE, n_kept: 2, n_rejected: 0, status: 'ok', rejected: [], added: true });
+    const r = await uploadTreeVideo(BASE, TREE, URI);
+    expect(r.ok).toBe(true);
+    expect(r.n_kept).toBe(2);
+  });
+
+  it('200 + ok:true nhưng stored:false → ok:true kèm retained/store_reason để màn nói đúng', async () => {
+    mockFetch(200, {
+      ok: true, tree_id: TREE, n_kept: 3, n_rejected: 0, status: 'ok', rejected: [],
+      added: true, stored: false, retained: true, store_reason: 'queued',
+      message: 'Đã nhận video, đang gửi lên kho lưu-trữ.',
+    });
+    const r = await uploadTreeVideo(BASE, TREE, URI);
+    expect(r.ok).toBe(true);
+    expect(r.stored).toBe(false);
+    expect(r.retained).toBe(true);
+    expect(r.store_reason).toBe('queued');
+    expect(r.message).toBe('Đã nhận video, đang gửi lên kho lưu-trữ.');
+  });
+
+  it('nhánh LỖI cũng mang `store_reason` — nếu không thì cờ "gửi lại vô ích" không tới nơi quyết định', async () => {
+    mockFetch(500, { error: 'Lỗi máy chủ', store_reason: 'empty_file' });
+    const r = await uploadTreeVideo(BASE, TREE, URI);
+    expect(r.ok).toBe(false);
+    expect(r.store_reason).toBe('empty_file');
+  });
+
   it('413 → too_large', async () => {
     mockFetch(413, { ok: false, error: 'too large' });
     const r = await uploadTreeVideo(BASE, TREE, URI);

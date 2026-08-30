@@ -19,7 +19,7 @@ import { phoenixKeyApi, PhoenixKeyApiError } from './phoenixKey-api';
 import rLog from './remoteLogger';
 
 // 0 = preprod (testnet), khớp WALLET_NETWORK bên register + AccountScreen + PhoenixWalletScreen.
-const WALLET_NETWORK = 0;
+import { CARDANO_NETWORK as WALLET_NETWORK } from '../config/cardanoNetwork';
 
 // Prefix challenge proof-of-ownership — KHỚP backend WalletV2ServiceImpl.REGISTER_PREFIX.
 // Đổi ở đây mà không đổi backend → chữ ký fail (WALLET_PAYMENT_SIGNATURE_INVALID).

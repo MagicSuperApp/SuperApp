@@ -7,8 +7,19 @@
  *
  * AN TOÀN:
  *   - Master_KEK/24 từ chỉ tồn tại trong RAM lúc hiển thị, KHÔNG log/persist thô.
- *   - Người dùng tự ghi ra giấy; xác nhận "đã lưu" mới rời màn.
  *   - Phase sau: wrap Master_KEK bằng Secure Enclave/Keystore + lưu để derive ví.
+ *
+ * ── Vì sao màn này KHÔNG giục người dùng ghi ra giấy ──────────────────────────
+ * PhoenixKey sinh ra để BỎ cụm từ khôi phục, không phải để phát nó ra. Cụm 24 từ
+ * là bản sao KHÔNG THU HỒI ĐƯỢC của toàn bộ ví: ai đọc được tờ giấy đó thì có ví,
+ * vĩnh viễn, và chủ ví không có cách nào huỷ nó. Đổi khoá cũng không cứu — cụm từ
+ * SINH RA khoá, nên nó vẫn mở được ví mới.
+ *
+ * Bản trước của màn này giục ("Ghi ra giấy, cất nơi an toàn") rồi CHẶN nút Hoàn
+ * tất sau một ô đánh dấu "Tôi đã ghi lại đủ 24 từ" — tức là buộc người dùng khai
+ * đã làm một việc nguy hiểm thì mới thoát ra được. Nay: xuất là TUỲ CHỌN, nói rõ
+ * rủi ro trước khi hiện, và đẩy người dùng sang việc an toàn hơn làm được ngay
+ * hôm nay — đặt người bảo hộ, thứ đường khôi phục on-chain sẽ đọc.
  */
 
 import React, { useState } from 'react';
@@ -20,7 +31,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { COLORS } from '../constants';
-import { showWarning, showInfo } from '../utils/alert';
+import { showInfo, showWarning } from '../utils/alert';
 import taadEnclave from '../sdk/taadEnclave';
 import { getOrCreateMasterKek } from '../services/masterKekStore';
 
@@ -31,7 +42,6 @@ const SeedExportScreen = () => {
   const [words, setWords] = useState<string[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [revealed, setRevealed] = useState(false);
-  const [confirmed, setConfirmed] = useState(false);
 
   const handleGenerate = async () => {
     if (!taadEnclave.isAvailable()) {
@@ -78,14 +88,6 @@ const SeedExportScreen = () => {
   };
 
   const handleDone = () => {
-    if (!confirmed) {
-      showWarning(
-        'Xác nhận đã lưu',
-        'Hãy chắc chắn bạn đã ghi lại đủ 24 từ đúng thứ tự. Mất cụm từ = mất ' +
-          'khả năng khôi phục nếu hỏng/mất máy.',
-      );
-      return;
-    }
     // Xoá khỏi RAM màn hình.
     setWords(null);
     setRevealed(false);
@@ -104,13 +106,42 @@ const SeedExportScreen = () => {
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll}>
-        {/* Cảnh báo an toàn */}
+        {/* Nói RỦI RO trước, không giục. Người dùng phải biết mình đang đánh đổi
+            cái gì TRƯỚC khi cụm từ hiện lên màn hình — sau khi hiện thì muộn rồi. */}
+        <View style={styles.dangerCard}>
+          <Icon name="alert-octagon-outline" size={22} color="#B3261E" />
+          <Text style={styles.warnText}>
+            Ghi cụm 24 từ ra giấy là <Text style={styles.bold}>tự tạo một chìa khoá thứ hai</Text> cho
+            ví của bạn. Ai đọc được tờ giấy đó thì mở được ví, và bạn
+            {' '}<Text style={styles.bold}>không thu hồi được</Text> — đổi khoá cũng không cứu, vì
+            chính cụm từ sinh ra khoá.
+          </Text>
+        </View>
+
+        {/* Việc AN TOÀN HƠN và làm được ngay hôm nay. Để trên nút hiện cụm từ, vì
+            phần lớn người vào đây chỉ đang tìm cách khỏi mất ví. */}
+        <TouchableOpacity
+          style={styles.saferCard}
+          activeOpacity={0.85}
+          onPress={() => navigation.navigate('Guardian')}
+        >
+          <Icon name="account-multiple-check-outline" size={22} color={COLORS.success} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.saferTitle}>Cách an toàn hơn: đặt người bảo hộ</Text>
+            <Text style={styles.saferSub}>
+              Không có giấy tờ nào để mất. Đặt ngay bây giờ thì lúc mất máy đã sẵn sàng.
+            </Text>
+          </View>
+          <Icon name="chevron-right" size={20} color={COLORS.textMuted} />
+        </TouchableOpacity>
+
         <View style={styles.warnCard}>
           <Icon name="shield-key-outline" size={22} color={COLORS.warning} />
           <Text style={styles.warnText}>
-            Cụm 24 từ là cách <Text style={styles.bold}>DUY NHẤT</Text> để khôi phục
-            danh tính & ví nếu mất máy. Ghi ra giấy, cất nơi an toàn.{'\n'}
-            <Text style={styles.bold}>Không</Text> ai (kể cả chúng tôi) khôi phục giúp được.
+            Hôm nay đường khôi phục bằng người bảo hộ chưa chạy được tới cuối, nên cụm 24 từ vẫn là
+            bản dự phòng duy nhất nếu mất máy. Nó là bản sao <Text style={styles.bold}>tạm thời</Text>,
+            không phải cách hệ định vận hành. Khi đường kia mở, hãy xoay khoá trước rồi mới huỷ giấy —
+            đừng huỷ trước.
           </Text>
         </View>
 
@@ -119,7 +150,7 @@ const SeedExportScreen = () => {
             <View style={styles.placeholderCard}>
               <Icon name="eye-off-outline" size={40} color={COLORS.accentLight} />
               <Text style={styles.placeholderText}>
-                Cụm từ sẽ hiện ngay bên dưới. Đảm bảo không ai nhìn màn hình của bạn.
+                Bạn không bắt buộc phải xuất cụm từ. Nếu vẫn muốn, hãy chắc không ai nhìn màn hình của bạn.
               </Text>
             </View>
             <TouchableOpacity
@@ -132,7 +163,7 @@ const SeedExportScreen = () => {
               ) : (
                 <>
                   <Icon name="key-plus" size={18} color="#fff" />
-                  <Text style={styles.primaryBtnText}>Hiện cụm 24 từ</Text>
+                  <Text style={styles.primaryBtnText}>Vẫn hiện cụm 24 từ</Text>
                 </>
               )}
             </TouchableOpacity>
@@ -155,27 +186,12 @@ const SeedExportScreen = () => {
             </TouchableOpacity>
 
             {/* Xác nhận đã lưu */}
-            <TouchableOpacity
-              style={styles.confirmRow}
-              onPress={() => setConfirmed(v => !v)}
-              activeOpacity={0.7}
-            >
-              <Icon
-                name={confirmed ? 'checkbox-marked' : 'checkbox-blank-outline'}
-                size={22}
-                color={confirmed ? COLORS.success : COLORS.textMuted}
-              />
-              <Text style={styles.confirmText}>
-                Tôi đã ghi lại đủ 24 từ đúng thứ tự và cất nơi an toàn.
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.primaryBtn, !confirmed && { opacity: 0.5 }]}
-              onPress={handleDone}
-            >
+            {/* Không còn ô "Tôi đã ghi lại đủ 24 từ" chặn nút. Ghi hay không là
+                việc của người dùng; bắt họ khai đã ghi mới cho thoát là ép làm một
+                việc rủi ro, và cái khai đó cũng không kiểm được. */}
+            <TouchableOpacity style={styles.primaryBtn} onPress={handleDone}>
               <Icon name="check" size={18} color="#fff" />
-              <Text style={styles.primaryBtnText}>Hoàn tất</Text>
+              <Text style={styles.primaryBtnText}>Đóng</Text>
             </TouchableOpacity>
           </>
         )}
@@ -195,6 +211,20 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 17, fontWeight: '700', color: COLORS.text },
   scroll: { padding: 20, paddingBottom: 40 },
 
+  dangerCard: {
+    flexDirection: 'row', gap: 12, alignItems: 'flex-start',
+    backgroundColor: '#FDECEA', borderRadius: 14,
+    borderWidth: 1, borderColor: '#F3B9B2',
+    padding: 14, marginBottom: 14,
+  },
+  saferCard: {
+    flexDirection: 'row', gap: 12, alignItems: 'center',
+    backgroundColor: COLORS.card, borderRadius: 14,
+    borderWidth: 1, borderColor: COLORS.border,
+    padding: 14, marginBottom: 14,
+  },
+  saferTitle: { fontSize: 14, fontWeight: '800', color: COLORS.text },
+  saferSub: { fontSize: 12, lineHeight: 17, color: COLORS.textMuted, marginTop: 2 },
   warnCard: {
     flexDirection: 'row', gap: 12, alignItems: 'flex-start',
     backgroundColor: '#FBF3E6', borderRadius: 14,

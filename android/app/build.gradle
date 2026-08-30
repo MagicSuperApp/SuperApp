@@ -110,8 +110,150 @@ def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
     compileSdk rootProject.ext.compileSdkVersion
 
     namespace "com.aladincontract.company"
+
+    // ── HAI APP TỪ MỘT NỀN MÃ ────────────────────────────────────────────────
+    // `APP_INSTANCE` ở tầng JS (`src/config/instance.config.ts`) chỉ đổi được
+    // CHỮ trong app. Mã gói, tên hiện dưới biểu tượng và khoá ký nằm ở tầng
+    // này — nên trước bản này, dựng với `APP_INSTANCE=checkfarm` vẫn ra một gói
+    // mang `com.aladincontract.company`, tức ra app Aladin đội tên CheckFarm.
+    //
+    // Hai pháp nhân RIÊNG (Aladin Contract và Công ty Cổ phần CheckFarm) ⇒ hai
+    // mã gói riêng, hai khoá ký riêng. Không dùng chung.
+    //
+    // ⛔ `com.checkfarm.app` KHÔNG ĐỔI ĐƯỢC sau lần tải bản dựng đầu tiên lên
+    //    Google Play. Sửa dòng đó sau đó là mất luôn chỗ đứng của ứng dụng.
+    // ── MỖI APP = MỘT THƯ MỤC TRONG `instances/` ────────────────────────────
+    //
+    // Trước đợt này, tên app + mã gói + biểu tượng nằm rải ở ba chỗ: khối
+    // `productFlavors` viết tay dưới đây, `strings.xml`, và `src/main/res/mipmap-*`.
+    // Hệ quả: đối tác muốn dựng app mang nhận diện của họ thì phải nhờ người sửa
+    // gradle hộ. Đó là chỗ nghẽn ở NGƯỜI, không phải ở kỹ thuật.
+    //
+    // Nay gradle ĐỌC thư mục. Thêm một app = thêm `instances/<mã>/instance.json`
+    // + một ảnh vuông 1024 ở `instances/<mã>/brand/icon-1024.png`, rồi chạy
+    // `python3 scripts/sinh-bieu-tuong.py <mã>`. KHÔNG sửa tệp này.
+    //
+    // Chi tiết + ví dụ đầy đủ: `instances/README.md`.
+    def thuMucApp = new File(rootDir, '../instances')
+
+    // ── LUẬT SUPERAPP — phiên bản đọc từ chính tệp luật ─────────────────────
+    //
+    // Mỗi `instance.json` phải khai `superapp.rulesVersion` ĐÚNG số này. Sửa luật
+    // là nâng số ở `instances/LUAT-SUPERAPP.md`, và khi ấy mọi app đỏ cho tới khi
+    // có người đọc luật mới rồi ký nhận trong tệp của app mình.
+    //
+    // Cố ý làm phiền: luật không tự lan sang app đã có. Không có bước này thì một
+    // ràng buộc mới thêm vào tài liệu sẽ đúng với app viết SAU nó và im lặng sai
+    // với mọi app viết TRƯỚC — mà không ai đỏ.
+    def tepLuat = new File(thuMucApp, 'LUAT-SUPERAPP.md')
+    if (!tepLuat.isFile()) {
+        throw new GradleException("Không thấy ${tepLuat} — mọi app khai tuân luật SuperApp, mà tệp luật không còn")
+    }
+    def khopLuat = (tepLuat.text =~ /rulesVersion:\s*(\d+)/)
+    if (!khopLuat) {
+        throw new GradleException("${tepLuat} thiếu dòng `<!-- rulesVersion: N -->` ở đầu tệp")
+    }
+    def LUAT_HIEN_TAI = khopLuat[0][1] as int
+
+    // ── MIỄN TẠM DID — hai app có TRƯỚC khi luật §1 ra đời ──────────────────
+    //
+    // 2026-08-30: chưa có đường cấp DID cho một *instance* (khác DID của người
+    // dùng, thứ đã có sẵn). Hai app này ra đời trước ràng buộc đó nên được miễn
+    // TẠM, ghi thẳng tên ở đây để ai cũng thấy đó là NỢ chứ không phải mặc định.
+    //
+    // ⛔ KHÔNG thêm tên vào danh sách này để cho một app mới đi lọt. Danh sách chỉ
+    //    được RÚT NGẮN. App thứ ba trở đi phải có DID thật — đó là toàn bộ điểm
+    //    của luật §1, và nới ở đây là gỡ luôn cái cổng.
+    def MIEN_TAM_DID = ['aladin', 'checkfarm'] as Set
+
+    def cacApp = (thuMucApp.listFiles() ?: new File[0])
+            .findAll { it.isDirectory() && new File(it, 'instance.json').isFile() }
+            .sort { it.name }
+            .collect { thuMuc ->
+                def khai = new groovy.json.JsonSlurper().parse(new File(thuMuc, 'instance.json'))
+                // Sai ở đây phải NỔ, không được đoán: một `applicationId` rỗng lọt
+                // xuống dưới là dựng ra gói mang mã của app khác, và không có triệu
+                // chứng nào cho tới lúc nộp cửa hàng.
+                if (khai.id != thuMuc.name) {
+                    throw new GradleException("instances/${thuMuc.name}/instance.json khai id='${khai.id}' — phải trùng tên thư mục")
+                }
+                if (!(khai.id ==~ /^[a-z][a-z0-9]*$/)) {
+                    throw new GradleException("mã app '${khai.id}' phải là chữ thường + số, bắt đầu bằng chữ (gradle dùng nó làm tên flavor)")
+                }
+                if (!khai.android?.applicationId) {
+                    throw new GradleException("instances/${khai.id}/instance.json thiếu android.applicationId")
+                }
+                if (!khai.displayName) {
+                    throw new GradleException("instances/${khai.id}/instance.json thiếu displayName")
+                }
+                // ── Luật SuperApp (instances/LUAT-SUPERAPP.md) ──────────────
+                if (khai.superapp == null) {
+                    throw new GradleException(
+                        "instances/${khai.id}/instance.json thiếu khối `superapp`.\n" +
+                        "  Một app dựng từ kho này phải khai nó tuân luật nào. Đọc instances/LUAT-SUPERAPP.md rồi thêm:\n" +
+                        "    \"superapp\": { \"rulesVersion\": ${LUAT_HIEN_TAI}, \"phoenixDid\": \"did:...\" }")
+                }
+                if (khai.superapp.rulesVersion != LUAT_HIEN_TAI) {
+                    throw new GradleException(
+                        "instances/${khai.id}: khai rulesVersion=${khai.superapp.rulesVersion}, luật hiện hành là ${LUAT_HIEN_TAI}.\n" +
+                        "  Đọc instances/LUAT-SUPERAPP.md rồi sửa số — đừng sửa số mà không đọc.")
+                }
+                def did = khai.superapp.phoenixDid
+                if (did == null) {
+                    if (!MIEN_TAM_DID.contains(khai.id)) {
+                        throw new GradleException(
+                            "instances/${khai.id}: `superapp.phoenixDid` là null.\n" +
+                            "  Luật §1 — mỗi app một danh tính PhoenixKey riêng. Một app không có danh tính\n" +
+                            "  thì nó là một thư mục, không phải một app trong hệ sinh thái.")
+                    }
+                } else if (!(did ==~ /^did:[a-z0-9]+:[A-Za-z0-9._:-]+$/)) {
+                    throw new GradleException("instances/${khai.id}: `superapp.phoenixDid` = '${did}' không đúng hình một DID")
+                }
+                khai
+            }
+    if (cacApp.isEmpty()) {
+        throw new GradleException("Không thấy app nào trong ${thuMucApp} — mỗi app cần một thư mục chứa instance.json")
+    }
+    def trungMaGoi = cacApp.groupBy { it.android.applicationId }.findAll { it.value.size() > 1 }
+    if (trungMaGoi) {
+        throw new GradleException("Hai app dùng chung applicationId ${trungMaGoi.keySet()} — cửa hàng coi đó là MỘT app, bản sau đè bản trước")
+    }
+
+    // Luật §1, nửa sau: "RIÊNG" nghĩa là không ai dùng chung. `null` không tính là
+    // trùng nhau — hai app cùng CHƯA có danh tính thì chưa vi phạm, chỉ là chưa có.
+    def trungDid = cacApp.findAll { it.superapp.phoenixDid != null }
+            .groupBy { it.superapp.phoenixDid }.findAll { it.value.size() > 1 }
+    if (trungDid) {
+        throw new GradleException("Hai app dùng chung phoenixDid ${trungDid.keySet()} — luật §1 đòi mỗi app một danh tính RIÊNG")
+    }
+
+    flavorDimensions "app"
+    productFlavors {
+        cacApp.each { khai ->
+            create(khai.id) {
+                dimension "app"
+                applicationId khai.android.applicationId
+                resValue "string", "app_name", khai.displayName
+            }
+        }
+    }
+
+    sourceSets {
+        cacApp.each { khai ->
+            getByName(khai.id) {
+                // Biểu tượng của app nằm trong thư mục của chính app đó, KHÔNG ở
+                // `src/main/res`. Cố ý: app mới quên bộ biểu tượng thì bản dựng ĐỎ
+                // ngay ("resource mipmap/ic_launcher not found"), thay vì lặng lẽ
+                // mượn biểu tượng của app đứng trước.
+                res.srcDirs += new File(thuMucApp, "${khai.id}/android/res")
+            }
+        }
+    }
+
     defaultConfig {
-        applicationId "com.aladincontract.company"
+        // KHÔNG khai `applicationId` ở đây: mỗi flavor tự khai. Để lại một giá
+        // trị mặc định ở đây là dựng sẵn một đường rơi câm cho flavor nào quên
+        // khai — và cái rơi đó ra đúng mã gói của app kia.
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         // Build 52 (2026-05-18): bumped 25 → 52 for parity with iOS CFBundleVersion=52.
@@ -124,10 +266,22 @@ def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
         // Build 75 (2026-07-10): tự phát hiện DID mồ côi + nút đăng-ký-lại khi server reset.
         // Build 76 (2026-07-13): hiện 2 ví (Standard+Phoenix) + stake_address CIP-1852;
         // fix "Phiên hết hạn" khi tạo vườn (tự lấy token field-reid); gộp fix cây + P0 nhiệt.
-        versionCode 90
+        versionCode 97
         versionName "2.0"
 
         // ✅ Support 16KB page size (required by Google Play Store 2024)
+        // ⚠ ĐÍNH CHÍNH 2026-08-20 — `abiFilters` ở đây KHÔNG cắt được lát nào.
+        //
+        // Chú thích cũ (giữ nguyên bên dưới) tin rằng bỏ 'x86' khỏi danh sách này là
+        // đủ để lát x86 không vào gói. Dựng thật hôm nay chứng minh ngược lại: với
+        // đúng dòng `abiFilters` dưới đây (không có x86) mà `gradle.properties` còn
+        // khai `reactNativeArchitectures=...,x86,...`, tệp .aab ra vẫn có
+        // `base/lib/x86/` với 25 tệp — trong khi ba lát kia 28 — thiếu đúng
+        // libtaad_enclave_core.so, libchat_mls.so và libcardano_serialization_lib.
+        // Plugin `com.facebook.react` đọc `reactNativeArchitectures` và ghi đè khối
+        // này. Nên chỗ THẬT SỰ cắt lát là `android/gradle.properties`, và hai nơi
+        // phải khớp nhau. Giữ `abiFilters` vì nó vẫn là lời khai đúng ý định.
+        //
         // Bỏ 'x86' (32-bit) từ 2026-08-15. Lý do: `.github/actions/rust-android/action.yml:71,76,89`
         // và `codemagic.yaml` CỐ Ý không dựng Rust cho x86 (máy thật không dùng nó).
         // Nhưng gradle vẫn đóng gói theo danh sách NÀY, nên bản dựng ĐÚNG vẫn đẻ ra một
@@ -209,4 +363,37 @@ dependencies {
     implementation 'com.google.firebase:firebase-analytics-ktx'
 }
 
+// ── Firebase: CÓ ĐIỀU KIỆN, theo từng app ───────────────────────────────────
+//
+// Bản trước áp thẳng plugin này cho MỌI flavor, và `google-services.json` nằm ở
+// gốc `app/` — mà gốc `app/` nằm trong đường tìm của MỌI variant. Hệ quả: dựng
+// CheckFarm thì plugin nhặt đúng tệp của Aladin rồi đỏ ngay:
+//
+//     No matching client found for package name 'com.checkfarm.app'
+//
+// Nên tệp của Aladin chuyển vào `src/aladin/` — đường tìm của riêng nó — và
+// flavor nào KHÔNG có tệp của chính mình thì tắt bước xử lý Firebase cho flavor
+// đó, thay vì để nó nhặt nhầm tệp của app khác.
+//
+// Vì sao đây là hướng đúng chứ không phải đường tạm: Firebase trong app này chỉ
+// phục vụ MỘT việc — đánh thức app khi bị tắt, cho hai loại tin `sign_request`
+// và `activation`. Cả hai đều là luồng danh tính PhoenixKey. `pushHandler.ts`
+// nạp module bằng `await import(...)` trong `try` và trả `null` khi không có,
+// nên phía JS chịu được việc vắng Firebase mà không cần đổi một dòng nào. Một
+// app chưa cần đẩy tin nền thì không có lý do gì phải mở tài khoản ở bên thứ ba
+// trước khi dựng được.
+//
+// Ngày CheckFarm cần đẩy tin nền: bỏ `google-services.json` của dự án Firebase
+// ĐỨNG TÊN pháp nhân CheckFarm vào `src/checkfarm/` là plugin tự bật lại — không
+// phải sửa dòng nào ở đây.
 apply plugin: 'com.google.gms.google-services'
+
+android.applicationVariants.all { variant ->
+    def flavor = variant.flavorName
+    def coCauHinh = file("src/${flavor}/google-services.json").exists()
+    if (!coCauHinh) {
+        def ten = "process${variant.name.capitalize()}GoogleServices"
+        tasks.matching { it.name == ten }.configureEach { it.enabled = false }
+        logger.lifecycle("[firebase] ${flavor}: không có google-services.json → tắt ${ten}")
+    }
+}

@@ -160,3 +160,33 @@ export function hasAnyLamp(raw: bigint | number | string | null | undefined): bo
     return false;
   }
 }
+
+/**
+ * ── Hai đơn vị LAMP cùng sống trong app, và chúng KHÔNG hoán đổi được ────────
+ *
+ * Cửa `/wakeme/vault/{did}` trả `initialDlamp` · `conditionalLamp` ·
+ * `reclaimedToPotLamp` · `vestedUnlocked` ở **LAMP NGUYÊN** (trần 1001/DID).
+ * Còn `chainWallet.lampBalance` là **oildrop** (`store/userSlice.ts:20`).
+ * 1 LAMP = 10⁶ oildrop.
+ *
+ * Đưa một số LAMP nguyên qua `fmtLamp` là chia nó cho 10⁶ — 1001 LAMP hiện ra
+ * `0.001001`. Sai kiểu này không ném lỗi, không đỏ test kiểu, và con số nhỏ đi
+ * đúng một triệu lần thì trông vẫn như một con số. Hai hàm dưới đây có mặt để
+ * chỗ gọi phải CHỌN đơn vị, thay vì mặc định rơi vào `fmtLamp`.
+ */
+
+/** LAMP nguyên → oildrop, để cộng được với số dư ví. `null` vào thì `null` ra. */
+export function lampWholeToOildrop(whole: number | null | undefined): bigint | null {
+  if (whole == null || typeof whole !== 'number' || !Number.isFinite(whole)) return null;
+  return BigInt(Math.trunc(whole)) * 10n ** BigInt(LAMP_DECIMALS);
+}
+
+/**
+ * Số LAMP **nguyên** cho màn hình — KHÔNG chia. Thiếu số trả `—`, không trả `0`:
+ * `0 LAMP` là một khẳng định về số dư, `chưa hỏi được` thì không (cùng luật với
+ * `fmtAdaLabel`).
+ */
+export function fmtLampWhole(whole: number | null | undefined): string {
+  if (whole == null || typeof whole !== 'number' || !Number.isFinite(whole)) return '—';
+  return Math.trunc(whole).toLocaleString('en-US');
+}

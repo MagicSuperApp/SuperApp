@@ -1,78 +1,38 @@
 // modules/chat/features/proof/types.ts
 //
-// Proof System types — ISOLATED layer.
+// Kết-quả kiểm-chứng một tin nhắn, rút về đúng thứ giao-diện cần biết.
 //
-// Trách nhiệm DUY NHẤT: kiểm chứng tin nhắn (hash, signature, Merkle proof).
-// KHÔNG đụng tới blockchain, storage, transport — đó là việc của Application Layer.
+// Bản trước mang cả `MessageProof` (hash · chữ ký · Merkle proof) và 14 `MessageStage`
+// dùng để chạy một hoạt-cảnh "đường ống bằng-chứng" bằng setTimeout. Hoạt-cảnh đó là
+// dàn-dựng, không phải trạng-thái thật của tin, nên đã gỡ cùng lượt gỡ dữ-liệu mẫu.
+//
+// Còn lại đúng hai thứ THẬT, đều lấy từ `proofchatService`:
+//   · `MessageState` — đường đi của tin (đang gửi → đã tới → đã xem)
+//   · `TrustState`   — tin có đúng người gửi, đúng nội dung hay không
+//
+// Chữ hiện ra màn hình lấy từ `TRUST_LABEL` bên dưới. Cố ý KHÔNG dùng "chữ ký số",
+// "Merkle", "băm", "mã hoá đầu-cuối": người nhận việc trên Aladin cần biết tin này
+// tin được hay không, không cần biết bằng cách nào.
 
-/**
- * Trạng thái cuối cùng của quá trình kiểm chứng một tin nhắn.
- * - pending:  chưa kiểm chứng xong
- * - verified: hash + signature + Merkle proof đều khớp
- * - failed:   ít nhất một bước không khớp → không tin được
- */
-export type VerificationStatus = 'pending' | 'verified' | 'failed';
+/** Đường đi của một tin nhắn. */
+export type MessageState =
+  | 'sending' // đang rời máy
+  | 'sent' // máy chủ đã nhận
+  | 'delivered' // đã tới máy người kia
+  | 'read' // người kia đã xem
+  | 'failed' // không gửi được
+  | 'locked'; // đã nhận nhưng máy này chưa mở được nội dung
 
-/**
- * Bằng chứng (proof) đính kèm mỗi tin nhắn.
- * Đây là DTO mà Proof System đọc/ghi — UI chỉ hiển thị, không tự sinh.
- */
-export interface MessageProof {
-  hash: string;          // SHA-256 của plaintext (hex)
-  signature: string;     // chữ ký số của hash bằng khóa người gửi
-  merkleProof: string;   // bằng chứng Merkle (root + siblings, encoded)
-}
+/** Kết-quả kiểm-chứng nguồn gốc + nội dung. */
+export type TrustState =
+  | 'checking' // đang kiểm
+  | 'ok' // đúng người gửi, nội dung nguyên vẹn
+  | 'broken' // không khớp — đừng tin nội dung
+  | 'unknown'; // chưa kiểm được (chưa mở được nội dung)
 
-/**
- * Lifecycle stage cho UI — granular hơn `VerificationStatus`.
- * Dùng để animate progress khi gửi / nhận.
- *
- * Outgoing pipeline:  encrypting → signing → sending → sent/delivered/read
- * Incoming pipeline:  encrypted → decrypting → verifying_signature → checking_integrity → done
- */
-export type MessageStage =
-  // Outgoing
-  | 'composing'
-  | 'encrypting'
-  | 'signing'
-  | 'sending'
-  | 'queued'              // offline, chờ flush
-  | 'sent'                // server ack
-  | 'delivered'           // peer device ack
-  | 'read'                // peer đã đọc
-  | 'failed_send'
-  // Incoming
-  | 'encrypted'           // mới nhận, chưa giải mã
-  | 'decrypting'
-  | 'verifying_signature'
-  | 'checking_integrity'
-  | 'done';               // pipeline xong → xem verificationStatus
-
-/**
- * Các stage thuộc giai đoạn “đang xử lý” — UI hiển thị spinner / progress chip.
- */
-export const PROCESSING_STAGES: MessageStage[] = [
-  'composing',
-  'encrypting',
-  'signing',
-  'sending',
-  'decrypting',
-  'verifying_signature',
-  'checking_integrity',
-];
-
-export const isProcessing = (stage: MessageStage) =>
-  PROCESSING_STAGES.includes(stage);
-
-export const isOutgoingStage = (stage: MessageStage) =>
-  [
-    'composing',
-    'encrypting',
-    'signing',
-    'sending',
-    'queued',
-    'sent',
-    'delivered',
-    'read',
-    'failed_send',
-  ].includes(stage);
+export const TRUST_LABEL: Record<TrustState, string> = {
+  checking: 'Đang kiểm tra',
+  ok: 'Đã kiểm tra',
+  broken: 'Nội dung đã bị đổi',
+  unknown: 'Chưa mở được',
+};

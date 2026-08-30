@@ -1,3 +1,352 @@
+## Mỗi app ký nhận luật SuperApp, và có cổng nổ khi không ký
+
+### Cái thiếu, và vì sao nó không phải chuyện giấy tờ
+Kho này dựng nhiều app từ một nền mã. Câu "mỗi app phải có danh tính riêng và tuân luật SuperApp" cho tới nay **không có chỗ nào cưỡng chế**: `instances/<mã>/instance.json` có bốn khoá — `id`, `displayName`, `android`, `ios` — không DID, không neo vào luật nào. Thêm một thư mục là thành một app.
+
+### Luật viết ra, và nó tự nói chỗ chưa canh được
+`instances/LUAT-SUPERAPP.md`, bảy mục, mỗi mục ghi rõ có cổng thật hay chưa. §6 (khoá ký) và §7 (chia phần tiền giữa các app) tự khai **CHƯA CƯỠNG CHẾ**, và có bài kiểm giữ nguyên chữ đó — xoá chữ mà không dựng cổng là đỏ. Không có phép này thì một tệp luật dần đọc như thể cả bảy mục đã được canh.
+
+### Cổng ở hai chỗ, hai lý do khác nhau
+
+| chỗ | bắt được cái mà chỗ kia không bắt |
+|---|---|
+| `android/app/build.gradle` | bản dựng trên máy cá nhân, không qua CI |
+| `src/config/instanceRules.test.ts` | đỏ ngay trên máy không có Android SDK, không phải chờ 20 phút |
+
+Cổng đòi: khối `superapp` bắt buộc · `rulesVersion` khớp số ở đầu tệp luật · `phoenixDid` không `null` với app mới · hai app không dùng chung DID.
+
+**`rulesVersion` là chỗ đáng đọc kỹ.** Sửa luật ⇒ nâng số ⇒ **mọi app đỏ** cho tới khi có người đọc luật mới rồi ký nhận trong tệp của app mình. Cố ý làm phiền: không có bước này thì một ràng buộc mới thêm vào tài liệu sẽ đúng với app viết SAU nó và **im lặng sai** với mọi app viết TRƯỚC.
+
+### Hai app hiện có được miễn TẠM — và cái miễn đó là nợ
+`aladin` và `checkfarm` để `phoenixDid: null`, vì chưa có đường cấp DID cho một *instance* (khác DID của **người dùng**, thứ đã có sẵn). Tên hai app ghi thẳng trong cổng kèm ngày và lý do, và một bài kiểm chặn danh sách đó **dài thêm** — nó chỉ được rút ngắn. Cách khác là bắt cả hai có DID ngay, và hôm nay chỉ làm được bằng cách bịa một chuỗi trông giống DID: cổng xanh mà không có gì đứng sau.
+
+### Kiểm chứng bằng đột biến — 4/4
+thêm app thứ ba không DID · nâng phiên bản luật · hai app trùng DID · gỡ khối kiểm khỏi gradle.
+
+⚠ Cổng gradle **chưa chạy được ở máy soạn** (không có Java). Bài kiểm JS canh phần văn bản của cổng; việc gradle cấu hình trót lọt thì lượt CI đầu tiên mới nói được.
+
+### README viết lại — bản cũ sai ở đúng chỗ người mới sẽ tắc
+- `src/config/instances/myapp.config.ts` — **đường không tồn tại**;
+- `moduleList` khai theo từng app — trường đã gỡ, tập module nay là hằng dẫn xuất từ `moduleIds.ts`;
+- nhánh `dev` — **không tồn tại**, nhánh tích hợp là `develop`;
+- "INV-1 = mỗi module giữ dữ liệu riêng" — trái với `Integration-Standard.md:119` ("store DID là single source of truth; mọi host là CLIENT");
+- không nói rõ Codemagic **chỉ dựng Aladin** (cả hai luồng Android khai `ANDROID_FLAVOR: aladin`).
+
+Kèm `src/config/docLinks.test.ts`: quét mọi `.md` ở gốc kho + `instances/`, đỏ khi một liên kết tương đối trỏ vào tệp không có. Một liên kết chết không làm bản dựng đỏ, không làm bài kiểm nào đỏ, và nó sống được hàng tháng — đúng lớp lỗi vừa nêu.
+
+### Rà tiếp
+Tên kho cũ `AladinContract/SuperApp` còn ở 6 chỗ (gồm một câu hướng dẫn trong `android-aab.yml` bảo người đọc chạy `gh api` vào kho sai) → `MagicSuperApp/SuperApp`. Mục "PR đang mở" của `VersionChecklist.md` còn ba PR đã gộp từ tháng 7 → thay bằng năm PR mở thật. `CONTRIBUTING.md` đo lại thì đúng nguyên.
+
+---
+
+## Chat nối API ProofChat thật, gỡ hết dữ-liệu mẫu, dựng lại giao-diện theo Fluent
+
+### Cái đã gỡ, và vì sao nó nguy chứ không chỉ thừa
+`store/chatSlice.ts` cũ nạp `MOCK_ROOMS` / `MOCK_MESSAGES` / `MOCK_INVITATIONS` thẳng vào `initialState`. Hệ quả không phải "thiếu dữ liệu" mà là **dữ liệu bịa giả làm dữ liệu thật**: máy chủ chưa mở, hoặc gọi hỏng, thì màn chat vẫn vẽ đủ 5 phòng, đủ tin nhắn, đủ số chưa-đọc, đủ huy hiệu "Đã xác thực". Người dùng nhắn vào đó rồi ngồi đợi trả lời.
+
+Gỡ hẳn, cùng những thứ chỉ tồn tại để nuôi nó:
+
+| Tệp bỏ | Nó dựng ra cái gì |
+|---|---|
+| `features/chat/data/mock.ts` (370 dòng) | 5 phòng, 13 tin, 3 lời mời, 3 mã phòng "công khai", ví + 5 giao dịch |
+| `features/proof/lifecycle.ts` | 2 "đường ống bằng-chứng" chạy bằng `setTimeout` |
+| `features/proof/components/ProofPipelineIndicator.tsx` | hoạt-cảnh "đang mã hoá → đang ký → đang gửi" |
+| `features/proof/components/VerificationBadge.tsx` | huy hiệu "Đã xác thực" đeo dưới **mọi** tin |
+| `features/escrow/{types.ts,components/EscrowStatusCard.tsx}` | thẻ ký-quỹ kèm số tiền, trong một module manifest ghi rõ "CHAT KHÔNG escrow/ví" |
+| `features/wallet/{types.ts,components/IdentityCard.tsx}` | thẻ danh-tính + `TOKEN_SYMBOL`, không màn nào còn dùng |
+| `features/chat/components/JobRoomItem.tsx` | dòng danh sách bày `jobTitle`/`escrow` — máy chủ không cấp trường nào |
+
+Trong `ChatScreen.tsx`, `handleDecrypt` chọn nội dung "giải mã được" **theo id tin**: `m.id === 'm6'` → *"Em vừa kiểm tra lại — model anh sửa được…"*. Đó là một câu viết cứng trong mã nguồn, hiện ra sau một hoạt-cảnh bốn chặng có vẻ như đang làm mật mã.
+
+### Bề mặt API đã nối (`services/proofchat-api.ts`, +435 dòng)
+Trước bản này client chỉ có `auth` + `conversations.list/get/create/getMessages` + `users.search` + `mls`. Thêm, theo `docs/PROOFCHAT-APIS.md`:
+
+* **conversations** — `update` · `addParticipants` · `updateParticipant` · `removeParticipant` · `join` · `leave` · `listPins` · `pin` · `unpin`
+* **memberRequests** — `pending` · `accept` · `decline` · `listForConversation` · `invite` · `myStatus` · `approve` · `reject` · `cancel`
+* **messages** — `react` · `reactions` · `unreact` · `remove` · `save` · `unsave` · `saved`
+* **readSignals** — `send` (Trackmess `/trackmess/signals`)
+* **uploads** — `image` (multipart `/support/uploads`) + `absoluteUrl`
+
+Điểm phân vai giữ nguyên và được ghi lại ở đầu tệp: **REST chỉ chở phần vỏ và metadata** (danh sách phòng, cảm-xúc, ghim, đã-xem); **nội dung tin đi đường riêng** qua `proofchatService` (mã hoá MLS + socket). Nhờ vậy cảm-xúc/ghim/lưu dùng được ngay cả khi máy này chưa mở được nội dung — đó cũng là lý do có trạng-thái tin `'locked'`.
+
+### Ai quyết định — đã trả về đúng chỗ
+`JoinConversationModal` cũ giữ **trong máy** một danh sách ba mã phòng "công khai" (bịa trong mock) rồi tự đoán: mã có trong danh sách → báo *"Đã tham gia phòng"*, không có → báo *"Đã gửi yêu cầu"*. Cả hai câu đều có thể sai vì máy chủ mới biết phòng mở hay kín. Nay app gửi mã lên `POST /conversations/:id/join` và **đọc** `action`: `JOINED` → vào thẳng; khác → đang chờ duyệt.
+
+Cùng lớp lỗi, cùng cách sửa: lời mời nay là `GET /member-requests/pending` thật, nhận/từ chối gọi `accept`/`decline` thật — trước đó chỉ lật một cờ trong máy, bên kia không hề hay biết.
+
+### Giao-diện: Fluent, không thêm phụ-thuộc native
+`theme/fluent.ts` + `shared/components/Fluent.tsx` dựng bốn lớp đúng thứ tự Fluent: **Mica** (nền màn, hai vệt loang `RadialGradient` qua `react-native-svg` đã có sẵn), **Acrylic** ba độ dày (thanh đầu màn · pill · hộp thoại), **Layer** (thẻ đặc), **Stroke** (viền tóc bắt sáng), cộng `ELEVATION`/`RADIUS`/`SPACE`/`MOTION`.
+
+⚠ **Blur ở đây là blur giả.** Blur GPU thật trên React Native cần `@react-native-community/blur` hoặc `expo-blur` — kho chưa có, thêm vào là buộc dựng lại cả hai nền. Nên lớp vật-liệu dựng bằng nền chuyển sắc + phủ trắng bán trong + viền sáng. Ghi rõ trong `fluent.ts`: khi nào có mô-đun native thì chỉ cần bọc `ACRYLIC.*` bằng `<BlurView>`, bảng màu đã tính sẵn cho trường hợp đó.
+
+Màu thô **không** nằm trong module: theo YC-1, giá trị sống ở `theme/tokens.ts` (`CHAT_SURFACE_TOKENS`, `AVATAR_TONE_TOKENS`) và `modules/chat/theme/fluent.ts` chỉ ghép chúng với brand `chat`. `npx eslint src/modules/chat` nay còn **0 lỗi, 1 cảnh báo** (`>>>` trong hàm băm tên → màu avatar).
+
+### Chữ trên màn hình
+Bỏ khỏi giao-diện: *"End-to-end · Proof System"*, *"Đã xác thực / Đang xác thực"*, *"Tin nhắn đã mã hóa — chạm để giải mã"*, địa chỉ ví rút gọn `0x7a3f…e3f4` trên đầu phòng, `DIRECT/GROUP/THREAD/JOB_NEGOTIATION` in thẳng ra cho người đọc.
+
+Nguyên tắc thay thế: **im lặng nghĩa là ổn**. Tin bình thường không đeo huy hiệu nào; chỉ khi nội dung không khớp chữ ký người gửi mới lên tiếng, và lên tiếng bằng câu người ta làm được gì với nó — *"Nội dung không khớp với người gửi. Đừng làm theo tin này."* Dòng phụ trên đầu phòng đổi từ chuỗi băm sang thứ dùng được: bao nhiêu người trong phòng, hoặc ai đang gõ.
+
+### Hai lỗi thứ tự đã chặn trước khi nó thành lỗi báo cáo
+1. **Danh tính đến sau danh sách.** `iAmAdmin` và tên phòng 1-1 đều tính theo "tôi là ai". Tải danh sách trước khi `getDid()` trả lời thì mọi phòng nạp lúc đó **vĩnh viễn** thiếu nút quản lý. Chặn bằng `identityResolved` — hỏi danh tính xong mới tải; không có phiên vẫn mở khoá (xem được phòng, chỉ không nhận ra mình trong đó). `setMeId` đồng thời tính lại `iAmAdmin` cho phòng đã nạp.
+2. **`onTyping` đăng ký vào socket chưa tồn tại.** `chatSocket.onTyping` gọi `socket?.on(...)` — socket còn `null` thì nó **im lặng không làm gì**, chỉ báo "đang nhập" chết mà không có một dòng lỗi. Nay gắn sau khi `initProofChat()` đã `resolve`.
+
+Cùng tinh thần: `loadMessages.fulfilled` giữ lại nội dung đã mở được ở lượt trước. REST chỉ trả phần vỏ, ghi đè thẳng thì cả phòng "đóng" lại mỗi lần mở màn.
+
+### Còn thiếu, nói thẳng
+* **Ảnh đính kèm chưa nối vào phòng chat.** `uploads.image` đã có ở tầng API, nhưng `CreateMessageDto` phía máy chủ **không có trường đính kèm**, và `/support/uploads` theo tài liệu là đường của support chat. Chưa có khuôn dạng tin mang tệp thì không dựng nút — `ChatInput` ẩn hẳn nút kẹp tệp khi không truyền `onPickImage`, chứ không để một nút bấm-không-ra-gì.
+* **`GET /users/search` có thể vẫn tắt phía máy chủ.** `MemberPicker` phân biệt rõ hai câu: 404 → *"Máy chủ chưa mở phần tìm người. Chưa tra được — không phải là không có ai."*, khác 404 → *"Chưa tra cứu được lúc này."* Nuốt lỗi thành danh sách rỗng là bắt người dùng gõ lại mãi.
+* **Poll và tin hẹn giờ** (`/polls/*`, `/conversations/:id/scheduled`) có trong tài liệu nhưng chưa nối — chưa có chỗ nào trong luồng hiện tại cần tới.
+
+### Đo
+`npx tsc --noEmit` sạch · `npx jest` **115 suite / 1692 test** đều xanh · `npx eslint src/modules/chat` 0 lỗi. 18 tệp đổi, **+3013 / −3136** dòng.
+
+---
+
+## Lát `x86` hỏng vẫn vào AAB — `abiFilters` KHÔNG cắt được nó
+
+### Đo được, không suy
+Dựng thật `bundleRelease` hôm nay với đúng cấu hình đang có trong kho — `android/app/build.gradle` khai `abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86_64'` (không có x86) — tệp `.aab` ra vẫn chứa:
+
+| lát | số tệp |
+|---|---|
+| arm64-v8a | 28 |
+| armeabi-v7a | 28 |
+| **x86** | **25** |
+| x86_64 | 28 |
+
+Ba tệp thiếu ở lát `x86`: `libtaad_enclave_core.so`, `libchat_mls.so`, `libcardano_serialization_lib`. Đúng ba thư viện gốc của tầng danh tính PhoenixKey — **cùng dạng hỏng với bản 87**.
+
+Plugin `com.facebook.react` đọc `reactNativeArchitectures` trong `gradle.properties` rồi **ghi đè** `abiFilters` viết tay. Chỗ thật sự cắt lát là dòng đó, không phải khối `ndk {}`.
+
+### Ba chú thích trong kho đều tin sai
+`android/app/build.gradle:131`, `scripts/soi-aab.sh:67`, `.github/workflows/android-aab.yml:307` — cả ba đều ghi *"chỉ `abiFilters` mới cắt x86"*. Đã đính chính cả ba tại chỗ, kèm số liệu đo được, chứ không xoá dòng cũ đi.
+
+### Sửa bốn nơi khai `reactNativeArchitectures`
+`armeabi-v7a,arm64-v8a,x86,x86_64` → `armeabi-v7a,arm64-v8a,x86_64`:
+
+* `android/gradle.properties` (bị gitignore — chỉ sửa được ở máy này)
+* `.github/workflows/android-aab.yml:179` — heredoc tự sinh gradle.properties
+* `codemagic.yaml:1037` và `:1302`
+
+⚠ Hai đường CI cũng đang khai `x86`, nghĩa là **mọi AAB ra từ CI trước bản này đều mang lát x86 hỏng**. `debug-apk.yml` thì không dính (nó vốn chỉ khai hai ABI).
+
+⚠ `android/gradle.properties` nằm trong `.gitignore`, nên máy của người khác vẫn còn `x86` cho tới khi họ tự sửa. Không có tệp mẫu nào trong kho để vá chỗ này.
+
+Đo lại sau khi sửa: `ABI trong tệp: arm64-v8a, armeabi-v7a, x86_64`, sáu `.so` Rust đủ ba lát, và tệp **giảm từ 110,5 MB xuống 92,4 MB** — 18 MB kia là lát không máy nào cài được đúng.
+
+### Cổng bắt được lỗi nhưng không nói được lỗi gì
+`scripts/build-aab.ps1` bắt đúng lát lạ, rồi in ra `DỪNG: Tệp .aab KHÔNG đầy đủ:` và **một dòng trống**.
+
+Nguyên nhân: PowerShell gọi hàm ở **chế độ đối số**, nên `Die "a" + $b` truyền **ba** đối số (`"a"`, `"+"`, `$b`) và `Die` chỉ nhận cái đầu. Phải viết `Die ("a" + $b)`. Đã vá cả hai chỗ và ghi lý do ngay trên định nghĩa `Die` — mất thêm một lượt dựng 12 phút chỉ để biết nó đang phàn nàn cái gì.
+
+### `dlltool` — chuỗi biên dịch Windows, không phải lỗi dự án
+Bản Rust host GNU (chọn vì máy không có trình liên kết Visual Studio, và ổ C: chỉ còn 7,3 GB) thiếu `dlltool.exe`, nên `windows-sys` — phụ thuộc dựng cho **host**, không phải cho Android — không biên dịch được:
+
+```
+error: error calling dlltool 'dlltool.exe': program not found
+```
+
+Gợi ý cargo in kèm (`rustup target install aarch64-linux-android`) **dẫn sai hướng** — target không hề thiếu.
+
+Vá bằng `llvm-dlltool.exe` có sẵn trong NDK, không tải thêm gì. Đã thêm bước soát vào script: chỉ hỏi khi host là `*-windows-gnu`, và in sẵn đường dẫn `llvm-dlltool` tính từ chính NDK script vừa dò ra.
+
+### `.gitignore`
+Thêm `build-aab.log` và `android/app/src/main/jniLibs/` — thư mục sau là sản phẩm `cargo ndk`, hàng chục MB, khác nhau theo bản NDK từng máy.
+
+## Cổng jest đỏ GIẢ ở bản dựng AAB — hai bộ test bị bỏ đói, không phải chậm
+
+`npm run build:aab` dừng ở bước 3 với hai bộ đỏ:
+
+```
+TreeManagementScreen › mang MÃ VƯỜN của màn danh sách sang màn Dẫn đường
+WayfindScreen        › bỏ cây của vườn khác cách 30 km, giữ cây trong tầm đi bộ
+   thrown: "Exceeded timeout of 5000 ms for a test."
+```
+
+Chạy RIÊNG hai bộ đó: **xanh, 4,4 giây cả hai cộng lại.** Vậy không phải mã màn chậm.
+
+### Đo được nguyên nhân
+Máy dựng có **16 nhân** ⇒ jest mở ~15 tiến trình con, mỗi tiến trình nạp trọn đồ thị module RN. Lúc dựng, máy còn **0,8 GB RAM trống**. Chúng tranh nhau bộ nhớ và bị hoán trang, nên các bộ dựng NGUYÊN một màn RN không kịp xong trong 5 giây — bị **bỏ đói CPU**, không phải chậm về logic.
+
+Kèm theo là hai dấu hiệu của cùng một gốc, trước đây đọc như lỗi riêng:
+`A worker process has failed to exit gracefully` và `You are trying to import a file after the Jest environment has been torn down` — cả hai là *hậu quả* của việc test bị cắt giữa chừng rồi phần async của nó chạy tiếp sau khi môi trường đã dọn.
+
+### Sửa hai chỗ
+* `jest.config.js` — thêm `testTimeout: 30_000`. 5000ms là **mặc định của Jest**, không phải con số ai đó đo cho kho này, và nó quá chật cho bộ test dựng nguyên màn.
+* `scripts/build-aab.ps1` — cổng chạy `--maxWorkers=50%`. Đây mới là chỗ chạm vào gốc: nửa số nhân thì không còn hoán trang.
+
+Đo lại sau khi sửa: **109 bộ / 1 639 test xanh trong 8,4 giây** — nhanh hơn hẳn 34,7 giây của lượt đỏ. Ít tiến trình hơn mà nhanh hơn, đúng dấu hiệu của thiếu bộ nhớ chứ không thiếu CPU.
+
+CI (ubuntu runner, máy trống) vẫn dùng số worker mặc định — không đụng tới.
+
+### Vì sao đáng sửa chứ không "chạy lại cho xanh"
+Một cổng đỏ giả tệ hơn một cổng chậm: nó dạy người ta bấm chạy lại tới khi xanh, và thói quen ấy sẽ nuốt luôn ngày có một test đỏ THẬT.
+
+## `gradlew bundleRelease` gõ tay đang ra bản THIẾU ví · DID · chat mã hoá
+
+### Lỗ
+Hai module Kotlin nạp thư viện native lúc lớp khởi tạo:
+
+```
+TaadEnclaveModule.kt:392   System.loadLibrary("taad_enclave_core")
+ChatMlsModule.kt:168       System.loadLibrary("chat_mls")
+```
+
+Cả hai `.so` **không có trong git** (`git ls-files android/app/src/main/jniLibs` → rỗng; thư mục ấy còn không tồn tại trên máy này), và `android/app/build.gradle` **không có** cargo/rust/externalNativeBuild nào — gradle không biết chúng tồn tại. Chúng do một bước RIÊNG dựng, chạy TRƯỚC gradle: `.github/actions/rust-android/action.yml` và `codemagic.yaml:1054`.
+
+Gõ thẳng `.\gradlew bundleRelease` bỏ mất bước ấy. Kết quả:
+
+* gradle dựng **xanh**;
+* AAB ký đúng, Play nhận;
+* app mở được — hai module có `try/catch`, đặt `libLoaded=false` rồi reject mọi method;
+* và toàn bộ tầng danh tính PhoenixKey (ví · DID · Master_KEK · cụm 24 từ · uỷ thác) cùng chat đầu-cuối **im lặng không dùng được**.
+
+Xanh ở máy dựng, hỏng ở tay người dùng. Đo thêm: máy này **chưa cài `cargo`** — nên mọi bản AAB từng dựng tay ở đây đều thiếu hai thư viện đó.
+
+### `scripts/build-aab.ps1`
+Dựng lại đúng thứ tự của CI, trên Windows, dừng ở lỗi đầu tiên:
+
+1. soát công cụ + tệp bí mật — node · Java · SDK · **NDK đúng bản `rootProject.ext.ndkVersion`** · `.env` · `keySigning.bin` · đủ **bốn** khoá `ORILIFE_UPLOAD_*`;
+2. `npm install --legacy-peer-deps` (kéo theo `patch-package`);
+3. cổng `tsc` + `jest --ci --forceExit`;
+4. `cargo ndk` hai crate × ba ABI → `jniLibs`, rồi kiểm **cả sáu** tệp;
+5. `gradlew bundleRelease --no-daemon`;
+6. **mở tệp `.aab` ra đọc danh sách mục.**
+
+Bước 6 là bước đáng giá nhất: nó kiểm **thành phẩm**, không kiểm "các bước đã chạy". Ba thứ phải có mặt — `base/assets/index.android.bundle`, `base/lib/{arm64-v8a,armeabi-v7a,x86_64}/lib{taad_enclave_core,chat_mls}.so` — và **không** được có lát ABI nào khác. Một lát `x86` lọt vào là một lát chắc chắn thiếu `.so` Rust (Rust cố ý không dựng cho x86), và Play sẽ giao đúng lát đó cho thiết bị x86: chính là lỗi bản 87.
+
+### Bốn chỗ khác đã soát ra
+* **NDK**: CI lấy "bản mới nhất đang cài" — đúng ở runner (chỉ một bản), **sai ở máy này** (đang có 5 bản). Script lấy đúng bản `android/build.gradle` khai, nếu không thì Rust và gradle dựng bằng hai NDK khác nhau trong cùng một tệp.
+* **`reactNativeArchitectures`** trong `android/gradle.properties` vẫn còn `x86`, trong khi `abiFilters` đã bỏ từ 15/08. Không sai kết quả (abiFilters lọc lát ra), chỉ tốn thời gian dựng RN native cho một ABI rồi vứt đi. Sửa được bằng một dòng — tệp đó bị gitignore nên nằm ngoài commit.
+* **`versionCode` = 92**, cố định trong `build.gradle`. Play từ chối tệp trùng versionCode; script cảnh báo trước khi dựng.
+* **Java**: máy này 21, CI dựng bằng **17**. Cảnh báo mềm chứ không chặn — chưa đo được 21 gãy, nhưng bản ra Play nên khớp bản đã đo.
+
+### Một cái bẫy của chính script
+Windows PowerShell 5.1 đọc `.ps1` theo bảng mã ANSI nếu tệp **không có BOM UTF-8** — mọi chú thích tiếng Việt thành rác, và rác đó chứa ký tự bộ phân tích đọc thành dấu nháy: 19 lỗi cú pháp ở một tệp viết đúng. Và `2>&1` trên một `.exe` dưới `$ErrorActionPreference='Stop'` bọc từng dòng stderr thành ErrorRecord rồi ném — mà `java -version` in ra stderr theo thiết kế. Cả hai đã vấp và đã sửa.
+
+Thêm `npm run build:aab`.
+
+## Giá nông sản: từ 2 mặt hàng lên 6, và một lỗi đọc số nhân giá lên gấp mười
+
+### Vì sao chỉ có hai
+`AGRO_ITEMS` trong `agroPriceService.ts` đóng cứng đúng hai dòng: sầu riêng và cà phê nhân. Không phải nguồn nghèo — ô chọn của agro.gov.vn có **230 mục**.
+
+Nhưng phần lớn 230 mục ấy đã chết. Đã dò thật ngày 19/08: POST từng mục, cửa sổ 400 ngày, thử cả ba nhịp *ngày/tuần/tháng*. Chỉ **sáu** mục còn số liệu của hôm qua (18-08-2026):
+
+| mặt hàng | giá | thị trường |
+|---|---|---|
+| Sầu riêng Ri6 đẹp | 53.000 đ/kg | Tây Nguyên |
+| Cà phê nhân | 96.800 đ/kg | Đắk Lăk |
+| **Hạt tiêu đen trong nước** | 138.000 đ/kg | Đắk Lắk |
+| **Heo hơi trại** | 57.000 đ/kg | Bắc Ninh |
+| **Cà phê Robusta** | 3.769 USD/tấn | London |
+| **Cà phê Arabica** | 345,1 cent/lb | New York |
+
+Mục thoi thóp gần nhất là `Hạt điều tươi` (06-01-2026) và `Phân đạm Urê Phú mỹ` (22-12-2025) — quá cũ để bày cạnh giá hôm qua, nên **không** đưa vào. Toàn bộ nhóm gạo/lúa, thuỷ sản, trái cây khác (thanh long, xoài, cam) trả bảng rỗng ở cả ba nhịp.
+
+Đừng thêm mục chỉ vì thấy tên trong ô chọn: một mục chết làm mục giá dài thêm một dòng "—" chẳng nói gì, và đẩy những dòng đang sống xuống dưới.
+
+### Cụm "Thế giới" hết trống
+London và New York không phải trong nước, nên chúng đi vào cụm **Thế giới** — cụm mà trước bản này **luôn trống**, vì nguồn duy nhất của nó (FAOSTAT) đòi một token Cognito sống 60 phút, không nhúng vào app được (`config/faostat.ts` đã ghi rõ, và `FAOSTAT_TOKEN` vẫn là `null`). Hai dòng sàn lấp đúng chỗ ấy bằng số liệu **hôm qua** thay vì số liệu 2024.
+
+### Lỗi đọc số: `345.1` thành `3451`
+Bản trước đọc ô giá bằng `String(cell).replace(/[.,\s]/g, '')` — vứt sạch mọi dấu chấm và phẩy. Với `138.000` (phân nhóm nghìn kiểu Việt) thì đúng. Với `345.1` — Arabica, cent/pound — nó ra **3451**, tức **gấp mười lần**.
+
+Đây là loại hỏng tệ nhất: 3451 vẫn là số hợp lệ, vẫn lọt mọi khoảng hợp lý, vẫn được vẽ lên màn. Lỗi chưa cắn ai chỉ vì hai mặt hàng cũ đều là số đồng tròn — nó cắn ngay ngày thêm mặt hàng đầu tiên có phần thập phân, tức là hôm nay.
+
+`parseAgroNumber` đọc theo ba luật, đúng thứ tự: mọi nhóm đúng ba chữ số ⇒ phân nhóm; đuôi một–hai chữ số ⇒ thập phân; còn lại ⇒ đọc thô. Nhập nhằng còn lại (`3.769`) giải theo lối Việt Nam — mà một giá 3,769 đồng cũng không tồn tại.
+
+Kéo theo hai chỗ nữa: `latestAndPrevious` thôi `Math.round` khi gộp trung bình các vùng, và màn dùng `formatPriceValue(n, decimals)` thay `formatVnd` để giữ đúng số chữ số của từng mặt hàng.
+
+### Lọc khoảng hợp lý: theo DÒNG, không theo mặt hàng
+Bản trước lấy ngày mới nhất rồi mới xét khoảng — nên một phiên hỏng ở nguồn làm **cả mặt hàng biến mất**. Đã gặp thật: Robusta ngày 18-08-2026 trang ghi `36700` giữa hai phiên `3769` và `3810` (nguồn tự rơi mất dấu thập phân). Nay lọc ở mức từng dòng, trước khi chọn ngày mới nhất: phiên hỏng bị bỏ, người dùng vẫn thấy giá phiên liền trước kèm đúng ngày của nó.
+
+### Một chỗ dễ "sửa cho sạch" rồi hỏng
+Nhãn gửi đi phải là **chính chuỗi** trong `<option>`, kể cả dấu cách thừa: `'Heo hơi trại |Live hog '`. Gõ lại cho gọn thì WebForms trả 200 kèm bảng **rỗng** — không lỗi nào để lần ra. Có test khoá đúng chuỗi này.
+
+### Đo lại
+`tsc` 0 lỗi · eslint 0 lỗi · **106 bộ / 1 610 test** xanh (20 test mới). Bốn khoá tên và hai khoá đơn vị mới, đủ cả bốn ngôn ngữ.
+
+## Vị trí cây: có toạ độ thì CẮM GHIM và chỉ đường được, thôi hiện "máy chủ chưa cho biết"
+
+### Câu cũ trả lời sai người
+Bản trước, dòng "nơi trồng" là `gpsPrecisionLabelVi('unknown')` — *"Máy chủ chưa cho biết vị trí này chính xác tới đâu"*. Câu đó nói về **sự thiếu của máy chủ**, không trả lời câu hỏi của người mua. Mà trong tay đã có `gps: [20.989, 105.944]`: một chỗ có thật, đi tới được.
+
+### Ba việc đổi
+**1. Tra ngược toạ độ ra địa chỉ.** Nền bản đồ đang dùng vốn đã có dữ liệu hành chính của chỗ đó, nên lấy ngay từ đấy — `reverseGeocode.ts`, Nominatim/OSM. Đo thật với đúng toạ độ cây mẫu:
+
+```
+GET nominatim.openstreetmap.org/reverse?format=jsonv2&lat=20.989&lon=105.944&zoom=16&accept-language=vi
+→ display_name: "Vinhomes Ocean Park, Xã Gia Lâm, Hà Nội, 17710, Việt Nam"
+```
+
+Không dùng thẳng `display_name`: mã bưu chính và tên nước đẩy phần có nghĩa ra khỏi dòng trên máy hẹp. `shortAddressVi` gắp lại theo **bốn bậc hành chính Việt Nam** — thôn/khu → xã/phường → huyện/quận → tỉnh — rồi cắt còn ba mẩu. Gộp bậc xã với bậc huyện làm một (bản đầu tôi viết thế, test bắt được) làm ca nông thôn `village + county + state` mất hẳn cấp huyện: ra *"Xã Cẩm Sơn, Tiền Giang"*, mà một tỉnh có nhiều xã trùng tên.
+
+Ba tầng lùi ở dòng "nơi trồng": địa chỉ tra được → toạ độ thô (vẫn chép dán sang bản đồ khác được) → mới đến "chưa có thông tin vị trí".
+
+**2. Bản đồ luôn cắm ghim, và ghim có nhãn tên cây.** Một cái chấm không tên không nói được nó đang chỉ cái gì.
+
+**3. Nút "Chỉ đường"** mở `https://www.google.com/maps/dir/?api=1&destination=lat,lon` — đường universal, máy có app Google Maps thì hệ điều hành bắt lấy mở thẳng app. Không dùng `geo:` vì iOS không có gì nhận. Đây là lý do tồn tại của cái ghim: không có nút này thì toạ độ vẫn chỉ là hai con số, chỉ khác là có một chấm đè lên.
+
+### Vòng ước lượng: giữ, nhưng thu hẹp điều kiện
+Vòng chỉ vẽ khi máy chủ **tự khai** `gps_precision='coarse'` kèm `gps_precision_m` — lúc đó mới biết chắc bán kính. Không khai gì thì không vẽ. `UNKNOWN_RADIUS_M = 250` của bản trước đã **xoá**: vẽ một vòng bịa bán kính còn tệ hơn không vẽ, vì nó trông y như một phép đo.
+
+### Giữ Nominatim sống được
+Họ cho 1 lượt/giây và đòi khai `User-Agent` — thiếu là chặn IP, mà chặn thì **mọi máy** mất dòng địa chỉ cùng lúc, im lặng. Nên: mỗi toạ độ hỏi đúng một lần (đệm bộ nhớ + đĩa 30 ngày, khoá làm tròn 4 chữ số ≈ 11m), hai lượt hỏi song song dùng chung một lời hứa. Đệm đĩa **chỉ ghi ca thành công** — ghi cả ca hỏng là khoá một toạ độ vào trạng thái "không có địa chỉ" chỉ vì một lần mất sóng.
+
+Đây là lượt gọi duy nhất của màn đi ra ngoài hệ thống, nên nó chỉ mang hai con số máy chủ đã công khai: không mã cây, không token. Có test khoá đúng điều đó.
+
+### Một cái bẫy trong chính bộ test
+Bốn ca đầu xanh giả: bản giả của `AsyncStorage` **lưu thật**, nên ca đầu ghi địa chỉ vào đĩa và mọi ca sau đọc lại — `fetch` giả không được gọi lần nào, và cả nhóm hoá ra chỉ đang kiểm bộ đệm. Thêm `AsyncStorage.clear()` vào `beforeEach`.
+
+### Đo lại
+`tsc` 0 lỗi · eslint 0 lỗi · **105 bộ / 1 590 test** xanh (17 test mới cho `reverseGeocode`).
+
+## Màn "Nguồn gốc" dựng lại theo mắt NGƯỜI MUA — ảnh, danh tính, nhật ký trước; bản đồ, 3D, chuỗi khối sau
+
+### Bố cục cũ hỏng ở đâu
+Bản trước xếp một ô ảnh cao 200px, rồi một thẻ bốn dòng ngang hàng nhau: *Ghi nhận · Vị trí · Góc chụp lúc đăng ký · Neo lên chuỗi*. Bốn dòng ấy đều đúng, nhưng chúng là bốn câu trả lời cho câu hỏi **"chứng minh đi"** — mà đó không phải câu hỏi đầu tiên của người đang cầm quả ở sạp.
+
+Người mua hỏi theo thứ tự: *trông nó thế nào → cây gì, của ai → ở đâu → đã trải qua gì*. Nay màn xếp đúng thứ tự đó, và ba khối "chứng minh" (bản đồ, khối 3D, neo chuỗi) rơi xuống các mục **gập, đóng sẵn** ở cuối.
+
+Gập không chỉ để gọn. Bản đồ MapLibre và `<Canvas>` 3D **mỗi thứ là một bề mặt GL**; mount cả hai cho một người chỉ nhìn được một là làm máy yếu nóng lên đúng lúc họ đang xem kỹ. Vì vậy `Fold` nhận `render: () => ReactNode` chứ không nhận node — đóng nghĩa là **chưa gọi**, tức chưa tốn gì.
+
+### Hai chỗ máy chủ KHÔNG trả lời, và màn phải nói ra
+Đo thân thật 19/08 (`GET /api/tree_by_code/ORI-w7er6uf-Z9MMB2PS`):
+
+**1. Không có trường nào về chủ vườn.** Allowlist `_public_prov` trả đúng 15 khoá: `anchor · code · created_at · embedding_hash · gps · images · lampnet_base · lampnet_pending · lampnet_view · model3d · n_views · name · record_cid · record_hash · tree_id`. Đã dò thêm `/api/booth/public/{code}` — khác không gian mã, trả 404 với mã cây.
+
+Người mua hỏi "của ai" **trước tiên**. Nên ô đó vẫn đứng đầu thẻ, và nó nói thẳng *"Hồ sơ công khai chưa kèm tên chủ vườn"* — không bỏ hẳn dòng (là giấu mất câu hỏi của họ), không đắp `author_did` vào (một chuỗi băm không phải tên người).
+
+`ownerLine()` vẫn đọc `owner_name`/`owner`/`farm_name`/`farm` để ngày máy chủ mở thêm thì hiện ra ngay, không phải chờ bản app mới.
+
+**2. Dòng thời gian đòi phiên đăng nhập.** `GET /api/tree/{id}/timeline` trả `401 {"error":"Cần đăng nhập."}` cho khách. Bản trước `EntityTimeline` hiện "Phiên hết hạn" — với người mua thì đó là câu vô nghĩa: họ không có tài khoản nào để hết hạn, và câu ấy sai bảo họ đi làm một việc không làm được.
+
+Nay `EntityTimeline` nhận `authHint`, và màn nguồn gốc truyền câu đúng với người của nó. Bên cạnh đó, `milestones()` dựng **hai mốc đọc được từ chính hồ sơ** — ngày đăng ký, lượt neo chuỗi — xếp **cũ trước** (đây là tiểu sử, không phải bảng tin), kèm một dòng nói rõ chúng đến từ hồ sơ xuất xứ chứ không phải nhật ký chăm sóc.
+
+### Bản đồ: VÒNG, không phải ghim
+Thân thật **không có `gps_precision`** ⇒ `gpsPrecision()` trả `'unknown'` ⇒ `canPinExactly()` = false. Cắm ghim nhọn lên một toạ độ đã qua `_coarsen_public_gps` là **nói dối bằng đồ hoạ**.
+
+`circleGeo.ts` dựng vòng bằng **đa giác theo toạ độ**, không dùng `CircleLayer` (vẽ theo *pixel*, nên phóng to thu nhỏ là mất hết nghĩa về khoảng cách). Vòng nhân `cos(lat)` cho chiều đông-tây — bỏ nó thì ở vĩ độ 21 vòng dẹt mất ~7%, nhìn ra ngay là hình bầu dục; có test đo lại bằng Haversine. Chưa biết bán kính thì vẽ `UNKNOWN_RADIUS_M = 250` **nét đứt**, và chữ dưới bản đồ là `gpsPrecisionLabelVi('unknown')`, không mượn câu của `coarse` (câu đó ngụ ý đã đo).
+
+### Khối 3D
+`https://lampnet.cloud/ln1q_7da38f774a97ca3a_file` → 200, **`text/plain`**, 73 953 byte, `ply / format ascii 1.0 / element vertex 2048`, có `red green blue`.
+
+Ba điều rút ra vào mã:
+- `Content-Type` là `text/plain` cho **mọi** tệp trong kho ⇒ đừng lọc theo MIME để đoán ascii/nhị phân; đưa `ArrayBuffer` cho `PLYLoader.parse` là nó tự đọc dòng `format`.
+- Điểm **có màu** ⇒ `vertexColors: true`, không thì mọi model trông y hệt nhau.
+- Không dùng `PLYLoader.load(url)`: nó đi qua XHR và lỗi chui ra không mang mã HTTP, nên không tách được "404 chưa dựng model" khỏi "mất sóng". Dùng `fetch` thì bốn nhánh hỏng ra bốn câu khác nhau — và chỉ **một** trong bốn đáng hiện nút "Thử lại".
+
+`coverage.advice` của máy chủ (*"Mới chụp ~60° (một phía cây)…"*) hiện **nguyên văn** dưới ô. Không có nó thì người mua nhìn một khối lỗ chỗ rồi kết luận hồ sơ dối, trong khi sự thật chỉ là chưa chụp đủ vòng. Số điểm lấy số **đọc được từ tệp**, không lấy số máy chủ khai — hai số lệch nhau là dấu hiệu tệp bị cắt, ưu tiên số khai sẽ giấu nó đi.
+
+### Một dòng gỡ mìn
+`TraceResultScreen` cũ có `Clipboard.setString(JSON.stringify(p))` **chạy trong thân render** — một dòng gỡ lỗi bỏ quên, và nó cướp bảng nháp của người dùng mỗi lần màn vẽ lại. Đã xoá; chép mã cây nay là một nút có chủ đích, có phản hồi "đã chép".
+
+### Đo lại
+`jest.config.js` thêm `three` vào `transformIgnorePatterns`: `three/examples/jsm/**` là ESM thuần (lõi `three` có bản CJS nên vẫn nạp được, các loader thì không), nên trước bản này **bất kỳ** test nào chạm tới `GLTFLoader`/`PLYLoader` đều chết ở dòng `import` đầu tiên.
+
+`tsc` 0 lỗi · eslint 0 lỗi · **104 bộ / 1 573 test** xanh (42 test mới cho `provenanceView`, `circleGeo`, `plyPointCloud`).
+
 ## SỬA: nút "Tải ảnh mã QR" gửi MÃ DẠNG CHỮ thay vì ảnh
 
 ### Nguyên nhân, đọc từ mã React Native

@@ -295,6 +295,7 @@
 					"-ObjC",
 					"-lc++",
 				);
+				APP_DISPLAY_NAME = Aladin;
 				PRODUCT_BUNDLE_IDENTIFIER = vn.aladinapp;
 				PRODUCT_NAME = aladin_mobile_fe;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -327,6 +328,7 @@
 					"-ObjC",
 					"-lc++",
 				);
+				APP_DISPLAY_NAME = Aladin;
 				PRODUCT_BUNDLE_IDENTIFIER = vn.aladinapp;
 				PRODUCT_NAME = aladin_mobile_fe;
 				PROVISIONING_PROFILE_SPECIFIER = Aladin_AppStore_Profile;
@@ -550,7 +552,7 @@
 			repositoryURL = "https://github.com/maplibre/maplibre-gl-native-distribution";
 			requirement = {
 				kind = exactVersion;
-				version = 6.27.0;
+				version = 6.17.1;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

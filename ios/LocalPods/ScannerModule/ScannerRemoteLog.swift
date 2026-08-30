@@ -22,9 +22,17 @@ import UIKit
 /// RAM: `scanner_vc_memory_warning`.
 enum ScannerRemoteLog {
 
-    /// Default must match `REMOTE_LOG_SERVER_URL` in remoteLogger.ts until JS calls `setLogEndpoint`.
-    static var endpoint: String =
-        "https://gutless-renovator-distaste.ngrok-free.dev/logs"
+    /// MẶC ĐỊNH RỖNG = KHÔNG gửi đi đâu. Chỉ ghi `print` + tệp `localFallbackPath`.
+    ///
+    /// Trước đây đây là một tên miền ngrok tạm viết cứng, và nó đi thẳng vào bản
+    /// phát hành: đo được chuỗi đó trong nhị phân đã ký của bản 94. Ngrok miễn phí
+    /// hết hạn là người khác giành lại được tên miền, và từ giây đó toàn bộ dấu vết
+    /// quét cây của máy người dùng thật — kể cả `treeId` — chảy về tay người lạ.
+    /// Không có cờ tắt, không ai đồng ý, và cổng CI chỉ soi gói JS nên không thấy.
+    ///
+    /// Cần bật lại khi gỡ lỗi: đặt `ScannerRemoteLog.endpoint` từ mã gọi, hoặc nối
+    /// vào `REMOTE_LOG_URL` như `src/services/remoteLogger.ts`. Đừng viết cứng.
+    static var endpoint: String = ""
 
     /// Một ID mỗi lần cold start — lọc log sau khi app restart vì crash.
     static let bootSessionId: String = String(UUID().uuidString.prefix(8))

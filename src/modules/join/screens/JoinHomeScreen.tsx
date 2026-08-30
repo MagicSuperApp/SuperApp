@@ -32,6 +32,7 @@ import {
   getPeerId,
   isNativeJoinAvailable,
   joinViaNativeSdk,
+  checkPersonDid,
   resolvePersonDid,
   isLampNetBackendEnabled,
   JoinApiError,
@@ -72,6 +73,9 @@ const JoinHomeScreen: React.FC = () => {
     // dài không lấy lại được thời gian — rồi quay lại mới bị báo "bản này chưa hỗ trợ".
     // Nói sai lý do còn tệ hơn không nói.
     if (!isNativeJoinAvailable()) {
+      // Xoá câu chi tiết của lần thử TRƯỚC. Không xoá thì câu "danh tính dạng cũ" của
+      // lần trước hiện dưới tiêu đề "Chưa hỗ trợ" — hai thứ không liên quan gì nhau.
+      setErrorDetail(null);
       setErrorKind('unsupported');
       setPhase('error');
       return;
@@ -79,6 +83,18 @@ const JoinHomeScreen: React.FC = () => {
 
     if (!personDid || !walletAddress) {
       // Thiếu danh tính/ví nhận thưởng → thông điệp quyền (auth), không phải lỗi mạng.
+      //
+      // Cổng danh tính nay TỪ CHỐI `did:cardano` và mọi dạng không phải `did:phoenix`
+      // (chủ sở hữu hệ thống chốt 27/08, xem `joinService.checkPersonDid`). Ba lý do
+      // từ chối cần ba câu khác nhau: "chưa có danh tính" thì người dùng đi tạo,
+      // "danh tính dạng cũ" thì họ phải tạo LẠI — bảo họ "thử lại" là gửi họ đi làm
+      // một việc không bao giờ xong.
+      const kiem = checkPersonDid(currentUser?.did ?? currentUser?.id ?? null);
+      setErrorDetail(
+        !kiem.ok ? kiem.message
+        : !walletAddress ? 'Chưa có ví nhận thưởng. Hãy mở mục Ví để tạo trước khi góp máy.'
+        : null,
+      );
       setErrorKind('auth');
       setPhase('error');
       return;
@@ -116,7 +132,7 @@ const JoinHomeScreen: React.FC = () => {
         setPhase('error');
       }
     }
-  }, [personDid, walletAddress]);
+  }, [personDid, walletAddress, currentUser]);
 
   const retry = useCallback(() => {
     setPhase('idle');

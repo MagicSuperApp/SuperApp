@@ -32,7 +32,7 @@ import { GroundBackdrop } from '../components/layered/Organic';
 import { useTk } from '../../../i18n/keys';
 import { RootState } from '../../../store';
 import { useAppDispatch } from '../../../store/hooks';
-import { showSuccess, showError, showWarning, showInfo } from '../../../utils/alert';
+import { showError, showSuccess } from '../../../utils/alert';
 import { withPhotoSave } from '../../../services/mediaSavePermission';
 
 // image-picker nạp mềm (giống FruitVideo/CareScan) — máy chưa cài thì báo rõ, không crash.

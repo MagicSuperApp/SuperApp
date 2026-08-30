@@ -34,8 +34,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, View, StyleSheet } from 'react-native';
 import type { ImageStyle, StyleProp, ViewStyle } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ORILIFE_BASE } from '../services/orilifeBase';
+import { orilifeAuthHeaderValue } from '../services/orilifeAuthHeader';
 
 // ── Xác thực cho ảnh ────────────────────────────────────────────────────────
 // Dùng LẠI đúng đường của các service ReID: khoá AsyncStorage `auth_token` do
@@ -43,32 +43,10 @@ import { ORILIFE_BASE } from '../services/orilifeBase';
 // CỐ Ý không gọi `ensureOrilifeToken()` ở đây: hàm đó có thể kích hoạt ký DID, mà
 // một dải 8 ảnh sẽ bật 8 lần hỏi sinh trắc. URL `/gimg` chỉ tới được SAU một lời
 // gọi API có auth, nên token đã có sẵn lúc vẽ.
-const AUTH_TOKEN_KEY = 'auth_token';
-
-/** Đệm trong bộ nhớ: một dải ảnh không nên đọc AsyncStorage mỗi tấm. */
-let _headerCache: { at: number; value: string | null } | null = null;
-const HEADER_TTL_MS = 30_000;
-
-/** Xoá đệm — gọi khi đăng xuất / đổi tài-khoản. */
-export function resetRemoteImageAuthCache(): void {
-  _headerCache = null;
-}
-
-/** `Bearer <auth_token>`, hoặc null. KHÔNG ném, KHÔNG log giá-trị token. */
-async function authHeaderValue(force = false): Promise<string | null> {
-  if (!force && _headerCache && Date.now() - _headerCache.at < HEADER_TTL_MS) {
-    return _headerCache.value;
-  }
-  try {
-    const token = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
-    const value = token ? `Bearer ${token}` : null;
-    _headerCache = { at: Date.now(), value };
-    return value;
-  } catch {
-    // Lỗi đọc kho: KHÔNG ghi đệm (để lần sau còn thử lại), và KHÔNG nổ.
-    return null;
-  }
-}
+//
+// Đệm đầu đề CHUYỂN xuống `services/orilifeAuthHeader.ts` để `clearOrilifeToken()`
+// với tới được — trước đây đệm nằm ở đây và hàm xoá nó không ai gọi, nên trong 30
+// giây sau khi đăng xuất ảnh vẫn đi kèm token của người vừa rời máy.
 
 /** `https://host:port` của URL, chữ thường. null nếu không phải http(s). */
 function originOf(url: string): string | null {
@@ -166,7 +144,7 @@ const RemoteImage: React.FC<RemoteImageProps> = ({
     let alive = true;
     // `retryKey` đổi = người dùng bấm thử lại → đọc lại token, đừng tin đệm:
     // ca hỏng hay gặp nhất chính là token vừa hết hạn.
-    authHeaderValue(retryKey > 0).then(v => {
+    orilifeAuthHeaderValue(retryKey > 0).then(v => {
       if (alive) setAuth({ forUri: current, value: v });
     });
     return () => { alive = false; };

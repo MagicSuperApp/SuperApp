@@ -44,6 +44,25 @@ export interface IdentifyFactors {
 
 // Báo giá phí 3-bucket cho tác vụ identify — khai tập trung ở types/fee.ts.
 import type { FeeQuote } from '../types/fee';
+import { canResendAfterNetworkError } from './resendPolicy';
+
+/**
+ * Cửa POST GỬI LẠI ĐƯỢC sau lỗi mạng. Luật + lý do đầy đủ ở `resendPolicy.ts`.
+ *
+ * Vắng mặt CỐ Ý:
+ *   · `/api/enroll` — TẠO cây, sinh `uuid4` mới mỗi lượt;
+ *   · `/api/verify_add` — bổ-sung góc, gửi lại là nhân đôi số ảnh của cây;
+ *   · `/api/remove_views` — xoá theo CHỈ SỐ, mà chỉ số dịch sau lượt xoá đầu, nên
+ *     lượt thứ hai xoá đúng những góc KHÁC.
+ */
+export const RESENDABLE_POST = [
+  '/api/identify',          // đọc — so khớp, không đổi hồ sơ cây nào
+  '/api/identify_verdict',  // nhãn đo, khoá theo `query_id` nên trùng khử được
+  '/api/delete',            // xoá cùng một cây hai lần vẫn ra một kết quả
+  '/api/rename',            // đặt cùng một tên hai lần vẫn ra một kết quả
+  '/api/tree/set_farm',     // gán cùng một vườn hai lần vẫn ra một kết quả
+  '/api/build3d/*',         // kích dựng lại — máy chủ tự gộp hàng đợi
+] as const;
 export type { FeeQuote };
 
 /** Băng tin-cậy THÔ (không lộ điểm số) — PoC-Tree §4 M2. */
@@ -152,6 +171,12 @@ export interface EnrollResponse {
    * mà không ai được báo — người dùng tưởng đăng ký hỏng và làm lại từ đầu.
    */
   farm_dropped?: boolean;
+  /**
+   * Máy chủ tự đoán loài cây ngay ở lượt đăng ký. CHỈ có khi app không gửi
+   * `species`. Hình dạng thô — đọc qua `parseSpeciesSuggest` (`speciesSuggest.ts`),
+   * đừng bóc tay: cổng là `confident`, không phải `confidence`.
+   */
+  species_suggest?: unknown;
   provenance?: {
     code?: string;
     has3d?: boolean;
@@ -425,7 +450,7 @@ async function _apiCall<T>(
     const isTimeoutErr = err instanceof Error && err.name === 'AbortError';
     const isConnErr = err instanceof TypeError && !isTimeoutErr;
 
-    if (isConnErr && attempt === 0) {
+    if (isConnErr && attempt === 0 && canResendAfterNetworkError(url, method, RESENDABLE_POST)) {
       return _apiCall<T>(url, method, body, timeoutMs, 1);
     }
 
@@ -883,7 +908,33 @@ export async function renameTree(
   form.append('name', name);
 
   const result = await _apiCall<{ ok: boolean }>(`${baseUrl}/api/rename`, 'POST', form);
-  return { ok: result.ok, error: result.error };
+  if (!result.ok) return { ok: false, error: result.error };
+
+  // ⚠️ HAI cờ `ok` khác nhau, và nhầm chúng là báo thành công cho một việc máy
+  // chủ đã từ chối.
+  //   · `result.ok`      — cờ VẬN CHUYỂN do `_apiCall` đặt: có nối được và HTTP
+  //                        không lỗi. Nó luôn `true` ở đây vì vừa lọc ở trên.
+  //   · `result.data.ok` — CÂU TRẢ LỜI của máy chủ.
+  // `/api/rename` trả `200 {"ok": false}` (`server.py:5688-5698`) ở hai ca: tên
+  // sau khi vệ sinh còn rỗng (`_vname` → `None`), và cây không có trong kho. Cả
+  // hai đều là "không đổi được tên", đều đi qua HTTP 200.
+  //
+  // Bản cũ trả thẳng `result.ok`, nên màn quản lý cây ghi tên mới vào danh sách
+  // trên máy trong khi máy chủ vẫn giữ tên cũ. Mở lại màn là tên cũ quay về, và
+  // không một dòng nào báo đã có chuyện gì.
+  if (result.data?.ok !== true) {
+    return {
+      ok: false,
+      error: {
+        type: 'validation_error',
+        detail:
+          'Máy chủ không đổi được tên. Thường là do tên chỉ còn khoảng trắng hoặc ' +
+          'ký tự bị loại sau khi vệ sinh — thử một tên khác có chữ.',
+        http_status: 200,
+      },
+    };
+  }
+  return { ok: true };
 }
 
 /**

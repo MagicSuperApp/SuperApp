@@ -1,0 +1,4 @@
+<resources>
+  <!-- Sinh bởi scripts/sinh-bieu-tuong.py từ instances/checkfarm/instance.json. -->
+  <color name="ic_launcher_background">#1F6B3A</color>
+</resources>

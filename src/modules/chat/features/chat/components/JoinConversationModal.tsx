@@ -1,24 +1,22 @@
 // modules/chat/features/chat/components/JoinConversationModal.tsx
 //
-// Modal "Tham gia cuộc trò chuyện": nhập conversationId (bắt buộc) +
-// message (optional). Gọi onSubmit để slice tự quyết định public/private.
+// Vào một phòng đã có sẵn bằng mã phòng.
+//
+// KHÁC HẲN BẢN CŨ Ở CHỖ AI QUYẾT ĐỊNH: bản cũ giữ trong máy một danh sách mã
+// phòng "công khai" (ba mã bịa trong dữ-liệu mẫu) rồi TỰ đoán — mã nằm trong
+// danh sách thì báo "đã vào phòng", không nằm thì báo "đã gửi yêu cầu". Cả hai
+// câu đều có thể sai, vì máy chủ mới là nơi biết phòng đó mở hay kín.
+//
+// Nay app chỉ gửi mã lên (`POST /conversations/:id/join`) và ĐỌC câu trả lời:
+// `action: 'JOINED'` → vào thẳng; ngược lại → đang chờ người quản duyệt.
 
-import React, { useEffect, useMemo, useState } from 'react';
-import {
-  Modal,
-  View,
-  Text,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
-  KeyboardAvoidingView,
-  Platform,
-} from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { NEUTRAL, withAlpha } from '../../../../../shared/theme';
 import { CHAT_THEME } from '../../../theme/colors';
-
-const MESSAGE_MAX = 300;
+import { RADIUS, SPACE, STROKE } from '../../../theme/fluent';
+import { Sheet } from './Sheet';
 
 export interface JoinConversationPayload {
   conversationId: string;
@@ -27,289 +25,115 @@ export interface JoinConversationPayload {
 
 interface Props {
   visible: boolean;
+  submitting?: boolean;
   onClose: () => void;
   onSubmit: (payload: JoinConversationPayload) => void;
-  /** ID public dùng để hiển thị gợi ý "phòng public" cho user. */
-  publicConversationIds?: string[];
 }
 
 const JoinConversationModal: React.FC<Props> = ({
   visible,
+  submitting = false,
   onClose,
   onSubmit,
-  publicConversationIds = [],
 }) => {
-  const [conversationId, setConversationId] = useState('');
+  const [id, setId] = useState('');
   const [message, setMessage] = useState('');
-  const [touched, setTouched] = useState(false);
 
   useEffect(() => {
-    if (visible) {
-      setConversationId('');
-      setMessage('');
-      setTouched(false);
-    }
+    if (!visible) return;
+    setId('');
+    setMessage('');
   }, [visible]);
 
-  const idError = useMemo(() => {
-    const v = conversationId.trim();
-    if (!v) return 'Vui lòng nhập ID cuộc trò chuyện.';
-    if (v.length < 4) return 'ID quá ngắn.';
-    return null;
-  }, [conversationId]);
-
-  const isPublic = useMemo(
-    () => publicConversationIds.includes(conversationId.trim()),
-    [conversationId, publicConversationIds],
-  );
-
-  const canSubmit = !idError;
-
-  // Chặn bấm kép: onSubmit đóng modal ở lượt render sau, nên chạm 2 lần liên tiếp
-  // (hay xảy ra khi sóng yếu, người dùng tưởng chưa ăn) gửi 2 yêu cầu tham gia.
-  const [submitting, setSubmitting] = useState(false);
-  useEffect(() => { if (visible) setSubmitting(false); }, [visible]);
-
-  const handleSubmit = () => {
-    setTouched(true);
-    if (!canSubmit || submitting) return;
-    setSubmitting(true);
-    onSubmit({
-      conversationId: conversationId.trim(),
-      message: message.trim() || undefined,
-    });
-  };
+  const trimmed = id.trim();
+  const canSubmit = trimmed.length > 0 && !submitting;
 
   return (
-    <Modal
+    <Sheet
       visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
-      statusBarTranslucent
+      onClose={onClose}
+      title="Vào một phòng"
+      subtitle="Dán mã phòng người khác gửi cho bạn."
+      scroll
     >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.overlay}
+      <TextInput
+        style={styles.input}
+        value={id}
+        onChangeText={setId}
+        placeholder="Mã phòng"
+        placeholderTextColor={NEUTRAL.textMuted}
+        autoCapitalize="none"
+        autoCorrect={false}
+      />
+
+      <TextInput
+        style={[styles.input, styles.inputMulti]}
+        value={message}
+        onChangeText={setMessage}
+        placeholder="Lời nhắn cho người quản phòng (không bắt buộc)"
+        placeholderTextColor={NEUTRAL.textMuted}
+        multiline
+        maxLength={300}
+      />
+
+      <View style={styles.note}>
+        <Icon name="information-outline" size={14} color={NEUTRAL.textMuted} />
+        <Text style={styles.noteText}>
+          Phòng mở thì bạn vào được ngay. Phòng kín thì lời nhắn của bạn sẽ chờ
+          người quản phòng đồng ý.
+        </Text>
+      </View>
+
+      <Pressable
+        style={[styles.primaryBtn, !canSubmit && styles.primaryBtnOff]}
+        disabled={!canSubmit}
+        onPress={() =>
+          onSubmit({ conversationId: trimmed, message: message.trim() || undefined })
+        }
       >
-        <TouchableOpacity
-          style={StyleSheet.absoluteFill}
-          activeOpacity={1}
-          onPress={onClose}
-        />
-
-        <View style={styles.sheet}>
-          <View style={styles.header}>
-            <View style={styles.headerIcon}>
-              <Icon name="account-multiple-plus-outline" size={20} color={CHAT_THEME.primary} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.title}>Tham gia cuộc trò chuyện</Text>
-              <Text style={styles.subtitle}>
-                Nhập ID phòng để vào hoặc gửi yêu cầu duyệt
-              </Text>
-            </View>
-            <TouchableOpacity hitSlop={8} onPress={onClose} style={styles.closeBtn}>
-              <Icon name="close" size={18} color={NEUTRAL.textMuted} />
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.body}>
-            <View style={styles.field}>
-              <Text style={styles.label}>
-                ID cuộc trò chuyện <Text style={styles.required}>*</Text>
-              </Text>
-              <TextInput
-                style={styles.input}
-                value={conversationId}
-                onChangeText={setConversationId}
-                placeholder="conv-…"
-                placeholderTextColor={NEUTRAL.textMuted}
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-              {touched && idError ? (
-                <Text style={styles.errorText}>{idError}</Text>
-              ) : conversationId.trim().length > 0 ? (
-                <View
-                  style={[
-                    styles.statusPill,
-                    {
-                      backgroundColor: isPublic
-                        ? withAlpha(NEUTRAL.success, 0.12)
-                        : withAlpha(NEUTRAL.warning, 0.12),
-                    },
-                  ]}
-                >
-                  <Icon
-                    name={isPublic ? 'lock-open-variant-outline' : 'lock-outline'}
-                    size={11}
-                    color={isPublic ? NEUTRAL.success : NEUTRAL.warning}
-                  />
-                  <Text
-                    style={[
-                      styles.statusText,
-                      { color: isPublic ? NEUTRAL.success : NEUTRAL.warning },
-                    ]}
-                  >
-                    {isPublic
-                      ? 'Phòng công khai · sẽ tham gia ngay'
-                      : 'Phòng riêng tư · cần admin duyệt'}
-                  </Text>
-                </View>
-              ) : (
-                <Text style={styles.hint}>
-                  Nếu là phòng công khai sẽ vào ngay, ngược lại sẽ tạo yêu cầu duyệt.
-                </Text>
-              )}
-            </View>
-
-            <View style={styles.field}>
-              <View style={styles.fieldHeader}>
-                <Text style={styles.label}>Lời nhắn cho admin</Text>
-                <Text style={styles.counter}>
-                  {message.length}/{MESSAGE_MAX}
-                </Text>
-              </View>
-              <TextInput
-                style={[styles.input, styles.textarea]}
-                value={message}
-                onChangeText={t => setMessage(t.slice(0, MESSAGE_MAX))}
-                placeholder="Tùy chọn — chỉ dùng khi cần admin duyệt"
-                placeholderTextColor={NEUTRAL.textMuted}
-                multiline
-                textAlignVertical="top"
-              />
-            </View>
-          </View>
-
-          <View style={styles.actions}>
-            <TouchableOpacity
-              style={[styles.btn, styles.btnGhost]}
-              onPress={onClose}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.btnGhostText}>Hủy bỏ</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.btn, styles.btnPrimary, (!canSubmit || submitting) && styles.btnDisabled]}
-              onPress={handleSubmit}
-              disabled={!canSubmit || submitting}
-              activeOpacity={0.85}
-            >
-              <Icon
-                name={isPublic ? 'login-variant' : 'send-outline'}
-                size={16}
-                color={NEUTRAL.white}
-              />
-              <Text style={styles.btnPrimaryText}>
-                {isPublic ? 'Tham gia ngay' : 'Gửi yêu cầu'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
+        {submitting ? (
+          <ActivityIndicator size="small" color={NEUTRAL.white} />
+        ) : (
+          <Text style={styles.primaryBtnText}>Gửi</Text>
+        )}
+      </Pressable>
+    </Sheet>
   );
 };
 
 const styles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: NEUTRAL.overlay, justifyContent: 'flex-end' },
-  sheet: {
-    backgroundColor: NEUTRAL.bg,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingBottom: Platform.OS === 'ios' ? 24 : 16,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 20,
-    paddingTop: 18,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: NEUTRAL.borderSoft,
-  },
-  headerIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: withAlpha(CHAT_THEME.primary, 0.12),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: { fontSize: 16, fontWeight: '800', color: NEUTRAL.text, letterSpacing: -0.3 },
-  subtitle: { fontSize: 11, color: NEUTRAL.textMuted, marginTop: 2 },
-  closeBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    backgroundColor: NEUTRAL.bgSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  body: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8 },
-  field: { marginBottom: 14 },
-  fieldHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  label: { fontSize: 12, fontWeight: '700', color: NEUTRAL.textSub, marginBottom: 6 },
-  required: { color: NEUTRAL.error },
-  counter: { fontSize: 10, color: NEUTRAL.textMuted, fontWeight: '600' },
   input: {
-    paddingHorizontal: 12,
-    paddingVertical: Platform.OS === 'ios' ? 12 : 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: NEUTRAL.border,
-    backgroundColor: NEUTRAL.bgSoft,
-    fontSize: 13,
+    minHeight: 48,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACE.md,
+    paddingVertical: SPACE.sm + 2,
+    fontSize: 15,
     color: NEUTRAL.text,
+    backgroundColor: 'rgba(255,255,255,0.8)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: STROKE.outer,
+    marginBottom: SPACE.md,
   },
-  textarea: { minHeight: 80, paddingTop: 10 },
-  hint: { fontSize: 11, color: NEUTRAL.textMuted, marginTop: 6 },
-  errorText: { fontSize: 11, color: NEUTRAL.error, marginTop: 6, fontWeight: '600' },
-  statusPill: {
+  inputMulti: { minHeight: 84, textAlignVertical: 'top' },
+  note: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    marginTop: 8,
+    alignItems: 'flex-start',
+    gap: 6,
+    padding: SPACE.sm + 2,
+    borderRadius: RADIUS.sm,
+    backgroundColor: withAlpha(CHAT_THEME.primary, 0.07),
+    marginBottom: SPACE.lg,
   },
-  statusText: { fontSize: 11, fontWeight: '700' },
-  actions: {
-    flexDirection: 'row',
-    gap: 10,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: NEUTRAL.borderSoft,
-  },
-  btn: {
-    flex: 1,
-    height: 46,
-    borderRadius: 12,
+  noteText: { flex: 1, fontSize: 12, lineHeight: 17, color: NEUTRAL.textSub },
+  primaryBtn: {
+    height: 48,
+    borderRadius: RADIUS.md,
     alignItems: 'center',
     justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 6,
+    backgroundColor: CHAT_THEME.primary,
   },
-  btnGhost: {
-    backgroundColor: NEUTRAL.bgSoft,
-    borderWidth: 1,
-    borderColor: NEUTRAL.border,
-  },
-  btnGhostText: { fontSize: 13, fontWeight: '700', color: NEUTRAL.textSub },
-  btnPrimary: { backgroundColor: CHAT_THEME.primary },
-  btnPrimaryText: { fontSize: 13, fontWeight: '800', color: NEUTRAL.white },
-  btnDisabled: { opacity: 0.5 },
+  primaryBtnOff: { backgroundColor: withAlpha(CHAT_THEME.primary, 0.3) },
+  primaryBtnText: { fontSize: 14.5, fontWeight: '700', color: NEUTRAL.white },
 });
 
 export default JoinConversationModal;

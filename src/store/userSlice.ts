@@ -7,6 +7,7 @@ import { databaseManager } from '../services/databaseManager';
 import { phoenixKeyApi, summarizeWalletAll, type WalletEntry } from '../services/phoenixKey-api';
 import { parseDidNetwork } from '../services/phoenixDid';
 import { clearWorkSession } from '../modules/work/services/session';
+import { clearOrilifeToken } from '../services/orilifeDidAuth';
 import { disconnectProofChat } from '../services/proofchatAuthBridge';
 import { clearAllDrafts } from '../services/treeDraftStore';
 import { setVideoQueueOwner, flushVideoUploadQueue } from '../services/videoUploadQueue';
@@ -65,6 +66,15 @@ interface UserState {
   phoenixKey: PhoenixKey | null;
   // Mạng Cardano THẬT theo danh tính (resolveNetwork). null = chưa rõ → UI dùng nhãn env.
   network: string | null;
+  // "Chưa rõ" có HAI nghĩa rất khác nhau, và trước đây UI chỉ có một chữ cho cả hai:
+  //   · đang gọi thật    → `networkResolving = true`  → "Đang kiểm tra…" là thật
+  //   · gọi xong, hỏng   → `networkUnknown = true`    → phải mời người dùng thử lại
+  // Gộp hai ca vào một chữ "Đang xác định" là app hứa đang làm việc trong khi không
+  // có lượt gọi nào đang chạy — người dùng ngồi chờ một thứ không bao giờ tới.
+  networkResolving: boolean;
+  networkUnknown: boolean;
+  // Tương tự cho ví: lấy hỏng thì phải nói, đừng để màn hình trống nhìn như "chưa có ví".
+  walletFailed: boolean;
   // Khoá ĐIỀU-KHIỂN DID (controller pkh) = địa-chỉ-2, khoá QUẢN-TRỊ danh-tính, KHÔNG giữ tài sản
   // (khác ví-seed giữ tiền ở `wallet.address`). null = chưa lấy được (refreshControllerPkh).
   controllerPkh: string | null;
@@ -78,6 +88,9 @@ const initialState: UserState = {
   wallets: [],
   phoenixKey: null,
   network: null,
+  networkResolving: false,
+  networkUnknown: false,
+  walletFailed: false,
   controllerPkh: null,
   isLoading: false,
   error: null,
@@ -139,6 +152,17 @@ export const logoutUser = createAsyncThunk(
       await disconnectProofChat();
     } catch (error) {
       console.warn('[Redux] Logout: disconnectProofChat lỗi (bỏ qua):', error);
+    }
+    try {
+      // ⛔ Đường RÒ LỚN NHẤT, và là đường duy nhất trong khối này bị bỏ sót tới
+      // 2026-08-28: `auth_token` OriLife sống qua đăng xuất. 17 chỗ trong app đọc
+      // thẳng khoá đó — vườn, cây, con, chăm sóc, dòng thời gian, truy xuất, video,
+      // trôi mẫu, ảnh. Người sau đăng nhập trên cùng máy thì mọi lời gọi đó vẫn đi
+      // ra MANG DANH người trước, im lặng, cho tới khi token hết hạn.
+      // `clearOrilifeToken` xoá cả owner-ref, dấu chủ token, và đệm đầu đề ảnh.
+      await clearOrilifeToken();
+    } catch (error) {
+      console.warn('[Redux] Logout: clearOrilifeToken lỗi (bỏ qua):', error);
     }
     try {
       // Nháp chụp cây / video quả là dữ liệu PHIÊN. Tablet field dùng CHUNG → xoá sạch
@@ -377,10 +401,29 @@ const userSlice = createSlice({
       .addCase(refreshWallet.fulfilled, (state, action) => {
         state.wallet = action.payload.wallet;
         state.wallets = action.payload.wallets;
+        state.walletFailed = false;
       })
-      // Mạng theo danh tính thật — chỉ set khi resolve được, null thì giữ nguyên
+      .addCase(refreshWallet.rejected, (state) => {
+        state.walletFailed = true;
+      })
+      // Mạng theo danh tính thật — chỉ set khi resolve được, null thì giữ nguyên.
+      // `resolveNetwork` tự nuốt lỗi và trả `null`, nên nhánh HỎNG đi qua `fulfilled`
+      // chứ không qua `rejected` — phải xét payload, không xét loại action.
+      .addCase(resolveNetwork.pending, (state) => {
+        state.networkResolving = true;
+      })
       .addCase(resolveNetwork.fulfilled, (state, action) => {
-        if (action.payload) state.network = action.payload;
+        state.networkResolving = false;
+        if (action.payload) {
+          state.network = action.payload;
+          state.networkUnknown = false;
+        } else {
+          state.networkUnknown = true;
+        }
+      })
+      .addCase(resolveNetwork.rejected, (state) => {
+        state.networkResolving = false;
+        state.networkUnknown = true;
       })
       // Khoá điều-khiển DID (địa-chỉ-2) — chỉ set khi lấy được, null thì giữ nguyên
       .addCase(refreshControllerPkh.fulfilled, (state, action) => {

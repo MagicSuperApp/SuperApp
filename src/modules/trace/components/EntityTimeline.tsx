@@ -25,6 +25,7 @@ import Icon from '../../../components/Icon';
 import RemoteImage from '../../../components/RemoteImage';
 import { COLORS } from '../../../constants';
 import { ORILIFE_BASE } from '../../../services/orilifeBase';
+import { getLampnetViewBase } from '../../../services/lampnetView';
 import {
   inheritedFrom, mediaOverflow, mediaUrls, showsChainChip, summarise,
 } from '../utils/timelineView';
@@ -38,6 +39,16 @@ interface Props {
   entityId: string;
   /** Số sự kiện hiện tối đa trước khi gộp lại. 0 = hiện hết. */
   limit?: number;
+  /**
+   * Câu thay cho "Phiên hết hạn" khi máy chủ trả 401.
+   *
+   * Cần vì cùng một mã 401 nghĩa hai điều khác hẳn nhau tuỳ chỗ gắn: ở màn của
+   * CHỦ VƯỜN nó là phiên hết hạn, đăng nhập lại là xong; ở màn nguồn gốc mà
+   * NGƯỜI MUA quét mã thì họ không có tài khoản nào để hết hạn, và bảo họ đăng
+   * nhập lại là gửi họ đi làm một việc vô nghĩa. Đo 2026-08-19: khách gọi
+   * `/api/tree/{id}/timeline` nhận `401 {"error":"Cần đăng nhập."}`.
+   */
+  authHint?: string;
 }
 
 /** `2026-08-09T03:12:00+00:00` → `09/08 · 10:12`. Chuỗi hỏng → trả nguyên văn. */
@@ -49,7 +60,7 @@ const fmtWhen = (iso: string): string => {
   return `${p(d.getDate())}/${p(d.getMonth() + 1)} · ${p(d.getHours())}:${p(d.getMinutes())}`;
 };
 
-const EntityTimeline: React.FC<Props> = ({ entityType, entityId, limit = 0 }) => {
+const EntityTimeline: React.FC<Props> = ({ entityType, entityId, limit = 0, authHint }) => {
   const [loading, setLoading] = React.useState(true);
   const [data, setData] = React.useState<TimelineResult | null>(null);
   const [errText, setErrText] = React.useState<string | null>(null);
@@ -64,6 +75,17 @@ const EntityTimeline: React.FC<Props> = ({ entityType, entityId, limit = 0 }) =>
   React.useEffect(() => {
     aliveRef.current = true;
     return () => { aliveRef.current = false; };
+  }, []);
+
+  // Tiền tố xem tệp theo CID. `null` = CHƯA BIẾT, và `mediaUrls` sẽ BỎ mọi phần tử
+  // `cid` cho tới khi biết — thà thiếu ảnh còn hơn bày một ô vỡ. Hỏi một lần cho cả
+  // phiên (`getLampnetViewBase` tự đệm), không chặn phần chữ của dòng thời gian:
+  // sự kiện vẫn hiện ngay, ảnh hiện thêm khi biết cổng.
+  const [viewBase, setViewBase] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    void getLampnetViewBase(ORILIFE_BASE).then((v) => {
+      if (aliveRef.current) setViewBase(v);
+    });
   }, []);
 
   const load = React.useCallback(async () => {
@@ -109,6 +131,20 @@ const EntityTimeline: React.FC<Props> = ({ entityType, entityId, limit = 0 }) =>
         <Text style={styles.dim}>
           Bản máy chủ đang chạy chưa bật dòng thời gian. Đây không phải lỗi của cây này.
         </Text>
+      </View>
+    );
+  }
+
+  // 401 KHÔNG phải lỗi cần thử lại khi người xem vốn không có tài khoản. Chỗ gắn
+  // nói câu đúng với người của mình qua `authHint`; không truyền thì giữ câu cũ.
+  if (errKind === 'auth_error' && authHint) {
+    return (
+      <View style={styles.box}>
+        <View style={styles.headRow}>
+          <Icon name="clock-rotate-left" size={15} color={COLORS.textMuted} />
+          <Text style={[styles.headText, { color: COLORS.textMuted }]}>DÒNG THỜI GIAN</Text>
+        </View>
+        <Text style={styles.dim}>{authHint}</Text>
       </View>
     );
   }
@@ -181,7 +217,7 @@ const EntityTimeline: React.FC<Props> = ({ entityType, entityId, limit = 0 }) =>
         const label = KIND_VI[ev.kind] ?? String(ev.kind);
         const note = summarise(ev);
         const fromFarm = inheritedFrom(ev) !== null;
-        const photos = mediaUrls(ev.media, ORILIFE_BASE);
+        const photos = mediaUrls(ev.media, ORILIFE_BASE, viewBase);
         const morePhotos = mediaOverflow(ev.media);
         return (
           <View key={ev.event_id ?? `${ev.kind}-${ev.ts}-${i}`} style={styles.row}>
@@ -245,6 +281,14 @@ const EntityTimeline: React.FC<Props> = ({ entityType, entityId, limit = 0 }) =>
                   )}
                 </View>
               )}
+              {/* Sự kiện CÓ tệp mà không dựng nổi URL nào — gần như luôn là ca chưa
+                  biết cổng xem (`getLampnetViewBase` trượt). Nói ra, đừng giấu: giấu
+                  đi thì dòng sự kiện trông y hệt một sự kiện vốn không có tệp nào. */}
+              {photos.length === 0 && Array.isArray(ev.media) && ev.media.length > 0 && (
+                <Text style={styles.mediaMissing}>
+                  {ev.media.length} tệp đính kèm — chưa lấy được cổng xem.
+                </Text>
+              )}
             </View>
           </View>
         );
@@ -299,6 +343,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   photoMoreText: { fontSize: 12, fontWeight: '800', color: COLORS.textSub },
+  mediaMissing: { fontSize: 11, color: COLORS.textMuted, marginTop: 4, fontStyle: 'italic' },
   when: { fontSize: 11, color: COLORS.textSub, marginTop: 2 },
   note: { fontSize: 12, color: COLORS.text, marginTop: 4, lineHeight: 17 },
 

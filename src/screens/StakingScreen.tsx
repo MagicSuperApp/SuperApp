@@ -23,7 +23,9 @@ import {
 import type { DelegationStatus, PoolDetail } from '../services/phoenixKey-api';
 
 const PRIMARY = '#0033AD'; // Cardano blue
-const NETWORK = 0;         // preprod, khớp WALLET_NETWORK
+import { CARDANO_NETWORK as NETWORK } from '../config/cardanoNetwork';
+import { showError, showWarning } from '../utils/alert';
+import { t, tf } from '../i18n';
 const ACCOUNT = 0;         // ví cố định (stake key đã đăng ký)
 
 // `fmtAda` bản riêng của màn này đã gỡ 2026-08-14: nó là bản thứ hai của một hàm
@@ -66,34 +68,31 @@ const StakingScreen: React.FC = () => {
     try {
       setPoolDetail(await getPool(id));
     } catch (e: any) {
-      Alert.alert('Không tìm thấy pool', e?.message ?? 'Kiểm tra lại pool id (pool1...).');
+      showError('Không tìm thấy pool', e?.message ?? 'Kiểm tra lại pool id (pool1...).');
     } finally { setChecking(false); }
   }, [poolId]);
 
   const handleDelegate = useCallback(async () => {
     if (!kek || !poolDetail) return;
-    Alert.alert(
-      'Xác nhận uỷ thác',
-      `Uỷ thác stake của ví vào pool ${poolDetail.ticker || poolDetail.poolId.slice(0, 12)}?`,
-      [
-        { text: 'Huỷ', style: 'cancel' },
-        {
-          text: 'Uỷ thác',
-          onPress: async () => {
+    showWarning('Xác nhận uỷ thác', `Uỷ thác stake của ví vào pool ${poolDetail.ticker || poolDetail.poolId.slice(0, 12)}?`, {
+        confirmText: 'Uỷ thác',
+        cancelText: 'Huỷ',
+        onConfirm: async () => {
             setDelegating(true);
             try {
               const { txHash } = await delegateToPool({
                 kekHex: kek, account: ACCOUNT, poolBech32: poolDetail.poolId, network: NETWORK,
               });
-              Alert.alert('Đã gửi uỷ thác', `Tx: ${txHash.slice(0, 16)}…\nMất vài phút để lên chuỗi.`);
+              Alert.alert(
+                t('Đã gửi uỷ thác'),
+                tf('Tx: {tx}…\nMất vài phút để lên chuỗi.', { tx: txHash.slice(0, 16) }),
+              );
               load();
             } catch (e: any) {
-              Alert.alert('Uỷ thác thất bại', e?.message ?? 'Thử lại nơi sóng tốt.');
+              Alert.alert(t('Uỷ thác thất bại'), e?.message ?? t('Thử lại nơi sóng tốt.'));
             } finally { setDelegating(false); }
           },
-        },
-      ],
-    );
+    });
   }, [kek, poolDetail, load]);
 
   const header = (

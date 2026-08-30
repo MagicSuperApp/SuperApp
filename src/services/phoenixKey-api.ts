@@ -683,7 +683,7 @@ export const activation = {
     ),
 };
 
-// ── WakeMe / Activation Vault 2-pha — WakemeController ────────────────────────
+// ── Wakeme / Activation Vault 2-pha — WakemeController ────────────────────────
 // Đối-chiếu `ActivationVaultDtos.java`. Luồng: build (BE trả unsigned tx) → CLIENT ký
 // → submit. vault/pot là ĐỌC.
 //
@@ -700,7 +700,7 @@ export const activation = {
 // Khai `initialDLamp` như bản cũ thì trường VĨNH VIỄN `undefined` và KHÔNG BÁO LỖI —
 // cùng đúng một họ với sáu tên trường lệch của OriLife. Có test khoá ở
 // `wakemeService.test.ts`; sửa tên ở đây là test đỏ ngay.
-export interface WakeMeBuildResponse {
+export interface WakemeBuildResponse {
   unsignedTxCbor: string;
   /** = controller_pkh (băm TAAD_Key), KHÔNG phải khoá ví. Xem `getLamp()`. */
   requiredSignerKeyHash: string;
@@ -714,7 +714,7 @@ export interface WakeMeBuildResponse {
   phase1Days: number;
   ttlSlot: number;
 }
-export interface WakeMeSubmitResponse {
+export interface WakemeSubmitResponse {
   cardanoTxHash: string;
   /**
    * ⚠️ LUÔN RỖNG ở đường thật (`ActivationVaultServiceImpl.java:145-147`) — đây là
@@ -723,7 +723,7 @@ export interface WakeMeSubmitResponse {
   vaultAddress: string;
   status: string;
 }
-export interface WakeMeActivityGate {
+export interface WakemeActivityGate {
   usedThisPeriod?: boolean | null;
   graceActive?: boolean | null;
   graceDaysLeft?: number | null;
@@ -753,7 +753,7 @@ export interface VaultStatusResponse {
   lastTickDay?: number | null;
   lastTickEpoch?: number | null;
   p2Epoch?: number | null;
-  activityGate?: WakeMeActivityGate | null;
+  activityGate?: WakemeActivityGate | null;
   // KHÔNG khai `[k: string]: unknown`. Chỉ mục đó nuốt mọi tên lạ — kể cả tên SAI —
   // nên nó chính là thứ đã che lỗi `initialDLamp` suốt thời gian qua.
 }
@@ -769,12 +769,12 @@ export interface PotStatusResponse {
 export const wakeme = {
   /** Bước 1: BE build unsigned tx nạp D LAMP vào vault user. Cần Bearer. */
   build: (body: { walletAddress: string; didCommit?: string }) =>
-    unwrap<WakeMeBuildResponse>(
+    unwrap<WakemeBuildResponse>(
       client.post('/wakeme/build', body, { needsAuth: true } as AxiosRequestConfig),
     ),
   /** Bước 2: submit tx đã ký. Cần Bearer. */
   submit: (signedTxCbor: string) =>
-    unwrap<WakeMeSubmitResponse>(
+    unwrap<WakemeSubmitResponse>(
       client.post('/wakeme/submit', { signedTxCbor }, { needsAuth: true } as AxiosRequestConfig),
     ),
   /**
@@ -794,11 +794,15 @@ export const wakeme = {
 /** Bí danh cũ — giữ một đợt cho nơi gọi cũ. Dùng `wakeme` cho mã mới. */
 export const getlamp = wakeme;
 
-// ── Guardian (khôi-phục xã-hội) — ĐÃ đối-chiếu GuardianServiceImpl.java ────────
+// ── Guardian (khôi-phục xã-hội) ───────────────────────────────────────────────
 // POST /guardians/add · /guardians/remove, body { user_did, guardian_did, nonce,
-// proof_signature }. proof_signature = owner-key ECDSA (SHA256withECDSA) ký canonical
-// "PHOENIXKEY_GUARDIAN_ADD:"+userDid+":"+guardianDid+":"+nonce (remove: _REMOVE:). Chuỗi
-// dựng trong guardianService.buildProof — KHỚP backend. Nonce TTL 5' (validateAndConsume).
+// proof_signature }. proof_signature = owner-key ECDSA (SHA256withECDSA).
+//
+// ⛔ Chú thích cũ ở đây ghi "ĐÃ đối-chiếu … KHỚP backend" cho khuôn nối `':'`. Máy
+// chủ đổi khuôn đó từ V30 (đóng khung theo độ dài + thêm field `opSeq`) — nhà
+// PhoenixKey báo 2026-08-27, dẫn `GuardianServiceImpl.java:84`. Lý do vì sao chưa
+// tự sửa một phía, và mức chắc của lời khai này, nằm ở đầu `guardianService.ts`.
+// Đừng chép lại nhãn "KHỚP backend" vào đây khi chưa tự chạy được luồng thật.
 export interface GuardianMutateRequest {
   userDid: string;
   guardianDid: string;

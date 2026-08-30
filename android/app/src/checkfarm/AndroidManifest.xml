@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Manifest riêng của CheckFarm.
+
+  VIỆC DUY NHẤT: gỡ `FirebaseInitProvider`.
+
+  Vì sao cần. Thư viện Firebase mang sẵn một ContentProvider tự chạy TRƯỚC
+  `Application.onCreate` để dựng "default app" từ tài nguyên `google_app_id` —
+  tài nguyên do plugin `google-services` sinh ra. Bản dựng CheckFarm cố ý không
+  có tệp cấu hình Firebase (xem `app/build.gradle`, khối "Firebase: CÓ ĐIỀU
+  KIỆN"), nên tài nguyên đó không tồn tại và provider kia chạy vào chỗ trống rồi
+  ghi log lỗi ở mỗi lần mở app.
+
+  Gỡ nó đi thì không có gì tự khởi Firebase, và `pushHandler.ts` — vốn nạp module
+  bằng `await import(...)` trong `try` — chỉ đơn giản không có gì để nạp.
+
+  ⚠ Tệp này CHỈ áp cho flavor `checkfarm`. Aladin giữ nguyên provider và giữ
+  nguyên đường đẩy tin nền.
+
+  Ngày CheckFarm có dự án Firebase đứng tên pháp nhân CheckFarm: xoá tệp này VÀ
+  bỏ `google-services.json` vào `src/checkfarm/`. Làm một nửa là hỏng — có tệp
+  cấu hình mà vẫn gỡ provider thì Firebase im lặng không chạy.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application>
+        <provider
+            android:name="com.google.firebase.provider.FirebaseInitProvider"
+            android:authorities="${applicationId}.firebaseinitprovider"
+            android:exported="false"
+            tools:node="remove" />
+    </application>
+</manifest>

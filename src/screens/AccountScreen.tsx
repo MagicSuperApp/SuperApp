@@ -14,10 +14,18 @@ import {
     Alert,
     Modal,
     Linking,
+    RefreshControl,
 } from 'react-native';
 // RN 0.84 đã gỡ Clipboard khỏi core → dùng package cộng đồng (API setString giữ nguyên).
 import Clipboard from '@react-native-clipboard/clipboard';
-import { logoutUser, selectChainWallet, selectChainWallets } from '../store/userSlice';
+import {
+    logoutUser,
+    selectChainWallet,
+    selectChainWallets,
+    refreshWallet,
+    resolveNetwork,
+    refreshControllerPkh,
+} from '../store/userSlice';
 import type { WalletEntry } from '../services/phoenixKey-api';
 import { setChatbotEnabled } from '../store/chatbotSlice';
 import { useSelector } from 'react-redux';
@@ -29,22 +37,24 @@ import { useCoachMark } from '../onboarding/CoachMarkContext';
 import { resetTutorial } from '../utils/tutorialStorage';
 import { COLORS } from '../constants';
 import StateView from '../components/state/StateView';
-import { showInfo } from '../utils/alert';
+import { showInfo, showWarning } from '../utils/alert';
 import { useNavigation } from '@react-navigation/native';
-import { showWarning } from '../utils/alert';
 import { getVersion, getBuildNumber } from 'react-native-device-info';
 // Debug host = backend field-reid THẬT app đang dùng (ORILIFE_BASE), không phải
 // aladin-api (backend Lợi deprecated) — để field soi đúng server (Lỗi field #5).
 import { ORILIFE_BASE } from '../services/orilifeBase';
-import { fmtLamp, fmtCarp } from '../utils/token';
+import { fmtLamp, fmtCarp, fmtLampWhole, lampWholeToOildrop } from '../utils/token';
+import { getVaultStatus, WAKEME_CLAIM_READY } from '../services/wakemeService';
+import type { VaultStatusResponse } from '../services/phoenixKey-api';
 import taad from '../sdk/taadEnclave';
 import { getStoredMasterKek } from '../services/masterKekStore';
+import { ownerPublicKey } from '../sdk/phoenixKey';
 import LanguagePickerModal from '../components/LanguagePickerModal';
 import { LANGUAGES, useLanguage } from '../i18n';
 import { BUILD_COMMIT, BUILD_BRANCH, BUILD_ID } from '@env';
 
 // 0 = preprod (testnet), khớp WALLET_NETWORK bên register + PhoenixWalletScreen.
-const WALLET_NETWORK = 0;
+import { CARDANO_NETWORK as WALLET_NETWORK } from '../config/cardanoNetwork';
 
 // Version THẬT đọc từ bundle (CFBundleShortVersionString / versionName + build number).
 // Thay chuỗi hard-code "Aladin v1.0.0" (Lỗi field #4) — để field biết đúng build đang chạy.
@@ -75,10 +85,12 @@ const { width } = Dimensions.get('window');
 
 // ── Token Balance Card ────────────────────────────────────────────────────────
 const TokenCard = ({
-    icon, label, value, unit, color, desc, index,
+    icon, label, value, unit, color, desc, index, onPress,
 }: {
     icon: string; label: string; value: any;
     unit: string; color: string; desc: string; index: number;
+    /** Có `onPress` thì thẻ bấm được — kèm dấu chevron để người dùng BIẾT là bấm được. */
+    onPress?: () => void;
 }) => {
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const slideAnim = useRef(new Animated.Value(12)).current;
@@ -90,7 +102,7 @@ const TokenCard = ({
         ]).start();
     }, []);
 
-    return (
+    const body = (
         <Animated.View style={[
             styles.tokenCard,
             { borderColor: `${color}25`, opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
@@ -103,6 +115,16 @@ const TokenCard = ({
             <Text style={styles.tokenUnit}>{unit}</Text>
             <Text style={styles.tokenDesc}>{desc}</Text>
         </Animated.View>
+    );
+
+    if (!onPress) return body;
+    return (
+        <TouchableOpacity activeOpacity={0.85} onPress={onPress}>
+            {body}
+            <View style={styles.tokenTapHint}>
+                <Icon name="chevron-right" size={16} color={color} />
+            </View>
+        </TouchableOpacity>
     );
 };
 
@@ -128,11 +150,19 @@ function netFromAddress(addr?: string | null): NetKind {
     return null;
 }
 
-function networkLabel(net: NetKind): string {
+function networkLabel(net: NetKind, resolving?: boolean, unknown?: boolean): string {
     if (net === 'mainnet') return 'Cardano Mainnet';
     if (net === 'preprod') return 'Cardano Preprod (Testnet)';
     if (net === 'preview') return 'Cardano Preview (Testnet)';
-    return 'Đang xác định';
+    // Ba trạng thái "chưa biết" KHÔNG được nói giống nhau.
+    //
+    // Cũ: cả ba đều in "Đang xác định" (bản tiếng Anh: "Detecting"). Chữ đó hứa có
+    // một lượt dò đang chạy. Nhưng lượt gọi chỉ chạy ĐÚNG MỘT LẦN lúc vào khu đã
+    // đăng nhập; hỏng một lần là hỏng vĩnh viễn, và màn hình vẫn "Detecting" mãi.
+    // Người dùng ngồi chờ một thứ không bao giờ tới, và không có nút nào để cứu.
+    if (resolving) return 'Đang kiểm tra…';
+    if (unknown) return 'Chưa kiểm được — kéo xuống để thử lại';
+    return 'Chưa kiểm';
 }
 
 // Tiền tố subdomain explorer theo từng mạng (mainnet = không tiền tố).
@@ -367,6 +397,8 @@ const AccountScreen = () => {
     // CẢ HAI ví (phoenix + standard) — hiện tách bạch, không gộp.
     const chainWallets = useSelector(selectChainWallets);
     const network = useSelector((state: RootState) => state.user.network);
+    const networkResolving = useSelector((state: RootState) => state.user.networkResolving);
+    const networkUnknown = useSelector((state: RootState) => state.user.networkUnknown);
     const phoenixKey = useSelector((state: RootState) => state.user.phoenixKey);
     // Địa-chỉ-2: khoá điều-khiển DID (quản-trị, KHÔNG giữ tài sản). null = chưa lấy được.
     const controllerPkh = useSelector((state: RootState) => state.user.controllerPkh);
@@ -395,15 +427,37 @@ const AccountScreen = () => {
     // backend. Dùng làm fallback để ví HIỆN kể cả khi /wallet/all chưa trả (deriver backend
     // chưa sẵn). Không cần mạng, không rò khoá (chỉ ra địa-chỉ công khai).
     const [localAddr, setLocalAddr] = useState<string | null>(null);
+    // Máy này có khoá phần cứng thật không. `null` = chưa đo xong.
+    const [hasHwKey, setHasHwKey] = useState<boolean | null>(null);
+    // Vì sao địa chỉ ví trống — để nói đúng lý do thay vì in một dấu gạch câm.
+    const [addrReason, setAddrReason] = useState<'no_wallet' | 'error' | null>(null);
+    useEffect(() => {
+        let alive = true;
+        (async () => {
+            try {
+                const pub = await ownerPublicKey();
+                if (alive) setHasHwKey(!!pub);
+            } catch {
+                if (alive) setHasHwKey(false);
+            }
+        })();
+        return () => { alive = false; };
+    }, []);
     useEffect(() => {
         let alive = true;
         (async () => {
             try {
                 const kek = await getStoredMasterKek();
-                if (!kek) return;
+                if (!kek) { if (alive) setAddrReason('no_wallet'); return; }
                 const addr = await taad.deriveWalletAddress(kek, 0, WALLET_NETWORK);
-                if (alive && addr) setLocalAddr(addr);
-            } catch { /* giữ null → hiện "—" */ }
+                if (alive && addr) { setLocalAddr(addr); setAddrReason(null); }
+                else if (alive) setAddrReason('error');
+            } catch {
+                // Trước đây `catch` nuốt im lặng và màn hình in một dấu gạch. Người dùng
+                // không phân biệt được "máy chưa lập ví" với "lập rồi nhưng đọc hỏng" —
+                // hai ca cần hai hành động khác hẳn nhau.
+                if (alive) setAddrReason('error');
+            }
         })();
         return () => { alive = false; };
     }, []);
@@ -415,8 +469,98 @@ const AccountScreen = () => {
     const realNet: NetKind = normNetwork(network) ?? netFromAddress(walletAddress);
 
     const did = phoenixKey?.did ?? user?.did ?? '';
+
+    /**
+     * Kéo-xuống-làm-mới. Trước đây màn này KHÔNG có, và đó là lỗ hổng thật:
+     * ba lượt gọi (`refreshWallet`, `resolveNetwork`, `refreshControllerPkh`) chỉ chạy
+     * ĐÚNG MỘT LẦN lúc vào khu đã đăng nhập (`navigation/index.tsx`). Nhà vườn ngoài
+     * vườn sóng yếu, lượt đó hỏng — và hỏng vĩnh viễn. Địa chỉ ví "—", Mạng "Detecting",
+     * không nút nào cứu được, thoát app vào lại cũng không gọi lại.
+     */
+    const [refreshing, setRefreshing] = useState(false);
+    const onRefresh = React.useCallback(async () => {
+        if (!did) return;
+        setRefreshing(true);
+        try {
+            await Promise.allSettled([
+                dispatch(refreshWallet(did)),
+                dispatch(resolveNetwork(did)),
+                dispatch(refreshControllerPkh(did)),
+            ]);
+        } finally {
+            // `finally` chứ không đặt sau `await`: một lượt ném là vòng xoay quay mãi.
+            setRefreshing(false);
+        }
+    }, [dispatch, did]);
     // Modal "Tài sản khác" (ADA + token khác + hợp đồng còn hạn).
     const [assetsOpen, setAssetsOpen] = useState(false);
+
+    // Bảng chia LAMP. Người dùng hỏi "tôi có bao nhiêu LAMP" nhưng con số đó nằm ở
+    // HAI chỗ khác nhau: LAMP tự do trong ví, và LAMP Wakeme còn khoá trong vault.
+    // Cộng gộp một số duy nhất là nói dối theo cả hai chiều — số trong ví thì tiêu
+    // được ngay, số trong vault thì chưa.
+    const [lampOpen, setLampOpen] = useState(false);
+    const [vault, setVault] = useState<VaultStatusResponse | null>(null);
+    const [vaultState, setVaultState] = useState<'idle' | 'loading' | 'ok' | 'closed'>('idle');
+
+    // Chỉ hỏi máy chủ khi người dùng MỞ popup — không nạp trước ở màn Tài khoản.
+    // Cửa `/wakeme/vault/{did}` hiện ném 501 vô điều kiện trên preprod
+    // (ActivationVaultServiceImpl.java:158-159), nên nạp sẵn chỉ tốn một lượt gọi
+    // hỏng cho mọi người vào màn này.
+    const openLamp = React.useCallback(() => {
+        setLampOpen(true);
+        if (!did || vaultState === 'loading' || vaultState === 'ok') return;
+        setVaultState('loading');
+        getVaultStatus(did)
+            .then((v) => { setVault(v); setVaultState('ok'); })
+            .catch(() => { setVault(null); setVaultState('closed'); });
+    }, [did, vaultState]);
+
+    // KHÔNG in 0 khi chưa biết. "0 LAMP" và "chưa hỏi được máy chủ" là hai việc
+    // khác hẳn nhau, mà chỉ một trong hai đáng để người dùng đi khiếu nại.
+    //
+    // ── Vì sao khối này được viết lại (nhà LAMP báo 21/08) ───────────────────
+    // Wakeme là **CHO MƯỢN để tiêu dịch vụ**, KHÔNG phải tặng
+    // (`Papers/pot-catalog.md:88`). LAMP rời vault đi đúng một trong hai đích
+    // (`:43-64`, chủ dự án chốt 12/08): về **pot** — ngày nào không dùng thì thu
+    // 1 LAMP — hoặc thành **sở hữu** sau khi qua `OwnEpoch`. Nên tài sản thật chỉ
+    // gồm số dư ví + `vestedUnlocked`.
+    //
+    // Bản cũ sai HAI lần, và lỗi thứ nhất che lỗi thứ hai:
+    //   1. ĐƠN VỊ — `initialDlamp` là LAMP NGUYÊN, `lampBalance` là oildrop
+    //      (1 LAMP = 10⁶ oildrop). `fmtLamp(vault.initialDlamp)` chia LAMP nguyên
+    //      cho 10⁶ ⇒ 1001 LAMP hiện ra `0.001001`; và `BigInt(own) +
+    //      BigInt(vault.initialDlamp)` cộng thẳng hai đơn vị lệch nhau 10⁶.
+    //   2. NGHĨA — `initialDlamp` là số BAN ĐẦU, **không giảm** khi LAMP bị thu về
+    //      pot. Bỏ không dùng 30 ngày thì 30 LAMP đã về pot mà con số vẫn nguyên:
+    //      độ lệch lớn dần mỗi đêm, và luôn lệch về phía có lợi cho con số.
+    //   Vì (1) làm số nhỏ đi một triệu lần nên (2) không ai nhìn ra.
+    const vaultOk = vaultState === 'ok' && vault ? vault : null;
+    const vestedOildrop = lampWholeToOildrop(vaultOk?.vestedUnlocked);
+    /** Tài sản THẬT: ví + phần Wakeme đã mở khoá. Không gồm phần đang mượn. */
+    const lampOwnedText = (() => {
+        const own = chainWallet?.lampBalance;
+        if (own == null) return '—';
+        if (vaultState === 'loading') return '…';
+        if (vestedOildrop == null) return fmtLamp(own);
+        // `Math.trunc` chứ không `BigInt(own as any)`: `lampBalance` khai là `number`
+        // (`userSlice.ts:34`), và `BigInt()` NÉM khi số có phần lẻ. Ném ở đây là ném
+        // giữa lượt dựng màn Tài khoản — người dùng thấy màn trắng, không thấy lỗi.
+        // Bỏ luôn `as any`: ép kiểu đi qua chính là thứ đã che lỗi đơn vị ở khối trên.
+        return fmtLamp(BigInt(Math.trunc(own)) + vestedOildrop);
+    })();
+    /**
+     * Nói thẳng con số trên đang gồm những gì — đừng để người đọc tự đoán.
+     *
+     * BA ca, không phải hai. "đang hỏi" khác "hỏi hỏng": gộp chúng lại là in câu
+     * "chưa hỏi được phần Wakeme" ngay trong lúc còn đang hỏi — một KHẲNG ĐỊNH về
+     * thất bại chưa xảy ra, đặt ngay cạnh con số đang hiện `…`.
+     */
+    const lampOwnedSub = vestedOildrop != null
+        ? 'Trong ví + phần Wakeme đã mở khoá thành sở hữu'
+        : vaultState === 'loading'
+            ? 'Đang hỏi phần Wakeme…'
+            : 'Mới tính phần trong ví — chưa hỏi được phần Wakeme';
     // Popup chọn ngôn ngữ (Việt · Anh · Trung). `useLanguage` để dòng phụ của mục
     // "Ngôn ngữ" đổi ngay khi người dùng chọn xong.
     const [langOpen, setLangOpen] = useState(false);
@@ -543,6 +687,9 @@ const AccountScreen = () => {
         <View style={styles.root}>
             <ScrollView
                 showsVerticalScrollIndicator={false}
+                refreshControl={
+                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.accent} />
+                }
                 contentContainerStyle={[
                     styles.scrollContent,
                     // iOS-fix: chừa khoảng dưới cho CurvedTabBar (navbar nổi) khỏi che nội dung.
@@ -580,10 +727,14 @@ const AccountScreen = () => {
                     </View>
 
                     {/* DID badge */}
-                    <View style={styles.didBadge}>
+                    {/* Huy hiệu này trước đây hiện LUÔN LUÔN, kể cả khi ngay phía trên
+                    đang in "Chưa có danh tính" — hai câu mâu thuẫn trên cùng một màn.
+                    Người dùng đọc "đã xác minh" rồi đánh giá thấp rủi ro khi quyết
+                    định giữ tài sản. Nay chỉ hiện khi có DID thật. */}
+                {!!did && <View style={styles.didBadge}>
                         <Icon name="shield-check-outline" size={12} color={COLORS.success} />
                         <Text style={styles.didBadgeText}>Danh tính đã xác minh</Text>
-                    </View>
+                    </View>}
                 </Animated.View>
 
                 {/* ── Token balances ── */}
@@ -611,6 +762,7 @@ const AccountScreen = () => {
                             unit="LAMP"
                             color={COLORS.accent}
                             desc="Sinh MAGIC mỗi 5 ngày"
+                            onPress={openLamp}
                         />
                         {/* CARP — token hệ sinh thái thứ 3. TODO brand: icon/màu tạm; số dư chờ API Phoenix. */}
                         <TokenCard
@@ -632,6 +784,125 @@ const AccountScreen = () => {
                             <Text style={styles.tokenDesc}>ADA · token · hợp đồng</Text>
                         </TouchableOpacity>
                     </ScrollView>
+
+                    {/* Popup LAMP: tổng · phần Wakeme · phần của bạn.
+                        Nút "Nhận LAMP (Wakeme)" nằm ở ĐÂY, cạnh đúng con số nó tác động,
+                        thay vì chôn giữa danh sách cài đặt. Nó là việc làm MỘT LẦN cho mỗi
+                        người, nên khi vault đã có thì nút biến mất — không mời gọi một
+                        thao tác không lặp lại được. */}
+                    <Modal visible={lampOpen} transparent animationType="slide" onRequestClose={() => setLampOpen(false)}>
+                        <TouchableOpacity style={styles.explorerBackdrop} activeOpacity={1} onPress={() => setLampOpen(false)}>
+                            <View style={styles.assetSheet}>
+                                <Text style={styles.assetSheetTitle}>LAMP</Text>
+
+                                {/* Dòng đầu là TÀI SẢN, không phải tổng gộp. Phần đang mượn
+                                    nằm riêng bên dưới — đặt nó dưới chữ "Tổng cộng" là mời
+                                    người dùng coi khoản mượn như thứ bán được, đúng điều
+                                    pot này cấm (`Papers/pot-catalog.md:88`). */}
+                                <View style={styles.lampRow}>
+                                    <Icon name="lightning-bolt" size={18} color={COLORS.accent} />
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={styles.lampRowName}>LAMP của bạn</Text>
+                                        <Text style={styles.lampRowSub}>{lampOwnedSub}</Text>
+                                    </View>
+                                    <Text style={styles.lampTotalVal}>{lampOwnedText}</Text>
+                                </View>
+
+                                <View style={styles.lampRow}>
+                                    <Icon name="wallet-outline" size={18} color={COLORS.accent} />
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={styles.lampRowName}>Trong ví</Text>
+                                        <Text style={styles.lampRowSub}>Dùng được ngay</Text>
+                                    </View>
+                                    <Text style={styles.lampRowVal}>{fmtLamp(chainWallet?.lampBalance)}</Text>
+                                </View>
+
+                                {!vaultOk ? (
+                                    <View style={styles.lampRow}>
+                                        <Icon name="lightbulb-on-outline" size={18} color={COLORS.accent} />
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.lampRowName}>Wakeme</Text>
+                                            <Text style={styles.lampRowSub}>
+                                                {vaultState === 'loading' ? 'Đang hỏi máy chủ…' : 'Chưa nhận'}
+                                            </Text>
+                                        </View>
+                                        <Text style={styles.lampRowVal}>
+                                            {vaultState === 'loading' ? '…' : '—'}
+                                        </Text>
+                                    </View>
+                                ) : (<>
+                                    <View style={styles.lampRow}>
+                                        <Icon name="lock-open-variant-outline" size={18} color={COLORS.accent} />
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.lampRowName}>Wakeme đã mở khoá</Text>
+                                            <Text style={styles.lampRowSub}>Đã thành sở hữu của bạn</Text>
+                                        </View>
+                                        <Text style={styles.lampRowVal}>{fmtLampWhole(vaultOk.vestedUnlocked)}</Text>
+                                    </View>
+
+                                    <View style={styles.lampRow}>
+                                        <Icon name="hand-coin-outline" size={18} color={COLORS.accent} />
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.lampRowName}>Wakeme đang mượn</Text>
+                                            <Text style={styles.lampRowSub}>
+                                                Tiêu dịch vụ được, KHÔNG bán được. Ngày nào không dùng thì bị thu 1 LAMP về pot.
+                                            </Text>
+                                        </View>
+                                        <Text style={styles.lampRowVal}>{fmtLampWhole(vaultOk.conditionalLamp)}</Text>
+                                    </View>
+
+                                    {/* Chỉ hiện khi ĐÃ có phần bị thu — đây là dòng giải thích
+                                        vì sao số của người dùng giảm đi. Ẩn nó thì con số tụt
+                                        mà không ai nói vì sao. */}
+                                    {vaultOk.reclaimedToPotLamp > 0 && (
+                                        <View style={styles.lampRow}>
+                                            <Icon name="arrow-u-left-top" size={18} color={COLORS.textMuted} />
+                                            <View style={{ flex: 1 }}>
+                                                <Text style={styles.lampRowName}>Đã thu về pot</Text>
+                                                <Text style={styles.lampRowSub}>Phần bỏ không dùng, đã trả lại pot</Text>
+                                            </View>
+                                            <Text style={styles.lampRowVal}>{fmtLampWhole(vaultOk.reclaimedToPotLamp)}</Text>
+                                        </View>
+                                    )}
+                                </>)}
+
+                                {vaultState !== 'ok' && (WAKEME_CLAIM_READY ? (
+                                    <TouchableOpacity
+                                        style={styles.lampClaimBtn}
+                                        activeOpacity={0.88}
+                                        onPress={() => { setLampOpen(false); navigation.navigate('Wakeme'); }}
+                                    >
+                                        <Text style={styles.lampClaimTxt}>Nhận LAMP (Wakeme)</Text>
+                                        <Text style={styles.lampClaimSub}>Mỗi người chỉ nhận một lần</Text>
+                                    </TouchableOpacity>
+                                ) : (
+                                    /* Luồng nhận chưa ký được tới cuối. Vẽ một nút sáng mời bấm
+                                       là hứa một việc app chưa làm được: người dùng bấm, ký, rồi
+                                       chuỗi từ chối ở bước cuối — hỏng SAU khi đã hứa. Nói trước
+                                       thì họ mất 2 giây; hứa hão thì họ mất niềm tin. */
+                                    <TouchableOpacity
+                                        style={styles.lampNoticeBtn}
+                                        activeOpacity={0.88}
+                                        onPress={() => { setLampOpen(false); navigation.navigate('Wakeme'); }}
+                                    >
+                                        <Icon name="information-outline" size={16} color={COLORS.textMuted} />
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.lampNoticeTxt}>Nhận LAMP (Wakeme): tính năng chưa mở</Text>
+                                            <Text style={styles.lampNoticeSub}>Xem chi tiết ›</Text>
+                                        </View>
+                                    </TouchableOpacity>
+                                ))}
+
+                                <Text style={styles.lampNote}>
+                                    LAMP trong vault Wakeme mở khoá dần theo ngày. Con số chưa hiện nghĩa là máy chủ chưa cho biết — app không tự điền.
+                                </Text>
+
+                                <TouchableOpacity style={styles.assetClose} onPress={() => setLampOpen(false)}>
+                                    <Text style={styles.assetCloseTxt}>Đóng</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </TouchableOpacity>
+                    </Modal>
 
                     {/* Modal "Tài sản khác": ADA thật + token/hợp-đồng (chưa có nguồn → ghi rõ, KHÔNG bịa). */}
                     <Modal visible={assetsOpen} transparent animationType="slide" onRequestClose={() => setAssetsOpen(false)}>
@@ -663,11 +934,19 @@ const AccountScreen = () => {
                         {chainWallets.length > 0 ? (
                             chainWallets.map(w => <WalletBlock key={w.kind} entry={w} />)
                         ) : (
+                            /* Trống thì NÓI VÌ SAO, đừng in một dấu gạch câm. Hai lý do
+                               dẫn tới hai việc khác hẳn nhau: chưa lập ví thì phải lập,
+                               còn đọc hỏng thì chỉ cần thử lại. */
                             <InfoRow
                                 icon="wallet-outline"
                                 label="Địa chỉ ví (giữ tài sản)"
-                                value={walletAddress}
-                                copyable mono
+                                value={walletAddress || (
+                                    addrReason === 'no_wallet' ? 'Chưa lập ví trên máy này'
+                                    : addrReason === 'error' ? 'Chưa đọc được — kéo xuống để thử lại'
+                                    : ''
+                                )}
+                                copyable={!!walletAddress}
+                                mono={!!walletAddress}
                                 explorerNet={walletAddress ? realNet : null}
                             />
                         )}
@@ -686,20 +965,30 @@ const AccountScreen = () => {
                                 copyable mono
                             />
                         )}
+                        {/* Trước đây hàng này in cứng "Khoá phần cứng v1" bất kể máy có
+                            khoá phần cứng thật hay không — một lời khẳng định về bảo mật mà
+                            app không hề đo. Máy không có khoá HW vẫn đọc y hệt, rồi người
+                            dùng dựa vào đó mà quyết định giữ tài sản trong ví. Và "v1" là số
+                            phiên bản nội bộ, ngoài đội ra không ai hiểu.
+                            Nay nói đúng cái đo được: có khoá trên máy này hay không. */}
                         <InfoRow
                             icon="shield-key-outline"
-                            label="Chuẩn khoá"
-                            value="Khoá phần cứng v1"
+                            label="Khoá bảo vệ"
+                            value={hasHwKey === null
+                                ? ''
+                                : hasHwKey
+                                    ? 'Khoá nằm trong chip bảo mật của máy'
+                                    : 'Chưa có khoá trên máy này'}
                         />
                         <InfoRow
                             icon="earth"
                             label="Mạng"
-                            value={networkLabel(realNet)}
+                            value={networkLabel(realNet, networkResolving, networkUnknown)}
                         />
                         <View style={styles.walletNote}>
                             <Icon name="information-outline" size={13} color={COLORS.textMuted} />
                             <Text style={styles.walletNoteText}>
-                                <Text style={styles.walletNoteStrong}>Basic Wallet</Text> you hold the keys yourself (recovery via a 24-word phrase) — used to receive and transfer assets.{' '}
+                                <Text style={styles.walletNoteStrong}>Ví cơ bản</Text> do chính bạn giữ chìa — dùng để nhận và chuyển tài sản.{' '}
                                 <Text style={styles.walletNoteStrong}>Phoenix Wallet</Text> is managed by the system against your identity — used for activation and services.
                             </Text>
                         </View>
@@ -758,18 +1047,12 @@ const AccountScreen = () => {
                             onPress={() => navigation.navigate('PhoenixWallet')}
                         />
                         {/*
-                          WakeMe — cùng lý do bố trí như OrgDID bên dưới: tính năng cũng
+                          Wakeme — cùng lý do bố trí như OrgDID bên dưới: tính năng cũng
                           cần Master_KEK, nên lối trong PhoenixWalletScreen là chính đáng,
                           nhưng nếu ĐÓ là lối duy nhất thì người chưa lập ví không bao giờ
-                          nhìn thấy tính năng tồn tại. Lối này để họ THẤY, rồi màn WakeMe
+                          nhìn thấy tính năng tồn tại. Lối này để họ THẤY, rồi màn Wakeme
                           tự dẫn sang thiết lập ví nếu chưa có.
                         */}
-                        <MenuItem
-                            icon="lightbulb-on-outline"
-                            label="Nhận LAMP (WakeMe)"
-                            sublabel="Nhận phần LAMP khởi tạo vào vault của bạn"
-                            onPress={() => navigation.navigate('WakeMe')}
-                        />
                         <MenuItem
                             icon="card-account-details-outline"
                             label="Xuất danh tính"
@@ -897,7 +1180,10 @@ const AccountScreen = () => {
                         style={styles.topupBtn}
                         activeOpacity={0.88}
                         onPress={() =>
-                            Alert.alert(
+                            // showInfo (KHÔNG phải Alert.alert gốc): hộp thoại native
+                            // không đi qua lớp dịch, nên chuỗi tiếng Việt lộ nguyên
+                            // với người chọn ngôn ngữ khác.
+                            showInfo(
                                 'Chưa mở nạp tín dụng',
                                 'Đường nạp tín dụng MAGIC chưa mở trong bản này. Khi mở, nút này sẽ dẫn thẳng tới màn nạp.',
                             )
@@ -1092,6 +1378,23 @@ const styles = StyleSheet.create({
         borderWidth: 1.5, borderColor: 'rgba(55,71,79,0.22)', marginRight: 10,
         shadowColor: COLORS.shadow, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 1, shadowRadius: 10, elevation: 2,
     },
+    tokenTapHint: { position: 'absolute', right: 8, top: 10 },
+    lampRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+    lampRowName: { flex: 1, fontSize: 14, color: COLORS.text },
+    lampRowSub: { fontSize: 11, color: COLORS.textMuted, marginTop: 2 },
+    lampRowVal: { fontSize: 15, fontWeight: '800', color: COLORS.text },
+    lampTotalVal: { fontSize: 20, fontWeight: '900', color: COLORS.accent },
+    lampClaimBtn: { marginTop: 16, backgroundColor: COLORS.accent, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
+    lampClaimTxt: { fontSize: 15, fontWeight: '800', color: '#fff' },
+    lampClaimSub: { fontSize: 11, color: 'rgba(255,255,255,0.85)', marginTop: 2 },
+    lampNoticeBtn: {
+        marginTop: 16, flexDirection: 'row', alignItems: 'center', gap: 10,
+        backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.border,
+        borderRadius: 14, paddingVertical: 13, paddingHorizontal: 14,
+    },
+    lampNoticeTxt: { fontSize: 14, fontWeight: '700', color: COLORS.text },
+    lampNoticeSub: { fontSize: 11.5, color: COLORS.textMuted, marginTop: 2 },
+    lampNote: { fontSize: 12, color: COLORS.textMuted, marginTop: 12, lineHeight: 18 },
     assetSheet: { backgroundColor: COLORS.bg, borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: 18, paddingBottom: 28 },
     assetSheetTitle: { fontSize: 16, fontWeight: '800', color: COLORS.text, marginBottom: 8 },
     assetRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: COLORS.border },

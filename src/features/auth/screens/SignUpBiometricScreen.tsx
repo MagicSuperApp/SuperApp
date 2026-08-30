@@ -17,7 +17,7 @@ import ReactNativeBiometrics, { BiometryTypes } from 'react-native-biometrics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AUTH_BLUE } from '../theme';
 import StepIndicator from '../components/StepIndicator';
-import { showError } from '../../../utils/alert';
+import { showError, showWarning } from '../../../utils/alert';
 import {
   biometricKindFromType,
   phoenixKeyAuth,
@@ -26,6 +26,7 @@ import {
 import { loginUser } from '../../../store/userSlice';
 import { useDispatch } from 'react-redux';
 import { useBottomActionPadding } from '../../../hooks/useBottomActionPadding';
+import { t } from '../../../i18n';
 
 // PhoenixUser local registry — sẽ sync lên api.phoenixkey.me khi backend production sẵn sàng.
 // Mỗi entry: { username, did, createdAt }.
@@ -200,6 +201,24 @@ const SignUpBiometricScreen: React.FC = () => {
         return;
       }
       console.log('[SignUp] PhoenixKey enrollment failed:', e);
+      // NGÕ CỤT có lối ra — đừng chỉ hiện chữ rồi để người dùng đứng đó.
+      //
+      // `khoa_bi_thu_hoi` nghĩa là khoá còn trong máy nhưng máy chủ đã thu hồi:
+      // lookup từ chối vì không còn `active`, đăng ký lại từ chối vì khoá vẫn tồn
+      // tại. Cài lại app KHÔNG gỡ được (Keychain giữ khoá qua lần cài lại). Lối ra
+      // duy nhất là 24 từ, nên phải đưa nút đi thẳng tới đó.
+      //
+      // Đọc `e.reason` chứ KHÔNG dò chuỗi tiếng Việt trong `e.message`: dò chuỗi
+      // vỡ ngay khi đổi câu chữ hoặc khi người dùng đang dùng ngôn ngữ khác.
+      if (e?.reason === 'khoa_bi_thu_hoi') {
+        setStage('idle');
+        showWarning('Khoá trên máy này đã bị thu hồi', e?.message ?? '', {
+            confirmText: 'Dùng 24 từ khôi phục',
+            cancelText: 'Để sau',
+            onConfirm: () => navigation.navigate('RestoreIdentity'),
+        });
+        return;
+      }
       showError(e?.message || 'Không tạo được danh tính. Vui lòng thử lại.');
       setStage('idle');
     }
@@ -228,31 +247,36 @@ const SignUpBiometricScreen: React.FC = () => {
    */
   const askWhoIsHoldingThePhone = () => {
     Alert.alert(
-      'Máy này đã có một danh tính',
-      'Một danh tính đã được tạo trên máy này trước đó. Bạn là ai?',
+      t('Máy này đã có một danh tính'),
+      t('Một danh tính đã được tạo trên máy này trước đó. Bạn là ai?'),
       [
         {
-          text: 'Tôi là chủ danh tính đó',
+          text: t('Tôi là chủ danh tính đó'),
           onPress: () => {
             setStage('generating');
             void completeSignUp('resume');
           },
         },
         {
-          text: 'Người khác — tôi có 24 từ',
+          // NHÃN CŨ ghi "Người khác — tôi có 24 từ", và đó là một cái bẫy: khi khoá
+          // trên máy đã bị máy chủ thu hồi thì ĐÂY là lối ra DUY NHẤT, kể cả cho
+          // chính chủ. Mà chính chủ đọc "Người khác" thì không bao giờ bấm — họ có
+          // phải người khác đâu. Nút này phục vụ CẢ HAI nhóm, nên nhãn phải nói về
+          // thứ người dùng ĐANG CẦM (24 từ), không nói về họ là ai.
+          text: t('Tôi có 24 từ khôi phục'),
           onPress: () => navigation.navigate('RestoreIdentity'),
         },
         {
-          text: 'Người khác — chưa có',
+          text: t('Người khác — chưa có danh tính'),
           style: 'destructive',
           onPress: () =>
             showError(
-              'Bản ứng dụng này chưa giữ được hai danh tính trên cùng một máy — tạo danh tính '
-              + 'mới ở đây sẽ xoá vĩnh viễn khoá của người đang dùng máy. Bản cập nhật tới mở '
-              + 'được việc đó. Trong lúc chờ, bạn hãy tạo danh tính trên máy của mình.',
+              t('Bản ứng dụng này chưa giữ được hai danh tính trên cùng một máy — tạo danh tính ')
+              + t('mới ở đây sẽ xoá vĩnh viễn khoá của người đang dùng máy. Bản cập nhật tới mở ')
+              + t('được việc đó. Trong lúc chờ, bạn hãy tạo danh tính trên máy của mình.'),
             ),
         },
-        { text: 'Huỷ', style: 'cancel' },
+        { text: t('Huỷ'), style: 'cancel' },
       ],
     );
   };

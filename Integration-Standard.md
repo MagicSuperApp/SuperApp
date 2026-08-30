@@ -287,7 +287,7 @@ Một platform/module chỉ được coi là READY khi TẤT CẢ mục dưới 
   (đều chốt 2026-07-11, dạy sai so với canonical) vào `Legacy/`. Cất cây `MobileCore/` v0.2 (repo chủ
   đã lên v0.3, 0 importer trong `src/`) vào `Legacy/`. Sửa đường JWKS `/.well-known/jwks.json` →
   `/api/v1/.well-known/jwks.json` ở §5.1 (đường cũ trả 404 — đo 2026-08-05).
-- v0.2.1 (2026-07-12): Rà soát nhất quán — sửa Status header (v0.1→v0.2), path "Nguồn chốt" trỏ `Specs/`, gỡ ghi chú lỗi thời §7.1 (nav ĐÃ config-driven qua YC-3), cập nhật vị trí git token (§10.2, chuẩn mới `Projects/Agents/.env`), làm rõ CARP thanh toán = tầng mạng nội bộ (§10.4 nhất quán §4.2), thống nhất mô tả upstream (§10.1↔§11).
+- v0.2.1 (2026-07-12): Rà soát nhất quán — sửa Status header (v0.1→v0.2), path "Nguồn chốt" trỏ `Specs/`, gỡ ghi chú lỗi thời §7.1 (nav ĐÃ config-driven qua YC-3), cập nhật vị trí git token (§10.2, chuẩn mới `Agents/.env`), làm rõ CARP thanh toán = tầng mạng nội bộ (§10.4 nhất quán §4.2), thống nhất mô tả upstream (§10.1↔§11).
 - v0.2 (2026-07-12): Gộp về MỘT file duy nhất tại ROOT (`Integration-Standard.md`) — dời khỏi `Specs/` (references dùng tên "INTEGRATION-STANDARD §X" không đổi). Thêm §10 (vận hành: env/cờ/token UI) + §11 (danh mục platform) + thư mục `Integration/` chứa snapshot 5 nền tảng. Đây là nơi mọi agent/dev tham chiếu chuẩn tích hợp.
 - v0.1 (2026-06-17): Khởi tạo Integration Standard. Tổng hợp QĐ-1..QĐ-8 từ EXPANSION-ANALYSIS + INV-1/INV-2/INV-3. 8 mục: Manifest, Design token/brand, Identity/data, Config/billing, Embed-SDK, Registry/governance, Frontend consistency, Checklist.
 
@@ -315,7 +315,7 @@ Một platform/module chỉ được coi là READY khi TẤT CẢ mục dưới 
   thời vẫn là nguồn duy nhất — đánh dấu ⚠ ở §11. Khi họ publish xong → cất nốt bản ở đây.
 
 ### 10.2 Vị trí key / creds
-- **Git token (push/PR):** `.env` ở workspace cha NGOÀI repo (2026-07-12: chuẩn mới `Projects/Agents/.env`, cũ `Projects/.env`), biến `GH_TOKEN_<ACCOUNT>`. KHÔNG commit, KHÔNG dán giá trị, KHÔNG nhúng trong URL remote.
+- **Git token (push/PR):** `.env` ở workspace cha NGOÀI repo (2026-07-12: chuẩn mới `Agents/.env`, cũ `Projects/.env`), biến `GH_TOKEN_<ACCOUNT>`. KHÔNG commit, KHÔNG dán giá trị, KHÔNG nhúng trong URL remote.
 - **API host/key platform:** `.env` của SuperApp (gitignored; mẫu [`.env.example`](.env.example)). Quy ước biến: `<PLATFORM>_API_URL` · `<PLATFORM>_WS_URL`+`_WS_PATH` · `<PLATFORM>_API_KEY` · `<PLATFORM>_BACKEND_ENABLED`.
 - Platform dùng DID/session (OriLife/AladinWork/ProofChat) → KHÔNG static token; auth = PhoenixKey login → Bearer TTL (§3.1, §5.1).
 - **Token nhúng trong URL remote git = rò rỉ** — xoay vòng ngay, sửa `git remote set-url`.

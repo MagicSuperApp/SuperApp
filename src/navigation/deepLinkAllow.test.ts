@@ -44,7 +44,7 @@ describe('danh sách trắng deep-link', () => {
   });
 
   it('route HOST mang dữ liệu riêng KHÔNG có trong bảng', () => {
-    for (const r of ['Wakeme', 'TreeDrift', 'TreeShare', 'Guardian', 'ActivityLog']) {
+    for (const r of ['Wakeme', 'TreeDrift', 'TreeShare', 'Guardian', 'ActivityLog', 'MyDevices']) {
       expect(HOST_DEEP_LINK_PATHS[r]).toBeUndefined();
     }
   });

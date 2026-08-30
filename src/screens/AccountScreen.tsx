@@ -1089,6 +1089,12 @@ const AccountScreen = () => {
                             onPress={() => navigation.navigate('Guardian')}
                         />
                         <MenuItem
+                            icon="cellphone-link"
+                            label="Thiết bị của tôi"
+                            sublabel="Xem máy nào đang giữ khoá, đặt tên hoặc gỡ ra"
+                            onPress={() => navigation.navigate('MyDevices')}
+                        />
+                        <MenuItem
                             icon="history"
                             label="Nhật ký hoạt động"
                             sublabel="Lịch sử ký, xoay khoá, khôi phục"

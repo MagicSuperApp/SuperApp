@@ -64,6 +64,7 @@ import NotificationScreen from '../screens/NotificationScreen';
 import SignRequestScreen from '../screens/SignRequestScreen';
 import GuardianScreen from '../screens/GuardianScreen';
 import ActivityLogScreen from '../screens/ActivityLogScreen';
+import MyDevicesScreen from '../screens/MyDevicesScreen';
 // Host-level capture/identity screens (dùng chung nhiều luồng, chưa thuộc module nào)
 import FruitListScreen from '../screens/FruitListScreen';
 import FruitCropperScreen from '../screens/FruitCropperScreen';
@@ -1727,6 +1728,7 @@ const HOST_STACK_SCREENS: Array<{
   { name: 'SignRequest', component: SignRequestScreen, options: { headerShown: false } },
   { name: 'Guardian', component: GuardianScreen, options: { headerShown: false } },
   { name: 'ActivityLog', component: ActivityLogScreen, options: { headerShown: false } },
+  { name: 'MyDevices', component: MyDevicesScreen, options: { headerShown: false } },
   { name: 'Main', component: ProtectedMain, options: { headerShown: false } },
   // Màn Thông báo — đích của nút chuông trên AppHeader (host-level).
   { name: 'Notifications', component: NotificationScreen, options: { headerShown: false } },

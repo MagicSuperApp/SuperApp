@@ -1,20 +1,42 @@
 // modules/chat/features/chat/screens/ChatHomeScreen.tsx
 //
-// Dashboard ProofChat — danh sách phòng chat 1-1 dựa theo job.
+// Danh sách trò chuyện. Toàn bộ dữ-liệu tới từ máy chủ ProofChat; không còn
+// nhánh nào vẽ phòng mẫu khi máy chủ chưa mở.
+//
+// Máy chủ dùng ở màn này:
+//   GET  /conversations                 danh sách phòng
+//   GET  /member-requests/pending       lời mời gửi cho tôi
+//   POST /member-requests/:id/accept|decline
+//   POST /conversations/:id/join        vào phòng bằng mã
+//   (tạo phòng đi qua `proofchatService` vì còn phải dựng khoá cho phòng)
+//
+// Vật liệu Fluent: nền Mica cho cả màn, thanh đầu màn là tấm Acrylic, mỗi dòng
+// trò chuyện là một thẻ bo góc nổi nhẹ.
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity, StatusBar,
-  TextInput, Animated, Platform, RefreshControl, Modal,
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  Pressable,
+  StatusBar,
+  TextInput,
+  Animated,
+  Platform,
+  RefreshControl,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import { useSelector, useDispatch } from 'react-redux';
 import Toast from 'react-native-toast-message';
-import { RootState } from '../../../../../store';
+import type { RootState, AppDispatch } from '../../../../../store';
 import { NEUTRAL, withAlpha } from '../../../../../shared/theme';
 import { CHAT_THEME } from '../../../theme/colors';
-import JobRoomItem from '../components/JobRoomItem';
+import { ACRYLIC, ELEVATION, MOTION, RADIUS, SPACE, STROKE } from '../../../theme/fluent';
+import { MicaBackdrop } from '../../../shared/components/Fluent';
+import StateView from '../../../../../components/state/StateView';
+import ConversationItem from '../components/ConversationItem';
 import CreateConversationModal, {
   type CreateConversationPayload,
 } from '../components/CreateConversationModal';
@@ -22,15 +44,16 @@ import JoinConversationModal, {
   type JoinConversationPayload,
 } from '../components/JoinConversationModal';
 import InvitationsModal from '../components/InvitationsModal';
-import StateView from '../../../../../components/state/StateView';
-import type { AppDispatch } from '../../../../../store';
+import { Sheet, SheetRow } from '../components/Sheet';
 import {
   acceptInvitation,
-  createConversation,
+  declineInvitation,
   joinConversation,
   loadConversations,
+  loadInvitations,
   receiveDecryptedMessage,
-  rejectInvitation,
+  setMeId,
+  setTyping,
 } from '../../../store/chatSlice';
 import { isProofChatBackendEnabled } from '../../../../../services/proofchat-api';
 import {
@@ -39,277 +62,287 @@ import {
   init as initProofChat,
   onDecryptedMessage,
 } from '../../../../../services/proofchatService';
+import { getDid } from '../../../../../services/proofchatIdentity';
+import chatSocket from '../../../../../services/chatSocket';
 import { useCapabilityLive } from '../../../../../config/useCapabilityLive';
 
-type FilterKey = 'all' | 'unread' | 'escrow';
+type FilterKey = 'all' | 'unread' | 'groups';
 
 const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'all', label: 'Tất cả' },
   { key: 'unread', label: 'Chưa đọc' },
-  { key: 'escrow', label: 'Có ký quỹ' },
+  { key: 'groups', label: 'Nhóm' },
 ];
 
 const ChatHomeScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const dispatch = useDispatch<AppDispatch>();
-  const rooms = useSelector((s: RootState) => s.chat.rooms);
-  const sync = useSelector((s: RootState) => s.chat.sync);
+
+  const conversations = useSelector((s: RootState) => s.chat.conversations);
   const invitations = useSelector((s: RootState) => s.chat.invitations);
-  const publicConversationIds = useSelector(
-    (s: RootState) => s.chat.publicConversationIds,
-  );
-  const roomsStatus = useSelector((s: RootState) => s.chat.roomsStatus);
-  // Nguồn dữ liệu đang vẽ: 'mock' = phòng chat MẪU, không phải phòng của người dùng.
-  const source = useSelector((s: RootState) => s.chat.source);
+  const listStatus = useSelector((s: RootState) => s.chat.listStatus);
+  const invitationsStatus = useSelector((s: RootState) => s.chat.invitationsStatus);
+  const sync = useSelector((s: RootState) => s.chat.sync);
 
-  // Cổng runtime: chỉ tải dữ liệu THẬT khi BE ProofChat sống (probe /health 2xx).
-  // Chưa sống → giữ mock (UI không vỡ). Hook re-render khi cổng lật (backend vừa
-  // được sửa) mà KHÔNG cần build lại / mở lại màn.
+  // Cổng runtime: chỉ gọi máy chủ khi nó thật sự sống (probe /health). Hook này
+  // re-render khi cổng lật, nên máy chủ vừa mở lại là màn tự nạp — không cần
+  // đóng mở app.
   const proofchatLive = useCapabilityLive('proofchat');
-  const backendEnabled = proofchatLive && isProofChatBackendEnabled();
-  useEffect(() => {
-    if (backendEnabled) {
-      dispatch(loadConversations());
-    }
-  }, [backendEnabled, dispatch]);
-
-  // Nối MLS realtime: đăng ký tin ĐÃ GIẢI MÃ → đổ vào store, rồi init (kết nối
-  // socket.io + phiên MLS). Chạy khi backend sống; best-effort (không native/ offline
-  // → chỉ log, UI vẫn chạy mock). Đây là điểm gỡ H-15 "UI chưa nối proofchatService".
-  useEffect(() => {
-    if (!backendEnabled) return;
-    let alive = true;
-    onDecryptedMessage(m => {
-      if (!alive) return;
-      dispatch(receiveDecryptedMessage({
-        id: m.id,
-        conversationId: m.conversationId,
-        senderId: m.senderId,
-        isMine: m.isMine,
-        timestamp: m.timestamp,
-        plaintext: m.plaintext,
-        merkleVerified: m.merkleVerified,
-      }));
-    });
-    initProofChat().catch(err => console.warn('[ProofChat] init failed:', err));
-    return () => { alive = false; };
-  }, [backendEnabled, dispatch]);
+  const backendReady = proofchatLive && isProofChatBackendEnabled();
 
   const [filter, setFilter] = useState<FilterKey>('all');
   const [query, setQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
-
   const [createOpen, setCreateOpen] = useState(false);
   const [joinOpen, setJoinOpen] = useState(false);
-  const [invitationsOpen, setInvitationsOpen] = useState(false);
-  const [actionSheetOpen, setActionSheetOpen] = useState(false);
+  const [invitesOpen, setInvitesOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [joining, setJoining] = useState(false);
+  const [busyInvite, setBusyInvite] = useState<string | null>(null);
+  // `undefined` = chưa hỏi xong danh tính. Phải chờ mốc này rồi mới tải danh sách:
+  // `iAmAdmin` và tên phòng 1-1 đều tính theo "tôi là ai", tải trước thì mọi phòng
+  // nạp lúc đó vĩnh viễn thiếu nút quản lý.
+  const [identityResolved, setIdentityResolved] = useState<boolean>(false);
 
-  const pendingInvitations = useMemo(
-    () => invitations.filter(i => i.status === 'pending').length,
-    [invitations],
-  );
-
-  const headerFade = useRef(new Animated.Value(0)).current;
-  const headerSlide = useRef(new Animated.Value(-12)).current;
+  const headerAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.parallel([
-      Animated.timing(headerFade, { toValue: 1, duration: 400, useNativeDriver: true }),
-      Animated.timing(headerSlide, { toValue: 0, duration: 400, useNativeDriver: true }),
-    ]).start();
-    // headerFade/headerSlide là `useRef(...).current` — tham chiếu bền, thêm vào deps
-    // để đúng luật hook mà KHÔNG làm effect chạy lại.
-  }, [headerFade, headerSlide]);
+    Animated.timing(headerAnim, {
+      toValue: 1,
+      duration: MOTION.slow,
+      useNativeDriver: true,
+    }).start();
+  }, [headerAnim]);
 
-  const handleCreate = async (payload: CreateConversationPayload) => {
-    // Backend TẮT (mock) → tạo phòng cục-bộ như cũ, không cần thành viên.
-    if (!backendEnabled) {
-      dispatch(createConversation(payload));
-      setCreateOpen(false);
-      Toast.show({ type: 'success', text1: 'Đã tạo cuộc trò chuyện', text2: payload.title });
-      return;
-    }
+  // ── Mở phiên chat: danh tính → nhận tin đã mở → nối máy chủ ───────────────
+  useEffect(() => {
+    if (!backendReady) return;
+    let alive = true;
 
-    // Backend SỐNG → tạo nhóm THẬT qua MLS (Welcome đẩy cho thành viên đồng bộ).
-    const members = payload.participantIds ?? [];
-    if (members.length === 0) {
-      Toast.show({ type: 'error', text1: 'Chưa chọn thành viên', text2: 'Cần ít nhất 1 người để tạo nhóm.' });
-      return;
-    }
-    // DIRECT = trò chuyện 1-1. Chọn nhiều người mà vẫn gửi DIRECT thì service chỉ
-    // lấy members[0], những người còn lại rơi LẶNG LẼ — chặn ngay tại đây.
-    if (payload.type === 'DIRECT' && members.length > 1) {
-      Toast.show({
-        type: 'error',
-        text1: 'Trò chuyện riêng chỉ 1 người',
-        text2: 'Bỏ bớt người, hoặc đổi sang Nhóm để thêm nhiều thành viên.',
+    // Hỏi danh tính TRƯỚC. Không có phiên (did rỗng) vẫn mở khoá việc tải — người
+    // dùng còn xem được phòng, chỉ là không nhận ra mình trong đó.
+    getDid()
+      .then((did) => {
+        if (!alive) return;
+        if (did) dispatch(setMeId(did));
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (alive) setIdentityResolved(true);
       });
-      return;
-    }
-    setCreateOpen(false);
-    Toast.show({ type: 'info', text1: 'Đang tạo nhóm…', text2: payload.title });
+
+    onDecryptedMessage((m) => {
+      if (!alive) return;
+      dispatch(
+        receiveDecryptedMessage({
+          id: m.id,
+          conversationId: m.conversationId,
+          senderId: m.senderId,
+          isMine: m.isMine,
+          timestamp: m.timestamp,
+          plaintext: m.plaintext,
+          merkleVerified: m.merkleVerified,
+        }),
+      );
+    });
+
+    initProofChat()
+      .then(() => {
+        if (!alive) return;
+        // Chỉ báo "đang nhập" — gắn sau khi socket đã nối, nếu không `onTyping`
+        // đăng ký vào một socket chưa tồn tại và im lặng không làm gì.
+        chatSocket.onTyping((t: { userId: string; isTyping: boolean; roomId?: string }) => {
+          if (!alive || !t.roomId) return;
+          dispatch(
+            setTyping({
+              conversationId: t.roomId,
+              userId: t.userId,
+              isTyping: t.isTyping,
+            }),
+          );
+        });
+      })
+      .catch((err) => console.warn('[Chat] mở phiên thất bại:', err));
+
+    return () => {
+      alive = false;
+    };
+  }, [backendReady, dispatch]);
+
+  // ── Nạp danh sách phòng + lời mời ────────────────────────────────────────
+  useEffect(() => {
+    if (!backendReady || !identityResolved) return;
+    dispatch(loadConversations());
+    dispatch(loadInvitations());
+  }, [backendReady, identityResolved, dispatch]);
+
+  const handleRefresh = useCallback(async () => {
+    if (!backendReady) return;
+    setRefreshing(true);
+    await Promise.all([dispatch(loadConversations()), dispatch(loadInvitations())]);
+    setRefreshing(false);
+  }, [backendReady, dispatch]);
+
+  // ── Tạo phòng ────────────────────────────────────────────────────────────
+  const handleCreate = async (payload: CreateConversationPayload) => {
+    const members = payload.participantIds;
+    if (members.length === 0) return;
+
+    setCreating(true);
     const res =
       payload.type === 'DIRECT'
         ? await createDirectConversation(members[0])
-        // Truyền ĐÚNG loại người dùng chọn (GROUP / THREAD / JOB_NEGOTIATION).
         : await createGroupConversation(payload.title, members, payload.type);
-    if (res.ok) {
-      await dispatch(loadConversations());
-      if (res.welcomePublished === false) {
-        // Nhóm đã dựng trên máy nhưng lời mời CHƯA lên server → thành viên chưa vào
-        // được. Nói thật, đừng báo "đã tạo" rồi để phòng câm.
-        Toast.show({
-          type: 'info',
-          text1: 'Đã tạo nhóm — chưa mời được ai',
-          text2: 'Mạng yếu nên lời mời chưa gửi đi. App sẽ tự gửi lại khi mở chat lúc có mạng.',
-        });
-      } else {
-        Toast.show({ type: 'success', text1: 'Đã tạo nhóm', text2: payload.title });
-      }
+    setCreating(false);
+
+    if (!res.ok) {
+      Toast.show({
+        type: 'error',
+        text1: 'Chưa tạo được phòng',
+        text2: res.error ?? 'Thử lại sau ít phút.',
+      });
+      return;
+    }
+
+    setCreateOpen(false);
+    await dispatch(loadConversations());
+
+    if (res.welcomePublished === false) {
+      // Phòng đã dựng trên máy nhưng lời mời chưa lên được máy chủ — người được
+      // mời chưa vào được. Nói thẳng, đừng báo "đã tạo" rồi để phòng câm.
+      Toast.show({
+        type: 'info',
+        text1: 'Đã tạo phòng — chưa mời được ai',
+        text2: 'Mạng yếu nên lời mời chưa gửi đi. App sẽ tự gửi lại khi có mạng.',
+      });
     } else {
-      Toast.show({ type: 'error', text1: 'Tạo nhóm thất bại', text2: res.error ?? 'Thử lại sau.' });
+      Toast.show({ type: 'success', text1: 'Đã tạo phòng', text2: payload.title });
     }
   };
 
-  const handleJoin = (payload: JoinConversationPayload) => {
-    const isPublic = publicConversationIds.includes(payload.conversationId);
-    dispatch(joinConversation(payload));
-    setJoinOpen(false);
-    Toast.show({
-      type: 'success',
-      text1: isPublic ? 'Đã tham gia phòng' : 'Đã gửi yêu cầu tham gia',
-      text2: isPublic
-        ? `Phòng ${payload.conversationId} đã được thêm vào danh sách.`
-        : 'Yêu cầu sẽ chờ admin của phòng phê duyệt.',
-    });
+  // ── Vào phòng bằng mã ────────────────────────────────────────────────────
+  const handleJoin = async (payload: JoinConversationPayload) => {
+    setJoining(true);
+    try {
+      // Máy chủ quyết vào thẳng hay chờ duyệt — app chỉ đọc câu trả lời.
+      const res = await dispatch(joinConversation(payload)).unwrap();
+      setJoinOpen(false);
+      if (res.action === 'JOINED') {
+        await dispatch(loadConversations());
+        Toast.show({ type: 'success', text1: 'Đã vào phòng' });
+      } else {
+        Toast.show({
+          type: 'info',
+          text1: 'Đã gửi yêu cầu',
+          text2: 'Chờ người quản phòng đồng ý.',
+        });
+      }
+    } catch {
+      Toast.show({
+        type: 'error',
+        text1: 'Không vào được phòng',
+        text2: 'Kiểm tra lại mã phòng rồi thử lần nữa.',
+      });
+    } finally {
+      setJoining(false);
+    }
   };
 
-  const handleAcceptInvitation = (invitationId: string) => {
-    const inv = invitations.find(i => i.id === invitationId);
-    dispatch(acceptInvitation({ invitationId }));
-    Toast.show({
-      type: 'success',
-      text1: 'Đã tham gia',
-      text2: inv ? inv.conversationTitle : 'Đã chấp nhận lời mời.',
-    });
+  // ── Lời mời ──────────────────────────────────────────────────────────────
+  const handleAcceptInvite = async (id: string) => {
+    setBusyInvite(id);
+    try {
+      await dispatch(acceptInvitation(id)).unwrap();
+      await dispatch(loadConversations());
+      Toast.show({ type: 'success', text1: 'Đã tham gia' });
+    } catch {
+      Toast.show({ type: 'error', text1: 'Chưa tham gia được', text2: 'Thử lại sau.' });
+    } finally {
+      setBusyInvite(null);
+    }
   };
 
-  const handleRejectInvitation = (invitationId: string) => {
-    dispatch(rejectInvitation({ invitationId }));
-    Toast.show({
-      type: 'info',
-      text1: 'Đã từ chối lời mời',
-    });
+  const handleDeclineInvite = async (id: string) => {
+    setBusyInvite(id);
+    try {
+      await dispatch(declineInvitation(id)).unwrap();
+    } catch {
+      Toast.show({ type: 'error', text1: 'Chưa bỏ qua được', text2: 'Thử lại sau.' });
+    } finally {
+      setBusyInvite(null);
+    }
   };
 
-  const filtered = useMemo(() => {
-    let list = rooms;
-    if (filter === 'unread') list = list.filter(r => r.unreadCount > 0);
-    if (filter === 'escrow') list = list.filter(r => !!r.escrow);
-    if (query.trim()) {
-      const q = query.toLowerCase();
+  // ── Lọc + sắp xếp ────────────────────────────────────────────────────────
+  const visible = useMemo(() => {
+    let list = conversations;
+    if (filter === 'unread') list = list.filter((c) => c.unreadCount > 0);
+    if (filter === 'groups') list = list.filter((c) => c.type !== 'DIRECT');
+    const q = query.trim().toLowerCase();
+    if (q) {
       list = list.filter(
-        r =>
-          r.counterpartyName.toLowerCase().includes(q) ||
-          r.jobTitle.toLowerCase().includes(q) ||
-          r.jobCategory.toLowerCase().includes(q),
+        (c) =>
+          c.title.toLowerCase().includes(q) ||
+          c.participants.some((p) => p.name.toLowerCase().includes(q)),
       );
     }
     return [...list].sort(
-      (a, b) => (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0),
+      (a, b) => (b.lastMessageAt ?? b.createdAt) - (a.lastMessageAt ?? a.createdAt),
     );
-  }, [rooms, filter, query]);
+  }, [conversations, filter, query]);
 
-  const totalUnread = rooms.reduce((sum, r) => sum + r.unreadCount, 0);
-
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    if (backendEnabled) {
-      // Flag ON → tải lại thật từ BE.
-      await dispatch(loadConversations());
-    } else {
-      // Flag OFF → giữ trải nghiệm mock (giả lập độ trễ mạng).
-      await new Promise<void>(r => setTimeout(() => r(), 700));
-    }
-    setRefreshing(false);
-  };
+  const totalUnread = conversations.reduce((n, c) => n + c.unreadCount, 0);
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="dark-content" backgroundColor={NEUTRAL.bg} />
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+      <MicaBackdrop />
 
       <Animated.View
         style={[
           styles.header,
-          { opacity: headerFade, transform: [{ translateY: headerSlide }] },
+          {
+            opacity: headerAnim,
+            transform: [
+              {
+                translateY: headerAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [-10, 0],
+                }),
+              },
+            ],
+          },
         ]}
       >
         <View style={styles.headerTop}>
-          <TouchableOpacity
-            style={styles.backBtn}
-            onPress={() => navigation.goBack()}
-            hitSlop={8}
-          >
-            <Icon name="chevron-left" size={22} color={NEUTRAL.text} />
-          </TouchableOpacity>
+          <Pressable onPress={() => navigation.goBack()} hitSlop={8} style={styles.backBtn}>
+            <Icon name="chevron-left" size={26} color={NEUTRAL.text} />
+          </Pressable>
 
-          <View style={styles.headerCenter}>
+          <View style={styles.headerTitleWrap}>
             <Text style={styles.title}>Trò chuyện</Text>
-            {/* Hàng phụ (huy hiệu đồng bộ + danh tính đã xác thực) tạm ẩn. Bật lại thì
-                nhập lại `SyncStatusPill` và selector `s.chat.identity` — đã gỡ vì
-                để nguyên là hai lỗi lint dead-code.
-              <View style={styles.subRow}>
-              <SyncStatusPill state={sync} />
-              {identity.verified && (
-                <View style={styles.idPill}>
-                  <Icon name="account-check-outline" size={10} color={CHAT_THEME.primary} />
-                  <Text style={styles.idPillText}>Verified Identity</Text>
-                </View>
-              )}
-            </View> */}
+            {totalUnread > 0 && (
+              <Text style={styles.subtitle}>{totalUnread} tin chưa đọc</Text>
+            )}
           </View>
 
-          <TouchableOpacity
-            style={styles.iconBtn}
-            onPress={() => setInvitationsOpen(true)}
+          <Pressable
+            onPress={() => setInvitesOpen(true)}
             hitSlop={6}
+            style={styles.bellBtn}
+            accessibilityLabel="Lời mời"
           >
-            <Icon name="bell-outline" size={18} color={CHAT_THEME.primary} />
-            {pendingInvitations > 0 && (
+            <Icon name="email-outline" size={19} color={CHAT_THEME.primary} />
+            {invitations.length > 0 && (
               <View style={styles.bellBadge}>
                 <Text style={styles.bellBadgeText}>
-                  {pendingInvitations > 9 ? '9+' : pendingInvitations}
+                  {invitations.length > 9 ? '9+' : invitations.length}
                 </Text>
               </View>
             )}
-          </TouchableOpacity>
+          </Pressable>
         </View>
-
-        {/*
-          KHÔNG nút ví, KHÔNG ô "Đang khóa". Chat không có ví/escrow — quyết định
-          đã ghi trong `module.manifest.json` của proofchat. Ô "Đang khóa" cũ đọc
-          `wallet.lockedInEscrow` từ store (dữ-liệu MOCK): nó bày một số dư có vẻ
-          thật ngay trên màn chat. Số dư giả nguy hơn nút chết (issue #110).
-        */}
-        <View style={styles.statsStrip}>
-          <Stat label="Phòng" value={rooms.length} />
-          <View style={styles.statDivider} />
-          <Stat label="Chưa đọc" value={totalUnread} accent />
-        </View>
-
-        {/* Cùng lý lẽ với khối chú thích ngay trên: dữ-liệu MẪU bày ra mà không nói là
-            mẫu thì nguy hơn một nút chết. Máy chủ ProofChat chưa sống thì màn này vẫn
-            vẽ đủ phòng, đủ tin nhắn, đủ số "chưa đọc" — người dùng nhắn vào đó rồi ngồi
-            đợi trả lời. Nói thẳng một dòng, và chỉ hiện đúng lúc còn đang mẫu. */}
-        {source === 'mock' && (
-          <View style={styles.mockNotice}>
-            <Icon name="information-outline" size={13} color={NEUTRAL.textMuted} />
-            <Text style={styles.mockNoticeText}>
-              Đây là phòng chat mẫu để xem trước. Máy chủ trò chuyện chưa mở, tin nhắn gửi ở
-              đây chưa tới ai.
-            </Text>
-          </View>
-        )}
 
         <View style={styles.searchBox}>
           <Icon name="magnify" size={18} color={NEUTRAL.textMuted} />
@@ -317,70 +350,70 @@ const ChatHomeScreen: React.FC = () => {
             style={styles.searchInput}
             value={query}
             onChangeText={setQuery}
-            placeholder="Tìm phòng theo tên, công việc…"
+            placeholder="Tìm theo tên phòng hoặc người"
             placeholderTextColor={NEUTRAL.textMuted}
           />
           {query.length > 0 && (
-            <TouchableOpacity onPress={() => setQuery('')} hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}>
+            <Pressable onPress={() => setQuery('')} hitSlop={12}>
               <Icon name="close-circle" size={16} color={NEUTRAL.textMuted} />
-            </TouchableOpacity>
+            </Pressable>
           )}
         </View>
 
         <View style={styles.filterRow}>
-          {FILTERS.map(f => {
+          {FILTERS.map((f) => {
             const active = filter === f.key;
             return (
-              <TouchableOpacity
+              <Pressable
                 key={f.key}
                 onPress={() => setFilter(f.key)}
                 style={[styles.filterPill, active && styles.filterPillActive]}
-                activeOpacity={0.8}
               >
                 <Text style={[styles.filterText, active && styles.filterTextActive]}>
                   {f.label}
                 </Text>
-              </TouchableOpacity>
+              </Pressable>
             );
           })}
         </View>
       </Animated.View>
 
       <FlatList
-        data={filtered}
-        keyExtractor={r => r.id}
+        data={visible}
+        keyExtractor={(c) => c.id}
         renderItem={({ item, index }) => (
-          <JobRoomItem
-            room={item}
+          <ConversationItem
+            conversation={item}
             index={index}
-            onPress={() =>
-              navigation.navigate('ChatRoom', { roomId: item.id })
-            }
+            onPress={() => navigation.navigate('ChatRoom', { roomId: item.id })}
           />
         )}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
+        ListHeaderComponent={<View style={{ height: SPACE.md }} />}
         ListEmptyComponent={
-          // Thứ tự trạng thái khi CHƯA có phòng nào:
-          //  1. Backend ON + đang tải lần đầu → loading skeleton.
-          //  2. Backend ON + tải lỗi → error (kéo/nhấn thử lại).
-          //  3. Offline → trạng thái offline thân thiện (INV-1: vẫn xem phòng đã tải).
-          //  4. Còn lại → empty thường (không tìm thấy / chưa có trò chuyện).
-          backendEnabled && roomsStatus === 'loading' ? (
+          !backendReady ? (
+            <StateView
+              status="offline"
+              title="Chưa kết nối được"
+              message="Máy chủ trò chuyện chưa sẵn sàng. Màn hình sẽ tự hiện phòng của bạn ngay khi kết nối lại."
+              onRetry={handleRefresh}
+            />
+          ) : listStatus === 'loading' ? (
             <StateView status="loading" loadingLines={5} />
-          ) : backendEnabled && roomsStatus === 'error' ? (
-            <StateView status="error" onRetry={handleRefresh} />
-          ) : !sync.online && rooms.length === 0 ? (
+          ) : listStatus === 'error' ? (
+            <StateView
+              status="error"
+              title="Chưa tải được"
+              message="Kéo xuống để thử lại."
+              onRetry={handleRefresh}
+            />
+          ) : !sync.online ? (
             <StateView status="offline" onRetry={handleRefresh} />
           ) : (
             <EmptyState query={query} filter={filter} />
           )
         }
         contentContainerStyle={
-          // Empty/loading/error: chiếm hết chiều cao + căn giữa dọc (tránh lệch trên
-          // cùng). Có phòng: chừa khoảng dưới cho CurvedTabBar (navbar nổi iOS).
-          filtered.length === 0
-            ? { flexGrow: 1, justifyContent: 'center' }
-            : { paddingBottom: 130 }
+          visible.length === 0 ? styles.listCentered : styles.listContent
         }
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -393,334 +426,185 @@ const ChatHomeScreen: React.FC = () => {
         }
       />
 
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={() => setActionSheetOpen(true)}
-        activeOpacity={0.85}
+      <Pressable
+        style={({ pressed }) => [styles.fab, pressed && { opacity: 0.9 }]}
+        onPress={() => setMenuOpen(true)}
+        accessibilityRole="button"
+        accessibilityLabel="Trò chuyện mới"
       >
         <Icon name="plus" size={26} color={NEUTRAL.white} />
-      </TouchableOpacity>
+      </Pressable>
 
-      <Modal
-        visible={actionSheetOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setActionSheetOpen(false)}
-        statusBarTranslucent
-      >
-        <TouchableOpacity
-          style={styles.actionSheetOverlay}
-          activeOpacity={1}
-          onPress={() => setActionSheetOpen(false)}
-        >
-          <View style={styles.actionSheet}>
-            <View style={styles.actionSheetHandle} />
-            <Text style={styles.actionSheetTitle}>Cuộc trò chuyện</Text>
-
-            <TouchableOpacity
-              style={styles.actionItem}
-              activeOpacity={0.85}
-              onPress={() => {
-                setActionSheetOpen(false);
-                setCreateOpen(true);
-              }}
-            >
-              <View style={styles.actionItemIcon}>
-                <Icon name="chat-plus-outline" size={20} color={CHAT_THEME.primary} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.actionItemTitle}>Tạo cuộc trò chuyện</Text>
-                <Text style={styles.actionItemDesc}>
-                  Mở phòng mới (DIRECT, GROUP, THREAD, JOB_NEGOTIATION)
-                </Text>
-              </View>
-              <Icon name="chevron-right" size={18} color={NEUTRAL.textMuted} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.actionItem}
-              activeOpacity={0.85}
-              onPress={() => {
-                setActionSheetOpen(false);
-                setJoinOpen(true);
-              }}
-            >
-              <View style={styles.actionItemIcon}>
-                <Icon name="account-multiple-plus-outline" size={20} color={CHAT_THEME.primary} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.actionItemTitle}>Tham gia cuộc trò chuyện</Text>
-                <Text style={styles.actionItemDesc}>
-                  Nhập ID phòng để vào hoặc gửi yêu cầu duyệt
-                </Text>
-              </View>
-              <Icon name="chevron-right" size={18} color={NEUTRAL.textMuted} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.actionCancel}
-              onPress={() => setActionSheetOpen(false)}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.actionCancelText}>Đóng</Text>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+      <Sheet visible={menuOpen} onClose={() => setMenuOpen(false)} title="Bắt đầu">
+        <SheetRow
+          icon="chat-plus-outline"
+          label="Trò chuyện mới"
+          description="Chọn người và mở một phòng"
+          onPress={() => {
+            setMenuOpen(false);
+            setCreateOpen(true);
+          }}
+        />
+        <SheetRow
+          icon="login-variant"
+          label="Vào phòng bằng mã"
+          description="Dùng mã phòng người khác gửi cho bạn"
+          onPress={() => {
+            setMenuOpen(false);
+            setJoinOpen(true);
+          }}
+        />
+      </Sheet>
 
       <CreateConversationModal
         visible={createOpen}
+        submitting={creating}
         onClose={() => setCreateOpen(false)}
         onSubmit={handleCreate}
-        requireMembers={backendEnabled}
       />
       <JoinConversationModal
         visible={joinOpen}
+        submitting={joining}
         onClose={() => setJoinOpen(false)}
         onSubmit={handleJoin}
-        publicConversationIds={publicConversationIds}
       />
       <InvitationsModal
-        visible={invitationsOpen}
+        visible={invitesOpen}
         invitations={invitations}
-        onClose={() => setInvitationsOpen(false)}
-        onAccept={handleAcceptInvitation}
-        onReject={handleRejectInvitation}
+        loading={invitationsStatus === 'loading'}
+        busyId={busyInvite}
+        onClose={() => setInvitesOpen(false)}
+        onAccept={handleAcceptInvite}
+        onDecline={handleDeclineInvite}
       />
     </View>
   );
 };
 
-const Stat: React.FC<{
-  label: string; value: number | string; accent?: boolean; small?: boolean;
-}> = ({ label, value, accent, small }) => (
-  <View style={styles.stat}>
-    <Text
-      style={[
-        styles.statValue,
-        accent && { color: CHAT_THEME.primary },
-        small && { fontSize: 14 },
-      ]}
-    >
-      {value}
-    </Text>
-    <Text style={styles.statLabel}>{label}</Text>
-  </View>
-);
-
 const EmptyState: React.FC<{ query: string; filter: FilterKey }> = ({ query, filter }) => (
   <View style={styles.empty}>
     <View style={styles.emptyIcon}>
-      <Icon name="message-outline" size={36} color={CHAT_THEME.primary} />
+      <Icon name="message-outline" size={34} color={CHAT_THEME.primary} />
     </View>
     <Text style={styles.emptyTitle}>
       {query ? 'Không tìm thấy phòng nào' : 'Chưa có cuộc trò chuyện'}
     </Text>
     <Text style={styles.emptyDesc}>
       {query
-        ? 'Thử từ khóa khác hoặc xóa bộ lọc.'
+        ? 'Thử từ khoá khác.'
         : filter === 'unread'
-        ? 'Tất cả tin nhắn đã được đọc.'
-        : filter === 'escrow'
-        ? 'Chưa có job nào có ký quỹ.'
-        : 'Khi bạn tạo job hoặc nhận job, phòng chat sẽ xuất hiện ở đây.'}
+        ? 'Bạn đã đọc hết tin rồi.'
+        : filter === 'groups'
+        ? 'Bạn chưa ở nhóm nào.'
+        : 'Nhấn nút cộng để mở cuộc trò chuyện đầu tiên.'}
     </Text>
   </View>
 );
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: NEUTRAL.bg },
+  root: { flex: 1 },
   header: {
-    paddingTop: Platform.OS === 'ios' ? 56 : 40,
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    backgroundColor: NEUTRAL.bg,
-    borderBottomWidth: 1,
-    borderBottomColor: NEUTRAL.border,
+    paddingTop: Platform.OS === 'ios' ? 58 : 44,
+    paddingHorizontal: SPACE.lg,
+    paddingBottom: SPACE.md,
+    backgroundColor: ACRYLIC.base.fill,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: STROKE.outer,
   },
   headerTop: {
-    flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACE.sm,
+    marginBottom: SPACE.md,
   },
-  backBtn: {
-    width: 36, height: 36, borderRadius: 12,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  headerCenter: { flex: 1, gap: 4 },
-  title: {
-    fontSize: 22, fontWeight: '800',
-    color: NEUTRAL.text, letterSpacing: -0.4,
-  },
-  subRow: { flexDirection: 'row', gap: 6, alignItems: 'center', flexWrap: 'wrap' },
-  idPill: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8,
+  backBtn: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
+  headerTitleWrap: { flex: 1 },
+  title: { fontSize: 24, fontWeight: '700', color: NEUTRAL.text, letterSpacing: -0.5 },
+  subtitle: { fontSize: 12, color: CHAT_THEME.primary, fontWeight: '600', marginTop: 1 },
+  bellBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: RADIUS.md,
     backgroundColor: withAlpha(CHAT_THEME.primary, 0.10),
-  },
-  idPillText: {
-    fontSize: 9, fontWeight: '800',
-    color: CHAT_THEME.primary, letterSpacing: 0.4,
-  },
-  iconBtn: {
-    width: 36, height: 36, borderRadius: 12,
-    backgroundColor: withAlpha(CHAT_THEME.primary, 0.10),
-    alignItems: 'center', justifyContent: 'center',
-    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   bellBadge: {
-    position: 'absolute', top: -3, right: -3,
-    minWidth: 16, height: 16, paddingHorizontal: 4, borderRadius: 8,
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    minWidth: 17,
+    height: 17,
+    paddingHorizontal: 4,
+    borderRadius: RADIUS.pill,
     backgroundColor: NEUTRAL.error,
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1.5, borderColor: NEUTRAL.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: NEUTRAL.white,
   },
-  bellBadgeText: { fontSize: 9, fontWeight: '800', color: NEUTRAL.white },
-  mockNotice: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 6,
-    marginTop: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 10,
-    backgroundColor: NEUTRAL.bg,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: NEUTRAL.textMuted,
-  },
-  mockNoticeText: {
-    flex: 1,
-    fontSize: 11,
-    lineHeight: 15,
-    color: NEUTRAL.textMuted,
-  },
-  statsStrip: {
-    flexDirection: 'row',
-    backgroundColor: NEUTRAL.bgSoft,
-    borderRadius: 14,
-    paddingVertical: 12,
-    marginBottom: 12,
-    borderWidth: 1, borderColor: NEUTRAL.border,
-  },
-  stat: { flex: 1, alignItems: 'center', gap: 2 },
-  statValue: {
-    fontSize: 17, fontWeight: '800',
-    color: NEUTRAL.text, letterSpacing: -0.4,
-  },
-  statLabel: { fontSize: 10, color: NEUTRAL.textMuted, fontWeight: '600' },
-  statDivider: { width: 1, backgroundColor: NEUTRAL.border, marginVertical: 4 },
+  bellBadgeText: { fontSize: 9.5, fontWeight: '800', color: NEUTRAL.white },
+
   searchBox: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: Platform.OS === 'ios' ? 10 : 6,
-    borderRadius: 12,
-    backgroundColor: NEUTRAL.bgSoft,
-    borderWidth: 1, borderColor: NEUTRAL.border,
-    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACE.sm,
+    height: 44,
+    paddingHorizontal: SPACE.md,
+    borderRadius: RADIUS.md,
+    backgroundColor: 'rgba(255,255,255,0.78)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: STROKE.outer,
+    marginBottom: SPACE.md,
   },
-  searchInput: { flex: 1, fontSize: 13, color: NEUTRAL.text, padding: 0 },
-  filterRow: { flexDirection: 'row', gap: 8 },
+  searchInput: { flex: 1, fontSize: 14, color: NEUTRAL.text, padding: 0 },
+
+  filterRow: { flexDirection: 'row', gap: SPACE.sm },
   filterPill: {
-    paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20,
-    backgroundColor: NEUTRAL.bgSoft,
-    borderWidth: 1, borderColor: NEUTRAL.border,
+    paddingHorizontal: SPACE.lg,
+    paddingVertical: 7,
+    borderRadius: RADIUS.pill,
+    backgroundColor: 'rgba(255,255,255,0.72)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: STROKE.outer,
   },
-  filterPillActive: {
-    backgroundColor: CHAT_THEME.primary,
-    borderColor: CHAT_THEME.primary,
-  },
-  filterText: { fontSize: 12, fontWeight: '600', color: NEUTRAL.textSub },
+  filterPillActive: { backgroundColor: CHAT_THEME.primary, borderColor: CHAT_THEME.primary },
+  filterText: { fontSize: 12.5, fontWeight: '600', color: NEUTRAL.textSub },
   filterTextActive: { color: NEUTRAL.white },
-  separator: { height: 1, backgroundColor: NEUTRAL.borderSoft, marginLeft: 78 },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
+
+  listCentered: { flexGrow: 1, justifyContent: 'center' },
+  // Chừa chỗ cho thanh điều-hướng nổi ở đáy màn.
+  listContent: { paddingBottom: 130 },
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: SPACE.xxl },
   emptyIcon: {
-    width: 72, height: 72, borderRadius: 24,
+    width: 72,
+    height: 72,
+    borderRadius: RADIUS.xl,
     backgroundColor: withAlpha(CHAT_THEME.primary, 0.10),
-    alignItems: 'center', justifyContent: 'center', marginBottom: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: SPACE.lg,
   },
   emptyTitle: { fontSize: 16, fontWeight: '700', color: NEUTRAL.text, marginBottom: 6 },
   emptyDesc: {
-    fontSize: 13, color: NEUTRAL.textMuted, textAlign: 'center', lineHeight: 19,
+    fontSize: 13,
+    color: NEUTRAL.textMuted,
+    textAlign: 'center',
+    lineHeight: 19,
   },
 
   fab: {
     position: 'absolute',
-    right: 18,
-    bottom: 75,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    right: SPACE.lg,
+    bottom: 78,
+    width: 58,
+    height: 58,
+    borderRadius: RADIUS.xl,
     backgroundColor: CHAT_THEME.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: CHAT_THEME.primaryDeep,
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 6,
+    ...ELEVATION.dialog,
   },
-
-  actionSheetOverlay: {
-    flex: 1,
-    backgroundColor: NEUTRAL.overlay,
-    justifyContent: 'flex-end',
-  },
-  actionSheet: {
-    backgroundColor: NEUTRAL.bg,
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: Platform.OS === 'ios' ? 24 : 16,
-    gap: 8,
-  },
-  actionSheetHandle: {
-    alignSelf: 'center',
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: NEUTRAL.border,
-    marginBottom: 8,
-  },
-  actionSheetTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: NEUTRAL.textMuted,
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-    paddingHorizontal: 4,
-    marginBottom: 4,
-  },
-  actionItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    borderRadius: 14,
-    backgroundColor: NEUTRAL.bgSoft,
-    borderWidth: 1,
-    borderColor: NEUTRAL.border,
-  },
-  actionItemIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: withAlpha(CHAT_THEME.primary, 0.12),
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  actionItemTitle: { fontSize: 14, fontWeight: '700', color: NEUTRAL.text },
-  actionItemDesc: { fontSize: 11, color: NEUTRAL.textMuted, marginTop: 2 },
-  actionCancel: {
-    height: 46,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: NEUTRAL.bgSoft,
-    borderWidth: 1,
-    borderColor: NEUTRAL.border,
-    marginTop: 4,
-  },
-  actionCancelText: { fontSize: 13, fontWeight: '700', color: NEUTRAL.textSub },
 });
 
 export default ChatHomeScreen;

@@ -1,145 +1,179 @@
 // modules/chat/features/chat/components/MessageBubble.tsx
 //
-// Bubble cho 1 tin nhắn. Hiển thị nội dung + lifecycle + kết quả kiểm chứng.
-// - Đang gửi (encrypting/signing/sending) → ProofPipelineIndicator
-// - Đang nhận (decrypting/verifying/checking) → ProofPipelineIndicator
-// - Encrypted (chưa decrypt) → placeholder, tap để chạy pipeline
-// - Done + verified → normal bubble + ✅
-// - Done + failed → đổi sang trạng thái cảnh báo đỏ, disable trust UI
+// Một bong bóng tin. So với bản trước đã bỏ toàn bộ phần dàn-dựng:
+//   · "đường ống bằng-chứng" chạy bằng setTimeout qua 4 chặng
+//   · nút "chạm để giải mã" — chạm vào thì hiện ra một câu viết cứng trong mã nguồn
+//   · huy hiệu "Đã xác thực / Đang xác thực" bằng chữ, hiện dưới mọi tin
+//
+// Còn lại đúng những gì tầng dưới thật sự báo về: nội dung (nếu mở được), đã gửi
+// tới đâu, và một dấu cảnh báo ĐỎ khi nội dung không khớp với chữ ký người gửi.
+// Tin bình thường không đeo huy hiệu nào — im lặng nghĩa là mọi thứ ổn; chỉ khi
+// có chuyện mới lên tiếng.
+//
+// Vật liệu Fluent: bong bóng của tôi tô màu thương-hiệu, bong bóng người khác là
+// tấm acrylic mỏng; góc bo lớn, góc sát mép được vuốt nhỏ lại để chỉ hướng.
 
 import React, { useEffect, useRef } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Animated,
-} from 'react-native';
+import { View, Text, StyleSheet, Pressable, Animated } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { NEUTRAL, withAlpha } from '../../../../../shared/theme';
 import { CHAT_THEME } from '../../../theme/colors';
-import type { Message } from '../types';
+import { ELEVATION, LAYER, MOTION, RADIUS, SIGNAL, SPACE, STROKE } from '../../../theme/fluent';
 import { formatTime } from '../../../shared/utils/format';
-import {
-  isProcessing,
-  type MessageStage,
-} from '../../proof/types';
-import ProofPipelineIndicator from '../../proof/components/ProofPipelineIndicator';
+import type { Message } from '../types';
+import type { MessageState } from '../../proof/types';
+
+/** Dấu trạng-thái gửi, chỉ hiện trên tin của chính mình. */
+const SEND_MARK: Partial<Record<MessageState, { icon: string; tint?: string }>> = {
+  sending: { icon: 'clock-outline' },
+  sent: { icon: 'check' },
+  delivered: { icon: 'check-all' },
+  read: { icon: 'check-all', tint: SIGNAL.tickRead },
+  failed: { icon: 'alert-circle-outline', tint: SIGNAL.tickFailed },
+};
 
 interface Props {
   message: Message;
+  /** Tin cuối trong chuỗi cùng người gửi — bong bóng được vuốt góc chỉ hướng. */
   showTail?: boolean;
-  onDecrypt?: (m: Message) => void;
+  /** Hiện tên người gửi (phòng nhiều người, tin của người khác). */
+  showSender?: boolean;
+  onLongPress?: (m: Message) => void;
+  onPressReaction?: (m: Message, emoji: string) => void;
 }
 
-const SEND_STATUS_ICON: Partial<Record<MessageStage, { name: string; color?: string }>> = {
-  queued:      { name: 'cloud-off-outline' },
-  sent:        { name: 'check' },
-  delivered:   { name: 'check-all' },
-  read:        { name: 'check-all', color: '#A8E6A1' },
-  failed_send: { name: 'alert-circle-outline', color: '#FFB4A0' },
-};
-
-const MessageBubble: React.FC<Props> = ({ message, showTail = true, onDecrypt }) => {
-  const fade = useRef(new Animated.Value(0)).current;
-  const slide = useRef(new Animated.Value(message.isMine ? 8 : -8)).current;
+const MessageBubble: React.FC<Props> = ({
+  message,
+  showTail = true,
+  showSender = false,
+  onLongPress,
+  onPressReaction,
+}) => {
+  const enter = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fade, { toValue: 1, duration: 220, useNativeDriver: true }),
-      Animated.timing(slide, { toValue: 0, duration: 220, useNativeDriver: true }),
-    ]).start();
-  }, []);
+    Animated.timing(enter, {
+      toValue: 1,
+      duration: MOTION.normal,
+      useNativeDriver: true,
+    }).start();
+  }, [enter]);
 
-  const isMine = message.isMine;
-  const stage = message.stage;
-  const failed = message.verificationStatus === 'failed';
-
-  // ── Bubble color ──
-  const bubbleStyle = [
-    styles.bubble,
-    isMine ? styles.bubbleMine : styles.bubbleTheirs,
-    !showTail && (isMine ? styles.bubbleMineNoTail : styles.bubbleTheirsNoTail),
-    failed && styles.bubbleFailed,
-  ];
-
-  // ── Content ──
-  const isProc = isProcessing(stage);
-  const isEncrypted = stage === 'encrypted';
+  const { isMine, deleted, trust } = message;
+  const broken = trust === 'broken';
+  const locked = message.text === undefined && !deleted;
 
   return (
     <Animated.View
       style={[
         styles.row,
         isMine ? styles.rowMine : styles.rowTheirs,
-        { opacity: fade, transform: [{ translateX: slide }] },
+        {
+          opacity: enter,
+          transform: [
+            {
+              translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [6, 0] }),
+            },
+          ],
+        },
       ]}
     >
-      <View style={bubbleStyle}>
-        {/* ─── BODY ─── */}
-        {isEncrypted ? (
-          <EncryptedPlaceholder
-            isMine={isMine}
-            onDecrypt={() => onDecrypt?.(message)}
-          />
-        ) : isProc ? (
-          <ProcessingBody
-            stage={stage}
-            isMine={isMine}
-            text={message.text}
-          />
-        ) : (
-          <Text
-            style={[
-              styles.text,
-              isMine ? styles.textMine : styles.textTheirs,
-              failed && styles.textFailed,
-            ]}
-          >
-            {message.text}
+      <View style={styles.column}>
+        {showSender && !isMine && !!message.senderName && (
+          <Text style={styles.sender} numberOfLines={1}>
+            {message.senderName}
           </Text>
         )}
 
-        {/* ─── META ROW ─── */}
-        {!isEncrypted && !isProc && (
-          <View style={styles.metaRow}>
-            {/* Verification badge — chỉ hiện khi stage === 'done' (tin đã nhận xong) */}
-            {!isMine && stage === 'done' && (
-              <VerifPill status={message.verificationStatus} />
-            )}
-
+        <Pressable
+          onLongPress={() => onLongPress?.(message)}
+          delayLongPress={280}
+          style={({ pressed }) => [
+            styles.bubble,
+            isMine ? styles.bubbleMine : styles.bubbleTheirs,
+            showTail && (isMine ? styles.tailMine : styles.tailTheirs),
+            broken && styles.bubbleBroken,
+            pressed && { opacity: 0.85 },
+          ]}
+        >
+          {deleted ? (
+            <Text style={[styles.body, styles.bodyRemoved, isMine && styles.bodyRemovedMine]}>
+              Tin nhắn đã được thu hồi
+            </Text>
+          ) : locked ? (
+            <View style={styles.lockedRow}>
+              <Icon
+                name="lock-outline"
+                size={14}
+                color={isMine ? 'rgba(255,255,255,0.85)' : NEUTRAL.textMuted}
+              />
+              <Text style={[styles.body, styles.bodyLocked, isMine && styles.bodyLockedMine]}>
+                Chưa mở được trên máy này
+              </Text>
+            </View>
+          ) : (
             <Text
               style={[
-                styles.time,
-                isMine ? styles.timeMine : styles.timeTheirs,
-                failed && styles.timeFailed,
+                styles.body,
+                isMine ? styles.bodyMine : styles.bodyTheirs,
+                broken && styles.bodyBroken,
               ]}
             >
+              {message.text}
+            </Text>
+          )}
+
+          <View style={styles.metaRow}>
+            {message.saved && (
+              <Icon
+                name="bookmark"
+                size={11}
+                color={isMine ? 'rgba(255,255,255,0.75)' : NEUTRAL.textMuted}
+              />
+            )}
+            {message.pinned && (
+              <Icon
+                name="pin"
+                size={11}
+                color={isMine ? 'rgba(255,255,255,0.75)' : NEUTRAL.textMuted}
+              />
+            )}
+            <Text style={[styles.time, isMine ? styles.timeMine : styles.timeTheirs]}>
               {formatTime(message.timestamp)}
             </Text>
-
-            {/* Status tick icons — chỉ với tin của mình */}
-            {isMine && SEND_STATUS_ICON[stage] && (
+            {isMine && SEND_MARK[message.state] && (
               <Icon
-                name={SEND_STATUS_ICON[stage]!.name}
+                name={SEND_MARK[message.state]!.icon}
                 size={13}
-                color={
-                  SEND_STATUS_ICON[stage]!.color ??
-                  (isMine ? 'rgba(255,255,255,0.85)' : NEUTRAL.textMuted)
-                }
-                style={{ marginLeft: 4 }}
+                color={SEND_MARK[message.state]!.tint ?? 'rgba(255,255,255,0.8)'}
               />
             )}
           </View>
-        )}
 
-        {/* Failed warning footer — disable trust UI */}
-        {failed && stage === 'done' && (
-          <View style={styles.failedFooter}>
-            <Icon name="shield-off-outline" size={12} color="#C0533A" />
-            <Text style={styles.failedFooterText}>
-              Không xác minh được nguồn gốc — không nên tin nội dung này.
-            </Text>
+          {broken && (
+            <View style={styles.warnRow}>
+              <Icon name="alert-circle" size={13} color={SIGNAL.alertIcon} />
+              <Text style={styles.warnText}>
+                Nội dung không khớp với người gửi. Đừng làm theo tin này.
+              </Text>
+            </View>
+          )}
+        </Pressable>
+
+        {message.reactions.length > 0 && (
+          <View style={[styles.reactionRow, isMine && styles.reactionRowMine]}>
+            {message.reactions.map((r) => (
+              <Pressable
+                key={r.emoji}
+                onPress={() => onPressReaction?.(message, r.emoji)}
+                style={[styles.reaction, r.mine && styles.reactionMine]}
+                accessibilityRole="button"
+                accessibilityLabel={`${r.emoji}, ${r.count} người`}
+              >
+                <Text style={styles.reactionEmoji}>{r.emoji}</Text>
+                {r.count > 1 && <Text style={styles.reactionCount}>{r.count}</Text>}
+              </Pressable>
+            ))}
           </View>
         )}
       </View>
@@ -147,155 +181,98 @@ const MessageBubble: React.FC<Props> = ({ message, showTail = true, onDecrypt })
   );
 };
 
-// ── Sub-components ──────────────────────────────────────────────────────────
-
-const ProcessingBody: React.FC<{
-  stage: MessageStage;
-  isMine: boolean;
-  text?: string;
-}> = ({ stage, isMine, text }) => (
-  <View style={{ gap: 6 }}>
-    {!!text && (
-      <Text
-        style={[
-          styles.text,
-          isMine ? styles.textMine : styles.textTheirs,
-          { opacity: 0.7 },
-        ]}
-        numberOfLines={2}
-      >
-        {text}
-      </Text>
-    )}
-    <ProofPipelineIndicator stage={stage} isMine={isMine} />
-  </View>
-);
-
-const EncryptedPlaceholder: React.FC<{
-  isMine: boolean;
-  onDecrypt: () => void;
-}> = ({ isMine, onDecrypt }) => (
-  <TouchableOpacity activeOpacity={0.7} onPress={onDecrypt}>
-    <View style={styles.encryptedRow}>
-      <Icon
-        name="lock-outline"
-        size={16}
-        color={isMine ? 'rgba(255,255,255,0.85)' : CHAT_THEME.primary}
-      />
-      <Text
-        style={[
-          styles.encryptedText,
-          { color: isMine ? 'rgba(255,255,255,0.92)' : CHAT_THEME.primaryDeep },
-        ]}
-      >
-        Tin nhắn đã mã hóa — chạm để giải mã
-      </Text>
-    </View>
-  </TouchableOpacity>
-);
-
-const VerifPill: React.FC<{ status: Message['verificationStatus'] }> = ({
-  status,
-}) => {
-  const map = {
-    verified: { icon: 'shield-check', label: 'Đã xác thực', color: '#3D7A5E' },
-    pending:  { icon: 'shield-sync-outline', label: 'Đang xác thực', color: '#B07D2F' },
-    failed:   { icon: 'shield-alert',  label: 'Không xác thực', color: '#C0533A' },
-  } as const;
-  const cfg = map[status];
-  return (
-    <View
-      style={[
-        styles.verifPill,
-        { backgroundColor: withAlpha(cfg.color, 0.14) },
-      ]}
-    >
-      <Icon name={cfg.icon} size={9} color={cfg.color} />
-      <Text style={[styles.verifText, { color: cfg.color }]}>{cfg.label}</Text>
-    </View>
-  );
-};
-
-// ── Styles ──────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', marginVertical: 2, paddingHorizontal: 12 },
+  row: { flexDirection: 'row', marginVertical: 2, paddingHorizontal: SPACE.md },
   rowMine: { justifyContent: 'flex-end' },
   rowTheirs: { justifyContent: 'flex-start' },
+  column: { maxWidth: '80%' },
+
+  sender: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: CHAT_THEME.primary,
+    marginBottom: 3,
+    marginLeft: SPACE.sm,
+  },
 
   bubble: {
-    maxWidth: '78%',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 18,
+    paddingHorizontal: SPACE.md,
+    paddingVertical: SPACE.sm + 1,
+    borderRadius: RADIUS.lg,
+    ...ELEVATION.rest,
   },
-  bubbleMine: {
-    backgroundColor: CHAT_THEME.primary,
-    borderBottomRightRadius: 6,
-  },
-  bubbleMineNoTail: { borderBottomRightRadius: 18 },
+  bubbleMine: { backgroundColor: CHAT_THEME.primary },
   bubbleTheirs: {
-    backgroundColor: NEUTRAL.card,
-    borderWidth: 1,
-    borderColor: NEUTRAL.border,
-    borderBottomLeftRadius: 6,
+    backgroundColor: LAYER.bubble,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: STROKE.base,
   },
-  bubbleTheirsNoTail: { borderBottomLeftRadius: 18 },
-  bubbleFailed: {
-    backgroundColor: '#FFF5F2',
-    borderColor: '#E8B0A0',
-    borderWidth: 1.5,
+  tailMine: { borderBottomRightRadius: RADIUS.xs },
+  tailTheirs: { borderBottomLeftRadius: RADIUS.xs },
+  bubbleBroken: {
+    backgroundColor: SIGNAL.alertBg,
+    borderWidth: 1,
+    borderColor: SIGNAL.alertBorder,
   },
 
-  text: { fontSize: 14, lineHeight: 20 },
-  textMine: { color: NEUTRAL.white },
-  textTheirs: { color: NEUTRAL.text },
-  textFailed: {
-    color: '#8C3622',
-    textDecorationLine: 'line-through',
-    textDecorationStyle: 'dotted',
-  },
+  body: { fontSize: 15, lineHeight: 21 },
+  bodyMine: { color: NEUTRAL.white },
+  bodyTheirs: { color: NEUTRAL.text },
+  bodyBroken: { color: SIGNAL.alertText },
+  bodyLocked: { color: NEUTRAL.textMuted, fontStyle: 'italic', fontSize: 14 },
+  bodyLockedMine: { color: 'rgba(255,255,255,0.88)' },
+  bodyRemoved: { color: NEUTRAL.textMuted, fontStyle: 'italic', fontSize: 14 },
+  bodyRemovedMine: { color: 'rgba(255,255,255,0.85)' },
+
+  lockedRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
 
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    marginTop: 4,
     gap: 4,
+    marginTop: 3,
   },
   time: { fontSize: 10, fontWeight: '500' },
   timeMine: { color: 'rgba(255,255,255,0.8)' },
   timeTheirs: { color: NEUTRAL.textMuted },
-  timeFailed: { color: '#C0533A' },
 
-  encryptedRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 2 },
-  encryptedText: { fontSize: 13, fontStyle: 'italic', fontWeight: '500' },
+  warnRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    marginTop: SPACE.sm,
+    paddingTop: SPACE.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: SIGNAL.alertBorder,
+  },
+  warnText: { flex: 1, fontSize: 11.5, lineHeight: 16, color: SIGNAL.alertText, fontWeight: '600' },
 
-  verifPill: {
+  reactionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+    marginTop: -6,
+    marginLeft: SPACE.sm,
+  },
+  reactionRowMine: { justifyContent: 'flex-end', marginLeft: 0, marginRight: SPACE.sm },
+  reaction: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 5,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: RADIUS.pill,
+    backgroundColor: LAYER.bubble,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: STROKE.outer,
   },
-  verifText: { fontSize: 9, fontWeight: '700', letterSpacing: 0.3 },
-
-  failedFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#E8B0A0',
+  reactionMine: {
+    backgroundColor: withAlpha(CHAT_THEME.primary, 0.14),
+    borderColor: withAlpha(CHAT_THEME.primary, 0.45),
   },
-  failedFooterText: {
-    flex: 1,
-    fontSize: 11,
-    color: '#8C3622',
-    fontWeight: '600',
-    lineHeight: 15,
-  },
+  reactionEmoji: { fontSize: 13 },
+  reactionCount: { fontSize: 10, fontWeight: '700', color: NEUTRAL.textSub },
 });
 
 export default MessageBubble;

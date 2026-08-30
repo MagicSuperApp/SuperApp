@@ -1,13 +1,20 @@
 /**
- * proofchat-api.ts — Client ProofChat cho app vỏ Aladin (v2.0, TRỤC 3).
+ * proofchat-api.ts — Client ProofChat cho app vỏ Aladin (v2.1, TRỤC 3).
  *
- * PHẠM VI v2.0 (anh chốt): CHỈ "cầu nối auth" + đọc danh sách hội thoại.
- *   - Đổi session token PhoenixKey → phiên ProofChat thật (accessToken/refreshToken).
- *   - Đọc danh sách hội thoại của tài khoản.
- * KHÔNG gửi/nhận tin trong v2.0: BE ProofChat bắt mọi tin là envelope mã hoá MLS
- * (CreateMessageDto.variants[].encryptedContent @IsNotEmpty), mà MLS/LampNet RN
- * client chưa publish. Gửi/nhận tin thật để v2.1 khi crypto stack lên. KHÔNG nhét
- * plaintext vào field encryptedContent (phản giá trị E2E của ProofChat).
+ * PHẠM VI v2.1 — bề mặt REST mà module chat đang dùng thật:
+ *   · auth            cầu nối PhoenixKey → phiên ProofChat (access/refresh token)
+ *   · conversations   liệt kê · chi tiết · tạo · đổi tên · thành viên · vào/rời · ghim
+ *   · memberRequests  lời mời tới tôi (nhận/từ chối) + yêu-cầu vào phòng (duyệt/từ chối)
+ *   · messages        cảm xúc · lưu · thu hồi
+ *   · readSignals     tín hiệu đã-xem (Trackmess) — KHÔNG kèm nội dung
+ *   · uploads         ảnh đính kèm (multipart)
+ *   · users           tìm người theo DID/username
+ *   · mls             KeyPackage + epoch-sync (tầng mật mã, không lộ ra UI)
+ *
+ * NỘI DUNG TIN vẫn đi đường riêng: gửi/nhận plaintext do `proofchatService` lo
+ * (mã hoá MLS + socket). REST ở đây chỉ chở METADATA (danh sách phòng, cảm xúc,
+ * ghim, đã-xem) nên dùng được ngay cả khi tầng giải mã chưa sẵn sàng. KHÔNG bao
+ * giờ nhét plaintext vào `encryptedContent`.
  *
  * Server: PROOFCHAT_API_URL (env). Envelope NestJS: { data, message, statusCode }.
  * Auth: Bearer accessToken cho endpoint cần auth (JwtAuthGuard).
@@ -30,15 +37,32 @@ export interface AuthTokens {
   refreshToken: string;
 }
 
+/** 1 thành viên trong hội thoại (BE participants). */
+export interface RemoteParticipant {
+  userId?: string;
+  userDid?: string;
+  nickname?: string;
+  displayName?: string;
+  avatar?: string | null;
+  role?: string; // ADMIN | MEMBER …
+  joinedAt?: number | string;
+}
+
 /** Hội thoại trả về từ BE (đọc thô — chưa giải mã nội dung tin). */
 export interface RemoteConversation {
   id: string;
   title?: string;
+  avatar?: string | null;
   type?: string;
   visibility?: string;
   ownerId?: string;
   memberCount?: number;
   createdAt?: number | string;
+  updatedAt?: number | string;
+  /** Thời điểm tin gần nhất — BE đặt tên khác nhau tuỳ endpoint, nhận cả hai. */
+  lastMessageAt?: number | string;
+  unreadCount?: number;
+  participants?: RemoteParticipant[];
 }
 
 export interface ListConversationsOptions {
@@ -61,6 +85,11 @@ export interface RemoteMessage {
   ciphertext?: string;
   encryptedContent?: string;
   createdAt?: number | string; // do client tạo, KHÔNG override (ký MerkleLeaf)
+  /** Metadata KHÔNG mã hoá — server giữ được và trả kèm. */
+  reactions?: Array<{ emoji: string; userId?: string }>;
+  isPinned?: boolean;
+  isSaved?: boolean;
+  deletedAt?: number | string | null;
 }
 
 export class ProofChatApiError extends Error {
@@ -445,6 +474,385 @@ export const conversations = {
         params: { deviceId, limit: opts.take, offset: opts.offset },
       } as AuthableConfig),
     ),
+
+  /** Đổi tên / ảnh hội thoại. BE: PATCH /conversations/:id. */
+  update: (
+    id: string,
+    body: { title?: string; avatar?: string },
+  ): Promise<RemoteConversation> =>
+    unwrap<RemoteConversation>(
+      client.patch(`/conversations/${encodeURIComponent(id)}`, body, {
+        needsAuth: true,
+      } as AuthableConfig),
+    ),
+
+  /** Thêm thành viên. BE: POST /conversations/:id/participants. */
+  addParticipants: (id: string, participantIds: string[]): Promise<unknown> =>
+    unwrap<unknown>(
+      client.post(
+        `/conversations/${encodeURIComponent(id)}/participants`,
+        { participantIds },
+        { needsAuth: true } as AuthableConfig,
+      ),
+    ),
+
+  /** Đặt biệt danh cho 1 thành viên. BE: PATCH /conversations/:id/participants/:userId. */
+  updateParticipant: (
+    id: string,
+    userId: string,
+    body: { nickname?: string },
+  ): Promise<unknown> =>
+    unwrap<unknown>(
+      client.patch(
+        `/conversations/${encodeURIComponent(id)}/participants/${encodeURIComponent(userId)}`,
+        body,
+        { needsAuth: true } as AuthableConfig,
+      ),
+    ),
+
+  /** Gỡ 1 thành viên. BE: DELETE /conversations/:id/participants/:userId. */
+  removeParticipant: (id: string, userId: string): Promise<unknown> =>
+    unwrap<unknown>(
+      client.delete(
+        `/conversations/${encodeURIComponent(id)}/participants/${encodeURIComponent(userId)}`,
+        { needsAuth: true } as AuthableConfig,
+      ),
+    ),
+
+  /**
+   * Vào một hội thoại theo ID. BE: POST /conversations/:id/join.
+   * Trả `{ action: 'JOINED' | 'REQUESTED', conversationId, requestId?, createdAt }`
+   * — phòng mở thì vào thẳng, phòng kín thì thành yêu-cầu chờ duyệt.
+   */
+  join: (id: string, message?: string): Promise<JoinConversationResult> =>
+    unwrap<JoinConversationResult>(
+      client.post(
+        `/conversations/${encodeURIComponent(id)}/join`,
+        message ? { message } : {},
+        { needsAuth: true } as AuthableConfig,
+      ),
+    ),
+
+  /** Rời hội thoại. BE: POST /conversations/:id/leave. */
+  leave: (id: string): Promise<unknown> =>
+    unwrap<unknown>(
+      client.post(
+        `/conversations/${encodeURIComponent(id)}/leave`,
+        {},
+        { needsAuth: true } as AuthableConfig,
+      ),
+    ),
+
+  /** Tin đã ghim của hội thoại. BE: GET /conversations/:id/pins. */
+  listPins: (id: string): Promise<RemotePin[]> =>
+    unwrapList<RemotePin>(
+      client.get(`/conversations/${encodeURIComponent(id)}/pins`, {
+        needsAuth: true,
+      } as AuthableConfig),
+    ),
+
+  /** Ghim 1 tin. BE: POST /conversations/:id/pins { messageId }. */
+  pin: (id: string, messageId: string): Promise<unknown> =>
+    unwrap<unknown>(
+      client.post(
+        `/conversations/${encodeURIComponent(id)}/pins`,
+        { messageId },
+        { needsAuth: true } as AuthableConfig,
+      ),
+    ),
+
+  /** Bỏ ghim. BE: DELETE /conversations/:id/pins/:msgId. */
+  unpin: (id: string, messageId: string): Promise<unknown> =>
+    unwrap<unknown>(
+      client.delete(
+        `/conversations/${encodeURIComponent(id)}/pins/${encodeURIComponent(messageId)}`,
+        { needsAuth: true } as AuthableConfig,
+      ),
+    ),
+};
+
+/** Kết quả vào phòng (BE JoinConversationResponseDto). */
+export interface JoinConversationResult {
+  action: 'JOINED' | 'REQUESTED' | string;
+  conversationId: string;
+  requestId?: string;
+  createdAt?: number;
+}
+
+/** 1 tin đã ghim (BE trả kèm bản ghi tin gốc — chỉ lấy phần cần cho UI). */
+export interface RemotePin {
+  id?: string;
+  messageId: string;
+  conversationId?: string;
+  pinnedBy?: string;
+  createdAt?: number | string;
+}
+
+// ── Lời mời / yêu-cầu vào phòng (BE Member Requests) ─────────────────
+// Thay hoàn toàn danh sách lời mời MOCK cũ trong store. Hai chiều:
+//   · người khác mời TÔI      → `pending()` → chấp nhận / từ chối
+//   · người khác xin VÀO phòng tôi quản → `listForConversation()` → duyệt / từ chối
+
+/** 1 lời mời hoặc yêu-cầu vào phòng (BE MemberRequestResponseDto). */
+export interface RemoteMemberRequest {
+  id: string;
+  conversationId: string;
+  targetUserId?: string;
+  initiatorId?: string;
+  type?: string; // INVITE | JOIN | ADD_DEVICE …
+  status?: string; // PENDING | APPROVED | REJECTED | EXPIRED | CANCELLED
+  message?: string;
+  rejectReason?: string;
+  createdAt?: number | string;
+  processedAt?: number | string;
+  expiresAt?: number | string;
+  conversationTitle?: string;
+  initiatorName?: string;
+}
+
+export const memberRequests = {
+  /** Lời mời đang chờ TÔI trả lời. BE: GET /member-requests/pending. */
+  pending: (): Promise<RemoteMemberRequest[]> =>
+    unwrapList<RemoteMemberRequest>(
+      client.get('/member-requests/pending', { needsAuth: true } as AuthableConfig),
+    ),
+
+  /** Nhận lời mời. BE: POST /member-requests/:id/accept. */
+  accept: (requestId: string): Promise<unknown> =>
+    unwrap<unknown>(
+      client.post(
+        `/member-requests/${encodeURIComponent(requestId)}/accept`,
+        {},
+        { needsAuth: true } as AuthableConfig,
+      ),
+    ),
+
+  /** Từ chối lời mời. BE: POST /member-requests/:id/decline. */
+  decline: (requestId: string): Promise<unknown> =>
+    unwrap<unknown>(
+      client.post(
+        `/member-requests/${encodeURIComponent(requestId)}/decline`,
+        {},
+        { needsAuth: true } as AuthableConfig,
+      ),
+    ),
+
+  /** Yêu-cầu vào phòng đang chờ duyệt của 1 phòng. BE: GET /conversations/:cid/member-requests. */
+  listForConversation: (
+    conversationId: string,
+    status = 'PENDING',
+  ): Promise<RemoteMemberRequest[]> =>
+    unwrapList<RemoteMemberRequest>(
+      client.get(
+        `/conversations/${encodeURIComponent(conversationId)}/member-requests`,
+        { needsAuth: true, params: { status } } as AuthableConfig,
+      ),
+    ),
+
+  /** Mời 1 người vào phòng. BE: POST /conversations/:cid/member-requests/invite. */
+  invite: (
+    conversationId: string,
+    targetUserId: string,
+    message?: string,
+  ): Promise<RemoteMemberRequest> =>
+    unwrap<RemoteMemberRequest>(
+      client.post(
+        `/conversations/${encodeURIComponent(conversationId)}/member-requests/invite`,
+        { targetUserId, message },
+        { needsAuth: true } as AuthableConfig,
+      ),
+    ),
+
+  /** Trạng thái yêu-cầu vào phòng của chính tôi. BE: GET …/member-requests/my-status. */
+  myStatus: (conversationId: string): Promise<RemoteMemberRequest | null> =>
+    unwrap<RemoteMemberRequest | null>(
+      client.get(
+        `/conversations/${encodeURIComponent(conversationId)}/member-requests/my-status`,
+        { needsAuth: true } as AuthableConfig,
+      ),
+    ),
+
+  /** Duyệt 1 yêu-cầu vào phòng. BE: POST …/member-requests/:rid/approve. */
+  approve: (
+    conversationId: string,
+    requestId: string,
+    body: { welcomeMessage?: string; ratchetTree?: string; epoch?: number } = {},
+  ): Promise<unknown> =>
+    unwrap<unknown>(
+      client.post(
+        `/conversations/${encodeURIComponent(conversationId)}/member-requests/${encodeURIComponent(requestId)}/approve`,
+        body,
+        { needsAuth: true } as AuthableConfig,
+      ),
+    ),
+
+  /** Từ chối 1 yêu-cầu vào phòng. BE: POST …/member-requests/:rid/reject. */
+  reject: (
+    conversationId: string,
+    requestId: string,
+    reason?: string,
+  ): Promise<unknown> =>
+    unwrap<unknown>(
+      client.post(
+        `/conversations/${encodeURIComponent(conversationId)}/member-requests/${encodeURIComponent(requestId)}/reject`,
+        { reason },
+        { needsAuth: true } as AuthableConfig,
+      ),
+    ),
+
+  /** Huỷ lời mời / yêu-cầu đang chờ. BE: DELETE …/member-requests/:rid. */
+  cancel: (conversationId: string, requestId: string): Promise<unknown> =>
+    unwrap<unknown>(
+      client.delete(
+        `/conversations/${encodeURIComponent(conversationId)}/member-requests/${encodeURIComponent(requestId)}`,
+        { needsAuth: true } as AuthableConfig,
+      ),
+    ),
+};
+
+// ── Thao tác trên 1 tin nhắn (cảm xúc, ghim, lưu, thu hồi) ───────────
+// Những đường này KHÔNG chạm nội dung tin — nội dung vẫn mã hoá đầu-cuối, server
+// chỉ giữ metadata (emoji, cờ đã-lưu, danh sách ghim). Vì thế dùng được NGAY cả
+// khi tầng giải mã chưa sẵn sàng.
+
+/** 1 cảm xúc trên tin (BE reactions). */
+export interface RemoteReaction {
+  emoji: string;
+  userId?: string;
+  createdAt?: number | string;
+}
+
+/** 1 tin đã lưu (BE /users/me/saved-messages). */
+export interface RemoteSavedMessage {
+  messageId: string;
+  conversationId?: string;
+  conversationTitle?: string;
+  savedAt?: number | string;
+}
+
+export const messages = {
+  /** Thả cảm xúc. BE: POST /messages/:id/reactions { emoji }. */
+  react: (messageId: string, emoji: string): Promise<unknown> =>
+    unwrap<unknown>(
+      client.post(
+        `/messages/${encodeURIComponent(messageId)}/reactions`,
+        { emoji },
+        { needsAuth: true } as AuthableConfig,
+      ),
+    ),
+
+  /** Danh sách cảm xúc của 1 tin. BE: GET /messages/:id/reactions. */
+  reactions: (messageId: string): Promise<RemoteReaction[]> =>
+    unwrapList<RemoteReaction>(
+      client.get(`/messages/${encodeURIComponent(messageId)}/reactions`, {
+        needsAuth: true,
+      } as AuthableConfig),
+    ),
+
+  /** Gỡ cảm xúc của mình. BE: DELETE /messages/:id/reactions/:emoji. */
+  unreact: (messageId: string, emoji: string): Promise<unknown> =>
+    unwrap<unknown>(
+      client.delete(
+        `/messages/${encodeURIComponent(messageId)}/reactions/${encodeURIComponent(emoji)}`,
+        { needsAuth: true } as AuthableConfig,
+      ),
+    ),
+
+  /** Thu hồi tin. BE: POST /messages/:id/delete { forEveryone }. */
+  remove: (messageId: string, forEveryone = false): Promise<unknown> =>
+    unwrap<unknown>(
+      client.post(
+        `/messages/${encodeURIComponent(messageId)}/delete`,
+        { forEveryone },
+        { needsAuth: true } as AuthableConfig,
+      ),
+    ),
+
+  /** Lưu tin vào mục của tôi. BE: POST /messages/:id/saved. */
+  save: (messageId: string): Promise<unknown> =>
+    unwrap<unknown>(
+      client.post(
+        `/messages/${encodeURIComponent(messageId)}/saved`,
+        {},
+        { needsAuth: true } as AuthableConfig,
+      ),
+    ),
+
+  /** Bỏ lưu. BE: DELETE /messages/:id/saved. */
+  unsave: (messageId: string): Promise<unknown> =>
+    unwrap<unknown>(
+      client.delete(`/messages/${encodeURIComponent(messageId)}/saved`, {
+        needsAuth: true,
+      } as AuthableConfig),
+    ),
+
+  /** Mục "đã lưu" của tôi. BE: GET /users/me/saved-messages. */
+  saved: (opts: { cursor?: string; limit?: number } = {}): Promise<RemoteSavedMessage[]> =>
+    unwrapList<RemoteSavedMessage>(
+      client.get('/users/me/saved-messages', {
+        needsAuth: true,
+        params: { cursor: opts.cursor, limit: opts.limit },
+      } as AuthableConfig),
+    ),
+};
+
+// ── Tín hiệu đã-xem (Trackmess) ──────────────────────────────────────
+// Báo cho server biết tin nào đã thực sự hiện trên màn hình, KHÔNG kèm nội dung.
+// Dùng để bên kia thấy "đã xem" và để đếm chưa-đọc đúng giữa nhiều thiết bị.
+
+export const readSignals = {
+  /** BE: POST /trackmess/signals { conversationId, items[] }. */
+  send: (
+    conversationId: string,
+    items: Array<{ messageId: string; dwellMs?: number; ts?: number }>,
+  ): Promise<unknown> =>
+    unwrap<unknown>(
+      client.post(
+        '/trackmess/signals',
+        {
+          conversationId,
+          items: items.map((i) => ({
+            messageId: i.messageId,
+            dwellMs: i.dwellMs ?? 0,
+            ts: i.ts ?? Date.now(),
+          })),
+        },
+        { needsAuth: true } as AuthableConfig,
+      ),
+    ),
+};
+
+// ── Tệp đính kèm (ảnh) ───────────────────────────────────────────────
+
+/** Kết quả tải ảnh lên (BE SupportUploadResponseDto / media upload). */
+export interface RemoteUpload {
+  id: string;
+  url: string;
+  mimeType?: string;
+  filename?: string;
+  sizeBytes?: number;
+}
+
+export const uploads = {
+  /**
+   * Tải 1 ảnh lên. BE: POST /support/uploads (multipart `file`, tối đa 10MB).
+   * Trả `{ id, url, … }` — `url` là đường tương đối, ghép với baseURL khi hiển thị.
+   */
+  image: (file: { uri: string; name: string; type: string }): Promise<RemoteUpload> => {
+    const form = new FormData();
+    // RN FormData nhận { uri, name, type } — không đọc tệp vào bộ nhớ.
+    form.append('file', file as unknown as Blob);
+    return unwrap<RemoteUpload>(
+      client.post('/support/uploads', form, {
+        needsAuth: true,
+        headers: { 'Content-Type': 'multipart/form-data' },
+      } as AuthableConfig),
+    );
+  },
+
+  /** Đường xem tệp đã tải lên (BE trả path tương đối). */
+  absoluteUrl: (url: string): string =>
+    /^https?:\/\//i.test(url) ? url : `${baseURL.replace(/\/+$/, '')}${url.startsWith('/') ? '' : '/'}${url}`,
 };
 
 // ── Người dùng (tìm người để bắt đầu chat cá nhân / thêm vào nhóm) ────
@@ -579,5 +987,14 @@ export const mls = {
     ),
 };
 
-export const proofChatApi = { auth, conversations, users, mls };
+export const proofChatApi = {
+  auth,
+  conversations,
+  memberRequests,
+  messages,
+  readSignals,
+  uploads,
+  users,
+  mls,
+};
 export default proofChatApi;

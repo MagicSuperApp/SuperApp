@@ -35,7 +35,19 @@ import { join } from 'path';
 import { INSTANCES } from './instance.config';
 
 const GOC = join(__dirname, '..', '..');
-const doc = (p: string) => readFileSync(join(GOC, p), 'utf8');
+/**
+ * Đọc một tệp khai báo, CHUẨN HOÁ xuống dòng về LF.
+ *
+ * Không phải chuyện thẩm mỹ. Kho này checkout trên Windows với `core.autocrlf`
+ * bật, nên mọi tệp trong cây làm việc mang CRLF. Còn các khẳng định dưới đây
+ * viết bằng LF — có biểu thức đòi một dấu xuống dòng ở giữa, có chỗ tách dòng
+ * rồi so từng dòng một. Chưa chuẩn hoá thì ba bài đỏ trên máy Windows và xanh
+ * trên CI Linux, với CÙNG một cây mã.
+ *
+ * Loại đỏ đó tệ hơn một bài đỏ thật: nó dạy người ta rằng đỏ ở máy mình là
+ * bình thường, và bài đỏ THẬT tiếp theo sẽ bị bỏ qua cùng đám ấy.
+ */
+const doc = (p: string) => readFileSync(join(GOC, p), 'utf8').replace(/\r\n/g, '\n');
 
 const GRADLE = doc('android/app/build.gradle');
 const CODEMAGIC = doc('codemagic.yaml');
@@ -483,7 +495,11 @@ describe('Firebase iOS — không khởi bằng cấu hình của app khác', ()
     const chet: string[] = [];
     for (const tep of quet(join(GOC, 'ios/aladin_mobile_fe'))) {
       if (!readFileSync(tep, 'utf8').includes('FirebaseApp.configure(')) continue;
-      const ten = tep.split('/').pop()!;
+      // Tách bằng CẢ HAI dấu. `join` trả dấu chéo ngược trên Windows, nên tách
+      // riêng dấu chéo xuôi không cắt được gì: `ten` thành nguyên đường dẫn
+      // tuyệt đối, `PBX.includes(ten)` luôn sai, và bài kết tội MỌI tệp Swift là
+      // mã chết — một lời buộc tội sai, chỉ xảy ra trên máy Windows.
+      const ten = tep.split(/[\\/]/).pop()!;
       if (!PBX.includes(ten)) chet.push(ten);
     }
     expect(chet).toEqual([]);

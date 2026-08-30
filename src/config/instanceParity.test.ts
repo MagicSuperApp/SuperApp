@@ -319,7 +319,10 @@ describe('app tự xưng tên MÌNH, không xưng tên app khác', () => {
     const pham: string[] = [];
     for (const thu of thuMuc) {
       for (const tep of quet(thu)) {
-        if (tep.endsWith('i18n/translate.ts')) continue; // chú thích giải thích chính lỗi này
+        // Chuẩn hoá dấu phân cách TRƯỚC khi so đuôi: `join` trả dấu chéo ngược
+        // trên Windows, nên phép so nguyên bản không bao giờ khớp và tệp lẽ ra
+        // được bỏ qua lại bị quét — bài đỏ chỉ trên máy Windows.
+        if (tep.replace(/\\/g, '/').endsWith('i18n/translate.ts')) continue; // chú thích giải thích chính lỗi này
         const noi = readFileSync(tep, 'utf8');
         for (const c of CAM) if (c.test(noi)) pham.push(`${tep} ~ ${c}`);
       }

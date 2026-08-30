@@ -206,7 +206,7 @@ Xanh ở máy dựng, hỏng ở tay người dùng. Đo thêm: máy này **chư
 ### `scripts/build-aab.ps1`
 Dựng lại đúng thứ tự của CI, trên Windows, dừng ở lỗi đầu tiên:
 
-1. soát công cụ + tệp bí mật — node · Java · SDK · **NDK đúng bản `rootProject.ext.ndkVersion`** · `.env` · `keySigning.bin` · đủ **bốn** khoá `ORILIFE_UPLOAD_*`;
+1. soát công cụ + tệp bí mật — node · Java · SDK · **NDK đúng bản `rootProject.ext.ndkVersion`** · `.env` · `keySigning.bin` · đủ **bốn** khoá `ALADIN_UPLOAD_*`;
 2. `npm install --legacy-peer-deps` (kéo theo `patch-package`);
 3. cổng `tsc` + `jest --ci --forceExit`;
 4. `cargo ndk` hai crate × ba ABI → `jniLibs`, rồi kiểm **cả sáu** tệp;

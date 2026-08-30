@@ -17,8 +17,8 @@
 #     TREE_DETECTION_API, BASE_API_URL, API_KEY, REGION_CODE
 #     PHOENIXKEY_API_URL, ORILIFE_API_BASE_URL, PHOENIX_WALLET_ENABLED
 #   android_signing (chỉ android-appstore-aab):
-#     ORILIFE_UPLOAD_STORE_FILE_B64, ORILIFE_UPLOAD_STORE_PASSWORD,
-#     ORILIFE_UPLOAD_KEY_ALIAS, ORILIFE_UPLOAD_KEY_PASSWORD
+#     ALADIN_UPLOAD_STORE_FILE_B64, ALADIN_UPLOAD_STORE_PASSWORD,
+#     ALADIN_UPLOAD_KEY_ALIAS, ALADIN_UPLOAD_KEY_PASSWORD
 #
 # iOS Code Signing (ios-appstore):
 #   Certificate : aladin-ios-cert  (production, upload Codemagic UI)
@@ -1300,7 +1300,7 @@ workflows:
       java: 17
       groups:
         - scanner_secrets
-        - android_signing  # ORILIFE_UPLOAD_STORE_FILE_B64, passwords
+        - android_signing  # ALADIN_UPLOAD_STORE_FILE_B64, passwords
       vars:
         AAB_OUTPUT: $CM_BUILD_DIR/android/app/build/outputs/bundle/${ANDROID_FLAVOR}Release
         # ── HAI APP ─────────────────────────────────────────────────────────
@@ -1469,12 +1469,12 @@ workflows:
 
       - name: Restore keystore from encrypted env
         script: |
-          if [ -z "$ORILIFE_UPLOAD_STORE_FILE_B64" ]; then
-            echo "❌ ORILIFE_UPLOAD_STORE_FILE_B64 chưa set trong group android_signing"
+          if [ -z "$ALADIN_UPLOAD_STORE_FILE_B64" ]; then
+            echo "❌ ALADIN_UPLOAD_STORE_FILE_B64 chưa set trong group android_signing"
             echo "   base64 -i keySigning.bin | pbcopy → paste vào Codemagic"
             exit 1
           fi
-          echo "$ORILIFE_UPLOAD_STORE_FILE_B64" | base64 -d > android/app/keySigning.bin
+          echo "$ALADIN_UPLOAD_STORE_FILE_B64" | base64 -d > android/app/keySigning.bin
           ls -lh android/app/keySigning.bin
           echo "✅ Keystore restored"
 
@@ -1489,7 +1489,7 @@ workflows:
           REGION_CODE=${REGION_CODE:-vn-south-01}
           EOF
           # gradle.properties (gitignored) — RN config + upload signing (group android_signing).
-          # ORILIFE_UPLOAD_STORE_FILE=keySigning.bin (đã giải mã ở step trước).
+          # ALADIN_UPLOAD_STORE_FILE=keySigning.bin (đã giải mã ở step trước).
           cat > android/gradle.properties <<EOF
           org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m
           android.useAndroidX=true
@@ -1510,17 +1510,17 @@ workflows:
           # android/gradle.properties bị gitignore và bị heredoc dưới đây ghi đè,
           # nên bản vá vô tác dụng suốt từ 26/07 — 10/10 lần chạy CI đỏ vì nó.
           expo.enableWorkletsIntegration=false
-          ORILIFE_UPLOAD_STORE_FILE=keySigning.bin
-          ORILIFE_UPLOAD_KEY_ALIAS=${ORILIFE_UPLOAD_KEY_ALIAS}
-          ORILIFE_UPLOAD_STORE_PASSWORD=${ORILIFE_UPLOAD_STORE_PASSWORD}
-          ORILIFE_UPLOAD_KEY_PASSWORD=${ORILIFE_UPLOAD_KEY_PASSWORD}
+          ALADIN_UPLOAD_STORE_FILE=keySigning.bin
+          ALADIN_UPLOAD_KEY_ALIAS=${ALADIN_UPLOAD_KEY_ALIAS}
+          ALADIN_UPLOAD_STORE_PASSWORD=${ALADIN_UPLOAD_STORE_PASSWORD}
+          ALADIN_UPLOAD_KEY_PASSWORD=${ALADIN_UPLOAD_KEY_PASSWORD}
           EOF
           perl -i -pe 's/^(\w+([.\w]*))=[ \t]+/$1=/; s/[ \t]+$//' android/app/secrets.properties android/gradle.properties
           echo "✅ secrets.properties + gradle.properties (signing) created"
 
       - name: Verify gradle.properties signing config
         script: |
-          grep -E "ORILIFE_UPLOAD_STORE_FILE|ORILIFE_UPLOAD_KEY_ALIAS" android/gradle.properties \
+          grep -E "ALADIN_UPLOAD_STORE_FILE|ALADIN_UPLOAD_KEY_ALIAS" android/gradle.properties \
             || { echo "❌ gradle.properties thiếu signing config"; exit 1; }
           echo "✅ gradle.properties signing OK"
 

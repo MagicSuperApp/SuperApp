@@ -106,11 +106,11 @@ if (-not (Test-Path '.env')) {
 Ok ".env ($((Get-Item '.env').Length) byte)"
 
 if (-not (Test-Path 'android/app/keySigning.bin')) { Die 'Thiếu android/app/keySigning.bin (kho khoá ký tải lên).' }
-if (-not (Test-Path 'android/gradle.properties')) { Die 'Thiếu android/gradle.properties (chứa 4 khoá ORILIFE_UPLOAD_*).' }
+if (-not (Test-Path 'android/gradle.properties')) { Die 'Thiếu android/gradle.properties (chứa 4 khoá ALADIN_UPLOAD_*).' }
 $gp = Get-Content 'android/gradle.properties' -Raw
-foreach ($k in @('ORILIFE_UPLOAD_STORE_FILE','ORILIFE_UPLOAD_STORE_PASSWORD','ORILIFE_UPLOAD_KEY_ALIAS','ORILIFE_UPLOAD_KEY_PASSWORD')) {
+foreach ($k in @('ALADIN_UPLOAD_STORE_FILE','ALADIN_UPLOAD_STORE_PASSWORD','ALADIN_UPLOAD_KEY_ALIAS','ALADIN_UPLOAD_KEY_PASSWORD')) {
     # Thiếu MỘT khoá thì `signingConfigs.release` rỗng hoàn toàn — build.gradle bọc
-    # cả khối trong `if (project.hasProperty('ORILIFE_UPLOAD_STORE_FILE'))`. Gradle
+    # cả khối trong `if (project.hasProperty('ALADIN_UPLOAD_STORE_FILE'))`. Gradle
     # KHÔNG báo lỗi; nó ký bằng khoá debug, và Play từ chối tệp ở bước tải lên.
     if ($gp -notmatch "(?m)^\s*$k\s*=") { Die "android/gradle.properties thiếu $k." }
 }

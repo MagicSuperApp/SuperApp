@@ -74,6 +74,112 @@ def enableProguardInReleaseBuilds = true
  */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
+// ── MỖI APP = MỘT THƯ MỤC TRONG `instances/` ────────────────────────────
+//
+// Trước đợt này, tên app + mã gói + biểu tượng nằm rải ở ba chỗ: khối
+// `productFlavors` viết tay dưới đây, `strings.xml`, và `src/main/res/mipmap-*`.
+// Hệ quả: đối tác muốn dựng app mang nhận diện của họ thì phải nhờ người sửa
+// gradle hộ. Đó là chỗ nghẽn ở NGƯỜI, không phải ở kỹ thuật.
+//
+// Nay gradle ĐỌC thư mục. Thêm một app = thêm `instances/<mã>/instance.json`
+// + một ảnh vuông 1024 ở `instances/<mã>/brand/icon-1024.png`, rồi chạy
+// `python3 scripts/sinh-bieu-tuong.py <mã>`. KHÔNG sửa tệp này.
+//
+// Chi tiết + ví dụ đầy đủ: `instances/README.md`.
+def thuMucApp = new File(rootDir, '../instances')
+
+// ── LUẬT SUPERAPP — phiên bản đọc từ chính tệp luật ─────────────────────
+//
+// Mỗi `instance.json` phải khai `superapp.rulesVersion` ĐÚNG số này. Sửa luật
+// là nâng số ở `instances/LUAT-SUPERAPP.md`, và khi ấy mọi app đỏ cho tới khi
+// có người đọc luật mới rồi ký nhận trong tệp của app mình.
+//
+// Cố ý làm phiền: luật không tự lan sang app đã có. Không có bước này thì một
+// ràng buộc mới thêm vào tài liệu sẽ đúng với app viết SAU nó và im lặng sai
+// với mọi app viết TRƯỚC — mà không ai đỏ.
+def tepLuat = new File(thuMucApp, 'LUAT-SUPERAPP.md')
+if (!tepLuat.isFile()) {
+    throw new GradleException("Không thấy ${tepLuat} — mọi app khai tuân luật SuperApp, mà tệp luật không còn")
+}
+def khopLuat = (tepLuat.text =~ /rulesVersion:\s*(\d+)/)
+if (!khopLuat) {
+    throw new GradleException("${tepLuat} thiếu dòng `<!-- rulesVersion: N -->` ở đầu tệp")
+}
+def LUAT_HIEN_TAI = khopLuat[0][1] as int
+
+// ── MIỄN TẠM DID — hai app có TRƯỚC khi luật §1 ra đời ──────────────────
+//
+// 2026-08-30: chưa có đường cấp DID cho một *instance* (khác DID của người
+// dùng, thứ đã có sẵn). Hai app này ra đời trước ràng buộc đó nên được miễn
+// TẠM, ghi thẳng tên ở đây để ai cũng thấy đó là NỢ chứ không phải mặc định.
+//
+// ⛔ KHÔNG thêm tên vào danh sách này để cho một app mới đi lọt. Danh sách chỉ
+//    được RÚT NGẮN. App thứ ba trở đi phải có DID thật — đó là toàn bộ điểm
+//    của luật §1, và nới ở đây là gỡ luôn cái cổng.
+def MIEN_TAM_DID = ['aladin', 'checkfarm'] as Set
+
+def cacApp = (thuMucApp.listFiles() ?: new File[0])
+        .findAll { it.isDirectory() && new File(it, 'instance.json').isFile() }
+        .sort { it.name }
+        .collect { thuMuc ->
+            def khai = new groovy.json.JsonSlurper().parse(new File(thuMuc, 'instance.json'))
+            // Sai ở đây phải NỔ, không được đoán: một `applicationId` rỗng lọt
+            // xuống dưới là dựng ra gói mang mã của app khác, và không có triệu
+            // chứng nào cho tới lúc nộp cửa hàng.
+            if (khai.id != thuMuc.name) {
+                throw new GradleException("instances/${thuMuc.name}/instance.json khai id='${khai.id}' — phải trùng tên thư mục")
+            }
+            if (!(khai.id ==~ /^[a-z][a-z0-9]*$/)) {
+                throw new GradleException("mã app '${khai.id}' phải là chữ thường + số, bắt đầu bằng chữ (gradle dùng nó làm tên flavor)")
+            }
+            if (!khai.android?.applicationId) {
+                throw new GradleException("instances/${khai.id}/instance.json thiếu android.applicationId")
+            }
+            if (!khai.displayName) {
+                throw new GradleException("instances/${khai.id}/instance.json thiếu displayName")
+            }
+            // ── Luật SuperApp (instances/LUAT-SUPERAPP.md) ──────────────
+            if (khai.superapp == null) {
+                throw new GradleException(
+                    "instances/${khai.id}/instance.json thiếu khối `superapp`.\n" +
+                    "  Một app dựng từ kho này phải khai nó tuân luật nào. Đọc instances/LUAT-SUPERAPP.md rồi thêm:\n" +
+                    "    \"superapp\": { \"rulesVersion\": ${LUAT_HIEN_TAI}, \"phoenixDid\": \"did:...\" }")
+            }
+            if (khai.superapp.rulesVersion != LUAT_HIEN_TAI) {
+                throw new GradleException(
+                    "instances/${khai.id}: khai rulesVersion=${khai.superapp.rulesVersion}, luật hiện hành là ${LUAT_HIEN_TAI}.\n" +
+                    "  Đọc instances/LUAT-SUPERAPP.md rồi sửa số — đừng sửa số mà không đọc.")
+            }
+            def did = khai.superapp.phoenixDid
+            if (did == null) {
+                if (!MIEN_TAM_DID.contains(khai.id)) {
+                    throw new GradleException(
+                        "instances/${khai.id}: `superapp.phoenixDid` là null.\n" +
+                        "  Luật §1 — mỗi app một danh tính PhoenixKey riêng. Một app không có danh tính\n" +
+                        "  thì nó là một thư mục, không phải một app trong hệ sinh thái.")
+                }
+            } else if (!(did ==~ /^did:[a-z0-9]+:[A-Za-z0-9._:-]+$/)) {
+                throw new GradleException("instances/${khai.id}: `superapp.phoenixDid` = '${did}' không đúng hình một DID")
+            }
+            khai
+        }
+if (cacApp.isEmpty()) {
+    throw new GradleException("Không thấy app nào trong ${thuMucApp} — mỗi app cần một thư mục chứa instance.json")
+}
+def trungMaGoi = cacApp.groupBy { it.android.applicationId }.findAll { it.value.size() > 1 }
+if (trungMaGoi) {
+    throw new GradleException("Hai app dùng chung applicationId ${trungMaGoi.keySet()} — cửa hàng coi đó là MỘT app, bản sau đè bản trước")
+}
+
+// Luật §1, nửa sau: "RIÊNG" nghĩa là không ai dùng chung. `null` không tính là
+// trùng nhau — hai app cùng CHƯA có danh tính thì chưa vi phạm, chỉ là chưa có.
+def trungDid = cacApp.findAll { it.superapp.phoenixDid != null }
+        .groupBy { it.superapp.phoenixDid }.findAll { it.value.size() > 1 }
+if (trungDid) {
+    throw new GradleException("Hai app dùng chung phoenixDid ${trungDid.keySet()} — luật §1 đòi mỗi app một danh tính RIÊNG")
+}
+
+
     android {
     signingConfigs {
         debug {
@@ -83,12 +189,30 @@ def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
             keyPassword 'android'
         }
 
-        release {
-            if (project.hasProperty('ORILIFE_UPLOAD_STORE_FILE')) {
-                storeFile file(ORILIFE_UPLOAD_STORE_FILE)
-                storePassword ORILIFE_UPLOAD_STORE_PASSWORD
-                keyAlias ORILIFE_UPLOAD_KEY_ALIAS
-                keyPassword ORILIFE_UPLOAD_KEY_PASSWORD
+        // ── MỖI APP MỘT KHOÁ KÝ ─────────────────────────────────────────────
+        //
+        // Trước bản này chỉ có MỘT khối `release` mang bốn biến `ORILIFE_UPLOAD_*`,
+        // và `buildTypes.release` gán nó cho MỌI flavor. Nghĩa là
+        // `assembleCheckfarmRelease` ký CheckFarm bằng khoá của Aladin.
+        //
+        // ⛔ Đó là hỏng KHÔNG SỬA ĐƯỢC SAU. Khoá tải lên gắn vĩnh viễn với mục
+        //    ứng dụng trên Google Play ngay từ bản đầu tiên. Một mục CheckFarm
+        //    trót nhận bản ký bằng khoá Aladin thì pháp nhân CheckFarm KHÔNG BAO
+        //    GIỜ nộp bản của họ lên đó được nữa, và cũng không chuyển giao được.
+        //    Muốn sửa phải bỏ mục cũ, mất luôn lượt cài và đánh giá đã có.
+        //
+        // Nay tên biến SUY từ mã app: `aladin` → `ALADIN_UPLOAD_*`,
+        // `checkfarm` → `CHECKFARM_UPLOAD_*`. Đối tác thêm `instances/<mã>/` là có
+        // ngay vùng khoá riêng mang tên họ, không phải nhờ ai sửa tệp này.
+        cacApp.each { khai ->
+            def tienTo = khai.id.toUpperCase() + '_UPLOAD_'
+            if (project.hasProperty(tienTo + 'STORE_FILE')) {
+                create(khai.id) {
+                    storeFile file(project.property(tienTo + 'STORE_FILE'))
+                    storePassword project.property(tienTo + 'STORE_PASSWORD')
+                    keyAlias project.property(tienTo + 'KEY_ALIAS')
+                    keyPassword project.property(tienTo + 'KEY_PASSWORD')
+                }
             }
         }
     }
@@ -122,111 +246,6 @@ def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
     //
     // ⛔ `com.checkfarm.app` KHÔNG ĐỔI ĐƯỢC sau lần tải bản dựng đầu tiên lên
     //    Google Play. Sửa dòng đó sau đó là mất luôn chỗ đứng của ứng dụng.
-    // ── MỖI APP = MỘT THƯ MỤC TRONG `instances/` ────────────────────────────
-    //
-    // Trước đợt này, tên app + mã gói + biểu tượng nằm rải ở ba chỗ: khối
-    // `productFlavors` viết tay dưới đây, `strings.xml`, và `src/main/res/mipmap-*`.
-    // Hệ quả: đối tác muốn dựng app mang nhận diện của họ thì phải nhờ người sửa
-    // gradle hộ. Đó là chỗ nghẽn ở NGƯỜI, không phải ở kỹ thuật.
-    //
-    // Nay gradle ĐỌC thư mục. Thêm một app = thêm `instances/<mã>/instance.json`
-    // + một ảnh vuông 1024 ở `instances/<mã>/brand/icon-1024.png`, rồi chạy
-    // `python3 scripts/sinh-bieu-tuong.py <mã>`. KHÔNG sửa tệp này.
-    //
-    // Chi tiết + ví dụ đầy đủ: `instances/README.md`.
-    def thuMucApp = new File(rootDir, '../instances')
-
-    // ── LUẬT SUPERAPP — phiên bản đọc từ chính tệp luật ─────────────────────
-    //
-    // Mỗi `instance.json` phải khai `superapp.rulesVersion` ĐÚNG số này. Sửa luật
-    // là nâng số ở `instances/LUAT-SUPERAPP.md`, và khi ấy mọi app đỏ cho tới khi
-    // có người đọc luật mới rồi ký nhận trong tệp của app mình.
-    //
-    // Cố ý làm phiền: luật không tự lan sang app đã có. Không có bước này thì một
-    // ràng buộc mới thêm vào tài liệu sẽ đúng với app viết SAU nó và im lặng sai
-    // với mọi app viết TRƯỚC — mà không ai đỏ.
-    def tepLuat = new File(thuMucApp, 'LUAT-SUPERAPP.md')
-    if (!tepLuat.isFile()) {
-        throw new GradleException("Không thấy ${tepLuat} — mọi app khai tuân luật SuperApp, mà tệp luật không còn")
-    }
-    def khopLuat = (tepLuat.text =~ /rulesVersion:\s*(\d+)/)
-    if (!khopLuat) {
-        throw new GradleException("${tepLuat} thiếu dòng `<!-- rulesVersion: N -->` ở đầu tệp")
-    }
-    def LUAT_HIEN_TAI = khopLuat[0][1] as int
-
-    // ── MIỄN TẠM DID — hai app có TRƯỚC khi luật §1 ra đời ──────────────────
-    //
-    // 2026-08-30: chưa có đường cấp DID cho một *instance* (khác DID của người
-    // dùng, thứ đã có sẵn). Hai app này ra đời trước ràng buộc đó nên được miễn
-    // TẠM, ghi thẳng tên ở đây để ai cũng thấy đó là NỢ chứ không phải mặc định.
-    //
-    // ⛔ KHÔNG thêm tên vào danh sách này để cho một app mới đi lọt. Danh sách chỉ
-    //    được RÚT NGẮN. App thứ ba trở đi phải có DID thật — đó là toàn bộ điểm
-    //    của luật §1, và nới ở đây là gỡ luôn cái cổng.
-    def MIEN_TAM_DID = ['aladin', 'checkfarm'] as Set
-
-    def cacApp = (thuMucApp.listFiles() ?: new File[0])
-            .findAll { it.isDirectory() && new File(it, 'instance.json').isFile() }
-            .sort { it.name }
-            .collect { thuMuc ->
-                def khai = new groovy.json.JsonSlurper().parse(new File(thuMuc, 'instance.json'))
-                // Sai ở đây phải NỔ, không được đoán: một `applicationId` rỗng lọt
-                // xuống dưới là dựng ra gói mang mã của app khác, và không có triệu
-                // chứng nào cho tới lúc nộp cửa hàng.
-                if (khai.id != thuMuc.name) {
-                    throw new GradleException("instances/${thuMuc.name}/instance.json khai id='${khai.id}' — phải trùng tên thư mục")
-                }
-                if (!(khai.id ==~ /^[a-z][a-z0-9]*$/)) {
-                    throw new GradleException("mã app '${khai.id}' phải là chữ thường + số, bắt đầu bằng chữ (gradle dùng nó làm tên flavor)")
-                }
-                if (!khai.android?.applicationId) {
-                    throw new GradleException("instances/${khai.id}/instance.json thiếu android.applicationId")
-                }
-                if (!khai.displayName) {
-                    throw new GradleException("instances/${khai.id}/instance.json thiếu displayName")
-                }
-                // ── Luật SuperApp (instances/LUAT-SUPERAPP.md) ──────────────
-                if (khai.superapp == null) {
-                    throw new GradleException(
-                        "instances/${khai.id}/instance.json thiếu khối `superapp`.\n" +
-                        "  Một app dựng từ kho này phải khai nó tuân luật nào. Đọc instances/LUAT-SUPERAPP.md rồi thêm:\n" +
-                        "    \"superapp\": { \"rulesVersion\": ${LUAT_HIEN_TAI}, \"phoenixDid\": \"did:...\" }")
-                }
-                if (khai.superapp.rulesVersion != LUAT_HIEN_TAI) {
-                    throw new GradleException(
-                        "instances/${khai.id}: khai rulesVersion=${khai.superapp.rulesVersion}, luật hiện hành là ${LUAT_HIEN_TAI}.\n" +
-                        "  Đọc instances/LUAT-SUPERAPP.md rồi sửa số — đừng sửa số mà không đọc.")
-                }
-                def did = khai.superapp.phoenixDid
-                if (did == null) {
-                    if (!MIEN_TAM_DID.contains(khai.id)) {
-                        throw new GradleException(
-                            "instances/${khai.id}: `superapp.phoenixDid` là null.\n" +
-                            "  Luật §1 — mỗi app một danh tính PhoenixKey riêng. Một app không có danh tính\n" +
-                            "  thì nó là một thư mục, không phải một app trong hệ sinh thái.")
-                    }
-                } else if (!(did ==~ /^did:[a-z0-9]+:[A-Za-z0-9._:-]+$/)) {
-                    throw new GradleException("instances/${khai.id}: `superapp.phoenixDid` = '${did}' không đúng hình một DID")
-                }
-                khai
-            }
-    if (cacApp.isEmpty()) {
-        throw new GradleException("Không thấy app nào trong ${thuMucApp} — mỗi app cần một thư mục chứa instance.json")
-    }
-    def trungMaGoi = cacApp.groupBy { it.android.applicationId }.findAll { it.value.size() > 1 }
-    if (trungMaGoi) {
-        throw new GradleException("Hai app dùng chung applicationId ${trungMaGoi.keySet()} — cửa hàng coi đó là MỘT app, bản sau đè bản trước")
-    }
-
-    // Luật §1, nửa sau: "RIÊNG" nghĩa là không ai dùng chung. `null` không tính là
-    // trùng nhau — hai app cùng CHƯA có danh tính thì chưa vi phạm, chỉ là chưa có.
-    def trungDid = cacApp.findAll { it.superapp.phoenixDid != null }
-            .groupBy { it.superapp.phoenixDid }.findAll { it.value.size() > 1 }
-    if (trungDid) {
-        throw new GradleException("Hai app dùng chung phoenixDid ${trungDid.keySet()} — luật §1 đòi mỗi app một danh tính RIÊNG")
-    }
-
     flavorDimensions "app"
     productFlavors {
         cacApp.each { khai ->
@@ -234,6 +253,12 @@ def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
                 dimension "app"
                 applicationId khai.android.applicationId
                 resValue "string", "app_name", khai.displayName
+                // Khoá ký gắn ở FLAVOR, không ở buildType — buildType chỉ có một
+                // mà app thì nhiều. Thiếu khoá thì KHÔNG gán gì, và cổng
+                // `taskGraph.whenReady` ở cuối tệp chặn bản phát hành lại.
+                if (signingConfigs.findByName(khai.id) != null) {
+                    signingConfig signingConfigs.getByName(khai.id)
+                }
             }
         }
     }
@@ -306,9 +331,9 @@ def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
             // Bản phát hành KHÔNG đi http trần. Mọi base URL trong `.env.example` đều https
             // và `grep -rnoE "http://" src/` không còn URL thật nào (chỉ 1 chuỗi trong test).
             manifestPlaceholders = [usesCleartextTraffic: "false"]
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.release
+            // KHÔNG gán `signingConfig` ở đây. buildType ĐÈ flavor, nên một dòng
+            // ở chỗ này là ép mọi app ký bằng cùng một khoá — đúng lỗi vừa gỡ.
+            // Khoá gắn ở từng flavor phía trên.
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
@@ -395,5 +420,41 @@ android.applicationVariants.all { variant ->
         def ten = "process${variant.name.capitalize()}GoogleServices"
         tasks.matching { it.name == ten }.configureEach { it.enabled = false }
         logger.lifecycle("[firebase] ${flavor}: không có google-services.json → tắt ${ten}")
+    }
+}
+
+// ── CỔNG CHẶN: bản PHÁT HÀNH không có khoá của chính app đó thì NỔ ──────────
+//
+// Không có cổng này, `assembleCheckfarmRelease` khi thiếu `CHECKFARM_UPLOAD_*`
+// vẫn chạy tới cùng và ra một gói KHÔNG KÝ. Nó không lỗi ở máy dựng; nó lỗi ở
+// cửa Play Console, sau khi người ta đã tải lên và tưởng là xong.
+//
+// Chặn ở `taskGraph.whenReady` chứ không ở lúc cấu hình: lúc cấu hình chưa biết
+// người ta định dựng flavor nào, nên ném ở đó là chặn cả `assembleAladinDebug`
+// của người chỉ muốn chạy thử máy mình.
+gradle.taskGraph.whenReady { doThi ->
+    def thieu = [] as Set
+    doThi.allTasks.each { cong ->
+        def khop = cong.name =~ /^(?:assemble|bundle)([A-Z][A-Za-z0-9]*)Release$/
+        if (!khop) return
+        def maApp = khop[0][1]
+        maApp = maApp[0].toLowerCase() + maApp.substring(1)
+        if (!cacApp.any { it.id == maApp }) return
+        if (android.signingConfigs.findByName(maApp) == null) {
+            thieu << maApp
+        }
+    }
+    if (thieu) {
+        throw new GradleException(
+            "Bản phát hành của app ${thieu} KHÔNG có khoá ký của chính app đó.\n" +
+            thieu.collect { ma ->
+                def T = ma.toUpperCase()
+                "  ${ma}: cần ${T}_UPLOAD_STORE_FILE, ${T}_UPLOAD_STORE_PASSWORD, " +
+                "${T}_UPLOAD_KEY_ALIAS, ${T}_UPLOAD_KEY_PASSWORD"
+            }.join("\n") + "\n" +
+            "Đặt trong android/gradle.properties hoặc truyền -P.\n" +
+            "KHÔNG mượn khoá của app khác: khoá tải lên gắn vĩnh viễn với mục ứng dụng\n" +
+            "trên cửa hàng, ký nhầm một lần là mục đó không chuyển giao được nữa."
+        )
     }
 }

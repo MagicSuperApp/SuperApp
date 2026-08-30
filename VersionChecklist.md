@@ -86,7 +86,7 @@
 ## 9. Bảo mật & Riêng tư
 | # | Hạng mục | TT | Ghi chú |
 |---|---|---|---|
-| 9.1 | Không hardcode secret/PAT trong repo | ✅ | đã gỡ PAT DucTiger khỏi remote Pinmez; secret ở `/Projects/Agents/.env` |
+| 9.1 | Không hardcode secret/PAT trong repo | ✅ | đã gỡ PAT DucTiger khỏi remote Pinmez; secret ở `/Agents/.env` |
 | 9.2 | `.gitignore` chặn `node_modules`/`.env`/`*.key` | ✅ | có |
 | 9.3 | Whitelist deep-link (traceScan) hẹp, chống điều hướng bừa | ✅ | thu về `*Detail` |
 | 9.4 | Seed/khoá ở Keystore native (không merge, INV-3) | ✅ | theo manifest |

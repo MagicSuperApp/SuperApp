@@ -336,9 +336,61 @@ export const identity = {
   register: (body: RegisterRequest) =>
     unwrap<RegisterResponse>(client.post('/identity/register', body)),
 
+  /**
+   * Owner-key MỚI NHẤT của một DID — **kể cả khi đã thu hồi**.
+   *
+   * ⚠ Máy chủ khai thẳng: *"Trả owner-key MỚI NHẤT theo `created_at`, KHÔNG lọc
+   * trạng thái… Phải đọc `status` và chỉ chấp nhận `active`"*
+   * (`IdentityController.java:422-433`). Trước bản này kiểu trả về ở đây KHÔNG có
+   * `status`, nên chỗ gọi không đọc được thứ máy chủ bảo phải đọc.
+   *
+   * Và nó chỉ trả MỘT khoá. Từ khi `POST /keys/authorize` cho một DID giữ nhiều
+   * khoá, "so khoá máy với khoá mà cửa này trả về" là phép so SAI: khoá của máy
+   * có thể hợp lệ mà vẫn khác khoá mới nhất. Muốn hỏi "khoá này có được uỷ quyền
+   * không" thì dùng `keyAuthorized` bên dưới — nó trả lời đúng câu đó.
+   */
   getPubkey: (did: string) =>
-    unwrap<{ publicKeyHex: string; keyRole: string }>(
+    unwrap<{ publicKeyHex: string; keyRole: string; status?: string }>(
       client.get(`/identity/${encodeURIComponent(did)}/pubkey`),
+    ),
+
+  /**
+   * `GET /identity/{did}/key-authorized?key=&at=` — khoá X có được uỷ quyền cho
+   * DID tại thời điểm `at` không. CÔNG KHAI.
+   *
+   * Đây là câu hỏi mà trước nay app phải SUY: nó so khoá máy với khoá duy nhất mà
+   * `/pubkey` trả về, trong khi cửa đó không lọc trạng thái và chỉ trả một khoá.
+   * Cửa này trả lời thẳng, không suy.
+   *
+   * ⚠ CẢ HAI tham số đều BẮT BUỘC phía máy chủ (`@RequestParam`, không có giá trị
+   * mặc định) — thiếu `at` là 400, không phải "lấy hiện tại".
+   *
+   * `rotationGapViolation` giai đoạn 1 LUÔN null (máy chủ chưa theo dõi epoch);
+   * hợp đồng ghi rõ "consumer nhận null coi như OK". Đừng đọc null thành cảnh báo.
+   */
+  keyAuthorized: (did: string, publicKeyHex: string, at: Date = new Date()) =>
+    unwrap<{ authorized: boolean; rotationGapViolation: boolean | null }>(
+      client.get(`/identity/${encodeURIComponent(did)}/key-authorized`, {
+        params: { key: publicKeyHex, at: at.toISOString() },
+      }),
+    ),
+
+  /**
+   * `GET /identity/{did}/active?at=` — DID có hiệu lực tại `at` không. CÔNG KHAI.
+   *
+   * BA trạng thái, không phải hai (`IdentityPointInTimeDtos.java`):
+   *   neverExisted=true            DID chưa từng đăng ký
+   *   active=true                  còn ≥1 khoá hiệu lực; `revokedAt` luôn null
+   *   active=false & !neverExisted mọi khoá đã thu hồi; `revokedAt` = lần gần nhất
+   *
+   * Gộp "chưa từng có" với "đã bị thu hồi" là mất đúng phần thông tin người dùng
+   * cần để biết phải làm gì tiếp.
+   */
+  isActiveAt: (did: string, at: Date = new Date()) =>
+    unwrap<{ active: boolean; revokedAt: string | null; neverExisted: boolean }>(
+      client.get(`/identity/${encodeURIComponent(did)}/active`, {
+        params: { at: at.toISOString() },
+      }),
     ),
 
   getStatus: (did: string) =>
@@ -810,6 +862,28 @@ export interface GuardianMutateRequest {
   proofSignature: string;
 }
 export const guardians = {
+  /**
+   * `GET /guardians/{userDid}` — danh sách người bảo hộ CỦA CHÍNH NGƯỜI GỌI.
+   *
+   * Máy chủ chặn tra DID khác: `if (!auth.userDid().equals(userDid)) → UNAUTHORIZED`
+   * (`GuardianController`). Nên `userDid` truyền vào phải là DID của phiên hiện tại.
+   *
+   * Trước bản này app THÊM và XOÁ được người bảo hộ nhưng KHÔNG liệt kê được — đặt
+   * xong rồi thì không có cách nào xem lại mình đã đặt ai.
+   *
+   * `count` máy chủ tách riêng có chủ đích ("client hiển thị ngay không phải count
+   * list"), và `status` trong từng dòng LUÔN là 'active' vì bảng chỉ trả active.
+   */
+  list: (userDid: string) =>
+    unwrap<{
+      guardians: Array<{ guardianDid: string; status: string; createdAt: string }>;
+      count: number;
+    }>(
+      client.get(`/guardians/${encodeURIComponent(userDid)}`, {
+        needsAuth: true,
+      } as AxiosRequestConfig),
+    ),
+
   add: (body: GuardianMutateRequest) =>
     unwrap<void>(
       client.post('/guardians/add', body, { needsAuth: true } as AxiosRequestConfig),

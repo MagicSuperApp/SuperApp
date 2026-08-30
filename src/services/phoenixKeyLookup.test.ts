@@ -34,6 +34,12 @@ let mockLookupImpl: () => Promise<{ userDid: string }> = async () => ({
   userDid: 'did:phoenix:aaaaaaahomxng:07002c1ff14a746a996709f8b8d35b9ac24cb7fd06cdc3cfe614e1d27a76bc58',
 });
 
+const mockKeyAuthCalls: any[][] = [];
+let mockKeyAuthImpl: () => Promise<{ authorized: boolean }> = async () => ({ authorized: true });
+let mockResolveImpl: () => Promise<{ userDid: string }> = async () => {
+  throw new Error('không dùng ở bài này');
+};
+
 /** Đường 3 (đăng ký lại). Mặc định hỏng, vì bài nào tới được đây cũng là bài hỏng. */
 let mockRegisterImpl: () => Promise<unknown> = async () => {
   throw new Error('không dùng ở bài này');
@@ -80,8 +86,9 @@ jest.mock('./phoenixKey-api', () => {
           mockLookupCalls.push(body);
           return mockLookupImpl();
         }),
-        resolveUsername: jest.fn(async () => { throw new Error('không dùng ở bài này'); }),
-        getPubkey: jest.fn(async () => { throw new Error('không dùng ở bài này'); }),
+        resolveUsername: jest.fn(async () => mockResolveImpl()),
+        keyAuthorized: jest.fn(async (...a: any[]) => { mockKeyAuthCalls.push(a); return mockKeyAuthImpl(); }),
+        getPubkey: jest.fn(async () => { throw new Error('KHÔNG được dùng nữa — xem bài kiểm đường 2'); }),
         register: jest.fn(async () => mockRegisterImpl()),
       },
     },
@@ -111,6 +118,9 @@ beforeEach(() => {
     userDid: 'did:phoenix:aaaaaaahomxng:07002c1ff14a746a996709f8b8d35b9ac24cb7fd06cdc3cfe614e1d27a76bc58',
   });
   mockRegisterImpl = async () => { throw new Error('không dùng ở bài này'); };
+  mockKeyAuthCalls.length = 0;
+  mockKeyAuthImpl = async () => ({ authorized: true });
+  mockResolveImpl = async () => { throw new Error('không dùng ở bài này'); };
 });
 
 describe('miền ký của lookup', () => {
@@ -233,5 +243,51 @@ describe('suy ra "khoá đã bị thu hồi" — ngõ cụt cần một lối ra
     const err = await registerIdentity('strong', 'resume').catch((e: any) => e);
     expect(err.reason).toBe('can_ten_dang_nhap');
     expect(String(err.message)).not.toMatch(/thu hồi/);
+  });
+});
+
+describe('đường 2 hỏi `key-authorized`, KHÔNG so với /pubkey nữa', () => {
+  /**
+   * `/pubkey` trả owner-key MỚI NHẤT và **không lọc trạng thái** — máy chủ ghi thẳng
+   * (`IdentityController.java:422-433`). Nó cũng chỉ trả MỘT khoá. Nên phép so cũ sai
+   * theo hai chiều, và cả hai đều im lặng:
+   *   khớp  → không chứng minh khoá còn dùng được (có thể đã thu hồi)
+   *   lệch  → không chứng minh khoá của người khác (có thể là khoá hợp lệ thứ hai)
+   * Bài dưới đây khoá lại rằng app hỏi đúng câu, chứ không suy.
+   */
+  const DID = 'did:phoenix:aaaaaaahomxng:07002c1ff14a746a996709f8b8d35b9ac24cb7fd06cdc3cfe614e1d27a76bc58';
+
+  it('lookup hỏng + tên đăng nhập đúng + khoá ĐƯỢC uỷ quyền → vào được', async () => {
+    mockLookupImpl = async () => { throw new PhoenixKeyApiError(-1, 0, 'Network error'); };
+    mockResolveImpl = async () => ({ userDid: DID });
+    mockKeyAuthImpl = async () => ({ authorized: true });
+
+    const { registerIdentity } = require('./phoenixKeyAuthService');
+    const res = await registerIdentity('strong', 'resume', 'nong-dan-a');
+    expect(res.user.did).toBe(DID);
+
+    // Hỏi ĐÚNG DID vừa tra ra, và bằng khoá của máy ở dạng lowercase.
+    const [did, key] = mockKeyAuthCalls[0];
+    expect(did).toBe(DID);
+    expect(key).toBe(key.toLowerCase());
+  });
+
+  it('khoá KHÔNG được uỷ quyền → nói đúng "tên này thuộc danh tính khác"', async () => {
+    mockLookupImpl = async () => { throw new PhoenixKeyApiError(-1, 0, 'Network error'); };
+    mockResolveImpl = async () => ({ userDid: DID });
+    mockKeyAuthImpl = async () => ({ authorized: false });
+
+    const { registerIdentity } = require('./phoenixKeyAuthService');
+    const err = await registerIdentity('strong', 'resume', 'ten-nguoi-khac').catch((e: any) => e);
+    expect(err.reason).toBe('ten_khong_khop_khoa');
+  });
+
+  it('KHÔNG còn gọi `/pubkey` ở đường này — mock của nó ném nếu bị gọi', async () => {
+    mockLookupImpl = async () => { throw new PhoenixKeyApiError(-1, 0, 'Network error'); };
+    mockResolveImpl = async () => ({ userDid: DID });
+    mockKeyAuthImpl = async () => ({ authorized: true });
+
+    const { registerIdentity } = require('./phoenixKeyAuthService');
+    await expect(registerIdentity('strong', 'resume', 'nong-dan-a')).resolves.toBeTruthy();
   });
 });

@@ -1060,15 +1060,43 @@ workflows:
       - name: Chốt flavor Android
         script: |
           set -eu
-          case "${ANDROID_FLAVOR:-}" in
-            aladin|checkfarm) ;;
-            "") echo "❌ ANDROID_FLAVOR rỗng. Giá trị hợp lệ: aladin | checkfarm"; exit 1 ;;
-            *)  echo "❌ ANDROID_FLAVOR='$ANDROID_FLAVOR' lạ. Hợp lệ: aladin | checkfarm"; exit 1 ;;
-          esac
-          case "$ANDROID_FLAVOR" in
-            aladin)    EXPECT=Aladin ;;
-            checkfarm) EXPECT=Checkfarm ;;
-          esac
+          # DANH SÁCH APP ĐỌC TỪ `instances/`, KHÔNG viết tay ở đây.
+          #
+          # `android/app/build.gradle` sinh flavor bằng cách quét đúng thư mục này
+          # (mỗi thư mục có `instance.json` là một app, và gradle ép `id` trùng tên
+          # thư mục). Cổng này từng chép lại danh sách đó bằng tay — hai nơi khai
+          # cùng một sự thật thì sớm muộn lệch nhau, và lúc lệch thì doanh nghiệp
+          # thứ ba thêm được thư mục, dựng được trên máy, rồi dừng ở CI với câu
+          # "giá trị lạ" cho một app CÓ THẬT.
+          #
+          # Câu báo lỗi in danh sách ĐO ĐƯỢC LÚC CHẠY, không phải danh sách viết
+          # sẵn — để nó không bao giờ nói sai về thực tế nữa.
+          DS=""
+          for d in instances/*/; do
+            [ -f "$d/instance.json" ] || continue
+            DS="$DS $(basename "$d")"
+          done
+          DS="${DS# }"
+          if [ -z "$DS" ]; then
+            echo "❌ Không thấy app nào trong instances/ — mỗi app cần một thư mục có instance.json"
+            exit 1
+          fi
+
+          if [ -z "${ANDROID_FLAVOR:-}" ]; then
+            echo "❌ ANDROID_FLAVOR rỗng. Giá trị hợp lệ: $DS"
+            exit 1
+          fi
+          HOP_LE=0
+          for m in $DS; do [ "$m" = "$ANDROID_FLAVOR" ] && HOP_LE=1; done
+          if [ "$HOP_LE" -ne 1 ]; then
+            echo "❌ ANDROID_FLAVOR='$ANDROID_FLAVOR' lạ. Hợp lệ: $DS"
+            exit 1
+          fi
+
+          # Gradle đặt tên tác vụ `assemble<Flavor>Debug` bằng cách VIẾT HOA ĐÚNG
+          # CHỮ ĐẦU, giữ nguyên phần còn lại (`checkfarm` → `Checkfarm`, KHÔNG phải
+          # `CheckFarm`). Suy theo đúng luật đó thay vì liệt kê từng app.
+          EXPECT="$(printf '%s' "$ANDROID_FLAVOR" | cut -c1 | tr '[:lower:]' '[:upper:]')$(printf '%s' "$ANDROID_FLAVOR" | cut -c2-)"
           if [ "${ANDROID_FLAVOR_CAP:-}" != "$EXPECT" ]; then
             echo "❌ ANDROID_FLAVOR_CAP='${ANDROID_FLAVOR_CAP:-}' không khớp ANDROID_FLAVOR='$ANDROID_FLAVOR' (chờ '$EXPECT')"
             exit 1
@@ -1337,15 +1365,43 @@ workflows:
       - name: Chốt flavor Android
         script: |
           set -eu
-          case "${ANDROID_FLAVOR:-}" in
-            aladin|checkfarm) ;;
-            "") echo "❌ ANDROID_FLAVOR rỗng. Giá trị hợp lệ: aladin | checkfarm"; exit 1 ;;
-            *)  echo "❌ ANDROID_FLAVOR='$ANDROID_FLAVOR' lạ. Hợp lệ: aladin | checkfarm"; exit 1 ;;
-          esac
-          case "$ANDROID_FLAVOR" in
-            aladin)    EXPECT=Aladin ;;
-            checkfarm) EXPECT=Checkfarm ;;
-          esac
+          # DANH SÁCH APP ĐỌC TỪ `instances/`, KHÔNG viết tay ở đây.
+          #
+          # `android/app/build.gradle` sinh flavor bằng cách quét đúng thư mục này
+          # (mỗi thư mục có `instance.json` là một app, và gradle ép `id` trùng tên
+          # thư mục). Cổng này từng chép lại danh sách đó bằng tay — hai nơi khai
+          # cùng một sự thật thì sớm muộn lệch nhau, và lúc lệch thì doanh nghiệp
+          # thứ ba thêm được thư mục, dựng được trên máy, rồi dừng ở CI với câu
+          # "giá trị lạ" cho một app CÓ THẬT.
+          #
+          # Câu báo lỗi in danh sách ĐO ĐƯỢC LÚC CHẠY, không phải danh sách viết
+          # sẵn — để nó không bao giờ nói sai về thực tế nữa.
+          DS=""
+          for d in instances/*/; do
+            [ -f "$d/instance.json" ] || continue
+            DS="$DS $(basename "$d")"
+          done
+          DS="${DS# }"
+          if [ -z "$DS" ]; then
+            echo "❌ Không thấy app nào trong instances/ — mỗi app cần một thư mục có instance.json"
+            exit 1
+          fi
+
+          if [ -z "${ANDROID_FLAVOR:-}" ]; then
+            echo "❌ ANDROID_FLAVOR rỗng. Giá trị hợp lệ: $DS"
+            exit 1
+          fi
+          HOP_LE=0
+          for m in $DS; do [ "$m" = "$ANDROID_FLAVOR" ] && HOP_LE=1; done
+          if [ "$HOP_LE" -ne 1 ]; then
+            echo "❌ ANDROID_FLAVOR='$ANDROID_FLAVOR' lạ. Hợp lệ: $DS"
+            exit 1
+          fi
+
+          # Gradle đặt tên tác vụ `assemble<Flavor>Debug` bằng cách VIẾT HOA ĐÚNG
+          # CHỮ ĐẦU, giữ nguyên phần còn lại (`checkfarm` → `Checkfarm`, KHÔNG phải
+          # `CheckFarm`). Suy theo đúng luật đó thay vì liệt kê từng app.
+          EXPECT="$(printf '%s' "$ANDROID_FLAVOR" | cut -c1 | tr '[:lower:]' '[:upper:]')$(printf '%s' "$ANDROID_FLAVOR" | cut -c2-)"
           if [ "${ANDROID_FLAVOR_CAP:-}" != "$EXPECT" ]; then
             echo "❌ ANDROID_FLAVOR_CAP='${ANDROID_FLAVOR_CAP:-}' không khớp ANDROID_FLAVOR='$ANDROID_FLAVOR' (chờ '$EXPECT')"
             exit 1

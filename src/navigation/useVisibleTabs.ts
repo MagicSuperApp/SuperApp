@@ -19,6 +19,7 @@ import { useSelector } from 'react-redux';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Toast from 'react-native-toast-message';
 import type { RootState } from '../store';
+import { DEFAULT_INSTANCE } from '../config/instance.config';
 import {
   resolveVisibleTabs,
   resolvePersona,
@@ -93,7 +94,11 @@ export function useVisibleTabs(opts?: Options): string[] {
   // ĐÓNG BĂNG: chỉ tái tính khi ghim/nonce đổi — KHÔNG theo farm state giữa phiên.
   // (farm signal cố tình NẰM NGOÀI deps để thanh không xáo theo màn.)
   return React.useMemo(
-    () => resolveVisibleTabs({ farms, trees, fruits }, usageRef.current, pinned, isAvailable),
+    // Bảng ưu tiên của APP ĐANG CHẠY — không phải hằng của nền dùng chung.
+    () => resolveVisibleTabs(
+      { farms, trees, fruits }, usageRef.current, pinned, isAvailable,
+      DEFAULT_INSTANCE.slotPriority,
+    ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [pinned, nonce],
   );

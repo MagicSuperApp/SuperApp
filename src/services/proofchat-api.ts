@@ -137,6 +137,26 @@ const ACCESS_TOKEN_KEY = 'proofchat_access_token';
 const REFRESH_TOKEN_KEY = 'proofchat_refresh_token';
 const DEVICE_ID_KEY = 'proofchat_device_id';
 
+/**
+ * DID PhoenixKey đã đổi ra cặp token đang nằm trong kho.
+ *
+ * ⛔ Vì sao khoá này phải có — cùng LỚP lỗi đã đo được ở đường OriLife 2026-08-28
+ *    (`services/orilifeDidAuth.ts`, khoá `orilife_token_did`), lần này ở đường chat:
+ *
+ *    `connectProofChat` cũ chỉ hỏi "CÓ token không", không hỏi "token CỦA AI" — thấy
+ *    có là trả `alreadyHadSession: true` ngay, không đăng nhập lại. Trên một máy dùng
+ *    chung (máy bảng ngoài đồng, máy công ty), người A đăng xuất → người B đăng nhập
+ *    → mọi lời gọi chat của người B đi ra máy chủ MANG DANH NGƯỜI A cho tới khi token
+ *    hết hạn. Đọc hội thoại của người A, gửi tin dưới tên người A, và không màn nào
+ *    báo gì.
+ *
+ * Nên từ nay token luôn đi kèm DID đã ký ra nó. Không khớp — hoặc không rõ của ai —
+ * là XOÁ và đăng nhập lại. Mặc định ĐÓNG: token đời cũ (lưu trước bản này) không có
+ * khoá này nên bị coi là vô chủ, và người dùng chịu MỘT lượt đăng nhập lại sau khi
+ * cập nhật. Đó là cái giá cố ý.
+ */
+const TOKEN_DID_KEY = 'proofchat_token_did';
+
 /** 'secure' = Keychain/Keystore; 'async-storage' = suy giảm; null = chưa ghi lần nào. */
 let tokenBackend: 'secure' | 'async-storage' | null = null;
 let warnedInsecure = false;
@@ -214,6 +234,21 @@ export const setTokens = async (t: AuthTokens): Promise<void> => {
   await writeToken(REFRESH_TOKEN_KEY, t.refreshToken);
 };
 
+/**
+ * Đóng dấu "cặp token này là của DID nào". Gọi NGAY SAU `phoenixKeyLogin` thành công.
+ *
+ * `refresh` KHÔNG gọi hàm này, và đúng như vậy: làm mới token giữ nguyên chủ, nên
+ * dấu cũ vẫn đúng. Chỉ lần đổi session PhoenixKey lấy phiên mới mới đổi chủ.
+ */
+export const setTokenOwnerDid = (did: string): Promise<void> =>
+  writeToken(TOKEN_DID_KEY, did);
+
+/** DID đã ký ra cặp token đang lưu, hoặc `null` nếu không rõ (token đời cũ / chưa có). */
+export const getTokenOwnerDid = async (): Promise<string | null> => {
+  const v = await readToken(TOKEN_DID_KEY);
+  return v && v.trim() ? v.trim() : null;
+};
+
 export const getAccessToken = (): Promise<string | null> => readToken(ACCESS_TOKEN_KEY);
 
 export const getRefreshToken = (): Promise<string | null> => readToken(REFRESH_TOKEN_KEY);
@@ -221,6 +256,10 @@ export const getRefreshToken = (): Promise<string | null> => readToken(REFRESH_T
 export const clearTokens = async (): Promise<void> => {
   await deleteToken(ACCESS_TOKEN_KEY);
   await deleteToken(REFRESH_TOKEN_KEY);
+  // Xoá CÙNG LÚC với token. Để dấu chủ sót lại một mình thì lượt đăng nhập kế
+  // tiếp của người khác sẽ thấy "token rỗng nhưng chủ là người cũ" — một trạng
+  // thái không ai đọc đúng.
+  await deleteToken(TOKEN_DID_KEY);
 };
 
 // ── deviceId (1 UUID / thiết bị, persistent) ─────────────────────────

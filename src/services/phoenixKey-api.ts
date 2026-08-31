@@ -401,6 +401,32 @@ export const identity = {
    * `rotationGapViolation` giai đoạn 1 LUÔN null (máy chủ chưa theo dõi epoch);
    * hợp đồng ghi rõ "consumer nhận null coi như OK". Đừng đọc null thành cảnh báo.
    */
+  /**
+   * `GET /identity/{did}/op-seq` — mốc chống phát lại của DID.
+   *
+   * `opSeq` là bộ đếm đơn điệu mỗi DID (bảng `did_op_watermarks`, không bao giờ
+   * dọn). Năm luồng GHI đều đòi nó VÀ buộc nó vào chuỗi ký: `/keys/authorize`,
+   * `/keys/revoke`, `/keys/rotate`, `/guardians/add`, `/guardians/remove`. Máy
+   * chủ nhận iff `opSeq > lastOpSeq`, sai thì 409 `OP_SEQ_REPLAY`.
+   *
+   * Trước bản này app KHÔNG có đường nào đọc mốc — `grep opSeq src/` ra 0, và đó
+   * chính là lý do `guardianService` nằm đó kèm lời khai "chữ ký gần chắc không
+   * còn verify được": nửa đầu (đóng khung theo độ dài) app dựng được, nửa sau
+   * (field `opSeq`) thì không có nguồn. Mốc chỉ lộ qua CÂU CHỮ trong thông báo
+   * lỗi, tức phải gửi sai một lần rồi đọc lỗi để biết phải gửi gì.
+   *
+   * Public — không đòi Bearer, cùng mức lộ với `/pubkey` và `/status`. Đúng thế:
+   * năm luồng ghi kia cũng không có phiên vào lúc cần `opSeq`, chúng xác thực
+   * bằng chữ ký ECDSA chứ không bằng phiếu.
+   *
+   * ⚠ Đọc SÁT lúc gửi, đừng nhớ lại. Hai thao tác liên tiếp trên cùng một DID thì
+   * cái thứ hai phải dùng mốc ĐÃ nâng; giữ lại giá trị cũ là tự chuốc 409.
+   */
+  opSeq: (did: string) =>
+    unwrap<{ lastOpSeq: number; nextOpSeq: number; maxOpSeq: number }>(
+      client.get(`/identity/${encodeURIComponent(did)}/op-seq`),
+    ),
+
   keyAuthorized: (did: string, publicKeyHex: string, at: Date = new Date()) =>
     unwrap<{ authorized: boolean; rotationGapViolation: boolean | null }>(
       client.get(`/identity/${encodeURIComponent(did)}/key-authorized`, {
@@ -790,12 +816,62 @@ export const deviceLifecycle = {
     ),
 };
 
+/** Vai khoá. ⚠ `owner` KHÔNG đi qua `/keys/authorize` — xem chú thích ở đó. */
+export type KeyRole = 'owner' | 'manager' | 'viewer';
+
+export interface KeyAuthorizeRequest {
+  userDid: string;
+  publicKeyHex: string;
+  keyOrigin: KeyOrigin;
+  keyRole: KeyRole;
+  nonce: string;
+  opSeq: number;
+  addedBySignature: string;
+}
+
 export const keys = {
   /**
    * Xoay khoá owner — thay khoá cũ bằng khoá mới qua Cardano updateDID.
    * Backend verify oldKeySignature bằng khoá cũ rồi build + submit tx.
    * Trả về txHash + keyId của khoá mới.
    */
+  /**
+   * `POST /keys/authorize` — gắn thêm một khoá thiết bị vào DID đã có.
+   *
+   * Đây là đường cho MỘT PhoenixKey dùng ở NHIỀU app. App A (đang giữ owner-key)
+   * ký uỷ quyền cho khoá của app B; khoá app B vào `authorized_keys` với
+   * `status='active'`, rồi app B tự đăng nhập được — `approveByMobile` chỉ lọc
+   * `status`, KHÔNG lọc vai:
+   *
+   * ```java
+   * authorizedKeyRepository.existsByUserDidAndPublicKeyHexAndStatus(
+   *         request.userDid(), request.publicKeyHex(), "active");
+   * ```
+   *
+   * ⚠ Cửa này PUBLIC ở tầng Spring (không Bearer). Zero-Trust nằm ở tầng service:
+   * `KeyServiceImpl.authorize()` bắt buộc DID phải sẵn có một owner-key ACTIVE
+   * (`findOwnerByUserDid`, thiếu là 404) và verify `addedBySignature` bằng chính
+   * khoá đó TRƯỚC khi ghi. App B không tự thêm mình vào được — app A phải ký.
+   *
+   * ⚠ `keyRole: 'owner'` bị chặn thẳng: luật V36 cho tối đa MỘT owner-key active
+   * mỗi DID (`OWNER_KEY_ALREADY_ACTIVE`). Đổi owner đi qua `/keys/rotate`.
+   *
+   * ⚠ Vai `manager` HÔM NAY không hạn chế gì ngoài vòng đời khoá. Phiếu phiên
+   * không mang claim vai (`mintSessionToken` chỉ có `userDid` + loại + hạn +
+   * `tokenEpoch`), và không cửa nghiệp vụ nào đọc `keyRole` — nên tầng dưới không
+   * phân biệt được vai kể cả khi muốn. Giao diện ĐỪNG hứa với người dùng rằng máy
+   * này "quyền hạn chế"; hôm nay nói vậy là nói sai. Ngoại lệ duy nhất đã đo:
+   * `/keys/devices/**` là `OWNER_ONLY`, phiên `manager` gọi vào nhận 403.
+   *
+   * Mã lỗi: 403 chữ ký sai · 404 DID chưa có owner-key active · 409
+   * `OP_SEQ_REPLAY` mốc lùi/bằng · 400 `KEY_FORMAT_INVALID` / `ENUM_INVALID_VALUE`.
+   *
+   * Dùng `keyAuthorizeService.authorizeDeviceKey` thay vì gọi thẳng — chuỗi ký
+   * canonical dễ dựng sai, và dựng sai thì chỉ hiện ra bằng một con 403.
+   */
+  authorize: (body: KeyAuthorizeRequest) =>
+    unwrapVoid(client.post('/keys/authorize', body)),
+
   rotate: (body: KeyRotateRequest) =>
     unwrap<KeyRotationResponse>(client.post('/keys/rotate', body)),
 
@@ -963,6 +1039,11 @@ export interface GuardianMutateRequest {
   guardianDid: string;
   nonce: string;
   proofSignature: string;
+  /**
+   * Moc chong phat lai — BAT BUOC tu V30 (`@NotNull @Positive` trong
+   * `GuardianAddRequest`). Thieu la 400 truoc khi cham toi chu ky.
+   */
+  opSeq: number;
 }
 export const guardians = {
   /**

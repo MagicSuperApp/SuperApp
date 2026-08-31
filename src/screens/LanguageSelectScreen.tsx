@@ -28,12 +28,13 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../constants';
+import { WORK_THEME } from '../theme';
 import { LANGUAGES, getLanguage, setLanguage, type LangCode } from '../i18n';
 
 // Xanh lá thương hiệu — khớp HERO của màn Đăng nhập để hai màn liền mạch.
 const BRAND = {
-  deep: '#1F5C2A',
-  primary: '#2B7A39',
+  deep: WORK_THEME.primaryDeep,
+  primary: WORK_THEME.primary,
   pale: '#C8E3CE',
   white: '#FFFFFF',
 };

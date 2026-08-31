@@ -255,7 +255,7 @@ const INSTANCE_TABS = buildTabs();
 // Thanh là position:absolute (nổi trên nội dung) — màn hình dùng nó PHẢI chừa
 // padding dưới = TAB_BAR_HEIGHT + insets.bottom + FLOAT để không bị che (xem
 // HomeScreen). Đây là cách xử iOS "navbar che nội dung dưới".
-const NAV_BG = COLORS.accentDeep;            // #264E7E — xanh đậm như herobar
+const NAV_BG = COLORS.accentDeep;            // theo app: Aladin #264E7E, CheckFarm #174F2A
 const TAB_BAR_HEIGHT = 64;                   // chiều cao phần thanh điều hướng
 const HOME_BTN_SIZE = 66;                    // đường kính nút Home
 const NOTCH_D = HOME_BTN_SIZE + 20;          // đường kính khuyết (rộng hơn nút → có khe trong suốt bao quanh)

@@ -81,12 +81,19 @@ export const DEFAULT_THEME_CONFIG: ThemeConfig = {
 // nắng cầm điện thoại rẻ. `theme/checkfarmContrast.test.ts` canh việc này bằng
 // cách TÍNH lại tương phản từ chính các giá trị dưới đây.
 //
-// Một chỗ phải chệch khỏi bảng gửi sang: bảng chỉ có MỘT màu chữ phụ
-// (`mutedFg #5F6B62`), trong khi token có hai bậc `textSub`/`textMuted`. Bậc
-// `textMuted` mặc định `#7A8C80` đo được **3,33** trên nền `#FAF7F0` — dưới
-// ngưỡng AA. Nên cả hai bậc cùng lấy `#5F6B62` (5,21) thay vì để một bậc kế
-// thừa giá trị trượt chuẩn; nhà CheckFarm muốn tách hai bậc thì gửi thêm một
-// mã, đây không phải chỗ tự nghĩ ra.
+// Hai bậc chữ phụ: bảng đầu chỉ có MỘT màu (`mutedFg #5F6B62`), nhà CheckFarm
+// gửi bổ sung `#657168` cho bậc nhạt hơn — cùng hue, chỉ nhạt hơn 2,4 bậc sáng.
+//
+//     textSub    #5F6B62   trên #FAF7F0  5,21
+//     textMuted  #657168   trên #FAF7F0  4,77   ← bậc thấp nhất còn qua AA
+//     (#6A776D  4,39 · #6C7A6F  4,22 — đều TRƯỢT)
+//
+// 🔴 Kèm một ràng buộc BỐ CỤC, không phải ràng buộc màu: nền kem `#FAF7F0` sáng
+// 96,1%, nên từ "vừa đủ qua chuẩn" tới "thoải mái" chỉ còn 2,4 bậc sáng. Hai
+// bậc chữ phụ vì thế KHÔNG nhìn ra là hai bậc. Chỗ nào cần một bậc yếu hơn thấy
+// rõ thì lấy CỠ CHỮ hoặc ĐỘ ĐẬM làm trục — đừng lấy màu, màu đã hết chỗ.
+//
+// Bậc mặc định cũ `#7A8C80` đo 3,33 trên nền này — dưới AA, nên không kế thừa.
 // ---------------------------------------------------------------------------
 export const CHECKFARM_THEME_CONFIG: ThemeConfig = {
   brandName: 'CheckFarm',
@@ -105,7 +112,7 @@ export const CHECKFARM_THEME_CONFIG: ThemeConfig = {
 
     text:        '#1A1A1A',
     textSub:     '#5F6B62',
-    textMuted:   '#5F6B62',
+    textMuted:   '#657168',
 
     inputBg:     '#EEF7F1',
     warning:     '#9C4A1C',
@@ -116,13 +123,19 @@ export const CHECKFARM_THEME_CONFIG: ThemeConfig = {
     borderSoft: '#EEF7F1',
     text:       '#1A1A1A',
     textSub:    '#5F6B62',
-    textMuted:  '#5F6B62',
+    textMuted:  '#657168',
     warning:    '#9C4A1C',
   },
   nav: {
     // Suy từ `brandLine #CBE4D5` với ĐÚNG độ đục của bản gốc (0,71) — bản gốc
-    // là `rgba(156, 189, 222, 0.71)`, tức màu LAM. Để nguyên thì viền thanh
-    // dưới của app xanh lục vẫn viền lam.
+    // là `rgba(156, 189, 222, 0.71)`, tức màu LAM.
+    //
+    // ⚠ Đo 2026-08-31: token `nav.*` hiện KHÔNG tệp nào tiêu thụ. Thanh dưới
+    // thật lấy nền từ `COLORS.accentDeep` (`navigation/index.tsx:258`, vẽ bằng
+    // `boxShadow` spread), tức một mảng ĐẶC — với CheckFarm là `#174F2A`, tương
+    // phản 8,97 với nền trang. Nên lo ngại "viền quá nhạt không tách nổi thanh
+    // khỏi nội dung" (WCAG 1.4.11) KHÔNG bị: ranh giới là mảng đặc, không phải
+    // đường viền. Giá trị dưới đây giữ cho ĐÚNG, phòng ngày có ai nối dây.
     tabBarBorder: 'rgba(203, 228, 213, 0.71)',
   },
   header: {

@@ -1328,7 +1328,7 @@ workflows:
       java: 17
       groups:
         - scanner_secrets
-        - android_signing  # ALADIN_UPLOAD_STORE_FILE_B64, passwords
+        - android_signing  # <MÃ APP VIẾT HOA>_UPLOAD_* — mỗi app một bộ, xem instances/README.md
       vars:
         AAB_OUTPUT: $CM_BUILD_DIR/android/app/build/outputs/bundle/${ANDROID_FLAVOR}Release
         # ── HAI APP ─────────────────────────────────────────────────────────
@@ -1525,18 +1525,44 @@ workflows:
 
       - name: Restore keystore from encrypted env
         script: |
-          if [ -z "$ALADIN_UPLOAD_STORE_FILE_B64" ]; then
-            echo "❌ ALADIN_UPLOAD_STORE_FILE_B64 chưa set trong group android_signing"
-            echo "   base64 -i keySigning.bin | pbcopy → paste vào Codemagic"
+          # TÊN BIẾN SUY TỪ `ANDROID_FLAVOR`, không gõ cứng tên app.
+          #
+          # Trước bản này bước dựng đã theo flavor (`bundle${ANDROID_FLAVOR_CAP}Release`)
+          # mà bước KÝ thì gõ cứng `ALADIN_UPLOAD_*`. Hệ quả: đặt
+          # `ANDROID_FLAVOR=checkfarm` thì gradle dựng CheckFarm còn máy nạp khoá
+          # Aladin — và cổng ở `android/app/build.gradle` (taskGraph.whenReady) chặn
+          # lại. Tức luồng này KHÔNG dựng nổi app thứ hai, mà lỗi báo ra lại nói về
+          # khoá chứ không nói về chỗ hỏng thật.
+          #
+          # `${!TEN}` là tham chiếu gián tiếp của bash — lấy GIÁ TRỊ của biến có tên
+          # nằm trong `$TEN`. Codemagic chạy script bằng bash (tệp này đã dùng
+          # `${PIPESTATUS[0]}` ở nhiều chỗ), nên cú pháp này dùng được.
+          TIEN_TO=$(echo "$ANDROID_FLAVOR" | tr '[:lower:]' '[:upper:]')
+          TEN_B64="${TIEN_TO}_UPLOAD_STORE_FILE_B64"
+          if [ -z "${!TEN_B64}" ]; then
+            echo "❌ ${TEN_B64} chưa set trong group android_signing"
+            echo "   Mỗi app một khoá RIÊNG — app '${ANDROID_FLAVOR}' cần đủ bốn biến:"
+            echo "     ${TIEN_TO}_UPLOAD_STORE_FILE_B64   (kho khoá .jks đã base64)"
+            echo "     ${TIEN_TO}_UPLOAD_KEY_ALIAS"
+            echo "     ${TIEN_TO}_UPLOAD_STORE_PASSWORD"
+            echo "     ${TIEN_TO}_UPLOAD_KEY_PASSWORD"
+            echo "   Sinh khoá: bash scripts/tao-khoa-ky.sh ${ANDROID_FLAVOR}"
+            echo "   Nạp:       base64 -i keySigning.bin | pbcopy → paste vào Codemagic"
             exit 1
           fi
-          echo "$ALADIN_UPLOAD_STORE_FILE_B64" | base64 -d > android/app/keySigning.bin
+          echo "${!TEN_B64}" | base64 -d > android/app/keySigning.bin
           ls -lh android/app/keySigning.bin
-          echo "✅ Keystore restored"
+          echo "✅ Keystore restored (${TIEN_TO}_UPLOAD_*)"
 
       - name: Create Android config (secrets + gradle.properties + signing)
         script: |
           set -e
+          # Mỗi khối `script:` là một shell RIÊNG — biến của bước trước không sống
+          # sang đây. Suy lại tiền tố, đừng giả định nó còn.
+          TIEN_TO=$(echo "$ANDROID_FLAVOR" | tr '[:lower:]' '[:upper:]')
+          TEN_ALIAS="${TIEN_TO}_UPLOAD_KEY_ALIAS"
+          TEN_STORE_PW="${TIEN_TO}_UPLOAD_STORE_PASSWORD"
+          TEN_KEY_PW="${TIEN_TO}_UPLOAD_KEY_PASSWORD
           # secrets.properties (gitignored) — API cho orilifesdk. Từ group scanner_secrets.
           cat > android/app/secrets.properties <<EOF
           TREE_DETECTION_API=${TREE_DETECTION_API:-https://api.orilife.io}
@@ -1566,19 +1592,23 @@ workflows:
           # android/gradle.properties bị gitignore và bị heredoc dưới đây ghi đè,
           # nên bản vá vô tác dụng suốt từ 26/07 — 10/10 lần chạy CI đỏ vì nó.
           expo.enableWorkletsIntegration=false
-          ALADIN_UPLOAD_STORE_FILE=keySigning.bin
-          ALADIN_UPLOAD_KEY_ALIAS=${ALADIN_UPLOAD_KEY_ALIAS}
-          ALADIN_UPLOAD_STORE_PASSWORD=${ALADIN_UPLOAD_STORE_PASSWORD}
-          ALADIN_UPLOAD_KEY_PASSWORD=${ALADIN_UPLOAD_KEY_PASSWORD}
+          ${TIEN_TO}_UPLOAD_STORE_FILE=keySigning.bin
+          ${TIEN_TO}_UPLOAD_KEY_ALIAS=${!TEN_ALIAS}
+          ${TIEN_TO}_UPLOAD_STORE_PASSWORD=${!TEN_STORE_PW}
+          ${TIEN_TO}_UPLOAD_KEY_PASSWORD=${!TEN_KEY_PW}
           EOF
           perl -i -pe 's/^(\w+([.\w]*))=[ \t]+/$1=/; s/[ \t]+$//' android/app/secrets.properties android/gradle.properties
           echo "✅ secrets.properties + gradle.properties (signing) created"
 
       - name: Verify gradle.properties signing config
         script: |
-          grep -E "ALADIN_UPLOAD_STORE_FILE|ALADIN_UPLOAD_KEY_ALIAS" android/gradle.properties \
-            || { echo "❌ gradle.properties thiếu signing config"; exit 1; }
-          echo "✅ gradle.properties signing OK"
+          TIEN_TO=$(echo "$ANDROID_FLAVOR" | tr '[:lower:]' '[:upper:]')
+          # Đối chiếu theo ĐÚNG app đang dựng. Tìm chuỗi cố định "ALADIN_UPLOAD_"
+          # thì bản CheckFarm ký đúng khoá của nó vẫn trượt phép kiểm này, còn bản
+          # CheckFarm ký NHẦM khoá Aladin thì lại qua — tức cổng chạy ngược.
+          grep -E "${TIEN_TO}_UPLOAD_STORE_FILE|${TIEN_TO}_UPLOAD_KEY_ALIAS" android/gradle.properties \
+            || { echo "❌ gradle.properties thiếu signing config cho app '${ANDROID_FLAVOR}'"; exit 1; }
+          echo "✅ gradle.properties signing OK (${TIEN_TO}_UPLOAD_*)"
 
       - name: Build Rust core (Android)
         script: |

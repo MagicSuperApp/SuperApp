@@ -27,6 +27,13 @@ on:
       - 'rust/**'
       - '.github/actions/**'
       - '.github/workflows/debug-apk.yml'
+      # `instances/**` phải có mặt vì gradle ĐỌC thư mục đó lúc cấu hình: mỗi
+      # `instance.json` khai `superapp.rulesVersion` và danh tính native, và cổng
+      # ở `android/app/build.gradle` nổ ngay pha cấu hình khi khai sai. Thiếu dòng
+      # này thì đúng tệp mà cổng canh là tệp duy nhất sửa được mà không lượt dựng
+      # nào chạy. Đo được ở PR #230: nó sửa CẢ HAI `instance.json` và không sinh
+      # lượt `Build debug APK` nào — phải bấm `workflow_dispatch` tay mới có.
+      - 'instances/**'
   # PR đụng tới tầng native: dựng TRƯỚC khi gộp, không phải sau.
   #
   # Vì sao thêm: đường `push` chỉ nghe `develop` và `feat/**`, nên một PR đổi
@@ -34,13 +41,21 @@ on:
   # minh được "bản CheckFarm dựng được khi không có Firebase" lại nằm ở phía bên
   # kia của lượt gộp. Cổng đặt sau cửa thì không phải cổng.
   #
-  # Lọc `paths` giữ nguyên (khai một lần ở trên là áp cho cả hai sự kiện), nên PR
-  # chỉ đụng chữ nghĩa hay tài liệu KHÔNG kéo theo 60 phút dựng.
+  # ⚠ ĐÍNH CHÍNH 2026-08-31 — chỗ này TỪNG ghi "lọc `paths` giữ nguyên (khai một
+  # lần ở trên là áp cho cả hai sự kiện)". SAI: YAML khai LẠI một danh sách riêng
+  # ngay bên dưới, và danh sách ấy HẸP HƠN đường `push` (thiếu `src/**`,
+  # `package.json`). Câu chú thích nằm ngay cạnh thứ nó tả sai, và vẫn sống được
+  # vì không ai đối chiếu hai danh sách.
+  #
+  # Giữ hẹp hơn là CÓ CHỦ Ý: PR chỉ đụng `src/**` đã có `verify-pr.yml` chạy
+  # tsc+jest, không cần thêm 45 phút dựng APK. Nhưng `instances/**` thì phải có ở
+  # CẢ HAI — lý do ghi ở khối `push` phía trên.
   pull_request:
     branches: [develop, main]
     paths:
       - 'android/**'
       - 'rust/**'
+      - 'instances/**'
       - '.github/actions/**'
       - '.github/workflows/debug-apk.yml'
   workflow_dispatch:   # nút bấm build tay

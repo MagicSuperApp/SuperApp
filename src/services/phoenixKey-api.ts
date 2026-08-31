@@ -332,13 +332,98 @@ export const clearSessionToken = (): Promise<void> =>
 export const getSessionToken = (): Promise<string | null> =>
   AsyncStorage.getItem(SESSION_TOKEN_KEY);
 
+/**
+ * `GET /identity/health` — sức khoẻ danh tính CỦA NGƯỜI ĐANG ĐĂNG NHẬP.
+ *
+ * Đối chiếu `IdentityController.java:573-578` + `IdentityServiceImpl.java:246-262`
+ * + `IdentityHealthResponse.java`. Per-user, đòi phiên (`userDidFromBearer`), trả
+ * `403` khi token hỏng — KHÔNG nhận `did` làm tham số.
+ *
+ * `requiresDeviceCosign` được TÍNH thật (`IdentityServiceImpl.java:258-259`:
+ * `hasDeviceKey && keyVersion >= 1`), không phải hằng — bản ghi này sửa lại một
+ * phép đo cũ nói ngược.
+ */
+export interface IdentityHealthResponse {
+  seedExported: boolean;
+  exportedAt?: string | null;
+  activeKeyCount: number;
+  /** Số guardian ĐANG hoạt động (`guardianRepository.countActiveByUserId`). */
+  guardianCount: number;
+  /** `device_pkh != null` — máy này đã bật khoá thiết bị chưa. */
+  hasDeviceKey: boolean;
+  requiresDeviceCosign: boolean;
+}
+
 export const identity = {
+  /**
+   * Sức khoẻ danh tính của chính người đang đăng nhập. Đòi phiên.
+   *
+   * Dùng để nhận ra diện `hasDeviceKey && guardianCount === 0` — người đã bật khoá
+   * thiết bị mà chưa có ai khôi phục hộ. Xem `services/deviceKeyRisk.ts`.
+   */
+  getHealth: () =>
+    unwrap<IdentityHealthResponse>(
+      client.get('/identity/health', { needsAuth: true } as AxiosRequestConfig),
+    ),
+
   register: (body: RegisterRequest) =>
     unwrap<RegisterResponse>(client.post('/identity/register', body)),
 
+  /**
+   * Owner-key MỚI NHẤT của một DID — **kể cả khi đã thu hồi**.
+   *
+   * ⚠ Máy chủ khai thẳng: *"Trả owner-key MỚI NHẤT theo `created_at`, KHÔNG lọc
+   * trạng thái… Phải đọc `status` và chỉ chấp nhận `active`"*
+   * (`IdentityController.java:422-433`). Trước bản này kiểu trả về ở đây KHÔNG có
+   * `status`, nên chỗ gọi không đọc được thứ máy chủ bảo phải đọc.
+   *
+   * Và nó chỉ trả MỘT khoá. Từ khi `POST /keys/authorize` cho một DID giữ nhiều
+   * khoá, "so khoá máy với khoá mà cửa này trả về" là phép so SAI: khoá của máy
+   * có thể hợp lệ mà vẫn khác khoá mới nhất. Muốn hỏi "khoá này có được uỷ quyền
+   * không" thì dùng `keyAuthorized` bên dưới — nó trả lời đúng câu đó.
+   */
   getPubkey: (did: string) =>
-    unwrap<{ publicKeyHex: string; keyRole: string }>(
+    unwrap<{ publicKeyHex: string; keyRole: string; status?: string }>(
       client.get(`/identity/${encodeURIComponent(did)}/pubkey`),
+    ),
+
+  /**
+   * `GET /identity/{did}/key-authorized?key=&at=` — khoá X có được uỷ quyền cho
+   * DID tại thời điểm `at` không. CÔNG KHAI.
+   *
+   * Đây là câu hỏi mà trước nay app phải SUY: nó so khoá máy với khoá duy nhất mà
+   * `/pubkey` trả về, trong khi cửa đó không lọc trạng thái và chỉ trả một khoá.
+   * Cửa này trả lời thẳng, không suy.
+   *
+   * ⚠ CẢ HAI tham số đều BẮT BUỘC phía máy chủ (`@RequestParam`, không có giá trị
+   * mặc định) — thiếu `at` là 400, không phải "lấy hiện tại".
+   *
+   * `rotationGapViolation` giai đoạn 1 LUÔN null (máy chủ chưa theo dõi epoch);
+   * hợp đồng ghi rõ "consumer nhận null coi như OK". Đừng đọc null thành cảnh báo.
+   */
+  keyAuthorized: (did: string, publicKeyHex: string, at: Date = new Date()) =>
+    unwrap<{ authorized: boolean; rotationGapViolation: boolean | null }>(
+      client.get(`/identity/${encodeURIComponent(did)}/key-authorized`, {
+        params: { key: publicKeyHex, at: at.toISOString() },
+      }),
+    ),
+
+  /**
+   * `GET /identity/{did}/active?at=` — DID có hiệu lực tại `at` không. CÔNG KHAI.
+   *
+   * BA trạng thái, không phải hai (`IdentityPointInTimeDtos.java`):
+   *   neverExisted=true            DID chưa từng đăng ký
+   *   active=true                  còn ≥1 khoá hiệu lực; `revokedAt` luôn null
+   *   active=false & !neverExisted mọi khoá đã thu hồi; `revokedAt` = lần gần nhất
+   *
+   * Gộp "chưa từng có" với "đã bị thu hồi" là mất đúng phần thông tin người dùng
+   * cần để biết phải làm gì tiếp.
+   */
+  isActiveAt: (did: string, at: Date = new Date()) =>
+    unwrap<{ active: boolean; revokedAt: string | null; neverExisted: boolean }>(
+      client.get(`/identity/${encodeURIComponent(did)}/active`, {
+        params: { at: at.toISOString() },
+      }),
     ),
 
   getStatus: (did: string) =>
@@ -635,6 +720,76 @@ export const delegation = {
     ),
 };
 
+/** Một thiết bị/khoá như máy chủ hiển thị cho chính chủ (`DeviceListResponse.DeviceView`). */
+export interface DeviceView {
+  keyId: string;
+  deviceName: string | null;
+  keyRole: string;
+  status: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+  /** Đúng cái máy đang cầm. Máy chủ tự chấm theo `keyId` trong phiên. */
+  current: boolean;
+}
+
+/**
+ * Vòng đời thiết bị tự-quản — `/keys/devices/**` (`DeviceLifecycleController`, V47).
+ *
+ * ⚠ KHÁC HẲN `keys.rotate`/`keys.revoke` bên dưới. `KeyController` là đường
+ * Zero-Trust: mọi thao tác kèm chữ ký ECDSA của owner-key, vì nó gọi được từ NGOÀI
+ * một phiên. Ba đường ở đây CHỈ dùng phiên, KHÔNG có tham số chữ ký nào — tiện ích
+ * tự-quản nhẹ cho người đã đăng nhập, không thay thế lớp kia.
+ *
+ * ⚠ CẢ BA đòi vai **OWNER** (`EndpointRolePolicy.OWNER_ONLY`, mẫu `/keys/devices/**`).
+ * Phiên vai `manager` gọi vào nhận **403 `KEY_ROLE_FORBIDDEN`** trước khi chạm
+ * service. Máy chủ nêu lý do: quản cả đội thiết bị là quyền của CHỦ DID — một khoá
+ * `manager` bị lộ không được dùng để do thám, cũng không được dùng để tự chống lại
+ * việc bị chủ đá ra.
+ *
+ * DID luôn lấy từ claim trong JWT, KHÔNG từ path/query/body — không có cách nào
+ * truyền DID người khác vào để đọc lịch sử đăng nhập của họ.
+ */
+export const deviceLifecycle = {
+  /**
+   * Danh sách thiết bị đang giữ khoá của chính mình.
+   *
+   * KHÔNG trả `publicKeyHex` — cố ý. Máy chủ ghi lý do: kho đã có một lỗ nghiêm
+   * trọng vì một giá trị vừa công khai vừa là khoá tra cứu (Issue #192 —
+   * `findByPublicKeyHexAndStatus` dùng pubkey làm khoá khôi phục DID). Nên đừng
+   * đi tìm pubkey ở đây để đối chiếu; muốn hỏi "khoá này còn hiệu lực không" thì
+   * dùng `identity.keyAuthorized`.
+   */
+  list: () =>
+    unwrap<{ devices: DeviceView[] }>(
+      client.get('/keys/devices', { needsAuth: true } as AxiosRequestConfig),
+    ),
+
+  /** Đặt tên máy. Máy chủ ép `@NotBlank` + tối đa 100 ký tự → cắt/chặn TRƯỚC khi gửi. */
+  rename: (keyId: string, deviceName: string) =>
+    unwrap<DeviceView>(
+      client.post(
+        `/keys/devices/${encodeURIComponent(keyId)}/name`,
+        { deviceName },
+        { needsAuth: true } as AxiosRequestConfig,
+      ),
+    ),
+
+  /**
+   * Đá một máy ra. Trả rỗng khi xong.
+   *
+   * Đây là đường DUY NHẤT đá được một máy mà KHÔNG đụng các máy còn lại — khác
+   * `identity.recoverDevice` (24 từ), vốn thu hồi TOÀN BỘ khoá owner cùng lúc.
+   */
+  revoke: (keyId: string) =>
+    unwrapVoid(
+      client.post(
+        `/keys/devices/${encodeURIComponent(keyId)}/revoke`,
+        {},
+        { needsAuth: true } as AxiosRequestConfig,
+      ),
+    ),
+};
+
 export const keys = {
   /**
    * Xoay khoá owner — thay khoá cũ bằng khoá mới qua Cardano updateDID.
@@ -810,6 +965,28 @@ export interface GuardianMutateRequest {
   proofSignature: string;
 }
 export const guardians = {
+  /**
+   * `GET /guardians/{userDid}` — danh sách người bảo hộ CỦA CHÍNH NGƯỜI GỌI.
+   *
+   * Máy chủ chặn tra DID khác: `if (!auth.userDid().equals(userDid)) → UNAUTHORIZED`
+   * (`GuardianController`). Nên `userDid` truyền vào phải là DID của phiên hiện tại.
+   *
+   * Trước bản này app THÊM và XOÁ được người bảo hộ nhưng KHÔNG liệt kê được — đặt
+   * xong rồi thì không có cách nào xem lại mình đã đặt ai.
+   *
+   * `count` máy chủ tách riêng có chủ đích ("client hiển thị ngay không phải count
+   * list"), và `status` trong từng dòng LUÔN là 'active' vì bảng chỉ trả active.
+   */
+  list: (userDid: string) =>
+    unwrap<{
+      guardians: Array<{ guardianDid: string; status: string; createdAt: string }>;
+      count: number;
+    }>(
+      client.get(`/guardians/${encodeURIComponent(userDid)}`, {
+        needsAuth: true,
+      } as AxiosRequestConfig),
+    ),
+
   add: (body: GuardianMutateRequest) =>
     unwrap<void>(
       client.post('/guardians/add', body, { needsAuth: true } as AxiosRequestConfig),
@@ -862,6 +1039,8 @@ export const phoenixKeyApi = {
   /** Bí danh cũ của `wakeme` — giữ một đợt cho nơi gọi cũ. */
   getlamp,
   keys,
+  /** Vòng đời thiết bị tự-quản (`/keys/devices/**`) — KHÁC `keys`, xem chú thích ở đó. */
+  deviceLifecycle,
   activation,
   guardians,
   activityLogs,

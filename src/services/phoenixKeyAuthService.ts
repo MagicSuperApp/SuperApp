@@ -372,12 +372,21 @@ const recoverLocalIdentityFromKey = async (
       const mine = (await ownerPublicKey()).toLowerCase();
       const { userDid } = await phoenixKeyApi.identity.resolveUsername(username.trim());
       const did = assertSupportedBackendDid(userDid, 'PhoenixKey lookup userDid');
-      const { publicKeyHex: theirs } = await phoenixKeyApi.identity.getPubkey(did);
 
-      // Khoá trên máy KHÁC khoá của tên đăng nhập đó ⇒ người đang cầm máy gõ tên của
-      // người khác. Nói riêng, đừng gộp vào "không rõ nguyên nhân": hai việc phải làm
-      // khác hẳn nhau.
-      if (!theirs || theirs.toLowerCase() !== mine) return { ok: false, reason: 'ten_khong_khop_khoa' };
+      // HỎI THẲNG "khoá này có được uỷ quyền cho DID đó không", thay vì SO với khoá
+      // mà `/pubkey` trả về. Phép so cũ sai theo hai chiều, và cả hai đều im lặng:
+      //
+      //  · `/pubkey` trả owner-key MỚI NHẤT và **không lọc trạng thái** — máy chủ ghi
+      //    thẳng điều đó (`IdentityController.java:422-433`). Khoá đã thu hồi vẫn được
+      //    trả về, nên so KHỚP không chứng minh khoá còn dùng được.
+      //  · `/pubkey` chỉ trả MỘT khoá. Từ khi `POST /keys/authorize` cho một DID giữ
+      //    nhiều khoá (đúng đường mà #233 cần), so LỆCH không chứng minh khoá là của
+      //    người khác — nó có thể là khoá hợp lệ thứ hai của chính họ. Khi đó app nói
+      //    "Tên đăng nhập này thuộc về một danh tính khác", một câu vừa sai vừa doạ.
+      //
+      // `key-authorized` trả đúng một boolean cho đúng câu hỏi đó.
+      const { authorized } = await phoenixKeyApi.identity.keyAuthorized(did, mine);
+      if (!authorized) return { ok: false, reason: 'ten_khong_khop_khoa' };
 
       const user: AuthUser = { id: did, did, createdAt: Date.now(), updatedAt: Date.now() };
       await migrateLegacyDidStores(did, user, biometricKind);

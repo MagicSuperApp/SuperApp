@@ -3,9 +3,9 @@
 // SEAM NGÔN NGỮ — nguồn DUY NHẤT khai ngôn ngữ app hỗ trợ.
 //
 // Mở rộng thị trường = thêm MỘT mã vào `SUPPORTED_LANGS` rồi bổ sung nhãn ở
-// `NAV_FRAME` / `SUBHOME_FRAME` và cột mới trong `src/i18n/phrases/*`;
-// TypeScript sẽ chỉ ra mọi chỗ còn thiếu (hai FRAME dùng `Record` ĐẦY ĐỦ, không
-// phải `Partial`, chính vì lý do đó).
+// `NAV_FRAME` và cột mới trong `src/i18n/phrases/*`; TypeScript sẽ chỉ ra mọi
+// chỗ còn thiếu (`NAV_FRAME` dùng `Record` ĐẦY ĐỦ, không phải `Partial`, chính
+// vì lý do đó).
 //
 // KHÔNG thêm phụ thuộc native (`react-native-localize`) để dò ngôn ngữ máy —
 // thêm là phải dựng lại cả hai nền tảng. `Intl` có sẵn trong Hermes là đủ; máy

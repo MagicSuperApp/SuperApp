@@ -35,7 +35,19 @@ import { join } from 'path';
 import { INSTANCES } from './instance.config';
 
 const GOC = join(__dirname, '..', '..');
-const doc = (p: string) => readFileSync(join(GOC, p), 'utf8');
+/**
+ * Đọc một tệp khai báo, CHUẨN HOÁ xuống dòng về LF.
+ *
+ * Không phải chuyện thẩm mỹ. Kho này checkout trên Windows với `core.autocrlf`
+ * bật, nên mọi tệp trong cây làm việc mang CRLF. Còn các khẳng định dưới đây
+ * viết bằng LF — có biểu thức đòi một dấu xuống dòng ở giữa, có chỗ tách dòng
+ * rồi so từng dòng một. Chưa chuẩn hoá thì ba bài đỏ trên máy Windows và xanh
+ * trên CI Linux, với CÙNG một cây mã.
+ *
+ * Loại đỏ đó tệ hơn một bài đỏ thật: nó dạy người ta rằng đỏ ở máy mình là
+ * bình thường, và bài đỏ THẬT tiếp theo sẽ bị bỏ qua cùng đám ấy.
+ */
+const doc = (p: string) => readFileSync(join(GOC, p), 'utf8').replace(/\r\n/g, '\n');
 
 const GRADLE = doc('android/app/build.gradle');
 const CODEMAGIC = doc('codemagic.yaml');
@@ -178,8 +190,12 @@ describe('cổng CI GitHub cũng gọi flavor tường minh', () => {
   it('android-aab.yml', () => {
     const y = doc('.github/workflows/android-aab.yml');
     expect(y).not.toMatch(/gradlew\s+bundleRelease\b/);
-    expect(y).toContain('bundleAladinRelease');
-    expect(y).toContain('outputs/bundle/aladinRelease');
+    // Từ 2026-08-31 luồng này dựng ĐƯỢC app thứ hai, nên flavor không còn là
+    // một chuỗi gõ cứng mà là biến suy từ app đang dựng. Yêu cầu gốc giữ
+    // nguyên — task và đường tệp phải TƯỜNG MINH theo flavor, không bao giờ là
+    // `bundleRelease` trần. Chi tiết đối chiếu với `instances/`: `aabTheoApp.test.ts`.
+    expect(y).toMatch(/gradlew "bundle\$\{CAP\}Release"/);
+    expect(y).toContain('bundle/${FLAVOR}Release');
   });
 });
 
@@ -306,6 +322,124 @@ describe('mỗi app tự mang bộ biểu tượng của mình', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// KHOÁ KÝ — mỗi app một khoá, và không app nào mượn được khoá của app khác.
+//
+// Vì sao đây là nhóm bài kiểm đáng có: hỏng ở đây KHÔNG SỬA ĐƯỢC SAU. Khoá tải
+// lên gắn vĩnh viễn với mục ứng dụng trên Google Play kể từ bản đầu tiên. Một
+// bản CheckFarm trót ký bằng khoá Aladin rồi tải lên là một mục CheckFarm mà
+// pháp nhân CheckFarm không bao giờ nộp bản của họ lên được nữa, và cũng không
+// chuyển giao được. Bản dựng thì vẫn xanh — không có triệu chứng nào ở máy dựng.
+//
+// Trước 2026-08-29 lỗi này ĐANG SỐNG: một khối `signingConfigs.release` duy nhất
+// mang bốn biến `ORILIFE_UPLOAD_*`, và `buildTypes.release` gán nó cho MỌI flavor.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('khoá ký — mỗi app một bộ, không dùng chung', () => {
+  const AAB_CI = doc('.github/workflows/android-aab.yml');
+
+  it('buildTypes.release KHÔNG gán signingConfig — buildType đè flavor', () => {
+    // Đây là bài kiểm quan trọng nhất của nhóm. buildType có ĐỘ ƯU TIÊN CAO HƠN
+    // flavor, nên chỉ cần một dòng `signingConfig` sống lại ở đây là mọi app
+    // quay về ký chung một khoá, và bốn bài kiểm dưới vẫn xanh hết.
+    const khoiRelease = GRADLE.match(/buildTypes\s*\{[\s\S]*?\n        release \{([\s\S]*?)\n        \}/);
+    expect(khoiRelease).not.toBeNull();
+    expect(khoiRelease![1]).not.toMatch(/^\s*signingConfig\s/m);
+  });
+
+  it('tên biến khoá SUY từ mã app, không gõ cứng tên app nào', () => {
+    // `khai.id.toUpperCase() + '_UPLOAD_'` — đối tác thêm `instances/<mã>/` là có
+    // ngay vùng khoá riêng, không phải nhờ ai sửa gradle. Cùng lý do với việc
+    // gradle đọc thư mục thay vì khai tay flavor.
+    expect(GRADLE).toContain("toUpperCase() + '_UPLOAD_'");
+    expect(GRADLE).toMatch(/signingConfigs\s*\{[\s\S]*?cacApp\.each/);
+  });
+
+  it('KHÔNG còn khối signingConfig dùng chung mang tên OriLife', () => {
+    expect(GRADLE).not.toMatch(/hasProperty\(\s*'ORILIFE_UPLOAD_STORE_FILE'\s*\)/);
+    expect(GRADLE).not.toMatch(/^\s*storeFile file\(ORILIFE_UPLOAD_STORE_FILE\)/m);
+  });
+
+  it('mỗi flavor tự gắn khoá của chính nó', () => {
+    const khoiFlavor = GRADLE.match(/productFlavors\s*\{([\s\S]*?)\n    \}/);
+    expect(khoiFlavor).not.toBeNull();
+    expect(khoiFlavor![1]).toContain('signingConfigs.getByName(khai.id)');
+  });
+
+  it('thiếu khoá thì bản PHÁT HÀNH nổ, không ra gói không ký', () => {
+    // Không có cổng này, `assembleCheckfarmRelease` thiếu khoá vẫn chạy tới cùng
+    // và ra một gói KHÔNG KÝ — không lỗi ở máy dựng, chỉ lỗi ở cửa Play Console
+    // sau khi người ta đã tải lên và tưởng là xong.
+    expect(GRADLE).toContain('gradle.taskGraph.whenReady');
+    expect(GRADLE).toMatch(/assemble\|bundle\)\(\[A-Z\]\[A-Za-z0-9\]\*\)Release/);
+    expect(GRADLE).toMatch(/throw new GradleException\([\s\S]{0,400}KHÔNG có khoá ký của chính app đó/);
+  });
+
+  it('cổng chặn phải NÉM, không được chỉ cảnh báo rồi chạy tiếp', () => {
+    // Cảnh báo rồi chạy tiếp là đúng khuôn hỏng vừa gỡ: có vẻ đã canh, thật ra
+    // vẫn ra gói sai. Đo trên chính khối cổng.
+    const cong = GRADLE.match(/gradle\.taskGraph\.whenReady[\s\S]*$/);
+    expect(cong).not.toBeNull();
+    expect(cong![0]).toContain('throw new GradleException');
+    expect(cong![0]).not.toMatch(/logger\.(warn|lifecycle)\(/);
+  });
+
+  it('CI Android truyền đủ bộ khoá, và bộ đó SUY theo app đang dựng', () => {
+    // Trước 2026-08-31 luồng này gõ cứng `ALADIN_UPLOAD_*`, và bài kiểm này ghi
+    // đúng chuỗi đó — tức nó đang canh cho một luồng chỉ dựng nổi MỘT app.
+    // Nay tên khoá suy từ `TIEN_TO`, nên phép đo đúng là: đủ bốn hậu tố, và
+    // tiền tố phải là biến chứ không phải tên một app.
+    expect(AAB_CI).toMatch(/gradlew "bundle\$\{CAP\}Release"/);
+    for (const hau of ['STORE_FILE', 'STORE_PASSWORD', 'KEY_ALIAS', 'KEY_PASSWORD']) {
+      expect(AAB_CI).toContain(`\${TIEN_TO}_UPLOAD_${hau}`);
+    }
+    // và KHÔNG còn tên app nào bị gõ cứng vào tên khoá ở mã chạy.
+    const maChay = AAB_CI.split('\n').filter((d) => !d.trim().startsWith('#'));
+    expect(maChay.filter((d) => /ALADIN_UPLOAD|CHECKFARM_UPLOAD/.test(d))).toEqual([]);
+    // Đo việc DÙNG, không đo việc NHẮC TÊN: lời báo lỗi trong workflow có nhắc tên
+    // cũ để người đọc biết phải đổi tên secret nào, và đó là chỗ nhắc ĐÚNG.
+    expect(AAB_CI).not.toMatch(/secrets\.ORILIFE_UPLOAD/);
+    expect(AAB_CI).not.toMatch(/-PORILIFE_UPLOAD/);
+    expect(AAB_CI).not.toMatch(/\$ORILIFE_UPLOAD/);
+    expect(AAB_CI).not.toMatch(/^\s*ORILIFE_UPLOAD_[A-Z_]+:/m);
+  });
+
+  it('không luồng CI nào truyền khoá của app này cho bản dựng của app kia', () => {
+    // Đo trực tiếp: mọi dòng gradle có `-P<TÊN>_UPLOAD_` phải nằm cùng lệnh với
+    // flavor mang đúng tên đó. Bắt được cả trường hợp ai đó chép khối build của
+    // Aladin ra rồi chỉ đổi tên flavor mà quên đổi tên biến khoá.
+    for (const [ten, noiDung] of [['android-aab.yml', AAB_CI], ['codemagic.yaml', CODEMAGIC]] as const) {
+      const lenh = noiDung.match(/(?:assemble|bundle)([A-Z][A-Za-z0-9]*)Release[\s\S]{0,600}?(?=\n\s*\n|$)/g) ?? [];
+      for (const khoi of lenh) {
+        const flavor = /(?:assemble|bundle)([A-Z][A-Za-z0-9]*)Release/.exec(khoi)![1].toUpperCase();
+        const bienKhoa = khoi.match(/-P([A-Z][A-Z0-9]*)_UPLOAD_/g) ?? [];
+        for (const b of bienKhoa) {
+          const chuKhoa = /-P([A-Z][A-Z0-9]*)_UPLOAD_/.exec(b)![1];
+          expect(`${ten}: ${khoi.slice(0, 40)} → ${chuKhoa}`).toBe(`${ten}: ${khoi.slice(0, 40)} → ${flavor}`);
+        }
+      }
+    }
+  });
+
+  it('script sinh khoá tồn tại, và từ chối ghi đè kho khoá đã có', () => {
+    const sc = doc('scripts/tao-khoa-ky.sh');
+    expect(sc).toContain('ĐÃ TỒN TẠI. Không ghi đè');
+    expect(sc).toContain('keytool -genkeypair');
+    // Script KHÔNG được tự đặt mật khẩu: `-storepass`/`-keypass` trên dòng lệnh
+    // là ghi mật khẩu vào lịch sử shell và vào bảng tiến trình của máy.
+    expect(sc).not.toContain('-storepass');
+    expect(sc).not.toContain('-keypass');
+  });
+
+  it('.gitignore chặn kho khoá ở MỌI đường, không chỉ dưới android/app', () => {
+    // Script ghi ra thư mục gốc kho. Trước 2026-08-29 `.gitignore` chỉ chặn
+    // `android/app/*.jks`, nên một `git add` lỡ tay là đẩy khoá Play Store lên kho.
+    const gi = doc('.gitignore');
+    for (const duoi of ['*.jks', '*.p12', '*.p8']) {
+      expect(gi.split('\n')).toContain(duoi);
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // FIREBASE iOS — không app nào khởi Firebase bằng cấu hình của app khác.
 //
 // Đây là nửa iOS của việc đã làm bên Android. Android tắt bước Firebase cho
@@ -372,7 +506,11 @@ describe('Firebase iOS — không khởi bằng cấu hình của app khác', ()
     const chet: string[] = [];
     for (const tep of quet(join(GOC, 'ios/aladin_mobile_fe'))) {
       if (!readFileSync(tep, 'utf8').includes('FirebaseApp.configure(')) continue;
-      const ten = tep.split('/').pop()!;
+      // Tách bằng CẢ HAI dấu. `join` trả dấu chéo ngược trên Windows, nên tách
+      // riêng dấu chéo xuôi không cắt được gì: `ten` thành nguyên đường dẫn
+      // tuyệt đối, `PBX.includes(ten)` luôn sai, và bài kết tội MỌI tệp Swift là
+      // mã chết — một lời buộc tội sai, chỉ xảy ra trên máy Windows.
+      const ten = tep.split(/[\\/]/).pop()!;
       if (!PBX.includes(ten)) chet.push(ten);
     }
     expect(chet).toEqual([]);
@@ -388,5 +526,72 @@ describe('Firebase iOS — không khởi bằng cấu hình của app khác', ()
       if (!existsSync(join(GOC, p))) continue;
       expect(doc(p)).toContain('com.aladin.orilife');
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PHÁP NHÂN VẬN HÀNH — khai ở HAI chỗ, nên phải có cổng canh hai chỗ không lệch.
+//
+// `instances/<mã>/instance.json` là bản đối tác sửa (không cần biết TypeScript).
+// `src/config/instance.config.ts` là bản mã chạy đọc. Lệch nhau thì bản đối tác
+// sửa không có tác dụng, và không có triệu chứng nào — họ sửa, dựng lại, và app
+// vẫn nói tên cũ.
+// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Bỏ chú thích, chỉ giữ MÃ CHẠY.
+ *
+ * Cổng cấm một chuỗi thì nó cấm luôn dòng chú thích giải thích vì sao cấm — và
+ * dòng chú thích đó lại là thứ đáng giữ nhất cho người sửa sau. Đo mã chạy thì
+ * cấm được cái đáng cấm mà không cấm nhầm lời giải thích.
+ */
+const maChay = (p: string) =>
+  doc(p)
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .split('\n')
+    .filter((l) => !l.trim().startsWith('//'))
+    .join('\n');
+
+describe('pháp nhân vận hành — tệp khai và mã chạy phải khớp', () => {
+  it('mỗi instance.json khai operator, và khớp bản trong instance.config.ts', () => {
+    for (const id of Object.keys(FLAVORS)) {
+      const khai = JSON.parse(readFileSync(join(THU_MUC_APP, id, 'instance.json'), 'utf8'));
+      const op = khai.operator as Record<string, unknown> | undefined;
+      expect(op ? `${id}: có operator` : `${id}: THIẾU operator`).toBe(`${id}: có operator`);
+      const ts = INSTANCES[id].operator;
+      expect(op!.name).toBe(ts.name);
+      expect(op!.address ?? null).toBe(ts.address);
+      expect(op!.addressEn ?? null).toBe(ts.addressEn);
+      expect(op!.contact ?? null).toBe(ts.contact);
+    }
+  });
+
+  it('policyContent KHÔNG còn hằng pháp nhân viết cứng', () => {
+    // Bài kiểm hàm thuần không bắt được ca này: `policyFor()` vẫn chạy đúng khi
+    // ai đó trả `OPERATOR` về thành hằng — nó chỉ in ra tên sai. Nên phải quét
+    // nguồn.
+    const pc = maChay('src/legal/policyContent.ts');
+    expect(pc).toContain('DEFAULT_INSTANCE.operator');
+    expect(pc).not.toMatch(/export const OPERATOR = \{/);
+    expect(pc).not.toContain("name: 'Aladin'");
+  });
+
+  it('tên app trên màn hình lấy từ instance, không ghi cứng', () => {
+    const login = maChay('src/screens/LoginScreen.tsx');
+    expect(login).toContain('DEFAULT_INSTANCE.displayName');
+    expect(login).not.toContain('ALADIN · DANH TÍNH SỐ');
+
+    const header = maChay('src/components/AppHeader.tsx');
+    expect(header).toContain('DEFAULT_INSTANCE.displayName');
+    expect(header).not.toMatch(/ctx\.title \?\? 'Aladin'/);
+
+    const onboard = maChay('src/screens/OnboardingScreen.tsx');
+    expect(onboard).toContain('DEFAULT_INSTANCE.displayName');
+    expect(onboard).not.toContain("tk('onboarding.title')");
+  });
+
+  it('mã kênh thông báo mang mã app, không ghi cứng aladin', () => {
+    const ln = maChay('src/services/localNotify.ts');
+    expect(ln).toContain('DEFAULT_INSTANCE.instanceId');
+    expect(ln).not.toContain("'aladin-farm-alerts'");
   });
 });

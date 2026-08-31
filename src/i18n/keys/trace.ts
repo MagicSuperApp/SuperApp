@@ -579,10 +579,10 @@ export const TRACE_STRINGS = {
   'trace.news.seeAll': { vi: 'Xem tất cả tin', en: 'See all news', zh: '查看全部资讯', ja: 'すべてのニュース' },
 
   'trace.ask.placeholder': {
-    vi: 'Hỏi Aladin về vườn của bạn…',
-    en: 'Ask Aladin about your garden…',
-    zh: '向 Aladin 询问你的果园…',
-    ja: '果樹園について Aladin に聞く…',
+    vi: 'Hỏi {brand} về vườn của bạn…',
+    en: 'Ask {brand} about your garden…',
+    zh: '向 {brand} 询问你的果园…',
+    ja: '果樹園について {brand} に聞く…',
   },
 
   // ── Mục GIÁ NÔNG SẢN ──────────────────────────────────────────────────────

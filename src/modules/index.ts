@@ -52,7 +52,7 @@ export const MODULES: ModuleEntry[] = [
     description: 'Tìm việc & đặt thợ mọi lĩnh vực',
     icon: 'briefcase-outline',
     image: require('../../assets/images/modules/job-fi.png'),
-    bgDark: '#1F5C2A',
+    bgDark: WORK_THEME.primaryDeep,
     routeName: 'WorkHome',
     available: true,
   },

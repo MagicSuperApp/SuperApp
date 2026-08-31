@@ -32,6 +32,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import ReactNativeBiometrics, { BiometryTypes } from 'react-native-biometrics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS } from '../constants';
+import { WORK_THEME } from '../theme';
 import { biometricKindFromType, phoenixKeyAuth } from '../services/phoenixKeyAuthService';
 import {
   isAvailable as isPhoenixKeyAvailable,
@@ -43,6 +44,7 @@ import { showError } from '../utils/alert';
 import LoginSuccessOverlay from '../components/LoginSuccessOverlay';
 import LanguagePickerModal from '../components/LanguagePickerModal';
 import { LANGUAGES, t, tf, useLanguage } from '../i18n';
+import { DEFAULT_INSTANCE } from '../config/instance.config';
 
 const PHOENIX_USERS_KEY = '@phoenixkey/users';
 const ACTIVE_USERNAME_KEY = '@phoenixkey/active_username';
@@ -57,8 +59,8 @@ const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
 // Aladin brand palette (xanh lá đậm + cam accent) — đồng bộ với app icon
 const BLUE = {
-  deep: '#1F5C2A',
-  primary: '#2B7A39',
+  deep: WORK_THEME.primaryDeep,
+  primary: WORK_THEME.primary,
   mid: '#3D9248',
   light: '#7DBD89',
   pale: '#C8E3CE',
@@ -390,7 +392,14 @@ const LoginScreen = () => {
               <Icon name="chevron-down" size={14} color={BLUE.white} />
             </TouchableOpacity>
           </View>
-          <Text allowFontScaling={false} style={styles.eyebrow}>ALADIN · DANH TÍNH SỐ</Text>
+          {/* Tên app lấy từ instance đang chạy, KHÔNG ghi cứng. Trước 2026-08-29
+              dòng này ghi thẳng `ALADIN · DANH TÍNH SỐ`, nên màn đăng nhập của
+              app CheckFarm cũng ghi ALADIN — người tải CheckFarm về mở lần đầu
+              thấy tên một công ty khác, và với người quen cảnh giác lừa đảo qua
+              app thì đó là dấu hiệu để gỡ ngay. */}
+          <Text allowFontScaling={false} style={styles.eyebrow}>
+            {`${DEFAULT_INSTANCE.displayName.toUpperCase()} · ${t('DANH TÍNH SỐ')}`}
+          </Text>
           <Text allowFontScaling={false} style={styles.title}>
             {/* `tf` giữ tên người ra NGOÀI khoá từ điển: nối chuỗi rồi mới dịch sẽ
                 không bao giờ khớp, còn khuôn '{name}' cho bản dịch tự đặt lại vị
@@ -484,6 +493,44 @@ const LoginScreen = () => {
           </View>
         </View>
 
+        {/* ĐẢO THỨ TỰ 2026-08-30 (#233).
+            Nền mã này nay dựng NHIỀU app, và hai app có hai mã gói khác nhau nên
+            Keystore/Secure Enclave tách hẳn — app thứ hai KHÔNG nhìn thấy khoá của
+            app thứ nhất. Người đã dùng app khác của hệ mở app này lên thì đang ở ca
+            "đã có danh tính", không phải ca "người mới".
+
+            Trước bản này nút "Chưa có tài khoản?" đứng TRƯỚC và không dòng nào nói
+            rằng người đã dùng app khác phải bấm nút kia. Bấm theo phản xạ thì sinh
+            một DID THỨ HAI cho cùng một người: `farmService` lấy `owner_did` từ
+            phiên nên danh sách vườn hiện RỖNG, mà "rỗng" trùng khớp với "tôi chưa
+            ghi gì" — nên nó không phải triệu chứng, nó là một hiểu lầm, và bước tiếp
+            theo rất dễ là nhập lại toàn bộ vườn dưới DID thứ hai. Dữ liệu chia đôi
+            vĩnh viễn.
+
+            Nên lối "đã có danh tính" đứng TRÊN, và lối "tạo mới" phải nói thẳng nó
+            sinh một danh tính KHÁC. */}
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => {
+            trackPress('restore_cta', { action: 'open_restore' });
+            navigation.navigate('RestoreIdentity' as never);
+          }}
+          style={styles.signUpCard}
+        >
+          <View style={styles.signUpIcon}>
+            <Icon name="backup-restore" size={20} color={BLUE.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.signUpTitle} allowFontScaling={false}>
+              Đã dùng một app khác của hệ này?
+            </Text>
+            <Text style={styles.signUpSub} allowFontScaling={false}>
+              Mở lại danh tính đã có bằng cụm 24 từ — vườn, cây và ví theo bạn sang đây
+            </Text>
+          </View>
+          <Icon name="arrow-right" size={18} color={BLUE.primary} />
+        </TouchableOpacity>
+
         {/* Sign up CTA */}
         <TouchableOpacity
           activeOpacity={0.85}
@@ -499,33 +546,10 @@ const LoginScreen = () => {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.signUpTitle} allowFontScaling={false}>
-              Chưa có tài khoản?
+              Chưa từng có danh tính nào?
             </Text>
             <Text style={styles.signUpSub} allowFontScaling={false}>
-              Tạo danh tính mới bằng sinh trắc học · 3 bước
-            </Text>
-          </View>
-          <Icon name="arrow-right" size={18} color={BLUE.primary} />
-        </TouchableOpacity>
-
-        {/* Restore wallet CTA — khôi phục ví bằng cụm 24 từ (máy mới / cài lại) */}
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={() => {
-            trackPress('restore_cta', { action: 'open_restore' });
-            navigation.navigate('RestoreIdentity' as never);
-          }}
-          style={styles.signUpCard}
-        >
-          <View style={styles.signUpIcon}>
-            <Icon name="backup-restore" size={20} color={BLUE.primary} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.signUpTitle} allowFontScaling={false}>
-              Đã có cụm 24 từ?
-            </Text>
-            <Text style={styles.signUpSub} allowFontScaling={false}>
-              Khôi phục ví trên thiết bị này
+              Tạo một danh tính MỚI — khác với danh tính bạn dùng ở app kia
             </Text>
           </View>
           <Icon name="arrow-right" size={18} color={BLUE.primary} />

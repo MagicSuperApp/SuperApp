@@ -33,7 +33,9 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../theme';
+import { WORK_THEME } from '../theme';
 import { useTk } from '../i18n/keys';
+import { DEFAULT_INSTANCE } from '../config/instance.config';
 import { markOnboardingSeen } from '../utils/onboardingFlag';
 import { ALADIN_WEB_URL } from '../utils/webLink';
 
@@ -47,8 +49,8 @@ import { ALADIN_WEB_URL } from '../utils/webLink';
 // (TonFarm) phải thêm nhóm token khởi động và sửa CẢ BA màn cùng lúc — sửa lẻ một
 // màn thì hai màn kia lệch màu mà không có gì báo.
 const BRAND = {
-  deep: '#1F5C2A',
-  primary: '#2B7A39',
+  deep: WORK_THEME.primaryDeep,
+  primary: WORK_THEME.primary,
   pale: '#C8E3CE',
   // Còn lại lấy từ token — không có lý do gì viết cứng.
   white: COLORS.white,
@@ -101,7 +103,7 @@ const OnboardingScreen: React.FC = () => {
               <Image source={require('../../assets/images/logo.png')} style={styles.logoImg} />
             </View>
           </View>
-          <Text allowFontScaling={false} style={styles.title}>{tk('onboarding.title')}</Text>
+          <Text allowFontScaling={false} style={styles.title}>{DEFAULT_INSTANCE.displayName}</Text>
           <Text style={styles.tagline}>{tk('onboarding.tagline')}</Text>
         </View>
 

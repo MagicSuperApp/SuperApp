@@ -53,6 +53,16 @@ android/app/*.jks
 android/app/*.p12
 android/gradle.properties
 
+# Kho khoá ký ở BẤT KỲ đâu trong kho, không chỉ dưới android/app/.
+# `scripts/tao-khoa-ky.sh` ghi ra thư mục gốc, và trước dòng này thì tệp đó
+# KHÔNG bị chặn — một `git add` lỡ tay là đẩy khoá tải lên Play Store lên kho.
+# Chặn theo ĐUÔI TỆP chứ không theo đường dẫn: đường dẫn thì người sau đổi được,
+# đuôi tệp thì không.
+*.jks
+*.p12
+*.p8
+*.mobileprovision
+
 # === node.js ===
 node_modules/
 npm-debug.log

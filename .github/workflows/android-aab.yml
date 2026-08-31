@@ -21,7 +21,26 @@ on:
       - 'rust/**'
       - '.github/actions/**'
       - '.github/workflows/android-aab.yml'
-  workflow_dispatch:  # Manual trigger button
+  workflow_dispatch:
+    inputs:
+      flavor:
+        description: 'App cần dựng (mã app trong instances/)'
+        type: choice
+        default: aladin
+        options:
+          - aladin
+          - checkfarm
+
+# ── VÌ SAO PHẢI LIỆT KÊ TAY, và cái gì canh cho danh sách này khỏi lệch ──────
+# `workflow_dispatch.inputs.<x>.options` KHÔNG nhận giá trị động: GitHub đọc nó
+# lúc dựng giao diện, trước khi có runner nào chạy. Nên danh sách trên là chỗ
+# DUY NHẤT trong kho còn phải gõ tay tên app — mọi chỗ khác (gradle, cổng ký)
+# đều ĐỌC `instances/`.
+#
+# Liệt kê tay thì sẽ lệch: thêm `instances/<mã>/` mà quên sửa đây là app mới
+# KHÔNG dựng được bản phát hành, và không có gì đỏ — chỉ là một mục thiếu trong
+# một hộp chọn không ai nhìn. `src/config/aabTheoApp.test.ts` đối chiếu danh
+# sách này với `instances/` và đỏ khi lệch.
 
 jobs:
   # CỔNG chất-lượng — nhánh `main` là nhánh RA PLAY STORE, mà trước đây lại là nhánh
@@ -60,6 +79,18 @@ jobs:
     name: Build signed AAB for Play Store
     needs: verify
     runs-on: ubuntu-latest
+
+    # ── App đang dựng ────────────────────────────────────────────────────────
+    # `push` lên `main` KHÔNG mang `inputs`, nên rơi về `aladin` — hành vi cũ
+    # giữ nguyên từng chữ. Chỉ lượt bấm tay mới chọn được app khác.
+    #
+    # `TIEN_TO` là bản viết HOA của `FLAVOR`, dùng để tra tên bí mật. Biểu thức
+    # của GitHub KHÔNG có hàm đổi hoa-thường, nên phải viết điều kiện; đây là
+    # lý do thứ hai khiến danh sách app xuất hiện tay ở tệp này, và cũng nằm
+    # trong phạm vi bài kiểm đối chiếu.
+    env:
+      FLAVOR: ${{ inputs.flavor || 'aladin' }}
+      TIEN_TO: ${{ (inputs.flavor || 'aladin') == 'checkfarm' && 'CHECKFARM' || 'ALADIN' }}
     # 60 → 90, cùng lý do như `debug-apk.yml`: thêm bước dựng Rust, và chạm trần
     # thời gian bị gắn nhãn `cancelled` chứ không phải `failure`.
     timeout-minutes: 90
@@ -92,7 +123,7 @@ jobs:
           echo "người bấm  = $NGUOI_BAM"
           if [ "$REF" != "refs/heads/main" ]; then
             echo "::error::Nhánh này KHÔNG phải main — dừng TRƯỚC khi chạm khoá ký."
-            echo "Job này ký bằng ORILIFE_UPLOAD_* — khoá ra Play Store. Chỉ main mới"
+            echo "Job này ký bằng ${TIEN_TO}_UPLOAD_* — khoá ra Play Store. Chỉ main mới"
             echo "được cho ra một tệp .aab ký thật."
             echo "Cần bản để thử? Chạy workflow 'Debug APK' — nó không chạm khoá ký."
             exit 1
@@ -205,6 +236,11 @@ jobs:
           analytics-api-url: ${{ secrets.ANALYTICS_API_URL }}
           analytics-api-key: ${{ secrets.ANALYTICS_API_KEY }}
           cardano-network: ${{ vars.CARDANO_NETWORK || '0' }}
+          # Thiếu dòng này thì mọi bản đều mang danh tính JS của app đầu tiên:
+          # `app-instance` mặc định `aladin`, và một app dựng đúng vỏ native mà
+          # sai instance JS thì mang tên, màu, pháp nhân của app kia — không có
+          # bước nào đỏ.
+          app-instance: ${{ env.FLAVOR }}
 
       - name: Create android/gradle.properties
         run: |
@@ -249,25 +285,37 @@ jobs:
 
       - name: Restore keystore from secret
         env:
-          ORILIFE_UPLOAD_STORE_FILE_B64: ${{ secrets.ORILIFE_UPLOAD_STORE_FILE_B64 }}
+          # Tra tên bí mật THEO app đang dựng. Không đưa cả hai bộ khoá vào môi
+          # trường rồi chọn trong bash: làm vậy là bản app này chạy với khoá app
+          # kia nằm sẵn bên cạnh, và một dòng sai thứ tự đủ để ký nhầm.
+          KHOA_B64: ${{ secrets[format('{0}_UPLOAD_STORE_FILE_B64', env.TIEN_TO)] }}
         run: |
-          if [ -z "$ORILIFE_UPLOAD_STORE_FILE_B64" ]; then
+          if [ -z "$KHOA_B64" ]; then
             echo "::error::Kho khoá ký chưa nạp — repo hiện có 0 secret."
             echo "Đo 2026-08-10 (kho khi đó còn ở AladinContract; nay là ${{ github.repository }}):"
             echo "               gh api repos/MagicSuperApp/SuperApp/actions/secrets"
             echo "               → {\"total_count\":0,\"secrets\":[]}"
             echo ""
+            echo "⚠ TÊN BIẾN SUY TỪ MÃ APP kể từ 2026-08-29: <MÃ APP VIẾT HOA>_UPLOAD_*."
+            echo "  Tên cũ gọi theo một nền tảng chứ không theo app, và nay nền mã này"
+            echo "  dựng NHIỀU app nên tên khoá phải nói rõ nó ký cho app nào."
+            echo "  Secret đã nạp dưới tên cũ thì đổi tên, KHÔNG cần sinh khoá mới —"
+            echo "  sinh khoá mới là mất quyền cập nhật ứng dụng đã phát hành."
+            echo ""
             echo "Cần nạp ĐỦ BỐN cái, thiếu một cái là bước ký gãy:"
-            echo "  ORILIFE_UPLOAD_STORE_FILE_B64   (keystore .jks đã base64)"
-            echo "  ORILIFE_UPLOAD_KEY_ALIAS"
-            echo "  ORILIFE_UPLOAD_STORE_PASSWORD"
-            echo "  ORILIFE_UPLOAD_KEY_PASSWORD"
+            echo "  ${TIEN_TO}_UPLOAD_STORE_FILE_B64   (keystore .jks đã base64)"
+            echo "  ${TIEN_TO}_UPLOAD_KEY_ALIAS"
+            echo "  ${TIEN_TO}_UPLOAD_STORE_PASSWORD"
+            echo "  ${TIEN_TO}_UPLOAD_KEY_PASSWORD"
+            echo ""
+            echo "App đang dựng: $FLAVOR. Mỗi app ký bằng khoá của CHÍNH pháp nhân"
+            echo "sở hữu nó — khoá gắn vĩnh viễn với mục cửa hàng từ lần nộp đầu."
             echo ""
             echo "Chỉ CHỦ SỞ HỮU kho khoá nạp được — đây là khoá ký ra bản Play Store,"
             echo "mất là mất luôn quyền cập nhật ứng dụng đã phát hành."
             exit 1
           fi
-          echo "$ORILIFE_UPLOAD_STORE_FILE_B64" | base64 -d > android/app/keySigning.bin
+          echo "$KHOA_B64" | base64 -d > android/app/keySigning.bin
           ls -lh android/app/keySigning.bin
           echo "Keystore restored ($(stat -c%s android/app/keySigning.bin) bytes)"
 
@@ -279,19 +327,34 @@ jobs:
 
       - name: Build signed AAB
         env:
-          ORILIFE_UPLOAD_KEY_ALIAS: ${{ secrets.ORILIFE_UPLOAD_KEY_ALIAS }}
-          ORILIFE_UPLOAD_STORE_PASSWORD: ${{ secrets.ORILIFE_UPLOAD_STORE_PASSWORD }}
-          ORILIFE_UPLOAD_KEY_PASSWORD: ${{ secrets.ORILIFE_UPLOAD_KEY_PASSWORD }}
+          KHOA_ALIAS:    ${{ secrets[format('{0}_UPLOAD_KEY_ALIAS', env.TIEN_TO)] }}
+          KHOA_STORE_PW: ${{ secrets[format('{0}_UPLOAD_STORE_PASSWORD', env.TIEN_TO)] }}
+          KHOA_KEY_PW:   ${{ secrets[format('{0}_UPLOAD_KEY_PASSWORD', env.TIEN_TO)] }}
         run: |
           set -eo pipefail   # fail fast if gradle exit != 0 (don't let tee mask it)
+          # Ba giá trị còn lại của bộ khoá phải CÓ MẶT, không chỉ mỗi kho khoá.
+          # Thiếu một cái thì gradle vẫn chạy, `signingConfig` rơi về không ký,
+          # và cổng ở `android/app/build.gradle` mới bắt — muộn hơn và khó đọc
+          # hơn là dừng ngay ở đây.
+          for TEN in KHOA_ALIAS KHOA_STORE_PW KHOA_KEY_PW; do
+            if [ -z "${!TEN}" ]; then
+              echo "::error::Thiếu bí mật cho app $FLAVOR — cần đủ bốn ${TIEN_TO}_UPLOAD_*"
+              exit 1
+            fi
+          done
           cd android
           chmod +x gradlew
           # Flavor TƯỜNG MINH — xem chú thích cùng loại ở debug-apk.yml.
-          ./gradlew bundleAladinRelease \
-            -PORILIFE_UPLOAD_STORE_FILE=keySigning.bin \
-            -PORILIFE_UPLOAD_KEY_ALIAS="$ORILIFE_UPLOAD_KEY_ALIAS" \
-            -PORILIFE_UPLOAD_STORE_PASSWORD="$ORILIFE_UPLOAD_STORE_PASSWORD" \
-            -PORILIFE_UPLOAD_KEY_PASSWORD="$ORILIFE_UPLOAD_KEY_PASSWORD" \
+          # Viết hoa chữ đầu ngay tại đây thay vì mang thêm một biến môi trường
+          # nữa: một biến suy ra mà để rỗng thì `bundleRelease` là task KHÔNG
+          # tồn tại và gradle báo lỗi khó đoán.
+          CAP="$(echo "${FLAVOR:0:1}" | tr '[:lower:]' '[:upper:]')${FLAVOR:1}"
+          echo "→ task: bundle${CAP}Release · khoá: ${TIEN_TO}_UPLOAD_*"
+          ./gradlew "bundle${CAP}Release" \
+            -P${TIEN_TO}_UPLOAD_STORE_FILE=keySigning.bin \
+            -P${TIEN_TO}_UPLOAD_KEY_ALIAS="$KHOA_ALIAS" \
+            -P${TIEN_TO}_UPLOAD_STORE_PASSWORD="$KHOA_STORE_PW" \
+            -P${TIEN_TO}_UPLOAD_KEY_PASSWORD="$KHOA_KEY_PW" \
             --no-daemon \
             --stacktrace \
             2>&1 | tee android-release.log
@@ -300,9 +363,9 @@ jobs:
         id: aab-info
         run: |
           # `bundle/release` KHÔNG còn tồn tại sau khi có flavor — đường đúng là
-          # `bundle/aladinRelease`. Giữ đường cũ thì `find` trả rỗng và bước này
+          # `bundle/<mã app>Release`. Giữ đường cũ thì `find` trả rỗng và bước này
           # đỏ ở chỗ khó đoán ra nguyên nhân.
-          AAB_FILE=$(find android/app/build/outputs/bundle/aladinRelease -name "*.aab" | head -1)
+          AAB_FILE=$(find "android/app/build/outputs/bundle/${FLAVOR}Release" -name "*.aab" | head -1)
           if [ -z "$AAB_FILE" ]; then
             echo "::error::AAB not found in expected directory"
             find android/app/build/outputs -type f | head -20
@@ -449,7 +512,7 @@ jobs:
       - name: Upload AAB artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.KHOA_API == 'thieu' && 'superapp-aab-KHONG-KHOA-API-KHONG-NOP-PLAY' || 'superapp-release-aab' }}
+          name: ${{ env.KHOA_API == 'thieu' && format('{0}-aab-KHONG-KHOA-API-KHONG-NOP-PLAY', env.FLAVOR) || format('{0}-release-aab', env.FLAVOR) }}
           path: |
             dist/superapp-release.aab
             dist/superapp-release.aab.sha256

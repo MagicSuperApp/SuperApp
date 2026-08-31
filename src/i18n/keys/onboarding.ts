@@ -11,12 +11,14 @@
  */
 
 export const ONBOARDING_STRINGS = {
-  'onboarding.title': {
-    vi: 'Aladin',
-    en: 'Aladin',
-    zh: 'Aladin',
-    ja: 'Aladin',
-  },
+  // ⛔ ĐÃ GỠ `onboarding.title`.
+  //
+  // Khoá đó ghi cứng 'Aladin' cả bốn ngôn ngữ, nên màn chào của app CheckFarm
+  // cũng ghi to chữ "Aladin". Tên app KHÔNG phải chuỗi dịch — nó là danh tính
+  // của instance, một app một tên, và không dịch sang ngôn ngữ nào cả.
+  // `OnboardingScreen` nay lấy thẳng `DEFAULT_INSTANCE.displayName`.
+  //
+  // Đừng thêm lại khoá này. Thêm lại là app thứ ba mang tên app thứ nhất.
   'onboarding.tagline': {
     vi: 'Một ứng dụng, bốn việc — và danh tính là của chính anh chị.',
     en: 'One app, four jobs — and the identity stays yours.',

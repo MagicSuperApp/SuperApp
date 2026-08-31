@@ -34,6 +34,7 @@ import { loadFarms, loadTrees } from '../modules/trace/store/farmSlice';
 import { tf } from '../i18n';
 import { selectChainWallet } from '../store/userSlice';
 import { NEUTRAL, withAlpha } from '../shared/theme';
+import { WORK_THEME, CHAT_THEME } from '../theme';
 import { MODULES, type ModuleEntry } from '../modules';
 import {
   getRankedQuickActions,
@@ -66,7 +67,7 @@ const BOTTOM_NAV_CLEARANCE = 120;
 // ── Hộp Quick Action (thu/mở) ───────────────────────────────────────────────
 // Thanh header PHẲNG, không gradient. Chữ/icon dùng xanh-lá đậm — cùng ngôn ngữ
 // màu với nhóm hành động "quét" (ACTION_COLORS.scan) ở navbar.
-const QUICK_GREEN_DEEP = '#1F5C2A';
+const QUICK_GREEN_DEEP = WORK_THEME.primaryDeep;
 // 4 nút / hàng; nút thừa (tính năng hay dùng ngoài bộ mặc định) tự xuống hàng.
 const QUICK_GAP = 8;
 const QUICK_ITEM_W = (width - H_PADDING * 2 - QUICK_GAP * 3) / 4;
@@ -86,21 +87,21 @@ const BANNERS = [
     id: 'b1',
     title: 'Truy xuất sầu riêng\ntới từng trái',
     sub: 'Định danh blockchain Cardano',
-    bg: '#3B6EA8',
+    bg: COLORS.accent,
     icon: 'leaf-circle-outline',
   },
   {
     id: 'b2',
     title: 'Tính năng Trò chuyện sắp\nra mắt',
     sub: 'Tin nhắn xác thực bằng chữ ký',
-    bg: '#264E7E',
+    bg: COLORS.accentDeep,
     icon: 'message-text-outline',
   },
   {
     id: 'b3',
     title: 'Tìm việc · Đặt thợ\nmọi lĩnh vực',
     sub: 'Hợp đồng số · Ký quỹ blockchain',
-    bg: '#4A86C2',
+    bg: CHAT_THEME.gradient[0],
     icon: 'briefcase-search-outline',
   },
 ];
@@ -858,10 +859,10 @@ const HomeScreen: React.FC = () => {
                 <View
                   style={[
                     styles.recentIcon,
-                    { backgroundColor: withAlpha('#3B6EA8', 0.12) },
+                    { backgroundColor: withAlpha(COLORS.accent, 0.12) },
                   ]}
                 >
-                  <Icon name="clipboard-text-outline" size={18} color="#3B6EA8" />
+                  <Icon name="clipboard-text-outline" size={18} color={COLORS.accent} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.recentTitle} numberOfLines={1}>

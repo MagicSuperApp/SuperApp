@@ -36,7 +36,7 @@
 import { APP_INSTANCE } from '@env';
 
 import type { ThemeConfig } from '../theme/theme.config';
-import { DEFAULT_THEME_CONFIG } from '../theme/theme.config';
+import { DEFAULT_THEME_CONFIG, CHECKFARM_THEME_CONFIG } from '../theme/theme.config';
 import type { AdaptiveConfig } from '../theme/adaptive';
 import { DEFAULT_ADAPTIVE_CONFIG } from '../theme/adaptive';
 // CỐ Ý import từ `moduleIds` chứ KHÔNG từ `registry`: registry import tĩnh mọi
@@ -68,6 +68,37 @@ export type TabSpec =
   | { kind: 'host'; route: string }
   | { kind: 'module'; moduleId: ModuleId };
 
+/**
+ * Pháp nhân VẬN HÀNH app — tên, địa chỉ, hòm thư nhận khiếu nại về dữ liệu.
+ *
+ * Vì sao đây là trường của INSTANCE chứ không phải hằng dùng chung: hai app do
+ * HAI pháp nhân khác nhau sở hữu. Trước đợt này `legal/policyContent.ts` giữ
+ * một hằng `OPERATOR` viết cứng tên Aladin, nên trang "Điều khoản & Chính sách"
+ * TRONG app CheckFarm nói rằng Aladin vận hành nó, kèm địa chỉ nhà riêng và hòm
+ * thư cá nhân của chủ Aladin.
+ *
+ * Đó không phải lỗi thẩm mỹ. Người dùng CheckFarm muốn yêu cầu xoá dữ liệu của
+ * mình sẽ viết thư tới pháp nhân không phát hành app họ đang cầm; và trang cửa
+ * hàng thì ghi nhà phát hành là CheckFarm. Hai văn bản mâu thuẫn, mỗi văn bản ở
+ * một nơi, nên mâu thuẫn không bao giờ lộ ra cho tới lúc có tranh chấp thật.
+ *
+ * `address`/`contact` cho phép `null`: pháp nhân đang thành lập thì CHƯA CÓ, và
+ * bịa ra một địa chỉ còn tệ hơn để trống. Trang chính sách hiện thẳng "chưa
+ * công bố" thay vì mượn địa chỉ của pháp nhân khác. Bài kiểm
+ * `instanceParity.test.ts` gọi tên app nào còn `null` là app CHƯA nộp cửa hàng
+ * được — để chỗ trống đó không lặng lẽ đi lên Play.
+ */
+export interface OperatorInfo {
+  /** Tên pháp nhân, tiếng Việt. */
+  name: string;
+  /** Tên pháp nhân tiếng Anh, nếu khác. Thiếu thì bản tiếng Anh dùng `name`. */
+  nameEn?: string;
+  address: string | null;
+  addressEn: string | null;
+  /** Hòm thư nhận yêu cầu về dữ liệu cá nhân. */
+  contact: string | null;
+}
+
 export interface InstanceConfig {
   /** Định danh instance — PHẢI khớp khoá trong `INSTANCES`. */
   instanceId: string;
@@ -80,6 +111,12 @@ export interface InstanceConfig {
    * nhận về tên một nền tảng khác.
    */
   displayName: string;
+
+  /**
+   * Pháp nhân vận hành app này. Phải khớp `operator` trong
+   * `instances/<mã>/instance.json` — có bài kiểm đối chiếu.
+   */
+  operator: OperatorInfo;
 
   /**
    * Thứ tự + thành phần thanh tab dưới (trái → phải).
@@ -125,6 +162,14 @@ export interface InstanceConfig {
 export const ALADIN_INSTANCE: InstanceConfig = {
   instanceId: 'aladin',
   displayName: 'Aladin',
+  operator: {
+    name: 'Aladin',
+    address:
+      'Số nhà 77, đường Chà Là 11, Khu đô thị Vinhomes Ocean Park 2, Xã Nghĩa Trụ, Tỉnh Hưng Yên, Việt Nam',
+    addressEn:
+      'No. 77, Cha La 11 Street, Vinhomes Ocean Park 2, Nghia Tru Commune, Hung Yen Province, Vietnam',
+    contact: 'aladincontract@gmail.com',
+  },
   tabs: [
     { kind: 'module', moduleId: 'chat' },
     { kind: 'module', moduleId: 'trace' },
@@ -161,6 +206,20 @@ export const ALADIN_INSTANCE: InstanceConfig = {
 export const CHECKFARM_INSTANCE: InstanceConfig = {
   instanceId: 'checkfarm',
   displayName: 'CheckFarm',
+  // Pháp nhân ĐỘC LẬP — không phải DDC Holdings, không phải DDC DigiTech, không
+  // phải Aladin Contract. Aladin Contract phát triển theo đơn đặt hàng và KHÔNG
+  // giữ quyền sở hữu hay quyền kiểm soát thông tin nào.
+  //
+  // `null` là thật: công ty đang thành lập, chưa có địa chỉ đăng ký và chưa có
+  // hòm thư dữ liệu. KHÔNG điền tạm địa chỉ của Aladin vào đây — đó đúng là lỗi
+  // vừa gỡ, chỉ khác chỗ đứng.
+  operator: {
+    name: 'Công ty Cổ phần CheckFarm',
+    nameEn: 'CheckFarm Inc',
+    address: null,
+    addressEn: null,
+    contact: null,
+  },
   tabs: [
     { kind: 'module', moduleId: 'chat' },
     { kind: 'module', moduleId: 'trace' },
@@ -174,10 +233,11 @@ export const CHECKFARM_INSTANCE: InstanceConfig = {
     default: SLOT_PRIORITY_DEFAULT,
     shipper: SLOT_PRIORITY_SHIPPER,
   },
-  // [CHỜ nhà CheckFarm] bảng màu + biểu tượng riêng. Tới lúc đó dùng chung theme
-  // để app dựng được và chạy được — CỐ Ý không bịa một bảng màu rồi để nó thành
-  // mặc định không ai dám đổi.
-  themeConfig: { ...DEFAULT_THEME_CONFIG, brandName: 'CheckFarm' },
+  // Bảng màu do chính nhà CheckFarm chốt và gửi sang (không phải bản bịa ở đây
+  // rồi thành mặc định không ai dám đổi). Giá trị + lý do từng ràng buộc nằm ở
+  // `theme/theme.config.ts`; ràng buộc nặng nhất là màu nhãn `#298A4A` TRƯỢT
+  // ngưỡng tương phản AA cho chữ cỡ thường, nên nó chỉ đi vào chỗ là hình.
+  themeConfig: CHECKFARM_THEME_CONFIG,
   adaptive: DEFAULT_ADAPTIVE_CONFIG,
 };
 

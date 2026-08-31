@@ -156,7 +156,7 @@ const VoiceMemoButton: React.FC<Props> = ({
         if (msg.includes('Quyền micro') || msg.includes('permission')) {
           Alert.alert(
             t('Cần quyền micro'),
-            t('Vui lòng vào Cài đặt → Aladin → Micro để cho phép ghi âm.'),
+            t('Vui lòng vào Cài đặt → {brand} → Micro để cho phép ghi âm.'),
             [{ text: t('Đã hiểu') }]
           );
         } else {

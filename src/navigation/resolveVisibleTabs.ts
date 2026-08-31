@@ -27,9 +27,41 @@ export const SLOT_PRIORITY_DEFAULT: string[] = ['Farms', 'WorkHome', 'JoinHome']
 // Shipper / thợ: Work + Join lên thanh; Farm lùi vào cổng.
 export const SLOT_PRIORITY_SHIPPER: string[] = ['WorkHome', 'JoinHome', 'Farms'];
 
-/** Thứ tự ưu tiên 3 service {Farm, Work, Join} theo persona (cổng §4 tái dùng). */
-export function slotPriority(persona: Persona): string[] {
-  return persona === 'shipper' ? SLOT_PRIORITY_SHIPPER : SLOT_PRIORITY_DEFAULT;
+/**
+ * Bảng ưu tiên SLOT của MỘT app. `InstanceConfig.slotPriority` mang đúng hình này.
+ */
+export interface SlotPriorityTable {
+  default: string[];
+  shipper: string[];
+}
+
+/** Bảng của nền dùng chung — dùng khi chỗ gọi không truyền bảng của app. */
+export const DEFAULT_SLOT_PRIORITY: SlotPriorityTable = {
+  default: SLOT_PRIORITY_DEFAULT,
+  shipper: SLOT_PRIORITY_SHIPPER,
+};
+
+/**
+ * Thứ tự ưu tiên 3 service {Farm, Work, Join} theo persona (cổng §4 tái dùng).
+ *
+ * ── Vì sao NHẬN bảng qua tham số thay vì tự đọc `InstanceConfig` ──────────────
+ * `config/instance.config.ts` ĐÃ import hai hằng ở trên từ chính tệp này. Đọc
+ * ngược lại là dựng một VÒNG import runtime — đúng loại đã làm bản signed chết ở
+ * boot với `Cannot read property 'default' of undefined`, và là loại chỉ lộ ra
+ * trên bản dựng thật chứ không lộ khi chạy dev.
+ *
+ * Nên chiều phụ thuộc giữ nguyên một chiều: tệp này KHÔNG biết gì về instance,
+ * còn chỗ gọi (đã import instance rồi) rót bảng vào. Hàm vẫn THUẦN — cùng đầu
+ * vào, cùng đầu ra, không đọc trạng thái toàn cục.
+ *
+ * Mặc định là bảng của nền dùng chung, nên mọi chỗ gọi cũ và mọi bài kiểm cũ
+ * giữ nguyên hành vi.
+ */
+export function slotPriority(
+  persona: Persona,
+  table: SlotPriorityTable = DEFAULT_SLOT_PRIORITY,
+): string[] {
+  return persona === 'shipper' ? table.shipper : table.default;
 }
 
 // Số ô SLOT thích ứng (2 ô trong).
@@ -87,15 +119,19 @@ export function resolveVisibleTabs(
   usage: UsageMap,
   pinned: string[] | null,
   isAvailable: (route: string) => boolean = () => true,
+  /** Bảng của app đang chạy. Vắng = bảng nền dùng chung — xem `slotPriority`. */
+  table: SlotPriorityTable = DEFAULT_SLOT_PRIORITY,
 ): string[] {
   // Chọn nguồn ưu tiên: ghim của user ĐÈ tất cả; nếu không, theo persona.
   let candidates: string[];
   if (pinned && pinned.length > 0) {
-    // Ghim trước, rồi bù bằng ưu tiên mặc định để luôn đủ SLOT_COUNT ô.
-    candidates = [...pinned, ...SLOT_PRIORITY_DEFAULT];
+    // Ghim trước, rồi bù bằng ưu tiên CỦA APP để luôn đủ SLOT_COUNT ô. Bù bằng
+    // bảng nền là lý do cũ khiến app khai thứ tự riêng vẫn ra thanh giống hệt
+    // nhau ngay khi người dùng có ghim.
+    candidates = [...pinned, ...table.default];
   } else {
     const persona = resolvePersona(farm, usage);
-    candidates = persona === 'shipper' ? SLOT_PRIORITY_SHIPPER : SLOT_PRIORITY_DEFAULT;
+    candidates = slotPriority(persona, table);
   }
 
   // Lọc theo route có mặt + KHÔNG trùng NEO + KHÔNG trùng lặp, lấy đúng SLOT_COUNT.

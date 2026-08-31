@@ -11,8 +11,15 @@ const routes = (items: ReturnType<typeof resolveGateItems>) => items.map((i) => 
 describe('resolveGateItems', () => {
   // Điều chỉnh menu arc (Aladin chốt, #53): BỎ 'Home' khỏi cung (nhấn nút giữa đã về
   // Home → mục Home thừa). Cung = Chat · [slot persona], Trace-quét chèn CHÍNH GIỮA.
-  it('user mới / nông dân: Chat · Farm · [Trace giữa] · Work · Join', () => {
-    const expected = ['ChatHome', 'Farms', 'TraceScan', 'WorkHome', 'JoinHome'];
+  // ĐỔI 2026-08-30: thứ tự ô nay đi theo `InstanceConfig.slotPriority` của app đang
+  // dựng, không còn theo hằng của nền dùng chung. Trước đó trường đó có 0 người đọc
+  // nên mọi app ra cùng một cung — xem `slotPriorityWiring.test.ts`.
+  //
+  // App mặc định lúc chạy bộ kiểm là Aladin, và Aladin CỐ Ý đặt Việc làm trước
+  // (`instance.config.ts:184`: "Người mở Aladin đến vì việc, không đến vì vườn").
+  // Nên kỳ vọng ở đây là cung của ALADIN, không phải cung của nền.
+  it('user mới / nông dân (Aladin): Chat · Work · [Trace giữa] · Join · Farm', () => {
+    const expected = ['ChatHome', 'WorkHome', 'TraceScan', 'JoinHome', 'Farms'];
     expect(routes(resolveGateItems(NO_FARM))).toEqual(expected);
     expect(routes(resolveGateItems({ farms: 2, trees: 9, fruits: 0 }))).toEqual(expected);
   });

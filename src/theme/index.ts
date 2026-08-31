@@ -37,6 +37,7 @@ function resolveTheme(config: ThemeConfig) {
     app:     { ...APP_TOKENS, ...(config.app ?? {}) },
     neutral: { ...NEUTRAL_TOKENS, ...(config.neutral ?? {}) },
     nav:     { ...NAV_TOKENS, ...(config.nav ?? {}) },
+    header:  { ...HEADER_TOKENS, ...(config.header ?? {}) },
     brand:   resolveBrand(config),
   };
 }
@@ -47,10 +48,42 @@ export type ResolvedTheme = ReturnType<typeof resolveTheme>;
 // White-label: đổi qua setActiveThemeConfig() trước khi render (vd đọc config
 // instance lúc bootstrap). Không dùng React Context để tránh vỡ ~73 import
 // stylesheet ở top-level module — token resolve một lần, ổn định toàn phiên.
-let activeTheme: ResolvedTheme = resolveTheme(DEFAULT_THEME_CONFIG);
+const activeTheme: ResolvedTheme = resolveTheme(DEFAULT_THEME_CONFIG);
 
+/**
+ * Nạp theme của instance đang dựng.
+ *
+ * 🔴 GHI ĐÈ TẠI CHỖ, cố ý — KHÔNG gán `activeTheme = resolveTheme(config)`.
+ *
+ * Các alias bên dưới (`COLORS`, `NEUTRAL`, `NAV`, `*_THEME`, `HEADER_COLORS`)
+ * là `const` trỏ tới CHÍNH các đối tượng nhánh của `activeTheme`, và 90 tệp
+ * đọc token qua chúng ở top-level (`StyleSheet.create` chạy lúc import). Gán
+ * lại `activeTheme` chỉ đổi biến trỏ: alias vẫn giữ đối tượng CŨ, nên override
+ * per-instance tới được `getTheme()` (5 tệp) mà KHÔNG tới 90 tệp kia.
+ *
+ * Đo được trước khi sửa, bằng một bài kiểm tạm:
+ *
+ *     COLORS.bg trước = #ffffff | COLORS.bg sau = #ffffff | getTheme().app.bg = #FAF7F0
+ *
+ * Tức cơ chế white-label chạy đúng ở nhánh gần như không ai đi, và câm ở nhánh
+ * gần như tất cả đều đi. Không màn nào đỏ, không bài kiểm nào đỏ — app thứ hai
+ * chỉ đơn giản dựng ra mang màu app thứ nhất. `theme/instanceThemeReach.test.ts`
+ * canh chỗ này.
+ *
+ * `Object.assign` với nguồn LUÔN đủ khoá (mỗi nhánh là spread của bộ token nền)
+ * nên gọi lần hai với config khác sẽ trả các khoá không khai VỀ giá trị nền,
+ * không tích luỹ vết của lần trước.
+ */
 export function setActiveThemeConfig(config: ThemeConfig): void {
-  activeTheme = resolveTheme(config);
+  const next = resolveTheme(config);
+  activeTheme.brandName = next.brandName;
+  Object.assign(activeTheme.app, next.app);
+  Object.assign(activeTheme.neutral, next.neutral);
+  Object.assign(activeTheme.nav, next.nav);
+  Object.assign(activeTheme.header, next.header);
+  (Object.keys(next.brand) as BrandKey[]).forEach((key) => {
+    Object.assign(activeTheme.brand[key], next.brand[key]);
+  });
 }
 
 // Selector chính: lấy toàn bộ theme đã resolve.
@@ -68,6 +101,7 @@ export const getToken = {
   app:     (): ResolvedTheme['app'] => activeTheme.app,
   neutral: (): ResolvedTheme['neutral'] => activeTheme.neutral,
   nav:     (): ResolvedTheme['nav'] => activeTheme.nav,
+  header:  (): ResolvedTheme['header'] => activeTheme.header,
   brand:   (key: BrandKey): ModuleTheme => activeTheme.brand[key],
 };
 
@@ -91,11 +125,12 @@ export const WORK_ACCENT = '#E08C3A';
 export const WORK_ACCENT_DEEP = '#B07026';
 export const WORK_BG_SOFT = '#E9F4ED';
 
-// Token menu hành động thích ứng (SG4) + Header toàn cục. Không thuộc lớp
-// white-label override (giá trị ổn định toàn phiên) — export trực tiếp để
+// Token menu hành động thích ứng (SG4) + Header toàn cục — export để
 // navigation/index.tsx + AppHeader tiêu thụ THAY cho hex hardcode.
 export const ACTION_COLORS = ACTION_TOKENS;
-export const HEADER_COLORS = HEADER_TOKENS;
+// Header ĐI QUA activeTheme (khác ACTION): app thứ hai phải đổi được màu thanh
+// trên, xem chú thích `header` ở `theme.config.ts`.
+export const HEADER_COLORS = activeTheme.header;
 
 // Bề mặt Fluent của module Trò chuyện + bảng màu ảnh đại diện. Giá trị thô sống
 // ở tokens.ts (YC-1); `modules/chat/theme/fluent.ts` ghép chúng với brand `chat`.

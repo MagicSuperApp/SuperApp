@@ -75,7 +75,9 @@ export const MODULE_DEEP_LINK_ALLOW: readonly string[] = [];
  *   · `LanguageSelect`— chọn ngôn ngữ, không đọc dữ liệu nào.
  *
  * Các route HOST khác cố ý KHÔNG có mặt — `Wakeme` (chuyển LAMP thật), `TreeDrift`
- * và `TreeShare` (đọc/ghi dữ liệu riêng của vườn), `Guardian`, `ActivityLog`.
+ * và `TreeShare` (đọc/ghi dữ liệu riêng của vườn), `Guardian`, `ActivityLog`,
+ * `MyDevices` (liệt kê máy của chủ và GỠ được máy — một liên kết ngoài mở thẳng
+ * vào đây là một cửa để dụ người dùng tự đá máy mình ra).
  */
 export const HOST_DEEP_LINK_PATHS: Readonly<Record<string, string>> = {
   Main: 'main',

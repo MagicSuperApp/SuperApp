@@ -1,5 +1,6 @@
 // screens/AccountScreen.tsx
 
+import { DEFAULT_INSTANCE } from '../config/instance.config';
 import React, { useEffect, useRef, useState } from 'react';
 import {
     View,
@@ -38,6 +39,7 @@ import { resetTutorial } from '../utils/tutorialStorage';
 import { COLORS } from '../constants';
 import StateView from '../components/state/StateView';
 import { showInfo, showWarning } from '../utils/alert';
+import { checkDeviceKeyRisk, isRiskSnoozed, snoozeRisk } from '../services/deviceKeyRisk';
 import { useNavigation } from '@react-navigation/native';
 import { getVersion, getBuildNumber } from 'react-native-device-info';
 // Debug host = backend field-reid THẬT app đang dùng (ORILIFE_BASE), không phải
@@ -58,7 +60,7 @@ import { CARDANO_NETWORK as WALLET_NETWORK } from '../config/cardanoNetwork';
 
 // Version THẬT đọc từ bundle (CFBundleShortVersionString / versionName + build number).
 // Thay chuỗi hard-code "Aladin v1.0.0" (Lỗi field #4) — để field biết đúng build đang chạy.
-const APP_VERSION_BASE = `Aladin v${getVersion()} (${getBuildNumber()})`;
+const APP_VERSION_BASE = `${DEFAULT_INSTANCE.displayName} v${getVersion()} (${getBuildNumber()})`;
 
 // Mã commit đã dựng ra bản này. VÌ SAO cần: số build ("86") do App Store Connect cấp
 // và tăng dần theo mỗi lần nộp, KHÔNG chỉ về commit nào; hơn nữa `main` và `develop`
@@ -410,6 +412,21 @@ const AccountScreen = () => {
     // vụ, nút Chính, chuông…) nên phải VỀ HOME TRƯỚC rồi mới chạy — chạy ngay tại
     // Cài đặt sẽ khoanh vào vùng không tồn tại/đang ẩn. Chờ một nhịp cho tab đổi
     // và layout ổn định để đo spotlight chính xác.
+    // ── Lời nhắc lập người khôi phục ─────────────────────────────────────
+    // Chỉ hiện cho đúng diện `hasDeviceKey && guardianCount === 0`. Ba trạng thái,
+    // và 'unknown' KHÔNG hiện gì — không cảnh báo, cũng không trấn an. Lý do đầy
+    // đủ ở `services/deviceKeyRisk.ts`.
+    const [showGuardianNudge, setShowGuardianNudge] = React.useState(false);
+    React.useEffect(() => {
+        let alive = true;
+        void (async () => {
+            if (await isRiskSnoozed()) return;
+            const r = await checkDeviceKeyRisk();
+            if (alive && r.state === 'at-risk') setShowGuardianNudge(true);
+        })();
+        return () => { alive = false; };
+    }, []);
+
     const { start: startTour } = useCoachMark();
     const tourTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
     React.useEffect(() => () => { if (tourTimer.current) clearTimeout(tourTimer.current); }, []);
@@ -594,7 +611,7 @@ const AccountScreen = () => {
         }, 1500);
         if (versionTapCount.current >= 5) {
             versionTapCount.current = 0;
-            showInfo('Aladin', APP_DEBUG_INFO);
+            showInfo(DEFAULT_INSTANCE.displayName, APP_DEBUG_INFO);
         }
     };
 
@@ -1088,6 +1105,12 @@ const AccountScreen = () => {
                             onPress={() => navigation.navigate('Guardian')}
                         />
                         <MenuItem
+                            icon="cellphone-link"
+                            label="Thiết bị của tôi"
+                            sublabel="Xem máy nào đang giữ khoá, đặt tên hoặc gỡ ra"
+                            onPress={() => navigation.navigate('MyDevices')}
+                        />
+                        <MenuItem
                             icon="history"
                             label="Nhật ký hoạt động"
                             sublabel="Lịch sử ký, xoay khoá, khôi phục"
@@ -1100,6 +1123,35 @@ const AccountScreen = () => {
                 {/* ── Bảo mật ── */}
                 <Animated.View style={{ opacity: fadeAnim }}>
                     <Section title="BẢO MẬT & KHÔI PHỤC">
+                        {/* Câu này nói ĐÚNG VIỆC, không doạ và không hứa: nêu tình
+                            trạng, nêu hệ quả cụ thể (mất máy), nêu một việc làm được
+                            ngay. Không dùng chữ "lỗi" — người dùng không làm gì sai. */}
+                        {showGuardianNudge && (
+                            <View style={styles.nudgeBox}>
+                                <Text style={styles.nudgeTitle}>Chưa có ai khôi phục hộ bạn</Text>
+                                <Text style={styles.nudgeBody}>
+                                    Máy này đã bật bảo mật 2 lớp nhưng chưa chọn người khôi phục.
+                                    Nếu mất máy, hiện chưa có cách nào lấy lại danh tính. Chọn một
+                                    người thân tin cậy là xong.
+                                </Text>
+                                <View style={styles.nudgeRow}>
+                                    <TouchableOpacity
+                                        style={styles.nudgePrimary}
+                                        activeOpacity={0.85}
+                                        onPress={() => navigation.navigate('Guardian')}
+                                    >
+                                        <Text style={styles.nudgePrimaryText}>Chọn người khôi phục</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        style={styles.nudgeGhost}
+                                        activeOpacity={0.7}
+                                        onPress={() => { void snoozeRisk(); setShowGuardianNudge(false); }}
+                                    >
+                                        <Text style={styles.nudgeGhostText}>Để sau</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
+                        )}
                         <MenuItem
                             icon="backup-restore"
                             label="Tái sinh danh tính"
@@ -1313,6 +1365,19 @@ const styles = StyleSheet.create({
         paddingHorizontal: 20,
     },
     sectionDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.accent },
+    nudgeBox: {
+        backgroundColor: '#fff8e1', borderRadius: 12, padding: 14, marginBottom: 10,
+        borderWidth: 1, borderColor: '#ffe082',
+    },
+    nudgeTitle: { fontSize: 14, fontWeight: '800', color: '#e65100', marginBottom: 4 },
+    nudgeBody: { fontSize: 13, lineHeight: 19, color: '#5d4037' },
+    nudgeRow: { flexDirection: 'row', alignItems: 'center', marginTop: 12, gap: 10 },
+    nudgePrimary: {
+        backgroundColor: '#e65100', borderRadius: 8, paddingVertical: 9, paddingHorizontal: 14,
+    },
+    nudgePrimaryText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+    nudgeGhost: { paddingVertical: 9, paddingHorizontal: 10 },
+    nudgeGhostText: { color: '#795548', fontSize: 13, fontWeight: '600' },
     sectionTitle: {
         fontSize: 11, fontWeight: '700', color: COLORS.accent, letterSpacing: 2,
     },

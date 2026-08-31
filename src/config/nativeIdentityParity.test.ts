@@ -190,8 +190,12 @@ describe('cổng CI GitHub cũng gọi flavor tường minh', () => {
   it('android-aab.yml', () => {
     const y = doc('.github/workflows/android-aab.yml');
     expect(y).not.toMatch(/gradlew\s+bundleRelease\b/);
-    expect(y).toContain('bundleAladinRelease');
-    expect(y).toContain('outputs/bundle/aladinRelease');
+    // Từ 2026-08-31 luồng này dựng ĐƯỢC app thứ hai, nên flavor không còn là
+    // một chuỗi gõ cứng mà là biến suy từ app đang dựng. Yêu cầu gốc giữ
+    // nguyên — task và đường tệp phải TƯỜNG MINH theo flavor, không bao giờ là
+    // `bundleRelease` trần. Chi tiết đối chiếu với `instances/`: `aabTheoApp.test.ts`.
+    expect(y).toMatch(/gradlew "bundle\$\{CAP\}Release"/);
+    expect(y).toContain('bundle/${FLAVOR}Release');
   });
 });
 
@@ -378,11 +382,18 @@ describe('khoá ký — mỗi app một bộ, không dùng chung', () => {
     expect(cong![0]).not.toMatch(/logger\.(warn|lifecycle)\(/);
   });
 
-  it('CI Android dựng flavor aladin và truyền đúng bộ biến ALADIN_UPLOAD_*', () => {
-    expect(AAB_CI).toContain('bundleAladinRelease');
+  it('CI Android truyền đủ bộ khoá, và bộ đó SUY theo app đang dựng', () => {
+    // Trước 2026-08-31 luồng này gõ cứng `ALADIN_UPLOAD_*`, và bài kiểm này ghi
+    // đúng chuỗi đó — tức nó đang canh cho một luồng chỉ dựng nổi MỘT app.
+    // Nay tên khoá suy từ `TIEN_TO`, nên phép đo đúng là: đủ bốn hậu tố, và
+    // tiền tố phải là biến chứ không phải tên một app.
+    expect(AAB_CI).toMatch(/gradlew "bundle\$\{CAP\}Release"/);
     for (const hau of ['STORE_FILE', 'STORE_PASSWORD', 'KEY_ALIAS', 'KEY_PASSWORD']) {
-      expect(AAB_CI).toContain(`ALADIN_UPLOAD_${hau}`);
+      expect(AAB_CI).toContain(`\${TIEN_TO}_UPLOAD_${hau}`);
     }
+    // và KHÔNG còn tên app nào bị gõ cứng vào tên khoá ở mã chạy.
+    const maChay = AAB_CI.split('\n').filter((d) => !d.trim().startsWith('#'));
+    expect(maChay.filter((d) => /ALADIN_UPLOAD|CHECKFARM_UPLOAD/.test(d))).toEqual([]);
     // Đo việc DÙNG, không đo việc NHẮC TÊN: lời báo lỗi trong workflow có nhắc tên
     // cũ để người đọc biết phải đổi tên secret nào, và đó là chỗ nhắc ĐÚNG.
     expect(AAB_CI).not.toMatch(/secrets\.ORILIFE_UPLOAD/);

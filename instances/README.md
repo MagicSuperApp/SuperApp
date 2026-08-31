@@ -164,7 +164,7 @@ triệu chứng**: mọi thứ chạy, chỉ là chạy vào nhà người ta.
 Vì sao iOS khác: `ios/LocalPods/ScannerModule/ScannerModule.podspec` khai
 `GoogleService-Info.plist` trong `s.resources`, và `s.resources` chép vào gói của **mọi**
 bản dựng — podspec không có nhánh theo app, iOS không có cơ chế theo flavor tương đương.
-Nên cổng nằm ở `ios/aladin_mobile_fe/AppDelegate.swift` → `configureFirebaseIfOwned()`:
+Nên cổng nằm ở `ios/SuperApp/AppDelegate.swift` → `configureFirebaseIfOwned()`:
 nó so `BUNDLE_ID` trong tệp cấu hình với mã gói **thật** đang chạy, lệch thì không khởi.
 
 Cách đó bịt **mọi** đường tệp lọt vào gói, kể cả đường chưa ai nghĩ ra, vì nó đo thứ

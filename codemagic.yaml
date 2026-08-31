@@ -59,8 +59,8 @@ workflows:
         BUNDLE_ID: vn.aladinapp
         APP_DISPLAY_NAME: Aladin
         APP_INSTANCE: aladin
-        XCODE_WORKSPACE: ios/aladin_mobile_fe.xcworkspace
-        XCODE_SCHEME: aladin_mobile_fe
+        XCODE_WORKSPACE: ios/SuperApp.xcworkspace
+        XCODE_SCHEME: SuperApp
         ARCHIVE_PATH: $CM_BUILD_DIR/build/ios/OriLife.xcarchive
         IPA_OUTPUT_DIR: $CM_BUILD_DIR/build/ios/ipa
 
@@ -364,7 +364,7 @@ workflows:
           rm -rf ~/Library/Developer/Xcode/DerivedData
           rm -rf ~/Library/Caches/org.swift.swiftpm
           rm -rf ~/Library/Caches/com.apple.dt.Xcode/SwiftPM
-          rm -rf ios/aladin_mobile_fe.xcworkspace/xcshareddata/swiftpm/checkouts 2>/dev/null || true
+          rm -rf ios/SuperApp.xcworkspace/xcshareddata/swiftpm/checkouts 2>/dev/null || true
           echo "✅ DerivedData + SPM cleaned"
 
       # Xuất JS bundle + SOURCEMAP để de-minify stack crash JS (VD "Cannot read
@@ -398,7 +398,7 @@ workflows:
       - name: Chốt mã gói iOS
         script: |
           set -eu
-          PBX=ios/aladin_mobile_fe.xcodeproj/project.pbxproj
+          PBX=ios/SuperApp.xcodeproj/project.pbxproj
           : "${BUNDLE_ID:?BUNDLE_ID rỗng — không đoán mã gói}"
           echo "→ đặt PRODUCT_BUNDLE_IDENTIFIER = $BUNDLE_ID"
           /usr/bin/sed -i '' -E "s/PRODUCT_BUNDLE_IDENTIFIER = [^;]+;/PRODUCT_BUNDLE_IDENTIFIER = ${BUNDLE_ID};/g" "$PBX"
@@ -518,7 +518,7 @@ workflows:
         BUNDLE_ID: vn.aladinapp
         APP_DISPLAY_NAME: Aladin
         APP_INSTANCE: aladin
-        XCODE_SCHEME: aladin_mobile_fe
+        XCODE_SCHEME: SuperApp
         ARCHIVE_PATH: build/ios/OriLife.xcarchive
         IPA_OUTPUT_DIR: build/ios/ipa
         APPLE_TEAM_ID: 3666KPJX5R
@@ -579,7 +579,7 @@ workflows:
       - name: Chốt mã gói iOS
         script: |
           set -eu
-          PBX=ios/aladin_mobile_fe.xcodeproj/project.pbxproj
+          PBX=ios/SuperApp.xcodeproj/project.pbxproj
           : "${BUNDLE_ID:?BUNDLE_ID rỗng — không đoán mã gói}"
           echo "→ đặt PRODUCT_BUNDLE_IDENTIFIER = $BUNDLE_ID"
           /usr/bin/sed -i '' -E "s/PRODUCT_BUNDLE_IDENTIFIER = [^;]+;/PRODUCT_BUNDLE_IDENTIFIER = ${BUNDLE_ID};/g" "$PBX"
@@ -692,7 +692,7 @@ workflows:
 
       - name: Disable NSAllowsArbitraryLoads (production)
         script: |
-          PLIST=ios/aladin_mobile_fe/Info.plist
+          PLIST=ios/SuperApp/Info.plist
           # Đặt ATS TẮT cho prod. `Set` đỏ nếu khoá chưa có → thử `Add`; cây cha chưa có
           # thì tạo dict trước. (issue #144 mục 2.4)
           /usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity dict" "$PLIST" 2>/dev/null || true
@@ -788,8 +788,8 @@ workflows:
           rm -rf ~/Library/Developer/Xcode/DerivedData
           rm -rf ~/Library/Caches/org.swift.swiftpm
           rm -rf ~/Library/Caches/com.apple.dt.Xcode
-          rm -rf ios/aladin_mobile_fe.xcworkspace/xcshareddata/swiftpm/checkouts 2>/dev/null || true
-          rm -rf ios/aladin_mobile_fe.xcworkspace/xcuserdata 2>/dev/null || true
+          rm -rf ios/SuperApp.xcworkspace/xcshareddata/swiftpm/checkouts 2>/dev/null || true
+          rm -rf ios/SuperApp.xcworkspace/xcuserdata 2>/dev/null || true
           echo "✅ DerivedData + SPM cleaned"
 
       - name: Set NODE_BINARY
@@ -810,8 +810,8 @@ workflows:
         script: |
           cat > fix_signature.rb <<'RUBY'
           require 'xcodeproj'
-          project = Xcodeproj::Project.open('ios/aladin_mobile_fe.xcodeproj')
-          target = project.targets.find { |t| t.name == 'aladin_mobile_fe' }
+          project = Xcodeproj::Project.open('ios/SuperApp.xcodeproj')
+          target = project.targets.find { |t| t.name == 'SuperApp' }
           phase_name = 'Fix MapLibre Signature Bug'
           unless target.shell_script_build_phases.find { |p| p.name == phase_name }
             phase = project.new(Xcodeproj::Project::Object::PBXShellScriptBuildPhase)

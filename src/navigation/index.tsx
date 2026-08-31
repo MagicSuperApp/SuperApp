@@ -175,7 +175,7 @@ const TAB_ICONS: Record<string, string> = Object.fromEntries(
 // 1. Component bọc riêng cho việc gọi FarmDetail từ Native.
 // PHẢI bọc RootErrorBoundary: đây là ROOT React thứ 2 (registerComponent bên dưới,
 // do FarmDetailActivity Android nạp qua ReactRootView riêng). Lưới chống-trắng-màn
-// ở index.js chỉ bọc root chính `aladin_mobile_fe` → root này nằm NGOÀI lưới đó;
+// ở index.js chỉ bọc root chính `SuperApp` → root này nằm NGOÀI lưới đó;
 // FarmDetailScreen (hoặc con) ném lúc render sẽ trắng câm nếu không có boundary tại đây.
 const NativeFarmDetailWrapper = (props: any) => {
   return (

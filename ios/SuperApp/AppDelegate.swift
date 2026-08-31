@@ -107,7 +107,7 @@ class AppDelegate: ExpoAppDelegate {
     window = UIWindow(frame: UIScreen.main.bounds)
 
     factory.startReactNative(
-      withModuleName: "aladin_mobile_fe",
+      withModuleName: "SuperApp",
       in: window,
       launchOptions: launchOptions
     )

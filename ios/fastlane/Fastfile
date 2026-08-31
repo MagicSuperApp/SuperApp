@@ -22,8 +22,8 @@ platform :ios do
 
     # Build for simulator
     xcodebuild(
-      workspace: "aladin_mobile_fe.xcworkspace",
-      scheme: "aladin_mobile_fe",
+      workspace: "SuperApp.xcworkspace",
+      scheme: "SuperApp",
       configuration: "Debug",
       destination: "generic/platform=iOS Simulator",
       build_settings: {
@@ -36,8 +36,8 @@ platform :ios do
         puts "✅ Simulator build SUCCESS"
         # Export to .app bundle
         xcodebuild(
-          workspace: "aladin_mobile_fe.xcworkspace",
-          scheme: "aladin_mobile_fe",
+          workspace: "SuperApp.xcworkspace",
+          scheme: "SuperApp",
           configuration: "Debug",
           destination: "generic/platform=iOS Simulator",
           archive_path: "../build/ios-simulator/Build/Products",
@@ -72,8 +72,8 @@ platform :ios do
 
     # Build
     xcodebuild(
-      workspace: "aladin_mobile_fe.xcworkspace",
-      scheme: "aladin_mobile_fe",
+      workspace: "SuperApp.xcworkspace",
+      scheme: "SuperApp",
       configuration: "Release",
       export_method: "ad-hoc",
       export_options: {
@@ -86,7 +86,7 @@ platform :ios do
     )
 
     # Verify .ipa exists
-    ipa_path = "../build/ios/aladin_mobile_fe.ipa"
+    ipa_path = "../build/ios/SuperApp.ipa"
     if File.exist?(ipa_path)
       puts "✅ IPA created: #{ipa_path}"
       sh("ls -lh #{ipa_path}")
@@ -116,8 +116,8 @@ platform :ios do
 
     # Build for App Store distribution
     xcodebuild(
-      workspace: "aladin_mobile_fe.xcworkspace",
-      scheme: "aladin_mobile_fe",
+      workspace: "SuperApp.xcworkspace",
+      scheme: "SuperApp",
       configuration: "Release",
       export_method: "app-store",
       export_options: {
@@ -132,7 +132,7 @@ platform :ios do
     # Upload to TestFlight
     pilot(
       app_identifier: ENV["BUNDLE_ID"],
-      ipa: "../build/ios/aladin_mobile_fe.ipa",
+      ipa: "../build/ios/SuperApp.ipa",
       skip_waiting_for_build_processing: false,
       skip_submission: false
     )
@@ -157,8 +157,8 @@ platform :ios do
     cocoapods(repo_update: true)
 
     xcodebuild(
-      workspace: "aladin_mobile_fe.xcworkspace",
-      scheme: "aladin_mobile_fe",
+      workspace: "SuperApp.xcworkspace",
+      scheme: "SuperApp",
       configuration: "Release",
       export_method: "ad-hoc",
       export_options: {
@@ -172,7 +172,7 @@ platform :ios do
 
     firebase_app_distribution(
       app: ENV["FIREBASE_APP_ID"],
-      ipa: "../build/ios/aladin_mobile_fe.ipa",
+      ipa: "../build/ios/SuperApp.ipa",
       groups: ENV["FIREBASE_TESTER_GROUPS"] || "",
       release_notes: ENV["RELEASE_NOTES"] || "Auto-build from CI"
     )

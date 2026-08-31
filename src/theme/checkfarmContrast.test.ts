@@ -63,6 +63,17 @@ it('màu nhãn KHÔNG được đặt vào token chữ nào', () => {
   expect(tuongPhan(NHAN, '#FFFFFF')).toBeLessThan(AA);
 });
 
+it('hai bậc chữ phụ KHÁC nhau, và bậc nhạt hơn vẫn qua AA', () => {
+  // Bậc nhạt không được rơi về bậc đậm (mất phân cấp), cũng không được trượt AA.
+  expect(app.textMuted).not.toBe(app.textSub);
+  expect(tuongPhan(app.textMuted!, app.bg!)).toBeGreaterThanOrEqual(AA);
+  // Và khoảng cách giữa hai bậc là RẤT hẹp — nền kem chỉ còn ~2,4 bậc sáng để
+  // tiêu. Ghi thành phép đo để không ai tưởng màu còn chỗ phân cấp: chênh lệch
+  // tương phản giữa hai bậc dưới 1,0 thì đừng dùng màu làm trục phân cấp.
+  const chenh = tuongPhan(app.textSub!, app.bg!) - tuongPhan(app.textMuted!, app.bg!);
+  expect(chenh).toBeLessThan(1);
+});
+
 it('chữ trắng trên nền đặc — nút chính và thanh trên', () => {
   // nút chính lấy `accent` chứ không lấy màu nhãn: trắng trên #298A4A chỉ 4,35.
   expect(tuongPhan('#FFFFFF', app.accent!)).toBeGreaterThanOrEqual(AA);

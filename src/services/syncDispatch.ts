@@ -4,8 +4,9 @@
 // backend OriLife (api.orilife.io). Tách riêng khỏi syncService để
 // test thuần (không phụ thuộc store/database/SQLite).
 //
-// Contract backend (verify từ Tiger 2026-05-18, nguồn:
-// src/modules/trace/utils/implicitParent.ts):
+// Contract backend (verify từ Tiger 2026-05-18). Bốn dòng dưới trước đây chỉ
+// sang `implicitParent.ts` làm nguồn; tệp đó nay là `geohash.ts` và phần khai
+// contract trong nó đã gỡ cùng mã chết, nên chép về ĐÂY — nơi thật sự đọc nó:
 //   - POST /farms : tồn tại (aladinAPI.createFarm). region_code REQUIRED.
 //   - POST /trees : tồn tại (aladinAPI.createTree). farm_id + geohash_7 REQUIRED.
 //   - POST /fruits: KHÔNG tồn tại — fruits chỉ sinh qua /captures/3d + MeshGPU.
@@ -21,7 +22,7 @@
 // KHÔNG bịa payload, KHÔNG báo "đã sync"). Xem [CẦN XÁC NHẬN CONTRACT] dưới.
 
 import aladinAPI from './aladin-api';
-import { computeGeohash7 } from '../modules/trace/utils/implicitParent';
+import { computeGeohash7 } from '../modules/trace/utils/geohash';
 import { ALADIN_REGION_CODE } from '@env';
 import { ORILIFE_BASE } from './orilifeBase';
 import { addTimelineEvent, type TimelineKind } from './timelineService';
@@ -133,8 +134,8 @@ export function classifySyncItem(envelope: SyncEnvelope): DispatchClass {
     }
 
     case 'fruit_identification':
-      // [CẦN XÁC NHẬN CONTRACT] Backend KHÔNG có POST /fruits (xác nhận
-      // implicitParent.ts:9). Fruit chỉ sinh qua POST /captures/3d + MeshGPU,
+      // [CẦN XÁC NHẬN CONTRACT] Backend KHÔNG có POST /fruits (xác nhận Tiger
+      // 2026-05-18, chép ở đầu tệp này). Fruit chỉ sinh qua /captures/3d + MeshGPU,
       // cần dữ liệu 3D capture thật mà payload caller (local Fruit object +
       // ảnh) KHÔNG chứa. Giữ item trong queue, KHÔNG bịa payload.
       return {

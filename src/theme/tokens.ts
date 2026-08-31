@@ -249,6 +249,7 @@ export const BASE_TOKENS = {
 export type AppTokens = typeof APP_TOKENS;
 export type NeutralTokens = typeof NEUTRAL_TOKENS;
 export type NavTokens = typeof NAV_TOKENS;
+export type HeaderTokens = typeof HEADER_TOKENS;
 export type BrandKey = keyof typeof BRAND_TOKENS;
 
 export interface ModuleTheme {

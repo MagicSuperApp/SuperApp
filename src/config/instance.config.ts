@@ -36,7 +36,7 @@
 import { APP_INSTANCE } from '@env';
 
 import type { ThemeConfig } from '../theme/theme.config';
-import { DEFAULT_THEME_CONFIG } from '../theme/theme.config';
+import { DEFAULT_THEME_CONFIG, CHECKFARM_THEME_CONFIG } from '../theme/theme.config';
 import type { AdaptiveConfig } from '../theme/adaptive';
 import { DEFAULT_ADAPTIVE_CONFIG } from '../theme/adaptive';
 // CỐ Ý import từ `moduleIds` chứ KHÔNG từ `registry`: registry import tĩnh mọi
@@ -233,10 +233,11 @@ export const CHECKFARM_INSTANCE: InstanceConfig = {
     default: SLOT_PRIORITY_DEFAULT,
     shipper: SLOT_PRIORITY_SHIPPER,
   },
-  // [CHỜ nhà CheckFarm] bảng màu + biểu tượng riêng. Tới lúc đó dùng chung theme
-  // để app dựng được và chạy được — CỐ Ý không bịa một bảng màu rồi để nó thành
-  // mặc định không ai dám đổi.
-  themeConfig: { ...DEFAULT_THEME_CONFIG, brandName: 'CheckFarm' },
+  // Bảng màu do chính nhà CheckFarm chốt và gửi sang (không phải bản bịa ở đây
+  // rồi thành mặc định không ai dám đổi). Giá trị + lý do từng ràng buộc nằm ở
+  // `theme/theme.config.ts`; ràng buộc nặng nhất là màu nhãn `#298A4A` TRƯỢT
+  // ngưỡng tương phản AA cho chữ cỡ thường, nên nó chỉ đi vào chỗ là hình.
+  themeConfig: CHECKFARM_THEME_CONFIG,
   adaptive: DEFAULT_ADAPTIVE_CONFIG,
 };
 

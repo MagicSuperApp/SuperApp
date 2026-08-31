@@ -17,6 +17,9 @@ import {
   type StyleProp,
 } from 'react-native';
 import {NEUTRAL} from '../shared/theme';
+// Tệp này có một hằng `COLORS` cục bộ (bảng màu riêng của khối phí), nên token
+// toàn cục vào dưới tên khác — trùng tên là `tsc` đỏ ngay, không âm thầm.
+import { COLORS as APP_COLORS } from '../theme';
 import {tf, useT} from '../i18n';
 import type {FeeQuote} from '../types/fee';
 
@@ -182,7 +185,7 @@ const COLORS = {
   demandText:   '#B07D2F',
 
   adaBg:   '#EBF1FB',
-  adaText: '#264E7E',
+  adaText: APP_COLORS.accentDeep,
 
   mlBg:   '#F3EBF9',
   mlText: '#6B21A8',
@@ -223,7 +226,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#3B6EA8',
+    backgroundColor: APP_COLORS.accent,
   },
 
   labelText: {

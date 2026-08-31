@@ -2862,7 +2862,7 @@ const styles = StyleSheet.create({
     ...ORG_ELEV.card,
   },
   primaryWalkBtn: {
-    backgroundColor: '#3B6EA8',
+    backgroundColor: COLORS.accent,
     minHeight: 92,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.22)',
@@ -2997,7 +2997,7 @@ const styles = StyleSheet.create({
     gap: 8, paddingVertical: 14, borderRadius: 14,
   },
   primaryBtnGo: {
-    backgroundColor: '#3B6EA8',
+    backgroundColor: COLORS.accent,
     ...ORG_ELEV.card,
   },
   primaryBtnRec: {

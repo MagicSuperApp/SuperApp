@@ -32,6 +32,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import ReactNativeBiometrics, { BiometryTypes } from 'react-native-biometrics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS } from '../constants';
+import { WORK_THEME } from '../theme';
 import { biometricKindFromType, phoenixKeyAuth } from '../services/phoenixKeyAuthService';
 import {
   isAvailable as isPhoenixKeyAvailable,
@@ -58,8 +59,8 @@ const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
 // Aladin brand palette (xanh lá đậm + cam accent) — đồng bộ với app icon
 const BLUE = {
-  deep: '#1F5C2A',
-  primary: '#2B7A39',
+  deep: WORK_THEME.primaryDeep,
+  primary: WORK_THEME.primary,
   mid: '#3D9248',
   light: '#7DBD89',
   pale: '#C8E3CE',

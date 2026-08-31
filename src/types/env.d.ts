@@ -44,20 +44,3 @@ declare module '@env' {
   export const APP_INSTANCE: string;
 }
 
-// Optional native module used by src/services/storageQueue.ts. Ships no bundled
-// @types, so declare the minimal surface this codebase relies on.
-declare module 'react-native-quick-sqlite' {
-  export interface QuickSqliteResultRows {
-    _array?: any[];
-    item?: (index: number) => any;
-    length?: number;
-  }
-  export interface QuickSqliteConnection {
-    execute(
-      sql: string,
-      params?: any[],
-    ): { rows?: QuickSqliteResultRows; rowsAffected?: number };
-    close(): void;
-  }
-  export function open(options: { name: string; location?: string }): QuickSqliteConnection;
-}

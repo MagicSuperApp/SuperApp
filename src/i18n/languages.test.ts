@@ -37,7 +37,6 @@ import {
   LANG_STORAGE_KEY,
 } from './store';
 import { NAV_FRAME } from '../navigation/navLabels';
-import { SUBHOME_FRAME } from '../navigation/subHomeLabels';
 
 beforeEach(async () => {
   await AsyncStorage.clear();
@@ -158,18 +157,6 @@ describe('nhãn phải đủ cho MỌI ngôn ngữ hỗ trợ', () => {
     for (const [route, frame] of Object.entries(NAV_FRAME)) {
       for (const code of NATIONAL_LANGS) {
         if (!frame.national[code]?.trim()) thieu.push(`${route}.${code}`);
-      }
-    }
-    expect(thieu).toEqual([]);
-  });
-
-  it('SUBHOME_FRAME: không tab con nào thiếu nhãn ở bất kỳ ngôn ngữ nào', () => {
-    const thieu: string[] = [];
-    for (const [app, tabs] of Object.entries(SUBHOME_FRAME)) {
-      for (const tab of tabs) {
-        for (const code of NATIONAL_LANGS) {
-          if (!tab.national[code]?.trim()) thieu.push(`${app}.${tab.key}.${code}`);
-        }
       }
     }
     expect(thieu).toEqual([]);

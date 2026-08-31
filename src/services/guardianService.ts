@@ -1,92 +1,92 @@
 /**
- * Guardian (khôi-phục xã-hội) — dựng proof_signature + gọi API.md §6
+ * Guardian (khôi-phục xã-hội) — dựng `proofSignature` + gọi
  * `POST /guardians/add · /guardians/remove`.
  *
- * ⛔ CHƯA KIỂM LẠI — CHUỖI KÝ DƯỚI ĐÂY GẦN CHẮC KHÔNG CÒN VERIFY ĐƯỢC.
+ * ══ Trước bản này chỗ đây HỎNG, và mã tự khai là hỏng ════════════════════════
+ * Nhà PhoenixKey báo 2026-08-27 (thư `ma:pk-canon-len`) rằng máy chủ đã đổi từ
+ * **V30**, lệch với app HAI chỗ:
  *
- * Chú thích cũ ở đây ghi "✅ ĐÃ ĐỐI-CHIẾU backend GuardianServiceImpl.java
- * (2026-07-27) … KHỚP đúng cách dựng dưới đây". Nhãn đó ĐÚNG vào ngày viết và
- * SAI từ lúc máy chủ đổi, mà không có gì trong kho này bật lên khi nó hết đúng.
- *
- * Nhà PhoenixKey báo 2026-08-27 (thư `ma:pk-canon-len`), dẫn `GuardianServiceImpl
- * .java:84`, rằng máy chủ đã đổi từ **V30**:
- *
- *   CanonicalMessage.build(GUARDIAN_ADD_PREFIX, userDid, guardianDid, nonce,
- *                          String.valueOf(opSeq))
- *
- * Lệch HAI chỗ, không phải một:
  *   1. đóng khung theo độ dài (`canonicalMessage.ts`) thay cho nối `':'`;
- *   2. có thêm field THỨ TƯ `opSeq` — watermark chống phát lại.
+ *   2. có thêm field THỨ TƯ `opSeq` — mốc chống phát lại.
  *
- * ══ Vì sao KHÔNG tự đổi một phía ngay tại đây ═════════════════════════════════
- * Phần (1) app dựng được rồi (`buildCanonicalHex`). Phần (2) thì KHÔNG: `opSeq`
- * không tồn tại ở bất cứ đâu trong kho này (`grep -rn "opSeq\|op_seq" src/` ⇒ 0),
- * và app cũng không có cửa nào ĐỌC ra nó — cụm `guardians` chỉ có `add`/`remove`,
- * không có đường đọc danh sách. Đổi nửa vời sang đóng khung mà thiếu field thứ tư
- * thì chữ ký vẫn không verify, nhưng mã lại TRÔNG như đã sửa xong — đắt hơn hẳn
- * so với để nguyên kèm lời khai này.
+ * Phần (1) app dựng được từ lâu. Phần (2) thì không: `opSeq` không tồn tại ở đâu
+ * trong kho này, và không có cửa nào ĐỌC ra nó. Nên bản trước để nguyên chuỗi ký
+ * cũ kèm một lời khai thẳng rằng nó gần chắc không verify được — đúng lựa chọn,
+ * vì sửa nửa vời sẽ làm mã TRÔNG như đã xong trong khi chữ ký vẫn hỏng.
  *
- * ══ Mức chắc của chính lời khai này ══════════════════════════════════════════
- * Nhà này CHƯA tự chạy luồng guardian trên máy chủ thật lần nào. Bằng chứng ở đây
- * là trích dẫn mã nguồn của nhà PhoenixKey, không phải phép đo của nhà này. Chính
- * họ cũng viết: "Nếu bên đó đã chạy thật được luồng này thì nói lại, vì khi ấy
- * phép đo của bên này sai." Đã hỏi lại `opSeq` lấy ở đâu; chưa có đáp.
+ * Nay `GET /identity/{did}/op-seq` đã được nối (`identity.opSeq`), nên cả hai nửa
+ * đều dựng được và tệp này sửa hẳn.
  *
- * Body { user_did, guardian_did, nonce, proof_signature }. Nonce TTL 5' (validateAndConsume).
+ * ══ Hợp đồng, đối chiếu `GuardianServiceImpl.java:84,155` ════════════════════
+ *
+ *     CanonicalMessage.build(GUARDIAN_ADD_PREFIX,
+ *             request.userDid(), request.guardianDid(),
+ *             request.nonce(), String.valueOf(request.opSeq()));
+ *
+ * Tiền tố mang sẵn dấu hai chấm (`"PHOENIXKEY_GUARDIAN_ADD:"`) và đi vào dạng byte
+ * THÔ, không đóng khung — nó là tiền tố miền, không phải một field. Bốn field sau
+ * mỗi cái kèm 4 byte độ dài big-endian.
+ *
+ * `opSeq` vào chuỗi ký dưới dạng CHUỖI THẬP PHÂN, không phải 8 byte số.
+ *
+ * ══ Mức chắc của lời khai này ════════════════════════════════════════════════
+ * Đây vẫn là phép đối chiếu MÃ NGUỒN máy chủ, không phải một lượt chạy thật —
+ * nhà này chưa chạy luồng guardian trên máy chủ thật lần nào. Khác với bản trước ở
+ * chỗ: trước là "biết sai mà không sửa được", nay là "dựng đúng theo hợp đồng đã
+ * đọc". Lượt chạy thật đầu tiên vẫn là phép đo cuối cùng.
  */
 
 import taad from '../sdk/taadEnclave';
 import { signRaw, currentUserDid } from '../sdk/phoenixKey';
+import { buildCanonicalHex } from './canonicalMessage';
 import { phoenixKeyApi, GuardianMutateRequest } from './phoenixKey-api';
 
-// Tên tiền tố vẫn khớp GUARDIAN_ADD_PREFIX/REMOVE_PREFIX; cách GHÉP thì không — xem đầu tệp.
-const CHALLENGE_ADD = 'PHOENIXKEY_GUARDIAN_ADD';
-const CHALLENGE_REMOVE = 'PHOENIXKEY_GUARDIAN_REMOVE';
+/** Tiền tố miền — kèm dấu hai chấm, đúng như hằng phía máy chủ. */
+export const CHALLENGE_ADD = 'PHOENIXKEY_GUARDIAN_ADD:';
+export const CHALLENGE_REMOVE = 'PHOENIXKEY_GUARDIAN_REMOVE:';
 
-// message chỉ gồm DID (did:phoenix ASCII) + nonce (hex) + prefix → ASCII; vẫn xử-lý
-// đa-byte cho chắc (không phụ-thuộc TextEncoder, khớp utf8ToHex bên authService).
-const utf8ToHex = (s: string): string => {
-  const push = (b: number) => b.toString(16).padStart(2, '0');
-  let out = '';
-  for (let i = 0; i < s.length; i += 1) {
-    const code = s.codePointAt(i)!;
-    if (code < 0x80) {
-      out += push(code);
-    } else if (code < 0x800) {
-      out += push(0xc0 | (code >> 6)) + push(0x80 | (code & 0x3f));
-    } else if (code < 0x10000) {
-      out += push(0xe0 | (code >> 12)) + push(0x80 | ((code >> 6) & 0x3f)) + push(0x80 | (code & 0x3f));
-    } else {
-      out += push(0xf0 | (code >> 18)) + push(0x80 | ((code >> 12) & 0x3f)) +
-        push(0x80 | ((code >> 6) & 0x3f)) + push(0x80 | (code & 0x3f));
-      i += 1; // surrogate pair
-    }
-  }
-  return out;
-};
+/**
+ * Dựng chuỗi ký guardian, trả **hex**.
+ *
+ * Tách ra khỏi hàm gọi mạng để bài kiểm ghim được từng byte mà không phải giả lập
+ * khoá phần cứng — đây là chỗ duy nhất trong tệp sai được một cách im lặng.
+ */
+export function buildGuardianMessageHex(
+  prefix: string,
+  userDid: string,
+  guardianDid: string,
+  nonce: string,
+  opSeq: number,
+): string {
+  return buildCanonicalHex(prefix, userDid, guardianDid, nonce, String(opSeq));
+}
 
 async function buildProof(
   prefix: string,
   guardianDid: string,
 ): Promise<GuardianMutateRequest> {
   const userDid = await currentUserDid();
-  if (!userDid) throw new Error('Chưa có danh tính để ký xác nhận người giám hộ.');
+  if (!userDid) throw new Error('Chưa có danh tính để ký xác nhận người bảo hộ.');
+
   const nonce = await taad.generateSalt();
-  const message = `${prefix}:${userDid}:${guardianDid}:${nonce}`;
+  // Đọc mốc SÁT lúc gửi. Giữ lại một giá trị đọc từ trước là tự chuốc 409
+  // `OP_SEQ_REPLAY` khi có thao tác khác chen vào giữa.
+  const { nextOpSeq } = await phoenixKeyApi.identity.opSeq(userDid);
+
   const proofSignature = await signRaw(
-    utf8ToHex(message),
-    'Xác nhận guardian',
+    buildGuardianMessageHex(prefix, userDid, guardianDid, nonce, nextOpSeq),
+    'Xác nhận người bảo hộ',
     'Ký bằng khoá phần cứng của bạn',
   );
-  return { userDid, guardianDid, nonce, proofSignature };
+  return { userDid, guardianDid, nonce, opSeq: nextOpSeq, proofSignature };
 }
 
-/** Thêm guardian: ký proof rồi POST /guardians/add. */
+/** Thêm người bảo hộ: ký proof rồi POST /guardians/add. */
 export async function addGuardian(guardianDid: string): Promise<void> {
   await phoenixKeyApi.guardians.add(await buildProof(CHALLENGE_ADD, guardianDid));
 }
 
-/** Bớt guardian: ký proof rồi POST /guardians/remove. */
+/** Bớt người bảo hộ: ký proof rồi POST /guardians/remove. */
 export async function removeGuardian(guardianDid: string): Promise<void> {
   await phoenixKeyApi.guardians.remove(await buildProof(CHALLENGE_REMOVE, guardianDid));
 }

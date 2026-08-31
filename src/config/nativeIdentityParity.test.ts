@@ -51,8 +51,8 @@ const doc = (p: string) => readFileSync(join(GOC, p), 'utf8').replace(/\r\n/g, '
 
 const GRADLE = doc('android/app/build.gradle');
 const CODEMAGIC = doc('codemagic.yaml');
-const PBXPROJ = doc('ios/aladin_mobile_fe.xcodeproj/project.pbxproj');
-const INFO_PLIST = doc('ios/aladin_mobile_fe/Info.plist');
+const PBXPROJ = doc('ios/SuperApp.xcodeproj/project.pbxproj');
+const INFO_PLIST = doc('ios/SuperApp/Info.plist');
 
 const THU_MUC_APP = join(GOC, 'instances');
 
@@ -452,7 +452,7 @@ describe('khoá ký — mỗi app một bộ, không dùng chung', () => {
 // gói, kể cả đường chưa ai nghĩ ra.
 // ─────────────────────────────────────────────────────────────────────────────
 describe('Firebase iOS — không khởi bằng cấu hình của app khác', () => {
-  const APPDELEGATE = doc('ios/aladin_mobile_fe/AppDelegate.swift');
+  const APPDELEGATE = doc('ios/SuperApp/AppDelegate.swift');
 
   it('AppDelegate KHÔNG gọi thẳng FirebaseApp.configure', () => {
     // Gọi thẳng là bỏ qua cổng. Đo trên mã chạy để không bắt nhầm chú thích.
@@ -488,14 +488,14 @@ describe('Firebase iOS — không khởi bằng cấu hình của app khác', ()
     // Hai lượt rà soát độc lập vẫn trích nó như một đường khởi Firebase đang
     // chạy. Mã chết đọc giống hệt mã sống; giữ nó là giữ một đường dẫn sai cho
     // mọi người đọc sau.
-    expect(existsSync(join(GOC, 'ios/aladin_mobile_fe/FirebaseSetup.swift'))).toBe(false);
+    expect(existsSync(join(GOC, 'ios/SuperApp/FirebaseSetup.swift'))).toBe(false);
   });
 
   it('mọi tệp Swift khởi Firebase đều PHẢI có trong project.pbxproj', () => {
     // Bài kiểm tổng quát cho bài học trên: tệp Swift nào gọi
     // `FirebaseApp.configure` mà không có trong dự án Xcode thì nó là mã chết
     // đội lốt mã sống. Bắt mọi tệp, kể cả tệp chưa ai viết.
-    const PBX = doc('ios/aladin_mobile_fe.xcodeproj/project.pbxproj');
+    const PBX = doc('ios/SuperApp.xcodeproj/project.pbxproj');
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { readdirSync, statSync } = require('fs');
     const quet = (d: string): string[] =>
@@ -504,7 +504,7 @@ describe('Firebase iOS — không khởi bằng cấu hình của app khác', ()
         return statSync(p).isDirectory() ? quet(p) : n.endsWith('.swift') ? [p] : [];
       });
     const chet: string[] = [];
-    for (const tep of quet(join(GOC, 'ios/aladin_mobile_fe'))) {
+    for (const tep of quet(join(GOC, 'ios/SuperApp'))) {
       if (!readFileSync(tep, 'utf8').includes('FirebaseApp.configure(')) continue;
       // Tách bằng CẢ HAI dấu. `join` trả dấu chéo ngược trên Windows, nên tách
       // riêng dấu chéo xuôi không cắt được gì: `ten` thành nguyên đường dẫn

@@ -15,7 +15,7 @@
 //
 // SỬA 2026-08-17 (2) — dòng cũ ở đây nói "quét ngoài app cũng mở thẳng màn kết quả".
 // SAI. Deep-link `lamp://…` mới chỉ khai ở `buildLinking`; KHÔNG platform nào đăng ký
-// scheme ở tầng hệ điều hành (`ios/aladin_mobile_fe/Info.plist:25-35` chỉ có scheme
+// scheme ở tầng hệ điều hành (`ios/SuperApp/Info.plist:25-35` chỉ có scheme
 // OAuth Google; `android/.../AndroidManifest.xml` chỉ có intent-filter MAIN/LAUNCHER).
 // `prefixes` chỉ dạy React Navigation cách ĐỌC một URL đã tới tay app, không bảo hệ
 // điều hành gửi URL tới. Nên `parseTraceCode` hôm nay chỉ phục vụ đường quét TRONG app.

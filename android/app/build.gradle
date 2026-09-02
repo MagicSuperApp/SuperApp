@@ -204,15 +204,44 @@ if (trungDid) {
         // Nay tên biến SUY từ mã app: `aladin` → `ALADIN_UPLOAD_*`,
         // `checkfarm` → `CHECKFARM_UPLOAD_*`. Đối tác thêm `instances/<mã>/` là có
         // ngay vùng khoá riêng mang tên họ, không phải nhờ ai sửa tệp này.
+        // ⛔ Phải soát ĐỦ BỐN, không phải chỉ `STORE_FILE`.
+        //
+        // Bản trước chỉ hỏi `hasProperty(STORE_FILE)` rồi đọc thẳng ba cái còn lại.
+        // Nạp thiếu một bí mật — chuyện thường gặp nhất khi thêm app mới, vì phải tạo
+        // bốn secret bằng bốn lần bấm tay — thì Gradle nổ ở giữa khối này:
+        //
+        //   Could not get unknown property 'CHECKFARM_UPLOAD_STORE_PASSWORD'
+        //
+        // Lời báo đó nêu đúng MỘT tên, ở một dòng trong tệp dựng, không nói còn thiếu
+        // gì nữa và không nói phải đặt ở đâu. Trong khi cổng ở cuối tệp này đã có sẵn
+        // câu báo đủ bốn tên kèm chỗ đặt — chỉ là dòng trên nổ trước nên không ai tới
+        // được đó. Một cổng nằm sau chỗ nổ thì không phải cổng.
+        //
+        // Cùng LỚP lỗi với bộ `ORILIFE_UPLOAD_*` (bí mật rỗng và bí mật thiếu cho ra
+        // cùng một lời báo), chỉ ở hình dạng khác: ở đây là bí mật nạp THIẾU MỘT PHẦN.
+        def DUOI = ['STORE_FILE', 'STORE_PASSWORD', 'KEY_ALIAS', 'KEY_PASSWORD']
         cacApp.each { khai ->
             def tienTo = khai.id.toUpperCase() + '_UPLOAD_'
-            if (project.hasProperty(tienTo + 'STORE_FILE')) {
-                create(khai.id) {
-                    storeFile file(project.property(tienTo + 'STORE_FILE'))
-                    storePassword project.property(tienTo + 'STORE_PASSWORD')
-                    keyAlias project.property(tienTo + 'KEY_ALIAS')
-                    keyPassword project.property(tienTo + 'KEY_PASSWORD')
-                }
+            def co = DUOI.findAll { project.hasProperty(tienTo + it) }
+            if (co.isEmpty()) return          // app này chưa cấu hình khoá — bình thường
+            if (co.size() < DUOI.size()) {
+                // Nạp NỬA VỜI nguy hơn không nạp: không nạp thì cổng cuối tệp báo rõ,
+                // còn nửa vời thì trước đây nổ bằng một lời báo nêu sai vấn đề.
+                throw new GradleException(
+                    "App '${khai.id}' nạp THIẾU khoá ký: có ${co.size()}/${DUOI.size()} giá trị.\n" +
+                    "  đã có   : " + co.collect { tienTo + it }.join(', ') + "\n" +
+                    "  còn thiếu: " + (DUOI - co).collect { tienTo + it }.join(', ') + "\n" +
+                    "Đặt trong android/gradle.properties, hoặc truyền -P, hoặc (trên CI)\n" +
+                    "thêm secret cùng tên rồi ánh xạ vào bước dựng.\n" +
+                    "LƯU Ý: một secret ĐẶT RỒI NHƯNG RỖNG cũng đi tới đây — danh sách secret\n" +
+                    "chỉ chứng minh biến TỒN TẠI, chỉ log lượt chạy mới chứng minh nó CÓ GIÁ TRỊ."
+                )
+            }
+            create(khai.id) {
+                storeFile file(project.property(tienTo + 'STORE_FILE'))
+                storePassword project.property(tienTo + 'STORE_PASSWORD')
+                keyAlias project.property(tienTo + 'KEY_ALIAS')
+                keyPassword project.property(tienTo + 'KEY_PASSWORD')
             }
         }
     }

@@ -909,12 +909,28 @@ export const users = {
    * Tìm người theo DID hoặc username để bắt đầu chat 1-1 / thêm vào nhóm.
    * BE: GET /users/search?q=<did_or_username> (Bearer). Trả mảng RemoteUser.
    *
-   * ⚠️ Đường này hiện **TẮT ở BE**: `ProofChat/BE/src/modules/users/user.controller.ts:95`
-   * — cả khối `@Get('search')` bị bình luận (`// @Get('search')` … `// }`), cùng 8 route
-   * GET khác của `users`. `usersService.searchUsers` vẫn còn, chỉ controller không mở.
-   * Nên mọi lượt gọi ở đây trả 404 cho tới khi bên ProofChat mở lại. Giữ nguyên mã gọi
-   * (mở lại là chạy, không phải sửa app), nhưng chỗ dùng PHẢI hiện lỗi chứ không được
-   * nuốt thành "không tìm thấy ai".
+   * Route SỐNG. Đo lại 2026-09-02 trên prod:
+   *
+   *   GET /api/v1/users/search?q=a            → 401   (có route, thiếu token)
+   *   GET /api/v1/users/search-khong-co-that  → 404   (đường bịa, để đối chứng)
+   *
+   * 401 cho đường thật và 404 cho đường bịa ⇒ route tồn tại. Ghi chú cũ ở đây kết luận
+   * "TẮT ở BE" từ `users/user.controller.ts:95`, nơi khối `@Get('search')` đúng là còn bị
+   * bình luận — nhưng route thật nằm LẠC ở module khác:
+   * `BE/src/modules/messages/messages.controller.ts:203` khai `@Get('users/search')`.
+   * Đo một tệp rồi kết luận cho cả hệ là đúng hình dạng lỗi "số đúng, sai nơi đo"; giữ
+   * đoạn này làm ví dụ, vì cái giá của nó là một tính năng bị coi là chết suốt nhiều tuần.
+   *
+   * ⚠️ CÁI CÒN CHẶN THẬT thì khác: `BE/src/modules/users/users.service.ts:381-396` tra
+   * bằng `did: { contains: query }`. Người gõ TÊN NGƯỜI luôn nhận mảng rỗng — route chạy,
+   * không lỗi, không làm được việc nó khai. Tìm được chỉ khi dán nguyên chuỗi DID.
+   * Bản vá là ProofChat/BE#105 (tra theo tên PhoenixKey).
+   *
+   * Nên chỗ dùng PHẢI phân biệt "rỗng vì không ai khớp" với "rỗng vì máy chủ chỉ biết tra
+   * DID" — nuốt cả hai thành "không tìm thấy ai" là giấu đúng cái đang hỏng.
+   *
+   * KHÔNG dựng đường tìm người song song ở phía app: hai đường tìm người là hai bảng
+   * định danh trôi khỏi nhau.
    */
   search: (q: string): Promise<RemoteUser[]> =>
     unwrapList<RemoteUser>(

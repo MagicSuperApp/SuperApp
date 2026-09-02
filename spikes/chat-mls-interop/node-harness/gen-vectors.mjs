@@ -1,7 +1,7 @@
 // Pha 0 spike — sinh GOLDEN TEST VECTORS từ đúng thư viện web (ts-mls 1.5.1,
 // circomlibjs 0.1.7, blakejs 1.2.1, tweetnacl 1.0.3) để bản Rust khớp byte-for-byte.
 //
-// Chạy: node gen-vectors.mjs   → ghi vectors.json + mls-sample.json
+// Chạy: node gen-vectors.mjs   → ghi rust/chat_mls/vectors/web-vectors.json + mls-sample.json
 //
 // 3 nhóm vector:
 //   T2  message-layer:  HKDF-SHA256(epochSecret, "mls-msg:"+id) → AES-256-GCM (IV cố định)
@@ -198,7 +198,13 @@ async function main() {
   }
 
   const vectors = { ciphersuite: CIPHERSUITE, generatedBy: 'ts-mls@1.5.1 / circomlibjs@0.1.7 / blakejs@1.2.1 / tweetnacl@1.0.3', tier2_message: t2, tier3_merkle: t3 };
-  writeFileSync(new URL('./vectors.json', import.meta.url), JSON.stringify(vectors, null, 2));
+  // ⛔ GHI THẲNG VÀO TỆP MÀ TEST RUST ĐỌC — chỉ MỘT bản duy nhất trong kho.
+  // Trước đây tệp này nằm cạnh harness (`./vectors.json`) còn bên Rust là các hằng
+  // `const` chép tay, nên "sinh lại vector" KHÔNG làm đỏ được gì: hai bên không
+  // đọc chung thứ gì cả. Ghi thẳng vào crate thì mỗi lần sinh lại là một lần đối
+  // chiếu thật — giá trị đổi ⇒ `git diff` bẩn ⇒ `cargo test` đỏ.
+  // Đổi đường này thì phải đổi `include_str!` ở rust/chat_mls/src/golden.rs cùng lúc.
+  writeFileSync(new URL('../../../rust/chat_mls/vectors/web-vectors.json', import.meta.url), JSON.stringify(vectors, null, 2) + '\n');
   writeFileSync(new URL('./mls-sample.json', import.meta.url), JSON.stringify(mls, null, 2));
 
   console.log('=== TẦNG 2 (message-layer) ===');
@@ -216,7 +222,7 @@ async function main() {
     epochSecretsAgree: mls.epochSecretsAgree,
     epochSecret_alice_hex: mls.epochSecret_alice_hex,
   }, null, 2));
-  console.log('\n✅ wrote vectors.json + mls-sample.json');
+  console.log('\n✅ đã ghi rust/chat_mls/vectors/web-vectors.json + mls-sample.json');
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

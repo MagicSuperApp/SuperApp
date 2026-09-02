@@ -7,6 +7,9 @@
 //!
 //! Mọi giá trị dây (wire) đi ra/vào dưới dạng base64/hex để bắc cầu RN dễ dàng.
 
+#[cfg(test)]
+pub mod golden;
+
 pub mod merkle;
 pub mod message_layer;
 pub mod mls;

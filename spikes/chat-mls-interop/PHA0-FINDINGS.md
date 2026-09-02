@@ -31,7 +31,7 @@ là giá trị deterministic của nhóm, đúng như RFC.
 # 1) Sinh golden vectors từ đúng lib của web
 cd spikes/chat-mls-interop/node-harness
 npm install
-node gen-vectors.mjs          # → vectors.json, mls-sample.json
+node gen-vectors.mjs          # → rust/chat_mls/vectors/web-vectors.json, mls-sample.json
 
 # 2) Đối chiếu bằng Rust (phải in "✅ TẤT CẢ KHỚP")
 cd ../rust-spike

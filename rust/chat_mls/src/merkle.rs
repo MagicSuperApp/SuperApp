@@ -156,42 +156,60 @@ pub fn verify_merkle_leaf(
 mod tests {
     use super::*;
 
-    // Golden vector từ gen-vectors.mjs (circomlibjs/blakejs/tweetnacl).
-    const PLAINTEXT: &str = "xin chào 🌱";
+    // Vector chuẩn ĐỌC TỪ TỆP, không chép tay — xem `crate::golden` để biết vì sao.
+    use crate::golden::{chuoi, so, vectors};
 
-    fn salt() -> String { "ab".repeat(32) }
+    fn t3(duong: &[&str]) -> String {
+        let v = vectors();
+        let mut d = vec!["tier3_merkle"];
+        d.extend_from_slice(duong);
+        chuoi(&v, &d)
+    }
+
+    fn plaintext() -> String { t3(&["input", "plaintext"]) }
+    fn salt() -> String { t3(&["input", "saltHex"]) }
+    fn conv_id() -> String { t3(&["input", "conversationId"]) }
+    fn sender() -> String { t3(&["input", "senderId"]) }
+    fn ts() -> u128 {
+        u128::try_from(so(&vectors(), &["tier3_merkle", "input", "timestamp"]))
+            .expect("timestamp trong vector âm — `as u128` sẽ cuộn thành số khổng lồ, không im lặng nhận")
+    }
 
     #[test]
     fn pt_commit_matches_web() {
-        let pt = compute_pt_commit(PLAINTEXT, &salt()).unwrap();
-        assert_eq!(fr_to_hex_be(&pt), "1bb179f17c9f93deec26dd15e8284ee0708b9e02ba5d76842b0447fceadefffa");
+        let pt = compute_pt_commit(&plaintext(), &salt()).unwrap();
+        assert_eq!(fr_to_hex_be(&pt), t3(&["expect", "ptCommit_hex"]));
     }
 
     #[test]
     fn leaf_hash_matches_web() {
-        let pt = compute_pt_commit(PLAINTEXT, &salt()).unwrap();
-        let leaf = compute_leaf_hash("conv-direct-0001", "stake1uxyztestsenderaddress", 1_700_000_000_000, pt).unwrap();
-        assert_eq!(fr_to_hex_be(&leaf), "0a9ebfe2278cef528e5423024cdaa7225a9831b193ade0346d12b8595a8c8007");
+        let pt = compute_pt_commit(&plaintext(), &salt()).unwrap();
+        let leaf = compute_leaf_hash(&conv_id(), &sender(), ts(), pt).unwrap();
+        assert_eq!(fr_to_hex_be(&leaf), t3(&["expect", "leafHash_hex"]));
     }
 
     #[test]
     fn create_and_verify_leaf() {
-        let seed: [u8; 32] = hex::decode("11".repeat(32)).unwrap().try_into().unwrap();
+        let seed: [u8; 32] = hex::decode(t3(&["expect", "ed25519_seed_hex"]))
+            .unwrap().try_into().unwrap();
         let sk = SigningKey::from_bytes(&seed);
         // Khớp pub key + signature golden
-        assert_eq!(hex::encode(sk.verifying_key().to_bytes()), "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737");
+        assert_eq!(
+            hex::encode(sk.verifying_key().to_bytes()),
+            t3(&["expect", "ed25519_pub_hex"])
+        );
 
         let leaf = create_merkle_leaf(
-            "conv-direct-0001", "stake1uxyztestsenderaddress", 1_700_000_000_000,
-            PLAINTEXT, &salt(), &sk, "cert-b64", "cose-b64",
+            &conv_id(), &sender(), ts(),
+            &plaintext(), &salt(), &sk, "cert-b64", "cose-b64",
         ).unwrap();
-        assert_eq!(leaf.signature, "b2daf749c7cfa9ce7444dabdec461690a7959bf68817bdc1b2ea44841f62a539d0a6c04c516379eed406587da6e1c923f4b6da7f6ef00390bbf6fb1b35997705");
+        assert_eq!(leaf.signature, t3(&["expect", "signature_hex"]));
 
-        let ok = verify_merkle_leaf(&leaf, "conv-direct-0001", "stake1uxyztestsenderaddress", 1_700_000_000_000, PLAINTEXT, &salt()).unwrap();
+        let ok = verify_merkle_leaf(&leaf, &conv_id(), &sender(), ts(), &plaintext(), &salt()).unwrap();
         assert!(ok, "verify chính leaf mình tạo phải PASS");
 
         // Sai plaintext → verify FAIL
-        let bad = verify_merkle_leaf(&leaf, "conv-direct-0001", "stake1uxyztestsenderaddress", 1_700_000_000_000, "sai", &salt()).unwrap();
+        let bad = verify_merkle_leaf(&leaf, &conv_id(), &sender(), ts(), "sai", &salt()).unwrap();
         assert!(!bad);
     }
 }

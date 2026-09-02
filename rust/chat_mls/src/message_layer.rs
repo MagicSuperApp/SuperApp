@@ -140,54 +140,62 @@ fn uuid_v4() -> String {
 mod tests {
     use super::*;
 
-    // Golden vector từ spikes/chat-mls-interop/node-harness/gen-vectors.mjs (ts-mls/WebCrypto).
-    const EPOCH_SECRET_HEX: &str =
-        "00112233445566778899aabbccddeeff102132435465768798a9bacbdcedfe0f";
-    const MESSAGE_ID: &str = "b3f1c0de-0000-4000-8000-000000000001";
-    const IV_HEX: &str = "a0a1a2a3a4a5a6a7a8a9aaab";
-    const WANT_MSGKEY: &str =
-        "23986dee6f35d00ca14b388d9330e8c1731f2f862ab0cd4451cce211098eef68";
-    const WANT_CT_B64: &str =
-        "cikq6FestzhqQpffOuQOxZ5IK2GUf93/mgYD+CNsrHGXqhxDHCKbiHQWTvjdKnRUaHYAC5U5cao7peRWo0Q2YTk4tr/HRLnGhBDFxy3TDQpmBGCtBY5iGRwKQ+WKCecnDmX2IjKGBj7g9Vf3ozimSZ1nig==";
-    const WANT_TAG_B64: &str = "eAIPf5HxeAhMwNmhbudJhQ==";
+    // Vector chuẩn ĐỌC TỪ TỆP, không chép tay — xem `crate::golden` để biết vì sao.
+    use crate::golden::{chuoi, vectors};
 
+    fn t2(duong: &[&str]) -> String {
+        let v = vectors();
+        let mut d = vec!["tier2_message"];
+        d.extend_from_slice(duong);
+        chuoi(&v, &d)
+    }
+
+    fn epoch_secret() -> Vec<u8> {
+        hex::decode(t2(&["input", "epochSecret_hex"])).unwrap()
+    }
+
+    fn message_id() -> String {
+        t2(&["input", "messageId"])
+    }
+
+    /// `plainContentJson` trong vector là ĐẦU VÀO đã được web tuần tự hoá. Đọc lại
+    /// từ đó thay vì gõ tay `salt`/`plaintext`: gõ tay là đường để một ngày nào đó
+    /// hai bên mã hoá hai nội dung khác nhau mà vẫn so ciphertext với nhau.
     fn plain() -> PlainContent {
-        PlainContent { salt: "ab".repeat(32), nonce: String::new(), plaintext: "xin chào 🌱".into() }
+        serde_json::from_str(&t2(&["input", "plainContentJson"]))
+            .expect("plainContentJson trong vector không đọc được thành PlainContent")
     }
 
     #[test]
     fn message_key_matches_web() {
-        let es = hex::decode(EPOCH_SECRET_HEX).unwrap();
-        let k = derive_message_key(&es, MESSAGE_ID);
-        assert_eq!(hex::encode(k), WANT_MSGKEY);
+        let k = derive_message_key(&epoch_secret(), &message_id());
+        assert_eq!(hex::encode(k), t2(&["expect", "messageKey_hex"]));
     }
 
     #[test]
     fn encrypt_matches_web_golden() {
-        let es = hex::decode(EPOCH_SECRET_HEX).unwrap();
-        let iv = hex::decode(IV_HEX).unwrap();
-        let body = encrypt(&es, 3, MESSAGE_ID, &iv, &plain()).unwrap();
-        assert_eq!(body.ciphertext, WANT_CT_B64, "ciphertext lệch web");
-        assert_eq!(body.tag, WANT_TAG_B64, "tag lệch web");
+        let iv = hex::decode(t2(&["input", "iv_hex"])).unwrap();
+        let body = encrypt(&epoch_secret(), 3, &message_id(), &iv, &plain()).unwrap();
+        assert_eq!(body.ciphertext, t2(&["expect", "ciphertext_b64"]), "ciphertext lệch web");
+        assert_eq!(body.tag, t2(&["expect", "tag_b64"]), "tag lệch web");
     }
 
     #[test]
     fn roundtrip_encrypt_decrypt() {
-        let es = hex::decode(EPOCH_SECRET_HEX).unwrap();
+        let es = epoch_secret();
         let body = encrypt_new(&es, 7, &plain()).unwrap();
         let got = decrypt(&es, &body).unwrap();
-        assert_eq!(got.plaintext, "xin chào 🌱");
-        assert_eq!(got.salt, "ab".repeat(32));
+        assert_eq!(got.plaintext, plain().plaintext);
+        assert_eq!(got.salt, plain().salt);
     }
 
     #[test]
     fn body_b64_roundtrip() {
-        let es = hex::decode(EPOCH_SECRET_HEX).unwrap();
-        let iv = hex::decode(IV_HEX).unwrap();
-        let body = encrypt(&es, 3, MESSAGE_ID, &iv, &plain()).unwrap();
+        let iv = hex::decode(t2(&["input", "iv_hex"])).unwrap();
+        let body = encrypt(&epoch_secret(), 3, &message_id(), &iv, &plain()).unwrap();
         let enc = encode_body_b64(&body).unwrap();
         let dec = decode_body_b64(&enc).unwrap();
         assert_eq!(dec.ciphertext, body.ciphertext);
-        assert_eq!(dec.message_id, MESSAGE_ID);
+        assert_eq!(dec.message_id, message_id());
     }
 }

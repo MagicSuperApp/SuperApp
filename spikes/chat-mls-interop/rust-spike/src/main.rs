@@ -1,9 +1,9 @@
-// Pha 0 spike — đối chiếu bản Rust với golden vectors (../node-harness/vectors.json).
+// Pha 0 spike — đối chiếu bản Rust với golden vectors (rust/chat_mls/vectors/web-vectors.json).
 //
 // Tầng 2 (message-layer): HKDF-SHA256(salt rỗng, info="mls-msg:"+id) -> AES-256-GCM.
 // Tầng 3 (Merkle):        strToField=first31(blake2b256), Poseidon BN254, Ed25519 sig.
 //
-// Mục tiêu: mọi giá trị Rust tính ra PHẢI trùng khít với "expect" trong vectors.json.
+// Mục tiêu: mọi giá trị Rust tính ra PHẢI trùng khít với "expect" trong tệp vector đó.
 
 use std::str::FromStr;
 
@@ -82,9 +82,12 @@ fn check(label: &str, got: &str, want: &str, ok: &mut bool) {
 
 fn main() {
     let raw = std::fs::read_to_string(
-        concat!(env!("CARGO_MANIFEST_DIR"), "/../node-harness/vectors.json"),
+        // Cùng MỘT tệp mà crate thật đọc (rust/chat_mls/src/golden.rs). Trước đây spike
+        // này đọc `../node-harness/vectors.json` — một bản riêng — nên spike xanh không
+        // nói được gì về crate thật.
+        concat!(env!("CARGO_MANIFEST_DIR"), "/../../../rust/chat_mls/vectors/web-vectors.json"),
     )
-    .expect("đọc vectors.json — chạy `node gen-vectors.mjs` trước");
+    .expect("đọc web-vectors.json — chạy `node gen-vectors.mjs` trước");
     let v: Value = serde_json::from_str(&raw).unwrap();
     let mut ok = true;
 

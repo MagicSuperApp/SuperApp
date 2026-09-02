@@ -954,7 +954,7 @@ Platform **không được** import screen component hoặc navigation type từ
 
 > ⚠️ **CHƯA CHẠY ĐƯỢC — đo 2026-08-17.** Câu cũ ở đây viết `(scheme thực tế đăng ký trong
 > SuperApp)`. **Sai.** SuperApp KHÔNG đăng ký scheme nào ở tầng hệ điều hành:
-> `ios/aladin_mobile_fe/Info.plist:25-35` chỉ có scheme OAuth của Google;
+> `ios/SuperApp/Info.plist:25-35` chỉ có scheme OAuth của Google;
 > `android/app/src/main/AndroidManifest.xml` chỉ có intent-filter `MAIN`/`LAUNCHER`, không có
 > `<data android:scheme>` nào. `prefixes` ở `src/navigation/index.tsx` chỉ nói cho React
 > Navigation biết cách ĐỌC một URL đã tới tay app — nó KHÔNG bảo hệ điều hành gửi URL tới.

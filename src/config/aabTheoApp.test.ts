@@ -75,3 +75,34 @@ it('danh tính JS đi theo app đang dựng, không rơi về app đầu tiên',
 it('đường tìm tệp .aab đi theo app, không gõ cứng một thư mục', () => {
   expect(WF).toMatch(/bundle\/\$\{FLAVOR\}Release/);
 });
+
+/**
+ * ── Cổng `ALADIN_API_KEY` đã gỡ 01/09 — hai bài dưới canh chỗ nó từng đứng ──
+ *
+ * Cổng cũ đặt biến `KHOA_API`, rồi BA bước sau đọc biến đó. Nên gỡ nửa vời là một
+ * lỗi thật, và là lỗi im: bỏ bước đặt mà quên bước đọc thì `${KHOA_API:-}` thành
+ * chuỗi rỗng, rơi vào nhánh `else`, và MỌI lượt phát hành đỏ ở bước soi gói —
+ * với một lời báo lỗi nói về khoá API, thứ chẳng liên quan gì tới nguyên nhân.
+ *
+ * Bài thứ hai canh cái đắt hơn: tên gói tải về. Suốt thời gian cổng đứng, tên
+ * DUY NHẤT từng ra đời là `aladin-aab-KHONG-KHOA-API-KHONG-NOP-PLAY` (lượt
+ * 33361993600, 31/08) — một bản hợp lệ tự dán nhãn cấm nộp. Ai làm đúng theo
+ * hướng dẫn thì không nộp gì cả.
+ */
+/** Các dòng CHẠY — bỏ chú thích, vì chú thích còn kể lại lịch sử là đúng. */
+const dongChay = WF.split('\n').filter((d) => !/^\s*#/.test(d));
+
+it('không dòng chạy nào còn đọc `KHOA_API` / `ALLOW_NO_API_KEY`', () => {
+  const sot = dongChay.filter((d) => /KHOA_API|ALLOW_NO_API_KEY/.test(d));
+  expect(sot).toEqual([]);
+});
+
+it('tên gói tải về là MỘT biểu thức theo app, không rẽ nhánh và không tự cấm nộp', () => {
+  const dong = dongChay.find((d) => /^\s+name: \$\{\{.*release-aab/.test(d));
+  expect(dong).toBeDefined();
+  // rẽ nhánh (`&&` / `||` / `? :`) nghĩa là có đường cho ra một tên khác
+  expect(dong).not.toMatch(/&&|\|\||\?/);
+  expect(dong).toContain('env.FLAVOR');
+  // và không chỗ CHẠY nào còn dựng được cái tên cấm nộp
+  expect(dongChay.filter((d) => /KHONG.NOP.PLAY/.test(d))).toEqual([]);
+});

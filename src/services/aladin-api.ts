@@ -8,9 +8,19 @@
  * cây không vào vườn"). Vi phạm INV-1 (INTEGRATION-STANDARD §3.2): client KHÔNG
  * được tự sinh id, phải ghi qua API để backend cấp uuid.
  *
- * File này còn tồn tại CHỈ vì hệ offline-sync cũ vẫn tham chiếu:
- *   - `src/modules/trace/utils/implicitParent.ts` (getOrCreateImplicitTree, gọi từ HomeScreen)
+ * File này còn tồn tại CHỈ vì hệ offline-sync cũ vẫn tham chiếu — ĐÚNG MỘT chỗ:
  *   - `src/services/syncDispatch.ts` (hàng đợi outbox) ← `src/services/syncService.ts`
+ *     ← `src/navigation/index.tsx:1898` (`syncService.start()`) — đường SỐNG.
+ *
+ * Ở đây từng có một dòng thứ hai: "`implicitParent.ts` (getOrCreateImplicitTree,
+ * gọi từ HomeScreen)". Đo 01/09: KHÔNG nơi nào trong `src/` gọi hàm đó, và
+ * `HomeScreen` không hề nhắc tới nó. Hàm ấy — cùng `getOrCreateImplicitFarm` —
+ * đã gỡ, một phần vì chúng tự sinh `farm_id`/`id` ở máy người dùng, tức phạm
+ * đúng cái bất biến ghi ngay bên trên. Lý do đầy đủ ở đầu
+ * `src/modules/trace/utils/geohash.ts` (tệp đổi tên từ `implicitParent.ts`).
+ *
+ * Bài học đáng giữ hơn cái hàm: dòng viện dẫn sai đó làm tệp này trông như có
+ * HAI nơi giữ nó sống, nên nó được coi là khó bóc gấp đôi thực tế.
  * Việc bóc nốt phần này thuộc quyết-định "giữ SQLite offline-first hay bỏ" của
  * team SuperApp (xem handoff Thư/Tùng). ĐỪNG mở rộng dùng client này thêm.
  */

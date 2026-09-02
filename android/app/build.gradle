@@ -285,13 +285,29 @@ if (trungDid) {
         // Build 54 (2026-05-18): V5 Independent Feature Operation — Quick Actions
         // (1-tap Cây/Quả/Vườn), implicit farm 22m × 22m, biometric login,
         // walk-away auto-stop, drag-to-edit polygon. Field test target Đắk Lắk.
-        // Keep Android versionCode in lockstep with iOS CFBundleVersion.
+        // Câu "keep in lockstep with iOS CFBundleVersion" từng đúng, nay KHÔNG.
+        // iOS tự tăng theo TestFlight mới nhất + 1 mỗi lượt dựng ký
+        // (`codemagic.yaml:845-860`); Android thì sửa TAY ở đây. Hai bên đã rời
+        // nhau từ lâu, và giữ câu cũ làm người đọc tưởng còn một thoả thuận đang
+        // được ai đó giữ. Giữ đồng bộ thật thì phải cho Android đọc cùng nguồn —
+        // chưa làm, nên nói thẳng là chưa.
         // Build 74 (2026-07-10): fix ví/mạng PhoenixKey (/wallet/all + Standard CIP-1852),
         // guardian đúng route §6, fix đơ iOS displayLink, YOLO gate C + A/B đăng-ký cây.
         // Build 75 (2026-07-10): tự phát hiện DID mồ côi + nút đăng-ký-lại khi server reset.
         // Build 76 (2026-07-13): hiện 2 ví (Standard+Phoenix) + stake_address CIP-1852;
         // fix "Phiên hết hạn" khi tạo vườn (tự lấy token field-reid); gộp fix cây + P0 nhiệt.
-        versionCode 97
+        // Build 98 (2026-09-01): tăng CHỦ ĐỘNG, không kèm tính năng nào.
+        // Lượt phát hành 33361993600 (31/08) đã dựng ra một gói mang đúng số 97.
+        // Gói đó ra đời với tên `…-KHONG-KHOA-API-KHONG-NOP-PLAY` nên nhiều khả
+        // năng chưa ai tải lên — nhưng đó là SUY ĐOÁN, chỉ Play Console trả lời
+        // được 97 còn trống hay đã tiêu.
+        //
+        // Tăng vì hai đường không cân nhau, không phải vì đã biết câu trả lời:
+        //   97 còn trống  → nhảy sang 98 mất KHÔNG GÌ (Play chỉ đòi số tăng dần,
+        //                   không đòi liên tiếp)
+        //   97 đã tiêu    → giữ 97 là Play từ chối, mất trọn một vòng dựng-nộp
+        // Rẻ một chiều thì chọn chiều rẻ, đừng chờ đo cái không đo được.
+        versionCode 98
         versionName "2.0"
 
         // ✅ Support 16KB page size (required by Google Play Store 2024)

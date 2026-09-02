@@ -8,13 +8,13 @@
   "operator": {
     "name": "Công ty Cổ phần CheckFarm",
     "nameEn": "CheckFarm Inc",
-    "address": null,
-    "addressEn": null,
-    "contact": null
+    "address": "404 Nguyễn Thái Bình, Phường Tân Lập, tỉnh Đắk Lắk, Việt Nam",
+    "addressEn": "404 Nguyen Thai Binh, Tan Lap Ward, Dak Lak Province, Viet Nam",
+    "contact": "contact@checkfarm.com"
   },
   "android": {
     "applicationId": "com.checkfarm.app",
-    "iconBackground": "#1F6B3A"
+    "iconBackground": "#298A4A"
   },
   "ios": {
     "bundleId": "com.checkfarm.app"

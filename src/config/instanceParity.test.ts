@@ -196,14 +196,22 @@ describe('pháp nhân vận hành — mỗi app một chủ', () => {
     }
   });
 
-  it('app nào còn thiếu địa chỉ/hòm thư thì CHƯA nộp cửa hàng được — gọi tên ra', () => {
-    // Không ném: `null` là trạng thái THẬT của một pháp nhân đang thành lập, và
-    // bịa một địa chỉ để bài kiểm xanh còn tệ hơn nhiều. Bài này chỉ bảo đảm
-    // danh sách đó luôn ĐÚNG với thực tế, để không ai tưởng đã đủ.
+  it('MỌI app đã đủ địa chỉ + hòm thư — thiếu là chưa nộp cửa hàng được', () => {
+    // Bài này từng ghim danh sách `['checkfarm']`, vì `null` là trạng thái THẬT
+    // của một pháp nhân đang thành lập và bịa địa chỉ cho bài kiểm xanh thì tệ
+    // hơn nhiều. CheckFarm cấp đủ ba trường ngày 01/09/2026, nên danh sách rỗng.
+    //
+    // Ghim rỗng CHẶT hơn ghim tên: danh sách có tên thì thêm một app thiếu dữ
+    // liệu vẫn có thể lọt bằng cách sửa đúng dòng ghim — còn rỗng thì mọi app
+    // thiếu đều đỏ, kể cả app chưa tồn tại hôm nay.
+    //
+    // Trở lại `null` là chuyện được phép (pháp nhân đổi, địa chỉ hết hiệu lực).
+    // Lúc đó bài này đỏ, và đỏ ĐÚNG: nó nói app đó chưa nộp cửa hàng được. Sửa
+    // bằng cách điền dữ liệu thật, đừng sửa bằng cách nới bài kiểm.
     const chuaDu = ids.filter(
       (id) => !INSTANCES[id].operator.address || !INSTANCES[id].operator.contact,
     );
-    expect(chuaDu).toEqual(['checkfarm']);
+    expect(chuaDu).toEqual([]);
   });
 });
 

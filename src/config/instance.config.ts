@@ -210,15 +210,19 @@ export const CHECKFARM_INSTANCE: InstanceConfig = {
   // phải Aladin Contract. Aladin Contract phát triển theo đơn đặt hàng và KHÔNG
   // giữ quyền sở hữu hay quyền kiểm soát thông tin nào.
   //
-  // `null` là thật: công ty đang thành lập, chưa có địa chỉ đăng ký và chưa có
-  // hòm thư dữ liệu. KHÔNG điền tạm địa chỉ của Aladin vào đây — đó đúng là lỗi
-  // vừa gỡ, chỉ khác chỗ đứng.
+  // Ba trường dưới từng là `null` kèm ghi chú "công ty đang thành lập, chưa có
+  // địa chỉ đăng ký". Nhà CheckFarm cấp đủ ngày 01/09/2026, nên `null` không
+  // còn đúng.
+  //
+  // Câu cấm đi kèm thì GIỮ NGUYÊN hiệu lực, vì nó mới là phần đắt: KHÔNG điền
+  // tạm địa chỉ của Aladin vào đây. Ba chuỗi này là địa chỉ của CheckFarm, do
+  // nhà CheckFarm cấp — không suy ra từ kho này.
   operator: {
     name: 'Công ty Cổ phần CheckFarm',
     nameEn: 'CheckFarm Inc',
-    address: null,
-    addressEn: null,
-    contact: null,
+    address: '404 Nguyễn Thái Bình, Phường Tân Lập, tỉnh Đắk Lắk, Việt Nam',
+    addressEn: '404 Nguyen Thai Binh, Tan Lap Ward, Dak Lak Province, Viet Nam',
+    contact: 'contact@checkfarm.com',
   },
   tabs: [
     { kind: 'module', moduleId: 'chat' },

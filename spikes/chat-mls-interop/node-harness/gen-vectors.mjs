@@ -1,5 +1,5 @@
-// Pha 0 spike — sinh GOLDEN TEST VECTORS từ đúng thư viện web (ts-mls 1.5.1,
-// circomlibjs 0.1.7, blakejs 1.2.1, tweetnacl 1.0.3) để bản Rust khớp byte-for-byte.
+// Pha 0 spike — sinh GOLDEN TEST VECTORS từ đúng thư viện web (ts-mls,
+// circomlibjs, blakejs, tweetnacl — phiên bản ĐỌC lúc chạy) để Rust khớp byte-for-byte.
 //
 // Chạy: node gen-vectors.mjs   → ghi rust/chat_mls/vectors/web-vectors.json + mls-sample.json
 //
@@ -12,13 +12,42 @@
 // khẳng định 2 bên đồng thuận epochSecret, và xuất mẫu KeyPackage/Welcome ra file).
 
 import { webcrypto as nodeCrypto } from 'node:crypto';
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import blake from 'blakejs';
 import nacl from 'tweetnacl';
 import { buildPoseidon } from 'circomlibjs';
 
 const subtle = nodeCrypto.subtle;
 const CIPHERSUITE = 'MLS_128_DHKEMP256_AES128GCM_SHA256_P256';
+
+// ── `generatedBy` phải ĐỌC phiên bản thật, không được ghi cứng ───────────────
+// Trước đây dòng này là một chuỗi literal 'ts-mls@1.5.1 / circomlibjs@0.1.7 / …'.
+// Cổng bên Rust khớp cứng chuỗi đó để bắt bên web đổi thư viện — nhưng chuỗi ghi
+// cứng thì KHÔNG BAO GIỜ đổi. Nâng circomlibjs lên 0.1.8, sinh lại vector: giá trị
+// mong đợi đổi, `generatedBy` vẫn ghi 0.1.7, và cổng vẫn xanh vì nó so chuỗi với
+// chuỗi. Một cái ghim mà chính nó ghi ra thứ nó bị so — không ghim được gì.
+//
+// Nay đọc từ `package.json` của từng gói ĐANG CÀI. Chạy ở kho nào thì nó khai đúng
+// phiên bản của kho đó — đây là điều kiện để cổng có nghĩa khi bộ sinh này về chạy
+// trong CI của bên web bằng chính `node_modules` của bên web.
+const requireCjs = createRequire(import.meta.url);
+const GOI_CAN_KHAI = ['ts-mls', 'circomlibjs', 'blakejs', 'tweetnacl'];
+
+function phienBan(ten) {
+  // `exports` của một số gói không mở `./package.json`, nên thử hai đường rồi mới bỏ.
+  try {
+    return requireCjs(`${ten}/package.json`).version;
+  } catch {
+    const p = requireCjs.resolve(ten);
+    const goc = p.slice(0, p.lastIndexOf(`node_modules/${ten}/`) + `node_modules/${ten}/`.length);
+    return JSON.parse(readFileSync(goc + 'package.json', 'utf8')).version;
+  }
+  // KHÔNG có nhánh trả giá trị mặc định: một `generatedBy` đoán mò còn tệ hơn không
+  // có nó, vì nó trông y hệt một phép đo thật.
+}
+
+const XUAT_XU = GOI_CAN_KHAI.map((t) => `${t}@${phienBan(t)}`).join(' / ');
 
 const b64 = (u8) => Buffer.from(u8).toString('base64');
 const hex = (u8) => Buffer.from(u8).toString('hex');
@@ -197,7 +226,7 @@ async function main() {
     mls = { error: String(e && e.stack ? e.stack : e) };
   }
 
-  const vectors = { ciphersuite: CIPHERSUITE, generatedBy: 'ts-mls@1.5.1 / circomlibjs@0.1.7 / blakejs@1.2.1 / tweetnacl@1.0.3', tier2_message: t2, tier3_merkle: t3 };
+  const vectors = { ciphersuite: CIPHERSUITE, generatedBy: XUAT_XU, tier2_message: t2, tier3_merkle: t3 };
   // ⛔ GHI THẲNG VÀO TỆP MÀ TEST RUST ĐỌC — chỉ MỘT bản duy nhất trong kho.
   // Trước đây tệp này nằm cạnh harness (`./vectors.json`) còn bên Rust là các hằng
   // `const` chép tay, nên "sinh lại vector" KHÔNG làm đỏ được gì: hai bên không

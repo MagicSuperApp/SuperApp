@@ -174,59 +174,28 @@ jobs:
       - name: Install npm dependencies
         run: npm install --legacy-peer-deps
 
-      # Bản PHÁT HÀNH không được rơi về khoá giả. `aladin-api.ts:75` lấy
-      # `ALADIN_API_KEY || 'mock-local-api-key'` và gắn vào header `X-API-Key` của
-      # MỌI lệnh đồng bộ vườn/cây; `api.orilife.io/api/health` trả `auth_open:false`
-      # (đo 2026-08-11) — tức máy chủ CÓ kiểm khoá. Nướng khoá giả vào bản lên Play
-      # Store nghĩa là mọi người dùng đồng bộ hỏng, và hỏng theo kiểu 401 im lặng.
-      # Bản debug thì vẫn rơi về khoá giả — chỗ đó chấp nhận được, đây thì không.
-      # ĐÍNH CHÍNH 2026-08-18 — bước này CHẶN CỨNG mọi lượt dựng AAB trên `main` kể từ
-      # khi nó ra đời, bằng một hệ quả chưa ai đo. Đo được:
-      #   * `gh api .../actions/workflows/android-aab.yml/runs` → lượt 17/08 và lượt
-      #     16/08 đều `failure`, và bước hỏng đúng là bước này. Tức nhánh RA PLAY STORE
-      #     chưa từng cho ra một tệp AAB nào kể từ đó.
-      #   * Câu cũ ở đây ("đồng bộ hỏng 401 trên máy mọi người dùng") sai: mã máy chủ
-      #     OriLife không có chỗ nào đọc header `X-API-Key`, và hai cửa ĐỌC công khai
-      #     trả lời bình thường khi không gửi khoá (`GET /api/health` → 200,
-      #     `GET /api/tree_by_code/<mã>` → 404 đúng hợp đồng, không 401).
-      #   * `codemagic.yaml` đã sửa cùng lý do từ 17/08 và có đường đi tiếp
-      #     (`ALLOW_NO_API_KEY=1`); đường GitHub thì không, nên hai đường lệch nhau.
+      # Ở ĐÂY TỪNG CÓ MỘT CỔNG "thiếu ALADIN_API_KEY thì không cho phát hành".
+      # Gỡ 2026-09-01 vì đo ra nó canh một giá trị KHÔNG ĐẦU NÀO ĐỌC:
       #
-      # Cổng vẫn ĐỨNG, vì cửa GHI (`POST /farms`, `POST /trees`) chưa đo được — chưa đo
-      # thì chưa được tuyên là an toàn. Nhưng nay chặn có đường đi tiếp CÓ CHỦ Ý, đúng
-      # bằng hình của `codemagic.yaml`, thay vì một bức tường không ai qua được.
+      #   * Đích thật của app là `ALADIN_API_URL = https://api.orilife.io`
+      #     (`.github/actions/rn-env/action.yml:106`).
+      #   * Mã máy chủ OriLife KHÔNG có chỗ nào đọc header `X-API-Key` VÀO. Cả kho chỉ
+      #     có một chuỗi `X-API-Key`, và đó là client GỬI ĐI sang LampNet
+      #     (`orilife-mesh-worker/lampnet_client.py:50`).
+      #   * Cửa GHI — phần trước đây ghi là "CHƯA đo được", tức lý do duy nhất giữ cổng
+      #     này đứng — nay đo xong: nó gác bằng PHIÊN, không bằng khoá.
+      #     `animal_server_ext.py:426` → `account: dict = Depends(_require_account)`.
+      #   * Chốt độc lập từ 11/07, trước cổng này: `Legacy/Integration-OriLife-snapshot-2026-07-11.md:31`
+      #     — "KHÔNG có API-key tĩnh (`ALADIN_API_KEY` deprecated) — auth = token DID runtime".
       #
-      # Cách gỡ, chọn một:
-      #   1. Nạp khoá: `gh secret set ALADIN_API_KEY --repo <kho>` (Codemagic ĐÃ có khoá
-      #      này trong nhóm `scanner_secrets` — chép sang là hai đường dựng khớp nhau).
-      #   2. Hoặc chốt là bản này không cần: đặt biến kho `ALLOW_NO_API_KEY` = `1`
-      #      (Settings → Secrets and variables → Actions → Variables).
-      - name: Chặn bản phát hành thiếu khoá API
-        env:
-          ALADIN_API_KEY: ${{ secrets.ALADIN_API_KEY }}
-          ALLOW_NO_API_KEY: ${{ vars.ALLOW_NO_API_KEY }}
-        run: |
-          if [ -n "$ALADIN_API_KEY" ]; then
-            echo "ALADIN_API_KEY có mặt (${#ALADIN_API_KEY} ký tự)."
-            echo "KHOA_API=co" >> "$GITHUB_ENV"
-          elif [ "$ALLOW_NO_API_KEY" = "1" ]; then
-            echo "::warning::Không có ALADIN_API_KEY — dựng tiếp vì biến kho ALLOW_NO_API_KEY=1."
-            echo "Bản này nướng 'mock-local-api-key' vào header X-API-Key (aladin-api.ts:75)."
-            echo "Chỉ chạm client aladin-api (ĐÃ deprecated); farmService / treeReIDService /"
-            echo "provenanceService KHÔNG gửi header này."
-            # Đánh dấu để BA bước sau đổi hành vi: bước soi AAB thôi cấm chuỗi khoá giả
-            # (nó có mặt là đúng thiết kế ở nhánh này), tên tệp tải về đổi thành tên
-            # KHÔNG thể nhầm với bản phát hành, và phần tổng kết thôi hướng dẫn nộp Play.
-            echo "KHOA_API=thieu" >> "$GITHUB_ENV"
-          else
-            echo "::error::Thiếu secret ALADIN_API_KEY và chưa đặt biến kho ALLOW_NO_API_KEY=1."
-            echo "Nạp khoá : gh secret set ALADIN_API_KEY --repo ${{ github.repository }}"
-            echo "Hoặc mở  : đặt biến kho ALLOW_NO_API_KEY=1 nếu chốt là bản này không cần khoá."
-            echo "Đo 2026-08-17 trước khi quyết: máy chủ OriLife KHÔNG đọc header X-API-Key,"
-            echo "hai cửa ĐỌC công khai trả lời bình thường khi không gửi khoá. Cửa GHI thì"
-            echo "CHƯA đo được — đó là lý do cổng này còn đứng thay vì bỏ hẳn."
-            exit 1
-          fi
+      # Giá của cổng thì đo được: lượt phát hành 33361993600 (31/08) là lượt DUY NHẤT
+      # xanh sau bốn lượt hỏng, và gói của nó ra đời mang tên
+      # `aladin-aab-KHONG-KHOA-API-KHONG-NOP-PLAY` — tự dán nhãn cấm nộp lên chính bản
+      # hợp lệ. Một cổng canh thứ không ai đọc thì nó không canh gì cả; nó chỉ chặn.
+      #
+      # `ALADIN_API_KEY` vẫn được truyền tiếp xuống `rn-env` ngay dưới đây, và
+      # `aladin-api.ts:75` vẫn gửi header đó. Gỡ cổng KHÔNG phải gỡ đường dây: có khoá
+      # thì khoá vẫn đi tới nơi, chỉ là thiếu nó thì thôi chặn.
 
       # PHẢI trước gradle — lý do đầy đủ ở .github/actions/rn-env/action.yml.
       - name: Sinh biến môi trường React Native
@@ -477,22 +446,19 @@ jobs:
             fi
           done
 
-          # Khoá giả — soi CHÍNH GÓI, không soi biến đầu vào. Cổng phía trên chỉ biết
-          # secret có mặt hay không; nó không biết giá trị đó có thật sự đi được tới
-          # bundle không. Một secret đặt nhầm sang tên khác, hay một bước rn-env đổi
-          # thứ tự, đều cho ra đúng gói mà cổng kia vừa gật.
-          # Ở nhánh CÓ CHỦ Ý (ALLOW_NO_API_KEY=1) thì chuỗi này có mặt là đúng thiết kế,
-          # nên chỉ nhắc; ở mọi nhánh khác nó là lỗi chặn.
+          # Khoá giả — CHỈ BÁO, không chặn. Trước 01/09 đây là lỗi chặn, dựa trên cổng
+          # `ALADIN_API_KEY` phía trên. Cổng đó đã gỡ (lý do + số đo ở chỗ nó từng đứng),
+          # nên phép so `KHOA_API = thieu` ở đây cũng không còn nghĩa: bỏ nguyên khối thì
+          # chuỗi này có mặt ở MỌI gói và bản dựng nào cũng đỏ.
+          #
+          # Vẫn IN ra, vì nó là phép đo rẻ và thật: nó nói giá trị nào đã đi tới bundle.
+          # Ngày nào máy chủ thật sự đọc `X-API-Key` thì chỗ này là nơi dựng lại cổng —
+          # nhưng dựng lại phải kèm phép đo mới, đừng dựng lại vì thấy dòng chữ này.
           if grep -qF 'mock-local-api-key' "$WORK/strings.txt"; then
-            if [ "${KHOA_API:-}" = "thieu" ]; then
-              echo "  (đã biết) có mock-local-api-key — đúng nhánh ALLOW_NO_API_KEY=1"
-            else
-              echo "::error::Bundle CÓ 'mock-local-api-key' trong khi cổng khoá API báo ĐỦ khoá."
-              echo "Nghĩa là secret không tới được tệp môi trường — ĐỪNG nộp Play."
-              FAIL=1
-            fi
+            echo "  ghi nhận  gói mang 'mock-local-api-key' (không có secret ALADIN_API_KEY)"
+            echo "            máy chủ api.orilife.io không đọc header X-API-Key vào — không chặn"
           else
-            echo "  OK  không có mock-local-api-key"
+            echo "  ghi nhận  gói mang khoá API thật"
           fi
 
           echo "── versionCode thật trong manifest của gói ─────────────────"
@@ -505,14 +471,15 @@ jobs:
           [ "$FAIL" -eq 0 ] || { echo "::error::AAB không đạt — ĐỪNG nộp Play"; exit 1; }
           echo "AAB đạt cả ba nhóm kiểm."
 
-      # Tên tệp tải về ĐỔI khi bản dựng đi qua đường ALLOW_NO_API_KEY=1. Lý do: phần
-      # tổng kết bên dưới nói thẳng "tải về rồi nộp Play Console → Production", nên một
-      # gói mang khoá giả mà vẫn tên `superapp-release-aab` là cái bẫy đặt sẵn cho
-      # chính người làm theo hướng dẫn. Đổi tên thì nhầm là không nhầm được.
+      # Tên tệp tải về: MỘT tên, không rẽ nhánh. Trước 01/09 tên đổi thành
+      # `…-KHONG-KHOA-API-KHONG-NOP-PLAY` khi thiếu `ALADIN_API_KEY` — và vì khoá đó
+      # chưa từng có, cái tên cấm-nộp là tên DUY NHẤT từng ra đời (lượt 33361993600,
+      # 31/08). Một bản hợp lệ tự dán nhãn cấm nộp thì người làm đúng hướng dẫn sẽ
+      # không nộp gì cả.
       - name: Upload AAB artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.KHOA_API == 'thieu' && format('{0}-aab-KHONG-KHOA-API-KHONG-NOP-PLAY', env.FLAVOR) || format('{0}-release-aab', env.FLAVOR) }}
+          name: ${{ format('{0}-release-aab', env.FLAVOR) }}
           path: |
             dist/superapp-release.aab
             dist/superapp-release.aab.sha256
@@ -528,16 +495,9 @@ jobs:
           echo "- **SHA256:** $(cat dist/superapp-release.aab.sha256 | cut -d' ' -f1)" >> $GITHUB_STEP_SUMMARY
           echo "- **versionCode:** $(grep versionCode android/app/build.gradle | grep -oE '[0-9]+')" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          if [ "${KHOA_API:-}" = "thieu" ]; then
-            echo "### ⛔ ĐỪNG nộp gói này lên Play" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Bản dựng đi qua đường \`ALLOW_NO_API_KEY=1\`: không có secret \`ALADIN_API_KEY\`," >> $GITHUB_STEP_SUMMARY
-            echo "nên gói mang \`mock-local-api-key\` ở header \`X-API-Key\`. Dùng để thử, không để phát hành." >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Muốn có gói nộp được: đặt secret \`ALADIN_API_KEY\` rồi chạy lại workflow này." >> $GITHUB_STEP_SUMMARY
-          else
-            echo "### Next steps" >> $GITHUB_STEP_SUMMARY
-            echo "1. Download artifact \`superapp-release-aab\` (button at top right of this page)" >> $GITHUB_STEP_SUMMARY
-            echo "2. Upload \`.aab\` to Play Console → Production track → Create new release" >> $GITHUB_STEP_SUMMARY
-            echo "3. Click 'Send for Review' → Google review 1-7 days" >> $GITHUB_STEP_SUMMARY
-          fi
+          echo "### Next steps" >> $GITHUB_STEP_SUMMARY
+          # Tên gói đi theo app đang dựng, KHÔNG gõ cứng: `aladin-release-aab`,
+          # `checkfarm-release-aab`… Gõ cứng một tên là chỉ sai đường cho app thứ hai.
+          echo "1. Download artifact \`${FLAVOR}-release-aab\` (button at top right of this page)" >> $GITHUB_STEP_SUMMARY
+          echo "2. Upload \`.aab\` to Play Console → Production track → Create new release" >> $GITHUB_STEP_SUMMARY
+          echo "3. Click 'Send for Review' → Google review 1-7 days" >> $GITHUB_STEP_SUMMARY

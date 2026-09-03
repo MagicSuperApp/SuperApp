@@ -50,7 +50,7 @@ import MapGround, { type MapGroundStatus } from '../features/space3d/scene/MapGr
 import TreeMarkers from '../features/space3d/scene/TreeMarkers';
 import { DEFAULT_MAP_SOURCE_ID } from '../features/space3d/mapTiles';
 import TreeModel, {
-  subscribeTreeModelStatus, type TreeModelStatus,
+  findTreeModelStatus, subscribeTreeModelStatus, type TreeModelStatus,
 } from '../features/space3d/scene/TreeModel';
 import { TREE_MODELS, getTreeModel } from '../features/space3d/treeModels';
 import TreeModelPreview from '../features/space3d/scene/TreeModelPreview';
@@ -529,8 +529,12 @@ const Space3DScreen: React.FC = () => {
     : '1 ngón xoay · 2 ngón phóng';
 
   // Chỉ báo trạng-thái của MODEL cây đang mở (mỗi cây có thể dùng model khác nhau).
+  // Cây điểm có dòng riêng theo mã cây — `findTreeModelStatus` ưu tiên dòng đó rồi
+  // mới tới dòng chung, nếu không câu của cây khác sẽ hiện dưới tên cây này.
   const focusModelStatus = useMemo(
-    () => (focusTree ? modelStatuses.find((s) => s.modelId === focusTree.modelId) : undefined),
+    () => (focusTree
+      ? findTreeModelStatus(modelStatuses, focusTree.modelId, focusTree.id)
+      : undefined),
     [modelStatuses, focusTree],
   );
 
@@ -607,6 +611,8 @@ const Space3DScreen: React.FC = () => {
               key={t.id}
               position={[t.pos.x, 0, t.pos.z]}
               modelId={t.modelId}
+              /* Cây điểm tải bản dựng 3D theo ĐÚNG mã cây này (mỗi cây một tệp). */
+              treeId={t.id}
               rotationY={t.rotationY}
               highlighted={t.id === focusTreeId || t.id === placingTreeId}
             />
@@ -758,8 +764,16 @@ const Space3DScreen: React.FC = () => {
             color={focusModelStatus.state === 'failed' ? '#fbbf24' : SPACE_COLORS.accent}
           />
           <Text style={styles.modelWarnTxt} numberOfLines={3}>
+            {/* Ba câu khác nhau, vì ba chuyện khác nhau:
+                  failed  — trục trặc, đáng thử lại
+                  missing — cây CHƯA có bản dựng 3D: chuyện bình thường của cây mới,
+                            gọi nó là "lỗi" thì người dùng đi tìm cách sửa một thứ
+                            không hỏng
+                  còn lại — câu của máy chủ về độ phủ ảnh, hiện nguyên văn */}
             {focusModelStatus.state === 'failed'
               ? `Đang dùng cây tự tạo — không nạp được "${getTreeModel(focusModelStatus.modelId).label}": ${focusModelStatus.message}`
+              : focusModelStatus.state === 'missing'
+              ? `Đang dùng cây tự tạo. ${focusModelStatus.message}`
               : focusModelStatus.message}
           </Text>
         </View>
@@ -872,7 +886,7 @@ const Space3DScreen: React.FC = () => {
                       left: 0,
                     }}></View>
                     {/* Icon nút = chính model đó, dựng 3D và quay chậm. */}
-                    <TreeModelPreview modelId={m.id} size={tileInner} />
+                    <TreeModelPreview modelId={m.id} treeId={focusTree?.id} size={tileInner} />
                     <Text style={styles.modelLabel} numberOfLines={1}>{m.label}</Text>
                     {m.credit ? (
                       <Text style={styles.modelHint} numberOfLines={1}>{m.credit}</Text>

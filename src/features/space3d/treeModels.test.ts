@@ -1,5 +1,6 @@
 import {
-  DEFAULT_TREE_MODEL_ID, TREE_MODELS, getTreeModel, isFileBacked,
+  DEFAULT_TREE_MODEL_ID, POINTS_TREE_MODEL_ID, PROCEDURAL_TREE_MODEL_ID,
+  TREE_MODELS, getTreeModel, isFileBacked, isPointCloud, treeModelKind,
 } from './treeModels';
 
 describe('sổ đăng ký TREE_MODELS', () => {
@@ -21,10 +22,30 @@ describe('sổ đăng ký TREE_MODELS', () => {
     }
   });
 
-  it('model mặc định TỒN TẠI và là cây tự tạo (không cần tệp → luôn hiện được)', () => {
+  it('model mặc định TỒN TẠI, là cây điểm từ OriLife, và không cần tệp đóng gói', () => {
     const def = TREE_MODELS.find((m) => m.id === DEFAULT_TREE_MODEL_ID);
     expect(def).toBeDefined();
+    expect(DEFAULT_TREE_MODEL_ID).toBe(POINTS_TREE_MODEL_ID);
+    expect(isPointCloud(def!)).toBe(true);
     expect(isFileBacked(def!)).toBe(false);
+  });
+
+  it('cây tự tạo VẪN còn trong sổ — nó là chỗ rơi về khi cây chưa dựng 3D', () => {
+    const def = TREE_MODELS.find((m) => m.id === PROCEDURAL_TREE_MODEL_ID);
+    expect(def).toBeDefined();
+    expect(treeModelKind(def!)).toBe('procedural');
+    expect(isFileBacked(def!)).toBe(false);
+  });
+
+  it('mọi model .glb cũ vẫn giữ nguyên trong sổ (đổi mặc định KHÔNG gỡ model nào)', () => {
+    // Người dùng đã chọn tay model nào thì lựa chọn đó nằm trong treeModelStore.
+    // Gỡ một id khỏi sổ = mọi cây đang dùng nó lặng lẽ rơi về mặc định.
+    const fileIds = TREE_MODELS.filter(isFileBacked).map((m) => m.id);
+    expect(fileIds).toEqual(expect.arrayContaining([
+      'tree1', 'tree_broadleaf', 'tree_zsky_a', 'tree_zsky_b', 'palm_tree',
+      'fiddle_leaf_plant', 'yucca_plant', 'bush',
+      'houseplant_bushy', 'houseplant_slim',
+    ]));
   });
 
   it('model có tệp phải kèm source thật (require đã resolve)', () => {
@@ -54,8 +75,24 @@ describe('getTreeModel', () => {
 });
 
 describe('isFileBacked', () => {
-  it('phân biệt đúng model có tệp và cây tự tạo', () => {
+  it('phân biệt đúng model có tệp và model không tệp', () => {
     expect(isFileBacked({ id: 'a', label: 'a', source: null })).toBe(false);
     expect(isFileBacked({ id: 'b', label: 'b', source: 123 })).toBe(true);
+    // Cây điểm cũng không có tệp đóng gói — nó tải từ máy chủ.
+    expect(isFileBacked({ id: 'c', label: 'c', source: null, kind: 'points' })).toBe(false);
+  });
+});
+
+describe('treeModelKind / isPointCloud', () => {
+  it('bản ghi không khai `kind` thì suy từ `source` (giữ sổ cũ chạy được)', () => {
+    expect(treeModelKind({ id: 'a', label: 'a', source: null })).toBe('procedural');
+    expect(treeModelKind({ id: 'b', label: 'b', source: 123 })).toBe('file');
+  });
+
+  it('`kind` khai rõ thì thắng — cây điểm không có tệp nhưng KHÔNG phải cây tự tạo', () => {
+    const points = { id: 'c', label: 'c', source: null, kind: 'points' as const };
+    expect(treeModelKind(points)).toBe('points');
+    expect(isPointCloud(points)).toBe(true);
+    expect(isPointCloud({ id: 'd', label: 'd', source: null })).toBe(false);
   });
 });

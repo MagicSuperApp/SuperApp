@@ -20,7 +20,6 @@ import {
   FlatList,
   ActivityIndicator,
   RefreshControl,
-  Alert,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -41,7 +40,7 @@ import {
 
 import { ORILIFE_BASE } from '../services/orilifeBase';
 import { forTree, useOpenWayfind } from '../features/wayfind/WayfindButton';
-import { showError, showWarning } from '../utils/alert';
+import { showError, showInfo, showWarning } from '../utils/alert';
 import { t } from '../i18n';
 const BASE_URL: string =
   ORILIFE_BASE;
@@ -252,10 +251,10 @@ const TreeManagementScreen: React.FC = () => {
               if (res.ok) {
                 setTrees(prev => prev.filter(t => t.tree_id !== item.tree_id));
               } else {
-                Alert.alert(t('Xoá thất bại'), res.error?.detail ?? t('Thử lại.'));
+                showError(t('Xoá thất bại'), res.error?.detail ?? t('Thử lại.'));
               }
             } catch {
-              Alert.alert(t('Lỗi mạng'), t('Không thể xoá cây. Kiểm tra kết nối và thử lại.'));
+              showError(t('Lỗi mạng'), t('Không thể xoá cây. Kiểm tra kết nối và thử lại.'));
             }
           },
     });
@@ -263,21 +262,23 @@ const TreeManagementScreen: React.FC = () => {
 
   // ── Action sheet (long press) ─────────────────────────────────────────────
   const handleLongPress = (item: TreeItem) => {
-    Alert.alert(
+    showInfo(
       item.name || item.tree_id || t('Cây chưa đặt tên'),
       t('Chọn hành động:'),
-      [
-        { text: t('Huỷ'), style: 'cancel' },
-        {
-          text: t('Đổi tên'),
-          onPress: () => setRenameTarget(item),
-        },
-        {
-          text: t('Xoá'),
-          style: 'destructive',
-          onPress: () => handleDelete(item),
-        },
-      ],
+      {
+        actions: [
+          { text: t('Huỷ'), style: 'cancel' },
+          {
+            text: t('Đổi tên'),
+            onPress: () => setRenameTarget(item),
+          },
+          {
+            text: t('Xoá'),
+            style: 'destructive',
+            onPress: () => handleDelete(item),
+          },
+        ],
+      },
     );
   };
 

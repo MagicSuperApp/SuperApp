@@ -15,7 +15,6 @@ import {
   TextInput,
   DeviceEventEmitter,
   PermissionsAndroid,
-  Alert,
   BackHandler,
   Animated,
   PanResponder,
@@ -528,14 +527,15 @@ const AddFarmMode = ({
   const confirmExit = () => {
     const hasUnsaved = coordinates.length > 0 || farmName.trim().length > 0;
     if (!hasUnsaved) { onBack(); return; }
-    Alert.alert(
+    showWarning(
       t('Thoát màn thêm vườn?'),
       t('Bạn sẽ mất các điểm GPS và thông tin đã nhập. Bạn có chắc muốn thoát?'),
-      [
-        { text: t('Ở lại'), style: 'cancel' },
-        { text: t('Thoát'), style: 'destructive', onPress: () => onBack() },
-      ],
-      { cancelable: true },
+      {
+        actions: [
+          { text: t('Ở lại'), style: 'cancel' },
+          { text: t('Thoát'), style: 'destructive', onPress: () => onBack() },
+        ],
+      },
     );
   };
   const confirmExitRef = useRef(confirmExit);
@@ -1742,14 +1742,18 @@ const FarmDetailScreen = () => {
       }
       if (validation.warnings.length > 0) {
         const proceed = await new Promise<boolean>(resolve => {
-          Alert.alert(
+          showWarning(
             t('Cảnh báo ranh giới'),
             validation.warnings.map(translateValidationKey).join('\n') + t('\n\nVẫn lưu?'),
-            [
-              { text: t('Để sửa'), style: 'cancel', onPress: () => resolve(false) },
-              { text: t('Vẫn lưu'), style: 'destructive', onPress: () => resolve(true) },
-            ],
-            { cancelable: false },
+            {
+              // `dismissable: false` là BẮT BUỘC ở đây: chỗ gọi đang `await` lời
+              // hứa này. Đóng lặng lẽ mà không nhánh nào chạy là treo luôn việc lưu.
+              dismissable: false,
+              actions: [
+                { text: t('Để sửa'), style: 'cancel', onPress: () => resolve(false) },
+                { text: t('Vẫn lưu'), style: 'destructive', onPress: () => resolve(true) },
+              ],
+            },
           );
         });
         if (!proceed) return;

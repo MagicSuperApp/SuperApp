@@ -25,14 +25,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity, StatusBar,
-  Modal, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, Alert,
+  Modal, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, 
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import { COLORS } from '../constants';
 import { phoenixKeyApi, PhoenixKeyApiError, type DeviceView } from '../services/phoenixKey-api';
 import { checkDeviceName, DEVICE_NAME_MAX_LEN } from '../features/devices/deviceName';
-import { showError, showSuccess } from '../utils/alert';
+import { showError, showSuccess, showWarning } from '../utils/alert';
 import StateView from '../components/state/StateView';
 
 const PRIMARY = '#4A55C7';
@@ -155,13 +155,15 @@ const MyDevicesScreen: React.FC = () => {
     // Alert của nền tảng, không phải một Modal nữa: hành động này KHÔNG hoàn tác
     // được, và một Modal thứ hai chồng lên Modal đổi tên là đúng cái lỗi iOS đã
     // sửa ở `CandidateDetailSheet`.
-    Alert.alert(
+    showWarning(
       'Gỡ máy này?',
       `“${ten}” sẽ mất quyền truy cập danh tính của bạn ngay lập tức. Không hoàn tác được.`,
-      [
-        { text: 'Thôi', style: 'cancel' },
-        { text: 'Gỡ máy', style: 'destructive', onPress: () => { doRevoke(d); } },
-      ],
+      {
+        actions: [
+          { text: 'Thôi', style: 'cancel' },
+          { text: 'Gỡ máy', style: 'destructive', onPress: () => { doRevoke(d); } },
+        ],
+      },
     );
   }, [doRevoke]);
 

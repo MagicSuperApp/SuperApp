@@ -11,7 +11,9 @@
     "icons": "node scripts/icons.js",
     "soi-mach": "node scripts/soi-mach.js",
     "build:aab": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-aab.ps1",
-    "postinstall": "patch-package"
+    "postinstall": "patch-package",
+    "android:aladin": "react-native run-android --mode AladinDebug",
+    "android:checkfarm": "react-native run-android --mode CheckfarmDebug"
   },
   "dependencies": {
     "@maplibre/maplibre-react-native": "^10.4.2",

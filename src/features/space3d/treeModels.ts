@@ -20,12 +20,22 @@
 
 export type TreeModelId = string;
 
+/**
+ * Cây đó lấy hình từ đâu:
+ *   'points'     — ĐÁM MÂY ĐIỂM của chính cây đó, tải từ OriLife (xem `treePoints.ts`)
+ *   'file'       — tệp .glb đóng gói trong app
+ *   'procedural' — dựng bằng hình học sẵn có, không cần tệp và không cần mạng
+ */
+export type TreeModelKind = 'points' | 'file' | 'procedural';
+
 export interface TreeModelDef {
   id: TreeModelId;
   /** Tên hiển thị trong bộ chọn. */
   label: string;
-  /** Kết quả `require()` của tệp .glb; null = cây dựng bằng hình học. */
+  /** Kết quả `require()` của tệp .glb; null = không có tệp đóng gói. */
   source: number | null;
+  /** Bỏ trống → suy từ `source` (có tệp = 'file', không = 'procedural'). */
+  kind?: TreeModelKind;
   /**
    * Nhân với TREE_HEIGHT ra chiều cao thật. Mặc định 1 (cây thân gỗ).
    * Chậu cảnh / cây bụi nên nhỏ hơn — nếu không mọi thứ đều cao bằng cây cổ thụ.
@@ -35,15 +45,43 @@ export interface TreeModelDef {
   credit?: string;
 }
 
-/** Model mặc định khi cây chưa được chọn gì — cây tự tạo, luôn có sẵn, không cần tệp. */
-export const DEFAULT_TREE_MODEL_ID: TreeModelId = 'procedural';
+/**
+ * Cây ĐIỂM: dựng từ chính ảnh người dùng chụp cây đó, lấy về từ OriLife.
+ * Đây là hình thật của cây, không phải một hình mẫu dùng chung.
+ */
+export const POINTS_TREE_MODEL_ID: TreeModelId = 'orilife_points';
+
+/** Cây dựng bằng hình học — luôn hiện được, kể cả khi mất mạng. */
+export const PROCEDURAL_TREE_MODEL_ID: TreeModelId = 'procedural';
+
+/**
+ * Model mặc định khi cây chưa được chọn gì.
+ *
+ * Trước đây là cây tự tạo — một hình nón giống hệt nhau cho mọi cây trong vườn.
+ * Nó luôn hiện được, nhưng nó không nói gì về cây đang đứng đó. Nay mặc định là
+ * ĐÁM MÂY ĐIỂM của chính cây ấy, cùng nguồn với ô 3D ở màn truy-xuất quả, nên
+ * cây trong sơ-đồ vườn và cây trong hồ-sơ xuất-xứ là MỘT.
+ *
+ * Cây chưa dựng 3D (chưa chụp đủ ảnh) vẫn rơi về hình nón — xem `TreeModel.tsx`.
+ * Đổi mặc định KHÔNG đụng tới cây người dùng đã tự chọn model: lựa chọn đó nằm
+ * trong `treeModelStore`, và chỉ cây chưa có bản ghi mới đọc hằng này.
+ */
+export const DEFAULT_TREE_MODEL_ID: TreeModelId = POINTS_TREE_MODEL_ID;
 
 /* eslint-disable @typescript-eslint/no-var-requires */
 export const TREE_MODELS: TreeModelDef[] = [
   {
-    id: DEFAULT_TREE_MODEL_ID,
+    id: POINTS_TREE_MODEL_ID,
+    label: 'Cây thật',
+    source: null,
+    kind: 'points',
+    credit: 'Dựng từ ảnh bạn đã chụp',
+  },
+  {
+    id: PROCEDURAL_TREE_MODEL_ID,
     label: 'Cây tự tạo',
     source: null,
+    kind: 'procedural',
     credit: 'Dựng sẵn trong app',
   },
   {
@@ -119,7 +157,17 @@ export function getTreeModel(id?: TreeModelId | null): TreeModelDef {
   return found ?? TREE_MODELS.find((m) => m.id === DEFAULT_TREE_MODEL_ID)!;
 }
 
-/** Model này có cần nạp tệp không (false = cây dựng bằng hình học). */
+/** Lấy loại của một model; bản ghi cũ không khai `kind` thì suy từ `source`. */
+export function treeModelKind(def: TreeModelDef): TreeModelKind {
+  return def.kind ?? (def.source != null ? 'file' : 'procedural');
+}
+
+/** Model này có cần nạp tệp .glb đóng gói không. */
 export function isFileBacked(def: TreeModelDef): boolean {
   return def.source != null;
+}
+
+/** Model này lấy hình từ đám mây điểm của chính cây đó (cần mạng + tree_id). */
+export function isPointCloud(def: TreeModelDef): boolean {
+  return treeModelKind(def) === 'points';
 }

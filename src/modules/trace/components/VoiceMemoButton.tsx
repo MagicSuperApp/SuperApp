@@ -17,7 +17,6 @@ import {
   NativeModules,
   Platform,
   Animated,
-  Alert,
 } from 'react-native';
 
 import { buzz } from '../../../utils/haptics';
@@ -154,10 +153,10 @@ const VoiceMemoButton: React.FC<Props> = ({
       } catch (e: any) {
         const msg = e?.message ?? 'Không thể bắt đầu ghi âm.';
         if (msg.includes('Quyền micro') || msg.includes('permission')) {
-          Alert.alert(
+          showWarning(
             t('Cần quyền micro'),
             t('Vui lòng vào Cài đặt → {brand} → Micro để cho phép ghi âm.'),
-            [{ text: t('Đã hiểu') }]
+            { confirmText: t('Đã hiểu') },
           );
         } else {
           showError('Lỗi ghi âm', msg);
@@ -235,7 +234,7 @@ const VoiceMemoButton: React.FC<Props> = ({
               setPlaying(false);
               onDeleted();
             } catch (e: any) {
-              Alert.alert(t('Lỗi'), e?.message ?? t('Không xoá được.'));
+              showError(t('Lỗi'), e?.message ?? t('Không xoá được.'));
             }
           },
     });

@@ -1562,7 +1562,7 @@ workflows:
           TIEN_TO=$(echo "$ANDROID_FLAVOR" | tr '[:lower:]' '[:upper:]')
           TEN_ALIAS="${TIEN_TO}_UPLOAD_KEY_ALIAS"
           TEN_STORE_PW="${TIEN_TO}_UPLOAD_STORE_PASSWORD"
-          TEN_KEY_PW="${TIEN_TO}_UPLOAD_KEY_PASSWORD
+          TEN_KEY_PW="${TIEN_TO}_UPLOAD_KEY_PASSWORD"
           # secrets.properties (gitignored) — API cho orilifesdk. Từ group scanner_secrets.
           cat > android/app/secrets.properties <<EOF
           TREE_DETECTION_API=${TREE_DETECTION_API:-https://api.orilife.io}

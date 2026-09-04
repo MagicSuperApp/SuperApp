@@ -29,13 +29,6 @@
             {
               "client_id": "225371694207-4op5f3r3p0lejq4upvbmg83u533rjhbv.apps.googleusercontent.com",
               "client_type": 3
-            },
-            {
-              "client_id": "225371694207-jsk2uhkcl5ralceu453rh1mhkdlo9v4b.apps.googleusercontent.com",
-              "client_type": 2,
-              "ios_info": {
-                "bundle_id": "com.aladin.orilife"
-              }
             }
           ]
         }

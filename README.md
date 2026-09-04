@@ -82,6 +82,42 @@ main       ← bản phát hành (CI: AAB đã ký → Play Store)
 
 ## Dựng trên máy
 
+### Máy mới — chạy cái này trước
+
+```bash
+bash scripts/dung-android.sh
+```
+
+Nó đọc phiên bản JDK / NDK / build-tools / compileSdk **thẳng từ `android/build.gradle`**
+(không gõ cứng, nên nâng gradle là nó theo), đối chiếu với máy, rồi liệt kê chính xác cái
+gì thiếu. Thiếu thì nó **dừng**, không dựng tiếp.
+
+```bash
+bash scripts/dung-android.sh --cai
+```
+
+cài phần còn thiếu qua Homebrew + `sdkmanager`, rồi bảo chạy lại chế độ kiểm để tự xác nhận.
+
+```bash
+bash scripts/dung-android.sh --dung aladin-aab
+```
+
+dựng luôn — tự xuất `JAVA_HOME`/`ANDROID_HOME` đúng bản, gọi flavor tường minh, và **kiểm
+tệp ra có thật** trước khi báo xong. Bốn đích: `aladin-aab` · `aladin-apk` · `checkfarm-aab`
+· `checkfarm-apk`.
+
+Hai chỗ hay vấp, đã đo trên máy đang dựng được app:
+
+- `java -version` báo *"Unable to locate a Java Runtime"* **không** có nghĩa là thiếu JDK.
+  macOS không đặt JDK của Homebrew lên PATH. Script tìm theo đường dẫn thật, không qua PATH.
+- Kho **không có** `android/local.properties` (nó bị `.gitignore` chặn). Gradle cần
+  `ANDROID_HOME` từ môi trường; script tự xuất.
+
+Khoá ký nằm ngoài phạm vi script — nó chỉ báo có/không, không in giá trị. Hôm nay `aladin`
+đủ bốn phần nên dựng được bản ký; `checkfarm` chưa có nên chỉ dựng nổi bản debug.
+
+### Lệnh trần, nếu đã dựng được rồi
+
 ```bash
 npm install --legacy-peer-deps
 ```

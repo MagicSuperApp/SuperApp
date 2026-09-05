@@ -12,6 +12,20 @@ import { COLORS } from '../constants';
 
 export type AlertType = 'error' | 'info' | 'warning' | 'success';
 
+/**
+ * Một nút trong hộp thoại.
+ *
+ * Khớp đúng hình dạng `Alert.alert`'s button của React Native (`text` · `onPress`
+ * · `style`) để chuyển một hộp thoại native sang đây là việc đổi tên hàm, không
+ * phải việc thiết kế lại luồng.
+ */
+export interface AlertAction {
+  text: string;
+  onPress?: () => void;
+  /** 'cancel' = nút thoát (cũng là nút chạy khi người dùng bấm ra ngoài / nút back). */
+  style?: 'default' | 'cancel' | 'destructive';
+}
+
 interface AlertPopupProps {
   visible: boolean;
   type: AlertType;
@@ -31,6 +45,23 @@ interface AlertPopupProps {
    * thứ mà bản gốc không cho họ chọn.
    */
   hideCancel?: boolean;
+  /**
+   * Danh sách nút ĐẦY ĐỦ. Có nó thì `onConfirm`/`confirmText`/`cancelText`/
+   * `hideCancel` bị bỏ qua.
+   *
+   * Vì sao cần: cặp `onConfirm` + `cancelText` chỉ diễn đạt được hộp thoại HAI
+   * nút, và nút huỷ thì không chạy được việc gì. Có những hộp thoại thật trong
+   * app cần ba, bốn nút và cần nút huỷ CÓ việc — ví dụ hộp thoại máy chủ từ chối
+   * đăng ký cây (Huỷ · Chụp lại · Tạo cây mới): bỏ bớt một nút là bỏ mất lối ra
+   * duy nhất của người dùng, đúng cái lỗi đã từng phải sửa.
+   */
+  actions?: AlertAction[];
+  /**
+   * Bấm ra ngoài / nút back có đóng được không. Mặc định có — khớp `Alert.alert`.
+   * Đặt `false` cho hộp thoại mà chỗ gọi đang CHỜ một lựa chọn (vd `await` một
+   * Promise): đóng lặng lẽ ở đó là treo luồng, không phải huỷ.
+   */
+  dismissable?: boolean;
 }
 
 const AlertPopup: React.FC<AlertPopupProps> = ({
@@ -43,6 +74,8 @@ const AlertPopup: React.FC<AlertPopupProps> = ({
   confirmText = 'OK',
   cancelText = 'Hủy',
   hideCancel = false,
+  actions,
+  dismissable = true,
 }) => {
   const getAlertConfig = (alertType: AlertType) => {
     switch (alertType) {
@@ -85,6 +118,22 @@ const AlertPopup: React.FC<AlertPopupProps> = ({
     if (onClose) onClose();
   };
 
+  /**
+   * Bấm ra ngoài / nút back. Khớp hành vi native: nếu có nút kiểu 'cancel' thì
+   * chạy đúng việc của nút đó — bỏ qua là những chỗ `await` một lựa chọn sẽ treo
+   * mãi vì không nhánh nào chạy.
+   */
+  const handleDismiss = () => {
+    if (!dismissable) return;
+    if (actions?.length) actions.find((a) => a.style === 'cancel')?.onPress?.();
+    handleClose();
+  };
+
+  const runAction = (action: AlertAction) => {
+    action.onPress?.();
+    handleClose();
+  };
+
   const handleConfirm = () => {
     if (onConfirm) {
       onConfirm();
@@ -101,9 +150,9 @@ const AlertPopup: React.FC<AlertPopupProps> = ({
       visible={visible}
       transparent={true}
       animationType="fade"
-      onRequestClose={handleClose}
+      onRequestClose={handleDismiss}
     >
-      <TouchableWithoutFeedback onPress={handleClose}>
+      <TouchableWithoutFeedback onPress={handleDismiss}>
         <View style={styles.overlay}>
           <TouchableWithoutFeedback>
             <View style={styles.modalContent}>
@@ -119,22 +168,50 @@ const AlertPopup: React.FC<AlertPopupProps> = ({
           </View>
 
           {/* Actions */}
-          <View style={styles.actions}>
-            {onConfirm && !hideCancel && (
+          {actions?.length ? (
+            // Quá hai nút thì xếp DỌC. Ba nút cạnh nhau trên màn hẹp là ba nhãn
+            // bị cắt cụt, và người dùng chọn nhầm vì đọc không ra chữ.
+            <View style={actions.length > 2 ? styles.actionsColumn : styles.actions}>
+              {actions.map((action, i) => {
+                const cancel = action.style === 'cancel';
+                const danger = action.style === 'destructive';
+                return (
+                  <TouchableOpacity
+                    key={`${action.text}-${i}`}
+                    style={[
+                      cancel ? styles.cancelBtn : styles.confirmBtn,
+                      !cancel && {
+                        backgroundColor: danger ? (COLORS.error || '#FF4444') : COLORS.accent,
+                      },
+                      actions.length > 2 && styles.stackedBtn,
+                    ]}
+                    onPress={() => runAction(action)}
+                  >
+                    <Text style={cancel ? styles.cancelBtnText : styles.confirmBtnText}>
+                      {action.text}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          ) : (
+            <View style={styles.actions}>
+              {onConfirm && !hideCancel && (
+                <TouchableOpacity
+                  style={styles.cancelBtn}
+                  onPress={handleCancel}
+                >
+                  <Text style={styles.cancelBtnText}>{cancelText}</Text>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
-                style={styles.cancelBtn}
-                onPress={handleCancel}
+                style={[styles.confirmBtn, { backgroundColor: COLORS.accent }]}
+                onPress={handleConfirm}
               >
-                <Text style={styles.cancelBtnText}>{cancelText}</Text>
+                <Text style={styles.confirmBtnText}>{confirmText}</Text>
               </TouchableOpacity>
-            )}
-            <TouchableOpacity
-              style={[styles.confirmBtn, { backgroundColor: COLORS.accent }]}
-              onPress={handleConfirm}
-            >
-              <Text style={styles.confirmBtnText}>{confirmText}</Text>
-            </TouchableOpacity>
-          </View>
+            </View>
+          )}
         </View>
       </TouchableWithoutFeedback>
     </View>
@@ -194,6 +271,16 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: 'row',
     gap: 12,
+    width: '100%',
+  },
+  actionsColumn: {
+    flexDirection: 'column',
+    gap: 10,
+    width: '100%',
+  },
+  /** Nút xếp dọc chiếm trọn bề ngang — `flex:1` của hàng ngang làm nó dẹt lại. */
+  stackedBtn: {
+    flex: 0,
     width: '100%',
   },
   cancelBtn: {

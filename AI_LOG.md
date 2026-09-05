@@ -1,3 +1,174 @@
+## Cây 3D: nối điểm thành lưới — chấm rời không đọc ra hình gì
+
+Điểm từ máy chủ đã lên đúng (lượt trước), nhưng anh Aladin xem thì "chỉ là các điểm nên nhìn không giống 1 cái hình gì". Máy chủ đã tự khai trước điều đó trong mô tả cửa `model3d`: mật-độ thật *"trung-vị vài trăm điểm"*, và *"478 điểm vẽ ra là một đám bụi chứ chưa ra dáng cây"*. Đúng như vậy trên máy thật.
+
+### Cách nối
+Mỗi điểm nối tới **3 điểm gần nó nhất** (`NEIGHBORS_PER_POINT`). Ba là con số anh chốt, và nó khớp với hình học: 1 láng giềng ra một chuỗi hạt, 2 ra những đường gấp khúc rời nhau, từ 3 thì các đoạn bắt đầu khép thành tam giác và mắt đọc ra **bề mặt**. Lên 4–5 thì số đoạn tăng nhanh hơn hình mà nó thêm được.
+
+Lưu ý một chỗ dễ hiểu nhầm: đây **không** phải "mỗi điểm đúng 3 đoạn". Quan hệ láng giềng không đối xứng (A gần B nhất, nhưng B có thể có ba điểm khác gần hơn A), nên sau khi gộp trùng thì điểm nằm giữa đám dày mang nhiều hơn 3 đoạn — đó là hành vi đúng, không phải lỗi.
+
+### Ba chỗ phải tính, nếu không lưới thành mạng nhện
+
+**1. Không so mọi cặp.** So tất cả với tất cả là O(n²): trần 4 000 điểm/cây ⇒ 16 triệu phép đo cho MỘT cây, trên luồng JS, nhân với số cây trong vườn — màn đứng hình ngay lúc mở. Điểm được ném vào **lưới ô vuông** trước (cạnh ô theo mật-độ, `res ≈ ∛(n/2)`), rồi mỗi điểm chỉ so với các ô kề: 3×3×3, thiếu thì nới ra 5×5×5. Đo được: 4 000 điểm dựng xong trong **19 ms**.
+
+**2. Trần chiều dài đoạn.** "Ba điểm gần nhất" LUÔN tìm ra ba điểm — kể cả cho một điểm lạc nằm một mình giữa khoảng trống, và ba đoạn của nó sẽ bắc ngang qua cả tán cây. Vài điểm lạc là đủ để biến lưới thành mạng nhện, đúng cái "rối" anh dặn tránh. Trần đặt ở **3× khoảng cách láng-giềng trung-vị** của chính cây đó. Lấy trung-vị chứ không lấy trung-bình, vì trung-bình bị chính những điểm lạc ấy kéo lệch lên.
+
+**3. Gộp đoạn trùng.** A→B và B→A là một đoạn; không gộp thì vẽ đôi mọi thứ và độ mờ cộng dồn thành đặc.
+
+### Màu và độ mờ
+Mỗi đầu đoạn lấy **màu của chính điểm đó**, three nội suy dọc đoạn — nên lưới mang đúng màu chụp được của hai đầu, không phải một màu bịa chung. Đoạn nối vẽ ở `opacity 0.55`: nó là thứ **suy ra** (phỏng đoán "hai điểm này chắc cùng nằm trên một mặt"), không phải thứ máy chủ đo được, nên phải nhạt hơn chính các điểm. Kèm `depthWrite: false` — có ghi độ sâu thì đoạn vẽ trước che đoạn sau dù cả hai đều mờ, và khối cây lộ ra từng mảng đặc tuỳ thứ tự vẽ.
+
+Vẽ **cả hai lớp**, không bỏ chấm đi: điểm là dữ-liệu thật và mang màu ảnh; lưới chỉ là cách đọc đám điểm ấy. Bỏ chấm là bỏ mất chỗ dày/thưa — thứ nói cho nông dân biết họ đã chụp kỹ chỗ nào.
+
+### Kéo theo
+`buildTreePoints` nay trả `THREE.Group` (lưới + chấm) thay vì `THREE.Points`, nên `frameTreePoints` đo bằng hình học của các ĐIỂM (lưới không thể vượt ra ngoài hộp bao của chúng) và `disposeTreePointsInstance` duyệt cây con để dọn cả hai vật liệu. Lưới dựng **một lần** lúc tải rồi nằm trong đệm cùng hình học — tìm láng giềng là phần tốn nhất, và nó không đổi giữa các lần dựng lại cảnh.
+
+### Một byte NUL trong mã nguồn
+`TreeModel.tsx` chứa một ký-tự NUL thật (`\x00`) mà chính tôi viết vào lượt trước, làm khoá phân cách trong `statusKey`. Hệ quả: `grep` báo *"Binary file matches"* và không soi được tệp nữa. Đã đổi sang dãy thoát `\u0000` — giá trị lúc chạy y hệt, nhưng tệp nguồn trở lại là văn bản.
+
+### Đo
+`npx tsc --noEmit` sạch · `npx eslint src/features/space3d` 0 lỗi · `npx jest src/features/space3d/treePoints` **35 xanh** (thêm 10 bài cho `buildEdgeGeometry`: gộp trùng, trần chiều dài, màu hai đầu, và một bài canh thời gian để bắt ca thuật-toán tụt về O(n²)) · toàn kho **2189/2190**, một đỏ duy nhất vẫn là ca `.env` đã báo.
+
+---
+
+## Hộp thoại hệ điều hành ra khỏi app; cây 3D đổi sang đúng cửa của chủ vườn
+
+Hai việc trong một lượt, không liên quan nhau về mã nhưng cùng một lỗi gốc: **app hiển thị một thứ, còn sự thật nằm ở chỗ khác.**
+
+---
+
+## A. 37 `Alert.alert` → popup của app
+
+### Vì sao không chỉ là đổi tên hàm
+`Alert.alert` của iOS/Android nhận **một mảng nút** — bao nhiêu nút cũng được, mỗi nút một việc. Popup của app trước bản này chỉ diễn đạt được **hai** nút, và nút huỷ **không chạy được việc gì** (`onConfirm` vừa nghĩa là "có việc để chạy" vừa nghĩa là "có hai lựa chọn").
+
+Chuyển thẳng thì sáu hộp thoại mất nút. Trong đó có những nút KHÔNG được phép mất:
+
+| Hộp thoại | Nút thứ ba | Mất nó thì sao |
+|---|---|---|
+| `TreeEnrollScreen` — máy chủ từ chối đăng ký (409 không phân loại được) | "Tạo cây mới" | Chú thích ngay trên nó ghi: bản cũ là hộp một nút OK, bấm OK rồi đăng ký lại là gặp đúng 409 đó **mãi mãi**. Nút này là lối ra duy nhất |
+| `TreeEnrollScreen` — cần bật GPS | "Mở Cài đặt" | "Thử lại" một mình là vòng lặp kín: không có gì bật được GPS |
+| `SignUpBiometricScreen` — máy đã có danh tính | "Tôi có 24 từ khôi phục" (1 trong **4** nút) | Khi khoá trên máy đã bị thu hồi, đây là lối ra duy nhất — kể cả cho chính chủ |
+| `TreeManagementScreen` · `FruitScanScreen` | nút giữa | Đổi tên cây / chọn cây khác |
+
+Nên `AlertPopup` được mở rộng trước, rồi mới chuyển:
+
+* **`actions?: AlertAction[]`** — khớp đúng hình dạng nút của `Alert.alert` (`text` · `onPress` · `style`), nên chuyển một hộp thoại là việc đổi tên hàm chứ không phải thiết kế lại luồng. Quá hai nút thì xếp **dọc**: ba nhãn tiếng Việt cạnh nhau trên màn hẹp là ba nhãn cụt, và người ta chọn nhầm vì đọc không ra chữ.
+* **`style: 'destructive'`** tô đỏ. Popup cũ tô mọi nút xác nhận bằng màu nhấn, nên "Xoá" và "Lưu" trông y hệt nhau.
+* **`dismissable?: boolean`** + bấm ra ngoài chạy đúng việc của nút `cancel`. Đây là chỗ dễ sinh lỗi treo nhất: `FarmDetailScreen` bọc hộp thoại cảnh báo ranh giới trong `await new Promise(resolve => …)`. Đóng lặng lẽ mà không nhánh nào chạy thì `resolve` không bao giờ được gọi và **việc lưu vườn treo vĩnh viễn**, không một dòng lỗi. Hộp đó nay khai `dismissable: false`, đúng như `{ cancelable: false }` bản gốc.
+
+### Đã chuyển hết, không sót
+19 tệp · 37 chỗ gọi · `grep "Alert\.alert("` trong `src/` nay ra **0**. Kiểu popup chọn theo nghĩa chứ không theo tiện: `showError` cho hỏng, `showWarning` cho việc bất khả hồi, `showSuccess` cho xong việc, `showInfo` cho bảng chọn hành động.
+
+Hai chỗ có **cả hai nút đều mang việc** (`AnimalEnrollScreen` "Xem hồ sơ"/"OK→goBack", `TreeEnrollScreen` "Xem chi tiết"/"Ghi cây kế tiếp") — nút thứ hai khai `style: 'cancel'` **kèm `onPress`**, để bấm ra ngoài cũng chạy đúng việc đó chứ không rơi vào hư không.
+
+### Cổng canh, và một lỗ hổng cũ được bịt luôn
+`alertCallSites.test.ts` trước canh "`Alert.alert` phải đi qua `t()`". Nay canh mạnh hơn: **không được có `Alert.alert` nào** — không còn chỗ nào thì cũng không còn chỗ nào để quên `t()`.
+
+Biểu thức cũ chỉ soi **đúng một dòng**, nên `Alert.alert(` xuống dòng rồi mới tới chuỗi trần thì lọt. `MyDevicesScreen` lọt suốt theo đúng lối đó: `'Gỡ máy này?'` và `'Gỡ máy'` chưa bao giờ đi qua `t()` mà bài kiểm vẫn xanh.
+
+`MyDevicesScreen.test.tsx` phải sửa theo: nó `jest.spyOn(Alert, 'alert')` rồi moi nút từ đối số thứ ba. Nay đọc `options.actions` của `showWarning`.
+
+---
+
+## B. Cây 3D: sai cửa, và cái sai đó câm
+
+### Triệu chứng anh báo
+"3D của cây thật đang dùng model cây tự tạo thay vì các điểm 3D từ API orilife" — đúng, và nguyên nhân đo được chứ không đoán.
+
+### Nguyên nhân
+Lượt trước tôi lấy đám mây điểm qua `GET /api/provenance/{tree_id}`, vì đó là cửa mà ô 3D ở màn truy-xuất quả đang dùng. Nhưng cửa ấy là **cửa CÔNG KHAI dành cho người mua**: cây riêng-tư trả 404 (cố ý — phân biệt là lộ sự tồn tại cây của người khác).
+
+Con số nằm sẵn trong kho, ở `treeVisibilityService.ts`, đo trên máy sản xuất 08/2026:
+
+> **139 cây — 54 riêng-tư, 85 CHƯA ĐẶT, 0 công khai**
+
+Tức là với **gần như mọi cây của chính chủ**, lượt gọi trả 404. Mã của tôi đọc 404 thành "cây chưa dựng 3D" rồi rơi về hình nón — đúng cái hình mà bản sửa sinh ra để thay thế, và không một dòng lỗi nào hiện lên.
+
+### Cửa đúng, và nó được dựng riêng cho đúng việc này
+Đọc OpenAPI thật của máy chủ (`https://api.orilife.io/openapi.json`, 165 đường) tìm ra:
+
+**`GET /api/tree/{tree_id}/model3d`** — mô tả của chính máy chủ: *"Dữ-liệu 3D của 1 cây cho app tự dựng cảnh native (#281, chị Thư)"*. Đo bằng `curl`: gọi không đăng nhập trả **401 `"Cần đăng nhập."`** — cửa của CHỦ, đúng thứ cần.
+
+Nó còn giải quyết sẵn một cái bẫy tôi đang tự đi vào: gom point cloud + quả + khung xương vào **cùng một hệ toạ-độ**, thay cho việc app tải `.ply` thô rồi tự ghép — *"ba lớp ba đường, lệch một lớp là cây vẽ sai mà không có lỗi nào"*.
+
+Hợp đồng đã cài đúng theo mô tả:
+* tham số là **CHUỖI** chứ không phải số (máy chủ vừa sửa riêng cho ca app nối biến rỗng vào đường dẫn);
+* **cây chưa dựng trả 200 với danh sách rỗng**, không phải lỗi HTTP. `meta.status` ba giá trị `none` / `building` / `failed`, và `failed` mang `meta.error`. Ba ca **ba câu khác nhau** — gộp `failed` vào `none` là nông dân bấm dựng, hỏng, app lại mời bấm dựng, vòng mãi không ai nói vì sao;
+* xin `max_points=4000` thay vì mặc-định 20 000: mặc-định ấy tính cho màn xem MỘT cây, còn sơ-đồ vườn vẽ hàng chục cây trên một ngữ-cảnh GL.
+
+### Chỗ tôi KHÔNG biết, và cách xử lý
+OpenAPI mô tả `meta.*` rất kỹ nhưng **không công bố schema phần hình học** (`schema: {}`), và cửa cần đăng nhập nên tôi không lấy được một thân thật để đo.
+
+Nên `readPointGeometry` đọc **dò**: mảng số phẳng, mảng bộ ba, base64 (`format=bin`); khoá `points`/`xyz`/`positions`/`vertices`/`cloud`, ở gốc hoặc lồng trong `model`/`data`/`geometry`; màu thang 0–255 tự quy về 0–1 (đưa nguyên vào three là cây trắng xoá).
+
+Và — quan trọng hơn cả — khi **không hình nào khớp mà máy chủ nói CÓ hình** (`available: true`, hoặc `n_points_model > 0`), kết quả là `kind: 'unreadable'` **kèm danh sách khoá thật sự nhận được**, chứ KHÔNG phải "chưa dựng". Xếp ca đó vào "chưa dựng" là dựng lại đúng cái bẫy vừa gỡ: cây hoá hình nón, im lặng. Có một bài kiểm canh riêng bất biến này.
+
+⚠ **Còn phải chốt:** một thân trả về thật (hoặc mã nguồn route) sẽ ghim được tên khoá chính xác và gỡ phần dò. Nếu sau khi cài bản này mà HUD hiện *"ứng dụng chưa đọc được dạng dữ-liệu này (khoá nhận được: …)"*, chụp giúp em câu đó — nó in ra đúng tên khoá cần.
+
+### Đo
+`npx tsc --noEmit` sạch · `npx eslint` trên các tệp đã sửa: **45 lỗi, y hệt mức nền** (toàn dead-code có sẵn, không phát sinh lỗi mới) · `npx jest` **2179/2180**.
+
+Một đỏ duy nhất còn lại vẫn là ca `.env` đã báo lượt trước — `proofchat-api.endpoints.test.ts › absoluteUrl`, do `.env` dòng 50 ghi `PROOFCHAT_API_URL=wss://ws.proofchat.app` (URL WebSocket nằm trong ô dành cho REST; `.env.example:72` ghi đúng là `https://api.proofchat.me/api/v1`). Đã kiểm bằng `git stash`: đỏ y nguyên ở HEAD, không liên quan lượt này.
+
+---
+
+## Cây mặc định trong vườn 3D nay là ĐÁM MÂY ĐIỂM thật của cây, không phải hình nón dựng sẵn
+
+### Đổi cái gì
+`DEFAULT_TREE_MODEL_ID` chuyển từ `'procedural'` sang `'orilife_points'`. Trước đó mọi cây chưa được chọn model đều là **một hình nón giống hệt nhau** — nó luôn hiện được, nhưng nó không nói gì về cái cây đang đứng chỗ đó. Nay mặc định là đám mây điểm dựng từ chính ảnh người dùng đã chụp cây ấy, **cùng nguồn với ô 3D ở màn truy-xuất quả**, nên cây trong sơ-đồ vườn và cây trong hồ-sơ xuất-xứ là một.
+
+Đường đi: `GET {ORILIFE_BASE}/api/provenance/{tree_id}` → `model3d.cid` + `lampnet_view` → tệp `.ply` → điểm x/y/z kèm màu chụp thật.
+
+**Không gỡ tính năng nào.** Cả 10 model `.glb` vẫn nguyên trong sổ, bộ chọn vẫn chạy, và cây người dùng đã tự chọn model không hề đổi — lựa chọn đó nằm trong `treeModelStore`, chỉ cây CHƯA có bản ghi mới đọc hằng mặc định. Có một bài kiểm mới canh đúng chuyện này (`treeModels.test.ts`), vì gỡ nhầm một id khỏi sổ là mọi cây đang dùng nó lặng lẽ rơi về mặc định.
+
+### Không viết lại phần tải PLY
+`treePoints.ts` dùng LẠI `traceResult/plyPointCloud`. Mọi bài học đã trả giá ở đó áp dụng y nguyên: cổng LampNet trả `200` kèm trang HTML thay cho tệp (`kind: 'gone'`), `text/plain` gắn cho cả tệp nhị phân nên đừng lọc theo MIME, trần 12 MB. Viết lại là mời những lỗi ấy quay lại một lần nữa ở chỗ khác.
+
+### Ba chỗ buộc phải khác ô xem ở màn truy-xuất
+
+**1. Khung toạ-độ.** Ô xem kia canh tâm model về gốc rồi quay quanh nó. Ở vườn thì cây phải ĐỨNG TRÊN ĐẤT đúng chỗ của nó, nên `frameTreePoints` đặt theo `box.min.y`, KHÔNG theo tâm — đám mây từ máy chủ nằm trong hệ của camera lúc dựng (đo được `z ≈ 5.8`), tâm nó không ở giữa thân cây. Theo tâm thì nửa vườn lún xuống đất, nửa còn lại lơ lửng. Ba bài kiểm canh riêng chuyện này.
+
+**2. Cỡ điểm.** `PointsMaterial.size` **không** chịu ảnh hưởng của `scale` trên object — bộ đổ bóng của three tính `gl_PointSize = size * (scale / -mvPosition.z)` với `size` là uniform vật liệu còn `mvPosition` đã ở hệ camera. Mượn nguyên con số 0,045 của ô xem cận rồi thu cây nhỏ lại thì được một khối chấm to bằng cả tán. Cỡ ở đây tính theo mét của cảnh vườn (`TREE_HEIGHT / 70`), và vì vậy vật liệu do `loadPointCloud` dựng bị bỏ ngay sau khi lấy hình học.
+
+**3. Hình học dùng chung, vật liệu riêng.** Mở lại sơ-đồ vườn mà tải lại vài chục tệp PLY là ngốn sóng của người đang đứng giữa vườn. Hình học nhớ theo `treeId` (đúng cách `treeAsset` nhớ model `.glb`), mỗi lần dựng chỉ tạo vật liệu mới, và chỗ dùng chỉ dọn vật liệu của mình. Đệm cố ý KHÔNG có hàm dọn: chặn trên là số cây người dùng thật sự mở, mỗi cây ≈ 30 KB (2048 điểm × 15 byte) — vườn 50 cây tốn chừng 1,5 MB.
+
+Kèm hàng chờ 3 cây một lúc. Vườn trăm cây mà bắn hết một lượt là nghẽn sóng chứ không phải nhanh hơn.
+
+### "Chưa dựng 3D" KHÔNG phải là lỗi
+Đây là chỗ dễ làm sai nhất về câu chữ. Cây mới đăng ký thì chưa chụp đủ ảnh quanh gốc, nên chưa có `.ply` — chuyện hoàn toàn bình thường. Gộp nó vào nhánh lỗi là mọi cây mới trông như đang hỏng, và người dùng đi tìm cách sửa một thứ không hỏng.
+
+Nên `TreePointsResult` tách `unavailable` khỏi `error`, `TreeModelStatus` có thêm trạng-thái `'missing'`, và HUD nói ba câu khác nhau. Cùng lý do: `unavailable` được NHỚ (đó là sự thật về cây), còn `error` thì KHÔNG — mất sóng một lần mà nhớ lại là cây đó câm cho tới khi thoát hẳn app.
+
+Mọi ca không có bản dựng đều rơi về cây tự tạo. Giữ đúng nguyên tắc sẵn có của màn: thấy cây tự tạo + có thông báo = lỗi NẠP MODEL; không thấy gì cả = lỗi DỰNG HÌNH/ÁNH SÁNG/VỊ TRÍ — hai hướng sửa khác hẳn nhau.
+
+### Trạng-thái phải khoá theo CẢ tree_id
+Model `.glb` dùng chung cho mọi cây nên một dòng cho mỗi `modelId` là đủ. Đám mây điểm thì mỗi cây một tệp: cây A dựng xong, cây B chưa chụp đủ ảnh. Giữ khoá cũ là câu của cây này đè lên câu của cây kia và HUD báo sai cây. `statuses` nay khoá `modelId|treeId`, và `findTreeModelStatus` ưu tiên dòng riêng của cây rồi mới tới dòng chung.
+
+### Ô xem trước trong bộ chọn
+Ô "Cây thật" hiện ĐÚNG đám mây điểm của cây đang mở, không phải một hình minh-hoạ chung — bộ chọn luôn mở cho một cây cụ thể nên `treeId` có sẵn, và hình học đã nằm trong đệm từ lượt dựng cảnh nên gần như không tốn thêm lượt mạng nào. Cây chưa dựng 3D thì ô hiện cây tự tạo, tức đúng thứ sẽ ra ngoài vườn nếu chọn. Chấm vàng chỉ bật khi HỎNG, không bật khi cây chưa chụp đủ ảnh.
+
+### Một bản mock sai suýt đổ tội cho mã đúng
+Bốn bài kiểm đầu tiên đỏ với `kind: 'error'` ở cả những ca lẽ ra là `unavailable`. Nguyên nhân nằm trong chính tệp test: `jest.mock('provenanceService')` thay CẢ module, nên `imageViewUrl` biến mất — mà `model3dUrl` gọi chính nó để ghép `lampnet_view` với `cid`. Hàm `undefined` ném bên trong `fetchTemplate`, và cái `catch` ở đó biến MỌI ca thành `error`. Đã dùng `requireActual` rồi phủ đúng một hàm.
+
+### `.env` của máy này đang sai — không phải lỗi của lượt sửa này
+`npx jest` còn **1 test đỏ**: `proofchat-api.endpoints.test.ts › absoluteUrl`. Đã kiểm bằng cách `git stash` phần sửa của lượt này — nó đỏ y nguyên ở HEAD, tức không liên quan gì tới 3D.
+
+Nguyên nhân đo được: `.env` dòng 50 ghi
+
+    PROOFCHAT_API_URL=wss://ws.proofchat.app
+
+Đó là URL **WebSocket** nằm trong ô dành cho REST. `.env.example:72` ghi đúng là `https://api.proofchat.me/api/v1`, và `.env` còn thiếu hẳn `PROOFCHAT_WS_URL`, `PROOFCHAT_WS_PATH`, `PROOFCHAT_BACKEND_ENABLED`. Test khẳng định `absoluteUrl` trả về đường bắt đầu bằng `http` — đúng với cấu hình tài liệu, sai với `.env` của máy này.
+
+**KHÔNG vá bằng cách map `wss://` → `https://` trong `absoluteUrl`.** Làm thế thì test xanh trong khi host vẫn sai, tức dựng lại đúng cái vỏ im lặng mà kho này vừa mất công gỡ. `.env` bị gitignore nên chỉ máy này dính; sửa đúng là sửa `.env`.
+
+Có sửa một dòng THẬT ở `proofchat-api.ts` nhân đây: `baseURL` dùng `??` nên **chuỗi rỗng lọt qua** (`@env` inline biến chưa đặt thành `''`, không phải `undefined`). Lúc đó `absoluteUrl` ghép base rỗng rồi trả về một đường TƯƠNG ĐỐI và thẻ ảnh im lặng không hiện gì. Nay cắt khoảng trắng rồi mới xét. Dòng này không làm test trên xanh — nó vá một đường hỏng câm khác.
+
+### Đo
+`npx tsc --noEmit` sạch · `npx eslint src/features/space3d` 0 lỗi · `npx jest src/features/space3d` **197 test xanh** (thêm 17 test mới: `treePoints` 13, `treeModels` 4) · toàn kho 2167/2168, một đỏ duy nhất là ca `.env` nói trên.
+
+---
+
 ## Mỗi app ký nhận luật SuperApp, và có cổng nổ khi không ký
 
 ### Cái thiếu, và vì sao nó không phải chuyện giấy tờ

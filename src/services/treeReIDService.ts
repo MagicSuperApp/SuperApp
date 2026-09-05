@@ -963,6 +963,77 @@ export async function buildTree3D(
 }
 
 /**
+ * getTreeModel3D — DỮ-LIỆU 3D của một cây để app TỰ DỰNG cảnh.
+ * `GET /api/tree/{tree_id}/model3d` (auth, CHỈ chủ vườn — chống IDOR).
+ *
+ * ── Vì sao KHÔNG dùng `/api/provenance/{tree_id}` cho việc này ───────────────
+ * Cửa provenance là cửa CÔNG KHAI dành cho người mua, và nó trả 404 cho cây
+ * riêng-tư (cố ý — phân biệt là lộ sự tồn tại của cây người khác). Kho sản xuất
+ * đo 08/2026: **139 cây — 54 riêng-tư, 85 CHƯA ĐẶT, 0 công khai**
+ * (`treeVisibilityService.ts`). Nghĩa là với gần như MỌI cây của chính chủ, cửa
+ * đó trả 404. Dựng cảnh vườn qua cửa ấy là mọi cây đều rơi về hình dự phòng —
+ * đúng lỗi đã gặp.
+ *
+ * Cửa này ngược lại: chủ đọc cây của mình, kể cả cây riêng-tư.
+ *
+ * ── Hợp đồng (đọc từ OpenAPI thật của máy chủ, 2026-09) ─────────────────────
+ * · Gom point cloud + quả + khung xương vào MỘT lần gọi và vào CÙNG một hệ
+ *   toạ-độ (cả ba lớp dời tâm cùng một lượng). Trước đây app tải `.ply` thô rồi
+ *   tự ghép với toạ-độ quả — ba lớp ba đường, lệch một lớp là cây vẽ sai mà
+ *   không có lỗi nào.
+ * · Tham số đều là CHUỖI, không phải số. Khai kiểu số thì khung web chặn ngay ở
+ *   cửa và `?max_points=` rỗng ăn 422 thay vì về mặc-định.
+ * · **Cây chưa dựng 3D trả 200 với danh sách RỖNG**, không phải lỗi HTTP.
+ *   `meta.status`: `none` (chưa ai bấm dựng) · `building` (đang xếp hàng) ·
+ *   `failed` (lượt dựng gần nhất hỏng, `meta.error` mang lý do). Ba ca ba câu —
+ *   gộp `failed` vào `none` là nông dân bấm dựng, hỏng, app lại mời bấm dựng,
+ *   vòng mãi không ai nói vì sao.
+ * · `meta.layers` — trạng-thái RIÊNG từng lớp, cùng bộ bốn giá trị
+ *   `ready`/`empty`/`pending`/`failed`.
+ * · `meta.coverage` (độ phủ góc + lời khuyên chụp thêm) và `meta.n_points_model`.
+ *
+ * ⚠ Máy chủ mô tả `meta.*` rất kỹ nhưng KHÔNG công bố schema của phần hình học
+ * (OpenAPI ghi `schema: {}`), nên tên khoá của mảng điểm phải đọc DÒ. Chỗ đọc
+ * (`features/space3d/treePoints.ts`) cố ý báo LỖI RÕ khi không nhận ra hình,
+ * thay vì im lặng rơi về cây dự phòng.
+ */
+export interface TreeModel3DMeta {
+  status?: string;
+  error?: string;
+  layers?: Record<string, string>;
+  coverage?: { covered_deg?: number; advice?: string; [k: string]: unknown };
+  n_points_model?: number;
+  [k: string]: unknown;
+}
+
+export interface TreeModel3DResponse {
+  ok?: boolean;
+  available?: boolean;
+  meta?: TreeModel3DMeta;
+  [k: string]: unknown;
+}
+
+export async function getTreeModel3D(
+  baseUrl: string,
+  treeId: string,
+  opts: { maxPoints?: number; colors?: boolean } = {},
+): Promise<{ ok: boolean; data?: TreeModel3DResponse; error?: APIError }> {
+  const q: string[] = [];
+  // Chỉ gửi tham số khi THẬT SỰ có giá trị. Nối một biến rỗng vào đường dẫn là
+  // chuyện xảy ra hằng ngày ở phía app, và máy chủ đã phải sửa riêng cho ca đó.
+  if (typeof opts.maxPoints === 'number' && Number.isFinite(opts.maxPoints)) {
+    q.push(`max_points=${encodeURIComponent(String(Math.max(1, Math.round(opts.maxPoints))))}`);
+  }
+  if (opts.colors === false) q.push('colors=0');
+  const qs = q.length ? `?${q.join('&')}` : '';
+
+  return _apiCall<TreeModel3DResponse>(
+    `${baseUrl}/api/tree/${encodeURIComponent(treeId)}/model3d${qs}`,
+    'GET',
+  );
+}
+
+/**
  * setTreeFarm — GÁN/ĐỔI vườn cho cây ĐÃ đăng ký. `POST /api/tree/set_farm`.
  *
  * Đây là đường vá lỗi thực địa 11/07 "tạo vườn nhưng cây không vào vườn": sửa

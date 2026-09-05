@@ -5,7 +5,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, StatusBar, ActivityIndicator, ScrollView, Alert,
+  View, Text, StyleSheet, TouchableOpacity, StatusBar, ActivityIndicator, ScrollView, 
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -103,7 +103,7 @@ const SignRequestScreen: React.FC = () => {
             await phoenixKeyApi.signRequest.cancel(requestId);
             navigation.goBack();
           } catch {
-            Alert.alert(t('Lỗi'), t('Không từ chối được, thử lại.'));
+            showError(t('Lỗi'), t('Không từ chối được, thử lại.'));
           } finally { setBusy(null); }
         },
     });

@@ -24,7 +24,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView,
-  Platform, PermissionsAndroid, Alert, StatusBar,
+  Platform, PermissionsAndroid, StatusBar,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -322,20 +322,22 @@ const FruitScanScreen: React.FC = () => {
       navigation.navigate('TreeManagement');
       return;
     }
-    Alert.alert(
+    showInfo(
       tk('trace.fruitScan.confirmTreeTitle'),
       tk('trace.fruitScan.confirmTreeBody', {
         name: guess.tree.name ?? '—',
         m: Math.round(guess.distanceM),
       }),
-      [
-        { text: t('Huỷ'), style: 'cancel' },
-        {
-          text: tk('trace.fruitScan.confirmTreePick'),
-          onPress: () => navigation.navigate('TreeManagement'),
-        },
-        { text: tk('trace.fruitScan.confirmTreeYes'), onPress: () => goCrop(guess.tree) },
-      ],
+      {
+        actions: [
+          { text: t('Huỷ'), style: 'cancel' },
+          {
+            text: tk('trace.fruitScan.confirmTreePick'),
+            onPress: () => navigation.navigate('TreeManagement'),
+          },
+          { text: tk('trace.fruitScan.confirmTreeYes'), onPress: () => goCrop(guess.tree) },
+        ],
+      },
     );
   }, [pinnedTreeId, trees, around, photo, navigation, goCrop]);
 

@@ -28,7 +28,6 @@ import {
   Image,
   ActivityIndicator,
   ScrollView,
-  Alert,
 } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -174,10 +173,9 @@ const AnimalIdentityScreen: React.FC = () => {
     imagePicker.launchCamera(await withPhotoSave(CAMERA_OPTIONS), (response: any) => {
       if (response.didCancel) return;
       if (response.errorCode) {
-        Alert.alert(
+        showError(
           t('Lỗi camera'),
           response.errorMessage ?? t('Không thể mở camera. Kiểm tra quyền trong Cài đặt.'),
-          [{ text: 'OK' }],
         );
         return;
       }

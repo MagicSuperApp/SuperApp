@@ -9,7 +9,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, StatusBar,
   Animated, Easing, Platform, ActivityIndicator,
-  TextInput, Alert,
+  TextInput, 
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
@@ -246,10 +246,11 @@ const SignUpBiometricScreen: React.FC = () => {
    * Khi PR #56 về: đổi nhánh 3 thành nút "Tạo danh tính mới trên máy này".
    */
   const askWhoIsHoldingThePhone = () => {
-    Alert.alert(
+    showWarning(
       t('Máy này đã có một danh tính'),
       t('Một danh tính đã được tạo trên máy này trước đó. Bạn là ai?'),
-      [
+      {
+        actions: [
         {
           text: t('Tôi là chủ danh tính đó'),
           onPress: () => {
@@ -277,7 +278,8 @@ const SignUpBiometricScreen: React.FC = () => {
             ),
         },
         { text: t('Huỷ'), style: 'cancel' },
-      ],
+        ],
+      },
     );
   };
 

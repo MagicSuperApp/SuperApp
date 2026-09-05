@@ -7,6 +7,12 @@
  *
  * LƯU Ý HIỆU NĂNG: mỗi Canvas = một ngữ-cảnh GL riêng. Vì vậy component này chỉ
  * được gắn khi bộ chọn ĐANG MỞ (hộp thoại), và tắt khử răng cưa cho nhẹ.
+ *
+ * Ô "Cây thật" xem trước ĐÚNG đám mây điểm của cây đang mở, không phải một hình
+ * minh-hoạ chung: bộ chọn luôn mở cho một cây cụ thể, nên `treeId` có sẵn. Cây
+ * chưa dựng 3D thì ô hiện cây tự tạo — đúng thứ sẽ hiện ra ngoài vườn nếu chọn.
+ * Hình học đã được `treePoints` nhớ sẵn từ lượt dựng cảnh, nên ô này gần như
+ * không tốn thêm lượt mạng nào.
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -14,7 +20,10 @@ import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { Canvas, useFrame } from '@react-three/fiber/native';
 import * as THREE from 'three';
 import { loadTreeTemplate } from '../treeAsset';
-import { getTreeModel, isFileBacked, type TreeModelId } from '../treeModels';
+import {
+  buildTreePoints, disposeTreePointsInstance, loadTreePoints,
+} from '../treePoints';
+import { getTreeModel, isFileBacked, isPointCloud, type TreeModelId } from '../treeModels';
 import { SPACE_COLORS } from '../visuals';
 import { TREE_HEIGHT, TREE_RADIUS } from '../treeFrame';
 
@@ -77,19 +86,44 @@ const Spinner: React.FC<{ object: THREE.Object3D }> = ({ object }) => {
 
 export interface TreeModelPreviewProps {
   modelId: TreeModelId;
+  /** Cây đang mở. Cần cho ô "Cây thật"; bỏ trống thì ô đó hiện cây tự tạo. */
+  treeId?: string;
   /** Cạnh ô (px). Ô vuông. */
   size: number;
 }
 
-export const TreeModelPreview: React.FC<TreeModelPreviewProps> = ({ modelId, size }) => {
+export const TreeModelPreview: React.FC<TreeModelPreviewProps> = ({ modelId, treeId, size }) => {
   const def = useMemo(() => getTreeModel(modelId), [modelId]);
   const [object, setObject] = useState<THREE.Object3D | null>(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let alive = true;
+    let points: THREE.Object3D | null = null;
     setObject(null);
     setFailed(false);
+
+    if (isPointCloud(def)) {
+      if (!treeId) {
+        setObject(buildProceduralPreview());
+        return;
+      }
+      loadTreePoints(treeId).then((r) => {
+        if (r.kind === 'ok') {
+          const built = buildTreePoints(r.template);
+          if (!alive) { disposeTreePointsInstance(built); return; }
+          points = built;
+          setObject(built);
+          return;
+        }
+        // Chưa dựng 3D, hoặc hỏng: hiện cây tự tạo — đúng thứ sẽ ra ngoài vườn.
+        // Chỉ chấm vàng khi HỎNG; cây chưa chụp đủ ảnh không phải sự cố.
+        if (!alive) return;
+        setObject(buildProceduralPreview());
+        if (r.kind === 'error') setFailed(true);
+      });
+      return () => { alive = false; disposeTreePointsInstance(points); };
+    }
 
     if (!isFileBacked(def)) {
       setObject(buildProceduralPreview());
@@ -103,7 +137,7 @@ export const TreeModelPreview: React.FC<TreeModelPreviewProps> = ({ modelId, siz
         if (alive) { setObject(buildProceduralPreview()); setFailed(true); }
       });
     return () => { alive = false; };
-  }, [def]);
+  }, [def, treeId]);
 
   return (
     <View style={[styles.wrap, { width: size, height: size }]}>
@@ -114,6 +148,8 @@ export const TreeModelPreview: React.FC<TreeModelPreviewProps> = ({ modelId, siz
           gl={{ antialias: false }}
         >
           <color attach="background" args={['#0b1512']} />
+          {/* Điểm dùng `PointsMaterial` (không nhận sáng) nên đèn dưới đây chỉ
+              phục vụ model .glb và cây tự tạo — để nguyên, không hại gì. */}
           <hemisphereLight args={['#bfe8cf', '#0a1410', 1.1]} />
           <ambientLight intensity={0.5} />
           <directionalLight position={[3, 6, 4]} intensity={1.2} color="#e6fff0" />

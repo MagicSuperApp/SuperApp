@@ -292,8 +292,13 @@ export const getDeviceId = async (): Promise<string> => {
 
 // ── Axios setup ──────────────────────────────────────────────────────
 
+// `??` KHÔNG đủ: `@env` inline biến chưa đặt thành CHUỖI RỖNG, không phải
+// `undefined`, nên chuỗi rỗng lọt qua và `baseURL` thành ''. Hậu quả không nằm ở
+// axios (mọi lượt gọi đã bị `isProofChatBackendEnabled()` chặn từ trước) mà ở
+// `uploads.absoluteUrl`: nó ghép base rỗng với '/media/…' rồi trả về một đường
+// TƯƠNG ĐỐI, và thẻ ảnh im lặng không hiện gì. Cắt khoảng trắng rồi mới xét.
 const baseURL =
-  (PROOFCHAT_API_URL as string | undefined) ?? 'http://localhost:3000';
+  ((PROOFCHAT_API_URL as string | undefined) ?? '').trim() || 'http://localhost:3000';
 
 const client: AxiosInstance = axios.create({
   baseURL,

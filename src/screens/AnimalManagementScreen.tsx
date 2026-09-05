@@ -36,7 +36,6 @@ import {
   FlatList,
   ActivityIndicator,
   RefreshControl,
-  Alert,
   ScrollView,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -57,7 +56,7 @@ import RenameModal from '../components/RenameModal';
 // ---------------------------------------------------------------------------
 
 import { ORILIFE_BASE } from '../services/orilifeBase';
-import { showWarning } from '../utils/alert';
+import { showError, showInfo, showWarning } from '../utils/alert';
 import { t } from '../i18n';
 import { SPECIES_OPTIONS, speciesLabel } from '../constants/animalSpecies';
 
@@ -287,10 +286,10 @@ const AnimalManagementScreen: React.FC = () => {
         );
         setRenameTarget(null);
       } else {
-        Alert.alert(t('Đổi tên thất bại'), res.error?.detail ?? t('Thử lại.'));
+        showError(t('Đổi tên thất bại'), res.error?.detail ?? t('Thử lại.'));
       }
     } catch {
-      Alert.alert(t('Lỗi mạng'), t('Không đổi được tên. Kiểm tra kết nối và thử lại.'));
+      showError(t('Lỗi mạng'), t('Không đổi được tên. Kiểm tra kết nối và thử lại.'));
     } finally {
       setIsRenaming(false);
     }
@@ -306,10 +305,10 @@ const AnimalManagementScreen: React.FC = () => {
               if (res.ok) {
                 setAnimals(prev => prev.filter(a => a.animal_did !== item.animal_did));
               } else {
-                Alert.alert(t('Xoá thất bại'), res.error?.detail ?? t('Thử lại.'));
+                showError(t('Xoá thất bại'), res.error?.detail ?? t('Thử lại.'));
               }
             } catch {
-              Alert.alert(t('Lỗi mạng'), t('Không thể xoá. Kiểm tra kết nối và thử lại.'));
+              showError(t('Lỗi mạng'), t('Không thể xoá. Kiểm tra kết nối và thử lại.'));
             }
           },
     });
@@ -317,18 +316,20 @@ const AnimalManagementScreen: React.FC = () => {
 
   // ── Action sheet (long press) ─────────────────────────────────────────────
   const handleLongPress = (item: AnimalItem) => {
-    Alert.alert(
+    showInfo(
       item.name || item.animal_did || t('Cá thể chưa đặt tên'),
       t('Chọn hành động:'),
-      [
-        { text: t('Huỷ'), style: 'cancel' },
-        // KHÔNG có "Đổi tên": máy chủ chưa có cửa đổi tên (xem chú đầu tệp).
-        {
-          text: t('Xoá'),
-          style: 'destructive',
-          onPress: () => handleDelete(item),
-        },
-      ],
+      {
+        actions: [
+          { text: t('Huỷ'), style: 'cancel' },
+          // KHÔNG có "Đổi tên": máy chủ chưa có cửa đổi tên (xem chú đầu tệp).
+          {
+            text: t('Xoá'),
+            style: 'destructive',
+            onPress: () => handleDelete(item),
+          },
+        ],
+      },
     );
   };
 

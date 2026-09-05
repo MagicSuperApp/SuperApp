@@ -1,4 +1,6 @@
-import { AlertType } from '../components/AlertPopup';
+import { AlertType, type AlertAction } from '../components/AlertPopup';
+
+export type { AlertAction };
 
 interface AlertConfig {
   type: AlertType;
@@ -8,6 +10,20 @@ interface AlertConfig {
   confirmText?: string;
   cancelText?: string;
   hideCancel?: boolean;
+  /** Danh sách nút đầy đủ — thay cho cặp `onConfirm`/`cancelText` khi cần >2 nút. */
+  actions?: AlertAction[];
+  /** Bấm ra ngoài / nút back có đóng được không. Mặc định có. */
+  dismissable?: boolean;
+}
+
+/** Tuỳ chọn dùng chung cho `showAlert` và các hàm tiện lợi. */
+export interface AlertOptions {
+  onConfirm?: () => void;
+  confirmText?: string;
+  cancelText?: string;
+  hideCancel?: boolean;
+  actions?: AlertAction[];
+  dismissable?: boolean;
 }
 
 class AlertManager {
@@ -52,12 +68,7 @@ export const showAlert = (
   type: AlertType,
   title: string,
   message: string,
-  options?: {
-    onConfirm?: () => void;
-    confirmText?: string;
-    cancelText?: string;
-    hideCancel?: boolean;
-  }
+  options?: AlertOptions
 ) => {
   alertManager.show({
     type,
@@ -67,23 +78,25 @@ export const showAlert = (
     confirmText: options?.confirmText,
     cancelText: options?.cancelText,
     hideCancel: options?.hideCancel,
+    actions: options?.actions,
+    dismissable: options?.dismissable,
   });
 };
 
 // Convenience methods
-export const showError = (title: string, message?: string, options?: { onConfirm?: () => void; confirmText?: string; cancelText?: string; hideCancel?: boolean }) => {
+export const showError = (title: string, message?: string, options?: AlertOptions) => {
   showAlert('error', title, message || 'Đã xảy ra lỗi.', options);
 };
 
-export const showSuccess = (title: string, message?: string, options?: { onConfirm?: () => void; confirmText?: string; cancelText?: string; hideCancel?: boolean }) => {
+export const showSuccess = (title: string, message?: string, options?: AlertOptions) => {
   showAlert('success', title, message || 'Thao tác thành công.', options);
 };
 
-export const showWarning = (title: string, message?: string, options?: { onConfirm?: () => void; confirmText?: string; cancelText?: string; hideCancel?: boolean }) => {
+export const showWarning = (title: string, message?: string, options?: AlertOptions) => {
   showAlert('warning', title, message || 'Cảnh báo.', options);
 };
 
-export const showInfo = (title: string, message?: string, options?: { onConfirm?: () => void; confirmText?: string; cancelText?: string; hideCancel?: boolean }) => {
+export const showInfo = (title: string, message?: string, options?: AlertOptions) => {
   showAlert('info', title, message || 'Thông tin.', options);
 };
 

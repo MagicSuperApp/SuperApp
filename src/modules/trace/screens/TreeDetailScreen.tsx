@@ -26,7 +26,6 @@ import {
   ScrollView,
   Image,
   ActivityIndicator,
-  Alert,
   Clipboard,
   Linking,
 } from 'react-native';
@@ -505,7 +504,7 @@ const TreeDetailScreen = () => {
             const r = await removeTreeViews(ORILIFE_BASE, id, [idx]);
             setDeletingIdx(null);
             if (!r.ok) {
-              Alert.alert(
+              showError(
                 t('Chưa xoá được'),
                 r.notOwner
                   ? t('Cây này không thuộc tài khoản đang đăng nhập.')
@@ -517,7 +516,7 @@ const TreeDetailScreen = () => {
             // số ngoài phạm vi) — im lặng ở đây thì người dùng thấy ảnh vẫn còn và
             // tưởng app đơ.
             if ((r.removed ?? 0) === 0) {
-              Alert.alert(t('Máy chủ không xoá góc nào'), t('Danh sách ảnh vừa đổi. Nạp lại rồi chọn lại ảnh cần xoá.'));
+              showWarning(t('Máy chủ không xoá góc nào'), t('Danh sách ảnh vừa đổi. Nạp lại rồi chọn lại ảnh cần xoá.'));
             }
             await loadImages().catch(() => undefined);
           },

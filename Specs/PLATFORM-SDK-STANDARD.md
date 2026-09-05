@@ -279,8 +279,8 @@ Khi onboard tổ chức mới (org prefix mới), cần cập nhật đồng th�
           },
           "keychainAccessGroup": {
             "type": "string",
-            "pattern": "^com\\.aladin\\.[a-z][a-z0-9]*$",
-            "description": "Keychain access group riêng của module. Bắt buộc để isolate keychain/SharedPreferences giữa các native module. Ví dụ: 'com.aladin.orilife'. CI semgrep sẽ audit iOS/Android code xác nhận chỉ dùng group này."
+            "pattern": "^[a-z][a-z0-9]*(\\.[a-z][a-z0-9]*)+$",
+            "description": "Keychain access group riêng của module, nằm trong KHÔNG GIAN TÊN CỦA CHÍNH APP (mã gói của app đó), không phải của bên phát triển. Bắt buộc để isolate keychain/SharedPreferences giữa các native module. Ví dụ: 'com.aladincontract.company'. CI semgrep sẽ audit iOS/Android code xác nhận chỉ dùng group này."
           },
           "isOptional": {
             "type": "boolean",
@@ -1076,7 +1076,7 @@ React Native 0.84.1 mặc định New Architecture. Platform **không được**
 | iOS class | `RCT` + TurboModule name + `Module` | `RCTScannerSDKModule` |
 | Android class | `com.<org>.<product>.` + TurboModule name + `Module` | `com.orilife.trace.ScannerSDKModule` |
 | Android package | `com.<org>.<product>.` + TurboModule name + `Package` | `com.orilife.trace.ScannerSDKPackage` |
-| Keychain access group | `com.aladin.<org>` | `com.aladin.orilife` |
+| Keychain access group | mã gói của chính app | `com.aladincontract.company` |
 
 ### 7.3 TurboModule spec file
 
@@ -1675,7 +1675,7 @@ PR này trigger CI gate đầy đủ. `CODEOWNERS` bắt buộc 2 approve từ `
       "moduleName": "ScannerSDK",
       "iosClassName": "RCTScannerSDKModule",
       "androidPackage": "com.orilife.trace.ScannerSDKModule",
-      "keychainAccessGroup": "com.aladin.orilife",
+      "keychainAccessGroup": "com.aladincontract.company",
       "isOptional": false,
       "specFile": "src/native/NativeScannerSDK.ts"
     },
@@ -1683,7 +1683,7 @@ PR này trigger CI gate đầy đủ. `CODEOWNERS` bắt buộc 2 approve từ `
       "moduleName": "PhoenixKeyModule",
       "iosClassName": "RCTPhoenixKeyModule",
       "androidPackage": "com.orilife.trace.PhoenixKeyModule",
-      "keychainAccessGroup": "com.aladin.orilife",
+      "keychainAccessGroup": "com.aladincontract.company",
       "isOptional": true,
       "specFile": "src/native/NativePhoenixKey.ts"
     }

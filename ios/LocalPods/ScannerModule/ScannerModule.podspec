@@ -19,8 +19,16 @@ Pod::Spec.new do |s|
   s.platform     = :ios, '15.1'
   s.source       = { :path => '.' }
   s.source_files = '**/*.{swift,m,mm,h}'
-  # secrets.plist + GoogleService-Info.plist + model YOLO gate TreeReID (Plan A).
-  s.resources    = ['Resources/secrets.plist', 'Resources/GoogleService-Info.plist', 'Resources/yolov26seg.tflite']
+  # secrets.plist + model YOLO gate TreeReID (Plan A).
+  #
+  # ⛔ ĐỪNG thêm `GoogleService-Info.plist` lại vào đây. `s.resources` chép vào
+  #    gói của MỌI bản dựng — podspec không có nhánh theo app. Nền mã này sinh
+  #    nhiều app cho nhiều PHÁP NHÂN, nên một tệp Firebase nằm ở đây là tệp của
+  #    một pháp nhân đi vào gói của mọi pháp nhân còn lại.
+  #    Ngày một app có dự án Firebase riêng: đặt tệp của app đó vào mục tiêu
+  #    Xcode của CHÍNH app đó, `BUNDLE_ID` khớp mã gói thật.
+  #    Cổng chạy nằm ở `ios/SuperApp/AppDelegate.swift` (`configureFirebaseIfOwned`).
+  s.resources    = ['Resources/secrets.plist', 'Resources/yolov26seg.tflite']
 
   s.swift_version = '5.9'
 

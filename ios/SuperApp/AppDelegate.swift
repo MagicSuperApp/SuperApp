@@ -79,12 +79,13 @@ class AppDelegate: ExpoAppDelegate {
     // Firebase Analytics for tracking user experience
     // ⛔ CHỈ khởi Firebase khi tệp cấu hình khai ĐÚNG app đang chạy.
     //
-    //    `ScannerModule.podspec` khai `Resources/GoogleService-Info.plist` trong
-    //    `s.resources`, mà `s.resources` chép vào gói của MỌI bản dựng — không
-    //    có nhánh theo app. Tệp đó khai `BUNDLE_ID com.aladin.orilife`,
-    //    `PROJECT_ID aladin-3599c`. Nên trước bản này, mọi app sinh từ nền mã
-    //    này — kể cả app của pháp nhân khác — đều khởi Firebase TRỎ VÀO dự án
-    //    của Aladin Contract, và đẩy số liệu phiên cùng Crashlytics vào đó.
+    //    `ScannerModule.podspec` từng khai `Resources/GoogleService-Info.plist`
+    //    trong `s.resources`, mà `s.resources` chép vào gói của MỌI bản dựng —
+    //    không có nhánh theo app. Tệp đó khai một mã gói NHÁP của dev và
+    //    `PROJECT_ID aladin-3599c`. Nên mọi app sinh từ nền mã này — kể cả app
+    //    của pháp nhân khác — đều có tệp Firebase của Aladin Contract trong gói.
+    //    Tệp đó đã gỡ khỏi kho; cổng dưới đây vẫn giữ, vì nó chặn MỌI đường tệp
+    //    lọt vào gói chứ không chỉ đường podspec.
     //
     //    Bên Android lớp lỗi này đã bịt bằng cách tắt bước Firebase cho flavor
     //    không có tệp riêng. iOS không có cơ chế theo flavor tương đương, nên
@@ -136,16 +137,20 @@ class ReactNativeDelegate: ExpoReactNativeFactoryDelegate {
 
 // ── CỔNG FIREBASE: chỉ khởi khi tệp cấu hình khai ĐÚNG app đang chạy ────────
 //
-// `ios/LocalPods/ScannerModule/ScannerModule.podspec` khai
+// `ios/LocalPods/ScannerModule/ScannerModule.podspec` từng khai
 // `Resources/GoogleService-Info.plist` trong `s.resources`. `s.resources` chép
-// vào gói của MỌI bản dựng — podspec không có nhánh theo app. Tệp đó khai:
-//
-//     BUNDLE_ID   com.aladin.orilife
-//     PROJECT_ID  aladin-3599c
+// vào gói của MỌI bản dựng — podspec không có nhánh theo app. Tệp đó khai một
+// mã gói NHÁP của dev và `PROJECT_ID aladin-3599c`.
 //
 // Nền mã này sinh nhiều app cho nhiều PHÁP NHÂN khác nhau. Trước bản này, mọi
-// app iOS dựng từ đây đều khởi Firebase trỏ vào dự án của Aladin Contract — số
-// liệu phiên và Crashlytics của app pháp nhân khác chảy vào console của Aladin.
+// app iOS dựng từ đây đều mang tệp Firebase của Aladin Contract trong gói — số
+// liệu phiên và Crashlytics của app pháp nhân khác có đường chảy vào console
+// của Aladin.
+//
+// ĐO ĐƯỢC KHI GỠ (04/09/2026): tệp đó khai mã gói nháp, còn app Aladin iOS chạy
+// bằng `vn.aladinapp`. Hai chuỗi không bằng nhau ⇒ `guard` dưới đây luôn trượt
+// ⇒ Firebase iOS **chưa từng khởi** ở bản Aladin. Nên việc gỡ tệp KHÔNG đổi
+// hành vi: trước gỡ dừng ở `guard` mã gói, sau gỡ dừng ở `guard` không có tệp.
 //
 // Không phải lỗi kỹ thuật đơn thuần: bên phát triển làm theo đơn đặt hàng và
 // KHÔNG giữ quyền kiểm soát thông tin của bên đặt hàng. Dòng dữ liệu này đúng

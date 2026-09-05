@@ -1,3 +1,65 @@
+## CheckFarm sập ngay khi mở — `MainActivity` chạm Firebase mà không hỏi trước
+
+### Triệu chứng, và vì sao nó khó lần
+`npm run android:checkfarm` cài xong, app bật lên rồi tắt ngay, **chưa kịp có một khung hình nào**. Metro không in lỗi — chỉ lặp lại:
+
+```
+ BUNDLE  ./index.js
+ BUNDLE  ./index.js
+ BUNDLE  ./index.js
+```
+
+Sáu dòng `BUNDLE` giống nhau KHÔNG phải là sáu lần dựng gói; đó là app chết rồi khởi động lại, mỗi vòng lại xin gói một lần. Lỗi nằm ở tầng native nên Metro không thể thấy. Phải `adb logcat`:
+
+```
+FATAL EXCEPTION: main
+Process: com.checkfarm.app
+java.lang.IllegalStateException: Default FirebaseApp is not initialized in this
+process com.checkfarm.app. Make sure to call FirebaseApp.initializeApp(Context) first.
+    at com.aladincontract.company.MainActivity.onCreate(MainActivity.kt:22)
+```
+
+### Nguyên nhân: nửa chừng của một thiết kế đúng
+`android/app/build.gradle` đã cố ý cho **mỗi app tự quyết có Firebase hay không**: flavor nào không có `src/<flavor>/google-services.json` thì bước `process<Variant>GoogleServices` bị TẮT cho flavor đó. Hôm nay chỉ `aladin` có tệp; `checkfarm` không.
+
+Chú thích trong chính tệp gradle ấy còn viết rõ vì sao làm được thế:
+
+> *"`pushHandler.ts` nạp module bằng `await import(...)` trong `try` và trả `null` khi không có, nên phía JS chịu được việc vắng Firebase mà không cần đổi một dòng nào."*
+
+Đúng — phía JS chịu được. Nhưng **`MainActivity.kt` thì không**, và nó bị bỏ sót:
+
+```kotlin
+analytics = Firebase.analytics   // dòng 22
+```
+
+Không có `google-services.json` ⇒ không có `google_app_id` trong tài nguyên ⇒ trình khởi-tạo tự động không dựng được app mặc-định. `Firebase.analytics` lúc đó **không trả `null` mà NÉM**. Ném trong `onCreate` là chết trước cả khung hình đầu tiên.
+
+Cả kho chỉ có **một** chỗ native chạm Firebase, và đó chính là chỗ này (`grep` xác nhận: 3 dòng import + 2 dòng dùng, đều trong `MainActivity.kt`). Nên phần "app không có Firebase vẫn dựng được" đã đúng ở gradle và ở JS, chỉ hụt đúng một mắt xích.
+
+### Sửa
+Hỏi trước khi chạm. `FirebaseApp.getApps(context)` trả về danh sách **rỗng** khi chưa app nào được dựng — nó không ném, khác hẳn `Firebase.analytics`:
+
+```kotlin
+private var analytics: FirebaseAnalytics? = null   // trước là `lateinit var`
+
+analytics = if (FirebaseApp.getApps(this).isNotEmpty()) Firebase.analytics else null
+```
+
+Analytics vắng thì app vẫn chạy đủ chức năng — đây là đo đếm, không phải tính năng của người dùng. Lý do đầy đủ ghi ngay tại chỗ sửa, kèm nguyên văn dòng ngoại lệ, để lần sau ai đọc `MainActivity` cũng biết vì sao có nhánh `if` này.
+
+### Đo trên máy thật (BHB09000193, Android 11)
+| | trước | sau |
+|---|---|---|
+| **CheckFarm** `com.checkfarm.app` | `FATAL EXCEPTION` ngay `onCreate` | không FATAL · tiến trình sống · `Displayed … MainActivity: +1s568ms` |
+| **Aladin** `com.aladincontract.company` | chạy bình thường | không FATAL · `FirebaseInitProvider: FirebaseApp initialization successful` · đang là cửa sổ tiêu điểm |
+
+Kiểm cả hai flavor vì hai app dùng CHUNG một `MainActivity` (`src/main`) — sửa cho app không có Firebase mà làm hỏng app CÓ Firebase thì đổi một lỗi lấy một lỗi. Aladin vẫn khởi tạo Firebase y như cũ: nhánh `if` chỉ thêm một câu hỏi, không đổi đường đi khi câu trả lời là "có".
+
+### Còn lại cho ngày CheckFarm cần đẩy tin nền
+Bỏ `google-services.json` của dự án Firebase **đứng tên pháp nhân CheckFarm** vào `android/app/src/checkfarm/` là plugin tự bật lại, và nhánh `if` ở trên tự đi đường có-Firebase. Không phải sửa dòng nào nữa — cả ở gradle lẫn ở đây.
+
+---
+
 ## Cây 3D: nối điểm thành lưới — chấm rời không đọc ra hình gì
 
 Điểm từ máy chủ đã lên đúng (lượt trước), nhưng anh Aladin xem thì "chỉ là các điểm nên nhìn không giống 1 cái hình gì". Máy chủ đã tự khai trước điều đó trong mô tả cửa `model3d`: mật-độ thật *"trung-vị vài trăm điểm"*, và *"478 điểm vẽ ra là một đám bụi chứ chưa ra dáng cây"*. Đúng như vậy trên máy thật.

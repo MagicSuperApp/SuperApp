@@ -85,7 +85,7 @@ main       ← bản phát hành (CI: AAB đã ký → Play Store)
 ### Máy mới — chạy cái này trước
 
 ```bash
-bash scripts/dung-android.sh
+bash scripts/build-android.sh
 ```
 
 Nó đọc phiên bản JDK / NDK / build-tools / compileSdk **thẳng từ `android/build.gradle`**
@@ -93,13 +93,13 @@ Nó đọc phiên bản JDK / NDK / build-tools / compileSdk **thẳng từ `and
 gì thiếu. Thiếu thì nó **dừng**, không dựng tiếp.
 
 ```bash
-bash scripts/dung-android.sh --cai
+bash scripts/build-android.sh --cai
 ```
 
 cài phần còn thiếu qua Homebrew + `sdkmanager`, rồi bảo chạy lại chế độ kiểm để tự xác nhận.
 
 ```bash
-bash scripts/dung-android.sh --dung aladin-aab
+bash scripts/build-android.sh --dung aladin-aab
 ```
 
 dựng luôn — tự xuất `JAVA_HOME`/`ANDROID_HOME` đúng bản, gọi flavor tường minh, và **kiểm

@@ -8,10 +8,10 @@
 # rồi đi cài thêm bản thứ hai, và Gradle chọn nhầm bản. Script này ghim ĐÚNG
 # các phiên bản mà `android/build.gradle` khai, rồi tự đối chiếu lại.
 #
-#   bash scripts/dung-android.sh              # chỉ KIỂM, không đụng gì
-#   bash scripts/dung-android.sh --cai        # kiểm, rồi cài phần còn thiếu
-#   bash scripts/dung-android.sh --dung aladin-aab      # kiểm rồi dựng
-#   bash scripts/dung-android.sh --dung checkfarm-apk
+#   bash scripts/build-android.sh              # chỉ KIỂM, không đụng gì
+#   bash scripts/build-android.sh --cai        # kiểm, rồi cài phần còn thiếu
+#   bash scripts/build-android.sh --dung aladin-aab      # kiểm rồi dựng
+#   bash scripts/build-android.sh --dung checkfarm-apk
 #
 # Script này KHÔNG đụng tới khoá ký. Xem mục "Khoá ký" ở cuối khi nó báo thiếu.
 
@@ -181,7 +181,7 @@ fi
 
 # ── Cổng: thiếu thì DỪNG. Đây là chỗ script phải chặn thật. ─────────────────
 if [ ${#THIEU[@]} -gt 0 ]; then
-  echo "⛔ Thiếu ${#THIEU[@]} thứ, chưa dựng được. Chạy: bash scripts/dung-android.sh --cai"
+  echo "⛔ Thiếu ${#THIEU[@]} thứ, chưa dựng được. Chạy: bash scripts/build-android.sh --cai"
   exit 1
 fi
 

@@ -75,6 +75,31 @@ export const ALLOWED_KEYS: readonly string[] = [
 
 const ALLOWED = new Set(ALLOWED_KEYS);
 
+/**
+ * Khoá bị chặn KỂ CẢ khi giá trị là số hoặc luận lý.
+ *
+ * ── Vì sao số và luận lý dùng danh sách CHẶN, còn chuỗi dùng danh sách CHO PHÉP
+ * Hai kiểu dữ liệu có bề mặt rủi ro khác hẳn nhau, nên áp cùng một cách là sai ở
+ * một trong hai chiều:
+ *
+ *   · CHUỖI chở được BẤT CỨ bí mật nào — cụm 24 từ, khoá, chứng thực, đường dẫn
+ *     mang tên người. Không ai liệt kê hết được tên xấu ⇒ phải CHO PHÉP theo
+ *     tên, và fail-closed.
+ *   · SỐ và LUẬN LÝ chỉ nguy hiểm khi bản thân con số LÀ bí mật, và tập đó
+ *     ĐẾM ĐƯỢC: toạ độ, mã PIN, mã OTP, số tiền. Ngoài tập đó, một `boolean`
+ *     hay một số đếm không chở nổi cụm từ khôi phục.
+ *
+ * Bản đầu của tệp này bắt cả số và luận lý qua danh sách cho phép, và nó lập tức
+ * hỏng theo chiều ngược: `rLog.phoenixWallet` gửi `hasDid`, `hasPubkey`,
+ * `sigLen`, `saved`… — toàn luận lý và độ dài, hoàn toàn vô hại — mà cổng bỏ
+ * sạch, làm vết chẩn đoán ví thành vô dụng. Cổng chặn quá tay thì người ta gỡ
+ * cổng, và lúc đó không còn gì chặn cả.
+ */
+const DENIED_NUMERIC_KEYS = new Set([
+  'lat', 'lon', 'latitude', 'longitude', 'altitude', 'accuracy',
+  'pin', 'otp', 'code', 'amount', 'balance', 'lovelace',
+]);
+
 /** Cắt ngắn chuỗi chẩn đoán. Vết ngăn xếp dài không giúp thêm, chỉ chở thêm. */
 const MAX_LEN = 300;
 
@@ -126,20 +151,27 @@ export function filterBeforeSend(
   if (!input) return { safe, dropped };
 
   for (const [key, value] of Object.entries(input)) {
-    // TẦNG 1 — tên không khai thì không đi.
-    if (!ALLOWED.has(key)) {
-      safe[key] = '[bỏ:tên-chưa-khai]';
-      dropped.push(key);
-      continue;
-    }
-
     if (value === null || value === undefined) {
       safe[key] = null;
       continue;
     }
-    // Số và luận lý không chở được bí mật dạng chuỗi.
+
+    // ── SỐ và LUẬN LÝ: danh sách CHẶN, tập nguy hiểm đếm được ────────────────
     if (typeof value === 'number' || typeof value === 'boolean') {
+      if (DENIED_NUMERIC_KEYS.has(key.toLowerCase())) {
+        safe[key] = '[bỏ:số-nhạy-cảm]';
+        dropped.push(key);
+        continue;
+      }
       safe[key] = value;
+      continue;
+    }
+
+    // ── CHUỖI: danh sách CHO PHÉP, fail-closed ──────────────────────────────
+    // TẦNG 1 — tên không khai thì không đi.
+    if (!ALLOWED.has(key)) {
+      safe[key] = '[bỏ:tên-chưa-khai]';
+      dropped.push(key);
       continue;
     }
 

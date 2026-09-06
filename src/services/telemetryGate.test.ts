@@ -39,6 +39,34 @@ describe('tầng 1 — tên chưa khai thì không đi', () => {
   });
 });
 
+describe('số và luận lý — danh sách CHẶN, không phải danh sách cho phép', () => {
+  // Bản đầu bắt cả số và luận lý qua danh sách cho phép, và hỏng theo chiều
+  // ngược: `rLog.phoenixWallet` gửi hasDid/hasPubkey/sigLen/saved — toàn luận lý
+  // và độ dài, hoàn toàn vô hại — mà cổng bỏ sạch. Cổng chặn quá tay thì người
+  // ta gỡ cổng, và lúc đó không còn gì chặn cả.
+
+  it('luận lý và số đếm với khoá chưa khai VẪN đi qua', () => {
+    const { safe, dropped } = filterBeforeSend({
+      hasDid: true, hasPubkey: false, sigLen: 64, saved: true,
+    });
+    expect(dropped).toEqual([]);
+    expect(safe).toEqual({ hasDid: true, hasPubkey: false, sigLen: 64, saved: true });
+  });
+
+  it('[đối xứng] số NHẠY CẢM vẫn bị chặn dù là số', () => {
+    const { safe, dropped } = filterBeforeSend({ lat: 10.77, pin: 123456 });
+    expect(dropped.sort()).toEqual(['lat', 'pin']);
+    expect(safe.lat).toBe('[bỏ:số-nhạy-cảm]');
+  });
+
+  it('cùng cái tên nhưng giá trị là CHUỖI thì quay về danh sách cho phép', () => {
+    // `sigLen` là số thì qua; là chuỗi thì phải khai tên — vì chuỗi chở được
+    // bất cứ gì, kể cả khi đứng dưới một cái tên nghe vô hại.
+    expect(filterBeforeSend({ sigLen: 64 }).dropped).toEqual([]);
+    expect(filterBeforeSend({ sigLen: 'abc' }).dropped).toEqual(['sigLen']);
+  });
+});
+
 describe('tầng 2 — hình dạng bí mật bị chặn dù tên hợp lệ', () => {
   // Đây là tầng quan trọng hơn: `err` là khoá HỢP LỆ và cần cho chẩn đoán,
   // nhưng nội dung của nó do thư viện bên ngoài quyết, không do kho này quyết.

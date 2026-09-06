@@ -17,6 +17,7 @@ import { store } from '../../store';
 import analyticsApi from './analyticsApi';
 import { ANALYTICS_CONFIG, SENSITIVE_FIELD_HINTS } from './config';
 import { AnalyticsEvent, AnalyticsEventType, TrackOptions } from './types';
+import { filterBeforeSend, forbiddenShape } from '../telemetryGate';
 
 type PartialEvent = Partial<AnalyticsEvent> & { type: AnalyticsEventType };
 
@@ -237,7 +238,13 @@ class AnalyticsService {
         value: partial.value ?? null,
         durationMs: partial.durationMs ?? null,
         latencyMs: partial.latencyMs ?? null,
-        metadata: partial.metadata ?? null,
+        // `metadata` là túi tự do: nơi gọi nhét được bất cứ gì vào, và không có
+        // kiểu nào chặn. Lọc ở ĐÂY chứ không ở nơi gọi — nơi gọi thì mỗi chỗ
+        // phải nhớ, và chỗ quên thì không gì báo. Trường bị bỏ để lại dấu chứ
+        // không biến mất, để người đọc bản ghi phân biệt "đã bỏ" với "không có".
+        metadata: partial.metadata
+          ? filterBeforeSend(partial.metadata as Record<string, unknown>).safe
+          : null,
         platform: Platform.OS,
         appVersion: ANALYTICS_CONFIG.APP_VERSION,
         osVersion: String(Platform.Version),
@@ -295,10 +302,35 @@ class AnalyticsService {
     }
   }
 
-  /** Ẩn dữ liệu nhạy cảm; rút gọn giá trị quá dài. */
+  /**
+   * Ẩn dữ liệu nhạy cảm; rút gọn giá trị quá dài.
+   *
+   * ── Đổi 2026-09-06: soi HÌNH DẠNG trước, soi tên sau ──────────────────────
+   * Bản trước chỉ hỏi `SENSITIVE_FIELD_HINTS` có khớp TÊN NHÃN không, và khớp
+   * theo chuỗi con. Ba lỗ, đã đo:
+   *   1. Không khớp ⇒ CHO QUA. Nhãn `phrase_input` không có từ nào trong danh
+   *      sách 13 mục ⇒ giá trị đi nguyên. Fail-OPEN.
+   *   2. Tiếng Việt chỉ có 2/13 mục; không có "cụm từ", "khôi phục", "khoá".
+   *   3. Không nhìn GIÁ TRỊ. Một cụm 24 từ BIP39 nhận ra được bằng hình dạng.
+   *
+   * Nay `forbiddenShape` chạy TRƯỚC và không phụ thuộc người gọi đặt tên gì.
+   * Danh sách theo tên GIỮ LẠI làm lớp thứ hai — nó bắt được thứ hình dạng
+   * không bắt được (mã PIN 6 số trông y hệt một số đo hợp lệ).
+   *
+   * Vì sao đây là chỗ đáng canh nhất: `trackInput` hiện KHÔNG có lời gọi nào
+   * trong màn hình (đo trên `origin/develop`), nhưng `README` của chính thư mục
+   * này dạy đúng mẫu gắn nó vào `onChangeText`. Người kế tiếp gắn dòng đó vào ô
+   * nhập 24 từ ở màn khôi phục thì cụm từ đi thẳng lên máy chủ đo lường — và
+   * với bản cũ thì không phép kiểm nào đỏ.
+   */
   private sanitizeValue(label: string | null, value: unknown): string | null {
     if (value === undefined || value === null) return null;
     const str = typeof value === 'string' ? value : JSON.stringify(value);
+
+    const shape = forbiddenShape(str);
+    if (shape) {
+      return `[bỏ:hình-dạng-${shape}]`;
+    }
 
     const hay = (label || '').toLowerCase();
     if (SENSITIVE_FIELD_HINTS.some(h => hay.includes(h))) {

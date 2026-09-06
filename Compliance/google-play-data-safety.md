@@ -29,7 +29,21 @@
 |---|---|---|---|---|---|
 | Địa chỉ ví Cardano (walletAddress) | Đăng ký ví, nhận/gửi ADA + token LAMP | Có khả năng — `cardanoTxService.ts:19-21` ghi rõ backend proxy UTXO tới Blockfrost (dịch vụ Cardano bên thứ 3); mức độ địa chỉ có lộ ra Blockfrost hay không **CHƯA ĐO ĐƯỢC** (việc đó nằm ở backend, ngoài kho này) | Có | CHƯA ĐO ĐƯỢC (không thấy API huỷ đăng ký ví) | Đăng ký: `src/services/phoenixKey-api.ts:486` (`register: (walletAddress)`); gửi khi tham gia việc làm: `src/modules/join/screens/JoinHomeScreen.tsx:96` (`cardano_address: walletAddress`) |
 | UTXO / số dư / mã giao dịch (tx hash, lovelace, native assets) | Dựng và gửi giao dịch Cardano/LAMP | CHƯA ĐO ĐƯỢC (đi qua backend PhoenixKey, không rõ backend forward tiếp cho ai) | Có | Không — đây là dữ liệu on-chain một khi đã submit, không xoá được theo bản chất blockchain | `src/services/cardanoTxService.ts:58,60,109-132,234-268` |
-| Khoá riêng ví (private key / master KEK) | Ký giao dịch | **Không thu thập / không rời máy** — comment trong mã khẳng định rõ: "seed KHÔNG rời native" (`cardanoTxService.ts:10`); khoá nằm trong Android Keystore / iOS Secure Enclave (`src/services/phoenixKey-native.ts:5-9`) | N/A — không truyền đi | N/A | Không cần khai ở Data Safety vì không "thu thập" theo định nghĩa Google (không rời thiết bị) |
+| Khoá riêng ví (private key / master KEK) | Ký giao dịch | **Không rời THIẾT BỊ. Nhưng có rời vùng native** — xem ô "Nguồn". Không gửi lên máy chủ nào. | N/A — không truyền đi | N/A | Không "thu thập" theo định nghĩa Google (không rời thiết bị) ⇒ không phải khai ở Data Safety. **Nhưng đừng đọc dòng này thành "khoá không bao giờ ra khỏi Keystore".** `masterKekStore.ts` (`getOrCreateMasterKek`) nhận KEK về dưới dạng **chuỗi JS** qua cầu React Native, và `SeedExportScreen` giữ cả 24 từ trong state của React. Heap JS là vùng dùng chung với mọi gói npm trong bản dựng. |
+
+> ⚠️ **ĐÍNH CHÍNH — dòng "khoá riêng ví" ở trên từng khai SAI, đọc trước khi chép bản này vào
+> Play Console.** Bản trước ghi *"Không thu thập / không rời máy"* và dẫn chứng bằng **một dòng
+> chú thích** (`cardanoTxService.ts:10`, "seed KHÔNG rời native").
+>
+> Chú thích đó đúng với tầng nó nói — đường KÝ GIAO DỊCH. Nó **không** đúng với KEK: `secureLoad`
+> trả một chuỗi qua cầu React Native, `getOrCreateMasterKek` giữ chuỗi đó trong JS, và màn xuất
+> cụm từ giữ cả 24 từ trong state React.
+>
+> Kết luận với Play **không đổi** — khoá vẫn không rời thiết bị, nên vẫn không phải khai. Cái sai
+> là **cơ sở** của kết luận, và cái sai đó đắt theo kiểu riêng: một bản khai với cửa hàng lấy chú
+> thích làm bằng chứng thì nó đúng đúng bằng lúc chú thích được viết, và không có gì báo khi mã
+> đi tiếp mà chú thích đứng lại. Bằng chứng cho một dòng khai phải là **cơ chế**, không phải lời
+> tự thuật của mã về chính nó.
 
 > ⚠️ Mục này **KHÔNG có bản khai tương ứng trước đây** ở bất kỳ đâu trong kho (không tìm thấy
 > `NSPrivacyCollectedDataTypeOtherFinancialInfo` hay tương đương trước bản sửa hôm nay ở

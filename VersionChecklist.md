@@ -20,7 +20,7 @@
 | 1.4 | Persona-adaptive — HÀNH VI thật | ⬜ | Tùng | ⚠ hiện NO-OP: `usage` chưa nối nguồn Work → thanh tĩnh; ràng buộc 1-đổi/phiên là seam ngủ |
 | 1.5 | Trace = nút quét nhanh (full-bleed, deep-link, back-safe) | ✅ | Tùng | whitelist đã thu về `*Detail`; ⬜ test camera máy thật |
 | 1.6 | Cổng thống nhất (tái nút xoè SG4, 2 tầng) | ✅ | Tùng | ⬜ test cử chỉ máy thật |
-| 1.7 | SubHome thu gọn (3 tab + ⌄) + `SubHomeFrame` | 🟡 | Tùng | khung xong; ⬜ WIRE vào màn app con (Chat/Farm) |
+| 1.7 | SubHome thu gọn (3 tab + ⌄) + `SubHomeFrame` | ⛔ | — | ĐÃ GỠ 31/08/2026 (`f07b4a5`): khung dựng xong nhưng không nơi nào gọi. Không còn việc phải làm. Thiết kế giữ ở `Specs/SG9-Nav-Frame-and-Shell-UX.md` §5.2 nếu có ngày dựng lại. |
 | 1.8 | Vòng dịch vụ QUAY được (rotary ring) + tầng lồng | ⬜ | Tùng | thiết kế SG9 §5B; dựng khi cổng ổn trên máy |
 | 1.9 | Bật `react-native-screens` (enableScreens/freeze) | ⬜ | Tùng | SG9 §7; cần test máy yếu |
 | 1.10 | Màu tươi + thích ứng ánh sáng (day/dim/night, bảo vệ mắt) | ⬜ | Tùng | SG9 §8; token luminance chưa có |

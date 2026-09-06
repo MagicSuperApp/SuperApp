@@ -297,21 +297,51 @@ jobs:
           rm -rf "$WORK"
           [ "$FAIL" -eq 0 ] || { echo "::error::APK không đạt"; exit 1; }
 
+      # ── TÊN THEO NHÁNH + GHI ĐÈ ────────────────────────────────────────────
+      #
+      # Tên tệp giao ra phải mang tên nhánh, vì tên cố định + `overwrite: false`
+      # nghĩa là MỖI lượt đẩy để lại thêm một bản 193 MB sống 30 ngày. Đo
+      # 2026-09-06: 35 bản còn sống, 6.329 MB, riêng `develop` giữ 21 bản của
+      # cùng một ứng dụng. Kho của gói free chỉ có 500 MB.
+      #
+      # Tên nhánh chứa dấu `/` (`claude/...`, `feat/...`) mà tên tệp giao ra thì
+      # KHÔNG nhận ký tự đó, nên phải đổi trước. Với sự kiện `pull_request`,
+      # `github.ref_name` là `<số>/merge` — lấy `head_ref` mới ra tên nhánh thật.
+      - name: Suy tên tệp giao ra theo nhánh
+        run: |
+          NHANH="${{ github.head_ref || github.ref_name }}"
+          echo "ARTIFACT_NAME=debug-apk-$(echo "$NHANH" | tr '/' '-')" >> "$GITHUB_ENV"
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: superapp-debug-apk
+          name: ${{ env.ARTIFACT_NAME }}
           path: |
             dist/superapp-debug.apk
             dist/checkfarm-debug.apk
-            android-debug.log
-            android/android-checkfarm.log
-          retention-days: 30
+          # Mỗi nhánh giữ ĐÚNG MỘT bản — bản mới đè bản cũ. Không có dòng này thì
+          # số bản tăng theo số lượt đẩy; có nó thì tăng theo số nhánh đang sống,
+          # và nhánh thì đóng còn lượt đẩy thì không.
+          overwrite: true
+          # 5 ngày, không phải 30. Đây là bản cài thẳng để thử tay: ai cần thì tải
+          # trong ngày. Giữ một tháng không phục vụ ai, nó chỉ lấp kho rồi làm
+          # lượt dựng SAU đỏ ở bước tải lên — bản dựng vẫn xanh, tệp thì không ra.
+          retention-days: 5
+          # APK đã là tệp nén. Nén lại lần nữa gần như không giảm byte nào mà tốn
+          # thời gian máy dựng. Đây là khoản tiết kiệm THỜI GIAN, không phải khoản
+          # tiết kiệm dung lượng — đừng tính nó vào phần giải quyết hết kho.
+          compression-level: 0
 
       - name: Build summary
         run: |
           echo "## SuperApp Debug APK — tải về cài test" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "1. Tải artifact **superapp-debug-apk** (nút góc phải trên trang này)." >> $GITHUB_STEP_SUMMARY
-          echo "2. Giải nén, copy \`superapp-debug.apk\` sang điện thoại Android." >> $GITHUB_STEP_SUMMARY
-          echo "3. Bật 'Cài từ nguồn không xác định' → mở file APK để cài." >> $GITHUB_STEP_SUMMARY
+          echo "1. Tải artifact **${ARTIFACT_NAME}** (nút góc phải trên trang này)." >> $GITHUB_STEP_SUMMARY
+          echo "2. Giải nén. Trong đó có HAI ứng dụng:" >> $GITHUB_STEP_SUMMARY
+          echo "   - \`superapp-debug.apk\` — bản Aladin" >> $GITHUB_STEP_SUMMARY
+          echo "   - \`checkfarm-debug.apk\` — bản CheckFarm" >> $GITHUB_STEP_SUMMARY
+          echo "3. Copy tệp cần thử sang điện thoại Android." >> $GITHUB_STEP_SUMMARY
+          echo "4. Bật 'Cài từ nguồn không xác định' → mở file APK để cài." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Tệp giữ **5 ngày**, và mỗi nhánh chỉ giữ bản mới nhất." >> $GITHUB_STEP_SUMMARY
+          echo "Nhật ký dựng nằm ở tab Logs của chính lượt chạy này, không nằm trong tệp tải về." >> $GITHUB_STEP_SUMMARY

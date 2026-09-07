@@ -12,6 +12,7 @@
 
 import { Platform } from 'react-native';
 import { REMOTE_LOG_URL } from '@env';
+import { filterBeforeSend } from './telemetryGate';
 
 // ⛔ KHÔNG có đường lui mặc định. Chỗ này từng viết cứng
 // `https://gutless-renovator-distaste.ngrok-free.dev/logs` — một tunnel tạm trên máy
@@ -42,6 +43,15 @@ const BOOT_SESSION = Math.random().toString(36).slice(2, 10);
 // ── Core send ─────────────────────────────────────────────────────────────────
 
 function send(event: string, data: Record<string, unknown>, level = 'info'): void {
+  // ── CỔNG LỌC — đặt ở đây, không ở từng nơi gọi ────────────────────────────
+  // `rLog.info`/`rLog.error` nhận `Record<string, unknown>` tuỳ ý, nên nơi gọi
+  // đưa được BẤT CỨ gì vào. Đặt phép lọc ở nơi gọi thì mỗi chỗ phải nhớ, và chỗ
+  // quên thì không gì báo. Đặt ở đây thì không đường nào ra mạng mà không qua.
+  //
+  // Console echo bên dưới CỐ Ý in bản GỐC: nó không rời máy, và người gỡ lỗi
+  // bằng Metro/Xcode cần thấy đủ. Chỉ phần ĐI RA MẠNG mới bị lọc.
+  const { safe, dropped } = filterBeforeSend(data);
+
   const payload = {
     event,
     device: DEVICE_LABEL,
@@ -49,12 +59,15 @@ function send(event: string, data: Record<string, unknown>, level = 'info'): voi
     appVersion: '',
     stackTrace: '',
     data: {
-      ...data,
+      ...safe,
       level,
       jsSeq: nextSeq(),
       bootSession: BOOT_SESSION,
       platform: Platform.OS,
       timestamp: new Date().toISOString(),
+      // Bỏ thì phải KÊU. Thiếu dòng này, người đọc bản ghi thấy một trường vắng
+      // mặt và tưởng đường mã không chạy tới đó — cổng tự thành vỏ im lặng.
+      ...(dropped.length ? { gateDropped: dropped.join(',') } : {}),
     },
   };
 
@@ -126,11 +139,23 @@ const rLog = {
       }, ok ? 'info' : 'error');
     },
 
+    /**
+     * `lat`/`lon` ĐÃ BỎ khỏi bản ghi đi ra mạng, và hai tham số giữ lại chỉ để
+     * nơi gọi không phải sửa theo.
+     *
+     * Vì sao bỏ: toạ độ chính xác đi chung ống với `bootSession`, mà
+     * `bootSession` lại đi chung với tên đăng nhập ở một sự kiện khác. Bên nhận
+     * không cần làm gì thông minh — một câu `GROUP BY bootSession` là ra bảng
+     * "tên người ↔ toạ độ vườn ↔ giờ". Cửa nhận đó cũng không xác thực gì.
+     *
+     * Đổi lại mất gì: không mất gì đo được. Toạ độ ở đây chưa từng dùng để chẩn
+     * đoán lần gọi hỏng — `hasFix` trả lời đủ câu "máy có định vị được không",
+     * mà không chở theo người dùng đang đứng ở đâu.
+     */
     apiStart(captureCount: number, lat?: number, lon?: number): void {
       send('tree_identity_api_start', {
         captureCount,
-        lat: lat ?? null,
-        lon: lon ?? null,
+        hasFix: lat != null && lon != null,
       });
     },
 

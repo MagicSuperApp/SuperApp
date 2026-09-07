@@ -156,3 +156,69 @@ describe('không nuốt lỗi, không đệm giá trị giả', () => {
     expect(out).not.toContain('kkkk');
   });
 });
+
+describe('chuỗi dài HỢP LỆ vẫn đi qua — mặt đối xứng của `long-base64`', () => {
+  // Mẫu `long-base64` bắt mọi mạch ≥60 ký tự thuần `[A-Za-z0-9_-]`, và đó là
+  // mẫu RỘNG nhất trong bộ. Người xem PR nêu đúng một chỗ trống: mọi bài kiểm
+  // trước đây đều chứng minh bí mật BỊ CHẶN, không bài nào chứng minh một giá
+  // trị dài nhưng vô hại KHÔNG bị mất. Một cổng chặn quá tay thì bị gỡ, và gỡ
+  // rồi thì không còn gì chặn — nên mặt này phải có bài kiểm riêng.
+  //
+  // Điều cứu phần lớn giá trị thật là DẤU NGẮT: `.` `/` `:` khoảng trắng đều
+  // cắt mạch, nên `\b...\b` không gom được 60 ký tự liền.
+
+  // `dropped` là tên trường trong `FilterResult`. Trên đường truyền nó mang tên
+  // `gateDropped` (`remoteLogger.ts:70`) — hai tên cho cùng một thứ, và bản đầu
+  // của khối này gõ nhầm tên-đường-truyền vào chỗ đọc kết quả hàm rồi so với
+  // `undefined`.
+  const diQua = (v: string) => {
+    const r = filterBeforeSend({ message: v });
+    return { ra: String(r.safe.message ?? ''), boBot: r.dropped };
+  };
+
+  it('URL dài đi qua nguyên vẹn', () => {
+    const url = 'https://api.orilife.io/v1/farms/12345/trees/67890/provenance?from=2026-01-01&to=2026-09-07';
+    expect(url.length).toBeGreaterThan(60);
+    const { ra, boBot } = diQua(url);
+    expect(ra).toBe(url);
+    expect(boBot).toHaveLength(0);
+  });
+
+  it('câu lỗi tiếng Việt dài đi qua', () => {
+    const cau = 'Không kết nối được máy chủ truy xuất sau ba lần thử lại, lần cuối lúc 14 giờ 32 phút, mã trả về 503';
+    expect(cau.length).toBeGreaterThan(60);
+    expect(diQua(cau).ra).toBe(cau);
+  });
+
+  it('UUID đi qua — 36 ký tự, lại có gạch nối', () => {
+    const id = '550e8400-e29b-41d4-a716-446655440000';
+    expect(diQua(id).ra).toBe(id);
+  });
+
+  it('mã tra cứu có dấu ngắt đi qua, dù tổng chiều dài vượt 60', () => {
+    const ma = 'req_2026-09-07_farm-12345_tree-67890_scan-0042_dev-a1b2c3';
+    expect(ma.length).toBeGreaterThan(50);
+    expect(diQua(ma).ra).toBe(ma);
+  });
+
+  it('ĐỐI CHỨNG: bỏ hết dấu ngắt khỏi chính mã đó thì nó BỊ chặn', () => {
+    // Không có ca này thì bốn phép so trên có thể đúng vì cổng đã hỏng hẳn,
+    // chứ không vì dấu ngắt cứu chúng.
+    const ma = 'req20260907farm12345tree67890scan0042deva1b2c3XyZqWeRtYuIoPaSdFgHjKl';
+    expect(ma.length).toBeGreaterThan(60);
+    const { ra, boBot } = diQua(ma);
+    expect(ra).toContain('[bỏ:hình-dạng-long-base64]');
+    expect(boBot).toContain('message');
+  });
+
+  it('trường bị bỏ phải KÊU — đó là điều kiện để giữ mẫu rộng', () => {
+    // Toàn bộ lập luận "thà chặn nhầm còn hơn cho lọt" đứng trên một tiền đề:
+    // chặn nhầm thì THẤY ĐƯỢC. Ngày nhánh bỏ im lặng đi, tiền đề sập và phải
+    // thu hẹp mẫu. Bài kiểm này canh đúng tiền đề đó.
+    const r = filterBeforeSend({ message: 'A'.repeat(80), event: 'thu' });
+    expect(String(r.safe.message)).toContain('[bỏ:');
+    expect(r.dropped).toContain('message');
+    // Và trường lành lặn bên cạnh KHÔNG bị vạ lây.
+    expect(r.safe.event).toBe('thu');
+  });
+});

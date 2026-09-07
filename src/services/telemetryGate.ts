@@ -116,7 +116,26 @@ const FORBIDDEN_SHAPES: readonly { name: string; pattern: RegExp }[] = [
   { name: 'did', pattern: /did:[a-z]+:[a-z0-9]+:[0-9a-f]{16,}/i },
   // 64 ký tự hex liền = Master_KEK, khoá riêng, hoặc băm định danh
   { name: 'hex-64', pattern: /\b[0-9a-f]{64}\b/i },
-  // base64url dài — chứng thực, phiếu, khoá đã mã hoá
+  // base64url dài — chứng thực, phiếu, khoá đã mã hoá.
+  //
+  // ── ĐÁNH ĐỔI, viết ra vì nó CỐ Ý chứ không phải sót ────────────────────────
+  // Mẫu này rộng: nó bắt MỌI mạch 60 ký tự trở lên chỉ gồm `[A-Za-z0-9_-]`. Một
+  // mã tra cứu hay mã băm dài mà không có dấu ngắt nào cũng dính. Giữ rộng, vì
+  // hai chiều hỏng KHÔNG cân nhau:
+  //
+  //   · Chặn nhầm một giá trị vô hại ⇒ trường đó ra `[bỏ:long-base64]` và tên
+  //     nó nằm trong `gateDropped`. Hỏng thấy được, sửa bằng cách thêm một mẫu
+  //     miễn trừ, và người đọc nhật ký biết ngay là thiếu cái gì.
+  //   · Cho lọt một bí mật ⇒ nó đã rời khỏi máy. Không có bước hai.
+  //
+  // Điều kiện để đánh đổi này còn đúng: chỗ bị bỏ phải KÊU. Ngày nào nhánh bỏ
+  // biến thành im lặng — bỏ trường đi mà không để lại dấu — thì lập luận trên
+  // sập, và lúc đó phải thu hẹp mẫu chứ không phải giữ nguyên.
+  //
+  // Dấu ngắt cứu phần lớn giá trị thật: dấu chấm, gạch chéo, hai chấm, khoảng
+  // trắng đều cắt mạch. Nên URL, dấu vết ngăn xếp, câu tiếng Việt, UUID (36 ký
+  // tự, lại có gạch nối) đều đi qua. Ca đối xứng cho từng loại nằm ở
+  // `telemetryGate.test.ts` §"chuỗi dài HỢP LỆ vẫn đi qua".
   { name: 'long-base64', pattern: /\b[A-Za-z0-9_-]{60,}\b/ },
   // địa chỉ ví Cardano
   { name: 'wallet-address', pattern: /\b(?:addr|addr_test|stake|stake_test)1[a-z0-9]{20,}\b/i },

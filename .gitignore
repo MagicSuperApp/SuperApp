@@ -133,3 +133,12 @@ build-aab.log
 # nguồn: hàng chục MB, và khác nhau theo bản NDK của từng máy. Đưa vào git là biến
 # bản dựng của một máy thành thứ mọi người khác dùng lại mà không biết.
 android/app/src/main/jniLibs/
+
+# Bản chép tay của tệp cấu hình. `android/app/google-services.json.bak` từng nằm
+# trên nhánh chính, không nơi nào tham chiếu, và khai BA mã gói trong đó HAI cái đã
+# chết — nên ai đọc nó để biết app này dùng mã gói nào sẽ đọc ra câu trả lời sai.
+#
+# Loại tệp này nguy hiểm đúng ở chỗ nó trông như nguồn: nó không gây lỗi dựng, không
+# cổng nào kêu, và nó tự già đi trong im lặng trong khi bản thật đổi. Chặn ở đây để
+# tệp thứ hai không vào được bằng cùng một đường.
+*.bak

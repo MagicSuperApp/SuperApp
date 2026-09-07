@@ -42,6 +42,9 @@ import { DEFAULT_ADAPTIVE_CONFIG } from '../theme/adaptive';
 // CỐ Ý import từ `moduleIds` chứ KHÔNG từ `registry`: registry import tĩnh mọi
 // màn của mọi module, nên kéo nó vào đây là kéo cả cây component (và module
 // native theo sau) vào mọi chỗ chỉ cần biết tên app.
+// Chỉ lấy KIỂU. `i18n/translate.ts:21` đã nhập ngược lại tệp này, nên một lần
+// nhập có giá trị chạy sẽ thành vòng. `import type` bị xoá lúc biên dịch.
+import type { LangCode } from '../i18n/types';
 import type { ModuleId } from '../navigation/moduleIds';
 import { MODULE_IDS } from '../navigation/moduleIds';
 import { SLOT_PRIORITY_DEFAULT, SLOT_PRIORITY_SHIPPER } from '../navigation/resolveVisibleTabs';
@@ -113,6 +116,22 @@ export interface InstanceConfig {
   displayName: string;
 
   /**
+   * Câu khẩu hiệu, đủ bốn thứ tiếng. Hiện MỘT chỗ: dưới tên app ở màn chào
+   * (`screens/OnboardingScreen.tsx`) — chỗ người dùng nhìn một lần lúc mới cài.
+   *
+   * VÌ SAO NẰM Ở ĐÂY chứ không phải một khoá trong `i18n/keys`: khẩu hiệu là
+   * câu app tự nói về MÌNH, nên nó thuộc danh tính instance chứ không phải chuỗi
+   * dùng chung. Trước đó nó là khoá `onboarding.tagline` — "Một ứng dụng, bốn
+   * việc" — và CheckFarm cũng hiện đúng câu định vị của Aladin. Cùng một lỗi với
+   * `onboarding.title` đã gỡ trước đó (xem `i18n/keys/onboarding.ts`), chỉ khác
+   * là lần này câu không mang tên app nên không phép kiểm nào bắt được.
+   *
+   * BẮT BUỘC, không `?`: app thứ ba quên khai thì `tsc` đỏ. Để tuỳ chọn kèm một
+   * đường rơi về câu của app khác là dựng lại đúng cái vừa gỡ.
+   */
+  tagline: Record<LangCode, string>;
+
+  /**
    * Pháp nhân vận hành app này. Phải khớp `operator` trong
    * `instances/<mã>/instance.json` — có bài kiểm đối chiếu.
    */
@@ -162,6 +181,14 @@ export interface InstanceConfig {
 export const ALADIN_INSTANCE: InstanceConfig = {
   instanceId: 'aladin',
   displayName: 'Aladin',
+  // Chuyển nguyên văn từ khoá `onboarding.tagline` đã gỡ — không viết lại câu
+  // thương hiệu, chỉ dời chỗ ở.
+  tagline: {
+    vi: 'Một ứng dụng, bốn việc — và danh tính là của chính anh chị.',
+    en: 'One app, four jobs — and the identity stays yours.',
+    zh: '一个应用，四件事 —— 身份始终属于你自己。',
+    ja: '一つのアプリで四つの仕事 — 本人確認はあなたのものです。',
+  },
   operator: {
     name: 'Aladin',
     address:
@@ -206,6 +233,15 @@ export const ALADIN_INSTANCE: InstanceConfig = {
 export const CHECKFARM_INSTANCE: InstanceConfig = {
   instanceId: 'checkfarm',
   displayName: 'CheckFarm',
+  // Bốn chuỗi do nhà CheckFarm cấp (khoá `khau_hieu` bên kho cấu hình của họ,
+  // 07/09/2026). Cùng luật với địa chỉ pháp nhân bên dưới: câu chữ là của
+  // CheckFarm, KHÔNG suy ra từ kho này và không sửa hộ.
+  tagline: {
+    vi: 'Truy xuất từ nguồn — Nâng tầm nông sản',
+    en: 'Trace the Source — Elevate the Produce',
+    zh: '追溯源头，提升农产价值',
+    ja: '源流をたどり、農産物の価値を高める',
+  },
   // Pháp nhân ĐỘC LẬP — không phải DDC Holdings, không phải DDC DigiTech, không
   // phải Aladin Contract. Aladin Contract phát triển theo đơn đặt hàng và KHÔNG
   // giữ quyền sở hữu hay quyền kiểm soát thông tin nào.

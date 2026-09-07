@@ -338,3 +338,76 @@ describe('app tự xưng tên MÌNH, không xưng tên app khác', () => {
     expect(pham).toEqual([]);
   });
 });
+
+describe('khẩu hiệu — mỗi app một câu, không app nào mượn câu của app khác', () => {
+  const LANGS = ['vi', 'en', 'zh', 'ja'] as const;
+
+  it('mọi app khai đủ bốn thứ tiếng, không chuỗi nào rỗng', () => {
+    expect(ids.length).toBeGreaterThanOrEqual(2); // chống-xanh-rỗng
+    for (const id of ids) {
+      const kh = INSTANCES[id].tagline;
+      for (const lang of LANGS) {
+        expect(typeof kh[lang]).toBe('string');
+        expect(kh[lang].trim().length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('KHÔNG hai app nào dùng chung một câu, ở bất kỳ thứ tiếng nào', () => {
+    // Đây là phép đo thay cho cái đã hỏng CÂM: khẩu hiệu từng là khoá dùng
+    // chung `onboarding.tagline`, nên hai app hiện y một câu mà không gì đỏ.
+    for (const lang of LANGS) {
+      const cau = ids.map(id => INSTANCES[id].tagline[lang]);
+      expect(new Set(cau).size).toBe(cau.length);
+    }
+  });
+
+  it('khoá `onboarding.tagline` KHÔNG được dựng lại ở bộ chuỗi dùng chung', () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { allKeys } = require('../i18n/keys');
+    expect(allKeys()).not.toContain('onboarding.tagline');
+  });
+
+  it('màn chào đọc khẩu hiệu TỪ instance, không từ khoá dùng chung', () => {
+    const src = readFileSync(join(__dirname, '..', 'screens', 'OnboardingScreen.tsx'), 'utf8');
+    expect(src).toContain('DEFAULT_INSTANCE.tagline[lang]');
+    expect(src).not.toContain("tk('onboarding.tagline')");
+  });
+});
+
+describe('mọi trường của InstanceConfig đều có nơi ĐỌC', () => {
+  /**
+   * Chiều hỏng ít ai canh: giao diện đọc một khoá mà cấu hình không có thì `tsc`
+   * đỏ ngay; còn cấu hình khai một trường mà KHÔNG giao diện nào đọc thì im lặng
+   * hoàn toàn — người đặt giá trị tưởng nó đã lên app.
+   *
+   * Đã xảy ra trong chính tệp này: `displayName` từng có 0 nơi đọc, trong khi
+   * `brandName` mặc định là tên một nền tảng khác (xem chú thích của trường đó).
+   * Không gì đỏ cho tới lúc có người nhìn màn hình.
+   */
+  const SRC_DIR = join(__dirname, '..');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { readdirSync, statSync } = require('fs');
+  const scan = (d: string): string[] =>
+    readdirSync(d).flatMap((n: string) => {
+      const p = join(d, n);
+      return statSync(p).isDirectory()
+        ? scan(p)
+        : /\.tsx?$/.test(n) && !n.includes('.test.') ? [p] : [];
+    });
+
+  it('không trường nào nằm chờ mà không chỗ nào đọc', () => {
+    const cfg = readFileSync(join(__dirname, 'instance.config.ts'), 'utf8');
+    const than = cfg.slice(cfg.indexOf('export interface InstanceConfig'));
+    const truong = [...than.matchAll(/^ {2}(\w+)\??:/gm)].map(m => m[1]);
+    expect(truong).toContain('tagline'); // chống-xanh-rỗng: biểu thức còn khớp
+
+    const files = scan(SRC_DIR).filter(
+      p => !p.replace(/\\/g, '/').endsWith('config/instance.config.ts'),
+    );
+    const noi = files.map(p => readFileSync(p, 'utf8')).join('\n');
+
+    const treo = truong.filter(t => !new RegExp(`\\.${t}\\b`).test(noi));
+    expect(treo).toEqual([]);
+  });
+});

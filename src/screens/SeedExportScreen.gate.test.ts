@@ -55,7 +55,12 @@ describe('A — cổng chắn việc LỘ, không chắn việc TẠO VÍ', () =
 
 describe('B — cổng là chữ ký do CHIP xác nhận, không phải boolean của JS', () => {
   it('dùng signRaw', () => {
-    expect(SRC).toContain("import { signRaw, currentUserDid } from '../sdk/phoenixKey';");
+    // Khớp TỪNG TÊN một, không khớp cả dòng import. Bản đầu so nguyên văn
+    // `"import { signRaw, currentUserDid } from '../sdk/phoenixKey';"` và sẽ
+    // đỏ chỉ vì ai đó đảo thứ tự hai cái tên — một phép kiểm vỡ vì lý do không
+    // liên quan gì tới thứ nó canh thì sớm muộn cũng bị tắt đi.
+    expect(SRC).toMatch(/import\s*\{[^}]*\bsignRaw\b[^}]*\}\s*from\s*'\.\.\/sdk\/phoenixKey'/);
+    expect(SRC).toMatch(/import\s*\{[^}]*\bcurrentUserDid\b[^}]*\}\s*from\s*'\.\.\/sdk\/phoenixKey'/);
   });
 
   it('KHÔNG quay lại simplePrompt', () => {
@@ -74,6 +79,32 @@ describe('B — cổng là chữ ký do CHIP xác nhận, không phải boolean 
 describe('C — DID đi cùng 24 từ', () => {
   it('màn lấy DID khi lộ cụm từ', () => {
     expect(SRC).toContain('setDid(await currentUserDid())');
+  });
+
+  it('việc LỘ chạy TRƯỚC lần đọc DID — đọc phụ không được chặn việc chính', () => {
+    // `currentUserDid` là `AsyncStorage.getItem` trần. Đặt nó TRÊN `setRevealed`
+    // thì một lần đọc ném là người dùng không bao giờ thấy 24 từ, dù chip đã xác
+    // nhận xong và cụm từ đã nằm sẵn trong bộ nhớ. Hành vi ấy khoá ở
+    // `SeedExportScreen.render.test.tsx`; phép so THỨ TỰ này thì bài kiểm dựng
+    // màn không làm được, nên hai chỗ canh hai mặt khác nhau của cùng một lỗi.
+    //
+    // Khớp kèm dấu `;` — tức khớp CÂU LỆNH, không khớp chuỗi trần. Bản đầu của
+    // phép so này đỏ, và đỏ vì một lý do đáng ghi lại: khối chú thích ngay trên
+    // đoạn mã, giải thích *vì sao* thứ tự phải như vậy, có nhắc lại
+    // `setDid(await currentUserDid())` trong dấu nháy ngược — và nó đứng TRƯỚC
+    // đoạn mã thật. Đúng cái bẫy đã dính một lần ở §B với `simplePrompt`:
+    // phép đo văn bản không phân biệt được mã với lời bàn về mã.
+    const reveal = at('setRevealed(true);');
+    const readDid = at('setDid(await currentUserDid());');
+    expect(reveal).toBeGreaterThan(-1);
+    expect(readDid).toBeGreaterThan(-1);
+    expect(reveal).toBeLessThan(readDid);
+  });
+
+  it('có nhánh nói ra khi KHÔNG đọc được DID', () => {
+    // Vẽ `null` ở nhánh này là dựng lại đúng trạng thái trước lượt sửa, nhưng
+    // lần này người dùng tin là đã chép đủ.
+    expect(SRC).toContain('Không đọc được mã định danh');
   });
 
   it('DID được hiện ra, không chỉ lấy về rồi bỏ đó', () => {

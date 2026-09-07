@@ -109,10 +109,23 @@ const SeedExportScreen = () => {
       if (list.length !== 24) {
         throw new Error(`Cụm từ không đúng 24 từ (nhận ${list.length})`);
       }
-      // DID đi CÙNG cụm từ — xem khối chú thích ở chỗ hiển thị bên dưới.
-      setDid(await currentUserDid());
+      // LỘ TRƯỚC, ĐỌC DID SAU — thứ tự này có chủ ý.
+      //
+      // Bản trước đặt `setDid(await currentUserDid())` TRÊN hai dòng này. Hệ quả:
+      // `currentUserDid` là `AsyncStorage.getItem` trần, và nếu nó ném thì `catch`
+      // ở dưới hiện "Lỗi" rồi người dùng KHÔNG BAO GIỜ thấy 24 từ — dù chip đã xác
+      // nhận xong và cụm từ đã dẫn xuất xong trong bộ nhớ. Một thao tác đọc PHỤ
+      // không được phép chặn thao tác CHÍNH.
       setWords(list);
       setRevealed(true);
+      // DID đi CÙNG cụm từ — xem khối chú thích ở chỗ hiển thị bên dưới. Ném ở
+      // đây thì rơi về nhánh "không đọc được mã định danh", và nhánh đó NÓI RA
+      // chứ không im lặng biến mất.
+      try {
+        setDid(await currentUserDid());
+      } catch {
+        setDid(null);
+      }
     } catch (e: any) {
       // Mã lỗi native đã phân biệt sẵn. Gộp hết thành một câu "thất bại" là bắt
       // người dùng đoán xem họ vừa tự huỷ, hay máy đang khoá tạm, hay khoá hỏng.
@@ -143,8 +156,18 @@ const SeedExportScreen = () => {
       {
         confirmText: 'Vẫn sao chép',
         onConfirm: () => {
-          Clipboard.setString(words.join(' '));
-          showInfo('Đã sao chép', 'Hãy dán vào nơi an toàn rồi xoá clipboard.');
+          // Chép CẢ DID khi có. Màn hình vừa nói với người dùng rằng 24 từ không
+          // đủ để đổi máy; nếu nút sao chép lại chỉ chép 24 từ thì chính nút đó
+          // dựng lại đúng cái thiếu mà màn hình vừa cảnh báo — và người dùng
+          // không có cách nào biết, vì clipboard không hiện ra cái nó đang giữ.
+          Clipboard.setString(did ? `${did}\n\n${words.join(' ')}` : words.join(' '));
+          showInfo(
+            'Đã sao chép',
+            did
+              ? 'Đã chép mã định danh và 24 từ. Hãy dán vào nơi an toàn rồi xoá clipboard.'
+              : 'Đã chép 24 từ. CHƯA có mã định danh — lấy thêm ở Tài khoản → Danh tính, ' +
+                'vì 24 từ không đủ để khôi phục trên máy mới.',
+          );
         },
       },
     );
@@ -282,7 +305,23 @@ const SeedExportScreen = () => {
                   không đủ. Dòng này không phải bí mật — gửi cho chính mình để giữ cũng được.
                 </Text>
               </View>
-            ) : null}
+            ) : (
+              /* KHÔNG được im lặng bỏ qua. `currentUserDid()` trả
+                 `Promise<string | null>`, nên "không có DID" là một trạng thái
+                 THẬT, không phải một lỗi. Bản trước vẽ `null` ở đây — và khi đó
+                 màn hình quay đúng về trạng thái trước lượt sửa này (24 từ, không
+                 một chữ nào về DID), chỉ khác một điều: lần này người dùng tin là
+                 họ đã chép đủ. Đó là cái vỏ im lặng ở dạng đắt nhất — nó không
+                 làm hỏng gì hôm nay, nó làm mất ví vào ngày đổi máy. */
+              <View style={[styles.didCard, styles.didCardThieu]}>
+                <Text style={styles.didLabel}>Không đọc được mã định danh</Text>
+                <Text style={styles.didNote}>
+                  24 từ này <Text style={styles.bold}>chưa đủ</Text> để khôi phục trên máy
+                  mới. Vào Tài khoản → Danh tính lấy mã định danh và chép nó cùng 24 từ
+                  trước khi rời màn này.
+                </Text>
+              </View>
+            )}
 
             <TouchableOpacity style={styles.copyBtn} onPress={handleCopy}>
               <Icon name="content-copy" size={15} color={COLORS.accent} />
@@ -351,6 +390,9 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: COLORS.border,
     padding: 14, marginBottom: 14,
   },
+  // Thẻ ở nhánh THIẾU DID phải trông khác thẻ ở nhánh có DID. Cùng một hình thì
+  // người dùng lướt qua và tưởng đã đọc rồi — mà đây đúng là thẻ họ phải đọc.
+  didCardThieu: { borderColor: COLORS.warning, borderWidth: 2 },
   didLabel: { fontSize: 12, fontWeight: '800', color: COLORS.text, marginBottom: 6 },
   // Chữ đều nét: DID là chuỗi hex dài, người dùng phải chép TAY ra giấy nên
   // `0`/`O` và `1`/`l` phải phân biệt được bằng mắt.

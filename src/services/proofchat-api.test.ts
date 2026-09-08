@@ -81,7 +81,11 @@ import {
   clearTokens,
   ProofChatApiError,
 } from './proofchat-api';
-import { connectProofChat, resetProofChatSessionBackoff } from './proofchatAuthBridge';
+import {
+  connectProofChat,
+  ensureProofChatSession,
+  resetProofChatSessionBackoff,
+} from './proofchatAuthBridge';
 
 const mockedFlag = isProofChatBackendEnabled as jest.Mock;
 
@@ -355,6 +359,82 @@ describe('request interceptor — bearer', () => {
     const fn = requestInterceptors[0];
     const cfg = await fn({ headers: {} });
     expect(cfg.headers.Authorization).toBeUndefined();
+  });
+});
+
+describe('ensureProofChatSession — gộp lượt gọi song song', () => {
+  // `ChatHomeScreen` bắn `loadConversations()` và `loadInvitations()` LIỀN NHAU,
+  // không chờ nhau. Cả hai đi qua interceptor, và khi kho chưa có token thì cả hai
+  // gọi provider này. Phép gộp phải biến hai lượt đó thành MỘT lần đăng nhập —
+  // hai lần `POST /auth/phoenixkey/login` thì lượt sau có thể thu hồi token của
+  // lượt trước, và người dùng mất phiên ngay khi vừa mở màn.
+  it('hai lượt gọi CÙNG LÚC chỉ đăng nhập một lần', async () => {
+    await clearTokens();
+    mockGetPhoenixSession.mockResolvedValue('phx-abc');
+    mockPost.mockResolvedValue({
+      data: { data: { accessToken: 'AA', refreshToken: 'RR' }, statusCode: 201 },
+    });
+
+    // KHÔNG await từng cái — bắn cùng lúc, đúng hình dạng ở màn hình.
+    const [a, b] = await Promise.all([ensureProofChatSession(), ensureProofChatSession()]);
+
+    const soLanLogin = mockPost.mock.calls.filter(
+      (c) => c[0] === '/auth/phoenixkey/login',
+    ).length;
+    expect(soLanLogin).toBe(1);
+    expect(a).toBe('AA');
+    expect(b).toBe('AA');
+  });
+
+  it('đã có token trong kho → không đăng nhập lần nào', async () => {
+    // Ca đối chứng cho bài trên: chứng minh phép đếm `soLanLogin` có chạy thật và
+    // biết trả về 0, chứ không phải luôn ra 1 vì lý do nào khác.
+    store['proofchat_access_token'] = 'CO-SAN';
+    const t = await ensureProofChatSession();
+    const soLanLogin = mockPost.mock.calls.filter(
+      (c) => c[0] === '/auth/phoenixkey/login',
+    ).length;
+    expect(soLanLogin).toBe(0);
+    expect(t).toBe('CO-SAN');
+  });
+});
+
+describe('gộp lượt đăng nhập — cả HAI đường vào', () => {
+  // `connectProofChat` có hai đường vào và chúng chạy chồng nhau thật:
+  // `proofchatService.init()` gọi thẳng vào nó mỗi lần mở màn Trò chuyện, còn
+  // interceptor REST đi qua `ensureProofChatSession`. Phép gộp đặt ở lớp ngoài
+  // (`ensureProofChatSession`) chỉ chặn được đường thứ hai — bài này đo ra 2 lượt
+  // login trước khi khoá được dời vào `connectProofChat`.
+  it('init gọi thẳng + interceptor cùng lúc ⇒ vẫn MỘT lần đăng nhập', async () => {
+    await clearTokens();
+    mockGetPhoenixSession.mockResolvedValue('phx-abc');
+    mockPost.mockResolvedValue({
+      data: { data: { accessToken: 'AA', refreshToken: 'RR' }, statusCode: 201 },
+    });
+
+    await Promise.all([connectProofChat(), ensureProofChatSession()]);
+
+    const soLanLogin = mockPost.mock.calls.filter(
+      (c) => c[0] === '/auth/phoenixkey/login',
+    ).length;
+    expect(soLanLogin).toBe(1);
+  });
+
+  it('hai lượt init CÙNG LÚC cũng chỉ một lần', async () => {
+    await clearTokens();
+    mockGetPhoenixSession.mockResolvedValue('phx-abc');
+    mockPost.mockResolvedValue({
+      data: { data: { accessToken: 'AA', refreshToken: 'RR' }, statusCode: 201 },
+    });
+
+    const [x, y] = await Promise.all([connectProofChat(), connectProofChat()]);
+
+    const soLanLogin = mockPost.mock.calls.filter(
+      (c) => c[0] === '/auth/phoenixkey/login',
+    ).length;
+    expect(soLanLogin).toBe(1);
+    expect(x.status).toBe('connected');
+    expect(y.status).toBe('connected');
   });
 });
 

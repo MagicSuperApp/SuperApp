@@ -565,7 +565,7 @@ const TreeEnrollScreen: React.FC = () => {
     // Hỏng thì phải NÓI. Im lặng ở đây là người dùng bấm, không thấy gì đổi, rồi
     // bấm tiếp — mỗi lần một lượt ghi hỏng nữa mà màn vẫn câm.
     if (!r.ok || r.data?.ok === false) {
-      setSpeciesError(r.error?.detail ?? 'Chưa lưu được giống cây. Thử lại giúp.');
+      setSpeciesError(r.error?.detail ?? 'Chưa lưu được loài cây. Thử lại giúp.');
       return;
     }
     setSpeciesChosen(speciesId);
@@ -1182,7 +1182,7 @@ const TreeEnrollScreen: React.FC = () => {
                   không tích sẵn, vì chính cú chạm này là nhãn máy chủ học theo. */}
               {speciesChosen ? (
                 <Text style={styles.successHint}>
-                  Đã ghi giống: {speciesNames[speciesChosen] ?? speciesChosen}
+                  Đã ghi loài: {speciesNames[speciesChosen] ?? speciesChosen}
                 </Text>
               ) : speciesSuggest && speciesOrder.length > 0 ? (
                 <View style={styles.speciesConfirm}>
@@ -1191,7 +1191,7 @@ const TreeEnrollScreen: React.FC = () => {
                     <Text style={styles.speciesConfirmGuess}>
                       {speciesNames[speciesSuggest.species] ?? speciesSuggest.species}
                     </Text>
-                    {'. '}Chạm để xác nhận, hoặc chọn đúng giống nếu máy đoán sai.
+                    {'. '}Chạm để xác nhận, hoặc chọn đúng loài nếu máy đoán sai.
                   </Text>
                   <View style={styles.speciesConfirmRow}>
                     {speciesOrder.map((id) => (

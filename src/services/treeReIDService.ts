@@ -517,7 +517,13 @@ export interface CaptureOrientation {
  * MÁY CHỦ CÓ NHẬN VÀ CÓ LƯU. Đo 2026-09-08 (phía OriLife, trên `origin/main` của
  * họ): `heading_ref` nằm trong danh sách cho-phép-theo-tên `_POSE_EXTRA_ALLOWED`
  * (`server.py:411`), được chuẩn hoá về `"true" | "magnetic"`; ảnh có `heading` mà
- * không khai gốc thì máy chủ ghi thẳng `"unknown"` chứ không để trống.
+ * không khai gốc thì máy chủ ghi thẳng `"unknown"` chứ không để trống. Chỗ GHI
+ * xuống siêu dữ liệu ảnh: `capture_meta.py:177`
+ * (`"heading_ref": normalize_heading_ref(form.get("heading_ref"))`).
+ *
+ * Hai con trỏ trên là số dòng ở kho BÊN KIA tại ngày đo — chúng sẽ trôi. Khi cần
+ * kiểm lại thì tìm theo TÊN (`_POSE_EXTRA_ALLOWED`, `normalize_heading_ref`), đừng
+ * mở theo số dòng: con trỏ số dòng sau khi trôi vẫn trỏ vào một dòng CÓ THẬT.
  *
  * ⛔ Chỗ này TỪNG mang một cảnh báo "MÁY CHỦ CHƯA CÓ CHỖ NHẬN — trường này đang bị
  * bỏ im lặng". Cảnh báo đó **sai** ở thời điểm ai đó đọc nó, và đã chết lặng lẽ:

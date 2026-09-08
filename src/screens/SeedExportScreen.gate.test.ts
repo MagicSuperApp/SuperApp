@@ -121,28 +121,53 @@ describe('C — DID đi cùng 24 từ', () => {
   });
 });
 
-describe('D — không Activity nào mở ra ngoài mà thiếu intent-filter', () => {
-  // Thiếu <intent-filter> chỉ chặn intent NGẦM ĐỊNH. Một app khác trên cùng máy
-  // vẫn gọi được bằng intent TƯỜNG MINH. Nên `exported="true"` mà không có
-  // intent-filter là một cửa mở mà không ai đọc manifest nhận ra là cửa.
-  it('FarmDetailActivity đóng với bên ngoài', () => {
-    const khoi = MANIFEST.indexOf('android:name=".FarmDetailActivity"');
-    expect(khoi).toBeGreaterThan(-1);
-    // Thẻ này TỰ ĐÓNG (`/>`), không có `</activity>`. Bản đầu của bài kiểm cắt
-    // tới `</activity>` nên `indexOf` trả -1, `slice` ra chuỗi RỖNG, và phép so
-    // sau đó đo một chuỗi rỗng — tức nó không đo gì mà vẫn cho ra một kết luận.
-    const het = MANIFEST.indexOf('>', khoi);
-    expect(het).toBeGreaterThan(khoi);
-    const than = MANIFEST.slice(khoi, het + 1);
-    expect(than).toContain('android:exported="false"');
+describe('D — đúng MỘT root React, và đúng MỘT activity', () => {
+  // Bản trước của khối này canh một câu YẾU HƠN: `.FarmDetailActivity` phải mang
+  // `exported="false"`. Câu đó đóng cửa ngoài nhưng để nguyên cái gốc — Activity
+  // ấy nạp một ROOT REACT THỨ HAI, dựng `Stack.Navigator` riêng nên KHÔNG đi qua
+  // `AuthGate`, và nằm ngoài lưới chống-trắng-màn ở `index.js`. Một cửa đã khoá
+  // vẫn là một cửa. Activity đã bị gỡ hẳn; bài kiểm đổi theo, sang câu MẠNH HƠN:
+  // nó không được quay lại.
+  it('không còn FarmDetailActivity trong manifest', () => {
+    // Bắt đúng dạng KHAI BÁO, không bắt cái tên trần: chú thích trong manifest
+    // có nhắc tên Activity cũ để nói vì sao nó bị gỡ, và một bài kiểm bắt tên
+    // trần sẽ đỏ vì chính lời giải thích rằng thứ đó không còn.
+    expect(MANIFEST).not.toContain('android:name=".FarmDetailActivity"');
+    // Ca đối chứng: `MANIFEST` có nội dung thật, không phải chuỗi rỗng — nếu
+    // đường dẫn tệp sai thì `not.toContain` cũng đạt, và bài này không đo gì.
+    expect(MANIFEST).toContain('android:name=".MainActivity"');
+    // Và khai bằng tên đầy đủ cũng không lọt: bài kế đếm số activity, phải là 1.
+  });
+
+  it('manifest chỉ khai đúng MỘT activity', () => {
+    const soActivity = (MANIFEST.match(/<activity[\s>]/g) || []).length;
+    expect(soActivity).toBe(1);
+  });
+
+  it('không đăng ký root React thứ hai ở tầng JS', () => {
+    // Phía Android gỡ Activity là chưa đủ: `registerComponent` bên JS là nửa kia
+    // của cùng một cơ chế, và nó sống được một mình — ai đó thêm lại Activity là
+    // root thứ hai chạy lại ngay, không phải viết thêm dòng JS nào.
+    const NAV = fs.readFileSync(
+      path.join(__dirname, '../navigation/index.tsx'),
+      'utf8',
+    );
+    expect(NAV).toContain('createStackNavigator'); // ca đối chứng: đọc đúng tệp
+    expect(NAV).not.toContain('AppRegistry.registerComponent');
   });
 
   it('chỉ đúng MỘT activity được mở ra ngoài, và nó là màn khởi chạy', () => {
+    // Thiếu <intent-filter> chỉ chặn intent NGẦM ĐỊNH. Một app khác trên cùng máy
+    // vẫn gọi được bằng intent TƯỜNG MINH. Nên `exported="true"` mà không có
+    // intent-filter là một cửa mở mà không ai đọc manifest nhận ra là cửa.
     const soMo = (MANIFEST.match(/android:exported="true"/g) || []).length;
     expect(soMo).toBe(1);
-    // Ca đối chứng: phép đếm trên có chạy thật, không phải khớp vào chuỗi rỗng.
-    const soDong = (MANIFEST.match(/android:exported="false"/g) || []).length;
-    expect(soDong).toBeGreaterThan(0);
+    // Ca đối chứng cho phép đếm: mọi thành phần khai trong manifest phải khai
+    // `android:exported` tường minh. Số thành phần và số lần khai phải bằng nhau
+    // — lệch là có thành phần khai thiếu, hoặc phép đếm đang khớp vào chỗ khác.
+    const soThanhPhan = (MANIFEST.match(/<(activity|service|receiver|provider)[\s>]/g) || []).length;
+    const soKhai = (MANIFEST.match(/android:exported="(true|false)"/g) || []).length;
+    expect(soKhai).toBe(soThanhPhan);
 
     const khoi = MANIFEST.indexOf('android:name=".MainActivity"');
     const than = MANIFEST.slice(khoi, MANIFEST.indexOf('</activity>', khoi));

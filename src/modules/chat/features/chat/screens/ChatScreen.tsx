@@ -60,6 +60,7 @@ import { isProofChatBackendEnabled } from '../../../../../services/proofchat-api
 import { sendText, syncConversation } from '../../../../../services/proofchatService';
 import chatSocket from '../../../../../services/chatSocket';
 import { showWarning } from '../../../../../utils/alert';
+import { useCapabilityLive } from '../../../../../config/useCapabilityLive';
 
 const ChatScreen: React.FC = () => {
   const navigation = useNavigation<any>();
@@ -91,7 +92,13 @@ const ChatScreen: React.FC = () => {
   const [actionTarget, setActionTarget] = useState<Message | null>(null);
   const [infoOpen, setInfoOpen] = useState(false);
 
-  const backendReady = isProofChatBackendEnabled();
+  // Phải ĐĂNG KÝ nghe cổng runtime, không chỉ đọc một phát lúc render như trước:
+  // `isProofChatBackendEnabled()` đọc `liveState` ĐỒNG BỘ, nên nếu màn này gắn trước
+  // khi probe /health xong (mở app rồi vào thẳng một phòng là đúng ca đó), nó chốt
+  // `false` và KHÔNG có gì bắt nó vẽ lại — ô nhập kẹt "Chưa kết nối máy chủ" tới khi
+  // thoát ra vào lại. ChatHomeScreen đã nối hook này từ đầu; đây là chỗ bị bỏ sót.
+  const proofchatLive = useCapabilityLive('proofchat');
+  const backendReady = proofchatLive && isProofChatBackendEnabled();
 
   // ── Nạp phòng ────────────────────────────────────────────────────────────
   useEffect(() => {

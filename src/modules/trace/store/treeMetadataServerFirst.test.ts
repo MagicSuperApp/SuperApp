@@ -58,7 +58,12 @@ describe('hồ sơ cây — thunk và câu báo phải nói cùng một chuyện
 
   it('máy chủ trượt thì thunk BỊ TỪ CHỐI, không âm thầm ghi cục bộ rồi báo xong', () => {
     const body = thunkBody();
-    expect(body).toContain('rejectWithValue');
+    // Khớp LỜI GỌI, không khớp cái tên. `rejectWithValue` còn đứng ở dòng khai
+    // tham số, nên `toContain('rejectWithValue')` vẫn xanh sau khi lời gọi bị gỡ
+    // hẳn — đo được bằng đột biến, và đó đúng là một ô xanh rỗng.
+    expect(body).toMatch(/return\s+rejectWithValue\s*\(/);
+    // Và nó phải nằm trong nhánh máy chủ trượt, không phải một lối thoát nào khác.
+    expect(body).toMatch(/if\s*\(!res\.ok\)\s*\{[\s\S]{0,160}return\s+rejectWithValue\s*\(/);
   });
 
   it('vì đã gọi máy chủ, câu báo KHÔNG được nói dữ liệu chỉ nằm trên máy này', () => {

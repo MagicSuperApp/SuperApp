@@ -81,7 +81,7 @@ import {
   clearTokens,
   ProofChatApiError,
 } from './proofchat-api';
-import { connectProofChat } from './proofchatAuthBridge';
+import { connectProofChat, resetProofChatSessionBackoff } from './proofchatAuthBridge';
 
 const mockedFlag = isProofChatBackendEnabled as jest.Mock;
 
@@ -91,6 +91,10 @@ beforeEach(() => {
   mockGet.mockReset();
   mockRequest.mockReset();
   mockGetPhoenixSession.mockReset();
+  // `connectProofChat` giữ mốc "lần hỏng gần nhất" ở phạm vi module để khỏi hỏi
+  // vân tay liên tục trong app thật. Trong test thì mốc đó rỉ từ ca này sang ca
+  // sau: ca trước hỏng ⇒ ca sau nhận lại kết quả hỏng cũ mà không gọi máy chủ.
+  resetProofChatSessionBackoff();
 });
 
 describe('feature flag', () => {

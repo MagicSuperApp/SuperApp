@@ -29,6 +29,32 @@ export type ConnectResult =
   | { status: 'error'; message: string };
 
 /**
+ * Nghỉ giữa hai lần dựng phiên SAU KHI thất bại.
+ *
+ * VÌ SAO PHẢI CÓ: đường dựng phiên đi qua `ensurePhoenixSession`, và bước ký ở đó
+ * BẬT HỘP VÂN TAY của hệ điều hành ("Activate the wallet"). Hàm này lại được gọi
+ * từ hai phía cùng lúc: `proofchatService.init()` mỗi lần mở màn Trò chuyện, và
+ * interceptor REST ở MỌI lượt gọi cần-auth khi kho chưa có token. Nên khi phiên
+ * PhoenixKey đang hỏng (đo trên máy thật 2026-09-08: `POST /auth/session/{id}/approve`
+ * trả 401 `Unauthorized — Missing Bearer token`), người dùng nhận một chuỗi hộp
+ * vân tay liên tiếp mà lần nào xác thực xong cũng chỉ để nhận lại đúng lỗi đó.
+ * Hỏi vân tay cho một lượt CHẮC CHẮN hỏng là cái giá không được phép trả.
+ *
+ * Nghỉ 60 giây: phiên sống lại thì lượt kế trong vòng một phút vẫn tự chạy. Người
+ * dùng bấm "Thử lại"/kéo-xuống muốn thử NGAY thì gọi `resetProofChatSessionBackoff()`
+ * — hành-động cố ý thì được quyền hỏi vân tay.
+ */
+const RETRY_COOLDOWN_MS = 60_000;
+let _lastFailureAt = 0;
+let _lastFailure: ConnectResult | null = null;
+
+/** Xoá thời gian nghỉ — dùng khi người dùng CỐ Ý yêu cầu thử lại. */
+export const resetProofChatSessionBackoff = (): void => {
+  _lastFailureAt = 0;
+  _lastFailure = null;
+};
+
+/**
  * Bảo đảm có phiên ProofChat hợp lệ. Idempotent: nếu đã có accessToken thì không
  * gọi lại login. Không bao giờ throw — trả ConnectResult để UI quyết định hiển thị.
  */
@@ -55,6 +81,13 @@ export const connectProofChat = async (): Promise<ConnectResult> => {
     await clearTokens();
   }
 
+  // Từ đây trở xuống là phần ĐẮT (có thể bật hộp vân tay + đi mạng). Đang trong
+  // thời gian nghỉ thì trả lại NGUYÊN VĂN kết quả hỏng lần trước — nơi gọi vẫn
+  // phân biệt được 'no-phoenix-session' với 'error', chỉ là không hỏi lại vân tay.
+  if (_lastFailure && Date.now() - _lastFailureAt < RETRY_COOLDOWN_MS) {
+    return _lastFailure;
+  }
+
   let phoenixSession = await getPhoenixSessionToken();
   if (!phoenixSession) {
     // Mobile-only chưa có PhoenixKey session token (chưa self-pair) → tự ký lấy rồi
@@ -62,7 +95,7 @@ export const connectProofChat = async (): Promise<ConnectResult> => {
     phoenixSession = await ensurePhoenixSession();
   }
   if (!phoenixSession) {
-    return { status: 'no-phoenix-session' };
+    return noteFailure({ status: 'no-phoenix-session' });
   }
 
   try {
@@ -71,12 +104,60 @@ export const connectProofChat = async (): Promise<ConnectResult> => {
     // KHÔNG đóng dấu bừa: lượt sau sẽ coi token là vô chủ và đăng nhập lại. Đăng
     // nhập thừa một lượt rẻ hơn nhận nhầm token của người khác là của mình.
     if (did) await setTokenOwnerDid(did);
+    resetProofChatSessionBackoff();
     return { status: 'connected', alreadyHadSession: false };
   } catch (err) {
     const message =
       err instanceof ProofChatApiError ? err.message : 'Không kết nối được ProofChat';
-    return { status: 'error', message };
+    return noteFailure({ status: 'error', message });
   }
+};
+
+/** Ghi mốc hỏng để bật thời gian nghỉ, rồi trả lại đúng kết quả đó cho nơi gọi. */
+const noteFailure = (res: ConnectResult): ConnectResult => {
+  _lastFailureAt = Date.now();
+  _lastFailure = res;
+  console.warn(
+    `[ProofChat] chưa dựng được phiên: ${res.status} — nghỉ ${RETRY_COOLDOWN_MS / 1000}s ` +
+      'trước khi thử lại (tránh hỏi vân tay liên tục).',
+  );
+  return res;
+};
+
+/**
+ * Provider phiên cho interceptor của `proofchat-api` (đăng ký ở bootstrap).
+ *
+ * Gộp lời gọi song song vào MỘT lần đăng nhập: màn danh sách bắn
+ * `loadConversations` + `loadInvitations` cùng lúc, không gộp thì thành hai lượt
+ * POST /auth/phoenixkey/login và lượt sau có thể thu hồi token của lượt trước.
+ *
+ * KHÔNG ném: trả `null` khi chưa đủ điều kiện (chưa có danh tính PhoenixKey, máy
+ * chủ chối) để lượt gọi đi tiếp mà không Bearer rồi nhận lỗi thật của nó, thay vì
+ * biến mọi lỗi thành lỗi đăng nhập.
+ */
+let _ensureInflight: Promise<string | null> | null = null;
+export const ensureProofChatSession = async (): Promise<string | null> => {
+  if (_ensureInflight) return _ensureInflight;
+
+  // Lượt trước có thể đã dựng xong phiên rồi — đọc kho trước khi đi tiếp.
+  const stored = await getAccessToken().catch(() => null);
+  if (stored) return stored;
+
+  _ensureInflight = (async () => {
+    try {
+      // Thời gian nghỉ sau khi hỏng nằm trong `connectProofChat` — nó là chỗ duy
+      // nhất cả hai đường (init màn chat + interceptor REST) đều đi qua.
+      const res = await connectProofChat();
+      if (res.status !== 'connected') return null;
+      return await getAccessToken();
+    } catch (err) {
+      console.warn(`[ProofChat] dựng phiên ném lỗi: ${(err as Error)?.message ?? err}`);
+      return null;
+    } finally {
+      _ensureInflight = null;
+    }
+  })();
+  return _ensureInflight;
 };
 
 /**

@@ -34,13 +34,13 @@
 export const IDENTITY_STRINGS = {
   // ── Màn hỏi trước rồi rẽ ──────────────────────────────────────────────────
   'identity.gate.title': {
-    vi: 'Bạn đã từng dùng app nào của hệ này chưa?',
+    vi: 'Bạn đã từng dùng app nào cùng nhóm với app này chưa?',
     en: 'Have you used any app in this system before?',
     zh: '你以前用过本系统的任何应用吗？',
     ja: 'このシステムのアプリを使ったことがありますか？',
   },
   'identity.gate.intro': {
-    vi: 'Chọn đúng dòng nói về bạn. Chọn nhầm là máy tạo cho bạn một danh tính THỨ HAI, và vườn cũ sẽ không hiện ra.',
+    vi: 'Chọn đúng dòng nói về bạn. Chọn nhầm thì máy lập cho bạn một tài khoản THỨ HAI, và vườn cũ sẽ không hiện ra.',
     en: 'Pick the line that describes you. The wrong pick creates a SECOND identity for you, and your old farm will not appear.',
     zh: '请选择符合你情况的一项。选错会为你新建第二个身份，原来的果园就不会出现。',
     ja: 'ご自身に当てはまるものを選んでください。誤って選ぶと二つ目の本人情報が作られ、以前の農園は表示されません。',
@@ -54,7 +54,7 @@ export const IDENTITY_STRINGS = {
     ja: 'はじめて使います',
   },
   'identity.gate.new.body': {
-    vi: 'Chưa từng dùng app nào của hệ này. Máy sẽ tạo một danh tính mới ngay trên điện thoại của bạn.',
+    vi: 'Chưa dùng app nào cùng nhóm. Điện thoại này sẽ lập cho bạn một tài khoản mới.',
     en: 'Never used any app in this system. A new identity will be created right on your phone.',
     zh: '从未用过本系统的任何应用。将直接在你的手机上创建一个新身份。',
     ja: 'このシステムのアプリを使ったことがありません。新しい本人情報をこの端末で作成します。',
@@ -68,13 +68,13 @@ export const IDENTITY_STRINGS = {
     ja: '機種変更した、またはこのアプリを入れ直した',
   },
   'identity.gate.sameApp.body': {
-    vi: 'Vẫn là app này, chỉ khác máy. Nhập cụm 24 từ để mở lại đúng danh tính cũ — vườn, cây và ví theo bạn sang máy mới.',
+    vi: 'Vẫn là app này, chỉ khác máy. Nhập cụm 24 từ để mở lại đúng tài khoản cũ — vườn, cây và ví theo bạn sang máy mới.',
     en: 'Same app, different device. Enter your 24-word phrase to reopen the same identity — your farms, trees and wallet come with you.',
     zh: '还是这个应用，只是换了设备。输入 24 个助记词即可重新打开原来的身份 —— 果园、树木和钱包都会跟着过来。',
     ja: '同じアプリで端末だけが違う状態です。24 語のフレーズを入力すると同じ本人情報を開き直せます。農園・樹木・ウォレットもそのまま引き継がれます。',
   },
   'identity.gate.sameApp.cost': {
-    vi: 'Cái giá: mọi máy khác đang dùng danh tính này sẽ bị đăng xuất ngay.',
+    vi: 'Bạn sẽ mất gì: mọi máy khác đang dùng tài khoản này bị thoát ra ngay.',
     en: 'The cost: every other device using this identity is signed out immediately.',
     zh: '代价：正在使用该身份的其他设备会立即被登出。',
     ja: '代償：この本人情報を使っている他のすべての端末は直ちにサインアウトされます。',
@@ -82,19 +82,19 @@ export const IDENTITY_STRINGS = {
 
   // Lối C — CÙNG máy, APP KHÁC
   'identity.gate.otherApp.title': {
-    vi: 'Máy này đang có một app khác của hệ',
+    vi: 'Máy này đang có một app khác cùng nhóm',
     en: 'This phone already has another app from this system',
     zh: '这台手机上已有本系统的另一个应用',
     ja: 'この端末にシステム内の別のアプリが入っている',
   },
   'identity.gate.otherApp.body': {
-    vi: 'Hai app giữ khoá ở hai chỗ tách biệt trên máy, nên app này không nhìn thấy khoá của app kia. Đường duy nhất hôm nay là nhập lại cụm 24 từ.',
+    vi: 'Mỗi app cất chìa khoá một chỗ riêng trong máy, app này không thấy chìa của app kia. Hiện giờ chỉ có một cách: nhập lại cụm 24 từ.',
     en: 'The two apps keep their keys in separate places on the device, so this app cannot see the other app’s key. Today the only way across is to re-enter the 24-word phrase.',
     zh: '两个应用把密钥存放在设备上彼此隔离的位置，所以本应用看不到另一个应用的密钥。目前唯一的办法是重新输入 24 个助记词。',
     ja: '二つのアプリは端末内の別々の場所に鍵を保管するため、このアプリは別アプリの鍵を見られません。現在の唯一の方法は 24 語のフレーズを入力し直すことです。',
   },
   'identity.gate.otherApp.cost': {
-    vi: 'Cái giá: app kia trên chính máy này sẽ bị đăng xuất, và muốn dùng lại thì phải nhập 24 từ ở đó.',
+    vi: 'Bạn sẽ mất gì: app kia trên chính máy này bị thoát ra, muốn dùng lại phải nhập 24 từ ở bên đó.',
     en: 'The cost: the other app on this same phone is signed out, and getting back into it means entering the 24 words there.',
     zh: '代价：本机上的另一个应用会被登出，想继续使用就得在那边重新输入 24 个助记词。',
     ja: '代償：同じ端末の別アプリはサインアウトされ、使い直すにはそちらで 24 語を入力する必要があります。',
@@ -102,7 +102,7 @@ export const IDENTITY_STRINGS = {
   // Đường "app cũ ký phê duyệt" chưa có. Nói thẳng là đích tạm, đừng để người
   // dùng tưởng đây là đường riêng cho ca C.
   'identity.gate.otherApp.temporary': {
-    vi: 'Chưa có đường nhờ app cũ xác nhận hộ — hôm nay lối này dẫn sang chính màn nhập 24 từ.',
+    vi: 'Cách nhờ app cũ xác nhận hộ thì chưa làm xong. Nên chọn dòng này cũng ra màn nhập 24 từ.',
     en: 'There is no “ask the old app to approve” path yet — today this leads to the same 24-word screen.',
     zh: '目前还没有“由旧应用确认”的通道 —— 这条路今天会带你到同一个 24 助记词页面。',
     ja: '「旧アプリに承認してもらう」経路はまだありません。今はこの選択も同じ 24 語入力画面に進みます。',
@@ -123,13 +123,13 @@ export const IDENTITY_STRINGS = {
     ja: 'この端末をなくしたとき、農園を取り戻せるものはひとつだけです',
   },
   'identity.backup.body': {
-    vi: 'Đó là cụm 24 từ của riêng bạn. Không máy chủ nào giữ hộ, và không ai cấp lại được. Xem và cất giữ bây giờ, hoặc để sau — tuỳ bạn.',
+    vi: 'Đó là cụm 24 từ của riêng bạn. Không ai giữ hộ, và không ai cấp lại được. Xem và cất giữ bây giờ, hoặc để sau — tuỳ bạn.',
     en: 'It is your own 24-word phrase. No server keeps a copy, and nobody can issue a new one. View and store it now, or later — your call.',
     zh: '那就是你自己的 24 个助记词。没有服务器代为保管，也没有人能补发。现在查看并保存，或者以后再说 —— 由你决定。',
     ja: 'それはあなた自身の 24 語のフレーズです。控えを預かるサーバーはなく、再発行できる人もいません。今すぐ確認して保管しても、後回しにしても構いません。',
   },
   'identity.backup.now': {
-    vi: 'Lưu bản sao lưu ngay',
+    vi: 'Xem 24 từ và cất giữ ngay',
     en: 'Save my backup now',
     zh: '立即保存备份',
     ja: '今すぐバックアップを保存',

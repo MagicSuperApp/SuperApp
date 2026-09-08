@@ -533,10 +533,10 @@ const LoginScreen = () => {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.signUpTitle} allowFontScaling={false}>
-              Bạn đã từng dùng app nào của hệ này chưa?
+              Bạn đã từng dùng app nào cùng nhóm với app này chưa?
             </Text>
             <Text style={styles.signUpSub} allowFontScaling={false}>
-              Người mới, đổi điện thoại, hay đang có app khác của hệ trên máy này — ba đường khác nhau, chọn ở đây
+              Người mới, đổi điện thoại, hay máy này đang có app khác cùng nhóm — ba đường khác nhau, chọn ở đây
             </Text>
           </View>
           <Icon name="arrow-right" size={18} color={BLUE.primary} />

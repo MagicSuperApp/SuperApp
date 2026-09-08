@@ -39,6 +39,54 @@ const asciiToHex = (s: string): string => {
   return out;
 };
 
+/**
+ * LÝ DO HỎNG GẦN NHẤT — để chỗ hỏng thôi im.
+ *
+ * Hàm dưới đây là best-effort có chủ ý: nó nuốt lỗi và trả `null` để một phiên
+ * chưa dựng được không làm sập màn nào. Nhưng "không sập" đã bị hiểu thành
+ * "không nói gì": mọi nơi gọi chỉ nhận `null`, nên khi tự-ghép-cặp hỏng thì ví
+ * hiện số dư `—`, danh sách phòng trống, và KHÔNG chỗ nào nói vì sao. Đúng cái
+ * bẫy mà chú thích đầu tệp này ghi là lý do nó ra đời ("đăng-ký ví Standard fail
+ * câm → /wallet/all rỗng → UI không hiện ví") — chỉ là lần này câm ở tầng trên.
+ *
+ * Nên giữ nguyên hợp đồng (vẫn không ném, vẫn trả `null`) và ghi thêm lý do ra
+ * một chỗ đọc được. Màn nào đang phải vẽ một khoảng trống thì hỏi chỗ này để nói
+ * cho người dùng biết đang chờ gì.
+ *
+ * Đo 2026-09-08: bước hỏng là `approve` — `POST /auth/session/{id}/approve` trả
+ * 401 `Unauthorized — Missing Bearer token`. Đây là ràng buộc phía máy chủ
+ * (PhoenixKeyDID/PhoenixKey-Database#257), client không tự qua được.
+ */
+export interface PhoenixSessionFailure {
+  /** Bước chết: existing | identity | init | sign | approve | status. */
+  step: string;
+  code: number;
+  httpStatus: number;
+  message: string;
+  /** Mốc thời gian (ms) — màn hình dùng để không khoe lại lỗi quá cũ. */
+  at: number;
+}
+
+let lastFailure: PhoenixSessionFailure | null = null;
+
+/** Lý do lần dựng phiên gần nhất hỏng; `null` nếu chưa hỏng lần nào hoặc đã xong. */
+export const getLastPhoenixSessionFailure = (): PhoenixSessionFailure | null => lastFailure;
+
+/**
+ * Câu ngắn, người-đọc-được, cho lý do đang kẹt. `null` khi không có gì để nói.
+ * KHÔNG in mã lỗi kỹ thuật ra UI (OriLife §5) — mã đã nằm trong remote log rồi.
+ */
+export const describePhoenixSessionFailure = (): string | null => {
+  if (!lastFailure) return null;
+  if (lastFailure.httpStatus === 401 || lastFailure.httpStatus === 403) {
+    return 'Máy chủ danh tính chưa cho máy này mở phiên đăng nhập.';
+  }
+  if (lastFailure.httpStatus === 0) {
+    return 'Không nối được tới máy chủ danh tính.';
+  }
+  return 'Chưa mở được phiên đăng nhập với máy chủ danh tính.';
+};
+
 // Guard chống chạy TRÙNG: nhiều effect/màn gọi ensurePhoenixSession gần như đồng
 // thời → nếu không khoá, self-pair chạy 2 lần = 2 lần ký = 2 Face ID + 2 đăng-ký
 // ví (lần 2 dính 409). Gộp về 1 promise dùng chung khi đang bay.
@@ -68,13 +116,19 @@ async function ensurePhoenixSessionInner(opts: { force?: boolean }): Promise<str
   try {
     const existing = opts.force ? null : await getSessionToken();
     rLog.phoenixWallet.sessionStart(!!existing, !!opts.force);
-    if (existing) return existing;
+    if (existing) {
+      lastFailure = null;
+      return existing;
+    }
 
     step = 'identity';
     const did = await currentUserDid();
     const pubkey = await ownerPublicKey();
     rLog.phoenixWallet.sessionIdentity(!!did, !!pubkey);
-    if (!did || !pubkey) return null;
+    if (!did || !pubkey) {
+      noteFailure(step, -1, 0, 'Máy này chưa có danh tính để mở phiên.');
+      return null;
+    }
 
     step = 'init';
     const { sessionId, challenge, tempToken } = await phoenixKeyApi.session.init();
@@ -94,6 +148,17 @@ async function ensurePhoenixSessionInner(opts: { force?: boolean }): Promise<str
     // approve MINT token nhưng KHÔNG trả sessionToken trong response HTTP (backend
     // SessionApproveResponse chỉ có status + linkedDeviceToken; sessionToken chỉ qua SSE).
     step = 'approve';
+    if (__DEV__) {
+      // Chẩn đoán chuỗi canonical. Nhánh chữ ký này TRƯỚC ĐÂY chưa từng chạy thật:
+      // cửa 401 ở `approve` chặn trước nó, nên một sai lệch định dạng ở đây có thể
+      // đã nằm im từ đầu. In ra để đối chiếu với thứ máy chủ dựng lại. Không có bí
+      // mật nào ở đây — challenge là công khai, chữ ký chỉ dùng được một lần cho
+      // đúng session này, khoá riêng không rời Secure Enclave.
+      console.log('[pk_selfpair] message   =', JSON.stringify(message));
+      console.log('[pk_selfpair] pubkey    =', pubkey);
+      console.log('[pk_selfpair] signature =', signature);
+      console.log('[pk_selfpair] timestamp =', timestamp, '| domain =', SELF_PAIR_DOMAIN);
+    }
     const approveRes = await phoenixKeyApi.session.approve(sessionId, {
       userDid: did,
       publicKeyHex: pubkey,
@@ -110,18 +175,29 @@ async function ensurePhoenixSessionInner(opts: { force?: boolean }): Promise<str
     if (status?.sessionToken) {
       await setSessionToken(status.sessionToken);
       rLog.phoenixWallet.sessionDone(true);
+      lastFailure = null;
       return status.sessionToken;
     }
     rLog.phoenixWallet.sessionDone(false);
+    // Không ném, nhưng cũng KHÔNG có token — vẫn là một lần hỏng, phải ghi lại.
+    noteFailure(step, -1, 0, 'Máy chủ báo phiên chưa được duyệt.');
     return null;
   } catch (err) {
     // Chưa có danh tính / offline / backend từ chối → thử lại lần vào sau.
     // Log lỗi THẬT (code/httpStatus/message) để biết bước nào hỏng.
     if (err instanceof PhoenixKeyApiError) {
       rLog.phoenixWallet.sessionError(step, err.code, err.httpStatus, err.message);
+      noteFailure(step, err.code, err.httpStatus, err.message);
     } else {
-      rLog.phoenixWallet.sessionError(step, -1, 0, err instanceof Error ? err.message : String(err));
+      const message = err instanceof Error ? err.message : String(err);
+      rLog.phoenixWallet.sessionError(step, -1, 0, message);
+      noteFailure(step, -1, 0, message);
     }
     return null;
   }
+}
+
+/** Ghi lý do hỏng. Tách hàm để mọi nhánh `return null` đều đi qua một chỗ. */
+function noteFailure(step: string, code: number, httpStatus: number, message: string): void {
+  lastFailure = { step, code, httpStatus, message, at: Date.now() };
 }

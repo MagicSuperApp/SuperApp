@@ -134,10 +134,14 @@ export const IDENTITY_STRINGS = {
     zh: '立即保存备份',
     ja: '今すぐバックアップを保存',
   },
+  // Cố ý KHÔNG viết "Nhắc tôi sau": `seedBackupReminder.ts` mới có phần GHI mốc
+  // (`markSeedBackupDeferred`, gọi ở `SignUpCompleteScreen.tsx:166`) và phần XOÁ.
+  // Chưa mã nào ĐỌC mốc đó để nhắc, nên chữ "nhắc" là một lời hứa không ai giữ —
+  // và không phép kiểm nào bắt được kiểu hứa này. Đổi lại khi phần đọc có người gọi.
   'identity.backup.later': {
-    vi: 'Nhắc tôi sau',
-    en: 'Remind me later',
-    zh: '以后提醒我',
-    ja: 'あとで知らせて',
+    vi: 'Để sau',
+    en: 'Not now',
+    zh: '稍后再说',
+    ja: 'あとで',
   },
 };

@@ -300,6 +300,25 @@ export const getDeviceId = async (): Promise<string> => {
 const baseURL =
   ((PROOFCHAT_API_URL as string | undefined) ?? '').trim() || 'http://localhost:3000';
 
+// ── Lazy-login: tự lấy phiên khi có lượt gọi cần-auth mà kho chưa có token ──
+//
+// VÌ SAO CÓ: `ChatHomeScreen` bắn `loadConversations()` ngay khi đọc xong DID
+// (việc cục bộ, xong trong mấy mili-giây), trong khi `proofchatService.init()`
+// mới đang đi vòng PhoenixKey → POST /auth/phoenixkey/login (mấy trăm mili-giây
+// tới vài giây). Lượt GET /conversations vì thế ra khỏi máy KHÔNG có Bearer, máy
+// chủ trả 401, và màn hiện "Chưa tải được — kéo xuống để thử lại" trong khi máy
+// chủ vẫn sống. Đo trên máy thật 2026-09-08.
+//
+// Đây ĐÚNG hình dạng mà AladinWork đã giải xong: `setWorkSessionProvider`
+// (`modules/work/services/workApi.ts:64`). Dùng setter thay vì import thẳng
+// `proofchatAuthBridge` để cắt vòng import (bridge import ngược tệp này).
+let _sessionProvider: (() => Promise<string | null>) | null = null;
+export const setProofChatSessionProvider = (
+  fn: (() => Promise<string | null>) | null,
+): void => {
+  _sessionProvider = fn;
+};
+
 const client: AxiosInstance = axios.create({
   baseURL,
   timeout: 20_000,
@@ -312,7 +331,11 @@ type AuthableConfig = (AxiosRequestConfig | InternalAxiosRequestConfig) & {
 
 client.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
   if ((config as AuthableConfig).needsAuth) {
-    const token = await getAccessToken();
+    let token = await getAccessToken();
+    // Chưa có token → dựng phiên NGAY tại đây rồi mới đi tiếp, thay vì để lượt gọi
+    // ra ngoài trần và nhận 401. Provider tự gộp các lượt song song vào một lần
+    // đăng nhập, nên hai thunk bắn cùng lúc không thành hai lần login.
+    if (!token && _sessionProvider) token = await _sessionProvider();
     if (token) {
       config.headers = config.headers ?? {};
       (config.headers as Record<string, string>).Authorization = `Bearer ${token}`;

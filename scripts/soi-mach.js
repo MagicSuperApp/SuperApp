@@ -132,6 +132,23 @@ const noBaseline = new Set(
 const moiDut = chuaNoi.filter((s) => !noBaseline.has(s));
 const daNoiLai = [...noBaseline].filter((s) => !chuaNoi.includes(s));
 
+// Con số "chưa nối" gộp HAI thứ khác hẳn nhau, và gộp lại thì nó không nói được
+// thứ duy nhất đáng hỏi: hàm nào đã đi được nửa đường.
+//
+//   dở dang — phía TS ĐÃ có tên tương ứng, nhưng Swift chưa gọi symbol Rust.
+//             Đây là nợ THẬT: có người bắt đầu nối rồi dừng, và phía TS đang mang
+//             một cái tên gọi vào là hỏng.
+//   nội bộ  — không phía nào có tên tương ứng. Phần lớn là hàm nội bộ của crate,
+//             chưa từng định thành cầu. Nó nằm trong danh sách để đếm, không phải
+//             để ai đó thấy áy náy.
+//
+// Tính TẠI ĐÂY thay vì ghi nhãn tay vào tệp nợ: một nhãn viết tay già đi lặng lẽ
+// đúng vào ngày ai đó nối xong nửa còn lại, và không có gì báo. Con số này thì
+// sinh lại mỗi lượt chạy.
+const sangLacDa = (s) => s.replace(/^taad_/, '').replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
+const doDang = chuaNoi.filter((s) => new RegExp(`\\b${sangLacDa(s)}\\b`).test(tsSrc));
+const noiBo = chuaNoi.filter((s) => !doDang.includes(s));
+
 // ---- báo cáo ------------------------------------------------------------
 console.log('soi-mach — cầu native TaadEnclave');
 console.log(`  Kotlin @ReactMethod : ${kotlin.size}`);
@@ -143,6 +160,8 @@ if (Object.keys(MIEN_TRU).length) console.log(`  miễn trừ            : ${Obj
 console.log('');
 
 console.log(`  Rust chưa nối      : ${chuaNoi.length}/${rustSymbols.size} (nợ ghi trong ${BASELINE}: ${noBaseline.size})`);
+console.log(`     ├ dở dang       : ${doDang.length}${doDang.length ? '  ' + doDang.join(', ') : ''}`);
+console.log(`     └ nội bộ crate  : ${noiBo.length}`);
 console.log('');
 
 if (daNoiLai.length) {

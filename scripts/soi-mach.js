@@ -89,6 +89,49 @@ for (const f of fs.readdirSync(path.join(ROOT, P.rustDir))) {
 }
 const rustSymbols = bat(rustSrc, /#\[no_mangle\][\s\S]{0,120}?extern\s+"C"\s+fn\s+([A-Za-z0-9_]+)/g);
 
+// ---- trạng thái thứ BA: KHÔNG ĐO ĐƯỢC -----------------------------------
+// Mọi phép kiểm dưới đây suy ra từ bốn tập trên. Một tập RỖNG không làm phép kiểm
+// nào đỏ — nó làm phép kiểm đó ngừng chạy, im lặng. Bốn tập cùng rỗng thì mọi vòng
+// lặp không chạy lần nào và cổng in ra câu khẳng định mạnh nhất nó có:
+//
+//     ✅ Mạch liền: 0 phương thức đủ cả 4 phía và đều chạm Rust.
+//
+// rồi thoát 0. Đó không phải "ổn", đó là "tôi không biết" nói bằng giọng của "ổn".
+//
+// Và nó KHÔNG cần ai phá hoại mới xảy ra: mỗi tập được gom bằng một regex khớp một
+// cách viết cụ thể. Di trú sang TurboModule là `@ReactMethod` biến mất khỏi Kotlin,
+// `@objc(...)` biến mất khỏi Swift, `RCT_EXTERN_METHOD` biến mất khỏi ObjC, interface
+// TS đổi tên theo codegen — bốn tệp vẫn còn đó nên `readFileSync` không ném, không
+// nhánh lỗi nào chạy. Đổi `tabWidth` 2→4 trong Prettier là đủ làm tập TS rỗng.
+//
+// Ca một tầng còn khó thấy hơn ca bốn tầng: chỉ Kotlin rỗng thì phép kiểm ĐỨT DỌC
+// (vòng lặp trên `kotlin`) tắt câm, trong khi ĐỨT NGANG vẫn đỏ vì "thiếu Kotlin" —
+// người ta sửa cái đỏ họ thấy, không ai biết phép kiểm JNI đã ngừng chạy.
+//
+// Mã thoát 2 chứ không phải 1: trạng thái MÙ phải kêu TO HƠN trạng thái LỆCH.
+const nguon = [
+  ['Kotlin @ReactMethod', kotlin.size],
+  ['Swift @objc func', swift.size],
+  ['ObjC RCT_EXTERN_METHOD', objc.size],
+  ['TS interface TaadEnclaveNativeBridge', ts.size],
+  ['Rust #[no_mangle] extern "C"', rustSymbols.size],
+  ['JNI Java_..._TaadEnclaveModule_', jniFns.size],
+];
+const mu = nguon.filter(([, n]) => n === 0);
+if (mu.length) {
+  console.error('⛔ KHÔNG ĐO ĐƯỢC — cổng này không kết luận được gì về mạch cầu.');
+  console.error('');
+  for (const [ten] of mu) {
+    console.error(`   ${ten} → 0 mục. Tệp đọc được, nhưng không mẫu nào khớp.`);
+  }
+  console.error('');
+  console.error('   Tệp còn đó nên không có lỗi đọc nào để bắt. Nguyên nhân hầu như luôn là');
+  console.error('   CÁCH VIẾT đã đổi (di trú TurboModule, đổi tabWidth, đổi tên interface),');
+  console.error('   chứ không phải mã bị xoá. Sửa mẫu khớp trong scripts/soi-mach.js, ĐỪNG');
+  console.error('   đọc màu xanh của lượt chạy trước như một bằng chứng.');
+  process.exit(2);
+}
+
 // ---- phép kiểm ----------------------------------------------------------
 const tang = { Kotlin: kotlin, Swift: swift, ObjC: objc, TS: ts };
 const tatCa = new Set([...kotlin, ...swift, ...objc, ...ts]);
@@ -142,7 +185,16 @@ const noBaseline = new Set(
   doc(BASELINE).split(/\r?\n/).map((l) => l.replace(/#.*/, '').trim()).filter(Boolean),
 );
 const moiDut = chuaNoi.filter((s) => !noBaseline.has(s));
-const daNoiLai = [...noBaseline].filter((s) => !chuaNoi.includes(s));
+// Một tên rời khỏi `chuaNoi` vì HAI lý do ngược hẳn nhau, và gộp lại thì dòng báo
+// nói sai theo đúng chiều dễ tin nhất:
+//   · tên VẪN CÒN trong rustSymbols ⟹ Swift đã gọi tới ⟹ nối xong thật.
+//   · tên KHÔNG CÒN trong rustSymbols ⟹ hàm bị xoá, bị đổi tên, hoặc regex dòng
+//     `#[no_mangle]` không khớp nữa (thêm một `#[cfg]` xen giữa là vượt cửa sổ 120
+//     ký tự). Không có cái nào là tiến độ.
+// Bản trước in cả hai dưới nhãn "đã nối xong — xoá khỏi tệp nợ", tức xoá một hàm
+// Rust và nối cầu cho nó cho ra CÙNG một dòng chữ, kèm cùng một lời khuyên.
+const daNoiLai = [...noBaseline].filter((s) => !chuaNoi.includes(s) && rustSymbols.has(s));
+const daBienMat = [...noBaseline].filter((s) => !rustSymbols.has(s));
 
 // Con số "chưa nối" gộp HAI thứ khác hẳn nhau, và gộp lại thì nó không nói được
 // thứ duy nhất đáng hỏi: hàm nào đã đi được nửa đường.
@@ -178,6 +230,15 @@ console.log('');
 
 if (daNoiLai.length) {
   console.log(`ℹ️  ${daNoiLai.length} hàm đã nối xong — xoá khỏi ${BASELINE}: ${daNoiLai.join(', ')}`);
+  console.log('');
+}
+if (daBienMat.length) {
+  console.log(`⚠️  ${daBienMat.length} tên trong ${BASELINE} KHÔNG còn là hàm \`#[no_mangle] extern "C"\`:`);
+  console.log(`      ${daBienMat.join(', ')}`);
+  console.log('    Đây KHÔNG phải "đã nối xong". Ba khả năng, phải phân biệt trước khi xoá dòng nợ:');
+  console.log('      · hàm bị xoá thật      → xoá dòng nợ là đúng');
+  console.log('      · hàm bị đổi tên       → đổi dòng nợ theo tên mới, đừng xoá');
+  console.log('      · regex không khớp nữa → SỬA scripts/soi-mach.js, hàm vẫn còn và vẫn chưa nối');
   console.log('');
 }
 if (!dutNgang.length && !dutDoc.length && !moiDut.length) {

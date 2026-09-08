@@ -156,6 +156,20 @@ export const loadTrees = createAsyncThunk(
   }
 );
 
+/**
+ * ⚠️ CHỈ GHI TRÊN MÁY NÀY. Không có lượt gọi mạng nào ở đây.
+ *
+ * Cửa máy chủ nhận hồ sơ cây (`POST /api/tree/{tree_id}/profile`) chưa lên máy sản
+ * xuất — nó còn nằm trong PR bên OriLife. Nên dữ liệu này sống trong AsyncStorage
+ * của đúng một thiết bị: gỡ ứng dụng hoặc đổi máy là mất, không khôi phục được.
+ *
+ * Vì thế câu báo thành công phải nói ra điều đó (`trace.meta.saved` /
+ * `trace.meta.savedBody`). Câu "Đã lưu" trần là một cái vỏ im lặng: người dùng tin
+ * dữ liệu đã ra khỏi máy, và họ chỉ biết là không vào ngày đã mất.
+ *
+ * Ngày cửa kia lên máy: gọi nó Ở ĐÂY, và chỉ khi lượt gọi ĐẠT mới đổi câu báo.
+ * Đừng đổi câu báo trước — đổi trước là quay lại đúng chỗ vừa gỡ.
+ */
 export const saveTreeMetadata = createAsyncThunk(
   'farm/saveTreeMetadata',
   async (input: { treeId: string; metadata: TreeMetadata }) => {

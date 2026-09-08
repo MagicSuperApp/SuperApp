@@ -244,7 +244,11 @@ export const TRACE_STRINGS = {
   },
   'trace.meta.voice': { vi: 'Nói thành lời', en: 'Say it out loud', zh: '语音记录', ja: '声で残す' },
   'trace.meta.save': { vi: 'Lưu thông tin', en: 'Save', zh: '保存', ja: '保存' },
-  'trace.meta.saved': { vi: 'Đã lưu', en: 'Saved', zh: '已保存', ja: '保存済み' },
+  // "trên máy này" là phần KHÔNG được bỏ: `saveTreeMetadata` chỉ ghi AsyncStorage,
+  // không có lượt gọi mạng nào. Cửa `POST /api/tree/{tree_id}/profile` chưa lên máy
+  // chủ. Câu "Đã lưu" trần khiến người dùng tin dữ liệu đã ra khỏi máy, và họ chỉ
+  // biết là không khi đổi máy — lúc đó đã mất.
+  'trace.meta.saved': { vi: 'Đã lưu trên máy này', en: 'Saved on this device', zh: '已保存到本机', ja: 'この端末に保存しました' },
   'trace.health.healthy': { vi: 'Khoẻ mạnh', en: 'Healthy', zh: '健康', ja: '健全' },
   'trace.health.flowering': { vi: 'Đang ra hoa', en: 'Flowering', zh: '开花中', ja: '開花中' },
   'trace.health.fruiting': { vi: 'Đang có quả', en: 'Fruiting', zh: '结果中', ja: '結実中' },
@@ -301,7 +305,7 @@ export const TRACE_STRINGS = {
 
   'trace.meta.dateIncomplete': { vi: 'Nhập đủ ngày/tháng/năm', en: 'Enter day, month and year', zh: '请填写完整日期', ja: '年月日をすべて入力' },
   'trace.meta.dateInvalid': { vi: 'Ngày không có thật', en: 'That date does not exist', zh: '日期不存在', ja: '存在しない日付です' },
-  'trace.meta.savedBody': { vi: 'Đã cập nhật thông tin cây.', en: 'Tree details updated.', zh: '已更新果树信息。', ja: '木の情報を更新しました。' },
+  'trace.meta.savedBody': { vi: 'Thông tin cây đã lưu trên máy này. Máy chủ chưa nhận — gỡ ứng dụng hoặc đổi máy là mất.', en: 'Tree details are saved on this device. The server has not received them — they are lost if you uninstall or switch devices.', zh: '果树信息已保存到本机。服务器尚未接收——卸载应用或更换设备后将丢失。', ja: '木の情報をこの端末に保存しました。サーバーは未受信です — アプリを削除するか端末を変えると失われます。' },
   'trace.meta.saveFail': { vi: 'Chưa lưu được', en: 'Could not save', zh: '保存失败', ja: '保存できませんでした' },
   'trace.meta.saveFailBody': { vi: 'Chưa lưu được thông tin. Bạn thử lại giúp nhé.', en: 'The details were not saved. Please try again.', zh: '信息未能保存，请重试。', ja: '保存できませんでした。もう一度お試しください。' },
 

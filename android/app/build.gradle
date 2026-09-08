@@ -195,11 +195,18 @@ if (trungDid) {
         // và `buildTypes.release` gán nó cho MỌI flavor. Nghĩa là
         // `assembleCheckfarmRelease` ký CheckFarm bằng khoá của Aladin.
         //
-        // ⛔ Đó là hỏng KHÔNG SỬA ĐƯỢC SAU. Khoá tải lên gắn vĩnh viễn với mục
-        //    ứng dụng trên Google Play ngay từ bản đầu tiên. Một mục CheckFarm
-        //    trót nhận bản ký bằng khoá Aladin thì pháp nhân CheckFarm KHÔNG BAO
-        //    GIỜ nộp bản của họ lên đó được nữa, và cũng không chuyển giao được.
-        //    Muốn sửa phải bỏ mục cũ, mất luôn lượt cài và đánh giá đã có.
+        // ⛔ Đó là hỏng ĐẮT, tuy KHÔNG phải không sửa được. Một mục CheckFarm
+        //    trót nhận bản ký bằng khoá Aladin thì phía CheckFarm phải xin đặt
+        //    lại khoá tải lên mới nộp được bản của họ — làm được, nhưng đi qua
+        //    bộ phận hỗ trợ của Google và không nhanh. Nặng hơn: chừng nào chưa
+        //    đặt lại, Aladin Contract vẫn ký được bản cập nhật cho app của pháp
+        //    nhân khác. Đó mới là lý do tách khoá, không phải chuyện mất vĩnh viễn.
+        //
+        //    Bản trước viết ở đây là "KHÔNG BAO GIỜ nộp được nữa, cũng không
+        //    chuyển giao được". Sai với app dùng Play App Signing — tài liệu
+        //    Google nói rõ mất khoá tải lên thì không bị khoá khỏi app, và không
+        //    nói gì về chuyện chuyển giao. Chi tiết + trích nguyên văn ở
+        //    `scripts/tao-khoa-ky.sh`, khối đầu tệp.
         //
         // Nay tên biến SUY từ mã app: `aladin` → `ALADIN_UPLOAD_*`,
         // `checkfarm` → `CHECKFARM_UPLOAD_*`. Đối tác thêm `instances/<mã>/` là có

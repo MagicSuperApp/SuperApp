@@ -26,7 +26,8 @@
 15. [Member Requests](#15-member-requests)
 16. [MLS (deprecated) & mls (bootstrap)](#16-mls-deprecated--mls-bootstrap)
 17. [LampNet Storage](#17-lampnet-storage)
-18. [Schemas / DTOs tổng hợp](#18-schemas--dtos-tổng-hợp)
+18. [Templates (Job Categories)](#18-templates-job-categories)
+19. [Schemas / DTOs tổng hợp](#19-schemas--dtos-tổng-hợp)
 
 ---
 
@@ -594,7 +595,32 @@ Response lỗi đặc trưng: `503` khi LampNet bị tắt hoặc không khả d
 
 ---
 
-## 18. Schemas / DTOs tổng hợp
+## 18. Templates (Job Categories)
+
+*Danh mục / mẫu công việc. Nhóm này KHÔNG có trong bản 1.0 của tài liệu — bổ sung
+2026-09-08 sau khi đối chiếu lại `GET /api/docs-json` trực tiếp (10 endpoint, tất cả
+đều cần Bearer). Schema `CreateJobCategoryDto` / `UpdateJobCategoryDto` đã có sẵn ở
+mục 19 từ trước — tức chỉ bảng endpoint bị thiếu, không phải cả nhóm.*
+
+| Method | Path | Auth | Mô tả |
+|---|---|---|---|
+| POST | `/api/v1/templates` | ✔ | Tạo danh mục việc mới |
+| GET | `/api/v1/templates` | ✔ | Liệt kê danh mục (query: `slug`, `parentId`, `skip`, `take`) |
+| GET | `/api/v1/templates/categories` | ✔ | Lấy toàn bộ slug danh mục |
+| GET | `/api/v1/templates/root` | ✔ | Danh mục gốc (không có cha) |
+| GET | `/api/v1/templates/slug/{slug}` | ✔ | Mọi phiên bản của một slug |
+| GET | `/api/v1/templates/slug/{slug}/latest` | ✔ | Phiên bản mới nhất của slug |
+| GET | `/api/v1/templates/{id}` | ✔ | Lấy danh mục theo ID |
+| GET | `/api/v1/templates/{id}/children` | ✔ | Danh mục con |
+| PATCH | `/api/v1/templates/{id}` | ✔ | Cập nhật danh mục |
+| DELETE | `/api/v1/templates/{id}` | ✔ | Xoá danh mục |
+
+> App vỏ Aladin CHƯA gọi nhóm này (`src/services/proofchat-api.ts` không có đường
+> `/templates` nào). Ghi ở đây để lần rà sau không tưởng là mình bỏ sót phía app.
+
+---
+
+## 19. Schemas / DTOs tổng hợp
 
 Danh sách toàn bộ schema xuất hiện trong tài liệu (nhiều schema không công khai field chi tiết trên UI):
 

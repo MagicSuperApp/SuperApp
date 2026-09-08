@@ -78,9 +78,15 @@ const wsBaseUrl = (): string =>
     .replace(/\/+$/, '')
     .replace(/\/chat$/, '')
     .replace(/\/+$/, '');
-// nginx route `/ws/` → WS gateway :8090 (strip prefix). BẮT BUỘC — thiếu path này
-// socket.io handshake không tới đúng gateway. Mặc định theo INTEGRATION.md ProofChat.
-const wsPath = (): string => (PROOFCHAT_WS_PATH as string | undefined) || '/ws/socket.io/';
+// Path socket.io. ĐÍNH CHÍNH 2026-09-08 — đo curl thẳng vào api.proofchat.me, KHÔNG
+// chép lại INTEGRATION.md §5 (§5 dạy sai chỗ này):
+//   GET /ws/socket.io/?EIO=4&transport=polling → 404 (nginx KHÔNG có route /ws/)
+//   GET /socket.io/?EIO=4&transport=polling    → 200; POST `40/chat,` trên sid đó trả
+//                                                error:auth {"error":"No token"}
+// tức namespace /chat nằm ở path MẶC ĐỊNH. Đường lui cũ '/ws/socket.io/' khiến mọi
+// bản dựng thiếu PROOFCHAT_WS_PATH gặp handshake 404 câm — và 404 đó hiện ra ngoài
+// đúng như "máy chủ chưa sẵn sàng", không như cấu hình sai.
+const wsPath = (): string => (PROOFCHAT_WS_PATH as string | undefined) || '/socket.io';
 
 /** Kết nối (idempotent). Lấy JWT ProofChat từ AsyncStorage, gắn vào auth handshake. */
 export async function connect(): Promise<void> {

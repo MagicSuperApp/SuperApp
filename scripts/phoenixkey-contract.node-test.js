@@ -53,10 +53,22 @@ const APPROVE_401 = {
 };
 // Hình dạng SAU khi sửa: approve không còn tường Bearer, nên nó chạm tới bước đọc
 // thân yêu cầu và từ chối vì thiếu chữ ký. 400 ở đây là câu trả lời ĐÚNG.
+//
+// Mã và câu là ĐO THẬT trên `api.phoenixkey.me` ngày 2026-09-08. Bản đầu của mẫu
+// này ghi `{code: 1001, message: 'Invalid signature payload'}` — một hình dạng
+// BỊA, dựng cho vừa ý mình. Nó không làm bài kiểm sai (phán quyết chỉ hỏi "có
+// phải 401 không", không đọc mã), nhưng một mẫu bịa nằm cạnh một mẫu thật thì
+// người đọc sau không phân biệt được cái nào tra lại được — và bộ này đã trả giá
+// một lần cho đúng thói quen đó, ở phong bì `{code, message, result}`.
 const APPROVE_400 = {
   ok: true,
   status: 400,
-  body: { code: 1001, message: 'Invalid signature payload' },
+  body: {
+    code: 9800,
+    message:
+      'signature: must not be blank; publicKeyHex: must not be blank; '
+      + 'userDid: must not be blank; domain: must not be blank',
+  },
 };
 
 const docs = (over = {}) => ({

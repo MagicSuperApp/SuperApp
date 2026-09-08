@@ -2928,6 +2928,7 @@ pub fn build_deactivate_taad_tx(
     protocol_params_json: &str,
     current_slot: u64,
 ) -> Result<String, String> {
+    deactivate_builder_gate()?;
     let li = parse_lifecycle_inputs(current_taad_utxo_json, utxo_inputs_json, protocol_params_json)?;
     let d = decode_taad_datum_full(&li.inline_datum_hex)?;
 
@@ -2938,6 +2939,8 @@ pub fn build_deactivate_taad_tx(
     let ctrl_pkh = ctrl_priv.to_public().hash();
 
     // revoked_slot = Some(current_slot); validity lower bound must equal it.
+    // ⛔ ĐƠN VỊ SAI — validator đọc ô này là `revoked_ms`. Chặn ở
+    // `deactivate_builder_gate()` phía trên, đọc lý do ở `DEACTIVATE_BUILDER_READY`.
     let new_datum = assemble_taad_datum(
         &d.did,
         d.entity_type,
@@ -2971,6 +2974,18 @@ pub fn build_deactivate_taad_tx(
 /// **UpdateGuardians** — controller signs; guardians list replaced (≤5).
 /// `new_guardians_json` = JSON array of 28-byte hex VerificationKeyHash.
 #[allow(clippy::too_many_arguments)]
+/// CỐ Ý KHÔNG gác, và đây là chỗ phải ghi lý do vì bốn hàm anh em cạnh nó đều
+/// bị gác nên người đọc sau sẽ tưởng chỗ này bị bỏ sót.
+///
+/// Lỗi đơn vị (slot ghi vào ô POSIX-ms) chỉ chạm hàm nào GHI một giá trị thời
+/// gian MỚI vào datum. Hàm này không ghi cái nào: `d.revoked_slot` và
+/// `d.recovery_anchor` được chuyển tiếp nguyên vẹn từ datum cũ, còn hai thứ nó
+/// thật sự đổi là danh sách guardian và `sequence`.
+///
+/// Gác nó lại còn gây đúng cái hại mà cửa kia định ngăn: danh sách guardian là
+/// TIỀN ĐỀ của khôi phục (`InitRecovery` đòi chữ ký guardian). Chặn đường ghi
+/// guardian tức là chặn người dùng dựng đường cứu hộ, để đổi lấy việc ngăn một
+/// lỗi không tồn tại ở đây.
 pub fn build_update_guardians_tx(
     current_taad_utxo_json: &str,
     new_guardians_json: &str,
@@ -3065,6 +3080,44 @@ pub fn build_update_guardians_tx(
 /// gõ cứng hằng của mạng, vì một hằng chép đúng rồi mạng chuyển era vẫn sinh ra
 /// giao dịch ráp được, ký được, rồi chết ở validator.
 const RECOVERY_BUILDERS_READY: bool = false;
+
+/// CÙNG LỚP lỗi với `RECOVERY_BUILDERS_READY` (số slot ghi vào ô POSIX-ms),
+/// nhưng KHÁC ô datum và khác điều kiện mở khoá, nên tách cờ riêng thay vì
+/// dùng chung một cửa — dùng chung thì câu lỗi nói sai chỗ phải sửa.
+///
+/// `build_deactivate_taad_tx` ghi `pd_some_int(current_slot)` vào trường thứ 8
+/// của datum. Validator khai trường ấy là `revoked_ms: Option<Int>`
+/// (`PhoenixKey-Validator/lib/phoenixkey/types.ak:90`, kho ở commit `564ad83`)
+/// — POSIX-mili-giây, không phải số slot. Tên cục bộ bên Rust là
+/// `revoked_slot`, và chính cái tên đó là thứ giấu lỗi: hai bên đọc cùng một ô
+/// bằng hai đơn vị, cả hai đều là số nguyên dương hợp lệ.
+///
+/// Vì sao chặn thay vì chỉ ghi chú: giống ba builder khôi phục,
+/// `taad_build_deactivate_taad_tx` hôm nay chưa có cầu nào
+/// (`scripts/soi-mach.chua-noi.txt:10`). Nó vô hại đúng tới ngày ai đó nối cầu.
+/// Và Deactivate là thao tác KHÔNG lùi được: một DID đã thu hồi thì không có
+/// redeemer nào tiêu lại được nó (`state_nft_logic.ak:343` đòi
+/// `d.revoked_ms == None`).
+///
+/// Mở khoá: nhận mốc quy đổi era-summary như ABI khôi phục, đổi tham số
+/// `current_slot` thành `revoked_at_posix_ms`, và ghim lại bài
+/// `deactivate_datum_marks_revoked_with_slot` theo đơn vị mới.
+const DEACTIVATE_BUILDER_READY: bool = false;
+
+/// Cửa fail-closed cho `build_deactivate_taad_tx`. Xem `DEACTIVATE_BUILDER_READY`.
+fn deactivate_builder_gate() -> Result<(), String> {
+    if DEACTIVATE_BUILDER_READY {
+        return Ok(());
+    }
+    Err(
+        "deactivate builder disabled: revoked_slot is written as a slot number but the \
+         validator reads that datum field as revoked_ms (POSIX milliseconds). Building here \
+         produces a transaction the validator rejects, after fees are paid, on an operation \
+         that cannot be undone. Unblock by switching the parameter to revoked_at_posix_ms \
+         with era-summary conversion inputs."
+            .into(),
+    )
+}
 
 /// Cửa fail-closed cho ba builder khôi phục. Xem `RECOVERY_BUILDERS_READY`.
 fn recovery_builders_gate() -> Result<(), String> {
@@ -4852,5 +4905,32 @@ mod tests {
     fn pkh_list_validates_length() {
         assert!(parse_pkh_list(&format!("[\"{}\"]", "11".repeat(28)), "g").is_ok());
         assert!(parse_pkh_list(&format!("[\"{}\"]", "11".repeat(20)), "g").is_err());
+    }
+
+    /// Cửa deactivate phải chặn TRƯỚC mọi phép phân tích đầu vào — không thì
+    /// người gọi nhận câu lỗi về JSON và đi sửa JSON, trong khi chỗ hỏng là
+    /// đơn vị thời gian. Đầu vào dưới đây cố tình là rác: nếu cửa bị gỡ, hàm
+    /// chết ở `parse_lifecycle_inputs` với một câu lỗi KHÁC HẲN.
+    #[test]
+    fn deactivate_gate_blocks_before_parsing() {
+        let e = build_deactivate_taad_tx("{", "00", "00", 0, "", "[", "{", 1).unwrap_err();
+        assert!(
+            e.contains("deactivate builder disabled"),
+            "cửa deactivate không chặn; nhận được: {e}"
+        );
+        assert!(e.contains("revoked_ms"), "câu lỗi phải nêu đúng ô datum; nhận được: {e}");
+    }
+
+    /// Ca ĐỐI XỨNG của bài trên — bài kia một mình không phân biệt được "gác
+    /// đúng một hàm" với "gác cả cụm". `update_guardians` KHÔNG ghi giá trị
+    /// thời gian mới nên phải đi QUA được cửa và chết ở chỗ khác. Gác nhầm nó
+    /// là chặn đường dựng guardian, tức chặn tiền đề của khôi phục.
+    #[test]
+    fn update_guardians_is_not_gated() {
+        let e = build_update_guardians_tx("{", "[]", "00", "00", 0, "", "[", "{", 1).unwrap_err();
+        assert!(
+            !e.contains("disabled"),
+            "update_guardians bị gác nhầm; nhận được: {e}"
+        );
     }
 }

@@ -383,6 +383,76 @@ workflows:
             2>&1 | tail -20 || echo "⚠️ export sourcemap lỗi (không chặn build)"
           ls -lh "$CM_BUILD_DIR/build/jsmap/" 2>/dev/null || true
 
+      # ── CỔNG: danh tính app iOS phải khớp `instances/<app>/instance.json` ─
+      # Bên Android đã có phép so này từ lâu — `APP_INSTANCE` vs `ANDROID_FLAVOR`
+      # trong workflow `android-appstore-aab`, kèm câu nói đúng cái hại: *"lệch
+      # hai biến này là dựng vỏ app này với chữ của app kia"*. Nửa iOS KHÔNG có
+      # phép so tương ứng nào, và nửa iOS mới là nửa nguy hơn: `BUNDLE_ID`,
+      # `APP_DISPLAY_NAME`, `APP_INSTANCE` và `ios_signing.bundle_identifier` là
+      # BỐN chỗ gõ tay cùng một sự thật, không chỗ nào trỏ về chỗ nào.
+      #
+      # Đặt lệch một trong bốn thì bản dựng vẫn ra, vẫn chạy, vẫn ký được, và
+      # mang tên app này với mã gói app kia. Không có gì đỏ cho tới lúc Apple soát
+      # gói đã nộp — hoặc không bao giờ đỏ, nếu chỗ lệch là tên hiển thị.
+      #
+      # Cổng này KHÔNG so hai biến gõ tay với nhau. Nó đọc `instances/` làm nguồn —
+      # cùng nguồn mà `android/app/build.gradle` và `src/config/instanceRules.test.ts`
+      # đọc — nên thêm app thứ ba không phải sửa cổng.
+      #
+      # CÒN HỞ, ghi ra để đừng ai đọc dấu ✅ dưới đây rộng hơn nó nói: dòng
+      # `ios_signing.bundle_identifier` là YAML tĩnh của workflow, không phải biến,
+      # nên cổng chạy lúc dựng không đọc được nó cho ĐÚNG workflow đang chạy. Chỗ
+      # kiểm đúng của nó là một bài kiểm tĩnh trên chính tệp này, chưa có.
+      - name: Soát danh tính app iOS khớp instances/
+        script: |
+          set -eu
+          : "${APP_INSTANCE:?APP_INSTANCE rỗng — không đoán app}"
+          KHAI="instances/${APP_INSTANCE}/instance.json"
+          if [ ! -f "$KHAI" ]; then
+            echo "❌ không có $KHAI"
+            echo "   APP_INSTANCE='$APP_INSTANCE' không phải app nào trong instances/:"
+            ls instances/
+            exit 1
+          fi
+          CHO_BUNDLE=$(node -p "JSON.parse(require('fs').readFileSync('$KHAI','utf8')).ios.bundleId")
+          CHO_TEN=$(node -p "JSON.parse(require('fs').readFileSync('$KHAI','utf8')).displayName")
+          LECH=0
+          if [ "${BUNDLE_ID:-}" != "$CHO_BUNDLE" ]; then
+            echo "❌ BUNDLE_ID='${BUNDLE_ID:-}' khác ios.bundleId='$CHO_BUNDLE' khai ở $KHAI"
+            LECH=1
+          fi
+          if [ "${APP_DISPLAY_NAME:-}" != "$CHO_TEN" ]; then
+            echo "❌ APP_DISPLAY_NAME='${APP_DISPLAY_NAME:-}' khác displayName='$CHO_TEN' khai ở $KHAI"
+            LECH=1
+          fi
+          if [ "$LECH" -ne 0 ]; then
+            echo "   Sửa ở: nhóm biến của workflow này trong codemagic.yaml, HOẶC ở $KHAI."
+            echo "   Lệch là dựng vỏ app này với chữ của app kia — và nó KHÔNG đỏ ở đâu khác."
+            exit 1
+          fi
+          echo "✅ instance=$APP_INSTANCE bundle=$BUNDLE_ID tên='$APP_DISPLAY_NAME' — khớp $KHAI"
+
+          # ── Biểu tượng iOS: MỘT bộ dùng chung, chưa có đường theo app ──────
+          # `ios/SuperApp/Images.xcassets/AppIcon.appiconset` là bộ DUY NHẤT, và
+          # `instances/<app>/` mới chỉ mang `android/` + `brand/` — không có `ios/`.
+          # Nên bản iOS của app khác `aladin` dựng ra hôm nay mang biểu tượng
+          # Aladin, chạy được, ký được, và không có gì đỏ. Chặn ở đây thay vì để
+          # nó ra tới tay người thử.
+          #
+          # Mở khoá cần HAI thứ, không phải một: (a) `instances/<app>/ios/icon-1024.png`,
+          # và (b) một bước sinh `AppIcon.appiconset` từ tệp đó trước `xcodebuild`.
+          # Chỉ có tệp mà chưa có bước sinh thì vẫn là biểu tượng Aladin — nên
+          # ĐỪNG gỡ cổng theo sự có mặt của tệp.
+          if [ "$APP_INSTANCE" != "aladin" ]; then
+            echo "❌ luồng iOS chưa dựng được app '$APP_INSTANCE'."
+            echo "   Biểu tượng iOS là một bộ dùng chung ở ios/SuperApp/Images.xcassets/AppIcon.appiconset;"
+            echo "   instances/$APP_INSTANCE/ không có thư mục ios/, nên bản này sẽ mang biểu tượng Aladin."
+            echo "   Mở khoá: (a) thêm instances/$APP_INSTANCE/ios/icon-1024.png, VÀ"
+            echo "            (b) thêm bước sinh AppIcon.appiconset từ tệp đó trước xcodebuild."
+            echo "   Có (a) mà thiếu (b) thì biểu tượng vẫn là Aladin — đừng gỡ cổng theo sự có mặt của tệp."
+            exit 1
+          fi
+
       # ── CHỐT MÃ GÓI iOS ─────────────────────────────────────────────────
       # Vì sao KHÔNG truyền `PRODUCT_BUNDLE_IDENTIFIER=` trên dòng lệnh
       # `xcodebuild`: setting truyền kiểu đó áp cho MỌI target trong workspace,
@@ -561,6 +631,76 @@ workflows:
             echo "   X-API-Key, và hai cửa ĐỌC công khai trả lời bình thường khi không gửi khoá"
             echo "   (GET /api/health → 200; GET /api/tree_by_code/<mã> → 404 đúng hợp đồng, không 401)."
             echo "   Cửa GHI thì CHƯA đo được — đó là lý do cổng này còn đứng thay vì bỏ hẳn."
+            exit 1
+          fi
+
+      # ── CỔNG: danh tính app iOS phải khớp `instances/<app>/instance.json` ─
+      # Bên Android đã có phép so này từ lâu — `APP_INSTANCE` vs `ANDROID_FLAVOR`
+      # trong workflow `android-appstore-aab`, kèm câu nói đúng cái hại: *"lệch
+      # hai biến này là dựng vỏ app này với chữ của app kia"*. Nửa iOS KHÔNG có
+      # phép so tương ứng nào, và nửa iOS mới là nửa nguy hơn: `BUNDLE_ID`,
+      # `APP_DISPLAY_NAME`, `APP_INSTANCE` và `ios_signing.bundle_identifier` là
+      # BỐN chỗ gõ tay cùng một sự thật, không chỗ nào trỏ về chỗ nào.
+      #
+      # Đặt lệch một trong bốn thì bản dựng vẫn ra, vẫn chạy, vẫn ký được, và
+      # mang tên app này với mã gói app kia. Không có gì đỏ cho tới lúc Apple soát
+      # gói đã nộp — hoặc không bao giờ đỏ, nếu chỗ lệch là tên hiển thị.
+      #
+      # Cổng này KHÔNG so hai biến gõ tay với nhau. Nó đọc `instances/` làm nguồn —
+      # cùng nguồn mà `android/app/build.gradle` và `src/config/instanceRules.test.ts`
+      # đọc — nên thêm app thứ ba không phải sửa cổng.
+      #
+      # CÒN HỞ, ghi ra để đừng ai đọc dấu ✅ dưới đây rộng hơn nó nói: dòng
+      # `ios_signing.bundle_identifier` là YAML tĩnh của workflow, không phải biến,
+      # nên cổng chạy lúc dựng không đọc được nó cho ĐÚNG workflow đang chạy. Chỗ
+      # kiểm đúng của nó là một bài kiểm tĩnh trên chính tệp này, chưa có.
+      - name: Soát danh tính app iOS khớp instances/
+        script: |
+          set -eu
+          : "${APP_INSTANCE:?APP_INSTANCE rỗng — không đoán app}"
+          KHAI="instances/${APP_INSTANCE}/instance.json"
+          if [ ! -f "$KHAI" ]; then
+            echo "❌ không có $KHAI"
+            echo "   APP_INSTANCE='$APP_INSTANCE' không phải app nào trong instances/:"
+            ls instances/
+            exit 1
+          fi
+          CHO_BUNDLE=$(node -p "JSON.parse(require('fs').readFileSync('$KHAI','utf8')).ios.bundleId")
+          CHO_TEN=$(node -p "JSON.parse(require('fs').readFileSync('$KHAI','utf8')).displayName")
+          LECH=0
+          if [ "${BUNDLE_ID:-}" != "$CHO_BUNDLE" ]; then
+            echo "❌ BUNDLE_ID='${BUNDLE_ID:-}' khác ios.bundleId='$CHO_BUNDLE' khai ở $KHAI"
+            LECH=1
+          fi
+          if [ "${APP_DISPLAY_NAME:-}" != "$CHO_TEN" ]; then
+            echo "❌ APP_DISPLAY_NAME='${APP_DISPLAY_NAME:-}' khác displayName='$CHO_TEN' khai ở $KHAI"
+            LECH=1
+          fi
+          if [ "$LECH" -ne 0 ]; then
+            echo "   Sửa ở: nhóm biến của workflow này trong codemagic.yaml, HOẶC ở $KHAI."
+            echo "   Lệch là dựng vỏ app này với chữ của app kia — và nó KHÔNG đỏ ở đâu khác."
+            exit 1
+          fi
+          echo "✅ instance=$APP_INSTANCE bundle=$BUNDLE_ID tên='$APP_DISPLAY_NAME' — khớp $KHAI"
+
+          # ── Biểu tượng iOS: MỘT bộ dùng chung, chưa có đường theo app ──────
+          # `ios/SuperApp/Images.xcassets/AppIcon.appiconset` là bộ DUY NHẤT, và
+          # `instances/<app>/` mới chỉ mang `android/` + `brand/` — không có `ios/`.
+          # Nên bản iOS của app khác `aladin` dựng ra hôm nay mang biểu tượng
+          # Aladin, chạy được, ký được, và không có gì đỏ. Chặn ở đây thay vì để
+          # nó ra tới tay người thử.
+          #
+          # Mở khoá cần HAI thứ, không phải một: (a) `instances/<app>/ios/icon-1024.png`,
+          # và (b) một bước sinh `AppIcon.appiconset` từ tệp đó trước `xcodebuild`.
+          # Chỉ có tệp mà chưa có bước sinh thì vẫn là biểu tượng Aladin — nên
+          # ĐỪNG gỡ cổng theo sự có mặt của tệp.
+          if [ "$APP_INSTANCE" != "aladin" ]; then
+            echo "❌ luồng iOS chưa dựng được app '$APP_INSTANCE'."
+            echo "   Biểu tượng iOS là một bộ dùng chung ở ios/SuperApp/Images.xcassets/AppIcon.appiconset;"
+            echo "   instances/$APP_INSTANCE/ không có thư mục ios/, nên bản này sẽ mang biểu tượng Aladin."
+            echo "   Mở khoá: (a) thêm instances/$APP_INSTANCE/ios/icon-1024.png, VÀ"
+            echo "            (b) thêm bước sinh AppIcon.appiconset từ tệp đó trước xcodebuild."
+            echo "   Có (a) mà thiếu (b) thì biểu tượng vẫn là Aladin — đừng gỡ cổng theo sự có mặt của tệp."
             exit 1
           fi
 

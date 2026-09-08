@@ -8,3 +8,14 @@
 # Cùng lý do với `rust/*/build_android.sh` và `build_ios.sh`: chúng chạy trên máy
 # dựng macOS/Linux của Codemagic.
 *.sh text eol=lf
+
+# Tệp NỢ mà `scripts/soi-mach.js` đọc — cũng phải LF, và vì một lý do KHÁC nên ghi
+# riêng ra đây thay vì gộp vào dòng trên.
+#
+# Bản thân script nay đã chịu được CRLF (`split(/\r?\n/)` + `/#.*/`). Dòng này là
+# lớp thứ hai, đặt ở tầng khác: một cổng đọc dữ liệu chỉ chắc khi CẢ dữ liệu lẫn
+# phép đọc đều xác định. Trước bản vá, `core.autocrlf=true` trên máy dựng làm tệp
+# này checkout ra CRLF, và cổng đếm 40 mục thay vì 35 rồi khuyên người ta xoá 5 dòng
+# chú thích đầu tệp — một con số sai và một lời khuyên sai in ra ngay dưới dòng
+# "✅ Mạch liền" mà người đọc tin.
+scripts/soi-mach.chua-noi.txt text eol=lf

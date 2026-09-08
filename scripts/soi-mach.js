@@ -94,7 +94,7 @@ const tang = { Kotlin: kotlin, Swift: swift, ObjC: objc, TS: ts };
 const tatCa = new Set([...kotlin, ...swift, ...objc, ...ts]);
 const dutNgang = [];
 for (const ten of [...tatCa].sort()) {
-  if (ten in MIEN_TRU) continue;
+  if (Object.hasOwn(MIEN_TRU, ten)) continue; // `in` đi qua cả chuỗi nguyên mẫu
   const thieu = Object.entries(tang).filter(([, s]) => !s.has(ten)).map(([k]) => k);
   if (thieu.length) dutNgang.push({ ten, thieu, co: Object.keys(tang).filter((k) => tang[k].has(ten)) });
 }
@@ -102,7 +102,7 @@ for (const ten of [...tatCa].sort()) {
 const hoa = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const dutDoc = [];
 for (const ten of [...kotlin].sort()) {
-  if (ten in MIEN_TRU) continue;
+  if (Object.hasOwn(MIEN_TRU, ten)) continue; // `in` đi qua cả chuỗi nguyên mẫu
   const native = 'native' + hoa(ten);
   if (!ktNative.has(native)) dutDoc.push(`Kotlin \`${ten}\` không có \`external fun ${native}\``);
   else if (!jniFns.has(native)) dutDoc.push(`\`${native}\` khai báo ở Kotlin nhưng android_jni.rs không có \`Java_..._${native}\` — gọi tới là app sập UnsatisfiedLinkError`);
@@ -114,7 +114,7 @@ for (const khoi of swiftSrc.split(/@objc\([^)]*\)/).slice(1)) {
   const dau = khoi.match(/^\s*func\s+([A-Za-z0-9_]+)\s*\(/);
   if (!dau) continue;
   const ten = dau[1];
-  if (ten in MIEN_TRU) continue;
+  if (Object.hasOwn(MIEN_TRU, ten)) continue; // `in` đi qua cả chuỗi nguyên mẫu
   const goi = [...bat(khoi, /\b(taad_[a-z0-9_]+)\s*\(/g)].filter((s) => s !== 'taad_free_string');
   if (!goi.length) { dutDoc.push(`Swift \`${ten}\` không gọi symbol \`taad_*\` nào`); continue; }
   const ma = goi.filter((s) => !rustSymbols.has(s));
@@ -125,9 +125,21 @@ for (const khoi of swiftSrc.split(/@objc\([^)]*\)/).slice(1)) {
 // của vụ 25/06 — Rust có hàm, không ai gọi được, và không cổng nào đỏ. "Chạm tới" nghĩa là
 // Swift gọi thẳng symbol đó. Cầu Android không đi qua C FFI (android_jni.rs gọi `crate::`
 // trực tiếp), nên phía Android đã được phép kiểm ĐỨT DỌC ở trên lo.
-const chuaNoi = [...rustSymbols].filter((s) => s !== 'taad_free_string' && !swiftSrc.includes(s + '('));
+// Chỉ soi MÃ. `swiftSrc` trần tính cả chú thích, nên một dòng
+// `// TODO: sau này gọi taad_x(...)` đủ để một hàm Rust chưa có cầu tự rơi khỏi
+// danh sách nợ — cổng xanh cho đúng thứ nó sinh ra để bắt. Cùng bẫy đã ghi hai
+// lần ở `src/screens/SeedExportScreen.gate.test.ts`: phép đo văn bản không tự
+// phân biệt được mã với lời bàn về mã.
+const swiftCode = swiftSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
+const chuaNoi = [...rustSymbols].filter((s) => s !== 'taad_free_string' && !swiftCode.includes(s + '('));
+// `split(/\r?\n/)` và `/#.*/` (không `$`) — HAI sửa cho HAI nguyên nhân, đừng bỏ một:
+// `split('\n')` để lại `\r` cuối dòng, mà trong regex JS dấu `.` KHÔNG khớp `\r` và
+// `$` không có cờ `m` chỉ khớp cuối chuỗi ⟹ `#.*$` không cắt được chú thích trên tệp
+// CRLF. Máy dựng chính đặt `core.autocrlf=true` (xem `.gitattributes`) và tệp nợ là
+// `.txt` không được ghim `eol`, nên nó checkout ra CRLF trên máy đó: đếm ra 40 thay
+// vì 35, và 5 dòng chú thích đầu tệp bị báo là "5 hàm đã nối xong".
 const noBaseline = new Set(
-  doc(BASELINE).split('\n').map((l) => l.replace(/#.*$/, '').trim()).filter(Boolean),
+  doc(BASELINE).split(/\r?\n/).map((l) => l.replace(/#.*/, '').trim()).filter(Boolean),
 );
 const moiDut = chuaNoi.filter((s) => !noBaseline.has(s));
 const daNoiLai = [...noBaseline].filter((s) => !chuaNoi.includes(s));

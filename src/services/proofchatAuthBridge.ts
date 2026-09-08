@@ -136,15 +136,30 @@ const noteFailure = (res: ConnectResult): ConnectResult => {
  * biến mọi lỗi thành lỗi đăng nhập.
  */
 let _ensureInflight: Promise<string | null> | null = null;
-export const ensureProofChatSession = async (): Promise<string | null> => {
+export const ensureProofChatSession = (): Promise<string | null> => {
   if (_ensureInflight) return _ensureInflight;
 
-  // Lượt trước có thể đã dựng xong phiên rồi — đọc kho trước khi đi tiếp.
-  const stored = await getAccessToken().catch(() => null);
-  if (stored) return stored;
-
+  // ⚠ Hàm này KHÔNG được là `async`, và `_ensureInflight` phải được gán TRƯỚC mọi
+  // `await`. Bản đầu đọc kho token bằng `await` rồi mới gán — và một `await` đứng
+  // trước phép gán là một khe cho lượt gọi thứ hai lọt qua:
+  //
+  //     A: _ensureInflight rỗng → await getAccessToken()   ↩ nhả luồng
+  //     B: _ensureInflight VẪN rỗng → await getAccessToken()
+  //     A: gán _ensureInflight = P1
+  //     B: ĐÈ _ensureInflight = P2        ⟹ hai lần POST /auth/phoenixkey/login
+  //
+  // Đo được, không phải suy luận: `ChatHomeScreen` bắn `loadConversations()` và
+  // `loadInvitations()` liền nhau, và bài kiểm "hai lượt gọi CÙNG LÚC chỉ đăng nhập
+  // một lần" đếm ra 2. Lượt sau có thể thu hồi token của lượt trước, tức người dùng
+  // mất phiên ngay khi vừa mở màn — đúng thứ phép gộp này sinh ra để chặn.
+  //
+  // Nay phần đọc kho nằm TRONG promise, và promise được gán ngay trong cùng một
+  // lượt chạy đồng bộ. Không còn khe nào.
   _ensureInflight = (async () => {
     try {
+      // Lượt trước có thể đã dựng xong phiên rồi — đọc kho trước khi đi tiếp.
+      const stored = await getAccessToken().catch(() => null);
+      if (stored) return stored;
       // Thời gian nghỉ sau khi hỏng nằm trong `connectProofChat` — nó là chỗ duy
       // nhất cả hai đường (init màn chat + interceptor REST) đều đi qua.
       const res = await connectProofChat();

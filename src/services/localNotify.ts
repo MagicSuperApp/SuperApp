@@ -81,11 +81,6 @@ export function available(): boolean {
   return load() !== null;
 }
 
-/** Chỉ dùng cho test — quên bản đã nạp. */
-export function _resetNotifyModule(): void {
-  _mod = undefined;
-}
-
 let _ready: Promise<boolean> | null = null;
 
 /**

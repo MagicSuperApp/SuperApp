@@ -21,11 +21,6 @@ import {
   type DelegationStatus,
 } from './phoenixKey-api';
 
-/** Danh sách pool_id (100/trang, trang bắt đầu từ 1). */
-export async function listPools(page = 1, count = 100): Promise<{ poolIds: string[]; page: number; count: number }> {
-  return phoenixKeyApi.pools.list({ page, count });
-}
-
 /** Chi tiết 1 pool (số + metadata off-chain). */
 export async function getPool(poolId: string): Promise<PoolDetail> {
   return phoenixKeyApi.pools.get(poolId);

@@ -24,9 +24,6 @@ import { filterBeforeSend } from './telemetryGate';
 // Cổng `.github/workflows/android-aab.yml` nay chặn `ngrok-free.dev` trong bundle.
 const REMOTE_LOG_SERVER_URL = String(REMOTE_LOG_URL ?? '').trim();
 
-/** Có nơi để gửi nhật ký không. Chưa cấu hình ⇒ chỉ in ra console, không đi mạng. */
-export const remoteLogEnabled = (): boolean => REMOTE_LOG_SERVER_URL.length > 0;
-
 // ── Device info (resolve 1 lần) ───────────────────────────────────────────────
 
 const DEVICE_LABEL = `${Platform.OS === 'ios' ? 'iOS' : 'Android'} RN`;

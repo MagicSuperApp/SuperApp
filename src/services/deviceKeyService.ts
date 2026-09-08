@@ -18,19 +18,6 @@ import { phoenixKeyApi } from './phoenixKey-api';
 export const DEVICE_KEY_SEED_STORAGE = 'phoenix_device_key_seed';
 
 /**
- * Đã bật DeviceKey trên máy này chưa (có secret lưu K_bio). Không gọi mạng.
- * Best-effort — lỗi đọc secure storage → coi như chưa bật.
- */
-export async function hasLocalDeviceKey(): Promise<boolean> {
-  try {
-    const v = await taad.secureLoad(DEVICE_KEY_SEED_STORAGE);
-    return !!v;
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Bật 2FA DeviceKey. Trả về devicePublicKeyHex đã đăng ký. Ném lỗi nếu thiếu
  * native / DID / session, hoặc backend từ chối (vd chưa deploy — 404/501).
  */

@@ -3030,11 +3030,63 @@ pub fn build_update_guardians_tx(
 /// status → Recovering{pending = new key, deadline = lb + timelock,
 /// collateral}. Continuing output locks `collateral_lovelace` extra ADA.
 ///
+/// Ba builder khôi phục (`init` / `cancel` / `finalize`) đã sẵn sàng chưa.
+///
+/// `false`, và lý do không phải "chưa viết xong" mà là **sai đơn vị thời gian**.
+///
+/// Cửa sổ khôi phục bên validator neo vào **POSIX mili-giây** — cận của
+/// validity-range trong Plutus V3 mang đơn vị đó. Ba hàm dưới đây dùng **số
+/// slot**. Hai đại lượng lệch bốn bậc độ lớn (POSIX-ms ~1,79×10¹² so với slot
+/// ~1,79×10⁸) nhưng cùng là số nguyên dương hợp lệ ⟹ không kiểu dữ liệu nào
+/// chặn, không bài kiểm nào đỏ, và sai lệch chỉ lộ ra khi giao dịch chạm chuỗi:
+/// ở chỗ đắt nhất, sau khi đã trả phí.
+///
+/// Hỏng theo CẢ HAI chiều, không chỉ một:
+///   · `cancel`   — `current_slot >= deadline` với deadline POSIX-ms thật thì
+///                  không bao giờ đúng ⟹ cổng "quá muộn để huỷ" chưa từng chặn
+///                  ai. Hỏng MỞ.
+///   · `finalize` — phép so luôn đúng ⟹ không ai finalize được; cận dưới đặt
+///                  `deadline + 1` đọc như slot rơi vào ~56.000 năm nữa. Hỏng ĐÓNG.
+///   · `init`     — neo vào `current_slot` thay vì cận trên, nên nhóm guardian
+///                  đúc được một deadline ĐÃ HẾT HẠN SẴN rồi finalize ngay giao
+///                  dịch kế tiếp, mất trắng cửa sổ huỷ của chính chủ.
+///
+/// Vì sao chặn ngay ở đây thay vì chỉ ghi chú: ba hàm này hôm nay **không có cầu
+/// nào** (nằm trong `scripts/soi-mach.chua-noi.txt`), nên chúng vô hại đúng tới
+/// ngày ai đó nối cầu. Người nối cầu sẽ đọc chữ ký hàm, thấy nó dựng được giao
+/// dịch, và không có gì trên đường đi nói cho họ biết giao dịch ấy sẽ chết ở
+/// validator. Một quả mìn im lặng thì phải được gỡ bằng một cái cửa, không bằng
+/// một dòng chú thích.
+///
+/// Mở khoá: ABI mới đổi `recovery_timelock_slots` → `recovery_timelock_ms` và
+/// nhận thêm ba ô mốc quy đổi (`timeline_anchor_slot`,
+/// `timeline_anchor_posix_ms`, `timeline_slot_length_ms`) đọc từ `/genesis` +
+/// era summaries của CHÍNH nhà cung cấp dữ liệu chuỗi mà app đang dùng — không
+/// gõ cứng hằng của mạng, vì một hằng chép đúng rồi mạng chuyển era vẫn sinh ra
+/// giao dịch ráp được, ký được, rồi chết ở validator.
+const RECOVERY_BUILDERS_READY: bool = false;
+
+/// Cửa fail-closed cho ba builder khôi phục. Xem `RECOVERY_BUILDERS_READY`.
+fn recovery_builders_gate() -> Result<(), String> {
+    if RECOVERY_BUILDERS_READY {
+        return Ok(());
+    }
+    Err(
+        "recovery builders disabled: timelock is measured in slots but the validator's \
+         recovery window is anchored to POSIX milliseconds. Building here produces a \
+         transaction the validator rejects, after fees are paid. Unblock by migrating to \
+         the recovery_timelock_ms ABI with era-summary conversion inputs."
+            .into(),
+    )
+}
+
 /// `recovery_timelock_slots` MUST equal the value baked into the deployed
 /// validator (the datum's deadline_slot must equal lb + that param, else the
 /// validator rejects). `guardian_signing_keys_json` = JSON array of 32-byte
 /// hex Ed25519 seeds for the signing guardians (test/preprod path; production
 /// aggregates guardian witnesses signed on their own devices).
+///
+/// ⛔ CHẶN ở `recovery_builders_gate()` — sai đơn vị thời gian, đọc ở đó.
 #[allow(clippy::too_many_arguments)]
 pub fn build_init_recovery_tx(
     current_taad_utxo_json: &str,
@@ -3050,6 +3102,7 @@ pub fn build_init_recovery_tx(
     protocol_params_json: &str,
     current_slot: u64,
 ) -> Result<String, String> {
+    recovery_builders_gate()?;
     let li = parse_lifecycle_inputs(current_taad_utxo_json, utxo_inputs_json, protocol_params_json)?;
     let d = decode_taad_datum_full(&li.inline_datum_hex)?;
 
@@ -3136,6 +3189,7 @@ pub fn build_cancel_recovery_tx(
     protocol_params_json: &str,
     current_slot: u64,
 ) -> Result<String, String> {
+    recovery_builders_gate()?;
     let li = parse_lifecycle_inputs(current_taad_utxo_json, utxo_inputs_json, protocol_params_json)?;
     let d = decode_taad_datum_full(&li.inline_datum_hex)?;
     let (_pc, _ph, deadline, _col) = decode_recovering_status(&d.status)?;
@@ -3199,6 +3253,7 @@ pub fn build_finalize_recovery_tx(
     protocol_params_json: &str,
     current_slot: u64,
 ) -> Result<String, String> {
+    recovery_builders_gate()?;
     let li = parse_lifecycle_inputs(current_taad_utxo_json, utxo_inputs_json, protocol_params_json)?;
     let d = decode_taad_datum_full(&li.inline_datum_hex)?;
     let (pending_ctrl, pending_hw, deadline, _col) = decode_recovering_status(&d.status)?;
@@ -3288,6 +3343,50 @@ fn parse_pkh_list(json: &str, label: &str) -> Result<Vec<[u8; 28]>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ─── Cửa fail-closed cho ba builder khôi phục ──────────────────
+
+    /// Cả ba phải TỪ CHỐI, và phải từ chối vì đúng lý do — không phải vì đầu vào rác.
+    ///
+    /// Đầu vào ở đây cố tình là rác. Đó chính là ca đối chứng: nếu cửa nằm SAU bước
+    /// phân tích đầu vào thì lỗi trả về sẽ là lỗi phân tích, và bài này đỏ. Tức bài
+    /// đo được cả VIỆC chặn lẫn CHỖ chặn — chặn muộn thì một nơi gọi truyền đầu vào
+    /// hợp lệ vẫn đi tiếp được vài bước trước khi dừng, và vài bước đó có thể tốn phí.
+    #[test]
+    fn recovery_builders_refuse_before_touching_inputs() {
+        let g = build_init_recovery_tx("", "", "", "", 0, 0, "", 0, "", "", "", 0);
+        let c = build_cancel_recovery_tx("", "", "", 0, "", "", "", 0);
+        let f = build_finalize_recovery_tx("", "", "", 0, "", "", "", 0);
+
+        for (ten, r) in [("init", g), ("cancel", c), ("finalize", f)] {
+            let e = r.expect_err(&format!("{} phải từ chối, không được dựng giao dịch", ten));
+            assert!(
+                e.contains("recovery builders disabled"),
+                "{} dừng vì lý do KHÁC — cửa đang nằm sau bước phân tích đầu vào. Lỗi thật: {}",
+                ten,
+                e
+            );
+            // Câu lỗi phải nói ra ĐƠN VỊ, vì đó là thứ người đọc cần để sửa. Một câu
+            // "chưa hỗ trợ" trần sẽ dẫn người ta đi bật cờ lên thay vì đi đổi ABI.
+            assert!(e.contains("POSIX millisecond"), "{}: câu lỗi không nêu đơn vị: {}", ten, e);
+        }
+    }
+
+    /// Ghim BẬC ĐỘ LỚN, không ghim giá trị — bậc là thứ duy nhất phân biệt được
+    /// slot với POSIX-ms. Cùng loại nhầm này đã xuất hiện ba lần ở ba kho khác nhau,
+    /// và mỗi lần đều đi qua mọi cổng kiểu vì cả hai đại lượng là số nguyên dương.
+    #[test]
+    fn slot_and_posix_ms_differ_by_four_orders_of_magnitude() {
+        // Một mốc thật trên preprod: cùng một thời điểm, đọc theo hai đơn vị.
+        let slot: u64 = 179_000_000;
+        let posix_ms: u64 = 1_790_000_000_000;
+        let bac = |n: u64| n.to_string().len();
+        assert_eq!(
+            bac(posix_ms) - bac(slot),
+            4,
+            "hai đại lượng phải lệch đúng 4 chữ số; lệch khác đi nghĩa là mốc mẫu đã cũ"
+        );
+    }
 
     // ─── ExUnit price: hai dạng chuỗi cùng một endpoint ────────────
 

@@ -62,6 +62,11 @@ export const PUBLIC_ROUTES: readonly string[] = [
   'Login',
   'Terms',
   'WebPage', // chỉ `OnboardingScreen.tsx:86` mở, kèm URL cố định
+  // Màn HỎI ở cửa vào — nó đứng TRƯỚC cả `SignUpBiometric` lẫn `RestoreIdentity`,
+  // nên đóng nó lại là đóng luôn cả hai đường đã mở bên dưới. Màn không đọc
+  // `state.user` một lần nào và không hiện dữ liệu nào của người dùng: nó chỉ
+  // hỏi một câu rồi điều hướng.
+  'IdentityEntryChoice',
   'SignUpBiometric',
   'SignUpComplete',
   // 2 — đường lấy lại quyền

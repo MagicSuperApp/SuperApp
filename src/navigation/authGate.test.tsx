@@ -91,6 +91,17 @@ describe('A — danh sách công khai', () => {
     expect(isPublicRoute('ExportIdentity')).toBe(false);
   });
 
+  it('màn HỎI ở cửa vào công khai — nó đứng TRƯỚC hai đường đã mở bên dưới', () => {
+    // `IdentityEntryChoice` là chỗ người chưa có phiên chọn giữa "tạo mới" và
+    // "24 từ". Đóng nó lại là đóng luôn cả `SignUpBiometric` lẫn
+    // `RestoreIdentity` — hai màn vẫn công khai, nhưng không còn ai tới được.
+    // Kiểu hỏng đó không kêu: app dựng bình thường, `tsc` xanh, nút vẫn bấm
+    // được, chỉ là màn kế tiếp không bao giờ hiện.
+    expect(isPublicRoute('IdentityEntryChoice')).toBe(true);
+    expect(isPublicRoute('SignUpBiometric')).toBe(true);
+    expect(isPublicRoute('RestoreIdentity')).toBe(true);
+  });
+
   it('màn lạ chưa ai khai là màn ĐÓNG — mặc định đóng, không mặc định mở', () => {
     expect(isPublicRoute('ManMoiAiDoVuaThem')).toBe(false);
   });

@@ -236,11 +236,21 @@ const LoginScreen = () => {
         return;
       }
 
-      // Máy CHƯA có danh tính thì đi thẳng sang màn tạo tài khoản — hỏi sinh trắc
-      // trước là bắt người dùng xác thực cho một cái khoá không tồn tại.
+      // Máy CHƯA có danh tính thì KHÔNG hỏi sinh trắc — hỏi trước là bắt người
+      // dùng xác thực cho một cái khoá không tồn tại.
+      //
+      // Nhưng cũng KHÔNG đi thẳng sang màn tạo mới nữa (hành vi cũ tới
+      // 2026-09-09). Nút này tròn, xanh, to nhất màn và không có một chữ nào:
+      // đưa thẳng nó vào màn tạo mới là để nó CHỌN HỘ người dùng một trong ba
+      // luồng khác hẳn nhau — người mới, người đổi điện thoại, người đang có
+      // app khác của hệ trên chính máy này. Hai trong ba lần chọn đó là sai, và
+      // cái sai không kêu lên: danh sách vườn hiện RỖNG dưới một DID thứ hai,
+      // trùng khớp với "tôi chưa ghi gì".
+      //
+      // Nay nút dẫn tới màn HỎI (`IdentityEntryChoice`), và chính người dùng rẽ.
       const [did, hasKey] = await Promise.all([currentUserDid(), isKeypairEnrolled()]);
       if (!did || !hasKey) {
-        navigation.navigate('SignUpBiometric' as never);
+        navigation.navigate('IdentityEntryChoice' as never);
         return;
       }
 
@@ -493,63 +503,40 @@ const LoginScreen = () => {
           </View>
         </View>
 
-        {/* ĐẢO THỨ TỰ 2026-08-30 (#233).
-            Nền mã này nay dựng NHIỀU app, và hai app có hai mã gói khác nhau nên
-            Keystore/Secure Enclave tách hẳn — app thứ hai KHÔNG nhìn thấy khoá của
-            app thứ nhất. Người đã dùng app khác của hệ mở app này lên thì đang ở ca
-            "đã có danh tính", không phải ca "người mới".
+        {/* GỘP HAI THẺ THÀNH MỘT LỐI 2026-09-09 — tiếp nối #233.
 
-            Trước bản này nút "Chưa có tài khoản?" đứng TRƯỚC và không dòng nào nói
-            rằng người đã dùng app khác phải bấm nút kia. Bấm theo phản xạ thì sinh
-            một DID THỨ HAI cho cùng một người: `farmService` lấy `owner_did` từ
-            phiên nên danh sách vườn hiện RỖNG, mà "rỗng" trùng khớp với "tôi chưa
-            ghi gì" — nên nó không phải triệu chứng, nó là một hiểu lầm, và bước tiếp
-            theo rất dễ là nhập lại toàn bộ vườn dưới DID thứ hai. Dữ liệu chia đôi
-            vĩnh viễn.
+            Bản #233 (2026-08-30) dựng hai thẻ ở đây và đảo thứ tự chúng, vì hai
+            app có hai mã gói nên Keystore/Secure Enclave tách hẳn: app thứ hai
+            KHÔNG nhìn thấy khoá của app thứ nhất. Cái đó vẫn đúng.
 
-            Nên lối "đã có danh tính" đứng TRÊN, và lối "tạo mới" phải nói thẳng nó
-            sinh một danh tính KHÁC. */}
+            Chỗ hai thẻ đó còn hụt: chúng chia người dùng làm HAI, mà thực tế có
+            BA. Thẻ khôi phục hỏi "Đã dùng một app KHÁC của hệ này?" — câu ấy tả
+            đúng ca "cùng máy, app khác" và LOẠI NHẦM ca đông hơn nhiều: người
+            đổi điện thoại hoặc cài lại app dùng CÙNG app trên MÁY KHÁC. Họ đọc
+            chữ "app khác" rồi tự loại mình ra, quay sang thẻ "tạo mới", và sinh
+            một DID thứ hai — đúng cái hỏng mà #233 định bịt.
+
+            Nên lối rẽ nay nằm ở MỘT màn hỏi (`IdentityEntryChoice`), ba lựa chọn
+            đặt cạnh nhau và mỗi lựa chọn nói cái giá của nó. Ở đây chỉ còn một
+            cửa dẫn vào màn đó — cùng đích với nút sinh trắc khi máy chưa có danh
+            tính, nhưng có CHỮ, cho người đọc chữ trước khi bấm. */}
         <TouchableOpacity
           activeOpacity={0.85}
           onPress={() => {
-            trackPress('restore_cta', { action: 'open_restore' });
-            navigation.navigate('RestoreIdentity' as never);
+            trackPress('identity_entry_cta', { action: 'open_entry_choice' });
+            navigation.navigate('IdentityEntryChoice' as never);
           }}
           style={styles.signUpCard}
         >
           <View style={styles.signUpIcon}>
-            <Icon name="backup-restore" size={20} color={BLUE.primary} />
+            <Icon name="help-circle-outline" size={20} color={BLUE.primary} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.signUpTitle} allowFontScaling={false}>
-              Đã dùng một app khác của hệ này?
+              Bạn đã từng dùng app nào của hệ này chưa?
             </Text>
             <Text style={styles.signUpSub} allowFontScaling={false}>
-              Mở lại danh tính đã có bằng cụm 24 từ — vườn, cây và ví theo bạn sang đây
-            </Text>
-          </View>
-          <Icon name="arrow-right" size={18} color={BLUE.primary} />
-        </TouchableOpacity>
-
-        {/* Sign up CTA */}
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={() => {
-            // Nhấn nút "Tạo tài khoản" → đo độ trễ đến màn SignUpBiometric.
-            trackPress('signup_cta', { action: 'open_signup' });
-            navigation.navigate('SignUpBiometric' as never);
-          }}
-          style={styles.signUpCard}
-        >
-          <View style={styles.signUpIcon}>
-            <Icon name="account-plus-outline" size={20} color={BLUE.primary} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.signUpTitle} allowFontScaling={false}>
-              Chưa từng có danh tính nào?
-            </Text>
-            <Text style={styles.signUpSub} allowFontScaling={false}>
-              Tạo một danh tính MỚI — khác với danh tính bạn dùng ở app kia
+              Người mới, đổi điện thoại, hay đang có app khác của hệ trên máy này — ba đường khác nhau, chọn ở đây
             </Text>
           </View>
           <Icon name="arrow-right" size={18} color={BLUE.primary} />
@@ -639,6 +626,7 @@ const BioButton: React.FC<{
           pointerEvents="none"
         />
         <TouchableOpacity
+          testID="login-biometric-button"
           activeOpacity={0.9}
           disabled={busy || off}
           onPressIn={() =>

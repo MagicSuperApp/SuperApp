@@ -52,6 +52,7 @@ import { hasSeenOnboarding } from '../utils/onboardingFlag';
 import ActivationScreen from '../screens/ActivationScreen';
 import HomeScreen from '../screens/HomeScreen';
 import SignUpBiometricScreen from '../features/auth/screens/SignUpBiometricScreen';
+import IdentityEntryChoiceScreen from '../features/auth/screens/IdentityEntryChoiceScreen';
 import SignUpCompleteScreen from '../features/auth/screens/SignUpCompleteScreen';
 import AccountScreen from '../screens/AccountScreen';
 import DeleteAccountScreen from '../screens/DeleteAccountScreen';
@@ -1721,6 +1722,9 @@ const HOST_STACK_SCREENS: Array<{
   { name: 'ProofChatWallet', component: ChatWalletScreen, options: { headerShown: false } },
   { name: 'ProofChatEscrow', component: ChatEscrowScreen, options: { headerShown: false } },
   // Auth flow.
+  // Cửa vào khi máy CHƯA có danh tính: hỏi một câu rồi rẽ ba lối, thay cho việc
+  // đi thẳng sang `SignUpBiometric`. Xem đầu tệp màn đó.
+  { name: 'IdentityEntryChoice', component: IdentityEntryChoiceScreen, options: { headerShown: false } },
   { name: 'SignUpBiometric', component: SignUpBiometricScreen, options: { headerShown: false } },
   { name: 'SignUpComplete', component: SignUpCompleteScreen, options: { headerShown: false, gestureEnabled: false } },
   // Capture/identity screens dùng chung (host-level).

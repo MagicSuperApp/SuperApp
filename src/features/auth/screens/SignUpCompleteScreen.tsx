@@ -36,6 +36,11 @@ import { AUTH_BLUE } from '../theme';
 import StepIndicator from '../components/StepIndicator';
 import { loginUser } from '../../../store/userSlice';
 import { useBottomActionPadding } from '../../../hooks/useBottomActionPadding';
+import { useTk } from '../../../i18n/keys';
+import {
+  markSeedBackupDeferred,
+  clearSeedBackupDeferred,
+} from '../../../services/seedBackupReminder';
 
 type StepStatus = 'pending' | 'processing' | 'done';
 
@@ -73,6 +78,7 @@ const SignUpCompleteScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const dispatch = useDispatch();
+  const tk = useTk();
   const recoveryLinked: boolean = route.params?.recoveryLinked ?? false;
 
   const [statuses, setStatuses] = useState<StepStatus[]>(
@@ -131,6 +137,34 @@ const SignUpCompleteScreen: React.FC = () => {
       dispatch(loginUser(user as any) as any);
     }
     navigation.reset({ index: 0, routes: [{ name: 'Main' as never }] });
+  };
+
+  /**
+   * ── Bước sao lưu: KHÔNG ép, nhưng KHÔNG giấu ─────────────────────────────
+   * Trước bản này luồng đăng ký không đi qua `SeedExport` một lần nào, nên phần
+   * lớn người dùng chưa từng nhìn thấy cụm 24 từ của mình — đường khôi phục có
+   * tồn tại mà họ không có vé vào.
+   *
+   * ⛔ ĐỪNG thêm lại ô đánh dấu "tôi đã ghi lại đủ 24 từ" rồi chặn nút. Bản
+   *    trước có đúng thứ đó và đã bị GỠ CÓ CHỦ Ý — xem khối chú thích đầu
+   *    `screens/SeedExportScreen.tsx`: cụm 24 từ là bản sao KHÔNG THU HỒI ĐƯỢC
+   *    của toàn bộ ví, nên buộc người dùng khai đã làm một việc nguy hiểm thì
+   *    mới thoát ra được là đẩy họ vào đúng chỗ nguy hiểm đó.
+   *
+   * `SeedExport` nằm sau cổng sinh trắc (`navigation/authGate.tsx`), và tới màn
+   * này thì phiên đã có: `SignUpBiometricScreen` dispatch `loginUser` TRƯỚC khi
+   * điều hướng sang đây.
+   */
+  const openBackup = () => {
+    void clearSeedBackupDeferred();
+    navigation.navigate('SeedExport');
+  };
+
+  const deferBackup = () => {
+    // Ghi mốc rồi vào app. `void` có chủ ý: người dùng không phải chờ một lượt
+    // ghi đĩa để bấm được nút, và lần ghi hỏng KHÔNG được chặn đường vào app.
+    void markSeedBackupDeferred();
+    enterApp();
   };
 
   const checkRotateDeg = checkRotate.interpolate({
@@ -230,19 +264,41 @@ const SignUpCompleteScreen: React.FC = () => {
         <View style={{ height: 20 }} />
       </ScrollView>
 
-      {/* Action */}
+      {/* Action — hai nút, và cả hai đều VÀO ĐƯỢC app. Không nút nào bị chặn sau
+          một lời khai, xem chú thích ở `openBackup`. */}
       <View style={[styles.actionBar, { paddingBottom: bottomPad }]}>
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={enterApp}
-          disabled={!allDone}
-          style={[styles.btnPrimary, !allDone && styles.btnDisabled]}
-        >
-          <Icon name="arrow-right-circle-outline" size={18} color={AUTH_BLUE.white} />
-          <Text style={styles.btnPrimaryText}>
-            {allDone ? 'Vào ứng dụng' : 'Đang xử lý…'}
-          </Text>
-        </TouchableOpacity>
+        {allDone ? (
+          <>
+            <Text style={styles.backupTitle}>{tk('identity.backup.title')}</Text>
+            <Text style={styles.backupBody}>{tk('identity.backup.body')}</Text>
+            <TouchableOpacity
+              testID="signup-backup-now"
+              activeOpacity={0.85}
+              onPress={openBackup}
+              style={styles.btnPrimary}
+            >
+              <Icon name="shield-key-outline" size={18} color={AUTH_BLUE.white} />
+              <Text style={styles.btnPrimaryText}>{tk('identity.backup.now')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              testID="signup-backup-later"
+              activeOpacity={0.7}
+              onPress={deferBackup}
+              style={styles.btnGhost}
+            >
+              <Text style={styles.btnGhostText}>{tk('identity.backup.later')}</Text>
+            </TouchableOpacity>
+          </>
+        ) : (
+          <TouchableOpacity
+            activeOpacity={0.85}
+            disabled
+            style={[styles.btnPrimary, styles.btnDisabled]}
+          >
+            <Icon name="arrow-right-circle-outline" size={18} color={AUTH_BLUE.white} />
+            <Text style={styles.btnPrimaryText}>Đang xử lý…</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );
@@ -448,6 +504,27 @@ const styles = StyleSheet.create({
   btnPrimaryText: {
     fontSize: 14, fontWeight: '800',
     color: AUTH_BLUE.white, letterSpacing: 0.3,
+  },
+
+  // ── Bước sao lưu ──────────────────────────────────────────────────────────
+  backupTitle: {
+    fontSize: 14, fontWeight: '800',
+    color: AUTH_BLUE.text, letterSpacing: -0.2,
+    lineHeight: 20, marginBottom: 6,
+  },
+  backupBody: {
+    fontSize: 12, color: AUTH_BLUE.textSub,
+    lineHeight: 18, marginBottom: 14,
+  },
+  // Nút thứ hai KHÔNG bị làm mờ đi: "để sau" là một lựa chọn hợp lệ, không phải
+  // một lựa chọn kém. Làm nó nhạt hơn là ép bằng thị giác thứ mà màn này cố ý
+  // không ép bằng luật.
+  btnGhost: {
+    alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 14, marginTop: 8,
+  },
+  btnGhostText: {
+    fontSize: 13, fontWeight: '700', color: AUTH_BLUE.textSub,
   },
 });
 

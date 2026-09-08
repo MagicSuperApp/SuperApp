@@ -473,9 +473,16 @@ export type ShellMatcher = 'sift' | 'xfeat' | 'loftr';
  *
  * ⚠ TÊN TRƯỜNG TRÊN DÂY LÀ `view_poses`, KHÔNG PHẢI `captures`.
  * `captures` là tên của khái niệm phía app (phiên chụp trong Redux). Máy chủ khai
- * receiver dưới tên khác — `server.py:2382` (enroll) và `:2734` (verify_add),
- * `view_poses: str = Form(None)`, parser `_parse_view_poses` (`:339`). Grep
- * `captures|heading_ref` trên `server.py` nhánh main: **0 khớp**.
+ * receiver dưới tên khác — `view_poses: str = Form(None)` ở cả hai đường enroll và
+ * verify_add, parser `_parse_view_poses`. Grep `captures` trên `server.py`: 0 khớp.
+ *
+ * Neo bằng TÊN HÀM chứ không số dòng: bản trước ghi `_parse_view_poses` ở `:339`,
+ * đo lại 08/09 thì nó ở `:546`. Con trỏ theo số dòng vẫn trỏ vào một dòng CÓ THẬT
+ * sau khi trôi, nên nó hỏng mà không kêu.
+ *
+ * Và câu cũ ở đây gộp `captures|heading_ref` vào chung một phép grep "0 khớp". Vế
+ * `heading_ref` nay SAI (xem khối `HeadingRef` bên dưới); vế `captures` vẫn đúng.
+ * Gộp hai khẳng định vào một phép đo thì lúc một vế chết, vế còn lại kéo nó sống thêm.
  *
  * Bản trước gửi `captures`. FastAPI bỏ im lặng trường không khai ⇒ toàn bộ tư thế
  * theo từng ảnh rơi mất, không một lỗi nào in ra — đúng thứ mà chính máy chủ ghi
@@ -507,12 +514,30 @@ export interface CaptureOrientation {
  * OriLife yêu cầu Bắc THẬT. App CHƯA đạt, và sửa là việc native (Thư) — đã báo.
  * Trong lúc đó thà khai đúng gốc quy chiếu còn hơn dán nhãn "true" cho số Bắc từ.
  *
- * ⚠ MÁY CHỦ CHƯA CÓ CHỖ NHẬN. `grep heading_ref` toàn `MassTreeIdentify/core/` nhánh
- * main: 0 khớp. Trường này đang bị bỏ im lặng. Vẫn gửi (không tốn gì, sẵn sàng cho
- * ngày họ thêm), nhưng KHÔNG được coi là "đã khai báo gốc quy chiếu" — trên máy chủ
- * hiện mọi số heading vẫn không có nguồn gốc. Đã xin OriLife thêm receiver.
- * Nó cũng không nhét được vào từng phần tử `view_poses`: parser chỉ giữ field SỐ
- * (`_view_pose_item`, `server.py:325-336`), mà đây là chuỗi.
+ * MÁY CHỦ CÓ NHẬN VÀ CÓ LƯU. Đo 2026-09-08 (phía OriLife, trên `origin/main` của
+ * họ): `heading_ref` nằm trong danh sách cho-phép-theo-tên `_POSE_EXTRA_ALLOWED`
+ * (`server.py:411`), được chuẩn hoá về `"true" | "magnetic"`; ảnh có `heading` mà
+ * không khai gốc thì máy chủ ghi thẳng `"unknown"` chứ không để trống.
+ *
+ * ⛔ Chỗ này TỪNG mang một cảnh báo "MÁY CHỦ CHƯA CÓ CHỖ NHẬN — trường này đang bị
+ * bỏ im lặng". Cảnh báo đó **sai** ở thời điểm ai đó đọc nó, và đã chết lặng lẽ:
+ * nó dựa trên một lần `grep` trên nhánh của bên kia, còn bên kia thì đọc mã bên
+ * này rồi kết luận ngược lại — hai nhà giữ hai bản đồ trái nhau về cùng một trường,
+ * mỗi bên đều tin phía kia mới là chỗ hở. Không dữ liệu nào rơi ở giữa, nhưng đó
+ * là may chứ không phải nhờ cơ chế nào.
+ *
+ * Xoá hẳn thay vì viết nhẹ đi, theo đúng đề nghị của bên giữ máy chủ: một cảnh báo
+ * đã chết nguy hơn không có cảnh báo, vì người đọc tin nó rồi dựng một đường vòng
+ * cho một chỗ không hỏng.
+ *
+ * ⚠ Điều CÒN đúng và phải nhớ khi thêm trường cảm biến mới: cửa đó **cho phép theo
+ * TÊN, không cấm theo tên**. Trường nào chưa được khai một dòng ở phía máy chủ thì
+ * rơi lặng — không lỗi, không cảnh báo. Nên thêm trường mới thì báo trước một dòng,
+ * đừng gửi rồi chờ xem có vào không.
+ *
+ * Riêng `heading_ref` vẫn không nhét được vào từng phần tử `view_poses`: parser chỉ
+ * giữ field SỐ (`_view_pose_item`), mà đây là chuỗi. Nó đi ở tầng form, không đi
+ * theo từng ảnh.
  */
 export type HeadingRef = 'ios_true_or_magnetic' | 'android_magnetic';
 

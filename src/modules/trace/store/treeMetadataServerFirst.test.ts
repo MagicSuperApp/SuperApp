@@ -53,7 +53,14 @@ describe('hồ sơ cây — thunk và câu báo phải nói cùng một chuyện
     expect(body).toContain('AsyncStorage.setItem');
     // Máy chủ TRƯỚC, kho máy SAU. Ngược thứ tự là ghi cục bộ rồi báo xong trong
     // khi máy chủ có thể đã chối — đúng cái vỏ im lặng bản này gỡ.
-    expect(body.indexOf('saveTreeProfile')).toBeLessThan(body.indexOf('AsyncStorage.setItem'));
+    // Khớp LỜI GỌI ở cả hai vế của phép so thứ tự. `indexOf('saveTreeProfile')` trần
+    // thì một dòng CHÚ THÍCH nhắc tên hàm, đặt phía trên `AsyncStorage.setItem`, đủ
+    // làm phép so đạt — kể cả khi lời gọi thật đã bị đẩy xuống sau lần ghi cục bộ,
+    // tức đúng cái vỏ im lặng bài này ghim. Phép đo văn bản không tự phân biệt được
+    // mã với lời bàn về mã.
+    expect(body.search(/\bsaveTreeProfile\s*\(/)).toBeLessThan(
+      body.indexOf('AsyncStorage.setItem'),
+    );
   });
 
   it('máy chủ trượt thì thunk BỊ TỪ CHỐI, không âm thầm ghi cục bộ rồi báo xong', () => {

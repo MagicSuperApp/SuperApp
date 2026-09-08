@@ -1,0 +1,105 @@
+# .github/workflows/phoenixkey-contract.yml
+#
+# Đối chiếu hợp đồng với API PhoenixKey ĐANG CHẠY.
+#
+# ── Vì sao cần, khi kho này đã có ~970 bài kiểm ────────────────────────────────
+# Lỗi đắt nhất tuần này không nằm trong kho này: cửa DUY NHẤT cấp `session_token`
+# lại đòi sẵn chính token đó (401/1304), làm đứng đăng ký ví và đăng nhập trò
+# chuyện. Không bài kiểm đơn vị nào bắt được — chúng mock lớp mạng, nên chúng đo
+# đúng thứ chúng tự dựng. Thứ bắt được một lỗi ở phía bên kia đường dây chỉ có thể
+# là một phép đo chạm vào chính đường dây đó.
+#
+# ── Vì sao KHÔNG phải cổng chặn merge ─────────────────────────────────────────
+# Nó phụ thuộc máy chủ của đội khác. Một cổng chặn merge mỗi lần máy người khác
+# hắt hơi là một cổng sẽ bị tắt trong vài tuần, và lúc bị tắt thì nó không bảo vệ
+# gì nữa mà vẫn nằm đó trông như đang bảo vệ. Nên nó chạy theo lịch: nhiệm vụ của
+# nó là BÁO, không phải CHẶN.
+#
+# ── Nó báo theo HAI chiều, và chiều thứ hai mới là chiều hay bị quên ──────────
+# Chuyển ĐỎ  = hợp đồng vừa vỡ, hoặc vẫn đang vỡ.
+# Chuyển XANH = phía máy chủ vừa được sửa ⟹ đây là lúc nối lại phần đang treo bên
+#               này. Không có bước này thì tin "đã sửa xong" tới bằng cách ai đó
+#               tình cờ thử lại, và đã có việc chết 33 ngày vì đúng kiểu đó.
+#
+# ── Ba trạng thái, không phải hai ─────────────────────────────────────────────
+# Mã thoát 0 đạt · 1 vi phạm · 2 KHÔNG ĐO ĐƯỢC. Trạng thái thứ ba có mã riêng vì
+# nếu nó phải mượn màu của một trong hai thì mượn màu nào cũng sai: mượn xanh là
+# nói "ổn" trong lúc mù, mượn đỏ là kêu sai chỗ rồi bị học cách bỏ qua.
+
+name: Hợp đồng PhoenixKey
+
+on:
+  schedule:
+    # 01:00 UTC = 08:00 giờ Việt Nam, mỗi ngày.
+    - cron: '0 1 * * *'
+  workflow_dispatch:
+  # Chạy luôn khi chính phép đo hoặc lớp client bị sửa — lúc đó thứ đáng nghi là
+  # bản sửa, không phải máy chủ.
+  pull_request:
+    paths:
+      - 'scripts/phoenixkey-contract.js'
+      - 'scripts/check-phoenixkey-contract.js'
+      - 'scripts/phoenixkey-contract.node-test.js'
+      - 'src/services/phoenixKey-api.ts'
+      - '.github/workflows/phoenixkey-contract.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.11.0'
+
+      # Bài kiểm cho HÀM PHÁN QUYẾT, không chạm mạng. Chạy TRƯỚC phép đo thật, vì
+      # nếu logic phán quyết hỏng thì màu của phép đo thật không có nghĩa gì.
+      # Đây cũng là thứ duy nhất chứng minh cơ chế này biết nói cả ba trạng thái —
+      # phép đo thật hôm nay chỉ chứng minh được nó biết nói ĐỎ.
+      #
+      # Chạy bằng `node --test` dựng sẵn trong Node, KHÔNG qua jest và KHÔNG cần
+      # `npm ci`. Lượt CI đầu tiên của workflow này ĐỎ ở đúng bước này: `npx jest`
+      # trên máy chạy chưa cài phụ thuộc ⟹ `Preset react-native not found`. Bài kiểm
+      # không sai dòng nào — đường tới nó mới là chỗ hỏng. Vá bằng cách gỡ nguyên
+      # nhân: bộ này là logic thuần, mọi phụ thuộc npm trên đường tới nó chỉ thêm
+      # chỗ để đỏ vì lý do không liên quan tới hợp đồng nó canh, mà cổng đỏ vì lý do
+      # không liên quan là cổng sẽ bị tắt.
+      - name: Bài kiểm hàm phán quyết
+        run: node --test scripts/phoenixkey-contract.node-test.js
+
+      - name: Đo hợp đồng trên máy chủ thật
+        id: measure
+        run: |
+          set +e
+          node scripts/check-phoenixkey-contract.js | tee /tmp/verdict.txt
+          echo "code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      # Viết thẳng kết quả vào trang tóm tắt của lượt chạy. Có tiền lệ đo được: một
+      # job đỏ 5 lượt trong 2 ngày mà giao diện không hiện dòng nhật ký nào, nên bị
+      # đọc thành "không rõ nguyên nhân" và một nhánh đứng 2 ngày — trong khi nguyên
+      # nhân nằm nguyên văn ở một kênh khác kênh người ta nhìn. Bước này đặt kết luận
+      # vào đúng chỗ người ta nhìn đầu tiên.
+      - name: Ghi kết quả vào tóm tắt
+        if: always()
+        run: |
+          {
+            echo '## Hợp đồng PhoenixKey'
+            echo
+            echo '```'
+            cat /tmp/verdict.txt 2>/dev/null || echo 'Phép đo không chạy được — xem bước trên.'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Kết luận
+        if: always()
+        run: |
+          case "${{ steps.measure.outputs.code }}" in
+            0) echo 'Hợp đồng ĐẠT. Nếu lượt trước còn đỏ thì đây là tín hiệu nối lại phần đang treo phía app.' ;;
+            1) echo 'Hợp đồng VI PHẠM — xem tóm tắt.'; exit 1 ;;
+            2) echo 'KHÔNG ĐO ĐƯỢC. Đây KHÔNG phải là đạt: phép đo mù, không phải hợp đồng đúng.'; exit 1 ;;
+            *) echo "Phép đo không trả mã hợp lệ (${{ steps.measure.outputs.code }}) — chính bước đo hỏng."; exit 1 ;;
+          esac

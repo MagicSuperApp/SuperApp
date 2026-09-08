@@ -39,7 +39,7 @@ on:
     paths:
       - 'scripts/phoenixkey-contract.js'
       - 'scripts/check-phoenixkey-contract.js'
-      - 'scripts/phoenixkey-contract.test.js'
+      - 'scripts/phoenixkey-contract.node-test.js'
       - 'src/services/phoenixKey-api.ts'
       - '.github/workflows/phoenixkey-contract.yml'
 
@@ -60,8 +60,16 @@ jobs:
       # nếu logic phán quyết hỏng thì màu của phép đo thật không có nghĩa gì.
       # Đây cũng là thứ duy nhất chứng minh cơ chế này biết nói cả ba trạng thái —
       # phép đo thật hôm nay chỉ chứng minh được nó biết nói ĐỎ.
+      #
+      # Chạy bằng `node --test` dựng sẵn trong Node, KHÔNG qua jest và KHÔNG cần
+      # `npm ci`. Lượt CI đầu tiên của workflow này ĐỎ ở đúng bước này: `npx jest`
+      # trên máy chạy chưa cài phụ thuộc ⟹ `Preset react-native not found`. Bài kiểm
+      # không sai dòng nào — đường tới nó mới là chỗ hỏng. Vá bằng cách gỡ nguyên
+      # nhân: bộ này là logic thuần, mọi phụ thuộc npm trên đường tới nó chỉ thêm
+      # chỗ để đỏ vì lý do không liên quan tới hợp đồng nó canh, mà cổng đỏ vì lý do
+      # không liên quan là cổng sẽ bị tắt.
       - name: Bài kiểm hàm phán quyết
-        run: npx jest scripts/phoenixkey-contract.test.js
+        run: node --test scripts/phoenixkey-contract.node-test.js
 
       - name: Đo hợp đồng trên máy chủ thật
         id: measure

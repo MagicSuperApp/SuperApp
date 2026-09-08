@@ -1,4 +1,4 @@
-// scripts/phoenixkey-contract.test.js
+// scripts/phoenixkey-contract.node-test.js
 //
 // Bài kiểm cho hàm phán quyết. Mục đích DUY NHẤT: chứng minh nó biết nói cả ba
 // trạng thái, và chứng minh cái xanh của nó không rỗng.
@@ -7,6 +7,25 @@
 // sống, nên nếu chỉ có nó thì "hôm nay đỏ" là toàn bộ bằng chứng ta có — và nó
 // không chứng minh được rằng ngày máy chủ được sửa thì thứ này sẽ chuyển xanh.
 // Ở đây cả hai cực đều nạp được bằng dữ liệu.
+//
+// ── Vì sao `node:test` chứ không jest, và vì sao tên tệp không phải `.test.js` ─
+// Bản đầu dùng jest, và lượt CI đầu tiên ĐỎ ngay: bước chạy `npx jest` mà chưa
+// cài phụ thuộc ⟹ `Preset react-native not found`. Bài kiểm không sai một dòng
+// nào; cái hỏng là đường tới nó.
+//
+// Đó là đúng lớp hỏng mà tệp này sinh ra để chống, nên vá bằng cách gỡ nguyên
+// nhân chứ không thêm một bước `npm ci`: bộ này là logic thuần, không chạm React
+// Native, không chạm mạng — mọi phụ thuộc npm trên đường tới nó chỉ là thêm chỗ
+// để hỏng vì lý do không liên quan tới hợp đồng nó canh. Cổng đỏ vì lý do không
+// liên quan là cổng sẽ bị tắt, và lúc bị tắt thì nó không bảo vệ gì nữa mà vẫn
+// nằm đó trông như đang bảo vệ.
+//
+// Tên tệp là `.node-test.js` chứ không `.test.js` để jest của kho KHÔNG nhặt nó
+// (`testMatch` mặc định chỉ khớp `*.test.js`) — jest không chạy được tệp dùng
+// `node:test`. Chạy: `node --test scripts/phoenixkey-contract.node-test.js`.
+
+const { describe, it } = require('node:test');
+const assert = require('node:assert/strict');
 
 const { STATE, verdict, exitCodeOf } = require('./phoenixkey-contract');
 
@@ -57,10 +76,10 @@ const find = (v, id) => v.checks.find((c) => c.id === id);
 describe('phán quyết hợp đồng PhoenixKey', () => {
   it('ĐỎ ở đúng hình dạng đang chạy hôm nay: approve bị 401/1304', () => {
     const v = verdict({ init: INIT_OK, approve: APPROVE_401, apiDocs: docs() });
-    expect(v.state).toBe(STATE.VIOLATED);
-    expect(find(v, 'approve-not-behind-bearer').state).toBe(STATE.VIOLATED);
-    expect(find(v, 'approve-not-behind-bearer').note).toMatch(/401\/1304/);
-    expect(exitCodeOf(v.state)).toBe(1);
+    assert.equal(v.state, STATE.VIOLATED);
+    assert.equal(find(v, 'approve-not-behind-bearer').state, STATE.VIOLATED);
+    assert.match(find(v, 'approve-not-behind-bearer').note, /401\/1304/);
+    assert.equal(exitCodeOf(v.state), 1);
   });
 
   it('XANH khi tường Bearer đã gỡ VÀ api-docs khai security riêng', () => {
@@ -69,9 +88,9 @@ describe('phán quyết hợp đồng PhoenixKey', () => {
       approve: APPROVE_400,
       apiDocs: docs({ security: [] }),
     });
-    expect(v.state).toBe(STATE.OK);
-    expect(v.checks.map((c) => c.state)).toEqual([STATE.OK, STATE.OK, STATE.OK]);
-    expect(exitCodeOf(v.state)).toBe(0);
+    assert.equal(v.state, STATE.OK);
+    assert.deepEqual(v.checks.map((c) => c.state), [STATE.OK, STATE.OK, STATE.OK]);
+    assert.equal(exitCodeOf(v.state), 0);
   });
 
   it('mọi mã KHÁC 401 đều tính là đã gỡ tường — bài canh không đòi approve trả 200', () => {
@@ -81,7 +100,8 @@ describe('phán quyết hợp đồng PhoenixKey', () => {
         approve: { ok: true, status, body: {} },
         apiDocs: docs({ security: [] }),
       });
-      expect([status, v.state]).toEqual([status, STATE.OK]);
+      // Ghép `status` vào phép so để lần đỏ nói được nó đỏ ở mã nào.
+      assert.deepEqual([status, v.state], [status, STATE.OK]);
     }
   });
 
@@ -91,7 +111,7 @@ describe('phán quyết hợp đồng PhoenixKey', () => {
       approve: { ok: true, status: 401, body: { code: 9999 } },
       apiDocs: docs({ security: [] }),
     });
-    expect(v.state).toBe(STATE.VIOLATED);
+    assert.equal(v.state, STATE.VIOLATED);
   });
 
   it('máy chủ không với tới ⟹ KHÔNG ĐO ĐƯỢC, KHÔNG phải đạt', () => {
@@ -100,10 +120,10 @@ describe('phán quyết hợp đồng PhoenixKey', () => {
       approve: { ok: false, reason: 'bỏ qua' },
       apiDocs: { ok: false, reason: 'ETIMEDOUT' },
     });
-    expect(v.state).toBe(STATE.UNMEASURABLE);
-    expect(exitCodeOf(v.state)).toBe(2);
+    assert.equal(v.state, STATE.UNMEASURABLE);
+    assert.equal(exitCodeOf(v.state), 2);
     // Chỗ đắt nhất: nó KHÔNG được rơi vào 0.
-    expect(exitCodeOf(v.state)).not.toBe(0);
+    assert.notEqual(exitCodeOf(v.state), 0);
   });
 
   it('init hỏng ⟹ mục approve là KHÔNG ĐO ĐƯỢC, không phải đạt ngầm', () => {
@@ -112,8 +132,8 @@ describe('phán quyết hợp đồng PhoenixKey', () => {
       approve: APPROVE_400, // ngay cả khi có sẵn một phản hồi trông đẹp
       apiDocs: docs({ security: [] }),
     });
-    expect(find(v, 'approve-not-behind-bearer').state).toBe(STATE.UNMEASURABLE);
-    expect(v.state).toBe(STATE.UNMEASURABLE);
+    assert.equal(find(v, 'approve-not-behind-bearer').state, STATE.UNMEASURABLE);
+    assert.equal(v.state, STATE.UNMEASURABLE);
   });
 
   it('vi phạm ĐÃ BIẾT thắng không-đo-được — không hạ một cái đỏ xuống thành "không rõ"', () => {
@@ -122,15 +142,15 @@ describe('phán quyết hợp đồng PhoenixKey', () => {
       approve: APPROVE_401,
       apiDocs: { ok: false, reason: 'api-docs 502' },
     });
-    expect(v.state).toBe(STATE.VIOLATED);
-    expect(find(v, 'api-docs-self-consistent').state).toBe(STATE.UNMEASURABLE);
+    assert.equal(v.state, STATE.VIOLATED);
+    assert.equal(find(v, 'api-docs-self-consistent').state, STATE.UNMEASURABLE);
   });
 
   it('api-docs tự mâu thuẫn là một mục RIÊNG: approve đã sửa mà tài liệu chưa thì vẫn đỏ', () => {
     const v = verdict({ init: INIT_OK, approve: APPROVE_400, apiDocs: docs() });
-    expect(v.state).toBe(STATE.VIOLATED);
-    expect(find(v, 'approve-not-behind-bearer').state).toBe(STATE.OK);
-    expect(find(v, 'api-docs-self-consistent').state).toBe(STATE.VIOLATED);
+    assert.equal(v.state, STATE.VIOLATED);
+    assert.equal(find(v, 'approve-not-behind-bearer').state, STATE.OK);
+    assert.equal(find(v, 'api-docs-self-consistent').state, STATE.VIOLATED);
   });
 
   it('api-docs khai 401 tường minh thì hết mâu thuẫn — hợp đồng nói đúng một điều', () => {
@@ -139,7 +159,7 @@ describe('phán quyết hợp đồng PhoenixKey', () => {
       approve: APPROVE_400,
       apiDocs: docs({ responses: { 200: {}, 401: {}, 403: {}, 404: {}, 409: {} } }),
     });
-    expect(find(v, 'api-docs-self-consistent').state).toBe(STATE.OK);
+    assert.equal(find(v, 'api-docs-self-consistent').state, STATE.OK);
   });
 
   it('không tìm thấy operation approve ⟹ KHÔNG ĐO ĐƯỢC, không tự cho là đạt', () => {
@@ -148,7 +168,7 @@ describe('phán quyết hợp đồng PhoenixKey', () => {
       approve: APPROVE_400,
       apiDocs: { ok: true, doc: { security: [{ bearerAuth: [] }], paths: {} } },
     });
-    expect(find(v, 'api-docs-self-consistent').state).toBe(STATE.UNMEASURABLE);
+    assert.equal(find(v, 'api-docs-self-consistent').state, STATE.UNMEASURABLE);
   });
 
   it('init trả 200 nhưng thiếu temp_token là VI PHẠM, không phải không-đo-được', () => {
@@ -157,14 +177,14 @@ describe('phán quyết hợp đồng PhoenixKey', () => {
       approve: APPROVE_400,
       apiDocs: docs({ security: [] }),
     });
-    expect(find(v, 'session-init-open').state).toBe(STATE.VIOLATED);
-    expect(find(v, 'session-init-open').note).toMatch(/temp_token/);
+    assert.equal(find(v, 'session-init-open').state, STATE.VIOLATED);
+    assert.match(find(v, 'session-init-open').note, /temp_token/);
   });
 
   it('luôn trả đủ ba mục, kể cả khi tổng đã đỏ ở mục đầu', () => {
     const v = verdict({ init: { ok: false, reason: 'x' } });
-    expect(v.checks).toHaveLength(3);
-    expect(v.checks.map((c) => c.id)).toEqual([
+    assert.equal(v.checks.length, 3);
+    assert.deepEqual(v.checks.map((c) => c.id), [
       'session-init-open',
       'approve-not-behind-bearer',
       'api-docs-self-consistent',

@@ -1,0 +1,27 @@
+{
+  "//": "Ghim NỘI DUNG hai cây vendored bằng băm đối tượng tree của git. Băm tree là băm nội dung và KHÔNG phụ thuộc đường dẫn cha — nên cùng một nội dung ở hai kho khác nhau, hai đường dẫn khác nhau, vẫn ra cùng một chuỗi. Đó là thứ cho phép đối chiếu với kho nguồn mà không cần quyền đọc kho đó: chỉ cần chuyển một CON SỐ, không phải chuyển cả CÂY.",
+  "//catches": "Bản chép trong kho này trôi khỏi giá trị đã chốt — cổng đỏ ngay.",
+  "//does-not-catch": "Kho nguồn đổi mà bên này chưa biết. Cổng vẫn XANH ở ca đó, và không có cách nào để nó biết: nó không đọc được kho riêng tư kia. Nửa ấy dựa vào cam kết gửi thư của bên giữ nguồn — một lời hứa của người, KHÔNG phải một cổng của máy. Đừng đọc màu xanh của cổng này thành 'hai cây còn khớp'.",
+  "//how-to-update": "Chỉ sửa khi CỐ Ý đổi bản chép. Sửa băm để cổng thôi đỏ, mà không biết vì sao nó đỏ, là gỡ chính cái cổng này.",
+  "trees": [
+    {
+      "path": "rust/vendor/openmls",
+      "tree": "8ada80d3c6af5015d025fe14a5bb19f26e153309",
+      "files": 468,
+      "source": "ProofChat/Myelin — vendor/openmls",
+      "sourceRef": "v0.1.0",
+      "sourceTreePending": true,
+      "pinnedAt": "2026-09-08"
+    },
+    {
+      "path": "rust/chat_mls/src",
+      "tree": "d7108e8fd9484bd25f80c488b9153509ec6bec4c",
+      "files": 7,
+      "source": "ProofChat/Myelin — crates/chat_mls/src",
+      "sourceRef": "v0.1.0",
+      "sourceTreePending": true,
+      "pinnedAt": "2026-09-08"
+    }
+  ],
+  "//sourceTreePending": "true = CHƯA có băm phía kho nguồn để đối chiếu. Bên giữ nguồn chạy `git rev-parse <tag>:<đường dẫn của họ>` rồi gửi hai chuỗi về; lúc đó thêm trường `sourceTree` và hạ cờ này xuống false. Chừng nào cờ còn true, cổng chỉ ghim được nửa 'bản chép bên này không trôi' — và nó NÓI RA điều đó mỗi lượt chạy thay vì im."
+}

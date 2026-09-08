@@ -9,6 +9,11 @@ import { ORILIFE_BASE } from '../../../services/orilifeBase';
 import { listFarms } from '../../../services/farmService';
 import { getTrees, mapTreeInfoToUI } from '../../../services/treeReIDService';
 import { ensureOrilifeToken } from '../../../services/orilifeDidAuth';
+import {
+  saveTreeProfile,
+  buildTreeProfileBody,
+  type VoiceMemoVerdict,
+} from '../../../services/treeProfileService';
 import { logout, logoutUser } from '../../../store/userSlice';
 
 // AsyncStorage key prefix for tree metadata (build 49 spec § 3).
@@ -157,25 +162,56 @@ export const loadTrees = createAsyncThunk(
 );
 
 /**
- * ⚠️ CHỈ GHI TRÊN MÁY NÀY. Không có lượt gọi mạng nào ở đây.
+ * Ghi hồ sơ sinh trưởng của cây — MÁY CHỦ TRƯỚC, kho máy SAU.
  *
- * Cửa máy chủ nhận hồ sơ cây (`POST /api/tree/{tree_id}/profile`) chưa lên máy sản
- * xuất — nó còn nằm trong PR bên OriLife. Nên dữ liệu này sống trong AsyncStorage
- * của đúng một thiết bị: gỡ ứng dụng hoặc đổi máy là mất, không khôi phục được.
+ * Thứ tự đó là phần quan trọng nhất của hàm này. Bản trước chỉ ghi `AsyncStorage`
+ * rồi báo "Đã lưu": thao tác đúng là đã xong, nhưng dữ liệu chỉ nằm trên đúng một
+ * cái máy — gỡ ứng dụng hoặc đổi máy là mất, mà người dùng không có cách nào biết.
+ * Nay máy chủ trượt thì thunk BỊ TỪ CHỐI và màn hiện đúng câu của máy chủ; không
+ * ghi cục bộ, vì ghi cục bộ rồi báo xong chính là cái vỏ im lặng vừa gỡ.
  *
- * Vì thế câu báo thành công phải nói ra điều đó (`trace.meta.saved` /
- * `trace.meta.savedBody`). Câu "Đã lưu" trần là một cái vỏ im lặng: người dùng tin
- * dữ liệu đã ra khỏi máy, và họ chỉ biết là không vào ngày đã mất.
+ * Cửa `POST /api/tree/{tree_id}/profile` đã sống trên máy sản xuất — đo 2026-09-08
+ * bằng hai cực: đường thật trả 401 (có cửa, đòi đăng nhập), đường bịa trả 404.
  *
- * Ngày cửa kia lên máy: gọi nó Ở ĐÂY, và chỉ khi lượt gọi ĐẠT mới đổi câu báo.
- * Đừng đổi câu báo trước — đổi trước là quay lại đúng chỗ vừa gỡ.
+ * Ba trạng thái "vắng / null / giá trị" của từng trường do `buildTreeProfileBody`
+ * dựng — xem `services/treeProfileService.ts`. Ở đây chỉ cần biết một điều: thân
+ * gửi lên KHÁC đối tượng lưu trên máy, và nó phải khác.
+ *
+ * Ghi âm KHÔNG lên máy chủ (chưa có đường nhận tệp). Máy chủ tự nói ra điều đó
+ * trong `voice_memo.reason` — câu tiếng Việt dành cho người dùng — và hàm này
+ * chuyển nguyên văn ra cho màn, không diễn giải lại.
  */
 export const saveTreeMetadata = createAsyncThunk(
   'farm/saveTreeMetadata',
-  async (input: { treeId: string; metadata: TreeMetadata }) => {
+  async (
+    input: { treeId: string; metadata: TreeMetadata },
+    { getState, rejectWithValue },
+  ) => {
     const { treeId, metadata } = input;
+
+    const previous = (getState() as { farm: FarmState }).farm.trees.find(
+      (t) => t.id === treeId,
+    )?.metadata;
+    const body = buildTreeProfileBody(previous, metadata);
+
+    let voiceMemo: VoiceMemoVerdict | undefined;
+    // Thân rỗng = không có gì để máy chủ ghi (chỉ đổi thứ máy chủ không giữ).
+    // Vẫn ghi cục bộ, nhưng KHÔNG bịa ra một lượt gọi mạng để trông cho bận rộn.
+    if (Object.keys(body).length > 0) {
+      await ensureOrilifeToken(ORILIFE_BASE);
+      let res = await saveTreeProfile(ORILIFE_BASE, treeId, body);
+      if (!res.ok && res.error?.type === 'auth_error') {
+        await ensureOrilifeToken(ORILIFE_BASE, { force: true });
+        res = await saveTreeProfile(ORILIFE_BASE, treeId, body);
+      }
+      if (!res.ok) {
+        return rejectWithValue(res.error?.detail ?? 'Máy chủ không nhận được hồ sơ cây');
+      }
+      voiceMemo = res.voiceMemo;
+    }
+
     await AsyncStorage.setItem(treeMetadataKey(treeId), JSON.stringify(metadata));
-    return { treeId, metadata };
+    return { treeId, metadata, voiceMemo };
   }
 );
 

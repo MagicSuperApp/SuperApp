@@ -191,9 +191,22 @@ const TreeMetadataTab: React.FC<Props> = ({ tree }) => {
         schema_version: 'tree_metadata/1.0',
       };
 
-      await dispatch(saveTreeMetadata({ treeId: tree.id, metadata })).unwrap();
+      const saved = await dispatch(saveTreeMetadata({ treeId: tree.id, metadata })).unwrap();
       setDirty(false);
-      showSuccess(tk('trace.meta.saved'), tk('trace.meta.savedBody'));
+      // Máy chủ CÓ câu thì hiện câu của máy chủ. `voice_memo.reason` là câu tiếng
+      // Việt viết cho người dùng, nói rõ phần ghi âm chưa có đường lên máy chủ —
+      // thay nó bằng câu của app là bỏ đi phần duy nhất nói được cái gì đã vào và
+      // cái gì chưa.
+      const voiceMemoReason =
+        saved.voiceMemo && saved.voiceMemo.accepted === false
+          ? (saved.voiceMemo.reason ?? tk('trace.meta.savedVoiceLocal'))
+          : null;
+      showSuccess(
+        tk('trace.meta.saved'),
+        voiceMemoReason
+          ? `${tk('trace.meta.savedBody')}\n\n${voiceMemoReason}`
+          : tk('trace.meta.savedBody'),
+      );
     } catch (e: any) {
       showWarning(tk('trace.meta.saveFail'), e?.message ?? tk('trace.meta.saveFailBody'));
     } finally {

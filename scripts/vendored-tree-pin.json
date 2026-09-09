@@ -1,7 +1,7 @@
 {
   "//": "Ghim NỘI DUNG hai cây vendored bằng băm đối tượng tree của git. Băm tree là băm nội dung và KHÔNG phụ thuộc đường dẫn cha — nên cùng một nội dung ở hai kho khác nhau, hai đường dẫn khác nhau, vẫn ra cùng một chuỗi. Đó là thứ cho phép đối chiếu với kho nguồn mà không cần quyền đọc kho đó: chỉ cần chuyển một CON SỐ, không phải chuyển cả CÂY.",
-  "//catches": "Bản chép trong kho này trôi khỏi giá trị đã chốt — cổng đỏ ngay.",
-  "//does-not-catch": "Kho nguồn đổi mà bên này chưa biết. Cổng vẫn XANH ở ca đó, và không có cách nào để nó biết: nó không đọc được kho riêng tư kia. Nửa ấy dựa vào cam kết gửi thư của bên giữ nguồn — một lời hứa của người, KHÔNG phải một cổng của máy. Đừng đọc màu xanh của cổng này thành 'hai cây còn khớp'.",
+  "//catches": "Bản chép trong kho này trôi khỏi giá trị đã chốt — cổng đỏ ngay. Và với mục có `sourceTree`: bản chép trôi khỏi giá trị mà kho nguồn đã báo tại lần đối chiếu gần nhất.",
+  "//does-not-catch": "Kho nguồn đổi SAU lần đối chiếu gần nhất. Cổng vẫn XANH ở ca đó, kể cả với mục đã có `sourceTree`: con số ấy là ảnh chụp tại `sourceComparedAt`, không phải một lượt đọc kho nguồn hôm nay — cổng không đọc được kho riêng tư kia. Nửa ấy dựa vào cam kết gửi thư của bên giữ nguồn, một lời hứa của người, KHÔNG phải một cổng của máy. Đừng đọc màu xanh của cổng này thành 'hai cây còn khớp HÔM NAY'.",
   "//how-to-update": "Chỉ sửa khi CỐ Ý đổi bản chép. Sửa băm để cổng thôi đỏ, mà không biết vì sao nó đỏ, là gỡ chính cái cổng này.",
   "trees": [
     {
@@ -10,7 +10,9 @@
       "files": 468,
       "source": "ProofChat/Myelin — vendor/openmls",
       "sourceRef": "v0.1.0",
-      "sourceTreePending": true,
+      "sourceTree": "8ada80d3c6af5015d025fe14a5bb19f26e153309",
+      "sourceComparedAt": "2026-09-09",
+      "//sourceTree": "Bên giữ nguồn đo và gửi sang 2026-09-09; trùng khít 468 tệp với bản chép ở đây. Bên đó đo thêm ở đầu nhánh chính và ra cùng chuỗi, nên ghim theo tag hay theo đầu nhánh cũng là một cây.",
       "pinnedAt": "2026-09-08"
     },
     {
@@ -19,9 +21,11 @@
       "files": 7,
       "source": "ProofChat/Myelin — crates/chat_mls/src",
       "sourceRef": "v0.1.0",
-      "sourceTreePending": true,
+      "sourceTreeDiffersByFormatting": "a09abebe1851104e8bb2847496870e5a5a7e71ee",
+      "sourceComparedAt": "2026-09-09",
+      "//sourceTreeDiffersByFormatting": "CỐ Ý không ghim đẳng thức liên kho ở cây này. Hai băm khác nhau vì khác ĐỊNH DẠNG — `cargo fmt` cộng một dòng `//!` trống trong `merkle.rs` — chứ không khác HÀNH VI. Băm cây không phân biệt được hai loại đó, nên ghim đẳng thức ở đây làm cổng đỏ ngay lần chạy đầu, và một cổng đỏ vô cớ là một cổng sắp bị tắt. Muốn so liên kho ở cây này thì phải đưa cả hai phía qua cùng một `rustfmt` rồi mới so — đó là một BƯỚC nữa, không phải một băm.",
       "pinnedAt": "2026-09-08"
     }
   ],
-  "//sourceTreePending": "true = CHƯA có băm phía kho nguồn để đối chiếu. Bên giữ nguồn chạy `git rev-parse <tag>:<đường dẫn của họ>` rồi gửi hai chuỗi về; lúc đó thêm trường `sourceTree` và hạ cờ này xuống false. Chừng nào cờ còn true, cổng chỉ ghim được nửa 'bản chép bên này không trôi' — và nó NÓI RA điều đó mỗi lượt chạy thay vì im."
+  "//sourceTreePending": "Trường cũ, đã gỡ khỏi cả hai mục 2026-09-09 khi bên giữ nguồn gửi hai chuỗi băm. Mục nào chưa có băm phía nguồn thì đặt lại `sourceTreePending: true`; cổng đọc cờ đó để nói ra rằng nó mới ghim được nửa."
 }

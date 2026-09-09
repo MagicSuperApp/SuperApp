@@ -92,12 +92,26 @@ function main() {
       rows.push({ ...t, state: STATE.UNMEASURABLE, note: got.reason });
       continue;
     }
-    rows.push({
-      ...t,
-      state: got.hash === t.tree ? STATE.OK : STATE.DRIFTED,
-      note: got.hash === t.tree ? got.hash : `ghim ${t.tree}\n        đo   ${got.hash}`,
-      got: got.hash,
-    });
+    // Hai phép so ĐỘC LẬP, và mục nào cũng phải qua phép thứ nhất:
+    //   1. bản chép ở đây == giá trị đã chốt trong tệp ghim
+    //   2. giá trị đã chốt == băm mà kho nguồn báo (CHỈ mục có `sourceTree`)
+    // Phép 2 không thay thế phép 1: nó trả lời "hai kho có cùng nội dung tại lần
+    // đối chiếu gần nhất", còn phép 1 trả lời "bản chép hôm nay chưa trôi".
+    if (got.hash !== t.tree) {
+      rows.push({ ...t, state: STATE.DRIFTED, note: `ghim ${t.tree}\n        đo   ${got.hash}`, got: got.hash });
+      continue;
+    }
+    if (t.sourceTree && t.sourceTree !== t.tree) {
+      rows.push({
+        ...t,
+        state: STATE.DRIFTED,
+        reason: 'cross',
+        note: `ghim ${t.tree}\n        nguồn ${t.sourceTree}  ← lệch với kho nguồn`,
+        got: got.hash,
+      });
+      continue;
+    }
+    rows.push({ ...t, state: STATE.OK, note: got.hash, got: got.hash });
   }
 
   for (const r of rows) {
@@ -105,6 +119,11 @@ function main() {
     console.log(`  ${dau} [${r.state}]  ${r.path}  (${r.files} tệp)`);
     console.log(`        ${r.note}`);
     console.log(`        nguồn: ${r.source} @ ${r.sourceRef}`);
+    if (r.sourceTree) {
+      console.log(`        ↔ đối chiếu liên kho: KHỚP tại ${r.sourceComparedAt} (ảnh chụp, không phải lượt đọc hôm nay)`);
+    } else if (r.sourceTreeDiffersByFormatting) {
+      console.log(`        ↔ đối chiếu liên kho: CỐ Ý không so — khác định dạng, không khác hành vi`);
+    }
   }
   console.log('');
 
@@ -114,22 +133,36 @@ function main() {
   else if (rows.some((r) => r.state === STATE.UNMEASURABLE)) tong = STATE.UNMEASURABLE;
   else tong = STATE.OK;
 
+  // Nửa "kho nguồn chưa đổi" KHÔNG bao giờ là cổng máy ở kho này — cổng không đọc
+  // được kho riêng tư kia. Có `sourceTree` chỉ nâng nó từ "chưa từng đối chiếu" lên
+  // "đã đối chiếu một lần, tại một ngày ghi trong tệp". Nên dòng này in ở MỌI lượt,
+  // không chỉ khi còn mục chưa đối chiếu: nếu nó tắt lúc đủ băm thì đúng lúc cổng
+  // trông kín nhất lại là lúc không còn gì nhắc rằng nó vẫn hở.
   const conChoNguon = trees.filter((t) => t.sourceTreePending);
-  if (conChoNguon.length) {
-    console.log(
-      `⚠  Cổng này mới ghim được NỬA: "bản chép bên này không trôi". Nửa còn lại —\n`
-      + `   "kho nguồn chưa đổi" — CHƯA đo được, vì ${conChoNguon.length}/${trees.length} mục chưa có băm\n`
-      + `   phía nguồn để đối chiếu. Nửa ấy đang dựa vào cam kết gửi thư của bên giữ\n`
-      + `   nguồn, tức một lời hứa của người, KHÔNG phải một cổng của máy.\n`
-      + `   ⟹ Màu xanh dưới đây KHÔNG có nghĩa là hai cây còn khớp.\n`,
-    );
-  }
+  const daDoiChieu = trees.filter((t) => t.sourceTree || t.sourceTreeDiffersByFormatting);
+  console.log(
+    `⚠  Cổng này ghim CHẮC nửa "bản chép bên này không trôi".\n`
+    + `   Nửa "kho nguồn chưa đổi SAU lần đối chiếu gần nhất" thì KHÔNG — nó dựa vào\n`
+    + `   cam kết gửi thư của bên giữ nguồn, tức một lời hứa của người, không phải một\n`
+    + `   cổng của máy. Cổng không có quyền đọc kho nguồn nên không thể tự biết.\n`
+    + `   ⟹ Màu xanh dưới đây KHÔNG có nghĩa là hai cây còn khớp HÔM NAY.\n`
+    + `   Đã đối chiếu ít nhất một lần: ${daDoiChieu.length}/${trees.length} mục.`
+    + (conChoNguon.length ? `  Chưa lần nào: ${conChoNguon.length}.\n` : `\n`),
+  );
 
   if (tong === STATE.OK) {
     console.log('✅ Bản chép trong kho này đúng bằng giá trị đã chốt.');
     process.exit(0);
   }
   if (tong === STATE.DRIFTED) {
+    // Hai nguyên nhân khác hẳn nhau, và cách xử cũng khác — đừng in chung một câu.
+    if (rows.some((r) => r.state === STATE.DRIFTED && r.reason === 'cross')) {
+      console.log('❌ LỆCH LIÊN KHO — giá trị đã chốt ở đây khác băm mà kho nguồn báo.');
+      console.log('   KHÔNG sửa `sourceTree` cho khớp: trường đó là thứ bên giữ nguồn gửi sang,');
+      console.log('   sửa nó là tự viết lại lời khai của bên kia. Hỏi bên giữ nguồn xem cây của');
+      console.log('   họ đã đổi chưa, rồi mới quyết chép lại hay giữ nguyên.');
+      process.exit(1);
+    }
     console.log('❌ LỆCH — bản chép đã đổi mà tệp ghim thì chưa.');
     console.log('   Đổi CỐ Ý thì cập nhật `scripts/vendored-tree-pin.json` trong cùng commit,');
     console.log('   và nói trong commit là đổi theo cái gì. Sửa băm cho cổng thôi đỏ, mà không');

@@ -9,7 +9,9 @@
  *
  * SELF-PAIRING: mobile TỰ init một session rồi TỰ approve bằng khoá owner:
  *   1. POST /auth/session/init                → { sessionId, challenge }
- *   2. ký DER(ECDSA P-256) trên "challenge:domain:timestamp" bằng khoá HW owner
+ *   2. ký DER(ECDSA P-256) trên chuỗi ĐÓNG KHUNG THEO ĐỘ DÀI bằng khoá HW owner
+ *      (tiền tố `PHOENIXKEY_SESSION_APPROVE:` + ba trường đóng khung — xem
+ *      `SESSION_APPROVE_PREFIX` bên dưới; KHÔNG còn nối bằng ':')
  *   3. POST /auth/session/{id}/approve         → { sessionToken }
  *   4. setSessionToken(sessionToken)           → mọi endpoint needsAuth chạy được
  *
@@ -19,6 +21,7 @@
  */
 
 import { currentUserDid, ownerPublicKey, signRaw } from '../sdk/phoenixKey';
+import { buildCanonicalHex } from './canonicalMessage';
 import {
   phoenixKeyApi,
   setSessionToken,
@@ -30,14 +33,19 @@ import rLog from './remoteLogger';
 // Domain tuỳ ý (không bị backend validate) — đặt tên app cho dễ truy vết log.
 const SELF_PAIR_DOMAIN = 'aladin-mobile';
 
-// message ASCII (challenge hex + domain + timestamp) → hex để signRaw ký.
-const asciiToHex = (s: string): string => {
-  let out = '';
-  for (let i = 0; i < s.length; i += 1) {
-    out += s.charCodeAt(i).toString(16).padStart(2, '0');
-  }
-  return out;
-};
+/**
+ * Tiền tố miền cho cửa duyệt phiên. **Dấu hai chấm cuối là một phần của tiền tố**,
+ * không phải dấu phân tách — tiền tố đi vào chuỗi ký dưới dạng byte UTF-8 THÔ,
+ * không đóng khung độ dài; chỉ ba trường sau nó mới đóng khung.
+ *
+ * Khớp `CanonicalMessage.build(PREFIX, challenge, domain, timestamp)` phía máy chủ.
+ * Nguồn khuôn: nhà PhoenixKey, `lib/bridge/canonical_message.dart`.
+ *
+ * ⚠ `timestamp` là epoch **GIÂY**, đưa vào dưới dạng chuỗi thập phân. Gửi mili-giây
+ * thì khung độ dài dài hơn 3 byte và nội dung khác ⇒ máy chủ từ chối với đúng một
+ * mã lỗi như khi sai khuôn, không phân biệt được. Đó là chỗ trượt im lặng nhất ở đây.
+ */
+export const SESSION_APPROVE_PREFIX = 'PHOENIXKEY_SESSION_APPROVE:';
 
 /**
  * LÝ DO HỎNG GẦN NHẤT — để chỗ hỏng thôi im.
@@ -136,9 +144,14 @@ async function ensurePhoenixSessionInner(opts: { force?: boolean }): Promise<str
 
     step = 'sign';
     const timestamp = Math.floor(Date.now() / 1000);
-    const message = `${challenge}:${SELF_PAIR_DOMAIN}:${timestamp}`;
+    const messageHex = buildCanonicalHex(
+      SESSION_APPROVE_PREFIX,
+      challenge,
+      SELF_PAIR_DOMAIN,
+      String(timestamp),
+    );
     const signature = await signRaw(
-      asciiToHex(message),
+      messageHex,
       'Activate the wallet',
       'Sign with the hardware key to unlock the wallet services',
     );
@@ -154,7 +167,7 @@ async function ensurePhoenixSessionInner(opts: { force?: boolean }): Promise<str
       // đã nằm im từ đầu. In ra để đối chiếu với thứ máy chủ dựng lại. Không có bí
       // mật nào ở đây — challenge là công khai, chữ ký chỉ dùng được một lần cho
       // đúng session này, khoá riêng không rời Secure Enclave.
-      console.log('[pk_selfpair] message   =', JSON.stringify(message));
+      console.log('[pk_selfpair] canonical =', messageHex);
       console.log('[pk_selfpair] pubkey    =', pubkey);
       console.log('[pk_selfpair] signature =', signature);
       console.log('[pk_selfpair] timestamp =', timestamp, '| domain =', SELF_PAIR_DOMAIN);

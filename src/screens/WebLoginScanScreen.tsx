@@ -25,16 +25,12 @@ import { Camera } from 'react-native-camera-kit';
 import { COLORS } from '../constants';
 import { currentUserDid, ownerPublicKey, signRaw } from '../sdk/phoenixKey';
 import { phoenixKeyApi } from '../services/phoenixKey-api';
+import { buildCanonicalHex } from '../services/canonicalMessage';
+import { SESSION_APPROVE_PREFIX } from '../services/phoenixSessionService';
 
 type Step = 'scanning' | 'confirm' | 'signing' | 'success' | 'error';
 
 interface QrPayload { sid: string; ch: string; dom: string; exp?: number }
-
-const asciiToHex = (s: string): string => {
-  let out = '';
-  for (let i = 0; i < s.length; i++) out += s.charCodeAt(i).toString(16).padStart(2, '0');
-  return out;
-};
 
 const B64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 
@@ -103,9 +99,16 @@ const WebLoginScanScreen = () => {
         throw new Error('Chưa có danh tính trên thiết bị này. Hãy tạo/khôi phục ví trước.');
       }
       const timestamp = Math.floor(Date.now() / 1000);
-      const message = `${payload.ch}:${payload.dom}:${timestamp}`;
+      // Cùng khuôn với `phoenixSessionService` — cả hai màn cùng gọi một cửa
+      // `POST /auth/session/{id}/approve`, nên chúng phải ký cùng một chuỗi.
+      const messageHex = buildCanonicalHex(
+        SESSION_APPROVE_PREFIX,
+        payload.ch,
+        payload.dom,
+        String(timestamp),
+      );
       const signature = await signRaw(
-        asciiToHex(message),
+        messageHex,
         'Đăng nhập web',
         `Xác thực đăng nhập ${payload.dom}`,
       );

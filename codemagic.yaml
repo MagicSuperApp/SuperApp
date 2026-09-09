@@ -53,9 +53,17 @@ workflows:
         # mã gói thật ghi cứng trong `project.pbxproj:298,331`. Nay nó được
         # truyền thẳng vào `xcodebuild` nên đổi ở đây là đổi thật.
         # `CFBundleDisplayName` trong `Info.plist` nay là `$(APP_DISPLAY_NAME)`.
-        # Bản CheckFarm: BUNDLE_ID=com.checkfarm.app, APP_DISPLAY_NAME=CheckFarm,
-        # APP_INSTANCE=checkfarm — và khoá ký PHẢI là khoá của Công ty Cổ phần
-        # CheckFarm, không dùng chung khoá Aladin (hai pháp nhân).
+        # ⛔ Luồng iOS CHƯA dựng được app nào ngoài `aladin`. Bước "Soát danh tính app
+        # iOS" bên dưới `exit 1` với mọi `APP_INSTANCE` khác — kể cả khi ba biến đặt
+        # đúng. Đừng đặt ba biến rồi bấm dựng: nó tiêu một lượt runner macOS trả tiền
+        # để nói lại đúng câu này.
+        # Điều kiện mở khoá, đủ ba: `instances/<app>/ios/AppIcon-1024.png` có mặt ·
+        # tệp đó 1024×1024 không kênh alpha · có bước sinh `AppIcon.appiconset` từ nó
+        # chạy trước `xcodebuild`. Thiếu bước thứ ba thì bản dựng vẫn mang biểu tượng
+        # Aladin, nên đừng gỡ cổng theo sự có mặt của tệp.
+        # Khi mở khoá, bản CheckFarm dùng: BUNDLE_ID=com.checkfarm.app,
+        # APP_DISPLAY_NAME=CheckFarm, APP_INSTANCE=checkfarm — và khoá ký PHẢI là khoá
+        # của Công ty Cổ phần CheckFarm, không dùng chung khoá Aladin (hai pháp nhân).
         BUNDLE_ID: vn.aladinapp
         APP_DISPLAY_NAME: Aladin
         APP_INSTANCE: aladin
@@ -383,6 +391,153 @@ workflows:
             2>&1 | tail -20 || echo "⚠️ export sourcemap lỗi (không chặn build)"
           ls -lh "$CM_BUILD_DIR/build/jsmap/" 2>/dev/null || true
 
+      # ── CỔNG: danh tính app iOS phải khớp `instances/<app>/instance.json` ─
+      # Bên Android đã có phép so này từ lâu — `APP_INSTANCE` vs `ANDROID_FLAVOR`
+      # trong workflow `android-appstore-aab`, kèm câu nói đúng cái hại: *"lệch
+      # hai biến này là dựng vỏ app này với chữ của app kia"*. Nửa iOS KHÔNG có
+      # phép so tương ứng nào, và nửa iOS mới là nửa nguy hơn: `BUNDLE_ID`,
+      # `APP_DISPLAY_NAME`, `APP_INSTANCE` và `ios_signing.bundle_identifier` là
+      # BỐN chỗ gõ tay cùng một sự thật, không chỗ nào trỏ về chỗ nào.
+      #
+      # Đặt lệch một trong bốn thì bản dựng vẫn ra, vẫn chạy, vẫn ký được, và
+      # mang tên app này với mã gói app kia. Không có gì đỏ cho tới lúc Apple soát
+      # gói đã nộp — hoặc không bao giờ đỏ, nếu chỗ lệch là tên hiển thị.
+      #
+      # Cổng này KHÔNG so hai biến gõ tay với nhau. Nó đọc `instances/` làm nguồn —
+      # cùng nguồn mà `android/app/build.gradle` và `src/config/instanceRules.test.ts`
+      # đọc — nên thêm app thứ ba không phải sửa cổng.
+      #
+      # CÒN HỞ, ghi ra để đừng ai đọc dấu ✅ dưới đây rộng hơn nó nói: dòng
+      # `ios_signing.bundle_identifier` là YAML tĩnh của workflow, không phải biến,
+      # nên cổng chạy lúc dựng không đọc được nó cho ĐÚNG workflow đang chạy. Chỗ
+      # kiểm đúng của nó là một bài kiểm tĩnh trên chính tệp này, chưa có.
+      - name: Soát danh tính app iOS khớp instances/
+        script: |
+          set -eu
+          : "${APP_INSTANCE:?APP_INSTANCE rỗng — không đoán app}"
+          KHAI="instances/${APP_INSTANCE}/instance.json"
+          if [ ! -f "$KHAI" ]; then
+            echo "❌ không có $KHAI"
+            echo "   APP_INSTANCE='$APP_INSTANCE' không phải app nào trong instances/:"
+            ls instances/
+            exit 1
+          fi
+          CHO_BUNDLE=$(node -p "JSON.parse(require('fs').readFileSync('$KHAI','utf8')).ios.bundleId")
+          CHO_TEN=$(node -p "JSON.parse(require('fs').readFileSync('$KHAI','utf8')).displayName")
+          LECH=0
+          if [ "${BUNDLE_ID:-}" != "$CHO_BUNDLE" ]; then
+            echo "❌ BUNDLE_ID='${BUNDLE_ID:-}' khác ios.bundleId='$CHO_BUNDLE' khai ở $KHAI"
+            LECH=1
+          fi
+          if [ "${APP_DISPLAY_NAME:-}" != "$CHO_TEN" ]; then
+            echo "❌ APP_DISPLAY_NAME='${APP_DISPLAY_NAME:-}' khác displayName='$CHO_TEN' khai ở $KHAI"
+            LECH=1
+          fi
+          if [ "$LECH" -ne 0 ]; then
+            echo "   Sửa ở: nhóm biến của workflow này trong codemagic.yaml, HOẶC ở $KHAI."
+            echo "   Lệch là dựng vỏ app này với chữ của app kia — và nó KHÔNG đỏ ở đâu khác."
+            exit 1
+          fi
+          echo "✅ instance=$APP_INSTANCE bundle=$BUNDLE_ID tên='$APP_DISPLAY_NAME' — khớp $KHAI"
+
+          # ── Biểu tượng iOS: MỘT bộ dùng chung, chưa có đường theo app ──────
+          # `ios/SuperApp/Images.xcassets/AppIcon.appiconset` là bộ DUY NHẤT, và
+          # `instances/<app>/` mới chỉ mang `android/` + `brand/` — không có `ios/`.
+          # Nên bản iOS của app khác `aladin` dựng ra hôm nay mang biểu tượng
+          # Aladin, chạy được, ký được, và không có gì đỏ. Chặn ở đây thay vì để
+          # nó ra tới tay người thử.
+          #
+          # Mở khoá cần BA thứ, không phải một:
+          #   (a) `instances/<app>/ios/AppIcon-1024.png` có mặt;
+          #   (b) tệp đó 1024×1024 và KHÔNG có kênh alpha;
+          #   (c) một bước sinh `AppIcon.appiconset` từ tệp đó, chạy trước `xcodebuild`.
+          # Có (a) mà thiếu (c) thì biểu tượng vẫn là Aladin — ĐỪNG gỡ cổng theo sự
+          # có mặt của tệp.
+          #
+          # Vì sao tên là `AppIcon-1024.png` chứ không phải `icon-1024.png`: bản trước
+          # của cổng này đề nghị tên `icon-1024.png`, và nhà CheckFarm chỉ ra rằng ở
+          # kho họ có ĐÚNG một tệp mang tên đó — 1024×1024, khác byte, và `hasAlpha:
+          # yes`. Tệp đúng của họ tên `AppIcon-1024.png`, do bộ sinh `make-icons.mjs`
+          # đặt. Tức câu chỉ đường của cổng cũ dẫn thẳng vào tệp sai.
+          #
+          # Vì sao alpha là chuyện phải chặn ở ĐÂY: App Store Connect từ chối kênh
+          # alpha ở bước NỘP, không ở bước dựng. Bản dựng xanh, tải lên xong, rồi bị
+          # chặn ở lượt xử lý bằng một dòng nói về "transparency" — cách chỗ gõ nhầm
+          # vài tiếng và vài bước. Đo bằng `sips`, có sẵn trên máy dựng macOS.
+          # ⚠ Bản trước của khối này đo ĐÚNG MỘT tệp — `instances/<app>/ios/AppIcon-1024.png`
+          # — và bọc nó trong `if [ -f ]`. Tệp đó KHÔNG tồn tại cho `aladin`
+          # (`instances/aladin/` chỉ có `android/` + `brand/`), mà `aladin` lại là app
+          # DUY NHẤT luồng này dựng được. Nên với mọi lượt dựng thật, phép đo alpha
+          # chưa bao giờ chạy một lần nào, và cổng vẫn in `✅ … khớp` rồi thoát 0.
+          #
+          # Ảnh mà `xcodebuild` thật sự đóng gói là bộ dùng chung dưới
+          # `ios/SuperApp/Images.xcassets/AppIcon.appiconset/`. Cổng đo tệp không ai
+          # dùng, và bỏ qua tệp được đóng gói — đúng nghĩa "cổng có tên đúng mà đo sai
+          # đại lượng", lần thứ hai trong chính khối này.
+          #
+          # Nay đo HAI tệp, và tệp bắt buộc là tệp đang được đóng gói:
+          #   (1) `AppIcon.appiconset/icon-1024.png` — LUÔN tồn tại ⟹ không `if [ -f ]`,
+          #       thiếu nó là đỏ. Đây là thứ đi vào gói nộp.
+          #   (2) `instances/<app>/ios/AppIcon-1024.png` — phép đo THÊM, chỉ chạy khi có.
+          command -v sips >/dev/null 2>&1 || {
+            echo "⛔ KHÔNG ĐO ĐƯỢC kênh alpha: máy dựng không có 'sips'."
+            echo "   Đây là trạng thái MÙ, không phải trạng thái đạt — nên cổng đỏ."
+            exit 1
+          }
+
+          do_bieu_tuong() {
+            T="$1"
+            RONG=$(sips -g pixelWidth  "$T" 2>/dev/null | awk '/pixelWidth/{print $2}')
+            CAO=$(sips  -g pixelHeight "$T" 2>/dev/null | awk '/pixelHeight/{print $2}')
+            ALPHA=$(sips -g hasAlpha   "$T" 2>/dev/null | awk '/hasAlpha/{print $2}')
+            # `$(sips … | awk …)` nuốt mã thoát của `sips`: `awk` luôn trả 0, nên một
+            # tệp 0 byte hay không phải ảnh cho ba biến RỖNG. So chuỗi rỗng với "1024"
+            # thì đỏ, nhưng đỏ kèm câu "là ×, cần 1024×1024" — câu đó nói LỆCH trong khi
+            # sự thật là KHÔNG ĐO ĐƯỢC, và nó dẫn người sửa đi tìm sai chỗ.
+            if [ -z "$RONG" ] || [ -z "$CAO" ] || [ -z "$ALPHA" ]; then
+              echo "⛔ KHÔNG ĐO ĐƯỢC $T — sips không trả đủ ba giá trị."
+              echo "   Tệp 0 byte, không phải ảnh, hoặc sips hỏng. Đây KHÔNG phải 'ảnh sai cỡ'."
+              exit 1
+            fi
+            if [ "$RONG" != "1024" ] || [ "$CAO" != "1024" ]; then
+              echo "❌ $T là ${RONG}×${CAO}, cần 1024×1024."
+              exit 1
+            fi
+            if [ "$ALPHA" != "no" ]; then
+              echo "❌ $T CÓ kênh alpha (hasAlpha=$ALPHA)."
+              echo "   App Store Connect từ chối ở bước NỘP, không ở bước dựng — nên nếu"
+              echo "   không chặn ở đây thì chỗ hỏng lộ ra cách chỗ gõ nhầm vài tiếng đồng hồ."
+              echo "   Lấy bản KHÔNG alpha; đừng lấy theo tên, hai tệp cùng cỡ có thể khác kênh."
+              exit 1
+            fi
+            echo "✅ $T 1024×1024, không alpha"
+          }
+
+          BO_DONG_GOI="ios/SuperApp/Images.xcassets/AppIcon.appiconset/icon-1024.png"
+          if [ ! -f "$BO_DONG_GOI" ]; then
+            echo "❌ thiếu $BO_DONG_GOI — đây là ảnh đi vào gói nộp, không phải tệp tuỳ chọn."
+            exit 1
+          fi
+          do_bieu_tuong "$BO_DONG_GOI"
+
+          BIEU_TUONG="instances/${APP_INSTANCE}/ios/AppIcon-1024.png"
+          if [ -f "$BIEU_TUONG" ]; then
+            do_bieu_tuong "$BIEU_TUONG"
+          fi
+          if [ "$APP_INSTANCE" != "aladin" ]; then
+            echo "❌ luồng iOS chưa dựng được app '$APP_INSTANCE'."
+            echo "   Biểu tượng iOS là một bộ dùng chung ở ios/SuperApp/Images.xcassets/AppIcon.appiconset;"
+            echo "   chưa có bước sinh bộ đó theo app, nên bản này sẽ mang biểu tượng Aladin."
+            if [ -f "$BIEU_TUONG" ]; then
+              echo "   ($BIEU_TUONG đã có và hợp lệ — nhưng chưa mã nào đọc nó."
+              echo "    Đây đúng là chỗ 'có tệp mà vẫn sai': đừng gỡ cổng theo sự có mặt của tệp.)"
+            else
+              echo "   Thiếu $BIEU_TUONG — bản 1024×1024, KHÔNG kênh alpha."
+            fi
+            echo "   Mở khoá: thêm bước sinh AppIcon.appiconset từ tệp đó trước xcodebuild."
+            exit 1
+          fi
+
       # ── CHỐT MÃ GÓI iOS ─────────────────────────────────────────────────
       # Vì sao KHÔNG truyền `PRODUCT_BUNDLE_IDENTIFIER=` trên dòng lệnh
       # `xcodebuild`: setting truyền kiểu đó áp cho MỌI target trong workspace,
@@ -512,9 +667,17 @@ workflows:
         # mã gói thật ghi cứng trong `project.pbxproj:298,331`. Nay nó được
         # truyền thẳng vào `xcodebuild` nên đổi ở đây là đổi thật.
         # `CFBundleDisplayName` trong `Info.plist` nay là `$(APP_DISPLAY_NAME)`.
-        # Bản CheckFarm: BUNDLE_ID=com.checkfarm.app, APP_DISPLAY_NAME=CheckFarm,
-        # APP_INSTANCE=checkfarm — và khoá ký PHẢI là khoá của Công ty Cổ phần
-        # CheckFarm, không dùng chung khoá Aladin (hai pháp nhân).
+        # ⛔ Luồng iOS CHƯA dựng được app nào ngoài `aladin`. Bước "Soát danh tính app
+        # iOS" bên dưới `exit 1` với mọi `APP_INSTANCE` khác — kể cả khi ba biến đặt
+        # đúng. Đừng đặt ba biến rồi bấm dựng: nó tiêu một lượt runner macOS trả tiền
+        # để nói lại đúng câu này.
+        # Điều kiện mở khoá, đủ ba: `instances/<app>/ios/AppIcon-1024.png` có mặt ·
+        # tệp đó 1024×1024 không kênh alpha · có bước sinh `AppIcon.appiconset` từ nó
+        # chạy trước `xcodebuild`. Thiếu bước thứ ba thì bản dựng vẫn mang biểu tượng
+        # Aladin, nên đừng gỡ cổng theo sự có mặt của tệp.
+        # Khi mở khoá, bản CheckFarm dùng: BUNDLE_ID=com.checkfarm.app,
+        # APP_DISPLAY_NAME=CheckFarm, APP_INSTANCE=checkfarm — và khoá ký PHẢI là khoá
+        # của Công ty Cổ phần CheckFarm, không dùng chung khoá Aladin (hai pháp nhân).
         BUNDLE_ID: vn.aladinapp
         APP_DISPLAY_NAME: Aladin
         APP_INSTANCE: aladin
@@ -547,7 +710,10 @@ workflows:
       - name: Soát khoá API trước khi phát hành
         script: |
           if [ -n "$API_KEY" ]; then
-            echo "✅ API_KEY có mặt (${#API_KEY} ký tự)."
+            # Chỉ nói CÓ MẶT, không nói dài bao nhiêu: trình che log của Codemagic che
+            # GIÁ TRỊ, không che con số suy ra từ giá trị. Độ dài là một mẩu tin thật về
+            # một bí mật, in ra vĩnh viễn trong log mà không đổi lại được gì.
+            echo "✅ API_KEY có mặt."
           elif [ "$ALLOW_NO_API_KEY" = "1" ]; then
             echo "⚠️  Không có API_KEY — dựng tiếp vì ALLOW_NO_API_KEY=1."
             echo "    Bản này nướng 'mock-local-api-key' vào header X-API-Key (aladin-api.ts:75)."
@@ -561,6 +727,153 @@ workflows:
             echo "   X-API-Key, và hai cửa ĐỌC công khai trả lời bình thường khi không gửi khoá"
             echo "   (GET /api/health → 200; GET /api/tree_by_code/<mã> → 404 đúng hợp đồng, không 401)."
             echo "   Cửa GHI thì CHƯA đo được — đó là lý do cổng này còn đứng thay vì bỏ hẳn."
+            exit 1
+          fi
+
+      # ── CỔNG: danh tính app iOS phải khớp `instances/<app>/instance.json` ─
+      # Bên Android đã có phép so này từ lâu — `APP_INSTANCE` vs `ANDROID_FLAVOR`
+      # trong workflow `android-appstore-aab`, kèm câu nói đúng cái hại: *"lệch
+      # hai biến này là dựng vỏ app này với chữ của app kia"*. Nửa iOS KHÔNG có
+      # phép so tương ứng nào, và nửa iOS mới là nửa nguy hơn: `BUNDLE_ID`,
+      # `APP_DISPLAY_NAME`, `APP_INSTANCE` và `ios_signing.bundle_identifier` là
+      # BỐN chỗ gõ tay cùng một sự thật, không chỗ nào trỏ về chỗ nào.
+      #
+      # Đặt lệch một trong bốn thì bản dựng vẫn ra, vẫn chạy, vẫn ký được, và
+      # mang tên app này với mã gói app kia. Không có gì đỏ cho tới lúc Apple soát
+      # gói đã nộp — hoặc không bao giờ đỏ, nếu chỗ lệch là tên hiển thị.
+      #
+      # Cổng này KHÔNG so hai biến gõ tay với nhau. Nó đọc `instances/` làm nguồn —
+      # cùng nguồn mà `android/app/build.gradle` và `src/config/instanceRules.test.ts`
+      # đọc — nên thêm app thứ ba không phải sửa cổng.
+      #
+      # CÒN HỞ, ghi ra để đừng ai đọc dấu ✅ dưới đây rộng hơn nó nói: dòng
+      # `ios_signing.bundle_identifier` là YAML tĩnh của workflow, không phải biến,
+      # nên cổng chạy lúc dựng không đọc được nó cho ĐÚNG workflow đang chạy. Chỗ
+      # kiểm đúng của nó là một bài kiểm tĩnh trên chính tệp này, chưa có.
+      - name: Soát danh tính app iOS khớp instances/
+        script: |
+          set -eu
+          : "${APP_INSTANCE:?APP_INSTANCE rỗng — không đoán app}"
+          KHAI="instances/${APP_INSTANCE}/instance.json"
+          if [ ! -f "$KHAI" ]; then
+            echo "❌ không có $KHAI"
+            echo "   APP_INSTANCE='$APP_INSTANCE' không phải app nào trong instances/:"
+            ls instances/
+            exit 1
+          fi
+          CHO_BUNDLE=$(node -p "JSON.parse(require('fs').readFileSync('$KHAI','utf8')).ios.bundleId")
+          CHO_TEN=$(node -p "JSON.parse(require('fs').readFileSync('$KHAI','utf8')).displayName")
+          LECH=0
+          if [ "${BUNDLE_ID:-}" != "$CHO_BUNDLE" ]; then
+            echo "❌ BUNDLE_ID='${BUNDLE_ID:-}' khác ios.bundleId='$CHO_BUNDLE' khai ở $KHAI"
+            LECH=1
+          fi
+          if [ "${APP_DISPLAY_NAME:-}" != "$CHO_TEN" ]; then
+            echo "❌ APP_DISPLAY_NAME='${APP_DISPLAY_NAME:-}' khác displayName='$CHO_TEN' khai ở $KHAI"
+            LECH=1
+          fi
+          if [ "$LECH" -ne 0 ]; then
+            echo "   Sửa ở: nhóm biến của workflow này trong codemagic.yaml, HOẶC ở $KHAI."
+            echo "   Lệch là dựng vỏ app này với chữ của app kia — và nó KHÔNG đỏ ở đâu khác."
+            exit 1
+          fi
+          echo "✅ instance=$APP_INSTANCE bundle=$BUNDLE_ID tên='$APP_DISPLAY_NAME' — khớp $KHAI"
+
+          # ── Biểu tượng iOS: MỘT bộ dùng chung, chưa có đường theo app ──────
+          # `ios/SuperApp/Images.xcassets/AppIcon.appiconset` là bộ DUY NHẤT, và
+          # `instances/<app>/` mới chỉ mang `android/` + `brand/` — không có `ios/`.
+          # Nên bản iOS của app khác `aladin` dựng ra hôm nay mang biểu tượng
+          # Aladin, chạy được, ký được, và không có gì đỏ. Chặn ở đây thay vì để
+          # nó ra tới tay người thử.
+          #
+          # Mở khoá cần BA thứ, không phải một:
+          #   (a) `instances/<app>/ios/AppIcon-1024.png` có mặt;
+          #   (b) tệp đó 1024×1024 và KHÔNG có kênh alpha;
+          #   (c) một bước sinh `AppIcon.appiconset` từ tệp đó, chạy trước `xcodebuild`.
+          # Có (a) mà thiếu (c) thì biểu tượng vẫn là Aladin — ĐỪNG gỡ cổng theo sự
+          # có mặt của tệp.
+          #
+          # Vì sao tên là `AppIcon-1024.png` chứ không phải `icon-1024.png`: bản trước
+          # của cổng này đề nghị tên `icon-1024.png`, và nhà CheckFarm chỉ ra rằng ở
+          # kho họ có ĐÚNG một tệp mang tên đó — 1024×1024, khác byte, và `hasAlpha:
+          # yes`. Tệp đúng của họ tên `AppIcon-1024.png`, do bộ sinh `make-icons.mjs`
+          # đặt. Tức câu chỉ đường của cổng cũ dẫn thẳng vào tệp sai.
+          #
+          # Vì sao alpha là chuyện phải chặn ở ĐÂY: App Store Connect từ chối kênh
+          # alpha ở bước NỘP, không ở bước dựng. Bản dựng xanh, tải lên xong, rồi bị
+          # chặn ở lượt xử lý bằng một dòng nói về "transparency" — cách chỗ gõ nhầm
+          # vài tiếng và vài bước. Đo bằng `sips`, có sẵn trên máy dựng macOS.
+          # ⚠ Bản trước của khối này đo ĐÚNG MỘT tệp — `instances/<app>/ios/AppIcon-1024.png`
+          # — và bọc nó trong `if [ -f ]`. Tệp đó KHÔNG tồn tại cho `aladin`
+          # (`instances/aladin/` chỉ có `android/` + `brand/`), mà `aladin` lại là app
+          # DUY NHẤT luồng này dựng được. Nên với mọi lượt dựng thật, phép đo alpha
+          # chưa bao giờ chạy một lần nào, và cổng vẫn in `✅ … khớp` rồi thoát 0.
+          #
+          # Ảnh mà `xcodebuild` thật sự đóng gói là bộ dùng chung dưới
+          # `ios/SuperApp/Images.xcassets/AppIcon.appiconset/`. Cổng đo tệp không ai
+          # dùng, và bỏ qua tệp được đóng gói — đúng nghĩa "cổng có tên đúng mà đo sai
+          # đại lượng", lần thứ hai trong chính khối này.
+          #
+          # Nay đo HAI tệp, và tệp bắt buộc là tệp đang được đóng gói:
+          #   (1) `AppIcon.appiconset/icon-1024.png` — LUÔN tồn tại ⟹ không `if [ -f ]`,
+          #       thiếu nó là đỏ. Đây là thứ đi vào gói nộp.
+          #   (2) `instances/<app>/ios/AppIcon-1024.png` — phép đo THÊM, chỉ chạy khi có.
+          command -v sips >/dev/null 2>&1 || {
+            echo "⛔ KHÔNG ĐO ĐƯỢC kênh alpha: máy dựng không có 'sips'."
+            echo "   Đây là trạng thái MÙ, không phải trạng thái đạt — nên cổng đỏ."
+            exit 1
+          }
+
+          do_bieu_tuong() {
+            T="$1"
+            RONG=$(sips -g pixelWidth  "$T" 2>/dev/null | awk '/pixelWidth/{print $2}')
+            CAO=$(sips  -g pixelHeight "$T" 2>/dev/null | awk '/pixelHeight/{print $2}')
+            ALPHA=$(sips -g hasAlpha   "$T" 2>/dev/null | awk '/hasAlpha/{print $2}')
+            # `$(sips … | awk …)` nuốt mã thoát của `sips`: `awk` luôn trả 0, nên một
+            # tệp 0 byte hay không phải ảnh cho ba biến RỖNG. So chuỗi rỗng với "1024"
+            # thì đỏ, nhưng đỏ kèm câu "là ×, cần 1024×1024" — câu đó nói LỆCH trong khi
+            # sự thật là KHÔNG ĐO ĐƯỢC, và nó dẫn người sửa đi tìm sai chỗ.
+            if [ -z "$RONG" ] || [ -z "$CAO" ] || [ -z "$ALPHA" ]; then
+              echo "⛔ KHÔNG ĐO ĐƯỢC $T — sips không trả đủ ba giá trị."
+              echo "   Tệp 0 byte, không phải ảnh, hoặc sips hỏng. Đây KHÔNG phải 'ảnh sai cỡ'."
+              exit 1
+            fi
+            if [ "$RONG" != "1024" ] || [ "$CAO" != "1024" ]; then
+              echo "❌ $T là ${RONG}×${CAO}, cần 1024×1024."
+              exit 1
+            fi
+            if [ "$ALPHA" != "no" ]; then
+              echo "❌ $T CÓ kênh alpha (hasAlpha=$ALPHA)."
+              echo "   App Store Connect từ chối ở bước NỘP, không ở bước dựng — nên nếu"
+              echo "   không chặn ở đây thì chỗ hỏng lộ ra cách chỗ gõ nhầm vài tiếng đồng hồ."
+              echo "   Lấy bản KHÔNG alpha; đừng lấy theo tên, hai tệp cùng cỡ có thể khác kênh."
+              exit 1
+            fi
+            echo "✅ $T 1024×1024, không alpha"
+          }
+
+          BO_DONG_GOI="ios/SuperApp/Images.xcassets/AppIcon.appiconset/icon-1024.png"
+          if [ ! -f "$BO_DONG_GOI" ]; then
+            echo "❌ thiếu $BO_DONG_GOI — đây là ảnh đi vào gói nộp, không phải tệp tuỳ chọn."
+            exit 1
+          fi
+          do_bieu_tuong "$BO_DONG_GOI"
+
+          BIEU_TUONG="instances/${APP_INSTANCE}/ios/AppIcon-1024.png"
+          if [ -f "$BIEU_TUONG" ]; then
+            do_bieu_tuong "$BIEU_TUONG"
+          fi
+          if [ "$APP_INSTANCE" != "aladin" ]; then
+            echo "❌ luồng iOS chưa dựng được app '$APP_INSTANCE'."
+            echo "   Biểu tượng iOS là một bộ dùng chung ở ios/SuperApp/Images.xcassets/AppIcon.appiconset;"
+            echo "   chưa có bước sinh bộ đó theo app, nên bản này sẽ mang biểu tượng Aladin."
+            if [ -f "$BIEU_TUONG" ]; then
+              echo "   ($BIEU_TUONG đã có và hợp lệ — nhưng chưa mã nào đọc nó."
+              echo "    Đây đúng là chỗ 'có tệp mà vẫn sai': đừng gỡ cổng theo sự có mặt của tệp.)"
+            else
+              echo "   Thiếu $BIEU_TUONG — bản 1024×1024, KHÔNG kênh alpha."
+            fi
+            echo "   Mở khoá: thêm bước sinh AppIcon.appiconset từ tệp đó trước xcodebuild."
             exit 1
           fi
 
@@ -1430,7 +1743,10 @@ workflows:
       - name: Soát khoá API trước khi phát hành
         script: |
           if [ -n "$API_KEY" ]; then
-            echo "✅ API_KEY có mặt (${#API_KEY} ký tự)."
+            # Chỉ nói CÓ MẶT, không nói dài bao nhiêu: trình che log của Codemagic che
+            # GIÁ TRỊ, không che con số suy ra từ giá trị. Độ dài là một mẩu tin thật về
+            # một bí mật, in ra vĩnh viễn trong log mà không đổi lại được gì.
+            echo "✅ API_KEY có mặt."
           elif [ "$ALLOW_NO_API_KEY" = "1" ]; then
             echo "⚠️  Không có API_KEY — dựng tiếp vì ALLOW_NO_API_KEY=1."
             echo "    Bản này nướng 'mock-local-api-key' vào header X-API-Key (aladin-api.ts:75)."

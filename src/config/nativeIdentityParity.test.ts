@@ -165,6 +165,43 @@ describe('codemagic — không luồng nào dựng vỏ app này với chữ app
     expect(khai.filter((b) => !hopLe.has(b))).toEqual([]);
   });
 
+  it('mọi APP_DISPLAY_NAME khai trong tệp đều là displayName của một app có thật', () => {
+    // Chiều `BUNDLE_ID` đã được bài ngay trên canh. Chiều `APP_DISPLAY_NAME` thì
+    // KHÔNG — đo được: đổi `APP_DISPLAY_NAME: Aladin` thành một chuỗi bất kỳ và
+    // chạy trọn bộ kiểm thì 98/98 vẫn xanh. Chỗ duy nhất bắt được là bước "Soát
+    // danh tính app iOS" trong `codemagic.yaml`, và bước đó chỉ chạy trên runner
+    // macOS tính tiền, sau khi PR đã merge. Bài này kéo phép bắt về tầng PR.
+    const hopLe = new Set(Object.values(FLAVORS).map((f) => f.appName));
+    const khai = [...CODEMAGIC.matchAll(/^\s*APP_DISPLAY_NAME:\s*(.+?)\s*$/gm)].map((m) => m[1]);
+    expect(khai.length).toBeGreaterThan(0);
+    expect(khai.filter((n) => !hopLe.has(n))).toEqual([]);
+  });
+
+  it('BUNDLE_ID và APP_DISPLAY_NAME trong cùng một luồng phải cùng nói về MỘT app', () => {
+    // Hai bài trên soi từng trường riêng, nên `BUNDLE_ID: vn.aladinapp` đứng cạnh
+    // `APP_DISPLAY_NAME: CheckFarm` vẫn qua được cả hai — mỗi giá trị đều "của một
+    // app có thật", chỉ là hai app khác nhau. Đó đúng là hình dạng của bản dựng
+    // mang vỏ app này với chữ app kia, tức thứ khối `describe` này mang tên.
+    // Đọc thẳng `instance.json` chứ không dùng `INSTANCES` (bảng TypeScript, không
+    // mang mã gói) hay `FLAVORS` (chỉ mang mã gói Android). Mã gói iOS của Aladin
+    // KHÁC mã Android (`vn.aladinapp` vs `com.aladincontract.company`), nên bảng
+    // thiếu một chiều là bài này đo hụt đúng app đang chạy.
+    const tenTheoBundle: Record<string, string> = {};
+    for (const ma of readdirSync(THU_MUC_APP)) {
+      const tep = join(THU_MUC_APP, ma, 'instance.json');
+      if (!existsSync(tep)) continue;
+      const khai = JSON.parse(readFileSync(tep, 'utf8'));
+      if (khai.ios?.bundleId) tenTheoBundle[khai.ios.bundleId] = khai.displayName;
+      tenTheoBundle[khai.android.applicationId] = khai.displayName;
+    }
+    // Ca đối chứng: bảng dựng được và có cả hai chiều mã gói. Bảng rỗng thì vòng
+    // lặp dưới không chạy lần nào và bài này xanh mà không đo gì.
+    expect(Object.keys(tenTheoBundle).length).toBeGreaterThanOrEqual(3);
+    const cap = [...CODEMAGIC.matchAll(/BUNDLE_ID:\s*(\S+)\n\s*APP_DISPLAY_NAME:\s*(.+?)\s*$/gm)];
+    expect(cap.length).toBeGreaterThan(0);
+    for (const m of cap) expect(`${m[1]} → ${m[2]}`).toBe(`${m[1]} → ${tenTheoBundle[m[1]]}`);
+  });
+
   it('lệnh gradle luôn gọi flavor tường minh', () => {
     // `assembleDebug` / `bundleRelease` (không flavor) dựng CẢ HAI app.
     expect(CODEMAGIC).not.toMatch(/gradlew\s+assembleDebug\b/);

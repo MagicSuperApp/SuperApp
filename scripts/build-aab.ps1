@@ -28,6 +28,7 @@
 # ══ CÁCH DÙNG ══════════════════════════════════════════════════════════════
 #     powershell -ExecutionPolicy Bypass -File scripts\build-aab.ps1
 #
+#     -App <mã>      app cần dựng (mặc định `aladin`; xem thư mục instances/)
 #     -SkipTests     bỏ cổng tsc + jest (chỉ dùng khi vừa chạy xong)
 #     -SkipRust      bỏ bước dựng Rust (chỉ khi jniLibs đã có sẵn và còn mới)
 #     -Clean         chạy `gradlew clean` trước
@@ -36,6 +37,7 @@
 
 [CmdletBinding()]
 param(
+    [string]$App = 'aladin',
     [switch]$SkipTests,
     [switch]$SkipRust,
     [switch]$Clean
@@ -105,16 +107,34 @@ if (-not (Test-Path '.env')) {
 }
 Ok ".env ($((Get-Item '.env').Length) byte)"
 
-if (-not (Test-Path 'android/app/keySigning.bin')) { Die 'Thiếu android/app/keySigning.bin (kho khoá ký tải lên).' }
-if (-not (Test-Path 'android/gradle.properties')) { Die 'Thiếu android/gradle.properties (chứa 4 khoá ALADIN_UPLOAD_*).' }
-$gp = Get-Content 'android/gradle.properties' -Raw
-foreach ($k in @('ALADIN_UPLOAD_STORE_FILE','ALADIN_UPLOAD_STORE_PASSWORD','ALADIN_UPLOAD_KEY_ALIAS','ALADIN_UPLOAD_KEY_PASSWORD')) {
-    # Thiếu MỘT khoá thì `signingConfigs.release` rỗng hoàn toàn — build.gradle bọc
-    # cả khối trong `if (project.hasProperty('ALADIN_UPLOAD_STORE_FILE'))`. Gradle
-    # KHÔNG báo lỗi; nó ký bằng khoá debug, và Play từ chối tệp ở bước tải lên.
-    if ($gp -notmatch "(?m)^\s*$k\s*=") { Die "android/gradle.properties thiếu $k." }
+# ── DỰNG APP NÀO ───────────────────────────────────────────────────────────
+# Kho này dựng NHIỀU app từ một nền mã (`instances/`), mỗi app một mã gói và một
+# khoá ký riêng. Trước bản này script gõ thẳng `bundleRelease` — task đó dựng MỌI
+# flavor, nên nó kéo theo app của pháp nhân khác và nổ ở cổng khoá ký của app đó.
+# Dựng đúng MỘT app, và mọi bước sau đều theo tên app này.
+if (-not (Test-Path "instances/$App/instance.json")) {
+    $co = ((Get-ChildItem 'instances' -Directory).Name) -join ', '
+    Die "Không có app '$App' (thiếu instances/$App/instance.json). Đang có: $co"
 }
-Ok 'Bốn khoá ký có mặt'
+$Flavor = $App.Substring(0,1).ToUpper() + $App.Substring(1)
+Ok "app: $App (flavor $Flavor)"
+
+$TIENTO = $App.ToUpper() + '_UPLOAD_'
+if (-not (Test-Path 'android/gradle.properties')) { Die "Thiếu android/gradle.properties (chứa 4 khoá $TIENTO*)." }
+$gp = Get-Content 'android/gradle.properties' -Raw
+foreach ($k in @('STORE_FILE','STORE_PASSWORD','KEY_ALIAS','KEY_PASSWORD')) {
+    # Thiếu MỘT khoá thì build.gradle KHÔNG tạo `signingConfigs.$App`, và cổng
+    # `taskGraph.whenReady` ở cuối build.gradle chặn bản phát hành — nhưng chỉ sau
+    # khi gradle đã cấu hình xong. Bắt ở đây để biết ngay, không mất một lượt dựng.
+    if ($gp -notmatch "(?m)^\s*$TIENTO$k\s*=") { Die "android/gradle.properties thiếu $TIENTO$k." }
+}
+# Kho khoá lấy từ chính giá trị đã khai, KHÔNG đoán tên tệp: mỗi app một khoá, và
+# `keySigning.bin` chỉ là tên khoá của Aladin.
+$storeFile = [regex]::Match($gp, "(?m)^\s*${TIENTO}STORE_FILE\s*=\s*(.+?)\s*$").Groups[1].Value
+$storePath = Join-Path 'android/app' $storeFile
+if (-not (Test-Path $storePath)) { $storePath = $storeFile }   # đã khai đường dẫn tuyệt đối
+if (-not (Test-Path $storePath)) { Die "Không thấy kho khoá '$storeFile' (khai ở ${TIENTO}STORE_FILE)." }
+Ok "Bốn khoá ký có mặt (kho khoá: $storeFile)"
 
 $versionCode = (Select-String -Path 'android/app/build.gradle' -Pattern 'versionCode\s+(\d+)').Matches[0].Groups[1].Value
 Warn "versionCode hiện là $versionCode — Play TỪ CHỐI tệp trùng versionCode đã tải lên. Tăng nó trước khi phát hành."
@@ -234,7 +254,7 @@ foreach ($abi in $ABIS) {
 if ($missing.Count -gt 0) { Die ("Thiếu .so:`n  " + ($missing -join "`n  ")) }
 
 # ───────────────────────────────────────────────────────────────────────────
-Step 5 'Gradle bundleRelease'
+Step 5 "Gradle bundle${Flavor}Release"
 
 Push-Location android
 try {
@@ -242,16 +262,20 @@ try {
     # Bốn khoá ký đọc từ android/gradle.properties (đã soát ở bước 1), nên không
     # cần truyền -P như CI. `--no-daemon`: daemon giữ lại classpath của lượt trước
     # và đã từng nuốt thay đổi ở jniLibs.
-    ./gradlew bundleRelease --no-daemon --stacktrace
-    if ($LASTEXITCODE -ne 0) { Die 'bundleRelease hỏng — đọc stacktrace phía trên.' }
+    ./gradlew "bundle${Flavor}Release" --no-daemon --stacktrace
+    if ($LASTEXITCODE -ne 0) { Die "bundle${Flavor}Release hỏng — đọc stacktrace phía trên." }
 } finally { Pop-Location }
 
 # ───────────────────────────────────────────────────────────────────────────
 Step 6 'Kiểm BÊN TRONG tệp .aab'
 
-$aab = Get-ChildItem 'android/app/build/outputs/bundle/release' -Filter '*.aab' -ErrorAction SilentlyContinue |
+# Có flavor thì gradle ghi vào `bundle/<flavor>Release/`, KHÔNG phải `bundle/release/`.
+# Thư mục cũ vẫn nằm đó trên máy nào từng dựng trước ngày tách hai app — trỏ vào
+# đó là đi kiểm tệp .aab của tháng trước rồi báo xanh cho bản vừa dựng.
+$outDir = "android/app/build/outputs/bundle/${App}Release"
+$aab = Get-ChildItem $outDir -Filter '*.aab' -ErrorAction SilentlyContinue |
        Sort-Object LastWriteTime -Descending | Select-Object -First 1
-if (-not $aab) { Die 'Không thấy tệp .aab nào ở android/app/build/outputs/bundle/release.' }
+if (-not $aab) { Die "Không thấy tệp .aab nào ở $outDir." }
 
 # Đọc DANH SÁCH MỤC trong tệp, không giải nén. Đây là bước quan trọng nhất của cả
 # script: nó kiểm THÀNH PHẨM, chứ không kiểm rằng "các bước đã chạy". Bước dựng

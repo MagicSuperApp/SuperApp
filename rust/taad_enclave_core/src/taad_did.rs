@@ -2973,19 +2973,30 @@ pub fn build_deactivate_taad_tx(
 
 /// **UpdateGuardians** — controller signs; guardians list replaced (≤5).
 /// `new_guardians_json` = JSON array of 28-byte hex VerificationKeyHash.
-#[allow(clippy::too_many_arguments)]
+///
 /// CỐ Ý KHÔNG gác, và đây là chỗ phải ghi lý do vì bốn hàm anh em cạnh nó đều
 /// bị gác nên người đọc sau sẽ tưởng chỗ này bị bỏ sót.
 ///
 /// Lỗi đơn vị (slot ghi vào ô POSIX-ms) chỉ chạm hàm nào GHI một giá trị thời
 /// gian MỚI vào datum. Hàm này không ghi cái nào: `d.revoked_slot` và
 /// `d.recovery_anchor` được chuyển tiếp nguyên vẹn từ datum cũ, còn hai thứ nó
-/// thật sự đổi là danh sách guardian và `sequence`.
+/// thật sự đổi là danh sách guardian và `sequence`. Nên cửa kia không có việc
+/// gì ở đây, và gác thêm chỉ là gác một lỗi không tồn tại tại chỗ này.
 ///
-/// Gác nó lại còn gây đúng cái hại mà cửa kia định ngăn: danh sách guardian là
-/// TIỀN ĐỀ của khôi phục (`InitRecovery` đòi chữ ký guardian). Chặn đường ghi
-/// guardian tức là chặn người dùng dựng đường cứu hộ, để đổi lấy việc ngăn một
-/// lỗi không tồn tại ở đây.
+/// ⚠ Bản trước còn ghi thêm một lý do NỮA — rằng gác nó sẽ chặn người dùng dựng
+/// đường cứu hộ, vì danh sách guardian là tiền đề của khôi phục. Câu đó nghe
+/// vững nhưng đứng trên một tiền đề chưa ai đo, và tiền đề ấy SAI: hàm này hôm
+/// nay cũng chưa dựng được giao dịch nào dùng được. Datum bên off-chain dựng 10
+/// trường và chỉ nhận `n == 9 || n == 10`, trong khi validator khai 15
+/// (`PhoenixKey-Validator/lib/phoenixkey/types.ak:66` @`564ad83`, thêm
+/// `limit_meter_policy` · `pending_meter_policy` · `pending_meter_ms` · `depth`
+/// · `device_pkh`). Aiken giải datum theo arity, nên MỌI builder họ TAAD — kể cả
+/// hàm này — sinh ra giao dịch validator từ chối, bất kể chuyện đơn vị.
+///
+/// Quyết định chừa vẫn giữ nguyên (gác thêm chẳng cứu được gì), nhưng lý do phải
+/// là lý do đúng: **cửa này không thuộc lớp lỗi mà cờ kia canh**, chứ không phải
+/// "chặn nó thì mất đường cứu hộ". Lệch arity là một việc riêng, chưa mở.
+#[allow(clippy::too_many_arguments)]
 pub fn build_update_guardians_tx(
     current_taad_utxo_json: &str,
     new_guardians_json: &str,
@@ -3041,10 +3052,6 @@ pub fn build_update_guardians_tx(
     )
 }
 
-/// **InitRecovery** — guardian threshold signs (NOT the lost controller).
-/// status → Recovering{pending = new key, deadline = lb + timelock,
-/// collateral}. Continuing output locks `collateral_lovelace` extra ADA.
-///
 /// Ba builder khôi phục (`init` / `cancel` / `finalize`) đã sẵn sàng chưa.
 ///
 /// `false`, và lý do không phải "chưa viết xong" mà là **sai đơn vị thời gian**.
@@ -3133,6 +3140,10 @@ fn recovery_builders_gate() -> Result<(), String> {
     )
 }
 
+/// **InitRecovery** — guardian threshold signs (NOT the lost controller).
+/// status → Recovering{pending = new key, deadline = lb + timelock,
+/// collateral}. Continuing output locks `collateral_lovelace` extra ADA.
+///
 /// `recovery_timelock_slots` MUST equal the value baked into the deployed
 /// validator (the datum's deadline_slot must equal lb + that param, else the
 /// validator rejects). `guardian_signing_keys_json` = JSON array of 32-byte
@@ -4923,14 +4934,25 @@ mod tests {
 
     /// Ca ĐỐI XỨNG của bài trên — bài kia một mình không phân biệt được "gác
     /// đúng một hàm" với "gác cả cụm". `update_guardians` KHÔNG ghi giá trị
-    /// thời gian mới nên phải đi QUA được cửa và chết ở chỗ khác. Gác nhầm nó
-    /// là chặn đường dựng guardian, tức chặn tiền đề của khôi phục.
+    /// thời gian mới nên phải đi QUA được cửa và chết ở chỗ khác.
+    ///
+    /// ⚠ Bản trước khẳng định bằng PHỦ ĐỊNH: `!e.contains("disabled")`. Tập bù
+    /// của một chuỗi là vô hạn, nên bài đó xanh với mọi cách chặn dùng câu chữ
+    /// khác. Đo bằng đột biến: chèn `return Err("update_guardians builder is
+    /// turned off pending the ms ABI")` ngay đầu hàm ⟹ hàm bị chặn CỨNG, và
+    /// `167 passed; 0 failed`. Bài mang đúng tên chốt, chạy đúng hàm, và chứng
+    /// minh không điều gì.
+    ///
+    /// Nay neo vào cái phải XẢY RA: đầu vào là JSON hỏng, nên hàm phải chết ở
+    /// bước phân tích đầu vào — tức nó đã đi qua cửa. Một chốt chặn đặt trước
+    /// bước ấy, mang bất cứ câu chữ nào, đều làm bài này đỏ.
     #[test]
     fn update_guardians_is_not_gated() {
         let e = build_update_guardians_tx("{", "[]", "00", "00", 0, "", "[", "{", 1).unwrap_err();
         assert!(
-            !e.contains("disabled"),
-            "update_guardians bị gác nhầm; nhận được: {e}"
+            e.contains("current_taad_utxo_json invalid"),
+            "update_guardians phải chết ở bước phân tích đầu vào (tức đã qua cửa); \
+             nhận được: {e}"
         );
     }
 }

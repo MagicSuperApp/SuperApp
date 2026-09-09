@@ -85,6 +85,8 @@ const ChatHomeScreen: React.FC = () => {
   const loadError = useSelector((s: RootState) => s.chat.loadError);
   const loadErrorTitle = useSelector((s: RootState) => s.chat.loadErrorTitle);
   const invitationsStatus = useSelector((s: RootState) => s.chat.invitationsStatus);
+  const invitationsError = useSelector((s: RootState) => s.chat.invitationsError);
+  const invitationsErrorTitle = useSelector((s: RootState) => s.chat.invitationsErrorTitle);
   const sync = useSelector((s: RootState) => s.chat.sync);
 
   // Cổng runtime: chỉ gọi máy chủ khi nó thật sự sống (probe /health). Hook này
@@ -483,6 +485,8 @@ const ChatHomeScreen: React.FC = () => {
         visible={invitesOpen}
         invitations={invitations}
         loading={invitationsStatus === 'loading'}
+        errorTitle={invitationsErrorTitle}
+        errorMessage={invitationsError}
         busyId={busyInvite}
         onClose={() => setInvitesOpen(false)}
         onAccept={handleAcceptInvite}

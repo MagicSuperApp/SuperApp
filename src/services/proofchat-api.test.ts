@@ -72,6 +72,17 @@ jest.mock('./phoenixKey-api', () => ({
   getSessionToken: () => mockGetPhoenixSession(),
 }));
 
+// ── DID của người đang dùng máy ──────────────────────────────────────
+// Điều khiển được thì mới dựng được ca "máy dùng chung": A đăng nhập, token vào
+// kho, B mở app. Không mock thì mọi ca chạy với cùng một người và cả lớp lỗi đó
+// vô hình.
+const mockCurrentUserDid = jest.fn<Promise<string | null>, []>();
+jest.mock('../sdk/phoenixKey', () => ({
+  ...jest.requireActual('../sdk/phoenixKey'),
+  __esModule: true,
+  currentUserDid: () => mockCurrentUserDid(),
+}));
+
 import {
   proofChatApi,
   isProofChatBackendEnabled,
@@ -83,6 +94,7 @@ import {
 } from './proofchat-api';
 import {
   connectProofChat,
+  disconnectProofChat,
   ensureProofChatSession,
   resetProofChatSessionBackoff,
 } from './proofchatAuthBridge';
@@ -95,6 +107,10 @@ beforeEach(() => {
   mockGet.mockReset();
   mockRequest.mockReset();
   mockGetPhoenixSession.mockReset();
+  // Mặc định: máy chưa đọc được DID — đúng trạng thái của phần lớn ca cũ trong tệp
+  // này, nên chúng không đổi nghĩa. Ca nào cần một người cụ thể thì tự đặt.
+  mockCurrentUserDid.mockReset();
+  mockCurrentUserDid.mockResolvedValue(null);
   // `connectProofChat` giữ mốc "lần hỏng gần nhất" ở phạm vi module để khỏi hỏi
   // vân tay liên tục trong app thật. Trong test thì mốc đó rỉ từ ca này sang ca
   // sau: ca trước hỏng ⇒ ca sau nhận lại kết quả hỏng cũ mà không gọi máy chủ.
@@ -386,16 +402,141 @@ describe('ensureProofChatSession — gộp lượt gọi song song', () => {
     expect(b).toBe('AA');
   });
 
-  it('đã có token trong kho → không đăng nhập lần nào', async () => {
+  it('token trong kho ĐÚNG chủ → không đăng nhập lần nào', async () => {
     // Ca đối chứng cho bài trên: chứng minh phép đếm `soLanLogin` có chạy thật và
     // biết trả về 0, chứ không phải luôn ra 1 vì lý do nào khác.
+    mockCurrentUserDid.mockResolvedValue('did:phoenix:NGUOI-A');
     store['proofchat_access_token'] = 'CO-SAN';
+    store['proofchat_token_did'] = 'did:phoenix:NGUOI-A';
     const t = await ensureProofChatSession();
     const soLanLogin = mockPost.mock.calls.filter(
       (c) => c[0] === '/auth/phoenixkey/login',
     ).length;
     expect(soLanLogin).toBe(0);
     expect(t).toBe('CO-SAN');
+  });
+
+  // Cặp đối xứng của ca trên, và là ca mà bản trước để lọt hoàn toàn.
+  //
+  // Phép kiểm chủ sở hữu chỉ nằm trong `connectProofChat`. `ensureProofChatSession`
+  // — nay là provider chính thức của interceptor REST, tức đường mà MỌI lượt gọi
+  // cần-auth đi qua — từng mở đầu bằng `getAccessToken()` rồi trả thẳng, không hỏi
+  // token đó của ai. Đó là cửa THỨ HAI vào kho token, và cửa đó không có khoá.
+  it('token trong kho của NGƯỜI KHÁC → phải đăng nhập lại, không dùng token đó', async () => {
+    mockCurrentUserDid.mockResolvedValue('did:phoenix:NGUOI-B');
+    store['proofchat_access_token'] = 'TOKEN-CUA-A';
+    store['proofchat_token_did'] = 'did:phoenix:NGUOI-A';
+    mockGetPhoenixSession.mockResolvedValue('phx-cua-b');
+    mockPost.mockResolvedValue({
+      data: { data: { accessToken: 'TOKEN-CUA-B', refreshToken: 'RR' }, statusCode: 201 },
+    });
+
+    const t = await ensureProofChatSession();
+
+    expect(t).not.toBe('TOKEN-CUA-A');
+    expect(t).toBe('TOKEN-CUA-B');
+    expect(
+      mockPost.mock.calls.filter((c) => c[0] === '/auth/phoenixkey/login').length,
+    ).toBe(1);
+    // Và dấu chủ phải sang tên — không thì lượt sau lại xoá đi đăng nhập lại.
+    expect(store['proofchat_token_did']).toBe('did:phoenix:NGUOI-B');
+  });
+
+  // Token vô chủ (kho có token nhưng chưa từng đóng dấu) là hình dạng thật của
+  // một bản cài cũ nâng cấp lên. Nó KHÔNG được mặc nhiên coi là của người đang
+  // dùng máy — không ai biết nó của ai.
+  it('token KHÔNG có dấu chủ → cũng phải đăng nhập lại', async () => {
+    mockCurrentUserDid.mockResolvedValue('did:phoenix:NGUOI-B');
+    store['proofchat_access_token'] = 'TOKEN-VO-CHU';
+    mockGetPhoenixSession.mockResolvedValue('phx-cua-b');
+    mockPost.mockResolvedValue({
+      data: { data: { accessToken: 'TOKEN-MOI', refreshToken: 'RR' }, statusCode: 201 },
+    });
+
+    const t = await ensureProofChatSession();
+
+    expect(t).toBe('TOKEN-MOI');
+  });
+});
+
+describe('thời gian nghỉ sau khi hỏng — của MỘT NGƯỜI, không của cái máy', () => {
+  // Cổng nghỉ 60 giây tồn tại vì đường dựng phiên bật hộp vân tay của hệ điều hành:
+  // phiên đang hỏng thì người dùng nhận một chuỗi hộp vân tay liên tiếp mà lần nào
+  // cũng chỉ để nhận lại đúng lỗi đó. Nhưng nó là trạng thái ở phạm vi module, và
+  // nếu không hỏi "hỏng CỦA AI" thì nó đè lên người dùng kế tiếp.
+
+  const choHong = async (did: string | null) => {
+    mockCurrentUserDid.mockResolvedValue(did);
+    mockGetPhoenixSession.mockResolvedValue(null); // không dựng nổi phiên
+    return connectProofChat();
+  };
+
+  it('ca đối chứng: CÙNG người, trong 60 giây ⇒ không hỏi lại máy chủ', async () => {
+    await clearTokens();
+    expect(await choHong('did:phoenix:A')).toEqual({ status: 'no-phoenix-session' });
+    mockGetPhoenixSession.mockClear();
+
+    const lai = await connectProofChat();
+
+    expect(lai).toEqual({ status: 'no-phoenix-session' });
+    // 0 lượt gọi — đây mới là thứ cổng nghỉ hứa, và là ca phải XANH.
+    expect(mockGetPhoenixSession).not.toHaveBeenCalled();
+  });
+
+  it('ĐỔI NGƯỜI trong 60 giây ⇒ phải hỏi lại, không dùng lỗi của người trước', async () => {
+    // Máy dùng chung: A gặp phiên hỏng → nghỉ 60s → A đăng xuất → B đăng nhập với
+    // phiên PhoenixKey SỐNG. Bản trước trả cho B nguyên văn lỗi của A, 0 lượt gọi.
+    await clearTokens();
+    await choHong('did:phoenix:A');
+
+    mockCurrentUserDid.mockResolvedValue('did:phoenix:B');
+    mockGetPhoenixSession.mockResolvedValue('phx-cua-b');
+    mockPost.mockResolvedValue({
+      data: { data: { accessToken: 'TOKEN-B', refreshToken: 'RR' }, statusCode: 201 },
+    });
+
+    const cuaB = await connectProofChat();
+
+    expect(cuaB).toEqual({ status: 'connected', alreadyHadSession: false });
+  });
+
+  it('MÁY VỪA CÓ DANH TÍNH ⇒ cổng nhả ngay, không bắt đợi hết 60 giây', async () => {
+    // Máy chưa có danh tính → hỏng → người dùng đi tạo danh tính xong quay lại Chat
+    // trong vòng một phút. Điều kiện đã đổi hẳn, nên câu trả lời cũ không còn đúng.
+    await clearTokens();
+    await choHong(null);
+
+    mockCurrentUserDid.mockResolvedValue('did:phoenix:VUA-TAO');
+    mockGetPhoenixSession.mockResolvedValue('phx-moi');
+    mockPost.mockResolvedValue({
+      data: { data: { accessToken: 'TOKEN-MOI', refreshToken: 'RR' }, statusCode: 201 },
+    });
+
+    expect(await connectProofChat()).toEqual({
+      status: 'connected',
+      alreadyHadSession: false,
+    });
+  });
+
+  it('ĐĂNG XUẤT dọn luôn thời gian nghỉ — nó thuộc về phiên vừa kết thúc', async () => {
+    await clearTokens();
+    await choHong('did:phoenix:A');
+
+    await disconnectProofChat();
+
+    // Cùng DID A, vẫn trong 60 giây — nhưng phiên đã kết thúc nên câu hỏi được hỏi
+    // lại. Không có bước này thì `_lastFailureDid` là lớp duy nhất, và nó chỉ đúng
+    // khi đọc được DID; máy không đọc được DID thì cả hai lượt cùng `null` và lỗi
+    // của phiên trước lại đè lên phiên sau.
+    mockGetPhoenixSession.mockResolvedValue('phx-lai-duoc');
+    mockPost.mockResolvedValue({
+      data: { data: { accessToken: 'TOKEN-2', refreshToken: 'RR' }, statusCode: 201 },
+    });
+
+    expect(await connectProofChat()).toEqual({
+      status: 'connected',
+      alreadyHadSession: false,
+    });
   });
 });
 

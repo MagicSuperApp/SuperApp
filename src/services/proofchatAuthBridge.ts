@@ -47,11 +47,28 @@ export type ConnectResult =
 const RETRY_COOLDOWN_MS = 60_000;
 let _lastFailureAt = 0;
 let _lastFailure: ConnectResult | null = null;
+/**
+ * DID của người dùng lúc lượt hỏng đó xảy ra.
+ *
+ * Thiếu vế này thì thời gian nghỉ là một trạng thái của CÁI MÁY, trong khi nguyên
+ * nhân hỏng là trạng thái của MỘT NGƯỜI. Hai ca thật, cả hai đều đo được:
+ *
+ *  · A gặp phiên hỏng → nghỉ 60s → A đăng xuất → B đăng nhập (DID khác, phiên
+ *    PhoenixKey sống) → B mở Chat và nhận nguyên văn lỗi CỦA A, 0 lượt gọi máy chủ.
+ *  · Máy chưa có danh tính → hỏng → người dùng đi tạo danh tính xong quay lại
+ *    trong vòng 60 giây → vẫn nhận lỗi cũ, dù điều kiện đã đổi hẳn.
+ *
+ * Nên cổng nghỉ chỉ áp khi DID **không đổi**: cùng người, cùng cảnh, thì lượt sau
+ * đúng là chắc chắn hỏng và không đáng một hộp vân tay nữa. Đổi người hay vừa có
+ * danh tính thì đó là một câu hỏi khác, phải hỏi lại máy chủ.
+ */
+let _lastFailureDid: string | null = null;
 
 /** Xoá thời gian nghỉ — dùng khi người dùng CỐ Ý yêu cầu thử lại. */
 export const resetProofChatSessionBackoff = (): void => {
   _lastFailureAt = 0;
   _lastFailure = null;
+  _lastFailureDid = null;
 };
 
 /**
@@ -115,7 +132,14 @@ const connectProofChatInner = async (): Promise<ConnectResult> => {
   // Từ đây trở xuống là phần ĐẮT (có thể bật hộp vân tay + đi mạng). Đang trong
   // thời gian nghỉ thì trả lại NGUYÊN VĂN kết quả hỏng lần trước — nơi gọi vẫn
   // phân biệt được 'no-phoenix-session' với 'error', chỉ là không hỏi lại vân tay.
-  if (_lastFailure && Date.now() - _lastFailureAt < RETRY_COOLDOWN_MS) {
+  // `_lastFailureDid === did` so cả ca hai bên cùng `null` (máy chưa có danh tính
+  // ở cả hai lượt) — đúng ca đáng nghỉ. Vừa có danh tính thì `did` khác `null` và
+  // cổng nhả ngay, không phải đợi hết 60 giây.
+  if (
+    _lastFailure &&
+    _lastFailureDid === did &&
+    Date.now() - _lastFailureAt < RETRY_COOLDOWN_MS
+  ) {
     return _lastFailure;
   }
 
@@ -126,7 +150,7 @@ const connectProofChatInner = async (): Promise<ConnectResult> => {
     phoenixSession = await ensurePhoenixSession();
   }
   if (!phoenixSession) {
-    return noteFailure({ status: 'no-phoenix-session' });
+    return noteFailure({ status: 'no-phoenix-session' }, did);
   }
 
   try {
@@ -140,14 +164,15 @@ const connectProofChatInner = async (): Promise<ConnectResult> => {
   } catch (err) {
     const message =
       err instanceof ProofChatApiError ? err.message : 'Không kết nối được ProofChat';
-    return noteFailure({ status: 'error', message });
+    return noteFailure({ status: 'error', message }, did);
   }
 };
 
 /** Ghi mốc hỏng để bật thời gian nghỉ, rồi trả lại đúng kết quả đó cho nơi gọi. */
-const noteFailure = (res: ConnectResult): ConnectResult => {
+const noteFailure = (res: ConnectResult, did: string | null): ConnectResult => {
   _lastFailureAt = Date.now();
   _lastFailure = res;
+  _lastFailureDid = did;
   console.warn(
     `[ProofChat] chưa dựng được phiên: ${res.status} — nghỉ ${RETRY_COOLDOWN_MS / 1000}s ` +
       'trước khi thử lại (tránh hỏi vân tay liên tục).',
@@ -188,11 +213,13 @@ export const ensureProofChatSession = (): Promise<string | null> => {
   // lượt chạy đồng bộ. Không còn khe nào.
   _ensureInflight = (async () => {
     try {
-      // Lượt trước có thể đã dựng xong phiên rồi — đọc kho trước khi đi tiếp.
-      const stored = await getAccessToken().catch(() => null);
-      if (stored) return stored;
-      // Thời gian nghỉ sau khi hỏng nằm trong `connectProofChat` — nó là chỗ duy
-      // nhất cả hai đường (init màn chat + interceptor REST) đều đi qua.
+      // ⛔ KHÔNG được đọc tắt `getAccessToken()` rồi trả luôn ở đây. "Kho có token"
+      // không phải câu hỏi cần trả lời — câu hỏi là "token đó CỦA AI". Phép kiểm
+      // chủ sở hữu chỉ nằm trong `connectProofChat` (`getTokenOwnerDid() === did`),
+      // nên một đường tắt ở đây là cửa THỨ HAI vào kho token, và cửa đó không hỏi
+      // gì: người B mở app trên máy dùng chung sẽ đi tiếp bằng token của người A.
+      // `connectProofChat` tự có đường trả sớm rẻ cho ca token khớp chủ — không
+      // đi mạng, không hộp vân tay — nên bỏ đường tắt không làm chậm ca thường.
       const res = await connectProofChat();
       if (res.status !== 'connected') return null;
       return await getAccessToken();
@@ -226,4 +253,14 @@ export const disconnectProofChat = async (): Promise<void> => {
   // Chạy cả khi cờ tắt, và cả khi logout() ở trên đã xoá — `clearTokens` là
   // idempotent, và đây là đường duy nhất bảo đảm kho sạch sau khi đăng xuất.
   await clearTokens().catch(() => undefined);
+  // Token không phải thứ duy nhất sống ở phạm vi module. Thời gian nghỉ cũng vậy,
+  // và nó sống sót qua đăng xuất: A gặp phiên hỏng → nghỉ 60 giây → A đăng xuất →
+  // B đăng nhập → B mở Chat và nhận nguyên văn lỗi của A, không một lượt gọi nào.
+  // `_lastFailureDid` đã chặn ca đó ở tầng so DID; đây là lớp thứ hai, và nó dọn
+  // theo đúng SỰ KIỆN "phiên này kết thúc" thay vì suy ra từ một giá trị.
+  resetProofChatSessionBackoff();
+  // Nhả cả lượt đang bay: nó được dựng bằng danh tính CŨ, nên ai bám vào nó sau
+  // khi đăng xuất là bám vào một câu trả lời cho người khác.
+  _connectInflight = null;
+  _ensureInflight = null;
 };

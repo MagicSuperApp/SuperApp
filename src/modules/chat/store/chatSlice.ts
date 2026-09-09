@@ -69,6 +69,9 @@ interface ChatState {
   loadError?: string;
   /** Tiêu đề đi kèm `loadError` — mỗi nguyên nhân một câu, xem LOAD_FAILURE_TEXT. */
   loadErrorTitle?: string;
+  /** Cùng cặp, nhưng cho danh sách LỜI MỜI — hai danh sách hỏng độc lập nhau. */
+  invitationsError?: string;
+  invitationsErrorTitle?: string;
 }
 
 const initialState: ChatState = {
@@ -85,6 +88,8 @@ const initialState: ChatState = {
   invitationsStatus: 'idle',
   loadError: undefined,
   loadErrorTitle: undefined,
+  invitationsError: undefined,
+  invitationsErrorTitle: undefined,
 };
 
 // ── Chuyển hình máy chủ → hình giao-diện ────────────────────────────────────
@@ -246,16 +251,24 @@ export type ChatLoadFailure = 'auth' | 'network' | 'server';
 const LOAD_FAILURE_TEXT: Record<ChatLoadFailure, { title: string; message: string }> = {
   auth: {
     title: 'Chưa đăng nhập được',
+    // KHÔNG hứa "sẽ hiện ngay khi phiên dựng xong". Không nơi nào gọi lại các thunk
+    // này khi phiên dựng xong — deps của effect nạp chỉ có `[backendReady,
+    // identityResolved, dispatch]`, không cái nào đổi theo phiên ProofChat. Câu đó
+    // hứa một cơ chế mã không có, và người dùng ngồi chờ một thứ không tới.
+    // Kéo xuống thì có thật: `handleRefresh` gọi `resetProofChatSessionBackoff()`
+    // nên nó bỏ qua cả thời gian nghỉ 60 giây.
     message:
-      'Máy chủ trò chuyện đang sống nhưng app chưa dựng được phiên đăng nhập. Danh sách phòng sẽ hiện ngay khi phiên dựng xong.',
+      'Máy chủ trò chuyện đang sống nhưng app chưa dựng được phiên đăng nhập. Kéo xuống để thử lại.',
   },
   network: {
     title: 'Không nối được máy chủ',
     message: 'Kiểm tra mạng rồi kéo xuống để thử lại.',
   },
   server: {
+    // Bảng này nay dùng cho CẢ danh sách phòng lẫn danh sách lời mời, nên câu chữ
+    // không được gọi tên một trong hai.
     title: 'Chưa tải được',
-    message: 'Chưa tải được danh sách trò chuyện. Kéo xuống để thử lại.',
+    message: 'Máy chủ chưa trả lời được. Kéo xuống để thử lại.',
   },
 };
 
@@ -304,14 +317,31 @@ export const loadMessages = createAsyncThunk<
   return { conversationId, messages };
 });
 
-/** Lời mời đang chờ tôi trả lời. */
-export const loadInvitations = createAsyncThunk<RemoteMemberRequest[] | Off>(
-  'chat/loadInvitations',
-  async () => {
-    if (!isProofChatBackendEnabled()) return OFF;
-    return proofChatApi.memberRequests.pending();
-  },
-);
+/**
+ * Lời mời đang chờ tôi trả lời.
+ *
+ * Phân loại nguyên nhân giống hệt `loadConversations`, và phải giống: `ChatHomeScreen`
+ * bắn hai thunk này LIỀN NHAU từ hai dòng cạnh nhau, nên chúng hỏng cùng lúc vì cùng
+ * một lý do. Vá một cái và bỏ cái kia thì màn hình vừa nói "chưa đăng nhập được" ở
+ * chỗ này vừa nói "Chưa có lời mời nào" ở chỗ kia — và câu thứ hai là một lời khẳng
+ * định SAI về thế giới, không phải một câu báo lỗi mờ nhạt. Người dùng đóng hộp đi
+ * và bỏ lỡ lời mời thật.
+ */
+export const loadInvitations = createAsyncThunk<
+  RemoteMemberRequest[] | Off,
+  void,
+  { rejectValue: ChatLoadFailure }
+>('chat/loadInvitations', async (_arg, { rejectWithValue }) => {
+  if (!isProofChatBackendEnabled()) return OFF;
+  try {
+    return await proofChatApi.memberRequests.pending();
+  } catch (err) {
+    const status = err instanceof ProofChatApiError ? err.httpStatus : -1;
+    if (status === 401 || status === 403) return rejectWithValue('auth');
+    if (status === 0) return rejectWithValue('network');
+    return rejectWithValue('server');
+  }
+});
 
 export const acceptInvitation = createAsyncThunk<string, string>(
   'chat/acceptInvitation',
@@ -668,9 +698,14 @@ const slice = createSlice({
         state.invitations = action.payload.map(toInvitation);
         state.invitationsStatus = 'ready';
       })
-      .addCase(loadInvitations.rejected, (state) => {
+      .addCase(loadInvitations.rejected, (state, action) => {
+        // Để TRỐNG là đúng (đừng khoe danh sách cũ), nhưng danh sách trống phải đi
+        // kèm câu nói vì sao — không thì nó đọc y hệt "không có lời mời nào".
         state.invitations = [];
         state.invitationsStatus = 'error';
+        const failure = LOAD_FAILURE_TEXT[action.payload ?? 'server'];
+        state.invitationsErrorTitle = failure.title;
+        state.invitationsError = failure.message;
       })
       .addCase(acceptInvitation.fulfilled, (state, action) => {
         state.invitations = state.invitations.filter((i) => i.id !== action.payload);

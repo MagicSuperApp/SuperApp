@@ -86,7 +86,16 @@ const wsBaseUrl = (): string =>
 // tức namespace /chat nằm ở path MẶC ĐỊNH. Đường lui cũ '/ws/socket.io/' khiến mọi
 // bản dựng thiếu PROOFCHAT_WS_PATH gặp handshake 404 câm — và 404 đó hiện ra ngoài
 // đúng như "máy chủ chưa sẵn sàng", không như cấu hình sai.
-const wsPath = (): string => (PROOFCHAT_WS_PATH as string | undefined) || '/socket.io';
+/**
+ * Đường lui khi bản dựng KHÔNG khai biến đường socket.
+ *
+ * Tách thành hằng để ghim được. Gọi `wsPath()` trong một bài kiểm là đọc giá trị
+ * môi trường CỦA MÁY đang chạy — bài đó đỏ ở máy này và xanh trên CI với cùng một
+ * cây mã, đúng loại đỏ dạy người ta bỏ qua màu đỏ. Hằng này thì như nhau ở mọi máy.
+ */
+export const WS_PATH_FALLBACK = '/socket.io';
+export const wsPath = (): string =>
+  (PROOFCHAT_WS_PATH as string | undefined) || WS_PATH_FALLBACK;
 
 /** Kết nối (idempotent). Lấy JWT ProofChat từ AsyncStorage, gắn vào auth handshake. */
 export async function connect(): Promise<void> {

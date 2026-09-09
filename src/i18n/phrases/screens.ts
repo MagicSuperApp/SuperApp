@@ -49,11 +49,6 @@ export const SCREENS: PhraseMap = {
     zh: '新用户、换手机，或本机上已有本系统的其他应用 —— 三条路各不相同，在这里选择',
     ja: 'はじめての方、機種変更の方、この端末にシステム内の別アプリがある方 — 三つの道は別物です。ここで選んでください',
   },
-  'Chưa từng có danh tính nào?': {
-    en: 'Never had an identity before?',
-    zh: '从未拥有过任何身份？',
-    ja: '本人情報をお持ちになったことがないですか？',
-  },
   'Tạo một danh tính MỚI — khác với danh tính bạn dùng ở app kia': {
     en: 'Create a NEW identity — different from the one you use in the other app',
     zh: '创建一个全新身份 — 与你在另一个应用中使用的身份不同',

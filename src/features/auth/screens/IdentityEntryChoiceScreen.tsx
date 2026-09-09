@@ -38,7 +38,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
-import { AUTH_BLUE } from '../theme';
+import { AUTH_BLUE, AUTH_WARN } from '../theme';
 import { useTk } from '../../../i18n/keys';
 
 /** Một lối rẽ. `cost` chỉ có ở lối phải trả giá — không bịa giá cho lối không có. */
@@ -119,7 +119,7 @@ const IdentityEntryChoiceScreen: React.FC = () => {
 
             {choice.costKey ? (
               <View style={styles.costRow}>
-                <Icon name="alert-outline" size={14} color="#B07D2F" />
+                <Icon name="alert-outline" size={14} color={AUTH_WARN.icon} />
                 <Text style={styles.costText}>{tk(choice.costKey)}</Text>
               </View>
             ) : null}
@@ -192,15 +192,15 @@ const styles = StyleSheet.create({
   },
   costRow: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 8,
-    backgroundColor: '#FFF6E6',
+    backgroundColor: AUTH_WARN.bg,
     borderRadius: 10,
-    borderWidth: 1, borderColor: '#F0DBB5',
+    borderWidth: 1, borderColor: AUTH_WARN.border,
     paddingHorizontal: 10, paddingVertical: 9,
     marginTop: 10,
   },
   costText: {
     flex: 1,
-    fontSize: 11, color: '#6F4720', lineHeight: 16, fontWeight: '600',
+    fontSize: 11, color: AUTH_WARN.text, lineHeight: 16, fontWeight: '600',
   },
   noteText: {
     fontSize: 11, color: AUTH_BLUE.textMuted,

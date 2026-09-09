@@ -19,6 +19,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { COLORS } from '../constants';
+import { describePhoenixSessionFailure } from '../services/phoenixSessionService';
 import { showError, showInfo, showSuccess, showWarning } from '../utils/alert';
 // `enableDeviceKey` CỐ Ý không còn được nhập ở đây — nút gọi nó đang đóng, xem
 // khối chú thích ở `handleEnable2fa`. Dịch vụ vẫn còn nguyên trong kho, chỉ là
@@ -111,6 +112,9 @@ const PhoenixWalletScreen = () => {
   const [ada, setAda] = useState<number | null>(null);
   const [lamp, setLamp] = useState<number | null>(null);
   const [magic, setMagic] = useState<number | null>(null);
+  // Vì sao ba ô số dư đang là "—". `null` = không có gì để nói (đọc được, hoặc
+  // chưa thử). Trước bản này số dư hỏng và số dư bằng 0 vẽ ra y hệt nhau.
+  const [balanceIssue, setBalanceIssue] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -138,8 +142,16 @@ const PhoenixWalletScreen = () => {
           setAda(s.lovelace ?? 0);
           setLamp(s.lamp ?? 0);
           setMagic(s.magicAvailable ?? 0);
+          setBalanceIssue(null);
         } catch {
-          // số dư chưa lấy được — giữ null (hiện "—")
+          // Số dư chưa lấy được → giữ null (hiện "—"), NHƯNG phải nói vì sao.
+          // Nguyên nhân hay gặp nhất không nằm ở endpoint này: tự-ghép-cặp
+          // PhoenixKey hỏng ⇒ không có Bearer session ⇒ ví chưa kịp đăng ký ⇒
+          // /wallet/all rỗng. Hỏi `phoenixSessionService` để nói đúng nguồn cơn
+          // thay vì đổ cho ví.
+          setBalanceIssue(
+            describePhoenixSessionFailure() ?? 'Chưa đọc được số dư từ máy chủ ví.',
+          );
         }
       }
     } finally {
@@ -247,6 +259,16 @@ const PhoenixWalletScreen = () => {
               chia khi chưa có câu trả lời: chia sai còn tệ hơn không chia. */}
           <BalanceCard icon="star-four-points-outline" label="MAGIC" value={magic == null ? '—' : fmtNum(magic)} color="#7A4DB8" />
         </View>
+
+        {!!balanceIssue && (
+          <View style={styles.noticeCard}>
+            <Icon name="information-outline" size={17} color={COLORS.accent} />
+            <Text style={styles.noticeText}>
+              {balanceIssue} Địa chỉ ví bên dưới vẫn đúng và vẫn nhận được tài sản; chỉ
+              phần số dư là chưa đọc được. Kéo xuống để thử lại.
+            </Text>
+          </View>
+        )}
 
         {/* Địa chỉ */}
         <View style={styles.sectionWrap}>
@@ -407,6 +429,18 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 12 },
   scroll: { padding: 20, paddingBottom: 40 },
 
+  noticeCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: COLORS.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: COLORS.accentLight,
+  },
+  noticeText: { flex: 1, fontSize: 12.5, color: COLORS.textMuted, lineHeight: 18 },
   emptyTitle: { fontSize: 17, fontWeight: '700', color: COLORS.text, marginTop: 4 },
   emptyText: { fontSize: 13, color: COLORS.textMuted, textAlign: 'center', lineHeight: 19 },
 

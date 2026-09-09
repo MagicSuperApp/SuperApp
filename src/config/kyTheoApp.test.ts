@@ -30,9 +30,72 @@ const maChay = (s: string) =>
     .join('\n');
 
 describe('phép đọc trước đã — hỏng ở đây thì bài dưới xanh giả', () => {
-  it('tìm được workflow phát hành AAB và bước nạp kho khoá', () => {
-    expect(CODEMAGIC).toContain('android-appstore-aab:');
+  it('tìm được hai luồng phát hành AAB và bước nạp kho khoá', () => {
+    expect(CODEMAGIC).toContain('android-aab-aladin:');
+    expect(CODEMAGIC).toContain('android-aab-checkfarm:');
     expect(CODEMAGIC).toContain('Restore keystore from encrypted env');
+  });
+});
+
+describe('khoá của hai pháp nhân KHÔNG chung một nhóm biến', () => {
+  // Vì sao đo ở đây chứ không tin mắt: `groups:` là danh sách tĩnh, Codemagic nạp
+  // MỌI nhóm được khai vào máy chạy trước khi bước đầu tiên chạy. Gộp hai nhóm cho
+  // tiện thì lượt dựng Aladin mang theo khoá CheckFarm suốt cả lượt, và không có
+  // bước nào để lộ ra điều đó — lượt dựng vẫn xanh, tệp ra vẫn đúng.
+  //
+  // Bài này ghim ĐIỀU KIỆN TÁCH, không ghim tên nhóm cho đẹp: nó đọc cấu trúc YAML
+  // đã phân giải, nên một lần dán nhầm cả hai nhóm vào một luồng là đỏ ngay.
+  const luong = (ten: string) => {
+    const i = CODEMAGIC.indexOf(`\n  ${ten}:\n`);
+    expect(i).toBeGreaterThan(-1);
+    const sau = CODEMAGIC.slice(i + 1);
+    const ket = sau.slice(1).search(/\n {2}[a-z][a-z0-9-]*:\n/);
+    return ket === -1 ? sau : sau.slice(0, ket + 1);
+  };
+
+  it('mỗi luồng chỉ khai nhóm khoá của CHÍNH app đó', () => {
+    const aladin = luong('android-aab-aladin');
+    const checkfarm = luong('android-aab-checkfarm');
+    expect(aladin).toContain('- android_signing_aladin');
+    expect(aladin).not.toContain('- android_signing_checkfarm');
+    expect(checkfarm).toContain('- android_signing_checkfarm');
+    expect(checkfarm).not.toContain('- android_signing_aladin');
+  });
+
+  it('KHÔNG còn nhóm gộp `android_signing` ở bất kỳ luồng nào', () => {
+    // Tên cũ là tên hợp lệ với Codemagic, nên để sót một dòng là nạp lại đúng thứ
+    // vừa tách ra — mà không lệnh nào báo.
+    expect(maChay(CODEMAGIC)).not.toMatch(/- android_signing\s*(#|$)/m);
+  });
+
+  it('ba biến chọn app của luồng CheckFarm khớp nhau', () => {
+    // `_CAP` là tên tác vụ Gradle. Gradle chỉ viết hoa CHỮ ĐẦU của tên flavor, nên
+    // `CheckFarm` (hai chữ hoa) là một tác vụ không tồn tại — và lượt dựng đỏ SAU
+    // khi đã nạp khoá thật vào máy.
+    const checkfarm = luong('android-aab-checkfarm');
+    expect(checkfarm).toContain('ANDROID_FLAVOR: checkfarm');
+    expect(checkfarm).toContain('ANDROID_FLAVOR_CAP: Checkfarm');
+    expect(checkfarm).toContain('APP_INSTANCE: checkfarm');
+    expect(checkfarm).not.toContain('ANDROID_FLAVOR_CAP: CheckFarm');
+  });
+
+  it('hai luồng dùng CHUNG bộ bước qua neo YAML — không chép đôi', () => {
+    // Chép đôi thì hai bản trôi khỏi nhau lặng lẽ: vá một bên, bên kia giữ nguyên
+    // lỗi, và cả hai vẫn xanh.
+    expect(CODEMAGIC).toContain('scripts: &android_aab_scripts');
+    expect(CODEMAGIC).toContain('scripts: *android_aab_scripts');
+    expect(CODEMAGIC).toContain('artifacts: &android_aab_artifacts');
+    expect(CODEMAGIC).toContain('artifacts: *android_aab_artifacts');
+  });
+});
+
+describe('tệp AAB ra mang tên app đang dựng', () => {
+  it('không gõ cứng `aladin-release.aab`', () => {
+    // Gõ cứng thì bản CheckFarm ra một tệp mang tên Aladin và lượt dựng báo xanh.
+    // Cái sai chỉ lộ ở người cầm tệp đi nộp — muộn nhất có thể, và đắt nhất.
+    const ma = maChay(CODEMAGIC);
+    expect(ma).not.toContain('dist/aladin-release.aab');
+    expect(ma).toContain('${ANDROID_FLAVOR}-release.aab');
   });
 });
 

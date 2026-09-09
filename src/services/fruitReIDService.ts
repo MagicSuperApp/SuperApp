@@ -448,10 +448,13 @@ export type FruitVerdict = 'correct' | 'wrong' | 'other';
 /**
  * Nông dân phán quả máy đoán có ĐÚNG không.
  *
- * OriLife nói thẳng đây là thứ giá-trị nhất bên này có thể cho họ: cửa này hiện
- * **0 lượt gọi**, nên không ai biết tỉ-lệ trúng thật là bao nhiêu. Mọi ngưỡng
- * bên đó còn mang nhãn `[CẦN CALIBRATE từ ≥50 quả thực địa]` — không có nhãn
- * đúng/sai thì 100 nông dân nhập xong vẫn không hiệu-chỉnh được gì.
+ * OriLife nói thẳng đây là thứ giá-trị nhất bên này có thể cho họ: không có nhãn
+ * đúng/sai thì 100 nông dân nhập xong vẫn không hiệu-chỉnh được gì — mọi ngưỡng
+ * bên đó còn mang nhãn `[CẦN CALIBRATE từ ≥50 quả thực địa]`.
+ *
+ * Cửa này ĐÃ được nối: `src/screens/FruitScanScreen.tsx:279` gọi tới sau khi
+ * nông dân bấm phán quyết. (Chú thích cũ ở đây ghi "0 lượt gọi" — số đó đúng lúc
+ * viết, đã sai từ lúc màn hình nối vào; sửa 2026-09-08.)
  *
  * ⚠ NEO LÀ `query_id`, KHÔNG PHẢI `fruit_id`. Bản trước gửi
  * `fruit_id + correct + actual_fruit_id` — hợp đồng thật KHÔNG CÓ tham số nào

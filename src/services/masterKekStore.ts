@@ -29,11 +29,6 @@ export async function getStoredMasterKek(): Promise<string | null> {
   return taad.secureLoad(KEK_KEY);
 }
 
-/** Thiết bị đã có Master_KEK ví chưa. */
-export async function hasMasterKek(): Promise<boolean> {
-  return (await getStoredMasterKek()) != null;
-}
-
 /**
  * Lấy KEK đã lưu; nếu CHƯA có thì sinh mới + lưu (khởi tạo ví lần đầu).
  * Trả KEK 64-hex. Ném nếu Rust core chưa sẵn sàng.

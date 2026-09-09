@@ -2,7 +2,8 @@
  * stakingService — đọc thông tin staking/SPO (Issue #74). Backend relay Blockfrost.
  *
  * READ-ONLY ở pha này:
- *   - listPools/getPool: duyệt & xem chi tiết pool.
+ *   - getPool: xem chi tiết một pool. (`listPools` đã gỡ — không màn nào duyệt
+ *     danh sách pool; máy chủ relay không có cửa liệt kê rẻ để dựa vào.)
  *   - getUserDelegation: derive stake address của user từ Master_KEK rồi hỏi trạng-thái
  *     delegation hiện tại (đang uỷ quyền pool nào, số dư stake, reward).
  *
@@ -20,11 +21,6 @@ import {
   type PoolDetail,
   type DelegationStatus,
 } from './phoenixKey-api';
-
-/** Danh sách pool_id (100/trang, trang bắt đầu từ 1). */
-export async function listPools(page = 1, count = 100): Promise<{ poolIds: string[]; page: number; count: number }> {
-  return phoenixKeyApi.pools.list({ page, count });
-}
 
 /** Chi tiết 1 pool (số + metadata off-chain). */
 export async function getPool(poolId: string): Promise<PoolDetail> {

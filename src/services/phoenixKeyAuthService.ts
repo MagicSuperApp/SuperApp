@@ -224,14 +224,6 @@ export const unlockExistingIdentity = async (): Promise<AuthUser | null> => {
   return user;
 };
 
-export const hasLocalIdentity = async (): Promise<boolean> => {
-  const [did, hasKey] = await Promise.all([
-    currentUserDid(),
-    isKeypairEnrolled(),
-  ]);
-  return !!did && hasKey;
-};
-
 /**
  * DID hiện tại CÓ tồn-tại trên PhoenixKey directory không (probe /identity/{did}/pubkey).
  * - `true`  : có (HTTP 200).
@@ -275,7 +267,6 @@ export const phoenixKeyAuth = {
   DeviceHasOwnerKeyError,
   isIdentityRegisteredOnServer,
   unlockExistingIdentity,
-  hasLocalIdentity,
   ownerPublicKey,
   wipeIdentity,
   sdk: phoenixKeySDK,

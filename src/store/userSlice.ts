@@ -9,6 +9,7 @@ import { parseDidNetwork } from '../services/phoenixDid';
 import { clearWorkSession } from '../modules/work/services/session';
 import { clearOrilifeToken } from '../services/orilifeDidAuth';
 import { disconnectProofChat } from '../services/proofchatAuthBridge';
+import { clearMerkleSession } from '../services/proofchatIdentity';
 import { clearAllDrafts } from '../services/treeDraftStore';
 import { setVideoQueueOwner, flushVideoUploadQueue } from '../services/videoUploadQueue';
 
@@ -152,6 +153,22 @@ export const logoutUser = createAsyncThunk(
       await disconnectProofChat();
     } catch (error) {
       console.warn('[Redux] Logout: disconnectProofChat lỗi (bỏ qua):', error);
+    }
+    try {
+      // Issue #286. `clearMerkleSession` được viết cho ĐÚNG chỗ này ("khi đăng
+      // xuất / xoay danh tính") rồi không nơi nào gọi. Thứ ở lại là `seedHex` —
+      // hạt giống khoá KÝ của phiên chat — cùng giấy uỷ nhiệm, hạn 12 GIỜ
+      // (`proofchatIdentity.ts:63`). Token bị dọn, kết nối bị ngắt, nháp bị xoá,
+      // nên màn hình trông đã sạch; vật liệu ký của người vừa đăng xuất thì còn
+      // nằm trên đĩa của máy dùng chung tới nửa ngày.
+      //
+      // Mức thiệt hại ĐÚNG là "vật liệu ở lại", không hơn: `getMerkleSession`
+      // gọi `isFresh(cached, did)` nên người sau (DID khác) KHÔNG dùng lại được
+      // phiên của người trước. Ghi rõ để lần sau không ai đọc nhầm thành ca mạo
+      // danh như đường token OriLife (28/08) — hai mức chữa gấp khác nhau.
+      await clearMerkleSession();
+    } catch (error) {
+      console.warn('[Redux] Logout: clearMerkleSession lỗi (bỏ qua):', error);
     }
     try {
       // ⛔ Đường RÒ LỚN NHẤT, và là đường duy nhất trong khối này bị bỏ sót tới

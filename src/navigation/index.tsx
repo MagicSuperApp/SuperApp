@@ -11,7 +11,11 @@
 // KHÔNG dynamic import/eval).
 
 import * as React from 'react';
-import { NavigationContainer, useNavigation } from '@react-navigation/native';
+import {
+  NavigationContainer,
+  createNavigationContainerRef,
+  useNavigation,
+} from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Provider, useSelector, useDispatch } from 'react-redux';
@@ -19,7 +23,7 @@ import { store, RootState } from '../store';
 import { refreshWallet, resolveNetwork, refreshControllerPkh } from '../store/userSlice';
 import { ensurePhoenixSession } from '../services/phoenixSessionService';
 import { ensureStandardWalletRegistered } from '../services/standardWalletService';
-import { initPush } from '../services/pushHandler';
+import { initPush, setPushNavigator } from '../services/pushHandler';
 import Toast from 'react-native-toast-message';
 import NetInfo from '@react-native-community/netinfo';
 import { handleNavigationStateChange } from '../services/analytics';
@@ -1837,6 +1841,15 @@ const buildLinking = () => ({
   config: { screens: buildDeepLinkScreens(MODULE_STACK_SCREENS, TRACE_SCAN_ROUTE_NAME) },
 });
 
+// Tham chiếu điều hướng cho THÔNG BÁO ĐẨY (Issue #288). `pushHandler` cố ý không
+// import navigator (tránh phụ thuộc vòng) mà nhận một hàm `navigate` qua
+// `setPushNavigator`. Hàm đặt đó trước bản này có 0 nơi gọi ⇒ `navigateRef` luôn
+// null ⇒ `navigateRef?.('SignRequest', …)` (`pushHandler.ts:51,53`) là một lời gọi
+// optional trên null: KHÔNG làm gì, KHÔNG ném, KHÔNG log. Bấm thông báo xong màn
+// hình đứng yên. `initPush()` vẫn chạy (dòng ~1566) nên token vẫn đăng ký — hỏng
+// đúng một nửa, và đó là nửa không ai nhìn thấy ở máy dựng.
+const navigationRef = createNavigationContainerRef();
+
 const AppNavigator = () => {
   // Build 52 (2026-05-17) — first-launch onboarding gate.
   // Read AsyncStorage flag before deciding initial route so the user lands
@@ -1937,7 +1950,28 @@ const AppNavigator = () => {
       <RadialMenuProvider>
       <AppHeaderProvider>
       <CoachMarkProvider>
-      <NavigationContainer linking={buildLinking()} onStateChange={handleNavigationStateChange}>
+      <NavigationContainer
+        ref={navigationRef}
+        linking={buildLinking()}
+        onStateChange={handleNavigationStateChange}
+        // ⚠ Đặt ở `onReady`, KHÔNG sớm hơn. Trao một hàm điều hướng trước lúc
+        // container sẵn sàng là trao một tham chiếu chưa dùng được — hỏng lặng lẽ
+        // đúng như khi chưa trao gì, chỉ khác là lần này trông như đã nối dây.
+        onReady={() => {
+          setPushNavigator((screen, params) => {
+            if (!navigationRef.isReady()) return;
+            // `navigate` của container KHÔNG kiểu hoá (`ParamListBase` rỗng) nên hai
+            // đối số rời cùng lúc suy ra `never`. Ép ở CHỮ KÝ, không ép từng đối số:
+            // `screen as never, params as never` biên dịch được nhưng vẫn là `never`
+            // và tsc bắt đúng chỗ đó. Tên route do máy chủ đẩy xuống nên không có
+            // kiểu tĩnh nào ở đây là thật — cửa kiểm thật nằm ở chính navigator.
+            (navigationRef.navigate as (s: string, p?: Record<string, unknown>) => void)(
+              screen,
+              params,
+            );
+          });
+        }}
+      >
         <Stack.Navigator
           initialRouteName={initialRoute}
           screenOptions={{

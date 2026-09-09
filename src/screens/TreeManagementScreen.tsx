@@ -33,6 +33,7 @@ import {
   renameTree,
   type TreeInfo,
 } from '../services/treeReIDService';
+import { forgetTreeLocally } from '../services/treeLocalCleanup';
 
 // ---------------------------------------------------------------------------
 // Config
@@ -249,6 +250,10 @@ const TreeManagementScreen: React.FC = () => {
             try {
               const res = await deleteTree(BASE_URL, item.tree_id);
               if (res.ok) {
+                // Máy chủ xoá xong thì dấu vết trên máy cũng phải đi (Issue #288).
+                // SAU `res.ok`, không phải trước: máy chủ trượt mà đã dọn máy là
+                // xoá ảnh/video của một cây VẪN CÒN SỐNG.
+                await forgetTreeLocally(item.tree_id);
                 setTrees(prev => prev.filter(t => t.tree_id !== item.tree_id));
               } else {
                 showError(t('Xoá thất bại'), res.error?.detail ?? t('Thử lại.'));

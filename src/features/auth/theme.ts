@@ -18,3 +18,19 @@ export const AUTH_BLUE = {
   textSub:  '#4B5872',
   textMuted:'#8A95A8',
 } as const;
+
+/**
+ * Tông cảnh báo của luồng đăng nhập — khối "bạn sẽ mất gì" ở cửa vào.
+ *
+ * Để ở đây chứ không gõ thẳng vào màn: `Integration-Standard.md §2.1` cấm màu gõ
+ * cứng trong mã module, và lý do thực dụng là app này dựng ra NHIỀU app từ một cây
+ * mã (`instances/`). Bốn giá trị nằm rải trong một tệp màn hình thì đổi chủ đề cho
+ * app khác sẽ bỏ sót đúng khối này, và người dùng CheckFarm gặp một mảng cam của
+ * Aladin giữa màn xanh của mình.
+ */
+export const AUTH_WARN = {
+  icon:   '#B07D2F',
+  bg:     '#FFF6E6',
+  border: '#F0DBB5',
+  text:   '#6F4720',
+} as const;

@@ -57,6 +57,34 @@ const MIEN_TRU = {
 const BASELINE = 'scripts/soi-mach.chua-noi.txt';
 
 const doc = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
+
+/**
+ * Bỏ chú thích TRƯỚC khi bất cứ phép bắt nào chạy.
+ *
+ * Vì sao phải dùng chung cho MỌI nguồn chứ không riêng Swift: một khai báo bị bọc
+ * trong chú thích vẫn khớp regex y hệt một khai báo sống. Ca đã tái hiện được —
+ * đổi `private external fun nativeMasterKekToMnemonic(` ở `TaadEnclaveModule.kt`
+ * thành `// ĐÃ TẮT TẠM: private external fun nativeMasterKekToMnemonic(` thì cổng
+ * vẫn in `✅ Mạch liền` và thoát 0, trong khi lời gọi từ JS sẽ ném
+ * `UnsatisfiedLinkError`. Đó đúng là hình dạng vụ 25/06 mà tệp này sinh ra để chặn.
+ *
+ * Bản trước strip cho ĐÚNG MỘT nguồn (`swiftSrc`) rồi dừng, kèm một chú thích tự
+ * nhận ra "cùng bẫy đã ghi hai lần". Đợt vá đó lấy phạm vi bằng phạm vi của
+ * TRIỆU CHỨNG, nên bảy nguồn anh em nằm ngay bên cạnh giữ nguyên lỗ.
+ *
+ * Chiều cắt chọn theo chiều HỎNG, không theo độ chính xác:
+ *   · cắt quá tay ⟹ một tên thật biến khỏi tập ⟹ cổng ĐỎ hoặc kêu KHÔNG ĐO ĐƯỢC.
+ *     Phiền, nhưng người bị chặn BIẾT mình bị chặn.
+ *   · cắt thiếu   ⟹ chú thích được tính là mã ⟹ cổng XANH oan, và không ai biết.
+ * Nên ở đây cắt cả đuôi dòng, không chỉ dòng mở đầu bằng `//`.
+ *
+ * `(^|[^:])` chừa lại `://` của URL trong chuỗi — không có nó thì một dòng mang
+ * `https://…` bị cụt và tên hàm đứng sau đó trên cùng dòng biến mất, tức đỏ oan
+ * theo một đường không ai đoán ra khi đọc thông điệp lỗi.
+ */
+const boChuThich = (src) =>
+  src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+
 const bat = (src, re, nhom = 1) => {
   const out = new Set();
   let m;
@@ -65,27 +93,27 @@ const bat = (src, re, nhom = 1) => {
 };
 
 // ---- gom tên phương thức ở từng tầng ------------------------------------
-const ktSrc = doc(P.kt);
+const ktSrc = boChuThich(doc(P.kt));
 const kotlin = bat(ktSrc, /@ReactMethod[\s\S]{0,80}?\bfun\s+([A-Za-z0-9_]+)\s*\(/g);
 const ktNative = bat(ktSrc, /\bexternal\s+fun\s+([A-Za-z0-9_]+)\s*\(/g);
 
-const swiftSrc = doc(P.swift);
+const swiftSrc = boChuThich(doc(P.swift));
 const swift = bat(swiftSrc, /@objc\([^)]*\)[\s\S]{0,40}?\bfunc\s+([A-Za-z0-9_]+)\s*\(/g);
 
-const objc = bat(doc(P.objc), /RCT_EXTERN_METHOD\(\s*([A-Za-z0-9_]+)\s*:/g);
+const objc = bat(boChuThich(doc(P.objc)), /RCT_EXTERN_METHOD\(\s*([A-Za-z0-9_]+)\s*:/g);
 
-const tsSrc = doc(P.ts);
+const tsSrc = boChuThich(doc(P.ts));
 const tsKhop = tsSrc.match(/interface TaadEnclaveNativeBridge \{([\s\S]*?)\n\}/);
 const tsBlock = tsKhop ? tsKhop[1] : '';
 const ts = bat(tsBlock, /^\s{2}([A-Za-z0-9_]+)\s*\(/gm);
 
 // ---- gom phía Rust -------------------------------------------------------
-const jniSrc = doc(P.jni);
+const jniSrc = boChuThich(doc(P.jni));
 const jniFns = bat(jniSrc, /Java_com_aladincontract_company_TaadEnclaveModule_([A-Za-z0-9_]+)/g);
 
 let rustSrc = '';
 for (const f of fs.readdirSync(path.join(ROOT, P.rustDir))) {
-  if (f.endsWith('.rs')) rustSrc += doc(path.join(P.rustDir, f)) + '\n';
+  if (f.endsWith('.rs')) rustSrc += boChuThich(doc(path.join(P.rustDir, f))) + '\n';
 }
 const rustSymbols = bat(rustSrc, /#\[no_mangle\][\s\S]{0,120}?extern\s+"C"\s+fn\s+([A-Za-z0-9_]+)/g);
 
@@ -168,13 +196,14 @@ for (const khoi of swiftSrc.split(/@objc\([^)]*\)/).slice(1)) {
 // của vụ 25/06 — Rust có hàm, không ai gọi được, và không cổng nào đỏ. "Chạm tới" nghĩa là
 // Swift gọi thẳng symbol đó. Cầu Android không đi qua C FFI (android_jni.rs gọi `crate::`
 // trực tiếp), nên phía Android đã được phép kiểm ĐỨT DỌC ở trên lo.
-// Chỉ soi MÃ. `swiftSrc` trần tính cả chú thích, nên một dòng
-// `// TODO: sau này gọi taad_x(...)` đủ để một hàm Rust chưa có cầu tự rơi khỏi
-// danh sách nợ — cổng xanh cho đúng thứ nó sinh ra để bắt. Cùng bẫy đã ghi hai
-// lần ở `src/screens/SeedExportScreen.gate.test.ts`: phép đo văn bản không tự
-// phân biệt được mã với lời bàn về mã.
-const swiftCode = swiftSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
-const chuaNoi = [...rustSymbols].filter((s) => s !== 'taad_free_string' && !swiftCode.includes(s + '('));
+// Chỉ soi MÃ: một dòng `// TODO: sau này gọi taad_x(...)` đủ để một hàm Rust chưa
+// có cầu tự rơi khỏi danh sách nợ — cổng xanh cho đúng thứ nó sinh ra để bắt. Cùng
+// bẫy đã ghi hai lần ở `src/screens/SeedExportScreen.gate.test.ts`: phép đo văn bản
+// không tự phân biệt được mã với lời bàn về mã.
+// `swiftSrc` nay đã qua `boChuThich` ngay lúc đọc, cùng lối với mọi nguồn khác —
+// bản trước strip riêng ở dòng này, và chính chỗ strip riêng ấy là dấu hiệu rằng
+// bảy nguồn còn lại chưa được quét.
+const chuaNoi = [...rustSymbols].filter((s) => s !== 'taad_free_string' && !swiftSrc.includes(s + '('));
 // `split(/\r?\n/)` và `/#.*/` (không `$`) — HAI sửa cho HAI nguyên nhân, đừng bỏ một:
 // `split('\n')` để lại `\r` cuối dòng, mà trong regex JS dấu `.` KHÔNG khớp `\r` và
 // `$` không có cờ `m` chỉ khớp cuối chuỗi ⟹ `#.*$` không cắt được chú thích trên tệp

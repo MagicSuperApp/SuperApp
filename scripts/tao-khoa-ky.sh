@@ -1,17 +1,30 @@
 #!/usr/bin/env bash
 # Sinh kho khoá TẢI LÊN (upload key) cho MỘT app trong `instances/`.
 #
-# ⛔ ĐỌC TRƯỚC KHI CHẠY — thứ này không sửa lại được:
+# ⛔ ĐỌC TRƯỚC KHI CHẠY — mỗi app MỘT khoá, đứng tên ĐÚNG pháp nhân sở hữu app đó.
 #
-#   Khoá tải lên gắn vĩnh viễn với mục ứng dụng trên Google Play kể từ bản ĐẦU
-#   TIÊN được tải lên. Mất khoá hoặc ký nhầm bằng khoá của app khác thì:
-#     · app đã phát hành KHÔNG cập nhật được nữa, và
-#     · mục ứng dụng đó KHÔNG chuyển giao được cho pháp nhân khác.
-#   Cách gỡ duy nhất là bỏ mục cũ, dựng mục mới — mất hết lượt cài và đánh giá.
+#   CheckFarm thuộc Công ty Cổ phần CheckFarm, không thuộc Aladin Contract — nên
+#   khoá CheckFarm phải do phía CheckFarm giữ, kể cả khi Aladin Contract dựng app
+#   hộ. Lý do là PHẠM VI THIỆT HẠI: ai cầm khoá thì ký được bản cập nhật cho MỌI
+#   app khoá đó ký. Một khoá dùng chung hai app nghĩa là pháp nhân này phát hành
+#   được bản cập nhật đứng tên pháp nhân kia, và không có cách nào tách ra sau.
 #
-#   Vì vậy: mỗi app MỘT khoá, đứng tên ĐÚNG pháp nhân sở hữu app đó. CheckFarm
-#   thuộc Công ty Cổ phần CheckFarm, không thuộc Aladin Contract — nên khoá
-#   CheckFarm phải do phía CheckFarm giữ, kể cả khi Aladin Contract dựng app hộ.
+#   ── Đính chính: khoá TẢI LÊN mất thì lấy lại được ─────────────────────────
+#   Bản trước của khối này viết "mất khoá thì app KHÔNG cập nhật được nữa" và
+#   "mục ứng dụng KHÔNG chuyển giao được". Cả hai đều sai với app dùng Play App
+#   Signing. Tài liệu Google (support.google.com/googleplay/android-developer/
+#   answer/9842756) nói thẳng: *"If you lose your upload key or suspect that it
+#   was compromised, you are not locked out of your app."* Cách gỡ là sinh khoá
+#   tải lên mới, xuất chứng thư dạng PEM rồi xin đặt lại trong Play Console.
+#   Phần chuyển giao mục ứng dụng thì trang đó không nói tới — nên cũng đừng
+#   khẳng định chiều ngược lại.
+#
+#   Cái THẬT SỰ không lấy lại được là khoá KÝ ỨNG DỤNG khi tự quản (không bật
+#   Play App Signing): *"This key cannot be reset if you manage it yourself."*
+#   Với Play App Signing thì khoá đó nằm ở Google, không nằm trong tệp này.
+#
+#   Nói quá một mức nguy hiểm phải trả giá thật: câu cũ từng thành lý do hoãn
+#   việc dựng app thứ hai, trong khi rào chắn thật chỉ là "đừng dùng chung khoá".
 #
 # Script này KHÔNG tự đặt mật khẩu và KHÔNG ghi mật khẩu ra đâu cả. `keytool`
 # tự hỏi, và câu trả lời chỉ nằm trong kho khoá vừa sinh.
@@ -42,8 +55,10 @@ BIDANH="${MA}-upload"
 
 if [ -e "$DICH" ]; then
   echo "⛔ ${DICH} ĐÃ TỒN TẠI. Không ghi đè." >&2
-  echo "   Ghi đè một kho khoá là mất khoá cũ, và mất khoá cũ là mất quyền" >&2
-  echo "   cập nhật app đã phát hành. Đổi tên hoặc dời tệp cũ đi trước." >&2
+  echo "   Ghi đè là mất khoá cũ. Lấy lại được (xin đặt lại khoá tải lên trong" >&2
+  echo "   Play Console), nhưng đi qua bộ phận hỗ trợ và không nhanh — và trong" >&2
+  echo "   lúc chờ thì không nộp được bản cập nhật nào." >&2
+  echo "   Đổi tên hoặc dời tệp cũ đi trước." >&2
   exit 1
 fi
 
@@ -69,7 +84,8 @@ echo
 echo "Ba việc tiếp theo, KHÔNG bỏ bước nào:"
 echo
 echo "  1. SAO LƯU tệp này ra chỗ ngoài máy (két, trình quản lý bí mật)."
-echo "     Mất tệp = mất quyền cập nhật app vĩnh viễn."
+echo "     Mất tệp thì phải xin đặt lại khoá tải lên — làm được, nhưng app đứng"
+echo "     im không cập nhật được cho tới lúc xong."
 echo
 echo "  2. Nạp làm biến bí mật CI, đúng bốn cái, tên suy từ mã app:"
 MA_HOA=$(printf '%s' "$MA" | tr '[:lower:]' '[:upper:]')

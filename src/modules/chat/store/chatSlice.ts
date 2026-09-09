@@ -33,6 +33,7 @@ import {
   proofChatApi,
   isProofChatBackendEnabled,
   getDeviceId,
+  ProofChatApiError,
   type RemoteConversation,
   type RemoteMemberRequest,
   type RemoteMessage,
@@ -66,6 +67,11 @@ interface ChatState {
   invitationsStatus: LoadStatus;
   /** Câu báo lỗi viết cho người dùng — KHÔNG chứa mã lỗi hay tên endpoint. */
   loadError?: string;
+  /** Tiêu đề đi kèm `loadError` — mỗi nguyên nhân một câu, xem LOAD_FAILURE_TEXT. */
+  loadErrorTitle?: string;
+  /** Cùng cặp, nhưng cho danh sách LỜI MỜI — hai danh sách hỏng độc lập nhau. */
+  invitationsError?: string;
+  invitationsErrorTitle?: string;
 }
 
 const initialState: ChatState = {
@@ -81,6 +87,9 @@ const initialState: ChatState = {
   messagesStatus: {},
   invitationsStatus: 'idle',
   loadError: undefined,
+  loadErrorTitle: undefined,
+  invitationsError: undefined,
+  invitationsErrorTitle: undefined,
 };
 
 // ── Chuyển hình máy chủ → hình giao-diện ────────────────────────────────────
@@ -229,14 +238,59 @@ const toJoinRequest = (r: RemoteMemberRequest): JoinRequest => ({
 const OFF = 'disabled' as const;
 type Off = typeof OFF;
 
+/**
+ * VÌ SAO TẢI HỎNG — ba nguyên nhân, ba câu trả lời khác nhau.
+ *
+ * Bản trước gộp cả ba vào một câu "Chưa tải được — kéo xuống để thử lại". Câu đó
+ * SAI ở ca hay gặp nhất: máy chủ sống, mạng tốt, nhưng app chưa có phiên đăng
+ * nhập (401). Kéo xuống bao nhiêu lần cũng ra đúng 401 đó, và người dùng đi tìm
+ * lỗi ở mạng của mình trong khi lỗi nằm ở danh tính.
+ */
+export type ChatLoadFailure = 'auth' | 'network' | 'server';
+
+const LOAD_FAILURE_TEXT: Record<ChatLoadFailure, { title: string; message: string }> = {
+  auth: {
+    title: 'Chưa đăng nhập được',
+    // KHÔNG hứa "sẽ hiện ngay khi phiên dựng xong". Không nơi nào gọi lại các thunk
+    // này khi phiên dựng xong — deps của effect nạp chỉ có `[backendReady,
+    // identityResolved, dispatch]`, không cái nào đổi theo phiên ProofChat. Câu đó
+    // hứa một cơ chế mã không có, và người dùng ngồi chờ một thứ không tới.
+    // Kéo xuống thì có thật: `handleRefresh` gọi `resetProofChatSessionBackoff()`
+    // nên nó bỏ qua cả thời gian nghỉ 60 giây.
+    message:
+      'Máy chủ trò chuyện đang sống nhưng app chưa dựng được phiên đăng nhập. Kéo xuống để thử lại.',
+  },
+  network: {
+    title: 'Không nối được máy chủ',
+    message: 'Kiểm tra mạng rồi kéo xuống để thử lại.',
+  },
+  server: {
+    // Bảng này nay dùng cho CẢ danh sách phòng lẫn danh sách lời mời, nên câu chữ
+    // không được gọi tên một trong hai.
+    title: 'Chưa tải được',
+    message: 'Máy chủ chưa trả lời được. Kéo xuống để thử lại.',
+  },
+};
+
 /** Danh sách phòng của tôi. */
 export const loadConversations = createAsyncThunk<
-  { conversations: RemoteConversation[]; meId: string } | Off
->('chat/loadConversations', async (_arg, { getState }) => {
+  { conversations: RemoteConversation[]; meId: string } | Off,
+  void,
+  { rejectValue: ChatLoadFailure }
+>('chat/loadConversations', async (_arg, { getState, rejectWithValue }) => {
   if (!isProofChatBackendEnabled()) return OFF;
   const meId = (getState() as { chat: ChatState }).chat.meId;
-  const list = await proofChatApi.conversations.list({ take: 100 });
-  return { conversations: list, meId };
+  try {
+    const list = await proofChatApi.conversations.list({ take: 100 });
+    return { conversations: list, meId };
+  } catch (err) {
+    // `httpStatus` KHÔNG sống sót qua `SerializedError` của Redux Toolkit (chỉ
+    // còn name/message/stack/code), nên phải phân loại NGAY tại đây.
+    const status = err instanceof ProofChatApiError ? err.httpStatus : -1;
+    if (status === 401 || status === 403) return rejectWithValue('auth');
+    if (status === 0) return rejectWithValue('network');
+    return rejectWithValue('server');
+  }
 });
 
 /** Chi tiết 1 phòng — cần cho danh sách thành viên và quyền quản. */
@@ -263,14 +317,31 @@ export const loadMessages = createAsyncThunk<
   return { conversationId, messages };
 });
 
-/** Lời mời đang chờ tôi trả lời. */
-export const loadInvitations = createAsyncThunk<RemoteMemberRequest[] | Off>(
-  'chat/loadInvitations',
-  async () => {
-    if (!isProofChatBackendEnabled()) return OFF;
-    return proofChatApi.memberRequests.pending();
-  },
-);
+/**
+ * Lời mời đang chờ tôi trả lời.
+ *
+ * Phân loại nguyên nhân giống hệt `loadConversations`, và phải giống: `ChatHomeScreen`
+ * bắn hai thunk này LIỀN NHAU từ hai dòng cạnh nhau, nên chúng hỏng cùng lúc vì cùng
+ * một lý do. Vá một cái và bỏ cái kia thì màn hình vừa nói "chưa đăng nhập được" ở
+ * chỗ này vừa nói "Chưa có lời mời nào" ở chỗ kia — và câu thứ hai là một lời khẳng
+ * định SAI về thế giới, không phải một câu báo lỗi mờ nhạt. Người dùng đóng hộp đi
+ * và bỏ lỡ lời mời thật.
+ */
+export const loadInvitations = createAsyncThunk<
+  RemoteMemberRequest[] | Off,
+  void,
+  { rejectValue: ChatLoadFailure }
+>('chat/loadInvitations', async (_arg, { rejectWithValue }) => {
+  if (!isProofChatBackendEnabled()) return OFF;
+  try {
+    return await proofChatApi.memberRequests.pending();
+  } catch (err) {
+    const status = err instanceof ProofChatApiError ? err.httpStatus : -1;
+    if (status === 401 || status === 403) return rejectWithValue('auth');
+    if (status === 0) return rejectWithValue('network');
+    return rejectWithValue('server');
+  }
+});
 
 export const acceptInvitation = createAsyncThunk<string, string>(
   'chat/acceptInvitation',
@@ -537,6 +608,7 @@ const slice = createSlice({
 
     clearError: (state) => {
       state.loadError = undefined;
+      state.loadErrorTitle = undefined;
     },
   },
 
@@ -546,6 +618,7 @@ const slice = createSlice({
       .addCase(loadConversations.pending, (state) => {
         state.listStatus = 'loading';
         state.loadError = undefined;
+        state.loadErrorTitle = undefined;
       })
       .addCase(loadConversations.fulfilled, (state, action) => {
         if (action.payload === OFF) {
@@ -559,13 +632,18 @@ const slice = createSlice({
         );
         state.listStatus = 'ready';
         state.loadError = undefined;
+        state.loadErrorTitle = undefined;
       })
-      .addCase(loadConversations.rejected, (state) => {
+      .addCase(loadConversations.rejected, (state, action) => {
         // Tải hỏng thì để TRỐNG. Giữ lại danh sách cũ ở đây chính là cái bẫy của
         // bản trước: người dùng nhìn thấy phòng nhưng không có gì đang chạy.
         state.conversations = [];
         state.listStatus = 'error';
-        state.loadError = 'Chưa tải được danh sách trò chuyện. Kéo xuống để thử lại.';
+        // `payload` rỗng = thunk ném ngoài khối try (lỗi lập trình, không phải
+        // lỗi mạng) — xếp vào 'server' để vẫn có câu nói được.
+        const failure = LOAD_FAILURE_TEXT[action.payload ?? 'server'];
+        state.loadErrorTitle = failure.title;
+        state.loadError = failure.message;
       })
 
       // ── Chi tiết phòng ──
@@ -620,9 +698,14 @@ const slice = createSlice({
         state.invitations = action.payload.map(toInvitation);
         state.invitationsStatus = 'ready';
       })
-      .addCase(loadInvitations.rejected, (state) => {
+      .addCase(loadInvitations.rejected, (state, action) => {
+        // Để TRỐNG là đúng (đừng khoe danh sách cũ), nhưng danh sách trống phải đi
+        // kèm câu nói vì sao — không thì nó đọc y hệt "không có lời mời nào".
         state.invitations = [];
         state.invitationsStatus = 'error';
+        const failure = LOAD_FAILURE_TEXT[action.payload ?? 'server'];
+        state.invitationsErrorTitle = failure.title;
+        state.invitationsError = failure.message;
       })
       .addCase(acceptInvitation.fulfilled, (state, action) => {
         state.invitations = state.invitations.filter((i) => i.id !== action.payload);

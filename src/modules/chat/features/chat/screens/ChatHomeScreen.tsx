@@ -63,6 +63,7 @@ import {
   onDecryptedMessage,
 } from '../../../../../services/proofchatService';
 import { getDid } from '../../../../../services/proofchatIdentity';
+import { resetProofChatSessionBackoff } from '../../../../../services/proofchatAuthBridge';
 import chatSocket from '../../../../../services/chatSocket';
 import { useCapabilityLive } from '../../../../../config/useCapabilityLive';
 
@@ -81,7 +82,11 @@ const ChatHomeScreen: React.FC = () => {
   const conversations = useSelector((s: RootState) => s.chat.conversations);
   const invitations = useSelector((s: RootState) => s.chat.invitations);
   const listStatus = useSelector((s: RootState) => s.chat.listStatus);
+  const loadError = useSelector((s: RootState) => s.chat.loadError);
+  const loadErrorTitle = useSelector((s: RootState) => s.chat.loadErrorTitle);
   const invitationsStatus = useSelector((s: RootState) => s.chat.invitationsStatus);
+  const invitationsError = useSelector((s: RootState) => s.chat.invitationsError);
+  const invitationsErrorTitle = useSelector((s: RootState) => s.chat.invitationsErrorTitle);
   const sync = useSelector((s: RootState) => s.chat.sync);
 
   // Cổng runtime: chỉ gọi máy chủ khi nó thật sự sống (probe /health). Hook này
@@ -180,6 +185,10 @@ const ChatHomeScreen: React.FC = () => {
   const handleRefresh = useCallback(async () => {
     if (!backendReady) return;
     setRefreshing(true);
+    // Kéo-xuống / bấm "Thử lại" là ý muốn RÕ RÀNG của người dùng, nên được phép
+    // dựng lại phiên ngay (kể cả khi lần trước hỏng và cầu nối đang nghỉ) — hộp
+    // vân tay bật lên lúc này là do người dùng vừa yêu cầu, không phải tự nhiên.
+    resetProofChatSessionBackoff();
     await Promise.all([dispatch(loadConversations()), dispatch(loadInvitations())]);
     setRefreshing(false);
   }, [backendReady, dispatch]);
@@ -400,10 +409,14 @@ const ChatHomeScreen: React.FC = () => {
           ) : listStatus === 'loading' ? (
             <StateView status="loading" loadingLines={5} />
           ) : listStatus === 'error' ? (
+            // Tiêu đề + lời nhắn do reducer đặt theo NGUYÊN NHÂN thật (401 chưa
+            // đăng nhập / mạng đứt / máy chủ lỗi) — xem LOAD_FAILURE_TEXT trong
+            // chatSlice. Câu cứng "Kéo xuống để thử lại" trước đây chỉ đúng một
+            // trong ba ca.
             <StateView
               status="error"
-              title="Chưa tải được"
-              message="Kéo xuống để thử lại."
+              title={loadErrorTitle ?? 'Chưa tải được'}
+              message={loadError ?? 'Kéo xuống để thử lại.'}
               onRetry={handleRefresh}
             />
           ) : !sync.online ? (
@@ -472,6 +485,8 @@ const ChatHomeScreen: React.FC = () => {
         visible={invitesOpen}
         invitations={invitations}
         loading={invitationsStatus === 'loading'}
+        errorTitle={invitationsErrorTitle}
+        errorMessage={invitationsError}
         busyId={busyInvite}
         onClose={() => setInvitesOpen(false)}
         onAccept={handleAcceptInvite}

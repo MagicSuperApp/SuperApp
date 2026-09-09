@@ -1022,8 +1022,6 @@ export const wakeme = {
    */
   pot: () => unwrap<PotStatusResponse>(client.get('/wakeme/pot')),
 };
-/** Bí danh cũ — giữ một đợt cho nơi gọi cũ. Dùng `wakeme` cho mã mới. */
-export const getlamp = wakeme;
 
 // ── Guardian (khôi-phục xã-hội) ───────────────────────────────────────────────
 // POST /guardians/add · /guardians/remove, body { user_did, guardian_did, nonce,
@@ -1117,8 +1115,6 @@ export const phoenixKeyApi = {
   pools,
   delegation,
   wakeme,
-  /** Bí danh cũ của `wakeme` — giữ một đợt cho nơi gọi cũ. */
-  getlamp,
   keys,
   /** Vòng đời thiết bị tự-quản (`/keys/devices/**`) — KHÁC `keys`, xem chú thích ở đó. */
   deviceLifecycle,

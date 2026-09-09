@@ -95,18 +95,39 @@ export async function getVaultStatus(did: string): Promise<VaultStatusResponse> 
  * Mã dựng/nộp bên dưới đã đúng và được giữ nguyên: mở khoá = thêm hai hàm FFI Rust
  * + cầu nối Swift/Kotlin + dựng lại native. Không xoá hàm này.
  */
+
+/**
+ * Cờ mở khoá đường ký Wakeme. `false` cho tới ngày hai hàm FFI Rust
+ * (`taad.witnessUnsignedTx` và cầu nối khoá thiết bị) có thật trong bản dựng gốc.
+ *
+ * Khai kiểu `boolean` là để nói rằng giá trị này SẼ đổi, không phải để làm vừa
+ * lòng trình biên dịch. Đo 2026-09-08, cả hai chiều: bỏ `: boolean` đi thì tsc
+ * **vẫn không** đỏ — `allowUnreachableCode: false` không lần qua một nhánh `if`,
+ * nó chỉ bắt câu lệnh nằm thẳng sau `throw` trong cùng khối. Ghi ra vì bản chú
+ * thích đầu của chính dòng này khẳng định ngược lại mà chưa chạy phép đo nào.
+ *
+ * Vì sao đổi từ `throw` trần sang cờ có tên — đây là điểm chính, không phải mẹo
+ * làm vừa lòng trình biên dịch: bản trước là một `throw` vô điều kiện, và toàn bộ
+ * phần dưới nó bị bịt bằng `eslint-disable-next-line no-unreachable`. Hình dạng
+ * đó khiến `witnessUnsignedTx` — hàm chỉ có ĐÚNG MỘT nơi gọi trong cả kho — trở
+ * thành mã chết mà không cổng nào kêu được, vì cái duy nhất kêu đã bị tắt tại
+ * chỗ. Nay trạng thái tắt mang một cái TÊN tra được, và ngày mở khoá là đổi một
+ * dòng chứ không phải gỡ một dòng bịt miệng.
+ */
+const WAKEME_SIGNING_READY: boolean = false;
 export async function getLamp(args: {
   kekHex: string;
   account: number;
   walletAddress: string;
   network: number;
 }): Promise<WakemeSubmitResponse> {
-  throw new Error(
-    'Wakeme chưa nhận được: bản ứng dụng này chưa ký được bằng khoá TAAD và khoá thiết bị. '
-    + 'Chờ bản cập nhật.',
-  );
+  if (!WAKEME_SIGNING_READY) {
+    throw new Error(
+      'Wakeme chưa nhận được: bản ứng dụng này chưa ký được bằng khoá TAAD và khoá thiết bị. '
+      + 'Chờ bản cập nhật.',
+    );
+  }
 
-  // eslint-disable-next-line no-unreachable
   const built = await phoenixKeyApi.wakeme.build({ walletAddress: args.walletAddress });
   const signed = await taad.witnessUnsignedTx(
     args.kekHex,

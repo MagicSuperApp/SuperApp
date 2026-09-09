@@ -45,7 +45,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, Image, Linking, Modal, PermissionsAndroid,
+  ActivityIndicator, Image, Linking, Modal, PermissionsAndroid,
   Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, View,
   useWindowDimensions,
 } from 'react-native';
@@ -368,24 +368,26 @@ const WayfindScreen: React.FC = () => {
 
   const askRemoveMarker = useCallback((moc: RadarTree) => {
     if (!params.farmId) return;
-    Alert.alert(
+    showWarning(
       tk('map.marker.deleteTitle'),
       tk('map.marker.deleteBody', { name: moc.name }),
-      [
-        { text: tk('map.marker.cancel'), style: 'cancel' },
-        {
-          text: tk('map.marker.delete'),
-          style: 'destructive',
-          onPress: () => {
-            removeFarmMarker(params.farmId as string, moc.id).then(rest => {
-              setMarkers(rest);
-              // Đang chỉ tới đúng mốc vừa xoá thì phải thả đích ra, không thì
-              // kim còn chỉ về một chỗ không còn tồn tại trong danh sách nào.
-              setPicked(p => (p?.kind === 'marker' && p.item.id === moc.id ? null : p));
-            });
+      {
+        actions: [
+          { text: tk('map.marker.cancel'), style: 'cancel' },
+          {
+            text: tk('map.marker.delete'),
+            style: 'destructive',
+            onPress: () => {
+              removeFarmMarker(params.farmId as string, moc.id).then(rest => {
+                setMarkers(rest);
+                // Đang chỉ tới đúng mốc vừa xoá thì phải thả đích ra, không thì
+                // kim còn chỉ về một chỗ không còn tồn tại trong danh sách nào.
+                setPicked(p => (p?.kind === 'marker' && p.item.id === moc.id ? null : p));
+              });
+            },
           },
-        },
-      ],
+        ],
+      },
     );
   }, [params.farmId, tk]);
 

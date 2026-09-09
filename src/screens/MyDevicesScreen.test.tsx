@@ -48,18 +48,22 @@ jest.mock('../services/phoenixKey-api', () => {
 });
 
 const mockShowError = jest.fn();
+// `showWarning` KHÔNG còn là hàm rỗng: hộp xác nhận "Gỡ máy này?" nay đi qua
+// popup của app (`utils/alert`) thay vì `Alert.alert` của hệ điều hành, nên nút
+// phá mà bài kiểm cần bấm nằm trong `options.actions` của lượt gọi này.
+const mockShowWarning = jest.fn();
 jest.mock('../utils/alert', () => ({
   showError: (...a: unknown[]) => mockShowError(...a),
   showSuccess: jest.fn(),
   showInfo: jest.fn(),
-  showWarning: jest.fn(),
+  showWarning: (...a: unknown[]) => mockShowWarning(...a),
 }));
 
-import { Alert } from 'react-native';
 import MyDevicesScreen from './MyDevicesScreen';
 import { PhoenixKeyApiError } from '../services/phoenixKey-api';
 
-const mockAlert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+/** Nút trong hộp thoại popup của app — khớp `AlertAction`. */
+type NutHopThoai = { text: string; onPress?: () => void; style?: string };
 
 /** Gom mọi chuỗi Text trong cây dựng được. */
 function texts(tree: renderer.ReactTestRenderer): string[] {
@@ -217,10 +221,11 @@ describe('mã lỗi máy chủ được dịch thành câu người đọc đư�
     mockRevoke.mockRejectedValue(new PhoenixKeyApiError(3008, 409, 'last owner key'));
 
     await act(async () => { nutTheoIcon(t, 'link-off')[0].props.onPress(); });
-    expect(mockAlert).toHaveBeenCalled();
+    expect(mockShowWarning).toHaveBeenCalled();
 
     // Bấm đúng nút phá trong hộp xác nhận mà màn vừa dựng.
-    const nut = (mockAlert.mock.calls[0] as unknown[])[2] as Array<{ text: string; onPress?: () => void }>;
+    const opts = (mockShowWarning.mock.calls[0] as unknown[])[2] as { actions?: NutHopThoai[] };
+    const nut = opts.actions ?? [];
     const go = nut.find(b => b.text === 'Gỡ máy')!;
     await act(async () => { go.onPress?.(); });
 

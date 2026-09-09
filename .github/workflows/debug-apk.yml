@@ -101,6 +101,13 @@ jobs:
     name: Build debug APK
     needs: verify
     runs-on: ubuntu-latest
+    # `contents: write` để đẩy tệp lên bản phát hành `debug-latest` (xem bước
+    # cuối). Mặc định của kho thuộc tổ chức thường là chỉ-đọc, và khi đó `gh
+    # release upload` trượt với "Resource not accessible by integration" — lời
+    # báo đó nói về quyền chứ không nói về tệp, nên dễ bị đọc thành lỗi khác.
+    # Khai TỐI THIỂU: chỉ `contents`, và job `verify` không cần nên không khai.
+    permissions:
+      contents: write
     # 60 → 90: bước dựng Rust mới thêm vào tốn ~10-15 phút khi nhớ đệm trượt, mà
     # riêng gradle đã 30-39 phút (đo 4 lượt gần nhất). Để 60 thì lượt đầu sau khi
     # đổi Cargo.lock sẽ chạm trần — và chạm trần bị gắn nhãn `cancelled`, tức hỏng
@@ -297,21 +304,88 @@ jobs:
           rm -rf "$WORK"
           [ "$FAIL" -eq 0 ] || { echo "::error::APK không đạt"; exit 1; }
 
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: superapp-debug-apk
-          path: |
-            dist/superapp-debug.apk
-            dist/checkfarm-debug.apk
-            android-debug.log
-            android/android-checkfarm.log
-          retention-days: 30
+      # ── GIAO QUA BẢN PHÁT HÀNH, KHÔNG QUA KHO TỆP ACTIONS ──────────────────
+      #
+      # `actions/upload-artifact` ghi vào kho tệp Actions, và kho đó CÓ HẠN MỨC:
+      # gói free của tổ chức là 500 MB, dùng chung với GitHub Packages. Một gói
+      # hai APK nặng 193 MB, nên kho chỉ chứa nổi HAI bản cùng lúc. Đo
+      # 2026-09-06: 37 tệp / 6.528 MB, và lượt dựng đỏ ở đúng bước cuối:
+      #
+      #   Failed to CreateArtifact: Artifact storage quota has been hit.
+      #
+      # Bản dựng vẫn xanh; chỉ tệp là không ra. Hạ thời hạn giữ và ghi đè theo
+      # nhánh chỉ dời được ngày chạm trần, KHÔNG gỡ được trần — một ứng dụng 96 MB
+      # thì không có cách xếp nào cho vừa 500 MB ở mức đồng thời có ích.
+      #
+      # Tệp đính kèm BẢN PHÁT HÀNH không tính vào hạn mức đó. Tài liệu billing
+      # định nghĩa phần bị tính là "GitHub Actions artifacts và GitHub Packages";
+      # Releases không nằm trong danh sách:
+      # https://docs.github.com/en/billing/concepts/product-billing/github-actions
+      #
+      # Dùng MỘT bản phát hành nháp cố định tên `debug-latest`, tệp đính kèm mang
+      # tên nhánh và ghi đè mỗi lượt (`--clobber`). Không tạo bản phát hành mới
+      # theo từng lượt đẩy: kho sẽ đầy trang phát hành, và mỗi bản mới lại gửi
+      # thông báo cho người theo dõi kho.
+      #
+      # ⚠ Đây là bản NHÁP (`--prerelease`) và tên tag cố định. KHÔNG đổi nó thành
+      #    bản phát hành thật, và KHÔNG đính bản đã ký lên đây — chỗ này là bản
+      #    debug ký bằng `debug.keystore` mà gradle tự sinh, không phải bản nộp kho.
+      - name: Suy tên tệp theo nhánh
+        run: |
+          NHANH="${{ github.head_ref || github.ref_name }}"
+          echo "HAU_TO=$(echo "$NHANH" | tr '/' '-')" >> "$GITHUB_ENV"
+
+      - name: Giao APK qua bản phát hành `debug-latest`
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eo pipefail
+          mv dist/superapp-debug.apk  "dist/aladin-debug-${HAU_TO}.apk"
+          mv dist/checkfarm-debug.apk "dist/checkfarm-debug-${HAU_TO}.apk"
+
+          # Tạo bản phát hành nếu chưa có. `|| true` ở đây KHÔNG phải nuốt lỗi:
+          # hai lượt dựng song song cùng thấy "chưa có" rồi cùng tạo, và lượt thua
+          # nhận lỗi "đã tồn tại" — đúng trạng thái mong muốn. Bước tải lên ngay
+          # dưới mới là chỗ phán đúng/sai, và nó KHÔNG có `|| true`.
+          # Phần mô tả viết ra tệp rồi truyền bằng `--notes-file`. Nhét chuỗi
+          # nhiều dòng thẳng vào `--notes` làm gãy chính khối YAML này: dòng nào
+          # thụt ít hơn khối `run: |` thì YAML coi là đã hết khối.
+          cat > /tmp/mo-ta-phat-hanh.md <<'MOTA'
+          Tệp đính kèm ở đây do lượt dựng tự đẩy lên. Mỗi nhánh một bộ, bản mới đè bản cũ.
+
+          - `aladin-debug-<nhánh>.apk` — bản Aladin
+          - `checkfarm-debug-<nhánh>.apk` — bản CheckFarm
+
+          Ký bằng `debug.keystore` do gradle tự sinh, KHÔNG phải khoá tải lên.
+          Không nộp tệp ở đây lên cửa hàng.
+          MOTA
+          sed -i 's/^          //' /tmp/mo-ta-phat-hanh.md
+
+          gh release view debug-latest >/dev/null 2>&1 || \
+            gh release create debug-latest \
+              --prerelease \
+              --title "Bản debug mới nhất (cài thẳng máy — KHÔNG phải bản phát hành)" \
+              --notes-file /tmp/mo-ta-phat-hanh.md \
+            || true
+
+          gh release upload debug-latest \
+            "dist/aladin-debug-${HAU_TO}.apk" \
+            "dist/checkfarm-debug-${HAU_TO}.apk" \
+            --clobber
+
+          echo "URL_PHAT_HANH=$(gh release view debug-latest --json url --jq .url)" >> "$GITHUB_ENV"
 
       - name: Build summary
         run: |
           echo "## SuperApp Debug APK — tải về cài test" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "1. Tải artifact **superapp-debug-apk** (nút góc phải trên trang này)." >> $GITHUB_STEP_SUMMARY
-          echo "2. Giải nén, copy \`superapp-debug.apk\` sang điện thoại Android." >> $GITHUB_STEP_SUMMARY
-          echo "3. Bật 'Cài từ nguồn không xác định' → mở file APK để cài." >> $GITHUB_STEP_SUMMARY
+          echo "Tệp nằm ở bản phát hành **[debug-latest](${URL_PHAT_HANH})**, KHÔNG còn ở mục Artifacts." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Hai ứng dụng dựng từ nhánh \`${HAU_TO}\`:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- \`aladin-debug-${HAU_TO}.apk\` — bản Aladin" >> $GITHUB_STEP_SUMMARY
+          echo "- \`checkfarm-debug-${HAU_TO}.apk\` — bản CheckFarm" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Tải tệp cần thử về, copy sang điện thoại Android, bật 'Cài từ nguồn không xác định' rồi mở tệp để cài." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Nhật ký dựng nằm ở tab Logs của chính lượt chạy này." >> $GITHUB_STEP_SUMMARY

@@ -21,7 +21,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, Clipboard, FlatList, Image, Pressable, ScrollView,
+  ActivityIndicator, Clipboard, FlatList, Image, Pressable, ScrollView,
   StatusBar, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
@@ -197,10 +197,11 @@ const FruitVideoScreen: React.FC = () => {
     (async () => {
       const draft = await restoreFruitVideoDraft(draftOwner);
       if (!draft?.videoUri) return;
-      Alert.alert(
+      showWarning(
         t('Khôi phục video dở?'),
         t('Có video quả quay buổi trước nhưng chưa gửi. Khôi phục để gửi tiếp?'),
-        [
+        {
+          actions: [
           { text: t('Bỏ'), style: 'destructive', onPress: () => { clearFruitVideoDraft(draftOwner); } },
           {
             text: t('Khôi phục'),
@@ -218,7 +219,8 @@ const FruitVideoScreen: React.FC = () => {
               if (draft.fruitName) setFruitName(draft.fruitName);
             },
           },
-        ],
+          ],
+        },
       );
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps

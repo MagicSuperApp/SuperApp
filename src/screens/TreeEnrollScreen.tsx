@@ -28,7 +28,6 @@ import {
   TouchableOpacity,
   Pressable,
   Platform,
-  Alert,
   Linking,
   ScrollView,
   ActivityIndicator,
@@ -290,12 +289,13 @@ const TreeEnrollScreen: React.FC = () => {
       // CÂY NÀO — trong khi `draft.name`/`draft.savedAt` đều nằm sẵn trong tay.
       // Nay: nút giữ đứng trước, nút phá nói rõ nó xoá bao nhiêu ảnh, và thân hộp
       // gọi đúng tên cây để người dùng biết mình đang bỏ cái gì.
-      Alert.alert(
+      showWarning(
         tk('trace.enroll.draftTitle'),
         draft.name
           ? tk('trace.enroll.draftBodyNamed', { name: draft.name, n: count, when: whenLabel(draft.savedAt) })
           : tk('trace.enroll.draftBody', { n: count, when: whenLabel(draft.savedAt) }),
-        [
+        {
+          actions: [
           {
             text: tk('trace.enroll.draftKeep'),
             onPress: () => {
@@ -322,7 +322,8 @@ const TreeEnrollScreen: React.FC = () => {
             style: 'destructive',
             onPress: () => { clearTreeCaptureDraft(draftOwner); },
           },
-        ],
+          ],
+        },
       );
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -596,10 +597,14 @@ const TreeEnrollScreen: React.FC = () => {
         anchor: null,
         n_views: 0,
       };
-      Alert.alert(
+      showSuccess(
         t('Đăng ký thành công'),
         tf('Mã cây: {ma}', { ma: code }),
-        [
+        {
+          // Không nút nào ở đây là "bỏ qua": một nút mở hồ sơ cây vừa tạo, nút kia
+          // dọn sạch để ghi cây kế tiếp. Nên nút thứ hai mang `style: 'cancel'`
+          // (để bấm ra ngoài cũng chạy đúng việc đó) nhưng vẫn có `onPress`.
+          actions: [
           {
             text: tk('trace.enroll.viewDetail'),
             onPress: () => {
@@ -613,13 +618,14 @@ const TreeEnrollScreen: React.FC = () => {
             // ngay sau khi vừa đăng ký thành công. Nay nói đúng việc nó làm:
             // dọn sạch rồi mở lượt ghi cây kế tiếp.
             text: tk('trace.enroll.nextTree'),
+            style: 'cancel',
             onPress: () => {
               dispatch(clearAll());
               (navigation as any).navigate('TreeIdentity', { farmId, retake: Date.now() });
             },
           },
-        ],
-        { cancelable: false },
+          ],
+        },
       );
     },
     [dispatch, navigation, draftOwner, name, farmId, gps],
@@ -836,10 +842,11 @@ const TreeEnrollScreen: React.FC = () => {
           const fromBody = res.error?.existing_tree_id ?? null;
           const regexMatch = detail.match(/tree[-_]?([0-9a-f-]{8,})/i);
           const foundId = fromBody ?? (regexMatch ? regexMatch[1] : null);
-          Alert.alert(
+          showWarning(
             t('Trùng cây đã có'),
             detail + '\n\n' + t('Bạn muốn làm gì?'),
-            [
+            {
+              actions: [
               { text: t('Huỷ'), style: 'cancel' },
               // Nút gộp CHỈ hiện khi biết gộp vào cây nào. Bản cũ luôn hiện nút,
               // rồi khi `foundId` rỗng thì bật một hộp thoại thứ hai bảo "chụp lại
@@ -857,33 +864,38 @@ const TreeEnrollScreen: React.FC = () => {
                 style: 'destructive',
                 onPress: handleForceEnroll,
               },
-            ],
+              ],
+            },
           );
           return;
         }
 
         if (kind === 'heterogeneous') {
-          Alert.alert(
+          showWarning(
             t('Nhiều cây trong ảnh'),
             t('Hệ thống phát hiện ảnh chứa nhiều cây khác nhau. ')
               + t('Vui lòng chỉ chụp một cây duy nhất trong khung hình.'),
-            [
-              { text: t('Huỷ'), style: 'cancel' },
-              { text: tk('trace.enroll.retake'), onPress: goRetake },
-            ],
+            {
+              actions: [
+                { text: t('Huỷ'), style: 'cancel' },
+                { text: tk('trace.enroll.retake'), onPress: goRetake },
+              ],
+            },
           );
           return;
         }
 
         if (kind === 'flat') {
-          Alert.alert(
+          showWarning(
             t('Ảnh phẳng hoặc lặp góc'),
             t('Các ảnh quá giống nhau hoặc chỉ nhìn từ một góc. ')
               + t('Hãy đi vòng quanh cây và chụp từ nhiều hướng đa dạng hơn.'),
-            [
-              { text: t('Huỷ'), style: 'cancel' },
-              { text: tk('trace.enroll.retake'), onPress: goRetake },
-            ],
+            {
+              actions: [
+                { text: t('Huỷ'), style: 'cancel' },
+                { text: tk('trace.enroll.retake'), onPress: goRetake },
+              ],
+            },
           );
           return;
         }
@@ -894,31 +906,35 @@ const TreeEnrollScreen: React.FC = () => {
         // đổi một chữ trong câu là trượt), nên lối thoát KHÔNG được phụ thuộc vào
         // việc phân loại đúng. Nhánh này giờ mở thẳng nút "Tạo cây mới" — cùng
         // hành động mà nhánh 'duplicate' cho, chỉ khác là không dám đoán lý do.
-        Alert.alert(
+        showError(
           t('Máy chủ từ chối đăng ký'),
           detail + '\n\n' + t('Nếu chắc đây là một cây KHÁC, chọn "Tạo cây mới".'),
-          [
-            { text: t('Huỷ'), style: 'cancel' },
-            { text: tk('trace.enroll.retake'), onPress: goRetake },
-            { text: t('Tạo cây mới'), style: 'destructive', onPress: handleForceEnroll },
-          ],
+          {
+            actions: [
+              { text: t('Huỷ'), style: 'cancel' },
+              { text: tk('trace.enroll.retake'), onPress: goRetake },
+              { text: t('Tạo cây mới'), style: 'destructive', onPress: handleForceEnroll },
+            ],
+          },
         );
         return;
       }
 
       if (status === 400) {
         if (detail.toLowerCase().includes('gps') || detail.toLowerCase().includes('location')) {
-          Alert.alert(
+          showWarning(
             t('Cần bật GPS'),
             t('Đăng ký cây yêu cầu thông tin vị trí. Vui lòng bật GPS và thử lại.'),
-            [
-              // "Thử lại" một mình là vòng lặp kín: không có gì bật được GPS nên
-              // lần nào cũng về đúng hộp thoại này. Mẫu mở Cài đặt đã có ở
-              // `TreeIdentityScreen` (quyền camera) — dùng lại đúng mẫu đó.
-              { text: tk('trace.enroll.openSettings'), onPress: () => { Linking.openSettings(); } },
-              { text: t('Thử lại'), onPress: handleEnroll },
-              { text: t('Huỷ'), style: 'cancel' },
-            ],
+            {
+              actions: [
+                // "Thử lại" một mình là vòng lặp kín: không có gì bật được GPS nên
+                // lần nào cũng về đúng hộp thoại này. Mẫu mở Cài đặt đã có ở
+                // `TreeIdentityScreen` (quyền camera) — dùng lại đúng mẫu đó.
+                { text: tk('trace.enroll.openSettings'), onPress: () => { Linking.openSettings(); } },
+                { text: t('Thử lại'), onPress: handleEnroll },
+                { text: t('Huỷ'), style: 'cancel' },
+              ],
+            },
           );
           return;
         }

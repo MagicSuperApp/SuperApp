@@ -24,7 +24,6 @@ import Toast from 'react-native-toast-message';
 import NetInfo from '@react-native-community/netinfo';
 import { handleNavigationStateChange } from '../services/analytics';
 import { Icon } from '../components/Icon';
-import RootErrorBoundary from '../components/RootErrorBoundary';
 import { COLORS, ACTION_COLORS } from '../theme';
 import { syncService } from '../services/syncService';
 import { flushVideoUploadQueue } from '../services/videoUploadQueue';
@@ -53,6 +52,7 @@ import { hasSeenOnboarding } from '../utils/onboardingFlag';
 import ActivationScreen from '../screens/ActivationScreen';
 import HomeScreen from '../screens/HomeScreen';
 import SignUpBiometricScreen from '../features/auth/screens/SignUpBiometricScreen';
+import IdentityEntryChoiceScreen from '../features/auth/screens/IdentityEntryChoiceScreen';
 import SignUpCompleteScreen from '../features/auth/screens/SignUpCompleteScreen';
 import AccountScreen from '../screens/AccountScreen';
 import DeleteAccountScreen from '../screens/DeleteAccountScreen';
@@ -111,8 +111,6 @@ import UsernameScreen from '../screens/UsernameScreen';
 // proofchat — anh Aladin chốt chat KHÔNG ví/escrow; giữ route để không vỡ màn cũ).
 import ChatWalletScreen from '../modules/chat/features/wallet/screens/WalletScreen';
 import ChatEscrowScreen from '../modules/chat/features/escrow/screens/EscrowScreen';
-// Wrapper Native gọi FarmDetail trực tiếp (giữ nguyên hành vi cũ).
-import FarmDetailScreen from '../modules/trace/screens/FarmDetailScreen';
 
 import {
   ActivityIndicator,
@@ -131,7 +129,6 @@ import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import AssistantBubble from '../components/AssistantBubble';
 import { CoachMarkProvider, useCoachMarkTarget } from '../onboarding/CoachMarkContext';
 import CoachMarkOverlay from '../onboarding/CoachMarkOverlay';
-import { AppRegistry } from 'react-native';
 
 // --- Registry config-driven -------------------------------------------------
 import {
@@ -172,32 +169,16 @@ const TAB_ICONS: Record<string, string> = Object.fromEntries(
   Object.keys(NAV_FRAME).map((route) => [route, navIcon(route, true)]),
 );
 
-// 1. Component bọc riêng cho việc gọi FarmDetail từ Native.
-// PHẢI bọc RootErrorBoundary: đây là ROOT React thứ 2 (registerComponent bên dưới,
-// do FarmDetailActivity Android nạp qua ReactRootView riêng). Lưới chống-trắng-màn
-// ở index.js chỉ bọc root chính `SuperApp` → root này nằm NGOÀI lưới đó;
-// FarmDetailScreen (hoặc con) ném lúc render sẽ trắng câm nếu không có boundary tại đây.
-const NativeFarmDetailWrapper = (props: any) => {
-  return (
-    <RootErrorBoundary>
-      <Provider store={store}>
-        <NavigationContainer>
-          <Stack.Navigator>
-            <Stack.Screen
-              name="FarmDetail"
-              component={FarmDetailScreen}
-              initialParams={props}
-              options={{ headerShown: false }}
-            />
-          </Stack.Navigator>
-        </NavigationContainer>
-      </Provider>
-    </RootErrorBoundary>
-  );
-};
-
-AppRegistry.registerComponent('FarmDetailScreen', () => NativeFarmDetailWrapper);
-
+// Ở đây từng đăng ký một ROOT REACT THỨ HAI mang tên `FarmDetailScreen`, do
+// `.FarmDetailActivity` bên Android nạp qua `ReactRootView` riêng. Đã gỡ cùng Activity đó:
+// root ấy dựng `Stack.Navigator` riêng nên KHÔNG đi qua `AuthGate`, và nó nằm ngoài lưới
+// chống-trắng-màn ở `index.js` (lưới đó chỉ bọc root chính `SuperApp`).
+//
+// Route `FarmDetail` không mất gì: nó khai ở `registry.ts` và chạy trong navigator chính.
+// Cần mở màn đó từ mã native thì gửi sự kiện vào root đang chạy, đừng đăng ký root mới.
+//
+// Chú thích này cố ý KHÔNG viết nguyên văn lời gọi cũ: bài canh ở
+// `SeedExportScreen.gate.test.ts` §D bắt đúng chuỗi đó trong tệp này.
 // --- Dựng danh sách tab từ instance.config + registry ----------------------
 // Mỗi tab: route name + component + title + icon. Host tab lấy từ HOST_TAB_*;
 // module tab lấy entrypoint qua registry.
@@ -1741,6 +1722,9 @@ const HOST_STACK_SCREENS: Array<{
   { name: 'ProofChatWallet', component: ChatWalletScreen, options: { headerShown: false } },
   { name: 'ProofChatEscrow', component: ChatEscrowScreen, options: { headerShown: false } },
   // Auth flow.
+  // Cửa vào khi máy CHƯA có danh tính: hỏi một câu rồi rẽ ba lối, thay cho việc
+  // đi thẳng sang `SignUpBiometric`. Xem đầu tệp màn đó.
+  { name: 'IdentityEntryChoice', component: IdentityEntryChoiceScreen, options: { headerShown: false } },
   { name: 'SignUpBiometric', component: SignUpBiometricScreen, options: { headerShown: false } },
   { name: 'SignUpComplete', component: SignUpCompleteScreen, options: { headerShown: false, gestureEnabled: false } },
   // Capture/identity screens dùng chung (host-level).

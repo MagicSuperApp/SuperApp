@@ -1,7 +1,9 @@
 {
   "extends": "@react-native/typescript-config",
+  "//allowUnreachableCode": "Bật 2026-09-08. Nó bắt câu lệnh nằm thẳng sau `throw`/`return` trong CÙNG khối — đúng hình dạng đã giấu `taad.witnessUnsignedTx` (hàm chỉ có MỘT nơi gọi trong cả kho, và nơi đó nằm sau một `throw` vô điều kiện, bị bịt bằng `eslint-disable-next-line no-unreachable`). Đã đo cả hai chiều: dựng lại hình dạng cũ ⇒ TS7027 ở `wakemeService.ts`; hình dạng hiện tại ⇒ sạch. Giới hạn phải nhớ: nó KHÔNG lần qua nhánh `if`, và KHÔNG bắt được dạng bắc cầu (hàm mà mọi nơi gọi đều nằm sau một hàm luôn ném) — đừng phát biểu rằng cờ này phủ 'mã không ai gọi'.",
   "compilerOptions": {
-    "types": ["jest"]
+    "types": ["jest"],
+    "allowUnreachableCode": false
   },
   "include": ["**/*.ts", "**/*.tsx"],
   "//": "Legacy/ = tài liệu + mã đã bị thay, giữ để đối chiếu (xem Legacy/README.md). Trong đó có MobileCore-v0.2-2026-07-16 — cây vendored cũ, có repo + CI riêng (@magiclamp/mobile-core), 0 importer trong src/. Loại khỏi tsc của SuperApp để test nội bộ của nó không tạo lỗi ma ở đây.",

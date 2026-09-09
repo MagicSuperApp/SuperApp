@@ -240,11 +240,6 @@ export function setVideoQueueOwner(owner: string | null | undefined): void {
   queueOwner = owner && owner.length > 0 ? owner : null;
 }
 
-/** Chủ hàng đợi hiện tại (chủ yếu cho test + chẩn đoán). */
-export function getVideoQueueOwner(): string | null {
-  return queueOwner;
-}
-
 /**
  * Job này có thuộc phiên hiện tại không.
  * - Job vô chủ (dữ liệu cũ trước bản này) → luôn thuộc, để không bỏ rơi clip cũ.

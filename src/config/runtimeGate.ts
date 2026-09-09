@@ -124,8 +124,24 @@ export const deriveHealthUrl = (
 /** Đăng ký endpoint health cho 1 capability (gọi lúc bootstrap, từ config module). */
 export const registerCapability = (cap: GateCapability, base: string | undefined): void => {
   const url = deriveHealthUrl(base, HEALTH_PATH[cap]);
-  if (url) healthUrls[cap] = url;
-  else delete healthUrls[cap];
+  if (url) {
+    healthUrls[cap] = url;
+    return;
+  }
+  // Ca (a) trong khối ⚠ ở trên. Trước bản này, base ĐÃ ĐẶT nhưng sai dạng bị `delete`
+  // không một tiếng động, rồi lộ ra ngoài y hệt backend chết. Ca đó đã xảy ra thật
+  // 2026-09-08: `.env` để PROOFCHAT_API_URL=wss://ws.proofchat.app (sai giao thức, và
+  // host đó còn không phân giải được DNS) ⇒ gate im lặng giữ mock, màn chat báo "máy
+  // chủ trò chuyện chưa sẵn sàng" suốt trong khi api.proofchat.me/api/v1/health trả 200.
+  // Cờ vẫn chỉ hai trạng thái (chưa đổi hình dạng 14 nơi tiêu thụ), nhưng người dựng
+  // app đọc được LÝ DO ở console thay vì đi sửa nhầm máy chủ.
+  if (base && base.trim()) {
+    console.warn(
+      `[runtimeGate] ${cap}: base '${base}' không phải URL http(s) tuyệt đối — coi như ` +
+        `CHƯA CẤU HÌNH, capability sẽ kẹt mock. Sửa biến môi trường, không phải máy chủ.`,
+    );
+  }
+  delete healthUrls[cap];
 };
 
 /** Kết quả live đọc đồng bộ. Default false = mock. Các gate module gọi hàm này. */
@@ -156,9 +172,18 @@ const probeOne = async (cap: GateCapability): Promise<void> => {
     // CHỈ 2xx = live. 502/503/504 (host chưa cấp), 404 (route chưa deploy), 5xx
     // đều → mock (không kích hoạt nhầm vào backend chưa sẵn).
     setLive(cap, res.ok);
-  } catch {
-    // Abort/timeout/mạng lỗi → mock (an toàn, không đoán live).
+    // Ca (b): ĐO ĐƯỢC. In cả khi thành công — không có dòng này thì 'module kẹt
+    // mock' và 'module chưa probe lần nào' trông giống hệt nhau trong logcat.
+    console.log(`[runtimeGate] ${cap} probe ${url} → HTTP ${res.status} ⇒ live=${res.ok}`);
+  } catch (err) {
+    // Ca (c): KHÔNG ĐO ĐƯỢC (abort/timeout/DNS/TLS/mạng rớt) → mock, an toàn.
+    // Phải kêu TO hơn ca (b): ở đây ta không biết backend sống hay chết.
     setLive(cap, false);
+    console.warn(
+      `[runtimeGate] ${cap} probe ${url} HỎNG (không đo được): ${
+        (err as Error)?.message ?? String(err)
+      }`,
+    );
   } finally {
     clearTimeout(timer);
   }

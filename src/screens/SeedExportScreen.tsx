@@ -34,15 +34,46 @@ import { COLORS } from '../constants';
 import { showInfo, showWarning } from '../utils/alert';
 import taadEnclave from '../sdk/taadEnclave';
 import { getOrCreateMasterKek } from '../services/masterKekStore';
+import { signRaw, currentUserDid } from '../sdk/phoenixKey';
+import { PhoenixKeyNativeError } from '../services/phoenixKey-native';
 
 const SeedExportScreen = () => {
   const insets = useSafeAreaInsets();
   const navigation: any = useNavigation();
 
   const [words, setWords] = useState<string[] | null>(null);
+  const [did, setDid] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [revealed, setRevealed] = useState(false);
 
+  /**
+   * ── Vì sao cổng đứng GIỮA bước 1 và bước 3, không đứng trước cả hàm ─────────
+   * Màn này làm HAI việc khác hẳn nhau bằng một nút:
+   *   (1) TẠO ví — `getOrCreateMasterKek()` sinh + lưu KEK nếu máy chưa có
+   *       (masterKekStore.ts, chú thích "khởi tạo ví lần đầu").
+   *   (3) LỘ bí mật — `masterKekToMnemonic()` biến KEK thành 24 từ đọc được.
+   *
+   * Hai lối vào khác dẫn người dùng tới đây để làm việc (1), không phải việc (3):
+   * màn Nhận LAMP và màn Ví đều gọi màn này bằng nhãn "Thiết lập ví". Đặt cổng
+   * trước CẢ hàm thì ai không qua được cổng sẽ KHÔNG CÓ VÍ và không nhận được
+   * LAMP — tức cổng bảo mật biến thành cổng chặn người dùng khỏi tài sản của họ.
+   * Nên bước (1) chạy trước, không cổng; cổng chỉ chắn bước (3).
+   *
+   * ── Vì sao là `signRaw`, KHÔNG phải `simplePrompt` ──────────────────────────
+   * `simplePrompt()` bật hộp thoại từ JS và trả về một `boolean` ở tầng JS: ai
+   * sửa được luồng JS là đổi được nó thành true. Đường đăng nhập của app này đã
+   * bỏ nó vì đúng lý do đó (LoginScreen.tsx, khối "XÁC THỰC BẰNG CHÍNH KHOÁ").
+   * `signRaw` để CHIP bật hộp thoại và chỉ trả chữ ký khi chip đã đối chiếu xong
+   * sinh trắc — chữ ký này không gửi đi đâu, giá trị của nó nằm ở chỗ nó KHÔNG
+   * TỒN TẠI nếu chủ khoá vắng mặt.
+   *
+   * ⚠️ Giới hạn phải nói thẳng, đừng đọc cổng này rộng hơn nó: nó chắn NGƯỜI
+   * đang cầm máy. Nó KHÔNG chắn mã chạy trong cùng tiến trình JS — khoá AES bọc
+   * Master_KEK ở TaadEnclaveModule dựng KHÔNG kèm `setUserAuthenticationRequired`
+   * (khác PhoenixKeyModule, nơi có), nên `secureLoad` + `masterKekToMnemonic` gọi
+   * thẳng được. Bịt đường đó là đổi ở tầng Keystore/Keychain, và nó đụng mọi ví
+   * đã tồn tại nên phải có đường di trú — việc RIÊNG, chưa làm ở đây.
+   */
   const handleGenerate = async () => {
     if (!taadEnclave.isAvailable()) {
       showWarning(
@@ -54,17 +85,62 @@ const SeedExportScreen = () => {
     }
     try {
       setLoading(true);
+      // BƯỚC 1 — TẠO VÍ. Không cổng, xem khối chú thích trên.
       // KEK BỀN VỮNG: lấy KEK ví đã lưu, hoặc sinh + lưu lần đầu → 24 từ ỔN ĐỊNH
       // (cùng cụm mỗi lần mở, đúng nghĩa backup). KHÔNG sinh KEK mới mỗi lần.
       const kek = await getOrCreateMasterKek();
+
+      // BƯỚC 2 — CỔNG. Sinh theo TỪNG BYTE để chuỗi hex luôn CHẴN: bên native
+      // `hexToBytes` đòi `length % 2 == 0` và ném ngay nếu lẻ, và lỗi đó lại trả
+      // về đúng mã mà app dịch thành "khoá trên máy hỏng".
+      let nonceHex = '';
+      for (let i = 0; i < 16; i++) {
+        nonceHex += ((Math.random() * 256) | 0).toString(16).padStart(2, '0');
+      }
+      await signRaw(
+        nonceHex,
+        'Xác thực để hiện cụm 24 từ',
+        'Cụm từ này mở được toàn bộ ví của bạn.',
+      );
+
+      // BƯỚC 3 — LỘ. Chỉ tới đây khi chip đã xác nhận chủ khoá có mặt.
       const phrase = await taadEnclave.masterKekToMnemonic(kek);
       const list = phrase.split(/\s+/).filter(Boolean);
       if (list.length !== 24) {
         throw new Error(`Cụm từ không đúng 24 từ (nhận ${list.length})`);
       }
+      // LỘ TRƯỚC, ĐỌC DID SAU — thứ tự này có chủ ý.
+      //
+      // Bản trước đặt `setDid(await currentUserDid())` TRÊN hai dòng này. Hệ quả:
+      // `currentUserDid` là `AsyncStorage.getItem` trần, và nếu nó ném thì `catch`
+      // ở dưới hiện "Lỗi" rồi người dùng KHÔNG BAO GIỜ thấy 24 từ — dù chip đã xác
+      // nhận xong và cụm từ đã dẫn xuất xong trong bộ nhớ. Một thao tác đọc PHỤ
+      // không được phép chặn thao tác CHÍNH.
       setWords(list);
       setRevealed(true);
+      // DID đi CÙNG cụm từ — xem khối chú thích ở chỗ hiển thị bên dưới. Ném ở
+      // đây thì rơi về nhánh "không đọc được mã định danh", và nhánh đó NÓI RA
+      // chứ không im lặng biến mất.
+      try {
+        setDid(await currentUserDid());
+      } catch {
+        setDid(null);
+      }
     } catch (e: any) {
+      // Mã lỗi native đã phân biệt sẵn. Gộp hết thành một câu "thất bại" là bắt
+      // người dùng đoán xem họ vừa tự huỷ, hay máy đang khoá tạm, hay khoá hỏng.
+      const code = (e as { code?: string } | null)?.code;
+      if (code === PhoenixKeyNativeError.USER_CANCELED) {
+        return; // tự huỷ: im lặng, ví đã tạo xong ở bước 1
+      }
+      if (code === PhoenixKeyNativeError.BIOMETRIC_LOCKOUT) {
+        showWarning(
+          'Máy đang tạm khoá sinh trắc',
+          'Sai sinh trắc học nhiều lần nên máy đang tạm khoá. Chờ khoảng 30 giây rồi thử lại, ' +
+            'hoặc mở khoá máy bằng mã PIN trước. Ví của bạn KHÔNG bị ảnh hưởng.',
+        );
+        return;
+      }
       showWarning('Lỗi', e?.message ?? 'Không tạo được cụm từ khôi phục.');
     } finally {
       setLoading(false);
@@ -80,8 +156,18 @@ const SeedExportScreen = () => {
       {
         confirmText: 'Vẫn sao chép',
         onConfirm: () => {
-          Clipboard.setString(words.join(' '));
-          showInfo('Đã sao chép', 'Hãy dán vào nơi an toàn rồi xoá clipboard.');
+          // Chép CẢ DID khi có. Màn hình vừa nói với người dùng rằng 24 từ không
+          // đủ để đổi máy; nếu nút sao chép lại chỉ chép 24 từ thì chính nút đó
+          // dựng lại đúng cái thiếu mà màn hình vừa cảnh báo — và người dùng
+          // không có cách nào biết, vì clipboard không hiện ra cái nó đang giữ.
+          Clipboard.setString(did ? `${did}\n\n${words.join(' ')}` : words.join(' '));
+          showInfo(
+            'Đã sao chép',
+            did
+              ? 'Đã chép mã định danh và 24 từ. Hãy dán vào nơi an toàn rồi xoá clipboard.'
+              : 'Đã chép 24 từ. CHƯA có mã định danh — lấy thêm ở Tài khoản → Danh tính, ' +
+                'vì 24 từ không đủ để khôi phục trên máy mới.',
+          );
         },
       },
     );
@@ -90,6 +176,7 @@ const SeedExportScreen = () => {
   const handleDone = () => {
     // Xoá khỏi RAM màn hình.
     setWords(null);
+    setDid(null);
     setRevealed(false);
     navigation.goBack();
   };
@@ -180,6 +267,62 @@ const SeedExportScreen = () => {
               ))}
             </View>
 
+            {/* ── KHÔNG AI ĐƯỢC HỎI CỤM TỪ ─────────────────────────────────────
+                Cảnh báo phía trên màn nói về mối đe doạ BỊ ĐỘNG ("ai đọc được tờ
+                giấy"). Cách mất tiền phổ biến hơn là CHỦ ĐỘNG: có người gọi điện
+                tự xưng nhân viên hỗ trợ, xin cụm từ để "giúp khôi phục". Người
+                dùng đang nhìn 24 từ là người sắp bị hỏi, nên câu này phải nằm ở
+                đây chứ không nằm trong tài liệu. */}
+            <View style={styles.scamCard}>
+              <Icon name="account-alert-outline" size={20} color="#B3261E" />
+              <Text style={styles.scamText}>
+                Không ai — <Text style={styles.bold}>kể cả nhân viên hỗ trợ của ứng dụng này</Text> —
+                có quyền hỏi bạn 24 từ. Ai hỏi, người đó đang lừa bạn.
+              </Text>
+            </View>
+
+            {/* ── DID phải được chép CÙNG 24 từ ────────────────────────────────
+                Trước đây màn này không hiện DID ở đâu cả. Nhưng khi khôi phục
+                trên MÁY MỚI, `RestoreIdentityScreen` không suy được DID chỉ từ 24
+                từ nên nó BẮT NGƯỜI DÙNG GÕ DID vào (xem nhánh "Máy mới — cần nhập
+                mã định danh" ở màn đó).
+
+                Nghĩa là người dùng chép đủ 24 từ đúng như màn này dặn, mất máy,
+                rồi không khôi phục được — vì thiếu một dòng chưa ai bảo họ chép.
+                Đây là đường mất ví KHÔNG cần kẻ tấn công nào, và nạn nhân là
+                người đã làm đúng mọi việc được dặn.
+
+                DID là phần CÔNG KHAI, chia sẻ được — nên hiện nó ở đây không mở
+                thêm rủi ro nào, mà đóng một đường mất vĩnh viễn. */}
+            {did ? (
+              <View style={styles.didCard}>
+                <Text style={styles.didLabel}>Mã định danh — chép dòng này cùng 24 từ</Text>
+                <Text style={styles.didValue} selectable>
+                  {did}
+                </Text>
+                <Text style={styles.didNote}>
+                  Đổi sang máy mới thì <Text style={styles.bold}>cần cả dòng này</Text>, 24 từ
+                  không đủ. Dòng này không phải bí mật — gửi cho chính mình để giữ cũng được.
+                </Text>
+              </View>
+            ) : (
+              /* KHÔNG được im lặng bỏ qua. `currentUserDid()` trả
+                 `Promise<string | null>`, nên "không có DID" là một trạng thái
+                 THẬT, không phải một lỗi. Bản trước vẽ `null` ở đây — và khi đó
+                 màn hình quay đúng về trạng thái trước lượt sửa này (24 từ, không
+                 một chữ nào về DID), chỉ khác một điều: lần này người dùng tin là
+                 họ đã chép đủ. Đó là cái vỏ im lặng ở dạng đắt nhất — nó không
+                 làm hỏng gì hôm nay, nó làm mất ví vào ngày đổi máy. */
+              <View style={[styles.didCard, styles.didCardThieu]}>
+                <Text style={styles.didLabel}>Không đọc được mã định danh</Text>
+                <Text style={styles.didNote}>
+                  24 từ này <Text style={styles.bold}>chưa đủ</Text> để khôi phục trên máy
+                  mới. Vào Tài khoản → Danh tính lấy mã định danh và chép nó cùng 24 từ
+                  trước khi rời màn này.
+                </Text>
+              </View>
+            )}
+
             <TouchableOpacity style={styles.copyBtn} onPress={handleCopy}>
               <Icon name="content-copy" size={15} color={COLORS.accent} />
               <Text style={styles.copyBtnText}>Sao chép (kém an toàn)</Text>
@@ -233,6 +376,31 @@ const styles = StyleSheet.create({
   },
   warnText: { flex: 1, fontSize: 13, lineHeight: 19, color: COLORS.textSub },
   bold: { fontWeight: '800', color: COLORS.warning },
+
+  scamCard: {
+    flexDirection: 'row', gap: 12, alignItems: 'flex-start',
+    backgroundColor: '#FDECEA', borderRadius: 14,
+    borderWidth: 1, borderColor: '#F3B9B2',
+    padding: 14, marginTop: 16, marginBottom: 14,
+  },
+  scamText: { flex: 1, fontSize: 13, lineHeight: 19, color: '#7A1C13' },
+
+  didCard: {
+    backgroundColor: COLORS.card, borderRadius: 14,
+    borderWidth: 1, borderColor: COLORS.border,
+    padding: 14, marginBottom: 14,
+  },
+  // Thẻ ở nhánh THIẾU DID phải trông khác thẻ ở nhánh có DID. Cùng một hình thì
+  // người dùng lướt qua và tưởng đã đọc rồi — mà đây đúng là thẻ họ phải đọc.
+  didCardThieu: { borderColor: COLORS.warning, borderWidth: 2 },
+  didLabel: { fontSize: 12, fontWeight: '800', color: COLORS.text, marginBottom: 6 },
+  // Chữ đều nét: DID là chuỗi hex dài, người dùng phải chép TAY ra giấy nên
+  // `0`/`O` và `1`/`l` phải phân biệt được bằng mắt.
+  didValue: {
+    fontSize: 12, lineHeight: 18, color: COLORS.text,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  didNote: { fontSize: 12, lineHeight: 17, color: COLORS.textMuted, marginTop: 8 },
 
   placeholderCard: {
     alignItems: 'center', gap: 12, padding: 28,

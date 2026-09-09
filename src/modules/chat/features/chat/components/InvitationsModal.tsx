@@ -23,6 +23,15 @@ interface Props {
   visible: boolean;
   invitations: Invitation[];
   loading?: boolean;
+  /**
+   * Lượt tải hỏng — câu viết cho người dùng, kèm tiêu đề. Rỗng nghĩa là tải xong.
+   *
+   * Danh sách rỗng vì KHÔNG CÓ lời mời, và danh sách rỗng vì KHÔNG TẢI ĐƯỢC, phải
+   * ra hai màn hình khác nhau. Gộp lại thì màn hình khẳng định "Chưa có lời mời
+   * nào" trong lúc thật ra có, và người dùng đóng hộp đi rồi bỏ lỡ lời mời thật.
+   */
+  errorTitle?: string;
+  errorMessage?: string;
   /** ID lời mời đang xử-lý — nút của riêng dòng đó quay vòng, không khoá cả bảng. */
   busyId?: string | null;
   onClose: () => void;
@@ -34,6 +43,8 @@ const InvitationsModal: React.FC<Props> = ({
   visible,
   invitations,
   loading = false,
+  errorTitle,
+  errorMessage,
   busyId,
   onClose,
   onAccept,
@@ -53,6 +64,14 @@ const InvitationsModal: React.FC<Props> = ({
     {loading && invitations.length === 0 ? (
       <View style={styles.center}>
         <ActivityIndicator color={CHAT_THEME.primary} />
+      </View>
+    ) : errorMessage && invitations.length === 0 ? (
+      // Tải hỏng — dấu hiệu khác hẳn ca rỗng thật: biểu tượng cảnh báo, tiêu đề
+      // riêng, và câu nói vì sao. KHÔNG dùng lại câu "Chưa có lời mời nào".
+      <View style={styles.center}>
+        <Icon name="alert-circle-outline" size={34} color={CHAT_THEME.primary} />
+        {!!errorTitle && <Text style={styles.errorTitle}>{errorTitle}</Text>}
+        <Text style={styles.emptyText}>{errorMessage}</Text>
       </View>
     ) : invitations.length === 0 ? (
       <View style={styles.center}>
@@ -113,7 +132,8 @@ const InvitationsModal: React.FC<Props> = ({
 
 const styles = StyleSheet.create({
   center: { alignItems: 'center', gap: SPACE.sm, paddingVertical: SPACE.xxl },
-  emptyText: { fontSize: 13, color: NEUTRAL.textMuted },
+  emptyText: { fontSize: 13, color: NEUTRAL.textMuted, textAlign: 'center' },
+  errorTitle: { fontSize: 15, fontWeight: '600', color: NEUTRAL.text, marginBottom: 2 },
   card: {
     padding: SPACE.md,
     borderRadius: RADIUS.lg,

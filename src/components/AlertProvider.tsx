@@ -22,6 +22,8 @@ const AlertProvider: React.FC<{ children: React.ReactNode }> = ({ children }) =>
           confirmText={currentAlert.confirmText}
           cancelText={currentAlert.cancelText}
           hideCancel={currentAlert.hideCancel}
+          actions={currentAlert.actions}
+          dismissable={currentAlert.dismissable}
         />
       )}
     </>

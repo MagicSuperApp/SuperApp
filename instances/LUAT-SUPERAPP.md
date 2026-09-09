@@ -78,11 +78,21 @@ Sau lần tải bản dựng đầu tiên lên cửa hàng thì mã gói **khôn
 
 ## 4. Mỗi app tự mang bộ biểu tượng của mình
 
-**Cưỡng chế: CÓ.**
+**Cưỡng chế: CÓ trên Android · KHÔNG trên iOS.**
 
-`src/main/res` không còn bộ `ic_launcher` dùng chung. App quên biểu tượng thì bản dựng đỏ ngay
-(`resource mipmap/ic_launcher not found`), thay vì lặng lẽ mượn biểu tượng của app đứng trước rồi
-đi thẳng lên cửa hàng.
+Android: `src/main/res` không còn bộ `ic_launcher` dùng chung. App quên biểu tượng thì bản dựng
+đỏ ngay (`resource mipmap/ic_launcher not found`), thay vì lặng lẽ mượn biểu tượng của app đứng
+trước rồi đi thẳng lên cửa hàng.
+
+iOS thì ngược hẳn, và đây là chỗ dễ đọc nhầm nhất trong cả tệp: câu giải thích ở trên nói về một
+triệu chứng **chỉ có ở Android**. Đo 2026-09-09 (`find instances -type d`): không app nào có thư
+mục `ios/`, và `ios/SuperApp/Images.xcassets/AppIcon.appiconset` là bộ **duy nhất** — bộ của
+Aladin. Nên một bản iOS của app khác `aladin` sẽ mang biểu tượng Aladin, **dựng được và ký
+được**, không cổng nào đỏ.
+
+Chặn tạm: luồng iOS trong `codemagic.yaml` `exit 1` khi `APP_INSTANCE != aladin`, và soi bộ ảnh
+đang thật sự đóng gói bằng `sips` (cỡ 1024×1024, không kênh alpha). Mở khoá thì cần một bước
+**sinh `AppIcon.appiconset` theo app** — đặt tệp vào chỗ là chưa đủ.
 
 ## 5. Mỗi app một dự án Firebase riêng — hoặc không có
 
@@ -126,5 +136,8 @@ Xem `instances/README.md`. Ba việc bắt buộc, thiếu việc nào cũng đ�
 
 1. `instances/<mã>/instance.json` — gồm khối `superapp` với `rulesVersion` đúng và `phoenixDid`
    **không** `null`;
-2. `instances/<mã>/brand/icon-1024.png` rồi chạy `python3 scripts/sinh-bieu-tuong.py <mã>`;
+2. `instances/<mã>/brand/icon-1024.png` rồi chạy `python3 scripts/sinh-bieu-tuong.py <mã>` — đó
+   là bộ **Android**. Cho iOS đặt thêm `instances/<mã>/ios/AppIcon-1024.png` (1024×1024, **không**
+   kênh alpha; `codemagic.yaml` đo bằng `sips`). Đặt tệp KHÔNG đủ: chưa có bước sinh
+   `AppIcon.appiconset` từ nó, nên luồng iOS vẫn chặn mọi app khác `aladin` — xem mục 4;
 3. một entry trong `src/config/instance.config.ts`.

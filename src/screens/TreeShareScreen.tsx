@@ -30,7 +30,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
-  ActivityIndicator, StatusBar, Alert,
+  ActivityIndicator, StatusBar, 
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -216,7 +216,7 @@ const TreeShareScreen: React.FC = () => {
             setBusyId(null);
             // 404 ở đây KHÔNG dịch thành "đã bị xoá rồi": máy chủ cố ý không phân
             // biệt "không có grant đó" với "grant đó không phải của bạn".
-            if (!r.ok) Alert.alert(t('Chưa thu hồi được'), r.error?.detail ?? t('Máy chủ từ chối.'));
+            if (!r.ok) showError(t('Chưa thu hồi được'), r.error?.detail ?? t('Máy chủ từ chối.'));
             load();
           },
     });

@@ -15,7 +15,6 @@ import {
   TextInput,
   DeviceEventEmitter,
   PermissionsAndroid,
-  Alert,
   BackHandler,
   Animated,
   PanResponder,
@@ -40,7 +39,7 @@ import { GroundBackdrop } from '../components/layered/Organic';
 import { useTk } from '../../../i18n/keys';
 // B2: tạo vườn QUA field-reid (server sinh farm_id uuid THẬT) — bỏ aladinAPI
 // (backend Lợi deprecated + client tự sinh `farm-<ts>` = gốc B2). INV-1 §3.2.
-import { BOUNDARY_METHOD, createFarm as createReidFarm } from '../../../services/farmService';
+import { BOUNDARY_METHOD, createFarm as createReidFarm, updateFarm } from '../../../services/farmService';
 import { ensureOrilifeToken } from '../../../services/orilifeDidAuth';
 import { ORILIFE_BASE } from '../../../services/orilifeBase';
 import { fieldErrorMessage } from '../../../services/treeReIDService';
@@ -528,14 +527,15 @@ const AddFarmMode = ({
   const confirmExit = () => {
     const hasUnsaved = coordinates.length > 0 || farmName.trim().length > 0;
     if (!hasUnsaved) { onBack(); return; }
-    Alert.alert(
+    showWarning(
       t('Thoát màn thêm vườn?'),
       t('Bạn sẽ mất các điểm GPS và thông tin đã nhập. Bạn có chắc muốn thoát?'),
-      [
-        { text: t('Ở lại'), style: 'cancel' },
-        { text: t('Thoát'), style: 'destructive', onPress: () => onBack() },
-      ],
-      { cancelable: true },
+      {
+        actions: [
+          { text: t('Ở lại'), style: 'cancel' },
+          { text: t('Thoát'), style: 'destructive', onPress: () => onBack() },
+        ],
+      },
     );
   };
   const confirmExitRef = useRef(confirmExit);
@@ -1742,14 +1742,18 @@ const FarmDetailScreen = () => {
       }
       if (validation.warnings.length > 0) {
         const proceed = await new Promise<boolean>(resolve => {
-          Alert.alert(
+          showWarning(
             t('Cảnh báo ranh giới'),
             validation.warnings.map(translateValidationKey).join('\n') + t('\n\nVẫn lưu?'),
-            [
-              { text: t('Để sửa'), style: 'cancel', onPress: () => resolve(false) },
-              { text: t('Vẫn lưu'), style: 'destructive', onPress: () => resolve(true) },
-            ],
-            { cancelable: false },
+            {
+              // `dismissable: false` là BẮT BUỘC ở đây: chỗ gọi đang `await` lời
+              // hứa này. Đóng lặng lẽ mà không nhánh nào chạy là treo luôn việc lưu.
+              dismissable: false,
+              actions: [
+                { text: t('Để sửa'), style: 'cancel', onPress: () => resolve(false) },
+                { text: t('Vẫn lưu'), style: 'destructive', onPress: () => resolve(true) },
+              ],
+            },
           );
         });
         if (!proceed) return;
@@ -2034,39 +2038,102 @@ const FarmDetailScreen = () => {
     setTreeIdentificationResult(null);
   };
 
+  /**
+   * Đổi tên vườn — MÁY CHỦ TRƯỚC, kho máy sau.
+   *
+   * ── Bản trước ghi ĐI ĐÂU MẤT ────────────────────────────────────────────
+   * Hàm này chỉ `dispatch(saveFarm(...))`, tức chỉ ghi SQLite trên máy. Tên mới
+   * hiện đúng, không lỗi, không trạng thái chờ — rồi biến mất khi gỡ app hoặc
+   * đổi máy, và người dùng không có cách nào nhìn ra. `updateFarm()` đã có sẵn ở
+   * `services/farmService.ts` trỏ đúng `POST /api/farm/{id}/update`, chỉ là chưa
+   * nơi nào gọi.
+   *
+   * ── Vì sao KHÔNG ghi cục bộ khi máy chủ trượt ───────────────────────────
+   * App này không có hàng đợi đồng bộ. Ghi cục bộ rồi báo xong là dựng lại đúng
+   * cái vỏ im lặng vừa gỡ, chỉ khác là lần này có chủ ý. Trượt thì nói thẳng,
+   * giữ nguyên tên cũ trên màn — người dùng thấy tên chưa đổi thì biết là chưa
+   * đổi. Đánh đổi phải nói rõ: mất mạng thì KHÔNG đổi tên được nữa, trong khi
+   * bản cũ "đổi được" — nhưng cái đổi được đó không sống qua lần cài lại.
+   *
+   * ── Bẫy đã tránh, đừng vô tình mở lại ───────────────────────────────────
+   * CHỈ gửi `{ name }`. Hợp đồng máy chủ: gửi `boundary_json` mà thiếu
+   * `boundary_method` thì nó ĐẶT LẠI nguồn-gốc ranh về `unknown` và xoá sai số —
+   * tức một lần đổi tên là mất sạch lời khai đo đạc, im lặng. `_buildFarmForm`
+   * chỉ đính ranh khi có ranh, nên gọi với mỗi `name` là an toàn. Ai thêm trường
+   * vào lời gọi này phải đọc lại docstring của `updateFarm` trước.
+   */
   const handleUpdateFarmName = async (newName: string) => {
     const trimmed = newName.trim();
     if (!farm_id || !trimmed) return;
 
     try {
-      // Trước đây dùng loadFarms(farm_id) — SAI action (loadFarms nhận userId,
-      // trả MẢNG farm) rồi spread cả object thunk action vào farm → mất hết field
-      // + null user_id khi lưu. Dùng loadFarm (đơn) + unwrap payload, map
-      // user_id (snake từ SQLite) → userId (saveFarm đọc farm.userId).
-      const action = await dispatch(loadFarm(farm_id));
-      const oldFarm: any = (action as any).payload;
-      if (!oldFarm) {
-        console.warn('[FarmDetailScreen] handleUpdateFarmName: farm not found', farm_id);
+      // 1. Ghi lên máy chủ trước — nguồn sự-thật. Cùng nếp token với đường tạo
+      //    vườn ở `handleAddFarm`: ký DID lấy phiên field-reid, hết hạn thì làm
+      //    mới đúng một lần rồi thử lại.
+      let saved;
+      const tokenOk = await ensureOrilifeToken(ORILIFE_BASE);
+      if (tokenOk) {
+        saved = await updateFarm(ORILIFE_BASE, farm_id, { name: trimmed });
+        if (!saved.ok && saved.error?.type === 'auth_error') {
+          const relog = await ensureOrilifeToken(ORILIFE_BASE, { force: true });
+          if (relog) saved = await updateFarm(ORILIFE_BASE, farm_id, { name: trimmed });
+        }
+      } else {
+        saved = {
+          ok: false as const,
+          error: {
+            type: 'auth_error' as const,
+            detail: 'Không lấy được phiên field-reid',
+            http_status: 401,
+          },
+        };
+      }
+
+      if (!saved.ok) {
+        const err = saved.error;
+        if (err?.type === 'network_error') {
+          showInfo('Cần kết nối mạng',
+            'Đổi tên vườn cần mạng để máy chủ ghi lại. Tên cũ được giữ nguyên — hãy kết nối rồi thử lại.');
+        } else if (err?.type === 'auth_error') {
+          showError('Chưa xác thực được với máy chủ',
+            'Không tạo được phiên với máy chủ nhận diện. Thử đăng xuất rồi đăng nhập lại; nếu vẫn lỗi, có thể danh tính chưa được đăng ký trên máy chủ.');
+        } else {
+          showError('Chưa đổi được tên', fieldErrorMessage(err));
+        }
         return;
       }
-      const updatedFarm = {
-        id: oldFarm.id,
-        name: trimmed,
-        coordinates: oldFarm.coordinates ?? [],
-        userId: oldFarm.userId ?? oldFarm.user_id ?? user?.id,
-      };
-      await dispatch(saveFarm(updatedFarm));
+
+      // 2. Máy chủ đã nhận → cập nhật kho máy để đọc lại lúc không mạng.
+      //    Trước đây dùng loadFarms(farm_id) — SAI action (loadFarms nhận userId,
+      //    trả MẢNG farm) rồi spread cả object thunk action vào farm → mất hết
+      //    field + null user_id khi lưu. Dùng loadFarm (đơn) + unwrap payload,
+      //    map user_id (snake từ SQLite) → userId (saveFarm đọc farm.userId).
+      //
+      //    Lỗi ở bước này KHÔNG chặn: tên đã nằm ở máy chủ, lần đồng bộ sau lấy
+      //    lại được. Cùng lối với đường tạo vườn.
+      try {
+        const action = await dispatch(loadFarm(farm_id));
+        const oldFarm: any = (action as any).payload;
+        if (oldFarm) {
+          await dispatch(saveFarm({
+            id: oldFarm.id,
+            name: trimmed,
+            coordinates: oldFarm.coordinates ?? [],
+            userId: oldFarm.userId ?? oldFarm.user_id ?? user?.id,
+          }));
+        } else {
+          console.warn('[FarmDetailScreen] handleUpdateFarmName: farm not in local cache', farm_id);
+        }
+      } catch (cacheErr: any) {
+        console.warn('[FarmDetailScreen] Local cache rename failed (non-blocking):', cacheErr?.message);
+      }
+
       // Cập nhật local state ngay để tên mới hiển thị (saveFarm chỉ cập nhật
       // state.farm.farms, không cập nhật biến `farm` cục bộ của màn này).
       setFarm((prev: any) => (prev ? { ...prev, name: trimmed } : prev));
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating farm name:', error);
-      Toast.show({
-        type: 'error',
-        text1: 'Không đổi được tên',
-        text2: 'Vui lòng thử lại.',
-        visibilityTime: 2500,
-      });
+      showError('Không đổi được tên', error?.message ?? 'Vui lòng thử lại.');
     }
   };
 

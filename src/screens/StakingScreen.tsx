@@ -10,7 +10,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, StatusBar, ScrollView,
-  TextInput, ActivityIndicator, Alert,
+  TextInput, ActivityIndicator, 
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
@@ -24,7 +24,7 @@ import type { DelegationStatus, PoolDetail } from '../services/phoenixKey-api';
 
 const PRIMARY = '#0033AD'; // Cardano blue
 import { CARDANO_NETWORK as NETWORK } from '../config/cardanoNetwork';
-import { showError, showWarning } from '../utils/alert';
+import { showError, showSuccess, showWarning } from '../utils/alert';
 import { t, tf } from '../i18n';
 const ACCOUNT = 0;         // ví cố định (stake key đã đăng ký)
 
@@ -83,13 +83,13 @@ const StakingScreen: React.FC = () => {
               const { txHash } = await delegateToPool({
                 kekHex: kek, account: ACCOUNT, poolBech32: poolDetail.poolId, network: NETWORK,
               });
-              Alert.alert(
+              showSuccess(
                 t('Đã gửi uỷ thác'),
                 tf('Tx: {tx}…\nMất vài phút để lên chuỗi.', { tx: txHash.slice(0, 16) }),
               );
               load();
             } catch (e: any) {
-              Alert.alert(t('Uỷ thác thất bại'), e?.message ?? t('Thử lại nơi sóng tốt.'));
+              showError(t('Uỷ thác thất bại'), e?.message ?? t('Thử lại nơi sóng tốt.'));
             } finally { setDelegating(false); }
           },
     });

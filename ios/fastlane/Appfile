@@ -3,17 +3,28 @@
 # ============================================================
 # Required environment variables:
 #   TREE_DETECTION_API   — API endpoint URL
-#   BUNDLE_ID            — App bundle identifier (com.aladin.orilife)
+#   BUNDLE_ID            — mã gói của app đang dựng. KHÔNG có giá trị mặc định.
 #   APPLE_ID             — Your Apple Developer account email
 #   PROFILE_NAME         — Provisioning profile name
 #   CERTIFICATE_PASSWORD — .p12 certificate password
+#
+# ⚠ CI KHÔNG đọc tệp này. `codemagic.yaml` dựng iOS bằng `xcodebuild` trực tiếp
+#   (`grep -n fastlane codemagic.yaml` → 0 dòng), và `keychain KEYCHAIN_PATH` ở
+#   cuối tệp là hằng Ruby chưa khai — chạm vào là `NameError`. Tức tệp này chưa
+#   từng chạy. Giữ lại cho người dựng tay, nhưng đừng tin nó là nguồn sự thật.
+#
+# ⛔ Không đặt mã gói mặc định ở đây. Bản trước mặc định một mã NHÁP do dev tạo
+#    lúc dựng thử, không phải mã của app nào đang sống. Mặc định sai thì
+#    người quên đặt biến vẫn dựng xanh, rồi ký và nộp lên một mã gói lạ.
+#    Mã gói thật hôm nay: Aladin iOS `vn.aladinapp` (đã lên App Store từ v1.0,
+#    KHÔNG đổi được), CheckFarm iOS `com.checkfarm.app`.
 # ============================================================
 
 # --- Credentials ---
 apple_id ENV["APPLE_ID"] || "dev@orilife.app"
 
 # --- Bundle & App ---
-bundle_identifier ENV["BUNDLE_ID"] || "com.aladin.orilife"
+bundle_identifier ENV.fetch("BUNDLE_ID") { raise "BUNDLE_ID rỗng — không đoán mã gói. Đặt biến rồi chạy lại." }
 
 # --- Code Signing ---
 # For manual signing (recommended for CI)
@@ -27,7 +38,7 @@ itc_team_id ENV["ITC_TEAM_ID"]   # App Store Connect Team ID
 team_id ENV["TEAM_ID"]           # Developer Portal Team ID
 
 # --- Pilot (TestFlight) ---
-app_identifier ENV["BUNDLE_ID"] || "com.aladin.orilife"
+app_identifier ENV.fetch("BUNDLE_ID") { raise "BUNDLE_ID rỗng — không đoán mã gói. Đặt biến rồi chạy lại." }
 
 # --- Keychain (for CI) ---
 keychain KEYCHAIN_PATH || "~/Library/Keychains/login.keychain-db"

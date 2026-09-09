@@ -473,9 +473,16 @@ export type ShellMatcher = 'sift' | 'xfeat' | 'loftr';
  *
  * ⚠ TÊN TRƯỜNG TRÊN DÂY LÀ `view_poses`, KHÔNG PHẢI `captures`.
  * `captures` là tên của khái niệm phía app (phiên chụp trong Redux). Máy chủ khai
- * receiver dưới tên khác — `server.py:2382` (enroll) và `:2734` (verify_add),
- * `view_poses: str = Form(None)`, parser `_parse_view_poses` (`:339`). Grep
- * `captures|heading_ref` trên `server.py` nhánh main: **0 khớp**.
+ * receiver dưới tên khác — `view_poses: str = Form(None)` ở cả hai đường enroll và
+ * verify_add, parser `_parse_view_poses`. Grep `captures` trên `server.py`: 0 khớp.
+ *
+ * Neo bằng TÊN HÀM chứ không số dòng: bản trước ghi `_parse_view_poses` ở `:339`,
+ * đo lại 08/09 thì nó ở `:546`. Con trỏ theo số dòng vẫn trỏ vào một dòng CÓ THẬT
+ * sau khi trôi, nên nó hỏng mà không kêu.
+ *
+ * Và câu cũ ở đây gộp `captures|heading_ref` vào chung một phép grep "0 khớp". Vế
+ * `heading_ref` nay SAI (xem khối `HeadingRef` bên dưới); vế `captures` vẫn đúng.
+ * Gộp hai khẳng định vào một phép đo thì lúc một vế chết, vế còn lại kéo nó sống thêm.
  *
  * Bản trước gửi `captures`. FastAPI bỏ im lặng trường không khai ⇒ toàn bộ tư thế
  * theo từng ảnh rơi mất, không một lỗi nào in ra — đúng thứ mà chính máy chủ ghi
@@ -507,12 +514,30 @@ export interface CaptureOrientation {
  * OriLife yêu cầu Bắc THẬT. App CHƯA đạt, và sửa là việc native (Thư) — đã báo.
  * Trong lúc đó thà khai đúng gốc quy chiếu còn hơn dán nhãn "true" cho số Bắc từ.
  *
- * ⚠ MÁY CHỦ CHƯA CÓ CHỖ NHẬN. `grep heading_ref` toàn `MassTreeIdentify/core/` nhánh
- * main: 0 khớp. Trường này đang bị bỏ im lặng. Vẫn gửi (không tốn gì, sẵn sàng cho
- * ngày họ thêm), nhưng KHÔNG được coi là "đã khai báo gốc quy chiếu" — trên máy chủ
- * hiện mọi số heading vẫn không có nguồn gốc. Đã xin OriLife thêm receiver.
- * Nó cũng không nhét được vào từng phần tử `view_poses`: parser chỉ giữ field SỐ
- * (`_view_pose_item`, `server.py:325-336`), mà đây là chuỗi.
+ * MÁY CHỦ CÓ NHẬN VÀ CÓ LƯU. Đo 2026-09-08 (phía OriLife, trên `origin/main` của
+ * họ): `heading_ref` nằm trong danh sách cho-phép-theo-tên `_POSE_EXTRA_ALLOWED`
+ * (`server.py:411`), được chuẩn hoá về `"true" | "magnetic"`; ảnh có `heading` mà
+ * không khai gốc thì máy chủ ghi thẳng `"unknown"` chứ không để trống.
+ *
+ * ⛔ Chỗ này TỪNG mang một cảnh báo "MÁY CHỦ CHƯA CÓ CHỖ NHẬN — trường này đang bị
+ * bỏ im lặng". Cảnh báo đó **sai** ở thời điểm ai đó đọc nó, và đã chết lặng lẽ:
+ * nó dựa trên một lần `grep` trên nhánh của bên kia, còn bên kia thì đọc mã bên
+ * này rồi kết luận ngược lại — hai nhà giữ hai bản đồ trái nhau về cùng một trường,
+ * mỗi bên đều tin phía kia mới là chỗ hở. Không dữ liệu nào rơi ở giữa, nhưng đó
+ * là may chứ không phải nhờ cơ chế nào.
+ *
+ * Xoá hẳn thay vì viết nhẹ đi, theo đúng đề nghị của bên giữ máy chủ: một cảnh báo
+ * đã chết nguy hơn không có cảnh báo, vì người đọc tin nó rồi dựng một đường vòng
+ * cho một chỗ không hỏng.
+ *
+ * ⚠ Điều CÒN đúng và phải nhớ khi thêm trường cảm biến mới: cửa đó **cho phép theo
+ * TÊN, không cấm theo tên**. Trường nào chưa được khai một dòng ở phía máy chủ thì
+ * rơi lặng — không lỗi, không cảnh báo. Nên thêm trường mới thì báo trước một dòng,
+ * đừng gửi rồi chờ xem có vào không.
+ *
+ * Riêng `heading_ref` vẫn không nhét được vào từng phần tử `view_poses`: parser chỉ
+ * giữ field SỐ (`_view_pose_item`), mà đây là chuỗi. Nó đi ở tầng form, không đi
+ * theo từng ảnh.
  */
 export type HeadingRef = 'ios_true_or_magnetic' | 'android_magnetic';
 
@@ -960,6 +985,77 @@ export async function buildTree3D(
     return { ok: !!result.data.ok, building: result.data.building };
   }
   return { ok: false, noProvenance: result.error?.http_status === 404, error: result.error };
+}
+
+/**
+ * getTreeModel3D — DỮ-LIỆU 3D của một cây để app TỰ DỰNG cảnh.
+ * `GET /api/tree/{tree_id}/model3d` (auth, CHỈ chủ vườn — chống IDOR).
+ *
+ * ── Vì sao KHÔNG dùng `/api/provenance/{tree_id}` cho việc này ───────────────
+ * Cửa provenance là cửa CÔNG KHAI dành cho người mua, và nó trả 404 cho cây
+ * riêng-tư (cố ý — phân biệt là lộ sự tồn tại của cây người khác). Kho sản xuất
+ * đo 08/2026: **139 cây — 54 riêng-tư, 85 CHƯA ĐẶT, 0 công khai**
+ * (`treeVisibilityService.ts`). Nghĩa là với gần như MỌI cây của chính chủ, cửa
+ * đó trả 404. Dựng cảnh vườn qua cửa ấy là mọi cây đều rơi về hình dự phòng —
+ * đúng lỗi đã gặp.
+ *
+ * Cửa này ngược lại: chủ đọc cây của mình, kể cả cây riêng-tư.
+ *
+ * ── Hợp đồng (đọc từ OpenAPI thật của máy chủ, 2026-09) ─────────────────────
+ * · Gom point cloud + quả + khung xương vào MỘT lần gọi và vào CÙNG một hệ
+ *   toạ-độ (cả ba lớp dời tâm cùng một lượng). Trước đây app tải `.ply` thô rồi
+ *   tự ghép với toạ-độ quả — ba lớp ba đường, lệch một lớp là cây vẽ sai mà
+ *   không có lỗi nào.
+ * · Tham số đều là CHUỖI, không phải số. Khai kiểu số thì khung web chặn ngay ở
+ *   cửa và `?max_points=` rỗng ăn 422 thay vì về mặc-định.
+ * · **Cây chưa dựng 3D trả 200 với danh sách RỖNG**, không phải lỗi HTTP.
+ *   `meta.status`: `none` (chưa ai bấm dựng) · `building` (đang xếp hàng) ·
+ *   `failed` (lượt dựng gần nhất hỏng, `meta.error` mang lý do). Ba ca ba câu —
+ *   gộp `failed` vào `none` là nông dân bấm dựng, hỏng, app lại mời bấm dựng,
+ *   vòng mãi không ai nói vì sao.
+ * · `meta.layers` — trạng-thái RIÊNG từng lớp, cùng bộ bốn giá trị
+ *   `ready`/`empty`/`pending`/`failed`.
+ * · `meta.coverage` (độ phủ góc + lời khuyên chụp thêm) và `meta.n_points_model`.
+ *
+ * ⚠ Máy chủ mô tả `meta.*` rất kỹ nhưng KHÔNG công bố schema của phần hình học
+ * (OpenAPI ghi `schema: {}`), nên tên khoá của mảng điểm phải đọc DÒ. Chỗ đọc
+ * (`features/space3d/treePoints.ts`) cố ý báo LỖI RÕ khi không nhận ra hình,
+ * thay vì im lặng rơi về cây dự phòng.
+ */
+export interface TreeModel3DMeta {
+  status?: string;
+  error?: string;
+  layers?: Record<string, string>;
+  coverage?: { covered_deg?: number; advice?: string; [k: string]: unknown };
+  n_points_model?: number;
+  [k: string]: unknown;
+}
+
+export interface TreeModel3DResponse {
+  ok?: boolean;
+  available?: boolean;
+  meta?: TreeModel3DMeta;
+  [k: string]: unknown;
+}
+
+export async function getTreeModel3D(
+  baseUrl: string,
+  treeId: string,
+  opts: { maxPoints?: number; colors?: boolean } = {},
+): Promise<{ ok: boolean; data?: TreeModel3DResponse; error?: APIError }> {
+  const q: string[] = [];
+  // Chỉ gửi tham số khi THẬT SỰ có giá trị. Nối một biến rỗng vào đường dẫn là
+  // chuyện xảy ra hằng ngày ở phía app, và máy chủ đã phải sửa riêng cho ca đó.
+  if (typeof opts.maxPoints === 'number' && Number.isFinite(opts.maxPoints)) {
+    q.push(`max_points=${encodeURIComponent(String(Math.max(1, Math.round(opts.maxPoints))))}`);
+  }
+  if (opts.colors === false) q.push('colors=0');
+  const qs = q.length ? `?${q.join('&')}` : '';
+
+  return _apiCall<TreeModel3DResponse>(
+    `${baseUrl}/api/tree/${encodeURIComponent(treeId)}/model3d${qs}`,
+    'GET',
+  );
 }
 
 /**

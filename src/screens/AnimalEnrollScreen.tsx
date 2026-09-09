@@ -25,7 +25,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   Platform,
-  Alert,
   ScrollView,
   ActivityIndicator,
   TextInput,
@@ -43,7 +42,7 @@ import {
 } from '../services/animalReIDService';
 import { withPhotoSave } from '../services/mediaSavePermission';
 import { useBottomActionPadding } from '../hooks/useBottomActionPadding';
-import { showError, showInfo, showWarning } from '../utils/alert';
+import { showError, showInfo, showSuccess, showWarning } from '../utils/alert';
 import { t, tf } from '../i18n';
 import { speciesLabel } from '../constants/animalSpecies';
 
@@ -154,20 +153,25 @@ const AnimalEnrollScreen: React.FC = () => {
   // ── Navigate sau thành công ───────────────────────────────────────────────
   const handleSuccess = useCallback(
     (animalDid: string) => {
-      Alert.alert(
+      showSuccess(
         t('Đăng ký thành công'),
         tf('Đã đăng ký {loai} vào hệ thống.', { loai: speciesLabel(species) }),
-        [
-          {
-            text: t('Xem hồ sơ'),
-            onPress: () => navigation.navigate('AnimalDetail', { animalDid }),
-          },
-          {
-            text: 'OK',
-            onPress: () => navigation.goBack(),
-          },
-        ],
-        { cancelable: false },
+        {
+          // Cả hai nút đều CÓ việc, nên cả hai phải là nút thật. Nút 'cancel' của
+          // hộp thoại này không phải "bỏ qua" — nó là "xong rồi, quay lại" — nên
+          // nó vẫn mang `onPress`, và bấm ra ngoài cũng chạy đúng việc đó.
+          actions: [
+            {
+              text: t('Xem hồ sơ'),
+              onPress: () => navigation.navigate('AnimalDetail', { animalDid }),
+            },
+            {
+              text: 'OK',
+              style: 'cancel',
+              onPress: () => navigation.goBack(),
+            },
+          ],
+        },
       );
     },
     [navigation, species],
@@ -209,24 +213,26 @@ const AnimalEnrollScreen: React.FC = () => {
           // Chưa nối cờ ép tạo (`force`) — cửa đó vừa mở phía máy chủ, chờ bản của họ
           // lên rồi mới nối, và khi nối thì cho xem con trùng TRƯỚC rồi mới cho ép.
           const similar = res.error?.similarAnimalDid;
-          Alert.alert(
+          showWarning(
             t('Cá thể có thể đã tồn tại'),
             detail + '\n\n' + (similar
               ? t('Mở hồ sơ con máy chủ cho là trùng để đối chiếu.')
               : t('Mở sổ vật nuôi của vườn này để xem con đó đã có chưa.'))
               + ' ' + t('Ảnh vừa chụp vẫn giữ nguyên.'),
-            [
-              { text: t('Để sau'), style: 'cancel' },
-              similar
-                ? {
-                    text: t('Xem con trùng'),
-                    onPress: () => navigation.navigate('AnimalDetail', { animalDid: similar }),
-                  }
-                : {
-                    text: t('Mở sổ vật nuôi'),
-                    onPress: () => navigation.navigate('AnimalManagement', { farmId }),
-                  },
-            ],
+            {
+              actions: [
+                { text: t('Để sau'), style: 'cancel' },
+                similar
+                  ? {
+                      text: t('Xem con trùng'),
+                      onPress: () => navigation.navigate('AnimalDetail', { animalDid: similar }),
+                    }
+                  : {
+                      text: t('Mở sổ vật nuôi'),
+                      onPress: () => navigation.navigate('AnimalManagement', { farmId }),
+                    },
+              ],
+            },
           );
           return;
         }

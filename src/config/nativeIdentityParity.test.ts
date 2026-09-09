@@ -165,6 +165,43 @@ describe('codemagic — không luồng nào dựng vỏ app này với chữ app
     expect(khai.filter((b) => !hopLe.has(b))).toEqual([]);
   });
 
+  it('mọi APP_DISPLAY_NAME khai trong tệp đều là displayName của một app có thật', () => {
+    // Chiều `BUNDLE_ID` đã được bài ngay trên canh. Chiều `APP_DISPLAY_NAME` thì
+    // KHÔNG — đo được: đổi `APP_DISPLAY_NAME: Aladin` thành một chuỗi bất kỳ và
+    // chạy trọn bộ kiểm thì 98/98 vẫn xanh. Chỗ duy nhất bắt được là bước "Soát
+    // danh tính app iOS" trong `codemagic.yaml`, và bước đó chỉ chạy trên runner
+    // macOS tính tiền, sau khi PR đã merge. Bài này kéo phép bắt về tầng PR.
+    const hopLe = new Set(Object.values(FLAVORS).map((f) => f.appName));
+    const khai = [...CODEMAGIC.matchAll(/^\s*APP_DISPLAY_NAME:\s*(.+?)\s*$/gm)].map((m) => m[1]);
+    expect(khai.length).toBeGreaterThan(0);
+    expect(khai.filter((n) => !hopLe.has(n))).toEqual([]);
+  });
+
+  it('BUNDLE_ID và APP_DISPLAY_NAME trong cùng một luồng phải cùng nói về MỘT app', () => {
+    // Hai bài trên soi từng trường riêng, nên `BUNDLE_ID: vn.aladinapp` đứng cạnh
+    // `APP_DISPLAY_NAME: CheckFarm` vẫn qua được cả hai — mỗi giá trị đều "của một
+    // app có thật", chỉ là hai app khác nhau. Đó đúng là hình dạng của bản dựng
+    // mang vỏ app này với chữ app kia, tức thứ khối `describe` này mang tên.
+    // Đọc thẳng `instance.json` chứ không dùng `INSTANCES` (bảng TypeScript, không
+    // mang mã gói) hay `FLAVORS` (chỉ mang mã gói Android). Mã gói iOS của Aladin
+    // KHÁC mã Android (`vn.aladinapp` vs `com.aladincontract.company`), nên bảng
+    // thiếu một chiều là bài này đo hụt đúng app đang chạy.
+    const tenTheoBundle: Record<string, string> = {};
+    for (const ma of readdirSync(THU_MUC_APP)) {
+      const tep = join(THU_MUC_APP, ma, 'instance.json');
+      if (!existsSync(tep)) continue;
+      const khai = JSON.parse(readFileSync(tep, 'utf8'));
+      if (khai.ios?.bundleId) tenTheoBundle[khai.ios.bundleId] = khai.displayName;
+      tenTheoBundle[khai.android.applicationId] = khai.displayName;
+    }
+    // Ca đối chứng: bảng dựng được và có cả hai chiều mã gói. Bảng rỗng thì vòng
+    // lặp dưới không chạy lần nào và bài này xanh mà không đo gì.
+    expect(Object.keys(tenTheoBundle).length).toBeGreaterThanOrEqual(3);
+    const cap = [...CODEMAGIC.matchAll(/BUNDLE_ID:\s*(\S+)\n\s*APP_DISPLAY_NAME:\s*(.+?)\s*$/gm)];
+    expect(cap.length).toBeGreaterThan(0);
+    for (const m of cap) expect(`${m[1]} → ${m[2]}`).toBe(`${m[1]} → ${tenTheoBundle[m[1]]}`);
+  });
+
   it('lệnh gradle luôn gọi flavor tường minh', () => {
     // `assembleDebug` / `bundleRelease` (không flavor) dựng CẢ HAI app.
     expect(CODEMAGIC).not.toMatch(/gradlew\s+assembleDebug\b/);
@@ -516,16 +553,88 @@ describe('Firebase iOS — không khởi bằng cấu hình của app khác', ()
     expect(chet).toEqual([]);
   });
 
-  it('tệp Firebase đang có trong kho đúng là của Aladin, không phải app khác', () => {
-    // Đo để lời tuyên ở chú thích không trôi: tệp trong kho hôm nay khai mã gói
-    // của Aladin. Ngày ai đó bỏ tệp của app khác vào đây, bài này gọi tên ra.
-    for (const p of [
-      'ios/GoogleService-Info.plist',
-      'ios/LocalPods/ScannerModule/Resources/GoogleService-Info.plist',
-    ]) {
-      if (!existsSync(join(GOC, p))) continue;
-      expect(doc(p)).toContain('com.aladin.orilife');
+  it('không tệp Firebase nào nằm ở chỗ chép vào gói của MỌI app', () => {
+    // Bài trước ở đây đo rằng tệp Firebase trong kho "đúng là của Aladin". Phép
+    // đo đó nhận sai tiền đề: tệp ấy khai một mã gói NHÁP của dev
+    // (`com.aladin` + `.orilife`), còn app Aladin iOS chạy bằng `vn.aladinapp`.
+    // Hai chuỗi không bằng nhau ⇒ `configureFirebaseIfOwned` luôn trượt ⇒
+    // Firebase iOS chưa từng khởi. Bài kiểm cũ canh cho một tệp CHẾT nằm yên,
+    // và đọc như thể nó đang sống.
+    //
+    // Đã gỡ tệp đó (04/09/2026) cùng dòng `s.resources` trong podspec. Bài này
+    // canh nó đừng quay lại: `s.resources` chép vào gói của MỌI bản dựng, nên
+    // một tệp Firebase đặt ở đó là tệp của một pháp nhân đi vào gói của mọi
+    // pháp nhân còn lại.
+    const PODSPEC = doc('ios/LocalPods/ScannerModule/ScannerModule.podspec');
+    const dongResources = PODSPEC.split('\n').filter((l) => /^\s*s\.resources\s*=/.test(l));
+    expect(dongResources.length).toBe(1);
+    expect(dongResources[0]).not.toContain('GoogleService-Info');
+
+    expect(
+      existsSync(join(GOC, 'ios/LocalPods/ScannerModule/Resources/GoogleService-Info.plist')),
+    ).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MÃ GÓI NHÁP — cổng chặn toàn kho.
+//
+// `com.aladin` + `.orilife` là mã gói một dev tạo lúc dựng thử, KHÔNG phải mã
+// của app nào đang sống. Chủ nhân chốt 04/09/2026: chỉ còn hai app, và mã gói
+// của chúng là `com.aladincontract.company` (Aladin, Android) và
+// `com.checkfarm.app` (CheckFarm) — cộng `vn.aladinapp` cho Aladin bản iOS, đã
+// lên App Store từ v1.0 nên KHÔNG đổi được.
+//
+// Vì sao cần cổng chứ không chỉ cần một lượt xoá: mã nháp ấy sống lâu được vì
+// nó nằm trong tệp SINH RA (`google-services.json`, `GoogleService-Info.plist`)
+// và trong VÍ DỤ ở tài liệu — hai chỗ không ai đọc lại. Một lượt xoá tay không
+// ngăn lượt tải tệp mới về mang nó trở lại. Cổng thì ngăn.
+//
+// Cổng này ĐỎ sau ngày ai đó tải lại `google-services.json` mà app iOS nháp vẫn
+// còn trong console Firebase `aladin-3599c`. Đó là câu trả lời đúng, không phải
+// phiền nhiễu: nó nói rằng chỗ phải dọn nằm ở console, không nằm trong kho.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('mã gói nháp không được quay lại kho', () => {
+  // Ghép chuỗi, KHÔNG viết liền: viết liền thì chính tệp này trúng cổng của nó.
+  const DRAFT_BUNDLE_ID = ['com', 'aladin', 'orilife'].join('.');
+
+  const SKIPPED_DIRS = new Set([
+    'node_modules',
+    '.git',
+    // Thư từ giữa các nhà agent. Đó là bản GHI CHÉP một sự việc — thư kể lại
+    // rằng mã nháp từng có ở đâu. Cấm nhắc tới nó trong bản ghi chép là xoá
+    // luôn lời giải thích vì sao phải xoá. Cổng này canh MÃ và tệp cấu hình.
+    '_Agents',
+    'Pods',
+    'build',
+    '.gradle',
+    '.expo',
+    'coverage',
+    'DerivedData',
+    'target',
+  ]);
+  // Tệp nhị phân: đọc bằng utf8 ra rác, và không ai gõ mã gói vào ảnh.
+  const SKIPPED_EXTENSIONS =
+    /\.(png|jpg|jpeg|gif|webp|ico|icns|tflite|pt|onnx|ttf|otf|woff2?|zip|jar|aar|apk|aab|ipa|keystore|jks|p12|mp4|mov|mp3|wav|pdf|so|dylib|bin|lock)$/i;
+
+  const walk = (dir: string): string[] =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+      if (e.isDirectory()) return SKIPPED_DIRS.has(e.name) ? [] : walk(join(dir, e.name));
+      return SKIPPED_EXTENSIONS.test(e.name) ? [] : [join(dir, e.name)];
+    });
+
+  it('không tệp nào trong kho còn nhắc mã gói nháp', () => {
+    const hits: string[] = [];
+    for (const file of walk(GOC)) {
+      let content: string;
+      try {
+        content = readFileSync(file, 'utf8');
+      } catch {
+        continue; // tệp không đọc được bằng utf8 — bỏ, không phải chỗ gõ mã gói
+      }
+      if (content.includes(DRAFT_BUNDLE_ID)) hits.push(file.slice(GOC.length + 1));
     }
+    expect(hits).toEqual([]);
   });
 });
 

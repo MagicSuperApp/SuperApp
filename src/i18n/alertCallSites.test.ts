@@ -9,19 +9,28 @@
  *
  * Bài kiểm từ điển hiện có (`phrases.test.ts`) không bắt được ca này: nó đo phía
  * TỪ ĐIỂN — mỗi chuỗi nguồn chỉ được có một bản dịch. Chuỗi nằm trong từ điển mà
- * KHÔNG chỗ nào gọi `t()` thì với nó vẫn hoàn hảo. Thật ra ba chuỗi của hộp thoại
- * Đổi tên ('Huỷ' · 'Lưu' · 'Nhập tên mới...') đã nằm sẵn trong từ điển với đủ
- * en/zh/ja từ lâu, chỉ là chưa ai gọi tới — dịch rồi mà chưa từng hiện ra.
+ * KHÔNG chỗ nào gọi `t()` thì với nó vẫn hoàn hảo.
  *
  * Nên cổng phải đặt ở phía CHỖ GỌI. Đây là chỗ không đi vòng qua được bằng cách
  * thêm một mục từ điển nữa.
  *
- * ── Phạm vi CỐ Ý hẹp ─────────────────────────────────────────────────────────
- * Chỉ canh `Alert.alert(` — hôm nay toàn kho có 0 vi phạm, nên bất biến này bật
- * lên được ngay. `showError`/`showWarning` KHÔNG nằm trong phạm vi: chúng còn
- * hàng chục chỗ gọi truyền chuỗi trần từ trước, bật cổng cho chúng là đỏ cả kho
- * mà chẳng sửa được gì trong một lượt. Đó là dòng riêng, không phải lý do để
- * hoãn cổng này.
+ * ── Bất biến MỚI: app không dùng `Alert` của hệ điều hành nữa ────────────────
+ * Toàn bộ 37 chỗ gọi `Alert.alert` đã chuyển sang popup của app
+ * (`utils/alert` → `components/AlertPopup`). Hai hộp thoại đó KHÔNG tương đương
+ * nhau về hình thức: một cái do iOS/Android vẽ, một cái do app vẽ. Để lẫn cả hai
+ * thì cùng một ứng dụng có hai kiểu hộp thoại, và người dùng gặp cái nào là tuỳ
+ * màn hình họ đang đứng.
+ *
+ * Bất biến này thay cho bất biến cũ ("`Alert.alert` phải đi qua `t()`") vì nó
+ * MẠNH HƠN: không còn `Alert.alert` nào thì cũng không còn chỗ nào để quên `t()`.
+ * Và nó bịt luôn lỗ hổng của bản cũ — biểu thức cũ chỉ soi ĐÚNG MỘT DÒNG, nên
+ * `Alert.alert(` xuống dòng rồi mới tới chuỗi trần thì lọt (đúng ca
+ * `MyDevicesScreen` đã lọt suốt: `'Gỡ máy này?'` chưa bao giờ đi qua `t()`).
+ *
+ * PHẠM VI: chỉ `Alert.alert`. `showError`/`showWarning`… KHÔNG nằm trong phạm vi
+ * canh chuỗi trần: chúng còn hàng chục chỗ gọi truyền chuỗi trần từ trước, bật
+ * cổng cho chúng là đỏ cả kho mà chẳng sửa được gì trong một lượt. Đó là dòng
+ * riêng, không phải lý do để hoãn cổng này.
  */
 
 import { readdirSync, readFileSync, statSync } from 'fs';
@@ -38,17 +47,25 @@ function walk(dir: string, out: string[] = []): string[] {
   return out;
 }
 
-/** `Alert.alert(` mà đối số đầu mở ngay bằng một chuỗi trần (nháy đơn/kép/ngược). */
-const BARE_FIRST_ARG = /Alert\s*\.\s*alert\(\s*['"`]/;
+/** Bất kỳ lượt gọi `Alert.alert(` nào — dù đối số đầu nằm ở dòng nào. */
+const NATIVE_ALERT = /Alert\s*\.\s*alert\s*\(/;
 
-describe('chỗ gọi Alert.alert', () => {
-  it('không chỗ nào truyền chuỗi trần làm tiêu đề — phải đi qua t()', () => {
+/**
+ * `utils/alert.ts` là NƠI ĐỊNH NGHĨA popup của app; nó nói về hộp thoại chứ
+ * không gọi hộp thoại của hệ điều hành. Loại trừ theo đường dẫn, không theo nội
+ * dung, để không ai "xin phép" bằng cách thêm một chú thích.
+ */
+const MIEN_TRU = ['utils\\alert.ts', 'utils/alert.ts'];
+
+describe('hộp thoại trong app', () => {
+  it('không màn nào gọi Alert của hệ điều hành — dùng popup của app', () => {
     const viPham: string[] = [];
 
     for (const file of walk(SRC)) {
+      if (MIEN_TRU.some((m) => file.endsWith(m))) continue;
       const lines = readFileSync(file, 'utf8').split('\n');
       lines.forEach((line, i) => {
-        if (BARE_FIRST_ARG.test(line)) {
+        if (NATIVE_ALERT.test(line)) {
           viPham.push(`${file.slice(SRC.length + 1)}:${i + 1}  ${line.trim()}`);
         }
       });

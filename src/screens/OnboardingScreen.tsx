@@ -35,6 +35,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../theme';
 import { WORK_THEME } from '../theme';
 import { useTk } from '../i18n/keys';
+import { useLanguage } from '../i18n/useLanguage';
 import { DEFAULT_INSTANCE } from '../config/instance.config';
 import { markOnboardingSeen } from '../utils/onboardingFlag';
 import { ALADIN_WEB_URL } from '../utils/webLink';
@@ -72,6 +73,9 @@ const OnboardingScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const tk = useTk();
+  // Khẩu hiệu không đi qua `tk` (nó là danh tính instance, không phải chuỗi dùng
+  // chung) nên phải tự đăng ký ngôn ngữ, không thì đổi ngôn ngữ xong câu vẫn cũ.
+  const lang = useLanguage();
   // Chặn bấm hai lần trong lúc đang ghi cờ — bấm đúp sẽ replace hai lần.
   const [leaving, setLeaving] = useState(false);
 
@@ -104,7 +108,7 @@ const OnboardingScreen: React.FC = () => {
             </View>
           </View>
           <Text allowFontScaling={false} style={styles.title}>{DEFAULT_INSTANCE.displayName}</Text>
-          <Text style={styles.tagline}>{tk('onboarding.tagline')}</Text>
+          <Text style={styles.tagline}>{DEFAULT_INSTANCE.tagline[lang]}</Text>
         </View>
 
         {/* ── Bốn khe module ────────────────────────────────────────────────── */}

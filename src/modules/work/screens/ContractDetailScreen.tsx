@@ -4,7 +4,7 @@
 
 import React, { useState } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet, TouchableOpacity, StatusBar, Alert, ActivityIndicator,
+  View, Text, ScrollView, StyleSheet, TouchableOpacity, StatusBar, ActivityIndicator,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -71,9 +71,9 @@ const ContractDetailScreen: React.FC = () => {
             const updated = await run(contract.id, btn.action, btn.body, contract.version);
             if (updated) setContract(updated);
             if (isWorkBackendEnabled()) reload();
-            else Alert.alert(t('Chế độ demo'), t('Cần backend AladinWork để thực thi bước này.'));
+            else showInfo(t('Chế độ demo'), t('Cần backend AladinWork để thực thi bước này.'));
           } catch (err) {
-            Alert.alert(t('Không thực hiện được'), pledgeErrorMessage(err));
+            showError(t('Không thực hiện được'), pledgeErrorMessage(err));
           }
         },
     });

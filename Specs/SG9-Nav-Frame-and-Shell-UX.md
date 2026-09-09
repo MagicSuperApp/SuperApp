@@ -12,7 +12,7 @@
 | Persona tab (§2) | [`resolveVisibleTabs.ts`](../src/navigation/resolveVisibleTabs.ts) · [`useVisibleTabs.ts`](../src/navigation/useVisibleTabs.ts) |
 | Trace quét (§3) | [`traceScan.ts`](../src/navigation/traceScan.ts) · [`TraceScanScreen.tsx`](../src/screens/TraceScanScreen.tsx) |
 | Cổng xoè (§4) | [`resolveGateItems.ts`](../src/navigation/resolveGateItems.ts) |
-| SubHome (§5) | [`SubHomeFrame.tsx`](../src/navigation/SubHomeFrame.tsx) · [`subHomeLabels.ts`](../src/navigation/subHomeLabels.ts) |
+| SubHome (§5) | ⛔ **ĐÃ GỠ 31/08/2026** (`f07b4a5`) — hai tệp không còn tồn tại, xem §5.2 |
 | Navigator lõi | [`navigation/index.tsx`](../src/navigation/index.tsx) · [`instance.config.ts`](../src/config/instance.config.ts) |
 | Home (§6) | [`HomeScreen.tsx`](../src/screens/HomeScreen.tsx) |
 | Checklist production | [`VersionChecklist.md`](../VersionChecklist.md) |
@@ -53,7 +53,7 @@ rồi khai route trong `instance.config.tabs` như các tab khác. KHÔNG sửa 
 | Khung | Cách vẽ |
 |---|---|
 | Tab dưới (`NavItemFrame`) | 2 dòng — EN đậm ở trên, quốc gia ở dưới |
-| SubHome (`SubHomeFrame`, cao ~40dp) | 1 dòng — `EN · quốc gia` |
+| SubHome (`SubHomeFrame`, cao ~40dp) — ⛔ đã gỡ, xem §5.2 | 1 dòng — `EN · quốc gia` |
 
 **Nguồn duy nhất**: `src/i18n/languages.ts`.
 
@@ -167,8 +167,25 @@ Nhầm lẫn cốt lõi trong đề xuất ban đầu: trộn "đổi app" (Serv
 - Ví dụ Chat (Chats/Calls/Pins/Docs): hiện *Trò chuyện · Gọi · Ghim* + ⌄(Tài liệu…). Farm (Vườn/Carbon/Cây/Chăm sóc): hiện *Vườn · Cây · Chăm sóc* + ⌄(Carbon…).
 - KHÔNG ẩn dụ "tab trình duyệt" (sai trên mobile).
 
-### 5.2 SubHome frame CHUẨN (song song NavItemFrame)
-Như tab dưới có `NavItemFrame`, SubHome có **`SubHomeFrame`** — nguồn duy nhất cho tab con:
+### 5.2 SubHome frame CHUẨN (song song NavItemFrame) — ⛔ ĐÃ GỠ KHỎI MÃ
+
+> **Trạng thái: hai tệp dưới đây KHÔNG còn tồn tại.** Gỡ ngày 31/08/2026, commit
+> `f07b4a5`, cùng lượt với ba tệp khác không có đường nào tới. Lý do ghi trong
+> chính commit đó, và nó đáng đọc trước khi ai định dựng lại:
+>
+> - `SubHomeFrame.tsx` — 251 dòng, **0 chỗ nhắc ở bất kỳ đâu khác**.
+> - `subHomeLabels.ts` — ngoài chính nó thì **chỉ bài kiểm dùng**.
+> - Lúc đó `subHomeLabels` có một bài kiểm canh nó trong `languages.test.ts` (bắt mọi
+>   tab con phải đủ nhãn ở mọi ngôn ngữ). Bài kiểm ấy xanh, đúng, và **canh một
+>   bảng không ai đọc** — nên mỗi lần thêm ngôn ngữ, người làm vẫn phải điền nhãn
+>   cho một khung chưa từng hiện lên màn hình. Phần canh đó gỡ cùng lượt;
+>   `languages.test.ts` vẫn còn và vẫn canh `navLabels`.
+>
+> Phần mô tả thiết kế bên dưới GIỮ NGUYÊN, vì nó là thứ cần đọc nếu có ngày dựng
+> lại — nhưng nó tả một thứ **chưa tồn tại**, không phải một thứ đang chạy. Không
+> giao việc "nối dây" cho ai dựa trên mục này.
+
+Như tab dưới có `NavItemFrame`, SubHome **đã từng có** `SubHomeFrame` — nguồn duy nhất cho tab con:
 - `src/navigation/subHomeLabels.ts` — `SUBHOME_FRAME: Record<appRoute, SubTab[]>`, mỗi `SubTab = {en, national{vi}, icon}` (cùng quy ước song ngữ, nhưng SubHome 1 dòng gọn: EN chuẩn, quốc gia là tooltip/ngữ cảnh — tiết kiệm cao).
 - `src/navigation/SubHomeFrame.tsx` — render khung thu gọn + chevron + dropdown. Thêm khu cho app con = clone 1 dòng `SubHomeFrame` cho route đó.
 - Top-3 hiển thị = `rank(subtabs, usage)`; phần dư vào dropdown. Ghim được (AsyncStorage `subhome_pinned_<app>`).
@@ -269,7 +286,7 @@ Thêm trục `luminance: 'day' | 'dim' | 'night'` cạnh `adaptive.ts` (đang lo
 | §2 Tab-bar persona-adaptive | **KHUNG ĐÃ CODE** (tsc sạch · 12 unit-test xanh) · ⚠ thích ứng runtime hiện **NO-OP** — `usage` chưa nối nguồn Work → mọi user thấy thanh TĨNH `Chat·Farm·Home·Work·Me` (`'farmer'`=`'new'` layout); ràng buộc "1 đổi/phiên + toast" là **seam ngủ** tới khi có slice usage | Tùng |
 | §3 Trace nút-quét | **ĐÃ CODE** (màn quét + nút Home header + mục cổng §4 + deep-link · tsc sạch · 7 unit-test xanh) · chờ test camera máy thật | Tùng |
 | §4 Cổng thống nhất (tái nút xoè Tùng, nâng z-order) | **ĐÃ CODE** cung = service thuần + **arc con 2 tầng (hành động nhanh)** + Trace nổi bật giữa · z-order ở root (tsc sạch · 8 unit-test xanh) · chờ test cử chỉ máy | Tùng |
-| §5 SubHome thu gọn + SubHomeFrame | **ĐÃ CODE** khung (tsc sạch · 10 unit-test xanh) · chờ wire vào màn app con | Tùng |
+| §5 SubHome thu gọn + SubHomeFrame | ⛔ **ĐÃ GỠ 31/08/2026** (`f07b4a5`) — khung từng dựng xong nhưng không nơi nào gọi, nên gỡ cùng ba tệp chết khác. **Không còn việc phải làm ở mục này.** Dựng lại thì bắt đầu từ §5.2. | — |
 | §6 Home tối giản | **BỎ số bịa xong** + ví/ProofChat THẬT · **LÀM NGAY PR kế** (không hoãn): gỡ carousel + lưới + hàng quick-action (cổng đã gánh; thêm "Quả" vào cổng) | Tùng chủ trì |
 | §7 react-native-screens | Spec xong · cần test máy | Tùng |
 | §8 Màu tươi + luminance | Spec xong · code chờ | Tùng |
@@ -281,8 +298,8 @@ Thêm trục `luminance: 'day' | 'dim' | 'night'` cạnh `adaptive.ts` (đang lo
 Mục này chốt CÁCH thi công (đã code) sao cho vừa bám spec vừa giữ navbar chuyên nghiệp, để review + mở rộng về sau không lệch.
 
 ### 10.1 Nguyên tắc UI/UX chuyên nghiệp (bất biến khi sửa)
-1. **Một nguồn sự thật / thêm = 1 dòng**: nhãn+icon nav (`navLabels.NAV_FRAME`), tab con (`subHomeLabels.SUBHOME_FRAME`), mục cổng + hành động nhanh (`resolveGateItems`: `SERVICE_TINT`/`SUB_ACTIONS`). Thêm dịch vụ/hành động KHÔNG sửa navigator, KHÔNG sửa component vẽ.
-2. **Tách LOGIC THUẦN khỏi VẼ**: mọi quyết định (persona → ô hiển thị, xếp hạng tab con, nội dung cổng, phân giải mã quét) là hàm thuần, **có unit-test** (`resolveVisibleTabs` · `subHomeLabels` · `resolveGateItems` · `traceScan` — 37 test). Component chỉ nhận kết quả rồi vẽ → dễ đổi hình mà không sợ vỡ logic.
+1. **Một nguồn sự thật / thêm = 1 dòng**: nhãn+icon nav (`navLabels.NAV_FRAME`), tab con (`subHomeLabels.SUBHOME_FRAME` — đã gỡ, xem §5.2), mục cổng + hành động nhanh (`resolveGateItems`: `SERVICE_TINT`/`SUB_ACTIONS`). Thêm dịch vụ/hành động KHÔNG sửa navigator, KHÔNG sửa component vẽ.
+2. **Tách LOGIC THUẦN khỏi VẼ**: mọi quyết định (persona → ô hiển thị, nội dung cổng, phân giải mã quét) là hàm thuần, **có unit-test** — `resolveVisibleTabs` · `resolveGateItems` · `traceScan`. (`subHomeLabels` từng nằm trong danh sách này, đã gỡ — xem §5.2.) Số test không ghi ở đây vì nó trôi mà không ai báo; đếm bằng `npx jest src/navigation/`. Component chỉ nhận kết quả rồi vẽ → dễ đổi hình mà không sợ vỡ logic.
 3. **KHÔNG hardcode màu**: mọi màu qua **brand token** (`*_THEME`, `COLORS`, `withAlpha`) — sẵn sàng cho §8 (màu tươi + luminance) đổi token là navbar tự đổi. Ngoại lệ còn lại (trắng/đen trong overlay xoè, màn quét) là kế thừa mẫu cũ, gom về token khi làm §8.
 4. **Ổn định > "thông minh"**: thanh persona **đóng băng theo phiên**, tối đa 1 đổi/phiên + toast (khử "rối/lạc khi đổi vai", §2.3). User **ghim đè** tất cả.
 5. **Cân đối hình học**: nút Home luôn rơi đúng khuyết-tròn (`cx` tính theo số ô resolver trả). Frame cố định kích thước (`NAV_FRAME_DIMS`) để mọi ô cân nhau; `allowFontScaling=false` cho nhãn 2 dòng khỏi vỡ.
@@ -305,7 +322,7 @@ Giữ đúng "linh hồn" nút xoè cũ (kéo=xoè · giữ=ghim · đường n�
 | Thanh persona | `navigation/resolveVisibleTabs.ts` · `useVisibleTabs.ts` | chọn ô hiển thị + đóng băng phiên |
 | Cổng xoè | `navigation/resolveGateItems.ts` · `index.tsx`(CurvedTabBar/Overlay) | mục cổng + arc con 2 tầng |
 | Quét truy xuất | `navigation/traceScan.ts` · `screens/TraceScanScreen.tsx` | phân giải mã + màn quét |
-| SubHome | `navigation/subHomeLabels.ts` · `SubHomeFrame.tsx` | khung tab-con thu gọn |
+| SubHome | ⛔ đã gỡ (`f07b4a5`) | khung tab-con thu gọn — xem §5.2 |
 | Home | `screens/HomeScreen.tsx` | bỏ số bịa, nối ví/chat thật |
 
 > Quy ước review: sửa HÌNH → chạm component vẽ; sửa HÀNH VI/NỘI DUNG → chạm hàm thuần + cập-nhật test. Không trộn 2 việc trong 1 chỗ.

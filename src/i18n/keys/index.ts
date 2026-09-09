@@ -27,6 +27,7 @@ import { TRACE_STRINGS } from './trace';
 import { MAP_STRINGS } from './map';
 import { ONBOARDING_STRINGS } from './onboarding';
 import { SCAN_STRINGS } from './scan';
+import { IDENTITY_STRINGS } from './identity';
 import React from 'react';
 
 /** Một khoá → bản dịch đủ 4 ngôn ngữ. Thiếu là `tsc` báo, không phải người dùng. */
@@ -39,13 +40,15 @@ const REGISTRY: KeyMap = {
   ...MAP_STRINGS,
   ...ONBOARDING_STRINGS,
   ...SCAN_STRINGS,
+  ...IDENTITY_STRINGS,
 };
 
 export type StringKey =
   | keyof typeof TRACE_STRINGS
   | keyof typeof MAP_STRINGS
   | keyof typeof ONBOARDING_STRINGS
-  | keyof typeof SCAN_STRINGS;
+  | keyof typeof SCAN_STRINGS
+  | keyof typeof IDENTITY_STRINGS;
 
 /**
  * Khoá → chữ theo ngôn ngữ đang chọn.
@@ -85,7 +88,7 @@ export function allKeys(): string[] {
   return Object.keys(REGISTRY);
 }
 
-export { TRACE_STRINGS, MAP_STRINGS, ONBOARDING_STRINGS };
+export { TRACE_STRINGS, MAP_STRINGS, ONBOARDING_STRINGS, IDENTITY_STRINGS };
 
 /**
  * TOÀN BỘ bộ khoá đã gộp — để bài kiểm soi được MỌI bộ, không riêng bộ nào.

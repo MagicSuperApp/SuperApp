@@ -244,7 +244,11 @@ export const TRACE_STRINGS = {
   },
   'trace.meta.voice': { vi: 'Nói thành lời', en: 'Say it out loud', zh: '语音记录', ja: '声で残す' },
   'trace.meta.save': { vi: 'Lưu thông tin', en: 'Save', zh: '保存', ja: '保存' },
-  'trace.meta.saved': { vi: 'Đã lưu', en: 'Saved', zh: '已保存', ja: '保存済み' },
+  // "trên máy này" là phần KHÔNG được bỏ: `saveTreeMetadata` chỉ ghi AsyncStorage,
+  // không có lượt gọi mạng nào. Cửa `POST /api/tree/{tree_id}/profile` chưa lên máy
+  // chủ. Câu "Đã lưu" trần khiến người dùng tin dữ liệu đã ra khỏi máy, và họ chỉ
+  // biết là không khi đổi máy — lúc đó đã mất.
+  'trace.meta.saved': { vi: 'Đã lưu lên máy chủ', en: 'Saved to the server', zh: '已保存到服务器', ja: 'サーバーに保存しました' },
   'trace.health.healthy': { vi: 'Khoẻ mạnh', en: 'Healthy', zh: '健康', ja: '健全' },
   'trace.health.flowering': { vi: 'Đang ra hoa', en: 'Flowering', zh: '开花中', ja: '開花中' },
   'trace.health.fruiting': { vi: 'Đang có quả', en: 'Fruiting', zh: '结果中', ja: '結実中' },
@@ -301,7 +305,19 @@ export const TRACE_STRINGS = {
 
   'trace.meta.dateIncomplete': { vi: 'Nhập đủ ngày/tháng/năm', en: 'Enter day, month and year', zh: '请填写完整日期', ja: '年月日をすべて入力' },
   'trace.meta.dateInvalid': { vi: 'Ngày không có thật', en: 'That date does not exist', zh: '日期不存在', ja: '存在しない日付です' },
-  'trace.meta.savedBody': { vi: 'Đã cập nhật thông tin cây.', en: 'Tree details updated.', zh: '已更新果树信息。', ja: '木の情報を更新しました。' },
+  // KHÔNG hứa "đổi máy vẫn còn" ở đây. Dữ liệu có thật trên máy chủ, nhưng app
+  // chưa đọc lại: `getTreeProfile` (`services/treeProfileService.ts`) hiện KHÔNG
+  // nơi nào gọi, và `loadTrees` chỉ nạp metadata từ `AsyncStorage`. Máy mới thì
+  // màn hình trống. Câu hứa một cơ chế chưa có là một cái vỏ im lặng bằng chữ.
+  'trace.meta.savedBody': { vi: 'Thông tin cây đã lưu lên máy chủ.', en: 'Tree details are saved to the server.', zh: '果树信息已保存到服务器。', ja: '木の情報をサーバーに保存しました。' },
+  // Ghi được trên máy, chưa lên máy chủ. Không nói "sẽ tự đồng bộ" — chưa có hàng
+  // đợi nào làm việc đó, nên câu phải chỉ đúng việc người dùng cần tự làm.
+  'trace.meta.savedLocalOnly': { vi: 'Mới lưu trên máy này', en: 'Saved on this device only', zh: '仅保存在本机', ja: 'この端末にのみ保存' },
+  'trace.meta.savedLocalOnlyBody': { vi: 'Chữ bạn vừa gõ không mất — máy đã giữ lại. Nhưng chưa gửi được lên máy chủ. Khi nào có sóng, mở lại mục này rồi bấm Lưu thêm một lần.', en: 'Nothing you typed was lost — this device kept it. It has not reached the server yet. When you are back online, open this tab and tap Save once more.', zh: '您输入的内容没有丢失——本机已保存，但尚未上传到服务器。恢复网络后请重新打开此页并再次点击保存。', ja: '入力した内容は失われていません — この端末に保存済みです。ただしサーバーにはまだ届いていません。通信が回復したらこの画面を開き、もう一度保存を押してください。' },
+  // Phần ghi âm KHÔNG lên máy chủ, và câu nói ra điều đó là câu của MÁY CHỦ
+  // (`voice_memo.reason`) chứ không phải khoá này. Khoá này chỉ là chỗ dựa khi
+  // máy chủ không nói gì — xem `TreeMetadataTab.handleSave`.
+  'trace.meta.savedVoiceLocal': { vi: 'Riêng đoạn ghi âm chỉ nằm trên máy này — gỡ ứng dụng hoặc đổi máy là mất.', en: 'The voice memo stays on this device only — it is lost if you uninstall or switch devices.', zh: '语音备忘仅保存在本机——卸载应用或更换设备后将丢失。', ja: '音声メモはこの端末にのみ残ります — アプリを削除するか端末を変えると失われます。' },
   'trace.meta.saveFail': { vi: 'Chưa lưu được', en: 'Could not save', zh: '保存失败', ja: '保存できませんでした' },
   'trace.meta.saveFailBody': { vi: 'Chưa lưu được thông tin. Bạn thử lại giúp nhé.', en: 'The details were not saved. Please try again.', zh: '信息未能保存，请重试。', ja: '保存できませんでした。もう一度お試しください。' },
 

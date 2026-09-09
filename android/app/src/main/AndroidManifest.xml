@@ -64,13 +64,23 @@
         </intent-filter>
       </activity>
 
-      <activity
-        android:name=".FarmDetailActivity"
-        android:label="@string/app_name"
-        android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
-        android:launchMode="singleTop"
-        android:windowSoftInputMode="adjustResize"
-        android:exported="true" />
+      <!--
+        MỘT activity, và đó là chủ ý — đừng thêm activity thứ hai để mở một màn React.
+
+        Ở đây từng có `.FarmDetailActivity`: một Activity nạp ROOT REACT THỨ HAI qua
+        `ReactRootView` riêng. Root đó dựng `Stack.Navigator` của chính nó và KHÔNG đi qua
+        `AuthGate` như navigator chính — tức nó là lối vào app không có cổng phiên. Nó cũng
+        không có nơi gọi nào: `startActivity` = 0 tệp trên toàn `android/**`.
+
+        Vòng vá trước hạ nó xuống `exported="false"`. Đóng cửa ngoài chặn được app khác trên
+        cùng máy gọi vào, nhưng KHÔNG chạm cái gốc: root React thứ hai vẫn còn, vẫn nằm ngoài
+        `AuthGate`, và vẫn nằm ngoài lưới chống-trắng-màn ở `index.js`. Cửa đóng thì không ai
+        đi qua được, nhưng nó vẫn là một cửa, và cửa nào cũng có ngày ai đó mở lại.
+
+        Màn `FarmDetail` KHÔNG mất: nó là một route bình thường của navigator chính
+        (`src/navigation/registry.ts`), và mọi nơi gọi đều đi bằng `navigate('FarmDetail')`.
+        Ngày cần mở nó từ mã native: gửi một sự kiện vào root đang chạy, đừng dựng root mới.
+      -->
     </application>
     
 </manifest>

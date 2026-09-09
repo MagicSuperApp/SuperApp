@@ -5,7 +5,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  View, Text, StyleSheet, TextInput, TouchableOpacity, StatusBar, ScrollView, ActivityIndicator, Alert,
+  View, Text, StyleSheet, TextInput, TouchableOpacity, StatusBar, ScrollView, ActivityIndicator, 
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
@@ -66,7 +66,7 @@ const GuardianScreen: React.FC = () => {
             await removeGuardian(g.did);
             await persist(list.filter((x) => x.did !== g.did));
           } catch (e) {
-            Alert.alert(t('Gỡ thất bại'), e instanceof Error ? e.message : t('Thử lại.'));
+            showError(t('Gỡ thất bại'), e instanceof Error ? e.message : t('Thử lại.'));
           }
         },
     });

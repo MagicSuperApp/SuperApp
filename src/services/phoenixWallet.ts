@@ -200,13 +200,3 @@ export async function signAndSubmit(preview: TxPreview): Promise<SignedTxResult>
     submittedAt: Date.now(),
   };
 }
-
-/** Cờ tiện cho UI: ví đã có thể dùng chưa (cờ build-time bật + có khoá trên máy). */
-export async function isWalletReady(): Promise<boolean> {
-  if (!isPhoenixWalletEnabled()) return false;
-  try {
-    return await isKeypairEnrolled();
-  } catch {
-    return false;
-  }
-}

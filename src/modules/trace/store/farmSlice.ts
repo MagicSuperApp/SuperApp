@@ -9,6 +9,11 @@ import { ORILIFE_BASE } from '../../../services/orilifeBase';
 import { listFarms } from '../../../services/farmService';
 import { getTrees, mapTreeInfoToUI } from '../../../services/treeReIDService';
 import { ensureOrilifeToken } from '../../../services/orilifeDidAuth';
+import {
+  saveTreeProfile,
+  buildTreeProfileBody,
+  type VoiceMemoVerdict,
+} from '../../../services/treeProfileService';
 import { logout, logoutUser } from '../../../store/userSlice';
 
 // AsyncStorage key prefix for tree metadata (build 49 spec § 3).
@@ -156,12 +161,87 @@ export const loadTrees = createAsyncThunk(
   }
 );
 
+/**
+ * Ghi hồ sơ sinh trưởng của cây — thử máy chủ, nhưng KHÔNG bao giờ đánh rơi chữ
+ * người dùng vừa gõ.
+ *
+ * Hàm này đã đi qua hai lần sai ngược chiều nhau, nên chép lại cả hai:
+ *
+ * Sai thứ nhất — chỉ ghi `AsyncStorage` rồi báo "Đã lưu". Thao tác đúng là xong,
+ * nhưng dữ liệu chỉ nằm trên một cái máy; gỡ ứng dụng là mất, mà người dùng không
+ * có cách nào biết. Đó là một cái vỏ im lặng.
+ *
+ * Sai thứ hai — vá bằng cách bắt máy chủ trả 200 mới ghi cục bộ. Nó gỡ được cái vỏ
+ * im lặng và dựng lên một cái tệ hơn cho đúng người dùng của app này: nông dân đứng
+ * dưới gốc cây, 3G rớt, gõ giống + tuổi + ghi chú, bấm Lưu, và chữ vừa gõ không nằm
+ * ở đâu cả. `Specs/PRINCIPLE-independent-feature.md:156` xếp đúng hình dạng đó vào
+ * bảng CẤM TUYỆT ĐỐI ("Server-required validation ⟹ mất mạng = mất app"), và
+ * `Platform-Feat-Spec.md:224` để F3.3 offline-first ở mức **Must**.
+ *
+ * Nay: **ghi cục bộ gần như luôn luôn, và nói thật cái gì đã lên máy chủ.** Chỉ MỘT
+ * lý do từ chối — `validation_error`, tức máy chủ nói chính dữ liệu này sai. Ghi
+ * cục bộ một giá trị máy chủ đã bác chỉ để lát nữa hai bên chọi nhau. Mọi lý do
+ * khác (mất sóng, quá hạn chờ, máy chủ bận, máy chủ hỏng, phiên hết hạn) đều KHÔNG
+ * phải lỗi của chữ vừa gõ, nên chữ đó được giữ và `pending` mang lý do ra màn.
+ *
+ * `pending` KHÔNG phải một hàng đợi đồng bộ — chưa có cái đó. Nó là một dữ kiện:
+ * "trên máy có, trên máy chủ chưa". Màn phải nói đúng ngần ấy, đừng hứa app sẽ tự
+ * gửi lại — không mã nào làm việc đó.
+ *
+ * Cửa `POST /api/tree/{tree_id}/profile` đã sống trên máy sản xuất — đo 2026-09-08
+ * bằng hai cực: đường thật trả 401 (có cửa, đòi đăng nhập), đường bịa trả 404.
+ *
+ * Ba trạng thái "vắng / null / giá trị" của từng trường do `buildTreeProfileBody`
+ * dựng — xem `services/treeProfileService.ts`. Ở đây chỉ cần biết một điều: thân
+ * gửi lên KHÁC đối tượng lưu trên máy, và nó phải khác.
+ *
+ * Ghi âm KHÔNG lên máy chủ (chưa có đường nhận tệp). Máy chủ tự nói ra điều đó
+ * trong `voice_memo.reason` — câu tiếng Việt dành cho người dùng — và hàm này
+ * chuyển nguyên văn ra cho màn, không diễn giải lại.
+ */
 export const saveTreeMetadata = createAsyncThunk(
   'farm/saveTreeMetadata',
-  async (input: { treeId: string; metadata: TreeMetadata }) => {
+  async (
+    input: { treeId: string; metadata: TreeMetadata },
+    { getState, rejectWithValue },
+  ) => {
     const { treeId, metadata } = input;
+
+    const previous = (getState() as { farm: FarmState }).farm.trees.find(
+      (t) => t.id === treeId,
+    )?.metadata;
+    const body = buildTreeProfileBody(previous, metadata);
+
+    let voiceMemo: VoiceMemoVerdict | undefined;
+    /** Đã ghi trên máy, CHƯA lên được máy chủ — kèm lý do của chính máy chủ. */
+    let pending: { detail: string } | undefined;
+    // Thân rỗng = không có gì để máy chủ ghi (chỉ đổi thứ máy chủ không giữ).
+    // Vẫn ghi cục bộ, nhưng KHÔNG bịa ra một lượt gọi mạng để trông cho bận rộn.
+    if (Object.keys(body).length > 0) {
+      await ensureOrilifeToken(ORILIFE_BASE);
+      let res = await saveTreeProfile(ORILIFE_BASE, treeId, body);
+      if (!res.ok && res.error?.type === 'auth_error') {
+        await ensureOrilifeToken(ORILIFE_BASE, { force: true });
+        res = await saveTreeProfile(ORILIFE_BASE, treeId, body);
+      }
+      if (!res.ok) {
+        // Ca DUY NHẤT từ chối: máy chủ nói chính dữ liệu này sai. Giữ nguyên câu
+        // của máy chủ — nó nói được người dùng phải sửa gì, câu của app thì không.
+        if (res.error?.type === 'validation_error') {
+          return rejectWithValue(
+            res.error.detail ?? 'Máy chủ không nhận được hồ sơ cây',
+          );
+        }
+        pending = {
+          detail: res.error?.detail ?? 'Chưa gửi được lên máy chủ',
+        };
+      } else {
+        voiceMemo = res.voiceMemo;
+      }
+    }
+
     await AsyncStorage.setItem(treeMetadataKey(treeId), JSON.stringify(metadata));
-    return { treeId, metadata };
+    return { treeId, metadata, voiceMemo, pending };
   }
 );
 

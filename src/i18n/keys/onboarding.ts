@@ -19,12 +19,17 @@ export const ONBOARDING_STRINGS = {
   // `OnboardingScreen` nay lấy thẳng `DEFAULT_INSTANCE.displayName`.
   //
   // Đừng thêm lại khoá này. Thêm lại là app thứ ba mang tên app thứ nhất.
-  'onboarding.tagline': {
-    vi: 'Một ứng dụng, bốn việc — và danh tính là của chính anh chị.',
-    en: 'One app, four jobs — and the identity stays yours.',
-    zh: '一个应用，四件事 —— 身份始终属于你自己。',
-    ja: '一つのアプリで四つの仕事 — 本人確認はあなたのものです。',
-  },
+  // ⛔ ĐÃ GỠ `onboarding.tagline` — cùng lý do với `onboarding.title` ở trên,
+  // nhưng khó thấy hơn một bậc.
+  //
+  // Câu "Một ứng dụng, bốn việc — và danh tính là của chính anh chị." là định vị
+  // của Aladin. Nó không mang chữ 'Aladin' nên bài kiểm "không ghi cứng tên app"
+  // (`config/instanceParity.test.ts`) đi qua êm, mà CheckFarm — app ngành nông —
+  // vẫn hiện đúng câu đó ở màn chào. Tên app thì có phép kiểm canh, còn CÂU app
+  // tự nói về mình thì chưa có gì canh.
+  //
+  // Khẩu hiệu nay là `tagline` trong `config/instance.config.ts`, mỗi app một
+  // câu, bắt buộc đủ bốn thứ tiếng. Đừng thêm lại khoá này.
 
   // ── Bốn khe module ────────────────────────────────────────────────────────
   'onboarding.trace.title': {

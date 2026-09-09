@@ -2,7 +2,8 @@
  * stakingService — đọc thông tin staking/SPO (Issue #74). Backend relay Blockfrost.
  *
  * READ-ONLY ở pha này:
- *   - listPools/getPool: duyệt & xem chi tiết pool.
+ *   - getPool: xem chi tiết một pool. (`listPools` đã gỡ — không màn nào duyệt
+ *     danh sách pool; máy chủ relay không có cửa liệt kê rẻ để dựa vào.)
  *   - getUserDelegation: derive stake address của user từ Master_KEK rồi hỏi trạng-thái
  *     delegation hiện tại (đang uỷ quyền pool nào, số dư stake, reward).
  *

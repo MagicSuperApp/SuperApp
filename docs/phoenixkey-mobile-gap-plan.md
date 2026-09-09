@@ -3,6 +3,16 @@
 Đối chiếu backend **PhoenixKey-Database** (Spring Boot, context `/api/v1`) vs mobile SuperApp.
 Trạng thái triển khai theo pha. Cập nhật 2026-07-27.
 
+> ⚠ **Tệp này là NHẬT KÝ của các đợt làm việc trong tháng 7/2026, không phải bản mô tả
+> hiện trạng.** Mỗi mục đúng với ngày nó được viết. Muốn biết một thứ hôm nay còn sống
+> không thì mở mã, đừng đọc bảng ở đây.
+>
+> Một chỗ đã lệch, ghi ra để không ai phải truy lại: mọi câu nhắc `getlamp.*` /
+> `getlampService` (mục "Follow-up ③ + GetLAMP" và "đợt 3") nói về một tệp nay là **mã
+> chết** — `src/services/wakemeService.ts` đã thay nó và tự ghi điều đó ở đầu tệp.
+> Không sửa các dòng dưới: chúng là ghi chép của một thời điểm, viết lại là làm hỏng
+> chính thứ nhật ký dùng để làm.
+
 ---
 
 ## Pha 0 — Realign & thêm endpoint mới ✅ (đã code, 0 lỗi TS)

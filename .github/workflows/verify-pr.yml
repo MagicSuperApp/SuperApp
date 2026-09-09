@@ -81,6 +81,16 @@ jobs:
       - name: Soi mạch dọc (cầu native không được đứt)
         run: node scripts/soi-mach.js
 
+      # Ghim nội dung hai cây vendored bằng băm tree của git. Cần `fetch-depth` đủ để
+      # `git rev-parse HEAD:<đường dẫn>` chạy được — bước checkout ở trên đã lấy cây
+      # làm việc nên đối tượng tree có sẵn cục bộ, không cần lịch sử.
+      #
+      # Cổng này bắt bản chép trong kho TRÔI, và KHÔNG bắt được kho nguồn đổi. Chính
+      # nó in ra lời rào đó mỗi lượt chạy, nên đừng đọc màu xanh của nó thành "hai cây
+      # còn khớp". Nửa còn lại dựa vào cam kết gửi thư của bên giữ nguồn.
+      - name: Ghim nội dung cây vendored
+        run: node scripts/check-vendored-tree.js
+
       # `--forceExit`: test xanh rồi mà jest vẫn treo thì đó là handle còn mở, KHÔNG
       # phải mã sai — nhưng runner cứ chạy tiếp tới lúc hết bộ nhớ và báo đỏ (đã xảy
       # ra: treo ~19 phút rồi exit 134). Nguyên nhân gốc là bộ đếm giờ rò trong

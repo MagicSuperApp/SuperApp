@@ -1,94 +1,177 @@
 /**
- * Ghim MỘT ràng buộc, và nó là ràng buộc giữa HAI tệp:
+ * Ghim MỘT ràng buộc: **chữ người dùng vừa gõ không được biến mất vì mạng.**
  *
- *   thunk gọi máy chủ hay không, và câu báo thành công nói gì, phải khớp nhau.
+ * Tệp này đã đi qua hai bản sai ngược chiều, và cả hai đều xanh lúc viết:
  *
- * Bản trước của tệp này ghim chiều NGƯỢC LẠI: chừng nào thunk chưa gọi mạng thì
- * câu báo phải nói "chỉ nằm trên máy này". Nó viết dạng ĐIỀU KIỆN đúng để hôm nay
- * tự nhả — cửa `POST /api/tree/{tree_id}/profile` đã lên máy sản xuất và thunk đã
- * gọi nó, nên vế đầu không còn thoả.
+ *  1. Bản đầu ghim "chỉ ghi cục bộ" — dữ liệu nằm trên đúng một cái máy, gỡ app là
+ *     mất, người dùng không có cách nào biết.
+ *  2. Bản sau ghim "máy chủ trượt thì PHẢI từ chối" — nó gỡ được cái vỏ im lặng và
+ *     dựng lên một cái tệ hơn: nông dân mất sóng thì mất luôn chữ vừa gõ. Đó là ô
+ *     "Server-required validation" trong bảng CẤM TUYỆT ĐỐI của
+ *     `Specs/PRINCIPLE-independent-feature.md:156`, và F3.3 offline-first ở
+ *     `Specs/Platform-Feat-Spec.md:224` là mức **Must**.
  *
- * Đo, không suy (2026-09-08, hai cực để phân biệt "sống" với "không tồn tại"):
+ * Và cả hai bản đều đo bằng **biểu thức chính quy trên mã nguồn**: cắt thân hàm ra
+ * rồi tìm chữ. Phép đo đó không phân biệt được mã với lời bàn về mã, không chạy một
+ * dòng nào, và xanh với mọi cách viết lại dù hành vi đảo ngược. Nên bản này **chạy
+ * thunk thật** với ba hình dạng lỗi khác nhau của máy chủ và đọc kết quả thật.
  *
- *   POST https://api.orilife.io/api/tree/x/profile          → 401
- *   POST https://api.orilife.io/api/tree/x/khong-co-cua-nay → 404
+ * Ba ca, ba kết cục khác nhau — đó là điều đang được ghim:
  *
- * 401 là "cửa có, đòi đăng nhập"; 404 là "không có cửa". Đo một cực thì 401 đọc
- * thành gì cũng được.
- *
- * Bài này không dựng màn nào — nó canh cho hai nửa không trôi khỏi nhau, và nó
- * ghim cả hai chiều nên ngày cửa kia chết thì nó lại đỏ.
+ *   máy chủ nhận       → `fulfilled`, không `pending`, có ghi `AsyncStorage`
+ *   mất sóng / bận     → `fulfilled` CÓ `pending` mang lý do, VẪN ghi `AsyncStorage`
+ *   máy chủ bác dữ liệu→ `rejected`, KHÔNG ghi `AsyncStorage`, giữ câu của máy chủ
  */
-import fs from 'fs';
-import path from 'path';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { configureStore } from '@reduxjs/toolkit';
 
-const SLICE = fs.readFileSync(path.join(__dirname, 'farmSlice.ts'), 'utf8');
-const KEYS = fs.readFileSync(
-  path.join(__dirname, '../../../i18n/keys/trace.ts'),
-  'utf8',
-);
+jest.mock('../../../services/orilifeDidAuth', () => ({
+  ensureOrilifeToken: jest.fn().mockResolvedValue(undefined),
+}));
+jest.mock('../../../services/treeProfileService', () => ({
+  ...jest.requireActual('../../../services/treeProfileService'),
+  saveTreeProfile: jest.fn(),
+}));
+jest.mock('../../../utils/database', () => ({ database: {} }));
+jest.mock('../../../services/databaseManager', () => ({
+  databaseManager: { ensureReady: jest.fn() },
+}));
 
-/** Thân của `saveTreeMetadata`, cắt từ chỗ khai tới dấu đóng `);` đầu tiên. */
-const thunkBody = (): string => {
-  const start = SLICE.indexOf('export const saveTreeMetadata = createAsyncThunk(');
-  expect(start).toBeGreaterThan(-1); // ca đối chứng: cắt được thật, không ra chuỗi rỗng
-  const end = SLICE.indexOf('\n);', start);
-  expect(end).toBeGreaterThan(start);
-  return SLICE.slice(start, end);
+import { saveTreeProfile } from '../../../services/treeProfileService';
+import farmReducer, { saveTreeMetadata, treeMetadataKey } from './farmSlice';
+import { saveErrorMessage } from './saveErrorMessage';
+import type { TreeMetadata } from '../types';
+
+const gia = saveTreeProfile as jest.MockedFunction<typeof saveTreeProfile>;
+
+const CAY = 'cay-01';
+const metadata = (): TreeMetadata => ({
+  variety: 'ri6',
+  age_years: 4,
+  notes: 'gõ dưới gốc cây, sóng chập chờn',
+  updated_at: '2026-09-09T00:00:00.000Z',
+  schema_version: 'tree_metadata/1.0',
+});
+
+const luu = async () => {
+  const store = configureStore({ reducer: { farm: farmReducer } });
+  const action = await store.dispatch(
+    saveTreeMetadata({ treeId: CAY, metadata: metadata() }),
+  );
+  return { action, store };
 };
 
-const line = (key: string): string => {
-  const i = KEYS.indexOf(`'${key}':`);
-  expect(i).toBeGreaterThan(-1);
-  return KEYS.slice(i, KEYS.indexOf('\n', i));
-};
+beforeEach(async () => {
+  jest.clearAllMocks();
+  await AsyncStorage.clear();
+});
 
-/** Thunk có đường đi tới máy chủ không — đo bằng lời gọi, không bằng chú thích. */
-const callsServer = (body: string): boolean => /\bsaveTreeProfile\s*\(/.test(body);
+describe('hồ sơ cây — mạng hỏng thì mất lượt gửi, KHÔNG mất chữ', () => {
+  it('ca đối chứng: máy chủ nhận ⟹ xong, không cờ treo, có ghi trên máy', async () => {
+    gia.mockResolvedValue({ ok: true, voiceMemo: undefined } as never);
 
-describe('hồ sơ cây — thunk và câu báo phải nói cùng một chuyện', () => {
-  it('thunk gọi cửa máy chủ, và gọi TRƯỚC khi ghi xuống kho máy', () => {
-    const body = thunkBody();
-    expect(callsServer(body)).toBe(true);
-    expect(body).toContain('AsyncStorage.setItem');
-    // Máy chủ TRƯỚC, kho máy SAU. Ngược thứ tự là ghi cục bộ rồi báo xong trong
-    // khi máy chủ có thể đã chối — đúng cái vỏ im lặng bản này gỡ.
-    // Khớp LỜI GỌI ở cả hai vế của phép so thứ tự. `indexOf('saveTreeProfile')` trần
-    // thì một dòng CHÚ THÍCH nhắc tên hàm, đặt phía trên `AsyncStorage.setItem`, đủ
-    // làm phép so đạt — kể cả khi lời gọi thật đã bị đẩy xuống sau lần ghi cục bộ,
-    // tức đúng cái vỏ im lặng bài này ghim. Phép đo văn bản không tự phân biệt được
-    // mã với lời bàn về mã.
-    expect(body.search(/\bsaveTreeProfile\s*\(/)).toBeLessThan(
-      body.indexOf('AsyncStorage.setItem'),
+    const { action, store } = await luu();
+
+    expect(action.type).toBe('farm/saveTreeMetadata/fulfilled');
+    expect((action.payload as { pending?: unknown }).pending).toBeUndefined();
+    expect(await AsyncStorage.getItem(treeMetadataKey(CAY))).toContain('ri6');
+    expect(store.getState().farm).toBeDefined();
+    // Ca này phải phân biệt được với ca dưới, không thì hai ca đo cùng một thứ.
+    expect(gia).toHaveBeenCalledTimes(1);
+  });
+
+  it('MẤT SÓNG: vẫn `fulfilled`, chữ vẫn nằm trên máy, và có cờ nói rõ chưa lên máy chủ', async () => {
+    gia.mockResolvedValue({
+      ok: false,
+      error: { type: 'network_error', detail: 'Không kết nối được máy chủ', http_status: 0 },
+    } as never);
+
+    const { action } = await luu();
+
+    expect(action.type).toBe('farm/saveTreeMetadata/fulfilled');
+    // Đây là điều quan trọng nhất trong cả tệp: chữ người dùng gõ còn nguyên.
+    expect(await AsyncStorage.getItem(treeMetadataKey(CAY))).toContain('sóng chập chờn');
+    // Và app KHÔNG được im lặng coi như đã xong — cờ mang chính câu của máy chủ.
+    expect((action.payload as { pending?: { detail: string } }).pending?.detail).toBe(
+      'Không kết nối được máy chủ',
     );
   });
 
-  it('máy chủ trượt thì thunk BỊ TỪ CHỐI, không âm thầm ghi cục bộ rồi báo xong', () => {
-    const body = thunkBody();
-    // Khớp LỜI GỌI, không khớp cái tên. `rejectWithValue` còn đứng ở dòng khai
-    // tham số, nên `toContain('rejectWithValue')` vẫn xanh sau khi lời gọi bị gỡ
-    // hẳn — đo được bằng đột biến, và đó đúng là một ô xanh rỗng.
-    expect(body).toMatch(/return\s+rejectWithValue\s*\(/);
-    // Và nó phải nằm trong nhánh máy chủ trượt, không phải một lối thoát nào khác.
-    expect(body).toMatch(/if\s*\(!res\.ok\)\s*\{[\s\S]{0,160}return\s+rejectWithValue\s*\(/);
+  it('MÁY CHỦ BẬN / HỎNG cũng giữ chữ — chỉ `validation_error` mới là lỗi của dữ liệu', async () => {
+    for (const type of ['server_error', 'rate_limited', 'auth_error'] as const) {
+      jest.clearAllMocks();
+      await AsyncStorage.clear();
+      gia.mockResolvedValue({
+        ok: false,
+        error: { type, detail: `hỏng kiểu ${type}`, http_status: 500 },
+      } as never);
+
+      const { action } = await luu();
+
+      expect(`${type}: ${action.type}`).toBe(`${type}: farm/saveTreeMetadata/fulfilled`);
+      expect(await AsyncStorage.getItem(treeMetadataKey(CAY))).toContain('ri6');
+    }
   });
 
-  it('vì đã gọi máy chủ, câu báo KHÔNG được nói dữ liệu chỉ nằm trên máy này', () => {
-    const body = thunkBody();
-    // Điều kiện, không phải khẳng định vô điều kiện — hai chiều đều được canh:
-    // ngày thunk thôi gọi máy chủ thì ca dưới nhả, và ca đầu tệp này đỏ thay.
-    if (!callsServer(body)) return;
+  it('MÁY CHỦ BÁC DỮ LIỆU: từ chối, không ghi, và giữ NGUYÊN VĂN câu của máy chủ', async () => {
+    gia.mockResolvedValue({
+      ok: false,
+      error: {
+        type: 'validation_error',
+        detail: 'Ngày thu hoạch không hợp lệ: ở tương lai',
+        http_status: 422,
+      },
+    } as never);
 
-    expect(line('trace.meta.saved')).not.toContain('trên máy này');
-    expect(line('trace.meta.savedBody')).not.toContain('Máy chủ chưa nhận');
-    expect(line('trace.meta.savedBody')).not.toContain('server has not received');
-    // Ca đối chứng: cắt được đúng dòng, không phải đang so với chuỗi rỗng.
-    expect(line('trace.meta.savedBody')).toContain('máy chủ');
+    const { action } = await luu();
+
+    expect(action.type).toBe('farm/saveTreeMetadata/rejected');
+    // Câu của máy chủ nói được người dùng phải sửa GÌ; câu chung chung của app thì
+    // không. `rejectWithValue` ném ra chuỗi trần, nên màn phải đọc nó như chuỗi —
+    // xem nhánh `catch` ở `screens/TreeMetadataTab.tsx`.
+    expect(action.payload).toBe('Ngày thu hoạch không hợp lệ: ở tương lai');
+    expect(await AsyncStorage.getItem(treeMetadataKey(CAY))).toBeNull();
   });
 
-  it('phần ghi âm vẫn chỉ nằm trên máy, và có sẵn câu nói ra điều đó', () => {
-    // Ghi âm KHÔNG có đường lên máy chủ. Câu ưu tiên là câu của máy chủ
-    // (`voice_memo.reason`); khoá này là chỗ dựa khi máy chủ không nói gì.
-    expect(line('trace.meta.savedVoiceLocal')).toContain('chỉ nằm trên máy này');
+  it('câu báo cho người dùng đọc được NGUYÊN VĂN câu bị ném ra, dù nó là chuỗi trần', async () => {
+    gia.mockResolvedValue({
+      ok: false,
+      error: {
+        type: 'validation_error',
+        detail: 'Ngày thu hoạch không hợp lệ: ở tương lai',
+        http_status: 422,
+      },
+    } as never);
+
+    const store = configureStore({ reducer: { farm: farmReducer } });
+    let bat: unknown;
+    try {
+      await store.dispatch(saveTreeMetadata({ treeId: CAY, metadata: metadata() })).unwrap();
+    } catch (e) {
+      bat = e;
+    }
+
+    // Hình dạng thật của thứ `unwrap()` ném ra — đây là dữ kiện mà `saveErrorMessage`
+    // tồn tại vì nó, nên ghim luôn cả hình dạng, không chỉ ghim hàm.
+    expect(typeof bat).toBe('string');
+    expect((bat as { message?: unknown })?.message).toBeUndefined();
+    expect(saveErrorMessage(bat, 'CÂU CHUNG CHUNG CỦA APP')).toBe(
+      'Ngày thu hoạch không hợp lệ: ở tương lai',
+    );
+  });
+
+  it('thân rỗng thì KHÔNG bịa ra lượt gọi mạng, nhưng vẫn ghi trên máy', async () => {
+    const store = configureStore({ reducer: { farm: farmReducer } });
+    // Chỉ có hai trường máy chủ không giữ ⟹ `buildTreeProfileBody` ra thân rỗng.
+    const action = await store.dispatch(
+      saveTreeMetadata({
+        treeId: CAY,
+        metadata: { updated_at: '2026-09-09T00:00:00.000Z', schema_version: 'tree_metadata/1.0' },
+      }),
+    );
+
+    expect(action.type).toBe('farm/saveTreeMetadata/fulfilled');
+    expect(gia).not.toHaveBeenCalled();
+    expect(await AsyncStorage.getItem(treeMetadataKey(CAY))).not.toBeNull();
   });
 });

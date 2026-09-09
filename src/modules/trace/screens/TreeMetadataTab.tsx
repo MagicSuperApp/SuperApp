@@ -38,6 +38,7 @@ import {
   TreeHealthStatus,
 } from '../types';
 import { saveTreeMetadata } from '../store/farmSlice';
+import { saveErrorMessage } from '../store/saveErrorMessage';
 import VoiceMemoButton from '../components/VoiceMemoButton';
 // Bật công khai + mã/QR truy xuất. Xem đầu tệp component về vì sao hai việc đó
 // nằm chung một thẻ: mã chỉ có nghĩa khi cây đã công khai.
@@ -201,14 +202,25 @@ const TreeMetadataTab: React.FC<Props> = ({ tree }) => {
         saved.voiceMemo && saved.voiceMemo.accepted === false
           ? (saved.voiceMemo.reason ?? tk('trace.meta.savedVoiceLocal'))
           : null;
-      showSuccess(
-        tk('trace.meta.saved'),
-        voiceMemoReason
-          ? `${tk('trace.meta.savedBody')}\n\n${voiceMemoReason}`
-          : tk('trace.meta.savedBody'),
-      );
+      // Ba màn KHÁC NHAU cho ba việc khác nhau, đừng gộp: lên được máy chủ · mới
+      // nằm trên máy này · máy chủ bác dữ liệu. Gộp hai cái đầu thì người dùng
+      // tưởng đã an toàn; gộp hai cái sau thì họ đi sửa nhầm thứ.
+      const body = (chinh: string) =>
+        voiceMemoReason ? `${chinh}\n\n${voiceMemoReason}` : chinh;
+      if (saved.pending) {
+        showWarning(
+          tk('trace.meta.savedLocalOnly'),
+          body(`${tk('trace.meta.savedLocalOnlyBody')}\n\n${saved.pending.detail}`),
+        );
+      } else {
+        showSuccess(tk('trace.meta.saved'), body(tk('trace.meta.savedBody')));
+      }
     } catch (e: any) {
-      showWarning(tk('trace.meta.saveFail'), e?.message ?? tk('trace.meta.saveFailBody'));
+      // Vì sao không viết thẳng `e?.message` ở đây: xem `store/saveErrorMessage.ts`.
+      showWarning(
+        tk('trace.meta.saveFail'),
+        saveErrorMessage(e, tk('trace.meta.saveFailBody')),
+      );
     } finally {
       setSaving(false);
     }

@@ -162,13 +162,31 @@ export const loadTrees = createAsyncThunk(
 );
 
 /**
- * Ghi hồ sơ sinh trưởng của cây — MÁY CHỦ TRƯỚC, kho máy SAU.
+ * Ghi hồ sơ sinh trưởng của cây — thử máy chủ, nhưng KHÔNG bao giờ đánh rơi chữ
+ * người dùng vừa gõ.
  *
- * Thứ tự đó là phần quan trọng nhất của hàm này. Bản trước chỉ ghi `AsyncStorage`
- * rồi báo "Đã lưu": thao tác đúng là đã xong, nhưng dữ liệu chỉ nằm trên đúng một
- * cái máy — gỡ ứng dụng hoặc đổi máy là mất, mà người dùng không có cách nào biết.
- * Nay máy chủ trượt thì thunk BỊ TỪ CHỐI và màn hiện đúng câu của máy chủ; không
- * ghi cục bộ, vì ghi cục bộ rồi báo xong chính là cái vỏ im lặng vừa gỡ.
+ * Hàm này đã đi qua hai lần sai ngược chiều nhau, nên chép lại cả hai:
+ *
+ * Sai thứ nhất — chỉ ghi `AsyncStorage` rồi báo "Đã lưu". Thao tác đúng là xong,
+ * nhưng dữ liệu chỉ nằm trên một cái máy; gỡ ứng dụng là mất, mà người dùng không
+ * có cách nào biết. Đó là một cái vỏ im lặng.
+ *
+ * Sai thứ hai — vá bằng cách bắt máy chủ trả 200 mới ghi cục bộ. Nó gỡ được cái vỏ
+ * im lặng và dựng lên một cái tệ hơn cho đúng người dùng của app này: nông dân đứng
+ * dưới gốc cây, 3G rớt, gõ giống + tuổi + ghi chú, bấm Lưu, và chữ vừa gõ không nằm
+ * ở đâu cả. `Specs/PRINCIPLE-independent-feature.md:156` xếp đúng hình dạng đó vào
+ * bảng CẤM TUYỆT ĐỐI ("Server-required validation ⟹ mất mạng = mất app"), và
+ * `Platform-Feat-Spec.md:224` để F3.3 offline-first ở mức **Must**.
+ *
+ * Nay: **ghi cục bộ gần như luôn luôn, và nói thật cái gì đã lên máy chủ.** Chỉ MỘT
+ * lý do từ chối — `validation_error`, tức máy chủ nói chính dữ liệu này sai. Ghi
+ * cục bộ một giá trị máy chủ đã bác chỉ để lát nữa hai bên chọi nhau. Mọi lý do
+ * khác (mất sóng, quá hạn chờ, máy chủ bận, máy chủ hỏng, phiên hết hạn) đều KHÔNG
+ * phải lỗi của chữ vừa gõ, nên chữ đó được giữ và `pending` mang lý do ra màn.
+ *
+ * `pending` KHÔNG phải một hàng đợi đồng bộ — chưa có cái đó. Nó là một dữ kiện:
+ * "trên máy có, trên máy chủ chưa". Màn phải nói đúng ngần ấy, đừng hứa app sẽ tự
+ * gửi lại — không mã nào làm việc đó.
  *
  * Cửa `POST /api/tree/{tree_id}/profile` đã sống trên máy sản xuất — đo 2026-09-08
  * bằng hai cực: đường thật trả 401 (có cửa, đòi đăng nhập), đường bịa trả 404.
@@ -195,6 +213,8 @@ export const saveTreeMetadata = createAsyncThunk(
     const body = buildTreeProfileBody(previous, metadata);
 
     let voiceMemo: VoiceMemoVerdict | undefined;
+    /** Đã ghi trên máy, CHƯA lên được máy chủ — kèm lý do của chính máy chủ. */
+    let pending: { detail: string } | undefined;
     // Thân rỗng = không có gì để máy chủ ghi (chỉ đổi thứ máy chủ không giữ).
     // Vẫn ghi cục bộ, nhưng KHÔNG bịa ra một lượt gọi mạng để trông cho bận rộn.
     if (Object.keys(body).length > 0) {
@@ -205,13 +225,23 @@ export const saveTreeMetadata = createAsyncThunk(
         res = await saveTreeProfile(ORILIFE_BASE, treeId, body);
       }
       if (!res.ok) {
-        return rejectWithValue(res.error?.detail ?? 'Máy chủ không nhận được hồ sơ cây');
+        // Ca DUY NHẤT từ chối: máy chủ nói chính dữ liệu này sai. Giữ nguyên câu
+        // của máy chủ — nó nói được người dùng phải sửa gì, câu của app thì không.
+        if (res.error?.type === 'validation_error') {
+          return rejectWithValue(
+            res.error.detail ?? 'Máy chủ không nhận được hồ sơ cây',
+          );
+        }
+        pending = {
+          detail: res.error?.detail ?? 'Chưa gửi được lên máy chủ',
+        };
+      } else {
+        voiceMemo = res.voiceMemo;
       }
-      voiceMemo = res.voiceMemo;
     }
 
     await AsyncStorage.setItem(treeMetadataKey(treeId), JSON.stringify(metadata));
-    return { treeId, metadata, voiceMemo };
+    return { treeId, metadata, voiceMemo, pending };
   }
 );
 

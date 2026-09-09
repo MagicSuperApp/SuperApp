@@ -305,7 +305,15 @@ export const TRACE_STRINGS = {
 
   'trace.meta.dateIncomplete': { vi: 'Nhập đủ ngày/tháng/năm', en: 'Enter day, month and year', zh: '请填写完整日期', ja: '年月日をすべて入力' },
   'trace.meta.dateInvalid': { vi: 'Ngày không có thật', en: 'That date does not exist', zh: '日期不存在', ja: '存在しない日付です' },
-  'trace.meta.savedBody': { vi: 'Thông tin cây đã lưu lên máy chủ. Đổi máy hay cài lại ứng dụng vẫn còn.', en: 'Tree details are saved to the server. They survive a device change or a reinstall.', zh: '果树信息已保存到服务器。更换设备或重装应用后依然保留。', ja: '木の情報をサーバーに保存しました。端末を変えても再インストールしても残ります。' },
+  // KHÔNG hứa "đổi máy vẫn còn" ở đây. Dữ liệu có thật trên máy chủ, nhưng app
+  // chưa đọc lại: `getTreeProfile` (`services/treeProfileService.ts`) hiện KHÔNG
+  // nơi nào gọi, và `loadTrees` chỉ nạp metadata từ `AsyncStorage`. Máy mới thì
+  // màn hình trống. Câu hứa một cơ chế chưa có là một cái vỏ im lặng bằng chữ.
+  'trace.meta.savedBody': { vi: 'Thông tin cây đã lưu lên máy chủ.', en: 'Tree details are saved to the server.', zh: '果树信息已保存到服务器。', ja: '木の情報をサーバーに保存しました。' },
+  // Ghi được trên máy, chưa lên máy chủ. Không nói "sẽ tự đồng bộ" — chưa có hàng
+  // đợi nào làm việc đó, nên câu phải chỉ đúng việc người dùng cần tự làm.
+  'trace.meta.savedLocalOnly': { vi: 'Mới lưu trên máy này', en: 'Saved on this device only', zh: '仅保存在本机', ja: 'この端末にのみ保存' },
+  'trace.meta.savedLocalOnlyBody': { vi: 'Chữ bạn vừa gõ không mất — máy đã giữ lại. Nhưng chưa gửi được lên máy chủ. Khi nào có sóng, mở lại mục này rồi bấm Lưu thêm một lần.', en: 'Nothing you typed was lost — this device kept it. It has not reached the server yet. When you are back online, open this tab and tap Save once more.', zh: '您输入的内容没有丢失——本机已保存，但尚未上传到服务器。恢复网络后请重新打开此页并再次点击保存。', ja: '入力した内容は失われていません — この端末に保存済みです。ただしサーバーにはまだ届いていません。通信が回復したらこの画面を開き、もう一度保存を押してください。' },
   // Phần ghi âm KHÔNG lên máy chủ, và câu nói ra điều đó là câu của MÁY CHỦ
   // (`voice_memo.reason`) chứ không phải khoá này. Khoá này chỉ là chỗ dựa khi
   // máy chủ không nói gì — xem `TreeMetadataTab.handleSave`.

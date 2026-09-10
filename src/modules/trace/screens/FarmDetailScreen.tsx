@@ -82,6 +82,16 @@ const { width, height } = Dimensions.get('window');
 
 const ITEMS_PER_PAGE = 10;
 
+/**
+ * Chỗ chừa cho thanh hành động đáy ở khung hình ĐẦU TIÊN, trước khi `onLayout`
+ * trả về chiều cao thật.
+ *
+ * ⚠ Đây KHÔNG phải chiều cao của thanh — nó là một cận TRÊN cố ý lấy dư. Đừng
+ * chỉnh nó cho "khớp": chiều cao thật đến ở khung ngay sau và ghi đè giá trị này.
+ * Ai thấy khoảng trắng ở đáy thì chỗ cần sửa là thanh, không phải con số ở đây.
+ */
+const CHUA_DO_THANH_DAY = 168;
+
 interface RouteParams { farm?: any | null }
 
 const requestLocationPermission = async () => {
@@ -1090,6 +1100,27 @@ const FarmDetailMode = ({
 
     return () => sub.remove();
   }, []);
+  /**
+   * Chiều cao THẬT của thanh hành động nổi ở đáy, đo bằng `onLayout`.
+   *
+   * VÌ SAO ĐO CHỨ KHÔNG GÕ SỐ. Thanh đó `position: 'absolute'` nên nó KHÔNG chiếm
+   * chỗ trong dòng chảy — phần chừa chỗ cho nó là một ô rỗng ở cuối footer, và
+   * trước bản này ô đó gõ cứng `height: 86` kèm chú thích "(2 nút)".
+   *
+   * Thanh nay có HAI HÀNG: hàng trên là "Xem sơ đồ 3D của vườn" + nút chỉ đường,
+   * hàng dưới là "Cập nhật hoạt động". Cộng lại ≈ 144 trên Android và ≈ 156 trên
+   * iOS (12 đệm trên + 46 hàng một + 10 lề + 52 hàng hai + 24/36 đệm dưới). Ô
+   * chừa 86 thiếu khoảng 58-70 điểm, và đó đúng là phần bị che: đuôi danh sách
+   * cây, và khối "Dòng thời gian" nằm ngay trên phân trang trong cùng footer.
+   *
+   * Con số gõ tay ở đây hỏng theo một kiểu KHÔNG ai thấy: thêm một nút vào thanh
+   * là nó sai thêm, mà không lệnh nào đỏ, không bài kiểm nào kêu — chỉ có người
+   * dùng thấy nội dung cụt ở đáy. Đo thì nó không lệch được nữa.
+   *
+   * Cùng khuôn với `CoachMarkOverlay` ("vị trí thẻ tính theo chiều cao THẬT").
+   */
+  const [chieuCaoThanhDay, setChieuCaoThanhDay] = useState(0);
+
   // Newest tree should be on top
   const sortedTrees = [...trees].sort((a, b) => {
     const aTime = Number(a.id?.split('_')[1] ?? 0);
@@ -1324,14 +1355,29 @@ const FarmDetailMode = ({
                 onNextPage={handleNextPage}
               />
             ) : null}
-            {/* Chừa chỗ cho thanh hành động nổi ở đáy (2 nút). */}
-            <View style={{ height: 86 }} />
+            {/*
+              Chừa chỗ cho thanh hành động nổi ở đáy — theo chiều cao ĐO ĐƯỢC,
+              không theo một con số gõ tay. Xem `chieuCaoThanhDay` ở trên.
+
+              `CHUA_DO_THANH_DAY` chỉ dùng cho khung hình ĐẦU TIÊN, trước khi
+              `onLayout` kịp chạy. Lấy dư còn hơn thiếu: thiếu là che nội dung,
+              dư là một khoảng trắng biến mất ngay khung sau.
+            */}
+            <View style={{ height: chieuCaoThanhDay || CHUA_DO_THANH_DAY }} />
           </View>
         }
       />
 
       {/* Bottom action bar */}
-      <View style={styles.bottomBar}>
+      <View
+        style={styles.bottomBar}
+        onLayout={(e) => {
+          // Làm tròn rồi mới so: chiều cao thật có phần lẻ, và đặt lại state với
+          // một giá trị chênh 0,5 điểm là một vòng vẽ lại không đổi gì trên màn.
+          const h = Math.ceil(e.nativeEvent.layout.height);
+          setChieuCaoThanhDay((truoc) => (truoc === h ? truoc : h));
+        }}
+      >
         {/* Toàn cảnh 3D của cả vườn (mặt đất theo ranh giới + mọi cây).
             Chạm 1 cây trong đó → bay sà vào xem quả. */}
         <View style={{ flexDirection: "row", gap: 8 }}>

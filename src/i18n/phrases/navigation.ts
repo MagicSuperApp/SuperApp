@@ -168,7 +168,14 @@ export const NAVIGATION: PhraseMap = {
   // Dòng nhãn trên khu logo màn Đăng nhập. Bản cũ 'ALADIN · PHOENIXKEY DID'
   // không dấu nên lọt lưới kiểm; bản mới có dấu tiếng Việt ⇒ BẮT BUỘC khai ở đây,
   // không thì người dùng tiếng Nhật/Trung thấy nguyên tiếng Việt.
-  'ALADIN · DANH TÍNH SỐ': { en: 'ALADIN · DIGITAL IDENTITY', zh: 'ALADIN · 数字身份', ja: 'ALADIN · デジタル ID' },
+  //
+  // ⛔ Khoá KHÔNG được mang tên app. Bản trước khai `'ALADIN · DANH TÍNH SỐ'`
+  // trọn cụm, trong khi màn dựng chuỗi bằng `DEFAULT_INSTANCE.displayName` rồi
+  // mới tra phần còn lại (`LoginScreen.tsx`, khu logo). Nên khoá tra thật là
+  // `'DANH TÍNH SỐ'`, và khoá dài kia chưa bao giờ khớp lần nào — nó chết CÂM:
+  // từ điển vẫn có một dòng trông đầy đủ, người đọc mã vẫn thấy ba thứ tiếng,
+  // còn người dùng tiếng Nhật vẫn đọc nguyên tiếng Việt. Một app thứ hai ra đời
+  // là khoá mang tên app hỏng thêm một lần nữa, cùng kiểu.
 
   // Ba khoá dưới đây là màn Đăng nhập và màn Chọn ngôn ngữ — hai màn ĐẦU TIÊN
   // người dùng thấy. Trước 2026-09-10 cả ba đều là chuỗi tiếng Anh ghi cứng

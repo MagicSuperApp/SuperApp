@@ -137,6 +137,22 @@ export const GRADIENT = {
   /** Ô mang nghĩa NƯỚC (mưa, tưới). */
   rain: { from: '#EDF6FC', to: NATURE.waterSoft, angle: 135, onDark: false },
 
+  /**
+   * Ô KHÔNG GIAN — ô tối DUY NHẤT của trang, dành cho bản xem trước sơ đồ 3D.
+   *
+   * Nền tối ở đây không phải để cho khác lạ: một khối phát sáng chỉ đọc ra
+   * "không gian" khi quanh nó tối. Cùng hình ấy đặt trên nền trắng thì vầng
+   * sáng biến mất và nó tụt về một hình vẽ phẳng.
+   *
+   * Hai chặng lệch nhau 1,30 lần — vẫn trong ngưỡng "nhẹ" của bộ này. Chữ trắng
+   * trên chặng sáng nhất cho 9,4:1; màu phát sáng `#7FE7C4` cho 6,3:1. Cả hai
+   * qua AA cho cỡ chữ nhỏ.
+   *
+   * ⚠ Trong MỘT trang chỉ được có một ô tối. Thêm cái thứ hai là hai cái cùng
+   * mất tác dụng làm dấu "khác loại".
+   */
+  space: { from: '#1B4C5C', to: '#123A47', angle: 150, onDark: true },
+
   /** Ô hành động chính khi nó KHÔNG phải ô hero — nút lớn, chữ trắng. */
   action: { from: NATURE.leaf, to: NATURE.leafDeep, angle: 135, onDark: true },
 } as const satisfies Record<string, GradientToken>;

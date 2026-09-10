@@ -19,6 +19,7 @@ import {
   Animated,
   PanResponder,
   Pressable,
+  Modal,
 } from 'react-native';
 // Icon: bo Font Awesome Solid tai qua Iconify (assets/icons -> icons.generated).
 // Them icon moi: `node scripts/icons.js <ten-fa6-solid>`.
@@ -34,10 +35,13 @@ import { COLORS } from '../../../constants';
 import {
   SURFACE as ORG_SURFACE, TONE as ORG_TONE, NATURE as ORG_NATURE,
   ORGANIC_CARD, ORGANIC_TILE, ELEVATION as ORG_ELEV, SPACE as ORG_SPACE,
+  GRADIENT as ORG_GRADIENT,
 } from '../theme/depth';
 import { GradientFill, GroundBackdrop } from '../components/layered/Organic';
 import { BentoRow, BentoTile } from '../components/layered/Surface';
 import FarmShape from '../components/layered/FarmShape';
+import RingProgress from '../components/layered/RingProgress';
+import { OSM_STREET_TILES } from '../../../features/space3d/mapTiles';
 import { useTk } from '../../../i18n/keys';
 // B2: tạo vườn QUA field-reid (server sinh farm_id uuid THẬT) — bỏ aladinAPI
 // (backend Lợi deprecated + client tự sinh `farm-<ts>` = gốc B2). INV-1 §3.2.
@@ -96,6 +100,15 @@ const ITEMS_PER_PAGE = 10;
  * Ai thấy khoảng trắng ở đáy thì chỗ cần sửa là thanh, không phải con số ở đây.
  */
 const CHUA_DO_THANH_DAY = 168;
+
+/**
+ * Màu phát sáng của ô không gian — PHẢI khớp `SANG` trong `layered/FarmShape`.
+ *
+ * Hai chỗ vì huy hiệu là JSX của màn còn hình là SVG của component, mà chúng
+ * nằm chồng lên nhau nên lệch một sắc là thấy ngay. Ghi ra đây để lần sau đổi
+ * thì đổi cả hai.
+ */
+const SANG_KHONG_GIAN = '#7FE7C4';
 
 interface RouteParams { farm?: any | null }
 
@@ -197,93 +210,87 @@ class MapErrorBoundary extends React.Component<{ children: React.ReactNode }, { 
   }
 }
 
-// ── Tree Card ─────────────────────────────────────────────────────────────────
-const TreeCard = ({
+// ── Nút cây ─────────────────────────────────────────────────────
+//
+// Một cây = một nút TRÒN, trong lòng chỉ có TÊN, quanh viền là vòng tiến độ thu.
+//
+// ── Thẻ cũ mang gì, và vì sao bỏ ─────────────────────────────────
+// Mỗi thẻ là một hàng ngang đầy: biểu tượng cây · tên · mã · chip 3D · thanh
+// tiến độ · phần trăm · mũi tên phải. Bảy thứ cho một cây, và bốn trong đó
+// giống hệt nhau ở MỌI thẻ:
+//
+//   biểu tượng cây   cây nào cũng là cây — không phân biệt được thẻ nào với thẻ nào
+//   mũi tên phải    cả danh sách đều bấm được; mũi tên nói một điều ai cũng biết
+//   mã cây         chuỗi băm ngắn, không ai đọc — tên mới là thứ nhà vườn gọi
+//
+// Một hàng ngang cũng chỉ xếp được MỘT cây mỗi dòng, nên vườn 128 cây thành
+// 128 dòng phải cuộn. Lưới ba cột cho một màn chứa ~12 cây thay vì ~4.
+//
+// ── Vòng tiến độ bao quanh, không phải thanh nằm dưới ──────────────────
+// Tiến độ và cây thành MỘT khối: mắt không phải nối một thanh ngang với một cái
+// tên ở chỗ khác. Xem `RingProgress`.
+const TreeChip = ({
   item,
-  index,
   farm,
+  size,
   onPress,
-  onView3D,
 }: {
   item: any;
-  index: number;
   farm?: any;
+  size: number;
   onPress: () => void;
-  onView3D?: () => void;
 }) => {
-  const tk = useTk();
-  const fruitCount = item.fruitCount ?? 0;
-  const has3DModel = item.has_3d ?? item.has3DModel ?? item.latest_mesh_cid ?? item.meshCid;
-  // Build 58 (2026-05-26): bỏ random fallback 10-90% — field test 25/5 báo
-  // nông dân thấy số phần trăm thu hoạch ngẫu nhiên → mất niềm tin. 0% khi
-  // chưa có data thật trung thực hơn.
-  const harvestPct = item.harvestProgress ?? 0;
-  const statusColor = fruitCount > 0 ? COLORS.success : COLORS.textMuted;
-  // Build 52 § A7 — farmer-friendly tree name.
-  const treeDisplayName = formatTreeName(item, farm);
-  const treeShortCode = shortTreeCode(item);
+  // ⛔ `?? 0` ở hai dòng này từng biến "chưa biết" thành "bằng không".
+  //
+  // `harvestProgress` trong toàn bộ `src/` có BA chỗ đọc và KHÔNG chỗ nào ghi;
+  // `mapTreeInfoToUI` (`services/treeReIDService.ts`) gõ cứng `fruitCount: 0`.
+  // Nên mọi cây trong lưới hiện `0 quả` với vòng rỗng — một con số bịa mang
+  // hình dạng số đo, và người cầm máy ngoài ruộng chép nó vào báo cáo.
+  //
+  // `null` đi thẳng tới `RingProgress` (vòng nét đứt) và tới chữ "chưa đếm".
+  // Cây thật sự chưa thu quả nào vẫn hiện `0 quả` với vòng nét liền — hai
+  // trạng thái đó phải ra hai hình khác nhau, đó là toàn bộ điểm của chỗ này.
+  const harvestPct = item.harvestProgress ?? null;
+  const soQua = item.fruitCount ?? null;
+  const ten = formatTreeName(item, farm);
 
   return (
-    <TouchableOpacity activeOpacity={0.8} onPress={onPress}>
-      <View style={styles.treeCard}>
-        <View style={styles.treeCardLeft}>
-          <View style={styles.treeIconWrap}>
-            <Icon name="tree" size={22} color={COLORS.accent} />
-          </View>
-          <View style={styles.treeProgBarWrap}>
-            <View style={[styles.treeProgBar, { height: `${harvestPct}%` as any }]} />
-          </View>
-        </View>
+    <TouchableOpacity
+      activeOpacity={0.85}
+      onPress={onPress}
+      style={{ width: size, alignItems: 'center' }}
+      accessibilityRole="button"
+      accessibilityLabel={
+        `${ten}, ` +
+        (soQua === null ? 'chưa đếm quả' : `${soQua} quả`) +
+        ', ' +
+        (harvestPct === null ? 'chưa có số liệu thu hoạch' : `đã thu ${harvestPct}%`)
+      }
+    >
+      {/*
+        BA phần, một khối. Không phần nào có nền riêng, viền riêng, hay bo góc
+        riêng — chúng ngồi chung trong lòng một hình tròn duy nhất, nên mắt đọc
+        ra một vật chứ không ra ba vật xếp chồng.
 
-        <View style={styles.treeCardBody}>
-          <View style={styles.treeTopRow}>
-            <View style={{ flex: 1, marginRight: 8 }}>
-              <Text style={styles.treeCode} numberOfLines={1}>{treeDisplayName}</Text>
-              {treeShortCode ? (
-                <Text style={styles.treeCodeSub} numberOfLines={1}>{tk('trace.label.code')} {treeShortCode}</Text>
-              ) : null}
-            </View>
-            {has3DModel && onView3D ? (
-              <TouchableOpacity
-                style={[styles.treeFruitChip, { backgroundColor: COLORS.accentGlow }]}
-                onPress={onView3D}
-                hitSlop={6}
-              >
-                <Icon name="expand" size={12} color={COLORS.accent} />
-                <Text style={[styles.treeFruitCount, { color: ORG_TONE.primary }]}>
-                  {tk('trace.label.has3d', { n: fruitCount })}
-                </Text>
-              </TouchableOpacity>
-            ) : (
-              <View style={[styles.treeFruitChip, { backgroundColor: ORG_SURFACE.raised }]}>
-                <Icon name="cube" size={12} color={COLORS.textMuted} />
-                <Text style={[styles.treeFruitCount, { color: ORG_NATURE.barkSoft }]}>
-                  {tk('trace.label.no3d', { n: fruitCount })}
-                </Text>
-              </View>
-            )}
-          </View>
-
-          {item.lastActivity && (
-            <View style={styles.treeLastActivity}>
-              <Icon name="clock" size={11} color={COLORS.textMuted} />
-              <Text style={styles.treeLastActivityText}>{item.lastActivity}</Text>
-            </View>
+        Thứ nối chúng lại là MÀU: số quả và cung tiến độ dùng chung sắc xanh
+        chủ đạo, còn tên là chữ tối. Nên "phần đã thu" ở viền và "quả đang có" ở
+        giữa nói cùng một chuyện bằng cùng một màu, còn cái tên đứng riêng ra
+        làm nhãn.
+      */}
+      <RingProgress pct={harvestPct} size={size} stroke={5}>
+        <Text style={styles.treeChipTen} numberOfLines={2}>{ten}</Text>
+        <View style={styles.treeChipGach} />
+        <Text style={styles.treeChipSo} numberOfLines={1}>
+          {soQua === null ? (
+            <Text style={styles.treeChipDonVi}>chưa đếm</Text>
+          ) : (
+            <>
+              {soQua}
+              <Text style={styles.treeChipDonVi}> quả</Text>
+            </>
           )}
-
-          {/* Mini progress bar */}
-          <View style={styles.treeHarvestRow}>
-            <View style={styles.treeHarvestTrack}>
-              <View style={[styles.treeHarvestFill, { width: `${harvestPct}%` as any }]} />
-            </View>
-            <Text style={styles.treeHarvestPct}>{harvestPct}%</Text>
-          </View>
-
-          {/* Build 54: nút "Chụp cây" chuyển sang TreeDetailScreen. */}
-        </View>
-
-        <Icon name="chevron-right" size={18} color={COLORS.accentLight} style={{ alignSelf: 'center', marginRight: 12 }} />
-      </View>
+        </Text>
+      </RingProgress>
     </TouchableOpacity>
   );
 };
@@ -745,9 +752,7 @@ const AddFarmMode = ({
                     sâu hơn mức ảnh có, và ảnh mờ vẫn ướm được, còn ô trắng thì không. */}
                 <MapLib.RasterSource
                   id="osm-tiles"
-                  /* Tên miền `a/b/c.` là dạng subdomain OSM đã ngưng — chỗ khác trong
-                     chính repo dùng đúng `tile.openstreetmap.org` (`mapTiles.ts:67`). */
-                  tileUrlTemplates={['https://tile.openstreetmap.org/{z}/{x}/{y}.png']}
+                  tileUrlTemplates={[OSM_STREET_TILES]}
                   tileSize={256}
                   maxZoomLevel={19}
                 >
@@ -1172,9 +1177,27 @@ const FarmDetailMode = ({
 
   const handleScanExisting3D = () => { };
 
-  const totalFruits = filteredTrees.reduce((sum, t) => sum + (t.fruitCount ?? 0), 0);
-  const areaLabel = farm?.areaSqm
-    ? `${(farm?.areaSqm / 10000).toFixed(1)} ha`
+  // Số của cả VƯỜN, nên đếm trên toàn bộ cây — KHÔNG trên `filteredTrees`.
+  // `filteredTrees` là kết quả lọc theo ô tìm kiếm; gõ "12" vào ô tìm cây thì
+  // dòng đầu màn đổi từ "1.240 quả" thành "8 quả", vẫn đứng cạnh diện tích
+  // vườn và vẫn đọc như một thuộc tính của vườn.
+  //
+  // `null` khi KHÔNG cây nào có số: cộng một dãy toàn "chưa biết" ra 0, và 0 ở
+  // đây đọc như "vườn này không có quả nào".
+  const dsCoQua = sortedTrees.filter((t) => typeof t.fruitCount === 'number');
+  const totalFruits = dsCoQua.length
+    ? dsCoQua.reduce((sum, t) => sum + t.fruitCount, 0)
+    : null;
+
+  // ⛔ Trường tên `areaM2`, KHÔNG phải `areaSqm`.
+  //
+  // `types/index.ts` khai `areaM2`, `farmService.ts` là nơi duy nhất sinh ra nó
+  // (từ `area_sqm` của máy chủ). Hai màn đọc `areaSqm` — một trường không tồn
+  // tại — nên diện tích máy chủ đã tính chưa từng hiện lần nào. Nó hỏng CÂM vì
+  // ngay sau đó có nhánh lui "N điểm", và vì `farm` khai kiểu `any` nên `tsc`
+  // không kêu.
+  const areaLabel = farm?.areaM2
+    ? `${(farm.areaM2 / 10000).toFixed(1)} ha`
     : `${farm?.coordinates?.length ?? 0} ${tk('trace.unit.points')}`;
 
   const moDuong = useOpenWayfind();
@@ -1182,6 +1205,18 @@ const FarmDetailMode = ({
   const soDiem = farm?.coordinates?.length ?? 0;
   /** Đủ ba điểm mới thành một mảnh đất vẽ được — dưới đó `FarmShape` trả `null`. */
   const coHinh = soDiem >= 3;
+
+  /** Cây đang mở popup. `null` = không mở. */
+  const [cayDangXem, setCayDangXem] = useState<any | null>(null);
+
+  /**
+   * Đường kính một nút cây trong lưới BA cột.
+   *
+   * Suy từ bề ngang màn chứ không gõ số: lề trang 12 mỗi bên, hai khe 12 giữa
+   * ba cột. Gõ một con số cố định thì máy hẹp bị tràn còn máy rộng thừa chỗ —
+   * và cả hai đều không có gì đỏ.
+   */
+  const CO_NUT = Math.floor((width - 12 * 2 - 12 * 2) / 3);
 
   /**
    * LƯỚI BENTO của màn này. Ba vế của luật (xem `BentoTile` trong
@@ -1209,7 +1244,14 @@ const FarmDetailMode = ({
       <View style={styles.bentoFacts}>
         <Icon name="apple-whole" size={13} color={ORG_TONE.sun} />
         <Text style={styles.bentoFactTxt}>
-          {totalFruits.toLocaleString('vi-VN')} quả <Text style={styles.bentoFactHint}>(ước tính)</Text>
+          {totalFruits === null ? (
+            <Text style={styles.bentoFactHint}>chưa đếm quả</Text>
+          ) : (
+            <>
+              {totalFruits.toLocaleString('vi-VN')} quả{' '}
+              <Text style={styles.bentoFactHint}>(ước tính)</Text>
+            </>
+          )}
         </Text>
         <View style={styles.bentoFactDot} />
         <Icon name="ruler-combined" size={13} color={ORG_TONE.rain} />
@@ -1245,17 +1287,31 @@ const FarmDetailMode = ({
         trong hàng này còn chữ.
       */}
       <BentoRow style={styles.bentoPreviews}>
-        <BentoTile flex={1} onPress={onView3DFarm} padded={false} style={styles.bentoPreview}>
-          <FarmShape farm={farm} trees={filteredTrees} mode="iso" />
+        {/*
+          Ô KHÔNG GIAN — ô tối duy nhất của trang.
+
+          Nền tối không phải để cho khác lạ: một khối phát sáng chỉ đọc ra "không
+          gian" khi quanh nó tối. Cùng hình ấy trên nền trắng thì vầng sáng biến
+          mất và nó tụt về một hình vẽ phẳng. Không đổ bóng — bóng dưới một khối
+          phát sáng kéo nó về lại thành "một tấm thẻ".
+        */}
+        <BentoTile
+          flex={1}
+          tone="space"
+          onPress={onView3DFarm}
+          padded={false}
+          style={styles.bentoPreview}
+        >
+          <FarmShape farm={farm} trees={filteredTrees} mode="space" />
           {/* Huy hiệu 3D ở GÓC, không phải nhãn giữa ô: hình nghiêng đã nói đây
               là không gian, huy hiệu chỉ xác nhận. Đặt ở góc trên-trái vì đó là
               chỗ mắt chạm đầu tiên khi đọc từ trái sang, và vì mảnh vườn nghiêng
               luôn dồn về giữa-dưới nên góc ấy trống. */}
           <View style={styles.bentoBadge3D}>
-            <Icon name="cube" size={13} color={ORG_TONE.primary} />
+            <Icon name="cube" size={13} color={SANG_KHONG_GIAN} />
             <Text style={styles.bentoBadge3DTxt}>3D</Text>
           </View>
-          {!coHinh ? <Text style={styles.bentoPreviewMoi}>Xem sơ đồ 3D</Text> : null}
+          {!coHinh ? <Text style={styles.bentoPreviewMoiToi}>Xem sơ đồ 3D</Text> : null}
         </BentoTile>
         <BentoTile
           flex={1}
@@ -1263,7 +1319,10 @@ const FarmDetailMode = ({
           padded={false}
           style={styles.bentoPreview}
         >
-          <FarmShape farm={farm} mode="flat" />
+          {/* `trees` PHẢI truyền: thiếu nó thì ô vẽ ranh giới trống không, và
+              một mảnh đất không cây đọc ra "vườn chưa có gì" — sai với vườn đang
+              có cả trăm cây. */}
+          <FarmShape farm={farm} trees={filteredTrees} mode="flat" />
           {coHinh ? (
             <Text style={styles.bentoPreviewDiem}>{soDiem} điểm</Text>
           ) : (
@@ -1399,24 +1458,22 @@ const FarmDetailMode = ({
             )
           ) : null
         }
-        renderItem={({ item, index }) => (
-          <TreeCard
+        /*
+          LƯỚI BA CỘT. `numColumns` là thuộc tính TĨNH của `FlatList` — đổi nó
+          lúc chạy làm danh sách ném. Ở đây nó là hằng nên không sao; nếu ngày
+          nào cần đổi theo bề ngang màn thì phải đổi cả `key` của danh sách.
+        */
+        numColumns={3}
+        columnWrapperStyle={styles.treeGridHang}
+        renderItem={({ item }) => (
+          <TreeChip
             item={item}
-            index={index}
             farm={farm}
-            onPress={() => {
-              // @ts-ignore
-              (navigation.navigate as any)('TreeDetail', { tree: item })
-            }}
-            onView3D={() => {
-              // Mở KHÔNG-GIAN 3D chung (vườn ⇄ cây ⇄ quả) thay cho WebView /view/{code}.
-              (navigation.navigate as any)('Space3D', {
-                mode: 'tree',
-                treeId: item.id,
-                farmId: item.farmId ?? farm?.id,
-                treeName: formatTreeName(item, farm),
-              });
-            }}
+            size={CO_NUT}
+            /* Chạm KHÔNG mở thẳng màn chi tiết nữa — nó mở popup. Màn chi tiết
+               là một chuyến đi khỏi danh sách; phần lớn lượt chạm chỉ để xem
+               nhanh cây này có gì, rồi quay lại chạm cây kế. */
+            onPress={() => setCayDangXem(item)}
           />
         )}
         ListFooterComponent={
@@ -1472,11 +1529,93 @@ const FarmDetailMode = ({
         */}
         <TouchableOpacity style={styles.activityLargeBtn} onPress={onActivityUpdate} activeOpacity={0.88}>
           <GradientFill name="action" />
-          <View style={styles.btnShine} />
           <Icon name="seedling" size={19} color={COLORS.white} />
           <Text style={styles.activityLargeBtnText}>Cập nhật hoạt động</Text>
         </TouchableOpacity>
       </View>
+
+      {/*
+        POPUP CHI TIẾT CÂY.
+
+        Chạm một nút cây mở cái này, KHÔNG mở thẳng màn chi tiết. Lý do là nhịp
+        làm việc thật: người ta quét mắt qua lưới, chạm một cây để xem nhanh nó
+        có gì, rồi chạm cây kế. Mở màn chi tiết cho mỗi lượt xem nhanh là bắt họ
+        đi và quay lại — mất chỗ đang đứng trong lưới, mất cả trang phân trang.
+
+        Màn chi tiết vẫn ở đó, sau MỘT nút. Ai cần đi sâu thì đi.
+      */}
+      <Modal
+        visible={cayDangXem != null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCayDangXem(null)}
+      >
+        {/* Chạm ra ngoài là đóng — cách thoát mà ai cũng thử trước tiên. */}
+        <Pressable style={styles.cayPopupNen} onPress={() => setCayDangXem(null)} />
+        <View style={styles.cayPopupBoc} pointerEvents="box-none">
+          <View style={styles.cayPopup}>
+            <GradientFill name="tile" />
+
+            <View style={styles.cayPopupDau}>
+              {/*
+                Cùng lý do với lưới: `?? 0` ở đây in ra "0%" và câu "đã thu
+                hoạch" cho một cây mà app KHÔNG có số liệu. Đọc rời ra thì nó
+                là một câu khẳng định, và nó sai.
+              */}
+              <RingProgress pct={cayDangXem?.harvestProgress ?? null} size={64} stroke={5}>
+                <Text style={styles.cayPopupPct}>
+                  {cayDangXem?.harvestProgress == null ? '—' : `${cayDangXem.harvestProgress}%`}
+                </Text>
+              </RingProgress>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.cayPopupTen} numberOfLines={2}>
+                  {cayDangXem ? formatTreeName(cayDangXem, farm) : ''}
+                </Text>
+                <Text style={styles.cayPopupPhu}>
+                  {cayDangXem?.harvestProgress == null ? 'chưa có số liệu thu hoạch' : 'đã thu hoạch'}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.cayPopupBang}>
+              {[
+                { nhan: 'Quả trên cây', gt: String(cayDangXem?.fruitCount ?? 'chưa đếm') },
+                {
+                  nhan: 'Quả dự kiến',
+                  gt: String(cayDangXem?.estimatedFruits ?? 'chưa ghi'),
+                  uoc: true,
+                },
+                { nhan: 'Giống', gt: cayDangXem?.species || 'chưa ghi' },
+                {
+                  nhan: 'Năm trồng',
+                  gt: cayDangXem?.plantedYear ? String(cayDangXem.plantedYear) : 'chưa ghi',
+                },
+              ].map((d) => (
+                <View key={d.nhan} style={styles.cayPopupHang}>
+                  <Text style={styles.cayPopupNhan}>{d.nhan}</Text>
+                  <Text style={styles.cayPopupGt}>
+                    {d.gt}
+                    {d.uoc ? <Text style={styles.cayPopupUoc}> (ước tính)</Text> : null}
+                  </Text>
+                </View>
+              ))}
+            </View>
+
+            <TouchableOpacity
+              style={styles.cayPopupNut}
+              activeOpacity={0.88}
+              onPress={() => {
+                const cay = cayDangXem;
+                setCayDangXem(null);
+                if (cay) (navigation.navigate as any)('TreeDetail', { tree: cay });
+              }}
+            >
+              <GradientFill name="action" />
+              <Text style={styles.cayPopupNutTxt}>Xem chi tiết</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* Rename Farm Popup */}
       <CommonPopup
@@ -2449,14 +2588,16 @@ const FarmDetailScreen = () => {
             }
           />
 
-          {/* Always show base map tiles for streets and areas */}
+          {/* Always show base map tiles for streets and areas.
+
+              ⛔ Ba dòng subdomain OSM đã ngưng (`a|b|c.tile…`) NẰM Ở ĐÂY tới tận
+              bản này, dù chỗ ngay trên trong CÙNG TỆP đã vá và ghi hẳn lý do ra.
+              Chúng không phân giải được, nên lớp bản đồ đường phố ra một mảng
+              xanh dương trống trong khi vệ tinh vẫn chạy (vệ tinh trỏ ArcGIS).
+              Nay cả hai nguồn lấy từ MỘT hằng — xem `mapTiles.ts`. */}
           <MapLib.RasterSource
             id="osm-tiles-detail"
-            tileUrlTemplates={[
-              'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
-              'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
-              'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png',
-            ]}
+            tileUrlTemplates={[OSM_STREET_TILES]}
             tileSize={256}
           >
             <MapLib.RasterLayer id="osm-tiles-layer-detail" sourceID="osm-tiles-detail" />
@@ -2618,6 +2759,71 @@ const styles = StyleSheet.create({
   },
 
   // Stats banner
+  // ── Nút cây + lưới ba cột ─────────────────────────────────────────────────
+  treeGridHang: { gap: 12, marginBottom: 12 },
+  /*
+   * Lòng nút KHÔNG có nền riêng nữa — nền là `fill` của chính hình tròn SVG
+   * (xem `RingProgress`). Một `View` bo tròn lồng vào giữa là một mép THỨ HAI, và
+   * hai mép không bao giờ khớp tuyệt đối — chúng để lại một đường chỉ mờ, và cái
+   * vòng đọc ra "thứ đeo quanh nút" thay vì "viền của nút".
+   */
+  treeChipTen: {
+    fontSize: 13, fontWeight: '700', color: ORG_NATURE.bark,
+    textAlign: 'center', letterSpacing: -0.2, lineHeight: 16,
+  },
+  /**
+   * Gạch nối giữa tên và số — ngắn, nhạt, không chạm hai bên.
+   *
+   * Nó là thứ duy nhất trong nút không mang tin, và có mặt vì một lý do: hai dòng
+   * chữ cỡ gần nhau đặt sát nhau thì mắt đọc thành một cụm ba dòng rối. Một vạch
+   * mảnh chia nó thành "nhãn" và "số liệu" mà không thêm một mảng nền nào.
+   */
+  treeChipGach: {
+    width: 16, height: 1, marginVertical: 5,
+    backgroundColor: ORG_TONE.border,
+  },
+  /** Số quả dùng CHÍNH sắc của cung tiến độ — đó là thứ nối giữa và viền. */
+  treeChipSo: {
+    fontSize: 15, fontWeight: '800', color: ORG_TONE.primary,
+    letterSpacing: -0.3, lineHeight: 18,
+  },
+  treeChipDonVi: { fontSize: 11, fontWeight: '600', color: ORG_NATURE.barkSoft },
+
+  // ── Popup chi tiết cây ────────────────────────────────────────────────────
+  cayPopupNen: { ...StyleSheet.absoluteFillObject, backgroundColor: ORG_SURFACE.scrim },
+  cayPopupBoc: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  cayPopup: {
+    width: '100%', maxWidth: 420,
+    borderRadius: 20, padding: 20, gap: 16,
+    backgroundColor: ORG_SURFACE.raised,
+    borderWidth: 1, borderColor: ORG_TONE.border,
+    // Lớp chuyển sắc trải kín nằm dưới nội dung — thiếu dòng này thì nó tràn
+    // qua góc bo.
+    overflow: 'hidden',
+  },
+  cayPopupDau: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  cayPopupPct: { fontSize: 15, fontWeight: '800', color: ORG_NATURE.bark, letterSpacing: -0.5 },
+  cayPopupTen: { fontSize: 19, fontWeight: '700', color: ORG_NATURE.bark, letterSpacing: -0.3 },
+  cayPopupPhu: { fontSize: 13, color: ORG_NATURE.barkSoft, marginTop: 2 },
+  cayPopupBang: { gap: 2 },
+  cayPopupHang: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 9,
+    borderBottomWidth: 1, borderBottomColor: ORG_TONE.border,
+  },
+  cayPopupNhan: { fontSize: 14, color: ORG_NATURE.barkSoft },
+  cayPopupGt: { fontSize: 15, fontWeight: '700', color: ORG_NATURE.bark },
+  /** "(ước tính)" phải KHÁC mắt so với con số — cùng lý do với dòng thông tin phụ. */
+  cayPopupUoc: { fontSize: 12, fontWeight: '400', fontStyle: 'italic', color: ORG_NATURE.barkSoft },
+  cayPopupNut: {
+    borderRadius: 14, paddingVertical: 15,
+    alignItems: 'center', justifyContent: 'center',
+    overflow: 'hidden',
+    // Cùng họ màu với lớp phủ — xem chú thích ở `activityLargeBtn`.
+    backgroundColor: ORG_GRADIENT.action.from,
+  },
+  cayPopupNutTxt: { fontSize: 15, fontWeight: '700', color: COLORS.white, letterSpacing: 0.2 },
+
   // ── Lưới Bento ────────────────────────────────────────────────────────────
   //
   // KHE HỞ HẸP, Ô RỘNG. Bản đầu dùng thẳng `SPACE.page` (16) và `SPACE.md` (12)
@@ -2660,20 +2866,43 @@ const styles = StyleSheet.create({
     fontSize: 12, fontWeight: '700', color: ORG_NATURE.barkSoft,
     paddingBottom: 8,
   },
-  /** Huy hiệu 3D — góc trên-trái, nền mờ để đọc được trên cả nền hình lẫn nền ô. */
+  /**
+   * Huy hiệu 3D — góc trên-trái, trên NỀN TỐI.
+   *
+   * Nền của nó là một lớp sáng rất mờ chứ không phải màu đặc: ô là không gian
+   * phát sáng, nên một chip trắng đục nằm đè lên trông như dán giấy lên màn.
+   */
   bentoBadge3D: {
     position: 'absolute', top: 8, left: 8,
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: 7, paddingVertical: 3,
     borderRadius: 999,
-    backgroundColor: ORG_SURFACE.raised,
-    borderWidth: 1, borderColor: ORG_TONE.border,
+    backgroundColor: 'rgba(127, 231, 196, 0.12)',
+    borderWidth: 1, borderColor: 'rgba(127, 231, 196, 0.32)',
   },
-  bentoBadge3DTxt: { fontSize: 11, fontWeight: '800', color: ORG_TONE.primary },
+  bentoBadge3DTxt: { fontSize: 11, fontWeight: '800', color: SANG_KHONG_GIAN },
 
   /** Chỉ hiện khi CHƯA có hình để vẽ — lúc đó ô phải tự nói nó mở ra cái gì. */
   bentoPreviewMoi: {
     fontSize: 14, fontWeight: '700', color: ORG_TONE.primary,
+    textAlign: 'center', paddingBottom: 14, paddingHorizontal: 8,
+  },
+  // ⛔ Cùng chữ, KHÁC nền ⇒ phải khác kiểu.
+  //
+  // Ô "Xem sơ đồ 3D" nằm trong `<BentoTile tone="space">`, tức nền TỐI
+  // (`GRADIENT.space`), còn ô "Vẽ ranh giới vườn" nằm trên nền sáng. Trước bản
+  // này cả hai dùng chung `bentoPreviewMoi` với `TONE.primary` — chữ xanh đậm
+  // trên nền tối, tương phản đo được **1,50** ở chặng sáng nhất của dải và
+  // **1,94** ở chỗ chữ thật sự đứng. Ngưỡng AA là 4,5; ngoài nắng thì bằng 0.
+  //
+  // Nó rơi đúng vào vườn VỪA TẠO, chưa đi ranh giới — lúc `FarmShape` trả
+  // `null` nên ô chỉ còn một hình chữ nhật tối và đúng dòng chữ này. Tức lời
+  // mời tàng hình ở đúng lúc người dùng cần nó nhất.
+  //
+  // `Surface.tsx` đã viết ra luật này thành chữ: ô có `onDark` thì chữ bên
+  // trong PHẢI là chữ sáng, và ô không tự đổi màu chữ của con.
+  bentoPreviewMoiToi: {
+    fontSize: 14, fontWeight: '700', color: ORG_NATURE.paper,
     textAlign: 'center', paddingBottom: 14, paddingHorizontal: 8,
   },
 
@@ -2724,65 +2953,6 @@ const styles = StyleSheet.create({
   },
 
   // Tree card
-  treeCard: {
-    backgroundColor: ORG_SURFACE.raised,
-    ...ORGANIC_CARD,
-    flexDirection: 'row', alignItems: 'stretch',
-    ...ORG_ELEV.card, overflow: 'hidden',
-  },
-  treeCardLeft: {
-    width: 48, alignItems: 'center', paddingVertical: 14, gap: 8,
-    backgroundColor: ORG_SURFACE.raised,
-    borderRightWidth: 1, borderRightColor: COLORS.border,
-  },
-  treeIconWrap: {
-    width: 32, height: 32, borderRadius: 8,
-    backgroundColor: COLORS.accentGlow,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  treeProgBarWrap: {
-    flex: 1, width: 4, backgroundColor: COLORS.border,
-    borderRadius: 2, overflow: 'hidden', maxHeight: 40,
-  },
-  treeProgBar: {
-    width: '100%', backgroundColor: COLORS.accent,
-    borderRadius: 2, position: 'absolute', bottom: 0,
-  },
-  treeCardBody: { flex: 1, padding: 12 },
-  treeTopRow: {
-    flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'space-between', marginBottom: 5,
-  },
-  treeCode: {
-    fontSize: 15, fontWeight: '700', color: COLORS.text, letterSpacing: -0.2,
-  },
-  treeCodeSub: {
-    fontSize: 10, fontWeight: '500', color: COLORS.textMuted,
-    letterSpacing: 0.3, marginTop: 1,
-  },
-  treeFruitChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20,
-  },
-  treeFruitCount: { fontSize: 11, fontWeight: '600' },
-  treeLastActivity: {
-    flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 8,
-  },
-  treeLastActivityText: { fontSize: 11, color: COLORS.textMuted },
-  treeHarvestRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-  },
-  treeHarvestTrack: {
-    flex: 1, height: 4, backgroundColor: COLORS.border,
-    borderRadius: 2, overflow: 'hidden',
-  },
-  treeHarvestFill: {
-    height: '100%', backgroundColor: COLORS.accent,
-    borderRadius: 2,
-  },
-  treeHarvestPct: {
-    fontSize: 11, fontWeight: '600', color: COLORS.textMuted, width: 32,
-  },
   treeCapture3DBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     marginTop: 10, paddingVertical: 7, paddingHorizontal: 10,
@@ -2872,7 +3042,24 @@ const styles = StyleSheet.create({
     color: COLORS.accent,
   },
   activityLargeBtn: {
-    backgroundColor: COLORS.accent,
+    /*
+      ⛔ Nền lấy từ CHÍNH token chuyển sắc, KHÔNG lấy `COLORS.accent`.
+
+      Nút này có một lớp `GradientFill name="action"` phủ lên. Nền ở dưới chỉ
+      hiện ra khi lớp phủ không phủ kín — và lúc đó nó phải CÙNG HỌ MÀU, để chỗ
+      hở chỉ hơi lệch sắc chứ không thành một mảng màu khác hẳn.
+
+      `COLORS.accent` không cùng họ: ở lớp token mặc định (`theme/tokens.ts:47`)
+      nó là XANH DƯƠNG `#3B6EA8`, trong khi `GRADIENT.action` là xanh lá. Đó là
+      lý do thật của "nút nửa trên xanh lá, nửa dưới xanh dương" — nền và lớp
+      phủ khác họ màu, cộng một lớp phủ có lúc hở.
+
+      Hai lượt vá trước sửa hai lỗi CÓ THẬT (id trùng, toạ độ dạng chuỗi phần
+      trăm) nhưng không phải lỗi này, nên triệu chứng còn nguyên qua cả hai.
+      Dòng này làm cho dù lớp phủ có hở lần nữa, người dùng cũng không thấy hai
+      màu — nó không sửa chỗ hở, nó làm chỗ hở thôi nhìn thấy được.
+    */
+    backgroundColor: ORG_GRADIENT.action.from,
     borderRadius: 14, paddingVertical: 16,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 10, overflow: 'hidden', position: 'relative',
@@ -2883,6 +3070,17 @@ const styles = StyleSheet.create({
   },
 
   // Shared
+  /**
+   * ⛔ ĐÃ GỠ khỏi nút "Cập nhật hoạt động", giữ định nghĩa vì màn khác còn dùng.
+   *
+   * Nó là một lớp trắng mờ phủ ĐÚNG NỬA TRÊN (`height: '50%'`) — mép dưới của
+   * nó là một đường ngang CẮT NGANG nút. Trên một nền màu phẳng thì gần như
+   * không thấy; trên nền chuyển sắc thì nửa trên bị nâng sáng còn nửa dưới thì
+   * không, và cái đường ấy hiện rõ thành ranh giới hai mảng màu.
+   *
+   * Nó ra đời để GIẢ một vệt sáng trên nền phẳng. Nay nền đã là chuyển sắc thật,
+   * nên nó vừa thừa vừa phá đúng thứ nó từng giả.
+   */
   btnShine: {
     position: 'absolute', top: 0, left: 0, right: 0,
     height: '50%', backgroundColor: 'rgba(255,255,255,0.09)',

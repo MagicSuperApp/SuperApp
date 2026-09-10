@@ -41,8 +41,19 @@ import { join } from 'path';
 // `core.autocrlf=true` (xem `.gitattributes`).
 const SRC = readFileSync(join(__dirname, 'FarmDetailScreen.tsx'), 'utf8').replace(/\r\n/g, '\n');
 
-/** Đếm số lần một chuỗi xuất hiện. */
-const dem = (needle: string): number => SRC.split(needle).length - 1;
+/**
+ * Đếm số lần một chuỗi xuất hiện TRONG MÃ CHẠY.
+ *
+ * Đếm trên `SRC` gốc là sai, và nó đã sai thật: một chú thích giải thích vì sao
+ * ô `tone="space"` cần chữ sáng có nhắc nguyên văn `tone="space"`, thế là phép
+ * đếm ra 2 và cổng báo "trang có hai ô tối". Cổng bắt lời giải thích rồi kết
+ * luận về mã — cùng cái bẫy mà `MA_CHAY` bên dưới sinh ra để tránh, chỉ khác là
+ * `dem` chưa được nối vào.
+ *
+ * `MA_CHAY` khai SAU `dem` trong tệp này, nhưng thân hàm mũi tên chỉ chạy lúc
+ * GỌI — và mọi lượt gọi đều nằm trong `it(...)`, tức sau khi module dựng xong.
+ */
+const dem = (needle: string): number => MA_CHAY.split(needle).length - 1;
 
 /**
  * Chỉ giữ MÃ CHẠY: bỏ chú thích khối `/* *​/` và chú thích dòng `//`.
@@ -119,11 +130,19 @@ describe('dòng thời gian là Ô LỚN NHẤT, không phải phần đuôi', (
 
 describe('hai ô xem trước HIỆN thứ chúng mở, không phải icon + chữ', () => {
   it('cả hai ô đều vẽ chính mảnh vườn này', () => {
-    // `iso` cho ô sơ đồ 3D, `flat` cho ô ranh giới — cùng một mảnh đất, hai cách
-    // nhìn, cả hai dựng từ `farm.coordinates` thật.
+    // `space` cho ô sơ đồ 3D, `flat` cho ô ranh giới — cùng một mảnh đất, hai
+    // cách nhìn, cả hai dựng từ `farm.coordinates` thật.
     expect(dem('<FarmShape')).toBe(2);
-    expect(MA_CHAY).toContain('mode="iso"');
+    expect(MA_CHAY).toContain('mode="space"');
     expect(MA_CHAY).toContain('mode="flat"');
+  });
+
+  it('ô sơ đồ 3D là ô TỐI, và là ô tối DUY NHẤT của trang', () => {
+    // `space` chỉ đúng trên nền tối: vầng sáng cần nền tối để đọc ra không gian.
+    // Và luật Bento cho phép đúng MỘT ô tối mỗi trang — cái thứ hai làm cả hai
+    // mất tác dụng làm dấu "khác loại".
+    expect(MA_CHAY).toContain('tone="space"');
+    expect(dem('tone="space"')).toBe(1);
   });
 
   it('KHÔNG có biểu tượng nào ĐỨNG THAY NHÃN trong hai ô đó', () => {
@@ -171,5 +190,158 @@ describe('thanh đáy còn đúng một việc', () => {
     // Giữ lời gọi này là giữ cho hai thứ đó không lệch nhau được nữa.
     expect(SRC).toContain('height: chieuCaoThanhDay || CHUA_DO_THANH_DAY');
     expect(SRC).toContain('setChieuCaoThanhDay(');
+  });
+});
+
+describe('không lớp phủ nào được cắt ngang một nền chuyển sắc', () => {
+  it('nút "Cập nhật hoạt động" KHÔNG còn lớp `btnShine`', () => {
+    // ⛔ `btnShine` phủ ĐÚNG NỬA TRÊN (`height: '50%'`), nên mép dưới của nó là
+    //    một đường ngang cắt ngang nút. Trên nền màu phẳng gần như không thấy;
+    //    trên nền chuyển sắc thì nửa trên bị nâng sáng còn nửa dưới thì không,
+    //    và cái đường ấy hiện rõ thành ranh giới hai mảng màu.
+    //
+    // Nó ra đời để GIẢ một vệt sáng trên nền phẳng. Nay nền là chuyển sắc thật,
+    // nên nó vừa thừa vừa phá đúng thứ nó từng giả.
+    const i = MA_CHAY.indexOf('styles.activityLargeBtn');
+    expect(i).toBeGreaterThan(-1);
+    const ket = MA_CHAY.indexOf('</TouchableOpacity>', i);
+    expect(ket).toBeGreaterThan(i);
+    const nut = MA_CHAY.slice(i, ket);
+    expect(nut).toContain('<GradientFill name="action" />');
+    expect(nut).not.toContain('styles.btnShine');
+  });
+});
+
+describe('cả hai ô xem trước đều vẽ cây trong vườn', () => {
+  it('mỗi `FarmShape` đều được truyền `trees`', () => {
+    // Ô ranh giới TỪNG thiếu vế này: nó vẽ mảnh đất trống không, và một mảnh đất
+    // không cây đọc ra "vườn chưa có gì" — sai với vườn đang có cả trăm cây.
+    expect(dem('<FarmShape')).toBe(dem('trees={filteredTrees}'));
+    expect(dem('trees={filteredTrees}')).toBe(2);
+  });
+});
+
+describe('nền dưới lớp phủ phải CÙNG HỌ MÀU với lớp phủ', () => {
+  it('nút "Cập nhật hoạt động" lấy nền từ chính token chuyển sắc', () => {
+    // ⛔ Đây là nguyên nhân THẬT của "nút hai màu", sau khi hai lượt vá trước
+    //    sửa hai lỗi khác (id trùng, toạ độ dạng chuỗi phần trăm).
+    //
+    // Nút có một lớp `GradientFill name="action"` phủ lên. Nền dưới chỉ hiện ra
+    // khi lớp phủ hở — và `COLORS.accent` ở lớp token mặc định là XANH DƯƠNG
+    // `#3B6EA8`, trong khi `GRADIENT.action` là xanh lá. Hở một chút là thấy hai
+    // màu khác hẳn nhau.
+    //
+    // Chốt này KHÔNG vá chỗ hở; nó làm chỗ hở thôi nhìn thấy được.
+    const i = MA_CHAY.indexOf('activityLargeBtn: {');
+    expect(i).toBeGreaterThan(-1);
+    const khoi = MA_CHAY.slice(i, i + 260);
+    expect(khoi).toContain('backgroundColor: ORG_GRADIENT.action.from');
+    expect(khoi).not.toContain('backgroundColor: COLORS.accent');
+  });
+});
+
+/**
+ * DANH SÁCH CÂY — nút tròn, lưới ba cột, chạm mở popup.
+ *
+ * Yêu cầu từ thực địa, và nó là một danh sách BỎ nhiều hơn là THÊM: bỏ biểu
+ * tượng cây, bỏ mũi tên phải, bỏ mã cây — chỉ còn tên. Ba thứ bỏ đi đều là thứ
+ * lặp lại y hệt trên mọi thẻ, tức không phân biệt được thẻ nào với thẻ nào:
+ *
+ *   biểu tượng cây   cây nào cũng là cây
+ *   mũi tên phải     cả danh sách đều bấm được
+ *   mã cây           chuỗi băm ngắn, không ai đọc — tên mới là thứ nhà vườn gọi
+ *
+ * Danh sách "bỏ đi" là loại dễ trôi ngược nhất: mỗi lượt sau chỉ cần thêm lại
+ * MỘT thứ, thấy hợp lý một mình, và vài lượt là thẻ cũ quay về nguyên hình.
+ */
+describe('danh sách cây — nút tròn trong lưới ba cột', () => {
+  it('lưới đúng BA cột', () => {
+    expect(MA_CHAY).toContain('numColumns={3}');
+  });
+
+  it('nút TRÒN, và tiến độ là VIỀN của chính nó — chỉ MỘT mép', () => {
+    // Phải soi TRONG `TreeChip`, không soi cả tệp: popup chi tiết cũng dùng
+    // `RingProgress`, nên phép so cả tệp vẫn xanh sau khi ai đó gỡ vòng khỏi
+    // nút. Đã cắn đúng ca đó lúc chạy đột biến.
+    const iChip = MA_CHAY.indexOf('const TreeChip');
+    expect(iChip).toBeGreaterThan(-1);
+    const thanChip = MA_CHAY.slice(iChip, MA_CHAY.indexOf('};', MA_CHAY.indexOf('return (', iChip)));
+    expect(thanChip).toContain('<RingProgress');
+
+    // ⛔ KHÔNG được có một `View` bo tròn lồng vào giữa. Đó là mép THỨ HAI, và
+    //    hai mép không bao giờ khớp tuyệt đối — chúng để lại một đường chỉ mờ,
+    //    và cái vòng đọc ra "thứ đeo quanh nút" thay vì "viền của nút". Đúng
+    //    lý do bản đầu bị báo là xấu.
+    expect(thanChip).not.toContain('borderRadius');
+    expect(MA_CHAY).not.toContain('treeChipTron');
+  });
+
+  it('nút mang SỐ QUẢ, và số dùng chung sắc với cung tiến độ', () => {
+    // Nút chỉ có mỗi cái tên thì trống — báo về từ thực địa. Số quả là con số
+    // duy nhất nhà vườn nhìn ở mức danh sách, nên nó vào đây.
+    //
+    // Dùng CHUNG `TONE.primary` với cung tiến độ là thứ nối giữa và viền lại:
+    // "phần đã thu" ở mép và "quả đang có" ở giữa nói cùng một chuyện bằng cùng
+    // một màu, còn cái tên đứng riêng làm nhãn.
+    const iChip = MA_CHAY.indexOf('const TreeChip');
+    const thanChip = MA_CHAY.slice(iChip, MA_CHAY.indexOf('};', MA_CHAY.indexOf('return (', iChip)));
+    expect(thanChip).toContain('item.fruitCount');
+    expect(thanChip).toContain('styles.treeChipSo');
+
+    const iSo = MA_CHAY.indexOf('treeChipSo: {');
+    expect(iSo).toBeGreaterThan(-1);
+    expect(MA_CHAY.slice(iSo, iSo + 160)).toContain('ORG_TONE.primary');
+  });
+
+  it('trong nút CHỈ có tên và số — không biểu tượng, không mũi tên, không mã', () => {
+    const i = MA_CHAY.indexOf('const TreeChip');
+    expect(i).toBeGreaterThan(-1);
+    const than = MA_CHAY.slice(i, MA_CHAY.indexOf('};', MA_CHAY.indexOf('return (', i)));
+    expect(than).toContain('formatTreeName(item, farm)');
+    expect(than).not.toContain('<Icon');
+    expect(than).not.toContain('shortTreeCode');
+  });
+
+  it('thẻ cũ KHÔNG quay lại', () => {
+    for (const chet of ['TreeCard', 'treeIconWrap', 'treeHarvestTrack', 'treeCodeSub']) {
+      expect(MA_CHAY).not.toContain(chet);
+    }
+  });
+});
+
+describe('chạm cây mở POPUP, màn chi tiết nằm sau một nút', () => {
+  it('chạm nút cây KHÔNG điều hướng thẳng', () => {
+    // Nhịp làm việc thật: quét mắt qua lưới, chạm xem nhanh, chạm cây kế. Mở
+    // màn chi tiết cho mỗi lượt xem nhanh là bắt người ta đi và quay lại — mất
+    // chỗ đang đứng trong lưới, mất cả trang phân trang.
+    const i = MA_CHAY.indexOf('<TreeChip');
+    expect(i).toBeGreaterThan(-1);
+    const khoi = MA_CHAY.slice(i, MA_CHAY.indexOf('/>', i));
+    expect(khoi).toContain('setCayDangXem(item)');
+    expect(khoi).not.toContain('TreeDetail');
+  });
+
+  it('popup có nút mở màn chi tiết, và nó đóng popup trước khi đi', () => {
+    // Không đóng thì lúc quay lại popup còn mở, đè lên lưới — người dùng phải
+    // đóng một thứ họ không mở.
+    const i = MA_CHAY.indexOf('cayPopupNut');
+    expect(i).toBeGreaterThan(-1);
+    const khoi = MA_CHAY.slice(i, i + 500);
+    expect(khoi).toContain('setCayDangXem(null)');
+    expect(khoi).toContain("'TreeDetail'");
+  });
+
+  it('popup mang đủ chi tiết cơ bản, và số ước tính tự khai', () => {
+    const i = MA_CHAY.indexOf('cayPopupBang');
+    expect(i).toBeGreaterThan(-1);
+    const khoi = MA_CHAY.slice(i, i + 900);
+    for (const nhan of ['Quả trên cây', 'Quả dự kiến', 'Giống', 'Năm trồng']) {
+      expect(khoi).toContain(nhan);
+    }
+    // Khớp CỜ điều khiển, không khớp chuỗi hiện ra: chuỗi "ước tính" còn nằm ở
+    // dòng thông tin phụ phía trên, nên phép so chuỗi vẫn xanh sau khi ai đó gỡ
+    // `uoc: true` và nhánh hiện chữ chết hẳn. Đã cắn đúng ca đó lúc đột biến.
+    expect(khoi).toContain('uoc: true');
+    expect(MA_CHAY).toContain('styles.cayPopupUoc');
   });
 });

@@ -30,13 +30,48 @@ export const vongRanh = (coordinates: unknown): DiemDat[] =>
     .filter(hopLe)
     .map((p: any) => ({ lat: Number(p.lat), lng: Number(p.lng ?? p.lon) }));
 
-/** Vị trí một cây — chấp cả `gps` dạng chuỗi lẫn cặp `lat`/`lon` rời. */
+/**
+ * Vị trí một cây. BỐN hình dạng, vì trong kho này cây có bốn hình dạng thật.
+ *
+ * ⛔ Bản đầu chỉ đọc `gps` / `lat` / `lon` — ba khoá lấy từ `forTree` bên
+ *    `features/wayfind`, tức hình dạng của bản ghi TỪ MÁY CHỦ. Nhưng kiểu `Tree`
+ *    trong `modules/trace/types` lưu ở `latitude`/`longitude`, hoặc ở dạng cặp
+ *    `location: { lat, lng }`. Không khoá nào trùng.
+ *
+ *    Hệ quả: hàm trả `null` cho MỌI cây, nên hai ô xem trước vẽ mảnh đất không
+ *    có một chấm nào — đúng như báo về từ thực địa, hai lượt liền.
+ *
+ *    Bài kiểm cũ không bắt được vì nó dựng dữ liệu giả theo ĐÚNG giả định sai
+ *    của hàm: cả hai cùng sinh ra từ một chỗ đọc thiếu, nên chúng đồng ý với
+ *    nhau. Nay các ca kiểm lấy hình dạng từ `interface Tree` chứ không từ đầu.
+ *
+ * Thứ tự đọc đi từ hình dạng CỤ THỂ nhất ra ngoài, để một bản ghi có nhiều khoá
+ * không bị đọc bằng khoá kém tin cậy hơn.
+ */
 export const viTriCay = (t: any): DiemDat | null => {
-  const g = typeof t?.gps === 'string' ? t.gps.split(',') : null;
-  const lat = Number(g ? g[0] : t?.lat);
-  const lng = Number(g ? g[1] : (t?.lng ?? t?.lon));
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  return { lat, lng };
+  const thu = (lat: unknown, lng: unknown): DiemDat | null => {
+    const a = Number(lat);
+    const b = Number(lng);
+    return Number.isFinite(a) && Number.isFinite(b) ? { lat: a, lng: b } : null;
+  };
+
+  // 1. Kiểu `Tree` của module: `latitude` / `longitude`.
+  const day = thu(t?.latitude, t?.longitude);
+  if (day) return day;
+
+  // 2. Dạng cặp: `location: { lat, lng }`.
+  const cap = thu(t?.location?.lat, t?.location?.lng ?? t?.location?.lon);
+  if (cap) return cap;
+
+  // 3. Bản ghi máy chủ: chuỗi `gps` "vĩ, kinh".
+  if (typeof t?.gps === 'string') {
+    const [a, b] = t.gps.split(',');
+    const chuoi = thu(a, b);
+    if (chuoi) return chuoi;
+  }
+
+  // 4. Cặp rời `lat` / `lon`|`lng`.
+  return thu(t?.lat, t?.lng ?? t?.lon);
 };
 
 /**
@@ -62,6 +97,27 @@ export const chuanHoa = (ring: readonly DiemDat[]): ((p: DiemDat) => DiemVe) => 
     // Vĩ độ lớn là về phía BẮC, mà trục y của SVG hướng XUỐNG.
     y: 1 - (p.lat - minY + buY) / canh,
   });
+};
+
+/**
+ * Xoay nhẹ quanh TÂM hộp 0..1, trước khi chiếu.
+ *
+ * Vì sao xoay quanh tâm chứ không quanh gốc: xoay quanh gốc (0,0) đẩy cả hình
+ * lệch ra một góc, nên phải bù lại bằng một phép dời — hai phép cho một việc, và
+ * chỗ bù đó là chỗ sai khi ai đó đổi góc.
+ *
+ * "Nhẹ" là một góc nhỏ có chủ ý: đủ để mảnh đất thôi nằm thẳng hàng với mép ô
+ * (thứ làm nó đọc ra "một hình vẽ"), chưa đủ để người ta phải nghiêng đầu.
+ */
+export const xoayNhe = (deg: number) => {
+  const r = (deg * Math.PI) / 180;
+  const c = Math.cos(r);
+  const s = Math.sin(r);
+  return (d: DiemVe): DiemVe => {
+    const x = d.x - 0.5;
+    const y = d.y - 0.5;
+    return { x: 0.5 + x * c - y * s, y: 0.5 + x * s + y * c };
+  };
 };
 
 /** Trải phẳng hộp 0..1 vào khung `viewBox` 100×100, chừa lề 8. */

@@ -903,8 +903,17 @@ export function mapTreeInfoToUI(t: TreeInfo, farmId: string): any {
     latitude: gps ? gps[0] : undefined,
     longitude: gps ? gps[1] : undefined,
     images: [],
-    estimatedFruits: 0,
-    fruitCount: 0,
+    // ⛔ KHÔNG điền số quả ở đây. field-reid không trả số quả, nên mọi giá trị
+    // đặt vào đây là giá trị do chính hàm này bịa ra.
+    //
+    // Trước bản này hai trường ấy gõ cứng `0`. Nó không dừng lại ở chỗ được
+    // điền: lưới cây ở `FarmDetailScreen` đọc thẳng ra thành `0 quả` kèm vòng
+    // tiến độ rỗng, và ở đó `0` không còn tự khai được là thiếu — nó đọc y hệt
+    // một cây đã đếm và không có quả nào.
+    //
+    // Để TRỐNG thì nơi dùng buộc phải quyết định hiện gì, và cả ba nơi đọc
+    // hiện nay (`useSpaceData`, `FarmListScreen`, `TreeDetailScreen`) đều đã
+    // có sẵn giá trị lui của riêng chúng.
     // Cờ 3D field-reid → field UI đang đọc (làm sáng chip "Xem 3D").
     has_3d: !!t.has3d,
     anchor: t.anchor ?? null,

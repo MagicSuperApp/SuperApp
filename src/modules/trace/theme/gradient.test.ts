@@ -141,9 +141,73 @@ describe('lớp chuyển sắc — `id` phải riêng theo từng lượt dựng
     expect(MA_CHAY).not.toContain('const id = `grad-${name}`');
   });
 
+  it('toạ độ chuyển sắc là SỐ, không phải chuỗi phần trăm', () => {
+    // ⛔ Đây là nguyên nhân THẬT của "nút có hai mảng màu", và nó sống qua được
+    // một lượt vá vì lượt đó sửa `id` — một lỗi có thật, nhưng lỗi khác.
+    //
+    // `gradientUnits` mặc định là `objectBoundingBox`: x1/y1/x2/y2 là phân số
+    // 0..1 của hộp bao. Truyền `"14.6%"` thì `react-native-svg` đọc thành 14,6
+    // ĐƠN VỊ NGƯỜI DÙNG — gấp hơn mười bốn lần hộp bao, nên cả đoạn chuyển màu
+    // nén vào một dải mỏng ở mép và phần còn lại phẳng lì.
+    expect(MA_CHAY).toContain('x1={0.5 - dx / 2}');
+    expect(MA_CHAY).toContain('y2={0.5 + dy / 2}');
+    expect(MA_CHAY).not.toMatch(/x1=\{`\$\{[^}]*\}%`\}/);
+    expect(MA_CHAY).not.toContain("%`}");
+  });
+
+  it('lớp phủ dùng hệ toạ độ TUYỆT ĐỐI, phủ kín bằng hai con số cố định', () => {
+    // ⛔ Đây là chỗ hở đã để lộ nền ra ngoài. `<Rect width="100%" height="100%">`
+    // trong một SVG không `viewBox` phải quy phần trăm về kích thước bố cục lúc
+    // chạy — quy trượt thì lớp phủ thiếu, và cái lộ ra là `backgroundColor` của
+    // khối cha.
+    //
+    // `viewBox="0 0 1 1"` + `preserveAspectRatio="none"` biến hệ toạ độ thành
+    // một ô vuông đơn vị kéo giãn cho khớp khối cha, nên `<Rect>` phủ kín bằng
+    // hai số cố định, không phụ thuộc cách thư viện đọc chuỗi phần trăm.
+    expect(MA_CHAY).toContain('viewBox="0 0 1 1"');
+    expect(MA_CHAY).toContain('preserveAspectRatio="none"');
+    expect(MA_CHAY).toContain('<Rect x={0} y={0} width={1} height={1}');
+    expect(MA_CHAY).not.toContain('<Rect x="0" y="0" width="100%"');
+  });
+
   it('ký tự lạ của `useId` bị lọc trước khi vào `url(#…)`', () => {
     // `useId()` trả dạng `:r3:`; dấu hai chấm trong `url(#…)` là cú pháp khác,
     // nên thiếu phép lọc thì id hợp lệ về mặt React mà vô nghĩa với SVG.
     expect(MA_CHAY).toMatch(/useId\(\)\.replace\(/);
+  });
+});
+
+/**
+ * MỌI màn trace phải đi qua lớp nền chung.
+ *
+ * ⛔ Đã trượt một lần, và trượt đúng kiểu đã được cảnh báo trước. Chuyển sắc cắm
+ *    vào `GroundBackdrop` để một chỗ sửa là cả module đổi màu. `TraceNewsScreen`
+ *    tự dựng nền riêng (`<View style={styles.root}>` với một màu phẳng) nên nó
+ *    KHÔNG đi qua lớp đó — mọi màn khác đổi nền, còn nó ở lại nền phẳng. Hai
+ *    loại nền cùng lúc trong một module, không lệnh nào báo.
+ *
+ * Cổng này không đo màu; nó đo DÂY NỐI. Màn nào không nối vào lớp chung thì
+ * ngày mai lớp chung đổi gì, màn đó cũng không nhận.
+ */
+describe('nền chung — không màn nào được đứng ngoài', () => {
+  const THU_MUC = join(__dirname, '..', 'screens');
+
+  it('mọi màn trong `screens/` đều dựng `GroundBackdrop` (thẳng hoặc qua `Ground`)', () => {
+    const { readdirSync } = require('fs') as typeof import('fs');
+    const dungNgoai: string[] = [];
+    for (const ten of readdirSync(THU_MUC)) {
+      if (!ten.endsWith('.tsx') || ten.includes('.test.')) continue;
+      // `*Tab.tsx` KHÔNG phải màn — nó vẽ BÊN TRONG một màn đã có nền rồi. Bắt
+      // nó tự dựng nền là bắt nó vẽ chồng lớp nền thứ hai lên lớp thứ nhất:
+      // chuyển sắc đè chuyển sắc, và mép trên đậm gấp đôi. Loại ra ở đây theo
+      // TÊN chứ không theo danh sách cứng, để tab thêm sau tự được loại đúng.
+      if (ten.endsWith('Tab.tsx')) continue;
+      const src = readFileSync(join(THU_MUC, ten), 'utf8');
+      // `<Ground>` bọc sẵn `GroundBackdrop` bên trong, nên nối kiểu nào cũng được.
+      if (!src.includes('<GroundBackdrop') && !src.includes('<Ground')) {
+        dungNgoai.push(ten);
+      }
+    }
+    expect(dungNgoai).toEqual([]);
   });
 });

@@ -38,6 +38,7 @@ import { RootState } from '../../../store';
 import { loadFarms, syncFarmsFromBackend } from '../store/farmSlice';
 import { Ground } from '../components/layered/Surface';
 import { Leaf } from '../components/layered/Organic';
+import FarmShape from '../components/layered/FarmShape';
 import {
   ELEVATION, NATURE, ORGANIC_CARD, ORGANIC_TILE, RADIUS,
   SPACE, SURFACE, TONE, TYPE,
@@ -88,10 +89,17 @@ const FarmCard: React.FC<{
       ]).start();
     }, [fade, slide, index]);
 
-    const trees = item.treeCount || 0;
-    const fruits = item.fruitCount || 0;
-    const area = item.areaSqm
-      ? `${(item.areaSqm / 10000).toFixed(1)} ha`
+    // Kiểu `Farm` đã viết ra luật này thành chữ: màn phải chịu được chỗ vắng và
+    // hiện "—", KHÔNG được hiện 0 — "0 cây" là một khẳng định sai, "—" là sự
+    // thật. Bản trước dùng `|| 0`, vừa trái luật đó vừa gộp luôn số 0 hợp lệ
+    // với chỗ vắng.
+    const trees = item.treeCount ?? null;
+    const fruits = item.fruitCount ?? null;
+    // ⛔ Trường tên `areaM2`. `areaSqm` không tồn tại trong kiểu `Farm` — đọc
+    // nó luôn ra `undefined`, nên nhánh lui "N điểm" chạy mãi và diện tích máy
+    // chủ đã tính chưa từng hiện. Hỏng câm vì `item` khai kiểu `any`.
+    const area = item.areaM2
+      ? `${(item.areaM2 / 10000).toFixed(1)} ha`
       : `${item.coordinates?.length ?? 0} ${tk('trace.unit.points')}`;
     const st = STATUS[item.status] ?? STATUS.active;
 
@@ -105,8 +113,24 @@ const FarmCard: React.FC<{
           <Leaf size={78} color={NATURE.moss} opacity={0.07} rotate={22} style={styles.cardLeaf} />
 
           <View style={styles.cardHead}>
+            {/*
+              Ô này vẽ CHÍNH mảnh vườn đó, không phải biểu tượng cái cây.
+
+              Một biểu tượng cây giống hệt nhau trên mọi thẻ thì không phân biệt
+              được thẻ nào với thẻ nào — người có sáu vườn phải đọc TÊN mới biết
+              đang nhìn vườn nào. Hình bóng mảnh đất thì mỗi vườn một khác, và
+              nó nhận ra được trước cả khi đọc chữ.
+
+              `FarmShape` trả `null` khi vườn chưa đủ ba điểm ranh giới. Lúc ấy
+              rơi về biểu tượng cũ — và chính sự khác nhau đó là tín hiệu: thẻ
+              nào còn hiện biểu tượng là thẻ chưa vẽ ranh giới.
+            */}
             <View style={styles.cardIcon}>
-              <Icon name="tree" size={20} color={TONE.primary} />
+              {coRanh(item) ? (
+                <FarmShape farm={item} mode="flat" />
+              ) : (
+                <Icon name="tree" size={20} color={TONE.primary} />
+              )}
             </View>
             <View style={styles.cardHeadText}>
               <Text style={styles.cardName} numberOfLines={1}>{item.name}</Text>
@@ -125,9 +149,9 @@ const FarmCard: React.FC<{
           </View>
 
           <View style={styles.cardStats}>
-            <Stat icon="tree" value={String(trees)} label={tk('trace.label.trees')} tone={TONE.primary} />
+            <Stat icon="tree" value={trees === null ? '—' : String(trees)} label={tk('trace.label.trees')} tone={TONE.primary} />
             <View style={styles.statSep} />
-            <Stat icon="apple-whole" value={String(fruits)} label={tk('trace.label.fruits')} tone={TONE.sun} />
+            <Stat icon="apple-whole" value={fruits === null ? '—' : String(fruits)} label={tk('trace.label.fruits')} tone={TONE.sun} />
             {/* Nút nằm TRONG thẻ nhưng bắt chạm riêng, nên bấm vào nó không mở
               luôn trang chi tiết vườn. Vườn chưa vẽ ranh giới → `forFarm` trả
               null → nút tự ẩn. */}
@@ -137,6 +161,9 @@ const FarmCard: React.FC<{
       </Animated.View>
     );
   };
+
+/** Đủ ba điểm mới thành một mảnh đất vẽ được — dưới đó `FarmShape` trả `null`. */
+const coRanh = (farm: any): boolean => (farm?.coordinates?.length ?? 0) >= 3;
 
 const Stat: React.FC<{ icon: IconName; value: string; label: string; tone: string }> = ({
   icon, value, label, tone,
@@ -339,6 +366,8 @@ const styles = StyleSheet.create({
   cardIcon: {
     width: 46, height: 46, ...ORGANIC_TILE,
     alignItems: 'center', justifyContent: 'center', backgroundColor: TONE.primarySoft,
+    // Hình vườn là một lớp SVG trải kín ô; thiếu dòng này thì nó tràn qua góc bo.
+    overflow: 'hidden',
   },
   cardHeadText: { flex: 1, minWidth: 0, gap: 2 },
   cardName: { fontSize: 18, fontWeight: '700', color: NATURE.bark },

@@ -240,8 +240,18 @@ const TreeChip = ({
   size: number;
   onPress: () => void;
 }) => {
-  const harvestPct = item.harvestProgress ?? 0;
-  const soQua = item.fruitCount ?? 0;
+  // ⛔ `?? 0` ở hai dòng này từng biến "chưa biết" thành "bằng không".
+  //
+  // `harvestProgress` trong toàn bộ `src/` có BA chỗ đọc và KHÔNG chỗ nào ghi;
+  // `mapTreeInfoToUI` (`services/treeReIDService.ts`) gõ cứng `fruitCount: 0`.
+  // Nên mọi cây trong lưới hiện `0 quả` với vòng rỗng — một con số bịa mang
+  // hình dạng số đo, và người cầm máy ngoài ruộng chép nó vào báo cáo.
+  //
+  // `null` đi thẳng tới `RingProgress` (vòng nét đứt) và tới chữ "chưa đếm".
+  // Cây thật sự chưa thu quả nào vẫn hiện `0 quả` với vòng nét liền — hai
+  // trạng thái đó phải ra hai hình khác nhau, đó là toàn bộ điểm của chỗ này.
+  const harvestPct = item.harvestProgress ?? null;
+  const soQua = item.fruitCount ?? null;
   const ten = formatTreeName(item, farm);
 
   return (
@@ -250,7 +260,12 @@ const TreeChip = ({
       onPress={onPress}
       style={{ width: size, alignItems: 'center' }}
       accessibilityRole="button"
-      accessibilityLabel={`${ten}, ${soQua} quả, đã thu ${harvestPct}%`}
+      accessibilityLabel={
+        `${ten}, ` +
+        (soQua === null ? 'chưa đếm quả' : `${soQua} quả`) +
+        ', ' +
+        (harvestPct === null ? 'chưa có số liệu thu hoạch' : `đã thu ${harvestPct}%`)
+      }
     >
       {/*
         BA phần, một khối. Không phần nào có nền riêng, viền riêng, hay bo góc
@@ -266,8 +281,14 @@ const TreeChip = ({
         <Text style={styles.treeChipTen} numberOfLines={2}>{ten}</Text>
         <View style={styles.treeChipGach} />
         <Text style={styles.treeChipSo} numberOfLines={1}>
-          {soQua}
-          <Text style={styles.treeChipDonVi}> quả</Text>
+          {soQua === null ? (
+            <Text style={styles.treeChipDonVi}>chưa đếm</Text>
+          ) : (
+            <>
+              {soQua}
+              <Text style={styles.treeChipDonVi}> quả</Text>
+            </>
+          )}
         </Text>
       </RingProgress>
     </TouchableOpacity>
@@ -1511,14 +1532,23 @@ const FarmDetailMode = ({
             <GradientFill name="tile" />
 
             <View style={styles.cayPopupDau}>
-              <RingProgress pct={cayDangXem?.harvestProgress ?? 0} size={64} stroke={5}>
-                <Text style={styles.cayPopupPct}>{cayDangXem?.harvestProgress ?? 0}%</Text>
+              {/*
+                Cùng lý do với lưới: `?? 0` ở đây in ra "0%" và câu "đã thu
+                hoạch" cho một cây mà app KHÔNG có số liệu. Đọc rời ra thì nó
+                là một câu khẳng định, và nó sai.
+              */}
+              <RingProgress pct={cayDangXem?.harvestProgress ?? null} size={64} stroke={5}>
+                <Text style={styles.cayPopupPct}>
+                  {cayDangXem?.harvestProgress == null ? '—' : `${cayDangXem.harvestProgress}%`}
+                </Text>
               </RingProgress>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={styles.cayPopupTen} numberOfLines={2}>
                   {cayDangXem ? formatTreeName(cayDangXem, farm) : ''}
                 </Text>
-                <Text style={styles.cayPopupPhu}>đã thu hoạch</Text>
+                <Text style={styles.cayPopupPhu}>
+                  {cayDangXem?.harvestProgress == null ? 'chưa có số liệu thu hoạch' : 'đã thu hoạch'}
+                </Text>
               </View>
             </View>
 

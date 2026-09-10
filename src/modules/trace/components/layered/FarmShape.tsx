@@ -11,9 +11,10 @@
  * Ô nay HIỆN THỨ NÓ MỞ. Cùng một mảnh vườn, ba cách nhìn:
  *
  *   flat   nhìn từ trên xuống — đúng thứ màn "Ranh giới" mở ra.
- *   iso    nghiêng và dựng thành, trên nền sáng.
- *   space  như `iso` nhưng xoay nhẹ, phát sáng, trong suốt, điểm nối hiện rõ —
- *          dành cho nền TỐI, đúng thứ màn "Sơ đồ 3D" mở ra.
+ *   iso    nghiêng và dựng thành đặc, trên nền sáng.
+ *   space  KHUNG DÂY quay quanh trục đứng, trên nền TỐI — đúng thứ màn "Sơ đồ
+ *          3D" mở ra. Chỉ ba thứ: điểm nối, đường nối, điểm cây. Không mặt tô,
+ *          không thành dựng, không bóng.
  *
  * Không nhãn, không biểu tượng. Hình đã là nhãn.
  *
@@ -32,7 +33,9 @@
  */
 
 import React from 'react';
-import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import {
+  AccessibilityInfo, StyleSheet, View, type StyleProp, type ViewStyle,
+} from 'react-native';
 import Svg, { Circle, Polygon, Path, G, Defs, RadialGradient, Stop } from 'react-native-svg';
 
 import { NATURE, TONE } from '../../theme/depth';
@@ -55,16 +58,84 @@ const GOC_XOAY = 14;
  */
 const SANG = '#7FE7C4';
 
+/** Một vòng quay đầy mất bao lâu. Chậm là có chủ ý — xem `useGocXoay`. */
+const CHU_KY_MS = 26_000;
+
+/**
+ * Nhịp vẽ lại của vòng quay, tính bằng khung/giây.
+ *
+ * KHÔNG chạy 60fps. Mỗi khung phải tính lại toạ độ của mọi đỉnh và tối đa 60
+ * chấm cây RỒI dựng lại cây SVG — việc đó nằm trên luồng JS, cùng luồng với
+ * cuộn danh sách và với mọi thứ khác của màn. Ở 12fps chuyển động vẫn liền vì
+ * hình quay rất chậm, mà giá chỉ bằng một phần năm.
+ */
+const NHIP = 12;
+
+/**
+ * Góc quay hiện tại của mảnh đất, tính theo đồng hồ.
+ *
+ * ── Ba thứ đáng nói, vì cả ba đều là chỗ animation gây hại thật ─────────────
+ *
+ * TẮT KHI NGƯỜI DÙNG XIN TẮT. `AccessibilityInfo.isReduceMotionEnabled` là
+ * thiết lập hệ điều hành cho người say chuyển động (vestibular). Bỏ qua nó là
+ * làm một nhóm người dùng buồn nôn để đổi lấy một hiệu ứng trang trí. Lúc đó
+ * hình đứng yên ở `GOC_XOAY` — vẫn nghiêng, vẫn ra không gian, chỉ không quay.
+ *
+ * DỌN KHI RỜI MÀN. Không có `clearInterval` thì vòng lặp sống tiếp sau khi màn
+ * đóng, gọi `setState` trên một component đã tháo, và ăn CPU nền — trên máy
+ * nông dân giữa nắng thì đó là pin.
+ *
+ * ĐỌC ĐỒNG HỒ, KHÔNG CỘNG DỒN. `goc += 1` mỗi nhịp thì tốc độ quay đổi theo
+ * việc máy có kịp vẽ hay không: máy yếu quay chậm hơn máy khoẻ. Suy góc từ
+ * `Date.now()` cho tốc độ như nhau ở mọi máy, và một khung bị bỏ lỡ chỉ làm
+ * hình nhảy một hơi chứ không làm nó tụt lại vĩnh viễn.
+ */
+function useGocXoay(bat: boolean): number {
+  const [goc, setGoc] = React.useState(GOC_XOAY);
+
+  React.useEffect(() => {
+    if (!bat) return;
+    let dung = false;
+    let id: ReturnType<typeof setInterval> | null = null;
+
+    const chay = () => {
+      if (dung) return;
+      id = setInterval(() => {
+        setGoc(GOC_XOAY + ((Date.now() % CHU_KY_MS) / CHU_KY_MS) * 360);
+      }, 1000 / NHIP);
+    };
+
+    AccessibilityInfo.isReduceMotionEnabled()
+      .then((giamChuyenDong) => {
+        if (!giamChuyenDong) chay();
+      })
+      // Không đọc được thiết lập thì QUAY — mặc định giữ nguyên trải nghiệm cho
+      // số đông, và người cần tắt vẫn tắt được ở nấc hệ điều hành khi máy trả
+      // lời được. Đây là hiệu ứng trang trí, không phải cổng an toàn.
+      .catch(() => chay());
+
+    return () => {
+      dung = true;
+      if (id) clearInterval(id);
+    };
+  }, [bat]);
+
+  return goc;
+}
+
 export const FarmShape: React.FC<{
   farm: any;
   trees?: readonly any[];
   mode: 'flat' | 'iso' | 'space';
   style?: StyleProp<ViewStyle>;
 }> = ({ farm, trees, mode, style }) => {
-  // ⚠ Hook phải đứng TRƯỚC mọi đường thoát sớm. Dưới đây có `return null` khi
-  // vườn chưa đủ ba điểm; gọi hook sau nó là số hook đổi giữa hai lượt dựng —
-  // React ném, và ném ở lượt vườn VỪA ĐỦ điểm chứ không phải lượt đang thiếu.
+  const khongGian = mode === 'space';
+
+  // ⚠ MỌI hook phải đứng TRƯỚC đường thoát sớm ở dưới (`ring.length < 3`). Gọi
+  // hook sau nó là số hook đổi giữa hai lượt dựng — và React ném ở lượt vườn
+  // VỪA ĐỦ điểm, chứ không phải lượt đang thiếu.
   const quangId = `bloom-${React.useId().replace(/[^a-zA-Z0-9]/g, '')}`;
+  const goc = useGocXoay(khongGian);
 
   const ring = vongRanh(farm?.coordinates);
   // Ba điểm mới thành một mảnh đất. Ít hơn thì không có hình để vẽ, và vẽ một
@@ -73,10 +144,10 @@ export const FarmShape: React.FC<{
 
   const veVi = chuanHoa(ring);
   const khoi = mode !== 'flat';
-  const khongGian = mode === 'space';
-  // `space` xoay nhẹ TRƯỚC khi nghiêng: xoay sau phép nghiêng thì hình thoi bị
-  // vặn thành một hình không còn đọc ra mặt phẳng nằm ngang nữa.
-  const xoay = mode === 'space' ? xoayNhe(GOC_XOAY) : (d: ReturnType<typeof veVi>) => d;
+  // Xoay TRONG MẶT PHẲNG ĐẤT rồi mới nghiêng — đó là chỗ "xoay quanh trục" đến
+  // từ đâu: trục đứng của mảnh đất. Xoay sau phép nghiêng thì hình bị vặn phẳng
+  // như một tờ giấy quay, không còn ra không gian.
+  const xoay = khongGian ? xoayNhe(goc) : (d: ReturnType<typeof veVi>) => d;
   const chieu = khoi ? nghieng : phang;
   const dat = (p: { lat: number; lng: number }) => chieu(xoay(veVi(p)));
   const vien = ring.map(dat);
@@ -86,13 +157,20 @@ export const FarmShape: React.FC<{
     .filter((p): p is NonNullable<typeof p> => p != null)
     .map(dat)
     // Trần 60 chấm: một vườn 400 cây vẽ đủ thì ra một mảng đặc, vừa không đọc
-    // được vừa tốn một cây SVG 400 nút cho một ô bằng bàn tay.
+    // được vừa tốn một cây SVG 400 nút cho một ô bằng bàn tay. Ở chế độ `space`
+    // trần này còn gánh thêm việc khác: nó là trần cho MỖI KHUNG HÌNH của vòng
+    // quay, nên nó quyết định luôn giá của animation.
     .slice(0, 60);
 
-  /** Thành đất dựng xuống — thứ làm hình thoi đọc ra KHỐI chứ không ra mảng phẳng. */
+  /**
+   * Thành đất dựng xuống — CHỈ cho `iso`.
+   *
+   * `space` cố ý KHÔNG có: yêu cầu là bỏ đổ bóng, chỉ giữ điểm nối, đường nối
+   * và điểm cây. Một mảng đặc dựng xuống chính là cái bóng ấy, chỉ khác tên.
+   */
   const day = 13;
   const duongThanh =
-    khoi
+    mode === 'iso'
       ? vien
           .map((p, i) => {
             const q = vien[(i + 1) % vien.length];
@@ -134,13 +212,22 @@ export const FarmShape: React.FC<{
           />
         ) : null}
 
+        {/*
+          ĐƯỜNG NỐI — ở `space` chỉ còn đường, KHÔNG tô mặt.
+
+          Yêu cầu là giữ lại đúng ba thứ: điểm nối, đường nối, điểm cây. Một mặt
+          phẳng có tô, dù mờ tới đâu, vẫn là thứ thứ tư — và nó che mất chính
+          những chấm cây nằm phía trong. Khung dây để hở thì cây nhìn xuyên qua
+          được, và đó cũng là thứ làm hình đọc ra KHÔNG GIAN chứ không ra một
+          miếng dán.
+        */}
         <Polygon
           points={noiDiem(vien)}
-          fill={khongGian ? SANG : khoi ? NATURE.moss : TONE.primarySoft}
-          fillOpacity={khongGian ? 0.13 : khoi ? 0.9 : 1}
+          fill={khongGian ? 'none' : khoi ? NATURE.moss : TONE.primarySoft}
+          fillOpacity={khongGian ? 0 : khoi ? 0.9 : 1}
           stroke={khongGian ? SANG : TONE.primary}
-          strokeOpacity={khongGian ? 0.9 : 1}
-          strokeWidth={khongGian ? 1.1 : khoi ? 1.4 : 1.8}
+          strokeOpacity={khongGian ? 0.92 : 1}
+          strokeWidth={khongGian ? 1.2 : khoi ? 1.4 : 1.8}
           strokeLinejoin="round"
         />
 
@@ -168,10 +255,13 @@ export const FarmShape: React.FC<{
             <Circle
               key={i}
               cx={c.x}
-              cy={khoi ? c.y - 3 : c.y}
+              // `iso` nâng chấm cây lên 3 để nó đứng TRÊN mặt đã tô. `space`
+              // không có mặt nào để đứng lên, nên nâng chỉ làm cây trôi lơ lửng
+              // lệch khỏi chỗ thật của nó.
+              cy={mode === 'iso' ? c.y - 3 : c.y}
               r={khoi ? 2.4 : 1.8}
               fill={khongGian ? SANG : NATURE.leafDeep}
-              opacity={khongGian ? 0.5 : 0.85}
+              opacity={khongGian ? 0.72 : 0.85}
             />
           ))}
         </G>

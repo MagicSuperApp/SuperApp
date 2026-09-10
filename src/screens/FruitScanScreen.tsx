@@ -11,7 +11,7 @@
  * đang chạy nó nhận nhầm **73% (412/564)** cặp quả KHÁC NHAU trên cùng một cây.
  * Con số dùng được duy nhất là rank-5 (0,92–0,95). Nên màn này luôn là BỘ CHỌN
  * top-5, kể cả khi máy nói chắc — và không bao giờ tự đi tiếp giùm nông dân.
- * Nguồn: thư OriLife 08/08 §1 và 07/08 §4 (`_Agents/inbox/_done/`).
+ * Nguồn: thư OriLife 08/08 §1 và 07/08 §4 — kênh thư nội bộ giữa các đội, ngoài kho.
  *
  * ── Ba đường ra, không đường nào là ngõ cụt ─────────────────────────────────
  *   chọn 1 quả  → mở màn khoanh vùng để BỒI GÓC cho đúng quả đó

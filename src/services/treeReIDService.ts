@@ -820,7 +820,7 @@ export async function enrollTree(
   appendGeoAndOrientation(form, options);
   appendTreeRegions(form, options.regions);
   // Gửi CẢ HAI tên trường: `dup` là hợp-đồng sạch OriLife chốt ở #235
-  // (`_Agents/inbox/_done/OriLife-to-SuperApp-fieldtest-12-fixes-API-handoff-2026-07-26.md` mục 1),
+  // (bàn giao API sau đợt thử thực địa 2026-07-26, mục 1),
   // `force` là bí danh backend bắc cầu cho bản app cũ. Gửi cả hai để app chạy đúng
   // dù backend đã hay chưa deploy #235 — đây từng là vòng 409 lặp vô tận ngoài đồng.
   if (options.force) {

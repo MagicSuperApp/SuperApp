@@ -45,7 +45,6 @@ import LoginSuccessOverlay from '../components/LoginSuccessOverlay';
 import LanguagePickerModal from '../components/LanguagePickerModal';
 import { LANGUAGES, t, tf, useLanguage } from '../i18n';
 import { DEFAULT_INSTANCE } from '../config/instance.config';
-import { APP_LOGO } from '../theme/brandLogo';
 
 const PHOENIX_USERS_KEY = '@phoenixkey/users';
 const ACTIVE_USERNAME_KEY = '@phoenixkey/active_username';
@@ -387,7 +386,7 @@ const LoginScreen = () => {
           <View style={styles.logoRow}>
             <View style={styles.logoOuter}>
               <View style={styles.logoInner}>
-                <Image source={APP_LOGO} style={{ width: 50, height: 50, borderRadius: 9 }} />
+                <Image source={DEFAULT_INSTANCE.logo} style={{ width: 50, height: 50, borderRadius: 9 }} />
               </View>
             </View>
 
@@ -415,7 +414,7 @@ const LoginScreen = () => {
             {/* `tf` giữ tên người ra NGOÀI khoá từ điển: nối chuỗi rồi mới dịch sẽ
                 không bao giờ khớp, còn khuôn '{name}' cho bản dịch tự đặt lại vị
                 trí (tiếng Nhật/Trung có trật tự từ khác tiếng Việt). */}
-            {activeUser ? tf('Chào @{name}', { name: activeUser.username }) : t('Chào bạn')}
+            {activeUser ? tf('Chào mừng @{name}', { name: activeUser.username }) : t('Chào mừng')}
           </Text>
           <Text allowFontScaling={false} style={styles.subtitle}>
             {activeUser
@@ -652,7 +651,7 @@ const BioButton: React.FC<{
         </TouchableOpacity>
       </Animated.View>
       <Text style={styles.bioBtnLabel} allowFontScaling={false}>
-        {t('Đăng nhập bằng sinh trắc')}
+        {t('ĐĂNG NHẬP BẰNG SINH TRẮC')}
       </Text>
     </>
   );

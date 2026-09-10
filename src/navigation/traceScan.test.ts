@@ -13,15 +13,43 @@ describe('parseTraceCode', () => {
     });
   });
 
-  it('deep-link route trực tiếp (không moduleId)', () => {
-    expect(parseTraceCode('lamp://FarmDetail?farmId=f1')).toEqual({
+  // ⚠️ CA NÀY TỪNG GHIM ĐÚNG CÁI KHOÁ SAI. Bản trước viết
+  // `lamp://FarmDetail?farmId=f1` và kỳ vọng `params: { farmId: 'f1' }` — bộ phân
+  // giải chỉ chép khoá nào có trong URL nên nó XANH, trong khi màn đích
+  // `FarmDetailScreen.tsx` đọc `params.farm_id` (`const [farm_id, setFarm_id] =
+  // useState(params.farm_id ?? null)`) ⇒ `undefined` ⇒ `farm` không bao giờ được
+  // nạp ⇒ màn CHI TIẾT rơi xuống nhánh TẠO MỚI. Người quét QR một vườn đã có gặp
+  // biểu mẫu trống, điền lại, và sinh ra vườn TRÙNG.
+  //
+  // Khoá CHÍNH THỨC của FarmDetail là `farm_id` — không phải chọn cho đẹp mà vì
+  // MỌI lối vào trong app đã dùng nó (`DashboardScreen.tsx:497,511`,
+  // `TreeEnrollScreen.tsx:783,1065`). Cái sai nằm ở QR, không nằm ở màn.
+  //
+  // ⛔ Đọc trước khi "sửa test cho xanh": nếu một bản sau lại thấy `farm_id` vướng
+  // mắt và đổi ngược về `farmId`, thì đúng lỗi cũ quay lại y nguyên. Muốn đổi khoá
+  // thì phải đổi ở MÀN ĐÍCH trước, rồi mới tới đây.
+  it('deep-link route trực tiếp — khoá vườn là `farm_id`, khớp màn đích', () => {
+    expect(parseTraceCode('lamp://FarmDetail?farm_id=f1')).toEqual({
       route: 'FarmDetail',
-      params: { farmId: 'f1' },
+      params: { farm_id: 'f1' },
     });
   });
 
-  it('không params → params bỏ trống', () => {
-    expect(parseTraceCode('lamp://trace/TreeDetail')).toEqual({ route: 'TreeDetail' });
+  it('QR mang khoá SAI (`farmId`) → null, KHÔNG mở màn chi tiết rỗng', () => {
+    // Đây là ca đắt nhất của cả tệp: mở FarmDetail mà không có `farm_id` thì màn
+    // đích không có gì để tra. Trả null để màn quét nói "chưa nhận diện" — thà
+    // không đi đâu còn hơn đi tới một màn không nói được nó đang nói về vườn nào.
+    expect(parseTraceCode('lamp://FarmDetail?farmId=f1')).toBeNull();
+    expect(parseTraceCode('lamp://trace/TreeDetail?tree_id=t1')).toBeNull();
+    expect(parseTraceCode('lamp://AnimalDetail?id=a1')).toBeNull();
+  });
+
+  it('thiếu hẳn khoá định danh → null', () => {
+    expect(parseTraceCode('lamp://trace/TreeDetail')).toBeNull();
+    expect(parseTraceCode('lamp://FarmDetail')).toBeNull();
+    expect(parseTraceCode('lamp://AnimalDetail?name=B%C3%B2')).toBeNull();
+    // Khoá có mặt nhưng RỖNG cũng không tra được gì.
+    expect(parseTraceCode('lamp://FarmDetail?farm_id=')).toBeNull();
   });
 
   // ⚠️ KHOÁ TÊN KHOÁ, không chỉ khoá bộ phân giải. Ca này trước đây viết
@@ -56,7 +84,18 @@ describe('parseTraceCode', () => {
   });
 
   it('bỏ khoảng trắng thừa, không phân biệt hoa/thường ở scheme', () => {
-    expect(parseTraceCode('  LAMP://trace/TreeDetail  ')).toEqual({ route: 'TreeDetail' });
+    expect(parseTraceCode('  LAMP://trace/TreeDetail?treeId=t1  ')).toEqual({
+      route: 'TreeDetail',
+      params: { treeId: 't1' },
+    });
+  });
+
+  // Bảng route→khoá là một object tra theo chuỗi quét được. Tên thuộc tính có sẵn
+  // trên `Object.prototype` phải KHÔNG được coi là route hợp lệ.
+  it('tên thuộc tính của Object KHÔNG thành route', () => {
+    expect(parseTraceCode('lamp://constructor?farm_id=f1')).toBeNull();
+    expect(parseTraceCode('lamp://toString?farm_id=f1')).toBeNull();
+    expect(parseTraceCode('lamp://__proto__?farm_id=f1')).toBeNull();
   });
 });
 

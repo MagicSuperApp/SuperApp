@@ -1,5 +1,5 @@
 /**
- * TreeQrCode — vẽ mã QR bằng CHẤM TRÒN, trên nền logo Aladin.
+ * TreeQrCode — vẽ mã QR bằng CHẤM TRÒN, trên nền dấu của app đang dựng.
  *
  * ══ CÁCH ẢNH NỀN LỘ RA, VÀ VÌ SAO NÓ VẪN QUÉT ĐƯỢC ═══════════════════════
  * Thứ tự vẽ, dưới lên trên:
@@ -31,9 +31,14 @@ import React, { forwardRef, useImperativeHandle, useMemo, useRef } from 'react';
 import { View, type StyleProp, type ViewStyle } from 'react-native';
 import Svg, { Circle, G, Image as SvgImage, Rect } from 'react-native-svg';
 
+import { DEFAULT_INSTANCE } from '../../config/instance.config';
 import { buildQrMatrix, finderShields, layoutQr } from './qrMatrix';
 
-const LOGO = require('../../../assets/images/QR_BG.png');
+// Nền tem lấy từ lời khai của app đang dựng. Tới 2026-09-10 đây là
+// `assets/images/QR_BG.png` — mặt cười Aladin — dùng chung cho mọi app, nên
+// nông dân CheckFarm in tem và dán dấu nhà khác lên nông sản của mình. Tem đã
+// in ngoài đời không sửa được bằng một lần đẩy mã.
+const LOGO = DEFAULT_INSTANCE.qrBackdrop;
 
 /**
  * Độ đục của logo dưới lớp chấm.

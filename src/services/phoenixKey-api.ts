@@ -261,12 +261,114 @@ client.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
   return config;
 });
 
-client.interceptors.response.use(response => {
-  if (response.data) {
-    response.data = transformKeys(response.data, toCamelCase);
-  }
-  return response;
-});
+/**
+ * Hàm đúc lại thẻ phiên, do `phoenixSessionService` đăng ký lúc nạp module.
+ *
+ * ── Vì sao TIÊM chứ không nhập thẳng ────────────────────────────────────────
+ * `phoenixSessionService` đã nhập từ tệp này (`phoenixKeyApi`, `setSessionToken`,
+ * `getSessionToken`, `PhoenixKeyApiError`). Nhập chiều ngược lại là một vòng
+ * nhập, và ở Metro vòng nhập không báo lỗi — nó cho ra `undefined` tại thời điểm
+ * nạp module. Tức đường tự chữa sẽ chết câm đúng ở ca nó cần chạy.
+ */
+type SessionRefresher = () => Promise<string | null>;
+let refreshSession: SessionRefresher | null = null;
+
+/** Gọi MỘT lần lúc nạp `phoenixSessionService`. */
+export function registerSessionRefresher(fn: SessionRefresher): void {
+  refreshSession = fn;
+}
+
+/** Đánh dấu lượt gọi đã thử đúc thẻ một lần rồi — không thử vòng hai. */
+type RetriableConfig = InternalAxiosRequestConfig & {
+  needsAuth?: boolean;
+  __sessionRetried?: boolean;
+};
+
+client.interceptors.response.use(
+  response => {
+    if (response.data) {
+      response.data = transformKeys(response.data, toCamelCase);
+    }
+    return response;
+  },
+  /**
+   * 401 ⇒ đúc lại thẻ MỘT lần rồi phát lại đúng lượt gọi đó.
+   *
+   * ── Ca hỏng nhánh này sinh ra để chặn ──────────────────────────────────────
+   * Thẻ phiên PhoenixKey sống 1 giờ. `ensurePhoenixSession` trả thẳng thẻ đã lưu
+   * ra mà KHÔNG hỏi hạn (`phoenixSessionService.ts:126-130`), và nó chỉ được gọi
+   * đúng một lần mỗi phiên đăng nhập (`navigation/index.tsx:1562`). Tới trước bản
+   * này, tệp này không có nhánh lỗi nào cả.
+   *
+   * Hệ quả đo được: hai người thử đăng nhập lúc 7h rồi đi ruộng; 8h05 thẻ hết
+   * hạn; từ đó `/wallet/{did}/all`, `/wallet/{did}/utxos`, `/devices/register`,
+   * `/seed/export-request`, `/guardians/*`, `/keys/*` đều 401. Màn Ví hiện ba dấu
+   * "—", kéo xuống làm mới y hệt, tắt app mở lại y hệt — vì thẻ chết vẫn nằm
+   * trong kho và vẫn được trả ra. Lối thoát duy nhất là đăng xuất rồi đăng nhập
+   * lại, và không câu nào trên màn gợi ý điều đó.
+   *
+   * Đường tự chữa từng tồn tại nhưng chỉ ở MỘT nhà tiêu thụ —
+   * `proofchatAuthBridge.ts:187-190`. Ai không mở ProofChat thì không bao giờ
+   * chạm tới nó. Đặt ở tầng chặn là đặt vào chỗ mọi cửa đều đi qua.
+   *
+   * ── Ba ràng buộc, mỗi cái chặn một ca hỏng khác nhau ───────────────────────
+   * 1. CHỈ lượt gọi khai `needsAuth`. Cửa công khai trả 401 là chuyện của máy
+   *    chủ, không phải thẻ sai — đúc lại ở đó là bật hộp sinh trắc hỏi một câu
+   *    vô nghĩa với người chỉ đang quét mã trên thùng hàng.
+   * 2. ĐÚNG MỘT lần mỗi lượt gọi (`__sessionRetried`). Thẻ mới mà vẫn 401 nghĩa
+   *    là máy chủ từ chối vì lý do khác; thử tiếp là vòng lặp vô hạn có kèm hộp
+   *    vân tay.
+   * 3. KHÔNG áp cho 403. Ở các cửa ví, 403 nghĩa là `caller_did != path_did` —
+   *    ký lại bằng chính khoá đó cho ra đúng kết quả cũ. (Khác `proofchatAuthBridge`,
+   *    nơi 403 mang nghĩa khác nên nó gộp hai mã là đúng với nó.)
+   *
+   * Chưa ai đăng ký hàm đúc thì nhánh này ném nguyên lỗi cũ ra — đúng hành vi
+   * trước bản này, không xấu thêm.
+   */
+  async (error: AxiosError) => {
+    const config = error.config as RetriableConfig | undefined;
+    const status = error.response?.status;
+
+    if (status !== 401 || !config?.needsAuth || config.__sessionRetried || !refreshSession) {
+      throw error;
+    }
+
+    config.__sessionRetried = true;
+    const fresh = await refreshSessionOnce();
+    if (!fresh) throw error;
+    return client.request(config);
+  },
+);
+
+/**
+ * Gộp mọi lượt đúc thẻ đang bay làm MỘT — nếu không thì mỗi lượt gọi hỏng là một
+ * hộp sinh trắc.
+ *
+ * ⚠ Khoá chống chạy trùng của `ensurePhoenixSession` KHÔNG che được ca này:
+ * `phoenixSessionService.ts:111` viết `if (!opts.force && inflightSession)`, tức
+ * `force: true` **cố ý** đi vòng qua khoá đó — đúng như nó phải thế, vì `force`
+ * sinh ra để ép đúc thẻ mới khi thẻ cũ hỏng. Mà nhánh 401 thì bắt buộc dùng
+ * `force`: không có nó, `ensurePhoenixSession` trả lại đúng cái thẻ chết vừa bị
+ * máy chủ từ chối.
+ *
+ * Hệ quả nếu bỏ lớp gộp này: màn Ví phát nhiều lượt gọi song song
+ * (`/wallet/{did}/all`, `/utxos`, `/params`…), tất cả 401 cùng lúc, mỗi lượt một
+ * hộp Face ID. Người dùng bấm Huỷ ở hộp thứ ba và không bao giờ gỡ được.
+ */
+let inflightRefresh: Promise<string | null> | null = null;
+
+function refreshSessionOnce(): Promise<string | null> {
+  if (inflightRefresh) return inflightRefresh;
+  const run = (async () => {
+    await clearSessionToken();
+    return refreshSession ? refreshSession() : null;
+  })();
+  inflightRefresh = run;
+  run.finally(() => {
+    if (inflightRefresh === run) inflightRefresh = null;
+  });
+  return run;
+}
 
 async function unwrap<T>(
   promise: Promise<{ data: { code: number; message: string; result?: T } }>,

@@ -1,4 +1,11 @@
+const mockEnsureToken = jest.fn<Promise<boolean>, any[]>(async () => false);
+jest.mock('./orilifeDidAuth', () => ({
+  __esModule: true,
+  ensureOrilifeToken: (...a: any[]) => mockEnsureToken(...a),
+}));
+
 import {
+  addTimelineEvent,
   anchorEvent, anchorState, fetchEventProof, fetchTimeline, safeExplorerUrl, sortNewestFirst,
   KIND_VI, KIND_ICON, KIND_FALLBACK_ICON, type TimelineEvent,
 } from './timelineService';
@@ -285,5 +292,104 @@ describe('anchorEvent', () => {
     expect(r.ok).toBe(true);
     expect(r.data?.already_anchored).toBe(false);
     expect(anchorState(r.data)).toBe(false);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PHIÊN HẾT HẠN — nút "Thử lại" phải gỡ được, không quay vòng 401
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Tệp này trước đây đọc `auth_token` thẳng từ kho và trả `auth_error` ngay khi
+// gặp 401, KHÔNG có đường ký lại. Token field-reid sống 12 giờ, nên hết buổi là
+// mọi dòng thời gian câm, và bấm "Thử lại" chỉ lặp lại đúng lời gọi hỏng đó.
+// Năm dịch vụ ReID đã có sẵn đường gỡ (`treeReIDService._apiCall`: 401 →
+// `ensureOrilifeToken(base, {force:true})` → gọi lại MỘT lần). Đây là cùng đường
+// đó, không phải cơ chế thứ hai.
+describe('401 giữa buổi → ký lại DID rồi thử lại MỘT lần', () => {
+  const AsyncStorage = require('@react-native-async-storage/async-storage');
+
+  /** Lần gọi thứ n trả status khác nhau — để đo "có gọi lại không". */
+  const mockFetchSeq = (statuses: number[], bodies: any[] = []) => {
+    let i = 0;
+    globalThis.fetch = jest.fn(async () => {
+      const s = statuses[Math.min(i, statuses.length - 1)];
+      const b = bodies[Math.min(i, bodies.length - 1)] ?? {};
+      i++;
+      return { status: s, ok: s >= 200 && s < 300, json: async () => b } as any;
+    }) as any;
+    return () => i;
+  };
+
+  beforeEach(() => { mockEnsureToken.mockReset(); mockEnsureToken.mockResolvedValue(false); });
+
+  it('fetchTimeline: có token + 401 → ký lại, gọi lại, trả kết quả THẬT', async () => {
+    await AsyncStorage.setItem('auth_token', 'tok-cu');
+    mockEnsureToken.mockResolvedValue(true);
+    const calls = mockFetchSeq([401, 200], [{}, { ok: true, events: [], chain_ok: true, is_owner: true }]);
+
+    const r = await fetchTimeline(BASE, 'tree', TREE);
+
+    expect(mockEnsureToken).toHaveBeenCalledWith(BASE, { force: true });
+    expect(calls()).toBe(2);
+    expect(r.ok).toBe(true);
+  });
+
+  it('fetchTimeline: ký lại thất bại → đúng một lời gọi lại rồi dừng, KHÔNG quay vòng', async () => {
+    await AsyncStorage.setItem('auth_token', 'tok-cu');
+    mockEnsureToken.mockResolvedValue(false);
+    const calls = mockFetchSeq([401]);
+
+    const r = await fetchTimeline(BASE, 'tree', TREE);
+
+    expect(calls()).toBe(1);
+    expect(r.error?.type).toBe('auth_error');
+  });
+
+  it('fetchTimeline: KHÔNG có token → 401 là "phải đăng nhập", KHÔNG bật hộp sinh trắc', async () => {
+    // Khách quét mã trên thùng hàng cũng đi qua cửa này. Ký DID là thao tác sinh
+    // trắc — bật nó cho một người chưa hề đăng nhập là hỏi một câu vô nghĩa.
+    await AsyncStorage.removeItem('auth_token');
+    mockFetchSeq([401]);
+
+    const r = await fetchTimeline(BASE, 'tree', TREE);
+
+    expect(mockEnsureToken).not.toHaveBeenCalled();
+    expect(r.error?.type).toBe('auth_error');
+  });
+
+  it('addTimelineEvent: 401 → ký lại rồi ghi lại, sự kiện KHÔNG rơi mất', async () => {
+    await AsyncStorage.setItem('auth_token', 'tok-cu');
+    mockEnsureToken.mockResolvedValue(true);
+    const calls = mockFetchSeq([401, 200], [{}, { ok: true, event_id: 'ev-9' }]);
+
+    const r = await addTimelineEvent(BASE, 'farm', 'farm-1', { kind: 'care' });
+
+    expect(mockEnsureToken).toHaveBeenCalledWith(BASE, { force: true });
+    expect(calls()).toBe(2);
+    expect(r.ok).toBe(true);
+    expect(r.event_id).toBe('ev-9');
+  });
+
+  it('addTimelineEvent: ký lại thất bại → trả 401 để hàng đợi giữ mục lại', async () => {
+    await AsyncStorage.setItem('auth_token', 'tok-cu');
+    mockEnsureToken.mockResolvedValue(false);
+    const calls = mockFetchSeq([401]);
+
+    const r = await addTimelineEvent(BASE, 'farm', 'farm-1', { kind: 'care' });
+
+    expect(calls()).toBe(1);
+    expect(r.error?.http_status).toBe(401);
+  });
+
+  it('addTimelineEvent: 401 LẦN HAI cũng không gọi lần ba (chặn vòng lặp)', async () => {
+    await AsyncStorage.setItem('auth_token', 'tok-cu');
+    mockEnsureToken.mockResolvedValue(true);
+    const calls = mockFetchSeq([401, 401]);
+
+    const r = await addTimelineEvent(BASE, 'farm', 'farm-1', { kind: 'care' });
+
+    expect(calls()).toBe(2);
+    expect(mockEnsureToken).toHaveBeenCalledTimes(1);
+    expect(r.error?.http_status).toBe(401);
   });
 });

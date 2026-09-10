@@ -35,9 +35,17 @@ danh tính PhoenixKey, và cả hai vẫn chạy bình thường khi người d�
 
 ### Ngày CheckFarm cần đẩy tin nền
 
-Dựng một dự án Firebase **đứng tên Công ty Cổ phần CheckFarm**, đăng ký ứng dụng
-Android `com.checkfarm.app`, tải `google-services.json` về đặt vào **đúng thư mục
-này**, rồi **xoá `AndroidManifest.xml` trong thư mục này**. Plugin tự bật lại.
+Dựng một dự án Firebase **RIÊNG cho app này** — đăng ký ứng dụng Android
+`com.checkfarm.app`, tải `google-services.json` về đặt vào **đúng thư mục này**, rồi
+**xoá `AndroidManifest.xml` trong thư mục này**. Plugin tự bật lại.
+
+Dự án đứng tên pháp nhân đang phát hành app, tức **Aladin** hôm nay (chủ sở hữu quyết
+2026-09-10, chuyển giao cho CheckFarm Inc sau — `instances/LUAT-SUPERAPP.md §6`). Bản
+trước của dòng này ghi "đứng tên Công ty Cổ phần CheckFarm", đúng với quyết định lúc ấy.
+
+Chữ **RIÊNG** thì không đổi nghĩa, và nó mới là phần quan trọng: cùng pháp nhân vẫn phải
+là hai dự án Firebase khác nhau. Dùng chung một dự án cho hai app là trộn số liệu, trộn
+người dùng, và trộn cả đường tin đẩy — ngày chuyển giao thì không tách ra được nữa.
 
 ⚠ Hai việc đó phải làm **cùng lúc**. Bỏ tệp cấu hình vào mà quên xoá manifest thì
 Firebase im lặng không chạy: dựng xanh, cài được, tin đẩy không bao giờ tới. Có một

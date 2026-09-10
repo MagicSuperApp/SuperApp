@@ -37,9 +37,7 @@ import { WORK_THEME } from '../theme';
 import { useTk } from '../i18n/keys';
 import { useLanguage } from '../i18n/useLanguage';
 import { DEFAULT_INSTANCE } from '../config/instance.config';
-import { APP_LOGO } from '../theme/brandLogo';
 import { markOnboardingSeen } from '../utils/onboardingFlag';
-import { ALADIN_WEB_URL } from '../utils/webLink';
 
 // Xanh lá KHỞI ĐỘNG — cùng bảng với màn Chọn ngôn ngữ và HERO màn Đăng nhập, để ba
 // màn đầu tiên liền một mạch.
@@ -89,9 +87,13 @@ const OnboardingScreen: React.FC = () => {
     navigation.replace('Login');
   }, [leaving, navigation]);
 
+  // Tiêu đề LẤY TỪ chính địa chỉ sắp mở, không viết tay: viết tay là mở đường
+  // cho thanh tiêu đề ghi một tên máy còn khung thì tải một tên máy khác.
+  const site = DEFAULT_INSTANCE.website;
   const openWeb = useCallback(() => {
-    navigation.navigate('WebPage', { url: ALADIN_WEB_URL, title: 'aladin.work' });
-  }, [navigation]);
+    if (!site) return;
+    navigation.navigate('WebPage', { url: site.url, title: site.hosts[0] });
+  }, [navigation, site]);
 
   return (
     <View style={styles.root}>
@@ -105,7 +107,7 @@ const OnboardingScreen: React.FC = () => {
         <View style={[styles.hero, { paddingTop: insets.top + (Platform.OS === 'ios' ? 28 : 24) }]}>
           <View style={styles.logoOuter}>
             <View style={styles.logoInner}>
-              <Image source={APP_LOGO} style={styles.logoImg} />
+              <Image source={DEFAULT_INSTANCE.logo} style={styles.logoImg} />
             </View>
           </View>
           <Text allowFontScaling={false} style={styles.title}>{DEFAULT_INSTANCE.displayName}</Text>
@@ -135,10 +137,14 @@ const OnboardingScreen: React.FC = () => {
             <Text style={styles.identityBody}>{tk('onboarding.identity.body')}</Text>
           </View>
 
-          <TouchableOpacity onPress={openWeb} style={styles.webLink} activeOpacity={0.7}>
-            <Icon name="open-in-new" size={16} color={BRAND.primary} />
-            <Text style={styles.webLinkText}>{tk('onboarding.web')}</Text>
-          </TouchableOpacity>
+          {/* App chưa khai trang web thì KHÔNG hiện mục này — trước đợt này nó
+              luôn hiện và luôn mở `aladin.work`, kể cả trong app của nhà khác. */}
+          {site && (
+            <TouchableOpacity onPress={openWeb} style={styles.webLink} activeOpacity={0.7}>
+              <Icon name="open-in-new" size={16} color={BRAND.primary} />
+              <Text style={styles.webLinkText}>{tk('onboarding.web')}</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* ── Nút ───────────────────────────────────────────────────────────── */}

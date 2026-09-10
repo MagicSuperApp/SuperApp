@@ -153,7 +153,7 @@ const connectProofChatInner = async (): Promise<ConnectResult> => {
     return noteFailure({ status: 'no-phoenix-session' }, did);
   }
 
-  const dangNhap = async (token: string): Promise<ConnectResult> => {
+  const signIn = async (token: string): Promise<ConnectResult> => {
     await proofChatApi.auth.phoenixKeyLogin(token);
     // Đóng dấu chủ NGAY sau khi có token. `did` null (chưa đọc được DID) thì
     // KHÔNG đóng dấu bừa: lượt sau sẽ coi token là vô chủ và đăng nhập lại. Đăng
@@ -164,7 +164,7 @@ const connectProofChatInner = async (): Promise<ConnectResult> => {
   };
 
   try {
-    return await dangNhap(phoenixSession);
+    return await signIn(phoenixSession);
   } catch (err) {
     // ── THẺ PHIÊN CHẾT LÀ NGÕ CỤT VĨNH VIỄN, nếu không có khối này ────────────
     //
@@ -188,7 +188,7 @@ const connectProofChatInner = async (): Promise<ConnectResult> => {
         // `force: true` bỏ qua thẻ trong kho và đúc thẻ mới. Đây là nơi dùng ĐẦU
         // TIÊN của tham số đó — nó được viết ra cho đúng ca này rồi bỏ không.
         const moi = await ensurePhoenixSession({ force: true });
-        if (moi) return await dangNhap(moi);
+        if (moi) return await signIn(moi);
       } catch (err2) {
         const m2 =
           err2 instanceof ProofChatApiError ? err2.message : 'Không kết nối được ProofChat';

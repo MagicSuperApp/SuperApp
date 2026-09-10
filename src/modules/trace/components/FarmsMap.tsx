@@ -67,6 +67,22 @@ const CARD_HEIGHT = 260;
 const MAX_SUGGESTIONS_COMPACT = 3;
 const MAX_SUGGESTIONS_FULL = 6;
 
+/**
+ * Giá trị so sánh khi CHƯA chọn vườn nào — cố ý không trùng được `farm_id` nào,
+ * để `filter` của lớp viền-vườn-đang-chọn không khớp feature nào.
+ *
+ * ⚠ Dựng bằng `String.fromCharCode(0)`, KHÔNG gõ chuỗi thoát vào đây:
+ * công cụ soạn thảo biến chuỗi thoát thành BYTE THẬT ngay lúc ghi tệp — đo được
+ * 2026-09-10, và nhiều khả năng đó chính là đường byte cũ đi vào.
+ * Bản trước đặt thẳng một byte NUL ở đúng chỗ này. Byte đó không hiện ra trên
+ * màn hình, nhưng nó làm `file(1)` xếp tệp thành `data` thay vì `text`, và
+ * `grep -rn` trên cây nguồn in `Binary file … matches` thay vì in dòng — tức
+ * TOÀN BỘ 819 dòng của tệp này biến mất khỏi mọi phép rà bằng grep, kể cả các
+ * bài kiểm quét mã nguồn. Hỏng im lặng đúng nghĩa: không phép đo nào kêu.
+ * `nulByteScan.test.ts` nay canh chỗ này.
+ */
+const NO_FARM_SELECTED = String.fromCharCode(0);
+
 type BaseLayer = 'street' | 'satellite';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -293,10 +309,22 @@ const MapBody: React.FC<MapBodyProps> = ({
   // Ngắm hết vườn MỘT LẦN, khi vườn về tới. Không chạy lại mỗi lượt `farms` đổi:
   // danh sách được nạp lại mỗi lần màn lấy nét, và bay camera về giữa lúc người
   // dùng đang kéo bản đồ là giật thứ họ đang cầm khỏi tay.
+  //
+  // Cái chốt `didFitRef` phải đóng lúc camera ĐÃ bay, KHÔNG phải lúc hẹn giờ.
+  // Bản trước đóng chốt ngay trước `setTimeout`, và mất hẳn lần ngắm ở ca hay
+  // gặp nhất: `bounds` là `useMemo` theo `farms`, nên mỗi lần danh sách vườn về
+  // lại (Home hâm nóng store rồi màn lấy nét nạp thêm) là một OBJECT mới ⇒ deps
+  // đổi ⇒ React chạy hàm dọn (`clearTimeout`) rồi chạy lại effect ⇒ gặp chốt đã
+  // đóng ⇒ thoát sớm. Hẹn giờ cũ bị huỷ, hẹn giờ mới không bao giờ được đặt:
+  // camera nằm nguyên ở `FALLBACK_CENTER` và người dùng mở "Bản đồ" ra không
+  // thấy vườn nào của mình. Không có gì đỏ, không có gì log.
+  //
+  // Đóng chốt trong thân hẹn giờ thì mỗi lần `farms` đổi chỉ dời lịch thêm
+  // 350 ms — tức ngắm MỘT LẦN sau khi danh sách đã yên, đúng thứ chú thích dưới
+  // đây hứa, và vẫn không giật bản đồ khỏi tay người đang kéo.
   useEffect(() => {
     if (didFitRef.current || !bounds || !mapModule) return;
-    didFitRef.current = true;
-    const t = setTimeout(fitAll, 350);
+    const t = setTimeout(() => { didFitRef.current = true; fitAll(); }, 350);
     return () => clearTimeout(t);
   }, [bounds, mapModule, fitAll]);
 
@@ -438,7 +466,7 @@ const MapBody: React.FC<MapBodyProps> = ({
             <MapLib.LineLayer
               id="farms-polygons-line-selected"
               minZoomLevel={POLYGON_MIN_ZOOM}
-              filter={['==', 'farm_id', selectedId ?? ' ']}
+              filter={['==', 'farm_id', selectedId ?? NO_FARM_SELECTED]}
               style={{ lineColor: TONE.sun, lineWidth: 4 }}
             />
           </MapLib.ShapeSource>

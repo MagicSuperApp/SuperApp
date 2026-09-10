@@ -62,10 +62,12 @@ export function tk(key: StringKey | string, vars?: Record<string, string | numbe
   const entry = REGISTRY[key as string];
   if (!entry) return key as string;
   const lang = getLanguage();
-  const out = entry[lang] || entry[DEFAULT_LANG] || entry[SOURCE_LANG] || (key as string);
-  // `{brand}` thay Ở ĐÂY, không đợi nơi gọi truyền vào — xem khối chú thích dưới.
-  const thay = out.includes(BRAND_SLOT) ? out.split(BRAND_SLOT).join(BRAND) : out;
-  return vars ? fill(thay, vars) : thay;
+  const raw = entry[lang] || entry[DEFAULT_LANG] || entry[SOURCE_LANG] || (key as string);
+  // Thay ở ĐÂY chứ không ở từng chỗ gọi, vì cùng lý do đã ghi ở `translate.ts:78`:
+  // chỗ gọi không phải biết gì, và chuỗi mang `{brand}` viết sau này cũng tự đúng.
+  // Thay TRƯỚC `fill` để một `vars.brand` truyền tay không lặng lẽ đè tên app.
+  const out = raw.includes(BRAND_SLOT) ? raw.split(BRAND_SLOT).join(BRAND) : raw;
+  return vars ? fill(out, vars) : out;
 }
 
 /**

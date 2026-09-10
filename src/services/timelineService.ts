@@ -37,9 +37,41 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { APIError } from './treeReIDService';
+import { ensureOrilifeToken } from './orilifeDidAuth';
 
 const AUTH_TOKEN_KEY = 'auth_token';
 const REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Phiên hết hạn GIỮA BUỔI: ký lại bằng DID rồi gọi lại ĐÚNG MỘT LẦN.
+ *
+ * ⛔ Vì sao tệp này phải có, và vì sao thiếu nó là một cái vỏ im lặng:
+ *   Token field-reid sống 12 giờ. Trước bản này, mọi cửa ở đây gặp 401 là trả
+ *   thẳng `auth_error` và không có đường gỡ nào — nút "Thử lại" trên màn dòng
+ *   thời gian chỉ lặp lại đúng lời gọi vừa hỏng, 401 vô hạn. Cùng lúc đó thì năm
+ *   dịch vụ ReID (`treeReIDService._apiCall`, `fruitReIDService`,
+ *   `animalReIDService`, `treeVisibilityService`…) đã có sẵn đúng đường gỡ này.
+ *   Đây là dùng LẠI đường đó, không phải cơ chế thứ hai.
+ *
+ * ⚠ Hai điều kiện, cả hai đều bắt buộc:
+ *   · `attempt === 0` — gọi lại một lần, không quay vòng.
+ *   · `hadToken` — máy PHẢI đang giữ một token. Không có token thì 401 nghĩa là
+ *     "thứ này riêng tư, phải đăng nhập", và ký DID là thao tác SINH TRẮC: bật
+ *     hộp vân tay cho một người khách đang quét mã trên thùng hàng là hỏi một câu
+ *     vô nghĩa. Các cửa ở đây cố ý phục vụ cả khách (xem đầu tệp).
+ */
+async function _shouldRetryAfterRelogin(
+  baseUrl: string,
+  attempt: number,
+  hadToken: boolean,
+): Promise<boolean> {
+  if (attempt !== 0 || !hadToken) return false;
+  try {
+    return await ensureOrilifeToken(baseUrl, { force: true });
+  } catch {
+    return false;
+  }
+}
 
 /** Loại thực thể có dòng thời gian (timeline_router.py:57). */
 export type TimelineEntityType = 'tree' | 'fruit' | 'farm' | 'animal' | 'plot';
@@ -100,6 +132,8 @@ export async function fetchTimeline(
   baseUrl: string,
   entityType: TimelineEntityType,
   entityId: string,
+  /** @internal Lượt gọi thứ mấy. Chỉ `_shouldRetryAfterRelogin` đặt giá trị này. */
+  attempt = 0,
 ): Promise<{ ok: boolean; data?: TimelineResult; error?: APIError }> {
   const authHeader = await _authHeader();
   const headers: Record<string, string> = { Accept: 'application/json' };
@@ -115,6 +149,12 @@ export async function fetchTimeline(
     clearTimeout(timeout);
 
     if (resp.status === 401) {
+      // Phiên hết hạn giữa buổi → ký lại rồi gọi lại MỘT lần (xem
+      // `_shouldRetryAfterRelogin`). Không có đường này thì nút "Thử lại" của màn
+      // dòng thời gian quay vòng 401 mãi mãi.
+      if (await _shouldRetryAfterRelogin(baseUrl, attempt, !!authHeader)) {
+        return fetchTimeline(baseUrl, entityType, entityId, attempt + 1);
+      }
       return { ok: false, error: { type: 'auth_error', detail: 'Phiên hết hạn', http_status: 401 } };
     }
     if (resp.status === 404) {
@@ -182,6 +222,8 @@ export async function addTimelineEvent(
   entityType: TimelineEntityType,
   entityId: string,
   body: { kind: TimelineKind; ts?: string; payload?: Record<string, unknown>; media?: unknown[] },
+  /** @internal Lượt gọi thứ mấy. Chỉ `_shouldRetryAfterRelogin` đặt giá trị này. */
+  attempt = 0,
 ): Promise<{ ok: boolean; event_id?: string; error?: APIError }> {
   const authHeader = await _authHeader();
   if (!authHeader) {
@@ -207,6 +249,14 @@ export async function addTimelineEvent(
     clearTimeout(timeout);
 
     if (resp.status === 401) {
+      // GHI mà gặp 401 là ca đắt nhất: sự kiện đang nằm trong hàng đợi và người
+      // dùng đã được hứa là nó sẽ lên máy chủ. Ký lại rồi ghi lại MỘT lần.
+      // `authHeader` ở đây luôn có (đã chặn ở đầu hàm) nên điều kiện thứ hai của
+      // `_shouldRetryAfterRelogin` mặc nhiên thoả — vẫn truyền tường minh để hàm
+      // đó giữ đúng MỘT luật cho cả hai cửa.
+      if (await _shouldRetryAfterRelogin(baseUrl, attempt, true)) {
+        return addTimelineEvent(baseUrl, entityType, entityId, body, attempt + 1);
+      }
       return { ok: false, error: { type: 'auth_error', detail: 'Phiên hết hạn', http_status: 401 } };
     }
     if (resp.status === 403) {

@@ -35,7 +35,8 @@ import { TRACE_SCAN_ROUTE_NAME } from './traceScan';
 import { tk } from '../i18n/keys';
 // An toàn về chiều phụ thuộc: tệp này đã đứng SAU `instance.config`, còn
 // `resolveVisibleTabs` thì không biết gì về instance — xem chú thích ở `slotPriority`.
-import { DEFAULT_INSTANCE } from '../config/instance.config';
+import { DEFAULT_INSTANCE, ENABLED_MODULES } from '../config/instance.config';
+import { moduleOwningRoute } from './moduleCatalog';
 // Mục cổng — SHAPE tương thích bộ chạy của HomeRadialOverlay (key/icon/label/
 // route/params) + `tint` trực tiếp (thay `group` của ActionDef SG4).
 export interface GateItem {
@@ -109,6 +110,25 @@ const SERVICE_TINT: Record<string, string> = {
 // (đúng "một mục trong toolbox nút giữa" §3).
 export const TRACE_SCAN_ROUTE: string | null = TRACE_SCAN_ROUTE_NAME;
 
+/**
+ * Route này có tới được trong app ĐANG DỰNG không?
+ *
+ * Route của host (Home/Account) luôn có. Route của một module chỉ có khi app
+ * bật module đó — từ 2026-09-10 app chọn được tập module (`InstanceConfig.modules`).
+ *
+ * Vì sao phải lọc Ở ĐÂY chứ không chỉ ở thanh tab: thanh tab đã tự bỏ module tắt
+ * (`navigation/index.tsx:213`), nhưng cổng xoè thì dựng từ `slotPriority` —
+ * một bảng THỨ TỰ ROUTE, không biết gì về module. App tắt `work` mà bảng vẫn
+ * liệt `WorkHome` thì cổng hiện đúng mục đó, người dùng bấm, và điều hướng tới
+ * một route chưa đăng ký. Không màn nào hiện, không lỗi nào ném — đúng loại
+ * hỏng CÂM mà cơ chế chọn module sinh ra để tránh, nên nó không được phép tự
+ * mở lại ở đây.
+ */
+function routeIsReachable(route: string): boolean {
+  const owner = moduleOwningRoute(route);
+  return owner === null || ENABLED_MODULES.includes(owner);
+}
+
 function serviceItem(route: string): GateItem {
   const item: GateItem = {
     key: `svc-${route}`,
@@ -147,10 +167,12 @@ export function resolveGateItems(farm: FarmSignal, usage: UsageMap = {}): GateIt
   // của nền dùng chung, nên `InstanceConfig.slotPriority` có 0 người đọc: hai app
   // khai thứ tự khác nhau mà ra CÙNG một thanh điều hướng — hỏng kiểu trông như
   // đã cấu hình được, và không bài kiểm nào đỏ vì không có gì để đỏ.
-  const order = [NEO_LEFT, ...slotPriority(persona, DEFAULT_INSTANCE.slotPriority)];
+  const order = [NEO_LEFT, ...slotPriority(persona, DEFAULT_INSTANCE.slotPriority)].filter(
+    routeIsReachable,
+  );
   const items = order.map(serviceItem);
 
-  if (TRACE_SCAN_ROUTE) {
+  if (TRACE_SCAN_ROUTE && routeIsReachable(TRACE_SCAN_ROUTE)) {
     const trace: GateItem = {
       key: 'svc-trace-scan',
       icon: 'qrcode',

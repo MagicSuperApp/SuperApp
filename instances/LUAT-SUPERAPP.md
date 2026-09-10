@@ -1,12 +1,18 @@
-<!-- rulesVersion: 2 -->
+<!-- rulesVersion: 3 -->
 
 # Luật SuperApp — thứ mọi app dựng từ kho này phải tuân
 
-**Phiên bản luật: 2.** Con số đó nằm ở dòng đầu tệp và **mỗi `instances/<mã>/instance.json`
+**Phiên bản luật: 3.** Con số đó nằm ở dòng đầu tệp và **mỗi `instances/<mã>/instance.json`
 phải khai đúng nó** (`superapp.rulesVersion`). Sửa luật là bắt buộc nâng số, và khi ấy mọi app
 phải xác nhận lại — bản dựng đỏ cho tới khi có người đọc và ký nhận. Đó là toàn bộ cơ chế: luật
 không tự lan, người phải xác nhận.
 
+> **v2 → v3 (2026-09-10)** đổi **§2**, và đổi theo hướng ngược lại với v1/v2: app nay **chọn
+> được** tập module, qua lời khai `modules: "all" | [...]`. Chủ sở hữu chốt hướng này vì nền tảng
+> sẽ có hàng trăm module và mỗi doanh nghiệp chỉ cần một phần. Chẩn đoán cũ (trường mảng trần
+> hỏng câm) **giữ nguyên** — chỉ đổi thuốc, xem §2.
+> Hai app hiện tại đều khai `"all"`, nên v3 **không đổi hành vi app nào**.
+>
 > **v1 → v2 (2026-09-10)** đổi hai mục, cả hai vì chủ sở hữu quyết cho `checkfarm` phát hành
 > dưới pháp nhân Aladin rồi chuyển giao sau:
 > **§4** iOS chuyển từ *chưa cưỡng chế* sang *cưỡng chế* — mỗi app một bộ `AppIcon.appiconset`
@@ -53,23 +59,53 @@ Hai app không được dùng chung một DID. Trùng là nổ.
 > trên tồn tại vì lý do đó, và chỉ được gỡ khi đường cấp có thật — không gỡ bằng cách bịa một
 > chuỗi trông giống DID.
 
-## 2. Không app nào được bỏ bớt module
+## 2. App CHỌN module, nhưng phải KHAI mình chọn kiểu gì
 
 **Cưỡng chế: CÓ.**
 
-Tập module là **hằng dẫn xuất** từ `MODULE_IDS` (`src/navigation/moduleIds.ts`), không phải biến
-của instance. Thêm module vào sổ là **cả hai** app có, không ai phải nhớ.
+Mỗi app khai `modules` trong `instances/<mã>/instance.json` và trong `InstanceConfig`, đúng một
+trong hai dạng:
 
-Trước đây có trường `enabledModules` cho mỗi app tự chọn tập module. Trường đó hỏng **câm**:
-`collectModuleScreens` gặp module vắng chỉ `console.warn` rồi bỏ qua
-(`src/navigation/registry.ts`) — không đỏ, không chặn. Ngày thêm module thứ năm mà một app quên
-khai, app đó lặng lẽ thiếu tính năng và không phép đo nào kêu. Nên trường đó đã bị gỡ, và
-`tsc` canh hai bên khỏi lệch: `registry.ts` khai `Record<ModuleId, RegistryEntry>` từ đúng kiểu
-`MODULE_IDS`.
+| khai | nghĩa | module thêm sau |
+|---|---|---|
+| `"all"` | app **lõi** — lấy cả sổ | **tự có** |
+| `["chat", "trace"]` | app **chọn lọc** | **không** tự vào, và đó là đúng ý |
 
-Cái **được phép** khác nhau giữa các app là lớp trình bày: tên, chủ đề màu, thứ tự và độ nổi bật
-của điểm vào. Đẩy một ô ra khỏi thanh tab và không có nó trong app là hai việc khác nhau — chỉ
-việc đầu được phép.
+Danh sách để bấm chọn ở `src/navigation/moduleCatalog.ts`, sinh từ chính `module.manifest.json`
+của từng module — kèm quyền module đó cần (máy ảnh, vị trí, đọc hồ sơ), vì bật một module là bật
+luôn quyền của nó và đó là thứ phải khai trên trang cửa hàng.
+
+### Vì sao có `"all"` thay vì để app khai một mảng trần
+
+Luật v1 và v2 **cấm hẳn** việc bỏ bớt module. Lệnh cấm đó không sai lúc viết: trường
+`enabledModules` đời đầu đúng là một mảng trần, và nó hỏng **câm** — `collectModuleScreens` gặp
+module vắng chỉ `console.warn` rồi bỏ qua, nên app quên khai module mới lặng lẽ thiếu tính năng
+và không phép đo nào kêu.
+
+Chỗ hỏng thật nằm ở chỗ **hai ca cho ra dữ liệu giống hệt nhau**: "app này cố ý không lấy module
+mới" và "app này quên khai module mới". Cấm hẳn là một cách chữa; làm hai ca phân biệt được là
+cách kia. `"all"` là lời khai tách chúng ra.
+
+Bắt app khai danh sách **bỏ** thì đúng cái hỏng đó quay lại, chỉ đổi dấu: nền tảng sẽ có hàng
+trăm module, và danh sách âm bắt mọi app phải sửa mỗi lần sổ dài thêm.
+
+### Chỗ cưỡng chế
+
+`src/config/moduleSelection.test.ts` — lời khai hợp lệ · hai nguồn JSON/TS không trôi khỏi nhau ·
+`"all"` thật sự là cả sổ chứ không phải ảnh chụp · **không tab hay `slotPriority` nào trỏ tới
+module app đã tắt** · danh mục khớp manifest · không hai module trùng route.
+
+Hàng in đậm là đường hỏng đắt nhất và nó **không** đi qua bảng `tabs`: `slotPriority` là bảng thứ
+tự route, không biết gì về module. App tắt `work` mà bảng còn liệt `WorkHome` thì cổng xoè vẫn vẽ
+đúng mục đó, người dùng bấm, và điều hướng tới một route chưa đăng ký — không màn nào hiện, không
+lỗi nào ném. `resolveGateItems` lọc lúc chạy; phép kiểm canh tầng cấu hình.
+
+### Cái tắt là ĐƯỜNG TỚI, không phải mã
+
+`registry.ts` vẫn import tĩnh mọi màn của mọi module (INV-SEC: không tải động, offline-first),
+nên **mã của module tắt vẫn nằm trong gói**. Tắt module bỏ đi tab, mục cổng xoè và việc đăng ký
+route — không làm gói nhẹ đi. Muốn gói nhẹ theo cấu hình thì phải sinh `registry.ts` lúc dựng;
+đó là việc khác và **chưa làm**.
 
 ## 3. Mỗi app một mã gói riêng, không bao giờ đổi
 

@@ -2,9 +2,10 @@
   "id": "aladin",
   "displayName": "Aladin",
   "superapp": {
-    "rulesVersion": 2,
+    "rulesVersion": 3,
     "phoenixDid": null
   },
+  "modules": "all",
   "operator": {
     "name": "Aladin",
     "address": "Số nhà 77, đường Chà Là 11, Khu đô thị Vinhomes Ocean Park 2, Xã Nghĩa Trụ, Tỉnh Hưng Yên, Việt Nam",

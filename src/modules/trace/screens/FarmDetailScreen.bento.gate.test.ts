@@ -248,10 +248,7 @@ describe('danh sách cây — nút tròn trong lưới ba cột', () => {
     expect(MA_CHAY).toContain('numColumns={3}');
   });
 
-  it('nút TRÒN, và vòng tiến độ bao quanh nó', () => {
-    // `borderRadius: 999` là thứ làm nó tròn; `RingProgress` bọc ngoài là thứ
-    // gắn tiến độ vào chính cái cây thay vì một thanh nằm chỗ khác.
-    //
+  it('nút TRÒN, và tiến độ là VIỀN của chính nó — chỉ MỘT mép', () => {
     // Phải soi TRONG `TreeChip`, không soi cả tệp: popup chi tiết cũng dùng
     // `RingProgress`, nên phép so cả tệp vẫn xanh sau khi ai đó gỡ vòng khỏi
     // nút. Đã cắn đúng ca đó lúc chạy đột biến.
@@ -259,12 +256,33 @@ describe('danh sách cây — nút tròn trong lưới ba cột', () => {
     expect(iChip).toBeGreaterThan(-1);
     const thanChip = MA_CHAY.slice(iChip, MA_CHAY.indexOf('};', MA_CHAY.indexOf('return (', iChip)));
     expect(thanChip).toContain('<RingProgress');
-    const i = MA_CHAY.indexOf('treeChipTron: {');
-    expect(i).toBeGreaterThan(-1);
-    expect(MA_CHAY.slice(i, i + 200)).toContain('borderRadius: 999');
+
+    // ⛔ KHÔNG được có một `View` bo tròn lồng vào giữa. Đó là mép THỨ HAI, và
+    //    hai mép không bao giờ khớp tuyệt đối — chúng để lại một đường chỉ mờ,
+    //    và cái vòng đọc ra "thứ đeo quanh nút" thay vì "viền của nút". Đúng
+    //    lý do bản đầu bị báo là xấu.
+    expect(thanChip).not.toContain('borderRadius');
+    expect(MA_CHAY).not.toContain('treeChipTron');
   });
 
-  it('trong nút CHỈ có tên — không biểu tượng, không mũi tên, không mã', () => {
+  it('nút mang SỐ QUẢ, và số dùng chung sắc với cung tiến độ', () => {
+    // Nút chỉ có mỗi cái tên thì trống — báo về từ thực địa. Số quả là con số
+    // duy nhất nhà vườn nhìn ở mức danh sách, nên nó vào đây.
+    //
+    // Dùng CHUNG `TONE.primary` với cung tiến độ là thứ nối giữa và viền lại:
+    // "phần đã thu" ở mép và "quả đang có" ở giữa nói cùng một chuyện bằng cùng
+    // một màu, còn cái tên đứng riêng làm nhãn.
+    const iChip = MA_CHAY.indexOf('const TreeChip');
+    const thanChip = MA_CHAY.slice(iChip, MA_CHAY.indexOf('};', MA_CHAY.indexOf('return (', iChip)));
+    expect(thanChip).toContain('item.fruitCount');
+    expect(thanChip).toContain('styles.treeChipSo');
+
+    const iSo = MA_CHAY.indexOf('treeChipSo: {');
+    expect(iSo).toBeGreaterThan(-1);
+    expect(MA_CHAY.slice(iSo, iSo + 160)).toContain('ORG_TONE.primary');
+  });
+
+  it('trong nút CHỈ có tên và số — không biểu tượng, không mũi tên, không mã', () => {
     const i = MA_CHAY.indexOf('const TreeChip');
     expect(i).toBeGreaterThan(-1);
     const than = MA_CHAY.slice(i, MA_CHAY.indexOf('};', MA_CHAY.indexOf('return (', i)));

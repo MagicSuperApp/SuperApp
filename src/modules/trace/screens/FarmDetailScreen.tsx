@@ -241,6 +241,7 @@ const TreeChip = ({
   onPress: () => void;
 }) => {
   const harvestPct = item.harvestProgress ?? 0;
+  const soQua = item.fruitCount ?? 0;
   const ten = formatTreeName(item, farm);
 
   return (
@@ -249,12 +250,25 @@ const TreeChip = ({
       onPress={onPress}
       style={{ width: size, alignItems: 'center' }}
       accessibilityRole="button"
-      accessibilityLabel={`${ten}, đã thu ${harvestPct}%`}
+      accessibilityLabel={`${ten}, ${soQua} quả, đã thu ${harvestPct}%`}
     >
-      <RingProgress pct={harvestPct} size={size} stroke={4}>
-        <View style={styles.treeChipTron}>
-          <Text style={styles.treeChipTen} numberOfLines={2}>{ten}</Text>
-        </View>
+      {/*
+        BA phần, một khối. Không phần nào có nền riêng, viền riêng, hay bo góc
+        riêng — chúng ngồi chung trong lòng một hình tròn duy nhất, nên mắt đọc
+        ra một vật chứ không ra ba vật xếp chồng.
+
+        Thứ nối chúng lại là MÀU: số quả và cung tiến độ dùng chung sắc xanh
+        chủ đạo, còn tên là chữ tối. Nên "phần đã thu" ở viền và "quả đang có" ở
+        giữa nói cùng một chuyện bằng cùng một màu, còn cái tên đứng riêng ra
+        làm nhãn.
+      */}
+      <RingProgress pct={harvestPct} size={size} stroke={5}>
+        <Text style={styles.treeChipTen} numberOfLines={2}>{ten}</Text>
+        <View style={styles.treeChipGach} />
+        <Text style={styles.treeChipSo} numberOfLines={1}>
+          {soQua}
+          <Text style={styles.treeChipDonVi}> quả</Text>
+        </Text>
       </RingProgress>
     </TouchableOpacity>
   );
@@ -2591,20 +2605,33 @@ const styles = StyleSheet.create({
   // Stats banner
   // ── Nút cây + lưới ba cột ─────────────────────────────────────────────────
   treeGridHang: { gap: 12, marginBottom: 12 },
-  /**
-   * Lòng nút — nền TRẮNG đặc, và đặc là có lý do: vòng tiến độ vẽ sát mép, nên
-   * lòng phải tách khỏi vòng bằng một mặt riêng, không thì chữ đè lên nét vòng.
+  /*
+   * Lòng nút KHÔNG có nền riêng nữa — nền là `fill` của chính hình tròn SVG
+   * (xem `RingProgress`). Một `View` bo tròn lồng vào giữa là một mép THỨ HAI, và
+   * hai mép không bao giờ khớp tuyệt đối — chúng để lại một đường chỉ mờ, và cái
+   * vòng đọc ra "thứ đeo quanh nút" thay vì "viền của nút".
    */
-  treeChipTron: {
-    width: '100%', height: '100%', borderRadius: 999,
-    alignItems: 'center', justifyContent: 'center',
-    paddingHorizontal: 8,
-    backgroundColor: ORG_SURFACE.raised,
-  },
   treeChipTen: {
     fontSize: 13, fontWeight: '700', color: ORG_NATURE.bark,
-    textAlign: 'center', letterSpacing: -0.2,
+    textAlign: 'center', letterSpacing: -0.2, lineHeight: 16,
   },
+  /**
+   * Gạch nối giữa tên và số — ngắn, nhạt, không chạm hai bên.
+   *
+   * Nó là thứ duy nhất trong nút không mang tin, và có mặt vì một lý do: hai dòng
+   * chữ cỡ gần nhau đặt sát nhau thì mắt đọc thành một cụm ba dòng rối. Một vạch
+   * mảnh chia nó thành "nhãn" và "số liệu" mà không thêm một mảng nền nào.
+   */
+  treeChipGach: {
+    width: 16, height: 1, marginVertical: 5,
+    backgroundColor: ORG_TONE.border,
+  },
+  /** Số quả dùng CHÍNH sắc của cung tiến độ — đó là thứ nối giữa và viền. */
+  treeChipSo: {
+    fontSize: 15, fontWeight: '800', color: ORG_TONE.primary,
+    letterSpacing: -0.3, lineHeight: 18,
+  },
+  treeChipDonVi: { fontSize: 11, fontWeight: '600', color: ORG_NATURE.barkSoft },
 
   // ── Popup chi tiết cây ────────────────────────────────────────────────────
   cayPopupNen: { ...StyleSheet.absoluteFillObject, backgroundColor: ORG_SURFACE.scrim },

@@ -1,54 +1,73 @@
 /**
- * RingProgress — vòng tiến độ bao quanh một nút tròn.
+ * RingProgress — mặt nút tròn, và VIỀN CỦA CHÍNH NÓ là thanh tiến độ.
  *
- * ── Vì sao vẽ bằng SVG chứ không xoay viền ──────────────────────────────────
- * Cách quen thuộc trong React Native là dựng một `View` bo tròn rồi cho
- * `borderRightColor: 'transparent'` và xoay nó đi một góc. Cách đó ĐÚNG ở đúng
- * bốn mốc (0 · 25 · 50 · 75%) và SAI ở mọi giá trị giữa: viền của một hình vuông
- * bo tròn được chia theo BỐN CẠNH, không theo góc quét, nên phần hiện ra không
- * tỉ lệ với phần trăm. `CircleProgress` trong `TreeDetailScreen` đang dùng đúng
- * mẹo ấy — nó vẽ ra một cái vòng trông có lý, nhưng 30% và 45% cho gần như cùng
- * một hình.
+ * ── Vì sao đĩa và vòng phải là MỘT hình, không phải hai ─────────────────────
+ * Bản đầu vẽ vòng bằng SVG rồi đặt một `View` bo tròn màu trắng lồng vào giữa.
+ * Hai hình, hai mép — và hai mép đó không bao giờ khớp tuyệt đối: chúng lệch
+ * nhau nửa nét vẽ, cộng thêm việc `View` bo tròn và `Circle` của SVG khử răng
+ * cưa khác nhau. Kết quả là một đường chỉ mờ chạy giữa vòng và lòng nút, nên
+ * cái vòng đọc ra "thứ đeo quanh nút" chứ không đọc ra "viền của nút".
  *
- * Với module đã có `react-native-svg`, `strokeDasharray` cho cung ĐÚNG ở mọi
- * phần trăm mà không tốn thêm gì. Một con số sai không rẻ hơn một con số đúng.
+ * Nay CHỈ MỘT `<Circle>` mang cả `fill` lẫn `stroke`: lòng nút và viền là hai
+ * thuộc tính của cùng một hình, nên chúng đồng tâm và khít nhau theo định nghĩa,
+ * không phải theo may mắn.
  *
- * ── Vòng này nói gì ─────────────────────────────────────────────────────────
- * Phần đã quét = phần quả đã thu. Nó bao quanh chính nút cây, nên tiến độ và
- * đối tượng là MỘT khối — mắt không phải nối một thanh ngang với một cái tên ở
- * chỗ khác.
+ * Cung tiến độ vẽ ĐÈ LÊN đúng đường viền ấy — cùng tâm, cùng bán kính, cùng bề
+ * dày. Nên nó không phải một vòng thứ hai; nó là phần viền đã được tô.
+ *
+ * ── Vì sao cung vẽ bằng SVG chứ không xoay viền ─────────────────────────────
+ * Cách quen thuộc trong React Native là dựng một `View` bo tròn, cho một cạnh
+ * `transparent` rồi xoay đi một góc. Cách đó ĐÚNG ở đúng bốn mốc (0·25·50·75%)
+ * và SAI ở mọi giá trị giữa: viền của một hình vuông bo tròn được chia theo BỐN
+ * CẠNH chứ không theo góc quét, nên phần hiện ra không tỉ lệ với phần trăm.
+ * `CircleProgress` trong `TreeDetailScreen` đang dùng đúng mẹo ấy — 30% và 45%
+ * cho gần như cùng một hình.
+ *
+ * Module đã có `react-native-svg`, nên `strokeDasharray` cho cung đúng ở mọi
+ * phần trăm mà không tốn thêm gì.
  */
 
 import React from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 
-import { TONE } from '../../theme/depth';
+import { SURFACE, TONE } from '../../theme/depth';
 
 export const RingProgress: React.FC<{
   /** 0..100. Ngoài dải thì bị kẹp — không có vòng nào quét quá một vòng. */
   pct: number;
   size: number;
-  /** Bề dày nét. Mỏng quá thì ngoài nắng không thấy; dày quá thì nuốt chữ bên trong. */
+  /**
+   * Bề dày VIỀN. Mỏng quá thì ngoài nắng không thấy phần đã quét; dày quá thì
+   * viền ăn vào chỗ của chữ bên trong.
+   */
   stroke?: number;
+  /** Màu lòng nút. Để trống thì trong suốt — dùng khi nút nằm trên nền có sẵn. */
+  fill?: string;
   children?: React.ReactNode;
   style?: StyleProp<ViewStyle>;
-}> = ({ pct, size, stroke = 4, children, style }) => {
+}> = ({ pct, size, stroke = 5, fill = SURFACE.raised, children, style }) => {
   const phanTram = Math.max(0, Math.min(100, Number.isFinite(pct) ? pct : 0));
+  // Bán kính trừ NỬA nét: `stroke` của SVG mọc đều hai bên đường tròn, nên
+  // thiếu phép trừ này thì nửa ngoài của viền bị khung cắt cụt.
   const r = (size - stroke) / 2;
   const chuVi = 2 * Math.PI * r;
 
   return (
     <View style={[{ width: size, height: size }, styles.wrap, style]}>
       <Svg width={size} height={size} style={StyleSheet.absoluteFill}>
-        {/* Rãnh — luôn vẽ đủ vòng, để cái vòng có hình cả khi tiến độ bằng 0. */}
+        {/*
+          MỘT hình mang cả lòng lẫn viền. Viền ở đây đóng hai vai: nó là mép của
+          nút, và nó là RÃNH của thanh tiến độ. Vẽ đủ vòng để nút có mép cả khi
+          tiến độ bằng 0.
+        */}
         <Circle
           cx={size / 2}
           cy={size / 2}
           r={r}
+          fill={fill}
           stroke={TONE.border}
           strokeWidth={stroke}
-          fill="none"
         />
         {phanTram > 0 ? (
           <Circle
@@ -66,18 +85,19 @@ export const RingProgress: React.FC<{
           />
         ) : null}
       </Svg>
-      <View style={styles.giua}>{children}</View>
+      {/*
+        Lề trong tính theo BÁN KÍNH, không gõ số: chữ phải nằm gọn trong hình
+        tròn, mà chỗ hẹp nhất của một hình tròn là hai bên. `size / 5` chừa đủ
+        cho một dòng chữ hai hàng mà không chạm viền ở bất kỳ cỡ nút nào.
+      */}
+      <View style={[styles.giua, { paddingHorizontal: size / 5 }]}>{children}</View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   wrap: { alignItems: 'center', justifyContent: 'center' },
-  giua: {
-    alignItems: 'center', justifyContent: 'center',
-    paddingHorizontal: 6,
-    backgroundColor: 'transparent',
-  },
+  giua: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
 });
 
 export default RingProgress;

@@ -277,8 +277,19 @@ if (trungDid) {
     // này — nên trước bản này, dựng với `APP_INSTANCE=checkfarm` vẫn ra một gói
     // mang `com.aladincontract.company`, tức ra app Aladin đội tên CheckFarm.
     //
-    // Hai pháp nhân RIÊNG (Aladin Contract và Công ty Cổ phần CheckFarm) ⇒ hai
-    // mã gói riêng, hai khoá ký riêng. Không dùng chung.
+    // Hai app RIÊNG ⇒ hai mã gói riêng, hai khoá tải lên riêng. Không dùng chung.
+    //
+    // Bản trước suy điều đó từ "hai pháp nhân riêng". Vế suy ấy KHÔNG còn đúng:
+    // từ 2026-09-10 cả hai app phát hành dưới pháp nhân Aladin, CheckFarm Inc
+    // nhận chuyển giao sau (`instances/LUAT-SUPERAPP.md §6`). Kết luận thì không
+    // đổi, nhưng lý do đổi hẳn — và lý do mới nặng hơn:
+    //
+    //   Google Play khoá mục ứng dụng VĨNH VIỄN theo khoá của tệp ĐẦU TIÊN tải
+    //   lên. Hai app chung một khoá thì ngày chuyển giao một trong hai sang pháp
+    //   nhân khác, khoá ấy vẫn nằm ở cả hai bên — và đường duy nhất để gỡ là đi
+    //   qua bộ phận hỗ trợ của Google.
+    //
+    // Tức là: cùng pháp nhân KHÔNG phải lý do để gộp khoá.
     //
     // ⛔ `com.checkfarm.app` KHÔNG ĐỔI ĐƯỢC sau lần tải bản dựng đầu tiên lên
     //    Google Play. Sửa dòng đó sau đó là mất luôn chỗ đứng của ứng dụng.

@@ -181,3 +181,22 @@ describe('thanh đáy còn đúng một việc', () => {
     expect(SRC).toContain('setChieuCaoThanhDay(');
   });
 });
+
+describe('không lớp phủ nào được cắt ngang một nền chuyển sắc', () => {
+  it('nút "Cập nhật hoạt động" KHÔNG còn lớp `btnShine`', () => {
+    // ⛔ `btnShine` phủ ĐÚNG NỬA TRÊN (`height: '50%'`), nên mép dưới của nó là
+    //    một đường ngang cắt ngang nút. Trên nền màu phẳng gần như không thấy;
+    //    trên nền chuyển sắc thì nửa trên bị nâng sáng còn nửa dưới thì không,
+    //    và cái đường ấy hiện rõ thành ranh giới hai mảng màu.
+    //
+    // Nó ra đời để GIẢ một vệt sáng trên nền phẳng. Nay nền là chuyển sắc thật,
+    // nên nó vừa thừa vừa phá đúng thứ nó từng giả.
+    const i = MA_CHAY.indexOf('styles.activityLargeBtn');
+    expect(i).toBeGreaterThan(-1);
+    const ket = MA_CHAY.indexOf('</TouchableOpacity>', i);
+    expect(ket).toBeGreaterThan(i);
+    const nut = MA_CHAY.slice(i, ket);
+    expect(nut).toContain('<GradientFill name="action" />');
+    expect(nut).not.toContain('styles.btnShine');
+  });
+});

@@ -141,6 +141,20 @@ describe('lớp chuyển sắc — `id` phải riêng theo từng lượt dựng
     expect(MA_CHAY).not.toContain('const id = `grad-${name}`');
   });
 
+  it('toạ độ chuyển sắc là SỐ, không phải chuỗi phần trăm', () => {
+    // ⛔ Đây là nguyên nhân THẬT của "nút có hai mảng màu", và nó sống qua được
+    // một lượt vá vì lượt đó sửa `id` — một lỗi có thật, nhưng lỗi khác.
+    //
+    // `gradientUnits` mặc định là `objectBoundingBox`: x1/y1/x2/y2 là phân số
+    // 0..1 của hộp bao. Truyền `"14.6%"` thì `react-native-svg` đọc thành 14,6
+    // ĐƠN VỊ NGƯỜI DÙNG — gấp hơn mười bốn lần hộp bao, nên cả đoạn chuyển màu
+    // nén vào một dải mỏng ở mép và phần còn lại phẳng lì.
+    expect(MA_CHAY).toContain('x1={0.5 - dx / 2}');
+    expect(MA_CHAY).toContain('y2={0.5 + dy / 2}');
+    expect(MA_CHAY).not.toMatch(/x1=\{`\$\{[^}]*\}%`\}/);
+    expect(MA_CHAY).not.toContain("%`}");
+  });
+
   it('ký tự lạ của `useId` bị lọc trước khi vào `url(#…)`', () => {
     // `useId()` trả dạng `:r3:`; dấu hai chấm trong `url(#…)` là cú pháp khác,
     // nên thiếu phép lọc thì id hợp lệ về mặt React mà vô nghĩa với SVG.

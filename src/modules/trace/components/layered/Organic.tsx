@@ -66,12 +66,29 @@ export const GradientFill: React.FC<{ name: GradientName }> = ({ name }) => {
   return (
     <Svg pointerEvents="none" style={StyleSheet.absoluteFill} width="100%" height="100%">
       <Defs>
+        {/*
+          ⛔ SỐ THẬP PHÂN, KHÔNG PHẢI CHUỖI PHẦN TRĂM. Đây là chỗ đã hỏng thật.
+
+          `gradientUnits` mặc định là `objectBoundingBox`, tức x1/y1/x2/y2 là
+          PHÂN SỐ 0..1 của hộp bao hình được tô. Bản trước truyền chuỗi
+          `"14.6%"`; `react-native-svg` không quy chuỗi phần trăm về phân số ở hệ
+          toạ độ này mà đọc nó thành 14,6 ĐƠN VỊ NGƯỜI DÙNG — gấp hơn mười bốn
+          lần hộp bao.
+
+          Hệ quả đúng như báo về từ thực địa: cả đoạn chuyển màu bị nén vào một
+          dải mỏng ở mép, phần còn lại phẳng lì một màu. Nhìn ra thành "nút có
+          hai mảng màu", không phải một chuyển sắc chảy đều.
+
+          Lượt vá trước đổ cho `id` trùng và sửa bằng `useId` — sửa đúng một lỗi
+          CÓ THẬT nhưng không phải lỗi này, nên triệu chứng còn nguyên. Giữ cả
+          hai bản vá: chúng chặn hai chỗ hỏng khác nhau.
+        */}
         <LinearGradient
           id={id}
-          x1={`${(0.5 - dx / 2) * 100}%`}
-          y1={`${(0.5 - dy / 2) * 100}%`}
-          x2={`${(0.5 + dx / 2) * 100}%`}
-          y2={`${(0.5 + dy / 2) * 100}%`}
+          x1={0.5 - dx / 2}
+          y1={0.5 - dy / 2}
+          x2={0.5 + dx / 2}
+          y2={0.5 + dy / 2}
         >
           <Stop offset="0" stopColor={g.from} />
           <Stop offset="1" stopColor={g.to} />

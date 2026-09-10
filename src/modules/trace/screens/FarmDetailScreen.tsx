@@ -1495,7 +1495,6 @@ const FarmDetailMode = ({
         */}
         <TouchableOpacity style={styles.activityLargeBtn} onPress={onActivityUpdate} activeOpacity={0.88}>
           <GradientFill name="action" />
-          <View style={styles.btnShine} />
           <Icon name="seedling" size={19} color={COLORS.white} />
           <Text style={styles.activityLargeBtnText}>Cập nhật hoạt động</Text>
         </TouchableOpacity>
@@ -2810,6 +2809,17 @@ const styles = StyleSheet.create({
   },
 
   // Shared
+  /**
+   * ⛔ ĐÃ GỠ khỏi nút "Cập nhật hoạt động", giữ định nghĩa vì màn khác còn dùng.
+   *
+   * Nó là một lớp trắng mờ phủ ĐÚNG NỬA TRÊN (`height: '50%'`) — mép dưới của
+   * nó là một đường ngang CẮT NGANG nút. Trên một nền màu phẳng thì gần như
+   * không thấy; trên nền chuyển sắc thì nửa trên bị nâng sáng còn nửa dưới thì
+   * không, và cái đường ấy hiện rõ thành ranh giới hai mảng màu.
+   *
+   * Nó ra đời để GIẢ một vệt sáng trên nền phẳng. Nay nền đã là chuyển sắc thật,
+   * nên nó vừa thừa vừa phá đúng thứ nó từng giả.
+   */
   btnShine: {
     position: 'absolute', top: 0, left: 0, right: 0,
     height: '50%', backgroundColor: 'rgba(255,255,255,0.09)',

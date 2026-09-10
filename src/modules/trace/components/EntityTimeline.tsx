@@ -307,7 +307,7 @@ const EntityTimeline: React.FC<Props> = ({ entityType, entityId, limit = 0, auth
 const styles = StyleSheet.create({
   box: {
     backgroundColor: COLORS.card, borderRadius: 14, padding: 14,
-    borderWidth: 1, borderColor: COLORS.border, marginBottom: 12,
+    marginBottom: 12,
   },
   headRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' },
   headText: { fontSize: 11, fontWeight: '800', color: COLORS.accent, letterSpacing: 0.6 },

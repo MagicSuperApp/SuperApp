@@ -1,3 +1,6 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
+
 /**
  * "Chuyển sắc organic NHẸ NHÀNG" — biến một chữ về gu thành hai con số.
  *
@@ -100,5 +103,47 @@ describe('`onDark` phải khớp độ sáng THẬT của token', () => {
     const khaiSai: GradientToken = { from: '#166e43', to: '#11563a', angle: 135, onDark: false };
     const toiNhat = doSang(khaiSai.from) < doSang(khaiSai.to) ? khaiSai.from : khaiSai.to;
     expect(tuongPhan(NATURE.bark, toiNhat)).toBeLessThan(4.5);
+  });
+});
+
+/**
+ * Mỗi lớp chuyển sắc phải có `id` RIÊNG — cổng nguồn.
+ *
+ * ⛔ Lỗi thật, báo từ thực địa sau lượt dựng đầu: nút "Cập nhật hoạt động" nửa
+ *    trên xanh lá nửa dưới xanh dương; "Chỉ đường tới vườn" có một mảng xanh
+ *    dương nhạt ở đỉnh. Đó là hình dạng của hai chuyển sắc chồng lệch nhau, chứ
+ *    không phải một chuyển sắc chảy đều.
+ *
+ * Gốc rễ: `id` đặt theo TÊN TOKEN (`grad-action`), tức mọi ô cùng `tone` dùng
+ * chung một id — và `react-native-svg` giữ sổ id CHUNG cho cả ứng dụng, không
+ * theo từng thẻ `<Svg>`. Lớp gắn sau ghi đè lớp trước, nên `url(#grad-action)`
+ * của nút này đi lấy hình học của một ô khác.
+ *
+ * Chua nhất: chú thích ở bản đầu đã viết ĐÚNG lý do ("hai lớp trùng id thì lớp
+ * sau lấy nhầm màu của lớp trước") rồi mã ngay dưới vẫn làm sai. Một câu chú
+ * thích đúng không chặn được gì — nên nay có bài kiểm.
+ *
+ * ⚠ Đây là phép đọc MÃ NGUỒN, không phải phép dựng thật. Nó bắt ca "ai đó rút
+ * `id` về lại tên token", KHÔNG bắt ca "`useId` còn đó mà react-native-svg vẫn
+ * trộn". Phép đo cuối cho ca sau là mở màn thật và nhìn nút.
+ */
+describe('lớp chuyển sắc — `id` phải riêng theo từng lượt dựng', () => {
+  const NGUON = readFileSync(
+    join(__dirname, '..', 'components', 'layered', 'Organic.tsx'),
+    'utf8',
+  ).replace(/\r\n/g, '\n');
+
+  const MA_CHAY = NGUON.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+
+  it('`id` dựng từ `useId()`, không phải từ tên token', () => {
+    expect(MA_CHAY).toContain('React.useId()');
+    // Đúng dòng đã gây ra lỗi. Có lại nó là quay về nguyên trạng.
+    expect(MA_CHAY).not.toContain('const id = `grad-${name}`');
+  });
+
+  it('ký tự lạ của `useId` bị lọc trước khi vào `url(#…)`', () => {
+    // `useId()` trả dạng `:r3:`; dấu hai chấm trong `url(#…)` là cú pháp khác,
+    // nên thiếu phép lọc thì id hợp lệ về mặt React mà vô nghĩa với SVG.
+    expect(MA_CHAY).toMatch(/useId\(\)\.replace\(/);
   });
 });

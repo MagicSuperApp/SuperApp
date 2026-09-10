@@ -1247,6 +1247,14 @@ const FarmDetailMode = ({
       <BentoRow style={styles.bentoPreviews}>
         <BentoTile flex={1} onPress={onView3DFarm} padded={false} style={styles.bentoPreview}>
           <FarmShape farm={farm} trees={filteredTrees} mode="iso" />
+          {/* Huy hiệu 3D ở GÓC, không phải nhãn giữa ô: hình nghiêng đã nói đây
+              là không gian, huy hiệu chỉ xác nhận. Đặt ở góc trên-trái vì đó là
+              chỗ mắt chạm đầu tiên khi đọc từ trái sang, và vì mảnh vườn nghiêng
+              luôn dồn về giữa-dưới nên góc ấy trống. */}
+          <View style={styles.bentoBadge3D}>
+            <Icon name="cube" size={13} color={ORG_TONE.primary} />
+            <Text style={styles.bentoBadge3DTxt}>3D</Text>
+          </View>
           {!coHinh ? <Text style={styles.bentoPreviewMoi}>Xem sơ đồ 3D</Text> : null}
         </BentoTile>
         <BentoTile
@@ -2551,6 +2559,17 @@ const styles = StyleSheet.create({
     fontSize: 12, fontWeight: '700', color: ORG_NATURE.barkSoft,
     paddingBottom: 8,
   },
+  /** Huy hiệu 3D — góc trên-trái, nền mờ để đọc được trên cả nền hình lẫn nền ô. */
+  bentoBadge3D: {
+    position: 'absolute', top: 8, left: 8,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 7, paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: ORG_SURFACE.raised,
+    borderWidth: 1, borderColor: ORG_TONE.border,
+  },
+  bentoBadge3DTxt: { fontSize: 11, fontWeight: '800', color: ORG_TONE.primary },
+
   /** Chỉ hiện khi CHƯA có hình để vẽ — lúc đó ô phải tự nói nó mở ra cái gì. */
   bentoPreviewMoi: {
     fontSize: 14, fontWeight: '700', color: ORG_TONE.primary,

@@ -43,10 +43,26 @@ export const GradientFill: React.FC<{ name: GradientName }> = ({ name }) => {
   // Hướng chảy trong hệ toạ độ màn hình (trục y hướng XUỐNG).
   const dx = Math.sin(rad);
   const dy = -Math.cos(rad);
-  // `id` phải khác nhau giữa các lớp cùng nằm trên một màn: SVG tra `fill="url(#id)"`
-  // theo tên trong CẢ tài liệu, nên hai lớp trùng id thì lớp sau lấy nhầm màu của
-  // lớp trước — và nó chỉ lộ ra khi màn có từ hai chuyển sắc trở lên.
-  const id = `grad-${name}`;
+  /**
+   * ⛔ ĐÂY LÀ CHỖ ĐÃ HỎNG THẬT, đừng rút gọn lại.
+   *
+   * Bản trước đặt `id = 'grad-' + name`, tức MỘT id cho MỘT token. Chú thích khi
+   * ấy đã viết đúng lý do ("hai lớp trùng id thì lớp sau lấy nhầm màu của lớp
+   * trước") rồi vẫn làm sai — vì một màn có nhiều ô cùng `tone`, và
+   * `react-native-svg` giữ sổ id CHUNG cho cả ứng dụng chứ không theo từng thẻ
+   * `<Svg>`. Lớp nào gắn sau ghi đè lớp trước, nên `url(#grad-action)` của nút
+   * này đi lấy toạ độ/chặng màu của một ô khác.
+   *
+   * Triệu chứng thực địa: nút "Cập nhật hoạt động" nửa trên xanh lá nửa dưới
+   * xanh dương, và "Chỉ đường tới vườn" có một mảng xanh dương nhạt ở đỉnh —
+   * đúng hình dạng của hai chuyển sắc chồng lệch nhau, không phải một chuyển
+   * sắc chảy đều.
+   *
+   * `useId()` cho mỗi LƯỢT DỰNG một id riêng. Bỏ ký tự lạ vì `useId` trả về
+   * dạng `:r3:`, mà dấu hai chấm trong `url(#…)` là cú pháp khác.
+   */
+  const rieng = React.useId().replace(/[^a-zA-Z0-9]/g, '');
+  const id = `grad-${name}-${rieng}`;
   return (
     <Svg pointerEvents="none" style={StyleSheet.absoluteFill} width="100%" height="100%">
       <Defs>
@@ -168,11 +184,22 @@ const PhotoWash: React.FC<{ source: NonNullable<(typeof BACKDROP_PHOTOS)[Backdro
   </>
 );
 
-/** Nền của một màn. `variant` chỉ đổi cách sắp hình, không đổi ngôn ngữ hình. */
+/**
+ * Nền của một màn. `variant` chỉ đổi cách sắp hình, không đổi ngôn ngữ hình.
+ *
+ * ── Vì sao chuyển sắc cắm Ở ĐÂY ─────────────────────────────────────────────
+ * Mọi màn trong module đều đi qua lớp này — hoặc trực tiếp, hoặc qua `<Ground>`.
+ * Nên một dòng ở đây cho cả module cùng một tông, mà KHÔNG màn nào phải sửa bố
+ * cục. Cắm ở từng màn thì màn thêm sau lại là một dịp quên, và module sẽ có hai
+ * loại nền cùng lúc mà không ai bật lên được điều đó.
+ *
+ * Nằm DƯỚI mọi lớp khác: chuyển sắc là mặt đất, mảng loang và lá nằm trên nó.
+ */
 export const GroundBackdrop: React.FC<{ variant?: BackdropVariant }> = ({ variant = 'home' }) => {
   const photo = BACKDROP_PHOTOS[variant];
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      <GradientFill name="ground" />
       {photo ? <PhotoWash source={photo} /> : <GreenWash variant={variant} />}
     </View>
   );

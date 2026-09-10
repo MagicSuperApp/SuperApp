@@ -126,15 +126,35 @@ describe('hai ô xem trước HIỆN thứ chúng mở, không phải icon + ch�
     expect(MA_CHAY).toContain('mode="flat"');
   });
 
-  it('KHÔNG có biểu tượng nào trong hai ô đó', () => {
-    // Hình đã là nhãn. Thêm một biểu tượng vào đây là quay lại đúng thứ vừa gỡ:
-    // một hình vẽ chung chung nói "bấm vào đây mở một thứ tên vậy", đè lên một
-    // hình cụ thể vốn đã nói được nhiều hơn.
+  it('KHÔNG có biểu tượng nào ĐỨNG THAY NHÃN trong hai ô đó', () => {
+    // Hình đã là nhãn. Một biểu tượng đặt giữa ô kèm dòng chữ là quay lại đúng
+    // thứ vừa gỡ: hình vẽ chung chung nói "bấm vào đây mở một thứ tên vậy", đè
+    // lên một hình cụ thể vốn đã nói được nhiều hơn.
+    //
+    // Huy hiệu "3D" ở GÓC thì khác loại và được phép — nó không thay hình, nó
+    // xác nhận hình đang xem là không gian. Nên phép so ở đây bắt cái NHÃN
+    // (`bentoActionTxt`, kiểu chữ của ô có nhãn), không bắt mọi `<Icon`.
     const i = MA_CHAY.indexOf('<BentoRow style={styles.bentoPreviews}>');
     expect(i).toBeGreaterThan(-1);
     const ket = MA_CHAY.indexOf('</BentoRow>', i);
     expect(ket).toBeGreaterThan(i);
-    expect(MA_CHAY.slice(i, ket)).not.toContain('<Icon');
+    const khoi = MA_CHAY.slice(i, ket);
+    expect(khoi).not.toContain('styles.bentoActionTxt');
+  });
+
+  it('ô sơ đồ 3D có huy hiệu ở GÓC, không phải nhãn giữa ô', () => {
+    const i = MA_CHAY.indexOf('<BentoRow style={styles.bentoPreviews}>');
+    const ket = MA_CHAY.indexOf('</BentoRow>', i);
+    // Khớp CẢ thuộc tính, không khớp tên trần: `styles.bentoBadge3D` là TIỀN TỐ
+    // của `styles.bentoBadge3DTxt`, nên phép so tên trần vẫn xanh sau khi ai đó
+    // gỡ hẳn khung huy hiệu mà để lại kiểu chữ. Đã cắn đúng ca đó lúc chạy đột
+    // biến — bài kiểm xanh trong khi huy hiệu đã biến mất.
+    expect(MA_CHAY.slice(i, ket)).toContain('style={styles.bentoBadge3D}');
+    // `position: 'absolute'` là thứ giữ nó ở GÓC. Bỏ dòng đó thì huy hiệu rơi
+    // vào dòng chảy và đẩy hình vườn xuống — thành đúng cái nhãn vừa gỡ.
+    const kieu = MA_CHAY.indexOf('bentoBadge3D: {');
+    expect(kieu).toBeGreaterThan(-1);
+    expect(MA_CHAY.slice(kieu, kieu + 160)).toContain("position: 'absolute'");
   });
 });
 

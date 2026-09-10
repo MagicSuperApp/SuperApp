@@ -21,6 +21,7 @@
  * mà ở đây câu ra đã đúng ngôn ngữ rồi) — cũng chính là điều ta muốn.
  */
 
+import { DEFAULT_INSTANCE } from '../../config/instance.config';
 import { getLanguage, subscribe } from '../store';
 import { DEFAULT_LANG, SOURCE_LANG, type LangCode } from '../types';
 import { TRACE_STRINGS } from './trace';
@@ -62,8 +63,31 @@ export function tk(key: StringKey | string, vars?: Record<string, string | numbe
   if (!entry) return key as string;
   const lang = getLanguage();
   const out = entry[lang] || entry[DEFAULT_LANG] || entry[SOURCE_LANG] || (key as string);
-  return vars ? fill(out, vars) : out;
+  // `{brand}` thay Ở ĐÂY, không đợi nơi gọi truyền vào — xem khối chú thích dưới.
+  const thay = out.includes(BRAND_SLOT) ? out.split(BRAND_SLOT).join(BRAND) : out;
+  return vars ? fill(thay, vars) : thay;
 }
+
+/**
+ * TÊN APP trong chuỗi hiển thị — cùng một chỗ thay với `t()` (`i18n/translate.ts`).
+ *
+ * ⛔ Thiếu vế này là lỗi ĐO ĐƯỢC, không phải chuyện đề phòng: `t()` thay `{brand}`
+ * tập trung đúng để nơi gọi khỏi phải nhớ, còn `tk()` thì chỉ thay khi người gọi
+ * TRUYỀN `vars` — mà không ai truyền `brand`, vì cả ý của thiết kế là không phải
+ * truyền. Kết quả: mọi khoá chứa `{brand}` hiện ra nguyên văn dấu ngoặc nhọn.
+ *
+ * Hai khoá đang dính, và cái nặng hơn không phải cái dễ thấy:
+ *   `trace.ask.placeholder`  → "Hỏi {brand} về vườn của bạn…" (xấu, ai cũng thấy)
+ *   `map.permission.why`     → "{brand} cần vị trí để chỉ đường tới vườn…"
+ *
+ * Cái thứ hai là câu XIN QUYỀN. Đó đúng lớp hỏng mà `t()` sinh ra để chặn: người
+ * dùng CheckFarm bị từ chối quyền được bảo đi tìm một mục tên khác trong Cài đặt
+ * máy, và họ kẹt ở đúng chỗ mà câu hướng dẫn lẽ ra gỡ.
+ *
+ * KHÔNG dịch tên app. Một app một tên, giống nhau ở cả bốn ngôn ngữ.
+ */
+const BRAND_SLOT = '{brand}';
+const BRAND = DEFAULT_INSTANCE.displayName;
 
 /** `'Còn {n} cây'` + `{ n: 3 }` → `'Còn 3 cây'`. Chỗ thay thiếu thì giữ nguyên `{n}`. */
 function fill(text: string, vars: Record<string, string | number>): string {

@@ -104,6 +104,10 @@ export const Card: React.FC<{
         style,
       ]}
     >
+      {/* Cùng chuyển sắc với ô Bento, để thẻ cũ và ô mới không thành hai loại
+          bề mặt trên cùng một màn. `styles.card` đã có `overflow: 'hidden'` nên
+          lớp này không tràn qua góc bo. */}
+      <GradientFill name="tile" />
       {children}
     </View>
   );

@@ -187,7 +187,7 @@ const MyDevicesScreen: React.FC = () => {
     const ten = d.deviceName?.trim() || 'Máy không tên';
     // Điểm 3 đầu tệp: owner đang hoạt động là khoá cuối cùng ⇒ nút gỡ chắc
     // chắn hỏng, nên không bày ra.
-    const goDuoc = song && d.keyRole?.toLowerCase() !== 'owner';
+    const canRevoke = song && d.keyRole?.toLowerCase() !== 'owner';
     const dangBan = busyKeyId === d.keyId;
 
     return (
@@ -209,7 +209,7 @@ const MyDevicesScreen: React.FC = () => {
           {!d.lastUsedAt && !!fmtTime(d.createdAt) && (
             <Text style={styles.time}>Thêm vào: {fmtTime(d.createdAt)}</Text>
           )}
-          {song && !goDuoc && (
+          {song && !canRevoke && (
             <Text style={styles.note}>
               Khoá chủ không gỡ được từ đây. Muốn đổi sang máy khác, dùng 24 từ hoặc người bảo hộ.
             </Text>
@@ -221,7 +221,7 @@ const MyDevicesScreen: React.FC = () => {
             <TouchableOpacity onPress={() => openRename(d)} hitSlop={8} style={styles.actBtn}>
               <Icon name="pencil-outline" size={18} color={COLORS.textSub} />
             </TouchableOpacity>
-            {goDuoc && (
+            {canRevoke && (
               dangBan
                 ? <ActivityIndicator style={styles.actBtn} color="#C62828" />
                 : (

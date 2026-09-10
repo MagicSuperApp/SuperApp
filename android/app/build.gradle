@@ -349,7 +349,14 @@ if (trungDid) {
         // Vẫn nhảy sang 99 vì hai đường không cân nhau, y như lần trước:
         //   98 còn trống → nhảy mất KHÔNG GÌ (Play đòi số TĂNG DẦN, không đòi liền kề)
         //   98 đã tiêu   → giữ 98 là Play từ chối, mất trọn một vòng dựng-nộp
-        versionCode 99
+        //
+        // Build 100 (2026-09-10): lần này KHÔNG phải suy đoán. 99 đã dựng thật bằng
+        // `scripts/build-aab.ps1` và bản đó đã lên kênh thử nghiệm — tức 99 ĐÃ TIÊU.
+        // Cùng lúc đó `.github/workflows/android-aab.yml` đọc THẲNG con số trong tệp
+        // này, không cộng thêm số lượt dựng như đường Codemagic. Nên để nguyên 99 là
+        // dựng ra một gói chắc chắn bị Play từ chối, và lượt dựng vẫn báo xanh —
+        // cái sai chỉ lộ ở bước tải lên.
+        versionCode 100
         versionName "2.0"
 
         // ✅ Support 16KB page size (required by Google Play Store 2024)

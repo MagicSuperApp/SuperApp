@@ -21,8 +21,8 @@
  * mà ở đây câu ra đã đúng ngôn ngữ rồi) — cũng chính là điều ta muốn.
  */
 
-import { getLanguage, subscribe } from '../store';
 import { DEFAULT_INSTANCE } from '../../config/instance.config';
+import { getLanguage, subscribe } from '../store';
 import { DEFAULT_LANG, SOURCE_LANG, type LangCode } from '../types';
 import { TRACE_STRINGS } from './trace';
 import { MAP_STRINGS } from './map';
@@ -63,11 +63,6 @@ export function tk(key: StringKey | string, vars?: Record<string, string | numbe
   if (!entry) return key as string;
   const lang = getLanguage();
   const raw = entry[lang] || entry[DEFAULT_LANG] || entry[SOURCE_LANG] || (key as string);
-  // `{brand}` = TÊN APP đang dựng. Lối từ điển cũ thay nó trong `t()`
-  // (`translate.ts:64`); lối khoá này thì KHÔNG, nên tới 2026-09-10 ô hỏi trợ lý ở
-  // màn Truy xuất hiện đúng chữ `Hỏi {brand} về vườn của bạn…` trên máy người dùng
-  // — thấy được bằng mắt, không phép đo nào kêu.
-  //
   // Thay ở ĐÂY chứ không ở từng chỗ gọi, vì cùng lý do đã ghi ở `translate.ts:78`:
   // chỗ gọi không phải biết gì, và chuỗi mang `{brand}` viết sau này cũng tự đúng.
   // Thay TRƯỚC `fill` để một `vars.brand` truyền tay không lặng lẽ đè tên app.
@@ -75,6 +70,24 @@ export function tk(key: StringKey | string, vars?: Record<string, string | numbe
   return vars ? fill(out, vars) : out;
 }
 
+/**
+ * TÊN APP trong chuỗi hiển thị — cùng một chỗ thay với `t()` (`i18n/translate.ts`).
+ *
+ * ⛔ Thiếu vế này là lỗi ĐO ĐƯỢC, không phải chuyện đề phòng: `t()` thay `{brand}`
+ * tập trung đúng để nơi gọi khỏi phải nhớ, còn `tk()` thì chỉ thay khi người gọi
+ * TRUYỀN `vars` — mà không ai truyền `brand`, vì cả ý của thiết kế là không phải
+ * truyền. Kết quả: mọi khoá chứa `{brand}` hiện ra nguyên văn dấu ngoặc nhọn.
+ *
+ * Hai khoá đang dính, và cái nặng hơn không phải cái dễ thấy:
+ *   `trace.ask.placeholder`  → "Hỏi {brand} về vườn của bạn…" (xấu, ai cũng thấy)
+ *   `map.permission.why`     → "{brand} cần vị trí để chỉ đường tới vườn…"
+ *
+ * Cái thứ hai là câu XIN QUYỀN. Đó đúng lớp hỏng mà `t()` sinh ra để chặn: người
+ * dùng CheckFarm bị từ chối quyền được bảo đi tìm một mục tên khác trong Cài đặt
+ * máy, và họ kẹt ở đúng chỗ mà câu hướng dẫn lẽ ra gỡ.
+ *
+ * KHÔNG dịch tên app. Một app một tên, giống nhau ở cả bốn ngôn ngữ.
+ */
 const BRAND_SLOT = '{brand}';
 const BRAND = DEFAULT_INSTANCE.displayName;
 

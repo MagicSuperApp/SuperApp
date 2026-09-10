@@ -69,10 +69,27 @@ echo
 echo "══ Máy này đang có gì ══"
 
 # ── 1. Homebrew ─────────────────────────────────────────────────────────────
+# Homebrew là TRÌNH CÀI, không phải thứ Gradle cần. Nó chỉ bắt buộc ở nhánh
+# `--cai`, và chỉ trên macOS — đó cũng là chỗ duy nhất script gọi `brew`
+# (dòng 157-161).
+#
+# Trước bản này nó bị tính vào `THIEU`, tức cổng cuối `[ ${#THIEU[@]} -gt 0 ]`
+# CHẶN CỨNG mọi lượt dựng trên Windows và Linux — nơi Homebrew không có và
+# không bao giờ có. Đo được trên máy Windows 10/09: JDK 21 ✓, Node ✓, SDK ✓,
+# NDK ✓, build-tools ✓, platform ✓, node_modules ✓ — đủ hết — mà script vẫn
+# in "⛔ Thiếu 1 thứ, chưa dựng được" rồi khuyên chạy `--cai`, và `--cai` lại
+# thoát ngay ở dòng 157 vì không có brew. Ngõ cụt, và câu lỗi chỉ sang một
+# thứ không liên quan tới cái đang thiếu.
+#
+# `sdkmanager` ngay dưới đã ở đúng mức này rồi (○, không tính vào THIEU). Đây
+# là đưa Homebrew về cùng mức, chứ không phải nới cổng: những thứ Gradle THẬT
+# SỰ cần vẫn chặn y nguyên.
 if command -v brew >/dev/null 2>&1; then
   ghi_du "Homebrew $(brew --version | head -1 | awk '{print $2}')"
-else
+elif [ "$(uname -s)" = "Darwin" ]; then
   ghi_thieu "Homebrew — cài tay: https://brew.sh (script này không tự cài trình cài gói)"
+else
+  printf '  ○ Homebrew không có — trên nền này không cần; chỉ `--cai` (macOS) mới dùng tới\n'
 fi
 
 # ── 2. JDK 17 ───────────────────────────────────────────────────────────────

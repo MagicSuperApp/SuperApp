@@ -18,10 +18,69 @@
 
 import React from 'react';
 import { Image, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
-import Svg, { Ellipse, Path, G } from 'react-native-svg';
+import Svg, { Ellipse, Path, G, Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 
-import { NATURE } from '../../theme/depth';
+import { GRADIENT, NATURE, type GradientName } from '../../theme/depth';
 import { BACKDROP_PHOTOS, PHOTO_OPACITY, type BackdropVariant } from '../../theme/backdrops';
+
+/**
+ * Lớp CHUYỂN SẮC lấp đầy khối cha. Đặt nó làm con đầu tiên của một `View` có
+ * `overflow: 'hidden'` và bo góc; nó tự trải kín, và không bao giờ ăn cú chạm.
+ *
+ * ── Góc tính theo quy ước CSS ───────────────────────────────────────────────
+ * `0` = chảy lên trên · `90` = sang phải · `180` = xuống dưới · `135` = xuống
+ * góc dưới-phải. Chọn quy ước này thay vì tự đặt một quy ước riêng vì mọi người
+ * đã quen nó từ `linear-gradient()` trên web — một quy ước riêng ở đây chỉ tạo
+ * ra một thứ nữa phải tra.
+ *
+ * ⚠ Không chuẩn hoá độ dài đường chuyển sắc theo tỉ lệ khung như CSS làm. Với
+ * hai chặng lệch nhau chưa tới một bậc sáng thì mắt không phân biệt được, và
+ * phép chuẩn hoá đó đổi lại bằng một khối tính chạy mỗi lần vẽ lại.
+ */
+export const GradientFill: React.FC<{ name: GradientName }> = ({ name }) => {
+  const g = GRADIENT[name];
+  const rad = (g.angle * Math.PI) / 180;
+  // Hướng chảy trong hệ toạ độ màn hình (trục y hướng XUỐNG).
+  const dx = Math.sin(rad);
+  const dy = -Math.cos(rad);
+  /**
+   * ⛔ ĐÂY LÀ CHỖ ĐÃ HỎNG THẬT, đừng rút gọn lại.
+   *
+   * Bản trước đặt `id = 'grad-' + name`, tức MỘT id cho MỘT token. Chú thích khi
+   * ấy đã viết đúng lý do ("hai lớp trùng id thì lớp sau lấy nhầm màu của lớp
+   * trước") rồi vẫn làm sai — vì một màn có nhiều ô cùng `tone`, và
+   * `react-native-svg` giữ sổ id CHUNG cho cả ứng dụng chứ không theo từng thẻ
+   * `<Svg>`. Lớp nào gắn sau ghi đè lớp trước, nên `url(#grad-action)` của nút
+   * này đi lấy toạ độ/chặng màu của một ô khác.
+   *
+   * Triệu chứng thực địa: nút "Cập nhật hoạt động" nửa trên xanh lá nửa dưới
+   * xanh dương, và "Chỉ đường tới vườn" có một mảng xanh dương nhạt ở đỉnh —
+   * đúng hình dạng của hai chuyển sắc chồng lệch nhau, không phải một chuyển
+   * sắc chảy đều.
+   *
+   * `useId()` cho mỗi LƯỢT DỰNG một id riêng. Bỏ ký tự lạ vì `useId` trả về
+   * dạng `:r3:`, mà dấu hai chấm trong `url(#…)` là cú pháp khác.
+   */
+  const rieng = React.useId().replace(/[^a-zA-Z0-9]/g, '');
+  const id = `grad-${name}-${rieng}`;
+  return (
+    <Svg pointerEvents="none" style={StyleSheet.absoluteFill} width="100%" height="100%">
+      <Defs>
+        <LinearGradient
+          id={id}
+          x1={`${(0.5 - dx / 2) * 100}%`}
+          y1={`${(0.5 - dy / 2) * 100}%`}
+          x2={`${(0.5 + dx / 2) * 100}%`}
+          y2={`${(0.5 + dy / 2) * 100}%`}
+        >
+          <Stop offset="0" stopColor={g.from} />
+          <Stop offset="1" stopColor={g.to} />
+        </LinearGradient>
+      </Defs>
+      <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${id})`} />
+    </Svg>
+  );
+};
 
 /**
  * Mảng loang. Dựng từ các cung có bán kính LỆCH nhau — tròn đều thì ra hình do
@@ -125,11 +184,22 @@ const PhotoWash: React.FC<{ source: NonNullable<(typeof BACKDROP_PHOTOS)[Backdro
   </>
 );
 
-/** Nền của một màn. `variant` chỉ đổi cách sắp hình, không đổi ngôn ngữ hình. */
+/**
+ * Nền của một màn. `variant` chỉ đổi cách sắp hình, không đổi ngôn ngữ hình.
+ *
+ * ── Vì sao chuyển sắc cắm Ở ĐÂY ─────────────────────────────────────────────
+ * Mọi màn trong module đều đi qua lớp này — hoặc trực tiếp, hoặc qua `<Ground>`.
+ * Nên một dòng ở đây cho cả module cùng một tông, mà KHÔNG màn nào phải sửa bố
+ * cục. Cắm ở từng màn thì màn thêm sau lại là một dịp quên, và module sẽ có hai
+ * loại nền cùng lúc mà không ai bật lên được điều đó.
+ *
+ * Nằm DƯỚI mọi lớp khác: chuyển sắc là mặt đất, mảng loang và lá nằm trên nó.
+ */
 export const GroundBackdrop: React.FC<{ variant?: BackdropVariant }> = ({ variant = 'home' }) => {
   const photo = BACKDROP_PHOTOS[variant];
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      <GradientFill name="ground" />
       {photo ? <PhotoWash source={photo} /> : <GreenWash variant={variant} />}
     </View>
   );

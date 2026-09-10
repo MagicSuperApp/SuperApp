@@ -76,6 +76,74 @@ export const SURFACE = {
 } as const;
 
 // ---------------------------------------------------------------------------
+// Chuyển sắc (gradient) — "organic nhẹ nhàng", và nhẹ là một CON SỐ
+// ---------------------------------------------------------------------------
+
+/**
+ * VÌ SAO CÓ MỤC NÀY, và vì sao nó bị ràng chặt tới vậy.
+ *
+ * Chuyển sắc là thứ dễ dùng hỏng nhất trong một hệ thiết kế: nó đẹp trên ảnh
+ * chụp và ăn mất chữ trên tay người dùng. Nền chuyển sắc có chỗ sáng chỗ tối, mà
+ * chữ thì chỉ có MỘT màu — nên độ tương phản đổi theo vị trí, và chỗ tệ nhất
+ * quyết định chữ có đọc được hay không. Người dùng ở đây là nhà vườn trên 40
+ * tuổi, cầm máy giữa nắng.
+ *
+ * Nên luật ở đây là: **hai chặng, cùng tông, lệch nhau ít.** Mỗi cặp dưới đây
+ * chênh nhau chưa tới một bậc sáng — đủ để mắt thấy bề mặt "có chiều", không đủ
+ * để phần nào của chữ bị nuốt. Chuyển sắc bảy sắc, hoặc chuyển sắc lệch tông
+ * (lam → cam), không thuộc hệ này.
+ *
+ * ── Cách đọc một mục ────────────────────────────────────────────────────────
+ *   from/to  hai chặng màu, theo hướng `angle`
+ *   angle    độ, 0 = trái→phải, 90 = trên→dưới. Chéo nhẹ (~135°) đọc ra "ánh
+ *            sáng tự nhiên" hơn là dọc thẳng, vì ngoài đời nắng chiếu chéo.
+ *   onDark   chữ trên nền này phải là chữ SÁNG hay chữ TỐI. Ghi ra để nơi dùng
+ *            không phải đoán, và để lượt soát sau đo được thay vì nhìn.
+ */
+export type GradientToken = {
+  from: string;
+  to: string;
+  angle: number;
+  onDark: boolean;
+};
+
+export const GRADIENT = {
+  /**
+   * Nền trang. Lệch đúng một hơi so với `SURFACE.ground` phẳng — chỉ để mép trên
+   * màn hình có chiều sâu, không để ai nhận ra "đây là gradient".
+   */
+  ground: { from: '#E8F4F8', to: NATURE.soil, angle: 135, onDark: false },
+
+  /**
+   * Ô CHÍNH của lưới Bento — ô to nhất trang.
+   *
+   * SÁNG, không tối, và đó là một ràng buộc từ mã chứ không phải một lựa chọn
+   * thẩm mỹ: ô này chứa `EntityTimeline`, mà component đó tự vẽ bằng bảng màu
+   * sáng (`COLORS`) và không nhận tham số nào để đổi. Đặt nền tối dưới nó là
+   * chữ tối trên nền tối — hỏng ở đúng chỗ người ta cần đọc nhất.
+   *
+   * Nên "ô chính" ở đây nói bằng KÍCH THƯỚC và bằng sắc xanh nhạt, không nói
+   * bằng độ tối. Muốn một ô tối thật thì phải cho `EntityTimeline` một tham số
+   * `onDark` trước đã — việc đó đụng cả màn chi tiết cây, nên nó là lượt khác.
+   */
+  hero: { from: '#F4FCF8', to: NATURE.leafSoft, angle: 145, onDark: false },
+
+  /** Ô số liệu / ô phụ — trắng ngả một hơi lam-lục ở góc dưới. */
+  tile: { from: NATURE.paper, to: '#F1F9FB', angle: 135, onDark: false },
+
+  /** Ô mang nghĩa NẮNG (quả chín, số ước tính). */
+  sun: { from: '#FEF6EA', to: NATURE.sunSoft, angle: 135, onDark: false },
+
+  /** Ô mang nghĩa NƯỚC (mưa, tưới). */
+  rain: { from: '#EDF6FC', to: NATURE.waterSoft, angle: 135, onDark: false },
+
+  /** Ô hành động chính khi nó KHÔNG phải ô hero — nút lớn, chữ trắng. */
+  action: { from: NATURE.leaf, to: NATURE.leafDeep, angle: 135, onDark: true },
+} as const satisfies Record<string, GradientToken>;
+
+export type GradientName = keyof typeof GRADIENT;
+
+// ---------------------------------------------------------------------------
 // Chiều sâu — phân tầng bằng NỀN và VIỀN, gần như không dùng bóng
 // ---------------------------------------------------------------------------
 

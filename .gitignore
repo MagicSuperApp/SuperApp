@@ -1,6 +1,7 @@
 # === NỘI BỘ — KHÔNG PUSH ===
 # Bộ não trợ lý: trí nhớ, ràng buộc, nhiệm vụ, ghi chép.
 BRAIN/
+graphify-out/
 # Draft tin nhắn gửi team (chưa duyệt/chưa gửi).
 _team-messages/
 

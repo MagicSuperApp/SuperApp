@@ -19,6 +19,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { OSM_STREET_TILES } from '../space3d/mapTiles';
 import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import Icon from '../../components/Icon';
@@ -26,7 +27,10 @@ import { NATURE, RADIUS, SPACE, TONE, TYPE } from '../../modules/trace/theme/dep
 import { circleShape, zoomForRadius } from './circleGeo';
 import { googleDirectionsUrl } from './reverseGeocode';
 
-const OSM_TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+// Lấy từ nguồn chung — xem `OSM_STREET_TILES` trong `space3d/mapTiles`. Chép tay
+// URL ở đây là dựng lại đúng chỗ đã làm bản vá tên miền chỉ tới được một trong
+// ba nơi.
+const OSM_TILES = OSM_STREET_TILES;
 const SAT_TILES =
   'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
 

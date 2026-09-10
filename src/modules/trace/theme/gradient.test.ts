@@ -155,6 +155,21 @@ describe('lớp chuyển sắc — `id` phải riêng theo từng lượt dựng
     expect(MA_CHAY).not.toContain("%`}");
   });
 
+  it('lớp phủ dùng hệ toạ độ TUYỆT ĐỐI, phủ kín bằng hai con số cố định', () => {
+    // ⛔ Đây là chỗ hở đã để lộ nền ra ngoài. `<Rect width="100%" height="100%">`
+    // trong một SVG không `viewBox` phải quy phần trăm về kích thước bố cục lúc
+    // chạy — quy trượt thì lớp phủ thiếu, và cái lộ ra là `backgroundColor` của
+    // khối cha.
+    //
+    // `viewBox="0 0 1 1"` + `preserveAspectRatio="none"` biến hệ toạ độ thành
+    // một ô vuông đơn vị kéo giãn cho khớp khối cha, nên `<Rect>` phủ kín bằng
+    // hai số cố định, không phụ thuộc cách thư viện đọc chuỗi phần trăm.
+    expect(MA_CHAY).toContain('viewBox="0 0 1 1"');
+    expect(MA_CHAY).toContain('preserveAspectRatio="none"');
+    expect(MA_CHAY).toContain('<Rect x={0} y={0} width={1} height={1}');
+    expect(MA_CHAY).not.toContain('<Rect x="0" y="0" width="100%"');
+  });
+
   it('ký tự lạ của `useId` bị lọc trước khi vào `url(#…)`', () => {
     // `useId()` trả dạng `:r3:`; dấu hai chấm trong `url(#…)` là cú pháp khác,
     // nên thiếu phép lọc thì id hợp lệ về mặt React mà vô nghĩa với SVG.

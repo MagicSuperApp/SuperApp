@@ -34,10 +34,12 @@ import { COLORS } from '../../../constants';
 import {
   SURFACE as ORG_SURFACE, TONE as ORG_TONE, NATURE as ORG_NATURE,
   ORGANIC_CARD, ORGANIC_TILE, ELEVATION as ORG_ELEV, SPACE as ORG_SPACE,
+  GRADIENT as ORG_GRADIENT,
 } from '../theme/depth';
 import { GradientFill, GroundBackdrop } from '../components/layered/Organic';
 import { BentoRow, BentoTile } from '../components/layered/Surface';
 import FarmShape from '../components/layered/FarmShape';
+import { OSM_STREET_TILES } from '../../../features/space3d/mapTiles';
 import { useTk } from '../../../i18n/keys';
 // B2: tạo vườn QUA field-reid (server sinh farm_id uuid THẬT) — bỏ aladinAPI
 // (backend Lợi deprecated + client tự sinh `farm-<ts>` = gốc B2). INV-1 §3.2.
@@ -754,9 +756,7 @@ const AddFarmMode = ({
                     sâu hơn mức ảnh có, và ảnh mờ vẫn ướm được, còn ô trắng thì không. */}
                 <MapLib.RasterSource
                   id="osm-tiles"
-                  /* Tên miền `a/b/c.` là dạng subdomain OSM đã ngưng — chỗ khác trong
-                     chính repo dùng đúng `tile.openstreetmap.org` (`mapTiles.ts:67`). */
-                  tileUrlTemplates={['https://tile.openstreetmap.org/{z}/{x}/{y}.png']}
+                  tileUrlTemplates={[OSM_STREET_TILES]}
                   tileSize={256}
                   maxZoomLevel={19}
                 >
@@ -2373,14 +2373,16 @@ const FarmDetailScreen = () => {
             }
           />
 
-          {/* Always show base map tiles for streets and areas */}
+          {/* Always show base map tiles for streets and areas.
+
+              ⛔ Ba dòng subdomain OSM đã ngưng (`a|b|c.tile…`) NẰM Ở ĐÂY tới tận
+              bản này, dù chỗ ngay trên trong CÙNG TỆP đã vá và ghi hẳn lý do ra.
+              Chúng không phân giải được, nên lớp bản đồ đường phố ra một mảng
+              xanh dương trống trong khi vệ tinh vẫn chạy (vệ tinh trỏ ArcGIS).
+              Nay cả hai nguồn lấy từ MỘT hằng — xem `mapTiles.ts`. */}
           <MapLib.RasterSource
             id="osm-tiles-detail"
-            tileUrlTemplates={[
-              'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
-              'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
-              'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png',
-            ]}
+            tileUrlTemplates={[OSM_STREET_TILES]}
             tileSize={256}
           >
             <MapLib.RasterLayer id="osm-tiles-layer-detail" sourceID="osm-tiles-detail" />
@@ -2801,7 +2803,24 @@ const styles = StyleSheet.create({
     color: COLORS.accent,
   },
   activityLargeBtn: {
-    backgroundColor: COLORS.accent,
+    /*
+      ⛔ Nền lấy từ CHÍNH token chuyển sắc, KHÔNG lấy `COLORS.accent`.
+
+      Nút này có một lớp `GradientFill name="action"` phủ lên. Nền ở dưới chỉ
+      hiện ra khi lớp phủ không phủ kín — và lúc đó nó phải CÙNG HỌ MÀU, để chỗ
+      hở chỉ hơi lệch sắc chứ không thành một mảng màu khác hẳn.
+
+      `COLORS.accent` không cùng họ: ở lớp token mặc định (`theme/tokens.ts:47`)
+      nó là XANH DƯƠNG `#3B6EA8`, trong khi `GRADIENT.action` là xanh lá. Đó là
+      lý do thật của "nút nửa trên xanh lá, nửa dưới xanh dương" — nền và lớp
+      phủ khác họ màu, cộng một lớp phủ có lúc hở.
+
+      Hai lượt vá trước sửa hai lỗi CÓ THẬT (id trùng, toạ độ dạng chuỗi phần
+      trăm) nhưng không phải lỗi này, nên triệu chứng còn nguyên qua cả hai.
+      Dòng này làm cho dù lớp phủ có hở lần nữa, người dùng cũng không thấy hai
+      màu — nó không sửa chỗ hở, nó làm chỗ hở thôi nhìn thấy được.
+    */
+    backgroundColor: ORG_GRADIENT.action.from,
     borderRadius: 14, paddingVertical: 16,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 10, overflow: 'hidden', position: 'relative',

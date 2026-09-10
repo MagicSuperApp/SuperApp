@@ -30,13 +30,48 @@ export const vongRanh = (coordinates: unknown): DiemDat[] =>
     .filter(hopLe)
     .map((p: any) => ({ lat: Number(p.lat), lng: Number(p.lng ?? p.lon) }));
 
-/** Vị trí một cây — chấp cả `gps` dạng chuỗi lẫn cặp `lat`/`lon` rời. */
+/**
+ * Vị trí một cây. BỐN hình dạng, vì trong kho này cây có bốn hình dạng thật.
+ *
+ * ⛔ Bản đầu chỉ đọc `gps` / `lat` / `lon` — ba khoá lấy từ `forTree` bên
+ *    `features/wayfind`, tức hình dạng của bản ghi TỪ MÁY CHỦ. Nhưng kiểu `Tree`
+ *    trong `modules/trace/types` lưu ở `latitude`/`longitude`, hoặc ở dạng cặp
+ *    `location: { lat, lng }`. Không khoá nào trùng.
+ *
+ *    Hệ quả: hàm trả `null` cho MỌI cây, nên hai ô xem trước vẽ mảnh đất không
+ *    có một chấm nào — đúng như báo về từ thực địa, hai lượt liền.
+ *
+ *    Bài kiểm cũ không bắt được vì nó dựng dữ liệu giả theo ĐÚNG giả định sai
+ *    của hàm: cả hai cùng sinh ra từ một chỗ đọc thiếu, nên chúng đồng ý với
+ *    nhau. Nay các ca kiểm lấy hình dạng từ `interface Tree` chứ không từ đầu.
+ *
+ * Thứ tự đọc đi từ hình dạng CỤ THỂ nhất ra ngoài, để một bản ghi có nhiều khoá
+ * không bị đọc bằng khoá kém tin cậy hơn.
+ */
 export const viTriCay = (t: any): DiemDat | null => {
-  const g = typeof t?.gps === 'string' ? t.gps.split(',') : null;
-  const lat = Number(g ? g[0] : t?.lat);
-  const lng = Number(g ? g[1] : (t?.lng ?? t?.lon));
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  return { lat, lng };
+  const thu = (lat: unknown, lng: unknown): DiemDat | null => {
+    const a = Number(lat);
+    const b = Number(lng);
+    return Number.isFinite(a) && Number.isFinite(b) ? { lat: a, lng: b } : null;
+  };
+
+  // 1. Kiểu `Tree` của module: `latitude` / `longitude`.
+  const day = thu(t?.latitude, t?.longitude);
+  if (day) return day;
+
+  // 2. Dạng cặp: `location: { lat, lng }`.
+  const cap = thu(t?.location?.lat, t?.location?.lng ?? t?.location?.lon);
+  if (cap) return cap;
+
+  // 3. Bản ghi máy chủ: chuỗi `gps` "vĩ, kinh".
+  if (typeof t?.gps === 'string') {
+    const [a, b] = t.gps.split(',');
+    const chuoi = thu(a, b);
+    if (chuoi) return chuoi;
+  }
+
+  // 4. Cặp rời `lat` / `lon`|`lng`.
+  return thu(t?.lat, t?.lng ?? t?.lon);
 };
 
 /**

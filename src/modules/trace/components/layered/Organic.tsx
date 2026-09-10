@@ -64,7 +64,27 @@ export const GradientFill: React.FC<{ name: GradientName }> = ({ name }) => {
   const rieng = React.useId().replace(/[^a-zA-Z0-9]/g, '');
   const id = `grad-${name}-${rieng}`;
   return (
-    <Svg pointerEvents="none" style={StyleSheet.absoluteFill} width="100%" height="100%">
+    /*
+      `viewBox="0 0 1 1"` + `preserveAspectRatio="none"`: hệ toạ độ của SVG thành
+      đúng một ô vuông đơn vị bị kéo giãn cho khớp khối cha, nên `<Rect>` bên
+      dưới phủ KÍN bằng hai con số cố định, không phụ thuộc vào việc thư viện
+      diễn giải chuỗi phần trăm thế nào.
+
+      Bản trước để `<Rect width="100%" height="100%">` trong một SVG không có
+      `viewBox`. Phần trăm ở đó phải quy về kích thước bố cục lúc chạy — và khi
+      nó quy trượt thì lớp chuyển sắc phủ THIẾU, để lộ `backgroundColor` của
+      khối cha ở phần còn lại. Nền ấy là `COLORS.accent`, mà ở lớp token mặc
+      định `COLORS.accent` là XANH DƯƠNG `#3B6EA8`. Đó chính là "nửa trên xanh
+      lá, nửa dưới xanh dương".
+    */
+    <Svg
+      pointerEvents="none"
+      style={StyleSheet.absoluteFill}
+      width="100%"
+      height="100%"
+      viewBox="0 0 1 1"
+      preserveAspectRatio="none"
+    >
       <Defs>
         {/*
           ⛔ SỐ THẬP PHÂN, KHÔNG PHẢI CHUỖI PHẦN TRĂM. Đây là chỗ đã hỏng thật.
@@ -94,7 +114,7 @@ export const GradientFill: React.FC<{ name: GradientName }> = ({ name }) => {
           <Stop offset="1" stopColor={g.to} />
         </LinearGradient>
       </Defs>
-      <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${id})`} />
+      <Rect x={0} y={0} width={1} height={1} fill={`url(#${id})`} />
     </Svg>
   );
 };

@@ -209,3 +209,22 @@ describe('cả hai ô xem trước đều vẽ cây trong vườn', () => {
     expect(dem('trees={filteredTrees}')).toBe(2);
   });
 });
+
+describe('nền dưới lớp phủ phải CÙNG HỌ MÀU với lớp phủ', () => {
+  it('nút "Cập nhật hoạt động" lấy nền từ chính token chuyển sắc', () => {
+    // ⛔ Đây là nguyên nhân THẬT của "nút hai màu", sau khi hai lượt vá trước
+    //    sửa hai lỗi khác (id trùng, toạ độ dạng chuỗi phần trăm).
+    //
+    // Nút có một lớp `GradientFill name="action"` phủ lên. Nền dưới chỉ hiện ra
+    // khi lớp phủ hở — và `COLORS.accent` ở lớp token mặc định là XANH DƯƠNG
+    // `#3B6EA8`, trong khi `GRADIENT.action` là xanh lá. Hở một chút là thấy hai
+    // màu khác hẳn nhau.
+    //
+    // Chốt này KHÔNG vá chỗ hở; nó làm chỗ hở thôi nhìn thấy được.
+    const i = MA_CHAY.indexOf('activityLargeBtn: {');
+    expect(i).toBeGreaterThan(-1);
+    const khoi = MA_CHAY.slice(i, i + 260);
+    expect(khoi).toContain('backgroundColor: ORG_GRADIENT.action.from');
+    expect(khoi).not.toContain('backgroundColor: COLORS.accent');
+  });
+});

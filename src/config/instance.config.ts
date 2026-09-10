@@ -100,6 +100,36 @@ export interface OperatorInfo {
   addressEn: string | null;
   /** Hòm thư nhận yêu cầu về dữ liệu cá nhân. */
   contact: string | null;
+
+  /**
+   * Mã app mà app này ĐANG MƯỢN pháp nhân — khai tường minh khi hai app cùng
+   * một pháp nhân vận hành.
+   *
+   * VÌ SAO PHẢI KHAI thay vì cứ để trùng: chép nhầm khối `operator` của app cũ
+   * sang app mới cho ra ĐÚNG cùng một trạng thái dữ liệu với việc mượn có chủ ý.
+   * Không có trường này thì phép kiểm chỉ còn hai đường, và cả hai đều tệ — cấm
+   * trùng (chặn cả ca hợp lệ) hoặc cho trùng (không bắt được ca chép nhầm). Khai
+   * ra thì ca chép nhầm vẫn đỏ, vì bản chép không mang lời khai.
+   *
+   * Không cho bắc cầu: app được mượn phải tự đứng tên, không được lại đi mượn
+   * app thứ ba.
+   */
+  sharedWith?: string;
+
+  /**
+   * Pháp nhân sẽ NHẬN CHUYỂN GIAO app này. Bắt buộc có khi `sharedWith` có.
+   *
+   * Đây là chỗ ghi nợ, và nó nằm trong dữ liệu chứ không nằm trong chú thích:
+   * một dòng chú thích "tạm thời, chuyển giao sau" già đi lặng lẽ và không phép
+   * kiểm nào đọc được nó. Trường này thì đọc được — nên ngày pháp nhân kia có
+   * tài khoản cửa hàng riêng, chỗ cần sửa tự chỉ ra chính nó.
+   */
+  transferTo?: {
+    name: string;
+    nameEn?: string;
+    /** Ngày bắt đầu mượn, dạng YYYY-MM-DD. */
+    since: string;
+  };
 }
 
 export interface InstanceConfig {
@@ -242,23 +272,38 @@ export const CHECKFARM_INSTANCE: InstanceConfig = {
     zh: '追溯源头，提升农产价值',
     ja: '源流をたどり、農産物の価値を高める',
   },
-  // Pháp nhân ĐỘC LẬP — không phải DDC Holdings, không phải DDC DigiTech, không
-  // phải Aladin Contract. Aladin Contract phát triển theo đơn đặt hàng và KHÔNG
-  // giữ quyền sở hữu hay quyền kiểm soát thông tin nào.
+  // ⛔ PHÁP NHÂN VẬN HÀNH — đọc hết trước khi sửa, chỗ này đã đảo chiều một lần.
   //
-  // Ba trường dưới từng là `null` kèm ghi chú "công ty đang thành lập, chưa có
-  // địa chỉ đăng ký". Nhà CheckFarm cấp đủ ngày 01/09/2026, nên `null` không
-  // còn đúng.
+  // Bản trước ghi CheckFarm là pháp nhân ĐỘC LẬP, kèm câu cấm "KHÔNG điền tạm
+  // địa chỉ của Aladin vào đây". Câu cấm đó viết ra để chặn một lỗi CÓ THẬT: một
+  // bản cũ của `legal/policyContent.ts` giữ hằng `OPERATOR` viết cứng tên Aladin,
+  // nên trang chính sách TRONG app CheckFarm nói Aladin vận hành nó — mà lúc ấy
+  // Aladin KHÔNG vận hành nó. Đó là khai sai.
   //
-  // Câu cấm đi kèm thì GIỮ NGUYÊN hiệu lực, vì nó mới là phần đắt: KHÔNG điền
-  // tạm địa chỉ của Aladin vào đây. Ba chuỗi này là địa chỉ của CheckFarm, do
-  // nhà CheckFarm cấp — không suy ra từ kho này.
+  // Chủ sở hữu quyết ngày 2026-09-10: app phát hành dưới pháp nhân **Aladin**,
+  // chuyển giao cho CheckFarm Inc sau. Nên hôm nay Aladin vận hành nó thật, và
+  // khai Aladin ở đây là khai ĐÚNG. Trạng thái dữ liệu giống hệt lỗi cũ; điều
+  // phân biệt hai ca nằm ở `sharedWith` + `transferTo` — có lời khai thì là mượn
+  // có chủ ý, không có thì là chép nhầm. `instanceParity.test.ts` đọc đúng chỗ đó.
+  //
+  // Câu cấm cũ vẫn còn hiệu lực dưới dạng đã sửa: KHÔNG điền địa chỉ của một
+  // pháp nhân vào app mà pháp nhân đó không vận hành. Ngày chuyển giao xong thì
+  // ba chuỗi dưới đây phải quay về địa chỉ CheckFarm — do nhà CheckFarm cấp, KHÔNG
+  // suy ra từ kho này. Bản của họ (cấp 01/09/2026) nằm trong `transferTo` để
+  // không phải đi hỏi lại.
   operator: {
-    name: 'Công ty Cổ phần CheckFarm',
-    nameEn: 'CheckFarm Inc',
-    address: '404 Nguyễn Thái Bình, Phường Tân Lập, tỉnh Đắk Lắk, Việt Nam',
-    addressEn: '404 Nguyen Thai Binh, Tan Lap Ward, Dak Lak Province, Viet Nam',
-    contact: 'contact@checkfarm.com',
+    name: 'Aladin',
+    address:
+      'Số nhà 77, đường Chà Là 11, Khu đô thị Vinhomes Ocean Park 2, Xã Nghĩa Trụ, Tỉnh Hưng Yên, Việt Nam',
+    addressEn:
+      'No. 77, Cha La 11 Street, Vinhomes Ocean Park 2, Nghia Tru Commune, Hung Yen Province, Vietnam',
+    contact: 'aladincontract@gmail.com',
+    sharedWith: 'aladin',
+    transferTo: {
+      name: 'Công ty Cổ phần CheckFarm',
+      nameEn: 'CheckFarm Inc',
+      since: '2026-09-10',
+    },
   },
   tabs: [
     { kind: 'module', moduleId: 'chat' },

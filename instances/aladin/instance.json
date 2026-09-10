@@ -2,7 +2,7 @@
   "id": "aladin",
   "displayName": "Aladin",
   "superapp": {
-    "rulesVersion": 1,
+    "rulesVersion": 2,
     "phoenixDid": null
   },
   "operator": {

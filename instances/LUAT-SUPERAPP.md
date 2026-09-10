@@ -1,11 +1,18 @@
-<!-- rulesVersion: 1 -->
+<!-- rulesVersion: 2 -->
 
 # Luật SuperApp — thứ mọi app dựng từ kho này phải tuân
 
-**Phiên bản luật: 1.** Con số đó nằm ở dòng đầu tệp và **mỗi `instances/<mã>/instance.json`
+**Phiên bản luật: 2.** Con số đó nằm ở dòng đầu tệp và **mỗi `instances/<mã>/instance.json`
 phải khai đúng nó** (`superapp.rulesVersion`). Sửa luật là bắt buộc nâng số, và khi ấy mọi app
 phải xác nhận lại — bản dựng đỏ cho tới khi có người đọc và ký nhận. Đó là toàn bộ cơ chế: luật
 không tự lan, người phải xác nhận.
+
+> **v1 → v2 (2026-09-10)** đổi hai mục, cả hai vì chủ sở hữu quyết cho `checkfarm` phát hành
+> dưới pháp nhân Aladin rồi chuyển giao sau:
+> **§4** iOS chuyển từ *chưa cưỡng chế* sang *cưỡng chế* — mỗi app một bộ `AppIcon.appiconset`
+> riêng, có phép kiểm bắt được ca dùng chung ảnh.
+> **§6** bỏ vế suy "hai app ⟹ hai pháp nhân ⟹ hai khoá". Khoá ký đi theo pháp nhân **phát hành**;
+> dùng chung thì được, nhưng phải KHAI bằng `operator.sharedWith` + `operator.transferTo`.
 
 Kho này dựng ra **nhiều app** từ **một nền mã**. Người dùng có quyền dùng app nào hoặc không dùng
 app nào — đó là lựa chọn của họ. Nhưng một app đã dựng từ kho này thì mang theo những ràng buộc
@@ -78,21 +85,38 @@ Sau lần tải bản dựng đầu tiên lên cửa hàng thì mã gói **khôn
 
 ## 4. Mỗi app tự mang bộ biểu tượng của mình
 
-**Cưỡng chế: CÓ trên Android · KHÔNG trên iOS.**
+**Cưỡng chế: CÓ trên Android · CÓ trên iOS (từ luật v2).**
 
 Android: `src/main/res` không còn bộ `ic_launcher` dùng chung. App quên biểu tượng thì bản dựng
 đỏ ngay (`resource mipmap/ic_launcher not found`), thay vì lặng lẽ mượn biểu tượng của app đứng
 trước rồi đi thẳng lên cửa hàng.
 
-iOS thì ngược hẳn, và đây là chỗ dễ đọc nhầm nhất trong cả tệp: câu giải thích ở trên nói về một
-triệu chứng **chỉ có ở Android**. Đo 2026-09-09 (`find instances -type d`): không app nào có thư
-mục `ios/`, và `ios/SuperApp/Images.xcassets/AppIcon.appiconset` là bộ **duy nhất** — bộ của
-Aladin. Nên một bản iOS của app khác `aladin` sẽ mang biểu tượng Aladin, **dựng được và ký
-được**, không cổng nào đỏ.
+iOS **từng** ngược hẳn, và chỗ này là chỗ dễ đọc nhầm nhất trong cả tệp: câu giải thích Android ở
+trên nói về một triệu chứng chỉ có ở Android. Đo 2026-09-09: không app nào có thư mục `ios/`, và
+`ios/SuperApp/Images.xcassets/AppIcon.appiconset` là bộ **duy nhất** — bộ của Aladin. Một bản iOS
+của app khác `aladin` mang biểu tượng Aladin, **dựng được và ký được**, không cổng nào đỏ. Chặn
+tạm lúc ấy là `exit 1` cho mọi app khác `aladin`.
 
-Chặn tạm: luồng iOS trong `codemagic.yaml` `exit 1` khi `APP_INSTANCE != aladin`, và soi bộ ảnh
-đang thật sự đóng gói bằng `sips` (cỡ 1024×1024, không kênh alpha). Mở khoá thì cần một bước
-**sinh `AppIcon.appiconset` theo app** — đặt tệp vào chỗ là chưa đủ.
+Nay mỗi app giữ bộ của mình ở `instances/<mã>/ios/AppIcon.appiconset/`, và bước dựng **chép** bộ
+đúng app vào chỗ Xcode đọc, rồi **đo lại chính tệp vừa chép**. Thứ tự đó là phần quan trọng: một
+bản trước đo bộ ảnh trước khi chép, nên nó luôn đo bộ của lượt dựng trước — vẫn ra dấu ✅, vẫn
+không nói gì về bản đang dựng.
+
+Ba chỗ hỏng, ba cách kêu khác nhau, nên đo riêng từng chỗ
+(`src/config/nativeIdentityParity.test.ts`):
+
+| hỏng | ai kêu, kêu lúc nào |
+|---|---|
+| thiếu bộ | máy chủ dựng đỏ — muộn, nhưng có kêu |
+| **trùng bộ với app khác** | **không ai kêu**; chỉ lộ khi có người nhìn màn hình máy |
+| còn kênh alpha | Apple từ chối ở bước **nộp**, sau cả một lượt dựng trả tiền |
+
+Hàng giữa là hàng đắt nhất, và là lý do có bài `KHÔNG hai app nào dùng chung một ảnh biểu tượng`.
+
+Sinh bộ mới: `python3 scripts/sinh-bieu-tuong.py <mã app>` — sinh cả Android lẫn iOS từ **một**
+tệp `instances/<mã>/brand/icon-1024.png`, rồi commit kết quả. ⚠ Đừng chạy lại cho app đã phát
+hành: bộ sinh ra khác byte với bộ đang trên cửa hàng, và ở cỡ 20×20 · 29×29 thì khác thật, không
+phải khác mã hoá. Bộ iOS của `aladin` vì vậy là bản **chép** từ bộ đang phát hành.
 
 ## 5. Mỗi app một dự án Firebase riêng — hoặc không có
 
@@ -106,13 +130,36 @@ Bẫy nguy hiểm nhất là chép tệp của app này sang thư mục app kia:
 dữ liệu của app này chảy vào dự án của pháp nhân khác. `src/config/nativeIdentityParity.test.ts`
 canh đúng chỗ đó.
 
-## 6. Mỗi app một khoá ký riêng
+## 6. Khoá ký đi theo PHÁP NHÂN PHÁT HÀNH, không đi theo tên app
 
-**CHƯA CƯỠNG CHẾ.**
+**CHƯA CƯỠNG CHẾ ở tầng khoá · CƯỠNG CHẾ ở tầng lời khai (từ luật v2).**
 
-Hai pháp nhân riêng thì hai khoá ký riêng. Hôm nay chưa có phép đo nào trong kho nói được một bản
-dựng đã ký bằng khoá của ai — khoá không nằm trong kho, và `nativeIdentityParity.test.ts` tự khai
-điều đó.
+Luật cũ viết "mỗi app một khoá ký riêng", suy từ "hai app = hai pháp nhân". Vế suy đó **không còn
+đúng**: chủ sở hữu quyết ngày 2026-09-10 rằng `checkfarm` phát hành dưới pháp nhân **Aladin**,
+chuyển giao cho CheckFarm Inc sau. Nên hai app hôm nay dùng chung một chứng chỉ phân phối iOS
+(đội Apple `3666KPJX5R`) — đúng và cố ý.
+
+Luật đúng là: **khoá ký thuộc về pháp nhân đứng tên phát hành**. Hai app cùng pháp nhân thì dùng
+chung được; hai app khác pháp nhân thì tuyệt đối không.
+
+Chỗ khó là hai ca có **trạng thái dữ liệu giống hệt nhau**: dùng chung có chủ ý, và chép nhầm
+khối `operator` của app cũ sang app mới. Nới phép kiểm thành "cho trùng" thì ca chép nhầm đi lọt;
+giữ "cấm trùng" thì ca hợp lệ đỏ và người sửa sẽ nới phép kiểm — đường nào cũng về chỗ mất phép
+canh. Nên phép đo không hỏi *"có trùng không"* mà hỏi *"trùng này có được KHAI không"*:
+
+- `operator.sharedWith` — mã app đang cho mượn pháp nhân. Không cho bắc cầu.
+- `operator.transferTo` — pháp nhân sẽ nhận chuyển giao, kèm ngày bắt đầu mượn.
+
+Bản chép nhầm không mang hai lời khai đó, nên nó vẫn đỏ. Và `transferTo` là chỗ **ghi nợ nằm
+trong dữ liệu chứ không trong chú thích**: một dòng chú thích "tạm thời, chuyển giao sau" già đi
+lặng lẽ và không phép kiểm nào đọc được nó.
+
+Riêng **Android** thì hai app vẫn giữ hai khoá tải lên riêng (`<MÃ>_UPLOAD_*`), kể cả khi cùng
+pháp nhân. Không phải vì luật đòi, mà vì Google Play khoá mục ứng dụng vĩnh viễn theo khoá của
+tệp đầu tiên tải lên: tách sẵn thì ngày chuyển giao không phải đụng gì tới khoá.
+
+Vẫn **chưa cưỡng chế** được phần cốt lõi: không phép đo nào trong kho nói được một bản dựng đã ký
+bằng khoá của ai — khoá không nằm trong kho, và `nativeIdentityParity.test.ts` tự khai điều đó.
 
 ## 7. Tiền: chia phần giữa các app
 

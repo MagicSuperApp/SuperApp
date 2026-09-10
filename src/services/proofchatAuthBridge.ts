@@ -10,7 +10,7 @@
  */
 import { currentUserDid } from '../sdk/phoenixKey';
 
-import { getSessionToken as getPhoenixSessionToken } from './phoenixKey-api';
+import { getSessionToken as getPhoenixSessionToken, clearSessionToken } from './phoenixKey-api';
 import { ensurePhoenixSession } from './phoenixSessionService';
 import {
   proofChatApi,
@@ -153,15 +153,49 @@ const connectProofChatInner = async (): Promise<ConnectResult> => {
     return noteFailure({ status: 'no-phoenix-session' }, did);
   }
 
-  try {
-    await proofChatApi.auth.phoenixKeyLogin(phoenixSession);
+  const dangNhap = async (token: string): Promise<ConnectResult> => {
+    await proofChatApi.auth.phoenixKeyLogin(token);
     // Đóng dấu chủ NGAY sau khi có token. `did` null (chưa đọc được DID) thì
     // KHÔNG đóng dấu bừa: lượt sau sẽ coi token là vô chủ và đăng nhập lại. Đăng
     // nhập thừa một lượt rẻ hơn nhận nhầm token của người khác là của mình.
     if (did) await setTokenOwnerDid(did);
     resetProofChatSessionBackoff();
     return { status: 'connected', alreadyHadSession: false };
+  };
+
+  try {
+    return await dangNhap(phoenixSession);
   } catch (err) {
+    // ── THẺ PHIÊN CHẾT LÀ NGÕ CỤT VĨNH VIỄN, nếu không có khối này ────────────
+    //
+    // `getPhoenixSessionToken()` là một lệnh đọc kho trần: không kiểm hạn, không
+    // kiểm gì (`phoenixKey-api.ts:332`). Thẻ phiên PhoenixKey sống 24 giờ. Hết
+    // hạn thì đường đi ở trên lấy đúng nó ra, ProofChat chối, và KHÔNG chỗ nào
+    // xoá — `clearSessionToken()` chỉ được gọi từ `wipeIdentity()`, tức phải xoá
+    // hẳn danh tính mới dọn được.
+    //
+    // Người dùng thấy "Chưa đăng nhập được… kéo xuống để thử lại", và kéo xuống
+    // KHÔNG BAO GIỜ gỡ được: nó xoá thời gian nghỉ 60 giây rồi đọc lại đúng thẻ
+    // chết đó. Lối ra duy nhất trước bản này là xoá dữ liệu app / cài lại —
+    // đăng xuất cũng không, vì `logoutUser` khi ấy chưa dọn thẻ này.
+    //
+    // Chỉ thử lại với 401/403, và chỉ MỘT lần. Lỗi khác (mạng, 5xx) không phải
+    // "thẻ sai", thử lại chỉ tốn thêm một hộp vân tay cho một lượt vẫn hỏng.
+    const httpStatus = err instanceof ProofChatApiError ? err.httpStatus : 0;
+    if (httpStatus === 401 || httpStatus === 403) {
+      try {
+        await clearSessionToken();
+        // `force: true` bỏ qua thẻ trong kho và đúc thẻ mới. Đây là nơi dùng ĐẦU
+        // TIÊN của tham số đó — nó được viết ra cho đúng ca này rồi bỏ không.
+        const moi = await ensurePhoenixSession({ force: true });
+        if (moi) return await dangNhap(moi);
+      } catch (err2) {
+        const m2 =
+          err2 instanceof ProofChatApiError ? err2.message : 'Không kết nối được ProofChat';
+        return noteFailure({ status: 'error', message: m2 }, did);
+      }
+      return noteFailure({ status: 'no-phoenix-session' }, did);
+    }
     const message =
       err instanceof ProofChatApiError ? err.message : 'Không kết nối được ProofChat';
     return noteFailure({ status: 'error', message }, did);

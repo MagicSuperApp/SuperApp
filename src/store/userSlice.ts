@@ -4,7 +4,12 @@ import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import { User } from '../types';
 import { database } from '../utils/database';
 import { databaseManager } from '../services/databaseManager';
-import { phoenixKeyApi, summarizeWalletAll, type WalletEntry } from '../services/phoenixKey-api';
+import {
+  phoenixKeyApi,
+  clearSessionToken,
+  summarizeWalletAll,
+  type WalletEntry,
+} from '../services/phoenixKey-api';
 import { parseDidNetwork } from '../services/phoenixDid';
 import { clearWorkSession } from '../modules/work/services/session';
 import { clearOrilifeToken } from '../services/orilifeDidAuth';
@@ -180,6 +185,33 @@ export const logoutUser = createAsyncThunk(
       await clearOrilifeToken();
     } catch (error) {
       console.warn('[Redux] Logout: clearOrilifeToken lỗi (bỏ qua):', error);
+    }
+    try {
+      // ⛔ CÙNG LỚP với dòng ngay trên, phát hiện muộn hơn: `phoenixkey_session_token`
+      // cũng sống qua đăng xuất. `clearSessionToken` được viết sẵn rồi đặt vào ĐÚNG
+      // MỘT đường — `wipeIdentity()` (`sdk/phoenixKey.ts`), tức đường XOÁ DANH TÍNH
+      // HẲN. Đường đăng xuất không ai nối. Đúng hình dạng lỗi của `auth_token` bên
+      // trên, khác tệp.
+      //
+      // Vì sao nó KHÔNG cùng mức với `clearMerkleSession` ở trên: `getMerkleSession`
+      // có `isFresh(cached, did)` nên người sau không dùng lại được phiên người
+      // trước. Thẻ phiên PhoenixKey KHÔNG có phép so nào tương đương — không có
+      // `phoenixkey_token_did`, và năm chỗ đọc nó đều gắn thẳng `Bearer ${token}`:
+      //   cardanoTxService.ts:189 · orgMint-api.ts:215 · orgMint-api.ts:367 (XHR,
+      //   NGOÀI interceptor) · phoenixKey-api.ts:252 · phoenixWallet-api.ts:108
+      // Thêm một mắt nữa khép mạch: `ensurePhoenixSession` trả thẳng thẻ đã lưu ra
+      // mà không hỏi của ai (`phoenixSessionService.ts:125`), nên người sau KHÔNG
+      // có đường tự đúc thẻ của mình chừng nào thẻ cũ còn nằm đó.
+      //
+      // Ba cửa đọc ví phía máy chủ có ép `caller_did == path_did` (DID khác → 401),
+      // nên người sau KHÔNG xem được số dư người trước. Bề mặt phơi ra là những
+      // đường KHÔNG có `{did}` trên đường dẫn — `/wallet/register`,
+      // `/wallet/standard/register`, dựng-nộp giao dịch Cardano, đúc tổ chức: ở đó
+      // chủ thể do THẺ quyết định, tức máy của người sau hành động mang danh người
+      // trước. Đó là ca mạo danh, không phải "vật liệu ở lại".
+      await clearSessionToken();
+    } catch (error) {
+      console.warn('[Redux] Logout: clearSessionToken lỗi (bỏ qua):', error);
     }
     try {
       // Nháp chụp cây / video quả là dữ liệu PHIÊN. Tablet field dùng CHUNG → xoá sạch

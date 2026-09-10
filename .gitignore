@@ -119,6 +119,17 @@ _Agents/
 .claude/
 CLAUDE.local.md
 .claude.json
+# `CLAUDE.md` từng được theo dõi có chủ ý (chỉ hai dòng: một con trỏ tới tệp
+# persona và một dòng chữ ký), hồi kho còn riêng tư. Kho công khai từ 10/09 nên
+# tiền đề đó mất: nó không lộ giá trị nào, nhưng nó lộ SƠ ĐỒ — rằng có thư mục
+# `_Agents/`, tên tệp persona nằm trong đó, và quy ước chữ ký. Sơ đồ là thứ cần
+# TRƯỚC một giá trị, nên nó không vô hại chỉ vì không chứa bí mật.
+#
+# Chặn ở đây là chặn DÒNG CHẢY, không phải xoá thứ đã ra: hai dòng cũ vẫn còn
+# trong lịch sử công khai và không lấy lại được. Viết lại lịch sử để xoá chúng
+# thì đổi mọi mã commit, phá mọi nhánh và PR đang mở, mà bản sao người khác đã
+# tải về vẫn còn — giá đó không cân với hai dòng không chứa giá trị nào.
+CLAUDE.md
 
 
 # Expo

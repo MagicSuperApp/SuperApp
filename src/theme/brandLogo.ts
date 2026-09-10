@@ -31,10 +31,28 @@ import type { ImageSourcePropType } from 'react-native';
 
 import { DEFAULT_INSTANCE } from '../config/instance.config';
 
-/** Mã app → logo của app đó. Khoá phải phủ đủ `INSTANCES` (bài kiểm canh). */
+/**
+ * Mã app → logo của app đó. Khoá phải phủ đủ `INSTANCES` (bài kiểm canh).
+ *
+ * ⛔ Trỏ `brand/logo.png`, KHÔNG trỏ `brand/icon-1024.png`. Hai tệp khác VAI:
+ *
+ * - `icon-1024.png` là lớp NÉT của biểu tượng thích ứng Android — nét trắng
+ *   trên nền TRONG SUỐT, dựng để hệ điều hành ghép lên tấm màu khai ở
+ *   `instance.json` (`android.iconBackground`). Đúng vai của nó, và cũng chính
+ *   vì thế mà đặt nó vào một `<Image>` trên nền sáng thì nó TÀNG HÌNH. Đổi một
+ *   logo sai lấy một logo không nhìn thấy không phải là vá.
+ * - `logo.png` là bản dùng TRONG app: đục, không kênh trong suốt, đọc được
+ *   trên cả nền sáng lẫn nền tối.
+ *
+ * Nền tối là ràng buộc thật, không phải đề phòng: ô logo ở màn đăng nhập là
+ * `rgba(255,255,255,0.18)` phủ lên dải xanh đậm, tức vẫn là một nền TỐI. Một
+ * bản nét-màu-trên-nền-trong-suốt đặt ở đó sẽ chìm. Nên cả hai app đều dùng
+ * bản ĐỤC — Aladin là tấm màu kèm nét trắng, CheckFarm là đĩa trắng kèm nét
+ * xanh — và cả hai đọc được ở mọi chỗ logo xuất hiện.
+ */
 export const LOGO_THEO_APP: Record<string, ImageSourcePropType> = {
-  aladin: require('../../instances/aladin/brand/icon-1024.png'),
-  checkfarm: require('../../instances/checkfarm/brand/icon-1024.png'),
+  aladin: require('../../instances/aladin/brand/logo.png'),
+  checkfarm: require('../../instances/checkfarm/brand/logo.png'),
 };
 
 /**

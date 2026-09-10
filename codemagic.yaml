@@ -16,9 +16,13 @@
 #   scanner_secrets:
 #     TREE_DETECTION_API, BASE_API_URL, API_KEY, REGION_CODE
 #     PHOENIXKEY_API_URL, ORILIFE_API_BASE_URL, PHOENIX_WALLET_ENABLED
-#   android_signing (chỉ android-appstore-aab):
+#   android_signing_aladin (chỉ android-aab-aladin):
 #     ALADIN_UPLOAD_STORE_FILE_B64, ALADIN_UPLOAD_STORE_PASSWORD,
 #     ALADIN_UPLOAD_KEY_ALIAS, ALADIN_UPLOAD_KEY_PASSWORD
+#   android_signing_checkfarm (chỉ android-aab-checkfarm):
+#     CHECKFARM_UPLOAD_STORE_FILE_B64, CHECKFARM_UPLOAD_STORE_PASSWORD,
+#     CHECKFARM_UPLOAD_KEY_ALIAS, CHECKFARM_UPLOAD_KEY_PASSWORD
+#   Hai nhóm RIÊNG vì hai pháp nhân riêng — không gộp lại "cho tiện".
 #
 # iOS Code Signing (ios-appstore):
 #   Certificate : aladin-ios-cert  (production, upload Codemagic UI)
@@ -393,7 +397,7 @@ workflows:
 
       # ── CỔNG: danh tính app iOS phải khớp `instances/<app>/instance.json` ─
       # Bên Android đã có phép so này từ lâu — `APP_INSTANCE` vs `ANDROID_FLAVOR`
-      # trong workflow `android-appstore-aab`, kèm câu nói đúng cái hại: *"lệch
+      # trong workflow `android-aab-aladin`, kèm câu nói đúng cái hại: *"lệch
       # hai biến này là dựng vỏ app này với chữ của app kia"*. Nửa iOS KHÔNG có
       # phép so tương ứng nào, và nửa iOS mới là nửa nguy hơn: `BUNDLE_ID`,
       # `APP_DISPLAY_NAME`, `APP_INSTANCE` và `ios_signing.bundle_identifier` là
@@ -704,7 +708,7 @@ workflows:
 
     scripts: &ios_release_scripts
 
-      # CỔNG SOÁT — cùng lý do với `android-appstore-aab` (đọc chú thích dài ở đó).
+      # CỔNG SOÁT — cùng lý do với `android-aab-aladin` (đọc chú thích dài ở đó).
       # Workflow này bắn thẳng lên TestFlight (`publishing.app_store_connect`) nên
       # bản thiếu khoá tới tay người thử ngay, không kịp rút lại.
       - name: Soát khoá API trước khi phát hành
@@ -732,7 +736,7 @@ workflows:
 
       # ── CỔNG: danh tính app iOS phải khớp `instances/<app>/instance.json` ─
       # Bên Android đã có phép so này từ lâu — `APP_INSTANCE` vs `ANDROID_FLAVOR`
-      # trong workflow `android-appstore-aab`, kèm câu nói đúng cái hại: *"lệch
+      # trong workflow `android-aab-aladin`, kèm câu nói đúng cái hại: *"lệch
       # hai biến này là dựng vỏ app này với chữ của app kia"*. Nửa iOS KHÔNG có
       # phép so tương ứng nào, và nửa iOS mới là nửa nguy hơn: `BUNDLE_ID`,
       # `APP_DISPLAY_NAME`, `APP_INSTANCE` và `ios_signing.bundle_identifier` là
@@ -1631,8 +1635,25 @@ workflows:
   # ============================================================
   # Workflow 4: Android Signed AAB — Play Store Internal Testing
   # ============================================================
-  android-appstore-aab:
-    name: Android Signed AAB (Play Store Internal Testing)
+  # ── HAI LUỒNG KÝ, MỘT BỘ BƯỚC ───────────────────────────────────────────────
+  # `android-aab-aladin` giữ toàn bộ các bước; `android-aab-checkfarm` ở cuối tệp
+  # dùng lại chúng qua neo YAML (`*android_aab_scripts`) — cùng cách mà
+  # `ios-production` dùng lại `ios-appstore`, nên cách này đã chạy thật trên
+  # Codemagic ở chính tệp này chứ không phải suy đoán.
+  #
+  # VÌ SAO TÁCH, và tách được cái gì — nói thẳng để không ai tưởng nó là thứ khác:
+  #   ĐƯỢC:     lượt dựng Aladin không nạp khoá CheckFarm vào máy chạy, và ngược lại.
+  #             Ngày CheckFarm về pháp nhân của nó, xoá một nhóm biến là xong, không
+  #             phải xoay khoá của app kia.
+  #   ĐƯỢC:     chọn app = chọn luồng. Trước đây phải đặt tay đúng ba biến khớp nhau
+  #             (`ANDROID_FLAVOR` + `_CAP` + `APP_INSTANCE`); gõ lệch một cái thì
+  #             Gradle dựng app này còn máy đi tìm thư mục app kia.
+  #   KHÔNG được: đây KHÔNG phải hàng rào phân quyền. Codemagic không giới hạn được
+  #             ai chạy luồng nào, nên người dựng được app này vẫn chạy được luồng
+  #             của app kia. Ai cần hàng rào thật thì phải tách ở tầng ứng dụng
+  #             Codemagic, không phải ở tệp này.
+  android-aab-aladin:
+    name: Android Signed AAB — Aladin (Play Store)
     max_build_duration: 60
     instance_type: mac_mini_m2
 
@@ -1641,7 +1662,9 @@ workflows:
       java: 17
       groups:
         - scanner_secrets
-        - android_signing  # <MÃ APP VIẾT HOA>_UPLOAD_* — mỗi app một bộ, xem instances/README.md
+        # MỘT nhóm cho MỘT app. Khoá tải lên của hai pháp nhân khác nhau không nằm
+        # chung một nhóm — xem khối chú thích ngay trên tên luồng.
+        - android_signing_aladin  # ALADIN_UPLOAD_* — xem instances/README.md
       vars:
         AAB_OUTPUT: $CM_BUILD_DIR/android/app/build/outputs/bundle/${ANDROID_FLAVOR}Release
         # ── HAI APP ─────────────────────────────────────────────────────────
@@ -1666,7 +1689,7 @@ workflows:
     triggering:
       events: []
 
-    scripts:
+    scripts: &android_aab_scripts
       # ── CHỐT FLAVOR ─────────────────────────────────────────────────────
       # Đứng TRƯỚC mọi bước dựng. `ANDROID_FLAVOR` rỗng thì `assemble${...}Debug`
       # co lại thành `assembleDebug` — tác vụ đó CÓ THẬT và nó dựng CẢ HAI app,
@@ -1856,7 +1879,7 @@ workflows:
           TIEN_TO=$(echo "$ANDROID_FLAVOR" | tr '[:lower:]' '[:upper:]')
           TEN_B64="${TIEN_TO}_UPLOAD_STORE_FILE_B64"
           if [ -z "${!TEN_B64}" ]; then
-            echo "❌ ${TEN_B64} chưa set trong group android_signing"
+            echo "❌ ${TEN_B64} chưa set trong nhóm android_signing_${ANDROID_FLAVOR}"
             echo "   Mỗi app một khoá RIÊNG — app '${ANDROID_FLAVOR}' cần đủ bốn biến:"
             echo "     ${TIEN_TO}_UPLOAD_STORE_FILE_B64   (kho khoá .jks đã base64)"
             echo "     ${TIEN_TO}_UPLOAD_KEY_ALIAS"
@@ -1886,8 +1909,9 @@ workflows:
           API_KEY=${API_KEY:-mock-local-api-key}
           REGION_CODE=${REGION_CODE:-vn-south-01}
           EOF
-          # gradle.properties (gitignored) — RN config + upload signing (group android_signing).
-          # ALADIN_UPLOAD_STORE_FILE=keySigning.bin (đã giải mã ở step trước).
+          # gradle.properties (gitignored) — RN config + upload signing. Khoá lấy từ
+          # nhóm biến của ĐÚNG app đang dựng (`android_signing_<app>`).
+          # `${TIEN_TO}_UPLOAD_STORE_FILE=keySigning.bin` (đã giải mã ở step trước).
           cat > android/gradle.properties <<EOF
           org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m
           android.useAndroidX=true
@@ -2021,11 +2045,15 @@ workflows:
           echo "✅ AAB: $AAB_FILE"
           ls -lh "$AAB_FILE"
           mkdir -p $CM_BUILD_DIR/dist
-          cp "$AAB_FILE" $CM_BUILD_DIR/dist/aladin-release.aab
-          shasum -a 256 $CM_BUILD_DIR/dist/aladin-release.aab
+          # Tên tệp ra phải mang tên app ĐANG dựng. Trước bản này nó gõ cứng
+          # `aladin-release.aab`: dựng CheckFarm vẫn ra một tệp mang tên Aladin, và
+          # lượt dựng báo xanh. Không cổng nào bắt được — cái sai chỉ lộ ra ở người
+          # cầm tệp đi nộp, tức lộ ra muộn nhất có thể và ở chỗ đắt nhất.
+          cp "$AAB_FILE" "$CM_BUILD_DIR/dist/${ANDROID_FLAVOR}-release.aab"
+          shasum -a 256 "$CM_BUILD_DIR/dist/${ANDROID_FLAVOR}-release.aab"
 
-    artifacts:
-      - dist/aladin-release.aab
+    artifacts: &android_aab_artifacts
+      - dist/*-release.aab
       - android-release.log
 
     # ── Vì sao Android CHƯA tự lên Google Play ───────────────────────────────────
@@ -2042,7 +2070,7 @@ workflows:
     #   1. Google Play Console → Users and permissions → mời service account, cho
     #      quyền "Release to testing tracks" + "Release to production".
     #   2. Google Cloud → tải tệp JSON khoá của service account đó.
-    #   3. Codemagic → Environment variables → nhóm `android_signing` → thêm biến
+    #   3. Codemagic → Environment variables → nhóm `android_signing_<app>` → thêm biến
     #      `GCLOUD_SERVICE_ACCOUNT_CREDENTIALS`, dán nguyên nội dung JSON, đánh dấu
     #      Secure.
     # Xong ba việc đó thì bỏ dấu `#` ở khối dưới là Android chạy y như iOS.
@@ -2057,3 +2085,38 @@ workflows:
     #     credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
     #     track: production
     #     submit_as_draft: true
+
+  # ══ CHECKFARM ═══════════════════════════════════════════════════════════════
+  # Cùng bộ bước với luồng Aladin ở trên, khác đúng hai thứ: nhóm biến giữ khoá,
+  # và ba biến chọn app. Bước dựng đọc tiền tố từ `ANDROID_FLAVOR` viết hoa
+  # (`CHECKFARM_UPLOAD_*`), nên không có tên khoá nào gõ cứng ở đây.
+  #
+  # CheckFarm là pháp nhân RIÊNG. Khoá tải lên của nó nằm ở nhóm riêng để ngày
+  # bàn giao chỉ phải xoá một nhóm — bàn giao thì XOAY khoá, không chuyển tài
+  # khoản CI.
+  android-aab-checkfarm:
+    name: Android Signed AAB — CheckFarm (Play Store)
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+
+    environment:
+      node: 22.11.0
+      java: 17
+      groups:
+        - scanner_secrets
+        - android_signing_checkfarm  # CHECKFARM_UPLOAD_* — xem instances/README.md
+      vars:
+        AAB_OUTPUT: $CM_BUILD_DIR/android/app/build/outputs/bundle/${ANDROID_FLAVOR}Release
+        # `..._CAP` là tên tác vụ Gradle: `bundleCheckfarmRelease`. Gradle chỉ viết
+        # hoa CHỮ ĐẦU của tên flavor, nên ở đây là `Checkfarm` — KHÔNG phải
+        # `CheckFarm`. Gõ hai chữ hoa thì tác vụ không tồn tại và lượt dựng đỏ ở
+        # Gradle, sau khi đã nạp khoá thật vào máy.
+        ANDROID_FLAVOR: checkfarm
+        ANDROID_FLAVOR_CAP: Checkfarm
+        APP_INSTANCE: checkfarm
+
+    triggering:
+      events: []
+
+    scripts: *android_aab_scripts
+    artifacts: *android_aab_artifacts

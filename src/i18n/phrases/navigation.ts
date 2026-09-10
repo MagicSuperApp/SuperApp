@@ -168,7 +168,29 @@ export const NAVIGATION: PhraseMap = {
   // Dòng nhãn trên khu logo màn Đăng nhập. Bản cũ 'ALADIN · PHOENIXKEY DID'
   // không dấu nên lọt lưới kiểm; bản mới có dấu tiếng Việt ⇒ BẮT BUỘC khai ở đây,
   // không thì người dùng tiếng Nhật/Trung thấy nguyên tiếng Việt.
-  'ALADIN · DANH TÍNH SỐ': { en: 'ALADIN · DIGITAL IDENTITY', zh: 'ALADIN · 数字身份', ja: 'ALADIN · デジタル ID' },
+  //
+  // ⛔ Khoá KHÔNG được mang tên app. Bản trước khai `'ALADIN · DANH TÍNH SỐ'`
+  // trọn cụm, trong khi màn dựng chuỗi bằng `DEFAULT_INSTANCE.displayName` rồi
+  // mới tra phần còn lại (`LoginScreen.tsx`, khu logo). Nên khoá tra thật là
+  // `'DANH TÍNH SỐ'`, và khoá dài kia chưa bao giờ khớp lần nào — nó chết CÂM:
+  // từ điển vẫn có một dòng trông đầy đủ, người đọc mã vẫn thấy ba thứ tiếng,
+  // còn người dùng tiếng Nhật vẫn đọc nguyên tiếng Việt. Một app thứ hai ra đời
+  // là khoá mang tên app hỏng thêm một lần nữa, cùng kiểu.
+  'DANH TÍNH SỐ': { en: 'DIGITAL IDENTITY', zh: '数字身份', ja: 'デジタル ID' },
+
+  // Lời chào ở màn Đăng nhập. Bản trước viết 'Wellcome' — sai chính tả, và là
+  // tiếng Anh giữa một màn tiếng Việt.
+  'Chào @{name}': { en: 'Welcome @{name}', zh: '欢迎 @{name}', ja: 'ようこそ @{name}' },
+  'Chào bạn': { en: 'Welcome', zh: '欢迎', ja: 'ようこそ' },
+
+  // Nhãn CHỮ dưới nút sinh trắc — khác nhãn trợ năng bên dưới. Bản trước gõ
+  // thẳng 'LOGIN WITH BIOMETRIC' vào mã, không qua từ điển, nên nó là tiếng Anh
+  // ở cả bốn thứ tiếng kể cả tiếng Việt.
+  'Đăng nhập bằng sinh trắc': {
+    en: 'LOGIN WITH BIOMETRIC',
+    zh: '生物识别登录',
+    ja: '生体認証でログイン',
+  },
 
   // Nhãn trợ năng của nút sinh trắc ở màn Đăng nhập — nút chỉ có icon nên đây là
   // thứ DUY NHẤT trình đọc màn hình đọc được. Ba nhánh theo cảm biến của thiết bị.

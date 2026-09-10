@@ -37,6 +37,7 @@ import { WORK_THEME } from '../theme';
 import { useTk } from '../i18n/keys';
 import { useLanguage } from '../i18n/useLanguage';
 import { DEFAULT_INSTANCE } from '../config/instance.config';
+import { APP_LOGO } from '../theme/brandLogo';
 import { markOnboardingSeen } from '../utils/onboardingFlag';
 import { ALADIN_WEB_URL } from '../utils/webLink';
 
@@ -104,7 +105,7 @@ const OnboardingScreen: React.FC = () => {
         <View style={[styles.hero, { paddingTop: insets.top + (Platform.OS === 'ios' ? 28 : 24) }]}>
           <View style={styles.logoOuter}>
             <View style={styles.logoInner}>
-              <Image source={require('../../assets/images/logo.png')} style={styles.logoImg} />
+              <Image source={APP_LOGO} style={styles.logoImg} />
             </View>
           </View>
           <Text allowFontScaling={false} style={styles.title}>{DEFAULT_INSTANCE.displayName}</Text>

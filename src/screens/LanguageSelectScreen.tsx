@@ -30,6 +30,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../constants';
 import { WORK_THEME } from '../theme';
 import { LANGUAGES, getLanguage, setLanguage, type LangCode } from '../i18n';
+import { APP_LOGO } from '../theme/brandLogo';
 
 // Xanh lá thương hiệu — khớp HERO của màn Đăng nhập để hai màn liền mạch.
 const BRAND = {
@@ -94,7 +95,7 @@ const LanguageSelectScreen = () => {
         <View style={styles.logoOuter}>
           <View style={styles.logoInner}>
             <Image
-              source={require('../../assets/images/logo.png')}
+              source={APP_LOGO}
               style={styles.logoImg}
             />
           </View>

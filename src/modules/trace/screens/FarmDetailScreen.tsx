@@ -19,6 +19,7 @@ import {
   Animated,
   PanResponder,
   Pressable,
+  Modal,
 } from 'react-native';
 // Icon: bo Font Awesome Solid tai qua Iconify (assets/icons -> icons.generated).
 // Them icon moi: `node scripts/icons.js <ten-fa6-solid>`.
@@ -39,6 +40,7 @@ import {
 import { GradientFill, GroundBackdrop } from '../components/layered/Organic';
 import { BentoRow, BentoTile } from '../components/layered/Surface';
 import FarmShape from '../components/layered/FarmShape';
+import RingProgress from '../components/layered/RingProgress';
 import { OSM_STREET_TILES } from '../../../features/space3d/mapTiles';
 import { useTk } from '../../../i18n/keys';
 // B2: tạo vườn QUA field-reid (server sinh farm_id uuid THẬT) — bỏ aladinAPI
@@ -208,93 +210,52 @@ class MapErrorBoundary extends React.Component<{ children: React.ReactNode }, { 
   }
 }
 
-// ── Tree Card ─────────────────────────────────────────────────────────────────
-const TreeCard = ({
+// ── Nút cây ─────────────────────────────────────────────────────
+//
+// Một cây = một nút TRÒN, trong lòng chỉ có TÊN, quanh viền là vòng tiến độ thu.
+//
+// ── Thẻ cũ mang gì, và vì sao bỏ ─────────────────────────────────
+// Mỗi thẻ là một hàng ngang đầy: biểu tượng cây · tên · mã · chip 3D · thanh
+// tiến độ · phần trăm · mũi tên phải. Bảy thứ cho một cây, và bốn trong đó
+// giống hệt nhau ở MỌI thẻ:
+//
+//   biểu tượng cây   cây nào cũng là cây — không phân biệt được thẻ nào với thẻ nào
+//   mũi tên phải    cả danh sách đều bấm được; mũi tên nói một điều ai cũng biết
+//   mã cây         chuỗi băm ngắn, không ai đọc — tên mới là thứ nhà vườn gọi
+//
+// Một hàng ngang cũng chỉ xếp được MỘT cây mỗi dòng, nên vườn 128 cây thành
+// 128 dòng phải cuộn. Lưới ba cột cho một màn chứa ~12 cây thay vì ~4.
+//
+// ── Vòng tiến độ bao quanh, không phải thanh nằm dưới ──────────────────
+// Tiến độ và cây thành MỘT khối: mắt không phải nối một thanh ngang với một cái
+// tên ở chỗ khác. Xem `RingProgress`.
+const TreeChip = ({
   item,
-  index,
   farm,
+  size,
   onPress,
-  onView3D,
 }: {
   item: any;
-  index: number;
   farm?: any;
+  size: number;
   onPress: () => void;
-  onView3D?: () => void;
 }) => {
-  const tk = useTk();
-  const fruitCount = item.fruitCount ?? 0;
-  const has3DModel = item.has_3d ?? item.has3DModel ?? item.latest_mesh_cid ?? item.meshCid;
-  // Build 58 (2026-05-26): bỏ random fallback 10-90% — field test 25/5 báo
-  // nông dân thấy số phần trăm thu hoạch ngẫu nhiên → mất niềm tin. 0% khi
-  // chưa có data thật trung thực hơn.
   const harvestPct = item.harvestProgress ?? 0;
-  const statusColor = fruitCount > 0 ? COLORS.success : COLORS.textMuted;
-  // Build 52 § A7 — farmer-friendly tree name.
-  const treeDisplayName = formatTreeName(item, farm);
-  const treeShortCode = shortTreeCode(item);
+  const ten = formatTreeName(item, farm);
 
   return (
-    <TouchableOpacity activeOpacity={0.8} onPress={onPress}>
-      <View style={styles.treeCard}>
-        <View style={styles.treeCardLeft}>
-          <View style={styles.treeIconWrap}>
-            <Icon name="tree" size={22} color={COLORS.accent} />
-          </View>
-          <View style={styles.treeProgBarWrap}>
-            <View style={[styles.treeProgBar, { height: `${harvestPct}%` as any }]} />
-          </View>
+    <TouchableOpacity
+      activeOpacity={0.85}
+      onPress={onPress}
+      style={{ width: size, alignItems: 'center' }}
+      accessibilityRole="button"
+      accessibilityLabel={`${ten}, đã thu ${harvestPct}%`}
+    >
+      <RingProgress pct={harvestPct} size={size} stroke={4}>
+        <View style={styles.treeChipTron}>
+          <Text style={styles.treeChipTen} numberOfLines={2}>{ten}</Text>
         </View>
-
-        <View style={styles.treeCardBody}>
-          <View style={styles.treeTopRow}>
-            <View style={{ flex: 1, marginRight: 8 }}>
-              <Text style={styles.treeCode} numberOfLines={1}>{treeDisplayName}</Text>
-              {treeShortCode ? (
-                <Text style={styles.treeCodeSub} numberOfLines={1}>{tk('trace.label.code')} {treeShortCode}</Text>
-              ) : null}
-            </View>
-            {has3DModel && onView3D ? (
-              <TouchableOpacity
-                style={[styles.treeFruitChip, { backgroundColor: COLORS.accentGlow }]}
-                onPress={onView3D}
-                hitSlop={6}
-              >
-                <Icon name="expand" size={12} color={COLORS.accent} />
-                <Text style={[styles.treeFruitCount, { color: ORG_TONE.primary }]}>
-                  {tk('trace.label.has3d', { n: fruitCount })}
-                </Text>
-              </TouchableOpacity>
-            ) : (
-              <View style={[styles.treeFruitChip, { backgroundColor: ORG_SURFACE.raised }]}>
-                <Icon name="cube" size={12} color={COLORS.textMuted} />
-                <Text style={[styles.treeFruitCount, { color: ORG_NATURE.barkSoft }]}>
-                  {tk('trace.label.no3d', { n: fruitCount })}
-                </Text>
-              </View>
-            )}
-          </View>
-
-          {item.lastActivity && (
-            <View style={styles.treeLastActivity}>
-              <Icon name="clock" size={11} color={COLORS.textMuted} />
-              <Text style={styles.treeLastActivityText}>{item.lastActivity}</Text>
-            </View>
-          )}
-
-          {/* Mini progress bar */}
-          <View style={styles.treeHarvestRow}>
-            <View style={styles.treeHarvestTrack}>
-              <View style={[styles.treeHarvestFill, { width: `${harvestPct}%` as any }]} />
-            </View>
-            <Text style={styles.treeHarvestPct}>{harvestPct}%</Text>
-          </View>
-
-          {/* Build 54: nút "Chụp cây" chuyển sang TreeDetailScreen. */}
-        </View>
-
-        <Icon name="chevron-right" size={18} color={COLORS.accentLight} style={{ alignSelf: 'center', marginRight: 12 }} />
-      </View>
+      </RingProgress>
     </TouchableOpacity>
   );
 };
@@ -1192,6 +1153,18 @@ const FarmDetailMode = ({
   /** Đủ ba điểm mới thành một mảnh đất vẽ được — dưới đó `FarmShape` trả `null`. */
   const coHinh = soDiem >= 3;
 
+  /** Cây đang mở popup. `null` = không mở. */
+  const [cayDangXem, setCayDangXem] = useState<any | null>(null);
+
+  /**
+   * Đường kính một nút cây trong lưới BA cột.
+   *
+   * Suy từ bề ngang màn chứ không gõ số: lề trang 12 mỗi bên, hai khe 12 giữa
+   * ba cột. Gõ một con số cố định thì máy hẹp bị tràn còn máy rộng thừa chỗ —
+   * và cả hai đều không có gì đỏ.
+   */
+  const CO_NUT = Math.floor((width - 12 * 2 - 12 * 2) / 3);
+
   /**
    * LƯỚI BENTO của màn này. Ba vế của luật (xem `BentoTile` trong
    * `components/layered/Surface.tsx`) rơi vào đây như sau:
@@ -1425,24 +1398,22 @@ const FarmDetailMode = ({
             )
           ) : null
         }
-        renderItem={({ item, index }) => (
-          <TreeCard
+        /*
+          LƯỚI BA CỘT. `numColumns` là thuộc tính TĨNH của `FlatList` — đổi nó
+          lúc chạy làm danh sách ném. Ở đây nó là hằng nên không sao; nếu ngày
+          nào cần đổi theo bề ngang màn thì phải đổi cả `key` của danh sách.
+        */
+        numColumns={3}
+        columnWrapperStyle={styles.treeGridHang}
+        renderItem={({ item }) => (
+          <TreeChip
             item={item}
-            index={index}
             farm={farm}
-            onPress={() => {
-              // @ts-ignore
-              (navigation.navigate as any)('TreeDetail', { tree: item })
-            }}
-            onView3D={() => {
-              // Mở KHÔNG-GIAN 3D chung (vườn ⇄ cây ⇄ quả) thay cho WebView /view/{code}.
-              (navigation.navigate as any)('Space3D', {
-                mode: 'tree',
-                treeId: item.id,
-                farmId: item.farmId ?? farm?.id,
-                treeName: formatTreeName(item, farm),
-              });
-            }}
+            size={CO_NUT}
+            /* Chạm KHÔNG mở thẳng màn chi tiết nữa — nó mở popup. Màn chi tiết
+               là một chuyến đi khỏi danh sách; phần lớn lượt chạm chỉ để xem
+               nhanh cây này có gì, rồi quay lại chạm cây kế. */
+            onPress={() => setCayDangXem(item)}
           />
         )}
         ListFooterComponent={
@@ -1502,6 +1473,80 @@ const FarmDetailMode = ({
           <Text style={styles.activityLargeBtnText}>Cập nhật hoạt động</Text>
         </TouchableOpacity>
       </View>
+
+      {/*
+        POPUP CHI TIẾT CÂY.
+
+        Chạm một nút cây mở cái này, KHÔNG mở thẳng màn chi tiết. Lý do là nhịp
+        làm việc thật: người ta quét mắt qua lưới, chạm một cây để xem nhanh nó
+        có gì, rồi chạm cây kế. Mở màn chi tiết cho mỗi lượt xem nhanh là bắt họ
+        đi và quay lại — mất chỗ đang đứng trong lưới, mất cả trang phân trang.
+
+        Màn chi tiết vẫn ở đó, sau MỘT nút. Ai cần đi sâu thì đi.
+      */}
+      <Modal
+        visible={cayDangXem != null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCayDangXem(null)}
+      >
+        {/* Chạm ra ngoài là đóng — cách thoát mà ai cũng thử trước tiên. */}
+        <Pressable style={styles.cayPopupNen} onPress={() => setCayDangXem(null)} />
+        <View style={styles.cayPopupBoc} pointerEvents="box-none">
+          <View style={styles.cayPopup}>
+            <GradientFill name="tile" />
+
+            <View style={styles.cayPopupDau}>
+              <RingProgress pct={cayDangXem?.harvestProgress ?? 0} size={64} stroke={5}>
+                <Text style={styles.cayPopupPct}>{cayDangXem?.harvestProgress ?? 0}%</Text>
+              </RingProgress>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.cayPopupTen} numberOfLines={2}>
+                  {cayDangXem ? formatTreeName(cayDangXem, farm) : ''}
+                </Text>
+                <Text style={styles.cayPopupPhu}>đã thu hoạch</Text>
+              </View>
+            </View>
+
+            <View style={styles.cayPopupBang}>
+              {[
+                { nhan: 'Quả trên cây', gt: String(cayDangXem?.fruitCount ?? 0) },
+                {
+                  nhan: 'Quả dự kiến',
+                  gt: String(cayDangXem?.estimatedFruits ?? 0),
+                  uoc: true,
+                },
+                { nhan: 'Giống', gt: cayDangXem?.species || 'chưa ghi' },
+                {
+                  nhan: 'Năm trồng',
+                  gt: cayDangXem?.plantedYear ? String(cayDangXem.plantedYear) : 'chưa ghi',
+                },
+              ].map((d) => (
+                <View key={d.nhan} style={styles.cayPopupHang}>
+                  <Text style={styles.cayPopupNhan}>{d.nhan}</Text>
+                  <Text style={styles.cayPopupGt}>
+                    {d.gt}
+                    {d.uoc ? <Text style={styles.cayPopupUoc}> (ước tính)</Text> : null}
+                  </Text>
+                </View>
+              ))}
+            </View>
+
+            <TouchableOpacity
+              style={styles.cayPopupNut}
+              activeOpacity={0.88}
+              onPress={() => {
+                const cay = cayDangXem;
+                setCayDangXem(null);
+                if (cay) (navigation.navigate as any)('TreeDetail', { tree: cay });
+              }}
+            >
+              <GradientFill name="action" />
+              <Text style={styles.cayPopupNutTxt}>Xem chi tiết</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* Rename Farm Popup */}
       <CommonPopup
@@ -2544,6 +2589,58 @@ const styles = StyleSheet.create({
   },
 
   // Stats banner
+  // ── Nút cây + lưới ba cột ─────────────────────────────────────────────────
+  treeGridHang: { gap: 12, marginBottom: 12 },
+  /**
+   * Lòng nút — nền TRẮNG đặc, và đặc là có lý do: vòng tiến độ vẽ sát mép, nên
+   * lòng phải tách khỏi vòng bằng một mặt riêng, không thì chữ đè lên nét vòng.
+   */
+  treeChipTron: {
+    width: '100%', height: '100%', borderRadius: 999,
+    alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 8,
+    backgroundColor: ORG_SURFACE.raised,
+  },
+  treeChipTen: {
+    fontSize: 13, fontWeight: '700', color: ORG_NATURE.bark,
+    textAlign: 'center', letterSpacing: -0.2,
+  },
+
+  // ── Popup chi tiết cây ────────────────────────────────────────────────────
+  cayPopupNen: { ...StyleSheet.absoluteFillObject, backgroundColor: ORG_SURFACE.scrim },
+  cayPopupBoc: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  cayPopup: {
+    width: '100%', maxWidth: 420,
+    borderRadius: 20, padding: 20, gap: 16,
+    backgroundColor: ORG_SURFACE.raised,
+    borderWidth: 1, borderColor: ORG_TONE.border,
+    // Lớp chuyển sắc trải kín nằm dưới nội dung — thiếu dòng này thì nó tràn
+    // qua góc bo.
+    overflow: 'hidden',
+  },
+  cayPopupDau: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  cayPopupPct: { fontSize: 15, fontWeight: '800', color: ORG_NATURE.bark, letterSpacing: -0.5 },
+  cayPopupTen: { fontSize: 19, fontWeight: '700', color: ORG_NATURE.bark, letterSpacing: -0.3 },
+  cayPopupPhu: { fontSize: 13, color: ORG_NATURE.barkSoft, marginTop: 2 },
+  cayPopupBang: { gap: 2 },
+  cayPopupHang: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 9,
+    borderBottomWidth: 1, borderBottomColor: ORG_TONE.border,
+  },
+  cayPopupNhan: { fontSize: 14, color: ORG_NATURE.barkSoft },
+  cayPopupGt: { fontSize: 15, fontWeight: '700', color: ORG_NATURE.bark },
+  /** "(ước tính)" phải KHÁC mắt so với con số — cùng lý do với dòng thông tin phụ. */
+  cayPopupUoc: { fontSize: 12, fontWeight: '400', fontStyle: 'italic', color: ORG_NATURE.barkSoft },
+  cayPopupNut: {
+    borderRadius: 14, paddingVertical: 15,
+    alignItems: 'center', justifyContent: 'center',
+    overflow: 'hidden',
+    // Cùng họ màu với lớp phủ — xem chú thích ở `activityLargeBtn`.
+    backgroundColor: ORG_GRADIENT.action.from,
+  },
+  cayPopupNutTxt: { fontSize: 15, fontWeight: '700', color: COLORS.white, letterSpacing: 0.2 },
+
   // ── Lưới Bento ────────────────────────────────────────────────────────────
   //
   // KHE HỞ HẸP, Ô RỘNG. Bản đầu dùng thẳng `SPACE.page` (16) và `SPACE.md` (12)
@@ -2655,65 +2752,6 @@ const styles = StyleSheet.create({
   },
 
   // Tree card
-  treeCard: {
-    backgroundColor: ORG_SURFACE.raised,
-    ...ORGANIC_CARD,
-    flexDirection: 'row', alignItems: 'stretch',
-    ...ORG_ELEV.card, overflow: 'hidden',
-  },
-  treeCardLeft: {
-    width: 48, alignItems: 'center', paddingVertical: 14, gap: 8,
-    backgroundColor: ORG_SURFACE.raised,
-    borderRightWidth: 1, borderRightColor: COLORS.border,
-  },
-  treeIconWrap: {
-    width: 32, height: 32, borderRadius: 8,
-    backgroundColor: COLORS.accentGlow,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  treeProgBarWrap: {
-    flex: 1, width: 4, backgroundColor: COLORS.border,
-    borderRadius: 2, overflow: 'hidden', maxHeight: 40,
-  },
-  treeProgBar: {
-    width: '100%', backgroundColor: COLORS.accent,
-    borderRadius: 2, position: 'absolute', bottom: 0,
-  },
-  treeCardBody: { flex: 1, padding: 12 },
-  treeTopRow: {
-    flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'space-between', marginBottom: 5,
-  },
-  treeCode: {
-    fontSize: 15, fontWeight: '700', color: COLORS.text, letterSpacing: -0.2,
-  },
-  treeCodeSub: {
-    fontSize: 10, fontWeight: '500', color: COLORS.textMuted,
-    letterSpacing: 0.3, marginTop: 1,
-  },
-  treeFruitChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20,
-  },
-  treeFruitCount: { fontSize: 11, fontWeight: '600' },
-  treeLastActivity: {
-    flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 8,
-  },
-  treeLastActivityText: { fontSize: 11, color: COLORS.textMuted },
-  treeHarvestRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-  },
-  treeHarvestTrack: {
-    flex: 1, height: 4, backgroundColor: COLORS.border,
-    borderRadius: 2, overflow: 'hidden',
-  },
-  treeHarvestFill: {
-    height: '100%', backgroundColor: COLORS.accent,
-    borderRadius: 2,
-  },
-  treeHarvestPct: {
-    fontSize: 11, fontWeight: '600', color: COLORS.textMuted, width: 32,
-  },
   treeCapture3DBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     marginTop: 10, paddingVertical: 7, paddingHorizontal: 10,

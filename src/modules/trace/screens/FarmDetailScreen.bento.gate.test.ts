@@ -228,3 +228,91 @@ describe('nền dưới lớp phủ phải CÙNG HỌ MÀU với lớp phủ', (
     expect(khoi).not.toContain('backgroundColor: COLORS.accent');
   });
 });
+
+/**
+ * DANH SÁCH CÂY — nút tròn, lưới ba cột, chạm mở popup.
+ *
+ * Yêu cầu từ thực địa, và nó là một danh sách BỎ nhiều hơn là THÊM: bỏ biểu
+ * tượng cây, bỏ mũi tên phải, bỏ mã cây — chỉ còn tên. Ba thứ bỏ đi đều là thứ
+ * lặp lại y hệt trên mọi thẻ, tức không phân biệt được thẻ nào với thẻ nào:
+ *
+ *   biểu tượng cây   cây nào cũng là cây
+ *   mũi tên phải     cả danh sách đều bấm được
+ *   mã cây           chuỗi băm ngắn, không ai đọc — tên mới là thứ nhà vườn gọi
+ *
+ * Danh sách "bỏ đi" là loại dễ trôi ngược nhất: mỗi lượt sau chỉ cần thêm lại
+ * MỘT thứ, thấy hợp lý một mình, và vài lượt là thẻ cũ quay về nguyên hình.
+ */
+describe('danh sách cây — nút tròn trong lưới ba cột', () => {
+  it('lưới đúng BA cột', () => {
+    expect(MA_CHAY).toContain('numColumns={3}');
+  });
+
+  it('nút TRÒN, và vòng tiến độ bao quanh nó', () => {
+    // `borderRadius: 999` là thứ làm nó tròn; `RingProgress` bọc ngoài là thứ
+    // gắn tiến độ vào chính cái cây thay vì một thanh nằm chỗ khác.
+    //
+    // Phải soi TRONG `TreeChip`, không soi cả tệp: popup chi tiết cũng dùng
+    // `RingProgress`, nên phép so cả tệp vẫn xanh sau khi ai đó gỡ vòng khỏi
+    // nút. Đã cắn đúng ca đó lúc chạy đột biến.
+    const iChip = MA_CHAY.indexOf('const TreeChip');
+    expect(iChip).toBeGreaterThan(-1);
+    const thanChip = MA_CHAY.slice(iChip, MA_CHAY.indexOf('};', MA_CHAY.indexOf('return (', iChip)));
+    expect(thanChip).toContain('<RingProgress');
+    const i = MA_CHAY.indexOf('treeChipTron: {');
+    expect(i).toBeGreaterThan(-1);
+    expect(MA_CHAY.slice(i, i + 200)).toContain('borderRadius: 999');
+  });
+
+  it('trong nút CHỈ có tên — không biểu tượng, không mũi tên, không mã', () => {
+    const i = MA_CHAY.indexOf('const TreeChip');
+    expect(i).toBeGreaterThan(-1);
+    const than = MA_CHAY.slice(i, MA_CHAY.indexOf('};', MA_CHAY.indexOf('return (', i)));
+    expect(than).toContain('formatTreeName(item, farm)');
+    expect(than).not.toContain('<Icon');
+    expect(than).not.toContain('shortTreeCode');
+  });
+
+  it('thẻ cũ KHÔNG quay lại', () => {
+    for (const chet of ['TreeCard', 'treeIconWrap', 'treeHarvestTrack', 'treeCodeSub']) {
+      expect(MA_CHAY).not.toContain(chet);
+    }
+  });
+});
+
+describe('chạm cây mở POPUP, màn chi tiết nằm sau một nút', () => {
+  it('chạm nút cây KHÔNG điều hướng thẳng', () => {
+    // Nhịp làm việc thật: quét mắt qua lưới, chạm xem nhanh, chạm cây kế. Mở
+    // màn chi tiết cho mỗi lượt xem nhanh là bắt người ta đi và quay lại — mất
+    // chỗ đang đứng trong lưới, mất cả trang phân trang.
+    const i = MA_CHAY.indexOf('<TreeChip');
+    expect(i).toBeGreaterThan(-1);
+    const khoi = MA_CHAY.slice(i, MA_CHAY.indexOf('/>', i));
+    expect(khoi).toContain('setCayDangXem(item)');
+    expect(khoi).not.toContain('TreeDetail');
+  });
+
+  it('popup có nút mở màn chi tiết, và nó đóng popup trước khi đi', () => {
+    // Không đóng thì lúc quay lại popup còn mở, đè lên lưới — người dùng phải
+    // đóng một thứ họ không mở.
+    const i = MA_CHAY.indexOf('cayPopupNut');
+    expect(i).toBeGreaterThan(-1);
+    const khoi = MA_CHAY.slice(i, i + 500);
+    expect(khoi).toContain('setCayDangXem(null)');
+    expect(khoi).toContain("'TreeDetail'");
+  });
+
+  it('popup mang đủ chi tiết cơ bản, và số ước tính tự khai', () => {
+    const i = MA_CHAY.indexOf('cayPopupBang');
+    expect(i).toBeGreaterThan(-1);
+    const khoi = MA_CHAY.slice(i, i + 900);
+    for (const nhan of ['Quả trên cây', 'Quả dự kiến', 'Giống', 'Năm trồng']) {
+      expect(khoi).toContain(nhan);
+    }
+    // Khớp CỜ điều khiển, không khớp chuỗi hiện ra: chuỗi "ước tính" còn nằm ở
+    // dòng thông tin phụ phía trên, nên phép so chuỗi vẫn xanh sau khi ai đó gỡ
+    // `uoc: true` và nhánh hiện chữ chết hẳn. Đã cắn đúng ca đó lúc đột biến.
+    expect(khoi).toContain('uoc: true');
+    expect(MA_CHAY).toContain('styles.cayPopupUoc');
+  });
+});

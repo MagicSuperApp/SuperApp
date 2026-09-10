@@ -66,17 +66,17 @@ describe('cổng xoè khi app chỉ bật một phần sổ module', () => {
     expect(routes.some((r: string) => traceRoutes.includes(r))).toBe(true);
   });
 
-  it('mục quét Trace đi qua cùng phép lọc — dù hôm nay nó là route HOST', () => {
-    // ⚠ Bài này KHÔNG phân biệt được gì ở cấu hình hôm nay, và nói ra là cố ý.
-    // `TraceScan` không nằm trong `routes` của manifest module trace — nó là màn
-    // của host shell (quét tiêu dùng, dành cho người MUA chứ không phải người
-    // làm vườn). Nên nó tới được kể cả khi module trace tắt, và bài này xanh cả
-    // khi phép lọc bị gỡ.
+  it('mục quét Trace đi qua cùng phép lọc — và nó CỐ Ý là route của host', () => {
+    // `TraceScan` không nằm trong `routes` của manifest module trace: nó là màn
+    // của host shell. Chủ sở hữu chốt 2026-09-10 rằng đó là ĐÚNG Ý, không phải
+    // chỗ hở — quét mã trên sản phẩm để tra nguồn gốc là việc của người MUA, và
+    // người dùng app nào cũng là người mua hàng. Nên app tắt module trace vẫn
+    // giữ mục quét, và không được "sửa" điều đó.
     //
-    // Giữ lại vì mục này đi vào cổng bằng đường RIÊNG (`TRACE_SCAN_ROUTE`),
-    // không qua `slotPriority`: ngày nó chuyển về thuộc module trace, bài này là
-    // thứ bắt được. Ghi rõ mức canh hiện tại để không ai đọc nó thành một phép
-    // canh đang có tác dụng.
+    // ⚠ Hệ quả cho chính bài này: nó KHÔNG phân biệt được gì ở cấu hình hôm nay
+    // và xanh cả khi phép lọc bị gỡ. Nói ra là cố ý — giữ lại vì mục này vào
+    // cổng bằng đường RIÊNG (`TRACE_SCAN_ROUTE`), không qua `slotPriority`, nên
+    // ngày ai đó chuyển nó về thuộc module trace thì đây là thứ bắt được.
     const items = resolveGateItems(NO_FARM);
     const scan = items.find((i: { prominent?: boolean }) => i.prominent);
     if (scan) {

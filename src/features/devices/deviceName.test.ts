@@ -42,8 +42,8 @@ describe('ký tự phá bố cục — đúng danh sách của isLayoutBreaking'
    * làm bài này đỏ mà không chỉ được ra khoảng nào lệch.
    */
   const CHAN: Array<[string, string]> = [
-    ['C0 (điều khiển)', ''],
-    ['C1 (điều khiển)', ''],
+    ['C0 (điều khiển)', '\u0001'],
+    ['C1 (điều khiển)', '\u0085'],
     ['gạch nối mềm U+00AD', '­'],
     ['ZWSP U+200B', '​'],
     ['RLM U+200F', '‏'],

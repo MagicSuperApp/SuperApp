@@ -18,7 +18,23 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 
 const GOC = join(__dirname, '..', '..');
-const doc = (p: string) => readFileSync(join(GOC, p), 'utf8');
+
+/**
+ * Đọc tệp và chuẩn hoá CRLF → LF NGAY TẠI CỬA.
+ *
+ * Vì sao một lần `.replace` lại đáng có chú thích dài thế này: máy dựng chính của
+ * kho là Windows đặt `core.autocrlf=true` — `.gitattributes` ghi thẳng điều đó ra.
+ * Mọi phép so bên dưới có xuống dòng nằm trong khuôn mẫu (`luong()` tìm luồng bằng
+ * `indexOf` một khuôn có xuống dòng ở hai đầu) sẽ trượt sạch khi tệp checkout ra
+ * CRLF, và bài kiểm đỏ với câu `expect(-1).toBeGreaterThan(-1)` — không một chữ
+ * nào nói về khoá ký, đúng lúc người ta cần nó nói. Ai thấy đỏ mà không hiểu vì
+ * sao thì đường ngắn nhất là gỡ chốt cho nó xanh, tức mất đúng cái chốt vừa dựng.
+ *
+ * Kho này đã dính đúng lớp lỗi ấy hai lần (`soi-aab.sh`, `soi-mach.chua-noi.txt`)
+ * và cả hai lần đều vá bằng HAI lớp: phép đọc chịu được CRLF, cộng `eol=lf` ở
+ * `.gitattributes`. Đây là lớp thứ nhất; lớp thứ hai nằm ở `.gitattributes`.
+ */
+const doc = (p: string) => readFileSync(join(GOC, p), 'utf8').replace(/\r\n/g, '\n');
 
 const CODEMAGIC = doc('codemagic.yaml');
 
@@ -43,8 +59,18 @@ describe('khoá của hai pháp nhân KHÔNG chung một nhóm biến', () => {
   // tiện thì lượt dựng Aladin mang theo khoá CheckFarm suốt cả lượt, và không có
   // bước nào để lộ ra điều đó — lượt dựng vẫn xanh, tệp ra vẫn đúng.
   //
-  // Bài này ghim ĐIỀU KIỆN TÁCH, không ghim tên nhóm cho đẹp: nó đọc cấu trúc YAML
-  // đã phân giải, nên một lần dán nhầm cả hai nhóm vào một luồng là đỏ ngay.
+  // Bài này ghim ĐIỀU KIỆN TÁCH, không ghim tên nhóm cho đẹp: một lần dán nhầm cả
+  // hai nhóm vào một luồng là đỏ ngay.
+  //
+  // Phép đo là ĐỐI CHIẾU VĂN BẢN trên khối của từng luồng, không phải đọc cây YAML
+  // đã phân giải — ghi ra đây để không ai đọc nhầm nó thành thứ mạnh hơn.
+  //
+  // Chỗ đáng ngờ nhất của một phép đo văn bản, khi tệp vừa có neo YAML, là neo có
+  // luồn khoá qua mặt nó được không. KHÔNG, và cái chặn là phép so DƯƠNG chứ không
+  // phải phép so âm: mỗi luồng phải có dòng `- android_signing_<app>` nằm trong
+  // CHÍNH khối văn bản của nó. Mọi cách luồn khoá bằng neo đều phải rút dòng ấy ra
+  // khỏi khối (thay bằng `environment: *neo`) — và rút ra là phép so dương đỏ. Nên
+  // đừng bỏ hai dòng `toContain` tưởng chúng thừa; chúng đang gánh phần đó.
   const luong = (ten: string) => {
     const i = CODEMAGIC.indexOf(`\n  ${ten}:\n`);
     expect(i).toBeGreaterThan(-1);

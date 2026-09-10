@@ -19,3 +19,16 @@
 # chú thích đầu tệp — một con số sai và một lời khuyên sai in ra ngay dưới dòng
 # "✅ Mạch liền" mà người đọc tin.
 scripts/soi-mach.chua-noi.txt text eol=lf
+
+# `codemagic.yaml` — tệp mà `src/config/kyTheoApp.test.ts` đối chiếu từng dòng.
+#
+# Cùng khuôn với hai khối trên, và vì đúng cái đã xảy ra: bài kiểm tìm luồng bằng
+# `indexOf` một khuôn mẫu có xuống dòng trong đó. Trên máy dựng (`core.autocrlf=true`)
+# tệp checkout ra CRLF, phép tìm trượt sạch, và bài ghim việc tách khoá ký hai pháp
+# nhân đỏ với câu `expect(-1).toBeGreaterThan(-1)` — không một chữ nào nói về khoá.
+# Ai thấy đỏ mà không hiểu vì sao thì đường ngắn nhất là gỡ chốt cho nó xanh, tức
+# mất đúng cái chốt vừa dựng.
+#
+# Phép đọc nay đã chịu được CRLF (chuẩn hoá ngay tại cửa đọc). Dòng này là lớp thứ
+# hai: dữ liệu xác định, chứ không chỉ phép đọc chịu đựng giỏi.
+codemagic.yaml text eol=lf

@@ -397,7 +397,7 @@ workflows:
 
       # ── CỔNG: danh tính app iOS phải khớp `instances/<app>/instance.json` ─
       # Bên Android đã có phép so này từ lâu — `APP_INSTANCE` vs `ANDROID_FLAVOR`
-      # trong workflow `android-appstore-aab`, kèm câu nói đúng cái hại: *"lệch
+      # trong workflow `android-aab-aladin`, kèm câu nói đúng cái hại: *"lệch
       # hai biến này là dựng vỏ app này với chữ của app kia"*. Nửa iOS KHÔNG có
       # phép so tương ứng nào, và nửa iOS mới là nửa nguy hơn: `BUNDLE_ID`,
       # `APP_DISPLAY_NAME`, `APP_INSTANCE` và `ios_signing.bundle_identifier` là
@@ -708,7 +708,7 @@ workflows:
 
     scripts: &ios_release_scripts
 
-      # CỔNG SOÁT — cùng lý do với `android-appstore-aab` (đọc chú thích dài ở đó).
+      # CỔNG SOÁT — cùng lý do với `android-aab-aladin` (đọc chú thích dài ở đó).
       # Workflow này bắn thẳng lên TestFlight (`publishing.app_store_connect`) nên
       # bản thiếu khoá tới tay người thử ngay, không kịp rút lại.
       - name: Soát khoá API trước khi phát hành
@@ -736,7 +736,7 @@ workflows:
 
       # ── CỔNG: danh tính app iOS phải khớp `instances/<app>/instance.json` ─
       # Bên Android đã có phép so này từ lâu — `APP_INSTANCE` vs `ANDROID_FLAVOR`
-      # trong workflow `android-appstore-aab`, kèm câu nói đúng cái hại: *"lệch
+      # trong workflow `android-aab-aladin`, kèm câu nói đúng cái hại: *"lệch
       # hai biến này là dựng vỏ app này với chữ của app kia"*. Nửa iOS KHÔNG có
       # phép so tương ứng nào, và nửa iOS mới là nửa nguy hơn: `BUNDLE_ID`,
       # `APP_DISPLAY_NAME`, `APP_INSTANCE` và `ios_signing.bundle_identifier` là

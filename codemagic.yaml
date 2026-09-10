@@ -22,7 +22,12 @@
 #   android_signing_checkfarm (chỉ android-aab-checkfarm):
 #     CHECKFARM_UPLOAD_STORE_FILE_B64, CHECKFARM_UPLOAD_STORE_PASSWORD,
 #     CHECKFARM_UPLOAD_KEY_ALIAS, CHECKFARM_UPLOAD_KEY_PASSWORD
-#   Hai nhóm RIÊNG vì hai pháp nhân riêng — không gộp lại "cho tiện".
+#   Hai nhóm RIÊNG. KHÔNG phải vì hai pháp nhân — từ 10/09/2026 chỉ còn một.
+#   Vì Google Play khoá mục ứng dụng VĨNH VIỄN theo khoá của tệp ĐẦU TIÊN tải
+#   lên: chung khoá thì ngày chuyển giao một app sang pháp nhân khác, khoá ấy
+#   vẫn nằm ở cả hai bên, và đường gỡ duy nhất đi qua hỗ trợ của Google.
+#   (Dòng cũ ghi "vì hai pháp nhân riêng" — đúng kết luận, sai lý do. Người sau
+#   đọc lý do, thấy nó hết hiệu lực, rồi gộp hai nhóm lại.)
 #
 # iOS Code Signing (ios-appstore):
 #   Certificate : aladin-ios-cert  (production, upload Codemagic UI)

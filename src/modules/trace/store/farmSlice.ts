@@ -352,6 +352,19 @@ const farmSlice = createSlice({
           state.farms.unshift(action.payload); // new farms appear on top
         }
       })
+      // Đồng bộ vườn từ máy chủ → ĐỔ THẲNG VÀO STORE.
+      //
+      // Nhánh này từng KHÔNG tồn tại, trong khi `syncTreesFromBackend` ngay dưới
+      // thì có. Hai thunk sinh đôi, một cái nối dây, một cái không — và chỗ hụt
+      // không kêu lên: thunk vẫn `fulfilled`, vẫn trả đúng mảng vườn, chỉ là mảng
+      // đó rơi xuống đất. Hai màn gọi nó đã phải tự bù bằng tay theo hai cách khác
+      // nhau (`FarmListScreen` gọi thêm `loadFarms` trong `.finally`;
+      // `DashboardScreen` đọc thẳng giá trị qua `.unwrap()`), tức mỗi nơi gọi lại
+      // phải tự nhớ một mẹo riêng — và màn thứ ba nào chỉ dispatch rồi đọc
+      // `state.farm.farms` sẽ thấy danh sách CŨ mà không có gì báo.
+      .addCase(syncFarmsFromBackend.fulfilled, (state, action) => {
+        state.farms = action.payload;
+      })
       // Sync trees from backend
       .addCase(syncTreesFromBackend.fulfilled, (state, action) => {
         state.trees = action.payload;

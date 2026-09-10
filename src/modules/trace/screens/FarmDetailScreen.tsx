@@ -1418,6 +1418,45 @@ const FarmDetailMode = ({
   );
 };
 
+// ── Màn này đang ở trạng thái nào ─────────────────────────────────────────────
+//
+// XUẤT RA để bài kiểm gọi được. Trước đây quyết định này là một dòng nằm giữa thân
+// component — `if (!farm) return <AddFarmMode …/>` — nên không có cách nào kiểm nó
+// mà không dựng cả màn hơn 3.000 dòng kèm bản đồ, máy ảnh, native.
+//
+// ⛔ VÌ SAO TÁCH RA: dòng cũ gộp hai tình huống KHÁC HẲN NHAU vào một màn hình.
+//   a) không có `farm_id` — người dùng bấm "Thêm vườn", tạo mới ĐÚNG là ý họ;
+//   b) có `farm_id` — người dùng mở một vườn ĐÃ CÓ (bấm từ danh sách, quét QR),
+//      nhưng vườn chưa nạp xong hoặc kho máy không có nó.
+// Ở ca (b) người dùng gặp một biểu mẫu TRỐNG ở đúng chỗ họ chờ vườn của mình. Việc
+// hợp lý nhất để làm với biểu mẫu trống là điền nó — nên họ vẽ lại ranh, đặt lại
+// tên, và app sinh ra vườn TRÙNG. Không lỗi nào hiện ra, không dòng log nào đỏ.
+// Đó là một nhánh phòng thủ nguỵ trang thành đường đi bình thường: cái vỏ im lặng.
+//
+// Luật ở đây: **chỉ SỰ VẮNG MẶT của `farm_id` mới mở màn tạo.** Mọi ca "có
+// `farm_id` mà chưa có vườn" đều phải nói ra là chưa có — đang tải, hoặc không tải
+// được — chứ không được im lặng đổi nghĩa màn hình.
+export type FarmDetailView = 'create' | 'loading' | 'unavailable' | 'detail';
+
+/** Vòng đời một lượt nạp vườn theo `farm_id`. */
+export type FarmLoadState = 'idle' | 'loading' | 'loaded' | 'failed';
+
+export function resolveFarmDetailView(input: {
+  farmId: string | null | undefined;
+  farm: unknown;
+  loadState: FarmLoadState;
+}): FarmDetailView {
+  if (input.farm) return 'detail';
+  // `TreeEnrollScreen.tsx` điều hướng với `{ farm_id: null }`, các lối "Thêm vườn"
+  // thì không truyền params — chuỗi rỗng, null, undefined cùng nghĩa "chưa chọn".
+  if (!input.farmId) return 'create';
+  // Có id mà chưa có vườn: chưa xong thì báo đang tải, xong rồi mà vẫn không có
+  // (kho máy thiếu, hoặc lượt nạp hỏng) thì báo không tải được — kèm nút thử lại.
+  return input.loadState === 'idle' || input.loadState === 'loading'
+    ? 'loading'
+    : 'unavailable';
+}
+
 // ── Main Screen ───────────────────────────────────────────────────────────────
 const FarmDetailScreen = () => {
   const navigation = useNavigation();
@@ -1470,6 +1509,10 @@ const FarmDetailScreen = () => {
   const [mapReady, setMapReady] = useState(false);
   const [coordMapMinimal, setCoordMapMinimal] = useState(true);
   const [farm, setFarm] = useState<any>(null);
+  // Vòng đời lượt nạp vườn. KHÔNG suy được từ `farm === null`: "chưa nạp xong" và
+  // "nạp xong mà không có" là hai sự thật khác nhau, và gộp chúng lại chính là cái
+  // đã biến màn chi tiết thành màn tạo. Xem `resolveFarmDetailView`.
+  const [farmLoadState, setFarmLoadState] = useState<FarmLoadState>('idle');
   // Search and Pagination state
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -1496,14 +1539,37 @@ const FarmDetailScreen = () => {
     }
   }, [params.scanResult, params.images]);
 
+  /**
+   * Nạp một vườn theo id và GHI LẠI kết quả thật của lượt nạp.
+   *
+   * `loadFarm` trả `payload === undefined` khi kho máy không có vườn đó, và lượt
+   * dispatch có thể `rejected` khi kho máy hỏng. Trước đây cả hai kết cục đều rơi
+   * vào `setFarm(null)` — cùng một giá trị với "chưa nạp" — nên màn không phân biệt
+   * nổi ba tình huống và chọn tình huống dễ nhất: hiện biểu mẫu tạo mới.
+   */
+  const fetchFarm = useCallback(
+    (id: string) => {
+      setFarmLoadState('loading');
+      dispatch(loadFarm(id))
+        .then((action: any) => {
+          const loaded = action?.payload ?? null;
+          setFarm(loaded);
+          // `rejected` cũng đi vào `.then` với redux-toolkit: phân biệt bằng `error`
+          // chứ không bằng payload rỗng, không thì lần nạp hỏng đội lốt "không có".
+          setFarmLoadState(action?.error ? 'failed' : 'loaded');
+        })
+        .catch(() => {
+          setFarm(null);
+          setFarmLoadState('failed');
+        });
+      dispatch(syncTreesFromBackend(id));
+    },
+    [dispatch],
+  );
+
   useEffect(() => {
-    if (farm_id) {
-      dispatch(loadFarm(farm_id)).then((fetchedFarm) => {
-        setFarm(fetchedFarm.payload ?? null);
-      });
-      dispatch(syncTreesFromBackend(farm_id));
-    }
-  }, [farm_id]);
+    if (farm_id) fetchFarm(farm_id);
+  }, [farm_id, fetchFarm]);
 
   // Refetch cây MỖI KHI màn được focus lại (vd quay về sau khi đăng ký cây mới ở
   // màn khác) → cây vừa tạo hiện ngay, không kẹt danh sách cũ (fix "cây không vào vườn").
@@ -1516,13 +1582,14 @@ const FarmDetailScreen = () => {
   useEffect(() => {
     if (params.farm_id && params.farm_id !== farm_id) {
       console.log('[FarmDetailScreen] Detected farm_id change in params:', params.farm_id);
+      // Chỉ đổi id. Lượt nạp do effect ở trên lo — trước đây chỗ này chép lại y
+      // nguyên đoạn nạp, nên có hai bản phải sửa song song và bản này đã bị bỏ quên
+      // đúng lúc bản kia được sửa.
+      setFarm(null);
+      setFarmLoadState('idle');
       setFarm_id(params.farm_id);
-      dispatch(loadFarm(params.farm_id)).then((fetchedFarm) => {
-        setFarm(fetchedFarm.payload ?? null);
-      });
-      dispatch(syncTreesFromBackend(params.farm_id));
     }
-  }, [params]);
+  }, [params, farm_id]);
   // Reset page when search changes
   useEffect(() => {
     setCurrentPage(1);
@@ -2183,7 +2250,41 @@ const FarmDetailScreen = () => {
     }
   };
 
-  if (!farm) {
+  // ⛔ ĐỌC `resolveFarmDetailView` TRƯỚC KHI SỬA KHỐI NÀY. Nhánh `create` chỉ được
+  // chạy khi KHÔNG có `farm_id`. Đưa nó về lại `if (!farm)` là dựng lại đúng lỗi
+  // "màn chi tiết hoá thành màn tạo" ⇒ vườn trùng.
+  const view = resolveFarmDetailView({ farmId: farm_id, farm, loadState: farmLoadState });
+
+  if (view === 'loading') {
+    // Không dùng `StateView status="loading"`: nó vẽ khung xương và BỎ QUA `title`,
+    // nên người dùng không đọc được là màn đang mở vườn nào chứ không phải đứng im.
+    return (
+      <View style={styles.root}>
+        <View style={styles.coordMapLoadingContainer}>
+          <ActivityIndicator size="large" color={COLORS.accent} />
+          <Text style={styles.coordMapLoadingText}>Đang mở vườn…</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (view === 'unavailable') {
+    // Nói thẳng là chưa mở được, và để người dùng thử lại. KHÔNG hiện biểu mẫu
+    // trống: người dùng sẽ điền nó và tạo ra một vườn thứ hai trùng vườn đang có.
+    return (
+      <View style={styles.root}>
+        <StateView
+          status="error"
+          title="Chưa mở được vườn này"
+          message="Vườn chưa có trên máy. Kiểm tra kết nối rồi thử lại; nếu vẫn không được, mở lại từ danh sách vườn."
+          actionLabel="Thử lại"
+          onRetry={() => fetchFarm(farm_id)}
+        />
+      </View>
+    );
+  }
+
+  if (view === 'create') {
     return (
       <AddFarmMode
         coordinates={coordinates}

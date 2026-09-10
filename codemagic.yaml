@@ -557,6 +557,42 @@ workflows:
           fi
           do_bieu_tuong "$BO_DONG_GOI"
 
+          # ── CHÉP MÀN CHÀO CỦA ĐÚNG APP ĐANG DỰNG ───────────────────────────
+          # Cùng luật với bộ biểu tượng ngay trên: `ios/SuperApp/LaunchScreen.storyboard`
+          # là chỗ Xcode ĐỌC, không phải tài sản của app nào.
+          #
+          # Vì sao phải chép chứ không thay biến như `Info.plist`: Xcode chỉ làm phép
+          # thay `$(BIẾN)` bên trong `Info.plist`. Với `.storyboard` thì KHÔNG — đó là
+          # ảnh tĩnh biên dịch sẵn lúc dựng. Nên tới trước bản này, MỌI app dựng từ
+          # nền mã này đều hiện chữ "Aladin" cùng khẩu hiệu tiếng Anh của Aladin ở
+          # màn chào. Đó là màn ĐẦU TIÊN người dùng thấy, trước cả màn đăng nhập.
+          #
+          # Chỗ này cố ý KHÔNG có đường lùi "thiếu thì bỏ qua": bỏ qua nghĩa là dựng
+          # ra app mang màn chào của app khác, và bản dựng vẫn xanh, vẫn ký được.
+          NGUON_MAN_CHAO="instances/${APP_INSTANCE}/ios/LaunchScreen.storyboard"
+          DICH_MAN_CHAO="ios/SuperApp/LaunchScreen.storyboard"
+          if [ ! -f "$NGUON_MAN_CHAO" ]; then
+            echo "❌ thiếu $NGUON_MAN_CHAO"
+            echo "   Mỗi app tự mang màn chào của mình. Chép từ một app đã có rồi"
+            echo "   đổi tên + khẩu hiệu + màu nền theo instances/${APP_INSTANCE}/instance.json."
+            echo "   KHÔNG mượn của app khác — mượn được thì bản dựng vẫn xanh."
+            exit 1
+          fi
+          cp "$NGUON_MAN_CHAO" "$DICH_MAN_CHAO"
+
+          # Đọc lại, không tin là `cp` đã chạy — cùng lý do với bộ biểu tượng.
+          if ! cmp -s "$NGUON_MAN_CHAO" "$DICH_MAN_CHAO"; then
+            echo "❌ màn chào đã chép KHÔNG khớp nguồn của '$APP_INSTANCE'."
+            exit 1
+          fi
+          # Và đo NỘI DUNG, không chỉ đo byte: `cmp` xanh vẫn có thể là chép đúng một
+          # tệp nguồn mang tên app khác. Tên hiển thị của app phải có mặt trong tệp.
+          if ! grep -q "$APP_DISPLAY_NAME" "$DICH_MAN_CHAO"; then
+            echo "❌ màn chào không chứa tên '$APP_DISPLAY_NAME' — nguồn của app này đặt sai nội dung."
+            exit 1
+          fi
+          echo "✅ màn chào iOS: $NGUON_MAN_CHAO → $DICH_MAN_CHAO (có '$APP_DISPLAY_NAME')"
+
       # ── CHỐT MÃ GÓI iOS ─────────────────────────────────────────────────
       # Vì sao KHÔNG truyền `PRODUCT_BUNDLE_IDENTIFIER=` trên dòng lệnh
       # `xcodebuild`: setting truyền kiểu đó áp cho MỌI target trong workspace,
@@ -905,6 +941,42 @@ workflows:
             exit 1
           fi
           do_bieu_tuong "$BO_DONG_GOI"
+
+          # ── CHÉP MÀN CHÀO CỦA ĐÚNG APP ĐANG DỰNG ───────────────────────────
+          # Cùng luật với bộ biểu tượng ngay trên: `ios/SuperApp/LaunchScreen.storyboard`
+          # là chỗ Xcode ĐỌC, không phải tài sản của app nào.
+          #
+          # Vì sao phải chép chứ không thay biến như `Info.plist`: Xcode chỉ làm phép
+          # thay `$(BIẾN)` bên trong `Info.plist`. Với `.storyboard` thì KHÔNG — đó là
+          # ảnh tĩnh biên dịch sẵn lúc dựng. Nên tới trước bản này, MỌI app dựng từ
+          # nền mã này đều hiện chữ "Aladin" cùng khẩu hiệu tiếng Anh của Aladin ở
+          # màn chào. Đó là màn ĐẦU TIÊN người dùng thấy, trước cả màn đăng nhập.
+          #
+          # Chỗ này cố ý KHÔNG có đường lùi "thiếu thì bỏ qua": bỏ qua nghĩa là dựng
+          # ra app mang màn chào của app khác, và bản dựng vẫn xanh, vẫn ký được.
+          NGUON_MAN_CHAO="instances/${APP_INSTANCE}/ios/LaunchScreen.storyboard"
+          DICH_MAN_CHAO="ios/SuperApp/LaunchScreen.storyboard"
+          if [ ! -f "$NGUON_MAN_CHAO" ]; then
+            echo "❌ thiếu $NGUON_MAN_CHAO"
+            echo "   Mỗi app tự mang màn chào của mình. Chép từ một app đã có rồi"
+            echo "   đổi tên + khẩu hiệu + màu nền theo instances/${APP_INSTANCE}/instance.json."
+            echo "   KHÔNG mượn của app khác — mượn được thì bản dựng vẫn xanh."
+            exit 1
+          fi
+          cp "$NGUON_MAN_CHAO" "$DICH_MAN_CHAO"
+
+          # Đọc lại, không tin là `cp` đã chạy — cùng lý do với bộ biểu tượng.
+          if ! cmp -s "$NGUON_MAN_CHAO" "$DICH_MAN_CHAO"; then
+            echo "❌ màn chào đã chép KHÔNG khớp nguồn của '$APP_INSTANCE'."
+            exit 1
+          fi
+          # Và đo NỘI DUNG, không chỉ đo byte: `cmp` xanh vẫn có thể là chép đúng một
+          # tệp nguồn mang tên app khác. Tên hiển thị của app phải có mặt trong tệp.
+          if ! grep -q "$APP_DISPLAY_NAME" "$DICH_MAN_CHAO"; then
+            echo "❌ màn chào không chứa tên '$APP_DISPLAY_NAME' — nguồn của app này đặt sai nội dung."
+            exit 1
+          fi
+          echo "✅ màn chào iOS: $NGUON_MAN_CHAO → $DICH_MAN_CHAO (có '$APP_DISPLAY_NAME')"
 
       # ── CHỐT MÃ GÓI iOS ─────────────────────────────────────────────────
       # Vì sao KHÔNG truyền `PRODUCT_BUNDLE_IDENTIFIER=` trên dòng lệnh
@@ -1393,6 +1465,24 @@ workflows:
         ARCHIVE_PATH: build/ios/OriLife.xcarchive
         IPA_OUTPUT_DIR: build/ios/ipa
         APPLE_TEAM_ID: 3666KPJX5R
+        # Số Apple ID của ỨNG DỤNG này, không phải của đội. Bước "Bump build
+        # number" đọc `$APP_STORE_APPLE_ID` từ một khối `scripts` DÙNG CHUNG
+        # (`&ios_release_scripts`), nên nếu luồng này không khai thì nó lấy giá
+        # trị toàn cục — tức số của ứng dụng Aladin — rồi +1.
+        #
+        # Cả hai nhánh hỏng đều KHÔNG đỏ: lệnh hỏi số bọc trong `2>/dev/null ||
+        # echo ""`, còn Apple thì nhận mọi số lớn hơn số đã tải. Nên chỗ này
+        # phải khai, không thể chờ nó tự kêu.
+        #
+        # Vì sao vá TRƯỚC lượt Codemagic đầu chứ không sau: `submit_to_testflight:
+        # true` ở dưới tải thẳng lên Apple, và Apple KHÔNG nhận số nhỏ hơn số đã
+        # tải. Một lượt lấy nhầm số của app kia là ghim vĩnh viễn, không có đường
+        # lùi. Giá vá trước là đúng dòng này.
+        #
+        # Nguồn: App Store Connect ▸ CheckFarm ▸ App Information (đọc 10/09/2026).
+        # Mốc hiện tại trên TestFlight của app này: build 62, tải tay bằng
+        # `xcrun altool` lúc 20:31 ngày 10/09/2026.
+        APP_STORE_APPLE_ID: 6808575982
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.checkfarm.app

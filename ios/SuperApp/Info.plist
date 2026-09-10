@@ -53,8 +53,15 @@
 	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>Ứng dụng cần sử dụng camera để định danh quả và chụp ảnh nông trại.</string>
+	<!-- Tên app trong câu này lấy từ $(APP_DISPLAY_NAME) — CÙNG biến đang dùng cho
+	     `CFBundleDisplayName` ở trên. Xcode thay thế $(...) bên trong MỌI giá trị
+	     chuỗi của Info.plist lúc build (không riêng gì giá trị nguyên khối), nên
+	     không cần thêm bước dựng nào: `codemagic.yaml` đã truyền biến này cho mọi
+	     workflow ký (`APP_DISPLAY_NAME="$APP_DISPLAY_NAME"` ở lệnh `xcodebuild`),
+	     và `project.pbxproj` đặt sẵn giá trị mặc định `Aladin` cho build cục bộ/
+	     Xcode không qua CI. App Aladin do vậy hiện ĐÚNG câu cũ, không đổi. -->
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Aladin ghi âm môi trường xung quanh cây trong 30 giây để hệ thống học hỏi thêm về điều kiện chụp.</string>
+	<string>$(APP_DISPLAY_NAME) ghi âm môi trường xung quanh cây trong 30 giây để hệ thống học hỏi thêm về điều kiện chụp.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Ứng dụng sử dụng Face ID để đăng nhập nhanh và bảo mật tài khoản.</string>
 	<!-- ĐÃ GỠ NSLocationAlwaysAndWhenInUseUsageDescription. Khai khoá đó là xin quyền vị trí

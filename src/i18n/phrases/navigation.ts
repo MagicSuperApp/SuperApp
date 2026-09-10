@@ -170,6 +170,40 @@ export const NAVIGATION: PhraseMap = {
   // không thì người dùng tiếng Nhật/Trung thấy nguyên tiếng Việt.
   'ALADIN · DANH TÍNH SỐ': { en: 'ALADIN · DIGITAL IDENTITY', zh: 'ALADIN · 数字身份', ja: 'ALADIN · デジタル ID' },
 
+  // Ba khoá dưới đây là màn Đăng nhập và màn Chọn ngôn ngữ — hai màn ĐẦU TIÊN
+  // người dùng thấy. Trước 2026-09-10 cả ba đều là chuỗi tiếng Anh ghi cứng
+  // trong `.tsx` ('Wellcome' — sai chính tả — và 'LOGIN WITH BIOMETRIC'), nên
+  // người dùng Việt mở app lần đầu gặp tiếng Anh sai chính tả ở đúng chỗ quyết
+  // định họ có tin app hay không. Chúng KHÔNG mang tên app, nên dịch được cho
+  // mọi instance mà không phải tách theo app.
+  'DANH TÍNH SỐ': { en: 'DIGITAL IDENTITY', zh: '数字身份', ja: 'デジタル ID' },
+  'Chào mừng': { en: 'Welcome', zh: '欢迎', ja: 'ようこそ' },
+  'Chào mừng @{name}': { en: 'Welcome @{name}', zh: '欢迎 @{name}', ja: 'ようこそ @{name}' },
+  'ĐĂNG NHẬP BẰNG SINH TRẮC': { en: 'LOGIN WITH BIOMETRIC', zh: '生物识别登录', ja: '生体認証でログイン' },
+
+  // Bong bóng trợ lý (`components/AssistantBubble.tsx`). Hai chuỗi này viết cứng
+  // tên **Aladin** tới 2026-09-10, và cả tệp không nhập từ điển lần nào — nên
+  // trong app CheckFarm, trợ lý tự xưng là trợ lý của một app khác, bằng tiếng
+  // Việt, ở cả bốn ngôn ngữ. `{brand}` được `translate.ts:64` thay bằng tên app
+  // đang dựng, nên một dòng khai chạy đúng cho mọi instance.
+  'Xin chào 👋 Mình là trợ lý {brand}. Bạn cần giúp gì hôm nay?': {
+    en: 'Hello 👋 I am the {brand} assistant. What can I help you with today?',
+    zh: '你好 👋 我是 {brand} 助手。今天需要什么帮助？',
+    ja: 'こんにちは 👋 {brand} アシスタントです。今日は何をお手伝いしましょう？',
+  },
+  'Trợ lý {brand}': { en: '{brand} Assistant', zh: '{brand} 助手', ja: '{brand} アシスタント' },
+
+  // Màn khung nhúng (`screens/WebPageScreen.tsx`) từ chối một địa chỉ. Câu này
+  // viết cứng "Aladin" và KHÔNG đi qua từ điển tới 2026-09-10 — mà với CheckFarm
+  // nó là nhánh MẶC ĐỊNH (app khai `website: null` nên mọi lối vào không kèm
+  // tham số đều rơi vào đây), tức người dùng CheckFarm gặp một màn tự xưng tên
+  // nhà khác, ở cả bốn ngôn ngữ.
+  'Địa chỉ này không nằm trong danh sách trang của {brand} nên app không mở.': {
+    en: 'This address is not on the {brand} list of sites, so the app will not open it.',
+    zh: '该网址不在 {brand} 的站点名单内，应用不会打开它。',
+    ja: 'このアドレスは {brand} のサイト一覧にないため、アプリでは開きません。',
+  },
+
   // Nhãn trợ năng của nút sinh trắc ở màn Đăng nhập — nút chỉ có icon nên đây là
   // thứ DUY NHẤT trình đọc màn hình đọc được. Ba nhánh theo cảm biến của thiết bị.
   'Đăng nhập bằng khuôn mặt': { en: 'Sign in with face', zh: '使用面容登录', ja: '顔でログイン' },

@@ -47,6 +47,8 @@
 //     KHÔNG phụ thuộc mạng.
 
 import { APP_INSTANCE } from '@env';
+import type { ImageSourcePropType } from 'react-native';
+import type { AnimationObject } from 'lottie-react-native';
 
 import type { ThemeConfig } from '../theme/theme.config';
 import { DEFAULT_THEME_CONFIG, CHECKFARM_THEME_CONFIG } from '../theme/theme.config';
@@ -80,6 +82,15 @@ export const ALL_MODULES: ModuleId[] = [...MODULE_IDS];
 // Cả hai chỉ tham chiếu bằng ĐỊNH DANH (route/moduleId) — không nhúng component
 // vào config (component import tĩnh ở registry / navigator).
 // ---------------------------------------------------------------------------
+/**
+ * Nguồn cho `LottieView` — KHÁC `ImageSourcePropType`.
+ *
+ * Tách kiểu chứ không dùng chung: `lottie-react-native` không nhận id tài sản
+ * dạng SỐ mà Metro cấp cho ảnh. Khai chung một kiểu thì `tsc` đỏ ở chỗ dùng chứ
+ * không đỏ ở chỗ khai — tức lỗi hiện ra xa nơi gây ra nó.
+ */
+export type LottieSource = string | AnimationObject | { uri: string };
+
 export type TabSpec =
   | { kind: 'host'; route: string }
   | { kind: 'module'; moduleId: ModuleId };
@@ -175,6 +186,80 @@ export interface InstanceConfig {
   tagline: Record<LangCode, string>;
 
   /**
+   * Dấu thương hiệu hiện TRONG app — khác biểu tượng ngoài màn hình chính của
+   * điện thoại (thứ đó do `instances/<mã>/ios|android/` lo, tầng native).
+   *
+   * Hiện 4 chỗ: đầu màn (`components/AppHeader.tsx`), màn chọn ngôn ngữ, màn
+   * chào, màn đăng nhập — tức mọi màn người dùng gặp trước khi đăng nhập, cộng
+   * thanh trên cùng của mọi màn sau đó.
+   *
+   * VÌ SAO PHẢI LÀ TRƯỜNG CHỨ KHÔNG PHẢI MỘT TỆP DÙNG CHUNG: trước đợt này cả
+   * bốn chỗ đều viết `require('../../assets/images/logo.png')`, một tệp duy
+   * nhất, là dấu của **Aladin**. Nên app CheckFarm — pháp nhân khác, hồ sơ cửa
+   * hàng khác — đeo dấu Aladin ở bốn màn. Đó không phải lỗi thẩm mỹ: cửa hàng
+   * đọc việc một app mang nhận diện của app khác là dấu hiệu nhái, và chủ sở
+   * hữu nêu thẳng rủi ro bị đánh dấu rác.
+   *
+   * Và chỗ hỏng thật nằm ở SỐ BỐN: gỡ dấu lạ ra khỏi một app đáng lẽ là sửa một
+   * dòng khai báo, hoá ra là đi tìm bốn lời gọi rải bốn tệp — không phép đo nào
+   * nói cho biết đã hết. Trường này làm số đó về một.
+   *
+   * KIỂU là `ImageSourcePropType` chứ không phải chuỗi đường dẫn: Metro gói ảnh
+   * theo `require` TĨNH lúc dựng. Một chuỗi đường dẫn sẽ biên dịch trót lọt rồi
+   * hỏng lúc chạy — đúng hình dạng lỗi mà lời khai này sinh ra để chặn.
+   * (Cũng khớp ràng buộc QĐ-1 ở đầu tệp: thuần giá trị, không tải động.)
+   */
+  logo: ImageSourcePropType;
+
+  /**
+   * Ảnh nền của TEM MÃ QR dán lên nông sản (`features/treeQr/TreeQrCode.tsx`).
+   *
+   * Tách khỏi `logo` vì hai thứ này rơi khác nhau khi sai, và một trong hai
+   * KHÔNG thu hồi được: tem QR được IN RA và dán lên hàng thật. Tới 2026-09-10
+   * nó là `assets/images/QR_BG.png` — mặt cười của Aladin trên nền xanh Aladin —
+   * dùng chung cho mọi app. Nông dân CheckFarm in tem cho vườn mình và dán dấu
+   * của một doanh nghiệp khác lên nông sản của họ; sửa mã sau đó không gỡ được
+   * những tem đã in.
+   *
+   * Cổng `instanceLogo.test.ts` đời đầu KHÔNG bắt được chỗ này: nó liệt kê hai
+   * đường dẫn ảnh mà đợt vá hôm ấy đã đụng tới, và `QR_BG.png` không nằm trong
+   * hai đường đó. Đó là lý do cổng nay đảo chiều — mọi lời gọi tài sản đều phải
+   * khai, chứ không phải vài đường bị cấm.
+   */
+  qrBackdrop: ImageSourcePropType;
+
+  /**
+   * Linh vật động (Lottie) — bong bóng trợ lý và lớp hướng dẫn lần đầu.
+   * `null` = app này chưa có linh vật riêng; nơi dùng rơi về `logo` tĩnh.
+   *
+   * Cho phép `null` chứ không mượn linh vật của app khác: tới 2026-09-10 cả hai
+   * app cùng phát `assets/animations/blink_logo.json` — mặt cười Aladin, nháy
+   * mắt — ở bong bóng trợ lý nổi trên MỌI màn. Mượn thì CheckFarm có một linh
+   * vật, nhưng là linh vật của nhà khác, đứng ở chỗ dễ thấy nhất trong app.
+   */
+  mascot: { blink: LottieSource; talking: LottieSource } | null;
+
+  /**
+   * Trang web của app này — đích của mục "Tìm hiểu thêm" ở màn chào, và là
+   * bảng tên máy DUY NHẤT được mở trong khung nhúng (`utils/webLink.ts`).
+   *
+   * `null` khi app chưa có trang web. Mục "Tìm hiểu thêm" tự ẩn, và bảng tên
+   * máy cho phép rỗng — tức không địa chỉ nào mở được trong app. Đó là chiều
+   * đúng để rơi: khung nhúng có cầu nối JavaScript, nên "không mở được gì" an
+   * toàn hơn "mở nhầm nhà ai đó".
+   *
+   * Trước đợt này địa chỉ là một hằng dùng chung viết cứng `https://aladin.work/`,
+   * kèm bảng tên máy cũng viết cứng đúng tên đó. Nên app CheckFarm mở trang chủ
+   * của một doanh nghiệp khác, ngay trong app, dưới thanh tiêu đề ghi tên máy
+   * lạ. Không phải chuyện thẩm mỹ: người dùng CheckFarm không có lý do nào để
+   * tin trang đó, mà app thì đang bảo họ rằng đây là nhà mình.
+   *
+   * `hosts` tách khỏi `url` vì một trang thường có hai tên (`x.vn` và `www.x.vn`)
+   * và phép kiểm KHÔNG so theo phần đuôi — lý do ghi ở đầu `utils/webLink.ts`.
+   */
+  website: { url: string; hosts: readonly string[] } | null;
+
+  /**
    * Pháp nhân vận hành app này. Phải khớp `operator` trong
    * `instances/<mã>/instance.json` — có bài kiểm đối chiếu.
    */
@@ -267,6 +352,18 @@ export const ALADIN_INSTANCE: InstanceConfig = {
     zh: '一个应用，四件事 —— 身份始终属于你自己。',
     ja: '一つのアプリで四つの仕事 — 本人確認はあなたのものです。',
   },
+  // NGUYÊN BYTE tệp `assets/images/logo.png` bốn màn vẫn đang dùng — đối chiếu
+  // bằng `cmp` lúc chuyển. Aladin đã phát hành, nên đợt này không được đổi một
+  // pixel nào của nó; cái đổi là CHỖ khai, không phải hình.
+  logo: require('../../instances/aladin/brand/logo.png'),
+  // NGUYÊN BYTE `assets/images/QR_BG.png` đang in trên tem — `cmp` xác nhận lúc
+  // chuyển. Tem đã dán ngoài đời không sửa được, nên đợt này không đổi hình.
+  qrBackdrop: require('../../instances/aladin/brand/qr-backdrop.png'),
+  mascot: {
+    blink: require('../assets/animations/blink_logo.json'),
+    talking: require('../assets/animations/talking_logo.json'),
+  },
+  website: { url: 'https://aladin.work/', hosts: ['aladin.work', 'www.aladin.work'] },
   operator: {
     name: 'Aladin',
     address:
@@ -323,6 +420,26 @@ export const CHECKFARM_INSTANCE: InstanceConfig = {
     zh: '追溯源头，提升农产价值',
     ja: '源流をたどり、農産物の価値を高める',
   },
+  // ÂM BẢN chính thức của nhà CheckFarm — `Logo/bieu-tuong-app/icon-1024.png`,
+  // thu về 256px. Không phải bản dựng ở kho này: màu nền đọc ra từ ảnh là
+  // `#298A4A`, khớp đúng `iconBackground` họ khai trong `instance.json`.
+  //
+  // ⚠ KHÔNG lấy `instances/checkfarm/brand/icon-1024.png` làm dấu trong app: tệp
+  // đó là lớp TIỀN CẢNH cho biểu tượng thích ứng Android — mực TRẮNG trên nền
+  // TRONG SUỐT. Đặt lên nền sáng của app thì không thấy gì, mà cũng chẳng có lỗi
+  // nào để lần ra.
+  logo: require('../../instances/checkfarm/brand/logo.png'),
+  // Dùng chính dấu của họ làm nền tem. Trước đợt này tem QR mọi app đều mang mặt
+  // cười Aladin, mà tem thì IN RA rồi dán lên nông sản — sai ở đây không thu về được.
+  qrBackdrop: require('../../instances/checkfarm/brand/qr-backdrop.png'),
+  // CHƯA CÓ linh vật riêng. Để `null` thay vì mượn linh vật Aladin: bong bóng
+  // trợ lý nổi trên MỌI màn, nên mượn là đặt dấu nhà khác vào chỗ dễ thấy nhất.
+  // Nơi dùng rơi về `logo` tĩnh (`components/BlinkLogo.tsx`).
+  mascot: null,
+  // CHƯA CÓ, và để trống là cố ý — nhà CheckFarm chưa cấp địa chỉ trang web nào.
+  // Điền tạm `aladin.work` vào đây là dựng lại đúng lỗi vừa gỡ, chỉ đổi chỗ viết.
+  // Ngày họ có trang, thêm cả `url` lẫn `hosts` ở ĐÂY, không sửa `utils/webLink.ts`.
+  website: null,
   // ⛔ PHÁP NHÂN VẬN HÀNH — đọc hết trước khi sửa, chỗ này đã đảo chiều một lần.
   //
   // Bản trước ghi CheckFarm là pháp nhân ĐỘC LẬP, kèm câu cấm "KHÔNG điền tạm

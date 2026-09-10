@@ -1,18 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- ⚠ Tệp này KHÔNG có bước dựng nào ghi đè theo instance — mọi app dựng từ nền mã
-     này (kể cả CheckFarm) đều thấy đúng chữ "Aladin" + khẩu hiệu tiếng Anh của
-     Aladin ở màn chào, vì đây là ảnh TĨNH biên dịch sẵn lúc build, không đọc được
-     biến môi trường như `Info.plist` ($(APP_DISPLAY_NAME) chỉ có tác dụng trong
-     Info.plist — Xcode KHÔNG làm phép thay đó cho .storyboard).
-     Nguồn riêng từng app đã có: `instances/aladin/ios/LaunchScreen.storyboard`
-     (y hệt tệp này) và `instances/checkfarm/ios/LaunchScreen.storyboard` (tên +
-     khẩu hiệu + màu nền của CheckFarm). Còn THIẾU một bước dựng — cùng dạng với
-     bước "Soát danh tính app iOS khớp instances/" đang copy
-     `instances/${APP_INSTANCE}/ios/AppIcon.appiconset` đè lên
-     `ios/SuperApp/Images.xcassets/AppIcon.appiconset` — copy
-     `instances/${APP_INSTANCE}/ios/LaunchScreen.storyboard` đè lên CHÍNH tệp này
-     trước bước archive. Ràng buộc tạm đang có hiệu lực: KHÔNG app nào khác Aladin
-     được build ký thật cho tới khi bước copy đó được nối dây trong `codemagic.yaml`. -->
+<!-- Nguồn LaunchScreen của app Aladin — bản y hệt `ios/SuperApp/LaunchScreen.storyboard`
+     hôm 2026-09-10, giữ lại đây làm "instances/<mã>/ios/" cho Aladin, đối xứng với
+     `instances/checkfarm/ios/LaunchScreen.storyboard`. Chưa có bước dựng nào copy tệp
+     này đè lên `ios/SuperApp/LaunchScreen.storyboard` (xem chú thích ở đầu tệp đó) —
+     tệp này hiện chỉ là NGUỒN sẵn sàng, đúng bằng đường lùi hôm nay nên Aladin không
+     đổi hành vi khi bước copy được nối dây. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="15702" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" launchScreen="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES" initialViewController="01J-lp-oVM">
     <device id="retina4_7" orientation="portrait" appearance="light"/>
     <dependencies>

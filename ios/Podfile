@@ -156,6 +156,22 @@ target 'SuperApp' do
           config.build_settings['SWIFT_VERSION'] = '5.9'
         end
 
+        # ── FIX: ExpoModulesCore + Swift 6 strict concurrency ─────────────────
+        # Cùng gốc với khối ngay trên, khác chỗ đau. Xcode 26 dựng pod này ở
+        # `-swift-version 6`, và ở chế độ đó việc chuyển một closure gắn actor
+        # (`@JavaScriptActor () throws -> JavaScriptValue`) qua ranh giới actor
+        # là LỖI chứ không còn là cảnh báo:
+        #   ConcurrentFunctionDefinition.swift — "Sending value of non-Sendable
+        #   type … risks causing data races"
+        # expo-modules-core chưa khai `Sendable` cho kiểu đó.
+        #
+        # Ép 5.9 cho ĐÚNG pod này, không hạ cả dự án: mã của kho vẫn dựng ở
+        # Swift 6, chỉ thư viện chưa theo kịp mới lùi. Bỏ khối này khi expo cập
+        # nhật — dấu hiệu là lượt dựng vẫn xanh sau khi gỡ.
+        if target.name == 'ExpoModulesCore'
+          config.build_settings['SWIFT_VERSION'] = '5.9'
+        end
+
         # ── FIX: expose module `React_RCTAppDelegate` cho APP target ──────────
         # Triệu chứng: dưới use_frameworks! :static + expo (SDK 56), pod
         # React-RCTAppDelegate BUILD ĐƯỢC nhưng KHÔNG vend clang module →

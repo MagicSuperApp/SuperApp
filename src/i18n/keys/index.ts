@@ -22,6 +22,7 @@
  */
 
 import { getLanguage, subscribe } from '../store';
+import { DEFAULT_INSTANCE } from '../../config/instance.config';
 import { DEFAULT_LANG, SOURCE_LANG, type LangCode } from '../types';
 import { TRACE_STRINGS } from './trace';
 import { MAP_STRINGS } from './map';
@@ -61,9 +62,21 @@ export function tk(key: StringKey | string, vars?: Record<string, string | numbe
   const entry = REGISTRY[key as string];
   if (!entry) return key as string;
   const lang = getLanguage();
-  const out = entry[lang] || entry[DEFAULT_LANG] || entry[SOURCE_LANG] || (key as string);
+  const raw = entry[lang] || entry[DEFAULT_LANG] || entry[SOURCE_LANG] || (key as string);
+  // `{brand}` = TÊN APP đang dựng. Lối từ điển cũ thay nó trong `t()`
+  // (`translate.ts:64`); lối khoá này thì KHÔNG, nên tới 2026-09-10 ô hỏi trợ lý ở
+  // màn Truy xuất hiện đúng chữ `Hỏi {brand} về vườn của bạn…` trên máy người dùng
+  // — thấy được bằng mắt, không phép đo nào kêu.
+  //
+  // Thay ở ĐÂY chứ không ở từng chỗ gọi, vì cùng lý do đã ghi ở `translate.ts:78`:
+  // chỗ gọi không phải biết gì, và chuỗi mang `{brand}` viết sau này cũng tự đúng.
+  // Thay TRƯỚC `fill` để một `vars.brand` truyền tay không lặng lẽ đè tên app.
+  const out = raw.includes(BRAND_SLOT) ? raw.split(BRAND_SLOT).join(BRAND) : raw;
   return vars ? fill(out, vars) : out;
 }
+
+const BRAND_SLOT = '{brand}';
+const BRAND = DEFAULT_INSTANCE.displayName;
 
 /** `'Còn {n} cây'` + `{ n: 3 }` → `'Còn 3 cây'`. Chỗ thay thiếu thì giữ nguyên `{n}`. */
 function fill(text: string, vars: Record<string, string | number>): string {

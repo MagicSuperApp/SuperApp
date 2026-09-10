@@ -1,18 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- ⚠ Tệp này KHÔNG có bước dựng nào ghi đè theo instance — mọi app dựng từ nền mã
-     này (kể cả CheckFarm) đều thấy đúng chữ "Aladin" + khẩu hiệu tiếng Anh của
-     Aladin ở màn chào, vì đây là ảnh TĨNH biên dịch sẵn lúc build, không đọc được
-     biến môi trường như `Info.plist` ($(APP_DISPLAY_NAME) chỉ có tác dụng trong
-     Info.plist — Xcode KHÔNG làm phép thay đó cho .storyboard).
-     Nguồn riêng từng app đã có: `instances/aladin/ios/LaunchScreen.storyboard`
-     (y hệt tệp này) và `instances/checkfarm/ios/LaunchScreen.storyboard` (tên +
-     khẩu hiệu + màu nền của CheckFarm). Còn THIẾU một bước dựng — cùng dạng với
-     bước "Soát danh tính app iOS khớp instances/" đang copy
-     `instances/${APP_INSTANCE}/ios/AppIcon.appiconset` đè lên
-     `ios/SuperApp/Images.xcassets/AppIcon.appiconset` — copy
-     `instances/${APP_INSTANCE}/ios/LaunchScreen.storyboard` đè lên CHÍNH tệp này
-     trước bước archive. Ràng buộc tạm đang có hiệu lực: KHÔNG app nào khác Aladin
-     được build ký thật cho tới khi bước copy đó được nối dây trong `codemagic.yaml`. -->
+<!-- Nguồn LaunchScreen của app CheckFarm — tên + khẩu hiệu + màu nền riêng, KHÔNG
+     mượn của Aladin. Ba giá trị chép có nhãn từ nguồn CheckFarm đã khai:
+       - text "CheckFarm"            ← instances/checkfarm/instance.json:3 (displayName)
+       - khẩu hiệu tiếng Anh          ← src/config/instance.config.ts CHECKFARM_INSTANCE.tagline.en
+                                         ("Trace the Source — Elevate the Produce"), chép 2026-09-10
+       - màu nền #298A4A → (0.161, 0.541, 0.290) ← instances/checkfarm/instance.json:23 (android.iconBackground)
+     CHƯA có bước dựng nào copy tệp này đè lên `ios/SuperApp/LaunchScreen.storyboard`
+     (xem chú thích ở đầu tệp đó — cần một bước kiểu "Soát danh tính app iOS" /
+     copy AppIcon.appiconset trong `codemagic.yaml`, ngoài phạm vi sở hữu tệp của
+     đợt dọn này). Tới khi bước đó được nối dây, app CheckFarm dựng ra vẫn hiện màn
+     chào của Aladin — đây là NGUỒN sẵn sàng, chưa phải bản đang chạy. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="15702" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" launchScreen="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES" initialViewController="01J-lp-oVM">
     <device id="retina4_7" orientation="portrait" appearance="light"/>
     <dependencies>
@@ -30,20 +28,20 @@
                         <rect key="frame" x="0.0" y="0.0" width="375" height="667"/>
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                         <subviews>
-                            <label opaque="NO" clipsSubviews="YES" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="Aladin" textAlignment="center" lineBreakMode="middleTruncation" baselineAdjustment="alignBaselines" minimumFontSize="18" translatesAutoresizingMaskIntoConstraints="NO" id="GJd-Yh-RWb">
+                            <label opaque="NO" clipsSubviews="YES" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="CheckFarm" textAlignment="center" lineBreakMode="middleTruncation" baselineAdjustment="alignBaselines" minimumFontSize="18" translatesAutoresizingMaskIntoConstraints="NO" id="GJd-Yh-RWb">
                                 <rect key="frame" x="0.0" y="312" width="375" height="55"/>
                                 <fontDescription key="fontDescription" type="boldSystem" pointSize="44"/>
                                 <color key="textColor" red="1" green="1" blue="1" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
                                 <nil key="highlightedColor"/>
                             </label>
-                            <label opaque="NO" clipsSubviews="YES" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="Trust layer for the gig economy" textAlignment="center" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" translatesAutoresizingMaskIntoConstraints="NO" id="TGL-2y-S1L">
+                            <label opaque="NO" clipsSubviews="YES" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="Trace the Source — Elevate the Produce" textAlignment="center" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" translatesAutoresizingMaskIntoConstraints="NO" id="TGL-2y-S1L">
                                 <rect key="frame" x="20" y="375" width="335" height="20"/>
                                 <fontDescription key="fontDescription" type="system" pointSize="14"/>
                                 <color key="textColor" red="0.85" green="0.92" blue="0.87" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
                                 <nil key="highlightedColor"/>
                             </label>
                         </subviews>
-                        <color key="backgroundColor" red="0.121" green="0.360" blue="0.164" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                        <color key="backgroundColor" red="0.161" green="0.541" blue="0.290" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
                         <constraints>
                             <constraint firstItem="GJd-Yh-RWb" firstAttribute="centerY" secondItem="Ze5-6b-2t3" secondAttribute="centerY" id="moa-c2-u7t"/>
                             <constraint firstItem="GJd-Yh-RWb" firstAttribute="leading" secondItem="Bcu-3y-fUS" secondAttribute="leading" symbolic="YES" id="x7j-FC-K8j"/>

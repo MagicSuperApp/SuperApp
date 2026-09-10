@@ -386,7 +386,7 @@ const LoginScreen = () => {
           <View style={styles.logoRow}>
             <View style={styles.logoOuter}>
               <View style={styles.logoInner}>
-                <Image source={require('../../assets/images/logo.png')} style={{ width: 50, height: 50, borderRadius: 9 }} />
+                <Image source={DEFAULT_INSTANCE.logo} style={{ width: 50, height: 50, borderRadius: 9 }} />
               </View>
             </View>
 
@@ -414,7 +414,7 @@ const LoginScreen = () => {
             {/* `tf` giữ tên người ra NGOÀI khoá từ điển: nối chuỗi rồi mới dịch sẽ
                 không bao giờ khớp, còn khuôn '{name}' cho bản dịch tự đặt lại vị
                 trí (tiếng Nhật/Trung có trật tự từ khác tiếng Việt). */}
-            {activeUser ? tf('Wellcome @{name}', { name: activeUser.username }) : 'Wellcome'}
+            {activeUser ? tf('Chào mừng @{name}', { name: activeUser.username }) : t('Chào mừng')}
           </Text>
           <Text allowFontScaling={false} style={styles.subtitle}>
             {activeUser
@@ -651,7 +651,7 @@ const BioButton: React.FC<{
         </TouchableOpacity>
       </Animated.View>
       <Text style={styles.bioBtnLabel} allowFontScaling={false}>
-        LOGIN WITH BIOMETRIC
+        {t('ĐĂNG NHẬP BẰNG SINH TRẮC')}
       </Text>
     </>
   );

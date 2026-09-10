@@ -41,6 +41,9 @@ import {
   ChatHistoryEntry,
 } from '../services/aladinChat';
 import BlinkLogo from './BlinkLogo';
+// `t()` thay `{brand}` bằng tên app đang dựng (`i18n/translate.ts:64`) — nên hai
+// chỗ dưới đây không còn tự xưng tên một app cố định nữa.
+import { t } from '../i18n';
 
 const BUBBLE_SIZE = 56;
 const EDGE_PADDING = 12;
@@ -93,7 +96,7 @@ const AssistantBubble: React.FC = () => {
     {
       id: 'welcome',
       from: 'bot',
-      text: 'Xin chào 👋 Mình là trợ lý Aladin. Bạn cần giúp gì hôm nay?',
+      text: t('Xin chào 👋 Mình là trợ lý {brand}. Bạn cần giúp gì hôm nay?'),
       ts: Date.now(),
     },
   ]);
@@ -368,7 +371,7 @@ const AssistantBubble: React.FC = () => {
                 <Icon name="question" size={20} color={COLORS.accent} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.sheetTitle}>Trợ lý Aladin</Text>
+                <Text style={styles.sheetTitle}>{t('Trợ lý {brand}')}</Text>
                 <Text style={styles.sheetSub}>Đang trực tuyến</Text>
               </View>
               <TouchableOpacity

@@ -28,8 +28,10 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { WebView } from 'react-native-webview';
 import { COLORS } from '../theme';
+import { t } from '../i18n';
 import { useTk } from '../i18n/keys';
-import { ALADIN_WEB_URL, isAllowedWebUrl } from '../utils/webLink';
+import { DEFAULT_INSTANCE } from '../config/instance.config';
+import { ALLOWED_WEB_ORIGINS, APP_WEB_URL, isAllowedWebUrl } from '../utils/webLink';
 
 type WebPageParams = { url?: string; title?: string; guestNote?: boolean };
 type WebPageRoute = RouteProp<{ WebPage: WebPageParams }, 'WebPage'>;
@@ -39,7 +41,10 @@ const WebPageScreen: React.FC = () => {
   const route = useRoute<WebPageRoute>();
   const tk = useTk();
 
-  const { url = ALADIN_WEB_URL, title, guestNote = true } = route.params ?? {};
+  // App chưa khai trang web thì đích mặc định là chuỗi rỗng — `isAllowedWebUrl`
+  // trượt, và màn hiện đúng lời từ chối bên dưới. Cố ý không rơi về trang của
+  // app khác: đó là lỗi vừa gỡ (xem `InstanceConfig.website`).
+  const { url = APP_WEB_URL ?? '', title, guestNote = true } = route.params ?? {};
   const allowed = isAllowedWebUrl(url);
 
   const webRef = useRef<WebView>(null);
@@ -74,17 +79,30 @@ const WebPageScreen: React.FC = () => {
     [],
   );
 
+  // Tiêu đề rơi về TÊN MÁY CỦA APP ĐANG DỰNG, không về một tên máy gõ cứng.
+  // Tới 2026-09-10 dòng này ghi `'aladin.work'`, nên trong app CheckFarm — vốn
+  // khai `website: null`, tức LUÔN đi vào nhánh từ chối bên dưới — thanh tiêu đề
+  // hiện tên miền của một doanh nghiệp khác, ở cả bốn ngôn ngữ (chuỗi đó không
+  // có trong từ điển nên không lối dịch nào chạm tới).
+  const fallbackTitle = DEFAULT_INSTANCE.website?.hosts[0] ?? '';
+
+  // `open-in-new` CHỈ hiện khi địa chỉ đã qua phép kiểm. `openOutside` gọi
+  // `Linking.openURL(url)` không lọc gì, nên bày nó trong nhánh TỪ CHỐI là dựng
+  // đúng cái mà khối chú thích đầu tệp nói màn này không làm: một nút mở hộ,
+  // đứng ngay dưới câu bảo rằng không mở được.
   const header = (
     <View style={styles.header}>
       <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={12}>
         <Icon name="arrow-left" size={24} color={COLORS.text} />
       </TouchableOpacity>
       <Text style={styles.headerTitle} numberOfLines={1}>
-        {title ?? 'aladin.work'}
+        {title ?? fallbackTitle}
       </Text>
-      <TouchableOpacity onPress={openOutside} hitSlop={12}>
-        <Icon name="open-in-new" size={22} color={COLORS.text} />
-      </TouchableOpacity>
+      {allowed && (
+        <TouchableOpacity onPress={openOutside} hitSlop={12}>
+          <Icon name="open-in-new" size={22} color={COLORS.text} />
+        </TouchableOpacity>
+      )}
     </View>
   );
 
@@ -97,7 +115,7 @@ const WebPageScreen: React.FC = () => {
         <View style={styles.center}>
           <Icon name="shield-alert-outline" size={44} color={COLORS.warning} />
           <Text style={styles.errText}>
-            Địa chỉ này không nằm trong danh sách trang của Aladin nên app không mở.
+            {t('Địa chỉ này không nằm trong danh sách trang của {brand} nên app không mở.')}
           </Text>
           <Text style={styles.errDetail} numberOfLines={2}>{url}</Text>
         </View>
@@ -121,7 +139,7 @@ const WebPageScreen: React.FC = () => {
           <WebView
             ref={webRef}
             source={{ uri: url }}
-            originWhitelist={['https://aladin.work', 'https://www.aladin.work']}
+            originWhitelist={ALLOWED_WEB_ORIGINS}
             onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
             setSupportMultipleWindows={false}
             javaScriptEnabled

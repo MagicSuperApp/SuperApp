@@ -1393,6 +1393,24 @@ workflows:
         ARCHIVE_PATH: build/ios/OriLife.xcarchive
         IPA_OUTPUT_DIR: build/ios/ipa
         APPLE_TEAM_ID: 3666KPJX5R
+        # Số Apple ID của ỨNG DỤNG này, không phải của đội. Bước "Bump build
+        # number" đọc `$APP_STORE_APPLE_ID` từ một khối `scripts` DÙNG CHUNG
+        # (`&ios_release_scripts`), nên nếu luồng này không khai thì nó lấy giá
+        # trị toàn cục — tức số của ứng dụng Aladin — rồi +1.
+        #
+        # Cả hai nhánh hỏng đều KHÔNG đỏ: lệnh hỏi số bọc trong `2>/dev/null ||
+        # echo ""`, còn Apple thì nhận mọi số lớn hơn số đã tải. Nên chỗ này
+        # phải khai, không thể chờ nó tự kêu.
+        #
+        # Vì sao vá TRƯỚC lượt Codemagic đầu chứ không sau: `submit_to_testflight:
+        # true` ở dưới tải thẳng lên Apple, và Apple KHÔNG nhận số nhỏ hơn số đã
+        # tải. Một lượt lấy nhầm số của app kia là ghim vĩnh viễn, không có đường
+        # lùi. Giá vá trước là đúng dòng này.
+        #
+        # Nguồn: App Store Connect ▸ CheckFarm ▸ App Information (đọc 10/09/2026).
+        # Mốc hiện tại trên TestFlight của app này: build 62, tải tay bằng
+        # `xcrun altool` lúc 20:31 ngày 10/09/2026.
+        APP_STORE_APPLE_ID: 6808575982
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.checkfarm.app

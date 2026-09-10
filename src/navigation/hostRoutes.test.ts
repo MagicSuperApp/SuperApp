@@ -50,27 +50,27 @@ function hostRoutesInSource(): string[] {
 describe('`HOST_ROUTES` khai đúng những gì host đang mang', () => {
   it('không màn host nào nằm ngoài lời khai', () => {
     const inSource = hostRoutesInSource();
-    const chuaKhai = inSource.filter((r) => !(HOST_ROUTES as readonly string[]).includes(r));
+    const undeclared = inSource.filter((r) => !(HOST_ROUTES as readonly string[]).includes(r));
 
     // Câu báo lỗi nói THẲNG việc phải làm. Chỗ hở này ra đời vì tập host lớn
     // dần mà không ai đếm; một dòng đỏ nói "thêm vào danh sách" thì người thêm
     // màn làm được ngay, còn một dòng đỏ nói "expected 55 to be 56" thì không.
-    expect({ chuaKhai, canLam: 'thêm vào src/navigation/hostRoutes.ts' }).toEqual({
-      chuaKhai: [],
-      canLam: 'thêm vào src/navigation/hostRoutes.ts',
+    expect({ undeclared, fix: 'thêm vào src/navigation/hostRoutes.ts' }).toEqual({
+      undeclared: [],
+      fix: 'thêm vào src/navigation/hostRoutes.ts',
     });
   });
 
   it('không lời khai nào trỏ vào màn đã gỡ', () => {
     const inSource = new Set(hostRoutesInSource());
-    const khaiThua = (HOST_ROUTES as readonly string[]).filter((r) => !inSource.has(r));
+    const stale = (HOST_ROUTES as readonly string[]).filter((r) => !inSource.has(r));
 
     // Chiều ngược lại cũng phải canh: gỡ một màn mà quên gỡ lời khai thì danh
     // sách này biến thành tài liệu chết, và lần sau người đọc nó tin một tập
     // không còn đúng.
-    expect({ khaiThua, canLam: 'gỡ khỏi src/navigation/hostRoutes.ts' }).toEqual({
-      khaiThua: [],
-      canLam: 'gỡ khỏi src/navigation/hostRoutes.ts',
+    expect({ stale, fix: 'gỡ khỏi src/navigation/hostRoutes.ts' }).toEqual({
+      stale: [],
+      fix: 'gỡ khỏi src/navigation/hostRoutes.ts',
     });
   });
 
@@ -94,13 +94,13 @@ describe('một route thuộc về host HOẶC một module, không thuộc cả
 
   it('mọi route module đều KHÔNG nằm trong tập host', () => {
     const hostSet = new Set<string>(HOST_ROUTES as readonly string[]);
-    const trung: string[] = [];
+    const overlaps: string[] = [];
     for (const id of MODULE_IDS) {
       for (const r of MODULE_CATALOG[id].routes) {
-        if (hostSet.has(r)) trung.push(`${id}:${r}`);
+        if (hostSet.has(r)) overlaps.push(`${id}:${r}`);
       }
     }
-    expect(trung).toEqual([]);
+    expect(overlaps).toEqual([]);
   });
 });
 

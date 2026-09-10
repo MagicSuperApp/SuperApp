@@ -1177,9 +1177,27 @@ const FarmDetailMode = ({
 
   const handleScanExisting3D = () => { };
 
-  const totalFruits = filteredTrees.reduce((sum, t) => sum + (t.fruitCount ?? 0), 0);
-  const areaLabel = farm?.areaSqm
-    ? `${(farm?.areaSqm / 10000).toFixed(1)} ha`
+  // Số của cả VƯỜN, nên đếm trên toàn bộ cây — KHÔNG trên `filteredTrees`.
+  // `filteredTrees` là kết quả lọc theo ô tìm kiếm; gõ "12" vào ô tìm cây thì
+  // dòng đầu màn đổi từ "1.240 quả" thành "8 quả", vẫn đứng cạnh diện tích
+  // vườn và vẫn đọc như một thuộc tính của vườn.
+  //
+  // `null` khi KHÔNG cây nào có số: cộng một dãy toàn "chưa biết" ra 0, và 0 ở
+  // đây đọc như "vườn này không có quả nào".
+  const dsCoQua = sortedTrees.filter((t) => typeof t.fruitCount === 'number');
+  const totalFruits = dsCoQua.length
+    ? dsCoQua.reduce((sum, t) => sum + t.fruitCount, 0)
+    : null;
+
+  // ⛔ Trường tên `areaM2`, KHÔNG phải `areaSqm`.
+  //
+  // `types/index.ts` khai `areaM2`, `farmService.ts` là nơi duy nhất sinh ra nó
+  // (từ `area_sqm` của máy chủ). Hai màn đọc `areaSqm` — một trường không tồn
+  // tại — nên diện tích máy chủ đã tính chưa từng hiện lần nào. Nó hỏng CÂM vì
+  // ngay sau đó có nhánh lui "N điểm", và vì `farm` khai kiểu `any` nên `tsc`
+  // không kêu.
+  const areaLabel = farm?.areaM2
+    ? `${(farm.areaM2 / 10000).toFixed(1)} ha`
     : `${farm?.coordinates?.length ?? 0} ${tk('trace.unit.points')}`;
 
   const moDuong = useOpenWayfind();
@@ -1226,7 +1244,14 @@ const FarmDetailMode = ({
       <View style={styles.bentoFacts}>
         <Icon name="apple-whole" size={13} color={ORG_TONE.sun} />
         <Text style={styles.bentoFactTxt}>
-          {totalFruits.toLocaleString('vi-VN')} quả <Text style={styles.bentoFactHint}>(ước tính)</Text>
+          {totalFruits === null ? (
+            <Text style={styles.bentoFactHint}>chưa đếm quả</Text>
+          ) : (
+            <>
+              {totalFruits.toLocaleString('vi-VN')} quả{' '}
+              <Text style={styles.bentoFactHint}>(ước tính)</Text>
+            </>
+          )}
         </Text>
         <View style={styles.bentoFactDot} />
         <Icon name="ruler-combined" size={13} color={ORG_TONE.rain} />
@@ -1286,7 +1311,7 @@ const FarmDetailMode = ({
             <Icon name="cube" size={13} color={SANG_KHONG_GIAN} />
             <Text style={styles.bentoBadge3DTxt}>3D</Text>
           </View>
-          {!coHinh ? <Text style={styles.bentoPreviewMoi}>Xem sơ đồ 3D</Text> : null}
+          {!coHinh ? <Text style={styles.bentoPreviewMoiToi}>Xem sơ đồ 3D</Text> : null}
         </BentoTile>
         <BentoTile
           flex={1}
@@ -1554,10 +1579,10 @@ const FarmDetailMode = ({
 
             <View style={styles.cayPopupBang}>
               {[
-                { nhan: 'Quả trên cây', gt: String(cayDangXem?.fruitCount ?? 0) },
+                { nhan: 'Quả trên cây', gt: String(cayDangXem?.fruitCount ?? 'chưa đếm') },
                 {
                   nhan: 'Quả dự kiến',
-                  gt: String(cayDangXem?.estimatedFruits ?? 0),
+                  gt: String(cayDangXem?.estimatedFruits ?? 'chưa ghi'),
                   uoc: true,
                 },
                 { nhan: 'Giống', gt: cayDangXem?.species || 'chưa ghi' },
@@ -2759,6 +2784,24 @@ const styles = StyleSheet.create({
   /** Chỉ hiện khi CHƯA có hình để vẽ — lúc đó ô phải tự nói nó mở ra cái gì. */
   bentoPreviewMoi: {
     fontSize: 14, fontWeight: '700', color: ORG_TONE.primary,
+    textAlign: 'center', paddingBottom: 14, paddingHorizontal: 8,
+  },
+  // ⛔ Cùng chữ, KHÁC nền ⇒ phải khác kiểu.
+  //
+  // Ô "Xem sơ đồ 3D" nằm trong `<BentoTile tone="space">`, tức nền TỐI
+  // (`GRADIENT.space`), còn ô "Vẽ ranh giới vườn" nằm trên nền sáng. Trước bản
+  // này cả hai dùng chung `bentoPreviewMoi` với `TONE.primary` — chữ xanh đậm
+  // trên nền tối, tương phản đo được **1,50** ở chặng sáng nhất của dải và
+  // **1,94** ở chỗ chữ thật sự đứng. Ngưỡng AA là 4,5; ngoài nắng thì bằng 0.
+  //
+  // Nó rơi đúng vào vườn VỪA TẠO, chưa đi ranh giới — lúc `FarmShape` trả
+  // `null` nên ô chỉ còn một hình chữ nhật tối và đúng dòng chữ này. Tức lời
+  // mời tàng hình ở đúng lúc người dùng cần nó nhất.
+  //
+  // `Surface.tsx` đã viết ra luật này thành chữ: ô có `onDark` thì chữ bên
+  // trong PHẢI là chữ sáng, và ô không tự đổi màu chữ của con.
+  bentoPreviewMoiToi: {
+    fontSize: 14, fontWeight: '700', color: ORG_NATURE.paper,
     textAlign: 'center', paddingBottom: 14, paddingHorizontal: 8,
   },
 

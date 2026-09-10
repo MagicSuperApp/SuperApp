@@ -44,9 +44,14 @@ describe('`space` chỉ có ba thứ: điểm nối, đường nối, điểm c�
   it('KHÔNG dựng thành — đó chính là cái bóng, chỉ khác tên', () => {
     // `duongThanh` phải bó vào ĐÚNG `iso`. Viết `khoi` (tức iso HOẶC space) là
     // thành mọc lại ở space mà không ai đổi một dòng nào trong phần vẽ.
+    //
+    // Phép CHỨA CHUỖI CON không đủ: `mode === 'iso' || khongGian ? …` giữ
+    // nguyên chuỗi con `mode === 'iso'` trong cửa sổ, nên thành mọc lại ở
+    // `space` mà ca vẫn xanh. Neo cả biểu thức tới dấu `?` thì một `||` chèn
+    // giữa làm phép khớp trượt.
     const i = MA_CHAY.indexOf('const duongThanh =');
     expect(i).toBeGreaterThan(-1);
-    expect(MA_CHAY.slice(i, i + 120)).toContain("mode === 'iso'");
+    expect(MA_CHAY.slice(i, i + 120)).toMatch(/const duongThanh =\s*mode === 'iso'\s*\?/);
   });
 
   it('điểm nối và điểm cây vẫn còn', () => {
@@ -68,7 +73,16 @@ describe('vòng quay phải cư xử tử tế', () => {
     return MA_CHAY.slice(i, MA_CHAY.indexOf('export const FarmShape'));
   })();
 
-  it('hỏi thiết lập GIẢM CHUYỂN ĐỘNG trước khi quay', () => {
+  it('KẾT QUẢ của thiết lập giảm chuyển động phải chặn được vòng quay', () => {
+    // Bản trước chỉ hỏi `toContain('AccessibilityInfo.isReduceMotionEnabled()')`.
+    // Nó chứng minh HÀM ĐƯỢC GỌI, không chứng minh KẾT QUẢ của nó chặn được gì:
+    // đổi `.then((giamChuyenDong) => { if (!giamChuyenDong) chay(); })` thành
+    // `.then(() => chay())` là vòng quay chạy bất kể thiết lập, mà chuỗi kia vẫn
+    // còn nguyên nên ca vẫn xanh. Xanh ở CẢ HAI cực = ca không kiểm gì.
+    //
+    // Nên neo vào chính ĐIỀU KIỆN, không neo vào lời gọi đọc cờ.
+    expect(HOOK).toMatch(/\.then\(\s*\(giamChuyenDong\)\s*=>\s*\{\s*if\s*\(\s*!giamChuyenDong\s*\)\s*chay\(\);/);
+    // và lời gọi đọc cờ vẫn phải có mặt — hai vế, không gộp.
     expect(HOOK).toContain('AccessibilityInfo.isReduceMotionEnabled()');
   });
 

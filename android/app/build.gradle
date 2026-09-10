@@ -491,11 +491,11 @@ apply plugin: 'com.google.gms.google-services'
 
 android.applicationVariants.all { variant ->
     def flavor = variant.flavorName
-    def coCauHinh = file("src/${flavor}/google-services.json").exists()
-    if (!coCauHinh) {
-        def ten = "process${variant.name.capitalize()}GoogleServices"
-        tasks.matching { it.name == ten }.configureEach { it.enabled = false }
-        logger.lifecycle("[firebase] ${flavor}: không có google-services.json → tắt ${ten}")
+    def hasFirebaseConfig = file("src/${flavor}/google-services.json").exists()
+    if (!hasFirebaseConfig) {
+        def taskName = "process${variant.name.capitalize()}GoogleServices"
+        tasks.matching { it.name == taskName }.configureEach { it.enabled = false }
+        logger.lifecycle("[firebase] ${flavor}: không có google-services.json → tắt ${taskName}")
     }
 }
 

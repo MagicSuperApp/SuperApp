@@ -89,9 +89,9 @@ const JoinHomeScreen: React.FC = () => {
       // từ chối cần ba câu khác nhau: "chưa có danh tính" thì người dùng đi tạo,
       // "danh tính dạng cũ" thì họ phải tạo LẠI — bảo họ "thử lại" là gửi họ đi làm
       // một việc không bao giờ xong.
-      const kiem = checkPersonDid(currentUser?.did ?? currentUser?.id ?? null);
+      const didCheck = checkPersonDid(currentUser?.did ?? currentUser?.id ?? null);
       setErrorDetail(
-        !kiem.ok ? kiem.message
+        !didCheck.ok ? didCheck.message
         : !walletAddress ? 'Chưa có ví nhận thưởng. Hãy mở mục Ví để tạo trước khi góp máy.'
         : null,
       );

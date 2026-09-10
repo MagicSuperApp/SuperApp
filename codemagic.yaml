@@ -1416,7 +1416,7 @@ workflows:
         # Nhóm dưới đây phải được tạo TRƯỚC lượt dựng đầu, trong App Store Connect
         # → ứng dụng CheckFarm → TestFlight → Internal Testing.
         beta_groups:
-          - CheckFarm Testing
+          - CheckFarm team
         # Chưa nộp App Store: ứng dụng chưa có siêu dữ liệu, và bước nộp đỏ khi
         # thiếu. Bật lên khi trang cửa hàng đã điền xong.
         submit_to_app_store: false

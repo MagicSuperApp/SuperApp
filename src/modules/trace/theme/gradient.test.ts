@@ -147,3 +147,38 @@ describe('lớp chuyển sắc — `id` phải riêng theo từng lượt dựng
     expect(MA_CHAY).toMatch(/useId\(\)\.replace\(/);
   });
 });
+
+/**
+ * MỌI màn trace phải đi qua lớp nền chung.
+ *
+ * ⛔ Đã trượt một lần, và trượt đúng kiểu đã được cảnh báo trước. Chuyển sắc cắm
+ *    vào `GroundBackdrop` để một chỗ sửa là cả module đổi màu. `TraceNewsScreen`
+ *    tự dựng nền riêng (`<View style={styles.root}>` với một màu phẳng) nên nó
+ *    KHÔNG đi qua lớp đó — mọi màn khác đổi nền, còn nó ở lại nền phẳng. Hai
+ *    loại nền cùng lúc trong một module, không lệnh nào báo.
+ *
+ * Cổng này không đo màu; nó đo DÂY NỐI. Màn nào không nối vào lớp chung thì
+ * ngày mai lớp chung đổi gì, màn đó cũng không nhận.
+ */
+describe('nền chung — không màn nào được đứng ngoài', () => {
+  const THU_MUC = join(__dirname, '..', 'screens');
+
+  it('mọi màn trong `screens/` đều dựng `GroundBackdrop` (thẳng hoặc qua `Ground`)', () => {
+    const { readdirSync } = require('fs') as typeof import('fs');
+    const dungNgoai: string[] = [];
+    for (const ten of readdirSync(THU_MUC)) {
+      if (!ten.endsWith('.tsx') || ten.includes('.test.')) continue;
+      // `*Tab.tsx` KHÔNG phải màn — nó vẽ BÊN TRONG một màn đã có nền rồi. Bắt
+      // nó tự dựng nền là bắt nó vẽ chồng lớp nền thứ hai lên lớp thứ nhất:
+      // chuyển sắc đè chuyển sắc, và mép trên đậm gấp đôi. Loại ra ở đây theo
+      // TÊN chứ không theo danh sách cứng, để tab thêm sau tự được loại đúng.
+      if (ten.endsWith('Tab.tsx')) continue;
+      const src = readFileSync(join(THU_MUC, ten), 'utf8');
+      // `<Ground>` bọc sẵn `GroundBackdrop` bên trong, nên nối kiểu nào cũng được.
+      if (!src.includes('<GroundBackdrop') && !src.includes('<Ground')) {
+        dungNgoai.push(ten);
+      }
+    }
+    expect(dungNgoai).toEqual([]);
+  });
+});

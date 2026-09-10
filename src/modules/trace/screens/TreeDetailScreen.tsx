@@ -42,7 +42,8 @@ import {
   SURFACE as ORG_SURFACE, TONE as ORG_TONE, NATURE as ORG_NATURE,
   ORGANIC_CARD, ORGANIC_TILE, ELEVATION as ORG_ELEV, TYPE as ORG_TYPE,
 } from '../theme/depth';
-import { GroundBackdrop } from '../components/layered/Organic';
+import { GradientFill, GroundBackdrop } from '../components/layered/Organic';
+import { BentoRow, BentoStat } from '../components/layered/Surface';
 import { useTk } from '../../../i18n/keys';
 import StateView from '../../../components/state/StateView';
 import RemoteImage from '../../../components/RemoteImage';
@@ -756,6 +757,7 @@ const TreeDetailScreen = () => {
 
       {/* Tree info card */}
       <View style={styles.heroCard}>
+        <GradientFill name="tile" />
         <View style={styles.heroTop}>
           <View style={styles.heroLeft}>
             <View style={styles.heroIconWrap}>
@@ -797,27 +799,56 @@ const TreeDetailScreen = () => {
           <View style={styles.heroDividerLine} />
         </View>
 
-        <View style={styles.heroStats}>
-          {[
-            { icon: 'counter', val: totalFruits, label: tk('trace.tree.statRecorded'), color: ORG_TONE.primary },
-            { icon: 'apple-whole', val: onTreeCount, label: tk('trace.tree.statOnTree'), color: ORG_TONE.leaf },
-            { icon: 'basket-shopping', val: harvestedCount, label: tk('trace.tree.statPicked'), color: ORG_TONE.sun },
-            { icon: 'circle-xmark', val: lostCount, label: tk('trace.tree.statLost'), color: ORG_NATURE.barkSoft },
-          ].map((s, i) => (
-            <View
-              key={i}
-              style={[
-                styles.heroStatItem,
-                i < 3 && { borderRightWidth: 1, borderRightColor: COLORS.border },
-              ]}
-            >
-              <Icon name={s.icon} size={15} color={s.color} />
-              <Text style={[styles.heroStatVal, { color: s.color }]}>{s.val}</Text>
-              <Text style={styles.heroStatLabel}>{s.label}</Text>
-            </View>
-          ))}
-        </View>
       </View>
+
+      {/*
+        BỐN CON SỐ, LƯỚI 2×2 — trước bản này là một dải bốn ô chia bằng vạch kẻ
+        nằm TRONG thẻ, đúng khuôn vừa gỡ khỏi màn chi tiết vườn.
+
+        Vạch kẻ dọc nói "bốn thứ này ngang hàng nhau", và ở đây câu đó đúng —
+        nhưng nó cũng nhét bốn con số vào một hàng hẹp, nên nhãn tiếng Việt
+        ("quả đã ghi", "trên cây") phải co lại hoặc cắt cụt. Lưới 2×2 cho mỗi ô
+        gấp đôi bề ngang mà vẫn giữ nguyên câu "bốn thứ ngang hàng".
+
+        Ra NGOÀI thẻ vì chúng là bốn ô, không phải một phần của thẻ tên cây.
+      */}
+      <BentoRow style={styles.treeStatsRow}>
+        {/*
+          `clipboard-list`, KHÔNG phải `counter`.
+
+          Bản trước ghi `icon: 'counter'` trong một mảng nội tuyến không ràng
+          kiểu, mà bộ biểu tượng KHÔNG có tên đó — nên ô "quả đã ghi" vẫn vẽ ra
+          một chỗ trống suốt thời gian qua, và không lệnh nào báo. Kiểu chặt của
+          `BentoStat` bắt được ngay lúc chuyển sang lưới.
+        */}
+        <BentoStat
+          flex={1}
+          icon="clipboard-list"
+          value={totalFruits}
+          label={tk('trace.tree.statRecorded')}
+        />
+        <BentoStat
+          flex={1}
+          icon="apple-whole"
+          value={onTreeCount}
+          label={tk('trace.tree.statOnTree')}
+        />
+      </BentoRow>
+      <BentoRow style={styles.treeStatsRow}>
+        <BentoStat
+          flex={1}
+          tone="sun"
+          icon="basket-shopping"
+          value={harvestedCount}
+          label={tk('trace.tree.statPicked')}
+        />
+        <BentoStat
+          flex={1}
+          icon="circle-xmark"
+          value={lostCount}
+          label={tk('trace.tree.statLost')}
+        />
+      </BentoRow>
 
       {/* Máy chủ mô tả cây này bằng lời (`/api/tree_views?describe=1` → features_vi):
           cành chính hướng nào, quả nằm tầng nào… Đặt NGAY DƯỚI tên cây vì đây là
@@ -1571,6 +1602,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
 
+  treeStatsRow: { marginBottom: 8 },
   heroCard: {
     backgroundColor: ORG_SURFACE.raised,
     borderRadius: 20,

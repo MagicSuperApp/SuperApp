@@ -64,6 +64,27 @@ export const chuanHoa = (ring: readonly DiemDat[]): ((p: DiemDat) => DiemVe) => 
   });
 };
 
+/**
+ * Xoay nhẹ quanh TÂM hộp 0..1, trước khi chiếu.
+ *
+ * Vì sao xoay quanh tâm chứ không quanh gốc: xoay quanh gốc (0,0) đẩy cả hình
+ * lệch ra một góc, nên phải bù lại bằng một phép dời — hai phép cho một việc, và
+ * chỗ bù đó là chỗ sai khi ai đó đổi góc.
+ *
+ * "Nhẹ" là một góc nhỏ có chủ ý: đủ để mảnh đất thôi nằm thẳng hàng với mép ô
+ * (thứ làm nó đọc ra "một hình vẽ"), chưa đủ để người ta phải nghiêng đầu.
+ */
+export const xoayNhe = (deg: number) => {
+  const r = (deg * Math.PI) / 180;
+  const c = Math.cos(r);
+  const s = Math.sin(r);
+  return (d: DiemVe): DiemVe => {
+    const x = d.x - 0.5;
+    const y = d.y - 0.5;
+    return { x: 0.5 + x * c - y * s, y: 0.5 + x * s + y * c };
+  };
+};
+
 /** Trải phẳng hộp 0..1 vào khung `viewBox` 100×100, chừa lề 8. */
 export const phang = (d: DiemVe): DiemVe => ({ x: 8 + d.x * 84, y: 8 + d.y * 84 });
 

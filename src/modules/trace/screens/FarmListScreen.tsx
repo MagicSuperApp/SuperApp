@@ -38,6 +38,7 @@ import { RootState } from '../../../store';
 import { loadFarms, syncFarmsFromBackend } from '../store/farmSlice';
 import { Ground } from '../components/layered/Surface';
 import { Leaf } from '../components/layered/Organic';
+import FarmShape from '../components/layered/FarmShape';
 import {
   ELEVATION, NATURE, ORGANIC_CARD, ORGANIC_TILE, RADIUS,
   SPACE, SURFACE, TONE, TYPE,
@@ -105,8 +106,24 @@ const FarmCard: React.FC<{
           <Leaf size={78} color={NATURE.moss} opacity={0.07} rotate={22} style={styles.cardLeaf} />
 
           <View style={styles.cardHead}>
+            {/*
+              Ô này vẽ CHÍNH mảnh vườn đó, không phải biểu tượng cái cây.
+
+              Một biểu tượng cây giống hệt nhau trên mọi thẻ thì không phân biệt
+              được thẻ nào với thẻ nào — người có sáu vườn phải đọc TÊN mới biết
+              đang nhìn vườn nào. Hình bóng mảnh đất thì mỗi vườn một khác, và
+              nó nhận ra được trước cả khi đọc chữ.
+
+              `FarmShape` trả `null` khi vườn chưa đủ ba điểm ranh giới. Lúc ấy
+              rơi về biểu tượng cũ — và chính sự khác nhau đó là tín hiệu: thẻ
+              nào còn hiện biểu tượng là thẻ chưa vẽ ranh giới.
+            */}
             <View style={styles.cardIcon}>
-              <Icon name="tree" size={20} color={TONE.primary} />
+              {coRanh(item) ? (
+                <FarmShape farm={item} mode="flat" />
+              ) : (
+                <Icon name="tree" size={20} color={TONE.primary} />
+              )}
             </View>
             <View style={styles.cardHeadText}>
               <Text style={styles.cardName} numberOfLines={1}>{item.name}</Text>
@@ -137,6 +154,9 @@ const FarmCard: React.FC<{
       </Animated.View>
     );
   };
+
+/** Đủ ba điểm mới thành một mảnh đất vẽ được — dưới đó `FarmShape` trả `null`. */
+const coRanh = (farm: any): boolean => (farm?.coordinates?.length ?? 0) >= 3;
 
 const Stat: React.FC<{ icon: IconName; value: string; label: string; tone: string }> = ({
   icon, value, label, tone,
@@ -339,6 +359,8 @@ const styles = StyleSheet.create({
   cardIcon: {
     width: 46, height: 46, ...ORGANIC_TILE,
     alignItems: 'center', justifyContent: 'center', backgroundColor: TONE.primarySoft,
+    // Hình vườn là một lớp SVG trải kín ô; thiếu dòng này thì nó tràn qua góc bo.
+    overflow: 'hidden',
   },
   cardHeadText: { flex: 1, minWidth: 0, gap: 2 },
   cardName: { fontSize: 18, fontWeight: '700', color: NATURE.bark },

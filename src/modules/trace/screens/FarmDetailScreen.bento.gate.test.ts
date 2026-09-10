@@ -119,11 +119,19 @@ describe('dòng thời gian là Ô LỚN NHẤT, không phải phần đuôi', (
 
 describe('hai ô xem trước HIỆN thứ chúng mở, không phải icon + chữ', () => {
   it('cả hai ô đều vẽ chính mảnh vườn này', () => {
-    // `iso` cho ô sơ đồ 3D, `flat` cho ô ranh giới — cùng một mảnh đất, hai cách
-    // nhìn, cả hai dựng từ `farm.coordinates` thật.
+    // `space` cho ô sơ đồ 3D, `flat` cho ô ranh giới — cùng một mảnh đất, hai
+    // cách nhìn, cả hai dựng từ `farm.coordinates` thật.
     expect(dem('<FarmShape')).toBe(2);
-    expect(MA_CHAY).toContain('mode="iso"');
+    expect(MA_CHAY).toContain('mode="space"');
     expect(MA_CHAY).toContain('mode="flat"');
+  });
+
+  it('ô sơ đồ 3D là ô TỐI, và là ô tối DUY NHẤT của trang', () => {
+    // `space` chỉ đúng trên nền tối: vầng sáng cần nền tối để đọc ra không gian.
+    // Và luật Bento cho phép đúng MỘT ô tối mỗi trang — cái thứ hai làm cả hai
+    // mất tác dụng làm dấu "khác loại".
+    expect(MA_CHAY).toContain('tone="space"');
+    expect(dem('tone="space"')).toBe(1);
   });
 
   it('KHÔNG có biểu tượng nào ĐỨNG THAY NHÃN trong hai ô đó', () => {

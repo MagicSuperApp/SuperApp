@@ -97,6 +97,15 @@ const ITEMS_PER_PAGE = 10;
  */
 const CHUA_DO_THANH_DAY = 168;
 
+/**
+ * Màu phát sáng của ô không gian — PHẢI khớp `SANG` trong `layered/FarmShape`.
+ *
+ * Hai chỗ vì huy hiệu là JSX của màn còn hình là SVG của component, mà chúng
+ * nằm chồng lên nhau nên lệch một sắc là thấy ngay. Ghi ra đây để lần sau đổi
+ * thì đổi cả hai.
+ */
+const SANG_KHONG_GIAN = '#7FE7C4';
+
 interface RouteParams { farm?: any | null }
 
 const requestLocationPermission = async () => {
@@ -1245,14 +1254,28 @@ const FarmDetailMode = ({
         trong hàng này còn chữ.
       */}
       <BentoRow style={styles.bentoPreviews}>
-        <BentoTile flex={1} onPress={onView3DFarm} padded={false} style={styles.bentoPreview}>
-          <FarmShape farm={farm} trees={filteredTrees} mode="iso" />
+        {/*
+          Ô KHÔNG GIAN — ô tối duy nhất của trang.
+
+          Nền tối không phải để cho khác lạ: một khối phát sáng chỉ đọc ra "không
+          gian" khi quanh nó tối. Cùng hình ấy trên nền trắng thì vầng sáng biến
+          mất và nó tụt về một hình vẽ phẳng. Không đổ bóng — bóng dưới một khối
+          phát sáng kéo nó về lại thành "một tấm thẻ".
+        */}
+        <BentoTile
+          flex={1}
+          tone="space"
+          onPress={onView3DFarm}
+          padded={false}
+          style={styles.bentoPreview}
+        >
+          <FarmShape farm={farm} trees={filteredTrees} mode="space" />
           {/* Huy hiệu 3D ở GÓC, không phải nhãn giữa ô: hình nghiêng đã nói đây
               là không gian, huy hiệu chỉ xác nhận. Đặt ở góc trên-trái vì đó là
               chỗ mắt chạm đầu tiên khi đọc từ trái sang, và vì mảnh vườn nghiêng
               luôn dồn về giữa-dưới nên góc ấy trống. */}
           <View style={styles.bentoBadge3D}>
-            <Icon name="cube" size={13} color={ORG_TONE.primary} />
+            <Icon name="cube" size={13} color={SANG_KHONG_GIAN} />
             <Text style={styles.bentoBadge3DTxt}>3D</Text>
           </View>
           {!coHinh ? <Text style={styles.bentoPreviewMoi}>Xem sơ đồ 3D</Text> : null}
@@ -2559,16 +2582,21 @@ const styles = StyleSheet.create({
     fontSize: 12, fontWeight: '700', color: ORG_NATURE.barkSoft,
     paddingBottom: 8,
   },
-  /** Huy hiệu 3D — góc trên-trái, nền mờ để đọc được trên cả nền hình lẫn nền ô. */
+  /**
+   * Huy hiệu 3D — góc trên-trái, trên NỀN TỐI.
+   *
+   * Nền của nó là một lớp sáng rất mờ chứ không phải màu đặc: ô là không gian
+   * phát sáng, nên một chip trắng đục nằm đè lên trông như dán giấy lên màn.
+   */
   bentoBadge3D: {
     position: 'absolute', top: 8, left: 8,
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: 7, paddingVertical: 3,
     borderRadius: 999,
-    backgroundColor: ORG_SURFACE.raised,
-    borderWidth: 1, borderColor: ORG_TONE.border,
+    backgroundColor: 'rgba(127, 231, 196, 0.12)',
+    borderWidth: 1, borderColor: 'rgba(127, 231, 196, 0.32)',
   },
-  bentoBadge3DTxt: { fontSize: 11, fontWeight: '800', color: ORG_TONE.primary },
+  bentoBadge3DTxt: { fontSize: 11, fontWeight: '800', color: SANG_KHONG_GIAN },
 
   /** Chỉ hiện khi CHƯA có hình để vẽ — lúc đó ô phải tự nói nó mở ra cái gì. */
   bentoPreviewMoi: {

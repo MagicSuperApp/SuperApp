@@ -12,7 +12,7 @@
  */
 
 import {
-  chuanHoa, hopLe, nghieng, noiDiem, phang, viTriCay, vongRanh,
+  chuanHoa, hopLe, nghieng, noiDiem, phang, viTriCay, vongRanh, xoayNhe,
 } from './farmShapeGeo';
 
 describe('lọc điểm — thiếu thì loại, không đoán', () => {
@@ -173,5 +173,40 @@ describe('hai khung vẽ nằm gọn trong viewBox 100×100', () => {
     // Hình THOI: bốn góc ô vuông chiếu ra bốn đỉnh lệch nhau, không còn thẳng cột.
     const xs = new Set(ds.map((d) => Math.round(d.x)));
     expect(xs.size).toBeGreaterThan(2);
+  });
+});
+
+describe('xoay nhẹ — quanh TÂM, không quanh gốc', () => {
+  it('tâm hộp đứng yên', () => {
+    // Xoay quanh gốc (0,0) thì tâm dời đi, và cả hình lệch ra một góc. Ca này
+    // là cách rẻ nhất để phân biệt hai phép xoay.
+    const d = xoayNhe(37)({ x: 0.5, y: 0.5 });
+    expect(d.x).toBeCloseTo(0.5, 9);
+    expect(d.y).toBeCloseTo(0.5, 9);
+  });
+
+  it('giữ nguyên khoảng cách tới tâm', () => {
+    const truoc = { x: 0.9, y: 0.5 };
+    const sau = xoayNhe(23)(truoc);
+    const r = (p: { x: number; y: number }) => Math.hypot(p.x - 0.5, p.y - 0.5);
+    expect(r(sau)).toBeCloseTo(r(truoc), 9);
+  });
+
+  it('xoay 0° là phép đồng nhất', () => {
+    const d = xoayNhe(0)({ x: 0.2, y: 0.8 });
+    expect(d.x).toBeCloseTo(0.2, 9);
+    expect(d.y).toBeCloseTo(0.8, 9);
+  });
+
+  it('xoay 360° quay về đúng chỗ cũ', () => {
+    const d = xoayNhe(360)({ x: 0.2, y: 0.8 });
+    expect(d.x).toBeCloseTo(0.2, 9);
+    expect(d.y).toBeCloseTo(0.8, 9);
+  });
+
+  it('KHÔNG sinh NaN với góc âm', () => {
+    const d = xoayNhe(-14)({ x: 0.1, y: 0.1 });
+    expect(Number.isFinite(d.x)).toBe(true);
+    expect(Number.isFinite(d.y)).toBe(true);
   });
 });

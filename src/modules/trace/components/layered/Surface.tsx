@@ -188,9 +188,10 @@ export const BentoTile: React.FC<{
       style={[
         styles.bentoTile,
         ORGANIC_CARD,
-        // Ô sáng cần viền tóc để có mép trên nền sáng; ô tối thì tự tách bằng
-        // sắc độ, thêm viền chỉ làm nó trông như bị kẻ khung.
-        dark ? ELEVATION.cardStrong : styles.bentoTileHairline,
+        // Ô sáng cần viền tóc để có mép trên nền sáng. Ô tối thì KHÔNG viền và
+        // KHÔNG bóng: nó đã tự tách khỏi nền bằng sắc độ, và một bóng đổ dưới
+        // khối phát sáng kéo nó về lại thành "một tấm thẻ" — đúng thứ vừa gỡ.
+        dark ? null : styles.bentoTileHairline,
         padded && styles.bentoTilePad,
         style,
       ]}

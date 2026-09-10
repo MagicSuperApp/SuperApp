@@ -343,7 +343,13 @@ if (trungDid) {
         //                   không đòi liên tiếp)
         //   97 đã tiêu    → giữ 97 là Play từ chối, mất trọn một vòng dựng-nộp
         // Rẻ một chiều thì chọn chiều rẻ, đừng chờ đo cái không đo được.
-        versionCode 98
+        // Build 99 (2026-09-09): tăng CHỦ ĐỘNG trước một lượt dựng tay, không kèm
+        // tính năng nào. 98 nằm trong `develop` từ 01/09; kho này KHÔNG chứa bằng
+        // chứng nào nói 98 đã lên Play hay chưa — chỉ Play Console trả lời được.
+        // Vẫn nhảy sang 99 vì hai đường không cân nhau, y như lần trước:
+        //   98 còn trống → nhảy mất KHÔNG GÌ (Play đòi số TĂNG DẦN, không đòi liền kề)
+        //   98 đã tiêu   → giữ 98 là Play từ chối, mất trọn một vòng dựng-nộp
+        versionCode 99
         versionName "2.0"
 
         // ✅ Support 16KB page size (required by Google Play Store 2024)

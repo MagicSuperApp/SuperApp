@@ -74,3 +74,49 @@ describe('tk', () => {
     expect(tk('trace.news.end', {})).toBe('That is all for now');
   });
 });
+
+/**
+ * `{brand}` — tên app phải được THAY, không hiện nguyên dấu ngoặc nhọn.
+ *
+ * ⛔ Lỗi thật, báo từ thực địa: nút Trợ lý ở trang Tổng quan hiện đúng chữ
+ *    "Hỏi {brand} về vườn của bạn…".
+ *
+ * Gốc rễ là một chỗ hở giữa hai hàm dịch. `t()` (`i18n/translate.ts`) thay
+ * `{brand}` TẬP TRUNG, và khối chú thích ở đó nói rõ vì sao: để nơi gọi không
+ * phải nhớ, vì "thay ở từng chỗ gọi thì mỗi chuỗi mới lại là một dịp quên".
+ * `tk()` ra đời sau, cùng việc, mà không mang theo vế ấy — nó chỉ thay khi
+ * người gọi TRUYỀN `vars`, trong khi cả ý của thiết kế là không phải truyền.
+ *
+ * Cái nặng hơn không phải cái dễ thấy. `map.permission.why` là câu XIN QUYỀN
+ * VỊ TRÍ — đúng lớp hỏng mà `t()` sinh ra để chặn: người dùng CheckFarm bị từ
+ * chối quyền sẽ đọc một câu trỏ tới một tên app không có trên máy họ, và kẹt ở
+ * đúng chỗ mà câu hướng dẫn lẽ ra gỡ.
+ */
+describe('tk thay {brand} như t', () => {
+  it('KHÔNG khoá nào trả về chuỗi còn nguyên `{brand}`, ở mọi ngôn ngữ', () => {
+    const sot: string[] = [];
+    for (const lang of SUPPORTED_LANGS) {
+      setLanguage(lang);
+      for (const key of allKeys()) {
+        if (tk(key).includes('{brand}')) sot.push(`${key} · ${lang}`);
+      }
+    }
+    expect(sot).toEqual([]);
+  });
+
+  it('vẫn thay được khi chuỗi có CẢ `{brand}` lẫn chỗ thay khác', () => {
+    // Hai phép thay chạy nối nhau, không cái nào nuốt cái kia.
+    const s = tk('map.permission.why');
+    expect(s).not.toContain('{brand}');
+    expect(s.length).toBeGreaterThan(0);
+  });
+
+  it('phép đo này có thật sự bắt được lỗi không', () => {
+    // Đối chứng cho chính bài trên: nếu bộ khoá KHÔNG còn chuỗi nào chứa
+    // `{brand}` thì bài đầu xanh vì không có gì để đo, chứ không phải vì đã vá.
+    const coCho = Object.values(ALL_STRINGS).some((entry) =>
+      Object.values(entry as Record<string, string>).some((v) => v.includes('{brand}')),
+    );
+    expect(coCho).toBe(true);
+  });
+});

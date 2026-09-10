@@ -2,15 +2,21 @@
   "id": "checkfarm",
   "displayName": "CheckFarm",
   "superapp": {
-    "rulesVersion": 1,
+    "rulesVersion": 3,
     "phoenixDid": null
   },
+  "modules": "all",
   "operator": {
-    "name": "Công ty Cổ phần CheckFarm",
-    "nameEn": "CheckFarm Inc",
-    "address": "404 Nguyễn Thái Bình, Phường Tân Lập, tỉnh Đắk Lắk, Việt Nam",
-    "addressEn": "404 Nguyen Thai Binh, Tan Lap Ward, Dak Lak Province, Viet Nam",
-    "contact": "contact@checkfarm.com"
+    "name": "Aladin",
+    "address": "Số nhà 77, đường Chà Là 11, Khu đô thị Vinhomes Ocean Park 2, Xã Nghĩa Trụ, Tỉnh Hưng Yên, Việt Nam",
+    "addressEn": "No. 77, Cha La 11 Street, Vinhomes Ocean Park 2, Nghia Tru Commune, Hung Yen Province, Vietnam",
+    "contact": "aladincontract@gmail.com",
+    "sharedWith": "aladin",
+    "transferTo": {
+      "name": "Công ty Cổ phần CheckFarm",
+      "nameEn": "CheckFarm Inc",
+      "since": "2026-09-10"
+    }
   },
   "android": {
     "applicationId": "com.checkfarm.app",

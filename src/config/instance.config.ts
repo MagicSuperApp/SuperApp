@@ -20,12 +20,25 @@
 // không chặn. Ngày SuperApp thêm module thứ năm mà một app quên khai, app đó
 // lặng lẽ thiếu tính năng và không phép đo nào kêu.
 //
-// Nên tập module nay là HẰNG DẪN XUẤT từ `MODULE_REGISTRY` (`ALL_MODULES` bên
-// dưới) — thêm module vào registry là CẢ HAI app có, không ai phải nhớ.
+// ── ĐỔI LẠI 2026-09-10: app CHỌN được module, qua một lời khai ──────────────
+// Chủ sở hữu bẻ lại hướng: nền tảng sẽ có hàng trăm module, và mỗi doanh nghiệp
+// dựng app riêng chỉ cần một phần trong đó. Bắt họ nhận hết là bắt họ phát hành
+// một app đầy tính năng không liên quan tới ngành của họ.
 //
-// Cái được phép khác nhau giữa hai app là **lớp trình bày**: tên, chủ đề màu,
-// thứ tự và độ nổi bật của điểm vào. KHÔNG phải sự CÓ MẶT của module. Ranh giới
-// đó là toàn bộ nội dung của tệp này.
+// Lệnh cấm ở trên KHÔNG sai lúc nó được viết — chỗ hỏng nó chỉ ra là thật. Cái
+// sai là cách chữa: cấm hẳn thay vì làm hai ca phân biệt được. Bản này giữ
+// nguyên chẩn đoán và đổi thuốc.
+//
+// Trường `modules: 'all' | ModuleId[]` (xem `InstanceConfig` bên dưới). `'all'`
+// là lời khai "app này lấy cả sổ, kể cả module thêm sau" — nhờ nó, "cố ý không
+// lấy" và "quên khai" thôi cho ra cùng một dữ liệu, và phép kiểm bắt được ca
+// thứ hai. Danh sách để bấm chọn ở `navigation/moduleCatalog.ts`.
+//
+// Hai app hiện tại đều khai `'all'`, nên bản này KHÔNG đổi hành vi một bit nào —
+// nó chỉ mở đường. Việc chọn module là quyền của kho app từng doanh nghiệp.
+//
+// Cái được phép khác nhau giữa hai app: tên, chủ đề màu, thứ tự và độ nổi bật
+// của điểm vào — và nay cả TẬP module. Ranh giới đó là nội dung của tệp này.
 //
 // RÀNG BUỘC SỐNG CÒN (INV-SEC / QĐ-1) — giữ nguyên:
 //   - Thuần GIÁ TRỊ: chuỗi id, mảng id, ref tới ThemeConfig đã compile-sẵn.
@@ -100,6 +113,36 @@ export interface OperatorInfo {
   addressEn: string | null;
   /** Hòm thư nhận yêu cầu về dữ liệu cá nhân. */
   contact: string | null;
+
+  /**
+   * Mã app mà app này ĐANG MƯỢN pháp nhân — khai tường minh khi hai app cùng
+   * một pháp nhân vận hành.
+   *
+   * VÌ SAO PHẢI KHAI thay vì cứ để trùng: chép nhầm khối `operator` của app cũ
+   * sang app mới cho ra ĐÚNG cùng một trạng thái dữ liệu với việc mượn có chủ ý.
+   * Không có trường này thì phép kiểm chỉ còn hai đường, và cả hai đều tệ — cấm
+   * trùng (chặn cả ca hợp lệ) hoặc cho trùng (không bắt được ca chép nhầm). Khai
+   * ra thì ca chép nhầm vẫn đỏ, vì bản chép không mang lời khai.
+   *
+   * Không cho bắc cầu: app được mượn phải tự đứng tên, không được lại đi mượn
+   * app thứ ba.
+   */
+  sharedWith?: string;
+
+  /**
+   * Pháp nhân sẽ NHẬN CHUYỂN GIAO app này. Bắt buộc có khi `sharedWith` có.
+   *
+   * Đây là chỗ ghi nợ, và nó nằm trong dữ liệu chứ không nằm trong chú thích:
+   * một dòng chú thích "tạm thời, chuyển giao sau" già đi lặng lẽ và không phép
+   * kiểm nào đọc được nó. Trường này thì đọc được — nên ngày pháp nhân kia có
+   * tài khoản cửa hàng riêng, chỗ cần sửa tự chỉ ra chính nó.
+   */
+  transferTo?: {
+    name: string;
+    nameEn?: string;
+    /** Ngày bắt đầu mượn, dạng YYYY-MM-DD. */
+    since: string;
+  };
 }
 
 export interface InstanceConfig {
@@ -171,6 +214,41 @@ export interface InstanceConfig {
    * setActiveAdaptiveConfig() lúc bootstrap. Declarative thuần (QĐ-1).
    */
   adaptive: AdaptiveConfig;
+
+  /**
+   * Module app này BẬT. Danh mục để bấm chọn ở `navigation/moduleCatalog.ts`.
+   *
+   * Hai hình dạng, và khác biệt giữa chúng là toàn bộ lý do trường này an toàn:
+   *
+   *   `'all'`     — app LÕI. Module mới vào sổ là app này TỰ CÓ, không ai phải
+   *                 nhớ. Đây là hành vi của cả hai app hiện tại.
+   *   `ModuleId[]` — app CHỌN LỌC. Module mới KHÔNG tự vào, và đó là ĐÚNG Ý của
+   *                 doanh nghiệp đó, không phải chỗ họ quên khai.
+   *
+   * VÌ SAO KHÔNG dùng một mảng trần cho cả hai: trường `enabledModules` đời đầu
+   * đúng là một mảng trần, và nó hỏng CÂM — không có cách nào phân biệt "app
+   * này cố ý không lấy module mới" với "app này quên khai module mới". Hai ca
+   * cho ra dữ liệu giống hệt nhau, nên không phép kiểm nào bắt được ca thứ hai.
+   * `'all'` là lời khai làm hai ca đó tách ra.
+   *
+   * VÌ SAO KHÔNG bắt khai danh sách BỎ: với hàng trăm module sắp có, danh sách
+   * âm bắt mọi app phải sửa mỗi lần sổ dài thêm — tức chính cái hỏng-câm trên,
+   * chỉ đổi dấu. (Chủ sở hữu chốt hướng này 2026-09-10.)
+   *
+   * ⚠ Tắt module KHÔNG làm gói nhẹ đi — xem khối đầu `moduleCatalog.ts`.
+   */
+  modules: 'all' | ModuleId[];
+}
+
+/**
+ * Tập module thực của một instance.
+ *
+ * Tách thành hàm (chứ không để chỗ gọi tự `=== 'all' ? … : …`) vì đây là chỗ
+ * DUY NHẤT biết `'all'` nghĩa là gì. Có hai chỗ gọi trở lên tự diễn giải là có
+ * hai chỗ trôi khỏi nhau.
+ */
+export function resolveModules(instance: InstanceConfig): ModuleId[] {
+  return instance.modules === 'all' ? [...ALL_MODULES] : [...instance.modules];
 }
 
 // ===========================================================================
@@ -217,6 +295,9 @@ export const ALADIN_INSTANCE: InstanceConfig = {
   // tên một NỀN TẢNG khác. OriLife là nền nhận diện, không phải tên app.
   themeConfig: { ...DEFAULT_THEME_CONFIG, brandName: 'Aladin' },
   adaptive: DEFAULT_ADAPTIVE_CONFIG,
+  // App lõi: mọi module, kể cả module thêm sau. Đây là app do bên vận hành nền
+  // tảng phát hành, nên nó phải là chỗ module mới chạy thật đầu tiên.
+  modules: 'all',
 };
 
 // ===========================================================================
@@ -242,23 +323,38 @@ export const CHECKFARM_INSTANCE: InstanceConfig = {
     zh: '追溯源头，提升农产价值',
     ja: '源流をたどり、農産物の価値を高める',
   },
-  // Pháp nhân ĐỘC LẬP — không phải DDC Holdings, không phải DDC DigiTech, không
-  // phải Aladin Contract. Aladin Contract phát triển theo đơn đặt hàng và KHÔNG
-  // giữ quyền sở hữu hay quyền kiểm soát thông tin nào.
+  // ⛔ PHÁP NHÂN VẬN HÀNH — đọc hết trước khi sửa, chỗ này đã đảo chiều một lần.
   //
-  // Ba trường dưới từng là `null` kèm ghi chú "công ty đang thành lập, chưa có
-  // địa chỉ đăng ký". Nhà CheckFarm cấp đủ ngày 01/09/2026, nên `null` không
-  // còn đúng.
+  // Bản trước ghi CheckFarm là pháp nhân ĐỘC LẬP, kèm câu cấm "KHÔNG điền tạm
+  // địa chỉ của Aladin vào đây". Câu cấm đó viết ra để chặn một lỗi CÓ THẬT: một
+  // bản cũ của `legal/policyContent.ts` giữ hằng `OPERATOR` viết cứng tên Aladin,
+  // nên trang chính sách TRONG app CheckFarm nói Aladin vận hành nó — mà lúc ấy
+  // Aladin KHÔNG vận hành nó. Đó là khai sai.
   //
-  // Câu cấm đi kèm thì GIỮ NGUYÊN hiệu lực, vì nó mới là phần đắt: KHÔNG điền
-  // tạm địa chỉ của Aladin vào đây. Ba chuỗi này là địa chỉ của CheckFarm, do
-  // nhà CheckFarm cấp — không suy ra từ kho này.
+  // Chủ sở hữu quyết ngày 2026-09-10: app phát hành dưới pháp nhân **Aladin**,
+  // chuyển giao cho CheckFarm Inc sau. Nên hôm nay Aladin vận hành nó thật, và
+  // khai Aladin ở đây là khai ĐÚNG. Trạng thái dữ liệu giống hệt lỗi cũ; điều
+  // phân biệt hai ca nằm ở `sharedWith` + `transferTo` — có lời khai thì là mượn
+  // có chủ ý, không có thì là chép nhầm. `instanceParity.test.ts` đọc đúng chỗ đó.
+  //
+  // Câu cấm cũ vẫn còn hiệu lực dưới dạng đã sửa: KHÔNG điền địa chỉ của một
+  // pháp nhân vào app mà pháp nhân đó không vận hành. Ngày chuyển giao xong thì
+  // ba chuỗi dưới đây phải quay về địa chỉ CheckFarm — do nhà CheckFarm cấp, KHÔNG
+  // suy ra từ kho này. Bản của họ (cấp 01/09/2026) nằm trong `transferTo` để
+  // không phải đi hỏi lại.
   operator: {
-    name: 'Công ty Cổ phần CheckFarm',
-    nameEn: 'CheckFarm Inc',
-    address: '404 Nguyễn Thái Bình, Phường Tân Lập, tỉnh Đắk Lắk, Việt Nam',
-    addressEn: '404 Nguyen Thai Binh, Tan Lap Ward, Dak Lak Province, Viet Nam',
-    contact: 'contact@checkfarm.com',
+    name: 'Aladin',
+    address:
+      'Số nhà 77, đường Chà Là 11, Khu đô thị Vinhomes Ocean Park 2, Xã Nghĩa Trụ, Tỉnh Hưng Yên, Việt Nam',
+    addressEn:
+      'No. 77, Cha La 11 Street, Vinhomes Ocean Park 2, Nghia Tru Commune, Hung Yen Province, Vietnam',
+    contact: 'aladincontract@gmail.com',
+    sharedWith: 'aladin',
+    transferTo: {
+      name: 'Công ty Cổ phần CheckFarm',
+      nameEn: 'CheckFarm Inc',
+      since: '2026-09-10',
+    },
   },
   tabs: [
     { kind: 'module', moduleId: 'chat' },
@@ -279,6 +375,11 @@ export const CHECKFARM_INSTANCE: InstanceConfig = {
   // ngưỡng tương phản AA cho chữ cỡ thường, nên nó chỉ đi vào chỗ là hình.
   themeConfig: CHECKFARM_THEME_CONFIG,
   adaptive: DEFAULT_ADAPTIVE_CONFIG,
+  // `'all'` là trạng thái HÔM NAY, không phải kết luận: bản này chỉ mở cơ chế,
+  // chưa đổi hành vi app nào — đợt thử đang chạy trên đúng bản dựng này. Việc
+  // chọn module nào là quyền của nhà CheckFarm ở kho của họ, không phải quyền
+  // của tệp này (chủ sở hữu bàn giao 2026-09-10).
+  modules: 'all',
 };
 
 // ---------------------------------------------------------------------------
@@ -318,10 +419,10 @@ export function resolveInstance(id: string | undefined | null): InstanceConfig {
 export const DEFAULT_INSTANCE: InstanceConfig = resolveInstance(APP_INSTANCE);
 
 /**
- * Tập module của instance đang chạy.
+ * Tập module của instance đang chạy — DẪN XUẤT từ `DEFAULT_INSTANCE.modules`.
  *
- * Giữ tên cũ để chỗ gọi không phải đổi, nhưng nay nó là HẰNG CHUNG chứ không
- * còn là lựa chọn của instance. Đừng khôi phục lại thành trường của
- * `InstanceConfig` — xem khối đầu tệp.
+ * Trước bản này nó là hằng chung `ALL_MODULES` và không app nào chọn được.
+ * Xem `resolveModules` để biết vì sao hình dạng là `'all' | ModuleId[]` chứ
+ * không phải một mảng trần.
  */
-export const ENABLED_MODULES: ModuleId[] = ALL_MODULES;
+export const ENABLED_MODULES: ModuleId[] = resolveModules(DEFAULT_INSTANCE);

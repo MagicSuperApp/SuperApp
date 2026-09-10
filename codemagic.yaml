@@ -22,7 +22,12 @@
 #   android_signing_checkfarm (chỉ android-aab-checkfarm):
 #     CHECKFARM_UPLOAD_STORE_FILE_B64, CHECKFARM_UPLOAD_STORE_PASSWORD,
 #     CHECKFARM_UPLOAD_KEY_ALIAS, CHECKFARM_UPLOAD_KEY_PASSWORD
-#   Hai nhóm RIÊNG vì hai pháp nhân riêng — không gộp lại "cho tiện".
+#   Hai nhóm RIÊNG. KHÔNG phải vì hai pháp nhân — từ 10/09/2026 chỉ còn một.
+#   Vì Google Play khoá mục ứng dụng VĨNH VIỄN theo khoá của tệp ĐẦU TIÊN tải
+#   lên: chung khoá thì ngày chuyển giao một app sang pháp nhân khác, khoá ấy
+#   vẫn nằm ở cả hai bên, và đường gỡ duy nhất đi qua hỗ trợ của Google.
+#   (Dòng cũ ghi "vì hai pháp nhân riêng" — đúng kết luận, sai lý do. Người sau
+#   đọc lý do, thấy nó hết hiệu lực, rồi gộp hai nhóm lại.)
 #
 # iOS Code Signing (ios-appstore):
 #   Certificate : aladin-ios-cert  (production, upload Codemagic UI)
@@ -57,17 +62,16 @@ workflows:
         # mã gói thật ghi cứng trong `project.pbxproj:298,331`. Nay nó được
         # truyền thẳng vào `xcodebuild` nên đổi ở đây là đổi thật.
         # `CFBundleDisplayName` trong `Info.plist` nay là `$(APP_DISPLAY_NAME)`.
-        # ⛔ Luồng iOS CHƯA dựng được app nào ngoài `aladin`. Bước "Soát danh tính app
-        # iOS" bên dưới `exit 1` với mọi `APP_INSTANCE` khác — kể cả khi ba biến đặt
-        # đúng. Đừng đặt ba biến rồi bấm dựng: nó tiêu một lượt runner macOS trả tiền
-        # để nói lại đúng câu này.
-        # Điều kiện mở khoá, đủ ba: `instances/<app>/ios/AppIcon-1024.png` có mặt ·
-        # tệp đó 1024×1024 không kênh alpha · có bước sinh `AppIcon.appiconset` từ nó
-        # chạy trước `xcodebuild`. Thiếu bước thứ ba thì bản dựng vẫn mang biểu tượng
-        # Aladin, nên đừng gỡ cổng theo sự có mặt của tệp.
-        # Khi mở khoá, bản CheckFarm dùng: BUNDLE_ID=com.checkfarm.app,
-        # APP_DISPLAY_NAME=CheckFarm, APP_INSTANCE=checkfarm — và khoá ký PHẢI là khoá
-        # của Công ty Cổ phần CheckFarm, không dùng chung khoá Aladin (hai pháp nhân).
+        # Luồng iOS nay dựng được nhiều app. Bộ biểu tượng chọn theo `APP_INSTANCE`
+        # ở bước "Soát danh tính app iOS" (chép `instances/<app>/ios/AppIcon.appiconset`
+        # vào chỗ Xcode đọc, rồi đo lại chính tệp vừa chép).
+        #
+        # ⚠ BA biến dưới đây phải đổi CÙNG NHAU, và `ios_signing.bundle_identifier`
+        # là biến thứ tư. Đổi ba quên một thì lượt dựng đi tới tận bước ký rồi mới
+        # đỏ — hoặc tệ hơn, ký được bằng hồ sơ của app kia. Đừng đặt đè từng biến
+        # khi chạy tay; dùng đúng luồng của app đó.
+        #
+        # Bản CheckFarm nằm ở luồng `ios-appstore-checkfarm` bên dưới.
         BUNDLE_ID: vn.aladinapp
         APP_DISPLAY_NAME: Aladin
         APP_INSTANCE: aladin
@@ -468,21 +472,16 @@ workflows:
           # alpha ở bước NỘP, không ở bước dựng. Bản dựng xanh, tải lên xong, rồi bị
           # chặn ở lượt xử lý bằng một dòng nói về "transparency" — cách chỗ gõ nhầm
           # vài tiếng và vài bước. Đo bằng `sips`, có sẵn trên máy dựng macOS.
-          # ⚠ Bản trước của khối này đo ĐÚNG MỘT tệp — `instances/<app>/ios/AppIcon-1024.png`
-          # — và bọc nó trong `if [ -f ]`. Tệp đó KHÔNG tồn tại cho `aladin`
-          # (`instances/aladin/` chỉ có `android/` + `brand/`), mà `aladin` lại là app
-          # DUY NHẤT luồng này dựng được. Nên với mọi lượt dựng thật, phép đo alpha
-          # chưa bao giờ chạy một lần nào, và cổng vẫn in `✅ … khớp` rồi thoát 0.
+          # ⚠ Một bản trước của khối này đo ĐÚNG MỘT tệp — `instances/<app>/ios/AppIcon-1024.png`
+          # — và bọc nó trong `if [ -f ]`. Tệp đó KHÔNG tồn tại cho `aladin`, mà `aladin`
+          # lại là app DUY NHẤT luồng này dựng được lúc ấy. Nên với mọi lượt dựng thật,
+          # phép đo alpha chưa bao giờ chạy một lần nào, và cổng vẫn in `✅ … khớp` rồi
+          # thoát 0 — cổng có tên đúng mà đo sai đại lượng.
           #
-          # Ảnh mà `xcodebuild` thật sự đóng gói là bộ dùng chung dưới
-          # `ios/SuperApp/Images.xcassets/AppIcon.appiconset/`. Cổng đo tệp không ai
-          # dùng, và bỏ qua tệp được đóng gói — đúng nghĩa "cổng có tên đúng mà đo sai
-          # đại lượng", lần thứ hai trong chính khối này.
-          #
-          # Nay đo HAI tệp, và tệp bắt buộc là tệp đang được đóng gói:
-          #   (1) `AppIcon.appiconset/icon-1024.png` — LUÔN tồn tại ⟹ không `if [ -f ]`,
-          #       thiếu nó là đỏ. Đây là thứ đi vào gói nộp.
-          #   (2) `instances/<app>/ios/AppIcon-1024.png` — phép đo THÊM, chỉ chạy khi có.
+          # Bài học đó quyết định THỨ TỰ hai việc dưới đây, và thứ tự mới là phần quan
+          # trọng: **chép bộ biểu tượng của app TRƯỚC, đo SAU**. Đo phải rơi vào đúng tệp
+          # sắp đi vào gói nộp. Đo trước khi chép là đo bộ của lượt dựng trước đó — vẫn
+          # ra một dấu ✅, vẫn không nói gì về bản đang dựng.
           command -v sips >/dev/null 2>&1 || {
             echo "⛔ KHÔNG ĐO ĐƯỢC kênh alpha: máy dựng không có 'sips'."
             echo "   Đây là trạng thái MÙ, không phải trạng thái đạt — nên cổng đỏ."
@@ -517,30 +516,46 @@ workflows:
             echo "✅ $T 1024×1024, không alpha"
           }
 
-          BO_DONG_GOI="ios/SuperApp/Images.xcassets/AppIcon.appiconset/icon-1024.png"
+          # ── CHÉP BỘ BIỂU TƯỢNG CỦA ĐÚNG APP ĐANG DỰNG ──────────────────────
+          # Thư mục `ios/SuperApp/Images.xcassets/AppIcon.appiconset` là chỗ Xcode
+          # đọc, KHÔNG phải tài sản của app nào. Mỗi lượt dựng chép đè nó bằng bộ
+          # của app đang dựng, giữ trong `instances/<app>/ios/AppIcon.appiconset/`.
+          #
+          # Trước bản này chỗ đây là một cổng `exit 1` cho mọi app khác `aladin`,
+          # kèm câu "chưa có bước sinh bộ đó theo app". Câu ấy ĐÚNG với trạng thái
+          # lúc nó được viết; nay bước đó có thật nên cổng hết việc. Và cái nó dặn
+          # thì vẫn giữ nguyên hiệu lực: mở khoá bằng BƯỚC CHỌN, không phải bằng sự
+          # có mặt của một tệp ảnh.
+          NGUON_BIEU_TUONG="instances/${APP_INSTANCE}/ios/AppIcon.appiconset"
+          DICH_BIEU_TUONG="ios/SuperApp/Images.xcassets/AppIcon.appiconset"
+          if [ ! -d "$NGUON_BIEU_TUONG" ]; then
+            echo "❌ thiếu $NGUON_BIEU_TUONG"
+            echo "   Mỗi app tự mang bộ biểu tượng iOS của mình. Sinh bằng:"
+            echo "     python3 scripts/sinh-bieu-tuong.py ${APP_INSTANCE}"
+            echo "   rồi commit kết quả. KHÔNG mượn bộ của app khác — mượn được thì"
+            echo "   bản dựng vẫn xanh và vẫn ký được, sai chỉ lộ khi có người nhìn máy."
+            exit 1
+          fi
+          rm -rf "$DICH_BIEU_TUONG"
+          mkdir -p "$DICH_BIEU_TUONG"
+          cp "$NGUON_BIEU_TUONG"/* "$DICH_BIEU_TUONG"/
+
+          # Chép xong thì ĐỌC LẠI, không tin là `cp` đã chạy. `cmp` so đúng tệp sắp
+          # đi vào gói với tệp nguồn của app này: chép hụt, chép nhầm thư mục, hay
+          # `cp` thất bại lặng đều đỏ ở đây — thay vì lộ ra dưới dạng một bản mang
+          # biểu tượng của app khác, thứ không phép kiểm tự động nào bắt được.
+          if ! cmp -s "$NGUON_BIEU_TUONG/icon-1024.png" "$DICH_BIEU_TUONG/icon-1024.png"; then
+            echo "❌ bộ biểu tượng đã chép KHÔNG khớp nguồn của '$APP_INSTANCE'."
+            exit 1
+          fi
+          echo "✅ biểu tượng iOS: $NGUON_BIEU_TUONG → $DICH_BIEU_TUONG"
+
+          BO_DONG_GOI="$DICH_BIEU_TUONG/icon-1024.png"
           if [ ! -f "$BO_DONG_GOI" ]; then
             echo "❌ thiếu $BO_DONG_GOI — đây là ảnh đi vào gói nộp, không phải tệp tuỳ chọn."
             exit 1
           fi
           do_bieu_tuong "$BO_DONG_GOI"
-
-          BIEU_TUONG="instances/${APP_INSTANCE}/ios/AppIcon-1024.png"
-          if [ -f "$BIEU_TUONG" ]; then
-            do_bieu_tuong "$BIEU_TUONG"
-          fi
-          if [ "$APP_INSTANCE" != "aladin" ]; then
-            echo "❌ luồng iOS chưa dựng được app '$APP_INSTANCE'."
-            echo "   Biểu tượng iOS là một bộ dùng chung ở ios/SuperApp/Images.xcassets/AppIcon.appiconset;"
-            echo "   chưa có bước sinh bộ đó theo app, nên bản này sẽ mang biểu tượng Aladin."
-            if [ -f "$BIEU_TUONG" ]; then
-              echo "   ($BIEU_TUONG đã có và hợp lệ — nhưng chưa mã nào đọc nó."
-              echo "    Đây đúng là chỗ 'có tệp mà vẫn sai': đừng gỡ cổng theo sự có mặt của tệp.)"
-            else
-              echo "   Thiếu $BIEU_TUONG — bản 1024×1024, KHÔNG kênh alpha."
-            fi
-            echo "   Mở khoá: thêm bước sinh AppIcon.appiconset từ tệp đó trước xcodebuild."
-            exit 1
-          fi
 
       # ── CHỐT MÃ GÓI iOS ─────────────────────────────────────────────────
       # Vì sao KHÔNG truyền `PRODUCT_BUNDLE_IDENTIFIER=` trên dòng lệnh
@@ -671,17 +686,16 @@ workflows:
         # mã gói thật ghi cứng trong `project.pbxproj:298,331`. Nay nó được
         # truyền thẳng vào `xcodebuild` nên đổi ở đây là đổi thật.
         # `CFBundleDisplayName` trong `Info.plist` nay là `$(APP_DISPLAY_NAME)`.
-        # ⛔ Luồng iOS CHƯA dựng được app nào ngoài `aladin`. Bước "Soát danh tính app
-        # iOS" bên dưới `exit 1` với mọi `APP_INSTANCE` khác — kể cả khi ba biến đặt
-        # đúng. Đừng đặt ba biến rồi bấm dựng: nó tiêu một lượt runner macOS trả tiền
-        # để nói lại đúng câu này.
-        # Điều kiện mở khoá, đủ ba: `instances/<app>/ios/AppIcon-1024.png` có mặt ·
-        # tệp đó 1024×1024 không kênh alpha · có bước sinh `AppIcon.appiconset` từ nó
-        # chạy trước `xcodebuild`. Thiếu bước thứ ba thì bản dựng vẫn mang biểu tượng
-        # Aladin, nên đừng gỡ cổng theo sự có mặt của tệp.
-        # Khi mở khoá, bản CheckFarm dùng: BUNDLE_ID=com.checkfarm.app,
-        # APP_DISPLAY_NAME=CheckFarm, APP_INSTANCE=checkfarm — và khoá ký PHẢI là khoá
-        # của Công ty Cổ phần CheckFarm, không dùng chung khoá Aladin (hai pháp nhân).
+        # Luồng iOS nay dựng được nhiều app. Bộ biểu tượng chọn theo `APP_INSTANCE`
+        # ở bước "Soát danh tính app iOS" (chép `instances/<app>/ios/AppIcon.appiconset`
+        # vào chỗ Xcode đọc, rồi đo lại chính tệp vừa chép).
+        #
+        # ⚠ BA biến dưới đây phải đổi CÙNG NHAU, và `ios_signing.bundle_identifier`
+        # là biến thứ tư. Đổi ba quên một thì lượt dựng đi tới tận bước ký rồi mới
+        # đỏ — hoặc tệ hơn, ký được bằng hồ sơ của app kia. Đừng đặt đè từng biến
+        # khi chạy tay; dùng đúng luồng của app đó.
+        #
+        # Bản CheckFarm nằm ở luồng `ios-appstore-checkfarm` bên dưới.
         BUNDLE_ID: vn.aladinapp
         APP_DISPLAY_NAME: Aladin
         APP_INSTANCE: aladin
@@ -807,21 +821,16 @@ workflows:
           # alpha ở bước NỘP, không ở bước dựng. Bản dựng xanh, tải lên xong, rồi bị
           # chặn ở lượt xử lý bằng một dòng nói về "transparency" — cách chỗ gõ nhầm
           # vài tiếng và vài bước. Đo bằng `sips`, có sẵn trên máy dựng macOS.
-          # ⚠ Bản trước của khối này đo ĐÚNG MỘT tệp — `instances/<app>/ios/AppIcon-1024.png`
-          # — và bọc nó trong `if [ -f ]`. Tệp đó KHÔNG tồn tại cho `aladin`
-          # (`instances/aladin/` chỉ có `android/` + `brand/`), mà `aladin` lại là app
-          # DUY NHẤT luồng này dựng được. Nên với mọi lượt dựng thật, phép đo alpha
-          # chưa bao giờ chạy một lần nào, và cổng vẫn in `✅ … khớp` rồi thoát 0.
+          # ⚠ Một bản trước của khối này đo ĐÚNG MỘT tệp — `instances/<app>/ios/AppIcon-1024.png`
+          # — và bọc nó trong `if [ -f ]`. Tệp đó KHÔNG tồn tại cho `aladin`, mà `aladin`
+          # lại là app DUY NHẤT luồng này dựng được lúc ấy. Nên với mọi lượt dựng thật,
+          # phép đo alpha chưa bao giờ chạy một lần nào, và cổng vẫn in `✅ … khớp` rồi
+          # thoát 0 — cổng có tên đúng mà đo sai đại lượng.
           #
-          # Ảnh mà `xcodebuild` thật sự đóng gói là bộ dùng chung dưới
-          # `ios/SuperApp/Images.xcassets/AppIcon.appiconset/`. Cổng đo tệp không ai
-          # dùng, và bỏ qua tệp được đóng gói — đúng nghĩa "cổng có tên đúng mà đo sai
-          # đại lượng", lần thứ hai trong chính khối này.
-          #
-          # Nay đo HAI tệp, và tệp bắt buộc là tệp đang được đóng gói:
-          #   (1) `AppIcon.appiconset/icon-1024.png` — LUÔN tồn tại ⟹ không `if [ -f ]`,
-          #       thiếu nó là đỏ. Đây là thứ đi vào gói nộp.
-          #   (2) `instances/<app>/ios/AppIcon-1024.png` — phép đo THÊM, chỉ chạy khi có.
+          # Bài học đó quyết định THỨ TỰ hai việc dưới đây, và thứ tự mới là phần quan
+          # trọng: **chép bộ biểu tượng của app TRƯỚC, đo SAU**. Đo phải rơi vào đúng tệp
+          # sắp đi vào gói nộp. Đo trước khi chép là đo bộ của lượt dựng trước đó — vẫn
+          # ra một dấu ✅, vẫn không nói gì về bản đang dựng.
           command -v sips >/dev/null 2>&1 || {
             echo "⛔ KHÔNG ĐO ĐƯỢC kênh alpha: máy dựng không có 'sips'."
             echo "   Đây là trạng thái MÙ, không phải trạng thái đạt — nên cổng đỏ."
@@ -856,30 +865,46 @@ workflows:
             echo "✅ $T 1024×1024, không alpha"
           }
 
-          BO_DONG_GOI="ios/SuperApp/Images.xcassets/AppIcon.appiconset/icon-1024.png"
+          # ── CHÉP BỘ BIỂU TƯỢNG CỦA ĐÚNG APP ĐANG DỰNG ──────────────────────
+          # Thư mục `ios/SuperApp/Images.xcassets/AppIcon.appiconset` là chỗ Xcode
+          # đọc, KHÔNG phải tài sản của app nào. Mỗi lượt dựng chép đè nó bằng bộ
+          # của app đang dựng, giữ trong `instances/<app>/ios/AppIcon.appiconset/`.
+          #
+          # Trước bản này chỗ đây là một cổng `exit 1` cho mọi app khác `aladin`,
+          # kèm câu "chưa có bước sinh bộ đó theo app". Câu ấy ĐÚNG với trạng thái
+          # lúc nó được viết; nay bước đó có thật nên cổng hết việc. Và cái nó dặn
+          # thì vẫn giữ nguyên hiệu lực: mở khoá bằng BƯỚC CHỌN, không phải bằng sự
+          # có mặt của một tệp ảnh.
+          NGUON_BIEU_TUONG="instances/${APP_INSTANCE}/ios/AppIcon.appiconset"
+          DICH_BIEU_TUONG="ios/SuperApp/Images.xcassets/AppIcon.appiconset"
+          if [ ! -d "$NGUON_BIEU_TUONG" ]; then
+            echo "❌ thiếu $NGUON_BIEU_TUONG"
+            echo "   Mỗi app tự mang bộ biểu tượng iOS của mình. Sinh bằng:"
+            echo "     python3 scripts/sinh-bieu-tuong.py ${APP_INSTANCE}"
+            echo "   rồi commit kết quả. KHÔNG mượn bộ của app khác — mượn được thì"
+            echo "   bản dựng vẫn xanh và vẫn ký được, sai chỉ lộ khi có người nhìn máy."
+            exit 1
+          fi
+          rm -rf "$DICH_BIEU_TUONG"
+          mkdir -p "$DICH_BIEU_TUONG"
+          cp "$NGUON_BIEU_TUONG"/* "$DICH_BIEU_TUONG"/
+
+          # Chép xong thì ĐỌC LẠI, không tin là `cp` đã chạy. `cmp` so đúng tệp sắp
+          # đi vào gói với tệp nguồn của app này: chép hụt, chép nhầm thư mục, hay
+          # `cp` thất bại lặng đều đỏ ở đây — thay vì lộ ra dưới dạng một bản mang
+          # biểu tượng của app khác, thứ không phép kiểm tự động nào bắt được.
+          if ! cmp -s "$NGUON_BIEU_TUONG/icon-1024.png" "$DICH_BIEU_TUONG/icon-1024.png"; then
+            echo "❌ bộ biểu tượng đã chép KHÔNG khớp nguồn của '$APP_INSTANCE'."
+            exit 1
+          fi
+          echo "✅ biểu tượng iOS: $NGUON_BIEU_TUONG → $DICH_BIEU_TUONG"
+
+          BO_DONG_GOI="$DICH_BIEU_TUONG/icon-1024.png"
           if [ ! -f "$BO_DONG_GOI" ]; then
             echo "❌ thiếu $BO_DONG_GOI — đây là ảnh đi vào gói nộp, không phải tệp tuỳ chọn."
             exit 1
           fi
           do_bieu_tuong "$BO_DONG_GOI"
-
-          BIEU_TUONG="instances/${APP_INSTANCE}/ios/AppIcon-1024.png"
-          if [ -f "$BIEU_TUONG" ]; then
-            do_bieu_tuong "$BIEU_TUONG"
-          fi
-          if [ "$APP_INSTANCE" != "aladin" ]; then
-            echo "❌ luồng iOS chưa dựng được app '$APP_INSTANCE'."
-            echo "   Biểu tượng iOS là một bộ dùng chung ở ios/SuperApp/Images.xcassets/AppIcon.appiconset;"
-            echo "   chưa có bước sinh bộ đó theo app, nên bản này sẽ mang biểu tượng Aladin."
-            if [ -f "$BIEU_TUONG" ]; then
-              echo "   ($BIEU_TUONG đã có và hợp lệ — nhưng chưa mã nào đọc nó."
-              echo "    Đây đúng là chỗ 'có tệp mà vẫn sai': đừng gỡ cổng theo sự có mặt của tệp.)"
-            else
-              echo "   Thiếu $BIEU_TUONG — bản 1024×1024, KHÔNG kênh alpha."
-            fi
-            echo "   Mở khoá: thêm bước sinh AppIcon.appiconset từ tệp đó trước xcodebuild."
-            exit 1
-          fi
 
       # ── CHỐT MÃ GÓI iOS ─────────────────────────────────────────────────
       # Vì sao KHÔNG truyền `PRODUCT_BUNDLE_IDENTIFIER=` trên dòng lệnh
@@ -1327,6 +1352,79 @@ workflows:
         # tuổi) phải điền xong bên App Store Connect, nếu không bước nộp đỏ. Đỏ ở bước
         # này KHÔNG mất gì: IPA đã lên TestFlight ở bước trên, nộp tay vẫn được.
         submit_to_app_store: true
+
+  # ============================================================
+  # Workflow 2c: iOS TestFlight — CheckFarm
+  # ============================================================
+  # Dùng LẠI `scripts` + `artifacts` của `ios-appstore` bằng mỏ neo YAML. Chỉ khối
+  # `environment` viết riêng, vì `vars` là bảng lồng: khoá gộp YAML (`<<:`) đè cả
+  # bảng chứ không trộn từng khoá, nên "kế thừa rồi sửa ba dòng" là thứ KHÔNG làm
+  # được ở đây. Viết đủ còn hơn viết một thứ trông như kế thừa mà không phải.
+  #
+  # ⛔ PHÁP NHÂN PHÁT HÀNH — đọc trước khi sửa bất cứ dòng nào dưới đây.
+  # App này mang thương hiệu CheckFarm nhưng **phát hành dưới pháp nhân Aladin**,
+  # đội Apple `3666KPJX5R`, theo quyết định của chủ sở hữu ngày 2026-09-10. Nghĩa
+  # là dùng CHUNG chứng chỉ phân phối với `vn.aladinapp` — đúng và cố ý, không
+  # phải chỗ quên tách.
+  #
+  # Đây là trạng thái TẠM. Ngày CheckFarm Inc có tài khoản riêng thì chuyển giao
+  # ứng dụng sang tài khoản đó. Mã gói `com.checkfarm.app` KHÔNG đổi khi chuyển
+  # giao — nó theo ứng dụng, không theo tài khoản. Nợ này ghi ở
+  # `instances/LUAT-SUPERAPP.md §6`; đừng để nó chỉ sống trong chú thích này.
+  ios-appstore-checkfarm:
+    name: iOS TestFlight — CheckFarm (chạy tay)
+
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+
+    environment:
+      node: 22.11.0
+      xcode: 26.4  # PIN CỤ THỂ, cùng lý do đã ghi ở `ios-appstore`. Hai luồng iOS
+                   # phải cùng một bản Xcode: lệch bản là hai app dựng bằng hai
+                   # trình biên dịch khác nhau từ CÙNG một cây mã.
+      cocoapods: default
+      groups:
+        - scanner_secrets
+      vars:
+        BUNDLE_ID: com.checkfarm.app
+        APP_DISPLAY_NAME: CheckFarm
+        APP_INSTANCE: checkfarm
+        XCODE_SCHEME: SuperApp
+        ARCHIVE_PATH: build/ios/OriLife.xcarchive
+        IPA_OUTPUT_DIR: build/ios/ipa
+        APPLE_TEAM_ID: 3666KPJX5R
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.checkfarm.app
+
+    # CHỈ CHẠY TAY, cùng lý do với hai luồng `android-aab-*`: một bản ký bằng chứng
+    # chỉ phân phối thật chỉ nên ra đời khi có người chủ ý cần. Và app này chưa có
+    # nhịp phát hành riêng — buộc nó vào một nhánh là dựng ra bản không ai đợi.
+    triggering:
+      events: []
+
+    scripts: *ios_release_scripts
+
+    artifacts: *ios_release_artifacts
+
+    publishing:
+      app_store_connect:
+        # CÙNG khoá API với hai luồng Aladin — một khoá cấp cho cả đội
+        # `3666KPJX5R`, không phải một khoá cho mỗi ứng dụng.
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        key_id: 5JA4K7A7JD
+        issuer_id: e56d98f1-e6f0-4e46-9ca8-29b30c2a9a7b
+        submit_to_testflight: true
+        # ⚠ Nhóm thử thuộc về TỪNG ứng dụng, không thuộc về đội. `OriLife Testing`
+        # là nhóm của `vn.aladinapp` và KHÔNG tồn tại dưới ứng dụng này — khai tên
+        # đó ở đây thì bước phát hành đỏ sau khi đã tải xong gói lên.
+        # Nhóm dưới đây phải được tạo TRƯỚC lượt dựng đầu, trong App Store Connect
+        # → ứng dụng CheckFarm → TestFlight → Internal Testing.
+        beta_groups:
+          - CheckFarm team
+        # Chưa nộp App Store: ứng dụng chưa có siêu dữ liệu, và bước nộp đỏ khi
+        # thiếu. Bật lên khi trang cửa hàng đã điền xong.
+        submit_to_app_store: false
 
   # ============================================================
   # Workflow 3: Android Debug APK — Demo / Direct Install

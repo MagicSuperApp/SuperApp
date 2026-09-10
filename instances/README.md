@@ -135,9 +135,18 @@ bash scripts/tao-khoa-ky.sh <mã-app>
 Script hỏi mật khẩu qua `keytool` và **không** ghi mật khẩu ra đâu cả. Nó từ chối ghi đè
 một kho khoá đã có — ghi đè là mất khoá cũ, và mất khoá cũ là mất app.
 
-Mục **CN** lúc `keytool` hỏi: điền tên pháp nhân **SỞ HỮU** app, không phải tên bên dựng
-hộ. CheckFarm thuộc Công ty Cổ phần CheckFarm; Aladin Contract dựng theo đơn đặt hàng và
-không giữ quyền kiểm soát — nên khoá CheckFarm do phía CheckFarm giữ.
+Mục **CN** lúc `keytool` hỏi: điền tên pháp nhân đang **PHÁT HÀNH** app — tức pháp nhân
+đứng tên tài khoản cửa hàng, không phải tên thương hiệu của app.
+
+Với `checkfarm` hôm nay, hai thứ đó KHÔNG trùng nhau, và chỗ này là chỗ dễ điền nhầm
+nhất: app mang thương hiệu CheckFarm nhưng phát hành dưới pháp nhân **Aladin** (chủ sở
+hữu quyết 2026-09-10, chuyển giao cho CheckFarm Inc sau — xem `LUAT-SUPERAPP.md §6`).
+
+Vẫn **một kho khoá riêng cho mỗi app**, kể cả khi cùng pháp nhân. Không phải vì luật
+đòi, mà vì Google Play khoá mục ứng dụng vĩnh viễn theo khoá của tệp **đầu tiên** tải
+lên: tách sẵn thì ngày chuyển giao không phải đụng gì tới khoá.
+
+Nạp bốn giá trị của một kho khoá lên máy chủ dựng: `bash scripts/load-signing-key.sh <mã-app> <đường dẫn kho khoá>`
 
 ### Thiếu khoá thì bản phát hành NỔ
 

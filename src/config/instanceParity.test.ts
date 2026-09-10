@@ -176,20 +176,75 @@ describe('pháp nhân vận hành — mỗi app một chủ', () => {
     }
   });
 
-  it('KHÔNG hai app nào dùng chung một pháp nhân', () => {
-    // Dùng chung nghĩa là một trong hai app đang khai sai chủ. Ngày có app thứ
-    // ba của đối tác thứ ba, chép khối `operator` của app cũ sang là ca dễ xảy
-    // ra nhất — và nó không có triệu chứng nào.
-    const ten = ids.map((id) => INSTANCES[id].operator.name);
-    expect(new Set(ten).size).toBe(ten.length);
+  // ── DÙNG CHUNG PHÁP NHÂN: được, nhưng phải KHAI ────────────────────────────
+  //
+  // Hai bài dưới đây từng cấm THẲNG việc hai app trùng pháp nhân. Lệnh cấm đó
+  // đúng với thực tế lúc nó được viết (hai app, hai công ty), và sai từ
+  // 2026-09-10, khi chủ sở hữu quyết cho CheckFarm phát hành dưới pháp nhân
+  // Aladin rồi chuyển giao sau.
+  //
+  // Chỗ khó là hai ca có TRẠNG THÁI DỮ LIỆU GIỐNG HỆT NHAU:
+  //   (a) mượn có chủ ý  — hai app cùng một pháp nhân, và đó là quyết định
+  //   (b) chép nhầm      — ai đó chép khối `operator` của app cũ sang app mới
+  // Nới bài kiểm thành "cho trùng" thì (b) đi lọt và không có triệu chứng nào.
+  // Giữ nguyên "cấm trùng" thì (a) đỏ, và người sửa sẽ nới bài kiểm — đường nào
+  // cũng về chỗ mất phép canh.
+  //
+  // Nên phép đo không hỏi "có trùng không" mà hỏi "trùng này có được KHAI
+  // không": `sharedWith` trỏ tới app cho mượn. Bản chép nhầm không mang lời khai
+  // đó, nên nó vẫn đỏ — và đỏ kèm đúng câu cần đọc.
+  it('trùng pháp nhân thì phải KHAI `sharedWith`, không được trùng lặng lẽ', () => {
+    for (const id of ids) {
+      for (const khac of ids) {
+        if (khac === id) continue;
+        if (INSTANCES[id].operator.name !== INSTANCES[khac].operator.name) continue;
+        const khai = INSTANCES[id].operator.sharedWith;
+        const khaiNguoc = INSTANCES[khac].operator.sharedWith;
+        expect(
+          khai === khac || khaiNguoc === id
+            ? `${id}↔${khac}: có khai`
+            : `${id}↔${khac}: TRÙNG pháp nhân mà không app nào khai sharedWith`,
+        ).toBe(`${id}↔${khac}: có khai`);
+      }
+    }
   });
 
-  it('KHÔNG app nào mang địa chỉ hoặc hòm thư của app khác', () => {
+  it('`sharedWith` trỏ tới app CÓ THẬT, và app đó phải tự đứng tên', () => {
+    // Cấm bắc cầu: A mượn B mà B lại mượn C thì không app nào trong dây thật sự
+    // đứng tên, và trang chính sách của cả ba trỏ vào chỗ không ai chịu trách
+    // nhiệm. Một bậc, không hơn.
+    for (const id of ids) {
+      const cho = INSTANCES[id].operator.sharedWith;
+      if (!cho) continue;
+      expect(ids).toContain(cho);
+      expect(INSTANCES[cho].operator.sharedWith).toBeUndefined();
+    }
+  });
+
+  it('mượn pháp nhân thì phải ghi luôn nơi CHUYỂN GIAO — nợ nằm trong dữ liệu', () => {
+    // Không có bài này thì `sharedWith` thành một đường hợp thức hoá vĩnh viễn:
+    // khai một chữ là hết đỏ, và không gì nhắc rằng đây là trạng thái tạm.
+    for (const id of ids) {
+      const op = INSTANCES[id].operator;
+      if (!op.sharedWith) continue;
+      expect(op.transferTo?.name?.trim() || '').not.toBe('');
+      expect(op.transferTo?.since || '').toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      // Chuyển giao cho chính pháp nhân đang cho mượn thì không phải chuyển giao.
+      expect(op.transferTo!.name).not.toBe(op.name);
+    }
+  });
+
+  it('KHÔNG app nào mang địa chỉ hoặc hòm thư của app khác — trừ khi đã khai', () => {
     for (const id of ids) {
       const cua_toi = INSTANCES[id].operator;
       for (const khac of ids) {
         if (khac === id) continue;
         const cua_no = INSTANCES[khac].operator;
+        // Đã khai mượn thì trùng địa chỉ là HỆ QUẢ, không phải triệu chứng — và
+        // phải xét CẢ HAI CHIỀU. Chỉ hỏi `cua_toi.sharedWith` thì cặp
+        // (app cho mượn, app đi mượn) vẫn đỏ ở lượt lặp ngược, vì app cho mượn
+        // không khai gì cả — nó có phải đi mượn đâu.
+        if (cua_toi.sharedWith === khac || cua_no.sharedWith === id) continue;
         if (cua_no.address) expect(cua_toi.address).not.toBe(cua_no.address);
         if (cua_no.contact) expect(cua_toi.contact).not.toBe(cua_no.contact);
       }
@@ -233,10 +288,24 @@ describe('trang chính sách nói đúng pháp nhân của app đang chạy', ()
   it('KHÔNG nêu địa chỉ hay hòm thư của pháp nhân app khác', () => {
     // Đây là bài kiểm quan trọng nhất của nhóm. Nó bắt đúng lỗi đã sống: trang
     // chính sách in địa chỉ nhà riêng của chủ một pháp nhân khác.
+    //
+    // Bỏ qua app nào DÙNG CHUNG pháp nhân với app đang chạy. Không bỏ thì bài
+    // này tự mâu thuẫn với bài ngay trên nó: bài trên đòi trang phải NÊU địa chỉ
+    // của pháp nhân đang vận hành, bài này cấm nêu địa chỉ đó vì nó cũng là địa
+    // chỉ của app kia — cùng một chuỗi, hai bài đòi hai điều ngược nhau, và
+    // không cách nào viết một trang chính sách thoả cả hai.
+    //
+    // Phần bài này canh thì KHÔNG mất: địa chỉ của một pháp nhân KHÔNG dính dáng
+    // vẫn đỏ như cũ, vì app đó không có `sharedWith` trỏ về đây.
     const vi = chuTrongTrang('vi');
     const en = chuTrongTrang('en');
+    const dangChay = DEFAULT_INSTANCE.instanceId;
+    const dungChung = (id: string) =>
+      INSTANCES[id].operator.sharedWith === dangChay ||
+      DEFAULT_INSTANCE.operator.sharedWith === id;
     for (const id of ids) {
-      if (id === DEFAULT_INSTANCE.instanceId) continue;
+      if (id === dangChay) continue;
+      if (dungChung(id)) continue;
       const khac = INSTANCES[id].operator;
       for (const gt of [khac.address, khac.addressEn, khac.contact]) {
         if (!gt) continue;

@@ -98,3 +98,35 @@ describe('vòng quay phải cư xử tử tế', () => {
     expect(Number(khop![1])).toBeLessThanOrEqual(20);
   });
 });
+
+describe('chấm cây — xanh lá, nhỏ, và có ở CẢ HAI ô', () => {
+  it('chấm cây khác màu khung dây, không cùng một màu', () => {
+    // Khung/điểm nối/thành nói về MẢNH ĐẤT; cây là thứ sống trên đó. Cùng một
+    // màu thì hai nghĩa dính vào nhau và ô cần chú giải mới đọc được.
+    expect(MA_CHAY).toContain('const LA_TREN_TOI');
+    expect(MA_CHAY).toContain('const LA_TREN_SANG');
+    expect(MA_CHAY).toContain('fill={khongGian ? LA_TREN_TOI : LA_TREN_SANG}');
+
+    // Phép so ÂM phải bó vào ĐÚNG khối chấm cây, không quét cả tệp: dòng tô
+    // THÀNH cũng có dạng `fill={khongGian ? SANG : …}`, nên một phép so âm rộng
+    // sẽ đỏ vì một dòng chẳng liên quan. Đã cắn đúng ca đó lúc viết bài này.
+    //
+    // Và phải khớp theo RANH GIỚI TỪ, không khớp chuỗi con: `LA_TREN_SANG` chứa
+    // đúng chữ `SANG` bên trong nó, nên `not.toContain('SANG')` đỏ ngay cả khi
+    // mã hoàn toàn đúng. Đây là lần thứ hai trong đợt này một phép so chuỗi con
+    // bắt nhầm (lần trước: `styles.bentoBadge3D` là tiền tố của `…3DTxt`).
+    const i = MA_CHAY.indexOf('cayTrong.map(');
+    expect(i).toBeGreaterThan(-1);
+    const khoiCay = MA_CHAY.slice(i, i + 400);
+    expect(khoiCay).not.toMatch(/\bSANG\b/);
+  });
+
+  it('chấm cây phải NHỎ', () => {
+    // Vườn trăm cây mà chấm to thì các chấm dính thành một mảng đặc, và ô thôi
+    // nói được "trồng thưa hay dày" — mất đúng cái tin nó mang.
+    const khop = MA_CHAY.match(/r=\{khongGian \? ([\d.]+) : ([\d.]+)\}/);
+    expect(khop).not.toBeNull();
+    expect(Number(khop![1])).toBeLessThanOrEqual(2.5);
+    expect(Number(khop![2])).toBeLessThanOrEqual(2.5);
+  });
+});

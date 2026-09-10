@@ -58,6 +58,23 @@ const GOC_XOAY = 14;
  */
 const SANG = '#7FE7C4';
 
+/**
+ * CHẤM CÂY — xanh lá, và cố ý KHÁC màu khung dây.
+ *
+ * Khung, điểm nối và thành đều là `SANG` (xanh lam-lục): chúng nói về MẢNH ĐẤT.
+ * Cây là thứ khác loại — nó là cái sống trên mảnh đất đó — nên nó phải đọc ra
+ * ngay mà không cần chú giải. Hai màu, hai nghĩa; thêm màu thứ ba thì ô bắt đầu
+ * thành bảng màu.
+ *
+ * Hai giá trị vì hai nền:
+ *   `LA_TREN_TOI`  xanh lá sáng, tương phản 5,4 với chặng sáng nhất của nền tối.
+ *                  Lệch tông rõ so với `SANG` (lá ~130°, lam-lục ~160°) nên hai
+ *                  thứ không lẫn vào nhau dù độ sáng gần nhau.
+ *   `LA_TREN_SANG` xanh lá đậm của module, tương phản 5,4 trên mặt ô ranh giới.
+ */
+const LA_TREN_TOI = '#6EDB7A';
+const LA_TREN_SANG = NATURE.leaf;
+
 /** Một vòng quay đầy mất bao lâu. Chậm là có chủ ý — xem `useGocXoay`. */
 const CHU_KY_MS = 26_000;
 
@@ -250,6 +267,13 @@ export const FarmShape: React.FC<{
           </G>
         ) : null}
 
+        {/*
+          CHẤM CÂY — nhỏ, xanh lá, một chấm một cây.
+
+          Đây là thứ biến hình bóng mảnh đất thành hình VƯỜN: ranh giới nói đất
+          rộng bao nhiêu, chấm cây nói trong đó có gì và trồng thưa hay dày. Hai
+          ô cùng vẽ, vì cả hai đều mở ra một màn có cây.
+        */}
         <G>
           {cayTrong.map((c, i) => (
             <Circle
@@ -259,9 +283,12 @@ export const FarmShape: React.FC<{
               // không có mặt nào để đứng lên, nên nâng chỉ làm cây trôi lơ lửng
               // lệch khỏi chỗ thật của nó.
               cy={mode === 'iso' ? c.y - 3 : c.y}
-              r={khoi ? 2.4 : 1.8}
-              fill={khongGian ? SANG : NATURE.leafDeep}
-              opacity={khongGian ? 0.72 : 0.85}
+              // Nhỏ, và nhỏ có lý do: một vườn trăm cây mà chấm to thì các chấm
+              // dính vào nhau thành một mảng đặc, và lúc đó nó thôi nói được
+              // "trồng thưa hay dày" — tức mất đúng cái tin nó mang.
+              r={khongGian ? 2 : 1.8}
+              fill={khongGian ? LA_TREN_TOI : LA_TREN_SANG}
+              opacity={khongGian ? 0.9 : 0.9}
             />
           ))}
         </G>

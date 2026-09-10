@@ -1286,7 +1286,10 @@ const FarmDetailMode = ({
           padded={false}
           style={styles.bentoPreview}
         >
-          <FarmShape farm={farm} mode="flat" />
+          {/* `trees` PHẢI truyền: thiếu nó thì ô vẽ ranh giới trống không, và
+              một mảnh đất không cây đọc ra "vườn chưa có gì" — sai với vườn đang
+              có cả trăm cây. */}
+          <FarmShape farm={farm} trees={filteredTrees} mode="flat" />
           {coHinh ? (
             <Text style={styles.bentoPreviewDiem}>{soDiem} điểm</Text>
           ) : (

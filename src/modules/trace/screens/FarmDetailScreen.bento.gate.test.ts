@@ -200,3 +200,12 @@ describe('không lớp phủ nào được cắt ngang một nền chuyển sắ
     expect(nut).not.toContain('styles.btnShine');
   });
 });
+
+describe('cả hai ô xem trước đều vẽ cây trong vườn', () => {
+  it('mỗi `FarmShape` đều được truyền `trees`', () => {
+    // Ô ranh giới TỪNG thiếu vế này: nó vẽ mảnh đất trống không, và một mảnh đất
+    // không cây đọc ra "vườn chưa có gì" — sai với vườn đang có cả trăm cây.
+    expect(dem('<FarmShape')).toBe(dem('trees={filteredTrees}'));
+    expect(dem('trees={filteredTrees}')).toBe(2);
+  });
+});

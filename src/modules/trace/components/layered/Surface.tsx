@@ -21,10 +21,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Icon, { type IconName } from '../../../../components/Icon';
 import {
-  ELEVATION, ORGANIC_CARD, ORGANIC_HERO, ORGANIC_TILE,
+  ELEVATION, GRADIENT, NATURE, ORGANIC_CARD, ORGANIC_HERO, ORGANIC_TILE,
   RADIUS, SPACE, SURFACE, TONE, TOUCH_MIN, TYPE,
+  type GradientName,
 } from '../../theme/depth';
-import { GroundBackdrop } from './Organic';
+import { GradientFill, GroundBackdrop } from './Organic';
 
 // ---------------------------------------------------------------------------
 // L0 — Mặt đất
@@ -134,6 +135,115 @@ export const CardRow: React.FC<{
 };
 
 // ---------------------------------------------------------------------------
+// L2b — Lưới BENTO
+// ---------------------------------------------------------------------------
+
+/**
+ * Bento là một LUẬT, không phải một kiểu trang trí. Luật đó có ba vế, và bỏ vế
+ * nào thì phần còn lại chỉ là "thẻ bo góc xếp cạnh nhau":
+ *
+ *   1. MỖI Ô MỘT VIỆC. Ô nào trả lời được nhiều hơn một câu hỏi thì nó chưa
+ *      phải một ô — nó là hai ô đang dính nhau.
+ *   2. Ô TO HƠN NGHĨA LÀ QUAN TRỌNG HƠN. Kích thước là câu nói thẳng nhất trên
+ *      một màn hình; ba ô bằng nhau nghĩa là "ba thứ này ngang nhau", và nói
+ *      câu đó khi nó không đúng là chỗ bắt đầu của một màn rối.
+ *   3. TRONG MỘT TRANG CHỈ MỘT Ô TỐI. Ô tối là dấu "khác loại". Hai cái là
+ *      không cái nào còn là dấu.
+ *
+ * `BentoRow` chỉ lo khoảng cách; chiều rộng từng ô do `flex` của `BentoTile`
+ * quyết định — đó là chỗ vế (2) được viết ra thành số.
+ */
+export const BentoRow: React.FC<{
+  children: React.ReactNode;
+  style?: StyleProp<ViewStyle>;
+}> = ({ children, style }) => <View style={[styles.bentoRow, style]}>{children}</View>;
+
+/**
+ * Một ô của lưới.
+ *
+ * `tone` chọn nền chuyển sắc (xem `GRADIENT` trong `theme/depth.ts`). Nền được
+ * vẽ bằng SVG nằm DƯỚI nội dung, nên ô phải `overflow: 'hidden'` — nếu không,
+ * góc bo mất và chuyển sắc tràn ra ngoài mép.
+ *
+ * ⚠ `tone` có `onDark: true` thì chữ bên trong PHẢI là chữ sáng. Ô không tự đổi
+ * màu chữ của con: nó không biết con là chữ, biểu tượng hay ảnh. Dùng `onDark`
+ * từ token để chọn, đừng nhớ bằng đầu.
+ */
+export const BentoTile: React.FC<{
+  children: React.ReactNode;
+  tone?: GradientName;
+  /** Phần chiều rộng trong hàng. 2 nghĩa là rộng gấp đôi ô `flex={1}` cạnh nó. */
+  flex?: number;
+  onPress?: () => void;
+  padded?: boolean;
+  style?: StyleProp<ViewStyle>;
+}> = ({ children, tone = 'tile', flex, onPress, padded = true, style }) => {
+  const dark = GRADIENT[tone].onDark;
+  const body = (
+    <View
+      style={[
+        styles.bentoTile,
+        ORGANIC_CARD,
+        // Ô sáng cần viền tóc để có mép trên nền sáng; ô tối thì tự tách bằng
+        // sắc độ, thêm viền chỉ làm nó trông như bị kẻ khung.
+        dark ? ELEVATION.cardStrong : styles.bentoTileHairline,
+        padded && styles.bentoTilePad,
+        style,
+      ]}
+    >
+      <GradientFill name={tone} />
+      {children}
+    </View>
+  );
+  const wrapped = flex != null ? <View style={{ flex }}>{body}</View> : body;
+  if (!onPress) return wrapped;
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [flex != null && { flex }, pressed && styles.pressed]}
+      android_ripple={{ color: dark ? 'rgba(255,255,255,0.14)' : TONE.primarySoft, borderless: false }}
+    >
+      {body}
+    </Pressable>
+  );
+};
+
+/**
+ * Ô SỐ LIỆU — con số lớn, nhãn nhỏ.
+ *
+ * Có mặt ở đây thay vì để mỗi màn tự dựng vì nó là chỗ dễ trượt nhất: một con số
+ * ƯỚC TÍNH trình bày y hệt một con số ĐẾM ĐƯỢC là một lời nói dối im lặng. `hint`
+ * là chỗ nói ra sự khác nhau đó, và nó nằm ngay dưới con số chứ không nằm trong
+ * chú thích cuối trang — người liếc một cái rồi đi tiếp không đọc chú thích.
+ */
+export const BentoStat: React.FC<{
+  icon: IconName;
+  value: React.ReactNode;
+  label: string;
+  /** Ví dụ "ước tính". Bỏ trống khi con số là số đếm được. */
+  hint?: string;
+  tone?: GradientName;
+  flex?: number;
+  onPress?: () => void;
+}> = ({ icon, value, label, hint, tone = 'tile', flex, onPress }) => {
+  const dark = GRADIENT[tone].onDark;
+  const fg = dark ? NATURE.paper : NATURE.bark;
+  const fgSoft = dark ? 'rgba(255,255,255,0.78)' : NATURE.barkSoft;
+  return (
+    <BentoTile tone={tone} flex={flex} onPress={onPress}>
+      <Icon name={icon} size={18} color={dark ? NATURE.paper : TONE.primary} />
+      <Text style={[TYPE.metricSm, styles.bentoStatVal, { color: fg }]} numberOfLines={1}>
+        {value}
+      </Text>
+      <Text style={[TYPE.caption, { color: fgSoft }]} numberOfLines={1}>{label}</Text>
+      {hint ? (
+        <Text style={[styles.bentoStatHint, { color: fgSoft }]} numberOfLines={1}>{hint}</Text>
+      ) : null}
+    </BentoTile>
+  );
+};
+
+// ---------------------------------------------------------------------------
 // L3 — Tấm trượt từ đáy
 // ---------------------------------------------------------------------------
 
@@ -204,6 +314,20 @@ const styles = StyleSheet.create({
   },
   cardPad: { padding: SPACE.lg },
   pressed: { opacity: 0.92 },
+
+  bentoRow: { flexDirection: 'row', gap: SPACE.md, paddingHorizontal: SPACE.page },
+  bentoTile: {
+    // `overflow: 'hidden'` KHÔNG phải tuỳ chọn: nền chuyển sắc là một lớp SVG
+    // trải kín nằm dưới nội dung, thiếu dòng này thì nó tràn qua góc bo.
+    overflow: 'hidden',
+    flex: 1,
+    justifyContent: 'center',
+    backgroundColor: SURFACE.raised,
+  },
+  bentoTileHairline: { borderWidth: 1, borderColor: TONE.border },
+  bentoTilePad: { padding: SPACE.lg },
+  bentoStatVal: { marginTop: SPACE.sm, marginBottom: 2 },
+  bentoStatHint: { fontSize: 12, marginTop: 1, fontStyle: 'italic' },
 
   row: {
     flexDirection: 'row', alignItems: 'center', gap: SPACE.md,

@@ -33,9 +33,10 @@ import { COLORS } from '../../../constants';
 // Nen huu co dung chung cua module (tong dat/la) - xem theme/depth.ts
 import {
   SURFACE as ORG_SURFACE, TONE as ORG_TONE, NATURE as ORG_NATURE,
-  ORGANIC_CARD, ORGANIC_TILE, ELEVATION as ORG_ELEV,
+  ORGANIC_CARD, ORGANIC_TILE, ELEVATION as ORG_ELEV, SPACE as ORG_SPACE,
 } from '../theme/depth';
-import { GroundBackdrop } from '../components/layered/Organic';
+import { GradientFill, GroundBackdrop } from '../components/layered/Organic';
+import { BentoRow, BentoTile } from '../components/layered/Surface';
 import { useTk } from '../../../i18n/keys';
 // B2: tạo vườn QUA field-reid (server sinh farm_id uuid THẬT) — bỏ aladinAPI
 // (backend Lợi deprecated + client tự sinh `farm-<ts>` = gốc B2). INV-1 §3.2.
@@ -74,7 +75,10 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
 import { KeyboardAvoidingView } from 'react-native';
-import WayfindButton, { forFarm } from '../../../features/wayfind/WayfindButton';
+// `WayfindButton` không còn nhập ở đây: ô "Chỉ đường" nay là một ô Bento như hai
+// ô cạnh nó, dựng từ `useOpenWayfind` + `forFarm`. Nhúng một nút mang kiểu dáng
+// riêng vào giữa lưới là chỗ lưới bắt đầu rã.
+import { forFarm, useOpenWayfind } from '../../../features/wayfind/WayfindButton';
 import { showError, showInfo, showWarning } from '../../../utils/alert';
 import { t } from '../../../i18n';
 
@@ -1172,6 +1176,120 @@ const FarmDetailMode = ({
     ? `${(farm?.areaSqm / 10000).toFixed(1)} ha`
     : `${farm?.coordinates?.length ?? 0} ${tk('trace.unit.points')}`;
 
+  const moDuong = useOpenWayfind();
+  const dichDuong = forFarm(farm);
+  const soDiem = farm?.coordinates?.length ?? 0;
+
+  /**
+   * LƯỚI BENTO của màn này. Ba vế của luật (xem `BentoTile` trong
+   * `components/layered/Surface.tsx`) rơi vào đây như sau:
+   *
+   *   Ô TO NHẤT là "Vườn này vừa trải qua gì". Người mở màn vườn hỏi câu đó
+   *   trước — danh sách cây là bản kiểm kê, và bản kiểm kê thì đã nằm ngay dưới
+   *   với phân trang riêng. Trước bản này dòng thời gian nằm CUỐI footer, tức
+   *   chính bản ghi gốc của mọi việc đồng áng là thứ phải cuộn qua 128 cây mới
+   *   thấy.
+   *
+   *   MỖI Ô MỘT VIỆC. Dải cũ có ba ô trông ngang hàng nhưng không cùng loại:
+   *   "cây" và "quả dự kiến" là THÔNG TIN, còn "điểm GPS (nhấn xem)" là một
+   *   NÚT — nhãn của nó phải xuống dòng để tự giải thích mình bấm được. Nay ba
+   *   ô hành động là ba động từ, và hai con số lui về một dòng chữ nhỏ.
+   *
+   *   THU GỌN THÔNG TIN PHỤ. Số cây vốn thừa: nó bằng đúng độ dài danh sách
+   *   ngay bên dưới, nên nó về nằm cạnh tiêu đề danh sách. Số quả thì thêm chữ
+   *   "ước tính" — trước đây nó hiện y hệt một con số đếm được, và một con số
+   *   không nói mình là ước tính là một con số người ta sẽ tin nhầm.
+   */
+  const bentoHeader = (
+    <View style={styles.bento}>
+      {/* Dòng thông tin phụ — nhỏ, không viền, không bấm được. */}
+      <View style={styles.bentoFacts}>
+        <Icon name="apple-whole" size={13} color={ORG_TONE.sun} />
+        <Text style={styles.bentoFactTxt}>
+          {totalFruits.toLocaleString('vi-VN')} quả <Text style={styles.bentoFactHint}>(ước tính)</Text>
+        </Text>
+        <View style={styles.bentoFactDot} />
+        <Icon name="ruler-combined" size={13} color={ORG_TONE.rain} />
+        <Text style={styles.bentoFactTxt}>{areaLabel}</Text>
+      </View>
+
+      {/* Ô CHÍNH — dòng thời gian của vườn. */}
+      <BentoTile tone="hero" style={styles.bentoHero}>
+        <View style={styles.bentoHeroHead}>
+          <Icon name="seedling" size={18} color={ORG_TONE.primary} />
+          <Text style={styles.bentoHeroTitle}>Vườn này vừa trải qua gì</Text>
+        </View>
+        {!!farm?.id && (
+          <EntityTimeline entityType="farm" entityId={String(farm.id)} limit={3} />
+        )}
+        {/* CỐ Ý KHÔNG có nút "ghi việc mới" ở đây. Việc đó có đúng một chỗ, và
+            chỗ đó là thanh đáy — vì nó phải theo người dùng cả khi họ đang xem
+            sâu trong danh sách 128 cây. Đặt thêm một nút ở đây là dựng lại đúng
+            cái vừa gỡ khỏi header: hai lối vào cho một việc. */}
+      </BentoTile>
+
+      {/* Ba ô hành động — ba động từ, không ô nào là thông tin. */}
+      <BentoRow style={styles.bentoActions}>
+        <BentoTile flex={1} onPress={onView3DFarm} style={styles.bentoAction}>
+          <Icon name="arrows-spin" size={20} color={ORG_TONE.primary} />
+          <Text style={styles.bentoActionTxt}>Sơ đồ 3D</Text>
+        </BentoTile>
+        {/* `forFarm` trả null khi vườn chưa vẽ ranh giới — không có toạ độ nào
+            để đi tới, nên ô tự vắng mặt thay vì bấm vào rồi không xảy ra gì. */}
+        {dichDuong ? (
+          <BentoTile
+            flex={1}
+            tone="rain"
+            onPress={() => moDuong(dichDuong)}
+            style={styles.bentoAction}
+          >
+            <Icon name="map-location-dot" size={20} color={ORG_TONE.rain} />
+            <Text style={styles.bentoActionTxt}>Chỉ đường</Text>
+          </BentoTile>
+        ) : null}
+        <BentoTile flex={1} onPress={() => onCoordinatesPress()} style={styles.bentoAction}>
+          <Icon name="draw-polygon" size={20} color={ORG_TONE.primary} />
+          <Text style={styles.bentoActionTxt}>Ranh giới</Text>
+          <Text style={styles.bentoActionSub}>{soDiem} điểm</Text>
+        </BentoTile>
+      </BentoRow>
+
+      {/* Tiêu đề danh sách — số cây về đây, cạnh chính danh sách nó đếm. */}
+      <View style={styles.sectionHeaderRow}>
+        <View style={styles.sectionHeaderLeft}>
+          <View style={styles.sectionDot} />
+          <Text style={styles.sectionTitle}>{tk('trace.section.treeList')}</Text>
+          <Text style={styles.sectionCount}>{filteredTrees.length}</Text>
+        </View>
+        <TouchableOpacity style={styles.addTreeBtn} onPress={onAddTree} activeOpacity={0.8}>
+          <View style={styles.addTreeBtnInner}>
+            <Icon name="plus" size={16} color={COLORS.accent} />
+            <Text style={styles.addTreeBtnText}>Thêm cây</Text>
+          </View>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.searchContainer}>
+        <Icon name="magnifying-glass" size={18} color={COLORS.textMuted} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Tìm cây..."
+          placeholderTextColor={COLORS.textMuted}
+          value={searchQuery}
+          onChangeText={onSearchChange}
+        />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity
+            onPress={() => onSearchChange('')}
+            hitSlop={{ top: 13, bottom: 13, left: 13, right: 13 }}
+          >
+            <Icon name="circle-xmark" size={18} color={COLORS.textMuted} />
+          </TouchableOpacity>
+        )}
+      </View>
+    </View>
+  );
+
   return (
     <View style={styles.root}>
       <StatusBar barStyle="dark-content" backgroundColor={ORG_SURFACE.ground} />
@@ -1206,71 +1324,11 @@ const FarmDetailMode = ({
             <Icon name="share-nodes" size={20} color={COLORS.accent} />
           </TouchableOpacity>
         ) : null}
-        <TouchableOpacity style={styles.activityBtn} onPress={onActivityUpdate}>
-          <Icon name="file-pen" size={20} color={COLORS.accent} />
-        </TouchableOpacity>
-      </View>
-
-      {/* Stats banner */}
-      <View style={styles.statsBanner}>
-        {[
-          { icon: 'tree', val: filteredTrees.length, label: 'cây' },
-          { icon: 'apple-whole', val: totalFruits, label: 'quả dự kiến' },
-          { icon: 'map-pin', val: farm?.coordinates?.length ?? 0, label: 'điểm GPS\n(nhấn xem)', onPress: () => onCoordinatesPress() },
-        ].map((s, i) => (
-          <View
-            key={i}
-            style={[
-              styles.statBannerItem,
-              i < 3 && { borderRightWidth: 1, borderRightColor: COLORS.border },
-            ]}
-          >
-            <TouchableOpacity
-              activeOpacity={s.onPress ? 0.7 : 1}
-              onPress={s.onPress}
-              style={{ alignItems: 'center' }}
-            >
-              <Icon name={s.icon} size={16} color={COLORS.accent} />
-              <Text style={styles.statBannerVal}>{s.val}</Text>
-              {s.label ? <Text style={styles.statBannerLabel}>{s.label}</Text> : null}
-            </TouchableOpacity>
-          </View>
-        ))}
-      </View>
-
-      {/* Search Input */}
-      <View style={styles.searchContainer}>
-        <Icon name="magnifying-glass" size={18} color={COLORS.textMuted} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Tìm cây..."
-          placeholderTextColor={COLORS.textMuted}
-          value={searchQuery}
-          onChangeText={onSearchChange}
-        />
-        {searchQuery.length > 0 && (
-          <TouchableOpacity onPress={() => onSearchChange('')} hitSlop={{ top: 13, bottom: 13, left: 13, right: 13 }}>
-            <Icon name="circle-xmark" size={18} color={COLORS.textMuted} />
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* Section header */}
-      <View style={styles.sectionHeaderRow}>
-        <View style={styles.sectionHeaderLeft}>
-          <View style={styles.sectionDot} />
-          <Text style={styles.sectionTitle}>{tk('trace.section.treeList')}</Text>
-        </View>
-        <TouchableOpacity
-          style={styles.addTreeBtn}
-          onPress={onAddTree}
-          activeOpacity={0.8}
-        >
-          <View style={styles.addTreeBtnInner}>
-            <Icon name="plus" size={16} color={COLORS.accent} />
-            <Text style={styles.addTreeBtnText}>Thêm cây</Text>
-          </View>
-        </TouchableOpacity>
+        {/* CỐ Ý KHÔNG có nút "cập nhật hoạt động" ở đây nữa. Trước bản này màn
+            có HAI lối vào cùng một việc: biểu tượng `file-pen` không nhãn ở đây,
+            và nút lớn ở đáy — cả hai gọi đúng `onActivityUpdate`. Hai lối vào
+            cho một việc là hai chỗ người dùng phải đoán xem chúng có khác nhau
+            không. Nay việc đó có đúng một chỗ: ô "Vườn này vừa trải qua gì". */}
       </View>
 
       {/* Tree list */}
@@ -1280,6 +1338,19 @@ const FarmDetailMode = ({
         contentContainerStyle={styles.treeListContent}
         showsVerticalScrollIndicator={false}
         ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+        /*
+          LƯỚI BENTO nằm TRONG phần cuộn, không đứng cố định phía trên.
+
+          Trước bản này bốn khối — dải thống kê, ô tìm, tiêu đề mục, thanh đáy —
+          đều đứng yên, nên một vườn 128 cây chỉ còn chưa tới nửa màn để xem
+          danh sách. Cho lưới cuộn theo là trả lại chỗ cho đúng thứ người ta mở
+          màn này để xem.
+
+          Đánh đổi, nói thẳng: nút "Ghi việc mới" nằm trong ô hero nên nó cuộn
+          khuất khi xem sâu trong danh sách. Đổi lại là danh sách được nguyên
+          màn, và việc ghi nhật ký có ĐÚNG MỘT chỗ thay vì hai.
+        */
+        ListHeaderComponent={bentoHeader}
         ListEmptyComponent={
           filteredTrees.length === 0 ? (
             trees.length === 0 ? (
@@ -1320,29 +1391,6 @@ const FarmDetailMode = ({
         )}
         ListFooterComponent={
           <View>
-            {/*
-              DÒNG THỜI GIAN CỦA VƯỜN — chỗ việc đồng áng thật sự được ghi.
-
-              Một lần phun cả vườn là MỘT sự việc, và máy chủ ghi nó ở ĐÂY, không
-              ghi xuống từng cây (ghi xuống cây là nhân một sự việc có thật thành
-              N bản ghi không có thật). Màn chi tiết cây chỉ thấy bản KẾ THỪA của
-              nó, mang nhãn "cả vườn". Trước bản này app không có chỗ nào vẽ dòng
-              của vườn — tức chính bản ghi GỐC là thứ không ai xem được: ghi xong
-              là biến mất khỏi tầm mắt người vừa ghi.
-
-              Vẽ NGOÀI nhánh `filteredTrees.length > 0`, và đó là chủ ý: việc đồng
-              áng không đợi có cây mới ghi được, nên vườn chưa có cây nào vẫn phải
-              thấy được nhật ký của nó.
-
-              Đặt TRÊN danh sách cây: dòng thời gian trả lời "vườn này đã trải qua
-              gì", danh sách cây là bản kiểm kê. Người mở màn vườn hỏi câu đầu
-              trước — còn danh sách thì đã có phân trang riêng bên dưới.
-            */}
-            {!!farm?.id && (
-              <View style={styles.farmTimelineWrap}>
-                <EntityTimeline entityType="farm" entityId={String(farm.id)} limit={5} />
-              </View>
-            )}
             {filteredTrees.length > 0 ? (
               /* Pagination */
               <PaginationControls
@@ -1378,23 +1426,22 @@ const FarmDetailMode = ({
           setChieuCaoThanhDay((truoc) => (truoc === h ? truoc : h));
         }}
       >
-        {/* Toàn cảnh 3D của cả vườn (mặt đất theo ranh giới + mọi cây).
-            Chạm 1 cây trong đó → bay sà vào xem quả. */}
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          <TouchableOpacity
-            style={styles.view3DFarmBtn}
-            onPress={onView3DFarm}
-            activeOpacity={0.85}
-          >
-            <Icon name="arrows-spin" size={19} color={COLORS.accent} />
-            <Text style={styles.view3DFarmBtnText}>Xem sơ đồ 3D của vườn</Text>
-            <Icon name="chevron-right" size={18} color={COLORS.accent} />
-          </TouchableOpacity>
-          {/* Đích là TRỌNG TÂM ranh giới đã vẽ. Vườn chưa vẽ ranh giới →
-              `forFarm` trả null → nút tự ẩn (không có toạ độ nào để đi tới). */}
-          <WayfindButton target={forFarm(farm)} size="sm" />
-        </View>
+        {/*
+          MỘT hàng, MỘT nút. Trước bản này thanh có hai hàng: "Xem sơ đồ 3D" +
+          chỉ đường ở trên, "Cập nhật hoạt động" ở dưới. Hai việc đầu nay là hai
+          ô trong lưới Bento, nên chúng rời khỏi đây — một việc không được có hai
+          chỗ bấm.
+
+          Còn lại đúng việc PHẢI theo người dùng: ghi nhật ký. Nó ở đây chứ không
+          ở trong ô hero vì người đang xem cây thứ 90 cũng phải ghi được ngay,
+          không phải cuộn ngược lên đầu.
+
+          Thanh mỏng đi còn một hàng, và phép đo `onLayout` ở trên tự bắt kịp —
+          đó đúng là lý do bản #309 đổi ô chừa chỗ từ số gõ tay sang chiều cao đo
+          được. Nếu ô chừa vẫn là hằng 86 thì bản này lại phải sửa tay lần nữa.
+        */}
         <TouchableOpacity style={styles.activityLargeBtn} onPress={onActivityUpdate} activeOpacity={0.88}>
+          <GradientFill name="action" />
           <View style={styles.btnShine} />
           <Icon name="seedling" size={19} color={COLORS.white} />
           <Text style={styles.activityLargeBtnText}>Cập nhật hoạt động</Text>
@@ -2440,22 +2487,42 @@ const styles = StyleSheet.create({
   },
 
   // Stats banner
-  statsBanner: {
-    flexDirection: 'row',
-    backgroundColor: ORG_SURFACE.raised,
-    marginHorizontal: 18,
-    ...ORGANIC_CARD,
-    marginBottom: 16,
-    ...ORG_ELEV.card,
+  // ── Lưới Bento ────────────────────────────────────────────────────────────
+  bento: { paddingBottom: 4 },
+
+  /** Dòng thông tin phụ: nhỏ, không viền, không bấm được. */
+  bentoFacts: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: ORG_SPACE.page, paddingBottom: ORG_SPACE.md,
   },
-  statBannerItem: {
-    flex: 1, paddingVertical: 14, alignItems: 'center', gap: 3,
+  bentoFactTxt: { fontSize: 13, color: ORG_NATURE.barkSoft },
+  /** "(ước tính)" phải KHÁC mắt so với con số, nếu không nó chỉ là chữ trang trí. */
+  bentoFactHint: { fontStyle: 'italic', color: ORG_NATURE.barkSoft },
+  bentoFactDot: {
+    width: 3, height: 3, borderRadius: 2,
+    backgroundColor: ORG_TONE.border, marginHorizontal: 2,
   },
-  statBannerVal: {
-    fontSize: 18, fontWeight: '700', color: ORG_NATURE.bark, letterSpacing: -0.3,
+
+  bentoHero: { marginHorizontal: ORG_SPACE.page, paddingHorizontal: 0 },
+  bentoHeroHead: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: ORG_SPACE.lg, paddingBottom: ORG_SPACE.sm,
   },
-  statBannerLabel: {
-    fontSize: 13, color: ORG_NATURE.barkSoft,
+  bentoHeroTitle: {
+    fontSize: 17, fontWeight: '700', color: ORG_NATURE.bark, letterSpacing: -0.2,
+  },
+
+  bentoActions: { marginTop: ORG_SPACE.md, marginBottom: ORG_SPACE.xl },
+  bentoAction: { alignItems: 'center', gap: 6, paddingVertical: ORG_SPACE.lg },
+  bentoActionTxt: {
+    fontSize: 14, fontWeight: '700', color: ORG_NATURE.bark, textAlign: 'center',
+  },
+  bentoActionSub: { fontSize: 12, color: ORG_NATURE.barkSoft },
+
+  /** Số cây, đặt cạnh chính danh sách nó đếm. */
+  sectionCount: {
+    fontSize: 14, fontWeight: '700', color: ORG_NATURE.barkSoft,
+    marginLeft: 2,
   },
 
   // Section header
@@ -2610,9 +2677,6 @@ const styles = StyleSheet.create({
   },
 
   // Bottom bar
-  /** Khối dòng thời gian của vườn nằm trong footer của FlatList — cần lề riêng
-   *  vì các hàng cây đã có lề của chúng. */
-  farmTimelineWrap: { paddingHorizontal: 16, paddingTop: 4 },
   bottomBar: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     paddingHorizontal: 20,
@@ -2634,26 +2698,6 @@ const styles = StyleSheet.create({
     borderColor: ORG_TONE.border,
   },
   scan3DExistingBtnText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: COLORS.accent,
-  },
-  view3DFarmBtn: {
-    marginBottom: 10,
-    borderRadius: 14,
-    flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: COLORS.accentGlow,
-    borderWidth: 1,
-    borderColor: ORG_TONE.border,
-  },
-  view3DFarmBtnText: {
-    flex: 1,
     fontSize: 14,
     fontWeight: '700',
     color: COLORS.accent,

@@ -18,10 +18,53 @@
 
 import React from 'react';
 import { Image, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
-import Svg, { Ellipse, Path, G } from 'react-native-svg';
+import Svg, { Ellipse, Path, G, Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 
-import { NATURE } from '../../theme/depth';
+import { GRADIENT, NATURE, type GradientName } from '../../theme/depth';
 import { BACKDROP_PHOTOS, PHOTO_OPACITY, type BackdropVariant } from '../../theme/backdrops';
+
+/**
+ * Lớp CHUYỂN SẮC lấp đầy khối cha. Đặt nó làm con đầu tiên của một `View` có
+ * `overflow: 'hidden'` và bo góc; nó tự trải kín, và không bao giờ ăn cú chạm.
+ *
+ * ── Góc tính theo quy ước CSS ───────────────────────────────────────────────
+ * `0` = chảy lên trên · `90` = sang phải · `180` = xuống dưới · `135` = xuống
+ * góc dưới-phải. Chọn quy ước này thay vì tự đặt một quy ước riêng vì mọi người
+ * đã quen nó từ `linear-gradient()` trên web — một quy ước riêng ở đây chỉ tạo
+ * ra một thứ nữa phải tra.
+ *
+ * ⚠ Không chuẩn hoá độ dài đường chuyển sắc theo tỉ lệ khung như CSS làm. Với
+ * hai chặng lệch nhau chưa tới một bậc sáng thì mắt không phân biệt được, và
+ * phép chuẩn hoá đó đổi lại bằng một khối tính chạy mỗi lần vẽ lại.
+ */
+export const GradientFill: React.FC<{ name: GradientName }> = ({ name }) => {
+  const g = GRADIENT[name];
+  const rad = (g.angle * Math.PI) / 180;
+  // Hướng chảy trong hệ toạ độ màn hình (trục y hướng XUỐNG).
+  const dx = Math.sin(rad);
+  const dy = -Math.cos(rad);
+  // `id` phải khác nhau giữa các lớp cùng nằm trên một màn: SVG tra `fill="url(#id)"`
+  // theo tên trong CẢ tài liệu, nên hai lớp trùng id thì lớp sau lấy nhầm màu của
+  // lớp trước — và nó chỉ lộ ra khi màn có từ hai chuyển sắc trở lên.
+  const id = `grad-${name}`;
+  return (
+    <Svg pointerEvents="none" style={StyleSheet.absoluteFill} width="100%" height="100%">
+      <Defs>
+        <LinearGradient
+          id={id}
+          x1={`${(0.5 - dx / 2) * 100}%`}
+          y1={`${(0.5 - dy / 2) * 100}%`}
+          x2={`${(0.5 + dx / 2) * 100}%`}
+          y2={`${(0.5 + dy / 2) * 100}%`}
+        >
+          <Stop offset="0" stopColor={g.from} />
+          <Stop offset="1" stopColor={g.to} />
+        </LinearGradient>
+      </Defs>
+      <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${id})`} />
+    </Svg>
+  );
+};
 
 /**
  * Mảng loang. Dựng từ các cung có bán kính LỆCH nhau — tròn đều thì ra hình do

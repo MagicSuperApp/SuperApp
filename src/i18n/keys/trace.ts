@@ -400,10 +400,17 @@ export const TRACE_STRINGS = {
   'trace.fruitVideo.sending': { vi: 'Đang gửi… giữ app mở', en: 'Sending… keep the app open', zh: '正在发送…请保持应用打开', ja: '送信中…アプリを開いたままに' },
   'trace.fruitVideo.queueAuto': { vi: 'Còn {n} clip chờ gửi · tự gửi khi có sóng', en: '{n} clips waiting · they will send when you have signal', zh: '还有 {n} 段待发送 · 有信号时自动发送', ja: '{n} 件が送信待ち · 電波が入れば自動送信' },
   'trace.fruitVideo.queueManual': { vi: 'Còn {n} clip chờ gửi · {m} clip phải bấm gửi tay', en: '{n} clips waiting · {m} need a manual send', zh: '还有 {n} 段待发送 · {m} 段需手动发送', ja: '{n} 件が送信待ち · {m} 件は手動送信が必要' },
+  // Kho trên máy đọc không ra ⟹ KHÔNG biết còn clip nào chờ. Câu này phải nói
+  // rõ là app không đọc được, chứ không được im lặng như khi hàng đợi rỗng —
+  // im lặng ở đây nghĩa là nói với người quay rằng clip đã gửi xong.
+  'trace.fruitVideo.queueUnknown': { vi: 'Không đọc được danh sách clip chờ gửi trên máy. Đừng xoá clip trong thư viện cho tới khi bấm gửi lại được.', en: 'Cannot read the list of clips waiting on this device. Do not delete the clips from your gallery until a retry succeeds.', zh: '无法读取本机待发送的短片列表。在重新发送成功前，请勿从相册删除这些短片。', ja: 'この端末の送信待ちクリップ一覧を読み取れません。再送信が成功するまで、アルバムからクリップを削除しないでください。' },
+  'trace.fruitVideo.queueUnknownTitle': { vi: 'Chưa đọc được hàng chờ gửi', en: 'Could not read the send queue', zh: '无法读取发送队列', ja: '送信待ち一覧を読み取れません' },
+  'trace.fruitVideo.queueUnknownBody': { vi: 'Clip đã được ghi vào hàng chờ trên máy nên không mất. Nhưng lần này app không đọc được hàng chờ để gửi đi — hãy bấm "Gửi lại" ở đầu màn khi có sóng.', en: 'The clip was written to the queue on this device, so it is not lost. This time the app could not read the queue to send it — tap “Retry” at the top of the screen once you have signal.', zh: '短片已写入本机队列，不会丢失。但这次应用无法读取队列进行发送 — 有信号后请点击屏幕顶部的“重新发送”。', ja: 'クリップは端末の送信待ち一覧に保存済みなので失われません。ただし今回はアプリが一覧を読めず送信できませんでした — 電波の良い場所で画面上部の「再送信」を押してください。' },
   'trace.fruitVideo.retrySend': { vi: 'Gửi lại', en: 'Retry', zh: '重新发送', ja: '再送信' },
   'trace.fruitVideo.sendingShort': { vi: 'Đang gửi…', en: 'Sending…', zh: '发送中…', ja: '送信中…' },
   'trace.fruitVideo.doneTitle': { vi: 'Đã lưu video quả', en: 'Fruit video saved', zh: '果实视频已保存', ja: '果実の動画を保存しました' },
-  'trace.fruitVideo.doneSawN': { vi: 'Đã lưu video và thấy {n} quả.', en: 'Saved, and {n} fruits were spotted.', zh: '已保存，识别到 {n} 个果实。', ja: '保存し、果実を {n} 個見つけました。' },
+  'trace.fruitVideo.doneSawN': { vi: 'Đã lưu video. Trong một khung, máy thấy nhiều nhất khoảng {n} quả.', en: 'Video saved. In a single frame, the app spotted at most about {n} fruits.', zh: '视频已保存。在单帧画面中，最多识别到约 {n} 个果实。', ja: '動画を保存しました。1コマの中で最も多いときで約 {n} 個の果実を検出しました。' },
+  'trace.fruitVideo.countHedge': { vi: 'Đây là ước lượng của máy trên MỘT khung hình, không phải số quả của cả cây. Dùng để tham khảo, đừng chép thẳng vào sổ.', en: 'This is the app’s estimate within a SINGLE frame, not the fruit count for the whole tree. Treat it as a hint, not a figure to record.', zh: '这是应用在单帧画面内的估算，并非整棵树的果实数量。仅供参考，请勿直接记入台账。', ja: 'これは1コマ内でのアプリの推定値で、木全体の果実数ではありません。目安として扱い、そのまま帳簿に記入しないでください。' },
   'trace.fruitVideo.doneSaved': { vi: 'Đã lưu video.', en: 'Video saved.', zh: '视频已保存。', ja: '動画を保存しました。' },
   'trace.fruitVideo.doneFrames': { vi: 'Chủ vườn sẽ xác nhận sau. ({n} khung hình)', en: 'The owner will confirm later. ({n} frames)', zh: '园主稍后确认。（{n} 帧）', ja: '所有者があとで確認します。（{n} フレーム）' },
   'trace.fruitVideo.doneSlower': {

@@ -38,10 +38,18 @@ jest.mock('react-redux', () => ({ useDispatch: () => jest.fn() }));
 
 // `isAvailable` là việc ĐẦU TIÊN `doRestore` làm. Nên nó là phép đo rẻ nhất cho
 // câu hỏi "khôi phục đã bắt đầu chưa" — không cần giả lập cả luồng ký.
+//
+// ⚠️ TỪ 2026-09-11 phép đo này KHÔNG còn độc quyền cho `doRestore`: màn dựng xong
+// là gọi `getStoredMasterKek()` để biết có hiện thẻ lối tắt "máy còn ví" không, mà
+// hàm đó mở đầu bằng đúng `taad.isAvailable()`. Nên `beforeEach` phải XOÁ số đếm
+// SAU khi dựng màn, và trước khi xoá thì khẳng định đúng số lần mount gọi — nếu
+// sau này có thêm một chỗ gọi lúc mount, khẳng định đó đỏ và người sửa biết ngay,
+// thay vì cứ thế bị xoá lẫn vào.
 jest.mock('../sdk/taadEnclave', () => ({
   __esModule: true,
   default: {
     isAvailable: jest.fn(() => false),
+    secureLoad: jest.fn(async () => null),
     deriveTaadPubkey: jest.fn(),
     signEd25519: jest.fn(),
   },
@@ -89,6 +97,10 @@ describe('RestoreIdentityScreen — cửa xác nhận', () => {
     jest.clearAllMocks();
     warn = jest.spyOn(appAlert, 'showWarning').mockImplementation(() => {});
     await act(async () => { tree = renderer.create(<RestoreIdentityScreen />); });
+    // Phép dò lúc mount (thẻ lối tắt) — khẳng định trước, xoá sau. Xem chú thích
+    // ở khối `jest.mock('../sdk/taadEnclave')`.
+    expect(taadEnclave.isAvailable).toHaveBeenCalledTimes(1);
+    (taadEnclave.isAvailable as jest.Mock).mockClear();
   });
 
   afterEach(() => { warn.mockRestore(); });
@@ -128,5 +140,52 @@ describe('RestoreIdentityScreen — cửa xác nhận', () => {
     // Cảnh báo "thiếu từ" KHÔNG được mang onConfirm — mang thì người dùng bấm
     // tiếp một nhát là khôi phục với cụm từ chưa đủ.
     expect(options?.onConfirm).toBeUndefined();
+  });
+});
+
+/**
+ * LỐI TẮT "máy này vẫn còn ví" — thứ quyết định màn này có phải ngõ cụt không.
+ *
+ * Kho khoá của iOS/Android giữ Master_KEK qua lần xoá-cài-lại app; AsyncStorage
+ * thì không. Người cài lại app trên chính máy cũ vì thế còn nguyên ví mà mất sạch
+ * mã định danh — và cả ba lối ở màn hỏi cửa vào đều đổ về màn này, vốn chỉ nhận 24
+ * từ. Ai chưa từng tự mở `SeedExportScreen` thì không có 24 từ nào để nhập.
+ *
+ * Hai cực phải phân biệt được, nếu không thì bài kiểm này không kiểm gì:
+ *   có ví trên máy   → thẻ lối tắt HIỆN
+ *   không có ví      → thẻ lối tắt VẮNG (và màn quay về đúng hình dạng cũ)
+ */
+describe('RestoreIdentityScreen — lối tắt khi máy còn ví', () => {
+  // Đếm PHẦN TỬ NỀN (`typeof n.type === 'string'`). `findAll` mặc định trả cả nút
+  // hợp thành lẫn nút nền, nên một `<TextInput testID=…>` ra HAI kết quả — con số
+  // đó không nói được gì về số ô thật sự trên màn.
+  const countHostByTestId = (tree: ReactTestRenderer, id: string) =>
+    tree.root.findAll(n => n.props?.testID === id && typeof n.type === 'string').length;
+
+  beforeEach(() => { jest.clearAllMocks(); });
+
+  it('máy CÒN ví → hiện thẻ lối tắt + ô tên đăng nhập, không đòi 24 từ', async () => {
+    (taadEnclave.isAvailable as jest.Mock).mockReturnValue(true);
+    (taadEnclave.secureLoad as jest.Mock).mockResolvedValue('a'.repeat(64));
+
+    let tree!: ReactTestRenderer;
+    await act(async () => { tree = renderer.create(<RestoreIdentityScreen />); });
+
+    expect(countHostByTestId(tree, 'restore-shortcut-same-device')).toBe(1);
+    expect(countHostByTestId(tree, 'restore-username')).toBe(1);
+    expect(countHostByTestId(tree, 'restore-same-device-btn')).toBe(1);
+  });
+
+  it('máy KHÔNG còn ví → thẻ lối tắt vắng mặt', async () => {
+    (taadEnclave.isAvailable as jest.Mock).mockReturnValue(false);
+    (taadEnclave.secureLoad as jest.Mock).mockResolvedValue(null);
+
+    let tree!: ReactTestRenderer;
+    await act(async () => { tree = renderer.create(<RestoreIdentityScreen />); });
+
+    expect(countHostByTestId(tree, 'restore-shortcut-same-device')).toBe(0);
+    // Ô tên đăng nhập vẫn còn, nhưng ở chỗ khác (kèm đường 24 từ) — nó là nguồn
+    // DID rẻ nhất cho máy mới, nên không được biến mất cùng thẻ lối tắt.
+    expect(countHostByTestId(tree, 'restore-username')).toBe(1);
   });
 });

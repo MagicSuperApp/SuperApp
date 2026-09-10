@@ -152,9 +152,10 @@ const FruitVideoScreen: React.FC = () => {
 
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<FruitVideoResult | null>(null);
-  const [queueCount, setQueueCount] = useState(0);
+  // `null` = chưa đếm được (kho trên máy đọc không ra), KHÁC `0` = không còn gì chờ.
+  const [queueCount, setQueueCount] = useState<number | null>(0);
   // Trong số đang chờ, bao nhiêu clip đã chạm cap → KHÔNG tự gửi lại nữa, phải bấm tay.
-  const [manualCount, setManualCount] = useState(0);
+  const [manualCount, setManualCount] = useState<number | null>(0);
   // Job vừa xếp hàng nhưng CHƯA lên LampNet — để nút "Gửi lại" nhắm đúng clip đó.
   const [pendingJobId, setPendingJobId] = useState<string | null>(null);
 
@@ -406,12 +407,31 @@ const FruitVideoScreen: React.FC = () => {
       clearFruitVideoDraft(draftOwner);
 
       // 2) Kích gửi 1 lần.
-      await flushVideoUploadQueue();
+      //
+      // BỌC LẠI: từ khi `loadVideoQueue` NÉM thay vì trả mảng rỗng (đúng luật "hình
+      // dạng lạ thì ném, đừng nuốt"), `flushVideoUploadQueue` ném theo được. Ở đúng
+      // chỗ này thì một lần ném là mất hết: nháp màn vừa bị xoá ba dòng trên, và
+      // `catch` ngoài cùng của `handleUpload` sẽ nuốt cả bước dựng màn kết quả —
+      // người quay không thấy màn nào, không thấy câu lỗi nào, chỉ thấy app quay về.
+      //
+      // Clip KHÔNG mất trong ca này: nó đã nằm trong hàng đợi bền (`enq.persisted`
+      // đã kiểm ngay trên). Cái hỏng chỉ là lần ĐỌC hàng đợi. Nên bắt riêng, nói
+      // đúng điều đã xảy ra, rồi đi tiếp — bước dưới đã phân biệt được `null`.
+      try {
+        await flushVideoUploadQueue();
+      } catch (e) {
+        console.log('[FruitVideo] flush hàng đợi lỗi:', e);
+        showInfo(tk('trace.fruitVideo.queueUnknownTitle'), tk('trace.fruitVideo.queueUnknownBody'));
+      }
       refreshQueueCount();
 
       // 3) Kết cục của CHÍNH clip này: còn trong hàng = chưa lên LampNet.
       const stillQueued = await isJobQueued(enq.job.id);
-      if (!stillQueued) {
+      // `=== false` chứ KHÔNG `!stillQueued`: `null` nghĩa là không đọc nổi hàng
+      // đợi, và `!null` cũng bằng `true`. Gộp hai thứ đó lại thì một lần đọc hỏng
+      // được đọc thành "clip đã lên máy chủ" — trong khi bản nháp trên máy vừa bị
+      // xoá vài dòng trước, nên không còn gì để dựng lại.
+      if (stillQueued === false) {
         // Gửi xong + byte đã lên LampNet → dựng màn kết quả từ SỔ BẰNG CHỨNG.
         // Tra theo `clientEventId` của CHÍNH clip này, KHÔNG lấy `proofs[0]`:
         // một cây có thể có nhiều clip trong hàng, flush duyệt [mới→cũ] còn sổ thì
@@ -471,7 +491,10 @@ const FruitVideoScreen: React.FC = () => {
     try {
       if (pendingJobId) {
         await retryVideoJobNow(pendingJobId);
-        if (!(await isJobQueued(pendingJobId))) setPendingJobId(null);
+        // Chỉ bỏ dấu "đang chờ" khi CHẮC CHẮN job đã rời hàng. Đọc hỏng (`null`)
+        // thì giữ nguyên dấu — giữ nhầm một dấu chờ chỉ phiền, bỏ nhầm nó là mất
+        // luôn nút gửi lại cho một clip vẫn còn nằm trên máy.
+        if ((await isJobQueued(pendingJobId)) === false) setPendingJobId(null);
       } else {
         // Không nhớ job cụ thể (mở lại màn / tắt app) → ép gửi lại CẢ HÀNG, kể cả
         // clip đã chạm cap. KHÔNG dùng flushVideoUploadQueue ở đây: flush cố ý bỏ
@@ -486,7 +509,11 @@ const FruitVideoScreen: React.FC = () => {
 
   // ── Màn kết quả ───────────────────────────────────────────────────────────
   if (result) {
-    const n = result.n_fruits_max ?? 0;
+    // KHÔNG `?? 0` — cùng lý do đã gỡ dấu ấy khỏi `fruitVideoService.ts:183`, và
+    // gỡ ở đó mà để lại ở đây thì chẳng gỡ được gì: `0` vẫn mang hình dạng một số
+    // đo, nên "máy chủ chưa cho biết" và "máy chủ đếm được không quả nào" vẫn ra
+    // cùng một dòng chữ.
+    const n = result.n_fruits_max;
     return (
       <View style={styles.root}>
         <StatusBar barStyle="dark-content" backgroundColor={SURFACE.ground} />
@@ -497,9 +524,26 @@ const FruitVideoScreen: React.FC = () => {
           <View style={styles.doneSeal}>
             <Icon name="circle-check" size={46} color={TONE.primary} />
           </View>
+          {/* BA nhánh: chưa biết · có thấy quả · không thấy quả nào. */}
           <Text style={styles.doneTitle}>
-            {n > 0 ? tk('trace.fruitVideo.doneSawN', { n }) : tk('trace.fruitVideo.doneSaved')}
+            {n === undefined
+              ? tk('trace.fruitVideo.doneSaved')
+              : n > 0
+                ? tk('trace.fruitVideo.doneSawN', { n })
+                : tk('trace.fruitVideo.doneSaved')}
           </Text>
+          {/* HEDGE PHẢI ĐI KÈM CON SỐ, KHÔNG ĐỂ Ở CHỖ KHÁC.
+              `n_fruits_max` là số quả nhiều nhất thấy trong MỘT KHUNG, do bộ dò HSV
+              ước lượng — `fruitVideoService.ts` khai đúng như vậy ở chỗ định nghĩa
+              trường, và còn trả kèm `fruit_count_method` "để UI cảnh báo đây là ước
+              lượng sơ bộ". Nhưng không màn nào đọc trường ấy, nên lời cảnh báo đó
+              chưa bao giờ tới được người đọc con số.
+              Hai tầng sai cùng lúc nếu để trần: ước lượng chứ không phải đếm, và
+              max-theo-khung chứ không phải tổng của cây. Người ghi chép ngoài vườn
+              chép thẳng con số vào sổ, rồi sổ đó thành số liệu thực địa. */}
+          {n !== undefined && n > 0 ? (
+            <Text style={styles.doneHedge}>{tk('trace.fruitVideo.countHedge')}</Text>
+          ) : null}
           {savedFruitName ? (
             <View style={styles.savedFruitChip}>
               <Icon name="apple-whole" size={15} color={TONE.primaryDeep} />
@@ -721,15 +765,20 @@ const FruitVideoScreen: React.FC = () => {
 
       {/* ── Chặng 3 — gửi ── */}
       <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) + 8 }]}>
-        {queueCount > 0 && (
+        {/* BA trạng thái, không phải hai. `null` = kho trên máy đọc không ra, nên
+            app KHÔNG biết còn clip nào chờ. Gộp nó vào nhánh "ẩn dải" là nói với
+            người quay rằng chẳng còn gì phải chờ — đúng lúc điều đó không ai biết. */}
+        {(queueCount === null || queueCount > 0) && (
           <View style={styles.queueBanner}>
             <Icon name="clock" size={15} color={TONE.sun} />
             {/* Nói ĐÚNG sự thật: clip đã chạm cap KHÔNG còn tự gửi lại nữa. Hứa
                 "sẽ tự gửi" cho những clip đó là để đội thực địa yên tâm nhầm. */}
             <Text style={styles.queueBannerText}>
-              {manualCount > 0
-                ? tk('trace.fruitVideo.queueManual', { n: queueCount, m: manualCount })
-                : tk('trace.fruitVideo.queueAuto', { n: queueCount })}
+              {queueCount === null
+                ? tk('trace.fruitVideo.queueUnknown')
+                : manualCount !== null && manualCount > 0
+                  ? tk('trace.fruitVideo.queueManual', { n: queueCount, m: manualCount })
+                  : tk('trace.fruitVideo.queueAuto', { n: queueCount })}
             </Text>
             <Pressable onPress={handleRetryPending} disabled={uploading} hitSlop={10}>
               <Text style={styles.queueRetryText}>
@@ -958,6 +1007,9 @@ const styles = StyleSheet.create({
   },
   doneTitle: { ...TYPE.section, fontSize: 20, textAlign: 'center' },
   doneSub: { ...TYPE.body, fontSize: 15, textAlign: 'center' },
+  // Nhỏ hơn tiêu đề nhưng KHÔNG mờ đi: đây là câu quyết định con số phía trên được
+  // đọc thế nào, nên nó không phải chú thích trang trí.
+  doneHedge: { ...TYPE.body, fontSize: 13, textAlign: 'center', marginTop: 6 },
   cidBox: {
     flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, alignSelf: 'stretch',
     backgroundColor: TONE.primarySoft, borderRadius: RADIUS.field,

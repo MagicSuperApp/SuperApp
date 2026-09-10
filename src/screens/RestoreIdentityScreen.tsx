@@ -9,7 +9,7 @@
  * wrap lại bằng Secure Enclave/Keystore của máy mới, đăng ký thiết bị.
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   StatusBar, TextInput, ActivityIndicator,
@@ -51,7 +51,22 @@ const RestoreIdentityScreen = () => {
 
   const [phrase, setPhrase] = useState('');
   const [did, setDid] = useState('');
+  const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // ── VÍ CÒN TRÊN MÁY KHÔNG — phép đo quyết định màn này có phải ngõ cụt không ──
+  // `undefined` = CHƯA ĐO, `null` = đo xong và KHÔNG có, chuỗi = có. Ba trạng thái,
+  // không gộp: gộp "chưa đo" vào "không có" thì thẻ lối tắt dưới đây nhấp nháy mất
+  // ở đúng lần mở màn đầu tiên, tức đúng lần người dùng cần nó nhất.
+  const [kekOnDevice, setKekOnDevice] = useState<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    let alive = true;
+    getStoredMasterKek()
+      .then(k => { if (alive) setKekOnDevice(k); })
+      .catch(() => { if (alive) setKekOnDevice(null); });
+    return () => { alive = false; };
+  }, []);
 
   // Cụm từ đã CHUẨN HOÁ — dùng cho cả phép đếm lẫn phép khôi phục. Xem
   // `utils/mnemonic.ts`: chép cụm từ kèm số thứ tự / dấu phẩy làm phép đếm cũ ra
@@ -96,6 +111,186 @@ const RestoreIdentityScreen = () => {
     );
   };
 
+  /**
+   * Gắn MÁY NÀY vào đúng danh tính của chủ ví, bằng một Master_KEK đã có trong tay.
+   *
+   * Tách khỏi `doRestore` vì KEK tới được từ HAI nguồn, và chỉ MỘT nguồn cần 24 từ:
+   *   `cum-tu`   — suy từ cụm 24 từ người dùng vừa gõ (máy mới / đổi máy);
+   *   `vi-tren-may` — đọc thẳng từ kho khoá của máy (cài lại app trên CHÍNH máy cũ).
+   * Từ chỗ có KEK trở đi hai đường giống hệt nhau, nên gộp làm một là để chúng
+   * không trôi khỏi nhau — chứ không phải để tiết kiệm dòng.
+   */
+  const attachThisDevice = async (
+    kek: string,
+    deviceHadWallet: boolean,
+    nguon: 'cum-tu' | 'vi-tren-may',
+  ) => {
+    const bangCumTu = nguon === 'cum-tu';
+
+    // ── TỰ TÌM DID (ưu tiên thứ đã có trên MÁY) ───────────────────────────────
+    // DID không derive được từ KEK, nhưng app ĐÃ lưu DID lúc đăng ký ở
+    // currentUserDid + registry '@phoenixkey/users'. Gom mọi DID đã biết (cộng DID
+    // user tự nhập nếu có) rồi thử recover-device từng cái. DID SAI → backend trả
+    // 403 (chữ ký không khớp TAAD_Key của DID đó) / 404 → KHÔNG đổi state → thử
+    // tiếp. DID ĐÚNG (hoặc 409 = máy đã gắn) → đăng nhập.
+    const candidates: string[] = [];
+    const typedDid = did.trim();
+    if (typedDid) candidates.push(typedDid);
+    const storedDid = await currentUserDid();
+    if (storedDid) candidates.push(storedDid);
+    try {
+      const raw = await AsyncStorage.getItem(PHOENIX_USERS_KEY);
+      if (raw) {
+        (JSON.parse(raw) as Array<{ did?: string }>).forEach(u => {
+          if (u?.did) candidates.push(u.did);
+        });
+      }
+    } catch {
+      // registry hỏng/không có → bỏ qua, còn typed/stored.
+    }
+
+    // ── TÊN ĐĂNG NHẬP LÀ NGUỒN DID THỨ BA, và trên máy vừa cài lại nó là nguồn
+    // DUY NHẤT. Hai nguồn trên đều nằm trong AsyncStorage — thứ mà xoá app là mất
+    // sạch, trong khi kho khoá thì không. Nên đúng ca "cài lại app trên máy cũ" là
+    // ca mà hai nguồn trên cùng rỗng một lúc, và trước bản này màn hình trả lời
+    // bằng câu "Máy mới — cần nhập mã định danh": bắt người dùng gõ một chuỗi 80 ký
+    // tự mà app chưa bao giờ đưa cho họ, ở đúng lúc app đã mất chỗ lưu nó.
+    // Máy chủ thì vẫn nhớ. Hỏi máy chủ.
+    const tenSach = username.trim();
+    if (tenSach) {
+      try {
+        const { userDid } = await phoenixKeyApi.identity.resolveUsername(tenSach);
+        if (userDid) candidates.push(userDid);
+      } catch (err) {
+        // Tên chưa đăng ký (404) hoặc mất sóng. KHÔNG dừng ở đây: các DID trên máy
+        // (nếu có) vẫn đáng thử. Nói ra ở cuối hàm nếu không DID nào khớp.
+        console.log('[Restore] resolveUsername lỗi:', err);
+      }
+    }
+
+    const uniqueDids = [...new Set(candidates.filter(d => DID_RE.test(d)))];
+
+    if (uniqueDids.length === 0) {
+      showWarning(
+        t('Chưa biết đây là tài khoản nào'),
+        (bangCumTu
+          ? (deviceHadWallet
+              ? t('Ví đang có trên máy được GIỮ NGUYÊN, chưa thay gì cả.')
+              : t('Đã lưu ví an toàn.')) + ' '
+          : '') +
+          t('Máy này không còn lưu mã định danh nào (xoá app là mất phần lưu đó).') + ' ' +
+          t('Hãy gõ TÊN ĐĂNG NHẬP bạn đã dùng lúc tạo tài khoản vào ô bên dưới — máy chủ vẫn nhớ nó.') + ' ' +
+          t('Nếu bạn có sẵn mã định danh did:phoenix:… thì gõ vào ô mã định danh cũng được.'),
+      );
+      return;
+    }
+
+    // Khoá HW của máy này — chuẩn bị 1 lần, dùng chung cho mọi lần thử.
+    const taadPub = await taadEnclave.deriveTaadPubkey(kek);
+    let newHwPub: string;
+    try {
+      newHwPub = (await enrollKeypair()).publicKeyHex;
+    } catch {
+      newHwPub = await ownerPublicKey();
+    }
+
+    // Thử từng DID ứng viên (ký bằng KEK — KHÔNG cần vân tay mỗi lần).
+    let matchedDid: string | null = null;
+    for (const cand of uniqueDids) {
+      const nonce = await genNonce();
+      const challenge = `PHOENIXKEY_RECOVER:${cand}:${newHwPub}:${nonce}`;
+      const signature = await taadEnclave.signEd25519(kek, challenge);
+      if (!signature) continue;
+      try {
+        await phoenixKeyApi.identity.recoverDevice({
+          userDid: cand,
+          newHwPublicKeyHex: newHwPub,
+          taadPublicKeyHex: taadPub,
+          signature,
+          nonce,
+        });
+        matchedDid = cand; // gắn thành công → đúng DID
+        break;
+      } catch (e) {
+        if (e instanceof PhoenixKeyApiError) {
+          // 409 = HW pubkey đã gắn (máy này đã recover DID này) → coi là ĐÚNG DID.
+          if (e.httpStatus === 409) { matchedDid = cand; break; }
+          // 403 chữ ký không khớp / 404 DID không tồn tại / 2002 user not found →
+          // DID này SAI so với KEK đang cầm → thử DID kế tiếp.
+          if (e.httpStatus === 403 || e.httpStatus === 404 || e.code === 2002) continue;
+        }
+        throw e; // lỗi mạng/khác → dừng, báo lỗi.
+      }
+    }
+
+    if (!matchedDid) {
+      showWarning(
+        bangCumTu
+          ? (typedDid ? t('Mã định danh không khớp cụm từ') : t('Không tìm thấy tài khoản khớp'))
+          : t('Ví trên máy không khớp tài khoản nào vừa tra'),
+        (bangCumTu
+          ? (typedDid
+              ? t('Mã định danh vừa nhập không khớp cụm 24 từ, hoặc không có trên máy chủ.')
+              : t('Các tài khoản đã lưu trên máy đều không khớp cụm 24 từ này. Kiểm tra lại cụm từ, hoặc nhập đúng tên đăng nhập / mã định danh bên dưới.'))
+          : t('Ví trên máy này không ký được cho tài khoản vừa tra. Kiểm tra lại tên đăng nhập; nếu đây đúng là máy cũ của bạn thì tài khoản có thể đã được khôi phục ở máy khác.')) +
+          (deviceHadWallet ? ' ' + t('Ví đang có trên máy được GIỮ NGUYÊN.') : ''),
+      );
+      return;
+    }
+
+    // Tới đây máy chủ đã xác nhận KEK này ký được cho DID `matchedDid` — tức nó
+    // ĐÚNG là ví của người đang cầm máy. Giờ mới được phép ghi đè.
+    if (deviceHadWallet) {
+      await storeMasterKek(kek);
+    }
+
+    await saveUserDid(matchedDid);
+
+    // ĐĂNG NHẬP THẬT: mở danh tính + dispatch loginUser (khớp LoginScreen) rồi vào Main.
+    const user = await phoenixKeyAuth.unlockExistingIdentity();
+    if (!user) {
+      throw new Error('Không mở được danh tính sau khôi phục (thiếu khoá HW?).');
+    }
+    await dispatch(loginUser(user as any) as any);
+    showSuccess(
+      t('Đã khôi phục & đăng nhập'),
+      bangCumTu
+        ? t('Nhận diện danh tính từ cụm 24 từ và đăng nhập thành công.')
+        : t('Nhận diện danh tính từ ví sẵn có trên máy và đăng nhập thành công.'),
+      { onConfirm: () => navigation.reset({ index: 0, routes: [{ name: 'Main' }] }) },
+    );
+  };
+
+  /**
+   * LỐI TẮT: máy này VẪN CÒN ví — không cần 24 từ.
+   *
+   * Vì sao lối này phải tồn tại, và vì sao nó không phải một tiện nghi:
+   * kho khoá của iOS/Android GIỮ Master_KEK qua lần xoá-cài-lại app, còn
+   * AsyncStorage thì không. Nên người cài lại app trên chính máy cũ rơi vào một
+   * trạng thái mà app trước bản này không có tên gọi: ví còn nguyên, mã định danh
+   * mất sạch. Cả ba lối ở màn hỏi cửa vào đều dẫn về đây, và màn này chỉ nhận 24 từ
+   * — một thứ app CHƯA BAO GIỜ bắt người dùng ghi lại (`SeedExportScreen` là màn
+   * tự nguyện, nằm sau lớp đăng nhập). Ai chưa từng mở màn đó thì "lối ra duy nhất"
+   * mà mã nguồn nhắc tới ở `phoenixKeyAuthService` là một lối không tồn tại.
+   *
+   * Ở đây KEK không đổi (đọc từ chính máy), nên `deviceHadWallet=false`: không có
+   * gì bị ghi đè, không có gì mất.
+   */
+  const doRestoreSameDevice = async () => {
+    if (!kekOnDevice) return;
+    try {
+      setLoading(true);
+      await attachThisDevice(kekOnDevice, false, 'vi-tren-may');
+    } catch (e: any) {
+      showWarning(
+        t('Chưa khôi phục được'),
+        e?.message ?? t('Không gắn được máy này vào tài khoản. Kiểm tra sóng rồi thử lại.'),
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const doRestore = async () => {
     if (!taadEnclave.isAvailable()) {
       showWarning(
@@ -125,111 +320,7 @@ const RestoreIdentityScreen = () => {
         await storeMasterKek(kek);
       }
 
-      // ── TỰ TÌM DID trên MÁY (KHÔNG đụng backend) → 24 từ là đủ trên cùng máy ──
-      // DID không derive được từ KEK, nhưng app ĐÃ lưu DID lúc đăng ký ở
-      // currentUserDid + registry '@phoenixkey/users'. Gom mọi DID đã biết (cộng DID
-      // user tự nhập nếu có) rồi thử recover-device từng cái. DID SAI → backend trả
-      // 403 (chữ ký không khớp TAAD_Key của DID đó) / 404 → KHÔNG đổi state → thử
-      // tiếp. DID ĐÚNG (hoặc 409 = máy đã gắn) → đăng nhập.
-      const candidates: string[] = [];
-      const typedDid = did.trim();
-      if (typedDid) candidates.push(typedDid);
-      const storedDid = await currentUserDid();
-      if (storedDid) candidates.push(storedDid);
-      try {
-        const raw = await AsyncStorage.getItem(PHOENIX_USERS_KEY);
-        if (raw) {
-          (JSON.parse(raw) as Array<{ did?: string }>).forEach(u => {
-            if (u?.did) candidates.push(u.did);
-          });
-        }
-      } catch {
-        // registry hỏng/không có → bỏ qua, còn typed/stored.
-      }
-      const uniqueDids = [...new Set(candidates.filter(d => DID_RE.test(d)))];
-
-      if (uniqueDids.length === 0) {
-        // Máy MỚI (cài lại/đổi máy) — chưa từng lưu DID nào. Chỉ trường hợp này mới
-        // cần user nhập DID (máy không thể suy ra DID chỉ từ 24 từ + không gọi backend).
-        showWarning(
-          'Máy mới — cần nhập mã định danh',
-          (deviceHadWallet
-            ? t('Ví đang có trên máy được GIỮ NGUYÊN, chưa thay gì cả.')
-            : t('Đã lưu ví an toàn.')) + ' ' +
-            t('Máy này chưa từng đăng nhập nên không có mã định danh để tự khôi phục.') + ' ' +
-            t('Nếu là máy MỚI, nhập mã định danh của bạn vào ô bên dưới.'),
-        );
-        return;
-      }
-
-      // Khoá HW của máy này — chuẩn bị 1 lần, dùng chung cho mọi lần thử.
-      const taadPub = await taadEnclave.deriveTaadPubkey(kek);
-      let newHwPub: string;
-      try {
-        newHwPub = (await enrollKeypair()).publicKeyHex;
-      } catch {
-        newHwPub = await ownerPublicKey();
-      }
-
-      // Thử từng DID ứng viên (ký bằng KEK — KHÔNG cần vân tay mỗi lần).
-      let matchedDid: string | null = null;
-      for (const cand of uniqueDids) {
-        const nonce = await genNonce();
-        const challenge = `PHOENIXKEY_RECOVER:${cand}:${newHwPub}:${nonce}`;
-        const signature = await taadEnclave.signEd25519(kek, challenge);
-        if (!signature) continue;
-        try {
-          await phoenixKeyApi.identity.recoverDevice({
-            userDid: cand,
-            newHwPublicKeyHex: newHwPub,
-            taadPublicKeyHex: taadPub,
-            signature,
-            nonce,
-          });
-          matchedDid = cand; // gắn thành công → đúng DID
-          break;
-        } catch (e) {
-          if (e instanceof PhoenixKeyApiError) {
-            // 409 = HW pubkey đã gắn (máy này đã recover DID này) → coi là ĐÚNG DID.
-            if (e.httpStatus === 409) { matchedDid = cand; break; }
-            // 403 chữ ký không khớp / 404 DID không tồn tại / 2002 user not found →
-            // DID này SAI cụm 24 từ → thử DID kế tiếp.
-            if (e.httpStatus === 403 || e.httpStatus === 404 || e.code === 2002) continue;
-          }
-          throw e; // lỗi mạng/khác → dừng, báo lỗi.
-        }
-      }
-
-      if (!matchedDid) {
-        showWarning(
-          typedDid ? 'Mã định danh không khớp cụm từ' : 'Không tìm thấy tài khoản khớp',
-          (typedDid
-            ? t('Mã định danh vừa nhập không khớp cụm 24 từ, hoặc không có trên máy chủ.')
-            : t('Các tài khoản đã lưu trên máy đều không khớp cụm 24 từ này. Kiểm tra lại cụm từ, hoặc nhập đúng mã định danh vào ô bên dưới nếu là máy mới.')) +
-            (deviceHadWallet ? ' ' + t('Ví đang có trên máy được GIỮ NGUYÊN.') : ''),
-        );
-        return;
-      }
-
-      // Tới đây máy chủ đã xác nhận cụm 24 từ này ký được cho DID `matchedDid` —
-      // tức nó ĐÚNG là cụm của người đang cầm máy. Giờ mới được phép ghi đè.
-      if (deviceHadWallet) {
-        await storeMasterKek(kek);
-      }
-
-      await saveUserDid(matchedDid);
-
-      // ĐĂNG NHẬP THẬT: mở danh tính + dispatch loginUser (khớp LoginScreen) rồi vào Main.
-      const user = await phoenixKeyAuth.unlockExistingIdentity();
-      if (!user) {
-        throw new Error('Không mở được danh tính sau khôi phục (thiếu khoá HW?).');
-      }
-      await dispatch(loginUser(user as any) as any);
-      showSuccess(
-        'Đã khôi phục & đăng nhập',
-        'Nhận diện danh tính từ cụm 24 từ và đăng nhập thành công.',
-        { onConfirm: () => navigation.reset({ index: 0, routes: [{ name: 'Main' }] }) },
-      );
+      await attachThisDevice(kek, deviceHadWallet, 'cum-tu');
     } catch (e: any) {
       showWarning(
         'Cụm từ không hợp lệ',
@@ -254,6 +345,58 @@ const RestoreIdentityScreen = () => {
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+        {/* LỐI TẮT — chỉ hiện khi ĐÃ ĐO XONG và máy thật sự còn ví. `undefined`
+            (chưa đo) KHÔNG hiện: hiện rồi rút lại là hứa một lối rồi lấy đi. */}
+        {kekOnDevice ? (
+          <View style={styles.shortcutCard} testID="restore-shortcut-same-device">
+            <View style={styles.shortcutHead}>
+              <Icon name="cellphone-key" size={20} color={COLORS.success} />
+              <Text style={styles.shortcutTitle}>
+                Máy này vẫn còn ví của bạn — không cần 24 từ
+              </Text>
+            </View>
+            <Text style={styles.shortcutBody}>
+              Xoá app không xoá ví: nó vẫn nằm trong kho khoá của máy. Chỉ cần gõ
+              <Text style={styles.bold}> tên đăng nhập</Text> bạn đã dùng lúc tạo tài
+              khoản, rồi bấm nút dưới đây.
+            </Text>
+
+            <View style={styles.didWrap}>
+              <TextInput
+                style={styles.didInput}
+                testID="restore-username"
+                value={username}
+                onChangeText={setUsername}
+                placeholder="tên đăng nhập của bạn"
+                placeholderTextColor={COLORS.textMuted}
+                autoCapitalize="none"
+                autoCorrect={false}
+                spellCheck={false}
+              />
+            </View>
+
+            <TouchableOpacity
+              testID="restore-same-device-btn"
+              style={[styles.shortcutBtn, loading && { opacity: 0.5 }]}
+              onPress={() => { void doRestoreSameDevice(); }}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <>
+                  <Icon name="login-variant" size={18} color="#fff" />
+                  <Text style={styles.primaryBtnText}>Khôi phục bằng ví trên máy</Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            <Text style={styles.shortcutOr}>
+              Không nhớ tên đăng nhập? Dùng 24 từ ở phần bên dưới.
+            </Text>
+          </View>
+        ) : null}
+
         <View style={styles.infoCard}>
           <Icon name="backup-restore" size={22} color={COLORS.accent} />
           <Text style={styles.infoText}>
@@ -288,6 +431,28 @@ const RestoreIdentityScreen = () => {
             {tf('{n}/24 từ', { n: wordCount })}
           </Text>
         </View>
+
+        {/* Tên đăng nhập — chỗ này chỉ hiện khi thẻ lối tắt KHÔNG hiện, để màn không
+            có hai ô cùng nghĩa. Nó vẫn cần cho đường 24 từ: trên máy mới thì tên
+            đăng nhập là cách rẻ nhất để ra DID, rẻ hơn nhiều so với gõ tay 80 ký tự. */}
+        {!kekOnDevice ? (
+          <>
+            <Text style={styles.didLabel}>Tên đăng nhập (nếu bạn còn nhớ)</Text>
+            <View style={styles.didWrap}>
+              <TextInput
+                style={styles.didInput}
+                testID="restore-username"
+                value={username}
+                onChangeText={setUsername}
+                placeholder="tên đăng nhập lúc tạo tài khoản"
+                placeholderTextColor={COLORS.textMuted}
+                autoCapitalize="none"
+                autoCorrect={false}
+                spellCheck={false}
+              />
+            </View>
+          </>
+        ) : null}
 
         {/* DID — chỉ cần khi khôi phục trên MÁY MỚI (cài lại / đổi điện thoại). Trên
             cùng máy để trống: app tự tìm DID đã lưu để khôi phục chỉ bằng 24 từ. */}
@@ -341,6 +506,32 @@ const styles = StyleSheet.create({
   backBtn: { padding: 4 },
   headerTitle: { fontSize: 17, fontWeight: '700', color: COLORS.text },
   scroll: { padding: 20, paddingBottom: 40 },
+
+  // Thẻ lối tắt cố ý dùng màu THÀNH CÔNG, không dùng màu cảnh báo: đây là lối rẻ
+  // nhất và ít mất mát nhất trên màn này (không thu hồi khoá ở máy khác), nên nó
+  // phải trông khác hẳn đường 24 từ vốn đăng xuất mọi nơi.
+  shortcutCard: {
+    backgroundColor: COLORS.inputBg, borderRadius: 14,
+    borderWidth: 1.5, borderColor: COLORS.success,
+    padding: 14, marginBottom: 22,
+  },
+  shortcutHead: {
+    flexDirection: 'row', gap: 10, alignItems: 'center', marginBottom: 8,
+  },
+  shortcutTitle: {
+    flex: 1, fontSize: 14, fontWeight: '800', color: COLORS.text, lineHeight: 19,
+  },
+  shortcutBody: {
+    fontSize: 13, lineHeight: 19, color: COLORS.textSub, marginBottom: 12,
+  },
+  shortcutBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: COLORS.success, borderRadius: 12, paddingVertical: 14,
+  },
+  shortcutOr: {
+    fontSize: 12, color: COLORS.textMuted, textAlign: 'center',
+    marginTop: 10, lineHeight: 17,
+  },
 
   infoCard: {
     flexDirection: 'row', gap: 12, alignItems: 'flex-start',

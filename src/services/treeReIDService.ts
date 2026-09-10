@@ -929,6 +929,29 @@ export async function deleteTree(
   form.append('tree_id', treeId);
 
   const result = await _apiCall<{ ok: boolean }>(`${baseUrl}/api/delete`, 'POST', form);
+
+  // `result.ok` là cờ VẬN CHUYỂN — nối được máy chủ và HTTP không lỗi. Nó KHÔNG
+  // phải câu trả lời của máy chủ cho việc xoá. Kiểu khai ngay trên đã nói thân có
+  // trường `ok`, và trước bản này không dòng nào đọc nó.
+  //
+  // Vì sao chỗ này đắt hơn hai hàm anh em cùng tệp (`renameTree`, `setTreeFarm`)
+  // đã vá đúng lớp lỗi này: nơi gọi ở `TreeManagementScreen` chạy
+  // `forgetTreeLocally` ngay sau khi thấy `ok`, mà hàm đó xoá ảnh cây, video bằng
+  // chứng và toạ độ 3D TRÊN MÁY. Máy chủ trả `200 {"ok": false}` (cây không có
+  // trong kho, hoặc không thuộc chủ) thì cây vẫn còn trên máy chủ — kéo làm mới là
+  // nó quay lại — còn ảnh và video thì đã mất hẳn, không có bản nào khác.
+  if (result.ok && result.data?.ok !== true) {
+    return {
+      ok: false,
+      error: {
+        type: 'validation_error',
+        detail:
+          'Máy chủ không xoá cây này. Thường là do cây không còn trong kho ảnh, ' +
+          'hoặc cây không thuộc tài khoản đang đăng nhập. Ảnh trên máy được giữ nguyên.',
+        http_status: 200,
+      },
+    };
+  }
   return { ok: result.ok, error: result.error };
 }
 

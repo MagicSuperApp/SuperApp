@@ -315,7 +315,16 @@ const styles = StyleSheet.create({
   cardPad: { padding: SPACE.lg },
   pressed: { opacity: 0.92 },
 
-  bentoRow: { flexDirection: 'row', gap: SPACE.md, paddingHorizontal: SPACE.page },
+  /**
+   * Lề 12 và khe 8 — HẸP HƠN thang chung của module (`SPACE.page` 16, `SPACE.md`
+   * 12), và cố ý.
+   *
+   * Thang chung dựng cho những khối xếp DỌC, nơi khoảng trắng là thứ tách mục
+   * này với mục kia. Lưới Bento thì tách bằng chính mép các ô, nên khoảng trắng
+   * ở đây không làm thêm việc gì — nó chỉ ăn bề ngang. Ba ô cạnh nhau ở thang cũ
+   * tốn 56 điểm cho chỗ trống, tức gần 15% một màn hẹp.
+   */
+  bentoRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 12 },
   bentoTile: {
     // `overflow: 'hidden'` KHÔNG phải tuỳ chọn: nền chuyển sắc là một lớp SVG
     // trải kín nằm dưới nội dung, thiếu dòng này thì nó tràn qua góc bo.

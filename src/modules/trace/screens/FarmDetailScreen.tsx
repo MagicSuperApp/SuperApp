@@ -37,6 +37,7 @@ import {
 } from '../theme/depth';
 import { GradientFill, GroundBackdrop } from '../components/layered/Organic';
 import { BentoRow, BentoTile } from '../components/layered/Surface';
+import FarmShape from '../components/layered/FarmShape';
 import { useTk } from '../../../i18n/keys';
 // B2: tạo vườn QUA field-reid (server sinh farm_id uuid THẬT) — bỏ aladinAPI
 // (backend Lợi deprecated + client tự sinh `farm-<ts>` = gốc B2). INV-1 §3.2.
@@ -1179,6 +1180,8 @@ const FarmDetailMode = ({
   const moDuong = useOpenWayfind();
   const dichDuong = forFarm(farm);
   const soDiem = farm?.coordinates?.length ?? 0;
+  /** Đủ ba điểm mới thành một mảnh đất vẽ được — dưới đó `FarmShape` trả `null`. */
+  const coHinh = soDiem >= 3;
 
   /**
    * LƯỚI BENTO của màn này. Ba vế của luật (xem `BentoTile` trong
@@ -1217,7 +1220,10 @@ const FarmDetailMode = ({
       <BentoTile tone="hero" style={styles.bentoHero}>
         <View style={styles.bentoHeroHead}>
           <Icon name="seedling" size={18} color={ORG_TONE.primary} />
-          <Text style={styles.bentoHeroTitle}>Vườn này vừa trải qua gì</Text>
+          {/* "Nhật ký", không phải "Vườn này vừa trải qua gì". Tiêu đề là NHÃN
+              của một ô, không phải một câu hỏi — người dùng đọc nó mỗi lần mở
+              màn, nên mỗi chữ thừa là một chữ họ phải đọc lại hàng ngày. */}
+          <Text style={styles.bentoHeroTitle}>Nhật ký</Text>
         </View>
         {!!farm?.id && (
           <EntityTimeline entityType="farm" entityId={String(farm.id)} limit={3} />
@@ -1228,31 +1234,47 @@ const FarmDetailMode = ({
             cái vừa gỡ khỏi header: hai lối vào cho một việc. */}
       </BentoTile>
 
-      {/* Ba ô hành động — ba động từ, không ô nào là thông tin. */}
-      <BentoRow style={styles.bentoActions}>
-        <BentoTile flex={1} onPress={onView3DFarm} style={styles.bentoAction}>
-          <Icon name="arrows-spin" size={20} color={ORG_TONE.primary} />
-          <Text style={styles.bentoActionTxt}>Sơ đồ 3D</Text>
+      {/*
+        HAI Ô XEM TRƯỚC — mỗi ô vẽ CHÍNH mảnh vườn này, không nhãn, không biểu
+        tượng. Hình đã là nhãn: một biểu tượng bánh răng cộng chữ "Sơ đồ 3D" chỉ
+        nói được "bấm vào đây mở một thứ tên vậy", còn hình bóng mảnh đất nói
+        luôn vườn có dạng gì, cây nằm đâu, và đã vẽ ranh giới chưa.
+
+        `FarmShape` trả `null` khi ring dưới ba điểm — chưa có hình để vẽ. Nên ô
+        chưa-vẽ-ranh-giới rơi về một lời mời bằng chữ, và đó là chỗ DUY NHẤT
+        trong hàng này còn chữ.
+      */}
+      <BentoRow style={styles.bentoPreviews}>
+        <BentoTile flex={1} onPress={onView3DFarm} padded={false} style={styles.bentoPreview}>
+          <FarmShape farm={farm} trees={filteredTrees} mode="iso" />
+          {!coHinh ? <Text style={styles.bentoPreviewMoi}>Xem sơ đồ 3D</Text> : null}
         </BentoTile>
-        {/* `forFarm` trả null khi vườn chưa vẽ ranh giới — không có toạ độ nào
-            để đi tới, nên ô tự vắng mặt thay vì bấm vào rồi không xảy ra gì. */}
-        {dichDuong ? (
-          <BentoTile
-            flex={1}
-            tone="rain"
-            onPress={() => moDuong(dichDuong)}
-            style={styles.bentoAction}
-          >
-            <Icon name="map-location-dot" size={20} color={ORG_TONE.rain} />
-            <Text style={styles.bentoActionTxt}>Chỉ đường</Text>
-          </BentoTile>
-        ) : null}
-        <BentoTile flex={1} onPress={() => onCoordinatesPress()} style={styles.bentoAction}>
-          <Icon name="draw-polygon" size={20} color={ORG_TONE.primary} />
-          <Text style={styles.bentoActionTxt}>Ranh giới</Text>
-          <Text style={styles.bentoActionSub}>{soDiem} điểm</Text>
+        <BentoTile
+          flex={1}
+          onPress={() => onCoordinatesPress()}
+          padded={false}
+          style={styles.bentoPreview}
+        >
+          <FarmShape farm={farm} mode="flat" />
+          {coHinh ? (
+            <Text style={styles.bentoPreviewDiem}>{soDiem} điểm</Text>
+          ) : (
+            <Text style={styles.bentoPreviewMoi}>Vẽ ranh giới vườn</Text>
+          )}
         </BentoTile>
       </BentoRow>
+
+      {/* Chỉ đường vẫn là một VIỆC, không phải một thứ để nhìn — nên nó giữ
+          nhãn. `forFarm` trả null khi vườn chưa vẽ ranh giới: không có toạ độ
+          nào để đi tới, nên ô tự vắng mặt thay vì bấm rồi không xảy ra gì. */}
+      {dichDuong ? (
+        <BentoRow style={styles.bentoActions}>
+          <BentoTile flex={1} tone="rain" onPress={() => moDuong(dichDuong)} style={styles.bentoAction}>
+            <Icon name="map-location-dot" size={20} color={ORG_TONE.rain} />
+            <Text style={styles.bentoActionTxt}>Chỉ đường tới vườn</Text>
+          </BentoTile>
+        </BentoRow>
+      ) : null}
 
       {/* Tiêu đề danh sách — số cây về đây, cạnh chính danh sách nó đếm. */}
       <View style={styles.sectionHeaderRow}>
@@ -2488,12 +2510,21 @@ const styles = StyleSheet.create({
 
   // Stats banner
   // ── Lưới Bento ────────────────────────────────────────────────────────────
-  bento: { paddingBottom: 4 },
+  //
+  // KHE HỞ HẸP, Ô RỘNG. Bản đầu dùng thẳng `SPACE.page` (16) và `SPACE.md` (12)
+  // cho lề và khe — đúng thang chung của module, nhưng ở đây nó ăn 44 điểm bề
+  // ngang cho hai ô đứng cạnh nhau, tức gần 12% màn hẹp dành cho chỗ trống.
+  // Lưới Bento sống bằng KHỐI, không bằng khoảng trắng giữa các khối; khe rộng
+  // làm các ô rời ra thành từng thẻ lẻ và mất luôn cảm giác một lưới.
+  //
+  // Nay lề 12, khe 8. Vẫn đủ để mắt tách hai ô, mà trả lại 20 điểm bề ngang cho
+  // chính nội dung — trên máy hẹp đó là chỗ cho hình vườn thở.
+  bento: { paddingBottom: 2 },
 
   /** Dòng thông tin phụ: nhỏ, không viền, không bấm được. */
   bentoFacts: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: ORG_SPACE.page, paddingBottom: ORG_SPACE.md,
+    paddingHorizontal: 12, paddingBottom: ORG_SPACE.sm,
   },
   bentoFactTxt: { fontSize: 13, color: ORG_NATURE.barkSoft },
   /** "(ước tính)" phải KHÁC mắt so với con số, nếu không nó chỉ là chữ trang trí. */
@@ -2503,21 +2534,37 @@ const styles = StyleSheet.create({
     backgroundColor: ORG_TONE.border, marginHorizontal: 2,
   },
 
-  bentoHero: { marginHorizontal: ORG_SPACE.page, paddingHorizontal: 0 },
+  bentoHero: { marginHorizontal: 12, paddingHorizontal: 0, paddingVertical: ORG_SPACE.md },
   bentoHeroHead: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingHorizontal: ORG_SPACE.lg, paddingBottom: ORG_SPACE.sm,
+    paddingHorizontal: ORG_SPACE.md, paddingBottom: ORG_SPACE.sm,
   },
   bentoHeroTitle: {
     fontSize: 17, fontWeight: '700', color: ORG_NATURE.bark, letterSpacing: -0.2,
   },
 
-  bentoActions: { marginTop: ORG_SPACE.md, marginBottom: ORG_SPACE.xl },
-  bentoAction: { alignItems: 'center', gap: 6, paddingVertical: ORG_SPACE.lg },
+  /** Hai ô xem trước: cao hơn rộng một chút, đủ chỗ cho hình vườn thở. */
+  bentoPreviews: { marginTop: 8 },
+  bentoPreview: { height: 132, justifyContent: 'flex-end', alignItems: 'center' },
+  /** Số điểm ranh giới — chữ nhỏ ĐÈ lên hình, không chiếm một hàng riêng. */
+  bentoPreviewDiem: {
+    fontSize: 12, fontWeight: '700', color: ORG_NATURE.barkSoft,
+    paddingBottom: 8,
+  },
+  /** Chỉ hiện khi CHƯA có hình để vẽ — lúc đó ô phải tự nói nó mở ra cái gì. */
+  bentoPreviewMoi: {
+    fontSize: 14, fontWeight: '700', color: ORG_TONE.primary,
+    textAlign: 'center', paddingBottom: 14, paddingHorizontal: 8,
+  },
+
+  bentoActions: { marginTop: 8, marginBottom: ORG_SPACE.lg },
+  bentoAction: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, paddingVertical: ORG_SPACE.md,
+  },
   bentoActionTxt: {
     fontSize: 14, fontWeight: '700', color: ORG_NATURE.bark, textAlign: 'center',
   },
-  bentoActionSub: { fontSize: 12, color: ORG_NATURE.barkSoft },
 
   /** Số cây, đặt cạnh chính danh sách nó đếm. */
   sectionCount: {
@@ -2529,7 +2576,7 @@ const styles = StyleSheet.create({
   sectionHeaderRow: {
     flexDirection: 'row', alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20, marginBottom: 10,
+    paddingHorizontal: 12, marginBottom: 8,
   },
   sectionHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   sectionDot: {
@@ -2551,7 +2598,9 @@ const styles = StyleSheet.create({
 
   // Tree list
   treeListContent: {
-    paddingHorizontal: 20, paddingTop: 4, flexGrow: 1,
+    // 12, cùng mép với lưới Bento ở trên. Lệch mép giữa phần đầu và phần danh
+    // sách là thứ mắt bắt được ngay dù không gọi tên ra được.
+    paddingHorizontal: 12, paddingTop: 4, flexGrow: 1,
   },
 
   // Tree card
@@ -2649,8 +2698,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    marginHorizontal: 20,
-    marginBottom: 16,
+    marginHorizontal: 12,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: ORG_TONE.border,
     gap: 8,

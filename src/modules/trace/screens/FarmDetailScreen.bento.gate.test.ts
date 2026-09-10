@@ -117,6 +117,27 @@ describe('dòng thời gian là Ô LỚN NHẤT, không phải phần đuôi', (
   });
 });
 
+describe('hai ô xem trước HIỆN thứ chúng mở, không phải icon + chữ', () => {
+  it('cả hai ô đều vẽ chính mảnh vườn này', () => {
+    // `iso` cho ô sơ đồ 3D, `flat` cho ô ranh giới — cùng một mảnh đất, hai cách
+    // nhìn, cả hai dựng từ `farm.coordinates` thật.
+    expect(dem('<FarmShape')).toBe(2);
+    expect(MA_CHAY).toContain('mode="iso"');
+    expect(MA_CHAY).toContain('mode="flat"');
+  });
+
+  it('KHÔNG có biểu tượng nào trong hai ô đó', () => {
+    // Hình đã là nhãn. Thêm một biểu tượng vào đây là quay lại đúng thứ vừa gỡ:
+    // một hình vẽ chung chung nói "bấm vào đây mở một thứ tên vậy", đè lên một
+    // hình cụ thể vốn đã nói được nhiều hơn.
+    const i = MA_CHAY.indexOf('<BentoRow style={styles.bentoPreviews}>');
+    expect(i).toBeGreaterThan(-1);
+    const ket = MA_CHAY.indexOf('</BentoRow>', i);
+    expect(ket).toBeGreaterThan(i);
+    expect(MA_CHAY.slice(i, ket)).not.toContain('<Icon');
+  });
+});
+
 describe('thanh đáy còn đúng một việc', () => {
   it('hai nút đã chuyển thành ô Bento KHÔNG còn ở thanh đáy', () => {
     for (const chet of ['view3DFarmBtn', 'view3DFarmBtnText']) {

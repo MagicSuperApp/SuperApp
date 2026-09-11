@@ -144,4 +144,25 @@ export const IDENTITY_STRINGS = {
     zh: '稍后再说',
     ja: 'あとで',
   },
+
+  // ── Lỗi từ lõi bảo mật (Rust FFI) ─────────────────────────────────────────
+  // Lõi nói được lý do CỤ THỂ (xem `services/enclaveErrorMessage.ts`), và câu
+  // của lõi thì hiện thẳng vì nó nói được người dùng phải làm gì. Hai khoá dưới
+  // đây chỉ dùng cho hai ca mà câu của lõi KHÔNG hiện được:
+  //   · lõi im lặng  → nói thẳng là im lặng, đừng bịa một lý do
+  //   · câu lỗi thô (vết ngăn xếp, đường dẫn nội bộ) → chỉ đưa MÃ TRA NGƯỢC.
+  // Từng có một khoá đi ra ngoài theo vết ngăn xếp của một thư viện ngoài, nên
+  // đường này đóng ở tầng mã chứ không nhờ người gọi nhớ.
+  'identity.enclave.systemError': {
+    vi: 'Lõi bảo mật gặp lỗi hệ thống. Mã tra cứu: {code}. Gửi mã này cho người hỗ trợ.',
+    en: 'The secure core hit a system error. Reference code: {code}. Send this code to support.',
+    zh: '安全核心发生系统错误。查询代码：{code}。请把此代码发给支持人员。',
+    ja: 'セキュアコアでシステムエラーが発生しました。参照コード: {code}。このコードをサポートにお伝えください。',
+  },
+  'identity.enclave.noReason': {
+    vi: 'Lõi bảo mật từ chối thao tác {method} nhưng không nêu lý do.',
+    en: 'The secure core refused “{method}” without giving a reason.',
+    zh: '安全核心拒绝了「{method}」，但没有给出原因。',
+    ja: 'セキュアコアは「{method}」を拒否しましたが、理由を示していません。',
+  },
 };

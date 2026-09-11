@@ -28,6 +28,11 @@ mod mobile_kek;
 #[cfg(target_os = "android")]
 mod android_jni;
 
+// Bài kiểm đường lỗi FFI (Issue #285) — chỉ biên dịch khi chạy test.
+#[cfg(test)]
+mod ffi_last_error_tests;
+
+use std::cell::RefCell;
 use std::ffi::{c_char, CStr, CString};
 
 // ─── Memory Management ────────────────────────────────────────────
@@ -38,6 +43,105 @@ pub unsafe extern "C" fn taad_free_string(s: *mut c_char) {
     if !s.is_null() {
         drop(CString::from_raw(s));
     }
+}
+
+// ─── Ô lỗi cuối (theo luồng) ──────────────────────────────────────
+//
+// Trước đây MỌI kiểu hỏng đều trả cùng một giá trị `null`: đối số sai định
+// dạng, seed sai độ dài, UTxO không đủ, validator sẽ từ chối, và cả những
+// cửa chặn CÓ CHỦ Ý (xem `taad_did::recovery_builders_gate`) — lõi viết câu
+// lỗi rất cụ thể mà không câu nào ra được tới người gọi.
+//
+// Vì sao chọn ô lỗi theo luồng thay vì thêm tham số ra `char** out_err`:
+// Android KHÔNG đi qua C ABI mà qua JNI (`android_jni.rs`), và JNI không có
+// `char**`. Một tham số ra chỉ phục vụ iOS, Android vẫn mù — tức phải dựng
+// HAI cơ chế cho cùng một việc. Ô lỗi theo luồng phục vụ cả hai cầu bằng một
+// cơ chế và KHÔNG đổi chữ ký của hàm nào đang được gọi, nên cầu đã nối không
+// phải sửa để biên dịch lại được.
+//
+// Hợp đồng: hàm trả `null` ⟹ ô lỗi có câu lỗi. Hàm trả giá trị ⟹ ô lỗi đã
+// được xoá (xem `string_to_c`). `taad_last_error` đọc MỘT LẦN rồi xoá.
+thread_local! {
+    static LAST_ERROR: RefCell<Option<String>> = const { RefCell::new(None) };
+}
+
+/// Ghi câu lỗi của lõi vào ô lỗi của luồng hiện tại.
+pub(crate) fn set_last_error(msg: impl Into<String>) {
+    let msg = msg.into();
+    LAST_ERROR.with(|slot| {
+        *slot.borrow_mut() = Some(msg);
+    });
+}
+
+/// Lấy RA câu lỗi (đọc một lần rồi xoá).
+pub(crate) fn take_last_error() -> Option<String> {
+    LAST_ERROR.with(|slot| slot.borrow_mut().take())
+}
+
+/// Khuôn chuẩn cho mọi nhánh `Err` của tầng FFI: ghi câu lỗi rồi trả null.
+pub(crate) fn fail<E: std::fmt::Display>(e: E) -> *mut c_char {
+    set_last_error(e.to_string());
+    std::ptr::null_mut()
+}
+
+/// Lỗi đối số: con trỏ null hoặc chuỗi không phải UTF-8 hợp lệ.
+fn fail_arg(name: &str) -> *mut c_char {
+    fail(format!(
+        "invalid argument `{name}`: null pointer or not valid UTF-8"
+    ))
+}
+
+/// Một số hàm lõi báo hỏng bằng chuỗi RỖNG chứ không bằng `Result`, nên ở đó
+/// KHÔNG có câu lỗi nào để chuyển tiếp. Chỗ ấy ít nhất phải nói rõ HÀM NÀO
+/// hỏng, và nói thẳng rằng lõi không kèm lý do — đừng bịa một lý do nghe như
+/// thật. (Đổi các hàm đó sang `Result` là việc riêng, xem Issue #285.)
+fn string_or_fail(s: String, op: &str) -> *mut c_char {
+    if s.is_empty() {
+        fail(format!(
+            "{op} failed: core returned an empty result and carries no message \
+             (check argument format and length)"
+        ))
+    } else {
+        string_to_c(s)
+    }
+}
+
+/// Đọc một đối số `*const c_char` bắt buộc; thoát sớm kèm câu lỗi nêu TÊN
+/// đối số nếu nó null / không phải UTF-8.
+macro_rules! arg {
+    ($ptr:expr, $name:literal) => {
+        match c_str_to_string($ptr) {
+            Some(s) => s,
+            None => return fail_arg($name),
+        }
+    };
+}
+
+/// Câu lỗi của lần gọi FFI gần nhất TRÊN LUỒNG NÀY, hoặc null nếu không có.
+/// Đọc một lần — gọi xong thì ô lỗi trống. Bên gọi free bằng `taad_free_string`.
+///
+/// Bên gọi chỉ nên đọc khi một hàm vừa trả `null`; đọc lúc khác thì giá trị
+/// không nói lên điều gì.
+#[no_mangle]
+pub extern "C" fn taad_last_error() -> *mut c_char {
+    match take_last_error() {
+        None => std::ptr::null_mut(),
+        // NUL giữa chuỗi không thể đi qua C — thay bằng khoảng trắng chứ
+        // không nuốt cả câu lỗi.
+        Some(msg) => match CString::new(msg.replace('\0', " ")) {
+            Ok(cs) => cs.into_raw(),
+            // KHÔNG gọi `fail` ở đây: hàm này là đường ĐỌC ô lỗi, ghi lại
+            // vào ô sẽ làm bên gọi đọc mãi không hết.
+            Err(_) => std::ptr::null_mut(),
+        },
+    }
+}
+
+/// Xoá ô lỗi. Bên gọi nên gọi trước một chuỗi thao tác để chắc chắn không
+/// đọc nhầm lỗi của lần gọi trước.
+#[no_mangle]
+pub extern "C" fn taad_clear_last_error() {
+    let _ = take_last_error();
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────
@@ -51,8 +155,13 @@ unsafe fn c_str_to_string(ptr: *const c_char) -> Option<String> {
 
 fn string_to_c(s: String) -> *mut c_char {
     match CString::new(s) {
-        Ok(cs) => cs.into_raw(),
-        Err(_) => std::ptr::null_mut(),
+        Ok(cs) => {
+            // Trả được giá trị ⟹ lần gọi này thành công ⟹ ô lỗi phải trống,
+            // nếu không bên gọi sẽ đọc được lỗi của một lần gọi ĐÃ qua.
+            let _ = take_last_error();
+            cs.into_raw()
+        }
+        Err(e) => fail(format!("cannot return string across FFI: {e}")),
     }
 }
 
@@ -77,9 +186,9 @@ pub extern "C" fn taad_generate_master_kek() -> *mut c_char {
 pub unsafe extern "C" fn taad_master_kek_to_mnemonic(
     kek_hex: *const c_char,
 ) -> *mut c_char {
-    let kek = match c_str_to_string(kek_hex) { Some(s) => s, None => return std::ptr::null_mut() };
+    let kek = arg!(kek_hex, "kek_hex");
     let result = crypto::master_kek_to_mnemonic(kek);
-    if result.is_empty() { std::ptr::null_mut() } else { string_to_c(result) }
+    string_or_fail(result, "taad_master_kek_to_mnemonic")
 }
 
 /// Decode a 24-word BIP39 mnemonic back to a 32-byte Master_KEK (64-char hex).
@@ -92,9 +201,9 @@ pub unsafe extern "C" fn taad_master_kek_to_mnemonic(
 pub unsafe extern "C" fn taad_mnemonic_to_master_kek(
     words: *const c_char,
 ) -> *mut c_char {
-    let words = match c_str_to_string(words) { Some(s) => s, None => return std::ptr::null_mut() };
+    let words = arg!(words, "words");
     let result = crypto::mnemonic_to_master_kek(words);
-    if result.is_empty() { std::ptr::null_mut() } else { string_to_c(result) }
+    string_or_fail(result, "taad_mnemonic_to_master_kek")
 }
 
 // ─── Mobile composed derive (khớp Enclave) ────────────────────────
@@ -105,9 +214,9 @@ pub unsafe extern "C" fn taad_mnemonic_to_master_kek(
 pub unsafe extern "C" fn taad_kek_derive_taad_pubkey(
     master_kek_hex: *const c_char,
 ) -> *mut c_char {
-    let kek = match c_str_to_string(master_kek_hex) { Some(s) => s, None => return std::ptr::null_mut() };
+    let kek = arg!(master_kek_hex, "master_kek_hex");
     let result = mobile_kek::derive_taad_pubkey(kek);
-    if result.is_empty() { std::ptr::null_mut() } else { string_to_c(result) }
+    string_or_fail(result, "taad_kek_derive_taad_pubkey")
 }
 
 /// Wallet seed (32-byte hex) từ Master_KEK. null nếu KEK sai.
@@ -115,9 +224,9 @@ pub unsafe extern "C" fn taad_kek_derive_taad_pubkey(
 pub unsafe extern "C" fn taad_kek_derive_wallet_seed(
     master_kek_hex: *const c_char,
 ) -> *mut c_char {
-    let kek = match c_str_to_string(master_kek_hex) { Some(s) => s, None => return std::ptr::null_mut() };
+    let kek = arg!(master_kek_hex, "master_kek_hex");
     let result = mobile_kek::derive_wallet_seed(kek);
-    if result.is_empty() { std::ptr::null_mut() } else { string_to_c(result) }
+    string_or_fail(result, "taad_kek_derive_wallet_seed")
 }
 
 /// Địa chỉ Cardano Shelley (Bech32) cho account index từ Master_KEK.
@@ -128,9 +237,9 @@ pub unsafe extern "C" fn taad_kek_derive_wallet_address(
     account: u32,
     network: u8,
 ) -> *mut c_char {
-    let kek = match c_str_to_string(master_kek_hex) { Some(s) => s, None => return std::ptr::null_mut() };
+    let kek = arg!(master_kek_hex, "master_kek_hex");
     let result = mobile_kek::derive_wallet_address(kek, account, network);
-    if result.is_empty() { std::ptr::null_mut() } else { string_to_c(result) }
+    string_or_fail(result, "taad_kek_derive_wallet_address")
 }
 
 /// Địa chỉ STAKE (reward, Bech32 `stake_test1…`/`stake1…`) cho account index từ Master_KEK.
@@ -143,9 +252,9 @@ pub unsafe extern "C" fn taad_kek_derive_stake_address(
     account: u32,
     network: u8,
 ) -> *mut c_char {
-    let kek = match c_str_to_string(master_kek_hex) { Some(s) => s, None => return std::ptr::null_mut() };
+    let kek = arg!(master_kek_hex, "master_kek_hex");
     let result = mobile_kek::derive_stake_address(kek, account, network);
-    if result.is_empty() { std::ptr::null_mut() } else { string_to_c(result) }
+    string_or_fail(result, "taad_kek_derive_stake_address")
 }
 
 /// Ký challenge proof-of-ownership cho PhoenixKey `/wallet/standard/register`
@@ -160,10 +269,10 @@ pub unsafe extern "C" fn taad_kek_sign_wallet_register(
     account: u32,
     message: *const c_char,
 ) -> *mut c_char {
-    let kek = match c_str_to_string(master_kek_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let msg = match c_str_to_string(message) { Some(s) => s, None => return std::ptr::null_mut() };
+    let kek = arg!(master_kek_hex, "master_kek_hex");
+    let msg = arg!(message, "message");
     let result = mobile_kek::sign_wallet_register(kek, account, msg);
-    if result.is_empty() { std::ptr::null_mut() } else { string_to_c(result) }
+    string_or_fail(result, "taad_kek_sign_wallet_register")
 }
 
 /// Dựng + ký tx Cardano gửi ADA/LAMP (Issue #74 — client build, backend relay qua
@@ -186,18 +295,18 @@ pub unsafe extern "C" fn taad_kek_build_signed_transfer(
     protocol_params_json: *const c_char,
     network: u8,
 ) -> *mut c_char {
-    let kek = match c_str_to_string(master_kek_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let to = match c_str_to_string(to_address) { Some(s) => s, None => return std::ptr::null_mut() };
+    let kek = arg!(master_kek_hex, "master_kek_hex");
+    let to = arg!(to_address, "to_address");
     let amount = c_str_to_string(amount_lovelace).and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
     let lamp = c_str_to_string(lamp_amount).and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
     let policy = c_str_to_string(lamp_policy_hex).unwrap_or_default();
     let name = c_str_to_string(lamp_asset_name_hex).unwrap_or_default();
-    let utxos = match c_str_to_string(utxos_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let params = match c_str_to_string(protocol_params_json) { Some(s) => s, None => return std::ptr::null_mut() };
+    let utxos = arg!(utxos_json, "utxos_json");
+    let params = arg!(protocol_params_json, "protocol_params_json");
     let result = mobile_kek::build_signed_transfer(
         kek, account, to, amount, lamp, policy, name, utxos, params, network,
     );
-    if result.is_empty() { std::ptr::null_mut() } else { string_to_c(result) }
+    string_or_fail(result, "taad_kek_build_signed_transfer")
 }
 
 /// Dựng + ký tx uỷ thác stake vào 1 pool (single-pool delegation, Issue #74).
@@ -213,12 +322,12 @@ pub unsafe extern "C" fn taad_kek_build_stake_delegation(
     protocol_params_json: *const c_char,
     network: u8,
 ) -> *mut c_char {
-    let kek = match c_str_to_string(master_kek_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let pool = match c_str_to_string(pool_bech32) { Some(s) => s, None => return std::ptr::null_mut() };
-    let utxos = match c_str_to_string(utxos_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let params = match c_str_to_string(protocol_params_json) { Some(s) => s, None => return std::ptr::null_mut() };
+    let kek = arg!(master_kek_hex, "master_kek_hex");
+    let pool = arg!(pool_bech32, "pool_bech32");
+    let utxos = arg!(utxos_json, "utxos_json");
+    let params = arg!(protocol_params_json, "protocol_params_json");
     let result = mobile_kek::build_stake_delegation(kek, account, pool, utxos, params, network);
-    if result.is_empty() { std::ptr::null_mut() } else { string_to_c(result) }
+    string_or_fail(result, "taad_kek_build_stake_delegation")
 }
 
 /// Witness (ký) tx CBOR ĐÃ DỰNG SẴN bằng payment key của account (GetLAMP §2 —
@@ -230,10 +339,10 @@ pub unsafe extern "C" fn taad_kek_witness_unsigned_tx(
     unsigned_tx_cbor_hex: *const c_char,
     network: u8,
 ) -> *mut c_char {
-    let kek = match c_str_to_string(master_kek_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let cbor = match c_str_to_string(unsigned_tx_cbor_hex) { Some(s) => s, None => return std::ptr::null_mut() };
+    let kek = arg!(master_kek_hex, "master_kek_hex");
+    let cbor = arg!(unsigned_tx_cbor_hex, "unsigned_tx_cbor_hex");
     let result = mobile_kek::witness_unsigned_tx(kek, account, cbor, network);
-    if result.is_empty() { std::ptr::null_mut() } else { string_to_c(result) }
+    string_or_fail(result, "taad_kek_witness_unsigned_tx")
 }
 
 // ─── HKDF ────────────────────────────────────────────────────────
@@ -250,12 +359,12 @@ pub unsafe extern "C" fn taad_hkdf_derive(
     salt_hex: *const c_char,
     length: u32,
 ) -> *mut c_char {
-    let ikm  = match c_str_to_string(ikm_hex)  { Some(s) => s, None => return std::ptr::null_mut() };
-    let info = match c_str_to_string(info)      { Some(s) => s, None => return std::ptr::null_mut() };
+    let ikm  = arg!(ikm_hex, "ikm_hex");
+    let info = arg!(info, "info");
     let salt = match c_str_to_string(salt_hex)  { Some(s) => s, None => String::new() };
 
     let result = crypto::hkdf_derive(ikm, info, salt, length as usize);
-    if result.is_empty() { std::ptr::null_mut() } else { string_to_c(result) }
+    string_or_fail(result, "taad_hkdf_derive")
 }
 
 // ─── Ed25519 — TAAD_Key ───────────────────────────────────────────
@@ -268,9 +377,9 @@ pub unsafe extern "C" fn taad_hkdf_derive(
 pub unsafe extern "C" fn taad_derive_ed25519_public_key(
     seed_hex: *const c_char,
 ) -> *mut c_char {
-    let seed = match c_str_to_string(seed_hex) { Some(s) => s, None => return std::ptr::null_mut() };
+    let seed = arg!(seed_hex, "seed_hex");
     let result = crypto::derive_ed25519_public_key(seed);
-    if result.is_empty() { std::ptr::null_mut() } else { string_to_c(result) }
+    string_or_fail(result, "taad_derive_ed25519_public_key")
 }
 
 // ─── AES-256-GCM — Wrapped_KEK ────────────────────────────────────
@@ -286,10 +395,10 @@ pub unsafe extern "C" fn taad_aes_gcm_encrypt(
     key_hex: *const c_char,
     plaintext_hex: *const c_char,
 ) -> *mut c_char {
-    let key  = match c_str_to_string(key_hex)       { Some(s) => s, None => return std::ptr::null_mut() };
-    let data = match c_str_to_string(plaintext_hex)  { Some(s) => s, None => return std::ptr::null_mut() };
+    let key  = arg!(key_hex, "key_hex");
+    let data = arg!(plaintext_hex, "plaintext_hex");
     let result = crypto::aes_gcm_encrypt(key, data);
-    if result.is_empty() { std::ptr::null_mut() } else { string_to_c(result) }
+    string_or_fail(result, "taad_aes_gcm_encrypt")
 }
 
 /// Decrypt Master_KEK with Device_KEK.
@@ -301,10 +410,10 @@ pub unsafe extern "C" fn taad_aes_gcm_decrypt(
     key_hex: *const c_char,
     encrypted_json: *const c_char,
 ) -> *mut c_char {
-    let key  = match c_str_to_string(key_hex)        { Some(s) => s, None => return std::ptr::null_mut() };
-    let json = match c_str_to_string(encrypted_json) { Some(s) => s, None => return std::ptr::null_mut() };
+    let key  = arg!(key_hex, "key_hex");
+    let json = arg!(encrypted_json, "encrypted_json");
     let result = crypto::aes_gcm_decrypt(key, json);
-    if result.is_empty() { std::ptr::null_mut() } else { string_to_c(result) }
+    string_or_fail(result, "taad_aes_gcm_decrypt")
 }
 
 // ─── PBKDF2 — Device_KEK from PIN ────────────────────────────────
@@ -318,8 +427,8 @@ pub unsafe extern "C" fn taad_pbkdf2_derive(
     pin: *const c_char,
     salt_hex: *const c_char,
 ) -> *mut c_char {
-    let pin  = match c_str_to_string(pin)      { Some(s) => s, None => return std::ptr::null_mut() };
-    let salt = match c_str_to_string(salt_hex) { Some(s) => s, None => return std::ptr::null_mut() };
+    let pin  = arg!(pin, "pin");
+    let salt = arg!(salt_hex, "salt_hex");
     string_to_c(crypto::pbkdf2_derive(pin, salt))
 }
 
@@ -335,14 +444,14 @@ pub extern "C" fn taad_generate_salt() -> *mut c_char {
 /// Compute SHA-256 of a UTF-8 string. Returns 64-char hex (caller must free).
 #[no_mangle]
 pub unsafe extern "C" fn taad_sha256_hex(data: *const c_char) -> *mut c_char {
-    let s = match c_str_to_string(data) { Some(s) => s, None => return std::ptr::null_mut() };
+    let s = arg!(data, "data");
     string_to_c(crypto::sha256_hex(s))
 }
 
 /// Compute SHA-256 of hex-encoded bytes. Returns 64-char hex (caller must free).
 #[no_mangle]
 pub unsafe extern "C" fn taad_sha256_bytes_hex(data_hex: *const c_char) -> *mut c_char {
-    let s = match c_str_to_string(data_hex) { Some(s) => s, None => return std::ptr::null_mut() };
+    let s = arg!(data_hex, "data_hex");
     string_to_c(crypto::sha256_bytes_hex(s))
 }
 
@@ -359,10 +468,36 @@ pub unsafe extern "C" fn taad_verify_p256_signature(
     message: *const c_char,
     sig_hex: *const c_char,
 ) -> bool {
-    let pk  = match c_str_to_string(pub_key_hex) { Some(s) => s, None => return false };
-    let msg = match c_str_to_string(message)     { Some(s) => s, None => return false };
-    let sig = match c_str_to_string(sig_hex)     { Some(s) => s, None => return false };
-    crypto::verify_p256_signature(pk, msg, sig)
+    // `false` ở đây gộp hai nghĩa hoàn toàn khác nhau: "chữ ký KHÔNG hợp lệ"
+    // và "tôi chưa đọc nổi đối số". Kiểu trả về là `bool` nên không tách được
+    // ở giá trị — tách ở ô lỗi: hỏng đối số thì có câu lỗi, chữ ký sai thì ô
+    // lỗi TRỐNG. Bên gọi phân biệt được bằng `taad_last_error()`.
+    let pk = match c_str_to_string(pub_key_hex) {
+        Some(s) => s,
+        None => {
+            fail_arg("pub_key_hex");
+            return false;
+        }
+    };
+    let msg = match c_str_to_string(message) {
+        Some(s) => s,
+        None => {
+            fail_arg("message");
+            return false;
+        }
+    };
+    let sig = match c_str_to_string(sig_hex) {
+        Some(s) => s,
+        None => {
+            fail_arg("sig_hex");
+            return false;
+        }
+    };
+    let ok = crypto::verify_p256_signature(pk, msg, sig);
+    // Đọc được hết đối số ⟹ kết quả là một PHÁN ĐOÁN thật, không phải một lần
+    // hỏng. Xoá ô lỗi để bên gọi không nhặt phải lý do của lần gọi trước.
+    take_last_error();
+    ok
 }
 
 // Backward-compat alias (old name)
@@ -398,9 +533,9 @@ pub unsafe extern "C" fn taad_derive_cardano_address(
     seed_hex: *const c_char,
     network: u8,
 ) -> *mut c_char {
-    let seed = match c_str_to_string(seed_hex) { Some(s) => s, None => return std::ptr::null_mut() };
+    let seed = arg!(seed_hex, "seed_hex");
     let addr = cardano::derive_address(seed, network);
-    if addr.is_empty() { std::ptr::null_mut() } else { string_to_c(addr) }
+    string_or_fail(addr, "taad_derive_cardano_address")
 }
 
 /// Derive a Shelley base address for a specific CIP-1852 account index
@@ -416,9 +551,9 @@ pub unsafe extern "C" fn taad_derive_cardano_address_account(
     account: u32,
     network: u8,
 ) -> *mut c_char {
-    let seed = match c_str_to_string(seed_hex) { Some(s) => s, None => return std::ptr::null_mut() };
+    let seed = arg!(seed_hex, "seed_hex");
     let addr = cardano::derive_address_account(seed, account, network);
-    if addr.is_empty() { std::ptr::null_mut() } else { string_to_c(addr) }
+    string_or_fail(addr, "taad_derive_cardano_address_account")
 }
 
 /// Derive BIP32 extended private key (hex) for Cardano payment path.
@@ -427,9 +562,9 @@ pub unsafe extern "C" fn taad_derive_cardano_address_account(
 pub unsafe extern "C" fn taad_derive_payment_xprv(
     seed_hex: *const c_char,
 ) -> *mut c_char {
-    let seed = match c_str_to_string(seed_hex) { Some(s) => s, None => return std::ptr::null_mut() };
+    let seed = arg!(seed_hex, "seed_hex");
     let xprv = cardano::derive_payment_signing_key_hex(seed);
-    if xprv.is_empty() { std::ptr::null_mut() } else { string_to_c(xprv) }
+    string_or_fail(xprv, "taad_derive_payment_xprv")
 }
 
 /// Derive BIP32 extended private key (hex) for the payment path of a specific
@@ -442,9 +577,9 @@ pub unsafe extern "C" fn taad_derive_payment_xprv_account(
     seed_hex: *const c_char,
     account: u32,
 ) -> *mut c_char {
-    let seed = match c_str_to_string(seed_hex) { Some(s) => s, None => return std::ptr::null_mut() };
+    let seed = arg!(seed_hex, "seed_hex");
     let xprv = cardano::derive_payment_signing_key_account(seed, account);
-    if xprv.is_empty() { std::ptr::null_mut() } else { string_to_c(xprv) }
+    string_or_fail(xprv, "taad_derive_payment_xprv_account")
 }
 
 /// Sign a UTF-8 message with the Ed25519 TAAD_Key derived from Master_KEK.
@@ -454,10 +589,10 @@ pub unsafe extern "C" fn taad_sign_ed25519(
     master_kek_hex: *const c_char,
     message: *const c_char,
 ) -> *mut c_char {
-    let kek = match c_str_to_string(master_kek_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let msg = match c_str_to_string(message) { Some(s) => s, None => return std::ptr::null_mut() };
+    let kek = arg!(master_kek_hex, "master_kek_hex");
+    let msg = arg!(message, "message");
     let sig = sign::sign_ed25519(kek, msg);
-    if sig.is_empty() { std::ptr::null_mut() } else { string_to_c(sig) }
+    string_or_fail(sig, "taad_sign_ed25519")
 }
 
 /// 2FA DeviceKey opt-in (Issue #28): sinh Ed25519 NGẪU NHIÊN (per-device) + ký canonical
@@ -468,10 +603,10 @@ pub unsafe extern "C" fn taad_device_key_optin(
     user_did: *const c_char,
     nonce: *const c_char,
 ) -> *mut c_char {
-    let did = match c_str_to_string(user_did) { Some(s) => s, None => return std::ptr::null_mut() };
-    let n = match c_str_to_string(nonce) { Some(s) => s, None => return std::ptr::null_mut() };
+    let did = arg!(user_did, "user_did");
+    let n = arg!(nonce, "nonce");
     let out = sign::device_key_optin(did, n);
-    if out.is_empty() { std::ptr::null_mut() } else { string_to_c(out) }
+    string_or_fail(out, "taad_device_key_optin")
 }
 
 // ================================================================
@@ -549,21 +684,21 @@ pub unsafe extern "C" fn taad_publish_did_tx(
     protocol_params_json: *const c_char,
     current_slot: u64,
 ) -> *mut c_char {
-    let did_s = match c_str_to_string(did) { Some(s) => s, None => return std::ptr::null_mut() };
-    let hw = match c_str_to_string(hw_pubkey_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let taad = match c_str_to_string(taad_pubkey_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let addr = match c_str_to_string(wallet_address) { Some(s) => s, None => return std::ptr::null_mut() };
-    let seed = match c_str_to_string(wallet_seed_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let svc = match c_str_to_string(service_endpoint) { Some(s) => s, None => return std::ptr::null_mut() };
-    let utxos = match c_str_to_string(utxo_inputs_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let params = match c_str_to_string(protocol_params_json) { Some(s) => s, None => return std::ptr::null_mut() };
+    let did_s = arg!(did, "did");
+    let hw = arg!(hw_pubkey_hex, "hw_pubkey_hex");
+    let taad = arg!(taad_pubkey_hex, "taad_pubkey_hex");
+    let addr = arg!(wallet_address, "wallet_address");
+    let seed = arg!(wallet_seed_hex, "wallet_seed_hex");
+    let svc = arg!(service_endpoint, "service_endpoint");
+    let utxos = arg!(utxo_inputs_json, "utxo_inputs_json");
+    let params = arg!(protocol_params_json, "protocol_params_json");
 
     match taad_did::build_publish_did_tx(
         &did_s, &hw, &taad, &addr, &seed, &svc,
         network, &utxos, &params, current_slot,
     ) {
         Ok(tx_hex) => string_to_c(tx_hex),
-        Err(_) => std::ptr::null_mut(),
+        Err(e) => fail(e),
     }
 }
 
@@ -611,22 +746,22 @@ pub unsafe extern "C" fn taad_build_create_taad_utxo_tx(
     protocol_params_json: *const c_char,
     current_slot: u64,
 ) -> *mut c_char {
-    let did_s = match c_str_to_string(did) { Some(s) => s, None => return std::ptr::null_mut() };
-    let hw = match c_str_to_string(hw_pub_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let taad = match c_str_to_string(taad_pub_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let kek = match c_str_to_string(master_kek_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let seed = match c_str_to_string(wallet_seed_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let script_cbor = match c_str_to_string(taad_script_cbor_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let policy = match c_str_to_string(policy_id_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let utxos = match c_str_to_string(utxo_inputs_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let params = match c_str_to_string(protocol_params_json) { Some(s) => s, None => return std::ptr::null_mut() };
+    let did_s = arg!(did, "did");
+    let hw = arg!(hw_pub_hex, "hw_pub_hex");
+    let taad = arg!(taad_pub_hex, "taad_pub_hex");
+    let kek = arg!(master_kek_hex, "master_kek_hex");
+    let seed = arg!(wallet_seed_hex, "wallet_seed_hex");
+    let script_cbor = arg!(taad_script_cbor_hex, "taad_script_cbor_hex");
+    let policy = arg!(policy_id_hex, "policy_id_hex");
+    let utxos = arg!(utxo_inputs_json, "utxo_inputs_json");
+    let params = arg!(protocol_params_json, "protocol_params_json");
 
     match taad_did::build_create_taad_utxo_tx(
         &did_s, entity_type, &hw, &taad, &kek, &seed,
         network, &script_cbor, &policy, &utxos, &params, current_slot,
     ) {
         Ok(tx_hex) => string_to_c(tx_hex),
-        Err(_) => std::ptr::null_mut(),
+        Err(e) => fail(e),
     }
 }
 
@@ -676,24 +811,24 @@ pub unsafe extern "C" fn taad_build_create_child_taad_utxo_tx(
     protocol_params_json: *const c_char,
     current_slot: u64,
 ) -> *mut c_char {
-    let child = match c_str_to_string(child_did) { Some(s) => s, None => return std::ptr::null_mut() };
-    let owner = match c_str_to_string(owner_did) { Some(s) => s, None => return std::ptr::null_mut() };
-    let hw = match c_str_to_string(hw_pub_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let child_taad = match c_str_to_string(child_taad_pub_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let owner_kek = match c_str_to_string(owner_master_kek_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let seed = match c_str_to_string(wallet_seed_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let script_cbor = match c_str_to_string(taad_script_cbor_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let policy = match c_str_to_string(policy_id_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let owner_utxo = match c_str_to_string(owner_utxo_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let utxos = match c_str_to_string(utxo_inputs_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let params = match c_str_to_string(protocol_params_json) { Some(s) => s, None => return std::ptr::null_mut() };
+    let child = arg!(child_did, "child_did");
+    let owner = arg!(owner_did, "owner_did");
+    let hw = arg!(hw_pub_hex, "hw_pub_hex");
+    let child_taad = arg!(child_taad_pub_hex, "child_taad_pub_hex");
+    let owner_kek = arg!(owner_master_kek_hex, "owner_master_kek_hex");
+    let seed = arg!(wallet_seed_hex, "wallet_seed_hex");
+    let script_cbor = arg!(taad_script_cbor_hex, "taad_script_cbor_hex");
+    let policy = arg!(policy_id_hex, "policy_id_hex");
+    let owner_utxo = arg!(owner_utxo_json, "owner_utxo_json");
+    let utxos = arg!(utxo_inputs_json, "utxo_inputs_json");
+    let params = arg!(protocol_params_json, "protocol_params_json");
 
     match taad_did::build_create_child_taad_utxo_tx(
         &child, &owner, entity_type, &hw, &child_taad, &owner_kek, &seed,
         network, &script_cbor, &policy, &owner_utxo, &utxos, &params, current_slot,
     ) {
         Ok(tx_hex) => string_to_c(tx_hex),
-        Err(_) => std::ptr::null_mut(),
+        Err(e) => fail(e),
     }
 }
 
@@ -724,14 +859,14 @@ pub unsafe extern "C" fn taad_build_rotate_taad_tx(
     current_slot: u64,
     new_recovery_anchor_cid: *const c_char,
 ) -> *mut c_char {
-    let utxo = match c_str_to_string(current_taad_utxo_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let new_taad = match c_str_to_string(new_taad_pubkey_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let new_hw = match c_str_to_string(new_hw_pubkey_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let old_kek = match c_str_to_string(old_master_kek_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let seed = match c_str_to_string(wallet_seed_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let script_cbor = match c_str_to_string(taad_script_cbor_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let utxos = match c_str_to_string(utxo_inputs_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let params = match c_str_to_string(protocol_params_json) { Some(s) => s, None => return std::ptr::null_mut() };
+    let utxo = arg!(current_taad_utxo_json, "current_taad_utxo_json");
+    let new_taad = arg!(new_taad_pubkey_hex, "new_taad_pubkey_hex");
+    let new_hw = arg!(new_hw_pubkey_hex, "new_hw_pubkey_hex");
+    let old_kek = arg!(old_master_kek_hex, "old_master_kek_hex");
+    let seed = arg!(wallet_seed_hex, "wallet_seed_hex");
+    let script_cbor = arg!(taad_script_cbor_hex, "taad_script_cbor_hex");
+    let utxos = arg!(utxo_inputs_json, "utxo_inputs_json");
+    let params = arg!(protocol_params_json, "protocol_params_json");
     // LampNet CID của khoá mới. Chuỗi rỗng (hoặc null) = chưa phân tán → None,
     // rotate encoder giữ anchor cũ (hoặc None với datum legacy).
     let anchor_cid = c_str_to_string(new_recovery_anchor_cid).unwrap_or_default();
@@ -742,7 +877,7 @@ pub unsafe extern "C" fn taad_build_rotate_taad_tx(
         network, &script_cbor, &utxos, &params, current_slot, anchor_cid_opt,
     ) {
         Ok(tx_hex) => string_to_c(tx_hex),
-        Err(_) => std::ptr::null_mut(),
+        Err(e) => fail(e),
     }
 }
 
@@ -761,17 +896,17 @@ pub unsafe extern "C" fn taad_build_deactivate_taad_tx(
     protocol_params_json: *const c_char,
     current_slot: u64,
 ) -> *mut c_char {
-    let utxo = match c_str_to_string(current_taad_utxo_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let kek = match c_str_to_string(master_kek_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let seed = match c_str_to_string(wallet_seed_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let script_cbor = match c_str_to_string(taad_script_cbor_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let utxos = match c_str_to_string(utxo_inputs_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let params = match c_str_to_string(protocol_params_json) { Some(s) => s, None => return std::ptr::null_mut() };
+    let utxo = arg!(current_taad_utxo_json, "current_taad_utxo_json");
+    let kek = arg!(master_kek_hex, "master_kek_hex");
+    let seed = arg!(wallet_seed_hex, "wallet_seed_hex");
+    let script_cbor = arg!(taad_script_cbor_hex, "taad_script_cbor_hex");
+    let utxos = arg!(utxo_inputs_json, "utxo_inputs_json");
+    let params = arg!(protocol_params_json, "protocol_params_json");
     match taad_did::build_deactivate_taad_tx(
         &utxo, &kek, &seed, network, &script_cbor, &utxos, &params, current_slot,
     ) {
         Ok(tx_hex) => string_to_c(tx_hex),
-        Err(_) => std::ptr::null_mut(),
+        Err(e) => fail(e),
     }
 }
 
@@ -789,18 +924,18 @@ pub unsafe extern "C" fn taad_build_update_guardians_tx(
     protocol_params_json: *const c_char,
     current_slot: u64,
 ) -> *mut c_char {
-    let utxo = match c_str_to_string(current_taad_utxo_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let guardians = match c_str_to_string(new_guardians_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let kek = match c_str_to_string(master_kek_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let seed = match c_str_to_string(wallet_seed_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let script_cbor = match c_str_to_string(taad_script_cbor_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let utxos = match c_str_to_string(utxo_inputs_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let params = match c_str_to_string(protocol_params_json) { Some(s) => s, None => return std::ptr::null_mut() };
+    let utxo = arg!(current_taad_utxo_json, "current_taad_utxo_json");
+    let guardians = arg!(new_guardians_json, "new_guardians_json");
+    let kek = arg!(master_kek_hex, "master_kek_hex");
+    let seed = arg!(wallet_seed_hex, "wallet_seed_hex");
+    let script_cbor = arg!(taad_script_cbor_hex, "taad_script_cbor_hex");
+    let utxos = arg!(utxo_inputs_json, "utxo_inputs_json");
+    let params = arg!(protocol_params_json, "protocol_params_json");
     match taad_did::build_update_guardians_tx(
         &utxo, &guardians, &kek, &seed, network, &script_cbor, &utxos, &params, current_slot,
     ) {
         Ok(tx_hex) => string_to_c(tx_hex),
-        Err(_) => std::ptr::null_mut(),
+        Err(e) => fail(e),
     }
 }
 
@@ -825,20 +960,20 @@ pub unsafe extern "C" fn taad_build_init_recovery_tx(
     protocol_params_json: *const c_char,
     current_slot: u64,
 ) -> *mut c_char {
-    let utxo = match c_str_to_string(current_taad_utxo_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let new_taad = match c_str_to_string(new_taad_pubkey_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let new_hw = match c_str_to_string(new_hw_pubkey_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let guardians = match c_str_to_string(guardian_signing_keys_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let seed = match c_str_to_string(wallet_seed_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let script_cbor = match c_str_to_string(taad_script_cbor_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let utxos = match c_str_to_string(utxo_inputs_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let params = match c_str_to_string(protocol_params_json) { Some(s) => s, None => return std::ptr::null_mut() };
+    let utxo = arg!(current_taad_utxo_json, "current_taad_utxo_json");
+    let new_taad = arg!(new_taad_pubkey_hex, "new_taad_pubkey_hex");
+    let new_hw = arg!(new_hw_pubkey_hex, "new_hw_pubkey_hex");
+    let guardians = arg!(guardian_signing_keys_json, "guardian_signing_keys_json");
+    let seed = arg!(wallet_seed_hex, "wallet_seed_hex");
+    let script_cbor = arg!(taad_script_cbor_hex, "taad_script_cbor_hex");
+    let utxos = arg!(utxo_inputs_json, "utxo_inputs_json");
+    let params = arg!(protocol_params_json, "protocol_params_json");
     match taad_did::build_init_recovery_tx(
         &utxo, &new_taad, &new_hw, &guardians, collateral_lovelace, recovery_timelock_slots,
         &seed, network, &script_cbor, &utxos, &params, current_slot,
     ) {
         Ok(tx_hex) => string_to_c(tx_hex),
-        Err(_) => std::ptr::null_mut(),
+        Err(e) => fail(e),
     }
 }
 
@@ -855,17 +990,17 @@ pub unsafe extern "C" fn taad_build_cancel_recovery_tx(
     protocol_params_json: *const c_char,
     current_slot: u64,
 ) -> *mut c_char {
-    let utxo = match c_str_to_string(current_taad_utxo_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let kek = match c_str_to_string(master_kek_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let seed = match c_str_to_string(wallet_seed_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let script_cbor = match c_str_to_string(taad_script_cbor_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let utxos = match c_str_to_string(utxo_inputs_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let params = match c_str_to_string(protocol_params_json) { Some(s) => s, None => return std::ptr::null_mut() };
+    let utxo = arg!(current_taad_utxo_json, "current_taad_utxo_json");
+    let kek = arg!(master_kek_hex, "master_kek_hex");
+    let seed = arg!(wallet_seed_hex, "wallet_seed_hex");
+    let script_cbor = arg!(taad_script_cbor_hex, "taad_script_cbor_hex");
+    let utxos = arg!(utxo_inputs_json, "utxo_inputs_json");
+    let params = arg!(protocol_params_json, "protocol_params_json");
     match taad_did::build_cancel_recovery_tx(
         &utxo, &kek, &seed, network, &script_cbor, &utxos, &params, current_slot,
     ) {
         Ok(tx_hex) => string_to_c(tx_hex),
-        Err(_) => std::ptr::null_mut(),
+        Err(e) => fail(e),
     }
 }
 
@@ -884,17 +1019,17 @@ pub unsafe extern "C" fn taad_build_finalize_recovery_tx(
     protocol_params_json: *const c_char,
     current_slot: u64,
 ) -> *mut c_char {
-    let utxo = match c_str_to_string(current_taad_utxo_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let new_kek = match c_str_to_string(new_master_kek_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let seed = match c_str_to_string(wallet_seed_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let script_cbor = match c_str_to_string(taad_script_cbor_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let utxos = match c_str_to_string(utxo_inputs_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let params = match c_str_to_string(protocol_params_json) { Some(s) => s, None => return std::ptr::null_mut() };
+    let utxo = arg!(current_taad_utxo_json, "current_taad_utxo_json");
+    let new_kek = arg!(new_master_kek_hex, "new_master_kek_hex");
+    let seed = arg!(wallet_seed_hex, "wallet_seed_hex");
+    let script_cbor = arg!(taad_script_cbor_hex, "taad_script_cbor_hex");
+    let utxos = arg!(utxo_inputs_json, "utxo_inputs_json");
+    let params = arg!(protocol_params_json, "protocol_params_json");
     match taad_did::build_finalize_recovery_tx(
         &utxo, &new_kek, &seed, network, &script_cbor, &utxos, &params, current_slot,
     ) {
         Ok(tx_hex) => string_to_c(tx_hex),
-        Err(_) => std::ptr::null_mut(),
+        Err(e) => fail(e),
     }
 }
 
@@ -980,24 +1115,24 @@ pub unsafe extern "C" fn taad_build_mint_lamp_via_did(
     network: u8,
     current_slot: u64,
 ) -> *mut c_char {
-    let auth_keks = match c_str_to_string(authority_keks_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let registry = match c_str_to_string(registry_utxo_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let token_tag = match c_str_to_string(token_tag_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let supply_state = match c_str_to_string(supply_state_utxo_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let ss_script = match c_str_to_string(supply_state_script_cbor) { Some(s) => s, None => return std::ptr::null_mut() };
-    let kho = match c_str_to_string(kho_utxo_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let policy = match c_str_to_string(lamp_policy_cbor_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let mint = match c_str_to_string(mint_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let utxos = match c_str_to_string(utxos_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let params = match c_str_to_string(protocol_params_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let seed = match c_str_to_string(wallet_seed_hex) { Some(s) => s, None => return std::ptr::null_mut() };
+    let auth_keks = arg!(authority_keks_json, "authority_keks_json");
+    let registry = arg!(registry_utxo_json, "registry_utxo_json");
+    let token_tag = arg!(token_tag_hex, "token_tag_hex");
+    let supply_state = arg!(supply_state_utxo_json, "supply_state_utxo_json");
+    let ss_script = arg!(supply_state_script_cbor, "supply_state_script_cbor");
+    let kho = arg!(kho_utxo_json, "kho_utxo_json");
+    let policy = arg!(lamp_policy_cbor_hex, "lamp_policy_cbor_hex");
+    let mint = arg!(mint_json, "mint_json");
+    let utxos = arg!(utxos_json, "utxos_json");
+    let params = arg!(protocol_params_json, "protocol_params_json");
+    let seed = arg!(wallet_seed_hex, "wallet_seed_hex");
 
     match mint_lamp::build_mint_lamp_via_did(
         &auth_keks, &registry, &token_tag, &supply_state, &ss_script, &kho, &policy, &mint,
         &utxos, &params, &seed, network, current_slot,
     ) {
         Ok(tx_hex) => string_to_c(tx_hex),
-        Err(_) => std::ptr::null_mut(),
+        Err(e) => fail(e),
     }
 }
 
@@ -1045,18 +1180,18 @@ pub unsafe extern "C" fn taad_build_signed_transfer(
     protocol_params_json: *const c_char,
     network: u8,
 ) -> *mut c_char {
-    let seed = match c_str_to_string(seed_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let to = match c_str_to_string(to_address) { Some(s) => s, None => return std::ptr::null_mut() };
+    let seed = arg!(seed_hex, "seed_hex");
+    let to = arg!(to_address, "to_address");
     let policy = c_str_to_string(lamp_policy_hex).unwrap_or_default();
     let name = c_str_to_string(lamp_asset_name_hex).unwrap_or_default();
-    let utxos = match c_str_to_string(utxos_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let params = match c_str_to_string(protocol_params_json) { Some(s) => s, None => return std::ptr::null_mut() };
+    let utxos = arg!(utxos_json, "utxos_json");
+    let params = arg!(protocol_params_json, "protocol_params_json");
 
     let tx_hex = transfer::build_signed_transfer(
         &seed, account, &to, amount_lovelace, lamp_amount,
         &policy, &name, &utxos, &params, network,
     );
-    if tx_hex.is_empty() { std::ptr::null_mut() } else { string_to_c(tx_hex) }
+    string_or_fail(tx_hex, "taad_build_signed_transfer")
 }
 
 // ================================================================
@@ -1106,20 +1241,20 @@ pub unsafe extern "C" fn taad_build_deploy_mint_registry(
     network: u8,
     slot: u64,
 ) -> *mut c_char {
-    let kek = match c_str_to_string(controller_kek) { Some(s) => s, None => return std::ptr::null_mut() };
-    let did = match c_str_to_string(governing_did) { Some(s) => s, None => return std::ptr::null_mut() };
-    let genesis = match c_str_to_string(genesis_utxo_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let entries = match c_str_to_string(initial_entries_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let script = match c_str_to_string(registry_script_cbor) { Some(s) => s, None => return std::ptr::null_mut() };
-    let utxos = match c_str_to_string(utxos_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let params = match c_str_to_string(params_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let seed = match c_str_to_string(wallet_seed_hex) { Some(s) => s, None => return std::ptr::null_mut() };
+    let kek = arg!(controller_kek, "controller_kek");
+    let did = arg!(governing_did, "governing_did");
+    let genesis = arg!(genesis_utxo_json, "genesis_utxo_json");
+    let entries = arg!(initial_entries_json, "initial_entries_json");
+    let script = arg!(registry_script_cbor, "registry_script_cbor");
+    let utxos = arg!(utxos_json, "utxos_json");
+    let params = arg!(params_json, "params_json");
+    let seed = arg!(wallet_seed_hex, "wallet_seed_hex");
 
     match registry_mint::build_deploy_mint_registry(
         &kek, &did, &genesis, &entries, &script, &utxos, &params, &seed, network, slot,
     ) {
         Ok(tx_hex) => string_to_c(tx_hex),
-        Err(_) => std::ptr::null_mut(),
+        Err(e) => fail(e),
     }
 }
 
@@ -1159,21 +1294,21 @@ pub unsafe extern "C" fn taad_build_update_mint_registry(
     network: u8,
     slot: u64,
 ) -> *mut c_char {
-    let kek = match c_str_to_string(controller_kek) { Some(s) => s, None => return std::ptr::null_mut() };
-    let did = match c_str_to_string(governing_did) { Some(s) => s, None => return std::ptr::null_mut() };
-    let registry = match c_str_to_string(registry_utxo_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let anchor = match c_str_to_string(did_anchor_utxo_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let entries = match c_str_to_string(new_entries_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let script = match c_str_to_string(registry_script_cbor) { Some(s) => s, None => return std::ptr::null_mut() };
-    let utxos = match c_str_to_string(utxos_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let params = match c_str_to_string(params_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let seed = match c_str_to_string(wallet_seed_hex) { Some(s) => s, None => return std::ptr::null_mut() };
+    let kek = arg!(controller_kek, "controller_kek");
+    let did = arg!(governing_did, "governing_did");
+    let registry = arg!(registry_utxo_json, "registry_utxo_json");
+    let anchor = arg!(did_anchor_utxo_json, "did_anchor_utxo_json");
+    let entries = arg!(new_entries_json, "new_entries_json");
+    let script = arg!(registry_script_cbor, "registry_script_cbor");
+    let utxos = arg!(utxos_json, "utxos_json");
+    let params = arg!(params_json, "params_json");
+    let seed = arg!(wallet_seed_hex, "wallet_seed_hex");
 
     match registry_mint::build_update_mint_registry(
         &kek, &did, &registry, &anchor, &entries, &script, &utxos, &params, &seed, network, slot,
     ) {
         Ok(tx_hex) => string_to_c(tx_hex),
-        Err(_) => std::ptr::null_mut(),
+        Err(e) => fail(e),
     }
 }
 
@@ -1225,21 +1360,21 @@ pub unsafe extern "C" fn taad_build_mint_via_registry(
     network: u8,
     slot: u64,
 ) -> *mut c_char {
-    let keks = match c_str_to_string(authority_keks_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let registry = match c_str_to_string(registry_utxo_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let policy = match c_str_to_string(token_policy_cbor) { Some(s) => s, None => return std::ptr::null_mut() };
-    let mint = match c_str_to_string(mint_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let ss_utxo = match c_str_to_string(supply_state_utxo_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let ss_script = match c_str_to_string(supply_state_script_cbor) { Some(s) => s, None => return std::ptr::null_mut() };
-    let utxos = match c_str_to_string(utxos_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let params = match c_str_to_string(params_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let seed = match c_str_to_string(wallet_seed_hex) { Some(s) => s, None => return std::ptr::null_mut() };
+    let keks = arg!(authority_keks_json, "authority_keks_json");
+    let registry = arg!(registry_utxo_json, "registry_utxo_json");
+    let policy = arg!(token_policy_cbor, "token_policy_cbor");
+    let mint = arg!(mint_json, "mint_json");
+    let ss_utxo = arg!(supply_state_utxo_json, "supply_state_utxo_json");
+    let ss_script = arg!(supply_state_script_cbor, "supply_state_script_cbor");
+    let utxos = arg!(utxos_json, "utxos_json");
+    let params = arg!(params_json, "params_json");
+    let seed = arg!(wallet_seed_hex, "wallet_seed_hex");
 
     match registry_mint::build_mint_via_registry(
         &keks, &registry, &policy, &mint, &ss_utxo, &ss_script, &utxos, &params, &seed, network, slot,
     ) {
         Ok(tx_hex) => string_to_c(tx_hex),
-        Err(_) => std::ptr::null_mut(),
+        Err(e) => fail(e),
     }
 }
 
@@ -1280,24 +1415,30 @@ pub unsafe extern "C" fn taad_build_genesis_supply_state(
     network: u8,
     slot: u64,
 ) -> *mut c_char {
-    let genesis = match c_str_to_string(genesis_utxo_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let thread_policy = match c_str_to_string(thread_nft_policy_cbor) { Some(s) => s, None => return std::ptr::null_mut() };
-    let dist_cap_s = match c_str_to_string(dist_cap_str) { Some(s) => s, None => return std::ptr::null_mut() };
-    let reserve_cap_s = match c_str_to_string(reserve_cap_str) { Some(s) => s, None => return std::ptr::null_mut() };
-    let ss_script = match c_str_to_string(supply_state_script_cbor) { Some(s) => s, None => return std::ptr::null_mut() };
-    let utxos = match c_str_to_string(utxos_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let params = match c_str_to_string(params_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let seed = match c_str_to_string(wallet_seed_hex) { Some(s) => s, None => return std::ptr::null_mut() };
+    let genesis = arg!(genesis_utxo_json, "genesis_utxo_json");
+    let thread_policy = arg!(thread_nft_policy_cbor, "thread_nft_policy_cbor");
+    let dist_cap_s = arg!(dist_cap_str, "dist_cap_str");
+    let reserve_cap_s = arg!(reserve_cap_str, "reserve_cap_str");
+    let ss_script = arg!(supply_state_script_cbor, "supply_state_script_cbor");
+    let utxos = arg!(utxos_json, "utxos_json");
+    let params = arg!(params_json, "params_json");
+    let seed = arg!(wallet_seed_hex, "wallet_seed_hex");
 
     // caps passed as decimal strings (oil) — u128 exceeds C u64 semantics safely.
-    let dist_cap: u128 = match dist_cap_s.trim().parse() { Ok(v) => v, Err(_) => return std::ptr::null_mut() };
-    let reserve_cap: u128 = match reserve_cap_s.trim().parse() { Ok(v) => v, Err(_) => return std::ptr::null_mut() };
+    let dist_cap: u128 = match dist_cap_s.trim().parse() {
+        Ok(v) => v,
+        Err(e) => return fail(format!("invalid argument `dist_cap_str`: {e}")),
+    };
+    let reserve_cap: u128 = match reserve_cap_s.trim().parse() {
+        Ok(v) => v,
+        Err(e) => return fail(format!("invalid argument `reserve_cap_str`: {e}")),
+    };
 
     match registry_mint::build_genesis_supply_state(
         &genesis, &thread_policy, dist_cap, reserve_cap, &ss_script, &utxos, &params, &seed, network, slot,
     ) {
         Ok(tx_hex) => string_to_c(tx_hex),
-        Err(_) => std::ptr::null_mut(),
+        Err(e) => fail(e),
     }
 }
 
@@ -1350,15 +1491,31 @@ pub unsafe extern "C" fn taad_lampnet_build_upload_request(
     did: *const c_char,
     master_kek_hex: *const c_char,
 ) -> *mut c_char {
-    let payload_s = match c_str_to_string(payload_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let hw_uid_s = match c_str_to_string(hw_uid_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let did_s = match c_str_to_string(did) { Some(s) => s, None => return std::ptr::null_mut() };
-    let kek_s = match c_str_to_string(master_kek_hex) { Some(s) => s, None => return std::ptr::null_mut() };
+    let payload_s = arg!(payload_hex, "payload_hex");
+    let hw_uid_s = arg!(hw_uid_hex, "hw_uid_hex");
+    let did_s = arg!(did, "did");
+    let kek_s = arg!(master_kek_hex, "master_kek_hex");
 
-    let payload = match hex::decode(&payload_s) { Ok(b) => b, Err(_) => return std::ptr::null_mut() };
-    let hw_uid = match hex::decode(&hw_uid_s) { Ok(b) => b, Err(_) => return std::ptr::null_mut() };
-    let kek_bytes = match hex::decode(&kek_s) { Ok(b) => b, Err(_) => return std::ptr::null_mut() };
-    if kek_bytes.len() != 32 { return std::ptr::null_mut(); }
+    // Câu lỗi của crate `hex` nêu KÝ TỰ sai — với chuỗi bí mật (payload, KEK)
+    // đó là một byte của bí mật đi ra ngoài. Chỉ nêu TÊN đối số.
+    let payload = match hex::decode(&payload_s) {
+        Ok(b) => b,
+        Err(_) => return fail("invalid argument `payload_hex`: not valid hex"),
+    };
+    let hw_uid = match hex::decode(&hw_uid_s) {
+        Ok(b) => b,
+        Err(_) => return fail("invalid argument `hw_uid_hex`: not valid hex"),
+    };
+    let kek_bytes = match hex::decode(&kek_s) {
+        Ok(b) => b,
+        Err(_) => return fail("invalid argument `master_kek_hex`: not valid hex"),
+    };
+    if kek_bytes.len() != 32 {
+        return fail(format!(
+            "invalid argument `master_kek_hex`: expected 32 bytes (64 hex chars), got {}",
+            kek_bytes.len()
+        ));
+    }
     let mut kek = [0u8; 32];
     kek.copy_from_slice(&kek_bytes);
 
@@ -1381,7 +1538,7 @@ pub unsafe extern "C" fn taad_lampnet_build_upload_request(
 pub unsafe extern "C" fn taad_lampnet_build_recover_request(
     cid: *const c_char,
 ) -> *mut c_char {
-    let cid_s = match c_str_to_string(cid) { Some(s) => s, None => return std::ptr::null_mut() };
+    let cid_s = arg!(cid, "cid");
     string_to_c(lampnet::lampnet_build_recover_request(&cid_s))
 }
 
@@ -1400,18 +1557,29 @@ pub unsafe extern "C" fn taad_lampnet_recover_decrypt(
     ciphertext_hex: *const c_char,
     master_kek_hex: *const c_char,
 ) -> *mut c_char {
-    let ct_s = match c_str_to_string(ciphertext_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let kek_s = match c_str_to_string(master_kek_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let blob = match hex::decode(&ct_s) { Ok(b) => b, Err(_) => return std::ptr::null_mut() };
-    let kek_bytes = match hex::decode(&kek_s) { Ok(b) => b, Err(_) => return std::ptr::null_mut() };
-    if kek_bytes.len() != 32 { return std::ptr::null_mut(); }
+    let ct_s = arg!(ciphertext_hex, "ciphertext_hex");
+    let kek_s = arg!(master_kek_hex, "master_kek_hex");
+    let blob = match hex::decode(&ct_s) {
+        Ok(b) => b,
+        Err(_) => return fail("invalid argument `ciphertext_hex`: not valid hex"),
+    };
+    let kek_bytes = match hex::decode(&kek_s) {
+        Ok(b) => b,
+        Err(_) => return fail("invalid argument `master_kek_hex`: not valid hex"),
+    };
+    if kek_bytes.len() != 32 {
+        return fail(format!(
+            "invalid argument `master_kek_hex`: expected 32 bytes (64 hex chars), got {}",
+            kek_bytes.len()
+        ));
+    }
     let mut kek = [0u8; 32];
     kek.copy_from_slice(&kek_bytes);
 
     let (secret, _) = lampnet::derive_x25519_static_from_kek(&kek);
     match lampnet::ecies_decrypt(&secret.to_bytes(), &blob) {
         Ok(plain) => string_to_c(hex::encode(&plain[..])),
-        Err(_) => std::ptr::null_mut(),
+        Err(e) => fail(e),
     }
 }
 // [V15] Staking + delegation (ĐA POOL — nền ISPO)
@@ -1441,14 +1609,14 @@ pub unsafe extern "C" fn taad_build_stake_delegation_tx(
     protocol_params_json: *const c_char,
     network: u8,
 ) -> *mut c_char {
-    let seed = match c_str_to_string(seed_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let pool = match c_str_to_string(pool_bech32) { Some(s) => s, None => return std::ptr::null_mut() };
-    let utxos = match c_str_to_string(utxos_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let params = match c_str_to_string(protocol_params_json) { Some(s) => s, None => return std::ptr::null_mut() };
+    let seed = arg!(seed_hex, "seed_hex");
+    let pool = arg!(pool_bech32, "pool_bech32");
+    let utxos = arg!(utxos_json, "utxos_json");
+    let params = arg!(protocol_params_json, "protocol_params_json");
 
     let tx_hex =
         staking::build_stake_delegation_tx(&seed, account, &pool, &utxos, &params, network);
-    if tx_hex.is_empty() { std::ptr::null_mut() } else { string_to_c(tx_hex) }
+    string_or_fail(tx_hex, "taad_build_stake_delegation_tx")
 }
 
 /// MULTI-POOL delegation (nền ISPO) — MỘT tx gồm N output + N StakeRegistration
@@ -1472,15 +1640,15 @@ pub unsafe extern "C" fn taad_build_multi_pool_delegation_tx(
     protocol_params_json: *const c_char,
     network: u8,
 ) -> *mut c_char {
-    let seed = match c_str_to_string(seed_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let allocs = match c_str_to_string(allocations_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let utxos = match c_str_to_string(utxos_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let params = match c_str_to_string(protocol_params_json) { Some(s) => s, None => return std::ptr::null_mut() };
+    let seed = arg!(seed_hex, "seed_hex");
+    let allocs = arg!(allocations_json, "allocations_json");
+    let utxos = arg!(utxos_json, "utxos_json");
+    let params = arg!(protocol_params_json, "protocol_params_json");
 
     let tx_hex = staking::build_multi_pool_delegation_tx(
         &seed, funding_account, &allocs, &utxos, &params, network,
     );
-    if tx_hex.is_empty() { std::ptr::null_mut() } else { string_to_c(tx_hex) }
+    string_or_fail(tx_hex, "taad_build_multi_pool_delegation_tx")
 }
 
 /// Rút reward của stake account `account`.
@@ -1497,13 +1665,13 @@ pub unsafe extern "C" fn taad_build_withdraw_reward_tx(
     protocol_params_json: *const c_char,
     network: u8,
 ) -> *mut c_char {
-    let seed = match c_str_to_string(seed_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let utxos = match c_str_to_string(utxos_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let params = match c_str_to_string(protocol_params_json) { Some(s) => s, None => return std::ptr::null_mut() };
+    let seed = arg!(seed_hex, "seed_hex");
+    let utxos = arg!(utxos_json, "utxos_json");
+    let params = arg!(protocol_params_json, "protocol_params_json");
 
     let tx_hex =
         staking::build_withdraw_reward_tx(&seed, account, reward_lovelace, &utxos, &params, network);
-    if tx_hex.is_empty() { std::ptr::null_mut() } else { string_to_c(tx_hex) }
+    string_or_fail(tx_hex, "taad_build_withdraw_reward_tx")
 }
 
 /// Conway vote delegation — ủy thác voting power của stake key `account` tới DRep.
@@ -1521,14 +1689,14 @@ pub unsafe extern "C" fn taad_build_vote_delegation_tx(
     protocol_params_json: *const c_char,
     network: u8,
 ) -> *mut c_char {
-    let seed = match c_str_to_string(seed_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let drep = match c_str_to_string(drep_id) { Some(s) => s, None => return std::ptr::null_mut() };
-    let utxos = match c_str_to_string(utxos_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let params = match c_str_to_string(protocol_params_json) { Some(s) => s, None => return std::ptr::null_mut() };
+    let seed = arg!(seed_hex, "seed_hex");
+    let drep = arg!(drep_id, "drep_id");
+    let utxos = arg!(utxos_json, "utxos_json");
+    let params = arg!(protocol_params_json, "protocol_params_json");
 
     let tx_hex =
         staking::build_vote_delegation_tx(&seed, account, &drep, &utxos, &params, network);
-    if tx_hex.is_empty() { std::ptr::null_mut() } else { string_to_c(tx_hex) }
+    string_or_fail(tx_hex, "taad_build_vote_delegation_tx")
 }
 
 /// Hủy đăng ký stake key `account` (hoàn lại ~2 ADA key deposit).
@@ -1540,12 +1708,12 @@ pub unsafe extern "C" fn taad_build_stake_deregistration_tx(
     protocol_params_json: *const c_char,
     network: u8,
 ) -> *mut c_char {
-    let seed = match c_str_to_string(seed_hex) { Some(s) => s, None => return std::ptr::null_mut() };
-    let utxos = match c_str_to_string(utxos_json) { Some(s) => s, None => return std::ptr::null_mut() };
-    let params = match c_str_to_string(protocol_params_json) { Some(s) => s, None => return std::ptr::null_mut() };
+    let seed = arg!(seed_hex, "seed_hex");
+    let utxos = arg!(utxos_json, "utxos_json");
+    let params = arg!(protocol_params_json, "protocol_params_json");
 
     let tx_hex =
         staking::build_stake_deregistration_tx(&seed, account, &utxos, &params, network);
-    if tx_hex.is_empty() { std::ptr::null_mut() } else { string_to_c(tx_hex) }
+    string_or_fail(tx_hex, "taad_build_stake_deregistration_tx")
 }
 

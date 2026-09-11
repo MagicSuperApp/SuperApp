@@ -1006,7 +1006,13 @@ const AccountScreen = () => {
                             <Icon name="information-outline" size={13} color={COLORS.textMuted} />
                             <Text style={styles.walletNoteText}>
                                 <Text style={styles.walletNoteStrong}>Ví cơ bản</Text> do chính bạn giữ chìa — dùng để nhận và chuyển tài sản.{' '}
-                                <Text style={styles.walletNoteStrong}>Phoenix Wallet</Text> is managed by the system against your identity — used for activation and services.
+                                {/* Nửa sau câu này viết bằng TIẾNG ANH tới 2026-09-11, nằm
+                                    ngay sau một nửa tiếng Việt trong CÙNG một đoạn. Nguồn của
+                                    app là tiếng Việt (`i18n/types.ts` — `SOURCE_LANG`), nên câu
+                                    tiếng Anh không có đường nào thành tiếng Việt: từ điển chỉ
+                                    dịch XUÔI từ tiếng Việt ra. Người dùng Việt đọc nửa đoạn
+                                    không hiểu, và người chọn tiếng Anh đọc nửa kia không hiểu. */}
+                                <Text style={styles.walletNoteStrong}>Phoenix Wallet</Text> do hệ thống giữ theo danh tính của bạn — dùng để kích hoạt và trả phí dịch vụ.
                             </Text>
                         </View>
                     </Section>

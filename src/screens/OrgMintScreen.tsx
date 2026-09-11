@@ -4,7 +4,7 @@
 //
 //   BƯỚC 1 — MINT VÀO KHO: chọn org → nhập số lượng → gọi mint-lamp (tạo intent
 //     LAMP_MINT) → chờ SSE "signed" (m-of-n gom đủ m chữ ký; single=1) → native
-//     dựng+ký CBOR (Thư) → submit-tx. Kết quả: LAMP nằm trong KHO Distribution,
+//     dựng+ký CBOR (Enclave native) → submit-tx. Kết quả: LAMP nằm trong KHO Distribution,
 //     CHƯA về ví. Hiển thị RÕ điều này — KHÔNG được nói "mint về ví".
 //
 //   BƯỚC 2 — CLAIM-RELEASE VỀ VÍ: đưa LAMP từ kho về ví user. Endpoint PhoenixKey
@@ -141,7 +141,7 @@ const OrgMintScreen: React.FC = () => {
       signHandleRef.current = handle;
       await signed;
 
-      // 1c. Native dựng + ký CBOR (Thư) → submit-tx.
+      // 1c. Native dựng + ký CBOR → submit-tx.
       setPhase('submitting');
       const result = await submitMintTx({
         orgDid,

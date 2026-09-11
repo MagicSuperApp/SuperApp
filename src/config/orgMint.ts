@@ -5,7 +5,7 @@
  *   1. Cap/authority/redeemer còn CHỜ LAMP hợp nhất design lên main (main CountMint
  *      vs branch DistributionVest/ReserveDraw). Chưa biết chữ ký OrgDID controller
  *      có đủ authorize không hay cần dist_authority riêng.
- *   2. Phần DỰNG + KÝ CBOR chạy ở Enclave NATIVE (Thư) — chưa ráp buildAndSignTx.
+ *   2. Phần DỰNG + KÝ CBOR chạy ở Enclave NATIVE — chưa ráp buildAndSignTx.
  *   3. Endpoint claim/vesting-release (bước 2 đưa LAMP về ví) PhoenixKey CHƯA cấp.
  *
  * Khi false: các màn OrgDID/Mint vẫn XEM được (UX review), nhưng nút thao tác

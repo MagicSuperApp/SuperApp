@@ -5,7 +5,7 @@
  *   - Nghiệp vụ Join/lease/verify/settlement do daemon LampNet sở hữu — app KHÔNG
  *     re-implement (spec §1). Ở đây chỉ khai chữ ký + gọi + phân loại lỗi.
  *   - FFI native `join_and_contribute(JoinConfig)` + lưu seed_hex ở Keystore/Keychain
- *     = phần của Thư (spec §1/§3). Ở service này CHỈ để CHỖ (joinViaNativeSdk) +
+ *     = phần của native (spec §1/§3). Ở service này CHỈ để CHỖ (joinViaNativeSdk) +
  *     comment TODO, KHÔNG tự viết native / KHÔNG chạm seed_hex plaintext (INV-3).
  *
  * Server: LAMPNET_BASE_URL (env). Wire format snake_case — dùng ĐÚNG key BE trả,
@@ -304,7 +304,7 @@ export const requestLease = (nodeId: string): Promise<Record<string, unknown>> =
     body: JSON.stringify({ node_id: nodeId }),
   });
 
-/** Bước 4 — Tải payload (ký lease_id). Chữ ký thật do native lo (Thư). */
+/** Bước 4 — Tải payload (ký lease_id). Chữ ký thật do native lo. */
 export const fetchPayload = (leaseId: string): Promise<Record<string, unknown>> =>
   request(`/v1/mobile/payload/${encodeURIComponent(leaseId)}`, { method: 'POST' });
 
@@ -502,11 +502,11 @@ export function resolvePersonDid(rawDid: string | null | undefined): string | nu
 
 /** Cầu native đã gắn chưa. Dùng để trả lời NGAY, không tốn một vòng mạng. */
 export function isNativeJoinAvailable(): boolean {
-  return false; // TODO(Thư): !!NativeModules.LampNetJoin
+  return false; // TODO(native): !!NativeModules.LampNetJoin
 }
 
 export async function joinViaNativeSdk(_config: JoinConfig): Promise<JoinResult> {
-  // TODO(Thư): thay bằng NativeModules.LampNetJoin.joinAndContribute(_config).
+  // TODO(native): thay bằng NativeModules.LampNetJoin.joinAndContribute(_config).
   //   - native lo attestation Hardware + seed_hex ở Secure Element.
   //   - KHÔNG log, KHÔNG trả seed_hex ra JS bridge (INV-3, spec §3).
   // Đường REST KHÔNG thay thế được: daemon đòi 22 trường kèm 2 chữ ký Ed25519 mà

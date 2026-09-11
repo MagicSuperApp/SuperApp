@@ -1,6 +1,6 @@
 // modules/work/services/signWorkChallenge.ts
 //
-// Nối signChallenge AladinWork vào KHOÁ PHẦN CỨNG PhoenixKey (thay TODO "Thư cấp").
+// Nối signChallenge AladinWork vào KHOÁ PHẦN CỨNG PhoenixKey (thay TODO "PhoenixKey native cấp").
 // Server verify ECDSA P-256 (secp256r1) / SHA-256, chữ ký DER hex trên
 // message = "<challenge>:<domain>:<timestamp>" (SPEC §2). signRaw của PhoenixKey
 // (Secure Enclave/StrongBox) nhận HEX bytes → tự SHA-256 + ký P-256 → trả DER hex —

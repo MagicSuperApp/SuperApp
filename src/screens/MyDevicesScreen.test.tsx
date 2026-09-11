@@ -143,7 +143,7 @@ describe('đổi tên KHÔNG được làm mất nhãn "máy này"', () => {
     // `TextInput` cũng dựng nhiều tầng cùng props; tầng nào cũng gọi được nên
     // lấy tầng đầu, đừng chốt số lượng — số đó là chi tiết dựng cây, không phải
     // điều tệp này muốn khoá.
-    const o = t.root.findAll(n => n.props?.placeholder === 'Ví dụ: iPhone của Thư')[0];
+    const o = t.root.findAll(n => n.props?.placeholder === 'Ví dụ: iPhone của tôi')[0];
     await act(async () => { o.props.onChangeText('Máy mới'); });
     await act(async () => { o.props.onSubmitEditing(); });
 
@@ -158,7 +158,7 @@ describe('đổi tên KHÔNG được làm mất nhãn "máy này"', () => {
     const t = await moMan([may()]);
     mockRename.mockResolvedValue({ ...may(), deviceName: 'Máy kho' });
     await act(async () => { nutTheoIcon(t, 'pencil-outline')[0].props.onPress(); });
-    const o = t.root.findAll(n => n.props?.placeholder === 'Ví dụ: iPhone của Thư')[0];
+    const o = t.root.findAll(n => n.props?.placeholder === 'Ví dụ: iPhone của tôi')[0];
     await act(async () => { o.props.onChangeText('   Máy kho   '); });
     await act(async () => { o.props.onSubmitEditing(); });
     expect(mockRename).toHaveBeenCalledWith('k-1', 'Máy kho');
@@ -167,7 +167,7 @@ describe('đổi tên KHÔNG được làm mất nhãn "máy này"', () => {
   it('tên chỉ có khoảng trắng bị chặn TẠI CHỖ, không gọi máy chủ', async () => {
     const t = await moMan([may()]);
     await act(async () => { nutTheoIcon(t, 'pencil-outline')[0].props.onPress(); });
-    const o = t.root.findAll(n => n.props?.placeholder === 'Ví dụ: iPhone của Thư')[0];
+    const o = t.root.findAll(n => n.props?.placeholder === 'Ví dụ: iPhone của tôi')[0];
     await act(async () => { o.props.onChangeText('    '); });
     await act(async () => { o.props.onSubmitEditing(); });
     expect(mockRename).not.toHaveBeenCalled();

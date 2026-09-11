@@ -123,7 +123,7 @@ mod tests {
 
     /// Round-trip: derive TAAD pubkey from kek, sign message with same kek,
     /// verify signature against that pubkey. This is the contract that
-    /// prevents the bug Tuân flagged.
+    /// prevents a previously flagged bug.
     #[test]
     fn sign_then_verify_with_derived_public_key() {
         let master_kek_hex =

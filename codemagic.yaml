@@ -352,6 +352,41 @@ workflows:
             echo "❌ No xcworkspace!"; ls -la ios/; exit 1
           fi
 
+      # ── Bản khai quyền riêng tư phải sống sót qua `pod install` ────────────────
+      # `pod install` ghi lại nhiều thứ dưới `ios/`, và tệp này là tệp Apple ĐỌC khi
+      # duyệt bản nộp. Mất nó thì bản dựng vẫn xanh, `.ipa` vẫn ra, và chỗ hỏng chỉ lộ
+      # ở khâu duyệt — sau khi đã tốn một lượt nộp.
+      #
+      # Cổng này FAIL-SAFE (đỏ khi lệch), đúng chiều theo Forall §Cổng gác cho cổng CI:
+      # cổng chặn thao tác hỏng thì người BIẾT mình bị chặn, còn cổng CI cho qua thì
+      # không ai biết, và màu xanh đó đi thẳng vào quyết định nộp bản.
+      #
+      # Phép so là `git diff` chứ không phải "tệp có tồn tại": một tệp bị ghi rỗng vẫn
+      # tồn tại, và đó đúng là hình dạng hỏng mà một nhà khác trong hệ báo gặp.
+      - name: Bản khai quyền riêng tư còn nguyên sau pod install
+        script: |
+          set -e
+          MANIFEST=ios/SuperApp/PrivacyInfo.xcprivacy
+          if [ ! -f "$MANIFEST" ]; then
+            echo "❌ $MANIFEST KHÔNG còn trên đĩa sau pod install."
+            exit 1
+          fi
+          # Trạng thái thứ ba — KHÔNG ĐO ĐƯỢC — phải kêu to hơn trạng thái lệch.
+          # Không có kho git (bản tải về dạng nén) thì cổng này không nói được gì, và
+          # im lặng ở đây là im lặng đúng lúc nó vô dụng.
+          if ! git rev-parse --git-dir >/dev/null 2>&1; then
+            echo "❌ CỔNG KHÔNG CHẠY ĐƯỢC: không có kho git để đối chiếu."
+            echo "   Cổng này đo bằng git diff, nên không có git là không đo được gì."
+            exit 1
+          fi
+          if ! git diff --quiet -- "$MANIFEST"; then
+            echo "❌ $MANIFEST ĐÃ BỊ ĐỔI trong lượt dựng này (nghi `pod install` ghi đè)."
+            echo "   Số dòng bây giờ: $(wc -l < "$MANIFEST")"
+            git --no-pager diff --stat -- "$MANIFEST"
+            exit 1
+          fi
+          echo "✅ $MANIFEST nguyên vẹn — $(wc -l < "$MANIFEST") dòng, khớp bản trong kho."
+
       # Chẩn-đoán vì sao globalThis.expo KHÔNG được cài trên bản signed → 3D/expo-gl +
       # video/expo-file-system crash. In các thứ SINH RA lúc pod install (không có ở
       # checkout Windows). Đọc log step này gửi lại để chỉ đúng gốc. Không chặn build.
@@ -1170,6 +1205,31 @@ workflows:
           rm -rf ~/Library/Caches/CocoaPods Pods Podfile.lock
           pod install --repo-update
           cd ..
+
+      # Bản sao thứ hai của cùng một cổng — lý do đầy đủ ở khối cùng tên phía trên,
+      # trong luồng `ios-adhoc-ipa`. Phải có HAI bản vì tệp này khai `CocoaPods install`
+      # ở hai chỗ, phục vụ bốn luồng iOS; đặt ở một chỗ thì ba luồng NỘP BẢN THẬT
+      # (`ios-appstore`, `ios-production`, `ios-appstore-checkfarm`) đi qua cửa mở —
+      # tức đúng ba luồng mà cổng này sinh ra để canh. Sửa bản này thì sửa cả bản kia.
+      - name: Bản khai quyền riêng tư còn nguyên sau pod install
+        script: |
+          set -e
+          MANIFEST=ios/SuperApp/PrivacyInfo.xcprivacy
+          if [ ! -f "$MANIFEST" ]; then
+            echo "❌ $MANIFEST KHÔNG còn trên đĩa sau pod install."
+            exit 1
+          fi
+          if ! git rev-parse --git-dir >/dev/null 2>&1; then
+            echo "❌ CỔNG KHÔNG CHẠY ĐƯỢC: không có kho git để đối chiếu."
+            exit 1
+          fi
+          if ! git diff --quiet -- "$MANIFEST"; then
+            echo "❌ $MANIFEST ĐÃ BỊ ĐỔI trong lượt dựng này (nghi `pod install` ghi đè)."
+            echo "   Số dòng bây giờ: $(wc -l < "$MANIFEST")"
+            git --no-pager diff --stat -- "$MANIFEST"
+            exit 1
+          fi
+          echo "✅ $MANIFEST nguyên vẹn — $(wc -l < "$MANIFEST") dòng, khớp bản trong kho."
 
       # Chẩn-đoán globalThis.expo (xem chú-thích ở workflow unsigned). In file sinh lúc
       # pod install để chỉ đúng gốc 3D/video crash trên bản signed. Không chặn build.

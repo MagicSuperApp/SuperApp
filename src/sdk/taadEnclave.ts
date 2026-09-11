@@ -18,6 +18,8 @@
 
 import { NativeModules, Platform } from 'react-native';
 
+import { describeEnclaveFailure } from '../services/enclaveErrorMessage';
+
 interface TaadEnclaveNativeBridge {
   generateMasterKek(): Promise<string>;
   masterKekToMnemonic(kekHex: string): Promise<string>;
@@ -115,33 +117,66 @@ const bridge: TaadEnclaveNativeBridge =
 /** True khi native bridge (Rust core) sẵn sàng trên nền-tảng hiện tại. */
 export const isAvailable = (): boolean => !!NativeModules.TaadEnclaveModule;
 
+/**
+ * Gọi một hàm native và chuyển LÝ DO THẬT của lõi lên trên (Issue #285).
+ *
+ * Lõi Rust giữ ô lỗi theo luồng, cầu Kotlin/Swift đọc nó rồi `reject` kèm đúng
+ * câu đó. Chỗ này chỉ lọc: câu viết cho người thì giữ nguyên, kết xuất máy thô
+ * thì đổi thành mã tra ngược và bản đầy đủ ở lại nhật ký máy.
+ *
+ * Bản đầy đủ đi vào `console.error` chứ KHÔNG đi vào nhật ký từ xa: nó có thể
+ * mang theo vật liệu khoá, và console thì không rời máy.
+ */
+const callNative = async <T>(method: string, run: () => Promise<T>): Promise<T> => {
+  try {
+    return await run();
+  } catch (err) {
+    const failure = describeEnclaveFailure(method, err);
+    if (failure.referenceCode) {
+      console.error(`[taadEnclave] ${method} ${failure.referenceCode}`, failure.raw);
+    }
+    throw new Error(`${method}: ${failure.message}`);
+  }
+};
+
+/**
+ * Native RESOLVE một chuỗi rỗng — tức nó không coi đây là lỗi nên ô lỗi của lõi
+ * cũng trống. Không có lý do nào để chuyển tiếp, và cũng KHÔNG được bịa một
+ * danh sách phỏng đoán như trước ("KEK/seed sai, UTXO trống, hoặc build lỗi"):
+ * người đọc sẽ đi kiểm đúng những thứ đó rồi không thấy gì.
+ */
+const emptyResult = (method: string): Error => {
+  const failure = describeEnclaveFailure(method, '');
+  return new Error(`${method}: ${failure.message}`);
+};
+
 /** Sinh Master_KEK 256-bit ngẫu nhiên → 64-hex. */
-export const generateMasterKek = (): Promise<string> => bridge.generateMasterKek();
+export const generateMasterKek = (): Promise<string> => callNative('generateMasterKek', () => bridge.generateMasterKek());
 
 /** Master_KEK (64-hex) → cụm 24 từ BIP39. */
 export const masterKekToMnemonic = (kekHex: string): Promise<string> =>
-  bridge.masterKekToMnemonic(kekHex);
+  callNative('masterKekToMnemonic', () => bridge.masterKekToMnemonic(kekHex));
 
 /** Cụm 24 từ BIP39 → Master_KEK (64-hex). Reject nếu cụm từ không hợp lệ. */
 export const mnemonicToMasterKek = (words: string): Promise<string> =>
-  bridge.mnemonicToMasterKek(words.trim().replace(/\s+/g, ' ').toLowerCase());
+  callNative('mnemonicToMasterKek', () => bridge.mnemonicToMasterKek(words.trim().replace(/\s+/g, ' ').toLowerCase()));
 
 // ── Derive (composed, khớp Enclave) ───────────────────────────────────────────
 
 /** TAAD_Key (Ed25519) pubkey hex từ Master_KEK. */
 export const deriveTaadPubkey = (kekHex: string): Promise<string> =>
-  bridge.deriveTaadPubkey(kekHex);
+  callNative('deriveTaadPubkey', () => bridge.deriveTaadPubkey(kekHex));
 
 /** Wallet seed (32-byte hex) từ Master_KEK. */
 export const deriveWalletSeed = (kekHex: string): Promise<string> =>
-  bridge.deriveWalletSeed(kekHex);
+  callNative('deriveWalletSeed', () => bridge.deriveWalletSeed(kekHex));
 
 /** Địa chỉ Cardano Shelley (Bech32). network: 0=preprod, 1=mainnet. account: 0=cố định, ≥1=hoạt động. */
 export const deriveWalletAddress = (
   kekHex: string,
   account = 0,
   network = 0,
-): Promise<string> => bridge.deriveWalletAddress(kekHex, account, network);
+): Promise<string> => callNative('deriveWalletAddress', () => bridge.deriveWalletAddress(kekHex, account, network));
 
 /**
  * Địa chỉ STAKE (reward) Cardano — bech32 `stake_test1…` (preprod) / `stake1…` (mainnet).
@@ -153,7 +188,7 @@ export const deriveStakeAddress = (
   kekHex: string,
   account = 0,
   network = 0,
-): Promise<string> => bridge.deriveStakeAddress(kekHex, account, network);
+): Promise<string> => callNative('deriveStakeAddress', () => bridge.deriveStakeAddress(kekHex, account, network));
 
 /** Proof-of-ownership cho ví Standard: pubkey + chữ ký payment key của `fixedAddress`. */
 export interface WalletRegisterProof {
@@ -174,7 +209,7 @@ export const signWalletRegister = async (
   account: number,
   message: string,
 ): Promise<WalletRegisterProof> => {
-  const json = await bridge.signWalletRegister(kekHex, account, message);
+  const json = await callNative('signWalletRegister', () => bridge.signWalletRegister(kekHex, account, message));
   const parsed = JSON.parse(json) as WalletRegisterProof;
   if (!parsed.paymentPublicKeyHex || !parsed.signature) {
     throw new Error('signWalletRegister: native trả thiếu pubkey/signature');
@@ -203,7 +238,7 @@ export const buildSignedTransfer = async (args: {
   protocolParamsJson: string;
   network: number;
 }): Promise<string> => {
-  const cbor = await bridge.buildSignedTransfer(
+  const cbor = await callNative('buildSignedTransfer', () => bridge.buildSignedTransfer(
     args.kekHex,
     args.account,
     args.toAddress,
@@ -214,9 +249,9 @@ export const buildSignedTransfer = async (args: {
     args.utxosJson,
     args.protocolParamsJson,
     args.network,
-  );
+  ));
   if (!cbor) {
-    throw new Error('buildSignedTransfer: native trả rỗng (KEK/seed sai, UTXO trống, hoặc build lỗi)');
+    throw emptyResult('buildSignedTransfer');
   }
   return cbor;
 };
@@ -235,16 +270,16 @@ export const buildStakeDelegation = async (args: {
   protocolParamsJson: string;
   network: number;
 }): Promise<string> => {
-  const cbor = await bridge.buildStakeDelegation(
+  const cbor = await callNative('buildStakeDelegation', () => bridge.buildStakeDelegation(
     args.kekHex,
     args.account,
     args.poolBech32,
     args.utxosJson,
     args.protocolParamsJson,
     args.network,
-  );
+  ));
   if (!cbor) {
-    throw new Error('buildStakeDelegation: native trả rỗng (KEK/seed sai, UTXO trống, hoặc build lỗi)');
+    throw emptyResult('buildStakeDelegation');
   }
   return cbor;
 };
@@ -260,9 +295,9 @@ export const witnessUnsignedTx = async (
   unsignedTxCborHex: string,
   network: number,
 ): Promise<string> => {
-  const cbor = await bridge.witnessUnsignedTx(kekHex, account, unsignedTxCborHex, network);
+  const cbor = await callNative('witnessUnsignedTx', () => bridge.witnessUnsignedTx(kekHex, account, unsignedTxCborHex, network));
   if (!cbor) {
-    throw new Error('witnessUnsignedTx: native trả rỗng (KEK sai hoặc tx CBOR không hợp lệ)');
+    throw emptyResult('witnessUnsignedTx');
   }
   return cbor;
 };
@@ -308,7 +343,7 @@ export const buildMintLampViaDid = async (args: {
     throw new Error(`buildMintLampViaDid: currentSlot phải là số nguyên ≥ 0 (nhận ${args.currentSlot})`);
   }
 
-  const cbor = await bridge.buildMintLampViaDid(
+  const cbor = await callNative('buildMintLampViaDid', () => bridge.buildMintLampViaDid(
     JSON.stringify(args.authorityKeksHex),
     args.registryUtxoJson,
     args.tokenTagHex,
@@ -322,14 +357,9 @@ export const buildMintLampViaDid = async (args: {
     args.walletSeedHex,
     args.network,
     args.currentSlot,
-  );
+  ));
   if (!cbor) {
-    // Rust trả NULL cho MỌI lỗi, không kèm thông điệp. Đừng đoán nguyên nhân ở đây —
-    // liệt kê đúng những khả năng đã biết để người đọc log còn có chỗ bắt đầu.
-    throw new Error(
-      'buildMintLampViaDid: native trả rỗng — authority không khớp registry, ' +
-        'token_tag không có trong registry, vượt cap, hoặc thiếu UTxO/collateral',
-    );
+    throw emptyResult('buildMintLampViaDid');
   }
   return cbor;
 };
@@ -375,7 +405,7 @@ export const buildMintViaRegistry = async (args: {
     throw new Error(`buildMintViaRegistry: slot phải là số nguyên ≥ 0 (nhận ${args.slot})`);
   }
 
-  const cbor = await bridge.buildMintViaRegistry(
+  const cbor = await callNative('buildMintViaRegistry', () => bridge.buildMintViaRegistry(
     JSON.stringify(args.authorityKeksHex),
     args.registryUtxoJson,
     args.tokenPolicyCbor,
@@ -387,14 +417,9 @@ export const buildMintViaRegistry = async (args: {
     args.walletSeedHex,
     args.network,
     args.slot,
-  );
+  ));
   if (!cbor) {
-    // Rust trả NULL cho MỌI lỗi, không kèm thông điệp. Liệt kê đúng những khả năng
-    // đã biết để người đọc log còn có chỗ bắt đầu.
-    throw new Error(
-      'buildMintViaRegistry: native trả rỗng — policy CBOR sai, mint_json sai, ' +
-        'vượt cap SupplyState, hoặc thiếu UTxO/collateral pure-ADA',
-    );
+    throw emptyResult('buildMintViaRegistry');
   }
   return cbor;
 };
@@ -417,7 +442,7 @@ export const deviceKeyOptin = async (
   userDid: string,
   nonce: string,
 ): Promise<DeviceKeyOptInProof> => {
-  const json = await bridge.deviceKeyOptin(userDid, nonce);
+  const json = await callNative('deviceKeyOptin', () => bridge.deviceKeyOptin(userDid, nonce));
   const parsed = JSON.parse(json) as DeviceKeyOptInProof;
   if (!parsed.publicKeyHex || !parsed.signature || !parsed.secretHex) {
     throw new Error('deviceKeyOptin: native trả thiếu pubkey/signature/secret');
@@ -428,19 +453,19 @@ export const deviceKeyOptin = async (
 // ── Wrapping primitives (dùng để wrap/unwrap Master_KEK khi persist) ──────────
 
 /** Sinh salt ngẫu nhiên (hex). */
-export const generateSalt = (): Promise<string> => bridge.generateSalt();
+export const generateSalt = (): Promise<string> => callNative('generateSalt', () => bridge.generateSalt());
 
 /** Device_KEK 32-byte hex = PBKDF2-HMAC-SHA256(pin, salt). */
 export const pbkdf2Derive = (pin: string, saltHex: string): Promise<string> =>
-  bridge.pbkdf2Derive(pin, saltHex);
+  callNative('pbkdf2Derive', () => bridge.pbkdf2Derive(pin, saltHex));
 
 /** AES-256-GCM encrypt → JSON {"ciphertext","iv"}. */
 export const aesGcmEncrypt = (keyHex: string, plaintextHex: string): Promise<string> =>
-  bridge.aesGcmEncrypt(keyHex, plaintextHex);
+  callNative('aesGcmEncrypt', () => bridge.aesGcmEncrypt(keyHex, plaintextHex));
 
 /** AES-256-GCM decrypt (encryptedJson) → plaintext hex. Reject nếu sai khoá. */
 export const aesGcmDecrypt = (keyHex: string, encryptedJson: string): Promise<string> =>
-  bridge.aesGcmDecrypt(keyHex, encryptedJson);
+  callNative('aesGcmDecrypt', () => bridge.aesGcmDecrypt(keyHex, encryptedJson));
 
 /**
  * Ký Ed25519 bằng TAAD_Key phái sinh từ Master_KEK. Trả chữ-ký (hex).
@@ -448,21 +473,21 @@ export const aesGcmDecrypt = (keyHex: string, encryptedJson: string): Promise<st
  * chữ-ký khoá controller. `message` là chuỗi cần ký (UTF-8), khớp hợp-đồng backend.
  */
 export const signEd25519 = (masterKekHex: string, message: string): Promise<string> =>
-  bridge.signEd25519(masterKekHex, message);
+  callNative('signEd25519', () => bridge.signEd25519(masterKekHex, message));
 
 // ── Secure storage (Keychain iOS / Keystore-AES Android) ──────────────────────
 
 /** Lưu chuỗi an toàn (hardware-backed, device-bound). Ghi đè nếu key đã có. */
 export const secureStore = (key: string, value: string): Promise<boolean> =>
-  bridge.secureStore(key, value);
+  callNative('secureStore', () => bridge.secureStore(key, value));
 
 /** Đọc chuỗi đã lưu; null nếu chưa có. */
 export const secureLoad = (key: string): Promise<string | null> =>
-  bridge.secureLoad(key);
+  callNative('secureLoad', () => bridge.secureLoad(key));
 
 /** Xoá key khỏi secure storage. */
 export const secureDelete = (key: string): Promise<boolean> =>
-  bridge.secureDelete(key);
+  callNative('secureDelete', () => bridge.secureDelete(key));
 
 export default {
   isAvailable,

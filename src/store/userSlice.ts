@@ -15,6 +15,9 @@ import { clearWorkSession } from '../modules/work/services/session';
 import { clearOrilifeToken } from '../services/orilifeDidAuth';
 import { disconnectProofChat } from '../services/proofchatAuthBridge';
 import { clearMerkleSession } from '../services/proofchatIdentity';
+import { shutdown as shutdownProofChatEngine } from '../services/proofchatService';
+import { clearTreeDedupCache } from '../services/treeDedupCache';
+import { resetRiskSnooze } from '../services/deviceKeyRisk';
 import { clearAllDrafts } from '../services/treeDraftStore';
 import { setVideoQueueOwner, flushVideoUploadQueue } from '../services/videoUploadQueue';
 
@@ -155,6 +158,21 @@ export const logoutUser = createAsyncThunk(
       console.warn('[Redux] Logout: clearWorkSession lỗi (bỏ qua):', error);
     }
     try {
+      // Issue #288 — quét anh em. `disconnectProofChat` chỉ dọn THẺ và ổ cắm
+      // HTTP; nó không đụng tới bộ máy MLS. `shutdownProofChatEngine` mới là
+      // thứ gỡ bộ lắng nghe, ngắt socket, và gọi `chatMls.freeIdentity()` —
+      // tức thả DANH TÍNH MLS của người vừa đăng xuất khỏi lớp native.
+      // Hàm đó viết xong rồi có 0 nơi gọi, đúng khuôn bốn hàm của #288.
+      //
+      // Không thả thì `currentIdentity` giữ DID người trước, và người sau mở
+      // Chat đi vào `init()` với một bộ máy đã nạp danh tính KHÔNG phải của họ.
+      // Gọi TRƯỚC `disconnectProofChat` để socket đóng bằng thẻ còn sống thay
+      // vì bằng một thẻ vừa bị xoá.
+      await shutdownProofChatEngine();
+    } catch (error) {
+      console.warn('[Redux] Logout: shutdownProofChatEngine lỗi (bỏ qua):', error);
+    }
+    try {
       await disconnectProofChat();
     } catch (error) {
       console.warn('[Redux] Logout: disconnectProofChat lỗi (bỏ qua):', error);
@@ -212,6 +230,26 @@ export const logoutUser = createAsyncThunk(
       await clearSessionToken();
     } catch (error) {
       console.warn('[Redux] Logout: clearSessionToken lỗi (bỏ qua):', error);
+    }
+    try {
+      // Issue #288 — quét anh em. Kho khử-trùng cây (`@aladin/treeDedupCache/v2`)
+      // KHÔNG gắn tên chủ: nó là một khoá phẳng cho cả máy. Người sau quét một
+      // cây trong vườn của mình thì app đối chiếu với các lần quét của NGƯỜI
+      // TRƯỚC rồi báo "cây này trùng với cây X" — X là cây ở một vườn họ chưa
+      // từng thấy. Đây không phải rác nằm im: nó ra một PHÁN ĐOÁN sai, và phán
+      // đoán đó trông y như một phán đoán đúng.
+      await clearTreeDedupCache();
+    } catch (error) {
+      console.warn('[Redux] Logout: clearTreeDedupCache lỗi (bỏ qua):', error);
+    }
+    try {
+      // Issue #288 — quét anh em. Chú thích của chính hàm này viết "gọi khi đăng
+      // xuất / đổi tài khoản", rồi 0 nơi gọi. Mốc ẩn là một khoá phẳng cho cả
+      // máy: người trước bấm "để sau" 7 ngày thì người sau KHÔNG được nhắc rằng
+      // khoá thiết bị CỦA HỌ đang ở trạng thái mất được mà không lấy lại được.
+      await resetRiskSnooze();
+    } catch (error) {
+      console.warn('[Redux] Logout: resetRiskSnooze lỗi (bỏ qua):', error);
     }
     try {
       // Nháp chụp cây / video quả là dữ liệu PHIÊN. Tablet field dùng CHUNG → xoá sạch

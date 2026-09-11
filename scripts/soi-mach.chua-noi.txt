@@ -21,6 +21,15 @@ taad_build_update_guardians_tx
 taad_build_update_mint_registry
 taad_build_vote_delegation_tx
 taad_build_withdraw_reward_tx
+
+# KHÔNG phải nợ — dòng dưới đây cố ý không bao giờ có cầu.
+# `taad_clear_last_error` xoá ô lỗi theo luồng. Hợp đồng của ô lỗi là
+# `taad_last_error` đọc MỘT LẦN rồi tự xoá, nên tầng app không có việc gì
+# phải gọi hàm xoá — mở một cầu tới nó là mở đúng một đường để vứt đi lời
+# giải thích mà tầng app sắp đọc. Nơi gọi duy nhất là bài kiểm Rust
+# (`rust/taad_enclave_core/src/ffi_last_error_tests.rs`), đặt lại ô giữa hai ca.
+taad_clear_last_error
+
 taad_construct_did
 taad_derive_cardano_address
 taad_derive_cardano_address_account

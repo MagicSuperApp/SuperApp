@@ -95,14 +95,35 @@ class TaadEnclaveModule(reactContext: ReactApplicationContext) :
         network: Int, slot: Long,
     ): String?
 
+    /**
+     * Câu lỗi của lần gọi native GẦN NHẤT trên luồng này (Issue #285).
+     * Lõi Rust giữ ô lỗi theo luồng; JNI chạy đồng bộ trên đúng luồng Java đã
+     * gọi, nên đọc ngay sau khi thấy null là đọc đúng lý do của lần gọi đó.
+     * Đọc một lần rồi ô lỗi trống.
+     */
+    private external fun nativeLastError(): String?
+
     // ── RN methods ──────────────────────────────────────────────────────────
+
+    /**
+     * Lý do THẬT của lần gọi vừa hỏng, hoặc `fallback` nếu lõi không nói gì.
+     * Không bao giờ ném — đường đọc lý do lỗi mà tự hỏng thì mất luôn lý do.
+     */
+    private fun reasonOr(fallback: String): String =
+        try {
+            nativeLastError()?.takeIf { it.isNotBlank() } ?: fallback
+        } catch (_: Throwable) {
+            fallback
+        }
 
     /** Gói chung: chạy native fn, reject nếu null/rỗng hoặc throw. */
     private inline fun run(promise: Promise, code: String, errMsg: String, block: () -> String?) {
         if (!libLoaded) { promise.reject("E_NATIVE_UNAVAILABLE", "Rust core .so chưa nạp được (ABI này thiếu lib)"); return }
         try {
             val out = block()
-            if (out.isNullOrEmpty()) promise.reject(code, errMsg) else promise.resolve(out)
+            // Lõi có câu lỗi thì đưa ĐÚNG câu đó lên; `errMsg` chỉ là phương án
+            // chót khi lõi im lặng (Issue #285).
+            if (out.isNullOrEmpty()) promise.reject(code, reasonOr(errMsg)) else promise.resolve(out)
         } catch (e: Throwable) {
             promise.reject(code, e.message ?: errMsg, e)
         }
@@ -114,7 +135,7 @@ class TaadEnclaveModule(reactContext: ReactApplicationContext) :
         try {
             val kek = nativeGenerateMasterKek()
             if (kek.isNullOrEmpty()) {
-                promise.reject("E_KEK_GEN", "nativeGenerateMasterKek trả null")
+                promise.reject("E_KEK_GEN", reasonOr("nativeGenerateMasterKek trả null"))
             } else {
                 promise.resolve(kek)
             }
@@ -129,7 +150,7 @@ class TaadEnclaveModule(reactContext: ReactApplicationContext) :
         try {
             val phrase = nativeMasterKekToMnemonic(kekHex)
             if (phrase.isNullOrEmpty()) {
-                promise.reject("E_KEK_TO_MNEMONIC", "Master_KEK không hợp lệ (cần 64-hex)")
+                promise.reject("E_KEK_TO_MNEMONIC", reasonOr("Master_KEK không hợp lệ (cần 64-hex)"))
             } else {
                 promise.resolve(phrase)
             }
@@ -144,7 +165,7 @@ class TaadEnclaveModule(reactContext: ReactApplicationContext) :
         try {
             val kek = nativeMnemonicToMasterKek(words)
             if (kek.isNullOrEmpty()) {
-                promise.reject("E_MNEMONIC_INVALID", "Cụm từ khôi phục không hợp lệ")
+                promise.reject("E_MNEMONIC_INVALID", reasonOr("Cụm từ khôi phục không hợp lệ"))
             } else {
                 promise.resolve(kek)
             }

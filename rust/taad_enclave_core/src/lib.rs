@@ -9,6 +9,9 @@
 //   - bool returns: 1 = true, 0 = false (C-compatible)
 // ================================================================
 
+// MOT cho khai moi luoc do on-chain ma kho nay neo vao. Doc dau tep truoc khi
+// doi bat ky con so arity nao.
+mod onchain_schema;
 mod crypto;
 mod cardano;
 mod sign;

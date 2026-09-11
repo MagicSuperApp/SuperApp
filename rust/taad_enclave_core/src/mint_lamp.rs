@@ -863,7 +863,11 @@ mod tests {
                 assert!(has_nft, "continuing SupplyState output must keep the thread/SUPPLY NFT");
                 let pd = o.plutus_data().expect("inline datum on continuing output");
                 let constr = pd.as_constr_plutus_data().unwrap();
-                assert_eq!(constr.data().len(), 4, "continuing datum is 4-field SupplyState");
+                assert_eq!(
+                    constr.data().len(),
+                    crate::onchain_schema::SUPPLY_STATE_FIELDS,
+                    "continuing datum is a full SupplyState"
+                );
                 assert_eq!(constr.data().get(0).as_integer().unwrap(), csl::BigInt::from_str(&(old_dist + amount as u128).to_string()).unwrap(), "dist_minted' = old + Δ");
                 assert_eq!(constr.data().get(1).as_integer().unwrap(), csl::BigInt::from_str("0").unwrap(), "reserve_minted untouched");
                 assert_eq!(constr.data().get(2).as_integer().unwrap(), csl::BigInt::from_str(&DIST_CAP.to_string()).unwrap(), "dist_cap preserved");

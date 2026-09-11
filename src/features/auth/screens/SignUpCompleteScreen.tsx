@@ -245,8 +245,8 @@ const SignUpCompleteScreen: React.FC = () => {
             <View style={{ flex: 1 }}>
               <Text style={styles.reminderTitle}>Bạn chưa liên kết khôi phục</Text>
               <Text style={styles.reminderText}>
-                Hãy thiết lập Người bảo hộ hoặc lưu Seed Phrase trong phần Tài khoản
-                ngay khi có thể — đó là cách duy nhất để khôi phục nếu mất thiết bị.
+                Hãy lưu cụm 24 từ trong phần Tài khoản ngay khi có thể — hôm nay đó là
+                cách duy nhất khôi phục được nếu mất thiết bị.
               </Text>
             </View>
           </View>

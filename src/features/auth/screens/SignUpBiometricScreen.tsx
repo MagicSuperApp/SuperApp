@@ -14,6 +14,7 @@ import {
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import ReactNativeBiometrics, { BiometryTypes } from 'react-native-biometrics';
+import { useBiometricSensor } from '../../../hooks/useBiometricSensor';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AUTH_BLUE } from '../theme';
 import StepIndicator from '../components/StepIndicator';
@@ -47,8 +48,13 @@ const SignUpBiometricScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const dispatch = useDispatch();
 
-  const [biometryType, setBiometryType] = useState<string>('');
-  const [sensorAvailable, setSensorAvailable] = useState<boolean | null>(null);
+  // Đo LẠI mỗi lần app về tiền cảnh. Bắt buộc ở đúng màn này: câu lỗi bên dưới
+  // (:142) bảo người dùng ra Cài đặt bật sinh trắc "sau đó thử lại", mà bước này
+  // màn hình tự khai là bắt buộc và không có cách thay thế. Không đo lại thì
+  // "thử lại" là một lời hứa suông và người dùng KHÔNG tạo được tài khoản.
+  const { available: sensorAvailable, biometryType } = useBiometricSensor(
+    (msg, e) => console.log(`[SignUp] ${msg}:`, e),
+  );
   const [stage, setStage] = useState<Stage>('idle');
   const [username, setUsername] = useState('');
   const [existingUsernames, setExistingUsernames] = useState<string[]>([]);
@@ -112,21 +118,10 @@ const SignUpBiometricScreen: React.FC = () => {
     );
     pulse.start();
 
-    let alive = true;
-    (async () => {
-      try {
-        const rn = new ReactNativeBiometrics();
-        const { available, biometryType: type } = await rn.isSensorAvailable();
-        if (!alive) return; // màn đã rời — đừng đặt state vào cây đã tháo
-        setSensorAvailable(available);
-        setBiometryType(type || '');
-      } catch (e) {
-        console.log('[SignUp] Biometric sensor check failed:', e);
-        if (alive) setSensorAvailable(false);
-      }
-    })();
-
-    return () => { alive = false; pulse.stop(); };
+    // Phép đo cảm biến ĐÃ dời sang `useBiometricSensor` — khối này chỉ chạy một
+    // lần lúc gắn cây, nên nó không thấy được lượt người dùng vừa bật sinh trắc
+    // trong Cài đặt rồi quay về.
+    return () => { pulse.stop(); };
   }, []);
 
   const startEnrollment = async () => {

@@ -132,14 +132,21 @@ const SignUpBiometricScreen: React.FC = () => {
   const startEnrollment = async () => {
     if (stage !== 'idle') return;
 
+    // Cả hai chỗ dưới truyền câu vào ô TIÊU ĐỀ — xem khối chú thích ở `completeSignUp`.
+    // Cùng một lỗi, cùng một màn, nên sửa cùng lúc: để sót một chỗ thì lần sau ai đọc
+    // màn này lại thấy hai kiểu gọi và không biết kiểu nào là đúng.
     if (!usernameStatus.ok) {
-      showError(usernameStatus.reason || 'Vui lòng nhập username hợp lệ trước khi xác thực.');
+      showError(
+        t('Tên đăng nhập chưa dùng được'),
+        usernameStatus.reason || t('Vui lòng nhập username hợp lệ trước khi xác thực.'),
+      );
       return;
     }
 
     if (!sensorAvailable) {
       showError(
-        'Thiết bị này chưa thiết lập sinh trắc học. Vui lòng bật Face ID / vân tay trong cài đặt của thiết bị, sau đó thử lại. Không có cách thay thế cho bước này.'
+        t('Máy chưa bật sinh trắc học'),
+        t('Thiết bị này chưa thiết lập sinh trắc học. Vui lòng bật Face ID / vân tay trong cài đặt của thiết bị, sau đó thử lại. Không có cách thay thế cho bước này.'),
       );
       return;
     }
@@ -212,14 +219,54 @@ const SignUpBiometricScreen: React.FC = () => {
       // vỡ ngay khi đổi câu chữ hoặc khi người dùng đang dùng ngôn ngữ khác.
       if (e?.reason === 'khoa_bi_thu_hoi') {
         setStage('idle');
-        showWarning('Khoá trên máy này đã bị thu hồi', e?.message ?? '', {
-            confirmText: 'Dùng 24 từ khôi phục',
-            cancelText: 'Để sau',
+        // `t(e.message)` — KHÔNG phải thừa. `RECOVER_FAIL_MESSAGE` trả câu tiếng Việt
+        // làm KHOÁ tra, và bản dịch bốn thứ tiếng của đúng năm câu đó đã nằm sẵn ở
+        // `i18n/phrases/errors.ts`. Nhưng `AlertPopup` không dịch gì cả (đo: 0 lời gọi
+        // `t` trong tệp đó), nên câu nào không được bọc ở CHỖ GỌI thì bản dịch viết ra
+        // rồi nằm chết. Cả năm câu đang ở tình trạng đó trước bản này.
+        showWarning(t('Khoá trên máy này đã bị thu hồi'), t(e?.message ?? ''), {
+            confirmText: t('Dùng 24 từ khôi phục'),
+            cancelText: t('Để sau'),
             onConfirm: () => navigation.navigate('RestoreIdentity'),
         });
         return;
       }
-      showError(e?.message || 'Không tạo được danh tính. Vui lòng thử lại.');
+
+      // `can_ten_dang_nhap` — máy CÓ khoá, máy chủ nhận ra khoá đó, chỉ thiếu tên
+      // đăng nhập để tra về đúng danh tính. Câu chữ đã đúng từ trước, nhưng nó ra
+      // màn hình kèm ĐÚNG MỘT nút OK — tức bảo người ta làm một việc rồi đóng cửa
+      // lại. Báo từ thực địa 11/09: người thử đọc câu này, bấm OK, và đứng nguyên
+      // tại màn đăng ký; không có chỗ nào nhập "tên đăng nhập của danh tính đó".
+      //
+      // Nhánh `khoa_bi_thu_hoi` ngay trên đã có lối ra từ lâu. Nhánh này thì không,
+      // và chênh lệch đó không có lý do — cả hai đều là ca "máy có khoá, người dùng
+      // kẹt". Nay cùng một hình dạng.
+      //
+      // Vì sao lối ra là màn Khôi phục chứ không phải một ô nhập tại chỗ: màn này
+      // là màn TẠO MỚI, nó đã cầm một `usernameTrim` mà người dùng vừa gõ cho danh
+      // tính mới. Mượn lại ô đó để nhập tên của danh tính CŨ là gộp hai ý nghĩa vào
+      // một ô — đúng kiểu nhầm dẫn tới trao nhầm danh tính mà cả khối chú thích
+      // `askWhoIsHoldingThePhone` dựng ra để tránh.
+      if (e?.reason === 'can_ten_dang_nhap') {
+        setStage('idle');
+        showWarning(t('Máy này đã có một danh tính'), t(e?.message ?? ''), {
+          confirmText: t('Mở lại danh tính đó'),
+          cancelText: t('Để sau'),
+          onConfirm: () => navigation.navigate('RestoreIdentity'),
+        });
+        return;
+      }
+
+      // Câu lỗi là NỘI DUNG, không phải tiêu đề. `showError(x)` một tham số đẩy cả
+      // câu lên làm tiêu đề rồi độn phần thân bằng chuỗi mặc định "Đã xảy ra lỗi."
+      // (`utils/alert.ts:88`) — thấy đúng như thế trong ảnh chụp từ thực địa 11/09:
+      // một câu dài, cụ thể, viết kỹ, và ngay dưới nó là ba chữ rỗng nghĩa. Chuỗi
+      // độn đó còn gõ cứng tiếng Việt, nên người đọc tiếng khác nhận một màn hình
+      // hai thứ tiếng.
+      showError(
+        t('Chưa tạo được danh tính'),
+        t(e?.message || 'Không tạo được danh tính. Vui lòng thử lại.'),
+      );
       setStage('idle');
     }
   };
@@ -272,6 +319,7 @@ const SignUpBiometricScreen: React.FC = () => {
           style: 'destructive',
           onPress: () =>
             showError(
+              t('Một máy chỉ giữ được một danh tính'),
               t('Bản ứng dụng này chưa giữ được hai danh tính trên cùng một máy — tạo danh tính ')
               + t('mới ở đây sẽ xoá vĩnh viễn khoá của người đang dùng máy. Bản cập nhật tới mở ')
               + t('được việc đó. Trong lúc chờ, bạn hãy tạo danh tính trên máy của mình.'),

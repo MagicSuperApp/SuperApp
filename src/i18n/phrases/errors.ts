@@ -178,6 +178,23 @@ export const ERRORS: PhraseMap = {
     zh: '本机已有密钥，但未能重新打开身份，原因尚不明确。请再试一次；若仍如此，请将此画面截图发给支持。',
     ja: 'この端末には鍵がありますが本人情報を開き直せず、原因はまだ不明です。もう一度お試しください。それでも同じ場合は、この画面のスクリーンショットをサポートにお送りください。',
   },
+  // ── TIÊU ĐỀ hộp thoại của màn tạo danh tính ────────────────────────────────
+  // Năm câu dài phía trên là phần THÂN. Trước bản này chúng được truyền vào ô
+  // TIÊU ĐỀ (`showError(x)` một tham số), nên phần thân rơi về chuỗi độn
+  // "Đã xảy ra lỗi." gõ cứng trong `utils/alert.ts:88` — thấy đúng thế trong ảnh
+  // chụp từ thực địa 11/09. Nay mỗi hộp có tiêu đề thật, và tiêu đề cũng phải
+  // dịch được: `AlertPopup.tsx` KHÔNG gọi `t` một lần nào, nên chuỗi nào không
+  // bọc ở chỗ gọi là chuỗi nằm nguyên tiếng Việt trên màn người đọc tiếng khác.
+  'Chưa tạo được danh tính': { en: 'Could not create the identity', zh: '无法创建身份', ja: '本人情報を作成できませんでした' },
+  'Máy này đã có một danh tính': { en: 'This device already has an identity', zh: '本机已有一个身份', ja: 'この端末にはすでに本人情報があります' },
+  'Tên đăng nhập chưa dùng được': { en: 'That username cannot be used yet', zh: '该用户名暂时无法使用', ja: 'そのユーザー名はまだ使えません' },
+  'Máy chưa bật sinh trắc học': { en: 'Biometrics is not set up on this device', zh: '本机尚未启用生物识别', ja: 'この端末で生体認証が設定されていません' },
+  'Khoá trên máy này đã bị thu hồi': { en: 'The key on this device has been revoked', zh: '本机的密钥已被吊销', ja: 'この端末の鍵は失効しています' },
+  'Một máy chỉ giữ được một danh tính': { en: 'One device holds only one identity', zh: '一台设备只能保存一个身份', ja: '1台の端末には本人情報を1つしか保持できません' },
+  // Nhãn nút. `confirmText`/`cancelText` cũng đi thẳng vào `AlertPopup` không qua `t`.
+  'Mở lại danh tính đó': { en: 'Reopen that identity', zh: '重新打开该身份', ja: 'その本人情報を開き直す' },
+  'Dùng 24 từ khôi phục': { en: 'Use the 24-word phrase', zh: '使用 24 词助记词', ja: '24単語の復元フレーズを使う' },
+
   'Thiết bị chưa có danh tính.': {
     en: 'This device has no identity yet.',
     zh: '本机尚无身份。',

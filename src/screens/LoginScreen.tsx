@@ -286,8 +286,24 @@ const LoginScreen = () => {
 
       const user = await phoenixKeyAuth.unlockExistingIdentity();
       if (!user) {
-        // Có khoá nhưng không dựng lại được danh tính (DID hỏng/không hỗ trợ).
-        navigation.navigate('SignUpBiometric' as never);
+        // Máy CÓ khoá trong chip, CÓ một DID đã lưu, nhưng không dựng lại được
+        // danh tính từ chúng — `unlockExistingIdentity` trả `null` ở đúng một
+        // chỗ: DID đã lưu không thuộc dạng máy chủ hiểu và cũng không cứu được
+        // bằng `recoverLocalIdentityFromKey` (`services/phoenixKeyAuthService.ts`,
+        // nhánh `isSupportedBackendDid` sai).
+        //
+        // Chỗ này TỪNG đi thẳng sang `SignUpBiometric` — màn TẠO MỚI. Đó là đúng
+        // cái hỏng mà `IdentityEntryChoiceScreen` được lập ra để bịt, chỉ khác
+        // nhánh: người dùng có khoá thật, có danh tính thật, và app chọn hộ họ
+        // luồng "tôi là người mới". Kết quả là một DID THỨ HAI cho cùng một
+        // người; `farmService` lấy `owner_did` từ phiên nên danh sách vườn hiện
+        // RỖNG, mà rỗng thì trùng khớp với "tôi chưa ghi gì" — không ai nhận ra
+        // đã mất đường về, và bước kế tiếp rất dễ là nhập lại vườn dưới DID mới.
+        //
+        // Nay dẫn sang màn HỎI, để chính người dùng rẽ. Không chọn hộ: nhánh này
+        // không phân biệt được "DID cũ của tôi" với "DID rác còn sót trên máy
+        // mượn", và hai thứ đó cần hai lối khác nhau.
+        navigation.navigate('IdentityEntryChoice' as never);
         return;
       }
 

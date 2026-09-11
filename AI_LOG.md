@@ -64,6 +64,15 @@ báo `add_key_input` là deprecation có sẵn). `cargo test --lib` **172/172**,
   kiểu `Int`, cả hai đều dương ⇒ **không bài kiểm nào bắt được**. Sửa arity mà
   quên chỗ này thì datum vẫn sai, chỉ khác là sai âm thầm hơn.
 
+  **ĐÍNH CHÍNH (cùng ngày, sau khi đi kiểm).** Câu trên đúng về *bài kiểm* nhưng
+  nói thiếu về *đường đi*, và thiếu theo hướng làm nó nghe nguy hơn thực tế:
+  builder ấy ĐÃ bị chặn fail-closed. `DEACTIVATE_BUILDER_READY = false` cộng
+  `deactivate_builder_gate()?` gọi ngay dòng đầu `build_deactivate_taad_tx`
+  (`:2919`), và câu lỗi nói thẳng đơn vị sai cùng điều kiện gỡ chặn. Tức không
+  có đường nào sinh ra giao dịch hỏng, chứ không phải "chưa ai gặp nên chưa lộ".
+  Tôi đã định thêm một lớp canh cho chỗ này rồi mới đọc mã — hoá ra không có gì
+  để thêm. Ghi lại vì một bản ghi nói quá cũng là một bản ghi sai.
+
 CHƯA ĐO ĐƯỢC: không có giao dịch thật nào chạy qua đường này (cả họ hàm còn nằm
 trong danh sách chưa-nối), nên phép đo cuối — validator có nhận datum không — vẫn
 chưa ai thực hiện. Việc này chỉ làm cho ngày đó dễ sửa hơn, không làm nó xảy ra.

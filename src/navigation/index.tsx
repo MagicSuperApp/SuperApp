@@ -69,6 +69,7 @@ import SignRequestScreen from '../screens/SignRequestScreen';
 import GuardianScreen from '../screens/GuardianScreen';
 import ActivityLogScreen from '../screens/ActivityLogScreen';
 import MyDevicesScreen from '../screens/MyDevicesScreen';
+import DevicePairScreen from '../screens/DevicePairScreen';
 // Host-level capture/identity screens (dùng chung nhiều luồng, chưa thuộc module nào)
 import FruitListScreen from '../screens/FruitListScreen';
 import FruitCropperScreen from '../screens/FruitCropperScreen';
@@ -1714,6 +1715,13 @@ const HOST_STACK_SCREENS: Array<{
   { name: 'Guardian', component: GuardianScreen, options: { headerShown: false } },
   { name: 'ActivityLog', component: ActivityLogScreen, options: { headerShown: false } },
   { name: 'MyDevices', component: MyDevicesScreen, options: { headerShown: false } },
+  // Ghép máy thứ hai vào một PhoenixKey đã có (issue #233). Route này NẰM TRONG
+  // `PUBLIC_ROUTES`, có chủ ý: vai `mode: 'show'` chạy trên máy CHƯA có danh tính,
+  // đóng nó lại là đóng đúng luồng nó mở. Màn không đọc `state.user` và không hiện
+  // dữ liệu nào của máy chủ; vai `mode: 'scan'` tự chặn bằng khoá phần cứng —
+  // `authorizeDeviceKey` đòi `currentUserDid` rồi đòi một chữ ký sinh trắc — chứ
+  // không bằng cổng điều hướng.
+  { name: 'DevicePair', component: DevicePairScreen, options: { headerShown: false } },
   { name: 'Main', component: ProtectedMain, options: { headerShown: false } },
   // Màn Thông báo — đích của nút chuông trên AppHeader (host-level).
   { name: 'Notifications', component: NotificationScreen, options: { headerShown: false } },

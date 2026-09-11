@@ -3,6 +3,10 @@
 // POST /keys/devices/{keyId}/revoke. Đối chiếu DeviceLifecycleController +
 // KeyServiceImpl (PhoenixKey-Database).
 //
+// Cộng một lối THÊM máy (issue #233) → `DevicePair` vai `scan`. Ba cửa trên đều
+// là việc BỚT; đường thêm nằm ở `POST /keys/authorize`, một cửa khác hẳn, ký bằng
+// owner-key chứ không đi bằng phiên — xem `keyAuthorizeService`.
+//
 // ── Ba chỗ dễ làm sai, đã xử ở đây ──────────────────────────────────────────
 //
 // 1. `list` trả VỀ CẢ khoá đã thu hồi. `findByUserDidOrderByCreatedAtDesc`
@@ -34,6 +38,7 @@ import { phoenixKeyApi, PhoenixKeyApiError, type DeviceView } from '../services/
 import { checkDeviceName, DEVICE_NAME_MAX_LEN } from '../features/devices/deviceName';
 import { showError, showSuccess, showWarning } from '../utils/alert';
 import StateView from '../components/state/StateView';
+import { tk } from '../i18n/keys';
 
 const PRIMARY = '#4A55C7';
 
@@ -182,8 +187,38 @@ const MyDevicesScreen: React.FC = () => {
     </View>
   );
 
+  /**
+   * Lối vào luồng GHÉP MÁY (issue #233).
+   *
+   * Trước bản này màn chỉ liệt kê / đổi tên / GỠ — ba việc đều là việc BỚT. Cửa
+   * `POST /keys/authorize` (đường THÊM) đã dựng xong ở `keyAuthorizeService` và
+   * không nơi nào gọi, nên người dùng cài app thứ hai chỉ còn lối 24 từ, mà lối
+   * đó THU HỒI khoá owner của app thứ nhất.
+   *
+   * Nút đứng NGOÀI `FlatList`, trên cả trạng thái rỗng: máy chưa có thiết bị nào
+   * trong danh sách vẫn phải thêm được máy — đó chính là ca hay gặp nhất.
+   */
+  const themMay = (
+    <TouchableOpacity
+      testID="my-devices-add"
+      accessibilityRole="button"
+      activeOpacity={0.85}
+      style={styles.addCard}
+      onPress={() => navigation.navigate('DevicePair', { mode: 'scan' })}
+    >
+      <View style={styles.addIcon}>
+        <Icon name="cellphone-link" size={18} color={PRIMARY} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.addTitle}>{tk('identity.devices.addTitle')}</Text>
+        <Text style={styles.addBody}>{tk('identity.devices.addBody')}</Text>
+      </View>
+      <Icon name="chevron-right" size={20} color={COLORS.textMuted} />
+    </TouchableOpacity>
+  );
+
   if (loading) return <View style={styles.root}>{header}<StateView status="loading" loadingLines={4} /></View>;
-  if (error) return <View style={styles.root}>{header}<StateView status="error" onRetry={load} /></View>;
+  if (error) return <View style={styles.root}>{header}{themMay}<StateView status="error" onRetry={load} /></View>;
 
   const renderRow = (d: DeviceView) => {
     const song = isActive(d);
@@ -251,6 +286,7 @@ const MyDevicesScreen: React.FC = () => {
     <View style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor={PRIMARY} />
       {header}
+      {themMay}
 
       <FlatList
         data={data}
@@ -321,6 +357,19 @@ const styles = StyleSheet.create({
     backgroundColor: PRIMARY, paddingTop: 56, paddingHorizontal: 16, paddingBottom: 16,
   },
   headerTitle: { flex: 1, fontSize: 16, fontWeight: '700', color: '#fff' },
+
+  addCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: COLORS.card, borderRadius: 12, padding: 14,
+    borderWidth: 1, borderColor: PRIMARY, borderStyle: 'dashed',
+    marginHorizontal: 12, marginTop: 12,
+  },
+  addIcon: {
+    width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(74,85,199,0.10)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  addTitle: { fontSize: 13, fontWeight: '800', color: COLORS.text },
+  addBody: { fontSize: 11, color: COLORS.textSub, marginTop: 3, lineHeight: 16 },
 
   list: { padding: 12, gap: 8 },
   empty: { flexGrow: 1 },

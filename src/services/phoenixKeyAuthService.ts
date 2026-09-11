@@ -55,6 +55,9 @@ import phoenixKeySDK, {
   wipeIdentity,
 } from '../sdk/phoenixKey';
 import { phoenixKeyApi, PhoenixKeyApiError } from './phoenixKey-api';
+// Chuỗi hiển thị theo KHOÁ, không viết thẳng tiếng Việt vào mã dịch vụ — bốn thứ
+// tiếng đi cùng nhau ở `i18n/keys/identity.ts`.
+import { tk } from '../i18n/keys';
 import {
   assertSupportedBackendDid,
   isMalformedPhoenixDid,
@@ -288,6 +291,43 @@ type RecoverOutcome =
   | { ok: true; value: GenesisResult }
   | { ok: false; reason: string };
 
+/** Tiền tố miền của cửa tra DID theo khoá. KHÁC `PHOENIXKEY_GENESIS:` của đăng ký. */
+export const LOOKUP_PREFIX = 'PHOENIXKEY_LOOKUP:';
+
+/**
+ * Tra DID theo CHÍNH khoá trong chip máy này — `POST /identity/lookup`.
+ *
+ * Tách ra khỏi đường 1 của `recoverLocalIdentityFromKey` vì có NƠI THỨ HAI cần
+ * đúng bước này: máy vừa được máy khác uỷ quyền (`devicePairService`) phải đổi khoá
+ * lấy DID, và nó KHÔNG được phép đi tiếp xuống đường 3 (đường đó đăng ký một DID
+ * MỚI). Chép lại chuỗi ký sang tệp kia là dựng một bản sao sẽ chết im lặng vào
+ * ngày máy chủ đổi khuôn — nên hai nơi gọi CHUNG hàm này.
+ *
+ * NÉM nguyên lỗi ra ngoài, không nuốt 404: hai nơi gọi đọc 404 theo hai nghĩa khác
+ * nhau (đường 1 ghép nó với câu trả lời của đường 3 để suy ra "khoá đã bị thu hồi";
+ * luồng ghép máy đọc nó là "máy kia chưa duyệt xong"). Quyết hộ ở đây là lấy mất
+ * của cả hai chỗ phần thông tin họ cần.
+ *
+ * Lời nhắc sinh trắc truyền vào, vì hai luồng nói hai việc khác nhau với người dùng.
+ */
+export const lookupDidByDeviceKey = async (
+  promptTitle: string,
+  promptSubtitle: string,
+): Promise<string> => {
+  const publicKeyHex = (await ownerPublicKey()).toLowerCase();
+  const nonce = randomHexNonce();
+  // ⚠ MIỀN KÝ RIÊNG — sai tiền tố thì máy chủ trả 404 và không có gì nói vì sao.
+  const messageHex = utf8ToHex(`${LOOKUP_PREFIX}${publicKeyHex}:${nonce}`);
+  const signatureHex = await signRaw(messageHex, promptTitle, promptSubtitle);
+
+  const { userDid } = await phoenixKeyApi.identity.lookupByKey({
+    publicKeyHex,
+    nonce,
+    signatureHex: signatureHex.toLowerCase(),
+  });
+  return assertSupportedBackendDid(userDid, 'PhoenixKey lookup-by-key userDid');
+};
+
 const recoverLocalIdentityFromKey = async (
   biometricKind: BiometricKind,
   username?: string,
@@ -335,24 +375,12 @@ const recoverLocalIdentityFromKey = async (
   // Ký challenge CHÍNH LÀ "khôi phục bằng vân tay/khuôn mặt": muốn ký thì phải mở khoá
   // trong Secure Enclave bằng sinh trắc. Không có gì để nhớ, không có gì để gõ.
   try {
-    const publicKeyHex = (await ownerPublicKey()).toLowerCase();
-    const nonce = randomHexNonce();
-    // ⚠ MIỀN KÝ RIÊNG — `PHOENIXKEY_LOOKUP:`, KHÁC `PHOENIXKEY_GENESIS:` của đường 3.
-    // DTO máy chủ đặt nhãn riêng để chống ký nhầm miền; sai tiền tố thì trả 404 và
-    // không có gì nói cho biết vì sao.
-    const messageHex = utf8ToHex(`PHOENIXKEY_LOOKUP:${publicKeyHex}:${nonce}`);
-    const signatureHex = await signRaw(
-      messageHex,
+    // Chuỗi ký + lượt gọi nằm ở `lookupDidByDeviceKey` — dùng CHUNG với luồng ghép
+    // máy, xem chú thích ở đó. Ở đây chỉ còn phần riêng của đường 1.
+    const did = await lookupDidByDeviceKey(
       'Khôi phục danh tính',
       'Xác thực để tìm lại danh tính của bạn trên máy này',
     );
-
-    const { userDid } = await phoenixKeyApi.identity.lookupByKey({
-      publicKeyHex,
-      nonce,
-      signatureHex: signatureHex.toLowerCase(),
-    });
-    const did = assertSupportedBackendDid(userDid, 'PhoenixKey lookup-by-key userDid');
 
     const user: AuthUser = { id: did, did, createdAt: Date.now(), updatedAt: Date.now() };
     await migrateLegacyDidStores(did, user, biometricKind);
@@ -619,7 +647,14 @@ const RECOVER_FAIL_MESSAGE: Record<string, string> = {
     'Máy này đã có khoá nhưng chưa mở lại được danh tính, chưa rõ vì sao. Thử lại một lần; nếu vẫn vậy, chụp màn hình này gửi hỗ trợ.',
 };
 
-const friendlyRegisterError = (err: unknown): string => {
+/**
+ * Mã lỗi lúc ĐĂNG KÝ → câu người đọc được.
+ *
+ * XUẤT RA để bài kiểm ghim từng nhánh. Riêng cặp 1403/1405 đáng một bài: chúng là
+ * hai NGUYÊN NHÂN khác hẳn nhau mà máy chủ mới tách ra, và trỏ nhầm thì người dùng
+ * vẫn thấy một câu trơn tru — không ngoại lệ, không màu đỏ ở đâu.
+ */
+export const friendlyRegisterError = (err: unknown): string => {
   console.warn('[PhoenixKey register] failed:', err);
 
   if (!(err instanceof PhoenixKeyApiError)) {
@@ -633,7 +668,13 @@ const friendlyRegisterError = (err: unknown): string => {
   }
   switch (err.code) {
     case 1403:
-      return 'Chữ ký không hợp lệ. Thử lại.';
+      return tk('identity.err.badSignature.title') + ' ' + tk('identity.err.badSignature.body');
+    // 1405 = LỆCH GIỜ, tách khỏi 1403 ở máy chủ (issue #274). Hai lỗi này người
+    // dùng xử lý khác hẳn nhau: 1403 thì thử lại, 1405 thì phải đi sửa đồng hồ —
+    // và ai đọc "chữ ký không hợp lệ" cho ca lệch giờ sẽ thử lại tới khi bỏ cuộc,
+    // vì thứ hỏng nằm ở Cài đặt chứ không ở app.
+    case 1405:
+      return tk('identity.err.clockSkew.title') + ' ' + tk('identity.err.clockSkew.body');
     case 5101:
       return 'Blockchain bận. Thử lại sau vài phút.';
     case 9800:

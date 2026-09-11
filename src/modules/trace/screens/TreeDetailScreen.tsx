@@ -1223,7 +1223,7 @@ const TreeDetailScreen = () => {
             ))}
           </ScrollView>
         </View>
-      )}
+      ) : null}
 
       {/* Bằng chứng video trên LampNet. Hiện mã lưu trữ vì OriLife KHÔNG có route
           tra ngược — đây là chỗ duy nhất đội thực địa đối chiếu được sau buổi.
@@ -1265,6 +1265,11 @@ const TreeDetailScreen = () => {
                 Clipboard.setString(p.videoCid);
               }}>
                 <Icon name="copy" size={14} color={COLORS.textMuted} />
+              </TouchableOpacity>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
 
       {/* ═══ MỤC 3 — QUẢ ═════════════════════════════════════════════════ */}
       <View style={[styles.sectionRow, styles.sectionQua]}>
@@ -2158,6 +2163,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999,
   },
   treeVideoBtnText: { fontSize: 12.5, fontWeight: '800', color: ORG_TONE.primary },
+  proofWrap: { gap: 8, marginBottom: 18 },
   proofRow: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     borderWidth: 1, borderColor: '#c8e6c9', backgroundColor: '#f1f8e9',

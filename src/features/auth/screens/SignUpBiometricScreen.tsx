@@ -207,10 +207,33 @@ const SignUpBiometricScreen: React.FC = () => {
       // vỡ ngay khi đổi câu chữ hoặc khi người dùng đang dùng ngôn ngữ khác.
       if (e?.reason === 'khoa_bi_thu_hoi') {
         setStage('idle');
+        // NHÃN NÚT KHÔNG ĐƯỢC HỨA "24 TỪ". App chưa bao giờ bắt người dùng ghi lại
+        // 24 từ — `SeedExportScreen` là màn tự nguyện, lại nằm SAU lớp đăng nhập,
+        // nên đúng người đang kẹt ở đây là người không vào được để lấy. Nhãn cũ đẩy
+        // họ tới một màn chỉ nhận thứ họ không có, và họ đọc đó là ngõ cụt.
+        // Màn khôi phục nay tự dò kho khoá: máy còn ví thì nó mở lối "khôi phục
+        // bằng ví trên máy" (chỉ cần tên đăng nhập). Nên nhãn nói ĐÍCH, không nói
+        // phương tiện — phương tiện nào dùng được thì chính màn kia quyết.
         showWarning('Khoá trên máy này đã bị thu hồi', e?.message ?? '', {
-            confirmText: 'Dùng 24 từ khôi phục',
+            confirmText: 'Mở màn khôi phục',
             cancelText: 'Để sau',
             onConfirm: () => navigation.navigate('RestoreIdentity'),
+        });
+        return;
+      }
+      // Cùng luật với `khoa_bi_thu_hoi` ngay trên: biết được LỐI RA thì phải đưa
+      // nút, đừng chỉ hiện chữ. Ở ca này lối ra là làm lại và làm HẾT hộp sinh
+      // trắc thứ hai — một việc người dùng làm được ngay tại chỗ, nên bắt họ đóng
+      // hộp thoại rồi tự mò lại từ đầu là bắt họ trả giá cho một câu app đã biết.
+      if (e?.reason === 'duong1_chua_xac_thuc') {
+        setStage('idle');
+        showWarning('Chưa mở lại được danh tính', e?.message ?? '', {
+          confirmText: 'Thử lại ngay',
+          cancelText: 'Để sau',
+          onConfirm: () => {
+            setStage('generating');
+            void completeSignUp('resume');
+          },
         });
         return;
       }
@@ -259,7 +282,10 @@ const SignUpBiometricScreen: React.FC = () => {
           // chính chủ. Mà chính chủ đọc "Người khác" thì không bao giờ bấm — họ có
           // phải người khác đâu. Nút này phục vụ CẢ HAI nhóm, nên nhãn phải nói về
           // thứ người dùng ĐANG CẦM (24 từ), không nói về họ là ai.
-          text: t('Tôi có 24 từ khôi phục'),
+          // Cùng lý do với nhãn ở nhánh `khoa_bi_thu_hoi`: nút này KHÔNG được lấy
+          // "24 từ" làm điều kiện vào, vì phần lớn người dùng chưa từng được đưa
+          // 24 từ. Màn khôi phục tự dò xem máy còn ví không rồi mở đúng lối.
+          text: t('Khôi phục danh tính đã có'),
           onPress: () => navigation.navigate('RestoreIdentity'),
         },
         {

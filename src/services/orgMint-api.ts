@@ -28,7 +28,7 @@ import axios, {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 // @ts-ignore — provided by react-native-dotenv at build time.
 import { PHOENIXKEY_API_URL } from '@env';
-import { PhoenixKeyApiError } from './phoenixKey-api';
+import { PhoenixKeyApiError, attachSessionRefresh } from './phoenixKey-api';
 
 // ── Request / Response shapes ─────────────────────────────────────────────────
 
@@ -230,6 +230,12 @@ client.interceptors.response.use(response => {
   }
   return response;
 });
+
+// Thẻ phiên sống 1 giờ và client này KHÔNG tự đúc lại được — trước bản này, một
+// thẻ hết hạn biến màn Ví tổ chức thành `Unauthorized — Missing Bearer token
+// (mã 1304)` vĩnh viễn, vì nút "Thử lại" chỉ phát lại đúng lượt gọi cũ bằng đúng
+// thẻ cũ. Xem `attachSessionRefresh` ở `phoenixKey-api.ts` cho ba ràng buộc.
+attachSessionRefresh(client);
 
 async function unwrap<T>(
   promise: Promise<{ data: { code: number; message: string; result?: T } }>,

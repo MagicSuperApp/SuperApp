@@ -26,11 +26,12 @@
 //    Bài kiểm dưới đây ghim cả hành vi lẫn độ phủ, vì chỉ ghim hành vi thì nhà
 //    tiêu thụ thứ năm ra đời vẫn lọt y như bốn nhà này.
 //
-// ── Chỗ CÒN HỞ, ghi ra để nó thôi im ────────────────────────────────────────
-//    `orgMint-api.ts:373` mở luồng SSE chờ ký bằng `XMLHttpRequest` và gắn
-//    `Bearer` thủ công — ngoài mọi interceptor, nên thẻ hết hạn vẫn giết luồng
-//    đó trong im lặng. Chưa vá: màn đa-chủ-sở-hữu mà nó phục vụ còn đóng sau
-//    cờ `ORG_MINT_ENABLED`. Mở cờ đó thì phải vá chỗ này trước.
+// ── Nhà tiêu thụ thứ NĂM, phát hiện lúc soát PR này ─────────────────────────
+//    `orgMint-api.ts` (`waitMintSigned`) mở luồng SSE chờ ký bằng
+//    `XMLHttpRequest` và gắn `Bearer` thủ công — ngoài mọi interceptor, nên
+//    bốn cửa trên KHÔNG với tới nó dù đọc chung một khoá kho. Đã vá bằng cùng
+//    `remintSessionOnce` (đúng một lần, cờ `retried`) — xem
+//    `orgMintWaitSigned401.test.ts` cho hành vi 401 giữa lúc chờ ký.
 
 import type { AxiosError, AxiosInstance } from 'axios';
 import fs from 'fs';

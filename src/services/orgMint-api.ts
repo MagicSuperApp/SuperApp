@@ -28,7 +28,7 @@ import axios, {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 // @ts-ignore — provided by react-native-dotenv at build time.
 import { PHOENIXKEY_API_URL } from '@env';
-import { PhoenixKeyApiError, attachSessionRefresh } from './phoenixKey-api';
+import { PhoenixKeyApiError, attachSessionRefresh, remintSessionOnce } from './phoenixKey-api';
 
 // ── Request / Response shapes ─────────────────────────────────────────────────
 
@@ -301,10 +301,9 @@ export function waitMintSigned(
     onError?: (err: Error) => void;
   },
 ): WaitSignedHandle {
-  const xhr = new XMLHttpRequest();
-  let lastIndex = 0;
   let aborted = false;
   let done = false;
+  let currentXhr: XMLHttpRequest | null = null;
 
   const url =
     `${baseURL}/sign/request/${encodeURIComponent(requestId)}/stream`;
@@ -312,7 +311,7 @@ export function waitMintSigned(
   const finish = () => {
     done = true;
     try {
-      xhr.abort();
+      currentXhr?.abort();
     } catch {}
   };
 
@@ -333,94 +332,129 @@ export function waitMintSigned(
     }
   };
 
-  const parseSseChunk = (raw: string): void => {
-    // SSE: các event tách nhau bằng dòng trống; mỗi event có ≥1 dòng `data:`.
-    for (const line of raw.split('\n')) {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith('data:')) continue;
-      const payload = trimmed.slice(5).trim();
-      if (!payload || payload === '[DONE]') continue;
-      try {
-        const obj = JSON.parse(payload) as Record<string, unknown>;
-        const type = String(obj.type ?? obj.status ?? '').toLowerCase();
-        const ev: MintSignEvent =
-          type === 'signed' || type === 'approved'
-            ? {
-                type: 'signed',
-                signaturesCollected: obj.signaturesCollected as number | undefined,
-                threshold: obj.threshold as number | undefined,
-              }
-            : type === 'cancelled'
-            ? { type: 'cancelled' }
-            : type === 'expired'
-            ? { type: 'expired' }
-            : {
-                type: 'pending',
-                signaturesCollected: obj.signaturesCollected as number | undefined,
-                threshold: obj.threshold as number | undefined,
-              };
-        handleEvent(ev);
-        if (done) return;
-      } catch {
-        // Dòng data không phải JSON hợp lệ → bỏ qua (keep-alive/comment).
-      }
-    }
-  };
+  /**
+   * Mở MỘT lượt kết nối SSE. `retried` chặn vòng lặp đúc thẻ: thẻ mới mà vẫn
+   * 401 nghĩa là máy chủ từ chối vì lý do khác, không đúc thêm lần hai — cùng
+   * luật với `attachSessionRefresh`/`cardanoTxService.rawGet`.
+   *
+   * Đây là NHÀ TIÊU THỤ THỨ NĂM của `phoenixkey_session_token` (bốn nhà kia:
+   * `phoenixKey-api`, `orgMint-api` nhánh axios, `phoenixWallet-api`,
+   * `cardanoTxService`), và trước bản này KHÔNG nhà nào đúc lại thẻ cho nó dù
+   * nó gắn `Bearer` thủ công y hệt bốn nhà kia — XHR thô không đi qua
+   * interceptor axios nên `attachSessionRefresh` không với tới. Phiên ký
+   * nhiều chữ (m-of-n) có thể treo hàng phút chờ người đồng ký khác; thẻ hết
+   * hạn giữa lúc chờ trước bản này biến màn hình chờ ký thành lỗi chết
+   * "Luồng chờ ký lỗi HTTP 401." không có đường tự chữa.
+   */
+  const open = (retried: boolean) => {
+    const xhr = new XMLHttpRequest();
+    currentXhr = xhr;
+    let lastIndex = 0;
 
-  xhr.open('GET', url, true);
-  xhr.setRequestHeader('Accept', 'text/event-stream');
-  // Gắn Bearer thủ công (XHR không đi qua axios interceptor).
-  AsyncStorage.getItem(SESSION_TOKEN_KEY)
-    .then(token => {
-      if (aborted) return;
-      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-      try {
-        xhr.send();
-      } catch (e: any) {
-        handlers.onError?.(new Error(e?.message || 'Không mở được luồng chờ ký.'));
-      }
-    })
-    .catch(() => {
-      if (!aborted) {
+    const parseSseChunk = (raw: string): void => {
+      // SSE: các event tách nhau bằng dòng trống; mỗi event có ≥1 dòng `data:`.
+      for (const line of raw.split('\n')) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith('data:')) continue;
+        const payload = trimmed.slice(5).trim();
+        if (!payload || payload === '[DONE]') continue;
         try {
-          xhr.send();
-        } catch {}
-      }
-    });
-
-  xhr.onreadystatechange = () => {
-    if (aborted || done) return;
-    if (xhr.readyState === 3 || xhr.readyState === 4) {
-      const text = xhr.responseText || '';
-      if (text.length > lastIndex) {
-        const delta = text.slice(lastIndex);
-        lastIndex = text.length;
-        parseSseChunk(delta);
-      }
-      if (xhr.readyState === 4 && !done) {
-        if (xhr.status < 200 || xhr.status >= 300) {
-          handlers.onError?.(
-            new Error(`Luồng chờ ký lỗi HTTP ${xhr.status}.`),
-          );
-        } else {
-          // Stream đóng mà chưa thấy 'signed' → coi như chưa đủ chữ ký.
-          handlers.onError?.(
-            new Error('Luồng chờ ký đóng trước khi gom đủ chữ ký.'),
-          );
+          const obj = JSON.parse(payload) as Record<string, unknown>;
+          const type = String(obj.type ?? obj.status ?? '').toLowerCase();
+          const ev: MintSignEvent =
+            type === 'signed' || type === 'approved'
+              ? {
+                  type: 'signed',
+                  signaturesCollected: obj.signaturesCollected as number | undefined,
+                  threshold: obj.threshold as number | undefined,
+                }
+              : type === 'cancelled'
+              ? { type: 'cancelled' }
+              : type === 'expired'
+              ? { type: 'expired' }
+              : {
+                  type: 'pending',
+                  signaturesCollected: obj.signaturesCollected as number | undefined,
+                  threshold: obj.threshold as number | undefined,
+                };
+          handleEvent(ev);
+          if (done) return;
+        } catch {
+          // Dòng data không phải JSON hợp lệ → bỏ qua (keep-alive/comment).
         }
       }
-    }
+    };
+
+    xhr.open('GET', url, true);
+    xhr.setRequestHeader('Accept', 'text/event-stream');
+    // Gắn Bearer thủ công (XHR không đi qua axios interceptor).
+    AsyncStorage.getItem(SESSION_TOKEN_KEY)
+      .then(token => {
+        if (aborted || currentXhr !== xhr) return;
+        if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+        try {
+          xhr.send();
+        } catch (e: any) {
+          handlers.onError?.(new Error(e?.message || 'Không mở được luồng chờ ký.'));
+        }
+      })
+      .catch(() => {
+        if (!aborted && currentXhr === xhr) {
+          try {
+            xhr.send();
+          } catch {}
+        }
+      });
+
+    xhr.onreadystatechange = () => {
+      if (aborted || done || currentXhr !== xhr) return;
+      if (xhr.readyState === 3 || xhr.readyState === 4) {
+        const text = xhr.responseText || '';
+        if (text.length > lastIndex) {
+          const delta = text.slice(lastIndex);
+          lastIndex = text.length;
+          parseSseChunk(delta);
+        }
+        if (xhr.readyState === 4 && !done) {
+          if (xhr.status === 401 && !retried) {
+            void remintSessionOnce().then(fresh => {
+              if (aborted || done || currentXhr !== xhr) return;
+              if (fresh) {
+                open(true);
+              } else {
+                handlers.onError?.(new Error(`Luồng chờ ký lỗi HTTP ${xhr.status}.`));
+              }
+            });
+            return;
+          }
+          if (xhr.status < 200 || xhr.status >= 300) {
+            handlers.onError?.(
+              new Error(`Luồng chờ ký lỗi HTTP ${xhr.status}.`),
+            );
+          } else {
+            // Stream đóng mà chưa thấy 'signed' → coi như chưa đủ chữ ký.
+            handlers.onError?.(
+              new Error('Luồng chờ ký đóng trước khi gom đủ chữ ký.'),
+            );
+          }
+        }
+      }
+    };
+
+    xhr.onerror = () => {
+      if (!aborted && !done && currentXhr === xhr) {
+        handlers.onError?.(new Error('Lỗi mạng khi chờ ký.'));
+      }
+    };
   };
 
-  xhr.onerror = () => {
-    if (!aborted && !done) handlers.onError?.(new Error('Lỗi mạng khi chờ ký.'));
-  };
+  open(false);
 
   return {
     abort: () => {
       aborted = true;
       try {
-        xhr.abort();
+        currentXhr?.abort();
       } catch {}
     },
   };

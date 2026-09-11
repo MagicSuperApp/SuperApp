@@ -12,7 +12,7 @@
  */
 
 import {
-  chuanHoa, hopLe, nghieng, noiDiem, phang, viTriCay, vongRanh, xoayNhe,
+  chuanHoa, hopLe, nghieng, noiDiem, phang, droppedPointCount, viTriCay, vongRanh, xoayNhe,
 } from './farmShapeGeo';
 
 describe('lọc điểm — thiếu thì loại, không đoán', () => {
@@ -25,6 +25,72 @@ describe('lọc điểm — thiếu thì loại, không đoán', () => {
     for (const rac of [null, undefined, {}, { lat: 12 }, { lat: 'x', lng: 108 }, { lat: NaN, lng: 1 }]) {
       expect(hopLe(rac)).toBe(false);
     }
+  });
+
+  /**
+   * ⛔ `Number.isFinite` một mình KHÔNG phải một phép kiểm toạ độ.
+   *
+   * `0` hữu hạn, `999` hữu hạn, `-5000` hữu hạn. Điểm `0/0` là giá trị máy sinh
+   * ra khi chưa bắt được GPS; nó nằm ngoài khơi Vịnh Guinea, nên khung nhìn
+   * phải giãn ra để chứa cả nó lẫn cụm cây thật, và cụm cây thật co lại thành
+   * một chấm. Hình thửa lúc đó vẫn vẽ, vẫn không báo gì.
+   *
+   * Mỗi ca dưới đây phân biệt được HAI cực: cực bị loại và cực sát biên vẫn
+   * phải được nhận. Thiếu vế thứ hai thì một phép kiểm siết quá tay cũng xanh.
+   */
+  it('loại `0/0` — "chưa có định vị", không phải một chỗ trên mặt đất', () => {
+    expect(hopLe({ lat: 0, lng: 0 })).toBe(false);
+    expect(hopLe({ lat: 0, lon: 0 })).toBe(false);
+    // Nhưng `0` ở MỘT trục vẫn là toạ độ thật (xích đạo, hoặc kinh tuyến gốc).
+    expect(hopLe({ lat: 0, lng: 105 })).toBe(true);
+    expect(hopLe({ lat: 10, lng: 0 })).toBe(true);
+  });
+
+  it('loại toạ độ NGOÀI DẢI, và KHÔNG cắt nhầm biên', () => {
+    for (const ngoai of [
+      { lat: 91, lng: 105 }, { lat: -91, lng: 105 },
+      { lat: 10, lng: 181 }, { lat: 10, lng: -5000 },
+      { lat: 999, lng: 105 },
+    ]) {
+      expect(hopLe(ngoai)).toBe(false);
+    }
+    // Biên là giá trị HỢP LỆ — cực đối xứng của bốn ca trên.
+    expect(hopLe({ lat: 90, lng: 180 })).toBe(true);
+    expect(hopLe({ lat: -90, lng: -180 })).toBe(true);
+  });
+
+  it('trường VẮNG không được hoá thành `0`', () => {
+    // `Number(null)` và `Number('')` đều ra `0`. Bản trước dùng `Number()` trần,
+    // nên một bản ghi thiếu kinh độ trở thành một điểm ở Vịnh Guinea.
+    expect(hopLe({ lat: 10.5, lng: null })).toBe(false);
+    expect(hopLe({ lat: 10.5, lng: '' })).toBe(false);
+    expect(hopLe({ lat: null, lng: null })).toBe(false);
+    // Chuỗi số thì vẫn đọc được — đường `gps: "vĩ, kinh"` đi qua đây.
+    expect(hopLe({ lat: '10.5', lng: '105.2' })).toBe(true);
+  });
+
+  it('`viTriCay` theo CÙNG luật, không lỏng hơn `hopLe`', () => {
+    // Hai hàm này lọc cùng một đàn cây ở hai màn khác nhau. Lệch nhau là cùng
+    // một cái cây được màn này nhận và màn kia loại.
+    expect(viTriCay({ latitude: 0, longitude: 0 })).toBeNull();
+    expect(viTriCay({ location: { lat: 0, lng: 0 } })).toBeNull();
+    expect(viTriCay({ gps: '0, 0' })).toBeNull();
+    expect(viTriCay({ lat: 999, lon: 105 })).toBeNull();
+    // Cực đối xứng: cây thật vẫn đọc được qua cả bốn hình dạng.
+    expect(viTriCay({ latitude: 12.5, longitude: 108.25 })).toEqual({ lat: 12.5, lng: 108.25 });
+  });
+
+  it('điểm bị loại ĐẾM được — không biến mất im lặng', () => {
+    const tho = [
+      { lat: 12, lng: 108 },
+      { lat: 0, lng: 0 },
+      { lat: 12.1, lng: 108.1 },
+      { lat: 999, lng: 108 },
+    ];
+    expect(vongRanh(tho)).toHaveLength(2);
+    expect(droppedPointCount(tho)).toBe(2);
+    // Vòng sạch thì con số phải là 0 — nếu không nó chỉ đang đếm bừa.
+    expect(droppedPointCount([{ lat: 12, lng: 108 }, { lat: 12.1, lng: 108.1 }])).toBe(0);
   });
 
   it('`vongRanh` bỏ điểm rác giữa vòng thay vì kéo cả vòng thành NaN', () => {

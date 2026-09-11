@@ -61,6 +61,7 @@ import Icon, { type IconName } from '../../../components/Icon';
 import type { RootState } from '../../../store';
 import { OSM_STREET_TILES } from '../../../features/space3d/mapTiles';
 import { useOpenWayfind, type WayfindTarget } from '../../../features/wayfind/WayfindButton';
+import { isValidLatLon } from '../../../features/wayfind/wayfind';
 import { formatTreeName, shortTreeCode } from '../../../utils/treeNameFormatter';
 import { BOUNDARY_METHOD } from '../../../services/farmService';
 import RingProgress from '../components/layered/RingProgress';
@@ -90,10 +91,17 @@ type LopNen = 'street' | 'satellite';
 // Hình học — thuần tính, không chạm React
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * ⛔ Đây từng là BẢN SAO THỨ BA của cùng một phép kiểm (`farmShapeGeo.hopLe`,
+ *    `farmMapGeo._valid`, và chỗ này) — và mỗi bản thiếu một ràng buộc khác
+ *    nhau, nên cùng một cái cây được màn này nhận và màn kia loại. Bản ở đây ép
+ *    dải nhưng bỏ lọt `0/0`, tức đúng giá trị máy sinh ra khi chưa có GPS.
+ *
+ * Nay chỉ còn một luật, ở `features/wayfind/wayfind.ts`. Cây bị loại KHÔNG biến
+ * mất im lặng: `soCayThieuToaDo` đếm chúng và màn nói ra con số.
+ */
 const hopLe = (p: { lat?: unknown; lng?: unknown } | null | undefined): p is Coord =>
-  !!p &&
-  typeof p.lat === 'number' && Number.isFinite(p.lat) && Math.abs(p.lat) <= 90 &&
-  typeof p.lng === 'number' && Number.isFinite(p.lng) && Math.abs(p.lng) <= 180;
+  !!p && isValidLatLon({ lat: p.lat as number, lon: p.lng as number });
 
 /**
  * Phần trăm đã thu của một cây. `null` = CHƯA BIẾT, và nó KHÁC `0`.

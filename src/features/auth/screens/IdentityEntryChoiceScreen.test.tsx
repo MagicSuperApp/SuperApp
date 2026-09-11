@@ -83,6 +83,28 @@ describe('ba lối rẽ', () => {
     act(() => { tree.unmount(); });
   });
 
+  it('có app đang đăng nhập trong tay → màn ghép máy, vai HIỆN MÃ (issue #233)', () => {
+    // Lối thứ tư, mở bằng `POST /keys/authorize`. Nó KHÔNG thay lối C: lối C phục
+    // vụ người không có máy kia trong tay. Vai phải là `show` — máy này chưa có
+    // danh tính nên nó là bên đi XIN, không phải bên đi duyệt.
+    const tree = mount();
+    act(() => { tree.root.findByProps({ testID: 'entry-choice-pair' }).props.onPress(); });
+    expect(mockNav.navigate).toHaveBeenCalledWith('DevicePair', { mode: 'show' });
+    act(() => { tree.unmount(); });
+  });
+
+  it('lối D KHÔNG mang dòng "bạn sẽ mất gì" — nó không thu hồi khoá nào', () => {
+    // Cực đối của ca `cost` ở lối B/C. `POST /keys/authorize` THÊM một khoá vào
+    // DID; bịa một cái giá ở đây là nói sai theo chiều ngược lại, và nó đẩy người
+    // dùng sang lối đắt hơn.
+    const tree = mount();
+    const cardD = tree.root.findByProps({ testID: 'entry-choice-pair' });
+    const textD = collectText(cardD.props.children);
+    expect(textD).not.toContain(vi('identity.gate.sameApp.cost'));
+    expect(textD).not.toContain(vi('identity.gate.otherApp.cost'));
+    act(() => { tree.unmount(); });
+  });
+
   it('ba lối là BA lựa chọn tách bạch, không phải một lựa chọn hiện ba lần', () => {
     const tree = mount();
     const text = collectText(tree.toJSON());

@@ -8,6 +8,7 @@ import { databaseManager } from '../../../services/databaseManager';
 import { ORILIFE_BASE } from '../../../services/orilifeBase';
 import { listFarms } from '../../../services/farmService';
 import { getTrees, mapTreeInfoToUI } from '../../../services/treeReIDService';
+import { syncErrorMessage } from './syncErrorMessage';
 import { ensureOrilifeToken } from '../../../services/orilifeDidAuth';
 import {
   saveTreeProfile,
@@ -21,6 +22,31 @@ import { logout, logoutUser } from '../../../store/userSlice';
 const TREE_METADATA_KEY_PREFIX = '@aladin/tree_metadata/';
 export const treeMetadataKey = (treeId: string) => `${TREE_METADATA_KEY_PREFIX}${treeId}`;
 
+/**
+ * Kết quả MỘT lượt đồng bộ — dữ liệu, VÀ nó đến từ đâu.
+ *
+ * ⛔ Bản trước hai thunk đồng bộ chỉ trả về một MẢNG. Mảng rỗng vì người dùng
+ *    chưa có vườn nào, và mảng rỗng vì không hỏi được máy chủ, ra cùng một giá
+ *    trị — nên màn hình không có cách nào phân biệt, và nó chọn cách nói sai
+ *    nguy hiểm hơn: *"chưa có trang trại nào"* kèm lời mời tạo mới. Người dùng
+ *    ngoài thực địa đọc đó là "dữ liệu của tôi mất rồi" và bấm tạo lại vườn đã
+ *    tồn tại trên máy chủ.
+ *
+ * Việc lùi về bộ nhớ đệm là ĐÚNG và giữ nguyên (offline-first, INV-1). Cái
+ * thiếu là LÝ DO đi kèm dữ liệu.
+ */
+export interface SyncOutcome<T> {
+  items: T[];
+  /** `'server'` = máy chủ trả lời. `'cache'` = không, và đây là bản lưu trong máy. */
+  source: 'server' | 'cache';
+  /**
+   * `null` khi `source === 'server'`. Ngược lại là câu DÀNH CHO NGƯỜI DÙNG,
+   * dựng bằng `syncErrorMessage` — tức ưu tiên câu của chính máy chủ, và với
+   * lỗi tầng kết nối thì kèm MÃ THAM CHIẾU chứ không phải nguyên văn traceback.
+   */
+  syncError: string | null;
+}
+
 interface FarmState {
   farms: Farm[];
   trees: Tree[];
@@ -28,6 +54,15 @@ interface FarmState {
   activities: Activity[];
   isLoading: boolean;
   error: string | null;
+  /**
+   * Lượt đồng bộ VƯỜN gần nhất không tới được máy chủ — lý do, dành cho người dùng.
+   *
+   * `null` nghĩa là lần gần nhất tới được. Nó KHÁC "danh sách rỗng": hai thứ đó
+   * phải ra hai màn hình khác nhau, và đó là toàn bộ điểm của trường này.
+   */
+  farmsSyncError: string | null;
+  /** Cùng nghĩa, cho lượt đồng bộ CÂY của một vườn. */
+  treesSyncError: string | null;
 }
 
 const initialState: FarmState = {
@@ -37,15 +72,18 @@ const initialState: FarmState = {
   activities: [],
   isLoading: false,
   error: null,
+  farmsSyncError: null,
+  treesSyncError: null,
 };
 
 // Đồng bộ vườn TỪ BACKEND field-reid (nguồn sự-thật DUY-NHẤT, INV-1).
 // Trước đây gọi aladinAPI (backend Lợi deprecated) → farm_id lệch với nơi enroll
 // ghi cây (field-reid) = gốc B2. Nay listFarms field-reid (owner lấy từ auth) →
 // SQLite chỉ là CACHE offline-first, không phải nguồn id.
-export const syncFarmsFromBackend = createAsyncThunk(
+export const syncFarmsFromBackend = createAsyncThunk<SyncOutcome<Farm>, string>(
   'farm/syncFarmsFromBackend',
-  async (userId: string) => {
+  async (userId: string, { rejectWithValue }) => {
+    let syncError: string | null = null;
     try {
       databaseManager.ensureReady('syncFarmsFromBackend');
       // BUG-FIX: ký token DID TRƯỚC khi đọc. Trước đây token chỉ được ký khi user vào
@@ -64,25 +102,39 @@ export const syncFarmsFromBackend = createAsyncThunk(
         for (const farm of farms) {
           await database.saveFarm(farm);
         }
-        return farms;
+        return { items: farms, source: 'server', syncError: null };
       }
+      // Máy chủ có trả lời nhưng không trả được dữ liệu. `syncErrorMessage` giữ
+      // nguyên câu của máy chủ khi có; lỗi tầng kết nối thì kèm mã tham chiếu.
+      syncError = syncErrorMessage(res.error);
     } catch (error: any) {
       console.error('[farmSlice] syncFarmsFromBackend error:', error?.message);
+      syncError = syncErrorMessage({
+        type: 'network_error',
+        detail: String(error),
+        http_status: 0,
+      });
     }
-    // Backend lỗi/offline → dùng cache SQLite (offline-first; KHÔNG mất dữ liệu, INV-1).
+    // Backend lỗi/offline → dùng cache SQLite (offline-first; KHÔNG mất dữ liệu,
+    // INV-1). Nhưng mang theo LÝ DO: danh sách này có thể cũ, và màn phải nói thế.
     try {
-      return await database.getFarms(userId);
-    } catch {
-      return [];
+      return { items: await database.getFarms(userId), source: 'cache', syncError };
+    } catch (dbErr: any) {
+      // Máy chủ hỏng VÀ đệm cũng không đọc được ⟹ app KHÔNG BIẾT người dùng có
+      // bao nhiêu vườn. Trả `[]` ở đây là bịa ra câu trả lời "không có vườn nào".
+      // Ném, để màn đi vào nhánh lỗi có nút thử lại.
+      console.error('[farmSlice] syncFarmsFromBackend cache error:', dbErr?.message);
+      return rejectWithValue(syncError ?? syncErrorMessage());
     }
   }
 );
 
 // Đồng bộ cây của MỘT vườn TỪ field-reid (GET /api/trees?farm_id=X) — cùng backend
 // nơi enroll ghi cây, nên cây vừa tạo hiện đúng vườn (sửa "cây không vào vườn").
-export const syncTreesFromBackend = createAsyncThunk(
+export const syncTreesFromBackend = createAsyncThunk<SyncOutcome<Tree>, string>(
   'farm/syncTreesFromBackend',
-  async (farmId: string) => {
+  async (farmId: string, { rejectWithValue }) => {
+    let syncError: string | null = null;
     try {
       databaseManager.ensureReady('syncTreesFromBackend');
       // Cùng lỗi token như syncFarmsFromBackend: ký trước + retry-force khi 401.
@@ -97,15 +149,24 @@ export const syncTreesFromBackend = createAsyncThunk(
         for (const tree of trees) {
           await database.saveTree(tree);
         }
-        return trees;
+        return { items: trees, source: 'server', syncError: null };
       }
+      syncError = syncErrorMessage(res.error);
     } catch (error: any) {
       console.error('[farmSlice] syncTreesFromBackend error:', error?.message);
+      syncError = syncErrorMessage({
+        type: 'network_error',
+        detail: String(error),
+        http_status: 0,
+      });
     }
     try {
-      return await database.getTrees(farmId);
-    } catch {
-      return [];
+      return { items: await database.getTrees(farmId), source: 'cache', syncError };
+    } catch (dbErr: any) {
+      // Cùng lý do với `syncFarmsFromBackend`: "vườn này chưa có cây nào" là một
+      // khẳng định, và ở đây app không có căn cứ nào để đưa ra nó.
+      console.error('[farmSlice] syncTreesFromBackend cache error:', dbErr?.message);
+      return rejectWithValue(syncError ?? syncErrorMessage());
     }
   }
 );
@@ -363,11 +424,27 @@ const farmSlice = createSlice({
       // phải tự nhớ một mẹo riêng — và màn thứ ba nào chỉ dispatch rồi đọc
       // `state.farm.farms` sẽ thấy danh sách CŨ mà không có gì báo.
       .addCase(syncFarmsFromBackend.fulfilled, (state, action) => {
-        state.farms = action.payload;
+        state.farms = action.payload.items;
+        // Lý do đi CÙNG dữ liệu, không đi sau nó. Đặt lại về `null` khi máy chủ
+        // trả lời được — nếu không thì một lần hỏng sẽ dán nhãn "chưa đồng bộ"
+        // lên mọi lượt sau, kể cả những lượt đã tới nơi.
+        state.farmsSyncError = action.payload.syncError;
+      })
+      .addCase(syncFarmsFromBackend.rejected, (state, action) => {
+        // Máy chủ hỏng VÀ đệm hỏng. KHÔNG đụng `state.farms`: danh sách cũ (nếu
+        // có) vẫn là thứ thật nhất đang cầm; cái phải đổi là app THÔI im lặng.
+        state.farmsSyncError =
+          (action.payload as string | undefined) ?? action.error.message ?? null;
+        state.error = state.farmsSyncError;
       })
       // Sync trees from backend
       .addCase(syncTreesFromBackend.fulfilled, (state, action) => {
-        state.trees = action.payload;
+        state.trees = action.payload.items;
+        state.treesSyncError = action.payload.syncError;
+      })
+      .addCase(syncTreesFromBackend.rejected, (state, action) => {
+        state.treesSyncError =
+          (action.payload as string | undefined) ?? action.error.message ?? null;
       })
       // Load trees
       .addCase(loadTrees.fulfilled, (state, action) => {

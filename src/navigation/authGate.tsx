@@ -71,6 +71,17 @@ export const PUBLIC_ROUTES: readonly string[] = [
   'SignUpComplete',
   // 2 — đường lấy lại quyền
   'RestoreIdentity',
+  // Ghép máy (issue #233). Mở vì vai `mode: 'show'` CHẠY TRÊN MÁY CHƯA CÓ PHIÊN —
+  // đó là toàn bộ lý do màn tồn tại; đóng nó lại là đóng đúng luồng nó mở, y như
+  // `RestoreIdentity` ở dòng trên.
+  //
+  // Cái gì gác vai `mode: 'scan'` (vai ĐỘNG tới danh tính) nếu không phải cổng này:
+  // `authorizeDeviceKey` đòi `currentUserDid()` — không có thì ném ngay — rồi đòi
+  // `signRaw`, tức một lần mở khoá phần cứng bằng vân tay/khuôn mặt. Cổng điều
+  // hướng không thêm được gì vào hai lớp đó, còn đóng lại thì mất nửa kia.
+  // Màn không đọc `state.user` (grep tệp: 0 kết quả) và không hiện dữ liệu máy
+  // chủ nào — thứ nó hiện là khoá công khai của CHÍNH máy đang cầm.
+  'DevicePair',
   // 3 — đường người mua (không tài khoản)
   'TraceScan',
   'TraceResult',

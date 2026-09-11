@@ -222,6 +222,41 @@ describe('khoá đã thu hồi vẫn phải HIỆN, không lặng lẽ biến m�
   });
 });
 
+describe('lối THÊM máy — issue #233', () => {
+  /**
+   * Màn này chỉ có ba việc, cả ba đều là việc BỚT: liệt kê · đổi tên · gỡ. Đường
+   * THÊM (`POST /keys/authorize`) đã dựng xong ở `keyAuthorizeService` và trước
+   * bản này KHÔNG nơi nào gọi — tức người dùng cài app thứ hai chỉ còn lối 24 từ,
+   * mà lối đó THU HỒI khoá owner của app thứ nhất.
+   *
+   * Bài canh LỜI GỌI `navigate`, không canh sự có mặt của một chuỗi trong mã: một
+   * cái nút có chữ mà không dẫn đi đâu vẫn qua được phép kiểm chuỗi.
+   */
+  it('có nút thêm máy, và nó mở màn ghép ở vai QUÉT', async () => {
+    const t = await moMan([may({ keyRole: 'owner', current: true })]);
+    const nut = t.root.findAll(n => n.props?.testID === 'my-devices-add', { deep: true })[0];
+    expect(nut).toBeTruthy();
+    await act(async () => { nut.props.onPress(); });
+    // Vai phải là `scan`: máy này là máy ĐANG giữ owner-key, nó đi quét mã của
+    // máy kia. Truyền nhầm `show` thì màn hiện khoá của chính nó và luồng đứng.
+    expect(mockNav.navigate).toHaveBeenCalledWith('DevicePair', { mode: 'scan' });
+  });
+
+  it('danh sách RỖNG vẫn thêm được máy — đó là ca hay gặp nhất', async () => {
+    const t = await moMan([]);
+    expect(t.root.findAll(n => n.props?.testID === 'my-devices-add', { deep: true }).length)
+      .toBeGreaterThan(0);
+  });
+
+  it('nút đứng NGOÀI danh sách, nên lượt tải hỏng cũng còn lối thêm', async () => {
+    mockList.mockRejectedValue(new PhoenixKeyApiError(9999, 500, 'server down'));
+    let t!: renderer.ReactTestRenderer;
+    await act(async () => { t = renderer.create(<MyDevicesScreen />); });
+    expect(t.root.findAll(n => n.props?.testID === 'my-devices-add', { deep: true }).length)
+      .toBeGreaterThan(0);
+  });
+});
+
 describe('mã lỗi máy chủ được dịch thành câu người đọc được', () => {
   it('3008 nói ra đường đi tiếp, không chỉ nói "thất bại"', async () => {
     const t = await moMan([may({ keyRole: 'manager' })]);

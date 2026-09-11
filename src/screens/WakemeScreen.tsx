@@ -31,14 +31,19 @@ import { fmtLamp } from '../utils/token';
 import { useCapabilityLive } from '../config/useCapabilityLive';
 import { getStoredMasterKek } from '../services/masterKekStore';
 import { isFeatureOpen, WAKEME_NOT_CONFIGURED, type FeatureProbe } from '../services/wakemeService';
+import { tk } from '../i18n/keys';
 
 type Phase = 'checking' | 'offline' | 'no_wallet' | 'not_open' | 'ready' | 'pot_empty' | 'error';
 
 /**
  * Mã lỗi backend → chữ người dùng đọc được. Nguồn: `ErrorCode.java` +
  * `GetLampPreflight.java`. Mỗi dòng nói được BƯỚC TIẾP THEO, không chỉ nói hỏng.
+ *
+ * XUẤT RA để bài kiểm ghim được từng nhánh mà không phải dựng cả màn (màn này kéo
+ * theo camera/sinh trắc). Đây là phần duy nhất của tệp sai được một cách IM LẶNG:
+ * một mã lỗi trỏ nhầm câu vẫn hiện ra một hộp thoại trông bình thường.
  */
-function explain(code: number, raw: string): { title: string; body: string } {
+export function explain(code: number, raw: string): { title: string; body: string } {
   switch (code) {
     case WAKEME_NOT_CONFIGURED:
       return {
@@ -52,6 +57,15 @@ function explain(code: number, raw: string): { title: string; body: string } {
       };
     case 1403:
       return { title: 'Danh tính đang bị khoá', body: 'Liên hệ hỗ trợ để mở lại.' };
+    // 1405 = LỆCH GIỜ. Máy chủ tách nó khỏi 1403 (issue #274) đúng vì hai ca này
+    // đòi người dùng làm hai việc khác hẳn nhau, mà trước đó chúng về chung một
+    // câu. Ở màn này câu cũ còn tệ hơn ở chỗ khác: "Liên hệ hỗ trợ để mở lại" đẩy
+    // người bị lệch đồng hồ đi gọi điện cho một việc họ tự sửa trong 15 giây.
+    case 1405:
+      return {
+        title: tk('identity.err.clockSkew.title'),
+        body: tk('identity.err.clockSkew.body'),
+      };
     case 1352:
       return { title: 'Kho LAMP tạm hết', body: 'Kho sẽ được nạp lại. Quay lại sau.' };
     case 1304:

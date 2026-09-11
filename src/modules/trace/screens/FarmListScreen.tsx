@@ -36,6 +36,7 @@ import { useTk } from '../../../i18n/keys';
 import WayfindButton, { forFarm } from '../../../features/wayfind/WayfindButton';
 import { RootState } from '../../../store';
 import { loadFarms, syncFarmsFromBackend } from '../store/farmSlice';
+import { farmListState, showStaleNotice } from './farmListEmptyState';
 import { Ground } from '../components/layered/Surface';
 import { Leaf } from '../components/layered/Organic';
 import FarmShape from '../components/layered/FarmShape';
@@ -186,6 +187,17 @@ const FarmListScreen: React.FC = () => {
   const farms = useSelector((s: RootState) => s.farm.farms);
   const isLoading = useSelector((s: RootState) => s.farm.isLoading);
   const loadError = useSelector((s: RootState) => s.farm.error);
+  /**
+   * Lượt hỏi máy chủ gần nhất có tới nơi không.
+   *
+   * ⛔ Thiếu đúng con trỏ này là gốc của lỗi cũ. `loadError` chỉ được đặt từ
+   *    `loadFarms.rejected`, tức đường đọc SQLite CỤC BỘ — nó không biết gì về
+   *    lượt gọi máy chủ. Còn `offline` đọc trạng thái giao diện mạng: nó bắt
+   *    được "máy không có mạng", KHÔNG bắt được "máy có mạng mà máy chủ chết"
+   *    (Wi-Fi cổng đăng nhập, sóng yếu có IP nhưng không có tuyến, 5xx). Nên ở
+   *    đúng ca ấy cả ba điều kiện đều im và màn rơi thẳng vào "chưa có vườn nào".
+   */
+  const syncError = useSelector((s: RootState) => s.farm.farmsSyncError);
   const user = useSelector((s: RootState) => s.user.currentUser);
   const offline = useOffline();
 
@@ -235,32 +247,65 @@ const FarmListScreen: React.FC = () => {
 
   const goToAddFarm = () => navigation.navigate('FarmDetail', { farm_id: null });
 
+  /**
+   * Tình huống hiện tại — hỏi `farmListState`, KHÔNG dựng lại chuỗi `if` ở đây.
+   *
+   * Bốn nhánh dưới đây từng là bốn câu `if` nằm ngay trong hàm vẽ, và ba trong
+   * số đó không thể chạy ở ca chúng sinh ra để xử. Không lệnh nào báo, vì đo
+   * được chúng thì phải dựng cả màn. Luật nay nằm ở một hàm thuần có bài kiểm
+   * (`farmListEmptyState.ts`); chỗ này chỉ còn việc bày.
+   */
+  const listState = farmListState({
+    farmCount: farms.length,
+    matchedCount: matched.length,
+    isLoading,
+    offline,
+    syncError,
+    loadError,
+  });
+
   const renderEmpty = () => {
-    if (matched.length > 0) return null;
-    if (isLoading && farms.length === 0) return <StateView status="loading" loadingLines={4} />;
-    if (farms.length === 0 && offline) return <StateView status="offline" onRetry={refreshFarms} />;
-    if (farms.length === 0 && loadError) return <StateView status="error" onRetry={refreshFarms} />;
-    if (farms.length === 0) {
-      return (
-        <StateView
-          status="empty"
-          title={tk('trace.empty.noFarmTitle')}
-          message={tk('trace.empty.noFarmBody')}
-          actionLabel={tk('trace.button.addFarm')}
-          onAction={goToAddFarm}
-        />
-      );
+    switch (listState) {
+      case 'list':
+        return null;
+      case 'loading':
+        return <StateView status="loading" loadingLines={4} />;
+      case 'offline':
+        return <StateView status="offline" onRetry={refreshFarms} />;
+      case 'error':
+        // Câu hiện ra là câu của máy chủ (hoặc mã tham chiếu cho lỗi tầng kết
+        // nối) — không phải "có lỗi xảy ra".
+        return (
+          <StateView
+            status="error"
+            title={tk('trace.farmList.syncFailTitle')}
+            message={syncError ?? loadError ?? undefined}
+            onRetry={refreshFarms}
+          />
+        );
+      case 'empty':
+        return (
+          <StateView
+            status="empty"
+            title={tk('trace.empty.noFarmTitle')}
+            message={tk('trace.empty.noFarmBody')}
+            actionLabel={tk('trace.button.addFarm')}
+            onAction={goToAddFarm}
+          />
+        );
+      case 'noResults':
+      default:
+        // Có vườn nhưng lọc rỗng — khác hẳn "chưa có vườn nào", nên nói khác.
+        return (
+          <View style={styles.noResult}>
+            <View style={styles.noResultIcon}>
+              <Icon name="magnifying-glass-minus" size={30} color={TONE.primary} />
+            </View>
+            <Text style={TYPE.cardTitle}>{tk('trace.farmList.noResults')}</Text>
+            <Text style={[TYPE.caption, styles.noResultHint]}>{tk('trace.farmList.noResultsHint')}</Text>
+          </View>
+        );
     }
-    // Có vườn nhưng lọc rỗng — khác hẳn "chưa có vườn nào", nên nói khác.
-    return (
-      <View style={styles.noResult}>
-        <View style={styles.noResultIcon}>
-          <Icon name="magnifying-glass-minus" size={30} color={TONE.primary} />
-        </View>
-        <Text style={TYPE.cardTitle}>{tk('trace.farmList.noResults')}</Text>
-        <Text style={[TYPE.caption, styles.noResultHint]}>{tk('trace.farmList.noResultsHint')}</Text>
-      </View>
-    );
   };
 
   return (
@@ -279,10 +324,27 @@ const FarmListScreen: React.FC = () => {
             <Text style={TYPE.caption}>
               {farms.length > 0
                 ? tk('trace.farmList.count', { n: matched.length })
-                : tk('trace.empty.noFarmTitle')}
+                /* Danh sách rỗng VÀ hỏi được máy chủ ⟹ đúng là chưa có vườn nào.
+                   Rỗng vì hỏi hỏng thì câu này là một khẳng định sai, nên chỗ
+                   đó nói theo nhánh lỗi bên dưới. */
+                : syncError || loadError
+                  ? tk('trace.farmList.syncFailTitle')
+                  : tk('trace.empty.noFarmTitle')}
             </Text>
           </View>
         </View>
+
+        {/* CÓ dữ liệu, nhưng nó là bản lưu trong máy và có thể đã cũ. Không có
+            dòng này thì một danh sách cũ trông y hệt một danh sách vừa đồng bộ —
+            người dùng không có cách nào biết cây vừa thêm trên máy khác chưa về. */}
+        {showStaleNotice({ farmCount: farms.length, syncError }) ? (
+          <View style={styles.staleRow}>
+            <Icon name="cloud-arrow-down" size={13} color={TONE.sun} />
+            <Text style={styles.staleTxt} numberOfLines={2}>
+              {tk('trace.farmList.staleNotice')}
+            </Text>
+          </View>
+        ) : null}
 
         <View style={styles.search}>
           <Icon name="magnifying-glass" size={17} color={NATURE.barkSoft} />
@@ -398,6 +460,16 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', backgroundColor: TONE.primarySoft,
   },
   noResultHint: { textAlign: 'center' },
+
+  // Dải "bản lưu trong máy" — nền NẮNG, không nền đỏ. Đây không phải một lỗi
+  // người dùng gây ra và cũng không chặn việc gì; nó là một lời rào về độ tươi
+  // của dữ liệu đang xem.
+  staleRow: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACE.sm,
+    marginTop: SPACE.sm, paddingVertical: SPACE.sm, paddingHorizontal: SPACE.md,
+    borderRadius: RADIUS.field, backgroundColor: NATURE.sunSoft,
+  },
+  staleTxt: { ...TYPE.caption, flex: 1, color: NATURE.bark },
 
   moreHint: { alignItems: 'center', paddingVertical: SPACE.xl },
 

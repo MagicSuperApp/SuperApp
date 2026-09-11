@@ -169,6 +169,76 @@ export const TRACE_STRINGS = {
     zh: '换个名字试试，或清空搜索查看全部。',
     ja: '別の名前で試すか、検索を消して全件を表示してください。',
   },
+  // ── Một lượt ĐỌC từ máy chủ không tới nơi ─────────────────────────────────
+  // Tách khỏi câu của đường GỬI ẢNH: câu bên đó khuyên "thử lại lần nữa, có thể
+  // đứt giữa lúc đang gửi ảnh", và người đang mở danh sách vườn thì không gửi
+  // ảnh nào. Xem `modules/trace/store/syncErrorMessage.ts`.
+  'trace.sync.network': {
+    vi: 'Không nối được tới máy chủ. Kiểm tra sóng hoặc Wi-Fi rồi thử lại.',
+    en: 'Could not reach the server. Check your signal or Wi-Fi, then try again.',
+    zh: '无法连接服务器。请检查信号或 Wi-Fi 后重试。',
+    ja: 'サーバーに接続できません。電波か Wi-Fi を確認して、もう一度お試しください。',
+  },
+  'trace.sync.timeout': {
+    vi: 'Máy chủ trả lời quá lâu nên máy đã dừng chờ. Thử lại nhé.',
+    en: 'The server took too long, so the app stopped waiting. Try again.',
+    zh: '服务器响应太慢，应用已停止等待。请重试。',
+    ja: 'サーバーの応答が遅すぎたため待機を中止しました。もう一度お試しください。',
+  },
+  'trace.sync.badResponse': {
+    vi: 'Máy chủ có trả lời nhưng trả về thứ đọc không được — thường là do Wi-Fi đang chen một trang đăng nhập vào giữa. Hãy đăng nhập Wi-Fi đó, hoặc tắt Wi-Fi và dùng 4G, rồi thử lại.',
+    en: 'The server replied with something unreadable — usually a Wi-Fi login page in the way. Sign in to that Wi-Fi, or switch it off and use mobile data, then try again.',
+    zh: '服务器有回应，但内容无法解析 — 通常是 Wi-Fi 登录页拦在中间。请登录该 Wi-Fi，或关闭 Wi-Fi 改用移动网络后重试。',
+    ja: 'サーバーは応答しましたが内容を読み取れません — 多くは Wi-Fi のログインページが割り込んでいます。その Wi-Fi にログインするか、Wi-Fi を切ってモバイル回線でお試しください。',
+  },
+  'trace.sync.authError': {
+    vi: 'Phiên đăng nhập hết hạn. Hãy đăng nhập lại.',
+    en: 'Your session has expired. Please sign in again.',
+    zh: '登录已过期，请重新登录。',
+    ja: 'ログインの有効期限が切れました。再度サインインしてください。',
+  },
+  'trace.sync.rateLimited': {
+    vi: 'Thao tác quá nhanh. Chờ một chút rồi thử lại.',
+    en: 'Too many requests. Wait a moment, then try again.',
+    zh: '操作过于频繁。请稍候再试。',
+    ja: '操作が速すぎます。少し待ってからお試しください。',
+  },
+  'trace.sync.serverError': {
+    vi: 'Máy chủ đang bận. Thử lại sau ít phút.',
+    en: 'The server is busy. Try again in a few minutes.',
+    zh: '服务器繁忙，请过几分钟再试。',
+    ja: 'サーバーが混み合っています。数分後にお試しください。',
+  },
+  'trace.sync.unknown': {
+    vi: 'Chưa hỏi được máy chủ. Thử lại nhé.',
+    en: 'Could not ask the server. Try again.',
+    zh: '暂时无法请求服务器，请重试。',
+    ja: 'サーバーに問い合わせできませんでした。もう一度お試しください。',
+  },
+
+  // ── Đồng bộ hỏng ≠ danh sách rỗng ─────────────────────────────────────────
+  // Hai câu dưới đây tồn tại để KHÔNG dùng `trace.empty.noFarm*` cho ca máy chủ
+  // không trả lời. "Chưa có trang trại nào" là một KHẲNG ĐỊNH về dữ liệu của
+  // người dùng; app chỉ được nói câu đó khi nó thật sự hỏi được và máy chủ thật
+  // sự trả lời là không có.
+  'trace.farmList.syncFailTitle': {
+    vi: 'Không tải được danh sách trang trại',
+    en: 'Could not load your farms',
+    zh: '无法加载农场列表',
+    ja: '農場一覧を読み込めませんでした',
+  },
+  'trace.farmList.staleNotice': {
+    vi: 'Đang xem bản lưu trong máy — chưa đồng bộ được với máy chủ.',
+    en: 'Showing the copy saved on this device — not synced with the server yet.',
+    zh: '正在显示本机保存的副本 — 尚未与服务器同步。',
+    ja: 'この端末に保存された内容を表示中 — サーバーとまだ同期できていません。',
+  },
+  'trace.farmDetail.treeSyncFailTitle': {
+    vi: 'Không tải được danh sách cây',
+    en: 'Could not load the trees',
+    zh: '无法加载果树列表',
+    ja: '木の一覧を読み込めませんでした',
+  },
   'trace.empty.noFarmTitle': { vi: 'Chưa có trang trại nào', en: 'No farms yet', zh: '还没有农场', ja: 'まだ農場がありません' },
   'trace.empty.noFarmBody': {
     vi: 'Thêm mảnh vườn đầu tiên để bắt đầu ghi nhận cây và quả.',
@@ -357,6 +427,18 @@ export const TRACE_STRINGS = {
   'trace.tree.statOnTree': { vi: 'trên cây', en: 'on the tree', zh: '树上', ja: '木にある' },
   'trace.tree.statPicked': { vi: 'đã hái', en: 'picked', zh: '已采收', ja: '収穫済み' },
   'trace.tree.statLost': { vi: 'đã mất', en: 'lost', zh: '已失去', ja: '失われた' },
+  // ── Khi số liệu quả CHƯA VỀ hoặc lượt lấy đã HỎNG ──────────────────────────
+  // `0` là một con số; "chưa có số liệu" là sự vắng mặt của con số. Hai thứ đó
+  // phải đọc ra khác nhau, nếu không người ghi chép ngoài vườn chép số 0 vào báo
+  // cáo rồi không ai truy lại được là cây chưa có quả hay app không hỏi được.
+  // Dấu gạch dùng chung cho MỌI ô số chưa biết trong module — một khoá, nhiều
+  // chỗ gọi, để không nơi nào tự chế lại chỗ trống bằng số `0`.
+  'trace.value.unknown': { vi: '—', en: '—', zh: '—', ja: '—' },
+  'trace.tree.harvestedShort': { vi: 'đã thu', en: 'harvested', zh: '已收', ja: '収穫' },
+  'trace.tree.noHarvestData': { vi: 'chưa có số liệu', en: 'no data yet', zh: '暂无数据', ja: 'データなし' },
+  'trace.tree.notEstimated': { vi: 'chưa ước tính', en: 'not estimated', zh: '尚未估算', ja: '未推定' },
+  'trace.tree.estimatedSuffix': { vi: ' (ước tính)', en: ' (estimate)', zh: '（估算）', ja: '（推定）' },
+  'trace.tree.fruitCountUnit': { vi: 'quả', en: 'fruit', zh: '个果实', ja: '個' },
   'trace.tree.addFruit': { vi: 'Thêm quả', en: 'Add fruit', zh: '添加果实', ja: '果実を追加' },
   'trace.tree.addFirstFruit': { vi: 'Thêm quả đầu tiên', en: 'Add the first fruit', zh: '添加第一个果实', ja: '最初の果実を追加' },
   'trace.tree.noFruit': { vi: 'Chưa ghi nhận quả nào', en: 'No fruit recorded yet', zh: '还没有记录果实', ja: 'まだ果実の記録がありません' },

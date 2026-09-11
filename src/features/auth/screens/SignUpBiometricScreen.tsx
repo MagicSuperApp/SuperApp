@@ -127,14 +127,21 @@ const SignUpBiometricScreen: React.FC = () => {
   const startEnrollment = async () => {
     if (stage !== 'idle') return;
 
+    // Cả hai chỗ dưới truyền câu vào ô TIÊU ĐỀ — xem khối chú thích ở `completeSignUp`.
+    // Cùng một lỗi, cùng một màn, nên sửa cùng lúc: để sót một chỗ thì lần sau ai đọc
+    // màn này lại thấy hai kiểu gọi và không biết kiểu nào là đúng.
     if (!usernameStatus.ok) {
-      showError(usernameStatus.reason || 'Vui lòng nhập username hợp lệ trước khi xác thực.');
+      showError(
+        t('Tên đăng nhập chưa dùng được'),
+        usernameStatus.reason || t('Vui lòng nhập username hợp lệ trước khi xác thực.'),
+      );
       return;
     }
 
     if (!sensorAvailable) {
       showError(
-        'Thiết bị này chưa thiết lập sinh trắc học. Vui lòng bật Face ID / vân tay trong cài đặt của thiết bị, sau đó thử lại. Không có cách thay thế cho bước này.'
+        t('Máy chưa bật sinh trắc học'),
+        t('Thiết bị này chưa thiết lập sinh trắc học. Vui lòng bật Face ID / vân tay trong cài đặt của thiết bị, sau đó thử lại. Không có cách thay thế cho bước này.'),
       );
       return;
     }
@@ -201,7 +208,8 @@ const SignUpBiometricScreen: React.FC = () => {
       // `khoa_bi_thu_hoi` nghĩa là khoá còn trong máy nhưng máy chủ đã thu hồi:
       // lookup từ chối vì không còn `active`, đăng ký lại từ chối vì khoá vẫn tồn
       // tại. Cài lại app KHÔNG gỡ được (Keychain giữ khoá qua lần cài lại). Lối ra
-      // duy nhất là 24 từ, nên phải đưa nút đi thẳng tới đó.
+      // là mở màn Khôi phục danh tính — máy còn ví thì chỉ cần tên đăng nhập, không
+      // bắt buộc phải có 24 từ (xem chú thích NHÃN NÚT ngay dưới).
       //
       // Đọc `e.reason` chứ KHÔNG dò chuỗi tiếng Việt trong `e.message`: dò chuỗi
       // vỡ ngay khi đổi câu chữ hoặc khi người dùng đang dùng ngôn ngữ khác.
@@ -214,22 +222,52 @@ const SignUpBiometricScreen: React.FC = () => {
         // Màn khôi phục nay tự dò kho khoá: máy còn ví thì nó mở lối "khôi phục
         // bằng ví trên máy" (chỉ cần tên đăng nhập). Nên nhãn nói ĐÍCH, không nói
         // phương tiện — phương tiện nào dùng được thì chính màn kia quyết.
-        showWarning('Khoá trên máy này đã bị thu hồi', e?.message ?? '', {
-            confirmText: 'Mở màn khôi phục',
-            cancelText: 'Để sau',
+        //
+        // `t(...)` bọc cả ba chuỗi — KHÔNG phải thừa. `AlertPopup` không dịch gì cả
+        // (đo: 0 lời gọi `t` trong tệp đó), nên câu nào không được bọc ở CHỖ GỌI thì
+        // bản dịch viết sẵn trong `i18n/phrases/errors.ts` nằm chết.
+        showWarning(t('Khoá trên máy này đã bị thu hồi'), t(e?.message ?? ''), {
+            confirmText: t('Mở màn khôi phục'),
+            cancelText: t('Để sau'),
             onConfirm: () => navigation.navigate('RestoreIdentity'),
         });
         return;
       }
+
+      // `can_ten_dang_nhap` — máy CÓ khoá, máy chủ nhận ra khoá đó, chỉ thiếu tên
+      // đăng nhập để tra về đúng danh tính. Câu chữ đã đúng từ trước, nhưng nó ra
+      // màn hình kèm ĐÚNG MỘT nút OK — tức bảo người ta làm một việc rồi đóng cửa
+      // lại. Báo từ thực địa 11/09: người thử đọc câu này, bấm OK, và đứng nguyên
+      // tại màn đăng ký; không có chỗ nào nhập "tên đăng nhập của danh tính đó".
+      //
+      // Nhánh `khoa_bi_thu_hoi` ngay trên đã có lối ra từ lâu. Nhánh này thì không,
+      // và chênh lệch đó không có lý do — cả hai đều là ca "máy có khoá, người dùng
+      // kẹt". Nay cùng một hình dạng.
+      //
+      // Vì sao lối ra là màn Khôi phục chứ không phải một ô nhập tại chỗ: màn này
+      // là màn TẠO MỚI, nó đã cầm một `usernameTrim` mà người dùng vừa gõ cho danh
+      // tính mới. Mượn lại ô đó để nhập tên của danh tính CŨ là gộp hai ý nghĩa vào
+      // một ô — đúng kiểu nhầm dẫn tới trao nhầm danh tính mà cả khối chú thích
+      // `askWhoIsHoldingThePhone` dựng ra để tránh.
+      if (e?.reason === 'can_ten_dang_nhap') {
+        setStage('idle');
+        showWarning(t('Máy này đã có một danh tính'), t(e?.message ?? ''), {
+          confirmText: t('Mở lại danh tính đó'),
+          cancelText: t('Để sau'),
+          onConfirm: () => navigation.navigate('RestoreIdentity'),
+        });
+        return;
+      }
+
       // Cùng luật với `khoa_bi_thu_hoi` ngay trên: biết được LỐI RA thì phải đưa
       // nút, đừng chỉ hiện chữ. Ở ca này lối ra là làm lại và làm HẾT hộp sinh
       // trắc thứ hai — một việc người dùng làm được ngay tại chỗ, nên bắt họ đóng
       // hộp thoại rồi tự mò lại từ đầu là bắt họ trả giá cho một câu app đã biết.
       if (e?.reason === 'duong1_chua_xac_thuc') {
         setStage('idle');
-        showWarning('Chưa mở lại được danh tính', e?.message ?? '', {
-          confirmText: 'Thử lại ngay',
-          cancelText: 'Để sau',
+        showWarning(t('Chưa mở lại được danh tính'), t(e?.message ?? ''), {
+          confirmText: t('Thử lại ngay'),
+          cancelText: t('Để sau'),
           onConfirm: () => {
             setStage('generating');
             void completeSignUp('resume');
@@ -237,7 +275,17 @@ const SignUpBiometricScreen: React.FC = () => {
         });
         return;
       }
-      showError(e?.message || 'Không tạo được danh tính. Vui lòng thử lại.');
+
+      // Câu lỗi là NỘI DUNG, không phải tiêu đề. `showError(x)` một tham số đẩy cả
+      // câu lên làm tiêu đề rồi độn phần thân bằng chuỗi mặc định "Đã xảy ra lỗi."
+      // (`utils/alert.ts:88`) — thấy đúng như thế trong ảnh chụp từ thực địa 11/09:
+      // một câu dài, cụ thể, viết kỹ, và ngay dưới nó là ba chữ rỗng nghĩa. Chuỗi
+      // độn đó còn gõ cứng tiếng Việt, nên người đọc tiếng khác nhận một màn hình
+      // hai thứ tiếng.
+      showError(
+        t('Chưa tạo được danh tính'),
+        t(e?.message || 'Không tạo được danh tính. Vui lòng thử lại.'),
+      );
       setStage('idle');
     }
   };
@@ -293,6 +341,7 @@ const SignUpBiometricScreen: React.FC = () => {
           style: 'destructive',
           onPress: () =>
             showError(
+              t('Một máy chỉ giữ được một danh tính'),
               t('Bản ứng dụng này chưa giữ được hai danh tính trên cùng một máy — tạo danh tính ')
               + t('mới ở đây sẽ xoá vĩnh viễn khoá của người đang dùng máy. Bản cập nhật tới mở ')
               + t('được việc đó. Trong lúc chờ, bạn hãy tạo danh tính trên máy của mình.'),

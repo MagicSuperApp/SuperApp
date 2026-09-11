@@ -100,22 +100,29 @@ export const NEUTRAL_TOKENS = {
 // trace & chat dùng chung blue; work dùng Aladin green + cam accent.
 export const BRAND_TOKENS = {
   /**
-   * Truy xuất — xanh lam-lục.
+   * Truy xuất — xanh lá.
    *
-   * Phải KHỚP `modules/trace/theme/depth.ts` (`TONE.primary` / `primaryDeep`).
-   * Hai bảng màu này nuôi hai chỗ khác nhau — brand nuôi HEADER và NAVBAR, còn
-   * `depth` nuôi mọi màn bên trong — nên lệch nhau là header xanh dương đội trên
-   * một module xanh lục, đúng lỗi đã gặp. Đổi một bên thì phải đổi bên kia.
+   * ⛔ Chú thích cũ ở đây dặn "phải KHỚP `modules/trace/theme/depth.ts`, đổi một
+   *    bên thì đổi bên kia". Đó là một phép đồng bộ BẰNG TAY giữa hai bảng màu
+   *    song song, và nó đã trôi: bảng này giữ `#0F8A6A` / `#0A6350` trong khi
+   *    `depth.ts` giữ `#166e43` / `#11563a` — tức thanh trên và thanh dưới một
+   *    màu, thân màn một màu, đúng cái lỗi mà lời dặn kia định ngăn.
+   *
+   *    Nay chiều phụ thuộc chỉ còn MỘT: `depth.ts` ĐỌC từ đây (`TRACE_THEME`),
+   *    không giữ bản nào của riêng nó. Giá trị dưới đây lấy đúng bộ mà `depth`
+   *    đang dùng, nên mọi màn của module giữ nguyên hình; chỗ đổi là thanh trên
+   *    và thanh dưới, chúng về đúng màu thân màn.
    */
   trace: {
     key: 'trace',
     name: 'Truy xuất',
-    primary:      '#0F8A6A',
-    primaryDeep:  '#0A6350',
-    primaryLight: '#7CC9B1',
-    primaryGlow:  'rgba(15, 138, 106, 0.10)',
+    primary:      '#166E43',
+    primaryDeep:  '#11563A',
+    /** Nền rất nhạt cùng tông — chặng sáng của ô hero và của mảng `primarySoft`. */
+    primaryLight: '#DDF3EC',
+    primaryGlow:  'rgba(22, 110, 67, 0.10)',
     onPrimary:    '#FFFFFF',
-    gradient:     ['#12A17D', '#0A6350'] as const,
+    gradient:     ['#166E43', '#11563A'] as const,
   },
   chat: {
     key: 'chat',

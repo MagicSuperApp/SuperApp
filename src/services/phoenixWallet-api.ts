@@ -25,7 +25,7 @@ import axios, {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 // @ts-ignore — provided by react-native-dotenv at build time.
 import { PHOENIXKEY_API_URL } from '@env';
-import { PhoenixKeyApiError } from './phoenixKey-api';
+import { PhoenixKeyApiError, attachSessionRefresh } from './phoenixKey-api';
 
 // ── Request / Response shapes [CHỜ team PhoenixKey chốt] ──────────────────────
 
@@ -123,6 +123,9 @@ client.interceptors.response.use(response => {
   }
   return response;
 });
+
+// Cùng khoá thẻ, cùng ca hỏng như `orgMint-api` — xem `attachSessionRefresh`.
+attachSessionRefresh(client);
 
 async function unwrap<T>(
   promise: Promise<{ data: { code: number; message: string; result?: T } }>,

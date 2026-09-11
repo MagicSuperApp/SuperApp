@@ -39,6 +39,7 @@
 
 import { signRaw, currentUserDid } from '../sdk/phoenixKey';
 import taad from '../sdk/taadEnclave';
+import { tk } from '../i18n/keys';
 import { buildCanonicalHex } from './canonicalMessage';
 import {
   phoenixKeyApi,
@@ -147,6 +148,12 @@ export function describeAuthorizeFailure(e: unknown): string {
   const http = e instanceof PhoenixKeyApiError ? e.httpStatus : undefined;
 
   switch (code) {
+    // 1405 = LỆCH GIỜ, tách khỏi 1403 ở máy chủ (issue #274). Phải nằm TRƯỚC nhánh
+    // `http === 403` bên dưới: máy chủ trả 1405 kèm 403, nên để rơi xuống đó là
+    // người bị lệch đồng hồ đọc "chữ ký không được chấp nhận" và đi kiểm tra khoá —
+    // đúng cái ngõ cụt mà việc tách mã lỗi sinh ra để gỡ.
+    case 1405:
+      return tk('identity.err.clockSkew.body');
     case 3009: // OP_SEQ_REPLAY — mốc đã bị nâng giữa lúc đọc và lúc gửi.
       return 'Có một thao tác khác vừa chạm vào danh tính của bạn. Thử lại một lần nữa.';
     case 3010: // OP_SEQ_TOO_FAR_AHEAD — mốc gửi vượt trần cho phép.

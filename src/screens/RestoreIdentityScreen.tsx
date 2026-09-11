@@ -32,6 +32,7 @@ import { enrollKeypair, ownerPublicKey, saveUserDid, currentUserDid, signRaw } f
 import { phoenixKeyAuth } from '../services/phoenixKeyAuthService';
 import { loginUser } from '../store/userSlice';
 import { countMnemonicWords, normalizeMnemonic } from '../utils/mnemonic';
+import { describeDidState } from '../features/identity/didState';
 import { t, tf } from '../i18n';
 
 const DID_RE = /^did:phoenix:[a-z2-7]{13}:[0-9a-f]{64}$/;
@@ -256,15 +257,29 @@ const RestoreIdentityScreen = () => {
     }
 
     if (!matchedDid) {
+      // ── HỎI MÁY CHỦ MÃ ĐÓ ĐANG Ở TRẠNG THÁI NÀO ─────────────────────────────
+      // Câu mặc định dưới đây gộp hai ca ("không khớp cụm từ, HOẶC không có trên
+      // máy chủ") và bỏ sót hẳn ca thứ ba — mã CÓ THẬT nhưng đã bị thu hồi, tức
+      // ca mà thử lại bao nhiêu lần cũng không xong. `identity.isActiveAt` phân
+      // biệt được cả ba và là cửa CÔNG KHAI, gọi được ở đây dù chưa có phiên.
+      //
+      // `null` = chưa hỏi được (mất sóng / máy chủ lỗi) ⟹ giữ nguyên câu cũ. Đó
+      // là chỗ duy nhất câu gộp còn hợp lệ: lúc app thật sự chưa biết.
+      const didState = typedDid ? await describeDidState(typedDid) : null;
+
       showWarning(
         bangCumTu
           ? (typedDid ? t('Mã định danh không khớp cụm từ') : t('Không tìm thấy tài khoản khớp'))
           : t('Ví trên máy không khớp tài khoản nào vừa tra'),
         (bangCumTu
           ? (typedDid
-              ? t('Mã định danh vừa nhập không khớp cụm 24 từ, hoặc không có trên máy chủ.')
+              ? (didState ?? t('Mã định danh vừa nhập không khớp cụm 24 từ, hoặc không có trên máy chủ.'))
               : t('Các tài khoản đã lưu trên máy đều không khớp cụm 24 từ này. Kiểm tra lại cụm từ, hoặc nhập đúng tên đăng nhập / mã định danh bên dưới.'))
-          : t('Ví trên máy này không ký được cho tài khoản vừa tra. Kiểm tra lại tên đăng nhập; nếu đây đúng là máy cũ của bạn thì tài khoản có thể đã được khôi phục ở máy khác.')) +
+          : t('Ví trên máy này không ký được cho tài khoản vừa tra. Kiểm tra lại tên đăng nhập; nếu đây đúng là máy cũ của bạn thì tài khoản có thể đã được khôi phục ở máy khác.')
+            // Đường lối tắt cũng đáng biết trạng thái của mã vừa gõ. Ở đây nó
+            // ĐÍNH THÊM chứ không thay: câu trên nói về VÍ, câu này nói về MÃ —
+            // hai dữ kiện khác nhau, bỏ cái nào cũng mất thông tin.
+            + (didState ? ' ' + didState : '')) +
           (deviceHadWallet ? ' ' + t('Ví đang có trên máy được GIỮ NGUYÊN.') : '') +
           // NÓI RA khi khoá phần cứng đã bị thay. Đây là thứ người dùng không có
           // cách nào tự thấy, mà nó đổi hẳn việc họ nên làm tiếp: khoá cũ đã mất

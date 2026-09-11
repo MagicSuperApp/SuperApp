@@ -12,20 +12,51 @@
  * Đo 2026-08-31 trước khi có bài kiểm này: 26 lần / 13 tệp. Sau khi dọn: 9 lần
  * / 6 tệp, tất cả nằm trong danh sách miễn dưới đây kèm lý do.
  */
-import { readFileSync, readdirSync, statSync } from 'fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'fs';
 import { join, relative } from 'path';
 
+import { INSTANCES } from '../config/instance.config';
 import { APP_TOKENS, AUTH_TOKENS, BRAND_TOKENS } from './tokens';
 
 const GOC = join(__dirname, '..', '..');
 
-/** Giá trị đổi theo app — viết cứng cái nào trong đây là app thứ hai sai màu. */
+/**
+ * Giá trị đổi theo app — viết cứng cái nào trong đây là app thứ hai sai màu.
+ *
+ * ⛔ Bản trước dựng tập này CHỈ từ `tokens.ts`, và đó là một lỗ theo đúng nghĩa
+ *    của phép đo: một bảng nhãn hiệu SONG SONG, nằm ngoài `tokens.ts`, thì
+ *    không có giá trị nào để mà trùng — bài kiểm xanh và không canh gì. Đúng ca
+ *    đã xảy ra: `modules/trace/theme/depth.ts` giữ ba sắc xanh riêng
+ *    (`#166e43` / `#11563a` / `#DDF3EC`), 0 lần xuất hiện trong `tokens.ts`.
+ *
+ * Nay tập này gom TỪ CẢ HAI đầu: bộ token nền, VÀ bảng ghi đè của từng instance
+ * trong `INSTANCES`. Nhờ vậy một tệp gõ cứng màu của CheckFarm cũng bị bắt, chứ
+ * không chỉ màu của app mặc định.
+ *
+ * Nó vẫn KHÔNG bắt được một bảng song song mang màu chưa app nào khai — không
+ * phép so giá trị nào làm được điều đó. Chỗ canh cho ca ấy là hai bài cuối tệp
+ * này (hình dạng khai báo) cộng `modules/trace/theme/brandFollowsInstance.test.ts`
+ * (hành vi: đổi instance thì màu module phải đổi theo).
+ */
+const instanceBrandHexes = (): string[] =>
+  Object.values(INSTANCES).flatMap((inst) => {
+    const t = inst.themeConfig;
+    return [
+      t.app?.accent, t.app?.accentDeep, t.app?.accentLight,
+      t.header?.bg,
+      ...Object.values(t.brand ?? {}).flatMap((b: any) => [
+        b?.primary, b?.primaryDeep, b?.primaryLight, ...(b?.gradient ?? []),
+      ]),
+    ].filter((h): h is string => typeof h === 'string' && /^#[0-9A-Fa-f]{6}$/.test(h));
+  });
+
 const MANG_NHAN_DIEN = new Set<string>(
   [
     APP_TOKENS.accent,
     APP_TOKENS.accentDeep,
     APP_TOKENS.accentLight,
     ...Object.values(BRAND_TOKENS).flatMap((b) => [b.primary, b.primaryDeep, b.primaryLight, ...b.gradient]),
+    ...instanceBrandHexes(),
     // Bảng CỬA VÀO — thêm 2026-09-11, cùng đợt đưa nó từ `features/auth/theme.ts`
     // về tầng token. Nó vắng mặt ở đây suốt, và đó chính là lý do một dải lam
     // riêng phủ trọn bốn màn cửa vào của app xanh lục mà không bài nào đỏ.
@@ -91,7 +122,7 @@ function quetTep(thuMuc: string, ra: string[] = []): string[] {
  * sẽ biến mất khỏi phép quét. Đó là lọt lưới — chiều hỏng đắt hơn. Chú thích
  * đuôi dòng thì không cần cắt: phần mã trên cùng dòng vẫn còn nguyên hex.
  */
-function hexTrongMaChay(noiDung: string): string[] {
+function runtimeCodeLines(noiDung: string): string[] {
   const maChay: string[] = [];
   let trongKhoi = false;
 
@@ -120,7 +151,12 @@ function hexTrongMaChay(noiDung: string): string[] {
     if (!sach.trim().startsWith('//')) maChay.push(sach);
   }
 
-  return maChay
+  return maChay;
+}
+
+/** Mọi hex nằm trong MÃ CHẠY của một tệp, viết hoa. */
+function hexInRuntimeCode(noiDung: string): string[] {
+  return runtimeCodeLines(noiDung)
     .flatMap((d) => d.match(/#[0-9A-Fa-f]{6}\b/g) ?? [])
     .map((h) => h.toUpperCase());
 }
@@ -129,21 +165,21 @@ it('phép quét tự kiểm — hỏng phép quét thì bài dưới xanh giả'
   const tep = quetTep(join(GOC, 'src'));
   expect(tep.length).toBeGreaterThan(200);
   // và nó phải THẤY được hex trong mã chạy, nếu không thì nó chỉ đang trả rỗng.
-  expect(hexTrongMaChay("const a = '#3B6EA8';")).toEqual(['#3B6EA8']);
-  expect(hexTrongMaChay("// nền cũ là #3B6EA8")).toEqual([]);
+  expect(hexInRuntimeCode("const a = '#3B6EA8';")).toEqual(['#3B6EA8']);
+  expect(hexInRuntimeCode("// nền cũ là #3B6EA8")).toEqual([]);
 
   // Chú thích KHỐI nhiều dòng, lối thụt lề không có `*` ở đầu dòng tiếp nối.
   // Bản trước của phép quét trượt đúng cực này — nó lọc theo ký tự đầu dòng,
   // nên dòng giữa khối trông y hệt mã chạy. Thiếu ca này thì bài tự kiểm xanh
   // ở CẢ HAI cực, và cái nó tự nhận là canh thì nó không canh.
   const khoi = ['/*', '  nền cũ ở lớp token là', '  XANH DƯƠNG #3B6EA8 nên bỏ.', '*/'].join('\n');
-  expect(hexTrongMaChay(khoi)).toEqual([]);
+  expect(hexInRuntimeCode(khoi)).toEqual([]);
 
   // Mở và đóng khối trên CÙNG một dòng thì phần mã hai bên vẫn phải thấy được.
-  expect(hexTrongMaChay("const a = /* cũ #FFFFFF */ '#3B6EA8';")).toEqual(['#3B6EA8']);
+  expect(hexInRuntimeCode("const a = /* cũ #FFFFFF */ '#3B6EA8';")).toEqual(['#3B6EA8']);
 
   // Chú thích ĐUÔI dòng cố ý KHÔNG cắt: cắt từ `//` sẽ cắt nhầm trong `https://`.
-  expect(hexTrongMaChay("const a = '#3B6EA8'; // nền")).toEqual(['#3B6EA8']);
+  expect(hexInRuntimeCode("const a = '#3B6EA8'; // nền")).toEqual(['#3B6EA8']);
 });
 
 it('màu mang nhận diện không được viết cứng ngoài src/theme/', () => {
@@ -151,7 +187,7 @@ it('màu mang nhận diện không được viết cứng ngoài src/theme/', ()
   for (const p of quetTep(join(GOC, 'src'))) {
     const duong = relative(GOC, p).split('\\').join('/');
     if (BO_QUA.some((b) => duong.includes(b)) || MIEN[duong]) continue;
-    const trung = hexTrongMaChay(readFileSync(p, 'utf8')).filter((h) => MANG_NHAN_DIEN.has(h));
+    const trung = hexInRuntimeCode(readFileSync(p, 'utf8')).filter((h) => MANG_NHAN_DIEN.has(h));
     if (trung.length) viPham.push(`${duong}: ${[...new Set(trung)].join(', ')}`);
   }
   expect(viPham).toEqual([]);
@@ -160,4 +196,69 @@ it('màu mang nhận diện không được viết cứng ngoài src/theme/', ()
 it('danh sách miễn không phình ra âm thầm', () => {
   // Miễn thêm một tệp là một quyết định, không phải một dòng thêm vào cho xanh.
   expect(Object.keys(MIEN)).toHaveLength(6);
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// Bảng nhãn hiệu SONG SONG trong một module — canh theo HÌNH DẠNG, không theo
+// giá trị.
+//
+// Ba bài trên so GIÁ TRỊ, nên chúng mù với một bảng mang màu mà chưa app nào
+// khai. Hai bài dưới hỏi câu khác: trong `src/modules/*/theme/`, có khoá nào
+// mang NGHĨA nhãn hiệu mà được gán thẳng một mã màu không? Câu đó trả lời được
+// mà không cần biết màu ấy là màu gì — và nó đúng là hình dạng đã lọt lưới.
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * Khoá mang nghĩa "màu chủ đạo của app này". Cố ý KHÔNG gồm tên riêng của một
+ * module (`leaf`, `moss`, `sun`): bộ này phải dùng được cho mọi module, kể cả
+ * module chưa ai viết.
+ */
+const BRAND_KEYS = [
+  'primary', 'primaryDeep', 'primarySoft', 'primaryLight', 'primaryGlow',
+  'accent', 'accentDeep', 'accentLight',
+];
+
+function moduleThemeFiles(): string[] {
+  const out: string[] = [];
+  const modulesRoot = join(GOC, 'src', 'modules');
+  for (const moduleName of readdirSync(modulesRoot)) {
+    const themeDir = join(modulesRoot, moduleName, 'theme');
+    // Module không có thư mục `theme/` là chuyện thường, không phải lỗi.
+    if (!existsSync(themeDir) || !statSync(themeDir).isDirectory()) continue;
+    out.push(...quetTep(themeDir));
+  }
+  return out;
+}
+
+/** `primary: '#166e43'` → vi phạm. `primary: TRACE_THEME.primary` → không. */
+function hexAssignedToBrandKey(noiDung: string): string[] {
+  const ra: string[] = [];
+  for (const dong of runtimeCodeLines(noiDung)) {
+    for (const khoa of BRAND_KEYS) {
+      if (new RegExp(`\\b${khoa}\\s*:\\s*'#[0-9A-Fa-f]{6}'`).test(dong)) {
+        ra.push(`${khoa} ← ${dong.trim()}`);
+      }
+    }
+  }
+  return ra;
+}
+
+it('phép quét hình dạng tự kiểm — hai cực', () => {
+  // Thiếu ca này thì một biểu thức chính quy hỏng vẫn cho bài dưới xanh.
+  expect(hexAssignedToBrandKey("  primary: '#166e43',")).toHaveLength(1);
+  expect(hexAssignedToBrandKey('  primary: TRACE_THEME.primary,')).toHaveLength(0);
+  expect(hexAssignedToBrandKey('  get primary(): string { return NATURE.leaf; },')).toHaveLength(0);
+  // Chú thích nêu giá trị cũ để giải thích lịch sử thì KHÔNG phải vi phạm.
+  expect(hexAssignedToBrandKey("// trước đây primary: '#166e43'")).toHaveLength(0);
+  // Khoá KHÔNG mang nghĩa nhãn hiệu thì để yên — màu minh hoạ của module.
+  expect(hexAssignedToBrandKey("  moss: '#4fa964',")).toHaveLength(0);
+});
+
+it('không module nào giữ bảng nhãn hiệu riêng', () => {
+  const violations: string[] = [];
+  for (const p of moduleThemeFiles()) {
+    const found = hexAssignedToBrandKey(readFileSync(p, 'utf8'));
+    if (found.length) violations.push(`${relative(GOC, p).split('\\').join('/')}: ${found.join(' | ')}`);
+  }
+  expect(violations).toEqual([]);
 });

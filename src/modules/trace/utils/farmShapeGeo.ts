@@ -17,18 +17,57 @@
  * tay. Đây là hàm để NHÌN, không phải để đo đạc.
  */
 
+import { isValidLatLon } from '../../../features/wayfind/wayfind';
+
 export interface DiemDat { lat: number; lng: number }
 export interface DiemVe { x: number; y: number }
 
-/** Một điểm trên mặt đất có dùng được không. Toạ độ thiếu/rác bị loại, không đoán. */
+/**
+ * Đổi sang số CHỈ khi đầu vào thật sự mang một con số.
+ *
+ * `Number()` trần KHÔNG dùng được ở đây: `Number(null)`, `Number('')` và
+ * `Number([])` đều ra `0` — một số hữu hạn, hợp lệ với mọi phép kiểm sau đó, và
+ * nằm ở Vịnh Guinea. Tức một trường VẮNG tự biến thành một toạ độ có thật.
+ */
+const toFiniteNumber = (v: unknown): number => {
+  if (typeof v === 'number') return v;
+  if (typeof v === 'string' && v.trim() !== '') return Number(v);
+  return NaN;
+};
+
+/**
+ * Một điểm trên mặt đất có dùng được không. Toạ độ thiếu/rác bị loại, không đoán.
+ *
+ * ⛔ Bản trước chỉ hỏi "có phải số hữu hạn không". `0` là số hữu hạn, và `0/0`
+ *    chính là thứ máy sinh ra khi chưa bắt được GPS: điểm đó rơi ra Vịnh Guinea,
+ *    khung nhìn phải giãn ra để chứa nó, nên toàn bộ cây thật co lại thành một
+ *    chấm. `999` / `-5000` cũng là số hữu hạn và cũng lọt.
+ *
+ * Luật nay mượn NGUYÊN `isValidLatLon` (`features/wayfind/wayfind.ts`) thay vì
+ * viết bản thứ tư: kho này từng có bốn phép kiểm toạ độ gần giống nhau, mỗi bản
+ * thiếu một ràng buộc khác nhau, nên cùng một cái cây được màn này nhận và màn
+ * kia loại — lệch kiểu không ai đọc ra được.
+ */
 export const hopLe = (p: any): boolean =>
-  p != null && Number.isFinite(Number(p?.lat)) && Number.isFinite(Number(p?.lng ?? p?.lon));
+  p != null && isValidLatLon({ lat: toFiniteNumber(p?.lat), lon: toFiniteNumber(p?.lng ?? p?.lon) });
 
 /** Lọc vòng ranh giới về dạng dùng được. Không đủ ba điểm thì không có mảnh đất nào. */
 export const vongRanh = (coordinates: unknown): DiemDat[] =>
   ((coordinates ?? []) as any[])
     .filter(hopLe)
-    .map((p: any) => ({ lat: Number(p.lat), lng: Number(p.lng ?? p.lon) }));
+    .map((p: any) => ({ lat: toFiniteNumber(p.lat), lng: toFiniteNumber(p.lng ?? p.lon) }));
+
+/**
+ * Bao nhiêu điểm bị loại khỏi một vòng ranh.
+ *
+ * Điểm rác biến mất IM LẶNG là chỗ hỏng thứ hai của bản trước: ranh giới hụt
+ * một đỉnh trông y hệt một ranh giới người ta vẽ thiếu. Nơi gọi đếm được thì
+ * nói ra được.
+ */
+export const droppedPointCount = (coordinates: unknown): number => {
+  const tho = ((coordinates ?? []) as any[]).length;
+  return tho - vongRanh(coordinates).length;
+};
 
 /**
  * Vị trí một cây. BỐN hình dạng, vì trong kho này cây có bốn hình dạng thật.
@@ -49,10 +88,12 @@ export const vongRanh = (coordinates: unknown): DiemDat[] =>
  * không bị đọc bằng khoá kém tin cậy hơn.
  */
 export const viTriCay = (t: any): DiemDat | null => {
+  // Cùng luật với `hopLe` — một cây bị hình thửa loại mà bản đồ vẫn nhận (hoặc
+  // ngược lại) là hai màn nói hai chuyện về cùng một cái cây.
   const thu = (lat: unknown, lng: unknown): DiemDat | null => {
-    const a = Number(lat);
-    const b = Number(lng);
-    return Number.isFinite(a) && Number.isFinite(b) ? { lat: a, lng: b } : null;
+    const a = toFiniteNumber(lat);
+    const b = toFiniteNumber(lng);
+    return isValidLatLon({ lat: a, lon: b }) ? { lat: a, lng: b } : null;
   };
 
   // 1. Kiểu `Tree` của module: `latitude` / `longitude`.

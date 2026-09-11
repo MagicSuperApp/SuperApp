@@ -284,7 +284,7 @@ const MyDevicesScreen: React.FC = () => {
             <TextInput
               value={draft}
               onChangeText={setDraft}
-              placeholder="Ví dụ: iPhone của Thư"
+              placeholder="Ví dụ: iPhone của tôi"
               placeholderTextColor={COLORS.textMuted}
               style={styles.input}
               maxLength={DEVICE_NAME_MAX_LEN}

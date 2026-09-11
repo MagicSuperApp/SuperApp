@@ -2,7 +2,7 @@
  * Ví tổ chức — SERVICE tạo OrgDID + mint LAMP bằng OrgDID.
  *
  * Tầng nghiệp-vụ trên orgMint-api.ts (REST + SSE). Chốt LUỒNG 2 BƯỚC mint và
- * gắn cờ ORG_MINT_ENABLED. Phần DỰNG + KÝ CBOR chạy ở Enclave NATIVE (Thư): service
+ * gắn cờ ORG_MINT_ENABLED. Phần DỰNG + KÝ CBOR chạy ở Enclave NATIVE: service
  * NHẬN hàm `buildAndSignTx` từ ngoài (dependency injection) — KHÔNG tự viết ký ở đây.
  *
  * ── RÀNG BUỘC UX SỐNG CÒN ─────────────────────────────────────────────────────
@@ -12,7 +12,7 @@
  * "chờ endpoint release"). TUYỆT ĐỐI không trộn 2 bước, không hiển thị "mint về ví".
  *
  * ── CHỜ ────────────────────────────────────────────────────────────────────────
- *   - Thư (native): buildAndSignTx — dựng CBOR mint + ký (m-of-n gom đủ m chữ ký).
+ *   - Enclave native: buildAndSignTx — dựng CBOR mint + ký (m-of-n gom đủ m chữ ký).
  *   - LAMP: cap/authority/redeemer (đừng hardcode trong MintLampRequest).
  *   - PhoenixKey: endpoint claim/vesting-release (bước 2).
  */
@@ -119,13 +119,13 @@ export interface MintSubmitResult {
 }
 
 /**
- * Hàm dựng + ký CBOR mint — CUNG CẤP TỪ ENCLAVE NATIVE (Thư).
+ * Hàm dựng + ký CBOR mint — CUNG CẤP TỪ ENCLAVE NATIVE.
  *
  * Nhận requestId (để native lấy intent LAMP_MINT đã ký ở backend/gom chữ ký) và
  * trả về CBOR tx ĐÃ ký (hex). Với m-of-n: native/luồng gom đủ m chữ ký trước khi
  * trả (single = 1 chữ ký). Service KHÔNG biết chi tiết ký — chỉ chuyển tiếp CBOR.
  *
- * TODO(Thư): ráp hàm này với module Enclave. Witness Cardano cho tx mint LAMP
+ * TODO(Enclave native): ráp hàm này với module Enclave. Witness Cardano cho tx mint LAMP
  * ON-CHAIN phải ký **Ed25519** (từ ví seed / khoá on-chain), KHÔNG dùng P-256.
  * ⚠️ ĐỪNG để P-256 chạm validator: `phoenixKey-native.sign` (P-256/secp256r1, HW key
  * Secure Enclave) CHỈ để verify OFF-CHAIN ở backend (challenge/verify đăng nhập, duyệt
@@ -351,7 +351,7 @@ export function waitMintSigned(requestId: string): {
 }
 
 /**
- * BƯỚC 1c: native dựng + ký CBOR (Thư) → submit lên chuỗi. Trả txHash.
+ * BƯỚC 1c: native dựng + ký CBOR → submit lên chuỗi. Trả txHash.
  * `buildAndSignTx` TIÊM TỪ NGOÀI (Enclave native) — service không tự ký.
  */
 export async function submitMintTx(args: {
@@ -361,7 +361,7 @@ export async function submitMintTx(args: {
 }): Promise<MintSubmitResult> {
   ensureEnabled();
 
-  // Dựng + ký ở Enclave native (m-of-n gom đủ m chữ ký; single = 1). TODO(Thư).
+  // Dựng + ký ở Enclave native (m-of-n gom đủ m chữ ký; single = 1). TODO(Enclave native).
   const { signedTxCbor } = await args.buildAndSignTx({
     orgDid: args.orgDid,
     requestId: args.requestId,

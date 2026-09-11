@@ -1893,7 +1893,7 @@ const FarmDetailScreen = () => {
   };
 
   // Build 51 (2026-05-17): track last reject reason for UI feedback toast.
-  // Fixes Thư's "0 điểm" silent-fail bug — user wants to know app is working
+  // Vá lỗi "0 điểm" hỏng câm — user wants to know app is working
   // but rejecting because GPS accuracy yếu or distance chưa đủ.
   const [autoPointRejectReason, setAutoPointRejectReason] = useState<string | null>(null);
   const autoPointRejectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

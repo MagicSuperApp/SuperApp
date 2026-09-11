@@ -15,7 +15,7 @@ const okValue = (raw: string) => {
 
 describe('cắt trước, đo sau — đúng thứ tự máy chủ', () => {
   it('cắt hai đầu rồi mới trả về, để cái được duyệt cũng là cái được lưu', () => {
-    expect(okValue('  iPhone của Thư  ')).toBe('iPhone của Thư');
+    expect(okValue('  iPhone của tôi  ')).toBe('iPhone của tôi');
   });
 
   it('chuỗi chỉ có khoảng trắng là RỖNG, không phải "đủ dài"', () => {
@@ -72,7 +72,7 @@ describe('ký tự phá bố cục — đúng danh sách của isLayoutBreaking'
   it('KHÔNG chặn tiếng Việt có dấu, emoji, hay khoảng trắng ở giữa', () => {
     // Cái giá của việc chép luật sai theo chiều siết: người dùng bị từ chối một
     // cái tên mà máy chủ sẵn sàng nhận, và không ai biết vì sao.
-    expect(okValue('Điện thoại của Thư 📱')).toBe('Điện thoại của Thư 📱');
+    expect(okValue('Điện thoại của tôi 📱')).toBe('Điện thoại của tôi 📱');
     expect(okValue('Máy bàn — phòng kỹ thuật')).toBe('Máy bàn — phòng kỹ thuật');
     expect(okValue('Nguyễn Văn Ánh Đường')).toBe('Nguyễn Văn Ánh Đường');
   });

@@ -224,7 +224,7 @@ class MapErrorBoundary extends React.Component<{ children: React.ReactNode }, { 
 //   mã cây         chuỗi băm ngắn, không ai đọc — tên mới là thứ nhà vườn gọi
 //
 // Một hàng ngang cũng chỉ xếp được MỘT cây mỗi dòng, nên vườn 128 cây thành
-// 128 dòng phải cuộn. Lưới ba cột cho một màn chứa ~12 cây thay vì ~4.
+// 128 dòng phải cuộn. Lưới bốn cột cho một màn chứa ~16 cây thay vì ~4.
 //
 // ── Vòng tiến độ bao quanh, không phải thanh nằm dưới ──────────────────
 // Tiến độ và cây thành MỘT khối: mắt không phải nối một thanh ngang với một cái
@@ -1210,13 +1210,17 @@ const FarmDetailMode = ({
   const [cayDangXem, setCayDangXem] = useState<any | null>(null);
 
   /**
-   * Đường kính một nút cây trong lưới BA cột.
+   * Đường kính một nút cây trong lưới BỐN cột.
    *
-   * Suy từ bề ngang màn chứ không gõ số: lề trang 12 mỗi bên, hai khe 12 giữa
-   * ba cột. Gõ một con số cố định thì máy hẹp bị tràn còn máy rộng thừa chỗ —
+   * Suy từ bề ngang màn chứ không gõ số: lề trang 12 mỗi bên, BA khe 12 giữa
+   * bốn cột. Gõ một con số cố định thì máy hẹp bị tràn còn máy rộng thừa chỗ —
    * và cả hai đều không có gì đỏ.
+   *
+   * ⚠ Số cột và công thức này phải đi cùng nhau. Đổi `numColumns` mà quên đổi số
+   * khe ở đây thì hàng cuối tràn ra khỏi mép phải — và nó tràn ÂM THẦM, vì
+   * `FlatList` không kêu, nó chỉ đẩy cột cuối ra ngoài vùng thấy được.
    */
-  const CO_NUT = Math.floor((width - 12 * 2 - 12 * 2) / 3);
+  const CO_NUT = Math.floor((width - 12 * 2 - 12 * 3) / 4);
 
   /**
    * LƯỚI BENTO của màn này. Ba vế của luật (xem `BentoTile` trong
@@ -1254,6 +1258,14 @@ const FarmDetailMode = ({
           )}
         </Text>
         <View style={styles.bentoFactDot} />
+        {/* ⛔ Tên này từng KHÔNG có trong bộ biểu tượng của kho, nên chỗ này vẽ
+               ra một ô TRỐNG cạnh con số diện tích — `Icon` nuốt tên lạ chứ
+               không ném, nên không lệnh nào báo. Nhánh `develop` đã vá đúng gốc:
+               sinh thật tệp `assets/icons/ruler-combined.svg` (#312), nên tên
+               này nay có thật. `components/Icon/iconNames.test.ts` canh chỗ đó.
+
+               Đừng đổi sang một tên khác "cho chắc": bài kiểm kia đã đo được
+               việc này rồi, và cái thước nói đúng thứ đang đo. */}
         <Icon name="ruler-combined" size={13} color={ORG_TONE.rain} />
         <Text style={styles.bentoFactTxt}>{areaLabel}</Text>
       </View>
@@ -1459,11 +1471,15 @@ const FarmDetailMode = ({
           ) : null
         }
         /*
-          LƯỚI BA CỘT. `numColumns` là thuộc tính TĨNH của `FlatList` — đổi nó
+          LƯỚI BỐN CỘT. `numColumns` là thuộc tính TĨNH của `FlatList` — đổi nó
           lúc chạy làm danh sách ném. Ở đây nó là hằng nên không sao; nếu ngày
           nào cần đổi theo bề ngang màn thì phải đổi cả `key` của danh sách.
+
+          Bốn cột cho một màn chứa ~16 cây thay vì ~12. Giá phải trả là chữ trong
+          nút nhỏ đi — cỡ chữ ở `treeChipTen`/`treeChipSo` đã hạ theo, xem chú
+          thích ở đó.
         */
-        numColumns={3}
+        numColumns={4}
         columnWrapperStyle={styles.treeGridHang}
         renderItem={({ item }) => (
           <TreeChip
@@ -1719,11 +1735,6 @@ const FarmDetailScreen = () => {
   const [editMode, setEditMode] = useState<'recording' | 'edit-ready'>('recording');
   const [editHistory, setEditHistory] = useState<{ lat: number; lng: number }[][]>([]);
   const walkAwayStateRef = useRef<WalkAwayState>(initWalkAwayState());
-  const [coordMapVisible, setCoordMapVisible] = useState(false);
-  const [mapModule, setMapModule] = useState<any>(null);
-  const [mapError, setMapError] = useState<string | null>(null);
-  const [mapReady, setMapReady] = useState(false);
-  const [coordMapMinimal, setCoordMapMinimal] = useState(true);
   const [farm, setFarm] = useState<any>(null);
   // Vòng đời lượt nạp vườn. KHÔNG suy được từ `farm === null`: "chưa nạp xong" và
   // "nạp xong mà không có" là hai sự thật khác nhau, và gộp chúng lại chính là cái
@@ -1810,20 +1821,6 @@ const FarmDetailScreen = () => {
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery]);
-
-  // Load MapLibre when user requests coordinate map
-  useEffect(() => {
-    if (coordMapVisible && !mapModule) {
-      import('@maplibre/maplibre-react-native')
-        .then((mod) => {
-          setMapModule(mod);
-          setMapError(null);
-        })
-        .catch((err: any) => {
-          setMapError(err?.message ?? String(err));
-        });
-    }
-  }, [coordMapVisible, mapModule]);
 
   // Ref để getCurrentPosition callback đọc coordinates hiện tại (tránh stale closure)
   const coordinatesRef = useRef<{ lat: number; lng: number }[]>([]);
@@ -2476,9 +2473,9 @@ const FarmDetailScreen = () => {
     // nên người dùng không đọc được là màn đang mở vườn nào chứ không phải đứng im.
     return (
       <View style={styles.root}>
-        <View style={styles.coordMapLoadingContainer}>
+        <View style={styles.dangMoWrap}>
           <ActivityIndicator size="large" color={COLORS.accent} />
-          <Text style={styles.coordMapLoadingText}>Đang mở vườn…</Text>
+          <Text style={styles.dangMoTxt}>Đang mở vườn…</Text>
         </View>
       </View>
     );
@@ -2525,124 +2522,6 @@ const FarmDetailScreen = () => {
     );
   }
 
-  const MapView = () => {
-    const MapLib = mapModule?.default ? mapModule.default : mapModule;
-    const canRenderMap = Boolean(MapLib?.MapView);
-    const polygonCoords = farm.coordinates && farm.coordinates.length >= 3
-      ? [...farm.coordinates.map((c: any) => [c.lng, c.lat]), [farm.coordinates[0].lng, farm.coordinates[0].lat]]
-      : [];
-
-    if (mapError) {
-      return (
-        <View style={styles.coordMapErrorContainer}>
-          <Text style={styles.coordMapErrorText}>Không thể tải bản đồ: {mapError}</Text>
-          <TouchableOpacity
-            style={[styles.recordBtn, { marginTop: 12, paddingVertical: 10, paddingHorizontal: 14 }]}
-            onPress={() => {
-              setMapError(null);
-              setMapReady(false);
-              setMapModule(null);
-              import('@maplibre/maplibre-react-native')
-                .then(mod => setMapModule(mod))
-                .catch(e => setMapError(e?.message ?? String(e)));
-            }}
-            activeOpacity={0.8}
-          >
-            <Text style={[styles.recordBtnText, { color: COLORS.white }]}>Thử lại</Text>
-          </TouchableOpacity>
-        </View>
-      );
-    }
-
-    if (!mapModule) {
-      return (
-        <View style={styles.coordMapLoadingContainer}>
-          <ActivityIndicator size="large" color={COLORS.accent} />
-          <Text style={styles.coordMapLoadingText}>Đang tải bản đồ...</Text>
-        </View>
-      );
-    }
-
-    if (!canRenderMap) {
-      return (
-        <View style={styles.coordMapErrorContainer}>
-          <Text style={styles.coordMapErrorText}>Bản đồ không khả dụng trên thiết bị này.</Text>
-        </View>
-      );
-    }
-
-    return (
-      <MapErrorBoundary>
-        <MapLib.MapView
-          style={StyleSheet.absoluteFillObject}
-          logoEnabled={false}
-          attributionEnabled={false}
-          onDidFinishLoadingMap={() => setMapReady(true)}
-        >
-          <MapLib.Camera
-            zoomLevel={14}
-            centerCoordinate={
-              farm.coordinates && farm.coordinates.length > 0
-                ? [farm.coordinates[0].lng, farm.coordinates[0].lat]
-                : [106.660172, 10.762622]
-            }
-          />
-
-          {/* Always show base map tiles for streets and areas.
-
-              ⛔ Ba dòng subdomain OSM đã ngưng (`a|b|c.tile…`) NẰM Ở ĐÂY tới tận
-              bản này, dù chỗ ngay trên trong CÙNG TỆP đã vá và ghi hẳn lý do ra.
-              Chúng không phân giải được, nên lớp bản đồ đường phố ra một mảng
-              xanh dương trống trong khi vệ tinh vẫn chạy (vệ tinh trỏ ArcGIS).
-              Nay cả hai nguồn lấy từ MỘT hằng — xem `mapTiles.ts`. */}
-          <MapLib.RasterSource
-            id="osm-tiles-detail"
-            tileUrlTemplates={[OSM_STREET_TILES]}
-            tileSize={256}
-          >
-            <MapLib.RasterLayer id="osm-tiles-layer-detail" sourceID="osm-tiles-detail" />
-          </MapLib.RasterSource>
-
-          {farm.coordinates && farm.coordinates.length > 0 && (
-            farm.coordinates.map((coord: any, idx: number) => (
-              <MapLib.PointAnnotation
-                key={`coord-${idx}`}
-                id={`coord-${idx}`}
-                coordinate={[coord.lng, coord.lat]}
-              >
-                <View style={styles.coordMarker}>
-                  <Text style={styles.coordMarkerText}>{idx + 1}</Text>
-                </View>
-              </MapLib.PointAnnotation>
-            ))
-          )}
-
-          {polygonCoords.length > 0 && (
-            <MapLib.ShapeSource
-              id="farm-polygon-source-detail"
-              shape={{
-                type: 'Feature',
-                geometry: {
-                  type: 'Polygon',
-                  coordinates: [polygonCoords],
-                },
-              }}
-            >
-              <MapLib.FillLayer
-                id="farm-polygon-fill-detail"
-                style={{ fillColor: 'rgba(46, 204, 113, 0.25)' }}
-              />
-              <MapLib.LineLayer
-                id="farm-polygon-line-detail"
-                style={{ lineColor: COLORS.accent, lineWidth: 2 }}
-              />
-            </MapLib.ShapeSource>
-          )}
-        </MapLib.MapView>
-      </MapErrorBoundary>
-    );
-  };
-
   return (
     <View style={{ flex: 1 }}>
       <FarmDetailMode
@@ -2659,7 +2538,17 @@ const FarmDetailScreen = () => {
         }}
         onBack={() => navigation.goBack()}
         onUpdateFarmName={handleUpdateFarmName}
-        onCoordinatesPress={() => setCoordMapVisible(true)}
+        /* Bản đồ vườn nay là một MÀN, không phải lớp phủ dựng trong màn này.
+           `trees` đi kèm làm đường lùi: màn kia đọc cây từ Redux trước, nhưng
+           một danh sách rỗng ở đó sẽ cho ra bản đồ không có chấm cây nào — đúng
+           cái lỗi mà màn kia sinh ra để vá. */
+        onCoordinatesPress={() =>
+          (navigation.navigate as any)('FarmMap', {
+            farm,
+            farmId: farm?.id ?? farm_id ?? undefined,
+            trees,
+          })
+        }
         onView3DFarm={() => {
           // Toàn cảnh vườn: KHÔNG truyền treeId → Space3D mở ở chế độ vườn.
           // farm_id là nguồn dự phòng khi `farm` (đọc từ SQLite) chưa về.
@@ -2669,20 +2558,6 @@ const FarmDetailScreen = () => {
           });
         }}
       />
-
-      {coordMapVisible && (
-        <View style={styles.coordMapOverlay}>
-          <View style={styles.coordMapHeader}>
-            <Text style={styles.coordMapHeaderText}>Bản đồ toạ độ nông trại</Text>
-            <TouchableOpacity onPress={() => setCoordMapVisible(false)}>
-              <Icon name="xmark" size={22} color={COLORS.textMuted} />
-            </TouchableOpacity>
-          </View>
-          <View style={styles.coordMapContainer}>
-            <MapView />
-          </View>
-        </View>
-      )}
 
       {treeIdentificationResult && (
         <View style={[StyleSheet.absoluteFill, { zIndex: 9999, elevation: 9999, backgroundColor: 'rgba(0,0,0,0.85)' }]}>
@@ -2767,9 +2642,14 @@ const styles = StyleSheet.create({
    * hai mép không bao giờ khớp tuyệt đối — chúng để lại một đường chỉ mờ, và cái
    * vòng đọc ra "thứ đeo quanh nút" thay vì "viền của nút".
    */
+  /**
+   * Cỡ chữ ĐI THEO số cột. Lưới bốn cột cho nút đường kính ~75 trên máy 360dp,
+   * mà `RingProgress` chừa lề trong bằng `size / 5` mỗi bên — còn ~45 điểm cho
+   * chữ. Cỡ 13 của lưới ba cột ngắt "Cây #12" thành ba dòng ở đó.
+   */
   treeChipTen: {
-    fontSize: 13, fontWeight: '700', color: ORG_NATURE.bark,
-    textAlign: 'center', letterSpacing: -0.2, lineHeight: 16,
+    fontSize: 11, fontWeight: '700', color: ORG_NATURE.bark,
+    textAlign: 'center', letterSpacing: -0.2, lineHeight: 13,
   },
   /**
    * Gạch nối giữa tên và số — ngắn, nhạt, không chạm hai bên.
@@ -2779,15 +2659,15 @@ const styles = StyleSheet.create({
    * mảnh chia nó thành "nhãn" và "số liệu" mà không thêm một mảng nền nào.
    */
   treeChipGach: {
-    width: 16, height: 1, marginVertical: 5,
+    width: 14, height: 1, marginVertical: 3,
     backgroundColor: ORG_TONE.border,
   },
   /** Số quả dùng CHÍNH sắc của cung tiến độ — đó là thứ nối giữa và viền. */
   treeChipSo: {
-    fontSize: 15, fontWeight: '800', color: ORG_TONE.primary,
-    letterSpacing: -0.3, lineHeight: 18,
+    fontSize: 13, fontWeight: '800', color: ORG_TONE.primary,
+    letterSpacing: -0.3, lineHeight: 15,
   },
-  treeChipDonVi: { fontSize: 11, fontWeight: '600', color: ORG_NATURE.barkSoft },
+  treeChipDonVi: { fontSize: 9, fontWeight: '600', color: ORG_NATURE.barkSoft },
 
   // ── Popup chi tiết cây ────────────────────────────────────────────────────
   cayPopupNen: { ...StyleSheet.absoluteFillObject, backgroundColor: ORG_SURFACE.scrim },
@@ -2864,7 +2744,7 @@ const styles = StyleSheet.create({
   /** Số điểm ranh giới — chữ nhỏ ĐÈ lên hình, không chiếm một hàng riêng. */
   bentoPreviewDiem: {
     fontSize: 12, fontWeight: '700', color: ORG_NATURE.barkSoft,
-    paddingBottom: 8,
+    position: 'absolute', top: 8, left: 8,
   },
   /**
    * Huy hiệu 3D — góc trên-trái, trên NỀN TỐI.
@@ -2946,6 +2826,21 @@ const styles = StyleSheet.create({
   },
 
   // Tree list
+  /**
+   * Trạng thái "đang mở vườn".
+   *
+   * Hai style này trước đây MƯỢN của lớp phủ bản đồ toạ độ
+   * (`coordMapLoadingContainer`/`coordMapLoadingText`). Lớp phủ đó nay là một
+   * màn riêng (`FarmMapScreen`) nên style của nó đã đi cùng — mượn đồ của một
+   * khối có thể bị gỡ là cách để một màn hỏng theo một thay đổi ở chỗ khác.
+   * Đây là bản của CHÍNH trạng thái này, cùng giá trị, không mượn của ai.
+   */
+  dangMoWrap: {
+    flex: 1, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: ORG_SURFACE.raised,
+  },
+  dangMoTxt: { fontSize: 14, color: COLORS.textMuted, marginTop: 8 },
+
   treeListContent: {
     // 12, cùng mép với lưới Bento ở trên. Lệch mép giữa phần đầu và phần danh
     // sách là thứ mắt bắt được ngay dù không gọi tên ra được.
@@ -3050,7 +2945,7 @@ const styles = StyleSheet.create({
       hở chỉ hơi lệch sắc chứ không thành một mảng màu khác hẳn.
 
       `COLORS.accent` không cùng họ: ở lớp token mặc định (`theme/tokens.ts:47`)
-      nó là XANH DƯƠNG `#3B6EA8`, trong khi `GRADIENT.action` là xanh lá. Đó là
+      nó là XANH DƯƠNG, trong khi `GRADIENT.action` là xanh lá. Đó là
       lý do thật của "nút nửa trên xanh lá, nửa dưới xanh dương" — nền và lớp
       phủ khác họ màu, cộng một lớp phủ có lúc hở.
 
@@ -3150,81 +3045,6 @@ const styles = StyleSheet.create({
   },
   coordCountLabel: {
     fontSize: 11, color: COLORS.accentLight, fontWeight: '600',
-  },
-
-  coordMapOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    zIndex: 999,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 16,
-  },
-  coordMapHeader: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: ORG_SURFACE.raised,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderTopLeftRadius: 12,
-    borderTopRightRadius: 12,
-    borderWidth: 1,
-    borderColor: ORG_TONE.border,
-  },
-  coordMapHeaderText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: COLORS.text,
-  },
-  coordMapContainer: {
-    width: '100%',
-    height: '80%',
-    backgroundColor: ORG_SURFACE.ground,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: ORG_TONE.border,
-    overflow: 'hidden',
-    marginTop: 8,
-  },
-  coordMapLoadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: ORG_SURFACE.raised,
-  },
-  coordMapLoadingText: {
-    fontSize: 14,
-    color: COLORS.textMuted,
-    marginTop: 8,
-  },
-  coordMapErrorContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: ORG_SURFACE.raised,
-    padding: 16,
-  },
-  coordMapErrorText: {
-    fontSize: 14,
-    color: COLORS.error,
-    textAlign: 'center',
-  },
-  coordMarker: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: COLORS.accent,
-    borderColor: COLORS.white,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  coordMarkerText: {
-    fontSize: 12,
-    color: COLORS.white,
-    fontWeight: '700',
   },
 
   coordPreview: {
@@ -3460,7 +3280,7 @@ const styles = StyleSheet.create({
   infoDivider: { width: 1, height: 24, backgroundColor: COLORS.border, marginHorizontal: 10 },
 
   // KHÔNG dùng shadow/elevation: PointAnnotation trên Android render child ra
-  // bitmap; shadow/elevation làm bitmap trắng → mất điểm. Giữ phẳng như coordMarker.
+  // bitmap; shadow/elevation làm bitmap trắng → mất điểm. Giữ phẳng, không bóng.
   // Vùng chạm rộng hơn để dễ kéo; chấm nằm giữa (khớp tâm với toạ độ đỉnh).
   vertexTouch: {
     width: 44, height: 44, alignItems: 'center', justifyContent: 'center',

@@ -96,10 +96,15 @@ export const SCREENS: PhraseMap = {
   'Đang khởi tạo tài khoản': { en: 'Setting up your account', zh: '正在初始化账户', ja: 'アカウントを初期化中' },
   'Vui lòng giữ ứng dụng mở cho tới khi hoàn tất.': { en: 'Please keep the app open until it finishes.', zh: '请保持应用开启直至完成。', ja: '完了するまでアプリを開いたままにしてください。' },
   'Bạn chưa liên kết khôi phục': { en: 'No recovery method linked yet', zh: '尚未关联恢复方式', ja: '復旧手段がまだ設定されていません' },
-  'Hãy thiết lập Người bảo hộ hoặc lưu Seed Phrase trong phần Tài khoản ngay khi có thể — đó là cách duy nhất để khôi phục nếu mất thiết bị.': {
-    en: 'Set up Guardians or save your seed phrase under Account as soon as you can — that is the only way to recover if you lose the device.',
-    zh: '请尽快在“账户”中设置监护人或保存助记词 — 这是设备丢失后唯一的恢复方式。',
-    ja: 'できるだけ早く「アカウント」でガーディアンを設定するか、シードフレーズを保存してください — 端末を紛失したときに復旧できる唯一の方法です。',
+  // ⛔ Câu cũ mời hai lối ngang nhau ("Người bảo hộ HOẶC Seed Phrase … cách duy nhất").
+  // Hôm nay chỉ một lối chạy được tới cuối. Ghi danh người bảo hộ có thật, nhưng KHÔNG
+  // màn nào dùng họ để khôi phục trên máy mới. Đặt hai lối cạnh nhau ở đúng màn cảnh báo
+  // mất danh tính thì người dùng chọn lối không tồn tại, và biết mình chọn sai vào ngày
+  // đã mất máy.
+  'Hãy lưu cụm 24 từ trong phần Tài khoản ngay khi có thể — hôm nay đó là cách duy nhất khôi phục được nếu mất thiết bị.': {
+    en: 'Save your 24 words under Account as soon as you can — today that is the only way to recover if you lose the device.',
+    zh: '请尽快在“账户”中保存 24 个助记词 — 目前这是设备丢失后唯一可行的恢复方式。',
+    ja: 'できるだけ早く「アカウント」で24単語を保存してください — 現時点では端末を紛失したときに復旧できる唯一の方法です。',
   },
   // ⛔ GỠ 2026-08-28 — khoá cũ ở đây dịch một câu KHÔNG ĐÚNG SỰ THẬT sang ba thứ
   // tiếng: "Dữ liệu khôi phục được phân tán an toàn trên mạng — chỉ bạn có thể
@@ -284,10 +289,10 @@ export const SCREENS: PhraseMap = {
 
   // ── Guardian / duyệt ký ────────────────────────────────────────────────────
   'Người bảo hộ (Guardian)': { en: 'Guardian', zh: '监护人（Guardian）', ja: 'ガーディアン' },
-  'Người giám hộ giúp bạn khôi phục danh tính khi mất thiết bị. Thêm người bạn tin tưởng bằng mã định danh của họ.': {
-    en: 'Guardians help you recover your identity if you lose your device. Add someone you trust using their identifier.',
-    zh: '监护人可在你丢失设备时帮你恢复身份。用对方的标识码添加你信任的人。',
-    ja: '保護者は端末をなくしたときに本人情報の復旧を助けてくれます。信頼できる人を識別子で追加してください。',
+  'Ghi danh người bạn tin tưởng bằng mã định danh của họ. Đường dùng người bảo hộ để khôi phục chưa chạy tới cuối — cụm 24 từ vẫn là bản dự phòng duy nhất.': {
+    en: 'Enrol someone you trust using their identifier. Recovery through a guardian does not run end to end yet — your 24 words are still the only fallback.',
+    zh: '用对方的标识码登记你信任的人。通过监护人恢复的流程尚未打通 — 24 个助记词仍是唯一的备份。',
+    ja: '信頼できる人を識別子で登録してください。ガーディアンによる復旧はまだ最後まで動きません — 24単語が唯一の予備手段です。',
   },
   'Thêm guardian': { en: 'Add guardian', zh: '添加监护人', ja: 'ガーディアンを追加' },
   'Duyệt yêu cầu ký': { en: 'Approve the signing request', zh: '批准签名请求', ja: '署名リクエストを承認' },

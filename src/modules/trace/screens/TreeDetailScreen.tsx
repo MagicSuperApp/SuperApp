@@ -24,7 +24,6 @@ import {
   TextInput,
   Modal,
   ScrollView,
-  Image,
   ActivityIndicator,
   Clipboard,
   Linking,
@@ -33,17 +32,26 @@ import {
 // Them icon moi: `node scripts/icons.js <ten-fa6-solid>`.
 import Icon, { type IconName } from '../../../components/Icon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect, useIsFocused } from '@react-navigation/native';
 import PaginationControls from '../components/PaginationControls';
 import { RootState } from '../../../store';
 import { COLORS } from '../../../constants';
 // Nen huu co dung chung cua module (tong dat/la) - xem theme/depth.ts
 import {
   SURFACE as ORG_SURFACE, TONE as ORG_TONE, NATURE as ORG_NATURE,
-  ORGANIC_CARD, ORGANIC_TILE, ELEVATION as ORG_ELEV, TYPE as ORG_TYPE,
+  ORGANIC_TILE, ELEVATION as ORG_ELEV, TYPE as ORG_TYPE,
+  GRADIENT as ORG_GRADIENT,
 } from '../theme/depth';
 import { GradientFill, GroundBackdrop } from '../components/layered/Organic';
-import { BentoRow, BentoStat } from '../components/layered/Surface';
+import { BentoRow, BentoTile } from '../components/layered/Surface';
+// Ô "3D" gắn CHÍNH bản dựng của màn đặt cây 3D — cùng model, cùng chấm quả, cùng
+// bộ nhớ đệm. Xem khối chú thích ở chỗ dựng ô.
+import TreeModelPreview from '../../../features/space3d/scene/TreeModelPreview';
+import { type FruitDot } from '../../../features/space3d/scene/FruitDots';
+import { coordFromServer } from '../../../features/space3d/treeFrame';
+import { loadTreeModelId } from '../../../features/space3d/treeModelStore';
+import { DEFAULT_TREE_MODEL_ID, type TreeModelId } from '../../../features/space3d/treeModels';
+import GLErrorBoundary from '../../../components/GLErrorBoundary';
 import { useTk } from '../../../i18n/keys';
 import StateView from '../../../components/state/StateView';
 import RemoteImage from '../../../components/RemoteImage';
@@ -67,7 +75,30 @@ import { showError, showWarning } from '../../../utils/alert';
 import { t } from '../../../i18n';
 
 const { width } = Dimensions.get('window');
-const ITEMS_PER_PAGE = 20;
+/**
+ * 21, không phải 20 — CHIA HẾT cho số cột của lưới quả.
+ *
+ * 20 quả trên lưới ba cột cho ra sáu hàng đủ và một hàng lẻ hai quả, tức trang
+ * nào cũng kết thúc bằng một hàng cụt. Đó không phải lỗi chức năng, nhưng nó là
+ * thứ mắt bắt được ngay mà không gọi tên ra được.
+ */
+const ITEMS_PER_PAGE = 21;
+
+/**
+ * Màu phát sáng của ô KHÔNG GIAN — cùng giá trị với màn chi tiết vườn và với
+ * `TreeShape`. Hai ô "3D" ở hai màn là một CẶP: cùng nền tối, cùng huy hiệu,
+ * cùng sắc sáng. Lệch màu là lệch đúng chỗ người dùng nhận ra cặp.
+ */
+const SANG_KHONG_GIAN = '#7FE7C4';
+
+/**
+ * Nền của khung vẽ 3D — chặng TỐI của `GRADIENT.space`.
+ *
+ * `<Canvas>` tô nền đặc, nên ô 3D không thể để lộ chuyển sắc của ô Bento phía
+ * sau. Lấy đúng một chặng của chính chuyển sắc đó thì mắt đọc ra MỘT khối tối,
+ * không ra "một ô ảnh chưa tải xong nằm trong một cái thẻ".
+ */
+const NEN_KHONG_GIAN = ORG_GRADIENT.space.to;
 
 type TabKey = 'overview' | 'history' | 'info';
 
@@ -99,88 +130,74 @@ const fmtDate = (iso?: string | null): string => {
   return isNaN(d.getTime()) ? '' : d.toLocaleDateString('vi-VN');
 };
 
-// ── Fruit Card ────────────────────────────────────────────────────────────────
-const FruitCard = ({
+// ── Nút quả ───────────────────────────────────────────────────────────────────
+//
+// Một quả = một nút TRÒN, ảnh quả làm nền, tên nằm DƯỚI nút.
+//
+// ── Thẻ cũ mang gì, và vì sao bỏ ─────────────────────────────────────────────
+// Mỗi quả là một hàng ngang đầy: ảnh vuông · tên · chip trạng thái · số góc ảnh ·
+// tầng · ngày ghi · mũi tên phải. Bảy thứ cho một quả, và một hàng ngang chỉ xếp
+// được MỘT quả mỗi dòng — cây 60 quả thành 60 dòng phải cuộn.
+//
+// Lưới ba cột cho một màn chứa ~9 quả thay vì ~4, và bốn thứ vừa bỏ đi đều đọc
+// được trong popup khi người ta thật sự cần tới chúng. Thứ KHÔNG bỏ được là ảnh:
+// nhà vườn nhận ra quả của mình bằng mắt, không bằng cái tên máy sinh.
+//
+// ── Vì sao tên nằm DƯỚI nút, không nằm trong ─────────────────────────────────
+// Nút cây bên màn vườn đặt tên vào GIỮA vòng tròn được, vì trong lòng nó trống.
+// Trong lòng nút quả là một tấm ảnh, và chữ đè lên ảnh thì độ tương phản đổi
+// theo từng tấm — chỗ tệ nhất quyết định chữ có đọc được hay không, mà ảnh quả
+// sầu riêng thì chỗ nào cũng có thể là chỗ tệ nhất.
+//
+// ── Viền mang TRẠNG THÁI ─────────────────────────────────────────────────────
+// Cùng vai với vòng tiến độ của nút cây: mép nút là chỗ nói trạng thái, lòng nút
+// là chỗ nhận ra vật. Ba màu lấy thẳng từ `STATUS_MAP` nên chú giải và chấm
+// không lệch nhau được.
+const FruitChip = ({
   item,
-  index,
+  size,
   onPress,
 }: {
   item: TreeLayoutFruit;
-  index: number;
+  size: number;
   onPress: () => void;
 }) => {
   const tk = useTk();
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(14)).current;
-  const scaleAnim = useRef(new Animated.Value(1)).current;
   const st = getStatus(item.status);
   const thumb = item.thumbnail_url ? `${ORILIFE_BASE}${item.thumbnail_url}` : null;
-  const enrolled = fmtDate(item.enrolled_at);
-
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, { toValue: 1, duration: 300, delay: index * 55, useNativeDriver: true }),
-      Animated.timing(slideAnim, { toValue: 0, duration: 300, delay: index * 55, useNativeDriver: true }),
-    ]).start();
-  }, []);
-
-  const hIn = () => Animated.spring(scaleAnim, { toValue: 0.97, useNativeDriver: true }).start();
-  const hOut = () => Animated.spring(scaleAnim, { toValue: 1, friction: 4, useNativeDriver: true }).start();
+  const ten = item.name || tk('trace.tree.unnamed');
 
   return (
-    <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }, { scale: scaleAnim }] }}>
-      <TouchableOpacity activeOpacity={1} onPress={onPress} onPressIn={hIn} onPressOut={hOut}>
-        <View style={styles.fruitCard}>
-          {/* Ảnh hỏng rơi về ĐÚNG ô icon vốn đã có cho trường hợp không ảnh — trước
-              đây chỉ nhánh `thumb === null` dùng nó, còn "có url mà tải hỏng" thì để
-              trống, cho ra ô xanh nhạt rỗng suốt cả danh sách. */}
-          <RemoteImage
-            uri={thumb}
-            style={styles.fruitThumb}
-            containerStyle={styles.fruitThumb}
-            resizeMode="cover"
-            placeholder={
-              <View style={[styles.fruitIconWrap, { backgroundColor: st.bg }]}>
-                <Icon name={st.icon} size={22} color={st.color} />
-              </View>
-            }
-          />
-
-          <View style={styles.fruitCardBody}>
-            <View style={styles.fruitTopRow}>
-              <Text style={styles.fruitCode} numberOfLines={1}>
-                {item.name || tk('trace.tree.unnamed')}
-              </Text>
-              <View style={[styles.fruitStatusChip, { backgroundColor: st.bg }]}>
-                <View style={[styles.fruitStatusDot, { backgroundColor: st.color }]} />
-                <Text style={[styles.fruitStatusText, { color: st.color }]}>{tk(st.labelKey)}</Text>
-              </View>
+    <TouchableOpacity
+      activeOpacity={0.85}
+      onPress={onPress}
+      style={{ width: size, alignItems: 'center' }}
+      accessibilityRole="button"
+      accessibilityLabel={`${ten}, ${tk(st.labelKey)}`}
+    >
+      <View
+        style={[
+          styles.quaTron,
+          { width: size, height: size, borderRadius: size / 2, borderColor: st.color },
+        ]}
+      >
+        {/* Ảnh hỏng rơi về ĐÚNG ô biểu tượng vốn đã có cho trường hợp không ảnh —
+            "có url mà tải hỏng" và "không có url" phải ra cùng một thứ, nếu không
+            thì danh sách có những ô trống không giải thích được. */}
+        <RemoteImage
+          uri={thumb}
+          style={styles.quaAnh}
+          containerStyle={styles.quaAnh}
+          resizeMode="cover"
+          placeholder={
+            <View style={[styles.quaTrong, { backgroundColor: st.bg }]}>
+              <Icon name={st.icon as IconName} size={Math.round(size * 0.32)} color={st.color} />
             </View>
-
-            <View style={styles.fruitMetaRow}>
-              <View style={styles.fruitMetaItem}>
-                <Icon name="camera" size={12} color={COLORS.textMuted} />
-                <Text style={styles.fruitMetaText}>{item.n_views}</Text>
-              </View>
-              {item.zone && (
-                <View style={styles.fruitMetaItem}>
-                  <Icon name="location-dot" size={12} color={COLORS.textMuted} />
-                  <Text style={styles.fruitMetaText}>{ZONE_VI[item.zone]}</Text>
-                </View>
-              )}
-              {enrolled ? (
-                <View style={styles.fruitMetaItem}>
-                  <Icon name="calendar" size={12} color={COLORS.textMuted} />
-                  <Text style={styles.fruitMetaText}>{enrolled}</Text>
-                </View>
-              ) : null}
-            </View>
-          </View>
-
-          <Icon name="chevron-right" size={18} color={COLORS.accentLight} style={{ alignSelf: 'center', marginRight: 12 }} />
-        </View>
-      </TouchableOpacity>
-    </Animated.View>
+          }
+        />
+      </View>
+      <Text style={styles.quaTen} numberOfLines={2}>{ten}</Text>
+    </TouchableOpacity>
   );
 };
 
@@ -363,8 +380,19 @@ const TreeDetailScreen = () => {
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab ?? 'overview');
   /** Tấm trượt "Công khai & mã QR" — mở từ nút trên thanh dưới. */
   const [publicOpen, setPublicOpen] = useState(false);
-  // Tấm "Việc khác" — ba việc hiếm, mỗi việc một dòng CÓ TÊN ĐẦY ĐỦ.
+  // Tấm "Khác" — ba việc hiếm, mỗi việc một dòng CÓ TÊN ĐẦY ĐỦ.
   const [moreOpen, setMoreOpen] = useState(false);
+  /**
+   * Thông tin PHỤ của thẻ Tổng quan có đang mở không.
+   *
+   * Đóng sẵn. Vị trí GPS, giống, năm trồng, đặc điểm máy chủ tả, mã lưu trữ
+   * video — năm thứ đó đều có người cần, nhưng không ai cần chúng MỖI LẦN mở
+   * màn. Bày sẵn cả năm là đẩy danh sách quả — thứ người ta mở màn này để xem —
+   * xuống dưới nếp gấp.
+   */
+  const [moRong, setMoRong] = useState(false);
+  /** Quả đang mở popup. `null` = không mở. */
+  const [quaDangXem, setQuaDangXem] = useState<TreeLayoutFruit | null>(null);
 
   // Quả của cây — lấy từ field-reid (xem chú thích đầu file).
   const [layout, setLayout] = useState<TreeLayoutResponse | null>(null);
@@ -558,6 +586,70 @@ const TreeDetailScreen = () => {
     firstFruitLoad.current = false;
   }, [fetchFruits]));
 
+  /**
+   * ── BA HOOK DƯỚI ĐÂY PHẢI NẰM TRÊN `if (!tree) return` ─────────────────────
+   *
+   * ⛔ Đã đặt sai một lần, ngay ở lượt viết chúng: chúng nằm dưới câu `return`
+   *    sớm ở ngay dưới. Lúc cây CHƯA về (đang hỏi máy chủ) React dựng màn với
+   *    ít hook hơn; tới khi cây về thì số hook tăng lên, và React ném
+   *    *"Rendered more hooks than during the previous render"* — tức màn trắng,
+   *    ở đúng đường mà mọi người mở màn này từ `TreeManagement` đều đi qua.
+   *
+   *    `tsc` không thấy gì, `jest` không thấy gì. Thứ bắt được là
+   *    `react-hooks/rules-of-hooks` của eslint. Nên đừng gỡ quy tắc đó, và đừng
+   *    đẩy hook nào xuống dưới câu return kia.
+   */
+
+  /**
+   * Model 3D mà NGƯỜI DÙNG đã chọn cho cây này ở màn đặt cây 3D.
+   *
+   * Đọc từ đúng kho mà màn đó ghi (`treeModelStore`, AsyncStorage). Không đọc
+   * được thì rơi về `DEFAULT_TREE_MODEL_ID` — cùng mặc định với màn kia, nên hai
+   * chỗ không bao giờ hiện hai cây khác nhau cho cùng một cây.
+   */
+  const [modelId, setModelId] = useState<TreeModelId>(DEFAULT_TREE_MODEL_ID);
+  useEffect(() => {
+    const id = tree?.id;
+    if (!id) return;
+    let alive = true;
+    loadTreeModelId(id)
+      .then(m => { if (alive) setModelId(m); })
+      .catch(() => undefined);
+    return () => { alive = false; };
+  }, [tree?.id]);
+
+  /**
+   * Chấm quả cho ô 3D — CHỈ quả còn trên cây.
+   *
+   * Quả đã hái / đã mất không còn trên tán; vẽ chúng ra là nói sai về cái cây
+   * đang đứng ngoài vườn. Toạ độ đi qua `coordFromServer` — ĐÚNG hàm mà cảnh 3D
+   * thật dùng, nên quả nằm ở cùng một chỗ trong ô xem trước và trong màn 3D.
+   *
+   * Đọc thẳng `layout` chứ không đọc `fruitItems`: biến kia là một biểu thức
+   * `?? []` dựng mảng MỚI mỗi lượt vẽ, nên để nó làm phụ thuộc thì `useMemo`
+   * không nhớ được gì.
+   */
+  const chamQua: FruitDot[] = useMemo(
+    () => (layout?.fruits ?? [])
+      .filter(f => f.status === 'on_tree')
+      .map(f => ({
+        fruitId: f.fruit_id,
+        name: f.name ?? '',
+        status: f.status,
+        coord: coordFromServer(f),
+      })),
+    [layout],
+  );
+
+  /**
+   * Ô 3D chỉ được gắn khi màn ĐANG có tiêu điểm.
+   *
+   * Mỗi `<Canvas>` là một ngữ cảnh GL riêng — chính `TreeModelPreview` ghi cảnh
+   * báo đó ở đầu tệp của nó. Giữ một ngữ cảnh sống trong lúc người dùng đã đi
+   * sang màn khác là tiền pin trả cho một thứ không ai nhìn.
+   */
+  const manDangMo = useIsFocused();
+
   // Chưa có cây thì màn phải nói ĐANG Ở ĐÂU trong ba tình huống khác hẳn nhau:
   // đang hỏi máy chủ / hỏi hỏng (chưa biết) / máy chủ nói không có. Trước bản
   // này cả ba đều bị effect an-toàn nuốt thành một cú `goBack()` im lặng.
@@ -682,6 +774,18 @@ const TreeDetailScreen = () => {
 
   const handlePageChange = (p: number) => setCurrentPage(Math.max(1, Math.min(p, totalPages)));
 
+  /**
+   * Đường kính một nút quả trong lưới BA cột.
+   *
+   * Suy từ bề ngang màn chứ không gõ số: lề danh sách 20 mỗi bên (`listContent`),
+   * hai khe 12 giữa ba cột. Gõ một con số cố định thì máy hẹp bị tràn còn máy
+   * rộng thừa chỗ — và cả hai đều không có gì đỏ.
+   */
+  const CO_QUA = Math.floor((width - 20 * 2 - 12 * 2) / 3);
+
+  /** Ảnh bìa của cây — tấm đầu dải, dùng làm nền ô "Ảnh". */
+  const anhBia = treeImages.length > 0 ? treeImages[0] : null;
+
   const handleStatusFilterChange = (status: string) => {
     setStatusFilter(status);
     setStatusDropdownVisible(false);
@@ -739,170 +843,340 @@ const TreeDetailScreen = () => {
         <Icon name="spray-can" size={16} color={ORG_TONE.primary} />
         <Text style={styles.headerCareTxt}>{tk('trace.tree.actCare')}</Text>
       </TouchableOpacity>
+      {/*
+        BA DẤU CHẤM DỌC, không chữ.
+
+        ⛔ Biểu tượng cũ tên `ellipsis` KHÔNG CÓ trong bộ icon của kho
+           (`icons.generated.ts` có `ellipsis-vertical`, không có `ellipsis`), nên
+           nút này lâu nay vẽ ra một ô TRỐNG bên cạnh chữ "Việc khác". Không lệnh
+           nào báo: `Icon` nuốt tên lạ chứ không ném.
+
+        Bỏ chữ đi được vì ba chấm dọc là quy ước ai cũng đọc được, và vì cái chữ
+        ấy đang phải co xuống cỡ 10 để lọt vào hàng — cỡ chữ đó thì nó không còn
+        giúp ai đọc nữa, nó chỉ chiếm chỗ của nút "Ghi thuốc" bên cạnh.
+      */}
       <TouchableOpacity
-        style={styles.headerActionBtn}
+        style={styles.headerMoreBtn}
         onPress={() => setMoreOpen(true)}
         accessibilityRole="button"
         accessibilityLabel={tk('trace.tree.moreActions')}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       >
-        <Icon name="ellipsis" size={20} color={COLORS.textSub} />
-        <Text style={styles.headerMoreTxt}>{tk('trace.tree.moreActions')}</Text>
+        <Icon name="ellipsis-vertical" size={18} color={ORG_NATURE.bark} />
       </TouchableOpacity>
     </Animated.View>
   );
 
   // ── Overview tab content ────────────────────────────────────────────────────
+  //
+  // BA MỤC, mỗi mục trả lời MỘT câu. Trước bản này tab Tổng quan là chín khối
+  // xếp dọc không có mục nào: thẻ tên cây · lưới 2×2 con số · hộp đặc điểm ·
+  // dải ảnh · hộp bằng chứng video · chip 🍈 kèm nút 3D · dòng dự kiến · tiêu đề
+  // danh sách quả · ô tìm kiếm. Chín khối, mỗi khối một nền riêng, một viền
+  // riêng — và người dùng phải cuộn qua sáu khối mới tới được danh sách quả,
+  // tức thứ họ mở màn này để xem.
+  //
+  //   Tổng quan   "cây này đang thế nào" — MỘT thẻ, số chính ở ngoài, số phụ
+  //               trong một ngăn mở ra khi cần.
+  //   Cây này     "nó trông ra sao" — ô 3D và ô ảnh, hai thứ NHÌN chứ không đọc.
+  //   Quả         "trên cây có gì" — lưới nút tròn, ảnh quả làm nền.
+  //
+  // Mỗi mục cao vừa một tầm mắt, nên cuộn một nhịp là sang mục sau. Đó là điều
+  // kiện thay cho "bớt khối đi": khối không mất, chúng về đúng mục của mình.
   const overviewHeader = (
     <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
 
-      {/* Tree info card */}
-      <View style={styles.heroCard}>
-        <GradientFill name="tile" />
-        <View style={styles.heroTop}>
-          <View style={styles.heroLeft}>
-            <View style={styles.heroIconWrap}>
-              <Icon name="tree" size={32} color={COLORS.accent} />
-              <View style={styles.heroIconGlow} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.heroLabel}>TÊN CÂY</Text>
-              <Text style={styles.heroCode}>{treeDisplayName}</Text>
-              {treeShortCode ? (
-                <Text style={styles.heroCodeSub}>Mã: {treeShortCode}</Text>
-              ) : null}
-              {/* Hàng vườn LUÔN hiện, kể cả khi cây chưa thuộc vườn nào. Bản cũ
-                  ẩn hàng này khi không có tên vườn — đúng ca cây mồ côi, tức là
-                  ca DUY NHẤT cần sửa lại bị giấu đi. Chạm để gán vườn. */}
-              <TouchableOpacity
-                style={styles.heroFarmRow}
-                activeOpacity={0.7}
-                onPress={() => setFarmPickerOpen(true)}
-                accessibilityLabel={farmLabel ? `Vườn ${farmLabel}, chạm để đổi` : 'Cây chưa thuộc vườn nào, chạm để chọn vườn'}
-              >
-                <Icon name="tree" size={12} color={farmLabel ? COLORS.textMuted : ORG_TONE.sun} />
-                <Text style={[styles.heroFarmText, !farmLabel && styles.heroFarmMissing]}>
-                  {farmLabel ?? 'Chưa thuộc vườn nào — chạm để chọn'}
-                </Text>
-              </TouchableOpacity>
-              <View style={styles.heroFarmRow}>
-                <Icon name="location-dot" size={12} color={COLORS.textMuted} />
-                <Text style={styles.heroFarmText}>{gpsText}</Text>
-              </View>
-            </View>
-          </View>
-          <CircleProgress pct={harvestPct} size={72} />
+      {/* ═══ MỤC 1 — TỔNG QUAN ═══════════════════════════════════════════ */}
+      <View style={styles.sectionRow}>
+        <View style={styles.sectionLeft}>
+          <View style={styles.sectionDot} />
+          <Text style={styles.sectionTitle}>Tổng quan</Text>
         </View>
-
-        <View style={styles.heroDivider}>
-          <View style={styles.heroDividerLine} />
-          <Icon name="leaf" size={12} color={COLORS.accentLight} />
-          <View style={styles.heroDividerLine} />
-        </View>
-
       </View>
 
-      {/*
-        BỐN CON SỐ, LƯỚI 2×2 — trước bản này là một dải bốn ô chia bằng vạch kẻ
-        nằm TRONG thẻ, đúng khuôn vừa gỡ khỏi màn chi tiết vườn.
+      <View style={styles.panel}>
+        <GradientFill name="tile" />
 
-        Vạch kẻ dọc nói "bốn thứ này ngang hàng nhau", và ở đây câu đó đúng —
-        nhưng nó cũng nhét bốn con số vào một hàng hẹp, nên nhãn tiếng Việt
-        ("quả đã ghi", "trên cây") phải co lại hoặc cắt cụt. Lưới 2×2 cho mỗi ô
-        gấp đôi bề ngang mà vẫn giữ nguyên câu "bốn thứ ngang hàng".
-
-        Ra NGOÀI thẻ vì chúng là bốn ô, không phải một phần của thẻ tên cây.
-      */}
-      <BentoRow style={styles.treeStatsRow}>
-        {/*
-          `clipboard-list`, KHÔNG phải `counter`.
-
-          Bản trước ghi `icon: 'counter'` trong một mảng nội tuyến không ràng
-          kiểu, mà bộ biểu tượng KHÔNG có tên đó — nên ô "quả đã ghi" vẫn vẽ ra
-          một chỗ trống suốt thời gian qua, và không lệnh nào báo. Kiểu chặt của
-          `BentoStat` bắt được ngay lúc chuyển sang lưới.
-        */}
-        <BentoStat
-          flex={1}
-          icon="clipboard-list"
-          value={totalFruits}
-          label={tk('trace.tree.statRecorded')}
-        />
-        <BentoStat
-          flex={1}
-          icon="apple-whole"
-          value={onTreeCount}
-          label={tk('trace.tree.statOnTree')}
-        />
-      </BentoRow>
-      <BentoRow style={styles.treeStatsRow}>
-        <BentoStat
-          flex={1}
-          tone="sun"
-          icon="basket-shopping"
-          value={harvestedCount}
-          label={tk('trace.tree.statPicked')}
-        />
-        <BentoStat
-          flex={1}
-          icon="circle-xmark"
-          value={lostCount}
-          label={tk('trace.tree.statLost')}
-        />
-      </BentoRow>
-
-      {/* Máy chủ mô tả cây này bằng lời (`/api/tree_views?describe=1` → features_vi):
-          cành chính hướng nào, quả nằm tầng nào… Đặt NGAY DƯỚI tên cây vì đây là
-          lời tả chính con cây, không phải chú thích cho dải ảnh — chỗ cũ của nó là
-          cuối dải ảnh, phải cuộn hết ảnh mới thấy.
-
-          Khi cây ĐÃ có ảnh mà máy chủ vẫn chưa trả mô tả (bản máy chủ cũ bỏ qua
-          tham số `describe`), nói thẳng ra một câu. Im lặng ở đây đọc đúng như
-          "tính năng bị gỡ mất". */}
-      {treeFeatures.length > 0 ? (
-        <View style={styles.featuresBox}>
-          <Text style={styles.featuresTitle}>{tk('trace.tree.featuresTitle')}</Text>
-          {treeFeatures.map((f, i) => (
-            <Text key={`f${i}`} style={styles.featuresLine}>• {f}</Text>
-          ))}
-        </View>
-      ) : treeImages.length > 0 ? (
-        <View style={styles.featuresBox}>
-          <Text style={styles.featuresTitle}>{tk('trace.tree.featuresTitle')}</Text>
-          <Text style={styles.featuresPending}>{tk('trace.tree.featuresPending')}</Text>
-        </View>
-      ) : null}
-
-      {/* Ảnh cây đã lưu — dải ngang, chạm để phóng to.
-          LUÔN VẼ KHỐI NÀY, kể cả khi chưa có ảnh nào: nút "Video cây" nằm trong đây,
-          mà đó đúng là lối để bổ sung ảnh. Ẩn khối khi rỗng = giấu mất lối thoát của
-          người đang thiếu ảnh. */}
-      {(
-        <View style={styles.photoStripWrap}>
-          <View style={styles.photoStripHeader}>
-            <View style={styles.sectionLeft}>
-              <View style={styles.sectionDot} />
-              <Text style={styles.sectionTitle}>
-                {tk('trace.tree.photos', { n: treeImages.length })}
-                {brokenImages > 0 ? tk('trace.tree.photosBroken', { n: brokenImages }) : ''}
+        <View style={styles.panelTop}>
+          <CircleProgress pct={harvestPct} size={64} />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.panelName} numberOfLines={2}>{treeDisplayName}</Text>
+            {treeShortCode ? (
+              <Text style={styles.panelCode} numberOfLines={1}>Mã {treeShortCode}</Text>
+            ) : null}
+            {/* Hàng vườn LUÔN hiện, kể cả khi cây chưa thuộc vườn nào. Bản cũ ẩn
+                hàng này khi không có tên vườn — đúng ca cây mồ côi, tức là ca
+                DUY NHẤT cần sửa lại bị giấu đi. Chạm để gán vườn. */}
+            <TouchableOpacity
+              style={styles.panelFarmRow}
+              activeOpacity={0.7}
+              onPress={() => setFarmPickerOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel={farmLabel ? `Vườn ${farmLabel}, chạm để đổi` : 'Cây chưa thuộc vườn nào, chạm để chọn vườn'}
+            >
+              <Icon name="tree" size={12} color={farmLabel ? ORG_NATURE.barkSoft : ORG_TONE.sun} />
+              <Text style={[styles.panelFarmTxt, !farmLabel && styles.panelFarmMissing]} numberOfLines={1}>
+                {farmLabel ?? 'Chưa thuộc vườn nào — chạm để chọn'}
               </Text>
-            </View>
-            {/* Bổ-sung góc nhìn cho cây bằng video → /api/tree/{id}/video (server chắt khung). */}
-            <TouchableOpacity style={styles.treeVideoBtn} onPress={handleTreeVideo} activeOpacity={0.8}>
-              <Icon name="video" size={15} color="#1b5e20" />
-              <Text style={styles.treeVideoBtnText}>Video cây</Text>
+              <Icon name="chevron-right" size={11} color={ORG_NATURE.barkSoft} />
             </TouchableOpacity>
           </View>
+        </View>
 
-          {/* Ảnh 404 KHÔNG có nghĩa là ảnh mất: `/gimg` xét quyền lúc gọi và trả 404
-              giả-không-tồn-tại khi từ chối. Chữ phải nói đúng điều đó — tuyệt đối
-              không viết "ảnh đã mất/đã xoá" và không tô đỏ như lỗi của app. */}
-          {(brokenImages > 0 || imagesError) && (
+        {/*
+          BỐN CON SỐ, MỘT HÀNG, trong CHÍNH thẻ này.
+
+          Trước bản này chúng là bốn ô Bento rời nằm ngoài thẻ — bốn nền, bốn
+          viền, hai hàng chiều cao. Nhưng chúng không phải bốn việc: chúng là bốn
+          mặt của MỘT câu ("cây này đang thế nào"), tức đúng nội dung của thẻ
+          Tổng quan. Vào trong thẻ thì chúng nói cùng một câu với cái tên và vòng
+          tiến độ ngay trên, và tiết kiệm được một tầm mắt.
+        */}
+        <View style={styles.panelSo}>
+          {[
+            { n: totalFruits, nhan: tk('trace.tree.statRecorded'), mau: ORG_NATURE.bark },
+            { n: onTreeCount, nhan: tk('trace.tree.statOnTree'), mau: ORG_TONE.primary },
+            { n: harvestedCount, nhan: tk('trace.tree.statPicked'), mau: ORG_TONE.sun },
+            { n: lostCount, nhan: tk('trace.tree.statLost'), mau: ORG_NATURE.barkSoft },
+          ].map((o, idx) => (
+            <React.Fragment key={o.nhan}>
+              {idx > 0 ? <View style={styles.panelVach} /> : null}
+              <View style={styles.panelO}>
+                <Text style={[styles.panelOSo, { color: o.mau }]}>{o.n}</Text>
+                <Text style={styles.panelONhan} numberOfLines={1}>{o.nhan}</Text>
+              </View>
+            </React.Fragment>
+          ))}
+        </View>
+
+        {/* ── Ngăn thông tin PHỤ ──────────────────────────────────────────── */}
+        {moRong ? (
+          <View style={styles.panelPhu}>
+            {[
+              { nhan: 'Vị trí', gt: gpsText },
+              { nhan: 'Giống', gt: (tree?.species as string) || 'chưa ghi' },
+              { nhan: 'Năm trồng', gt: tree?.plantedYear ? String(tree.plantedYear) : 'chưa ghi' },
+              {
+                nhan: 'Dự kiến cả mùa',
+                gt: estimatedFruits > 0 ? `${estimatedFruits} quả` : 'chưa ước tính',
+                uoc: estimatedFruits > 0,
+              },
+            ].map((d) => (
+              <View key={d.nhan} style={styles.panelPhuHang}>
+                <Text style={styles.panelPhuNhan}>{d.nhan}</Text>
+                <Text style={styles.panelPhuGt} numberOfLines={1}>
+                  {d.gt}
+                  {d.uoc ? <Text style={styles.panelPhuUoc}> (ước tính)</Text> : null}
+                </Text>
+              </View>
+            ))}
+
+            {/* Máy chủ mô tả cây này bằng lời (`/api/tree_views?describe=1` →
+                features_vi): cành chính hướng nào, quả nằm tầng nào…
+
+                Khi cây ĐÃ có ảnh mà máy chủ vẫn chưa trả mô tả (bản máy chủ cũ
+                bỏ qua tham số `describe`), nói thẳng ra một câu. Im lặng ở đây
+                đọc đúng như "tính năng bị gỡ mất". */}
+            {treeFeatures.length > 0 ? (
+              <View style={styles.panelKhoi}>
+                <Text style={styles.panelKhoiTitle}>{tk('trace.tree.featuresTitle')}</Text>
+                {treeFeatures.map((f, k) => (
+                  <Text key={`f${k}`} style={styles.featuresLine}>• {f}</Text>
+                ))}
+              </View>
+            ) : treeImages.length > 0 ? (
+              <View style={styles.panelKhoi}>
+                <Text style={styles.panelKhoiTitle}>{tk('trace.tree.featuresTitle')}</Text>
+                <Text style={styles.featuresPending}>{tk('trace.tree.featuresPending')}</Text>
+              </View>
+            ) : null}
+
+            {/* Bằng chứng video trên LampNet. Hiện mã lưu trữ vì OriLife KHÔNG có
+                route tra ngược — đây là chỗ duy nhất đội thực địa đối chiếu được
+                sau buổi. Chạm để mở, biểu tượng chép để sao mã. */}
+            {videoProofs.length > 0 ? (
+              <View style={styles.panelKhoi}>
+                <Text style={styles.panelKhoiTitle}>
+                  {tk('trace.tree.videos', { n: videoProofs.length })}
+                </Text>
+                {videoProofs.map(pr => (
+                  <TouchableOpacity
+                    key={pr.videoCid}
+                    style={styles.proofRow}
+                    activeOpacity={0.7}
+                    onPress={() => { Linking.openURL(`https://lampnet.cloud/${pr.videoCid}`); }}
+                  >
+                    <Icon
+                      name={pr.stored === false ? 'triangle-exclamation' : 'shield-halved'}
+                      size={15}
+                      color={pr.stored === false ? ORG_TONE.sun : ORG_TONE.primary}
+                    />
+                    <View style={styles.proofBody}>
+                      <Text style={styles.proofCid} numberOfLines={1}>{pr.videoCid}</Text>
+                      <Text style={styles.proofMeta}>
+                        {pr.stored === false ? tk('trace.tree.notUploaded') : ''}
+                        {pr.at ? new Date(pr.at).toLocaleString('vi-VN') : ''}
+                        {/* Cùng con số, cùng người đọc, nên phải cùng một lời rào với
+                            màn kết quả quay quả: đây là số quả nhiều nhất trong MỘT
+                            khung do bộ dò màu ước lượng, không phải số quả của cả cây.
+                            Một màn có rào một màn không thì người ghi chép sẽ chép con
+                            số ở màn không có rào. */}
+                        {pr.nFruitsMax ? ` · ước lượng ${pr.nFruitsMax} quả trong 1 khung` : ''}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => { Clipboard.setString(pr.videoCid); }}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      accessibilityLabel="Sao chép mã lưu trữ"
+                    >
+                      <Icon name="copy" size={14} color={ORG_NATURE.barkSoft} />
+                    </TouchableOpacity>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
+        <TouchableOpacity
+          style={styles.panelMoRong}
+          onPress={() => setMoRong(v => !v)}
+          activeOpacity={0.75}
+          accessibilityRole="button"
+        >
+          <Text style={styles.panelMoRongTxt}>{moRong ? 'Thu gọn' : 'Xem thêm'}</Text>
+          <Icon name={moRong ? 'chevron-up' : 'chevron-down'} size={13} color={ORG_TONE.primary} />
+        </TouchableOpacity>
+      </View>
+
+      {/* ═══ MỤC 2 — CÂY NÀY ═════════════════════════════════════════════
+          Hai ô NHÌN, không phải hai ô đọc. Cùng khuôn với hàng "xem trước" ở màn
+          chi tiết vườn, và cố ý giống: ô tối bên trái mở không gian 3D, ô sáng
+          bên phải là chính cái cây qua ống kính. Học một lần, dùng ở hai màn. */}
+      <View style={styles.sectionRow}>
+        <View style={styles.sectionLeft}>
+          <View style={styles.sectionDot} />
+          <Text style={styles.sectionTitle}>Cây này</Text>
+        </View>
+        {/* Bổ-sung góc nhìn cho cây bằng video → /api/tree/{id}/video (server
+            chắt khung). Đây là lối DUY NHẤT để cây có thêm ảnh, nên nó phải ở
+            ngay cạnh tiêu đề mục, không nằm lẫn trong dải. */}
+        <TouchableOpacity style={styles.treeVideoBtn} onPress={handleTreeVideo} activeOpacity={0.85}>
+          <Icon name="video" size={14} color={ORG_TONE.primary} />
+          <Text style={styles.treeVideoBtnText}>Video cây</Text>
+        </TouchableOpacity>
+      </View>
+
+      <BentoRow style={styles.bentoPreviews}>
+        {/*
+          Ô KHÔNG GIAN — ô tối duy nhất của màn.
+
+          Nền tối không phải để cho khác lạ: một khối phát sáng chỉ đọc ra "không
+          gian" khi quanh nó tối. Cùng hình ấy trên nền trắng thì vầng sáng biến
+          mất và nó tụt về một hình vẽ phẳng.
+
+          Hình bên trong là BẢN DỰNG THẬT của chính cây này — không phải một hình
+          minh hoạ vẽ lại.
+
+          ⛔ Bản trước ô này vẽ một khung tán bằng SVG: mấy vòng elip co giãn theo
+             góc quay, trông như một khối cầu đang quay. Nó đẹp và nó RẺ, nhưng nó
+             là một cái cây TỰ NGHĨ RA — mọi cây trong vườn cho ra cùng một hình,
+             và hình đó không liên quan gì tới đám mây điểm mà chủ vườn đã chụp.
+             Yêu cầu nói thẳng: *"sử dụng 3D từ 3D place luôn, không tạo thêm 1
+             model giả"*.
+
+          Nay ô gắn `TreeModelPreview` — CHÍNH component mà màn đặt cây 3D dùng —
+          với CHÍNH `modelId` người dùng đã chọn cho cây này, và `FruitDots` là
+          CHÍNH lớp chấm quả của cảnh 3D thật. Ba thứ đi cùng nhau nên ô xem
+          trước và màn 3D không thể nói hai chuyện khác nhau về một cây.
+
+          `treePoints` giữ bộ nhớ đệm ở tầng module, nên cây đã xem ở đây thì mở
+          màn 3D không tải lại, và ngược lại.
+
+          Cây chưa dựng 3D vẫn ra cây tự tạo — nhưng đó KHÔNG phải một model giả
+          thêm vào: nó đúng là thứ màn 3D hiện cho cây chưa có đám mây điểm, tức
+          ô đang nói thật về cái sẽ mở ra.
+        */}
+        <BentoTile
+          flex={1}
+          tone="space"
+          onPress={handleView3D}
+          padded={false}
+          style={styles.bentoPreview}
+        >
+          {/* Lỗi trong cây con 3D KHÔNG được kéo sập cả màn chi tiết cây: người
+              dùng vào đây để xem quả, không phải để xem 3D. */}
+          <GLErrorBoundary tag="tree_detail_preview">
+            {manDangMo && tree?.id ? (
+              <TreeModelPreview
+                modelId={modelId}
+                treeId={tree.id}
+                fruits={chamQua}
+                fill
+                /* `<Canvas>` tô nền ĐẶC. Truyền đúng chặng tối của ô không gian
+                   vào đây, nếu không sẽ thấy một ô gần-đen nằm trong một khối
+                   xanh đậm — hai màu tối khác nhau đọc ra "ảnh chưa tải xong". */
+                background={NEN_KHONG_GIAN}
+              />
+            ) : null}
+          </GLErrorBoundary>
+          <View style={styles.badge3D}>
+            <Icon name="cube" size={13} color={SANG_KHONG_GIAN} />
+            <Text style={styles.badge3DTxt}>3D</Text>
+          </View>
+        </BentoTile>
+
+        {/* Ô ẢNH — ảnh bìa làm nền, số ảnh làm nhãn. Chưa có ảnh thì ô tự đổi
+            thành một lời mời CÓ VIỆC LÀM (quay video), chứ không phải một ô
+            trống báo thiếu. */}
+        <BentoTile
+          flex={1}
+          onPress={() => (anhBia ? setZoomImage(anhBia) : handleTreeVideo())}
+          padded={false}
+          style={styles.bentoPreview}
+        >
+          {anhBia ? (
+            <>
+              <RemoteImage
+                uri={anhBia}
+                fallbackUri={localImages[0]}
+                retryKey={imgRetry}
+                style={StyleSheet.absoluteFill}
+                containerStyle={StyleSheet.absoluteFill}
+                resizeMode="cover"
+                placeholder={<View style={styles.anhTrong}><Icon name="image" size={24} color={ORG_NATURE.barkSoft} /></View>}
+                accessibilityLabel="Ảnh bìa của cây"
+              />
+              <View style={styles.anhChip}>
+                <Icon name="images" size={12} color={ORG_NATURE.bark} />
+                <Text style={styles.anhChipTxt}>
+                  {tk('trace.tree.photos', { n: treeImages.length })}
+                </Text>
+              </View>
+            </>
+          ) : (
+            <View style={styles.anhMoi}>
+              <Icon name="camera" size={22} color={ORG_TONE.primary} />
+              <Text style={styles.anhMoiTxt}>Chưa có ảnh — quay video để thêm</Text>
+            </View>
+          )}
+        </BentoTile>
+      </BentoRow>
+
+      {/* Dải ảnh ngang — MỘT hàng, cuộn ngang, không cao thêm theo số ảnh. Chỉ
+          dựng khi CÓ ảnh: lúc chưa có, ô "Ảnh" ở trên đã nói điều đó và đã có
+          việc để làm tiếp, nên một dải rỗng ở đây là lời thứ hai cho cùng tin. */}
+      {treeImages.length > 0 ? (
+        <View style={styles.daiAnh}>
+          {/* Ảnh 404 KHÔNG có nghĩa là ảnh mất: `/gimg` xét quyền lúc gọi và trả
+              404 giả-không-tồn-tại khi từ chối. Chữ phải nói đúng điều đó —
+              tuyệt đối không viết "ảnh đã mất/đã xoá" và không tô đỏ như lỗi của
+              app. */}
+          {(brokenImages > 0 || imagesError) ? (
             <View style={styles.photoNote}>
               <Icon name="circle-info" size={13} color="#8a6d1f" />
               <Text style={styles.photoNoteText}>
-                {imagesError
-                  ? tk('trace.tree.photoNetFail')
-                  : tk('trace.tree.photoServerFail')}
+                {imagesError ? tk('trace.tree.photoNetFail') : tk('trace.tree.photoServerFail')}
               </Text>
               <TouchableOpacity
                 onPress={() => { setImgRetry(n => n + 1); loadImages().catch(() => undefined); }}
@@ -912,190 +1186,127 @@ const TreeDetailScreen = () => {
                 <Text style={styles.photoRetryText}>Thử lại</Text>
               </TouchableOpacity>
             </View>
-          )}
-
-          {treeImages.length === 0 && !imagesError && (
-            <Text style={styles.photoEmptyText}>Cây này chưa có ảnh nào.</Text>
-          )}
+          ) : null}
 
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.photoStrip}
           >
-            {treeImages.map((uri, i) => (
-              <View key={`${uri}-${i}`}>
+            {treeImages.map((uri, k) => (
+              <View key={`${uri}-${k}`}>
                 <TouchableOpacity activeOpacity={0.85} onPress={() => setZoomImage(uri)}>
                   <RemoteImage
                     uri={uri}
-                    fallbackUri={localImages[i]}
+                    fallbackUri={localImages[k]}
                     retryKey={imgRetry}
                     style={styles.photoThumb}
                     resizeMode="cover"
                     onFinalError={() => setBrokenImages(n => n + 1)}
                     placeholder={<Icon name="image" size={22} color="#9bb0a4" />}
-                    accessibilityLabel={`Ảnh cây ${i + 1}`}
+                    accessibilityLabel={`Ảnh cây ${k + 1}`}
                   />
                 </TouchableOpacity>
                 {/* Chỉ ảnh nào ĐANG là ảnh máy chủ mới xoá được: `remove_views`
                     nhận vị trí trong `/api/tree_views`. Dải đang chạy bản lùi
                     local thì vị trí không khớp nữa ⇒ không hiện nút, thà thiếu
                     nút còn hơn xoá nhầm góc mà không ai thấy. */}
-                {i < serverImgCount && (
+                {k < serverImgCount ? (
                   <TouchableOpacity
                     style={styles.photoDelBtn}
                     activeOpacity={0.8}
                     disabled={deletingIdx !== null}
-                    onPress={() => handleDeleteView(i)}
-                    accessibilityLabel={`Xoá ảnh cây ${i + 1}`}
+                    onPress={() => handleDeleteView(k)}
+                    accessibilityLabel={`Xoá ảnh cây ${k + 1}`}
                   >
-                    {deletingIdx === i
+                    {deletingIdx === k
                       ? <ActivityIndicator size="small" color="#fff" />
                       : <Icon name="trash" size={11} color="#fff" />}
                   </TouchableOpacity>
-                )}
+                ) : null}
               </View>
             ))}
           </ScrollView>
         </View>
-      )}
+      ) : null}
 
-      {/* Bằng chứng video trên LampNet. Hiện mã lưu trữ vì OriLife KHÔNG có route
-          tra ngược — đây là chỗ duy nhất đội thực địa đối chiếu được sau buổi.
-          Chạm để sao chép mã. */}
-      {videoProofs.length > 0 && (
-        <View style={styles.proofWrap}>
-          <View style={styles.sectionLeft}>
-            <View style={styles.sectionDot} />
-            <Text style={styles.sectionTitle}>{tk('trace.tree.videos', { n: videoProofs.length })}</Text>
-          </View>
-          {videoProofs.map(p => (
-            <TouchableOpacity
-              key={p.videoCid}
-              style={styles.proofRow}
-              activeOpacity={0.7}
-              onPress={() => {
-                Linking.openURL(`https://lampnet.cloud/${p.videoCid}`)
-              }}
-            >
-              <Icon
-                name={p.stored === false ? 'triangle-exclamation' : 'shield-halved'}
-                size={15}
-                color={p.stored === false ? '#B26A00' : '#1b5e20'}
-              />
-              <View style={styles.proofBody}>
-                <Text style={styles.proofCid} numberOfLines={1}>{p.videoCid}</Text>
-                <Text style={styles.proofMeta}>
-                  {p.stored === false ? tk('trace.tree.notUploaded') : ''}
-                  {p.at ? new Date(p.at).toLocaleString('vi-VN') : ''}
-                  {p.nFruitsMax ? ` · khoảng ${p.nFruitsMax} quả` : ''}
-                </Text>
-              </View>
-              <TouchableOpacity onPress={() => {
-                Clipboard.setString(p.videoCid);
-              }}>
-                <Icon name="copy" size={14} color={COLORS.textMuted} />
+      {/* Danh sách bằng chứng video KHÔNG còn đứng ở đây. Nó đã về ngăn "Xem
+          thêm" của thẻ Tổng quan — cùng chỗ với vị trí, giống, năm trồng: những
+          thứ có người cần nhưng không ai cần MỖI LẦN mở màn.
 
-              </TouchableOpacity>
-            </TouchableOpacity>
-          ))}
+          Bản ở đây là bản cũ còn sót sau cú dời, và nó sống lại vì một lần vá cú
+          pháp: cú dời để lại khối JSX chưa đóng nên tệp không biên dịch được, và
+          cách đóng nhanh nhất lại là dựng lại nguyên khối tại chỗ cũ. Hệ quả
+          không kêu: màn hiện danh sách video HAI LẦN, và bản dưới đây là bản duy
+          nhất còn giữ lời rào "trong 1 khung" — nên xoá nó mà không mang lời rào
+          sang trước thì đúng cái mà chính lời rào ấy cảnh báo sẽ xảy ra. */}
+
+      {/* ═══ MỤC 3 — QUẢ ═════════════════════════════════════════════════ */}
+      <View style={[styles.sectionRow, styles.sectionQua]}>
+        <View style={styles.sectionLeft}>
+          <View style={styles.sectionDot} />
+          <Text style={styles.sectionTitle}>Quả</Text>
+          {totalFruits > 0 ? <Text style={styles.sectionCount}>{totalFruits}</Text> : null}
+          {fruitsLoading ? <ActivityIndicator size="small" color={ORG_TONE.primary} /> : null}
         </View>
-      )}
+        {/*
+          NÚT ĐẶC, chữ trắng. Trước bản này nó là nút viền nhạt trông y hệt ô tìm
+          kiếm và ô lọc ngay dưới — ba khối cùng sắc, cùng độ dày viền, mà chỉ
+          MỘT trong ba là việc thật sự tạo ra dữ liệu mới.
 
-      {/* Mesh fruit chip + capture-again CTA */}
-      <View style={styles.meshChipRow}>
-        <View style={styles.meshChip}>
-          <Text style={styles.meshChipEmoji}>🍈</Text>
-          <Text style={styles.meshChipText}>
-            {totalFruits}
-          </Text>
-        </View>
-        <TouchableOpacity style={styles.captureBtn} onPress={handleView3D} activeOpacity={0.85}>
-          <Icon name="expand" size={16} color={COLORS.white} />
-          <Text style={styles.captureBtnText}>Sơ đồ 3D</Text>
+          MỘT cửa thêm quả. Bản cũ có thêm nút "Video quả" ngay cạnh, cũng nói là
+          thêm quả nhưng chạy đường khác hẳn: `fruit_video` chỉ ĐẾM quả trên
+          khung hình, KHÔNG enroll — nên quay xong danh sách vẫn rỗng.
+        */}
+        <TouchableOpacity
+          style={styles.addFruitBtn}
+          onPress={handleAddFruit}
+          onPressIn={() => Animated.spring(btnScale, { toValue: 0.94, useNativeDriver: true }).start()}
+          onPressOut={() => Animated.spring(btnScale, { toValue: 1, friction: 4, useNativeDriver: true }).start()}
+          activeOpacity={1}
+          accessibilityRole="button"
+        >
+          <Animated.View style={[styles.addFruitBtnInner, { transform: [{ scale: btnScale }] }]}>
+            <GradientFill name="action" />
+            <Icon name="plus" size={15} color={COLORS.white} />
+            <Text style={styles.addFruitBtnText}>{tk('trace.tree.addFruit')}</Text>
+          </Animated.View>
         </TouchableOpacity>
       </View>
 
-      {estimatedFruits > 0 && (
-        <View style={styles.estimateNote}>
-          <Icon name="chart-line" size={14} color={COLORS.accent} />
-          <Text style={styles.estimateText}>
-            Dự kiến <Text style={{ fontWeight: '700', color: COLORS.accent }}>{estimatedFruits} quả</Text> trong mùa này
-          </Text>
+      <View style={styles.searchRow}>
+        <View style={styles.searchInputWrap}>
+          <Icon name="magnifying-glass" size={17} color={ORG_NATURE.barkSoft} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Tìm quả theo tên…"
+            placeholderTextColor={ORG_NATURE.barkSoft}
+            value={searchQuery}
+            onChangeText={(text) => { setSearchQuery(text); setCurrentPage(1); }}
+          />
+          {searchQuery.length > 0 ? (
+            <TouchableOpacity
+              onPress={() => { setSearchQuery(''); setCurrentPage(1); }}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Icon name="circle-xmark" size={16} color={ORG_NATURE.barkSoft} />
+            </TouchableOpacity>
+          ) : null}
         </View>
-      )}
 
-      <View style={styles.sectionRow}>
-        <View style={styles.sectionLeft}>
-          <View style={styles.sectionDot} />
-          <Text style={styles.sectionTitle}>
-            {totalFruits > 0
-              ? tk('trace.tree.fruitListN', { n: totalFruits })
-              : tk('trace.tree.fruitList')}
-          </Text>
-          {fruitsLoading && <ActivityIndicator size="small" color={COLORS.accent} />}
-        </View>
-        <View style={styles.fruitActionRow}>
-          <TouchableOpacity
-            style={styles.addFruitBtn}
-            onPress={handleAddFruit}
-            onPressIn={() => Animated.spring(btnScale, { toValue: 0.94, useNativeDriver: true }).start()}
-            onPressOut={() => Animated.spring(btnScale, { toValue: 1, friction: 4, useNativeDriver: true }).start()}
-            activeOpacity={1}
+        <TouchableOpacity
+          style={[styles.statusFilterBtn, statusFilter !== 'all' && styles.statusFilterBtnBat]}
+          onPress={() => setStatusDropdownVisible(true)}
+          accessibilityRole="button"
+        >
+          <Icon name="filter" size={16} color={statusFilter === 'all' ? ORG_NATURE.barkSoft : ORG_TONE.primary} />
+          <Text
+            style={[styles.statusFilterText, statusFilter !== 'all' && styles.statusFilterTextBat]}
+            numberOfLines={1}
           >
-            <Animated.View style={[styles.addFruitBtnInner, { transform: [{ scale: btnScale }] }]}>
-              <Icon name="plus" size={15} color={COLORS.accent} />
-              <Text style={styles.addFruitBtnText}>{tk('trace.tree.addFruit')}</Text>
-            </Animated.View>
-          </TouchableOpacity>
-        </View>
-      </View>
-      {/* MỘT cửa thêm quả. Bản cũ có thêm nút "Video quả" ngay cạnh, cũng nói là
-          thêm quả nhưng chạy đường khác hẳn: `fruit_video` chỉ ĐẾM quả trên khung
-          hình, KHÔNG enroll (xem đầu `fruitVideoService.ts`) — nên quay xong danh
-          sách vẫn rỗng. Nay lối quay video nằm trong chính trang "Quả trên cây",
-          cạnh chụp ảnh và thư viện, và nói rõ nó làm gì. */}
-
-      <View style={styles.searchContainer}>
-        <View style={styles.searchRow}>
-          <View style={styles.searchInputWrap}>
-            <Icon name="magnifying-glass" size={18} color={COLORS.textMuted} style={styles.searchIcon} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Tìm kiếm theo tên quả..."
-              placeholderTextColor={COLORS.textMuted}
-              value={searchQuery}
-              onChangeText={(text) => {
-                setSearchQuery(text);
-                setCurrentPage(1);
-              }}
-            />
-            {searchQuery.length > 0 && (
-              <TouchableOpacity
-                onPress={() => {
-                  setSearchQuery('');
-                  setCurrentPage(1);
-                }}
-                style={styles.clearSearchBtn}
-              >
-                <Icon name="xmark" size={16} color={COLORS.textMuted} />
-              </TouchableOpacity>
-            )}
-          </View>
-
-          <TouchableOpacity
-            style={styles.statusFilterBtn}
-            onPress={() => setStatusDropdownVisible(true)}
-          >
-            <Icon name="filter" size={18} color={COLORS.accent} />
-            <Text style={styles.statusFilterText}>
-              {statusFilter === 'all'
-                ? tk('trace.fruit.allStatus')
-                : tk(getStatus(statusFilter).labelKey)}
-            </Text>
-            <Icon name="chevron-down" size={18} color={COLORS.accent} />
-          </TouchableOpacity>
-        </View>
+            {statusFilter === 'all' ? tk('trace.fruit.allStatus') : tk(getStatus(statusFilter).labelKey)}
+          </Text>
+        </TouchableOpacity>
       </View>
     </Animated.View>
   );
@@ -1155,12 +1366,25 @@ const TreeDetailScreen = () => {
       keyExtractor={(item) => item.fruit_id}
       showsVerticalScrollIndicator={false}
       contentContainerStyle={styles.listContent}
-      ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
       ListHeaderComponent={overviewHeader}
       ListEmptyComponent={overviewEmpty}
-      renderItem={({ item, index }) => (
-        // Chạm 1 quả → màn quả đầy-đủ của cây (xem góc ảnh / sơ-đồ / thêm góc).
-        <FruitCard item={item} index={index} onPress={handleAddFruit} />
+      /*
+        LƯỚI BA CỘT. `numColumns` là thuộc tính TĨNH của `FlatList` — đổi nó lúc
+        chạy làm danh sách ném. Ở đây nó là hằng nên không sao; nếu ngày nào cần
+        đổi theo bề ngang màn thì phải đổi cả `key` của danh sách.
+
+        Ba chứ không bốn như lưới cây bên màn vườn: nút quả mang ẢNH, và ảnh
+        đường kính 75 thì không còn nhận ra quả nào với quả nào — mà nhận ra quả
+        bằng mắt chính là lý do nút này có ảnh.
+      */
+      numColumns={3}
+      columnWrapperStyle={styles.quaHang}
+      renderItem={({ item }) => (
+        /* Chạm KHÔNG mở thẳng màn quả nữa — nó mở popup. Cùng nhịp làm việc với
+           lưới cây bên màn vườn: người ta quét mắt qua lưới, chạm một quả để xem
+           nhanh nó có gì, rồi chạm quả kế. Mở một màn cho mỗi lượt xem nhanh là
+           bắt họ đi và quay lại — mất chỗ đang đứng trong lưới, mất cả trang. */
+        <FruitChip item={item} size={CO_QUA} onPress={() => setQuaDangXem(item)} />
       )}
       ListFooterComponent={
         totalPages > 1 ? (
@@ -1319,6 +1543,108 @@ const TreeDetailScreen = () => {
         />
       )}
 
+      {/*
+        POPUP CHI TIẾT QUẢ.
+
+        Chạm một nút quả mở cái này, KHÔNG mở thẳng màn quả. Cùng khuôn và cùng
+        lý do với popup cây ở màn chi tiết vườn — hai màn phải cho ra cùng một
+        thứ khi người dùng làm cùng một cử chỉ, nếu không thì họ phải học hai lần.
+
+        Bốn dòng trong bảng chính là bốn thứ vừa bị bỏ khỏi thẻ quả cũ. Chúng
+        không mất; chúng chỉ thôi chiếm chỗ ở mức danh sách, nơi không ai đọc.
+      */}
+      <Modal
+        visible={quaDangXem != null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setQuaDangXem(null)}
+      >
+        {/* Chạm ra ngoài là đóng — cách thoát mà ai cũng thử trước tiên. */}
+        <TouchableOpacity
+          style={styles.quaPopupNen}
+          activeOpacity={1}
+          onPress={() => setQuaDangXem(null)}
+        />
+        <View style={styles.quaPopupBoc} pointerEvents="box-none">
+          <View style={styles.quaPopup}>
+            <GradientFill name="tile" />
+
+            <View style={styles.quaPopupDau}>
+              <View
+                style={[
+                  styles.quaTron,
+                  { width: 68, height: 68, borderRadius: 34, borderColor: getStatus(quaDangXem?.status).color },
+                ]}
+              >
+                <RemoteImage
+                  uri={quaDangXem?.thumbnail_url ? `${ORILIFE_BASE}${quaDangXem.thumbnail_url}` : null}
+                  style={styles.quaAnh}
+                  containerStyle={styles.quaAnh}
+                  resizeMode="cover"
+                  placeholder={
+                    <View style={[styles.quaTrong, { backgroundColor: getStatus(quaDangXem?.status).bg }]}>
+                      <Icon
+                        name={getStatus(quaDangXem?.status).icon as IconName}
+                        size={24}
+                        color={getStatus(quaDangXem?.status).color}
+                      />
+                    </View>
+                  }
+                />
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.quaPopupTen} numberOfLines={2}>
+                  {quaDangXem?.name || tk('trace.tree.unnamed')}
+                </Text>
+                <View
+                  style={[styles.fruitStatusChip, { backgroundColor: getStatus(quaDangXem?.status).bg, alignSelf: 'flex-start', marginTop: 5 }]}
+                >
+                  <View style={[styles.fruitStatusDot, { backgroundColor: getStatus(quaDangXem?.status).color }]} />
+                  <Text style={[styles.fruitStatusText, { color: getStatus(quaDangXem?.status).color }]}>
+                    {tk(getStatus(quaDangXem?.status).labelKey)}
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                onPress={() => setQuaDangXem(null)}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                accessibilityLabel="Đóng"
+              >
+                <Icon name="xmark" size={18} color={ORG_NATURE.barkSoft} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.quaPopupBang}>
+              {[
+                { nhan: 'Số góc ảnh', gt: String(quaDangXem?.n_views ?? 0) },
+                { nhan: 'Tầng trên cây', gt: quaDangXem?.zone ? ZONE_VI[quaDangXem.zone] : 'chưa đặt' },
+                { nhan: 'Ngày ghi nhận', gt: fmtDate(quaDangXem?.enrolled_at) || tk('trace.tree.noDate') },
+                { nhan: 'Mã quả', gt: (quaDangXem?.fruit_id ?? '').slice(-8).toUpperCase() || '—' },
+              ].map((d) => (
+                <View key={d.nhan} style={styles.quaPopupHang}>
+                  <Text style={styles.quaPopupNhan}>{d.nhan}</Text>
+                  <Text style={styles.quaPopupGt} numberOfLines={1}>{d.gt}</Text>
+                </View>
+              ))}
+            </View>
+
+            {/* Máy chủ chưa mở cửa cho MỘT quả (`fruitReIDService` không có route
+                lấy một quả), nên "xem chi tiết" dẫn tới màn quả CỦA CÂY — đúng
+                nơi xem được từng góc ảnh và thêm góc mới. Đó cũng là đích mà thẻ
+                quả cũ vẫn dẫn tới, nên không mất đường nào. */}
+            <TouchableOpacity
+              style={styles.quaPopupNut}
+              activeOpacity={0.88}
+              onPress={() => { setQuaDangXem(null); handleAddFruit(); }}
+              accessibilityRole="button"
+            >
+              <GradientFill name="action" />
+              <Text style={styles.quaPopupNutTxt}>Xem chi tiết</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       {/* Lightbox ảnh cây */}
       <Modal
         visible={zoomImage != null}
@@ -1378,46 +1704,94 @@ const TreeDetailScreen = () => {
         animationType="fade"
         onRequestClose={() => setMoreOpen(false)}
       >
+        {/* Nền là một lớp RIÊNG, không phải cái bọc của tấm.
+
+            Bản trước tấm nằm TRONG một `TouchableOpacity` phủ kín màn, nên chạm
+            vào chính tấm — kể cả khoảng đệm giữa hai hàng — cũng đóng tấm. Chạm
+            hụt một hàng là mất luôn tấm, và người dùng phải mở lại từ đầu. */}
         <TouchableOpacity
-          style={styles.modalOverlay}
+          style={styles.khacNen}
           activeOpacity={1}
           onPress={() => setMoreOpen(false)}
-        >
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>{tk('trace.tree.moreActions')}</Text>
-            <TouchableOpacity
-              style={styles.modalOption}
-              onPress={() => { setMoreOpen(false); handlePlaceInFarm(); }}
-            >
-              <Icon name="map-pin" size={18} color={COLORS.textSub} />
-              <Text style={styles.modalOptionText}>{tk('trace.tree.actPlace')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.modalOption}
-              onPress={() => {
-                setMoreOpen(false);
-                tree && (navigation as any).navigate('TreeDrift', {
-                  treeId: tree.id, treeName: (tree as any).name,
-                });
-              }}
-            >
-              <Icon name="chart-line" size={18} color={COLORS.textSub} />
-              <Text style={styles.modalOptionText}>{tk('trace.tree.actDrift')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.modalOption}
-              onPress={() => {
-                setMoreOpen(false);
-                tree && (navigation as any).navigate('TreeShare', {
-                  scopeType: 'tree', scopeId: tree.id, scopeName: (tree as any).name,
-                });
-              }}
-            >
-              <Icon name="share-nodes" size={18} color={COLORS.textSub} />
-              <Text style={styles.modalOptionText}>{tk('trace.tree.actShare')}</Text>
-            </TouchableOpacity>
+          accessibilityLabel="Đóng"
+        />
+        <View style={styles.khacBoc} pointerEvents="box-none">
+          <View style={styles.khacTam}>
+            <GradientFill name="tile" />
+            <Text style={styles.khacTieuDe}>{tk('trace.tree.moreActions')}</Text>
+
+            {/*
+              BA HÀNG, mỗi hàng là một NÚT nhìn ra nút.
+
+              ⛔ Bản trước ba hàng này dùng chung `styles.modalOption` với hai tấm
+                 kia, mà style đó có `justifyContent: 'space-between'` — đúng cho
+                 tấm lọc trạng thái, vì ở đó icon và chữ được bọc chung trong
+                 `modalOptionLeft` còn vế phải là dấu tích. Ở đây KHÔNG có vế
+                 phải và KHÔNG có bọc, nên `space-between` đẩy biểu tượng dính
+                 mép trái và cả câu chữ dính mép phải, chừa một khoảng trống to
+                 tướng ở giữa. Cộng thêm: không nền, không viền, ba biểu tượng
+                 cùng một màu xám — ba việc khác hẳn nhau trông y hệt nhau, và
+                 không hàng nào trông như bấm được.
+
+              Nay mỗi hàng có mặt riêng, biểu tượng nằm trong một ô màu, và có
+              mũi tên ở cuối vì cả ba đều ĐI SANG MÀN KHÁC.
+
+              MÀU NÓI NGHĨA, không phải để cho vui:
+                · xanh lá — đặt cây vào sơ đồ: việc trong không gian của mình;
+                · xanh nước — biến thiên: thứ để ĐỌC, không tạo ra gì;
+                · nắng — chia sẻ: việc DUY NHẤT đưa dữ liệu RA NGOÀI, nên nó phải
+                  khác hạng với hai việc trên, không chỉ khác tên.
+            */}
+            {([
+              {
+                icon: 'map-pin',
+                mau: ORG_TONE.primary,
+                nen: ORG_TONE.primarySoft,
+                nhan: tk('trace.tree.actPlace'),
+                lam: () => handlePlaceInFarm(),
+              },
+              {
+                icon: 'chart-line',
+                mau: ORG_TONE.rain,
+                nen: ORG_TONE.rainSoft,
+                nhan: tk('trace.tree.actDrift'),
+                lam: () => {
+                  if (!tree) return;
+                  (navigation as any).navigate('TreeDrift', {
+                    treeId: tree.id, treeName: (tree as any).name,
+                  });
+                },
+              },
+              {
+                icon: 'share-nodes',
+                mau: ORG_TONE.sun,
+                nen: ORG_TONE.sunSoft,
+                nhan: tk('trace.tree.actShare'),
+                lam: () => {
+                  if (!tree) return;
+                  (navigation as any).navigate('TreeShare', {
+                    scopeType: 'tree', scopeId: tree.id, scopeName: (tree as any).name,
+                  });
+                },
+              },
+            ] as { icon: IconName; mau: string; nen: string; nhan: string; lam: () => void }[]).map(v => (
+              <TouchableOpacity
+                key={v.nhan}
+                style={styles.khacHang}
+                activeOpacity={0.75}
+                onPress={() => { setMoreOpen(false); v.lam(); }}
+                accessibilityRole="button"
+                accessibilityLabel={v.nhan}
+              >
+                <View style={[styles.khacIcon, { backgroundColor: v.nen }]}>
+                  <Icon name={v.icon} size={17} color={v.mau} />
+                </View>
+                <Text style={styles.khacNhan} numberOfLines={2}>{v.nhan}</Text>
+                <Icon name="chevron-right" size={15} color={ORG_NATURE.barkSoft} />
+              </TouchableOpacity>
+            ))}
           </View>
-        </TouchableOpacity>
+        </View>
       </Modal>
 
       {/* Chọn vườn cho cây (`/api/tree/set_farm`). Có cả lối GỠ khỏi vườn vì máy
@@ -1519,6 +1893,157 @@ const TreeDetailScreen = () => {
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
+
+  // ── Nút ba chấm ở đầu màn ──────────────────────────────────────────────────
+  // Vuông 40, không chữ. Cạnh tối thiểu chỗ bấm của bộ token là 56, nhưng ở đây
+  // `hitSlop` 10 mỗi phía cộng vào cho đủ 60 — vùng CHẠM đủ rộng mà vùng VẼ vẫn
+  // nhỏ, nên nút không tranh chỗ với "Ghi thuốc" ngay cạnh.
+  headerMoreBtn: {
+    width: 40, height: 40, borderRadius: 12,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: ORG_SURFACE.raised,
+    borderWidth: 1, borderColor: ORG_TONE.border,
+  },
+
+  // ── MỤC 1 — thẻ Tổng quan ──────────────────────────────────────────────────
+  panel: {
+    borderRadius: 20,
+    borderWidth: 1, borderColor: ORG_TONE.border,
+    overflow: 'hidden',
+    padding: 14,
+    marginBottom: 18,
+    ...ORG_ELEV.card,
+  },
+  panelTop: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  panelName: { fontSize: 19, fontWeight: '800', color: ORG_NATURE.bark, letterSpacing: -0.3 },
+  panelCode: { fontSize: 11.5, fontWeight: '600', color: ORG_NATURE.barkSoft, marginTop: 2 },
+  panelFarmRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6 },
+  panelFarmTxt: { flex: 1, fontSize: 12.5, color: ORG_NATURE.barkSoft },
+  /** Cây mồ côi — sắc NẮNG, vì đây là chỗ có việc phải làm, không phải chỗ báo lỗi. */
+  panelFarmMissing: { color: ORG_TONE.sun, fontWeight: '700' },
+
+  panelSo: {
+    flexDirection: 'row', alignItems: 'stretch',
+    marginTop: 14, paddingTop: 12,
+    borderTopWidth: 1, borderTopColor: ORG_TONE.border,
+  },
+  panelVach: { width: 1, backgroundColor: ORG_TONE.border, marginVertical: 2 },
+  panelO: { flex: 1, alignItems: 'center', gap: 2, paddingHorizontal: 2 },
+  panelOSo: { fontSize: 19, fontWeight: '800', letterSpacing: -0.5 },
+  panelONhan: { fontSize: 10, color: ORG_NATURE.barkSoft },
+
+  panelPhu: {
+    marginTop: 12, paddingTop: 12, gap: 7,
+    borderTopWidth: 1, borderTopColor: ORG_TONE.border,
+  },
+  panelPhuHang: {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between', gap: 12,
+  },
+  panelPhuNhan: { fontSize: 12.5, color: ORG_NATURE.barkSoft },
+  panelPhuGt: { fontSize: 13, fontWeight: '600', color: ORG_NATURE.bark, flexShrink: 1, textAlign: 'right' },
+  panelPhuUoc: { fontSize: 11, fontWeight: '400', color: ORG_NATURE.barkSoft },
+  panelKhoi: { marginTop: 4, gap: 4 },
+  panelKhoiTitle: { fontSize: 11.5, fontWeight: '800', color: ORG_NATURE.bark, letterSpacing: 0.2 },
+
+  /** Cả một hàng bấm được, không phải một chữ nhỏ bấm được. */
+  panelMoRong: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    marginTop: 12, paddingTop: 10,
+    borderTopWidth: 1, borderTopColor: ORG_TONE.border,
+  },
+  panelMoRongTxt: { fontSize: 13, fontWeight: '700', color: ORG_TONE.primary },
+
+  // ── MỤC 2 — hai ô xem trước ────────────────────────────────────────────────
+  bentoPreviews: { marginBottom: 12 },
+  bentoPreview: { height: 138, justifyContent: 'flex-end', alignItems: 'center' },
+  /** Huy hiệu ở GÓC, không phải nhãn giữa ô: hình đã nói đây là không gian. */
+  badge3D: {
+    position: 'absolute', top: 10, left: 10,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingVertical: 3, paddingHorizontal: 8, borderRadius: 999,
+    backgroundColor: 'rgba(127, 231, 196, 0.14)',
+  },
+  badge3DTxt: { fontSize: 11, fontWeight: '800', color: SANG_KHONG_GIAN },
+
+  anhTrong: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: ORG_SURFACE.sunken,
+  },
+  /** Chip đếm ảnh — nền kính mờ, vì nó nằm TRÊN một tấm ảnh sáng tối bất kỳ. */
+  anhChip: {
+    position: 'absolute', left: 10, bottom: 10,
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingVertical: 4, paddingHorizontal: 9, borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+  },
+  anhChipTxt: { fontSize: 11.5, fontWeight: '800', color: ORG_NATURE.bark },
+  anhMoi: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 14 },
+  anhMoiTxt: { fontSize: 12, fontWeight: '700', color: ORG_TONE.primary, textAlign: 'center', lineHeight: 16 },
+
+  daiAnh: { marginBottom: 18 },
+
+  // ── MỤC 3 — nút quả ────────────────────────────────────────────────────────
+  quaHang: { gap: 12, marginBottom: 14 },
+  /**
+   * Lòng nút là ẢNH, mép nút là TRẠNG THÁI.
+   *
+   * `overflow: 'hidden'` KHÔNG phải tuỳ chọn: ảnh bên trong là hình vuông, thiếu
+   * dòng này thì bốn góc ảnh thò ra ngoài vòng tròn và nút thành hình vuông bo.
+   * Màu viền do nơi dùng truyền vào, lấy thẳng từ `STATUS_MAP`.
+   */
+  quaTron: {
+    overflow: 'hidden',
+    borderWidth: 3,
+    backgroundColor: ORG_SURFACE.sunken,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  quaAnh: { width: '100%', height: '100%' },
+  quaTrong: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
+  quaTen: {
+    marginTop: 7,
+    fontSize: 11.5, fontWeight: '700', color: ORG_NATURE.bark,
+    textAlign: 'center', lineHeight: 14, letterSpacing: -0.2,
+  },
+
+  // ── Popup chi tiết quả ─────────────────────────────────────────────────────
+  quaPopupNen: { ...StyleSheet.absoluteFillObject, backgroundColor: ORG_SURFACE.scrim },
+  quaPopupBoc: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  quaPopup: {
+    width: '100%', maxWidth: 420,
+    borderRadius: 20, overflow: 'hidden',
+    padding: 18, gap: 14,
+    borderWidth: 1, borderColor: ORG_TONE.border,
+    ...ORG_ELEV.modal,
+  },
+  quaPopupDau: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  quaPopupTen: { fontSize: 18, fontWeight: '800', color: ORG_NATURE.bark, letterSpacing: -0.3 },
+  quaPopupBang: { gap: 7 },
+  quaPopupHang: {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between', gap: 12,
+  },
+  quaPopupNhan: { fontSize: 13, color: ORG_NATURE.barkSoft },
+  quaPopupGt: { fontSize: 14, fontWeight: '600', color: ORG_NATURE.bark, flexShrink: 1, textAlign: 'right' },
+  quaPopupNut: {
+    alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 13, borderRadius: 999, overflow: 'hidden',
+  },
+  quaPopupNutTxt: { fontSize: 15, fontWeight: '800', color: COLORS.white },
+
+  // ── Tiêu đề mục Quả ────────────────────────────────────────────────────────
+  sectionQua: { marginTop: 4 },
+  sectionCount: {
+    fontSize: 12, fontWeight: '800', color: ORG_TONE.primary,
+    backgroundColor: ORG_TONE.primarySoft,
+    paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999,
+    overflow: 'hidden',
+  },
+  /** Ô lọc ĐANG bật phải trông khác ô lọc tắt — nếu không, không ai biết danh
+   *  sách đang bị cắt bớt, và "mất quả" là kết luận tự nhiên tiếp theo. */
+  statusFilterBtnBat: { borderColor: ORG_TONE.primary, backgroundColor: ORG_TONE.primarySoft },
+  statusFilterTextBat: { color: ORG_TONE.primary, fontWeight: '800' },
   root: { flex: 1, backgroundColor: ORG_SURFACE.ground },
 
   header: {
@@ -1546,13 +2071,6 @@ const styles = StyleSheet.create({
     fontSize: 11, fontWeight: '500', color: COLORS.textMuted,
     letterSpacing: 0.5, marginTop: 2,
   },
-  headerActionBtn: {
-    minWidth: 44, paddingHorizontal: 6, paddingVertical: 5, borderRadius: 12,
-    backgroundColor: ORG_SURFACE.raised,
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: ORG_TONE.border,
-  },
-  headerMoreTxt: { fontSize: 10, fontWeight: '700', color: COLORS.textSub, marginTop: 1 },
   // Nút "Ghi thuốc" — việc hằng ngày, nên nó là nút DUY NHẤT ở đầu màn có nền
   // nổi và chữ đầy đủ. Xem chú thích ở phần Header về vì sao đúng nút này.
   headerCareBtn: {
@@ -1594,7 +2112,6 @@ const styles = StyleSheet.create({
   },
 
   tabBody: { flex: 1 },
-  meshHost: { flex: 1 },
 
   listContent: {
     paddingHorizontal: 20,
@@ -1602,90 +2119,20 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
 
-  treeStatsRow: { marginBottom: 8 },
-  heroCard: {
-    backgroundColor: ORG_SURFACE.raised,
-    borderRadius: 20,
-    borderWidth: 1, borderColor: ORG_TONE.border,
-    marginBottom: 12,
-    ...ORG_ELEV.card,
-    overflow: 'hidden',
-  },
-  heroTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 18,
-    paddingBottom: 14,
-    gap: 12,
-  },
-  heroLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 14 },
-  heroIconWrap: {
-    width: 56, height: 56, borderRadius: 16,
-    backgroundColor: COLORS.accentGlow,
-    alignItems: 'center', justifyContent: 'center',
-    position: 'relative',
-  },
-  heroIconGlow: {
-    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    borderRadius: 16, borderWidth: 1, borderColor: COLORS.accentLight, opacity: 0.3,
-  },
-  heroLabel: {
-    fontSize: 9, fontWeight: '700', color: COLORS.accent,
-    letterSpacing: 2, marginBottom: 3,
-  },
-  heroCode: {
-    fontSize: 18, fontWeight: '800', color: COLORS.text, letterSpacing: -0.3,
-    marginBottom: 4,
-  },
-  heroCodeSub: {
-    fontSize: 11, fontWeight: '500', color: COLORS.textMuted,
-    letterSpacing: 0.4, marginBottom: 2,
-  },
-  heroFarmRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
-  heroFarmText: { fontSize: 12, color: COLORS.textMuted },
-  heroFarmMissing: { color: ORG_TONE.sun, fontWeight: '600' },
   farmPickEmpty: { fontSize: 13, color: COLORS.textMuted, paddingVertical: 8 },
   farmPickRemove: { color: COLORS.error },
 
-  heroDivider: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 18, gap: 8,
-    marginBottom: 0,
-  },
-  heroDividerLine: { flex: 1, height: 1, backgroundColor: COLORS.border },
 
-  heroStats: {
-    flexDirection: 'row',
-    borderTopWidth: 1, borderTopColor: COLORS.border,
-    marginTop: 0,
-  },
-  heroStatItem: {
-    flex: 1, alignItems: 'center', paddingVertical: 14, gap: 4,
-  },
-  heroStatVal: {
-    fontSize: 18, fontWeight: '800', letterSpacing: -0.5,
-  },
-  heroStatLabel: { fontSize: 10, color: COLORS.textMuted, textAlign: 'center' },
 
-  photoStripWrap: { marginBottom: 14, gap: 8 },
-  featuresBox: {
-    marginHorizontal: 18, marginBottom: 16,
-    paddingHorizontal: 16, paddingVertical: 14,
-    backgroundColor: ORG_TONE.primarySoft, ...ORGANIC_CARD, gap: 3,
-  },
-  featuresTitle: { fontSize: 15, fontWeight: '700', color: ORG_TONE.primaryDeep, marginBottom: 4 },
   featuresLine: { fontSize: 14.5, color: ORG_NATURE.bark, lineHeight: 22 },
   featuresPending: { fontSize: 14, color: ORG_NATURE.barkSoft, lineHeight: 21 },
-  photoStripHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   treeVideoBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: '#e8f5e9',
-    borderWidth: 1, borderColor: '#1b5e20',
-    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10,
+    backgroundColor: ORG_SURFACE.raised,
+    borderWidth: 1, borderColor: ORG_TONE.primary,
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999,
   },
-  treeVideoBtnText: { fontSize: 13, fontWeight: '700', color: '#1b5e20' },
-  proofWrap: { marginBottom: 14, gap: 8 },
+  treeVideoBtnText: { fontSize: 12.5, fontWeight: '800', color: ORG_TONE.primary },
   proofRow: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     borderWidth: 1, borderColor: '#c8e6c9', backgroundColor: '#f1f8e9',
@@ -1747,12 +2194,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#8a6d1f',
   },
   photoRetryText: { color: COLORS.white, fontSize: 12, fontWeight: '700' },
-  photoEmptyText: {
-    marginHorizontal: 14,
-    marginTop: 8,
-    color: '#7d8f85',
-    fontSize: 12.5,
-  },
   zoomClose: {
     position: 'absolute', top: 48, right: 20,
     width: 40, height: 40, borderRadius: 20,
@@ -1760,57 +2201,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
 
-  meshChipRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 12,
-  },
-  meshChip: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: COLORS.accentGlow,
-    borderWidth: 1,
-    borderColor: ORG_TONE.border,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  meshChipEmoji: { fontSize: 16 },
-  meshChipText: { fontSize: 13, color: COLORS.text, fontWeight: '700' },
-  captureBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: COLORS.accent,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 12,
-  },
-  captureBtnText: { color: COLORS.white, fontSize: 13, fontWeight: '700' },
-  view3DBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: COLORS.accentGlow,
-    borderWidth: 1,
-    borderColor: COLORS.accent,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 12,
-  },
-  view3DBtnText: { color: COLORS.accent, fontSize: 13, fontWeight: '700' },
 
-  estimateNote: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: COLORS.accentGlow,
-    borderRadius: 12, padding: 11,
-    borderWidth: 1, borderColor: ORG_TONE.border,
-    marginBottom: 16,
-  },
-  estimateText: { fontSize: 13, color: COLORS.textSub },
 
   sectionRow: {
     flexDirection: 'row', alignItems: 'center',
@@ -1820,56 +2211,31 @@ const styles = StyleSheet.create({
   sectionLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   sectionDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.accent },
   sectionTitle: { ...ORG_TYPE.section },
-  addFruitBtn: { borderRadius: 10, overflow: 'hidden' },
+  addFruitBtn: { borderRadius: 999 },
+  /**
+   * Nút ĐẶC, chữ trắng, bo tròn hẳn.
+   *
+   * Bản trước: nền `accentGlow` rất nhạt, viền `TONE.border`, chữ xanh — tức
+   * giống HỆT ô tìm kiếm và ô lọc ngay bên dưới nó. Ba khối cùng sắc, cùng độ
+   * dày viền, mà chỉ MỘT trong ba tạo ra dữ liệu mới; hai cái kia chỉ lọc lại
+   * thứ đã có. Nút chính của một mục phải khác hạng với các ô điều khiển quanh
+   * nó, nếu không thì nó không còn là nút chính.
+   *
+   * `overflow: 'hidden'` ở lớp TRONG vì `GradientFill` nằm trong lớp đó.
+   */
   addFruitBtnInner: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: COLORS.accentGlow,
-    borderWidth: 1, borderColor: ORG_TONE.border,
-    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10,
-  },
-  addFruitBtnText: { fontSize: 13, fontWeight: '600', color: COLORS.accent },
-  fruitActionRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  fruitVideoBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: '#e8f5e9',
-    borderWidth: 1, borderColor: '#1b5e20',
-    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10,
-    flex: 1, justifyContent: 'center',
-  },
-  fruitVideoBtnText: { fontSize: 13, fontWeight: '700', color: '#1b5e20' },
-
-  fruitCard: {
-    backgroundColor: ORG_SURFACE.raised,
-    borderRadius: 16, borderWidth: 1, borderColor: ORG_TONE.border,
-    flexDirection: 'row', alignItems: 'center',
-    ...ORG_ELEV.card,
+    paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999,
     overflow: 'hidden',
   },
-  fruitIconWrap: {
-    width: 52, alignItems: 'center', justifyContent: 'center',
-    alignSelf: 'stretch',
-    borderRightWidth: 1, borderRightColor: COLORS.border,
-  },
-  fruitThumb: {
-    width: 64, height: 64, alignSelf: 'center',
-    marginLeft: 8, borderRadius: 12,
-    backgroundColor: COLORS.accentGlow,
-  },
-  fruitCardBody: { flex: 1, padding: 12 },
-  fruitTopRow: {
-    flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'space-between', marginBottom: 6,
-  },
-  fruitCode: { flex: 1, fontSize: 15, fontWeight: '700', color: COLORS.text, letterSpacing: -0.2, marginRight: 8 },
+  addFruitBtnText: { fontSize: 13.5, fontWeight: '800', color: COLORS.white },
+
   fruitStatusChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20,
   },
   fruitStatusDot: { width: 5, height: 5, borderRadius: 2.5 },
   fruitStatusText: { fontSize: 10, fontWeight: '600' },
-  fruitMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  fruitMetaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  fruitMetaText: { fontSize: 11, color: COLORS.textMuted },
 
   emptyWrap: {
     alignItems: 'center', paddingTop: 40, gap: 10,
@@ -1928,8 +2294,7 @@ const styles = StyleSheet.create({
     height: '50%', backgroundColor: 'rgba(255,255,255,0.09)', borderRadius: 14,
   },
 
-  searchContainer: { marginTop: 12, marginBottom: 8 },
-  searchRow: { flexDirection: 'row', gap: 12 },
+  searchRow: { flexDirection: 'row', gap: 10, marginBottom: 14 },
   searchInputWrap: {
     flex: 1,
     flexDirection: 'row',
@@ -1942,22 +2307,55 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     ...ORG_ELEV.card,
   },
-  searchIcon: { marginRight: 10 },
   searchInput: { flex: 1, fontSize: 15, color: COLORS.text, paddingVertical: 0 },
-  clearSearchBtn: { padding: 4 },
   statusFilterBtn: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
     backgroundColor: ORG_SURFACE.raised,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: ORG_TONE.border,
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     paddingVertical: 12,
-    gap: 8,
     ...ORG_ELEV.card,
   },
-  statusFilterText: { fontSize: 14, color: COLORS.accent, fontWeight: '600', flex: 1 },
+  statusFilterText: { fontSize: 13, color: ORG_NATURE.barkSoft, fontWeight: '700', maxWidth: 92 },
+
+  // ── Tấm "Khác" ─────────────────────────────────────────────────────────────
+  khacNen: { ...StyleSheet.absoluteFillObject, backgroundColor: ORG_SURFACE.scrim },
+  khacBoc: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  khacTam: {
+    width: '100%', maxWidth: 400,
+    borderRadius: 20, overflow: 'hidden',
+    padding: 16, gap: 10,
+    borderWidth: 1, borderColor: ORG_TONE.border,
+    ...ORG_ELEV.modal,
+  },
+  /** Canh TRÁI, cùng mép với ba hàng dưới. Canh giữa thì tiêu đề trôi khỏi cột
+   *  chữ của các hàng, và mắt phải nhảy hai lần cho một tấm ba dòng. */
+  khacTieuDe: {
+    fontSize: 16, fontWeight: '800', color: ORG_NATURE.bark,
+    letterSpacing: -0.2, marginBottom: 2, paddingHorizontal: 2,
+  },
+  khacHang: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingVertical: 11, paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: ORG_SURFACE.raised,
+    borderWidth: 1, borderColor: ORG_TONE.border,
+  },
+  khacIcon: {
+    width: 38, height: 38, borderRadius: 12,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  /** `flex: 1` là thứ giữ chữ SÁT biểu tượng: nhãn ở đây là cả một câu, và câu
+   *  đó phải bắt đầu ngay sau ô màu rồi tự xuống dòng, không phải bị đẩy sang
+   *  mép phải như bản trước. */
+  khacNhan: {
+    flex: 1,
+    fontSize: 14.5, fontWeight: '600', color: ORG_NATURE.bark, lineHeight: 19,
+  },
 
   modalOverlay: {
     flex: 1,

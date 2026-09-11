@@ -73,7 +73,10 @@ const failMessage = (e: unknown): string => {
   switch (code) {
     case 3002: return 'Không tìm thấy thiết bị này. Có thể nó đã bị gỡ ở nơi khác.';
     case 3004: return 'Thiết bị này đã bị gỡ trước đó rồi.';
-    case 3008: return 'Đây là khoá chủ duy nhất còn hiệu lực — gỡ nó thì bạn mất luôn danh tính. Hãy dùng 24 từ hoặc người bảo hộ để chuyển sang máy mới.';
+    // KHÔNG mời người bảo hộ ở đây: ghi danh người bảo hộ thì chạy, nhưng dùng họ để
+    // khôi phục trên máy mới thì app chưa có đường nào. Mời một lối thoát không tồn tại
+    // ở đúng lúc người dùng sắp mất danh tính là chỗ sai đắt nhất trong cả màn này.
+    case 3008: return 'Đây là khoá chủ duy nhất còn hiệu lực — gỡ nó thì bạn mất luôn danh tính. Hãy dùng cụm 24 từ để chuyển sang máy mới.';
     case 3012: return `Tên máy không hợp lệ — để trống, dài quá ${DEVICE_NAME_MAX_LEN} ký tự, hoặc có ký tự ẩn.`;
     case 1306: return 'Phiên này không phải vai chủ danh tính nên không quản được thiết bị. Hãy đăng nhập bằng máy chủ danh tính.';
     default: return e instanceof Error && e.message ? e.message : 'Không thực hiện được. Thử lại sau.';
@@ -211,7 +214,7 @@ const MyDevicesScreen: React.FC = () => {
           )}
           {song && !canRevoke && (
             <Text style={styles.note}>
-              Khoá chủ không gỡ được từ đây. Muốn đổi sang máy khác, dùng 24 từ hoặc người bảo hộ.
+              Khoá chủ không gỡ được từ đây. Muốn đổi sang máy khác, dùng cụm 24 từ.
             </Text>
           )}
         </View>

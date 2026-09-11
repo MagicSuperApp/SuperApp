@@ -10,7 +10,7 @@
   "route": "Farms",
   "icon": { "name": "sprout", "colorToken": "brand.trace.primary" },
   "navSlot": "tab",
-  "routes": ["Farms", "Dashboard", "FarmList", "FarmDetail", "TreeDetail", "Activity"],
+  "routes": ["Farms", "Dashboard", "FarmList", "FarmDetail", "FarmMap", "TreeDetail", "Activity"],
 
   "capabilities": {
     "data": ["read:profile", "read:trace.record", "write:trace.record"],

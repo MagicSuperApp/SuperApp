@@ -14,6 +14,7 @@ import {
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import ReactNativeBiometrics, { BiometryTypes } from 'react-native-biometrics';
+import { useBiometricSensor } from '../../../hooks/useBiometricSensor';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AUTH_BLUE } from '../theme';
 import StepIndicator from '../components/StepIndicator';
@@ -47,8 +48,13 @@ const SignUpBiometricScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const dispatch = useDispatch();
 
-  const [biometryType, setBiometryType] = useState<string>('');
-  const [sensorAvailable, setSensorAvailable] = useState<boolean | null>(null);
+  // Đo LẠI mỗi lần app về tiền cảnh. Bắt buộc ở đúng màn này: câu lỗi bên dưới
+  // (:142) bảo người dùng ra Cài đặt bật sinh trắc "sau đó thử lại", mà bước này
+  // màn hình tự khai là bắt buộc và không có cách thay thế. Không đo lại thì
+  // "thử lại" là một lời hứa suông và người dùng KHÔNG tạo được tài khoản.
+  const { available: sensorAvailable, biometryType } = useBiometricSensor(
+    (msg, e) => console.log(`[SignUp] ${msg}:`, e),
+  );
   const [stage, setStage] = useState<Stage>('idle');
   const [username, setUsername] = useState('');
   const [existingUsernames, setExistingUsernames] = useState<string[]>([]);
@@ -112,21 +118,10 @@ const SignUpBiometricScreen: React.FC = () => {
     );
     pulse.start();
 
-    let alive = true;
-    (async () => {
-      try {
-        const rn = new ReactNativeBiometrics();
-        const { available, biometryType: type } = await rn.isSensorAvailable();
-        if (!alive) return; // màn đã rời — đừng đặt state vào cây đã tháo
-        setSensorAvailable(available);
-        setBiometryType(type || '');
-      } catch (e) {
-        console.log('[SignUp] Biometric sensor check failed:', e);
-        if (alive) setSensorAvailable(false);
-      }
-    })();
-
-    return () => { alive = false; pulse.stop(); };
+    // Phép đo cảm biến ĐÃ dời sang `useBiometricSensor` — khối này chỉ chạy một
+    // lần lúc gắn cây, nên nó không thấy được lượt người dùng vừa bật sinh trắc
+    // trong Cài đặt rồi quay về.
+    return () => { pulse.stop(); };
   }, []);
 
   const startEnrollment = async () => {
@@ -212,10 +207,33 @@ const SignUpBiometricScreen: React.FC = () => {
       // vỡ ngay khi đổi câu chữ hoặc khi người dùng đang dùng ngôn ngữ khác.
       if (e?.reason === 'khoa_bi_thu_hoi') {
         setStage('idle');
+        // NHÃN NÚT KHÔNG ĐƯỢC HỨA "24 TỪ". App chưa bao giờ bắt người dùng ghi lại
+        // 24 từ — `SeedExportScreen` là màn tự nguyện, lại nằm SAU lớp đăng nhập,
+        // nên đúng người đang kẹt ở đây là người không vào được để lấy. Nhãn cũ đẩy
+        // họ tới một màn chỉ nhận thứ họ không có, và họ đọc đó là ngõ cụt.
+        // Màn khôi phục nay tự dò kho khoá: máy còn ví thì nó mở lối "khôi phục
+        // bằng ví trên máy" (chỉ cần tên đăng nhập). Nên nhãn nói ĐÍCH, không nói
+        // phương tiện — phương tiện nào dùng được thì chính màn kia quyết.
         showWarning('Khoá trên máy này đã bị thu hồi', e?.message ?? '', {
-            confirmText: 'Dùng 24 từ khôi phục',
+            confirmText: 'Mở màn khôi phục',
             cancelText: 'Để sau',
             onConfirm: () => navigation.navigate('RestoreIdentity'),
+        });
+        return;
+      }
+      // Cùng luật với `khoa_bi_thu_hoi` ngay trên: biết được LỐI RA thì phải đưa
+      // nút, đừng chỉ hiện chữ. Ở ca này lối ra là làm lại và làm HẾT hộp sinh
+      // trắc thứ hai — một việc người dùng làm được ngay tại chỗ, nên bắt họ đóng
+      // hộp thoại rồi tự mò lại từ đầu là bắt họ trả giá cho một câu app đã biết.
+      if (e?.reason === 'duong1_chua_xac_thuc') {
+        setStage('idle');
+        showWarning('Chưa mở lại được danh tính', e?.message ?? '', {
+          confirmText: 'Thử lại ngay',
+          cancelText: 'Để sau',
+          onConfirm: () => {
+            setStage('generating');
+            void completeSignUp('resume');
+          },
         });
         return;
       }
@@ -264,7 +282,10 @@ const SignUpBiometricScreen: React.FC = () => {
           // chính chủ. Mà chính chủ đọc "Người khác" thì không bao giờ bấm — họ có
           // phải người khác đâu. Nút này phục vụ CẢ HAI nhóm, nên nhãn phải nói về
           // thứ người dùng ĐANG CẦM (24 từ), không nói về họ là ai.
-          text: t('Tôi có 24 từ khôi phục'),
+          // Cùng lý do với nhãn ở nhánh `khoa_bi_thu_hoi`: nút này KHÔNG được lấy
+          // "24 từ" làm điều kiện vào, vì phần lớn người dùng chưa từng được đưa
+          // 24 từ. Màn khôi phục tự dò xem máy còn ví không rồi mở đúng lối.
+          text: t('Khôi phục danh tính đã có'),
           onPress: () => navigation.navigate('RestoreIdentity'),
         },
         {

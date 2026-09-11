@@ -84,7 +84,7 @@ const GuardianScreen: React.FC = () => {
 
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
         <Text style={styles.lead}>
-          Người giám hộ giúp bạn khôi phục danh tính khi mất thiết bị. Thêm người bạn tin tưởng bằng mã định danh của họ.
+          Ghi danh người bạn tin tưởng bằng mã định danh của họ. Đường dùng người bảo hộ để khôi phục chưa chạy tới cuối — cụm 24 từ vẫn là bản dự phòng duy nhất.
         </Text>
 
         {/* Danh sách */}

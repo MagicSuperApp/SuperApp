@@ -180,15 +180,22 @@ describe('nút gỡ không được bày ra khi chắc chắn hỏng', () => {
     // Chỉ số duy nhất V36 cho phép ≤1 owner-key active mỗi DID, và cửa này chỉ
     // vai owner gọi được ⇒ owner-key active LUÔN là cái cuối cùng ⇒ máy chủ luôn
     // trả 3008. Một nút chắc chắn hỏng còn tệ hơn không có nút.
+    //
+    // Câu chỉ đường trước đây mời "24 từ hoặc người bảo hộ". Vế thứ hai là một
+    // lời hứa không có đường nào thực hiện — ghi danh người bảo hộ thì chạy,
+    // dùng họ để khôi phục thì `guardianService` không có hàm nào. Bài kiểm cũ
+    // ghim đúng vế sai đó, nên nó phải đổi theo. Vế 1 của
+    // `guardianKhongHuaKhoiPhuc.test.ts` là chỗ đo NĂNG LỰC; ngày đường khôi
+    // phục được nối, chính nó đỏ trước và người sửa được nhắc nới lại câu này.
     const t = await moMan([may({ keyRole: 'owner', current: true })]);
     expect(nutTheoIcon(t, 'link-off').length).toBe(0);
-    expect(noiText(t)).toContain('24 từ hoặc người bảo hộ');
+    expect(noiText(t)).toContain('dùng cụm 24 từ');
   });
 
   it('khoá vai khác: gỡ được', async () => {
     const t = await moMan([may({ keyRole: 'manager', deviceName: 'Máy kế toán' })]);
     expect(nutTheoIcon(t, 'link-off').length).toBe(1);
-    expect(noiText(t)).not.toContain('24 từ hoặc người bảo hộ');
+    expect(noiText(t)).not.toContain('dùng cụm 24 từ');
   });
 
   it('khoá đã thu hồi: không nút nào cả, kể cả đổi tên', async () => {
@@ -230,7 +237,7 @@ describe('mã lỗi máy chủ được dịch thành câu người đọc đư�
     await act(async () => { go.onPress?.(); });
 
     expect(mockShowError).toHaveBeenCalledWith(
-      expect.stringContaining('24 từ hoặc người bảo hộ'),
+      expect.stringContaining('dùng cụm 24 từ'),
     );
   });
 

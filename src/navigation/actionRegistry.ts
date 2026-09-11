@@ -133,8 +133,12 @@ export const DOMAIN_PACKS: Record<Domain, ActionPack> = {
   ],
 };
 
-// ── Nhãn loài thân thiện từ mã variety/species ──────────────────────────────
-const VARIETY_LABEL: Record<string, string> = {
+// ── Nhãn LOÀI suy từ mã GIỐNG ───────────────────────────────────────────────
+// Hai tầng khác nhau, bảng này đi từ tầng dưới lên tầng trên: khoá là `variety`
+// (GIỐNG — ri6 · monthong · musang_king), giá trị là `species` (LOÀI — sầu riêng).
+// Không phải "nhãn của giống". Mọi giống sầu riêng đều suy ra cùng một loài, nên
+// bảng nhiều-về-một là đúng, KHÔNG phải trùng lặp cần gộp.
+const VARIETY_TO_SPECIES_LABEL: Record<string, string> = {
   ri6: 'sầu riêng',
   monthong: 'sầu riêng',
   musang_king: 'sầu riêng',
@@ -145,7 +149,7 @@ function dominantSpeciesLabel(state: RootState): string | undefined {
   const trees = state.farm?.trees ?? [];
   for (const t of trees) {
     const v = t.metadata?.variety;
-    if (v && VARIETY_LABEL[v]) return VARIETY_LABEL[v];
+    if (v && VARIETY_TO_SPECIES_LABEL[v]) return VARIETY_TO_SPECIES_LABEL[v];
     if (t.species) return t.species;
   }
   return undefined;
@@ -161,7 +165,7 @@ export function resolveDomain(state: RootState): Domain {
   const farms = state.farm?.farms ?? [];
 
   const hasDurian = trees.some(
-    (t) => (t.metadata?.variety && VARIETY_LABEL[t.metadata.variety]) || /sầu|durian/i.test(t.species ?? ''),
+    (t) => (t.metadata?.variety && VARIETY_TO_SPECIES_LABEL[t.metadata.variety]) || /sầu|durian/i.test(t.species ?? ''),
   );
   if (hasDurian) return 'durian';
   if (trees.length > 0 || fruits.length > 0) return 'tree';

@@ -7,12 +7,16 @@
  * khi lời gọi đã bị gỡ. Ở đây thứ được khoá là LỜI GỌI `navigation.navigate`
  * với đúng đích, sinh ra bởi đúng nhánh điều kiện.
  *
- * Hai ca đi thành một cặp, và cặp đó là điều kiện để bài kiểm có nghĩa:
- *   · máy CHƯA có danh tính  ⇒ đi tới màn HỎI (`IdentityEntryChoice`)
- *   · máy ĐÃ có danh tính    ⇒ đường cũ nguyên vẹn (mở khoá bằng chính khoá)
+ * Ba ca đi thành một bộ, và bộ đó là điều kiện để bài kiểm có nghĩa:
+ *   · máy CHƯA có danh tính        ⇒ đi tới màn HỎI (`IdentityEntryChoice`)
+ *   · máy ĐÃ có danh tính, mở ĐƯỢC ⇒ đường cũ nguyên vẹn (mở khoá bằng chính khoá)
+ *   · máy CÓ khoá nhưng mở KHÔNG ĐƯỢC ⇒ cũng về màn HỎI, KHÔNG sang màn tạo mới
  * Thiếu ca thứ hai thì ca thứ nhất không phân biệt được "rẽ đúng ca" với "rẽ
  * mọi ca" — một hàm `navigate('IdentityEntryChoice')` đặt vô điều kiện ở đầu
  * `runBiometric` cũng làm ca thứ nhất xanh.
+ *
+ * Ca thứ ba thêm sau, vì nó là nhánh không ai canh: hai ca đầu đều xanh trong
+ * khi nhánh "mở không được" đẩy thẳng người dùng sang màn TẠO MỚI.
  *
  * Dùng `react-test-renderer` theo tiền lệ `MyDevicesScreen.test.tsx`
  * (`@testing-library/react-native` không có trong kho này).
@@ -148,6 +152,52 @@ describe('máy ĐÃ có danh tính — ca đối xứng, đường cũ không đ
     expect(mockSignRaw).toHaveBeenCalled();
     expect(mockUnlockExistingIdentity).toHaveBeenCalled();
     expect(mockNav.navigate).not.toHaveBeenCalledWith('IdentityEntryChoice');
+    await act(async () => { tree.unmount(); });
+  });
+});
+
+describe('máy CÓ khoá nhưng KHÔNG dựng lại được danh tính', () => {
+  // `unlockExistingIdentity` trả `null` ở đúng một chỗ khi máy có cả khoá lẫn
+  // DID: DID đã lưu không thuộc dạng máy chủ hiểu, và cũng không cứu được bằng
+  // `recoverLocalIdentityFromKey`. Người dùng trong ca này KHÔNG phải người mới
+  // — họ có khoá trong chip.
+  const keyPresentButUnlockFails = () => {
+    mockCurrentUserDid.mockResolvedValue('did:phoenix:mainnet:abc');
+    mockIsKeypairEnrolled.mockResolvedValue(true);
+    mockSignRaw.mockResolvedValue('deadbeef');
+    mockUnlockExistingIdentity.mockResolvedValue(null);
+  };
+
+  it('KHÔNG đẩy sang màn tạo mới — đó là đường sinh ra DID thứ hai', async () => {
+    keyPresentButUnlockFails();
+
+    const tree = await mountAndPress();
+
+    // Đi thẳng sang `SignUpBiometric` là chọn hộ người dùng luồng "tôi là người
+    // mới". Hậu quả không kêu: DID thứ hai, danh sách vườn hiện RỖNG, và rỗng
+    // trùng khớp với "tôi chưa ghi gì".
+    expect(mockNav.navigate).not.toHaveBeenCalledWith('SignUpBiometric');
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('dẫn về màn HỎI để chính người dùng rẽ', async () => {
+    keyPresentButUnlockFails();
+
+    const tree = await mountAndPress();
+
+    expect(mockNav.navigate).toHaveBeenCalledWith('IdentityEntryChoice');
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('vẫn ký chuỗi thử trước — nhánh này nằm SAU phép xác thực, không thay nó', async () => {
+    // Ràng buộc ngược chiều hai ca trên: nếu ai đó "sửa" bằng cách rẽ sớm hơn
+    // lời gọi chip thì hai ca kia vẫn xanh, mà đăng nhập thì thôi đòi sinh trắc.
+    keyPresentButUnlockFails();
+
+    const tree = await mountAndPress();
+
+    expect(mockSignRaw).toHaveBeenCalled();
+    expect(mockUnlockExistingIdentity).toHaveBeenCalled();
     await act(async () => { tree.unmount(); });
   });
 });

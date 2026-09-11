@@ -27,6 +27,15 @@ const PARTS: Array<[string, PhraseMap]> = [
   ['dialogs', DIALOGS],
 ];
 
+/**
+ * Số bộ cụm từ đang gộp — để `phrases.test.ts` đối chiếu rằng nó soi ĐỦ bộ.
+ *
+ * Không có con số này thì bài canh trùng-khoá chỉ soi đúng những bộ người viết
+ * bài nhớ liệt kê, và bộ thêm sau đứng ngoài mọi phép canh mà không triệu chứng
+ * gì — `dialogs` đã đứng ngoài như thế cho tới 2026-09-11.
+ */
+export const PARTS_COUNT = PARTS.length;
+
 function build(): PhraseMap {
   const out: PhraseMap = Object.create(null);
   const seen = __DEV__ ? new Map<string, string>() : null;

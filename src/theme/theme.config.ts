@@ -8,7 +8,14 @@
 // override CHỈ những token muốn đổi. Phần không khai → rơi về BASE_TOKENS.
 // KHÔNG được thêm token mới ở đây — chỉ ghi đè token đã có trong tokens.ts.
 
-import type { AppTokens, NeutralTokens, NavTokens, HeaderTokens, BrandKey } from './tokens';
+import type {
+  AppTokens,
+  NeutralTokens,
+  NavTokens,
+  HeaderTokens,
+  AuthTokens,
+  BrandKey,
+} from './tokens';
 
 // Partial vì instance chỉ override token cần đổi; còn lại kế thừa default.
 export interface ThemeConfig {
@@ -28,6 +35,15 @@ export interface ThemeConfig {
    * khoẻ/tạo) mang NGHĨA xuyên app, không phải nhãn hiệu riêng app nào.
    */
   header?: Partial<Record<keyof HeaderTokens, string>>;
+  /**
+   * Luồng ĐĂNG KÝ / ĐĂNG NHẬP — quãng người dùng gặp TRƯỚC mọi màn khác.
+   *
+   * Mở cho white-label vì cùng một lý do với `header`, chỉ nặng hơn: giá trị
+   * mặc định là một dải LAM riêng của app đầu tiên, và nó phủ trọn bốn màn cửa
+   * vào. App thứ hai ghi đè được `app.*` mà không ghi đè được đây thì người
+   * dùng đi qua một cửa lam rồi bước vào một app lục.
+   */
+  auth?: Partial<Record<keyof AuthTokens, string>>;
   brand?: Partial<
     Record<
       BrandKey,
@@ -141,6 +157,31 @@ export const CHECKFARM_THEME_CONFIG: ThemeConfig = {
   header: {
     // `deep` trên nền đậm: chữ trắng trên `#174F2A` đo 9,60.
     bg: '#174F2A',
+  },
+  // ── Cửa vào (đăng ký / đăng nhập) ─────────────────────────────────────────
+  //
+  // KHÔNG có giá trị nào mới ở đây: mỗi dòng là một giá trị ĐÃ nằm trong chính
+  // bảng trên, chỉ gán thêm một vai. Cố ý — bảng màu là thứ nhà CheckFarm chốt,
+  // và bịa thêm một sắc xanh cho vừa mắt là thay họ ra quyết định nhãn hiệu.
+  //
+  // Vì sao phải khai: bản trước KHÔNG khai, nên bốn màn cửa vào lấy dải lam mặc
+  // định — người tải CheckFarm về đi qua một cửa xanh LAM rồi bước vào một app
+  // xanh LỤC. Số đo tương phản của từng cặp dưới đây nằm ở
+  // `theme/authContrast.test.ts`, tính lại từ chính các giá trị này chứ không
+  // chép sang.
+  auth: {
+    deep:      '#174F2A', // = header.bg / app.accentDeep
+    primary:   '#23763F', // = app.accent — dùng làm CHỮ nên lấy bậc qua AA
+    pale:      '#CBE4D5', // = app.accentLight
+    glowSoft:  'rgba(203, 228, 213, 0.25)', // `#CBE4D5` ở ĐÚNG độ đục bản gốc
+    bgSoft:    '#FAF7F0', // = app.bg
+    border:    '#DCE3DC', // = app.border
+    text:      '#1A1A1A',
+    textSub:   '#5F6B62',
+    textMuted: '#657168', // bậc thấp nhất còn qua AA trên nền kem
+    // Khối cảnh báo giữ tông ẤM dùng chung (nó nói "coi chừng", không nói tên
+    // app); chỉ dấu hiệu lấy màu cảnh báo của CheckFarm cho khớp phần còn lại.
+    warnIcon:  '#9C4A1C',
   },
   brand: {
     // `trace` là module người dùng CheckFarm chạm nhiều nhất; kéo nó về hue của

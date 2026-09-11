@@ -15,6 +15,7 @@ import {
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { COLORS } from '../../../constants';
+import { t } from '../../../i18n';
 import { WORK_THEME } from '../theme/colors';
 import { formatVND } from '../data/mockData';
 import { useJobDetail } from '../hooks/useJobs';
@@ -230,7 +231,7 @@ const JobDetailScreen: React.FC = () => {
         <View style={[styles.section, styles.trustSection]}>
           <View style={styles.trustHeader}>
             <Icon name="shield-check" size={16} color={WORK_THEME.primary} />
-            <Text style={styles.trustHeaderTitle}>Bảo vệ Aladin</Text>
+            <Text style={styles.trustHeaderTitle}>{t('Bảo vệ {brand}')}</Text>
           </View>
           <View style={styles.trustItem}>
             <Icon name="lock-outline" size={12} color={COLORS.textSub} />
@@ -247,7 +248,7 @@ const JobDetailScreen: React.FC = () => {
           <View style={styles.trustItem}>
             <Icon name="message-badge-outline" size={12} color={COLORS.textSub} />
             <Text style={styles.trustItemText}>
-              Trao đổi qua Aladin Chat — lưu trữ vĩnh viễn làm bằng chứng nếu tranh chấp
+              {t('Trao đổi qua {brand} Chat — lưu trữ vĩnh viễn làm bằng chứng nếu tranh chấp')}
             </Text>
           </View>
         </View>

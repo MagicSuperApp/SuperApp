@@ -290,7 +290,7 @@ export const WORK: PhraseMap = {
   'Chứng chỉ nghề (đã upload)': { en: 'Trade certificate (uploaded)', zh: '职业证书（已上传）', ja: '職業資格（アップロード済み）' },
 
   // ── Ký phiên làm việc ──────────────────────────────────────────────────────
-  'Đăng nhập Aladin Work': { en: 'Sign in to Aladin Work', zh: '登录 Aladin Work', ja: 'Aladin Work にログイン' },
+  'Đăng nhập {brand} Work': { en: 'Sign in to {brand} Work', zh: '登录 {brand} Work', ja: '{brand} Work にログイン' },
   'Ký bằng khoá phần cứng để mở phiên làm việc': {
     en: 'Sign with the hardware key to open a work session',
     zh: '使用硬件密钥签名以开启工作会话',
@@ -307,10 +307,10 @@ export const WORK: PhraseMap = {
     ja: 'https://…（写真またはクリップのリンク）',
   },
   'Quận 1, TP. HCM': { en: 'District 1, Ho Chi Minh City', zh: '胡志明市第一郡', ja: 'ホーチミン市1区' },
-  'Tin của bạn đã được ký số và đăng lên Aladin Work.\n\nThợ phù hợp sẽ liên hệ qua Aladin Chat trong vài phút.': {
-    en: 'Your post has been digitally signed and published on Aladin Work.\n\nSuitable workers will get in touch through Aladin Chat within a few minutes.',
-    zh: '你的招工信息已完成数字签名并发布到 Aladin Work。\n\n合适的师傅将在几分钟内通过 Aladin Chat 与你联系。',
-    ja: '募集は電子署名されて Aladin Work に掲載されました。\n\n条件に合う職人が数分以内に Aladin Chat から連絡します。',
+  'Tin của bạn đã được ký số và đăng lên {brand} Work.\n\nThợ phù hợp sẽ liên hệ qua {brand} Chat trong vài phút.': {
+    en: 'Your post has been digitally signed and published on {brand} Work.\n\nSuitable workers will get in touch through {brand} Chat within a few minutes.',
+    zh: '你的招工信息已完成数字签名并发布到 {brand} Work。\n\n合适的师傅将在几分钟内通过 {brand} Chat 与你联系。',
+    ja: '募集は電子署名されて {brand} Work に掲載されました。\n\n条件に合う職人が数分以内に {brand} Chat から連絡します。',
   },
 
   // ── Dữ liệu MẪU (mockData / workMockApi) ───────────────────────────────────
@@ -423,7 +423,6 @@ export const WORK: PhraseMap = {
   // Yêu cầu của tin tuyển việc
   'Kinh nghiệm ≥ 3 năm': { en: '3+ years of experience', zh: '3 年以上经验', ja: '経験3年以上' },
   'Có CMND/CCCD đã xác thực': { en: 'Verified national ID', zh: '已验证的身份证', ja: '本人確認済みの身分証' },
-  'Có CMND đã xác thực Aladin': { en: 'ID verified with Aladin', zh: '已通过 Aladin 验证的身份证', ja: 'Aladin で確認済みの身分証' },
   'Cam kết bảo hành 12 tháng': { en: '12-month workmanship warranty', zh: '承诺 12 个月保修', ja: '12か月の保証をお約束' },
   'Cam kết bảo hành 1 tháng': { en: '1-month workmanship warranty', zh: '承诺 1 个月保修', ja: '1か月の保証をお約束' },
   'Cam kết tối thiểu 3 tháng': { en: 'Minimum 3-month commitment', zh: '至少承诺 3 个月', ja: '最低3か月の継続' },

@@ -17,6 +17,7 @@ import {
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import { COLORS } from '../../../constants';
+import { t } from '../../../i18n';
 import { WORK_THEME, WORK_ACCENT, WORK_BG_SOFT } from '../theme/colors';
 import StateView from '../../../components/state/StateView';
 import { formatVND, type Job } from '../data/mockData';
@@ -74,7 +75,11 @@ const WorkHomeScreen: React.FC = () => {
       {/* ── HEADER ─────────────────────────────────────── */}
       <View style={styles.header}>
         <View style={styles.headerTitleBox}>
-            <Text style={styles.headerTitle}>Aladin Work</Text>
+            {/* Tên app lấy từ instance đang dựng — `t()` thay `{brand}`
+                (`i18n/translate.ts`). Trước 2026-09-11 dòng này ghi cứng
+                "Aladin Work", nên bản CheckFarm mở mục Việc làm ra là thấy tên
+                một app khác ngay dòng đầu. */}
+            <Text style={styles.headerTitle}>{t('{brand} Work')}</Text>
             <Text style={styles.headerSubtitle}>Tìm thợ · Đặt việc · Ký hợp đồng số</Text>
           </View>
         <View style={styles.headerTop}>
@@ -152,7 +157,7 @@ const WorkHomeScreen: React.FC = () => {
                   <Text style={styles.guideTagText}>GUIDE TOUR</Text>
                 </View>
                 <Text style={styles.guideTitle} numberOfLines={3}>
-                  Hướng dẫn đăng việc trên Aladin
+                  {t('Hướng dẫn đăng việc trên {brand}')}
                 </Text>
                 <View style={styles.guideIllustration}>
                   <View style={styles.guideClipboard}>
@@ -307,7 +312,10 @@ const WorkHomeScreen: React.FC = () => {
             <View style={{ flex: 1 }}>
               <Text style={styles.trustTitle}>Bảo vệ bởi smart contract</Text>
               <Text style={styles.trustSub}>
-                Mọi giao dịch trên Aladin đều có hợp đồng số ký bằng khoá trên máy bạn. Tiền cọc định giá bằng MAGIC nhưng khoá và hoàn bằng CARP — bạn không lo bị quỵt.
+                {/* `t(` phải ở CÙNG DÒNG với chuỗi: `brandSlot.test.ts` soi
+                    theo dòng, và nó soi theo dòng vì chỗ hỏng cũng theo dòng —
+                    lớp bọc `<Text>` bỏ qua `t()` ở tiếng Việt. */}
+                {t('Mọi giao dịch trên {brand} đều có hợp đồng số ký bằng khoá trên máy bạn. Tiền cọc định giá bằng MAGIC nhưng khoá và hoàn bằng CARP — bạn không lo bị quỵt.')}
               </Text>
             </View>
           </View>

@@ -18,6 +18,12 @@
  * đúng MỘT lần, không lặp vô hạn.
  */
 
+// `export {}` ép tệp này thành MODULE riêng, không phải SCRIPT toàn cục — nếu
+// không, `let mockKhoToken` ở đây và ở `cardanoTxServiceAuthRetry.test.ts` cùng
+// khai vào một scope toàn cục chung, và `tsc --noEmit` báo trùng tên biến dù
+// jest (qua babel) vẫn chạy được — hai công cụ đọc "module" khác nhau.
+export {};
+
 // Kho giả có TRẠNG THÁI: `remintSessionOnce` không trả token qua giá trị hàm mà
 // qua tác dụng phụ ghi lại kho (đúng hành vi `refreshSessionOnce` thật — xem
 // `cardanoTxService.rawGet`, nó cũng gọi lại `AsyncStorage.getItem` sau khi đúc

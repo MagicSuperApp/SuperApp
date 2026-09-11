@@ -13,6 +13,10 @@
  * chỉ đọc chữ trong mã.
  */
 
+// `export {}` ép tệp này thành MODULE riêng — xem chú thích cùng dòng ở
+// `orgMintWaitSigned401.test.ts` (cùng tên biến `mockKhoToken`, khác tệp).
+export {};
+
 jest.mock('@react-native-async-storage/async-storage', () => ({
   getItem: jest.fn(async (k: string) => (k === 'phoenixkey_session_token' ? mockKhoToken : null)),
   setItem: jest.fn(async (k: string, v: string) => {

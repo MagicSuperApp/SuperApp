@@ -308,10 +308,29 @@ const FruitCropperScreen: React.FC = () => {
    * Khoá gồm cả VÙNG: khoanh vùng khác trên cùng tấm ảnh là một lần gửi hợp lệ khác.
    */
   const [sentShotKey, setSentShotKey] = useState<string | null>(null);
-  const shotKey = useMemo(() => {
-    const b = lastRegion?.bbox;
-    return `${imageUri}|${b ? b.join(',') : 'chua-khoanh'}`;
-  }, [imageUri, lastRegion]);
+
+  /**
+   * Khoá của một lần gửi, dựng từ ĐỐI SỐ — không đọc state.
+   *
+   * Đây là chỗ bản đầu của cổng này hỏng, và hỏng ở đúng một trong hai đường nên
+   * nhìn qua tưởng đã kín. `useRegion` gọi `setLastRegion(reg)` rồi gọi THẲNG
+   * `runAddView(fruitId, reg, p)` trong cùng một lượt bấm; `runAddView` là một
+   * `useCallback` nên nó ôm giá trị của lần render TRƯỚC — lúc đó `lastRegion` còn
+   * `null`, và nó ghim `…|chua-khoanh` trong khi khoá sống đã là `…|38,68,324,864`.
+   * Hai chuỗi khác nhau ⟹ nút không khoá ⟹ bấm lần hai gửi lại đúng tấm đó.
+   *
+   * Thêm `shotKey` vào danh sách phụ thuộc KHÔNG cứu được — đã đo bằng đột biến:
+   * cả chuỗi `useRegion → runAddView` đóng băng từ cùng một render, nên mọi thứ
+   * đọc từ state đều là bản cũ. Chỉ có đối số là tươi. Vậy thì lấy đối số.
+   */
+  const shotKeyOf = useCallback(
+    (uri: string, bbox?: Bbox) => `${uri}|${bbox ? bbox.join(',') : 'chua-khoanh'}`,
+    [],
+  );
+  const shotKey = useMemo(
+    () => shotKeyOf(imageUri, lastRegion?.bbox),
+    [shotKeyOf, imageUri, lastRegion],
+  );
   const shotAlreadySent = sentShotKey !== null && sentShotKey === shotKey;
   const [nameInput, setNameInput] = useState(
     () => (fruitCount === undefined ? '' : `Quả ${fruitCount + 1}`),
@@ -778,7 +797,11 @@ const FruitCropperScreen: React.FC = () => {
     if (ask) {
       // Tấm này đã lên máy chủ. Ghim lại TRƯỚC khi dựng lời mời, vì từ lúc lời mời
       // hiện ra là nút "Thêm góc cho quả này" lại bấm được.
-      setSentShotKey(shotKey);
+      //
+      // Ghim theo `region` — ĐỐI SỐ hàm này nhận — chứ KHÔNG theo `shotKey` đọc từ
+      // state: `useRegion` gọi thẳng vào đây trong cùng lượt bấm đã đặt state, nên
+      // `shotKey` ở đây là bản của lần render trước. Xem `shotKeyOf`.
+      setSentShotKey(shotKeyOf(imageUri, region.bbox));
       setServerAsk({
         message: ask.message,
         yesLabel: ask.yesLabel,
@@ -790,7 +813,7 @@ const FruitCropperScreen: React.FC = () => {
     }
 
     navigation.goBack();
-  }, [imageUri, zone, viewType, coord, zPlaced, capture, navigation, loadPlan, shootNext]);
+  }, [imageUri, zone, viewType, coord, zPlaced, capture, navigation, loadPlan, shootNext, shotKeyOf]);
 
   const openPlacer = useCallback(() => {
     navigation.navigate('FruitPlace3D', {
@@ -931,7 +954,11 @@ const FruitCropperScreen: React.FC = () => {
         // Quả đã đăng ký xong trên máy chủ. Ghim TRƯỚC khi dựng lời mời — xem
         // `sentShotKey`. Bấm "Lưu quả" lần nữa ở đây là đăng ký một quả THỨ HAI
         // từ đúng tấm ảnh vừa dùng.
-        setSentShotKey(shotKey);
+        // Dựng lại từ nguồn, KHÔNG dùng `shotKey` của render. Đường này hôm nay
+        // ghim đúng (vì `lastRegion` có trong danh sách phụ thuộc ngay dưới), nhưng
+        // hai đường anh em nên đọc khoá theo cùng một cách — chênh nhau là chỗ đã
+        // làm đường kia hỏng mà nhìn qua tưởng kín.
+        setSentShotKey(shotKeyOf(imageUri, lastRegion?.bbox));
         setServerAsk({
           message: ask.message,
           yesLabel: ask.yesLabel,
@@ -944,7 +971,7 @@ const FruitCropperScreen: React.FC = () => {
     }
 
     navigation.goBack();
-  }, [lastRegion, nameInput, coord, zPlaced, treeId, imageUri, viewType, capture, navigation, fetchPlanFor, shootNext]);
+  }, [lastRegion, nameInput, coord, zPlaced, treeId, imageUri, viewType, capture, navigation, fetchPlanFor, shootNext, shotKeyOf]);
 
   // ── Quay lại bước crop để khoanh vùng khác ─────────────────────────────────
   const recrop = useCallback(() => { setErrMsg(null); setStep('crop'); }, []);

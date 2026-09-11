@@ -44,7 +44,7 @@ import {
 } from '../services/treeDraftStore';
 import {
   enqueueVideoUpload, flushVideoUploadQueue, retryVideoJobNow, retryAllVideoJobsNow,
-  isJobQueued, getVideoQueueCount, getNeedsManualCount,
+  isJobQueued, getVideoQueueCount, getNeedsManualCount, VideoQueueReadError,
 } from '../services/videoUploadQueue';
 import { withPhotoSave } from '../services/mediaSavePermission';
 import { GroundBackdrop } from '../modules/trace/components/layered/Organic';
@@ -411,7 +411,8 @@ const FruitVideoScreen: React.FC = () => {
       // BỌC LẠI: từ khi `loadVideoQueue` NÉM thay vì trả mảng rỗng (đúng luật "hình
       // dạng lạ thì ném, đừng nuốt"), `flushVideoUploadQueue` ném theo được. Ở đúng
       // chỗ này thì một lần ném là mất hết: nháp màn vừa bị xoá ba dòng trên, và
-      // `catch` ngoài cùng của `handleUpload` sẽ nuốt cả bước dựng màn kết quả —
+      // hàm này KHÔNG có nhánh bắt lỗi nào bao ngoài (nay đã thêm, xem cuối hàm)
+      // nên lỗi bay thẳng ra khỏi `handleUpload`, bỏ luôn bước dựng màn kết quả —
       // người quay không thấy màn nào, không thấy câu lỗi nào, chỉ thấy app quay về.
       //
       // Clip KHÔNG mất trong ca này: nó đã nằm trong hàng đợi bền (`enq.persisted`
@@ -479,6 +480,20 @@ const FruitVideoScreen: React.FC = () => {
         else showWarning(tk('trace.fruitVideo.fruitFailTitle'),
           tk('trace.fruitVideo.fruitFailBody', { reason: failReason }));
       }
+    } catch (e) {
+      // PHẢI CÓ, cùng lý do với `handleRetryPending`. `enqueueVideoUpload` đọc hàng
+      // đợi trong mutex nên nay ném được, và hàm này trước đó chỉ có `try…finally`.
+      //
+      // Đây là một ĐƯỜNG LÙI nếu để nguyên: trước bản vá hàng đợi, cùng trạng thái
+      // "kho không ghi được" đi tới nhánh `persisted === false` và hiện hộp "Máy hết
+      // dung lượng". Bỏ `catch` thì cửa báo đó biến mất — bấm Gửi, không màn nào,
+      // không hộp nào, nút sáng lại.
+      console.log('[FruitVideo] gửi lỗi:', e);
+      if (e instanceof VideoQueueReadError) {
+        showInfo(tk('trace.fruitVideo.queueUnknownTitle'), tk('trace.fruitVideo.queueUnknownBody'));
+      } else {
+        showError(tk('trace.fruitVideo.retryFailTitle'), tk('trace.fruitVideo.retryFailBody'));
+      }
     } finally {
       setUploading(false);
     }
@@ -502,10 +517,25 @@ const FruitVideoScreen: React.FC = () => {
         await retryAllVideoJobsNow();
       }
       refreshQueueCount();
+    } catch (e) {
+      // PHẢI CÓ. Từ khi `loadVideoQueue` ném thay vì trả mảng rỗng, cả
+      // `retryVideoJobNow` lẫn `retryAllVideoJobsNow` ném theo được — và hàm này
+      // trước đó chỉ có `try…finally`. Hệ quả: bấm "Gửi lại" → lỗi bay ra ngoài →
+      // `finally` bật nút sáng lại → KHÔNG một chữ nào trên màn đổi.
+      //
+      // Nặng hơn bình thường vì đây là nút mà chính câu `queueUnknownBody` vừa
+      // thêm ở dải báo đang mời người ta bấm. Hứa một lối thoát rồi để nó câm là
+      // tệ hơn không hứa gì: người quay sẽ bấm mãi.
+      console.log('[FruitVideo] gửi lại lỗi:', e);
+      if (e instanceof VideoQueueReadError) {
+        showInfo(tk('trace.fruitVideo.queueUnknownTitle'), tk('trace.fruitVideo.queueUnknownBody'));
+      } else {
+        showError(tk('trace.fruitVideo.retryFailTitle'), tk('trace.fruitVideo.retryFailBody'));
+      }
     } finally {
       setUploading(false);
     }
-  }, [pendingJobId, refreshQueueCount]);
+  }, [pendingJobId, refreshQueueCount, tk]);
 
   // ── Màn kết quả ───────────────────────────────────────────────────────────
   if (result) {
@@ -526,7 +556,12 @@ const FruitVideoScreen: React.FC = () => {
           </View>
           {/* BA nhánh: chưa biết · có thấy quả · không thấy quả nào. */}
           <Text style={styles.doneTitle}>
-            {n === undefined
+            {/* `== null` (HAI dấu bằng) bắt cả `undefined` lẫn `null`. Máy chủ trả
+                `"n_fruits_max": null` là thân JSON hoàn toàn hợp lệ, và `null > 0`
+                cho `false` — nên nếu chỉ tách `undefined` thì ca "máy chủ nói rõ là
+                không biết" lại rơi vào nhánh "không thấy quả nào". Đúng cái nhầm mà
+                ba ngôi này dựng ra để tránh. */}
+            {n == null
               ? tk('trace.fruitVideo.doneSaved')
               : n > 0
                 ? tk('trace.fruitVideo.doneSawN', { n })
@@ -541,7 +576,7 @@ const FruitVideoScreen: React.FC = () => {
               Hai tầng sai cùng lúc nếu để trần: ước lượng chứ không phải đếm, và
               max-theo-khung chứ không phải tổng của cây. Người ghi chép ngoài vườn
               chép thẳng con số vào sổ, rồi sổ đó thành số liệu thực địa. */}
-          {n !== undefined && n > 0 ? (
+          {n != null && n > 0 ? (
             <Text style={styles.doneHedge}>{tk('trace.fruitVideo.countHedge')}</Text>
           ) : null}
           {savedFruitName ? (
@@ -557,7 +592,8 @@ const FruitVideoScreen: React.FC = () => {
               người quay đúng bằng câu "lần sau quay chậm hơn", trong khi app chỉ
               đơn giản là chưa biết. */}
           <Text style={styles.doneSub}>
-            {result.n_frames === undefined
+            {/* `== null` — xem chú thích ở nhánh đếm quả phía trên. */}
+            {result.n_frames == null
               ? tk('trace.fruitVideo.doneFramesUnknown')
               : result.n_frames > 0
                 ? tk('trace.fruitVideo.doneFrames', { n: result.n_frames })

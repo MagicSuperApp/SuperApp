@@ -554,7 +554,13 @@ async function uploadTreeVideoAsQueueResult(
   });
   return {
     ok: r.ok,
-    n_frames: (r.n_kept ?? 0) + (r.n_rejected ?? 0),
+    // Cùng luật với `fruitVideoService`: máy chủ KHÔNG nói thì để `undefined`, đừng
+    // cộng ra `0`. `0` ở trường này dẫn màn kết quả vào câu "lần sau quay chậm hơn"
+    // — một lời trách người quay, dựng từ chỗ máy chủ im lặng. Đường cây hôm nay
+    // chưa có ai xếp việc vào (đo trong chính tệp này), nên đây là vá chỗ chưa nổ.
+    n_frames: r.n_kept === undefined && r.n_rejected === undefined
+      ? undefined
+      : (r.n_kept ?? 0) + (r.n_rejected ?? 0),
     video_cid: r.video_cid,
     event_id: r.event_id,
     link_status: r.link_status,

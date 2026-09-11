@@ -988,7 +988,12 @@ const TreeDetailScreen = () => {
                 <Text style={styles.proofMeta}>
                   {p.stored === false ? tk('trace.tree.notUploaded') : ''}
                   {p.at ? new Date(p.at).toLocaleString('vi-VN') : ''}
-                  {p.nFruitsMax ? ` · khoảng ${p.nFruitsMax} quả` : ''}
+                  {/* Cùng con số, cùng người đọc, nên phải cùng một lời rào với màn
+                      kết quả quay quả: đây là số quả nhiều nhất trong MỘT khung do
+                      bộ dò màu ước lượng, không phải số quả của cả cây. Một màn có
+                      rào một màn không thì người ghi chép sẽ chép con số ở màn không
+                      có rào. */}
+                  {p.nFruitsMax ? ` · ước lượng ${p.nFruitsMax} quả trong 1 khung` : ''}
                 </Text>
               </View>
               <TouchableOpacity onPress={() => {

@@ -15,6 +15,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import ReactNativeBiometrics, { BiometryTypes } from 'react-native-biometrics';
+import { useBiometricSensor } from '../hooks/useBiometricSensor';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
@@ -28,9 +29,16 @@ const BiometricSettings = () => {
   const currentUser = useSelector((state: RootState) => state.user.currentUser);
   const phoenixKey = useSelector((state: RootState) => state.user.phoenixKey);
   const rnBiometrics = new ReactNativeBiometrics();
-  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  // Đo LẠI mỗi lần app về tiền cảnh. Đây là màn CÀI ĐẶT sinh trắc — hành trình
+  // hiển nhiên của người dùng là mở màn này, thấy "không dùng được", ra Cài đặt
+  // máy bật Face ID, rồi quay lại. Đo một lần thì họ quay về đúng màn cũ.
+  const { available: sensorAvailable, biometryType } = useBiometricSensor(
+    (msg, e) => console.log(`[BiometricSettings] ${msg}:`, e),
+  );
+  // `null` (chưa đo xong) đọc thành "chưa bày" — cùng chiều với bản cũ khởi tạo
+  // `false`, nên phần hiển thị không đổi hành vi ở khung hình đầu.
+  const biometricAvailable = sensorAvailable === true;
   const [biometricEnabled, setBiometricEnabled] = useState(false);
-  const [biometryType, setBiometryType] = useState('');
   const [resolvedDid, setResolvedDid] = useState<string | null>(null);
 
   // Nguồn DID tin cậy: ưu tiên redux (phoenixKey/currentUser), nếu rỗng thì
@@ -47,11 +55,6 @@ const BiometricSettings = () => {
     }
   };
 
-  useEffect(() => {
-    checkBiometricAvailability();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   // Phân giải DID rồi nạp cài đặt khi đã có nguồn (kể cả lúc redux rỗng).
   useEffect(() => {
     let mounted = true;
@@ -66,16 +69,6 @@ const BiometricSettings = () => {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phoenixKey, currentUser]);
-
-  const checkBiometricAvailability = async () => {
-    try {
-      const result = await rnBiometrics.isSensorAvailable();
-      setBiometricAvailable(result.available);
-      setBiometryType(result.biometryType || '');
-    } catch (error) {
-      setBiometricAvailable(false);
-    }
-  };
 
   const loadBiometricSettings = async (did: string) => {
     try {

@@ -1101,7 +1101,7 @@ const AccountScreen = () => {
                         <MenuItem
                             icon="account-supervisor-outline"
                             label="Người bảo hộ"
-                            sublabel="Thêm guardian để khôi phục khi mất thiết bị"
+                            sublabel="Ghi danh trước — đường khôi phục bằng người bảo hộ chưa chạy tới cuối"
                             onPress={() => navigation.navigate('Guardian')}
                         />
                         <MenuItem

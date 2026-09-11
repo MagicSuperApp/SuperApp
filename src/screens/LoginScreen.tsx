@@ -30,6 +30,7 @@ import { useDispatch } from 'react-redux';
 import { useAnalytics } from '../services/analytics';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import ReactNativeBiometrics, { BiometryTypes } from 'react-native-biometrics';
+import { useBiometricSensor } from '../hooks/useBiometricSensor';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS } from '../constants';
 import { WORK_THEME } from '../theme';
@@ -90,10 +91,13 @@ const LoginScreen = () => {
   const dispatch = useDispatch();
   const { trackPress, trackAction } = useAnalytics('LoginScreen');
 
-  const [biometryType, setBiometryType] = useState<string>('');
-  // `null` = CHƯA dò xong. Phân biệt với `false` (dò xong, máy không có cảm biến)
-  // để nút không loé sang trạng thái tắt trong mấy khung hình đầu.
-  const [sensorAvailable, setSensorAvailable] = useState<boolean | null>(null);
+  // `available === null` = CHƯA dò xong. Phân biệt với `false` (dò xong, máy
+  // không có cảm biến) để nút không loé sang trạng thái tắt trong mấy khung hình
+  // đầu. Hook đo LẠI mỗi lần app về tiền cảnh — cần thế vì nút "Mở Cài đặt"
+  // (:485 bên dưới) đẩy người dùng ra ngoài rồi họ quay về với cảm biến vừa bật.
+  const { available: sensorAvailable, biometryType } = useBiometricSensor(
+    (msg, e) => console.log(`[Login] ${msg}:`, e),
+  );
   const [busy, setBusy] = useState(false);
   // Overlay hiệu ứng logo chớp mắt khi đăng nhập thành công (trước khi vào Main).
   const [showSuccess, setShowSuccess] = useState(false);
@@ -168,20 +172,10 @@ const LoginScreen = () => {
     const loops = [float(blob1, 4500), float(blob2, 6000), float(blob3, 5200)];
     loops.forEach(l => l.start());
 
-    let alive = true;
-    (async () => {
-      try {
-        const rn = new ReactNativeBiometrics();
-        const { available, biometryType: type } = await rn.isSensorAvailable();
-        if (!alive) return; // màn đã rời — đừng đặt state vào cây đã tháo
-        setSensorAvailable(available);
-        setBiometryType(type || '');
-      } catch (e) {
-        console.log('[Login] Biometric sensor check failed:', e);
-      }
-    })();
-
-    return () => { alive = false; loops.forEach(l => l.stop()); };
+    // Phép đo cảm biến ĐÃ dời sang `useBiometricSensor` — nó cần nghe `AppState`,
+    // còn khối này chỉ chạy một lần nên không đo lại được sau khi người dùng ra
+    // Cài đặt bật Face ID rồi quay về.
+    return () => { loops.forEach(l => l.stop()); };
   }, [fadeAnim, slideAnim, blob1, blob2, blob3]);
 
   const hasFaceId = biometryType === BiometryTypes.FaceID;
@@ -286,8 +280,24 @@ const LoginScreen = () => {
 
       const user = await phoenixKeyAuth.unlockExistingIdentity();
       if (!user) {
-        // Có khoá nhưng không dựng lại được danh tính (DID hỏng/không hỗ trợ).
-        navigation.navigate('SignUpBiometric' as never);
+        // Máy CÓ khoá trong chip, CÓ một DID đã lưu, nhưng không dựng lại được
+        // danh tính từ chúng — `unlockExistingIdentity` trả `null` ở đúng một
+        // chỗ: DID đã lưu không thuộc dạng máy chủ hiểu và cũng không cứu được
+        // bằng `recoverLocalIdentityFromKey` (`services/phoenixKeyAuthService.ts`,
+        // nhánh `isSupportedBackendDid` sai).
+        //
+        // Chỗ này TỪNG đi thẳng sang `SignUpBiometric` — màn TẠO MỚI. Đó là đúng
+        // cái hỏng mà `IdentityEntryChoiceScreen` được lập ra để bịt, chỉ khác
+        // nhánh: người dùng có khoá thật, có danh tính thật, và app chọn hộ họ
+        // luồng "tôi là người mới". Kết quả là một DID THỨ HAI cho cùng một
+        // người; `farmService` lấy `owner_did` từ phiên nên danh sách vườn hiện
+        // RỖNG, mà rỗng thì trùng khớp với "tôi chưa ghi gì" — không ai nhận ra
+        // đã mất đường về, và bước kế tiếp rất dễ là nhập lại vườn dưới DID mới.
+        //
+        // Nay dẫn sang màn HỎI, để chính người dùng rẽ. Không chọn hộ: nhánh này
+        // không phân biệt được "DID cũ của tôi" với "DID rác còn sót trên máy
+        // mượn", và hai thứ đó cần hai lối khác nhau.
+        navigation.navigate('IdentityEntryChoice' as never);
         return;
       }
 

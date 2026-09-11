@@ -1016,7 +1016,12 @@ const TreeDetailScreen = () => {
                       <Text style={styles.proofMeta}>
                         {pr.stored === false ? tk('trace.tree.notUploaded') : ''}
                         {pr.at ? new Date(pr.at).toLocaleString('vi-VN') : ''}
-                        {pr.nFruitsMax ? ` · khoảng ${pr.nFruitsMax} quả` : ''}
+                        {/* Cùng con số, cùng người đọc, nên phải cùng một lời rào với
+                            màn kết quả quay quả: đây là số quả nhiều nhất trong MỘT
+                            khung do bộ dò màu ước lượng, không phải số quả của cả cây.
+                            Một màn có rào một màn không thì người ghi chép sẽ chép con
+                            số ở màn không có rào. */}
+                        {pr.nFruitsMax ? ` · ước lượng ${pr.nFruitsMax} quả trong 1 khung` : ''}
                       </Text>
                     </View>
                     <TouchableOpacity
@@ -1224,6 +1229,17 @@ const TreeDetailScreen = () => {
           </ScrollView>
         </View>
       ) : null}
+
+      {/* Danh sách bằng chứng video KHÔNG còn đứng ở đây. Nó đã về ngăn "Xem
+          thêm" của thẻ Tổng quan — cùng chỗ với vị trí, giống, năm trồng: những
+          thứ có người cần nhưng không ai cần MỖI LẦN mở màn.
+
+          Bản ở đây là bản cũ còn sót sau cú dời, và nó sống lại vì một lần vá cú
+          pháp: cú dời để lại khối JSX chưa đóng nên tệp không biên dịch được, và
+          cách đóng nhanh nhất lại là dựng lại nguyên khối tại chỗ cũ. Hệ quả
+          không kêu: màn hiện danh sách video HAI LẦN, và bản dưới đây là bản duy
+          nhất còn giữ lời rào "trong 1 khung" — nên xoá nó mà không mang lời rào
+          sang trước thì đúng cái mà chính lời rào ấy cảnh báo sẽ xảy ra. */}
 
       {/* ═══ MỤC 3 — QUẢ ═════════════════════════════════════════════════ */}
       <View style={[styles.sectionRow, styles.sectionQua]}>

@@ -103,8 +103,12 @@ describe('describeEnclaveFailure — kết xuất máy thô chỉ ra mã tra ng�
   });
 
   it('cụm 24 từ lọt vào câu lỗi thì KHÔNG được hiện ra', () => {
+    // Cố ý cắt chuỗi làm hai vế: giá trị truyền vào không đổi, nhưng không dòng
+    // nào trong tệp mang đủ 12 từ thường liền nhau trong nháy — `scripts/soi-khoa.sh`
+    // canh đúng hình dạng đó, và ở đây nó báo đúng (bài kiểm nào cũng chỉ là mẫu).
     const phrase =
-      'abandon ability able about above absent absorb abstract absurd abuse access accident';
+      'abandon ability able about above absent ' +
+      'absorb abstract absurd abuse access accident';
     const out = describeEnclaveFailure('mnemonicToMasterKek', new Error(phrase));
     expect(out.referenceCode).not.toBeNull();
     expect(out.message).not.toContain('abandon');

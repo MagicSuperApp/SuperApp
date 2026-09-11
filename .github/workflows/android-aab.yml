@@ -72,8 +72,26 @@ jobs:
       # `timeout-minutes` → job bị gắn nhãn `cancelled`. Nhãn đó đọc như "có người
       # bấm huỷ" nên năm ngày liền không ai thấy develop đang hỏng. Cổng bản PHÁT
       # HÀNH là chỗ cuối cùng còn thiếu cờ này — tức nó vẫn còn nguyên mìn.
-      - name: Unit tests (jest)
-        run: npx jest --ci --forceExit
+      # HAI lượt, mỗi app một lượt. Luật và lý do đầy đủ ở `verify-pr.yml`; ở ĐÂY
+      # nó nặng hơn mọi luồng khác, vì đây là cổng của bản PHÁT HÀNH — thứ người
+      # dùng thật tải về. Tới trước bản này nó gọi `npx jest` trần, tức bản phát
+      # hành của app này đi ra cửa hàng sau khi chỉ chứng minh app KIA.
+      #
+      # `--cacheDirectory` riêng là bắt buộc: bộ chuyển mã nướng giá trị vào lúc
+      # biến đổi mã, dùng chung bộ đệm thì hai lượt cho ra cùng một app và cả hai
+      # vẫn xanh. `src/config/ciJestPerApp.test.ts` canh cả hai điều này cho MỌI
+      # tệp trong thư mục workflow, kể cả tệp viết sau này.
+      - name: Unit tests (jest) — app `aladin`
+        env:
+          APP_INSTANCE: aladin
+          EXPECTED_APP_INSTANCE: aladin
+        run: npx jest --ci --forceExit --cacheDirectory /tmp/jest-cache-aladin
+
+      - name: Unit tests (jest) — app `checkfarm`
+        env:
+          APP_INSTANCE: checkfarm
+          EXPECTED_APP_INSTANCE: checkfarm
+        run: npx jest --ci --forceExit --cacheDirectory /tmp/jest-cache-checkfarm
 
   build-aab:
     name: Build signed AAB for Play Store

@@ -93,9 +93,27 @@ describe('trên bản đồ có CHẤM CÂY', () => {
   it('chú giải màu và chấm cây dùng CHUNG một hằng', () => {
     // Chú giải lệch màu với thứ nó chú giải là loại lỗi không ai thấy lúc soát
     // mã và ai cũng thấy ngoài nắng. Buộc cả hai đọc `NHOM_CAY` thì chúng không
-    // lệch được nữa.
-    expect(BAN_DO).toContain('circleColor: NHOM_CAY[nhom].mau');
+    // lệch được nữa — kể cả nhánh "rỗng".
+    expect(BAN_DO).toContain("NHOM_CAY[nhom].rong ? 'rgba(0, 0, 0, 0)' : NHOM_CAY[nhom].mau");
     expect(BAN_DO).toContain('backgroundColor: NHOM_CAY[nhom].mau');
+  });
+
+  it('"chưa biết" KHÔNG bị quy về 0', () => {
+    // ⛔ Bản trước `tienDoThu` trả 0 khi trường vắng. Đó là một con số BỊA mang
+    //    hình dạng số đo: `harvestProgress` trong toàn bộ `src/` KHÔNG có chỗ
+    //    nào ghi, nên mọi cây rơi vào nhóm "Chưa thu" và hàng chú giải ở đáy
+    //    khẳng định điều đó bằng một con số đếm.
+    //
+    // Màn chi tiết vườn đã vá đúng chỗ này (`RingProgress` nhận `null`). Hai
+    // màn nói hai chuyện khác nhau về cùng một cây thì cái sai không còn là một
+    // ô màu — nó là chuyện app tự mâu thuẫn.
+    expect(BAN_DO).toContain('const tienDoThu = (cay: any): number | null');
+    expect(BAN_DO).toContain("if (p === null) return 'chuaBiet'");
+    expect(BAN_DO).toContain("pct === null ? '—'");
+    expect(BAN_DO).toContain("cay?.fruitCount ?? 'chưa đếm'");
+    // Chấm "chưa biết" vẽ RỖNG chứ không lấy một MÀU thứ tư: màu thứ tư lọt vào
+    // thang màu thu hoạch và đọc ra thành một trạng thái thu hoạch thứ tư.
+    expect(BAN_DO).toContain('rong: true');
   });
 
   it('cây KHÔNG có toạ độ được đếm và nói ra, không bị nuốt', () => {

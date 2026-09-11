@@ -34,8 +34,22 @@ import Svg, { Circle } from 'react-native-svg';
 import { SURFACE, TONE } from '../../theme/depth';
 
 export const RingProgress: React.FC<{
-  /** 0..100. Ngoài dải thì bị kẹp — không có vòng nào quét quá một vòng. */
-  pct: number;
+  /**
+   * 0..100. Ngoài dải thì bị kẹp — không có vòng nào quét quá một vòng.
+   *
+   * `null` nghĩa là CHƯA BIẾT, và nó KHÁC `0`. Vòng lúc đó vẽ nét đứt, không
+   * vẽ cung nào — người dùng đọc ra "chưa có số", chứ không đọc ra "đã thu 0%".
+   *
+   * Ràng buộc này không phải chuyện thẩm mỹ. Máy chủ hiện không trả trường
+   * tiến độ cho danh sách cây, nên nơi dùng buộc phải điền một giá trị; điền
+   * `0` là dựng một con số mang hình dạng số đo mà không ai đo. Người cầm máy
+   * ngoài ruộng chép nó vào báo cáo, và tới lúc đó thì không còn cách nào phân
+   * biệt "cây chưa thu quả nào" với "app không biết cây này thế nào".
+   *
+   * Giá trị không phải số hữu hạn (`NaN`, `Infinity`) cũng vào đường CHƯA BIẾT
+   * chứ không bị quy về 0 — cùng một lý do.
+   */
+  pct: number | null;
   size: number;
   /**
    * Bề dày VIỀN. Mỏng quá thì ngoài nắng không thấy phần đã quét; dày quá thì
@@ -47,7 +61,8 @@ export const RingProgress: React.FC<{
   children?: React.ReactNode;
   style?: StyleProp<ViewStyle>;
 }> = ({ pct, size, stroke = 5, fill = SURFACE.raised, children, style }) => {
-  const phanTram = Math.max(0, Math.min(100, Number.isFinite(pct) ? pct : 0));
+  const chuaBiet = pct === null || !Number.isFinite(pct);
+  const phanTram = Math.max(0, Math.min(100, chuaBiet ? 0 : (pct as number)));
   // Bán kính trừ NỬA nét: `stroke` của SVG mọc đều hai bên đường tròn, nên
   // thiếu phép trừ này thì nửa ngoài của viền bị khung cắt cụt.
   const r = (size - stroke) / 2;
@@ -60,6 +75,10 @@ export const RingProgress: React.FC<{
           MỘT hình mang cả lòng lẫn viền. Viền ở đây đóng hai vai: nó là mép của
           nút, và nó là RÃNH của thanh tiến độ. Vẽ đủ vòng để nút có mép cả khi
           tiến độ bằng 0.
+
+          CHƯA BIẾT thì rãnh vẽ NÉT ĐỨT. Đó là toàn bộ chỗ để mắt phân biệt hai
+          trạng thái khác hẳn nhau mà lại cùng cho một vòng trống: "đã thu 0%"
+          (nét liền, rỗng) và "không có số" (nét đứt).
         */}
         <Circle
           cx={size / 2}
@@ -68,8 +87,9 @@ export const RingProgress: React.FC<{
           fill={fill}
           stroke={TONE.border}
           strokeWidth={stroke}
+          strokeDasharray={chuaBiet ? `${chuVi / 36} ${chuVi / 36}` : undefined}
         />
-        {phanTram > 0 ? (
+        {!chuaBiet && phanTram > 0 ? (
           <Circle
             cx={size / 2}
             cy={size / 2}

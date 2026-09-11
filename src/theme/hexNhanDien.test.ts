@@ -55,14 +55,58 @@ function quetTep(thuMuc: string, ra: string[] = []): string[] {
   return ra;
 }
 
-/** Bỏ dòng chú thích: chú thích được phép nêu giá trị cũ để giải thích lịch sử. */
+/**
+ * Bỏ chú thích: chú thích được phép nêu giá trị cũ để giải thích lịch sử.
+ *
+ * ── Vì sao theo dõi TRẠNG THÁI khối, không đoán bằng ký tự đầu dòng ─────────
+ * Bản đầu lọc theo tiền tố: bỏ dòng bắt đầu bằng `//`, `*`, hoặc `/*`. Nó đúng
+ * với chú thích viết theo lối JSDoc, nơi mọi dòng tiếp nối đều mở đầu bằng `*`.
+ * Nó TRƯỢT với lối viết khối thụt lề không có `*` — dòng giữa một khối
+ * `/* … *`+`/` trông y hệt một dòng mã, nên hex trong đó bị đếm thành gõ cứng.
+ *
+ * Đó là ca đã xảy ra: hai chú thích giải thích đúng cái lỗi "nửa trên xanh lá,
+ * nửa dưới xanh dương" bị chính bài này bắt, vì chúng NÊU giá trị màu để nói
+ * vì sao không được dùng nó. Bài kiểm bắt đúng thứ nó tự tuyên là được phép.
+ *
+ * Cái sai không nằm ở hai tệp kia — nằm ở đây: phép đo đọc HÌNH DẠNG dòng chứ
+ * không đọc thứ nó cần biết là dòng ấy có phải mã chạy không.
+ *
+ * ── Vì sao `//` vẫn chỉ xử ở mức CẢ DÒNG ───────────────────────────────────
+ * Cắt từ `//` tới hết dòng nghe gọn hơn, nhưng nó cắt nhầm bên trong chuỗi:
+ * `'https://…'` có `//`, nên một hex đứng SAU một địa chỉ mạng trên cùng dòng
+ * sẽ biến mất khỏi phép quét. Đó là lọt lưới — chiều hỏng đắt hơn. Chú thích
+ * đuôi dòng thì không cần cắt: phần mã trên cùng dòng vẫn còn nguyên hex.
+ */
 function hexTrongMaChay(noiDung: string): string[] {
-  return noiDung
-    .split('\n')
-    .filter((d) => {
-      const s = d.trim();
-      return !s.startsWith('//') && !s.startsWith('*') && !s.startsWith('/*');
-    })
+  const maChay: string[] = [];
+  let trongKhoi = false;
+
+  for (const dong of noiDung.split('\n')) {
+    let conLai = dong;
+    let sach = '';
+
+    while (conLai.length) {
+      if (trongKhoi) {
+        const dong_ = conLai.indexOf('*/');
+        if (dong_ === -1) break;
+        conLai = conLai.slice(dong_ + 2);
+        trongKhoi = false;
+        continue;
+      }
+      const mo = conLai.indexOf('/*');
+      if (mo === -1) {
+        sach += conLai;
+        break;
+      }
+      sach += conLai.slice(0, mo);
+      conLai = conLai.slice(mo + 2);
+      trongKhoi = true;
+    }
+
+    if (!sach.trim().startsWith('//')) maChay.push(sach);
+  }
+
+  return maChay
     .flatMap((d) => d.match(/#[0-9A-Fa-f]{6}\b/g) ?? [])
     .map((h) => h.toUpperCase());
 }
@@ -73,6 +117,19 @@ it('phép quét tự kiểm — hỏng phép quét thì bài dưới xanh giả'
   // và nó phải THẤY được hex trong mã chạy, nếu không thì nó chỉ đang trả rỗng.
   expect(hexTrongMaChay("const a = '#3B6EA8';")).toEqual(['#3B6EA8']);
   expect(hexTrongMaChay("// nền cũ là #3B6EA8")).toEqual([]);
+
+  // Chú thích KHỐI nhiều dòng, lối thụt lề không có `*` ở đầu dòng tiếp nối.
+  // Bản trước của phép quét trượt đúng cực này — nó lọc theo ký tự đầu dòng,
+  // nên dòng giữa khối trông y hệt mã chạy. Thiếu ca này thì bài tự kiểm xanh
+  // ở CẢ HAI cực, và cái nó tự nhận là canh thì nó không canh.
+  const khoi = ['/*', '  nền cũ ở lớp token là', '  XANH DƯƠNG #3B6EA8 nên bỏ.', '*/'].join('\n');
+  expect(hexTrongMaChay(khoi)).toEqual([]);
+
+  // Mở và đóng khối trên CÙNG một dòng thì phần mã hai bên vẫn phải thấy được.
+  expect(hexTrongMaChay("const a = /* cũ #FFFFFF */ '#3B6EA8';")).toEqual(['#3B6EA8']);
+
+  // Chú thích ĐUÔI dòng cố ý KHÔNG cắt: cắt từ `//` sẽ cắt nhầm trong `https://`.
+  expect(hexTrongMaChay("const a = '#3B6EA8'; // nền")).toEqual(['#3B6EA8']);
 });
 
 it('màu mang nhận diện không được viết cứng ngoài src/theme/', () => {

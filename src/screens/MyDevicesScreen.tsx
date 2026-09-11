@@ -117,16 +117,16 @@ const MyDevicesScreen: React.FC = () => {
 
   const submitRename = useCallback(async () => {
     if (!target) return;
-    const kiem = checkDeviceName(draft);
-    if (!kiem.ok) { showError(kiem.message); return; }
+    const nameCheck = checkDeviceName(draft);
+    if (!nameCheck.ok) { showError(nameCheck.message); return; }
     setSaving(true);
     try {
       // Gửi giá trị ĐÃ CẮT, không phải chuỗi thô — xem chú thích ở checkDeviceName.
-      const view = await phoenixKeyApi.deviceLifecycle.rename(target.keyId, kiem.value);
+      const view = await phoenixKeyApi.deviceLifecycle.rename(target.keyId, nameCheck.value);
       setDevices(prev => prev.map(d =>
         // Chỉ nhận `deviceName` từ phản hồi. `current` của phản hồi luôn false
         // (điểm 2 ở đầu tệp) nên phải giữ giá trị địa phương.
-        d.keyId === target.keyId ? { ...d, deviceName: view.deviceName ?? kiem.value } : d,
+        d.keyId === target.keyId ? { ...d, deviceName: view.deviceName ?? nameCheck.value } : d,
       ));
       setTarget(null);
       showSuccess('Đã đổi tên máy.');
@@ -187,7 +187,7 @@ const MyDevicesScreen: React.FC = () => {
     const ten = d.deviceName?.trim() || 'Máy không tên';
     // Điểm 3 đầu tệp: owner đang hoạt động là khoá cuối cùng ⇒ nút gỡ chắc
     // chắn hỏng, nên không bày ra.
-    const goDuoc = song && d.keyRole?.toLowerCase() !== 'owner';
+    const canRevoke = song && d.keyRole?.toLowerCase() !== 'owner';
     const dangBan = busyKeyId === d.keyId;
 
     return (
@@ -209,7 +209,7 @@ const MyDevicesScreen: React.FC = () => {
           {!d.lastUsedAt && !!fmtTime(d.createdAt) && (
             <Text style={styles.time}>Thêm vào: {fmtTime(d.createdAt)}</Text>
           )}
-          {song && !goDuoc && (
+          {song && !canRevoke && (
             <Text style={styles.note}>
               Khoá chủ không gỡ được từ đây. Muốn đổi sang máy khác, dùng 24 từ hoặc người bảo hộ.
             </Text>
@@ -221,7 +221,7 @@ const MyDevicesScreen: React.FC = () => {
             <TouchableOpacity onPress={() => openRename(d)} hitSlop={8} style={styles.actBtn}>
               <Icon name="pencil-outline" size={18} color={COLORS.textSub} />
             </TouchableOpacity>
-            {goDuoc && (
+            {canRevoke && (
               dangBan
                 ? <ActivityIndicator style={styles.actBtn} color="#C62828" />
                 : (

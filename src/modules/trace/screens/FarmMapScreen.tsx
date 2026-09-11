@@ -96,39 +96,54 @@ const hopLe = (p: { lat?: unknown; lng?: unknown } | null | undefined): p is Coo
   typeof p.lng === 'number' && Number.isFinite(p.lng) && Math.abs(p.lng) <= 180;
 
 /**
- * Phần trăm đã thu của một cây, 0..100.
+ * Phần trăm đã thu của một cây. `null` = CHƯA BIẾT, và nó KHÁC `0`.
  *
- * `harvestProgress` là trường máy chủ/cache mang sẵn — cùng nguồn mà nút cây ở
- * `FarmDetailScreen` đang hiện. Đọc lại đúng trường đó để hai màn không bao giờ
- * nói hai con số khác nhau về cùng một cây.
+ * ⛔ Bản trước trả `0` khi trường vắng. Đó là một con số BỊA mang hình dạng số
+ *    đo: `harvestProgress` trong toàn bộ `src/` có bốn chỗ ĐỌC và KHÔNG chỗ nào
+ *    GHI (`grep` xác nhận), nên mọi cây trên bản đồ đều rơi vào nhóm "Chưa thu"
+ *    và hàng chú giải ở đáy khẳng định điều đó bằng một con số đếm.
+ *
+ *    Màn chi tiết vườn đã vá đúng chỗ này (`RingProgress` nhận `null`, vòng vẽ
+ *    nét đứt, chữ "chưa đếm"). Hai màn nói hai chuyện khác nhau về cùng một cây
+ *    thì cái sai không còn là một ô màu — nó là chuyện app tự mâu thuẫn.
  */
-const tienDoThu = (cay: any): number => {
+const tienDoThu = (cay: any): number | null => {
   const v = Number(cay?.harvestProgress);
-  if (!Number.isFinite(v)) return 0;
+  if (!Number.isFinite(v)) return null;
   return Math.max(0, Math.min(100, v));
 };
 
-/** Ba nhóm màu của chấm cây. Xem `NHOM_CAY` cho nhãn và màu. */
-type NhomCay = 'chuaThu' | 'dangThu' | 'daThu';
+/** Bốn nhóm chấm cây. Xem `NHOM_CAY` cho nhãn và màu. */
+type NhomCay = 'chuaBiet' | 'chuaThu' | 'dangThu' | 'daThu';
 
 const nhomCua = (cay: any): NhomCay => {
   const p = tienDoThu(cay);
+  if (p === null) return 'chuaBiet';
   if (p <= 0) return 'chuaThu';
   if (p >= 100) return 'daThu';
   return 'dangThu';
 };
 
 /**
- * Chú giải màu — MỘT nguồn cho cả chấm trên bản đồ lẫn hàng chú giải ở đáy.
+ * Chú giải — MỘT nguồn cho cả chấm trên bản đồ lẫn hàng chú giải ở đáy.
  *
  * Tách thành hằng vì chú giải và chấm phải cùng màu theo ĐỊNH NGHĨA, không phải
  * theo việc người sửa có nhớ sửa cả hai chỗ hay không. Chú giải lệch màu với
  * thứ nó chú giải là loại lỗi không ai thấy lúc soát mã và ai cũng thấy ngoài
  * nắng.
+ *
+ * `rong` = chấm RỖNG (chỉ có viền, không có ruột). Đó là bản dịch sang ngôn ngữ
+ * bản đồ của cái vòng NÉT ĐỨT mà `RingProgress` dùng cho "chưa biết": một hình
+ * chưa được tô xong đọc ra "chưa có số", trong khi mọi hình đặc đều là một lời
+ * khẳng định. Dùng thêm một MÀU thứ tư thì nó lọt vào thang màu thu hoạch và
+ * người dùng sẽ đọc nó thành một trạng thái thu hoạch thứ tư.
  */
-const NHOM_CAY: Record<NhomCay, { mau: string; nhan: string }> = {
-  // Xanh lá: cây đang nuôi quả, chưa động tới. Đây là trạng thái THƯỜNG nên nó
-  // lấy màu chủ đạo của module.
+const NHOM_CAY: Record<NhomCay, { mau: string; nhan: string; rong?: boolean }> = {
+  // Chưa biết: chấm rỗng, viền sẫm. Hôm nay MỌI cây rơi vào đây, vì không đường
+  // nào trong app ghi `harvestProgress`. Ngày máy chủ trả trường đó thì ba nhóm
+  // dưới tự sáng lên, không phải sửa dòng nào.
+  chuaBiet: { mau: NATURE.bark, nhan: 'Chưa có số liệu', rong: true },
+  // Xanh lá: cây đang nuôi quả, chưa động tới. Màu chủ đạo của module.
   chuaThu: { mau: TONE.primary, nhan: 'Chưa thu' },
   // Cam nắng: đang thu dở. Màu ấm = việc đang làm, cùng quy ước với số quả ở
   // màn chi tiết vườn.
@@ -137,7 +152,7 @@ const NHOM_CAY: Record<NhomCay, { mau: string; nhan: string }> = {
   daThu: { mau: NATURE.barkSoft, nhan: 'Đã thu xong' },
 };
 
-const THU_TU_NHOM: NhomCay[] = ['chuaThu', 'dangThu', 'daThu'];
+const THU_TU_NHOM: NhomCay[] = ['chuaBiet', 'chuaThu', 'dangThu', 'daThu'];
 
 interface DiemCay {
   cay: any;
@@ -286,8 +301,10 @@ const PopupCay: React.FC<{
   const ma = shortTreeCode(cay);
 
   const dong: Array<{ nhan: string; gt: string; uoc?: boolean }> = [
-    { nhan: 'Quả trên cây', gt: String(cay?.fruitCount ?? 0) },
-    { nhan: 'Quả dự kiến', gt: String(cay?.estimatedFruits ?? 0), uoc: true },
+    // Cùng chữ với popup cây ở màn chi tiết vườn — hai màn phải nói cùng một
+    // câu về cùng một cây, kể cả khi câu đó là "chưa biết".
+    { nhan: 'Quả trên cây', gt: String(cay?.fruitCount ?? 'chưa đếm') },
+    { nhan: 'Quả dự kiến', gt: String(cay?.estimatedFruits ?? 'chưa ghi'), uoc: cay?.estimatedFruits != null },
     { nhan: 'Giống', gt: cay?.species || 'chưa ghi' },
     { nhan: 'Năm trồng', gt: cay?.plantedYear ? String(cay.plantedYear) : 'chưa ghi' },
     { nhan: 'Toạ độ', gt: toaDoChu(lat, lng) },
@@ -298,8 +315,9 @@ const PopupCay: React.FC<{
       <GradientFill name="tile" />
 
       <View style={styles.popupDau}>
+        {/* `null` → vòng NÉT ĐỨT và dấu gạch, không phải "0%". Xem `tienDoThu`. */}
         <RingProgress pct={pct} size={62} stroke={5}>
-          <Text style={styles.popupPct}>{pct}%</Text>
+          <Text style={styles.popupPct}>{pct === null ? '—' : `${pct}%`}</Text>
         </RingProgress>
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={styles.popupTen} numberOfLines={2}>{formatTreeName(cay, farm)}</Text>
@@ -666,11 +684,16 @@ const FarmMapScreen: React.FC = () => {
                   id={`fmap-cay-${nhom}-layer`}
                   style={{
                     circleRadius: 7,
-                    circleColor: NHOM_CAY[nhom].mau,
+                    // Nhóm "chưa biết" vẽ RỖNG: ruột trong suốt, chỉ còn viền.
+                    // Một hình chưa tô xong đọc ra "chưa có số"; mọi hình đặc
+                    // đều là một lời khẳng định.
+                    circleColor: NHOM_CAY[nhom].rong ? 'rgba(0, 0, 0, 0)' : NHOM_CAY[nhom].mau,
                     // Viền trắng: chấm xanh lá trên ảnh vệ tinh (cũng xanh lá) sẽ
                     // biến mất nếu không có một đường tách nó khỏi nền.
                     circleStrokeWidth: 2,
-                    circleStrokeColor: 'rgba(255, 255, 255, 0.92)',
+                    circleStrokeColor: NHOM_CAY[nhom].rong
+                      ? NHOM_CAY[nhom].mau
+                      : 'rgba(255, 255, 255, 0.92)',
                   }}
                 />
               </MapLib.ShapeSource>
@@ -818,7 +841,14 @@ const FarmMapScreen: React.FC = () => {
                   if (n === 0) return null;
                   return (
                     <View key={nhom} style={styles.chuGiaiMuc}>
-                      <View style={[styles.chuGiaiCham, { backgroundColor: NHOM_CAY[nhom].mau }]} />
+                      <View
+                        style={[
+                          styles.chuGiaiCham,
+                          NHOM_CAY[nhom].rong
+                            ? { backgroundColor: 'transparent', borderColor: NHOM_CAY[nhom].mau }
+                            : { backgroundColor: NHOM_CAY[nhom].mau },
+                        ]}
+                      />
                       <Text style={styles.chuGiaiTxt}>{NHOM_CAY[nhom].nhan} · {n}</Text>
                     </View>
                   );

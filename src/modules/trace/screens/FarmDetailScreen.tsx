@@ -240,8 +240,18 @@ const TreeChip = ({
   size: number;
   onPress: () => void;
 }) => {
-  const harvestPct = item.harvestProgress ?? 0;
-  const soQua = item.fruitCount ?? 0;
+  // ⛔ `?? 0` ở hai dòng này từng biến "chưa biết" thành "bằng không".
+  //
+  // `harvestProgress` trong toàn bộ `src/` có BA chỗ đọc và KHÔNG chỗ nào ghi;
+  // `mapTreeInfoToUI` (`services/treeReIDService.ts`) gõ cứng `fruitCount: 0`.
+  // Nên mọi cây trong lưới hiện `0 quả` với vòng rỗng — một con số bịa mang
+  // hình dạng số đo, và người cầm máy ngoài ruộng chép nó vào báo cáo.
+  //
+  // `null` đi thẳng tới `RingProgress` (vòng nét đứt) và tới chữ "chưa đếm".
+  // Cây thật sự chưa thu quả nào vẫn hiện `0 quả` với vòng nét liền — hai
+  // trạng thái đó phải ra hai hình khác nhau, đó là toàn bộ điểm của chỗ này.
+  const harvestPct = item.harvestProgress ?? null;
+  const soQua = item.fruitCount ?? null;
   const ten = formatTreeName(item, farm);
 
   return (
@@ -250,7 +260,12 @@ const TreeChip = ({
       onPress={onPress}
       style={{ width: size, alignItems: 'center' }}
       accessibilityRole="button"
-      accessibilityLabel={`${ten}, ${soQua} quả, đã thu ${harvestPct}%`}
+      accessibilityLabel={
+        `${ten}, ` +
+        (soQua === null ? 'chưa đếm quả' : `${soQua} quả`) +
+        ', ' +
+        (harvestPct === null ? 'chưa có số liệu thu hoạch' : `đã thu ${harvestPct}%`)
+      }
     >
       {/*
         BA phần, một khối. Không phần nào có nền riêng, viền riêng, hay bo góc
@@ -266,8 +281,14 @@ const TreeChip = ({
         <Text style={styles.treeChipTen} numberOfLines={2}>{ten}</Text>
         <View style={styles.treeChipGach} />
         <Text style={styles.treeChipSo} numberOfLines={1}>
-          {soQua}
-          <Text style={styles.treeChipDonVi}> quả</Text>
+          {soQua === null ? (
+            <Text style={styles.treeChipDonVi}>chưa đếm</Text>
+          ) : (
+            <>
+              {soQua}
+              <Text style={styles.treeChipDonVi}> quả</Text>
+            </>
+          )}
         </Text>
       </RingProgress>
     </TouchableOpacity>
@@ -1156,9 +1177,27 @@ const FarmDetailMode = ({
 
   const handleScanExisting3D = () => { };
 
-  const totalFruits = filteredTrees.reduce((sum, t) => sum + (t.fruitCount ?? 0), 0);
-  const areaLabel = farm?.areaSqm
-    ? `${(farm?.areaSqm / 10000).toFixed(1)} ha`
+  // Số của cả VƯỜN, nên đếm trên toàn bộ cây — KHÔNG trên `filteredTrees`.
+  // `filteredTrees` là kết quả lọc theo ô tìm kiếm; gõ "12" vào ô tìm cây thì
+  // dòng đầu màn đổi từ "1.240 quả" thành "8 quả", vẫn đứng cạnh diện tích
+  // vườn và vẫn đọc như một thuộc tính của vườn.
+  //
+  // `null` khi KHÔNG cây nào có số: cộng một dãy toàn "chưa biết" ra 0, và 0 ở
+  // đây đọc như "vườn này không có quả nào".
+  const dsCoQua = sortedTrees.filter((t) => typeof t.fruitCount === 'number');
+  const totalFruits = dsCoQua.length
+    ? dsCoQua.reduce((sum, t) => sum + t.fruitCount, 0)
+    : null;
+
+  // ⛔ Trường tên `areaM2`, KHÔNG phải `areaSqm`.
+  //
+  // `types/index.ts` khai `areaM2`, `farmService.ts` là nơi duy nhất sinh ra nó
+  // (từ `area_sqm` của máy chủ). Hai màn đọc `areaSqm` — một trường không tồn
+  // tại — nên diện tích máy chủ đã tính chưa từng hiện lần nào. Nó hỏng CÂM vì
+  // ngay sau đó có nhánh lui "N điểm", và vì `farm` khai kiểu `any` nên `tsc`
+  // không kêu.
+  const areaLabel = farm?.areaM2
+    ? `${(farm.areaM2 / 10000).toFixed(1)} ha`
     : `${farm?.coordinates?.length ?? 0} ${tk('trace.unit.points')}`;
 
   const moDuong = useOpenWayfind();
@@ -1209,20 +1248,25 @@ const FarmDetailMode = ({
       <View style={styles.bentoFacts}>
         <Icon name="apple-whole" size={13} color={ORG_TONE.sun} />
         <Text style={styles.bentoFactTxt}>
-          {totalFruits.toLocaleString('vi-VN')} quả <Text style={styles.bentoFactHint}>(ước tính)</Text>
+          {totalFruits === null ? (
+            <Text style={styles.bentoFactHint}>chưa đếm quả</Text>
+          ) : (
+            <>
+              {totalFruits.toLocaleString('vi-VN')} quả{' '}
+              <Text style={styles.bentoFactHint}>(ước tính)</Text>
+            </>
+          )}
         </Text>
         <View style={styles.bentoFactDot} />
-        {/* `draw-polygon`, KHÔNG phải `ruler-combined`.
+        {/* ⛔ Tên này từng KHÔNG có trong bộ biểu tượng của kho, nên chỗ này vẽ
+               ra một ô TRỐNG cạnh con số diện tích — `Icon` nuốt tên lạ chứ
+               không ném, nên không lệnh nào báo. Nhánh `develop` đã vá đúng gốc:
+               sinh thật tệp `assets/icons/ruler-combined.svg` (#312), nên tên
+               này nay có thật. `components/Icon/iconNames.test.ts` canh chỗ đó.
 
-            ⛔ Bộ biểu tượng của kho KHÔNG có tên `ruler-combined`, nên chỗ này
-               vẽ ra một ô TRỐNG cạnh con số diện tích suốt thời gian qua —
-               `Icon` nuốt tên lạ chứ không ném, nên không lệnh nào báo. Bài
-               `components/Icon/iconNames.test.ts` chỉ đúng vào đây; nó đang đỏ
-               vì việc này.
-
-            `draw-polygon` có sẵn, và nó nói đúng hơn cả: diện tích ở đây suy từ
-            chính vòng ranh đa giác mà chủ vườn đã đi. */}
-        <Icon name="draw-polygon" size={13} color={ORG_TONE.rain} />
+               Đừng đổi sang một tên khác "cho chắc": bài kiểm kia đã đo được
+               việc này rồi, và cái thước nói đúng thứ đang đo. */}
+        <Icon name="ruler-combined" size={13} color={ORG_TONE.rain} />
         <Text style={styles.bentoFactTxt}>{areaLabel}</Text>
       </View>
 
@@ -1279,7 +1323,7 @@ const FarmDetailMode = ({
             <Icon name="cube" size={13} color={SANG_KHONG_GIAN} />
             <Text style={styles.bentoBadge3DTxt}>3D</Text>
           </View>
-          {!coHinh ? <Text style={styles.bentoPreviewMoi}>Xem sơ đồ 3D</Text> : null}
+          {!coHinh ? <Text style={styles.bentoPreviewMoiToi}>Xem sơ đồ 3D</Text> : null}
         </BentoTile>
         <BentoTile
           flex={1}
@@ -1529,23 +1573,32 @@ const FarmDetailMode = ({
             <GradientFill name="tile" />
 
             <View style={styles.cayPopupDau}>
-              <RingProgress pct={cayDangXem?.harvestProgress ?? 0} size={64} stroke={5}>
-                <Text style={styles.cayPopupPct}>{cayDangXem?.harvestProgress ?? 0}%</Text>
+              {/*
+                Cùng lý do với lưới: `?? 0` ở đây in ra "0%" và câu "đã thu
+                hoạch" cho một cây mà app KHÔNG có số liệu. Đọc rời ra thì nó
+                là một câu khẳng định, và nó sai.
+              */}
+              <RingProgress pct={cayDangXem?.harvestProgress ?? null} size={64} stroke={5}>
+                <Text style={styles.cayPopupPct}>
+                  {cayDangXem?.harvestProgress == null ? '—' : `${cayDangXem.harvestProgress}%`}
+                </Text>
               </RingProgress>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={styles.cayPopupTen} numberOfLines={2}>
                   {cayDangXem ? formatTreeName(cayDangXem, farm) : ''}
                 </Text>
-                <Text style={styles.cayPopupPhu}>đã thu hoạch</Text>
+                <Text style={styles.cayPopupPhu}>
+                  {cayDangXem?.harvestProgress == null ? 'chưa có số liệu thu hoạch' : 'đã thu hoạch'}
+                </Text>
               </View>
             </View>
 
             <View style={styles.cayPopupBang}>
               {[
-                { nhan: 'Quả trên cây', gt: String(cayDangXem?.fruitCount ?? 0) },
+                { nhan: 'Quả trên cây', gt: String(cayDangXem?.fruitCount ?? 'chưa đếm') },
                 {
                   nhan: 'Quả dự kiến',
-                  gt: String(cayDangXem?.estimatedFruits ?? 0),
+                  gt: String(cayDangXem?.estimatedFruits ?? 'chưa ghi'),
                   uoc: true,
                 },
                 { nhan: 'Giống', gt: cayDangXem?.species || 'chưa ghi' },
@@ -1597,6 +1650,45 @@ const FarmDetailMode = ({
   );
 };
 
+// ── Màn này đang ở trạng thái nào ─────────────────────────────────────────────
+//
+// XUẤT RA để bài kiểm gọi được. Trước đây quyết định này là một dòng nằm giữa thân
+// component — `if (!farm) return <AddFarmMode …/>` — nên không có cách nào kiểm nó
+// mà không dựng cả màn hơn 3.000 dòng kèm bản đồ, máy ảnh, native.
+//
+// ⛔ VÌ SAO TÁCH RA: dòng cũ gộp hai tình huống KHÁC HẲN NHAU vào một màn hình.
+//   a) không có `farm_id` — người dùng bấm "Thêm vườn", tạo mới ĐÚNG là ý họ;
+//   b) có `farm_id` — người dùng mở một vườn ĐÃ CÓ (bấm từ danh sách, quét QR),
+//      nhưng vườn chưa nạp xong hoặc kho máy không có nó.
+// Ở ca (b) người dùng gặp một biểu mẫu TRỐNG ở đúng chỗ họ chờ vườn của mình. Việc
+// hợp lý nhất để làm với biểu mẫu trống là điền nó — nên họ vẽ lại ranh, đặt lại
+// tên, và app sinh ra vườn TRÙNG. Không lỗi nào hiện ra, không dòng log nào đỏ.
+// Đó là một nhánh phòng thủ nguỵ trang thành đường đi bình thường: cái vỏ im lặng.
+//
+// Luật ở đây: **chỉ SỰ VẮNG MẶT của `farm_id` mới mở màn tạo.** Mọi ca "có
+// `farm_id` mà chưa có vườn" đều phải nói ra là chưa có — đang tải, hoặc không tải
+// được — chứ không được im lặng đổi nghĩa màn hình.
+export type FarmDetailView = 'create' | 'loading' | 'unavailable' | 'detail';
+
+/** Vòng đời một lượt nạp vườn theo `farm_id`. */
+export type FarmLoadState = 'idle' | 'loading' | 'loaded' | 'failed';
+
+export function resolveFarmDetailView(input: {
+  farmId: string | null | undefined;
+  farm: unknown;
+  loadState: FarmLoadState;
+}): FarmDetailView {
+  if (input.farm) return 'detail';
+  // `TreeEnrollScreen.tsx` điều hướng với `{ farm_id: null }`, các lối "Thêm vườn"
+  // thì không truyền params — chuỗi rỗng, null, undefined cùng nghĩa "chưa chọn".
+  if (!input.farmId) return 'create';
+  // Có id mà chưa có vườn: chưa xong thì báo đang tải, xong rồi mà vẫn không có
+  // (kho máy thiếu, hoặc lượt nạp hỏng) thì báo không tải được — kèm nút thử lại.
+  return input.loadState === 'idle' || input.loadState === 'loading'
+    ? 'loading'
+    : 'unavailable';
+}
+
 // ── Main Screen ───────────────────────────────────────────────────────────────
 const FarmDetailScreen = () => {
   const navigation = useNavigation();
@@ -1644,6 +1736,10 @@ const FarmDetailScreen = () => {
   const [editHistory, setEditHistory] = useState<{ lat: number; lng: number }[][]>([]);
   const walkAwayStateRef = useRef<WalkAwayState>(initWalkAwayState());
   const [farm, setFarm] = useState<any>(null);
+  // Vòng đời lượt nạp vườn. KHÔNG suy được từ `farm === null`: "chưa nạp xong" và
+  // "nạp xong mà không có" là hai sự thật khác nhau, và gộp chúng lại chính là cái
+  // đã biến màn chi tiết thành màn tạo. Xem `resolveFarmDetailView`.
+  const [farmLoadState, setFarmLoadState] = useState<FarmLoadState>('idle');
   // Search and Pagination state
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -1670,14 +1766,37 @@ const FarmDetailScreen = () => {
     }
   }, [params.scanResult, params.images]);
 
+  /**
+   * Nạp một vườn theo id và GHI LẠI kết quả thật của lượt nạp.
+   *
+   * `loadFarm` trả `payload === undefined` khi kho máy không có vườn đó, và lượt
+   * dispatch có thể `rejected` khi kho máy hỏng. Trước đây cả hai kết cục đều rơi
+   * vào `setFarm(null)` — cùng một giá trị với "chưa nạp" — nên màn không phân biệt
+   * nổi ba tình huống và chọn tình huống dễ nhất: hiện biểu mẫu tạo mới.
+   */
+  const fetchFarm = useCallback(
+    (id: string) => {
+      setFarmLoadState('loading');
+      dispatch(loadFarm(id))
+        .then((action: any) => {
+          const loaded = action?.payload ?? null;
+          setFarm(loaded);
+          // `rejected` cũng đi vào `.then` với redux-toolkit: phân biệt bằng `error`
+          // chứ không bằng payload rỗng, không thì lần nạp hỏng đội lốt "không có".
+          setFarmLoadState(action?.error ? 'failed' : 'loaded');
+        })
+        .catch(() => {
+          setFarm(null);
+          setFarmLoadState('failed');
+        });
+      dispatch(syncTreesFromBackend(id));
+    },
+    [dispatch],
+  );
+
   useEffect(() => {
-    if (farm_id) {
-      dispatch(loadFarm(farm_id)).then((fetchedFarm) => {
-        setFarm(fetchedFarm.payload ?? null);
-      });
-      dispatch(syncTreesFromBackend(farm_id));
-    }
-  }, [farm_id]);
+    if (farm_id) fetchFarm(farm_id);
+  }, [farm_id, fetchFarm]);
 
   // Refetch cây MỖI KHI màn được focus lại (vd quay về sau khi đăng ký cây mới ở
   // màn khác) → cây vừa tạo hiện ngay, không kẹt danh sách cũ (fix "cây không vào vườn").
@@ -1690,13 +1809,14 @@ const FarmDetailScreen = () => {
   useEffect(() => {
     if (params.farm_id && params.farm_id !== farm_id) {
       console.log('[FarmDetailScreen] Detected farm_id change in params:', params.farm_id);
+      // Chỉ đổi id. Lượt nạp do effect ở trên lo — trước đây chỗ này chép lại y
+      // nguyên đoạn nạp, nên có hai bản phải sửa song song và bản này đã bị bỏ quên
+      // đúng lúc bản kia được sửa.
+      setFarm(null);
+      setFarmLoadState('idle');
       setFarm_id(params.farm_id);
-      dispatch(loadFarm(params.farm_id)).then((fetchedFarm) => {
-        setFarm(fetchedFarm.payload ?? null);
-      });
-      dispatch(syncTreesFromBackend(params.farm_id));
     }
-  }, [params]);
+  }, [params, farm_id]);
   // Reset page when search changes
   useEffect(() => {
     setCurrentPage(1);
@@ -2343,7 +2463,41 @@ const FarmDetailScreen = () => {
     }
   };
 
-  if (!farm) {
+  // ⛔ ĐỌC `resolveFarmDetailView` TRƯỚC KHI SỬA KHỐI NÀY. Nhánh `create` chỉ được
+  // chạy khi KHÔNG có `farm_id`. Đưa nó về lại `if (!farm)` là dựng lại đúng lỗi
+  // "màn chi tiết hoá thành màn tạo" ⇒ vườn trùng.
+  const view = resolveFarmDetailView({ farmId: farm_id, farm, loadState: farmLoadState });
+
+  if (view === 'loading') {
+    // Không dùng `StateView status="loading"`: nó vẽ khung xương và BỎ QUA `title`,
+    // nên người dùng không đọc được là màn đang mở vườn nào chứ không phải đứng im.
+    return (
+      <View style={styles.root}>
+        <View style={styles.dangMoWrap}>
+          <ActivityIndicator size="large" color={COLORS.accent} />
+          <Text style={styles.dangMoTxt}>Đang mở vườn…</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (view === 'unavailable') {
+    // Nói thẳng là chưa mở được, và để người dùng thử lại. KHÔNG hiện biểu mẫu
+    // trống: người dùng sẽ điền nó và tạo ra một vườn thứ hai trùng vườn đang có.
+    return (
+      <View style={styles.root}>
+        <StateView
+          status="error"
+          title="Chưa mở được vườn này"
+          message="Vườn chưa có trên máy. Kiểm tra kết nối rồi thử lại; nếu vẫn không được, mở lại từ danh sách vườn."
+          actionLabel="Thử lại"
+          onRetry={() => fetchFarm(farm_id)}
+        />
+      </View>
+    );
+  }
+
+  if (view === 'create') {
     return (
       <AddFarmMode
         coordinates={coordinates}
@@ -2613,6 +2767,24 @@ const styles = StyleSheet.create({
     fontSize: 14, fontWeight: '700', color: ORG_TONE.primary,
     textAlign: 'center', paddingBottom: 14, paddingHorizontal: 8,
   },
+  // ⛔ Cùng chữ, KHÁC nền ⇒ phải khác kiểu.
+  //
+  // Ô "Xem sơ đồ 3D" nằm trong `<BentoTile tone="space">`, tức nền TỐI
+  // (`GRADIENT.space`), còn ô "Vẽ ranh giới vườn" nằm trên nền sáng. Trước bản
+  // này cả hai dùng chung `bentoPreviewMoi` với `TONE.primary` — chữ xanh đậm
+  // trên nền tối, tương phản đo được **1,50** ở chặng sáng nhất của dải và
+  // **1,94** ở chỗ chữ thật sự đứng. Ngưỡng AA là 4,5; ngoài nắng thì bằng 0.
+  //
+  // Nó rơi đúng vào vườn VỪA TẠO, chưa đi ranh giới — lúc `FarmShape` trả
+  // `null` nên ô chỉ còn một hình chữ nhật tối và đúng dòng chữ này. Tức lời
+  // mời tàng hình ở đúng lúc người dùng cần nó nhất.
+  //
+  // `Surface.tsx` đã viết ra luật này thành chữ: ô có `onDark` thì chữ bên
+  // trong PHẢI là chữ sáng, và ô không tự đổi màu chữ của con.
+  bentoPreviewMoiToi: {
+    fontSize: 14, fontWeight: '700', color: ORG_NATURE.paper,
+    textAlign: 'center', paddingBottom: 14, paddingHorizontal: 8,
+  },
 
   bentoActions: { marginTop: 8, marginBottom: ORG_SPACE.lg },
   bentoAction: {
@@ -2654,6 +2826,21 @@ const styles = StyleSheet.create({
   },
 
   // Tree list
+  /**
+   * Trạng thái "đang mở vườn".
+   *
+   * Hai style này trước đây MƯỢN của lớp phủ bản đồ toạ độ
+   * (`coordMapLoadingContainer`/`coordMapLoadingText`). Lớp phủ đó nay là một
+   * màn riêng (`FarmMapScreen`) nên style của nó đã đi cùng — mượn đồ của một
+   * khối có thể bị gỡ là cách để một màn hỏng theo một thay đổi ở chỗ khác.
+   * Đây là bản của CHÍNH trạng thái này, cùng giá trị, không mượn của ai.
+   */
+  dangMoWrap: {
+    flex: 1, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: ORG_SURFACE.raised,
+  },
+  dangMoTxt: { fontSize: 14, color: COLORS.textMuted, marginTop: 8 },
+
   treeListContent: {
     // 12, cùng mép với lưới Bento ở trên. Lệch mép giữa phần đầu và phần danh
     // sách là thứ mắt bắt được ngay dù không gọi tên ra được.

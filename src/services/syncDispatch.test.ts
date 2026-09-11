@@ -20,7 +20,7 @@ jest.mock('./timelineService', () => ({
   addTimelineEvent: (...a: any[]) => mockAddTimelineEvent(...a),
 }));
 
-import { classifySyncItem, isRetryableError } from './syncDispatch';
+import { classifySyncItem, classifySyncFailure, isRetryableError } from './syncDispatch';
 
 beforeEach(() => {
   mockCreateFarm.mockClear();
@@ -246,5 +246,53 @@ describe('isRetryableError', () => {
   it('4xx khác (400/422) → KHÔNG retry', () => {
     expect(isRetryableError({ response: { status: 400 } })).toBe(false);
     expect(isRetryableError({ response: { status: 422 } })).toBe(false);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// classifySyncFailure — BỐN hạng, vì "retry hay không" là câu hỏi SAI
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Câu hỏi cũ chỉ có hai đáp án nên mọi thứ không-retry-được đều rơi vào một rọ
+// là "chết vĩnh viễn". 401 (phiên hết hạn) rơi vào đó, và một mục nhật ký chăm
+// sóc bị đánh dấu chết ngay lần gửi đầu — trong khi người dùng vừa đọc câu "Đã
+// lưu vào sổ — Sẽ gửi lên máy chủ khi có mạng". Xem `syncService.processSyncQueue`:
+// chỉ 'pending'|'sending' mới được quét lại, nên 'error' là chết thật, kể cả sau
+// khi mở lại app.
+describe('classifySyncFailure', () => {
+  it('401 = phiên hết hạn → hạng RIÊNG `auth`, KHÔNG phải payload sai', () => {
+    expect(classifySyncFailure({ response: { status: 401 } })).toBe('auth');
+  });
+
+  it('403 = chưa đủ điều kiện (cây chưa đăng ký) → `blocked`, cũng không phải payload sai', () => {
+    // `timelineService.addTimelineEvent` đo được: 403 ở cửa này nghĩa là thực thể
+    // CHƯA đăng ký, không phải sai quyền vĩnh viễn. Đăng ký xong là gửi được.
+    expect(classifySyncFailure({ response: { status: 403 } })).toBe('blocked');
+  });
+
+  it('404 "máy chủ chưa bật dòng thời gian" → `blocked`, không giết mục', () => {
+    expect(classifySyncFailure({ response: { status: 404 } })).toBe('blocked');
+  });
+
+  it('http_status 0 = KHÔNG có phản hồi HTTP → `retryable` (mất mạng)', () => {
+    // Đây là đường mà `syncDispatch` NÉM khi `addTimelineEvent` trả lỗi mạng:
+    // `status: res.error?.http_status ?? 0`. Đọc 0 thành "4xx lạ" là giết mục
+    // đúng lúc người dùng đang offline — chính lúc hàng đợi phải sống nhất.
+    expect(classifySyncFailure({ response: { status: 0 } })).toBe('retryable');
+  });
+
+  it('không có response → `retryable`', () => {
+    expect(classifySyncFailure(new Error('Network Error'))).toBe('retryable');
+  });
+
+  it('408/429/5xx → `retryable`', () => {
+    expect(classifySyncFailure({ response: { status: 408 } })).toBe('retryable');
+    expect(classifySyncFailure({ response: { status: 429 } })).toBe('retryable');
+    expect(classifySyncFailure({ response: { status: 503 } })).toBe('retryable');
+  });
+
+  it('400/422 = payload sai → `permanent` (hạng duy nhất được phép chết)', () => {
+    expect(classifySyncFailure({ response: { status: 400 } })).toBe('permanent');
+    expect(classifySyncFailure({ response: { status: 422 } })).toBe('permanent');
   });
 });

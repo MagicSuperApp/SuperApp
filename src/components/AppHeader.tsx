@@ -180,7 +180,7 @@ const AppHeader = () => {
         {/* Trái: thương hiệu + lời chào (sub) */}
         <View style={styles.brandWrap}>
           <View style={styles.logoDot}>
-            <Image source={require('../../assets/images/logo.png')} style={{ width: 30, height: 30, borderRadius: 9 }} />
+            <Image source={DEFAULT_INSTANCE.logo} style={{ width: 30, height: 30, borderRadius: 9 }} />
           </View>
           <View style={styles.brandText}>
             <Text style={styles.title} numberOfLines={1}>

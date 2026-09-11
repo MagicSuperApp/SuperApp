@@ -65,17 +65,17 @@ type MintPhase = 'idle' | 'requesting' | 'waiting_sign' | 'submitting' | 'done' 
 // Ba `resolve*` dưới đây cũng chưa có nguồn thật (app chưa có chỗ mở Master_KEK
 // ở tầng màn, chưa có endpoint trả slot tip). Chúng KHÔNG bao giờ chạy khi
 // ORG_MINT_CHAIN còn null, nên để chúng ném thẳng còn hơn trả số giả.
-const chuaCoNguon = (ten: string) => async (): Promise<never> => {
+const noSourceYet = (ten: string) => async (): Promise<never> => {
   throw new Error(`Chưa có nguồn dữ liệu: ${ten}`);
 };
 
 const buildAndSignTx: BuildAndSignMintTx = makeBuildAndSignMintTx({
   chain: ORG_MINT_CHAIN,
   network: ORG_MINT_NETWORK,
-  resolveAuthorityKeks: chuaCoNguon('Master_KEK của authority tổ chức'),
-  resolveWallet: chuaCoNguon('UTxO + seed ví trả phí'),
-  resolveTipSlot: chuaCoNguon('slot tip của chuỗi'),
-  resolveMint: chuaCoNguon('số LAMP + tên token'),
+  resolveAuthorityKeks: noSourceYet('Master_KEK của authority tổ chức'),
+  resolveWallet: noSourceYet('UTxO + seed ví trả phí'),
+  resolveTipSlot: noSourceYet('slot tip của chuỗi'),
+  resolveMint: noSourceYet('số LAMP + tên token'),
 });
 
 const OrgMintScreen: React.FC = () => {

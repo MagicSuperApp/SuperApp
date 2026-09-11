@@ -41,8 +41,19 @@ import { join } from 'path';
 // `core.autocrlf=true` (xem `.gitattributes`).
 const SRC = readFileSync(join(__dirname, 'FarmDetailScreen.tsx'), 'utf8').replace(/\r\n/g, '\n');
 
-/** Đếm số lần một chuỗi xuất hiện. */
-const dem = (needle: string): number => SRC.split(needle).length - 1;
+/**
+ * Đếm số lần một chuỗi xuất hiện TRONG MÃ CHẠY.
+ *
+ * Đếm trên `SRC` gốc là sai, và nó đã sai thật: một chú thích giải thích vì sao
+ * ô `tone="space"` cần chữ sáng có nhắc nguyên văn `tone="space"`, thế là phép
+ * đếm ra 2 và cổng báo "trang có hai ô tối". Cổng bắt lời giải thích rồi kết
+ * luận về mã — cùng cái bẫy mà `MA_CHAY` bên dưới sinh ra để tránh, chỉ khác là
+ * `dem` chưa được nối vào.
+ *
+ * `MA_CHAY` khai SAU `dem` trong tệp này, nhưng thân hàm mũi tên chỉ chạy lúc
+ * GỌI — và mọi lượt gọi đều nằm trong `it(...)`, tức sau khi module dựng xong.
+ */
+const dem = (needle: string): number => MA_CHAY.split(needle).length - 1;
 
 /**
  * Chỉ giữ MÃ CHẠY: bỏ chú thích khối `/* *​/` và chú thích dòng `//`.

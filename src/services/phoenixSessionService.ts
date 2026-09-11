@@ -26,6 +26,7 @@ import {
   phoenixKeyApi,
   setSessionToken,
   getSessionToken,
+  registerSessionRefresher,
   PhoenixKeyApiError,
 } from './phoenixKey-api';
 import rLog from './remoteLogger';
@@ -117,6 +118,21 @@ export function ensurePhoenixSession(opts: { force?: boolean } = {}): Promise<st
   });
   return run;
 }
+
+/**
+ * Nối đường tự chữa 401 cho MỌI cửa PhoenixKey.
+ *
+ * Đặt ở đây chứ không nhập ngược từ `phoenixKey-api`: tệp đó đã bị tệp này nhập
+ * (dòng 25-31), nên nhập hai chiều là một vòng nhập — thứ Metro không báo lỗi mà
+ * cho ra `undefined` lúc nạp module, tức đường tự chữa chết câm đúng ca cần nó.
+ *
+ * `force: true` là bắt buộc: không có nó thì `ensurePhoenixSession` trả lại đúng
+ * cái thẻ chết vừa bị máy chủ từ chối (`ensurePhoenixSessionInner` đọc thẳng thẻ
+ * đã lưu, không hỏi hạn). Và vì `force` cố ý đi vòng qua `inflightSession` ở
+ * ngay trên, lớp gộp lượt đúc phải nằm ở phía gọi — xem `refreshSessionOnce`
+ * trong `phoenixKey-api.ts`.
+ */
+registerSessionRefresher(() => ensurePhoenixSession({ force: true }));
 
 async function ensurePhoenixSessionInner(opts: { force?: boolean }): Promise<string | null> {
   // `step` bám theo tiến-trình để catch biết CHẾT Ở ĐÂU (log remote).

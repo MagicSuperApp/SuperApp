@@ -30,15 +30,40 @@ export const TRACE_SCAN_ROUTE_NAME = 'TraceScan';
 // chi tiết của đúng thực thể trên bao bì, KHÔNG tới danh sách/dashboard nội bộ hay
 // luồng ĐĂNG KÝ (TreeIdentity/AnimalIdentity là enroll phía SẢN XUẤT — không phải
 // đích soi nguồn gốc). Whitelist hẹp cũng chặn QR lạ điều hướng bừa vào màn nhạy cảm.
-const TRACE_TARGET_WHITELIST = new Set<string>([
-  'TreeDetail',
-  'FarmDetail',
-  'AnimalDetail',
+//
+// GIÁ TRỊ = TÊN KHOÁ tham số mà CHÍNH MÀN ĐÍCH ĐỌC, không phải một tên do bảng này
+// đặt ra. Bảng cố ý ghi ba tên viết theo ba lối khác nhau, vì ba màn đó thật sự đọc
+// ba lối khác nhau — thống nhất chúng ở đây mà không sửa màn là làm hỏng cả ba.
+//
+// ⚠️ VÌ SAO PHẢI ÉP KHOÁ, chứ không chỉ ép route: bộ phân giải chép NGUYÊN khoá nào
+// có trong URL. Một mã QR ghi `?farmId=…` cho `FarmDetail` (màn đọc `farm_id`) vẫn
+// qua được whitelist, vẫn điều hướng, và màn đích nhận `undefined` — nó không nói
+// "mã sai", nó hiện một màn không có dữ liệu. Lỗi này đã xảy ra HAI lần ở hai màn
+// khác nhau (`AnimalDetail` với `id` thay `animalDid`; `FarmDetail` với `farmId`
+// thay `farm_id`), và cả hai lần bài kiểm đều XANH vì nó chỉ kiểm bộ phân giải chứ
+// không kiểm đầu đọc. Thiếu khoá ⇒ trả null ⇒ màn quét nói "chưa nhận diện": thà
+// không đi đâu còn hơn đi tới một màn không biết nó đang nói về cái gì.
+//
+// Dùng `Map` chứ không phải object: khoá tra là chuỗi QUÉT ĐƯỢC từ bên ngoài, mà
+// object thì `TRACE_TARGET_ID_KEY['constructor']` trả về một giá trị truthy.
+const TRACE_TARGET_ID_KEY = new Map<string, string>([
+  // TreeDetailScreen.tsx — `interface RouteParams { tree?; treeId?; … }`
+  ['TreeDetail', 'treeId'],
+  // FarmDetailScreen.tsx — `useState(params.farm_id ?? null)`, và mọi lối vào
+  // trong app đã dùng tên này (DashboardScreen, TreeEnrollScreen).
+  ['FarmDetail', 'farm_id'],
+  // AnimalDetailScreen.tsx — `readAnimalDid(route.params)`
+  ['AnimalDetail', 'animalDid'],
 ]);
 
 export interface TraceTarget {
   route: string;
-  params?: Record<string, string>;
+  /**
+   * LUÔN có, và luôn chứa khoá định danh của `route`. Trước đây trường này là tuỳ
+   * chọn — tức hợp đồng cho phép "mở màn chi tiết mà không nói chi tiết của cái
+   * gì". Đó chính là hình dạng đã dẫn tới màn trống.
+   */
+  params: Record<string, string>;
 }
 
 // ── Mã cây CÔNG KHAI — LỐI TẮT tra cứu, KHÔNG phải cách định danh ────────────
@@ -103,6 +128,9 @@ export function parseTreeCode(raw: string): string | null {
  * Chỉ nhận deep-link nội bộ `lamp://…` (sản phẩm Aladin đã đăng ký). Lấy
  * đoạn cuối path làm route; query (?k=v) thành params. Route ngoài whitelist →
  * null (màn quét hiện "chưa nhận diện"). HÀM THUẦN — không điều hướng.
+ *
+ * Cũng trả null khi route hợp lệ nhưng THIẾU khoá định danh mà màn đích đọc —
+ * xem `TRACE_TARGET_ID_KEY` phía trên để biết vì sao đó là điều kiện bắt buộc.
  */
 export function parseTraceCode(raw: string): TraceTarget | null {
   if (!raw) return null;
@@ -113,7 +141,9 @@ export function parseTraceCode(raw: string): TraceTarget | null {
   const [pathPart, queryPart] = m[1].split('?');
   const segs = pathPart.split('/').filter(Boolean);
   const route = segs[segs.length - 1];
-  if (!route || !TRACE_TARGET_WHITELIST.has(route)) return null;
+  if (!route) return null;
+  const idKey = TRACE_TARGET_ID_KEY.get(route);
+  if (!idKey) return null;
 
   const params: Record<string, string> = {};
   if (queryPart) {
@@ -132,5 +162,9 @@ export function parseTraceCode(raw: string): TraceTarget | null {
     }
   }
 
-  return { route, params: Object.keys(params).length ? params : undefined };
+  // Khoá định danh vắng mặt hoặc rỗng ⇒ mã này không tra được thực thể nào. Không
+  // điều hướng: màn quét sẽ hiện "chưa nhận diện" thay vì một màn chi tiết trống.
+  if (!params[idKey]) return null;
+
+  return { route, params };
 }

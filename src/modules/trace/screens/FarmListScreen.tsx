@@ -89,10 +89,17 @@ const FarmCard: React.FC<{
       ]).start();
     }, [fade, slide, index]);
 
-    const trees = item.treeCount || 0;
-    const fruits = item.fruitCount || 0;
-    const area = item.areaSqm
-      ? `${(item.areaSqm / 10000).toFixed(1)} ha`
+    // Kiểu `Farm` đã viết ra luật này thành chữ: màn phải chịu được chỗ vắng và
+    // hiện "—", KHÔNG được hiện 0 — "0 cây" là một khẳng định sai, "—" là sự
+    // thật. Bản trước dùng `|| 0`, vừa trái luật đó vừa gộp luôn số 0 hợp lệ
+    // với chỗ vắng.
+    const trees = item.treeCount ?? null;
+    const fruits = item.fruitCount ?? null;
+    // ⛔ Trường tên `areaM2`. `areaSqm` không tồn tại trong kiểu `Farm` — đọc
+    // nó luôn ra `undefined`, nên nhánh lui "N điểm" chạy mãi và diện tích máy
+    // chủ đã tính chưa từng hiện. Hỏng câm vì `item` khai kiểu `any`.
+    const area = item.areaM2
+      ? `${(item.areaM2 / 10000).toFixed(1)} ha`
       : `${item.coordinates?.length ?? 0} ${tk('trace.unit.points')}`;
     const st = STATUS[item.status] ?? STATUS.active;
 
@@ -142,9 +149,9 @@ const FarmCard: React.FC<{
           </View>
 
           <View style={styles.cardStats}>
-            <Stat icon="tree" value={String(trees)} label={tk('trace.label.trees')} tone={TONE.primary} />
+            <Stat icon="tree" value={trees === null ? '—' : String(trees)} label={tk('trace.label.trees')} tone={TONE.primary} />
             <View style={styles.statSep} />
-            <Stat icon="apple-whole" value={String(fruits)} label={tk('trace.label.fruits')} tone={TONE.sun} />
+            <Stat icon="apple-whole" value={fruits === null ? '—' : String(fruits)} label={tk('trace.label.fruits')} tone={TONE.sun} />
             {/* Nút nằm TRONG thẻ nhưng bắt chạm riêng, nên bấm vào nó không mở
               luôn trang chi tiết vườn. Vườn chưa vẽ ranh giới → `forFarm` trả
               null → nút tự ẩn. */}

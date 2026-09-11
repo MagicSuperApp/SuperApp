@@ -23,7 +23,12 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import taad from '../sdk/taadEnclave';
-import { phoenixKeyApi, baseURL, PhoenixKeyApiError } from './phoenixKey-api';
+import {
+  phoenixKeyApi,
+  baseURL,
+  PhoenixKeyApiError,
+  remintSessionOnce,
+} from './phoenixKey-api';
 import { currentUserDid } from '../sdk/phoenixKey';
 
 const SESSION_TOKEN_KEY = 'phoenixkey_session_token';
@@ -185,7 +190,7 @@ export async function fetchWalletUtxosAndParams(
 }
 
 /** GET thô giữ nguyên JSON (KHÔNG camelCase). Bóc envelope { code, message, result }. */
-async function rawGet<T = unknown>(path: string): Promise<T> {
+async function rawGet<T = unknown>(path: string, retried = false): Promise<T> {
   const token = await AsyncStorage.getItem(SESSION_TOKEN_KEY);
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -195,6 +200,15 @@ async function rawGet<T = unknown>(path: string): Promise<T> {
     res = await fetch(`${baseURL}${path}`, { method: 'GET', headers });
   } catch (e) {
     throw new PhoenixKeyApiError(-1, 0, `Mạng lỗi khi lấy dữ liệu Cardano: ${String(e)}`);
+  }
+
+  // 401 ⇒ đúc lại thẻ MỘT lần rồi phát lại. Lối này đi thẳng `fetch` nên
+  // `attachSessionRefresh` không với tới; dùng chung lớp gộp qua
+  // `remintSessionOnce` để không sinh hộp sinh trắc thứ hai. Đúng MỘT vòng:
+  // thẻ mới mà vẫn 401 thì máy chủ từ chối vì lý do khác.
+  if (res.status === 401 && !retried) {
+    const fresh = await remintSessionOnce();
+    if (fresh) return rawGet<T>(path, true);
   }
 
   let body: { code?: number; message?: string; result?: T };

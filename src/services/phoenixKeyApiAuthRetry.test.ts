@@ -62,7 +62,17 @@ beforeEach(() => {
 
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const api = require('./phoenixKey-api');
-  onError = instance.interceptors.response.use.mock.calls[0][1];
+
+  // TÌM hàm lỗi, không lấy theo VỊ TRÍ. Bản trước đăng ký một lượt
+  // `use(thành-công, lỗi)` nên `calls[0][1]` trúng; nay nhánh 401 đã tách thành
+  // `attachSessionRefresh()` dùng chung cho bốn client, và nó đăng ký một lượt
+  // RIÊNG `use(undefined, lỗi)` sau lượt đổi khoá camelCase. Lấy theo vị trí thì
+  // bộ kiểm đỏ vì THỨ TỰ ĐĂNG KÝ đổi, trong khi hành vi nó canh không đổi gì —
+  // đúng loại đỏ giả dạy người ta sửa bộ kiểm cho vừa mã.
+  const calls = instance.interceptors.response.use.mock.calls as unknown[][];
+  const coHamLoi = calls.find(c => typeof c[1] === 'function');
+  if (!coHamLoi) throw new Error('Không client nào đăng ký nhánh lỗi 401 — đường tự chữa đã mất.');
+  onError = coHamLoi[1] as ErrorHandler;
 
   refresher = jest.fn(async () => 'fresh-token');
   api.registerSessionRefresher(refresher);
@@ -137,7 +147,10 @@ describe('401 ở cửa PhoenixKey thì đúc lại thẻ rồi phát lại', ()
     instance.request.mockClear();
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     require('./phoenixKey-api');
-    const handler = instance.interceptors.response.use.mock.calls[0][1];
+    // Tìm theo hình dạng, không theo vị trí — xem chú thích ở `beforeEach`.
+    const handler = (instance.interceptors.response.use.mock.calls as unknown[][]).find(
+      c => typeof c[1] === 'function',
+    )![1] as ErrorHandler;
     await expect(handler(failWith(401, { needsAuth: true }))).rejects.toBeDefined();
     expect(instance.request).not.toHaveBeenCalled();
   });

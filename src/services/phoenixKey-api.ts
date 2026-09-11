@@ -284,48 +284,61 @@ type RetriableConfig = InternalAxiosRequestConfig & {
   __sessionRetried?: boolean;
 };
 
-client.interceptors.response.use(
-  response => {
-    if (response.data) {
-      response.data = transformKeys(response.data, toCamelCase);
-    }
-    return response;
-  },
-  /**
-   * 401 ⇒ đúc lại thẻ MỘT lần rồi phát lại đúng lượt gọi đó.
-   *
-   * ── Ca hỏng nhánh này sinh ra để chặn ──────────────────────────────────────
-   * Thẻ phiên PhoenixKey sống 1 giờ. `ensurePhoenixSession` trả thẳng thẻ đã lưu
-   * ra mà KHÔNG hỏi hạn (`phoenixSessionService.ts:126-130`), và nó chỉ được gọi
-   * đúng một lần mỗi phiên đăng nhập (`navigation/index.tsx:1562`). Tới trước bản
-   * này, tệp này không có nhánh lỗi nào cả.
-   *
-   * Hệ quả đo được: hai người thử đăng nhập lúc 7h rồi đi ruộng; 8h05 thẻ hết
-   * hạn; từ đó `/wallet/{did}/all`, `/wallet/{did}/utxos`, `/devices/register`,
-   * `/seed/export-request`, `/guardians/*`, `/keys/*` đều 401. Màn Ví hiện ba dấu
-   * "—", kéo xuống làm mới y hệt, tắt app mở lại y hệt — vì thẻ chết vẫn nằm
-   * trong kho và vẫn được trả ra. Lối thoát duy nhất là đăng xuất rồi đăng nhập
-   * lại, và không câu nào trên màn gợi ý điều đó.
-   *
-   * Đường tự chữa từng tồn tại nhưng chỉ ở MỘT nhà tiêu thụ —
-   * `proofchatAuthBridge.ts:187-190`. Ai không mở ProofChat thì không bao giờ
-   * chạm tới nó. Đặt ở tầng chặn là đặt vào chỗ mọi cửa đều đi qua.
-   *
-   * ── Ba ràng buộc, mỗi cái chặn một ca hỏng khác nhau ───────────────────────
-   * 1. CHỈ lượt gọi khai `needsAuth`. Cửa công khai trả 401 là chuyện của máy
-   *    chủ, không phải thẻ sai — đúc lại ở đó là bật hộp sinh trắc hỏi một câu
-   *    vô nghĩa với người chỉ đang quét mã trên thùng hàng.
-   * 2. ĐÚNG MỘT lần mỗi lượt gọi (`__sessionRetried`). Thẻ mới mà vẫn 401 nghĩa
-   *    là máy chủ từ chối vì lý do khác; thử tiếp là vòng lặp vô hạn có kèm hộp
-   *    vân tay.
-   * 3. KHÔNG áp cho 403. Ở các cửa ví, 403 nghĩa là `caller_did != path_did` —
-   *    ký lại bằng chính khoá đó cho ra đúng kết quả cũ. (Khác `proofchatAuthBridge`,
-   *    nơi 403 mang nghĩa khác nên nó gộp hai mã là đúng với nó.)
-   *
-   * Chưa ai đăng ký hàm đúc thì nhánh này ném nguyên lỗi cũ ra — đúng hành vi
-   * trước bản này, không xấu thêm.
-   */
-  async (error: AxiosError) => {
+client.interceptors.response.use(response => {
+  if (response.data) {
+    response.data = transformKeys(response.data, toCamelCase);
+  }
+  return response;
+});
+
+/**
+ * Gắn đường tự chữa 401 vào MỘT client axios bất kỳ.
+ *
+ * ── Vì sao là hàm dùng chung, không phải đoạn mã chép ra bốn chỗ ───────────
+ * Thẻ phiên nằm chung một khoá kho (`phoenixkey_session_token`) cho **bốn**
+ * nhà tiêu thụ: tệp này, `orgMint-api`, `phoenixWallet-api` và lối `fetch` thô
+ * trong `cardanoTxService`. Cả bốn gắn `Bearer` y hệt nhau, nhưng tới trước bản
+ * này chỉ tệp này có nhánh 401. Nên cùng một thẻ chết cho ra hai hành vi khác
+ * nhau tuỳ người dùng bấm vào màn nào: màn Danh tính tự hồi, màn Ví tổ chức và
+ * màn Ví chuỗi thì kẹt vĩnh viễn ở `Unauthorized — Missing Bearer token (mã
+ * 1304)` với một nút "Thử lại" không bao giờ đổi được kết quả, vì nó chỉ phát
+ * lại đúng lượt gọi cũ bằng đúng cái thẻ cũ.
+ *
+ * ── Ca hỏng nhánh này sinh ra để chặn ──────────────────────────────────────
+ * Thẻ phiên PhoenixKey sống 1 giờ. `ensurePhoenixSession` trả thẳng thẻ đã lưu
+ * ra mà KHÔNG hỏi hạn (`phoenixSessionService.ts:126-130`), và nó chỉ được gọi
+ * đúng một lần mỗi phiên đăng nhập (`navigation/index.tsx:1562`).
+ *
+ * Hệ quả đo được: hai người thử đăng nhập lúc 7h rồi đi ruộng; 8h05 thẻ hết
+ * hạn; từ đó `/wallet/{did}/all`, `/wallet/{did}/utxos`, `/devices/register`,
+ * `/seed/export-request`, `/guardians/*`, `/keys/*` đều 401. Màn Ví hiện ba dấu
+ * "—", kéo xuống làm mới y hệt, tắt app mở lại y hệt — vì thẻ chết vẫn nằm
+ * trong kho và vẫn được trả ra. Lối thoát duy nhất là đăng xuất rồi đăng nhập
+ * lại, và không câu nào trên màn gợi ý điều đó.
+ *
+ * Đường tự chữa từng tồn tại nhưng chỉ ở MỘT nhà tiêu thụ —
+ * `proofchatAuthBridge.ts:187-190`. Ai không mở ProofChat thì không bao giờ
+ * chạm tới nó. Đặt ở tầng chặn là đặt vào chỗ mọi cửa đều đi qua.
+ *
+ * ── Ba ràng buộc, mỗi cái chặn một ca hỏng khác nhau ───────────────────────
+ * 1. CHỈ lượt gọi khai `needsAuth`. Cửa công khai trả 401 là chuyện của máy
+ *    chủ, không phải thẻ sai — đúc lại ở đó là bật hộp sinh trắc hỏi một câu
+ *    vô nghĩa với người chỉ đang quét mã trên thùng hàng.
+ * 2. ĐÚNG MỘT lần mỗi lượt gọi (`__sessionRetried`). Thẻ mới mà vẫn 401 nghĩa
+ *    là máy chủ từ chối vì lý do khác; thử tiếp là vòng lặp vô hạn có kèm hộp
+ *    vân tay.
+ * 3. KHÔNG áp cho 403. Ở các cửa ví, 403 nghĩa là `caller_did != path_did` —
+ *    ký lại bằng chính khoá đó cho ra đúng kết quả cũ. (Khác `proofchatAuthBridge`,
+ *    nơi 403 mang nghĩa khác nên nó gộp hai mã là đúng với nó.)
+ *
+ * Chưa ai đăng ký hàm đúc thì nhánh này ném nguyên lỗi cũ ra — đúng hành vi
+ * trước bản này, không xấu thêm.
+ *
+ * ⚠ Phải gọi SAU khi client đã đăng ký interceptor phản hồi thành công của
+ * riêng nó (đổi khoá sang camelCase), vì axios chạy theo thứ tự đăng ký.
+ */
+export function attachSessionRefresh(target: AxiosInstance): void {
+  target.interceptors.response.use(undefined, async (error: AxiosError) => {
     const config = error.config as RetriableConfig | undefined;
     const status = error.response?.status;
 
@@ -336,9 +349,23 @@ client.interceptors.response.use(
     config.__sessionRetried = true;
     const fresh = await refreshSessionOnce();
     if (!fresh) throw error;
-    return client.request(config);
-  },
-);
+    return target.request(config);
+  });
+}
+
+attachSessionRefresh(client);
+
+/**
+ * Đúc lại thẻ phiên MỘT lượt, cho nhà tiêu thụ KHÔNG đi qua axios.
+ *
+ * `cardanoTxService.rawGet` gọi thẳng `fetch` (cố ý: nó phải giữ nguyên khoá
+ * snake_case của JSON Cardano, không cho interceptor đổi sang camelCase), nên
+ * `attachSessionRefresh` không với tới nó. Xuất hàm này để lối đó dùng CHUNG
+ * lớp gộp `inflightRefresh` — nếu nó tự đúc riêng thì màn Ví lại có hai hộp
+ * sinh trắc song song, đúng cái mà lớp gộp sinh ra để chặn.
+ */
+export const remintSessionOnce = (): Promise<string | null> =>
+  refreshSession ? refreshSessionOnce() : Promise.resolve(null);
 
 /**
  * Gộp mọi lượt đúc thẻ đang bay làm MỘT — nếu không thì mỗi lượt gọi hỏng là một

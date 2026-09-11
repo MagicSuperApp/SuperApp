@@ -53,69 +53,101 @@ export const GradientFill: React.FC<{ name: GradientName }> = ({ name }) => {
    * `<Svg>`. Lớp nào gắn sau ghi đè lớp trước, nên `url(#grad-action)` của nút
    * này đi lấy toạ độ/chặng màu của một ô khác.
    *
-   * Triệu chứng thực địa: nút "Cập nhật hoạt động" nửa trên xanh lá nửa dưới
-   * xanh dương, và "Chỉ đường tới vườn" có một mảng xanh dương nhạt ở đỉnh —
-   * đúng hình dạng của hai chuyển sắc chồng lệch nhau, không phải một chuyển
-   * sắc chảy đều.
-   *
    * `useId()` cho mỗi LƯỢT DỰNG một id riêng. Bỏ ký tự lạ vì `useId` trả về
    * dạng `:r3:`, mà dấu hai chấm trong `url(#…)` là cú pháp khác.
    */
   const rieng = React.useId().replace(/[^a-zA-Z0-9]/g, '');
   const id = `grad-${name}-${rieng}`;
+
+  /**
+   * Kích thước THẬT của khối cha, tính bằng pixel bố cục, đo bằng `onLayout`.
+   *
+   * ⛔ LƯỢT VÁ THỨ BA CHO CÙNG MỘT TRIỆU CHỨNG. Đọc hết đoạn này trước khi rút
+   *    gọn nó về lại "một con số phần trăm cho gọn".
+   *
+   * Báo về từ thực địa, bản này: *"panel thông tin của vườn có background trắng
+   * nhưng chỉ trắng ở MỘT VÙNG TRÊN BÊN TRÁI, còn lại thì không có màu"*, và
+   * cùng hình dạng đó ở nút "Chỉ đường tới vườn" lẫn bốn ô quả của màn chi tiết
+   * cây. Một mảng màu neo ở GỐC TOẠ ĐỘ, nhỏ hơn khối cha theo cả hai chiều —
+   * đó là chữ ký của một khung nhìn bị quy nhỏ hơn khối chứa nó.
+   *
+   * Hai lượt vá trước đều đổi TỪ một cách quy đơn vị tương đối SANG một cách
+   * khác: `<Rect width="100%">` → `viewBox="0 0 1 1"` + `<Rect width={1}>`.
+   * Cả hai lượt đều sửa một lỗi có thật, và cả hai lần triệu chứng vẫn còn.
+   *
+   * Nên lượt này bỏ HẲN đơn vị tương đối khỏi đường này. Bằng chứng chỉ đúng
+   * chỗ: hai lớp `GreenWash`/`PhotoWash` ngay dưới cũng là `<Svg>` trong cùng
+   * tệp, cũng `width="100%"`, và KHÔNG ai báo chúng hỏng — khác biệt duy nhất
+   * là chúng không có `viewBox`, và hình học của chúng quy thẳng ra pixel của
+   * mặt vẽ. Đây làm đúng như thế: đo bằng `onLayout`, rồi cả `<Svg>` lẫn
+   * `<Rect>` nhận HAI CON SỐ PIXEL. Không phần trăm, không viewBox, không phép
+   * quy nào giữa hệ toạ độ người dùng và khung nhìn để mà quy trượt.
+   *
+   * Làm tròn LÊN: thiếu nửa pixel là một sợi chỉ nền lộ ra ở mép phải/mép dưới,
+   * còn thừa nửa pixel thì bị `overflow: 'hidden'` của khối cha cắt đi — mọi nơi
+   * dùng lớp này đều bo góc và cắt tràn, đó là điều kiện ghi ở ngay trên.
+   */
+  const [co, setCo] = React.useState<{ w: number; h: number }>({ w: 0, h: 0 });
+
   return (
     /*
-      `viewBox="0 0 1 1"` + `preserveAspectRatio="none"`: hệ toạ độ của SVG thành
-      đúng một ô vuông đơn vị bị kéo giãn cho khớp khối cha, nên `<Rect>` bên
-      dưới phủ KÍN bằng hai con số cố định, không phụ thuộc vào việc thư viện
-      diễn giải chuỗi phần trăm thế nào.
+      MÀU NỀN ĐẶC nằm dưới lớp SVG, và nó KHÔNG phải thứ trang trí thừa.
 
-      Bản trước để `<Rect width="100%" height="100%">` trong một SVG không có
-      `viewBox`. Phần trăm ở đó phải quy về kích thước bố cục lúc chạy — và khi
-      nó quy trượt thì lớp chuyển sắc phủ THIẾU, để lộ `backgroundColor` của
-      khối cha ở phần còn lại. Nền ấy là `COLORS.accent`, mà ở lớp token mặc
-      định `COLORS.accent` là XANH DƯƠNG `#3B6EA8`. Đó chính là "nửa trên xanh
-      lá, nửa dưới xanh dương".
+      Nó là lưới an toàn: khung hình đầu tiên chưa có số đo nên chưa vẽ được
+      chuyển sắc, và nếu một ngày `react-native-svg` lại quy trượt một lần nữa
+      thì thứ tệ nhất người dùng thấy là một ô MỘT MÀU PHẲNG — chứ không phải
+      một ô phủ dở dang để lộ nền sau lưng. Đó đúng là triệu chứng vừa phải vá
+      ba lượt, và nó không được phép quay lại dù chẩn đoán ở trên có sai.
+
+      Lấy `from` chứ không lấy `to` vì `from` là chặng bắt đầu. Cả hai chặng đều
+      đã được `theme/gradient.test.ts` đo tương phản với màu chữ của token (nó
+      đo ở chặng TỆ NHẤT), nên rơi về `from` không thể làm chữ mất đọc.
     */
-    <Svg
+    <View
       pointerEvents="none"
-      style={StyleSheet.absoluteFill}
-      width="100%"
-      height="100%"
-      viewBox="0 0 1 1"
-      preserveAspectRatio="none"
+      style={[StyleSheet.absoluteFill, { backgroundColor: g.from }]}
+      onLayout={(e) => {
+        const { width, height } = e.nativeEvent.layout;
+        const w = Math.ceil(width);
+        const h = Math.ceil(height);
+        // So trước khi đặt lại: một lượt bố cục cho ra cùng số đo là một vòng
+        // vẽ lại không đổi gì trên màn, mà lớp này nằm dưới MỌI thẻ của mọi màn.
+        setCo((truoc) => (truoc.w === w && truoc.h === h ? truoc : { w, h }));
+      }}
     >
-      <Defs>
-        {/*
-          ⛔ SỐ THẬP PHÂN, KHÔNG PHẢI CHUỖI PHẦN TRĂM. Đây là chỗ đã hỏng thật.
+      {co.w > 0 && co.h > 0 ? (
+        <Svg width={co.w} height={co.h}>
+          <Defs>
+            {/*
+              ⛔ SỐ THẬP PHÂN, KHÔNG PHẢI CHUỖI PHẦN TRĂM. Đây là chỗ đã hỏng thật.
 
-          `gradientUnits` mặc định là `objectBoundingBox`, tức x1/y1/x2/y2 là
-          PHÂN SỐ 0..1 của hộp bao hình được tô. Bản trước truyền chuỗi
-          `"14.6%"`; `react-native-svg` không quy chuỗi phần trăm về phân số ở hệ
-          toạ độ này mà đọc nó thành 14,6 ĐƠN VỊ NGƯỜI DÙNG — gấp hơn mười bốn
-          lần hộp bao.
+              `gradientUnits` mặc định là `objectBoundingBox`, tức x1/y1/x2/y2 là
+              PHÂN SỐ 0..1 của hộp bao hình được tô. Bản trước truyền chuỗi
+              `"14.6%"`; `react-native-svg` không quy chuỗi phần trăm về phân số
+              ở hệ toạ độ này mà đọc nó thành 14,6 ĐƠN VỊ NGƯỜI DÙNG — gấp hơn
+              mười bốn lần hộp bao.
 
-          Hệ quả đúng như báo về từ thực địa: cả đoạn chuyển màu bị nén vào một
-          dải mỏng ở mép, phần còn lại phẳng lì một màu. Nhìn ra thành "nút có
-          hai mảng màu", không phải một chuyển sắc chảy đều.
+              Hệ quả: cả đoạn chuyển màu bị nén vào một dải mỏng ở mép, phần còn
+              lại phẳng lì một màu. Nhìn ra thành "nút có hai mảng màu".
 
-          Lượt vá trước đổ cho `id` trùng và sửa bằng `useId` — sửa đúng một lỗi
-          CÓ THẬT nhưng không phải lỗi này, nên triệu chứng còn nguyên. Giữ cả
-          hai bản vá: chúng chặn hai chỗ hỏng khác nhau.
-        */}
-        <LinearGradient
-          id={id}
-          x1={0.5 - dx / 2}
-          y1={0.5 - dy / 2}
-          x2={0.5 + dx / 2}
-          y2={0.5 + dy / 2}
-        >
-          <Stop offset="0" stopColor={g.from} />
-          <Stop offset="1" stopColor={g.to} />
-        </LinearGradient>
-      </Defs>
-      <Rect x={0} y={0} width={1} height={1} fill={`url(#${id})`} />
-    </Svg>
+              Phân số ở đây quy theo HỘP BAO CỦA HÌNH, không quy theo khung nhìn,
+              nên nó không dính vào lỗi kích thước đã vá ở trên — giữ nguyên.
+            */}
+            <LinearGradient
+              id={id}
+              x1={0.5 - dx / 2}
+              y1={0.5 - dy / 2}
+              x2={0.5 + dx / 2}
+              y2={0.5 + dy / 2}
+            >
+              <Stop offset="0" stopColor={g.from} />
+              <Stop offset="1" stopColor={g.to} />
+            </LinearGradient>
+          </Defs>
+          <Rect x={0} y={0} width={co.w} height={co.h} fill={`url(#${id})`} />
+        </Svg>
+      ) : null}
+    </View>
   );
 };
 

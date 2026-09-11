@@ -254,9 +254,16 @@ describe('nền dưới lớp phủ phải CÙNG HỌ MÀU với lớp phủ', (
  * Danh sách "bỏ đi" là loại dễ trôi ngược nhất: mỗi lượt sau chỉ cần thêm lại
  * MỘT thứ, thấy hợp lý một mình, và vài lượt là thẻ cũ quay về nguyên hình.
  */
-describe('danh sách cây — nút tròn trong lưới ba cột', () => {
-  it('lưới đúng BA cột', () => {
-    expect(MA_CHAY).toContain('numColumns={3}');
+describe('danh sách cây — nút tròn trong lưới bốn cột', () => {
+  it('lưới đúng BỐN cột', () => {
+    expect(MA_CHAY).toContain('numColumns={4}');
+  });
+
+  it('bề ngang nút suy theo ĐÚNG số cột đó', () => {
+    // Số cột và công thức chia phải đi cùng nhau. Lệch nhau thì cột cuối tràn
+    // khỏi mép phải, và nó tràn ÂM THẦM — `FlatList` không kêu một tiếng nào.
+    // Bốn cột ⇒ lề trang hai bên + BA khe.
+    expect(MA_CHAY).toContain('Math.floor((width - 12 * 2 - 12 * 3) / 4)');
   });
 
   it('nút TRÒN, và tiến độ là VIỀN của chính nó — chỉ MỘT mép', () => {

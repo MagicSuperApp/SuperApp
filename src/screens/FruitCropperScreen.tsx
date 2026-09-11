@@ -290,6 +290,48 @@ const FruitCropperScreen: React.FC = () => {
   const [candFailed, setCandFailed] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [lastRegion, setLastRegion] = useState<FruitRegion | null>(null);
+
+  /**
+   * TẤM ẢNH NÀY ĐÃ GỬI ĐI RỒI HAY CHƯA — `null` là chưa, chuỗi là khoá của tấm đã gửi.
+   *
+   * Vì sao cần một ô riêng chứ `busy` là chưa đủ: cả `saveNewFruit` lẫn `runAddView`
+   * khi lưu THÀNH CÔNG mà máy chủ còn đòi thêm mặt thì dựng lời mời "Chụp tiếp" rồi
+   * `return` — KHÔNG `goBack()`. Màn ở nguyên bước cũ, `busy` đã về `false`, nút xanh
+   * to nằm ngay dưới lời mời, và không gì trên màn nói rằng tấm này đã lưu xong. Bấm
+   * lần hai là gửi LẠI ĐÚNG tấm ảnh đó, đúng vùng đó.
+   *
+   * Hậu quả không phải một bản ghi thừa vô hại: `fruitReIDService.ts` cố ý để `enroll`
+   * và `add_view` NGOÀI danh sách gửi-lại-được, với lý do viết thẳng trong tệp — thêm
+   * một bản ghi thừa là làm hỏng chính chữ ký dùng để phân biệt các quả với nhau. Cổng
+   * đó dựng ở tầng mạng; ngón tay thì bấm ở tầng giao diện.
+   *
+   * Khoá gồm cả VÙNG: khoanh vùng khác trên cùng tấm ảnh là một lần gửi hợp lệ khác.
+   */
+  const [sentShotKey, setSentShotKey] = useState<string | null>(null);
+
+  /**
+   * Khoá của một lần gửi, dựng từ ĐỐI SỐ — không đọc state.
+   *
+   * Đây là chỗ bản đầu của cổng này hỏng, và hỏng ở đúng một trong hai đường nên
+   * nhìn qua tưởng đã kín. `useRegion` gọi `setLastRegion(reg)` rồi gọi THẲNG
+   * `runAddView(fruitId, reg, p)` trong cùng một lượt bấm; `runAddView` là một
+   * `useCallback` nên nó ôm giá trị của lần render TRƯỚC — lúc đó `lastRegion` còn
+   * `null`, và nó ghim `…|chua-khoanh` trong khi khoá sống đã là `…|38,68,324,864`.
+   * Hai chuỗi khác nhau ⟹ nút không khoá ⟹ bấm lần hai gửi lại đúng tấm đó.
+   *
+   * Thêm `shotKey` vào danh sách phụ thuộc KHÔNG cứu được — đã đo bằng đột biến:
+   * cả chuỗi `useRegion → runAddView` đóng băng từ cùng một render, nên mọi thứ
+   * đọc từ state đều là bản cũ. Chỉ có đối số là tươi. Vậy thì lấy đối số.
+   */
+  const shotKeyOf = useCallback(
+    (uri: string, bbox?: Bbox) => `${uri}|${bbox ? bbox.join(',') : 'chua-khoanh'}`,
+    [],
+  );
+  const shotKey = useMemo(
+    () => shotKeyOf(imageUri, lastRegion?.bbox),
+    [shotKeyOf, imageUri, lastRegion],
+  );
+  const shotAlreadySent = sentShotKey !== null && sentShotKey === shotKey;
   const [nameInput, setNameInput] = useState(
     () => (fruitCount === undefined ? '' : `Quả ${fruitCount + 1}`),
   );
@@ -753,6 +795,13 @@ const FruitCropperScreen: React.FC = () => {
     const fresh = await loadPlan();
     const ask = nextShotAsk(fresh);
     if (ask) {
+      // Tấm này đã lên máy chủ. Ghim lại TRƯỚC khi dựng lời mời, vì từ lúc lời mời
+      // hiện ra là nút "Thêm góc cho quả này" lại bấm được.
+      //
+      // Ghim theo `region` — ĐỐI SỐ hàm này nhận — chứ KHÔNG theo `shotKey` đọc từ
+      // state: `useRegion` gọi thẳng vào đây trong cùng lượt bấm đã đặt state, nên
+      // `shotKey` ở đây là bản của lần render trước. Xem `shotKeyOf`.
+      setSentShotKey(shotKeyOf(imageUri, region.bbox));
       setServerAsk({
         message: ask.message,
         yesLabel: ask.yesLabel,
@@ -764,7 +813,7 @@ const FruitCropperScreen: React.FC = () => {
     }
 
     navigation.goBack();
-  }, [imageUri, zone, viewType, coord, zPlaced, capture, navigation, loadPlan, shootNext]);
+  }, [imageUri, zone, viewType, coord, zPlaced, capture, navigation, loadPlan, shootNext, shotKeyOf]);
 
   const openPlacer = useCallback(() => {
     navigation.navigate('FruitPlace3D', {
@@ -902,6 +951,14 @@ const FruitCropperScreen: React.FC = () => {
       const fresh = await fetchPlanFor(newFruitId);
       const ask = nextShotAsk(fresh);
       if (ask) {
+        // Quả đã đăng ký xong trên máy chủ. Ghim TRƯỚC khi dựng lời mời — xem
+        // `sentShotKey`. Bấm "Lưu quả" lần nữa ở đây là đăng ký một quả THỨ HAI
+        // từ đúng tấm ảnh vừa dùng.
+        // Dựng lại từ nguồn, KHÔNG dùng `shotKey` của render. Đường này hôm nay
+        // ghim đúng (vì `lastRegion` có trong danh sách phụ thuộc ngay dưới), nhưng
+        // hai đường anh em nên đọc khoá theo cùng một cách — chênh nhau là chỗ đã
+        // làm đường kia hỏng mà nhìn qua tưởng kín.
+        setSentShotKey(shotKeyOf(imageUri, lastRegion?.bbox));
         setServerAsk({
           message: ask.message,
           yesLabel: ask.yesLabel,
@@ -914,7 +971,7 @@ const FruitCropperScreen: React.FC = () => {
     }
 
     navigation.goBack();
-  }, [lastRegion, nameInput, coord, zPlaced, treeId, imageUri, viewType, capture, navigation, fetchPlanFor, shootNext]);
+  }, [lastRegion, nameInput, coord, zPlaced, treeId, imageUri, viewType, capture, navigation, fetchPlanFor, shootNext, shotKeyOf]);
 
   // ── Quay lại bước crop để khoanh vùng khác ─────────────────────────────────
   const recrop = useCallback(() => { setErrMsg(null); setStep('crop'); }, []);
@@ -1111,16 +1168,19 @@ const FruitCropperScreen: React.FC = () => {
         <ServerAsk ask={serverAsk} busy={busy} onDismiss={() => setServerAsk(null)} />
 
         <TouchableOpacity
-          style={[styles.stagePrimary, busy && styles.disabled]}
-          disabled={busy}
+          testID="crop-use-region"
+          style={[styles.stagePrimary, (busy || shotAlreadySent) && styles.disabled]}
+          disabled={busy || shotAlreadySent}
           onPress={useRegion}
           activeOpacity={0.88}
         >
           {busy ? <ActivityIndicator color={COLORS.white} /> : (
             <>
-              <Icon name="check" size={15} color={COLORS.white} />
+              <Icon name={shotAlreadySent ? 'circle-check' : 'check'} size={15} color={COLORS.white} />
               <Text style={styles.stagePrimaryTxt}>
-                {fruitId ? 'Thêm góc cho quả này' : 'Dùng vùng này'}
+                {shotAlreadySent
+                  ? 'Đã lưu tấm này'
+                  : fruitId ? 'Thêm góc cho quả này' : 'Dùng vùng này'}
               </Text>
             </>
           )}
@@ -1303,8 +1363,9 @@ const FruitCropperScreen: React.FC = () => {
         <ServerAsk ask={serverAsk} busy={busy} onDismiss={() => setServerAsk(null)} />
 
         <TouchableOpacity
-          style={[styles.primary, busy && styles.disabled]}
-          disabled={busy}
+          testID="crop-save-fruit"
+          style={[styles.primary, (busy || shotAlreadySent) && styles.disabled]}
+          disabled={busy || shotAlreadySent}
           // KHÔNG truyền thẳng `saveNewFruit`: onPress đưa vào một
           // GestureResponderEvent, nó sẽ rơi đúng chỗ tham số `allowDup` và luôn
           // truthy ⟹ mọi lần lưu đều ép qua cổng trùng.
@@ -1313,8 +1374,10 @@ const FruitCropperScreen: React.FC = () => {
         >
           {busy ? <ActivityIndicator color={COLORS.white} /> : (
             <>
-              <Icon name="floppy-disk" size={15} color={COLORS.white} />
-              <Text style={styles.primaryTxt}>{tk('trace.crop.save')}</Text>
+              <Icon name={shotAlreadySent ? 'circle-check' : 'floppy-disk'} size={15} color={COLORS.white} />
+              <Text style={styles.primaryTxt}>
+                {shotAlreadySent ? 'Đã lưu quả này' : tk('trace.crop.save')}
+              </Text>
             </>
           )}
         </TouchableOpacity>

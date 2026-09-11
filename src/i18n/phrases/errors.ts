@@ -39,6 +39,16 @@ export const ERRORS: PhraseMap = {
     zh: '网络连接中断，请检查信号或 Wi-Fi 后重试。',
     ja: 'ネットワークが切断されました。電波や Wi-Fi を確認してからお試しください。',
   },
+  'Mạng vẫn nối được nhưng quá chậm nên gửi ảnh chưa xong. Hãy ra chỗ sóng tốt hơn (hoặc ra ngoài trời) rồi thử lại.': {
+    en: 'The connection is alive but too slow to finish sending the photos. Move somewhere with a better signal (or step outside) and try again.',
+    zh: '网络仍然连通，但太慢，照片没能发完。请移动到信号更好的地方（或走到室外）后重试。',
+    ja: '接続はできていますが遅すぎて写真を送り切れませんでした。電波の良い場所（屋外など）へ移動してからもう一度お試しください。',
+  },
+  'Máy chủ có trả lời nhưng trả về thứ đọc không được — thường là do mạng Wi-Fi đang chen một trang đăng nhập vào giữa. Hãy mở trình duyệt đăng nhập Wi-Fi đó, hoặc tắt Wi-Fi và dùng 4G, rồi thử lại.': {
+    en: 'The server replied, but with something unreadable — usually a Wi-Fi sign-in page cutting in. Open a browser and sign in to that Wi-Fi, or turn Wi-Fi off and use mobile data, then try again.',
+    zh: '服务器有响应，但返回的内容无法读取 — 通常是 Wi-Fi 的登录页面挡在中间。请打开浏览器登录该 Wi-Fi，或关闭 Wi-Fi 改用移动数据后重试。',
+    ja: 'サーバーからの応答はありましたが、読み取れない内容でした — 多くは Wi-Fi のログインページが割り込んでいる場合です。ブラウザでその Wi-Fi にログインするか、Wi-Fi を切ってモバイル通信に切り替えてからお試しください。',
+  },
   'Mất kết nối. Thử lại sau.': { en: 'Connection lost. Try again later.', zh: '连接中断，请稍后重试。', ja: '接続が切れました。しばらくしてからお試しください。' },
   'Không kết nối được máy chủ. Kiểm tra mạng và thử lại.': {
     en: 'Could not reach the server. Check your network and try again.',
@@ -158,15 +168,20 @@ export const ERRORS: PhraseMap = {
     zh: '服务器返回了应用无法识别的身份编码。这是服务器端故障 — 请将此画面截图发给支持。',
     ja: 'アプリが解釈できない本人情報コードがサーバーから返されました。サーバー側の不具合です — この画面のスクリーンショットをサポートにお送りください。',
   },
-  'Khoá trên máy này đã bị thu hồi, nhiều khả năng do trước đó có một lần khôi phục bằng 24 từ. Cài lại ứng dụng không mở lại được. Dùng 24 từ khôi phục của bạn để mở lại danh tính trên máy này.': {
-    en: 'The key on this device has been revoked, most likely because the identity was recovered from a 24-word phrase earlier. Reinstalling the app will not bring it back. Use your 24-word recovery phrase to reopen the identity on this device.',
-    zh: '本机的密钥已被吊销，很可能是此前用 24 个助记词恢复过身份。重新安装应用无法找回。请用你的 24 词助记词在本机重新打开该身份。',
-    ja: 'この端末の鍵は失効しています。以前に24単語で本人情報を復元したためと思われます。アプリを入れ直しても戻りません。24単語の復元フレーズを使って、この端末で本人情報を開き直してください。',
+  'Khoá trên máy này đã bị thu hồi, nhiều khả năng do trước đó có một lần khôi phục ở nơi khác. Cài lại ứng dụng không mở lại được. Hãy mở màn Khôi phục danh tính: nếu ví của bạn còn trong máy thì chỉ cần tên đăng nhập, không cần 24 từ.': {
+    en: 'The key on this device has been revoked, most likely because the identity was recovered somewhere else earlier. Reinstalling the app will not bring it back. Open the Restore identity screen: if your wallet is still on this device, your username alone is enough — no 24-word phrase needed.',
+    zh: '本机的密钥已被吊销，很可能是此前在别处恢复过身份。重新安装应用无法找回。请打开“恢复身份”页面：如果钱包仍在本机，只需用户名即可，不需要 24 个助记词。',
+    ja: 'この端末の鍵は失効しています。以前に別の場所で本人情報を復元したためと思われます。アプリを入れ直しても戻りません。「本人情報の復元」画面を開いてください。ウォレットがこの端末に残っていれば、ユーザー名だけで足り、24単語は不要です。',
   },
   'Máy này đã có khoá của một danh tính đã tạo trước đó. Nhập lại đúng tên đăng nhập của danh tính đó để mở lại trên máy này.': {
     en: 'This device already holds the key of an identity created earlier. Enter that identity\u2019s username again to reopen it on this device.',
     zh: '本机已持有先前创建的某个身份的密钥。请重新输入该身份的用户名，以在本机重新打开它。',
     ja: 'この端末には、以前作成された本人情報の鍵がすでにあります。その本人情報のユーザー名をもう一度入力して、この端末で開き直してください。',
+  },
+  'Máy này đã có danh tính của bạn, nhưng bước xác thực để mở lại chưa xong. Bấm lại và làm hết CẢ HAI lần hỏi vân tay hoặc khuôn mặt — lần thứ hai có tên "Khôi phục danh tính".': {
+    en: 'This device already holds your identity, but the check needed to reopen it did not finish. Tap again and complete BOTH fingerprint or face prompts — the second one is titled “Restore identity”.',
+    zh: '本机已持有你的身份，但用于重新打开它的验证没有完成。请再点一次，并完成两次指纹或面容验证——第二次名为「恢复身份」。',
+    ja: 'この端末にはあなたの本人情報がありますが、開き直すための認証が完了していません。もう一度タップし、指紋または顔認証を2回とも完了してください— 2回目は「本人情報の復元」という名前です。',
   },
   'Tên đăng nhập này thuộc về một danh tính khác, không phải danh tính đang có khoá trên máy. Kiểm tra lại tên, hoặc dùng máy đã tạo danh tính đó.': {
     en: 'This username belongs to a different identity, not the one whose key is on this device. Check the name, or use the device where that identity was created.',
@@ -191,9 +206,11 @@ export const ERRORS: PhraseMap = {
   'Máy chưa bật sinh trắc học': { en: 'Biometrics is not set up on this device', zh: '本机尚未启用生物识别', ja: 'この端末で生体認証が設定されていません' },
   'Khoá trên máy này đã bị thu hồi': { en: 'The key on this device has been revoked', zh: '本机的密钥已被吊销', ja: 'この端末の鍵は失効しています' },
   'Một máy chỉ giữ được một danh tính': { en: 'One device holds only one identity', zh: '一台设备只能保存一个身份', ja: '1台の端末には本人情報を1つしか保持できません' },
+  'Chưa mở lại được danh tính': { en: 'Could not reopen the identity', zh: '未能重新打开身份', ja: '本人情報を開き直せませんでした' },
   // Nhãn nút. `confirmText`/`cancelText` cũng đi thẳng vào `AlertPopup` không qua `t`.
   'Mở lại danh tính đó': { en: 'Reopen that identity', zh: '重新打开该身份', ja: 'その本人情報を開き直す' },
-  'Dùng 24 từ khôi phục': { en: 'Use the 24-word phrase', zh: '使用 24 词助记词', ja: '24単語の復元フレーズを使う' },
+  'Mở màn khôi phục': { en: 'Open the restore screen', zh: '打开恢复页面', ja: '復元画面を開く' },
+  'Thử lại ngay': { en: 'Try again now', zh: '立即重试', ja: '今すぐ再試行' },
 
   'Thiết bị chưa có danh tính.': {
     en: 'This device has no identity yet.',

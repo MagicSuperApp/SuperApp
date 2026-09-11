@@ -191,15 +191,52 @@ function releaseJob(id: string): void {
 
 // ── Lưu/đọc hàng đợi ─────────────────────────────────────────────────────────
 
-/** Đọc toàn bộ hàng đợi. KHÔNG ném — lỗi/khoá hỏng → mảng rỗng. */
+/**
+ * Ném khi KHO đọc không được — khác hẳn kho đọc được và rỗng.
+ *
+ * Có kiểu riêng để nơi gọi phân biệt được bằng `instanceof`, không phải bằng cách
+ * dò chuỗi thông báo.
+ */
+export class VideoQueueReadError extends Error {
+  readonly code = 'VIDEO_QUEUE_READ_FAILED';
+  constructor(public readonly goc: unknown) {
+    super('Không đọc được hàng đợi clip trên máy.');
+    this.name = 'VideoQueueReadError';
+  }
+}
+
+/**
+ * Đọc toàn bộ hàng đợi.
+ *
+ * ── VÌ SAO KHÔNG CÒN NUỐT LỖI THÀNH MẢNG RỖNG ──────────────────────────────
+ * Chỗ GHI ngay dưới đã bỏ lối nuốt-lỗi từ trước, và chú thích của nó tả đúng
+ * chuỗi hỏng: kho đầy ⟹ ghi trượt ⟹ hàng đợi rỗng ⟹ màn suy "không còn trong
+ * hàng ⟹ đã gửi xong" ⟹ hiện "Đã lưu video" trong khi clip chưa rời máy.
+ *
+ * Chỗ ĐỌC dựng lại y hệt chuỗi ấy từ đầu kia: `AsyncStorage.getItem` ném (kho
+ * đầy, tệp hỏng) thì hàm này trả mảng rỗng, và mọi nơi gọi đều đọc ra "chẳng
+ * còn gì chờ gửi". `isJobQueued` trả `false`, huy hiệu về 0, `flush` báo đã
+ * xong. Không dòng nào đỏ.
+ *
+ * Nên TÁCH BA trạng thái thay vì hai:
+ *  · không có khoá         → `[]`, hàng đợi rỗng thật;
+ *  · có khoá nhưng hỏng    → `[]`, dữ liệu không dùng được, coi như rỗng;
+ *  · KHO ĐỌC KHÔNG ĐƯỢC    → NÉM. Không ai được suy ra điều gì từ trạng thái này.
+ */
 export async function loadVideoQueue(): Promise<VideoUploadJob[]> {
+  let raw: string | null;
   try {
-    const raw = await AsyncStorage.getItem(QUEUE_KEY);
-    if (!raw) return [];
+    raw = await AsyncStorage.getItem(QUEUE_KEY);
+  } catch (e) {
+    throw new VideoQueueReadError(e);
+  }
+  if (!raw) return [];
+  try {
     const arr = JSON.parse(raw);
     if (!Array.isArray(arr)) return [];
     return arr.filter(isJob);
   } catch {
+    // Thân hỏng thì dữ liệu không dùng được — đây là "rỗng" thật, không phải mù.
     return [];
   }
 }
@@ -255,24 +292,49 @@ async function loadOwnQueue(): Promise<VideoUploadJob[]> {
   return (await loadVideoQueue()).filter(ownsJob);
 }
 
+/**
+ * `null` = KHÔNG ĐẾM ĐƯỢC, khác hẳn `0`. Ba hàm đếm dưới đây nuôi huy hiệu trên
+ * màn; một huy hiệu ghi `0` khi thật ra máy không đọc nổi kho là nói với người
+ * dùng rằng chẳng còn gì phải chờ.
+ */
+async function demOwn(loc: (j: VideoUploadJob) => boolean): Promise<number | null> {
+  try {
+    return (await loadOwnQueue()).filter(loc).length;
+  } catch (e) {
+    if (e instanceof VideoQueueReadError) return null;
+    throw e;
+  }
+}
+
 /** Số clip của TÔI đang chờ gửi (tính cả cần-can-thiệp-tay). Cho badge. */
-export async function getVideoQueueCount(): Promise<number> {
-  return (await loadOwnQueue()).length;
+export async function getVideoQueueCount(): Promise<number | null> {
+  return demOwn(() => true);
 }
 
 /** Số clip của TÔI còn tự thử được (chưa chạm cap) — phần "sẽ tự gửi lại". */
-export async function getPendingAutoCount(): Promise<number> {
-  return (await loadOwnQueue()).filter(j => !j.needsManual).length;
+export async function getPendingAutoCount(): Promise<number | null> {
+  return demOwn(j => !j.needsManual);
 }
 
 /** Số clip của TÔI đã chạm cap — chỉ đi tiếp khi người dùng bấm gửi tay. */
-export async function getNeedsManualCount(): Promise<number> {
-  return (await loadOwnQueue()).filter(j => j.needsManual).length;
+export async function getNeedsManualCount(): Promise<number | null> {
+  return demOwn(j => !!j.needsManual);
 }
 
-/** Job `id` còn nằm trong hàng không (màn dùng để biết clip vừa gửi đã xong hay còn chờ). */
-export async function isJobQueued(id: string): Promise<boolean> {
-  return (await loadVideoQueue()).some(j => j.id === id);
+/**
+ * Job `id` còn nằm trong hàng không.
+ *
+ * `null` = CHƯA BIẾT, và nơi gọi PHẢI xử nó khác `false`. Màn dùng hàm này để kết
+ * luận "clip đã lên máy chủ"; trả `false` cho một lần đọc hỏng là dựng ra đúng kết
+ * luận sai đó, còn bản nháp trên máy thì đã bị xoá trước đấy vài dòng.
+ */
+export async function isJobQueued(id: string): Promise<boolean | null> {
+  try {
+    return (await loadVideoQueue()).some(j => j.id === id);
+  } catch (e) {
+    if (e instanceof VideoQueueReadError) return null;
+    throw e;
+  }
 }
 
 // ── Khoá khử-trùng ổn định theo clip ─────────────────────────────────────────
@@ -492,7 +554,13 @@ async function uploadTreeVideoAsQueueResult(
   });
   return {
     ok: r.ok,
-    n_frames: (r.n_kept ?? 0) + (r.n_rejected ?? 0),
+    // Cùng luật với `fruitVideoService`: máy chủ KHÔNG nói thì để `undefined`, đừng
+    // cộng ra `0`. `0` ở trường này dẫn màn kết quả vào câu "lần sau quay chậm hơn"
+    // — một lời trách người quay, dựng từ chỗ máy chủ im lặng. Đường cây hôm nay
+    // chưa có ai xếp việc vào (đo trong chính tệp này), nên đây là vá chỗ chưa nổ.
+    n_frames: r.n_kept === undefined && r.n_rejected === undefined
+      ? undefined
+      : (r.n_kept ?? 0) + (r.n_rejected ?? 0),
     video_cid: r.video_cid,
     event_id: r.event_id,
     link_status: r.link_status,
@@ -520,8 +588,14 @@ let flushing = false;
 export interface FlushResult {
   /** Số job gửi xong (stored !== false) và đã rời hàng. */
   sent: number;
-  /** Số job vẫn còn trong hàng sau lượt flush. */
-  remaining: number;
+  /**
+   * Số job vẫn còn trong hàng sau lượt flush.
+   *
+   * `null` = KHÔNG ĐẾM ĐƯỢC (kho trên máy đọc không ra). Khác hẳn `0`: `0` nói
+   * "đã gửi hết", `null` nói "không biết còn gì không". Nơi gọi không được gộp
+   * hai thứ đó — gộp là dựng lại đúng chuỗi hỏng mà `loadVideoQueue` vừa bỏ.
+   */
+  remaining: number | null;
   /** Số job vừa chạm cap needsManual trong lượt này. */
   hitCap: number;
   /** true nếu bỏ qua vì offline / đang flush. */
@@ -618,7 +692,7 @@ export async function retryVideoJobNow(
  */
 export async function retryAllVideoJobsNow(
   deps: FlushDeps = defaultDeps(),
-): Promise<{ sent: number; remaining: number }> {
+): Promise<{ sent: number; remaining: number | null }> {
   const jobs = await loadOwnQueue();
   let sent = 0;
   for (const job of jobs) {

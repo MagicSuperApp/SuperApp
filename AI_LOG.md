@@ -1,3 +1,414 @@
+## Tấm "Khác" ở màn chi tiết cây: ba hàng chữ trôi nổi → ba nút thật
+
+### Yêu cầu
+> *"popup 'Khác' ở màn hình chi tiết cây có các nút như Đặt vị trí cây trong sơ
+> đồ, Biến thiên của cây,... Các nút này cho có style nhìn rất xấu"*
+
+### "Xấu" ở đây là một lỗi CÓ TÊN, không phải chuyện gu
+Ba hàng đó dùng chung `styles.modalOption` với hai tấm khác trong cùng màn, mà
+style ấy có `justifyContent: 'space-between'`.
+
+Với tấm **lọc trạng thái** thì đúng: ở đó biểu tượng và chữ được bọc chung trong
+`modalOptionLeft`, còn vế phải là dấu tích — hai vế, đẩy ra hai mép là hợp lý.
+
+Với tấm **"Khác"** thì sai, vì nó KHÔNG có vế phải và KHÔNG có bọc. Hai con của
+hàng là `<Icon>` và `<Text>`, nên `space-between` dính biểu tượng vào mép trái,
+dính cả câu chữ vào mép phải, và chừa một khoảng trống to tướng ở giữa. Cộng thêm
+ba thứ nữa:
+
+* không nền, không viền ⇒ không hàng nào trông như **bấm được**;
+* ba biểu tượng cùng `COLORS.textSub` xám ⇒ ba việc khác hẳn nhau trông y hệt;
+* không mũi tên, dù cả ba đều **đi sang màn khác**.
+
+### Sửa
+Tấm "Khác" có style riêng, không dùng chung nữa (hai tấm kia giữ nguyên —
+`modalOption` vẫn đúng ở đó). Mỗi hàng nay có mặt riêng (nền + viền tóc + bo 14),
+biểu tượng nằm trong một ô màu 38×38, nhãn `flex: 1` nên câu chữ bắt đầu **ngay
+sau** ô màu rồi tự xuống dòng, và một mũi tên ở cuối.
+
+**Màu nói nghĩa**, không phải để cho vui:
+
+| việc | màu | vì sao |
+|---|---|---|
+| Đặt vị trí cây trong sơ đồ | xanh lá | việc trong không gian của mình |
+| Biến thiên của cây | xanh nước | thứ để ĐỌC, không tạo ra gì |
+| Chia sẻ dữ liệu cây này | nắng | việc **duy nhất** đưa dữ liệu RA NGOÀI |
+
+Vế thứ ba không phải trang trí: chú thích sẵn có ở chính màn này đã nhấn rằng
+chia sẻ là hành động ra ngoài duy nhất trong nhóm, nên nó phải khác **hạng** với
+hai việc kia chứ không chỉ khác tên.
+
+### Một lỗi thứ hai, cùng chỗ
+Tấm nằm TRONG một `TouchableOpacity` phủ kín màn (`modalOverlay`). Một `View`
+thường không chặn chạm, nên chạm vào **chính tấm** — kể cả khoảng đệm giữa hai
+hàng — cũng đóng tấm. Chạm hụt một hàng là mất luôn tấm, phải mở lại từ đầu.
+
+Nay nền là một lớp RIÊNG (`khacNen`, phủ tuyệt đối) và tấm nằm trong một bọc
+`pointerEvents="box-none"` — đúng khuôn mà popup cây ở màn chi tiết vườn và popup
+quả ở màn này đã dùng.
+
+### Một cái bẫy trong chính bài kiểm, ghi lại vì nó XANH OAN
+Phép cắt lấy riêng mã của tấm "Khác" ban đầu dùng mốc cuối là chuỗi
+`farmPickerOpen` trần. Tên đó còn xuất hiện ở chỗ khai state và ở nút mở tấm chọn
+vườn — **cả hai đều đứng trước** tấm này — nên lát cắt ra RỖNG, và mọi phép so
+"không được chứa `modalOption`" đều xanh mà không đo gì cả. Mốc đúng là
+`visible={farmPickerOpen}`. Lý do ghi ngay tại hàm cắt.
+
+### Đo
+`tsc --noEmit` sạch · `jest` **2489/2490** (bài đỏ còn lại vẫn là
+`soiMachBoChuThich`, đỏ sẵn từ trước, không liên quan) · `eslint` trên
+`TreeDetailScreen` vẫn đúng 3 lỗi `exhaustive-deps` có sẵn, không thêm · không
+sinh style chết nào. Bài cổng lên 27 phép kiểm, ba phép mới canh riêng tấm này
+(không dùng chung style · mỗi hàng một màu · chạm vào tấm không đóng tấm).
+
+Chưa đo được: tấm trông ra sao trên máy thật. Bài kiểm đọc nguồn, nó không nhìn.
+
+## Ô "3D" của cây: gỡ model tự vẽ, gắn thẳng bản dựng của màn đặt cây 3D
+
+### Yêu cầu
+> *"ở nút xem 3D của cây, sử dụng 3D từ 3D place luôn, không tạo thêm 1 model giả"*
+
+Đúng, và đó là lỗi của lượt trước. `layered/TreeShape.tsx` vẽ một khung tán bằng
+SVG — mấy vòng elip co giãn theo `cos`/`sin` của góc quay, trông như một khối cầu
+đang quay. Nó rẻ, nó mở ra trong một khung hình, và nó **sai**: mọi cây trong
+vườn cho ra cùng một hình, và hình đó không liên quan gì tới đám mây điểm mà chủ
+vườn đã chụp. Một ô xem trước nói sai về thứ nó mở ra thì thà đừng có ô.
+
+### Sửa: dùng lại đúng thứ đã có
+Kho đã có sẵn `features/space3d/scene/TreeModelPreview.tsx` — ô xem trước mà màn
+đặt cây 3D dùng làm biểu tượng cho bộ chọn model. Nó đã làm đủ ba việc: nạp đám
+mây điểm THẬT của cây (`loadTreePoints`), tự canh camera theo hộp bao nên model
+nào cũng vừa ô, và quay chậm. Nên không viết gì mới — **gắn chính nó**.
+
+Ba tham số TUỲ CHỌN thêm vào, nên bộ chọn model không phải đổi một dòng:
+
+| tham số | vì sao cần |
+|---|---|
+| `fruits` | chấm quả — dùng CHÍNH `FruitDots` của cảnh 3D thật, không vẽ lại |
+| `fill` | ô Bento không vuông, còn bộ chọn thì vuông cạnh `size` |
+| `background` | `<Canvas>` tô nền ĐẶC; không truyền màu thì thấy một ô gần-đen nằm trong khối xanh đậm — hai màu tối cạnh nhau đọc ra "ảnh chưa tải xong" |
+
+Bốn thứ khớp nhau nên ô xem trước và màn 3D không thể nói hai chuyện khác nhau về
+một cây:
+
+* **Model**: `loadTreeModelId(tree.id)` — đọc từ chính kho mà màn đặt cây 3D ghi,
+  cùng `DEFAULT_TREE_MODEL_ID` khi chưa chọn.
+* **Quả**: `coordFromServer(f)` — đúng hàm cảnh 3D dùng, nên quả nằm cùng một chỗ
+  ở hai nơi. Chỉ quả `on_tree`.
+* **Bộ nhớ đệm**: `treePoints` giữ cache ở tầng module ⇒ xem ô này rồi mở màn 3D
+  không tải lại, và ngược lại.
+* **Đường lùi**: cây chưa dựng 3D vẫn ra cây tự tạo — nhưng đó KHÔNG phải model
+  giả thêm vào, nó đúng là thứ màn 3D hiện cho cây chưa có đám mây điểm.
+
+`layered/TreeShape.tsx` **xoá hẳn**; `useGocXoay` ở `FarmShape` trả về không-xuất
+như cũ (nó được xuất ra chỉ để phục vụ tệp vừa xoá).
+
+### Giá phải trả, nói thẳng
+Một ngữ cảnh GL nữa trên màn chi tiết cây — chính `TreeModelPreview` ghi cảnh báo
+đó ở đầu tệp của nó ("chỉ được gắn khi bộ chọn ĐANG MỞ"). Nay nó được gắn ở một
+màn thường trực, nên phải kèm hai điều kiện:
+
+* `useIsFocused()` — người dùng đi sang màn khác thì khung vẽ tháo, không giữ một
+  ngữ cảnh GL sống cho thứ không ai nhìn.
+* `GLErrorBoundary tag="tree_detail_preview"` — lỗi trong cây con 3D không được
+  kéo sập màn; người ta vào đây để xem quả, không phải để xem 3D.
+
+Và một lượt mạng: cây chưa từng mở 3D thì `loadTreePoints` phải đi lấy đám mây
+điểm. Đổi lại là ô nói THẬT.
+
+### ⛔ Một lỗi thật, bắt được lúc soát lint
+Ba hook mới (`useState` model · `useEffect` nạp model · `useMemo` chấm quả) cộng
+`useIsFocused` ban đầu bị đặt **dưới** câu `if (!tree) return` của màn.
+
+Lúc cây chưa về (đang hỏi máy chủ) React dựng màn với ít hook hơn; tới khi cây về
+thì số hook tăng, và React ném *"Rendered more hooks than during the previous
+render"* — **màn trắng**, ở đúng đường mà mọi người mở màn này từ
+`TreeManagement` đều đi qua.
+
+`tsc` không thấy gì. `jest` không thấy gì. Thứ bắt được là
+`react-hooks/rules-of-hooks` của eslint. Đã chuyển cả bốn hook lên trên câu
+return, ghi lý do ngay tại chỗ, và thêm một phép kiểm cổng đo bằng thứ duy nhất
+đo được từ nguồn: THỨ TỰ (`useIsFocused()` · `loadTreeModelId(id)` ·
+`const chamQua` đều phải đứng trước `if (!tree) {`).
+
+Nhân tiện sửa luôn một phụ thuộc sai: `chamQua` đọc thẳng `layout` chứ không đọc
+`fruitItems` — biến kia là biểu thức `?? []` dựng mảng MỚI mỗi lượt vẽ, nên để nó
+làm phụ thuộc thì `useMemo` không nhớ được gì.
+
+### Đo
+`tsc --noEmit` sạch · `jest` **2486/2487** · `eslint` trên `TreeDetailScreen` còn
+đúng 3 lỗi `exhaustive-deps` có sẵn từ trước, không thêm lỗi nào. Bài cổng của
+màn cây lên 24 phép kiểm, trong đó bảy phép mới canh riêng ô 3D (không còn tệp
+hình tự vẽ · gắn đúng component của màn 3D · đúng model đã chọn · chấm quả qua
+`coordFromServer` · chỉ quả trên cây · khung vẽ chỉ sống khi màn mở và có tường
+lửa lỗi · nền lấy đúng chặng tối).
+
+Chưa đo được, và lần này nó nặng hơn mọi lượt trước: **ô 3D có dựng nổi trên máy
+thật không.** Tôi không chạy được app ở lượt này, mà đây là thứ chạm tầng GL —
+loại lỗi mà jest và tsc đứng ngoài hoàn toàn. Phép đo cuối là mở màn chi tiết một
+cây ĐÃ dựng 3D và một cây CHƯA dựng, trên máy thật.
+
+## Lưới cây bốn cột; màn chi tiết cây chia thành MỤC, quả thành nút tròn có ảnh
+
+### Yêu cầu
+> *"ở danh sách cây trong màn chi tiết vườn, tăng lên thành 4 cột... màn hình chi
+> tiết cây có vẻ có quá nhiều panel trong 1 màn hình, hãy thiết kế lại sao cho
+> từng panel hay từng mục chiếm vừa đủ chiều cao màn hình. Nút Việc khác thì thay
+> thành icon 3 dấu chấm dọc, popup đó cũng viết thành Khác thôi... chia ra từng
+> Section (Section tổng quan, 1 panel chứa thông tin chính, có nút mở rộng xem
+> thông tin phụ). Mục Ảnh cây thay thành 'Cây này'... nút xem 3D lấy đúng thiết
+> kế từ màn chi tiết farm, chỉ khác là hình hiển thị là model 3D của cây cùng các
+> chấm xanh nhỏ có ánh sáng bloom đại diện cho quả; danh sách quả lấy thiết kế
+> hình tròn tương tự, lưới 3 cột, ảnh quả làm background, dưới nút có tên quả,
+> popup chi tiết cơ bản và nút xem chi tiết thiết kế tương tự."*
+
+### 1. Lưới cây: ba cột → bốn
+`CO_NUT` suy lại theo **ba** khe thay vì hai — số cột và công thức chia phải đi
+cùng nhau, và khi lệch thì cột cuối tràn khỏi mép phải **âm thầm**: `FlatList`
+không kêu một tiếng nào. Cỡ chữ trong nút hạ theo (13→11 cho tên, 15→13 cho số):
+nút còn ~75 điểm trên máy 360dp, mà `RingProgress` chừa lề trong `size / 5` mỗi
+bên nên chữ chỉ còn ~45 điểm — cỡ cũ ngắt "Cây #12" thành ba dòng ở đó.
+
+### 2. "Quá nhiều panel" là một con số, không phải một cảm giác
+Tab Tổng quan trước bản này có **chín khối** xếp dọc, mỗi khối một nền riêng một
+viền riêng: thẻ tên cây · lưới 2×2 con số · hộp đặc điểm · dải ảnh · hộp bằng
+chứng video · chip 🍈 kèm nút 3D · dòng dự kiến · tiêu đề danh sách quả · ô tìm
+kiếm. Danh sách quả — thứ người ta mở màn này để xem — nằm sau **sáu** khối.
+
+Nay ba MỤC, mỗi mục trả lời một câu:
+
+| mục | câu nó trả lời | hình dạng |
+|---|---|---|
+| **Tổng quan** | cây này đang thế nào | MỘT thẻ: vòng %, tên, vườn, bốn con số; ngăn "Xem thêm" giữ vị trí · giống · năm trồng · dự kiến · đặc điểm máy chủ tả · mã lưu trữ video |
+| **Cây này** | nó trông ra sao | hai ô NHÌN: 3D và ảnh bìa, rồi dải ảnh ngang |
+| **Quả** | trên cây có gì | lưới nút tròn ba cột, ảnh quả làm nền |
+
+Khối không mất — chúng về đúng mục của mình, và năm thứ không ai cần MỖI LẦN mở
+màn thì vào ngăn đóng sẵn. Bốn con số thôi là bốn ô Bento rời (bốn nền, bốn
+viền, hai hàng chiều cao) mà vào trong chính thẻ Tổng quan: chúng không phải bốn
+việc, chúng là bốn mặt của một câu.
+
+### 3. Ô 3D của cây — `TreeShape`
+Em song sinh của `FarmShape mode="space"`, cố ý giống tới từng lớp: nền tối, huy
+hiệu 3D ở góc, cùng sắc sáng `#7FE7C4`. Khác ở thứ được vẽ — tán cây là mấy vòng
+vĩ tuyến cộng **hai kinh tuyến co giãn theo `cos`/`sin` của góc quay** (đó là
+toàn bộ mẹo làm khối cầu đọc ra "đang quay"), và mỗi quả **còn trên cây** là một
+chấm xanh có quầng bloom, quay quanh trục đứng cùng cái tán.
+
+Ba điều đáng ghi:
+* **Chỉ quả `on_tree` mới có chấm.** Vẽ quả đã hái/đã mất là nói sai về cái tán
+  đang đứng ngoài vườn.
+* **Quả thiếu `pos_z` được rải bằng HÀM BĂM từ `fruit_id`, không phải
+  `Math.random()`.** Ngẫu nhiên cho quả một chỗ mới mỗi khung hình — tán sẽ lấp
+  lánh như tuyết TV, và người ta thôi tin cả cái hình.
+* **Vòng quay dùng CHUNG với `FarmShape`** (`useGocXoay` nay xuất ra). Chép bản
+  thứ hai là chép cả ba cái bẫy của bản gốc — tắt khi người dùng xin tắt · dọn
+  khi rời màn · đọc đồng hồ chứ không cộng dồn — và bản chép già đi lặng lẽ vào
+  ngày bản gốc sửa.
+
+### 4. Nút quả: thẻ hàng ngang → nút tròn có ảnh
+Thẻ cũ mang bảy thứ cho một quả và xếp được MỘT quả mỗi dòng. Lưới ba cột cho
+một màn ~9 quả thay vì ~4, và bốn thứ bỏ đi đều đọc được trong popup khi người ta
+thật sự cần. Thứ KHÔNG bỏ được là ảnh: nhà vườn nhận ra quả của mình bằng mắt,
+không bằng cái tên máy sinh.
+
+**Tên nằm DƯỚI nút, không nằm trong** — khác nút cây bên màn vườn, và có lý do:
+trong lòng nút cây trống, còn trong lòng nút quả là một tấm ảnh. Chữ đè lên ảnh
+thì tương phản đổi theo từng tấm, mà ảnh sầu riêng thì chỗ nào cũng có thể là chỗ
+tệ nhất. Viền nút mang TRẠNG THÁI, màu lấy thẳng `STATUS_MAP` nên không lệch được.
+
+Ba cột chứ không bốn như lưới cây: nút quả mang ảnh, và ảnh đường kính 75 thì
+không còn nhận ra quả nào với quả nào — mà nhận ra bằng mắt chính là lý do nút
+này có ảnh. `ITEMS_PER_PAGE` 20 → **21** cho chia hết ba cột; 20 để lại một hàng
+cụt ở cuối mọi trang.
+
+### 5. Hai lỗi câm tìm thấy dọc đường
+* **`<Icon name="ellipsis">` không tồn tại trong bộ icon của kho.** Nút "Việc
+  khác" lâu nay vẽ ra một ô TRỐNG cạnh chữ — `Icon` nuốt tên lạ chứ không ném.
+  Nay là `ellipsis-vertical` (có thật), bỏ chữ, đúng yêu cầu.
+* **`<Icon name="ruler-combined">` cũng không tồn tại**, ở dòng diện tích của màn
+  chi tiết vườn. Đổi sang `draw-polygon` — có sẵn, và nói đúng hơn: diện tích ở
+  đó suy từ chính vòng ranh đa giác chủ vườn đã đi.
+
+Cả hai đều là chỗ `components/Icon/iconNames.test.ts` đang ĐỎ sẵn từ trước. Bài
+đó nay xanh.
+
+### 6. Nút hiện rõ hơn
+"Thêm quả" từ nền nhạt + viền `TONE.border` + chữ xanh → nút ĐẶC chuyển sắc,
+chữ trắng, bo tròn hẳn. Bản cũ trông **giống hệt** ô tìm kiếm và ô lọc ngay dưới
+nó: ba khối cùng sắc, cùng độ dày viền, mà chỉ MỘT trong ba tạo ra dữ liệu mới.
+Ô lọc khi ĐANG bật nay cũng khác ô lọc tắt — không thì không ai biết danh sách
+đang bị cắt bớt, và "mất quả" là kết luận tự nhiên tiếp theo.
+
+### Đo
+Hai bài cổng mới/sửa: `TreeDetailScreen.sections.gate.test.ts` (20 phép kiểm —
+ba mục · nút ba chấm · hai ô nhìn · hình 3D · lưới quả · nút đặc) và
+`FarmDetailScreen.bento.gate.test.ts` (bốn cột, kèm phép kiểm mới buộc công thức
+chia đi cùng số cột). `tsc --noEmit` sạch. `jest` **2482/2483**.
+
+`eslint` trên `TreeDetailScreen` từ 6 lỗi xuống 3 (ba lỗi còn lại là
+`exhaustive-deps` có sẵn, không thuộc phần sửa này); 52 khối style chết được gỡ.
+
+Còn ĐỎ đúng một bài, và nó đỏ sẵn từ trước, không liên quan:
+`src/config/soiMachBoChuThich.test.ts`. Nguyên nhân đã lần ra: bài đó đọc tệp
+nguồn rồi khớp `/const boChuThich = ([\s\S]*?);\n/` — mẫu ấy KHÔNG khớp `;\r\n`,
+mà kho này đặt `core.autocrlf=true` nên bản làm việc trên Windows là CRLF. Sửa
+đúng một dòng ở chính bài kiểm (chuẩn hoá CRLF tại cửa đọc, y như năm bài cổng
+khác đang làm). Chưa sửa vì nó nằm ngoài phần việc này.
+
+Chưa đo được: mỗi mục có thật sự vừa một tầm mắt trên máy hẹp không, ảnh quả có
+tải về không, hình 3D quay có mượt trên máy yếu không. Phép đo cuối cho ba câu đó
+là mở màn thật trên máy thật.
+
+## "Panel chỉ có màu ở một vùng trên bên trái" — lượt vá THỨ BA, và lần này bỏ hẳn đơn vị tương đối
+
+### Triệu chứng, nguyên văn
+> *"panel thông tin của vườn (diện tích, chu vi, số điểm, số cây) có background
+> trắng nhưng chỉ trắng ở 1 vùng trên bên trái, còn lại thì không có màu; popup
+> chi tiết cây cũng bị tương tự... nút Chỉ đường tới vườn đang bị có 1 mảng màu
+> xanh dương ở trên và lệch về phía bên trái; ở màn chi tiết cây, 4 ô Quả đã ghi
+> / Quả trên cây / quả đã hái / quả đã mất cũng có các mảng màu ở trên và lệch
+> về phía bên trái."*
+
+Một mảng màu **neo ở gốc toạ độ**, nhỏ hơn khối cha theo CẢ HAI chiều. Đó là chữ
+ký của một khung nhìn bị quy nhỏ hơn khối chứa nó — không phải lỗi màu, không
+phải lỗi bố cục.
+
+### Vì sao hai lượt vá trước không dứt được
+Cả hai đều đổi TỪ một cách quy đơn vị tương đối SANG một cách khác:
+
+| lượt | cách quy | vẫn còn phép quy nào |
+|---|---|---|
+| 1 | `<Rect width="100%">` trong `<Svg>` không `viewBox` | phần trăm → pixel lúc chạy |
+| 2 | `viewBox="0 0 1 1"` + `<Rect width={1}>` | hệ toạ độ người dùng → khung nhìn |
+| **3** | **`onLayout` → hai con số pixel** | **không còn** |
+
+### Chỗ bằng chứng chỉ đúng vào
+Trong CÙNG tệp `Organic.tsx`, hai lớp `GreenWash`/`PhotoWash` cũng là `<Svg>`,
+cũng `width="100%"`, và chưa ai báo chúng hỏng. `FarmShape` cũng vậy. Khác biệt
+duy nhất của lớp hỏng: nó là lớp DUY NHẤT có `viewBox` + `style={absoluteFill}`
+trên chính thẻ `<Svg>`. Nên lượt này đưa nó về đúng hình dạng đang chạy tốt ở
+những chỗ kia — `<Svg>` không style, nhận `width`/`height` là SỐ — chỉ khác là số
+đo lấy từ `onLayout` thay vì gõ tay.
+
+Làm tròn LÊN, không làm tròn gần nhất: thiếu nửa pixel là một sợi chỉ nền lộ ra ở
+mép phải/mép dưới, còn thừa nửa pixel thì `overflow: 'hidden'` của khối cha cắt
+đi — mọi nơi dùng lớp này đều bo góc và cắt tràn.
+
+### Phần KHÔNG phụ thuộc vào chẩn đoán trên có đúng hay không
+Lớp phủ nay có **màu nền đặc** (`GRADIENT[name].from`) nằm dưới SVG. Nếu một ngày
+thư viện lại quy trượt lần nữa, thứ tệ nhất người dùng thấy là một ô MỘT MÀU
+PHẲNG — không phải một ô phủ dở dang để lộ nền sau lưng. Triệu chứng đã phải vá
+ba lượt thì không được phép quay lại kể cả khi tôi đọc sai tầng native.
+
+Lấy `from` an toàn vì `theme/gradient.test.ts` đã đo tương phản CẢ HAI chặng với
+màu chữ của token, ở chặng tệ nhất.
+
+### Cùng cái bẫy, chỗ thứ hai: `MicaBackdrop` của module Trò chuyện
+`chat/shared/components/Fluent.tsx` có đúng hình dạng hỏng của **lượt 1**
+(`<Svg width="100%">` + `<Rect width="100%">`), cộng hai lỗi đã được ghi tên ở
+module Truy xuất:
+
+* `id="micaA"`/`"micaB"` là **hằng**, mà `react-native-svg` giữ sổ id chung cho
+  cả ứng dụng — và `ChatScreen` dựng HAI `MicaBackdrop` cùng lúc (dòng 251, 265).
+  Không phải giả định, là hai lời khai trùng nhau có thật trong cây.
+* `cx="88%"` trong `objectBoundingBox` bị đọc thành **88 đơn vị người dùng**, tức
+  tâm vệt loang rơi ra ngoài màn 88 lần bề rộng hộp bao — đúng cái bẫy phần trăm
+  đã tốn hai lượt vá bên kia.
+
+Vá cả ba, cùng một khuôn.
+
+### Đo
+`gradient.test.ts` thêm bốn phép kiểm: số đo pixel (cấm `viewBox`,
+`preserveAspectRatio`, `100%` TRONG thân `GradientFill` — cắt riêng thân hàm ra vì
+hai lớp wash cùng tệp vẫn dùng `100%` hợp lệ), làm tròn lên, màu nền dự phòng, và
+không đặt lại state khi số đo không đổi. Toàn kho: `tsc` sạch, `jest` 2462 xanh,
+ba bài đỏ còn lại là ba bài đã đỏ sẵn trên nhánh chưa sửa. `eslint` 0 lỗi ở cả hai
+tệp sửa.
+
+Chưa đo được: **tôi không chạy được app trên máy thật ở lượt này.** Chẩn đoán
+tầng native ở trên là suy từ mã nguồn `react-native-svg` cộng với chỗ khác biệt
+giữa lớp hỏng và lớp chạy tốt, không phải từ một lượt dựng có mắt nhìn. Phép đo
+cuối vẫn là mở màn thật.
+
+## Bản đồ nông trại: từ một lớp phủ không có cây thành MỘT MÀN có cây, có số, chạm được
+
+### Yêu cầu, và vì sao nó không phải chuyện thẩm mỹ
+> *"tính năng xem Bản đồ nông trại trông đang khá là đơn giản và thiếu chuyên
+> nghiệp cũng như thiếu thông tin, hãy sửa lại thành 1 màn hình riêng thay vì
+> popup, trên bản đồ cũng cần hiển thị các điểm cây, nhấn vào xem được popup chi
+> tiết của cây."*
+
+"Đơn giản" ở đây đo được, không phải một cảm giác. Lớp phủ cũ (`coordMapVisible`
+trong `FarmDetailScreen`) bày ra đúng ba thứ: nền OSM, đa giác ranh giới, và các
+đỉnh ranh đánh số 1·2·3. Nó hụt ba chỗ:
+
+1. **Không có cây.** Thứ người ta mở bản đồ vườn để xem là CÂY nằm ở đâu — mảnh
+   đất thì họ vừa đi bộ vòng quanh để đo. Một bản đồ vườn không có cây trả lời
+   đúng câu hỏi mà không ai hỏi.
+2. **Không có số liệu.** Diện tích, chu vi, số điểm ranh, số cây đã định vị, cách
+   lấy ranh, sai số GPS — tất cả đã nằm sẵn trong bộ nhớ và không con nào hiện ra.
+3. **Là popup nên nó không có chỗ.** Lớp phủ không có vùng an toàn, không vào
+   lịch sử điều hướng (nút Back của Android đóng cả màn vườn chứ không đóng bản
+   đồ), và mọi thứ thêm vào đều phải chen với bản đồ.
+
+### Sửa: `src/modules/trace/screens/FarmMapScreen.tsx`, route `FarmMap`
+
+Màn riêng lấy được: vùng an toàn thật, nút Back của hệ điều hành, chỗ cho bảng số
+liệu ở đáy, và — quan trọng nhất — chỗ cho popup CHI TIẾT CÂY mà không phải chồng
+popup lên popup.
+
+| | lớp phủ cũ | màn mới |
+|---|---|---|
+| **Cây** | không có | chấm màu theo tiến độ thu, chạm mở chi tiết |
+| **Số liệu** | không có | diện tích · chu vi · điểm ranh · `cây trên bản đồ / tổng cây` |
+| **Nguồn gốc ranh** | không nói | "Đi bộ quanh vườn · sai số ±5 m" |
+| **Nền** | chỉ OSM | OSM ⇄ vệ tinh, ẩn/hiện chấm cây, ngắm cả vườn |
+| **Thoát** | nút ✕ | Back hệ điều hành + nút quay lại |
+
+Ba quyết định đáng ghi lại, cả ba đều vì một lỗi có thật trong kho:
+
+**Chấm cây là `CircleLayer`, KHÔNG phải `MarkerView`.** `FarmsMap` (bản đồ nhiều
+vườn) chọn `MarkerView` vì mỗi ghim ở đó phải mang TÊN, mà bản đồ raster thuần
+không có nguồn glyph cho `SymbolLayer`. Ở đây ngược lại: chấm cây không mang chữ,
+còn số lượng thì khác hẳn — 128 cây là thường, 500 cây không lạ. 500 `MarkerView`
+là 500 View của React Native phải đặt lại vị trí mỗi khung hình khi người dùng kéo
+bản đồ. `CircleLayer` vẽ trên GPU và `ShapeSource` vẫn nhận `onPress`. Còn đúng
+MỘT `MarkerView`: nhãn tên của cây đang chọn — bài kiểm đếm con số 1 đó.
+
+**Ba nguồn chấm, ba màu HẰNG, thay vì một nguồn tô màu theo dữ liệu.** Biểu thức
+`['get','mau']` của MapLibre có thể không được lớp bọc React Native hiểu tuỳ phiên
+bản, và khi không hiểu thì nó KHÔNG báo lỗi — nó vẽ ra màu mặc định. Một lỗi im
+lặng ở phần chú giải màu là một phần chú giải nói dối. Chú giải và chấm đọc chung
+hằng `NHOM_CAY`, nên chúng không lệch nhau được.
+
+**Đỉnh ranh thôi đánh số.** Số thứ tự đỉnh là thứ cần khi ĐANG VẼ ranh (đó là việc
+của `AddFarmMode`), không phải khi đọc. Ở màn đọc chúng là tới 200 nhãn chữ đè lên
+nhau quanh mép, che đúng phần bản đồ mà chúng đánh dấu.
+
+Hai chỗ đã hỏng ở bản đồ khác trong kho, vá sẵn ngay từ đầu: cả hai nguồn ô ảnh
+khai `maxZoomLevel={19}` (thiếu nó thì z20 ra ô TRẮNG — "phóng to thì lỗi bản đồ"),
+và URL ô đường phố lấy từ hằng `OSM_STREET_TILES` chứ không chép tay tên miền
+`a|b|c.tile.openstreetmap.org` đã ngưng phân giải.
+
+### Nói ra chỗ mình không biết
+Cây chưa có toạ độ KHÔNG bị nuốt: bảng đáy hiện `12/40 cây trên bản đồ` và một
+dòng "28 cây chưa có toạ độ nên chưa lên được bản đồ". Bỏ im lặng thì người dùng
+đếm chấm rồi kết luận vườn mình có ngần ấy cây — một con số sai do chính màn hình
+tạo ra. Cùng luật với "hiện — chứ đừng hiện 0" của `FarmsMap`.
+
+### Đo
+`FarmMapScreen.gate.test.ts` — 13 phép kiểm nguồn khoá ba vế của yêu cầu (màn
+riêng · có chấm cây · chạm ra chi tiết) cộng hai bẫy zoom/tên-miền ở trên. Toàn
+kho: `tsc --noEmit` sạch; `jest` 2456/2459, ba bài đỏ CÒN LẠI đều đỏ y hệt trên
+nhánh chưa sửa (`soiMachBoChuThich`, `iconNames`, `hexNhanDien` — không bài nào
+chạm tới màn này). `eslint` trên `FarmDetailScreen` giảm từ 27 lỗi xuống 24 nhờ
+phần mã chết được gỡ; màn mới 0 lỗi.
+
+Chưa đo được, và phải nói thẳng: bản đồ có tải đủ ô ảnh không, chấm cây có rơi
+đúng chỗ không, popup có vừa màn hẹp không. Phép đo cuối cho ba câu đó là mở màn
+thật trên máy thật, ngoài vườn thật.
+
 ## CheckFarm sập ngay khi mở — `MainActivity` chạm Firebase mà không hỏi trước
 
 ### Triệu chứng, và vì sao nó khó lần

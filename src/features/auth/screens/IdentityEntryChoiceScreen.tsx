@@ -11,6 +11,7 @@
 //   A. chưa từng dùng app nào của hệ           → tạo danh tính mới
 //   B. CÙNG app, MÁY KHÁC (đổi máy / cài lại)  → 24 từ
 //   C. CÙNG máy, APP KHÁC của hệ               → 24 từ, app kia bị đăng xuất
+//   D. có một app/máy ĐANG đăng nhập trong tay → nhờ nó ký duyệt (issue #233)
 //
 // Đi nhầm sang A là sinh một DID THỨ HAI cho cùng một người. `farmService` lấy
 // `owner_did` từ phiên, nên danh sách vườn hiện RỖNG — và rỗng trùng khớp với
@@ -29,8 +30,9 @@
 //    hiện TRƯỚC khi người dùng chọn, không phải sau.
 // 3. Chuỗi nằm ở `i18n/keys/identity.ts`, đủ bốn thứ tiếng. Không rải chữ ở đây.
 //
-// Lối C hôm nay dẫn TẠM sang cùng màn 24 từ: đường "app cũ ký phê duyệt" chưa
-// tồn tại. Màn nói thẳng điều đó thay vì để người dùng tưởng đã có đường riêng.
+// Lối C vẫn dẫn sang màn 24 từ. Đường "app cũ ký phê duyệt" NAY ĐÃ CÓ, nhưng nó
+// là một lối RIÊNG (lối D) chứ không thay được lối C: lối D đòi máy/app kia đang
+// mở được trong tay, còn lối C phục vụ cả người không có điều kiện đó.
 
 import React from 'react';
 import {
@@ -49,7 +51,9 @@ type Choice = {
   bodyKey: string;
   costKey?: string;
   noteKey?: string;
-  target: 'SignUpBiometric' | 'RestoreIdentity';
+  target: 'SignUpBiometric' | 'RestoreIdentity' | 'DevicePair';
+  /** Tham số điều hướng. Chỉ lối ghép máy cần — nó dùng CHUNG màn với vai quét. */
+  params?: Record<string, unknown>;
 };
 
 // Thứ tự CÓ Ý: lối "người mới" đứng đầu vì nó là lối duy nhất KHÔNG phá gì cả.
@@ -80,6 +84,22 @@ const CHOICES: Choice[] = [
     noteKey: 'identity.gate.otherApp.temporary',
     target: 'RestoreIdentity',
   },
+  // Lối D — issue #233. Đứng CUỐI dù nó là lối rẻ nhất, vì nó có một điều kiện
+  // ngoài tầm app: máy kia phải đang trong tay và mở được. Ai không có điều kiện
+  // đó mà đọc nó đầu tiên thì mất thời gian rồi mới quay về ba lối trên.
+  //
+  // KHÔNG có `costKey`: `POST /keys/authorize` THÊM một khoá vào DID, không thu
+  // hồi khoá nào — khác hẳn B và C, vốn đi qua `recoverDevice` và nâng
+  // `users.token_epoch`. Bịa một cái giá ở đây là nói sai theo chiều ngược lại.
+  {
+    testID: 'entry-choice-pair',
+    icon: 'cellphone-link',
+    titleKey: 'identity.gate.pair.title',
+    bodyKey: 'identity.gate.pair.body',
+    noteKey: 'identity.gate.pair.note',
+    target: 'DevicePair',
+    params: { mode: 'show' },
+  },
 ];
 
 const IdentityEntryChoiceScreen: React.FC = () => {
@@ -104,7 +124,11 @@ const IdentityEntryChoiceScreen: React.FC = () => {
             activeOpacity={0.85}
             accessibilityRole="button"
             accessibilityLabel={tk(choice.titleKey)}
-            onPress={() => navigation.navigate(choice.target)}
+            onPress={() =>
+              choice.params
+                ? navigation.navigate(choice.target, choice.params)
+                : navigation.navigate(choice.target)
+            }
             style={styles.card}
           >
             <View style={styles.cardHead}>

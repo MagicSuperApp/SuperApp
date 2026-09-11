@@ -155,19 +155,62 @@ describe('lớp chuyển sắc — `id` phải riêng theo từng lượt dựng
     expect(MA_CHAY).not.toContain("%`}");
   });
 
-  it('lớp phủ dùng hệ toạ độ TUYỆT ĐỐI, phủ kín bằng hai con số cố định', () => {
-    // ⛔ Đây là chỗ hở đã để lộ nền ra ngoài. `<Rect width="100%" height="100%">`
-    // trong một SVG không `viewBox` phải quy phần trăm về kích thước bố cục lúc
-    // chạy — quy trượt thì lớp phủ thiếu, và cái lộ ra là `backgroundColor` của
-    // khối cha.
+  /**
+   * Thân của `GradientFill` — CHỈ nó.
+   *
+   * Phải cắt ra vì hai lớp nền `GreenWash`/`PhotoWash` trong cùng tệp vẫn dùng
+   * `<Svg width="100%">` một cách hợp lệ (chúng không có `viewBox`, hình học quy
+   * thẳng ra pixel mặt vẽ, và không lần nào bị báo hỏng). Quét cả tệp rồi cấm
+   * chuỗi "100%" là bắt nhầm hai lớp đang chạy đúng.
+   */
+  const THAN_FILL = MA_CHAY.slice(
+    MA_CHAY.indexOf('export const GradientFill'),
+    MA_CHAY.indexOf('export const Blob'),
+  );
+
+  it('lớp phủ nhận SỐ ĐO PIXEL đo được, không đơn vị tương đối nào', () => {
+    // ⛔ Triệu chứng đã phải vá BA lượt: một mảng màu neo ở gốc toạ độ, nhỏ hơn
+    //    khối cha theo cả hai chiều — "chỉ trắng ở một vùng trên bên trái, còn
+    //    lại thì không có màu".
     //
-    // `viewBox="0 0 1 1"` + `preserveAspectRatio="none"` biến hệ toạ độ thành
-    // một ô vuông đơn vị kéo giãn cho khớp khối cha, nên `<Rect>` phủ kín bằng
-    // hai số cố định, không phụ thuộc cách thư viện đọc chuỗi phần trăm.
-    expect(MA_CHAY).toContain('viewBox="0 0 1 1"');
-    expect(MA_CHAY).toContain('preserveAspectRatio="none"');
-    expect(MA_CHAY).toContain('<Rect x={0} y={0} width={1} height={1}');
-    expect(MA_CHAY).not.toContain('<Rect x="0" y="0" width="100%"');
+    // Hai lượt đầu chỉ đổi TỪ một cách quy đơn vị tương đối SANG một cách khác:
+    //   · `<Rect width="100%">` trong SVG không viewBox  → quy trượt lúc chạy;
+    //   · `viewBox="0 0 1 1"` + `<Rect width={1}>`       → vẫn còn một phép quy
+    //     giữa hệ toạ độ người dùng và khung nhìn để mà trượt.
+    //
+    // Lượt này bỏ hẳn: đo `onLayout`, rồi cả `<Svg>` lẫn `<Rect>` nhận hai con
+    // số pixel. Không còn phép quy nào.
+    expect(THAN_FILL).toContain('onLayout');
+    expect(THAN_FILL).toContain('<Svg width={co.w} height={co.h}>');
+    expect(THAN_FILL).toContain('<Rect x={0} y={0} width={co.w} height={co.h}');
+
+    // Ba hình dạng CŨ, mỗi cái là một lượt vá đã thất bại. Có lại cái nào cũng
+    // là quay về đúng nguyên trạng.
+    expect(THAN_FILL).not.toContain('viewBox');
+    expect(THAN_FILL).not.toContain('preserveAspectRatio');
+    expect(THAN_FILL).not.toContain('100%');
+  });
+
+  it('làm tròn LÊN, không làm tròn gần nhất', () => {
+    // Thiếu nửa pixel là một sợi chỉ nền lộ ra ở mép phải/mép dưới — đúng loại
+    // lỗi chỉ thấy trên máy thật. Thừa nửa pixel thì `overflow: 'hidden'` của
+    // khối cha cắt đi, không ai thấy gì.
+    expect(THAN_FILL).toContain('Math.ceil(width)');
+    expect(THAN_FILL).toContain('Math.ceil(height)');
+  });
+
+  it('có MÀU NỀN ĐẶC dự phòng dưới lớp SVG', () => {
+    // Lưới an toàn, và là phần KHÔNG phụ thuộc vào chẩn đoán ở trên có đúng hay
+    // không: khung hình đầu chưa có số đo, và nếu thư viện lại quy trượt lần
+    // nữa thì thứ tệ nhất người dùng thấy là một ô MỘT MÀU PHẲNG — chứ không
+    // phải một ô phủ dở dang để lộ nền sau lưng.
+    expect(THAN_FILL).toContain('backgroundColor: g.from');
+  });
+
+  it('số đo không đổi thì KHÔNG đặt lại state', () => {
+    // Lớp này nằm dưới mọi thẻ của mọi màn. Một `setState` cho cùng một số đo là
+    // một vòng vẽ lại không đổi gì trên màn, nhân lên theo số ô trong lưới.
+    expect(THAN_FILL).toContain('truoc.w === w && truoc.h === h');
   });
 
   it('ký tự lạ của `useId` bị lọc trước khi vào `url(#…)`', () => {

@@ -311,7 +311,10 @@ const SignUpBiometricScreen: React.FC = () => {
           // chính chủ. Mà chính chủ đọc "Người khác" thì không bao giờ bấm — họ có
           // phải người khác đâu. Nút này phục vụ CẢ HAI nhóm, nên nhãn phải nói về
           // thứ người dùng ĐANG CẦM (24 từ), không nói về họ là ai.
-          text: t('Tôi có 24 từ khôi phục'),
+          // Cùng lý do với nhãn ở nhánh `khoa_bi_thu_hoi`: nút này KHÔNG được lấy
+          // "24 từ" làm điều kiện vào, vì phần lớn người dùng chưa từng được đưa
+          // 24 từ. Màn khôi phục tự dò xem máy còn ví không rồi mở đúng lối.
+          text: t('Khôi phục danh tính đã có'),
           onPress: () => navigation.navigate('RestoreIdentity'),
         },
         {

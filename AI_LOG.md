@@ -1,3 +1,68 @@
+## Đính chính cái NEO: `1d61d189…` là bản đã nghỉ, không phải bản đang chạy
+
+Soát lại mục ngay dưới. Việc gom arity thì đúng, nhưng **cái neo mà nó gom về
+thì sai**, và sai đúng theo kiểu mà chính nó cảnh báo ở dòng "một cái neo sai
+còn tệ hơn một ô trống".
+
+### Vì sao đo được, trong khi mục dưới nói "không làm được từ kho này"
+Mục dưới kết luận việc 1 bất khả thi sau khi quét tìm `*.ak` / `plutus.json`
+**trong kho SuperApp**. Đúng — ở đây không có tệp nào. Nhưng câu hỏi không phải
+"kho này có tệp không", mà "tệp đó ở đâu": kho `PhoenixKey-Validator` nằm ngay
+cạnh trên cùng máy. Không tìm thấy là phát biểu về **vùng đã quét**, không phải
+về thế giới.
+
+### Bốn phép đo (kho validator, 2026-09-11, chỉ đọc)
+1. `deploy/plutus-preprod.json` tự khai `"_stale": true`; `_stale_reason` nói
+   `taad` CHƯA apply param và bản công bố trước đó "ĐÃ CHẾT".
+2. Hash `taad` trong chính tệp ấy là `258cf1f4…` — **không phải** `1d61d189…`.
+3. `1d61d189…` có đúng **một** chỗ trong cả kho validator, ở
+   `docs/CBOR_SCHEMA_FOR_CORE.md`, trong câu nói UTxO ở hash đó là bản
+   **Design-1** và **KHÔNG spend được** bằng validator hiện nay.
+4. Blueprint **không ghim arity nào**: `taad.spend` khai `datum` là `Data` mờ.
+   Số trường do mã Aiken ép lúc chạy ⇒ "chốt bản nhắm tới" phải là *một commit
+   của `types.ak` + hash script sinh ra từ chính commit đó*, không phải một hash
+   đứng một mình.
+
+Hệ quả: câu "bản ĐANG DEPLOY dùng lược đồ 10 trường" ở mục dưới (mục 3) **không
+có gì đỡ**, và cái neo ấy đang được in ra trong **mọi** câu lỗi arity như thể nó
+là bản đang chạy. `TAAD_VALIDATOR` nay hạ xuống "chưa chốt" — đúng mức đã đo.
+
+### `TAADDatum` ở HEAD kho validator: 16 trường, thứ tự thì KHỚP
+Không phải 15 như issue #291 ghi (`aux_device_pkhs` nối thêm sau khi issue được
+viết). Mười ô đầu khớp **đúng thứ tự** với bên dựng — chỗ lệch là **số lượng**,
+không phải **thứ tự**. Riêng ô 8: validator gọi `revoked_ms`, bên dựng ghi số
+slot; đường ghi ô đó vẫn đang bị chặn fail-closed.
+
+### Một lỗ chưa ai nêu: rẽ nhánh theo arity, hỏng lặng lẽ
+`if n == 10 { fields.get(9) }` ở hai bộ giải (`decode_taad_datum_for_rotate`,
+`decode_taad_datum_full`) không bị mục dưới đếm, vì nó **không trông giống một
+phép kiểm** — nó không từ chối gì, chỉ chọn đọc hay không đọc một ô. Ngày arity
+đổi, cổng vẫn NHẬN datum còn nhánh này trả "không có anchor", rồi bộ mã hoá xoay
+khoá ghi `None` đè lên: **mất neo phân tán khoá trên chuỗi, không một dòng lỗi**.
+Nay đọc `TAAD_DATUM_FIELDS` + `TAAD_RECOVERY_ANCHOR_INDEX`.
+
+Đo bằng đột biến: đặt `TAAD_RECOVERY_ANCHOR_INDEX` lệch một ô ⇒ **3 ca đỏ**
+(`legacy_kem_v2_dung_mot_truong`, `rotate_none_preserves_existing_anchor`,
+`rotate_with_recovery_anchor_some_sets_field9`), 169 xanh. Tức hằng mới có người
+canh, không phải một dòng trang trí.
+
+### Bảng đếm ở đầu `onchain_schema.rs` thiếu 9 chỗ
+Ghi "mười sáu chỗ". Đếm lại: **25**. Thiếu 7 `assert` gõ cứng arity trong
+`registry_mint.rs` (SinglePkh · MultiSig · RegistryDatum · RegistryEntry ·
+SupplyState ×3) — đúng các lược đồ mà bảng ghi là "—" — cộng 2 rẽ nhánh ở trên.
+Bảy `assert` ấy nay đọc hằng; bảng nay có thêm cột "rẽ nhánh theo arity".
+
+### Đo
+`cargo test --lib` **172/172**. `cargo clippy --lib`: **0** cảnh báo chạm
+`onchain_schema.rs` (117 cảnh báo còn lại có sẵn trên `develop`). `tsc --noEmit`
+sạch. `jest` **194 bộ / 2750 xanh / 1 bỏ qua**, y hệt mốc trước khi sửa — thay
+đổi nằm trọn trong Rust.
+
+CHƯA ĐO ĐƯỢC, không đổi: chưa giao dịch thật nào chạy qua đường này, nên câu
+"validator có nhận datum không" vẫn chưa ai trả lời. Việc 2 của issue #291 (đồng
+bộ bên dựng) vẫn chờ việc 1, và việc 1 nay đã có đủ dữ kiện để chốt — nhưng chốt
+bản nào là quyết định của nhà giữ kho validator, không phải của kho này.
+
 ## Arity lược đồ on-chain về MỘT chỗ khai (issue #291, việc 3)
 
 ### Việc này làm gì, và cố ý KHÔNG làm gì

@@ -21,7 +21,9 @@
 //   - Defer LampNet Daemon abstraction (Task #16) sau khi prototype ổn định
 // ================================================================
 
-use crate::onchain_schema::check_taad_datum_arity;
+use crate::onchain_schema::{
+    check_taad_datum_arity, TAAD_DATUM_FIELDS, TAAD_RECOVERY_ANCHOR_INDEX,
+};
 use blake2::{Blake2b, Digest};
 use blake2::digest::consts::{U28, U32};
 use cardano_serialization_lib as csl;
@@ -716,7 +718,7 @@ pub fn build_publish_did_tx(
 // Validator schema source: `PhoenixKey-Validator/lib/phoenixkey/types.ak`
 // + compiled blueprint `PhoenixKey-Validator/deploy/plutus-preprod.json`.
 //
-// TAADDatum (constr 0, 10 fields):
+// TAADDatum (constr 0; số trường = `onchain_schema::TAAD_DATUM_FIELDS`):
 //   0 did:             ByteArray
 //   1 entity_type:     EntityType  (constr 0..9, no fields)
 //   2 controller_pkh:  ByteArray (28-byte blake2b_224 of TAAD_Key pubkey)
@@ -740,15 +742,23 @@ pub fn build_publish_did_tx(
 //   constr 5 UpdateGuardians { new_guardians: List<ByteArray> }
 //   constr 6 Transfer { ...3 fields... }
 //
-// NOTE on Math Spec v4.5 §10.1 vs deployed validator schema:
-//   The Math Spec describes a richer TAADDatum (suspended_by, knowledge_factors,
-//   secondary_wallets, ...). The deployed validator (`plutus-preprod.json`
-//   hash `1d61d189...`) uses the 10-field schema from `types.ak` (recovery_anchor
-//   appended as field 9). Encoding
-//   MUST match the deployed validator binary, else the script hash mismatches
-//   and the UTxO becomes unspendable. v4.5 fields land in a future validator
-//   redeploy + new script hash. Until that happens, this encoding is the
-//   source of truth on the Rust side.
+// NOTE on Math Spec v4.5 §10.1 vs validator schema:
+//   Math Spec tả một TAADDatum giàu hơn (suspended_by, knowledge_factors,
+//   secondary_wallets, ...). Bên dựng ở đây phát 10 ô như trên.
+//
+//   ⚠ Bản trước của khối này viết: "validator ĐÃ DEPLOY (`plutus-preprod.json`
+//   hash `1d61d189...`) dùng lược đồ 10 trường". Đo lại trong kho validator
+//   2026-09-11: `1d61d189…` là hash bản **Design-1**, và tài liệu của chính kho
+//   đó nói UTxO ở hash ấy KHÔNG spend được bằng validator hiện nay; còn
+//   `plutus-preprod.json` tự khai `"_stale": true` và mang hash `258cf1f4…`.
+//   Thêm nữa blueprint khai `taad.spend` nhận `Data` mờ, tức nó KHÔNG ghim arity
+//   nào — số trường do mã Aiken ép lúc chạy. Nên câu "bản đã deploy dùng 10
+//   trường" không có gì đỡ. Chi tiết + phép đo: `onchain_schema::TAAD_VALIDATOR`.
+//
+//   Điều còn đúng và là lý do khối này tồn tại: bên dựng PHẢI khớp đúng bản
+//   validator ở địa chỉ script mà giao dịch gửi tới, sai thì UTxO không tiêu
+//   lại được. Bản nhắm tới hiện CHƯA CHỐT (issue #291 việc 1). Chừng nào chưa
+//   chốt, khối này là nguồn sự thật của phía Rust và không hơn thế.
 
 /// Encode TAADDatum per types.ak schema. Returns a Plutus Data value ready
 /// to attach as an inline datum on the TAAD UTxO output.
@@ -1994,12 +2004,14 @@ fn decode_taad_datum_for_rotate(
     // Field 8: revoked_slot — preserve unchanged
     let revoked_slot_data = fields.get(8);
 
-    // Field 9: recovery_anchor (Option<ByteArray>) — only present on the v2
-    // schema. Legacy 9-field datums implicitly carry None. Captured so callers
-    // that don't supply a new CID at rotate time can fall back to the existing
-    // anchor (the validator allows recovery_anchor to change freely on Rotate).
-    let recovery_anchor_data = if n == 10 {
-        Some(fields.get(9))
+    // recovery_anchor (Option<ByteArray>) — chỉ có ở lược đồ v2. Datum legacy
+    // ngầm mang None. Giữ lại để chỗ gọi nào không cấp CID mới lúc xoay khoá thì
+    // còn rơi về anchor cũ (validator cho phép recovery_anchor đổi tự do ở Rotate).
+    //
+    // Arity và vị trí đọc từ `onchain_schema`, KHÔNG gõ tay: gõ tay thì ngày
+    // arity đổi, cổng ở trên vẫn nhận datum còn nhánh này im lặng trả None.
+    let recovery_anchor_data = if n == TAAD_DATUM_FIELDS {
+        Some(fields.get(TAAD_RECOVERY_ANCHOR_INDEX))
     } else {
         None
     };
@@ -2478,8 +2490,10 @@ fn decode_taad_datum_full(inline_datum_hex: &str) -> Result<FullTaadDatum, Strin
         .parse::<u64>()
         .map_err(|_| format!("sequence not a non-negative integer: {}", seq_str))?;
 
-    let recovery_anchor = if n == 10 {
-        fields.get(9)
+    // Vị trí + arity đọc từ `onchain_schema` — xem `TAAD_RECOVERY_ANCHOR_INDEX`
+    // để biết vì sao chỗ này không được gõ số.
+    let recovery_anchor = if n == TAAD_DATUM_FIELDS {
+        fields.get(TAAD_RECOVERY_ANCHOR_INDEX)
     } else {
         encode_option_bytes(None)
     };
@@ -2974,16 +2988,21 @@ pub fn build_deactivate_taad_tx(
 /// ⚠ Bản trước còn ghi thêm một lý do NỮA — rằng gác nó sẽ chặn người dùng dựng
 /// đường cứu hộ, vì danh sách guardian là tiền đề của khôi phục. Câu đó nghe
 /// vững nhưng đứng trên một tiền đề chưa ai đo, và tiền đề ấy SAI: hàm này hôm
-/// nay cũng chưa dựng được giao dịch nào dùng được. Datum bên off-chain dựng 10
-/// trường và chỉ nhận `n == 9 || n == 10`, trong khi validator khai 15
-/// (`PhoenixKey-Validator/lib/phoenixkey/types.ak:66` @`564ad83`, thêm
-/// `limit_meter_policy` · `pending_meter_policy` · `pending_meter_ms` · `depth`
-/// · `device_pkh`). Aiken giải datum theo arity, nên MỌI builder họ TAAD — kể cả
-/// hàm này — sinh ra giao dịch validator từ chối, bất kể chuyện đơn vị.
+/// nay cũng chưa dựng được giao dịch nào dùng được, vì cả họ builder TAAD còn
+/// nằm trong `scripts/soi-mach.chua-noi.txt` — không màn nào gọi tới.
+///
+/// ⚠ Bản trước còn viết thêm rằng nguyên nhân là LỆCH ARITY: "validator khai 15
+/// trường (`types.ak:66` @`564ad83`) nên mọi builder TAAD sinh giao dịch bị từ
+/// chối". Câu đó nhầm hai thứ khác nhau — `564ad83` là MÃ NGUỒN validator, đã đi
+/// trước bản deploy, còn thứ quyết định là blueprint ĐANG CHẠY tại địa chỉ script
+/// mà giao dịch gửi tới (xem `onchain_schema::TAAD_VALIDATOR`). Thêm nữa, script
+/// CBOR không nằm trong kho mà là tham số lúc chạy (`taad_script_cbor_hex`), nên
+/// "validator nào" do người gọi quyết. Chưa ai đo được lần từ chối nào.
 ///
 /// Quyết định chừa vẫn giữ nguyên (gác thêm chẳng cứu được gì), nhưng lý do phải
 /// là lý do đúng: **cửa này không thuộc lớp lỗi mà cờ kia canh**, chứ không phải
-/// "chặn nó thì mất đường cứu hộ". Lệch arity là một việc riêng, chưa mở.
+/// "chặn nó thì mất đường cứu hộ". Lệch arity là một việc riêng, chưa mở
+/// (issue #291).
 #[allow(clippy::too_many_arguments)]
 pub fn build_update_guardians_tx(
     current_taad_utxo_json: &str,

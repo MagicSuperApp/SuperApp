@@ -1804,7 +1804,7 @@ mod tests {
         assert_eq!(threshold, 1);
         let constr = data.as_constr_plutus_data().expect("authorization is constr");
         assert_eq!(constr.alternative(), BigNum::from(0u64), "SinglePkh = constr 0");
-        assert_eq!(constr.data().len(), 1, "SinglePkh has exactly 1 field");
+        assert_eq!(constr.data().len(), AUTHORITY_SINGLE_PKH_FIELDS, "SinglePkh arity");
         let pkh_field = constr.data().get(0).as_bytes().expect("field 0 is bytes");
         assert_eq!(pkh_field, hex::decode(pkh_a()).unwrap(), "field 0 = the pkh bytes");
         assert_eq!(pkh_field.len(), 28);
@@ -1824,7 +1824,11 @@ mod tests {
         assert_eq!(threshold, 2);
         let constr = data.as_constr_plutus_data().expect("authorization is constr");
         assert_eq!(constr.alternative(), BigNum::from(1u64), "MultiSig = constr 1");
-        assert_eq!(constr.data().len(), 2, "MultiSig has 2 fields: [pkhs, threshold]");
+        assert_eq!(
+            constr.data().len(),
+            AUTHORITY_MULTISIG_FIELDS,
+            "MultiSig arity: [pkhs, threshold]"
+        );
         // Field 0: List of 3 byte arrays (28 bytes each).
         let list = constr.data().get(0).as_list().expect("field 0 is a list");
         assert_eq!(list.len(), 3);
@@ -1868,7 +1872,7 @@ mod tests {
         // Top: Constr 0, 2 fields.
         let constr = datum.as_constr_plutus_data().expect("datum is constr");
         assert_eq!(constr.alternative(), BigNum::from(0u64), "RegistryDatum = constr 0");
-        assert_eq!(constr.data().len(), 2, "RegistryDatum has 2 fields");
+        assert_eq!(constr.data().len(), REGISTRY_DATUM_FIELDS, "RegistryDatum arity");
 
         // Field 0: governing_did UTF-8 bytes.
         let did_bytes = constr.data().get(0).as_bytes().expect("field 0 is bytes");
@@ -1881,7 +1885,7 @@ mod tests {
         // Entry 0: Constr 0 [action_tag=BADGE, SinglePkh].
         let e0 = entry_list.get(0).as_constr_plutus_data().expect("entry is constr");
         assert_eq!(e0.alternative(), BigNum::from(0u64), "Entry = constr 0");
-        assert_eq!(e0.data().len(), 2, "Entry has 2 fields");
+        assert_eq!(e0.data().len(), REGISTRY_ENTRY_FIELDS, "RegistryEntry arity");
         assert_eq!(e0.data().get(0).as_bytes().unwrap(), b"BADGE".to_vec());
         let e0_authz = e0.data().get(1).as_constr_plutus_data().unwrap();
         assert_eq!(e0_authz.alternative(), BigNum::from(0u64), "entry 0 authorization = SinglePkh (constr 0)");
@@ -2282,7 +2286,11 @@ mod tests {
 
         let constr = data.as_constr_plutus_data().expect("datum is constr");
         assert_eq!(constr.alternative(), BigNum::from(0u64), "SupplyState = constr 0");
-        assert_eq!(constr.data().len(), 4, "4 fields: [dist_minted, reserve_minted, dist_cap, reserve_cap]");
+        assert_eq!(
+            constr.data().len(),
+            SUPPLY_STATE_FIELDS,
+            "SupplyState arity: [dist_minted, reserve_minted, dist_cap, reserve_cap]"
+        );
 
         assert_eq!(constr.data().get(0).as_integer().unwrap(), csl::BigInt::from_str("0").unwrap(), "dist_minted = 0 genesis");
         assert_eq!(constr.data().get(1).as_integer().unwrap(), csl::BigInt::from_str("0").unwrap(), "reserve_minted = 0 genesis");
@@ -2385,7 +2393,7 @@ mod tests {
             let pd = o.plutus_data().expect("inline datum present");
             let constr = pd.as_constr_plutus_data().expect("datum is constr");
             assert_eq!(constr.alternative(), BigNum::from(0u64));
-            assert_eq!(constr.data().len(), 4, "4-field SupplyState");
+            assert_eq!(constr.data().len(), SUPPLY_STATE_FIELDS, "SupplyState arity");
             assert_eq!(constr.data().get(0).as_integer().unwrap(), csl::BigInt::from_str("0").unwrap(), "dist_minted = 0");
             assert_eq!(constr.data().get(1).as_integer().unwrap(), csl::BigInt::from_str("0").unwrap(), "reserve_minted = 0");
             assert_eq!(constr.data().get(2).as_integer().unwrap(), csl::BigInt::from_str(&DIST_CAP.to_string()).unwrap(), "dist_cap baked");
@@ -2509,7 +2517,11 @@ mod tests {
             assert!(has_nft, "continuing SupplyState output must keep the thread NFT");
             let pd = o.plutus_data().expect("inline datum on continuing output");
             let constr = pd.as_constr_plutus_data().unwrap();
-            assert_eq!(constr.data().len(), 4, "continuing datum is 4-field SupplyState");
+            assert_eq!(
+                constr.data().len(),
+                SUPPLY_STATE_FIELDS,
+                "continuing datum is a full SupplyState"
+            );
             assert_eq!(
                 constr.data().get(0).as_integer().unwrap(),
                 csl::BigInt::from_str(&(old_dist + amount).to_string()).unwrap(),

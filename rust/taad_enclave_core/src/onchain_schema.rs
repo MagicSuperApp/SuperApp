@@ -9,22 +9,27 @@
 //!
 //! Trước tệp này, mỗi con số ấy được gõ TAY ở nhiều chỗ:
 //!
-//! | lược đồ               | guard chạy thật | assert trong test |
-//! |-----------------------|-----------------|-------------------|
-//! | `TAADDatum`           | 3               | 6                 |
-//! | `RegistryDatum`       | 1               | —                 |
-//! | `RegistryEntry`       | 1               | —                 |
-//! | `Authority` (2 nhánh) | 2               | —                 |
-//! | `SupplyState`         | 1               | 2                 |
+//! | lược đồ               | guard chạy thật | rẽ nhánh theo arity | assert trong test |
+//! |-----------------------|-----------------|---------------------|-------------------|
+//! | `TAADDatum`           | 3               | 2                   | 6                 |
+//! | `RegistryDatum`       | 1               | —                   | 1                 |
+//! | `RegistryEntry`       | 1               | —                   | 1                 |
+//! | `Authority` (2 nhánh) | 2               | —                   | 2                 |
+//! | `SupplyState`         | 1               | —                   | 5                 |
 //!
-//! Mười sáu chỗ cho bốn con số. Ngày một con số đổi, lần sửa sau **chắc chắn**
-//! sót một — và chỗ sót sẽ là một `assert` trong test, tức bài kiểm tiếp tục
-//! xanh trong khi bên dựng đã lệch. Đó là hình dạng tệ nhất: sai mà có bằng
+//! **Hai mươi lăm** chỗ cho bốn con số. Ngày một con số đổi, lần sửa sau **chắc
+//! chắn** sót một — và chỗ sót sẽ là một `assert` trong test, tức bài kiểm tiếp
+//! tục xanh trong khi bên dựng đã lệch. Đó là hình dạng tệ nhất: sai mà có bằng
 //! chứng "đúng".
 //!
-//! (Một trong sáu `assert` ấy còn ghim chuỗi lỗi `"4 field"` thay vì con số —
+//! (Một trong các `assert` ấy còn ghim chuỗi lỗi `"4 field"` thay vì con số —
 //! nên đổi arity xong thì ca đỏ vì SAI CHỮ, không phải vì sai arity. Ca đó nay
 //! đọc hằng.)
+//!
+//! Cột **rẽ nhánh theo arity** là cột nguy nhất và là cột dễ bỏ sót nhất khi
+//! đếm, vì nó không trông giống một phép kiểm: `if n == 10 { fields.get(9) }`
+//! không TỪ CHỐI gì cả, nó chỉ chọn đọc hay không đọc một ô. Cổng arity ở trên
+//! nhận datum, nhánh này trả "không có" — xem [`TAAD_RECOVERY_ANCHOR_INDEX`].
 //!
 //! ── Tệp này KHÔNG làm gì ────────────────────────────────────────────────────
 //! Nó **không** sửa con số nào, và **không** kết luận con số nào đúng. Nó chỉ
@@ -60,31 +65,66 @@ impl SchemaPin {
 // PhoenixKey — TAADDatum
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Bản validator mà bên dựng TAAD đang nhắm tới.
+/// Bản validator mà bên dựng TAAD nhắm tới — **CHƯA CHỐT**.
 ///
-/// Neo vào **blueprint ĐÃ DEPLOY**, không neo vào HEAD của kho validator. Hai
-/// thứ đó đã rời nhau: mã nguồn `types.ak` ở commit `564ad83` khai 15 trường
-/// (thêm `limit_meter_policy` · `pending_meter_policy` · `pending_meter_ms` ·
-/// `depth` · `device_pkh`), trong khi blueprint đang chạy trên preprod dùng
-/// lược đồ 10 trường.
+/// Bản trước của hằng này neo vào `deploy/plutus-preprod.json @blueprint
+/// 1d61d189… (preprod)` và nói đó là "bản ĐÃ DEPLOY". Đo lại trực tiếp trong kho
+/// validator (2026-09-11) thì cả ba vế đều không đứng được:
 ///
-/// Nhầm hai thứ này là nhầm theo hướng nguy hiểm: "validator khai 15" đọc ra
-/// thành "mọi giao dịch đều bị từ chối", trong khi thứ quyết định là **bản đang
-/// chạy tại địa chỉ script mà giao dịch gửi tới**.
+/// * `deploy/plutus-preprod.json` **tự khai là đã cũ**: `"_stale": true`, kèm
+///   `_stale_reason` nói `taad` CHƯA apply param và bản công bố trước đó "ĐÃ
+///   CHẾT".
+/// * Hash `taad` trong chính tệp ấy là `258cf1f4…`, **không phải** `1d61d189…`.
+/// * `1d61d189…` xuất hiện đúng MỘT lần trong cả kho validator, ở
+///   `docs/CBOR_SCHEMA_FOR_CORE.md`, và câu chứa nó nói UTxO ở hash đó là bản
+///   **Design-1** và **KHÔNG thể spend** bởi validator hiện nay.
+///
+/// Tức cái neo cũ là một hash ĐÃ NGHỈ, được in ra trong mọi câu lỗi arity như
+/// thể nó là bản đang chạy. Đúng cái mà [`LAMP_GENESIS_VALIDATOR`] bên dưới đã
+/// cảnh báo: một cái neo sai tệ hơn một ô trống, vì ô trống thì còn có người đi
+/// hỏi. Nay hạ xuống "chưa chốt", đúng mức đã đo được.
+///
+/// Thêm một phép đo cần biết trước khi ai đó điền lại ô này: blueprint **không
+/// ghim arity nào cả** — `taad.spend` khai `datum: {"$ref": "…/Data"}`, tức
+/// `Data` mờ. Số trường do mã Aiken ép lúc chạy, theo `types.ak` ở commit ĐƯỢC
+/// BIÊN DỊCH ra bản đang chạy. Nên "chốt bản nhắm tới" phải là **một commit của
+/// `types.ak` cộng hash script sinh ra từ chính commit đó**, không phải một hash
+/// đứng một mình.
 pub const TAAD_VALIDATOR: SchemaPin = SchemaPin {
     repo: "PhoenixKey-Validator",
-    file: "deploy/plutus-preprod.json",
-    reference: "blueprint 1d61d189… (preprod)",
+    file: "lib/phoenixkey/types.ak + deploy/plutus-preprod.json",
+    reference: "chưa chốt bản — xem issue #291 việc 1",
 };
 
 /// Số trường của `TAADDatum` v2 — lược đồ bên dựng đang phát.
 ///
-/// ⚠ ĐÂY LÀ CON SỐ ĐANG CÓ TRANH CHẤP, xem issue #291. Đừng đổi nó vì đọc được
-/// một con số khác trong mã nguồn validator: mã nguồn đã đi trước bản deploy.
-/// Điều kiện để đổi là **một bản blueprint cụ thể** (hash) được chốt là bản
-/// nhắm tới — lúc đó sửa đúng dòng này, và chín chỗ đọc nó đi theo.
+/// ⚠ ĐÂY LÀ CON SỐ ĐANG CÓ TRANH CHẤP, xem issue #291. Nó mô tả **bên dựng**:
+/// ba bộ mã hoá trong `taad_did.rs` phát đúng 10 ô. Nó KHÔNG phải một khẳng định
+/// rằng validator nhận 10.
 ///
-/// Thứ tự trường xem khối chú thích "TAAD Plutus Data encoding" ở `taad_did.rs`.
+/// Đừng đổi nó chỉ vì đọc được một con số khác trong mã nguồn validator. Điều
+/// kiện để đổi là [`TAAD_VALIDATOR`] được chốt thành một bản cụ thể — lúc đó sửa
+/// đúng dòng này, và mọi chỗ đọc nó đi theo.
+///
+/// ── Đã đo được gì, tính đến 2026-09-11 ──────────────────────────────────────
+/// `TAADDatum` ở HEAD kho validator (`lib/phoenixkey/types.ak`) có **16** trường
+/// — không phải 15 như issue #291 ghi; `aux_device_pkhs` được nối thêm sau khi
+/// issue được viết. Mười ô ĐẦU khớp **đúng thứ tự** với bên dựng:
+///
+/// ```text
+///   0 did · 1 entity_type · 2 controller_pkh · 3 hw_key_pubkey · 4 sequence
+///   5 status · 6 guardians · 7 parent_did · 8 revoked_ms · 9 recovery_anchor
+/// ```
+///
+/// Sáu ô sau (`limit_meter_policy` · `pending_meter_policy` · `pending_meter_ms`
+/// · `depth` · `device_pkh` · `aux_device_pkhs`) là phần bên dựng chưa có.
+///
+/// Nên chỗ lệch là **số lượng**, không phải **thứ tự** — và đó là tin tốt: nối
+/// thêm ô vào cuối thì chín ô đầu giữ nguyên vị trí CBOR. Nhưng ô số 8 thì phải
+/// đọc kỹ: validator gọi nó là `revoked_ms` (POSIX mili-giây) còn bên dựng ghi
+/// SỐ SLOT vào đó. Cùng kiểu `Int`, cùng dương ⇒ không phép kiểm kiểu nào bắt
+/// được. Đường GHI ô đó đang bị chặn fail-closed ở
+/// `taad_did::deactivate_builder_gate`.
 pub const TAAD_DATUM_FIELDS: usize = 10;
 
 /// Lược đồ CŨ, trước khi `recovery_anchor` được nối vào cuối.
@@ -115,6 +155,22 @@ pub fn check_taad_datum_arity(nhan: &str, n: usize) -> Result<(), String> {
         TAAD_VALIDATOR.describe(),
     ))
 }
+
+/// Vị trí của `recovery_anchor` — trường DUY NHẤT mà v2 nối thêm vào cuối lược
+/// đồ cũ. Đánh số từ 0 nên chỉ số của nó BẰNG số trường của bản legacy.
+///
+/// Phải là một hằng chứ không phải số `9` gõ tay, vì hai bộ giải đều rẽ nhánh
+/// theo nó và cả hai rẽ nhánh ấy hỏng LẶNG LẼ: chúng đọc arity để quyết định
+/// "datum này có ô anchor không". Gõ tay `if n == 10 { fields.get(9) }` thì ngày
+/// [`TAAD_DATUM_FIELDS`] lên 11, cổng arity ở trên vẫn NHẬN datum 11 trường,
+/// còn câu điều kiện thành sai ⇒ anchor bị đọc thành "không có". Bộ mã hoá xoay
+/// khoá liền sau đó ghi `None` đè lên — tức MẤT neo phân tán khoá trên chuỗi,
+/// không một dòng lỗi nào.
+///
+/// Quan hệ "v2 = legacy + 1" mà biểu thức này dựa vào được
+/// `legacy_kem_v2_dung_mot_truong` ghim: ngày ai đó nối thêm một trường NỮA mà
+/// không nghĩ lại chỗ này, ca đó đỏ trước.
+pub const TAAD_RECOVERY_ANCHOR_INDEX: usize = TAAD_DATUM_FIELDS_LEGACY;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LAMP Genesis — RegistryDatum · RegistryEntry · SupplyState
@@ -183,8 +239,9 @@ mod tests {
     fn arity_duoc_ghim_o_dung_mot_cho() {
         assert_eq!(
             TAAD_DATUM_FIELDS, 10,
-            "TAADDatum v2 đang là 10 trường. Đổi con số này cần một blueprint ĐÃ DEPLOY \
-             được chốt là bản nhắm tới — xem issue #291, đừng đổi theo HEAD của kho validator."
+            "Bên dựng đang phát 10 trường. Đổi con số này cần `TAAD_VALIDATOR` được chốt \
+             trước (một commit của types.ak + hash script sinh ra từ chính commit đó) — \
+             xem issue #291 việc 1. Đừng đổi chỉ vì đọc được 16 ở HEAD kho validator."
         );
         assert_eq!(TAAD_DATUM_FIELDS_LEGACY, 9);
         assert_eq!(REGISTRY_DATUM_FIELDS, 2);
@@ -203,6 +260,16 @@ mod tests {
     #[test]
     fn legacy_kem_v2_dung_mot_truong() {
         assert_eq!(TAAD_DATUM_FIELDS, TAAD_DATUM_FIELDS_LEGACY + 1);
+        // Tiền đề mà HAI bộ giải dựa vào để đọc `recovery_anchor`: nó là ô CUỐI
+        // của v2. Ghim riêng ra vì nếu ngày nào đó có trường thứ hai được nối
+        // thêm, quan hệ "legacy + 1" ở trên vẫn đúng cho một bước nhưng chỉ số
+        // này thì thôi đúng, và nó thôi đúng bằng cách trả về sai ô chứ không
+        // bằng một lỗi.
+        assert_eq!(
+            TAAD_RECOVERY_ANCHOR_INDEX,
+            TAAD_DATUM_FIELDS - 1,
+            "recovery_anchor phải là ô cuối của v2 — hai bộ giải đọc nó bằng chỉ số này"
+        );
     }
 
     #[test]

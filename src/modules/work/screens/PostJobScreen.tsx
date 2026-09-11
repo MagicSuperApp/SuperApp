@@ -17,6 +17,7 @@ import {
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import { COLORS } from '../../../constants';
+import { t } from '../../../i18n';
 import { WORK_THEME } from '../theme/colors';
 import { CATEGORIES } from '../data/mockData';
 import { usePostJob } from '../hooks/usePostJob';
@@ -54,7 +55,10 @@ const PostJobScreen: React.FC = () => {
     });
 
     if (ok) {
-      showSuccess('Đăng tin thành công', 'Tin của bạn đã được ký số và đăng lên Aladin Work.\n\nThợ phù hợp sẽ liên hệ qua Aladin Chat trong vài phút.', {
+      // `t()` TƯỜNG MINH: lớp bọc `<Text>` bỏ qua `t()` ở tiếng Việt
+      // (`i18n/autoText.tsx`), nên `{brand}` viết trần sẽ ra màn nguyên dấu
+      // ngoặc nhọn cho đúng nhóm người dùng đông nhất.
+      showSuccess('Đăng tin thành công', t('Tin của bạn đã được ký số và đăng lên {brand} Work.\n\nThợ phù hợp sẽ liên hệ qua {brand} Chat trong vài phút.'), {
           confirmText: 'OK',
           hideCancel: true,
           onConfirm: () => navigation.goBack(),

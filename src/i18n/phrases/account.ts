@@ -36,6 +36,21 @@ export const ACCOUNT: PhraseMap = {
 
   // ── Ví ─────────────────────────────────────────────────────────────────────
   'Ví cơ bản': { en: 'Basic wallet', zh: '基础钱包', ja: 'ベーシックウォレット' },
+  // Hai vế của ghi chú dưới khối ví ở `screens/AccountScreen.tsx`. Tới
+  // 2026-09-11 vế thứ hai viết thẳng bằng TIẾNG ANH, nằm ngay sau vế tiếng Việt
+  // trong cùng một đoạn — và vì nguồn của app là tiếng Việt, câu tiếng Anh đó
+  // không có đường nào thành tiếng Việt. Đã chuyển vế đó về tiếng Việt và khai
+  // cả hai ở đây, nên nay đoạn này đổi ngôn ngữ trọn vẹn.
+  'do chính bạn giữ chìa — dùng để nhận và chuyển tài sản.': {
+    en: 'is one you hold the key to — for receiving and sending assets.',
+    zh: '由你自己保管钥匙 — 用于接收和转出资产。',
+    ja: 'は鍵をご自身で保管します — 資産の受け取りと送付に使います。',
+  },
+  'do hệ thống giữ theo danh tính của bạn — dùng để kích hoạt và trả phí dịch vụ.': {
+    en: 'is held by the system against your identity — for activation and service fees.',
+    zh: '由系统按你的身份保管 — 用于激活和支付服务费。',
+    ja: 'はあなたの本人確認に紐づけてシステムが保管します — 有効化とサービス料金に使います。',
+  },
   'Bạn tự giữ khoá (từ cụm 24 từ)': {
     en: 'You hold the key yourself (from the 24-word phrase)',
     zh: '密钥由您自行保管（源自 24 个助记词）',

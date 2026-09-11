@@ -1217,8 +1217,18 @@ const TreeIdentityScreen: React.FC = () => {
                   accessibilityRole="button"
                   accessibilityLabel="Là cây khác"
                 >
-                  <Icon name="swap-horizontal" size={16} color="#5c6bc0" />
-                  <Text style={[styles.verdictBtnText, { color: '#5c6bc0' }]}>Cây khác</Text>
+                  {/* `#3949ab` (Indigo 600) thay `#5c6bc0` (Indigo 400), đo
+                      2026-09-11 bằng công thức tương phản WCAG 2.x trên chính
+                      nền của nút (`verdictOther.backgroundColor = #e8eaf6`):
+
+                        #5c6bc0 / #e8eaf6  = 4,06  ← TRƯỢT ngưỡng AA 4,5
+                        #3949ab / #e8eaf6  = 6,46
+
+                      Và nó lệch với hai nút ANH EM ngay cạnh, vốn đều đạt:
+                      "Đúng cây" 7,00 · "Sai cây" 4,92. Chữ 13px đậm vẫn tính
+                      theo ngưỡng chữ THƯỜNG (ngưỡng 3:1 chỉ áp từ 14pt đậm). */}
+                  <Icon name="swap-horizontal" size={16} color="#3949ab" />
+                  <Text style={[styles.verdictBtnText, { color: '#3949ab' }]}>Cây khác</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -2529,7 +2539,7 @@ const styles = StyleSheet.create({
   },
   verdictCorrect: { borderColor: '#1b5e20', backgroundColor: '#e8f5e9' },
   verdictWrong: { borderColor: '#c62828', backgroundColor: '#ffebee' },
-  verdictOther: { borderColor: '#5c6bc0', backgroundColor: '#e8eaf6' },
+  verdictOther: { borderColor: '#3949ab', backgroundColor: '#e8eaf6' },
   verdictBtnText: { fontSize: 13, fontWeight: '700' },
   verdictDone: {
     flexDirection: 'row',

@@ -16,7 +16,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'fs';
 import { join, relative } from 'path';
 
 import { INSTANCES } from '../config/instance.config';
-import { APP_TOKENS, BRAND_TOKENS } from './tokens';
+import { APP_TOKENS, AUTH_TOKENS, BRAND_TOKENS } from './tokens';
 
 const GOC = join(__dirname, '..', '..');
 
@@ -57,6 +57,20 @@ const MANG_NHAN_DIEN = new Set<string>(
     APP_TOKENS.accentLight,
     ...Object.values(BRAND_TOKENS).flatMap((b) => [b.primary, b.primaryDeep, b.primaryLight, ...b.gradient]),
     ...instanceBrandHexes(),
+    // Bảng CỬA VÀO — thêm 2026-09-11, cùng đợt đưa nó từ `features/auth/theme.ts`
+    // về tầng token. Nó vắng mặt ở đây suốt, và đó chính là lý do một dải lam
+    // riêng phủ trọn bốn màn cửa vào của app xanh lục mà không bài nào đỏ.
+    // KHÔNG lấy `white` (trùng trắng khắp nơi) và KHÔNG lấy nhóm `warn*`: giá
+    // trị của chúng trùng `APP_TOKENS.warning` / `ACTION_TOKENS.nutrition`, tức
+    // cùng một hex mang NGHĨA khác ở chỗ khác — cấm nó là cấm nhầm.
+    AUTH_TOKENS.deep,
+    AUTH_TOKENS.primary,
+    AUTH_TOKENS.pale,
+    AUTH_TOKENS.bgSoft,
+    AUTH_TOKENS.border,
+    AUTH_TOKENS.text,
+    AUTH_TOKENS.textSub,
+    AUTH_TOKENS.textMuted,
   ].map((h) => h.toUpperCase()),
 );
 

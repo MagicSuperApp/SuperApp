@@ -11,6 +11,7 @@ import {
   NAV_TOKENS,
   ACTION_TOKENS,
   HEADER_TOKENS,
+  AUTH_TOKENS,
   CHAT_SURFACE_TOKENS,
   AVATAR_TONE_TOKENS,
   withAlpha,
@@ -38,6 +39,7 @@ function resolveTheme(config: ThemeConfig) {
     neutral: { ...NEUTRAL_TOKENS, ...(config.neutral ?? {}) },
     nav:     { ...NAV_TOKENS, ...(config.nav ?? {}) },
     header:  { ...HEADER_TOKENS, ...(config.header ?? {}) },
+    auth:    { ...AUTH_TOKENS, ...(config.auth ?? {}) },
     brand:   resolveBrand(config),
   };
 }
@@ -81,6 +83,7 @@ export function setActiveThemeConfig(config: ThemeConfig): void {
   Object.assign(activeTheme.neutral, next.neutral);
   Object.assign(activeTheme.nav, next.nav);
   Object.assign(activeTheme.header, next.header);
+  Object.assign(activeTheme.auth, next.auth);
   (Object.keys(next.brand) as BrandKey[]).forEach((key) => {
     Object.assign(activeTheme.brand[key], next.brand[key]);
   });
@@ -102,6 +105,7 @@ export const getToken = {
   neutral: (): ResolvedTheme['neutral'] => activeTheme.neutral,
   nav:     (): ResolvedTheme['nav'] => activeTheme.nav,
   header:  (): ResolvedTheme['header'] => activeTheme.header,
+  auth:    (): ResolvedTheme['auth'] => activeTheme.auth,
   brand:   (key: BrandKey): ModuleTheme => activeTheme.brand[key],
 };
 
@@ -128,6 +132,9 @@ export const WORK_BG_SOFT = '#E9F4ED';
 // Token menu hành động thích ứng (SG4) + Header toàn cục — export để
 // navigation/index.tsx + AppHeader tiêu thụ THAY cho hex hardcode.
 export const ACTION_COLORS = ACTION_TOKENS;
+// Cửa vào (đăng ký/đăng nhập) — ĐI QUA activeTheme, cùng lý do với HEADER.
+// `features/auth/theme.ts` chỉ còn là con trỏ tới đây.
+export const AUTH_COLORS = activeTheme.auth;
 // Header ĐI QUA activeTheme (khác ACTION): app thứ hai phải đổi được màu thanh
 // trên, xem chú thích `header` ở `theme.config.ts`.
 export const HEADER_COLORS = activeTheme.header;

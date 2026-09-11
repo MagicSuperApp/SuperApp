@@ -733,13 +733,13 @@ export const SCREENS: PhraseMap = {
   'Tìm Tasker': { en: 'Find a Tasker', zh: '寻找 Tasker', ja: 'タスカーを探す' },
   'Tạo việc ngay': { en: 'Post a job now', zh: '立即发布工作', ja: 'すぐに募集する' },
   'Tạo Việc Ngay': { en: 'Post a job now', zh: '立即发布工作', ja: 'すぐに募集する' },
-  'Hướng dẫn đăng việc trên Aladin': { en: 'How to post a job on Aladin', zh: '如何在 Aladin 上发布工作', ja: 'Aladin での募集の出し方' },
+  'Hướng dẫn đăng việc trên {brand}': { en: 'How to post a job on {brand}', zh: '如何在 {brand} 上发布工作', ja: '{brand} での募集の出し方' },
   'Một số lưu ý cho lần đầu đăng việc': { en: 'A few tips for your first posting', zh: '首次发布的几点提示', ja: '初めて募集を出す方へのヒント' },
   'Bảo vệ bởi smart contract': { en: 'Protected by a smart contract', zh: '由智能合约保护', ja: 'スマートコントラクトで保護' },
-  'Mọi giao dịch trên Aladin đều có hợp đồng số ký bằng khoá trên máy bạn. Tiền cọc định giá bằng MAGIC nhưng khoá và hoàn bằng CARP — bạn không lo bị quỵt.': {
-    en: 'Every deal on Aladin comes with a digital contract signed by the key on your device. The deposit is priced in MAGIC but locked and refunded in CARP — so you cannot be stiffed.',
-    zh: 'Aladin 上的每笔交易都有用本机密钥签署的数字合同。押金以 MAGIC 计价，但以 CARP 锁定和退还 — 不用担心被赖账。',
-    ja: 'Aladin のすべての取引には、端末の鍵で署名された電子契約が付きます。保証金は MAGIC で値付けし、ロックと返金は CARP で行います — 踏み倒される心配はありません。',
+  'Mọi giao dịch trên {brand} đều có hợp đồng số ký bằng khoá trên máy bạn. Tiền cọc định giá bằng MAGIC nhưng khoá và hoàn bằng CARP — bạn không lo bị quỵt.': {
+    en: 'Every deal on {brand} comes with a digital contract signed by the key on your device. The deposit is priced in MAGIC but locked and refunded in CARP — so you cannot be stiffed.',
+    zh: '{brand} 上的每笔交易都有用本机密钥签署的数字合同。押金以 MAGIC 计价，但以 CARP 锁定和退还 — 不用担心被赖账。',
+    ja: '{brand} のすべての取引には、端末の鍵で署名された電子契約が付きます。保証金は MAGIC で値付けし、ロックと返金は CARP で行います — 踏み倒される心配はありません。',
   },
   'Nổi bật': { en: 'Featured', zh: '精选', ja: '注目' },
   'Chi tiết tin': { en: 'Posting details', zh: '信息详情', ja: '募集の詳細' },
@@ -756,7 +756,7 @@ export const SCREENS: PhraseMap = {
     zh: '按能力与空闲时间匹配（Jem-Math）',
     ja: '能力と空き状況でマッチング（Jem-Math）',
   },
-  'Bảo vệ Aladin': { en: 'Aladin protection', zh: 'Aladin 保障', ja: 'Aladin の保護' },
+  'Bảo vệ {brand}': { en: '{brand} protection', zh: '{brand} 保障', ja: '{brand} の保護' },
   'Mọi thoả thuận được ký số ngay trên máy bạn, có giá trị pháp lý': {
     en: 'Every agreement is digitally signed on your own device and is legally binding',
     zh: '每份协议都在你的设备上完成数字签名，具有法律效力',
@@ -767,10 +767,10 @@ export const SCREENS: PhraseMap = {
     zh: '保证金以 MAGIC 计价、用 CARP 锁定/退还 — 双方确认后才释放',
     ja: '保証金は MAGIC で価格を表し、ロックと返還は CARP で行います — 双方が確認したときにのみ解放されます',
   },
-  'Trao đổi qua Aladin Chat — lưu trữ vĩnh viễn làm bằng chứng nếu tranh chấp': {
-    en: 'Talk through Aladin Chat — stored permanently as evidence in a dispute',
-    zh: '通过 Aladin Chat 沟通 — 永久留存，可作为争议证据',
-    ja: 'やり取りは Aladin Chat で行います — 争いになったときの証拠として永久に保存されます',
+  'Trao đổi qua {brand} Chat — lưu trữ vĩnh viễn làm bằng chứng nếu tranh chấp': {
+    en: 'Talk through {brand} Chat — stored permanently as evidence in a dispute',
+    zh: '通过 {brand} Chat 沟通 — 永久留存，可作为争议证据',
+    ja: 'やり取りは {brand} Chat で行います — 争いになったときの証拠として永久に保存されます',
   },
   'Đăng tin đặt thợ': { en: 'Post a job', zh: '发布招工信息', ja: '職人の募集を出す' },
   'Mô tả công việc, hệ thống gợi ý thợ phù hợp': {

@@ -186,6 +186,53 @@ export const ACTION_TOKENS = {
   onAction:  '#FFFFFF',
 } as const;
 
+// ── Token LUỒNG ĐĂNG KÝ / ĐĂNG NHẬP ────────────────────────────────────────
+//
+// Trước 2026-09-11 bộ giá trị này sống ở `features/auth/theme.ts` dưới tên
+// `AUTH_BLUE`, là một object literal gõ cứng. Bốn màn của luồng vào
+// (`IdentityEntryChoice`, `SignUpBiometric`, `SignUpComplete`, `StepIndicator`)
+// đọc thẳng nó — tức toàn bộ đường vào app KHÔNG đi qua tầng chủ đề, nên app
+// thứ hai dựng ra vẫn xanh LAM ở đúng quãng người dùng gặp đầu tiên, trong khi
+// mọi màn sau đó đã xanh LỤC. Không phép kiểm nào đỏ: `hexNhanDien.test.ts`
+// chỉ canh các giá trị TRÙNG token nhận diện, mà bảng này mang một dải lam
+// riêng không trùng giá trị nào.
+//
+// Chuyển về đây theo YC-1 (giá trị màu thô nằm ở tokens.ts) và mở cho
+// `ThemeConfig.auth` ghi đè, đúng lối `header` đã đi trước.
+//
+// 🔴 `textMuted` ĐÃ ĐỔI, và đây là đổi giá trị chứ không phải dời chỗ:
+//
+//     cũ  #8A95A8 trên #F4F7FB  2,81   trên #FFFFFF  3,02   ← TRƯỢT AA 4,5
+//     mới #647187 trên #F4F7FB  4,59   trên #FFFFFF  4,94
+//
+// Tính lại bằng công thức độ chói tương đối của WCAG 2.x. `#647187` là bậc
+// sáng ĐẦU TIÊN còn giữ nguyên hue 218° và bão hoà 15% của bản cũ mà qua được
+// ngưỡng ở CẢ HAI nền bậc này đứng lên (nền bgSoft và thẻ trắng) — chọn mức
+// tối thiểu để đổi ít nhất có thể. `theme/authContrast.test.ts` TÍNH lại từ
+// chính các giá trị dưới đây, nên hạ bậc sáng lần nữa là đỏ.
+//
+// Ba khoá `mid` · `light` · `glow` của bản cũ đã BỎ: đo 2026-09-11 trên toàn
+// `src/` cho 0 nơi đọc. Giữ chúng là bắt mọi app sau phải khai một giá trị cho
+// một vai không tồn tại.
+export const AUTH_TOKENS = {
+  deep:      '#152B5A',
+  primary:   '#2C5BC4',
+  pale:      '#B9D2F0',
+  white:     '#FFFFFF',
+  glowSoft:  'rgba(185, 210, 240, 0.25)',
+  bgSoft:    '#F4F7FB',
+  border:    '#E5EAF2',
+  text:      '#0F1A2E',
+  textSub:   '#4B5872',
+  textMuted: '#647187',
+
+  // Tông cảnh báo của luồng vào — khối "bạn sẽ mất gì" ở cửa vào.
+  warnIcon:   '#B07D2F',
+  warnBg:     '#FFF6E6',
+  warnBorder: '#F0DBB5',
+  warnText:   '#6F4720',
+} as const;
+
 // ── Token Header toàn cục (SG-Header — thanh trên kiểu Facebook, thu/thả) ────
 // Header xanh đậm đồng bộ navbar; icon/chữ trắng (WCAG AA trên nền đậm).
 export const HEADER_TOKENS = {
@@ -248,6 +295,7 @@ export const BASE_TOKENS = {
   nav:     NAV_TOKENS,
   action:  ACTION_TOKENS,
   header:  HEADER_TOKENS,
+  auth:    AUTH_TOKENS,
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -257,6 +305,7 @@ export type AppTokens = typeof APP_TOKENS;
 export type NeutralTokens = typeof NEUTRAL_TOKENS;
 export type NavTokens = typeof NAV_TOKENS;
 export type HeaderTokens = typeof HEADER_TOKENS;
+export type AuthTokens = typeof AUTH_TOKENS;
 export type BrandKey = keyof typeof BRAND_TOKENS;
 
 export interface ModuleTheme {

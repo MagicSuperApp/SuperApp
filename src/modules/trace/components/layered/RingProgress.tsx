@@ -20,8 +20,10 @@
  * `transparent` rồi xoay đi một góc. Cách đó ĐÚNG ở đúng bốn mốc (0·25·50·75%)
  * và SAI ở mọi giá trị giữa: viền của một hình vuông bo tròn được chia theo BỐN
  * CẠNH chứ không theo góc quét, nên phần hiện ra không tỉ lệ với phần trăm.
- * `CircleProgress` trong `TreeDetailScreen` đang dùng đúng mẹo ấy — 30% và 45%
- * cho gần như cùng một hình.
+ * `CircleProgress` trong `TreeDetailScreen` từng dùng đúng mẹo ấy — 30% và 45%
+ * cho gần như cùng một hình. Nó đã bị gỡ; màn đó nay gọi chính thành phần này
+ * (`HarvestRing` trong `TreeDetailScreen.tsx`), nên không còn bản vòng tròn thứ
+ * hai trong module.
  *
  * Module đã có `react-native-svg`, nên `strokeDasharray` cho cung đúng ở mọi
  * phần trăm mà không tốn thêm gì.

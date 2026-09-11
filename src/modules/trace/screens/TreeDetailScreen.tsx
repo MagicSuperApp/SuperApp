@@ -44,6 +44,8 @@ import {
 } from '../theme/depth';
 import { GradientFill, GroundBackdrop } from '../components/layered/Organic';
 import { BentoRow, BentoTile } from '../components/layered/Surface';
+import RingProgress from '../components/layered/RingProgress';
+import { treeFruitStats } from './treeFruitStats';
 // Ô "3D" gắn CHÍNH bản dựng của màn đặt cây 3D — cùng model, cùng chấm quả, cùng
 // bộ nhớ đệm. Xem khối chú thích ở chỗ dựng ô.
 import TreeModelPreview from '../../../features/space3d/scene/TreeModelPreview';
@@ -201,40 +203,51 @@ const FruitChip = ({
   );
 };
 
-// ── Circular progress (harvest %) ─────────────────────────────────────────────
-const CircleProgress = ({ pct, size = 72 }: { pct: number; size?: number }) => {
-  const animPct = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.timing(animPct, { toValue: pct, duration: 900, useNativeDriver: false }).start();
-  }, [pct]);
-
-  const stroke = 5;
-  const deg = (pct / 100) * 360;
-
+// ── Vòng tiến độ thu hoạch ───────────────────────────────────────────────────
+//
+// `CircleProgress` cũ ở đây đã bị GỠ, không phải sửa. Hai lỗi, mỗi lỗi tự nó đủ:
+//
+// 1. `pct: number` — kiểu không cho phép diễn đạt "chưa biết", nên nơi gọi buộc
+//    phải điền `0`, và `0%` đọc ra "đã đếm, chưa thu quả nào". Đó chính là lỗi
+//    #314: lượt lấy số liệu hỏng mà màn hình trình một số đo.
+// 2. Nó vẽ bằng mẹo xoay viền một `View` bo tròn — đúng ở đúng bốn mốc
+//    (0·25·50·75%) và sai ở mọi giá trị giữa, vì viền chia theo BỐN CẠNH chứ
+//    không theo góc quét. `RingProgress.tsx` đã ghi nguyên văn chỗ này trong
+//    docblock của nó, kèm tên tệp này.
+//
+// `RingProgress` nhận `pct: number | null`, vẽ cung bằng `strokeDasharray` nên
+// đúng ở mọi phần trăm, và vẽ vòng NÉT ĐỨT khi chưa có số. Màn danh sách cây
+// (`FarmDetailScreen` ▸ `TreeChip`) đã dùng nó từ trước — nay hai màn cùng một
+// cách nói, không còn hai bản vòng tròn song song.
+const HarvestRing: React.FC<{ pct: number | null; size?: number }> = ({ pct, size = 64 }) => {
+  const tk = useTk();
+  const chuaBiet = pct === null;
   return (
-    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-      <View style={{
-        position: 'absolute',
-        width: size, height: size, borderRadius: size / 2,
-        borderWidth: stroke, borderColor: ORG_TONE.border,
-      }} />
-      <View style={{
-        position: 'absolute',
-        width: size, height: size, borderRadius: size / 2,
-        borderWidth: stroke,
-        borderColor: COLORS.accent,
-        borderRightColor: 'transparent',
-        borderBottomColor: pct > 50 ? COLORS.accent : 'transparent',
-        transform: [{ rotate: `${deg - 90}deg` }],
-      }} />
-      <View style={{ alignItems: 'center' }}>
-        <Text style={{ fontSize: 14, fontWeight: '800', color: COLORS.text, letterSpacing: -0.5 }}>
-          {pct}%
+    <RingProgress
+      pct={pct}
+      size={size}
+      stroke={5}
+      fill="transparent"
+      style={undefined}
+    >
+      {chuaBiet ? (
+        <Text
+          style={{ fontSize: 9, color: COLORS.textMuted, fontWeight: '700', textAlign: 'center' }}
+          numberOfLines={2}
+        >
+          {tk('trace.tree.noHarvestData')}
         </Text>
-        <Text style={{ fontSize: 9, color: COLORS.textMuted, fontWeight: '600' }}>đã thu</Text>
-      </View>
-    </View>
+      ) : (
+        <>
+          <Text style={{ fontSize: 14, fontWeight: '800', color: COLORS.text, letterSpacing: -0.5 }}>
+            {pct}%
+          </Text>
+          <Text style={{ fontSize: 9, color: COLORS.textMuted, fontWeight: '600' }}>
+            {tk('trace.tree.harvestedShort')}
+          </Text>
+        </>
+      )}
+    </RingProgress>
   );
 };
 
@@ -743,16 +756,27 @@ const TreeDetailScreen = () => {
   };
 
   // ── Dữ liệu quả (server) ───────────────────────────────────────────────────
+  //
+  // ⛔ CHƯA BIẾT đi bằng `null`, KHÔNG đi bằng `0`.
+  //
+  //    Bản trước: `stats?.total ?? fruitItems.length`. Lượt gọi lấy quả hỏng thì
+  //    `layout` là `null`, `fruitItems` là mảng rỗng, và mọi ô hiện `0` — trông
+  //    y hệt một cây đã được đếm và đếm ra không quả nào. Người ghi chép ngoài
+  //    vườn chép con số đó vào báo cáo, và tới lúc đối chiếu thì không còn cách
+  //    nào phân biệt "cây chưa ra quả" với "app không lấy được số liệu".
+  //
+  //    `harvestPct` nặng hơn một bậc: `totalFruits > 0 ? … : 0` ĐẶT phần trăm
+  //    bằng 0, tức khẳng định "đã thu 0%" cho một cây chưa ai đếm.
+  //
+  // Màn danh sách cây và màn chi tiết vườn đã vá đúng chỗ này từ trước
+  // (`RingProgress` nhận `pct: number | null`, vẽ vòng nét đứt). Màn này nay theo.
+  // Luật ở `treeFruitStats.ts` — tách khỏi màn để còn kiểm được ở đúng ca đã
+  // hỏng (dựng lại màn này thì phải dựng cả maplibre/camera/GL).
   const fruitItems: TreeLayoutFruit[] = layout?.fruits ?? [];
-  const stats = layout?.stats;
-  const totalFruits = stats?.total ?? fruitItems.length;
-  const onTreeCount = stats?.on_tree ?? fruitItems.filter(f => f.status === 'on_tree').length;
-  const harvestedCount = stats?.harvested ?? fruitItems.filter(f => f.status === 'harvested').length;
-  const lostCount = stats?.lost ?? fruitItems.filter(f => f.status === 'lost').length;
-  // % thu hoạch tính TỪ QUẢ THẬT (server /api/trees không trả harvestProgress →
-  // vòng tròn trước đây luôn đứng 0%).
-  const harvestPct = totalFruits > 0 ? Math.round((harvestedCount / totalFruits) * 100) : 0;
-  const estimatedFruits = tree?.estimatedFruits ?? 0;
+  const { total: totalFruits, onTree: onTreeCount, harvested: harvestedCount, lost: lostCount, harvestPct } =
+    treeFruitStats(layout);
+  /** `null` = chưa ai ước tính. `0` sẽ là "ước tính được, và bằng không". */
+  const estimatedFruits: number | null = tree?.estimatedFruits ?? null;
 
   // Mới ghi nhận lên trước.
   const sortedFruits = [...fruitItems].sort((a, b) =>
@@ -898,7 +922,7 @@ const TreeDetailScreen = () => {
         <GradientFill name="tile" />
 
         <View style={styles.panelTop}>
-          <CircleProgress pct={harvestPct} size={64} />
+          <HarvestRing pct={harvestPct} size={64} />
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={styles.panelName} numberOfLines={2}>{treeDisplayName}</Text>
             {treeShortCode ? (
@@ -942,7 +966,17 @@ const TreeDetailScreen = () => {
             <React.Fragment key={o.nhan}>
               {idx > 0 ? <View style={styles.panelVach} /> : null}
               <View style={styles.panelO}>
-                <Text style={[styles.panelOSo, { color: o.mau }]}>{o.n}</Text>
+                {/*
+                  Chưa biết thì hiện dấu gạch, và hiện nó bằng màu CHỮ MỜ chứ
+                  không bằng màu của ô. Một dấu gạch tô cùng màu với con số vẫn
+                  đọc ra "một giá trị"; tô mờ thì nó đọc ra chỗ trống — đúng cái
+                  nó là.
+                */}
+                <Text
+                  style={[styles.panelOSo, { color: o.n === null ? COLORS.textMuted : o.mau }]}
+                >
+                  {o.n === null ? tk('trace.value.unknown') : o.n}
+                </Text>
                 <Text style={styles.panelONhan} numberOfLines={1}>{o.nhan}</Text>
               </View>
             </React.Fragment>
@@ -958,15 +992,20 @@ const TreeDetailScreen = () => {
               { nhan: 'Năm trồng', gt: tree?.plantedYear ? String(tree.plantedYear) : 'chưa ghi' },
               {
                 nhan: 'Dự kiến cả mùa',
-                gt: estimatedFruits > 0 ? `${estimatedFruits} quả` : 'chưa ước tính',
-                uoc: estimatedFruits > 0,
+                // `null` = chưa ai ước tính. Bản cũ dùng `estimatedFruits > 0`,
+                // nên một ước tính THẬT bằng 0 cũng bị đọc thành "chưa ước tính".
+                gt:
+                  estimatedFruits === null
+                    ? tk('trace.tree.notEstimated')
+                    : `${estimatedFruits} ${tk('trace.tree.fruitCountUnit')}`,
+                uoc: estimatedFruits !== null,
               },
             ].map((d) => (
               <View key={d.nhan} style={styles.panelPhuHang}>
                 <Text style={styles.panelPhuNhan}>{d.nhan}</Text>
                 <Text style={styles.panelPhuGt} numberOfLines={1}>
                   {d.gt}
-                  {d.uoc ? <Text style={styles.panelPhuUoc}> (ước tính)</Text> : null}
+                  {d.uoc ? <Text style={styles.panelPhuUoc}>{tk('trace.tree.estimatedSuffix')}</Text> : null}
                 </Text>
               </View>
             ))}
@@ -1246,7 +1285,12 @@ const TreeDetailScreen = () => {
         <View style={styles.sectionLeft}>
           <View style={styles.sectionDot} />
           <Text style={styles.sectionTitle}>Quả</Text>
-          {totalFruits > 0 ? <Text style={styles.sectionCount}>{totalFruits}</Text> : null}
+          {/* `null` (chưa biết) KHÔNG hiện số — nhưng cũng không hiện `0`.
+              Chỗ trống ở đây là đúng: nhánh lỗi của danh sách quả ngay bên dưới
+              mới là chỗ nói vì sao. */}
+          {totalFruits !== null && totalFruits > 0
+            ? <Text style={styles.sectionCount}>{totalFruits}</Text>
+            : null}
           {fruitsLoading ? <ActivityIndicator size="small" color={ORG_TONE.primary} /> : null}
         </View>
         {/*
@@ -1616,7 +1660,11 @@ const TreeDetailScreen = () => {
 
             <View style={styles.quaPopupBang}>
               {[
-                { nhan: 'Số góc ảnh', gt: String(quaDangXem?.n_views ?? 0) },
+                // `?? 0` ở đây in ra "Số góc ảnh: 0" cho một quả mà máy chủ
+                // KHÔNG trả trường `n_views` — tức khẳng định "chưa chụp góc
+                // nào" thay cho "không biết". Ba hàng còn lại trong chính bảng
+                // này đã nói chỗ trống bằng chữ; hàng này nay theo.
+                { nhan: 'Số góc ảnh', gt: quaDangXem?.n_views == null ? tk('trace.value.unknown') : String(quaDangXem.n_views) },
                 { nhan: 'Tầng trên cây', gt: quaDangXem?.zone ? ZONE_VI[quaDangXem.zone] : 'chưa đặt' },
                 { nhan: 'Ngày ghi nhận', gt: fmtDate(quaDangXem?.enrolled_at) || tk('trace.tree.noDate') },
                 { nhan: 'Mã quả', gt: (quaDangXem?.fruit_id ?? '').slice(-8).toUpperCase() || '—' },

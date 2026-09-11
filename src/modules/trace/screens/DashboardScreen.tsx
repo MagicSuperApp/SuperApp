@@ -245,10 +245,13 @@ const DashboardScreen: React.FC = () => {
       let list = cached;
       try {
         const fresh = await dispatch(syncFarmsFromBackend(user.id)).unwrap();
-        if (Array.isArray(fresh) && fresh.length > 0) list = fresh;
+        // CHỈ nhận bản của máy chủ. `source === 'cache'` là chính bản vừa đọc ở
+        // bước 1, và nó THIẾU tâm vườn / cách lấy ranh / số cây — xem lời rào ở
+        // trên. Nhận nó ở đây là ghi đè bản đầy đủ bằng bản thiếu.
+        if (fresh.source === 'server' && fresh.items.length > 0) list = fresh.items;
       } catch {
-        // Máy chủ hỏng → giữ nguyên cache. `syncFarmsFromBackend` tự nuốt lỗi
-        // mạng, nên tới đây là ca hiếm; vẫn bắt để không kéo đổ cả màn.
+        // Máy chủ hỏng VÀ đệm cũng hỏng → thunk từ chối. Giữ nguyên cache đã đọc
+        // ở bước 1; `state.farm.farmsSyncError` mang lý do cho màn nào cần nói.
       }
       if (list.length > 0) {
         for (const farm of list) await dispatch(loadTrees(farm.id));
@@ -571,7 +574,20 @@ const DashboardScreen: React.FC = () => {
               <View style={[styles.wxFacts, { borderTopColor: wx.border }]}>
                 <WxFact tone={wx} icon="wx-humidity" value={`${weather.now.humidity}%`} label={tk('trace.weather.humidity')} />
                 <WxFact tone={wx} icon="wx-wind" value={`${weather.now.windKph} km/h`} label={tk('trace.weather.wind')} />
-                <WxFact tone={wx} icon="wx-rainchance" value={`${weather.days[0]?.rainChance ?? 0}%`} label={tk('trace.weather.rainChance')} />
+                {/* ⛔ `?? 0` ở đây in ra "0%" khi bản tin KHÔNG có ngày nào —
+                    tức nói với người đi làm đồng rằng hôm nay chắc chắn không
+                    mưa, bằng đúng hình dạng của một con số dự báo. Không có số
+                    thì hiện dấu gạch. */}
+                <WxFact
+                  tone={wx}
+                  icon="wx-rainchance"
+                  value={
+                    weather.days[0]?.rainChance == null
+                      ? tk('trace.value.unknown')
+                      : `${weather.days[0].rainChance}%`
+                  }
+                  label={tk('trace.weather.rainChance')}
+                />
               </View>
 
               {adviceKey ? (

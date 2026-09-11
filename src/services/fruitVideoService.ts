@@ -171,8 +171,17 @@ export async function uploadFruitVideo(
     // Server trả 200 kể cả khi stored:false / 0 khung — vẫn coi là OK (đã nhận clip).
     return {
       ok: true,
-      n_frames: body?.n_frames ?? 0,
-      n_fruits_max: body?.n_fruits_max ?? 0,
+      // KHÔNG `?? 0` — cùng lý do đã viết cho `stored` mười lăm dòng dưới, chỉ ở
+      // chỗ đắt hơn: đây là hai con số người dùng ĐỌC. `0` mang hình dạng một số
+      // đo, nên "máy chủ không nói gì" và "máy chủ đếm được không quả nào" ra cùng
+      // một màn hình, và người ghi chép ngoài vườn chép `0` vào báo cáo.
+      //
+      // `FruitVideoScreen.tsx:516` ĐÃ có sẵn nhánh `n_frames === undefined` →
+      // "chưa cho biết", và có cả bài kiểm cho nhánh đó. Chính hai dấu `?? 0` ở
+      // đây làm nhánh ấy không bao giờ chạy được: bài kiểm xanh trên một con
+      // đường mà mã thật không đi tới.
+      n_frames: body?.n_frames,
+      n_fruits_max: body?.n_fruits_max,
       // Nhãn phương-pháp đếm ("hsv_estimate") — surface để UI cảnh-báo đây là ước-lượng
       // sơ-bộ, KHÔNG phải ground-truth (khớp interface + doc mục 4).
       fruit_count_method: body?.fruit_count_method,

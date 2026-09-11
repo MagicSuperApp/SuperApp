@@ -45,6 +45,11 @@ export interface IdentifyFactors {
 // Báo giá phí 3-bucket cho tác vụ identify — khai tập trung ở types/fee.ts.
 import type { FeeQuote } from '../types/fee';
 import { canResendAfterNetworkError } from './resendPolicy';
+// Kiểm URI còn sống — MỘT nguồn duy nhất, dùng chung với đường dọn bản nháp. Không
+// chép lại ở đây: hai bản sẽ trôi khỏi nhau ở đúng chỗ khó thấy nhất (mặc định khi
+// không kiểm được). `treeDraftStore` chỉ kéo theo AsyncStorage + một kiểu, không tạo
+// vòng import.
+import { fileExists } from './treeDraftStore';
 
 /**
  * Cửa POST GỬI LẠI ĐƯỢC sau lỗi mạng. Luật + lý do đầy đủ ở `resendPolicy.ts`.
@@ -219,7 +224,17 @@ export interface TreeListResponse {
 }
 
 export interface APIError {
-  type: 'network_error' | 'auth_error' | 'validation_error' | 'duplicate' | 'rate_limited' | 'server_error';
+  /**
+   * `network_error`  — không nối được tới máy chủ (mất sóng thật).
+   * `timeout`        — nối được nhưng quá chậm, chạm trần thời gian chờ.
+   * `bad_response`   — máy chủ (hoặc thứ chen giữa) trả về thứ không phải JSON.
+   * `missing_image`  — ảnh sắp gửi KHÔNG còn trên đĩa; mạng không liên quan.
+   *
+   * Bốn nhãn này CỐ Ý tách rời: chúng dẫn tới bốn việc khác nhau mà người dùng phải
+   * làm, và gộp lại thì câu hướng dẫn sai ở ba trong bốn ca — xem khối `catch`
+   * cuối `_apiCall` và `attributeImageSendFailure`.
+   */
+  type: 'network_error' | 'timeout' | 'bad_response' | 'missing_image' | 'auth_error' | 'validation_error' | 'duplicate' | 'rate_limited' | 'server_error';
   detail: string;
   http_status: number;
   retry_after_seconds?: number;
@@ -264,6 +279,27 @@ export function enrollWarningMessages(res?: {
  * "lỗi" chung chung (Lỗi field #3). Ưu tiên `reason` (server đã trả câu gợi ý), rồi map
  * theo `error_code`, cuối cùng fallback `detail`.
  */
+/**
+ * Mã tham chiếu ngắn cho ba lỗi tầng kết nối, ví dụ ` (mã: TypeError)`.
+ *
+ * KHÔNG phải để người dùng hiểu — họ không cần hiểu. Nó để một ảnh chụp màn hình
+ * gửi từ vườn tự nó nói được nguyên nhân, thay vì tốn một vòng hỏi lại rồi vẫn
+ * không biết. Đây là đường mà Forall cho phép với lỗi hệ thống thô: hiện MÃ, không
+ * hiện nguyên văn traceback (đường dẫn nội bộ và thông tin phiên đi ra ngoài theo
+ * traceback là chuyện đã xảy ra thật ở một kho khác).
+ *
+ * Chỉ lấy tên lớp lỗi ở đầu chuỗi (`TypeError: Network request failed` → `TypeError`),
+ * cắt trần 24 ký tự. Không moi được thì trả chuỗi rỗng — thà không có mã còn hơn
+ * một mã bịa.
+ */
+function errRefCode(err: APIError): string {
+  const raw = (err.detail ?? '').trim();
+  if (!raw) return '';
+  const name = raw.split(':')[0].trim();
+  if (!name || name.length > 24 || /\s/.test(name)) return '';
+  return ` (mã: ${name})`;
+}
+
 export function fieldErrorMessage(err?: APIError): string {
   if (!err) return 'Có lỗi xảy ra. Bạn thử lại nhé.';
   if (err.reason && err.reason.trim()) return err.reason;
@@ -283,7 +319,30 @@ export function fieldErrorMessage(err?: APIError): string {
 
   switch (err.type) {
     case 'network_error':
-      return 'Mất kết nối mạng. Kiểm tra sóng/Wi-Fi rồi thử lại.';
+      // ĐÍNH KÈM MÃ THAM CHIẾU. Máy đầy vạch sóng mà app vẫn báo mất mạng là ca có
+      // thật, báo từ thực địa 11/09 (cây ngoài sân, sóng mạnh) — và ở đúng ca đó
+      // câu chữ nào cũng chỉ là phỏng đoán, vì bản trước NÉM ĐI thứ duy nhất phân
+      // biệt được: chuỗi lỗi gốc. `TypeError` là đứt kết nối thật (đứt giữa chừng
+      // khi đang đẩy ảnh vẫn ra đúng mã này, kể cả lúc đầy vạch); còn lại là thứ
+      // khác hẳn. Mã ngắn này tra ngược được trong nhật ký, và một ảnh chụp màn
+      // hình từ vườn là đủ để biết đi hướng nào — thay vì một vòng hỏi lại.
+      return 'Chưa gửi được lên máy chủ. Kiểm tra sóng/Wi-Fi rồi thử lại; nếu máy đang đủ sóng thì thường là kết nối bị đứt giữa lúc đang gửi ảnh — thử lại một lần nữa.'
+        + errRefCode(err);
+    // KHÔNG hứa "ảnh vẫn còn trong máy" ở câu này. Ảnh có còn hay không tuỳ đường
+    // chụp (iOS giữ trong kho phiên, Android giữ trong trạng thái màn) và chưa ai
+    // đo độ bền của chúng qua một lần app bị hệ điều hành thu hồi. Hứa một thứ
+    // chưa đo rồi người dùng mất ảnh thật thì lần sau họ không tin câu nào nữa.
+    case 'timeout':
+      return 'Gửi ảnh quá lâu nên máy đã dừng lại (quá 2 phút). Hãy thử lại; nếu vẫn vậy thì chụp ít góc hơn cho lần này.'
+        + errRefCode(err);
+    case 'bad_response':
+      return 'Máy chủ có trả lời nhưng trả về thứ đọc không được — thường là do mạng Wi-Fi đang chen một trang đăng nhập vào giữa. Hãy mở trình duyệt đăng nhập Wi-Fi đó, hoặc tắt Wi-Fi và dùng 4G, rồi thử lại.'
+        + errRefCode(err);
+    case 'missing_image':
+      // KHÔNG nhắc tới sóng hay Wi-Fi ở câu này. Đây đúng là ca mà nhãn cũ đẩy người
+      // dùng đi kiểm tra một thứ không liên quan, rồi thử lại nhiều lần với đúng
+      // những tấm ảnh đã mất — nên lần nào cũng hỏng y hệt.
+      return 'Ảnh vừa chụp không còn trong máy nên chưa gửi đi được (máy đã tự dọn để lấy chỗ trống). Hãy chụp lại rồi gửi ngay, đừng để lâu giữa lúc chụp và lúc gửi.';
     case 'auth_error':
       return 'Phiên đăng nhập hết hạn. Hãy đăng nhập lại.';
     case 'rate_limited':
@@ -454,9 +513,33 @@ async function _apiCall<T>(
       return _apiCall<T>(url, method, body, timeoutMs, 1);
     }
 
+    // ── BA NGUYÊN NHÂN KHÁC HẲN NHAU, ĐỪNG GỘP LÀM MỘT ───────────────────────
+    // Bản trước gắn `network_error` cho MỌI thứ ném ra khỏi khối trên, và màn hình
+    // dịch nhãn đó thành "Mất kết nối mạng. Kiểm tra sóng/Wi-Fi rồi thử lại."
+    //
+    // Câu đó sai ở hai trong ba nguyên nhân, và sai theo kiểu tệ nhất: người dùng
+    // NHÌN THẤY máy mình đang đủ sóng và đủ Wi-Fi, nên câu của app mâu thuẫn với
+    // thứ họ đang nhìn. Lúc đó họ không còn cách nào đoán ra việc phải làm — báo
+    // thực địa 11/09 là đúng ca này: quét cây trong nhà, máy đủ sóng lẫn Wi-Fi, app
+    // vẫn nói mất kết nối.
+    //
+    //  · QUÁ HẠN (`AbortError`) — kết nối vẫn sống, chỉ là chậm. Lời gọi đăng ký
+    //    cây đẩy nhiều ảnh với trần 120 giây; trong nhà, sóng yếu thì chạm trần là
+    //    chuyện thường. Việc phải làm là RA CHỖ SÓNG TỐT rồi thử lại, không phải
+    //    đi kiểm tra Wi-Fi.
+    //  · MẤT KẾT NỐI THẬT (`TypeError` từ `fetch`) — câu cũ đúng ở đúng ca này.
+    //  · THÂN TRẢ VỀ KHÔNG PHẢI JSON (`SyntaxError` từ `resp.json()`) — máy chủ đã
+    //    trả lời, nhưng trả một trang HTML. Ngoài vườn và ở quán, đây gần như luôn
+    //    là trang đăng nhập Wi-Fi chen ngang. Bảo người ta kiểm tra sóng là chỉ sai
+    //    hướng: sóng tốt, chính cái Wi-Fi đó mới là thứ đang chặn.
+    const isBodyErr = err instanceof SyntaxError;
     return {
       ok: false,
-      error: { type: 'network_error', detail: String(err), http_status: 0 },
+      error: {
+        type: isTimeoutErr ? 'timeout' : isBodyErr ? 'bad_response' : 'network_error',
+        detail: String(err),
+        http_status: 0,
+      },
     };
   }
 }
@@ -781,7 +864,10 @@ export async function identifyTree(
 
   // M4: chỉ nối ?matcher= khi tester ép — mặc-định để backend dùng ENV.
   const qs = options.matcher ? `?matcher=${encodeURIComponent(options.matcher)}` : '';
-  return _apiCall<IdentifyResponse>(`${baseUrl}/api/identify${qs}`, 'POST', form, IMAGE_REQUEST_TIMEOUT_MS);
+  return attributeImageSendFailure(
+    await _apiCall<IdentifyResponse>(`${baseUrl}/api/identify${qs}`, 'POST', form, IMAGE_REQUEST_TIMEOUT_MS),
+    imagePaths,
+  );
 }
 
 /**
@@ -801,6 +887,53 @@ export async function submitIdentifyVerdict(
   if (params.correctTid) form.append('correct_tid', params.correctTid);
 
   return _apiCall<IdentifyVerdictResponse>(`${baseUrl}/api/identify_verdict`, 'POST', form);
+}
+
+/**
+ * Sau một lượt gửi ảnh NÉM, tách ra hai nguyên nhân mà iOS trả về giống hệt nhau.
+ *
+ * VÌ SAO PHẢI CÓ. `fetch` với `FormData` chứa `{ uri: 'file://…' }` giao việc đọc tệp
+ * cho tầng mạng của hệ điều hành. Tệp đó không đọc được — đã bị dọn, sai đường dẫn,
+ * hết quyền — thì NSURLSession làm hỏng CẢ lượt gọi và React Native dựng lại thành
+ * `TypeError: Network request failed`, **không phân biệt được** với mất sóng thật.
+ * Nên một máy đầy vạch sóng vẫn đọc ra "mất kết nối mạng", và người dùng đi kiểm tra
+ * Wi-Fi — việc không liên quan gì tới chỗ hỏng. Đây là ca báo từ thực địa 11/09: cây
+ * ngoài sân, sóng mạnh, mà màn hình báo mất mạng; đo cùng lúc thì máy chủ sống và
+ * trả lời trong 0,34 giây.
+ *
+ * CHẠY SAU, KHÔNG CHẠY TRƯỚC. Kiểm trước mỗi lượt gửi thì trả tiền ở mọi lượt CHẠY
+ * ĐƯỢC để phục vụ lượt hỏng; và tệ hơn, nó dựng thêm một cửa có thể tự sai (`getInfo`
+ * hỏng ⟹ chặn nhầm một lượt gửi lành). Chạy sau thì đường thường không tốn gì, và
+ * cửa này không chặn được cái gì cả — nó chỉ ĐỔI TÊN một lỗi đã xảy ra rồi.
+ *
+ * FAIL-OPEN có chủ ý: `fileExists` trả `true` khi không kiểm được (thiếu module,
+ * URI không phải `file://`). Không kiểm được ⟹ giữ nguyên nhãn `network_error` cũ.
+ * Đây là chiều đúng theo bảng ở Forall §Cổng gác — cơ chế này không chặn thao tác
+ * nào, nên hỏng thì phải im chứ không được tự tin đổi nhãn.
+ */
+async function attributeImageSendFailure<T>(
+  res: { ok: boolean; data?: T; error?: APIError },
+  imagePaths: string[],
+): Promise<{ ok: boolean; data?: T; error?: APIError }> {
+  if (res.ok || res.error?.type !== 'network_error') return res;
+
+  let missing = 0;
+  for (const p of imagePaths) {
+    if (!(await fileExists(p))) missing++;
+  }
+  if (missing === 0) return res;
+
+  return {
+    ok: false,
+    error: {
+      ...res.error,
+      type: 'missing_image',
+      // Giữ nguyên `detail` gốc và NỐI thêm số đo, không thay thế: chuỗi lỗi gốc là
+      // thứ duy nhất tra ngược được trong nhật ký, còn con số là thứ nói được vì sao
+      // đổi nhãn. Mất một trong hai thì lần sau lại phải đoán.
+      detail: `${res.error.detail} · ${missing}/${imagePaths.length} ảnh không còn trên đĩa`,
+    },
+  };
 }
 
 export async function enrollTree(
@@ -834,7 +967,10 @@ export async function enrollTree(
     form.append('dup', 'true');
   }
 
-  return _apiCall<EnrollResponse>(`${baseUrl}/api/enroll`, 'POST', form, IMAGE_REQUEST_TIMEOUT_MS);
+  return attributeImageSendFailure(
+    await _apiCall<EnrollResponse>(`${baseUrl}/api/enroll`, 'POST', form, IMAGE_REQUEST_TIMEOUT_MS),
+    imagePaths,
+  );
 }
 
 export async function verifyAddTree(
@@ -870,7 +1006,10 @@ export async function verifyAddTree(
   // nên không ai thấy.
   appendTreeRegions(form, options.regions);
 
-  return _apiCall<VerifyAddResponse>(`${baseUrl}/api/verify_add`, 'POST', form, IMAGE_REQUEST_TIMEOUT_MS);
+  return attributeImageSendFailure(
+    await _apiCall<VerifyAddResponse>(`${baseUrl}/api/verify_add`, 'POST', form, IMAGE_REQUEST_TIMEOUT_MS),
+    imagePaths,
+  );
 }
 
 export async function getTrees(
@@ -935,6 +1074,29 @@ export async function deleteTree(
   form.append('tree_id', treeId);
 
   const result = await _apiCall<{ ok: boolean }>(`${baseUrl}/api/delete`, 'POST', form);
+
+  // `result.ok` là cờ VẬN CHUYỂN — nối được máy chủ và HTTP không lỗi. Nó KHÔNG
+  // phải câu trả lời của máy chủ cho việc xoá. Kiểu khai ngay trên đã nói thân có
+  // trường `ok`, và trước bản này không dòng nào đọc nó.
+  //
+  // Vì sao chỗ này đắt hơn hai hàm anh em cùng tệp (`renameTree`, `setTreeFarm`)
+  // đã vá đúng lớp lỗi này: nơi gọi ở `TreeManagementScreen` chạy
+  // `forgetTreeLocally` ngay sau khi thấy `ok`, mà hàm đó xoá ảnh cây, video bằng
+  // chứng và toạ độ 3D TRÊN MÁY. Máy chủ trả `200 {"ok": false}` (cây không có
+  // trong kho, hoặc không thuộc chủ) thì cây vẫn còn trên máy chủ — kéo làm mới là
+  // nó quay lại — còn ảnh và video thì đã mất hẳn, không có bản nào khác.
+  if (result.ok && result.data?.ok !== true) {
+    return {
+      ok: false,
+      error: {
+        type: 'validation_error',
+        detail:
+          'Máy chủ không xoá cây này. Thường là do cây không còn trong kho ảnh, ' +
+          'hoặc cây không thuộc tài khoản đang đăng nhập. Ảnh trên máy được giữ nguyên.',
+        http_status: 200,
+      },
+    };
+  }
   return { ok: result.ok, error: result.error };
 }
 

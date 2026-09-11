@@ -301,6 +301,26 @@ const recoverLocalIdentityFromKey = async (
    */
   let lookupSaidNotFound = false;
 
+  /**
+   * VÌ SAO PHẢI GIỮ LÝ DO CỦA ĐƯỜNG 1, KHÔNG CHỈ GIỮ MỖI 404.
+   *
+   * Đường 3 ở dưới suy luận dựa trên một TIỀN ĐỀ viết thẳng trong chú thích của nó:
+   * "tới được đây nghĩa là đường 1 đã không ra DID nào; với khoá đã đăng ký thì
+   * đường 1 phải thành công". Tiền đề ấy chỉ đúng khi đường 1 THẬT SỰ HỎI ĐƯỢC máy
+   * chủ. Nó sai ở đúng ba ca hay gặp ngoài vườn, và trước bản này KHÔNG ca nào được
+   * kiểm: người dùng bỏ qua hộp sinh trắc thứ hai · mất sóng giữa chừng · máy chủ
+   * trả 5xx. Cả ba đều rơi xuống đường 3, nhận `3005` (khoá ĐÃ đăng ký), rồi báo
+   * `can_ten_dang_nhap` — một câu nói về TÊN ĐĂNG NHẬP, trong khi thứ vừa hỏng
+   * không liên quan gì tới tên.
+   *
+   * Người dùng thực địa đọc câu đó rồi xoá app cài lại, vì câu ấy không nói được
+   * điều gì họ làm khác đi. Cài lại không gỡ được: Keychain giữ khoá qua lần cài.
+   *
+   * Nên giữ lại phân loại lỗi của đường 1 và ĐỐI CHIẾU với kết luận của đường 3.
+   * `chua_chay` nghĩa là đường 1 chưa từng ném lỗi nào — khác hẳn "hỏng không rõ".
+   */
+  let duong1Loi = 'chua_chay';
+
   // ĐƯỜNG 1 — tra DID theo CHÍNH KHOÁ trong chip. Không hỏi tên đăng nhập.
   //
   // Đây là cửa `POST /identity/lookup` (PhoenixKey-Database #192, lên 18/08/2026,
@@ -343,7 +363,11 @@ const recoverLocalIdentityFromKey = async (
     // khoá đã thu hồi. Nên KHÔNG được dịch 404 ở đây thành một nguyên nhân cụ thể —
     // chỉ ghi sổ rồi đi tiếp. Ca "khoá chưa từng đăng ký" là ca duy nhất đường 3 cứu
     // được, và nó cũng chính là ca hay gặp thứ hai (sinh khoá xong thì mất mạng).
-    rLog.info('identity_lookup_by_key_failed', { raw: String(err).slice(0, 200) });
+    duong1Loi = describeRecoverFailure(err);
+    rLog.info('identity_lookup_by_key_failed', {
+      duong1Loi,
+      raw: String(err).slice(0, 200),
+    });
     // GIỮ LẠI việc "lookup nói không thấy". Một mình nó không kết luận được gì (404
     // gộp ba ca), nhưng ghép với câu trả lời của đường 3 thì SUY RA được — xem
     // `describeRecoverFailure` và chú thích ở `khoa_bi_thu_hoi`.
@@ -449,14 +473,56 @@ const recoverLocalIdentityFromKey = async (
     // ⚠ Đây là phép SUY LUẬN, không phải máy chủ nói. Nếu chữ ký lookup hỏng vì lý
     // do khác thì cũng ra 404 và rơi vào đây. Câu chữ vì thế nói "nhiều khả năng"
     // và vẫn chừa đường thử lại, chứ không phán chắc.
-    if (reason === 'can_ten_dang_nhap' && lookupSaidNotFound) reason = 'khoa_bi_thu_hoi';
+    // ── ĐỐI CHIẾU VỚI LÝ DO CỦA ĐƯỜNG 1 ──────────────────────────────────────
+    // `3005` chỉ nói "khoá này đã đăng ký". Nó KHÔNG nói vì sao đường 1 không lấy
+    // được DID cho chính khoá ấy — mà đó mới là thứ người dùng cần biết để làm
+    // khác đi. Thứ tự dưới đây đi từ kết luận CHẮC nhất xuống kết luận yếu nhất:
+    //
+    //  1. đường 1 nhận 404  ⟹ khoá có trong kho nhưng không `active` ⟹ đã thu hồi.
+    //  2. đường 1 hỏng vì CHƯA XÁC THỰC ⟹ người dùng bỏ qua hộp sinh trắc thứ hai.
+    //     Đây là ca im lặng nhất: không lỗi mạng, không lỗi máy chủ, không gì trên
+    //     màn hình nói rằng có một hộp thứ hai vừa bị bỏ qua.
+    //  3. đường 1 hỏng vì MẤT MẠNG ⟹ dùng câu về sóng, đã có sẵn.
+    //  4. còn lại ⟹ giữ nguyên `can_ten_dang_nhap`; tên đăng nhập vẫn là việc
+    //     người dùng làm được ngay, nên câu đó vẫn là câu đúng nhất còn lại.
+    reason = chonLyDoKhoiPhuc({ reason, lookupSaidNotFound, duong1Loi });
 
     console.warn('[PhoenixKey recover] failed:', err);
     rLog.error('identity_recover_failed', {
-      reason, lookupSaidNotFound, raw: String(err).slice(0, 300),
+      reason, lookupSaidNotFound, duong1Loi, raw: String(err).slice(0, 300),
     });
     return { ok: false, reason };
   }
+};
+
+/**
+ * Chọn LÝ DO cuối cùng, từ ba mảnh bằng chứng rời.
+ *
+ * Tách ra thành hàm THUẦN vì nó là một phép suy luận, không phải một bước của thủ
+ * tục: nó không gọi mạng, không đọc chip, không ghi gì. Nằm lồng trong `catch` thì
+ * không ghim được bằng phép kiểm, mà đây đúng là chỗ đã sai một lần ngoài thực địa.
+ *
+ * `reason` — kết luận của đường 3 (đăng ký lại).
+ * `lookupSaidNotFound` — đường 1 có nhận 404 không.
+ * `duong1Loi` — đường 1 hỏng vì gì, `'chua_chay'` nếu nó không ném lỗi nào.
+ */
+export const chonLyDoKhoiPhuc = ({
+  reason,
+  lookupSaidNotFound,
+  duong1Loi,
+}: {
+  reason: string;
+  lookupSaidNotFound: boolean;
+  duong1Loi: string;
+}): string => {
+  // Chỉ can thiệp vào đúng một kết luận. Mọi lý do khác của đường 3 đều đã nói
+  // đúng thứ nó biết, không có gì để đối chiếu thêm.
+  if (reason !== 'can_ten_dang_nhap') return reason;
+
+  if (lookupSaidNotFound) return 'khoa_bi_thu_hoi';
+  if (duong1Loi === 'chua_xac_thuc') return 'duong1_chua_xac_thuc';
+  if (duong1Loi === 'mat_mang') return 'mat_mang';
+  return reason;
 };
 
 /**
@@ -525,11 +591,28 @@ const RECOVER_FAIL_MESSAGE: Record<string, string> = {
     'Máy chủ trả về một mã danh tính app chưa hiểu được. Đây là lỗi phía máy chủ — chụp màn hình này gửi hỗ trợ.',
   can_ten_dang_nhap:
     'Máy này đã có khoá của một danh tính đã tạo trước đó. Nhập lại đúng tên đăng nhập của danh tính đó để mở lại trên máy này.',
+  // Ca này TRƯỚC ĐÂY đội lốt `can_ten_dang_nhap` và đó là chỗ đắt nhất: người dùng
+  // được bảo đi sửa tên đăng nhập, trong khi thứ vừa hỏng là một hộp sinh trắc mà
+  // họ còn không biết là có. Câu phải gọi đúng tên hộp đó, vì trên màn hình nó là
+  // thứ duy nhất phân biệt được lần hỏi thứ nhất với lần thứ hai.
+  duong1_chua_xac_thuc:
+    'Máy này đã có danh tính của bạn, nhưng bước xác thực để mở lại chưa xong. Bấm lại và làm hết CẢ HAI lần hỏi vân tay hoặc khuôn mặt — lần thứ hai có tên "Khôi phục danh tính".',
   // Ca NGÕ CỤT: khoá còn trong máy nhưng máy chủ đã thu hồi nó, nên không cửa nào
   // nhận. Xoá app cài lại KHÔNG gỡ được — phải nói thẳng, nếu không người dùng sẽ
-  // cài lại lần thứ ba, thứ tư. Lối ra duy nhất là 24 từ, và câu phải chỉ đúng nó.
+  // cài lại lần thứ ba, thứ tư.
+  //
+  // CÂU CŨ NÓI "lối ra duy nhất là 24 từ", VÀ ĐÓ LÀ MỘT LỐI RA KHÔNG TỒN TẠI với
+  // phần lớn người đọc nó: app chưa bao giờ bắt ai ghi lại 24 từ — `SeedExportScreen`
+  // là màn tự nguyện và nằm SAU lớp đăng nhập, tức đúng người đang kẹt ở đây là
+  // người không vào lấy được. Chỉ vào một thứ họ không có thì câu ấy chính là ngõ
+  // cụt mà nó đang mô tả.
+  //
+  // Thứ máy này CÓ: Master_KEK vẫn nằm trong kho khoá (kho khoá sống qua lần xoá
+  // app, AsyncStorage thì không) — cùng một bí mật mà 24 từ dùng để dựng lại. Nên
+  // màn khôi phục dò kho khoá rồi mở lối "khôi phục bằng ví trên máy", chỉ cần tên
+  // đăng nhập. Câu này vì thế chỉ tới MÀN, không chỉ tới phương tiện.
   khoa_bi_thu_hoi:
-    'Khoá trên máy này đã bị thu hồi, nhiều khả năng do trước đó có một lần khôi phục bằng 24 từ. Cài lại ứng dụng không mở lại được. Dùng 24 từ khôi phục của bạn để mở lại danh tính trên máy này.',
+    'Khoá trên máy này đã bị thu hồi, nhiều khả năng do trước đó có một lần khôi phục ở nơi khác. Cài lại ứng dụng không mở lại được. Hãy mở màn Khôi phục danh tính: nếu ví của bạn còn trong máy thì chỉ cần tên đăng nhập, không cần 24 từ.',
   ten_khong_khop_khoa:
     'Tên đăng nhập này thuộc về một danh tính khác, không phải danh tính đang có khoá trên máy. Kiểm tra lại tên, hoặc dùng máy đã tạo danh tính đó.',
   khong_ro:

@@ -1225,6 +1225,52 @@ const TreeDetailScreen = () => {
         </View>
       ) : null}
 
+      {/* Bằng chứng video trên LampNet. Hiện mã lưu trữ vì OriLife KHÔNG có route
+          tra ngược — đây là chỗ duy nhất đội thực địa đối chiếu được sau buổi.
+          Chạm để sao chép mã. */}
+      {videoProofs.length > 0 && (
+        <View style={styles.proofWrap}>
+          <View style={styles.sectionLeft}>
+            <View style={styles.sectionDot} />
+            <Text style={styles.sectionTitle}>{tk('trace.tree.videos', { n: videoProofs.length })}</Text>
+          </View>
+          {videoProofs.map(p => (
+            <TouchableOpacity
+              key={p.videoCid}
+              style={styles.proofRow}
+              activeOpacity={0.7}
+              onPress={() => {
+                Linking.openURL(`https://lampnet.cloud/${p.videoCid}`)
+              }}
+            >
+              <Icon
+                name={p.stored === false ? 'triangle-exclamation' : 'shield-halved'}
+                size={15}
+                color={p.stored === false ? '#B26A00' : '#1b5e20'}
+              />
+              <View style={styles.proofBody}>
+                <Text style={styles.proofCid} numberOfLines={1}>{p.videoCid}</Text>
+                <Text style={styles.proofMeta}>
+                  {p.stored === false ? tk('trace.tree.notUploaded') : ''}
+                  {p.at ? new Date(p.at).toLocaleString('vi-VN') : ''}
+                  {/* Cùng con số, cùng người đọc, nên phải cùng một lời rào với màn
+                      kết quả quay quả: đây là số quả nhiều nhất trong MỘT khung do
+                      bộ dò màu ước lượng, không phải số quả của cả cây. Một màn có
+                      rào một màn không thì người ghi chép sẽ chép con số ở màn không
+                      có rào. */}
+                  {p.nFruitsMax ? ` · ước lượng ${p.nFruitsMax} quả trong 1 khung` : ''}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => {
+                Clipboard.setString(p.videoCid);
+              }}>
+                <Icon name="copy" size={14} color={COLORS.textMuted} />
+              </TouchableOpacity>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
       {/* ═══ MỤC 3 — QUẢ ═════════════════════════════════════════════════ */}
       <View style={[styles.sectionRow, styles.sectionQua]}>
         <View style={styles.sectionLeft}>
@@ -2117,6 +2163,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999,
   },
   treeVideoBtnText: { fontSize: 12.5, fontWeight: '800', color: ORG_TONE.primary },
+  proofWrap: { gap: 8, marginBottom: 18 },
   proofRow: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     borderWidth: 1, borderColor: '#c8e6c9', backgroundColor: '#f1f8e9',

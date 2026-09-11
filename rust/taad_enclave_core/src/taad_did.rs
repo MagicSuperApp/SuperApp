@@ -21,6 +21,7 @@
 //   - Defer LampNet Daemon abstraction (Task #16) sau khi prototype ổn định
 // ================================================================
 
+use crate::onchain_schema::check_taad_datum_arity;
 use blake2::{Blake2b, Digest};
 use blake2::digest::consts::{U28, U32};
 use cardano_serialization_lib as csl;
@@ -707,6 +708,10 @@ pub fn build_publish_did_tx(
 }
 
 // ─── 3. TAAD Plutus Data encoding (per types.ak v0.1.0-preprod) ────
+//
+// ⚠ ARITY của TAADDatum KHÔNG còn gõ ở tệp này. Nó nằm ở
+// `onchain_schema::TAAD_DATUM_FIELDS`, cùng với bản validator đang nhắm tới và
+// điều kiện để đổi con số đó. Đọc đầu tệp ấy trước khi sửa lược đồ dưới đây.
 //
 // Validator schema source: `PhoenixKey-Validator/lib/phoenixkey/types.ak`
 // + compiled blueprint `PhoenixKey-Validator/deploy/plutus-preprod.json`.
@@ -1828,13 +1833,7 @@ fn decode_owner_datum(inline_datum_hex: &str) -> Result<DecodedOwnerDatum, Strin
         return Err("owner TAADDatum constructor index must be 0".into());
     }
     let fields = constr.data();
-    let n = fields.len();
-    if n != 9 && n != 10 {
-        return Err(format!(
-            "owner TAADDatum must have 9 or 10 fields, got {}",
-            n
-        ));
-    }
+    check_taad_datum_arity("owner", fields.len())?;
 
     // Field 0: did
     let did_bytes = fields
@@ -1944,18 +1943,12 @@ fn decode_taad_datum_for_rotate(
         return Err("TAADDatum constructor index must be 0".into());
     }
     let fields = constr.data();
-    // Schema v2 (validator with `recovery_anchor`) has 10 fields. We still
-    // accept a legacy 9-field datum so a UTxO created before the field was
-    // appended can be rotated forward (the rotate encoder will add the field,
-    // defaulting it to None when absent). Reject anything outside {9, 10} —
-    // a different arity means a schema we don't understand.
+    // Nhận CẢ lược đồ cũ: một UTxO tạo trước ngày `recovery_anchor` được nối vào
+    // vẫn nằm trên chuỗi và vẫn phải xoay khoá được (bộ mã hoá xoay sẽ nâng nó
+    // lên v2, điền `None`). Arity nào ngoài hai bản đó là một lược đồ ta không
+    // hiểu — xem `onchain_schema`.
     let n = fields.len();
-    if n != 9 && n != 10 {
-        return Err(format!(
-            "TAADDatum must have 9 (legacy) or 10 (with recovery_anchor) fields, got {}",
-            n
-        ));
-    }
+    check_taad_datum_arity("rotate", n)?;
 
     // Field 0: did
     let did_bytes = fields
@@ -2454,12 +2447,7 @@ fn decode_taad_datum_full(inline_datum_hex: &str) -> Result<FullTaadDatum, Strin
     }
     let fields = constr.data();
     let n = fields.len();
-    if n != 9 && n != 10 {
-        return Err(format!(
-            "TAADDatum must have 9 (legacy) or 10 fields, got {}",
-            n
-        ));
-    }
+    check_taad_datum_arity("full", n)?;
 
     let did_bytes = fields
         .get(0)
@@ -3406,6 +3394,8 @@ fn parse_pkh_list(json: &str, label: &str) -> Result<Vec<[u8; 28]>, String> {
 
 #[cfg(test)]
 mod tests {
+    // Arity doc tu MOT cho — xem `onchain_schema`. Khong go lai so o day.
+    use crate::onchain_schema::TAAD_DATUM_FIELDS;
     use super::*;
 
     // ─── Cửa fail-closed cho ba builder khôi phục ──────────────────
@@ -3772,7 +3762,7 @@ mod tests {
         // recovery_anchor = None (Constr 1 []), matching the validator's
         // TAADDatum arity. A 9-field create would fail validation on-chain.
         let constr = datum.as_constr_plutus_data().unwrap();
-        assert_eq!(constr.data().len(), 10, "create must emit 10 fields");
+        assert_eq!(constr.data().len(), TAAD_DATUM_FIELDS, "create must emit v2 arity");
         assert_eq!(
             constr.data().get(9).as_constr_plutus_data().unwrap().alternative(),
             BigNum::from(1u64),
@@ -3809,7 +3799,7 @@ mod tests {
         assert_eq!(redecoded.sequence, 1, "Rotate must seq+1");
         // New datum must carry the v2 10-field schema.
         let nf = new_datum.as_constr_plutus_data().unwrap().data();
-        assert_eq!(nf.len(), 10, "rotate output must have 10 fields (v2 schema)");
+        assert_eq!(nf.len(), TAAD_DATUM_FIELDS, "rotate output must have v2 arity");
     }
 
     /// EntityType encodes as ConstrPlutusData(alt = entity_type, no fields).
@@ -3958,7 +3948,7 @@ mod tests {
         let new_constr = new_datum.as_constr_plutus_data().unwrap();
         let nf = new_constr.data();
         // v2 schema: 10 fields even when rotating from a legacy 9-field datum.
-        assert_eq!(nf.len(), 10);
+        assert_eq!(nf.len(), TAAD_DATUM_FIELDS);
         // Field 9 recovery_anchor = None = Constr 1 [] (no new CID, legacy src).
         assert_eq!(
             nf.get(9).as_constr_plutus_data().unwrap().alternative(),
@@ -4031,7 +4021,7 @@ mod tests {
         .unwrap();
 
         let nf = new_datum.as_constr_plutus_data().unwrap().data();
-        assert_eq!(nf.len(), 10, "rotate output is v2 (10 fields)");
+        assert_eq!(nf.len(), TAAD_DATUM_FIELDS, "rotate output is v2");
         let anchor = nf.get(9).as_constr_plutus_data().unwrap();
         assert_eq!(
             anchor.alternative(),
@@ -4065,7 +4055,7 @@ mod tests {
         let new_datum =
             encode_taad_datum_rotate(&decoded, &[0x33u8; 28], &[0x44u8; 32], None).unwrap();
         let nf = new_datum.as_constr_plutus_data().unwrap().data();
-        assert_eq!(nf.len(), 10);
+        assert_eq!(nf.len(), TAAD_DATUM_FIELDS);
         assert_eq!(
             nf.get(9).as_constr_plutus_data().unwrap().alternative(),
             BigNum::from(1u64),
@@ -4141,7 +4131,7 @@ mod tests {
         let upgraded =
             encode_taad_datum_rotate(&decoded, &[0x33u8; 28], &[0x44u8; 32], None).unwrap();
         let nf = upgraded.as_constr_plutus_data().unwrap().data();
-        assert_eq!(nf.len(), 10, "upgraded to v2 schema");
+        assert_eq!(nf.len(), TAAD_DATUM_FIELDS, "upgraded to v2 schema");
         assert_eq!(nf.get(4).as_integer().unwrap().to_str(), "3", "seq+1");
         assert_eq!(
             nf.get(9).as_constr_plutus_data().unwrap().alternative(),

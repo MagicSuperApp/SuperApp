@@ -1,3 +1,73 @@
+## Arity lược đồ on-chain về MỘT chỗ khai (issue #291, việc 3)
+
+### Việc này làm gì, và cố ý KHÔNG làm gì
+Issue #291 có bốn việc. Đây **chỉ là việc 3**: gom con số arity về một chỗ.
+
+Nó **không** đổi con số nào, và **không** kết luận con số nào đúng. Việc 1 —
+chốt bản validator được nhắm tới — **không làm được từ kho này**: quét toàn kho
+tìm `*.ak`, `plutus.json`, `blueprint*.json` cho **không tệp nào**. Lược đồ
+on-chain chỉ tồn tại ở đây dưới dạng chú thích trong mã Rust.
+
+### Ba chỗ issue nói chưa chính xác, đã đối chiếu lại
+1. **Không phải "hai nơi" gõ cứng số 10 — mà mười sáu chỗ cho bốn con số.**
+   TAADDatum: 3 guard chạy thật (`decode_owner_datum` · `decode_taad_datum_for_rotate`
+   · `decode_taad_datum_full`) + 6 assert. LAMP: 5 guard + 2 assert. Việc này làm
+   luận điểm của issue MẠNH hơn, không yếu đi.
+2. **Không phải "cả họ TAAD" — 8 trên 17 hàm.** Chỉ 3 hàm phát datum
+   (`create` · `create_child` · `rotate`) và 5 hàm đọc datum (`deactivate` ·
+   `init/cancel/finalize_recovery` · `update_guardians`). Chín hàm còn lại
+   (stake/vote delegation, mint registry, supply state, signed transfer,
+   withdraw reward) không đụng `TAADDatum`. Hai nửa hỏng theo hai kiểu khác nhau:
+   phát → validator từ chối; đọc → app tự từ chối UTxO thật ngay trên máy.
+   (Danh sách `soi-mach.chua-noi.txt` có **17** mục `taad_build_*` ở dòng 7–23,
+   không phải 12 ở dòng 7–18.)
+3. **Tiền đề "validator khai 15" chưa đủ để kết luận "mọi giao dịch bị từ chối".**
+   Chính `taad_did.rs:737-741` ghi ngược lại: bản **ĐANG DEPLOY** trên preprod
+   (blueprint hash `1d61d189…`) dùng lược đồ **10 trường**. `564ad83` là **mã
+   nguồn validator đã đi trước bản deploy**. Hai câu không mâu thuẫn — chúng nói
+   về hai thứ. Thêm nữa: script CBOR **không nằm trong kho** mà là **tham số lúc
+   chạy** (`taad_script_cbor_hex`), nên "validator nào" do người gọi quyết.
+
+### Làm gì
+`rust/taad_enclave_core/src/onchain_schema.rs` — một chỗ khai, cho **cả hai** kho
+validator. Mở rộng sang LAMP vì cùng một cái bẫy: `registry_mint.rs` /
+`mint_lamp.rs` cũng chép lược đồ của một tệp `.ak` không có ở đây ("mirrors
+registry.ak/types.ak schema **byte-for-byte**") và cũng gõ tay arity. Vá riêng
+TAAD là vá một nửa rồi tuyên bố xong.
+
+Neo ghi thành **dữ liệu** (`SchemaPin`) chứ không thành chú thích, vì chú thích
+không in ra được: khi guard nổ ngoài đồng, câu lỗi phải nói luôn nó đang đo theo
+bản nào. `LAMP_GENESIS_VALIDATOR.reference` để trống có chủ ý — **không bịa một
+hash cho đủ ô**, vì một cái neo sai còn tệ hơn một ô trống.
+
+Hai cổng dùng chung (`check_taad_datum_arity`, `check_lamp_arity`) thay cho tám
+câu điều kiện tự viết, trong đó hai câu còn không nói nhận được bao nhiêu trường.
+
+### Một ca kiểm đang đỏ VÌ SAI CHỮ
+`decode_supply_state_datum_rejects_wrong_field_count` ghim chuỗi `"4 field"`. Đổi
+câu lỗi là nó đỏ — nhưng đỏ vì sai CHỮ, không phải vì sai arity. Một ca đỏ nói
+nhầm lý do còn tốn thời gian hơn một ca xanh oan. Nay nó đọc hằng.
+
+### Đo
+`cargo build --lib` sạch — **không cảnh báo mới nào** từ bốn tệp đã sửa (bốn cảnh
+báo `add_key_input` là deprecation có sẵn). `cargo test --lib` **172/172**, trong
+đó 5 ca mới của `onchain_schema`. `jest` không đổi: 2675/2677, bài đỏ duy nhất là
+`soiMachBoChuThich` đỏ sẵn từ trước.
+
+### Còn lại cho issue #291
+· **Việc 1** cần bản blueprint **đã deploy** (hash) — không lấy được từ kho này.
+· **Việc 2** chờ việc 1.
+· **Việc 4** chưa tới lượt: chưa hàm nào được nối ra màn hình, nên chưa dòng nào
+  được gỡ khỏi `soi-mach.chua-noi.txt`.
+· Một lỗi **thứ hai** đừng để issue này nuốt: `taad_did.rs:3092-3100` — validator
+  khai trường 8 là `revoked_ms` (POSIX mili-giây) còn Rust ghi **số slot**. Cùng
+  kiểu `Int`, cả hai đều dương ⇒ **không bài kiểm nào bắt được**. Sửa arity mà
+  quên chỗ này thì datum vẫn sai, chỉ khác là sai âm thầm hơn.
+
+CHƯA ĐO ĐƯỢC: không có giao dịch thật nào chạy qua đường này (cả họ hàm còn nằm
+trong danh sách chưa-nối), nên phép đo cuối — validator có nhận datum không — vẫn
+chưa ai thực hiện. Việc này chỉ làm cho ngày đó dễ sửa hơn, không làm nó xảy ra.
+
 ## Tấm "Khác" ở màn chi tiết cây: ba hàng chữ trôi nổi → ba nút thật
 
 ### Yêu cầu

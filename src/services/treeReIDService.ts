@@ -292,7 +292,7 @@ export function enrollWarningMessages(res?: {
  * cắt trần 24 ký tự. Không moi được thì trả chuỗi rỗng — thà không có mã còn hơn
  * một mã bịa.
  */
-function errRefCode(err: APIError): string {
+export function errRefCode(err: APIError): string {
   const raw = (err.detail ?? '').trim();
   if (!raw) return '';
   const name = raw.split(':')[0].trim();

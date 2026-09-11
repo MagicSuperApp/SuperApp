@@ -167,9 +167,9 @@ export function buildFarmRing(
   treeCount: number,
   treeOrigin?: LatLng | null,
 ): { ring: Vec2[]; origin: LatLng | null; hasBoundary: boolean } {
-  const pts = (boundary ?? []).filter(
-    (p) => p && Number.isFinite(p.lat) && Number.isFinite(p.lng),
-  );
+  // `isUsableLatLng` chứ không `Number.isFinite`: cùng lý do với `originFromTrees`
+  // ngay trên — một đỉnh `0/0` kéo trọng tâm ranh giới ra giữa Đại Tây Dương.
+  const pts = (boundary ?? []).filter(isUsableLatLng);
   const spare = isUsableLatLng(treeOrigin) ? treeOrigin : null;
   if (pts.length < 3) {
     const origin = spare ?? (pts.length ? centroidLatLng(pts) : null);

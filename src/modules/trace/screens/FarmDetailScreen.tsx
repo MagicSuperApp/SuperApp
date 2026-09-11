@@ -1074,6 +1074,8 @@ const AddFarmMode = ({
 const FarmDetailMode = ({
   farm,
   trees,
+  treesSyncError,
+  onRetryTrees,
   searchQuery,
   currentPage,
   onSearchChange,
@@ -1087,6 +1089,13 @@ const FarmDetailMode = ({
 }: {
   farm: any;
   trees: any[];
+  /**
+   * Lượt hỏi cây gần nhất KHÔNG tới được máy chủ — câu dành cho người dùng.
+   * `null` = tới được. Danh sách rỗng với `null`, và danh sách rỗng với một câu
+   * ở đây, là HAI chuyện khác hẳn nhau — nên chúng ra hai màn khác nhau.
+   */
+  treesSyncError: string | null;
+  onRetryTrees: () => void;
   searchQuery: string;
   currentPage: number;
   onSearchChange: (query: string) => void;
@@ -1454,7 +1463,19 @@ const FarmDetailMode = ({
         ListHeaderComponent={bentoHeader}
         ListEmptyComponent={
           filteredTrees.length === 0 ? (
-            trees.length === 0 ? (
+            /* Danh sách rỗng vì KHÔNG HỎI ĐƯỢC máy chủ là một màn KHÁC, và nó
+               phải đứng trước. "Vườn này chưa có cây nào" là một khẳng định về
+               dữ liệu của người dùng; app chỉ được nói câu đó khi nó thật sự
+               hỏi được. Cây vẫn nằm trên máy chủ, và lời mời "thêm cây đầu
+               tiên" ở đúng ca này dẫn tới đăng ký trùng. */
+            trees.length === 0 && treesSyncError ? (
+              <StateView
+                status="error"
+                title={tk('trace.farmDetail.treeSyncFailTitle')}
+                message={treesSyncError}
+                onRetry={onRetryTrees}
+              />
+            ) : trees.length === 0 ? (
               <StateView
                 status="empty"
                 title="Chưa có cây nào trong vườn"
@@ -1721,6 +1742,7 @@ const FarmDetailScreen = () => {
   const dispatch = useAppDispatch();
   const user = useSelector((state: RootState) => state.user.currentUser);
   const trees = useSelector((state: RootState) => state.farm.trees);
+  const treesSyncError = useSelector((state: RootState) => state.farm.treesSyncError);
   const [treeIdentificationResult, setTreeIdentificationResult] = useState<{
     code: string;
     images: string[];
@@ -2527,6 +2549,8 @@ const FarmDetailScreen = () => {
       <FarmDetailMode
         farm={farm}
         trees={trees}
+        treesSyncError={treesSyncError}
+        onRetryTrees={() => { if (farm_id) dispatch(syncTreesFromBackend(farm_id)); }}
         searchQuery={searchQuery}
         currentPage={currentPage}
         onSearchChange={setSearchQuery}

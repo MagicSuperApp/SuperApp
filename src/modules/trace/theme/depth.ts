@@ -30,7 +30,7 @@
 
 import { Platform, type TextStyle, type ViewStyle } from 'react-native';
 
-import { withAlpha } from '../../../theme';
+import { TRACE_THEME, withAlpha } from '../../../theme';
 
 // ---------------------------------------------------------------------------
 // Bảng màu — nước biển nông dưới nắng
@@ -39,13 +39,41 @@ import { withAlpha } from '../../../theme';
 /**
  * Tên cũ (`leaf`, `soil`, `bark`…) giữ nguyên để không phải sửa nơi dùng, nhưng
  * GIÁ TRỊ nay lấy từ nước và lá non thay vì đất và vỏ cây.
+ *
+ * ── Ba khoá đầu ĐỔI THEO APP, phần còn lại thì không ───────────────────────
+ *
+ * ⛔ Bản trước gõ cứng cả ba sắc xanh chủ đạo ở đây, nên mọi app dựng từ nền mã
+ *    này hiện module Truy xuất bằng đúng một tông xanh, bất kể app đó khai màu
+ *    gì. `theme/hexNhanDien.test.ts` không bắt được vì nó dựng tập cần canh TỪ
+ *    `theme/tokens.ts`, mà ba hex ấy không có mặt ở đó — một bảng nhãn hiệu
+ *    SONG SONG thì phép kiểm dựa trên bảng chính không thể nhìn thấy.
+ *
+ *    Tệ hơn: `tokens.ts` có chú thích ngay tại `BRAND_TOKENS.trace` dặn "phải
+ *    KHỚP `TONE.primary`/`primaryDeep`, đổi một bên thì đổi bên kia". Lời dặn
+ *    ấy là một phép đồng bộ bằng tay, và nó ĐÃ TRÔI: bảng kia giữ `#0F8A6A`
+ *    trong khi bảng này giữ `#166e43` — thanh trên một màu, thân màn một màu.
+ *
+ * Nay `leaf`/`leafDeep`/`leafSoft` ĐỌC từ `TRACE_THEME` (`theme/index.ts`), tức
+ * từ cấu hình của app đang chạy: `instance.config.ts` → `themeConfig.brand.trace`.
+ * Không còn bản thứ hai để mà trôi.
+ *
+ * Đọc bằng GETTER chứ không chụp giá trị lúc nạp module: `setActiveThemeConfig`
+ * ghi đè TẠI CHỖ các nhánh của theme đang chạy, nên getter luôn trả bản mới —
+ * kể cả ở bài kiểm đổi theme giữa chừng, nơi một giá trị chụp sẵn sẽ đứng im mà
+ * vẫn xanh.
+ *
+ * Các khoá còn lại (`moss`, `soil`, `bark`, `sun`, `water`, `paper`, `clay`) CỐ
+ * Ý đứng yên: chúng là màu MINH HOẠ của module — hoạ tiết lá, nền trang, chữ,
+ * quả chín, nước mưa — mang nghĩa nghề vườn chứ không mang nhãn hiệu, nên chúng
+ * giống nhau ở mọi app. Muốn đổi một trong số đó theo app thì phải khai nó
+ * thành token ở `theme/tokens.ts` trước, đừng gõ một giá trị mới vào đây.
  */
 export const NATURE = {
-  /** Xanh chủ đạo — lá non pha lam, tươi hơn hẳn xanh rêu cũ. */
-  leaf: '#166e43',
-  leafDeep: '#11563a',
-  leafSoft: '#DDF3EC',
-  /** Xanh phụ, dùng cho hạng hai. */
+  /** Xanh chủ đạo — màu NHÃN HIỆU của app đang chạy. */
+  get leaf(): string { return TRACE_THEME.primary; },
+  get leafDeep(): string { return TRACE_THEME.primaryDeep; },
+  get leafSoft(): string { return TRACE_THEME.primaryLight; },
+  /** Xanh phụ, dùng cho hạng hai. Màu minh hoạ — KHÔNG đổi theo app. */
   moss: '#4fa964',
   /** "Đất" nay là NƯỚC: trắng ngả lam-lục, thật sáng. */
   soil: '#F2F9FB',
@@ -126,7 +154,11 @@ export const GRADIENT = {
    * bằng độ tối. Muốn một ô tối thật thì phải cho `EntityTimeline` một tham số
    * `onDark` trước đã — việc đó đụng cả màn chi tiết cây, nên nó là lượt khác.
    */
-  hero: { from: '#F4FCF8', to: NATURE.leafSoft, angle: 145, onDark: false },
+  get hero(): GradientToken {
+    // Getter vì chặng `to` là màu nhãn hiệu — xem `NATURE`. Một đối tượng chụp
+    // sẵn lúc nạp module thì đứng im ở màu của app đầu tiên.
+    return { from: '#F4FCF8', to: NATURE.leafSoft, angle: 145, onDark: false };
+  },
 
   /** Ô số liệu / ô phụ — trắng ngả một hơi lam-lục ở góc dưới. */
   tile: { from: NATURE.paper, to: '#F1F9FB', angle: 135, onDark: false },
@@ -154,7 +186,9 @@ export const GRADIENT = {
   space: { from: '#1B4C5C', to: '#123A47', angle: 150, onDark: true },
 
   /** Ô hành động chính khi nó KHÔNG phải ô hero — nút lớn, chữ trắng. */
-  action: { from: NATURE.leaf, to: NATURE.leafDeep, angle: 135, onDark: true },
+  get action(): GradientToken {
+    return { from: NATURE.leaf, to: NATURE.leafDeep, angle: 135, onDark: true };
+  },
 } as const satisfies Record<string, GradientToken>;
 
 export type GradientName = keyof typeof GRADIENT;
@@ -267,9 +301,11 @@ export const GLASS = {
 // ---------------------------------------------------------------------------
 
 export const TONE = {
-  primary: NATURE.leaf,
-  primaryDeep: NATURE.leafDeep,
-  primarySoft: NATURE.leafSoft,
+  // Ba khoá này là NHÃN HIỆU, nên chúng đi thẳng từ theme của app đang chạy.
+  // Getter chứ không chụp giá trị — lý do đầy đủ ở chú thích của `NATURE`.
+  get primary(): string { return NATURE.leaf; },
+  get primaryDeep(): string { return NATURE.leafDeep; },
+  get primarySoft(): string { return NATURE.leafSoft; },
   leaf: NATURE.moss,
   leafSoft: withAlpha(NATURE.moss, 0.14),
   sun: NATURE.sun,

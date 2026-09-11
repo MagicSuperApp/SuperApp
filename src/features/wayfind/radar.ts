@@ -20,7 +20,9 @@
  * Mọi thứ trong tệp: mét cho khoảng cách, độ cho góc, pixel cho màn. Không trộn.
  */
 
-import { haversineMeters, initialBearingDeg, normalizeDeg, type LatLon } from './wayfind';
+import {
+  haversineMeters, initialBearingDeg, isValidLatLon, normalizeDeg, type LatLon,
+} from './wayfind';
 
 /** Mét trên một độ vĩ. Trái Đất không tròn đều nhưng ở cự ly 20 m thì sai số này không đo được. */
 const M_PER_DEG_LAT = 111_320;
@@ -105,9 +107,10 @@ export function radarPoint(
 export function asLatLon(p: unknown): LatLon | null {
   if (!p || typeof p !== 'object') return null;
   const o = p as Record<string, unknown>;
-  const lat = Number(o.lat);
-  const lon = Number(o.lon ?? o.lng);
-  return Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : null;
+  // `isValidLatLon` chứ không `Number.isFinite`: `0/0` là giá trị máy sinh ra
+  // khi chưa bắt được GPS, và một đỉnh như thế kéo cả ranh giới ra khỏi màn.
+  const q = { lat: Number(o.lat), lon: Number(o.lon ?? o.lng) };
+  return isValidLatLon(q) ? q : null;
 }
 
 /**

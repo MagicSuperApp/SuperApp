@@ -210,7 +210,23 @@ async function _apiCall<T>(
       return { ok: false, error: { type: 'server_error', detail: `Lỗi máy chủ: HTTP ${resp.status}`, http_status: resp.status } };
     }
     if (!resp.ok) {
-      return { ok: false, error: { type: 'server_error', detail: `HTTP ${resp.status}`, http_status: resp.status } };
+      // ĐỌC THÂN PHẢN HỒI TRƯỚC KHI BỎ NÓ ĐI.
+      //
+      // Nhánh này bắt mọi mã 4xx còn lại (400 · 403 · 404 · 409). OriLife đặt câu
+      // tiếng Việt cho người dùng ở `error`, còn FastAPI đặt lỗi kiểm tra ở `detail`
+      // — đúng khuôn mà `fruitVideoService.ts:160` đã đọc. Thay hết bằng "HTTP 409"
+      // là lấy một câu nói được người ta phải làm gì, đổi thành một câu không.
+      //
+      // `HTTP <mã>` vẫn giữ làm lưới đỡ khi thân rỗng hoặc không phải JSON (trang
+      // chặn WiFi ngoài vườn trả HTML). Lúc đó nó là mã tra ngược được, không phải
+      // một câu giả vờ giải thích.
+      let detail = `HTTP ${resp.status}`;
+      try {
+        const body = await resp.json();
+        const tuMayChu = body?.error ?? body?.detail;
+        if (typeof tuMayChu === 'string' && tuMayChu.trim()) detail = tuMayChu;
+      } catch { /* thân rỗng hoặc không phải JSON → giữ mã HTTP */ }
+      return { ok: false, error: { type: 'server_error', detail, http_status: resp.status } };
     }
 
     const data = await resp.json() as T;

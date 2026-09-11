@@ -28,7 +28,7 @@ import {
   storeMasterKek,
 } from '../services/masterKekStore';
 import { phoenixKeyApi, PhoenixKeyApiError } from '../services/phoenixKey-api';
-import { enrollKeypair, ownerPublicKey, saveUserDid, currentUserDid } from '../sdk/phoenixKey';
+import { enrollKeypair, ownerPublicKey, saveUserDid, currentUserDid, signRaw } from '../sdk/phoenixKey';
 import { phoenixKeyAuth } from '../services/phoenixKeyAuthService';
 import { loginUser } from '../store/userSlice';
 import { countMnemonicWords, normalizeMnemonic } from '../utils/mnemonic';
@@ -127,6 +127,16 @@ const RestoreIdentityScreen = () => {
   ) => {
     const bangCumTu = nguon === 'cum-tu';
 
+    /**
+     * Đã sinh khoá phần cứng MỚI chưa — tức khoá cũ đã bị xoá khỏi chip chưa.
+     *
+     * Phải theo dõi vì nó đổi HẲN ý nghĩa của một lần thất bại: chưa sinh khoá mới
+     * thì hỏng là hỏng suông, thử lại lúc khác cũng thế; đã sinh rồi thì máy đang
+     * ở giữa chừng — khoá cũ mất hẳn, khoá mới chưa mã định danh nào công nhận —
+     * và người dùng PHẢI làm cho xong, không được bỏ dở hay gỡ app.
+     */
+    let hwKeyReplaced = false;
+
     // ── TỰ TÌM DID (ưu tiên thứ đã có trên MÁY) ───────────────────────────────
     // DID không derive được từ KEK, nhưng app ĐÃ lưu DID lúc đăng ký ở
     // currentUserDid + registry '@phoenixkey/users'. Gom mọi DID đã biết (cộng DID
@@ -185,42 +195,64 @@ const RestoreIdentityScreen = () => {
       return;
     }
 
-    // Khoá HW của máy này — chuẩn bị 1 lần, dùng chung cho mọi lần thử.
     const taadPub = await taadEnclave.deriveTaadPubkey(kek);
-    let newHwPub: string;
-    try {
-      newHwPub = (await enrollKeypair()).publicKeyHex;
-    } catch {
-      newHwPub = await ownerPublicKey();
-    }
 
-    // Thử từng DID ứng viên (ký bằng KEK — KHÔNG cần vân tay mỗi lần).
-    let matchedDid: string | null = null;
-    for (const cand of uniqueDids) {
-      const nonce = await genNonce();
-      const challenge = `PHOENIXKEY_RECOVER:${cand}:${newHwPub}:${nonce}`;
-      const signature = await taadEnclave.signEd25519(kek, challenge);
-      if (!signature) continue;
-      try {
-        await phoenixKeyApi.identity.recoverDevice({
-          userDid: cand,
-          newHwPublicKeyHex: newHwPub,
-          taadPublicKeyHex: taadPub,
-          signature,
-          nonce,
-        });
-        matchedDid = cand; // gắn thành công → đúng DID
-        break;
-      } catch (e) {
-        if (e instanceof PhoenixKeyApiError) {
-          // 409 = HW pubkey đã gắn (máy này đã recover DID này) → coi là ĐÚNG DID.
-          if (e.httpStatus === 409) { matchedDid = cand; break; }
-          // 403 chữ ký không khớp / 404 DID không tồn tại / 2002 user not found →
-          // DID này SAI so với KEK đang cầm → thử DID kế tiếp.
-          if (e.httpStatus === 403 || e.httpStatus === 404 || e.code === 2002) continue;
+    /** Thử gắn máy vào từng mã định danh ứng viên, bằng MỘT khoá phần cứng cho trước. */
+    const tryAttachWith = async (hwPub: string): Promise<string | null> => {
+      for (const cand of uniqueDids) {
+        const nonce = await genNonce();
+        const challenge = `PHOENIXKEY_RECOVER:${cand}:${hwPub}:${nonce}`;
+        const signature = await taadEnclave.signEd25519(kek, challenge);
+        if (!signature) continue;
+        try {
+          await phoenixKeyApi.identity.recoverDevice({
+            userDid: cand,
+            newHwPublicKeyHex: hwPub,
+            taadPublicKeyHex: taadPub,
+            signature,
+            nonce,
+          });
+          return cand; // gắn thành công → đúng mã định danh
+        } catch (e) {
+          if (e instanceof PhoenixKeyApiError) {
+            // 409 = khoá này đã gắn (máy này đã khôi phục mã đó rồi) → coi là ĐÚNG.
+            if (e.httpStatus === 409) return cand;
+            // 403 chữ ký không khớp / 404 không tồn tại / 2002 không có người dùng →
+            // mã này SAI so với ví đang cầm → thử mã kế tiếp.
+            if (e.httpStatus === 403 || e.httpStatus === 404 || e.code === 2002) continue;
+          }
+          throw e; // lỗi mạng/khác → dừng, báo lỗi.
         }
-        throw e; // lỗi mạng/khác → dừng, báo lỗi.
       }
+      return null;
+    };
+
+    // ── THỬ KHOÁ PHẦN CỨNG ĐANG CÓ TRƯỚC, SINH KHOÁ MỚI SAU ───────────────────
+    // `enrollKeypair()` KHÔNG phải một thao tác thêm: `nativeGenerateKeypair` XOÁ
+    // khoá cũ trong Secure Enclave / Keystore trước khi ghi khoá mới, và khoá đó
+    // không có bản sao ở đâu cả. Gọi nó ở dòng đầu — như bản trước — nghĩa là mọi
+    // lần bấm Khôi phục đều phá khoá cũ TRƯỚC khi biết có gắn được không; mất sóng
+    // giữa vòng lặp là máy còn lại một khoá mới chưa mã định danh nào công nhận.
+    //
+    // Với đường "ví còn trên máy" thì khoá cũ thường VẪN ĐÚNG là khoá đang đăng ký
+    // (chỉ AsyncStorage mất, kho khoá thì không) — thử nó trước là máy chủ trả 409
+    // "khoá này gắn rồi", tức xong việc mà không phá gì. Chỉ khi nó không được
+    // nhận mới sinh khoá mới.
+    let matchedDid: string | null = null;
+    let hwPub: string | null = null;
+    try {
+      hwPub = await ownerPublicKey();
+    } catch {
+      hwPub = null; // máy chưa có khoá nào → phải sinh
+    }
+    if (hwPub) matchedDid = await tryAttachWith(hwPub);
+
+    if (!matchedDid) {
+      // Khoá đang có không được nhận (hoặc không có khoá nào). Giờ mới sinh khoá
+      // mới — và từ đây trở đi khoá cũ đã mất, nên câu lỗi ở dưới phải nói ra.
+      hwPub = (await enrollKeypair()).publicKeyHex;
+      hwKeyReplaced = true;
+      matchedDid = await tryAttachWith(hwPub);
     }
 
     if (!matchedDid) {
@@ -233,7 +265,14 @@ const RestoreIdentityScreen = () => {
               ? t('Mã định danh vừa nhập không khớp cụm 24 từ, hoặc không có trên máy chủ.')
               : t('Các tài khoản đã lưu trên máy đều không khớp cụm 24 từ này. Kiểm tra lại cụm từ, hoặc nhập đúng tên đăng nhập / mã định danh bên dưới.'))
           : t('Ví trên máy này không ký được cho tài khoản vừa tra. Kiểm tra lại tên đăng nhập; nếu đây đúng là máy cũ của bạn thì tài khoản có thể đã được khôi phục ở máy khác.')) +
-          (deviceHadWallet ? ' ' + t('Ví đang có trên máy được GIỮ NGUYÊN.') : ''),
+          (deviceHadWallet ? ' ' + t('Ví đang có trên máy được GIỮ NGUYÊN.') : '') +
+          // NÓI RA khi khoá phần cứng đã bị thay. Đây là thứ người dùng không có
+          // cách nào tự thấy, mà nó đổi hẳn việc họ nên làm tiếp: khoá cũ đã mất
+          // khỏi chip và không có bản sao, nên bỏ dở ở đây là để máy nằm giữa
+          // chừng — khoá mới chưa tài khoản nào công nhận.
+          (hwKeyReplaced
+            ? ' ' + t('Lưu ý: máy đã sinh khoá bảo mật MỚI trong bước vừa rồi, khoá cũ không còn. Hãy làm cho xong bước khôi phục này — đừng gỡ app — nếu không máy sẽ không ký được cho tài khoản nào.')
+            : ''),
       );
       return;
     }
@@ -274,12 +313,63 @@ const RestoreIdentityScreen = () => {
    * mà mã nguồn nhắc tới ở `phoenixKeyAuthService` là một lối không tồn tại.
    *
    * Ở đây KEK không đổi (đọc từ chính máy), nên `deviceHadWallet=false`: không có
-   * gì bị ghi đè, không có gì mất.
+   * gì bị ghi đè.
+   *
+   * ⛔ LỐI NÀY PHẢI QUA SINH TRẮC. Đây là chỗ bản đầu của tính năng hở, và lỗ hở
+   * lớn hơn cái nó vá:
+   *
+   *   · `getStoredMasterKek()` đọc kho khoá ở mức `WhenUnlockedThisDeviceOnly` —
+   *     tức chỉ cần MÀN HÌNH MÁY đã mở, KHÔNG có bước sinh trắc riêng của app.
+   *   · `taadEnclave.signEd25519(kek, …)` ký bằng ví, cũng không hỏi sinh trắc.
+   *   · Tên đăng nhập KHÔNG phải bí mật: `resolveUsername` là lời gọi GET trần,
+   *     không Bearer, không ký (`services/phoenixKey-api.ts`). Chính tệp đó giải
+   *     thích vì sao chiều tra-theo-khoá bắt buộc ký, nhưng chiều tra-theo-tên thì
+   *     không có ràng buộc ấy.
+   *
+   * Ba thứ đó cộng lại: người mượn được máy lúc màn hình đang mở, biết tên đăng
+   * nhập của chủ máy, là gắn được khoá phần cứng CỦA HỌ vào danh tính chủ máy mà
+   * không lần nào phải đưa mặt hay vân tay ra. Đường 24 từ không có lỗ này vì 24 từ
+   * là thứ KHÔNG nằm trên máy — người mượn máy không lấy được. Bỏ điều kiện ấy đi
+   * mà không thay bằng điều kiện khác là hạ rào, không phải mở lối.
+   *
+   * Điều kiện thay vào là chữ ký của chính chip: `signRaw` chỉ trả về chữ ký sau
+   * khi chip đã đối chiếu xong khuôn mặt / vân tay, và sửa mã JS không đi vòng được
+   * (cùng lập luận đã viết ở `LoginScreen`). Chữ ký này không gửi đi đâu — giá trị
+   * của nó nằm ở chỗ nó KHÔNG TỒN TẠI nếu chủ khoá vắng mặt.
+   *
+   * Chip không ký được (chưa có khoá, hoặc khoá đã hỏng vì người dùng vừa thêm/xoá
+   * vân tay) thì lối này ĐÓNG, không mở hé. Đóng ở đây là fail-closed đúng nghĩa:
+   * người thật còn đường 24 từ và đường hỗ trợ, còn để hé thì người mượn máy đi lọt.
    */
   const doRestoreSameDevice = async () => {
     if (!kekOnDevice) return;
     try {
       setLoading(true);
+
+      // Chuỗi thử đổi mỗi lần, sinh theo TỪNG BYTE để chuỗi hex luôn CHẴN —
+      // `hexToBytes` bên native đòi độ dài chẵn và ném ngay nếu lẻ.
+      let nonceHex = '';
+      for (let i = 0; i < 16; i++) {
+        nonceHex += ((Math.random() * 256) | 0).toString(16).padStart(2, '0');
+      }
+      try {
+        await signRaw(
+          nonceHex,
+          t('Khôi phục danh tính'),
+          t('Xác thực để mở lại danh tính bằng ví sẵn có trên máy này'),
+        );
+      } catch (bioErr: any) {
+        const code = bioErr?.code;
+        if (code === 'USER_CANCELED' || code === 'E_USER_CANCELED') return; // tự huỷ → im lặng
+        showWarning(
+          t('Chưa xác thực được trên máy này'),
+          t('Lối khôi phục bằng ví sẵn có cần chính vân tay hoặc khuôn mặt của chủ máy — không có bước đó thì bất cứ ai mượn được máy cũng khôi phục được.') + ' ' +
+            t('Nếu máy vừa thêm hoặc xoá vân tay/khuôn mặt thì khoá cũ đã bị hệ điều hành huỷ, và lối này không dùng được nữa.') + ' ' +
+            t('Hãy dùng cụm 24 từ ở phần dưới màn hình.'),
+        );
+        return;
+      }
+
       await attachThisDevice(kekOnDevice, false, 'vi-tren-may');
     } catch (e: any) {
       showWarning(
@@ -289,6 +379,35 @@ const RestoreIdentityScreen = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  /**
+   * Cửa xác nhận cho LỐI TẮT — cùng một cái giá, nên cùng một lời cảnh báo.
+   *
+   * Bản đầu của tính năng gọi thẳng `doRestoreSameDevice`, và chú thích thẻ lối tắt
+   * còn tự khen nó "không thu hồi khoá ở máy khác". Câu đó SAI, và sai theo kiểu
+   * khó thấy nhất: cả hai lối gọi CÙNG một `identity.recoverDevice` bên trong
+   * `attachThisDevice`, không phân nhánh theo nguồn. Nên hậu quả ghi ở đầu tệp —
+   * máy chủ tăng `token_epoch` rồi bác mọi phiên và mọi token mang epoch cũ, trên
+   * MỌI máy — xảy ra y hệt ở lối tắt. Lối tắt rẻ hơn ở chỗ không phải gõ 24 từ,
+   * KHÔNG rẻ hơn ở chỗ hậu quả.
+   */
+  const handleRestoreSameDevice = () => {
+    if (!username.trim()) {
+      showWarning(t('Chưa có tên đăng nhập'), t('Gõ tên đăng nhập bạn đã dùng lúc tạo tài khoản, rồi bấm lại.'));
+      return;
+    }
+    showWarning(
+      t('Việc này sẽ đăng xuất mọi app và mọi máy khác'),
+      t('Khôi phục sẽ gắn danh tính của bạn vào ứng dụng này. Mọi ứng dụng khác đang dùng CÙNG danh tính đó sẽ bị đăng xuất — kể cả trên điện thoại khác hoặc máy tính khác, không riêng máy này.') +
+        ' ' +
+        t('Dữ liệu của bạn không mất. Máy sẽ hỏi vân tay hoặc khuôn mặt ở bước tiếp theo.'),
+      {
+        confirmText: t('Vẫn khôi phục'),
+        cancelText: t('Để sau'),
+        onConfirm: () => { void doRestoreSameDevice(); },
+      },
+    );
   };
 
   const doRestore = async () => {
@@ -378,7 +497,7 @@ const RestoreIdentityScreen = () => {
             <TouchableOpacity
               testID="restore-same-device-btn"
               style={[styles.shortcutBtn, loading && { opacity: 0.5 }]}
-              onPress={() => { void doRestoreSameDevice(); }}
+              onPress={handleRestoreSameDevice}
               disabled={loading}
             >
               {loading ? (
@@ -507,9 +626,16 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 17, fontWeight: '700', color: COLORS.text },
   scroll: { padding: 20, paddingBottom: 40 },
 
-  // Thẻ lối tắt cố ý dùng màu THÀNH CÔNG, không dùng màu cảnh báo: đây là lối rẻ
-  // nhất và ít mất mát nhất trên màn này (không thu hồi khoá ở máy khác), nên nó
-  // phải trông khác hẳn đường 24 từ vốn đăng xuất mọi nơi.
+  // Thẻ lối tắt dùng màu THÀNH CÔNG vì nó là lối DUY NHẤT còn đi được với người
+  // không có 24 từ — không phải vì nó nhẹ hậu quả hơn.
+  //
+  // ⚠ Câu ở đây từng viết "không thu hồi khoá ở máy khác". SAI, và sai theo kiểu
+  // khó thấy nhất: hai lối gọi CÙNG một `identity.recoverDevice` bên trong
+  // `attachThisDevice`, không phân nhánh theo nguồn. Hậu quả thu hồi phiên trên
+  // MỌI máy — ghi ở đầu tệp — xảy ra y hệt ở lối tắt. Nên cả hai lối nay cùng đi
+  // qua một cửa xác nhận (`handleRestoreSameDevice` / `handleRestore`).
+  // Chú thích khen một thuộc tính an ninh mà mã không có là thứ sẽ được người
+  // review sau tin theo, nên nó đắt hơn một dòng mã sai.
   shortcutCard: {
     backgroundColor: COLORS.inputBg, borderRadius: 14,
     borderWidth: 1.5, borderColor: COLORS.success,

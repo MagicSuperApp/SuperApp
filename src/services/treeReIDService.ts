@@ -219,7 +219,16 @@ export interface TreeListResponse {
 }
 
 export interface APIError {
-  type: 'network_error' | 'auth_error' | 'validation_error' | 'duplicate' | 'rate_limited' | 'server_error';
+  /**
+   * `network_error`  — không nối được tới máy chủ (mất sóng thật).
+   * `timeout`        — nối được nhưng quá chậm, chạm trần thời gian chờ.
+   * `bad_response`   — máy chủ (hoặc thứ chen giữa) trả về thứ không phải JSON.
+   *
+   * Ba nhãn này CỐ Ý tách rời: chúng dẫn tới ba việc khác nhau mà người dùng phải
+   * làm, và gộp lại thì câu hướng dẫn sai ở hai trong ba ca — xem khối `catch`
+   * cuối `_apiCall`.
+   */
+  type: 'network_error' | 'timeout' | 'bad_response' | 'auth_error' | 'validation_error' | 'duplicate' | 'rate_limited' | 'server_error';
   detail: string;
   http_status: number;
   retry_after_seconds?: number;
@@ -284,6 +293,14 @@ export function fieldErrorMessage(err?: APIError): string {
   switch (err.type) {
     case 'network_error':
       return 'Mất kết nối mạng. Kiểm tra sóng/Wi-Fi rồi thử lại.';
+    // KHÔNG hứa "ảnh vẫn còn trong máy" ở câu này. Ảnh có còn hay không tuỳ đường
+    // chụp (iOS giữ trong kho phiên, Android giữ trong trạng thái màn) và chưa ai
+    // đo độ bền của chúng qua một lần app bị hệ điều hành thu hồi. Hứa một thứ
+    // chưa đo rồi người dùng mất ảnh thật thì lần sau họ không tin câu nào nữa.
+    case 'timeout':
+      return 'Mạng vẫn nối được nhưng quá chậm nên gửi ảnh chưa xong. Hãy ra chỗ sóng tốt hơn (hoặc ra ngoài trời) rồi thử lại.';
+    case 'bad_response':
+      return 'Máy chủ có trả lời nhưng trả về thứ đọc không được — thường là do mạng Wi-Fi đang chen một trang đăng nhập vào giữa. Hãy mở trình duyệt đăng nhập Wi-Fi đó, hoặc tắt Wi-Fi và dùng 4G, rồi thử lại.';
     case 'auth_error':
       return 'Phiên đăng nhập hết hạn. Hãy đăng nhập lại.';
     case 'rate_limited':
@@ -454,9 +471,33 @@ async function _apiCall<T>(
       return _apiCall<T>(url, method, body, timeoutMs, 1);
     }
 
+    // ── BA NGUYÊN NHÂN KHÁC HẲN NHAU, ĐỪNG GỘP LÀM MỘT ───────────────────────
+    // Bản trước gắn `network_error` cho MỌI thứ ném ra khỏi khối trên, và màn hình
+    // dịch nhãn đó thành "Mất kết nối mạng. Kiểm tra sóng/Wi-Fi rồi thử lại."
+    //
+    // Câu đó sai ở hai trong ba nguyên nhân, và sai theo kiểu tệ nhất: người dùng
+    // NHÌN THẤY máy mình đang đủ sóng và đủ Wi-Fi, nên câu của app mâu thuẫn với
+    // thứ họ đang nhìn. Lúc đó họ không còn cách nào đoán ra việc phải làm — báo
+    // thực địa 11/09 là đúng ca này: quét cây trong nhà, máy đủ sóng lẫn Wi-Fi, app
+    // vẫn nói mất kết nối.
+    //
+    //  · QUÁ HẠN (`AbortError`) — kết nối vẫn sống, chỉ là chậm. Lời gọi đăng ký
+    //    cây đẩy nhiều ảnh với trần 120 giây; trong nhà, sóng yếu thì chạm trần là
+    //    chuyện thường. Việc phải làm là RA CHỖ SÓNG TỐT rồi thử lại, không phải
+    //    đi kiểm tra Wi-Fi.
+    //  · MẤT KẾT NỐI THẬT (`TypeError` từ `fetch`) — câu cũ đúng ở đúng ca này.
+    //  · THÂN TRẢ VỀ KHÔNG PHẢI JSON (`SyntaxError` từ `resp.json()`) — máy chủ đã
+    //    trả lời, nhưng trả một trang HTML. Ngoài vườn và ở quán, đây gần như luôn
+    //    là trang đăng nhập Wi-Fi chen ngang. Bảo người ta kiểm tra sóng là chỉ sai
+    //    hướng: sóng tốt, chính cái Wi-Fi đó mới là thứ đang chặn.
+    const isBodyErr = err instanceof SyntaxError;
     return {
       ok: false,
-      error: { type: 'network_error', detail: String(err), http_status: 0 },
+      error: {
+        type: isTimeoutErr ? 'timeout' : isBodyErr ? 'bad_response' : 'network_error',
+        detail: String(err),
+        http_status: 0,
+      },
     };
   }
 }

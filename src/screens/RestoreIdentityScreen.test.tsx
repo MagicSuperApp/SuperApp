@@ -52,6 +52,10 @@ jest.mock('../sdk/taadEnclave', () => ({
     secureLoad: jest.fn(async () => null),
     deriveTaadPubkey: jest.fn(),
     signEd25519: jest.fn(),
+    // Nguồn ngẫu nhiên cho chuỗi thử chống phát-lại. Thiếu nó thì `genNonce()` gọi
+    // vào `undefined` và ném ngay ở dòng đầu vòng lặp gắn máy — bài kiểm sẽ đỏ với
+    // một lý do không dính gì tới thứ nó đo, và đỏ ở chỗ trông y hệt "cổng đã chặn".
+    generateSalt: jest.fn(),
   },
 }));
 
@@ -60,10 +64,18 @@ jest.mock('../sdk/phoenixKey', () => ({
   ownerPublicKey: jest.fn(),
   saveUserDid: jest.fn(),
   currentUserDid: jest.fn(async () => null),
+  signRaw: jest.fn(async () => 'ff'.repeat(32)),
 }));
 
 jest.mock('../services/phoenixKey-api', () => ({
-  phoenixKeyApi: {},
+  phoenixKeyApi: {
+    identity: {
+      resolveUsername: jest.fn(async () => ({
+        userDid: 'did:phoenix:abcdefghijklm:' + 'a'.repeat(64),
+      })),
+      recoverDevice: jest.fn(async () => ({})),
+    },
+  },
   PhoenixKeyApiError: class extends Error {},
 }));
 
@@ -71,6 +83,8 @@ jest.mock('../services/phoenixKeyAuthService', () => ({ phoenixKeyAuth: {} }));
 jest.mock('../store/userSlice', () => ({ loginUser: jest.fn() }));
 
 import taadEnclave from '../sdk/taadEnclave';
+import { signRaw, ownerPublicKey } from '../sdk/phoenixKey';
+import { phoenixKeyApi } from '../services/phoenixKey-api';
 import RestoreIdentityScreen from './RestoreIdentityScreen';
 
 // 24 từ BIP39 hợp lệ về SỐ LƯỢNG — màn chỉ đếm từ trước khi mở cửa xác nhận.
@@ -187,5 +201,123 @@ describe('RestoreIdentityScreen — lối tắt khi máy còn ví', () => {
     // Ô tên đăng nhập vẫn còn, nhưng ở chỗ khác (kèm đường 24 từ) — nó là nguồn
     // DID rẻ nhất cho máy mới, nên không được biến mất cùng thẻ lối tắt.
     expect(countHostByTestId(tree, 'restore-username')).toBe(1);
+  });
+});
+
+/**
+ * LỐI TẮT PHẢI CHỊU ĐÚNG HAI RÀNG BUỘC MÀ ĐƯỜNG 24 TỪ ĐANG CHỊU.
+ *
+ * Bản đầu của lối tắt bỏ cả hai, và bỏ theo cách nghe rất hợp lý: "máy còn ví thì
+ * đâu có phá gì". Cả hai vế đều sai:
+ *
+ * 1. SINH TRẮC — kho khoá mở ở mức `WhenUnlockedThisDeviceOnly` (chỉ cần màn hình
+ *    máy đã mở), ký bằng ví cũng không hỏi sinh trắc, còn tên đăng nhập là lời gọi
+ *    GET trần không ký. Ba thứ cộng lại: người mượn được máy lúc màn hình đang mở
+ *    và biết tên đăng nhập là gắn được khoá CỦA HỌ vào danh tính chủ máy mà không
+ *    lần nào đưa mặt ra. Đường 24 từ không có lỗ này chỉ vì 24 từ không nằm trên máy.
+ * 2. CẢNH BÁO — hai lối gọi CÙNG một `identity.recoverDevice`, nên hậu quả thu hồi
+ *    phiên trên mọi máy là như nhau.
+ *
+ * Bốn bài dưới đây đo bốn cực khác nhau, không phải bốn cách nói một điều: chưa xác
+ * nhận thì chưa chạm gì · xác nhận rồi thì sinh trắc đi TRƯỚC · sinh trắc hỏng thì
+ * dừng hẳn · ô tên trống thì không mở cửa. Bỏ bất kỳ chốt nào trong mã đều làm ít
+ * nhất một bài đỏ.
+ */
+describe('RestoreIdentityScreen — lối tắt phải qua cửa xác nhận VÀ sinh trắc', () => {
+  let warn: jest.SpyInstance;
+  let tree!: ReactTestRenderer;
+
+  const pressShortcut = async (t: ReactTestRenderer) => {
+    const btn = t.root.find(n => n.props?.testID === 'restore-same-device-btn');
+    await act(async () => { btn.props.onPress(); });
+  };
+  const typeUsername = async (t: ReactTestRenderer, name: string) => {
+    const input = t.root.find(
+      n => n.props?.testID === 'restore-username' && typeof n.props?.onChangeText === 'function',
+    );
+    await act(async () => { input.props.onChangeText(name); });
+  };
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    (taadEnclave.isAvailable as jest.Mock).mockReturnValue(true);
+    (taadEnclave.secureLoad as jest.Mock).mockResolvedValue('a'.repeat(64));
+    (taadEnclave.deriveTaadPubkey as jest.Mock).mockResolvedValue('b'.repeat(64));
+    (taadEnclave.signEd25519 as jest.Mock).mockResolvedValue('c'.repeat(64));
+    (taadEnclave.generateSalt as jest.Mock).mockResolvedValue('0123456789abcdef');
+    (signRaw as jest.Mock).mockResolvedValue('ff'.repeat(32));
+    // Khoá phần cứng ĐANG CÓ. Phải đặt: `attachThisDevice` cố ý thử khoá này TRƯỚC
+    // rồi mới sinh khoá mới, vì `enrollKeypair` xoá khoá cũ khỏi chip và khoá đó
+    // không có bản sao. Để mock trả `undefined` là dựng một cái máy không có khoá
+    // nào — đúng ca mà bản vá này tránh, và không phải ca đang muốn đo.
+    (ownerPublicKey as jest.Mock).mockResolvedValue('d'.repeat(64));
+    // Đặt LẠI ở đây chứ không chỉ ở nhà máy mock: cấu hình jest của kho này đặt lại
+    // mock giữa các bài, nên phần thân hàm khai trong `jest.mock(...)` không sống
+    // qua `beforeEach`. Thiếu hai dòng này thì `resolveUsername` trả `undefined`,
+    // danh sách mã định danh ứng viên rỗng, và bài kiểm xanh/đỏ vì một lý do không
+    // liên quan gì tới thứ nó định đo.
+    (phoenixKeyApi.identity.resolveUsername as jest.Mock).mockResolvedValue({
+      userDid: 'did:phoenix:abcdefghijklm:' + 'a'.repeat(64),
+    });
+    (phoenixKeyApi.identity.recoverDevice as jest.Mock).mockResolvedValue({});
+    warn = jest.spyOn(appAlert, 'showWarning').mockImplementation(() => {});
+    await act(async () => { tree = renderer.create(<RestoreIdentityScreen />); });
+    await typeUsername(tree, 'nguoi-thu-dong');
+  });
+
+  afterEach(() => { warn.mockRestore(); });
+
+  it('bấm lối tắt thì CHƯA chạm gì — chỉ mở cửa xác nhận nói rõ cái giá', async () => {
+    await pressShortcut(tree);
+
+    expect(signRaw).not.toHaveBeenCalled();
+    expect(phoenixKeyApi.identity.recoverDevice).not.toHaveBeenCalled();
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    const [title, message, options] = warn.mock.calls[0];
+    expect(String(title)).toMatch(/đăng xuất/i);
+    expect(String(message)).toMatch(/máy tính khác|điện thoại khác/i);
+    expect(typeof options?.onConfirm).toBe('function');
+  });
+
+  it('xác nhận rồi thì hỏi sinh trắc TRƯỚC, gọi máy chủ SAU', async () => {
+    await pressShortcut(tree);
+    const onConfirm = warn.mock.calls[0][2]?.onConfirm as () => void;
+    await act(async () => { onConfirm(); });
+
+    expect(signRaw).toHaveBeenCalled();
+    expect(phoenixKeyApi.identity.recoverDevice).toHaveBeenCalled();
+    // THỨ TỰ mới là thứ đang đo. Gọi cả hai mà gọi ngược thì chữ ký của chip không
+    // còn là điều kiện của lần gắn máy — nó thành một thủ tục chạy kèm.
+    const signOrder = (signRaw as jest.Mock).mock.invocationCallOrder[0];
+    const callOrder = (phoenixKeyApi.identity.recoverDevice as jest.Mock)
+      .mock.invocationCallOrder[0];
+    expect(signOrder).toBeLessThan(callOrder);
+  });
+
+  it('sinh trắc HỎNG → dừng hẳn, KHÔNG gọi máy chủ, và nói rõ vì sao', async () => {
+    (signRaw as jest.Mock).mockRejectedValue(
+      Object.assign(new Error('E_NO_KEY'), { code: 'NO_KEY' }),
+    );
+
+    await pressShortcut(tree);
+    const onConfirm = warn.mock.calls[0][2]?.onConfirm as () => void;
+    await act(async () => { onConfirm(); });
+
+    expect(phoenixKeyApi.identity.recoverDevice).not.toHaveBeenCalled();
+    const lastWarn = warn.mock.calls[warn.mock.calls.length - 1];
+    expect(String(lastWarn[1])).toMatch(/24 từ/);
+  });
+
+  it('chưa gõ tên đăng nhập → không mở cửa xác nhận, không chạm máy chủ', async () => {
+    await typeUsername(tree, '');
+    await pressShortcut(tree);
+
+    expect(signRaw).not.toHaveBeenCalled();
+    expect(phoenixKeyApi.identity.recoverDevice).not.toHaveBeenCalled();
+    const [, , options] = warn.mock.calls[0];
+    // Cảnh báo "thiếu tên" KHÔNG được mang onConfirm — mang thì bấm tiếp một nhát
+    // là chạy luồng khôi phục với một ô trống.
+    expect(options?.onConfirm).toBeUndefined();
   });
 });

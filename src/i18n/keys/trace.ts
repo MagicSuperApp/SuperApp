@@ -209,6 +209,8 @@ export const TRACE_STRINGS = {
   'trace.activity.cost': { vi: 'Việc này tốn {n} MAGIC', en: 'This costs {n} MAGIC', zh: '此项消耗 {n} MAGIC', ja: 'この記録に {n} MAGIC' },
   'trace.activity.costLabel': { vi: 'Chi phí', en: 'Cost', zh: '费用', ja: '費用' },
   'trace.activity.needClip': { vi: 'Cần quay trước đã', en: 'Record a clip first', zh: '请先拍摄', ja: '先に撮影してください' },
+  'trace.activity.needLogin': { vi: 'Chưa đăng nhập nên chưa ghi được việc này. Quay ra đăng nhập rồi vào lại.', en: 'You are not signed in, so this work cannot be recorded. Sign in and come back.', zh: '尚未登录，无法记录这项农事。请先登录后再返回。', ja: 'ログインしていないため、この作業を記録できません。ログインしてから戻ってください。' },
+  'trace.activity.needFarm': { vi: 'Chưa xác định được vườn của cây này. Quay ra mở lại vườn rồi chọn cây từ đó.', en: 'The farm for this tree could not be determined. Go back, open the farm again, and pick the tree from there.', zh: '无法确定这棵树所属的园地。请返回重新打开园地，再从中选择该树。', ja: 'この木の農園を特定できません。戻って農園を開き直し、そこから木を選んでください。' },
   'trace.activity.startRecord': { vi: 'Bấm để quay', en: 'Tap to record', zh: '点击拍摄', ja: 'タップして撮影' },
   'trace.activity.startRecordHint': { vi: 'Lia máy vào chỗ cần ghi', en: 'Point the camera at the spot', zh: '对准要记录的地方', ja: '記録したい場所に向けます' },
   'trace.activity.gotClip': { vi: 'Đã chọn {n} hình rõ nhất', en: 'Kept the {n} clearest frames', zh: '已保留 {n} 张最清晰的画面', ja: '鮮明なコマを {n} 枚保存' },

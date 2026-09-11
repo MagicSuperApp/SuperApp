@@ -272,7 +272,18 @@ const ActivityScreen = () => {
 
   const selectedActivity = ACTIVITIES.find(a => a.type === selected);
   const hasFiles = scannedFiles.length > 0;
-  const canSave = !!selected && !saving && hasFiles;
+
+  // ── NÚT PHẢI HỎI CÙNG MỘT CÂU MÀ `handleSave` HỎI ─────────────────────────
+  // `handleSave` thoát ngay ở dòng đầu nếu thiếu `farm` hoặc `user`, và thoát KHÔNG
+  // một câu nào. `canSave` cũ không hỏi hai thứ đó ⟹ nút sáng, bấm được, bấm xong
+  // không có gì xảy ra: không quay vòng, không lỗi, không màn mới. Người ghi việc
+  // ngoài vườn đọc đó là "đã lưu rồi" và đi sang cây kế tiếp.
+  //
+  // Hai thứ này KHÔNG phải thứ người dùng nhập sai — `farm` suy từ tham số điều
+  // hướng hoặc từ kho vườn, `user` là phiên đăng nhập. Nên chúng vắng mặt là trạng
+  // thái của APP, và câu nói ra phải nói đúng thế, đừng bắt người ta đoán.
+  const contextReady = !!farm && !!user;
+  const canSave = !!selected && !saving && hasFiles && contextReady;
 
   // Mở CAMERA QUAY VIDEO ngay (OS camera) và nhận đường dẫn file trả về → set vào
   // scannedFiles để bật "Lưu onnet". Thay cho luồng cũ điều hướng sang TreeIdentity
@@ -470,6 +481,16 @@ const ActivityScreen = () => {
             </View>
             {!hasFiles && (
               <Text style={styles.bottomHint}>{tk('trace.activity.needClip')}</Text>
+            )}
+            {/* Nói ra LÝ DO nút tắt khi lý do KHÔNG nằm ở tay người dùng. Thiếu clip
+                thì đã có dòng trên; thiếu vườn hoặc phiên đăng nhập thì trước đây
+                không dòng nào nói, mà đó lại là hai thứ người dùng không tự thấy. */}
+            {!contextReady && (
+              <Text style={styles.bottomHint}>
+                {!user
+                  ? tk('trace.activity.needLogin')
+                  : tk('trace.activity.needFarm')}
+              </Text>
             )}
           </View>
         )}

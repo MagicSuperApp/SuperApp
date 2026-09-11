@@ -39,6 +39,16 @@ export const ERRORS: PhraseMap = {
     zh: '网络连接中断，请检查信号或 Wi-Fi 后重试。',
     ja: 'ネットワークが切断されました。電波や Wi-Fi を確認してからお試しください。',
   },
+  'Mạng vẫn nối được nhưng quá chậm nên gửi ảnh chưa xong. Hãy ra chỗ sóng tốt hơn (hoặc ra ngoài trời) rồi thử lại.': {
+    en: 'The connection is alive but too slow to finish sending the photos. Move somewhere with a better signal (or step outside) and try again.',
+    zh: '网络仍然连通，但太慢，照片没能发完。请移动到信号更好的地方（或走到室外）后重试。',
+    ja: '接続はできていますが遅すぎて写真を送り切れませんでした。電波の良い場所（屋外など）へ移動してからもう一度お試しください。',
+  },
+  'Máy chủ có trả lời nhưng trả về thứ đọc không được — thường là do mạng Wi-Fi đang chen một trang đăng nhập vào giữa. Hãy mở trình duyệt đăng nhập Wi-Fi đó, hoặc tắt Wi-Fi và dùng 4G, rồi thử lại.': {
+    en: 'The server replied, but with something unreadable — usually a Wi-Fi sign-in page cutting in. Open a browser and sign in to that Wi-Fi, or turn Wi-Fi off and use mobile data, then try again.',
+    zh: '服务器有响应，但返回的内容无法读取 — 通常是 Wi-Fi 的登录页面挡在中间。请打开浏览器登录该 Wi-Fi，或关闭 Wi-Fi 改用移动数据后重试。',
+    ja: 'サーバーからの応答はありましたが、読み取れない内容でした — 多くは Wi-Fi のログインページが割り込んでいる場合です。ブラウザでその Wi-Fi にログインするか、Wi-Fi を切ってモバイル通信に切り替えてからお試しください。',
+  },
   'Mất kết nối. Thử lại sau.': { en: 'Connection lost. Try again later.', zh: '连接中断，请稍后重试。', ja: '接続が切れました。しばらくしてからお試しください。' },
   'Không kết nối được máy chủ. Kiểm tra mạng và thử lại.': {
     en: 'Could not reach the server. Check your network and try again.',

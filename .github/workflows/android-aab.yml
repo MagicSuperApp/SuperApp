@@ -362,13 +362,18 @@ jobs:
           ls -lh "$AAB_FILE"
 
           mkdir -p dist
-          cp "$AAB_FILE" dist/superapp-release.aab
-          shasum -a 256 dist/superapp-release.aab > dist/superapp-release.aab.sha256
-          cat dist/superapp-release.aab.sha256
+          # TÊN TỆP PHẢI MANG TÊN APP. Bản trước gõ cứng `superapp-release.aab`, nên
+          # hai app cho ra hai tệp TRÙNG TÊN: lượt dựng vẫn xanh, hiện vật vẫn tải về
+          # được, và cái sai chỉ lộ ở người cầm tệp đi nộp — nhầm cửa hàng, nhầm pháp
+          # nhân ký. Đường Codemagic đã vá đúng lỗ này (`dist/${ANDROID_FLAVOR}-release.aab`);
+          # đường này là tệp anh em bị bỏ sót.
+          cp "$AAB_FILE" "dist/${FLAVOR}-release.aab"
+          shasum -a 256 "dist/${FLAVOR}-release.aab" > "dist/${FLAVOR}-release.aab.sha256"
+          cat "dist/${FLAVOR}-release.aab.sha256"
 
           # Output for downstream steps
-          echo "aab_path=dist/superapp-release.aab" >> $GITHUB_OUTPUT
-          echo "aab_size=$(stat -c%s dist/superapp-release.aab)" >> $GITHUB_OUTPUT
+          echo "aab_path=dist/${FLAVOR}-release.aab" >> $GITHUB_OUTPUT
+          echo "aab_size=$(stat -c%s "dist/${FLAVOR}-release.aab")" >> $GITHUB_OUTPUT
 
       # ── VÌ SAO CÓ BƯỚC NÀY ──────────────────────────────────────────────────
       # Bước "Dựng Rust core" ở trên kiểm jniLibs — tức kiểm ĐẦU VÀO của gradle.
@@ -390,7 +395,7 @@ jobs:
       - name: Soi chính tệp AAB — .so, biến môi trường, versionCode
         run: |
           set -eo pipefail
-          AAB=dist/superapp-release.aab
+          AAB="dist/${FLAVOR}-release.aab"
           WORK=$(mktemp -d)
           unzip -q -o "$AAB" -d "$WORK"
 
@@ -499,8 +504,8 @@ jobs:
         with:
           name: ${{ format('{0}-release-aab', env.FLAVOR) }}
           path: |
-            dist/superapp-release.aab
-            dist/superapp-release.aab.sha256
+            dist/${{ env.FLAVOR }}-release.aab
+            dist/${{ env.FLAVOR }}-release.aab.sha256
             android-release.log
           retention-days: 30
 
@@ -508,9 +513,9 @@ jobs:
         run: |
           echo "## Android AAB (SuperApp) — Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **File:** \`superapp-release.aab\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Size:** $(($(stat -c%s dist/superapp-release.aab) / 1024 / 1024)) MB" >> $GITHUB_STEP_SUMMARY
-          echo "- **SHA256:** $(cat dist/superapp-release.aab.sha256 | cut -d' ' -f1)" >> $GITHUB_STEP_SUMMARY
+          echo "- **File:** \`${FLAVOR}-release.aab\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Size:** $(($(stat -c%s "dist/${FLAVOR}-release.aab") / 1024 / 1024)) MB" >> $GITHUB_STEP_SUMMARY
+          echo "- **SHA256:** $(cat "dist/${FLAVOR}-release.aab.sha256" | cut -d' ' -f1)" >> $GITHUB_STEP_SUMMARY
           echo "- **versionCode:** $(grep versionCode android/app/build.gradle | grep -oE '[0-9]+')" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Next steps" >> $GITHUB_STEP_SUMMARY

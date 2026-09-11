@@ -211,6 +211,33 @@ export const TRACE_STRINGS = {
   'trace.activity.needClip': { vi: 'Cần quay trước đã', en: 'Record a clip first', zh: '请先拍摄', ja: '先に撮影してください' },
   'trace.activity.needLogin': { vi: 'Chưa đăng nhập nên chưa ghi được việc này. Quay ra đăng nhập rồi vào lại.', en: 'You are not signed in, so this work cannot be recorded. Sign in and come back.', zh: '尚未登录，无法记录这项农事。请先登录后再返回。', ja: 'ログインしていないため、この作業を記録できません。ログインしてから戻ってください。' },
   'trace.activity.needFarm': { vi: 'Chưa xác định được vườn của cây này. Quay ra mở lại vườn rồi chọn cây từ đó.', en: 'The farm for this tree could not be determined. Go back, open the farm again, and pick the tree from there.', zh: '无法确定这棵树所属的园地。请返回重新打开园地，再从中选择该树。', ja: 'この木の農園を特定できません。戻って農園を開き直し、そこから木を選んでください。' },
+  // ── Phân/thuốc đã dùng ──────────────────────────────────────────────────────
+  // `fertilizingDesc` (ở trên) đã hứa "Ghi loại phân và lượng bón" từ lâu, trong khi
+  // `ActivityScreen` gửi `materials: []` cứng. Đây là phần làm cho lời hứa đó có thật.
+  'trace.activity.materials': { vi: 'Đã dùng gì', en: 'What was used', zh: '使用了什么', ja: '使用したもの' },
+  'trace.activity.materialsHintFert': {
+    vi: 'Ghi tên phân và lượng bón. Đây là phần người mua quả đọc được về sau.',
+    en: 'Record the fertiliser name and the amount. This is what a buyer reads later.',
+    zh: '记录肥料名称和用量。买家日后会看到这部分。',
+    ja: '肥料名と量を記録します。後で購入者が見る情報です。',
+  },
+  'trace.activity.materialsHintPest': {
+    vi: 'Ghi tên thuốc và lượng phun. Đây là phần người mua quả đọc được về sau.',
+    en: 'Record the product name and the amount sprayed. This is what a buyer reads later.',
+    zh: '记录药物名称和喷施量。买家日后会看到这部分。',
+    ja: '薬剤名と散布量を記録します。後で購入者が見る情報です。',
+  },
+  'trace.activity.materialName': { vi: 'Tên trên bao bì', en: 'Name on the label', zh: '包装上的名称', ja: 'ラベルの名称' },
+  'trace.activity.materialAmount': { vi: 'Lượng', en: 'Amount', zh: '用量', ja: '量' },
+  'trace.activity.materialUnit': { vi: 'Đơn vị', en: 'Unit', zh: '单位', ja: '単位' },
+  'trace.activity.addMaterial': { vi: 'Thêm loại nữa', en: 'Add another', zh: '再加一种', ja: 'さらに追加' },
+  'trace.activity.removeMaterial': { vi: 'Bỏ dòng này', en: 'Remove this row', zh: '删除此行', ja: 'この行を削除' },
+  'trace.activity.needMaterial': {
+    vi: 'Cần ghi ít nhất tên một loại đã dùng',
+    en: 'Name at least one product used',
+    zh: '至少填写一种使用的产品名称',
+    ja: '使用したものを最低一つ記入してください',
+  },
   'trace.activity.startRecord': { vi: 'Bấm để quay', en: 'Tap to record', zh: '点击拍摄', ja: 'タップして撮影' },
   'trace.activity.startRecordHint': { vi: 'Lia máy vào chỗ cần ghi', en: 'Point the camera at the spot', zh: '对准要记录的地方', ja: '記録したい場所に向けます' },
   'trace.activity.gotClip': { vi: 'Đã chọn {n} hình rõ nhất', en: 'Kept the {n} clearest frames', zh: '已保留 {n} 张最清晰的画面', ja: '鮮明なコマを {n} 枚保存' },

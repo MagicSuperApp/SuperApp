@@ -844,7 +844,7 @@ export const TRACE_STRINGS = {
   // Bốn nút icon xám cùng cỡ cùng màu, không nút nào có chữ — trong đó một nút
   // là CHIA SẺ RA NGOÀI. Nay hai việc hằng ngày ra ngoài kèm chữ, hai việc hiếm
   // vào tấm có tên đầy đủ.
-  'trace.tree.moreActions': { vi: 'Việc khác', en: 'More', zh: '更多', ja: 'その他' },
+  'trace.tree.moreActions': { vi: 'Khác', en: 'More', zh: '更多', ja: 'その他' },
   'trace.tree.actCare': { vi: 'Ghi thuốc', en: 'Log spray', zh: '记录用药', ja: '散布記録' },
   'trace.tree.actDrift': {
     vi: 'Biến thiên của cây', en: 'How much the tree has changed',

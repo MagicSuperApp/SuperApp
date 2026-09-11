@@ -79,7 +79,9 @@ describe.each([
       text: AUTH_COLORS.text,
       textSub: AUTH_COLORS.textSub,
       textMuted: AUTH_COLORS.textMuted,
-      // `primary` được dùng LÀM CHỮ ở 28 chỗ, không chỉ làm nền nút.
+      // `primary` xuất hiện 28 lần trong bốn màn cửa vào, và trong đó có chỗ
+      // dùng làm MÀU CHỮ (`SignUpBiometricScreen.tsx:516,561`) chứ không chỉ
+      // làm nền nút — nên nó phải qua ngưỡng chữ, không phải ngưỡng hình.
       primary: AUTH_COLORS.primary,
       deep: AUTH_COLORS.deep,
     };

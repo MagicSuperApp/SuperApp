@@ -22,7 +22,8 @@
 import { AUTH_COLORS } from '../../theme';
 
 /**
- * Bảng màu luồng vào. Tên giữ chữ `BLUE` vì 42 chỗ gọi đang dùng, nhưng nó
+ * Bảng màu luồng vào. Tên giữ chữ `BLUE` vì 99 chỗ gọi ở 4 tệp đang dùng
+ * (đếm 2026-09-11: `grep -rho 'AUTH_BLUE\.' src/features/auth/{screens,components}`), nhưng nó
  * KHÔNG còn nhất thiết là lam: app nào ghi đè `ThemeConfig.auth` thì đây là
  * bảng của app đó (CheckFarm đang là xanh lục).
  */

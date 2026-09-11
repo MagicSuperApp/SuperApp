@@ -12,7 +12,7 @@
 // Chưa ai gọi được thân 200 thật: đường đòi phiên DID của một máy thật, mà bên này
 // không dựng phiên giả để đo. Hình dạng dưới đây đọc TỪ MÃ MÁY CHỦ
 // (`timeline_router.py:164-176`, `timeline_store.py:255-272`), không phải từ một lượt
-// gọi thành công. Nên coi phần TRÌNH BÀY là nháp để Tùng dựng lại; phần ĐỌC DỮ LIỆU
+// gọi thành công. Nên coi phần TRÌNH BÀY là nháp cần đội Frontend/UIUX dựng lại; phần ĐỌC DỮ LIỆU
 // (`services/timelineService.ts`) đã có 14 test khoá theo mã máy chủ.
 //
 // Nguyên tắc giữ khi dựng tạm: thà hiện ÍT mà đúng, còn hơn hiện đẹp mà đoán. Cụ thể

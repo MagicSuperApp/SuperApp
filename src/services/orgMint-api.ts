@@ -7,7 +7,7 @@
  *     trả {request_id} + SSE "signed". 🟢 shape đứng; CAP/AUTHORITY/REDEEMER còn
  *     CHỜ LAMP hợp nhất design lên main (đừng hardcode — xem TODO bên dưới).
  *   - `POST /identity/org/{orgDid}/mint-lamp/submit-tx {request_id, signed_tx_cbor}`
- *     → {tx_hash}. CBOR = dựng+ký ở Enclave NATIVE (Thư) — client chỉ chuyển tiếp.
+ *     → {tx_hash}. CBOR = dựng+ký ở Enclave NATIVE — client chỉ chuyển tiếp.
  *
  * RÀNG BUỘC UX SỐNG CÒN: mint LAMP = vào KHO Distribution (dest_hash), KHÔNG ra
  * thẳng ví user. `recipient_address` KHÔNG áp cho bước mint → KHÔNG có trong
@@ -165,7 +165,7 @@ export interface MintLampResult {
 
 export interface SubmitMintTxRequest {
   request_id: string;
-  /** CBOR tx ĐÃ ký (hex) — dựng + ký ở Enclave NATIVE (Thư), client chuyển tiếp. */
+  /** CBOR tx ĐÃ ký (hex) — dựng + ký ở Enclave NATIVE, client chuyển tiếp. */
   signed_tx_cbor: string;
 }
 
@@ -481,7 +481,7 @@ export const orgMintApi = {
     ),
 
   /**
-   * Submit CBOR đã ký (dựng+ký ở Enclave native — Thư). Backend submit lên chuỗi.
+   * Submit CBOR đã ký (dựng+ký ở Enclave native). Backend submit lên chuỗi.
    */
   submitMintTx: (orgDid: string, body: SubmitMintTxRequest) =>
     unwrap<SubmitMintTxResult>(

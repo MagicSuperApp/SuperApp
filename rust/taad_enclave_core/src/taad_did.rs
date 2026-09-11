@@ -971,7 +971,7 @@ fn blake2b_224(bytes: &[u8]) -> [u8; 28] {
 //
 // RANH GIỚI (QUAN TRỌNG): hàm này CHỈ sinh keypair + trả `secret_hex` ra cho
 // tầng trên. Việc LƯU TRỮ secret (wrap bằng Device_KEK), sao lưu/khôi phục,
-// và phân tán lên LampNet là phạm vi §11 spec (Long làm) — KHÔNG xử lý ở đây.
+// và phân tán lên LampNet là phạm vi §11 spec — KHÔNG xử lý ở đây.
 
 /// Một keypair controller Ed25519 sinh độc lập cho luồng xoay khoá Model B.
 ///

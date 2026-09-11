@@ -489,8 +489,8 @@ pub unsafe extern "C" fn taad_device_key_optin(
 //                                  derive-demo/publish_did.rs)
 //   #3 build_create_taad_utxo   — signature ready, body TODO (chờ Validator
 //                                  PR #2 merge + plutus-preprod.json regen)
-//   #4 build_rotate_taad        — signature ready, body TODO (chờ Tuân
-//                                  finalize TAADRedeemer cbor schema)
+//   #4 build_rotate_taad        — signature ready, body TODO (chờ
+//                                  TAADRedeemer cbor schema finalize)
 // ================================================================
 
 /// Construct DID string per Math Spec v4.3 §2.1 + did:phoenix method.md §2.
@@ -909,7 +909,7 @@ pub unsafe extern "C" fn taad_build_finalize_recovery_tx(
 ///   - `pkh_hex`    → 28-byte VerificationKeyHash = blake2b-224(pubkey), khớp
 ///     đúng `controller_pkh` mà build rotate/create tự tính lại.
 ///   - `secret_hex` → CALLER tự lưu. Storage/wrap (Device_KEK) + recovery
-///     wrapping + phân tán LampNet theo §11 spec (Long làm) — NGOÀI phạm vi FFI
+///     wrapping + phân tán LampNet theo §11 spec — NGOÀI phạm vi FFI
 ///     này. KHÔNG log/persist/transmit ở tầng Rust.
 ///
 /// SECURITY: `secret_hex` là root-of-trust controller mới sau rotate. Caller

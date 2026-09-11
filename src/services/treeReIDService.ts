@@ -594,7 +594,7 @@ export interface CaptureOrientation {
  *   · `android_magnetic` — `HeadingSensorReader.kt:27` đọc `TYPE_ROTATION_VECTOR`
  *     và KHÔNG cộng độ lệch từ (`GeomagneticField`), nên là Bắc TỪ.
  *
- * OriLife yêu cầu Bắc THẬT. App CHƯA đạt, và sửa là việc native (Thư) — đã báo.
+ * OriLife yêu cầu Bắc THẬT. App CHƯA đạt, và sửa là việc native — đã báo.
  * Trong lúc đó thà khai đúng gốc quy chiếu còn hơn dán nhãn "true" cho số Bắc từ.
  *
  * MÁY CHỦ CÓ NHẬN VÀ CÓ LƯU. Đo 2026-09-08 (phía OriLife, trên `origin/main` của

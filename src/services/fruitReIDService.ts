@@ -3,7 +3,7 @@
  *
  * Backend = field-reid (ORILIFE_API_BASE_URL, mặc định https://api.orilife.io) —
  * cùng máy chủ với treeReIDService. Tách file riêng để KHÔNG đụng treeReIDService
- * (file Thư đang build). Cùng pattern: Bearer token AsyncStorage, timeout 45s, retry 1 lần.
+ * (tệp đang có nhánh sửa song song). Cùng pattern: Bearer token AsyncStorage, timeout 45s, retry 1 lần.
  *
  * API: GET /api/species/catalog · POST /api/tree/set_species · POST /api/fruit/detect ·
  *      POST /api/fruit/candidates · POST /api/fruit/identify · POST /api/fruit/enroll ·

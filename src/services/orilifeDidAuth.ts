@@ -408,8 +408,36 @@ let lastLoginError: string | null = null;
 let lastLoginKind: DidLoginFailKind | null = null;
 let lastServerSaid: string | null = null;
 
+/**
+ * Số hiệu THẾ của danh tính. Tăng mỗi lần van được mở có chủ ý.
+ *
+ * Vì sao cần: `clearOrilifeLoginCooldown()` xoá được BIẾN, nhưng không xoá được
+ * một lượt đăng nhập ĐANG BAY. Bỏ `inflightLogin = null` thì lượt cũ mất tay cầm
+ * chứ không dừng — nó vẫn chạy tiếp, và khi máy chủ trả lời thì thân hàm của nó
+ * ghi `loginCooldownUntil` cùng ba câu lỗi vào đúng các biến vừa được dọn.
+ *
+ * Chuỗi hỏng, tất cả các bước đều là đường người dùng đi hằng ngày:
+ *   1. Phiên của DID cũ chết → một màn gọi `loginOnce`, lượt ký đang chờ máy chủ.
+ *   2. Người dùng lập lại danh tính (hoặc đăng xuất) → van mở, trạng thái sạch.
+ *   3. Máy chủ từ chối lượt của DID CŨ → thân hàm ghi nghỉ-60-giây.
+ *   4. DID MỚI bị khoá sinh trắc một phút, và màn hình trình câu từ chối của DID
+ *      cũ như thể máy chủ vừa nói về danh tính mới.
+ *
+ * Bước 4 là chỗ đắt: người vừa lập danh tính mới đọc một câu nói về danh tính họ
+ * vừa bỏ, nên câu đó vừa sai vừa không hành động được gì. Đúng cái van này sinh
+ * ra để chấm dứt.
+ *
+ * Sửa bằng số hiệu thế chứ không bằng cờ huỷ: lượt đang bay KHÔNG huỷ được (nó
+ * đang nằm trong hộp sinh trắc của hệ điều hành), nên thứ duy nhất làm được là
+ * để nó chạy xong rồi TỪ CHỐI lời khai của nó. Lượt nào sinh ra ở thế trước thì
+ * vẫn trả kết quả cho chính người đã gọi nó — không nuốt lỗi — nhưng không được
+ * phép viết lên trạng thái dùng chung nữa.
+ */
+let loginGeneration = 0;
+
 /** Cho phép hỏi sinh trắc lại NGAY. Chỉ gọi khi trạng thái danh tính đã đổi thật. */
 export function clearOrilifeLoginCooldown(): void {
+  loginGeneration += 1;
   loginCooldownUntil = 0;
   lastLoginError = null;
   lastLoginKind = null;
@@ -453,8 +481,15 @@ function loginOnce(baseUrl: string): Promise<DidLoginResult> {
       serverSaid: lastServerSaid ?? undefined,
     });
   }
+  // Chốt thế NGAY lúc dựng lượt, trước mọi `await` — xem `loginGeneration`.
+  const generationAtStart = loginGeneration;
   const run = (async () => {
     const res = await loginOrilifeWithDid(baseUrl);
+    // Van đã mở giữa chừng ⟹ lượt này nói về một danh tính KHÁC danh tính đang
+    // hiện hành. Vẫn trả kết quả cho người đã gọi, nhưng thôi ghi ra biến chung.
+    // Cả hai nhánh đều bỏ ghi, không riêng nhánh hỏng: một lượt THÀNH CÔNG của
+    // DID cũ cũng không phải bằng chứng nào về DID mới.
+    if (generationAtStart !== loginGeneration) return res;
     if (res.ok) {
       loginCooldownUntil = 0;
       lastLoginError = null;

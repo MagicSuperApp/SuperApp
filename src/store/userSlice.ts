@@ -7,6 +7,7 @@ import { databaseManager } from '../services/databaseManager';
 import {
   phoenixKeyApi,
   clearSessionToken,
+  clearSessionMintCooldown,
   summarizeWalletAll,
   type WalletEntry,
 } from '../services/phoenixKey-api';
@@ -235,6 +236,17 @@ export const logoutUser = createAsyncThunk(
       // chủ thể do THẺ quyết định, tức máy của người sau hành động mang danh người
       // trước. Đó là ca mạo danh, không phải "vật liệu ở lại".
       await clearSessionToken();
+      // Van thứ HAI, đối xứng với `clearOrilifeLoginCooldown()` ở khối trên. Đường
+      // đúc thẻ PhoenixKey có đồng hồ nghỉ riêng (`MINT_COOLDOWN_MS`), và hàm mở
+      // van của nó được viết ra rồi KHÔNG nơi nào gọi — nên tới trước dòng này,
+      // người đăng xuất rồi đăng nhập bằng danh tính khác vẫn chịu nguyên một
+      // phút nghỉ do máy chủ từ chối NGƯỜI TRƯỚC.
+      //
+      // Vì sao nó ở trong cùng khối `try` với `clearSessionToken` chứ không đứng
+      // riêng: hai lệnh này là một việc. Xoá thẻ mà không mở van thì người sau
+      // vừa không có thẻ vừa không được đúc thẻ — trạng thái tệ hơn cả trước khi
+      // xoá. `clearSessionToken` ném thì van cũng không cần mở, vì thẻ cũ còn đó.
+      clearSessionMintCooldown();
     } catch (error) {
       console.warn('[Redux] Logout: clearSessionToken lỗi (bỏ qua):', error);
     }

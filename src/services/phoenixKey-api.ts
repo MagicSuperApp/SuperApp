@@ -405,9 +405,25 @@ let inflightRefresh: Promise<string | null> | null = null;
 const MINT_COOLDOWN_MS = 60_000;
 let mintCooldownUntil = 0;
 
+/**
+ * Số hiệu THẾ của danh tính, cùng cơ chế và cùng lý do với `loginGeneration`
+ * trong `orilifeDidAuth.ts` — đọc khối chú thích ở đó để khỏi chép lại.
+ *
+ * Ghi ở đây đúng một điều riêng: van này bị bỏ quên lâu hơn van kia. Van đăng
+ * nhập OriLife có hai chỗ gọi mở; van đúc thẻ PhoenixKey thì `clearSessionMint-
+ * Cooldown` được viết ra rồi **không nơi nào gọi** — tức người đăng xuất xong
+ * đăng nhập bằng danh tính khác vẫn gánh nguyên đồng hồ nghỉ của người trước, và
+ * không màn nào nói vì sao. Cùng hình dạng với `clearSessionToken` ở
+ * `store/userSlice.ts` (viết sẵn, nối vào đúng một đường, đường đăng xuất bỏ
+ * trống) — hàm có, đường không có.
+ */
+let mintGeneration = 0;
+
 /** Cho phép đúc lại ngay — dùng khi người dùng vừa tự xác thực lại. */
 export function clearSessionMintCooldown(): void {
+  mintGeneration += 1;
   mintCooldownUntil = 0;
+  inflightRefresh = null;
 }
 
 /** Còn bao nhiêu mili-giây nữa mới được đúc lại; 0 nghĩa là đúc được ngay. */
@@ -417,6 +433,8 @@ export const sessionMintCooldownLeft = (): number =>
 function refreshSessionOnce(): Promise<string | null> {
   if (inflightRefresh) return inflightRefresh;
   if (Date.now() < mintCooldownUntil) return Promise.resolve(null);
+  // Chốt thế NGAY lúc dựng lượt, trước mọi `await` — xem `mintGeneration`.
+  const generationAtStart = mintGeneration;
   const run = (async () => {
     // KHÔNG xoá thẻ đang lưu trước khi có thẻ mới. `ensurePhoenixSession({force:true})`
     // đã bỏ qua thẻ đã lưu rồi, nên lệnh xoá ở đây không giúp gì cho lượt đúc — nó
@@ -424,7 +442,11 @@ function refreshSessionOnce(): Promise<string | null> {
     // lượt gọi sau đó chắc chắn 401 kể cả khi thẻ cũ vẫn còn sống và cái 401 ban
     // đầu đến từ chuyện khác.
     const fresh = refreshSession ? await refreshSession() : null;
-    mintCooldownUntil = fresh ? 0 : Date.now() + MINT_COOLDOWN_MS;
+    // Van đã mở giữa chừng ⟹ lượt này nói về danh tính CŨ. Trả thẻ cho người đã
+    // gọi, nhưng thôi đặt đồng hồ nghỉ lên danh tính mới. Xem `mintGeneration`.
+    if (generationAtStart === mintGeneration) {
+      mintCooldownUntil = fresh ? 0 : Date.now() + MINT_COOLDOWN_MS;
+    }
     return fresh;
   })();
   inflightRefresh = run;

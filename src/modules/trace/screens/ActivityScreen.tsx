@@ -12,6 +12,8 @@ import {
   ScrollView,
   Modal,
   TextInput,
+  Linking,
+  PermissionsAndroid,
 } from 'react-native';
 // Icon: bộ Font Awesome Solid tải qua Iconify (assets/icons → icons.generated).
 // Thêm icon mới: `node scripts/icons.js <tên-fa6-solid>`.
@@ -33,7 +35,7 @@ import { GroundBackdrop } from '../components/layered/Organic';
 import { useTk } from '../../../i18n/keys';
 import { RootState } from '../../../store';
 import { useAppDispatch } from '../../../store/hooks';
-import { showError, showSuccess } from '../../../utils/alert';
+import { showError, showSuccess, showWarning } from '../../../utils/alert';
 import { withPhotoSave } from '../../../services/mediaSavePermission';
 
 // image-picker nạp mềm (giống FruitVideo/CareScan) — máy chưa cài thì báo rõ, không crash.
@@ -346,6 +348,28 @@ const ActivityScreen = () => {
   // quả cần đọc — không ai biết cho tới lúc đi tra ngược, khi đó thì đã muộn.
   const canSave = !!selected && !saving && hasFiles && contextReady && materialsReady;
 
+  /**
+   * Quyền máy ảnh đã bị TỪ CHỐI TỪ TRƯỚC — đường duy nhất gỡ được nằm ở Cài đặt.
+   *
+   * ⛔ Lỗi đội thực địa báo trên iOS: bấm một việc (Tưới nước / Bón phân / Phun
+   * thuốc…) thì máy ảnh "tự tắt ngay khi mở". Đó KHÔNG phải máy ảnh hỏng — iOS chỉ
+   * hỏi quyền ĐÚNG MỘT LẦN; từ lần từ chối đó trở đi `launchCamera` gọi lại callback
+   * ngay với `errorCode: 'permission'` mà không dựng khung hình nào, nên người dùng
+   * thấy màn máy ảnh loé lên rồi biến mất.
+   *
+   * Trước bản này màn không có đường nào ra: nhánh `errorCode` chỉ hiện câu "Kiểm
+   * tra lại quyền dùng máy ảnh" — một lời khuyên không kèm chỗ để làm. Mà `Cài đặt`
+   * của iOS chỉ hiện mục Máy ảnh của app SAU khi app đã xin ít nhất một lần, nên
+   * người dùng đi tìm cũng không chắc thấy. Nút này đưa thẳng tới đó.
+   */
+  const askOpenSettings = useCallback(() => {
+    showWarning(tk('trace.activity.camPermTitle'), tk('trace.activity.camPermBody'), {
+      confirmText: tk('trace.activity.openSettings'),
+      cancelText: tk('trace.activity.later'),
+      onConfirm: () => { Linking.openSettings().catch(() => {}); },
+    });
+  }, [tk]);
+
   // Mở CAMERA QUAY VIDEO ngay (OS camera) và nhận đường dẫn file trả về → set vào
   // scannedFiles để bật "Lưu onnet". Thay cho luồng cũ điều hướng sang TreeIdentity
   // (màn nhận diện cây) vốn KHÔNG trả file về nên nút Lưu không bao giờ bật.
@@ -354,16 +378,40 @@ const ActivityScreen = () => {
       showError(tk('trace.activity.noCamera'), tk('trace.activity.noCameraBody'));
       return;
     }
+
+    // Android: hộp quyền phải do APP bật TRƯỚC. `launchCamera` không tự xin — không
+    // xin thì picker trả lỗi và máy ảnh không mở, giống hệt ca iOS ở dưới. Hai màn
+    // chụp khác trong app (`FruitListScreen`, `TreeIdentityScreen`) đã làm đúng thế;
+    // riêng màn này bỏ sót, nên nó là màn duy nhất mở máy ảnh mà không hỏi gì.
+    if (Platform.OS === 'android') {
+      const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA, {
+        title: tk('trace.activity.camPermTitle'),
+        message: tk('trace.activity.camPermAsk'),
+        buttonPositive: tk('trace.activity.allow'),
+        buttonNegative: tk('trace.activity.deny'),
+      });
+      if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+        askOpenSettings();
+        return;
+      }
+    }
+
     imagePicker.launchCamera(await withPhotoSave(VIDEO_OPTIONS), (response: any) => {
       if (response.didCancel) return;
       if (response.errorCode) {
+        // Đây là ca "cam tự tắt": quyền đã bị từ chối trước đó nên picker đóng ngay.
+        // Nó phải ra một câu KHÁC hẳn lỗi máy ảnh thường, kèm nút đi thẳng tới Cài đặt.
+        if (response.errorCode === 'permission') {
+          askOpenSettings();
+          return;
+        }
         showError(tk('trace.activity.cameraErr'), response.errorMessage ?? tk('trace.activity.cameraErrBody'));
         return;
       }
       const asset = response.assets?.[0];
       if (asset?.uri) setScannedFiles([asset.uri]);
     });
-  }, []);
+  }, [askOpenSettings, tk]);
 
   const handleSave = async () => {
     if (!selected || !farm || !user || !selectedActivity) return;

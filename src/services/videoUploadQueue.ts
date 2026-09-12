@@ -80,7 +80,7 @@ const FileSystem = (): FileSystemLegacy | null => {
   }
 };
 import { ORILIFE_BASE } from './orilifeBase';
-import { ensureOrilifeToken } from './orilifeDidAuth';
+import { ensureOrilifeToken, tokenMatchesCurrentDid } from './orilifeDidAuth';
 import {
   uploadFruitVideo,
   isRetryableStoreReason,
@@ -566,6 +566,41 @@ async function uploadTreeVideoAsQueueResult(
     link_status: r.link_status,
     stored: r.stored,
     error: r.error,
+  };
+}
+
+/**
+ * Bộ phụ thuộc cho lượt flush TỰ ĐỘNG — giống `defaultDeps` ở mọi mặt trừ một:
+ * nó KHÔNG được phép ký, tức không được phép bật hộp sinh trắc.
+ *
+ * ⛔ Vòng lặp đo được trên iOS (đội thực địa báo "đơ, không thoát được màn hình ở
+ * trang chi tiết vườn"; Android không dính):
+ *
+ *   1. Màn Chi tiết vườn nạp dữ liệu ⇒ `ensureOrilifeToken` ⇒ `signRaw` ⇒ iOS dựng
+ *      hộp Face ID. Hộp đó là alert CỦA HỆ ĐIỀU HÀNH: app bị phủ kín, mọi cú chạm
+ *      vào nút quay lại rơi vào hư không.
+ *   2. Hộp hệ thống hiện lên ⇒ app chuyển `active → inactive`; đóng hộp ⇒ `active`.
+ *   3. `App.tsx` nghe `AppState` và ở mỗi lần quay lại `active` thì gọi
+ *      `flushVideoUploadQueue()`.
+ *   4. Flush gọi `ensureToken()` ⇒ lại `signRaw` ⇒ **lại một hộp Face ID nữa**.
+ *
+ * Tức mỗi lần người dùng quét mặt xong là sinh ra đúng một hộp mới để quét tiếp.
+ * Không có điểm dừng, và không có cú chạm nào thoát ra được — đó chính là "đơ".
+ * Android không dính vì hộp sinh trắc ở đó là dialog TRONG app, không đẩy
+ * `AppState` qua `inactive`, nên bước 3 không bao giờ nổ.
+ *
+ * Luật rút ra, rộng hơn hàng đợi video: **một lượt chạy do SỰ KIỆN kích hoạt
+ * (khởi động, quay lại tiền cảnh, mạng phục hồi) không được dựng hộp sinh trắc.**
+ * Hộp đó phải do người dùng bấm mà ra, vì chỉ khi đó mới có ai đó đang nhìn màn
+ * hình để trả lời nó. Không có token thì lượt này bỏ qua, clip nằm yên trong hàng
+ * và lượt sau gửi tiếp — hàng đợi sinh ra chính là để chịu được việc đó.
+ */
+export function backgroundFlushDeps(): FlushDeps {
+  return {
+    ...defaultDeps(),
+    // Chỉ ĐỌC: có sẵn token đúng chủ thì gửi, không có thì thôi. `force` cũng không
+    // đổi gì — lượt tự động không ký, kể cả khi máy chủ vừa trả 401.
+    ensureToken: () => tokenMatchesCurrentDid(),
   };
 }
 

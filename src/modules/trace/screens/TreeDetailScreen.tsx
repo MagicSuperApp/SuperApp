@@ -1159,6 +1159,30 @@ const TreeDetailScreen = () => {
               />
             ) : null}
           </GLErrorBoundary>
+
+          {/*
+            TẤM CHẮN CHẠM — ô này BẤM ĐƯỢC là nhờ nó.
+
+            ⛔ Lỗi đội thực địa báo: bấm ô 3D ở màn chi tiết cây thì không mở được
+               màn Không gian 3D. Không lỗi, không màn mới — bấm như bấm vào tường.
+
+            Nguyên nhân: `<Canvas>` của `TreeModelPreview` là một bề mặt GL native.
+            Nó tự NHẬN quyền xử lý cú chạm (để xoay/kéo model), nên cú chạm dừng
+            lại ở đó và không bao giờ nổi lên tới `Pressable` mà `BentoTile` bọc
+            bên ngoài. Ô càng vẽ kín thì càng không bấm được — tức chính cái làm ô
+            đẹp là cái làm ô chết.
+
+            Tấm `View` trong suốt này phủ kín bề mặt GL và trở thành ĐÍCH của cú
+            chạm. Nó KHÔNG có trình xử lý nào, nên cú chạm nổi tiếp lên `Pressable`
+            và `handleView3D` chạy. Không dùng `pointerEvents="none"`: thế thì cú
+            chạm xuyên qua nó xuống thẳng bề mặt GL, đúng lại lỗi cũ.
+
+            Cùng một cách vá đã dùng cho nút chọn model ở `Space3DScreen.tsx:881`.
+            Hai chỗ là một cặp: ở đâu có `TreeModelPreview` nằm trong một thứ bấm
+            được thì ở đó phải có tấm chắn này.
+          */}
+          <View style={styles.chanCham3D} />
+
           <View style={styles.badge3D}>
             <Icon name="cube" size={13} color={SANG_KHONG_GIAN} />
             <Text style={styles.badge3DTxt}>3D</Text>
@@ -2005,8 +2029,17 @@ const styles = StyleSheet.create({
   // ── MỤC 2 — hai ô xem trước ────────────────────────────────────────────────
   bentoPreviews: { marginBottom: 12 },
   bentoPreview: { height: 138, justifyContent: 'flex-end', alignItems: 'center' },
+  /**
+   * Tấm chắn trong suốt phủ bề mặt GL — xem chú thích ở chỗ dùng.
+   *
+   * `zIndex` là phần BẮT BUỘC, không phải trang trí: không có nó thì tấm chắn nằm
+   * dưới bề mặt GL trong thứ tự vẽ và không chắn được gì.
+   */
+  chanCham3D: { ...StyleSheet.absoluteFillObject, zIndex: 1 },
   /** Huy hiệu ở GÓC, không phải nhãn giữa ô: hình đã nói đây là không gian. */
   badge3D: {
+    // Phải CAO HƠN `chanCham3D`, nếu không huy hiệu bị tấm chắn phủ lên và biến mất.
+    zIndex: 2,
     position: 'absolute', top: 10, left: 10,
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingVertical: 3, paddingHorizontal: 8, borderRadius: 999,

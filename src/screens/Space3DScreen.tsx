@@ -53,7 +53,7 @@ import { DEFAULT_MAP_SOURCE_ID } from '../features/space3d/mapTiles';
 import TreeModel, {
   findTreeModelStatus, subscribeTreeModelStatus, type TreeModelStatus,
 } from '../features/space3d/scene/TreeModel';
-import { TREE_MODELS, getTreeModel } from '../features/space3d/treeModels';
+import { TREE_MODELS, getTreeModel, DEFAULT_TREE_MODEL_ID } from '../features/space3d/treeModels';
 import TreeModelPreview from '../features/space3d/scene/TreeModelPreview';
 import FruitDots from '../features/space3d/scene/FruitDots';
 import { useSpaceData, type SceneFruit, type SceneTree } from '../features/space3d/useSpaceData';
@@ -546,21 +546,42 @@ const Space3DScreen: React.FC = () => {
   // nhưng lời gọi duy nhất nằm trong `TreeViewer3DScreen`, và màn ấy không tuyến
   // nào mở tới (mọi lối vào 3D nay đổ về màn này). Nên câu nhắc là một mệnh lệnh
   // trỏ vào cái nút không tồn tại — cây mới nào cũng đứng nguyên ở đó.
-  const [build3d, setBuild3d] = useState<{ state: 'idle' | 'sending' | 'done'; msg?: string }>({
-    state: 'idle',
-  });
-  // Đổi cây thì kết quả của lượt bấm trước không còn nói về cây đang xem nữa.
-  useEffect(() => { setBuild3d({ state: 'idle' }); }, [focusTreeId]);
+  //
+  // `treeId` nằm TRONG state chứ không nằm ngoài, vì lời gọi mạng mất vài giây và
+  // trong quãng đó người dùng chạm được sang cây khác. Không mang mã cây theo thì
+  // câu "Đã xếp hàng dựng hình 3D" của cây A hiện dưới tên cây B, và B thì chưa
+  // hề được gửi yêu cầu nào — sai theo đúng chiều người dùng không nhận ra.
+  // Lọc bằng cách SO Ở LÚC VẼ (`build3dHere`), không bằng một `useEffect` dọn theo
+  // `focusTreeId`: `askBuild3D` đóng trên `focusTree` của lúc bấm, nên khi nó trả
+  // về, mọi thứ nó đọc được đều là của cây cũ — kể cả cờ dọn.
+  type Build3dState = {
+    treeId?: string;
+    state: 'idle' | 'sending' | 'done' | 'error';
+    msg?: string;
+  };
+  const [build3d, setBuild3d] = useState<Build3dState>({ state: 'idle' });
+
+  // Màn tháo giữa chừng thì thôi ghi state — cùng nếp với `useTreePointCloud`.
+  const aliveRef = useRef(true);
+  useEffect(() => () => { aliveRef.current = false; }, []);
+
+  /** Kết quả một lượt bấm chỉ nói về ĐÚNG cây đã bấm. */
+  const build3dHere: Build3dState = build3d.treeId && build3d.treeId === focusTreeId
+    ? build3d
+    : { state: 'idle' };
 
   const askBuild3D = useCallback(async () => {
-    if (!focusTree || build3d.state === 'sending') return;
-    setBuild3d({ state: 'sending' });
-    const r = await buildTree3D(ORILIFE_BASE, focusTree.id);
+    if (!focusTree || build3dHere.state === 'sending') return;
+    const treeId = focusTree.id;
+    setBuild3d({ treeId, state: 'sending' });
+    const r = await buildTree3D(ORILIFE_BASE, treeId);
+    if (!aliveRef.current) return;
     if (r.ok) {
       // H-25: `building:true` nghĩa là ĐÃ XẾP HÀNG, không phải "đang dựng ngay" —
       // máy chủ chỉ chạy làn 3D khi làn xuất xứ rảnh. Viết "đang dựng" là hứa hộ
       // máy chủ một mốc nó không hứa, rồi người dùng ngồi chờ một thanh quay.
       setBuild3d({
+        treeId,
         state: 'done',
         msg: 'Đã xếp hàng dựng hình 3D. Máy chủ chạy khi rảnh làn — quay lại sau ít phút.',
       });
@@ -568,21 +589,43 @@ const Space3DScreen: React.FC = () => {
     }
     if (r.noProvenance) {
       setBuild3d({
+        treeId,
         state: 'done',
         msg: 'Cây này chưa có hồ sơ xuất xứ nên chưa dựng được. Hoàn tất đăng ký cây rồi bấm lại.',
       });
       return;
     }
+    // `error`, KHÔNG phải `done`: một lần rớt mạng không được khoá vĩnh viễn đường
+    // thử lại. Gộp hai thứ vào `done` thì người dùng đọc "chưa gửi được" xong hết
+    // cách bấm lại, trừ khi rời màn rồi quay vào — không có gì trên màn nói thế.
     // Câu của máy chủ nếu có — nó nói được phải làm gì, câu chung chung thì không.
-    setBuild3d({ state: 'done', msg: r.error?.detail ?? 'Chưa gửi được yêu cầu dựng hình.' });
-  }, [focusTree, build3d.state]);
+    setBuild3d({
+      treeId,
+      state: 'error',
+      msg: r.error?.detail ?? 'Chưa gửi được yêu cầu dựng hình.',
+    });
+  }, [focusTree, build3dHere.state, focusTreeId]);
+
+  // Trạng thái của ĐÁM MÂY ĐIỂM, tra theo model mặc định chứ không theo model
+  // người dùng đang chọn để xem. Tra theo `focusTree.modelId` thì việc chọn kiểu
+  // "cây tự tạo" cho dễ nhìn lại làm nút dựng biến mất, trong khi cây vẫn thật sự
+  // chưa có bản dựng — một lựa chọn hiển thị không được đóng mất một cửa ghi.
+  const focusPointsStatus = useMemo(
+    () => (focusTree
+      ? findTreeModelStatus(modelStatuses, DEFAULT_TREE_MODEL_ID, focusTree.id)
+      : undefined),
+    [modelStatuses, focusTree],
+  );
 
   // Bày nút khi cây CHƯA có bản dựng và máy chủ KHÔNG đang dựng dở. Đọc
   // `serverStatus` thô chứ không dò câu chữ (xem `TreeModelStatus.serverStatus`).
   const canBuild3D = !!focusTree
-    && focusModelStatus?.state === 'missing'
-    && focusModelStatus.serverStatus !== 'building'
-    && build3d.state !== 'done';
+    && focusPointsStatus?.state === 'missing'
+    && focusPointsStatus.serverStatus !== 'building'
+    // `sending` VẪN bày nút — nút tự khoá và đổi thành vòng quay. Loại nó ra là
+    // nút biến mất đúng lúc người dùng vừa bấm, trông như cú bấm rơi vào hư không.
+    // `error` cũng bày: một lần rớt mạng không được lấy mất đường thử lại.
+    && build3dHere.state !== 'done';
 
   /**
    * Câu hiện trên dải nhắc. Ba câu gốc, vì ba chuyện khác nhau:
@@ -594,7 +637,7 @@ const Space3DScreen: React.FC = () => {
    * sau, để nó thắng là người dùng bấm xong không thấy gì đổi.
    */
   const modelWarnText = useMemo(() => {
-    if (build3d.msg) return build3d.msg;
+    if (build3dHere.msg) return build3dHere.msg;
     const st = focusModelStatus;
     if (!st?.message) return null;
     if (st.state === 'failed') {
@@ -602,7 +645,7 @@ const Space3DScreen: React.FC = () => {
     }
     if (st.state === 'missing') return `Đang dùng cây tự tạo. ${st.message}`;
     return st.message;
-  }, [build3d.msg, focusModelStatus]);
+  }, [build3dHere.msg, focusModelStatus]);
 
   const pickModel = useCallback((modelId: string) => {
     if (focusTree) data.setTreeModel(focusTree.id, modelId);
@@ -834,9 +877,9 @@ const Space3DScreen: React.FC = () => {
             <TouchableOpacity
               style={styles.build3dBtn}
               onPress={askBuild3D}
-              disabled={build3d.state === 'sending'}
+              disabled={build3dHere.state === 'sending'}
             >
-              {build3d.state === 'sending'
+              {build3dHere.state === 'sending'
                 ? <ActivityIndicator size="small" color="#06150d" />
                 : <Text style={styles.build3dTxt}>Dựng hình 3D</Text>}
             </TouchableOpacity>

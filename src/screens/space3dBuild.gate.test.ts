@@ -41,7 +41,11 @@ const NAV = read('..', 'navigation', 'index.tsx');
 describe('Nút dựng hình 3D — dây nối từ màn tới cửa máy chủ', () => {
   it('màn không gian 3D gọi `buildTree3D` thật, không chỉ nhập khẩu', () => {
     expect(SPACE3D).toContain("import { buildTree3D } from '../services/treeReIDService'");
-    expect(SPACE3D).toContain('await buildTree3D(ORILIFE_BASE, focusTree.id)');
+    // `treeId` chứ không `focusTree.id`: mã cây phải được CHỐT một lần trước khi
+    // gọi mạng, rồi dùng lại đúng cái đó lúc ghi kết quả. Đọc `focusTree.id` ở
+    // hai thời điểm khác nhau là cách đường đua đổi cây chui vào.
+    expect(SPACE3D).toContain('const treeId = focusTree.id;');
+    expect(SPACE3D).toContain('await buildTree3D(ORILIFE_BASE, treeId)');
   });
 
   it('nút gắn vào đúng hàm xử lý, và có điều kiện bày', () => {
@@ -63,7 +67,20 @@ describe('Nút dựng hình 3D — dây nối từ màn tới cửa máy chủ',
     expect(TREE_POINTS).toContain('serverStatus: status');
     expect(TREE_MODEL).toContain('serverStatus?: string');
     expect(TREE_MODEL).toContain("serverStatus: r.kind === 'unavailable' ? r.serverStatus : undefined");
-    expect(SPACE3D).toContain("focusModelStatus.serverStatus !== 'building'");
+    expect(SPACE3D).toContain("focusPointsStatus.serverStatus !== 'building'");
+  });
+
+  /**
+   * Nút phải đọc trạng thái ĐÁM MÂY ĐIỂM, không đọc trạng thái của model người
+   * dùng đang chọn để xem. Tra theo `focusTree.modelId` thì chọn kiểu "cây tự
+   * tạo" cho dễ nhìn lại làm nút dựng biến mất, trong khi cây vẫn thật sự chưa
+   * có bản dựng — một lựa chọn HIỂN THỊ đóng mất một cửa GHI.
+   */
+  it('điều kiện bày nút tra theo model mặc định, không theo model đang xem', () => {
+    expect(SPACE3D).toContain(
+      'findTreeModelStatus(modelStatuses, DEFAULT_TREE_MODEL_ID, focusTree.id)',
+    );
+    expect(SPACE3D).toContain("focusPointsStatus?.state === 'missing'");
   });
 
   it('không dò câu chữ tiếng Việt để đoán máy chủ đang dựng', () => {
@@ -86,8 +103,38 @@ describe('Nút dựng hình 3D — dây nối từ màn tới cửa máy chủ',
     expect(SPACE3D).toContain('chưa có hồ sơ xuất xứ');
   });
 
-  it('đổi cây thì kết quả lượt bấm trước bị dọn', () => {
-    expect(SPACE3D).toContain("useEffect(() => { setBuild3d({ state: 'idle' }); }, [focusTreeId]);");
+  /**
+   * Lời gọi mạng mất vài giây, và trong quãng đó người dùng chạm được sang cây
+   * khác. Bản đầu dọn bằng một `useEffect` theo `focusTreeId` — KHÔNG đủ, và
+   * thiếu theo một chiều khó thấy: `askBuild3D` đóng trên `focusTree` của lúc
+   * bấm, nên khi nó trả về, nó ghi state vô điều kiện ĐÈ lên thứ `useEffect` vừa
+   * dọn. Kết quả: câu "Đã xếp hàng dựng hình 3D" của cây A hiện dưới tên cây B,
+   * còn B thì chưa hề được gửi yêu cầu nào.
+   *
+   * Cách chắc là mang mã cây THEO state rồi lọc ở lúc vẽ — thứ duy nhất đọc được
+   * cả cây-lúc-bấm lẫn cây-lúc-vẽ.
+   */
+  it('kết quả một lượt bấm chỉ nói về đúng cây đã bấm', () => {
+    expect(SPACE3D).toContain('setBuild3d({ treeId, state:');
+    expect(SPACE3D).toContain("build3d.treeId && build3d.treeId === focusTreeId");
+    // Và cách cũ không được quay lại: dọn theo `focusTreeId` là cái bẫy ở trên.
+    expect(SPACE3D).not.toContain("useEffect(() => { setBuild3d({ state: 'idle' }); }, [focusTreeId]);");
+  });
+
+  /**
+   * Một lần rớt mạng KHÔNG được lấy mất đường thử lại. Gộp nhánh hỏng vào `done`
+   * thì `canBuild3D` tắt nút vĩnh viễn: người dùng đọc "chưa gửi được yêu cầu
+   * dựng hình" rồi hết cách bấm lại, trừ khi rời màn và quay vào — mà không có
+   * gì trên màn nói điều đó.
+   */
+  it('lỗi mạng ra trạng thái riêng, không khoá luôn đường thử lại', () => {
+    expect(SPACE3D).toContain("state: 'error'");
+    expect(SPACE3D).toContain("build3dHere.state !== 'done'");
+  });
+
+  /** Màn tháo giữa chừng thì thôi ghi state. */
+  it('không ghi trạng thái sau khi màn đã tháo', () => {
+    expect(SPACE3D).toContain('if (!aliveRef.current) return;');
   });
 
   /**

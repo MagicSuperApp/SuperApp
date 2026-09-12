@@ -1,8 +1,39 @@
 # chat_mls
 
 Lõi Rust cho tính năng **chat E2EE (ProofChat)** trên mobile. Port 3 tầng giao thức của
-web (`ts-mls`) để **interop với client web đang chạy** — xem
-`spikes/chat-mls-interop/PHA0-FINDINGS.md` (Pha 0 đã chứng minh khớp byte-for-byte).
+web (`ts-mls`) để **interop với client web đang chạy**.
+
+> ⛔ **12/09/2026 — tầng 2 KHÔNG còn liên thông với web. Đừng đọc
+> `spikes/chat-mls-interop/PHA0-FINDINGS.md` như bằng chứng hiện hành.**
+>
+> Câu ở đây trước là "Pha 0 đã chứng minh khớp byte-for-byte". Nó đúng lúc viết và
+> **sai bây giờ**: web đã chuyển tầng 2 sang **application message của RFC 9420**,
+> còn `src/message_layer.rs` (`derive_message_key`) vẫn là sơ đồ HKDF cũ. Đo bằng
+> thực thi, không bằng suy luận: thân tin của web mở đầu `0001000206636f6e` (byte
+> dây MLS, **không có trường `epoch`**), `decode_body_b64` ném lỗi trên thân của
+> web, và `ffi.rs` (`core_decrypt`) thì lại đọc `body.epoch` — trường mà thân của
+> web không mang.
+>
+> Vì sao bản khảo sát vẫn xanh: bộ ca kiểm liên thông nạp hàm dẫn khoá từ một tệp
+> **không mã sản xuất nào import**, và tập vector chỉ có tầng 2 + tầng 3 — không có
+> vector cho application message. Nó xanh trong khi hai bên không đọc được nhau.
+> Đây đúng là ca §"có phép kiểm ĐỎ ở chốt X ≠ chốt X được ghim" của rule chung.
+>
+> Hướng vá do bên chủ ProofChat chốt (cả hai đường đều mất tin cũ). Chưa chốt thì
+> **không sửa `message_layer.rs` theo phỏng đoán** — sửa lệch pha là hỏng thêm một
+> lớp nữa. Trạng thái hai app: CheckFarm khai `modules: ["trace","join"]` nên không
+> chạm chỗ này; Aladin khai `"all"` nên có chạm.
+>
+> ⚠ **`src/` là BẢN CHÉP, không phải nguồn — đừng sửa gì trong đó, kể cả chú
+> thích.** Nguồn là `ProofChat/Myelin — crates/chat_mls/src`, và cây này bị ghim
+> băm trong `scripts/vendored-tree-pin.json`; đổi một dòng chú thích cũng làm
+> cổng `check-vendored-tree` đỏ. Đã vấp đúng một lần khi viết chính khối cảnh
+> báo này: bản đầu sửa docstring ở `src/lib.rs`, và cái giá không phải là cổng
+> đỏ — là **bản chép trở thành nguồn thứ hai**, rồi hai bên trôi khỏi nhau mà
+> không ai biết bên nào đúng.
+>
+> Cần đổi chữ trong `src/` thì gửi việc đó sang bên giữ nguồn. Cảnh báo dành cho
+> người đọc bên này thì đặt ở tệp này — README **không** nằm trong cây bị ghim.
 
 ## Ba tầng
 

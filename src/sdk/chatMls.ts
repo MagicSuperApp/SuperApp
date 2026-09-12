@@ -10,7 +10,9 @@
  * Gọi `newIdentity(stakeAddress)` hoặc `importState(blob)` để khởi tạo, rồi các thao tác.
  * Hàm thao tác native trả CHUỖI JSON `{ok, ...}`; wrapper parse & ném nếu ok=false.
  *
- * Xem rust/chat_mls/README.md + spikes/chat-mls-interop/PHA0-FINDINGS.md.
+ * Xem rust/chat_mls/README.md. ⛔ 12/09/2026: KHÔNG dùng
+ * `spikes/chat-mls-interop/PHA0-FINDINGS.md` làm căn cứ — tầng 2 của web đã đổi
+ * sang application message RFC 9420, bản khảo sát đó xanh giả. Chi tiết ở README.
  */
 
 import { NativeModules, Platform } from 'react-native';

@@ -1355,12 +1355,36 @@ const FarmDetailMode = ({
       {/* Chỉ đường vẫn là một VIỆC, không phải một thứ để nhìn — nên nó giữ
           nhãn. `forFarm` trả null khi vườn chưa vẽ ranh giới: không có toạ độ
           nào để đi tới, nên ô tự vắng mặt thay vì bấm rồi không xảy ra gì. */}
-      {dichDuong ? (
+      {/* Ô VẬT NUÔI — lối vào NHÌN THẤY ĐƯỢC của nhánh định danh con vật.
+          Trước bản này nhánh ấy chỉ tới được bằng cách KÉO nút giữa rồi thả trúng
+          một cung con (`resolveGateItems.ts` ▸ `SUB_ACTIONS.Farms`). Cử chỉ đó có
+          thật và chạy đúng, nhưng nó không tự lộ ra: không màn nào bày một chữ
+          "vật nuôi" nào, nên bốn màn con vật đứng sau một thao tác phải biết
+          trước mới làm được. Đặt ở ĐÂY vì đây là chỗ duy nhất đã cầm sẵn mã vườn
+          — màn sổ lọc theo `farmId`, và mở nó không kèm mã thì nó liệt kê vật
+          nuôi của MỌI vườn dưới tiêu đề một vườn.
+          Ô chỉ đường vẫn tự vắng mặt khi vườn chưa vẽ ranh giới (không có toạ độ
+          nào để đi tới), nên hàng này có lúc một ô, có lúc hai. */}
+      {dichDuong || farm?.id ? (
         <BentoRow style={styles.bentoActions}>
-          <BentoTile flex={1} tone="rain" onPress={() => moDuong(dichDuong)} style={styles.bentoAction}>
-            <Icon name="map-location-dot" size={20} color={ORG_TONE.rain} />
-            <Text style={styles.bentoActionTxt}>Chỉ đường tới vườn</Text>
-          </BentoTile>
+          {dichDuong ? (
+            <BentoTile flex={1} tone="rain" onPress={() => moDuong(dichDuong)} style={styles.bentoAction}>
+              <Icon name="map-location-dot" size={20} color={ORG_TONE.rain} />
+              <Text style={styles.bentoActionTxt}>Chỉ đường tới vườn</Text>
+            </BentoTile>
+          ) : null}
+          {farm?.id ? (
+            <BentoTile
+              flex={1}
+              onPress={() =>
+                (navigation as any).navigate('AnimalManagement', { farmId: String(farm.id) })
+              }
+              style={styles.bentoAction}
+            >
+              <Icon name="paw" size={20} color={COLORS.accent} />
+              <Text style={styles.bentoActionTxt}>Vật nuôi</Text>
+            </BentoTile>
+          ) : null}
         </BentoRow>
       ) : null}
 

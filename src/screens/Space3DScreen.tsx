@@ -38,6 +38,7 @@ import { Canvas, useThree } from '@react-three/fiber/native';
 import * as THREE from 'three';
 
 import { ORILIFE_BASE } from '../services/orilifeBase';
+import { buildTree3D } from '../services/treeReIDService';
 import { getFruitViews, type FruitView } from '../services/fruitReIDService';
 import { ringRadius, type Vec2 } from '../features/space3d/geo';
 import { TREE_HEIGHT, coordToLocalMeters, coordToZone, ZONE_LABEL } from '../features/space3d/treeFrame';
@@ -538,6 +539,71 @@ const Space3DScreen: React.FC = () => {
     [modelStatuses, focusTree],
   );
 
+  // ── Dựng hình 3D cho cây đang mở ──────────────────────────────────────────
+  //
+  // `treePoints.ts` bảo người dùng *"Chụp thêm ảnh quanh cây rồi bấm dựng"* từ
+  // lâu, mà KHÔNG màn nào có nút đó: `buildTree3D` đã viết xong ở tầng dịch vụ
+  // nhưng lời gọi duy nhất nằm trong `TreeViewer3DScreen`, và màn ấy không tuyến
+  // nào mở tới (mọi lối vào 3D nay đổ về màn này). Nên câu nhắc là một mệnh lệnh
+  // trỏ vào cái nút không tồn tại — cây mới nào cũng đứng nguyên ở đó.
+  const [build3d, setBuild3d] = useState<{ state: 'idle' | 'sending' | 'done'; msg?: string }>({
+    state: 'idle',
+  });
+  // Đổi cây thì kết quả của lượt bấm trước không còn nói về cây đang xem nữa.
+  useEffect(() => { setBuild3d({ state: 'idle' }); }, [focusTreeId]);
+
+  const askBuild3D = useCallback(async () => {
+    if (!focusTree || build3d.state === 'sending') return;
+    setBuild3d({ state: 'sending' });
+    const r = await buildTree3D(ORILIFE_BASE, focusTree.id);
+    if (r.ok) {
+      // H-25: `building:true` nghĩa là ĐÃ XẾP HÀNG, không phải "đang dựng ngay" —
+      // máy chủ chỉ chạy làn 3D khi làn xuất xứ rảnh. Viết "đang dựng" là hứa hộ
+      // máy chủ một mốc nó không hứa, rồi người dùng ngồi chờ một thanh quay.
+      setBuild3d({
+        state: 'done',
+        msg: 'Đã xếp hàng dựng hình 3D. Máy chủ chạy khi rảnh làn — quay lại sau ít phút.',
+      });
+      return;
+    }
+    if (r.noProvenance) {
+      setBuild3d({
+        state: 'done',
+        msg: 'Cây này chưa có hồ sơ xuất xứ nên chưa dựng được. Hoàn tất đăng ký cây rồi bấm lại.',
+      });
+      return;
+    }
+    // Câu của máy chủ nếu có — nó nói được phải làm gì, câu chung chung thì không.
+    setBuild3d({ state: 'done', msg: r.error?.detail ?? 'Chưa gửi được yêu cầu dựng hình.' });
+  }, [focusTree, build3d.state]);
+
+  // Bày nút khi cây CHƯA có bản dựng và máy chủ KHÔNG đang dựng dở. Đọc
+  // `serverStatus` thô chứ không dò câu chữ (xem `TreeModelStatus.serverStatus`).
+  const canBuild3D = !!focusTree
+    && focusModelStatus?.state === 'missing'
+    && focusModelStatus.serverStatus !== 'building'
+    && build3d.state !== 'done';
+
+  /**
+   * Câu hiện trên dải nhắc. Ba câu gốc, vì ba chuyện khác nhau:
+   *   failed  — trục trặc lúc nạp, đáng thử lại
+   *   missing — cây CHƯA có bản dựng 3D: chuyện bình thường của cây mới, gọi nó
+   *             là "lỗi" thì người dùng đi tìm cách sửa một thứ không hỏng
+   *   còn lại — câu của máy chủ về độ phủ ảnh, hiện nguyên văn
+   * Vừa bấm dựng thì câu TRẢ LỜI đè lên: trạng thái cũ còn đúng tới lượt nạp
+   * sau, để nó thắng là người dùng bấm xong không thấy gì đổi.
+   */
+  const modelWarnText = useMemo(() => {
+    if (build3d.msg) return build3d.msg;
+    const st = focusModelStatus;
+    if (!st?.message) return null;
+    if (st.state === 'failed') {
+      return `Đang dùng cây tự tạo — không nạp được "${getTreeModel(st.modelId).label}": ${st.message}`;
+    }
+    if (st.state === 'missing') return `Đang dùng cây tự tạo. ${st.message}`;
+    return st.message;
+  }, [build3d.msg, focusModelStatus]);
+
   const pickModel = useCallback((modelId: string) => {
     if (focusTree) data.setTreeModel(focusTree.id, modelId);
     setModelPickerOpen(false);
@@ -756,26 +822,25 @@ const Space3DScreen: React.FC = () => {
       {/* Model cây hỏng → nói RÕ lý do ngay trên màn, kèm dấu hiệu đang dùng cây
           dự phòng. Không có khối này thì lỗi chỉ nằm trong console, người dùng
           chỉ thấy "cây trông lạ" mà không biết vì sao. */}
-      {focusModelStatus?.message ? (
-        <View style={styles.modelWarn} pointerEvents="none">
+      {modelWarnText ? (
+        <View style={styles.modelWarn} pointerEvents="box-none">
           <Icon
-            name={focusModelStatus.state === 'failed' ? 'alert-circle' : 'information'}
+            name={focusModelStatus?.state === 'failed' ? 'alert-circle' : 'information'}
             size={15}
-            color={focusModelStatus.state === 'failed' ? '#fbbf24' : SPACE_COLORS.accent}
+            color={focusModelStatus?.state === 'failed' ? '#fbbf24' : SPACE_COLORS.accent}
           />
-          <Text style={styles.modelWarnTxt} numberOfLines={3}>
-            {/* Ba câu khác nhau, vì ba chuyện khác nhau:
-                  failed  — trục trặc, đáng thử lại
-                  missing — cây CHƯA có bản dựng 3D: chuyện bình thường của cây mới,
-                            gọi nó là "lỗi" thì người dùng đi tìm cách sửa một thứ
-                            không hỏng
-                  còn lại — câu của máy chủ về độ phủ ảnh, hiện nguyên văn */}
-            {focusModelStatus.state === 'failed'
-              ? `Đang dùng cây tự tạo — không nạp được "${getTreeModel(focusModelStatus.modelId).label}": ${focusModelStatus.message}`
-              : focusModelStatus.state === 'missing'
-              ? `Đang dùng cây tự tạo. ${focusModelStatus.message}`
-              : focusModelStatus.message}
-          </Text>
+          <Text style={styles.modelWarnTxt} numberOfLines={4}>{modelWarnText}</Text>
+          {canBuild3D ? (
+            <TouchableOpacity
+              style={styles.build3dBtn}
+              onPress={askBuild3D}
+              disabled={build3d.state === 'sending'}
+            >
+              {build3d.state === 'sending'
+                ? <ActivityIndicator size="small" color="#06150d" />
+                : <Text style={styles.build3dTxt}>Dựng hình 3D</Text>}
+            </TouchableOpacity>
+          ) : null}
         </View>
       ) : null}
 
@@ -1044,6 +1109,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 9,
   },
   modelWarnTxt: { flex: 1, color: SPACE_COLORS.textMuted, fontSize: 11, lineHeight: 15 },
+
+  build3dBtn: {
+    minWidth: 88, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: SPACE_COLORS.accent, borderRadius: 9,
+    paddingVertical: 7, paddingHorizontal: 10,
+  },
+  build3dTxt: { color: '#06150d', fontSize: 12, fontWeight: '800' },
 
   // Nằm TRÊN modelWarn để hai câu nhắc không đè lên nhau khi cùng xuất hiện.
   mapNote: {

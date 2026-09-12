@@ -63,6 +63,7 @@ import CommonPopup from '../components/CommonPopup';
 import StateView from '../../../components/state/StateView';
 import { useAppDispatch } from '../../../store/hooks';
 import { formatTreeName, shortTreeCode } from '../../../utils/treeNameFormatter';
+import { loadTreeCovers } from '../../../services/treeImageStore';
 import {
   classifySpeed,
   validatePolygon,
@@ -233,63 +234,76 @@ class MapErrorBoundary extends React.Component<{ children: React.ReactNode }, { 
 // Tiến độ và cây thành MỘT khối: mắt không phải nối một thanh ngang với một cái
 // tên ở chỗ khác. Xem `RingProgress`.
 /**
- * ẢNH CHUNG của một cây, khi không có ảnh riêng.
+ * ẢNH CHUNG của một cây, khi cây đó chưa có ảnh nào trên máy.
  *
  * `assets/images/modules/tree.png` là hình minh hoạ của module — 128px, đủ nét ở
- * cỡ thẻ này. Ngày có bộ ảnh cây tử tế thì thay ở ĐÂY, một chỗ.
- *
- * ⚠ Máy chủ field-reid KHÔNG trả ảnh cây: `mapTreeInfoToUI` đặt `images: []` vì
- *   không cửa nào trả đường dẫn ảnh. Nên `item.images?.[0]` chỉ có với cây vừa
- *   tạo trên chính máy này, và mọi cây đọc về từ máy chủ đều dùng hình chung.
- *   Lời giải thật là máy chủ trả kèm một đường dẫn ảnh.
+ * cỡ nút này. Ngày có bộ ảnh cây tử tế thì thay ở ĐÂY, một chỗ.
  */
 const ANH_CAY_CHUNG = require('../../../../assets/images/modules/tree.png');
 
 /**
- * Một cây trong lưới — Ô VUÔNG bo góc: ảnh ở trên, chữ ở dưới.
+ * Một cây trong lưới — nút TRÒN, và viền của chính nó là thanh tiến độ.
  *
- * ── Vì sao thôi dùng nút tròn ───────────────────────────────────────────────
- * Nút tròn cũ có một lý do thật: viền của hình tròn CHÍNH LÀ cung tiến độ thu
- * hoạch, nên vòng và lòng là một vật chứ không phải hai. Lý do đó đã rỗng từ
- * lâu mà không ai gỡ — `harvestProgress` trong toàn bộ `src/` KHÔNG có chỗ nào
- * ghi, nên cung ấy chưa từng vẽ một lần nào: mọi cây đều ra vòng NÉT ĐỨT.
+ * ── Ba phần, một khối ───────────────────────────────────────────────────────
+ * Không phần nào có nền riêng, viền riêng hay bo góc riêng: ảnh nằm gọn trong
+ * lòng một hình tròn duy nhất, và cung tiến độ là ĐƯỜNG VIỀN của chính hình tròn
+ * ấy — không phải một vòng thứ hai đeo quanh nó. Hai mép không bao giờ khớp
+ * tuyệt đối; chúng để lại một đường chỉ mờ, và cái vòng thôi đọc ra "viền của
+ * nút". Xem `RingProgress`.
  *
- * Tức cái vòng đang chiếm trọn đường viền của mọi nút để nói đúng một câu:
- * "không có số liệu". Ô vuông trả chỗ đó lại cho thứ người ta thật sự nhìn.
+ * ── Ảnh lấy ở đâu ───────────────────────────────────────────────────────────
+ * `treeImageStore` — đường dẫn ảnh do CHÍNH máy này ghi lúc đăng ký cây
+ * (`appendTreeImages`). Máy chủ field-reid KHÔNG trả ảnh cây: `mapTreeInfoToUI`
+ * đặt `images: []` vì không cửa nào trả đường dẫn. Nên cây đăng ký trên máy khác
+ * dùng hình chung, và đó là giới hạn thật chứ không phải một thiếu sót ở đây.
  *
- * ⚠ "Chưa biết" vẫn KHÁC "bằng không", và đó là điều bản cũ giữ đúng. Nó chỉ
- *   dời chỗ: từ nét đứt của cái vòng sang chữ "chưa đếm" và sang việc huy hiệu
- *   tiến độ VẮNG MẶT hẳn khi chưa có số — vắng mặt thì không khẳng định gì, còn
- *   một huy hiệu ghi "0%" thì khẳng định.
+ * ⚠ Đường dẫn có thể CHẾT (Android dọn vùng nhớ tạm). `onError` tụt về hình
+ *   chung — đừng để lại một ô trống giữa lòng nút.
  */
 const TreeChip = ({
   item,
   farm,
   size,
+  anhBia,
   onPress,
 }: {
   item: any;
   farm?: any;
   size: number;
+  /** Ảnh đã chụp của chính cây này, nếu máy còn giữ. */
+  anhBia?: string;
   onPress: () => void;
 }) => {
   // ⛔ `?? 0` ở hai dòng này từng biến "chưa biết" thành "bằng không".
   //
   // `harvestProgress` trong toàn bộ `src/` có BA chỗ đọc và KHÔNG chỗ nào ghi;
-  // `mapTreeInfoToUI` (`services/treeReIDService.ts`) không điền số quả. Nên mọi
-  // cây trong lưới từng hiện `0 quả` — một con số bịa mang hình dạng số đo, và
-  // người cầm máy ngoài ruộng chép nó vào báo cáo.
+  // `mapTreeInfoToUI` không điền số quả. Nên mọi cây trong lưới từng hiện
+  // `0 quả` với vòng rỗng — một con số bịa mang hình dạng số đo, và người cầm
+  // máy ngoài ruộng chép nó vào báo cáo.
+  //
+  // `null` đi thẳng tới `RingProgress` (vòng nét đứt) và tới chữ "chưa đếm".
   const harvestPct = item.harvestProgress ?? null;
   const soQua = item.fruitCount ?? null;
   const ten = formatTreeName(item, farm);
-  const anhRieng = typeof item.images?.[0] === 'string' ? item.images[0] : null;
   const [hongAnh, setHongAnh] = useState(false);
+  const coAnhThat = !!anhBia && !hongAnh;
+
+  /**
+   * Đường kính LÒNG nút — trừ đúng bề dày viền ở cả hai bên.
+   *
+   * `RingProgress` vẽ viền tâm tại bán kính `(size - stroke) / 2`, tức mép
+   * TRONG của viền nằm ở `size / 2 - stroke`. Ảnh đúng đường kính này thì tiếp
+   * xúc mép trong của viền: không đè lên cung tiến độ, cũng không chừa một
+   * khe sáng giữa ảnh và viền.
+   */
+  const NET = 5;
+  const coLong = size - NET * 2;
 
   return (
     <TouchableOpacity
       activeOpacity={0.85}
       onPress={onPress}
-      style={[styles.cayThe, { width: size }]}
+      style={{ width: size, alignItems: 'center' }}
       accessibilityRole="button"
       accessibilityLabel={
         `${ten}, ` +
@@ -298,39 +312,38 @@ const TreeChip = ({
         (harvestPct === null ? 'chưa có số liệu thu hoạch' : `đã thu ${harvestPct}%`)
       }
     >
-      {/* Ô ảnh NỀN TRẮNG. Trắng vì ảnh cây là hình xoá nền: nền trắng cho hình
-          đứng rõ, và nó cũng tách thẻ khỏi nền ngả lam-lục của cả trang. */}
-      <View style={styles.cayAnh}>
+      <RingProgress pct={harvestPct} size={size} stroke={NET}>
+        {/* Ảnh THẬT thì phủ kín lòng nút (`cover`); hình chung thì chừa lề
+            (`contain`) vì nó là hình minh hoạ xoá nền, phủ kín sẽ cắt cụt ngọn.
+            Nền trắng của `RingProgress` lộ ra quanh nó, và đó là chỗ "nền trắng"
+            của thẻ đến từ. */}
         <Image
-          source={anhRieng && !hongAnh ? { uri: anhRieng } : ANH_CAY_CHUNG}
-          style={styles.cayAnhHinh}
-          /* `contain`: ảnh cây có tỉ lệ khác nhau, `cover` cắt cụt ngọn. */
-          resizeMode="contain"
+          source={coAnhThat ? { uri: anhBia } : ANH_CAY_CHUNG}
+          style={[
+            coAnhThat
+              ? { width: coLong, height: coLong, borderRadius: coLong / 2 }
+              : { width: coLong * 0.62, height: coLong * 0.62 },
+          ]}
+          resizeMode={coAnhThat ? 'cover' : 'contain'}
           fadeDuration={0}
           onError={() => setHongAnh(true)}
         />
-        {/* Huy hiệu tiến độ — CHỈ khi thật sự có số. Vắng mặt không khẳng định
-            gì; một huy hiệu "0%" thì khẳng định, và nó sẽ sai. */}
-        {harvestPct !== null ? (
-          <View style={styles.cayHuyHieu}>
-            <Text style={styles.cayHuyHieuTxt}>{harvestPct}%</Text>
-          </View>
-        ) : null}
-      </View>
+      </RingProgress>
 
-      <View style={styles.cayChu}>
-        <Text style={styles.cayTen} numberOfLines={1}>{ten}</Text>
-        <Text style={styles.cayQua} numberOfLines={1}>
-          {soQua === null ? (
-            <Text style={styles.cayDonVi}>chưa đếm</Text>
-          ) : (
-            <>
-              {soQua}
-              <Text style={styles.cayDonVi}> quả</Text>
-            </>
-          )}
-        </Text>
-      </View>
+      {/* Chữ nằm DƯỚI nút. Trước bản này nó nằm TRONG lòng nút, và lòng nút nay
+          là chỗ của ảnh — chữ đè lên một tấm ảnh chụp thật thì đọc được hay
+          không là chuyện may rủi theo từng tấm. */}
+      <Text style={styles.cayTen} numberOfLines={1}>{ten}</Text>
+      <Text style={styles.cayQua} numberOfLines={1}>
+        {soQua === null ? (
+          <Text style={styles.cayDonVi}>chưa đếm</Text>
+        ) : (
+          <>
+            {soQua}
+            <Text style={styles.cayDonVi}> quả</Text>
+          </>
+        )}
+      </Text>
     </TouchableOpacity>
   );
 };
@@ -1228,6 +1241,21 @@ const FarmDetailMode = ({
   const endIndex = startIndex + ITEMS_PER_PAGE;
   const paginatedTrees = filteredTrees.slice(startIndex, endIndex);
 
+  /**
+   * Nạp ảnh bìa mỗi khi TRANG đổi. Khoá phụ thuộc là danh sách mã cây nối lại,
+   * không phải chính mảng `paginatedTrees` — mảng đó dựng mới ở mỗi lượt vẽ, nên
+   * đặt nó vào phụ thuộc là một vòng đọc đĩa ở MỌI lượt vẽ.
+   */
+  const maTrang = paginatedTrees.map((t) => t.id).join('|');
+  useEffect(() => {
+    let con = true;
+    loadTreeCovers(maTrang ? maTrang.split('|') : []).then((bang) => {
+      // Lượt nạp cũ về sau lượt mới thì nó nói về trang đã rời — bỏ đi.
+      if (con) setAnhBia((truoc) => ({ ...truoc, ...bang }));
+    });
+    return () => { con = false; };
+  }, [maTrang]);
+
   const handlePreviousPage = () => {
     if (currentPage > 1) {
       onPageChange(currentPage - 1);
@@ -1273,6 +1301,14 @@ const FarmDetailMode = ({
 
   /** Cây đang mở popup. `null` = không mở. */
   const [cayDangXem, setCayDangXem] = useState<any | null>(null);
+
+  /**
+   * Ảnh bìa của các cây ĐANG HIỆN, `{ tree_id: uri }`.
+   *
+   * Chỉ nạp cho một TRANG chứ không cho cả vườn: vườn 400 cây thì 400 lượt đọc
+   * đĩa để bày 12 cái thẻ, và 388 tấm trong số đó không ai nhìn thấy.
+   */
+  const [anhBia, setAnhBia] = useState<Record<string, string>>({});
 
   /**
    * Bề ngang một THẺ cây trong lưới BA cột.
@@ -1639,6 +1675,7 @@ const FarmDetailMode = ({
             item={item}
             farm={farm}
             size={CO_NUT}
+            anhBia={anhBia[item.id]}
             /* Chạm KHÔNG mở thẳng màn chi tiết nữa — nó mở popup. Màn chi tiết
                là một chuyến đi khỏi danh sách; phần lớn lượt chạm chỉ để xem
                nhanh cây này có gì, rồi quay lại chạm cây kế. */
@@ -2833,38 +2870,12 @@ const styles = StyleSheet.create({
   // ── Thẻ cây + lưới ba cột ─────────────────────────────────────────────────
   treeGridHang: { gap: 12, marginBottom: 12 },
 
-  cayThe: {
-    borderRadius: 16, overflow: 'hidden',
-    backgroundColor: ORG_SURFACE.raised,
-    borderWidth: 1, borderColor: ORG_TONE.border,
-  },
-  /**
-   * Ô ảnh VUÔNG, nền TRẮNG.
-   *
-   * `aspectRatio` chứ không gõ chiều cao: bề ngang thẻ suy từ bề ngang màn, nên
-   * một con số cố định méo ô ảnh trên máy hẹp và máy rộng theo hai kiểu khác nhau.
-   *
-   * Trắng chứ không phải nền thẻ ngả lam-lục: ảnh cây là hình xoá nền, và nền
-   * trắng cho hình đứng rõ nhất.
-   */
-  cayAnh: {
-    width: '100%', aspectRatio: 1,
-    alignItems: 'center', justifyContent: 'center',
-    backgroundColor: ORG_NATURE.paper,
-  },
-  cayAnhHinh: { width: '78%', height: '78%' },
-  /** Chỉ hiện khi THẬT SỰ có số liệu thu hoạch — xem chú thích ở `TreeChip`. */
-  cayHuyHieu: {
-    position: 'absolute', top: 6, right: 6,
-    paddingHorizontal: 6, paddingVertical: 2, borderRadius: 999,
-    backgroundColor: ORG_TONE.primarySoft,
-  },
-  cayHuyHieuTxt: { fontSize: 10, fontWeight: '800', color: ORG_TONE.primaryDeep },
-  cayChu: { paddingHorizontal: 8, paddingTop: 6, paddingBottom: 8, gap: 1 },
   cayTen: {
-    fontSize: 12, fontWeight: '700', color: ORG_NATURE.bark, letterSpacing: -0.2,
+    fontSize: 12, fontWeight: '700', color: ORG_NATURE.bark,
+    letterSpacing: -0.2, marginTop: 6, textAlign: 'center',
   },
-  cayQua: { fontSize: 11, fontWeight: '700', color: ORG_TONE.primary },
+  /** Số quả dùng CHUNG sắc với cung tiến độ: cả hai nói về cùng một cây. */
+  cayQua: { fontSize: 12, fontWeight: '800', color: ORG_TONE.primary, marginTop: 1 },
   cayDonVi: { fontSize: 11, fontWeight: '600', color: ORG_NATURE.barkSoft },
 
   // ── Popup chi tiết cây ────────────────────────────────────────────────────

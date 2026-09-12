@@ -9,6 +9,16 @@
  * trông y hệt mọi ô khác trên trang, trong khi nó là thứ duy nhất mở ra một bản
  * đồ.
  *
+ * ── Nền PHỦ KÍN nút, hình vườn thì không ────────────────────────────────────
+ * Nền trải hết bề mặt nút, tràn ra ngoài hộp vườn — vì nó là NỀN, và một cái nền
+ * chừa lề thì đọc ra "một tấm ảnh dán vào giữa", không đọc ra "chỗ này nằm ở
+ * đây". Hình bóng mảnh vườn vẫn nằm trong dải 8..92% như cũ.
+ *
+ * Để tràn mà KHÔNG lệch, nền phải đi qua đúng phép chiếu của `FarmShape` rồi
+ * kéo dài ra hai đầu — xem khối "PHÉP CHIẾU" trong thân hàm. Bề mặt nút đo bằng
+ * `onLayout` chứ không đoán: khung 100×100 của SVG đặt vừa vào ô theo cạnh NGẮN,
+ * nên không biết ô rộng-cao bao nhiêu thì không biết hình nằm ở đâu trong đó.
+ *
  * ── Nền và hình phải nói về CÙNG một mảnh đất ───────────────────────────────
  * Đây là chỗ dễ sai nhất, và sai theo kiểu trông rất hợp lý: dán một ảnh bản đồ
  * bất kỳ xuống dưới thì ô vẫn đẹp, nhưng mảnh vườn nằm trật khỏi thửa đất bên
@@ -39,123 +49,150 @@ import {
 import { hopVe, vongRanh } from '../../utils/farmShapeGeo';
 
 /**
- * Mức phóng chọn sao cho hộp vườn phủ khoảng NỬA một ô bản đồ trở lên.
+ * Trần số ảnh ô tải cho MỘT ô xem trước.
  *
- * Không lấy mức nét nhất có thể: ô xem trước chỉ rộng cỡ bàn tay, mà mỗi mức
- * phóng thêm là số ảnh phải tải nhân bốn. Trần 4 ảnh (lưới 2×2) là chỗ đổi
- * được nhiều độ nét nhất cho mỗi lượt gọi mạng.
+ * Mỗi mức phóng thêm là số ảnh nhân bốn. Ô này rộng cỡ bàn tay, nên đổi thêm độ
+ * nét lấy thêm lượt gọi mạng rất nhanh mất giá — 9 ảnh (lưới 3×3) là chỗ dừng.
  */
-const O_MOI_CANH = 2;
+const TRAN_O = 9;
 const MUC_TOI_DA = 19;
 const MUC_TOI_THIEU = 3;
 
-/** Chọn mức phóng lớn nhất mà hộp vườn còn nằm gọn trong lưới `O_MOI_CANH`. */
-export function chonMucPhong(canhDo: number, latGiua: number): number {
+/**
+ * Mức phóng lớn nhất mà CỬA SỔ cần vẽ còn nằm trong trần số ô.
+ *
+ * Đo bằng số ô theo mỗi cạnh chứ không bằng "hộp vườn có lọt một ô không": cửa
+ * sổ nay là cả bề mặt nút, rộng hơn hộp vườn, và nó là thứ thật sự phải phủ.
+ */
+export function chonMucPhong(
+  tayDo: number, dongDo: number, namDo: number, bacDo: number,
+): number {
   for (let z = MUC_TOI_DA; z > MUC_TOI_THIEU; z--) {
-    const rongO = 360 / Math.pow(2, z);
-    // Ô bản đồ vuông theo Mercator: bề cao theo ĐỘ VĨ hẹp hơn bề rộng theo độ
-    // kinh đúng bằng cos(vĩ độ). Đo theo cạnh hẹp thì không bao giờ thiếu ô.
-    const caoO = rongO * Math.cos((latGiua * Math.PI) / 180);
-    if (canhDo <= Math.min(rongO, caoO) * (O_MOI_CANH - 1)) return z;
+    const soNgang = Math.floor(lngToTileX(dongDo, z)) - Math.floor(lngToTileX(tayDo, z)) + 1;
+    const soDoc = Math.floor(latToTileY(namDo, z)) - Math.floor(latToTileY(bacDo, z)) + 1;
+    if (soNgang * soDoc <= TRAN_O) return z;
   }
   return MUC_TOI_THIEU;
 }
 
 const FarmMapBackdrop: React.FC<{
   farm: any;
-  /** `satellite` (mặc định) cho ô xem trước: tán cây thật đọc ra ngay là vườn. */
+  /**
+   * `street` (mặc định) — BẢN ĐỒ THƯỜNG, không phải ảnh vệ tinh.
+   *
+   * Ô này rộng cỡ bàn tay. Ảnh vệ tinh ở cỡ đó là một mảng lục sẫm lốm đốm:
+   * đúng về địa lý, nhưng không đọc ra thứ gì giúp người dùng biết vườn nằm đâu.
+   * Bản đồ đường phố thì có đường, có tên, có bờ nước — những nét vẽ CỐ Ý để
+   * nhận ra ở cỡ nhỏ.
+   */
   sourceId?: string;
   /** Làm nhạt ảnh để hình bóng vườn vẽ đè lên còn đọc được. */
   opacity?: number;
   style?: StyleProp<ViewStyle>;
-}> = ({ farm, sourceId = 'satellite', opacity = 0.85, style }) => {
+}> = ({ farm, sourceId = 'street', opacity = 0.9, style }) => {
   const [hong, setHong] = useState<Record<string, boolean>>({});
+  /** Bề mặt THẬT của nút, đo bằng `onLayout` — xem phép chiếu bên dưới. */
+  const [co, setCo] = useState<{ w: number; h: number } | null>(null);
 
   const ring = vongRanh(farm?.coordinates);
   // Dưới ba điểm thì `FarmShape` cũng trả `null` — không có mảnh đất nào để
   // đặt nền dưới. Vẽ một vùng bản đồ ở đây lúc đó là bịa ra một vị trí.
-  if (ring.length < 3) return null;
+  const duQuyDinh = ring.length >= 3;
 
-  const { minLng, minLat, buX, buY, canh } = hopVe(ring);
-  const tayDo = minLng - buX;
-  const namDo = minLat - buY;
-  const latGiua = namDo + canh / 2;
-  const z = chonMucPhong(canh, latGiua);
+  let o: React.ReactNode[] = [];
+  if (duQuyDinh && co && co.w > 0 && co.h > 0) {
+    const { minLng, minLat, buX, buY, canh } = hopVe(ring);
+    const tayHop = minLng - buX;
+    const namHop = minLat - buY;
 
-  // Bốn mép hộp trong hệ ô bản đồ (số thực, chưa làm tròn).
-  const xTay = lngToTileX(tayDo, z);
-  const xDong = lngToTileX(tayDo + canh, z);
-  const yBac = latToTileY(namDo + canh, z);
-  const yNam = latToTileY(namDo, z);
+    /*
+      PHÉP CHIẾU — phải khớp TỪNG ĐIỂM với `FarmShape`, nếu không mảnh vườn nằm
+      trật khỏi thửa đất bên dưới nó.
 
-  const x0 = Math.floor(xTay);
-  const x1 = Math.floor(xDong);
-  const y0 = Math.floor(yBac);
-  const y1 = Math.floor(yNam);
+      `FarmShape` vẽ bằng `<Svg viewBox="0 0 100 100">` với `preserveAspectRatio`
+      mặc định, tức khung 100×100 được đặt vừa vào ô theo cạnh NGẮN và canh giữa
+      theo cạnh còn lại. Trong khung đó, `phang()` trải hộp vườn vào dải 8..92.
 
-  const src = getMapSource(sourceId);
-  const o: React.ReactNode[] = [];
-  for (let y = y0; y <= y1; y++) {
-    for (let x = x0; x <= x1; x++) {
-      const key = `${z}/${x}/${y}`;
-      if (hong[key]) continue;
-      // Vị trí của ô ẢNH trong hộp vườn, theo phần trăm cạnh hộp. Mép trái của
-      // ô là kinh độ `tileXToLng(x)`, mép phải là `tileXToLng(x + 1)`.
-      const traiDo = tileXToLng(x, z);
-      const phaiDo = tileXToLng(x + 1, z);
-      const trenDo = tileYToLat(y, z);
-      const duoiDo = tileYToLat(y + 1, z);
-      o.push(
-        <Image
-          key={key}
-          source={{ uri: tileUrl(src, { z, x, y }) }}
-          style={[
-            styles.o,
-            {
-              left: `${((traiDo - tayDo) / canh) * 100}%`,
-              width: `${((phaiDo - traiDo) / canh) * 100}%`,
-              // Vĩ độ lớn là về phía BẮC, trục y của màn hình hướng XUỐNG.
-              top: `${((namDo + canh - trenDo) / canh) * 100}%`,
-              height: `${((trenDo - duoiDo) / canh) * 100}%`,
-            },
-          ]}
-          resizeMode="cover"
-          fadeDuration={0}
-          onError={() => setHong((truoc) => ({ ...truoc, [key]: true }))}
-        />,
-      );
+      Nối hai phép lại: một điểm ở toạ độ chuẩn hoá `u` ∈ 0..1 rơi vào
+      `lech + (8 + u * 84) * canhVe / 100` pixel trên màn.
+    */
+    const canhVe = Math.min(co.w, co.h);
+    const lechX = (co.w - canhVe) / 2;
+    const lechY = (co.h - canhVe) / 2;
+    const pxX = (u: number) => lechX + ((8 + u * 84) * canhVe) / 100;
+    const pxY = (v: number) => lechY + ((8 + v * 84) * canhVe) / 100;
+
+    // Nghịch đảo: mép nút ứng với toạ độ chuẩn hoá nào. Đây là chỗ nền TRÀN
+    // RA KHỎI hộp vườn để phủ kín nút — `u` ngoài dải 0..1 là chuyện bình thường.
+    const uTai = (px: number) => (((px - lechX) * 100) / canhVe - 8) / 84;
+    const uTay = uTai(0);
+    const uDong = uTai(co.w);
+    const vBac = (((0 - lechY) * 100) / canhVe - 8) / 84;
+    const vNam = (((co.h - lechY) * 100) / canhVe - 8) / 84;
+
+    const lngTay = tayHop + uTay * canh;
+    const lngDong = tayHop + uDong * canh;
+    // `v` chạy theo trục màn hình (xuống dưới), vĩ độ chạy ngược lại.
+    const latBac = namHop + (1 - vBac) * canh;
+    const latNam = namHop + (1 - vNam) * canh;
+
+    const z = chonMucPhong(lngTay, lngDong, latNam, latBac);
+    const x0 = Math.floor(lngToTileX(lngTay, z));
+    const x1 = Math.floor(lngToTileX(lngDong, z));
+    const y0 = Math.floor(latToTileY(latBac, z));
+    const y1 = Math.floor(latToTileY(latNam, z));
+
+    const src = getMapSource(sourceId);
+    const ds: React.ReactNode[] = [];
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const key = `${z}/${x}/${y}`;
+        if (hong[key]) continue;
+        const trai = pxX((tileXToLng(x, z) - tayHop) / canh);
+        const phai = pxX((tileXToLng(x + 1, z) - tayHop) / canh);
+        const tren = pxY(1 - (tileYToLat(y, z) - namHop) / canh);
+        const duoi = pxY(1 - (tileYToLat(y + 1, z) - namHop) / canh);
+        ds.push(
+          <Image
+            key={key}
+            source={{ uri: tileUrl(src, { z, x, y }) }}
+            style={[
+              styles.o,
+              { left: trai, top: tren, width: phai - trai, height: duoi - tren },
+            ]}
+            resizeMode="cover"
+            fadeDuration={0}
+            onError={() => setHong((truoc) => ({ ...truoc, [key]: true }))}
+          />,
+        );
+      }
     }
+    o = ds;
   }
 
+  if (!duQuyDinh) return null;
+
   return (
-    /*
-      Hai lớp bọc, và cả hai đều cần thiết:
-
-      NGOÀI canh giữa một hình VUÔNG trong ô chữ nhật — vì `FarmShape` vẽ bằng
-      `viewBox="0 0 100 100"` với `preserveAspectRatio` mặc định, tức hình của nó
-      cũng nằm trong đúng hình vuông ấy. Lệch một trong hai là nền trượt khỏi hình.
-
-      TRONG thu hộp về đúng 8..92% mỗi cạnh — dải mà `phang()` trải hộp vườn vào
-      (`8 + d.x * 84`). Không thu thì nền rộng hơn hình đúng 16%.
-    */
-    <View pointerEvents="none" style={[styles.boc, style]}>
-      <View style={styles.vuong}>
-        <View style={[styles.hop, { opacity }]}>{o}</View>
-      </View>
+    <View
+      pointerEvents="none"
+      style={[styles.boc, { opacity }, style]}
+      onLayout={(e) => {
+        const { width, height } = e.nativeEvent.layout;
+        setCo((truoc) =>
+          truoc && Math.abs(truoc.w - width) < 1 && Math.abs(truoc.h - height) < 1
+            ? truoc
+            : { w: width, h: height },
+        );
+      }}
+    >
+      {o}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  boc: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
-  /** Hình vuông lớn nhất nằm gọn trong ô — cùng hình vuông mà SVG của `FarmShape` dùng. */
-  vuong: { height: '100%', aspectRatio: 1, maxWidth: '100%' },
-  /** 8..92% — khớp `phang()` trong `farmShapeGeo`. */
-  hop: {
-    position: 'absolute',
-    left: '8%', top: '8%', width: '84%', height: '84%',
-    overflow: 'hidden',
-  },
+  /** Phủ KÍN nút. `overflow: hidden` để ảnh tràn ra ngoài bị cắt theo góc bo. */
+  boc: { ...StyleSheet.absoluteFillObject, overflow: 'hidden' },
   o: { position: 'absolute' },
 });
 

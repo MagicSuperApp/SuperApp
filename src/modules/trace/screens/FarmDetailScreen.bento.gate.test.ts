@@ -254,85 +254,92 @@ describe('nền dưới lớp phủ phải CÙNG HỌ MÀU với lớp phủ', (
  * Danh sách "bỏ đi" là loại dễ trôi ngược nhất: mỗi lượt sau chỉ cần thêm lại
  * MỘT thứ, thấy hợp lý một mình, và vài lượt là thẻ cũ quay về nguyên hình.
  */
-describe('danh sách cây — thẻ vuông có ảnh, lưới ba cột', () => {
+describe('danh sách cây — nút TRÒN có ảnh, lưới ba cột', () => {
   /**
-   * ── Nút tròn đã đi, và vì sao ─────────────────────────────────────────────
-   * Nút tròn có một lý do THẬT: viền hình tròn CHÍNH LÀ cung tiến độ thu hoạch,
-   * nên vòng và lòng là một vật chứ không phải hai hình chồng nhau.
+   * Nút tròn giữ nguyên, và lý do của nó cũng vậy: viền hình tròn CHÍNH LÀ cung
+   * tiến độ, nên vòng và lòng là MỘT vật chứ không phải hai hình chồng nhau.
+   * Hai mép không bao giờ khớp tuyệt đối — chúng để lại một đường chỉ mờ, và cái
+   * vòng thôi đọc ra "viền của nút".
    *
-   * Lý do đó rỗng từ lâu mà không ai gỡ: `harvestProgress` trong toàn bộ `src/`
-   * có ba chỗ ĐỌC và KHÔNG chỗ nào GHI, nên cung ấy chưa từng vẽ một lần nào —
-   * mọi cây đều ra vòng nét đứt. Tức cái vòng chiếm trọn đường viền của mọi nút
-   * để nói đúng một câu: "không có số liệu". Thẻ vuông trả chỗ đó cho ảnh cây.
-   *
-   * Cái bản cũ giữ ĐÚNG thì bản này giữ nguyên, chỉ dời chỗ: "chưa biết" vẫn
-   * khác "bằng không" — nay nói bằng chữ "chưa đếm" và bằng việc huy hiệu tiến
-   * độ VẮNG MẶT, chứ không bằng nét đứt.
+   * Thứ đổi là LÒNG nút: từ chữ sang ẢNH THẬT của chính cây đó, và chữ dời
+   * xuống dưới. Chữ đè lên một tấm ảnh chụp thì đọc được hay không là chuyện may
+   * rủi theo từng tấm — mà ảnh là thứ app không kiểm soát.
    */
   it('lưới đúng BA cột', () => {
     expect(MA_CHAY).toContain('numColumns={3}');
   });
 
-  it('bề ngang thẻ suy theo ĐÚNG số cột đó', () => {
+  it('bề ngang nút suy theo ĐÚNG số cột đó', () => {
     // Số cột và công thức chia phải đi cùng nhau. Lệch nhau thì cột cuối tràn
     // khỏi mép phải, và nó tràn ÂM THẦM — `FlatList` không kêu một tiếng nào.
-    // Ba cột ⇒ lề trang hai bên + HAI khe.
     expect(MA_CHAY).toContain('Math.floor((width - 12 * 2 - 12 * 2) / 3)');
   });
 
-  it('thẻ VUÔNG bo góc, và ô ảnh vuông theo bề ngang thẻ', () => {
-    // Soi TRONG `TreeChip`, không soi cả tệp — đúng cái bẫy mà chính tệp này đã
-    // ghi ra ở bản trước: popup chi tiết cây VẪN dùng `RingProgress`, và ở đó nó
-    // đúng chỗ (vòng hiện "—" khi chưa có số). Cấm cả tệp là cấm nhầm nó.
+  it('nút TRÒN, và tiến độ là VIỀN của chính nó — chỉ MỘT mép', () => {
+    // Phải soi TRONG `TreeChip`, không soi cả tệp: popup chi tiết cũng dùng
+    // `RingProgress`, nên phép so cả tệp vẫn xanh sau khi ai đó gỡ vòng khỏi nút.
     const iChip = MA_CHAY.indexOf('const TreeChip');
     expect(iChip).toBeGreaterThan(-1);
     const thanChip = MA_CHAY.slice(iChip, MA_CHAY.indexOf('};', MA_CHAY.indexOf('return (', iChip)));
-    expect(thanChip).not.toContain('<RingProgress');
+    expect(thanChip).toContain('<RingProgress');
+    expect(thanChip).toContain('pct={harvestPct}');
 
-    const i = MA_CHAY.indexOf('cayAnh: {');
+    // ⛔ KHÔNG được có một `View` bo tròn lồng vào giữa làm mép THỨ HAI. Ảnh
+    //    trong lòng nút thì được bo tròn — nó KHÔNG phải một mép thứ hai, nó là
+    //    chính cái ruột, và nó tiếp xúc mép trong của viền.
+    expect(MA_CHAY).not.toContain('treeChipTron');
+  });
+
+  it('lòng nút là ẢNH ĐÃ CHỤP của chính cây đó', () => {
+    const iChip = MA_CHAY.indexOf('const TreeChip');
+    const thanChip = MA_CHAY.slice(iChip, MA_CHAY.indexOf('};', MA_CHAY.indexOf('return (', iChip)));
+    expect(thanChip).toContain('anhBia');
+    expect(thanChip).toContain('<Image');
+    // Ảnh chụp thật phủ kín lòng nút; hình chung thì chừa lề vì nó là hình
+    // minh hoạ xoá nền, phủ kín sẽ cắt cụt ngọn.
+    expect(thanChip).toContain("coAnhThat ? 'cover' : 'contain'");
+    // Đường dẫn chết (Android dọn vùng nhớ tạm) phải tụt về hình chung, không
+    // để lại một ô trống giữa lòng nút.
+    expect(thanChip).toContain('onError={() => setHongAnh(true)}');
+    expect(thanChip).toContain('ANH_CAY_CHUNG');
+  });
+
+  it('ảnh lấy từ kho ảnh cây CÓ SẴN, không dựng thêm một kho thứ hai', () => {
+    // `treeImageStore` đã giữ đường dẫn ảnh theo `tree_id` từ lúc đăng ký
+    // (`appendTreeImages`). Dựng một kho nữa ở đây là hai bảng nói về cùng một
+    // thứ, và chúng sẽ lệch nhau.
+    expect(MA_CHAY).toContain("loadTreeCovers");
+    expect(MA_CHAY).toContain("from '../../../services/treeImageStore'");
+  });
+
+  it('chỉ nạp ảnh cho MỘT TRANG, không cho cả vườn', () => {
+    // Vườn 400 cây thì 400 lượt đọc đĩa để bày 12 thẻ, và 388 tấm không ai thấy.
+    const i = MA_CHAY.indexOf('loadTreeCovers(');
     expect(i).toBeGreaterThan(-1);
-    // `aspectRatio` chứ không gõ chiều cao: bề ngang thẻ suy từ bề ngang màn.
-    expect(MA_CHAY.slice(i, i + 220)).toContain('aspectRatio: 1');
+    expect(MA_CHAY.slice(Math.max(0, i - 400), i)).toContain('paginatedTrees.map');
   });
 
-  it('ô ảnh nền TRẮNG', () => {
-    const i = MA_CHAY.indexOf('cayAnh: {');
-    expect(MA_CHAY.slice(i, i + 220)).toContain('ORG_NATURE.paper');
+  it('nút mang SỐ QUẢ, và số dùng chung sắc với cung tiến độ', () => {
+    const iChip = MA_CHAY.indexOf('const TreeChip');
+    const thanChip = MA_CHAY.slice(iChip, MA_CHAY.indexOf('};', MA_CHAY.indexOf('return (', iChip)));
+    expect(thanChip).toContain('item.fruitCount');
+    expect(thanChip).toContain('styles.cayQua');
+
+    const iSo = MA_CHAY.indexOf('cayQua: {');
+    expect(iSo).toBeGreaterThan(-1);
+    expect(MA_CHAY.slice(iSo, iSo + 160)).toContain('ORG_TONE.primary');
   });
 
-  it('thẻ mang ẢNH, và ảnh riêng hỏng thì tụt về ảnh chung', () => {
-    const i = MA_CHAY.indexOf('const TreeChip');
-    expect(i).toBeGreaterThan(-1);
-    const than = MA_CHAY.slice(i, MA_CHAY.indexOf('};', MA_CHAY.indexOf('return (', i)));
-    expect(than).toContain('ANH_CAY_CHUNG');
-    expect(than).toContain('onError={() => setHongAnh(true)}');
-    // `contain`, không `cover`: ảnh cây mỗi cây một tỉ lệ, `cover` cắt cụt ngọn.
-    expect(than).toContain('resizeMode="contain"');
-  });
-
-  it('thẻ mang SỐ QUẢ, và chữ nằm DƯỚI ảnh', () => {
-    const i = MA_CHAY.indexOf('const TreeChip');
-    const than = MA_CHAY.slice(i, MA_CHAY.indexOf('};', MA_CHAY.indexOf('return (', i)));
-    expect(than).toContain('item.fruitCount');
-    expect(than).toContain('styles.cayQua');
-    // Chữ trong dải riêng, KHÔNG đè lên ảnh: đè lên ảnh thì đọc được hay không
-    // tuỳ vào chính tấm ảnh.
-    const iChu = MA_CHAY.indexOf('cayChu: {');
-    expect(iChu).toBeGreaterThan(-1);
-    expect(MA_CHAY.slice(iChu, iChu + 160)).not.toContain("position: 'absolute'");
-  });
-
-  it('huy hiệu tiến độ VẮNG MẶT khi chưa có số, không hiện "0%"', () => {
-    // Vắng mặt thì không khẳng định gì; một huy hiệu ghi "0%" thì khẳng định,
-    // và với mọi cây hôm nay nó sẽ khẳng định sai.
-    const i = MA_CHAY.indexOf('const TreeChip');
-    const than = MA_CHAY.slice(i, MA_CHAY.indexOf('};', MA_CHAY.indexOf('return (', i)));
-    expect(than).toContain('harvestPct !== null ?');
-    expect(than).toContain('item.harvestProgress ?? null');
+  it('"chưa biết" vẫn KHÁC "bằng không"', () => {
+    const iChip = MA_CHAY.indexOf('const TreeChip');
+    const thanChip = MA_CHAY.slice(iChip, MA_CHAY.indexOf('};', MA_CHAY.indexOf('return (', iChip)));
+    expect(thanChip).toContain('item.harvestProgress ?? null');
+    expect(thanChip).toContain('item.fruitCount ?? null');
+    expect(thanChip).toContain('chưa đếm');
   });
 
   it('thẻ cũ KHÔNG quay lại', () => {
-    for (const chet of ['TreeCard', 'treeIconWrap', 'treeHarvestTrack', 'treeCodeSub', 'treeChipTron']) {
+    for (const chet of ['TreeCard', 'treeIconWrap', 'treeHarvestTrack', 'treeCodeSub', 'cayThe']) {
       expect(MA_CHAY).not.toContain(chet);
     }
   });

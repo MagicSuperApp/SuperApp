@@ -47,6 +47,10 @@ const DECLARATION = path.join(SRC, 'config', 'instance.config.ts');
 const SHARED_ASSETS = [
   /assets\/images\/modules\//, // biểu tượng module
   /assets\/images\/trace\//, // ảnh nền màn Truy xuất
+  // Ảnh loài vật nuôi ở ô chọn loài. Con gà là con gà ở MỌI app — nó không mang
+  // nhãn hiệu của app nào, nên gọi thẳng từ bảng tra là đúng chỗ. Xem
+  // `modules/trace/components/animal/speciesPhoto.ts` và README của thư mục.
+  /assets\/images\/animals\//, // ảnh loài vật nuôi
   /modules\/[a-z]+\/module\.manifest\.json/, // lời khai module
 ];
 

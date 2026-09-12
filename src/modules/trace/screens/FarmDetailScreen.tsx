@@ -40,6 +40,7 @@ import {
 import { GradientFill, GroundBackdrop } from '../components/layered/Organic';
 import { BentoRow, BentoTile } from '../components/layered/Surface';
 import FarmShape from '../components/layered/FarmShape';
+import FarmAnimalsTab from '../components/FarmAnimalsTab';
 import RingProgress from '../components/layered/RingProgress';
 import { OSM_STREET_TILES } from '../../../features/space3d/mapTiles';
 import { useTk } from '../../../i18n/keys';
@@ -1112,6 +1113,22 @@ const FarmDetailMode = ({
   const tk = useTk();
   const [renamePopupVisible, setRenamePopupVisible] = useState(false);
 
+  /**
+   * NHÁNH NỘI DUNG đang xem — cây trồng hay vật nuôi.
+   *
+   * ⛔ Trước bản này vật nuôi KHÔNG phải một nhánh: nó là một ô nhỏ lọt giữa lưới
+   *    Bento của cây, nằm cạnh "Chỉ đường tới vườn". Hai thứ đó khác loại hẳn
+   *    nhau — chỉ đường là một việc xong trong một giây, còn vật nuôi có danh
+   *    sách riêng, bộ lọc riêng, luồng nhận diện riêng. Tệ hơn: cả HÀNG đó chỉ
+   *    hiện khi vườn đã có toạ độ hoặc đã có mã, nên lối vào một nửa nội dung
+   *    của vườn tự ẩn hiện theo một lý do chẳng liên quan tới nó.
+   *
+   * Nay hai nhánh đứng ngang nhau ở thanh tab ngay dưới tiêu đề. Trạng thái này
+   * CỐ Ý không lưu: mở một vườn là mở ra cây trước, vì đó là thứ phần lớn lượt
+   * mở màn đi tìm.
+   */
+  const [nhanh, setNhanh] = useState<'cay' | 'vat-nuoi'>('cay');
+
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener('openScreen', (screen) => {
       (navigation.navigate as any)(screen);
@@ -1354,37 +1371,19 @@ const FarmDetailMode = ({
 
       {/* Chỉ đường vẫn là một VIỆC, không phải một thứ để nhìn — nên nó giữ
           nhãn. `forFarm` trả null khi vườn chưa vẽ ranh giới: không có toạ độ
-          nào để đi tới, nên ô tự vắng mặt thay vì bấm rồi không xảy ra gì. */}
-      {/* Ô VẬT NUÔI — lối vào NHÌN THẤY ĐƯỢC của nhánh định danh con vật.
-          Trước bản này nhánh ấy chỉ tới được bằng cách KÉO nút giữa rồi thả trúng
-          một cung con (`resolveGateItems.ts` ▸ `SUB_ACTIONS.Farms`). Cử chỉ đó có
-          thật và chạy đúng, nhưng nó không tự lộ ra: không màn nào bày một chữ
-          "vật nuôi" nào, nên bốn màn con vật đứng sau một thao tác phải biết
-          trước mới làm được. Đặt ở ĐÂY vì đây là chỗ duy nhất đã cầm sẵn mã vườn
-          — màn sổ lọc theo `farmId`, và mở nó không kèm mã thì nó liệt kê vật
-          nuôi của MỌI vườn dưới tiêu đề một vườn.
-          Ô chỉ đường vẫn tự vắng mặt khi vườn chưa vẽ ranh giới (không có toạ độ
-          nào để đi tới), nên hàng này có lúc một ô, có lúc hai. */}
-      {dichDuong || farm?.id ? (
+          nào để đi tới, nên ô tự vắng mặt thay vì bấm rồi không xảy ra gì.
+
+          ⛔ Ở đây TỪNG có thêm một ô "Vật nuôi" đứng cạnh. Nó sai chỗ theo hai
+             cách: vật nuôi là một NHÁNH nội dung ngang hàng với cây, không phải
+             một việc bấm phát xong như chỉ đường; và vì cả hàng này chỉ hiện khi
+             `dichDuong || farm?.id`, lối vào ấy tự ẩn hiện theo việc vườn đã vẽ
+             ranh giới hay chưa. Nay nó là một tab trên đầu màn — xem `nhanh`. */}
+      {dichDuong ? (
         <BentoRow style={styles.bentoActions}>
-          {dichDuong ? (
-            <BentoTile flex={1} tone="rain" onPress={() => moDuong(dichDuong)} style={styles.bentoAction}>
-              <Icon name="map-location-dot" size={20} color={ORG_TONE.rain} />
-              <Text style={styles.bentoActionTxt}>Chỉ đường tới vườn</Text>
-            </BentoTile>
-          ) : null}
-          {farm?.id ? (
-            <BentoTile
-              flex={1}
-              onPress={() =>
-                (navigation as any).navigate('AnimalManagement', { farmId: String(farm.id) })
-              }
-              style={styles.bentoAction}
-            >
-              <Icon name="paw" size={20} color={COLORS.accent} />
-              <Text style={styles.bentoActionTxt}>Vật nuôi</Text>
-            </BentoTile>
-          ) : null}
+          <BentoTile flex={1} tone="rain" onPress={() => moDuong(dichDuong)} style={styles.bentoAction}>
+            <Icon name="map-location-dot" size={20} color={ORG_TONE.rain} />
+            <Text style={styles.bentoActionTxt}>Chỉ đường tới vườn</Text>
+          </BentoTile>
         </BentoRow>
       ) : null}
 
@@ -1465,7 +1464,71 @@ const FarmDetailMode = ({
             không. Nay việc đó có đúng một chỗ: ô "Vườn này vừa trải qua gì". */}
       </View>
 
-      {/* Tree list */}
+      {/*
+        THANH TAB — hai NHÁNH nội dung của một vườn, đứng ngang nhau.
+
+        Nằm ngay dưới tiêu đề chứ không cuộn theo danh sách: người đang xem cây
+        thứ 90 vẫn phải chuyển sang đàn được mà không cuộn ngược lên đầu. Đó cũng
+        là lý do nó KHÔNG nằm trong `bentoHeader` — phần đầu Bento cuộn theo danh
+        sách, và một thanh chuyển nhánh mà cuộn mất thì nhánh kia coi như không
+        có.
+
+        Hai nút CHIA ĐỀU bề ngang. Chia đều là câu nói "hai nhánh này ngang
+        nhau"; cho cây rộng hơn vì nó đông dữ liệu hơn là nói sai — số lượng
+        không phải thứ hạng.
+      */}
+      <View style={styles.tabBar}>
+        {/* Mỗi trường một dòng, KHÔNG gộp một dòng cho gọn: bài kiểm tên icon
+            (`components/Icon/iconNames.test.ts`) quét theo DÒNG — dòng nào có
+            chữ "icon" thì mọi chuỗi kebab-case trên dòng đó bị coi là tên icon.
+            Gộp lại thì khoá `'vat-nuoi'` bị đọc thành một icon không có thật. */}
+        {([
+          { khoa: 'cay', nhan: 'Cây trồng', icon: 'seedling' },
+          {
+            khoa: 'vat-nuoi',
+            nhan: 'Vật nuôi',
+            icon: 'paw',
+          },
+        ] as const).map((muc) => {
+          const dangChon = nhanh === muc.khoa;
+          return (
+            <TouchableOpacity
+              key={muc.khoa}
+              style={[styles.tabBtn, dangChon && styles.tabBtnOn]}
+              onPress={() => setNhanh(muc.khoa)}
+              activeOpacity={0.85}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: dangChon }}
+            >
+              <Icon
+                name={muc.icon}
+                size={17}
+                color={dangChon ? ORG_TONE.primary : ORG_NATURE.barkSoft}
+              />
+              <Text style={[styles.tabTxt, dangChon && styles.tabTxtOn]}>{muc.nhan}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {/* NHÁNH VẬT NUÔI — bố cục Bento riêng, xem `FarmAnimalsTab`. Chỉ dựng khi
+          đã biết mã vườn: sổ đàn lọc theo `farmId`, và mở nó không kèm mã thì nó
+          liệt kê vật nuôi của MỌI vườn dưới tiêu đề một vườn. */}
+      {nhanh === 'vat-nuoi' ? (
+        farm?.id ? (
+          /* Không có thanh nổi ở nhánh này (xem chú thích ở thanh đáy), nên chỗ
+             chừa cuối danh sách chỉ là một hơi thở, không phải chiều cao một
+             thanh. */
+          <FarmAnimalsTab farmId={String(farm.id)} chuaDay={24} />
+        ) : (
+          <StateView
+            status="empty"
+            title="Chưa mở được sổ đàn"
+            message="Vườn này chưa có mã trên máy chủ, nên chưa lọc được vật nuôi của riêng nó."
+          />
+        )
+      ) : (
+      /* Tree list */
       <FlatList
         data={paginatedTrees}
         keyExtractor={(item) => item.id}
@@ -1563,8 +1626,10 @@ const FarmDetailMode = ({
           </View>
         }
       />
+      )}
 
       {/* Bottom action bar */}
+      {nhanh === 'cay' ? (
       <View
         style={styles.bottomBar}
         onLayout={(e) => {
@@ -1587,6 +1652,12 @@ const FarmDetailMode = ({
           Thanh mỏng đi còn một hàng, và phép đo `onLayout` ở trên tự bắt kịp —
           đó đúng là lý do bản #309 đổi ô chừa chỗ từ số gõ tay sang chiều cao đo
           được. Nếu ô chừa vẫn là hằng 86 thì bản này lại phải sửa tay lần nữa.
+
+          CHỈ Ở NHÁNH CÂY. Nhánh vật nuôi cố ý không có thanh này: hai việc của
+          nó — nhận diện và thêm cá thể — đã là hai ô Bento ngay đầu tab, và một
+          nút nổi mang đúng một trong hai việc ấy là dựng lại thứ vừa gỡ khỏi
+          header, hai lối vào cho một việc. Đánh đổi, nói thẳng: hai ô ấy cuộn
+          khuất khi xem sâu trong sổ đàn.
         */}
         <TouchableOpacity style={styles.activityLargeBtn} onPress={onActivityUpdate} activeOpacity={0.88}>
           <GradientFill name="action" />
@@ -1594,6 +1665,7 @@ const FarmDetailMode = ({
           <Text style={styles.activityLargeBtnText}>Cập nhật hoạt động</Text>
         </TouchableOpacity>
       </View>
+      ) : null}
 
       {/*
         POPUP CHI TIẾT CÂY.
@@ -2681,6 +2753,37 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
 
+  /**
+   * THANH TAB — hai nhánh nội dung của vườn.
+   *
+   * Kiểu "rãnh + con trượt": cả thanh là một rãnh lõm (`SURFACE.sunken`), nút
+   * đang chọn là một tấm NỔI lên khỏi rãnh. Chọn lối này thay vì gạch chân vì ở
+   * đây chỉ có hai nút chia đều bề ngang — một gạch chân dài nửa màn đọc ra
+   * đường kẻ trang trí chứ không ra dấu chọn.
+   *
+   * ⚠ Dấu chọn KHÔNG chỉ nằm ở màu chữ: nền nổi + bóng làm cả khối khác hẳn,
+   * nên nó vẫn đọc được dưới nắng và với mắt kém phân biệt màu.
+   *
+   * Lề 12 — cùng mép với lưới Bento và danh sách, không phải `SPACE.page` 16.
+   */
+  tabBar: {
+    flexDirection: 'row', gap: 6,
+    marginHorizontal: 12, marginBottom: 10,
+    padding: 4, borderRadius: 16,
+    backgroundColor: ORG_SURFACE.sunken,
+    borderWidth: 1, borderColor: ORG_TONE.border,
+  },
+  tabBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 7, paddingVertical: 10, borderRadius: 12,
+  },
+  tabBtnOn: {
+    backgroundColor: ORG_SURFACE.raised,
+    ...ORG_ELEV.card,
+  },
+  tabTxt: { fontSize: 15, fontWeight: '700', color: ORG_NATURE.barkSoft },
+  tabTxtOn: { color: ORG_TONE.primary },
+
   // Stats banner
   // ── Nút cây + lưới ba cột ─────────────────────────────────────────────────
   treeGridHang: { gap: 12, marginBottom: 12 },
@@ -2837,7 +2940,7 @@ const styles = StyleSheet.create({
   bentoActions: { marginTop: 8, marginBottom: ORG_SPACE.lg },
   bentoAction: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 8, paddingVertical: ORG_SPACE.md,
+    gap: 8, paddingVertical: ORG_SPACE.md, paddingHorizontal: ORG_SPACE.md,
   },
   bentoActionTxt: {
     fontSize: 14, fontWeight: '700', color: ORG_NATURE.bark, textAlign: 'center',

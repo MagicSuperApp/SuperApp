@@ -60,9 +60,17 @@ export const RingProgress: React.FC<{
   stroke?: number;
   /** Màu lòng nút. Để trống thì trong suốt — dùng khi nút nằm trên nền có sẵn. */
   fill?: string;
+  /**
+   * Màu CUNG đã quét. Mặc định là sắc chủ đạo (nhánh cây trồng).
+   *
+   * Có tham số này vì nhánh VẬT NUÔI nói bằng nâu: một vòng xanh lá quanh nút
+   * con vật là mảnh xanh duy nhất giữa một trang nâu, và mắt đọc nó ra "thứ này
+   * thuộc chỗ khác". Xem `NATURE.barn` trong `theme/depth.ts`.
+   */
+  mau?: string;
   children?: React.ReactNode;
   style?: StyleProp<ViewStyle>;
-}> = ({ pct, size, stroke = 5, fill = SURFACE.raised, children, style }) => {
+}> = ({ pct, size, stroke = 5, fill = SURFACE.raised, mau = TONE.primary, children, style }) => {
   const chuaBiet = pct === null || !Number.isFinite(pct);
   const phanTram = Math.max(0, Math.min(100, chuaBiet ? 0 : (pct as number)));
   // Bán kính trừ NỬA nét: `stroke` của SVG mọc đều hai bên đường tròn, nên
@@ -96,7 +104,7 @@ export const RingProgress: React.FC<{
             cx={size / 2}
             cy={size / 2}
             r={r}
-            stroke={TONE.primary}
+            stroke={mau}
             strokeWidth={stroke}
             fill="none"
             strokeLinecap="round"

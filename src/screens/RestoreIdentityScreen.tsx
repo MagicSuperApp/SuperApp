@@ -101,7 +101,21 @@ const RestoreIdentityScreen = () => {
       t('Việc này sẽ đăng xuất mọi app và mọi máy khác'),
       t('Khôi phục bằng 24 từ sẽ gắn danh tính của bạn vào ứng dụng này. Mọi ứng dụng khác đang dùng CÙNG danh tính đó sẽ bị đăng xuất — kể cả trên điện thoại khác hoặc máy tính khác, không riêng máy này.') +
         ' ' +
-        t('Dữ liệu của bạn không mất — nhưng muốn dùng lại app kia thì phải nhập lại 24 từ ở đó, và khi ấy ứng dụng này lại bị đăng xuất.') +
+        // ⛔ SIẾT 2026-09-12 theo số đo nhà Phoenix (`PhoenixKey-Database` `9c04c03`).
+        // Câu cũ ghi "muốn dùng lại app kia thì phải nhập lại 24 từ ở đó" — đúng cho
+        // MÁY CHÍNH, sai cho máy được cấp quyền riêng, và app đang nói cả hai bằng
+        // một câu.
+        //
+        // Hai cơ chế khác nhau, cùng chạy một lúc, nên đừng gộp:
+        //   · `recoverDevice` tăng `users.token_epoch` ⟹ `SessionAuthValidator` bác
+        //     MỌI phiên của MỌI vai ngay ở lượt gọi kế tiếp, không đợi hết hạn. Vế
+        //     "đăng xuất mọi app và mọi máy khác" vì thế ĐÚNG — giữ nguyên.
+        //   · nhưng `revokeOwnersByUserDid` chỉ thu hồi khoá `keyRole = 'owner'`.
+        //     Khoá `manager`/`viewer` vẫn `active`, nên máy giữ chúng bị đá ra rồi
+        //     đăng nhập lại bình thường, KHÔNG cần 24 từ.
+        // Hứa thừa ở đây làm người dùng tưởng mình vừa cắt quyền mọi máy khác, trong
+        // khi thứ vừa xảy ra chỉ là đá chúng ra một lượt.
+        t('Dữ liệu của bạn không mất. Máy chính cũ muốn dùng lại thì phải nhập 24 từ ở đó, và khi ấy ứng dụng này lại bị đăng xuất. Máy nào bạn đã cấp quyền riêng thì chỉ bị thoát ra một lượt rồi đăng nhập lại được — muốn cắt hẳn thì vào Thiết bị và thu hồi.') +
         ' ' +
         t('Chỉ dùng đường này khi bạn đang cài lại máy hoặc đổi sang máy mới.'),
       {
@@ -416,7 +430,9 @@ const RestoreIdentityScreen = () => {
       t('Việc này sẽ đăng xuất mọi app và mọi máy khác'),
       t('Khôi phục sẽ gắn danh tính của bạn vào ứng dụng này. Mọi ứng dụng khác đang dùng CÙNG danh tính đó sẽ bị đăng xuất — kể cả trên điện thoại khác hoặc máy tính khác, không riêng máy này.') +
         ' ' +
-        t('Dữ liệu của bạn không mất. Máy sẽ hỏi vân tay hoặc khuôn mặt ở bước tiếp theo.'),
+        // Cùng phép siết với nhánh 24 từ ở trên, cùng một lý do — xem chú thích ở
+        // `handleRestore`. Máy được cấp quyền riêng chỉ bị thoát một lượt.
+        t('Dữ liệu của bạn không mất. Máy nào bạn đã cấp quyền riêng thì chỉ bị thoát ra một lượt rồi đăng nhập lại được — muốn cắt hẳn thì vào Thiết bị và thu hồi. Máy sẽ hỏi vân tay hoặc khuôn mặt ở bước tiếp theo.'),
       {
         confirmText: t('Vẫn khôi phục'),
         cancelText: t('Để sau'),

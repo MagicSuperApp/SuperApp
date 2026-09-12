@@ -20,6 +20,7 @@
  */
 import { tk } from '../../../i18n/keys';
 import { errRefCode, type APIError } from '../../../services/treeReIDService';
+import { authSyncMessage } from '../../../services/orilifeAuthMessage';
 
 /** Ba nhãn thuộc tầng KẾT NỐI — chúng là chỗ mã tham chiếu có giá trị. */
 const CONNECTION_LEVEL: ReadonlySet<APIError['type']> = new Set([
@@ -40,6 +41,7 @@ const KEY_BY_TYPE: Partial<Record<APIError['type'], string>> = {
 export function syncErrorMessage(err?: APIError): string {
   if (!err) return tk('trace.sync.unknown');
   if (err.reason && err.reason.trim()) return err.reason;
+  if (err.type === 'auth_error') return authSyncMessage();
 
   const key = KEY_BY_TYPE[err.type];
   const cau = key ? tk(key) : tk('trace.sync.unknown');

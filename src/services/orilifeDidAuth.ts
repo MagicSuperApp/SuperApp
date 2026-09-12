@@ -23,6 +23,7 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { tk } from '../i18n/keys';
 import { currentUserDid, ownerPublicKey, signRaw, isKeypairEnrolled } from '../sdk/phoenixKey';
 import { isAvailable as phoenixKeyIsAvailable } from './phoenixKey-native';
 import rLog from './remoteLogger';
@@ -95,12 +96,46 @@ const hexToBase64 = (hex: string): string => {
 
 // ── public API ───────────────────────────────────────────────────────────────
 
+/**
+ * Chỗ hỏng, theo NGƯỜI DÙNG PHẢI LÀM GÌ — không theo tầng kỹ thuật.
+ *
+ * Có nhãn này vì `error` là chuỗi viết cho người sửa máy (`Challenge HTTP 401`,
+ * `Verify network: …`), và đem nguyên văn ra màn hình là đúng thứ §"lỗi hệ thống
+ * thô thì hiện MÃ THAM CHIẾU" cấm. Nhưng bỏ hẳn đi rồi nói một câu chung chung thì
+ * lại là cái vỏ im lặng. Nhãn này là đường giữa: máy chủ nói gì thì phân đúng ô,
+ * rồi màn hình tự chọn câu tiếng Việt hợp ô đó.
+ *
+ * Năm ô đòi năm hành động NGƯỢC nhau, nên đừng gộp:
+ *   · no-identity — máy chưa có danh tính → phải lập/khôi phục danh tính;
+ *   · network     — không tới được máy chủ → xem sóng, thử lại;
+ *   · sign        — ký hỏng (người dùng tắt hộp thoại, sinh trắc không nhận) → ký lại;
+ *   · refused     — tới nơi, máy chủ TỪ CHỐI danh tính này → thử lại vô ích;
+ *   · server      — máy chủ trả lời sai hợp đồng → chờ, không phải lỗi người dùng.
+ */
+export type DidLoginFailKind =
+  | 'no-identity'
+  | 'network'
+  | 'sign'
+  | 'refused'
+  | 'server'
+  | 'unknown';
+
 export interface DidLoginResult {
   ok: boolean;
   token?: string;
   owner?: string;
   username?: string;
   error?: string;
+  kind?: DidLoginFailKind;
+  /**
+   * Câu MÁY CHỦ tự viết, chỉ đặt khi máy chủ thật sự có gửi một câu.
+   *
+   * Tách khỏi `error` vì `error` lẫn hai thứ: câu của máy chủ, và mã do chính app
+   * dựng ra khi máy chủ im (`Verify HTTP 401`). Đem mã tự dựng ra màn hình là hiện
+   * một thứ người dùng không đọc được; bỏ luôn câu của máy chủ thì mất đúng chỗ
+   * duy nhất nói được người dùng phải làm gì. Một trường riêng thì không phải đoán.
+   */
+  serverSaid?: string;
 }
 
 /**
@@ -127,7 +162,7 @@ export async function loginOrilifeWithDid(baseUrl: string): Promise<DidLoginResu
     });
     if (!did) {
       rLog.error('did_login_no_did', { keyEnrolled, signerAvailable: phoenixKeyIsAvailable() });
-      return { ok: false, error: 'Thiết bị chưa có danh tính.' };
+      return { ok: false, kind: 'no-identity', error: 'Thiết bị chưa có danh tính.' };
     }
 
     // 1) Lấy challenge (single-use, TTL 5 phút) — không cần auth.
@@ -139,17 +174,23 @@ export async function loginOrilifeWithDid(baseUrl: string): Promise<DidLoginResu
       });
     } catch (ne: any) {
       rLog.error('did_login_challenge_neterr', { err: ne?.message ?? String(ne) });
-      return { ok: false, error: `Challenge network: ${ne?.message ?? ne}` };
+      return { ok: false, kind: 'network', error: `Challenge network: ${ne?.message ?? ne}` };
     }
     if (!chRes.ok) {
       rLog.error('did_login_challenge_http', { status: chRes.status });
-      return { ok: false, error: `Challenge HTTP ${chRes.status}` };
+      // 401/403 ở cửa CHALLENGE nghĩa là máy chủ chặn trước cả khi biết mình là ai —
+      // đó là từ-chối, không phải máy chủ hỏng. Hai ca đòi hai câu khác nhau.
+      return {
+        ok: false,
+        kind: chRes.status === 401 || chRes.status === 403 ? 'refused' : 'server',
+        error: `Challenge HTTP ${chRes.status}`,
+      };
     }
     const chBody = await chRes.json();
     const challenge: string | undefined = chBody?.challenge;
     rLog.info('did_login_challenge_ok', { hasChallenge: !!challenge });
     if (!challenge) {
-      return { ok: false, error: 'Server không trả challenge.' };
+      return { ok: false, kind: 'server', error: 'Server không trả challenge.' };
     }
 
     // 2) Ký challenge bằng khoá phần-cứng (ECDSA P-256 SHA-256 → HEX của DER).
@@ -158,8 +199,8 @@ export async function loginOrilifeWithDid(baseUrl: string): Promise<DidLoginResu
     try {
       signatureHex = await signRaw(
         asciiToHex(challenge),
-        'OriLife login',
-        'Sign challenge for OriLife login (DID auth)',
+        tk('identity.bio.farmLoginTitle'),
+        tk('identity.bio.farmLoginBody'),
       );
       pubkeyHex = await ownerPublicKey();
       rLog.info('did_login_signed', {
@@ -168,7 +209,7 @@ export async function loginOrilifeWithDid(baseUrl: string): Promise<DidLoginResu
       });
     } catch (se: any) {
       rLog.error('did_login_sign_failed', { err: se?.message ?? String(se), code: se?.code });
-      return { ok: false, error: `Ký thất bại: ${se?.message ?? se}` };
+      return { ok: false, kind: 'sign', error: `Ký thất bại: ${se?.message ?? se}` };
     }
     const signatureB64 = hexToBase64(signatureHex);
 
@@ -187,7 +228,7 @@ export async function loginOrilifeWithDid(baseUrl: string): Promise<DidLoginResu
       });
     } catch (ne: any) {
       rLog.error('did_login_verify_neterr', { err: ne?.message ?? String(ne) });
-      return { ok: false, error: `Verify network: ${ne?.message ?? ne}` };
+      return { ok: false, kind: 'network', error: `Verify network: ${ne?.message ?? ne}` };
     }
     const vBody = await vRes.json().catch(() => ({}));
     if (!vRes.ok || !vBody?.ok || !vBody?.token) {
@@ -195,9 +236,17 @@ export async function loginOrilifeWithDid(baseUrl: string): Promise<DidLoginResu
         status: vRes.status,
         detail: vBody?.detail ?? vBody?.error ?? null,
       });
+      const noiRa =
+        typeof vBody?.detail === 'string' && vBody.detail.trim() ? vBody.detail.trim()
+          : typeof vBody?.error === 'string' && vBody.error.trim() ? vBody.error.trim()
+            : undefined;
       return {
         ok: false,
-        error: vBody?.detail || vBody?.error || `Verify HTTP ${vRes.status}`,
+        // Tới được cửa verify mà bị bác: máy chủ đã NHÌN chữ ký và nói không.
+        // 5xx là máy chủ hỏng, còn lại là từ-chối — và từ-chối thì thử lại vô ích.
+        kind: vRes.status >= 500 ? 'server' : 'refused',
+        error: noiRa ?? `Verify HTTP ${vRes.status}`,
+        serverSaid: noiRa,
       };
     }
 
@@ -228,7 +277,7 @@ export async function loginOrilifeWithDid(baseUrl: string): Promise<DidLoginResu
     };
   } catch (err: any) {
     rLog.error('did_login_exception', { err: err?.message ?? String(err) });
-    return { ok: false, error: err?.message ?? String(err) };
+    return { ok: false, kind: 'unknown', error: err?.message ?? String(err) };
   }
 }
 
@@ -320,6 +369,143 @@ export async function ensureOrilifeToken(
     if (await tokenMatchesCurrentDid()) return true;
     await clearOrilifeToken().catch(() => {});
   }
-  const res = await loginOrilifeWithDid(baseUrl);
+  const res = await loginOnce(baseUrl);
   return res.ok;
+}
+
+// ── Van chặn bão sinh trắc ───────────────────────────────────────────────────
+//
+// `loginOrilifeWithDid` gọi `signRaw`, và `signRaw` bật hộp thoại sinh trắc của hệ
+// điều hành. Hộp thoại đó là MODAL: nó phủ lên màn đang mở, nuốt mọi thao tác chạm,
+// và người dùng không tắt được bằng nút Quay lại.
+//
+// Chỗ hỏng đo được trên bản 99 (ba đoạn quay người dùng gửi 2026-09-12): mở màn
+// trang trại mà phiên OriLife đã chết thì Face ID bật lại ở giây 19 · 23 · 26 · 30 ·
+// 38 — lần nào cũng nhận đúng mặt, và lần nào xong cũng lại có cái tiếp theo. Máy
+// trông như treo ("đơ như cây cơ") trong khi thật ra không luồng nào treo cả.
+//
+// Nguyên nhân KHÔNG nằm ở một chỗ gọi nào: 11 service cùng gọi `ensureOrilifeToken`
+// trước mỗi yêu cầu, rồi gọi LẠI với `force` khi máy chủ trả 401 — riêng màn trang
+// trại có ba luồng làm đúng thế. Mỗi lượt là một lần ký, tức một hộp thoại. Vá từng
+// chỗ gọi thì vá 22 chỗ và chỗ thứ 23 viết sau lại hở, nên van đặt ở ĐÂY, nơi duy
+// nhất mọi đường đi qua.
+//
+// Hai lớp, giải hai việc khác nhau — đừng gộp:
+//   · gộp-đang-bay: nhiều lời gọi CÙNG LÚC dùng chung một lần ký (một hộp thoại);
+//   · nghỉ-sau-khi-trượt: máy chủ vừa từ chối thì 60 giây sau mới hỏi lại sinh trắc.
+//     Không có lớp này thì ba luồng nối đuôi nhau vẫn ra ba hộp thoại, chỉ là không
+//     chồng lên nhau.
+//
+// `force` KHÔNG vượt được van. `force` nghĩa là "đừng tin thẻ đang lưu", không phải
+// "cứ hỏi vân tay người ta thêm lần nữa" — và mọi chỗ truyền `force` hôm nay đều là
+// đường thử-lại tự động sau 401, đúng thứ sinh ra cơn bão. Đường vượt van có chủ ý
+// là `clearOrilifeLoginCooldown()`, gọi khi trạng thái đã ĐỔI thật: đổi danh tính,
+// đăng xuất, hoặc người dùng tự bấm đăng nhập lại.
+const LOGIN_COOLDOWN_MS = 60_000;
+let inflightLogin: Promise<DidLoginResult> | null = null;
+let loginCooldownUntil = 0;
+let lastLoginError: string | null = null;
+let lastLoginKind: DidLoginFailKind | null = null;
+let lastServerSaid: string | null = null;
+
+/**
+ * Số hiệu THẾ của danh tính. Tăng mỗi lần van được mở có chủ ý.
+ *
+ * Vì sao cần: `clearOrilifeLoginCooldown()` xoá được BIẾN, nhưng không xoá được
+ * một lượt đăng nhập ĐANG BAY. Bỏ `inflightLogin = null` thì lượt cũ mất tay cầm
+ * chứ không dừng — nó vẫn chạy tiếp, và khi máy chủ trả lời thì thân hàm của nó
+ * ghi `loginCooldownUntil` cùng ba câu lỗi vào đúng các biến vừa được dọn.
+ *
+ * Chuỗi hỏng, tất cả các bước đều là đường người dùng đi hằng ngày:
+ *   1. Phiên của DID cũ chết → một màn gọi `loginOnce`, lượt ký đang chờ máy chủ.
+ *   2. Người dùng lập lại danh tính (hoặc đăng xuất) → van mở, trạng thái sạch.
+ *   3. Máy chủ từ chối lượt của DID CŨ → thân hàm ghi nghỉ-60-giây.
+ *   4. DID MỚI bị khoá sinh trắc một phút, và màn hình trình câu từ chối của DID
+ *      cũ như thể máy chủ vừa nói về danh tính mới.
+ *
+ * Bước 4 là chỗ đắt: người vừa lập danh tính mới đọc một câu nói về danh tính họ
+ * vừa bỏ, nên câu đó vừa sai vừa không hành động được gì. Đúng cái van này sinh
+ * ra để chấm dứt.
+ *
+ * Sửa bằng số hiệu thế chứ không bằng cờ huỷ: lượt đang bay KHÔNG huỷ được (nó
+ * đang nằm trong hộp sinh trắc của hệ điều hành), nên thứ duy nhất làm được là
+ * để nó chạy xong rồi TỪ CHỐI lời khai của nó. Lượt nào sinh ra ở thế trước thì
+ * vẫn trả kết quả cho chính người đã gọi nó — không nuốt lỗi — nhưng không được
+ * phép viết lên trạng thái dùng chung nữa.
+ */
+let loginGeneration = 0;
+
+/** Cho phép hỏi sinh trắc lại NGAY. Chỉ gọi khi trạng thái danh tính đã đổi thật. */
+export function clearOrilifeLoginCooldown(): void {
+  loginGeneration += 1;
+  loginCooldownUntil = 0;
+  lastLoginError = null;
+  lastLoginKind = null;
+  lastServerSaid = null;
+  inflightLogin = null;
+}
+
+/** Còn bao nhiêu mili-giây nữa mới hỏi sinh trắc lại; 0 nghĩa là hỏi được ngay. */
+export const orilifeLoginCooldownLeft = (): number =>
+  Math.max(0, loginCooldownUntil - Date.now());
+
+/**
+ * Lý do máy chủ từ chối ở lần đăng nhập DID gần nhất, nguyên văn.
+ *
+ * Có hàm này để màn hình thôi phải bịa. Câu cũ — "Phiên đăng nhập hết hạn. Hãy đăng
+ * nhập lại." — vừa sai (phiên có thể chưa hết hạn; máy chủ có thể đang từ chối chính
+ * DID này) vừa không làm được gì: màn trang trại không có chỗ nào để "đăng nhập lại".
+ */
+export const lastOrilifeLoginError = (): string | null => lastLoginError;
+
+/** Ô hỏng của lần đăng nhập DID gần nhất — dùng để chọn câu nói với người dùng. */
+export const lastOrilifeLoginKind = (): DidLoginFailKind | null => lastLoginKind;
+
+/**
+ * Câu máy chủ tự viết ở lần từ chối gần nhất, hoặc `null` nếu máy chủ không nói gì.
+ *
+ * `null` là một câu trả lời hợp lệ và chỗ gọi phải chịu được nó — đừng dựng một
+ * câu thay thế rồi trình bày như thể máy chủ đã nói.
+ */
+export const lastOrilifeServerSaid = (): string | null => lastServerSaid;
+
+function loginOnce(baseUrl: string): Promise<DidLoginResult> {
+  if (inflightLogin) return inflightLogin;
+  if (Date.now() < loginCooldownUntil) {
+    // KHÔNG ký, KHÔNG hộp thoại. Trả về đúng lý do máy chủ đã nói lần trước —
+    // im lặng trả `{ok:false}` trơ ở đây là dựng lại cái vỏ im lặng ở tầng dưới.
+    return Promise.resolve({
+      ok: false,
+      kind: lastLoginKind ?? undefined,
+      error: lastLoginError ?? undefined,
+      serverSaid: lastServerSaid ?? undefined,
+    });
+  }
+  // Chốt thế NGAY lúc dựng lượt, trước mọi `await` — xem `loginGeneration`.
+  const generationAtStart = loginGeneration;
+  const run = (async () => {
+    const res = await loginOrilifeWithDid(baseUrl);
+    // Van đã mở giữa chừng ⟹ lượt này nói về một danh tính KHÁC danh tính đang
+    // hiện hành. Vẫn trả kết quả cho người đã gọi, nhưng thôi ghi ra biến chung.
+    // Cả hai nhánh đều bỏ ghi, không riêng nhánh hỏng: một lượt THÀNH CÔNG của
+    // DID cũ cũng không phải bằng chứng nào về DID mới.
+    if (generationAtStart !== loginGeneration) return res;
+    if (res.ok) {
+      loginCooldownUntil = 0;
+      lastLoginError = null;
+      lastLoginKind = null;
+      lastServerSaid = null;
+    } else {
+      loginCooldownUntil = Date.now() + LOGIN_COOLDOWN_MS;
+      lastLoginError = res.error ?? null;
+      lastLoginKind = res.kind ?? 'unknown';
+      lastServerSaid = res.serverSaid ?? null;
+    }
+    return res;
+  })();
+  inflightLogin = run;
+  run.finally(() => {
+    if (inflightLogin === run) inflightLogin = null;
+  });
+  return run;
 }

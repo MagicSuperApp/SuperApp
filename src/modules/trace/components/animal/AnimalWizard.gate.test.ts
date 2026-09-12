@@ -146,25 +146,32 @@ describe('4 · mỗi khung hình hỏi đúng một câu', () => {
   });
 });
 
-describe('ô chọn loài: ảnh thật nếu có, biểu tượng nếu chưa', () => {
+describe('ảnh loài: một thành phần, một bảng tra', () => {
   const ANH = doc(join(__dirname, 'speciesPhoto.ts'));
 
-  it('ô chọn loài vẽ ẢNH khi bảng tra có, không gõ cứng biểu tượng', () => {
-    const i = THAN.indexOf('styles.luoiLoai');
-    expect(i).toBeGreaterThan(-1);
-    const luoi = THAN.slice(i, i + 1600);
-    expect(luoi).toContain('anhLoai(k)');
-    expect(luoi).toContain('<Image');
-    // `contain`, không `cover`: ảnh xoá nền mỗi loài một tỉ lệ, `cover` cắt cụt.
-    expect(luoi).toContain('resizeMode="contain"');
+  it('MỌI chỗ bày "con gì" đều đi qua MỘT thành phần', () => {
+    // Trước bản này có SÁU chỗ tự dựng lấy: bảng cơ cấu đàn, chip lọc, ô chọn
+    // loài, dòng tóm tắt, danh sách ứng viên, thẻ cá thể. Sáu bản chép tay của
+    // cùng một quyết định thì lượt sau chỉ cần sửa năm chỗ là có một chỗ lệch —
+    // và chỗ lệch ấy không đỏ ở đâu cả, nó chỉ hiện ra một con gà VẼ NÉT nằm
+    // giữa năm con gà CHỤP ẢNH.
+    const tab = chay(doc(join(__dirname, '..', 'FarmAnimalsTab.tsx')));
+    for (const nguon of [THAN, tab]) {
+      expect(nguon).toContain('<AnhLoai');
+      // Không tệp nào được tự tra bảng ảnh/biểu tượng loài nữa.
+      expect(nguon).not.toContain('hinhLoai(');
+    }
   });
 
-  it('loài CHƯA có ảnh rơi về biểu tượng, KHÔNG rơi về ô rỗng', () => {
-    // Một ô xám rỗng đọc ra "app hỏng". Bước một của cả luồng không được phép
-    // trông như hỏng chỉ vì bảng ảnh chưa điền.
-    const i = THAN.indexOf('anhLoai(k)');
-    const khoi = THAN.slice(i, i + 900);
-    expect(khoi).toContain('hinhLoai(k)');
+  it('`AnhLoai` vẽ ẢNH khi có, và rơi về BIỂU TƯỢNG khi chưa — không rơi về ô rỗng', () => {
+    // Một ô xám rỗng đọc ra "app hỏng"; biểu tượng đọc ra "đây là con gà". Nhánh
+    // biểu tượng phải còn sống để bảng ảnh thêm/bớt được mà không ai sửa chỗ vẽ.
+    const c = chay(doc(join(__dirname, 'AnhLoai.tsx')));
+    expect(c).toContain('const anh = anhLoai(species)');
+    expect(c).toContain('hinhLoai(species)');
+    expect(c).toContain('<Image');
+    // `contain`, không `cover`: ảnh loài mỗi con một tỉ lệ, `cover` cắt cụt đầu.
+    expect(c).toContain('resizeMode="contain"');
   });
 
   it('bảng ảnh KHÔNG `require` một tệp chưa có', () => {

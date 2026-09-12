@@ -146,8 +146,9 @@ describe('thẻ cá thể: ô VUÔNG bo góc, ảnh trên, chữ dưới', () =>
     const i = MA_TAB.indexOf('const AnimalCard');
     const than = MA_TAB.slice(i, i + 2500);
     // 1) ảnh thật của chính con này → 2) ảnh loài → 3) biểu tượng.
-    expect(than.indexOf('dungAnhRieng')).toBeLessThan(than.indexOf('anhLoaiNay ?'));
-    expect(than).toContain('hinhLoai(item.species)');
+    // Hai nguồn sau do `AnhLoai` lo, nên ở đây chỉ còn hai nhánh phải đúng thứ tự.
+    expect(than.indexOf('dungAnhRieng')).toBeLessThan(than.indexOf('<AnhLoai'));
+    expect(than).toContain('species={item.species}');
   });
 
   it('ảnh riêng CHẾT thì tụt xuống ảnh loài, không để lại ô trống', () => {
@@ -172,11 +173,10 @@ describe('chip lọc loài: ảnh loài + số dạng huy hiệu', () => {
   it('chip dùng ẢNH loài, rơi về biểu tượng khi thiếu', () => {
     // Soi TỪ lời gắn style của chip TỚI thẻ đóng của nó, không soi một cửa sổ
     // đếm ký tự: cửa sổ cố định co lại thành sai ngay khi ai đó thêm một dòng.
-    const i = MA_TAB.indexOf('const anh = khoa ?');
+    const i = MA_TAB.indexOf('styles.chipLoc, on && styles.chipLocOn');
     expect(i).toBeGreaterThan(-1);
     const khoi = MA_TAB.slice(i, MA_TAB.indexOf('</TouchableOpacity>', i));
-    expect(khoi).toContain('anhLoai(khoa)');
-    expect(khoi).toContain('hinhLoai(khoa)');
+    expect(khoi).toContain('<AnhLoai');
   });
 
   it('con số tách khỏi nhãn thành huy hiệu riêng', () => {
@@ -190,9 +190,10 @@ describe('chip lọc loài: ảnh loài + số dạng huy hiệu', () => {
 
   it('ô "Tất cả" KHÔNG mượn ảnh của một loài bất kỳ', () => {
     // Nó là cả sáu loài; lấy hình con gà đại diện là nói sai.
-    const i = MA_TAB.indexOf('const anh = khoa ?');
-    expect(i).toBeGreaterThan(-1);
-    expect(MA_TAB.slice(i, i + 80)).toContain('khoa ? anhLoai(khoa) : null');
+    const i = MA_TAB.indexOf('styles.chipLoc, on && styles.chipLocOn');
+    const khoi = MA_TAB.slice(i, MA_TAB.indexOf('</TouchableOpacity>', i));
+    expect(khoi).toContain('khoa ? (');
+    expect(khoi).toContain('name="paw"');
   });
 });
 
@@ -274,11 +275,12 @@ describe('biểu tượng loài lấy từ bộ ĐANG dùng ở module này', ()
     // Tên lạ không ném lỗi: `<Icon>` trả `null` và để lại một ô trống. Kiểu
     // hỏng chỉ lộ ra khi có người mở đúng màn đó.
     expect(MA_TAB).not.toContain('speciesIcon');
-    expect(MA_TAB).toContain("from './animal/speciesFa'");
-    expect(MA_THAN).toContain("from './speciesFa'");
-    // Bảng tra chỉ còn MỘT bản — hai bản chép tay thì sớm muộn cũng lệch.
+    // Bảng tra chỉ còn MỘT bản, và chỉ `AnhLoai` đọc nó — hai bản chép tay thì
+    // sớm muộn cũng lệch.
     const fa = doc(join(__dirname, 'animal', 'speciesFa.ts'));
     expect(fa).toContain('export const HINH_LOAI');
     expect(MA_TAB).not.toContain('const HINH_LOAI');
+    const anhLoaiTs = doc(join(__dirname, 'animal', 'AnhLoai.tsx'));
+    expect(anhLoaiTs).toContain("from './speciesFa'");
   });
 });

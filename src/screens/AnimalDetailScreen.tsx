@@ -37,6 +37,7 @@ import { ORILIFE_BASE } from '../services/orilifeBase';
 import { getAnimal, type AnimalInfo } from '../services/animalReIDService';
 import EntityTimeline from '../modules/trace/components/EntityTimeline';
 import { speciesLabel } from '../constants/animalSpecies';
+import AnhLoai from '../modules/trace/components/animal/AnhLoai';
 
 type AnimalDetailRouteParams = {
   AnimalDetail: {
@@ -148,7 +149,11 @@ const AnimalDetailScreen: React.FC = () => {
     return (
       <>
         <View style={styles.card}>
-          <Icon name="paw" size={32} color={HEADER_BG} style={styles.cardIcon} />
+          {/* ẢNH của LOÀI thay cho bàn chân chung — xem `AnhLoai`. Lề đặt ở
+              `View` bọc ngoài, vì `AnhLoai` cố ý không nhận `style`. */}
+          <View style={styles.cardIcon}>
+            <AnhLoai species={animal?.species} size={56} color={HEADER_BG} />
+          </View>
           <Text style={styles.cardName}>{animal?.name || 'Chưa đặt tên'}</Text>
           <Text style={styles.cardLabel}>Mã định danh vật nuôi</Text>
           <Text style={styles.cardDid} numberOfLines={3} selectable>

@@ -65,8 +65,7 @@ import {
 } from '../../theme/depth';
 import { GradientFill } from '../layered/Organic';
 import { luuAnhCaThe } from '../../utils/animalPhotoCache';
-import { hinhLoai } from './speciesFa';
-import { anhLoai } from './speciesPhoto';
+import AnhLoai from './AnhLoai';
 
 const imagePicker = (() => {
   try { return require('react-native-image-picker'); } catch { return null; }
@@ -398,7 +397,7 @@ const AnimalWizard: React.FC<{
   const oTomTat = (
     <View style={styles.tomTat}>
       <View style={styles.tomTatHang}>
-        <Icon name={hinhLoai(loai)} size={15} color={ORG_TONE.barn} />
+        <AnhLoai species={loai} size={20} color={ORG_TONE.barn} />
         <Text style={styles.tomTatNhan}>Loài</Text>
         <Text style={styles.tomTatGt}>{loai ? speciesLabel(loai) : '—'}</Text>
       </View>
@@ -437,15 +436,8 @@ const AnimalWizard: React.FC<{
             <View style={styles.luoiLoai}>
               {SPECIES_KEYS.map((k) => {
                 const chon = loai === k;
-                /*
-                  ẢNH THẬT nếu có, biểu tượng nếu chưa — xem `speciesPhoto.ts`.
-
-                  ⛔ KHÔNG vẽ một ô xám rỗng cho loài chưa có ảnh. Ô rỗng đọc ra
-                     "app hỏng"; biểu tượng đọc ra "đây là con gà". Sáu ô này là
-                     bước MỘT của cả luồng, nên chúng phải đọc được ngay cả khi
-                     bảng ảnh còn trống trơn.
-                */
-                const anh = anhLoai(k);
+                /* Ảnh thật nếu có, biểu tượng nếu chưa — `AnhLoai` lo cả hai
+                   nhánh, và nó là chỗ DUY NHẤT trong kho quyết định việc đó. */
                 return (
                   <TouchableOpacity
                     key={k}
@@ -455,23 +447,11 @@ const AnimalWizard: React.FC<{
                     accessibilityRole="radio"
                     accessibilityState={{ selected: chon }}
                   >
-                    {anh ? (
-                      <Image
-                        source={anh}
-                        style={styles.oLoaiAnh}
-                        /* `contain`: ảnh xoá nền có tỉ lệ khác nhau (con bò nằm
-                           ngang, con gà đứng dọc). `cover` sẽ cắt cụt đầu hoặc
-                           chân — và cắt cụt thì mỗi loài cụt một kiểu. */
-                        resizeMode="contain"
-                        fadeDuration={0}
-                      />
-                    ) : (
-                      <Icon
-                        name={hinhLoai(k)}
-                        size={24}
-                        color={chon ? ORG_TONE.barn : ORG_NATURE.barkSoft}
-                      />
-                    )}
+                    <AnhLoai
+                      species={k}
+                      size={52}
+                      color={chon ? ORG_TONE.barn : ORG_NATURE.barkSoft}
+                    />
                     <Text style={[styles.oLoaiTxt, chon && styles.oLoaiTxtChon]}>
                       {speciesLabel(k)}
                     </Text>
@@ -735,7 +715,7 @@ const AnimalWizard: React.FC<{
                 activeOpacity={0.85}
                 onPress={() => { onClose(); onOpenAnimal?.(c.animal_did); }}
               >
-                <Icon name={hinhLoai(c.species)} size={18} color={ORG_TONE.barn} />
+                <AnhLoai species={c.species} size={26} color={ORG_TONE.barn} />
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={styles.ungVienTen} numberOfLines={1}>
                     {c.name || 'Chưa đặt tên'}
@@ -932,11 +912,6 @@ const styles = StyleSheet.create({
     backgroundColor: ORG_SURFACE.raised,
   },
   oLoaiChon: { backgroundColor: ORG_TONE.barnSoft },
-  /**
-   * Ô ảnh loài. Cao hơn hẳn biểu tượng (24) vì một tấm ảnh thật cần chỗ mới đọc
-   * ra con gì; `%` theo cạnh ô nên nó co giãn cùng lưới trên máy hẹp.
-   */
-  oLoaiAnh: { width: '68%', height: '52%' },
   oLoaiTxt: { fontSize: 13, fontWeight: '600', color: ORG_NATURE.barkSoft },
   oLoaiTxtChon: { color: ORG_TONE.barnDeep, fontWeight: '700' },
 

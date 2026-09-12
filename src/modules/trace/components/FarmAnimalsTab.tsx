@@ -52,8 +52,7 @@ import { GradientFill } from './layered/Organic';
 import { BentoRow, BentoTile } from './layered/Surface';
 import PaginationControls from './PaginationControls';
 import AnimalWizard, { type AnimalFlowMode, ANH_TOI_THIEU } from './animal/AnimalWizard';
-import { hinhLoai } from './animal/speciesFa';
-import { anhLoai } from './animal/speciesPhoto';
+import AnhLoai from './animal/AnhLoai';
 import { docAnhCaThe } from '../utils/animalPhotoCache';
 
 const { width } = Dimensions.get('window');
@@ -125,7 +124,6 @@ const AnimalCard = ({
   const [hongAnh, setHongAnh] = useState(false);
   const ten = item.name?.trim() || 'Chưa đặt tên';
   const loai = speciesLabel(item.species);
-  const anhLoaiNay = anhLoai(item.species);
 
   // Ảnh riêng chết thì tụt xuống ảnh loài; đổi con thì thử lại từ đầu.
   useEffect(() => { setHongAnh(false); }, [anhRieng]);
@@ -153,17 +151,11 @@ const AnimalCard = ({
             fadeDuration={0}
             onError={() => setHongAnh(true)}
           />
-        ) : anhLoaiNay ? (
-          <Image
-            source={anhLoaiNay}
-            style={styles.theAnhLoai}
-            /* `contain` cho ảnh loài: mỗi loài một tỉ lệ (bò nằm ngang, gà đứng
-               dọc), `cover` sẽ cắt cụt mỗi loài một kiểu. */
-            resizeMode="contain"
-            fadeDuration={0}
-          />
         ) : (
-          <Icon name={hinhLoai(item.species)} size={30} color={ORG_TONE.barn} />
+          /* Không có ảnh riêng thì về ảnh LOÀI, và `AnhLoai` lo nốt nhánh
+             "loài chưa có ảnh" → biểu tượng. Cạnh 84% ô để con vật không chạm
+             mép; ô ảnh vuông theo bề ngang thẻ nên suy thẳng từ `size`. */
+          <AnhLoai species={item.species} size={size * 0.84} color={ORG_TONE.barn} />
         )}
 
         {/* Huy hiệu số ảnh — ở GÓC, đè lên ảnh, không chiếm một hàng riêng.
@@ -367,7 +359,7 @@ const FarmAnimalsTab = ({
           <View style={styles.heroBang}>
             {coCau.map(({ khoa, so }) => (
               <View key={khoa} style={styles.heroHang}>
-                <Icon name={hinhLoai(khoa)} size={15} color={ORG_TONE.barn} />
+                <AnhLoai species={khoa} size={18} color={ORG_TONE.barn} />
                 <Text style={styles.heroNhan} numberOfLines={1}>{speciesLabel(khoa)}</Text>
                 {/* Thanh tỉ lệ so với loài ĐÔNG NHẤT, không so với tổng: mắt đọc
                     được "loài nào nhiều hơn loài nào" ngay cả khi đàn lệch hẳn
@@ -451,7 +443,6 @@ const FarmAnimalsTab = ({
         >
           {[{ khoa: '', so: dan.length }, ...coCau].map(({ khoa, so }) => {
             const on = locLoai === khoa;
-            const anh = khoa ? anhLoai(khoa) : null;
             return (
               <TouchableOpacity
                 key={khoa || 'tat-ca'}
@@ -464,14 +455,14 @@ const FarmAnimalsTab = ({
               >
                 {/* Ảnh loài làm biểu tượng. Ô "Tất cả" KHÔNG có ảnh nào đại diện
                     được — nó là cả sáu loài — nên nó giữ biểu tượng bàn chân. */}
-                {anh ? (
-                  <Image source={anh} style={styles.chipLocAnh} resizeMode="contain" fadeDuration={0} />
-                ) : (
-                  <Icon
-                    name={khoa ? hinhLoai(khoa) : 'paw'}
-                    size={14}
+                {khoa ? (
+                  <AnhLoai
+                    species={khoa}
+                    size={22}
                     color={on ? ORG_TONE.barnDeep : ORG_NATURE.barkSoft}
                   />
+                ) : (
+                  <Icon name="paw" size={14} color={on ? ORG_TONE.barnDeep : ORG_NATURE.barkSoft} />
                 )}
                 <Text style={[styles.chipLocTxt, on && styles.chipLocTxtOn]}>
                   {khoa ? speciesLabel(khoa) : 'Tất cả'}
@@ -596,15 +587,8 @@ const FarmAnimalsTab = ({
                     resizeMode="cover"
                     fadeDuration={0}
                   />
-                ) : anhLoai(dangXem?.species) ? (
-                  <Image
-                    source={anhLoai(dangXem?.species)!}
-                    style={styles.popupAnhLoai}
-                    resizeMode="contain"
-                    fadeDuration={0}
-                  />
                 ) : (
-                  <Icon name={hinhLoai(dangXem?.species)} size={26} color={ORG_TONE.barn} />
+                  <AnhLoai species={dangXem?.species} size={54} color={ORG_TONE.barn} />
                 )}
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
@@ -767,7 +751,6 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: ORG_TONE.border,
   },
   chipLocOn: { backgroundColor: ORG_TONE.barnSoft, borderColor: ORG_TONE.barn },
-  chipLocAnh: { width: 22, height: 22 },
   chipLocTxt: { fontSize: 13, fontWeight: '600', color: ORG_NATURE.barkSoft },
   chipLocTxtOn: { color: ORG_TONE.barnDeep },
   /** Huy hiệu số — tròn, nền chìm, để con số tách hẳn khỏi nhãn. */
@@ -797,8 +780,6 @@ const styles = StyleSheet.create({
   },
   /** Ảnh chụp thật — lấp đầy ô. */
   theAnhPhu: { width: '100%', height: '100%' },
-  /** Ảnh loài — chừa lề để con vật không chạm mép ô. */
-  theAnhLoai: { width: '84%', height: '84%' },
   theHuyHieu: {
     position: 'absolute', top: 6, right: 6,
     flexDirection: 'row', alignItems: 'center', gap: 3,
@@ -819,7 +800,6 @@ const styles = StyleSheet.create({
     backgroundColor: ORG_TONE.barnSoft,
   },
   popupAnhPhu: { width: '100%', height: '100%' },
-  popupAnhLoai: { width: '84%', height: '84%' },
 
   dangTai: { alignItems: 'center', paddingTop: 56, gap: 10 },
   dangTaiTxt: { fontSize: 14, color: COLORS.textMuted },

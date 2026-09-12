@@ -617,8 +617,21 @@ const RECOVER_FAIL_MESSAGE: Record<string, string> = {
     'Máy chủ từ chối mở lại danh tính cho khoá đã có trên máy này. Đây là lỗi phía máy chủ — chụp màn hình này gửi hỗ trợ.',
   did_sai_dinh_dang:
     'Máy chủ trả về một mã danh tính app chưa hiểu được. Đây là lỗi phía máy chủ — chụp màn hình này gửi hỗ trợ.',
+  // ⛔ Câu cũ đúng mà VẪN chặn người dùng, vì nó bỏ mất dữ kiện quyết định: danh
+  // tính "đã tạo trước đó" có thể được tạo ở MỘT ỨNG DỤNG KHÁC trên cùng cái điện
+  // thoại. Hai app dùng chung một khe khoá phần cứng, nên khoá lập trong Aladin
+  // hiện ra ở CheckFarm và ngược lại — trong khi với người dùng, hai app là hai
+  // sản phẩm khác nhau, không có lý do gì để nối hai việc đó lại.
+  //
+  // Ca thực địa 2026-09-12: một người không vào được CheckFarm vì trên máy đó đã
+  // từng lập tài khoản qua Aladin. Câu cũ bảo "nhập lại đúng tên đăng nhập của
+  // danh tính đó", và người đọc không biết "danh tính đó" là danh tính nào, vì họ
+  // đang đứng ở một app chưa từng lập gì.
+  //
+  // Câu mới nói cả ba vế: vì sao gặp cảnh này · một danh tính dùng được cho mọi
+  // app (không phải hạn chế, là thiết kế) · không nhớ tên thì đi đâu.
   can_ten_dang_nhap:
-    'Máy này đã có khoá của một danh tính đã tạo trước đó. Nhập lại đúng tên đăng nhập của danh tính đó để mở lại trên máy này.',
+    'Máy này đã có khoá của một danh tính đã tạo trước đó — có thể do một ứng dụng khác trên cùng điện thoại này. Một danh tính dùng chung cho mọi ứng dụng, nên chỉ cần nhập đúng tên đăng nhập đó là vào được ngay. Không nhớ tên thì mở màn Khôi phục danh tính.',
   // Ca này TRƯỚC ĐÂY đội lốt `can_ten_dang_nhap` và đó là chỗ đắt nhất: người dùng
   // được bảo đi sửa tên đăng nhập, trong khi thứ vừa hỏng là một hộp sinh trắc mà
   // họ còn không biết là có. Câu phải gọi đúng tên hộp đó, vì trên màn hình nó là

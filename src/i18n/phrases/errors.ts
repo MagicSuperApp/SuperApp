@@ -173,10 +173,10 @@ export const ERRORS: PhraseMap = {
     zh: '本机的密钥已被吊销，很可能是此前在别处恢复过身份。重新安装应用无法找回。请打开“恢复身份”页面：如果钱包仍在本机，只需用户名即可，不需要 24 个助记词。',
     ja: 'この端末の鍵は失効しています。以前に別の場所で本人情報を復元したためと思われます。アプリを入れ直しても戻りません。「本人情報の復元」画面を開いてください。ウォレットがこの端末に残っていれば、ユーザー名だけで足り、24単語は不要です。',
   },
-  'Máy này đã có khoá của một danh tính đã tạo trước đó. Nhập lại đúng tên đăng nhập của danh tính đó để mở lại trên máy này.': {
-    en: 'This device already holds the key of an identity created earlier. Enter that identity\u2019s username again to reopen it on this device.',
-    zh: '本机已持有先前创建的某个身份的密钥。请重新输入该身份的用户名，以在本机重新打开它。',
-    ja: 'この端末には、以前作成された本人情報の鍵がすでにあります。その本人情報のユーザー名をもう一度入力して、この端末で開き直してください。',
+  'Máy này đã có khoá của một danh tính đã tạo trước đó — có thể do một ứng dụng khác trên cùng điện thoại này. Một danh tính dùng chung cho mọi ứng dụng, nên chỉ cần nhập đúng tên đăng nhập đó là vào được ngay. Không nhớ tên thì mở màn Khôi phục danh tính.': {
+    en: 'This device already holds the key of an identity created earlier — possibly by another app on this same phone. One identity works across all the apps, so entering that username is enough to get in. If you do not remember it, open the Restore identity screen.',
+    zh: '本机已持有先前创建的某个身份的密钥 — 可能是同一部手机上的另一个应用创建的。一个身份可用于所有应用，因此只要输入该用户名即可进入。若记不清用户名，请打开“恢复身份”页面。',
+    ja: 'この端末には、以前作成された本人情報の鍵がすでにあります — 同じ端末の別のアプリで作成された可能性があります。本人情報は一つですべてのアプリに使えるので、そのユーザー名を入力すれば入れます。思い出せない場合は「本人情報の復元」画面を開いてください。',
   },
   'Máy này đã có danh tính của bạn, nhưng bước xác thực để mở lại chưa xong. Bấm lại và làm hết CẢ HAI lần hỏi vân tay hoặc khuôn mặt — lần thứ hai có tên "Khôi phục danh tính".': {
     en: 'This device already holds your identity, but the check needed to reopen it did not finish. Tap again and complete BOTH fingerprint or face prompts — the second one is titled “Restore identity”.',

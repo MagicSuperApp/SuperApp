@@ -127,6 +127,15 @@ export interface DidLoginResult {
   username?: string;
   error?: string;
   kind?: DidLoginFailKind;
+  /**
+   * Câu MÁY CHỦ tự viết, chỉ đặt khi máy chủ thật sự có gửi một câu.
+   *
+   * Tách khỏi `error` vì `error` lẫn hai thứ: câu của máy chủ, và mã do chính app
+   * dựng ra khi máy chủ im (`Verify HTTP 401`). Đem mã tự dựng ra màn hình là hiện
+   * một thứ người dùng không đọc được; bỏ luôn câu của máy chủ thì mất đúng chỗ
+   * duy nhất nói được người dùng phải làm gì. Một trường riêng thì không phải đoán.
+   */
+  serverSaid?: string;
 }
 
 /**
@@ -227,12 +236,17 @@ export async function loginOrilifeWithDid(baseUrl: string): Promise<DidLoginResu
         status: vRes.status,
         detail: vBody?.detail ?? vBody?.error ?? null,
       });
+      const noiRa =
+        typeof vBody?.detail === 'string' && vBody.detail.trim() ? vBody.detail.trim()
+          : typeof vBody?.error === 'string' && vBody.error.trim() ? vBody.error.trim()
+            : undefined;
       return {
         ok: false,
         // Tới được cửa verify mà bị bác: máy chủ đã NHÌN chữ ký và nói không.
         // 5xx là máy chủ hỏng, còn lại là từ-chối — và từ-chối thì thử lại vô ích.
         kind: vRes.status >= 500 ? 'server' : 'refused',
-        error: vBody?.detail || vBody?.error || `Verify HTTP ${vRes.status}`,
+        error: noiRa ?? `Verify HTTP ${vRes.status}`,
+        serverSaid: noiRa,
       };
     }
 
@@ -392,12 +406,14 @@ let inflightLogin: Promise<DidLoginResult> | null = null;
 let loginCooldownUntil = 0;
 let lastLoginError: string | null = null;
 let lastLoginKind: DidLoginFailKind | null = null;
+let lastServerSaid: string | null = null;
 
 /** Cho phép hỏi sinh trắc lại NGAY. Chỉ gọi khi trạng thái danh tính đã đổi thật. */
 export function clearOrilifeLoginCooldown(): void {
   loginCooldownUntil = 0;
   lastLoginError = null;
   lastLoginKind = null;
+  lastServerSaid = null;
   inflightLogin = null;
 }
 
@@ -417,6 +433,14 @@ export const lastOrilifeLoginError = (): string | null => lastLoginError;
 /** Ô hỏng của lần đăng nhập DID gần nhất — dùng để chọn câu nói với người dùng. */
 export const lastOrilifeLoginKind = (): DidLoginFailKind | null => lastLoginKind;
 
+/**
+ * Câu máy chủ tự viết ở lần từ chối gần nhất, hoặc `null` nếu máy chủ không nói gì.
+ *
+ * `null` là một câu trả lời hợp lệ và chỗ gọi phải chịu được nó — đừng dựng một
+ * câu thay thế rồi trình bày như thể máy chủ đã nói.
+ */
+export const lastOrilifeServerSaid = (): string | null => lastServerSaid;
+
 function loginOnce(baseUrl: string): Promise<DidLoginResult> {
   if (inflightLogin) return inflightLogin;
   if (Date.now() < loginCooldownUntil) {
@@ -426,6 +450,7 @@ function loginOnce(baseUrl: string): Promise<DidLoginResult> {
       ok: false,
       kind: lastLoginKind ?? undefined,
       error: lastLoginError ?? undefined,
+      serverSaid: lastServerSaid ?? undefined,
     });
   }
   const run = (async () => {
@@ -434,10 +459,12 @@ function loginOnce(baseUrl: string): Promise<DidLoginResult> {
       loginCooldownUntil = 0;
       lastLoginError = null;
       lastLoginKind = null;
+      lastServerSaid = null;
     } else {
       loginCooldownUntil = Date.now() + LOGIN_COOLDOWN_MS;
       lastLoginError = res.error ?? null;
       lastLoginKind = res.kind ?? 'unknown';
+      lastServerSaid = res.serverSaid ?? null;
     }
     return res;
   })();

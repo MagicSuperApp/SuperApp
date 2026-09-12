@@ -171,8 +171,28 @@ describe('câu nói với người dùng bám đúng ô hỏng', () => {
     const cau = authSyncMessage();
     // Câu cũ đoán sai nguyên nhân rồi ra một mệnh lệnh không có nút nào để làm.
     expect(cau).not.toBe(tk('trace.sync.authError'));
-    // Chờ bao lâu cũng ra kết quả cũ → câu phải ĐỨNG MỘT MÌNH, không nối đếm ngược.
-    expect(cau).toBe(tk('trace.sync.auth.refused'));
+    expect(cau.startsWith(tk('trace.sync.auth.refused'))).toBe(true);
+    // Máy chủ CÓ nói một câu → phải hiện nguyên văn, đó là chỗ duy nhất nói được
+    // vì sao nó từ chối.
+    expect(cau).toContain('did not enrolled');
+    // Chờ bao lâu cũng ra kết quả cũ → KHÔNG được nối đếm ngược vào đây.
+    expect(cau).not.toContain(tk('trace.sync.auth.wait', { s: 60 }).trim());
+  });
+
+  it('máy chủ từ chối mà KHÔNG nói gì → không bịa ra câu nào thay nó', async () => {
+    // Mã app tự dựng (`Verify HTTP 401`) không phải câu của máy chủ. Để nó lọt ra
+    // màn hình là hiện một thứ người dùng không đọc được, và trình bày nó như lời
+    // máy chủ là nói hộ máy chủ một điều nó chưa nói.
+    mockFetch.mockImplementation(async (url: string) => {
+      if (String(url).includes('/challenge')) {
+        return { ok: true, json: async () => ({ ok: true, challenge: 'Y2g' }) } as any;
+      }
+      return { ok: false, status: 401, json: async () => ({ ok: false }) } as any;
+    });
+    await ensureOrilifeToken(BASE);
+    expect(lastOrilifeLoginKind()).toBe('refused');
+    expect(authSyncMessage()).toBe(tk('trace.sync.auth.refused'));
+    expect(authSyncMessage()).not.toContain('Verify HTTP');
   });
 
   it('mất mạng → nói mất mạng, và CÓ đếm ngược vì thử lại đổi được kết quả', async () => {

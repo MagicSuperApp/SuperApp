@@ -23,6 +23,7 @@
 import { tk } from '../i18n/keys';
 import {
   lastOrilifeLoginKind,
+  lastOrilifeServerSaid,
   orilifeLoginCooldownLeft,
   type DidLoginFailKind,
 } from './orilifeDidAuth';
@@ -48,7 +49,17 @@ const AUTH_KEY_BY_KIND: Record<DidLoginFailKind, string> = {
  */
 export function authSyncMessage(): string {
   const kind = lastOrilifeLoginKind();
-  const cau = tk(kind ? AUTH_KEY_BY_KIND[kind] : 'trace.sync.authError');
+  let cau = tk(kind ? AUTH_KEY_BY_KIND[kind] : 'trace.sync.authError');
+
+  // Ở ô "bị từ chối", câu của MÁY CHỦ là thứ duy nhất nói được vì sao nó từ chối
+  // — app ở đây không biết gì hơn ngoài "không". Chỉ nối khi máy chủ THẬT SỰ có
+  // gửi một câu: `serverSaid` để rỗng khi máy chủ im, nên không có đường nào để
+  // một mã app tự dựng (`Verify HTTP 401`) lọt ra màn hình.
+  if (kind === 'refused') {
+    const noi = lastOrilifeServerSaid();
+    if (noi) cau += ` Máy chủ nói: "${noi}"`;
+  }
+
   const conLai = orilifeLoginCooldownLeft();
   // Chỉ hứa "chờ rồi thử lại" khi thử lại THẬT SỰ đổi được kết quả. Máy chủ từ
   // chối, hoặc máy chưa có danh tính, thì chờ bao lâu cũng ra kết quả cũ — hứa ở

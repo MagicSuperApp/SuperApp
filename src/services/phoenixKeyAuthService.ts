@@ -168,8 +168,8 @@ export const registerIdentity = async (
 
   const signature = await signRaw(
     messageHex,
-    'Create a new identity',
-    'Sign to create a new PhoenixKey identity on this device',
+    tk('identity.bio.createTitle'),
+    tk('identity.bio.createBody'),
   );
 
   // ADDITIVE: gắn ví Master_KEK (TAAD_Key + địa chỉ Cardano). Bỏ qua nếu lỗi.

@@ -384,11 +384,48 @@ export const remintSessionOnce = (): Promise<string | null> =>
  */
 let inflightRefresh: Promise<string | null> | null = null;
 
+/**
+ * NGHỈ SAU MỘT LẦN ĐÚC HỎNG — lớp gộp ở trên KHÔNG che được ca này.
+ *
+ * `inflightRefresh` chỉ gộp các lượt đúc chạy CHỒNG NHAU. Lượt đúc hỏng xong là
+ * nó tự xoá, nên lượt gọi 401 TIẾP THEO — người dùng bấm "Thử lại", một màn khác
+ * vừa gắn, một `useEffect` chạy lại — mở một lượt đúc MỚI, và mỗi lượt đúc là
+ * một hộp sinh trắc chặn toàn màn hình.
+ *
+ * Đo từ thực địa 2026-09-12 (bản dựng 99, quay màn hình): sau khi máy chủ từ
+ * chối dựng phiên, hộp Face ID bật lại ở giây thứ 19 · 23 · 26 · 30 · 38 — năm
+ * lần trong hai mươi giây, lần nào cũng quét xong rồi vẫn hiện y câu lỗi cũ.
+ * Người dùng mô tả đúng cái nhìn thấy: *"không thoát ra được, không điều khiển
+ * các chức năng"*. Không phải app treo — là một chuỗi hộp hệ thống nối đuôi nhau.
+ *
+ * Máy chủ từ chối một lượt đúc thì lượt sau bằng ĐÚNG khoá đó cho ĐÚNG câu trả
+ * lời đó. Nghỉ một phút không làm mất gì, và nó đổi một vòng lặp không lối ra
+ * thành một câu lỗi đứng yên đọc được.
+ */
+const MINT_COOLDOWN_MS = 60_000;
+let mintCooldownUntil = 0;
+
+/** Cho phép đúc lại ngay — dùng khi người dùng vừa tự xác thực lại. */
+export function clearSessionMintCooldown(): void {
+  mintCooldownUntil = 0;
+}
+
+/** Còn bao nhiêu mili-giây nữa mới được đúc lại; 0 nghĩa là đúc được ngay. */
+export const sessionMintCooldownLeft = (): number =>
+  Math.max(0, mintCooldownUntil - Date.now());
+
 function refreshSessionOnce(): Promise<string | null> {
   if (inflightRefresh) return inflightRefresh;
+  if (Date.now() < mintCooldownUntil) return Promise.resolve(null);
   const run = (async () => {
-    await clearSessionToken();
-    return refreshSession ? refreshSession() : null;
+    // KHÔNG xoá thẻ đang lưu trước khi có thẻ mới. `ensurePhoenixSession({force:true})`
+    // đã bỏ qua thẻ đã lưu rồi, nên lệnh xoá ở đây không giúp gì cho lượt đúc — nó
+    // chỉ bảo đảm rằng một lượt đúc HỎNG để máy lại **không còn thẻ nào**, tức mọi
+    // lượt gọi sau đó chắc chắn 401 kể cả khi thẻ cũ vẫn còn sống và cái 401 ban
+    // đầu đến từ chuyện khác.
+    const fresh = refreshSession ? await refreshSession() : null;
+    mintCooldownUntil = fresh ? 0 : Date.now() + MINT_COOLDOWN_MS;
+    return fresh;
   })();
   inflightRefresh = run;
   run.finally(() => {

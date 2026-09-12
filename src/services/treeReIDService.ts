@@ -10,6 +10,7 @@
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ensureOrilifeToken } from './orilifeDidAuth';
+import { authSyncMessage } from './orilifeAuthMessage';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -344,7 +345,11 @@ export function fieldErrorMessage(err?: APIError): string {
       // những tấm ảnh đã mất — nên lần nào cũng hỏng y hệt.
       return 'Ảnh vừa chụp không còn trong máy nên chưa gửi đi được (máy đã tự dọn để lấy chỗ trống). Hãy chụp lại rồi gửi ngay, đừng để lâu giữa lúc chụp và lúc gửi.';
     case 'auth_error':
-      return 'Phiên đăng nhập hết hạn. Hãy đăng nhập lại.';
+      // Câu cũ — "Phiên đăng nhập hết hạn. Hãy đăng nhập lại." — đoán một nguyên
+      // nhân rồi ra một mệnh lệnh không có nút nào để làm. Nay lấy ô hỏng THẬT của
+      // lần đăng nhập DID gần nhất; `syncErrorMessage` là cửa duy nhất giữ phép
+      // ánh xạ đó, nên hai màn không nói hai câu khác nhau về cùng một sự việc.
+      return authSyncMessage();
     case 'rate_limited':
       return 'Thao tác quá nhanh. Chờ một chút rồi thử lại.';
     case 'server_error':

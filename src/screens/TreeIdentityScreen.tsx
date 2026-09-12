@@ -78,7 +78,11 @@ import ReidConfirmDialog, { type ReidCandidate } from '../components/reid/ReidCo
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import type { RootState } from '../store';
 import { loadFarms } from '../modules/trace/store/farmSlice';
-import { ensureOrilifeToken, clearOrilifeToken } from '../services/orilifeDidAuth';
+import {
+  ensureOrilifeToken,
+  clearOrilifeToken,
+  clearOrilifeLoginCooldown,
+} from '../services/orilifeDidAuth';
 import { BiometricKind, biometricKindFromType, phoenixKeyAuth } from '../services/phoenixKeyAuthService';
 import { loginUser } from '../store/userSlice';
 import ReactNativeBiometrics from 'react-native-biometrics';
@@ -701,6 +705,10 @@ const TreeIdentityScreen: React.FC = () => {
       const prevName = currentUser?.name;
       const { user } = await phoenixKeyAuth.reRegisterIdentity(kind);
       await clearOrilifeToken(); // token cũ (nếu có) gắn DID cũ → bỏ để login lại bằng DID mới
+      // DID vừa ĐỔI, nên đồng hồ nghỉ sinh trắc của DID cũ không còn nói gì về DID
+      // mới. Không mở van ở đây thì người vừa lập lại danh tính phải chờ một phút
+      // mới vào được vườn, và không màn nào giải thích vì sao.
+      clearOrilifeLoginCooldown();
       await dispatch(loginUser({ ...user, name: prevName } as any) as any);
       // Đăng-ký xong → thử nhận-diện lại luôn (ensureOrilifeToken sẽ ký bằng DID mới).
       await runIdentify(imagePaths);

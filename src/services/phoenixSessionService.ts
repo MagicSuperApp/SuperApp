@@ -20,6 +20,7 @@
  * mobile — đúng). Token TTL 1h → gọi lại khi hết (idempotent, nuốt lỗi).
  */
 
+import { tk } from '../i18n/keys';
 import { currentUserDid, ownerPublicKey, signRaw } from '../sdk/phoenixKey';
 import { buildCanonicalHex } from './canonicalMessage';
 import {
@@ -168,8 +169,8 @@ async function ensurePhoenixSessionInner(opts: { force?: boolean }): Promise<str
     );
     const signature = await signRaw(
       messageHex,
-      'Activate the wallet',
-      'Sign with the hardware key to unlock the wallet services',
+      tk('identity.bio.walletTitle'),
+      tk('identity.bio.walletBody'),
     );
 
     rLog.phoenixWallet.sessionSigned(signature?.length ?? 0);

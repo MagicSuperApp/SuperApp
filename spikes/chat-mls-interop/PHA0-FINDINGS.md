@@ -1,5 +1,20 @@
 # Pha 0 — Spike interop: kết quả
 
+> ⛔ **HẾT HIỆU LỰC 12/09/2026 — đọc như tư liệu lịch sử, KHÔNG dùng làm căn cứ.**
+>
+> Dấu ✅ ở tầng 2 bên dưới **không còn đúng**: web đã chuyển tầng 2 sang application
+> message của RFC 9420, còn bản Rust vẫn giữ sơ đồ HKDF mà bảng này nghiệm thu. Hai
+> bên hiện **không đọc được tin của nhau** — đo bằng thực thi: thân tin của web mở
+> đầu `0001000206636f6e` và không mang trường `epoch`; hàm giải mã của ta ném lỗi
+> trên thân đó, còn hàm giải mã của web trả `undefined` trên thân của ta.
+>
+> Bảng này vẫn xanh vì bộ ca kiểm liên thông nạp hàm dẫn khoá từ một tệp không mã
+> sản xuất nào import, và tập vector thiếu hẳn vector cho application message. Nên
+> **màu xanh ở đây là màu của một phép đo không đo gì**, không phải bằng chứng.
+>
+> Bên chủ ProofChat chốt hướng vá, và bước đầu của họ là mở rộng tập vector trước.
+> Trạng thái hiện hành nằm ở `rust/chat_mls/README.md`.
+
 > Mục tiêu: chứng minh bản Rust khớp giao thức MLS 3-tầng của web (ts-mls) **trước khi**
 > đầu tư Pha 1. Cập nhật: 2026-07-01.
 

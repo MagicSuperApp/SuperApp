@@ -427,4 +427,50 @@ export const IDENTITY_STRINGS = {
     zh: '安全核心拒绝了「{method}」，但没有给出原因。',
     ja: 'セキュアコアは「{method}」を拒否しましたが、理由を示していません。',
   },
+
+  // ── Chữ trong hộp sinh trắc của HỆ ĐIỀU HÀNH ──────────────────────────────
+  // Ba cặp dưới đây trước bản này là chuỗi tiếng Anh viết thẳng trong mã dịch
+  // vụ, trong một app mà mọi màn còn lại đều tiếng Việt. Chúng là chỗ dễ thấy
+  // nhất chứ không phải chỗ khuất: hộp Face ID / vân tay do hệ điều hành vẽ,
+  // che kín màn hình, và bật đúng ở ba thời điểm quan trọng nhất — lập danh
+  // tính, đăng nhập, mở ví.
+  //
+  // Chữ ở đây KHÔNG nằm trong thông điệp được ký, nên đổi nó không đụng chữ ký
+  // (cùng lý do đã ghi ở `modules/work/services/signWorkChallenge.ts`).
+  'identity.bio.createTitle': {
+    vi: 'Lập danh tính mới',
+    en: 'Create a new identity',
+    zh: '创建新身份',
+    ja: '新しい本人確認を作成',
+  },
+  'identity.bio.createBody': {
+    vi: 'Xác thực để sinh khoá danh tính ngay trong chip bảo mật của máy này.',
+    en: 'Authenticate to generate the identity key inside this device’s secure chip.',
+    zh: '请验证身份，以在本机安全芯片内生成身份密钥。',
+    ja: '認証すると、この端末のセキュアチップ内に本人確認用の鍵を生成します。',
+  },
+  'identity.bio.walletTitle': {
+    vi: 'Mở khoá ví',
+    en: 'Unlock the wallet',
+    zh: '解锁钱包',
+    ja: 'ウォレットのロック解除',
+  },
+  'identity.bio.walletBody': {
+    vi: 'Xác thực để mở phiên làm việc với các dịch vụ ví.',
+    en: 'Authenticate to open a session with the wallet services.',
+    zh: '请验证身份，以开启钱包服务会话。',
+    ja: '認証すると、ウォレットサービスとのセッションを開きます。',
+  },
+  'identity.bio.farmLoginTitle': {
+    vi: 'Đăng nhập vườn',
+    en: 'Sign in to your farm',
+    zh: '登录农场',
+    ja: '農園にサインイン',
+  },
+  'identity.bio.farmLoginBody': {
+    vi: 'Xác thực để mở dữ liệu vườn và cây của bạn.',
+    en: 'Authenticate to open your farm and tree data.',
+    zh: '请验证身份，以打开您的农场与树木数据。',
+    ja: '認証すると、農園と樹木のデータを開きます。',
+  },
 };

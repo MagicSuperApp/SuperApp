@@ -42,6 +42,13 @@ export interface TreeModelStatus {
   state: 'loading' | 'ready' | 'failed' | 'missing';
   textured: boolean;
   message?: string;
+  /**
+   * Nguyên văn `meta.status` của máy chủ khi `state === 'missing'` (`none` /
+   * `building` / `failed`). Chỉ có ở cây điểm. Màn hình đọc trường này để quyết
+   * bày hay không bày nút "Dựng hình 3D" — `building` nghĩa là đã có lượt đang
+   * chạy. KHÔNG suy từ `message`: câu chữ đổi là phép so sánh đó chết im lặng.
+   */
+  serverStatus?: string;
 }
 
 const statusKey = (modelId: TreeModelId, treeId?: string) => `${modelId}\u0000${treeId ?? ''}`;
@@ -160,6 +167,7 @@ function useTreePointCloud(
         state: r.kind === 'unavailable' ? 'missing' : 'failed',
         textured: false,
         message: r.message,
+        serverStatus: r.kind === 'unavailable' ? r.serverStatus : undefined,
       });
     });
 

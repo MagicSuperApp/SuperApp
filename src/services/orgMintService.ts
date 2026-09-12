@@ -383,9 +383,32 @@ export async function submitMintTx(args: {
 /**
  * BƯỚC 2: đưa LAMP từ KHO Distribution về ví user (claim/vesting-release).
  *
- * PhoenixKey CHƯA cấp endpoint này → LUÔN ném OrgReleaseNotAvailableError. UI hiện
- * nút disabled + ghi "chờ endpoint release". KHÔNG bịa path. Khi backend cấp: ráp
- * gọi ở đây (mẫu 2 bước như mint: request → ký → submit), UI mở nút.
+ * ⛔ ĐÍNH CHÍNH 2026-09-12 — TIỀN ĐỀ CŨ SAI, và nó là loại sai không tự lộ ra.
+ *
+ * Chú thích cũ ghi *"PhoenixKey CHƯA cấp endpoint này"*, tức nó khai một việc ĐANG
+ * CHỜ. Nhà Phoenix đo lại trên `PhoenixKey-Database` `9c04c03` và trả lời: **sẽ
+ * không bao giờ có**. `POST /identity/org/{orgDid}/mint-lamp` khai thẳng trong mô
+ * tả của nó là *"KHÔNG đúc LAMP, KHÔNG submit tx"* — PhoenixKey chỉ phát Grant
+ * tự-verify. Toàn bộ `OrgController` đúng bảy đường, không có `release`, không có
+ * `claim`, không có `vesting`. Bước 2 thuộc nhà MagicLamp (`dist_treasury`).
+ *
+ * Khác nhau ở chỗ phải hành động khác: một việc "đang chờ" thì ngồi đợi là đúng;
+ * một việc "sẽ không có" mà ngồi đợi thì đợi mãi, và không có gì kêu lên. Đây đúng
+ * lớp "việc hoãn buộc vào một sự kiện không bao giờ xảy ra".
+ *
+ * ĐƯỜNG THẬT, đã có sẵn, không cần cửa mới: app đọc
+ * `GET /identity/org/{orgDid}/grants` cho tới khi Grant sang `CONSUMED` rồi lấy
+ * `txHash` — `dist_treasury` ghi trạng thái đó qua
+ * `POST /identity/org/grants/{grantId}/consume` sau khi đã ráp + ký + submit thật.
+ * Tức tín hiệu "xong" là một thứ QUAN SÁT ĐƯỢC, không phải một lời gọi app tự phát.
+ *
+ * CHƯA nối vì còn một chốt fail-closed ở phía máy chủ: khoá verify của
+ * `dist_treasury` mặc định RỖNG, và khi rỗng thì `consumeLampGrant` từ chối mọi
+ * request bằng 503, không có đường cho qua. Khoá đó đã đặt trên tiến trình đang
+ * chạy hay chưa: CHƯA KIỂM — nó nằm ở biến môi trường máy chủ, không đọc từ mã.
+ *
+ * Nên hàm này vẫn ném, nhưng ném vì một lý do KHÁC lý do cũ. Khi nối: dựng đường
+ * đọc `grants` ở đây, đừng đi tìm một cửa `release`.
  */
 export async function claimReleaseToWallet(_args: {
   orgDid: string;

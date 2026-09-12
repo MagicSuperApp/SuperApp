@@ -197,6 +197,56 @@ export const TRACE_STRINGS = {
     zh: '登录已过期，请重新登录。',
     ja: 'ログインの有効期限が切れました。再度サインインしてください。',
   },
+  // ── Phiên OriLife hỏng: NĂM ô, năm việc phải làm khác nhau ────────────────
+  //
+  // `trace.sync.authError` ở trên là câu CUỐI CÙNG còn lại khi không biết gì hơn.
+  // Nó từng là câu DUY NHẤT, và đó là lỗi đo được trên bản 99 (ba đoạn quay người
+  // dùng gửi 2026-09-12): màn trang trại hiện "Phiên hết hạn. Hãy đăng nhập lại."
+  // kèm nút "Thử lại", trong khi (a) phiên chưa chắc hết hạn, và (b) màn đó KHÔNG
+  // có chỗ nào để đăng nhập lại — bấm "Thử lại" chỉ bật thêm một hộp Face ID nữa.
+  //
+  // Năm khoá dưới đây bám đúng `DidLoginFailKind` (`services/orilifeDidAuth.ts`).
+  // Thêm ô mới ở đó thì thêm khoá ở đây — `authKindMessage` rơi về câu cũ nếu
+  // thiếu, nên chỗ thiếu hiện ra bằng một câu mờ chứ không bằng một khoảng trống.
+  'trace.sync.auth.noIdentity': {
+    vi: 'Máy này chưa có danh tính nên chưa vào được vườn. Vào mục Tôi để lập danh tính, hoặc khôi phục danh tính cũ.',
+    en: 'This device has no identity yet, so it cannot open the farm. Go to Me to create one, or restore your existing identity.',
+    zh: '本机尚未建立身份，无法进入农场。请到"我"创建身份，或恢复原有身份。',
+    ja: 'この端末にはまだ識別情報がないため農園を開けません。「マイページ」で作成するか、既存の識別情報を復元してください。',
+  },
+  'trace.sync.auth.network': {
+    vi: 'Chưa nối được tới máy chủ danh tính. Kiểm tra sóng hoặc Wi-Fi rồi thử lại.',
+    en: 'Could not reach the identity server. Check your signal or Wi-Fi, then try again.',
+    zh: '无法连接身份服务器。请检查信号或 Wi-Fi 后重试。',
+    ja: '識別サーバーに接続できません。電波か Wi-Fi を確認してもう一度お試しください。',
+  },
+  'trace.sync.auth.sign': {
+    vi: 'Chưa ký được bằng vân tay/khuôn mặt. Hãy quay màn hình về phía mình rồi thử lại — nếu đang mở máy ảnh thì đóng máy ảnh trước.',
+    en: 'Could not sign with your fingerprint or face. Face the screen and try again — close the camera first if it is open.',
+    zh: '未能通过指纹或面容签名。请面向屏幕后重试 — 如果相机已打开，请先关闭。',
+    ja: '指紋・顔認証で署名できませんでした。画面を自分に向けてもう一度お試しください。カメラを開いている場合は先に閉じてください。',
+  },
+  'trace.sync.auth.refused': {
+    vi: 'Máy chủ chưa cho danh tính này vào vườn. Thử lại cũng ra kết quả cũ — đây là việc ở máy chủ, không phải do máy của bạn.',
+    en: 'The server is not letting this identity into the farm. Retrying gives the same result — this is on the server side, not your device.',
+    zh: '服务器暂不允许此身份进入农场。重试结果相同 — 这是服务器端的问题，与您的设备无关。',
+    ja: 'サーバーがこの識別情報の農園への入場を許可していません。再試行しても同じ結果です — 端末側ではなくサーバー側の問題です。',
+  },
+  'trace.sync.auth.server': {
+    vi: 'Máy chủ danh tính đang trục trặc. Chờ ít phút rồi mở lại — không phải do máy của bạn.',
+    en: 'The identity server is having trouble. Wait a few minutes and reopen — this is not your device.',
+    zh: '身份服务器出现故障。请过几分钟再打开 — 与您的设备无关。',
+    ja: '識別サーバーに不具合が出ています。数分待ってから開き直してください — 端末側の問題ではありません。',
+  },
+  // Đếm ngược của van chặn bão sinh trắc. Nối SAU câu ô hỏng ở trên, không thay nó:
+  // người dùng cần biết cả "vì sao" lẫn "bao giờ được thử lại".
+  'trace.sync.auth.wait': {
+    vi: ' Chờ khoảng {s} giây rồi thử lại.',
+    en: ' Wait about {s} seconds, then try again.',
+    zh: ' 请等待约 {s} 秒后重试。',
+    ja: ' 約 {s} 秒待ってからお試しください。',
+  },
+
   'trace.sync.rateLimited': {
     vi: 'Thao tác quá nhanh. Chờ một chút rồi thử lại.',
     en: 'Too many requests. Wait a moment, then try again.',

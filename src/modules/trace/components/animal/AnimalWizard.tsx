@@ -64,6 +64,7 @@ import {
   SPACE as ORG_SPACE, SURFACE as ORG_SURFACE, TONE as ORG_TONE,
 } from '../../theme/depth';
 import { GradientFill } from '../layered/Organic';
+import { luuAnhCaThe } from '../../utils/animalPhotoCache';
 import { hinhLoai } from './speciesFa';
 import { anhLoai } from './speciesPhoto';
 
@@ -304,6 +305,11 @@ const AnimalWizard: React.FC<{
         ORILIFE_BASE, loai, vuon, ten.trim(), anhBo.map((a) => a.uri),
       );
       if (res.ok && res.data) {
+        // Nhớ MỘT tấm để sổ đàn có mặt con vật mà bày. Máy chủ không trả ảnh của
+        // con nào cả, nên đây là lần DUY NHẤT app cầm ảnh của con này — xem
+        // `utils/animalPhotoCache.ts`. Không `await`: đăng ký đã xong trên máy
+        // chủ, một lượt ghi đĩa hỏng không được phép giữ người dùng lại.
+        if (anhBo[0]?.uri) void luuAnhCaThe(res.data.animal_did, anhBo[0].uri);
         setDidMoi(res.data.animal_did);
         setBuoc('ketqua');
         onChanged?.();

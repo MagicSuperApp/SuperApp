@@ -31,9 +31,9 @@
  * chưa tải. Trần có thật thì nói ra — xem `quaTran`.
  */
 
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Dimensions, FlatList, Modal, Pressable, RefreshControl,
+  ActivityIndicator, Dimensions, FlatList, Image, Modal, Pressable, RefreshControl,
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -50,10 +50,11 @@ import {
 } from '../theme/depth';
 import { GradientFill } from './layered/Organic';
 import { BentoRow, BentoTile } from './layered/Surface';
-import RingProgress from './layered/RingProgress';
 import PaginationControls from './PaginationControls';
 import AnimalWizard, { type AnimalFlowMode, ANH_TOI_THIEU } from './animal/AnimalWizard';
 import { hinhLoai } from './animal/speciesFa';
+import { anhLoai } from './animal/speciesPhoto';
+import { docAnhCaThe } from '../utils/animalPhotoCache';
 
 const { width } = Dimensions.get('window');
 
@@ -83,64 +84,102 @@ export function didNgan(did?: string): string {
   return duoi.length > 14 ? `${duoi.slice(0, 6)}…${duoi.slice(-4)}` : duoi;
 }
 
-/**
- * Vòng quanh nút = phần hồ sơ ảnh đã đủ, 0..100. `null` khi máy chủ KHÔNG trả
- * `n_images` — chưa biết thì vẽ nét đứt, đúng luật của `RingProgress`.
- *
- * ⛔ `?? 0` ở đây là một con số bịa mang hình dạng số đo: "0 ảnh" nói rằng cá
- * thể này chưa có tấm nào, trong khi thật ra app không hỏi được.
- */
-export function pctHoSo(n?: number | null): number | null {
-  if (typeof n !== 'number' || !Number.isFinite(n)) return null;
-  return Math.max(0, Math.min(100, Math.round((n / ANH_TOI_THIEU) * 100)));
-}
-
 function ngayGon(iso?: string): string {
   if (!iso) return 'chưa rõ';
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? 'chưa rõ' : d.toLocaleDateString('vi-VN');
 }
 
-// ── Nút một cá thể ───────────────────────────────────────────────────────────
+// ── Thẻ một cá thể ───────────────────────────────────────────────────────────
 /**
- * Cùng khuôn với `TreeChip`: một hình tròn duy nhất, viền của nó là tiến độ,
- * trong lòng là tên + một con số. Khác ở chỗ con số là SỐ ẢNH chứ không phải số
- * quả — đó là con số duy nhất ở mức danh sách mà người nuôi cần liếc: hồ sơ đủ
- * ảnh thì nhận diện mới chạy được.
+ * VUÔNG BO GÓC, ảnh chiếm phần trên, chữ nằm dưới. Không còn hình tròn.
+ *
+ * ── Vì sao bỏ hình tròn ─────────────────────────────────────────────────────
+ * Nút tròn là khuôn của `TreeChip`, và ở đó nó có lý do: viền của hình tròn CHÍNH
+ * LÀ thanh tiến độ thu hoạch, nên vòng và lòng là một vật. Bên vật nuôi không có
+ * cung tiến độ nào đáng vẽ, nên hình tròn chỉ còn là một cái khung — mà khung
+ * tròn thì cắt cụt bốn góc của thứ quan trọng nhất trên thẻ: mặt con vật.
+ *
+ * ── Ảnh lấy ở đâu ───────────────────────────────────────────────────────────
+ * Ba nguồn, theo thứ tự:
+ *
+ *   1. ẢNH THẬT của chính con này, chụp lúc đăng ký trên máy này
+ *      (`utils/animalPhotoCache.ts`). Máy chủ KHÔNG trả ảnh con vật, nên đây là
+ *      tấm duy nhất app có — và chỉ có với con ghi trên chính máy này.
+ *   2. ẢNH LOÀI (`speciesPhoto.ts`) — con gà chung cho mọi con gà.
+ *   3. BIỂU TƯỢNG (`speciesFa.ts`) — khi loài đó chưa có ảnh.
+ *
+ * ⛔ Đường dẫn ở (1) có thể CHẾT: ảnh nằm trong vùng nhớ tạm của máy ảnh, Android
+ *    dọn khi thiếu chỗ. Nên `onError` phải tụt xuống (2), không được để lại một ô
+ *    trống — xem `hongAnh`.
  */
-const AnimalChip = ({
-  item, size, onPress,
-}: { item: AnimalInfo; size: number; onPress: () => void }) => {
-  const pct = pctHoSo(item.n_images);
+const AnimalCard = ({
+  item, size, anhRieng, onPress,
+}: {
+  item: AnimalInfo;
+  size: number;
+  /** Ảnh thật của chính con này, nếu máy còn giữ. */
+  anhRieng?: string;
+  onPress: () => void;
+}) => {
+  const [hongAnh, setHongAnh] = useState(false);
   const ten = item.name?.trim() || 'Chưa đặt tên';
   const loai = speciesLabel(item.species);
+  const anhLoaiNay = anhLoai(item.species);
+
+  // Ảnh riêng chết thì tụt xuống ảnh loài; đổi con thì thử lại từ đầu.
+  useEffect(() => { setHongAnh(false); }, [anhRieng]);
+  const dungAnhRieng = !!anhRieng && !hongAnh;
 
   return (
     <TouchableOpacity
       activeOpacity={0.85}
       onPress={onPress}
-      style={{ width: size, alignItems: 'center' }}
+      style={[styles.the, { width: size }]}
       accessibilityRole="button"
       accessibilityLabel={
         `${ten}, ${loai}, ` +
         (item.n_images == null ? 'chưa rõ số ảnh' : `${item.n_images} ảnh`)
       }
     >
-      <RingProgress pct={pct} size={size} stroke={5} mau={ORG_TONE.barn}>
-        <Icon name={hinhLoai(item.species)} size={18} color={ORG_TONE.barn} />
-        <Text style={styles.chipTen} numberOfLines={2}>{ten}</Text>
-        <Text style={styles.chipSo} numberOfLines={1}>
-          {item.n_images == null ? (
-            <Text style={styles.chipDonVi}>chưa rõ</Text>
-          ) : (
-            <>
-              {item.n_images}
-              <Text style={styles.chipDonVi}> ảnh</Text>
-            </>
-          )}
-        </Text>
-      </RingProgress>
-      <Text style={styles.chipLoai} numberOfLines={1}>{loai}</Text>
+      <View style={styles.theAnh}>
+        {dungAnhRieng ? (
+          <Image
+            source={{ uri: anhRieng }}
+            style={styles.theAnhPhu}
+            /* `cover`: đây là ảnh chụp thật, lấp đầy ô vuông thì thẻ mới ra thẻ.
+               Ảnh LOÀI thì ngược lại — xem dưới. */
+            resizeMode="cover"
+            fadeDuration={0}
+            onError={() => setHongAnh(true)}
+          />
+        ) : anhLoaiNay ? (
+          <Image
+            source={anhLoaiNay}
+            style={styles.theAnhLoai}
+            /* `contain` cho ảnh loài: mỗi loài một tỉ lệ (bò nằm ngang, gà đứng
+               dọc), `cover` sẽ cắt cụt mỗi loài một kiểu. */
+            resizeMode="contain"
+            fadeDuration={0}
+          />
+        ) : (
+          <Icon name={hinhLoai(item.species)} size={30} color={ORG_TONE.barn} />
+        )}
+
+        {/* Huy hiệu số ảnh — ở GÓC, đè lên ảnh, không chiếm một hàng riêng.
+            `null` là CHƯA BIẾT chứ không phải 0, nên nó ra một dấu hỏi. */}
+        <View style={styles.theHuyHieu}>
+          <Icon name="image" size={9} color={ORG_NATURE.paper} />
+          <Text style={styles.theHuyHieuTxt}>
+            {item.n_images == null ? '?' : item.n_images}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.theChu}>
+        <Text style={styles.theTen} numberOfLines={1}>{ten}</Text>
+        <Text style={styles.theLoai} numberOfLines={1}>{loai}</Text>
+      </View>
     </TouchableOpacity>
   );
 };
@@ -178,6 +217,13 @@ const FarmAnimalsTab = ({
    *    Nay loài là bước MỘT của tấm trượt, nên không còn tham số nào để thiếu.
    */
   const [luong, setLuong] = useState<AnimalFlowMode | null>(null);
+
+  /**
+   * Ảnh thật của từng cá thể, giữ trên máy — máy chủ không trả ảnh con vật nào.
+   * Rỗng là chuyện BÌNH THƯỜNG (máy khác ghi, hoặc mới cài lại): thẻ rơi về ảnh
+   * loài. Xem `utils/animalPhotoCache.ts`.
+   */
+  const [anhRieng, setAnhRieng] = useState<Record<string, string>>({});
 
   /** Chặn hai lượt tải chồng nhau khi màn được focus lại giữa lúc đang tải. */
   const dangChay = useRef(false);
@@ -220,6 +266,11 @@ const FarmAnimalsTab = ({
     setDangLamMoi(false);
     dangChay.current = false;
   }, [farmId]);
+
+  // Nạp lại bảng ảnh cùng nhịp với sổ đàn: vừa đăng ký xong một con là bảng có
+  // thêm một mục, và thẻ của con đó phải mang ảnh thật ngay chứ không đợi lần
+  // mở màn sau.
+  useEffect(() => { docAnhCaThe().then(setAnhRieng); }, [dan.length]);
 
   // Tải lại mỗi lần quay về màn: người dùng vừa đi đăng ký một cá thể mới xong,
   // và danh sách cũ ở đây sẽ nói rằng việc đó chưa xảy ra.
@@ -400,6 +451,7 @@ const FarmAnimalsTab = ({
         >
           {[{ khoa: '', so: dan.length }, ...coCau].map(({ khoa, so }) => {
             const on = locLoai === khoa;
+            const anh = khoa ? anhLoai(khoa) : null;
             return (
               <TouchableOpacity
                 key={khoa || 'tat-ca'}
@@ -408,10 +460,28 @@ const FarmAnimalsTab = ({
                 activeOpacity={0.8}
                 accessibilityRole="button"
                 accessibilityState={{ selected: on }}
+                accessibilityLabel={`${khoa ? speciesLabel(khoa) : 'Tất cả'}, ${so} cá thể`}
               >
+                {/* Ảnh loài làm biểu tượng. Ô "Tất cả" KHÔNG có ảnh nào đại diện
+                    được — nó là cả sáu loài — nên nó giữ biểu tượng bàn chân. */}
+                {anh ? (
+                  <Image source={anh} style={styles.chipLocAnh} resizeMode="contain" fadeDuration={0} />
+                ) : (
+                  <Icon
+                    name={khoa ? hinhLoai(khoa) : 'paw'}
+                    size={14}
+                    color={on ? ORG_TONE.barnDeep : ORG_NATURE.barkSoft}
+                  />
+                )}
                 <Text style={[styles.chipLocTxt, on && styles.chipLocTxtOn]}>
-                  {khoa ? speciesLabel(khoa) : 'Tất cả'} {so}
+                  {khoa ? speciesLabel(khoa) : 'Tất cả'}
                 </Text>
+                {/* Con số thành HUY HIỆU, không còn là chữ dính đuôi nhãn. Dính
+                    đuôi thì "Gà 12" đọc ra một cái tên, và mắt phải tách nó ra
+                    mới thấy 12 là số lượng. */}
+                <View style={[styles.chipLocSo, on && styles.chipLocSoOn]}>
+                  <Text style={[styles.chipLocSoTxt, on && styles.chipLocSoTxtOn]}>{so}</Text>
+                </View>
               </TouchableOpacity>
             );
           })}
@@ -438,7 +508,12 @@ const FarmAnimalsTab = ({
           />
         }
         renderItem={({ item }) => (
-          <AnimalChip item={item} size={coNut} onPress={() => setDangXem(item)} />
+          <AnimalCard
+            item={item}
+            size={coNut}
+            anhRieng={anhRieng[item.animal_did]}
+            onPress={() => setDangXem(item)}
+          />
         )}
         ListEmptyComponent={
           dangTai ? (
@@ -511,9 +586,27 @@ const FarmAnimalsTab = ({
             <GradientFill name="tile" />
 
             <View style={styles.popupDau}>
-              <RingProgress pct={pctHoSo(dangXem?.n_images)} size={64} stroke={5} mau={ORG_TONE.barn}>
-                <Icon name={hinhLoai(dangXem?.species)} size={24} color={ORG_TONE.barn} />
-              </RingProgress>
+              {/* Cùng ba nguồn ảnh với thẻ trong lưới, cùng thứ tự — hai chỗ bày
+                  cùng một con thì phải bày cùng một hình. */}
+              <View style={styles.popupAnh}>
+                {dangXem && anhRieng[dangXem.animal_did] ? (
+                  <Image
+                    source={{ uri: anhRieng[dangXem.animal_did] }}
+                    style={styles.popupAnhPhu}
+                    resizeMode="cover"
+                    fadeDuration={0}
+                  />
+                ) : anhLoai(dangXem?.species) ? (
+                  <Image
+                    source={anhLoai(dangXem?.species)!}
+                    style={styles.popupAnhLoai}
+                    resizeMode="contain"
+                    fadeDuration={0}
+                  />
+                ) : (
+                  <Icon name={hinhLoai(dangXem?.species)} size={26} color={ORG_TONE.barn} />
+                )}
+              </View>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={styles.popupTen} numberOfLines={2}>
                   {dangXem?.name?.trim() || 'Chưa đặt tên'}
@@ -668,21 +761,65 @@ const styles = StyleSheet.create({
 
   chipHang: { gap: 8, paddingHorizontal: 12, paddingBottom: 12 },
   chipLoc: {
-    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingLeft: 8, paddingRight: 8, paddingVertical: 6, borderRadius: 999,
     backgroundColor: ORG_SURFACE.raised,
     borderWidth: 1, borderColor: ORG_TONE.border,
   },
   chipLocOn: { backgroundColor: ORG_TONE.barnSoft, borderColor: ORG_TONE.barn },
+  chipLocAnh: { width: 22, height: 22 },
   chipLocTxt: { fontSize: 13, fontWeight: '600', color: ORG_NATURE.barkSoft },
   chipLocTxtOn: { color: ORG_TONE.barnDeep },
-
-  chipTen: {
-    fontSize: 11, fontWeight: '700', color: ORG_NATURE.bark,
-    textAlign: 'center', letterSpacing: -0.2, lineHeight: 13, marginTop: 1,
+  /** Huy hiệu số — tròn, nền chìm, để con số tách hẳn khỏi nhãn. */
+  chipLocSo: {
+    minWidth: 20, paddingHorizontal: 5, paddingVertical: 1, borderRadius: 999,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: ORG_SURFACE.sunken,
   },
-  chipSo: { fontSize: 12, fontWeight: '700', color: ORG_TONE.barnDeep, marginTop: 1 },
-  chipDonVi: { fontSize: 10, fontWeight: '600', color: ORG_NATURE.barkSoft },
-  chipLoai: { fontSize: 11, color: ORG_NATURE.barkSoft, marginTop: 4 },
+  chipLocSoOn: { backgroundColor: ORG_TONE.barn },
+  chipLocSoTxt: { fontSize: 11, fontWeight: '800', color: ORG_NATURE.barkSoft },
+  chipLocSoTxtOn: { color: ORG_NATURE.paper },
+
+  // ── Thẻ một cá thể: vuông bo góc, ảnh trên, chữ dưới ───────────────────────
+  the: {
+    borderRadius: 16, overflow: 'hidden',
+    backgroundColor: ORG_SURFACE.raised,
+    borderWidth: 1, borderColor: ORG_TONE.border,
+  },
+  /**
+   * Ô ảnh VUÔNG (`aspectRatio: 1`), không gõ chiều cao: bề ngang thẻ suy từ bề
+   * ngang màn, nên một con số cố định sẽ méo trên máy hẹp hoặc máy rộng.
+   */
+  theAnh: {
+    width: '100%', aspectRatio: 1,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: ORG_TONE.barnSoft,
+  },
+  /** Ảnh chụp thật — lấp đầy ô. */
+  theAnhPhu: { width: '100%', height: '100%' },
+  /** Ảnh loài — chừa lề để con vật không chạm mép ô. */
+  theAnhLoai: { width: '84%', height: '84%' },
+  theHuyHieu: {
+    position: 'absolute', top: 6, right: 6,
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    paddingHorizontal: 6, paddingVertical: 2, borderRadius: 999,
+    backgroundColor: 'rgba(18, 38, 46, 0.55)',
+  },
+  theHuyHieuTxt: { fontSize: 10, fontWeight: '800', color: ORG_NATURE.paper },
+  theChu: { paddingHorizontal: 8, paddingTop: 6, paddingBottom: 8, gap: 1 },
+  theTen: {
+    fontSize: 12, fontWeight: '700', color: ORG_NATURE.bark, letterSpacing: -0.2,
+  },
+  theLoai: { fontSize: 11, color: ORG_NATURE.barkSoft },
+
+  /** Ảnh trong popup — cùng ô vuông bo góc với thẻ trong lưới. */
+  popupAnh: {
+    width: 64, height: 64, borderRadius: 14, overflow: 'hidden',
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: ORG_TONE.barnSoft,
+  },
+  popupAnhPhu: { width: '100%', height: '100%' },
+  popupAnhLoai: { width: '84%', height: '84%' },
 
   dangTai: { alignItems: 'center', paddingTop: 56, gap: 10 },
   dangTaiTxt: { fontSize: 14, color: COLORS.textMuted },

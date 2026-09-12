@@ -40,13 +40,7 @@ describe('lòng nút và viền là MỘT hình', () => {
 
   it('cung tiến độ dùng ĐÚNG bán kính và bề dày của viền', () => {
     // Lệch một trong hai là cung trôi ra khỏi viền, và lại thành hai vòng.
-    //
-    // Neo vào `stroke={mau}` — lời gắn màu của CHÍNH cung. Trước đây neo vào
-    // `TONE.primary`, và cái neo đó trượt ngay khi màu cung thành một tham số
-    // (nhánh vật nuôi vẽ vòng màu nâu): lượt khớp đầu tiên rơi vào dòng khai
-    // giá trị mặc định, cách chỗ vẽ cung vài chục dòng. Neo vào thuộc tính thì
-    // nó chỉ trượt khi chỗ vẽ cung thật sự đổi.
-    const i = MA_CHAY.indexOf('stroke={mau}');
+    const i = MA_CHAY.indexOf('TONE.primary');
     expect(i).toBeGreaterThan(-1);
     const cung = MA_CHAY.slice(Math.max(0, i - 200), i + 400);
     expect(cung).toContain('r={r}');

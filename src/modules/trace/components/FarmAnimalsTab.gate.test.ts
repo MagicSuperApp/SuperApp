@@ -105,11 +105,115 @@ describe('tab vật nuôi theo đúng luật Bento của tab cây', () => {
 
   it('nhánh vật nuôi nói bằng NÂU, không mượn sắc của nhánh cây', () => {
     // Xanh lá là màu nhánh cây trồng. Một mảng xanh giữa trang nâu đọc ra "thứ
-    // này thuộc chỗ khác" — kể cả cái vòng quanh nút cá thể, nên `RingProgress`
-    // nhận màu qua tham số chứ không gõ cứng `TONE.primary` nữa.
-    expect(MA_TAB).toContain('mau={ORG_TONE.barn}');
+    // này thuộc chỗ khác".
     expect(MA_TAB).toContain('name="actionBarn"');
     expect(MA_THAN).toContain('name="actionBarn"');
+    expect(MA_TAB).not.toContain('ORG_TONE.primary');
+  });
+});
+
+describe('thẻ cá thể: ô VUÔNG bo góc, ảnh trên, chữ dưới', () => {
+  it('KHÔNG còn nút tròn', () => {
+    // Nút tròn là khuôn của `TreeChip`, và ở đó nó có lý do: viền hình tròn
+    // CHÍNH LÀ thanh tiến độ thu hoạch. Bên vật nuôi không có cung nào đáng vẽ,
+    // nên hình tròn chỉ còn là cái khung cắt cụt bốn góc của mặt con vật.
+    expect(MA_TAB).not.toContain('RingProgress');
+    expect(MA_TAB).toContain('const AnimalCard');
+  });
+
+  it('ô ảnh VUÔNG suy theo bề ngang thẻ, không gõ chiều cao', () => {
+    // Bề ngang thẻ suy từ bề ngang màn; một chiều cao cố định sẽ méo ô ảnh trên
+    // máy hẹp và máy rộng theo hai kiểu khác nhau.
+    const i = MA_TAB.indexOf('theAnh: {');
+    expect(i).toBeGreaterThan(-1);
+    expect(MA_TAB.slice(i, i + 200)).toContain('aspectRatio: 1');
+  });
+
+  it('vẫn là lưới BA cột, và bề ngang thẻ suy theo đúng số cột đó', () => {
+    expect(MA_TAB).toContain('numColumns={3}');
+    expect(MA_TAB).toContain('Math.floor((width - 12 * 2 - 12 * 2) / 3)');
+  });
+
+  it('chữ nằm DƯỚI ảnh, không đè lên ảnh', () => {
+    // Chữ đè lên ảnh chụp thật thì đọc được hay không tuỳ vào ảnh — mà ảnh là
+    // thứ app không kiểm soát. Một dải chữ riêng thì luôn đọc được.
+    const i = MA_TAB.indexOf('theChu: {');
+    expect(i).toBeGreaterThan(-1);
+    expect(MA_TAB.slice(i, i + 160)).not.toContain("position: 'absolute'");
+  });
+
+  it('ba nguồn ảnh, đúng thứ tự, và nguồn cuối KHÔNG phải ô trống', () => {
+    const i = MA_TAB.indexOf('const AnimalCard');
+    const than = MA_TAB.slice(i, i + 2500);
+    // 1) ảnh thật của chính con này → 2) ảnh loài → 3) biểu tượng.
+    expect(than.indexOf('dungAnhRieng')).toBeLessThan(than.indexOf('anhLoaiNay ?'));
+    expect(than).toContain('hinhLoai(item.species)');
+  });
+
+  it('ảnh riêng CHẾT thì tụt xuống ảnh loài, không để lại ô trống', () => {
+    // Ảnh nằm trong vùng nhớ tạm của máy ảnh — Android dọn khi thiếu chỗ. Tin
+    // rằng "có khoá trong bảng thì có ảnh trên đĩa" là chỗ sinh ra ô đen.
+    const i = MA_TAB.indexOf('const AnimalCard');
+    const than = MA_TAB.slice(i, i + 2500);
+    expect(than).toContain('onError={() => setHongAnh(true)}');
+    expect(than).toContain('!!anhRieng && !hongAnh');
+  });
+
+  it('số ảnh là HUY HIỆU ở góc, và `null` ra dấu hỏi chứ không ra 0', () => {
+    expect(MA_TAB).toContain('theHuyHieu');
+    const i = MA_TAB.indexOf('theHuyHieuTxt}>');
+    expect(MA_TAB.slice(i, i + 120)).toContain("item.n_images == null ? '?'");
+    const kieu = MA_TAB.indexOf('theHuyHieu: {');
+    expect(MA_TAB.slice(kieu, kieu + 120)).toContain("position: 'absolute'");
+  });
+});
+
+describe('chip lọc loài: ảnh loài + số dạng huy hiệu', () => {
+  it('chip dùng ẢNH loài, rơi về biểu tượng khi thiếu', () => {
+    // Soi TỪ lời gắn style của chip TỚI thẻ đóng của nó, không soi một cửa sổ
+    // đếm ký tự: cửa sổ cố định co lại thành sai ngay khi ai đó thêm một dòng.
+    const i = MA_TAB.indexOf('const anh = khoa ?');
+    expect(i).toBeGreaterThan(-1);
+    const khoi = MA_TAB.slice(i, MA_TAB.indexOf('</TouchableOpacity>', i));
+    expect(khoi).toContain('anhLoai(khoa)');
+    expect(khoi).toContain('hinhLoai(khoa)');
+  });
+
+  it('con số tách khỏi nhãn thành huy hiệu riêng', () => {
+    // "Gà 12" dính liền đọc ra một cái tên; mắt phải tách ra mới thấy 12 là số
+    // lượng. Huy hiệu làm việc tách đó bằng hình, không bắt người đọc làm.
+    expect(MA_TAB).toContain('styles.chipLocSo');
+    const i = MA_TAB.indexOf('chipLocSo: {');
+    expect(i).toBeGreaterThan(-1);
+    expect(MA_TAB.slice(i, i + 200)).toContain('borderRadius: 999');
+  });
+
+  it('ô "Tất cả" KHÔNG mượn ảnh của một loài bất kỳ', () => {
+    // Nó là cả sáu loài; lấy hình con gà đại diện là nói sai.
+    const i = MA_TAB.indexOf('const anh = khoa ?');
+    expect(i).toBeGreaterThan(-1);
+    expect(MA_TAB.slice(i, i + 80)).toContain('khoa ? anhLoai(khoa) : null');
+  });
+});
+
+describe('ảnh cá thể: máy chủ không trả, nên app tự giữ', () => {
+  const CACHE = doc(join(__dirname, '..', 'utils', 'animalPhotoCache.ts'));
+
+  it('luồng đăng ký nhớ lại một tấm, và KHÔNG chặn người dùng vì lượt ghi đó', () => {
+    expect(MA_THAN).toContain('luuAnhCaThe(res.data.animal_did');
+    // `void`, không `await`: đăng ký đã xong trên máy chủ rồi.
+    expect(MA_THAN).toContain('void luuAnhCaThe');
+  });
+
+  it('đọc hỏng thì trả bảng RỖNG, không ném', () => {
+    // Mất ảnh trang trí không được phép làm hỏng cả sổ đàn.
+    const i = CACHE.indexOf('export async function docAnhCaThe');
+    expect(i).toBeGreaterThan(-1);
+    expect(CACHE.slice(i, i + 700)).toContain('return {}');
+  });
+
+  it('có trần số mục, không lớn vô hạn', () => {
+    expect(CACHE).toMatch(/export const TRAN_MUC = \d+/);
   });
 });
 
@@ -121,13 +225,13 @@ describe('không con số nào được bịa ra', () => {
     expect(MA_TAB).toContain('item.n_images == null');
   });
 
-  it('vòng quanh nút đo ĐÚNG thứ nó nói: hồ sơ ảnh so với mức tối thiểu', () => {
-    const i = MA_TAB.indexOf('export function pctHoSo');
+  it('số ảnh CHƯA BIẾT ra DẤU HỎI, không ra số 0', () => {
+    // Vòng tiến độ đã nghỉ cùng nút tròn (xem nhóm "thẻ cá thể"), nên phép đo
+    // dời sang huy hiệu — chỗ con số ấy sống bây giờ. Vẫn đúng một câu hỏi:
+    // "chưa biết" và "bằng không" phải ra hai hình khác nhau.
+    const i = MA_TAB.indexOf('theHuyHieuTxt}>');
     expect(i).toBeGreaterThan(-1);
-    const than = MA_TAB.slice(i, MA_TAB.indexOf('\n}', i));
-    expect(than).toContain('ANH_TOI_THIEU');
-    // Không phải số → CHƯA BIẾT, không phải 0. `RingProgress` vẽ nét đứt.
-    expect(than).toContain('return null');
+    expect(MA_TAB.slice(i, i + 120)).toContain("item.n_images == null ? '?'");
   });
 
   it('mức tối thiểu chỉ được khai MỘT chỗ', () => {

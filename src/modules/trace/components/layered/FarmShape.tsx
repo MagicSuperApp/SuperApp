@@ -144,8 +144,18 @@ export const FarmShape: React.FC<{
   farm: any;
   trees?: readonly any[];
   mode: 'flat' | 'iso' | 'space';
+  /**
+   * Có ẢNH BẢN ĐỒ nằm dưới hay không (xem `FarmMapBackdrop`).
+   *
+   * Mặc định `false` — nền là một mảng phẳng, nên mặt vườn tô ĐẶC cho mảnh đất
+   * ra hình khối rõ ràng. Bật lên thì mặt hạ xuống gần trong suốt: một mảng
+   * xanh đục phủ kín ảnh vệ tinh lấy mất đúng thứ người ta nhìn ảnh vệ tinh để
+   * xem — tán cây thật, bờ ruộng, lối đi. Lúc đó ranh giới nói bằng ĐƯỜNG VIỀN,
+   * và viền dày thêm một chút để nó không chìm vào nền nhiều chi tiết.
+   */
+  coNenBanDo?: boolean;
   style?: StyleProp<ViewStyle>;
-}> = ({ farm, trees, mode, style }) => {
+}> = ({ farm, trees, mode, coNenBanDo = false, style }) => {
   const khongGian = mode === 'space';
 
   // ⚠ MỌI hook phải đứng TRƯỚC đường thoát sớm ở dưới (`ring.length < 3`). Gọi
@@ -241,10 +251,10 @@ export const FarmShape: React.FC<{
         <Polygon
           points={noiDiem(vien)}
           fill={khongGian ? 'none' : khoi ? NATURE.moss : TONE.primarySoft}
-          fillOpacity={khongGian ? 0 : khoi ? 0.9 : 1}
+          fillOpacity={khongGian ? 0 : khoi ? 0.9 : coNenBanDo ? 0.22 : 1}
           stroke={khongGian ? SANG : TONE.primary}
           strokeOpacity={khongGian ? 0.92 : 1}
-          strokeWidth={khongGian ? 1.2 : khoi ? 1.4 : 1.8}
+          strokeWidth={khongGian ? 1.2 : khoi ? 1.4 : coNenBanDo ? 2.4 : 1.8}
           strokeLinejoin="round"
         />
 
@@ -288,6 +298,11 @@ export const FarmShape: React.FC<{
               // "trồng thưa hay dày" — tức mất đúng cái tin nó mang.
               r={khongGian ? 2 : 1.8}
               fill={khongGian ? LA_TREN_TOI : LA_TREN_SANG}
+              // Trên ảnh vệ tinh, một chấm xanh lá nằm giữa tán cây xanh lá thì
+              // biến mất. Viền sáng mảnh là thứ tách nó khỏi nền — cùng lý do
+              // với viền trắng quanh chấm cây ở màn bản đồ.
+              stroke={!khongGian && coNenBanDo ? NATURE.paper : undefined}
+              strokeWidth={!khongGian && coNenBanDo ? 0.7 : undefined}
               opacity={khongGian ? 0.9 : 0.9}
             />
           ))}

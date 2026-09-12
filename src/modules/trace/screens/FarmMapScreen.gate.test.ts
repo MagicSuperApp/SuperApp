@@ -111,9 +111,46 @@ describe('trên bản đồ có CHẤM CÂY', () => {
     expect(BAN_DO).toContain("if (p === null) return 'chuaBiet'");
     expect(BAN_DO).toContain("pct === null ? '—'");
     expect(BAN_DO).toContain("cay?.fruitCount ?? 'chưa đếm'");
-    // Chấm "chưa biết" vẽ RỖNG chứ không lấy một MÀU thứ tư: màu thứ tư lọt vào
-    // thang màu thu hoạch và đọc ra thành một trạng thái thu hoạch thứ tư.
-    expect(BAN_DO).toContain('rong: true');
+  });
+
+  /**
+   * ── Chấm "chưa biết" TỪNG vẽ rỗng, và nó đã phải đổi ───────────────────────
+   *
+   * Bản trước vẽ nhóm này rỗng — ruột trong suốt, viền `NATURE.bark` gần như
+   * đen — với lý do: "một hình chưa tô xong đọc ra chưa có số", và "một MÀU thứ
+   * tư sẽ lọt vào thang màu thu hoạch".
+   *
+   * Lý do ấy đúng về nguyên tắc và sai về hậu quả, vì chú thích ngay cạnh nó đã
+   * tự khai mất: **hôm nay MỌI cây rơi vào nhóm này**, do không đường nào trong
+   * app ghi `harvestProgress`. Nên cả bản đồ là một rừng vòng tròn đen rỗng trên
+   * ảnh vệ tinh. Báo về từ thực địa: *"chỉ thấy border màu đen, nhìn xấu và
+   * không rõ"*.
+   *
+   * Một quy ước chỉ có nghĩa khi nó PHÂN BIỆT được hai thứ. Khi 100% số chấm
+   * rơi vào một nhóm thì rỗng-hay-đặc không phân biệt gì cả — nó chỉ còn làm
+   * mọi cây khó nhìn.
+   *
+   * Nên chấm nay TÔ ĐẶC, và cái nó khẳng định là "có một cây ở đây" — đúng.
+   * Vế còn lại của lý do cũ thì bài dưới giữ nguyên: màu của nó phải nằm NGOÀI
+   * thang thu hoạch, để ngày máy chủ trả `harvestProgress` thì ba nhóm kia sáng
+   * lên mà nhóm này vẫn không đọc ra một trạng thái thu hoạch thứ tư.
+   */
+  it('chấm "chưa biết" TÔ ĐẶC, màu NGOÀI thang thu hoạch, và có viền tách nền', () => {
+    expect(BAN_DO).not.toContain('rong: true');
+    expect(BAN_DO).toContain("chuaBiet: { mau: LIME, nhan: 'Chưa có số liệu' }");
+
+    // Ngoài thang: KHÔNG dùng lại ba màu của ba nhóm có số liệu.
+    const i = BAN_DO.indexOf('const LIME =');
+    expect(i).toBeGreaterThan(-1);
+    const mau = /const LIME = '(#[0-9A-Fa-f]{6})'/.exec(BAN_DO);
+    expect(mau).not.toBeNull();
+    for (const cam of ['TONE.primary', 'TONE.sun', 'NATURE.barkSoft', 'NATURE.bark']) {
+      expect(BAN_DO).not.toContain(`const LIME = ${cam}`);
+    }
+
+    // Viền SẪM cho lime: lime sáng gần bằng trắng, nên viền trắng không tách
+    // được gì — nó chỉ làm chấm loe ra thành một vệt nhạt.
+    expect(BAN_DO).toContain('NHOM_CAY[nhom].mau === LIME');
   });
 
   it('cây KHÔNG có toạ độ được đếm và nói ra, không bị nuốt', () => {

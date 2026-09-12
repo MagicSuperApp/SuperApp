@@ -8,7 +8,7 @@ import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-c
 import AppNavigator from './src/navigation';
 import AlertProvider from './src/components/AlertProvider';
 import { loadTreeDedupCache } from './src/services/treeDedupCache';
-import { flushVideoUploadQueue } from './src/services/videoUploadQueue';
+import { flushVideoUploadQueue, backgroundFlushDeps } from './src/services/videoUploadQueue';
 import analytics from './src/services/analytics';
 import {
   bootstrapRuntimeGate,
@@ -34,7 +34,11 @@ function App() {
 
     // Hàng đợi gửi video bền: mở lại app → thử gửi những clip còn kẹt từ buổi
     // trước (mạng rớt / stored=false). Fire-and-forget; tự bỏ qua nếu offline.
-    void flushVideoUploadQueue();
+    //
+    // `backgroundFlushDeps` — KHÔNG ký, tức không bật hộp sinh trắc. Lượt này chạy
+    // vì app vừa mở, không vì ai bấm gì; xem vòng lặp đơ trên iOS ghi ở chỗ khai
+    // báo hàm đó.
+    void flushVideoUploadQueue(backgroundFlushDeps());
 
     // Mỗi lần app quay lại foreground = một phiên mới; vào background thì chốt
     // thời gian xem màn hình cuối và đẩy dữ liệu còn tồn lên server.
@@ -45,7 +49,12 @@ function App() {
         // Quay lại foreground → probe lại: backend vừa được sửa sẽ tự bật.
         refreshRuntimeGate();
         // …và thử gửi lại clip video còn kẹt (mạng có thể vừa phục hồi).
-        void flushVideoUploadQueue();
+        //
+        // ⛔ ĐÂY là mắt xích đã khoá app trên iOS: hộp Face ID là alert hệ thống nên
+        // nó tự đẩy app qua `inactive → active`, và lượt flush ký thêm một lần nữa
+        // ⇒ hộp mới ⇒ lại `active` ⇒ vô tận. `backgroundFlushDeps` không ký, nên
+        // chuỗi đứt ngay tại đây.
+        void flushVideoUploadQueue(backgroundFlushDeps());
       } else if (prev === 'active' && next.match(/inactive|background/)) {
         analytics.endSession();
       }

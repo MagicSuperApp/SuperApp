@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://magiclamp.network/schema/billing.hooks.json",
+  "$id": "https://magiclamp.eco/schema/billing.hooks.json",
   "title": "MagicLamp Billing Hooks",
   "description": "JSON-Schema validate billing.hooks.json theo INTEGRATION-STANDARD §4.2. Mỗi hook = KHAI điểm đo phí (metering point): { event, unit, valueBased }. DECLARATIVE thuần (INV-SEC / QĐ-1): CẤM công thức/giá/biểu thức — giá do PriceFn bên LAMP + mức DAO-bound quyết định. additionalProperties:false MỌI cấp. Mảng hooks rỗng = hợp lệ (module miễn phí, vd ProofChat).",
   "type": "object",

@@ -23,6 +23,17 @@ web (`ts-mls`) để **interop với client web đang chạy**.
 > **không sửa `message_layer.rs` theo phỏng đoán** — sửa lệch pha là hỏng thêm một
 > lớp nữa. Trạng thái hai app: CheckFarm khai `modules: ["trace","join"]` nên không
 > chạm chỗ này; Aladin khai `"all"` nên có chạm.
+>
+> ⚠ **`src/` là BẢN CHÉP, không phải nguồn — đừng sửa gì trong đó, kể cả chú
+> thích.** Nguồn là `ProofChat/Myelin — crates/chat_mls/src`, và cây này bị ghim
+> băm trong `scripts/vendored-tree-pin.json`; đổi một dòng chú thích cũng làm
+> cổng `check-vendored-tree` đỏ. Đã vấp đúng một lần khi viết chính khối cảnh
+> báo này: bản đầu sửa docstring ở `src/lib.rs`, và cái giá không phải là cổng
+> đỏ — là **bản chép trở thành nguồn thứ hai**, rồi hai bên trôi khỏi nhau mà
+> không ai biết bên nào đúng.
+>
+> Cần đổi chữ trong `src/` thì gửi việc đó sang bên giữ nguồn. Cảnh báo dành cho
+> người đọc bên này thì đặt ở tệp này — README **không** nằm trong cây bị ghim.
 
 ## Ba tầng
 

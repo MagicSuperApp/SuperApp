@@ -59,7 +59,7 @@ import { useSelector } from 'react-redux';
 
 import Icon, { type IconName } from '../../../components/Icon';
 import type { RootState } from '../../../store';
-import { OSM_STREET_TILES } from '../../../features/space3d/mapTiles';
+import { STREET_TILES } from '../../../features/space3d/mapTiles';
 import { useOpenWayfind, type WayfindTarget } from '../../../features/wayfind/WayfindButton';
 import { isValidLatLon } from '../../../features/wayfind/wayfind';
 import { formatTreeName, shortTreeCode } from '../../../utils/treeNameFormatter';
@@ -642,7 +642,7 @@ const FarmMapScreen: React.FC = () => {
             ra làm nền dự phòng. */}
         <MapLib.RasterSource
           id="fmap-osm"
-          tileUrlTemplates={[OSM_STREET_TILES]}
+          tileUrlTemplates={[STREET_TILES]}
           tileSize={256}
           maxZoomLevel={TILE_MAX_ZOOM}
         >
@@ -928,7 +928,7 @@ const FarmMapScreen: React.FC = () => {
             (nó chiếm chỗ và mở một hộp thoại lạc lõng), KHÔNG miễn nghĩa vụ ghi
             nguồn — nên dòng này không được bỏ. */}
         <Text style={styles.ghiNguon}>
-          {lop === 'satellite' ? '© Esri · Maxar' : '© OpenStreetMap'}
+          {lop === 'satellite' ? '© Esri · Maxar' : '© Esri · OpenStreetMap'}
         </Text>
       </View>
     </View>

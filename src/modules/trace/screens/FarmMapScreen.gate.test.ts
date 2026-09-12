@@ -188,16 +188,24 @@ describe('những chỗ đã từng hỏng ở các bản đồ khác trong kho'
     expect(dem(BAN_DO, 'maxZoomLevel={TILE_MAX_ZOOM}')).toBe(2);
   });
 
-  it('ô bản đồ đường phố lấy từ hằng chung, không chép tay tên miền đã ngưng', () => {
-    // Ba dòng subdomain `a|b|c.tile.openstreetmap.org` đã ngưng phân giải, và
-    // kho từng có ba bản chép của cùng URL nên bản vá chỉ tới được một chỗ.
-    expect(BAN_DO).toContain('OSM_STREET_TILES');
+  it('ô bản đồ đường phố lấy từ hằng chung, không chép tay URL', () => {
+    // Kho từng có tới NĂM bản chép của cùng một URL ô, nên mỗi lượt vá chỉ tới
+    // được chỗ người sửa đang mở. Hằng chung là thứ chặn chuyện đó.
+    expect(BAN_DO).toContain('STREET_TILES');
     expect(boChuThich(BAN_DO)).not.toMatch(/[abc]\.tile\.openstreetmap\.org/);
+    // Và không được trỏ thẳng về máy chủ ô của OSM nữa — nó CHẶN app (xem
+    // `STREET_TILES` trong `space3d/mapTiles.ts`).
+    expect(boChuThich(BAN_DO)).not.toContain('tile.openstreetmap.org');
   });
 
   it('vẫn ghi nguồn OpenStreetMap — đó là nghĩa vụ giấy phép, không phải trang trí', () => {
     // `attributionEnabled={false}` chỉ tắt nút mặc định của thư viện; nó không
     // miễn nghĩa vụ ghi nguồn của ODbL.
-    expect(BAN_DO).toContain('© OpenStreetMap');
+    //
+    // Đổi máy chủ ô sang Esri KHÔNG đổi việc dữ liệu bên dưới đến từ đâu: nền
+    // đường phố của Esri dựng một phần trên dữ liệu OSM, nên dòng ghi nguồn
+    // mang cả hai tên.
+    expect(BAN_DO).toContain('OpenStreetMap');
+    expect(BAN_DO).toContain('© Esri');
   });
 });

@@ -44,7 +44,7 @@ import FarmShape from '../components/layered/FarmShape';
 import FarmMapBackdrop from '../components/layered/FarmMapBackdrop';
 import FarmAnimalsTab from '../components/FarmAnimalsTab';
 import RingProgress from '../components/layered/RingProgress';
-import { OSM_STREET_TILES } from '../../../features/space3d/mapTiles';
+import { STREET_TILES } from '../../../features/space3d/mapTiles';
 import { useTk } from '../../../i18n/keys';
 // B2: tạo vườn QUA field-reid (server sinh farm_id uuid THẬT) — bỏ aladinAPI
 // (backend Lợi deprecated + client tự sinh `farm-<ts>` = gốc B2). INV-1 §3.2.
@@ -805,7 +805,7 @@ const AddFarmMode = ({
                     sâu hơn mức ảnh có, và ảnh mờ vẫn ướm được, còn ô trắng thì không. */}
                 <MapLib.RasterSource
                   id="osm-tiles"
-                  tileUrlTemplates={[OSM_STREET_TILES]}
+                  tileUrlTemplates={[STREET_TILES]}
                   tileSize={256}
                   maxZoomLevel={19}
                 >

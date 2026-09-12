@@ -301,6 +301,32 @@ export async function tokenMatchesCurrentDid(): Promise<boolean> {
 }
 
 /**
+ * Lượt DID-login ĐANG BAY. Mọi lời gọi tới trong lúc nó chưa xong dùng CHUNG kết
+ * quả — tức đúng MỘT hộp sinh trắc, không phải một hộp cho mỗi lời gọi.
+ *
+ * ⛔ Lỗi đội thực địa báo trên iOS (module Truy xuất): mỗi lần chuyển màn là máy
+ * hỏi khuôn mặt thêm một lần nữa — màn thứ nhất 1 lần, màn thứ hai 2 lần, màn thứ
+ * ba 3 lần, quay về màn cũ 4 lần. Nguồn nằm ở đây, không nằm ở màn nào cả:
+ *
+ *   · `ensureOrilifeToken` là hàm `ensure*` DUY NHẤT trong kho KHÔNG có lớp gộp.
+ *     `ensurePhoenixSession` (`phoenixSessionService.ts:100`) và `ensureWorkSession`
+ *     (`workAuthService.ts:13`) đều có `inflight`, và cả hai đều ghi rõ lý do:
+ *     "không khoá thì 2 lần ký = 2 Face ID".
+ *   · Mà hàm này bị gọi từ 15 chỗ độc lập — 5 dịch vụ ReID, dòng thời gian, chia
+ *     sẻ quyền, trôi mẫu, kế hoạch chụp, truy xuất, hàng đợi video, `farmSlice`…
+ *     Mở một màn Truy xuất là bắn một loạt lời gọi đó SONG SONG.
+ *   · Các màn trong `Stack.Navigator` phẳng KHÔNG bị tháo khi đẩy màn mới, và
+ *     chúng cùng đọc kho `farm`. Nên mỗi màn mở thêm là thêm một đợt nạp nữa nghe
+ *     cùng một lần đổi kho ⇒ số lời gọi song song tăng đúng 1 sau mỗi lần chuyển
+ *     màn, và trước bản này mỗi lời gọi đẻ ra một hộp Face ID riêng.
+ *
+ * Người dùng thấy: mở màn thứ tư là bốn hộp sinh trắc liên tiếp, mỗi hộp phải quét
+ * mặt một lần mới đi tiếp được. Ngoài đồng, cầm điện thoại một tay, đó là đường
+ * cụt — bấm Huỷ thì lượt nạp hỏng, mà quét đủ bốn lần thì màn đã trôi mất.
+ */
+let _inflightLogin: Promise<boolean> | null = null;
+
+/**
  * Đảm bảo có token CỦA ĐÚNG NGƯỜI ĐANG DÙNG MÁY trước khi gọi API ReID.
  *
  * Bản trước chỉ hỏi "có token không" (`hasOrilifeToken`). Trên máy dùng chung ngoài
@@ -318,8 +344,30 @@ export async function ensureOrilifeToken(
 ): Promise<boolean> {
   if (!opts.force) {
     if (await tokenMatchesCurrentDid()) return true;
-    await clearOrilifeToken().catch(() => {});
   }
-  const res = await loginOrilifeWithDid(baseUrl);
-  return res.ok;
+  // Gộp mọi lượt ký ĐANG BAY làm MỘT — xem `_inflightLogin`.
+  if (_inflightLogin) return _inflightLogin;
+
+  const run = (async () => {
+    // Đọc LẠI sau khi đã giành được quyền: lượt ký ngay trước có thể vừa lưu xong
+    // token đúng chủ trong lúc lời gọi này còn đang chờ `await` ở trên. Không đọc
+    // lại thì lượt thứ hai vẫn ký, tức vẫn hai hộp Face ID.
+    if (!opts.force && (await tokenMatchesCurrentDid())) return true;
+    // Xoá TRƯỚC khi ký: token lạ/vô chủ còn nằm trong kho là còn đường cho 17 chỗ
+    // đọc thẳng `auth_token` gửi nó ra máy chủ (xem ghi chú ở `TOKEN_DID_KEY`).
+    await clearOrilifeToken().catch(() => {});
+    const res = await loginOrilifeWithDid(baseUrl);
+    return res.ok;
+  })();
+
+  // Nhả khoá khi xong (thành hay bại) để lượt 401 kế tiếp còn ký lại được — cùng
+  // khuôn với `ensurePhoenixSession`. So sánh tham chiếu phòng ca lượt mới đã được
+  // đặt vào trước khi lượt cũ kịp dọn.
+  _inflightLogin = run;
+  void run
+    .finally(() => {
+      if (_inflightLogin === run) _inflightLogin = null;
+    })
+    .catch(() => {});
+  return run;
 }

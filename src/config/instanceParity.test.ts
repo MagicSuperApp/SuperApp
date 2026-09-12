@@ -16,8 +16,22 @@
  * module thứ năm mà một app quên khai, app đó lặng lẽ thiếu tính năng: không đỏ,
  * không cảnh báo, không màn nào trống — chỉ là một nút không bao giờ xuất hiện.
  *
- * Nay tập module là hằng dẫn xuất (`ALL_MODULES`). Bài kiểm này canh việc KHÔNG
- * ai lặng lẽ trả nó về thành một lựa chọn.
+ * ── Luật đổi 2026-09-10, và ba bài trong tệp này đã phải đảo dấu ─────────────
+ * Bản trước của phần trên viết: *"Nay tập module là hằng dẫn xuất (`ALL_MODULES`).
+ * Bài kiểm này canh việc KHÔNG ai lặng lẽ trả nó về thành một lựa chọn."* Câu đó
+ * **hết hiệu lực**: luật SuperApp lên v3 (`instances/LUAT-SUPERAPP.md §2`), và
+ * app ĐƯỢC chọn module qua lời khai `modules: 'all' | [...]`.
+ *
+ * Ba bài ở đây từng khai "mọi app có cùng tập module" và chúng vẫn XANH suốt từ
+ * 10/09 tới 12/09 — không phải vì chúng canh đúng, mà vì cả hai app tình cờ còn
+ * khai `'all'`. Bài kiểm khai một chính sách đã bị bãi bỏ mà vẫn xanh là bài
+ * kiểm đang chờ để đỏ nhầm; nó đỏ lần đầu có người DÙNG cơ chế mới, đúng lúc
+ * người đó cần nó xanh nhất.
+ *
+ * Nên ba bài đó nay đo thứ v3 thật sự hứa: **mỗi app nạp đúng tập route của
+ * CHÍNH lời khai nó**, và `'all'` vẫn phải là cả sổ chứ không phải một ảnh chụp.
+ * Cái làm lệnh cấm đời v1 cần thiết — hai ca "cố ý bỏ" và "quên khai" cho ra dữ
+ * liệu giống hệt nhau — nay được tách bằng chính lời khai, không bằng lệnh cấm.
  *
  * ── Nó KHÔNG đo được gì — đọc trước khi tin nó ───────────────────────────────
  *  · **Màn có render nổi không.** Bài kiểm đọc TÊN route, không dựng cây React.
@@ -68,20 +82,40 @@ describe('bất biến: mọi app sinh từ nền này có CÙNG tập tính nă
 
   it('`ALL_MODULES` dẫn xuất ĐÚNG từ registry — không phải danh sách viết tay', () => {
     expect([...ALL_MODULES].sort()).toEqual([...MODULE_IDS].sort());
-    expect(ENABLED_MODULES).toEqual(ALL_MODULES);
+    // `ENABLED_MODULES` là tập của app ĐANG CHẠY, nên nó KHÔNG còn phải bằng cả
+    // sổ (luật v3). Nhưng nó vẫn phải là tập con thật, không rỗng, không trùng —
+    // một phần tử lạ ở đây nghĩa là có đường nào đó nặn ra id ngoài sổ.
+    expect(ENABLED_MODULES.length).toBeGreaterThan(0);
+    expect(new Set(ENABLED_MODULES).size).toBe(ENABLED_MODULES.length);
+    ENABLED_MODULES.forEach((m) => expect(ALL_MODULES).toContain(m));
   });
 
   // ĐÂY là bài kiểm chính. Mọi bài khác trong tệp chỉ đỡ cho nó.
-  it('mọi app nạp CÙNG một tập route module, và tập đó phủ hết registry', () => {
+  it('mỗi app nạp ĐÚNG tập route của chính lời khai nó', () => {
     const full = routesOf(MODULE_IDS);
     expect(full.length).toBeGreaterThan(20);
 
     for (const id of ids) {
       const inst = INSTANCES[id];
-      // Instance KHÔNG được có đường riêng để thu hẹp tập module. Nếu ai đó thêm
-      // lại một trường như vậy, dòng dưới bắt được ngay.
+      // Instance KHÔNG được có đường riêng để thu hẹp tập module. Lời khai hợp
+      // lệ duy nhất là `modules`; một trường thứ hai làm cùng việc là dựng lại
+      // đúng cái hỏng-câm mà `enabledModules` đời đầu đã gây ra.
       expect(inst).not.toHaveProperty('enabledModules');
-      expect(routesOf(ENABLED_MODULES)).toEqual(full);
+
+      const khai = inst.modules;
+      if (khai === 'all') {
+        // `'all'` phải là CẢ SỔ, kể cả module thêm sau — không phải ảnh chụp của
+        // ngày viết. Đây là phần của bài cũ còn nguyên giá trị.
+        expect(routesOf(ALL_MODULES)).toEqual(full);
+      } else {
+        // App chọn lọc: tập route bằng đúng hợp của các module nó khai. Thiếu
+        // một route nghĩa là có màn không tới được; thừa một route nghĩa là có
+        // màn tới được mà app không khai — cả hai đều im lặng khi chạy.
+        expect(routesOf([...khai].sort())).toEqual(routesOf(khai));
+        expect(routesOf(khai).length).toBeGreaterThan(0);
+        // Và nó phải THẬT SỰ hẹp hơn cả sổ, không thì lời khai là trang trí.
+        expect(routesOf(khai).every((r) => full.includes(r))).toBe(true);
+      }
     }
   });
 
@@ -123,16 +157,26 @@ describe('bất biến: mọi app sinh từ nền này có CÙNG tập tính nă
     }
   });
 
-  // Thứ tự ô ĐƯỢC PHÉP khác nhau — nhưng TẬP ô thì không. Khác tập nghĩa là một
-  // app có một điểm vào mà app kia không có, và đó lại là vi phạm yêu cầu cứng
-  // dưới một cái tên khác.
-  it('hai app có thể khác THỨ TỰ ô dịch vụ, nhưng phải cùng TẬP ô', () => {
-    const setOf = (a: string[]) => [...a].sort().join(',');
-    const base = setOf(INSTANCES[ids[0]].slotPriority.default);
+  // Bản trước đòi HAI APP CÙNG TẬP ô dịch vụ, và chỉ cho khác thứ tự. Ràng buộc
+  // đó chết cùng luật v1/v2: app tắt `work` mà vẫn phải liệt `WorkHome` trong
+  // bảng thứ tự thì bảng ấy trỏ tới một route chưa đăng ký — đúng cái hỏng câm
+  // mà `moduleSelection.test.ts` sinh ra để chặn. Hai bài sẽ đòi hai điều ngược
+  // nhau, và không cấu hình nào thoả được cả hai.
+  //
+  // Thứ còn phải đúng ở v3, và là thứ thật sự bảo vệ người dùng: MỌI route trên
+  // bảng phải thuộc một module app ĐANG BẬT, và hai bảng của cùng một app không
+  // được nặn ra route ngoài tập ấy.
+  it('bảng thứ tự ô của mỗi app chỉ chứa route của module app đó đang bật', () => {
     for (const id of ids) {
+      const on = INSTANCES[id].modules === 'all'
+        ? [...ALL_MODULES]
+        : [...(INSTANCES[id].modules as ModuleId[])];
+      const choPhep = new Set(routesOf(on));
       const sp = INSTANCES[id].slotPriority;
-      expect(setOf(sp.default)).toBe(base);
-      expect(setOf(sp.shipper)).toBe(base);
+      expect(sp.default.length).toBeGreaterThan(0); // chống-xanh-rỗng
+      for (const route of [...sp.default, ...sp.shipper]) {
+        expect(choPhep.has(route)).toBe(true);
+      }
     }
   });
 });

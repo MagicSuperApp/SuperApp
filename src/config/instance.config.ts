@@ -474,17 +474,37 @@ export const CHECKFARM_INSTANCE: InstanceConfig = {
     },
   },
   tabs: [
-    { kind: 'module', moduleId: 'chat' },
     { kind: 'module', moduleId: 'trace' },
     { kind: 'host', route: 'Home' },
-    { kind: 'module', moduleId: 'work' },
     { kind: 'module', moduleId: 'join' },
     { kind: 'host', route: 'Account' },
   ],
   initialTabRoute: 'Home',
+  // Bảng RIÊNG, không dùng chung `SLOT_PRIORITY_DEFAULT` — bảng chung liệt
+  // `WorkHome`, mà `work` đã tắt ở app này. Để nguyên bảng chung thì cổng xoè
+  // vẫn vẽ mục Việc làm, người dùng bấm, và điều hướng tới một route chưa đăng
+  // ký: không màn nào hiện, không lỗi nào ném.
+  //
+  // Hai ô, và phải là hai — dù nó làm nút giữa LỆCH KHỎI TÂM. Đánh đổi này viết
+  // ra vì chiều sai của nó im lặng, còn chiều đúng thì chỉ hơi xấu.
+  //
+  // Thanh tab dựng theo khuôn `[neo trái, slot, Home, slot, neo phải]`
+  // (`resolveVisibleTabs.ts:150`), và neo trái là hằng `ChatHome` của nền, không
+  // phải thứ app khai. Tắt `chat` là neo ấy rụng, nên hàng còn BỐN ô và nút giữa
+  // rơi ở 37,5% chiều ngang thay vì 50%.
+  //
+  // Bản đầu của đợt này hạ xuống MỘT ô cho nút giữa về đúng tâm. Bộ kiểm bắt
+  // được, và nó bắt đúng: `resolveGateItems` dựng cung từ CHÍNH bảng này, nên bỏ
+  // `JoinHome` khỏi bảng là bỏ nó khỏi cả thanh tab LẪN cổng xoè — module `join`
+  // vẫn khai bật, màn vẫn đăng ký, mà không lối nào tới. Đúng lớp hỏng "hàm có,
+  // đường không có": không cổng kiểu nào bắt, không bài hàm thuần nào đỏ.
+  //
+  // Đường lấy được cả hai là cho app khai NEO của nó thay vì nhận hằng của nền.
+  // Đó là sửa mã dùng chung nhiều app, không phải sửa cấu hình một app, nên nó
+  // nằm ngoài đợt này.
   slotPriority: {
-    default: SLOT_PRIORITY_DEFAULT,
-    shipper: SLOT_PRIORITY_SHIPPER,
+    default: ['Farms', 'JoinHome'],
+    shipper: ['Farms', 'JoinHome'],
   },
   // Bảng màu do chính nhà CheckFarm chốt và gửi sang (không phải bản bịa ở đây
   // rồi thành mặc định không ai dám đổi). Giá trị + lý do từng ràng buộc nằm ở
@@ -492,11 +512,27 @@ export const CHECKFARM_INSTANCE: InstanceConfig = {
   // ngưỡng tương phản AA cho chữ cỡ thường, nên nó chỉ đi vào chỗ là hình.
   themeConfig: CHECKFARM_THEME_CONFIG,
   adaptive: DEFAULT_ADAPTIVE_CONFIG,
-  // `'all'` là trạng thái HÔM NAY, không phải kết luận: bản này chỉ mở cơ chế,
-  // chưa đổi hành vi app nào — đợt thử đang chạy trên đúng bản dựng này. Việc
-  // chọn module nào là quyền của nhà CheckFarm ở kho của họ, không phải quyền
-  // của tệp này (chủ sở hữu bàn giao 2026-09-10).
-  modules: 'all',
+  // App CHỌN LỌC, không phải app lõi — và lý do là một ràng buộc của cửa hàng,
+  // không phải một sở thích về sản phẩm.
+  //
+  // `chat` (tin nhắn) và `work` (sàn việc làm) là NỘI DUNG DO NGƯỜI DÙNG TẠO.
+  // Apple guideline 1.2 và Google đều đòi app có thứ đó phải có đủ bốn cơ chế:
+  // lọc nội dung · nút báo cáo · chặn người dùng khác · liên hệ công khai. Đo
+  // trên toàn bộ `src/` ngày 10/09/2026, và đo lại 12/09: ba cơ chế đầu có
+  // **0 dòng** — không phải chưa đủ tốt, là chưa tồn tại. Thiếu là bị TỪ CHỐI
+  // duyệt, không phải bị nhắc nhở.
+  //
+  // Chủ sở hữu chốt 12/09/2026: bản đầu tắt hai module đó để nộp được, rồi dựng
+  // đủ bốn cơ chế và bật lại sau. Thứ tự đã bàn: chặn → báo cáo → lọc.
+  //
+  // Hai điều PHẢI biết kèm, vì cả hai đều dễ đọc nhầm theo chiều có lợi:
+  //   · Tắt module KHÔNG làm gói nhẹ đi. `registry.ts` vẫn nhập tĩnh mọi màn;
+  //     cái tắt là ĐƯỜNG TỚI (tab, mục cổng xoè, đăng ký route), không phải mã.
+  //   · Ví KHÔNG tắt theo. Bốn màn ví khai thẳng ở tầng host, không mang
+  //     `moduleId` nào (`navigation/index.tsx:1768-1774`), nên phép lọc
+  //     `ENABLED_MODULES` không chạm tới chúng. Ô "Financial features" của
+  //     Google vẫn phải khai CÓ.
+  modules: ['trace', 'join'],
 };
 
 // ---------------------------------------------------------------------------

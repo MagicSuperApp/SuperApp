@@ -430,6 +430,24 @@ export function clearSessionMintCooldown(): void {
 export const sessionMintCooldownLeft = (): number =>
   Math.max(0, mintCooldownUntil - Date.now());
 
+/**
+ * Số hiệu thế hiện hành. Chỗ ĐÚC thẻ đọc nó để biết mình còn nói về danh tính
+ * đang đăng nhập hay không.
+ *
+ * Vì sao phải xuất ra chứ không giữ kín trong tệp này: chốt thế ở
+ * `refreshSessionOnce` chỉ canh được BIẾN đồng hồ nghỉ. Việc tốn kém hơn nhiều
+ * — `setSessionToken(...)`, tức GHI thẻ xuống kho — nằm ở
+ * `phoenixSessionService.ensurePhoenixSessionInner`, một tệp khác. Không có con
+ * số này thì một lượt đúc mồ côi vẫn trồng lại thẻ của người trước sau khi
+ * `logoutUser` vừa xoá nó, và thẻ phiên PhoenixKey KHÔNG mang dấu chủ nên người
+ * sau dùng thẳng — đúng ca mạo danh mà `clearSessionToken` sinh ra để chặn.
+ *
+ * Dùng số hiệu thế chứ không so DID: đăng xuất KHÔNG xoá cặp khoá (người cũ phải
+ * đăng nhập lại được bằng DID cũ), nên DID sau đăng xuất vẫn y như trước và một
+ * phép so DID sẽ im lặng cho qua đúng ca này.
+ */
+export const sessionMintGeneration = (): number => mintGeneration;
+
 function refreshSessionOnce(): Promise<string | null> {
   if (inflightRefresh) return inflightRefresh;
   if (Date.now() < mintCooldownUntil) return Promise.resolve(null);

@@ -28,6 +28,7 @@ import {
   setSessionToken,
   getSessionToken,
   registerSessionRefresher,
+  sessionMintGeneration,
   PhoenixKeyApiError,
 } from './phoenixKey-api';
 import rLog from './remoteLogger';
@@ -138,6 +139,10 @@ registerSessionRefresher(() => ensurePhoenixSession({ force: true }));
 async function ensurePhoenixSessionInner(opts: { force?: boolean }): Promise<string | null> {
   // `step` bám theo tiến-trình để catch biết CHẾT Ở ĐÂU (log remote).
   let step = 'existing';
+  // Chốt thế NGAY, trước mọi `await`. Lượt đúc này đi qua một hộp sinh trắc rồi
+  // vài chặng mạng; trong khoảng đó người dùng bấm đăng xuất được. Xem
+  // `sessionMintGeneration` ở `phoenixKey-api.ts`.
+  const generationAtStart = sessionMintGeneration();
   try {
     const existing = opts.force ? null : await getSessionToken();
     rLog.phoenixWallet.sessionStart(!!existing, !!opts.force);
@@ -203,6 +208,17 @@ async function ensurePhoenixSessionInner(opts: { force?: boolean }): Promise<str
     const status = await phoenixKeyApi.session.getStatus(sessionId, tempToken);
     rLog.phoenixWallet.sessionStatus(status?.status ?? 'unknown', !!status?.sessionToken);
     if (status?.sessionToken) {
+      // ⛔ Danh tính đã đổi giữa chừng (đăng xuất / lập lại danh tính) ⟹ thẻ vừa
+      // đúc là thẻ của NGƯỜI TRƯỚC. Ghi nó xuống kho là trồng lại đúng cái
+      // `clearSessionToken()` vừa nhổ, và thẻ phiên PhoenixKey không mang dấu
+      // chủ nên người sau sẽ dùng thẳng mà không gì kêu lên.
+      //
+      // Vẫn TRẢ thẻ cho lượt gọi đã mở nó — lượt đó thuộc về người trước và có
+      // quyền hoàn tất việc của mình; cái bị chặn là để lại dấu vết trên máy.
+      if (generationAtStart !== sessionMintGeneration()) {
+        rLog.phoenixWallet.sessionDone(false);
+        return status.sessionToken;
+      }
       await setSessionToken(status.sessionToken);
       rLog.phoenixWallet.sessionDone(true);
       lastFailure = null;

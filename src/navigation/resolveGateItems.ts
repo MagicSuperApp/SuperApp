@@ -99,7 +99,12 @@ const SUB_ACTIONS: Record<string, Omit<GateSubItem, 'key'>[]> = {
 // route service → màu thương hiệu (brand token). Host (Home) dùng accent nền.
 const SERVICE_TINT: Record<string, string> = {
   [NEO_CENTER]: COLORS.accent,        // Home
-  [NEO_LEFT]: CHAT_THEME.primary, // Chat
+  // Khoá viết THẲNG tên route, không viết `[NEO_LEFT]`. Dùng hằng NEO ở đây là
+  // buộc màu vào VỊ TRÍ thay vì vào dịch vụ: khi ô trái đổi chủ (13/09/2026 từ
+  // Chat sang Ví) thì chủ mới thừa kế màu của chủ cũ, còn chủ cũ mất màu và rơi
+  // về `COLORS.accent` — hai lỗi cùng lúc, không lỗi nào ném.
+  ChatHome: CHAT_THEME.primary,        // Chat
+  PhoenixWallet: COLORS.accentDeep,    // Ví
   Farms: TRACE_THEME.primary,          // Farm
   WorkHome: WORK_THEME.primary,        // Work
   JoinHome: LAMPNET_THEME.primary,     // Join

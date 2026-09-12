@@ -373,6 +373,10 @@ export const ALADIN_INSTANCE: InstanceConfig = {
     contact: 'aladincontract@gmail.com',
   },
   tabs: [
+    // Ví là NEO trái từ 13/09/2026 (`resolveVisibleTabs.NEO_LEFT`). Nó đứng
+    // trước `chat` ở đây vì mảng này là TẬP ĐẦY ĐỦ theo thứ tự khai, còn thứ tự
+    // VẼ do resolver quyết — giữ hai thứ đó tách nhau là chủ ý của SG9 §2.
+    { kind: 'host', route: 'PhoenixWallet' },
     { kind: 'module', moduleId: 'chat' },
     { kind: 'module', moduleId: 'trace' },
     { kind: 'host', route: 'Home' },
@@ -383,9 +387,13 @@ export const ALADIN_INSTANCE: InstanceConfig = {
   initialTabRoute: 'Home',
   // Việc làm lên trước — kể cả với người chưa có dữ liệu nào. Người mở Aladin
   // đến vì việc, không đến vì vườn.
+  // `ChatHome` vào bảng từ 13/09/2026: chat thôi làm NEO (ô trái nay là Ví —
+  // xem `resolveVisibleTabs.NEO_LEFT`), nên nó phải tranh SLOT như mọi module.
+  // Aladin xếp nó sau Việc làm và trước Góp máy: người mở Aladin đến vì việc,
+  // nhưng nhắn tin là thứ họ dùng hằng ngày hơn góp máy.
   slotPriority: {
-    default: ['WorkHome', 'JoinHome', 'Farms'],
-    shipper: ['WorkHome', 'JoinHome', 'Farms'],
+    default: ['WorkHome', 'ChatHome', 'JoinHome', 'Farms'],
+    shipper: ['WorkHome', 'ChatHome', 'JoinHome', 'Farms'],
   },
   // `brandName` lấy từ chính `displayName` — trước đợt này theme mặc định trả
   // `'OriLife'`, tức app tên Aladin mà mọi chỗ hỏi tên thương hiệu đều nhận về
@@ -474,6 +482,10 @@ export const CHECKFARM_INSTANCE: InstanceConfig = {
     },
   },
   tabs: [
+    // Ví là NEO trái từ 13/09/2026 (`resolveVisibleTabs.NEO_LEFT`). Nó đứng
+    // trước `chat` ở đây vì mảng này là TẬP ĐẦY ĐỦ theo thứ tự khai, còn thứ tự
+    // VẼ do resolver quyết — giữ hai thứ đó tách nhau là chủ ý của SG9 §2.
+    { kind: 'host', route: 'PhoenixWallet' },
     { kind: 'module', moduleId: 'chat' },
     { kind: 'module', moduleId: 'trace' },
     { kind: 'host', route: 'Home' },

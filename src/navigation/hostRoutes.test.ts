@@ -13,7 +13,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
-import { HOST_ROUTES } from './hostRoutes';
+import { HOST_ROUTES, HOST_TAB_ROUTES } from './hostRoutes';
 import { MODULE_CATALOG, moduleOwningRoute } from './moduleCatalog';
 import { MODULE_IDS } from './moduleIds';
 
@@ -76,6 +76,56 @@ describe('`HOST_ROUTES` khai đúng những gì host đang mang', () => {
 
   it('không tên nào khai hai lần', () => {
     expect(new Set(HOST_ROUTES).size).toBe(HOST_ROUTES.length);
+  });
+});
+
+/**
+ * Cùng hai chiều như trên, cho tập TAB. Tách hàm đọc riêng vì tab khai bằng
+ * `Route: Component` chứ không bằng `name: '…'` — chính chỗ khác hình dạng đó
+ * là lý do hai cổng an toàn từng mù với tab (xem `HOST_TAB_ROUTES`).
+ */
+function hostTabRoutesInSource(): string[] {
+  const src = readFileSync(NAV_SRC, 'utf8');
+  const start = src.indexOf('const HOST_TAB_SCREENS');
+  expect(start).toBeGreaterThan(-1);
+  const end = src.indexOf('\n};', start);
+  expect(end).toBeGreaterThan(start);
+
+  const block = src.slice(start, end);
+  // Chỉ nhận dòng khai thật (thụt đúng hai dấu cách), để chuỗi trong chú thích
+  // không bị đếm thành một tab.
+  return [...block.matchAll(/^ {2}([A-Za-z0-9_]+):\s/gm)].map((m) => m[1]);
+}
+
+describe('`HOST_TAB_ROUTES` khai đúng những tab host đang mang', () => {
+  it('quét được khối nguồn (đề phòng regex hỏng ⇒ hai bài dưới xanh rỗng)', () => {
+    expect(hostTabRoutesInSource().length).toBeGreaterThan(1);
+  });
+
+  it('không tab host nào nằm ngoài lời khai', () => {
+    const undeclared = hostTabRoutesInSource()
+      .filter((r) => !(HOST_TAB_ROUTES as readonly string[]).includes(r));
+    expect({ undeclared, fix: 'thêm vào HOST_TAB_ROUTES ở src/navigation/hostRoutes.ts' }).toEqual({
+      undeclared: [],
+      fix: 'thêm vào HOST_TAB_ROUTES ở src/navigation/hostRoutes.ts',
+    });
+  });
+
+  it('không lời khai tab nào trỏ vào màn đã gỡ', () => {
+    const inSource = new Set(hostTabRoutesInSource());
+    const stale = (HOST_TAB_ROUTES as readonly string[]).filter((r) => !inSource.has(r));
+    expect({ stale, fix: 'gỡ khỏi HOST_TAB_ROUTES ở src/navigation/hostRoutes.ts' }).toEqual({
+      stale: [],
+      fix: 'gỡ khỏi HOST_TAB_ROUTES ở src/navigation/hostRoutes.ts',
+    });
+  });
+
+  it('một route KHÔNG được vừa là tab vừa là màn stack', () => {
+    // Khai hai nơi thì `navigate('X')` trỏ vào đâu là tuỳ nhánh chỗ gọi đang
+    // đứng — hỏng chỉ lộ ra ở một luồng người dùng cụ thể, nên chặn ở đây.
+    const stack = new Set<string>(HOST_ROUTES as readonly string[]);
+    const trung = (HOST_TAB_ROUTES as readonly string[]).filter((r) => stack.has(r));
+    expect(trung).toEqual([]);
   });
 });
 

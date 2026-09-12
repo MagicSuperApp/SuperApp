@@ -40,6 +40,8 @@ import {
   isPublicRoute,
 } from './authGate';
 
+import { HOST_TAB_ROUTES } from './hostRoutes';
+
 const NAV_SRC = fs.readFileSync(path.join(__dirname, 'index.tsx'), 'utf8');
 
 /**
@@ -51,6 +53,10 @@ const NAV_SRC = fs.readFileSync(path.join(__dirname, 'index.tsx'), 'utf8');
 const ROUTE_CO_THAT: ReadonlySet<string> = (() => {
   const ten = new Set<string>();
   for (const m of NAV_SRC.matchAll(/name: '([A-Za-z0-9_]+)'/g)) ten.add(m[1]);
+  // Màn host là TAB khai bằng `Route: Component`, mẫu `name: '…'` ở trên KHÔNG
+  // bắt được. Thiếu dòng này thì danh sách cấm mục ruỗng ở đúng những màn là
+  // tab — và ví là một trong số đó từ 13/09/2026.
+  for (const r of HOST_TAB_ROUTES) ten.add(r);
   const goc = path.join(__dirname, '..', 'modules');
   for (const mod of fs.readdirSync(goc)) {
     const f = path.join(goc, mod, 'module.manifest.json');

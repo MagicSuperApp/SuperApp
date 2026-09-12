@@ -17,15 +17,32 @@
 // phiên + toast" do hook useVisibleTabs (index.tsx) đảm nhiệm — hàm này thuần.
 
 // ── NEO (cố định) ────────────────────────────────────────────────────────────
-export const NEO_LEFT = 'ChatHome'; // Chat — đầu trái
+//
+// ── Vì sao ô trái là VÍ chứ không còn là CHAT (đổi 13/09/2026) ───────────────
+// NEO nghĩa là "cố định mọi persona", nên thứ đặt vào đó phải là thứ KHÔNG phụ
+// thuộc app nào bật gì. Chat không thoả điều đó: nó là module, và nó đang TẮT ở
+// CheckFarm vì ba cơ chế Apple guideline 1.2 (chặn · báo cáo · lọc) chưa tồn
+// tại (`instance.config.ts` khối tabs CheckFarm). Một NEO có thể vắng mặt thì
+// nó không phải NEO — thực tế thanh CheckFarm chạy bốn ô suốt thời gian qua, ô
+// trái bỏ trống, mà không dòng nào kêu.
+//
+// Ví thì ngược lại: nó là màn HOST, có ở mọi app, không cờ nào tắt được. Đảo
+// hai thứ này làm bố cục khớp lại với chính định nghĩa của nó, và nó KHÔNG tự
+// hỏng khi chat bật lại — lúc đó chat vào tranh SLOT như mọi module khác.
+//
+// Đánh đổi phải nói ra: Aladin còn hai ô SLOT cho ba thứ {Work, Join, Chat}
+// (Farms vốn đã đứng cuối bảng của Aladin), nên một trong ba lùi vào cổng xoè.
+// "Lùi vào cổng xoè" KHÔNG phải "mất" — module vẫn nạp, vẫn tới được bằng cổng
+// và deep-link; đó là ranh giới `instance.config.ts` đã đặt sẵn.
+export const NEO_LEFT = 'PhoenixWallet'; // Ví — đầu trái
 export const NEO_CENTER = 'Home';        // ô giữa (cổng)
 export const NEO_RIGHT = 'Account';      // Me — đầu phải (AVATAR user)
 
 // ── SLOT ưu tiên theo persona ───────────────────────────────────────────────
-// Nông dân / user mới: Farm nổi cạnh Home, Work kề; Join lùi vào cổng.
-export const SLOT_PRIORITY_DEFAULT: string[] = ['Farms', 'WorkHome', 'JoinHome'];
-// Shipper / thợ: Work + Join lên thanh; Farm lùi vào cổng.
-export const SLOT_PRIORITY_SHIPPER: string[] = ['WorkHome', 'JoinHome', 'Farms'];
+// Nông dân / user mới: Farm nổi cạnh Home, rồi Chat; Work/Join lùi vào cổng.
+export const SLOT_PRIORITY_DEFAULT: string[] = ['Farms', 'ChatHome', 'WorkHome', 'JoinHome'];
+// Shipper / thợ: Work + Chat lên thanh; Join/Farm lùi vào cổng.
+export const SLOT_PRIORITY_SHIPPER: string[] = ['WorkHome', 'ChatHome', 'JoinHome', 'Farms'];
 
 /**
  * Bảng ưu tiên SLOT của MỘT app. `InstanceConfig.slotPriority` mang đúng hình này.

@@ -57,6 +57,10 @@ export const NAV_FRAME: Record<string, NavFrame> = {
   // ngoài đọc không ra việc. 'Góp máy' nói đúng việc tab đang làm. Sẽ chọn lại
   // tên chính thức khi chốt bộ từ vựng toàn app (H-19 còn mở cho ~10 thuật ngữ khác).
   JoinHome:      { en: 'Join', national: { vi: 'Góp máy',    zh: '连灯', ja: '参加' },     icon: 'bolt',        iconActive: 'bolt' },
+  // Ví. Nhãn quốc gia là "Ví" trần, KHÔNG phải "Ví Phượng hoàng": tên sản phẩm
+  // của tầng danh tính không nói được với người dùng rằng ô này chứa tiền của
+  // họ, và nhãn tab chỉ có chỗ cho một từ. Tên đầy đủ vẫn ở tiêu đề bên trong.
+  PhoenixWallet: { en: 'Wallet', national: { vi: 'Ví', zh: '钱包', ja: 'ウォレット' }, icon: 'wallet', iconActive: 'wallet' },
   // Account = "Me/Tôi" (anh Aladin chốt). Icon dự phòng; ô này ưu tiên vẽ AVATAR
   // user (ảnh hoặc initials) qua NavItemFrame — xem prop avatarUri/initials.
   Account:       { en: 'Me',   national: { vi: 'Tôi',        zh: '我',   ja: 'マイ' },     icon: 'circle-user', iconActive: 'circle-user' },

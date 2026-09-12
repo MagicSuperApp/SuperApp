@@ -6,25 +6,42 @@
 import { DEFAULT_INSTANCE } from '../config/instance.config';
 
 import { resolveGateItems, TRACE_SCAN_ROUTE } from './resolveGateItems';
+import { NEO_LEFT } from './resolveVisibleTabs';
 
 const NO_FARM = { farms: 0, trees: 0, fruits: 0 };
 const routes = (items: ReturnType<typeof resolveGateItems>) => items.map((i) => i.route);
 
 /**
- * Cung KỲ VỌNG, dựng từ chính lời khai của app đang dựng.
+ * Ba mệnh đề LUẬT của cung, kiểm rời nhau.
  *
- * Trước 2026-09-10 chỗ này là một mảng gõ tay mang thứ tự của Aladin, kèm chú
- * thích "App mặc định lúc chạy bộ kiểm là Aladin". Câu đó là một GIẢ ĐỊNH về
- * biến môi trường `APP_INSTANCE`, không phải một điều bài kiểm đo được — và nó
- * sai ngay lần đầu ai đó chạy bộ kiểm trên bản dựng CheckFarm: bài đỏ, mà mã
- * thì đúng.
+ * ── Vì sao không còn so với một mảng dựng sẵn (đổi 13/09/2026) ──────────────
+ * Bản cũ là `['ChatHome', p[0], TRACE, p[1], p[2]]` — nó gõ cứng hai thứ mà mã
+ * không hứa: **ô đầu cung là Chat** (thật ra ô đầu là `NEO_LEFT`, và NEO trái
+ * nay là Ví) và **bảng ưu tiên có đúng ba ô**. Cả hai đều đúng tại thời điểm
+ * viết và cả hai đều là chi tiết triển khai, nên khi chính sách đổi thì bài đỏ
+ * mà mã không sai.
  *
- * Luật thật là hình dạng: Chat mở đầu · ô ưu tiên số 1 · Trace-quét CHÍNH GIỮA ·
- * hai ô ưu tiên còn lại. Thứ tự ba ô kia là quyền của instance.
+ * Cũng cố ý KHÔNG dựng kỳ vọng bằng cách chạy lại công thức chèn giữa của
+ * `resolveGateItems`: bài kiểm chép thuật toán của thứ nó kiểm thì nó xanh với
+ * mọi thuật toán, kể cả thuật toán sai.
  */
-const expectedArc = (priority: string[]) => [
-  'ChatHome', priority[0], TRACE_SCAN_ROUTE, priority[1], priority[2],
-];
+const expectArcShape = (got: string[], priority: string[]) => {
+  // 1. NEO trái mở đầu cung.
+  expect(got[0]).toBe(NEO_LEFT);
+  // 2. Trace-quét nằm CHÍNH GIỮA — hai bên lệch nhau nhiều nhất một ô.
+  const iTrace = got.indexOf(TRACE_SCAN_ROUTE as string);
+  expect(iTrace).toBeGreaterThan(-1);
+  expect(Math.abs(iTrace - (got.length - 1 - iTrace))).toBeLessThanOrEqual(1);
+  // 3. Bỏ NEO trái và Trace ra thì phần còn lại là DÃY CON của bảng ưu tiên,
+  //    giữ nguyên thứ tự app khai. Nói "dãy con" chứ không "bằng" vì cung lọc
+  //    route của module app đang tắt (CheckFarm tắt `chat` và `work`) — ràng
+  //    buộc thật là THỨ TỰ, không phải độ dài.
+  const con = got.filter((r) => r !== NEO_LEFT && r !== TRACE_SCAN_ROUTE);
+  expect(con.length).toBeGreaterThan(0);
+  const viTri = con.map((r) => priority.indexOf(r));
+  expect(viTri).not.toContain(-1); // không mục lạ nào lọt vào cung
+  expect(viTri).toEqual([...viTri].sort((a, b) => a - b));
+};
 
 describe('resolveGateItems', () => {
   // Điều chỉnh menu arc (Aladin chốt, #53): BỎ 'Home' khỏi cung (nhấn nút giữa đã về
@@ -36,24 +53,35 @@ describe('resolveGateItems', () => {
   // Aladin CỐ Ý đặt Việc làm trước (`instance.config.ts`: "Người mở Aladin đến vì
   // việc, không đến vì vườn"); CheckFarm đặt Trang trại trước. Cả hai đều ĐÚNG —
   // nên bài đo hình dạng cung, và lấy thứ tự ô từ lời khai của app đang dựng.
-  it('user mới: Chat · [ô ưu tiên 1] · [Trace giữa] · hai ô còn lại', () => {
-    const expected = expectedArc(DEFAULT_INSTANCE.slotPriority.default);
-    expect(routes(resolveGateItems(NO_FARM))).toEqual(expected);
-    expect(routes(resolveGateItems({ farms: 2, trees: 9, fruits: 0 }))).toEqual(expected);
+  it('user mới: NEO trái · [Trace giữa] · các ô ưu tiên đúng thứ tự của app', () => {
+    const p = DEFAULT_INSTANCE.slotPriority.default;
+    expectArcShape(routes(resolveGateItems(NO_FARM)), p);
+    expectArcShape(routes(resolveGateItems({ farms: 2, trees: 9, fruits: 0 })), p);
   });
 
   it('shipper (Work usage, không farm): đi theo bảng ưu tiên `shipper`; Trace vẫn giữa', () => {
-    expect(routes(resolveGateItems(NO_FARM, { WorkHome: 8 }))).toEqual(
-      expectedArc(DEFAULT_INSTANCE.slotPriority.shipper),
+    expectArcShape(
+      routes(resolveGateItems(NO_FARM, { WorkHome: 8 })),
+      DEFAULT_INSTANCE.slotPriority.shipper,
     );
   });
 
-  it('ĐỐI CHỨNG — hai bảng ưu tiên đủ ba ô, không thì kỳ vọng trên toàn `undefined`', () => {
-    // `expectedArc` đọc `priority[0..2]`. Bảng thiếu ô thì kỳ vọng mang `undefined`,
-    // và một cung cũng thiếu ô sẽ khớp với nó — hai cái sai bằng nhau thành xanh.
+  it('ĐỐI CHỨNG — hai bảng ưu tiên không rỗng và không trùng mục', () => {
+    // Bảng rỗng thì mệnh đề 3 của `expectArcShape` so `[]` với `[]` và xanh
+    // trong khi cung chẳng có ô nào. Bảng trùng mục thì cung vẽ hai nút giống
+    // hệt nhau mà không phép so mảng nào kêu.
     for (const table of [DEFAULT_INSTANCE.slotPriority.default, DEFAULT_INSTANCE.slotPriority.shipper]) {
-      expect(table).toHaveLength(3);
+      expect(table.length).toBeGreaterThanOrEqual(3);
       expect(table.every((r) => typeof r === 'string' && r.length > 0)).toBe(true);
+      expect(new Set(table).size).toBe(table.length);
+    }
+  });
+
+  it('ĐỐI CHỨNG — NEO trái KHÔNG nằm trong bảng ưu tiên', () => {
+    // Nếu nó nằm cả hai nơi thì cung mở đầu bằng nó rồi lặp lại nó ở giữa, và
+    // mệnh đề 3 ở trên vẫn xanh vì phép lọc bỏ sạch mọi lần xuất hiện.
+    for (const table of [DEFAULT_INSTANCE.slotPriority.default, DEFAULT_INSTANCE.slotPriority.shipper]) {
+      expect(table).not.toContain(NEO_LEFT);
     }
   });
 

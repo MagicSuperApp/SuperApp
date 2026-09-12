@@ -48,7 +48,12 @@ import {
   searchFarms,
 } from '../utils/farmMapGeo';
 
-const OSM_TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+// ⛔ Đây TỪNG là một bản chép tay URL ô bản đồ — bản thứ năm trong kho, và đúng
+// thứ mà hằng chung sinh ra để chặn: lượt vá máy chủ ô chỉ tới được những chỗ
+// đang `import`, còn dòng chép tay này ở lại với tên miền đã bị chặn.
+import { STREET_TILES } from '../../../features/space3d/mapTiles';
+
+const OSM_TILES = STREET_TILES;
 const SAT_TILES =
   'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
 
@@ -610,7 +615,7 @@ const MapBody: React.FC<MapBodyProps> = ({
             (nó chiếm chỗ và mở một hộp thoại lạc lõng), không miễn nghĩa vụ ghi
             nguồn — nên dòng này KHÔNG được bỏ. */}
         <Text style={styles.attribution}>
-          {layer === 'satellite' ? '© Esri · Maxar' : '© OpenStreetMap'}
+          {layer === 'satellite' ? '© Esri · Maxar' : '© Esri · OpenStreetMap'}
         </Text>
       </View>
     </View>

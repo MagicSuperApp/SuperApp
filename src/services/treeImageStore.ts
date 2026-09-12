@@ -65,6 +65,44 @@ export async function appendTreeImages(treeId: string, uris: string[]): Promise<
   }
 }
 
+/**
+ * Ảnh BÌA của nhiều cây một lượt — `{ tree_id: uri }`, cây chưa có ảnh thì vắng.
+ *
+ * Vì sao cần: lưới cây ở màn chi tiết vườn bày 12 thẻ một trang, và mỗi thẻ cần
+ * đúng MỘT tấm. Gọi `loadTreeImages` cho từng cây là 12 lượt đọc đĩa nối tiếp
+ * nhau ngay lúc lưới đang dựng — trên máy yếu đó là một khựng thấy được. Cầu
+ * `multiGet` làm cả mẻ trong một lượt.
+ *
+ * Trả ảnh ĐẦU danh sách: `appendTreeImages` xếp ảnh mới nhất lên trước, nên bìa
+ * luôn là tấm chụp gần đây nhất — cây thay đổi theo mùa, và tấm cũ nhất là tấm
+ * nói sai nhất về cây hôm nay.
+ *
+ * Đọc hỏng → bỏ qua cây đó (thẻ tự rơi về hình chung). Mất một tấm ảnh trang
+ * trí không được phép làm hỏng cả lưới.
+ */
+export async function loadTreeCovers(treeIds: readonly string[]): Promise<Record<string, string>> {
+  const ids = treeIds.filter((x): x is string => typeof x === 'string' && !!x);
+  if (ids.length === 0) return {};
+  try {
+    const cap = await AsyncStorage.multiGet(ids.map(keyFor));
+    const out: Record<string, string> = {};
+    for (const [key, raw] of cap) {
+      if (!raw) continue;
+      const id = key.slice(KEY_PREFIX.length);
+      try {
+        const arr = JSON.parse(raw);
+        const dau = Array.isArray(arr) ? arr.find((x: unknown) => typeof x === 'string' && x) : null;
+        if (dau) out[id] = dau;
+      } catch {
+        /* một cây hỏng không được kéo cả mẻ theo */
+      }
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
 /** Xoá ảnh đã lưu của cây (khi xoá cây). */
 export async function clearTreeImages(treeId: string): Promise<void> {
   if (!treeId) return;

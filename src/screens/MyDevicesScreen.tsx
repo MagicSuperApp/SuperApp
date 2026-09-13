@@ -37,6 +37,7 @@ import { COLORS } from '../constants';
 import { phoenixKeyApi, PhoenixKeyApiError, type DeviceView } from '../services/phoenixKey-api';
 import { checkDeviceName, DEVICE_NAME_MAX_LEN } from '../features/devices/deviceName';
 import { showError, showSuccess, showWarning } from '../utils/alert';
+import { GATE_PREFIX, requireUserPresence } from '../services/sensitiveActionGate';
 import StateView from '../components/state/StateView';
 import { tk } from '../i18n/keys';
 
@@ -147,6 +148,21 @@ const MyDevicesScreen: React.FC = () => {
   const doRevoke = useCallback(async (d: DeviceView) => {
     setBusyKeyId(d.keyId);
     try {
+      // ── CỔNG XÁC THỰC ────────────────────────────────────────────────────────
+      // Gỡ máy là thao tác MẤT DANH TÍNH và không hoàn tác được: máy bị gỡ mất
+      // quyền ngay, và chủ nó không tự lấy lại được. Trước bản này chỉ có một
+      // Alert đứng chắn — mà Alert thì ai cầm máy đang mở cũng bấm qua được.
+      // Vì sao cổng tồn tại + ranh giới của nó: `sensitiveActionGate.ts` đầu tệp.
+      //
+      // Ký đúng `keyId` sắp gỡ: một lần duyệt không được dùng lại để gỡ máy khác.
+      // Cổng ném khi người dùng huỷ — rơi xuống `catch`, và KHÔNG gọi `revoke`.
+      await requireUserPresence({
+        prefix: GATE_PREFIX.revokeDevice,
+        fields: [d.keyId],
+        title: 'Xác nhận gỡ máy',
+        subtitle: 'Quét khuôn mặt hoặc vân tay để gỡ máy này khỏi danh tính',
+      });
+
       await phoenixKeyApi.deviceLifecycle.revoke(d.keyId);
       // Không xoá khỏi danh sách — máy chủ vẫn trả về nó với status='revoked'.
       // Tải lại để trạng thái trên màn đúng bằng trạng thái đã lưu.

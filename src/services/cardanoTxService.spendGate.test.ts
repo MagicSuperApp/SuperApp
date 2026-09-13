@@ -31,35 +31,42 @@ const at = (needle: string): number => SRC.indexOf(needle);
 
 describe('A — cổng đứng ĐÚNG CHỖ trong nguồn', () => {
   it('cổng ký đứng TRƯỚC bước dựng+ký CBOR', () => {
-    const cong = at('await signRaw(');
-    const kyCbor = at('await taad.buildSignedTransfer(');
-    expect(cong).toBeGreaterThan(-1);
-    expect(kyCbor).toBeGreaterThan(-1);
-    expect(cong).toBeLessThan(kyCbor);
+    const gate = at('await requireUserPresence(');
+    const signCbor = at('await taad.buildSignedTransfer(');
+    expect(gate).toBeGreaterThan(-1);
+    expect(signCbor).toBeGreaterThan(-1);
+    expect(gate).toBeLessThan(signCbor);
   });
 
   it('cổng đứng SAU khi đã có dữ liệu để hiện cho người duyệt', () => {
     // Hỏi trước khi biết mình duyệt cái gì là cổng dạy người ta bấm qua cho xong.
-    const layUtxo = at('await fetchWalletUtxosAndParams(');
-    const cong = at('await signRaw(');
-    expect(layUtxo).toBeGreaterThan(-1);
-    expect(layUtxo).toBeLessThan(cong);
+    const fetchUtxo = at('await fetchWalletUtxosAndParams(');
+    const gate = at('await requireUserPresence(');
+    expect(fetchUtxo).toBeGreaterThan(-1);
+    expect(fetchUtxo).toBeLessThan(gate);
   });
 
   it('ký ĐÚNG nội dung lần chuyển này, không ký một hằng số', () => {
     // Ký hằng số thì một lần duyệt dùng lại được cho lần chuyển khác — cổng vẫn
     // bật hộp thoại, nhưng nó không còn buộc hộp thoại vào giao dịch nào cả.
-    const sig = SRC.slice(at('await signRaw('), at('await signRaw(') + 400);
-    expect(sig).toContain('SPEND_PREFIX');
+    const sig = SRC.slice(at('await requireUserPresence('), at('await requireUserPresence(') + 400);
+    expect(sig).toContain('GATE_PREFIX.spend');
     expect(sig).toContain('params.toAddress');
     expect(sig).toContain('params.amountLovelace');
   });
 
   it('tiền tố miền RIÊNG, không mượn tiền tố của cổng khác', () => {
-    expect(SRC).toContain("const SPEND_PREFIX = 'PHOENIXKEY_SPEND:'");
+    // Tiền tố sống ở `sensitiveActionGate.ts` — đọc ở đó, vì đó mới là nơi đặt ra
+    // nó. Đọc bản chép trong tệp này thì bài kiểm canh một bản sao.
+    const GATE = fs.readFileSync(path.join(__dirname, 'sensitiveActionGate.ts'), 'utf8');
+    expect(GATE).toContain("spend: 'PHOENIXKEY_SPEND:'");
     // Mượn `PHOENIXKEY_AUTHORIZE:` thì một chữ ký lấy ở cổng thêm-máy dùng lại
     // được cho một lệnh chuyển tiền.
-    expect(SRC).not.toContain("SPEND_PREFIX = 'PHOENIXKEY_AUTHORIZE:'");
+    expect(GATE).not.toContain("spend: 'PHOENIXKEY_AUTHORIZE:'");
+    // Mỗi thao tác một tiền tố: trùng nhau là một lần duyệt dùng được cho việc khác.
+    const prefixes = [...GATE.matchAll(/'(PHOENIXKEY_[A-Z_]+:)'/g)].map((m) => m[1]);
+    expect(prefixes.length).toBeGreaterThan(1);
+    expect(new Set(prefixes).size).toBe(prefixes.length);
   });
 });
 

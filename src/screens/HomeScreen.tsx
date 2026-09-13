@@ -45,6 +45,7 @@ import { fmtLamp } from '../utils/token';
 import { useCollapsibleHeader } from '../components/AppHeader';
 import { useCoachMarkTarget, useCoachMark } from '../onboarding/CoachMarkContext';
 import { shouldAutoRunTutorial } from '../utils/tutorialStorage';
+import { LinearWash, deepen, tint } from '../shared/components/SoftGradient';
 
 const { width } = Dimensions.get('window');
 const H_PADDING = 20;
@@ -63,6 +64,37 @@ const MODULE_CARD_W =
 // Home nhô lên 43 + cushion. Cộng thêm insets.bottom tại nơi dùng. Giữ đồng bộ
 // với TAB_BAR_HEIGHT/FLOAT trong navigation/index.tsx.
 const BOTTOM_NAV_CLEARANCE = 120;
+
+// ── Nền trang ───────────────────────────────────────────────────────────────
+//
+// XANH DƯƠNG, không phải xanh lá — và đây không phải đổi gu, mà là sửa một chỗ
+// lấy nhầm bảng màu. Trang chủ là HUB của mọi module: nó đứng trên `COLORS`
+// (bảng màu của APP, khoá `accent` ghi rõ "unified blue"), không đứng trên bảng
+// màu của một module nào. Bản trước lấy `WORK_THEME.primary` — màu nhãn hiệu
+// của riêng module Việc làm — nên cả trang chủ ngả xanh LÁ, tức nó tự nhận mình
+// là sân của một module, ngay phía trên một lưới bốn module ngang hàng nhau.
+//
+// `COLORS.accent` cũng là màu thanh trên và thanh dưới đang dùng (`accentDeep`),
+// nên nền trang nay cùng họ với hai thanh kẹp nó — thay vì chen một sắc thứ ba
+// vào giữa.
+//
+// SÁNG HƠN, và chỗ sáng lên nằm ở chặng DƯỚI: nay là TRẮNG hẳn, thay cho
+// `NEUTRAL.bgSoft` (`#F7F8F7`) phẳng lì của bản trước — `bgSoft` là một màu xám
+// ngả vàng, dìm cả trang xuống một bậc trước khi có bất kỳ chuyển sắc nào.
+//
+// Số đo, để không nói quá: chặng TRÊN `#F5F8FB` có độ chói 0,935, tức gần như
+// ĐÚNG BẰNG `bgSoft` cũ (0,936) — chênh 0,001, dưới mức mắt phân biệt được. Nên
+// đúng hơn phải nói: mép trên giữ nguyên độ sáng cũ nhưng đổi sang ngả lam, còn
+// toàn bộ phần dưới — chỗ chiếm gần hết trang — sáng lên tới trắng.
+//
+// Mức pha 0,05 là chỗ cân giữa hai yêu cầu ngược nhau: 0,04 thì mọi điểm đều
+// sáng hơn `bgSoft` thật, nhưng nhạt tới mức không còn đọc ra xanh; 0,07 ra xanh
+// rõ nhưng kéo mép trên tối hơn nền cũ thấy được. 0,05 ra xanh mà không tối đi.
+//
+// Hai chặng lệch nhau 1,07 lần — nhẹ hơn nhiều so với ngưỡng 1,5 của bộ chuyển
+// sắc, đúng mức cho một lớp nằm dưới TOÀN BỘ chữ của trang.
+const HOME_BG_FROM = tint(NEUTRAL.bg, COLORS.accent, 0.05);
+const HOME_BG_TO = NEUTRAL.bg;
 
 // ── Hộp Quick Action (thu/mở) ───────────────────────────────────────────────
 // Thanh header PHẲNG, không gradient. Chữ/icon dùng xanh-lá đậm — cùng ngôn ngữ
@@ -150,6 +182,11 @@ const BannerCarousel = ({ fade }: { fade: Animated.Value }) => {
         })}
         renderItem={({ item }) => (
           <View style={[styles.banner, { backgroundColor: item.bg, width: CAROUSEL_W }]}>
+            {/* Chuyển sắc chéo thay cho mảng màu phẳng. `deepen` cho chặng cuối
+                TỐI hơn chặng đầu, nên chữ trắng của banner ở mọi vị trí đều
+                tương phản bằng hoặc hơn bản phẳng cũ. `styles.banner` đã có
+                `overflow: 'hidden'` nên lớp này không tràn qua góc bo. */}
+            <LinearWash from={item.bg} to={deepen(item.bg)} angle={135} />
             <View style={styles.bannerOrb} />
             <View style={styles.bannerOrb2} />
             <View style={{ flex: 1 }}>
@@ -305,6 +342,20 @@ const ModuleCard = ({
               { backgroundColor: bgDark, shadowColor: bgDark },
             ]}
           >
+            {/* Cùng thủ pháp với banner: nền thẻ nay có chiều thay vì phẳng.
+                Chặng cuối TỐI hơn — lý do ở `deepen`. Lớp này nằm DƯỚI hai quầng
+                sáng (`moduleOrb`), vì quầng là lớp trang trí nổi trên nền.
+
+                Tự bo góc thay vì đặt `overflow: 'hidden'` lên `moduleCard`: thẻ
+                này đổ bóng (`shadowRadius`/`elevation`), mà cắt tràn ở ngay khối
+                đổ bóng thì trên iOS bóng bị cắt mất luôn. Bo ngay lớp nền là
+                cách duy nhất giữ được CẢ góc bo lẫn bóng. */}
+            <LinearWash
+              from={bgDark}
+              to={deepen(bgDark)}
+              angle={140}
+              style={styles.moduleWash}
+            />
             <View pointerEvents="none" style={styles.moduleOrb} />
             <View pointerEvents="none" style={styles.moduleOrb2} />
 
@@ -646,6 +697,10 @@ const HomeScreen: React.FC = () => {
     <View style={styles.root}>
       <StatusBar barStyle="dark-content" backgroundColor={NEUTRAL.bg} />
 
+      {/* Nền màn: một chuyển sắc dọc rất nhạt, xanh DƯƠNG ở mép trên tan xuống
+          trắng. Nằm SAU toàn bộ nội dung, không nhận cú chạm. */}
+      <LinearWash from={HOME_BG_FROM} to={HOME_BG_TO} angle={180} />
+
       {/* HeroBar cũ ĐÃ BỎ: nút Tài khoản + Thông báo (chuông) nay nằm trong
           AppHeader toàn cục (thu/thả theo cuộn) ở tầng nav — tránh 2 thanh trên
           chồng nhau. Xem components/AppHeader.tsx. */}
@@ -886,7 +941,9 @@ const HomeScreen: React.FC = () => {
 
 // ── Styles ──────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: NEUTRAL.bgSoft },
+  // Khớp chặng ĐẦU của <LinearWash> ở trên: lớp này chỉ lộ ra trong khung hình
+  // đầu tiên, trước khi nền đo xong kích thước.
+  root: { flex: 1, backgroundColor: HOME_BG_FROM },
   scroll: {
     paddingTop: 8,
     paddingHorizontal: H_PADDING,
@@ -1046,6 +1103,9 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 6,
   },
+  // Bo góc của lớp nền chuyển sắc — phải KHỚP `moduleCard.borderRadius`. Nằm
+  // ngay dưới nó để hai con số này luôn ở trong tầm mắt của nhau.
+  moduleWash: { borderRadius: 22 },
   moduleOrb: {
     position: 'absolute',
     width: 130,

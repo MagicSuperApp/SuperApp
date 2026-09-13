@@ -186,6 +186,24 @@ export interface InstanceConfig {
   tagline: Record<LangCode, string>;
 
   /**
+   * Khẩu hiệu NGẮN — hiện dưới tên app ở màn đăng nhập
+   * (`screens/LoginNetworkScreen.tsx`), ngay cạnh logo.
+   *
+   * Khác `tagline` ở ĐỘ DÀI, và độ dài ở đây là một ràng buộc bố cục chứ không
+   * phải sở thích: dòng này được kéo giãn khoảng cách chữ cho RỘNG ĐÚNG BẰNG tên
+   * app ở trên nó. Một câu dài thì bị thu nhỏ cỡ chữ để vừa bề ngang ấy, và tới
+   * một lúc nó nhỏ tới mức không đọc được. Giữ dưới khoảng 22 ký tự.
+   *
+   * `tagline` không dùng lại được: bản của Aladin là *"Một ứng dụng, bốn việc —
+   * và danh tính là của chính anh chị."*, một câu KỂ CHUYỆN dài gấp ba mức này.
+   * Hai câu phục vụ hai chỗ khác nhau nên chúng là hai trường.
+   *
+   * BẮT BUỘC, không `?`, cùng lý do với `tagline`: app thứ ba quên khai thì
+   * `tsc` đỏ, thay vì lặng lẽ mượn câu của app khác.
+   */
+  slogan: Record<LangCode, string>;
+
+  /**
    * Dấu thương hiệu hiện TRONG app — khác biểu tượng ngoài màn hình chính của
    * điện thoại (thứ đó do `instances/<mã>/ios|android/` lo, tầng native).
    *
@@ -352,6 +370,13 @@ export const ALADIN_INSTANCE: InstanceConfig = {
     zh: '一个应用，四件事 —— 身份始终属于你自己。',
     ja: '一つのアプリで四つの仕事 — 本人確認はあなたのものです。',
   },
+  // Bản NGẮN cho màn đăng nhập. Bốn chữ, không vế phụ, không dấu gạch ngang.
+  slogan: {
+    vi: 'Bảo mật, minh bạch, thân thiện',
+    en: 'Secure, transparent, user-friendly',
+    zh: '安全、透明、用户友好',
+    ja: '安全、透明、ユーザーフレンドリー',
+  },
   // NGUYÊN BYTE tệp `assets/images/logo.png` bốn màn vẫn đang dùng — đối chiếu
   // bằng `cmp` lúc chuyển. Aladin đã phát hành, nên đợt này không được đổi một
   // pixel nào của nó; cái đổi là CHỖ khai, không phải hình.
@@ -419,7 +444,13 @@ export const CHECKFARM_INSTANCE: InstanceConfig = {
     en: 'Trace the Source — Elevate the Produce',
     zh: '追溯源头，提升农产价值',
     ja: '源流をたどり、農産物の価値を高める',
+  },  slogan: {
+    vi: 'Truy xuất từ nguồn',
+    en: 'Trace the source',
+    zh: '追溯源头',
+    ja: '産地までたどる',
   },
+
   // ÂM BẢN chính thức của nhà CheckFarm — `Logo/bieu-tuong-app/icon-1024.png`,
   // thu về 256px. Không phải bản dựng ở kho này: màu nền đọc ra từ ảnh là
   // `#298A4A`, khớp đúng `iconBackground` họ khai trong `instance.json`.

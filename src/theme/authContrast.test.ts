@@ -102,6 +102,26 @@ describe.each([
     expect(contrastRatio(AUTH_WARN.icon, AUTH_WARN.bg)).toBeGreaterThanOrEqual(AA_GRAPHIC);
   });
 
+  /**
+   * `canvas` là nền TỐI phủ kín màn đăng nhập mạng lưới, và mọi chữ trên nó —
+   * tên app, khẩu hiệu, dòng phiên bản — là chữ TRẮNG ĐẶC. Không có nền nào
+   * khác để lui về: cả màn chỉ có một màu này.
+   */
+  it('nền tràn của màn đăng nhập cho chữ trắng đạt AA', () => {
+    expect(contrastRatio(AUTH_COLORS.white, AUTH_COLORS.canvas)).toBeGreaterThanOrEqual(AA);
+  });
+
+  /**
+   * Nút sinh trắc dùng ĐÚNG màu nền, nên thứ duy nhất tách nó khỏi nền là viền
+   * TRẮNG. Viền là thành phần phi-chữ → ngưỡng 3 của WCAG 1.4.11. Bài này canh
+   * đúng chỗ đã suýt hỏng: nếu ai đổi `canvas` sang một sắc sáng, viền trắng mờ
+   * đi và cái nút biến mất hẳn khỏi màn.
+   */
+  it('viền trắng của nút sinh trắc tách được khỏi nền', () => {
+    expect(contrastRatio(AUTH_COLORS.white, AUTH_COLORS.canvas))
+      .toBeGreaterThanOrEqual(AA_GRAPHIC);
+  });
+
   it('hai bậc chữ phụ không rơi về cùng một giá trị', () => {
     expect(AUTH_COLORS.textMuted).not.toBe(AUTH_COLORS.textSub);
   });
@@ -113,7 +133,7 @@ it('ĐỔI THEO APP — bảng CheckFarm khác bảng mặc định ở mọi va
   setActiveThemeConfig(CHECKFARM_THEME_CONFIG);
   const farm = { ...AUTH_COLORS };
 
-  const same = (['deep', 'primary', 'pale', 'bgSoft', 'border', 'text', 'textSub', 'textMuted'] as const)
+  const same = (['canvas', 'deep', 'primary', 'pale', 'bgSoft', 'border', 'text', 'textSub', 'textMuted'] as const)
     .filter((k) => base[k] === farm[k]);
   expect(same).toEqual([]);
 });

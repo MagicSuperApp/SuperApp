@@ -215,6 +215,19 @@ export const ACTION_TOKENS = {
 // `src/` cho 0 nơi đọc. Giữ chúng là bắt mọi app sau phải khai một giá trị cho
 // một vai không tồn tại.
 export const AUTH_TOKENS = {
+  /**
+   * Nền TRÀN MÀN của màn đăng nhập mạng lưới (`screens/LoginNetworkScreen`).
+   *
+   * Khác `bgSoft` ở vai: `bgSoft` là nền SÁNG của bốn màn cửa vào có chữ tối;
+   * `canvas` là một mảng màu ĐẶC, TỐI, phủ kín màn, và chữ trên nó là chữ TRẮNG.
+   * Hai vai ngược nhau nên không dùng chung một khoá được.
+   *
+   * Nằm ở đây chứ không gõ thẳng vào tệp màn hình vì đó đúng là cái bẫy kho này
+   * đã gỡ hai lần: một hex nhãn hiệu nằm trong mã màn thì app thứ hai dựng từ
+   * nền mã này sẽ đeo màu của app thứ nhất, và không phép kiểm nào thấy.
+   * `theme/authContrast.test.ts` nay đo cả khoá này, cho CẢ HAI app.
+   */
+  canvas:    '#1F511A',
   deep:      '#152B5A',
   primary:   '#2C5BC4',
   pale:      '#B9D2F0',

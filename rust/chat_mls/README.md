@@ -12,6 +12,15 @@ web (`ts-mls`) để **interop với client web đang chạy** — xem
 | 2 — message | `src/message_layer.rs` | `HKDF-SHA256(epoch_secret, "mls-msg:"+id)` → `AES-256-GCM`. |
 | 3 — Merkle | `src/merkle.rs` | Poseidon BN254 (`light-poseidon`, khớp circomlibjs) + Ed25519 session sig. |
 
+⚠ **Tầng 2 đã rẽ khỏi bản web, còn tầng 1 và tầng 3 VẪN KHỚP.** Đây là câu dễ mất nhất khi
+đọc lướt, và mất nó thì người đọc kết luận "đã phân kỳ" cho cả ba tầng rồi đi dựng lại thứ
+không cần dựng. Chỉ tầng 2 lệch; tầng 1 (MLS) và tầng 3 (Merkle) vẫn interop được với client
+web đang chạy.
+
+Tệp này là **bản sao có nhãn**, không phải nguồn — nguồn là docstring trong kho ProofChat.
+Ghim bản chép ở `scripts/vendored-tree-pin.json`; chỉ cập nhật ghim khi commit nguồn đã nằm
+trên `main` của kho đó, không cập nhật lúc họ mới mở PR.
+
 Persistence: `MlsIdentity::export_state()` / `import_state()` — serialize OpenMLS storage +
 cache `epoch_secret` theo `(conversation, epoch)` (fork giữ epoch_secret trong RAM, mất khi
 `MlsGroup::load` → cache cứu, và cho phép giải mã tin ở epoch cũ).

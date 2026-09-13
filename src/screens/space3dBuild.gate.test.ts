@@ -150,20 +150,35 @@ describe('Nút dựng hình 3D — dây nối từ màn tới cửa máy chủ',
 });
 
 describe('Vật nuôi — lối vào nhìn thấy được', () => {
-  it('màn chi tiết vườn mở sổ vật nuôi KÈM mã vườn', () => {
-    expect(FARM_DETAIL).toContain(
-      "navigate('AnimalManagement', { farmId: String(farm.id) })",
-    );
+  /**
+   * ── Lối vào ấy nay là một TAB, không còn là một ô ──────────────────────────
+   * Bài này ra đời khi nhánh vật nuôi chỉ tới được bằng cách KÉO nút giữa rồi
+   * thả trúng một cung con — một cử chỉ chạy đúng nhưng không tự lộ ra. Bản vá
+   * lúc đó đặt một ô "Vật nuôi" vào lưới Bento của màn chi tiết vườn, và bài
+   * này khoá đúng ô đó lại.
+   *
+   * Ô ấy sai CẤP, và báo từ thực địa gọi thẳng ra: vật nuôi là một NHÁNH nội
+   * dung ngang hàng với cây, không phải một việc bấm phát xong như "Chỉ đường".
+   * Nó nay là một tab trên đầu màn (`FarmAnimalsTab` + `styles.tabBar`), nên
+   * phép đo ở đây dời theo — cùng một câu hỏi, chỗ trả lời đã khác.
+   *
+   * Ràng buộc VỀ MÃ VƯỜN thì không đổi một ly: sổ đàn lọc theo `farmId`
+   * (`listAnimals(BASE_URL, farmId, …)`), nên mở nó không kèm mã thì nó liệt kê
+   * vật nuôi của MỌI vườn dưới tiêu đề một vườn — sai theo đúng chiều người
+   * dùng không nhận ra. Chi tiết bố cục của tab do
+   * `modules/trace/components/FarmAnimalsTab.gate.test.ts` giữ.
+   */
+  it('màn chi tiết vườn có lối vào NHÌN THẤY ĐƯỢC cho nhánh vật nuôi', () => {
+    expect(FARM_DETAIL).toContain('styles.tabBar');
+    expect(FARM_DETAIL).toContain("nhan: 'Vật nuôi'");
+    expect(FARM_DETAIL).toContain('<FarmAnimalsTab');
   });
 
-  /**
-   * Mã vườn không phải chi tiết trang trí. Màn sổ lọc theo `farmId`
-   * (`AnimalManagementScreen.tsx` ▸ `listAnimals(BASE_URL, farmId, …)`), nên mở
-   * nó không kèm mã thì nó liệt kê vật nuôi của MỌI vườn dưới tiêu đề một vườn
-   * — sai theo đúng chiều người dùng không nhận ra.
-   */
-  it('ô chỉ hiện khi đã biết mã vườn', () => {
-    expect(FARM_DETAIL).toContain('{dichDuong || farm?.id ? (');
+  it('sổ đàn chỉ dựng khi đã biết mã vườn, và nó nhận đúng mã ấy', () => {
+    expect(FARM_DETAIL).toContain('farmId={String(farm.id)}');
+    const i = FARM_DETAIL.indexOf('<FarmAnimalsTab');
+    expect(i).toBeGreaterThan(-1);
+    expect(FARM_DETAIL.slice(Math.max(0, i - 300), i)).toContain('farm?.id ? (');
   });
 
   it('cung con vẫn trỏ màn CÓ máy ảnh, không trỏ màn danh sách', () => {

@@ -53,19 +53,35 @@ export interface MapSource {
  * tán cây / luống / bờ ranh thật, còn bản đồ đường phố thường trắng trơn.
  */
 /**
- * URL ô bản đồ đường phố — MỘT nguồn duy nhất cho cả kho.
+ * URL ô BẢN ĐỒ ĐƯỜNG PHỐ — MỘT nguồn duy nhất cho cả kho.
  *
- * ⛔ Tên miền `a.` / `b.` / `c.tile.openstreetmap.org` là dạng subdomain OSM ĐÃ
- *    NGƯNG. Chúng không còn phân giải được, và MapLibre báo đúng như vậy:
- *    *"Unable to resolve host a.tile.openstreetmap.org: no address associated
- *    with hostname"*. Lớp vệ tinh vẫn chạy vì nó trỏ máy chủ ArcGIS, nên nhìn ra
- *    thành "vệ tinh thì được, bản đồ thì một màu xanh dương".
+ * ── Lượt hai: rời khỏi máy chủ ô của OpenStreetMap ──────────────────────────
+ * Báo về từ thực địa: nền bản đồ hiện ra một tấm ảnh ghi *"Access blocked"*.
+ * Đó không phải lỗi mạng và cũng không phải lỗi mã — đó là `tile.openstreetmap.org`
+ * TỪ CHỐI phục vụ, đúng theo chính sách của họ: máy chủ ô ấy do quỹ OSM chạy
+ * bằng tiền quyên góp, và chính sách dùng ô của họ KHÔNG cho phép một ứng dụng
+ * lấy nó làm nền bản đồ chung. Họ chặn theo dải IP và theo ứng dụng, nên nó chạy
+ * được ở máy này và chết ở máy khác — kiểu hỏng không bao giờ tái hiện được ở
+ * bàn làm việc.
  *
- *    Kho đã vá một lần, ở MỘT trong ba chỗ chép cùng một URL. Hai chỗ kia ở lại
- *    tên miền chết. Đó là lý do hằng này tồn tại: URL chép tay ở ba chỗ thì bản
- *    vá cũng chỉ tới được chỗ người sửa đang mở.
+ * Nên nguồn nay là **Esri World Street Map**, ĐÚNG máy chủ mà lớp vệ tinh của
+ * app đã chạy ổn từ đầu (`server.arcgisonline.com`). Một nhà cung cấp cho cả
+ * hai lớp: một bộ điều khoản để đọc, một tên miền để mở trong tường lửa, và
+ * không còn lớp nào sống bằng lòng hảo tâm của một quỹ phi lợi nhuận.
+ *
+ * ⚠ Nền Esri VẪN dựng một phần trên dữ liệu OpenStreetMap, nên dòng ghi nguồn
+ *   giữ CẢ HAI tên. Đó là nghĩa vụ giấy phép, không phải phép lịch sự.
+ *
+ * ⛔ Đừng quay lại `a.` / `b.` / `c.tile.openstreetmap.org` — dạng subdomain ấy
+ *    đã ngưng phân giải hẳn (*"Unable to resolve host … no address associated
+ *    with hostname"*), và `mapTiles.test.ts` canh cho nó không mọc lại.
+ *
+ * ⚠ Thứ tự `{z}/{y}/{x}` là của Esri, KHÔNG phải `{z}/{x}/{y}` như OSM. `tileUrl`
+ *   thay theo TÊN nên đổi chỗ không sao; nhưng ai chép URL này đi nơi khác mà
+ *   đảo lại hai chữ thì được một bản đồ lộn ngược, im lặng.
  */
-export const OSM_STREET_TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+export const STREET_TILES =
+  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}';
 
 export const MAP_SOURCES: readonly MapSource[] = [
   {
@@ -79,9 +95,10 @@ export const MAP_SOURCES: readonly MapSource[] = [
   {
     id: 'street',
     label: 'Bản đồ',
-    urlTemplate: OSM_STREET_TILES,
+    urlTemplate: STREET_TILES,
     maxZoom: 19,
-    attribution: '© OpenStreetMap contributors',
+    // Nền Esri dựng một phần trên dữ liệu OSM ⇒ ghi cả hai. Nghĩa vụ giấy phép.
+    attribution: '© Esri · OpenStreetMap contributors',
   },
 ] as const;
 

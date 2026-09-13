@@ -59,7 +59,7 @@ import { useSelector } from 'react-redux';
 
 import Icon, { type IconName } from '../../../components/Icon';
 import type { RootState } from '../../../store';
-import { OSM_STREET_TILES } from '../../../features/space3d/mapTiles';
+import { STREET_TILES } from '../../../features/space3d/mapTiles';
 import { useOpenWayfind, type WayfindTarget } from '../../../features/wayfind/WayfindButton';
 import { isValidLatLon } from '../../../features/wayfind/wayfind';
 import { formatTreeName, shortTreeCode } from '../../../utils/treeNameFormatter';
@@ -146,11 +146,37 @@ const nhomCua = (cay: any): NhomCay => {
  * khẳng định. Dùng thêm một MÀU thứ tư thì nó lọt vào thang màu thu hoạch và
  * người dùng sẽ đọc nó thành một trạng thái thu hoạch thứ tư.
  */
+/**
+ * XANH LIME của chấm "chưa có số liệu".
+ *
+ * ⛔ ĐÂY LÀ LƯỢT SỬA MỘT LỖI ĐO ĐƯỢC, đừng đổi lại về chấm rỗng.
+ *
+ * Bản trước vẽ nhóm này RỖNG — ruột trong suốt, viền `NATURE.bark` (#12262E,
+ * gần như đen) — với lý do "một hình chưa tô xong đọc ra chưa có số". Lý do ấy
+ * đúng về nguyên tắc và sai về hậu quả, vì chú thích ngay cạnh nó đã tự khai
+ * mất rồi: *hôm nay MỌI cây rơi vào nhóm này*, do không đường nào trong app ghi
+ * `harvestProgress`. Nên cả bản đồ là một rừng vòng tròn đen rỗng trên ảnh vệ
+ * tinh — báo về từ thực địa: *"chỉ thấy border màu đen, nhìn xấu và không rõ"*.
+ *
+ * Một quy ước chỉ có nghĩa khi nó PHÂN BIỆT được hai thứ. Khi 100% số chấm rơi
+ * vào một nhóm thì quy ước rỗng-hay-đặc không phân biệt gì cả — nó chỉ còn làm
+ * mọi cây khó nhìn.
+ *
+ * Nay chấm TÔ ĐẶC. Điều nó khẳng định là "có một cây ở đây", và điều đó ĐÚNG.
+ * Màu chọn nằm NGOÀI thang thu hoạch (xanh lá → cam → xám lam): vàng-lục rực
+ * không lẫn được với ba màu kia, nên ngày máy chủ trả `harvestProgress` thì ba
+ * nhóm dưới sáng lên mà lime vẫn đọc ra "chưa có số".
+ *
+ * Chọn lime còn vì nền: ảnh vệ tinh vườn cây là một mảng lục sẫm, và lime là
+ * sắc hiếm khi có trong tự nhiên ở độ sáng đó.
+ */
+const LIME = '#C6F432';
+
 const NHOM_CAY: Record<NhomCay, { mau: string; nhan: string; rong?: boolean }> = {
-  // Chưa biết: chấm rỗng, viền sẫm. Hôm nay MỌI cây rơi vào đây, vì không đường
+  // Chưa biết: chấm LIME tô đặc. Hôm nay MỌI cây rơi vào đây, vì không đường
   // nào trong app ghi `harvestProgress`. Ngày máy chủ trả trường đó thì ba nhóm
   // dưới tự sáng lên, không phải sửa dòng nào.
-  chuaBiet: { mau: NATURE.bark, nhan: 'Chưa có số liệu', rong: true },
+  chuaBiet: { mau: LIME, nhan: 'Chưa có số liệu' },
   // Xanh lá: cây đang nuôi quả, chưa động tới. Màu chủ đạo của module.
   chuaThu: { mau: TONE.primary, nhan: 'Chưa thu' },
   // Cam nắng: đang thu dở. Màu ấm = việc đang làm, cùng quy ước với số quả ở
@@ -616,7 +642,7 @@ const FarmMapScreen: React.FC = () => {
             ra làm nền dự phòng. */}
         <MapLib.RasterSource
           id="fmap-osm"
-          tileUrlTemplates={[OSM_STREET_TILES]}
+          tileUrlTemplates={[STREET_TILES]}
           tileSize={256}
           maxZoomLevel={TILE_MAX_ZOOM}
         >
@@ -696,12 +722,18 @@ const FarmMapScreen: React.FC = () => {
                     // Một hình chưa tô xong đọc ra "chưa có số"; mọi hình đặc
                     // đều là một lời khẳng định.
                     circleColor: NHOM_CAY[nhom].rong ? 'rgba(0, 0, 0, 0)' : NHOM_CAY[nhom].mau,
-                    // Viền trắng: chấm xanh lá trên ảnh vệ tinh (cũng xanh lá) sẽ
-                    // biến mất nếu không có một đường tách nó khỏi nền.
+                    // Viền: chấm màu trên ảnh vệ tinh (cũng nhiều màu) sẽ biến
+                    // mất nếu không có một đường tách nó khỏi nền.
+                    //
+                    // Lime thì viền SẪM chứ không viền trắng: lime đã sáng gần
+                    // bằng trắng (tương phản 1,3:1), nên viền trắng không tách
+                    // được gì — nó chỉ làm chấm loe ra thành một vệt nhạt.
                     circleStrokeWidth: 2,
                     circleStrokeColor: NHOM_CAY[nhom].rong
                       ? NHOM_CAY[nhom].mau
-                      : 'rgba(255, 255, 255, 0.92)',
+                      : NHOM_CAY[nhom].mau === LIME
+                        ? 'rgba(18, 38, 46, 0.85)'
+                        : 'rgba(255, 255, 255, 0.92)',
                   }}
                 />
               </MapLib.ShapeSource>
@@ -896,7 +928,7 @@ const FarmMapScreen: React.FC = () => {
             (nó chiếm chỗ và mở một hộp thoại lạc lõng), KHÔNG miễn nghĩa vụ ghi
             nguồn — nên dòng này không được bỏ. */}
         <Text style={styles.ghiNguon}>
-          {lop === 'satellite' ? '© Esri · Maxar' : '© OpenStreetMap'}
+          {lop === 'satellite' ? '© Esri · Maxar' : '© Esri · OpenStreetMap'}
         </Text>
       </View>
     </View>

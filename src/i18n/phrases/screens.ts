@@ -44,10 +44,13 @@ export const SCREENS: PhraseMap = {
     zh: '你以前用过本系统的任何应用吗？',
     ja: 'このシステムのアプリを使ったことがありますか？',
   },
-  'Người mới, đổi điện thoại, hay máy này đang có app khác cùng nhóm — ba đường khác nhau, chọn ở đây': {
-    en: 'New here, changing phone, or already running another app from this system on this device — three different paths, choose here',
-    zh: '新用户、换手机，或本机上已有本系统的其他应用 —— 三条路各不相同，在这里选择',
-    ja: 'はじめての方、機種変更の方、この端末にシステム内の別アプリがある方 — 三つの道は別物です。ここで選んでください',
+  // Câu cũ ghi "ba đường" ở cả bốn thứ tiếng, và đã sai từ ngày lối thứ tư (nhờ app
+  // đang đăng nhập duyệt) chạy được. Số gõ cứng không sinh từ danh sách lối, nên nó
+  // chết im lặng ở BỐN chỗ cùng lúc và không cổng nào kêu.
+  'Người mới, đổi điện thoại, hay máy này đang có app khác cùng nhóm — mỗi trường hợp một đường riêng, chọn ở đây': {
+    en: 'New here, changing phone, or already running another app from this system on this device — each case has its own path, choose here',
+    zh: '新用户、换手机，或本机上已有本系统的其他应用 —— 每种情况都有各自的路径，在这里选择',
+    ja: 'はじめての方、機種変更の方、この端末にシステム内の別アプリがある方 — それぞれに別の道があります。ここで選んでください',
   },
   'Tạo một danh tính MỚI — khác với danh tính bạn dùng ở app kia': {
     en: 'Create a NEW identity — different from the one you use in the other app',

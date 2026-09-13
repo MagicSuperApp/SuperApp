@@ -87,11 +87,19 @@ export const IDENTITY_STRINGS = {
     zh: '这台手机上已有本系统的另一个应用',
     ja: 'この端末にシステム内の別のアプリが入っている',
   },
+  // ⛔ Câu cũ ở đây kết bằng "Hiện giờ chỉ có một cách: nhập lại cụm 24 từ" — SAI kể từ
+  // ngày `DevicePairScreen` chạy được, và sai ở chỗ đắt nhất: nó đứng TRƯỚC, trong khi
+  // câu đính chính (`…otherApp.temporary`) đứng SAU khung cảnh báo. Người đọc lướt dừng
+  // ở câu đầu, và câu đầu đẩy họ sang đúng lối **đá app kia ra khỏi máy**.
+  // Đo trên bản dựng 2026-09-13, màn thật: thẻ này vừa nói "chỉ có một cách" vừa chỉ
+  // sang cách thứ hai, trong cùng một khối.
+  // Nay câu này chỉ nêu SỰ THẬT kỹ thuật; việc có mấy lối và chọn lối nào để cho
+  // `…temporary` và cho chính các thẻ nói.
   'identity.gate.otherApp.body': {
-    vi: 'Mỗi app cất chìa khoá một chỗ riêng trong máy, app này không thấy chìa của app kia. Hiện giờ chỉ có một cách: nhập lại cụm 24 từ.',
-    en: 'The two apps keep their keys in separate places on the device, so this app cannot see the other app’s key. Today the only way across is to re-enter the 24-word phrase.',
-    zh: '两个应用把密钥存放在设备上彼此隔离的位置，所以本应用看不到另一个应用的密钥。目前唯一的办法是重新输入 24 个助记词。',
-    ja: '二つのアプリは端末内の別々の場所に鍵を保管するため、このアプリは別アプリの鍵を見られません。現在の唯一の方法は 24 語のフレーズを入力し直すことです。',
+    vi: 'Mỗi app cất chìa khoá một chỗ riêng trong máy, nên app này không tự thấy chìa của app kia.',
+    en: 'The two apps keep their keys in separate places on the device, so this app cannot see the other app’s key on its own.',
+    zh: '两个应用把密钥存放在设备上彼此隔离的位置，所以本应用自己看不到另一个应用的密钥。',
+    ja: '二つのアプリは端末内の別々の場所に鍵を保管するため、このアプリは別アプリの鍵をそのままでは見られません。',
   },
   'identity.gate.otherApp.cost': {
     vi: 'Bạn sẽ mất gì: app kia trên chính máy này bị thoát ra, muốn dùng lại phải nhập 24 từ ở bên đó.',

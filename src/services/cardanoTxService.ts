@@ -29,9 +29,20 @@ import {
   PhoenixKeyApiError,
   remintSessionOnce,
 } from './phoenixKey-api';
-import { currentUserDid } from '../sdk/phoenixKey';
+import { currentUserDid, signRaw } from '../sdk/phoenixKey';
+import { buildCanonicalHex } from './canonicalMessage';
 
 const SESSION_TOKEN_KEY = 'phoenixkey_session_token';
+
+/**
+ * Tiền tố miền của chuỗi ký cổng xác thực chuyển tiền.
+ *
+ * Có tiền tố RIÊNG để một chữ ký lấy ở cổng này không dùng lại được ở cổng khác
+ * của cùng khoá — cùng lý do `AUTHORIZE_PREFIX` tồn tại trong `keyAuthorizeService`.
+ * Chuỗi này KHÔNG đi lên chuỗi khối và máy chủ không đọc nó; nó chỉ tồn tại để
+ * hộp thoại của chip gắn với đúng lần chuyển đang duyệt.
+ */
+const SPEND_PREFIX = 'PHOENIXKEY_SPEND:';
 
 // ── UTXO: khoá là DID, KHÔNG phải address ────────────────────────────────────
 //
@@ -262,6 +273,42 @@ export async function sendCardano(params: SendCardanoParams): Promise<{ txHash: 
   }
   const { utxosJson: utxosStr, protocolParamsJson: paramsStr } =
     await fetchWalletUtxosAndParams(did);
+
+  // ── CỔNG XÁC THỰC — đứng GIỮA việc chuẩn bị và việc TIÊU TIỀN ──────────────
+  //
+  // Vì sao cổng này phải có, và vì sao nó không thừa: khoá gốc của ví nằm trong
+  // Keychain/Keystore dưới `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`
+  // (`TaadEnclaveModule.swift:295`) — KHÔNG có `SecAccessControl`, không
+  // `.biometryAny`, không `.userPresence`. Nghĩa là `secureLoad` trả khoá ra chỉ
+  // với điều kiện MÁY ĐÃ MỞ KHOÁ. Trước bản này, cả đường gửi tiền không có một
+  // lần chạm sinh trắc nào: ai cầm máy đang mở là chuyển đi được toàn bộ số dư.
+  //
+  // Điều đó đắt hơn kể từ khi một danh tính chạy được trên nhiều máy và nhiều
+  // app cùng lúc (`keyAuthorizeService`): máy phụ thường là máy lỏng hơn — máy
+  // cũ, máy mượn, app cài kèm — và hôm nay máy phụ có quyền ngang máy chính ở
+  // mọi luồng nghiệp vụ (`phoenixKey-api.ts:1065`).
+  //
+  // Ký ĐÚNG NỘI DUNG giao dịch, không ký một chuỗi bất kỳ: chữ ký này không đi
+  // lên chuỗi, nhưng nó buộc hộp thoại của chip phải bật cho CHÍNH lần chuyển
+  // này. Ký một hằng số thì một lần duyệt dùng lại được cho lần chuyển khác.
+  //
+  // ⚠ Đặt SAU bước dựng dữ liệu và TRƯỚC bước ký CBOR, không đặt đầu hàm. Đầu
+  // hàm thì người dùng bị hỏi trước khi biết mình sắp duyệt cái gì, và một cổng
+  // hỏi trước khi có nội dung là cổng dạy người ta bấm qua cho xong.
+  //
+  // `signRaw` ném khi người dùng huỷ hoặc sinh trắc trượt — để nó ném thẳng ra
+  // ngoài. KHÔNG bắt rồi đi tiếp: nuốt lỗi ở đây là gỡ cổng mà vẫn giữ hình
+  // dạng của cổng.
+  await signRaw(
+    buildCanonicalHex(
+      SPEND_PREFIX,
+      params.toAddress,
+      String(params.amountLovelace),
+      String(net),
+    ),
+    'Xác nhận chuyển tiền',
+    'Quét khuôn mặt hoặc vân tay để ký lệnh chuyển này',
+  );
 
   // 3) Native dựng + ký CBOR (seed không rời native).
   const cbor = await taad.buildSignedTransfer({

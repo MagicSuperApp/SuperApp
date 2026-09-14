@@ -24,6 +24,7 @@ jest.mock('../store/syncSlice', () => ({
   __esModule: true,
   updateSyncStatus: (a: any) => ({ type: 'sync/updateSyncStatus', payload: a }),
   removeFromSyncQueue: (id: string) => ({ type: 'sync/removeFromSyncQueue', payload: id }),
+  loadSyncQueue: () => ({ type: 'sync/loadSyncQueue/THUNK' }),
 }));
 
 let mockQueueRows: any[] = [];
@@ -64,7 +65,7 @@ jest.mock('../utils/alert', () => ({
   showInfo: jest.fn(),
 }));
 
-import { syncService } from './syncService';
+import { syncService, MAX_RETRY_COUNT, NEEDS_ATTENTION_PREFIX } from './syncService';
 
 /** Một mục nhật ký chăm sóc đúng hình dạng `addSyncItem` ghi xuống CSDL. */
 function careRow(txId = 'activity_1') {
@@ -103,6 +104,11 @@ async function pass(): Promise<void> {
 beforeEach(() => {
   jest.useFakeTimers();
   jest.clearAllMocks();
+  // `store.dispatch` THẬT trả lại chính hành động đã phát (và với thunk thì trả
+  // promise của nó). Mock phải giữ tính chất đó, vì `processSyncQueue` nay ĐỌC giá
+  // trị trả về để biết lệnh xoá có bị từ chối không. Trả `undefined` như trước là
+  // dựng một máy chủ giả LỎNG hơn máy thật — chỗ đó thì test nào cũng xanh.
+  mockDispatch.mockImplementation((a: any) => a);
   mockQueueRows = [careRow()];
   mockAddTimelineEvent.mockResolvedValue({ ok: true });
   mockEnsureToken.mockResolvedValue(false);
@@ -194,6 +200,90 @@ describe('các hạng lỗi khác vẫn giữ nguyên hành vi', () => {
     expect(mockEnsureToken).not.toHaveBeenCalled();
   });
 
+  /**
+   * ⛔ Ca này thay cho một ca xanh-mà-sai: bản cũ gọi `pass()` ĐÚNG MỘT LẦN rồi
+   * khẳng định mục còn `pending`. Mệnh đề nó khẳng định ("mất mạng → còn sống")
+   * sai từ vòng thứ 6, và không có gì đỏ lên — vì trần `MAX_RETRY_COUNT` chỉ
+   * chạm tới ở vòng thứ 5. Một ca kiểm chạy thiếu vòng là một ca kiểm nói dối
+   * về đúng cái nó mang tên.
+   *
+   * Số vòng ở đây lấy từ chính hằng số, KHÔNG gõ cứng: đổi trần mà bài kiểm vẫn
+   * chạy đủ vòng thì bài mới còn canh được.
+   */
+  it('mất mạng KÉO DÀI quá trần → VẪN không chết (mất sóng không phải mất dữ liệu)', async () => {
+    mockAddTimelineEvent.mockResolvedValue({
+      ok: false,
+      error: { type: 'network_error', detail: 'TypeError: Network request failed', http_status: 0 },
+    });
+
+    for (let i = 0; i < MAX_RETRY_COUNT + 3; i++) await pass();
+
+    const seen = statusCalls().map(c => c.status);
+    // Đủ vòng thật, không phải một vòng rồi khẳng định bừa.
+    expect(seen.length).toBeGreaterThanOrEqual(MAX_RETRY_COUNT + 3);
+    expect(seen).not.toContain('error');
+    // `'sending'` là nhãn tạm mỗi vòng đặt trước khi gọi mạng; ngoài nó ra chỉ
+    // được phép có `'pending'`.
+    expect(seen.every(s => s === 'pending' || s === 'sending')).toBe(true);
+    expect(lastStatus().status).toBe('pending');
+    // Và mục KHÔNG bị gắn nhãn quá-trần: mất mạng không đếm lượt, nên nó chưa
+    // từng chạm trần dù đã thử tám lần.
+    expect(lastStatus().errorCode ?? '').not.toContain(NEEDS_ATTENTION_PREFIX);
+    // Mất sóng không phải chuyện phiên đăng nhập → đừng bật hộp sinh trắc.
+    expect(mockEnsureToken).not.toHaveBeenCalled();
+    expect(mockShowWarning).not.toHaveBeenCalled();
+  });
+
+  /**
+   * "KHÔNG đếm lượt" phải được đo ở chỗ con số ấy ĐƯỢC DÙNG, không phải ở chỗ nó
+   * được ghi. Ca mất-mạng-kéo-dài phía trên KHÔNG canh được điều này: nhánh
+   * `offline` trả về trước khi chạm trần, nên đổi `count: prev` thành `count:`
+   * trong nhánh đó chẳng làm ca nào đỏ (đã đo bằng đột biến — bộ kiểm còn xanh
+   * 52/52). Chỗ con số rò ra là lượt lỗi hạng KHÁC ngay sau đó.
+   */
+  it('mất mạng rồi máy chủ mới mệt → lượt 503 ĐẦU TIÊN vẫn là lượt đầu, không phải lượt thứ bảy', async () => {
+    mockAddTimelineEvent.mockResolvedValue({
+      ok: false,
+      error: { type: 'network_error', detail: 'Network request failed', http_status: 0 },
+    });
+    for (let i = 0; i < MAX_RETRY_COUNT + 1; i++) await pass();
+
+    // Sóng về, nhưng máy chủ đang mệt.
+    mockAddTimelineEvent.mockResolvedValue({
+      ok: false,
+      error: { type: 'server_error', detail: 'HTTP 503', http_status: 503 },
+    });
+    await pass();
+
+    // Sáu lượt mất sóng KHÔNG được tính vào ngân sách thử của máy chủ. Tính vào
+    // thì mục bị gắn nhãn quá-trần ngay lượt 503 đầu — một lời khai sai về việc
+    // máy chủ đã từ chối bao nhiêu lần.
+    expect(lastStatus().status).toBe('pending');
+    expect(lastStatus().errorCode).toBe('HTTP 503');
+    expect(lastStatus().errorCode).not.toMatch(/^\[cần xem lại\] /);
+  });
+
+  /**
+   * Máy chủ mệt (503) là hạng CÓ đếm lượt. Chạm trần thì mục phải HẠ NHỊP, không
+   * được chết: `'error'` không nằm trong bộ lọc của `processSyncQueue`, nên nhãn
+   * đó là xoá vĩnh viễn. Máy chủ mệt hai phút rưỡi không phải lý do xoá sổ tay
+   * của nông dân.
+   */
+  it('503 kéo dài quá trần → hạ nhịp + gắn nhãn, KHÔNG đánh dấu chết', async () => {
+    mockAddTimelineEvent.mockResolvedValue({
+      ok: false,
+      error: { type: 'server_error', detail: 'HTTP 503', http_status: 503 },
+    });
+
+    for (let i = 0; i < MAX_RETRY_COUNT + 3; i++) await pass();
+
+    const seen = statusCalls().map(c => c.status);
+    expect(seen).not.toContain('error');
+    expect(lastStatus().status).toBe('pending');
+    // Nhãn phải xuất hiện — nếu không thì mục quá hạn trông y hệt mục vừa xếp hàng.
+    expect(lastStatus().errorCode).toMatch(/^\[cần xem lại\] /);
+  });
+
   it('403 "cây chưa đăng ký" → còn sống, và KHÔNG ký lại (ký lại không gỡ được)', async () => {
     mockAddTimelineEvent.mockResolvedValue({
       ok: false,
@@ -203,5 +293,69 @@ describe('các hạng lỗi khác vẫn giữ nguyên hành vi', () => {
 
     expect(lastStatus().status).toBe('pending');
     expect(mockEnsureToken).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * ── Gửi trùng ───────────────────────────────────────────────────────────────
+ * Hai đường dẫn tới hai dòng "phun thuốc" cho MỘT lần phun:
+ *   · vòng quét CỐ Ý nhặt lại mục kẹt `'sending'` từ phiên trước, mà cửa ghi sự
+ *     kiện không có khoá tự nhiên;
+ *   · lệnh xoá mục đã gửi xong chạy mà không ai chờ và không ai soi kết quả.
+ */
+describe('không gửi trùng một sự việc', () => {
+  it('gửi kèm `client_event_id` lấy từ ĐÚNG transaction_id của mục hàng đợi', async () => {
+    mockQueueRows = [careRow('activity_1757000000000_zz9')];
+    await pass();
+
+    const body = mockAddTimelineEvent.mock.calls[0][3];
+    expect(body.client_event_id).toBe('activity_1757000000000_zz9');
+  });
+
+  it('CHỜ lệnh xoá xong rồi mới kết thúc vòng — không để nó bay trong lúc vòng sau chạy', async () => {
+    let release!: () => void;
+    const pendingRemoval = new Promise<any>(resolve => {
+      release = () => resolve({ type: 'sync/removeFromSyncQueue', payload: 'activity_1' });
+    });
+    mockDispatch.mockImplementation((a: any) =>
+      a?.type === 'sync/removeFromSyncQueue' ? pendingRemoval : a);
+
+    let finished = false;
+    const round = syncService.syncOnce().then(() => { finished = true; });
+    // Xả hết microtask đang chờ. Vòng quét chỉ còn kẹt ở đúng một chỗ: lệnh xoá.
+    for (let i = 0; i < 50; i++) await Promise.resolve();
+
+    // Bỏ `await` ở lời gọi xoá thì dòng này đỏ: vòng đã kết thúc trong khi lệnh
+    // ghi xuống CSDL còn đang bay, và vòng kế đọc lại CSDL sẽ thấy mục vẫn còn.
+    expect(finished).toBe(false);
+
+    release();
+    await round;
+    expect(finished).toBe(true);
+  });
+
+  it('xếp mục mới → nạp lại hàng đợi bằng THUNK, không phát một chuỗi trần', async () => {
+    // Chuỗi trần `'sync/loadSyncQueue'` không khớp `addCase` nào (xem
+    // `syncSlice.test.ts`): nó đi qua store và không làm gì. Ghim ở đây vì đây mới
+    // là nơi phát nó.
+    await syncService.addSyncItem('activity', { activity: { type: 'watering', farmId: 'farm-1' } });
+
+    const types = mockDispatch.mock.calls.map(c => c[0]?.type);
+    expect(types).toContain('sync/loadSyncQueue/THUNK');
+    expect(types).not.toContain('sync/loadSyncQueue');
+  });
+
+  it('lệnh xoá bị TỪ CHỐI → kêu lên; `createAsyncThunk` không ném nên không soi là nuốt trọn', async () => {
+    const spy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    mockDispatch.mockImplementation((a: any) =>
+      a?.type === 'sync/removeFromSyncQueue'
+        ? { type: 'sync/removeFromSyncQueue/rejected', error: { message: 'database is locked' } }
+        : a);
+
+    await pass();
+
+    const said = spy.mock.calls.map(c => String(c[0])).join('\n');
+    expect(said).toMatch(/xoá activity_1 khỏi hàng đợi THẤT BẠI/);
+    spy.mockRestore();
   });
 });

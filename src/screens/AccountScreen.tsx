@@ -51,6 +51,7 @@ import { appVersionBase, commitShort } from '../services/fieldReportHead';
 import { fmtLamp, fmtCarp, fmtLampWhole, lampWholeToOildrop } from '../utils/token';
 import { getVaultStatus, WAKEME_CLAIM_READY } from '../services/wakemeService';
 import type { VaultStatusResponse } from '../services/phoenixKey-api';
+import { vaultRowText, vaultStateFromError, type VaultRowState } from './wakemeVaultRow';
 import taad from '../sdk/taadEnclave';
 import { getStoredMasterKek } from '../services/masterKekStore';
 import { ownerPublicKey } from '../sdk/phoenixKey';
@@ -540,7 +541,7 @@ const AccountScreen = () => {
     // được ngay, số trong vault thì chưa.
     const [lampOpen, setLampOpen] = useState(false);
     const [vault, setVault] = useState<VaultStatusResponse | null>(null);
-    const [vaultState, setVaultState] = useState<'idle' | 'loading' | 'ok' | 'closed'>('idle');
+    const [vaultState, setVaultState] = useState<VaultRowState>('idle');
 
     // Chỉ hỏi máy chủ khi người dùng MỞ popup — không nạp trước ở màn Tài khoản.
     // Cửa `/wakeme/vault/{did}` hiện ném 501 vô điều kiện trên preprod
@@ -552,7 +553,10 @@ const AccountScreen = () => {
         setVaultState('loading');
         getVaultStatus(did)
             .then((v) => { setVault(v); setVaultState('ok'); })
-            .catch(() => { setVault(null); setVaultState('closed'); });
+            // Lượt hỏi trượt KHÔNG phải bằng chứng người này không có két — xem
+            // `wakemeVaultRow.ts`. Hôm nay cửa ném 501 cho tất cả mọi người, nên
+            // nhánh này là nhánh duy nhất chạy thật.
+            .catch((e) => { setVault(null); setVaultState(vaultStateFromError(e)); });
     }, [did, vaultState]);
 
     // KHÔNG in 0 khi chưa biết. "0 LAMP" và "chưa hỏi được máy chủ" là hai việc
@@ -876,11 +880,11 @@ const AccountScreen = () => {
                                         <View style={{ flex: 1 }}>
                                             <Text style={styles.lampRowName}>Wakeme</Text>
                                             <Text style={styles.lampRowSub}>
-                                                {vaultState === 'loading' ? 'Đang hỏi máy chủ…' : 'Chưa nhận'}
+                                                {vaultRowText(vaultState).sub}
                                             </Text>
                                         </View>
                                         <Text style={styles.lampRowVal}>
-                                            {vaultState === 'loading' ? '…' : '—'}
+                                            {vaultRowText(vaultState).value}
                                         </Text>
                                     </View>
                                 ) : (<>

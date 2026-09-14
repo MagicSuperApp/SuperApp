@@ -173,10 +173,14 @@ export const ERRORS: PhraseMap = {
     zh: '本机的密钥已被吊销，很可能是此前在别处恢复过身份。重新安装应用无法找回。请打开“恢复身份”页面：如果钱包仍在本机，只需用户名即可，不需要 24 个助记词。',
     ja: 'この端末の鍵は失効しています。以前に別の場所で本人情報を復元したためと思われます。アプリを入れ直しても戻りません。「本人情報の復元」画面を開いてください。ウォレットがこの端末に残っていれば、ユーザー名だけで足り、24単語は不要です。',
   },
-  'Máy này đã có khoá của một danh tính đã tạo trước đó — có thể do một ứng dụng khác trên cùng điện thoại này. Một danh tính dùng chung cho mọi ứng dụng, nên chỉ cần nhập đúng tên đăng nhập đó là vào được ngay. Không nhớ tên thì mở màn Khôi phục danh tính.': {
-    en: 'This device already holds the key of an identity created earlier — possibly by another app on this same phone. One identity works across all the apps, so entering that username is enough to get in. If you do not remember it, open the Restore identity screen.',
-    zh: '本机已持有先前创建的某个身份的密钥 — 可能是同一部手机上的另一个应用创建的。一个身份可用于所有应用，因此只要输入该用户名即可进入。若记不清用户名，请打开“恢复身份”页面。',
-    ja: 'この端末には、以前作成された本人情報の鍵がすでにあります — 同じ端末の別のアプリで作成された可能性があります。本人情報は一つですべてのアプリに使えるので、そのユーザー名を入力すれば入れます。思い出せない場合は「本人情報の復元」画面を開いてください。',
+  // ⛔ Câu cũ ở đây hứa "một danh tính dùng chung cho mọi ứng dụng" và mời người dùng
+  // gõ tên đăng nhập của app kia. Kho khoá tách theo mã gói (không `.entitlements`,
+  // không `keychain-access-groups`, không `sharedUserId`) nên lời mời đó dẫn vào một
+  // đường chết — lý do đo được ghi ở `phoenixKeyAuthService.ts` ▸ `can_ten_dang_nhap`.
+  'Máy này đã có khoá của một danh tính do CHÍNH ứng dụng này tạo ở lần cài trước — gỡ ứng dụng không xoá khoá đó đi. Hãy mở màn Khôi phục danh tính: máy sẽ tự hỏi máy chủ xem khoá này thuộc tài khoản nào, không cần bạn nhớ gì. Ứng dụng khác trên cùng điện thoại giữ khoá ở kho riêng, nên tên đăng nhập bên đó không mở được máy này.': {
+    en: 'This device already holds the key of an identity created by THIS app on an earlier install — uninstalling does not erase that key. Open the Restore identity screen: the app will ask the server which account this key belongs to, with nothing for you to remember. Another app on the same phone keeps its keys in a separate store, so its username will not open this one.',
+    zh: '本机已持有本应用在上一次安装时创建的某个身份的密钥 —— 卸载应用并不会删除该密钥。请打开“恢复身份”页面：应用会向服务器查询这个密钥属于哪个账户，你无需记住任何内容。同一部手机上的其他应用把密钥存在各自独立的位置，因此那边的用户名打不开这一个。',
+    ja: 'この端末には、前回のインストール時に「このアプリ」が作成した本人情報の鍵が残っています — アプリを削除しても鍵は消えません。「本人情報の復元」画面を開いてください。この鍵がどのアカウントのものかはアプリがサーバーに問い合わせるので、覚えておくものはありません。同じ端末の別のアプリは鍵を別の保管場所に持つため、そちらのユーザー名ではこのアプリを開けません。',
   },
   'Máy này đã có danh tính của bạn, nhưng bước xác thực để mở lại chưa xong. Bấm lại và làm hết CẢ HAI lần hỏi vân tay hoặc khuôn mặt — lần thứ hai có tên "Khôi phục danh tính".': {
     en: 'This device already holds your identity, but the check needed to reopen it did not finish. Tap again and complete BOTH fingerprint or face prompts — the second one is titled “Restore identity”.',

@@ -125,11 +125,10 @@ export const SCREENS: PhraseMap = {
   'Đang xử lý giao dịch blockchain...': { en: 'Processing the blockchain transaction...', zh: '正在处理区块链交易...', ja: 'ブロックチェーンの取引を処理中...' },
   'Bạn sẽ nhận được': { en: 'You will receive', zh: '你将收到', ja: '受け取れるもの' },
   'Kích hoạt thành công!': { en: 'Activated successfully!', zh: '激活成功！', ja: '有効化が完了しました！' },
-  'LAMP sẽ tự động sinh MAGIC mỗi 5 ngày theo tỷ lệ giao thức': {
-    en: 'LAMP automatically generates MAGIC every 5 days at the protocol rate',
-    zh: 'LAMP 会按协议比例每 5 天自动产出 MAGIC',
-    ja: 'LAMP はプロトコルの比率にしたがって 5 日ごとに自動で MAGIC を生み出します',
-  },
+  // 'LAMP sẽ tự động sinh MAGIC mỗi 5 ngày theo tỷ lệ giao thức' đã gỡ 15/09/2026.
+  // Hai lý do, mỗi lý do tự nó đã đủ: không có mã sinh MAGIC ở đâu trong `src/` hay
+  // `rust/`, và mục từ này không có một nơi dùng nào trong `src/` — nó là chữ đã
+  // chết, chỉ còn chờ ai đó dán lại vào một màn hình.
   'Quét mã QR': { en: 'Scan QR code', zh: '扫描二维码', ja: 'QR コードを読み取る' },
   'Bỏ qua': { en: 'Skip', zh: '跳过', ja: 'スキップ' },
   'Đang chờ xác nhận từ người hỗ trợ...': { en: 'Waiting for the helper to confirm...', zh: '等待协助人员确认...', ja: 'サポート担当者の確認を待っています...' },

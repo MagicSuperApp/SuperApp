@@ -22,7 +22,14 @@ export const ACCOUNT: PhraseMap = {
 
   // ── Thẻ token ──────────────────────────────────────────────────────────────
   'Tín dụng sử dụng dịch vụ': { en: 'Service usage credit', zh: '服务使用额度', ja: 'サービス利用クレジット' },
-  'Sinh MAGIC mỗi 5 ngày': { en: 'Generates MAGIC every 5 days', zh: '每 5 天产出 MAGIC', ja: '5 日ごとに MAGIC を生成' },
+  // 'Sinh MAGIC mỗi 5 ngày' đã gỡ 15/09/2026 — không có mã sinh MAGIC ở bất cứ
+  // đâu trong `src/` hay `rust/`, nên đó là một lời hứa với người dùng mà sản phẩm
+  // không giữ được. Xem chú thích tại chỗ dùng ở `screens/AccountScreen.tsx`.
+  'Token nền, tổng cung cố định': {
+    en: 'Base token, fixed supply',
+    zh: '基础代币，总量固定',
+    ja: '基盤トークン・総供給量は固定',
+  },
   'Token hệ sinh thái': { en: 'Ecosystem token', zh: '生态代币', ja: 'エコシステムトークン' },
   'TÀI SẢN KHÁC': { en: 'OTHER ASSETS', zh: '其他资产', ja: 'その他の資産' },
   'Tài sản khác': { en: 'Other assets', zh: '其他资产', ja: 'その他の資産' },

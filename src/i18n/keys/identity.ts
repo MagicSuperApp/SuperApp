@@ -110,11 +110,15 @@ export const IDENTITY_STRINGS = {
   // Đường "app cũ ký phê duyệt" NAY ĐÃ CÓ (`DevicePairScreen` + `authorizeDeviceKey`).
   // Câu cũ ở đây nói nó "chưa làm xong"; giữ lại là để một lời khai đã chết đứng
   // giữa hai lối rẽ và đẩy người dùng sang lối đắt hơn.
+  // ⛔ 2026-09-14: lối ghép máy nay đứng TRƯỚC thẻ này, nên "dòng ngay bên dưới" đã
+  // thành một con trỏ trỏ sai chỗ. Con trỏ theo VỊ TRÍ là thứ chết im lặng mỗi lần
+  // ai đó xếp lại thẻ — nên câu mới gọi thẻ kia bằng TÊN của nó, không bằng chỗ nó
+  // đứng. Xem khối `CHOICES` ở `IdentityEntryChoiceScreen.tsx` để biết vì sao đổi.
   'identity.gate.otherApp.temporary': {
-    vi: 'Dòng này vẫn dẫn tới màn 24 từ. Nếu app kia trên máy này còn đang đăng nhập, dòng ngay bên dưới nhẹ hơn: nhờ nó duyệt, không cần 24 từ.',
-    en: 'This one still leads to the 24-word screen. If the other app on this phone is still signed in, the line just below is lighter: let it approve this app, no 24 words needed.',
-    zh: '这一条仍会进入 24 助记词页面。如果本机上的另一个应用仍在登录状态，下面那一条更轻松：让它来批准，无需 24 个助记词。',
-    ja: 'この選択は今も 24 語の画面に進みます。同じ端末の別アプリがまだサインイン中なら、すぐ下の行のほうが軽く済みます。承認してもらえば 24 語は不要です。',
+    vi: 'Dòng này vẫn dẫn tới màn 24 từ. Nếu app kia trên máy này còn mở được, hãy dùng dòng “Nhờ app đang đăng nhập duyệt cho máy này” — nhẹ hơn, và không app nào bị thoát ra.',
+    en: 'This one still leads to the 24-word screen. If the other app on this phone can still be opened, use the line “Ask the app that is already signed in to approve this one” instead — lighter, and neither app gets signed out.',
+    zh: '这一条仍会进入 24 助记词页面。如果本机上的另一个应用还打得开，请改用“让已登录的应用来批准这一台”那一条 —— 更轻松，而且两个应用都不会被登出。',
+    ja: 'この選択は今も 24 語の画面に進みます。同じ端末の別アプリがまだ開けるなら、「すでにサインイン済みのアプリに承認してもらう」の行をお使いください。そのほうが軽く、どちらのアプリもサインアウトされません。',
   },
 
   // ── Lối D — nhờ máy/app đang đăng nhập duyệt khoá của máy này (issue #233) ──

@@ -128,7 +128,7 @@ for M in api.orilife.io api.aladin.work api.proofchat.me api.phoenixkey.me; do
   fi
 done
 echo
-for B in staging-api.orilife.io localhost:8001 localhost:3000 ngrok-free.dev ngrok.io mock-local-api-key; do
+for B in staging-api.orilife.io localhost:8001 localhost:3000 ngrok-free.dev ngrok.io; do
   if grep -qF "$B" "$W/s.txt"; then
     echo "  ✗ CÓ $B — bản này dựng từ tệp .env sai (máy cá nhân?), không phải từ đường dựng của kho"
     FAIL=1
@@ -136,6 +136,26 @@ for B in staging-api.orilife.io localhost:8001 localhost:3000 ngrok-free.dev ngr
     echo "  OK  không có $B"
   fi
 done
+
+# `mock-local-api-key` — CHỈ BÁO, KHÔNG chặn. Nó từng đứng trong danh sách trên,
+# và đó là một cổng chặn dựa vào một tiền đề đã chết:
+#   · kho KHÔNG có secret `ALADIN_API_KEY` (chỉ có tám biến `*_UPLOAD_*`), nên
+#     `.github/actions/rn-env` sinh `ALADIN_API_KEY=${API_KEY:-mock-local-api-key}`
+#     rơi về chuỗi đệm ở MỌI lượt dựng — kể cả lượt dựng của kho;
+#   · máy chủ `api.orilife.io` không có chỗ nào đọc header `X-API-Key`.
+# Hệ quả đo được: giữ nó trong danh sách chặn thì cổng này phán "ĐỪNG NỘP PLAY"
+# cho một gói hợp lệ. `.github/workflows/android-aab.yml` đã hạ nó xuống mức ghi
+# nhận ngày 01/09 kèm số đo; dòng này là chỗ duy nhất còn sót lại, nên hai cổng
+# cho cùng một khái niệm nói ngược nhau và cái NGHIÊM hơn là cái đã cũ.
+#
+# Vẫn in ra, vì nó là phép đo rẻ và thật: nó nói giá trị nào đã đi tới bundle.
+# Ngày nào máy chủ thật sự đọc `X-API-Key` thì đây là nơi dựng lại cổng — nhưng
+# dựng lại phải kèm phép đo mới, đừng dựng lại vì đọc thấy dòng chữ này.
+if grep -qF 'mock-local-api-key' "$W/s.txt"; then
+  echo "  ghi nhận  gói mang 'mock-local-api-key' (kho không có secret ALADIN_API_KEY) — không chặn"
+else
+  echo "  ghi nhận  gói mang khoá API thật"
+fi
 
 echo
 echo "────────────────────────────────────────────────────────────────────"

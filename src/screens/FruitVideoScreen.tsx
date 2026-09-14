@@ -30,6 +30,7 @@ import Geolocation from 'react-native-geolocation-service';
 
 import Icon from '../components/Icon';
 import { useTk } from '../i18n/keys';
+import { cameraErrorBody } from '../utils/cameraError';
 import { useAppSelector } from '../store/hooks';
 import type { RootState } from '../store';
 import { ORILIFE_BASE } from '../services/orilifeBase';
@@ -290,7 +291,7 @@ const FruitVideoScreen: React.FC = () => {
     imagePicker.launchCamera(await withPhotoSave(PHOTO_OPTIONS), async (response: any) => {
       if (response.didCancel) return;
       if (response.errorCode) {
-        showWarning(tk('trace.activity.cameraErr'), response.errorMessage ?? tk('trace.activity.cameraErrBody'));
+        showWarning(tk('trace.activity.cameraErr'), cameraErrorBody(response));
         return;
       }
       const a = response.assets?.[0];

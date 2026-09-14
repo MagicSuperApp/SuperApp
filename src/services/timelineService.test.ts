@@ -7,7 +7,7 @@ jest.mock('./orilifeDidAuth', () => ({
 import {
   addTimelineEvent,
   anchorEvent, anchorState, fetchEventProof, fetchTimeline, safeExplorerUrl, sortNewestFirst,
-  KIND_VI, KIND_ICON, KIND_FALLBACK_ICON, type TimelineEvent,
+  kindLabel, ENTITY_NOUN_VI, KIND_ICON, KIND_FALLBACK_ICON, type TimelineEvent,
 } from './timelineService';
 
 const BASE = 'https://api.orilife.io';
@@ -154,10 +154,49 @@ describe('sortNewestFirst', () => {
   });
 });
 
-describe('KIND_VI', () => {
-  it('phủ đủ 9 loại mà máy chủ khai (timeline_store.py:55-58)', () => {
-    for (const k of ['enroll', 'care', 'flowering', 'fruiting', 'harvest', 'observe', 'note', 'media', 'transfer']) {
-      expect(KIND_VI[k]).toBeTruthy();
+// 9 loại máy chủ khai (timeline_store.py:55-58). Giữ ở một chỗ vì hai khối dưới
+// cùng đo theo nó.
+const CHIN_LOAI = ['enroll', 'care', 'flowering', 'fruiting', 'harvest', 'observe', 'note', 'media', 'transfer'];
+
+describe('nhãn hiển thị', () => {
+  // `enroll` RỜI khỏi `KIND_VI` ngày 14/09/2026: nó là loại duy nhất có nhãn phụ
+  // thuộc loại thực thể, nên để nó trong bảng phẳng là chỗ sinh ra lỗi "vườn mới
+  // lập mà dòng thời gian ghi Đăng ký cây". Phép phủ vì thế hỏi `kindLabel`, không
+  // hỏi bảng — bảng chỉ là một nửa lối ra.
+  it('mọi loại máy chủ khai đều có nhãn, ở CẢ ba loại thực thể có màn', () => {
+    for (const k of CHIN_LOAI) {
+      for (const e of ['farm', 'tree', 'fruit'] as const) {
+        expect(kindLabel(k, e)).toBeTruthy();
+      }
+    }
+  });
+
+  it('`enroll` nói đúng thứ vừa được lập — ba thực thể ra ba nhãn KHÁC nhau', () => {
+    // Vế bắt lỗi: bản trước trả 'Đăng ký cây' cho cả ba.
+    expect(kindLabel('enroll', 'farm')).toBe('Lập vườn');
+    expect(kindLabel('enroll', 'tree')).toBe('Đăng ký cây');
+    expect(kindLabel('enroll', 'fruit')).toBe('Đăng ký quả');
+    const ba = (['farm', 'tree', 'fruit'] as const).map(e => kindLabel('enroll', e));
+    expect(new Set(ba).size).toBe(3);
+  });
+
+  it('loại KHÔNG phụ thuộc thực thể thì ba thực thể ra CÙNG một nhãn', () => {
+    // Không có vế này thì bài trên đi quá tay cũng xanh.
+    for (const k of ['care', 'harvest', 'note']) {
+      const ba = (['farm', 'tree', 'fruit'] as const).map(e => kindLabel(k, e));
+      expect(new Set(ba).size).toBe(1);
+    }
+  });
+
+  it('loại LẠ trả lại nguyên chuỗi máy chủ gửi, không nuốt thành nhãn chung', () => {
+    expect(kindLabel('pruning_v2', 'tree')).toBe('pruning_v2');
+  });
+
+  it('mọi loại thực thể máy chủ cho phép đều có danh từ tiếng Việt', () => {
+    // `Record` đầy đủ đã ép ở tầng kiểu; bài này ghim thêm phần GIÁ TRỊ không rỗng,
+    // vì `Record` không chặn được chuỗi rỗng.
+    for (const e of ['tree', 'fruit', 'farm', 'animal', 'plot'] as const) {
+      expect(ENTITY_NOUN_VI[e]).toBeTruthy();
     }
   });
 });
@@ -174,7 +213,10 @@ describe('KIND_ICON', () => {
   });
 
   it('phủ đúng 9 loại máy chủ khai', () => {
-    expect(Object.keys(KIND_ICON).sort()).toEqual(Object.keys(KIND_VI).sort());
+    // Mốc so là DANH SÁCH của máy chủ, không phải `KIND_VI` — từ 14/09/2026 bảng đó
+    // cố ý thiếu `enroll` (nhãn của nó nằm ở `KIND_VI_ENROLL`), nên so hai bảng với
+    // nhau sẽ xanh ngay cả khi cả hai cùng sót một loại.
+    expect(Object.keys(KIND_ICON).sort()).toEqual([...CHIN_LOAI].sort());
   });
 });
 

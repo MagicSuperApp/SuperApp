@@ -31,6 +31,7 @@ import {
 } from '../theme/depth';
 import { GroundBackdrop } from '../components/layered/Organic';
 import { useTk } from '../../../i18n/keys';
+import { cameraErrorBody } from '../../../utils/cameraError';
 import { RootState } from '../../../store';
 import { useAppDispatch } from '../../../store/hooks';
 import { showError, showSuccess } from '../../../utils/alert';
@@ -301,12 +302,23 @@ const ActivityScreen = () => {
   const route = useRoute();
   const { farm: farmParam, tree } = (route.params ?? {}) as RouteParams;
   const farms = useSelector((state: RootState) => state.farm.farms);
-  // farm hiệu dụng: ưu tiên param farm; nếu chỉ có tree thì tra vườn theo tree.farmId
-  // (fallback object tối thiểu để vẫn ghi được farmId khi vườn chưa nạp vào store).
+  // farm hiệu dụng: ưu tiên param farm; nếu chỉ có tree thì tra vườn theo tree.farmId.
+  //
+  // ── KHÔNG dựng VƯỜN GIẢ từ tên CÂY ──────────────────────────────────────────
+  // Bản trước có thêm `?? { id: tree.farmId, name: tree.name ?? '—' }`. Object đó
+  // LUÔN truthy, nên nó vô hiệu hoá đúng cái cổng `contextReady` dựng ra để chặn ca
+  // thiếu `farm` (xem khối chú thích ở `contextReady` bên dưới) — cổng nhả 100%.
+  // Hai chỗ hỏng theo, cả hai im lặng:
+  //   · `name` lấy từ `tree.name` ⟹ tiêu đề màn và `farmName` gửi vào `addSyncItem`
+  //     mang TÊN CÂY chứ không phải tên vườn;
+  //   · `tree.farmId` có thể `undefined` (`RouteParams` khai cả hai là `any`, nên
+  //     `tsc` không đỏ) ⟹ nhật ký ghi dưới một mã vườn rỗng, không màn nào đọc lại.
+  // Ca vào: khởi động lạnh, mở cây bằng QR/deep-link trước khi danh sách vườn đồng bộ.
+  // Vườn chưa nạp là trạng thái của APP, và `contextReady` đã có câu nói đúng thế.
+  // Đối chứng cùng kho: `CareScanScreen.tsx:186` chặn tường minh `targetId === 'default'`
+  // với đúng lý lẽ này — ghi dưới mã không thuộc về ai thì ghi xong biến mất.
   const farm = farmParam
-    ?? (tree
-      ? farms.find((f: any) => f.id === tree.farmId) ?? { id: tree.farmId, name: tree.name ?? '—' }
-      : undefined);
+    ?? (tree ? farms.find((f: any) => f.id === tree.farmId) : undefined);
   const dispatch = useAppDispatch();
   const user = useSelector((state: RootState) => state.user.currentUser);
   // Chỉ tin số dư đến TỪ CHAIN (selector chung). null = chưa biết số dư thật → không chặn nhầm.
@@ -357,7 +369,7 @@ const ActivityScreen = () => {
     imagePicker.launchCamera(await withPhotoSave(VIDEO_OPTIONS), (response: any) => {
       if (response.didCancel) return;
       if (response.errorCode) {
-        showError(tk('trace.activity.cameraErr'), response.errorMessage ?? tk('trace.activity.cameraErrBody'));
+        showError(tk('trace.activity.cameraErr'), cameraErrorBody(response));
         return;
       }
       const asset = response.assets?.[0];
@@ -398,7 +410,21 @@ const ActivityScreen = () => {
       // activityData is the persistence/sync shape (string timestamp, materials,
       // thumbnailPath) which intentionally diverges from the in-memory Activity type.
       setSyncStep(0);
-      await dispatch(saveActivity(activityData as unknown as Activity));
+      // `.unwrap()` KHÔNG phải trang trí — thiếu nó thì `catch` dưới đây CHẾT.
+      //
+      // `saveActivity` là `createAsyncThunk`, và một thunk như thế KHÔNG BAO GIỜ ném:
+      // payload creator ném thì RTK bắt lấy, đổi thành action `…/rejected`, rồi cho
+      // promise **resolve**. Nên `await dispatch(...)` trần đi tiếp bình thường sau
+      // một lượt ghi đã hỏng: `addSyncItem` chạy, `showSuccess('Đã lưu')` hiện,
+      // `goBack()` đóng màn — không một bản ghi nào trên máy. Người ghi việc ngoài
+      // vườn đọc "đã lưu" rồi đi sang cây kế tiếp, và không có gì kêu lên.
+      //
+      // `farmSlice` cũng KHÔNG có `saveActivity.rejected`, nên kho cũng không giữ
+      // dấu vết. Thêm `catch` ở đây không sửa được gì — cái hụt là promise không
+      // bao giờ bị từ chối. `.unwrap()` là thứ ném lại lỗi gốc để `catch` chạm tới.
+      //
+      // Áp cho cả ba việc: tưới nước · bón phân · xịt thuốc.
+      await dispatch(saveActivity(activityData as unknown as Activity)).unwrap();
 
       // KHÔNG trừ MAGIC tại máy. Bản trước gọi
       //   dispatch(updateCredits({ magic: -selectedActivity.credits, ... }))
@@ -415,8 +441,18 @@ const ActivityScreen = () => {
 
       showSuccess(tk('trace.activity.savedTitle'), tk('trace.activity.savedBody'));
       navigation.goBack();
-    } catch (_) {
-      showError(tk('trace.activity.saveFail'), tk('trace.activity.saveFailBody'));
+    } catch (err: unknown) {
+      // Lỗi ở đây là lỗi HỆ THỐNG thô (SQLite đầy đĩa, kho chưa mở, đẩy tệp hỏng) —
+      // không phải câu dành cho người dùng, nên KHÔNG dán nguyên văn ra màn. Nhưng
+      // cũng không được bỏ trắng: bản trước `catch (_)` ném luôn nguyên nhân đi, và
+      // một ảnh chụp màn hình từ vườn không nói được gì để mà lần lại.
+      // Giữ tên lớp lỗi làm MÃ THAM CHIẾU (`SQLITE_FULL`, `TypeError`…) — tra ngược
+      // được trong nhật ký, và ngắn đủ để người ghi đọc lại qua điện thoại.
+      const ref = err instanceof Error ? (err.name || 'Error') : typeof err;
+      showError(
+        tk('trace.activity.saveFail'),
+        `${tk('trace.activity.saveFailBody')} (mã: ${ref})`,
+      );
     } finally {
       setSaving(false);
       setSyncStep(-1);

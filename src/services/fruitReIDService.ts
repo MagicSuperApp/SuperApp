@@ -36,7 +36,12 @@ export const RESENDABLE_POST = [
 // ---------------------------------------------------------------------------
 
 export interface APIError {
-  type: 'auth_error' | 'rate_limited' | 'duplicate' | 'validation_error' | 'server_error' | 'network_error';
+  /**
+   * `not_found` tách khỏi `server_error`: máy chủ trả lời dứt khoát là không có thứ
+   * đang hỏi ⟹ thử lại vô ích, trong khi `server_error` thì thử lại có ích. Gộp hai
+   * cái là mời người dùng thử lại mãi cho một ca không bao giờ đổi.
+   */
+  type: 'auth_error' | 'rate_limited' | 'duplicate' | 'validation_error' | 'server_error' | 'network_error' | 'not_found';
   detail: string;
   http_status: number;
   retry_after_seconds?: number;
@@ -308,11 +313,34 @@ async function _apiCall<T>(
     }
     if (resp.status === 422) {
       let detail = 'Dữ liệu không hợp lệ';
-      try { detail = (await resp.json()).detail ?? detail; } catch { /* ignore */ }
+      // Đọc CẢ `error`: máy chủ field-reid đặt câu cho người dùng ở trường đó (nhánh
+      // 409 của `treeReIDService` ghi rõ điều này). Chỉ đọc `detail` thì câu
+      // "Ảnh quá mờ — chụp lại khi đủ sáng" bị thay bằng "Dữ liệu không hợp lệ".
+      try { const b = await resp.json(); detail = b.detail ?? b.error ?? detail; } catch { /* ignore */ }
       return { ok: false, error: { type: 'validation_error', detail, http_status: 422 } };
     }
     if (resp.status >= 500) return { ok: false, error: { type: 'server_error', detail: `Lỗi máy chủ HTTP ${resp.status}`, http_status: resp.status } };
-    if (!resp.ok) return { ok: false, error: { type: 'server_error', detail: `HTTP ${resp.status}`, http_status: resp.status } };
+    if (!resp.ok) {
+      // Thân mang câu thật của máy chủ (403 "Quả này không thuộc bạn", 404 "Không có
+      // quả đó") — đọc trước khi bỏ. Và đừng gán `server_error` cho cả hai: nhãn đó
+      // dịch ra "máy chủ đang bận, thử lại sau", một nguyên nhân TẠM THỜI mà hai ca
+      // này không có.
+      let detail = '';
+      try { const b = await resp.json(); detail = b.detail ?? b.error ?? ''; } catch { /* ignore */ }
+      const type: APIError['type'] = resp.status === 401 || resp.status === 403
+        ? 'auth_error'
+        : resp.status === 404 ? 'not_found' : 'server_error';
+      return {
+        ok: false,
+        error: {
+          type,
+          detail: detail || (resp.status === 403 ? 'Tài khoản này không có quyền với quả đó.'
+            : resp.status === 404 ? 'Không tìm thấy quả đó trên máy chủ.'
+              : `HTTP ${resp.status}`),
+          http_status: resp.status,
+        },
+      };
+    }
 
     return { ok: true, data: (await resp.json()) as T };
   } catch (err: unknown) {

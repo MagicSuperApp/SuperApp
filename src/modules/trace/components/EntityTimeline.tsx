@@ -30,7 +30,7 @@ import {
   inheritedFrom, mediaOverflow, mediaUrls, showsChainChip, summarise,
 } from '../utils/timelineView';
 import {
-  fetchTimeline, sortNewestFirst, KIND_VI, KIND_ICON, KIND_FALLBACK_ICON,
+  fetchTimeline, sortNewestFirst, kindLabel, ENTITY_NOUN_VI, KIND_ICON, KIND_FALLBACK_ICON,
   type TimelineEntityType, type TimelineResult,
 } from '../../../services/timelineService';
 
@@ -208,13 +208,17 @@ const EntityTimeline: React.FC<Props> = ({ entityType, entityId, limit = 0, auth
 
       {all.length === 0 && (
         <Text style={styles.dim}>
-          Chưa có sự kiện nào được ghi cho {entityType === 'fruit' ? 'quả' : 'cây'} này.
+          {/* Ba loại thực thể, ba danh từ. Bản trước chỉ tách `fruit`, nên MỌI dòng
+              thời gian của VƯỜN nói "cho cây này" — cùng một gốc với nhãn `enroll`
+              gắn cứng "Đăng ký cây": chỗ gọi biết `entityType`, chỗ sinh chữ thì
+              không được truyền. */}
+          Chưa có sự kiện nào được ghi cho {ENTITY_NOUN_VI[entityType] ?? 'mục'} này.
         </Text>
       )}
 
       {shown.map((ev, i) => {
         const isLast = i === shown.length - 1 && hidden === 0;
-        const label = KIND_VI[ev.kind] ?? String(ev.kind);
+        const label = kindLabel(ev.kind, entityType);
         const note = summarise(ev);
         const fromFarm = inheritedFrom(ev) !== null;
         const photos = mediaUrls(ev.media, ORILIFE_BASE, viewBase);

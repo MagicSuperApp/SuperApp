@@ -1493,6 +1493,23 @@ const TreeIdentityScreen: React.FC = () => {
             </>
           )}
         </TouchableOpacity>
+
+        {/* Nút mờ phải NÓI VÌ SAO nó mờ.
+            Đo trên máy ảo iPhone 17 ngày 14/09/2026: bấm `Nhận diện (0 góc)` khi chưa
+            có góc nào — không có gì xảy ra, không một chữ nào. Người dùng không phân
+            biệt được "nút hỏng" với "mình chưa làm đủ", và cách duy nhất để biết là
+            đoán ra nghĩa của con số trong ngoặc.
+            Màn `ActivityScreen` ở cùng kho đã làm đúng: nút `Lưu vào sổ` mờ thì bên
+            cạnh có chữ "Cần quay trước đã". Dòng dưới đây mang cùng vai, và nói thêm
+            phần `ActivityScreen` không cần nói: CÒN THIẾU BAO NHIÊU. */}
+        {!isLoading && !isIdentifyingLocal && totalCaptures < MIN_ROUND1 && (
+          <Text style={styles.ctrlHintText}>
+            {tk('trace.identify.needMoreAngles', {
+              n: MIN_ROUND1 - totalCaptures,
+              min: MIN_ROUND1,
+            })}
+          </Text>
+        )}
       </View>
     );
   };
@@ -2475,6 +2492,15 @@ const styles = StyleSheet.create({
     borderColor: CAM,
   },
   ctrlBtnDisabled: { opacity: 0.4 },
+  // Cố ý KHÔNG mờ như chính cái nút: dòng này là thứ giải thích nút mờ, nên nó phải
+  // đọc được rõ hơn nút. Mờ cả hai thì lời giải thích biến mất cùng thứ nó giải thích.
+  ctrlHintText: {
+    color: NEUTRAL.white,
+    fontSize: 13,
+    textAlign: 'center',
+    marginTop: 8,
+    opacity: 0.9,
+  },
   ctrlBtnText: { color: '#000000', fontSize: 15, fontWeight: '700' },
   ctrlBtnSecText: { color: CAM, fontSize: 15, fontWeight: '700' },
 

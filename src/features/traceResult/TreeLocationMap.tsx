@@ -19,7 +19,9 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { STREET_TILES } from '../space3d/mapTiles';
+import {
+  EMPTY_BASE_STYLE, ESRI_SATELLITE_TILES, STREET_TILES,
+} from '../space3d/mapTiles';
 import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import Icon from '../../components/Icon';
@@ -27,12 +29,12 @@ import { NATURE, RADIUS, SPACE, TONE, TYPE } from '../../modules/trace/theme/dep
 import { circleShape, zoomForRadius } from './circleGeo';
 import { googleDirectionsUrl } from './reverseGeocode';
 
-// Lấy từ nguồn chung — xem `STREET_TILES` trong `space3d/mapTiles`. Chép tay URL
-// ở đây là dựng lại đúng chỗ đã làm bản vá máy chủ ô chỉ tới được một trong
-// năm nơi.
+// Lấy từ nguồn chung — xem `STREET_TILES` và `ESRI_SATELLITE_TILES` trong
+// `space3d/mapTiles`. Chép tay URL ở đây là dựng lại đúng chỗ đã làm bản vá máy
+// chủ ô chỉ tới được một trong năm nơi. Cả HAI lớp đều lấy từ hằng chung: lớp
+// vệ tinh cũng là một bản chép tay cho tới lượt này, và nó im lặng đúng kiểu ấy.
 const OSM_TILES = STREET_TILES;
-const SAT_TILES =
-  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+const SAT_TILES = ESRI_SATELLITE_TILES;
 
 /** Cả hai nguồn chỉ có ảnh tới z19 — khai thiếu thì z20 ra ô trắng. */
 const TILE_MAX_ZOOM = 19;
@@ -121,6 +123,8 @@ const TreeLocationMap: React.FC<TreeLocationMapProps> = ({
     <View>
       <View style={styles.box}>
         <MapLib.MapView
+          // BẮT BUỘC — xem `space3d/mapTiles.ts` khối `EMPTY_BASE_STYLE`.
+          mapStyle={EMPTY_BASE_STYLE}
           style={StyleSheet.absoluteFillObject}
           logoEnabled={false}
           attributionEnabled={false}

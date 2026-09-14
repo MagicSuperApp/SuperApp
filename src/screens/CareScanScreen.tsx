@@ -83,6 +83,19 @@ const CareScanScreen: React.FC = () => {
   // `/api/care/withdrawal`. `null` = chưa hỏi xong hoặc hỏi hỏng; hai ca đó đều
   // KHÔNG được hiện "an toàn" (xem `renderLogged`).
   const [wd, setWd] = useState<CareWithdrawalResponse | null>(null);
+  /**
+   * Lỗi của lượt hỏi CÁCH LY — tách khỏi `wd === null` để không quy sai nguyên nhân.
+   *
+   * Bản trước gộp hai ca vào một `null`: (a) máy chủ trả lời nhưng không tra được
+   * thời gian cách ly của thuốc, (b) lời gọi chưa tới máy chủ (401, mất mạng, 500).
+   * Rồi câu in ra khẳng định ca (a) — *"hệ chưa tra được thời-gian cách-ly của thuốc
+   * đã dùng"* — cho cả ca (b). Đó là một câu về KHO THUỐC dùng cho một sự việc về
+   * ĐƯỜNG MẠNG: người đọc đi tra nhãn thuốc, trong khi việc phải làm là đăng nhập
+   * lại hoặc thử lại.
+   * Hướng fail-safe (không biết thì không nói an toàn) thì đúng và giữ nguyên; cái
+   * sửa ở đây là NÓI ĐÚNG vì sao chưa biết.
+   */
+  const [wdErr, setWdErr] = useState<APIError | null>(null);
 
   // ── CHỌN TAY TRONG DANH MỤC ────────────────────────────────────────────────
   //
@@ -133,12 +146,17 @@ const CareScanScreen: React.FC = () => {
     setMatchMessage(null);
     try {
       const res = await matchCareLabel(BASE_URL, imageUri);
-      if (res.ok && res.data) {
+      // `CareMatchResponse.ok` cũng là trường BẮT BUỘC (`careService.ts:84`) — cùng
+      // lý do như cửa ghi: máy chủ từ chối ở tầng nghiệp vụ mà vẫn trả HTTP 200.
+      // Bỏ qua nó thì một lượt bị từ chối hiện thành "không tìm thấy ứng viên", và
+      // người dùng đi chụp lại mãi một tấm nhãn mà máy chủ không hề từ chối vì ảnh.
+      if (res.ok && res.data && res.data.ok !== false) {
         setCandidates(res.data.candidates ?? []);
         setMatchReason(res.data.reason ?? null);
         setMatchMessage(res.data.ambiguous ? res.data.message ?? null : null);
       } else {
-        showError('Lỗi', res.error?.detail ?? 'Không nhận diện được nhãn. Thử chụp rõ hơn.');
+        showError('Chưa nhận diện được nhãn',
+          res.data?.error ?? res.error?.detail ?? 'Không nhận diện được nhãn. Thử chụp rõ hơn.');
       }
     } finally {
       setMatching(false);
@@ -152,7 +170,9 @@ const CareScanScreen: React.FC = () => {
     setProductsErr(null);
     try {
       const res = await getCareProducts(BASE_URL);
-      if (res.ok && res.data) {
+      // `ok` ở cửa này là TUỲ CHỌN, nên phép hỏi đúng là `!== false` (vắng mặt vẫn
+      // tính là được), không phải `=== true`.
+      if (res.ok && res.data && res.data.ok !== false) {
         setProducts(res.data.products ?? []);
       } else {
         // Lượt hỏi HỎNG và kho RỖNG là hai việc khác nhau, và chúng đòi hai hành
@@ -202,16 +222,34 @@ const CareScanScreen: React.FC = () => {
         // nhận nó ở cả hai lối.
         imagePath: imageUri ?? undefined,
       });
-      if (res.ok && res.data) {
+      // ── ĐỌC `data.ok`, KHÔNG CHỈ ĐỌC `res.ok` ────────────────────────────────
+      // `res.ok` là kết quả của tầng HTTP. Máy chủ từ chối ở tầng NGHIỆP VỤ bằng
+      // `200 {ok:false, error:"…"}` — `CareLogResponse.ok` là trường bắt buộc đúng
+      // vì thế. Bản trước chỉ hỏi `res.ok && res.data`, nên một lượt bị từ chối đi
+      // thẳng vào `setLogged()` và màn hiện dấu ✓ xanh *"Đã ghi nhật-ký"* kèm nút
+      // "Xong". Câu của máy chủ không hiện ở đâu, và lần xịt thuốc đó không vào sổ
+      // — mà sổ đó chính là thứ tính ngày cách ly để chặn thu hoạch.
+      // Đối chứng: `TreeEnrollScreen`, `TreeIdentityScreen`, `FruitCropperScreen`,
+      // `FruitScanScreen` và 6 service đều đọc `data.ok`; màn này đọc 0 lần.
+      if (res.ok && res.data && res.data.ok !== false) {
         setLogged(res.data);
         // Ghi xong mới hỏi được trạng thái cách ly, và phải hỏi ở cửa KHÁC: máy chủ
         // gộp MỌI lần ghi của đối tượng rồi lấy mốc xa nhất. `withdrawal_until` của
         // riêng lần ghi này không trả lời được câu "cây này bán được chưa" — một lần
         // ghi trước đó có thể còn xa hơn.
         const w = await getWithdrawalStatus(BASE_URL, targetType, targetId);
-        setWd(w.ok && w.data ? w.data : null);
+        const wOk = w.ok && w.data && w.data.ok !== false;
+        setWd(wOk ? w.data! : null);
+        setWdErr(wOk ? null : (w.error ?? null));
       } else {
-        showError('Lỗi', res.error?.detail ?? 'Ghi nhật-ký thất bại. Vui lòng thử lại.');
+        // Câu của máy chủ TRƯỚC câu của mình. Ở ca `200 {ok:false}` thì lý do nằm
+        // trong `data.error` (`res.error` lúc đó là `undefined`), nên phải đọc cả hai
+        // chỗ — máy chủ nói "Cây này đang bị khoá ghi — chờ kiểm tra viên duyệt" thì
+        // người dùng phải đọc đúng câu đó; "Ghi thất bại, thử lại" không nói được
+        // việc phải làm, và lời mời thử lại ở đây là lời mời thử lại vô ích.
+        showError('Chưa ghi được nhật-ký',
+          res.data?.error ?? res.error?.detail
+          ?? 'Ghi nhật-ký thất bại. Vui lòng thử lại.');
       }
     } finally {
       setLogging(false);
@@ -249,9 +287,18 @@ const CareScanScreen: React.FC = () => {
         ) : safeState === 'unknown' ? (
           <View style={styles.unknownBox}>
             <Icon name="help-circle" size={18} color={COLORS.warning} />
+            {/* HAI nguyên nhân khác hẳn nhau cho cùng một chữ "chưa biết" — và việc
+                phải làm ở hai ca cũng khác hẳn. Gộp chúng là đẩy người dùng đi tra
+                nhãn thuốc trong khi hỏng nằm ở phiên đăng nhập. */}
             <Text style={styles.unknownText}>
-              CHƯA khẳng-định được an-toàn — hệ chưa tra được thời-gian cách-ly của thuốc đã dùng.
-              Xin xem nhãn thuốc trước khi thu-hoạch/bán.
+              {wdErr
+                ? 'CHƯA khẳng-định được an-toàn — máy chưa hỏi được máy chủ về thời-gian '
+                  + `cách-ly (${wdErr.type === 'auth_error' ? 'phiên đăng nhập đã hết hạn'
+                    : wdErr.type === 'network_error' ? 'mất kết nối'
+                      : `máy chủ trả HTTP ${wdErr.http_status}`}). `
+                  + 'Lần ghi vừa rồi ĐÃ vào sổ; hãy mở lại cây này khi có mạng để xem hạn cách-ly.'
+                : 'CHƯA khẳng-định được an-toàn — hệ chưa tra được thời-gian cách-ly của thuốc đã dùng. '
+                  + 'Xin xem nhãn thuốc trước khi thu-hoạch/bán.'}
             </Text>
           </View>
         ) : (
@@ -272,6 +319,26 @@ const CareScanScreen: React.FC = () => {
             </Text>
           </View>
         )}
+        {/* ── CỜ AN TOÀN máy chủ gửi — trước đây có 0 nơi đọc ────────────────────
+            `flags` là danh sách cảnh báo ngoài phép tính cách ly: thuốc nằm trong
+            danh mục cấm ở thị trường xuất khẩu, hoặc dư lượng vượt ngưỡng. Máy chủ
+            gửi, màn không có ô nào cho nó ⟹ nông dân thấy khối xanh "An-toàn — không
+            trong thời-gian cách-ly" rồi bán cả lô. Cách ly hết hạn KHÔNG kéo theo lô
+            đó bán được: hai điều kiện khác nhau.
+            Mã lạ vẫn hiện NGUYÊN VĂN chứ không bỏ: một cờ không có trong bảng dịch
+            vẫn là một cờ máy chủ đã dựng lên để cảnh báo. */}
+        {!!wd?.flags?.length && wd.flags.map((f, i) => (
+          <View key={`flag-${i}`} style={styles.warnBox}>
+            <Icon name="alert-octagon" size={18} color={COLORS.error} />
+            <Text style={styles.warnText}>
+              {f === 'cam_EU'
+                ? 'Thuốc này nằm trong danh mục CẤM của thị trường EU — lô hàng có thể bị từ chối dù đã hết cách-ly.'
+                : f === 'du_luong_MRL'
+                  ? 'Dư lượng có thể VƯỢT NGƯỠNG cho phép (MRL) — cần kiểm nghiệm trước khi bán.'
+                  : `Cảnh báo an-toàn từ máy chủ: ${f}`}
+            </Text>
+          </View>
+        ))}
         {!!wd?.advice?.length && wd.advice.map((a, i) => (
           <Text key={`advice-${i}`} style={styles.unknownText}>{a}</Text>
         ))}

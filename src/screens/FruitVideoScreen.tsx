@@ -30,6 +30,7 @@ import Geolocation from 'react-native-geolocation-service';
 
 import Icon from '../components/Icon';
 import { useTk } from '../i18n/keys';
+import { cameraErrorBody } from '../utils/cameraError';
 import { useAppSelector } from '../store/hooks';
 import type { RootState } from '../store';
 import { ORILIFE_BASE } from '../services/orilifeBase';
@@ -258,13 +259,20 @@ const FruitVideoScreen: React.FC = () => {
   // ── Quay video ────────────────────────────────────────────────────────────
   const handleRecord = useCallback(async () => {
     if (!imagePicker?.launchCamera) {
-      showError('Chưa mở được máy ảnh', 'Bản app này chưa mở được máy ảnh. Vui lòng cập nhật app rồi thử lại.');
+      showError(tk('trace.activity.noCamera'), tk('trace.activity.noCameraBody'));
       return;
     }
     imagePicker.launchCamera(await withPhotoSave(VIDEO_OPTIONS), (response: any) => {
       if (response.didCancel) return;
       if (response.errorCode) {
-        showError('Lỗi camera', response.errorMessage ?? 'Không mở được camera. Kiểm tra quyền.');
+        // Đường này TỪNG là chuỗi gõ cứng `'Không mở được camera. Kiểm tra quyền.'`
+        // kèm `response.errorMessage ??` đứng trước. Hai lỗi trong một dòng, và cả hai
+        // đều là lỗi mà lượt vá hôm 14/09 tưởng đã xử: nó chỉ tiến tới `handleCover`
+        // cách đây 26 dòng, còn nhánh QUAY VIDEO thì ở lại — tức lượt vá lấy phạm vi
+        // bằng phạm vi của triệu chứng chứ không của nguyên nhân.
+        //   · chuỗi gõ cứng không qua `tk` ⟹ người chọn 中文/日本語 đọc tiếng Việt;
+        //   · "kiểm tra quyền" là câu SAI cho máy không có máy ảnh — xem `cameraError.ts`.
+        showError(tk('trace.activity.cameraErr'), cameraErrorBody(response));
         return;
       }
       const asset = response.assets?.[0];
@@ -290,7 +298,7 @@ const FruitVideoScreen: React.FC = () => {
     imagePicker.launchCamera(await withPhotoSave(PHOTO_OPTIONS), async (response: any) => {
       if (response.didCancel) return;
       if (response.errorCode) {
-        showWarning(tk('trace.activity.cameraErr'), response.errorMessage ?? tk('trace.activity.cameraErrBody'));
+        showWarning(tk('trace.activity.cameraErr'), cameraErrorBody(response));
         return;
       }
       const a = response.assets?.[0];

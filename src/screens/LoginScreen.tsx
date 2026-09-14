@@ -625,7 +625,11 @@ const LoginScreen = () => {
               Bạn đã từng dùng app nào cùng nhóm với app này chưa?
             </Text>
             <Text style={styles.signUpSub} allowFontScaling={false}>
-              Người mới, đổi điện thoại, hay máy này đang có app khác cùng nhóm — ba đường khác nhau, chọn ở đây
+              {/* KHÔNG ghi số lối ở đây. Câu cũ ghi "ba đường" và đã sai từ ngày lối thứ
+                  tư (nhờ app đang đăng nhập duyệt) chạy được — số gõ cứng không sinh từ
+                  danh sách nên nó chết im lặng, và không cổng nào kêu. Đo trên màn thật
+                  2026-09-13: câu nói ba, màn bày bốn. */}
+              Người mới, đổi điện thoại, hay máy này đang có app khác cùng nhóm — mỗi trường hợp một đường riêng, chọn ở đây
             </Text>
           </View>
           <Icon name="arrow-right" size={18} color={BLUE.primary} />

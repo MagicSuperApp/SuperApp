@@ -47,15 +47,16 @@ import {
   farmAnchor, farmAreaM2, farmsBounds, formatFarmArea, pinFeatures, polygonFeatures,
   searchFarms,
 } from '../utils/farmMapGeo';
+import {
+  EMPTY_BASE_STYLE, ESRI_SATELLITE_TILES, STREET_TILES,
+} from '../../../features/space3d/mapTiles';
 
-// ⛔ Đây TỪNG là một bản chép tay URL ô bản đồ — bản thứ năm trong kho, và đúng
-// thứ mà hằng chung sinh ra để chặn: lượt vá máy chủ ô chỉ tới được những chỗ
-// đang `import`, còn dòng chép tay này ở lại với tên miền đã bị chặn.
-import { STREET_TILES } from '../../../features/space3d/mapTiles';
-
+// ⛔ Hai URL này TỪNG là hai bản chép tay, dù hằng dùng chung đã tồn tại và các
+// màn bản đồ khác đã nhập nó. Tệp này là chỗ bản vá máy chủ ô lần trước KHÔNG
+// tới được: lượt vá chỉ tới được những chỗ đang `import`, còn dòng chép tay thì
+// ở lại với tên miền đã bị chặn.
 const OSM_TILES = STREET_TILES;
-const SAT_TILES =
-  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+const SAT_TILES = ESRI_SATELLITE_TILES;
 
 /** Cả hai nguồn chỉ có ảnh tới đây — xem chú thích đầu tệp. */
 const TILE_MAX_ZOOM = 19;
@@ -389,6 +390,8 @@ const MapBody: React.FC<MapBodyProps> = ({
   return (
     <View style={styles.fill}>
       <MapLib.MapView
+        // BẮT BUỘC — xem `space3d/mapTiles.ts` khối `EMPTY_BASE_STYLE`.
+        mapStyle={EMPTY_BASE_STYLE}
         style={StyleSheet.absoluteFillObject}
         logoEnabled={false}
         attributionEnabled={false}

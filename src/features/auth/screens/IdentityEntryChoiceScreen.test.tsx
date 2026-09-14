@@ -108,15 +108,48 @@ describe('ba lối rẽ', () => {
     act(() => { tree.unmount(); });
   });
 
-  it('ba lối là BA lựa chọn tách bạch, không phải một lựa chọn hiện ba lần', () => {
+  it('các lối là những lựa chọn TÁCH BẠCH, không phải một lựa chọn hiện nhiều lần', () => {
     const tree = mount();
     const text = collectText(tree.toJSON());
     for (const key of [
       'identity.gate.new.title',
       'identity.gate.sameApp.title',
       'identity.gate.otherApp.title',
+      'identity.gate.pair.title',
     ] as const) {
       expect(text).toContain(vi(key));
+    }
+    act(() => { tree.unmount(); });
+  });
+
+  /**
+   * Không lối nào được tuyên bố nó là lối DUY NHẤT.
+   *
+   * Đây là ca đã xảy ra thật, đo trên bản dựng 2026-09-13: thẻ "máy này đang có app
+   * khác" mở đầu bằng *"Hiện giờ chỉ có một cách: nhập lại cụm 24 từ"*, trong khi lối
+   * ghép máy nằm ngay bên dưới và chính thẻ đó nói ra ở đoạn cuối. Câu sai đứng TRƯỚC,
+   * câu đúng đứng SAU khung cảnh báo — người đọc lướt dừng ở câu sai.
+   *
+   * Vì sao nó đắt chứ không chỉ là lỗi câu chữ: câu ấy đẩy người dùng sang lối 24 từ,
+   * mà lối 24 từ **thu hồi khoá chủ** ⟹ app kia trên chính máy đó bị đá ra. Một câu
+   * chữ đã chết dẫn thẳng tới một hành động không hoàn tác được.
+   *
+   * Canh theo Ý, không theo một chuỗi cố định: liệt kê các cách nói "duy nhất" ở cả
+   * bốn thứ tiếng. Danh sách này là cận dưới — nó không bắt được mọi cách diễn đạt, và
+   * nói ra điều đó ở đây đúng hơn là để người đọc tưởng nó kín.
+   */
+  it('không thẻ nào tự xưng là lối DUY NHẤT', () => {
+    const tree = mount();
+    const text = collectText(tree.toJSON()).toLowerCase();
+    for (const cum of [
+      'chỉ có một cách',
+      'cách duy nhất',
+      'the only way',
+      'only option',
+      '唯一',
+      '唯一の方法',
+    ]) {
+      expect(text).not.toContain(cum.toLowerCase());
     }
     act(() => { tree.unmount(); });
   });

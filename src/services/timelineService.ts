@@ -303,9 +303,25 @@ export async function addTimelineEvent(
   }
 }
 
+/**
+ * Danh từ tiếng Việt của từng loại thực thể — dùng trong câu chữ cho người đọc.
+ *
+ * Khai ĐỦ cả năm loại mà `TimelineEntityType` (dòng 77, theo `timeline_router.py:57`)
+ * cho phép, không chỉ ba loại đang có màn. `Record` đầy đủ là thứ bắt lỗi hộ: thêm
+ * một loại thực thể mới ở máy chủ mà quên đặt danh từ thì `tsc` đỏ ngay tại đây,
+ * thay vì màn hình lặng lẽ gọi con vật là "cây".
+ */
+export const ENTITY_NOUN_VI: Record<TimelineEntityType, string> = {
+  farm: 'vườn',
+  tree: 'cây',
+  fruit: 'quả',
+  animal: 'con vật',
+  plot: 'lô đất',
+};
+
 /** Nhãn tiếng Việt cho `kind`. Loại lạ → trả lại chính chuỗi đó, KHÔNG nuốt. */
 export const KIND_VI: Record<string, string> = {
-  enroll: 'Đăng ký cây',
+  // `enroll` KHÔNG có nhãn cố định ở đây — xem `KIND_VI_ENROLL` và `kindLabel`.
   care: 'Chăm sóc',
   flowering: 'Ra hoa',
   fruiting: 'Đậu quả',
@@ -315,6 +331,49 @@ export const KIND_VI: Record<string, string> = {
   media: 'Thêm ảnh/video',
   transfer: 'Chuyển giao',
 };
+
+/**
+ * `enroll` nghĩa là "ghi danh thực thể này lần đầu" — và thực thể là gì thì nhãn
+ * phải nói đúng thứ đó.
+ *
+ * Bản trước gắn cứng `enroll: 'Đăng ký cây'` cho MỌI dòng thời gian. Đo trên máy ảo
+ * iPhone 17 ngày 14/09/2026: tạo một vườn mới, chưa đăng ký cây nào, mở chi tiết
+ * vườn — khối `DÒNG THỜI GIAN` hiện một mục nhãn **"Đăng ký cây"**, ngay bên dưới
+ * dòng "Cây trong vườn 0". Hai con số trên cùng một màn nói ngược nhau, và cái sai
+ * là cái nằm ở chỗ dễ tin hơn: dòng thời gian là thứ người mua quả đọc để tra ngược.
+ */
+export const KIND_VI_ENROLL: Record<TimelineEntityType, string> = {
+  farm: 'Lập vườn',
+  tree: 'Đăng ký cây',
+  fruit: 'Đăng ký quả',
+  animal: 'Đăng ký con vật',
+  plot: 'Lập lô đất',
+};
+
+/**
+ * Nhãn hiển thị của một mục dòng thời gian.
+ *
+ * Gộp hai bảng trên vào MỘT lối ra, để chỗ gọi không phải tự nhớ rằng `enroll` là
+ * ca đặc biệt — cùng lý do `routeIsReachable` phải dọn lên `moduleCatalog` và
+ * `cameraErrorBody` phải thành hàm dùng chung: một điều kiện chép tay ở nhiều nơi
+ * thì chỗ quên là chỗ không ai thấy.
+ *
+ * `kind` lạ → trả lại nguyên chuỗi máy chủ gửi, KHÔNG nuốt thành "Khác": một loại
+ * sự kiện mới mà app chưa biết vẫn phải đọc được, còn hơn biến mất sau một nhãn
+ * chung (Forall §Cái vỏ im lặng).
+ */
+export function kindLabel(kind: string, entityType: TimelineEntityType): string {
+  // Nhánh dự phòng KHÔNG được lui về `.tree`. Bản đầu viết `?? KIND_VI_ENROLL.tree`,
+  // và dòng đó dựng lại đúng con bọ mà cả hàm này sinh ra để diệt: máy chủ thêm một
+  // loại thực thể app chưa biết (`plot_group`, `hive`…) thì nó lại được gọi là "Đăng
+  // ký cây". `Record` đầy đủ chỉ chặn ở `tsc`; chuỗi máy chủ gửi lúc chạy thì không
+  // đi qua `tsc` chỗ nào. Câu dự phòng phải là câu ĐÚNG với mọi loại thực thể.
+  if (kind === 'enroll') return KIND_VI_ENROLL[entityType] ?? 'Ghi danh lần đầu';
+  // `kind` lạ: giữ nguyên chuỗi máy chủ (đừng nuốt), nhưng đừng để nó LÀM tiêu đề —
+  // người mua quả quét mã rồi đọc thấy một dòng tên `pruning_v2`. Kèm một từ tiếng
+  // người phía trước thì họ biết mình đang xem một việc bản app này chưa biết tên.
+  return KIND_VI[kind] ?? `Việc khác · ${String(kind)}`;
+}
 
 /**
  * Biểu tượng theo `kind`. Tên lấy TỪ BỘ ĐÃ SINH (`components/Icon/icons.generated.ts`,

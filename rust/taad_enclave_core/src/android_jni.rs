@@ -302,6 +302,20 @@ pub extern "system" fn Java_com_aladincontract_company_TaadEnclaveModule_nativeW
 }
 
 #[no_mangle]
+pub extern "system" fn Java_com_aladincontract_company_TaadEnclaveModule_nativeWitnessUnsignedTxEd25519<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    unsigned_tx_cbor_hex: JString<'local>,
+    taad_master_kek_hex: JString<'local>,
+    device_secret_hex: JString<'local>,
+) -> jstring {
+    let cbor = jarg!(env, unsigned_tx_cbor_hex, "unsigned_tx_cbor_hex");
+    let kek = jarg!(env, taad_master_kek_hex, "taad_master_kek_hex");
+    let device = jarg!(env, device_secret_hex, "device_secret_hex");
+    ret(&env, crate::transfer::witness_unsigned_tx_ed25519(&cbor, &kek, &device), "nativeWitnessUnsignedTxEd25519")
+}
+
+#[no_mangle]
 pub extern "system" fn Java_com_aladincontract_company_TaadEnclaveModule_nativeGenerateSalt<'local>(
     env: JNIEnv<'local>,
     _class: JClass<'local>,

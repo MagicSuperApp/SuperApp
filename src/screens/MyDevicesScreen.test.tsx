@@ -47,6 +47,16 @@ jest.mock('../services/phoenixKey-api', () => {
   };
 });
 
+// Cổng sinh trắc đứng TRƯỚC `revoke` (`MyDevicesScreen.doRevoke`). Trong môi
+// trường test không có chip nên cổng thật luôn ném, và mọi bài về mã lỗi máy chủ
+// sẽ chết trước khi tới được máy chủ. Mock nó để từng bài tự chọn: qua cổng
+// (mặc định) hay huỷ ở cổng (bài riêng bên dưới).
+const mockGate = jest.fn();
+jest.mock('../services/sensitiveActionGate', () => ({
+  GATE_PREFIX: { revokeDevice: 'PHOENIXKEY_REVOKE_DEVICE:' },
+  requireUserPresence: (...a: unknown[]) => mockGate(...a),
+}));
+
 const mockShowError = jest.fn();
 // `showWarning` KHÔNG còn là hàm rỗng: hộp xác nhận "Gỡ máy này?" nay đi qua
 // popup của app (`utils/alert`) thay vì `Alert.alert` của hệ điều hành, nên nút
@@ -119,7 +129,14 @@ function nutTheoIcon(tree: renderer.ReactTestRenderer, iconName: string) {
   return tho.filter(n => !laConChau(n));
 }
 
-beforeEach(() => { jest.clearAllMocks(); });
+beforeEach(() => {
+  jest.clearAllMocks();
+  // Mặc định CHO QUA cổng, đặt lại ở mỗi bài. `clearAllMocks` chỉ xoá danh sách
+  // lượt gọi chứ không xoá `mockRejectedValue`, nên thiếu dòng này thì một bài
+  // đặt cổng-ném sẽ rò sang mọi bài chạy sau nó — và thứ tự bài là thứ không ai
+  // nhìn khi thêm bài mới.
+  mockGate.mockResolvedValue(undefined);
+});
 
 describe('đổi tên KHÔNG được làm mất nhãn "máy này"', () => {
   it('giữ `current` địa phương, chỉ nhận `deviceName` từ phản hồi', async () => {
@@ -273,6 +290,46 @@ describe('mã lỗi máy chủ được dịch thành câu người đọc đư�
 
     expect(mockShowError).toHaveBeenCalledWith(
       expect.stringContaining('dùng cụm 24 từ'),
+    );
+  });
+
+  it('huỷ ở cổng sinh trắc ⟹ KHÔNG gỡ máy nào cả', async () => {
+    // Phép đo thật của cổng: không phải "có gọi cổng không", mà "cổng trượt thì
+    // máy có bị gỡ không". Một cổng bị bọc trong `try { } catch {}` vẫn được gọi
+    // đủ số lần, vẫn hiện hộp thoại, và vẫn gỡ máy — bài đếm lượt gọi không phân
+    // biệt được hai bản đó.
+    const t = await moMan([may({ keyRole: 'manager' })]);
+    mockGate.mockRejectedValue(new Error('Người dùng đã huỷ'));
+
+    await act(async () => { nutTheoIcon(t, 'link-off')[0].props.onPress(); });
+    const opts = (mockShowWarning.mock.calls[0] as unknown[])[2] as { actions?: NutHopThoai[] };
+    const go = (opts.actions ?? []).find(b => b.text === 'Gỡ máy')!;
+    await act(async () => { go.onPress?.(); });
+
+    expect(mockGate).toHaveBeenCalled();
+    expect(mockRevoke).not.toHaveBeenCalled();
+  });
+
+  it('qua cổng rồi thì `revoke` nhận ĐÚNG keyId của máy được chọn', async () => {
+    // Đối chứng cho bài trên: nếu bài trên xanh chỉ vì màn không gỡ được máy nào
+    // trong môi trường test, thì bài này cũng phải đỏ. Hai bài cùng xanh mới nói
+    // được rằng cái phân biệt chúng đúng là cái cổng.
+    // Khai TƯỜNG MINH là cổng cho qua. `jest.clearAllMocks()` ở `beforeEach` chỉ
+    // xoá danh sách lượt gọi, KHÔNG xoá `mockRejectedValue` mà bài trên vừa đặt —
+    // thiếu dòng này thì bài dưới chạy với cổng vẫn đang ném của bài trên.
+    mockGate.mockResolvedValue(undefined);
+    const t = await moMan([may({ keyId: 'key-abc', keyRole: 'manager' })]);
+    mockRevoke.mockResolvedValue(undefined);
+
+    await act(async () => { nutTheoIcon(t, 'link-off')[0].props.onPress(); });
+    const opts = (mockShowWarning.mock.calls[0] as unknown[])[2] as { actions?: NutHopThoai[] };
+    const go = (opts.actions ?? []).find(b => b.text === 'Gỡ máy')!;
+    await act(async () => { go.onPress?.(); });
+
+    expect(mockRevoke).toHaveBeenCalledWith('key-abc');
+    // Ký ĐÚNG máy sắp gỡ: một lần duyệt không dùng lại được để gỡ máy khác.
+    expect(mockGate).toHaveBeenCalledWith(
+      expect.objectContaining({ fields: ['key-abc'] }),
     );
   });
 

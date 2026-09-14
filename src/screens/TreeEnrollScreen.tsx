@@ -53,6 +53,11 @@ import {
   platformHeadingRef,
   enrollWarningMessages,
   getTrees,
+  // Bộ dịch lỗi của chính service này — ba câu viết rất kỹ cho `network_error` /
+  // `timeout` / `bad_response`. Màn này trước đây gọi nó 0 lần và hiện thẳng
+  // `error.detail`, mà `detail` ở ba ca đó là `String(err)`: người đứng trong vườn
+  // đọc `TypeError: Network request failed` hoặc `SyntaxError: JSON Parse error`.
+  fieldErrorMessage,
   type EnrollResponse,
 } from '../services/treeReIDService';
 import {
@@ -565,7 +570,9 @@ const TreeEnrollScreen: React.FC = () => {
     // Hỏng thì phải NÓI. Im lặng ở đây là người dùng bấm, không thấy gì đổi, rồi
     // bấm tiếp — mỗi lần một lượt ghi hỏng nữa mà màn vẫn câm.
     if (!r.ok || r.data?.ok === false) {
-      setSpeciesError(r.error?.detail ?? 'Chưa lưu được loài cây. Thử lại giúp.');
+      // Cùng bộ dịch — `fruitReIDService` cũng đặt `String(err)` vào `detail` ở ca
+      // mất mạng, nên hiện thô ở đây cho ra đúng một chuỗi lỗi JS.
+      setSpeciesError(fieldErrorMessage(r.error));
       return;
     }
     setSpeciesChosen(speciesId);
@@ -685,8 +692,10 @@ const TreeEnrollScreen: React.FC = () => {
                 },
           });
         } else {
+          // `res.data.reason` là câu máy chủ soạn cho ca gộp bị từ chối — giữ ưu tiên
+          // cho nó. Chỉ khi không có nó mới qua bộ dịch (đừng hiện `detail` thô).
           showError('Chưa gộp được',
-            res.data?.reason ?? res.error?.detail ?? 'Không thể gộp. Thử lại.');
+            res.data?.reason ?? fieldErrorMessage(res.error));
         }
       } finally {
         setIsEnrolling(false);
@@ -724,7 +733,10 @@ const TreeEnrollScreen: React.FC = () => {
         setEnrollResult(res.data);
         handleSuccess(res.data.tree_id, res.data.provenance?.code ?? res.data.tree_id);
       } else {
-        showError('Lỗi', res.error?.detail ?? 'Tạo cây mới thất bại.');
+        // Qua bộ dịch, KHÔNG hiện `detail` thô: ở ca mất sóng và ca Wi-Fi chen trang
+        // đăng nhập — hai ca hay gặp nhất ngoài vườn — `detail` là chuỗi ném ra của
+        // JS, và câu dự phòng tiếng Việt bên dưới không bao giờ chạy tới.
+        showError('Lỗi', fieldErrorMessage(res.error));
       }
     } finally {
       setIsEnrolling(false);
@@ -942,7 +954,10 @@ const TreeEnrollScreen: React.FC = () => {
         return;
       }
 
-      showError('Lỗi đăng ký', detail);
+      // Mọi ca CÒN LẠI — gồm cả mất sóng, quá hạn, Wi-Fi chen trang đăng nhập, 403,
+      // 404 — đi qua bộ dịch. `detail` ở trên chỉ dùng được cho 409/400, nơi nó ĐÚNG
+      // là câu tiếng Việt của máy chủ; ở nhánh này nó là chuỗi ném ra của JS.
+      showError('Lỗi đăng ký', fieldErrorMessage(res.error));
     } finally {
       setIsEnrolling(false);
     }
@@ -1139,9 +1154,23 @@ const TreeEnrollScreen: React.FC = () => {
               <Text style={styles.successCode}>
                 Mã: {enrollResult.provenance?.code ?? enrollResult.tree_id}
               </Text>
-              <Text style={styles.successViews}>
-                {enrollResult.n_views_added ?? 0} góc đã lưu
-              </Text>
+              {/* KHÔNG `?? 0`. `n_views_added` là trường TUỲ CHỌN
+                  (`treeReIDService.ts:141`), nên máy chủ trả 200 mà không khai nó là
+                  chuyện hợp lệ — và `?? 0` biến "máy chủ không nói" thành "đã lưu 0
+                  góc". Màn khi đó in "Đã đăng ký thành công" ngay trên dòng "0 góc đã
+                  lưu": nông dân đọc là hỏng, đăng ký lại, và hai hồ sơ cho một gốc cây
+                  chính là thứ làm hỏng chữ ký dùng để phân biệt cây.
+                  Hai màn anh em đã làm đúng: cùng tệp `:677` và
+                  `TreeIdentityScreen.tsx:932-935`. */}
+              {enrollResult.n_views_added == null ? (
+                <Text style={styles.successViews}>
+                  Máy chủ chưa khai số góc đã lưu — mở cây ra xem để chắc.
+                </Text>
+              ) : (
+                <Text style={styles.successViews}>
+                  {enrollResult.n_views_added} góc đã lưu
+                </Text>
+              )}
               {/* Kênh MCR vỏ-thân thấy một cây rất giống nhưng vẫn tách được → cho
                   đăng ký, kèm cảnh-báo NHẸ để chủ vườn tự đối chiếu. Trước đây
                   backend gửi `dup_suspect` mà app không hiện gì. */}

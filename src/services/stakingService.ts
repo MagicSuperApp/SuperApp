@@ -16,6 +16,7 @@
 import taad from '../sdk/taadEnclave';
 import { fetchWalletUtxosAndParams } from './cardanoTxService';
 import { currentUserDid } from '../sdk/phoenixKey';
+import { GATE_PREFIX, requireUserPresence } from './sensitiveActionGate';
 import {
   phoenixKeyApi,
   type PoolDetail,
@@ -85,6 +86,22 @@ export async function delegateToPool(args: {
     throw new Error('Chưa đăng nhập PhoenixKey — không lấy được UTXO của ví.');
   }
   const { utxosJson, protocolParamsJson } = await fetchWalletUtxosAndParams(did);
+
+  // ── CỔNG XÁC THỰC ──────────────────────────────────────────────────────────
+  // Uỷ thác KHÔNG chuyển tiền đi, nhưng nó vẫn là thao tác ra tiền: cert
+  // StakeRegistration đặt cọc khoá stake (deposit lấy từ chính ví), và từ lúc
+  // này phần thưởng chảy về pool người dùng vừa chọn. Ai cầm máy đang mở mà đổi
+  // được pool là đổi được nơi nhận thưởng của người khác.
+  // Vì sao cổng tồn tại + ranh giới: `sensitiveActionGate.ts` đầu tệp.
+  //
+  // Đặt SAU khi đã có UTXO/params, TRƯỚC bước dựng+ký cert — cùng lý do thứ tự
+  // ở `cardanoTxService.sendCardano`.
+  await requireUserPresence({
+    prefix: GATE_PREFIX.delegate,
+    fields: [args.poolBech32, String(args.account), String(net)],
+    title: 'Xác nhận uỷ thác stake',
+    subtitle: 'Quét khuôn mặt hoặc vân tay để xác nhận pool bạn chọn',
+  });
 
   const cbor = await taad.buildStakeDelegation({
     kekHex: args.kekHex,

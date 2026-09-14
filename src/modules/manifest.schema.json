@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://magiclamp.network/schema/module.manifest.json",
+  "$id": "https://magiclamp.eco/schema/module.manifest.json",
   "title": "MagicLamp Module Manifest",
   "description": "JSON-Schema validate module.manifest.json theo INTEGRATION-STANDARD §1. Declarative thuần: additionalProperties:false ở mọi cấp, whitelist kiểu (string/number/boolean/enum/array), CẤM trường tự do chứa code/template/eval (INV-SEC / QĐ-1).",
   "type": "object",

@@ -31,6 +31,8 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { COLORS } from '../../../constants';
 import { WORK_THEME } from '../theme/colors';
 import { useTaskers } from '../hooks/useTaskers';
+import { ENABLED_MODULES } from '../../../config/instance.config';
+import { routeIsReachable } from '../../../navigation/moduleCatalog';
 
 type RouteParams = { WorkerProfile: { workerId: string } };
 
@@ -237,12 +239,20 @@ const WorkerProfileScreen: React.FC = () => {
       </Animated.ScrollView>
 
       <View style={styles.bottomBar}>
+        {/*
+          Ẩn hẳn khi app không khai module `chat`: route `ChatRoom` khi đó chưa bao giờ
+          được đăng ký vào cây điều hướng, nên nút này là NÚT CHẾT — bấm không đổi màn,
+          không một chữ nào. Người dùng đọc ra là "app hỏng", và không có cách nào biết
+          đây là tính năng bản này không có.
+        */}
+        {routeIsReachable('ChatRoom', ENABLED_MODULES) && (
         <TouchableOpacity
           onPress={() => navigation.navigate('ChatRoom', { roomId: `worker-${worker.did}` })}
           style={styles.chatBtn}
         >
           <Icon name="message-outline" size={20} color={WORK_THEME.primary} />
         </TouchableOpacity>
+        )}
         <TouchableOpacity
           onPress={() => navigation.navigate('PostJob')}
           activeOpacity={0.85}

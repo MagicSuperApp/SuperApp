@@ -37,6 +37,8 @@ import { selectChainWallet } from '../store/userSlice';
 import { NEUTRAL, withAlpha } from '../shared/theme';
 import { WORK_THEME } from '../theme';
 import { MODULES, type ModuleEntry } from '../modules';
+import { routeIsReachable } from '../navigation/moduleCatalog';
+import { ENABLED_MODULES } from '../config/instance.config';
 import {
   getRankedQuickActions,
   type RankedQuickAction,
@@ -55,6 +57,26 @@ import {
 } from '../services/agriNewsService';
 import { dungBang, type TamBang } from './homeBanners';
 import { BannerCard } from './BannerCard';
+
+/**
+ * Lưới "Dịch vụ" chỉ hiện module mà APP ĐANG DỰNG có khai.
+ *
+ * `MODULES` (`src/modules/index.ts`) là DANH MỤC của nền — nó liệt mọi module tồn
+ * tại, và mỗi mục mang `available: true` cố định. Nó KHÔNG phải lời khai của app
+ * này. Bản trước dựng lưới thẳng từ nó, nên khu "Dịch vụ" là lối vào DUY NHẤT
+ * không lọc theo `InstanceConfig.modules`: thanh tab lọc, cổng xoè lọc, màn chính
+ * thì không.
+ *
+ * Đo được 2026-09-14 trên máy ảo: CheckFarm tắt `chat`, thanh tab bỏ Chat, cổng xoè
+ * bỏ Chat, mà thẻ "TRÒ CHUYỆN" vẫn nằm giữa màn đầu tiên và bấm vào vẫn mở được.
+ * Với Apple guideline 1.2 thì việc tắt module khi ấy không có tác dụng nào.
+ *
+ * Lọc ở cấp module (không phải cấp tệp) và dùng CHUNG một phép hỏi với cổng xoè —
+ * `routeIsReachable` — để lần sau thêm một lối vào thì có đúng một chỗ để gọi.
+ */
+const VISIBLE_MODULES: ModuleEntry[] = MODULES.filter(
+  m => routeIsReachable(m.routeName, ENABLED_MODULES),
+);
 
 const { width } = Dimensions.get('window');
 const H_PADDING = 20;
@@ -872,7 +894,7 @@ const HomeScreen: React.FC = () => {
             <LayoutToggle value={moduleLayout} onChange={setModuleLayout} />
           </View>
           <View style={styles.moduleGrid}>
-            {MODULES.map((m, i) => {
+            {VISIBLE_MODULES.map((m, i) => {
               const card = (
                 <ModuleCard
                   entry={m}
@@ -905,28 +927,45 @@ const HomeScreen: React.FC = () => {
               onPress={() => (navigation as any).navigate('PhoenixWallet')}
             />
             <View style={styles.statDivider} />
-            <QuickStatRow
-              index={1}
-              icon="pine-tree"
-              label="Trang trại đang theo dõi"
-              value={tf('{farms} vườn · {trees} cây', { farms: farms.length, trees: trees.length })}
-              color={COLORS.accent}
-              onPress={() => navigation.navigate('Farms' as never)}
-            />
+            {/*
+              Cùng luật với ô chat bên dưới: `Farms` là route của module `trace`. App
+              nào không khai `trace` thì ô này vừa đếm một thứ luôn bằng 0, vừa là một
+              nút không tới được đâu.
+            */}
+            {routeIsReachable('Farms', ENABLED_MODULES) && (
+              <QuickStatRow
+                index={1}
+                icon="pine-tree"
+                label="Trang trại đang theo dõi"
+                value={tf('{farms} vườn · {trees} cây', { farms: farms.length, trees: trees.length })}
+                color={COLORS.accent}
+                onPress={() => navigation.navigate('Farms' as never)}
+              />
+            )}
             <View style={styles.statDivider} />
-            {/* ProofChat THẬT: đếm tin chưa đọc từ store; 0 → nhãn trung tính. */}
-            <QuickStatRow
-              index={2}
-              icon="message-text-outline"
-              label="Tin nhắn ProofChat"
-              value={
-                proofChatUnread > 0
-                  ? tf('{n} tin chưa đọc', { n: proofChatUnread })
-                  : 'Không có tin mới'
-              }
-              color={COLORS.accent}
-              onPress={() => navigation.navigate('ChatHome' as never)}
-            />
+            {/*
+              ProofChat THẬT: đếm tin chưa đọc từ store; 0 → nhãn trung tính.
+
+              ⛔ Lọc theo module, giống `VISIBLE_MODULES` ở đầu tệp. Dòng này là LỐI
+              VÀO THỨ HAI của chat trên CÙNG màn hình, cách khối kia 780 dòng — lượt
+              vá 14/09 chỉ chạm lưới "Dịch vụ" nên nó ở lại, và app CheckFarm (khai
+              `modules` không có `chat`) vẫn hiện một ô "Tin nhắn ProofChat · Không có
+              tin mới" cho một tính năng không tồn tại trong app đó.
+            */}
+            {routeIsReachable('ChatHome', ENABLED_MODULES) && (
+              <QuickStatRow
+                index={2}
+                icon="message-text-outline"
+                label="Tin nhắn ProofChat"
+                value={
+                  proofChatUnread > 0
+                    ? tf('{n} tin chưa đọc', { n: proofChatUnread })
+                    : 'Không có tin mới'
+                }
+                color={COLORS.accent}
+                onPress={() => navigation.navigate('ChatHome' as never)}
+              />
+            )}
           </View>
         </View>
 

@@ -5,6 +5,15 @@
  */
 import { getWithdrawalStatus, safeStateOf, type CareMatchResponse, type CareProduct } from './careService';
 
+// `careService` nay gọi `ensureOrilifeToken` trước mỗi lượt (đợt siết "làm mới phiên"
+// trước đây bỏ sót đúng tệp này, nên luồng nhãn thuốc chết ở 401 mà không làm mới lần
+// nào). Bản thật đọc kho khoá + DID, không chạy được trong jest — mock đúng mẫu
+// `grantService.test.ts:27`. Trả `false` = "không làm mới được", để nhánh thử-lại-một-lần
+// KHÔNG tự chạy và mỗi ca kiểm vẫn chỉ thấy đúng một lượt `fetch`.
+jest.mock('./orilifeDidAuth', () => ({
+  ensureOrilifeToken: jest.fn(async () => false),
+}));
+
 describe('safeStateOf — ba nhánh tường minh', () => {
   it('false → blocked (đang trong thời-gian cách-ly)', () => {
     expect(safeStateOf(false)).toBe('blocked');

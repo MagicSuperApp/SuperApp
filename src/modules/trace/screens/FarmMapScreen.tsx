@@ -59,7 +59,9 @@ import { useSelector } from 'react-redux';
 
 import Icon, { type IconName } from '../../../components/Icon';
 import type { RootState } from '../../../store';
-import { STREET_TILES } from '../../../features/space3d/mapTiles';
+import {
+  EMPTY_BASE_STYLE, ESRI_SATELLITE_TILES, STREET_TILES,
+} from '../../../features/space3d/mapTiles';
 import { useOpenWayfind, type WayfindTarget } from '../../../features/wayfind/WayfindButton';
 import { isValidLatLon } from '../../../features/wayfind/wayfind';
 import { formatTreeName, shortTreeCode } from '../../../utils/treeNameFormatter';
@@ -73,9 +75,11 @@ import { farmAreaM2, formatFarmArea, MIN_SPAN_DEG } from '../utils/farmMapGeo';
 import { viTriCay } from '../utils/farmShapeGeo';
 import { formatDistance, perimeterMeters, type Coord } from '../utils/polygonGuards';
 
-/** Ảnh vệ tinh — cùng nguồn với `mapTiles.MAP_SOURCES`, xem chú thích ở đó. */
-const SAT_TILES =
-  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+// Ảnh vệ tinh — NHẬP từ nguồn chung. Trước 2026-09-14 chỗ này khai một hằng chép
+// tay, ngay dưới một dòng chú thích nói nó "cùng nguồn với `mapTiles.MAP_SOURCES`".
+// Chú thích đó chính là thứ làm bản sao vô hình: nó khai quan hệ mà không tạo ra
+// quan hệ nào, nên ngày nguồn đổi thì không có gì kéo chỗ này theo.
+const SAT_TILES = ESRI_SATELLITE_TILES;
 
 /**
  * Cả hai nguồn ảnh chỉ CÓ ảnh tới z19 (`mapTiles.ts`). Thiếu khai báo này thì ở
@@ -606,6 +610,10 @@ const FarmMapScreen: React.FC = () => {
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
 
       <MapLib.MapView
+        // BẮT BUỘC — thiếu prop này thì style nền chết và KÉO THEO cả hai lớp
+        // raster bên dưới, ra một màn xanh dương trơn không báo lỗi gì.
+        // Lý do đầy đủ + số đo ở `space3d/mapTiles.ts` khối `EMPTY_BASE_STYLE`.
+        mapStyle={EMPTY_BASE_STYLE}
         style={StyleSheet.absoluteFillObject}
         logoEnabled={false}
         attributionEnabled={false}

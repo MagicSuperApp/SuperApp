@@ -154,6 +154,7 @@ export const TRACE_STRINGS = {
     zh: '需要网络。下拉可重试。',
     ja: '通信が必要です。下に引いて再試行してください。',
   },
+  'trace.news.retry': { vi: 'Thử lại', en: 'Try again', zh: '重试', ja: '再試行' },
   'trace.news.end': { vi: 'Hết tin mới rồi', en: 'That is all for now', zh: '暂时就这些', ja: 'ここまでです' },
 
   // ── Màn DANH SÁCH TRẠI ────────────────────────────────────────────────────
@@ -421,6 +422,15 @@ export const TRACE_STRINGS = {
   // chủ. Câu "Đã lưu" trần khiến người dùng tin dữ liệu đã ra khỏi máy, và họ chỉ
   // biết là không khi đổi máy — lúc đó đã mất.
   'trace.meta.saved': { vi: 'Đã lưu lên máy chủ', en: 'Saved to the server', zh: '已保存到服务器', ja: 'サーバーに保存しました' },
+  // Nhãn THỨ BA, và nó là nhãn không được thiếu. Hai nhãn trên chia đôi thế giới
+  // thành "chưa bấm" ⟂ "đã lên máy chủ", nên lượt gửi TRƯỢT không có chỗ đứng và
+  // rơi vào nhãn "Đã lưu lên máy chủ" — đúng câu sai nhất trong ba câu.
+  'trace.meta.savePending': {
+    vi: 'Chưa gửi lên máy chủ — bấm để thử lại',
+    en: 'Not sent to the server — tap to retry',
+    zh: '尚未发送到服务器 — 点击重试',
+    ja: 'サーバー未送信 — タップして再試行',
+  },
   'trace.health.healthy': { vi: 'Khoẻ mạnh', en: 'Healthy', zh: '健康', ja: '健全' },
   'trace.health.flowering': { vi: 'Đang ra hoa', en: 'Flowering', zh: '开花中', ja: '開花中' },
   'trace.health.fruiting': { vi: 'Đang có quả', en: 'Fruiting', zh: '结果中', ja: '結実中' },

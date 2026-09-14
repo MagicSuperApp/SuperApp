@@ -1500,22 +1500,38 @@ const TreeDetailScreen = () => {
           </View>
         </>
       }
+      /*
+        Cùng THỨ TỰ ƯU TIÊN với `overviewEmpty` ở trên: đang tải → lỗi tải → thật
+        sự chưa có quả.
+
+        ⛔ Bản trước để tiêu đề lớn luôn là "Chưa ghi nhận quả nào" và đẩy
+        `fruitsError` xuống dòng phụ xám, không nút Thử lại — tức một lần hỏng
+        mạng hiện ra y như một sự thật về dữ liệu, đúng cái mà chú thích ở
+        `overviewEmpty` cấm. Nông dân đọc câu đó là tưởng mất dữ liệu.
+      */
       ListEmptyComponent={
-        <View style={styles.emptyWrap}>
-          {fruitsLoading ? (
+        fruitsLoading ? (
+          <View style={styles.emptyWrap}>
             <ActivityIndicator size="large" color={COLORS.accent} />
-          ) : (
+            <Text style={styles.emptyTitle}>{tk('trace.tree.loadingHistory')}</Text>
+          </View>
+        ) : fruitsError ? (
+          <View style={styles.emptyWrap}>
+            <Icon name="plug-circle-xmark" size={36} color={COLORS.warning} />
+            <Text style={styles.emptyTitle}>Không tải được quả</Text>
+            <Text style={styles.emptyBody}>{fruitsError}</Text>
+            <TouchableOpacity style={styles.emptyAddBtn} onPress={() => fetchFruits(true)}>
+              <Icon name="arrows-rotate" size={15} color={COLORS.white} />
+              <Text style={styles.emptyAddBtnText}>Thử lại</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.emptyWrap}>
             <Icon name="box-archive" size={36} color={COLORS.accentLight} />
-          )}
-          <Text style={styles.emptyTitle}>
-            {tk(fruitsLoading ? 'trace.tree.loadingHistory' : 'trace.tree.noFruit')}
-          </Text>
-          {!fruitsLoading && (
-            <Text style={styles.emptyBody}>
-              {fruitsError ?? tk('trace.tree.noFruitHintTab')}
-            </Text>
-          )}
-        </View>
+            <Text style={styles.emptyTitle}>{tk('trace.tree.noFruit')}</Text>
+            <Text style={styles.emptyBody}>{tk('trace.tree.noFruitHintTab')}</Text>
+          </View>
+        )
       }
       renderItem={({ item }) => {
         const st = getStatus(item.status);

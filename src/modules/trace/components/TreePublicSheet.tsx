@@ -83,6 +83,12 @@ const TreePublicSheet: React.FC<TreePublicSheetProps> = ({ visible, onClose, tre
 
   const [loading, setLoading] = useState(true);
   const [isPublic, setIsPublic] = useState(false);
+  /**
+   * KHÔNG ĐỌC ĐƯỢC — trạng thái thứ ba, và nó phải kêu TO HƠN "chưa công khai".
+   * Khi cờ này bật, ba lựa chọn bị KHOÁ: đổi mức mà không biết mức hiện tại là
+   * đổi mù, và cái giá của việc đổi mù ở đây là hạ mức một cây đang bán được.
+   */
+  const [readError, setReadError] = useState(false);
   const [chosen, setChosen] = useState<TreeVisibility | null>(null);
   const [code, setCode] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -102,8 +108,20 @@ const TreePublicSheet: React.FC<TreePublicSheetProps> = ({ visible, onClose, tre
     // `not_public` là CÂU TRẢ LỜI (riêng tư hoặc chưa đặt), `error` mới là hỏng.
     // Gộp hai thứ thì mất mạng cũng hiện thành "chưa công khai", rồi nông dân đi
     // bật lại một cây vốn đã bật.
-    setIsPublic(r.kind === 'ok');
-    setCode(r.kind === 'ok' ? (r.provenance.code ?? null) : null);
+    //
+    // ⛔ Bản trước viết đúng câu này rồi ngay dòng dưới làm ngược lại —
+    // `setIsPublic(r.kind === 'ok')` gộp cả ba nhánh của `ProvenanceResult`
+    // (`services/provenanceService.ts` — `ok` · `not_public` · `error`) thành một
+    // chữ nhị phân. Chú thích không phải cổng.
+    if (r.kind === 'error') {
+      setReadError(true);
+      setIsPublic(false);
+      setCode(null);
+    } else {
+      setReadError(false);
+      setIsPublic(r.kind === 'ok');
+      setCode(r.kind === 'ok' ? (r.provenance.code ?? null) : null);
+    }
     setLoading(false);
   }, [treeId]);
 
@@ -188,24 +206,46 @@ const TreePublicSheet: React.FC<TreePublicSheetProps> = ({ visible, onClose, tre
             <View style={s.center}><ActivityIndicator color={TONE.primary} /></View>
           ) : (
             <>
-              <View style={[s.statusPill, isPublic && s.statusPillOn]}>
-                <View style={[s.statusDot, { backgroundColor: isPublic ? TONE.primary : NATURE.barkSoft }]} />
-                <Text style={[s.statusTxt, isPublic && s.statusTxtOn]}>
-                  {isPublic ? 'Đang công khai' : 'Chưa công khai'}
-                </Text>
-              </View>
+              {readError ? (
+                <View style={s.errBox}>
+                  <Icon name="plug-circle-xmark" size={18} color={TONE.danger} />
+                  <View style={s.errText}>
+                    <Text style={s.errTitle}>Chưa đọc được trạng thái — cần mạng</Text>
+                    <Text style={s.errHint}>
+                      Chưa biết cây đang ở mức nào thì đổi mức là đổi mù. Nối mạng rồi bấm Thử lại.
+                    </Text>
+                  </View>
+                  <Pressable
+                    onPress={refresh}
+                    style={({ pressed }) => [s.retryBtn, pressed && s.pressed]}
+                    accessibilityRole="button"
+                  >
+                    <Text style={s.retryTxt}>Thử lại</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <View style={[s.statusPill, isPublic && s.statusPillOn]}>
+                  <View style={[s.statusDot, { backgroundColor: isPublic ? TONE.primary : NATURE.barkSoft }]} />
+                  <Text style={[s.statusTxt, isPublic && s.statusTxtOn]}>
+                    {isPublic ? 'Đang công khai' : 'Chưa công khai'}
+                  </Text>
+                </View>
+              )}
 
-              <View style={s.opts}>
+              <View style={[s.opts, readError && s.optsLocked]}>
                 {OPTIONS.map((o) => {
-                  const active = activeValue === o.value;
+                  // Khoá khi chưa đọc được: `activeValue` lúc đó rơi về `private`
+                  // theo mặc định, tức màn đang CHỈ VÀO một mức nó không đọc được.
+                  const active = !readError && activeValue === o.value;
+                  const locked = saving || readError;
                   return (
                     <Pressable
                       key={o.value}
-                      disabled={saving}
+                      disabled={locked}
                       onPress={() => choose(o.value)}
                       style={({ pressed }) => [s.opt, active && s.optOn, pressed && s.pressed]}
                       accessibilityRole="radio"
-                      accessibilityState={{ selected: active, disabled: saving }}
+                      accessibilityState={{ selected: active, disabled: locked }}
                     >
                       <View style={[s.optIcon, active && s.optIconOn]}>
                         <Icon name={o.icon} size={14} color={active ? NATURE.paper : NATURE.barkSoft} />
@@ -324,7 +364,25 @@ const s = StyleSheet.create({
   statusTxt: { fontSize: 13, fontWeight: '700', color: NATURE.barkSoft },
   statusTxtOn: { color: TONE.primaryDeep },
 
+  errBox: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
+    borderRadius: RADIUS.card, borderWidth: 1, borderColor: TONE.danger,
+    backgroundColor: SURFACE.sunken,
+    paddingHorizontal: SPACE.md, paddingVertical: SPACE.md,
+  },
+  errText: { flex: 1, minWidth: 0 },
+  errTitle: { ...TYPE.cardTitle, fontSize: 15, color: TONE.danger },
+  errHint: { ...TYPE.caption, fontSize: 12.5, marginTop: 2 },
+  retryBtn: {
+    borderRadius: RADIUS.chip, borderWidth: 1, borderColor: TONE.border,
+    paddingHorizontal: SPACE.md, paddingVertical: 8,
+    backgroundColor: SURFACE.raised,
+  },
+  retryTxt: { ...TYPE.caption, fontSize: 13, fontWeight: '700', color: TONE.primaryDeep },
+
   opts: { gap: SPACE.sm },
+  /** Ba lựa chọn bị khoá khi chưa đọc được trạng thái — xem `readError`. */
+  optsLocked: { opacity: 0.45 },
   opt: {
     flexDirection: 'row', alignItems: 'center', gap: SPACE.md,
     minHeight: TOUCH_MIN,

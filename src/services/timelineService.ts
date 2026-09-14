@@ -363,8 +363,16 @@ export const KIND_VI_ENROLL: Record<TimelineEntityType, string> = {
  * chung (Forall §Cái vỏ im lặng).
  */
 export function kindLabel(kind: string, entityType: TimelineEntityType): string {
-  if (kind === 'enroll') return KIND_VI_ENROLL[entityType] ?? KIND_VI_ENROLL.tree;
-  return KIND_VI[kind] ?? String(kind);
+  // Nhánh dự phòng KHÔNG được lui về `.tree`. Bản đầu viết `?? KIND_VI_ENROLL.tree`,
+  // và dòng đó dựng lại đúng con bọ mà cả hàm này sinh ra để diệt: máy chủ thêm một
+  // loại thực thể app chưa biết (`plot_group`, `hive`…) thì nó lại được gọi là "Đăng
+  // ký cây". `Record` đầy đủ chỉ chặn ở `tsc`; chuỗi máy chủ gửi lúc chạy thì không
+  // đi qua `tsc` chỗ nào. Câu dự phòng phải là câu ĐÚNG với mọi loại thực thể.
+  if (kind === 'enroll') return KIND_VI_ENROLL[entityType] ?? 'Ghi danh lần đầu';
+  // `kind` lạ: giữ nguyên chuỗi máy chủ (đừng nuốt), nhưng đừng để nó LÀM tiêu đề —
+  // người mua quả quét mã rồi đọc thấy một dòng tên `pruning_v2`. Kèm một từ tiếng
+  // người phía trước thì họ biết mình đang xem một việc bản app này chưa biết tên.
+  return KIND_VI[kind] ?? `Việc khác · ${String(kind)}`;
 }
 
 /**

@@ -21,6 +21,8 @@ import StateView from '../../../components/state/StateView';
 import type { ContractParty } from '../services/types';
 import { showError, showInfo, showWarning } from '../../../utils/alert';
 import { t } from '../../../i18n';
+import { ENABLED_MODULES } from '../../../config/instance.config';
+import { routeIsReachable } from '../../../navigation/moduleCatalog';
 
 type RouteParams = { ContractDetail: { contractId: string } };
 
@@ -80,6 +82,16 @@ const ContractDetailScreen: React.FC = () => {
   };
 
   const onOpenChat = async () => {
+    // ⛔ Cổng này phải đứng TRƯỚC `openConversation` — `openConversation` là một lệnh
+    // POST thật lên máy chủ (`work/services/workApi.ts`), nên thứ tự không phải chi
+    // tiết thẩm mỹ: app khai KHÔNG có chat mà vẫn tạo một cuộc hội thoại ProofChat
+    // trên máy chủ là rò NĂNG LỰC, thấy được ngay khi ai soi lưu lượng mạng của bản
+    // dựng đó. Màn `ChatRoom` thì không lộ (route của module tắt chưa từng được đăng
+    // ký vào cây điều hướng), nhưng "màn không lộ" không cứu được lượt gọi mạng.
+    if (!routeIsReachable('ChatRoom', ENABLED_MODULES)) {
+      showInfo('Chưa có trò chuyện', 'Bản ứng dụng này không có phần trò chuyện. Liên hệ qua số điện thoại trong hợp đồng.');
+      return;
+    }
     if (!isWorkBackendEnabled()) {
       showInfo('Chế độ demo', 'Cần backend để mở phòng chat của hợp đồng.');
       return;

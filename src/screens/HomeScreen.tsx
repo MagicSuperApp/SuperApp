@@ -838,28 +838,45 @@ const HomeScreen: React.FC = () => {
               onPress={() => (navigation as any).navigate('PhoenixWallet')}
             />
             <View style={styles.statDivider} />
-            <QuickStatRow
-              index={1}
-              icon="pine-tree"
-              label="Trang trại đang theo dõi"
-              value={tf('{farms} vườn · {trees} cây', { farms: farms.length, trees: trees.length })}
-              color={COLORS.accent}
-              onPress={() => navigation.navigate('Farms' as never)}
-            />
+            {/*
+              Cùng luật với ô chat bên dưới: `Farms` là route của module `trace`. App
+              nào không khai `trace` thì ô này vừa đếm một thứ luôn bằng 0, vừa là một
+              nút không tới được đâu.
+            */}
+            {routeIsReachable('Farms', ENABLED_MODULES) && (
+              <QuickStatRow
+                index={1}
+                icon="pine-tree"
+                label="Trang trại đang theo dõi"
+                value={tf('{farms} vườn · {trees} cây', { farms: farms.length, trees: trees.length })}
+                color={COLORS.accent}
+                onPress={() => navigation.navigate('Farms' as never)}
+              />
+            )}
             <View style={styles.statDivider} />
-            {/* ProofChat THẬT: đếm tin chưa đọc từ store; 0 → nhãn trung tính. */}
-            <QuickStatRow
-              index={2}
-              icon="message-text-outline"
-              label="Tin nhắn ProofChat"
-              value={
-                proofChatUnread > 0
-                  ? tf('{n} tin chưa đọc', { n: proofChatUnread })
-                  : 'Không có tin mới'
-              }
-              color={COLORS.accent}
-              onPress={() => navigation.navigate('ChatHome' as never)}
-            />
+            {/*
+              ProofChat THẬT: đếm tin chưa đọc từ store; 0 → nhãn trung tính.
+
+              ⛔ Lọc theo module, giống `VISIBLE_MODULES` ở đầu tệp. Dòng này là LỐI
+              VÀO THỨ HAI của chat trên CÙNG màn hình, cách khối kia 780 dòng — lượt
+              vá 14/09 chỉ chạm lưới "Dịch vụ" nên nó ở lại, và app CheckFarm (khai
+              `modules` không có `chat`) vẫn hiện một ô "Tin nhắn ProofChat · Không có
+              tin mới" cho một tính năng không tồn tại trong app đó.
+            */}
+            {routeIsReachable('ChatHome', ENABLED_MODULES) && (
+              <QuickStatRow
+                index={2}
+                icon="message-text-outline"
+                label="Tin nhắn ProofChat"
+                value={
+                  proofChatUnread > 0
+                    ? tf('{n} tin chưa đọc', { n: proofChatUnread })
+                    : 'Không có tin mới'
+                }
+                color={COLORS.accent}
+                onPress={() => navigation.navigate('ChatHome' as never)}
+              />
+            )}
           </View>
         </View>
 

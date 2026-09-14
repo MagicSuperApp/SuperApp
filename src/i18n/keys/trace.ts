@@ -259,6 +259,16 @@ export const TRACE_STRINGS = {
     zh: '服务器繁忙，请过几分钟再试。',
     ja: 'サーバーが混み合っています。数分後にお試しください。',
   },
+  // 403 — đã xác thực ĐÚNG mà vẫn bị từ chối. Câu này cố ý KHÔNG mời đăng nhập lại
+  // và KHÔNG mời thử lại: cả hai đều là việc vô ích ở ca này. Nó chỉ dùng khi máy chủ
+  // không gửi câu nào; có câu của máy chủ thì hiện câu đó, vì chỉ nó nói được thứ này
+  // thuộc về ai.
+  'trace.sync.forbidden': {
+    vi: 'Tài khoản đang dùng không có quyền với thứ này — nó thuộc một tài khoản khác. Đăng nhập lại không đổi được điều đó.',
+    en: 'The account you are signed in with has no access to this — it belongs to another account. Signing in again will not change that.',
+    zh: '当前账号无权访问该内容——它属于其他账号。重新登录也无法改变。',
+    ja: 'ご利用中のアカウントにはこの項目への権限がありません（別のアカウントのものです）。再ログインしても変わりません。',
+  },
   'trace.sync.unknown': {
     vi: 'Chưa hỏi được máy chủ. Thử lại nhé.',
     en: 'Could not ask the server. Try again.',
@@ -446,11 +456,19 @@ export const TRACE_STRINGS = {
   // nhân rồi nói chắc nịch**, trong khi thư viện đã trả về đúng nguyên nhân ở
   // `errorCode` và mã cũ vứt đi. Câu sai kiểu này đắt hơn câu chung chung, vì nó
   // tiêu thời gian của người dùng vào đúng chỗ không có gì để sửa.
+  // Bản đầu của câu này nói "nếu đang chạy trên MÁY ẢO…" và dừng ở đó. Hai chỗ sai,
+  // cùng một gốc là viết cho người soạn hệ chứ không cho người đang cầm máy:
+  //   · "máy ảo" là khái niệm của lập trình viên. Người làm vườn đang cầm điện thoại
+  //     thật, đọc xong không biết câu đó có nói về mình hay không. Lập trình viên thử
+  //     trên máy ảo thì đã có `{code}` ở ca `others` để nhận ra.
+  //   · Không có BƯỚC KẾ nào — mà ở đây bước kế là bắt buộc: `ActivityScreen` đòi
+  //     `hasFiles` mới cho lưu (`canSave`), nên máy ảnh không mở được nghĩa là buổi
+  //     tưới/bón hôm nay KHÔNG vào được sổ. Câu cũ không nói một chữ về chuyện đó.
   'trace.activity.cameraErrUnavailable': {
-    vi: 'Máy này không dùng được máy ảnh. Nếu đang chạy trên máy ảo hoặc máy không có máy ảnh thì chức năng quay sẽ không mở được.',
-    en: 'This device has no usable camera. On a simulator, or a device without a camera, recording cannot start.',
-    zh: '此设备无可用相机。在模拟器或没有相机的设备上无法录制。',
-    ja: 'この端末では利用できるカメラがありません。シミュレータやカメラのない端末では録画できません。',
+    vi: 'Điện thoại này chưa mở được máy ảnh cho ứng dụng. Việc vừa chọn cần một đoạn clip mới lưu được, nên hiện chưa ghi vào sổ. Bạn thử tắt hẳn ứng dụng rồi mở lại; vẫn vậy thì mượn máy khác quay giúp, hoặc gọi người hướng dẫn.',
+    en: 'This phone cannot open the camera for the app. The activity you picked needs a clip before it can be saved, so nothing has been recorded yet. Try closing the app fully and reopening it; if it still fails, borrow another phone or call your field contact.',
+    zh: '本机无法为应用打开相机。所选作业需要一段视频才能保存，因此尚未记录。请先完全关闭应用再打开；若仍不行，请借用其他手机拍摄，或联系现场指导人员。',
+    ja: 'この端末ではアプリのカメラを開けません。選んだ作業は動画がないと保存できないため、まだ記録されていません。アプリを完全に終了して開き直してください。それでも直らない場合は別の端末で撮るか、現場担当者に連絡してください。',
   },
   'trace.activity.cameraErrPermission': {
     vi: 'App chưa được phép dùng máy ảnh. Mở Cài đặt → quyền máy ảnh rồi bật lên.',
@@ -461,11 +479,15 @@ export const TRACE_STRINGS = {
   // Ca `others`: nguyên nhân THÔ, không dịch được ra câu người dùng làm theo được.
   // Nên đưa MÃ THAM CHIẾU thay vì đoán bừa một hướng dẫn — Forall §Cái vỏ im lặng
   // mục 2: lỗi hệ thống thô thì hiện mã tra ngược được, không hiện câu bịa.
+  // Câu cũ nói "báo kèm mã" mà không nói BÁO CHO AI — trong app không có màn nhận báo
+  // lỗi nào mở được, nên đó là một chỉ dẫn tới chỗ trống. Câu mới nói rõ việc phải làm
+  // (chụp màn hình, gửi cho người hướng dẫn) và nói rõ người dùng KHÔNG cần hiểu mã,
+  // chỉ cần để nó có trong ảnh.
   'trace.activity.cameraErrOther': {
-    vi: 'Không mở được máy ảnh. Thử lại; nếu vẫn vậy, báo kèm mã: {code}',
-    en: 'Could not open the camera. Try again; if it persists, report code: {code}',
-    zh: '无法打开相机。请重试；若仍然如此，请报告代码：{code}',
-    ja: 'カメラを開けません。再試行してください。続く場合はコードを報告してください: {code}',
+    vi: 'Không mở được máy ảnh. Bạn thử lại một lần nữa. Vẫn không được thì chụp lại màn hình này và gửi cho người hướng dẫn — chỉ cần dòng mã dưới đây có trong ảnh: {code}',
+    en: 'Could not open the camera. Please try once more. If it still fails, screenshot this message and send it to your field contact — the technical team only needs the code line below: {code}',
+    zh: '无法打开相机。请再试一次。若仍不行，请截图本提示并发给现场指导人员——技术人员只需要下面这行代码：{code}',
+    ja: 'カメラを開けません。もう一度お試しください。それでも直らない場合は、この画面を撮って現場担当者に送ってください。技術側に必要なのは下のコード行だけです: {code}',
   },
   'trace.activity.camPermTitle': { vi: 'Cần quyền máy ảnh', en: 'Camera permission needed', zh: '需要相机权限', ja: 'カメラの許可が必要です' },
   'trace.activity.camPermBody': {

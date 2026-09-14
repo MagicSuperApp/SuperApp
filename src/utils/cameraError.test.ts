@@ -20,10 +20,18 @@ describe('cameraErrorBody — ba mã, ba câu, không câu nào trùng câu nào
 
   it('máy không có máy ảnh ⟹ KHÔNG được chỉ người dùng đi mở quyền', () => {
     const s = cameraErrorBody({ errorCode: 'camera_unavailable' });
-    expect(s).toMatch(/không dùng được máy ảnh|máy ảo|no usable camera|simulator/i);
+    expect(s).toMatch(/chưa mở được máy ảnh|cannot open the camera/i);
     // Vế bắt lỗi: đây chính là câu bản cũ trả về cho ca này.
     expect(s).not.toMatch(NOI_VE_QUYEN);
     expect(s).not.toMatch(CHI_TOI_CAI_DAT);
+  });
+
+  it('ca không có máy ảnh phải nói rõ VIỆC HÔM NAY CHƯA VÀO SỔ, không chỉ kể lỗi', () => {
+    // `ActivityScreen.canSave` đòi có tệp mới cho lưu, nên máy ảnh không mở được nghĩa
+    // là buổi tưới/bón hôm nay không ghi được. Câu chỉ kể lỗi để người dùng tưởng đã
+    // lưu xong rồi đi làm việc khác — hỏng đắt hơn chính cái lỗi máy ảnh.
+    const s = cameraErrorBody({ errorCode: 'camera_unavailable' });
+    expect(s).toMatch(/chưa ghi vào sổ|nothing has been recorded/i);
   });
 
   it('thiếu quyền ⟹ chỉ đúng chỗ bật quyền', () => {
@@ -43,9 +51,35 @@ describe('cameraErrorBody — ba mã, ba câu, không câu nào trùng câu nào
     expect(cameraErrorBody({})).toContain('unknown');
   });
 
-  it('máy ảnh tự nói được thì để NÓ nói — lời của nó thắng câu của mình', () => {
-    const s = cameraErrorBody({ errorCode: 'permission', errorMessage: 'Ống kính bị che' });
-    expect(s).toBe('Ống kính bị che');
+  // ── Ba bài dưới ĐẢO DẤU một bài cũ, cố ý ────────────────────────────────────
+  // Bài cũ ghim: "máy ảnh tự nói được thì để NÓ nói — lời của nó thắng câu của mình",
+  // và nó XANH ở bản cũ. Chính sách đó sai: `errorMessage` của thư viện này là chuỗi
+  // cho lập trình viên (`README.md:136` — *"use it for debug purpose only"*), một
+  // trong các giá trị thật là câu tiếng Anh nói về `Manifest.permission.CAMERA`. Lật
+  // chính sách thì phải đi tìm bài kiểm cũ và đảo dấu kỳ vọng của nó, chứ không để
+  // nó nằm lại canh cho bản sai.
+  it('`errorMessage` KHÔNG được làm cả câu — nó là chuỗi cho lập trình viên', () => {
+    const s = cameraErrorBody({
+      errorCode: 'others',
+      errorMessage: 'This library does not require Manifest.permission.CAMERA',
+    });
+    expect(s).not.toBe('This library does not require Manifest.permission.CAMERA');
+    // Câu hướng dẫn tiếng người vẫn phải còn nguyên ở đầu.
+    expect(s).toMatch(/chụp lại màn hình|screenshot this message/i);
+  });
+
+  it('nhưng cũng KHÔNG được bỏ mất nó — nó là thứ duy nhất nói ca `others` là ca gì', () => {
+    const s = cameraErrorBody({ errorCode: 'others', errorMessage: 'Activity error' });
+    expect(s).toContain('Activity error');
+    expect(s).toContain('others');
+  });
+
+  it('`errorMessage` KHÔNG được đè câu của hai ca ĐÃ BIẾT nguyên nhân', () => {
+    // Ca `permission` có câu chỉ đúng chỗ bật quyền. Một chuỗi gỡ lỗi thay được câu
+    // đó là mất đường đi duy nhất người dùng có.
+    const s = cameraErrorBody({ errorCode: 'permission', errorMessage: 'SecurityException' });
+    expect(s).toMatch(CHI_TOI_CAI_DAT);
+    expect(s).not.toContain('SecurityException');
   });
 
   it('ba ca ra ba chuỗi ĐÔI MỘT khác nhau — nếu không bài trên chẳng kiểm gì', () => {

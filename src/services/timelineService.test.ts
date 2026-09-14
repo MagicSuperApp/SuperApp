@@ -188,8 +188,23 @@ describe('nhãn hiển thị', () => {
     }
   });
 
-  it('loại LẠ trả lại nguyên chuỗi máy chủ gửi, không nuốt thành nhãn chung', () => {
-    expect(kindLabel('pruning_v2', 'tree')).toBe('pruning_v2');
+  it('loại LẠ giữ nguyên chuỗi máy chủ, nhưng KHÔNG để chuỗi đó làm cả tiêu đề', () => {
+    const s = kindLabel('pruning_v2', 'tree');
+    // Không nuốt: mã máy chủ phải còn, để người gỡ lỗi đối chiếu được.
+    expect(s).toContain('pruning_v2');
+    // Nhưng cũng không để người mua quả đọc thấy một dòng tên `pruning_v2` — phải có
+    // một từ tiếng người phía trước nói đây là việc app chưa biết tên.
+    expect(s).not.toBe('pruning_v2');
+    expect(s).toMatch(/Việc khác/);
+  });
+
+  it('loại thực thể LẠ khi ghi danh KHÔNG được gọi là "cây"', () => {
+    // Nhánh dự phòng cũ viết `?? KIND_VI_ENROLL.tree`, tức nó dựng lại đúng con bọ mà
+    // `kindLabel` sinh ra để diệt. `Record` đầy đủ chỉ chặn ở `tsc`; chuỗi máy chủ gửi
+    // lúc chạy không đi qua `tsc` chỗ nào — nên phải có bài ở đây.
+    const s = kindLabel('enroll', 'hive' as any);
+    expect(s).not.toMatch(/cây/);
+    expect(s).toBeTruthy();
   });
 
   it('mọi loại thực thể máy chủ cho phép đều có danh từ tiếng Việt', () => {

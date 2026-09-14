@@ -13,7 +13,6 @@ import {
   Modal,
   TextInput,
   Linking,
-  PermissionsAndroid,
 } from 'react-native';
 // Icon: bộ Font Awesome Solid tải qua Iconify (assets/icons → icons.generated).
 // Thêm icon mới: `node scripts/icons.js <tên-fa6-solid>`.
@@ -34,6 +33,7 @@ import {
 import { GroundBackdrop } from '../components/layered/Organic';
 import { useTk } from '../../../i18n/keys';
 import { cameraErrorBody } from '../../../utils/cameraError';
+import { ensureCameraPermission } from '../../../utils/cameraPermission';
 import { RootState } from '../../../store';
 import { useAppDispatch } from '../../../store/hooks';
 import { showError, showSuccess, showWarning } from '../../../utils/alert';
@@ -365,14 +365,22 @@ const ActivityScreen = () => {
    *
    * ⛔ Lỗi đội thực địa báo trên iOS: bấm một việc (Tưới nước / Bón phân / Phun
    * thuốc…) thì máy ảnh "tự tắt ngay khi mở". Đó KHÔNG phải máy ảnh hỏng — iOS chỉ
-   * hỏi quyền ĐÚNG MỘT LẦN; từ lần từ chối đó trở đi `launchCamera` gọi lại callback
-   * ngay với `errorCode: 'permission'` mà không dựng khung hình nào, nên người dùng
-   * thấy màn máy ảnh loé lên rồi biến mất.
+   * hỏi quyền ĐÚNG MỘT LẦN, nên ai đã bấm "Không cho phép" thì từ đó về sau không
+   * còn hộp hỏi nào nữa.
    *
-   * Trước bản này màn không có đường nào ra: nhánh `errorCode` chỉ hiện câu "Kiểm
-   * tra lại quyền dùng máy ảnh" — một lời khuyên không kèm chỗ để làm. Mà `Cài đặt`
-   * của iOS chỉ hiện mục Máy ảnh của app SAU khi app đã xin ít nhất một lần, nên
-   * người dùng đi tìm cũng không chắc thấy. Nút này đưa thẳng tới đó.
+   * ── ĐÍNH CHÍNH 15/09/2026 ────────────────────────────────────────────────────
+   * Bản trước của chú thích này nói rằng lúc đó `launchCamera` "gọi lại callback
+   * ngay với `errorCode: 'permission'`". SAI, và sai theo chiều làm người đọc yên
+   * tâm: trên iOS `react-native-image-picker` KHÔNG kiểm quyền máy ảnh lần nào —
+   * hàm kiểm của nó (`ImagePickerManager.mm:386`) không có một nơi gọi. Nên mã
+   * `permission` không bao giờ tới được JS, và cả khối `askOpenSettings` dưới đây
+   * là mã CHẾT trên iOS. Thứ thật sự xảy ra: màn máy ảnh dựng lên, hình đen, người
+   * dùng bấm Huỷ, thư viện trả `didCancel`, màn im lặng đi tiếp.
+   *
+   * Nay quyền được hỏi TRƯỚC khi mở (`utils/cameraPermission.ts`), nên nút này mới
+   * thật sự tới tay người dùng. Nó vẫn cần thiết: `Cài đặt` của iOS chỉ hiện mục
+   * Máy ảnh của app SAU khi app đã xin ít nhất một lần, nên người dùng đi tìm cũng
+   * không chắc thấy — nút này đưa thẳng tới đó.
    */
   const askOpenSettings = useCallback(() => {
     showWarning(tk('trace.activity.camPermTitle'), tk('trace.activity.camPermBody'), {
@@ -391,21 +399,22 @@ const ActivityScreen = () => {
       return;
     }
 
-    // Android: hộp quyền phải do APP bật TRƯỚC. `launchCamera` không tự xin — không
-    // xin thì picker trả lỗi và máy ảnh không mở, giống hệt ca iOS ở dưới. Hai màn
-    // chụp khác trong app (`FruitListScreen`, `TreeIdentityScreen`) đã làm đúng thế;
-    // riêng màn này bỏ sót, nên nó là màn duy nhất mở máy ảnh mà không hỏi gì.
-    if (Platform.OS === 'android') {
-      const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA, {
-        title: tk('trace.activity.camPermTitle'),
-        message: tk('trace.activity.camPermAsk'),
-        buttonPositive: tk('trace.activity.allow'),
-        buttonNegative: tk('trace.activity.deny'),
-      });
-      if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
-        askOpenSettings();
-        return;
-      }
+    // Hộp quyền phải do APP bật TRƯỚC, trên CẢ HAI nền tảng.
+    //
+    // Android thì đã đúng từ trước. iOS thì không, và đó là lỗi đội thực địa báo:
+    // `react-native-image-picker` có viết hàm kiểm quyền máy ảnh nhưng KHÔNG BAO
+    // GIỜ gọi nó, nên mã `permission` ở nhánh dưới không bao giờ tới được JS trên
+    // iOS. Ai từng bấm "Không cho phép" thì máy ảnh mở ra đen rồi tắt, không một
+    // câu nào. Chi tiết và số đo: `utils/cameraPermission.ts`.
+    const camPerm = await ensureCameraPermission({
+      title: tk('trace.activity.camPermTitle'),
+      message: tk('trace.activity.camPermAsk'),
+      buttonPositive: tk('trace.activity.allow'),
+      buttonNegative: tk('trace.activity.deny'),
+    });
+    if (camPerm === 'denied') {
+      askOpenSettings();
+      return;
     }
 
     imagePicker.launchCamera(await withPhotoSave(VIDEO_OPTIONS), (response: any) => {
@@ -414,6 +423,9 @@ const ActivityScreen = () => {
         // Ca "cam tự tắt": quyền đã bị từ chối trước đó nên picker đóng ngay. Nó
         // phải ra một câu KHÁC hẳn lỗi máy ảnh thường, kèm nút đi thẳng tới Cài đặt
         // — một hộp chỉ kể lỗi thì người dùng không có chỗ nào để sửa.
+        //
+        // Nhánh này giờ chỉ còn là lưới thứ hai: cổng ở trên đã bắt ca đó rồi, trừ
+        // khi quyền bị thu hồi giữa lúc kiểm và lúc mở, hoặc máy không đo được quyền.
         if (response.errorCode === 'permission') {
           askOpenSettings();
           return;

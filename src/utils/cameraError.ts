@@ -20,6 +20,13 @@ import { tk } from '../i18n/keys';
  * Quyền có; máy ảnh không. Câu đó tiêu thời gian của người dùng vào đúng chỗ không
  * có gì để sửa.
  *
+ * ⚠ Số đo trên là số đo trên MÁY ẢO, và máy ảo không đại diện cho máy thật ở đúng
+ * chuyện quyền: `ImagePickerManager.mm:70-73` trả `camera_unavailable` ngay dòng
+ * đầu khi chạy máy ảo, TRƯỚC mọi nhánh quyền. Nên nó chứng minh được điều nó được
+ * dẫn ra để chứng minh — ba mã lỗi cần ba câu khác nhau — và không chứng minh được
+ * gì về đường quyền. Đường quyền trên iOS hỏng theo một kiểu khác hẳn, không máy ảo
+ * nào chạm tới được; xem `utils/cameraPermission.ts`.
+ *
  * ── ĐÍNH CHÍNH 14/09/2026: `errorMessage` KHÔNG phải câu cho người dùng ─────────
  * Bản đầu của hàm này cho `errorMessage` quyền ưu tiên cao nhất, với lý do "máy ảnh
  * nói được thành câu thì để NÓ nói" (Forall §Cái vỏ im lặng mục 2). Nguyên tắc đúng,

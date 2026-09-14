@@ -818,7 +818,19 @@ const AccountScreen = () => {
                             value={fmtLamp(chainWallet?.lampBalance)}
                             unit="LAMP"
                             color={COLORS.accent}
-                            desc="Sinh MAGIC mỗi 5 ngày"
+                            // ⛔ KHÔNG viết lại "Sinh MAGIC mỗi 5 ngày" ở đây.
+                            //
+                            // Câu đó đứng ở ô này tới 15/09/2026, dịch sẵn ra bốn thứ
+                            // tiếng, và KHÔNG có một dòng mã nào đứng sau: quét cả
+                            // `src/` lẫn `rust/` cho mọi tên gọi của việc sinh MAGIC
+                            // (`schedulegen`, `generateMagic`, `mintMagic`) đều ra rỗng.
+                            // Người dùng đọc nó rồi chờ một khoản không bao giờ tới.
+                            //
+                            // Câu dưới đây nói một tính chất ĐANG đúng của LAMP (tổng
+                            // cung cố định, không đốt) chứ không hứa một hành vi. Ngày
+                            // nào cửa sinh MAGIC có mã thật thì đổi lại — cùng lúc với
+                            // mã, không trước.
+                            desc="Token nền, tổng cung cố định"
                             onPress={openLamp}
                         />
                         {/* CARP — token hệ sinh thái thứ 3. TODO brand: icon/màu tạm; số dư chờ API Phoenix. */}

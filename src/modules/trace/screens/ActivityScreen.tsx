@@ -16,7 +16,6 @@ import {
   PermissionsAndroid,
   KeyboardAvoidingView,
   Keyboard,
-  Dimensions,
 } from 'react-native';
 import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 // Icon: bộ Font Awesome Solid tải qua Iconify (assets/icons → icons.generated).
@@ -348,6 +347,11 @@ const ActivityScreen = () => {
   // (`ScrollView.js:1224-1250`) chỉ ghi lại số đo chứ không dời `contentOffset`.
   const scrollRef = useRef<ScrollView>(null);
 
+  // Thanh nút "Lưu". Cần tay cầm vì ĐỈNH của nó là đáy khung nhìn thật của vùng
+  // cuộn — nó là anh em ngay sau vùng cuộn trong cùng một cột và không co
+  // (`flexShrink` mặc định 0), nên toàn bộ phần co dồn vào vùng cuộn.
+  const bottomBarRef = useRef<View>(null);
+
   // Bàn phím có đang che thật không, và che bao nhiêu.
   //
   // CỐ Ý không nuôi một biến `boolean`: có hai ca bàn phím "mở" mà không che gì,
@@ -419,15 +423,28 @@ const ActivityScreen = () => {
       const input = TextInput.State.currentlyFocusedInput();
       // Bàn phím không chiếm chỗ thật (xem `kbHeight`) thì không có gì để tránh.
       if (kb <= 0 || !scroll || !input) return;
-      input.measureInWindow((_x, y, _w, h) => {
-        const dich = scrollOffsetToRevealInput({
-          inputTop: y,
-          inputHeight: h,
-          keyboardTop: Dimensions.get('window').height - kb,
-          currentOffset: scrollOffsetRef.current,
-          gap: KEYBOARD_INPUT_GAP,
+      // Mốc là ĐỈNH THANH NÚT, không phải đỉnh bàn phím — xem chú thích ở
+      // `scrollOffsetToRevealInput`. Thanh nút là anh em ngay sau vùng cuộn trong
+      // cùng một cột, nên đỉnh nó CHÍNH LÀ đáy khung nhìn của vùng cuộn; và đo nó
+      // bằng cùng một phép `measureInWindow` với ô nhập thì hai số ở cùng một hệ
+      // toạ độ, không còn chỗ cho lệch thanh trạng thái như khi lấy `Dimensions`.
+      const bar = bottomBarRef.current;
+      if (!bar) return;
+      bar.measureInWindow((_sx, barTop, _sw, barHeight) => {
+        input.measureInWindow((_x, y, _w, h) => {
+          // Một nút đã rời khỏi cây (dòng vật tư bị xoá trong lúc chờ) trả về số
+          // đo RỖNG `0,0,0,0`. Đọc nó như "ô đang ở mép trên" là đọc một lần đo
+          // hỏng thành dữ liệu — thà không cuộn còn hơn cuộn theo số bịa.
+          if (h <= 0 || barHeight <= 0) return;
+          const target = scrollOffsetToRevealInput({
+            inputTop: y,
+            inputHeight: h,
+            visibleBottom: barTop,
+            currentOffset: scrollOffsetRef.current,
+            gap: KEYBOARD_INPUT_GAP,
+          });
+          if (target !== null) scroll.scrollTo({ y: target, animated: true });
         });
-        if (dich !== null) scroll.scrollTo({ y: dich, animated: true });
       });
     }, kbDurationRef.current);
   }, []);
@@ -829,6 +846,7 @@ const ActivityScreen = () => {
             chừa chỗ cho một thanh nút PHỦ LÊN vùng cuộn. Thanh nút không phủ nữa thì
             khối đệm thành một khoảng trống chết ngay trên đỉnh bàn phím. */}
         <View
+          ref={bottomBarRef}
           style={[
             styles.bottomBar,
             {

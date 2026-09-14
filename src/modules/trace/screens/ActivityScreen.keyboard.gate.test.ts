@@ -95,11 +95,36 @@ describe('bàn phím không được che ô nhập vật tư', () => {
     // `automaticallyAdjustKeyboardInsets` mặc định TẮT
     // (`RCTScrollViewComponentView.mm:149`) và bốn handler bàn phím ở lớp JS
     // chỉ ghi số đo chứ không dời `contentOffset`.
+    // Ghim ĐẠI LƯỢNG "mọi ô nhập đều có `onFocus`", KHÔNG ghim SỐ ĐẾM ô nhập.
+    // Số ô là một tập đang lớn dần: thêm một ô ghi chú làm đúng quy tắc mà ca này
+    // vẫn đỏ thì nó dạy người ta sửa ca kiểm, không dạy người ta làm đúng.
     const soONhap = (SRC.match(/<TextInput/g) ?? []).length;
     const soOnFocus = (SRC.match(/onFocus=\{scrollInputIntoView\}/g) ?? []).length;
-    expect(soONhap).toBe(3); // tên · lượng · đơn vị
+    expect(soONhap).toBeGreaterThan(0);
     expect(soOnFocus).toBe(soONhap);
     expect(SRC).toMatch(/ref=\{scrollRef\}/);
+  });
+
+  it('chân 3d — mốc là ĐÁY KHUNG NHÌN của vùng cuộn, không phải đỉnh bàn phím', () => {
+    // Chân 2 vừa đặt thanh nút "Lưu" vào GIỮA vùng cuộn và bàn phím, nên hai mốc
+    // đó cách nhau đúng chiều cao thanh nút (~117 điểm) — hơn cả chiều cao một ô
+    // nhập. Nhắm vào đỉnh bàn phím tức nhắm vào giữa thanh nút: màn giật lên rồi
+    // ô vẫn bị che, chỉ đổi thứ che. Lấy `Dimensions` làm mốc còn hỏng thêm một
+    // kiểu nữa trên Android, nơi nó không cùng hệ quy chiếu với `measureInWindow`.
+    // Khớp TRỌN biểu thức, không khớp tiền tố. `toContain('visibleBottom: barTop')`
+    // vẫn xanh với `visibleBottom: barTop + barHeight` — mà đó chính là cách viết
+    // lấy lại ĐÁY thanh nút, tức đỉnh bàn phím, tức đúng cái lỗi đang vá. Đo được:
+    // ca này từng để đột biến ấy đi qua với 171/171 xanh.
+    expect(SRC).toMatch(/\n\s*visibleBottom: barTop,\n/);
+    expect(SRC).toMatch(/bar\.measureInWindow\(/);
+    expect(SRC).toMatch(/ref=\{bottomBarRef\}/);
+    expect(SRC).not.toMatch(/Dimensions\.get\('window'\)/);
+  });
+
+  it('số đo RỖNG không được đọc thành số đo thật', () => {
+    // Nút đã rời khỏi cây (dòng vật tư bị xoá trong lúc chờ) trả `0,0,0,0`. Đọc
+    // nó như "ô đang ở mép trên" là dựng một cái vỏ im lặng: cuộn theo số bịa.
+    expect(SRC).toMatch(/if \(h <= 0 \|\| barHeight <= 0\) return;/);
   });
 
   it('chân 3b — cuộn tới Ô ĐANG GÕ, KHÔNG cuộn tới cuối vùng cuộn', () => {

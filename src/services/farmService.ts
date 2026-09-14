@@ -32,11 +32,13 @@
  * điều không xảy ra với GPS thật. Nên hàm map giữ `null` cho chỗ vắng.
  */
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ORILIFE_BASE } from './orilifeBase';
+import { orilifeAuthHeaderValue } from './orilifeAuthHeader';
+import { ensureOrilifeToken } from './orilifeDidAuth';
 import type { Farm } from '../modules/trace/types';
 import type { APIError } from './treeReIDService';
 import { canResendAfterNetworkError } from './resendPolicy';
+import { serverRejectionOf } from './serverRejection';
 
 /**
  * Cửa POST GỬI LẠI ĐƯỢC sau lỗi mạng. Luật + lý do đầy đủ ở `resendPolicy.ts`.
@@ -111,20 +113,31 @@ export const BOUNDARY_METHOD = {
   mixed: 'mixed',
 } as const;
 
-const AUTH_TOKEN_KEY = 'auth_token';
 const REQUEST_TIMEOUT_MS = 45_000;
 
 // ---------------------------------------------------------------------------
-// Shared internal helper (bản sao gọn của treeReIDService — giữ cô lập)
+// Đường xác thực — DÙNG CHUNG, không chép lại
 // ---------------------------------------------------------------------------
+//
+// ⛔ Bản trước tệp này giữ một `_getAuthHeader` riêng đọc thẳng `auth_token` từ
+// AsyncStorage, kèm chú thích tự khai "bản sao gọn của treeReIDService — giữ cô
+// lập". Câu đó chính là lời khai rằng **bản vá tương lai sẽ không tới được
+// đây**: `treeReIDService:449` đã học cách ký lại phiên khi gặp 401
+// (`ensureOrilifeToken(base, { force: true })` rồi thử lại một lần), còn cửa
+// vườn — cửa ĐÔNG NHẤT của app — thì vẫn trả `auth_error` và câm giữa thực địa.
+//
+// Nay đọc đầu đề qua `orilifeAuthHeaderValue` (cùng đệm với `RemoteImage`, và
+// đệm đó bị `clearOrilifeToken()` xoá lúc đăng xuất) và dùng chung đúng đường
+// ký lại phiên của bản gốc.
+//
+// `orilifeAuthHeaderValue(force)` phải được ép đọc lại ở lượt thử THỨ HAI: đệm
+// giữ đầu đề tới 30 giây, nên gửi lại bằng đệm là gửi lại đúng cái thẻ vừa bị
+// máy chủ từ chối.
 
-async function _getAuthHeader(): Promise<string | null> {
-  try {
-    const token = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
-    return token ? `Bearer ${token}` : null;
-  } catch {
-    return null;
-  }
+/** Gốc máy chủ của một URL đầy đủ — `ensureOrilifeToken` nhận gốc, không nhận đường. */
+function _baseOf(url: string): string {
+  const i = url.indexOf('/api/');
+  return i > 0 ? url.slice(0, i) : url;
 }
 
 async function _apiCall<T>(
@@ -133,7 +146,7 @@ async function _apiCall<T>(
   body?: FormData,
   attempt = 0,
 ): Promise<{ ok: boolean; data?: T; error?: APIError }> {
-  const authHeader = await _getAuthHeader();
+  const authHeader = await orilifeAuthHeaderValue(attempt > 0);
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (authHeader) headers['Authorization'] = authHeader;
 
@@ -150,6 +163,12 @@ async function _apiCall<T>(
     clearTimeout(timeoutHandle);
 
     if (resp.status === 401) {
+      // Ký lại phiên MỘT lần rồi thử lại — cùng đường với `treeReIDService`.
+      // Không có nó thì thẻ hết hạn giữa buổi làm danh sách vườn câm hẳn, dù
+      // mạng vẫn tốt và người dùng vẫn đang đứng trong vườn của mình.
+      if (attempt === 0 && (await ensureOrilifeToken(_baseOf(url), { force: true }))) {
+        return _apiCall<T>(url, method, body, 1);
+      }
       return {
         ok: false,
         error: { type: 'auth_error', detail: 'Token hết hạn hoặc không hợp lệ', http_status: 401 },
@@ -216,6 +235,13 @@ async function _apiCall<T>(
     }
 
     const data = await resp.json() as T;
+    // HAI TẦNG `ok`, và tầng thứ hai từng không ai đọc. `resp.ok` là cờ HTTP;
+    // `data.ok` là cờ NGHIỆP VỤ, và máy chủ này từ chối bằng `200 {"ok": false}`
+    // ở vài đường (`timelineService.ts` đã vá tại chỗ từ trước). Bỏ qua nó ở đây
+    // thì `listFarms` trả về `{ok:true, farms:[]}` cho một lần bị từ chối — app
+    // khẳng định "đã đồng bộ xong, bạn có 0 vườn" và mời tạo lại vườn đã có.
+    const rejection = serverRejectionOf(data, resp.status);
+    if (rejection) return { ok: false, error: rejection };
     return { ok: true, data };
 
   } catch (err: unknown) {

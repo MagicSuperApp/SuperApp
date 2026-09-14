@@ -42,6 +42,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ensureOrilifeToken } from './orilifeDidAuth';
 import type { APIError, ApiResult } from './fruitReIDService';
+import { serverRejectionOf } from './serverRejection';
 
 const AUTH_TOKEN_KEY = 'auth_token';
 const REQUEST_TIMEOUT_MS = 20_000;
@@ -256,7 +257,13 @@ async function _publicGet<T>(url: string, attempt = 0): Promise<ApiResult<T> | n
         },
       };
     }
-    return { ok: true, data: (await resp.json()) as T };
+    const data = (await resp.json()) as T;
+    // Cửa công khai khai `ok` trong thân. `200 {"ok": false}` là lời từ chối —
+    // để nó lọt thì `_readProv` nhận một hồ sơ thiếu và dựng câu "thiếu hồ sơ
+    // xuất xứ", che mất câu máy chủ vừa nói cho người quét mã.
+    const rejection = serverRejectionOf(data, resp.status);
+    if (rejection) return { ok: false, error: rejection };
+    return { ok: true, data };
   } catch (err: unknown) {
     clearTimeout(timer);
     const isTimeout = err instanceof Error && err.name === 'AbortError';
@@ -316,7 +323,12 @@ async function _authGet<T>(
         error: { type: 'server_error', detail: `HTTP ${resp.status}`, http_status: resp.status },
       };
     }
-    return { ok: true, data: (await resp.json()) as T };
+    const data = (await resp.json()) as T;
+    // Cùng luật với `_publicGet`: `200 {"ok": false}` là từ chối, không phải một
+    // bản ghi quả rỗng.
+    const rejection = serverRejectionOf(data, resp.status);
+    if (rejection) return { ok: false, error: rejection };
+    return { ok: true, data };
   } catch (err: unknown) {
     clearTimeout(timer);
     const isTimeout = err instanceof Error && err.name === 'AbortError';

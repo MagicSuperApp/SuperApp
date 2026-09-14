@@ -35,6 +35,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ensureOrilifeToken } from './orilifeDidAuth';
 import type { APIError, ApiResult } from './fruitReIDService';
+import { serverRejectionOf } from './serverRejection';
 
 const AUTH_TOKEN_KEY = 'auth_token';
 const REQUEST_TIMEOUT_MS = 20_000;
@@ -188,7 +189,14 @@ async function _apiCall<T>(
       return { ok: false, error: { type: 'server_error', detail: `HTTP ${resp.status}`, http_status: resp.status } };
     }
 
-    return { ok: true, data: (await resp.json()) as T };
+    const data = (await resp.json()) as T;
+    // `GrantListResponse.ok` / `GrantCreateResponse.ok` là cờ NGHIỆP VỤ, và máy
+    // chủ này từ chối bằng `200 {"ok": false}` ở vài đường. Bỏ qua thì một lần
+    // thu hồi bị từ chối hiện ra như đã thu hồi, và danh sách chia sẻ bị từ chối
+    // hiện ra như "bạn chưa chia sẻ cho ai" — cả hai đều là lời nói dối êm ru.
+    const rejection = serverRejectionOf(data, resp.status);
+    if (rejection) return { ok: false, error: rejection };
+    return { ok: true, data };
   } catch (err: unknown) {
     clearTimeout(timer);
     const isTimeout = err instanceof Error && err.name === 'AbortError';

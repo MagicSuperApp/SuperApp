@@ -142,6 +142,33 @@ export const ACCOUNT: PhraseMap = {
     zh: '先登记 — 监护人恢复流程尚未打通',
     ja: '先に登録を — ガーディアンによる復旧はまだ最後まで動きません',
   },
+  // ── Ô nhắc sao lưu ở mục BẢO MẬT & KHÔI PHỤC ───────────────────────────────
+  // ⛔ Bộ khoá cũ của ô này ('Chưa có ai khôi phục hộ bạn' + 'Chọn người khôi phục')
+  // đã GỠ 15/09/2026 cùng lý do với khoá ở dòng 140: chúng mời người bảo hộ như một
+  // việc làm xong là hết lo, trong khi đường khôi phục ấy chưa chạy tới cuối. Người
+  // tin câu cũ thì không lưu 24 từ, và mất máy là mất cả ví. Câu mới nói đúng thứ
+  // đang chạy được, và nó phải có đủ bốn thứ tiếng — người dùng nước ngoài đọc một
+  // câu rào bằng tiếng Việt thì coi như không có câu rào nào.
+  'Chưa có đường lấy lại danh tính': {
+    en: 'No way back to your identity yet',
+    zh: '目前还没有找回身份的途径',
+    ja: '本人情報を取り戻す手段がまだありません',
+  },
+  'Nếu mất máy này, chỉ cụm 24 từ lấy lại được danh tính và ví của bạn — hôm nay đó là đường khôi phục duy nhất chạy được. Ghi danh người bảo hộ vẫn nên làm, nhưng đường khôi phục bằng người bảo hộ chưa chạy tới cuối nên nó chưa thay được cụm 24 từ.': {
+    en: 'If you lose this phone, only your 24-word phrase gets your identity and wallet back — today that is the only recovery path that works. Enrolling a guardian is still worth doing, but guardian recovery does not run end to end yet, so it does not replace the 24 words.',
+    zh: '万一丢了这部手机，只有你的 24 个助记词能找回身份和钱包 —— 目前这是唯一走得通的恢复途径。登记监护人仍然值得做，但监护人恢复流程尚未打通，还不能替代这 24 个词。',
+    ja: 'この端末をなくした場合、本人情報とウォレットを取り戻せるのは 24 語のフレーズだけです。今日の時点で機能する復旧手段はこれひとつです。ガーディアンの登録もしておく価値はありますが、ガーディアンによる復旧はまだ最後まで動かないため、24 語の代わりにはなりません。',
+  },
+  'Xem và cất giữ 24 từ': {
+    en: 'View and store the 24 words',
+    zh: '查看并保存 24 个助记词',
+    ja: '24 語を確認して保管する',
+  },
+  'Ghi danh người bảo hộ': {
+    en: 'Enrol a guardian',
+    zh: '登记监护人',
+    ja: 'ガーディアンを登録',
+  },
   'Nhật ký hoạt động': { en: 'Activity log', zh: '活动日志', ja: '操作履歴' },
   'Lịch sử ký, xoay khoá, khôi phục': {
     en: 'History of signing, key rotation and recovery',
@@ -494,11 +521,32 @@ export const ACCOUNT: PhraseMap = {
     zh: '手机上的所有密钥、身份、登录会话和临时数据 — 包括尚未发送的短片。此后你无法在本设备重新登录。',
     ja: '端末上のすべての鍵・本人情報・ログインセッション・一時データ（未送信のクリップを含む）。この後、この端末では再ログインできません。',
   },
-  'Gửi yêu cầu xoá tới máy chủ': { en: 'Send a deletion request to the servers', zh: '向服务器发送删除请求', ja: 'サーバーへ削除リクエストを送信' },
-  'Yêu cầu xoá dữ liệu gắn với danh tính của bạn: hồ sơ vườn, công việc, hội thoại.': {
-    en: 'Request deletion of the data tied to your identity: farm records, work, conversations.',
-    zh: '请求删除与你身份关联的数据：农场记录、工作、会话。',
-    ja: 'あなたの本人情報に紐づくデータ（農園記録・仕事・会話）の削除を要求します。',
+  // ── Hệ quả MẤT TIỀN — thêm 15/09/2026 ──────────────────────────────────────
+  // `wipeLocalIdentity()` gọi `clearMasterKek()`, tức xoá gốc sinh ví. Ba dòng cũ
+  // của màn xoá tài khoản không nhắc một chữ nào tới tiền, nên người dùng gõ XOÁ
+  // mà chưa từng đọc được hệ quả nặng nhất. Câu này phải đủ bốn thứ tiếng.
+  'Mất quyền vào ví và tài sản': {
+    en: 'You lose access to your wallet and assets',
+    zh: '你将失去钱包和资产的使用权',
+    ja: 'ウォレットと資産へのアクセスを失います',
+  },
+  'Khoá gốc của ví bị xoá cùng danh tính. ADA, LAMP và mọi tài sản trong ví của bạn vẫn còn trên chuỗi nhưng sẽ KHÔNG ai tiêu được nữa — trừ khi bạn đã cất giữ cụm 24 từ. Không có 24 từ thì số tiền đó mất vĩnh viễn, và không ai cấp lại được.': {
+    en: 'The wallet root key is erased together with your identity. Your ADA, LAMP and every other asset stay on-chain but NOBODY will be able to spend them again — unless you have stored your 24-word phrase. Without those 24 words the funds are gone for good, and nobody can issue them again.',
+    zh: '钱包主密钥会随身份一并抹除。你的 ADA、LAMP 及其他所有资产仍留在链上，但再也没有人能动用它们 —— 除非你已保存好 24 个助记词。没有这 24 个词，这笔资产就永久丢失，也没有人能补发。',
+    ja: 'ウォレットの元となる鍵が本人情報もろとも消去されます。ADA・LAMP をはじめ資産はチェーン上に残りますが、24 語のフレーズを保管していない限り、誰も二度と使えません。24 語がなければその資産は永久に失われ、再発行できる人もいません。',
+  },
+  // ⛔ Khoá cũ 'Gửi yêu cầu xoá tới máy chủ' + câu mô tả của nó đã GỠ 15/09/2026:
+  // chúng tả một lần GỬI không xảy ra (`REMOTE_DELETE_ENABLED = false` ⇒ chỉ ghi
+  // nhật ký rồi trả `'pending'`).
+  'Ghi lại yêu cầu xoá phía máy chủ': {
+    en: 'Record a server-side deletion request',
+    zh: '记录服务器端的删除请求',
+    ja: 'サーバー側の削除リクエストを記録',
+  },
+  'Hiện chưa có cửa xoá tự động theo danh tính, nên app chỉ ghi lại yêu cầu để người trực xử lý tay. Hồ sơ vườn, công việc và hội thoại phía máy chủ sẽ chưa biến mất ngay khi bạn bấm xoá.': {
+    en: 'There is no automatic delete-by-identity endpoint yet, so the app only records the request for a person on duty to handle by hand. Your farm records, work and conversations on the servers will not disappear the moment you tap delete.',
+    zh: '目前还没有按身份自动删除的接口，所以应用只是记录下请求，由值班人员手工处理。你点下删除后，服务器上的农场记录、工作和会话不会立刻消失。',
+    ja: '本人情報をもとに自動削除する窓口はまだないため、アプリは担当者が手作業で処理できるようリクエストを記録するだけです。削除を押した時点では、サーバー上の農園記録・仕事・会話はまだ消えません。',
   },
   'Có thứ không xoá được': { en: 'Some data cannot be removed', zh: '有些数据无法删除', ja: '削除できないデータがあります' },
   'Dữ liệu đã ghi lên chuỗi và đặc trưng ảnh đã gộp vào mô hình nhận diện chung thì không thể gỡ. Đây là giới hạn kỹ thuật, không phải lựa chọn.': {
@@ -510,10 +558,24 @@ export const ACCOUNT: PhraseMap = {
   'Xoá vĩnh viễn': { en: 'Delete permanently', zh: '永久删除', ja: '完全に削除' },
   'Đang xoá tài khoản…': { en: 'Deleting account…', zh: '正在删除账户…', ja: 'アカウントを削除しています…' },
   'Đã xoá tài khoản': { en: 'Account deleted', zh: '账户已删除', ja: 'アカウントを削除しました' },
-  'Dữ liệu trên máy này đã được xoá. Yêu cầu xoá phía máy chủ đã được ghi nhận và sẽ được xử lý.': {
-    en: 'Data on this device has been removed. The server-side deletion request has been recorded and will be processed.',
-    zh: '本机数据已删除。服务器端的删除请求已记录，将会处理。',
-    ja: 'この端末のデータは削除されました。サーバー側の削除リクエストは記録され、処理されます。',
+  // ⛔ Khoá cũ 'Dữ liệu trên máy này đã được xoá. Yêu cầu xoá phía máy chủ đã được
+  // ghi nhận và sẽ được xử lý.' đã GỠ 15/09/2026 — nó phát ra bất kể
+  // `requestRemoteDeletion` trả gì, mà hàm đó đang luôn trả `'pending'`. Nay mỗi
+  // trạng thái có câu riêng, và câu của `'pending'` nói thẳng là CHƯA xoá.
+  'Dữ liệu trên máy này đã được xoá, và máy chủ đã xoá dữ liệu gắn với danh tính của bạn.': {
+    en: 'Data on this device has been removed, and the servers have deleted the data tied to your identity.',
+    zh: '本机数据已删除，服务器也已删除与你身份关联的数据。',
+    ja: 'この端末のデータは削除され、サーバー側でもあなたの本人情報に紐づくデータが削除されました。',
+  },
+  'Dữ liệu trên máy này đã được xoá. Phía máy chủ thì CHƯA xoá: yêu cầu mới chỉ được ghi lại để người trực xử lý tay, và app chưa nhận được xác nhận nào.': {
+    en: 'Data on this device has been removed. On the servers it has NOT: the request was only recorded for a person on duty to handle by hand, and the app has received no confirmation.',
+    zh: '本机数据已删除。服务器端则尚未删除：请求只是被记录下来交由值班人员手工处理，应用还没有收到任何确认。',
+    ja: 'この端末のデータは削除されました。サーバー側はまだです。リクエストは担当者が手作業で処理するために記録されただけで、アプリは確認をひとつも受け取っていません。',
+  },
+  'Dữ liệu trên máy này đã được xoá. Phía máy chủ thì CHƯA: lần gửi yêu cầu vừa rồi hỏng. Hãy liên hệ hỗ trợ để yêu cầu xoá phần dữ liệu đó.': {
+    en: 'Data on this device has been removed. On the servers it has not: sending the request just failed. Please contact support to have that data deleted.',
+    zh: '本机数据已删除。服务器端则没有：刚才发送请求失败了。请联系支持人员来删除那部分数据。',
+    ja: 'この端末のデータは削除されました。サーバー側は削除されていません。先ほどのリクエスト送信が失敗しました。そのデータの削除はサポートへご連絡ください。',
   },
   'Chưa xoá được. Thử lại khi có mạng tốt.': {
     en: 'Could not delete. Try again with a good connection.',

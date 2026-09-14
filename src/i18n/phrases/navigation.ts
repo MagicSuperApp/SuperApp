@@ -253,6 +253,19 @@ export const NAVIGATION: PhraseMap = {
     zh: '本机上的密钥已无法使用（通常是刚在设置中添加或删除了指纹/人脸）。请恢复身份后继续使用。',
     ja: 'この端末の鍵は使用できなくなりました（多くは設定で指紋や顔を追加・削除した直後です）。続けるには本人情報を復元してください。',
   },
+  // Nút "Đổi tài khoản" ghi DID trước rồi mới đổi nhãn. `saveUserDid` ném khi DID
+  // trong sổ `@phoenixkey/users` sai định dạng — lúc đó phải NÓI RA, vì đổi nhãn
+  // suông chính là lỗi vừa được gỡ ở `screens/LoginScreen.tsx`.
+  'Chưa đổi được tài khoản': {
+    en: 'Could not switch account',
+    zh: '无法切换账户',
+    ja: 'アカウントを切り替えられません',
+  },
+  'Mã định danh của tài khoản kia lưu trên máy không dùng được, nên app giữ nguyên tài khoản đang mở. Hãy khôi phục tài khoản đó bằng cụm 24 từ.': {
+    en: 'The identity code stored on this device for that account is unusable, so the app kept the account you are on. Restore that account with its 24-word phrase.',
+    zh: '本机上保存的那个账户的身份代码无法使用，因此应用保持在当前账户。请用该账户的 24 个助记词恢复它。',
+    ja: 'その端末に保存されている当該アカウントの識別コードが使用できないため、アプリは現在のアカウントのままにしました。24 語のフレーズでそのアカウントを復元してください。',
+  },
   'Aladin Chat — phiên bản mới': { en: 'Aladin Chat — new version', zh: 'Aladin Chat — 新版本', ja: 'Aladin Chat — 新バージョン' },
   'Tin nhắn ký số · Escrow tích hợp': { en: 'Digitally signed messages · Built-in escrow', zh: '数字签名消息 · 内置托管', ja: '電子署名付きメッセージ · エスクロー内蔵' },
   'Đăng ký thợ — nhận 100 MAGIC': { en: 'Register as a pro — get 100 MAGIC', zh: '注册师傅 — 获得 100 MAGIC', ja: '職人登録で 100 MAGIC 進呈' },

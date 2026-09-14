@@ -48,14 +48,28 @@ const DeleteAccountScreen: React.FC = () => {
     setDeleting(true);
     try {
       // 1) Yêu cầu máy chủ xoá theo DID (chưa có endpoint → ghi 'pending', không bịa).
-      await requestRemoteDeletion(did);
+      //
+      // ⛔ ĐÍNH CHÍNH 15/09/2026 — TRẢ VỀ CỦA HÀM NÀY TRƯỚC NAY BỊ VỨT ĐI.
+      // Dòng cũ là `await requestRemoteDeletion(did);` rồi câu báo thành công nói
+      // "Yêu cầu xoá phía máy chủ đã được ghi nhận và sẽ được xử lý" — một lời hứa
+      // phát ra mà không đọc lấy một chữ từ kết quả thật. Hàm này khai rõ ba trạng
+      // thái (`RemoteDeletionState` ở `services/accountDeletionService.ts`), và với
+      // `REMOTE_DELETE_ENABLED = false` nó LUÔN trả `'pending'`: không backend nào
+      // được gọi, chỉ một dòng nhật ký cho người trực. Câu cũ biến "chưa ai làm gì"
+      // thành "đã ghi nhận và sẽ được xử lý" — người dùng rời màn tin rằng dữ liệu
+      // phía máy chủ đang trên đường bị xoá.
+      const remoteState = await requestRemoteDeletion(did);
       // 2) Đóng DB per-user + xoá phiên xuyên module + nháp.
       await dispatch(logoutUser());
       // 3) Xoá sạch khoá/DID/token/cache trên máy — non-custodial: xoá khoá = xoá tài khoản.
       await wipeLocalIdentity();
       showSuccess(
         t('Đã xoá tài khoản'),
-        t('Dữ liệu trên máy này đã được xoá. Yêu cầu xoá phía máy chủ đã được ghi nhận và sẽ được xử lý.'),
+        remoteState === 'done'
+          ? t('Dữ liệu trên máy này đã được xoá, và máy chủ đã xoá dữ liệu gắn với danh tính của bạn.')
+          : remoteState === 'failed'
+            ? t('Dữ liệu trên máy này đã được xoá. Phía máy chủ thì CHƯA: lần gửi yêu cầu vừa rồi hỏng. Hãy liên hệ hỗ trợ để yêu cầu xoá phần dữ liệu đó.')
+            : t('Dữ liệu trên máy này đã được xoá. Phía máy chủ thì CHƯA xoá: yêu cầu mới chỉ được ghi lại để người trực xử lý tay, và app chưa nhận được xác nhận nào.'),
         {
           confirmText: t('Đã hiểu'),
           hideCancel: true,
@@ -97,8 +111,30 @@ const DeleteAccountScreen: React.FC = () => {
           chưa gửi. Sau bước này bạn không đăng nhập lại được trên thiết bị này.
         </Row>
 
-        <Row icon="cloud-upload-outline" tint={COLORS.text} title="Gửi yêu cầu xoá tới máy chủ">
-          Yêu cầu xoá dữ liệu gắn với danh tính của bạn: hồ sơ vườn, công việc, hội thoại.
+        {/* ⛔ HỆ QUẢ NẶNG NHẤT, VÀ NÓ TỪNG KHÔNG ĐƯỢC NHẮC MỘT CHỮ.
+            `wipeLocalIdentity()` gọi `clearMasterKek()` — Master_KEK là gốc sinh ra
+            mọi ví Cardano của tài khoản này (`sdk/taadEnclave` derive account-0,
+            account-N từ đúng nó). Xoá KEK mà không có 24 từ thì không còn đường nào
+            dựng lại khoá ký, nên số dư trong ví vẫn nằm trên chuỗi mà KHÔNG AI tiêu
+            được nữa — kể cả chính chủ, kể cả đội hỗ trợ.
+            Ba dòng cũ ở màn này nói về khoá, dữ liệu máy chủ và dữ liệu trên chuỗi;
+            không dòng nào nhắc tới TIỀN. Người đọc hết ba dòng đó rồi gõ XOÁ là
+            người vừa đồng ý một việc mà màn hình chưa hề nói ra. */}
+        <Row icon="wallet-outline" tint={COLORS.error} title="Mất quyền vào ví và tài sản">
+          Khoá gốc của ví bị xoá cùng danh tính. ADA, LAMP và mọi tài sản trong ví của
+          bạn vẫn còn trên chuỗi nhưng sẽ KHÔNG ai tiêu được nữa — trừ khi bạn đã cất
+          giữ cụm 24 từ. Không có 24 từ thì số tiền đó mất vĩnh viễn, và không ai cấp
+          lại được.
+        </Row>
+
+        <Row icon="cloud-upload-outline" tint={COLORS.text} title="Ghi lại yêu cầu xoá phía máy chủ">
+          {/* Câu cũ: "Gửi yêu cầu xoá tới máy chủ — Yêu cầu xoá dữ liệu gắn với danh
+              tính của bạn". Nó tả một lần gửi KHÔNG xảy ra: `REMOTE_DELETE_ENABLED`
+              đang là `false`, nên `requestRemoteDeletion` chỉ ghi một dòng nhật ký
+              rồi trả `'pending'`. */}
+          Hiện chưa có cửa xoá tự động theo danh tính, nên app chỉ ghi lại yêu cầu để
+          người trực xử lý tay. Hồ sơ vườn, công việc và hội thoại phía máy chủ sẽ chưa
+          biến mất ngay khi bạn bấm xoá.
         </Row>
 
         {/* Không xoá được */}

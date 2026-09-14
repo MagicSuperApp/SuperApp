@@ -4,7 +4,7 @@ import { join } from 'path';
 import { latLngToMeters, metersToLatLng } from './geo';
 import {
   DEFAULT_MAP_SOURCE_ID, MAP_SOURCES, MAX_TILES, MERCATOR_MAX_LAT, MIN_ZOOM,
-  OSM_STREET_TILES,
+  STREET_TILES,
   getMapSource, latToTileY, lngToTileX, planTiles, tileUrl, tileXToLng, tileYToLat,
   tilesPerAxis,
 } from './mapTiles';
@@ -59,9 +59,12 @@ describe('tileUrl', () => {
     expect(tileUrl(sat, { z: 17, x: 105, y: 62 })).toMatch(/\/17\/62\/105$/);
   });
 
-  it('OSM xếp {z}/{x}/{y}', () => {
+  it('nguồn "Bản đồ" cũng xếp {z}/{y}/{x} — nay nó cũng là Esri', () => {
+    // Trước đây nguồn này là `tile.openstreetmap.org`, xếp `{z}/{x}/{y}`. Máy
+    // chủ ô của OSM CHẶN app (xem `STREET_TILES`), nên lớp bản đồ đã dời sang
+    // cùng máy chủ với lớp vệ tinh — và thứ tự đổi theo.
     expect(tileUrl(getMapSource('street'), { z: 17, x: 105, y: 62 }))
-      .toMatch(/\/17\/105\/62\.png$/);
+      .toMatch(/\/17\/62\/105$/);
   });
 
   it('x quấn vòng quanh Trái Đất, y bị kẹp trong lưới', () => {
@@ -256,8 +259,33 @@ describe('không tệp nào còn trỏ vào tên miền OSM đã ngưng', () => 
 
   it('nguồn "Bản đồ" dùng đúng hằng chung', () => {
     const street = MAP_SOURCES.find((s) => s.id === 'street');
-    expect(street?.urlTemplate).toBe(OSM_STREET_TILES);
-    expect(OSM_STREET_TILES).toBe('https://tile.openstreetmap.org/{z}/{x}/{y}.png');
+    expect(street?.urlTemplate).toBe(STREET_TILES);
+  });
+
+  /**
+   * ── Vì sao lớp bản đồ KHÔNG còn lấy ô từ máy chủ OpenStreetMap ────────────
+   * Báo về từ thực địa: nền hiện ra một tấm ảnh ghi "Access blocked". Không
+   * phải lỗi mạng, không phải lỗi mã — `tile.openstreetmap.org` từ chối phục
+   * vụ, đúng theo chính sách của họ: máy chủ ô ấy do quỹ OSM chạy bằng tiền
+   * quyên góp và không cho một ứng dụng lấy làm nền bản đồ chung.
+   *
+   * Họ chặn theo dải IP và theo ứng dụng, nên nó chạy ở máy này và chết ở máy
+   * khác — kiểu hỏng không tái hiện được ở bàn làm việc. Bài này chốt lại để
+   * lượt sau không ai "dọn cho gọn" bằng cách trỏ ngược về đó.
+   */
+  it('KHÔNG lấy ô từ máy chủ của OpenStreetMap nữa', () => {
+    for (const s of MAP_SOURCES) {
+      expect(s.urlTemplate).not.toContain('tile.openstreetmap.org');
+    }
+    expect(STREET_TILES).toContain('server.arcgisonline.com');
+  });
+
+  it('vẫn GHI NGUỒN OpenStreetMap — nền Esri dựng một phần trên dữ liệu OSM', () => {
+    // Nghĩa vụ giấy phép, không phải phép lịch sự. Đổi máy chủ ô không đổi việc
+    // dữ liệu bên dưới đến từ đâu.
+    const street = MAP_SOURCES.find((s) => s.id === 'street');
+    expect(street?.attribution).toContain('OpenStreetMap');
+    expect(street?.attribution).toContain('Esri');
   });
 
   it('phép lọc chú thích KHÔNG được ăn mất URL', () => {

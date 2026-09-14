@@ -121,7 +121,33 @@ export const viTriCay = (t: any): DiemDat | null => {
  * Hai trục chia CÙNG một số (cạnh dài nhất), rồi canh giữa phần thừa. Nhờ vậy
  * một mảnh dài gấp ba vẫn hiện ra dài gấp ba.
  */
-export const chuanHoa = (ring: readonly DiemDat[]): ((p: DiemDat) => DiemVe) => {
+export interface HopVe {
+  /** Kinh độ nhỏ nhất của vòng ranh (CHƯA trừ phần bù canh giữa). */
+  minLng: number;
+  /** Vĩ độ nhỏ nhất của vòng ranh (CHƯA trừ phần bù canh giữa). */
+  minLat: number;
+  /** Nửa phần thừa theo trục Đông-Tây, để canh giữa mảnh hẹp. */
+  buX: number;
+  /** Nửa phần thừa theo trục Bắc-Nam. */
+  buY: number;
+  /** Cạnh hộp, tính bằng ĐỘ. Vuông theo độ, không vuông theo mét — xem dưới. */
+  canh: number;
+}
+
+/**
+ * Hộp VUÔNG (theo độ) mà `chuanHoa` trải cả vườn vào.
+ *
+ * Tách ra khỏi `chuanHoa` vì có thứ KHÁC cần đúng cái hộp này: nền bản đồ dưới
+ * ô xem trước ranh giới (`FarmMapBackdrop`). Nền và hình phải nói về cùng một
+ * mảnh đất; hai phép tính hộp chép tay ở hai tệp thì sớm muộn cũng lệch, và lúc
+ * lệch thì mảnh vườn nằm trật khỏi thửa đất bên dưới — sai theo kiểu trông vẫn
+ * rất hợp lý.
+ *
+ * ⚠ Vuông theo ĐỘ, không theo mét. Một độ kinh ở vĩ độ Việt Nam ngắn hơn một độ
+ * vĩ khoảng 8%, nên hình hơi bè ngang — đúng cái sai số vài phần trăm mà
+ * `FarmShape` đã khai từ đầu. Đừng "sửa" nó ở một trong hai chỗ.
+ */
+export const hopVe = (ring: readonly DiemDat[]): HopVe => {
   const xs = ring.map((p) => p.lng);
   const ys = ring.map((p) => p.lat);
   const minX = Math.min(...xs);
@@ -131,12 +157,25 @@ export const chuanHoa = (ring: readonly DiemDat[]): ((p: DiemDat) => DiemVe) => 
   // Vườn suy biến thành một điểm hoặc một đường: cạnh dài nhất bằng 0. Thay
   // bằng một số dương cực nhỏ để mọi điểm rơi về giữa hộp, thay vì ra `NaN`.
   const canh = Math.max(maxX - minX, maxY - minY) || 1e-9;
-  const buX = (canh - (maxX - minX)) / 2;
-  const buY = (canh - (maxY - minY)) / 2;
+  return {
+    minLng: minX,
+    minLat: minY,
+    buX: (canh - (maxX - minX)) / 2,
+    buY: (canh - (maxY - minY)) / 2,
+    canh,
+  };
+};
+
+export const chuanHoa = (ring: readonly DiemDat[]): ((p: DiemDat) => DiemVe) => {
+  const { minLng, minLat, buX, buY, canh } = hopVe(ring);
   return (p: DiemDat): DiemVe => ({
-    x: (p.lng - minX + buX) / canh,
+    // ⚠ TRỪ RỒI MỚI CỘNG BÙ, đúng thứ tự này. Gộp thành `p.lng - (minLng - buX)`
+    //   gọn hơn nhưng SAI SỐ HƠN HẲN ở vườn suy biến: `canh` lúc đó là 1e-9 còn
+    //   kinh độ cỡ 106, nên phép trừ hai số gần bằng nhau ăn mất mấy chữ số có
+    //   nghĩa và tâm hộp trượt khỏi 0,5. `farmShapeGeo.test.ts` đo đúng chỗ đó.
+    x: (p.lng - minLng + buX) / canh,
     // Vĩ độ lớn là về phía BẮC, mà trục y của SVG hướng XUỐNG.
-    y: 1 - (p.lat - minY + buY) / canh,
+    y: 1 - (p.lat - minLat + buY) / canh,
   });
 };
 

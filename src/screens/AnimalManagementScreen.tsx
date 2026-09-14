@@ -59,6 +59,7 @@ import { ORILIFE_BASE } from '../services/orilifeBase';
 import { showError, showInfo, showWarning } from '../utils/alert';
 import { t } from '../i18n';
 import { SPECIES_OPTIONS, speciesLabel } from '../constants/animalSpecies';
+import AnhLoai from '../modules/trace/components/animal/AnhLoai';
 
 const FILTER_OPTIONS: Array<{ key: string; label: string; icon: string }> = [
   { key: '', label: 'Tất cả', icon: 'paw' },
@@ -117,9 +118,11 @@ const AnimalCard: React.FC<AnimalCardProps> = ({ item, onPress, onLongPress }) =
     activeOpacity={0.75}
     delayLongPress={450}
   >
-    {/* Avatar */}
+    {/* Avatar — ẢNH của LOÀI, không phải một bàn chân chung.
+        Mọi thẻ mang cùng một biểu tượng thì biểu tượng ấy không phân biệt được
+        thẻ nào với thẻ nào, tức nó chiếm chỗ mà không mang tin. */}
     <View style={styles.cardAvatar}>
-      <Icon name="paw" size={26} color={HEADER_BG} />
+      <AnhLoai species={item.species} size={40} color={HEADER_BG} />
     </View>
 
     {/* Info */}
@@ -445,11 +448,24 @@ const AnimalManagementScreen: React.FC = () => {
               onPress={() => handleSpeciesChange(opt.key)}
               activeOpacity={0.75}
             >
-              <Icon
-                name={opt.icon}
-                size={14}
-                color={selectedSpecies === opt.key ? NEUTRAL.white : NEUTRAL.textSub}
-              />
+              {/* Ô "Tất cả" là cả sáu loài — không ảnh nào đại diện được, nên nó
+                  giữ biểu tượng bàn chân. Các ô còn lại mang ảnh loài thật.
+
+                  ⛔ `opt.icon` là tên của bộ MaterialCommunityIcons; `AnhLoai`
+                     tra theo KHOÁ LOÀI của máy chủ, nên nó không cần tên ấy. */}
+              {opt.key ? (
+                <AnhLoai
+                  species={opt.key}
+                  size={20}
+                  color={selectedSpecies === opt.key ? NEUTRAL.white : NEUTRAL.textSub}
+                />
+              ) : (
+                <Icon
+                  name={opt.icon}
+                  size={14}
+                  color={selectedSpecies === opt.key ? NEUTRAL.white : NEUTRAL.textSub}
+                />
+              )}
               <Text
                 style={[
                   styles.filterChipText,

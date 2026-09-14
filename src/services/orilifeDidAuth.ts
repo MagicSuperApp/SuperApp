@@ -367,8 +367,19 @@ export async function ensureOrilifeToken(
 ): Promise<boolean> {
   if (!opts.force) {
     if (await tokenMatchesCurrentDid()) return true;
-    await clearOrilifeToken().catch(() => {});
   }
+
+  // Đọc lại trước khi bắt đầu đăng nhập.
+  // Một lượt khác có thể vừa hoàn thành trong lúc lời gọi này đang chờ.
+  if (!opts.force && (await tokenMatchesCurrentDid())) return true;
+
+  // Token lạ/vô chủ không được phép tiếp tục nằm trong storage.
+  await clearOrilifeToken().catch(() => {});
+
+  // loginOnce chịu trách nhiệm:
+  // - gộp các lượt đăng nhập đang bay
+  // - cooldown sau khi thất bại
+  // - tránh spam Face ID / sinh trắc
   const res = await loginOnce(baseUrl);
   return res.ok;
 }

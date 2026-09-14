@@ -48,13 +48,14 @@ import {
   searchFarms,
 } from '../utils/farmMapGeo';
 import {
-  EMPTY_BASE_STYLE, ESRI_SATELLITE_TILES, OSM_STREET_TILES,
+  EMPTY_BASE_STYLE, ESRI_SATELLITE_TILES, STREET_TILES,
 } from '../../../features/space3d/mapTiles';
 
-// Hai URL này trước 2026-09-14 là hai bản CHÉP TAY, dù hằng dùng chung đã tồn tại
-// và các màn bản đồ khác đã nhập nó. Tệp này là chỗ bản vá tên miền OSM lần trước
-// KHÔNG tới được.
-const OSM_TILES = OSM_STREET_TILES;
+// ⛔ Hai URL này TỪNG là hai bản chép tay, dù hằng dùng chung đã tồn tại và các
+// màn bản đồ khác đã nhập nó. Tệp này là chỗ bản vá máy chủ ô lần trước KHÔNG
+// tới được: lượt vá chỉ tới được những chỗ đang `import`, còn dòng chép tay thì
+// ở lại với tên miền đã bị chặn.
+const OSM_TILES = STREET_TILES;
 const SAT_TILES = ESRI_SATELLITE_TILES;
 
 /** Cả hai nguồn chỉ có ảnh tới đây — xem chú thích đầu tệp. */
@@ -617,7 +618,7 @@ const MapBody: React.FC<MapBodyProps> = ({
             (nó chiếm chỗ và mở một hộp thoại lạc lõng), không miễn nghĩa vụ ghi
             nguồn — nên dòng này KHÔNG được bỏ. */}
         <Text style={styles.attribution}>
-          {layer === 'satellite' ? '© Esri · Maxar' : '© OpenStreetMap'}
+          {layer === 'satellite' ? '© Esri · Maxar' : '© Esri · OpenStreetMap'}
         </Text>
       </View>
     </View>

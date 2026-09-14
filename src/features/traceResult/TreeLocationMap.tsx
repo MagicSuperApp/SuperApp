@@ -1,5 +1,5 @@
 /**
- * TreeLocationMap — cây này ở ĐÂU, vẽ trên nền OpenStreetMap.
+ * TreeLocationMap — cây này ở ĐÂU, vẽ trên nền bản đồ đường phố.
  *
  * ── Có toạ độ thì CẮM GHIM, và cho đi tới được ──────────────────────────────
  * Máy chủ trả `gps: [lat, lon]` cho mọi cây công khai. Bản trước chỉ vẽ một vòng
@@ -20,7 +20,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  EMPTY_BASE_STYLE, ESRI_SATELLITE_TILES, OSM_STREET_TILES,
+  EMPTY_BASE_STYLE, ESRI_SATELLITE_TILES, STREET_TILES,
 } from '../space3d/mapTiles';
 import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -29,10 +29,11 @@ import { NATURE, RADIUS, SPACE, TONE, TYPE } from '../../modules/trace/theme/dep
 import { circleShape, zoomForRadius } from './circleGeo';
 import { googleDirectionsUrl } from './reverseGeocode';
 
-// Lấy từ nguồn chung — xem `OSM_STREET_TILES` trong `space3d/mapTiles`. Chép tay
-// URL ở đây là dựng lại đúng chỗ đã làm bản vá tên miền chỉ tới được một trong
-// ba nơi.
-const OSM_TILES = OSM_STREET_TILES;
+// Lấy từ nguồn chung — xem `STREET_TILES` và `ESRI_SATELLITE_TILES` trong
+// `space3d/mapTiles`. Chép tay URL ở đây là dựng lại đúng chỗ đã làm bản vá máy
+// chủ ô chỉ tới được một trong năm nơi. Cả HAI lớp đều lấy từ hằng chung: lớp
+// vệ tinh cũng là một bản chép tay cho tới lượt này, và nó im lặng đúng kiểu ấy.
+const OSM_TILES = STREET_TILES;
 const SAT_TILES = ESRI_SATELLITE_TILES;
 
 /** Cả hai nguồn chỉ có ảnh tới z19 — khai thiếu thì z20 ra ô trắng. */

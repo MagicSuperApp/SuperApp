@@ -90,6 +90,23 @@ export const NATURE = {
   /** Mặt thẻ — TRẮNG hẳn, để nổi trên nền ngả xanh. */
   paper: '#FFFFFF',
   clay: '#D2703F',
+
+  /**
+   * NÂU CHUỒNG — sắc riêng của nhánh VẬT NUÔI.
+   *
+   * Cả module Truy xuất nói bằng xanh lá: đó là màu của nhánh cây trồng. Vật
+   * nuôi là nhánh còn lại, và nó cần một sắc để người dùng biết mình đang đứng ở
+   * nhánh nào mà không phải đọc tiêu đề. Nâu vì đó chính là màu bốn màn vật nuôi
+   * đã mang từ đầu (`#5d4037`) — đổi sang một sắc thứ ba là bắt người quen tay
+   * học lại một thứ họ đã biết.
+   *
+   * ⚠ Ba chặng này đi cùng nhau: `barn` là chặng đậm cho nền tối và nút chính,
+   * `barnDeep` là chặng cuối của chuyển sắc, `barnSoft` là nền nhạt cho ô sáng.
+   * Chữ trắng trên `barn` đo được 8,3:1 — qua AA ở mọi cỡ.
+   */
+  barn: '#6D4C41',
+  barnDeep: '#4E342E',
+  barnSoft: '#F6EDE7',
 } as const;
 
 export const SURFACE = {
@@ -184,6 +201,40 @@ export const GRADIENT = {
    * mất tác dụng làm dấu "khác loại".
    */
   space: { from: '#1B4C5C', to: '#123A47', angle: 150, onDark: true },
+
+  /**
+   * Ô SÁNG của nhánh VẬT NUÔI — trắng ngả nâu ấm.
+   *
+   * Cùng vai trò với `tile` ở nhánh cây, khác đúng một việc: nó nói "bạn đang ở
+   * nhánh vật nuôi". Giữ THẬT nhạt — sắc nhận dạng đặt ở ô tối và ở nút chính,
+   * còn các ô thường mà đậm lên thì cả trang thành một mảng nâu và chữ chìm đi.
+   */
+  barn: { from: '#FFFCFA', to: NATURE.barnSoft, angle: 135, onDark: false },
+
+  /**
+   * Ô CHÍNH của nhánh vật nuôi — bản nâu của `hero`.
+   *
+   * SÁNG, cùng ràng buộc với `hero`: ô này chứa bảng cơ cấu đàn, chữ tối.
+   */
+  heroBarn: { from: '#FFF8F4', to: '#F0DFD5', angle: 145, onDark: false },
+
+  /**
+   * Ô TỐI của nhánh vật nuôi — bản nâu của `space`.
+   *
+   * Vẫn đúng luật "một trang một ô tối": trang cây dùng `space`, trang vật nuôi
+   * dùng cái này, và hai trang đó không bao giờ hiện cùng lúc.
+   */
+  earth: { from: NATURE.barn, to: NATURE.barnDeep, angle: 150, onDark: true },
+
+  /**
+   * Nút hành động chính của nhánh vật nuôi — bản nâu của `action`.
+   *
+   * ⚠ Hai chặng CÙNG cặp với `earth`, chỉ khác góc. Bản đầu mở chặng sáng ở
+   * `#7B5548` cho nút "nổi" hơn: hai chặng lệch 1,74 lần, vượt ngưỡng 1,5 của
+   * `gradient.test.ts` — tức nó đã thôi là "chuyển sắc nhẹ" và thành một vệt
+   * sáng chạy ngang nút. Muốn nút nổi hơn thì đổi bóng, đừng kéo giãn chuyển sắc.
+   */
+  actionBarn: { from: NATURE.barn, to: NATURE.barnDeep, angle: 135, onDark: true },
 
   /** Ô hành động chính khi nó KHÔNG phải ô hero — nút lớn, chữ trắng. */
   get action(): GradientToken {
@@ -313,6 +364,10 @@ export const TONE = {
   rain: NATURE.water,
   rainSoft: NATURE.waterSoft,
   soil: NATURE.clay,
+  /** Sắc nhận dạng của nhánh vật nuôi — xem `NATURE.barn`. */
+  barn: NATURE.barn,
+  barnDeep: NATURE.barnDeep,
+  barnSoft: NATURE.barnSoft,
   danger: '#D1483C',
   /**
    * Viền tóc. Nay là thứ TÁCH THẺ KHỎI NỀN — việc mà bóng đổ làm ở bản trước.

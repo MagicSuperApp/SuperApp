@@ -149,6 +149,39 @@ export function forbiddenShape(value: string): string | null {
   return null;
 }
 
+/**
+ * Che ĐÚNG ĐOẠN mang hình dạng bí mật, giữ lại phần còn lại của câu.
+ *
+ * Khác `forbiddenShape` ở chỗ dùng được cho VĂN BẢN DÀI cho người đọc. Hai hàm
+ * ứng với hai chiều hỏng khác nhau, nên đừng gộp:
+ *
+ *   · Trường chẩn đoán đi ra MẠNG (`filterBeforeSend`): bỏ CẢ trường là đúng —
+ *     không ai xem trước, và một trường mất thì người gỡ lỗi thấy ngay chỗ trống
+ *     có nhãn.
+ *   · Câu hiện cho người dùng đọc rồi tự gửi: bỏ cả câu là bỏ đúng phần duy nhất
+ *     có giá trị. Mẫu `recovery-phrase` khớp mười hai từ thường liền nhau, nên
+ *     một câu tiếng Anh hoặc một đoạn tiếng Việt viết không dấu dài là đủ dính —
+ *     và lúc đó dòng quan trọng nhất của báo cáo biến thành một dấu ngoặc vuông.
+ *
+ * Mẫu nằm ở ĐÂY, không chép sang nơi khác: thêm một mẫu mới thì cả hai đường ra
+ * được che cùng lúc. Đó là lý do hàm này ở tệp này chứ không ở tệp gọi nó.
+ */
+export function redactForbidden(value: string): { text: string; dropped: string[] } {
+  let text = String(value ?? '');
+  const dropped: string[] = [];
+  for (const s of FORBIDDEN_SHAPES) {
+    // Bản sao có cờ `g` — mẫu gốc không mang `g` vì `filterBeforeSend` chỉ `test`,
+    // và `lastIndex` của một mẫu dùng chung có `g` sẽ trôi giữa các lượt gọi.
+    const all = new RegExp(s.pattern.source, s.pattern.flags.replace('g', '') + 'g');
+    if (all.test(text)) {
+      all.lastIndex = 0;
+      text = text.replace(all, `[bỏ:${s.name}]`);
+      dropped.push(s.name);
+    }
+  }
+  return { text, dropped };
+}
+
 export interface FilterResult {
   /** Bản đã lọc, an toàn để gửi đi. */
   safe: Record<string, unknown>;

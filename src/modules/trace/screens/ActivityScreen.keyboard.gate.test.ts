@@ -36,6 +36,22 @@ const styleBlock = (name: string): string => {
   return m[0];
 };
 
+/**
+ * Object NỘI TUYẾN hợp nhất lên `styles.<name>` tại chỗ dựng hình.
+ *
+ * ⛔ `styleBlock` một mình KHÔNG đủ để kết luận về kiểu dáng đang chạy. Kiểu dáng
+ * sống của thanh nút là `[styles.bottomBar, { … }]`, và object nội tuyến đó đã
+ * đang đè lên một thuộc tính (`paddingBottom`) — tức khối trong `StyleSheet.create`
+ * tự nó không phải bản cuối. Đặt `position: 'absolute'` vào object nội tuyến thì
+ * thanh nút chìm xuống dưới bàn phím y như cũ, mà cổng chỉ đọc `StyleSheet.create`
+ * vẫn xanh.
+ */
+const inlineStyleAt = (name: string): string => {
+  const m = SRC.match(new RegExp(`\\[\\s*styles\\.${name},\\s*\\{[\\s\\S]*?\\n\\s*\\},?\\s*\\n?\\s*\\]`));
+  if (!m) throw new Error(`Không tìm thấy chỗ hợp nhất kiểu dáng nội tuyến cho \`${name}\``);
+  return m[0];
+};
+
 describe('bàn phím không được che ô nhập vật tư', () => {
   it('chân 1 — có `KeyboardAvoidingView` bọc, và trên iOS là `padding`', () => {
     expect(SRC).toContain('<KeyboardAvoidingView');
@@ -45,8 +61,26 @@ describe('bàn phím không được che ô nhập vật tư', () => {
   it('chân 2 — thanh nút nằm TRONG LUỒNG, không phải con tuyệt đối', () => {
     // Đây là chân mà lần vá đầu bỏ sót. Đặt lại `position: 'absolute'` ở đây thì
     // thanh nút đứng im dưới bàn phím dù bọc `KeyboardAvoidingView` vẫn còn.
-    expect(styleBlock('bottomBar')).not.toContain("position: 'absolute'");
-    expect(styleBlock('bottomBar')).not.toMatch(/\bbottom:\s*0\b/);
+    // Đọc CẢ HAI nguồn hợp thành kiểu dáng sống — xem `inlineStyleAt`.
+    for (const nguon of [styleBlock('bottomBar'), inlineStyleAt('bottomBar')]) {
+      expect(nguon).not.toContain("position: 'absolute'");
+      expect(nguon).not.toMatch(/\bbottom:\s*0\b/);
+    }
+  });
+
+  it('chân 2c — thanh nút là CON của `KeyboardAvoidingView`, không đứng ngoài', () => {
+    // Chân 2 chỉ nói thanh nút không tuyệt đối. Nó vẫn có thể nằm ngoài bọc, và
+    // lúc đó `behavior="padding"` không chạm tới nó — bàn phím lại che, mà cả hai
+    // ca kiểm trên vẫn xanh. Phép đo: thanh nút phải xuất hiện GIỮA
+    // `<KeyboardAvoidingView` và `</KeyboardAvoidingView>`.
+    const trongBoc = SRC.slice(
+      SRC.indexOf('<KeyboardAvoidingView'),
+      SRC.indexOf('</KeyboardAvoidingView>'),
+    );
+    expect(trongBoc).toContain('styles.bottomBar');
+    // …và SAU `</ScrollView>`, tức là anh em thứ hai trong luồng chứ không phải
+    // một khối lọt vào bên trong vùng cuộn (ở đó nó cuộn theo nội dung và biến mất).
+    expect(trongBoc.indexOf('styles.bottomBar')).toBeGreaterThan(trongBoc.indexOf('</ScrollView>'));
   });
 
   it('chân 2b — không còn khối đệm chừa chỗ cho thanh nút phủ', () => {
@@ -66,6 +100,37 @@ describe('bàn phím không được che ô nhập vật tư', () => {
     expect(soONhap).toBe(3); // tên · lượng · đơn vị
     expect(soOnFocus).toBe(soONhap);
     expect(SRC).toMatch(/ref=\{scrollRef\}/);
+  });
+
+  it('chân 3b — cuộn tới Ô ĐANG GÕ, KHÔNG cuộn tới cuối vùng cuộn', () => {
+    // `scrollToEnd` không có tham chiếu nào tới nút đang focus. Nó trùng kết quả
+    // với phép đúng ở đúng một ca — ô đang gõ là thứ cuối cùng — và màn này không
+    // ở ca đó: `materialRows` là MẢNG, có nút thêm dòng. Từ dòng thứ hai trở đi,
+    // chạm ô của dòng ĐẦU thì `scrollToEnd` đẩy chính ô đó ra khỏi mép trên.
+    // Công thức và các cực đã kiểm: `src/utils/keyboardScroll.test.ts`.
+    // Khớp LỜI GỌI, không khớp cái tên: chú thích trong màn có nhắc tên hàm này
+    // để nói vì sao không dùng nó, và đó là thứ phải giữ lại chứ không phải xoá đi.
+    expect(SRC).not.toMatch(/\.scrollToEnd\(/);
+    expect(SRC).toContain('scrollOffsetToRevealInput');
+    expect(SRC).toContain('TextInput.State.currentlyFocusedInput()');
+    // Vị trí cuộn phải là số ĐANG đúng — phép trên cộng dồn vào nó.
+    expect(SRC).toMatch(/onScroll=\{onScroll\}/);
+  });
+
+  it('chân 3c — chờ theo thời lượng HỆ ĐIỀU HÀNH khai, không theo số gõ tay', () => {
+    // Bản trước chờ 120ms cố định. iOS báo 250–350ms tuỳ đời máy và tuỳ trợ năng
+    // "Giảm chuyển động"; chờ thiếu thì cuộn trước lúc `KeyboardAvoidingView` co
+    // xong, và đích bị kẹp theo tầm cuộn cũ.
+    expect(SRC).toContain('kbDurationRef');
+    expect(SRC).toMatch(/e\.duration/);
+    expect(SRC).not.toMatch(/setTimeout\([^,]*,\s*120\s*\)/);
+  });
+
+  it('lần chạm đầu vẫn cuộn, dù `onFocus` bắn TRƯỚC khi có bàn phím', () => {
+    // `onFocus` → `keyboardWillShow` là thứ tự thật. Ở lượt `onFocus`, chiều cao
+    // bàn phím còn 0 nên phép cuộn thoát ngay ở cổng. Không chạy lại sau khi bàn
+    // phím hiện thì lần chạm ĐẦU TIÊN — ca thường gặp nhất — không cuộn gì cả.
+    expect(SRC).toMatch(/if \(kbHeight > 0\) scrollInputIntoView\(\);/);
   });
 
   it('không thu đệm đáy khi bàn phím KHÔNG chiếm chỗ thật', () => {

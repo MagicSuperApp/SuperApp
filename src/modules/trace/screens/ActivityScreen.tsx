@@ -16,7 +16,9 @@ import {
   PermissionsAndroid,
   KeyboardAvoidingView,
   Keyboard,
+  Dimensions,
 } from 'react-native';
+import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 // Icon: bộ Font Awesome Solid tải qua Iconify (assets/icons → icons.generated).
 // Thêm icon mới: `node scripts/icons.js <tên-fa6-solid>`.
 import Icon from '../../../components/Icon';
@@ -36,6 +38,7 @@ import {
 import { GroundBackdrop } from '../components/layered/Organic';
 import { useTk } from '../../../i18n/keys';
 import { cameraErrorBody } from '../../../utils/cameraError';
+import { scrollOffsetToRevealInput, KEYBOARD_INPUT_GAP } from '../../../utils/keyboardScroll';
 import { RootState } from '../../../store';
 import { useAppDispatch } from '../../../store/hooks';
 import { showError, showSuccess, showWarning } from '../../../utils/alert';
@@ -356,6 +359,14 @@ const ActivityScreen = () => {
   //     cao vài chục điểm, hoặc không có gì.
   const [kbHeight, setKbHeight] = useState(0);
   const keyboardOpen = kbHeight > 0;
+  // Bản sao cho các callback: chúng chạy trong `setTimeout`/`measureInWindow`, nơi
+  // giá trị bắt từ lượt dựng hình có thể đã cũ.
+  const kbHeightRef = useRef(0);
+  kbHeightRef.current = kbHeight;
+  // Bàn phím trượt lên mất bao lâu — hệ điều hành tự khai trong chính sự kiện.
+  // Đo được thay cho một con số gõ tay: iOS báo 250–350ms tuỳ đời máy và tuỳ trợ
+  // năng "Giảm chuyển động", Android báo 0 vì `keyboardDidShow` bắn SAU hoạt ảnh.
+  const kbDurationRef = useRef(0);
   useEffect(() => {
     // Nghe theo ĐÚNG nền tảng, như chính `KeyboardAvoidingView` làm
     // (`KeyboardAvoidingView.js:198-214`): iOS chỉ bắn `Will*`, Android chỉ bắn
@@ -365,6 +376,7 @@ const ActivityScreen = () => {
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
     const hien = Keyboard.addListener(showEvent, e => {
       const { height = 0, screenY = 1 } = e.endCoordinates ?? {};
+      kbDurationRef.current = typeof e.duration === 'number' ? e.duration : 0;
       // `screenY === 0` = bàn phím không chiếm chỗ thật. Ngưỡng 80 điểm loại nốt
       // thanh phím tắt của bàn phím phần cứng.
       setKbHeight(screenY === 0 || height <= 80 ? 0 : height);
@@ -373,17 +385,59 @@ const ActivityScreen = () => {
     return () => { hien.remove(); an.remove(); };
   }, []);
 
+  // Vị trí cuộn hiện tại. Phép cuộn dưới đây cộng thêm vào nó, nên phải là số
+  // ĐANG đúng chứ không phải số của lượt dựng hình gần nhất.
+  const scrollOffsetRef = useRef(0);
+  const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
+  }, []);
+
   /**
-   * Đưa ô đang gõ vào tầm nhìn.
+   * Đưa ô ĐANG GÕ vào tầm nhìn.
    *
-   * Ba ô vật tư là nội dung CUỐI của vùng cuộn (dưới chúng chỉ còn nút "thêm dòng"
-   * và dòng ghi chi phí), nên `scrollToEnd` là phép đủ — không cần đo toạ độ từng ô.
-   * Chờ một nhịp vì `KeyboardAvoidingView` mới thu vùng cuộn ở đợt bố cục kế tiếp;
-   * cuộn trước đó thì cuộn theo chiều cao cũ.
+   * ⛔ Bản vá trước gọi `scrollToEnd` ở đây, kèm chú thích nói rằng ba ô vật tư là
+   * nội dung cuối vùng cuộn nên cuộn-tới-cuối là phép đủ. Câu đó sai ngay trong
+   * chính màn này: `materialRows` là một MẢNG có nút "thêm dòng"
+   * (`setMaterialRows(rows => [...rows, …])`), nên từ dòng thứ hai trở đi, chạm ô
+   * của dòng ĐẦU sẽ cuộn thẳng xuống đáy và đẩy chính ô vừa chạm ra khỏi mép trên.
+   * `scrollToEnd` không có tham chiếu nào tới nút đang focus — nó tính đích bằng
+   * `contentSize.height − bounds.size.height + contentInset.bottom`.
+   *
+   * Phép đúng đo ô đang gõ trong HỆ TOẠ ĐỘ CỬA SỔ rồi so với đỉnh bàn phím, nên
+   * nó không cần biết thanh tiêu đề cao bao nhiêu, có bao nhiêu dòng vật tư, hay
+   * ô đang gõ nằm thứ mấy. Công thức tách riêng ở `scrollOffsetToRevealInput` để
+   * kiểm được ở đúng cực mà lỗi trên xảy ra.
+   *
+   * Chờ đúng khoảng thời gian HỆ ĐIỀU HÀNH khai trong sự kiện bàn phím
+   * (`kbDurationRef`) thay cho một con số gõ tay: cuộn trước khi
+   * `KeyboardAvoidingView` co xong thì đích bị kẹp theo tầm cuộn cũ.
    */
   const scrollInputIntoView = useCallback(() => {
-    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 120);
+    setTimeout(() => {
+      const kb = kbHeightRef.current;
+      const scroll = scrollRef.current;
+      const input = TextInput.State.currentlyFocusedInput();
+      // Bàn phím không chiếm chỗ thật (xem `kbHeight`) thì không có gì để tránh.
+      if (kb <= 0 || !scroll || !input) return;
+      input.measureInWindow((_x, y, _w, h) => {
+        const dich = scrollOffsetToRevealInput({
+          inputTop: y,
+          inputHeight: h,
+          keyboardTop: Dimensions.get('window').height - kb,
+          currentOffset: scrollOffsetRef.current,
+          gap: KEYBOARD_INPUT_GAP,
+        });
+        if (dich !== null) scroll.scrollTo({ y: dich, animated: true });
+      });
+    }, kbDurationRef.current);
   }, []);
+
+  // Lần chạm ĐẦU TIÊN: `onFocus` bắn TRƯỚC `keyboardWillShow`, nên lúc đó
+  // `kbHeightRef` còn 0 và lượt gọi trên thoát ngay ở cổng `kb <= 0`. Bàn phím
+  // hiện xong thì chạy lại — lúc này mới có đủ số để đo.
+  useEffect(() => {
+    if (kbHeight > 0) scrollInputIntoView();
+  }, [kbHeight, scrollInputIntoView]);
 
   const selectedActivity = ACTIVITIES.find(a => a.type === selected);
   const hasFiles = scannedFiles.length > 0;
@@ -596,11 +650,13 @@ const ActivityScreen = () => {
              (`ReactCommon/yoga/yoga/algorithm/AbsoluteLayout.cpp:203-210`). Bọc mà
              không đổi cách định vị thì vùng cuộn co đúng còn thanh nút đứng im
              dưới bàn phím — đo bằng chính Yoga của kho này.
-          3. Cuộn tới ô đang gõ — `onFocus` của ba ô vật tư gọi `scrollInputIntoView`.
+          3. Cuộn tới ĐÚNG ô đang gõ — `onFocus` của mỗi ô gọi `scrollInputIntoView`.
              Co vùng chứa KHÔNG dời nội dung: iOS không tự cuộn (xem chú thích ở
              `scrollRef`), còn Android tuy có `scrollToChild` nhưng nó chỉ cuộn tới
              khung của `ScrollView`, mà khung đó trước đây kéo tới đáy màn nơi thanh
-             nút đang phủ lên. */}
+             nút đang phủ lên. Phải là ô ĐANG GÕ chứ không phải cuối vùng cuộn —
+             danh sách vật tư thêm được dòng, nên cuộn-tới-cuối đẩy ô của dòng đầu
+             ra khỏi mép trên (xem chú thích ở `scrollInputIntoView`). */}
       <KeyboardAvoidingView
         style={styles.kav}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -610,6 +666,8 @@ const ActivityScreen = () => {
           contentContainerStyle={styles.scroll}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          onScroll={onScroll}
+          scrollEventThrottle={16}
         >
           {/* Guide */}
           <View style={styles.guideCard}>

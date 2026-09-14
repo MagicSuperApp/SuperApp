@@ -319,7 +319,12 @@ const RestoreIdentityScreen = () => {
     if (!user) {
       throw new Error('Không mở được danh tính sau khôi phục (thiếu khoá HW?).');
     }
-    await dispatch(loginUser(user as any) as any);
+    // `.unwrap()` là phần KHÔNG được bỏ: không có nó thì lần đăng nhập trượt vẫn đi qua
+    // đây êm, và người vừa khôi phục danh tính đọc chữ "thành công" rồi vào một app
+    // rỗng — bước rất dễ tiếp theo của họ là lập danh tính MỚI, tức tự tay bỏ đúng cái
+    // vừa khôi phục được. Lý do đầy đủ ở khối chú thích trên `loginUser`
+    // (`store/userSlice.ts`).
+    await (dispatch(loginUser(user as any) as any) as any).unwrap();
     showSuccess(
       t('Đã khôi phục & đăng nhập'),
       bangCumTu

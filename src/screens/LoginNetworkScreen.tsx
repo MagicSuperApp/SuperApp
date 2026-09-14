@@ -563,7 +563,10 @@ const LoginNetworkScreen: React.FC = () => {
       trackAction('login_success', {
         metadata: { kind: bioKind, biometryType: biometryType || 'unknown' },
       });
-      await dispatch(loginUser(user as any) as any);
+      // `.unwrap()`: thiếu nó thì lỗi mở cơ sở dữ liệu của người dùng bị nuốt, làn
+      // sáng vẫn chạy rồi vào `Main` với `currentUser: null`. Xem khối chú thích
+      // trên `loginUser` (`store/userSlice.ts`).
+      await (dispatch(loginUser(user as any) as any) as any).unwrap();
 
       // ── Làn sáng ──────────────────────────────────────────────────────────
       // Chỉ bật SAU khi xác thực xong và phiên đã dựng. Bật sớm hơn là hứa với

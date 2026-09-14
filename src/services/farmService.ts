@@ -183,9 +183,35 @@ async function _apiCall<T>(
     }
 
     if (!resp.ok) {
+      // ── "KHÔNG CÓ QUYỀN" · "KHÔNG TỒN TẠI" · "MÁY CHỦ LỖI" là BA ca, không phải một ──
+      // Bản trước gán `server_error` cho mọi 4xx còn lại, và `fieldErrorMessage` dịch
+      // nhãn đó thành *"Máy chủ đang bận. Thử lại sau ít phút."* — một nguyên nhân TẠM
+      // THỜI. Nên vườn bị rút quyền (403) và vườn đã xoá (404) đều mời người dùng thử
+      // lại vô hạn cho một ca không bao giờ đổi. Hai tệp bên cạnh
+      // (`treeReIDService`, `fruitReIDService`) đã tách; tệp này là cửa ĐÔNG NHẤT —
+      // mọi lượt đọc và ghi vườn đi qua đây — nên bỏ sót nó là bỏ sót phần lớn lưu lượng.
+      // Và 403 KHÔNG được mang nhãn `auth_error`: ba màn đọc nhãn đó thành lệnh làm mới
+      // phiên, tức xoá thẻ đang dùng tốt cộng một hộp Face ID vô ích.
+      let detail = '';
+      try {
+        const body = await resp.json();
+        detail = body.detail ?? body.error ?? '';
+      } catch { /* thân không phải JSON — rơi về câu theo mã dưới đây */ }
+      const type: APIError['type'] = resp.status === 401
+        ? 'auth_error'
+        : resp.status === 403 ? 'forbidden'
+          : resp.status === 404 ? 'not_found' : 'server_error';
       return {
         ok: false,
-        error: { type: 'server_error', detail: `HTTP ${resp.status}`, http_status: resp.status },
+        error: {
+          type,
+          detail: detail || (resp.status === 403
+            ? 'Tài khoản này không có quyền với vườn đó.'
+            : resp.status === 404
+              ? 'Không tìm thấy vườn đó trên máy chủ.'
+              : `HTTP ${resp.status}`),
+          http_status: resp.status,
+        },
       };
     }
 

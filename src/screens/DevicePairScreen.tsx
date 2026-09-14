@@ -121,7 +121,9 @@ const DevicePairScreen: React.FC = () => {
       if (!user) {
         throw new Error(`Đã nhận danh tính ${did} nhưng chưa mở được trên máy này.`);
       }
-      await dispatch(loginUser(user as any) as any);
+      // `.unwrap()` để lần đăng nhập trượt rơi vào `catch` dưới thay vì đi tiếp vào
+      // `Main` với `currentUser: null` — xem `store/userSlice.ts`.
+      await (dispatch(loginUser(user as any) as any) as any).unwrap();
       navigation.reset({ index: 0, routes: [{ name: 'Main' }] });
     } catch (e) {
       // "Chưa được duyệt" KHÁC "hỏng". Ca thứ nhất là chuyện bình thường của một

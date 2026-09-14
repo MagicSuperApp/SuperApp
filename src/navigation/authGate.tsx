@@ -61,6 +61,16 @@ export const PUBLIC_ROUTES: readonly string[] = [
   'Onboarding',
   'Login',
   'Terms',
+  // Báo cáo thử thực địa. Mở ra ngoài cổng vì lớp lỗi dày nhất của một buổi đi vườn nằm
+  // TRƯỚC lúc đăng nhập xong — khoá sinh trắc bị hệ điều hành huỷ sau khi người dùng thêm
+  // một vân tay, danh tính chưa dùng được trên máy này, sinh trắc tạm khoá. Đóng màn này
+  // lại là làm cho đúng lớp lỗi cần báo nhất thành lớp không báo được, và thứ người thực
+  // địa làm thay vào đó là chụp ảnh màn hình gửi Zalo — mất commit, mất máy chủ, mất 39
+  // dòng trước đó.
+  //
+  // Màn KHÔNG đọc `state.user` một dòng nào (grep tệp đó: 0 kết quả) và không truy vấn gì;
+  // nó chỉ dựng lại những câu app đã hiện. Nên mở nó không mở thêm dữ liệu nào.
+  'DiagnosticReport',
   'WebPage', // chỉ `OnboardingScreen.tsx:86` mở, kèm URL cố định
   // Màn HỎI ở cửa vào — nó đứng TRƯỚC cả `SignUpBiometric` lẫn `RestoreIdentity`,
   // nên đóng nó lại là đóng luôn cả hai đường đã mở bên dưới. Màn không đọc

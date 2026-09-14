@@ -45,6 +45,7 @@ import { showError } from '../utils/alert';
 import LoginSuccessOverlay from '../components/LoginSuccessOverlay';
 import LanguagePickerModal from '../components/LanguagePickerModal';
 import { LANGUAGES, t, tf, useLanguage } from '../i18n';
+import { tk } from '../i18n/keys';
 import { DEFAULT_INSTANCE } from '../config/instance.config';
 import { LinearWash, deepen, tint } from '../shared/components/SoftGradient';
 
@@ -643,6 +644,29 @@ const LoginScreen = () => {
             ra gì. Không có API tin tức nào để nối vào, nên gỡ hẳn thay vì để chờ.
             Có API thật thì dựng lại từ `EventCard` (còn nguyên bên dưới). */}
 
+        {/* ── Lối gửi báo cáo, đặt NGOÀI cổng đăng nhập ─────────────────────────
+            Lớp lỗi dày nhất của một buổi đi vườn nằm TRƯỚC lúc đăng nhập xong, và cả
+            bốn ca đều kết thúc ở chính màn này: danh tính chưa dùng được trên máy
+            (:229), sinh trắc tạm khoá (:319), khoá bị hệ điều hành huỷ vì người dùng
+            vừa thêm/xoá một vân tay (:326), sinh trắc thất bại (:330).
+
+            Nếu cửa báo cáo chỉ nằm ở màn Tài khoản thì đúng lớp lỗi cần báo nhất lại là
+            lớp KHÔNG báo được — `AccountScreen` tự đẩy về `Login` khi chưa có phiên. Thứ
+            người thực địa làm thay vào đó là chụp ảnh màn hình gửi Zalo: ảnh đó không
+            mang commit, không mang máy chủ, không mang những dòng trước đó.
+
+            Một dòng chữ, không phải một thẻ: nó không được cạnh tranh với nút đăng nhập. */}
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => navigation.navigate('DiagnosticReport' as never)}
+          style={styles.reportLinkWrap}
+        >
+          <Icon name="message-alert-outline" size={13} color={COLORS.textMuted} />
+          <Text style={styles.reportLinkText} allowFontScaling={false}>
+            {tk('identity.report.loginLink')}
+          </Text>
+        </TouchableOpacity>
+
         {/* Footer */}
         <View style={styles.footer}>
           <Icon name="lock-check-outline" size={13} color={COLORS.textMuted} />
@@ -1107,11 +1131,24 @@ const styles = StyleSheet.create({
   },
 
   // ── Footer ────────────────────────────────────────────
+  // Vùng chạm rộng hơn chữ (đệm dọc 10): người thực địa bấm bằng tay găng hoặc tay ướt,
+  // và một dòng chữ 12px không có đệm là một đích gần như không bấm trúng.
+  reportLinkWrap: {
+    flexDirection: 'row',
+    alignItems: 'center', justifyContent: 'center',
+    gap: 6,
+    marginTop: 20,
+    paddingVertical: 10,
+  },
+  reportLinkText: {
+    fontSize: 12, color: COLORS.textMuted, fontWeight: '600',
+    textDecorationLine: 'underline',
+  },
   footer: {
     flexDirection: 'row',
     alignItems: 'center', justifyContent: 'center',
     gap: 6,
-    marginTop: 24,
+    marginTop: 4,
     paddingTop: 14,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,

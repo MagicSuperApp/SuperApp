@@ -19,6 +19,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ensureOrilifeToken } from './orilifeDidAuth';
 import type { APIError, ApiResult } from './fruitReIDService';
+import { serverRejectionOf } from './serverRejection';
 
 const AUTH_TOKEN_KEY = 'auth_token';
 const REQUEST_TIMEOUT_MS = 20_000;
@@ -265,7 +266,13 @@ export async function getCapturePlan(
     if (!resp.ok) {
       return { ok: false, error: { type: 'server_error', detail: `HTTP ${resp.status}`, http_status: resp.status } };
     }
-    return { ok: true, data: (await resp.json()) as CapturePlan };
+    const body = (await resp.json()) as CapturePlan;
+    // `CapturePlan.ok` được khai từ đầu và KHÔNG nơi nào đọc. Máy chủ từ chối
+    // bằng `200 {"ok": false}` thì `captureHint()` trả `null` — đúng hình dạng
+    // "máy chủ không có gì để nói", tức màn chụp im lặng cho một lần bị chặn.
+    const rejection = serverRejectionOf(body, resp.status);
+    if (rejection) return { ok: false, error: rejection };
+    return { ok: true, data: body };
   } catch (err: unknown) {
     clearTimeout(timer);
     const isTimeout = err instanceof Error && err.name === 'AbortError';

@@ -50,6 +50,7 @@ import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { useDispatch } from 'react-redux';
 
 import GLErrorBoundary from '../components/GLErrorBoundary';
+import LanguagePickerModal from '../components/LanguagePickerModal';
 import { useAnalytics } from '../services/analytics';
 import { useBiometricSensor } from '../hooks/useBiometricSensor';
 import { biometricKindFromType, phoenixKeyAuth } from '../services/phoenixKeyAuthService';
@@ -60,7 +61,7 @@ import {
 import { currentUserDid, isKeypairEnrolled, signRaw } from '../sdk/phoenixKey';
 import { loginUser } from '../store/userSlice';
 import { showError } from '../utils/alert';
-import { t, useLanguage } from '../i18n';
+import { LANGUAGES, t, useLanguage } from '../i18n';
 import { AUTH_COLORS, NEUTRAL, WORK_THEME } from '../theme';
 import { DEFAULT_INSTANCE } from '../config/instance.config';
 import {
@@ -74,10 +75,31 @@ import {
   taoMangLuoi,
   type MangLuoi,
 } from '../features/loginNetwork/mangLuoi';
-import { dungDoHoa, type BangMau } from '../features/loginNetwork/doHoa';
+import {
+  dungDoHoa,
+  CO_CHAM,
+  CO_CHAM_NHANH,
+  type BangMau,
+} from '../features/loginNetwork/doHoa';
 
 /** Yêu cầu ghi "khoảng 100 chấm". */
 const SO_NUT = 100;
+
+/**
+ * Lớp BỤI: thêm 50 chấm nữa, nhỏ hơn và nhanh hơn hẳn lớp trên.
+ *
+ * Chúng không nối dây và không truyền làn sáng (lý do ở `mangLuoi.ts`), nên cái
+ * chúng thêm vào là chuyển động chứ không phải mật độ: mạng lưới giữ nguyên hình
+ * của nó, và phía sau có một lớp bay nhanh làm màn hình sâu hơn.
+ *
+ * Một NỬA số chấm thường. Lớp này đi nhanh gấp hơn hai chục lần, nên nó chiếm
+ * chỗ trong mắt nhiều hơn hẳn phần nó chiếm trong đếm đầu: để ngang số với lớp
+ * thường thì cái đọc ra là một màn đầy chấm bay, và mạng lưới đứng sau nó.
+ */
+const SO_NUT_NHANH = 50;
+
+/** Tổng số chấm phải vẽ — cỡ mọi bộ đệm của `doHoa`. */
+const TONG_NUT = SO_NUT + SO_NUT_NHANH;
 
 /**
  * Đường kính nút sinh trắc.
@@ -127,8 +149,11 @@ interface CanhProps {
 
 const Canh: React.FC<CanhProps> = ({ mangRef, tamRef, mau, onSangHet }) => {
   const { camera, size, gl } = useThree();
-  const doHoa = useMemo(() => dungDoHoa(SO_NUT, mau), [mau]);
+  // `SO_NUT` (chứ không `TONG_NUT`) là sức chứa lớp dây: chỉ lớp thường nối dây.
+  const doHoa = useMemo(() => dungDoHoa(TONG_NUT, mau, SO_NUT), [mau]);
   const daBao = useRef(false);
+  // Cỡ chấm là thuộc tính TĨNH, nạp lên máy đúng một lần sau khi mạng đã dựng.
+  const daCo = useRef(false);
 
   useEffect(() => () => doHoa.huy(), [doHoa]);
 
@@ -156,8 +181,16 @@ const Canh: React.FC<CanhProps> = ({ mangRef, tamRef, mau, onSangHet }) => {
   useEffect(() => {
     if (size.width <= 0 || size.height <= 0) return;
     const m = mangRef.current;
-    if (!m) mangRef.current = taoMangLuoi(size.width, size.height, SO_NUT);
-    else doiKhung(m, size.width, size.height);
+    if (!m) {
+      mangRef.current = taoMangLuoi(
+        size.width,
+        size.height,
+        SO_NUT,
+        Math.random,
+        SO_NUT_NHANH,
+      );
+      daCo.current = false;
+    } else doiKhung(m, size.width, size.height);
     tamRef.current = { x: size.width / 2, y: size.height / 2 };
   }, [size.width, size.height, mangRef, tamRef]);
 
@@ -168,6 +201,19 @@ const Canh: React.FC<CanhProps> = ({ mangRef, tamRef, mau, onSangHet }) => {
     buoc(m, dt);
 
     doHoa.datDpr(typeof gl.getPixelRatio === 'function' ? gl.getPixelRatio() : 1);
+
+    // ── Cỡ chấm, một lần ────────────────────────────────────────────────────
+    // Không nằm ở `dungDoHoa` được: cỡ tuỳ chấm thuộc lớp nào, mà lúc dựng đồ
+    // hoạ thì mạng lưới chưa có (nó chờ số đo khung). Đặt ở đây là chỗ sớm nhất
+    // biết đủ cả hai.
+    if (!daCo.current) {
+      for (let i = 0; i < m.nut.length; i++) {
+        const n = m.nut[i];
+        doHoa.coCham[i] = n.co * (n.nhanh ? CO_CHAM_NHANH : CO_CHAM);
+      }
+      doHoa.xongCo();
+      daCo.current = true;
+    }
 
     // ── Chấm ────────────────────────────────────────────────────────────────
     for (let i = 0; i < m.nut.length; i++) {
@@ -318,6 +364,10 @@ const LoginNetworkScreen: React.FC = () => {
   const [busy, setBusy] = useState(false);
   const insets = useSafeAreaInsets();
   const lang = useLanguage();
+  // Đổi ngôn ngữ NGAY tại màn đăng nhập, không phải đăng nhập vào mới đổi được —
+  // người chưa có tài khoản thì không có đường nào khác để tới phần Cài đặt.
+  const [moChonNgonNgu, setMoChonNgonNgu] = useState(false);
+  const ngonNgu = LANGUAGES.find((l) => l.code === lang) ?? LANGUAGES[0];
 
   /**
    * Khẩu hiệu ngắn được KÉO GIÃN cho rộng đúng bằng tên app ở trên nó.
@@ -339,6 +389,24 @@ const LoginNetworkScreen: React.FC = () => {
   // `onLayout` lại, và nếu tính lại từ số đo MỚI thì hai thứ đuổi nhau mãi.
   const daCan = useRef(false);
   const slogan = DEFAULT_INSTANCE.slogan[lang];
+
+  /**
+   * ĐỔI NGÔN NGỮ thì phải căn lại từ đầu — và phải căn lại ĐÚNG CÁCH.
+   *
+   * Nút đổi ngôn ngữ ở góc trên mang vào một chỗ hỏng mà bản trước không có: câu
+   * khẩu hiệu đổi, nhưng `daCan` đã chốt nên `letterSpacing` giữ nguyên giá trị
+   * tính cho câu CŨ — câu tiếng Nhật nhận khoảng giãn của câu tiếng Việt.
+   *
+   * Không đủ nếu chỉ mở chốt: số đo bề ngang lúc đó vẫn đang mang `letterSpacing`
+   * cũ, nên nó không phải bề ngang TỰ NHIÊN của câu mới, và phép căn lại lệch
+   * theo một hướng khác. Phải trả `gianChu` về 0 VÀ xoá số đo cũ, để dòng khẩu
+   * hiệu được đo lại từ trạng thái chưa giãn.
+   */
+  useEffect(() => {
+    daCan.current = false;
+    setGianChu(0);
+    setRongMoc(0);
+  }, [slogan]);
 
   useEffect(() => {
     if (daCan.current || rongTen <= 0 || rongMoc <= 0) return;
@@ -619,6 +687,30 @@ const LoginNetworkScreen: React.FC = () => {
         </Text>
       </View>
 
+      {/* Nút đổi ngôn ngữ — góc trên bên PHẢI. Nằm sau lớp nhận cú chạm trong
+          cây nên nó là đích của cú chạm trong vùng của nó. */}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={ngonNgu.endonym}
+        hitSlop={8}
+        onPress={() => setMoChonNgonNgu(true)}
+        style={({ pressed }) => [
+          styles.nutNgonNgu,
+          { top: insets.top + 10 },
+          pressed && styles.nutDangKyNhan,
+        ]}
+      >
+        <Text style={styles.coNgonNgu} allowFontScaling={false}>
+          {ngonNgu.flag}
+        </Text>
+        <Icon name="chevron-down" size={14} color={NEUTRAL.white} />
+      </Pressable>
+
+      <LanguagePickerModal
+        visible={moChonNgonNgu}
+        onClose={() => setMoChonNgonNgu(false)}
+      />
+
       {/* Nút sinh trắc. Nằm TRÊN lớp nhận cú chạm nên nó là đích của cú chạm
           trong vùng của nó — mạng lưới không bị kéo theo khi người dùng bấm. */}
       <NutSinhTrac kieu={kieu} nen={nen} busy={busy} onPress={runBiometric} />
@@ -651,7 +743,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 28,
+    // Chừa hai bên rộng hơn bề ngang nút đổi ngôn ngữ ở góc phải (≈52 + lề 16).
+    // Chừa ĐỀU hai bên chứ không chỉ bên phải: chừa một bên thì cụm logo lệch
+    // khỏi tâm màn, mà nó phải đứng giữa. Với tên app dài, cụm này hẹp lại chứ
+    // không bao giờ chui xuống dưới nút.
+    paddingHorizontal: 76,
   },
   logo: { width: 52, height: 52, borderRadius: 13, marginRight: 12 },
   cotChu: { alignItems: 'flex-start' },
@@ -677,12 +773,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   /**
-   * Nút đăng ký: viền trắng, ruột rỗng.
+   * Nút đăng ký: nền trắng NHẠT, không viền.
    *
-   * Cùng ngôn ngữ với nút sinh trắc (viền trắng trên nền xanh) nhưng KHÔNG có
-   * mặt đĩa — đó là cách nói "đây là lối phụ". Trong một màn chỉ có hai thứ bấm
-   * được, thứ hạng phải đọc ra ngay: nút chính to, đặc, ở giữa; nút này mảnh,
-   * rỗng, nằm sát đáy.
+   * Thứ hạng vẫn phải đọc ra ngay — nút chính to, đặc, ở giữa; nút này nằm sát
+   * đáy — nhưng nó nói bằng một cách khác: một mảng trắng mờ chứ không phải một
+   * đường viền. Trên nền chuyển động của mạng lưới thì một mặt phẳng đứng yên
+   * hơn một đường kẻ: viền mảnh chạy ngang qua các chấm sáng sẽ đứt quãng theo
+   * chúng, còn mảng nền thì che hẳn phía dưới nó và chữ luôn nằm trên một nền
+   * ổn định.
+   *
+   * 16% là chỗ cân: đủ để thấy hình nút khi phía sau đang tối, còn nhạt để nó
+   * không tranh với đĩa trắng đặc của nút sinh trắc.
    */
   nutDangKy: {
     flexDirection: 'row',
@@ -693,11 +794,33 @@ const styles = StyleSheet.create({
     // phụ trên một màn không đeo găng, và nới to hơn là nó tranh chỗ nút chính.
     paddingVertical: 13,
     borderRadius: 999,
-    borderWidth: 1.5,
-    borderColor: NEUTRAL.white,
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
     marginBottom: 16,
   },
   nutDangKyNhan: { opacity: 0.6 },
+
+  /**
+   * Nút đổi ngôn ngữ. Vẫn giữ lối viền-trắng-ruột-rỗng, và nay nó là thứ DUY
+   * NHẤT trong màn dùng lối ấy — cố ý: nó không cùng hạng với nút đăng ký (một
+   * lối vào) mà là một công tắc, nên nó không nên trông giống nút đăng ký thu
+   * nhỏ. Viền nói "đổi một thiết lập"; mảng nền nói "đi tới đâu đó".
+   *
+   * `right` chứ không `left`, và `top` cộng safe-area tại nơi dùng — góc trên
+   * bên phải là chỗ quen thuộc của nút này (màn cũ cũng đặt ở đó), và nó không
+   * đụng vào cụm logo đang canh giữa.
+   */
+  nutNgonNgu: {
+    position: 'absolute',
+    right: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingLeft: 10,
+    paddingRight: 7,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  coNgonNgu: { fontSize: 18, lineHeight: 22 },
   chuDangKy: {
     fontSize: 15,
     fontWeight: '700',
@@ -726,10 +849,10 @@ const styles = StyleSheet.create({
     borderRadius: CO_NUT / 2,
     alignItems: 'center',
     justifyContent: 'center',
-    // Viền trắng là thứ DUY NHẤT tách nút khỏi nền — đĩa cùng màu nền. Dày 3 để
-    // nó còn là một đường rõ trên nền có chấm sáng chạy qua phía sau.
-    borderWidth: 3,
+    
+    borderWidth: 6,
     borderColor: NEUTRAL.white,
+
   },
   nutSong: {
     position: 'absolute',
@@ -738,6 +861,11 @@ const styles = StyleSheet.create({
     borderRadius: (CO_NUT + 10) / 2,
     borderWidth: 2,
     borderColor: NEUTRAL.white,
+    backgroundColor: NEUTRAL.white,
+    shadowColor: NEUTRAL.white,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 10,
   },
 });
 

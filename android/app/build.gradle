@@ -367,7 +367,10 @@ if (trungDid) {
         // này, không cộng thêm số lượt dựng như đường Codemagic. Nên để nguyên 99 là
         // dựng ra một gói chắc chắn bị Play từ chối, và lượt dựng vẫn báo xanh —
         // cái sai chỉ lộ ở bước tải lên.
-        versionCode 100
+        //
+        // Build 101 (2026-09-11): tăng CHỦ ĐỘNG trước một lượt dựng tay, không kèm
+        // tính năng nào.
+        versionCode 101
         versionName "2.0"
 
         // ✅ Support 16KB page size (required by Google Play Store 2024)

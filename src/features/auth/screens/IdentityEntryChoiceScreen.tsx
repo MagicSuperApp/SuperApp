@@ -29,6 +29,11 @@
 //    `handleRestore` ở `screens/RestoreIdentityScreen.tsx`). Cái giá đó phải
 //    hiện TRƯỚC khi người dùng chọn, không phải sau.
 // 3. Chuỗi nằm ở `i18n/keys/identity.ts`, đủ bốn thứ tiếng. Không rải chữ ở đây.
+// 4. Bốn lối MANG BỐN MÀU, và lối "người mới" mang màu XANH LÁ. Trước
+//    2026-09-14 bốn thẻ giống hệt nhau — cùng nền trắng, cùng viền xám, cùng ô
+//    biểu tượng lam — nên phải đọc hết bốn khối chữ mới chọn được, ở đúng màn
+//    mà chọn sai thì chia đôi dữ liệu vĩnh viễn. Màu ở đây không phải trang
+//    trí: nó là thứ đọc được trước khi chữ kịp được đọc. Xem `AUTH_TOKENS`.
 //
 // Lối C vẫn dẫn sang màn 24 từ. Đường "app cũ ký phê duyệt" NAY ĐÃ CÓ, nhưng nó
 // là một lối RIÊNG (lối D) chứ không thay được lối C: lối D đòi máy/app kia đang
@@ -43,10 +48,21 @@ import { useNavigation } from '@react-navigation/native';
 import { AUTH_BLUE, AUTH_WARN } from '../theme';
 import { useTk } from '../../../i18n/keys';
 
+/**
+ * TÔNG của một lối rẽ: màu biểu tượng, ô nền sau biểu tượng, viền thẻ.
+ *
+ * Ba giá trị, không một giá trị: một mình màu biểu tượng thì cái chấm màu quá
+ * nhỏ để nhận ra khi lướt, còn tô cả thẻ thì bốn thẻ thành bốn mảng màu và màn
+ * đọc như một bảng quảng cáo. Ô biểu tượng là chỗ đủ lớn để thấy ngay mà vẫn
+ * giữ được nền trắng cho chữ.
+ */
+type Tone = { icon: string; bg: string; border: string };
+
 /** Một lối rẽ. `cost` chỉ có ở lối phải trả giá — không bịa giá cho lối không có. */
 type Choice = {
   testID: string;
   icon: string;
+  tone: Tone;
   titleKey: string;
   bodyKey: string;
   costKey?: string;
@@ -54,6 +70,29 @@ type Choice = {
   target: 'SignUpBiometric' | 'RestoreIdentity' | 'DevicePair';
   /** Tham số điều hướng. Chỉ lối ghép máy cần — nó dùng CHUNG màn với vai quét. */
   params?: Record<string, unknown>;
+  /**
+   * Thẻ được tô cả nền và viền đậm, thay vì chỉ có ô biểu tượng màu.
+   *
+   * Chỉ ĐÚNG MỘT lối được đặt cờ này, và đó là lối an toàn. Đặt cho lối thứ hai
+   * là hỏng chính thứ nó làm: nổi bật là một thứ TƯƠNG ĐỐI, hai thẻ cùng nổi
+   * bật thì không thẻ nào nổi bật.
+   */
+  noiBat?: boolean;
+};
+
+// Bốn tông, đọc từ tầng token (`theme/tokens.ts#AUTH_TOKENS`) — không gõ hex ở
+// đây: Integration-Standard §2.1, và bảng cửa vào từng có đúng lỗi ấy một lần.
+const TONE_AN_TOAN: Tone = {
+  icon: AUTH_BLUE.safeIcon, bg: AUTH_BLUE.safeBg, border: AUTH_BLUE.safeBorder,
+};
+const TONE_DOI_MAY: Tone = {
+  icon: AUTH_BLUE.moveIcon, bg: AUTH_BLUE.moveBg, border: AUTH_BLUE.moveBorder,
+};
+const TONE_APP_KHAC: Tone = {
+  icon: AUTH_BLUE.swapIcon, bg: AUTH_BLUE.swapBg, border: AUTH_BLUE.swapBorder,
+};
+const TONE_GHEP_MAY: Tone = {
+  icon: AUTH_BLUE.pairIcon, bg: AUTH_BLUE.pairBg, border: AUTH_BLUE.pairBorder,
 };
 
 // Thứ tự CÓ Ý: lối "người mới" đứng đầu vì nó là lối duy nhất KHÔNG phá gì cả.
@@ -63,6 +102,11 @@ const CHOICES: Choice[] = [
   {
     testID: 'entry-choice-new',
     icon: 'account-plus-outline',
+    // XANH LÁ, và là thẻ duy nhất được tô cả nền: nó là lối KHÔNG mất gì. Ba lối
+    // dưới đều đổi trạng thái ở nơi khác — hai lối thu hồi phiên, một lối thêm
+    // khoá vào DID — nên không lối nào trong ba được mang màu này.
+    tone: TONE_AN_TOAN,
+    noiBat: true,
     titleKey: 'identity.gate.new.title',
     bodyKey: 'identity.gate.new.body',
     target: 'SignUpBiometric',
@@ -70,6 +114,7 @@ const CHOICES: Choice[] = [
   {
     testID: 'entry-choice-same-app',
     icon: 'cellphone-arrow-down',
+    tone: TONE_DOI_MAY,
     titleKey: 'identity.gate.sameApp.title',
     bodyKey: 'identity.gate.sameApp.body',
     costKey: 'identity.gate.sameApp.cost',
@@ -78,6 +123,7 @@ const CHOICES: Choice[] = [
   {
     testID: 'entry-choice-other-app',
     icon: 'apps',
+    tone: TONE_APP_KHAC,
     titleKey: 'identity.gate.otherApp.title',
     bodyKey: 'identity.gate.otherApp.body',
     costKey: 'identity.gate.otherApp.cost',
@@ -94,6 +140,7 @@ const CHOICES: Choice[] = [
   {
     testID: 'entry-choice-pair',
     icon: 'cellphone-link',
+    tone: TONE_GHEP_MAY,
     titleKey: 'identity.gate.pair.title',
     bodyKey: 'identity.gate.pair.body',
     noteKey: 'identity.gate.pair.note',
@@ -129,11 +176,19 @@ const IdentityEntryChoiceScreen: React.FC = () => {
                 ? navigation.navigate(choice.target, choice.params)
                 : navigation.navigate(choice.target)
             }
-            style={styles.card}
+            style={[
+              styles.card,
+              { borderColor: choice.tone.border },
+              // Thẻ nổi bật: nền tô nhạt + viền dày hơn. Hai dấu hiệu chứ không
+              // một, vì một mình màu thì người không phân biệt được hue chỉ thấy
+              // bốn thẻ y hệt nhau — đúng cái màn này đang sửa.
+              choice.noiBat && styles.cardNoiBat,
+              choice.noiBat && { backgroundColor: choice.tone.bg },
+            ]}
           >
             <View style={styles.cardHead}>
-              <View style={styles.cardIcon}>
-                <Icon name={choice.icon} size={20} color={AUTH_BLUE.primary} />
+              <View style={[styles.cardIcon, { backgroundColor: choice.tone.bg }]}>
+                <Icon name={choice.icon} size={20} color={choice.tone.icon} />
               </View>
               <Text style={styles.cardTitle}>{tk(choice.titleKey)}</Text>
               <Icon name="chevron-right" size={20} color={AUTH_BLUE.textMuted} />
@@ -189,6 +244,7 @@ const styles = StyleSheet.create({
     lineHeight: 19, marginBottom: 22,
   },
 
+  // `borderColor` bị ghi đè theo tông ở chỗ dùng; giá trị ở đây là nền lùi.
   card: {
     backgroundColor: AUTH_BLUE.white,
     borderRadius: 16,
@@ -196,10 +252,14 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 14,
   },
+  /** Viền dày hơn ba thẻ kia. Màu đến từ tông, đặt ở chỗ dùng. */
+  cardNoiBat: { borderWidth: 2 },
   cardHead: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
     marginBottom: 8,
   },
+  // Nền ô lấy theo TÔNG của từng lối (đặt tại chỗ dùng). `glowSoft` cũ để lại
+  // đây làm nền lùi cho trường hợp một lối mới quên khai tông.
   cardIcon: {
     width: 36, height: 36, borderRadius: 12,
     backgroundColor: AUTH_BLUE.glowSoft,

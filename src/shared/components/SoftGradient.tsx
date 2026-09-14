@@ -199,6 +199,144 @@ export const LinearWash: React.FC<LinearWashProps> = ({ from, to, angle = 135, s
   );
 };
 
+// ── Màn phủ ẢNH → MÀU ───────────────────────────────────────────────────────
+
+export interface ScrimWashProps {
+  /** Màu đặc ở CUỐI dải. Thường là màu module của thẻ. */
+  color: string;
+  /**
+   * Hướng, cùng quy ước `LinearWash`. 90 = chảy ngang sang PHẢI; lệch vài độ
+   * khỏi 90 thì mốc đặc màu thành một đường XIÊN — xem `mocDacAnToan`, và
+   * đừng bẻ nghiêng mà quên chỉnh `solidAt` theo.
+   */
+  angle?: number;
+  /**
+   * Nơi dải đạt màu ĐẶC, tính theo phần của bề rộng (0..1). Chữ phải bắt đầu
+   * SAU mốc này, nếu không nó nằm trên ảnh và mất tương phản.
+   */
+  solidAt?: number;
+  style?: StyleProp<ViewStyle>;
+}
+
+/**
+ * Lớp phủ chuyển từ TRONG SUỐT sang một màu đặc — để một tấm ảnh tan vào nền
+ * màu của thẻ thay vì bị cắt thành hai nửa bằng một đường thẳng.
+ *
+ * ── Đây là lớp DUY NHẤT trong tệp được dùng alpha, và vì sao ────────────────
+ * Đầu tệp kể lại một lỗi: chặng màu viết alpha ngay trong chuỗi `rgba(…)` cho
+ * ra "một mảng màu đậm ở góc, đọc như màn hình hỏng". Bài học rút ra ở đó là
+ * đúng, nhưng nó thuộc về một ca khác: một VỆT LOANG TRÒN đặt lên nền TRANG gần
+ * trắng, nơi mọi độ đục đều đọc ra vết bẩn, và nơi hoàn toàn có thể pha sẵn ra
+ * hex đặc vì phía dưới chỉ là một màu.
+ *
+ * Ở đây phía dưới là một tấm ẢNH. Không pha sẵn được: hỗn hợp phải tính trên
+ * từng điểm ảnh của ảnh, mà mã không đọc được điểm ảnh. Alpha không phải một
+ * lựa chọn phong cách, nó là cách duy nhất. Hai rào giữ nó khỏi lặp lại ca cũ:
+ *   · alpha đi qua `stopOpacity` (thuộc tính riêng), không trộn vào chuỗi màu —
+ *     chỗ từng quy trượt;
+ *   · dải trải HẾT bề ngang và kết thúc ĐẶC, nên thứ tệ nhất nó cho ra là một
+ *     mảng màu phủ kín, không bao giờ là một vệt neo ở góc.
+ *
+ * KHÔNG có màu nền dự phòng — dự phòng ở đây phải là "không phủ gì cả", vì một
+ * mảng đặc phủ kín sẽ giấu mất tấm ảnh. Khung hình đầu (chưa có số đo) vì thế
+ * hiện ảnh trần; nơi dùng phải giữ chữ đọc được ở cả khung ấy (bóng chữ).
+ *
+ * ── Vì sao BỐN chặng chứ không hai ─────────────────────────────────────────
+ * Hai chặng cho một dải alpha tuyến tính: nó đi qua vùng nửa đục ở đúng khúc
+ * giữa, nơi mắt nhạy nhất với chuyển dần, và trên nền ảnh nhiều chi tiết thì
+ * khúc ấy lộ ra thành một dải sọc. Bốn chặng bẻ đường cong: chậm lúc đầu (ảnh
+ * còn rõ), nhanh ở khúc giữa, rồi đặc hẳn trước mốc `solidAt`.
+ */
+/**
+ * Mốc đặc màu AN TOÀN cho một dải nghiêng — tức giá trị lớn nhất mà `solidAt`
+ * được phép nhận nếu muốn mọi điểm từ `tuX` sang phải đều đã đặc màu.
+ *
+ * ── Vì sao cần một phép tính chứ không một con số ──────────────────────────
+ * Dải THẲNG NGANG (90°) thì mốc đặc là một đường dọc: chữ bắt đầu ở 50% bề
+ * ngang thì `solidAt = 0.5` là vừa khít. Dải NGHIÊNG thì mốc ấy là một đường
+ * xiên — nó chạm mép trên ở một chỗ và mép dưới ở một chỗ khác, cách nhau đúng
+ * `|cos(góc)|` của bề ngang. Giữ nguyên 0,5 khi bẻ nghiêng là để một GÓC của
+ * khối chữ thò ra ngoài vùng đã đặc màu, nằm trên ảnh — và đó là góc trên hoặc
+ * góc dưới, chỗ mắt ít soi nhất lúc thử, chỗ chữ mất tương phản lúc dùng thật.
+ *
+ * Suy thẳng từ hình học của `LinearGradient`: với trục chạy từ `0,5 − d/2` tới
+ * `0,5 + d/2` trong hộp đơn vị, chặng tại một điểm là
+ * `t = 0,5 + (x−0,5)·dx + (y−0,5)·dy`. Lấy `y` tệ nhất (0 hoặc 1) ra được công
+ * thức dưới. Hộp ĐƠN VỊ, không phải pixel: `gradientUnits` mặc định là
+ * `objectBoundingBox`, nên góc ở đây bị bề ngang thẻ kéo bẹt ra — 100° trên một
+ * thẻ rộng gấp hai lần rưỡi chiều cao đọc ra khoảng 4° nghiêng, đúng mức "chéo
+ * nhẹ" chứ không phải một đường chéo thật.
+ */
+export const mocDacAnToan = (angle: number, tuX = 0.5): number => {
+  const rad = (angle * Math.PI) / 180;
+  return 0.5 + (tuX - 0.5) * Math.sin(rad) - Math.abs(Math.cos(rad)) / 2;
+};
+
+export const ScrimWash: React.FC<ScrimWashProps> = ({
+  color,
+  angle = 90,
+  solidAt = 0.72,
+  style,
+}) => {
+  const { size, onLayout } = useSize();
+  const id = useGradId('scrim');
+  const rad = (angle * Math.PI) / 180;
+  const dx = Math.sin(rad);
+  const dy = -Math.cos(rad);
+
+  // Ba chặng đầu rải trong quãng trước `solidAt`, chặng cuối đặc từ đó tới hết.
+  //
+  // ── Dải GIỮ TRONG lâu rồi mới đóng nhanh ─────────────────────────────────
+  // Bản đầu rải đều hơn (0,42 → 0,18 rồi 0,75 → 0,72). Hệ quả đo được: ở nửa
+  // quãng, dải đã đục 18%, và tới ba phần tư quãng đã 72% — tức tấm ảnh bị làm
+  // mờ gần hết ngay trong vùng lẽ ra còn phải thấy rõ. Với một hình minh hoạ
+  // nằm gọn trong quãng ấy thì cái đọc ra là "mất ảnh".
+  //
+  // Nay hơn nửa quãng đầu gần như trong suốt (8%), rồi dải đóng lại trong một
+  // phần năm cuối. Ảnh vì thế còn rõ ở phần lớn khung của nó, và chỗ chuyển vẫn
+  // đủ dài để không thành một đường kẻ.
+  const moc = Math.min(Math.max(solidAt, 0.2), 0.95);
+  const chang: Array<[number, number]> = [
+    [0, 0],
+    [moc * 0.55, 0.08],
+    [moc * 0.82, 0.55],
+    [moc, 1],
+    [1, 1],
+  ];
+
+  return (
+    <View
+      pointerEvents="none"
+      style={[StyleSheet.absoluteFill, styles.clip, style]}
+      onLayout={onLayout}
+    >
+      {size.w > 0 && size.h > 0 ? (
+        <Svg width={size.w} height={size.h}>
+          <Defs>
+            <LinearGradient
+              id={id}
+              x1={0.5 - dx / 2}
+              y1={0.5 - dy / 2}
+              x2={0.5 + dx / 2}
+              y2={0.5 + dy / 2}
+            >
+              {chang.map(([offset, opacity]) => (
+                <Stop
+                  key={offset}
+                  offset={String(offset)}
+                  stopColor={color}
+                  stopOpacity={opacity}
+                />
+              ))}
+            </LinearGradient>
+          </Defs>
+          <Rect x={0} y={0} width={size.w} height={size.h} fill={`url(#${id})`} />
+        </Svg>
+      ) : null}
+    </View>
+  );
+};
+
 const styles = StyleSheet.create({
   clip: { overflow: 'hidden' },
 });

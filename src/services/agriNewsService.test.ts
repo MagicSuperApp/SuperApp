@@ -7,7 +7,8 @@
  */
 
 import {
-  parseFeed, parseRssDate, cleanText, mergeFeeds, timeAgoVi, hotNews, type NewsItem,
+  parseFeed, parseRssDate, cleanText, mergeFeeds, timeAgoVi, hotNews,
+  fetchAgriNewsCached, clearAgriNewsCache, type NewsItem,
 } from './agriNewsService';
 
 const FEED = `<?xml version="1.0" encoding="UTF-8"?>
@@ -159,5 +160,82 @@ describe('hotNews — tin nóng cho trang Tổng quan', () => {
   it('danh sách rỗng → mảng rỗng, không nổ', () => {
     expect(hotNews([], { now: NOW })).toEqual([]);
     expect(hotNews(undefined as any, { now: NOW })).toEqual([]);
+  });
+});
+
+/**
+ * ĐỆM TIN — thêm cùng đợt đưa tin lên băng trượt Trang chủ (2026-09-14).
+ *
+ * Trước đó chỉ trang Tổng quan gọi tin, mỗi lần mở màn một lượt, nên không ai
+ * cần đệm. Trang chủ thì khác hẳn: nó là màn người ta quay về sau MỌI thao tác,
+ * và mỗi lượt quay về là hai lượt tải RSS cho một dòng chữ không đổi.
+ *
+ * Ba ca dưới đây là ba cách cái đệm ấy hỏng mà nhìn màn không thấy: nó tải lại
+ * khi lẽ ra không cần, nó tải hai lần cho hai nơi gọi cùng lúc, và — tệ nhất —
+ * nó đóng dấu một lần TẢI HỎNG rồi khoá mục tin suốt cả TTL.
+ */
+describe('đệm tin', () => {
+  const XML_RONG = '<rss><channel></channel></rss>';
+  const goc = global.fetch;
+
+  const datFetch = (fn: jest.Mock) => {
+    (global as any).fetch = fn;
+    return fn;
+  };
+
+  beforeEach(() => {
+    clearAgriNewsCache();
+  });
+
+  afterEach(() => {
+    (global as any).fetch = goc;
+  });
+
+  it('trong TTL thì KHÔNG gọi mạng lần thứ hai', async () => {
+    const f = datFetch(jest.fn(async () => ({ ok: true, text: async () => FEED })));
+    const mot = await fetchAgriNewsCached(60_000, 1000);
+    const hai = await fetchAgriNewsCached(60_000, 5000);
+    expect(hai).toBe(mot); // ĐÚNG mảng cũ, không phải một mảng bằng nó
+    expect(f).toHaveBeenCalledTimes(2); // 2 = số nguồn RSS, của lượt ĐẦU
+  });
+
+  it('quá TTL thì tải lại', async () => {
+    const f = datFetch(jest.fn(async () => ({ ok: true, text: async () => FEED })));
+    await fetchAgriNewsCached(60_000, 1000);
+    await fetchAgriNewsCached(60_000, 1000 + 60_001);
+    expect(f).toHaveBeenCalledTimes(4);
+  });
+
+  it('hai nơi gọi CÙNG LÚC chỉ tải một lượt', async () => {
+    const f = datFetch(jest.fn(async () => ({ ok: true, text: async () => FEED })));
+    const [a, b] = await Promise.all([
+      fetchAgriNewsCached(60_000, 1000),
+      fetchAgriNewsCached(60_000, 1000),
+    ]);
+    expect(a).toBe(b);
+    expect(f).toHaveBeenCalledTimes(2);
+  });
+
+  /**
+   * Ca đắt nhất. Mạng chập hai giây trả về mảng rỗng; đóng dấu thời gian cho nó
+   * là cả TTL sau đó không ai thử lại, và mục tin trống suốt mười lăm phút vì
+   * một sự cố đã qua từ lâu.
+   */
+  it('tải HỎNG không được ghi vào đệm — lượt sau vẫn thử lại', async () => {
+    const f = datFetch(jest.fn(async () => ({ ok: false, text: async () => XML_RONG })));
+    expect(await fetchAgriNewsCached(60_000, 1000)).toEqual([]);
+    expect(f).toHaveBeenCalledTimes(2);
+
+    datFetch(jest.fn(async () => ({ ok: true, text: async () => FEED })));
+    const sau = await fetchAgriNewsCached(60_000, 1500);
+    expect(sau.length).toBeGreaterThan(0);
+  });
+
+  it('`clearAgriNewsCache` buộc lượt sau tải lại — đó là kéo-để-làm-mới', async () => {
+    const f = datFetch(jest.fn(async () => ({ ok: true, text: async () => FEED })));
+    await fetchAgriNewsCached(60_000, 1000);
+    clearAgriNewsCache();
+    await fetchAgriNewsCached(60_000, 1000);
+    expect(f).toHaveBeenCalledTimes(4);
   });
 });

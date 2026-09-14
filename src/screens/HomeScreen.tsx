@@ -23,6 +23,7 @@ import {
   LayoutChangeEvent,
   NativeSyntheticEvent,
   NativeScrollEvent,
+  Linking,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -34,7 +35,7 @@ import { loadFarms, loadTrees } from '../modules/trace/store/farmSlice';
 import { tf } from '../i18n';
 import { selectChainWallet } from '../store/userSlice';
 import { NEUTRAL, withAlpha } from '../shared/theme';
-import { WORK_THEME, CHAT_THEME } from '../theme';
+import { WORK_THEME } from '../theme';
 import { MODULES, type ModuleEntry } from '../modules';
 import {
   getRankedQuickActions,
@@ -46,11 +47,23 @@ import { useCollapsibleHeader } from '../components/AppHeader';
 import { useCoachMarkTarget, useCoachMark } from '../onboarding/CoachMarkContext';
 import { shouldAutoRunTutorial } from '../utils/tutorialStorage';
 import { LinearWash, deepen, tint } from '../shared/components/SoftGradient';
+import {
+  clearAgriNewsCache,
+  fetchAgriNewsCached,
+  hotNews,
+  type NewsItem,
+} from '../services/agriNewsService';
+import { dungBang, type TamBang } from './homeBanners';
+import { BannerCard } from './BannerCard';
 
 const { width } = Dimensions.get('window');
 const H_PADDING = 20;
 const CAROUSEL_W = width - H_PADDING * 2;
 const CAROUSEL_H = 140;
+
+/** Bao lâu thì tự sang tấm kế. */
+const BANNER_NHIP_MS = 7000;
+
 const MODULE_GAP = 12;
 // Card 2 cột. Trên máy nhỏ / landscape hẹp, nửa màn hình quá nhỏ khiến chữ tràn.
 // Đặt sàn tối thiểu (MODULE_CARD_MIN) — nếu 1 nửa màn hình < sàn thì cho card
@@ -108,56 +121,52 @@ const QUICK_ITEM_W = (width - H_PADDING * 2 - QUICK_GAP * 3) / 4;
 const formatToken = (n: number): string =>
   Number.isFinite(n) ? Math.round(n).toLocaleString('vi-VN') : '0';
 
-// ── Băng giới thiệu tính năng (nội dung viết cứng, KHÔNG phải dữ liệu giả) ──
-// Chú thích cũ ghi "Mock data" nên đợt rà 15/08 suýt gỡ nhầm cả khu. Ba tấm này
-// mô tả đúng tính năng đang có: truy xuất tới từng trái (chạy thật), Trò chuyện
-// ("sắp ra mắt" — đúng, ProofChat còn sau cổng), Việc làm (có thật). Không tấm nào
-// hứa khuyến mãi hay mốc thời gian, nên không quá hạn được. Đổi nội dung khi tính
-// năng đổi; đừng nối API tin tức vào đây.
-const BANNERS = [
-  {
-    id: 'b1',
-    title: 'Truy xuất sầu riêng\ntới từng trái',
-    sub: 'Định danh blockchain Cardano',
-    bg: COLORS.accent,
-    icon: 'leaf-circle-outline',
-  },
-  {
-    id: 'b2',
-    title: 'Tính năng Trò chuyện sắp\nra mắt',
-    sub: 'Tin nhắn xác thực bằng chữ ký',
-    bg: COLORS.accentDeep,
-    icon: 'message-text-outline',
-  },
-  {
-    id: 'b3',
-    title: 'Tìm việc · Đặt thợ\nmọi lĩnh vực',
-    sub: 'Hợp đồng số · Ký quỹ blockchain',
-    bg: CHAT_THEME.gradient[0],
-    icon: 'briefcase-search-outline',
-  },
-];
+// ── Băng trượt ──────────────────────────────────────────────────────────────
+//
+// Nội dung của ba tấm DỜI sang `screens/homeBanners.ts`; ở đây chỉ còn cách vẽ.
+//
+// ── Một dòng chú thích cũ bị BỎ, và nó đáng được nói rõ ────────────────────
+// Bản trước khoá lại: *"Đổi nội dung khi tính năng đổi; đừng nối API tin tức
+// vào đây."* Câu ấy bảo vệ một thứ có thật — ba tấm này KHÔNG được hứa khuyến
+// mãi hay mốc thời gian, vì một lời hứa quá hạn nằm trên trang chủ thì không ai
+// dọn. Nhưng nó khoá luôn cả thứ nó không định khoá: một tấm băng đứng im suốt
+// vòng đời app thì mắt học cách bỏ qua nó, và khi ấy nó chiếm 140 px mà không
+// còn nói gì nữa.
+//
+// Nay tấm Truy xuất nối vào ĐÚNG nguồn tin mà trang Tổng quan đang đọc (RSS Dân
+// Việt qua `agriNewsService`). Điều răn thật sự vẫn giữ nguyên và nay nằm ở
+// `homeBanners.ts`: tấm nào cũng chỉ được nói thứ app làm được thật, và tin thì
+// mang theo NGUỒN + TUỔI của nó nên không có gì để quá hạn cả.
 
-// HeroBar (thanh chào + chuông + avatar) ĐÃ DỜI lên AppHeader toàn cục
-// (components/AppHeader.tsx) — thu/thả theo cuộn, hiển thị ở MỌI màn, nút Tài
-// khoản + Thông báo nằm ở đó thay vì trong từng màn. Xoá khỏi Home để tránh 2
-// thanh trên chồng nhau.
-
-// ── Carousel ────────────────────────────────────────────────────────────────
-const BannerCarousel = ({ fade }: { fade: Animated.Value }) => {
+const BannerCarousel = ({
+  fade,
+  tin,
+  onMo,
+}: {
+  fade: Animated.Value;
+  tin: NewsItem | null;
+  onMo: (tam: TamBang) => void;
+}) => {
   const [active, setActive] = useState(0);
   const listRef = useRef<FlatList>(null);
+  // `now` chốt theo tin, không theo mỗi lượt vẽ: gọi `Date.now()` thẳng trong
+  // thân hàm là "3 giờ trước" đổi giữa hai lượt vẽ không liên quan gì tới nó.
+  const bang = React.useMemo(() => dungBang(tin, Date.now()), [tin]);
 
+  // BẢY giây, không còn bốn. Bốn giây là quãng đọc xong một dòng tiêu đề ngắn —
+  // đủ cho ba câu viết cứng của băng cũ, không đủ cho một tiêu đề tin thật cộng
+  // hai dòng tóm tắt cộng dòng nguồn. Tấm trượt đi giữa câu thì người đọc bỏ
+  // luôn, và một băng không ai đọc hết thì nối tin vào cũng vô nghĩa.
   useEffect(() => {
     const id = setInterval(() => {
       setActive((prev) => {
-        const next = (prev + 1) % BANNERS.length;
+        const next = (prev + 1) % bang.length;
         listRef.current?.scrollToIndex({ index: next, animated: true });
         return next;
       });
-    }, 4000);
+    }, BANNER_NHIP_MS);
     return () => clearInterval(id);
-  }, []);
+  }, [bang.length]);
 
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const idx = Math.round(e.nativeEvent.contentOffset.x / CAROUSEL_W);
@@ -168,7 +177,7 @@ const BannerCarousel = ({ fade }: { fade: Animated.Value }) => {
     <Animated.View style={{ opacity: fade }}>
       <FlatList
         ref={listRef}
-        data={BANNERS}
+        data={bang}
         keyExtractor={(b) => b.id}
         horizontal
         pagingEnabled
@@ -181,37 +190,16 @@ const BannerCarousel = ({ fade }: { fade: Animated.Value }) => {
           index,
         })}
         renderItem={({ item }) => (
-          <View style={[styles.banner, { backgroundColor: item.bg, width: CAROUSEL_W }]}>
-            {/* Chuyển sắc chéo thay cho mảng màu phẳng. `deepen` cho chặng cuối
-                TỐI hơn chặng đầu, nên chữ trắng của banner ở mọi vị trí đều
-                tương phản bằng hoặc hơn bản phẳng cũ. `styles.banner` đã có
-                `overflow: 'hidden'` nên lớp này không tràn qua góc bo. */}
-            <LinearWash from={item.bg} to={deepen(item.bg)} angle={135} />
-            <View style={styles.bannerOrb} />
-            <View style={styles.bannerOrb2} />
-            <View style={{ flex: 1 }}>
-              {/* Tiêu đề có \n cứng — giới hạn 2 dòng + co chữ khi người dùng bật
-                  font-scale lớn, tránh bị cắt cụt trong banner cao cố định. */}
-              <Text
-                style={styles.bannerTitle}
-                numberOfLines={2}
-                adjustsFontSizeToFit
-                minimumFontScale={0.8}
-              >
-                {item.title}
-              </Text>
-              <Text style={styles.bannerSub} numberOfLines={2}>
-                {item.sub}
-              </Text>
-            </View>
-            <View style={styles.bannerIconWrap}>
-              <Icon name={item.icon} size={56} color="rgba(255,255,255,0.85)" />
-            </View>
-          </View>
+          <BannerCard
+            tam={item}
+            rong={CAROUSEL_W}
+            cao={CAROUSEL_H}
+            onPress={onMo}
+          />
         )}
       />
       <View style={styles.dots}>
-        {BANNERS.map((_, i) => (
+        {bang.map((_, i) => (
           <View
             key={i}
             style={[styles.dot, i === active && styles.dotActive]}
@@ -572,6 +560,29 @@ const HomeScreen: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [moduleLayout, setModuleLayout] = useState<ModuleLayout>('grid');
 
+  /**
+   * Tin MỚI NHẤT cho tấm băng Truy xuất.
+   *
+   * `null` là chưa có — chưa tải xong, hoặc tải hỏng, và hai cái đó cố ý KHÔNG
+   * phân biệt ở đây: cả hai đều dẫn tới đúng một hành vi (tấm băng hiện chữ
+   * tĩnh của module). Một cờ `đang tải` chỉ có nghĩa nếu có ai định vẽ vòng
+   * xoay, mà một băng trượt tự động thì không được đứng ở vòng xoay.
+   *
+   * `hotNews` chứ không phải `tin[0]`: nó sắp lại theo thời gian và đẩy tin
+   * KHÔNG đọc được ngày xuống cuối — đứng đầu mảng không có nghĩa là mới nhất.
+   */
+  const [tinMoi, setTinMoi] = useState<NewsItem | null>(null);
+
+  const napTin = React.useCallback(() => {
+    fetchAgriNewsCached()
+      .then((list) => setTinMoi(hotNews(list, { now: Date.now(), limit: 1 })[0] ?? null))
+      // Tải hỏng thì GIỮ tin cũ đang hiện, không xoá về `null`: một tấm băng
+      // đang đọc được mà tự rơi về chữ tĩnh vì một lượt mạng chập là tệ hơn.
+      .catch(() => { });
+  }, []);
+
+  useEffect(() => { napTin(); }, [napTin]);
+
   // Hộp Quick Action: mặc định thu gọn (khi đã hiện — xem quickVisible bên dưới).
   const [quickOpen, setQuickOpen] = useState(false);
   const [quickBodyH, setQuickBodyH] = useState(0);
@@ -663,6 +674,24 @@ const HomeScreen: React.FC = () => {
     work: undefined, // Work chưa có nguồn thật → không gắn badge số bịa.
   };
 
+  /**
+   * Bấm vào một tấm băng.
+   *
+   * Tấm tin mở BÀI BÁO ngoài trình duyệt, đúng lối mà mục tin ở trang Tổng quan
+   * đang dùng — app không có màn đọc bài, và dựng một màn đọc bài chỉ để không
+   * phải rời app là chép lại một tờ báo. Mở hỏng (máy không có trình duyệt mặc
+   * định) thì lùi về mục tin trong app chứ không im lặng.
+   */
+  const moBang = (tam: TamBang) => {
+    if (tam.link) {
+      Linking.openURL(tam.link).catch(() =>
+        (navigation as any).navigate('TraceNews'),
+      );
+      return;
+    }
+    if (tam.route) (navigation as any).navigate(tam.route);
+  };
+
   const handleModulePress = (entry: ModuleEntry) => {
     if (!entry.available) {
       // Placeholder cho module chưa sẵn sàng
@@ -682,6 +711,11 @@ const HomeScreen: React.FC = () => {
     setRefreshing(true);
     try {
       refreshQuickActions();
+      // Kéo-để-làm-mới là thao tác duy nhất người dùng biết để đòi dữ liệu mới,
+      // nên nó phải VƯỢT đệm tin — còn trong TTL mà trả lại đúng mảng cũ thì
+      // thao tác ấy nói dối.
+      clearAgriNewsCache();
+      napTin();
       if (uid) {
         const loaded = await dispatch(loadFarms(uid)).unwrap();
         await Promise.allSettled(loaded.map((f) => dispatch(loadTrees(f.id)).unwrap()));
@@ -691,7 +725,7 @@ const HomeScreen: React.FC = () => {
     } finally {
       setRefreshing(false);
     }
-  }, [user?.id, dispatch, refreshQuickActions]);
+  }, [user?.id, dispatch, refreshQuickActions, napTin]);
 
   return (
     <View style={styles.root}>
@@ -730,7 +764,7 @@ const HomeScreen: React.FC = () => {
       >
         {/* Carousel banner */}
         <View>
-          <BannerCarousel fade={carouselFade} />
+          <BannerCarousel fade={carouselFade} tin={tinMoi} onMo={moBang} />
         </View>
         {/* Quick Action — nút nào hiện & đứng thứ mấy đều do HÀNH VI quyết định:
             danh sách nút khai ở config/quickActions.ts, lọc theo số lượt mở và sắp
@@ -1006,48 +1040,7 @@ const styles = StyleSheet.create({
   },
   bellBadgeText: { color: NEUTRAL.white, fontSize: 9, fontWeight: '800' },
 
-  // Banner
-  banner: {
-    height: CAROUSEL_H,
-    borderRadius: 20,
-    padding: 18,
-    flexDirection: 'row',
-    alignItems: 'center',
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  bannerOrb: {
-    position: 'absolute',
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    top: -40,
-    right: -30,
-  },
-  bannerOrb2: {
-    position: 'absolute',
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    bottom: -20,
-    left: 20,
-  },
-  bannerTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: NEUTRAL.white,
-    lineHeight: 24,
-    letterSpacing: -0.3,
-  },
-  bannerSub: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.78)',
-    marginTop: 6,
-    fontWeight: '500',
-  },
-  bannerIconWrap: { marginLeft: 8 },
+  // Băng trượt: mọi kiểu dáng của một tấm nay ở `BannerCard.tsx`.
   dots: {
     flexDirection: 'row',
     justifyContent: 'center',

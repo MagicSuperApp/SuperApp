@@ -122,6 +122,50 @@ describe.each([
       .toBeGreaterThanOrEqual(AA_GRAPHIC);
   });
 
+  /**
+   * BỐN LỐI RẼ ở cửa vào phải PHÂN BIỆT ĐƯỢC, và phải đọc được.
+   *
+   * Bài này canh hai chiều của cùng một thay đổi. Chiều một: bốn tông không
+   * được trôi về cùng một màu — đó chính là trạng thái trước 2026-09-14, khi
+   * bốn thẻ dùng chung một ô biểu tượng lam và màn phải đọc hết mới chọn được.
+   * Chiều hai: cho màu riêng mà không đo thì rất dễ ra bốn ô pastel có biểu
+   * tượng mờ tịt trên nền của chính nó.
+   */
+  it('bốn tông lối rẽ — mỗi lối một màu, và biểu tượng nào cũng đọc được', () => {
+    const tones = {
+      safe: [AUTH_COLORS.safeIcon, AUTH_COLORS.safeBg],
+      move: [AUTH_COLORS.moveIcon, AUTH_COLORS.moveBg],
+      swap: [AUTH_COLORS.swapIcon, AUTH_COLORS.swapBg],
+      pair: [AUTH_COLORS.pairIcon, AUTH_COLORS.pairBg],
+    };
+    expect(new Set(Object.values(tones).map(([icon]) => icon)).size).toBe(4);
+
+    // Ngưỡng CHỮ, không phải ngưỡng hình: biểu tượng ở đây là thứ mang nghĩa
+    // duy nhất trong ô của nó, nên nó phải rõ như một chữ cái.
+    const failed = Object.entries(tones)
+      .filter(([, [icon, bg]]) => contrastRatio(icon, bg) < AA)
+      .map(([k, [icon, bg]]) => `${k} ${icon} trên ${bg} = ${contrastRatio(icon, bg).toFixed(2)}`);
+    expect(failed).toEqual([]);
+  });
+
+  /**
+   * Thẻ "người mới" là thẻ DUY NHẤT tô cả nền, nên nó là nền duy nhất trong bốn
+   * tông có chữ đứng lên. Cả ba bậc chữ phải qua AA trên nó — kể cả bậc nhạt
+   * nhất, thứ màn này chưa dùng trên thẻ ấy nhưng sẽ dùng ngay khi có ai thêm
+   * một dòng ghi chú.
+   */
+  it('thẻ an toàn — mọi bậc chữ đạt AA trên nền tô của nó, và viền đọc được', () => {
+    for (const role of ['text', 'textSub', 'textMuted'] as const) {
+      expect(contrastRatio(AUTH_COLORS[role], AUTH_COLORS.safeBg)).toBeGreaterThanOrEqual(AA);
+    }
+    // Viền là thứ nói "thẻ này khác ba thẻ kia" cho người không phân biệt hue →
+    // ngưỡng phi-chữ, trên CẢ nền thẻ lẫn nền màn.
+    expect(contrastRatio(AUTH_COLORS.safeBorder, AUTH_COLORS.safeBg))
+      .toBeGreaterThanOrEqual(AA_GRAPHIC);
+    expect(contrastRatio(AUTH_COLORS.safeBorder, AUTH_COLORS.bgSoft))
+      .toBeGreaterThanOrEqual(AA_GRAPHIC);
+  });
+
   it('hai bậc chữ phụ không rơi về cùng một giá trị', () => {
     expect(AUTH_COLORS.textMuted).not.toBe(AUTH_COLORS.textSub);
   });

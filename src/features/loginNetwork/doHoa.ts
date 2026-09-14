@@ -46,6 +46,18 @@ export interface BangMau {
  *  dài khoảng một phần sáu giây — "vệt sáng nhẹ, biến mất nhanh". */
 const MAU_VET = 10;
 
+/**
+ * Cỡ cơ bản của một chấm, tính bằng pixel bố cục — đường kính cả QUẦNG, không
+ * phải lõi. Lõi chỉ chiếm khoảng một phần năm bán kính (xem `MANH_CHAM`), phần
+ * còn lại là ánh sáng.
+ *
+ * Lớp bụi nhỏ hơn hẳn: nó đông bằng lớp thường và bay nhanh gấp bội, nên để
+ * cùng cỡ là nó át mất mạng lưới. Nhỏ và nhanh đọc ra là bụi; to và nhanh đọc
+ * ra là mạng lưới đang loạn.
+ */
+export const CO_CHAM = 38;
+export const CO_CHAM_NHANH = 17;
+
 /** Đoạn vệt dài hơn mức này bị bỏ: đó không phải chuyển động mà là một cú nhảy
  *  (đổi khung, dựng lại mạng), và vẽ nó ra là một tia sáng quét ngang màn. */
 const VET_TOI_DA = 90;
@@ -58,6 +70,18 @@ export interface DoHoa {
   viTriCham: Float32Array;
   sangCham: Float32Array;
   xongCham: () => void;
+  /**
+   * Bộ đệm CỠ của từng chấm, tính bằng pixel bố cục — ghi thẳng vào, rồi gọi
+   * `xongCo`. Cỡ đến từ mô phỏng (`Nut.co` × cỡ cơ bản của lớp) chứ không bốc
+   * tại chỗ, vì hai lớp chấm có hai dải cỡ khác nhau và chỉ mô phỏng biết chấm
+   * nào thuộc lớp nào.
+   *
+   * Đây là thuộc tính TĨNH: ghi một lần lúc dựng mạng, không phải mỗi khung
+   * hình. `xongCo` tách riêng khỏi `xongCham` chính là để khỏi nạp lại nó 60
+   * lần mỗi giây cho một mảng không đổi.
+   */
+  coCham: Float32Array;
+  xongCo: () => void;
   /** Bộ đệm dây nối — ghi thẳng vào, rồi gọi `xongDuong(soDuong)`. */
   viTriDuong: Float32Array;
   sangDuong: Float32Array;
@@ -125,7 +149,14 @@ const MANH_DUONG = /* glsl */ `
 
 // ── Dựng ────────────────────────────────────────────────────────────────────
 
-export function dungDoHoa(soNut: number, mau: BangMau): DoHoa {
+/**
+ * `soNoi` là số chấm CÓ THỂ NỐI DÂY, mặc định bằng `soNut`.
+ *
+ * Tách khỏi `soNut` vì lớp bụi không nối dây (xem `duyetCanh` ở `mangLuoi.ts`):
+ * cấp phát dây theo tổng số chấm là giữ không bốn lần chỗ cần — với 200 chấm là
+ * gần nửa megabyte bộ đệm không bao giờ có ai ghi vào.
+ */
+export function dungDoHoa(soNut: number, mau: BangMau, soNoi = soNut): DoHoa {
   const goc = new THREE.Group();
   const bo: Array<{ dispose: () => void }> = [];
   const giu = <T extends { dispose: () => void }>(x: T): T => {
@@ -168,7 +199,7 @@ export function dungDoHoa(soNut: number, mau: BangMau): DoHoa {
   // ── Dây nối ───────────────────────────────────────────────────────────────
   // Sức chứa = mọi cặp có thể có. Cấp phát MỘT LẦN: cấp lại mỗi khung hình là
   // ép bộ thu gom rác chạy giữa lúc đang vẽ, và nó hiện ra thành giật đều đặn.
-  const toiDaDuong = (soNut * (soNut - 1)) / 2;
+  const toiDaDuong = (soNoi * (soNoi - 1)) / 2;
   const viTriDuong = new Float32Array(toiDaDuong * 2 * 3);
   const sangDuong = new Float32Array(toiDaDuong * 2);
   const hhDuong = giu(new THREE.BufferGeometry());
@@ -192,12 +223,10 @@ export function dungDoHoa(soNut: number, mau: BangMau): DoHoa {
   // ── Chấm ──────────────────────────────────────────────────────────────────
   const viTriCham = new Float32Array(soNut * 3);
   const sangCham = new Float32Array(soNut);
-  const coCham = new Float32Array(soNut);
-  for (let i = 0; i < soNut; i++) {
-    // Cỡ quầng khác nhau để mạng lưới không ra một lưới hạt đều tăm tắp. Quầng
-    // rộng hơn lõi nhiều lần — phần lớn diện tích này là ánh sáng, không phải chấm.
-    coCham[i] = 26 + Math.random() * 26;
-  }
+  // Cỡ do nơi gọi ghi vào (xem `coCham` ở giao diện). Mồi bằng cỡ cơ bản của lớp
+  // thường để một khung hình lỡ vẽ trước khi cỡ kịp ghi vẫn ra chấm, không ra
+  // một màn đen — `gl_PointSize = 0` là chấm biến mất, không phải chấm nhỏ.
+  const coCham = new Float32Array(soNut).fill(CO_CHAM);
   const hhCham = giu(new THREE.BufferGeometry());
   hhCham.setAttribute('position', new THREE.BufferAttribute(viTriCham, 3));
   hhCham.setAttribute('aSang', new THREE.BufferAttribute(sangCham, 1));
@@ -232,9 +261,15 @@ export function dungDoHoa(soNut: number, mau: BangMau): DoHoa {
       vlCham.uniforms.uDpr.value = dpr;
     },
 
+    coCham,
+
     xongCham() {
       hhCham.attributes.position.needsUpdate = true;
       hhCham.attributes.aSang.needsUpdate = true;
+    },
+
+    xongCo() {
+      hhCham.attributes.aCo.needsUpdate = true;
     },
 
     xongDuong(soDuong) {

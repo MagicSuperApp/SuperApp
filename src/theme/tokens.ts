@@ -244,6 +244,56 @@ export const AUTH_TOKENS = {
   warnBg:     '#FFF6E6',
   warnBorder: '#F0DBB5',
   warnText:   '#6F4720',
+
+  // ── Bốn lối rẽ ở cửa vào (`IdentityEntryChoiceScreen`) ────────────────────
+  //
+  // Màn ấy hỏi MỘT câu rồi mở bốn thẻ, và tới 2026-09-14 bốn thẻ ấy giống hệt
+  // nhau: cùng nền trắng, cùng viền xám, cùng một ô biểu tượng lam. Khác nhau
+  // chỉ ở chữ. Đó là một màn phải ĐỌC HẾT mới chọn được, trong khi hậu quả chọn
+  // sai thì nặng — đi nhầm sang lối "người mới" là sinh một DID thứ hai và chia
+  // đôi dữ liệu vĩnh viễn (xem đầu tệp màn ấy).
+  //
+  // Bốn tông dưới đây cho mỗi lối một MÀU RIÊNG, để mắt nhận ra thẻ trước khi
+  // đọc, và lối AN TOÀN mang màu XANH LÁ — lối duy nhất không thu hồi phiên nào
+  // ở đâu cả.
+  //
+  // ── Vì sao chúng dùng CHUNG cho mọi app ─────────────────────────────────
+  // Cùng lý do nhóm `warn*` dùng chung, và chú thích ở `theme.config.ts` đã nói
+  // ra: chúng nói NGHĨA ("an toàn", "sẽ mất phiên"), không nói tên app. Một app
+  // ghi đè được từng khoá nếu thật sự cần, nhưng để nguyên thì bốn lối vẫn phân
+  // biệt được ở mọi bản dựng — điều một bảng theo nhãn hiệu không bảo đảm nổi,
+  // vì hai trong bốn tông sẽ trôi về cùng hue của nhãn.
+  //
+  // Mọi giá trị `*Icon` ở đây đạt AA (≥ 4,5) trên CẢ ô nền của nó lẫn hai nền
+  // màn của hai app — tính trong `theme/authContrast.test.ts`, không chép số.
+
+  /** Lối A — người mới. Xanh lá: lối duy nhất không phá gì cả. */
+  safeIcon:   '#1B7A3E',
+  /**
+   * Nhạt hơn ba nền kia, và có lý do đo được: đây là nền duy nhất phủ CẢ THẺ,
+   * nên chữ của thẻ đứng trên nó. Ở `#E9F6EE` thì bậc chữ nhạt nhất
+   * (`textMuted`) rơi xuống 4,44 — trượt AA đúng một chút. `#EDF8F1` kéo nó về
+   * 4,54 mà vẫn còn ra màu. Ba nền kia chỉ làm ô biểu tượng nên không vướng.
+   */
+  safeBg:     '#EDF8F1',
+  /** Đậm hơn hẳn ba viền kia: đây là viền DUY NHẤT phải đọc được (≥ 3:1), vì nó
+   *  là thứ nói "thẻ này khác ba thẻ dưới" cho người không phân biệt được hue. */
+  safeBorder: '#2E8F57',
+
+  /** Lối B — cùng app, máy khác. Tím. */
+  moveIcon:   '#5A3FBF',
+  moveBg:     '#EFEBFC',
+  moveBorder: '#D3C8F5',
+
+  /** Lối C — cùng máy, app khác của hệ. Lam ngọc. */
+  swapIcon:   '#0E6C77',
+  swapBg:     '#E3F4F6',
+  swapBorder: '#B3DFE4',
+
+  /** Lối D — nhờ máy đang đăng nhập ký duyệt. Hồng sen. */
+  pairIcon:   '#A63A62',
+  pairBg:     '#FBEAF1',
+  pairBorder: '#EFC6D8',
 } as const;
 
 // ── Token Header toàn cục (SG-Header — thanh trên kiểu Facebook, thu/thả) ────

@@ -337,6 +337,167 @@ describe('làn sáng sau khi xác thực', () => {
   });
 });
 
+/**
+ * LỚP BỤI — 100 chấm thêm vào, nhanh hơn hẳn và quán tính lớn hơn.
+ *
+ * Cách hỏng mà nhóm này canh không phải "trông không đủ nhanh" mà là hai thứ
+ * chết người: lớp bụi lọt vào điều kiện `daSangHet` và khoá luôn màn chuyển sau
+ * khi xác thực, hoặc lớp bụi nối dây và mạng lưới đặc lại thành một tấm trắng.
+ */
+describe('lớp bụi', () => {
+  const bui = (soNhanh = 50, hat = 1) =>
+    taoMangLuoi(RONG, CAO, 100, nguon(hat), soNhanh);
+
+  it('mặc định KHÔNG có chấm bụi nào — màn cũ không tự đổi', () => {
+    const m = taoMangLuoi(RONG, CAO, 100, nguon());
+    expect(m.nut.filter((n) => n.nhanh)).toHaveLength(0);
+  });
+
+  it('thêm đúng số chấm được yêu cầu, và chúng có lưới nhà riêng', () => {
+    const m = bui();
+    expect(m.nut).toHaveLength(150);
+    expect(m.nut.filter((n) => n.nhanh)).toHaveLength(50);
+    const o = new Set(m.nut.filter((n) => n.nhanh).map((n) => `${n.oCot},${n.oHang}`));
+    expect(o.size).toBe(50);
+  });
+
+  /**
+   * CỠ KHÁC NHAU, ở cả hai lớp. Canh hai đầu: không chấm nào trùng cỡ chấm khác
+   * (bỏ sót `co` là mọi chấm về đúng một cỡ), và không chấm nào lệch tới mức
+   * thành một quả cầu giữa màn.
+   */
+  it('mỗi chấm một cỡ riêng, ở CẢ HAI lớp', () => {
+    const m = bui();
+    const co = (loc: boolean) => m.nut.filter((n) => n.nhanh === loc).map((n) => n.co);
+    for (const loc of [false, true]) {
+      const c = co(loc);
+      // Không đòi TẤT CẢ khác nhau: nguồn giả ở bài này là một LCG nhỏ, nó có
+      // trùng lặp ở ba chữ số thập phân. Đòi 90% là đủ bắt lỗi thật — bỏ `co`
+      // đi thì con số này về 1.
+      expect(new Set(c.map((x) => x.toFixed(3))).size).toBeGreaterThan(
+        c.length * 0.9,
+      );
+      expect(Math.min(...c)).toBeGreaterThan(0.6);
+      expect(Math.max(...c)).toBeLessThan(1.5);
+    }
+    // Lớp bụi trải rộng hơn — nó ít chấm hơn nên cần chênh nhiều hơn để đọc ra.
+    const rong = (c: number[]) => Math.max(...c) - Math.min(...c);
+    expect(rong(co(true))).toBeGreaterThan(rong(co(false)));
+  });
+
+  it('lúc lặng, bụi đi NHANH HƠN RẤT NHIỀU lớp thường', () => {
+    const m = bui();
+    tua(m, 10);
+    let thuong = 0;
+    let nhanh = 0;
+    for (let i = 0; i < 20 * 60; i++) {
+      buoc(m, 1 / 60);
+      for (const n of m.nut) {
+        const v = Math.hypot(n.vx, n.vy);
+        if (n.nhanh) nhanh = Math.max(nhanh, v);
+        else thuong = Math.max(thuong, v);
+      }
+    }
+    expect(thuong).toBeLessThan(20); // lớp thường giữ nguyên nết cũ
+    expect(nhanh).toBeGreaterThan(thuong * 5);
+  });
+
+  it('quanh điểm chạm, bụi ăn vành RỘNG HƠN lớp thường', () => {
+    const m = bui();
+    const cx = RONG / 2;
+    const cy = CAO / 2;
+    datCham(m, cx, cy);
+    tua(m, 4);
+    const tb = (a: number[]) => a.reduce((x, y) => x + y, 0) / a.length;
+    const bk = (loc: boolean) =>
+      tb(m.nut.filter((n) => n.nhanh === loc).map((n) => Math.hypot(n.x - cx, n.y - cy)));
+    expect(bk(true)).toBeGreaterThan(bk(false) * 1.4);
+  });
+
+  /**
+   * QUÁN TÍNH LỚN HƠN. Đo bằng độ vọt sau khi thả tay: cùng một quãng đường về
+   * nhà, chấm giảm chấn nhẹ hơn thì trôi qua nhà xa hơn. Đây là phép đo trực
+   * tiếp của `CHAN_NHANH`, nên hạ hệ số ấy về 1 là bài này đỏ.
+   */
+  it('bụi VỌT xa hơn khi về nhà — quán tính lớn hơn', () => {
+    const m = bui();
+    datCham(m, RONG / 2, CAO / 2);
+    tua(m, 3);
+    buongCham(m);
+    const gan = m.nut.map(() => Infinity);
+    const votXa = m.nut.map(() => 0);
+    for (let i = 0; i < 5 * 60; i++) {
+      buoc(m, 1 / 60);
+      m.nut.forEach((n, j) => {
+        const d = Math.hypot(n.x - n.nhaX, n.y - n.nhaY);
+        if (d < gan[j]) gan[j] = d;
+        else votXa[j] = Math.max(votXa[j], d - gan[j]);
+      });
+    }
+    const tb = (a: number[]) => a.reduce((x, y) => x + y, 0) / a.length;
+    const cua = (loc: boolean) => tb(votXa.filter((_, j) => m.nut[j].nhanh === loc));
+    expect(cua(true)).toBeGreaterThan(cua(false));
+  });
+
+  it('bụi KHÔNG nối dây — mạng lưới giữ nguyên hình của nó', () => {
+    const m = bui();
+    tua(m, 5);
+    duyetCanh(m, (a, c) => {
+      expect(a.nhanh).toBe(false);
+      expect(c.nhanh).toBe(false);
+    });
+  });
+
+  /**
+   * Chính là cách hỏng nguy hiểm nhất của cả thay đổi này: một chấm bụi đang bay
+   * ở chỗ trống làm `daSangHet` mãi mãi false, và người dùng đã xác thực xong
+   * đứng nhìn màn đăng nhập không bao giờ chuyển.
+   */
+  it('làn sáng vẫn báo XONG, và cuối cùng thắp cả bụi', () => {
+    const m = bui();
+    batLanTruyen(m, RONG / 2, CAO / 2);
+    tua(m, 12);
+    expect(daSangHet(m)).toBe(true);
+    expect(m.nut.filter((n) => n.moc < 0)).toHaveLength(0);
+  });
+
+  it('bụi không truyền lửa — làn sáng không nhảy cóc qua cả màn', () => {
+    const m = bui();
+    batLanTruyen(m, RONG / 2, CAO / 2);
+    buoc(m, 1 / 60);
+    // Ngòi chỉ lấy trong lớp thường, nên khung đầu tiên không có chấm bụi nào sáng.
+    expect(m.nut.filter((n) => n.nhanh && n.moc >= 0)).toHaveLength(0);
+    buoc(m, 1 / 60);
+    expect(m.nut.filter((n) => n.moc >= 0).length).toBeLessThan(m.nut.length);
+  });
+
+  it('bụi cũng ở trong khung, dù chạy hai phút', () => {
+    const m = bui();
+    tua(m, 120);
+    expect(ngoaiKhung(m)).toHaveLength(0);
+  });
+
+  /**
+   * Thả tay là lúc lớp bụi đi nhanh nhất và vọt xa nhất — nếu `CHAN_NHANH` bị
+   * hạ xuống nữa thì chính ở đây chấm bụi bắn ra ngoài mép màn rồi mất hút cả
+   * giây. Biên rộng hơn `LE` một chút vì bụi ĐƯỢC phép vọt xa hơn lớp thường.
+   */
+  it('thả tay xong bụi cũng không bắn ra ngoài màn', () => {
+    const m = bui();
+    datCham(m, RONG / 2, CAO / 2);
+    tua(m, 3);
+    buongCham(m);
+    let xa = 0;
+    for (let i = 0; i < 6 * 60; i++) {
+      buoc(m, 1 / 60);
+      for (const n of m.nut) {
+        xa = Math.max(xa, -n.x, n.x - m.rong, -n.y, n.y - m.cao);
+      }
+    }
+    expect(xa).toBeLessThan(200);
+  });
+});
+
 describe('bước thời gian', () => {
   /**
    * App nằm nền rồi quay lại: khung đầu tiên mang cả quãng thời gian đã vắng.

@@ -277,6 +277,34 @@ const SignUpBiometricScreen: React.FC = () => {
         return;
       }
 
+      // Chưa lập được khoá dự phòng ⟹ app TỰ DỪNG, không phải app hỏng. Hai mã, và
+      // chúng phải ra hai hộp thoại KHÁC NHAU, vì lối ra của chúng trái ngược:
+      //
+      //   · `derive_failed` — lõi có mặt, lần này trượt. Thử lại là việc làm được
+      //     ngay tại chỗ, nên phải có nút, cùng hình dạng với `duong1_chua_xac_thuc`.
+      //   · `core_missing`  — máy này không có lõi. Mời thử lại là mời người ta bấm
+      //     mãi vào một thứ không bao giờ đổi, nên nhánh này CỐ Ý chỉ có một nút.
+      //
+      // Không gộp hai mã lại cho gọn: một nửa số người đọc sẽ nhận lời khuyên vô
+      // dụng, và đó đúng là nhóm bị chặn nặng nhất.
+      if (e?.reason === 'derive_failed') {
+        setStage('idle');
+        showWarning(t('Chưa tạo được danh tính'), t(e?.message ?? ''), {
+          confirmText: t('Thử lại ngay'),
+          cancelText: t('Để sau'),
+          onConfirm: () => {
+            setStage('generating');
+            void completeSignUp(intent);
+          },
+        });
+        return;
+      }
+      if (e?.reason === 'core_missing') {
+        showError(t('Chưa tạo được danh tính'), t(e?.message ?? ''));
+        setStage('idle');
+        return;
+      }
+
       // Câu lỗi là NỘI DUNG, không phải tiêu đề. `showError(x)` một tham số đẩy cả
       // câu lên làm tiêu đề rồi độn phần thân bằng chuỗi mặc định "Đã xảy ra lỗi."
       // (`utils/alert.ts:88`) — thấy đúng như thế trong ảnh chụp từ thực địa 11/09:

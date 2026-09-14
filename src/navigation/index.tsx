@@ -44,7 +44,14 @@ import { TRACE_SCAN_ROUTE_NAME } from './traceScan';
 import { buildDeepLinkScreens } from './deepLinkAllow';
 
 // --- Host shell screens (KHÔNG thuộc module — vỏ giữ tĩnh) ------------------
-import LoginScreen from '../screens/LoginScreen';
+// Màn đăng nhập hiện dùng: bản MẠNG LƯỚI, vẽ toàn bộ trên một mặt OpenGL.
+//
+// Bản cũ `screens/LoginScreen` VẪN CÒN trong kho và vẫn chạy được — nó bị thay
+// vì kể quá nhiều chuyện cùng lúc (logo, nhãn, tiêu đề, phụ đề, nút ngôn ngữ,
+// thẻ DID, lối đăng ký, khu tin tức), không vì hỏng. Muốn quay lại: đổi đường
+// dẫn ở dòng dưới về '../screens/LoginScreen'. Không chỗ nào khác phải sửa —
+// hai màn cùng nhận không tham số và cùng tự điều hướng sang 'Main'.
+import LoginScreen from '../screens/LoginNetworkScreen';
 // Màn hỏi ngôn ngữ LẦN ĐẦU (máy vừa cài) — đứng TRƯỚC Login trong luồng khởi động.
 import LanguageSelectScreen from '../screens/LanguageSelectScreen';
 // Màn CHÀO (hỏi-một-lần) — đứng giữa Chọn ngôn ngữ và Đăng nhập. App lên hai cửa

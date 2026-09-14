@@ -170,6 +170,9 @@ export const CHECKFARM_THEME_CONFIG: ThemeConfig = {
   // `theme/authContrast.test.ts`, tính lại từ chính các giá trị này chứ không
   // chép sang.
   auth: {
+    // Nền tràn màn của màn đăng nhập. Lấy `accentDeep` của chính CheckFarm —
+    // KHÔNG kế thừa `#235C1E` của Aladin, vì đó là một sắc xanh khác hẳn.
+    canvas:    '#174F2A',
     deep:      '#174F2A', // = header.bg / app.accentDeep
     primary:   '#23763F', // = app.accent — dùng làm CHỮ nên lấy bậc qua AA
     pale:      '#CBE4D5', // = app.accentLight

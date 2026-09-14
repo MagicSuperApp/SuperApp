@@ -170,6 +170,60 @@ export async function fetchAgriNews(): Promise<NewsItem[]> {
 }
 
 // ---------------------------------------------------------------------------
+// Đệm trong bộ nhớ
+// ---------------------------------------------------------------------------
+
+/**
+ * Đệm sống theo PHIÊN, không ghi xuống đĩa.
+ *
+ * ── Vì sao có nó ────────────────────────────────────────────────────────────
+ * Tới 2026-09-14 chỉ trang Tổng quan gọi tin, mỗi lần mở màn một lượt. Nay băng
+ * trên TRANG CHỦ cũng lấy tin — và Trang chủ là màn người ta quay về sau MỌI
+ * thao tác. Không có đệm thì mỗi lần quay về là hai lượt tải RSS, trên mạng 3G
+ * ngoài vườn là vài trăm KB và vài giây cho một dòng chữ không đổi.
+ *
+ * ── Hai thứ nó làm, và thứ hai mới là thứ hay bị bỏ sót ────────────────────
+ *   1. TTL: trong `ttlMs` thì trả lại đúng mảng đã có.
+ *   2. GỘP LƯỢT ĐANG BAY: hai nơi gọi cùng lúc lúc đệm còn rỗng thì chỉ MỘT
+ *      lượt tải thật chạy, cả hai cùng chờ nó. Thiếu vế này thì Trang chủ và
+ *      Tổng quan mở gần nhau vẫn tải hai lần, và đệm chỉ giấu được lần thứ ba.
+ *
+ * Tải hỏng → `fetchAgriNews` trả mảng rỗng (nó tự nuốt lỗi từng nguồn). KHÔNG
+ * đóng dấu thời gian cho một mảng rỗng: coi lần hỏng ấy là "đã có tin" thì cả
+ * `ttlMs` sau đó không ai thử lại, và một trục trặc mạng hai giây khoá mục tin
+ * suốt mười lăm phút.
+ */
+let dem: { luc: number; tin: NewsItem[] } | null = null;
+let dangBay: Promise<NewsItem[]> | null = null;
+
+/** Mười lăm phút: RSS của báo cũng chỉ nhích chừng ấy một lần. */
+export const TTL_TIN_MS = 15 * 60_000;
+
+export async function fetchAgriNewsCached(
+  ttlMs = TTL_TIN_MS,
+  now = Date.now(),
+): Promise<NewsItem[]> {
+  if (dem && now - dem.luc < ttlMs) return dem.tin;
+  if (dangBay) return dangBay;
+
+  dangBay = fetchAgriNews()
+    .then(tin => {
+      if (tin.length > 0) dem = { luc: now, tin };
+      return tin;
+    })
+    .catch(() => [] as NewsItem[])
+    .finally(() => {
+      dangBay = null;
+    });
+  return dangBay;
+}
+
+/** Xoá đệm — cho bài kiểm, và cho lượt kéo-để-làm-mới của người dùng. */
+export function clearAgriNewsCache(): void {
+  dem = null;
+}
+
+// ---------------------------------------------------------------------------
 // Tin NÓNG
 // ---------------------------------------------------------------------------
 

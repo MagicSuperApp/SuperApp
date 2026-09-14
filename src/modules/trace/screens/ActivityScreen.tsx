@@ -14,6 +14,8 @@ import {
   TextInput,
   Linking,
   PermissionsAndroid,
+  KeyboardAvoidingView,
+  Keyboard,
 } from 'react-native';
 // Icon: bộ Font Awesome Solid tải qua Iconify (assets/icons → icons.generated).
 // Thêm icon mới: `node scripts/icons.js <tên-fa6-solid>`.
@@ -336,6 +338,24 @@ const ActivityScreen = () => {
 
   const [materialRows, setMaterialRows] = useState<MaterialRow[]>([{ ...EMPTY_MATERIAL_ROW }]);
 
+  // Bàn phím đang mở hay không — CHỈ dùng để thu khoảng đệm đáy của thanh nút.
+  //
+  // Vì sao cần: thanh nút chừa `36 + insets.bottom` cho vạch Home. Khi bàn phím lên,
+  // vạch Home bị bàn phím che, nên khoảng chừa đó thành một dải trống giữa nút và
+  // bàn phím — trên máy 848 điểm nó chiếm gần một phần mười màn hình, đúng lúc màn
+  // hình đang chật nhất.
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  useEffect(() => {
+    // iOS bắn `Will`, Android chỉ bắn `Did` — đăng ký cả hai thì trên iOS nhận hai
+    // lần cùng một trạng thái (vô hại, `setState` cùng giá trị) còn trên Android
+    // không mất sự kiện. Nghe đúng một họ là hỏng ở đúng một nền tảng, im lặng.
+    const hien = Keyboard.addListener('keyboardWillShow', () => setKeyboardOpen(true));
+    const hien2 = Keyboard.addListener('keyboardDidShow', () => setKeyboardOpen(true));
+    const an = Keyboard.addListener('keyboardWillHide', () => setKeyboardOpen(false));
+    const an2 = Keyboard.addListener('keyboardDidHide', () => setKeyboardOpen(false));
+    return () => { hien.remove(); hien2.remove(); an.remove(); an2.remove(); };
+  }, []);
+
   const selectedActivity = ACTIVITIES.find(a => a.type === selected);
   const hasFiles = scannedFiles.length > 0;
 
@@ -532,6 +552,18 @@ const ActivityScreen = () => {
         </View>
       </View>
 
+      {/* ⌨️ Ô "Đã dùng gì" nằm CUỐI màn, nên khi bàn phím lên nó bị che hoàn toàn —
+          người dùng gõ mù, không thấy mình đang gõ vào đâu. `ScrollView` trần KHÔNG
+          tự đẩy ô đang gõ lên: trên iOS nó không đổi kích thước theo bàn phím, và
+          `android:windowSoftInputMode="adjustResize"` chỉ co cửa sổ chứ không cuộn
+          tới ô đang gõ khi ô đó nằm dưới một thanh nút cố định.
+          Bọc CẢ hai — vùng cuộn VÀ thanh nút — chứ không bọc mỗi vùng cuộn: thanh
+          nút là anh em của `ScrollView`, bọc thiếu nó thì ô nhập hiện ra còn nút
+          "Lưu vào sổ" vẫn nằm dưới bàn phím. Nếp này lấy từ `OrgMintScreen:202`. */}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
       <ScrollView
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
@@ -691,7 +723,16 @@ const ActivityScreen = () => {
       </ScrollView>
 
       {/* Bottom bar */}
-      <View style={[styles.bottomBar, { paddingBottom: (Platform.OS === 'ios' ? 36 : 24) + insets.bottom }]}>
+      <View
+        style={[
+          styles.bottomBar,
+          {
+            paddingBottom: keyboardOpen
+              ? 12
+              : (Platform.OS === 'ios' ? 36 : 24) + insets.bottom,
+          },
+        ]}
+      >
         {selectedActivity && (
           <View style={styles.bottomMeta}>
             <Text style={styles.bottomMetaLabel}>{tk('trace.activity.costLabel')}</Text>
@@ -738,6 +779,7 @@ const ActivityScreen = () => {
           </TouchableOpacity>
         </Animated.View>
       </View>
+      </KeyboardAvoidingView>
 
       <LampNetSyncModal visible={saving} step={syncStep} />
     </View>

@@ -1,4 +1,5 @@
 import { AlertType, type AlertAction } from '../components/AlertPopup';
+import { recordDiag } from '../services/diagnosticReport';
 
 export type { AlertAction };
 
@@ -70,6 +71,19 @@ export const showAlert = (
   message: string,
   options?: AlertOptions
 ) => {
+  // Ghi lại MỌI thông báo đã hiện ra, kể cả loại "thành công". Đặt ở đây vì đây
+  // là chỗ duy nhất dựng hộp thoại — đặt ở 51 tệp gọi thì tệp quên không có gì
+  // báo, đúng cái đã xảy ra với phép hỏi "route này tới được không".
+  //
+  // Vì sao ghi cả THÀNH CÔNG: xem đầu `services/diagnosticReport.ts`. Họ lỗi đắt
+  // nhất của app là màn hình nói "Đã lưu" cho lượt ghi máy chủ đã từ chối, và
+  // một bản ghi chỉ chứa lỗi thì không có gì trong đó để bắt ca ấy.
+  // CỐ Ý không `as` gì cả: `AlertType` và `DiagKind` hôm nay trùng khít, và nếu
+  // ai thêm một loại thông báo thứ năm thì `tsc` đỏ ở ĐÂY — tức người thêm loại
+  // mới buộc phải quyết xem nó có vào báo cáo hay không. Một dấu `as` ở đây sẽ
+  // biến lựa chọn đó thành mặc định im lặng.
+  recordDiag(type, title, message);
+
   alertManager.show({
     type,
     title,

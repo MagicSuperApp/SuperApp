@@ -412,10 +412,17 @@ const JobCard: React.FC<{
         <Text style={styles.jobTitle} numberOfLines={3}>{job.title}</Text>
 
         <View style={styles.jobMetaRow}>
-          <View style={styles.jobMetaItem}>
-            <Icon name="map-marker-outline" size={12} color={COLORS.textMuted} />
-            <Text style={styles.jobMetaText}>{job.district}, {job.location}</Text>
-          </View>
+          {/* Ẩn HẲN dòng địa điểm khi dây không trả — cùng nếp với `postedAt` ngay
+              dưới. Dây AladinWork không có trường địa điểm nào, và đó là chủ ý
+              (xem `data/adapters.ts`), nên đây không phải ô chờ dữ liệu về. */}
+          {!!(job.district || job.location) && (
+            <View style={styles.jobMetaItem}>
+              <Icon name="map-marker-outline" size={12} color={COLORS.textMuted} />
+              <Text style={styles.jobMetaText}>
+                {[job.district, job.location].filter(Boolean).join(', ')}
+              </Text>
+            </View>
+          )}
           {!!job.postedAt && (
             <View style={styles.jobMetaItem}>
               <Icon name="clock-outline" size={12} color={COLORS.textMuted} />

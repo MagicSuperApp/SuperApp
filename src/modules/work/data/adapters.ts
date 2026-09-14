@@ -68,9 +68,17 @@ export const toUiJob = (j: WorkJob): Job => ({
   categoryId: categoryIdFor(j),
   budget: j.priceVND ?? 0,
   budgetUnit: 'VND',
-  // Backend chưa tách địa điểm → để nhãn trung tính (KHÔNG bịa quận/thành phố).
-  location: 'Việt Nam',
-  district: j.template?.label || j.skill || '',
+  // ⛔ KHÔNG có địa điểm trên bản ghi việc, và đó là CHỦ Ý của máy chủ — không
+  // phải "chưa kịp làm". Toạ độ nằm ở bảng khác vì bảng việc là cửa công khai
+  // không đòi đăng nhập, nên một trường địa chỉ lọt vào đây là địa chỉ nhà người
+  // thuê ra cửa ẩn danh (nhà AladinWork xác nhận 14/09, `server.js:5131-5134`).
+  //
+  // Hai giá trị cũ ở đây đều tới được mắt người dùng: `'Việt Nam'` là hằng số đội
+  // lốt dữ liệu, còn `district` thì nhận TÊN MẪU VIỆC — nên màn hiện một loại việc
+  // dưới nhãn "Địa điểm" kèm biểu tượng ghim bản đồ. Trả rỗng và để màn ẩn hẳn
+  // dòng, cùng nếp với `postedAt` ngay dưới.
+  location: '',
+  district: '',
   // `WorkJob` KHÔNG có trường thời gian nào (xem `services/types.ts`) ⇒ không
   // suy ra được lúc đăng. Trả rỗng để màn ẩn dòng, thay vì viết cứng
   // "Vừa đăng" cho MỌI việc — kể cả việc đăng từ tháng trước.
@@ -117,7 +125,8 @@ export const toUiWorker = (a: WorkAccount): Worker => ({
   // (`Core/server.js:2339`). `jems.length` là việc nhận — sai nghĩa hoàn toàn.
   completedJobs: a.completedJobs ?? 0,
   hourlyRate: 0,
-  location: 'Việt Nam',
+  // Cùng lý do với `toUiJob` ở trên: dây không trả địa điểm của người làm.
+  location: '',
   skills: a.skills ?? [],
   // `verified` đúng theo SPEC §1 (mọi tài khoản AladinWork đều qua PhoenixKey DID)
   // — đây là suy ra từ điều kiện tạo tài khoản, KHÔNG phải trường dây trả về.

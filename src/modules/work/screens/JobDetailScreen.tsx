@@ -154,7 +154,18 @@ const JobDetailScreen: React.FC = () => {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Thông tin chung</Text>
           <View style={styles.infoGrid}>
-            <InfoItem icon="map-marker-outline" label="Địa điểm" value={`${job.district}, ${job.location}`} />
+            {/* Ô "Địa điểm" chỉ hiện khi dây CÓ trả địa điểm. Trước đây nó luôn
+                hiện, và giá trị là một hằng số ghép với TÊN MẪU VIỆC — tức màn
+                trình một loại việc dưới nhãn nơi chốn, kèm biểu tượng ghim bản đồ.
+                Dây không có trường địa điểm, và đó là chủ ý của máy chủ chứ không
+                phải thiếu sót — xem khối chú thích ở `data/adapters.ts`. */}
+            {!!(job.district || job.location) && (
+              <InfoItem
+                icon="map-marker-outline"
+                label="Địa điểm"
+                value={[job.district, job.location].filter(Boolean).join(', ')}
+              />
+            )}
             {/* Dây không có trường thời gian đăng, cũng không có số người ứng
                 tuyển ⇒ rỗng/0 nghĩa là CHƯA BIẾT. Hiện "—" chứ không bịa. */}
             <InfoItem icon="clock-outline" label="Đăng" value={job.postedAt || '—'} />

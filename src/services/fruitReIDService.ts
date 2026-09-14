@@ -40,8 +40,13 @@ export interface APIError {
    * `not_found` tách khỏi `server_error`: máy chủ trả lời dứt khoát là không có thứ
    * đang hỏi ⟹ thử lại vô ích, trong khi `server_error` thì thử lại có ích. Gộp hai
    * cái là mời người dùng thử lại mãi cho một ca không bao giờ đổi.
+   *
+   * `forbidden` (403) cũng KHÔNG được gộp vào `auth_error`, vì lý do nặng hơn một câu
+   * chữ: nhãn `auth_error` được ba màn đọc như lệnh *làm mới phiên* (gọi
+   * `ensureOrilifeToken(base, { force: true })` — xoá thẻ đang dùng tốt, bật thêm một
+   * hộp Face ID). Lý do đầy đủ ở `treeReIDService.ts`, khối định nghĩa `APIError`.
    */
-  type: 'auth_error' | 'rate_limited' | 'duplicate' | 'validation_error' | 'server_error' | 'network_error' | 'not_found';
+  type: 'auth_error' | 'forbidden' | 'rate_limited' | 'duplicate' | 'validation_error' | 'server_error' | 'network_error' | 'not_found';
   detail: string;
   http_status: number;
   retry_after_seconds?: number;
@@ -327,9 +332,10 @@ async function _apiCall<T>(
       // này không có.
       let detail = '';
       try { const b = await resp.json(); detail = b.detail ?? b.error ?? ''; } catch { /* ignore */ }
-      const type: APIError['type'] = resp.status === 401 || resp.status === 403
+      const type: APIError['type'] = resp.status === 401
         ? 'auth_error'
-        : resp.status === 404 ? 'not_found' : 'server_error';
+        : resp.status === 403 ? 'forbidden'
+          : resp.status === 404 ? 'not_found' : 'server_error';
       return {
         ok: false,
         error: {

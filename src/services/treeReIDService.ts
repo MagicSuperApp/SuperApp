@@ -239,8 +239,20 @@ export interface APIError {
    *                    `server_error` vì hai câu dẫn tới hai việc trái ngược: lỗi máy
    *                    chủ thì thử lại có ích, còn không tồn tại thì thử lại vô ích
    *                    mãi mãi. Trước đây mọi 4xx còn lại đều mang `server_error`.
+   *
+   * `forbidden`      — 403: đã xác thực ĐÚNG, nhưng danh tính này không có quyền với
+   *                    thứ đang hỏi. **Không được gộp vào `auth_error`.** Nhãn
+   *                    `auth_error` không chỉ là một câu chữ — ba màn đọc nó như một
+   *                    lệnh *làm mới phiên*: `TreeIdentityScreen.tsx:790`,
+   *                    `FarmDetailScreen.tsx:2321` và `:2607` gọi
+   *                    `ensureOrilifeToken(base, { force: true })`, tức XOÁ thẻ phiên
+   *                    đang dùng tốt và bật thêm một hộp Face ID. Gộp 403 vào đó thì
+   *                    người mở một cây không thuộc mình bị mất phiên đang dùng, quét
+   *                    mặt một lượt vô ích, nhận đúng con 403 ấy, rồi đọc câu "phiên
+   *                    hết hạn, hãy đăng nhập lại" trên màn không có nút đăng nhập.
+   *                    403 thì đăng nhập lại bao nhiêu lần cũng không đổi kết quả.
    */
-  type: 'network_error' | 'timeout' | 'bad_response' | 'missing_image' | 'auth_error' | 'validation_error' | 'duplicate' | 'rate_limited' | 'server_error' | 'not_found';
+  type: 'network_error' | 'timeout' | 'bad_response' | 'missing_image' | 'auth_error' | 'forbidden' | 'validation_error' | 'duplicate' | 'rate_limited' | 'server_error' | 'not_found';
   detail: string;
   http_status: number;
   retry_after_seconds?: number;
@@ -355,6 +367,13 @@ export function fieldErrorMessage(err?: APIError): string {
       // lần đăng nhập DID gần nhất; `syncErrorMessage` là cửa duy nhất giữ phép
       // ánh xạ đó, nên hai màn không nói hai câu khác nhau về cùng một sự việc.
       return authSyncMessage();
+    case 'forbidden':
+      // KHÔNG mời đăng nhập lại, và KHÔNG mời thử lại. Đây là ca đã xác thực đúng mà
+      // vẫn bị từ chối, nên hai lời khuyên ấy đều dẫn người dùng đi làm một việc vô
+      // ích. Câu của máy chủ mới nói được ai mới có quyền — *"Bạn không phải chủ cây
+      // này"* chỉ ra việc phải làm, câu chung chung của app thì không.
+      return err.detail
+        || 'Tài khoản đang dùng không có quyền với thứ này. Nó thuộc một tài khoản khác — hãy hỏi người đã ghi danh nó, hoặc kiểm tra xem bạn đang đăng nhập bằng danh tính nào.';
     case 'rate_limited':
       return 'Thao tác quá nhanh. Chờ một chút rồi thử lại.';
     case 'not_found':
@@ -530,9 +549,13 @@ async function _apiCall<T>(
         const body = await resp.json();
         detail = body.detail ?? body.error ?? '';
       } catch { /* thân không phải JSON — rơi về câu theo mã dưới đây */ }
-      const type: APIError['type'] = resp.status === 401 || resp.status === 403
+      // 403 KHÔNG phải `auth_error` — xem khối lý do ở định nghĩa `APIError['type']`.
+      // Ba màn đọc `auth_error` thành lệnh làm mới phiên; 403 đi vào đó thì người dùng
+      // mất thẻ phiên đang dùng tốt cộng một lượt quét mặt vô ích.
+      const type: APIError['type'] = resp.status === 401
         ? 'auth_error'
-        : resp.status === 404 ? 'not_found' : 'server_error';
+        : resp.status === 403 ? 'forbidden'
+          : resp.status === 404 ? 'not_found' : 'server_error';
       return {
         ok: false,
         error: {

@@ -230,6 +230,41 @@ describe('classifySyncItem — activity ghi vào dòng thời gian THẬT', () =
     await d.run();
     expect(mockAddTimelineEvent.mock.calls[0][3].payload.tree_id).toBe('tree-8');
   });
+
+  // ── Khoá khử-trùng ────────────────────────────────────────────────────────
+  // Cửa `POST /{entity}/{id}/event` không có khoá tự nhiên, mà hàng đợi CỐ Ý nhặt
+  // lại mục kẹt `'sending'` từ phiên trước. Hai điều đó cộng lại là: một lần phun
+  // thuốc ra hai dòng trong sổ.
+  it('gửi `client_event_id` bằng ĐÚNG transaction_id của mục hàng đợi', async () => {
+    const d = classifySyncItem({ type: 'activity', data: { activity: act } }, 'activity_1757000000000_abc');
+    if (d.kind !== 'api') throw new Error('expected api');
+    await d.run();
+    const body = mockAddTimelineEvent.mock.calls[0][3];
+    expect(body.client_event_id).toBe('activity_1757000000000_abc');
+    expect(body.payload.client_event_id).toBe('activity_1757000000000_abc');
+  });
+
+  it('gửi LẠI cùng một mục → id KHÔNG đổi (đó là toàn bộ điều app phải bảo đảm)', async () => {
+    const txId = 'activity_1757000000000_abc';
+    for (let i = 0; i < 3; i++) {
+      const d = classifySyncItem({ type: 'activity', data: { activity: act } }, txId);
+      if (d.kind !== 'api') throw new Error('expected api');
+      await d.run();
+    }
+    const ids = mockAddTimelineEvent.mock.calls.map(c => c[3].client_event_id);
+    expect(ids).toEqual([txId, txId, txId]);
+  });
+
+  it('HAI mục khác nhau → HAI id khác nhau (id chung sẽ làm máy chủ nuốt mất mục thứ hai)', async () => {
+    for (const txId of ['activity_1_a', 'activity_2_b']) {
+      const d = classifySyncItem({ type: 'activity', data: { activity: act } }, txId);
+      if (d.kind !== 'api') throw new Error('expected api');
+      await d.run();
+    }
+    const ids = mockAddTimelineEvent.mock.calls.map(c => c[3].client_event_id);
+    expect(ids[0]).not.toBe(ids[1]);
+    expect(ids.every(x => typeof x === 'string' && x.length > 0)).toBe(true);
+  });
 });
 
 describe('isRetryableError', () => {
@@ -274,15 +309,26 @@ describe('classifySyncFailure', () => {
     expect(classifySyncFailure({ response: { status: 404 } })).toBe('blocked');
   });
 
-  it('http_status 0 = KHÔNG có phản hồi HTTP → `retryable` (mất mạng)', () => {
+  it('http_status 0 = KHÔNG có phản hồi HTTP → `offline`, KHÔNG phải `retryable`', () => {
     // Đây là đường mà `syncDispatch` NÉM khi `addTimelineEvent` trả lỗi mạng:
     // `status: res.error?.http_status ?? 0`. Đọc 0 thành "4xx lạ" là giết mục
     // đúng lúc người dùng đang offline — chính lúc hàng đợi phải sống nhất.
-    expect(classifySyncFailure({ response: { status: 0 } })).toBe('retryable');
+    //
+    // Và gộp nó vào `retryable` cũng giết, chỉ chậm hơn: `retryable` là hạng DUY
+    // NHẤT bị đếm lượt, nên mất sóng ba phút là hết 5 lượt của hẹn giờ 30 giây.
+    expect(classifySyncFailure({ response: { status: 0 } })).toBe('offline');
   });
 
-  it('không có response → `retryable`', () => {
-    expect(classifySyncFailure(new Error('Network Error'))).toBe('retryable');
+  it('không có response → `offline`', () => {
+    expect(classifySyncFailure(new Error('Network Error'))).toBe('offline');
+  });
+
+  it('mất mạng và "máy chủ mệt" KHÔNG cùng một hạng — chúng gỡ bằng hai việc khác nhau', () => {
+    // Ca này đối xứng: nó đỏ cả khi ai đó gộp offline vào retryable, lẫn khi ai đó
+    // đẩy 5xx sang offline để "cho chắc". Một khẳng định `not.toBe` một phía thì
+    // không phân biệt được hai cực đó.
+    expect(classifySyncFailure({ response: { status: 0 } }))
+      .not.toBe(classifySyncFailure({ response: { status: 503 } }));
   });
 
   it('408/429/5xx → `retryable`', () => {

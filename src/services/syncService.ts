@@ -1,20 +1,28 @@
 // services/syncService.ts
 
 import { store } from '../store';
-import { updateSyncStatus, removeFromSyncQueue } from '../store/syncSlice';
+import { updateSyncStatus, removeFromSyncQueue, loadSyncQueue } from '../store/syncSlice';
 import { database } from '../utils/database';
 import { classifySyncItem, classifySyncFailure } from './syncDispatch';
 import { ensureOrilifeToken } from './orilifeDidAuth';
 import { ORILIFE_BASE } from './orilifeBase';
 import { showWarning } from '../utils/alert';
 
-// Hết số lần thử này thì item bị đánh dấu 'error' (chết) để khỏi kẹt vòng lặp
-// vô hạn. Trước đó item ở 'pending' + backoff để tự retry.
+// Hết số lần thử này thì item HẠ NHỊP thử xuống mức thấp nhất (xem nhánh chạm
+// trần trong `handleSyncFailure`). Nó KHÔNG còn bị đánh dấu 'error' nữa: 'error'
+// không nằm trong bộ lọc của `processSyncQueue`, nên nhãn đó là xoá vĩnh viễn chứ
+// không phải "tạm ngừng".
 //
-// ⚠ Trần này CHỈ áp cho hạng `retryable`. Phiên hết hạn (`auth`) và điều kiện máy
-// chủ chưa thoả (`blocked`) KHÔNG đếm vào đây: đếm chúng là quay lại đúng lỗi cũ,
-// chỉ chậm hơn năm lượt.
-const MAX_RETRY_COUNT = 5;
+// ⚠ Trần này CHỈ đếm hạng `retryable`. Mất mạng (`offline`), phiên hết hạn (`auth`)
+// và điều kiện máy chủ chưa thoả (`blocked`) KHÔNG đếm vào đây: đếm chúng là quay
+// lại đúng lỗi cũ, chỉ chậm hơn năm lượt.
+export const MAX_RETRY_COUNT = 5;
+/**
+ * Gắn trước `errorCode` khi một mục đã quá trần. Mục vẫn sống và vẫn tự thử, chỉ
+ * là ở nhịp thấp nhất — nhãn này để màn hàng đợi (chưa có) lọc ra được ngay, và
+ * để nhật ký dev phân biệt "đang chờ bình thường" với "chờ đã quá lâu".
+ */
+export const NEEDS_ATTENTION_PREFIX = '[cần xem lại] ';
 // Backoff luỹ thừa, chặn trên để không chờ quá lâu giữa các lần thử.
 const BACKOFF_BASE_MS = 5_000;
 const BACKOFF_MAX_MS = 5 * 60_000; // 5 phút
@@ -135,8 +143,23 @@ class SyncService {
           // Gọi API THẬT tới backend
           await this.syncItem(item);
 
-          // Thành công → xoá khỏi queue + dọn retry state
-          store.dispatch(removeFromSyncQueue(txId));
+          // Thành công → xoá khỏi queue + dọn retry state.
+          //
+          // PHẢI `await`: `removeFromSyncQueue` là một thunk ghi xuống SQLite. Bỏ
+          // `await` thì vòng lặp chạy tiếp (và cả `processSyncQueue` kết thúc, cờ
+          // `isProcessing` hạ) trong khi lệnh xoá còn đang bay — vòng quét sau đọc
+          // lại CSDL thấy mục vẫn còn và gửi lần hai.
+          const removal: any = await store.dispatch(removeFromSyncQueue(txId));
+          // `createAsyncThunk` KHÔNG ném khi thân hỏng: nó trả một hành động
+          // `…/rejected` mang `error`. Không soi chỗ này thì lần xoá hỏng im lặng
+          // hoàn toàn — và mục đã tới máy chủ sẽ được gửi lại ở vòng sau.
+          if (removal?.error) {
+            console.error(
+              `[SyncService] xoá ${txId} khỏi hàng đợi THẤT BẠI — vòng sau sẽ gửi lại mục đã tới máy chủ; ` +
+              `chống trùng lúc này chỉ còn dựa vào client_event_id:`,
+              removal.error,
+            );
+          }
           this.retryState.delete(txId);
           // Gửi được nghĩa là phiên đang sống → đợt cảnh báo cũ đã hết hiệu lực.
           this.authWarned = false;
@@ -159,7 +182,9 @@ class SyncService {
    */
   private async syncItem(item: any): Promise<void> {
     const envelope = JSON.parse(item.payload);
-    const dispatch = classifySyncItem(envelope);
+    // `transaction_id` đi kèm để cửa GHI không có khoá tự nhiên gửi được khoá
+    // khử-trùng ổn định (xem `client_event_id` ở `syncDispatch`).
+    const dispatch = classifySyncItem(envelope, this.txIdOf(item));
 
     if (dispatch.kind === 'unsupported') {
       const err: any = new Error(dispatch.reason);
@@ -205,8 +230,10 @@ class SyncService {
    *    mục vẫn 'pending' (SỐNG) và người dùng được báo. KHÔNG đếm lượt, KHÔNG chết.
    *  - `blocked` (403/404, điều kiện máy chủ chưa thoả): 'pending' + backoff dài,
    *    KHÔNG ký lại (ký lại không gỡ được), KHÔNG đếm lượt, KHÔNG chết.
-   *  - `retryable` (mạng/408/429/5xx): 'pending' + backoff luỹ thừa, tăng count
-   *    tới MAX_RETRY_COUNT rồi mới đánh dấu 'error'.
+   *  - `offline` (không có phản hồi HTTP nào): 'pending' + chờ dài, KHÔNG đếm
+   *    lượt, KHÔNG chết. Gỡ bằng việc có sóng lại, không bằng việc thử thêm.
+   *  - `retryable` (408/429/5xx): 'pending' + backoff luỹ thừa, tăng count tới
+   *    MAX_RETRY_COUNT rồi hạ nhịp xuống mức thấp nhất — vẫn 'pending', vẫn sống.
    *  - `permanent` (400/422 payload sai): đánh dấu 'error' ngay — hạng DUY NHẤT
    *    được phép chết.
    */
@@ -257,6 +284,33 @@ class SyncService {
       return;
     }
 
+    // ── Mất mạng (không có phản hồi HTTP nào) ────────────────────────────────
+    // KHÔNG đếm lượt, KHÔNG BAO GIỜ chết. Cái hỏng là cái sóng, không phải dữ liệu
+    // — và nó gỡ bằng một việc nằm ngoài tầm cả app lẫn máy chủ.
+    //
+    // Đây là chỗ đã mất dữ liệu đồng ruộng: mất sóng ba phút thì hẹn giờ 30 giây
+    // tiêu hết 5 lượt, mục chuyển `'error'`, mà vòng quét chỉ nhặt
+    // `'pending' | 'sending'` nên không đường nào hồi sinh — kể cả cài lại app.
+    // `showWarning` chạy 0 lần. Nếp đúng đã có sẵn trong cùng thư mục:
+    // `videoUploadQueue.flushVideoUploadQueue` gặp offline thì trả `skipped:true`
+    // và KHÔNG tăng `attempts`.
+    //
+    // Chờ dài (BACKOFF_MAX_MS) là CÓ CHỦ Ý và không làm chậm người dùng: mạng phục
+    // hồi thì `drainNow()` (NetInfo, `navigation/index.tsx`) xoá sạch cửa sổ chờ và
+    // quét ngay. Thử dồn lúc không có sóng chỉ đốt pin giữa vườn.
+    if (failure === 'offline') {
+      if (!this.retryState.has(txId)) {
+        console.warn(`[SyncService] ${txId} chưa nối được máy chủ (mất mạng) — giữ hàng đợi, KHÔNG đếm lượt: ${errorCode}`);
+      }
+      this.retryState.set(txId, { count: prev, nextAttemptAt: Date.now() + BACKOFF_MAX_MS });
+      store.dispatch(updateSyncStatus({
+        transactionId: txId,
+        status: 'pending',
+        errorCode,
+      }));
+      return;
+    }
+
     // ── Điều kiện máy chủ chưa thoả (403 chưa đăng ký · 404 chưa bật cửa) ────
     // Ký lại KHÔNG gỡ được, nên đừng bật hộp sinh trắc; thử dồn cũng vô ích, nên
     // chờ dài. Nhưng nó CÓ THỂ thoả về sau (cây được đăng ký, máy chủ bật cửa),
@@ -274,14 +328,44 @@ class SyncService {
       return;
     }
 
-    if (failure === 'permanent' || count >= MAX_RETRY_COUNT) {
-      // Lỗi vĩnh viễn hoặc hết lượt thử → đánh dấu chết để khỏi kẹt vòng lặp.
+    if (failure === 'permanent') {
+      // Payload sai — gửi lại bao nhiêu lần cũng hỏng. Hạng DUY NHẤT được chết.
       console.error(`Sync gave up for ${txId} (retry=${count}):`, errorCode);
       this.retryState.delete(txId);
       store.dispatch(updateSyncStatus({
         transactionId: txId,
         status: 'error',
         errorCode,
+      }));
+      return;
+    }
+
+    if (count >= MAX_RETRY_COUNT) {
+      // ── Chạm trần: HẠ NHỊP, không giết ─────────────────────────────────────
+      // Trần cũ đưa mục sang `'error'`, mà `'error'` không nằm trong bộ lọc của
+      // `processSyncQueue` ⇒ chết vĩnh viễn. Với hạng `retryable` (408/429/5xx) thì
+      // đó là: máy chủ mệt khoảng hai phút rưỡi (5s+10s+20s+40s+80s) là nhật ký
+      // đồng áng mất hẳn. Máy chủ mệt không phải lỗi của dữ liệu.
+      //
+      // Vì sao KHÔNG chép nguyên nếp `needsManual` của `videoUploadQueue` (chạm
+      // trần thì ngừng tự thử, giữ job chờ người bấm): bên đó CÓ nút gửi lại tay.
+      // Ở đây KHÔNG có màn nào bày hàng đợi, cũng không có nút nào — ngừng tự thử
+      // là chết im, chỉ đổi tên. Nên trần ở đây đổi vai: từ "giết" thành "hạ nhịp
+      // xuống mức thấp nhất" (BACKOFF_MAX_MS, tức 5 phút/lượt) và gắn nhãn vào
+      // `errorCode` để màn hàng đợi — khi có — lọc ra được ngay.
+      //
+      // Đánh đổi đã cân: một mục hỏng dai dẳng sẽ gửi lại mãi ở nhịp 5 phút thay vì
+      // tắt hẳn. Đó là lưu lượng nhỏ và đo được; chiều ngược lại là mất dữ liệu của
+      // người dùng và không đo được. `permanent` (400/422) vẫn chết ngay ở nhánh
+      // trên, nên mục payload-sai KHÔNG nằm trong vòng này.
+      if (this.retryState.get(txId)?.count !== count) {
+        console.warn(`[SyncService] ${txId} quá ${MAX_RETRY_COUNT} lượt — hạ nhịp thử còn ${BACKOFF_MAX_MS}ms/lượt, KHÔNG bỏ mục: ${errorCode}`);
+      }
+      this.retryState.set(txId, { count, nextAttemptAt: Date.now() + BACKOFF_MAX_MS });
+      store.dispatch(updateSyncStatus({
+        transactionId: txId,
+        status: 'pending',
+        errorCode: `${NEEDS_ATTENTION_PREFIX}${errorCode}`,
       }));
       return;
     }
@@ -347,8 +431,15 @@ class SyncService {
 
     await database.addToSyncQueue(transactionId, payload, mediaPaths);
 
-    // Refresh sync queue in Redux
-    store.dispatch({ type: 'sync/loadSyncQueue' });
+    // Nạp lại hàng đợi vào Redux.
+    //
+    // Dòng cũ ở đây là `store.dispatch({ type: 'sync/loadSyncQueue' })` — một chuỗi
+    // TRẦN. `createAsyncThunk('sync/loadSyncQueue', …)` chỉ phát
+    // `…/pending|fulfilled|rejected`, nên không `addCase` nào khớp chuỗi trần: lệnh
+    // đó đi qua store và không làm gì cả, im lặng. Gọi đúng thunk thì `state.sync.queue`
+    // mới có thật — đó là điều kiện cần cho một màn bày hàng đợi, thứ người dùng
+    // đang KHÔNG có (xem nhánh chạm trần: mục sống nhưng không ai nhìn thấy nó).
+    await store.dispatch(loadSyncQueue());
 
     return transactionId;
   }

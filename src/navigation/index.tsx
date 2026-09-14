@@ -68,6 +68,7 @@ import SignUpCompleteScreen from '../features/auth/screens/SignUpCompleteScreen'
 import AccountScreen from '../screens/AccountScreen';
 import DeleteAccountScreen from '../screens/DeleteAccountScreen';
 import TermsScreen from '../screens/TermsScreen';
+import DiagnosticReportScreen from '../screens/DiagnosticReportScreen';
 import BiometricSettings from '../screens/BiometricSettings';
 import NotificationScreen from '../screens/NotificationScreen';
 // PhoenixKey — duyệt ký / guardian / nhật ký hoạt động.
@@ -1726,6 +1727,7 @@ const HOST_STACK_SCREENS: Array<{
   // navigator". Không test nào bắt được: mọi test đều mock `useNavigation` bằng
   // `navigate: jest.fn()`, và hai màn đó không có test render nào.
   { name: 'Terms', component: TermsScreen, options: { headerShown: false } },
+  { name: 'DiagnosticReport', component: DiagnosticReportScreen, options: { headerShown: false } },
   // PhoenixKey feature screens.
   { name: 'SignRequest', component: SignRequestScreen, options: { headerShown: false } },
   { name: 'Guardian', component: GuardianScreen, options: { headerShown: false } },

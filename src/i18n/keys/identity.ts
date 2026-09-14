@@ -385,6 +385,17 @@ export const IDENTITY_STRINGS = {
     ja: 'サインイン画面に戻る',
   },
 
+  // ── Lối gửi báo cáo, đặt ở màn đăng nhập ──────────────────────────────────
+  // Câu hỏi đứng trước lời mời: người đang kẹt ngoài cổng đọc "Không vào được?"
+  // là nhận ra tình cảnh của mình, rồi mới đọc tới việc phải làm. Đảo lại thì nó
+  // thành một mục thực đơn, và người đang vội sẽ lướt qua.
+  'identity.report.loginLink': {
+    vi: 'Không vào được? Gửi báo cáo lỗi',
+    en: 'Cannot get in? Send an error report',
+    zh: '进不去？发送错误报告',
+    ja: '入れませんか？ エラー報告を送る',
+  },
+
   // ── Bước sao lưu sau khi đăng ký ──────────────────────────────────────────
   'identity.backup.title': {
     vi: 'Nếu mất điện thoại, chỉ một thứ lấy lại được vườn của bạn',

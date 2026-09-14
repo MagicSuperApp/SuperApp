@@ -16,7 +16,6 @@ import {
     Modal,
     Linking,
     RefreshControl,
-    Share,
 } from 'react-native';
 // RN 0.84 đã gỡ Clipboard khỏi core → dùng package cộng đồng (API setString giữ nguyên).
 import Clipboard from '@react-native-clipboard/clipboard';
@@ -42,11 +41,13 @@ import StateView from '../components/state/StateView';
 import { showInfo, showWarning } from '../utils/alert';
 import { checkDeviceKeyRisk, isRiskSnoozed, snoozeRisk } from '../services/deviceKeyRisk';
 import { useNavigation } from '@react-navigation/native';
-import { getVersion, getBuildNumber } from 'react-native-device-info';
 // Debug host = backend field-reid THẬT app đang dùng (ORILIFE_BASE), không phải
 // aladin-api (backend Lợi deprecated) — để field soi đúng server (Lỗi field #5).
 import { ORILIFE_BASE } from '../services/orilifeBase';
-import { buildDiagnosticReport } from '../services/diagnosticReport';
+// Hai dữ kiện bản dựng lấy từ `fieldReportHead` — KHÔNG dựng lại ở đây. Màn này và màn
+// xem trước báo cáo phải in ra cùng một phần đầu; hai bản chép tay là một bản sao sẽ chết
+// im lặng (thêm một dòng ở một chỗ thì báo cáo gửi từ chỗ kia thiếu đúng dòng đó).
+import { appVersionBase, commitShort } from '../services/fieldReportHead';
 import { fmtLamp, fmtCarp, fmtLampWhole, lampWholeToOildrop } from '../utils/token';
 import { getVaultStatus, WAKEME_CLAIM_READY } from '../services/wakemeService';
 import type { VaultStatusResponse } from '../services/phoenixKey-api';
@@ -55,14 +56,14 @@ import { getStoredMasterKek } from '../services/masterKekStore';
 import { ownerPublicKey } from '../sdk/phoenixKey';
 import LanguagePickerModal from '../components/LanguagePickerModal';
 import { LANGUAGES, useLanguage } from '../i18n';
-import { BUILD_COMMIT, BUILD_BRANCH, BUILD_ID } from '@env';
+import { BUILD_BRANCH, BUILD_ID } from '@env';
 
 // 0 = preprod (testnet), khớp WALLET_NETWORK bên register + PhoenixWalletScreen.
 import { CARDANO_NETWORK as WALLET_NETWORK } from '../config/cardanoNetwork';
 
 // Version THẬT đọc từ bundle (CFBundleShortVersionString / versionName + build number).
 // Thay chuỗi hard-code "Aladin v1.0.0" (Lỗi field #4) — để field biết đúng build đang chạy.
-const APP_VERSION_BASE = `${DEFAULT_INSTANCE.displayName} v${getVersion()} (${getBuildNumber()})`;
+const APP_VERSION_BASE = appVersionBase();
 
 // Mã commit đã dựng ra bản này. VÌ SAO cần: số build ("86") do App Store Connect cấp
 // và tăng dần theo mỗi lần nộp, KHÔNG chỉ về commit nào; hơn nữa `main` và `develop`
@@ -70,7 +71,7 @@ const APP_VERSION_BASE = `${DEFAULT_INSTANCE.displayName} v${getVersion()} (${ge
 // quả: người thử báo lỗi kèm "2.0 (86)" mà không ai truy được bản đó gồm những vá nào.
 // CI ghi BUILD_COMMIT vào bundle (codemagic.yaml, .github/actions/rn-env). Build tay ở
 // máy lập trình viên thì biến trống → giấu hẳn, KHÔNG in "()" rỗng hay chữ "unknown".
-const COMMIT_SHORT = (BUILD_COMMIT ?? '').trim().slice(0, 7);
+const COMMIT_SHORT = commitShort();
 const APP_VERSION_LABEL = COMMIT_SHORT
     ? `${APP_VERSION_BASE} · ${COMMIT_SHORT}`
     : APP_VERSION_BASE;
@@ -633,44 +634,20 @@ const AccountScreen = () => {
         if (versionTapCount.current >= 5) {
             versionTapCount.current = 0;
 
-            // Dựng báo cáo TRƯỚC khi mở hộp thoại: chính hộp thoại này cũng đi qua
-            // `showAlert`, nên dựng sau thì dòng mới nhất của báo cáo là chính nó.
-            const report = buildDiagnosticReport({
-                'Bản': APP_VERSION_BASE,
-                'Commit': COMMIT_SHORT || '(bản dựng tay, CI không ghi)',
-                'Nhánh': (BUILD_BRANCH ?? '').trim(),
-                'Mã lượt dựng': (BUILD_ID ?? '').trim(),
-                'Máy chủ': ORILIFE_BASE,
-                'Nền': `${Platform.OS} ${Platform.Version}`,
-            });
-
-            showInfo(DEFAULT_INSTANCE.displayName, APP_DEBUG_INFO, {
-                actions: [
-                    {
-                        text: 'Gửi báo cáo',
-                        onPress: () => {
-                            // Khay chia sẻ của hệ điều hành: người thử tự chọn Zalo,
-                            // thư, hay ghi chú — và THẤY toàn văn trước khi gửi. Không
-                            // máy chủ, không khoá, không thêm nhà cung cấp nào vào
-                            // đường đi của dữ liệu người dùng.
-                            Share.share({ message: report }).catch(() => {
-                                // Khay không mở được thì vẫn còn đường bảng nháp —
-                                // im lặng ở đây là bỏ người thử giữa đường.
-                                Clipboard.setString(report);
-                                showInfo('Đã sao chép báo cáo', 'Khay chia sẻ không mở được. Báo cáo đã nằm ở bảng nháp — dán vào Zalo giúp.');
-                            });
-                        },
-                    },
-                    {
-                        text: 'Sao chép',
-                        onPress: () => {
-                            Clipboard.setString(report);
-                            showInfo('Đã sao chép báo cáo', 'Dán vào Zalo hoặc thư để gửi về.');
-                        },
-                    },
-                    { text: 'Đóng', style: 'cancel' },
-                ],
-            });
+            // ── ĐÍNH CHÍNH: nút gửi ĐÃ RỜI khỏi hộp thoại này ───────────────────────
+            // Bản trước gắn "Gửi báo cáo" vào đây và chú thích tại chỗ khẳng định người
+            // dùng "THẤY toàn văn trước khi gửi". Khẳng định đó SAI: hộp thoại hiện
+            // `APP_DEBUG_INFO` (chỉ phần đầu), còn đoạn báo cáo đi thẳng vào
+            // `Share.share`. Và `components/AlertPopup.tsx` render thân bằng một `<Text>`
+            // trần, không vùng cuộn — nên 40 dòng không thể nằm ở đây kể cả khi muốn.
+            //
+            // Báo cáo chở những câu app đã hiện, trong đó có câu nội suy tên người bảo hộ,
+            // `@username`, tên cây, tên cá thể; còn `telemetryGate.FORBIDDEN_SHAPES`
+            // không có mẫu nào chặn TÊN NGƯỜI. Mở khay chia sẻ là gửi ra ngoài — bất khả
+            // hồi. Nên việc gửi chuyển sang màn `DiagnosticReport`, nơi đọc được toàn văn.
+            //
+            // 5-chạm GIỮ NGUYÊN vai cũ của nó: xem nhanh dữ kiện bản dựng.
+            showInfo(DEFAULT_INSTANCE.displayName, APP_DEBUG_INFO);
         }
     };
 
@@ -1269,6 +1246,24 @@ const AccountScreen = () => {
                             được cả khi mất mạng, vì Google Play đòi phần tiết lộ dữ liệu
                             phải mở được NGAY TRONG ứng dụng — mà người dùng ngoài vườn
                             thường không có mạng đủ khoẻ để tải một trang web. */}
+                        {/* Hàng ĐẦU của mục Hỗ trợ, và nó là hàng CÓ ĐÍCH THẬT.
+                            Trước bản này mục Hỗ trợ mở đầu bằng "Trung tâm hỗ trợ" —
+                            một hàng chưa có đích, nên `MenuItem` vẽ nó ở trạng thái tắt.
+                            Người đi tìm chỗ báo lỗi mở mục này ra và gặp đúng một hàng
+                            bấm không được, một hàng điều khoản, một hàng ghi số phiên bản:
+                            không hàng nào nói "báo lỗi ở đây".
+                            Đường gửi báo cáo trước đó chỉ nằm sau cử chỉ ẩn chạm 5 lần vào
+                            số phiên bản — tri thức truyền miệng, sống trong người đi dặn
+                            chứ không sống trong app, nên mất ngay khi đội đổi người.
+                            Dòng phụ nói RÕ gửi cái gì: bấm xong là ra khỏi máy, không thu
+                            về được. Và cố ý KHÔNG hứa "gửi cho đội hỗ trợ" — app không
+                            gửi cho ai, nó mở khay chia sẻ để người dùng tự chọn. */}
+                        <MenuItem
+                            icon="message-alert-outline"
+                            label="Gửi báo cáo lỗi"
+                            sublabel="Gồm các thông báo gần nhất, số phiên bản và máy chủ. Bạn xem trước khi gửi."
+                            onPress={() => navigation.navigate('DiagnosticReport')}
+                        />
                         <MenuItem icon="help-circle-outline" label="Trung tâm hỗ trợ" />
                         <MenuItem
                             icon="file-document-outline"

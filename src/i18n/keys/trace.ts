@@ -333,7 +333,20 @@ export const TRACE_STRINGS = {
   'trace.activity.fertilizing': { vi: 'Bón phân', en: 'Fertilising', zh: '施肥', ja: '施肥' },
   'trace.activity.fertilizingDesc': { vi: 'Ghi loại phân và lượng bón', en: 'Record the type and amount', zh: '记录肥料种类与用量', ja: '肥料の種類と量を記録' },
   'trace.activity.pesticide': { vi: 'Phun thuốc', en: 'Spraying', zh: '喷药', ja: '散布' },
-  'trace.activity.pesticideDesc': { vi: 'Lia máy vào nhãn thuốc để ghi', en: 'Point the camera at the label', zh: '对准药物标签拍摄', ja: 'ラベルにカメラを向けます' },
+  // ⛔ Câu cũ: "Lia máy vào nhãn thuốc để ghi" (và các bản dịch tương ứng: "Point
+  // the camera at the label"…). Nó hứa một thao tác QUÉT NHÃN mà luồng này không
+  // có: `ActivityScreen` quay một đoạn phim rồi cho gõ tay tên thuốc vào ba ô chữ
+  // tự do, không nhận dạng gì, không đối chiếu kho sản phẩm nào.
+  //
+  // Máy quét nhãn thật có tồn tại, nhưng ở màn KHÁC (`CareScanScreen`, vào từ
+  // trang chi tiết MỘT CÂY) và nó mới là chỗ gọi `POST /api/care/match`. Người
+  // dùng đọc câu cũ ở đây rồi ngồi đợi một thông báo "đã nhận ra thuốc gì" không
+  // bao giờ tới — báo từ thực địa 14/09.
+  //
+  // Nay nói đúng việc nó làm, đối xứng với `fertilizingDesc` ngay trên. Ngày nào
+  // nối được máy quét vào luồng này thì đổi câu lại — nhưng đổi SAU khi nối, không
+  // phải trước.
+  'trace.activity.pesticideDesc': { vi: 'Ghi tên thuốc và lượng phun', en: 'Record the product name and amount sprayed', zh: '记录药物名称与喷施量', ja: '薬剤名と散布量を記録' },
   'trace.activity.harvesting': { vi: 'Thu hoạch', en: 'Harvesting', zh: '采收', ja: '収穫' },
   'trace.activity.harvestingDesc': { vi: 'Ghi số quả đã hái', en: 'Record the fruit picked', zh: '记录采收的果实', ja: '収穫した果実を記録' },
   'trace.activity.cost': { vi: 'Việc này tốn {n} MAGIC', en: 'This costs {n} MAGIC', zh: '此项消耗 {n} MAGIC', ja: 'この記録に {n} MAGIC' },

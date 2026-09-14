@@ -14,7 +14,10 @@ import {
   TextInput,
   Linking,
   PermissionsAndroid,
+  KeyboardAvoidingView,
+  Keyboard,
 } from 'react-native';
+import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 // Icon: bộ Font Awesome Solid tải qua Iconify (assets/icons → icons.generated).
 // Thêm icon mới: `node scripts/icons.js <tên-fa6-solid>`.
 import Icon from '../../../components/Icon';
@@ -34,6 +37,7 @@ import {
 import { GroundBackdrop } from '../components/layered/Organic';
 import { useTk } from '../../../i18n/keys';
 import { cameraErrorBody } from '../../../utils/cameraError';
+import { scrollOffsetToRevealInput, KEYBOARD_INPUT_GAP } from '../../../utils/keyboardScroll';
 import { RootState } from '../../../store';
 import { useAppDispatch } from '../../../store/hooks';
 import { showError, showSuccess, showWarning } from '../../../utils/alert';
@@ -336,6 +340,122 @@ const ActivityScreen = () => {
 
   const [materialRows, setMaterialRows] = useState<MaterialRow[]>([{ ...EMPTY_MATERIAL_ROW }]);
 
+  // Vùng cuộn — cần tay cầm để tự đưa ô nhập lên khi bàn phím mở (xem `onFocus`
+  // của ba ô vật tư bên dưới). iOS KHÔNG tự cuộn tới ô đang gõ: đường duy nhất ở
+  // lớp native là `automaticallyAdjustKeyboardInsets`, mặc định TẮT
+  // (`RCTScrollViewComponentView.mm:149`), và bốn handler bàn phím ở lớp JS
+  // (`ScrollView.js:1224-1250`) chỉ ghi lại số đo chứ không dời `contentOffset`.
+  const scrollRef = useRef<ScrollView>(null);
+
+  // Thanh nút "Lưu". Cần tay cầm vì ĐỈNH của nó là đáy khung nhìn thật của vùng
+  // cuộn — nó là anh em ngay sau vùng cuộn trong cùng một cột và không co
+  // (`flexShrink` mặc định 0), nên toàn bộ phần co dồn vào vùng cuộn.
+  const bottomBarRef = useRef<View>(null);
+
+  // Bàn phím có đang che thật không, và che bao nhiêu.
+  //
+  // CỐ Ý không nuôi một biến `boolean`: có hai ca bàn phím "mở" mà không che gì,
+  // và một biến bật/tắt sẽ thu đệm đáy ở cả hai ca đó, làm nút dính vào vạch Home
+  // mà chẳng đổi lấy chỗ nào:
+  //   · Trợ năng "Prefer Cross-Fade Transitions" (iOS) — bàn phím báo `screenY === 0`.
+  //     Chính `KeyboardAvoidingView` cũng có cổng này (`KeyboardAvoidingView.js:88-96`).
+  //   · Bàn phím phần cứng — iOS vẫn bắn `WillShow`, nhưng chỉ có thanh phím tắt
+  //     cao vài chục điểm, hoặc không có gì.
+  const [kbHeight, setKbHeight] = useState(0);
+  const keyboardOpen = kbHeight > 0;
+  // Bản sao cho các callback: chúng chạy trong `setTimeout`/`measureInWindow`, nơi
+  // giá trị bắt từ lượt dựng hình có thể đã cũ.
+  const kbHeightRef = useRef(0);
+  kbHeightRef.current = kbHeight;
+  // Bàn phím trượt lên mất bao lâu — hệ điều hành tự khai trong chính sự kiện.
+  // Đo được thay cho một con số gõ tay: iOS báo 250–350ms tuỳ đời máy và tuỳ trợ
+  // năng "Giảm chuyển động", Android báo 0 vì `keyboardDidShow` bắn SAU hoạt ảnh.
+  const kbDurationRef = useRef(0);
+  useEffect(() => {
+    // Nghe theo ĐÚNG nền tảng, như chính `KeyboardAvoidingView` làm
+    // (`KeyboardAvoidingView.js:198-214`): iOS chỉ bắn `Will*`, Android chỉ bắn
+    // `Did*` (`Keyboard.js:113,144`). Đăng ký cả hai họ không thêm độ phủ nào,
+    // chỉ thêm một lượt vẽ thừa trên iOS.
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const hien = Keyboard.addListener(showEvent, e => {
+      const { height = 0, screenY = 1 } = e.endCoordinates ?? {};
+      kbDurationRef.current = typeof e.duration === 'number' ? e.duration : 0;
+      // `screenY === 0` = bàn phím không chiếm chỗ thật. Ngưỡng 80 điểm loại nốt
+      // thanh phím tắt của bàn phím phần cứng.
+      setKbHeight(screenY === 0 || height <= 80 ? 0 : height);
+    });
+    const an = Keyboard.addListener(hideEvent, () => setKbHeight(0));
+    return () => { hien.remove(); an.remove(); };
+  }, []);
+
+  // Vị trí cuộn hiện tại. Phép cuộn dưới đây cộng thêm vào nó, nên phải là số
+  // ĐANG đúng chứ không phải số của lượt dựng hình gần nhất.
+  const scrollOffsetRef = useRef(0);
+  const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
+  }, []);
+
+  /**
+   * Đưa ô ĐANG GÕ vào tầm nhìn.
+   *
+   * ⛔ Bản vá trước gọi `scrollToEnd` ở đây, kèm chú thích nói rằng ba ô vật tư là
+   * nội dung cuối vùng cuộn nên cuộn-tới-cuối là phép đủ. Câu đó sai ngay trong
+   * chính màn này: `materialRows` là một MẢNG có nút "thêm dòng"
+   * (`setMaterialRows(rows => [...rows, …])`), nên từ dòng thứ hai trở đi, chạm ô
+   * của dòng ĐẦU sẽ cuộn thẳng xuống đáy và đẩy chính ô vừa chạm ra khỏi mép trên.
+   * `scrollToEnd` không có tham chiếu nào tới nút đang focus — nó tính đích bằng
+   * `contentSize.height − bounds.size.height + contentInset.bottom`.
+   *
+   * Phép đúng đo ô đang gõ trong HỆ TOẠ ĐỘ CỬA SỔ rồi so với đỉnh bàn phím, nên
+   * nó không cần biết thanh tiêu đề cao bao nhiêu, có bao nhiêu dòng vật tư, hay
+   * ô đang gõ nằm thứ mấy. Công thức tách riêng ở `scrollOffsetToRevealInput` để
+   * kiểm được ở đúng cực mà lỗi trên xảy ra.
+   *
+   * Chờ đúng khoảng thời gian HỆ ĐIỀU HÀNH khai trong sự kiện bàn phím
+   * (`kbDurationRef`) thay cho một con số gõ tay: cuộn trước khi
+   * `KeyboardAvoidingView` co xong thì đích bị kẹp theo tầm cuộn cũ.
+   */
+  const scrollInputIntoView = useCallback(() => {
+    setTimeout(() => {
+      const kb = kbHeightRef.current;
+      const scroll = scrollRef.current;
+      const input = TextInput.State.currentlyFocusedInput();
+      // Bàn phím không chiếm chỗ thật (xem `kbHeight`) thì không có gì để tránh.
+      if (kb <= 0 || !scroll || !input) return;
+      // Mốc là ĐỈNH THANH NÚT, không phải đỉnh bàn phím — xem chú thích ở
+      // `scrollOffsetToRevealInput`. Thanh nút là anh em ngay sau vùng cuộn trong
+      // cùng một cột, nên đỉnh nó CHÍNH LÀ đáy khung nhìn của vùng cuộn; và đo nó
+      // bằng cùng một phép `measureInWindow` với ô nhập thì hai số ở cùng một hệ
+      // toạ độ, không còn chỗ cho lệch thanh trạng thái như khi lấy `Dimensions`.
+      const bar = bottomBarRef.current;
+      if (!bar) return;
+      bar.measureInWindow((_sx, barTop, _sw, barHeight) => {
+        input.measureInWindow((_x, y, _w, h) => {
+          // Một nút đã rời khỏi cây (dòng vật tư bị xoá trong lúc chờ) trả về số
+          // đo RỖNG `0,0,0,0`. Đọc nó như "ô đang ở mép trên" là đọc một lần đo
+          // hỏng thành dữ liệu — thà không cuộn còn hơn cuộn theo số bịa.
+          if (h <= 0 || barHeight <= 0) return;
+          const target = scrollOffsetToRevealInput({
+            inputTop: y,
+            inputHeight: h,
+            visibleBottom: barTop,
+            currentOffset: scrollOffsetRef.current,
+            gap: KEYBOARD_INPUT_GAP,
+          });
+          if (target !== null) scroll.scrollTo({ y: target, animated: true });
+        });
+      });
+    }, kbDurationRef.current);
+  }, []);
+
+  // Lần chạm ĐẦU TIÊN: `onFocus` bắn TRƯỚC `keyboardWillShow`, nên lúc đó
+  // `kbHeightRef` còn 0 và lượt gọi trên thoát ngay ở cổng `kb <= 0`. Bàn phím
+  // hiện xong thì chạy lại — lúc này mới có đủ số để đo.
+  useEffect(() => {
+    if (kbHeight > 0) scrollInputIntoView();
+  }, [kbHeight, scrollInputIntoView]);
+
   const selectedActivity = ACTIVITIES.find(a => a.type === selected);
   const hasFiles = scannedFiles.length > 0;
 
@@ -532,212 +652,257 @@ const ActivityScreen = () => {
         </View>
       </View>
 
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
+      {/* ⌨️ Ô "Đã dùng gì" nằm CUỐI màn, nên khi bàn phím lên nó bị che hoàn toàn —
+          người dùng gõ mù, không thấy mình đang gõ vào đâu (báo từ thực địa 14/09).
+
+          Cần ĐỦ BA thứ, thiếu một thì vẫn che:
+
+          1. `KeyboardAvoidingView` co vùng chứa. Trên iOS cửa sổ không đổi kích
+             thước theo bàn phím, nên không có nó thì không gì co lại cả.
+          2. Thanh nút phải nằm TRONG LUỒNG, làm anh em thứ hai bên trong bọc này —
+             xem `styles.bottomBar`. Trước đây nó là `position:'absolute', bottom:0`,
+             và `behavior="padding"` KHÔNG nâng nổi một con tuyệt đối: padding chỉ
+             đặt lên chính bọc này, còn Yoga định vị con tuyệt đối theo
+             `measuredDimension − border`, không trừ padding
+             (`ReactCommon/yoga/yoga/algorithm/AbsoluteLayout.cpp:203-210`). Bọc mà
+             không đổi cách định vị thì vùng cuộn co đúng còn thanh nút đứng im
+             dưới bàn phím — đo bằng chính Yoga của kho này.
+          3. Cuộn tới ĐÚNG ô đang gõ — `onFocus` của mỗi ô gọi `scrollInputIntoView`.
+             Co vùng chứa KHÔNG dời nội dung: iOS không tự cuộn (xem chú thích ở
+             `scrollRef`), còn Android tuy có `scrollToChild` nhưng nó chỉ cuộn tới
+             khung của `ScrollView`, mà khung đó trước đây kéo tới đáy màn nơi thanh
+             nút đang phủ lên. Phải là ô ĐANG GÕ chứ không phải cuối vùng cuộn —
+             danh sách vật tư thêm được dòng, nên cuộn-tới-cuối đẩy ô của dòng đầu
+             ra khỏi mép trên (xem chú thích ở `scrollInputIntoView`). */}
+      <KeyboardAvoidingView
+        style={styles.kav}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        {/* Guide */}
-        <View style={styles.guideCard}>
-          <View style={styles.guideIconWrap}>
-            <Icon name="circle-info" size={17} color={COLORS.accent} />
-          </View>
-          <Text style={styles.guideText}>{tk('trace.activity.guide')}</Text>
-        </View>
-
-        {/* Activity selection */}
-        <View style={styles.sectionRow}>
-          <View style={styles.dot} />
-          <Text style={styles.sectionLabel}>{tk('trace.activity.pick')}</Text>
-        </View>
-        <View style={styles.actList}>
-          {ACTIVITIES.map(act => (
-            <ActivityCard
-              key={act.type}
-              activity={act}
-              selected={selected === act.type}
-              onSelect={() => {
-                // Chọn 1 hoạt động → MỞ ỐNG KÍNH NGAY (bỏ bước bấm "Bắt đầu ghi hình").
-                // Bấm lại chính nó = bỏ chọn. Chọn cái mới = mở camera quay luôn.
-                if (selected === act.type) { setSelected(null); setScannedFiles([]); return; }
-                setSelected(act.type);
-                setScannedFiles([]);
-                handleRecord();
-              }}
-            />
-          ))}
-        </View>
-
-        {/* Camera section */}
-        {selectedActivity && (
-          <>
-            <View style={[styles.sectionRow, { marginTop: 10 }]}>
-              <View style={styles.dot} />
-              <Text style={styles.sectionLabel}>{tk('trace.activity.record')}</Text>
+        <ScrollView
+          ref={scrollRef}
+          contentContainerStyle={styles.scroll}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          onScroll={onScroll}
+          scrollEventThrottle={16}
+        >
+          {/* Guide */}
+          <View style={styles.guideCard}>
+            <View style={styles.guideIconWrap}>
+              <Icon name="circle-info" size={17} color={COLORS.accent} />
             </View>
+            <Text style={styles.guideText}>{tk('trace.activity.guide')}</Text>
+          </View>
 
-            {hasFiles ? (
-              <View style={[styles.cameraCard, { borderColor: `${COLORS.success}44` }]}>
-                <View style={[styles.cameraIcon, { backgroundColor: `${COLORS.success}12` }]}>
-                  <Icon name="circle-check" size={26} color={COLORS.success} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.cameraTitle}>{tk('trace.activity.gotClip', { n: scannedFiles.length })}</Text>
-                  <Text style={styles.cameraSub}>{tk('trace.activity.gotClipHint')}</Text>
-                </View>
-                <TouchableOpacity
-                  style={styles.retakeBtn}
-                  onPress={handleRecord}
-                >
-                  <Icon name="arrows-rotate" size={14} color={COLORS.textSub} />
-                  <Text style={styles.retakeText}>{tk('trace.activity.retake')}</Text>
-                </TouchableOpacity>
+          {/* Activity selection */}
+          <View style={styles.sectionRow}>
+            <View style={styles.dot} />
+            <Text style={styles.sectionLabel}>{tk('trace.activity.pick')}</Text>
+          </View>
+          <View style={styles.actList}>
+            {ACTIVITIES.map(act => (
+              <ActivityCard
+                key={act.type}
+                activity={act}
+                selected={selected === act.type}
+                onSelect={() => {
+                  // Chọn 1 hoạt động → MỞ ỐNG KÍNH NGAY (bỏ bước bấm "Bắt đầu ghi hình").
+                  // Bấm lại chính nó = bỏ chọn. Chọn cái mới = mở camera quay luôn.
+                  if (selected === act.type) { setSelected(null); setScannedFiles([]); return; }
+                  setSelected(act.type);
+                  setScannedFiles([]);
+                  handleRecord();
+                }}
+              />
+            ))}
+          </View>
+
+          {/* Camera section */}
+          {selectedActivity && (
+            <>
+              <View style={[styles.sectionRow, { marginTop: 10 }]}>
+                <View style={styles.dot} />
+                <Text style={styles.sectionLabel}>{tk('trace.activity.record')}</Text>
               </View>
-            ) : (
-              <TouchableOpacity
-                style={[styles.cameraCard, { borderColor: `${selectedActivity.color}30` }]}
-                onPress={handleRecord}
-                activeOpacity={0.85}
-              >
-                <View style={[styles.cameraIcon, { backgroundColor: selectedActivity.bg }]}>
-                  <Icon name="camera" size={24} color={selectedActivity.color} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.cameraTitle}>{tk('trace.activity.startRecord')}</Text>
-                  <Text style={styles.cameraSub}>{tk('trace.activity.startRecordHint')}</Text>
-                </View>
-                <Icon name="chevron-right" size={18} color={COLORS.accentLight} />
-              </TouchableOpacity>
-            )}
 
-            {/* ── Phân/thuốc đã dùng ─────────────────────────────────────────
-                Chỉ hiện với hai việc CÓ vật tư. Đặt SAU khối quay clip vì clip là
-                bằng chứng, còn đây là lời khai đi kèm bằng chứng đó. */}
-            {needsMaterials && (
-              <>
-                <View style={[styles.sectionRow, { marginTop: 16 }]}>
-                  <View style={styles.dot} />
-                  <Text style={styles.sectionLabel}>{tk('trace.activity.materials')}</Text>
-                </View>
-                <Text style={styles.matHint}>
-                  {tk(selected === 'pesticide'
-                    ? 'trace.activity.materialsHintPest'
-                    : 'trace.activity.materialsHintFert')}
-                </Text>
-
-                {materialRows.map((row, i) => (
-                  <View key={i} style={styles.matCard}>
-                    <TextInput
-                      style={styles.matName}
-                      value={row.name}
-                      onChangeText={t => setMaterialRows(rows =>
-                        rows.map((r, j) => (j === i ? { ...r, name: t } : r)))}
-                      placeholder={tk('trace.activity.materialName')}
-                      placeholderTextColor={COLORS.textMuted}
-                    />
-                    <View style={styles.matRow}>
-                      <TextInput
-                        style={[styles.matSmall, { flex: 1.2 }]}
-                        value={row.amount}
-                        onChangeText={t => setMaterialRows(rows =>
-                          rows.map((r, j) => (j === i ? { ...r, amount: t } : r)))}
-                        placeholder={tk('trace.activity.materialAmount')}
-                        placeholderTextColor={COLORS.textMuted}
-                        keyboardType="numeric"
-                      />
-                      <TextInput
-                        style={[styles.matSmall, { flex: 1 }]}
-                        value={row.unit}
-                        onChangeText={t => setMaterialRows(rows =>
-                          rows.map((r, j) => (j === i ? { ...r, unit: t } : r)))}
-                        placeholder={tk('trace.activity.materialUnit')}
-                        placeholderTextColor={COLORS.textMuted}
-                      />
-                      {/* Nút bỏ dòng chỉ hiện khi CÓ dòng thứ hai — bỏ dòng cuối
-                          cùng thì màn trống trơn và không còn chỗ nào để gõ. */}
-                      {materialRows.length > 1 && (
-                        <TouchableOpacity
-                          style={styles.matDelBtn}
-                          onPress={() => setMaterialRows(rows => rows.filter((_, j) => j !== i))}
-                          accessibilityLabel={tk('trace.activity.removeMaterial')}
-                        >
-                          <Icon name="xmark" size={14} color={COLORS.textSub} />
-                        </TouchableOpacity>
-                      )}
-                    </View>
+              {hasFiles ? (
+                <View style={[styles.cameraCard, { borderColor: `${COLORS.success}44` }]}>
+                  <View style={[styles.cameraIcon, { backgroundColor: `${COLORS.success}12` }]}>
+                    <Icon name="circle-check" size={26} color={COLORS.success} />
                   </View>
-                ))}
-
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.cameraTitle}>{tk('trace.activity.gotClip', { n: scannedFiles.length })}</Text>
+                    <Text style={styles.cameraSub}>{tk('trace.activity.gotClipHint')}</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.retakeBtn}
+                    onPress={handleRecord}
+                  >
+                    <Icon name="arrows-rotate" size={14} color={COLORS.textSub} />
+                    <Text style={styles.retakeText}>{tk('trace.activity.retake')}</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
                 <TouchableOpacity
-                  style={styles.matAddBtn}
-                  onPress={() => setMaterialRows(rows => [...rows, { ...EMPTY_MATERIAL_ROW }])}
+                  style={[styles.cameraCard, { borderColor: `${selectedActivity.color}30` }]}
+                  onPress={handleRecord}
+                  activeOpacity={0.85}
                 >
-                  <Icon name="plus" size={13} color={ORG_TONE.primary} />
-                  <Text style={styles.matAddText}>{tk('trace.activity.addMaterial')}</Text>
+                  <View style={[styles.cameraIcon, { backgroundColor: selectedActivity.bg }]}>
+                    <Icon name="camera" size={24} color={selectedActivity.color} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.cameraTitle}>{tk('trace.activity.startRecord')}</Text>
+                    <Text style={styles.cameraSub}>{tk('trace.activity.startRecordHint')}</Text>
+                  </View>
+                  <Icon name="chevron-right" size={18} color={COLORS.accentLight} />
                 </TouchableOpacity>
-              </>
-            )}
+              )}
 
-            <View style={styles.creditNote}>
-              <Icon name="bolt" size={13} color={COLORS.accent} />
-              <Text style={styles.creditNoteText}>
-                {tk('trace.activity.cost', { n: selectedActivity.credits })}
-              </Text>
+              {/* ── Phân/thuốc đã dùng ─────────────────────────────────────────
+                  Chỉ hiện với hai việc CÓ vật tư. Đặt SAU khối quay clip vì clip là
+                  bằng chứng, còn đây là lời khai đi kèm bằng chứng đó. */}
+              {needsMaterials && (
+                <>
+                  <View style={[styles.sectionRow, { marginTop: 16 }]}>
+                    <View style={styles.dot} />
+                    <Text style={styles.sectionLabel}>{tk('trace.activity.materials')}</Text>
+                  </View>
+                  <Text style={styles.matHint}>
+                    {tk(selected === 'pesticide'
+                      ? 'trace.activity.materialsHintPest'
+                      : 'trace.activity.materialsHintFert')}
+                  </Text>
+
+                  {materialRows.map((row, i) => (
+                    <View key={i} style={styles.matCard}>
+                      <TextInput
+                        style={styles.matName}
+                        value={row.name}
+                        onChangeText={t => setMaterialRows(rows =>
+                          rows.map((r, j) => (j === i ? { ...r, name: t } : r)))}
+                        placeholder={tk('trace.activity.materialName')}
+                        placeholderTextColor={COLORS.textMuted}
+                        onFocus={scrollInputIntoView}
+                      />
+                      <View style={styles.matRow}>
+                        <TextInput
+                          style={[styles.matSmall, { flex: 1.2 }]}
+                          value={row.amount}
+                          onChangeText={t => setMaterialRows(rows =>
+                            rows.map((r, j) => (j === i ? { ...r, amount: t } : r)))}
+                          placeholder={tk('trace.activity.materialAmount')}
+                          placeholderTextColor={COLORS.textMuted}
+                          keyboardType="numeric"
+                          onFocus={scrollInputIntoView}
+                        />
+                        <TextInput
+                          style={[styles.matSmall, { flex: 1 }]}
+                          value={row.unit}
+                          onChangeText={t => setMaterialRows(rows =>
+                            rows.map((r, j) => (j === i ? { ...r, unit: t } : r)))}
+                          placeholder={tk('trace.activity.materialUnit')}
+                          placeholderTextColor={COLORS.textMuted}
+                          onFocus={scrollInputIntoView}
+                        />
+                        {/* Nút bỏ dòng chỉ hiện khi CÓ dòng thứ hai — bỏ dòng cuối
+                            cùng thì màn trống trơn và không còn chỗ nào để gõ. */}
+                        {materialRows.length > 1 && (
+                          <TouchableOpacity
+                            style={styles.matDelBtn}
+                            onPress={() => setMaterialRows(rows => rows.filter((_, j) => j !== i))}
+                            accessibilityLabel={tk('trace.activity.removeMaterial')}
+                          >
+                            <Icon name="xmark" size={14} color={COLORS.textSub} />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+                  ))}
+
+                  <TouchableOpacity
+                    style={styles.matAddBtn}
+                    onPress={() => setMaterialRows(rows => [...rows, { ...EMPTY_MATERIAL_ROW }])}
+                  >
+                    <Icon name="plus" size={13} color={ORG_TONE.primary} />
+                    <Text style={styles.matAddText}>{tk('trace.activity.addMaterial')}</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+
+              <View style={styles.creditNote}>
+                <Icon name="bolt" size={13} color={COLORS.accent} />
+                <Text style={styles.creditNoteText}>
+                  {tk('trace.activity.cost', { n: selectedActivity.credits })}
+                </Text>
+              </View>
+            </>
+          )}
+
+        </ScrollView>
+
+        {/* Thanh nút — anh em thứ hai TRONG `KeyboardAvoidingView`, nằm trong luồng.
+            Khối đệm `height: 120` cuối vùng cuộn đã bỏ cùng lúc: nó chỉ tồn tại để
+            chừa chỗ cho một thanh nút PHỦ LÊN vùng cuộn. Thanh nút không phủ nữa thì
+            khối đệm thành một khoảng trống chết ngay trên đỉnh bàn phím. */}
+        <View
+          ref={bottomBarRef}
+          style={[
+            styles.bottomBar,
+            {
+              paddingBottom: keyboardOpen
+                ? 12
+                : (Platform.OS === 'ios' ? 36 : 24) + insets.bottom,
+            },
+          ]}
+        >
+          {selectedActivity && (
+            <View style={styles.bottomMeta}>
+              <Text style={styles.bottomMetaLabel}>{tk('trace.activity.costLabel')}</Text>
+              <View style={styles.creditChip}>
+                <Icon name="bolt" size={11} color={COLORS.accent} />
+                <Text style={styles.creditChipText}>{selectedActivity.credits} MAGIC</Text>
+              </View>
+              {!hasFiles && (
+                <Text style={styles.bottomHint}>{tk('trace.activity.needClip')}</Text>
+              )}
+              {/* Nói ra lý do thứ ba. Thiếu clip đã có dòng trên; thiếu tên vật tư thì
+                  trước đây nút vẫn sáng (và gửi rỗng), nay nút tắt — nên phải có câu
+                  nói vì sao, không thì nó thành một nút tắt không ai hiểu. */}
+              {hasFiles && !materialsReady && (
+                <Text style={styles.bottomHint}>{tk('trace.activity.needMaterial')}</Text>
+              )}
+              {/* Nói ra LÝ DO nút tắt khi lý do KHÔNG nằm ở tay người dùng. Thiếu clip
+                  thì đã có dòng trên; thiếu vườn hoặc phiên đăng nhập thì trước đây
+                  không dòng nào nói, mà đó lại là hai thứ người dùng không tự thấy. */}
+              {!contextReady && (
+                <Text style={styles.bottomHint}>
+                  {!user
+                    ? tk('trace.activity.needLogin')
+                    : tk('trace.activity.needFarm')}
+                </Text>
+              )}
             </View>
-          </>
-        )}
+          )}
 
-        <View style={{ height: 120 }} />
-      </ScrollView>
-
-      {/* Bottom bar */}
-      <View style={[styles.bottomBar, { paddingBottom: (Platform.OS === 'ios' ? 36 : 24) + insets.bottom }]}>
-        {selectedActivity && (
-          <View style={styles.bottomMeta}>
-            <Text style={styles.bottomMetaLabel}>{tk('trace.activity.costLabel')}</Text>
-            <View style={styles.creditChip}>
-              <Icon name="bolt" size={11} color={COLORS.accent} />
-              <Text style={styles.creditChipText}>{selectedActivity.credits} MAGIC</Text>
-            </View>
-            {!hasFiles && (
-              <Text style={styles.bottomHint}>{tk('trace.activity.needClip')}</Text>
-            )}
-            {/* Nói ra lý do thứ ba. Thiếu clip đã có dòng trên; thiếu tên vật tư thì
-                trước đây nút vẫn sáng (và gửi rỗng), nay nút tắt — nên phải có câu
-                nói vì sao, không thì nó thành một nút tắt không ai hiểu. */}
-            {hasFiles && !materialsReady && (
-              <Text style={styles.bottomHint}>{tk('trace.activity.needMaterial')}</Text>
-            )}
-            {/* Nói ra LÝ DO nút tắt khi lý do KHÔNG nằm ở tay người dùng. Thiếu clip
-                thì đã có dòng trên; thiếu vườn hoặc phiên đăng nhập thì trước đây
-                không dòng nào nói, mà đó lại là hai thứ người dùng không tự thấy. */}
-            {!contextReady && (
-              <Text style={styles.bottomHint}>
-                {!user
-                  ? tk('trace.activity.needLogin')
-                  : tk('trace.activity.needFarm')}
+          <Animated.View style={{ transform: [{ scale: btnScale }] }}>
+            <TouchableOpacity
+              style={[styles.saveBtn, !canSave && styles.saveBtnOff]}
+              onPress={handleSave}
+              disabled={!canSave}
+              onPressIn={() => Animated.spring(btnScale, { toValue: 0.97, useNativeDriver: true }).start()}
+              onPressOut={() => Animated.spring(btnScale, { toValue: 1, friction: 4, useNativeDriver: true }).start()}
+              activeOpacity={1}
+            >
+              <View style={styles.btnShine} />
+              <Icon name={saving ? 'spinner' : 'cloud-arrow-up'} size={20} color={COLORS.white} />
+              <Text style={styles.saveBtnText}>
+                {tk(saving ? 'trace.activity.saving' : 'trace.activity.save')}
               </Text>
-            )}
-          </View>
-        )}
-
-        <Animated.View style={{ transform: [{ scale: btnScale }] }}>
-          <TouchableOpacity
-            style={[styles.saveBtn, !canSave && styles.saveBtnOff]}
-            onPress={handleSave}
-            disabled={!canSave}
-            onPressIn={() => Animated.spring(btnScale, { toValue: 0.97, useNativeDriver: true }).start()}
-            onPressOut={() => Animated.spring(btnScale, { toValue: 1, friction: 4, useNativeDriver: true }).start()}
-            activeOpacity={1}
-          >
-            <View style={styles.btnShine} />
-            <Icon name={saving ? 'spinner' : 'cloud-arrow-up'} size={20} color={COLORS.white} />
-            <Text style={styles.saveBtnText}>
-              {tk(saving ? 'trace.activity.saving' : 'trace.activity.save')}
-            </Text>
-          </TouchableOpacity>
-        </Animated.View>
-      </View>
+            </TouchableOpacity>
+          </Animated.View>
+        </View>
+      </KeyboardAvoidingView>
 
       <LampNetSyncModal visible={saving} step={syncStep} />
     </View>
@@ -829,8 +994,18 @@ const styles = StyleSheet.create({
   },
   creditNoteText: { fontSize: 14, color: ORG_NATURE.bark },
 
+  kav: { flex: 1 },
+  // ⛔ KHÔNG đặt lại `position: 'absolute', bottom: 0` ở đây.
+  //
+  // Thanh nút là con của `KeyboardAvoidingView`. `behavior="padding"` đặt
+  // `paddingBottom` lên chính bọc đó, còn Yoga định vị con TUYỆT ĐỐI theo
+  // `measuredDimension − border` — KHÔNG trừ padding
+  // (`ReactCommon/yoga/yoga/algorithm/AbsoluteLayout.cpp:203-210`). Nên ở dạng
+  // tuyệt đối, bàn phím mở ra thì vùng cuộn co đúng mà thanh nút đứng nguyên
+  // dưới bàn phím. Đo bằng chính Yoga của kho này, cùng một cây bố cục:
+  //   tuyệt đối → đáy thanh nút y=800 (bàn phím bắt đầu ở y=500) → BỊ CHE
+  //   trong luồng → đáy thanh nút y=500 → NHÌN THẤY
   bottomBar: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
     paddingHorizontal: 20,
     paddingBottom: Platform.OS === 'ios' ? 36 : 24,
     paddingTop: 12,

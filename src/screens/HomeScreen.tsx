@@ -36,6 +36,8 @@ import { selectChainWallet } from '../store/userSlice';
 import { NEUTRAL, withAlpha } from '../shared/theme';
 import { WORK_THEME, CHAT_THEME } from '../theme';
 import { MODULES, type ModuleEntry } from '../modules';
+import { routeIsReachable } from '../navigation/moduleCatalog';
+import { ENABLED_MODULES } from '../config/instance.config';
 import {
   getRankedQuickActions,
   type RankedQuickAction,
@@ -45,6 +47,26 @@ import { fmtLamp } from '../utils/token';
 import { useCollapsibleHeader } from '../components/AppHeader';
 import { useCoachMarkTarget, useCoachMark } from '../onboarding/CoachMarkContext';
 import { shouldAutoRunTutorial } from '../utils/tutorialStorage';
+
+/**
+ * Lưới "Dịch vụ" chỉ hiện module mà APP ĐANG DỰNG có khai.
+ *
+ * `MODULES` (`src/modules/index.ts`) là DANH MỤC của nền — nó liệt mọi module tồn
+ * tại, và mỗi mục mang `available: true` cố định. Nó KHÔNG phải lời khai của app
+ * này. Bản trước dựng lưới thẳng từ nó, nên khu "Dịch vụ" là lối vào DUY NHẤT
+ * không lọc theo `InstanceConfig.modules`: thanh tab lọc, cổng xoè lọc, màn chính
+ * thì không.
+ *
+ * Đo được 2026-09-14 trên máy ảo: CheckFarm tắt `chat`, thanh tab bỏ Chat, cổng xoè
+ * bỏ Chat, mà thẻ "TRÒ CHUYỆN" vẫn nằm giữa màn đầu tiên và bấm vào vẫn mở được.
+ * Với Apple guideline 1.2 thì việc tắt module khi ấy không có tác dụng nào.
+ *
+ * Lọc ở cấp module (không phải cấp tệp) và dùng CHUNG một phép hỏi với cổng xoè —
+ * `routeIsReachable` — để lần sau thêm một lối vào thì có đúng một chỗ để gọi.
+ */
+const VISIBLE_MODULES: ModuleEntry[] = MODULES.filter(
+  m => routeIsReachable(m.routeName, ENABLED_MODULES),
+);
 
 const { width } = Dimensions.get('window');
 const H_PADDING = 20;
@@ -783,7 +805,7 @@ const HomeScreen: React.FC = () => {
             <LayoutToggle value={moduleLayout} onChange={setModuleLayout} />
           </View>
           <View style={styles.moduleGrid}>
-            {MODULES.map((m, i) => {
+            {VISIBLE_MODULES.map((m, i) => {
               const card = (
                 <ModuleCard
                   entry={m}

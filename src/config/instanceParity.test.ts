@@ -16,8 +16,34 @@
  * module thứ năm mà một app quên khai, app đó lặng lẽ thiếu tính năng: không đỏ,
  * không cảnh báo, không màn nào trống — chỉ là một nút không bao giờ xuất hiện.
  *
- * Nay tập module là hằng dẫn xuất (`ALL_MODULES`). Bài kiểm này canh việc KHÔNG
- * ai lặng lẽ trả nó về thành một lựa chọn.
+ * ── ĐÍNH CHÍNH 2026-09-14 — bài kiểm này từng ép một chính sách ĐÃ BỊ LẬT ─────
+ * Bản trước của tệp này khẳng định `expect(ENABLED_MODULES).toEqual(ALL_MODULES)`
+ * và `expect(routesOf(ENABLED_MODULES)).toEqual(full)` cho MỌI app — tức "mọi app
+ * phải nạp đủ mọi module". Luật đã đổi sang v3: **app CHỌN module, nhưng phải KHAI
+ * mình chọn kiểu gì** (`instances/LUAT-SUPERAPP.md §2`).
+ *
+ * Hai dòng đó xanh cho tới hôm nay chỉ vì cả hai app đang khai `modules: 'all'`.
+ * Doanh nghiệp đầu tiên khai một tập con sẽ đỏ ngay — và đỏ ở một bài mang tên
+ * *"bất biến: mọi app sinh từ nền này có CÙNG tập tính năng"*, nên người đọc sẽ
+ * kết luận mình vi phạm một bất biến sản phẩm chứ không kết luận bài kiểm đã lỗi
+ * thời. Đó là chỗ đắt: một bài kiểm lỗi thời nói dối MẠNH HƠN một bài kiểm thiếu.
+ *
+ * Và nó ĐỌC SAI một vế trong chính câu của chủ nhân trích ở trên: câu ấy nói app
+ * không được mất *"những tính năng mà NÓ ĐANG TÍCH HỢP"* — không nói mọi app phải
+ * tích hợp mọi thứ. Bản v2 nới câu đó rộng hơn nguyên văn rồi ép bản rộng.
+ *
+ * ── Bất biến còn lại sau khi lật, và nó vẫn chặn đúng lỗ cũ ───────────────────
+ * Lỗ `enabledModules` hỏng câm KHÔNG được mở lại, và nó không mở lại: cái phân
+ * biệt "cố ý không lấy module mới" với "quên khai module mới" là **lời khai**
+ * `'all'`, không phải một mảng trần. Nên ba vế phải ép:
+ *   1. mọi app PHẢI khai `modules` — vắng là đỏ, không rơi về mặc định;
+ *   2. app khai `'all'` thì tập route phải ĐÚNG BẰNG toàn bộ registry (vế cũ, giữ
+ *      nguyên — chỉ thu hẹp phạm vi áp dụng lại cho đúng);
+ *   3. app khai một mảng thì tập route phải là TẬP CON thật sự của registry, và
+ *      mọi id trong mảng phải có thật.
+ *
+ * Vế 3 hôm nay **không phân biệt được hai bên đột biến** vì chưa app nào khai mảng
+ * — ghi ra đây thay vì đếm nó vào số bài xanh.
  *
  * ── Nó KHÔNG đo được gì — đọc trước khi tin nó ───────────────────────────────
  *  · **Màn có render nổi không.** Bài kiểm đọc TÊN route, không dựng cây React.
@@ -34,8 +60,9 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
-import { INSTANCES, ALL_MODULES, ENABLED_MODULES, resolveInstance } from './instance.config';
+import { INSTANCES, ALL_MODULES, resolveInstance, resolveModules } from './instance.config';
 import { MODULE_IDS } from '../navigation/moduleIds';
+import { resolveVisibleTabs } from '../navigation/resolveVisibleTabs';
 import type { ModuleId } from '../navigation/moduleIds';
 
 /**
@@ -58,7 +85,7 @@ const routesOf = (ids: readonly ModuleId[]) =>
 
 const ids = Object.keys(INSTANCES);
 
-describe('bất biến: mọi app sinh từ nền này có CÙNG tập tính năng', () => {
+describe('bất biến: app KHÔNG được lặng lẽ mất module nó đã khai', () => {
   // Chống-xanh-rỗng. Một bài kiểm duyệt qua mảng rỗng thì luôn xanh, và cái xanh
   // đó đọc y hệt cái xanh thật.
   it('bảng INSTANCES có ít nhất hai app, và registry có module', () => {
@@ -68,20 +95,59 @@ describe('bất biến: mọi app sinh từ nền này có CÙNG tập tính nă
 
   it('`ALL_MODULES` dẫn xuất ĐÚNG từ registry — không phải danh sách viết tay', () => {
     expect([...ALL_MODULES].sort()).toEqual([...MODULE_IDS].sort());
-    expect(ENABLED_MODULES).toEqual(ALL_MODULES);
   });
 
   // ĐÂY là bài kiểm chính. Mọi bài khác trong tệp chỉ đỡ cho nó.
-  it('mọi app nạp CÙNG một tập route module, và tập đó phủ hết registry', () => {
+  it('mọi app KHAI tập module của mình, và lời khai khớp tập route nạp được', () => {
     const full = routesOf(MODULE_IDS);
     expect(full.length).toBeGreaterThan(20);
 
     for (const id of ids) {
       const inst = INSTANCES[id];
-      // Instance KHÔNG được có đường riêng để thu hẹp tập module. Nếu ai đó thêm
-      // lại một trường như vậy, dòng dưới bắt được ngay.
+
+      // Trường CŨ `enabledModules` là mảng trần, không phân biệt được "cố ý không
+      // lấy" với "quên khai" ⇒ hỏng câm. Nó KHÔNG được quay lại, kể cả khi luật
+      // mới đã cho phép chọn module: cái được phép là lời KHAI, không phải mảng trần.
       expect(inst).not.toHaveProperty('enabledModules');
-      expect(routesOf(ENABLED_MODULES)).toEqual(full);
+
+      // Vế 1 — phải KHAI. Vắng là đỏ, không rơi về mặc định.
+      expect(inst.modules).toBeDefined();
+
+      const taken = resolveModules(inst);
+      const routes = routesOf(taken);
+
+      if (inst.modules === 'all') {
+        // Vế 2 — `'all'` nghĩa là đủ registry, kể cả module thêm sau. Đây là vế cũ,
+        // giữ nguyên; chỉ thu phạm vi lại cho đúng những app thật sự khai `'all'`.
+        expect(taken.length).toBe(MODULE_IDS.length);
+        expect(routes).toEqual(full);
+      } else {
+        // Vế 3 — mảng thì phải là tập con THẬT, và mọi id phải có thật trong registry.
+        // ⚠ Hôm nay KHÔNG app nào đi vào nhánh này (cả hai khai `'all'`), nên nhánh
+        // này chưa phân biệt được hai bên đột biến. Ghi ra thay vì tính nó là đã ghim.
+        for (const m of taken) expect(MODULE_IDS).toContain(m);
+        expect(taken.length).toBeLessThanOrEqual(MODULE_IDS.length);
+        for (const r of routes) expect(full).toContain(r);
+      }
+    }
+  });
+
+  // Chặn đúng chỗ nhóm rà soát chỉ ra là hỏng tinh vi nhất: một bước "chuẩn hoá"
+  // nở `'all'` thành mảng tường minh trông vô hại và LẶNG LẼ biến lời khai dương
+  // thành danh sách âm — từ lần đó module thứ năm không vào, và không ai khai gì.
+  it("`'all'` phải Ở LẠI dạng `'all'` — không được nở thành mảng tường minh", () => {
+    const declared = ids.map(id => INSTANCES[id].modules);
+    expect(declared).toContain('all');
+    for (const id of ids) {
+      const raw = INSTANCES[id].modules;
+      if (Array.isArray(raw)) continue;
+      expect(raw).toBe('all');
+      // Và lời khai phải là chuỗi ở CẢ tệp JSON, không chỉ ở hằng TS — nơi doanh
+      // nghiệp sửa là tệp JSON.
+      const khai = JSON.parse(
+        readFileSync(join(__dirname, '..', '..', 'instances', id, 'instance.json'), 'utf8'),
+      );
+      expect(khai.modules).toBe('all');
     }
   });
 
@@ -123,16 +189,80 @@ describe('bất biến: mọi app sinh từ nền này có CÙNG tập tính nă
     }
   });
 
-  // Thứ tự ô ĐƯỢC PHÉP khác nhau — nhưng TẬP ô thì không. Khác tập nghĩa là một
-  // app có một điểm vào mà app kia không có, và đó lại là vi phạm yêu cầu cứng
-  // dưới một cái tên khác.
-  it('hai app có thể khác THỨ TỰ ô dịch vụ, nhưng phải cùng TẬP ô', () => {
-    const setOf = (a: string[]) => [...a].sort().join(',');
-    const base = setOf(INSTANCES[ids[0]].slotPriority.default);
+  // ── ĐÍNH CHÍNH THỨ HAI, 2026-09-14 — bài này so SAI HAI THỨ với nhau ──────────
+  //
+  // Bản trước (viết sáng cùng ngày) đòi hai app có **cùng một tập ô**, và đo bằng
+  // cách so tập của app A với tập của app B. Tiền đề của nó là "mọi app nạp mọi
+  // module" — đúng ngày cả hai khai `modules: 'all'`, và **hết đúng** khi CheckFarm
+  // tắt `chat` cho đợt nộp (Apple guideline 1.2; lý do ở `CHECKFARM_INSTANCE.modules`).
+  //
+  // Nó lặp lại y nguyên lỗi mà phần đầu tệp này đã tả: một bài kiểm nới câu của chủ
+  // nhân rộng hơn nguyên văn rồi ép bản rộng. Câu ấy nói app không được mất *"những
+  // tính năng mà NÓ ĐANG TÍCH HỢP"* — mốc so là **lời khai của chính app đó**, không
+  // phải lời khai của app bên cạnh. So chéo hai app thì app nào chọn một tập con cũng
+  // đỏ, và đỏ dưới cái tên "vi phạm bất biến sản phẩm".
+  //
+  // Nên mốc so đổi: mỗi app tự đối chiếu với `modules` của CHÍNH NÓ. Lỗ cũ —
+  // `enabledModules` hỏng câm, quên khai một module thì không ai kêu — vẫn bị bịt,
+  // và bịt CHẶT HƠN trước: bản cũ chỉ phát hiện được khi hai app lệch nhau, nên hai
+  // app cùng quên một module thì nó xanh.
+  it('mỗi app KHÔNG được mất ô của module CHÍNH NÓ đã khai — mốc so là lời khai của nó', () => {
+    // Ô nào trên thanh thuộc về module nào. Ô `host` (Ví, Home, Tôi) không thuộc
+    // module nào nên không tham gia phép đo này.
+    const entryOf = (m: string) => manifestOf(m as any).entrypoint;
+
     for (const id of ids) {
-      const sp = INSTANCES[id].slotPriority;
-      expect(setOf(sp.default)).toBe(base);
-      expect(setOf(sp.shipper)).toBe(base);
+      const inst = INSTANCES[id];
+      const declared = inst.modules === 'all' ? [...ALL_MODULES] : [...inst.modules];
+      for (const persona of ['default', 'shipper'] as const) {
+        const loiVao = new Set([inst.anchorLeft, ...inst.slotPriority[persona]]);
+        for (const m of declared) {
+          const entry = entryOf(m);
+          // Module đã khai mà điểm vào của nó KHÔNG có mặt ở bất cứ nguồn ô nào —
+          // ô trái, bảng tranh slot, hay mảng `tabs` — là ca "lặng lẽ mất tính năng".
+          const onTabs = inst.tabs.some(t => t.kind === 'module' && t.moduleId === m);
+          expect(loiVao.has(entry) || onTabs).toBe(true);
+        }
+        // Và chiều ngược lại: bảng ưu tiên KHÔNG được nêu điểm vào của một module
+        // app này KHÔNG khai. Đây là vế bắt được ca CheckFarm sáng nay: `ChatHome`
+        // còn nằm trong `slotPriority` sau khi `chat` đã tắt.
+        const notDeclared = ALL_MODULES.filter(m => !declared.includes(m));
+        for (const m of notDeclared) {
+          expect([...loiVao]).not.toContain(entryOf(m));
+        }
+      }
+    }
+  });
+
+  // Mặt kia của cùng một đồng xu. Bài trên cấm hai app khác TẬP; bài này cấm hai
+  // app giống nhau ĐẾN MỨC bị cửa hàng đọc là một bản sao (Apple 4.3 "Spam —
+  // bản sao chỉ khác biệt nhỏ", Google Play "nội dung trùng lặp").
+  //
+  // Đo ở CHỖ NGƯỜI XÉT DUYỆT ĐỨNG: họ cài máy sạch, chưa có vườn, chưa có lịch
+  // sử dùng ⟹ persona `'new'` ⟹ bảng `default`. Nên ngưỡng ở ca đó chặt hơn.
+  it('hai app phải ra hai thanh khác nhau — và khác ở NHIỀU HƠN một ô', () => {
+    const thanh = (id: string, persona: 'default' | 'shipper') => {
+      const inst = INSTANCES[id];
+      return resolveVisibleTabs(
+        { farms: 0, trees: 0, fruits: 0 },
+        persona === 'shipper' ? { WorkHome: 9 } : {},
+        null, () => true, inst.slotPriority, inst.anchorLeft,
+      );
+    };
+    const lechBaoNhieuO = (a: string[], b: string[]) => {
+      expect(a.length).toBe(b.length); // cùng bố cục 5 ô
+      return a.filter((r, i) => r !== b[i]).length;
+    };
+
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) {
+        // Máy sạch — đây là thứ người xét duyệt nhìn thấy.
+        expect(lechBaoNhieuO(thanh(ids[i], 'default'), thanh(ids[j], 'default')))
+          .toBeGreaterThanOrEqual(3);
+        // Người đã dùng một thời gian — nhẹ hơn, nhưng KHÔNG được bằng 0.
+        expect(lechBaoNhieuO(thanh(ids[i], 'shipper'), thanh(ids[j], 'shipper')))
+          .toBeGreaterThanOrEqual(2);
+      }
     }
   });
 });

@@ -6,7 +6,6 @@
 import { DEFAULT_INSTANCE } from '../config/instance.config';
 
 import { resolveGateItems, TRACE_SCAN_ROUTE } from './resolveGateItems';
-import { NEO_LEFT } from './resolveVisibleTabs';
 
 const NO_FARM = { farms: 0, trees: 0, fruits: 0 };
 const routes = (items: ReturnType<typeof resolveGateItems>) => items.map((i) => i.route);
@@ -26,17 +25,28 @@ const routes = (items: ReturnType<typeof resolveGateItems>) => items.map((i) => 
  * mọi thuật toán, kể cả thuật toán sai.
  */
 const expectArcShape = (got: string[], priority: string[]) => {
-  // 1. NEO trái mở đầu cung.
-  expect(got[0]).toBe(NEO_LEFT);
+  // 1. Ô TRÁI CỦA APP ĐANG DỰNG mở đầu cung.
+  //
+  //    ĐỔI 2026-09-14: trước đây dòng này so với hằng `NEO_LEFT` của nền. Ô trái
+  //    nay là thứ APP KHAI (`InstanceConfig.anchorLeft`), nên so với hằng nền là
+  //    so với một giá trị chỉ TÌNH CỜ đúng cho app mặc định — và nó sẽ đỏ ở đúng
+  //    app đầu tiên khai ô trái khác, tức đỏ ở chính ca nó phải xanh.
+  expect(got[0]).toBe(DEFAULT_INSTANCE.anchorLeft);
   // 2. Trace-quét nằm CHÍNH GIỮA — hai bên lệch nhau nhiều nhất một ô.
   const iTrace = got.indexOf(TRACE_SCAN_ROUTE as string);
   expect(iTrace).toBeGreaterThan(-1);
   expect(Math.abs(iTrace - (got.length - 1 - iTrace))).toBeLessThanOrEqual(1);
-  // 3. Bỏ NEO trái và Trace ra thì phần còn lại là DÃY CON của bảng ưu tiên,
-  //    giữ nguyên thứ tự app khai. Nói "dãy con" chứ không "bằng" vì cung lọc
-  //    route của module app đang tắt (CheckFarm tắt `chat` và `work`) — ràng
-  //    buộc thật là THỨ TỰ, không phải độ dài.
-  const con = got.filter((r) => r !== NEO_LEFT && r !== TRACE_SCAN_ROUTE);
+  // 3. Bỏ ô trái và Trace ra thì phần còn lại là DÃY CON của bảng ưu tiên, giữ
+  //    nguyên thứ tự app khai. Nói "dãy con" chứ không "bằng" vì cung lọc route
+  //    của module app đang tắt — ràng buộc thật là THỨ TỰ, không phải độ dài.
+  //
+  //    ĐÍNH CHÍNH 2026-09-14: câu cũ ở đây ghi "CheckFarm tắt `chat` và `work`".
+  //    Không còn đúng — `instance.config.ts` khai `modules: 'all'` cho CheckFarm,
+  //    và cả hai module đó đang bật. Mệnh đề "dãy con" thì vẫn cần, vì nó đúng
+  //    với app suy biến BẤT KỲ; chỉ ví dụ minh hoạ là đã chết.
+  const con = got.filter(
+    (r) => r !== DEFAULT_INSTANCE.anchorLeft && r !== TRACE_SCAN_ROUTE,
+  );
   expect(con.length).toBeGreaterThan(0);
   const viTri = con.map((r) => priority.indexOf(r));
   expect(viTri).not.toContain(-1); // không mục lạ nào lọt vào cung
@@ -77,11 +87,15 @@ describe('resolveGateItems', () => {
     }
   });
 
-  it('ĐỐI CHỨNG — NEO trái KHÔNG nằm trong bảng ưu tiên', () => {
+  it('ĐỐI CHỨNG — ô trái của app KHÔNG nằm trong bảng ưu tiên CỦA CHÍNH NÓ', () => {
     // Nếu nó nằm cả hai nơi thì cung mở đầu bằng nó rồi lặp lại nó ở giữa, và
     // mệnh đề 3 ở trên vẫn xanh vì phép lọc bỏ sạch mọi lần xuất hiện.
+    //
+    // So với `anchorLeft` của CHÍNH app đang dựng, không với hằng nền: một app
+    // ĐƯỢC PHÉP để ô trái của app KHÁC nằm trong bảng ưu tiên của mình — CheckFarm
+    // đặt `PhoenixWallet` (ô trái của Aladin) vào bảng là hợp lệ và có chủ ý.
     for (const table of [DEFAULT_INSTANCE.slotPriority.default, DEFAULT_INSTANCE.slotPriority.shipper]) {
-      expect(table).not.toContain(NEO_LEFT);
+      expect(table).not.toContain(DEFAULT_INSTANCE.anchorLeft);
     }
   });
 
@@ -116,11 +130,31 @@ describe('resolveGateItems', () => {
     // Route đích KHÁC route module (không mở lại màn module).
     for (const a of farm) expect(a.route).not.toBe('Farms');
 
-    const chat = byRoute.ChatHome.subActions ?? [];
-    // KHÔNG có 'ProofChatWallet': chat không có ví (module.manifest.json của
-    // proofchat, issue #110). Test này giữ lối vào đó khỏi quay lại.
-    expect(chat.map((a) => a.route)).toEqual(['Notifications']);
-    expect(chat.map((a) => a.route)).not.toContain('ProofChatWallet');
+    // ── ĐÍNH CHÍNH 2026-09-14: chat có thể KHÔNG có mặt, và đó là trạng thái hợp lệ ──
+    //
+    // Bài cũ đọc thẳng `byRoute.ChatHome.subActions`, tức nó giả định MỌI app đều bật
+    // `chat`. Giả định đó vừa hết đúng: CheckFarm tắt `chat` cho đợt nộp này (Apple
+    // guideline 1.2 — xem khối chú thích ở `CHECKFARM_INSTANCE.modules`), nên bài nổ
+    // `Cannot read properties of undefined`.
+    //
+    // Nhưng KHÔNG được sửa thành `byRoute.ChatHome?.subActions ?? []` rồi so với mảng
+    // rỗng: viết thế là bài xanh ở CẢ HAI cực — chat có mà hỏng cũng xanh, chat không
+    // có cũng xanh — tức nó thôi kiểm gì. Nên bài này rẽ theo LỜI KHAI của app đang
+    // chạy, và mỗi nhánh vẫn khẳng định một điều.
+    const chatDeclared = DEFAULT_INSTANCE.modules === 'all'
+      || DEFAULT_INSTANCE.modules.includes('chat');
+    if (chatDeclared) {
+      const chat = byRoute.ChatHome.subActions ?? [];
+      // KHÔNG có 'ProofChatWallet': chat không có ví (module.manifest.json của
+      // proofchat, issue #110). Test này giữ lối vào đó khỏi quay lại.
+      expect(chat.map((a) => a.route)).toEqual(['Notifications']);
+      expect(chat.map((a) => a.route)).not.toContain('ProofChatWallet');
+    } else {
+      // App KHÔNG khai chat ⟹ cổng xoè không được có lối vào chat. Đây là vế quan
+      // trọng: nếu một đường chat vẫn lọt lên cổng sau khi module đã tắt thì người
+      // xét duyệt vẫn gặp nội dung do người dùng tạo, và việc tắt module thành vô nghĩa.
+      expect(byRoute.ChatHome).toBeUndefined();
+    }
 
     expect(byRoute.WorkHome.subActions).toBeUndefined();
     expect(byRoute.JoinHome.subActions).toBeUndefined();

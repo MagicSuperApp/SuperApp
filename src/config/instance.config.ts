@@ -278,6 +278,20 @@ export interface InstanceConfig {
   initialTabRoute: string;
 
   /**
+   * Ô TRÁI của thanh tab — app tự khai, KHÔNG kế thừa im lặng.
+   *
+   * Bắt buộc (không `?`) là chủ ý: một trường tuỳ chọn thì app mới sinh ra sẽ
+   * nhận mặc định của nền mà không ai gõ một chữ nào, và thanh của nó trùng
+   * thanh app khác — đúng hình dạng vừa phải đi sửa. Khai tường minh thì việc
+   * "trùng" là một lựa chọn có người ký tên, không phải một sự im lặng.
+   *
+   * Chỉ có ô TRÁI khai được. Ô giữa là nút cổng nằm trong khuyết tròn và ô phải
+   * là avatar người dùng — hai thứ đó là kết cấu của thanh, lý do đầy đủ ở
+   * `navigation/resolveVisibleTabs.ts` khối `NEO_*`.
+   */
+  anchorLeft: string;
+
+  /**
    * Thứ tự ưu tiên 3 ô dịch vụ {Farms, WorkHome, JoinHome} cho hai persona.
    *
    * ĐÂY là trục ĐƯỢC PHÉP khác nhau giữa hai app, và là trục quan trọng nhất.
@@ -385,6 +399,9 @@ export const ALADIN_INSTANCE: InstanceConfig = {
     { kind: 'host', route: 'Account' },
   ],
   initialTabRoute: 'Home',
+  // Ô trái Aladin = VÍ. Aladin là app việc làm: người dùng nhận tiền công, nên
+  // ví là thứ họ mở nhiều nhất sau Trang chủ.
+  anchorLeft: 'PhoenixWallet',
   // Việc làm lên trước — kể cả với người chưa có dữ liệu nào. Người mở Aladin
   // đến vì việc, không đến vì vườn.
   // `ChatHome` vào bảng từ 13/09/2026: chat thôi làm NEO (ô trái nay là Ví —
@@ -486,7 +503,6 @@ export const CHECKFARM_INSTANCE: InstanceConfig = {
     // trước `chat` ở đây vì mảng này là TẬP ĐẦY ĐỦ theo thứ tự khai, còn thứ tự
     // VẼ do resolver quyết — giữ hai thứ đó tách nhau là chủ ý của SG9 §2.
     { kind: 'host', route: 'PhoenixWallet' },
-    { kind: 'module', moduleId: 'chat' },
     { kind: 'module', moduleId: 'trace' },
     { kind: 'host', route: 'Home' },
     { kind: 'module', moduleId: 'work' },
@@ -494,9 +510,38 @@ export const CHECKFARM_INSTANCE: InstanceConfig = {
     { kind: 'host', route: 'Account' },
   ],
   initialTabRoute: 'Home',
+  // ── Ô TRÁI = VƯỜN, và vì sao hai app phải lệch nhau ở đây ──────────────────
+  //
+  // Apple 4.3 ("Spam — bản sao chỉ khác biệt nhỏ") và Google Play ("nội dung
+  // trùng lặp") đều xét hai app CÙNG một nhà phát hành. Hai app này dùng chung
+  // một binary, chung bộ route, chung nhãn — nên thanh điều hướng là bề mặt mà
+  // người xét duyệt so sánh TRƯỚC TIÊN, vì nó nằm trên mọi ảnh chụp màn hình.
+  //
+  // Đo 2026-09-14 trước bản này: hai app ra thanh lệch đúng **1 ô trên 5** ở
+  // persona mặc định (ô duy nhất lệch là ô slot đầu: Việc làm vs Vườn), và lệch
+  // **0 ô** ở persona `shipper` — hai bảng `slotPriority.shipper` khi ấy là hai
+  // mảng giống nhau từng phần tử. Bài kiểm `slotPriorityWiring.test.ts` vẫn xanh,
+  // vì nó chỉ hỏi `not.toEqual` ở ĐÚNG persona mặc định: một phép đo trả lời
+  // "có khác ít nhất một chỗ" cho một câu đang hỏi "khác đủ chưa".
+  //
+  // Nay: Vườn lên ô trái (CheckFarm là app nông — vườn là thứ mở đầu tiên), Ví
+  // xuống tranh slot. KHÔNG module nào bị bỏ: Chat/Việc làm không lên thanh vẫn
+  // nạp đủ route, vẫn tới được qua cổng xoè và deep-link.
+  anchorLeft: 'Farms',
+  // Bảng RIÊNG, không dùng hằng của nền nữa — dùng hằng nền là lý do bảng
+  // `shipper` hai app từng giống nhau từng phần tử.
   slotPriority: {
-    default: SLOT_PRIORITY_DEFAULT,
-    shipper: SLOT_PRIORITY_SHIPPER,
+    // Vườn đã ở ô trái ⟹ nó tự bị loại khỏi vòng tranh slot (`seen`).
+    //
+    // `ChatHome` KHÔNG có trong hai bảng này, và đó không phải chuyện thẩm mỹ: kho
+    // có một cổng riêng đòi **mọi route trong `slotPriority` phải TỚI ĐƯỢC**
+    // (`src/config/` — bài "cấu hình điều hướng không trỏ vào module đã tắt"). Chat
+    // đã tắt ở `modules` bên dưới ⟹ để tên nó ở đây là khai một đường không tồn tại.
+    // Trông cậy vào `isAvailable` lọc hộ lúc chạy là đúng hành vi nhưng SAI lời khai:
+    // bảng ưu tiên là thứ người đọc cấu hình dùng để biết app này có gì.
+    default: ['PhoenixWallet', 'JoinHome', 'WorkHome'],
+    // Người giao hàng / thợ ở CheckFarm: Việc làm lên thanh, Ví giữ ô còn lại.
+    shipper: ['WorkHome', 'PhoenixWallet', 'JoinHome'],
   },
   // Bảng màu do chính nhà CheckFarm chốt và gửi sang (không phải bản bịa ở đây
   // rồi thành mặc định không ai dám đổi). Giá trị + lý do từng ràng buộc nằm ở
@@ -504,11 +549,36 @@ export const CHECKFARM_INSTANCE: InstanceConfig = {
   // ngưỡng tương phản AA cho chữ cỡ thường, nên nó chỉ đi vào chỗ là hình.
   themeConfig: CHECKFARM_THEME_CONFIG,
   adaptive: DEFAULT_ADAPTIVE_CONFIG,
-  // `'all'` là trạng thái HÔM NAY, không phải kết luận: bản này chỉ mở cơ chế,
-  // chưa đổi hành vi app nào — đợt thử đang chạy trên đúng bản dựng này. Việc
-  // chọn module nào là quyền của nhà CheckFarm ở kho của họ, không phải quyền
-  // của tệp này (chủ sở hữu bàn giao 2026-09-10).
-  modules: 'all',
+  // ── DANH SÁCH CHỌN, và `chat` KHÔNG có trong đó ────────────────────────────
+  //
+  // Đây là **danh sách chọn**, không phải danh sách trừ — khai những module app
+  // này CÓ, chứ không khai những module nó bỏ. Hai cách viết ra cùng một tập hôm
+  // nay nhưng già đi ngược nhau: thêm một module mới vào nền thì danh sách chọn
+  // giữ nguyên hành vi (app không tự nhận thứ chưa ai xét), còn danh sách trừ tự
+  // bật nó lên cho mọi app mà không ai gõ một chữ nào.
+  //
+  // Vì sao `chat` bị tắt cho đợt nộp này — quyết định của chủ nhân 2026-09-14:
+  // Apple guideline 1.2 đòi ĐỦ BA cơ chế cho nội dung do người dùng tạo — chặn
+  // người, báo cáo nội dung, lọc nội dung. Đo trong kho này cùng ngày:
+  //
+  //   grep -rln "blockUser|reportUser|moderation" src/   →  0 tệp
+  //
+  //   (đọc ở SỐ TỆP, không đọc ở số dòng: một tệp nhắc chữ "moderation" trong
+  //   chú thích vẫn là 0 cơ chế)
+  //
+  // Trong khi đó CheckFarm khai `modules: 'all'` và `ChatHome` đứng thứ hai ở mọi
+  // bảng `slotPriority` — tức chat là thứ người xét duyệt gặp ngay trên thanh, ở
+  // mọi ảnh chụp màn hình. Guideline 1.2 là cửa TỪ CHỐI thẳng, không nhắc nhở; và
+  // một lượt từ chối làm chậm CẢ HAI app cùng pháp nhân.
+  //
+  // Đây là quyết định CHO ĐỢT NỘP, không phải bỏ chat: mã module `chat` còn nguyên
+  // trong kho, Aladin vẫn bật. Bật lại ở đây là thêm đúng một phần tử vào mảng
+  // này và một mục vào `tabs`, sau khi ba cơ chế đã có và đo được.
+  //
+  // Và giữ nguyên điều đã ghi từ trước: việc chọn module nào là quyền của nhà
+  // CheckFarm ở kho của họ (chủ sở hữu bàn giao 2026-09-10). Dòng này là trạng
+  // thái hôm nay của bản dựng đang thử, không phải một phán quyết vĩnh viễn.
+  modules: ['trace', 'work', 'join'],
 };
 
 // ---------------------------------------------------------------------------

@@ -256,8 +256,18 @@ const WorkHomeScreen: React.FC = () => {
 
             {loading ? (
               <StateView status="loading" loadingLines={3} />
-            ) : errorKind === 'network' ? (
-              <StateView status="offline" onRetry={reload} />
+            ) : errorKind === 'network' || errorKind === 'backend-off' ? (
+              /* `backend-off` = cổng runtime chưa sống, và cổng đó gộp "chưa cấu
+                 hình host" với "máy chủ 502" và "mạng rớt" (`runtimeGate.ts`).
+                 Cả ba đều là CHƯA HỎI ĐƯỢC, nên phải ra màn ngoại tuyến có nút
+                 thử lại — KHÔNG ra câu "chưa có tin việc nào", câu đó khẳng định
+                 một điều app chưa đo. */
+              <StateView
+                status="offline"
+                title="Chưa xem được tin việc"
+                message="Chưa nối được máy chủ việc làm, nên màn này chưa biết chợ đang có tin nào. Kiểm tra mạng rồi thử lại."
+                onRetry={reload}
+              />
             ) : errorKind === 'auth' ? (
               <StateView
                 status="error"

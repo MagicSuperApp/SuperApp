@@ -23,18 +23,20 @@ const TaskersScreen: React.FC = () => {
   const { taskers, total, loading, errorKind, usingMock, reload } = useTaskers({
     availableOnly: onlyAvailable,
   });
-  const { create, creating, errorCode } = useCreateContract();
+  const { create, creating } = useCreateContract();
 
   // Đặt 1 dịch vụ → tạo hợp đồng {offeringId} → mở ContractDetail (vào vòng đời pledge).
   const handleBook = async (offeringId: string) => {
-    const contract = await create({ offeringId });
-    if (contract) {
-      navigation.navigate('ContractDetail', { contractId: contract.id });
+    // Mã lỗi lấy từ CHÍNH lượt gọi này, không đọc `errorCode` trong state sau
+    // `await` (đó là bao đóng cũ) — xem `hooks/mutationOutcome.ts`.
+    const res = await create({ offeringId });
+    if (res.ok && res.value) {
+      navigation.navigate('ContractDetail', { contractId: res.value.id });
     } else {
       showError('Chưa đặt được',
-        errorCode === 'BACKEND_DISABLED'
+        res.code === 'BACKEND_DISABLED'
           ? 'Cần máy chủ AladinWork để tạo hợp đồng. Thử lại khi dịch vụ sống.'
-          : `Không tạo được hợp đồng${errorCode ? ` (${errorCode})` : ''}. Thử lại sau.`);
+          : `Không tạo được hợp đồng${res.code ? ` (${res.code})` : ''}. Thử lại sau.`);
     }
   };
 

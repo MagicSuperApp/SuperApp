@@ -27,7 +27,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator, FlatList, Linking, Pressable, RefreshControl,
-  StatusBar, StyleSheet, Text, View,
+  ScrollView, StatusBar, StyleSheet, Text, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -37,6 +37,7 @@ import RemoteImage from '../../../components/RemoteImage';
 import { GroundBackdrop } from '../components/layered/Organic';
 import { useTk } from '../../../i18n/keys';
 import { fetchAgriNews, hotNews, timeAgoVi, type NewsItem } from '../../../services/agriNewsService';
+import { showError } from '../../../utils/alert';
 import {
   NATURE, ORGANIC_CARD, ORGANIC_TILE, RADIUS, SPACE, SURFACE, TONE, TYPE,
 } from '../theme/depth';
@@ -127,10 +128,27 @@ const TraceNewsScreen: React.FC = () => {
           <Text style={TYPE.caption}>{tk('trace.news.loading')}</Text>
         </View>
       ) : news.length === 0 ? (
-        <View style={styles.center}>
+        /* ⛔ Bản trước dựng một `<View>` thuần ở đây trong khi câu hiện ra là
+           "Kéo màn hình xuống để thử lại" — `RefreshControl` chỉ gắn trên
+           `FlatList` bên dưới, mà nhánh này KHÔNG dựng `FlatList`. App bảo làm
+           một việc mà chính nó không nhận. Mẫu đúng: `DashboardScreen.tsx`. */
+        <ScrollView
+          contentContainerStyle={styles.centerContent}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TONE.primary} />
+          }
+        >
           <Text style={TYPE.cardTitle}>{tk('trace.news.failTitle')}</Text>
           <Text style={[TYPE.caption, styles.centerTxt]}>{tk('trace.news.failBody')}</Text>
-        </View>
+          <Pressable
+            onPress={onRefresh}
+            style={({ pressed }) => [styles.retryBtn, pressed && styles.rowOn]}
+            accessibilityRole="button"
+          >
+            <Icon name="arrows-rotate" size={14} color={TONE.primaryDeep} />
+            <Text style={styles.retryTxt}>{tk('trace.news.retry')}</Text>
+          </Pressable>
+        </ScrollView>
       ) : (
         <FlatList
           data={rows}
@@ -153,11 +171,24 @@ const TraceNewsScreen: React.FC = () => {
   );
 };
 
+/**
+ * Mở một bài báo.
+ *
+ * ⛔ `catch(() => {})` là cái vỏ im lặng: chạm vào tin mà KHÔNG GÌ xảy ra, và
+ * người dùng chỉ biết chạm lại. `openURL` ném ở ca thật — liên kết rỗng hoặc hỏng
+ * trong luồng RSS, và trên iOS là mọi lược đồ không có ứng dụng nào nhận.
+ */
+const openNewsLink = (link: string) => {
+  Linking.openURL(link).catch((e: any) => {
+    showError('Không mở được bài này', `Liên kết của bài này hỏng hoặc máy chưa có trình duyệt. (mã: ${e?.name ?? 'Error'})`);
+  });
+};
+
 /** Tin nóng nhất — ảnh tràn ngang, chữ nằm dưới. */
 const NewsHero: React.FC<{ item: NewsItem }> = ({ item }) => (
   <Pressable
     style={({ pressed }) => [styles.hero, pressed && styles.rowOn]}
-    onPress={() => Linking.openURL(item.link).catch(() => {})}
+    onPress={() => openNewsLink(item.link)}
   >
     <RemoteImage
       uri={item.imageUrl}
@@ -192,7 +223,7 @@ const NewsRow: React.FC<{ item: NewsItem; big?: boolean; flip?: boolean }> = ({
   return (
     <Pressable
       style={({ pressed }) => [styles.row, pressed && styles.rowOn]}
-      onPress={() => Linking.openURL(item.link).catch(() => {})}
+      onPress={() => openNewsLink(item.link)}
     >
       {flip ? null : img}
       <View style={styles.rowBody}>
@@ -217,7 +248,21 @@ const Meta: React.FC<{ item: NewsItem }> = ({ item }) => (
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: SURFACE.ground },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: SPACE.sm, paddingHorizontal: SPACE.xxl },
+  // Bản cho `contentContainerStyle`: ở đó `flex: 1` không dựng nổi vùng kéo —
+  // phải `flexGrow` để nội dung ngắn vẫn choán hết khung và kéo xuống được.
+  centerContent: {
+    flexGrow: 1, alignItems: 'center', justifyContent: 'center',
+    gap: SPACE.sm, paddingHorizontal: SPACE.xxl,
+  },
   centerTxt: { textAlign: 'center' },
+  retryBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACE.sm,
+    marginTop: SPACE.sm,
+    backgroundColor: SURFACE.raised, ...ORGANIC_TILE,
+    borderWidth: 1, borderColor: TONE.border,
+    paddingHorizontal: SPACE.lg, paddingVertical: SPACE.sm,
+  },
+  retryTxt: { fontSize: 14, fontWeight: '700', color: TONE.primaryDeep },
 
   header: {
     flexDirection: 'row', alignItems: 'center', gap: SPACE.md,

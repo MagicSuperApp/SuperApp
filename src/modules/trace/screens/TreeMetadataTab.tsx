@@ -4,7 +4,7 @@
 // Farmer input: variety / age / health / last harvest / notes / voice memo.
 // Spec: docs/build49/session-3-tree-metadata.md
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,10 @@ import {
   Alert,
   ActivityIndicator,
   Platform,
+  Keyboard,
+  KeyboardAvoidingView,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from 'react-native';
 // Icon: bo Font Awesome Solid tai qua Iconify (assets/icons -> icons.generated).
 // Them icon moi: `node scripts/icons.js <ten-fa6-solid>`.
@@ -39,7 +43,8 @@ import {
 } from '../types';
 import { saveTreeMetadata } from '../store/farmSlice';
 import { saveErrorMessage } from '../store/saveErrorMessage';
-import VoiceMemoButton from '../components/VoiceMemoButton';
+import VoiceMemoButton, { getExistingRecording } from '../components/VoiceMemoButton';
+import { KEYBOARD_INPUT_GAP, scrollOffsetToRevealInput } from '../../../utils/keyboardScroll';
 // Bật công khai + mã/QR truy xuất. Xem đầu tệp component về vì sao hai việc đó
 // nằm chung một thẻ: mã chỉ có nghĩa khi cây đã công khai.
 import TreePublicCard from '../components/TreePublicCard';
@@ -126,6 +131,25 @@ const TreeMetadataTab: React.FC<Props> = ({ tree }) => {
   const [saving, setSaving] = useState(false);
   const [dirty,  setDirty]  = useState(false);
 
+  /**
+   * Lượt gửi GẦN NHẤT đi tới đâu — KHÔNG suy được từ `dirty`.
+   *
+   * ⛔ `dirty` là "giá trị trên màn có khác kho cục bộ không", và `saveTreeMetadata`
+   * GHI CỤC BỘ cả khi máy chủ từ chối (`store/farmSlice.ts` — `AsyncStorage.setItem`
+   * chạy sau nhánh `pending`, và reducer `saveTreeMetadata.fulfilled` cập nhật
+   * `state.trees[].metadata` luôn). Nên sau một lượt gửi TRƯỢT, `current` vẫn khớp
+   * form ⟹ `dirty` về `false` ⟹ nhãn nút cũ đọc thành "Đã lưu lên máy chủ" trong
+   * khi máy chủ chưa có một chữ nào.
+   *
+   * Và ca nặng hơn: cây chưa khai gì thì `dirty = false` ngay từ khung hình ĐẦU,
+   * nên nút đọc "Đã lưu lên máy chủ" trước cả lượt gửi đầu tiên.
+   *
+   *   'idle'    — chưa gửi lần nào trong phiên này (hoặc vừa sửa lại).
+   *   'server'  — máy chủ đã nhận.
+   *   'pending' — mới nằm trên máy này, máy chủ CHƯA nhận.
+   */
+  const [saveState, setSaveState] = useState<'idle' | 'server' | 'pending'>('idle');
+
   // Mark dirty whenever any field changes.
   useEffect(() => {
     if (!current) {
@@ -144,7 +168,108 @@ const TreeMetadataTab: React.FC<Props> = ({ tree }) => {
       notes !== (current.notes ?? '') ||
       voiceMemoPath !== current.voice_memo_path;
     setDirty(changed);
+    // Người dùng vừa sửa tiếp thì nhãn "Đã lưu lên máy chủ" của lượt trước hết
+    // đúng. `pending` thì GIỮ — nó vẫn là sự thật đang có hiệu lực (máy chủ chưa
+    // nhận), và nó là thứ mở nút "thử lại".
+    if (changed) setSaveState(s => (s === 'server' ? 'idle' : s));
   }, [variety, varietyOther, ageYears, healthStatus, dateDay, dateMonth, dateYear, notes, voiceMemoPath, current]);
+
+  /**
+   * Nhặt lại BẢN GHI ÂM MỒ CÔI của cây này.
+   *
+   * Thẻ ghi âm chỉ đặt state trong tab; đường lưu thật là nút "Lưu thông tin".
+   * Thoát tab giữa hai việc đó thì tệp AAC vẫn nằm trong máy mà metadata không có
+   * đường nào biết — mở lại cây chỉ thấy "Bấm để ghi âm", rồi người dùng ghi đè
+   * lên chính đoạn mình vừa nói.
+   *
+   * Nhặt được thì `voiceMemoPath` đổi ⟹ `dirty` bật lên, đúng như nó phải thế:
+   * bản ghi này CHƯA vào hồ sơ cây.
+   */
+  useEffect(() => {
+    if (voiceMemoPath) return;
+    let alive = true;
+    getExistingRecording(tree.id).then(r => {
+      if (!alive || !r) return;
+      setVoiceMemoPath(r.uri);
+      setVoiceMemoDuration(r.duration_s);
+      setVoiceMemoRecordedAt(prev => prev ?? nowIso());
+    });
+    return () => { alive = false; };
+  }, [tree.id, voiceMemoPath]);
+
+  // ── Bàn phím ────────────────────────────────────────────────────────────────
+  // Ba chân, thiếu một thì ô "Ghi chú" và nút "Lưu thông tin" vẫn bị bàn phím phủ
+  // kín. Hình dạng chuẩn + lý do từng chân: `ActivityScreen.tsx` §"⌨️" và
+  // `utils/keyboardScroll.ts`. Cổng chặn tái phát: `TreeMetadataTab.keyboard.gate.test.ts`.
+  const scrollRef = useRef<ScrollView>(null);
+  const bottomBarRef = useRef<View>(null);
+
+  // Bàn phím có CHIẾM CHỖ THẬT không, và bao nhiêu. Cố ý không nuôi một biến
+  // bật/tắt: trợ năng "Prefer Cross-Fade Transitions" báo `screenY === 0`, và bàn
+  // phím phần cứng chỉ có thanh phím tắt — cả hai đều "mở" mà không che gì.
+  const [kbHeight, setKbHeight] = useState(0);
+  const keyboardOpen = kbHeight > 0;
+  const kbHeightRef = useRef(0);
+  kbHeightRef.current = kbHeight;
+  /** Thời lượng hoạt ảnh bàn phím do HỆ ĐIỀU HÀNH tự khai — không gõ tay một số. */
+  const kbDurationRef = useRef(0);
+  useEffect(() => {
+    // iOS chỉ bắn `Will*`, Android chỉ bắn `Did*` (`Keyboard.js:113,144`).
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const hien = Keyboard.addListener(showEvent, e => {
+      const { height = 0, screenY = 1 } = e.endCoordinates ?? {};
+      kbDurationRef.current = typeof e.duration === 'number' ? e.duration : 0;
+      setKbHeight(screenY === 0 || height <= 80 ? 0 : height);
+    });
+    const an = Keyboard.addListener(hideEvent, () => setKbHeight(0));
+    return () => { hien.remove(); an.remove(); };
+  }, []);
+
+  const scrollOffsetRef = useRef(0);
+  const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
+  }, []);
+
+  /**
+   * Đưa ô ĐANG GÕ vào tầm nhìn.
+   *
+   * Mốc là ĐÁY KHUNG NHÌN của vùng cuộn — tức ĐỈNH thanh nút — chứ không phải
+   * đỉnh bàn phím: thanh nút là anh em ngay sau vùng cuộn và không co, nên nó
+   * đứng CHÍNH GIỮA vùng cuộn và bàn phím. Nhắm vào đỉnh bàn phím là nhắm vào
+   * giữa thanh nút, và ô chỉ đổi từ bị-bàn-phím-che sang bị-nút-Lưu-che.
+   */
+  const scrollInputIntoView = useCallback(() => {
+    setTimeout(() => {
+      const kb = kbHeightRef.current;
+      const scroll = scrollRef.current;
+      const input = TextInput.State.currentlyFocusedInput();
+      if (kb <= 0 || !scroll || !input) return;
+      const bar = bottomBarRef.current;
+      if (!bar) return;
+      bar.measureInWindow((_sx, barTop, _sw, barHeight) => {
+        input.measureInWindow((_x, y, _w, h) => {
+          // Một nút đã rời khỏi cây trả số đo RỖNG `0,0,0,0`. Đọc nó như "ô đang
+          // ở mép trên" là cuộn theo số bịa — thà không cuộn.
+          if (h <= 0 || barHeight <= 0) return;
+          const target = scrollOffsetToRevealInput({
+            inputTop: y,
+            inputHeight: h,
+            visibleBottom: barTop,
+            currentOffset: scrollOffsetRef.current,
+            gap: KEYBOARD_INPUT_GAP,
+          });
+          if (target !== null) scroll.scrollTo({ y: target, animated: true });
+        });
+      });
+    }, kbDurationRef.current);
+  }, []);
+
+  // Lần chạm ĐẦU TIÊN: `onFocus` bắn TRƯỚC `keyboardWillShow`, nên lượt gọi ở đó
+  // thoát ngay ở cổng `kb <= 0`. Chạy lại khi đã có số đo thật.
+  useEffect(() => {
+    if (kbHeight > 0) scrollInputIntoView();
+  }, [kbHeight, scrollInputIntoView]);
 
   /** Ten giong (Ri6, Monthong...) la ten rieng nen giu nguyen; rieng "Khac" thi dich. */
   const varietyLabel = useMemo(() => {
@@ -168,7 +293,21 @@ const TreeMetadataTab: React.FC<Props> = ({ tree }) => {
   }, [dateDay, dateMonth, dateYear, tk]);
 
   const notesOver = notes.length > NOTES_MAX;
-  const canSave = !ageError && !dateError && !notesOver && dirty && !saving;
+  // `saveState === 'pending'` cũng mở nút: lượt trước chưa lên được máy chủ, mà
+  // lúc đó `dirty` đã về `false` vì kho cục bộ đã khớp form. Không có vế này thì
+  // nút tắt và người dùng không còn đường nào thử lại.
+  const canSave = !ageError && !dateError && !notesOver && (dirty || saveState === 'pending') && !saving;
+
+  /**
+   * Ba nhãn cho BA sự thật khác nhau — đừng gộp.
+   *   "Lưu thông tin"                      · có thứ chưa gửi, hoặc chưa gửi lần nào
+   *   "Đã lưu lên máy chủ"                 · máy chủ ĐÃ nhận, và form không đổi từ đó
+   *   "Chưa gửi lên máy chủ — bấm để thử lại" · mới nằm trên máy này
+   */
+  const saveLabelKey =
+    saveState === 'pending' ? 'trace.meta.savePending'
+      : (!dirty && saveState === 'server') ? 'trace.meta.saved'
+        : 'trace.meta.save';
 
   const handleSave = async () => {
     if (!canSave) return;
@@ -193,7 +332,9 @@ const TreeMetadataTab: React.FC<Props> = ({ tree }) => {
       };
 
       const saved = await dispatch(saveTreeMetadata({ treeId: tree.id, metadata })).unwrap();
-      setDirty(false);
+      // ⛔ KHÔNG hạ cờ `dirty` ở đây. Chỗ này chạy TRƯỚC nhánh xét `saved.pending`,
+      // nên nó hạ cờ cho cả lượt gửi đã TRƯỢT — popup nói "Mới lưu trên máy này",
+      // người dùng tắt popup, và nút phía sau lại khai đã lên máy chủ.
       // Máy chủ CÓ câu thì hiện câu của máy chủ. `voice_memo.reason` là câu tiếng
       // Việt viết cho người dùng, nói rõ phần ghi âm chưa có đường lên máy chủ —
       // thay nó bằng câu của app là bỏ đi phần duy nhất nói được cái gì đã vào và
@@ -208,11 +349,16 @@ const TreeMetadataTab: React.FC<Props> = ({ tree }) => {
       const body = (chinh: string) =>
         voiceMemoReason ? `${chinh}\n\n${voiceMemoReason}` : chinh;
       if (saved.pending) {
+        // Máy chủ CHƯA nhận: cờ `dirty` giữ nguyên, trạng thái gửi là `pending`,
+        // và nút đổi thành "Chưa gửi lên máy chủ — bấm để thử lại".
+        setSaveState('pending');
         showWarning(
           tk('trace.meta.savedLocalOnly'),
           body(`${tk('trace.meta.savedLocalOnlyBody')}\n\n${saved.pending.detail}`),
         );
       } else {
+        setDirty(false);
+        setSaveState('server');
         showSuccess(tk('trace.meta.saved'), body(tk('trace.meta.savedBody')));
       }
     } catch (e: any) {
@@ -240,10 +386,26 @@ const TreeMetadataTab: React.FC<Props> = ({ tree }) => {
 
   return (
     <View style={styles.root}>
+      {/* ⌨️ Ô "Ghi chú" nằm gần cuối màn, nên bàn phím phủ kín cả ô lẫn nút
+          "Lưu thông tin". Cần ĐỦ BA chân, thiếu một thì vẫn che:
+            1. `KeyboardAvoidingView` co vùng chứa (iOS không tự co cửa sổ).
+            2. Thanh nút TRONG LUỒNG, là anh em thứ hai bên trong bọc này —
+               `behavior="padding"` KHÔNG nâng nổi một con `position:'absolute'`,
+               vì Yoga định vị con tuyệt đối theo `measuredDimension − border`
+               (`ReactCommon/yoga/yoga/algorithm/AbsoluteLayout.cpp:203-210`).
+            3. Mỗi ô nhập gọi `scrollInputIntoView` ở `onFocus` — co vùng chứa
+               KHÔNG dời nội dung. */}
+      <KeyboardAvoidingView
+        style={styles.kav}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        onScroll={onScroll}
+        scrollEventThrottle={16}
       >
         {/* Công khai & mã truy xuất — đặt TRÊN CÙNG có chủ ý: đây là điều kiện để
             quả của cây lọt vào tầm tra cứu của người mua, mà trước bản này app
@@ -283,6 +445,7 @@ const TreeMetadataTab: React.FC<Props> = ({ tree }) => {
               value={varietyOther}
               onChangeText={setVarietyOther}
               maxLength={64}
+              onFocus={scrollInputIntoView}
             />
           )}
 
@@ -296,6 +459,7 @@ const TreeMetadataTab: React.FC<Props> = ({ tree }) => {
             value={ageYears}
             onChangeText={(v) => setAgeYears(v.replace(/[^0-9]/g, ''))}
             maxLength={3}
+            onFocus={scrollInputIntoView}
           />
           {ageError && <Text style={styles.errorText}>{tk('trace.meta.ageError', { range: ageError })}</Text>}
 
@@ -337,6 +501,7 @@ const TreeMetadataTab: React.FC<Props> = ({ tree }) => {
               value={dateDay}
               onChangeText={(v) => setDateDay(v.replace(/[^0-9]/g, '').slice(0, 2))}
               maxLength={2}
+              onFocus={scrollInputIntoView}
             />
             <Text style={styles.dateSep}>/</Text>
             <TextInput
@@ -347,6 +512,7 @@ const TreeMetadataTab: React.FC<Props> = ({ tree }) => {
               value={dateMonth}
               onChangeText={(v) => setDateMonth(v.replace(/[^0-9]/g, '').slice(0, 2))}
               maxLength={2}
+              onFocus={scrollInputIntoView}
             />
             <Text style={styles.dateSep}>/</Text>
             <TextInput
@@ -357,6 +523,7 @@ const TreeMetadataTab: React.FC<Props> = ({ tree }) => {
               value={dateYear}
               onChangeText={(v) => setDateYear(v.replace(/[^0-9]/g, '').slice(0, 4))}
               maxLength={4}
+              onFocus={scrollInputIntoView}
             />
             <TouchableOpacity
               style={styles.todayBtn}
@@ -389,6 +556,7 @@ const TreeMetadataTab: React.FC<Props> = ({ tree }) => {
             onChangeText={setNotes}
             maxLength={NOTES_MAX + 50}  // soft cap for warning
             textAlignVertical="top"
+            onFocus={scrollInputIntoView}
           />
           <View style={styles.counterRow}>
             <Text style={[styles.counterText, notesOver && { color: COLORS.error }]}>
@@ -407,11 +575,19 @@ const TreeMetadataTab: React.FC<Props> = ({ tree }) => {
           />
         </View>
 
-        <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* Save button — sticky bottom (nhấc lên khỏi mép bằng safe-area insets) */}
-      <View style={[styles.bottomBar, { paddingBottom: 10 + insets.bottom }]}>
+      {/* Thanh nút — anh em thứ hai TRONG `KeyboardAvoidingView`, nằm trong luồng.
+          Khối đệm `height: 100` cuối vùng cuộn đã bỏ cùng lúc: nó chỉ tồn tại để
+          chừa chỗ cho một thanh nút PHỦ LÊN vùng cuộn. Thanh nút không phủ nữa thì
+          nó thành một khoảng trống chết ngay trên đỉnh bàn phím. */}
+      <View
+        ref={bottomBarRef}
+        style={[
+          styles.bottomBar,
+          { paddingBottom: keyboardOpen ? 10 : 10 + insets.bottom },
+        ]}
+      >
         <TouchableOpacity
           style={[styles.saveBtn, !canSave && styles.saveBtnDisabled]}
           onPress={handleSave}
@@ -423,13 +599,14 @@ const TreeMetadataTab: React.FC<Props> = ({ tree }) => {
           ) : (
             <>
               <Icon name="floppy-disk" size={19} color={COLORS.white} />
-              <Text style={styles.saveBtnText}>
-                {tk(dirty ? 'trace.meta.save' : 'trace.meta.saved')}
+              <Text style={styles.saveBtnText} numberOfLines={2}>
+                {tk(saveLabelKey)}
               </Text>
             </>
           )}
         </TouchableOpacity>
       </View>
+      </KeyboardAvoidingView>
 
       {/* Variety modal */}
       <Modal
@@ -566,9 +743,16 @@ const styles = StyleSheet.create({
   counterRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 4, marginBottom: 4 },
   counterText: { fontSize: 11, color: COLORS.textMuted },
 
+  kav: { flex: 1 },
+  // ⛔ KHÔNG đặt lại `position: 'absolute', bottom: 0` ở đây.
+  //
+  // Thanh nút là con của `KeyboardAvoidingView`. `behavior="padding"` đặt
+  // `paddingBottom` lên chính bọc đó, còn Yoga định vị con TUYỆT ĐỐI theo
+  // `measuredDimension − border` — KHÔNG trừ padding
+  // (`ReactCommon/yoga/yoga/algorithm/AbsoluteLayout.cpp:203-210`). Ở dạng tuyệt
+  // đối, bàn phím mở ra thì vùng cuộn co đúng mà thanh nút đứng nguyên dưới bàn
+  // phím, và ô "Ghi chú" vẫn không gõ được.
   bottomBar: {
-    position: 'absolute',
-    bottom: 0, left: 0, right: 0,
     paddingHorizontal: 20,
     // paddingBottom động = 10 + insets.bottom (áp inline). Nút gọn hơn, không sát mép.
     paddingTop: 10,

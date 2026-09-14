@@ -73,13 +73,25 @@ describe('bàn phím không được che ô nhập vật tư', () => {
     // lúc đó `behavior="padding"` không chạm tới nó — bàn phím lại che, mà cả hai
     // ca kiểm trên vẫn xanh. Phép đo: thanh nút phải xuất hiện GIỮA
     // `<KeyboardAvoidingView` và `</KeyboardAvoidingView>`.
-    const trongBoc = SRC.slice(
-      SRC.indexOf('<KeyboardAvoidingView'),
-      SRC.indexOf('</KeyboardAvoidingView>'),
-    );
+    // ⛔ Kiểm hai mốc CÓ THẬT trước khi cắt. `String.indexOf` trả `-1` khi không
+    // thấy, và `slice(i, -1)` thì cắt tới GẦN CUỐI TỆP thay vì báo hỏng — tức
+    // mất hẳn thẻ đóng, phép đo vẫn trả một giá trị hợp lệ và vẫn xanh. Đó là
+    // trạng thái thứ ba (KHÔNG ĐO ĐƯỢC) đội lốt trạng thái "khớp". Đo 15/09/2026:
+    // ở bản trước hai đột biến "đưa thanh nút ra ngoài bọc" và "xoá thẻ đóng"
+    // đều SỐNG SÓT ca này.
+    const moBoc = SRC.indexOf('<KeyboardAvoidingView');
+    const dongBoc = SRC.indexOf('</KeyboardAvoidingView>');
+    expect(moBoc).toBeGreaterThanOrEqual(0);
+    expect(dongBoc).toBeGreaterThan(moBoc);
+
+    const trongBoc = SRC.slice(moBoc, dongBoc);
     expect(trongBoc).toContain('styles.bottomBar');
     // …và SAU `</ScrollView>`, tức là anh em thứ hai trong luồng chứ không phải
     // một khối lọt vào bên trong vùng cuộn (ở đó nó cuộn theo nội dung và biến mất).
+    // Cùng cái bẫy, một tầng sâu hơn: vùng cuộn bị đẩy RA NGOÀI bọc thì
+    // `indexOf('</ScrollView>')` trả `-1`, và mọi phép `toBeGreaterThan(-1)` bên
+    // dưới đúng một cách vô nghĩa. Khai sự tồn tại TRƯỚC, so thứ tự SAU.
+    expect(trongBoc).toContain('</ScrollView>');
     expect(trongBoc.indexOf('styles.bottomBar')).toBeGreaterThan(trongBoc.indexOf('</ScrollView>'));
   });
 

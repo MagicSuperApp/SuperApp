@@ -46,6 +46,7 @@ import LoginSuccessOverlay from '../components/LoginSuccessOverlay';
 import LanguagePickerModal from '../components/LanguagePickerModal';
 import { LANGUAGES, t, tf, useLanguage } from '../i18n';
 import { DEFAULT_INSTANCE } from '../config/instance.config';
+import { LinearWash, deepen, tint } from '../shared/components/SoftGradient';
 
 const PHOENIX_USERS_KEY = '@phoenixkey/users';
 const ACTIVE_USERNAME_KEY = '@phoenixkey/active_username';
@@ -69,6 +70,74 @@ const BLUE = {
   glow: 'rgba(168, 212, 176, 0.35)',
   glowSoft: 'rgba(232, 245, 235, 0.45)',
 };
+
+// ── Hai chặng chuyển sắc của khu HERO ───────────────────────────────────────
+//
+// Trước bản này khu hero là HAI MẢNG ĐẶC chồng nhau: `heroBase` màu `deep`, rồi
+// `heroOverlay` màu `primary` phủ lên ở độ đục 0,5. Kết quả là một màu phẳng —
+// đúng bằng trung bình của hai màu — nên cả khối đọc ra "một ô màu", không ra
+// "một bề mặt có ánh sáng". Nay là một chuyển sắc chéo, theo đúng luật "nhẹ"
+// của `trace/theme/depth.ts`: hai chặng CÙNG tông, lệch chưa tới một bậc sáng,
+// để chữ trắng đọc được ở MỌI vị trí trên nền chứ không chỉ ở chỗ tối.
+//
+// ── Vì sao TÍNH ra chứ không gõ cứng hai hex ────────────────────────────────
+// `BLUE.deep`/`BLUE.primary` đọc từ `WORK_THEME`, tức từ app đang chạy. Gõ một
+// hex xanh thứ ba vào đây là dựng lại đúng cái bẫy mà `trace/theme/depth.ts`
+// vừa gỡ: một bảng màu SONG SONG, đứng im ở màu của app đầu tiên trong khi phần
+// còn lại của màn đổi theo instance. `deepen` suy chặng cuối TỪ chặng đầu, nên
+// dù app nào chạy thì hai chặng cũng vẫn cùng tông với nhau.
+//
+// ── Vì sao không lấy thẳng cặp `primary → deep` ─────────────────────────────
+// Với bảng màu Aladin, `primary` và `deep` lệch nhau 1,80 lần — vượt ngưỡng 1,5
+// mà `trace/theme/gradient.test.ts` đặt cho cả bộ chuyển sắc. Nó sẽ thôi là
+// "chuyển sắc nhẹ" và thành một vệt sáng chạy ngang khu hero. `deepen` giữ tỉ lệ
+// ở ~1,30 cho MỌI màu đưa vào, nên luật ấy đứng với mọi instance chứ không chỉ
+// với bảng màu hiện tại.
+//
+// ── Vì sao chặng ĐẦU cũng đã tối đi một bậc ─────────────────────────────────
+// Chặng đầu KHÔNG phải `BLUE.primary` trần. Mảng phẳng hiện nay là trung bình
+// của `deep` và `primary` (do lớp phủ 0,5), tức đã tối hơn `primary` — nên lấy
+// thẳng `primary` làm chặng sáng nhất là làm NHẠT nền đi so với bản đang chạy,
+// và chữ trên đó tương phản kém hơn hôm nay. Nhãn `eyebrow` (10px, màu
+// `BLUE.pale`) là chỗ mỏng nhất: trên mảng phẳng hiện nay nó đo 4,9:1, còn trên
+// `primary` trần chỉ còn 3,9:1.
+//
+// `deepen(primary, 0,12)` cho `#266B32` — gần như trùng mảng phẳng hôm nay
+// (`#256B32`). Nhờ vậy lượt này KHÔNG làm chữ nào tệ đi: chặng sáng nhất bằng
+// nền cũ, mọi chỗ còn lại tối hơn, tức tương phản bằng hoặc hơn.
+//
+// Chặng cuối ĐÃ HẠ từ 0,24 xuống 0,18. Bản 0,24 rơi vào `#215D2B`: đo thì vẫn
+// "nhẹ" (hai chặng lệch 1,21 lần, dưới ngưỡng 1,5), nhưng nó dồn toàn bộ phần
+// tối vào MỘT GÓC dưới-phải, mà góc ấy lại là chỗ khu hero giáp tấm trắng — một
+// vùng sậm nằm cạnh một mép trắng thì đọc ra vết bẩn chứ không ra ánh sáng.
+// 0,18 giữ cùng hướng sáng mà hai chặng chỉ còn lệch 1,10 lần.
+//
+// Số đo với bảng màu Aladin, tính theo WCAG, ở chặng SÁNG NHẤT (chỗ tệ nhất):
+//   · chữ TRẮNG: 6,50:1 — qua AA cho cả cỡ chữ nhỏ. Mảng phẳng hôm nay đo
+//     6,51:1, tức lượt này đổi đúng 0,01 — nằm dưới mức phân biệt được.
+//   · `BLUE.pale` (nhãn `eyebrow`): 4,75:1 — BẰNG mảng phẳng hôm nay, qua AA.
+const HERO_FROM = deepen(BLUE.primary, 0.12);
+const HERO_TO = deepen(BLUE.primary, 0.18);
+
+// ── Nền tấm trắng ───────────────────────────────────────────────────────────
+//
+// Việc cần làm: chỗ nối giữa hero xanh và tấm trắng đừng là một đường cắt phẳng.
+//
+// Bản trước làm bằng HAI VỆT LOANG TRÒN ở hai góc trên (lối Mica của module Trò
+// chuyện). Nó cho ra đúng thứ vừa bị báo lỗi — *"mảng màu xanh bên phải, nhìn
+// như màn hình bị hỏng"*: một vệt tròn trên nền trắng, dù nhạt tới đâu, vẫn đọc
+// ra một VẾT Ố nằm ở một góc, vì mắt tìm ra mép của nó. Lối Mica chỉ đứng được
+// trên nền đã có màu, không đứng được trên nền trắng.
+//
+// Nay là một chuyển sắc THẲNG chạy dọc cả tấm: xanh rất nhạt ở mép trên (nơi
+// giáp hero) tan đều xuống trắng hẳn ở dưới (nơi có chữ và thẻ). Không mép, nên
+// không có gì để nhận ra thành một vết.
+//
+// `tint` pha ra hex ĐẶC thay vì phủ một lớp alpha — lý do ở chính `tint`.
+// 0,05 là mức để chặng trên đo 1,03 so với trắng: mắt thấy tấm "ấm lên" ở mép
+// giáp hero, nhưng không ai chỉ được ra đâu là chỗ màu bắt đầu.
+const SHEET_FROM = tint(COLORS.bg, BLUE.primary, 0.05);
+const SHEET_TO = COLORS.bg;
 const ACCENT_ORANGE = '#E08C3A';
 
 // ── Mock events / tin tức (sẽ đổi sang API thật sau) ────────────────────────
@@ -340,13 +409,17 @@ const LoginScreen = () => {
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor={BLUE.deep} />
+      {/* Thanh trạng thái lấy ĐÚNG chặng đầu của hero, không lấy `BLUE.deep`:
+          chặng đầu là màu ở mép TRÊN-TRÁI (góc 145°), tức ngay dưới thanh. Để
+          `deep` ở đây là một đường nối sậm hơn chạy ngang đỉnh màn. */}
+      <StatusBar barStyle="light-content" backgroundColor={HERO_FROM} />
 
       {/* ── HERO ZONE ───────────────────────────────────── */}
       <View style={styles.hero}>
-        {/* Layered solid color base */}
-        <View style={styles.heroBase} />
-        <View style={styles.heroOverlay} />
+        {/* Nền hero: chuyển sắc chéo hai chặng cùng tông (xem HERO_FROM/HERO_TO).
+            Lớp này tự trải kín khu hero và không nhận cú chạm; mọi thứ bên dưới
+            trong cây — blob, sao, chữ — vẽ đè lên nó. */}
+        <LinearWash from={HERO_FROM} to={HERO_TO} angle={145} />
 
         {/* Decorative blob circles */}
         <Animated.View
@@ -452,6 +525,12 @@ const LoginScreen = () => {
       </View>
 
       {/* ── SHEET ─────────────────────────────────────── */}
+      {/* Bọc thêm MỘT lớp quanh ScrollView: nền phải ĐỨNG YÊN khi nội dung cuộn
+          (đặt nó trong `contentContainerStyle` thì nó trôi theo và biến mất ngay
+          dòng thứ hai). Lớp bọc giữ bo góc + `overflow: 'hidden'`, còn ScrollView
+          nay trong suốt để thấy được chuyển sắc phía sau. */}
+      <View style={styles.sheetWrap}>
+        <LinearWash from={SHEET_FROM} to={SHEET_TO} angle={180} />
       <ScrollView
         style={styles.sheet}
         contentContainerStyle={styles.sheetContent}
@@ -568,6 +647,7 @@ const LoginScreen = () => {
           </Text>
         </View>
       </ScrollView>
+      </View>
 
       {/* Hiệu ứng đăng nhập thành công — phủ toàn màn, chạy 1 nhịp chớp mắt rồi
           reset về Main. */}
@@ -660,9 +740,6 @@ const BioButton: React.FC<{
           />
         </TouchableOpacity>
       </Animated.View>
-      <Text style={styles.bioBtnLabel} allowFontScaling={false}>
-        {t('ĐĂNG NHẬP BẰNG SINH TRẮC')}
-      </Text>
     </>
   );
 };
@@ -742,17 +819,6 @@ const styles = StyleSheet.create({
     height: HERO_HEIGHT,
     overflow: 'hidden',
   },
-  heroBase: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: BLUE.deep,
-  },
-  heroOverlay: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: BLUE.primary,
-    opacity: 0.5,
-  },
-
   // Decorative blobs
   blob: {
     position: 'absolute',
@@ -849,12 +915,21 @@ const styles = StyleSheet.create({
   },
 
   // ── SHEET ────────────────────────────────────────────
-  sheet: {
+  // Lớp bọc: giữ hình dáng của tấm (bo góc trên, kéo lên đè mép hero) và CẮT
+  // TRÀN, để nền không lòi ra ngoài bốn góc.
+  sheetWrap: {
     flex: 1,
-    backgroundColor: COLORS.bg,
     marginTop: -24,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
+    overflow: 'hidden',
+    backgroundColor: COLORS.bg,
+  },
+  // ScrollView nay TRONG SUỐT: nền của tấm do <LinearWash> ở lớp bọc vẽ.
+  // Đặt lại một màu đặc ở đây là xoá mất hai vệt loang.
+  sheet: {
+    flex: 1,
+    backgroundColor: 'transparent',
   },
   sheetContent: {
     paddingHorizontal: 22,
@@ -879,6 +954,7 @@ const styles = StyleSheet.create({
     width: BIO_BTN_SIZE, height: BIO_BTN_SIZE,
     alignItems: 'center', justifyContent: 'center',
     display: 'flex',
+    marginBottom: 16,
   },
   bioBtn: {
     width: BIO_BTN_SIZE - 2, height: BIO_BTN_SIZE - 2,

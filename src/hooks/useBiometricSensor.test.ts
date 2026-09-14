@@ -169,10 +169,17 @@ describe('độ phủ — không màn nào được tự đo cảm biến một 
     expect(found.sort()).toEqual(allowed.sort());
   });
 
-  // Ba màn GIỮ trạng thái cảm biến. Cả ba trước 2026-09-11 đều mang đúng một
-  // hình dạng: `useEffect(..., [])` đo một lần. Cả ba phải đi qua hook.
+  // Các màn GIỮ trạng thái cảm biến. Ba màn đầu, trước 2026-09-11, đều mang đúng
+  // một hình dạng: `useEffect(..., [])` đo một lần. Tất cả phải đi qua hook.
+  //
+  // `LoginNetworkScreen` thêm vào khi nó thay `LoginScreen` ở tuyến 'Login'. Cả
+  // hai cùng có mặt trong danh sách là CỐ Ý: màn cũ vẫn nằm trong kho và vẫn đổi
+  // lại được bằng một dòng, nên nó vẫn phải chịu cùng luật. Bỏ màn mới ra khỏi
+  // đây thì luật này canh một màn không ai mở nữa, còn màn người dùng thật sự
+  // thấy thì không ai canh.
   const stateful = [
     'screens/LoginScreen.tsx',
+    'screens/LoginNetworkScreen.tsx',
     'features/auth/screens/SignUpBiometricScreen.tsx',
     'screens/BiometricSettings.tsx',
   ];

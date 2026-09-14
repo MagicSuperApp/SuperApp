@@ -37,6 +37,21 @@ const ExportIdentityScreen = () => {
   const [fixedAddr, setFixedAddr] = useState<string | null>(null);
   const [activeAddr, setActiveAddr] = useState<string | null>(null);
   const [activeIdx, setActiveIdx] = useState(1);
+  /**
+   * VÌ SAO ô ví trống — hai ca khác hẳn nhau, và trước bản này chúng ra CÙNG một câu.
+   *
+   * ⛔ ĐÍNH CHÍNH 15/09/2026. Ba lời gọi derive bên dưới từng nằm trong `catch {}`
+   * RỖNG, nên mọi lần hỏng đều để `fixedAddr` ở `null`, và màn in "Chưa có ví —
+   * vào Xuất cụm 24 từ để khởi tạo gốc ví trước". Đó là một lời nói dối về trạng
+   * thái: người dùng CÓ ví, có tiền trong đó, chỉ là máy vừa không dựng lại được
+   * địa chỉ. Câu ấy còn đẩy họ đi làm đúng việc nguy hiểm nhất — mở màn 24 từ để
+   * "khởi tạo" một cái gốc ví đã tồn tại.
+   *   · `null`      — chưa đo xong.
+   *   · `no_wallet` — KHÔNG có Master_KEK trên máy: đúng là chưa có ví.
+   *   · `error`     — có KEK nhưng derive ném: có ví, máy chưa đọc được.
+   * Cùng ba trạng thái và cùng tên với `addrReason` ở `screens/AccountScreen.tsx`.
+   */
+  const [addrReason, setAddrReason] = useState<'no_wallet' | 'error' | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -44,13 +59,32 @@ const ExportIdentityScreen = () => {
       try { setHwPub(await ownerPublicKey()); } catch { /* chưa có khoá HW */ }
 
       const kek = await getStoredMasterKek();
-      if (kek) {
-        const idx = await getActiveAccountIndex();
-        setActiveIdx(idx);
-        try { setTaadPub(await taad.deriveTaadPubkey(kek)); } catch {}
-        try { setFixedAddr(await taad.deriveWalletAddress(kek, 0, WALLET_NETWORK)); } catch {}
-        try { setActiveAddr(await taad.deriveWalletAddress(kek, idx, WALLET_NETWORK)); } catch {}
+      if (!kek) {
+        setAddrReason('no_wallet');
+        return;
       }
+      const idx = await getActiveAccountIndex();
+      setActiveIdx(idx);
+      // Ba lượt derive vẫn ĐỘC LẬP: một cái hỏng không được giết hai cái kia, vì
+      // mỗi ô hiện được là một ô người dùng dùng được. Cái đổi là lần hỏng nay
+      // ĐỂ LẠI DẤU thay vì biến mất — `failed` bật lên thì câu cuối màn nói đúng
+      // rằng máy chưa đọc được ví, không nói rằng ví không tồn tại.
+      let failed = false;
+      const derive = async (run: () => Promise<void>, what: string) => {
+        try { await run(); } catch (e) {
+          failed = true;
+          console.warn(`[ExportIdentity] derive ${what} lỗi:`, e);
+        }
+      };
+      await derive(async () => setTaadPub(await taad.deriveTaadPubkey(kek)), 'taadPubkey');
+      await derive(async () => setFixedAddr(await taad.deriveWalletAddress(kek, 0, WALLET_NETWORK)), 'walletAddress(0)');
+      await derive(async () => setActiveAddr(await taad.deriveWalletAddress(kek, idx, WALLET_NETWORK)), `walletAddress(${idx})`);
+      setAddrReason(failed ? 'error' : null);
+    } catch (e) {
+      // Lượt đọc DID / KEK hỏng cũng là "có thể có ví mà chưa đọc được", không phải
+      // "chưa có ví". Trước bản này nhánh này không tồn tại và lỗi bay lên trên.
+      console.warn('[ExportIdentity] nạp danh tính lỗi:', e);
+      setAddrReason('error');
     } finally {
       setLoading(false);
     }
@@ -92,9 +126,15 @@ const ExportIdentityScreen = () => {
           <Field icon="wallet" label="Ví cố định (account 0)" value={fixedAddr} onCopy={() => copy(fixedAddr, 'ví cố định')} />
           <Field icon="wallet-outline" label={`Ví hoạt động (account ${activeIdx})`} value={activeAddr} onCopy={() => copy(activeAddr, 'ví hoạt động')} />
 
-          {!fixedAddr && (
-            <Text style={styles.hint}>
+          {!fixedAddr && addrReason === 'no_wallet' && (
+            <Text style={styles.hint} testID="export-identity-no-wallet">
               Chưa có ví — vào "Xuất cụm 24 từ" để khởi tạo gốc ví trước.
+            </Text>
+          )}
+          {!fixedAddr && addrReason === 'error' && (
+            <Text style={styles.hint} testID="export-identity-read-failed">
+              Máy này CÓ ví nhưng chưa đọc được địa chỉ. Đừng khởi tạo lại gốc ví —
+              ví của bạn vẫn còn. Hãy đóng app rồi mở lại; còn lỗi thì gửi báo cáo.
             </Text>
           )}
         </ScrollView>

@@ -41,22 +41,56 @@ const OK = {
 
 beforeEach(() => { jest.clearAllMocks(); (AsyncStorage as any).clear?.(); });
 
-describe('checkDeviceKeyRisk — BA trạng thái, không phải hai', () => {
-  it('đã bật khoá thiết bị + 0 người khôi phục → at-risk', async () => {
-    getHealth.mockResolvedValue({ ...OK, hasDeviceKey: true, guardianCount: 0 });
-    await expect(checkDeviceKeyRisk()).resolves.toEqual({ state: 'at-risk' });
+describe('checkDeviceKeyRisk — đo ĐÃ LƯU 24 TỪ, không đo số người bảo hộ', () => {
+  it('chưa lưu 24 từ → at-risk, và nói rõ đã đo đại lượng nào', async () => {
+    getHealth.mockResolvedValue({ ...OK, seedExported: false, exportedAt: null });
+    await expect(checkDeviceKeyRisk()).resolves.toEqual({
+      state: 'at-risk', why: 'seed-not-saved',
+    });
   });
 
-  it('đã bật khoá thiết bị + có người khôi phục → safe', async () => {
-    getHealth.mockResolvedValue({ ...OK, hasDeviceKey: true, guardianCount: 1 });
+  it('đã lưu 24 từ → safe, kể cả khi KHÔNG có người bảo hộ nào', async () => {
+    getHealth.mockResolvedValue({ ...OK, seedExported: true, guardianCount: 0 });
     await expect(checkDeviceKeyRisk()).resolves.toEqual({ state: 'safe' });
   });
 
-  it('CHƯA bật khoá thiết bị → safe, dù 0 người khôi phục', async () => {
-    // Không có khoá thiết bị thì không có đường đóng băng nào để mà lo. Doạ họ ở
-    // đây là dạy người dùng bỏ qua cảnh báo.
-    getHealth.mockResolvedValue({ ...OK, hasDeviceKey: false, guardianCount: 0 });
-    await expect(checkDeviceKeyRisk()).resolves.toEqual({ state: 'safe' });
+  // ══ Bài đắt nhất của tệp này ═══════════════════════════════════════════════
+  // Đây đúng là ca bản cũ trả SAI: `hasDeviceKey && guardianCount === 0` cho ra
+  // `safe` ngay khi có một người bảo hộ, nên lời nhắc TẮT cho người chưa bao giờ
+  // thấy 24 từ của mình. Mà đường khôi phục bằng người bảo hộ chưa chạy tới cuối
+  // (`screens/GuardianScreen.tsx:181` tự khai với người dùng), nên "an toàn" đó
+  // là một lời hứa không có gì đỡ.
+  it('ĐÃ ghi danh người bảo hộ NHƯNG chưa lưu 24 từ → VẪN at-risk', async () => {
+    getHealth.mockResolvedValue({
+      ...OK, seedExported: false, exportedAt: null,
+      hasDeviceKey: true, guardianCount: 1,
+    });
+    await expect(checkDeviceKeyRisk()).resolves.toEqual({
+      state: 'at-risk', why: 'seed-not-saved',
+    });
+  });
+
+  it('ghi danh NHIỀU người bảo hộ vẫn không hạ được mức rủi ro', async () => {
+    // Chốt chiều "càng nhiều càng an toàn". Nếu ai đó dựng lại một ngưỡng kiểu
+    // `guardianCount >= 2 → safe`, bài này đỏ.
+    getHealth.mockResolvedValue({
+      ...OK, seedExported: false, exportedAt: null, guardianCount: 5,
+    });
+    await expect(checkDeviceKeyRisk()).resolves.toEqual({
+      state: 'at-risk', why: 'seed-not-saved',
+    });
+  });
+
+  it('CHƯA bật khoá thiết bị mà chưa lưu 24 từ → vẫn at-risk', async () => {
+    // Bản cũ trả `safe` ở đây. Mất máy thì Master_KEK đi theo máy dù có bật khoá
+    // thiết bị hay không — `hasDeviceKey` không phải đường khôi phục.
+    getHealth.mockResolvedValue({
+      ...OK, seedExported: false, exportedAt: null,
+      hasDeviceKey: false, guardianCount: 0,
+    });
+    await expect(checkDeviceKeyRisk()).resolves.toEqual({
+      state: 'at-risk', why: 'seed-not-saved',
+    });
   });
 
   // Ba bài dưới đây là phần đắt nhất: "chưa hỏi được" KHÔNG được rơi vào một
@@ -107,9 +141,30 @@ describe('checkDeviceKeyRisk — BA trạng thái, không phải hai', () => {
     await expect(checkDeviceKeyRisk()).resolves.toEqual({ state: 'unknown', why: 'server' });
   });
 
-  it('bản máy chủ cũ VẮNG trường → unknown/server, KHÔNG đọc vắng thành "bằng không"', async () => {
-    getHealth.mockResolvedValue({ seedExported: true, activeKeyCount: 1 });
+  it('bản máy chủ cũ VẮNG `seedExported` → unknown/server, KHÔNG đọc vắng thành "chưa lưu"', async () => {
+    // Vắng trường là "chưa hỏi được". Đọc nó thành `false` là biến một lần
+    // không-đo-được thành một khẳng định về người dùng.
+    getHealth.mockResolvedValue({
+      activeKeyCount: 1, guardianCount: 2, hasDeviceKey: true, requiresDeviceCosign: true,
+    });
     await expect(checkDeviceKeyRisk()).resolves.toEqual({ state: 'unknown', why: 'server' });
+  });
+
+  it('`seedExported` không phải boolean → unknown/server', async () => {
+    // Máy chủ trả chuỗi `"false"` thì `if (h.seedExported)` đọc ra TRUE — một
+    // chuỗi không rỗng là thật trong JS. Chốt kiểu, đừng chốt độ-thật.
+    getHealth.mockResolvedValue({ ...OK, seedExported: 'false' });
+    await expect(checkDeviceKeyRisk()).resolves.toEqual({ state: 'unknown', why: 'server' });
+  });
+
+  it('vắng `guardianCount`/`hasDeviceKey` KHÔNG còn chặn câu trả lời', async () => {
+    // Thu hẹp phép kiểm hình dạng là CÓ CHỦ Ý: hai trường đó không đi vào quyết
+    // định nữa, nên đòi chúng có mặt là tạo một cớ trả 'unknown' — tức im lặng
+    // ở đúng ca đang cần nói.
+    getHealth.mockResolvedValue({ seedExported: false, activeKeyCount: 1 });
+    await expect(checkDeviceKeyRisk()).resolves.toEqual({
+      state: 'at-risk', why: 'seed-not-saved',
+    });
   });
 });
 

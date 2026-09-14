@@ -1077,6 +1077,15 @@ export const SCREENS: PhraseMap = {
     zh: '尚无钱包 — 请先到“导出 24 个助记词”创建钱包根。',
     ja: 'ウォレットがありません — まず「24語のフレーズを書き出す」でウォレットのルートを作成してください。',
   },
+  // Câu trên chỉ được nói khi máy THẬT SỰ chưa có gốc ví. Trước 15/09/2026 mọi lần
+  // derive hỏng cũng rơi vào đúng câu đó (`catch {}` rỗng ở
+  // `screens/ExportIdentityScreen.tsx`) — tức mời người đang CÓ ví đi khởi tạo lại
+  // gốc ví. Câu dưới là ca còn lại, và nó phải nói rõ ĐỪNG khởi tạo lại.
+  'Máy này CÓ ví nhưng chưa đọc được địa chỉ. Đừng khởi tạo lại gốc ví — ví của bạn vẫn còn. Hãy đóng app rồi mở lại; còn lỗi thì gửi báo cáo.': {
+    en: 'This device DOES have a wallet but could not read the address. Do not create a new wallet root — your wallet is still there. Close the app and open it again; if it still fails, send an error report.',
+    zh: '本机确实有钱包，只是没能读出地址。请不要重新创建钱包根 —— 你的钱包还在。请关闭应用后重新打开；若仍出错，请发送错误报告。',
+    ja: 'この端末にウォレットはありますが、アドレスを読み取れませんでした。ウォレットのルートを作り直さないでください。ウォレットは残っています。アプリを一度閉じて開き直し、それでも失敗する場合はエラー報告をお送りください。',
+  },
   'Hãy chắc chắn bạn đã ghi lại đủ 24 từ đúng thứ tự. Mất cụm từ = mất khả năng khôi phục nếu hỏng/mất máy.': {
     en: 'Make sure you have written down all 24 words in the right order. Losing the phrase means losing any way to recover if the device breaks or goes missing.',
     zh: '请确认你已按正确顺序记下全部 24 个词。丢失助记词就等于在设备损坏或丢失时无法恢复。',

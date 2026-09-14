@@ -413,6 +413,32 @@ export const IDENTITY_STRINGS = {
     zh: '那就是你自己的 24 个助记词。没有服务器代为保管，也没有人能补发。现在查看并保存，或者以后再说 —— 由你决定。',
     ja: 'それはあなた自身の 24 語のフレーズです。控えを預かるサーバーはなく、再発行できる人もいません。今すぐ確認して保管しても、後回しにしても構いません。',
   },
+  // ── TÊN ĐĂNG NHẬP PHẢI ĐI KÈM 24 TỪ ───────────────────────────────────────
+  // Thêm 15/09/2026. Trên MÁY MỚI, `attachThisDevice`
+  // (`screens/RestoreIdentityScreen.tsx`) có bốn nguồn để biết 24 từ thuộc danh
+  // tính nào, và ba nguồn đầu đều câm ở đúng ca đó:
+  //   1. DID người dùng tự gõ        — app chưa bao giờ đưa chuỗi đó cho họ;
+  //   2. DID lưu trong AsyncStorage  — máy mới thì rỗng;
+  //   3. sổ `@phoenixkey/users`      — máy mới thì rỗng;
+  //   4. hỏi máy chủ bằng khoá trong chip — cần `isKeypairEnrolled()`, mà máy mới
+  //      trả `false`.
+  // Còn lại đúng MỘT nguồn chạy được: `resolveUsername(tên đăng nhập)`. Tức thiếu
+  // tên đăng nhập thì 24 từ không mở được gì cả — và tên đó trước nay chỉ hiện ở
+  // màn đăng nhập của MÁY CŨ, tức đúng cái máy vừa mất.
+  // Nên nó phải nằm NGAY chỗ người dùng được bảo lưu 24 từ, không phải ở một màn
+  // khác mà họ phải nhớ ghé qua.
+  'identity.backup.usernameLabel': {
+    vi: 'Tên đăng nhập của bạn: @{name}',
+    en: 'Your username: @{name}',
+    zh: '你的用户名：@{name}',
+    ja: 'あなたのユーザー名: @{name}',
+  },
+  'identity.backup.usernameWhy': {
+    vi: 'Ghi tên này ra giấy CÙNG cụm 24 từ. Trên một máy mới, app phải hỏi máy chủ bằng tên đăng nhập mới biết 24 từ thuộc danh tính nào — thiếu tên thì riêng 24 từ chưa đủ để lấy lại tài khoản.',
+    en: 'Write this name down TOGETHER with the 24 words. On a new phone the app has to ask the server by username to learn which identity the 24 words belong to — without the name, the 24 words alone are not enough to get your account back.',
+    zh: '请把这个名字和 24 个助记词写在一起。在新手机上，应用必须用用户名向服务器查询，才知道这 24 个词属于哪个身份 —— 没有名字，光有 24 个词还找不回账户。',
+    ja: 'この名前は 24 語のフレーズと一緒に書き留めてください。新しい端末では、アプリはユーザー名でサーバーに問い合わせて初めて、その 24 語がどの本人情報のものか分かります。名前がなければ、24 語だけではアカウントを取り戻せません。',
+  },
   'identity.backup.now': {
     vi: 'Xem 24 từ và cất giữ ngay',
     en: 'Save my backup now',

@@ -35,6 +35,7 @@ import { useDispatch } from 'react-redux';
 import { AUTH_BLUE } from '../theme';
 import StepIndicator from '../components/StepIndicator';
 import { loginUser } from '../../../store/userSlice';
+import { showError } from '../../../utils/alert';
 import { useBottomActionPadding } from '../../../hooks/useBottomActionPadding';
 import { useTk } from '../../../i18n/keys';
 import {
@@ -131,10 +132,26 @@ const SignUpCompleteScreen: React.FC = () => {
     ]).start();
   }, [allDone]);
 
-  const enterApp = () => {
+  const enterApp = async () => {
     const user = route.params?.user;
     if (user) {
-      dispatch(loginUser(user as any) as any);
+      try {
+        // Lượt này là lượt THỨ HAI — `SignUpBiometricScreen` đã dispatch trước khi điều
+        // hướng sang đây. Nhưng nó vẫn phải `.unwrap()`: bản trước không `await` và
+        // cũng không đọc kết quả, nên một lần mở cơ sở dữ liệu hỏng đi qua đây im lặng
+        // rồi `reset` vào `Main` với `currentUser: null` — app rỗng, ngay sau ba màn
+        // báo "xong". Lý do đầy đủ ở `store/userSlice.ts`.
+        await (dispatch(loginUser(user as any) as any) as any).unwrap();
+      } catch (e: any) {
+        // KHÔNG vào `Main`. Vào được mà không có phiên thì người dùng đứng trong một app
+        // trắng, và đường dễ nhất trước mặt họ là đăng ký lại từ đầu.
+        showError(
+          'Chưa mở được tài khoản trên máy này',
+          (e?.message ? e.message + ' ' : '')
+            + 'Danh tính đã tạo xong và vẫn còn trên máy — chỉ bước mở dữ liệu cục bộ là chưa chạy. Hãy đóng app rồi mở lại và đăng nhập; đừng đăng ký lại.',
+        );
+        return;
+      }
     }
     navigation.reset({ index: 0, routes: [{ name: 'Main' as never }] });
   };
@@ -164,7 +181,7 @@ const SignUpCompleteScreen: React.FC = () => {
     // Ghi mốc rồi vào app. `void` có chủ ý: người dùng không phải chờ một lượt
     // ghi đĩa để bấm được nút, và lần ghi hỏng KHÔNG được chặn đường vào app.
     void markSeedBackupDeferred();
-    enterApp();
+    void enterApp();
   };
 
   const checkRotateDeg = checkRotate.interpolate({

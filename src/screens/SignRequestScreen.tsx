@@ -141,7 +141,16 @@ const SignRequestScreen: React.FC = () => {
   if (error) return <View style={styles.root}>{header}<StateView status="error" title="Lỗi" message={error} onRetry={load} /></View>;
 
   const intent = data?.intent ?? {};
-  const displayText = (intent.displayText as string) ?? (intent.display_text as string) ?? 'Yêu cầu ký giao dịch';
+  // ── KHÔNG tự soạn tiêu đề cho thứ sắp được KÝ ────────────────────────────────
+  // Bản trước lui về chuỗi 'Yêu cầu ký giao dịch' khi máy chủ không gửi mô tả. Chữ ký
+  // thì đặt lên `canonicalJson(intent)` — nội dung THẬT — nên màn hiện một câu do app
+  // tự soạn, người dùng quét mặt duyệt câu đó, và chữ ký rơi xuống một nội dung chưa ai
+  // đọc. Ngay bên dưới lại là dòng *"Chỉ duyệt khi bạn nhận ra giao dịch này"* — một
+  // lời khuyên không thể làm theo, vì màn đã lấy đi thứ để nhận ra.
+  // Nay: không có mô tả thì NÓI LÀ KHÔNG CÓ, và nút duyệt tắt. Từ chối vẫn mở — bế tắc
+  // ở đây phải có đường ra, và đường ra an toàn là không ký.
+  const moTaMayChu = (intent.displayText as string) ?? (intent.display_text as string) ?? '';
+  const coMoTa = typeof moTaMayChu === 'string' && moTaMayChu.trim().length > 0;
   const type = (intent.type as string) ?? '';
   const domain = (intent.domain as string) ?? '';
   const done = data?.status && data.status !== 'pending';
@@ -154,7 +163,13 @@ const SignRequestScreen: React.FC = () => {
         <View style={styles.iconCircle}>
           <Icon name="shield-key-outline" size={30} color={PRIMARY} />
         </View>
-        <Text style={styles.displayText}>{displayText}</Text>
+        {coMoTa ? (
+          <Text style={styles.displayText}>{moTaMayChu}</Text>
+        ) : (
+          <Text style={styles.displayText}>
+            Máy chủ không gửi kèm mô tả nội dung sắp ký.
+          </Text>
+        )}
 
         <View style={styles.card}>
           {!!type && <Row label="Loại" value={type} />}
@@ -166,7 +181,9 @@ const SignRequestScreen: React.FC = () => {
         <View style={styles.warn}>
           <Icon name="alert-outline" size={15} color="#C7862E" />
           <Text style={styles.warnText}>
-            Chỉ duyệt khi bạn nhận ra giao dịch này. Ký bằng khoá TAAD trong thiết bị — không ai khác ký thay được.
+            {coMoTa
+              ? 'Chỉ duyệt khi bạn nhận ra giao dịch này. Ký bằng khoá TAAD trong thiết bị — không ai khác ký thay được.'
+              : 'Không duyệt được yêu cầu này: máy chủ chưa nói nội dung sắp ký là gì, nên không có cách nào nhận ra nó. Hãy từ chối, rồi yêu cầu lại từ ứng dụng đã gửi. Ký bằng khoá TAAD trong thiết bị là việc không hoàn tác được.'}
           </Text>
         </View>
       </ScrollView>
@@ -184,7 +201,11 @@ const SignRequestScreen: React.FC = () => {
             {busy === 'cancel' ? <ActivityIndicator size="small" color="#C0533A" />
               : <Text style={styles.rejectText}>Từ chối</Text>}
           </TouchableOpacity>
-          <TouchableOpacity style={styles.approveBtn} onPress={onApprove} disabled={busy !== null}>
+          <TouchableOpacity
+            style={[styles.approveBtn, !coMoTa && styles.approveBtnOff]}
+            onPress={onApprove}
+            disabled={busy !== null || !coMoTa}
+          >
             {busy === 'approve' ? <ActivityIndicator size="small" color="#fff" />
               : <><Icon name="check" size={16} color="#fff" /><Text style={styles.approveText}>Duyệt & ký</Text></>}
           </TouchableOpacity>
@@ -248,6 +269,9 @@ const styles = StyleSheet.create({
     flex: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     paddingVertical: 14, borderRadius: 12, backgroundColor: PRIMARY,
   },
+  // Nút TẮT phải TRÔNG như tắt. Giữ nguyên màu mà chỉ chặn `onPress` thì người dùng bấm
+  // mãi một nút im lặng và nghĩ máy treo.
+  approveBtnOff: { backgroundColor: COLORS.border, opacity: 0.7 },
   approveText: { fontSize: 14, fontWeight: '800', color: '#fff' },
   doneRow: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   doneText: { fontSize: 13, fontWeight: '700', color: COLORS.text },

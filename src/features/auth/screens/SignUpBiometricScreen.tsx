@@ -190,7 +190,8 @@ const SignUpBiometricScreen: React.FC = () => {
       nextList.push(newEntry);
       await AsyncStorage.setItem(PHOENIX_USERS_KEY, JSON.stringify(nextList));
       await AsyncStorage.setItem(ACTIVE_USERNAME_KEY, usernameTrim);
-      await dispatch(loginUser({ ...user, name: usernameTrim } as any) as any);
+      // `.unwrap()` để lần đăng nhập trượt rơi vào `catch` dưới — xem `store/userSlice.ts`.
+      await (dispatch(loginUser({ ...user, name: usernameTrim } as any) as any) as any).unwrap();
       setStage('done');
       setTimeout(
         () => navigation.navigate('SignUpComplete', { username: usernameTrim, user: { ...user, name: usernameTrim } }),

@@ -111,6 +111,24 @@ const initialState: UserState = {
 /**
  * Initialize database and load user data on login
  */
+/**
+ * ⛔ MỌI NƠI GỌI PHẢI DÙNG `.unwrap()` — `await dispatch(loginUser(u))` KHÔNG ném.
+ *
+ * `createAsyncThunk` bắt lỗi rồi *giải quyết* promise bằng một action `rejected`. Nên
+ * `await dispatch(loginUser(u))` chạy tiếp bình thường kể cả khi mở cơ sở dữ liệu của
+ * người dùng hỏng — và nhánh `rejected` dưới đây chỉ ghi câu lỗi vào `state.error`, một
+ * ô mà **không màn nào đọc** (grep `state.user` + `error` trong `src/`: 0 kết quả). Hai
+ * đường im lặng chồng lên nhau, nên lần đăng nhập trượt đi qua đủ cả hai mà không để
+ * lại dấu gì trên màn.
+ *
+ * Hậu quả đo được ở sáu nơi gọi: màn hiện "đăng nhập thành công" rồi `reset` vào `Main`
+ * với `currentUser: null`. Nặng nhất là màn KHÔI PHỤC DANH TÍNH — người vừa khôi phục
+ * đọc chữ thành công, vào một app rỗng, và bước rất dễ tiếp theo của họ là lập một danh
+ * tính MỚI, tức tự tay bỏ đúng cái vừa khôi phục được.
+ *
+ * `.unwrap()` ném lại lỗi thật, và cả sáu nơi gọi đều đã nằm trong `try/catch` có câu
+ * cho người dùng. Không cần thêm cơ chế nào — chỉ cần thôi nuốt.
+ */
 export const loginUser = createAsyncThunk(
   'user/loginUser',
   async (userData: User) => {

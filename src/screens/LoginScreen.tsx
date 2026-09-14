@@ -304,7 +304,10 @@ const LoginScreen = () => {
       trackAction('login_success', {
         metadata: { kind: bioKind, biometryType: biometryType || 'unknown' },
       });
-      await dispatch(loginUser(user as any) as any);
+      // `.unwrap()`: thiếu nó thì lỗi mở cơ sở dữ liệu của người dùng bị nuốt, màn vẫn
+      // chạy hiệu ứng thành công rồi `reset` vào `Main` với `currentUser: null`. Xem
+      // khối chú thích trên `loginUser` (`store/userSlice.ts`).
+      await (dispatch(loginUser(user as any) as any) as any).unwrap();
       // Hiện hiệu ứng logo chớp mắt; onDone của overlay sẽ reset về Main.
       setShowSuccess(true);
     } catch (e) {

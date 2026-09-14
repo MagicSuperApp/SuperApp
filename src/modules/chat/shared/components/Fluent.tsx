@@ -31,25 +31,75 @@ interface MicaProps {
  * Nền Mica. Đặt là con ĐẦU TIÊN của màn, sau đó mọi thứ khác vẽ đè lên.
  * Không nhận sự-kiện chạm (`pointerEvents="none"`).
  */
-export const MicaBackdrop: React.FC<MicaProps> = ({ intensity = 1 }) => (
-  <View style={StyleSheet.absoluteFill} pointerEvents="none">
-    <View style={[StyleSheet.absoluteFill, { backgroundColor: MICA.base }]} />
-    <Svg style={StyleSheet.absoluteFill} width="100%" height="100%">
-      <Defs>
-        <RadialGradient id="micaA" cx="88%" cy="4%" rx="82%" ry="46%">
-          <Stop offset="0" stopColor={MICA.washPrimary} stopOpacity={intensity} />
-          <Stop offset="1" stopColor={MICA.washFade} stopOpacity={0} />
-        </RadialGradient>
-        <RadialGradient id="micaB" cx="6%" cy="0%" rx="70%" ry="34%">
-          <Stop offset="0" stopColor={MICA.washAccent} stopOpacity={intensity} />
-          <Stop offset="1" stopColor={MICA.washFade} stopOpacity={0} />
-        </RadialGradient>
-      </Defs>
-      <Rect x="0" y="0" width="100%" height="100%" fill="url(#micaA)" />
-      <Rect x="0" y="0" width="100%" height="100%" fill="url(#micaB)" />
-    </Svg>
-  </View>
-);
+export const MicaBackdrop: React.FC<MicaProps> = ({ intensity = 1 }) => {
+  /**
+   * `id` RIÊNG theo từng lượt dựng, không phải hằng `"micaA"`/`"micaB"`.
+   *
+   * ⛔ `react-native-svg` giữ sổ `id` CHUNG cho cả ứng dụng, không theo từng thẻ
+   *    `<Svg>` — lỗi này đã được ghi và vá ở `trace/components/layered/Organic`.
+   *    Ở đây nó KHÔNG phải giả định: `ChatScreen` dựng hai `MicaBackdrop` trong
+   *    cùng một cây (dòng 251 và 265), nên hai lớp cùng khai `id="micaA"` và
+   *    lớp gắn sau ghi đè hình học của lớp trước.
+   */
+  const rieng = React.useId().replace(/[^a-zA-Z0-9]/g, '');
+  const idA = `mica-a-${rieng}`;
+  const idB = `mica-b-${rieng}`;
+
+  /**
+   * Số đo THẬT của màn, bằng pixel bố cục.
+   *
+   * ⛔ Cùng một lỗi, cùng một cách vá với `GradientFill` bên module Truy xuất —
+   *    đọc khối chú thích ở đó cho đủ lý do. Tóm tắt: `<Svg width="100%">` kèm
+   *    `<Rect width="100%">` phải quy phần trăm lúc chạy, và khi nó quy trượt
+   *    thì lớp phủ ra một mảng neo ở gốc toạ độ, nhỏ hơn khối cha. Đo rồi truyền
+   *    hai con số thì không còn phép quy nào để mà trượt.
+   */
+  const [co, setCo] = React.useState<{ w: number; h: number }>({ w: 0, h: 0 });
+
+  return (
+    <View
+      style={StyleSheet.absoluteFill}
+      pointerEvents="none"
+      onLayout={(e) => {
+        const { width, height } = e.nativeEvent.layout;
+        const w = Math.ceil(width);
+        const h = Math.ceil(height);
+        setCo((truoc) => (truoc.w === w && truoc.h === h ? truoc : { w, h }));
+      }}
+    >
+      {/* Nền đặc — lớp này KHÔNG phụ thuộc SVG, nên màn không bao giờ trong suốt
+          dù hai vệt loang phía trên có hỏng. */}
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: MICA.base }]} />
+      {co.w > 0 && co.h > 0 ? (
+        <Svg width={co.w} height={co.h}>
+          <Defs>
+            {/*
+              ⛔ PHÂN SỐ, KHÔNG PHẢI CHUỖI PHẦN TRĂM. `gradientUnits` mặc định là
+              `objectBoundingBox`, tức cx/cy/rx/ry là phân số 0..1 của hộp bao.
+              `react-native-svg` KHÔNG quy chuỗi phần trăm về phân số ở hệ toạ độ
+              này — nó đọc `"88%"` thành 88 ĐƠN VỊ NGƯỜI DÙNG, tức tâm vệt loang
+              rơi ra ngoài màn 88 lần chiều rộng hộp bao.
+
+              Lỗi này đã tốn hai lượt vá ở module Truy xuất trước khi ai đó nhìn
+              ra. Cùng một thư viện, cùng một cái bẫy, nên chép sang cả lời giải
+              thích.
+            */}
+            <RadialGradient id={idA} cx={0.88} cy={0.04} rx={0.82} ry={0.46}>
+              <Stop offset="0" stopColor={MICA.washPrimary} stopOpacity={intensity} />
+              <Stop offset="1" stopColor={MICA.washFade} stopOpacity={0} />
+            </RadialGradient>
+            <RadialGradient id={idB} cx={0.06} cy={0} rx={0.7} ry={0.34}>
+              <Stop offset="0" stopColor={MICA.washAccent} stopOpacity={intensity} />
+              <Stop offset="1" stopColor={MICA.washFade} stopOpacity={0} />
+            </RadialGradient>
+          </Defs>
+          <Rect x={0} y={0} width={co.w} height={co.h} fill={`url(#${idA})`} />
+          <Rect x={0} y={0} width={co.w} height={co.h} fill={`url(#${idB})`} />
+        </Svg>
+      ) : null}
+    </View>
+  );
+};
 
 // ── Acrylic ─────────────────────────────────────────────────────────────────
 

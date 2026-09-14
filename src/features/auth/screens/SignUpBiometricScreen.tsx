@@ -14,6 +14,7 @@ import {
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import ReactNativeBiometrics, { BiometryTypes } from 'react-native-biometrics';
+import { useBiometricSensor } from '../../../hooks/useBiometricSensor';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AUTH_BLUE } from '../theme';
 import StepIndicator from '../components/StepIndicator';
@@ -47,8 +48,13 @@ const SignUpBiometricScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const dispatch = useDispatch();
 
-  const [biometryType, setBiometryType] = useState<string>('');
-  const [sensorAvailable, setSensorAvailable] = useState<boolean | null>(null);
+  // Đo LẠI mỗi lần app về tiền cảnh. Bắt buộc ở đúng màn này: câu lỗi bên dưới
+  // (:142) bảo người dùng ra Cài đặt bật sinh trắc "sau đó thử lại", mà bước này
+  // màn hình tự khai là bắt buộc và không có cách thay thế. Không đo lại thì
+  // "thử lại" là một lời hứa suông và người dùng KHÔNG tạo được tài khoản.
+  const { available: sensorAvailable, biometryType } = useBiometricSensor(
+    (msg, e) => console.log(`[SignUp] ${msg}:`, e),
+  );
   const [stage, setStage] = useState<Stage>('idle');
   const [username, setUsername] = useState('');
   const [existingUsernames, setExistingUsernames] = useState<string[]>([]);
@@ -112,34 +118,30 @@ const SignUpBiometricScreen: React.FC = () => {
     );
     pulse.start();
 
-    let alive = true;
-    (async () => {
-      try {
-        const rn = new ReactNativeBiometrics();
-        const { available, biometryType: type } = await rn.isSensorAvailable();
-        if (!alive) return; // màn đã rời — đừng đặt state vào cây đã tháo
-        setSensorAvailable(available);
-        setBiometryType(type || '');
-      } catch (e) {
-        console.log('[SignUp] Biometric sensor check failed:', e);
-        if (alive) setSensorAvailable(false);
-      }
-    })();
-
-    return () => { alive = false; pulse.stop(); };
+    // Phép đo cảm biến ĐÃ dời sang `useBiometricSensor` — khối này chỉ chạy một
+    // lần lúc gắn cây, nên nó không thấy được lượt người dùng vừa bật sinh trắc
+    // trong Cài đặt rồi quay về.
+    return () => { pulse.stop(); };
   }, []);
 
   const startEnrollment = async () => {
     if (stage !== 'idle') return;
 
+    // Cả hai chỗ dưới truyền câu vào ô TIÊU ĐỀ — xem khối chú thích ở `completeSignUp`.
+    // Cùng một lỗi, cùng một màn, nên sửa cùng lúc: để sót một chỗ thì lần sau ai đọc
+    // màn này lại thấy hai kiểu gọi và không biết kiểu nào là đúng.
     if (!usernameStatus.ok) {
-      showError(usernameStatus.reason || 'Vui lòng nhập username hợp lệ trước khi xác thực.');
+      showError(
+        t('Tên đăng nhập chưa dùng được'),
+        usernameStatus.reason || t('Vui lòng nhập username hợp lệ trước khi xác thực.'),
+      );
       return;
     }
 
     if (!sensorAvailable) {
       showError(
-        'Thiết bị này chưa thiết lập sinh trắc học. Vui lòng bật Face ID / vân tay trong cài đặt của thiết bị, sau đó thử lại. Không có cách thay thế cho bước này.'
+        t('Máy chưa bật sinh trắc học'),
+        t('Thiết bị này chưa thiết lập sinh trắc học. Vui lòng bật Face ID / vân tay trong cài đặt của thiết bị, sau đó thử lại. Không có cách thay thế cho bước này.'),
       );
       return;
     }
@@ -188,7 +190,8 @@ const SignUpBiometricScreen: React.FC = () => {
       nextList.push(newEntry);
       await AsyncStorage.setItem(PHOENIX_USERS_KEY, JSON.stringify(nextList));
       await AsyncStorage.setItem(ACTIVE_USERNAME_KEY, usernameTrim);
-      await dispatch(loginUser({ ...user, name: usernameTrim } as any) as any);
+      // `.unwrap()` để lần đăng nhập trượt rơi vào `catch` dưới — xem `store/userSlice.ts`.
+      await (dispatch(loginUser({ ...user, name: usernameTrim } as any) as any) as any).unwrap();
       setStage('done');
       setTimeout(
         () => navigation.navigate('SignUpComplete', { username: usernameTrim, user: { ...user, name: usernameTrim } }),
@@ -206,20 +209,112 @@ const SignUpBiometricScreen: React.FC = () => {
       // `khoa_bi_thu_hoi` nghĩa là khoá còn trong máy nhưng máy chủ đã thu hồi:
       // lookup từ chối vì không còn `active`, đăng ký lại từ chối vì khoá vẫn tồn
       // tại. Cài lại app KHÔNG gỡ được (Keychain giữ khoá qua lần cài lại). Lối ra
-      // duy nhất là 24 từ, nên phải đưa nút đi thẳng tới đó.
+      // là mở màn Khôi phục danh tính — máy còn ví thì chỉ cần tên đăng nhập, không
+      // bắt buộc phải có 24 từ (xem chú thích NHÃN NÚT ngay dưới).
       //
       // Đọc `e.reason` chứ KHÔNG dò chuỗi tiếng Việt trong `e.message`: dò chuỗi
       // vỡ ngay khi đổi câu chữ hoặc khi người dùng đang dùng ngôn ngữ khác.
       if (e?.reason === 'khoa_bi_thu_hoi') {
         setStage('idle');
-        showWarning('Khoá trên máy này đã bị thu hồi', e?.message ?? '', {
-            confirmText: 'Dùng 24 từ khôi phục',
-            cancelText: 'Để sau',
+        // NHÃN NÚT KHÔNG ĐƯỢC HỨA "24 TỪ". App chưa bao giờ bắt người dùng ghi lại
+        // 24 từ — `SeedExportScreen` là màn tự nguyện, lại nằm SAU lớp đăng nhập,
+        // nên đúng người đang kẹt ở đây là người không vào được để lấy. Nhãn cũ đẩy
+        // họ tới một màn chỉ nhận thứ họ không có, và họ đọc đó là ngõ cụt.
+        // Màn khôi phục nay tự dò kho khoá: máy còn ví thì nó mở lối "khôi phục
+        // bằng ví trên máy" (chỉ cần tên đăng nhập). Nên nhãn nói ĐÍCH, không nói
+        // phương tiện — phương tiện nào dùng được thì chính màn kia quyết.
+        //
+        // `t(...)` bọc cả ba chuỗi — KHÔNG phải thừa. `AlertPopup` không dịch gì cả
+        // (đo: 0 lời gọi `t` trong tệp đó), nên câu nào không được bọc ở CHỖ GỌI thì
+        // bản dịch viết sẵn trong `i18n/phrases/errors.ts` nằm chết.
+        showWarning(t('Khoá trên máy này đã bị thu hồi'), t(e?.message ?? ''), {
+            confirmText: t('Mở màn khôi phục'),
+            cancelText: t('Để sau'),
             onConfirm: () => navigation.navigate('RestoreIdentity'),
         });
         return;
       }
-      showError(e?.message || 'Không tạo được danh tính. Vui lòng thử lại.');
+
+      // `can_ten_dang_nhap` — máy CÓ khoá, máy chủ nhận ra khoá đó, chỉ thiếu tên
+      // đăng nhập để tra về đúng danh tính. Câu chữ đã đúng từ trước, nhưng nó ra
+      // màn hình kèm ĐÚNG MỘT nút OK — tức bảo người ta làm một việc rồi đóng cửa
+      // lại. Báo từ thực địa 11/09: người thử đọc câu này, bấm OK, và đứng nguyên
+      // tại màn đăng ký; không có chỗ nào nhập "tên đăng nhập của danh tính đó".
+      //
+      // Nhánh `khoa_bi_thu_hoi` ngay trên đã có lối ra từ lâu. Nhánh này thì không,
+      // và chênh lệch đó không có lý do — cả hai đều là ca "máy có khoá, người dùng
+      // kẹt". Nay cùng một hình dạng.
+      //
+      // Vì sao lối ra là màn Khôi phục chứ không phải một ô nhập tại chỗ: màn này
+      // là màn TẠO MỚI, nó đã cầm một `usernameTrim` mà người dùng vừa gõ cho danh
+      // tính mới. Mượn lại ô đó để nhập tên của danh tính CŨ là gộp hai ý nghĩa vào
+      // một ô — đúng kiểu nhầm dẫn tới trao nhầm danh tính mà cả khối chú thích
+      // `askWhoIsHoldingThePhone` dựng ra để tránh.
+      if (e?.reason === 'can_ten_dang_nhap') {
+        setStage('idle');
+        showWarning(t('Máy này đã có một danh tính'), t(e?.message ?? ''), {
+          confirmText: t('Mở lại danh tính đó'),
+          cancelText: t('Để sau'),
+          onConfirm: () => navigation.navigate('RestoreIdentity'),
+        });
+        return;
+      }
+
+      // Cùng luật với `khoa_bi_thu_hoi` ngay trên: biết được LỐI RA thì phải đưa
+      // nút, đừng chỉ hiện chữ. Ở ca này lối ra là làm lại và làm HẾT hộp sinh
+      // trắc thứ hai — một việc người dùng làm được ngay tại chỗ, nên bắt họ đóng
+      // hộp thoại rồi tự mò lại từ đầu là bắt họ trả giá cho một câu app đã biết.
+      if (e?.reason === 'duong1_chua_xac_thuc') {
+        setStage('idle');
+        showWarning(t('Chưa mở lại được danh tính'), t(e?.message ?? ''), {
+          confirmText: t('Thử lại ngay'),
+          cancelText: t('Để sau'),
+          onConfirm: () => {
+            setStage('generating');
+            void completeSignUp('resume');
+          },
+        });
+        return;
+      }
+
+      // Chưa lập được khoá dự phòng ⟹ app TỰ DỪNG, không phải app hỏng. Hai mã, và
+      // chúng phải ra hai hộp thoại KHÁC NHAU, vì lối ra của chúng trái ngược:
+      //
+      //   · `derive_failed` — lõi có mặt, lần này trượt. Thử lại là việc làm được
+      //     ngay tại chỗ, nên phải có nút, cùng hình dạng với `duong1_chua_xac_thuc`.
+      //   · `core_missing`  — máy này không có lõi. Mời thử lại là mời người ta bấm
+      //     mãi vào một thứ không bao giờ đổi, nên nhánh này CỐ Ý chỉ có một nút.
+      //
+      // Không gộp hai mã lại cho gọn: một nửa số người đọc sẽ nhận lời khuyên vô
+      // dụng, và đó đúng là nhóm bị chặn nặng nhất.
+      if (e?.reason === 'derive_failed') {
+        setStage('idle');
+        showWarning(t('Chưa tạo được danh tính'), t(e?.message ?? ''), {
+          confirmText: t('Thử lại ngay'),
+          cancelText: t('Để sau'),
+          onConfirm: () => {
+            setStage('generating');
+            void completeSignUp(intent);
+          },
+        });
+        return;
+      }
+      if (e?.reason === 'core_missing') {
+        showError(t('Chưa tạo được danh tính'), t(e?.message ?? ''));
+        setStage('idle');
+        return;
+      }
+
+      // Câu lỗi là NỘI DUNG, không phải tiêu đề. `showError(x)` một tham số đẩy cả
+      // câu lên làm tiêu đề rồi độn phần thân bằng chuỗi mặc định "Đã xảy ra lỗi."
+      // (`utils/alert.ts:88`) — thấy đúng như thế trong ảnh chụp từ thực địa 11/09:
+      // một câu dài, cụ thể, viết kỹ, và ngay dưới nó là ba chữ rỗng nghĩa. Chuỗi
+      // độn đó còn gõ cứng tiếng Việt, nên người đọc tiếng khác nhận một màn hình
+      // hai thứ tiếng.
+      showError(
+        t('Chưa tạo được danh tính'),
+        t(e?.message || 'Không tạo được danh tính. Vui lòng thử lại.'),
+      );
       setStage('idle');
     }
   };
@@ -264,7 +359,10 @@ const SignUpBiometricScreen: React.FC = () => {
           // chính chủ. Mà chính chủ đọc "Người khác" thì không bao giờ bấm — họ có
           // phải người khác đâu. Nút này phục vụ CẢ HAI nhóm, nên nhãn phải nói về
           // thứ người dùng ĐANG CẦM (24 từ), không nói về họ là ai.
-          text: t('Tôi có 24 từ khôi phục'),
+          // Cùng lý do với nhãn ở nhánh `khoa_bi_thu_hoi`: nút này KHÔNG được lấy
+          // "24 từ" làm điều kiện vào, vì phần lớn người dùng chưa từng được đưa
+          // 24 từ. Màn khôi phục tự dò xem máy còn ví không rồi mở đúng lối.
+          text: t('Khôi phục danh tính đã có'),
           onPress: () => navigation.navigate('RestoreIdentity'),
         },
         {
@@ -272,6 +370,7 @@ const SignUpBiometricScreen: React.FC = () => {
           style: 'destructive',
           onPress: () =>
             showError(
+              t('Một máy chỉ giữ được một danh tính'),
               t('Bản ứng dụng này chưa giữ được hai danh tính trên cùng một máy — tạo danh tính ')
               + t('mới ở đây sẽ xoá vĩnh viễn khoá của người đang dùng máy. Bản cập nhật tới mở ')
               + t('được việc đó. Trong lúc chờ, bạn hãy tạo danh tính trên máy của mình.'),

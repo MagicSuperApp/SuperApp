@@ -100,22 +100,29 @@ export const NEUTRAL_TOKENS = {
 // trace & chat dùng chung blue; work dùng Aladin green + cam accent.
 export const BRAND_TOKENS = {
   /**
-   * Truy xuất — xanh lam-lục.
+   * Truy xuất — xanh lá.
    *
-   * Phải KHỚP `modules/trace/theme/depth.ts` (`TONE.primary` / `primaryDeep`).
-   * Hai bảng màu này nuôi hai chỗ khác nhau — brand nuôi HEADER và NAVBAR, còn
-   * `depth` nuôi mọi màn bên trong — nên lệch nhau là header xanh dương đội trên
-   * một module xanh lục, đúng lỗi đã gặp. Đổi một bên thì phải đổi bên kia.
+   * ⛔ Chú thích cũ ở đây dặn "phải KHỚP `modules/trace/theme/depth.ts`, đổi một
+   *    bên thì đổi bên kia". Đó là một phép đồng bộ BẰNG TAY giữa hai bảng màu
+   *    song song, và nó đã trôi: bảng này giữ `#0F8A6A` / `#0A6350` trong khi
+   *    `depth.ts` giữ `#166e43` / `#11563a` — tức thanh trên và thanh dưới một
+   *    màu, thân màn một màu, đúng cái lỗi mà lời dặn kia định ngăn.
+   *
+   *    Nay chiều phụ thuộc chỉ còn MỘT: `depth.ts` ĐỌC từ đây (`TRACE_THEME`),
+   *    không giữ bản nào của riêng nó. Giá trị dưới đây lấy đúng bộ mà `depth`
+   *    đang dùng, nên mọi màn của module giữ nguyên hình; chỗ đổi là thanh trên
+   *    và thanh dưới, chúng về đúng màu thân màn.
    */
   trace: {
     key: 'trace',
     name: 'Truy xuất',
-    primary:      '#0F8A6A',
-    primaryDeep:  '#0A6350',
-    primaryLight: '#7CC9B1',
-    primaryGlow:  'rgba(15, 138, 106, 0.10)',
+    primary:      '#166E43',
+    primaryDeep:  '#11563A',
+    /** Nền rất nhạt cùng tông — chặng sáng của ô hero và của mảng `primarySoft`. */
+    primaryLight: '#DDF3EC',
+    primaryGlow:  'rgba(22, 110, 67, 0.10)',
     onPrimary:    '#FFFFFF',
-    gradient:     ['#12A17D', '#0A6350'] as const,
+    gradient:     ['#166E43', '#11563A'] as const,
   },
   chat: {
     key: 'chat',
@@ -177,6 +184,116 @@ export const ACTION_TOKENS = {
   health:    '#C0392B', // sức khoẻ (tiêm thuốc, tỉa quả…) — đỏ
   create:    '#3B6EA8', // tạo (thêm vườn/đàn) — lam
   onAction:  '#FFFFFF',
+} as const;
+
+// ── Token LUỒNG ĐĂNG KÝ / ĐĂNG NHẬP ────────────────────────────────────────
+//
+// Trước 2026-09-11 bộ giá trị này sống ở `features/auth/theme.ts` dưới tên
+// `AUTH_BLUE`, là một object literal gõ cứng. Bốn màn của luồng vào
+// (`IdentityEntryChoice`, `SignUpBiometric`, `SignUpComplete`, `StepIndicator`)
+// đọc thẳng nó — tức toàn bộ đường vào app KHÔNG đi qua tầng chủ đề, nên app
+// thứ hai dựng ra vẫn xanh LAM ở đúng quãng người dùng gặp đầu tiên, trong khi
+// mọi màn sau đó đã xanh LỤC. Không phép kiểm nào đỏ: `hexNhanDien.test.ts`
+// chỉ canh các giá trị TRÙNG token nhận diện, mà bảng này mang một dải lam
+// riêng không trùng giá trị nào.
+//
+// Chuyển về đây theo YC-1 (giá trị màu thô nằm ở tokens.ts) và mở cho
+// `ThemeConfig.auth` ghi đè, đúng lối `header` đã đi trước.
+//
+// 🔴 `textMuted` ĐÃ ĐỔI, và đây là đổi giá trị chứ không phải dời chỗ:
+//
+//     cũ  #8A95A8 trên #F4F7FB  2,81   trên #FFFFFF  3,02   ← TRƯỢT AA 4,5
+//     mới #647187 trên #F4F7FB  4,59   trên #FFFFFF  4,94
+//
+// Tính lại bằng công thức độ chói tương đối của WCAG 2.x. `#647187` là bậc
+// sáng ĐẦU TIÊN còn giữ nguyên hue 218° và bão hoà 15% của bản cũ mà qua được
+// ngưỡng ở CẢ HAI nền bậc này đứng lên (nền bgSoft và thẻ trắng) — chọn mức
+// tối thiểu để đổi ít nhất có thể. `theme/authContrast.test.ts` TÍNH lại từ
+// chính các giá trị dưới đây, nên hạ bậc sáng lần nữa là đỏ.
+//
+// Ba khoá `mid` · `light` · `glow` của bản cũ đã BỎ: đo 2026-09-11 trên toàn
+// `src/` cho 0 nơi đọc. Giữ chúng là bắt mọi app sau phải khai một giá trị cho
+// một vai không tồn tại.
+export const AUTH_TOKENS = {
+  /**
+   * Nền TRÀN MÀN của màn đăng nhập mạng lưới (`screens/LoginNetworkScreen`).
+   *
+   * Khác `bgSoft` ở vai: `bgSoft` là nền SÁNG của bốn màn cửa vào có chữ tối;
+   * `canvas` là một mảng màu ĐẶC, TỐI, phủ kín màn, và chữ trên nó là chữ TRẮNG.
+   * Hai vai ngược nhau nên không dùng chung một khoá được.
+   *
+   * Nằm ở đây chứ không gõ thẳng vào tệp màn hình vì đó đúng là cái bẫy kho này
+   * đã gỡ hai lần: một hex nhãn hiệu nằm trong mã màn thì app thứ hai dựng từ
+   * nền mã này sẽ đeo màu của app thứ nhất, và không phép kiểm nào thấy.
+   * `theme/authContrast.test.ts` nay đo cả khoá này, cho CẢ HAI app.
+   */
+  canvas:    '#1F511A',
+  deep:      '#152B5A',
+  primary:   '#2C5BC4',
+  pale:      '#B9D2F0',
+  white:     '#FFFFFF',
+  glowSoft:  'rgba(185, 210, 240, 0.25)',
+  bgSoft:    '#F4F7FB',
+  border:    '#E5EAF2',
+  text:      '#0F1A2E',
+  textSub:   '#4B5872',
+  textMuted: '#647187',
+
+  // Tông cảnh báo của luồng vào — khối "bạn sẽ mất gì" ở cửa vào.
+  warnIcon:   '#B07D2F',
+  warnBg:     '#FFF6E6',
+  warnBorder: '#F0DBB5',
+  warnText:   '#6F4720',
+
+  // ── Bốn lối rẽ ở cửa vào (`IdentityEntryChoiceScreen`) ────────────────────
+  //
+  // Màn ấy hỏi MỘT câu rồi mở bốn thẻ, và tới 2026-09-14 bốn thẻ ấy giống hệt
+  // nhau: cùng nền trắng, cùng viền xám, cùng một ô biểu tượng lam. Khác nhau
+  // chỉ ở chữ. Đó là một màn phải ĐỌC HẾT mới chọn được, trong khi hậu quả chọn
+  // sai thì nặng — đi nhầm sang lối "người mới" là sinh một DID thứ hai và chia
+  // đôi dữ liệu vĩnh viễn (xem đầu tệp màn ấy).
+  //
+  // Bốn tông dưới đây cho mỗi lối một MÀU RIÊNG, để mắt nhận ra thẻ trước khi
+  // đọc, và lối AN TOÀN mang màu XANH LÁ — lối duy nhất không thu hồi phiên nào
+  // ở đâu cả.
+  //
+  // ── Vì sao chúng dùng CHUNG cho mọi app ─────────────────────────────────
+  // Cùng lý do nhóm `warn*` dùng chung, và chú thích ở `theme.config.ts` đã nói
+  // ra: chúng nói NGHĨA ("an toàn", "sẽ mất phiên"), không nói tên app. Một app
+  // ghi đè được từng khoá nếu thật sự cần, nhưng để nguyên thì bốn lối vẫn phân
+  // biệt được ở mọi bản dựng — điều một bảng theo nhãn hiệu không bảo đảm nổi,
+  // vì hai trong bốn tông sẽ trôi về cùng hue của nhãn.
+  //
+  // Mọi giá trị `*Icon` ở đây đạt AA (≥ 4,5) trên CẢ ô nền của nó lẫn hai nền
+  // màn của hai app — tính trong `theme/authContrast.test.ts`, không chép số.
+
+  /** Lối A — người mới. Xanh lá: lối duy nhất không phá gì cả. */
+  safeIcon:   '#1B7A3E',
+  /**
+   * Nhạt hơn ba nền kia, và có lý do đo được: đây là nền duy nhất phủ CẢ THẺ,
+   * nên chữ của thẻ đứng trên nó. Ở `#E9F6EE` thì bậc chữ nhạt nhất
+   * (`textMuted`) rơi xuống 4,44 — trượt AA đúng một chút. `#EDF8F1` kéo nó về
+   * 4,54 mà vẫn còn ra màu. Ba nền kia chỉ làm ô biểu tượng nên không vướng.
+   */
+  safeBg:     '#EDF8F1',
+  /** Đậm hơn hẳn ba viền kia: đây là viền DUY NHẤT phải đọc được (≥ 3:1), vì nó
+   *  là thứ nói "thẻ này khác ba thẻ dưới" cho người không phân biệt được hue. */
+  safeBorder: '#2E8F57',
+
+  /** Lối B — cùng app, máy khác. Tím. */
+  moveIcon:   '#5A3FBF',
+  moveBg:     '#EFEBFC',
+  moveBorder: '#D3C8F5',
+
+  /** Lối C — cùng máy, app khác của hệ. Lam ngọc. */
+  swapIcon:   '#0E6C77',
+  swapBg:     '#E3F4F6',
+  swapBorder: '#B3DFE4',
+
+  /** Lối D — nhờ máy đang đăng nhập ký duyệt. Hồng sen. */
+  pairIcon:   '#A63A62',
+  pairBg:     '#FBEAF1',
+  pairBorder: '#EFC6D8',
 } as const;
 
 // ── Token Header toàn cục (SG-Header — thanh trên kiểu Facebook, thu/thả) ────
@@ -241,6 +358,7 @@ export const BASE_TOKENS = {
   nav:     NAV_TOKENS,
   action:  ACTION_TOKENS,
   header:  HEADER_TOKENS,
+  auth:    AUTH_TOKENS,
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -250,6 +368,7 @@ export type AppTokens = typeof APP_TOKENS;
 export type NeutralTokens = typeof NEUTRAL_TOKENS;
 export type NavTokens = typeof NAV_TOKENS;
 export type HeaderTokens = typeof HEADER_TOKENS;
+export type AuthTokens = typeof AUTH_TOKENS;
 export type BrandKey = keyof typeof BRAND_TOKENS;
 
 export interface ModuleTheme {

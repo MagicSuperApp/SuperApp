@@ -11,6 +11,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 import { COLORS } from '../constants';
@@ -22,12 +23,22 @@ const TermsScreen = () => {
   // useLanguage() để màn vẽ lại khi người dùng đổi ngôn ngữ trong lúc đang đọc.
   const lang = useLanguage();
   const doc = policyFor(lang);
+  // Màn này KHÔNG có thanh tiêu đề của navigator (`headerShown: false`), nên nó
+  // tự chịu trách nhiệm chừa lề trên. Thiếu chỗ này thì nút Quay lại nằm lọt
+  // trong vùng thanh trạng thái: đo trên iPhone 17 ở giả lập, nó đè lên đồng hồ
+  // và cú chạm vào đó bị hệ điều hành nuốt làm thao tác "cuộn lên đầu" — nút vẫn
+  // vẽ ra, trông bấm được, mà không bao giờ lùi được. Lấy số thật từ thiết bị
+  // chứ không gõ một hằng: tai thỏ mỗi máy một cỡ.
+  const insets = useSafeAreaInsets();
 
   return (
     <View style={styles.root}>
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.bg} />
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + 16 }]}
+      >
         <TouchableOpacity
           style={styles.backBtn}
           onPress={() => navigation.goBack()}

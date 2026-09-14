@@ -19,6 +19,7 @@
 
 import { tf } from '../../i18n';
 import { imageViewUrl, type Provenance } from '../../services/provenanceService';
+import { isValidLatLon } from '../wayfind/wayfind';
 
 /** Model 3D trong hồ sơ. Trường đọc từ thân thật, đo 2026-08-19. */
 export interface Model3d {
@@ -91,9 +92,10 @@ export function gpsPoint(p: Provenance | null | undefined): { lat: number; lon: 
   const g = p?.gps;
   if (!Array.isArray(g) || g.length < 2) return null;
   const [lat, lon] = g;
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-  if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
-  return { lat, lon };
+  // Dải đã ép sẵn; `isValidLatLon` thêm nốt ràng buộc còn thiếu — loại `0/0`,
+  // giá trị máy sinh ra khi chưa có định vị. Một ghim ở Vịnh Guinea trên màn
+  // truy xuất đọc ra "quả này đến từ ngoài khơi châu Phi".
+  return isValidLatLon({ lat, lon }) ? { lat, lon } : null;
 }
 
 /**

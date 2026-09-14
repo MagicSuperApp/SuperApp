@@ -52,6 +52,7 @@ import {
   tokenMatchesCurrentDid,
   tokenOwnerDid,
   clearOrilifeToken,
+  clearOrilifeLoginCooldown,
 } from './orilifeDidAuth';
 import { orilifeAuthHeaderValue, resetOrilifeAuthHeaderCache } from './orilifeAuthHeader';
 
@@ -73,6 +74,11 @@ const mockFetch = jest.fn(mayChuThat);
 beforeEach(async () => {
   await AsyncStorage.clear();
   resetOrilifeAuthHeaderCache();
+  // Van chặn bão sinh trắc giữ trạng thái Ở CẤP MÔ-ĐUN, nên nó sống qua ranh giới
+  // giữa hai bài trong cùng tệp. Bài "mất mạng" dưới đây cố ý làm đăng nhập trượt;
+  // thiếu dòng này thì mọi bài SAU nó chạy trong thời gian nghỉ 60 giây và đỏ vì
+  // một lý do không liên quan tới điều nó định canh.
+  clearOrilifeLoginCooldown();
   mockCurrentDid = DID_A;
   servedToken = 'tok-moi';
   // `mockClear` chỉ xoá lịch sử gọi, KHÔNG trả lại hiện thực. Bài "mất mạng" dưới
@@ -211,7 +217,12 @@ describe('dây nối còn nguyên', () => {
 
   it('logoutUser gọi clearOrilifeToken', () => {
     const src = doc('../store/userSlice.ts');
-    expect(src).toContain("import { clearOrilifeToken } from '../services/orilifeDidAuth';");
+    // Canh việc NHẬP, không canh cách xuống dòng của câu nhập: danh sách tên trong
+    // ngoặc nhọn còn dài thêm (đã thêm `clearOrilifeLoginCooldown` 2026-09-12), và
+    // một bài so nguyên văn cả câu thì đỏ ở lần thêm tên kế tiếp mà không có gì hỏng.
+    expect(src).toMatch(
+      /import \{[^}]*\bclearOrilifeToken\b[^}]*\} from '\.\.\/services\/orilifeDidAuth';/s,
+    );
     const thunk = src.slice(src.indexOf("'user/logoutUser'"), src.indexOf('export const loadWallet'));
     expect(thunk).toContain('await clearOrilifeToken();');
   });

@@ -1,11 +1,12 @@
 // modules/work/services/signWorkChallenge.ts
 //
-// Nối signChallenge AladinWork vào KHOÁ PHẦN CỨNG PhoenixKey (thay TODO "Thư cấp").
+// Nối signChallenge AladinWork vào KHOÁ PHẦN CỨNG PhoenixKey (thay TODO "PhoenixKey native cấp").
 // Server verify ECDSA P-256 (secp256r1) / SHA-256, chữ ký DER hex trên
 // message = "<challenge>:<domain>:<timestamp>" (SPEC §2). signRaw của PhoenixKey
 // (Secure Enclave/StrongBox) nhận HEX bytes → tự SHA-256 + ký P-256 → trả DER hex —
 // KHỚP đúng thứ AladinWork cần (cùng cơ chế orilifeDidAuth đã dùng cho field-reid).
 
+import { t } from '../../../i18n';
 import { signRaw } from '../../../sdk/phoenixKey';
 import type { SignChallengeFn } from '../hooks/useWorkAuth';
 
@@ -27,6 +28,9 @@ const utf8ToHex = (s: string): string => {
 export const signWorkChallenge: SignChallengeFn = ({ message }) =>
   signRaw(
     utf8ToHex(message),
-    'Đăng nhập Aladin Work',
+    // Tiêu đề hộp thoại SINH TRẮC của hệ điều hành — người dùng đọc nó, nên nó
+    // phải mang tên app đang chạy. Nó KHÔNG nằm trong `message` được ký, nên
+    // đổi chữ ở đây không đụng tới chữ ký (xem `utf8ToHex(message)` ngay trên).
+    t('Đăng nhập {brand} Work'),
     'Ký bằng khoá phần cứng để mở phiên làm việc',
   );

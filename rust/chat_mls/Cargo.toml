@@ -58,11 +58,30 @@ cbindgen = "0.27"
 [profile.dev]
 opt-level = 2   # arkworks (Poseidon) quá chậm ở opt-level 0
 
+# Crate này là GỐC workspace của chính nó (không có Cargo.toml workspace nào ở
+# `rust/` hay ở gốc kho). Điều đó QUAN TRỌNG: `[patch.crates-io]` bên dưới chỉ có
+# tác dụng ở gốc workspace, và cargo bỏ qua nó TRONG IM LẶNG ở mọi nơi khác. Ở hình
+# dạng hiện tại nó nằm đúng chỗ — đừng nhét crate này vào một workspace cha mà
+# không mang khối patch lên theo.
 [workspace]
 
 # Trỏ toàn bộ họ crate openmls về bản fork vendored (rust/vendor/openmls) đã patch
 # expose raw epoch_secret. Patch cả 4 để mọi thứ resolve từ CÙNG 1 workspace (tránh
 # mismatch kiểu giữa trait crates.io và trait của fork). Xem PHA0-FINDINGS.md.
+#
+# ── Quan hệ với kho nguồn Myelin (ProofChat) — đo 2026-09-08 ────────────────────
+# Nguồn của `src/` là `ProofChat/Myelin` `crates/chat_mls`, tag `v0.1.0` (tag chú
+# giải `43ac9b8` → commit `acc619b`). Kho này VENDOR mã đó tại chỗ chứ không kéo
+# bằng phụ thuộc git. `rust/vendor/openmls` cũng trùng BYTE với `vendor/openmls`
+# của Myelin (468 tệp mỗi bên, `diff -rq` trả rỗng).
+#
+# ⚠ Bẫy sẽ bật NẾU có ngày ai đó đổi `chat_mls` sang phụ thuộc git:
+#     chat_mls = { git = "https://github.com/ProofChat/Myelin", tag = "v0.1.0" }
+# thì khối `[patch]` này KHÔNG đi theo, cargo im lặng dựng với `openmls` gốc từ
+# crates.io, và bản gốc KHÔNG lộ `epoch_secret`. Hỏng ở TẦNG 2 lúc chạy, không
+# hỏng lúc phân giải phụ thuộc — nên `cargo build` xanh không chứng minh gì.
+# Lúc đó gốc workspace tiêu thụ phải mang bốn dòng trỏ về git thay cho `path`.
+# Hôm nay CHƯA cần, và thêm sẵn là sai: nó sẽ đè bản vendored đang dùng.
 [patch.crates-io]
 openmls                  = { path = "../vendor/openmls/openmls" }
 openmls_rust_crypto      = { path = "../vendor/openmls/openmls_rust_crypto" }

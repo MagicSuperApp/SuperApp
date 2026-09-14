@@ -270,7 +270,15 @@ class Database {
 
     await this.db.executeSql(
       'INSERT OR REPLACE INTO trees (id, farm_id, code, latitude, longitude, species, planted_year, estimated_fruits, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [tree.id, tree.farmId, tree.code, tree.latitude, tree.longitude, tree.species, tree.plantedYear, tree.estimatedFruits || 0, new Date().toISOString()]
+      // `?? null` chứ KHÔNG `|| 0`: cột `estimated_fruits` không có `NOT NULL`
+      // nên nhận `NULL` được, và `NULL` mới nói đúng "chưa biết".
+      //
+      // `|| 0` gây hai hại cùng lúc. Một: nguồn không có số quả (field-reid
+      // không trả) thì `undefined` thành `0` NGAY TRONG CACHE, nên mọi phép
+      // `?? ` ở tầng màn vĩnh viễn không bắn nữa — vá tầng trên thành vô nghĩa
+      // sau lần đọc lại đầu tiên. Hai: `INSERT OR REPLACE` ghi đè, nên số quả
+      // người dùng NHẬP TAY bị một lượt đồng bộ nền xoá về 0.
+      [tree.id, tree.farmId, tree.code, tree.latitude, tree.longitude, tree.species, tree.plantedYear, tree.estimatedFruits ?? null, new Date().toISOString()]
     );
   }
 
@@ -296,8 +304,12 @@ class Database {
         longitude: item.longitude,
         species: item.species,
         plantedYear: item.planted_year,
-        estimatedFruits: item.estimated_fruits || 0,
-        fruitCount: item.fruitCount || 0,
+        // `?? undefined` giữ nguyên chỗ vắng thay vì khai nó là 0. `SUM`/`COUNT`
+        // của SQLite trả `NULL` khi không có hàng nào, và `NULL` ở đây nghĩa là
+        // "chưa đếm", không phải "đếm được không quả nào". Màn hình phân biệt
+        // hai thứ đó bằng "chưa đếm" và "0 quả".
+        estimatedFruits: item.estimated_fruits ?? undefined,
+        fruitCount: item.fruitCount ?? undefined,
         images: [], // Assuming images are not stored in DB or handle separately
       });
     }

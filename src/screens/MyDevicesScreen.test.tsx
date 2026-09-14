@@ -47,6 +47,16 @@ jest.mock('../services/phoenixKey-api', () => {
   };
 });
 
+// Cổng sinh trắc đứng TRƯỚC `revoke` (`MyDevicesScreen.doRevoke`). Trong môi
+// trường test không có chip nên cổng thật luôn ném, và mọi bài về mã lỗi máy chủ
+// sẽ chết trước khi tới được máy chủ. Mock nó để từng bài tự chọn: qua cổng
+// (mặc định) hay huỷ ở cổng (bài riêng bên dưới).
+const mockGate = jest.fn();
+jest.mock('../services/sensitiveActionGate', () => ({
+  GATE_PREFIX: { revokeDevice: 'PHOENIXKEY_REVOKE_DEVICE:' },
+  requireUserPresence: (...a: unknown[]) => mockGate(...a),
+}));
+
 const mockShowError = jest.fn();
 // `showWarning` KHÔNG còn là hàm rỗng: hộp xác nhận "Gỡ máy này?" nay đi qua
 // popup của app (`utils/alert`) thay vì `Alert.alert` của hệ điều hành, nên nút
@@ -119,7 +129,14 @@ function nutTheoIcon(tree: renderer.ReactTestRenderer, iconName: string) {
   return tho.filter(n => !laConChau(n));
 }
 
-beforeEach(() => { jest.clearAllMocks(); });
+beforeEach(() => {
+  jest.clearAllMocks();
+  // Mặc định CHO QUA cổng, đặt lại ở mỗi bài. `clearAllMocks` chỉ xoá danh sách
+  // lượt gọi chứ không xoá `mockRejectedValue`, nên thiếu dòng này thì một bài
+  // đặt cổng-ném sẽ rò sang mọi bài chạy sau nó — và thứ tự bài là thứ không ai
+  // nhìn khi thêm bài mới.
+  mockGate.mockResolvedValue(undefined);
+});
 
 describe('đổi tên KHÔNG được làm mất nhãn "máy này"', () => {
   it('giữ `current` địa phương, chỉ nhận `deviceName` từ phản hồi', async () => {
@@ -143,7 +160,7 @@ describe('đổi tên KHÔNG được làm mất nhãn "máy này"', () => {
     // `TextInput` cũng dựng nhiều tầng cùng props; tầng nào cũng gọi được nên
     // lấy tầng đầu, đừng chốt số lượng — số đó là chi tiết dựng cây, không phải
     // điều tệp này muốn khoá.
-    const o = t.root.findAll(n => n.props?.placeholder === 'Ví dụ: iPhone của Thư')[0];
+    const o = t.root.findAll(n => n.props?.placeholder === 'Ví dụ: iPhone của tôi')[0];
     await act(async () => { o.props.onChangeText('Máy mới'); });
     await act(async () => { o.props.onSubmitEditing(); });
 
@@ -158,7 +175,7 @@ describe('đổi tên KHÔNG được làm mất nhãn "máy này"', () => {
     const t = await moMan([may()]);
     mockRename.mockResolvedValue({ ...may(), deviceName: 'Máy kho' });
     await act(async () => { nutTheoIcon(t, 'pencil-outline')[0].props.onPress(); });
-    const o = t.root.findAll(n => n.props?.placeholder === 'Ví dụ: iPhone của Thư')[0];
+    const o = t.root.findAll(n => n.props?.placeholder === 'Ví dụ: iPhone của tôi')[0];
     await act(async () => { o.props.onChangeText('   Máy kho   '); });
     await act(async () => { o.props.onSubmitEditing(); });
     expect(mockRename).toHaveBeenCalledWith('k-1', 'Máy kho');
@@ -167,7 +184,7 @@ describe('đổi tên KHÔNG được làm mất nhãn "máy này"', () => {
   it('tên chỉ có khoảng trắng bị chặn TẠI CHỖ, không gọi máy chủ', async () => {
     const t = await moMan([may()]);
     await act(async () => { nutTheoIcon(t, 'pencil-outline')[0].props.onPress(); });
-    const o = t.root.findAll(n => n.props?.placeholder === 'Ví dụ: iPhone của Thư')[0];
+    const o = t.root.findAll(n => n.props?.placeholder === 'Ví dụ: iPhone của tôi')[0];
     await act(async () => { o.props.onChangeText('    '); });
     await act(async () => { o.props.onSubmitEditing(); });
     expect(mockRename).not.toHaveBeenCalled();
@@ -180,15 +197,22 @@ describe('nút gỡ không được bày ra khi chắc chắn hỏng', () => {
     // Chỉ số duy nhất V36 cho phép ≤1 owner-key active mỗi DID, và cửa này chỉ
     // vai owner gọi được ⇒ owner-key active LUÔN là cái cuối cùng ⇒ máy chủ luôn
     // trả 3008. Một nút chắc chắn hỏng còn tệ hơn không có nút.
+    //
+    // Câu chỉ đường trước đây mời "24 từ hoặc người bảo hộ". Vế thứ hai là một
+    // lời hứa không có đường nào thực hiện — ghi danh người bảo hộ thì chạy,
+    // dùng họ để khôi phục thì `guardianService` không có hàm nào. Bài kiểm cũ
+    // ghim đúng vế sai đó, nên nó phải đổi theo. Vế 1 của
+    // `guardianKhongHuaKhoiPhuc.test.ts` là chỗ đo NĂNG LỰC; ngày đường khôi
+    // phục được nối, chính nó đỏ trước và người sửa được nhắc nới lại câu này.
     const t = await moMan([may({ keyRole: 'owner', current: true })]);
     expect(nutTheoIcon(t, 'link-off').length).toBe(0);
-    expect(noiText(t)).toContain('24 từ hoặc người bảo hộ');
+    expect(noiText(t)).toContain('dùng cụm 24 từ');
   });
 
   it('khoá vai khác: gỡ được', async () => {
     const t = await moMan([may({ keyRole: 'manager', deviceName: 'Máy kế toán' })]);
     expect(nutTheoIcon(t, 'link-off').length).toBe(1);
-    expect(noiText(t)).not.toContain('24 từ hoặc người bảo hộ');
+    expect(noiText(t)).not.toContain('dùng cụm 24 từ');
   });
 
   it('khoá đã thu hồi: không nút nào cả, kể cả đổi tên', async () => {
@@ -215,6 +239,41 @@ describe('khoá đã thu hồi vẫn phải HIỆN, không lặng lẽ biến m�
   });
 });
 
+describe('lối THÊM máy — issue #233', () => {
+  /**
+   * Màn này chỉ có ba việc, cả ba đều là việc BỚT: liệt kê · đổi tên · gỡ. Đường
+   * THÊM (`POST /keys/authorize`) đã dựng xong ở `keyAuthorizeService` và trước
+   * bản này KHÔNG nơi nào gọi — tức người dùng cài app thứ hai chỉ còn lối 24 từ,
+   * mà lối đó THU HỒI khoá owner của app thứ nhất.
+   *
+   * Bài canh LỜI GỌI `navigate`, không canh sự có mặt của một chuỗi trong mã: một
+   * cái nút có chữ mà không dẫn đi đâu vẫn qua được phép kiểm chuỗi.
+   */
+  it('có nút thêm máy, và nó mở màn ghép ở vai QUÉT', async () => {
+    const t = await moMan([may({ keyRole: 'owner', current: true })]);
+    const nut = t.root.findAll(n => n.props?.testID === 'my-devices-add', { deep: true })[0];
+    expect(nut).toBeTruthy();
+    await act(async () => { nut.props.onPress(); });
+    // Vai phải là `scan`: máy này là máy ĐANG giữ owner-key, nó đi quét mã của
+    // máy kia. Truyền nhầm `show` thì màn hiện khoá của chính nó và luồng đứng.
+    expect(mockNav.navigate).toHaveBeenCalledWith('DevicePair', { mode: 'scan' });
+  });
+
+  it('danh sách RỖNG vẫn thêm được máy — đó là ca hay gặp nhất', async () => {
+    const t = await moMan([]);
+    expect(t.root.findAll(n => n.props?.testID === 'my-devices-add', { deep: true }).length)
+      .toBeGreaterThan(0);
+  });
+
+  it('nút đứng NGOÀI danh sách, nên lượt tải hỏng cũng còn lối thêm', async () => {
+    mockList.mockRejectedValue(new PhoenixKeyApiError(9999, 500, 'server down'));
+    let t!: renderer.ReactTestRenderer;
+    await act(async () => { t = renderer.create(<MyDevicesScreen />); });
+    expect(t.root.findAll(n => n.props?.testID === 'my-devices-add', { deep: true }).length)
+      .toBeGreaterThan(0);
+  });
+});
+
 describe('mã lỗi máy chủ được dịch thành câu người đọc được', () => {
   it('3008 nói ra đường đi tiếp, không chỉ nói "thất bại"', async () => {
     const t = await moMan([may({ keyRole: 'manager' })]);
@@ -230,7 +289,47 @@ describe('mã lỗi máy chủ được dịch thành câu người đọc đư�
     await act(async () => { go.onPress?.(); });
 
     expect(mockShowError).toHaveBeenCalledWith(
-      expect.stringContaining('24 từ hoặc người bảo hộ'),
+      expect.stringContaining('dùng cụm 24 từ'),
+    );
+  });
+
+  it('huỷ ở cổng sinh trắc ⟹ KHÔNG gỡ máy nào cả', async () => {
+    // Phép đo thật của cổng: không phải "có gọi cổng không", mà "cổng trượt thì
+    // máy có bị gỡ không". Một cổng bị bọc trong `try { } catch {}` vẫn được gọi
+    // đủ số lần, vẫn hiện hộp thoại, và vẫn gỡ máy — bài đếm lượt gọi không phân
+    // biệt được hai bản đó.
+    const t = await moMan([may({ keyRole: 'manager' })]);
+    mockGate.mockRejectedValue(new Error('Người dùng đã huỷ'));
+
+    await act(async () => { nutTheoIcon(t, 'link-off')[0].props.onPress(); });
+    const opts = (mockShowWarning.mock.calls[0] as unknown[])[2] as { actions?: NutHopThoai[] };
+    const go = (opts.actions ?? []).find(b => b.text === 'Gỡ máy')!;
+    await act(async () => { go.onPress?.(); });
+
+    expect(mockGate).toHaveBeenCalled();
+    expect(mockRevoke).not.toHaveBeenCalled();
+  });
+
+  it('qua cổng rồi thì `revoke` nhận ĐÚNG keyId của máy được chọn', async () => {
+    // Đối chứng cho bài trên: nếu bài trên xanh chỉ vì màn không gỡ được máy nào
+    // trong môi trường test, thì bài này cũng phải đỏ. Hai bài cùng xanh mới nói
+    // được rằng cái phân biệt chúng đúng là cái cổng.
+    // Khai TƯỜNG MINH là cổng cho qua. `jest.clearAllMocks()` ở `beforeEach` chỉ
+    // xoá danh sách lượt gọi, KHÔNG xoá `mockRejectedValue` mà bài trên vừa đặt —
+    // thiếu dòng này thì bài dưới chạy với cổng vẫn đang ném của bài trên.
+    mockGate.mockResolvedValue(undefined);
+    const t = await moMan([may({ keyId: 'key-abc', keyRole: 'manager' })]);
+    mockRevoke.mockResolvedValue(undefined);
+
+    await act(async () => { nutTheoIcon(t, 'link-off')[0].props.onPress(); });
+    const opts = (mockShowWarning.mock.calls[0] as unknown[])[2] as { actions?: NutHopThoai[] };
+    const go = (opts.actions ?? []).find(b => b.text === 'Gỡ máy')!;
+    await act(async () => { go.onPress?.(); });
+
+    expect(mockRevoke).toHaveBeenCalledWith('key-abc');
+    // Ký ĐÚNG máy sắp gỡ: một lần duyệt không dùng lại được để gỡ máy khác.
+    expect(mockGate).toHaveBeenCalledWith(
+      expect.objectContaining({ fields: ['key-abc'] }),
     );
   });
 

@@ -52,6 +52,84 @@ export interface MapSource {
  * Mặc định là ẢNH VỆ TINH: vườn cây ở nông thôn nhìn ảnh vệ tinh mới thấy được
  * tán cây / luống / bờ ranh thật, còn bản đồ đường phố thường trắng trơn.
  */
+/**
+ * URL ô BẢN ĐỒ ĐƯỜNG PHỐ — MỘT nguồn duy nhất cho cả kho.
+ *
+ * ── Lượt hai: rời khỏi máy chủ ô của OpenStreetMap ──────────────────────────
+ * Báo về từ thực địa: nền bản đồ hiện ra một tấm ảnh ghi *"Access blocked"*.
+ * Đó không phải lỗi mạng và cũng không phải lỗi mã — đó là `tile.openstreetmap.org`
+ * TỪ CHỐI phục vụ, đúng theo chính sách của họ: máy chủ ô ấy do quỹ OSM chạy
+ * bằng tiền quyên góp, và chính sách dùng ô của họ KHÔNG cho phép một ứng dụng
+ * lấy nó làm nền bản đồ chung. Họ chặn theo dải IP và theo ứng dụng, nên nó chạy
+ * được ở máy này và chết ở máy khác — kiểu hỏng không bao giờ tái hiện được ở
+ * bàn làm việc.
+ *
+ * Nên nguồn nay là **Esri World Street Map**, ĐÚNG máy chủ mà lớp vệ tinh của
+ * app đã chạy ổn từ đầu (`server.arcgisonline.com`). Một nhà cung cấp cho cả
+ * hai lớp: một bộ điều khoản để đọc, một tên miền để mở trong tường lửa, và
+ * không còn lớp nào sống bằng lòng hảo tâm của một quỹ phi lợi nhuận.
+ *
+ * ⚠ Nền Esri VẪN dựng một phần trên dữ liệu OpenStreetMap, nên dòng ghi nguồn
+ *   giữ CẢ HAI tên. Đó là nghĩa vụ giấy phép, không phải phép lịch sự.
+ *
+ * ⛔ Đừng quay lại `a.` / `b.` / `c.tile.openstreetmap.org` — dạng subdomain ấy
+ *    đã ngưng phân giải hẳn (*"Unable to resolve host … no address associated
+ *    with hostname"*), và `mapTiles.test.ts` canh cho nó không mọc lại.
+ *
+ * ⚠ Thứ tự `{z}/{y}/{x}` là của Esri, KHÔNG phải `{z}/{x}/{y}` như OSM. `tileUrl`
+ *   thay theo TÊN nên đổi chỗ không sao; nhưng ai chép URL này đi nơi khác mà
+ *   đảo lại hai chữ thì được một bản đồ lộn ngược, im lặng.
+ */
+export const STREET_TILES =
+  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}';
+
+/**
+ * URL ô ẢNH VỆ TINH — cùng luật một-nguồn với `STREET_TILES` ở trên.
+ *
+ * Lập hằng này 2026-09-14 vì đúng cái mà chú thích trên cảnh báo đã tái diễn ở
+ * nguồn còn lại: `FarmMapScreen.tsx` khai `const SAT_TILES = '…arcgisonline…'`
+ * chép tay, ngay dưới một dòng chú thích nói nó "cùng nguồn với
+ * `mapTiles.MAP_SOURCES`". Tệp đó ĐÃ nhập hằng ô ĐƯỜNG PHỐ từ đây — tức bản vá
+ * lần trước đi tới đúng một trong hai URL trên cùng một màn hình.
+ */
+export const ESRI_SATELLITE_TILES =
+  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+
+/**
+ * STYLE NỀN RỖNG cho `MapView` — bắt buộc phải truyền, không được bỏ trống.
+ *
+ * ── Vì sao tồn tại (đo trên máy ảo iPhone 17, 2026-09-14) ────────────────────
+ * Bốn màn bản đồ của app đều vẽ `<MapView>` KHÔNG có prop `mapStyle`. Khi đó
+ * `@maplibre/maplibre-react-native@10.4.2` rơi về `StyleURL.Default`, mà giá trị
+ * đó do native cấp (`ios/MLRN/MLRNModule.m:20` → `[MLNStyle defaultStyleURL]`) và
+ * KHÔNG giải ra được style dùng được. Kết quả đo: `MapLibre error [event]:Style
+ * [code]:-1`, lặp **50 lần**, và màn hình là một hình chữ nhật xanh dương trơn.
+ *
+ * Chỗ đắt không phải bản đồ trống — mà là app KHÔNG NÓI GÌ. Thanh công cụ vẫn
+ * hiện "0m chu vi · 0m² diện tích · 0 điểm", nút phóng to, nút định vị, nút đổi
+ * lớp vẫn đủ. Người nông dân đi vẽ ranh vườn trên nền trống không có cách nào
+ * biết là hỏng — họ sẽ tưởng vườn mình chưa hiện ra. Chính là "cái vỏ im lặng".
+ *
+ * Và style nền chết thì kéo theo CẢ lớp raster của app: hai `RasterSource` (OSM
+ * + Esri) khai đúng, nhưng không có style để bám vào nên không ô nào được vẽ.
+ *
+ * ── Vì sao RỖNG chứ không trỏ một nhà cung cấp ──────────────────────────────
+ * App đã tự cấp toàn bộ ảnh nền bằng `RasterSource` của chính nó. Cái nó thiếu
+ * chỉ là một style HỢP LỆ để các lớp đó bám vào. Style rỗng nạp tức thì, không
+ * cần mạng, không cần khoá API, không thêm nhà cung cấp nào vào đường đi của dữ
+ * liệu người dùng — nên nó KHÔNG kéo theo một quyết định về tài khoản hay về
+ * quyền riêng tư, thứ mà một style trỏ máy chủ bên thứ ba sẽ kéo theo.
+ *
+ * ⚠ Style rỗng KHÔNG khai `glyphs`/`sprite`. Lớp chữ (`SymbolLayer` có `textField`)
+ *   và icon theo sprite sẽ không vẽ được. Hôm nay bốn màn không dùng chúng; ngày
+ *   nào dùng thì khai `glyphs` ở ĐÂY, đừng thêm style riêng ở màn đó.
+ */
+export const EMPTY_BASE_STYLE = {
+  version: 8 as const,
+  sources: {},
+  layers: [],
+};
+
 export const MAP_SOURCES: readonly MapSource[] = [
   {
     id: 'satellite',
@@ -64,9 +142,10 @@ export const MAP_SOURCES: readonly MapSource[] = [
   {
     id: 'street',
     label: 'Bản đồ',
-    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    urlTemplate: STREET_TILES,
     maxZoom: 19,
-    attribution: '© OpenStreetMap contributors',
+    // Nền Esri dựng một phần trên dữ liệu OSM ⇒ ghi cả hai. Nghĩa vụ giấy phép.
+    attribution: '© Esri · OpenStreetMap contributors',
   },
 ] as const;
 

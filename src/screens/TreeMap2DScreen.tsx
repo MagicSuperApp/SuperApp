@@ -6,7 +6,7 @@
  *  đặt absolute theo pos_x × rộng-băng và pos_h × cao-băng. Panel thống-kê + mốc ngữ-cảnh.
  *  Bấm 1 chấm quả → mở timeline ảnh các góc (getFruitViews) trong modal cuối màn.
  *
- *  KHÔNG dùng react-native-svg (app chưa link svg → tránh Thư native-link):
+ *  KHÔNG dùng react-native-svg (app chưa link svg → tránh thêm một bước link native):
  *    băng/thân/chấm = View + borderRadius + position:absolute + transform.
  *    Toán bố-trí (zone→băng, pos_x/pos_h→toạ-độ chấm, tvLocalH, tvDotColor) port nguyên từ web.
  *

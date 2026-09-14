@@ -94,8 +94,30 @@ jobs:
 
       # --forceExit: xem lý do ở `verify-pr.yml` (jest treo vì handle còn mở thì
       # runner chạy tới hết bộ nhớ và báo đỏ dù test đã xanh).
-      - name: Unit tests (jest)
-        run: npx jest --ci --forceExit
+      #
+      # HAI lượt, mỗi app một lượt — cùng luật và cùng lý do đã ghi ở
+      # `verify-pr.yml`. Luồng này dựng APK cho CẢ HAI app, nên nó mà chỉ chạy bộ
+      # kiểm cho một app thì cái nó phát ra rộng hơn cái nó chứng minh.
+      #
+      # `--cacheDirectory` riêng là bắt buộc, không phải tối ưu: bộ chuyển mã nướng
+      # giá trị vào lúc BIẾN ĐỔI MÃ, dùng chung bộ đệm thì lượt sau ăn lại mã đã
+      # nướng của lượt trước và hai lượt cho ra cùng một app — cả hai vẫn xanh.
+      #
+      # `EXPECTED_APP_INSTANCE` là lời khai ĐỘC LẬP; `instanceUnderTest.test.ts` so
+      # nó với app mã thật sự nhận được. Bỏ trống trên CI là ĐỎ — và đó đúng là
+      # cách lỗi này bị bắt: bản trước gọi `npx jest` trần ở đây trong khi
+      # `verify-pr.yml` đã khai, nên luồng này lặng lẽ chỉ chứng minh app mặc định.
+      - name: Unit tests (jest) — app `aladin`
+        env:
+          APP_INSTANCE: aladin
+          EXPECTED_APP_INSTANCE: aladin
+        run: npx jest --ci --forceExit --cacheDirectory /tmp/jest-cache-aladin
+
+      - name: Unit tests (jest) — app `checkfarm`
+        env:
+          APP_INSTANCE: checkfarm
+          EXPECTED_APP_INSTANCE: checkfarm
+        run: npx jest --ci --forceExit --cacheDirectory /tmp/jest-cache-checkfarm
 
   build-debug-apk:
     name: Build debug APK
@@ -163,9 +185,28 @@ jobs:
       # PHẢI trước gradle: gradle gọi Metro, Metro nướng giá trị @env vào bundle.
       # Thiếu bước này thì mọi biến @env là `undefined` và app trỏ localhost —
       # KHÔNG có lỗi nào được in ra. Lý do đầy đủ ở .github/actions/rn-env/action.yml.
-      - name: Sinh biến môi trường React Native
+      # `app-instance` khai TƯỜNG MINH, không mượn giá trị mặc định của action.
+      #
+      # Đây là bước sinh `.env`, và `.env` là đường DUY NHẤT `APP_INSTANCE` tới
+      # được tầng JavaScript. Bỏ trống thì `rn-env/action.yml:120` điền
+      # `${IN_APP_INSTANCE:-aladin}` — luồng này rồi dựng CẢ HAI flavor từ đúng
+      # tệp đó, nên gói CheckFarm giao ra mang vỏ native CheckFarm (mã gói, tên,
+      # biểu tượng) với toàn bộ JavaScript của Aladin: logo Aladin bốn màn, tên
+      # app "Aladin", khẩu hiệu Aladin, `{brand}` → "Aladin", bảng trang web trỏ
+      # `aladin.work`, thứ tự ô ưu tiên việc-làm.
+      #
+      # Không bước nào đỏ vì bước đối chiếu của action chỉ so TÊN biến, mà tên
+      # luôn có mặt nhờ chính giá trị mặc định đó. Và gói CheckFarm không đi qua
+      # bước "Soi chính tệp APK" bên dưới — bước đó chỉ mở gói Aladin.
+      #
+      # Cùng cái bẫy này đã được vá cho đường cửa hàng (`android-aab.yml` truyền
+      # `app-instance: ${{ env.FLAVOR }}`, có bài ghim ở `aabTheoApp.test.ts`).
+      # Luồng debug là luồng DUY NHẤT người thử thật sự cầm được bản CheckFarm,
+      # và nó bị bỏ sót.
+      - name: Sinh biến môi trường React Native (Aladin)
         uses: ./.github/actions/rn-env
         with:
+          app-instance: aladin
           aladin-api-key: ${{ secrets.ALADIN_API_KEY }}
           cardano-network: ${{ vars.CARDANO_NETWORK || '0' }}
 
@@ -224,10 +265,24 @@ jobs:
       #
       # Bước này đỏ = một trong hai điều đã hỏng: hoặc bước tắt Firebase theo flavor
       # không còn chạy, hoặc CheckFarm đã có tệp cấu hình mà nó sai gói.
+      # Sinh LẠI `.env` cho đúng app sắp dựng. Không tái dùng tệp của lượt Aladin:
+      # xem lý do dài ở bước sinh `.env` phía trên.
+      - name: Sinh lại biến môi trường React Native (CheckFarm)
+        uses: ./.github/actions/rn-env
+        with:
+          app-instance: checkfarm
+          aladin-api-key: ${{ secrets.ALADIN_API_KEY }}
+          cardano-network: ${{ vars.CARDANO_NETWORK || '0' }}
+
       - name: Dựng bản CheckFarm — chứng minh dựng được khi KHÔNG có Firebase
         run: |
           set -eo pipefail
           cd android
+          # `--rerun-tasks` cho riêng bước gói JS: Gradle KHÔNG khai `.env` là đầu
+          # vào của tác vụ gói, nên đổi tệp đó xong chạy lại thì tác vụ vẫn được
+          # coi là "đã mới" và gói cũ đi thẳng vào APK. Tức là bản vá ở bước trên
+          # sẽ im lặng không có tác dụng — đúng loại hỏng câm mà nó sinh ra để gỡ.
+          ./gradlew :app:createBundleCheckfarmDebugJsAndAssets --rerun-tasks --no-daemon 2>&1 | tail -20 || true
           ./gradlew assembleCheckfarmDebug --no-daemon --stacktrace 2>&1 | tee android-checkfarm.log
           CF=$(find app/build/outputs/apk/checkfarm/debug -name "*.apk" | head -1)
           if [ -z "$CF" ]; then
@@ -236,6 +291,36 @@ jobs:
             exit 1
           fi
           echo "✅ CheckFarm APK: $CF ($(stat -c%s "$CF") bytes)"
+
+          # ── ĐỌC LẠI CHÍNH TỆP SẮP GIAO, không tin là hai bước trên đã chạy ──
+          #
+          # Hai bước vá phía trên đều có thể im lặng không ăn: `rn-env` ghi `.env`
+          # mà Gradle dùng lại gói cũ, hoặc tên tác vụ gói đổi theo phiên bản
+          # RNGP nên `--rerun-tasks` trượt vào hư không. Cả hai ca cho ra một APK
+          # trông đúng ở mọi dấu hiệu bên ngoài.
+          #
+          # Phép đo đúng là mở gói ra tìm tên app trong bó JavaScript. `displayName`
+          # của instance nằm nguyên văn trong bó, nên thấy "CheckFarm" mà KHÔNG
+          # thấy chuỗi khẩu hiệu của Aladin là bằng chứng bó đúng app.
+          unzip -o -q "$CF" assets/index.android.bundle -d /tmp/cf-apk 2>/dev/null || true
+          BO=/tmp/cf-apk/assets/index.android.bundle
+          if [ ! -f "$BO" ]; then
+            echo "::error::Không tìm thấy bó JavaScript trong APK CheckFarm."
+            echo "  Gói debug không nhúng bó thì phép đo dưới đây KHÔNG chạy được,"
+            echo "  và im lặng bỏ qua nó là quay lại đúng trạng thái vừa vá."
+            exit 1
+          fi
+          if ! grep -q 'CheckFarm' "$BO"; then
+            echo "::error::Bó JavaScript trong APK CheckFarm KHÔNG chứa tên 'CheckFarm'."
+            exit 1
+          fi
+          # Khẩu hiệu Aladin — chuỗi CHỈ có trong `ALADIN_INSTANCE.tagline`.
+          if grep -q 'Một ứng dụng, bốn việc' "$BO"; then
+            echo "::error::APK CheckFarm đang mang khẩu hiệu của Aladin — bó JS sai app."
+            echo "  Nghĩa là bước sinh lại '.env' hoặc bước gói lại đã không ăn."
+            exit 1
+          fi
+          echo "✅ bó JavaScript trong APK CheckFarm mang đúng danh tính CheckFarm"
           # Giao ra luôn, không chỉ chứng minh. Bản CheckFarm chưa có mục trên
           # Google Play (cần Play Console của pháp nhân CheckFarm), nên đường duy
           # nhất để người thử cầm được nó là tải tệp này về cài thẳng.

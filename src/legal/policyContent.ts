@@ -62,8 +62,8 @@ export const OPERATOR = DEFAULT_INSTANCE.operator;
  * nhân khác để lấp chỗ trống là đúng lỗi vừa gỡ. Để trống hẳn thì người đọc
  * tưởng phần mềm hỏng. Nên nói ra.
  */
-const CHUA_CO_VI = 'chưa công bố — pháp nhân đang hoàn tất thủ tục thành lập';
-const CHUA_CO_EN = 'not yet published — the legal entity is still being registered';
+const NOT_PUBLISHED_VI = 'chưa công bố — pháp nhân đang hoàn tất thủ tục thành lập';
+const NOT_PUBLISHED_EN = 'not yet published — the legal entity is still being registered';
 
 const VI: PolicyDoc = {
   title: 'Điều khoản & Chính sách',
@@ -76,8 +76,8 @@ const VI: PolicyDoc = {
       heading: '1. Ai vận hành ứng dụng',
       body: [
         `${OPERATOR.name} vận hành ứng dụng này.`,
-        `Địa chỉ: ${OPERATOR.address ?? CHUA_CO_VI}`,
-        `Liên hệ về dữ liệu cá nhân: ${OPERATOR.contact ?? CHUA_CO_VI}`,
+        `Địa chỉ: ${OPERATOR.address ?? NOT_PUBLISHED_VI}`,
+        `Liên hệ về dữ liệu cá nhân: ${OPERATOR.contact ?? NOT_PUBLISHED_VI}`,
       ],
     },
     {
@@ -159,8 +159,8 @@ const EN: PolicyDoc = {
       heading: '1. Who operates this app',
       body: [
         `${OPERATOR.nameEn ?? OPERATOR.name} operates this app.`,
-        `Address: ${OPERATOR.addressEn ?? CHUA_CO_EN}`,
-        `Data protection contact: ${OPERATOR.contact ?? CHUA_CO_EN}`,
+        `Address: ${OPERATOR.addressEn ?? NOT_PUBLISHED_EN}`,
+        `Data protection contact: ${OPERATOR.contact ?? NOT_PUBLISHED_EN}`,
       ],
     },
     {

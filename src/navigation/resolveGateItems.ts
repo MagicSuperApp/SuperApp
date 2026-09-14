@@ -17,7 +17,6 @@ import { navNational, navIcon } from './navLabels';
 import {
   resolvePersona,
   slotPriority,
-  NEO_LEFT,
   NEO_CENTER,
   NEO_RIGHT,
   type FarmSignal,
@@ -35,7 +34,8 @@ import { TRACE_SCAN_ROUTE_NAME } from './traceScan';
 import { tk } from '../i18n/keys';
 // An toàn về chiều phụ thuộc: tệp này đã đứng SAU `instance.config`, còn
 // `resolveVisibleTabs` thì không biết gì về instance — xem chú thích ở `slotPriority`.
-import { DEFAULT_INSTANCE } from '../config/instance.config';
+import { DEFAULT_INSTANCE, ENABLED_MODULES } from '../config/instance.config';
+import { routeIsReachable as isRouteReachable } from './moduleCatalog';
 // Mục cổng — SHAPE tương thích bộ chạy của HomeRadialOverlay (key/icon/label/
 // route/params) + `tint` trực tiếp (thay `group` của ActionDef SG4).
 export interface GateItem {
@@ -98,7 +98,12 @@ const SUB_ACTIONS: Record<string, Omit<GateSubItem, 'key'>[]> = {
 // route service → màu thương hiệu (brand token). Host (Home) dùng accent nền.
 const SERVICE_TINT: Record<string, string> = {
   [NEO_CENTER]: COLORS.accent,        // Home
-  [NEO_LEFT]: CHAT_THEME.primary, // Chat
+  // Khoá viết THẲNG tên route, không viết `[NEO_LEFT]`. Dùng hằng NEO ở đây là
+  // buộc màu vào VỊ TRÍ thay vì vào dịch vụ: khi ô trái đổi chủ (13/09/2026 từ
+  // Chat sang Ví) thì chủ mới thừa kế màu của chủ cũ, còn chủ cũ mất màu và rơi
+  // về `COLORS.accent` — hai lỗi cùng lúc, không lỗi nào ném.
+  ChatHome: CHAT_THEME.primary,        // Chat
+  PhoenixWallet: COLORS.accentDeep,    // Ví
   Farms: TRACE_THEME.primary,          // Farm
   WorkHome: WORK_THEME.primary,        // Work
   JoinHome: LAMPNET_THEME.primary,     // Join
@@ -108,6 +113,23 @@ const SERVICE_TINT: Record<string, string> = {
 // Trace-quét (§3) — màn QUÉT TIÊU DÙNG (TraceScan) đã dựng → item hiện trong cổng
 // (đúng "một mục trong toolbox nút giữa" §3).
 export const TRACE_SCAN_ROUTE: string | null = TRACE_SCAN_ROUTE_NAME;
+
+/**
+ * Phép hỏi "route này tới được không" nay là hàm DÙNG CHUNG ở `moduleCatalog`.
+ *
+ * Nó rời khỏi đây 2026-09-14 vì bản riêng tư này chỉ bảo vệ được cổng xoè: cùng
+ * điều kiện ấy vắng mặt ở khu "Dịch vụ" của màn chính, nên tắt `chat` mà thẻ
+ * "TRÒ CHUYỆN" vẫn nằm nguyên trên màn đầu tiên người dùng thấy. Lý do đầy đủ ở
+ * `moduleCatalog.routeIsReachable`.
+ *
+ * Vì sao phải lọc ở cổng xoè chứ không chỉ ở thanh tab (giữ nguyên ghi chú cũ):
+ * thanh tab đã tự bỏ module tắt (`navigation/index.tsx:213`), nhưng cổng xoè dựng
+ * từ `slotPriority` — một bảng THỨ TỰ ROUTE, không biết gì về module. App tắt
+ * `work` mà bảng vẫn liệt `WorkHome` thì cổng hiện đúng mục đó, người dùng bấm, và
+ * điều hướng tới một route chưa đăng ký. Không màn nào hiện, không lỗi nào ném.
+ */
+const routeIsReachable = (route: string): boolean =>
+  isRouteReachable(route, ENABLED_MODULES);
 
 function serviceItem(route: string): GateItem {
   const item: GateItem = {
@@ -147,10 +169,16 @@ export function resolveGateItems(farm: FarmSignal, usage: UsageMap = {}): GateIt
   // của nền dùng chung, nên `InstanceConfig.slotPriority` có 0 người đọc: hai app
   // khai thứ tự khác nhau mà ra CÙNG một thanh điều hướng — hỏng kiểu trông như
   // đã cấu hình được, và không bài kiểm nào đỏ vì không có gì để đỏ.
-  const order = [NEO_LEFT, ...slotPriority(persona, DEFAULT_INSTANCE.slotPriority)];
+  // Ô trái cũng lấy của app đang chạy (`anchorLeft`), không lấy hằng nền: cổng xoè
+  // và thanh tab phải nói CÙNG một thứ tự, không thì một app khai ô trái riêng sẽ
+  // thấy thanh đổi mà cổng thì không.
+  const order = [
+    DEFAULT_INSTANCE.anchorLeft,
+    ...slotPriority(persona, DEFAULT_INSTANCE.slotPriority),
+  ].filter(routeIsReachable);
   const items = order.map(serviceItem);
 
-  if (TRACE_SCAN_ROUTE) {
+  if (TRACE_SCAN_ROUTE && routeIsReachable(TRACE_SCAN_ROUTE)) {
     const trace: GateItem = {
       key: 'svc-trace-scan',
       icon: 'qrcode',

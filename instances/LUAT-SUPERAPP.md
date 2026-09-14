@@ -1,11 +1,24 @@
-<!-- rulesVersion: 1 -->
+<!-- rulesVersion: 3 -->
 
 # Luật SuperApp — thứ mọi app dựng từ kho này phải tuân
 
-**Phiên bản luật: 1.** Con số đó nằm ở dòng đầu tệp và **mỗi `instances/<mã>/instance.json`
+**Phiên bản luật: 3.** Con số đó nằm ở dòng đầu tệp và **mỗi `instances/<mã>/instance.json`
 phải khai đúng nó** (`superapp.rulesVersion`). Sửa luật là bắt buộc nâng số, và khi ấy mọi app
 phải xác nhận lại — bản dựng đỏ cho tới khi có người đọc và ký nhận. Đó là toàn bộ cơ chế: luật
 không tự lan, người phải xác nhận.
+
+> **v2 → v3 (2026-09-10)** đổi **§2**, và đổi theo hướng ngược lại với v1/v2: app nay **chọn
+> được** tập module, qua lời khai `modules: "all" | [...]`. Chủ sở hữu chốt hướng này vì nền tảng
+> sẽ có hàng trăm module và mỗi doanh nghiệp chỉ cần một phần. Chẩn đoán cũ (trường mảng trần
+> hỏng câm) **giữ nguyên** — chỉ đổi thuốc, xem §2.
+> Hai app hiện tại đều khai `"all"`, nên v3 **không đổi hành vi app nào**.
+>
+> **v1 → v2 (2026-09-10)** đổi hai mục, cả hai vì chủ sở hữu quyết cho `checkfarm` phát hành
+> dưới pháp nhân Aladin rồi chuyển giao sau:
+> **§4** iOS chuyển từ *chưa cưỡng chế* sang *cưỡng chế* — mỗi app một bộ `AppIcon.appiconset`
+> riêng, có phép kiểm bắt được ca dùng chung ảnh.
+> **§6** bỏ vế suy "hai app ⟹ hai pháp nhân ⟹ hai khoá". Khoá ký đi theo pháp nhân **phát hành**;
+> dùng chung thì được, nhưng phải KHAI bằng `operator.sharedWith` + `operator.transferTo`.
 
 Kho này dựng ra **nhiều app** từ **một nền mã**. Người dùng có quyền dùng app nào hoặc không dùng
 app nào — đó là lựa chọn của họ. Nhưng một app đã dựng từ kho này thì mang theo những ràng buộc
@@ -46,23 +59,53 @@ Hai app không được dùng chung một DID. Trùng là nổ.
 > trên tồn tại vì lý do đó, và chỉ được gỡ khi đường cấp có thật — không gỡ bằng cách bịa một
 > chuỗi trông giống DID.
 
-## 2. Không app nào được bỏ bớt module
+## 2. App CHỌN module, nhưng phải KHAI mình chọn kiểu gì
 
 **Cưỡng chế: CÓ.**
 
-Tập module là **hằng dẫn xuất** từ `MODULE_IDS` (`src/navigation/moduleIds.ts`), không phải biến
-của instance. Thêm module vào sổ là **cả hai** app có, không ai phải nhớ.
+Mỗi app khai `modules` trong `instances/<mã>/instance.json` và trong `InstanceConfig`, đúng một
+trong hai dạng:
 
-Trước đây có trường `enabledModules` cho mỗi app tự chọn tập module. Trường đó hỏng **câm**:
-`collectModuleScreens` gặp module vắng chỉ `console.warn` rồi bỏ qua
-(`src/navigation/registry.ts`) — không đỏ, không chặn. Ngày thêm module thứ năm mà một app quên
-khai, app đó lặng lẽ thiếu tính năng và không phép đo nào kêu. Nên trường đó đã bị gỡ, và
-`tsc` canh hai bên khỏi lệch: `registry.ts` khai `Record<ModuleId, RegistryEntry>` từ đúng kiểu
-`MODULE_IDS`.
+| khai | nghĩa | module thêm sau |
+|---|---|---|
+| `"all"` | app **lõi** — lấy cả sổ | **tự có** |
+| `["chat", "trace"]` | app **chọn lọc** | **không** tự vào, và đó là đúng ý |
 
-Cái **được phép** khác nhau giữa các app là lớp trình bày: tên, chủ đề màu, thứ tự và độ nổi bật
-của điểm vào. Đẩy một ô ra khỏi thanh tab và không có nó trong app là hai việc khác nhau — chỉ
-việc đầu được phép.
+Danh sách để bấm chọn ở `src/navigation/moduleCatalog.ts`, sinh từ chính `module.manifest.json`
+của từng module — kèm quyền module đó cần (máy ảnh, vị trí, đọc hồ sơ), vì bật một module là bật
+luôn quyền của nó và đó là thứ phải khai trên trang cửa hàng.
+
+### Vì sao có `"all"` thay vì để app khai một mảng trần
+
+Luật v1 và v2 **cấm hẳn** việc bỏ bớt module. Lệnh cấm đó không sai lúc viết: trường
+`enabledModules` đời đầu đúng là một mảng trần, và nó hỏng **câm** — `collectModuleScreens` gặp
+module vắng chỉ `console.warn` rồi bỏ qua, nên app quên khai module mới lặng lẽ thiếu tính năng
+và không phép đo nào kêu.
+
+Chỗ hỏng thật nằm ở chỗ **hai ca cho ra dữ liệu giống hệt nhau**: "app này cố ý không lấy module
+mới" và "app này quên khai module mới". Cấm hẳn là một cách chữa; làm hai ca phân biệt được là
+cách kia. `"all"` là lời khai tách chúng ra.
+
+Bắt app khai danh sách **bỏ** thì đúng cái hỏng đó quay lại, chỉ đổi dấu: nền tảng sẽ có hàng
+trăm module, và danh sách âm bắt mọi app phải sửa mỗi lần sổ dài thêm.
+
+### Chỗ cưỡng chế
+
+`src/config/moduleSelection.test.ts` — lời khai hợp lệ · hai nguồn JSON/TS không trôi khỏi nhau ·
+`"all"` thật sự là cả sổ chứ không phải ảnh chụp · **không tab hay `slotPriority` nào trỏ tới
+module app đã tắt** · danh mục khớp manifest · không hai module trùng route.
+
+Hàng in đậm là đường hỏng đắt nhất và nó **không** đi qua bảng `tabs`: `slotPriority` là bảng thứ
+tự route, không biết gì về module. App tắt `work` mà bảng còn liệt `WorkHome` thì cổng xoè vẫn vẽ
+đúng mục đó, người dùng bấm, và điều hướng tới một route chưa đăng ký — không màn nào hiện, không
+lỗi nào ném. `resolveGateItems` lọc lúc chạy; phép kiểm canh tầng cấu hình.
+
+### Cái tắt là ĐƯỜNG TỚI, không phải mã
+
+`registry.ts` vẫn import tĩnh mọi màn của mọi module (INV-SEC: không tải động, offline-first),
+nên **mã của module tắt vẫn nằm trong gói**. Tắt module bỏ đi tab, mục cổng xoè và việc đăng ký
+route — không làm gói nhẹ đi. Muốn gói nhẹ theo cấu hình thì phải sinh `registry.ts` lúc dựng;
+đó là việc khác và **chưa làm**.
 
 ## 3. Mỗi app một mã gói riêng, không bao giờ đổi
 
@@ -78,21 +121,38 @@ Sau lần tải bản dựng đầu tiên lên cửa hàng thì mã gói **khôn
 
 ## 4. Mỗi app tự mang bộ biểu tượng của mình
 
-**Cưỡng chế: CÓ trên Android · KHÔNG trên iOS.**
+**Cưỡng chế: CÓ trên Android · CÓ trên iOS (từ luật v2).**
 
 Android: `src/main/res` không còn bộ `ic_launcher` dùng chung. App quên biểu tượng thì bản dựng
 đỏ ngay (`resource mipmap/ic_launcher not found`), thay vì lặng lẽ mượn biểu tượng của app đứng
 trước rồi đi thẳng lên cửa hàng.
 
-iOS thì ngược hẳn, và đây là chỗ dễ đọc nhầm nhất trong cả tệp: câu giải thích ở trên nói về một
-triệu chứng **chỉ có ở Android**. Đo 2026-09-09 (`find instances -type d`): không app nào có thư
-mục `ios/`, và `ios/SuperApp/Images.xcassets/AppIcon.appiconset` là bộ **duy nhất** — bộ của
-Aladin. Nên một bản iOS của app khác `aladin` sẽ mang biểu tượng Aladin, **dựng được và ký
-được**, không cổng nào đỏ.
+iOS **từng** ngược hẳn, và chỗ này là chỗ dễ đọc nhầm nhất trong cả tệp: câu giải thích Android ở
+trên nói về một triệu chứng chỉ có ở Android. Đo 2026-09-09: không app nào có thư mục `ios/`, và
+`ios/SuperApp/Images.xcassets/AppIcon.appiconset` là bộ **duy nhất** — bộ của Aladin. Một bản iOS
+của app khác `aladin` mang biểu tượng Aladin, **dựng được và ký được**, không cổng nào đỏ. Chặn
+tạm lúc ấy là `exit 1` cho mọi app khác `aladin`.
 
-Chặn tạm: luồng iOS trong `codemagic.yaml` `exit 1` khi `APP_INSTANCE != aladin`, và soi bộ ảnh
-đang thật sự đóng gói bằng `sips` (cỡ 1024×1024, không kênh alpha). Mở khoá thì cần một bước
-**sinh `AppIcon.appiconset` theo app** — đặt tệp vào chỗ là chưa đủ.
+Nay mỗi app giữ bộ của mình ở `instances/<mã>/ios/AppIcon.appiconset/`, và bước dựng **chép** bộ
+đúng app vào chỗ Xcode đọc, rồi **đo lại chính tệp vừa chép**. Thứ tự đó là phần quan trọng: một
+bản trước đo bộ ảnh trước khi chép, nên nó luôn đo bộ của lượt dựng trước — vẫn ra dấu ✅, vẫn
+không nói gì về bản đang dựng.
+
+Ba chỗ hỏng, ba cách kêu khác nhau, nên đo riêng từng chỗ
+(`src/config/nativeIdentityParity.test.ts`):
+
+| hỏng | ai kêu, kêu lúc nào |
+|---|---|
+| thiếu bộ | máy chủ dựng đỏ — muộn, nhưng có kêu |
+| **trùng bộ với app khác** | **không ai kêu**; chỉ lộ khi có người nhìn màn hình máy |
+| còn kênh alpha | Apple từ chối ở bước **nộp**, sau cả một lượt dựng trả tiền |
+
+Hàng giữa là hàng đắt nhất, và là lý do có bài `KHÔNG hai app nào dùng chung một ảnh biểu tượng`.
+
+Sinh bộ mới: `python3 scripts/sinh-bieu-tuong.py <mã app>` — sinh cả Android lẫn iOS từ **một**
+tệp `instances/<mã>/brand/icon-1024.png`, rồi commit kết quả. ⚠ Đừng chạy lại cho app đã phát
+hành: bộ sinh ra khác byte với bộ đang trên cửa hàng, và ở cỡ 20×20 · 29×29 thì khác thật, không
+phải khác mã hoá. Bộ iOS của `aladin` vì vậy là bản **chép** từ bộ đang phát hành.
 
 ## 5. Mỗi app một dự án Firebase riêng — hoặc không có
 
@@ -106,13 +166,36 @@ Bẫy nguy hiểm nhất là chép tệp của app này sang thư mục app kia:
 dữ liệu của app này chảy vào dự án của pháp nhân khác. `src/config/nativeIdentityParity.test.ts`
 canh đúng chỗ đó.
 
-## 6. Mỗi app một khoá ký riêng
+## 6. Khoá ký đi theo PHÁP NHÂN PHÁT HÀNH, không đi theo tên app
 
-**CHƯA CƯỠNG CHẾ.**
+**CHƯA CƯỠNG CHẾ ở tầng khoá · CƯỠNG CHẾ ở tầng lời khai (từ luật v2).**
 
-Hai pháp nhân riêng thì hai khoá ký riêng. Hôm nay chưa có phép đo nào trong kho nói được một bản
-dựng đã ký bằng khoá của ai — khoá không nằm trong kho, và `nativeIdentityParity.test.ts` tự khai
-điều đó.
+Luật cũ viết "mỗi app một khoá ký riêng", suy từ "hai app = hai pháp nhân". Vế suy đó **không còn
+đúng**: chủ sở hữu quyết ngày 2026-09-10 rằng `checkfarm` phát hành dưới pháp nhân **Aladin**,
+chuyển giao cho CheckFarm Inc sau. Nên hai app hôm nay dùng chung một chứng chỉ phân phối iOS
+(đội Apple `3666KPJX5R`) — đúng và cố ý.
+
+Luật đúng là: **khoá ký thuộc về pháp nhân đứng tên phát hành**. Hai app cùng pháp nhân thì dùng
+chung được; hai app khác pháp nhân thì tuyệt đối không.
+
+Chỗ khó là hai ca có **trạng thái dữ liệu giống hệt nhau**: dùng chung có chủ ý, và chép nhầm
+khối `operator` của app cũ sang app mới. Nới phép kiểm thành "cho trùng" thì ca chép nhầm đi lọt;
+giữ "cấm trùng" thì ca hợp lệ đỏ và người sửa sẽ nới phép kiểm — đường nào cũng về chỗ mất phép
+canh. Nên phép đo không hỏi *"có trùng không"* mà hỏi *"trùng này có được KHAI không"*:
+
+- `operator.sharedWith` — mã app đang cho mượn pháp nhân. Không cho bắc cầu.
+- `operator.transferTo` — pháp nhân sẽ nhận chuyển giao, kèm ngày bắt đầu mượn.
+
+Bản chép nhầm không mang hai lời khai đó, nên nó vẫn đỏ. Và `transferTo` là chỗ **ghi nợ nằm
+trong dữ liệu chứ không trong chú thích**: một dòng chú thích "tạm thời, chuyển giao sau" già đi
+lặng lẽ và không phép kiểm nào đọc được nó.
+
+Riêng **Android** thì hai app vẫn giữ hai khoá tải lên riêng (`<MÃ>_UPLOAD_*`), kể cả khi cùng
+pháp nhân. Không phải vì luật đòi, mà vì Google Play khoá mục ứng dụng vĩnh viễn theo khoá của
+tệp đầu tiên tải lên: tách sẵn thì ngày chuyển giao không phải đụng gì tới khoá.
+
+Vẫn **chưa cưỡng chế** được phần cốt lõi: không phép đo nào trong kho nói được một bản dựng đã ký
+bằng khoá của ai — khoá không nằm trong kho, và `nativeIdentityParity.test.ts` tự khai điều đó.
 
 ## 7. Tiền: chia phần giữa các app
 

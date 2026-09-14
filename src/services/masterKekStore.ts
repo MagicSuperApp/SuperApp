@@ -37,7 +37,19 @@ export async function getOrCreateMasterKek(): Promise<string> {
   const existing = await taad.secureLoad(KEK_KEY);
   if (existing) return existing;
   const kek = await taad.generateMasterKek();
-  await taad.secureStore(KEK_KEY, kek);
+  // KHÔNG bỏ giá trị trả về. `secureStore` khai `Promise<boolean>`, nên hợp đồng
+  // TypeScript cho phép một cầu native báo hỏng bằng `false` mà không ném — và
+  // đúng ca đó thì hàm này trả về một KEK chỉ sống trong RAM. Hệ quả: danh tính
+  // được đăng ký kèm khoá TAAD suy từ KEK ấy, máy chủ giữ khoá, còn máy thì không
+  // dựng lại được nó, và 24 từ hiện cho người dùng về sau sinh từ một KEK KHÁC.
+  // Đó là một danh tính chết đi lọt cả cổng bắt buộc của máy chủ.
+  //
+  // Đo 2026-09-14: hai cầu hiện có đều `reject` chứ không `resolve(false)`
+  // (`TaadEnclaveModule.kt:371-373`, `TaadEnclaveModule.swift:296-300`), nên đây là
+  // lỗ HỢP ĐỒNG còn hở, không phải lỗi đang chạy. Bịt bằng một dòng thì rẻ hơn
+  // nhiều so với việc trông vào lời hứa của hai tệp native ở kho khác chiều.
+  const stored = await taad.secureStore(KEK_KEY, kek);
+  if (!stored) throw new Error('Không lưu được khoá gốc ví vào kho khoá của máy.');
   return kek;
 }
 

@@ -169,7 +169,11 @@ export const FEATURED_JOBS: Job[] = [
       'Nhà 2 vợ chồng + 1 em bé, căn hộ 80m². Cần dọn vệ sinh + giặt ủi 4 giờ/tuần, sáng Thứ 7. Có thiết bị đầy đủ, chỉ cần người chăm chỉ và tin cậy.',
     requirements: [
       'Sạch sẽ, cẩn thận với đồ trẻ em',
-      'Có CMND đã xác thực Aladin',
+      // Trước 2026-09-11 dòng này ghi "Có CMND đã xác thực Aladin" — dữ liệu
+      // MẪU nhưng hiện thẳng lên màn Chi tiết tin, nên bản CheckFarm quảng cáo
+      // tên một app khác. Gộp về đúng câu đã có sẵn ở ngay trên (dòng 160), vừa
+      // bỏ được tên app vừa bớt một bản trùng nghĩa trong từ điển.
+      'Có CMND/CCCD đã xác thực',
       'Cam kết tối thiểu 3 tháng',
     ],
     applicantCount: 8,

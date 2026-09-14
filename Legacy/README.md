@@ -27,7 +27,7 @@ hành bản **2026-08-08** thay nó, và mở đầu bản mới bằng một m�
 | 4 | JWKS PhoenixKey ở `/.well-known/jwks.json` | đường đó **404**; đường đúng có tiền tố `/api/v1` |
 
 **Nguồn chuẩn nay ở:** `ProofChat/INTEGRATION.md` (v2026-08-08). Đọc mục ⚠️ ở **đầu** tài liệu trước
-mọi thứ khác. Thư bàn giao: `_Agents/inbox/ProofChat-INTEGRATION-cap-nhat-va-lo-hong-con-mo-2026-08-08.md`.
+mọi thứ khác. Thư bàn giao đi qua kênh thư nội bộ giữa các đội, không nằm trong kho.
 
 ---
 
@@ -74,8 +74,8 @@ Ranh giới: SuperApp **không còn phụ trách MobileCore** từ 2026-07-16, n
 
 ### `_team-messages/` (25 tệp) — kênh thư cũ, KHÔNG cất được bằng `git mv`
 
-Đúng là kênh thư đã ngừng: tệp mới nhất **2026-07-07**, còn kênh thay nó (`_Agents/inbox/`) chạy từ
-2026-07-14 tới nay. Nhưng **không cất vào đây được**, vì:
+Đúng là kênh thư đã ngừng: tệp mới nhất **2026-07-07**, còn kênh thay nó chạy từ 2026-07-14 tới
+nay và nằm ngoài kho. Nhưng **không cất vào đây được**, vì:
 
 - `_team-messages/` bị `.gitignore:5` chặn ⇒ **git chưa từng theo dõi nó**. Không có lịch sử để giữ,
   và `git mv` không chạy trên tệp untracked.

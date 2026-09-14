@@ -34,6 +34,7 @@ import { useNavigation } from '@react-navigation/native';
 
 import Icon from '../../../components/Icon';
 import RemoteImage from '../../../components/RemoteImage';
+import { GroundBackdrop } from '../components/layered/Organic';
 import { useTk } from '../../../i18n/keys';
 import { fetchAgriNews, hotNews, timeAgoVi, type NewsItem } from '../../../services/agriNewsService';
 import {
@@ -99,6 +100,16 @@ const TraceNewsScreen: React.FC = () => {
   return (
     <View style={styles.root}>
       <StatusBar barStyle="dark-content" backgroundColor={SURFACE.ground} />
+      {/*
+        Màn này là màn DUY NHẤT trong module không đi qua `GroundBackdrop`, nên
+        khi chuyển sắc cắm vào lớp đó thì mọi màn khác đổi nền còn nó ở lại nền
+        phẳng — hai loại nền cùng lúc trong một module, mà không lệnh nào báo.
+
+        Đúng thứ khối chú thích ở `GroundBackdrop` nói sẽ xảy ra ("màn thêm sau
+        lại là một dịp quên"); chỉ khác là màn này có TRƯỚC, và bị bỏ sót vì nó
+        tự dựng nền riêng thay vì dùng lớp chung.
+      */}
+      <GroundBackdrop variant="list" />
 
       <View style={[styles.header, { paddingTop: insets.top + SPACE.sm }]}>
         <Pressable onPress={() => navigation.goBack()} style={styles.backBtn} hitSlop={10}>

@@ -6,7 +6,7 @@
 // vàng-hổ-phách trên nền app chủ). Đủ 4 trạng thái qua StateView.
 //
 // CHỖ CHỜ:
-//   - Native `join_and_contribute` + seed_hex Keystore = Thư (joinService.joinViaNativeSdk).
+//   - Native `join_and_contribute` + seed_hex Keystore = native (joinService.joinViaNativeSdk).
 //   - Endpoint LampNet dev sống thì Join thật; nay bắt lỗi 3 lớp qua JoinApiError.
 //   - DID hiện qua adapter resolvePersonDid() — KHÔNG rò did:cardano thô (spec §6).
 
@@ -89,9 +89,9 @@ const JoinHomeScreen: React.FC = () => {
       // từ chối cần ba câu khác nhau: "chưa có danh tính" thì người dùng đi tạo,
       // "danh tính dạng cũ" thì họ phải tạo LẠI — bảo họ "thử lại" là gửi họ đi làm
       // một việc không bao giờ xong.
-      const kiem = checkPersonDid(currentUser?.did ?? currentUser?.id ?? null);
+      const didCheck = checkPersonDid(currentUser?.did ?? currentUser?.id ?? null);
       setErrorDetail(
-        !kiem.ok ? kiem.message
+        !didCheck.ok ? didCheck.message
         : !walletAddress ? 'Chưa có ví nhận thưởng. Hãy mở mục Ví để tạo trước khi góp máy.'
         : null,
       );
@@ -113,7 +113,7 @@ const JoinHomeScreen: React.FC = () => {
         bootstrap_did,
         attestation_mode: 'Hardware',
       };
-      // Ưu tiên native SDK (Thư); nay fallback REST bên trong joinViaNativeSdk.
+      // Ưu tiên native SDK; nay fallback REST bên trong joinViaNativeSdk.
       const res = await joinViaNativeSdk(config);
       setResult(res);
       setPhase('joined');

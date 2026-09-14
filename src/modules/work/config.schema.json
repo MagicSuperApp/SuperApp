@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://magiclamp.network/schema/work.config.json",
+  "$id": "https://magiclamp.eco/schema/work.config.json",
   "title": "Work Module Config",
   "description": "Tham số admin (non-dev) tuỳ biến marketplace đặt việc, theo INTEGRATION-STANDARD §4.1. DECLARATIVE thuần (INV-SEC / QĐ-1): chỉ experience layer (INV-2), KHÔNG chạm data layer, KHÔNG biểu thức/template/ref-code. additionalProperties:false MỌI cấp; whitelist kiểu có min/max/maxLength/pattern. Escrow/dòng tiền = module SG5 riêng, KHÔNG khai ở config này.",
   "type": "object",

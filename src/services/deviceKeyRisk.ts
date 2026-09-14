@@ -77,8 +77,8 @@ export async function checkDeviceKeyRisk(): Promise<DeviceKeyRisk> {
     // nghiệp vụ mới là thứ đứng vững ở lối đó.
     const code = e instanceof PhoenixKeyApiError ? e.code : undefined;
     const status = e instanceof PhoenixKeyApiError ? e.httpStatus : undefined;
-    const chuaCoPhien = status === 401 || status === 403 || code === 1304;
-    return { state: 'unknown', why: chuaCoPhien ? 'no-session' : 'server' };
+    const noSession = status === 401 || status === 403 || code === 1304;
+    return { state: 'unknown', why: noSession ? 'no-session' : 'server' };
   }
 }
 

@@ -41,26 +41,30 @@ import StateView from '../components/state/StateView';
 import { showInfo, showWarning } from '../utils/alert';
 import { checkDeviceKeyRisk, isRiskSnoozed, snoozeRisk } from '../services/deviceKeyRisk';
 import { useNavigation } from '@react-navigation/native';
-import { getVersion, getBuildNumber } from 'react-native-device-info';
 // Debug host = backend field-reid THẬT app đang dùng (ORILIFE_BASE), không phải
 // aladin-api (backend Lợi deprecated) — để field soi đúng server (Lỗi field #5).
 import { ORILIFE_BASE } from '../services/orilifeBase';
+// Hai dữ kiện bản dựng lấy từ `fieldReportHead` — KHÔNG dựng lại ở đây. Màn này và màn
+// xem trước báo cáo phải in ra cùng một phần đầu; hai bản chép tay là một bản sao sẽ chết
+// im lặng (thêm một dòng ở một chỗ thì báo cáo gửi từ chỗ kia thiếu đúng dòng đó).
+import { appVersionBase, commitShort } from '../services/fieldReportHead';
 import { fmtLamp, fmtCarp, fmtLampWhole, lampWholeToOildrop } from '../utils/token';
 import { getVaultStatus, WAKEME_CLAIM_READY } from '../services/wakemeService';
 import type { VaultStatusResponse } from '../services/phoenixKey-api';
+import { vaultRowText, vaultStateFromError, type VaultRowState } from './wakemeVaultRow';
 import taad from '../sdk/taadEnclave';
 import { getStoredMasterKek } from '../services/masterKekStore';
 import { ownerPublicKey } from '../sdk/phoenixKey';
 import LanguagePickerModal from '../components/LanguagePickerModal';
 import { LANGUAGES, useLanguage } from '../i18n';
-import { BUILD_COMMIT, BUILD_BRANCH, BUILD_ID } from '@env';
+import { BUILD_BRANCH, BUILD_ID } from '@env';
 
 // 0 = preprod (testnet), khớp WALLET_NETWORK bên register + PhoenixWalletScreen.
 import { CARDANO_NETWORK as WALLET_NETWORK } from '../config/cardanoNetwork';
 
 // Version THẬT đọc từ bundle (CFBundleShortVersionString / versionName + build number).
 // Thay chuỗi hard-code "Aladin v1.0.0" (Lỗi field #4) — để field biết đúng build đang chạy.
-const APP_VERSION_BASE = `${DEFAULT_INSTANCE.displayName} v${getVersion()} (${getBuildNumber()})`;
+const APP_VERSION_BASE = appVersionBase();
 
 // Mã commit đã dựng ra bản này. VÌ SAO cần: số build ("86") do App Store Connect cấp
 // và tăng dần theo mỗi lần nộp, KHÔNG chỉ về commit nào; hơn nữa `main` và `develop`
@@ -68,7 +72,7 @@ const APP_VERSION_BASE = `${DEFAULT_INSTANCE.displayName} v${getVersion()} (${ge
 // quả: người thử báo lỗi kèm "2.0 (86)" mà không ai truy được bản đó gồm những vá nào.
 // CI ghi BUILD_COMMIT vào bundle (codemagic.yaml, .github/actions/rn-env). Build tay ở
 // máy lập trình viên thì biến trống → giấu hẳn, KHÔNG in "()" rỗng hay chữ "unknown".
-const COMMIT_SHORT = (BUILD_COMMIT ?? '').trim().slice(0, 7);
+const COMMIT_SHORT = commitShort();
 const APP_VERSION_LABEL = COMMIT_SHORT
     ? `${APP_VERSION_BASE} · ${COMMIT_SHORT}`
     : APP_VERSION_BASE;
@@ -143,12 +147,31 @@ function normNetwork(net: string | null): NetKind {
     return null;
 }
 
-// Suy mạng TỪ ĐỊA-CHỈ VÍ THẬT khi chưa resolve được. addr1 = Mainnet; addr_test KHÔNG phân biệt
-// được preprod/preview qua tiền tố → mặc định preprod (mạng test chuẩn của dự án, TESTNET-PLAN).
+// Suy mạng TỪ ĐỊA-CHỈ VÍ THẬT khi chưa resolve được.
+//
+// `addr1` nói được mainnet, vì byte mạng trong địa chỉ chỉ có hai giá trị và một trong
+// hai là mainnet. `addr_test` thì KHÔNG: nó nói "mạng thử", không nói **thử nào**.
+// Preprod và Preview dùng CÙNG byte mạng, nên tiền tố không phân biệt được hai cái.
+//
+// Bản trước trả `'preprod'` cho `addr_test`, lấy lý do "preprod là mạng thử chuẩn của
+// dự án". Đó là suy từ một KẾ HOẠCH, không phải đọc từ dữ liệu — và nó là đúng loại
+// lỗi mà một phép đo không được mắc: nó trả một giá trị hợp lệ đúng lúc nó không đo
+// được gì, nên màu xanh của nó vô nghĩa. Nó không nói "preprod", nó nói "tôi không
+// biết" bằng giọng của "preprod".
+//
+// Cái sai lộ ra ở chỗ đắt: nhãn mạng và **đường tới Explorer** dựng từ giá trị này
+// (`explorerSub`), mà một địa chỉ Preview tra trên `preprod.cardanoscan.io` thì KHÔNG
+// thấy gì — người dùng đọc đó là "ví trống", không đọc là "tra sai mạng". Chính khối
+// chú thích ngay trên `NetKind` đã ghi điều đó rồi.
+// Và có một dữ kiện làm chỗ này đắt thêm: độ dài epoch Preview và Preprod chênh NĂM
+// LẦN (1 ngày / 5 ngày), nên cùng một con số MAGIC thì hạn dùng khác hẳn nhau.
+//
+// `null` ⟹ `networkLabel` nói "Chưa kiểm được — kéo xuống để thử lại", tức nói thật
+// và có việc để làm. Mạng thật lấy từ `resolveNetwork` (theo DID), không lấy từ tiền tố.
 function netFromAddress(addr?: string | null): NetKind {
     if (!addr) return null;
-    if (addr.startsWith('addr_test') || addr.startsWith('stake_test')) return 'preprod';
     if (addr.startsWith('addr1') || addr.startsWith('stake1')) return 'mainnet';
+    if (addr.startsWith('addr_test') || addr.startsWith('stake_test')) return null;
     return null;
 }
 
@@ -518,7 +541,7 @@ const AccountScreen = () => {
     // được ngay, số trong vault thì chưa.
     const [lampOpen, setLampOpen] = useState(false);
     const [vault, setVault] = useState<VaultStatusResponse | null>(null);
-    const [vaultState, setVaultState] = useState<'idle' | 'loading' | 'ok' | 'closed'>('idle');
+    const [vaultState, setVaultState] = useState<VaultRowState>('idle');
 
     // Chỉ hỏi máy chủ khi người dùng MỞ popup — không nạp trước ở màn Tài khoản.
     // Cửa `/wakeme/vault/{did}` hiện ném 501 vô điều kiện trên preprod
@@ -530,7 +553,10 @@ const AccountScreen = () => {
         setVaultState('loading');
         getVaultStatus(did)
             .then((v) => { setVault(v); setVaultState('ok'); })
-            .catch(() => { setVault(null); setVaultState('closed'); });
+            // Lượt hỏi trượt KHÔNG phải bằng chứng người này không có két — xem
+            // `wakemeVaultRow.ts`. Hôm nay cửa ném 501 cho tất cả mọi người, nên
+            // nhánh này là nhánh duy nhất chạy thật.
+            .catch((e) => { setVault(null); setVaultState(vaultStateFromError(e)); });
     }, [did, vaultState]);
 
     // KHÔNG in 0 khi chưa biết. "0 LAMP" và "chưa hỏi được máy chủ" là hai việc
@@ -611,6 +637,20 @@ const AccountScreen = () => {
         }, 1500);
         if (versionTapCount.current >= 5) {
             versionTapCount.current = 0;
+
+            // ── ĐÍNH CHÍNH: nút gửi ĐÃ RỜI khỏi hộp thoại này ───────────────────────
+            // Bản trước gắn "Gửi báo cáo" vào đây và chú thích tại chỗ khẳng định người
+            // dùng "THẤY toàn văn trước khi gửi". Khẳng định đó SAI: hộp thoại hiện
+            // `APP_DEBUG_INFO` (chỉ phần đầu), còn đoạn báo cáo đi thẳng vào
+            // `Share.share`. Và `components/AlertPopup.tsx` render thân bằng một `<Text>`
+            // trần, không vùng cuộn — nên 40 dòng không thể nằm ở đây kể cả khi muốn.
+            //
+            // Báo cáo chở những câu app đã hiện, trong đó có câu nội suy tên người bảo hộ,
+            // `@username`, tên cây, tên cá thể; còn `telemetryGate.FORBIDDEN_SHAPES`
+            // không có mẫu nào chặn TÊN NGƯỜI. Mở khay chia sẻ là gửi ra ngoài — bất khả
+            // hồi. Nên việc gửi chuyển sang màn `DiagnosticReport`, nơi đọc được toàn văn.
+            //
+            // 5-chạm GIỮ NGUYÊN vai cũ của nó: xem nhanh dữ kiện bản dựng.
             showInfo(DEFAULT_INSTANCE.displayName, APP_DEBUG_INFO);
         }
     };
@@ -840,11 +880,11 @@ const AccountScreen = () => {
                                         <View style={{ flex: 1 }}>
                                             <Text style={styles.lampRowName}>Wakeme</Text>
                                             <Text style={styles.lampRowSub}>
-                                                {vaultState === 'loading' ? 'Đang hỏi máy chủ…' : 'Chưa nhận'}
+                                                {vaultRowText(vaultState).sub}
                                             </Text>
                                         </View>
                                         <Text style={styles.lampRowVal}>
-                                            {vaultState === 'loading' ? '…' : '—'}
+                                            {vaultRowText(vaultState).value}
                                         </Text>
                                     </View>
                                 ) : (<>
@@ -1006,7 +1046,13 @@ const AccountScreen = () => {
                             <Icon name="information-outline" size={13} color={COLORS.textMuted} />
                             <Text style={styles.walletNoteText}>
                                 <Text style={styles.walletNoteStrong}>Ví cơ bản</Text> do chính bạn giữ chìa — dùng để nhận và chuyển tài sản.{' '}
-                                <Text style={styles.walletNoteStrong}>Phoenix Wallet</Text> is managed by the system against your identity — used for activation and services.
+                                {/* Nửa sau câu này viết bằng TIẾNG ANH tới 2026-09-11, nằm
+                                    ngay sau một nửa tiếng Việt trong CÙNG một đoạn. Nguồn của
+                                    app là tiếng Việt (`i18n/types.ts` — `SOURCE_LANG`), nên câu
+                                    tiếng Anh không có đường nào thành tiếng Việt: từ điển chỉ
+                                    dịch XUÔI từ tiếng Việt ra. Người dùng Việt đọc nửa đoạn
+                                    không hiểu, và người chọn tiếng Anh đọc nửa kia không hiểu. */}
+                                <Text style={styles.walletNoteStrong}>Phoenix Wallet</Text> do hệ thống giữ theo danh tính của bạn — dùng để kích hoạt và trả phí dịch vụ.
                             </Text>
                         </View>
                     </Section>
@@ -1101,7 +1147,7 @@ const AccountScreen = () => {
                         <MenuItem
                             icon="account-supervisor-outline"
                             label="Người bảo hộ"
-                            sublabel="Thêm guardian để khôi phục khi mất thiết bị"
+                            sublabel="Ghi danh trước — đường khôi phục bằng người bảo hộ chưa chạy tới cuối"
                             onPress={() => navigation.navigate('Guardian')}
                         />
                         <MenuItem
@@ -1204,6 +1250,24 @@ const AccountScreen = () => {
                             được cả khi mất mạng, vì Google Play đòi phần tiết lộ dữ liệu
                             phải mở được NGAY TRONG ứng dụng — mà người dùng ngoài vườn
                             thường không có mạng đủ khoẻ để tải một trang web. */}
+                        {/* Hàng ĐẦU của mục Hỗ trợ, và nó là hàng CÓ ĐÍCH THẬT.
+                            Trước bản này mục Hỗ trợ mở đầu bằng "Trung tâm hỗ trợ" —
+                            một hàng chưa có đích, nên `MenuItem` vẽ nó ở trạng thái tắt.
+                            Người đi tìm chỗ báo lỗi mở mục này ra và gặp đúng một hàng
+                            bấm không được, một hàng điều khoản, một hàng ghi số phiên bản:
+                            không hàng nào nói "báo lỗi ở đây".
+                            Đường gửi báo cáo trước đó chỉ nằm sau cử chỉ ẩn chạm 5 lần vào
+                            số phiên bản — tri thức truyền miệng, sống trong người đi dặn
+                            chứ không sống trong app, nên mất ngay khi đội đổi người.
+                            Dòng phụ nói RÕ gửi cái gì: bấm xong là ra khỏi máy, không thu
+                            về được. Và cố ý KHÔNG hứa "gửi cho đội hỗ trợ" — app không
+                            gửi cho ai, nó mở khay chia sẻ để người dùng tự chọn. */}
+                        <MenuItem
+                            icon="message-alert-outline"
+                            label="Gửi báo cáo lỗi"
+                            sublabel="Gồm các thông báo gần nhất, số phiên bản và máy chủ. Bạn xem trước khi gửi."
+                            onPress={() => navigation.navigate('DiagnosticReport')}
+                        />
                         <MenuItem icon="help-circle-outline" label="Trung tâm hỗ trợ" />
                         <MenuItem
                             icon="file-document-outline"

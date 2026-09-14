@@ -177,6 +177,30 @@ async function _apiCall<T>(
       try { detail = (await resp.json()).detail ?? detail; } catch { /* bỏ qua */ }
       return { ok: false, error: { type: 'validation_error', detail, http_status: 422 } };
     }
+    // 404 ở NHÁNH VẬT NUÔI có một nghĩa riêng, và gộp nó vào rổ "HTTP <số>" bên
+    // dưới là bỏ mất đúng cái nghĩa đó.
+    //
+    // Bộ định tuyến `animal` bên OriLife được gắn trong một khối `try/except`
+    // (OriLife agent xác nhận 13/09/2026, `core/server.py:2391-2393`): module vật
+    // nuôi nạp lỗi thì **cả hai lượt gắn biến mất cùng lúc**, máy chủ vẫn lên
+    // bình thường và chỉ ghi một dòng cảnh báo. Từ phía app, trạng thái đó nhìn
+    // giống hệt "gọi sai đường" — cả hai đều là 404.
+    //
+    // Phân biệt được mà không cần hỏi ai: 404 ⟹ bộ định tuyến KHÔNG có mặt;
+    // 200 hoặc 422 ⟹ đường sống, vấn đề nằm ở tham số. Hai kết luận đó dẫn hai
+    // người khác nhau đi sửa hai chỗ khác nhau, nên chúng không được mang chung
+    // một câu.
+    if (resp.status === 404) {
+      return {
+        ok: false,
+        error: {
+          type: 'server_error',
+          detail: 'Máy chủ chưa bật nhánh vật nuôi. Đây là việc phía máy chủ, '
+            + 'không phải do ảnh hay thông tin bạn nhập — thử lại sau.',
+          http_status: 404,
+        },
+      };
+    }
     if (resp.status >= 500) {
       return { ok: false, error: { type: 'server_error', detail: `Lỗi máy chủ: HTTP ${resp.status}`, http_status: resp.status } };
     }

@@ -27,7 +27,7 @@ import { isValidPhoenixDid } from '../services/types';
 import { saveWorkSession, getValidWorkSession, clearWorkSession, type WorkSession } from '../services/session';
 
 /**
- * Hàm ký do Thư cấp: nhận message chuẩn (challenge:domain:timestamp) + trả
+ * Hàm ký do PhoenixKey native cấp: nhận message chuẩn (challenge:domain:timestamp) + trả
  * signature DER hex. Ký bằng P-256 (secp256r1) ECDSA / sha256 — KHÔNG secp256k1.
  * Timestamp (giây) đã dựng sẵn để đảm bảo khớp giữa message ký và body verify.
  */
@@ -76,7 +76,7 @@ export const useWorkAuth = () => {
       // timestamp = GIÂY epoch (SPEC §8: khác availability = ms).
       const timestamp = Math.floor(Date.now() / 1000);
       const message = `${ch.challenge}:${ch.domain}:${timestamp}`;
-      // ── điểm ký (Thư) ──────────────────────────────────────────────
+      // ── điểm ký (PhoenixKey native) ────────────────────────────────
       const signature = await signChallenge({
         did, message, challenge: ch.challenge, domain: ch.domain, timestamp,
       });

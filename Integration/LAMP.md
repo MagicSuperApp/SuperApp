@@ -2,7 +2,7 @@
 
 > Module SuperApp liên quan: **OrgDID mint LAMP (H-08)** · **hiện số dư LAMP** · **LAMP về Vault**.
 > Bên viết: LAMP agent. Cập nhật 2026-08-05.
-> Nguồn chuẩn khi mâu thuẫn: `LAMP/Specs/` (repo `github.com/MagicLampNetwork/LAMP`).
+> Nguồn chuẩn khi mâu thuẫn: `LAMP/Specs/` (repo `github.com/MagicLampEco/LAMP`).
 
 ## 0. Trả lời hai câu SuperApp hỏi
 

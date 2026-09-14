@@ -30,16 +30,48 @@ final class PhoenixKeyModule: NSObject {
             }
 
             let tag = aliasTag(alias)
-            let attrs: [String: Any] = [
+            var attrs: [String: Any] = [
                 kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
                 kSecAttrKeySizeInBits as String: 256,
-                kSecAttrTokenID as String: kSecAttrTokenIDSecureEnclave,
                 kSecPrivateKeyAttrs as String: [
                     kSecAttrIsPermanent as String: true,
                     kSecAttrApplicationTag as String: tag,
                     kSecAttrAccessControl as String: access,
                 ],
             ]
+
+            // Secure Enclave chỉ có trên máy THẬT. Trên máy ảo, `SecKeyCreateRandomKey`
+            // trả `errSecAuthFailed` (-25293) và app dừng ở bước lập danh tính — tức là
+            // KHÔNG màn nào sau đăng nhập mở được để thử hay để chụp ảnh hồ sơ cửa hàng.
+            //
+            // Nhánh dưới đổi sang khoá phần mềm trong keychain, và CHỈ tồn tại ở lát
+            // máy ảo: `#if targetEnvironment(simulator)` do trình biên dịch cắt, nên
+            // lát `iphoneos` — thứ duy nhất ký được và nộp được lên cửa hàng — không
+            // mang một byte nào của nhánh này. Đừng gỡ dấu khoanh để "cho gọn".
+            //
+            // Đánh đổi phải biết: khoá phần mềm KHÔNG được chip bảo vệ, nên bản máy ảo
+            // yếu hơn bản máy thật đúng ở điểm mà lời hứa "khoá không rời thiết bị"
+            // đang neo vào. Bản máy ảo vì thế chỉ dùng để thử và chụp ảnh, không phải
+            // thứ đem đo mức an toàn.
+            #if targetEnvironment(simulator)
+            _ = access
+            var simError: Unmanaged<CFError>?
+            var simPrivateAttrs: [String: Any] = [
+                kSecAttrIsPermanent as String: true,
+                kSecAttrApplicationTag as String: tag,
+            ]
+            if let simAccess = SecAccessControlCreateWithFlags(
+                nil,
+                kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+                requireBiometric ? [.biometryCurrentSet] : [],
+                &simError
+            ) {
+                simPrivateAttrs[kSecAttrAccessControl as String] = simAccess
+            }
+            attrs[kSecPrivateKeyAttrs as String] = simPrivateAttrs
+            #else
+            attrs[kSecAttrTokenID as String] = kSecAttrTokenIDSecureEnclave
+            #endif
 
             var error: Unmanaged<CFError>?
             guard let privateKey = SecKeyCreateRandomKey(attrs as CFDictionary, &error) else {

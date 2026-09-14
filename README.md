@@ -153,10 +153,17 @@ npx tsc --noEmit -p tsconfig.json && npx jest
 | `android-aab.yml` | đẩy lên `main` | AAB đã ký cho Play Store |
 | `branch-policy.yml` | PR vào `main` | chặn nếu không đến từ `develop` |
 
-Bản phát hành cửa hàng dựng ở Codemagic (`codemagic.yaml`). **Hôm nay ở đó chỉ có Aladin**: cả hai
-luồng Android (`android-debug-apk`, `android-appstore-aab`) đều khai `ANDROID_FLAVOR: aladin`, và
-ba luồng iOS đều dựng gói của Aladin. CheckFarm mới có bản dựng debug ở `debug-apk.yml` — chưa có
-đường lên cửa hàng.
+Bản phát hành cửa hàng dựng ở Codemagic (`codemagic.yaml`). Android có **một luồng ký cho mỗi
+app** — `android-aab-aladin` và `android-aab-checkfarm` — dùng chung bộ bước qua neo YAML, khác
+nhau ở nhóm biến giữ khoá (`android_signing_aladin` / `android_signing_checkfarm`) và ba biến
+chọn app. Chọn app tức là chọn luồng, không phải đặt tay từng biến.
+
+Việc tách nhóm là để ngày CheckFarm về pháp nhân của nó chỉ phải xoá một nhóm biến, và để lượt
+dựng app này không nạp khoá của app kia vào máy chạy. Nó **không** phải hàng rào phân quyền:
+Codemagic không giới hạn được ai chạy luồng nào.
+
+Còn lệch: `android-debug-apk` vẫn khai `ANDROID_FLAVOR: aladin`, và ba luồng iOS đều dựng gói
+của Aladin — CheckFarm chưa có đường iOS.
 
 ## Tài liệu trong kho
 

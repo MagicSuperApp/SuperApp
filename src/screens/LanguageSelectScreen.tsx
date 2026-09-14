@@ -30,6 +30,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../constants';
 import { WORK_THEME } from '../theme';
 import { LANGUAGES, getLanguage, setLanguage, type LangCode } from '../i18n';
+import { DEFAULT_INSTANCE } from '../config/instance.config';
 
 // Xanh lá thương hiệu — khớp HERO của màn Đăng nhập để hai màn liền mạch.
 const BRAND = {
@@ -94,12 +95,19 @@ const LanguageSelectScreen = () => {
         <View style={styles.logoOuter}>
           <View style={styles.logoInner}>
             <Image
-              source={require('../../assets/images/logo.png')}
+              source={DEFAULT_INSTANCE.logo}
               style={styles.logoImg}
             />
           </View>
         </View>
-        <Text allowFontScaling={false} style={styles.eyebrow}>ALADINN</Text>
+        {/* Tên app lấy từ instance đang dựng, KHÔNG ghi cứng. Trước 2026-09-10 dòng
+            này ghi thẳng `ALADINN`, nên người tải CheckFarm về thấy tên một công ty
+            khác ngay MÀN ĐẦU TIÊN — trước cả màn chào, trước cả đăng nhập. Cùng lỗi
+            đã vá ở `LoginScreen.tsx` ngày 2026-08-29; chỗ này bị bỏ sót vì lần đó
+            soát theo chuỗi `ALADIN`, mà chuỗi ở đây viết hai chữ N. */}
+        <Text allowFontScaling={false} style={styles.eyebrow}>
+          {DEFAULT_INSTANCE.displayName.toUpperCase()}
+        </Text>
         {/* Tra bảng thay vì chuỗi ternary: thêm ngôn ngữ mới mà quên nhánh thì
             `tsc` báo ngay, chứ ternary sẽ lặng lẽ hiện tiếng Trung cho tiếng Nhật. */}
         <Text allowFontScaling={false} style={styles.title}>{TITLE[picked]}</Text>

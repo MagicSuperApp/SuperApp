@@ -15,12 +15,15 @@ import {
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { COLORS } from '../../../constants';
+import { t } from '../../../i18n';
 import { WORK_THEME } from '../theme/colors';
 import { formatVND } from '../data/mockData';
 import { useJobDetail } from '../hooks/useJobs';
 import StateView from '../../../components/state/StateView';
 import PosterAvatar from '../components/PosterAvatar';
-import { showError } from '../../../utils/alert';
+import { showError, showInfo } from '../../../utils/alert';
+import { ENABLED_MODULES } from '../../../config/instance.config';
+import { routeIsReachable } from '../../../navigation/moduleCatalog';
 
 type RouteParams = { JobDetail: { jobId: string } };
 
@@ -230,7 +233,7 @@ const JobDetailScreen: React.FC = () => {
         <View style={[styles.section, styles.trustSection]}>
           <View style={styles.trustHeader}>
             <Icon name="shield-check" size={16} color={WORK_THEME.primary} />
-            <Text style={styles.trustHeaderTitle}>Bảo vệ Aladin</Text>
+            <Text style={styles.trustHeaderTitle}>{t('Bảo vệ {brand}')}</Text>
           </View>
           <View style={styles.trustItem}>
             <Icon name="lock-outline" size={12} color={COLORS.textSub} />
@@ -247,19 +250,37 @@ const JobDetailScreen: React.FC = () => {
           <View style={styles.trustItem}>
             <Icon name="message-badge-outline" size={12} color={COLORS.textSub} />
             <Text style={styles.trustItemText}>
-              Trao đổi qua Aladin Chat — lưu trữ vĩnh viễn làm bằng chứng nếu tranh chấp
+              {t('Trao đổi qua {brand} Chat — lưu trữ vĩnh viễn làm bằng chứng nếu tranh chấp')}
             </Text>
           </View>
         </View>
       </Animated.ScrollView>
 
       <View style={styles.bottomBar}>
+        {/* Cùng luật với `WorkerProfileScreen`: app không khai `chat` thì route
+            `ChatRoom` không tồn tại, nút thành nút chết. Ẩn, đừng để bấm.
+
+            Và KHÔNG điều hướng bằng `roomId: job-<id>` nữa. Chuỗi đó do màn này
+            tự bịa tại chỗ, không phải mã hội thoại máy chủ cấp — màn phòng tra
+            không thấy rồi hiện "Không mở được cuộc trò chuyện, quay lại danh
+            sách rồi thử lần nữa", trỏ người dùng về một danh sách họ chưa từng
+            mở. Cổng `routeIsReachable` ngay dưới trả lời "route có tồn tại
+            không", nó không trả lời "phòng có tồn tại không", nên nó xanh ở
+            đúng ca này. Đường mở phòng thật hôm nay đi qua hợp đồng
+            (`POST /contracts/{id}/conversation`, xem `ContractDetailScreen`). */}
+        {routeIsReachable('ChatRoom', ENABLED_MODULES) && (
         <TouchableOpacity
-          onPress={() => navigation.navigate('ChatRoom', { roomId: `job-${job.id}` })}
+          onPress={() =>
+            showInfo(
+              'Chưa nhắn tin được ở đây',
+              'Phòng trò chuyện mở ra sau khi hai bên có hợp đồng. Đặt thợ trước, rồi nhắn tin ngay trong hợp đồng đó.',
+            )
+          }
           style={styles.chatBtn}
         >
           <Icon name="message-outline" size={20} color={WORK_THEME.primary} />
         </TouchableOpacity>
+        )}
         {/* Trạng thái "Đã ứng tuyển" đã bỏ cùng với `applied`: nó chỉ đổi màu nút chứ
             chưa bao giờ có hồ sơ nào được gửi đi. Ngày nối được cửa ứng tuyển thì dựng
             lại trạng thái từ CÂU TRẢ LỜI của máy chủ, đừng dựng lại từ biến trong màn. */}

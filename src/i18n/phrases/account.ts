@@ -36,6 +36,21 @@ export const ACCOUNT: PhraseMap = {
 
   // ── Ví ─────────────────────────────────────────────────────────────────────
   'Ví cơ bản': { en: 'Basic wallet', zh: '基础钱包', ja: 'ベーシックウォレット' },
+  // Hai vế của ghi chú dưới khối ví ở `screens/AccountScreen.tsx`. Tới
+  // 2026-09-11 vế thứ hai viết thẳng bằng TIẾNG ANH, nằm ngay sau vế tiếng Việt
+  // trong cùng một đoạn — và vì nguồn của app là tiếng Việt, câu tiếng Anh đó
+  // không có đường nào thành tiếng Việt. Đã chuyển vế đó về tiếng Việt và khai
+  // cả hai ở đây, nên nay đoạn này đổi ngôn ngữ trọn vẹn.
+  'do chính bạn giữ chìa — dùng để nhận và chuyển tài sản.': {
+    en: 'is one you hold the key to — for receiving and sending assets.',
+    zh: '由你自己保管钥匙 — 用于接收和转出资产。',
+    ja: 'は鍵をご自身で保管します — 資産の受け取りと送付に使います。',
+  },
+  'do hệ thống giữ theo danh tính của bạn — dùng để kích hoạt và trả phí dịch vụ.': {
+    en: 'is held by the system against your identity — for activation and service fees.',
+    zh: '由系统按你的身份保管 — 用于激活和支付服务费。',
+    ja: 'はあなたの本人確認に紐づけてシステムが保管します — 有効化とサービス料金に使います。',
+  },
   'Bạn tự giữ khoá (từ cụm 24 từ)': {
     en: 'You hold the key yourself (from the 24-word phrase)',
     zh: '密钥由您自行保管（源自 24 个助记词）',
@@ -110,10 +125,15 @@ export const ACCOUNT: PhraseMap = {
     ja: '検索用の名前を設定して見つけてもらう',
   },
   'Người bảo hộ': { en: 'Guardians', zh: '监护人', ja: 'ガーディアン' },
-  'Thêm guardian để khôi phục khi mất thiết bị': {
-    en: 'Add a guardian to recover if you lose your device',
-    zh: '添加监护人，设备丢失时可恢复',
-    ja: '端末紛失時に復旧できるようガーディアンを追加',
+  // ⛔ Khoá cũ `Thêm guardian để khôi phục khi mất thiết bị` đã GỠ 2026-09-11: nó hứa
+  // một năng lực app chưa có. Ghi danh người bảo hộ thì chạy thật (`POST /guardians/add`),
+  // nhưng KHÔNG màn nào dùng người bảo hộ để khôi phục trên máy mới — `guardianService`
+  // chỉ có `addGuardian`/`removeGuardian`, không có hàm khôi phục nào. Cùng lớp với khoá
+  // đã gỡ 2026-08-28 ở `screens.ts`.
+  'Ghi danh trước — đường khôi phục bằng người bảo hộ chưa chạy tới cuối': {
+    en: 'Enrol them now — guardian recovery does not run end to end yet',
+    zh: '先登记 — 监护人恢复流程尚未打通',
+    ja: '先に登録を — ガーディアンによる復旧はまだ最後まで動きません',
   },
   'Nhật ký hoạt động': { en: 'Activity log', zh: '活动日志', ja: '操作履歴' },
   'Lịch sử ký, xoay khoá, khôi phục': {

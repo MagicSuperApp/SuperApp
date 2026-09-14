@@ -51,10 +51,27 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<!-- Câu này phải kể ĐỦ việc app thật sự mở camera để làm, vì App Review đối chiếu
+	     nó với hành vi quan sát được (guideline 5.1.1(i)). Bản trước chỉ nhắc "định
+	     danh quả và chụp ảnh nông trại", trong khi camera còn mở ở: nhận diện CÂY
+	     (`TreeIdentityScreen`), quét NHÃN THUỐC bảo vệ thực vật (`CareScanScreen`),
+	     nhận diện VẬT NUÔI (`AnimalIdentityScreen`), và quay video việc đồng
+	     (`ActivityScreen`). Bốn mục đích không được khai — mà nhãn thuốc là mục
+	     reviewer hỏi kỹ nhất, vì nó là dữ liệu hoá chất nông nghiệp.
+	     Chuỗi để NGUYÊN VĂN, không qua $(APP_DISPLAY_NAME): câu này nói app làm gì,
+	     không nói app tên gì, nên cả hai app dùng chung là đúng — cả hai đều có đủ
+	     bốn tính năng trên. -->
 	<key>NSCameraUsageDescription</key>
-	<string>Ứng dụng cần sử dụng camera để định danh quả và chụp ảnh nông trại.</string>
+	<string>Ứng dụng dùng camera để nhận diện cây và quả, quay lại việc chăm sóc (tưới nước, bón phân, phun thuốc), quét nhãn thuốc bảo vệ thực vật, nhận diện vật nuôi và chụp ảnh nông trại.</string>
+	<!-- Tên app trong câu này lấy từ $(APP_DISPLAY_NAME) — CÙNG biến đang dùng cho
+	     `CFBundleDisplayName` ở trên. Xcode thay thế $(...) bên trong MỌI giá trị
+	     chuỗi của Info.plist lúc build (không riêng gì giá trị nguyên khối), nên
+	     không cần thêm bước dựng nào: `codemagic.yaml` đã truyền biến này cho mọi
+	     workflow ký (`APP_DISPLAY_NAME="$APP_DISPLAY_NAME"` ở lệnh `xcodebuild`),
+	     và `project.pbxproj` đặt sẵn giá trị mặc định `Aladin` cho build cục bộ/
+	     Xcode không qua CI. App Aladin do vậy hiện ĐÚNG câu cũ, không đổi. -->
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Aladin ghi âm môi trường xung quanh cây trong 30 giây để hệ thống học hỏi thêm về điều kiện chụp.</string>
+	<string>$(APP_DISPLAY_NAME) ghi âm môi trường xung quanh cây trong 30 giây để hệ thống học hỏi thêm về điều kiện chụp.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Ứng dụng sử dụng Face ID để đăng nhập nhanh và bảo mật tài khoản.</string>
 	<!-- ĐÃ GỠ NSLocationAlwaysAndWhenInUseUsageDescription. Khai khoá đó là xin quyền vị trí

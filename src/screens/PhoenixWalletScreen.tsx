@@ -29,7 +29,7 @@ import taad from '../sdk/taadEnclave';
 import { getStoredMasterKek, getActiveAccountIndex, rotateActiveAccount } from '../services/masterKekStore';
 import { currentUserDid } from '../sdk/phoenixKey';
 import { phoenixKeyApi, summarizeWalletAll } from '../services/phoenixKey-api';
-import { fmtAda, fmtLamp } from '../utils/token';
+import { fmtAda, fmtLamp, fmtCarp } from '../utils/token';
 
 // 0 = preprod (testnet, khớp register WALLET_NETWORK), 1 = mainnet.
 import { CARDANO_NETWORK as WALLET_NETWORK } from '../config/cardanoNetwork';
@@ -112,6 +112,13 @@ const PhoenixWalletScreen = () => {
   const [ada, setAda] = useState<number | null>(null);
   const [lamp, setLamp] = useState<number | null>(null);
   const [magic, setMagic] = useState<number | null>(null);
+  // CARP và MAGIC-đã-cộng-dồn ĐÃ về trong cùng một lượt gọi `/wallet/{did}/all`
+  // (`WalletEntry.balances.carp`, `magic.accrued`) nhưng trước 13/09/2026 bị bỏ
+  // ngay tại chỗ nhận. Không phải thiếu cửa máy chủ — thiếu ô hiển thị. CARP là
+  // thứ mua được bằng tiền pháp định, nên người dùng nạp tiền xong mà không thấy
+  // số nào đổi là ca hỏng đắt nhất trong cả màn này.
+  const [carp, setCarp] = useState<number | null>(null);
+  const [magicAccrued, setMagicAccrued] = useState<number | null>(null);
   // Vì sao ba ô số dư đang là "—". `null` = không có gì để nói (đọc được, hoặc
   // chưa thử). Trước bản này số dư hỏng và số dư bằng 0 vẽ ra y hệt nhau.
   const [balanceIssue, setBalanceIssue] = useState<string | null>(null);
@@ -142,6 +149,8 @@ const PhoenixWalletScreen = () => {
           setAda(s.lovelace ?? 0);
           setLamp(s.lamp ?? 0);
           setMagic(s.magicAvailable ?? 0);
+          setCarp(s.carp ?? 0);
+          setMagicAccrued(s.magicAccrued ?? 0);
           setBalanceIssue(null);
         } catch {
           // Số dư chưa lấy được → giữ null (hiện "—"), NHƯNG phải nói vì sao.
@@ -198,11 +207,20 @@ const PhoenixWalletScreen = () => {
     );
   };
 
+  // Từ 13/09/2026 màn này là GỐC của tab Ví, không còn là màn đẩy lên stack.
+  // Gốc tab thì không có gì phía sau để lùi về: nút mũi tên vẫn vẽ ra, vẫn bấm
+  // được, và `goBack()` không làm gì cả — đúng loại nút chết mà người dùng đọc
+  // thành "app treo". Hỏi navigator thay vì đoán: bốn chỗ gọi cũ
+  // (`navigate('PhoenixWallet')`) vẫn có thể đẩy màn này lên stack ở luồng khác,
+  // nên ẩn cứng cũng sai.
+  const canGoBack = typeof navigation.canGoBack === 'function' && navigation.canGoBack();
   const Header = (
     <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-      <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-        <Icon name="chevron-left" size={26} color={COLORS.text} />
-      </TouchableOpacity>
+      {canGoBack ? (
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <Icon name="chevron-left" size={26} color={COLORS.text} />
+        </TouchableOpacity>
+      ) : <View style={{ width: 26 }} />}
       <Text style={styles.headerTitle}>Ví của tôi</Text>
       <View style={{ width: 26 }} />
     </View>
@@ -257,7 +275,23 @@ const PhoenixWalletScreen = () => {
           {/* MAGIC: `magic.available` là sổ vault (không đọc từ UTxO) nên CHƯA rõ có
               phải đơn vị thô hay không — giữ in nguyên, đã hỏi MAGIC agent. Đừng
               chia khi chưa có câu trả lời: chia sai còn tệ hơn không chia. */}
-          <BalanceCard icon="star-four-points-outline" label="MAGIC" value={magic == null ? '—' : fmtNum(magic)} color="#7A4DB8" />
+          <BalanceCard
+            icon="star-four-points-outline"
+            label="MAGIC"
+            value={magic == null ? '—' : fmtNum(magic)}
+            color="#7A4DB8"
+            // `available` và `accrued` là HAI số khác nghĩa: một cái tiêu được
+            // bây giờ, một cái đã cộng dồn. Gộp thành một ô là nói dối theo cả
+            // hai chiều. Dòng phụ chỉ hiện khi hai số LỆCH nhau — bằng nhau thì
+            // nó chỉ là tiếng ồn.
+            sub={magicAccrued != null && magic != null && magicAccrued !== magic
+              ? tf('cộng dồn {n}', { n: fmtNum(magicAccrued) })
+              : null}
+          />
+          {/* CARP — đơn vị mua được bằng tiền pháp định. `CARP_DECIMALS = 9`
+              (`utils/token.ts`), khác ADA/LAMP, nên PHẢI dùng `fmtCarp` chứ
+              không dùng lại `fmtLamp`. */}
+          <BalanceCard icon="water-outline" label="CARP" value={fmtCarp(carp)} color="#1E88A8" />
         </View>
 
         {!!balanceIssue && (
@@ -315,6 +349,38 @@ const PhoenixWalletScreen = () => {
                   : <><Icon name="autorenew" size={15} color={COLORS.accent} /><Text style={styles.copyText}>Xoay ví</Text></>}
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+
+        {/* Hai hành động chính của một cái ví. `Gửi` là lối vào DUY NHẤT tới
+            `cardanoTxService.sendCardano()` — đường đó đã có đủ từ trước nhưng
+            tới 13/09/2026 vẫn không màn nào gọi, tức tính năng dựng xong mà
+            người dùng không chạm được. `Nhận` cố ý chỉ sao chép địa chỉ ví CỐ
+            ĐỊNH (account 0): đó là địa chỉ đã đăng ký với máy chủ ví, nên tiền
+            gửi về đó chắc chắn hiện ra ở số dư phía trên.
+
+            `Nhận` nay mở màn riêng có mã QR. Trước đó nó chỉ chép địa chỉ vào
+            bộ nhớ tạm — đủ khi người gửi ngồi trên cùng một máy, vô dụng khi
+            người gửi cầm máy khác, mà đó mới là ca thường. */}
+        <View style={styles.sectionWrap}>
+          <View style={styles.actionRow}>
+            <TouchableOpacity
+              style={styles.actionBtn}
+              activeOpacity={0.85}
+              onPress={() => navigation.navigate('WalletSend')}
+            >
+              <Icon name="arrow-top-right" size={20} color={COLORS.accent} />
+              <Text style={styles.actionText}>Gửi</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionBtn, !address ? styles.actionBtnOff : null]}
+              activeOpacity={0.85}
+              disabled={!address}
+              onPress={() => navigation.navigate('WalletReceive', { address })}
+            >
+              <Icon name="arrow-bottom-left" size={20} color={COLORS.accent} />
+              <Text style={styles.actionText}>Nhận</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -405,8 +471,10 @@ const PhoenixWalletScreen = () => {
   );
 };
 
-const BalanceCard = ({ icon, label, value, color }: {
+const BalanceCard = ({ icon, label, value, color, sub }: {
   icon: string; label: string; value: string; color: string;
+  /** Dòng phụ dưới nhãn. Dùng cho số KHÁC nghĩa với số chính (xem MAGIC). */
+  sub?: string | null;
 }) => (
   <View style={styles.balCard}>
     <View style={[styles.balIcon, { backgroundColor: `${color}14` }]}>
@@ -414,6 +482,7 @@ const BalanceCard = ({ icon, label, value, color }: {
     </View>
     <Text style={styles.balValue} numberOfLines={1}>{value}</Text>
     <Text style={styles.balLabel}>{label}</Text>
+    {!!sub && <Text style={styles.balSub} numberOfLines={1}>{sub}</Text>}
   </View>
 );
 
@@ -444,17 +513,28 @@ const styles = StyleSheet.create({
   emptyTitle: { fontSize: 17, fontWeight: '700', color: COLORS.text, marginTop: 4 },
   emptyText: { fontSize: 13, color: COLORS.textMuted, textAlign: 'center', lineHeight: 19 },
 
-  balanceRow: { flexDirection: 'row', gap: 10, marginBottom: 22 },
+  // `flexWrap` + `basis` chứ không `flex: 1`: bốn thẻ chia đều một hàng thì mỗi
+  // thẻ còn ~80dp và con số bị cắt giữa chừng trên máy 5,4".
+  balanceRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 22 },
   balCard: {
-    flex: 1, alignItems: 'center', gap: 6,
+    flexGrow: 1, flexBasis: '46%', alignItems: 'center', gap: 6,
     backgroundColor: COLORS.card, borderRadius: 16,
     borderWidth: 1, borderColor: COLORS.border, paddingVertical: 16, paddingHorizontal: 6,
   },
   balIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   balValue: { fontSize: 15, fontWeight: '800', color: COLORS.text },
   balLabel: { fontSize: 11, fontWeight: '700', color: COLORS.textMuted, letterSpacing: 1 },
+  balSub: { fontSize: 10.5, color: COLORS.textMuted },
 
   sectionWrap: { marginBottom: 16 },
+  actionRow: { flexDirection: 'row', gap: 12 },
+  actionBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: COLORS.card, borderRadius: 14, paddingVertical: 14,
+    borderWidth: 1, borderColor: COLORS.border,
+  },
+  actionBtnOff: { opacity: 0.45 },
+  actionText: { color: COLORS.text, fontSize: 15, fontWeight: '700' },
   sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
   sectionDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.accent },
   sectionTitle: { fontSize: 11, fontWeight: '700', color: COLORS.accent, letterSpacing: 2 },

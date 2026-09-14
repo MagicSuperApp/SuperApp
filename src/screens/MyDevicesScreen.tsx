@@ -3,6 +3,10 @@
 // POST /keys/devices/{keyId}/revoke. Đối chiếu DeviceLifecycleController +
 // KeyServiceImpl (PhoenixKey-Database).
 //
+// Cộng một lối THÊM máy (issue #233) → `DevicePair` vai `scan`. Ba cửa trên đều
+// là việc BỚT; đường thêm nằm ở `POST /keys/authorize`, một cửa khác hẳn, ký bằng
+// owner-key chứ không đi bằng phiên — xem `keyAuthorizeService`.
+//
 // ── Ba chỗ dễ làm sai, đã xử ở đây ──────────────────────────────────────────
 //
 // 1. `list` trả VỀ CẢ khoá đã thu hồi. `findByUserDidOrderByCreatedAtDesc`
@@ -33,7 +37,9 @@ import { COLORS } from '../constants';
 import { phoenixKeyApi, PhoenixKeyApiError, type DeviceView } from '../services/phoenixKey-api';
 import { checkDeviceName, DEVICE_NAME_MAX_LEN } from '../features/devices/deviceName';
 import { showError, showSuccess, showWarning } from '../utils/alert';
+import { GATE_PREFIX, requireUserPresence } from '../services/sensitiveActionGate';
 import StateView from '../components/state/StateView';
+import { tk } from '../i18n/keys';
 
 const PRIMARY = '#4A55C7';
 
@@ -73,7 +79,10 @@ const failMessage = (e: unknown): string => {
   switch (code) {
     case 3002: return 'Không tìm thấy thiết bị này. Có thể nó đã bị gỡ ở nơi khác.';
     case 3004: return 'Thiết bị này đã bị gỡ trước đó rồi.';
-    case 3008: return 'Đây là khoá chủ duy nhất còn hiệu lực — gỡ nó thì bạn mất luôn danh tính. Hãy dùng 24 từ hoặc người bảo hộ để chuyển sang máy mới.';
+    // KHÔNG mời người bảo hộ ở đây: ghi danh người bảo hộ thì chạy, nhưng dùng họ để
+    // khôi phục trên máy mới thì app chưa có đường nào. Mời một lối thoát không tồn tại
+    // ở đúng lúc người dùng sắp mất danh tính là chỗ sai đắt nhất trong cả màn này.
+    case 3008: return 'Đây là khoá chủ duy nhất còn hiệu lực — gỡ nó thì bạn mất luôn danh tính. Hãy dùng cụm 24 từ để chuyển sang máy mới.';
     case 3012: return `Tên máy không hợp lệ — để trống, dài quá ${DEVICE_NAME_MAX_LEN} ký tự, hoặc có ký tự ẩn.`;
     case 1306: return 'Phiên này không phải vai chủ danh tính nên không quản được thiết bị. Hãy đăng nhập bằng máy chủ danh tính.';
     default: return e instanceof Error && e.message ? e.message : 'Không thực hiện được. Thử lại sau.';
@@ -117,16 +126,16 @@ const MyDevicesScreen: React.FC = () => {
 
   const submitRename = useCallback(async () => {
     if (!target) return;
-    const kiem = checkDeviceName(draft);
-    if (!kiem.ok) { showError(kiem.message); return; }
+    const nameCheck = checkDeviceName(draft);
+    if (!nameCheck.ok) { showError(nameCheck.message); return; }
     setSaving(true);
     try {
       // Gửi giá trị ĐÃ CẮT, không phải chuỗi thô — xem chú thích ở checkDeviceName.
-      const view = await phoenixKeyApi.deviceLifecycle.rename(target.keyId, kiem.value);
+      const view = await phoenixKeyApi.deviceLifecycle.rename(target.keyId, nameCheck.value);
       setDevices(prev => prev.map(d =>
         // Chỉ nhận `deviceName` từ phản hồi. `current` của phản hồi luôn false
         // (điểm 2 ở đầu tệp) nên phải giữ giá trị địa phương.
-        d.keyId === target.keyId ? { ...d, deviceName: view.deviceName ?? kiem.value } : d,
+        d.keyId === target.keyId ? { ...d, deviceName: view.deviceName ?? nameCheck.value } : d,
       ));
       setTarget(null);
       showSuccess('Đã đổi tên máy.');
@@ -139,6 +148,21 @@ const MyDevicesScreen: React.FC = () => {
   const doRevoke = useCallback(async (d: DeviceView) => {
     setBusyKeyId(d.keyId);
     try {
+      // ── CỔNG XÁC THỰC ────────────────────────────────────────────────────────
+      // Gỡ máy là thao tác MẤT DANH TÍNH và không hoàn tác được: máy bị gỡ mất
+      // quyền ngay, và chủ nó không tự lấy lại được. Trước bản này chỉ có một
+      // Alert đứng chắn — mà Alert thì ai cầm máy đang mở cũng bấm qua được.
+      // Vì sao cổng tồn tại + ranh giới của nó: `sensitiveActionGate.ts` đầu tệp.
+      //
+      // Ký đúng `keyId` sắp gỡ: một lần duyệt không được dùng lại để gỡ máy khác.
+      // Cổng ném khi người dùng huỷ — rơi xuống `catch`, và KHÔNG gọi `revoke`.
+      await requireUserPresence({
+        prefix: GATE_PREFIX.revokeDevice,
+        fields: [d.keyId],
+        title: 'Xác nhận gỡ máy',
+        subtitle: 'Quét khuôn mặt hoặc vân tay để gỡ máy này khỏi danh tính',
+      });
+
       await phoenixKeyApi.deviceLifecycle.revoke(d.keyId);
       // Không xoá khỏi danh sách — máy chủ vẫn trả về nó với status='revoked'.
       // Tải lại để trạng thái trên màn đúng bằng trạng thái đã lưu.
@@ -179,15 +203,45 @@ const MyDevicesScreen: React.FC = () => {
     </View>
   );
 
+  /**
+   * Lối vào luồng GHÉP MÁY (issue #233).
+   *
+   * Trước bản này màn chỉ liệt kê / đổi tên / GỠ — ba việc đều là việc BỚT. Cửa
+   * `POST /keys/authorize` (đường THÊM) đã dựng xong ở `keyAuthorizeService` và
+   * không nơi nào gọi, nên người dùng cài app thứ hai chỉ còn lối 24 từ, mà lối
+   * đó THU HỒI khoá owner của app thứ nhất.
+   *
+   * Nút đứng NGOÀI `FlatList`, trên cả trạng thái rỗng: máy chưa có thiết bị nào
+   * trong danh sách vẫn phải thêm được máy — đó chính là ca hay gặp nhất.
+   */
+  const themMay = (
+    <TouchableOpacity
+      testID="my-devices-add"
+      accessibilityRole="button"
+      activeOpacity={0.85}
+      style={styles.addCard}
+      onPress={() => navigation.navigate('DevicePair', { mode: 'scan' })}
+    >
+      <View style={styles.addIcon}>
+        <Icon name="cellphone-link" size={18} color={PRIMARY} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.addTitle}>{tk('identity.devices.addTitle')}</Text>
+        <Text style={styles.addBody}>{tk('identity.devices.addBody')}</Text>
+      </View>
+      <Icon name="chevron-right" size={20} color={COLORS.textMuted} />
+    </TouchableOpacity>
+  );
+
   if (loading) return <View style={styles.root}>{header}<StateView status="loading" loadingLines={4} /></View>;
-  if (error) return <View style={styles.root}>{header}<StateView status="error" onRetry={load} /></View>;
+  if (error) return <View style={styles.root}>{header}{themMay}<StateView status="error" onRetry={load} /></View>;
 
   const renderRow = (d: DeviceView) => {
     const song = isActive(d);
     const ten = d.deviceName?.trim() || 'Máy không tên';
     // Điểm 3 đầu tệp: owner đang hoạt động là khoá cuối cùng ⇒ nút gỡ chắc
     // chắn hỏng, nên không bày ra.
-    const goDuoc = song && d.keyRole?.toLowerCase() !== 'owner';
+    const canRevoke = song && d.keyRole?.toLowerCase() !== 'owner';
     const dangBan = busyKeyId === d.keyId;
 
     return (
@@ -209,9 +263,9 @@ const MyDevicesScreen: React.FC = () => {
           {!d.lastUsedAt && !!fmtTime(d.createdAt) && (
             <Text style={styles.time}>Thêm vào: {fmtTime(d.createdAt)}</Text>
           )}
-          {song && !goDuoc && (
+          {song && !canRevoke && (
             <Text style={styles.note}>
-              Khoá chủ không gỡ được từ đây. Muốn đổi sang máy khác, dùng 24 từ hoặc người bảo hộ.
+              Khoá chủ không gỡ được từ đây. Muốn đổi sang máy khác, dùng cụm 24 từ.
             </Text>
           )}
         </View>
@@ -221,7 +275,7 @@ const MyDevicesScreen: React.FC = () => {
             <TouchableOpacity onPress={() => openRename(d)} hitSlop={8} style={styles.actBtn}>
               <Icon name="pencil-outline" size={18} color={COLORS.textSub} />
             </TouchableOpacity>
-            {goDuoc && (
+            {canRevoke && (
               dangBan
                 ? <ActivityIndicator style={styles.actBtn} color="#C62828" />
                 : (
@@ -248,6 +302,7 @@ const MyDevicesScreen: React.FC = () => {
     <View style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor={PRIMARY} />
       {header}
+      {themMay}
 
       <FlatList
         data={data}
@@ -284,7 +339,7 @@ const MyDevicesScreen: React.FC = () => {
             <TextInput
               value={draft}
               onChangeText={setDraft}
-              placeholder="Ví dụ: iPhone của Thư"
+              placeholder="Ví dụ: iPhone của tôi"
               placeholderTextColor={COLORS.textMuted}
               style={styles.input}
               maxLength={DEVICE_NAME_MAX_LEN}
@@ -318,6 +373,19 @@ const styles = StyleSheet.create({
     backgroundColor: PRIMARY, paddingTop: 56, paddingHorizontal: 16, paddingBottom: 16,
   },
   headerTitle: { flex: 1, fontSize: 16, fontWeight: '700', color: '#fff' },
+
+  addCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: COLORS.card, borderRadius: 12, padding: 14,
+    borderWidth: 1, borderColor: PRIMARY, borderStyle: 'dashed',
+    marginHorizontal: 12, marginTop: 12,
+  },
+  addIcon: {
+    width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(74,85,199,0.10)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  addTitle: { fontSize: 13, fontWeight: '800', color: COLORS.text },
+  addBody: { fontSize: 11, color: COLORS.textSub, marginTop: 3, lineHeight: 16 },
 
   list: { padding: 12, gap: 8 },
   empty: { flexGrow: 1 },

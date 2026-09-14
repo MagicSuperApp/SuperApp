@@ -16,9 +16,18 @@
 #   scanner_secrets:
 #     TREE_DETECTION_API, BASE_API_URL, API_KEY, REGION_CODE
 #     PHOENIXKEY_API_URL, ORILIFE_API_BASE_URL, PHOENIX_WALLET_ENABLED
-#   android_signing (chỉ android-appstore-aab):
+#   android_signing_aladin (chỉ android-aab-aladin):
 #     ALADIN_UPLOAD_STORE_FILE_B64, ALADIN_UPLOAD_STORE_PASSWORD,
 #     ALADIN_UPLOAD_KEY_ALIAS, ALADIN_UPLOAD_KEY_PASSWORD
+#   android_signing_checkfarm (chỉ android-aab-checkfarm):
+#     CHECKFARM_UPLOAD_STORE_FILE_B64, CHECKFARM_UPLOAD_STORE_PASSWORD,
+#     CHECKFARM_UPLOAD_KEY_ALIAS, CHECKFARM_UPLOAD_KEY_PASSWORD
+#   Hai nhóm RIÊNG. KHÔNG phải vì hai pháp nhân — từ 10/09/2026 chỉ còn một.
+#   Vì Google Play khoá mục ứng dụng VĨNH VIỄN theo khoá của tệp ĐẦU TIÊN tải
+#   lên: chung khoá thì ngày chuyển giao một app sang pháp nhân khác, khoá ấy
+#   vẫn nằm ở cả hai bên, và đường gỡ duy nhất đi qua hỗ trợ của Google.
+#   (Dòng cũ ghi "vì hai pháp nhân riêng" — đúng kết luận, sai lý do. Người sau
+#   đọc lý do, thấy nó hết hiệu lực, rồi gộp hai nhóm lại.)
 #
 # iOS Code Signing (ios-appstore):
 #   Certificate : aladin-ios-cert  (production, upload Codemagic UI)
@@ -53,17 +62,16 @@ workflows:
         # mã gói thật ghi cứng trong `project.pbxproj:298,331`. Nay nó được
         # truyền thẳng vào `xcodebuild` nên đổi ở đây là đổi thật.
         # `CFBundleDisplayName` trong `Info.plist` nay là `$(APP_DISPLAY_NAME)`.
-        # ⛔ Luồng iOS CHƯA dựng được app nào ngoài `aladin`. Bước "Soát danh tính app
-        # iOS" bên dưới `exit 1` với mọi `APP_INSTANCE` khác — kể cả khi ba biến đặt
-        # đúng. Đừng đặt ba biến rồi bấm dựng: nó tiêu một lượt runner macOS trả tiền
-        # để nói lại đúng câu này.
-        # Điều kiện mở khoá, đủ ba: `instances/<app>/ios/AppIcon-1024.png` có mặt ·
-        # tệp đó 1024×1024 không kênh alpha · có bước sinh `AppIcon.appiconset` từ nó
-        # chạy trước `xcodebuild`. Thiếu bước thứ ba thì bản dựng vẫn mang biểu tượng
-        # Aladin, nên đừng gỡ cổng theo sự có mặt của tệp.
-        # Khi mở khoá, bản CheckFarm dùng: BUNDLE_ID=com.checkfarm.app,
-        # APP_DISPLAY_NAME=CheckFarm, APP_INSTANCE=checkfarm — và khoá ký PHẢI là khoá
-        # của Công ty Cổ phần CheckFarm, không dùng chung khoá Aladin (hai pháp nhân).
+        # Luồng iOS nay dựng được nhiều app. Bộ biểu tượng chọn theo `APP_INSTANCE`
+        # ở bước "Soát danh tính app iOS" (chép `instances/<app>/ios/AppIcon.appiconset`
+        # vào chỗ Xcode đọc, rồi đo lại chính tệp vừa chép).
+        #
+        # ⚠ BA biến dưới đây phải đổi CÙNG NHAU, và `ios_signing.bundle_identifier`
+        # là biến thứ tư. Đổi ba quên một thì lượt dựng đi tới tận bước ký rồi mới
+        # đỏ — hoặc tệ hơn, ký được bằng hồ sơ của app kia. Đừng đặt đè từng biến
+        # khi chạy tay; dùng đúng luồng của app đó.
+        #
+        # Bản CheckFarm nằm ở luồng `ios-appstore-checkfarm` bên dưới.
         BUNDLE_ID: vn.aladinapp
         APP_DISPLAY_NAME: Aladin
         APP_INSTANCE: aladin
@@ -170,22 +178,29 @@ workflows:
           # rơi về rỗng DÙ máy chủ sống (đo 05/08: api.aladin.work/api/v1/health = 200).
           WORK_API_URL=${WORK_API_URL:-https://api.aladin.work/api/v1}
 
-          # ProofChat. Cờ mặc định `off` = MỌI bản phát hành chạy dữ liệu giả, dù máy
-          # chủ sống. Bật là quyết định của người phát hành, không phải hệ quả phụ của
-          # việc máy chủ hồi sinh.
+          # ProofChat.
           #
-          # ĐÍNH CHÍNH 2026-08-18: lý do cũ ghi ở đây ("token production còn nằm trần
-          # trong AsyncStorage") ĐÃ HẾT HIỆU LỰC — commit 48efb57 chuyển token phiên
-          # sang Keychain/Keystore qua `taad.secureStore` (`proofchat-api.ts`).
-          # Còn lại một chặn THẬT, đo 2026-08-18 và nằm ở phía ProofChat chứ không
-          # phải ở app: `GET https://api.proofchat.me/api/v1/users/search` → 404
-          # ("Cannot GET"), tức cửa TÌM NGƯỜI để mở hội thoại vẫn đóng
-          # (`proofchat-api.ts:465` đã ghi: khối `@Get('search')` bị bình luận ở BE).
-          # Bật cờ lúc này chỉ đổi "chat giả" thành "chat thật nhưng không tìm được ai".
+          # ĐO LẠI 2026-09-14 — cả hai lý do từng giữ cờ này ở `off` nay đều hết hiệu
+          # lực, và không có gì báo lúc chúng hết:
+          #   · `GET https://api.proofchat.me/api/v1/health` → 200
+          #   · `GET .../users/search` → **401 Unauthorized** (trước là 404
+          #     "Cannot GET"). Mã đổi từ 404 sang 401 nghĩa là cửa TÌM NGƯỜI đã mở
+          #     thật, chỉ còn đòi phiên đăng nhập — đúng thứ app vẫn gửi.
+          # (Lý do cũ hơn nữa, "token production nằm trần trong AsyncStorage", đã hết
+          # từ commit 48efb57: token phiên chuyển sang Keychain/Keystore.)
+          #
+          # Nên mặc định nay là `on`, và đó KHÔNG phải "bật chat vô điều kiện": cổng
+          # thật vẫn là phép thăm dò lúc chạy (`isCapabilityLive('proofchat')`,
+          # `config/runtimeGate.ts`) — máy chủ chết thì app tự tắt module trong vài
+          # giây. Cái vừa gỡ là lớp chặn CỨNG nướng vào bản dựng, thứ không phép đo
+          # nào lật lại được: bản dựng mang cờ `off` vẫn mời người dùng "chờ kết nối
+          # lại" cho một kết nối không bao giờ được thử.
+          # Muốn tắt cho một bản cụ thể thì đặt `PROOFCHAT_BACKEND_ENABLED=off` ở nhóm
+          # biến của bản đó — tắt vẫn là một lựa chọn, chỉ thôi là mặc định im lặng.
           PROOFCHAT_API_URL=${PROOFCHAT_API_URL:-https://api.proofchat.me/api/v1}
           PROOFCHAT_WS_URL=${PROOFCHAT_WS_URL:-https://api.proofchat.me}
           PROOFCHAT_WS_PATH=${PROOFCHAT_WS_PATH:-/socket.io}
-          PROOFCHAT_BACKEND_ENABLED=${PROOFCHAT_BACKEND_ENABLED:-off}
+          PROOFCHAT_BACKEND_ENABLED=${PROOFCHAT_BACKEND_ENABLED:-on}
 
           # ⚠ analytics.orilife.io KHÔNG phân giải được (DNS NXDOMAIN, đo 05/08) — để
           # trống thay vì nướng một host không tồn tại vào mọi bản build. Để trống CHỈ
@@ -344,6 +359,41 @@ workflows:
             echo "❌ No xcworkspace!"; ls -la ios/; exit 1
           fi
 
+      # ── Bản khai quyền riêng tư phải sống sót qua `pod install` ────────────────
+      # `pod install` ghi lại nhiều thứ dưới `ios/`, và tệp này là tệp Apple ĐỌC khi
+      # duyệt bản nộp. Mất nó thì bản dựng vẫn xanh, `.ipa` vẫn ra, và chỗ hỏng chỉ lộ
+      # ở khâu duyệt — sau khi đã tốn một lượt nộp.
+      #
+      # Cổng này FAIL-SAFE (đỏ khi lệch), đúng chiều theo Forall §Cổng gác cho cổng CI:
+      # cổng chặn thao tác hỏng thì người BIẾT mình bị chặn, còn cổng CI cho qua thì
+      # không ai biết, và màu xanh đó đi thẳng vào quyết định nộp bản.
+      #
+      # Phép so là `git diff` chứ không phải "tệp có tồn tại": một tệp bị ghi rỗng vẫn
+      # tồn tại, và đó đúng là hình dạng hỏng mà một nhà khác trong hệ báo gặp.
+      - name: Bản khai quyền riêng tư còn nguyên sau pod install
+        script: |
+          set -e
+          MANIFEST=ios/SuperApp/PrivacyInfo.xcprivacy
+          if [ ! -f "$MANIFEST" ]; then
+            echo "❌ $MANIFEST KHÔNG còn trên đĩa sau pod install."
+            exit 1
+          fi
+          # Trạng thái thứ ba — KHÔNG ĐO ĐƯỢC — phải kêu to hơn trạng thái lệch.
+          # Không có kho git (bản tải về dạng nén) thì cổng này không nói được gì, và
+          # im lặng ở đây là im lặng đúng lúc nó vô dụng.
+          if ! git rev-parse --git-dir >/dev/null 2>&1; then
+            echo "❌ CỔNG KHÔNG CHẠY ĐƯỢC: không có kho git để đối chiếu."
+            echo "   Cổng này đo bằng git diff, nên không có git là không đo được gì."
+            exit 1
+          fi
+          if ! git diff --quiet -- "$MANIFEST"; then
+            echo "❌ $MANIFEST ĐÃ BỊ ĐỔI trong lượt dựng này (nghi `pod install` ghi đè)."
+            echo "   Số dòng bây giờ: $(wc -l < "$MANIFEST")"
+            git --no-pager diff --stat -- "$MANIFEST"
+            exit 1
+          fi
+          echo "✅ $MANIFEST nguyên vẹn — $(wc -l < "$MANIFEST") dòng, khớp bản trong kho."
+
       # Chẩn-đoán vì sao globalThis.expo KHÔNG được cài trên bản signed → 3D/expo-gl +
       # video/expo-file-system crash. In các thứ SINH RA lúc pod install (không có ở
       # checkout Windows). Đọc log step này gửi lại để chỉ đúng gốc. Không chặn build.
@@ -393,7 +443,7 @@ workflows:
 
       # ── CỔNG: danh tính app iOS phải khớp `instances/<app>/instance.json` ─
       # Bên Android đã có phép so này từ lâu — `APP_INSTANCE` vs `ANDROID_FLAVOR`
-      # trong workflow `android-appstore-aab`, kèm câu nói đúng cái hại: *"lệch
+      # trong workflow `android-aab-aladin`, kèm câu nói đúng cái hại: *"lệch
       # hai biến này là dựng vỏ app này với chữ của app kia"*. Nửa iOS KHÔNG có
       # phép so tương ứng nào, và nửa iOS mới là nửa nguy hơn: `BUNDLE_ID`,
       # `APP_DISPLAY_NAME`, `APP_INSTANCE` và `ios_signing.bundle_identifier` là
@@ -464,21 +514,16 @@ workflows:
           # alpha ở bước NỘP, không ở bước dựng. Bản dựng xanh, tải lên xong, rồi bị
           # chặn ở lượt xử lý bằng một dòng nói về "transparency" — cách chỗ gõ nhầm
           # vài tiếng và vài bước. Đo bằng `sips`, có sẵn trên máy dựng macOS.
-          # ⚠ Bản trước của khối này đo ĐÚNG MỘT tệp — `instances/<app>/ios/AppIcon-1024.png`
-          # — và bọc nó trong `if [ -f ]`. Tệp đó KHÔNG tồn tại cho `aladin`
-          # (`instances/aladin/` chỉ có `android/` + `brand/`), mà `aladin` lại là app
-          # DUY NHẤT luồng này dựng được. Nên với mọi lượt dựng thật, phép đo alpha
-          # chưa bao giờ chạy một lần nào, và cổng vẫn in `✅ … khớp` rồi thoát 0.
+          # ⚠ Một bản trước của khối này đo ĐÚNG MỘT tệp — `instances/<app>/ios/AppIcon-1024.png`
+          # — và bọc nó trong `if [ -f ]`. Tệp đó KHÔNG tồn tại cho `aladin`, mà `aladin`
+          # lại là app DUY NHẤT luồng này dựng được lúc ấy. Nên với mọi lượt dựng thật,
+          # phép đo alpha chưa bao giờ chạy một lần nào, và cổng vẫn in `✅ … khớp` rồi
+          # thoát 0 — cổng có tên đúng mà đo sai đại lượng.
           #
-          # Ảnh mà `xcodebuild` thật sự đóng gói là bộ dùng chung dưới
-          # `ios/SuperApp/Images.xcassets/AppIcon.appiconset/`. Cổng đo tệp không ai
-          # dùng, và bỏ qua tệp được đóng gói — đúng nghĩa "cổng có tên đúng mà đo sai
-          # đại lượng", lần thứ hai trong chính khối này.
-          #
-          # Nay đo HAI tệp, và tệp bắt buộc là tệp đang được đóng gói:
-          #   (1) `AppIcon.appiconset/icon-1024.png` — LUÔN tồn tại ⟹ không `if [ -f ]`,
-          #       thiếu nó là đỏ. Đây là thứ đi vào gói nộp.
-          #   (2) `instances/<app>/ios/AppIcon-1024.png` — phép đo THÊM, chỉ chạy khi có.
+          # Bài học đó quyết định THỨ TỰ hai việc dưới đây, và thứ tự mới là phần quan
+          # trọng: **chép bộ biểu tượng của app TRƯỚC, đo SAU**. Đo phải rơi vào đúng tệp
+          # sắp đi vào gói nộp. Đo trước khi chép là đo bộ của lượt dựng trước đó — vẫn
+          # ra một dấu ✅, vẫn không nói gì về bản đang dựng.
           command -v sips >/dev/null 2>&1 || {
             echo "⛔ KHÔNG ĐO ĐƯỢC kênh alpha: máy dựng không có 'sips'."
             echo "   Đây là trạng thái MÙ, không phải trạng thái đạt — nên cổng đỏ."
@@ -513,30 +558,82 @@ workflows:
             echo "✅ $T 1024×1024, không alpha"
           }
 
-          BO_DONG_GOI="ios/SuperApp/Images.xcassets/AppIcon.appiconset/icon-1024.png"
+          # ── CHÉP BỘ BIỂU TƯỢNG CỦA ĐÚNG APP ĐANG DỰNG ──────────────────────
+          # Thư mục `ios/SuperApp/Images.xcassets/AppIcon.appiconset` là chỗ Xcode
+          # đọc, KHÔNG phải tài sản của app nào. Mỗi lượt dựng chép đè nó bằng bộ
+          # của app đang dựng, giữ trong `instances/<app>/ios/AppIcon.appiconset/`.
+          #
+          # Trước bản này chỗ đây là một cổng `exit 1` cho mọi app khác `aladin`,
+          # kèm câu "chưa có bước sinh bộ đó theo app". Câu ấy ĐÚNG với trạng thái
+          # lúc nó được viết; nay bước đó có thật nên cổng hết việc. Và cái nó dặn
+          # thì vẫn giữ nguyên hiệu lực: mở khoá bằng BƯỚC CHỌN, không phải bằng sự
+          # có mặt của một tệp ảnh.
+          NGUON_BIEU_TUONG="instances/${APP_INSTANCE}/ios/AppIcon.appiconset"
+          DICH_BIEU_TUONG="ios/SuperApp/Images.xcassets/AppIcon.appiconset"
+          if [ ! -d "$NGUON_BIEU_TUONG" ]; then
+            echo "❌ thiếu $NGUON_BIEU_TUONG"
+            echo "   Mỗi app tự mang bộ biểu tượng iOS của mình. Sinh bằng:"
+            echo "     python3 scripts/sinh-bieu-tuong.py ${APP_INSTANCE}"
+            echo "   rồi commit kết quả. KHÔNG mượn bộ của app khác — mượn được thì"
+            echo "   bản dựng vẫn xanh và vẫn ký được, sai chỉ lộ khi có người nhìn máy."
+            exit 1
+          fi
+          rm -rf "$DICH_BIEU_TUONG"
+          mkdir -p "$DICH_BIEU_TUONG"
+          cp "$NGUON_BIEU_TUONG"/* "$DICH_BIEU_TUONG"/
+
+          # Chép xong thì ĐỌC LẠI, không tin là `cp` đã chạy. `cmp` so đúng tệp sắp
+          # đi vào gói với tệp nguồn của app này: chép hụt, chép nhầm thư mục, hay
+          # `cp` thất bại lặng đều đỏ ở đây — thay vì lộ ra dưới dạng một bản mang
+          # biểu tượng của app khác, thứ không phép kiểm tự động nào bắt được.
+          if ! cmp -s "$NGUON_BIEU_TUONG/icon-1024.png" "$DICH_BIEU_TUONG/icon-1024.png"; then
+            echo "❌ bộ biểu tượng đã chép KHÔNG khớp nguồn của '$APP_INSTANCE'."
+            exit 1
+          fi
+          echo "✅ biểu tượng iOS: $NGUON_BIEU_TUONG → $DICH_BIEU_TUONG"
+
+          BO_DONG_GOI="$DICH_BIEU_TUONG/icon-1024.png"
           if [ ! -f "$BO_DONG_GOI" ]; then
             echo "❌ thiếu $BO_DONG_GOI — đây là ảnh đi vào gói nộp, không phải tệp tuỳ chọn."
             exit 1
           fi
           do_bieu_tuong "$BO_DONG_GOI"
 
-          BIEU_TUONG="instances/${APP_INSTANCE}/ios/AppIcon-1024.png"
-          if [ -f "$BIEU_TUONG" ]; then
-            do_bieu_tuong "$BIEU_TUONG"
-          fi
-          if [ "$APP_INSTANCE" != "aladin" ]; then
-            echo "❌ luồng iOS chưa dựng được app '$APP_INSTANCE'."
-            echo "   Biểu tượng iOS là một bộ dùng chung ở ios/SuperApp/Images.xcassets/AppIcon.appiconset;"
-            echo "   chưa có bước sinh bộ đó theo app, nên bản này sẽ mang biểu tượng Aladin."
-            if [ -f "$BIEU_TUONG" ]; then
-              echo "   ($BIEU_TUONG đã có và hợp lệ — nhưng chưa mã nào đọc nó."
-              echo "    Đây đúng là chỗ 'có tệp mà vẫn sai': đừng gỡ cổng theo sự có mặt của tệp.)"
-            else
-              echo "   Thiếu $BIEU_TUONG — bản 1024×1024, KHÔNG kênh alpha."
-            fi
-            echo "   Mở khoá: thêm bước sinh AppIcon.appiconset từ tệp đó trước xcodebuild."
+          # ── CHÉP MÀN CHÀO CỦA ĐÚNG APP ĐANG DỰNG ───────────────────────────
+          # Cùng luật với bộ biểu tượng ngay trên: `ios/SuperApp/LaunchScreen.storyboard`
+          # là chỗ Xcode ĐỌC, không phải tài sản của app nào.
+          #
+          # Vì sao phải chép chứ không thay biến như `Info.plist`: Xcode chỉ làm phép
+          # thay `$(BIẾN)` bên trong `Info.plist`. Với `.storyboard` thì KHÔNG — đó là
+          # ảnh tĩnh biên dịch sẵn lúc dựng. Nên tới trước bản này, MỌI app dựng từ
+          # nền mã này đều hiện chữ "Aladin" cùng khẩu hiệu tiếng Anh của Aladin ở
+          # màn chào. Đó là màn ĐẦU TIÊN người dùng thấy, trước cả màn đăng nhập.
+          #
+          # Chỗ này cố ý KHÔNG có đường lùi "thiếu thì bỏ qua": bỏ qua nghĩa là dựng
+          # ra app mang màn chào của app khác, và bản dựng vẫn xanh, vẫn ký được.
+          NGUON_MAN_CHAO="instances/${APP_INSTANCE}/ios/LaunchScreen.storyboard"
+          DICH_MAN_CHAO="ios/SuperApp/LaunchScreen.storyboard"
+          if [ ! -f "$NGUON_MAN_CHAO" ]; then
+            echo "❌ thiếu $NGUON_MAN_CHAO"
+            echo "   Mỗi app tự mang màn chào của mình. Chép từ một app đã có rồi"
+            echo "   đổi tên + khẩu hiệu + màu nền theo instances/${APP_INSTANCE}/instance.json."
+            echo "   KHÔNG mượn của app khác — mượn được thì bản dựng vẫn xanh."
             exit 1
           fi
+          cp "$NGUON_MAN_CHAO" "$DICH_MAN_CHAO"
+
+          # Đọc lại, không tin là `cp` đã chạy — cùng lý do với bộ biểu tượng.
+          if ! cmp -s "$NGUON_MAN_CHAO" "$DICH_MAN_CHAO"; then
+            echo "❌ màn chào đã chép KHÔNG khớp nguồn của '$APP_INSTANCE'."
+            exit 1
+          fi
+          # Và đo NỘI DUNG, không chỉ đo byte: `cmp` xanh vẫn có thể là chép đúng một
+          # tệp nguồn mang tên app khác. Tên hiển thị của app phải có mặt trong tệp.
+          if ! grep -q "$APP_DISPLAY_NAME" "$DICH_MAN_CHAO"; then
+            echo "❌ màn chào không chứa tên '$APP_DISPLAY_NAME' — nguồn của app này đặt sai nội dung."
+            exit 1
+          fi
+          echo "✅ màn chào iOS: $NGUON_MAN_CHAO → $DICH_MAN_CHAO (có '$APP_DISPLAY_NAME')"
 
       # ── CHỐT MÃ GÓI iOS ─────────────────────────────────────────────────
       # Vì sao KHÔNG truyền `PRODUCT_BUNDLE_IDENTIFIER=` trên dòng lệnh
@@ -667,17 +764,16 @@ workflows:
         # mã gói thật ghi cứng trong `project.pbxproj:298,331`. Nay nó được
         # truyền thẳng vào `xcodebuild` nên đổi ở đây là đổi thật.
         # `CFBundleDisplayName` trong `Info.plist` nay là `$(APP_DISPLAY_NAME)`.
-        # ⛔ Luồng iOS CHƯA dựng được app nào ngoài `aladin`. Bước "Soát danh tính app
-        # iOS" bên dưới `exit 1` với mọi `APP_INSTANCE` khác — kể cả khi ba biến đặt
-        # đúng. Đừng đặt ba biến rồi bấm dựng: nó tiêu một lượt runner macOS trả tiền
-        # để nói lại đúng câu này.
-        # Điều kiện mở khoá, đủ ba: `instances/<app>/ios/AppIcon-1024.png` có mặt ·
-        # tệp đó 1024×1024 không kênh alpha · có bước sinh `AppIcon.appiconset` từ nó
-        # chạy trước `xcodebuild`. Thiếu bước thứ ba thì bản dựng vẫn mang biểu tượng
-        # Aladin, nên đừng gỡ cổng theo sự có mặt của tệp.
-        # Khi mở khoá, bản CheckFarm dùng: BUNDLE_ID=com.checkfarm.app,
-        # APP_DISPLAY_NAME=CheckFarm, APP_INSTANCE=checkfarm — và khoá ký PHẢI là khoá
-        # của Công ty Cổ phần CheckFarm, không dùng chung khoá Aladin (hai pháp nhân).
+        # Luồng iOS nay dựng được nhiều app. Bộ biểu tượng chọn theo `APP_INSTANCE`
+        # ở bước "Soát danh tính app iOS" (chép `instances/<app>/ios/AppIcon.appiconset`
+        # vào chỗ Xcode đọc, rồi đo lại chính tệp vừa chép).
+        #
+        # ⚠ BA biến dưới đây phải đổi CÙNG NHAU, và `ios_signing.bundle_identifier`
+        # là biến thứ tư. Đổi ba quên một thì lượt dựng đi tới tận bước ký rồi mới
+        # đỏ — hoặc tệ hơn, ký được bằng hồ sơ của app kia. Đừng đặt đè từng biến
+        # khi chạy tay; dùng đúng luồng của app đó.
+        #
+        # Bản CheckFarm nằm ở luồng `ios-appstore-checkfarm` bên dưới.
         BUNDLE_ID: vn.aladinapp
         APP_DISPLAY_NAME: Aladin
         APP_INSTANCE: aladin
@@ -704,7 +800,7 @@ workflows:
 
     scripts: &ios_release_scripts
 
-      # CỔNG SOÁT — cùng lý do với `android-appstore-aab` (đọc chú thích dài ở đó).
+      # CỔNG SOÁT — cùng lý do với `android-aab-aladin` (đọc chú thích dài ở đó).
       # Workflow này bắn thẳng lên TestFlight (`publishing.app_store_connect`) nên
       # bản thiếu khoá tới tay người thử ngay, không kịp rút lại.
       - name: Soát khoá API trước khi phát hành
@@ -732,7 +828,7 @@ workflows:
 
       # ── CỔNG: danh tính app iOS phải khớp `instances/<app>/instance.json` ─
       # Bên Android đã có phép so này từ lâu — `APP_INSTANCE` vs `ANDROID_FLAVOR`
-      # trong workflow `android-appstore-aab`, kèm câu nói đúng cái hại: *"lệch
+      # trong workflow `android-aab-aladin`, kèm câu nói đúng cái hại: *"lệch
       # hai biến này là dựng vỏ app này với chữ của app kia"*. Nửa iOS KHÔNG có
       # phép so tương ứng nào, và nửa iOS mới là nửa nguy hơn: `BUNDLE_ID`,
       # `APP_DISPLAY_NAME`, `APP_INSTANCE` và `ios_signing.bundle_identifier` là
@@ -803,21 +899,16 @@ workflows:
           # alpha ở bước NỘP, không ở bước dựng. Bản dựng xanh, tải lên xong, rồi bị
           # chặn ở lượt xử lý bằng một dòng nói về "transparency" — cách chỗ gõ nhầm
           # vài tiếng và vài bước. Đo bằng `sips`, có sẵn trên máy dựng macOS.
-          # ⚠ Bản trước của khối này đo ĐÚNG MỘT tệp — `instances/<app>/ios/AppIcon-1024.png`
-          # — và bọc nó trong `if [ -f ]`. Tệp đó KHÔNG tồn tại cho `aladin`
-          # (`instances/aladin/` chỉ có `android/` + `brand/`), mà `aladin` lại là app
-          # DUY NHẤT luồng này dựng được. Nên với mọi lượt dựng thật, phép đo alpha
-          # chưa bao giờ chạy một lần nào, và cổng vẫn in `✅ … khớp` rồi thoát 0.
+          # ⚠ Một bản trước của khối này đo ĐÚNG MỘT tệp — `instances/<app>/ios/AppIcon-1024.png`
+          # — và bọc nó trong `if [ -f ]`. Tệp đó KHÔNG tồn tại cho `aladin`, mà `aladin`
+          # lại là app DUY NHẤT luồng này dựng được lúc ấy. Nên với mọi lượt dựng thật,
+          # phép đo alpha chưa bao giờ chạy một lần nào, và cổng vẫn in `✅ … khớp` rồi
+          # thoát 0 — cổng có tên đúng mà đo sai đại lượng.
           #
-          # Ảnh mà `xcodebuild` thật sự đóng gói là bộ dùng chung dưới
-          # `ios/SuperApp/Images.xcassets/AppIcon.appiconset/`. Cổng đo tệp không ai
-          # dùng, và bỏ qua tệp được đóng gói — đúng nghĩa "cổng có tên đúng mà đo sai
-          # đại lượng", lần thứ hai trong chính khối này.
-          #
-          # Nay đo HAI tệp, và tệp bắt buộc là tệp đang được đóng gói:
-          #   (1) `AppIcon.appiconset/icon-1024.png` — LUÔN tồn tại ⟹ không `if [ -f ]`,
-          #       thiếu nó là đỏ. Đây là thứ đi vào gói nộp.
-          #   (2) `instances/<app>/ios/AppIcon-1024.png` — phép đo THÊM, chỉ chạy khi có.
+          # Bài học đó quyết định THỨ TỰ hai việc dưới đây, và thứ tự mới là phần quan
+          # trọng: **chép bộ biểu tượng của app TRƯỚC, đo SAU**. Đo phải rơi vào đúng tệp
+          # sắp đi vào gói nộp. Đo trước khi chép là đo bộ của lượt dựng trước đó — vẫn
+          # ra một dấu ✅, vẫn không nói gì về bản đang dựng.
           command -v sips >/dev/null 2>&1 || {
             echo "⛔ KHÔNG ĐO ĐƯỢC kênh alpha: máy dựng không có 'sips'."
             echo "   Đây là trạng thái MÙ, không phải trạng thái đạt — nên cổng đỏ."
@@ -852,30 +943,82 @@ workflows:
             echo "✅ $T 1024×1024, không alpha"
           }
 
-          BO_DONG_GOI="ios/SuperApp/Images.xcassets/AppIcon.appiconset/icon-1024.png"
+          # ── CHÉP BỘ BIỂU TƯỢNG CỦA ĐÚNG APP ĐANG DỰNG ──────────────────────
+          # Thư mục `ios/SuperApp/Images.xcassets/AppIcon.appiconset` là chỗ Xcode
+          # đọc, KHÔNG phải tài sản của app nào. Mỗi lượt dựng chép đè nó bằng bộ
+          # của app đang dựng, giữ trong `instances/<app>/ios/AppIcon.appiconset/`.
+          #
+          # Trước bản này chỗ đây là một cổng `exit 1` cho mọi app khác `aladin`,
+          # kèm câu "chưa có bước sinh bộ đó theo app". Câu ấy ĐÚNG với trạng thái
+          # lúc nó được viết; nay bước đó có thật nên cổng hết việc. Và cái nó dặn
+          # thì vẫn giữ nguyên hiệu lực: mở khoá bằng BƯỚC CHỌN, không phải bằng sự
+          # có mặt của một tệp ảnh.
+          NGUON_BIEU_TUONG="instances/${APP_INSTANCE}/ios/AppIcon.appiconset"
+          DICH_BIEU_TUONG="ios/SuperApp/Images.xcassets/AppIcon.appiconset"
+          if [ ! -d "$NGUON_BIEU_TUONG" ]; then
+            echo "❌ thiếu $NGUON_BIEU_TUONG"
+            echo "   Mỗi app tự mang bộ biểu tượng iOS của mình. Sinh bằng:"
+            echo "     python3 scripts/sinh-bieu-tuong.py ${APP_INSTANCE}"
+            echo "   rồi commit kết quả. KHÔNG mượn bộ của app khác — mượn được thì"
+            echo "   bản dựng vẫn xanh và vẫn ký được, sai chỉ lộ khi có người nhìn máy."
+            exit 1
+          fi
+          rm -rf "$DICH_BIEU_TUONG"
+          mkdir -p "$DICH_BIEU_TUONG"
+          cp "$NGUON_BIEU_TUONG"/* "$DICH_BIEU_TUONG"/
+
+          # Chép xong thì ĐỌC LẠI, không tin là `cp` đã chạy. `cmp` so đúng tệp sắp
+          # đi vào gói với tệp nguồn của app này: chép hụt, chép nhầm thư mục, hay
+          # `cp` thất bại lặng đều đỏ ở đây — thay vì lộ ra dưới dạng một bản mang
+          # biểu tượng của app khác, thứ không phép kiểm tự động nào bắt được.
+          if ! cmp -s "$NGUON_BIEU_TUONG/icon-1024.png" "$DICH_BIEU_TUONG/icon-1024.png"; then
+            echo "❌ bộ biểu tượng đã chép KHÔNG khớp nguồn của '$APP_INSTANCE'."
+            exit 1
+          fi
+          echo "✅ biểu tượng iOS: $NGUON_BIEU_TUONG → $DICH_BIEU_TUONG"
+
+          BO_DONG_GOI="$DICH_BIEU_TUONG/icon-1024.png"
           if [ ! -f "$BO_DONG_GOI" ]; then
             echo "❌ thiếu $BO_DONG_GOI — đây là ảnh đi vào gói nộp, không phải tệp tuỳ chọn."
             exit 1
           fi
           do_bieu_tuong "$BO_DONG_GOI"
 
-          BIEU_TUONG="instances/${APP_INSTANCE}/ios/AppIcon-1024.png"
-          if [ -f "$BIEU_TUONG" ]; then
-            do_bieu_tuong "$BIEU_TUONG"
-          fi
-          if [ "$APP_INSTANCE" != "aladin" ]; then
-            echo "❌ luồng iOS chưa dựng được app '$APP_INSTANCE'."
-            echo "   Biểu tượng iOS là một bộ dùng chung ở ios/SuperApp/Images.xcassets/AppIcon.appiconset;"
-            echo "   chưa có bước sinh bộ đó theo app, nên bản này sẽ mang biểu tượng Aladin."
-            if [ -f "$BIEU_TUONG" ]; then
-              echo "   ($BIEU_TUONG đã có và hợp lệ — nhưng chưa mã nào đọc nó."
-              echo "    Đây đúng là chỗ 'có tệp mà vẫn sai': đừng gỡ cổng theo sự có mặt của tệp.)"
-            else
-              echo "   Thiếu $BIEU_TUONG — bản 1024×1024, KHÔNG kênh alpha."
-            fi
-            echo "   Mở khoá: thêm bước sinh AppIcon.appiconset từ tệp đó trước xcodebuild."
+          # ── CHÉP MÀN CHÀO CỦA ĐÚNG APP ĐANG DỰNG ───────────────────────────
+          # Cùng luật với bộ biểu tượng ngay trên: `ios/SuperApp/LaunchScreen.storyboard`
+          # là chỗ Xcode ĐỌC, không phải tài sản của app nào.
+          #
+          # Vì sao phải chép chứ không thay biến như `Info.plist`: Xcode chỉ làm phép
+          # thay `$(BIẾN)` bên trong `Info.plist`. Với `.storyboard` thì KHÔNG — đó là
+          # ảnh tĩnh biên dịch sẵn lúc dựng. Nên tới trước bản này, MỌI app dựng từ
+          # nền mã này đều hiện chữ "Aladin" cùng khẩu hiệu tiếng Anh của Aladin ở
+          # màn chào. Đó là màn ĐẦU TIÊN người dùng thấy, trước cả màn đăng nhập.
+          #
+          # Chỗ này cố ý KHÔNG có đường lùi "thiếu thì bỏ qua": bỏ qua nghĩa là dựng
+          # ra app mang màn chào của app khác, và bản dựng vẫn xanh, vẫn ký được.
+          NGUON_MAN_CHAO="instances/${APP_INSTANCE}/ios/LaunchScreen.storyboard"
+          DICH_MAN_CHAO="ios/SuperApp/LaunchScreen.storyboard"
+          if [ ! -f "$NGUON_MAN_CHAO" ]; then
+            echo "❌ thiếu $NGUON_MAN_CHAO"
+            echo "   Mỗi app tự mang màn chào của mình. Chép từ một app đã có rồi"
+            echo "   đổi tên + khẩu hiệu + màu nền theo instances/${APP_INSTANCE}/instance.json."
+            echo "   KHÔNG mượn của app khác — mượn được thì bản dựng vẫn xanh."
             exit 1
           fi
+          cp "$NGUON_MAN_CHAO" "$DICH_MAN_CHAO"
+
+          # Đọc lại, không tin là `cp` đã chạy — cùng lý do với bộ biểu tượng.
+          if ! cmp -s "$NGUON_MAN_CHAO" "$DICH_MAN_CHAO"; then
+            echo "❌ màn chào đã chép KHÔNG khớp nguồn của '$APP_INSTANCE'."
+            exit 1
+          fi
+          # Và đo NỘI DUNG, không chỉ đo byte: `cmp` xanh vẫn có thể là chép đúng một
+          # tệp nguồn mang tên app khác. Tên hiển thị của app phải có mặt trong tệp.
+          if ! grep -q "$APP_DISPLAY_NAME" "$DICH_MAN_CHAO"; then
+            echo "❌ màn chào không chứa tên '$APP_DISPLAY_NAME' — nguồn của app này đặt sai nội dung."
+            exit 1
+          fi
+          echo "✅ màn chào iOS: $NGUON_MAN_CHAO → $DICH_MAN_CHAO (có '$APP_DISPLAY_NAME')"
 
       # ── CHỐT MÃ GÓI iOS ─────────────────────────────────────────────────
       # Vì sao KHÔNG truyền `PRODUCT_BUNDLE_IDENTIFIER=` trên dòng lệnh
@@ -951,22 +1094,29 @@ workflows:
           # rơi về rỗng DÙ máy chủ sống (đo 05/08: api.aladin.work/api/v1/health = 200).
           WORK_API_URL=${WORK_API_URL:-https://api.aladin.work/api/v1}
 
-          # ProofChat. Cờ mặc định `off` = MỌI bản phát hành chạy dữ liệu giả, dù máy
-          # chủ sống. Bật là quyết định của người phát hành, không phải hệ quả phụ của
-          # việc máy chủ hồi sinh.
+          # ProofChat.
           #
-          # ĐÍNH CHÍNH 2026-08-18: lý do cũ ghi ở đây ("token production còn nằm trần
-          # trong AsyncStorage") ĐÃ HẾT HIỆU LỰC — commit 48efb57 chuyển token phiên
-          # sang Keychain/Keystore qua `taad.secureStore` (`proofchat-api.ts`).
-          # Còn lại một chặn THẬT, đo 2026-08-18 và nằm ở phía ProofChat chứ không
-          # phải ở app: `GET https://api.proofchat.me/api/v1/users/search` → 404
-          # ("Cannot GET"), tức cửa TÌM NGƯỜI để mở hội thoại vẫn đóng
-          # (`proofchat-api.ts:465` đã ghi: khối `@Get('search')` bị bình luận ở BE).
-          # Bật cờ lúc này chỉ đổi "chat giả" thành "chat thật nhưng không tìm được ai".
+          # ĐO LẠI 2026-09-14 — cả hai lý do từng giữ cờ này ở `off` nay đều hết hiệu
+          # lực, và không có gì báo lúc chúng hết:
+          #   · `GET https://api.proofchat.me/api/v1/health` → 200
+          #   · `GET .../users/search` → **401 Unauthorized** (trước là 404
+          #     "Cannot GET"). Mã đổi từ 404 sang 401 nghĩa là cửa TÌM NGƯỜI đã mở
+          #     thật, chỉ còn đòi phiên đăng nhập — đúng thứ app vẫn gửi.
+          # (Lý do cũ hơn nữa, "token production nằm trần trong AsyncStorage", đã hết
+          # từ commit 48efb57: token phiên chuyển sang Keychain/Keystore.)
+          #
+          # Nên mặc định nay là `on`, và đó KHÔNG phải "bật chat vô điều kiện": cổng
+          # thật vẫn là phép thăm dò lúc chạy (`isCapabilityLive('proofchat')`,
+          # `config/runtimeGate.ts`) — máy chủ chết thì app tự tắt module trong vài
+          # giây. Cái vừa gỡ là lớp chặn CỨNG nướng vào bản dựng, thứ không phép đo
+          # nào lật lại được: bản dựng mang cờ `off` vẫn mời người dùng "chờ kết nối
+          # lại" cho một kết nối không bao giờ được thử.
+          # Muốn tắt cho một bản cụ thể thì đặt `PROOFCHAT_BACKEND_ENABLED=off` ở nhóm
+          # biến của bản đó — tắt vẫn là một lựa chọn, chỉ thôi là mặc định im lặng.
           PROOFCHAT_API_URL=${PROOFCHAT_API_URL:-https://api.proofchat.me/api/v1}
           PROOFCHAT_WS_URL=${PROOFCHAT_WS_URL:-https://api.proofchat.me}
           PROOFCHAT_WS_PATH=${PROOFCHAT_WS_PATH:-/socket.io}
-          PROOFCHAT_BACKEND_ENABLED=${PROOFCHAT_BACKEND_ENABLED:-off}
+          PROOFCHAT_BACKEND_ENABLED=${PROOFCHAT_BACKEND_ENABLED:-on}
 
           # ⚠ analytics.orilife.io KHÔNG phân giải được (DNS NXDOMAIN, đo 05/08) — để
           # trống thay vì nướng một host không tồn tại vào mọi bản build. Để trống CHỈ
@@ -1069,6 +1219,31 @@ workflows:
           rm -rf ~/Library/Caches/CocoaPods Pods Podfile.lock
           pod install --repo-update
           cd ..
+
+      # Bản sao thứ hai của cùng một cổng — lý do đầy đủ ở khối cùng tên phía trên,
+      # trong luồng `ios-adhoc-ipa`. Phải có HAI bản vì tệp này khai `CocoaPods install`
+      # ở hai chỗ, phục vụ bốn luồng iOS; đặt ở một chỗ thì ba luồng NỘP BẢN THẬT
+      # (`ios-appstore`, `ios-production`, `ios-appstore-checkfarm`) đi qua cửa mở —
+      # tức đúng ba luồng mà cổng này sinh ra để canh. Sửa bản này thì sửa cả bản kia.
+      - name: Bản khai quyền riêng tư còn nguyên sau pod install
+        script: |
+          set -e
+          MANIFEST=ios/SuperApp/PrivacyInfo.xcprivacy
+          if [ ! -f "$MANIFEST" ]; then
+            echo "❌ $MANIFEST KHÔNG còn trên đĩa sau pod install."
+            exit 1
+          fi
+          if ! git rev-parse --git-dir >/dev/null 2>&1; then
+            echo "❌ CỔNG KHÔNG CHẠY ĐƯỢC: không có kho git để đối chiếu."
+            exit 1
+          fi
+          if ! git diff --quiet -- "$MANIFEST"; then
+            echo "❌ $MANIFEST ĐÃ BỊ ĐỔI trong lượt dựng này (nghi `pod install` ghi đè)."
+            echo "   Số dòng bây giờ: $(wc -l < "$MANIFEST")"
+            git --no-pager diff --stat -- "$MANIFEST"
+            exit 1
+          fi
+          echo "✅ $MANIFEST nguyên vẹn — $(wc -l < "$MANIFEST") dòng, khớp bản trong kho."
 
       # Chẩn-đoán globalThis.expo (xem chú-thích ở workflow unsigned). In file sinh lúc
       # pod install để chỉ đúng gốc 3D/video crash trên bản signed. Không chặn build.
@@ -1325,6 +1500,97 @@ workflows:
         submit_to_app_store: true
 
   # ============================================================
+  # Workflow 2c: iOS TestFlight — CheckFarm
+  # ============================================================
+  # Dùng LẠI `scripts` + `artifacts` của `ios-appstore` bằng mỏ neo YAML. Chỉ khối
+  # `environment` viết riêng, vì `vars` là bảng lồng: khoá gộp YAML (`<<:`) đè cả
+  # bảng chứ không trộn từng khoá, nên "kế thừa rồi sửa ba dòng" là thứ KHÔNG làm
+  # được ở đây. Viết đủ còn hơn viết một thứ trông như kế thừa mà không phải.
+  #
+  # ⛔ PHÁP NHÂN PHÁT HÀNH — đọc trước khi sửa bất cứ dòng nào dưới đây.
+  # App này mang thương hiệu CheckFarm nhưng **phát hành dưới pháp nhân Aladin**,
+  # đội Apple `3666KPJX5R`, theo quyết định của chủ sở hữu ngày 2026-09-10. Nghĩa
+  # là dùng CHUNG chứng chỉ phân phối với `vn.aladinapp` — đúng và cố ý, không
+  # phải chỗ quên tách.
+  #
+  # Đây là trạng thái TẠM. Ngày CheckFarm Inc có tài khoản riêng thì chuyển giao
+  # ứng dụng sang tài khoản đó. Mã gói `com.checkfarm.app` KHÔNG đổi khi chuyển
+  # giao — nó theo ứng dụng, không theo tài khoản. Nợ này ghi ở
+  # `instances/LUAT-SUPERAPP.md §6`; đừng để nó chỉ sống trong chú thích này.
+  ios-appstore-checkfarm:
+    name: iOS TestFlight — CheckFarm (chạy tay)
+
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+
+    environment:
+      node: 22.11.0
+      xcode: 26.4  # PIN CỤ THỂ, cùng lý do đã ghi ở `ios-appstore`. Hai luồng iOS
+                   # phải cùng một bản Xcode: lệch bản là hai app dựng bằng hai
+                   # trình biên dịch khác nhau từ CÙNG một cây mã.
+      cocoapods: default
+      groups:
+        - scanner_secrets
+      vars:
+        BUNDLE_ID: com.checkfarm.app
+        APP_DISPLAY_NAME: CheckFarm
+        APP_INSTANCE: checkfarm
+        XCODE_SCHEME: SuperApp
+        ARCHIVE_PATH: build/ios/OriLife.xcarchive
+        IPA_OUTPUT_DIR: build/ios/ipa
+        APPLE_TEAM_ID: 3666KPJX5R
+        # Số Apple ID của ỨNG DỤNG này, không phải của đội. Bước "Bump build
+        # number" đọc `$APP_STORE_APPLE_ID` từ một khối `scripts` DÙNG CHUNG
+        # (`&ios_release_scripts`), nên nếu luồng này không khai thì nó lấy giá
+        # trị toàn cục — tức số của ứng dụng Aladin — rồi +1.
+        #
+        # Cả hai nhánh hỏng đều KHÔNG đỏ: lệnh hỏi số bọc trong `2>/dev/null ||
+        # echo ""`, còn Apple thì nhận mọi số lớn hơn số đã tải. Nên chỗ này
+        # phải khai, không thể chờ nó tự kêu.
+        #
+        # Vì sao vá TRƯỚC lượt Codemagic đầu chứ không sau: `submit_to_testflight:
+        # true` ở dưới tải thẳng lên Apple, và Apple KHÔNG nhận số nhỏ hơn số đã
+        # tải. Một lượt lấy nhầm số của app kia là ghim vĩnh viễn, không có đường
+        # lùi. Giá vá trước là đúng dòng này.
+        #
+        # Nguồn: App Store Connect ▸ CheckFarm ▸ App Information (đọc 10/09/2026).
+        # Mốc hiện tại trên TestFlight của app này: build 62, tải tay bằng
+        # `xcrun altool` lúc 20:31 ngày 10/09/2026.
+        APP_STORE_APPLE_ID: 6808575982
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.checkfarm.app
+
+    # CHỈ CHẠY TAY, cùng lý do với hai luồng `android-aab-*`: một bản ký bằng chứng
+    # chỉ phân phối thật chỉ nên ra đời khi có người chủ ý cần. Và app này chưa có
+    # nhịp phát hành riêng — buộc nó vào một nhánh là dựng ra bản không ai đợi.
+    triggering:
+      events: []
+
+    scripts: *ios_release_scripts
+
+    artifacts: *ios_release_artifacts
+
+    publishing:
+      app_store_connect:
+        # CÙNG khoá API với hai luồng Aladin — một khoá cấp cho cả đội
+        # `3666KPJX5R`, không phải một khoá cho mỗi ứng dụng.
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        key_id: 5JA4K7A7JD
+        issuer_id: e56d98f1-e6f0-4e46-9ca8-29b30c2a9a7b
+        submit_to_testflight: true
+        # ⚠ Nhóm thử thuộc về TỪNG ứng dụng, không thuộc về đội. `OriLife Testing`
+        # là nhóm của `vn.aladinapp` và KHÔNG tồn tại dưới ứng dụng này — khai tên
+        # đó ở đây thì bước phát hành đỏ sau khi đã tải xong gói lên.
+        # Nhóm dưới đây phải được tạo TRƯỚC lượt dựng đầu, trong App Store Connect
+        # → ứng dụng CheckFarm → TestFlight → Internal Testing.
+        beta_groups:
+          - CheckFarm team
+        # Chưa nộp App Store: ứng dụng chưa có siêu dữ liệu, và bước nộp đỏ khi
+        # thiếu. Bật lên khi trang cửa hàng đã điền xong.
+        submit_to_app_store: false
+
+  # ============================================================
   # Workflow 3: Android Debug APK — Demo / Direct Install
   # ============================================================
   android-debug-apk:
@@ -1440,22 +1706,29 @@ workflows:
           # rơi về rỗng DÙ máy chủ sống (đo 05/08: api.aladin.work/api/v1/health = 200).
           WORK_API_URL=${WORK_API_URL:-https://api.aladin.work/api/v1}
 
-          # ProofChat. Cờ mặc định `off` = MỌI bản phát hành chạy dữ liệu giả, dù máy
-          # chủ sống. Bật là quyết định của người phát hành, không phải hệ quả phụ của
-          # việc máy chủ hồi sinh.
+          # ProofChat.
           #
-          # ĐÍNH CHÍNH 2026-08-18: lý do cũ ghi ở đây ("token production còn nằm trần
-          # trong AsyncStorage") ĐÃ HẾT HIỆU LỰC — commit 48efb57 chuyển token phiên
-          # sang Keychain/Keystore qua `taad.secureStore` (`proofchat-api.ts`).
-          # Còn lại một chặn THẬT, đo 2026-08-18 và nằm ở phía ProofChat chứ không
-          # phải ở app: `GET https://api.proofchat.me/api/v1/users/search` → 404
-          # ("Cannot GET"), tức cửa TÌM NGƯỜI để mở hội thoại vẫn đóng
-          # (`proofchat-api.ts:465` đã ghi: khối `@Get('search')` bị bình luận ở BE).
-          # Bật cờ lúc này chỉ đổi "chat giả" thành "chat thật nhưng không tìm được ai".
+          # ĐO LẠI 2026-09-14 — cả hai lý do từng giữ cờ này ở `off` nay đều hết hiệu
+          # lực, và không có gì báo lúc chúng hết:
+          #   · `GET https://api.proofchat.me/api/v1/health` → 200
+          #   · `GET .../users/search` → **401 Unauthorized** (trước là 404
+          #     "Cannot GET"). Mã đổi từ 404 sang 401 nghĩa là cửa TÌM NGƯỜI đã mở
+          #     thật, chỉ còn đòi phiên đăng nhập — đúng thứ app vẫn gửi.
+          # (Lý do cũ hơn nữa, "token production nằm trần trong AsyncStorage", đã hết
+          # từ commit 48efb57: token phiên chuyển sang Keychain/Keystore.)
+          #
+          # Nên mặc định nay là `on`, và đó KHÔNG phải "bật chat vô điều kiện": cổng
+          # thật vẫn là phép thăm dò lúc chạy (`isCapabilityLive('proofchat')`,
+          # `config/runtimeGate.ts`) — máy chủ chết thì app tự tắt module trong vài
+          # giây. Cái vừa gỡ là lớp chặn CỨNG nướng vào bản dựng, thứ không phép đo
+          # nào lật lại được: bản dựng mang cờ `off` vẫn mời người dùng "chờ kết nối
+          # lại" cho một kết nối không bao giờ được thử.
+          # Muốn tắt cho một bản cụ thể thì đặt `PROOFCHAT_BACKEND_ENABLED=off` ở nhóm
+          # biến của bản đó — tắt vẫn là một lựa chọn, chỉ thôi là mặc định im lặng.
           PROOFCHAT_API_URL=${PROOFCHAT_API_URL:-https://api.proofchat.me/api/v1}
           PROOFCHAT_WS_URL=${PROOFCHAT_WS_URL:-https://api.proofchat.me}
           PROOFCHAT_WS_PATH=${PROOFCHAT_WS_PATH:-/socket.io}
-          PROOFCHAT_BACKEND_ENABLED=${PROOFCHAT_BACKEND_ENABLED:-off}
+          PROOFCHAT_BACKEND_ENABLED=${PROOFCHAT_BACKEND_ENABLED:-on}
 
           # ⚠ analytics.orilife.io KHÔNG phân giải được (DNS NXDOMAIN, đo 05/08) — để
           # trống thay vì nướng một host không tồn tại vào mọi bản build. Để trống CHỈ
@@ -1631,8 +1904,25 @@ workflows:
   # ============================================================
   # Workflow 4: Android Signed AAB — Play Store Internal Testing
   # ============================================================
-  android-appstore-aab:
-    name: Android Signed AAB (Play Store Internal Testing)
+  # ── HAI LUỒNG KÝ, MỘT BỘ BƯỚC ───────────────────────────────────────────────
+  # `android-aab-aladin` giữ toàn bộ các bước; `android-aab-checkfarm` ở cuối tệp
+  # dùng lại chúng qua neo YAML (`*android_aab_scripts`) — cùng cách mà
+  # `ios-production` dùng lại `ios-appstore`, nên cách này đã chạy thật trên
+  # Codemagic ở chính tệp này chứ không phải suy đoán.
+  #
+  # VÌ SAO TÁCH, và tách được cái gì — nói thẳng để không ai tưởng nó là thứ khác:
+  #   ĐƯỢC:     lượt dựng Aladin không nạp khoá CheckFarm vào máy chạy, và ngược lại.
+  #             Ngày CheckFarm về pháp nhân của nó, xoá một nhóm biến là xong, không
+  #             phải xoay khoá của app kia.
+  #   ĐƯỢC:     chọn app = chọn luồng. Trước đây phải đặt tay đúng ba biến khớp nhau
+  #             (`ANDROID_FLAVOR` + `_CAP` + `APP_INSTANCE`); gõ lệch một cái thì
+  #             Gradle dựng app này còn máy đi tìm thư mục app kia.
+  #   KHÔNG được: đây KHÔNG phải hàng rào phân quyền. Codemagic không giới hạn được
+  #             ai chạy luồng nào, nên người dựng được app này vẫn chạy được luồng
+  #             của app kia. Ai cần hàng rào thật thì phải tách ở tầng ứng dụng
+  #             Codemagic, không phải ở tệp này.
+  android-aab-aladin:
+    name: Android Signed AAB — Aladin (Play Store)
     max_build_duration: 60
     instance_type: mac_mini_m2
 
@@ -1641,7 +1931,9 @@ workflows:
       java: 17
       groups:
         - scanner_secrets
-        - android_signing  # <MÃ APP VIẾT HOA>_UPLOAD_* — mỗi app một bộ, xem instances/README.md
+        # MỘT nhóm cho MỘT app. Khoá tải lên của hai pháp nhân khác nhau không nằm
+        # chung một nhóm — xem khối chú thích ngay trên tên luồng.
+        - android_signing_aladin  # ALADIN_UPLOAD_* — xem instances/README.md
       vars:
         AAB_OUTPUT: $CM_BUILD_DIR/android/app/build/outputs/bundle/${ANDROID_FLAVOR}Release
         # ── HAI APP ─────────────────────────────────────────────────────────
@@ -1666,7 +1958,7 @@ workflows:
     triggering:
       events: []
 
-    scripts:
+    scripts: &android_aab_scripts
       # ── CHỐT FLAVOR ─────────────────────────────────────────────────────
       # Đứng TRƯỚC mọi bước dựng. `ANDROID_FLAVOR` rỗng thì `assemble${...}Debug`
       # co lại thành `assembleDebug` — tác vụ đó CÓ THẬT và nó dựng CẢ HAI app,
@@ -1782,22 +2074,29 @@ workflows:
           # rơi về rỗng DÙ máy chủ sống (đo 05/08: api.aladin.work/api/v1/health = 200).
           WORK_API_URL=${WORK_API_URL:-https://api.aladin.work/api/v1}
 
-          # ProofChat. Cờ mặc định `off` = MỌI bản phát hành chạy dữ liệu giả, dù máy
-          # chủ sống. Bật là quyết định của người phát hành, không phải hệ quả phụ của
-          # việc máy chủ hồi sinh.
+          # ProofChat.
           #
-          # ĐÍNH CHÍNH 2026-08-18: lý do cũ ghi ở đây ("token production còn nằm trần
-          # trong AsyncStorage") ĐÃ HẾT HIỆU LỰC — commit 48efb57 chuyển token phiên
-          # sang Keychain/Keystore qua `taad.secureStore` (`proofchat-api.ts`).
-          # Còn lại một chặn THẬT, đo 2026-08-18 và nằm ở phía ProofChat chứ không
-          # phải ở app: `GET https://api.proofchat.me/api/v1/users/search` → 404
-          # ("Cannot GET"), tức cửa TÌM NGƯỜI để mở hội thoại vẫn đóng
-          # (`proofchat-api.ts:465` đã ghi: khối `@Get('search')` bị bình luận ở BE).
-          # Bật cờ lúc này chỉ đổi "chat giả" thành "chat thật nhưng không tìm được ai".
+          # ĐO LẠI 2026-09-14 — cả hai lý do từng giữ cờ này ở `off` nay đều hết hiệu
+          # lực, và không có gì báo lúc chúng hết:
+          #   · `GET https://api.proofchat.me/api/v1/health` → 200
+          #   · `GET .../users/search` → **401 Unauthorized** (trước là 404
+          #     "Cannot GET"). Mã đổi từ 404 sang 401 nghĩa là cửa TÌM NGƯỜI đã mở
+          #     thật, chỉ còn đòi phiên đăng nhập — đúng thứ app vẫn gửi.
+          # (Lý do cũ hơn nữa, "token production nằm trần trong AsyncStorage", đã hết
+          # từ commit 48efb57: token phiên chuyển sang Keychain/Keystore.)
+          #
+          # Nên mặc định nay là `on`, và đó KHÔNG phải "bật chat vô điều kiện": cổng
+          # thật vẫn là phép thăm dò lúc chạy (`isCapabilityLive('proofchat')`,
+          # `config/runtimeGate.ts`) — máy chủ chết thì app tự tắt module trong vài
+          # giây. Cái vừa gỡ là lớp chặn CỨNG nướng vào bản dựng, thứ không phép đo
+          # nào lật lại được: bản dựng mang cờ `off` vẫn mời người dùng "chờ kết nối
+          # lại" cho một kết nối không bao giờ được thử.
+          # Muốn tắt cho một bản cụ thể thì đặt `PROOFCHAT_BACKEND_ENABLED=off` ở nhóm
+          # biến của bản đó — tắt vẫn là một lựa chọn, chỉ thôi là mặc định im lặng.
           PROOFCHAT_API_URL=${PROOFCHAT_API_URL:-https://api.proofchat.me/api/v1}
           PROOFCHAT_WS_URL=${PROOFCHAT_WS_URL:-https://api.proofchat.me}
           PROOFCHAT_WS_PATH=${PROOFCHAT_WS_PATH:-/socket.io}
-          PROOFCHAT_BACKEND_ENABLED=${PROOFCHAT_BACKEND_ENABLED:-off}
+          PROOFCHAT_BACKEND_ENABLED=${PROOFCHAT_BACKEND_ENABLED:-on}
 
           # ⚠ analytics.orilife.io KHÔNG phân giải được (DNS NXDOMAIN, đo 05/08) — để
           # trống thay vì nướng một host không tồn tại vào mọi bản build. Để trống CHỈ
@@ -1856,7 +2155,7 @@ workflows:
           TIEN_TO=$(echo "$ANDROID_FLAVOR" | tr '[:lower:]' '[:upper:]')
           TEN_B64="${TIEN_TO}_UPLOAD_STORE_FILE_B64"
           if [ -z "${!TEN_B64}" ]; then
-            echo "❌ ${TEN_B64} chưa set trong group android_signing"
+            echo "❌ ${TEN_B64} chưa set trong nhóm android_signing_${ANDROID_FLAVOR}"
             echo "   Mỗi app một khoá RIÊNG — app '${ANDROID_FLAVOR}' cần đủ bốn biến:"
             echo "     ${TIEN_TO}_UPLOAD_STORE_FILE_B64   (kho khoá .jks đã base64)"
             echo "     ${TIEN_TO}_UPLOAD_KEY_ALIAS"
@@ -1886,8 +2185,9 @@ workflows:
           API_KEY=${API_KEY:-mock-local-api-key}
           REGION_CODE=${REGION_CODE:-vn-south-01}
           EOF
-          # gradle.properties (gitignored) — RN config + upload signing (group android_signing).
-          # ALADIN_UPLOAD_STORE_FILE=keySigning.bin (đã giải mã ở step trước).
+          # gradle.properties (gitignored) — RN config + upload signing. Khoá lấy từ
+          # nhóm biến của ĐÚNG app đang dựng (`android_signing_<app>`).
+          # `${TIEN_TO}_UPLOAD_STORE_FILE=keySigning.bin` (đã giải mã ở step trước).
           cat > android/gradle.properties <<EOF
           org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m
           android.useAndroidX=true
@@ -2021,11 +2321,15 @@ workflows:
           echo "✅ AAB: $AAB_FILE"
           ls -lh "$AAB_FILE"
           mkdir -p $CM_BUILD_DIR/dist
-          cp "$AAB_FILE" $CM_BUILD_DIR/dist/aladin-release.aab
-          shasum -a 256 $CM_BUILD_DIR/dist/aladin-release.aab
+          # Tên tệp ra phải mang tên app ĐANG dựng. Trước bản này nó gõ cứng
+          # `aladin-release.aab`: dựng CheckFarm vẫn ra một tệp mang tên Aladin, và
+          # lượt dựng báo xanh. Không cổng nào bắt được — cái sai chỉ lộ ra ở người
+          # cầm tệp đi nộp, tức lộ ra muộn nhất có thể và ở chỗ đắt nhất.
+          cp "$AAB_FILE" "$CM_BUILD_DIR/dist/${ANDROID_FLAVOR}-release.aab"
+          shasum -a 256 "$CM_BUILD_DIR/dist/${ANDROID_FLAVOR}-release.aab"
 
-    artifacts:
-      - dist/aladin-release.aab
+    artifacts: &android_aab_artifacts
+      - dist/*-release.aab
       - android-release.log
 
     # ── Vì sao Android CHƯA tự lên Google Play ───────────────────────────────────
@@ -2042,7 +2346,7 @@ workflows:
     #   1. Google Play Console → Users and permissions → mời service account, cho
     #      quyền "Release to testing tracks" + "Release to production".
     #   2. Google Cloud → tải tệp JSON khoá của service account đó.
-    #   3. Codemagic → Environment variables → nhóm `android_signing` → thêm biến
+    #   3. Codemagic → Environment variables → nhóm `android_signing_<app>` → thêm biến
     #      `GCLOUD_SERVICE_ACCOUNT_CREDENTIALS`, dán nguyên nội dung JSON, đánh dấu
     #      Secure.
     # Xong ba việc đó thì bỏ dấu `#` ở khối dưới là Android chạy y như iOS.
@@ -2057,3 +2361,38 @@ workflows:
     #     credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
     #     track: production
     #     submit_as_draft: true
+
+  # ══ CHECKFARM ═══════════════════════════════════════════════════════════════
+  # Cùng bộ bước với luồng Aladin ở trên, khác đúng hai thứ: nhóm biến giữ khoá,
+  # và ba biến chọn app. Bước dựng đọc tiền tố từ `ANDROID_FLAVOR` viết hoa
+  # (`CHECKFARM_UPLOAD_*`), nên không có tên khoá nào gõ cứng ở đây.
+  #
+  # CheckFarm là pháp nhân RIÊNG. Khoá tải lên của nó nằm ở nhóm riêng để ngày
+  # bàn giao chỉ phải xoá một nhóm — bàn giao thì XOAY khoá, không chuyển tài
+  # khoản CI.
+  android-aab-checkfarm:
+    name: Android Signed AAB — CheckFarm (Play Store)
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+
+    environment:
+      node: 22.11.0
+      java: 17
+      groups:
+        - scanner_secrets
+        - android_signing_checkfarm  # CHECKFARM_UPLOAD_* — xem instances/README.md
+      vars:
+        AAB_OUTPUT: $CM_BUILD_DIR/android/app/build/outputs/bundle/${ANDROID_FLAVOR}Release
+        # `..._CAP` là tên tác vụ Gradle: `bundleCheckfarmRelease`. Gradle chỉ viết
+        # hoa CHỮ ĐẦU của tên flavor, nên ở đây là `Checkfarm` — KHÔNG phải
+        # `CheckFarm`. Gõ hai chữ hoa thì tác vụ không tồn tại và lượt dựng đỏ ở
+        # Gradle, sau khi đã nạp khoá thật vào máy.
+        ANDROID_FLAVOR: checkfarm
+        ANDROID_FLAVOR_CAP: Checkfarm
+        APP_INSTANCE: checkfarm
+
+    triggering:
+      events: []
+
+    scripts: *android_aab_scripts
+    artifacts: *android_aab_artifacts

@@ -4,14 +4,14 @@
 // AladinWork tự cấp session HMAC (TTL 12h), KHÔNG có refresh-token → hết hạn
 // thì đăng nhập lại (challenge → ký → verify).
 //
-// PHẦN KÝ P-256 (secp256r1) (challenge → signature) là việc của Thư / lớp native
+// PHẦN KÝ P-256 (secp256r1) (challenge → signature) là việc của lớp native
 // PhoenixKey (Secure Enclave/StrongBox — KHÔNG secp256k1). Ở đây chỉ:
 //   - gọi /auth/challenge (lấy challenge)
-//   - gọi /auth/verify (nộp signature Thư ký → nhận session)
+//   - gọi /auth/verify (nộp signature PhoenixKey native ký → nhận session)
 //   - lưu / đọc / xoá session token an toàn.
 //
 // Prod: KHÔNG dùng localStorage. Dùng AsyncStorage như các service khác trong
-// repo; khi Thư nối Keychain/Keystore thật có thể thay lớp lưu ở đây.
+// repo; khi PhoenixKey native nối Keychain/Keystore thật có thể thay lớp lưu ở đây.
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 

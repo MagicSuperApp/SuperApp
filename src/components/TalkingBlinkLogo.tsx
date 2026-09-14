@@ -1,6 +1,8 @@
 import React, { useRef, useEffect } from 'react';
-import { View, StyleSheet, StyleProp, ViewStyle } from 'react-native';
+import { View, Image, StyleSheet, StyleProp, ViewStyle } from 'react-native';
 import LottieView from 'lottie-react-native';
+
+import { DEFAULT_INSTANCE } from '../config/instance.config';
 
 /**
  * TalkingBlinkLogo
@@ -43,11 +45,34 @@ export default function TalkingBlinkLogo({
     }
   }, [autoPlay]);
 
+  // App chưa có linh vật riêng thì lớp hướng dẫn hiện dấu TĨNH của chính nó.
+  // Mượn linh vật Aladin ở đây là đặt mặt cười nhà khác vào đúng màn dạy người
+  // dùng lần đầu — xem `InstanceConfig.mascot`.
+  const mascot = DEFAULT_INSTANCE.mascot;
+  if (!mascot) {
+    return (
+      <View
+        style={[
+          styles.container,
+          { backgroundColor: DEFAULT_INSTANCE.themeConfig.header?.bg ?? '#285B23' },
+          { width: size, height: size, borderRadius: size / 2 },
+          style,
+        ]}
+      >
+        <Image
+          source={DEFAULT_INSTANCE.logo}
+          style={{ width: size, height: size }}
+          resizeMode="contain"
+        />
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.container, { width: size, height: size, borderRadius: size / 2 }, style]}>
       <LottieView
         ref={animRef}
-        source={require('../assets/animations/talking_logo.json')}
+        source={mascot.talking}
         autoPlay={autoPlay}
         loop={loop}
         style={{ width: size, height: size }}

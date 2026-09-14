@@ -83,17 +83,30 @@ describe('HAI APP THẬT phải ra hai thanh khác nhau', () => {
    * rót bảng — chúng chỉ kiểm hàm, không kiểm dây. Bài này so hai cấu hình CÓ THẬT
    * trong kho, nên nó đỏ đúng lúc dây đứt.
    */
-  it('Aladin đặt Việc làm trước, CheckFarm đặt Trang trại trước', () => {
+  // ĐỔI 2026-09-14: ô trái thôi làm hằng của nền, app khai nó ở `anchorLeft`.
+  // CheckFarm dời Vườn lên ô trái, nên Vườn KHÔNG còn đứng đầu `slotPriority` —
+  // câu cũ của bài này ("CheckFarm đặt Trang trại trước") vẫn ĐÚNG về sản phẩm,
+  // chỉ là nó đo ở trường đã không còn giữ dữ kiện đó.
+  it('Aladin mở đầu bằng Ví, CheckFarm mở đầu bằng Vườn', () => {
+    expect(ALADIN_INSTANCE.anchorLeft).toBe('PhoenixWallet');
     expect(ALADIN_INSTANCE.slotPriority.default[0]).toBe('WorkHome');
-    expect(CHECKFARM_INSTANCE.slotPriority.default[0]).toBe('Farms');
+
+    expect(CHECKFARM_INSTANCE.anchorLeft).toBe('Farms');
+    expect(CHECKFARM_INSTANCE.slotPriority.default[0]).toBe('PhoenixWallet');
+  });
+
+  it('hai app khai ô trái KHÁC nhau', () => {
+    expect(ALADIN_INSTANCE.anchorLeft).not.toBe(CHECKFARM_INSTANCE.anchorLeft);
   });
 
   it('rót hai bảng đó vào cùng một hàm → ra hai kết quả KHÁC nhau', () => {
     const aladin = resolveVisibleTabs(
-      KHONG_CO_DU_LIEU, {}, null, () => true, ALADIN_INSTANCE.slotPriority,
+      KHONG_CO_DU_LIEU, {}, null, () => true,
+      ALADIN_INSTANCE.slotPriority, ALADIN_INSTANCE.anchorLeft,
     );
     const checkfarm = resolveVisibleTabs(
-      KHONG_CO_DU_LIEU, {}, null, () => true, CHECKFARM_INSTANCE.slotPriority,
+      KHONG_CO_DU_LIEU, {}, null, () => true,
+      CHECKFARM_INSTANCE.slotPriority, CHECKFARM_INSTANCE.anchorLeft,
     );
     expect(aladin).not.toEqual(checkfarm);
   });

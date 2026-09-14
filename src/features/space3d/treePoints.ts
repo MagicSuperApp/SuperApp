@@ -147,7 +147,14 @@ export interface TreePointsTemplate {
  */
 export type TreePointsResult =
   | { kind: 'ok'; template: TreePointsTemplate }
-  | { kind: 'unavailable'; message: string }
+  /**
+   * `serverStatus` = nguyên văn `meta.status` của máy chủ (`none`/`building`/
+   * `failed`), KHÔNG phải câu hiển thị. Màn hình cần nó để biết có nên bày nút
+   * "Dựng hình 3D" hay không: `building` là đã có lượt đang chạy, bày nút ở đó
+   * là mời người dùng xếp hàng chồng lên chính mình. Suy ngược từ `message`
+   * thì hỏng ngay lần đầu ai sửa câu chữ, và hỏng im lặng.
+   */
+  | { kind: 'unavailable'; message: string; serverStatus?: string }
   | { kind: 'unreadable'; message: string }
   | { kind: 'error'; message: string };
 
@@ -496,7 +503,11 @@ async function fetchTemplate(treeId: string): Promise<TreePointsResult> {
       || (typeof declared === 'number' && declared > 0);
 
     if (!looksBuilt) {
-      return { kind: 'unavailable', message: messageForStatus(body.meta) };
+      return {
+        kind: 'unavailable',
+        message: messageForStatus(body.meta),
+        serverStatus: status,
+      };
     }
     return {
       kind: 'unreadable',

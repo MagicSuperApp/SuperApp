@@ -261,12 +261,218 @@ client.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
   return config;
 });
 
+/**
+ * Hàm đúc lại thẻ phiên, do `phoenixSessionService` đăng ký lúc nạp module.
+ *
+ * ── Vì sao TIÊM chứ không nhập thẳng ────────────────────────────────────────
+ * `phoenixSessionService` đã nhập từ tệp này (`phoenixKeyApi`, `setSessionToken`,
+ * `getSessionToken`, `PhoenixKeyApiError`). Nhập chiều ngược lại là một vòng
+ * nhập, và ở Metro vòng nhập không báo lỗi — nó cho ra `undefined` tại thời điểm
+ * nạp module. Tức đường tự chữa sẽ chết câm đúng ở ca nó cần chạy.
+ */
+type SessionRefresher = () => Promise<string | null>;
+let refreshSession: SessionRefresher | null = null;
+
+/** Gọi MỘT lần lúc nạp `phoenixSessionService`. */
+export function registerSessionRefresher(fn: SessionRefresher): void {
+  refreshSession = fn;
+}
+
+/** Đánh dấu lượt gọi đã thử đúc thẻ một lần rồi — không thử vòng hai. */
+type RetriableConfig = InternalAxiosRequestConfig & {
+  needsAuth?: boolean;
+  __sessionRetried?: boolean;
+};
+
 client.interceptors.response.use(response => {
   if (response.data) {
     response.data = transformKeys(response.data, toCamelCase);
   }
   return response;
 });
+
+/**
+ * Gắn đường tự chữa 401 vào MỘT client axios bất kỳ.
+ *
+ * ── Vì sao là hàm dùng chung, không phải đoạn mã chép ra bốn chỗ ───────────
+ * Thẻ phiên nằm chung một khoá kho (`phoenixkey_session_token`) cho **bốn**
+ * nhà tiêu thụ: tệp này, `orgMint-api`, `phoenixWallet-api` và lối `fetch` thô
+ * trong `cardanoTxService`. Cả bốn gắn `Bearer` y hệt nhau, nhưng tới trước bản
+ * này chỉ tệp này có nhánh 401. Nên cùng một thẻ chết cho ra hai hành vi khác
+ * nhau tuỳ người dùng bấm vào màn nào: màn Danh tính tự hồi, màn Ví tổ chức và
+ * màn Ví chuỗi thì kẹt vĩnh viễn ở `Unauthorized — Missing Bearer token (mã
+ * 1304)` với một nút "Thử lại" không bao giờ đổi được kết quả, vì nó chỉ phát
+ * lại đúng lượt gọi cũ bằng đúng cái thẻ cũ.
+ *
+ * ── Ca hỏng nhánh này sinh ra để chặn ──────────────────────────────────────
+ * Thẻ phiên PhoenixKey sống 1 giờ. `ensurePhoenixSession` trả thẳng thẻ đã lưu
+ * ra mà KHÔNG hỏi hạn (`phoenixSessionService.ts:126-130`), và nó chỉ được gọi
+ * đúng một lần mỗi phiên đăng nhập (`navigation/index.tsx:1562`).
+ *
+ * Hệ quả đo được: hai người thử đăng nhập lúc 7h rồi đi ruộng; 8h05 thẻ hết
+ * hạn; từ đó `/wallet/{did}/all`, `/wallet/{did}/utxos`, `/devices/register`,
+ * `/seed/export-request`, `/guardians/*`, `/keys/*` đều 401. Màn Ví hiện ba dấu
+ * "—", kéo xuống làm mới y hệt, tắt app mở lại y hệt — vì thẻ chết vẫn nằm
+ * trong kho và vẫn được trả ra. Lối thoát duy nhất là đăng xuất rồi đăng nhập
+ * lại, và không câu nào trên màn gợi ý điều đó.
+ *
+ * Đường tự chữa từng tồn tại nhưng chỉ ở MỘT nhà tiêu thụ —
+ * `proofchatAuthBridge.ts:187-190`. Ai không mở ProofChat thì không bao giờ
+ * chạm tới nó. Đặt ở tầng chặn là đặt vào chỗ mọi cửa đều đi qua.
+ *
+ * ── Ba ràng buộc, mỗi cái chặn một ca hỏng khác nhau ───────────────────────
+ * 1. CHỈ lượt gọi khai `needsAuth`. Cửa công khai trả 401 là chuyện của máy
+ *    chủ, không phải thẻ sai — đúc lại ở đó là bật hộp sinh trắc hỏi một câu
+ *    vô nghĩa với người chỉ đang quét mã trên thùng hàng.
+ * 2. ĐÚNG MỘT lần mỗi lượt gọi (`__sessionRetried`). Thẻ mới mà vẫn 401 nghĩa
+ *    là máy chủ từ chối vì lý do khác; thử tiếp là vòng lặp vô hạn có kèm hộp
+ *    vân tay.
+ * 3. KHÔNG áp cho 403. Ở các cửa ví, 403 nghĩa là `caller_did != path_did` —
+ *    ký lại bằng chính khoá đó cho ra đúng kết quả cũ. (Khác `proofchatAuthBridge`,
+ *    nơi 403 mang nghĩa khác nên nó gộp hai mã là đúng với nó.)
+ *
+ * Chưa ai đăng ký hàm đúc thì nhánh này ném nguyên lỗi cũ ra — đúng hành vi
+ * trước bản này, không xấu thêm.
+ *
+ * ⚠ Phải gọi SAU khi client đã đăng ký interceptor phản hồi thành công của
+ * riêng nó (đổi khoá sang camelCase), vì axios chạy theo thứ tự đăng ký.
+ */
+export function attachSessionRefresh(target: AxiosInstance): void {
+  target.interceptors.response.use(undefined, async (error: AxiosError) => {
+    const config = error.config as RetriableConfig | undefined;
+    const status = error.response?.status;
+
+    if (status !== 401 || !config?.needsAuth || config.__sessionRetried || !refreshSession) {
+      throw error;
+    }
+
+    config.__sessionRetried = true;
+    const fresh = await refreshSessionOnce();
+    if (!fresh) throw error;
+    return target.request(config);
+  });
+}
+
+attachSessionRefresh(client);
+
+/**
+ * Đúc lại thẻ phiên MỘT lượt, cho nhà tiêu thụ KHÔNG đi qua axios.
+ *
+ * `cardanoTxService.rawGet` gọi thẳng `fetch` (cố ý: nó phải giữ nguyên khoá
+ * snake_case của JSON Cardano, không cho interceptor đổi sang camelCase), nên
+ * `attachSessionRefresh` không với tới nó. Xuất hàm này để lối đó dùng CHUNG
+ * lớp gộp `inflightRefresh` — nếu nó tự đúc riêng thì màn Ví lại có hai hộp
+ * sinh trắc song song, đúng cái mà lớp gộp sinh ra để chặn.
+ */
+export const remintSessionOnce = (): Promise<string | null> =>
+  refreshSession ? refreshSessionOnce() : Promise.resolve(null);
+
+/**
+ * Gộp mọi lượt đúc thẻ đang bay làm MỘT — nếu không thì mỗi lượt gọi hỏng là một
+ * hộp sinh trắc.
+ *
+ * ⚠ Khoá chống chạy trùng của `ensurePhoenixSession` KHÔNG che được ca này:
+ * `phoenixSessionService.ts:111` viết `if (!opts.force && inflightSession)`, tức
+ * `force: true` **cố ý** đi vòng qua khoá đó — đúng như nó phải thế, vì `force`
+ * sinh ra để ép đúc thẻ mới khi thẻ cũ hỏng. Mà nhánh 401 thì bắt buộc dùng
+ * `force`: không có nó, `ensurePhoenixSession` trả lại đúng cái thẻ chết vừa bị
+ * máy chủ từ chối.
+ *
+ * Hệ quả nếu bỏ lớp gộp này: màn Ví phát nhiều lượt gọi song song
+ * (`/wallet/{did}/all`, `/utxos`, `/params`…), tất cả 401 cùng lúc, mỗi lượt một
+ * hộp Face ID. Người dùng bấm Huỷ ở hộp thứ ba và không bao giờ gỡ được.
+ */
+let inflightRefresh: Promise<string | null> | null = null;
+
+/**
+ * NGHỈ SAU MỘT LẦN ĐÚC HỎNG — lớp gộp ở trên KHÔNG che được ca này.
+ *
+ * `inflightRefresh` chỉ gộp các lượt đúc chạy CHỒNG NHAU. Lượt đúc hỏng xong là
+ * nó tự xoá, nên lượt gọi 401 TIẾP THEO — người dùng bấm "Thử lại", một màn khác
+ * vừa gắn, một `useEffect` chạy lại — mở một lượt đúc MỚI, và mỗi lượt đúc là
+ * một hộp sinh trắc chặn toàn màn hình.
+ *
+ * Đo từ thực địa 2026-09-12 (bản dựng 99, quay màn hình): sau khi máy chủ từ
+ * chối dựng phiên, hộp Face ID bật lại ở giây thứ 19 · 23 · 26 · 30 · 38 — năm
+ * lần trong hai mươi giây, lần nào cũng quét xong rồi vẫn hiện y câu lỗi cũ.
+ * Người dùng mô tả đúng cái nhìn thấy: *"không thoát ra được, không điều khiển
+ * các chức năng"*. Không phải app treo — là một chuỗi hộp hệ thống nối đuôi nhau.
+ *
+ * Máy chủ từ chối một lượt đúc thì lượt sau bằng ĐÚNG khoá đó cho ĐÚNG câu trả
+ * lời đó. Nghỉ một phút không làm mất gì, và nó đổi một vòng lặp không lối ra
+ * thành một câu lỗi đứng yên đọc được.
+ */
+const MINT_COOLDOWN_MS = 60_000;
+let mintCooldownUntil = 0;
+
+/**
+ * Số hiệu THẾ của danh tính, cùng cơ chế và cùng lý do với `loginGeneration`
+ * trong `orilifeDidAuth.ts` — đọc khối chú thích ở đó để khỏi chép lại.
+ *
+ * Ghi ở đây đúng một điều riêng: van này bị bỏ quên lâu hơn van kia. Van đăng
+ * nhập OriLife có hai chỗ gọi mở; van đúc thẻ PhoenixKey thì `clearSessionMint-
+ * Cooldown` được viết ra rồi **không nơi nào gọi** — tức người đăng xuất xong
+ * đăng nhập bằng danh tính khác vẫn gánh nguyên đồng hồ nghỉ của người trước, và
+ * không màn nào nói vì sao. Cùng hình dạng với `clearSessionToken` ở
+ * `store/userSlice.ts` (viết sẵn, nối vào đúng một đường, đường đăng xuất bỏ
+ * trống) — hàm có, đường không có.
+ */
+let mintGeneration = 0;
+
+/** Cho phép đúc lại ngay — dùng khi người dùng vừa tự xác thực lại. */
+export function clearSessionMintCooldown(): void {
+  mintGeneration += 1;
+  mintCooldownUntil = 0;
+  inflightRefresh = null;
+}
+
+/** Còn bao nhiêu mili-giây nữa mới được đúc lại; 0 nghĩa là đúc được ngay. */
+export const sessionMintCooldownLeft = (): number =>
+  Math.max(0, mintCooldownUntil - Date.now());
+
+/**
+ * Số hiệu thế hiện hành. Chỗ ĐÚC thẻ đọc nó để biết mình còn nói về danh tính
+ * đang đăng nhập hay không.
+ *
+ * Vì sao phải xuất ra chứ không giữ kín trong tệp này: chốt thế ở
+ * `refreshSessionOnce` chỉ canh được BIẾN đồng hồ nghỉ. Việc tốn kém hơn nhiều
+ * — `setSessionToken(...)`, tức GHI thẻ xuống kho — nằm ở
+ * `phoenixSessionService.ensurePhoenixSessionInner`, một tệp khác. Không có con
+ * số này thì một lượt đúc mồ côi vẫn trồng lại thẻ của người trước sau khi
+ * `logoutUser` vừa xoá nó, và thẻ phiên PhoenixKey KHÔNG mang dấu chủ nên người
+ * sau dùng thẳng — đúng ca mạo danh mà `clearSessionToken` sinh ra để chặn.
+ *
+ * Dùng số hiệu thế chứ không so DID: đăng xuất KHÔNG xoá cặp khoá (người cũ phải
+ * đăng nhập lại được bằng DID cũ), nên DID sau đăng xuất vẫn y như trước và một
+ * phép so DID sẽ im lặng cho qua đúng ca này.
+ */
+export const sessionMintGeneration = (): number => mintGeneration;
+
+function refreshSessionOnce(): Promise<string | null> {
+  if (inflightRefresh) return inflightRefresh;
+  if (Date.now() < mintCooldownUntil) return Promise.resolve(null);
+  // Chốt thế NGAY lúc dựng lượt, trước mọi `await` — xem `mintGeneration`.
+  const generationAtStart = mintGeneration;
+  const run = (async () => {
+    // KHÔNG xoá thẻ đang lưu trước khi có thẻ mới. `ensurePhoenixSession({force:true})`
+    // đã bỏ qua thẻ đã lưu rồi, nên lệnh xoá ở đây không giúp gì cho lượt đúc — nó
+    // chỉ bảo đảm rằng một lượt đúc HỎNG để máy lại **không còn thẻ nào**, tức mọi
+    // lượt gọi sau đó chắc chắn 401 kể cả khi thẻ cũ vẫn còn sống và cái 401 ban
+    // đầu đến từ chuyện khác.
+    const fresh = refreshSession ? await refreshSession() : null;
+    // Van đã mở giữa chừng ⟹ lượt này nói về danh tính CŨ. Trả thẻ cho người đã
+    // gọi, nhưng thôi đặt đồng hồ nghỉ lên danh tính mới. Xem `mintGeneration`.
+    if (generationAtStart === mintGeneration) {
+      mintCooldownUntil = fresh ? 0 : Date.now() + MINT_COOLDOWN_MS;
+    }
+    return fresh;
+  })();
+  inflightRefresh = run;
+  run.finally(() => {
+    if (inflightRefresh === run) inflightRefresh = null;
+  });
+  return run;
+}
 
 async function unwrap<T>(
   promise: Promise<{ data: { code: number; message: string; result?: T } }>,

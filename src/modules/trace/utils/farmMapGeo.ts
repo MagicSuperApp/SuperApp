@@ -24,6 +24,7 @@
  */
 
 import { areaSquareMeters, computeCentroid, type Coord } from './polygonGuards';
+import { isValidLatLon } from '../../../features/wayfind/wayfind';
 import type { Farm } from '../types';
 
 // ---------------------------------------------------------------------------
@@ -71,12 +72,13 @@ const HALF_MIN_SPAN = MIN_SPAN_DEG / 2;
 
 export interface LatLng { lat: number; lng: number }
 
+/**
+ * ⛔ Bản trước ép dải nhưng KHÔNG loại `0/0`, nên một đỉnh ranh giới rỗng kéo
+ *    hộp bao của vườn ra tận Vịnh Guinea và mọi ghim thật dồn về một điểm.
+ *    Nay mượn nguyên `isValidLatLon` — cùng luật với hình thửa và với màn bản đồ.
+ */
 function _valid(p: { lat?: unknown; lng?: unknown } | null | undefined): p is LatLng {
-  return (
-    !!p &&
-    typeof p.lat === 'number' && Number.isFinite(p.lat) && Math.abs(p.lat) <= 90 &&
-    typeof p.lng === 'number' && Number.isFinite(p.lng) && Math.abs(p.lng) <= 180
-  );
+  return !!p && isValidLatLon({ lat: p.lat as number, lon: p.lng as number });
 }
 
 /**

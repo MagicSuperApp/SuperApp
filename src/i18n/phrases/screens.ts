@@ -44,10 +44,13 @@ export const SCREENS: PhraseMap = {
     zh: '你以前用过本系统的任何应用吗？',
     ja: 'このシステムのアプリを使ったことがありますか？',
   },
-  'Người mới, đổi điện thoại, hay máy này đang có app khác cùng nhóm — ba đường khác nhau, chọn ở đây': {
-    en: 'New here, changing phone, or already running another app from this system on this device — three different paths, choose here',
-    zh: '新用户、换手机，或本机上已有本系统的其他应用 —— 三条路各不相同，在这里选择',
-    ja: 'はじめての方、機種変更の方、この端末にシステム内の別アプリがある方 — 三つの道は別物です。ここで選んでください',
+  // Câu cũ ghi "ba đường" ở cả bốn thứ tiếng, và đã sai từ ngày lối thứ tư (nhờ app
+  // đang đăng nhập duyệt) chạy được. Số gõ cứng không sinh từ danh sách lối, nên nó
+  // chết im lặng ở BỐN chỗ cùng lúc và không cổng nào kêu.
+  'Người mới, đổi điện thoại, hay máy này đang có app khác cùng nhóm — mỗi trường hợp một đường riêng, chọn ở đây': {
+    en: 'New here, changing phone, or already running another app from this system on this device — each case has its own path, choose here',
+    zh: '新用户、换手机，或本机上已有本系统的其他应用 —— 每种情况都有各自的路径，在这里选择',
+    ja: 'はじめての方、機種変更の方、この端末にシステム内の別アプリがある方 — それぞれに別の道があります。ここで選んでください',
   },
   'Tạo một danh tính MỚI — khác với danh tính bạn dùng ở app kia': {
     en: 'Create a NEW identity — different from the one you use in the other app',
@@ -96,10 +99,15 @@ export const SCREENS: PhraseMap = {
   'Đang khởi tạo tài khoản': { en: 'Setting up your account', zh: '正在初始化账户', ja: 'アカウントを初期化中' },
   'Vui lòng giữ ứng dụng mở cho tới khi hoàn tất.': { en: 'Please keep the app open until it finishes.', zh: '请保持应用开启直至完成。', ja: '完了するまでアプリを開いたままにしてください。' },
   'Bạn chưa liên kết khôi phục': { en: 'No recovery method linked yet', zh: '尚未关联恢复方式', ja: '復旧手段がまだ設定されていません' },
-  'Hãy thiết lập Người bảo hộ hoặc lưu Seed Phrase trong phần Tài khoản ngay khi có thể — đó là cách duy nhất để khôi phục nếu mất thiết bị.': {
-    en: 'Set up Guardians or save your seed phrase under Account as soon as you can — that is the only way to recover if you lose the device.',
-    zh: '请尽快在“账户”中设置监护人或保存助记词 — 这是设备丢失后唯一的恢复方式。',
-    ja: 'できるだけ早く「アカウント」でガーディアンを設定するか、シードフレーズを保存してください — 端末を紛失したときに復旧できる唯一の方法です。',
+  // ⛔ Câu cũ mời hai lối ngang nhau ("Người bảo hộ HOẶC Seed Phrase … cách duy nhất").
+  // Hôm nay chỉ một lối chạy được tới cuối. Ghi danh người bảo hộ có thật, nhưng KHÔNG
+  // màn nào dùng họ để khôi phục trên máy mới. Đặt hai lối cạnh nhau ở đúng màn cảnh báo
+  // mất danh tính thì người dùng chọn lối không tồn tại, và biết mình chọn sai vào ngày
+  // đã mất máy.
+  'Hãy lưu cụm 24 từ trong phần Tài khoản ngay khi có thể — hôm nay đó là cách duy nhất khôi phục được nếu mất thiết bị.': {
+    en: 'Save your 24 words under Account as soon as you can — today that is the only way to recover if you lose the device.',
+    zh: '请尽快在“账户”中保存 24 个助记词 — 目前这是设备丢失后唯一可行的恢复方式。',
+    ja: 'できるだけ早く「アカウント」で24単語を保存してください — 現時点では端末を紛失したときに復旧できる唯一の方法です。',
   },
   // ⛔ GỠ 2026-08-28 — khoá cũ ở đây dịch một câu KHÔNG ĐÚNG SỰ THẬT sang ba thứ
   // tiếng: "Dữ liệu khôi phục được phân tán an toàn trên mạng — chỉ bạn có thể
@@ -284,10 +292,10 @@ export const SCREENS: PhraseMap = {
 
   // ── Guardian / duyệt ký ────────────────────────────────────────────────────
   'Người bảo hộ (Guardian)': { en: 'Guardian', zh: '监护人（Guardian）', ja: 'ガーディアン' },
-  'Người giám hộ giúp bạn khôi phục danh tính khi mất thiết bị. Thêm người bạn tin tưởng bằng mã định danh của họ.': {
-    en: 'Guardians help you recover your identity if you lose your device. Add someone you trust using their identifier.',
-    zh: '监护人可在你丢失设备时帮你恢复身份。用对方的标识码添加你信任的人。',
-    ja: '保護者は端末をなくしたときに本人情報の復旧を助けてくれます。信頼できる人を識別子で追加してください。',
+  'Ghi danh người bạn tin tưởng bằng mã định danh của họ. Đường dùng người bảo hộ để khôi phục chưa chạy tới cuối — cụm 24 từ vẫn là bản dự phòng duy nhất.': {
+    en: 'Enrol someone you trust using their identifier. Recovery through a guardian does not run end to end yet — your 24 words are still the only fallback.',
+    zh: '用对方的标识码登记你信任的人。通过监护人恢复的流程尚未打通 — 24 个助记词仍是唯一的备份。',
+    ja: '信頼できる人を識別子で登録してください。ガーディアンによる復旧はまだ最後まで動きません — 24単語が唯一の予備手段です。',
   },
   'Thêm guardian': { en: 'Add guardian', zh: '添加监护人', ja: 'ガーディアンを追加' },
   'Duyệt yêu cầu ký': { en: 'Approve the signing request', zh: '批准签名请求', ja: '署名リクエストを承認' },
@@ -728,13 +736,13 @@ export const SCREENS: PhraseMap = {
   'Tìm Tasker': { en: 'Find a Tasker', zh: '寻找 Tasker', ja: 'タスカーを探す' },
   'Tạo việc ngay': { en: 'Post a job now', zh: '立即发布工作', ja: 'すぐに募集する' },
   'Tạo Việc Ngay': { en: 'Post a job now', zh: '立即发布工作', ja: 'すぐに募集する' },
-  'Hướng dẫn đăng việc trên Aladin': { en: 'How to post a job on Aladin', zh: '如何在 Aladin 上发布工作', ja: 'Aladin での募集の出し方' },
+  'Hướng dẫn đăng việc trên {brand}': { en: 'How to post a job on {brand}', zh: '如何在 {brand} 上发布工作', ja: '{brand} での募集の出し方' },
   'Một số lưu ý cho lần đầu đăng việc': { en: 'A few tips for your first posting', zh: '首次发布的几点提示', ja: '初めて募集を出す方へのヒント' },
   'Bảo vệ bởi smart contract': { en: 'Protected by a smart contract', zh: '由智能合约保护', ja: 'スマートコントラクトで保護' },
-  'Mọi giao dịch trên Aladin đều có hợp đồng số ký bằng khoá trên máy bạn. Tiền cọc định giá bằng MAGIC nhưng khoá và hoàn bằng CARP — bạn không lo bị quỵt.': {
-    en: 'Every deal on Aladin comes with a digital contract signed by the key on your device. The deposit is priced in MAGIC but locked and refunded in CARP — so you cannot be stiffed.',
-    zh: 'Aladin 上的每笔交易都有用本机密钥签署的数字合同。押金以 MAGIC 计价，但以 CARP 锁定和退还 — 不用担心被赖账。',
-    ja: 'Aladin のすべての取引には、端末の鍵で署名された電子契約が付きます。保証金は MAGIC で値付けし、ロックと返金は CARP で行います — 踏み倒される心配はありません。',
+  'Mọi giao dịch trên {brand} đều có hợp đồng số ký bằng khoá trên máy bạn. Tiền cọc định giá bằng MAGIC nhưng khoá và hoàn bằng CARP — bạn không lo bị quỵt.': {
+    en: 'Every deal on {brand} comes with a digital contract signed by the key on your device. The deposit is priced in MAGIC but locked and refunded in CARP — so you cannot be stiffed.',
+    zh: '{brand} 上的每笔交易都有用本机密钥签署的数字合同。押金以 MAGIC 计价，但以 CARP 锁定和退还 — 不用担心被赖账。',
+    ja: '{brand} のすべての取引には、端末の鍵で署名された電子契約が付きます。保証金は MAGIC で値付けし、ロックと返金は CARP で行います — 踏み倒される心配はありません。',
   },
   'Nổi bật': { en: 'Featured', zh: '精选', ja: '注目' },
   'Chi tiết tin': { en: 'Posting details', zh: '信息详情', ja: '募集の詳細' },
@@ -751,7 +759,7 @@ export const SCREENS: PhraseMap = {
     zh: '按能力与空闲时间匹配（Jem-Math）',
     ja: '能力と空き状況でマッチング（Jem-Math）',
   },
-  'Bảo vệ Aladin': { en: 'Aladin protection', zh: 'Aladin 保障', ja: 'Aladin の保護' },
+  'Bảo vệ {brand}': { en: '{brand} protection', zh: '{brand} 保障', ja: '{brand} の保護' },
   'Mọi thoả thuận được ký số ngay trên máy bạn, có giá trị pháp lý': {
     en: 'Every agreement is digitally signed on your own device and is legally binding',
     zh: '每份协议都在你的设备上完成数字签名，具有法律效力',
@@ -762,10 +770,10 @@ export const SCREENS: PhraseMap = {
     zh: '保证金以 MAGIC 计价、用 CARP 锁定/退还 — 双方确认后才释放',
     ja: '保証金は MAGIC で価格を表し、ロックと返還は CARP で行います — 双方が確認したときにのみ解放されます',
   },
-  'Trao đổi qua Aladin Chat — lưu trữ vĩnh viễn làm bằng chứng nếu tranh chấp': {
-    en: 'Talk through Aladin Chat — stored permanently as evidence in a dispute',
-    zh: '通过 Aladin Chat 沟通 — 永久留存，可作为争议证据',
-    ja: 'やり取りは Aladin Chat で行います — 争いになったときの証拠として永久に保存されます',
+  'Trao đổi qua {brand} Chat — lưu trữ vĩnh viễn làm bằng chứng nếu tranh chấp': {
+    en: 'Talk through {brand} Chat — stored permanently as evidence in a dispute',
+    zh: '通过 {brand} Chat 沟通 — 永久留存，可作为争议证据',
+    ja: 'やり取りは {brand} Chat で行います — 争いになったときの証拠として永久に保存されます',
   },
   'Đăng tin đặt thợ': { en: 'Post a job', zh: '发布招工信息', ja: '職人の募集を出す' },
   'Mô tả công việc, hệ thống gợi ý thợ phù hợp': {

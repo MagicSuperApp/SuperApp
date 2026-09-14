@@ -18,10 +18,138 @@
 
 import React from 'react';
 import { Image, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
-import Svg, { Ellipse, Path, G } from 'react-native-svg';
+import Svg, { Ellipse, Path, G, Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
 
-import { NATURE } from '../../theme/depth';
+import { GRADIENT, NATURE, type GradientName } from '../../theme/depth';
 import { BACKDROP_PHOTOS, PHOTO_OPACITY, type BackdropVariant } from '../../theme/backdrops';
+
+/**
+ * Lớp CHUYỂN SẮC lấp đầy khối cha. Đặt nó làm con đầu tiên của một `View` có
+ * `overflow: 'hidden'` và bo góc; nó tự trải kín, và không bao giờ ăn cú chạm.
+ *
+ * ── Góc tính theo quy ước CSS ───────────────────────────────────────────────
+ * `0` = chảy lên trên · `90` = sang phải · `180` = xuống dưới · `135` = xuống
+ * góc dưới-phải. Chọn quy ước này thay vì tự đặt một quy ước riêng vì mọi người
+ * đã quen nó từ `linear-gradient()` trên web — một quy ước riêng ở đây chỉ tạo
+ * ra một thứ nữa phải tra.
+ *
+ * ⚠ Không chuẩn hoá độ dài đường chuyển sắc theo tỉ lệ khung như CSS làm. Với
+ * hai chặng lệch nhau chưa tới một bậc sáng thì mắt không phân biệt được, và
+ * phép chuẩn hoá đó đổi lại bằng một khối tính chạy mỗi lần vẽ lại.
+ */
+export const GradientFill: React.FC<{ name: GradientName }> = ({ name }) => {
+  const g = GRADIENT[name];
+  const rad = (g.angle * Math.PI) / 180;
+  // Hướng chảy trong hệ toạ độ màn hình (trục y hướng XUỐNG).
+  const dx = Math.sin(rad);
+  const dy = -Math.cos(rad);
+  /**
+   * ⛔ ĐÂY LÀ CHỖ ĐÃ HỎNG THẬT, đừng rút gọn lại.
+   *
+   * Bản trước đặt `id = 'grad-' + name`, tức MỘT id cho MỘT token. Chú thích khi
+   * ấy đã viết đúng lý do ("hai lớp trùng id thì lớp sau lấy nhầm màu của lớp
+   * trước") rồi vẫn làm sai — vì một màn có nhiều ô cùng `tone`, và
+   * `react-native-svg` giữ sổ id CHUNG cho cả ứng dụng chứ không theo từng thẻ
+   * `<Svg>`. Lớp nào gắn sau ghi đè lớp trước, nên `url(#grad-action)` của nút
+   * này đi lấy toạ độ/chặng màu của một ô khác.
+   *
+   * `useId()` cho mỗi LƯỢT DỰNG một id riêng. Bỏ ký tự lạ vì `useId` trả về
+   * dạng `:r3:`, mà dấu hai chấm trong `url(#…)` là cú pháp khác.
+   */
+  const rieng = React.useId().replace(/[^a-zA-Z0-9]/g, '');
+  const id = `grad-${name}-${rieng}`;
+
+  /**
+   * Kích thước THẬT của khối cha, tính bằng pixel bố cục, đo bằng `onLayout`.
+   *
+   * ⛔ LƯỢT VÁ THỨ BA CHO CÙNG MỘT TRIỆU CHỨNG. Đọc hết đoạn này trước khi rút
+   *    gọn nó về lại "một con số phần trăm cho gọn".
+   *
+   * Báo về từ thực địa, bản này: *"panel thông tin của vườn có background trắng
+   * nhưng chỉ trắng ở MỘT VÙNG TRÊN BÊN TRÁI, còn lại thì không có màu"*, và
+   * cùng hình dạng đó ở nút "Chỉ đường tới vườn" lẫn bốn ô quả của màn chi tiết
+   * cây. Một mảng màu neo ở GỐC TOẠ ĐỘ, nhỏ hơn khối cha theo cả hai chiều —
+   * đó là chữ ký của một khung nhìn bị quy nhỏ hơn khối chứa nó.
+   *
+   * Hai lượt vá trước đều đổi TỪ một cách quy đơn vị tương đối SANG một cách
+   * khác: `<Rect width="100%">` → `viewBox="0 0 1 1"` + `<Rect width={1}>`.
+   * Cả hai lượt đều sửa một lỗi có thật, và cả hai lần triệu chứng vẫn còn.
+   *
+   * Nên lượt này bỏ HẲN đơn vị tương đối khỏi đường này. Bằng chứng chỉ đúng
+   * chỗ: hai lớp `GreenWash`/`PhotoWash` ngay dưới cũng là `<Svg>` trong cùng
+   * tệp, cũng `width="100%"`, và KHÔNG ai báo chúng hỏng — khác biệt duy nhất
+   * là chúng không có `viewBox`, và hình học của chúng quy thẳng ra pixel của
+   * mặt vẽ. Đây làm đúng như thế: đo bằng `onLayout`, rồi cả `<Svg>` lẫn
+   * `<Rect>` nhận HAI CON SỐ PIXEL. Không phần trăm, không viewBox, không phép
+   * quy nào giữa hệ toạ độ người dùng và khung nhìn để mà quy trượt.
+   *
+   * Làm tròn LÊN: thiếu nửa pixel là một sợi chỉ nền lộ ra ở mép phải/mép dưới,
+   * còn thừa nửa pixel thì bị `overflow: 'hidden'` của khối cha cắt đi — mọi nơi
+   * dùng lớp này đều bo góc và cắt tràn, đó là điều kiện ghi ở ngay trên.
+   */
+  const [co, setCo] = React.useState<{ w: number; h: number }>({ w: 0, h: 0 });
+
+  return (
+    /*
+      MÀU NỀN ĐẶC nằm dưới lớp SVG, và nó KHÔNG phải thứ trang trí thừa.
+
+      Nó là lưới an toàn: khung hình đầu tiên chưa có số đo nên chưa vẽ được
+      chuyển sắc, và nếu một ngày `react-native-svg` lại quy trượt một lần nữa
+      thì thứ tệ nhất người dùng thấy là một ô MỘT MÀU PHẲNG — chứ không phải
+      một ô phủ dở dang để lộ nền sau lưng. Đó đúng là triệu chứng vừa phải vá
+      ba lượt, và nó không được phép quay lại dù chẩn đoán ở trên có sai.
+
+      Lấy `from` chứ không lấy `to` vì `from` là chặng bắt đầu. Cả hai chặng đều
+      đã được `theme/gradient.test.ts` đo tương phản với màu chữ của token (nó
+      đo ở chặng TỆ NHẤT), nên rơi về `from` không thể làm chữ mất đọc.
+    */
+    <View
+      pointerEvents="none"
+      style={[StyleSheet.absoluteFill, { backgroundColor: g.from }]}
+      onLayout={(e) => {
+        const { width, height } = e.nativeEvent.layout;
+        const w = Math.ceil(width);
+        const h = Math.ceil(height);
+        // So trước khi đặt lại: một lượt bố cục cho ra cùng số đo là một vòng
+        // vẽ lại không đổi gì trên màn, mà lớp này nằm dưới MỌI thẻ của mọi màn.
+        setCo((truoc) => (truoc.w === w && truoc.h === h ? truoc : { w, h }));
+      }}
+    >
+      {co.w > 0 && co.h > 0 ? (
+        <Svg width={co.w} height={co.h}>
+          <Defs>
+            {/*
+              ⛔ SỐ THẬP PHÂN, KHÔNG PHẢI CHUỖI PHẦN TRĂM. Đây là chỗ đã hỏng thật.
+
+              `gradientUnits` mặc định là `objectBoundingBox`, tức x1/y1/x2/y2 là
+              PHÂN SỐ 0..1 của hộp bao hình được tô. Bản trước truyền chuỗi
+              `"14.6%"`; `react-native-svg` không quy chuỗi phần trăm về phân số
+              ở hệ toạ độ này mà đọc nó thành 14,6 ĐƠN VỊ NGƯỜI DÙNG — gấp hơn
+              mười bốn lần hộp bao.
+
+              Hệ quả: cả đoạn chuyển màu bị nén vào một dải mỏng ở mép, phần còn
+              lại phẳng lì một màu. Nhìn ra thành "nút có hai mảng màu".
+
+              Phân số ở đây quy theo HỘP BAO CỦA HÌNH, không quy theo khung nhìn,
+              nên nó không dính vào lỗi kích thước đã vá ở trên — giữ nguyên.
+            */}
+            <LinearGradient
+              id={id}
+              x1={0.5 - dx / 2}
+              y1={0.5 - dy / 2}
+              x2={0.5 + dx / 2}
+              y2={0.5 + dy / 2}
+            >
+              <Stop offset="0" stopColor={g.from} />
+              <Stop offset="1" stopColor={g.to} />
+            </LinearGradient>
+          </Defs>
+          <Rect x={0} y={0} width={co.w} height={co.h} fill={`url(#${id})`} />
+        </Svg>
+      ) : null}
+    </View>
+  );
+};
 
 /**
  * Mảng loang. Dựng từ các cung có bán kính LỆCH nhau — tròn đều thì ra hình do
@@ -125,11 +253,22 @@ const PhotoWash: React.FC<{ source: NonNullable<(typeof BACKDROP_PHOTOS)[Backdro
   </>
 );
 
-/** Nền của một màn. `variant` chỉ đổi cách sắp hình, không đổi ngôn ngữ hình. */
+/**
+ * Nền của một màn. `variant` chỉ đổi cách sắp hình, không đổi ngôn ngữ hình.
+ *
+ * ── Vì sao chuyển sắc cắm Ở ĐÂY ─────────────────────────────────────────────
+ * Mọi màn trong module đều đi qua lớp này — hoặc trực tiếp, hoặc qua `<Ground>`.
+ * Nên một dòng ở đây cho cả module cùng một tông, mà KHÔNG màn nào phải sửa bố
+ * cục. Cắm ở từng màn thì màn thêm sau lại là một dịp quên, và module sẽ có hai
+ * loại nền cùng lúc mà không ai bật lên được điều đó.
+ *
+ * Nằm DƯỚI mọi lớp khác: chuyển sắc là mặt đất, mảng loang và lá nằm trên nó.
+ */
 export const GroundBackdrop: React.FC<{ variant?: BackdropVariant }> = ({ variant = 'home' }) => {
   const photo = BACKDROP_PHOTOS[variant];
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      <GradientFill name="ground" />
       {photo ? <PhotoWash source={photo} /> : <GreenWash variant={variant} />}
     </View>
   );

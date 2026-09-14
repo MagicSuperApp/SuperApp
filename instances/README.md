@@ -37,8 +37,10 @@ tay. Thêm thư mục là có flavor.
 {
   "id": "checkfarm",
   "displayName": "CheckFarm",
+  "modules": "all",
+  "operator": { "name": "<pháp nhân vận hành>", "nameEn": "<legal entity>" },
   "superapp": {
-    "rulesVersion": 1,
+    "rulesVersion": 3,
     "phoenixDid": "did:phoenix:1:<64 ký tự hex>"
   },
   "android": {
@@ -55,11 +57,25 @@ tay. Thêm thư mục là có flavor.
 |---|---|---|
 | `id` | mã nội bộ. Phải **trùng tên thư mục**, chữ thường + số | không (là tên flavor) |
 | `displayName` | chữ hiện dưới biểu tượng trên máy người dùng | được |
+| `modules` | **`"all"`** hoặc một mảng mã module. Xem ô cảnh báo ngay dưới bảng | được |
+| `operator` | pháp nhân vận hành — hiện trong trang Điều khoản & Chính sách **trong app** | được, nhưng phải khai `transferTo` khi đổi |
 | `superapp.rulesVersion` | phiên bản `LUAT-SUPERAPP.md` mà app này ký nhận | phải nâng khi luật đổi |
 | `superapp.phoenixDid` | danh tính PhoenixKey **của chính app này** | không nên |
 | `android.applicationId` | mã gói trên Google Play | **KHÔNG BAO GIỜ** |
 | `android.iconBackground` | màu lớp nền của biểu tượng thích ứng | được |
 | `ios.bundleId` | mã gói trên App Store | **KHÔNG BAO GIỜ** |
+
+> ⚠ **`modules`: khai `"all"` thì đừng bao giờ "chuẩn hoá" nó thành mảng tường minh.**
+> Hai chuỗi ký tự khác nhau, nhưng hệ quả khác nhau ở chỗ không nhìn thấy được:
+> `"all"` nghĩa là *"lấy mọi module, kể cả module khung thêm sau"*; một mảng liệt đủ
+> bốn module hôm nay nghĩa là *"lấy đúng bốn cái này"*. Nở `"all"` ra mảng là biến một
+> **lời khai** thành một **danh sách đóng băng** — từ lần đó module thứ năm không vào
+> app, không có gì đỏ, không cảnh báo, chỉ là một nút không bao giờ xuất hiện. Đó đúng
+> là lỗ mà trường `enabledModules` cũ đã gây ra và là lý do nó bị bỏ.
+> Khai mảng khi **cố ý** chỉ lấy một tập con thì đúng và được phép — cái sai là nở
+> `"all"` ra mảng rồi tưởng mình không đổi gì.
+> Bài kiểm canh đúng dòng này: `src/config/instanceParity.test.ts`, ca
+> *"`'all'` phải Ở LẠI dạng `'all'`"* — nó đọc cả tệp JSON này, không chỉ đọc hằng TS.
 
 **Khối `superapp` là bắt buộc, và nó là chỗ app ký nhận luật.** Đọc
 [`LUAT-SUPERAPP.md`](LUAT-SUPERAPP.md) trước khi điền — `rulesVersion` khai sai
@@ -135,9 +151,18 @@ bash scripts/tao-khoa-ky.sh <mã-app>
 Script hỏi mật khẩu qua `keytool` và **không** ghi mật khẩu ra đâu cả. Nó từ chối ghi đè
 một kho khoá đã có — ghi đè là mất khoá cũ, và mất khoá cũ là mất app.
 
-Mục **CN** lúc `keytool` hỏi: điền tên pháp nhân **SỞ HỮU** app, không phải tên bên dựng
-hộ. CheckFarm thuộc Công ty Cổ phần CheckFarm; Aladin Contract dựng theo đơn đặt hàng và
-không giữ quyền kiểm soát — nên khoá CheckFarm do phía CheckFarm giữ.
+Mục **CN** lúc `keytool` hỏi: điền tên pháp nhân đang **PHÁT HÀNH** app — tức pháp nhân
+đứng tên tài khoản cửa hàng, không phải tên thương hiệu của app.
+
+Với `checkfarm` hôm nay, hai thứ đó KHÔNG trùng nhau, và chỗ này là chỗ dễ điền nhầm
+nhất: app mang thương hiệu CheckFarm nhưng phát hành dưới pháp nhân **Aladin** (chủ sở
+hữu quyết 2026-09-10, chuyển giao cho CheckFarm Inc sau — xem `LUAT-SUPERAPP.md §6`).
+
+Vẫn **một kho khoá riêng cho mỗi app**, kể cả khi cùng pháp nhân. Không phải vì luật
+đòi, mà vì Google Play khoá mục ứng dụng vĩnh viễn theo khoá của tệp **đầu tiên** tải
+lên: tách sẵn thì ngày chuyển giao không phải đụng gì tới khoá.
+
+Nạp bốn giá trị của một kho khoá lên máy chủ dựng: `bash scripts/load-signing-key.sh <mã-app> <đường dẫn kho khoá>`
 
 ### Thiếu khoá thì bản phát hành NỔ
 

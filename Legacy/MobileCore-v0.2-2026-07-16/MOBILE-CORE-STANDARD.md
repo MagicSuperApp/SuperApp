@@ -164,7 +164,7 @@ Aladin chốt: **xây MỚI trong `SuperApp/MobileCore/`, đúng chuẩn từ đ
 ---
 
 ## 6. Provenance & NEEDS-EVIDENCE (trung thực nguồn)
-- Bảng §2 rút từ code thật (file:line trong docstring mỗi module + `_Agents/topics/mobile-core-standard.md`). [ĐỀ XUẤT] = suy từ nguyên lý, chưa ai dùng.
+- Bảng §2 rút từ code thật (file:line trong docstring mỗi module + sổ ghi chép nội bộ về chuẩn MobileCore, ngoài kho). [ĐỀ XUẤT] = suy từ nguyên lý, chưa ai dùng.
 - CHƯA đọc repo PhoenixKey-SDK → chưa xác nhận "L0 crypto agnostic (@noble/curves)" tái dùng được vs bản native Keystore đang dùng.
 - capability_router (định tuyến nhiệt/pin) tồn tại ở orilife-core NHƯNG chưa nối mobile.
 - mergePolicy thực tế = `lww`, không phải per-field-CRDT.

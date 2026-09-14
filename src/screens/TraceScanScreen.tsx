@@ -71,7 +71,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Animated, Image, Linking, Modal, PermissionsAndroid, Platform, Pressable,
+  ActivityIndicator, Animated, AppState, Image, Linking, Modal, PermissionsAndroid, Platform, Pressable,
   ScrollView, StatusBar, StyleSheet, Text, View, useWindowDimensions,
   type GestureResponderEvent,
 } from 'react-native';
@@ -202,18 +202,41 @@ const TraceScanScreen: React.FC = () => {
   }, [blockedUntil]);
 
   // ── Quyền máy ảnh ─────────────────────────────────────────────────────────
+  //
+  // Đo LẠI khi app quay về tiền cảnh. Không có nó thì khối `granted === false`
+  // bên dưới (:506) là một BỨC TƯỜNG CỤT: nó bày nút "Mở Cài đặt", người dùng
+  // bật quyền rồi quay lại, và màn vẫn đứng nguyên ở câu "không có quyền" — hai
+  // lối ra duy nhất là bấm Đóng hoặc tắt hẳn app, mà không chỗ nào nói thế.
+  //
+  // Lần đầu thì `request` (hiện hộp xin quyền). Những lần sau chỉ `check` —
+  // `request` lại sẽ bật hộp thoại mỗi lần app về tiền cảnh, và ở trạng thái
+  // "đừng hỏi lại" thì nó chẳng hỏi được gì mà vẫn tốn một lượt gọi.
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    let asked = false;
+
+    const measure = async () => {
       if (Platform.OS !== 'android') { if (!cancelled) setGranted(true); return; }
       try {
-        const res = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA);
-        if (!cancelled) setGranted(res === PermissionsAndroid.RESULTS.GRANTED);
+        if (!asked) {
+          asked = true;
+          const res = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA);
+          if (!cancelled) setGranted(res === PermissionsAndroid.RESULTS.GRANTED);
+          return;
+        }
+        const ok = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.CAMERA);
+        // Chỉ NÂNG lên khi đã có quyền. Một lượt `check` trả `false` giữa chừng
+        // không được phép dập màn đang quét xuống bức tường cụt — quyền bị rút
+        // giữa phiên thì chính máy ảnh sẽ hỏng và báo theo đường của nó.
+        if (!cancelled && ok) setGranted(true);
       } catch {
-        if (!cancelled) setGranted(false);
+        if (!cancelled && !asked) setGranted(false);
       }
-    })();
-    return () => { cancelled = true; };
+    };
+
+    measure();
+    const sub = AppState.addEventListener('change', s => { if (s === 'active') measure(); });
+    return () => { cancelled = true; sub.remove(); };
   }, []);
 
   const safeBack = useCallback(() => {

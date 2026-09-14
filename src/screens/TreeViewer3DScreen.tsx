@@ -31,7 +31,7 @@ const BASE_URL: string =
   ORILIFE_BASE;
 
 // Origin tin-cậy duy nhất = backend field-reid. originWhitelist=['*'] cho tải mọi domain
-// → rủi ro thực thi mã độc qua WebView bridge (Thư báo 2026-06-17).
+// → rủi ro thực thi mã độc qua WebView bridge (báo 2026-06-17).
 const ALLOWED_ORIGIN: string = BASE_URL.replace(/\/+$/, '');
 
 // Trang /view (server) nạp three.js từ unpkg qua <script type="importmap"> → BẮT BUỘC

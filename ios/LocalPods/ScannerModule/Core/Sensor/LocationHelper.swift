@@ -42,7 +42,7 @@ final class LocationHelper: NSObject {
     override init() {
         super.init()
         locationManager.delegate = self
-        // Field test 2026-05-15 (lần 2): @Quang test 6 cây + retry 2 = 2 mã khác nhau.
+        // Field test 2026-05-15 (lần 2): test 6 cây + retry 2 = 2 mã khác nhau.
         // Root cause: NearestTen accuracy + lazy GPS init → `latestLocation` có thể nil
         // khi user bắt đầu quét → fallback timestamp-based ID → mỗi quét khác nhau.
         // Revert về Best để GPS fix nhanh + chính xác hơn cho dedup.
@@ -50,7 +50,7 @@ final class LocationHelper: NSObject {
         // (so với kCLDistanceFilterNone trước đây).
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
         locationManager.distanceFilter = 3.0
-        // Build 51 (2026-05-17) — Thư field feedback "0 điểm + máy nóng":
+        // Build 51 (2026-05-17) — field feedback "0 điểm + máy nóng":
         // .fitness activity type = Apple recommended cho walking; tự auto-pause
         // khi user đứng yên → giảm 30-50% power vs .other default.
         // KHÔNG đổi desiredAccuracy (vẫn Best cho dedup chính xác).

@@ -65,7 +65,7 @@ Module (platform cắm vào):
 
 - **Pull, không push.** Ta KHÔNG chủ động đi tích hợp vào app ngoài. Ta xây nền tảng đủ tốt để host TỰ tìm đến vì lợi ích gia tăng cho user của họ (thêm tính năng/trải nghiệm, họ không mất gì). Ví dụ: user Facebook gọi được thợ sửa nhà uy tín–giá rẻ–đảm bảo mà không rời Facebook; host không adopt = chấp nhận user rời đi. Nhúng host = kênh **acquisition**, value luôn ở lại tầng fabric.
 - **Tuân thủ có chủ quyền là THUỘC TÍNH THIẾT KẾ.** Platform jurisdiction-aware: data residency, retention, mức KYC, tính năng cho phép — cấu hình PER chủ quyền (VNeID chỉ là một ví dụ; bất kỳ app quản lý cư dân của quốc gia/tổ chức nào cũng vậy). Chủ quyền adopt thì *họ* giữ trách nhiệm pháp lý địa phương; MagicLamp cung cấp substrate có-khả-năng-tuân-thủ. Gánh nặng pháp lý phân tán sang adopter, không dồn lên Treasury.
-- **Ngoại lệ — Registry magiclamp.network do pháp nhân của ta vận hành.** Phần này pull model KHÔNG xoá được trách nhiệm pháp lý (đăng ký tự do + DAO hậu kiểm + safety-multisig takedown). Còn chờ founder quyết pháp nhân + nơi giữ safety-multisig.
+- **Ngoại lệ — Registry magiclamp.eco do pháp nhân của ta vận hành.** Phần này pull model KHÔNG xoá được trách nhiệm pháp lý (đăng ký tự do + DAO hậu kiểm + safety-multisig takedown). Còn chờ founder quyết pháp nhân + nơi giữ safety-multisig.
 
 ---
 

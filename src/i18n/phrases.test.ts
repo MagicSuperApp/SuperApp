@@ -17,6 +17,8 @@ import { WORK } from './phrases/work';
 import { CHAT } from './phrases/chat';
 import { ERRORS } from './phrases/errors';
 import { SCREENS } from './phrases/screens';
+import { DIALOGS } from './phrases/dialogs';
+import { PARTS_COUNT } from './dictionary';
 import type { PhraseMap } from './types';
 
 const FILES: Array<[string, PhraseMap]> = [
@@ -28,7 +30,18 @@ const FILES: Array<[string, PhraseMap]> = [
   ['chat', CHAT],
   ['errors', ERRORS],
   ['screens', SCREENS],
+  // `dialogs` bị BỎ SÓT tới 2026-09-11: `dictionary.ts` gộp CHÍN bộ, bài này chỉ
+  // soi tám. Tức cổng đo một tập hẹp hơn tập nó khẳng định — một mục trong
+  // `dialogs.ts` đè lệch một mục ở bộ khác thì nó vẫn xanh. Danh sách này phải
+  // khớp `PARTS` trong `dictionary.ts`; mục dưới canh việc đó.
+  ['dialogs', DIALOGS],
 ];
+
+it('bài này soi ĐỦ số bộ mà dictionary.ts gộp', () => {
+  // Thêm một bộ vào `dictionary.ts` mà quên thêm ở đây thì bộ ấy đứng ngoài mọi
+  // phép canh, và không có triệu chứng nào.
+  expect(FILES).toHaveLength(PARTS_COUNT);
+});
 
 describe('từ điển cụm từ', () => {
   it('không chuỗi nào có HAI bản dịch khác nhau ở hai tệp', () => {

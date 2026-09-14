@@ -4,12 +4,21 @@ import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import { User } from '../types';
 import { database } from '../utils/database';
 import { databaseManager } from '../services/databaseManager';
-import { phoenixKeyApi, summarizeWalletAll, type WalletEntry } from '../services/phoenixKey-api';
+import {
+  phoenixKeyApi,
+  clearSessionToken,
+  clearSessionMintCooldown,
+  summarizeWalletAll,
+  type WalletEntry,
+} from '../services/phoenixKey-api';
 import { parseDidNetwork } from '../services/phoenixDid';
 import { clearWorkSession } from '../modules/work/services/session';
-import { clearOrilifeToken } from '../services/orilifeDidAuth';
+import { clearOrilifeToken, clearOrilifeLoginCooldown } from '../services/orilifeDidAuth';
 import { disconnectProofChat } from '../services/proofchatAuthBridge';
 import { clearMerkleSession } from '../services/proofchatIdentity';
+import { shutdown as shutdownProofChatEngine } from '../services/proofchatService';
+import { clearTreeDedupCache } from '../services/treeDedupCache';
+import { resetRiskSnooze } from '../services/deviceKeyRisk';
 import { clearAllDrafts } from '../services/treeDraftStore';
 import { setVideoQueueOwner, flushVideoUploadQueue } from '../services/videoUploadQueue';
 
@@ -102,6 +111,24 @@ const initialState: UserState = {
 /**
  * Initialize database and load user data on login
  */
+/**
+ * ⛔ MỌI NƠI GỌI PHẢI DÙNG `.unwrap()` — `await dispatch(loginUser(u))` KHÔNG ném.
+ *
+ * `createAsyncThunk` bắt lỗi rồi *giải quyết* promise bằng một action `rejected`. Nên
+ * `await dispatch(loginUser(u))` chạy tiếp bình thường kể cả khi mở cơ sở dữ liệu của
+ * người dùng hỏng — và nhánh `rejected` dưới đây chỉ ghi câu lỗi vào `state.error`, một
+ * ô mà **không màn nào đọc** (grep `state.user` + `error` trong `src/`: 0 kết quả). Hai
+ * đường im lặng chồng lên nhau, nên lần đăng nhập trượt đi qua đủ cả hai mà không để
+ * lại dấu gì trên màn.
+ *
+ * Hậu quả đo được ở sáu nơi gọi: màn hiện "đăng nhập thành công" rồi `reset` vào `Main`
+ * với `currentUser: null`. Nặng nhất là màn KHÔI PHỤC DANH TÍNH — người vừa khôi phục
+ * đọc chữ thành công, vào một app rỗng, và bước rất dễ tiếp theo của họ là lập một danh
+ * tính MỚI, tức tự tay bỏ đúng cái vừa khôi phục được.
+ *
+ * `.unwrap()` ném lại lỗi thật, và cả sáu nơi gọi đều đã nằm trong `try/catch` có câu
+ * cho người dùng. Không cần thêm cơ chế nào — chỉ cần thôi nuốt.
+ */
 export const loginUser = createAsyncThunk(
   'user/loginUser',
   async (userData: User) => {
@@ -150,6 +177,21 @@ export const logoutUser = createAsyncThunk(
       console.warn('[Redux] Logout: clearWorkSession lỗi (bỏ qua):', error);
     }
     try {
+      // Issue #288 — quét anh em. `disconnectProofChat` chỉ dọn THẺ và ổ cắm
+      // HTTP; nó không đụng tới bộ máy MLS. `shutdownProofChatEngine` mới là
+      // thứ gỡ bộ lắng nghe, ngắt socket, và gọi `chatMls.freeIdentity()` —
+      // tức thả DANH TÍNH MLS của người vừa đăng xuất khỏi lớp native.
+      // Hàm đó viết xong rồi có 0 nơi gọi, đúng khuôn bốn hàm của #288.
+      //
+      // Không thả thì `currentIdentity` giữ DID người trước, và người sau mở
+      // Chat đi vào `init()` với một bộ máy đã nạp danh tính KHÔNG phải của họ.
+      // Gọi TRƯỚC `disconnectProofChat` để socket đóng bằng thẻ còn sống thay
+      // vì bằng một thẻ vừa bị xoá.
+      await shutdownProofChatEngine();
+    } catch (error) {
+      console.warn('[Redux] Logout: shutdownProofChatEngine lỗi (bỏ qua):', error);
+    }
+    try {
       await disconnectProofChat();
     } catch (error) {
       console.warn('[Redux] Logout: disconnectProofChat lỗi (bỏ qua):', error);
@@ -178,8 +220,73 @@ export const logoutUser = createAsyncThunk(
       // ra MANG DANH người trước, im lặng, cho tới khi token hết hạn.
       // `clearOrilifeToken` xoá cả owner-ref, dấu chủ token, và đệm đầu đề ảnh.
       await clearOrilifeToken();
+      // Mở van chặn bão sinh trắc. Van đó đứng đúng chỗ khi cùng một danh tính bị
+      // máy chủ từ chối liên tục; nhưng đăng xuất là lúc danh tính ĐỔI, nên giữ
+      // nguyên đồng hồ nghỉ của người trước là bắt người sau chờ một phút không
+      // vì lý do gì. CỐ Ý gọi ở đây chứ không nhét vào `clearOrilifeToken`:
+      // `ensureOrilifeToken` cũng gọi hàm xoá đó trước mỗi lần ký, nên đặt lệnh
+      // mở van vào trong nó là vô hiệu hoá chính cái van, im lặng.
+      clearOrilifeLoginCooldown();
     } catch (error) {
       console.warn('[Redux] Logout: clearOrilifeToken lỗi (bỏ qua):', error);
+    }
+    try {
+      // ⛔ CÙNG LỚP với dòng ngay trên, phát hiện muộn hơn: `phoenixkey_session_token`
+      // cũng sống qua đăng xuất. `clearSessionToken` được viết sẵn rồi đặt vào ĐÚNG
+      // MỘT đường — `wipeIdentity()` (`sdk/phoenixKey.ts`), tức đường XOÁ DANH TÍNH
+      // HẲN. Đường đăng xuất không ai nối. Đúng hình dạng lỗi của `auth_token` bên
+      // trên, khác tệp.
+      //
+      // Vì sao nó KHÔNG cùng mức với `clearMerkleSession` ở trên: `getMerkleSession`
+      // có `isFresh(cached, did)` nên người sau không dùng lại được phiên người
+      // trước. Thẻ phiên PhoenixKey KHÔNG có phép so nào tương đương — không có
+      // `phoenixkey_token_did`, và năm chỗ đọc nó đều gắn thẳng `Bearer ${token}`:
+      //   cardanoTxService.ts:189 · orgMint-api.ts:215 · orgMint-api.ts:367 (XHR,
+      //   NGOÀI interceptor) · phoenixKey-api.ts:252 · phoenixWallet-api.ts:108
+      // Thêm một mắt nữa khép mạch: `ensurePhoenixSession` trả thẳng thẻ đã lưu ra
+      // mà không hỏi của ai (`phoenixSessionService.ts:125`), nên người sau KHÔNG
+      // có đường tự đúc thẻ của mình chừng nào thẻ cũ còn nằm đó.
+      //
+      // Ba cửa đọc ví phía máy chủ có ép `caller_did == path_did` (DID khác → 401),
+      // nên người sau KHÔNG xem được số dư người trước. Bề mặt phơi ra là những
+      // đường KHÔNG có `{did}` trên đường dẫn — `/wallet/register`,
+      // `/wallet/standard/register`, dựng-nộp giao dịch Cardano, đúc tổ chức: ở đó
+      // chủ thể do THẺ quyết định, tức máy của người sau hành động mang danh người
+      // trước. Đó là ca mạo danh, không phải "vật liệu ở lại".
+      await clearSessionToken();
+      // Van thứ HAI, đối xứng với `clearOrilifeLoginCooldown()` ở khối trên. Đường
+      // đúc thẻ PhoenixKey có đồng hồ nghỉ riêng (`MINT_COOLDOWN_MS`), và hàm mở
+      // van của nó được viết ra rồi KHÔNG nơi nào gọi — nên tới trước dòng này,
+      // người đăng xuất rồi đăng nhập bằng danh tính khác vẫn chịu nguyên một
+      // phút nghỉ do máy chủ từ chối NGƯỜI TRƯỚC.
+      //
+      // Vì sao nó ở trong cùng khối `try` với `clearSessionToken` chứ không đứng
+      // riêng: hai lệnh này là một việc. Xoá thẻ mà không mở van thì người sau
+      // vừa không có thẻ vừa không được đúc thẻ — trạng thái tệ hơn cả trước khi
+      // xoá. `clearSessionToken` ném thì van cũng không cần mở, vì thẻ cũ còn đó.
+      clearSessionMintCooldown();
+    } catch (error) {
+      console.warn('[Redux] Logout: clearSessionToken lỗi (bỏ qua):', error);
+    }
+    try {
+      // Issue #288 — quét anh em. Kho khử-trùng cây (`@aladin/treeDedupCache/v2`)
+      // KHÔNG gắn tên chủ: nó là một khoá phẳng cho cả máy. Người sau quét một
+      // cây trong vườn của mình thì app đối chiếu với các lần quét của NGƯỜI
+      // TRƯỚC rồi báo "cây này trùng với cây X" — X là cây ở một vườn họ chưa
+      // từng thấy. Đây không phải rác nằm im: nó ra một PHÁN ĐOÁN sai, và phán
+      // đoán đó trông y như một phán đoán đúng.
+      await clearTreeDedupCache();
+    } catch (error) {
+      console.warn('[Redux] Logout: clearTreeDedupCache lỗi (bỏ qua):', error);
+    }
+    try {
+      // Issue #288 — quét anh em. Chú thích của chính hàm này viết "gọi khi đăng
+      // xuất / đổi tài khoản", rồi 0 nơi gọi. Mốc ẩn là một khoá phẳng cho cả
+      // máy: người trước bấm "để sau" 7 ngày thì người sau KHÔNG được nhắc rằng
+      // khoá thiết bị CỦA HỌ đang ở trạng thái mất được mà không lấy lại được.
+      await resetRiskSnooze();
+    } catch (error) {
+      console.warn('[Redux] Logout: resetRiskSnooze lỗi (bỏ qua):', error);
     }
     try {
       // Nháp chụp cây / video quả là dữ liệu PHIÊN. Tablet field dùng CHUNG → xoá sạch

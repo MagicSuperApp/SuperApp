@@ -36,8 +36,10 @@ import { useTk } from '../../../i18n/keys';
 import WayfindButton, { forFarm } from '../../../features/wayfind/WayfindButton';
 import { RootState } from '../../../store';
 import { loadFarms, syncFarmsFromBackend } from '../store/farmSlice';
+import { farmListState, showStaleNotice } from './farmListEmptyState';
 import { Ground } from '../components/layered/Surface';
 import { Leaf } from '../components/layered/Organic';
+import FarmShape from '../components/layered/FarmShape';
 import {
   ELEVATION, NATURE, ORGANIC_CARD, ORGANIC_TILE, RADIUS,
   SPACE, SURFACE, TONE, TYPE,
@@ -88,10 +90,17 @@ const FarmCard: React.FC<{
       ]).start();
     }, [fade, slide, index]);
 
-    const trees = item.treeCount || 0;
-    const fruits = item.fruitCount || 0;
-    const area = item.areaSqm
-      ? `${(item.areaSqm / 10000).toFixed(1)} ha`
+    // Kiểu `Farm` đã viết ra luật này thành chữ: màn phải chịu được chỗ vắng và
+    // hiện "—", KHÔNG được hiện 0 — "0 cây" là một khẳng định sai, "—" là sự
+    // thật. Bản trước dùng `|| 0`, vừa trái luật đó vừa gộp luôn số 0 hợp lệ
+    // với chỗ vắng.
+    const trees = item.treeCount ?? null;
+    const fruits = item.fruitCount ?? null;
+    // ⛔ Trường tên `areaM2`. `areaSqm` không tồn tại trong kiểu `Farm` — đọc
+    // nó luôn ra `undefined`, nên nhánh lui "N điểm" chạy mãi và diện tích máy
+    // chủ đã tính chưa từng hiện. Hỏng câm vì `item` khai kiểu `any`.
+    const area = item.areaM2
+      ? `${(item.areaM2 / 10000).toFixed(1)} ha`
       : `${item.coordinates?.length ?? 0} ${tk('trace.unit.points')}`;
     const st = STATUS[item.status] ?? STATUS.active;
 
@@ -105,8 +114,24 @@ const FarmCard: React.FC<{
           <Leaf size={78} color={NATURE.moss} opacity={0.07} rotate={22} style={styles.cardLeaf} />
 
           <View style={styles.cardHead}>
+            {/*
+              Ô này vẽ CHÍNH mảnh vườn đó, không phải biểu tượng cái cây.
+
+              Một biểu tượng cây giống hệt nhau trên mọi thẻ thì không phân biệt
+              được thẻ nào với thẻ nào — người có sáu vườn phải đọc TÊN mới biết
+              đang nhìn vườn nào. Hình bóng mảnh đất thì mỗi vườn một khác, và
+              nó nhận ra được trước cả khi đọc chữ.
+
+              `FarmShape` trả `null` khi vườn chưa đủ ba điểm ranh giới. Lúc ấy
+              rơi về biểu tượng cũ — và chính sự khác nhau đó là tín hiệu: thẻ
+              nào còn hiện biểu tượng là thẻ chưa vẽ ranh giới.
+            */}
             <View style={styles.cardIcon}>
-              <Icon name="tree" size={20} color={TONE.primary} />
+              {coRanh(item) ? (
+                <FarmShape farm={item} mode="flat" />
+              ) : (
+                <Icon name="tree" size={20} color={TONE.primary} />
+              )}
             </View>
             <View style={styles.cardHeadText}>
               <Text style={styles.cardName} numberOfLines={1}>{item.name}</Text>
@@ -125,9 +150,9 @@ const FarmCard: React.FC<{
           </View>
 
           <View style={styles.cardStats}>
-            <Stat icon="tree" value={String(trees)} label={tk('trace.label.trees')} tone={TONE.primary} />
+            <Stat icon="tree" value={trees === null ? '—' : String(trees)} label={tk('trace.label.trees')} tone={TONE.primary} />
             <View style={styles.statSep} />
-            <Stat icon="apple-whole" value={String(fruits)} label={tk('trace.label.fruits')} tone={TONE.sun} />
+            <Stat icon="apple-whole" value={fruits === null ? '—' : String(fruits)} label={tk('trace.label.fruits')} tone={TONE.sun} />
             {/* Nút nằm TRONG thẻ nhưng bắt chạm riêng, nên bấm vào nó không mở
               luôn trang chi tiết vườn. Vườn chưa vẽ ranh giới → `forFarm` trả
               null → nút tự ẩn. */}
@@ -137,6 +162,9 @@ const FarmCard: React.FC<{
       </Animated.View>
     );
   };
+
+/** Đủ ba điểm mới thành một mảnh đất vẽ được — dưới đó `FarmShape` trả `null`. */
+const coRanh = (farm: any): boolean => (farm?.coordinates?.length ?? 0) >= 3;
 
 const Stat: React.FC<{ icon: IconName; value: string; label: string; tone: string }> = ({
   icon, value, label, tone,
@@ -159,6 +187,17 @@ const FarmListScreen: React.FC = () => {
   const farms = useSelector((s: RootState) => s.farm.farms);
   const isLoading = useSelector((s: RootState) => s.farm.isLoading);
   const loadError = useSelector((s: RootState) => s.farm.error);
+  /**
+   * Lượt hỏi máy chủ gần nhất có tới nơi không.
+   *
+   * ⛔ Thiếu đúng con trỏ này là gốc của lỗi cũ. `loadError` chỉ được đặt từ
+   *    `loadFarms.rejected`, tức đường đọc SQLite CỤC BỘ — nó không biết gì về
+   *    lượt gọi máy chủ. Còn `offline` đọc trạng thái giao diện mạng: nó bắt
+   *    được "máy không có mạng", KHÔNG bắt được "máy có mạng mà máy chủ chết"
+   *    (Wi-Fi cổng đăng nhập, sóng yếu có IP nhưng không có tuyến, 5xx). Nên ở
+   *    đúng ca ấy cả ba điều kiện đều im và màn rơi thẳng vào "chưa có vườn nào".
+   */
+  const syncError = useSelector((s: RootState) => s.farm.farmsSyncError);
   const user = useSelector((s: RootState) => s.user.currentUser);
   const offline = useOffline();
 
@@ -208,32 +247,65 @@ const FarmListScreen: React.FC = () => {
 
   const goToAddFarm = () => navigation.navigate('FarmDetail', { farm_id: null });
 
+  /**
+   * Tình huống hiện tại — hỏi `farmListState`, KHÔNG dựng lại chuỗi `if` ở đây.
+   *
+   * Bốn nhánh dưới đây từng là bốn câu `if` nằm ngay trong hàm vẽ, và ba trong
+   * số đó không thể chạy ở ca chúng sinh ra để xử. Không lệnh nào báo, vì đo
+   * được chúng thì phải dựng cả màn. Luật nay nằm ở một hàm thuần có bài kiểm
+   * (`farmListEmptyState.ts`); chỗ này chỉ còn việc bày.
+   */
+  const listState = farmListState({
+    farmCount: farms.length,
+    matchedCount: matched.length,
+    isLoading,
+    offline,
+    syncError,
+    loadError,
+  });
+
   const renderEmpty = () => {
-    if (matched.length > 0) return null;
-    if (isLoading && farms.length === 0) return <StateView status="loading" loadingLines={4} />;
-    if (farms.length === 0 && offline) return <StateView status="offline" onRetry={refreshFarms} />;
-    if (farms.length === 0 && loadError) return <StateView status="error" onRetry={refreshFarms} />;
-    if (farms.length === 0) {
-      return (
-        <StateView
-          status="empty"
-          title={tk('trace.empty.noFarmTitle')}
-          message={tk('trace.empty.noFarmBody')}
-          actionLabel={tk('trace.button.addFarm')}
-          onAction={goToAddFarm}
-        />
-      );
+    switch (listState) {
+      case 'list':
+        return null;
+      case 'loading':
+        return <StateView status="loading" loadingLines={4} />;
+      case 'offline':
+        return <StateView status="offline" onRetry={refreshFarms} />;
+      case 'error':
+        // Câu hiện ra là câu của máy chủ (hoặc mã tham chiếu cho lỗi tầng kết
+        // nối) — không phải "có lỗi xảy ra".
+        return (
+          <StateView
+            status="error"
+            title={tk('trace.farmList.syncFailTitle')}
+            message={syncError ?? loadError ?? undefined}
+            onRetry={refreshFarms}
+          />
+        );
+      case 'empty':
+        return (
+          <StateView
+            status="empty"
+            title={tk('trace.empty.noFarmTitle')}
+            message={tk('trace.empty.noFarmBody')}
+            actionLabel={tk('trace.button.addFarm')}
+            onAction={goToAddFarm}
+          />
+        );
+      case 'noResults':
+      default:
+        // Có vườn nhưng lọc rỗng — khác hẳn "chưa có vườn nào", nên nói khác.
+        return (
+          <View style={styles.noResult}>
+            <View style={styles.noResultIcon}>
+              <Icon name="magnifying-glass-minus" size={30} color={TONE.primary} />
+            </View>
+            <Text style={TYPE.cardTitle}>{tk('trace.farmList.noResults')}</Text>
+            <Text style={[TYPE.caption, styles.noResultHint]}>{tk('trace.farmList.noResultsHint')}</Text>
+          </View>
+        );
     }
-    // Có vườn nhưng lọc rỗng — khác hẳn "chưa có vườn nào", nên nói khác.
-    return (
-      <View style={styles.noResult}>
-        <View style={styles.noResultIcon}>
-          <Icon name="magnifying-glass-minus" size={30} color={TONE.primary} />
-        </View>
-        <Text style={TYPE.cardTitle}>{tk('trace.farmList.noResults')}</Text>
-        <Text style={[TYPE.caption, styles.noResultHint]}>{tk('trace.farmList.noResultsHint')}</Text>
-      </View>
-    );
   };
 
   return (
@@ -252,10 +324,27 @@ const FarmListScreen: React.FC = () => {
             <Text style={TYPE.caption}>
               {farms.length > 0
                 ? tk('trace.farmList.count', { n: matched.length })
-                : tk('trace.empty.noFarmTitle')}
+                /* Danh sách rỗng VÀ hỏi được máy chủ ⟹ đúng là chưa có vườn nào.
+                   Rỗng vì hỏi hỏng thì câu này là một khẳng định sai, nên chỗ
+                   đó nói theo nhánh lỗi bên dưới. */
+                : syncError || loadError
+                  ? tk('trace.farmList.syncFailTitle')
+                  : tk('trace.empty.noFarmTitle')}
             </Text>
           </View>
         </View>
+
+        {/* CÓ dữ liệu, nhưng nó là bản lưu trong máy và có thể đã cũ. Không có
+            dòng này thì một danh sách cũ trông y hệt một danh sách vừa đồng bộ —
+            người dùng không có cách nào biết cây vừa thêm trên máy khác chưa về. */}
+        {showStaleNotice({ farmCount: farms.length, syncError }) ? (
+          <View style={styles.staleRow}>
+            <Icon name="cloud-arrow-down" size={13} color={TONE.sun} />
+            <Text style={styles.staleTxt} numberOfLines={2}>
+              {tk('trace.farmList.staleNotice')}
+            </Text>
+          </View>
+        ) : null}
 
         <View style={styles.search}>
           <Icon name="magnifying-glass" size={17} color={NATURE.barkSoft} />
@@ -339,6 +428,8 @@ const styles = StyleSheet.create({
   cardIcon: {
     width: 46, height: 46, ...ORGANIC_TILE,
     alignItems: 'center', justifyContent: 'center', backgroundColor: TONE.primarySoft,
+    // Hình vườn là một lớp SVG trải kín ô; thiếu dòng này thì nó tràn qua góc bo.
+    overflow: 'hidden',
   },
   cardHeadText: { flex: 1, minWidth: 0, gap: 2 },
   cardName: { fontSize: 18, fontWeight: '700', color: NATURE.bark },
@@ -369,6 +460,16 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', backgroundColor: TONE.primarySoft,
   },
   noResultHint: { textAlign: 'center' },
+
+  // Dải "bản lưu trong máy" — nền NẮNG, không nền đỏ. Đây không phải một lỗi
+  // người dùng gây ra và cũng không chặn việc gì; nó là một lời rào về độ tươi
+  // của dữ liệu đang xem.
+  staleRow: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACE.sm,
+    marginTop: SPACE.sm, paddingVertical: SPACE.sm, paddingHorizontal: SPACE.md,
+    borderRadius: RADIUS.field, backgroundColor: NATURE.sunSoft,
+  },
+  staleTxt: { ...TYPE.caption, flex: 1, color: NATURE.bark },
 
   moreHint: { alignItems: 'center', paddingVertical: SPACE.xl },
 

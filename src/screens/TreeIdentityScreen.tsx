@@ -19,7 +19,7 @@
  */
 
 import { t } from '../i18n';
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { launchCamera } from 'react-native-image-picker';
 import {
   View,
@@ -76,7 +76,14 @@ import ResultBadge from '../components/reid/ResultBadge';
 import FactorBreakdown, { type FactorScores } from '../components/reid/FactorBreakdown';
 import ReidConfirmDialog, { type ReidCandidate } from '../components/reid/ReidConfirmDialog';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
-import { ensureOrilifeToken, clearOrilifeToken } from '../services/orilifeDidAuth';
+import type { RootState } from '../store';
+import { loadFarms } from '../modules/trace/store/farmSlice';
+import {
+  ensureOrilifeToken,
+  clearOrilifeToken,
+  clearOrilifeLoginCooldown,
+} from '../services/orilifeDidAuth';
+import { clearSessionMintCooldown } from '../services/phoenixKey-api';
 import { BiometricKind, biometricKindFromType, phoenixKeyAuth } from '../services/phoenixKeyAuthService';
 import { loginUser } from '../store/userSlice';
 import ReactNativeBiometrics from 'react-native-biometrics';
@@ -139,6 +146,110 @@ const GUIDANCE = {
 } as const;
 
 // ---------------------------------------------------------------------------
+// VƯỜN của màn này — và cổng chặn ở đường GHI
+// ---------------------------------------------------------------------------
+
+/**
+ * Vườn mà mọi thứ ghi từ màn này sẽ gắn vào. BỐN trạng thái, không phải hai.
+ *
+ * ⛔ Lỗi đã đo: màn này từng lấy vườn bằng đúng một dòng `route.params?.farmId`,
+ * không có đường lùi. BỐN lối vào không truyền tham số đó —
+ * `TreeManagementScreen` (nút "+" và nút "Đăng ký cây đầu tiên"),
+ * `navigation/resolveGateItems.ts` (hành động nhanh "Quét cây"), và
+ * `config/quickActions.ts` (nút "Quét cây" màn chính). Đi bằng bốn đường đó thì
+ * `farmId === undefined` mà `verifyAddTree` VẪN gửi: máy chủ gán `farm_id = null`,
+ * cây rơi khỏi bộ lọc `/api/trees?farm_id=X`, nông dân tưởng mất cây rồi đăng ký
+ * lại ⇒ hai bản ghi cho một gốc cây. Còn app thì báo "Đã xác nhận".
+ *
+ * `loading` tách khỏi `no-farms` là CỐ Ý: "chưa nạp xong" và "chưa có vườn nào"
+ * là hai chuyện khác nhau, và nói nhầm câu thứ hai là bảo người đang có vườn đi
+ * tạo vườn mới.
+ */
+export type FarmContext =
+  | { status: 'ready'; farmId: string }
+  | { status: 'loading' }
+  | { status: 'needs-choice' }
+  | { status: 'no-farms' };
+
+/**
+ * Chọn vườn theo ĐÚNG mẫu `TreeEnrollScreen` đang dùng (`TreeEnrollScreen.tsx`
+ * quanh dòng 234–262) — không đẻ mẫu thứ hai:
+ *   · có mã vườn từ lối vào và vườn đó CÒN THẬT → dùng luôn;
+ *   · mã trỏ vườn đã xoá → bỏ (id chết cũng làm cây mồ côi y như thiếu id);
+ *   · đúng MỘT vườn → tự chọn, không thêm ma sát cho người chỉ có một vườn;
+ *   · nhiều vườn → HỎI, không đoán;
+ *   · chưa có vườn nào → dẫn đi tạo vườn.
+ */
+export function resolveFarmContext(input: {
+  routeFarmId?: string;
+  farms: { id: string }[];
+  loading: boolean;
+}): FarmContext {
+  const wanted = (input.routeFarmId ?? '').trim();
+  const farms = input.farms ?? [];
+
+  if (wanted && farms.some(f => f.id === wanted)) {
+    return { status: 'ready', farmId: wanted };
+  }
+  // Danh sách chưa về thì chưa kết luận được gì — kể cả khi có mã từ lối vào,
+  // vì chưa biết vườn đó còn hay đã xoá.
+  if (farms.length === 0 && input.loading) return { status: 'loading' };
+  if (farms.length === 1) return { status: 'ready', farmId: farms[0].id };
+  if (farms.length === 0) return { status: 'no-farms' };
+  return { status: 'needs-choice' };
+}
+
+/** Tuỳ chọn của `verifyAddTree`, lấy TỪ chính chữ ký nó — không chép lại hình dạng. */
+type VerifyAddOptions = NonNullable<Parameters<typeof verifyAddTree>[3]>;
+
+/**
+ * Bổ sung góc nhìn cho một cây ĐÃ CÓ — cổng duy nhất của màn này ra `verifyAddTree`.
+ *
+ * Cổng đặt ở ĐƯỜNG GHI chứ không ở đầu màn, có chủ ý: màn này còn một đường ĐỌC
+ * hợp lệ không cần vườn (chụp rồi soi xem đây là cây nào, kể cả cây không phải
+ * của mình). Chặn ở đầu màn là khoá luôn việc soi. Chỗ hỏng nằm ở đường ghi.
+ *
+ * Vườn chưa rõ ⟹ KHÔNG một byte nào rời khỏi máy, và trả về lý do để màn nói
+ * đúng chuyện — chứ không phải gửi `undefined` rồi hiện "Đã xác nhận".
+ */
+export async function addViewsToTree(args: {
+  baseUrl: string;
+  treeId: string;
+  imagePaths: string[];
+  farm: FarmContext;
+  gps?: { lat: number; lng: number; accuracy?: number } | null;
+  regions?: VerifyAddOptions['regions'];
+  captures?: VerifyAddOptions['captures'];
+  headingRef?: VerifyAddOptions['headingRef'];
+}): Promise<Awaited<ReturnType<typeof verifyAddTree>> & { blocked?: 'farm-required' }> {
+  if (args.farm.status !== 'ready') {
+    return { ok: false, blocked: 'farm-required' };
+  }
+  return verifyAddTree(args.baseUrl, args.treeId, args.imagePaths, {
+    // `farm_id` BẮT BUỘC — xem khối chú thích của `FarmContext`.
+    farmId: args.farm.farmId,
+    lat: args.gps?.lat,
+    lon: args.gps?.lng,
+    acc: args.gps?.accuracy,
+    regions: args.regions,
+    captures: args.captures,
+    headingRef: args.headingRef,
+  });
+}
+
+/** Câu nói cho từng lý do vườn chưa rõ. Ba ca ba câu — gộp là nói sai một ca. */
+export function farmBlockedMessage(farm: FarmContext): string {
+  switch (farm.status) {
+    case 'loading':
+      return 'Đang tải danh sách vườn. Chờ một chút rồi bấm lại.';
+    case 'no-farms':
+      return 'Chưa có vườn nào. Tạo vườn trước — cây phải thuộc một vườn thì mới hiện trong trang trại.';
+    default:
+      return 'Chọn vườn trước khi lưu. Cây không thuộc vườn nào sẽ không hiện trong trang trại.';
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Screen
 // ---------------------------------------------------------------------------
 
@@ -167,11 +278,37 @@ const TreeIdentityScreen: React.FC = () => {
   // Giữ tên hiển-thị khi phải đăng-ký-lại (DID mới nhưng tên cũ).
   const currentUser = useAppSelector(s => s.user.currentUser);
 
-  // Vườn hiện-hành (nếu mở từ ngữ-cảnh farm) — truyền tiếp xuống TreeEnroll.
-  const farmId = route.params?.farmId;
+  // ── Vườn của màn này ──────────────────────────────────────────────────────
+  // Trước đây chỉ có đúng dòng `route.params?.farmId` và KHÔNG có đường lùi — xem
+  // khối chú thích của `FarmContext` ở đầu tệp. Nay dùng lại mẫu chọn vườn của
+  // `TreeEnrollScreen`: nạp danh sách, đúng một vườn thì tự chọn, nhiều vườn thì
+  // để người dùng chọn, chưa có vườn thì dẫn đi tạo.
+  const farms = useAppSelector((s: RootState) => s.farm.farms);
+  const farmsLoading = useAppSelector((s: RootState) => s.farm.isLoading);
+  const [pickedFarmId, setPickedFarmId] = useState<string | undefined>(route.params?.farmId);
 
   useEffect(() => {
-    rLog.treeIdentity.screenMount({ farmId });
+    if (currentUser?.id && farms.length === 0) dispatch(loadFarms(currentUser.id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.id]);
+
+  // Vườn đang chọn không còn trong danh sách (bị xoá, hoặc mã cũ từ lối vào) → bỏ
+  // chọn để bộ chọn buộc chọn lại, khỏi gửi một id chết.
+  useEffect(() => {
+    if (pickedFarmId && farms.length > 0 && !farms.some(f => f.id === pickedFarmId)) {
+      setPickedFarmId(undefined);
+    }
+  }, [farms, pickedFarmId]);
+
+  const farmContext = useMemo(
+    () => resolveFarmContext({ routeFarmId: pickedFarmId, farms, loading: farmsLoading }),
+    [pickedFarmId, farms, farmsLoading],
+  );
+  /** Mã vườn ĐÃ XÁC MINH, hoặc `undefined`. Đừng đọc `route.params.farmId` nữa. */
+  const farmId = farmContext.status === 'ready' ? farmContext.farmId : undefined;
+
+  useEffect(() => {
+    rLog.treeIdentity.screenMount({ farmId: route.params?.farmId });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -569,7 +706,16 @@ const TreeIdentityScreen: React.FC = () => {
       const prevName = currentUser?.name;
       const { user } = await phoenixKeyAuth.reRegisterIdentity(kind);
       await clearOrilifeToken(); // token cũ (nếu có) gắn DID cũ → bỏ để login lại bằng DID mới
-      await dispatch(loginUser({ ...user, name: prevName } as any) as any);
+      // DID vừa ĐỔI, nên đồng hồ nghỉ sinh trắc của DID cũ không còn nói gì về DID
+      // mới. Không mở van ở đây thì người vừa lập lại danh tính phải chờ một phút
+      // mới vào được vườn, và không màn nào giải thích vì sao.
+      clearOrilifeLoginCooldown();
+      // Van thứ HAI. `reRegisterIdentity` đổi DID, nên đồng hồ nghỉ của đường đúc
+      // thẻ PhoenixKey cũng hết nghĩa — mở cả hai, không thì người vừa lập lại
+      // danh tính vào được vườn mà không dùng được ví trong một phút.
+      clearSessionMintCooldown();
+      // `.unwrap()` để lần đăng nhập trượt rơi vào `catch` dưới — xem `store/userSlice.ts`.
+      await (dispatch(loginUser({ ...user, name: prevName } as any) as any) as any).unwrap();
       // Đăng-ký xong → thử nhận-diện lại luôn (ensureOrilifeToken sẽ ký bằng DID mới).
       await runIdentify(imagePaths);
     } catch (e: any) {
@@ -711,19 +857,25 @@ const TreeIdentityScreen: React.FC = () => {
           ? capturesRedux.map(c => `file://${c.fileURL}`)
           : androidImageUris;
 
-      const res = await verifyAddTree(BASE_URL, identResult.tree_id, imgs, {
-        // `farm_id` BẮT BUỘC. Thiếu nó máy chủ gán null và cây rơi khỏi bộ lọc
-        // `/api/trees?farm_id=X` (`treeReIDService.ts:795-797`) — bổ sung ảnh xong
-        // là cây biến mất khỏi vườn, người ta tưởng mất cây rồi đăng ký lại, sinh
-        // cây trùng. Đường đăng ký đã gửi từ lâu; đường này thì quên.
-        farmId,
-        lat: gpsRedux?.lat,
-        lon: gpsRedux?.lng,
-        acc: gpsRedux?.accuracy,
+      // `farm_id` BẮT BUỘC. Thiếu nó máy chủ gán null và cây rơi khỏi bộ lọc
+      // `/api/trees?farm_id=X` (`treeReIDService.ts:795-797`) — bổ sung ảnh xong
+      // là cây biến mất khỏi vườn, người ta tưởng mất cây rồi đăng ký lại, sinh
+      // cây trùng. Cổng nằm trong `addViewsToTree`: vườn chưa rõ thì KHÔNG gửi.
+      const res = await addViewsToTree({
+        baseUrl: BASE_URL,
+        treeId: identResult.tree_id,
+        imagePaths: imgs,
+        farm: farmContext,
+        gps: gpsRedux,
         regions: TreeReIDBridge.isAvailable() ? autoTreeRegions(capturesRedux).regions : undefined,
         captures: TreeReIDBridge.isAvailable() ? toCaptureOrientations(capturesRedux) : undefined,
         headingRef: platformHeadingRef(),
       });
+
+      if (res.blocked === 'farm-required') {
+        showWarning('Chưa lưu được vị trí', farmBlockedMessage(farmContext));
+        return;
+      }
 
       // ĐỌC CỜ, ĐỪNG ĐỌC MỖI TẦNG VẬN CHUYỂN. `res.ok` chỉ nói HTTP 200. Máy chủ
       // vẫn trả 200 kèm `{ok:false, added:false, reason:"ảnh không khớp cây này"}`
@@ -761,15 +913,21 @@ const TreeIdentityScreen: React.FC = () => {
           ? capturesRedux.map(c => `file://${c.fileURL}`)
           : androidImageUris;
 
-      const res = await verifyAddTree(BASE_URL, id, imgs, {
-        farmId,
-        lat: gpsRedux?.lat,
-        lon: gpsRedux?.lng,
-        acc: gpsRedux?.accuracy,
+      const res = await addViewsToTree({
+        baseUrl: BASE_URL,
+        treeId: id,
+        imagePaths: imgs,
+        farm: farmContext,
+        gps: gpsRedux,
         regions: TreeReIDBridge.isAvailable() ? autoTreeRegions(capturesRedux).regions : undefined,
         captures: TreeReIDBridge.isAvailable() ? toCaptureOrientations(capturesRedux) : undefined,
         headingRef: platformHeadingRef(),
       });
+
+      if (res.blocked === 'farm-required') {
+        showWarning('Chưa thêm được góc', farmBlockedMessage(farmContext));
+        return;
+      }
 
       if (res.ok && res.data?.ok !== false && res.data?.added !== false) {
         // `n_added` là trường TUỲ CHỌN. `?? 0` biến "máy chủ không khai" thành
@@ -973,6 +1131,61 @@ const TreeIdentityScreen: React.FC = () => {
           </View>
         )}
 
+        {/* Bộ chọn vườn — chỉ hiện khi vườn CHƯA rõ.
+            Vào màn này từ nút "Quét cây" (màn chính · hành động nhanh) hoặc từ màn
+            "Quản lý cây" thì không có ngữ cảnh vườn nào cả. Nếu người dùng chỉ có
+            MỘT vườn thì `resolveFarmContext` đã tự chọn, khối này không hiện —
+            không thêm ma sát cho ca phổ biến nhất. */}
+        {farmContext.status !== 'ready' && (
+          <View style={styles.farmSection}>
+            <Text style={styles.farmSectionTitle}>Vườn *</Text>
+            {farmContext.status === 'loading' ? (
+              <Text style={styles.farmWarnText}>Đang tải danh sách vườn...</Text>
+            ) : (
+              <>
+                <View style={styles.farmChips}>
+                  {farms.map(f => (
+                    <TouchableOpacity
+                      key={f.id}
+                      style={[styles.farmChip, pickedFarmId === f.id && styles.farmChipActive]}
+                      onPress={() => setPickedFarmId(f.id)}
+                      activeOpacity={0.8}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Chọn vườn ${f.name}`}
+                    >
+                      <Icon
+                        name={pickedFarmId === f.id ? 'check-circle' : 'sprout-outline'}
+                        size={14}
+                        color={pickedFarmId === f.id ? '#1b5e20' : NEUTRAL.textMuted}
+                      />
+                      <Text
+                        style={[
+                          styles.farmChipText,
+                          pickedFarmId === f.id && styles.farmChipTextActive,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {f.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                  <TouchableOpacity
+                    style={styles.farmChip}
+                    onPress={() => (navigation as any).navigate('FarmDetail', { farm_id: null })}
+                    activeOpacity={0.8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Tạo vườn mới"
+                  >
+                    <Icon name="plus" size={14} color="#1b5e20" />
+                    <Text style={[styles.farmChipText, { color: '#1b5e20' }]}>Tạo vườn mới</Text>
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.farmWarnText}>{farmBlockedMessage(farmContext)}</Text>
+              </>
+            )}
+          </View>
+        )}
+
         {/* M3: phán-quyết người dùng — chỉ hiện khi backend trả query_id */}
         {queryId && (
           <View style={styles.verdictBox}>
@@ -1018,8 +1231,18 @@ const TreeIdentityScreen: React.FC = () => {
                   accessibilityRole="button"
                   accessibilityLabel="Là cây khác"
                 >
-                  <Icon name="swap-horizontal" size={16} color="#5c6bc0" />
-                  <Text style={[styles.verdictBtnText, { color: '#5c6bc0' }]}>Cây khác</Text>
+                  {/* `#3949ab` (Indigo 600) thay `#5c6bc0` (Indigo 400), đo
+                      2026-09-11 bằng công thức tương phản WCAG 2.x trên chính
+                      nền của nút (`verdictOther.backgroundColor = #e8eaf6`):
+
+                        #5c6bc0 / #e8eaf6  = 4,06  ← TRƯỢT ngưỡng AA 4,5
+                        #3949ab / #e8eaf6  = 6,46
+
+                      Và nó lệch với hai nút ANH EM ngay cạnh, vốn đều đạt:
+                      "Đúng cây" 7,00 · "Sai cây" 4,92. Chữ 13px đậm vẫn tính
+                      theo ngưỡng chữ THƯỜNG (ngưỡng 3:1 chỉ áp từ 14pt đậm). */}
+                  <Icon name="swap-horizontal" size={16} color="#3949ab" />
+                  <Text style={[styles.verdictBtnText, { color: '#3949ab' }]}>Cây khác</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -1271,6 +1494,23 @@ const TreeIdentityScreen: React.FC = () => {
             </>
           )}
         </TouchableOpacity>
+
+        {/* Nút mờ phải NÓI VÌ SAO nó mờ.
+            Đo trên máy ảo iPhone 17 ngày 14/09/2026: bấm `Nhận diện (0 góc)` khi chưa
+            có góc nào — không có gì xảy ra, không một chữ nào. Người dùng không phân
+            biệt được "nút hỏng" với "mình chưa làm đủ", và cách duy nhất để biết là
+            đoán ra nghĩa của con số trong ngoặc.
+            Màn `ActivityScreen` ở cùng kho đã làm đúng: nút `Lưu vào sổ` mờ thì bên
+            cạnh có chữ "Cần quay trước đã". Dòng dưới đây mang cùng vai, và nói thêm
+            phần `ActivityScreen` không cần nói: CÒN THIẾU BAO NHIÊU. */}
+        {!isLoading && !isIdentifyingLocal && totalCaptures < MIN_ROUND1 && (
+          <Text style={styles.ctrlHintText}>
+            {tk('trace.identify.needMoreAngles', {
+              n: MIN_ROUND1 - totalCaptures,
+              min: MIN_ROUND1,
+            })}
+          </Text>
+        )}
       </View>
     );
   };
@@ -2140,6 +2380,58 @@ const styles = StyleSheet.create({
     color: NEUTRAL.text,
     lineHeight: 18,
   },
+  // Bộ chọn vườn — cùng ngôn ngữ hình với bộ chọn ở `TreeEnrollScreen`.
+  farmSection: {
+    marginTop: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: NEUTRAL.bgWarm,
+    borderWidth: 1,
+    borderColor: NEUTRAL.border,
+  },
+  farmSectionTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: NEUTRAL.text,
+    marginBottom: 8,
+  },
+  farmChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  farmChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: NEUTRAL.border,
+    backgroundColor: NEUTRAL.white,
+    maxWidth: '100%',
+  },
+  farmChipActive: {
+    borderColor: '#1b5e20',
+    backgroundColor: '#e8f5e9',
+  },
+  farmChipText: {
+    fontSize: 13,
+    color: NEUTRAL.textSub,
+    flexShrink: 1,
+  },
+  farmChipTextActive: {
+    color: '#1b5e20',
+    fontWeight: '600',
+  },
+  farmWarnText: {
+    marginTop: 8,
+    fontSize: 12,
+    color: NEUTRAL.warning,
+    lineHeight: 17,
+  },
   decisionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2201,6 +2493,15 @@ const styles = StyleSheet.create({
     borderColor: CAM,
   },
   ctrlBtnDisabled: { opacity: 0.4 },
+  // Cố ý KHÔNG mờ như chính cái nút: dòng này là thứ giải thích nút mờ, nên nó phải
+  // đọc được rõ hơn nút. Mờ cả hai thì lời giải thích biến mất cùng thứ nó giải thích.
+  ctrlHintText: {
+    color: NEUTRAL.white,
+    fontSize: 13,
+    textAlign: 'center',
+    marginTop: 8,
+    opacity: 0.9,
+  },
   ctrlBtnText: { color: '#000000', fontSize: 15, fontWeight: '700' },
   ctrlBtnSecText: { color: CAM, fontSize: 15, fontWeight: '700' },
 
@@ -2278,7 +2579,7 @@ const styles = StyleSheet.create({
   },
   verdictCorrect: { borderColor: '#1b5e20', backgroundColor: '#e8f5e9' },
   verdictWrong: { borderColor: '#c62828', backgroundColor: '#ffebee' },
-  verdictOther: { borderColor: '#5c6bc0', backgroundColor: '#e8eaf6' },
+  verdictOther: { borderColor: '#3949ab', backgroundColor: '#e8eaf6' },
   verdictBtnText: { fontSize: 13, fontWeight: '700' },
   verdictDone: {
     flexDirection: 'row',

@@ -11,11 +11,49 @@
  * Chỉ nhận đúng tên máy nằm trong bảng, đúng giao thức `https`.
  */
 
-/** Trang chủ Aladin — đích mặc định của mục "Tìm hiểu thêm". */
-export const ALADIN_WEB_URL = 'https://aladin.work/';
+import { DEFAULT_INSTANCE } from '../config/instance.config';
 
-/** Tên máy được phép mở trong app. Thêm dòng ở đây, đừng nới lỏng phép kiểm. */
-const ALLOWED_HOSTS: readonly string[] = ['aladin.work', 'www.aladin.work'];
+/**
+ * Trang chủ của APP ĐANG DỰNG — đích của mục "Tìm hiểu thêm". `null` = app này
+ * chưa có trang web, và lúc đó mục ấy KHÔNG hiện (`OnboardingScreen`).
+ *
+ * Trước 2026-09-10 đây là hằng `ALADIN_WEB_URL = 'https://aladin.work/'`, dùng
+ * chung cho mọi app. Nên trong app CheckFarm, "Tìm hiểu thêm" mở trang chủ của
+ * một doanh nghiệp khác — và mở NGAY TRONG app, trong khung có cầu nối
+ * JavaScript, vì `ALLOWED_HOSTS` cũng viết cứng đúng tên máy đó.
+ *
+ * Để `null` thay vì mượn tạm trang của app khác: cùng luật với `address: null`
+ * ở `OperatorInfo` — chưa có thì khai là chưa có, bịa ra một cái còn tệ hơn để
+ * trống.
+ */
+export const APP_WEB_URL: string | null = DEFAULT_INSTANCE.website?.url ?? null;
+
+/**
+ * Tên máy được phép mở TRONG app. Lấy từ lời khai instance — thêm ở
+ * `instances/<mã>` chứ không thêm ở đây, và đừng nới lỏng phép kiểm.
+ *
+ * App chưa khai trang web thì bảng RỖNG, tức `isAllowedWebUrl` trượt mọi địa
+ * chỉ và không gì mở được trong khung nhúng. Đó là chiều đúng để rơi.
+ */
+const ALLOWED_HOSTS: readonly string[] = DEFAULT_INSTANCE.website?.hosts ?? [];
+
+/**
+ * Cùng bảng trên, ở dạng `react-native-webview` đòi (`originWhitelist`).
+ *
+ * SINH ra từ `ALLOWED_HOSTS` chứ không gõ lại. Tới 2026-09-10 `WebPageScreen`
+ * gõ cứng `['https://aladin.work', 'https://www.aladin.work']` ngay cạnh dòng
+ * gọi `isAllowedWebUrl` — hai bảng cho cùng một sự thật, không bảng nào trỏ về
+ * bảng nào. Chúng chưa lệch chỉ vì cả hai cùng viết cứng một tên máy.
+ *
+ * Ngày CheckFarm khai trang web, `isAllowedWebUrl` cho qua tên máy của họ còn
+ * bảng gõ tay thì không ⟹ `react-native-webview` đẩy CHÍNH trang nhà họ sang
+ * trình duyệt ngoài. Không lỗi, không đỏ, chỉ là app đối xử với nhà mình như
+ * với người lạ.
+ *
+ * Rỗng khi app chưa khai trang web — `originWhitelist` rỗng nghĩa là khung
+ * nhúng không nhận nguồn nào, đúng chiều đã chọn ở `InstanceConfig.website`.
+ */
+export const ALLOWED_WEB_ORIGINS: string[] = ALLOWED_HOSTS.map((h) => `https://${h}`);
 
 /**
  * Tách giao thức + tên máy. Tự cắt thay vì dùng `URL`: bản `URL` của React Native

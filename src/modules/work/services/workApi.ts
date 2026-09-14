@@ -146,13 +146,13 @@ export const getHealth = (): Promise<HealthResult> =>
   call(client().get('/health'));
 
 // ─────────────────────────────────────────────────────────────────────
-// 2–3. AUTH (không auth). PHẦN KÝ signature = việc Thư / native.
+// 2–3. AUTH (không auth). PHẦN KÝ signature = việc PhoenixKey native.
 // ─────────────────────────────────────────────────────────────────────
 export const authChallenge = (did: string): Promise<ChallengeResult> =>
   call(client().post('/auth/challenge', { did }));
 
 /**
- * Nộp challenge + signature (Thư ký P-256 / secp256r1, DER hex) → nhận session
+ * Nộp challenge + signature (PhoenixKey native ký P-256 / secp256r1, DER hex) → nhận session
  * Bearer. Lớp gọi này KHÔNG tự ký; caller truyền signature + timestamp (GIÂY epoch).
  */
 export const authVerify = (body: VerifyBody): Promise<VerifyResult> =>

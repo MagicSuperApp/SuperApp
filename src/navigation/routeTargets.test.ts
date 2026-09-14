@@ -19,6 +19,8 @@
 import fs from 'fs';
 import path from 'path';
 
+import { HOST_TAB_ROUTES } from './hostRoutes';
+
 const SRC = path.join(__dirname, '..');
 
 function walk(dir: string, out: string[] = []): string[] {
@@ -35,6 +37,9 @@ function declaredRoutes(): Set<string> {
   const names = new Set<string>();
   const nav = fs.readFileSync(path.join(SRC, 'navigation/index.tsx'), 'utf8');
   for (const m of nav.matchAll(/name:\s*'([A-Za-z0-9_]+)'/g)) names.add(m[1]);
+  // Tab host khai bằng `Route: Component`; mẫu trên không bắt được, nên trước
+  // 13/09/2026 mọi màn là tab đều bị bài này đọc thành "route không tồn tại".
+  for (const r of HOST_TAB_ROUTES) names.add(r);
 
   const modulesDir = path.join(SRC, 'modules');
   for (const mod of fs.readdirSync(modulesDir)) {

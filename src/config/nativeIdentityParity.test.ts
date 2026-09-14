@@ -660,6 +660,84 @@ const maChay = (p: string) =>
     .filter((l) => !l.trim().startsWith('//'))
     .join('\n');
 
+// ─────────────────────────────────────────────────────────────────────────────
+// BIỂU TƯỢNG iOS — mỗi app một bộ, và bộ đó phải NỘP ĐƯỢC
+//
+// Trước bản này, biểu tượng iOS là MỘT bộ dùng chung ở
+// `ios/SuperApp/Images.xcassets/AppIcon.appiconset` — bộ của Aladin. Một bản iOS
+// của app khác dựng được, ký được, và mang biểu tượng Aladin: không cổng nào đỏ,
+// vì không có gì để so. Nay mỗi app giữ bộ của mình trong `instances/<mã>/ios/`
+// và bước dựng chép bộ đúng app vào chỗ Xcode đọc.
+//
+// Ba điều dưới đây hỏng theo ba cách khác nhau, nên đo riêng từng điều:
+//   thiếu bộ      → bản dựng đỏ ở máy chủ dựng, muộn nhưng có kêu
+//   trùng bộ      → KHÔNG ai kêu, chỉ lộ khi có người nhìn màn hình máy
+//   còn kênh alpha→ Apple từ chối ở bước NỘP, sau cả một lượt dựng trả tiền
+//
+// Đọc PNG bằng tay thay vì kéo thêm thư viện: bốn byte cạnh nằm ở đầu khối IHDR
+// và kiểu màu ở byte 25 — đủ để trả lời cả ba câu, và một phép kiểm về biểu
+// tượng không nên tự nó thêm một phụ thuộc mới vào cây dựng.
+const docPng = (p: string) => {
+  const b = readFileSync(p);
+  const chuKy = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  if (!b.subarray(0, 8).equals(chuKy)) return null;
+  const kieuMau = b[25];
+  return {
+    rong: b.readUInt32BE(16),
+    cao: b.readUInt32BE(20),
+    // Kiểu 4 = xám + alpha, 6 = màu thật + alpha. Khối `tRNS` cũng tạo phần
+    // trong suốt cho kiểu bảng màu, nên dò luôn tên khối đó.
+    coAlpha: kieuMau === 4 || kieuMau === 6 || b.includes(Buffer.from('tRNS')),
+  };
+};
+
+describe('biểu tượng iOS — mỗi app một bộ của chính nó', () => {
+  const boCua = (id: string) => join(THU_MUC_APP, id, 'ios', 'AppIcon.appiconset');
+
+  it('mọi app đều có bộ AppIcon.appiconset riêng, kèm Contents.json', () => {
+    for (const id of Object.keys(FLAVORS)) {
+      const d = boCua(id);
+      expect(existsSync(d) ? `${id}: có bộ iOS` : `${id}: THIẾU ${d}`).toBe(`${id}: có bộ iOS`);
+      expect(existsSync(join(d, 'Contents.json'))).toBe(true);
+    }
+  });
+
+  it('mọi app có ĐỦ cùng một danh sách tệp — không app nào thiếu cỡ nào', () => {
+    // So theo danh sách chứ không theo số lượng: hai bộ cùng 19 tệp mà lệch tên
+    // thì Xcode nhận một bộ khuyết và KHÔNG báo gì.
+    const ids = Object.keys(FLAVORS);
+    const chuan = readdirSync(boCua(ids[0])).sort();
+    for (const id of ids) {
+      expect(`${id}: ${readdirSync(boCua(id)).sort().join(',')}`).toBe(`${id}: ${chuan.join(',')}`);
+    }
+  });
+
+  it('icon-1024 của mỗi app: 1024×1024 và KHÔNG kênh alpha', () => {
+    for (const id of Object.keys(FLAVORS)) {
+      const anh = docPng(join(boCua(id), 'icon-1024.png'));
+      expect(anh ? `${id}: đọc được PNG` : `${id}: KHÔNG phải PNG`).toBe(`${id}: đọc được PNG`);
+      expect(`${id}: ${anh!.rong}×${anh!.cao}`).toBe(`${id}: 1024×1024`);
+      expect(anh!.coAlpha ? `${id}: CÓ alpha` : `${id}: không alpha`).toBe(`${id}: không alpha`);
+    }
+  });
+
+  it('KHÔNG hai app nào dùng chung một ảnh biểu tượng', () => {
+    // Đây là bài đắt nhất của nhóm, vì nó là bài DUY NHẤT bắt được ca chép bộ
+    // của app khác sang. Ca đó cho ra một bản dựng xanh hoàn toàn.
+    const ids = Object.keys(FLAVORS);
+    for (const id of ids) {
+      for (const khac of ids) {
+        if (khac === id) continue;
+        const a = readFileSync(join(boCua(id), 'icon-1024.png'));
+        const b = readFileSync(join(boCua(khac), 'icon-1024.png'));
+        expect(a.equals(b) ? `${id} TRÙNG ảnh với ${khac}` : `${id} khác ${khac}`).toBe(
+          `${id} khác ${khac}`,
+        );
+      }
+    }
+  });
+});
+
 describe('pháp nhân vận hành — tệp khai và mã chạy phải khớp', () => {
   it('mỗi instance.json khai operator, và khớp bản trong instance.config.ts', () => {
     for (const id of Object.keys(FLAVORS)) {
@@ -671,6 +749,12 @@ describe('pháp nhân vận hành — tệp khai và mã chạy phải khớp', 
       expect(op!.address ?? null).toBe(ts.address);
       expect(op!.addressEn ?? null).toBe(ts.addressEn);
       expect(op!.contact ?? null).toBe(ts.contact);
+      // Hai trường khai việc MƯỢN pháp nhân cũng phải khớp hai bên. Bỏ chúng ra
+      // khỏi phép so là để mở đúng một đường: sửa `instance.json` cho hết đỏ ở
+      // `instanceParity` mà bản mã chạy vẫn mang lời khai cũ — và trang chính
+      // sách người dùng đọc là bản mã chạy, không phải tệp khai.
+      expect(op!.sharedWith ?? null).toBe(ts.sharedWith ?? null);
+      expect(JSON.stringify(op!.transferTo ?? null)).toBe(JSON.stringify(ts.transferTo ?? null));
     }
   });
 

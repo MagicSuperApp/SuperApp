@@ -2,7 +2,13 @@
  * AnimalDetailScreen — Hồ sơ cá thể vật nuôi
  *
  * Params: { animalDid } — khoá CHÍNH THỨC, khớp lệ TreeDetail (`treeId`) và
- * FarmDetail (`farmId`): tên khoá phải trùng thứ màn đích đọc.
+ * FarmDetail (`farm_id`): tên khoá phải trùng thứ màn đích đọc.
+ *
+ * Dòng trên tới 2026-09-10 ghi `farmId` cho FarmDetail — SAI, màn đó đọc
+ * `farm_id` (`FarmDetailScreen.tsx:1487`). Câu sai này không nằm im: nó là chỗ
+ * bài kiểm mã QR ghim đúng cái khoá hỏng, nên bộ kiểm xanh trong khi quét mã
+ * vườn thật lại mở ra màn TẠO VƯỜN MỚI. Bảng ép khoá nay ở
+ * `navigation/traceScan.ts` → `TRACE_TARGET_ID_KEY`; sửa ở đó, đừng sửa ở đây.
  * Nhận thêm `id` CHỈ để đỡ mã QR cũ đã in ra ngoài (`lamp://AnimalDetail?id=…`).
  * Đừng sinh thêm mã mới bằng `id`.
  *
@@ -31,6 +37,7 @@ import { ORILIFE_BASE } from '../services/orilifeBase';
 import { getAnimal, type AnimalInfo } from '../services/animalReIDService';
 import EntityTimeline from '../modules/trace/components/EntityTimeline';
 import { speciesLabel } from '../constants/animalSpecies';
+import AnhLoai from '../modules/trace/components/animal/AnhLoai';
 
 type AnimalDetailRouteParams = {
   AnimalDetail: {
@@ -142,7 +149,11 @@ const AnimalDetailScreen: React.FC = () => {
     return (
       <>
         <View style={styles.card}>
-          <Icon name="paw" size={32} color={HEADER_BG} style={styles.cardIcon} />
+          {/* ẢNH của LOÀI thay cho bàn chân chung — xem `AnhLoai`. Lề đặt ở
+              `View` bọc ngoài, vì `AnhLoai` cố ý không nhận `style`. */}
+          <View style={styles.cardIcon}>
+            <AnhLoai species={animal?.species} size={56} color={HEADER_BG} />
+          </View>
           <Text style={styles.cardName}>{animal?.name || 'Chưa đặt tên'}</Text>
           <Text style={styles.cardLabel}>Mã định danh vật nuôi</Text>
           <Text style={styles.cardDid} numberOfLines={3} selectable>

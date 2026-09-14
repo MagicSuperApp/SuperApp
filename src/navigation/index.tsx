@@ -44,7 +44,14 @@ import { TRACE_SCAN_ROUTE_NAME } from './traceScan';
 import { buildDeepLinkScreens } from './deepLinkAllow';
 
 // --- Host shell screens (KHÔNG thuộc module — vỏ giữ tĩnh) ------------------
-import LoginScreen from '../screens/LoginScreen';
+// Màn đăng nhập hiện dùng: bản MẠNG LƯỚI, vẽ toàn bộ trên một mặt OpenGL.
+//
+// Bản cũ `screens/LoginScreen` VẪN CÒN trong kho và vẫn chạy được — nó bị thay
+// vì kể quá nhiều chuyện cùng lúc (logo, nhãn, tiêu đề, phụ đề, nút ngôn ngữ,
+// thẻ DID, lối đăng ký, khu tin tức), không vì hỏng. Muốn quay lại: đổi đường
+// dẫn ở dòng dưới về '../screens/LoginScreen'. Không chỗ nào khác phải sửa —
+// hai màn cùng nhận không tham số và cùng tự điều hướng sang 'Main'.
+import LoginScreen from '../screens/LoginNetworkScreen';
 // Màn hỏi ngôn ngữ LẦN ĐẦU (máy vừa cài) — đứng TRƯỚC Login trong luồng khởi động.
 import LanguageSelectScreen from '../screens/LanguageSelectScreen';
 // Màn CHÀO (hỏi-một-lần) — đứng giữa Chọn ngôn ngữ và Đăng nhập. App lên hai cửa
@@ -61,6 +68,7 @@ import SignUpCompleteScreen from '../features/auth/screens/SignUpCompleteScreen'
 import AccountScreen from '../screens/AccountScreen';
 import DeleteAccountScreen from '../screens/DeleteAccountScreen';
 import TermsScreen from '../screens/TermsScreen';
+import DiagnosticReportScreen from '../screens/DiagnosticReportScreen';
 import BiometricSettings from '../screens/BiometricSettings';
 import NotificationScreen from '../screens/NotificationScreen';
 // PhoenixKey — duyệt ký / guardian / nhật ký hoạt động.
@@ -69,6 +77,7 @@ import SignRequestScreen from '../screens/SignRequestScreen';
 import GuardianScreen from '../screens/GuardianScreen';
 import ActivityLogScreen from '../screens/ActivityLogScreen';
 import MyDevicesScreen from '../screens/MyDevicesScreen';
+import DevicePairScreen from '../screens/DevicePairScreen';
 // Host-level capture/identity screens (dùng chung nhiều luồng, chưa thuộc module nào)
 import FruitListScreen from '../screens/FruitListScreen';
 import FruitCropperScreen from '../screens/FruitCropperScreen';
@@ -99,6 +108,8 @@ import CareScanScreen from '../screens/CareScanScreen';
 import SeedExportScreen from '../screens/SeedExportScreen';
 import RestoreIdentityScreen from '../screens/RestoreIdentityScreen';
 import PhoenixWalletScreen from '../screens/PhoenixWalletScreen';
+import WalletSendScreen from '../screens/WalletSendScreen';
+import WalletReceiveScreen from '../screens/WalletReceiveScreen';
 import WakemeScreen from '../screens/WakemeScreen';
 import StakingScreen from '../screens/StakingScreen';
 import OrgDidScreen from '../screens/OrgDidScreen';
@@ -157,6 +168,13 @@ if (__DEV__) {
 const HOST_TAB_SCREENS: Record<string, React.ComponentType<any>> = {
   Home: HomeScreen,
   Account: AccountScreen,
+  // Ví LÀ TAB từ 13/09/2026, không còn là màn trong host stack. Chuyển hẳn chứ
+  // không khai hai nơi: cùng một tên route nằm ở cả Tab lẫn Stack thì
+  // `navigate('PhoenixWallet')` trỏ vào đâu là tuỳ chỗ gọi đang đứng ở nhánh
+  // nào — hỏng theo kiểu chỉ lộ ra ở một luồng người dùng cụ thể. Giữ NGUYÊN
+  // tên route nên bốn chỗ gọi cũ (`AccountScreen`, `HomeScreen`, `authGate`
+  // NEVER_PUBLIC_ROUTES, cổng xoè) không phải sửa.
+  PhoenixWallet: PhoenixWalletScreen,
 };
 // Nhãn/icon tab DẪN XUẤT từ NAV_FRAME (navLabels.ts) — nguồn DUY NHẤT. Nhãn tab
 // CÓ THỂ khác displayName module; hiện module 'chat' khai displayName "Trò
@@ -1709,11 +1727,19 @@ const HOST_STACK_SCREENS: Array<{
   // navigator". Không test nào bắt được: mọi test đều mock `useNavigation` bằng
   // `navigate: jest.fn()`, và hai màn đó không có test render nào.
   { name: 'Terms', component: TermsScreen, options: { headerShown: false } },
+  { name: 'DiagnosticReport', component: DiagnosticReportScreen, options: { headerShown: false } },
   // PhoenixKey feature screens.
   { name: 'SignRequest', component: SignRequestScreen, options: { headerShown: false } },
   { name: 'Guardian', component: GuardianScreen, options: { headerShown: false } },
   { name: 'ActivityLog', component: ActivityLogScreen, options: { headerShown: false } },
   { name: 'MyDevices', component: MyDevicesScreen, options: { headerShown: false } },
+  // Ghép máy thứ hai vào một PhoenixKey đã có (issue #233). Route này NẰM TRONG
+  // `PUBLIC_ROUTES`, có chủ ý: vai `mode: 'show'` chạy trên máy CHƯA có danh tính,
+  // đóng nó lại là đóng đúng luồng nó mở. Màn không đọc `state.user` và không hiện
+  // dữ liệu nào của máy chủ; vai `mode: 'scan'` tự chặn bằng khoá phần cứng —
+  // `authorizeDeviceKey` đòi `currentUserDid` rồi đòi một chữ ký sinh trắc — chứ
+  // không bằng cổng điều hướng.
+  { name: 'DevicePair', component: DevicePairScreen, options: { headerShown: false } },
   { name: 'Main', component: ProtectedMain, options: { headerShown: false } },
   // Màn Thông báo — đích của nút chuông trên AppHeader (host-level).
   { name: 'Notifications', component: NotificationScreen, options: { headerShown: false } },
@@ -1737,8 +1763,16 @@ const HOST_STACK_SCREENS: Array<{
   // Quét QUẢ khi CHƯA biết cây: chụp quả → hỏi máy chủ quả nào của cây nào (soi
   // trên các cây gần chỗ đứng) → mở đúng cây. Xem đầu file FruitScanScreen.
   { name: 'FruitScan', component: FruitScanScreen, options: { headerShown: false } },
-  // Đường của NGƯỜI MUA. Vào từ màn "Quét truy xuất" (`TraceScanScreen`) — chỗ
-  // người ta tới khi cầm sản phẩm trên tay mà không có mã QR nào để quét.
+  // ⚠ BẢN THỨ HAI đã chết của đường NGƯỜI MUA — đừng nối nút vào, và đừng viết
+  // thêm gì cho nó. Câu cũ ở đây ghi "vào từ màn Quét truy xuất"; đo lại thì
+  // `TraceScanScreen` không có một lời gọi `navigate('FruitLookup')` nào — lối ra
+  // duy nhất của nó là `navigate('Main')` (`TraceScanScreen.tsx:244`). Lý do là
+  // chính `TraceScanScreen` nay TỰ tra quả: nó gọi cùng một `lookupFruit` của
+  // `fruitLookupService` (`TraceScanScreen.tsx:276`) và bày cùng bộ đối chiếu.
+  // Nên đây không phải một lối vào còn thiếu mà là một hiện thực bị thay thế.
+  // Cũng KHÔNG có deep-link nào bù: `HOST_DEEP_LINK_PATHS` chỉ mở `Main` và
+  // `LanguageSelect` (`deepLinkAllow.ts:82-85`). Giữ đăng ký để một `navigate`
+  // sót lại ở đâu đó không nổ; xoá hẳn màn là một quyết định riêng.
   { name: 'FruitLookup', component: FruitLookupScreen, options: { headerShown: false } },
   // Dẫn đường tới vườn / tới gốc cây (chặng xa giao bản đồ ngoài, chặng gần tự chỉ).
   { name: 'Wayfind', component: WayfindScreen, options: { headerShown: false } },
@@ -1767,7 +1801,12 @@ const HOST_STACK_SCREENS: Array<{
   // PhoenixKey Enclave — sao lưu/khôi phục bằng cụm 24 từ (BIP39 / Master_KEK).
   { name: 'SeedExport', component: SeedExportScreen, options: { headerShown: false } },
   { name: 'RestoreIdentity', component: RestoreIdentityScreen, options: { headerShown: false } },
-  { name: 'PhoenixWallet', component: PhoenixWalletScreen, options: { headerShown: false } },
+  // `PhoenixWallet` đã RỜI stack sang tab 13/09/2026 — xem `HOST_TAB_SCREENS`.
+  // Gửi ADA. Route HOST, cố ý KHÔNG vào `buildLinking()` — cùng lý do với `Wakeme`
+  // ngay dưới: màn này chuyển tài sản thật, không nên mở được bằng một đường dẫn
+  // từ bên ngoài (một liên kết đã điền sẵn địa chỉ người nhận là một cái bẫy).
+  { name: 'WalletSend', component: WalletSendScreen, options: { headerShown: false } },
+  { name: 'WalletReceive', component: WalletReceiveScreen, options: { headerShown: false } },
   // Wakeme — nhận phần LAMP khởi tạo. Route HOST, KHÔNG thêm vào `buildLinking()`:
   // màn này chuyển LAMP thật, không nên mở được bằng một đường dẫn từ bên ngoài.
   { name: 'Wakeme', component: WakemeScreen, options: { headerShown: false } },

@@ -12,7 +12,7 @@
 // Chưa ai gọi được thân 200 thật: đường đòi phiên DID của một máy thật, mà bên này
 // không dựng phiên giả để đo. Hình dạng dưới đây đọc TỪ MÃ MÁY CHỦ
 // (`timeline_router.py:164-176`, `timeline_store.py:255-272`), không phải từ một lượt
-// gọi thành công. Nên coi phần TRÌNH BÀY là nháp để Tùng dựng lại; phần ĐỌC DỮ LIỆU
+// gọi thành công. Nên coi phần TRÌNH BÀY là nháp cần đội Frontend/UIUX dựng lại; phần ĐỌC DỮ LIỆU
 // (`services/timelineService.ts`) đã có 14 test khoá theo mã máy chủ.
 //
 // Nguyên tắc giữ khi dựng tạm: thà hiện ÍT mà đúng, còn hơn hiện đẹp mà đoán. Cụ thể
@@ -30,7 +30,7 @@ import {
   inheritedFrom, mediaOverflow, mediaUrls, showsChainChip, summarise,
 } from '../utils/timelineView';
 import {
-  fetchTimeline, sortNewestFirst, KIND_VI, KIND_ICON, KIND_FALLBACK_ICON,
+  fetchTimeline, sortNewestFirst, kindLabel, ENTITY_NOUN_VI, KIND_ICON, KIND_FALLBACK_ICON,
   type TimelineEntityType, type TimelineResult,
 } from '../../../services/timelineService';
 
@@ -208,13 +208,17 @@ const EntityTimeline: React.FC<Props> = ({ entityType, entityId, limit = 0, auth
 
       {all.length === 0 && (
         <Text style={styles.dim}>
-          Chưa có sự kiện nào được ghi cho {entityType === 'fruit' ? 'quả' : 'cây'} này.
+          {/* Ba loại thực thể, ba danh từ. Bản trước chỉ tách `fruit`, nên MỌI dòng
+              thời gian của VƯỜN nói "cho cây này" — cùng một gốc với nhãn `enroll`
+              gắn cứng "Đăng ký cây": chỗ gọi biết `entityType`, chỗ sinh chữ thì
+              không được truyền. */}
+          Chưa có sự kiện nào được ghi cho {ENTITY_NOUN_VI[entityType] ?? 'mục'} này.
         </Text>
       )}
 
       {shown.map((ev, i) => {
         const isLast = i === shown.length - 1 && hidden === 0;
-        const label = KIND_VI[ev.kind] ?? String(ev.kind);
+        const label = kindLabel(ev.kind, entityType);
         const note = summarise(ev);
         const fromFarm = inheritedFrom(ev) !== null;
         const photos = mediaUrls(ev.media, ORILIFE_BASE, viewBase);
@@ -307,7 +311,7 @@ const EntityTimeline: React.FC<Props> = ({ entityType, entityId, limit = 0, auth
 const styles = StyleSheet.create({
   box: {
     backgroundColor: COLORS.card, borderRadius: 14, padding: 14,
-    borderWidth: 1, borderColor: COLORS.border, marginBottom: 12,
+    marginBottom: 12,
   },
   headRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' },
   headText: { fontSize: 11, fontWeight: '800', color: COLORS.accent, letterSpacing: 0.6 },

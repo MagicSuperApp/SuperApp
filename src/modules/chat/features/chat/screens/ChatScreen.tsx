@@ -57,10 +57,26 @@ import {
 } from '../../../store/chatSlice';
 import type { Message } from '../types';
 import { isProofChatBackendEnabled } from '../../../../../services/proofchat-api';
-import { sendText, syncConversation } from '../../../../../services/proofchatService';
+import {
+  init as initProofChat,
+  sendText,
+  syncConversation,
+} from '../../../../../services/proofchatService';
 import chatSocket from '../../../../../services/chatSocket';
 import { showWarning } from '../../../../../utils/alert';
 import { useCapabilityLive } from '../../../../../config/useCapabilityLive';
+
+/**
+ * Chuỗi lỗi của tầng gửi là chuỗi cho LẬP TRÌNH VIÊN đọc — `'chưa init'`,
+ * `'gửi thất bại'`, `'cần ít nhất 1 thành viên'` (`services/proofchatService.ts`).
+ * Đổ thẳng ra Toast là đưa người dùng một câu họ không hiểu và không hành động
+ * được. Giữ chuỗi thô cho nhật ký, đưa ra màn câu nói được việc phải làm.
+ */
+function sendFailureText(raw?: string): string {
+  if (raw === 'chưa init') return 'Phiên trò chuyện chưa mở xong. Đợi một nhịp rồi gửi lại.';
+  if (raw === 'cần ít nhất 1 thành viên') return 'Phòng này chưa có ai khác để nhận tin.';
+  return 'Tin chưa gửi đi được. Kiểm tra mạng rồi gửi lại.';
+}
 
 const ChatScreen: React.FC = () => {
   const navigation = useNavigation<any>();
@@ -103,6 +119,12 @@ const ChatScreen: React.FC = () => {
   // ── Nạp phòng ────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!backendReady || !conversationId) return;
+    // Mở phiên chat TỪ ĐÂY nữa, không chỉ từ màn danh sách phòng. Vào thẳng một
+    // phòng (nút nhắn tin ở tin tuyển việc, ở hồ sơ thợ, hay một thông báo đẩy)
+    // là đường có thật, và trên đường đó phiên chưa từng được mở: tin gõ xong
+    // bấm gửi thì trượt, còn tin người kia gửi sang cũng không tới vì chưa ai
+    // nghe socket. `init()` tự bỏ qua khi phiên đã sẵn sàng.
+    void initProofChat().catch((err) => console.warn('[Chat] mở phiên thất bại:', err));
     dispatch(loadMessages(conversationId));
     dispatch(loadConversationDetail(conversationId));
     dispatch(loadPins(conversationId));
@@ -166,7 +188,7 @@ const ChatScreen: React.FC = () => {
             Toast.show({
               type: 'error',
               text1: 'Chưa gửi được',
-              text2: ack.error ?? 'Thử lại sau.',
+              text2: sendFailureText(ack.error),
             });
           }
         })

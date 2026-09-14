@@ -7,7 +7,7 @@
  *     TEN_KEY_PW="${TIEN_TO}_UPLOAD_KEY_PASSWORD
  *
  * Bash nuốt tiếp mọi dòng sau đó cho tới dấu nháy kế, nên cả bước
- * "Create Android config" không parse được. Luồng `android-appstore-aab` — luồng
+ * "Create Android config" không parse được. Luồng `android-aab-aladin` — luồng
  * DUY NHẤT sinh ra gói nộp cửa hàng — chết ngay ở đó, từ 31/08 tới 03/09.
  *
  * Điều đáng học không phải là thiếu một ký tự, mà là `kyTheoApp.test.ts` được

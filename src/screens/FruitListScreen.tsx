@@ -1,9 +1,15 @@
 /**
- * FruitListScreen — quả của MỘT cây: thống kê, danh sách, chi tiết, gán giống.
+ * FruitListScreen — quả của MỘT cây: thống kê, danh sách, chi tiết, gán LOÀI.
  *
- *  - GET  /api/tree/{id}/layout   → giống + thống kê + danh sách quả
- *  - GET  /api/species/catalog    → bộ chọn giống (gán cho cây cũ chưa rõ giống)
- *  - POST /api/tree/set_species   → đặt giống → nạp lại (ẩn/hiện theo giống có-quả)
+ *  - GET  /api/tree/{id}/layout   → loài + thống kê + danh sách quả
+ *  - GET  /api/species/catalog    → bộ chọn loài (gán cho cây cũ chưa rõ loài)
+ *  - POST /api/tree/set_species   → đặt loài → nạp lại (ẩn/hiện theo loài có-quả)
+ *
+ * ⚠ LOÀI ≠ GIỐNG — hai tầng, đừng gộp. `species` (loài) = sầu riêng · mít · …,
+ * đi qua `set_species` lên máy chủ. `variety` (giống) = Ri6 · Monthong · …, nằm
+ * ở hồ sơ cây (`TreeMetadata.variety`) và HÔM NAY chỉ sống trong máy. Màn này
+ * chỉ đụng LOÀI. Chốt với OriLife 2026-09-08: đấu giống vào cửa loài thì hai
+ * khái niệm dính một chỗ và không tách lại được.
  *  - GET  /api/fruit/{id}/views   → ảnh các góc, hiện trong tấm chi tiết
  *  Backend = field-reid (ORILIFE_API_BASE_URL = api.orilife.io).
  *

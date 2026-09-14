@@ -281,8 +281,8 @@ Một platform/module chỉ được coi là READY khi TẤT CẢ mục dưới 
 ---
 
 ## 9. Change Log
-- v0.3 (2026-08-10): **Bỏ mô hình snapshot 2 lớp** — áp quyết định Aladin 2026-07-15 đã treo chưa land
-  (`_Agents/topics/integration-standard-convention.md`): platform sở hữu contract ở repo mình, SuperApp
+- v0.3 (2026-08-10): **Bỏ mô hình snapshot 2 lớp** — áp quyết định 2026-07-15 đã treo chưa land
+  (ghi trong sổ quyết định nội bộ, ngoài repo): platform sở hữu contract ở repo mình, SuperApp
   chỉ giữ INDEX. Viết lại §10.1 + §11. Cất `Integration/ProofChat.md` + `Integration/OriLife.md`
   (đều chốt 2026-07-11, dạy sai so với canonical) vào `Legacy/`. Cất cây `MobileCore/` v0.2 (repo chủ
   đã lên v0.3, 0 importer trong `src/`) vào `Legacy/`. Sửa đường JWKS `/.well-known/jwks.json` →
@@ -303,7 +303,7 @@ Một platform/module chỉ được coi là READY khi TẤT CẢ mục dưới 
 > *"Mỗi platform TỰ GIỮ `<Platform>-Integration.md` ở root repo mình. SuperApp THAM CHIẾU về đó —
 > KHÔNG giữ snapshot/bản sao. Mô hình cũ 'SuperApp giữ `Integration/<Platform>.md` snapshot' = SAI,
 > phải bỏ."* Lý do: app NGOÀI cũng tích hợp thẳng platform → contract phải do platform sở hữu.
-> Nguồn: `_Agents/topics/integration-standard-convention.md` (2026-07-15), thắng bản §10.1 cũ (12/07).
+> Nguồn: sổ quyết định nội bộ, mục quy ước chuẩn tích hợp (2026-07-15) — thắng bản §10.1 cũ (12/07).
 
 - **Canonical:** file contract nằm ở repo của CHÍNH platform (cột "Nguồn chuẩn" §11). Platform là chủ,
   tự cập nhật theo version mình; đổi endpoint/auth/token → sửa tại đó (kèm ngày + HEAD commit).

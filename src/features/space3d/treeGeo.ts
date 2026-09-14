@@ -26,7 +26,8 @@
  * dùng, nên hai màn không thể hiểu khác nhau về "gốc" ở đâu.
  */
 
-import { centroidLatLng, metersToLatLng, type LatLng, type Vec2 } from './geo';
+import { centroidLatLng, isUsableLatLng, metersToLatLng, type LatLng, type Vec2 } from './geo';
+import { isValidLatLon } from '../wayfind/wayfind';
 
 /** `{lat, lon}` của module dẫn đường ⟂ `{lat, lng}` của sơ đồ 3D — nối ở đây. */
 export interface GeoPoint { lat: number; lon: number }
@@ -44,7 +45,9 @@ export function farmOrigin(boundary: unknown): LatLng | null {
     if (!o) continue;
     const lat = Number(o.lat);
     const lng = Number(o.lng ?? o.lon);
-    if (Number.isFinite(lat) && Number.isFinite(lng)) pts.push({ lat, lng });
+    // `isUsableLatLng` chứ không `Number.isFinite`: một đỉnh `0/0` lọt vào là
+    // kéo gốc hệ toạ độ ra giữa Đại Tây Dương, và MỌI cây đặt tay dịch theo.
+    if (isUsableLatLng({ lat, lng })) pts.push({ lat, lng });
   }
   if (pts.length < 3) return null;
   return centroidLatLng(pts);
@@ -77,20 +80,25 @@ export function treeGeoPoint(input: {
   return parseGps(serverGps);
 }
 
-/** Ba dạng `gps` đang tồn tại → `{lat, lon}`. Không đọc được thì `null`. */
+/**
+ * Ba dạng `gps` đang tồn tại → `{lat, lon}`. Không đọc được thì `null`.
+ *
+ * ⛔ Bản trước chỉ hỏi `Number.isFinite`, trong khi chú thích của `treeGeoPoint`
+ *    ngay trên đã hứa "không vẽ nó ở toạ độ 0,0 giữa Đại Tây Dương". Lời hứa
+ *    nằm ở chú thích, ràng buộc thì không ở đâu cả — nên `0/0` đi thẳng ra bản
+ *    đồ dẫn đường. Nay dùng chung `isValidLatLon` với mọi chỗ khác.
+ */
 export function parseGps(gps: unknown): GeoPoint | null {
   if (!gps) return null;
 
   if (Array.isArray(gps) && gps.length >= 2) {
-    const lat = Number(gps[0]);
-    const lon = Number(gps[1]);
-    return Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : null;
+    const p = { lat: Number(gps[0]), lon: Number(gps[1]) };
+    return isValidLatLon(p) ? p : null;
   }
   if (typeof gps === 'object') {
     const o = gps as Record<string, unknown>;
-    const lat = Number(o.lat);
-    const lon = Number(o.lon ?? o.lng);
-    return Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : null;
+    const p = { lat: Number(o.lat), lon: Number(o.lon ?? o.lng) };
+    return isValidLatLon(p) ? p : null;
   }
   return null;
 }

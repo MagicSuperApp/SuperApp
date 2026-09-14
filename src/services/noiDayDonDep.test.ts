@@ -116,3 +116,74 @@ describe('lời gọi phải CÒN Ở ĐÓ — quét mã nguồn, khớp lời g
     expect(src).toContain('await clearMerkleSession();');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CÂU HỎI THỨ NĂM của Issue #288: "còn chỗ nào nữa?"
+//
+// Quét lại `src/services/`, `src/modules/*/services/` và `*Store.ts` theo đúng
+// khuôn — hàm dọn / gỡ đăng ký / đặt tham chiếu toàn cục có 0 nơi gọi — ra thêm
+// ba chỗ CÙNG LỚP, và cả ba đều nằm trên đường đăng xuất:
+//
+//   proofchatService.shutdown  → `disconnectProofChat` chỉ dọn THẺ. Bộ máy MLS
+//       vẫn giữ danh tính người trước vì `chatMls.freeIdentity()` không ai gọi.
+//   clearTreeDedupCache        → `@aladin/treeDedupCache/v2` là khoá PHẲNG cho
+//       cả máy: người sau quét cây của mình rồi được báo trùng với cây của
+//       người trước. Đây là một PHÁN ĐOÁN sai, không phải rác nằm im.
+//   resetRiskSnooze            → chú thích của chính hàm viết "gọi khi đăng
+//       xuất / đổi tài khoản", rồi 0 nơi gọi. Người trước ẩn lời nhắc 7 ngày ⇒
+//       người sau không được nhắc về khoá thiết bị CỦA HỌ.
+//
+// Ba chỗ còn lại trong đợt quét KHÔNG nối, và lý do phải viết ra để lần sau
+// không ai nối nhầm:
+//   videoUploadQueue.clearVideoQueue/removeVideoJob — `logoutUser` CỐ Ý không
+//       xoá hàng đợi (clip quay ngoài đồng chưa gửi là dữ liệu thật);
+//   treeReIDNativeBridge.unsubscribeAll — mỗi màn đã tự gỡ bằng hàm trả về của
+//       `subscribe*`; gọi gộp ở đây sẽ cắt cả bộ lắng nghe của màn đang mở;
+//   lampnetView.resetLampnetViewCache — cache một địa chỉ máy chủ, không phải
+//       dữ liệu người dùng.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('quét anh em — ba dây nối thêm trên đường đăng xuất', () => {
+  const doc = (p: string) => readFileSync(join(__dirname, p), 'utf8').replace(/\r\n/g, '\n');
+
+  /** Chỉ thân thunk `logoutUser`. */
+  const thunk = (): string => {
+    const src = doc('../store/userSlice.ts');
+    return src.slice(src.indexOf("'user/logoutUser'"), src.indexOf('export const loadWallet'));
+  };
+
+  it('logoutUser thả danh tính MLS (shutdown của proofchatService)', () => {
+    const src = doc('../store/userSlice.ts');
+    expect(src).toContain(
+      "import { shutdown as shutdownProofChatEngine } from '../services/proofchatService';",
+    );
+    expect(thunk()).toContain('await shutdownProofChatEngine();');
+  });
+
+  it('thả danh tính MLS TRƯỚC khi thẻ bị xoá', () => {
+    // Ngược thứ tự thì socket đóng bằng một thẻ vừa bị thu hồi.
+    const t = thunk();
+    expect(t.indexOf('await shutdownProofChatEngine();')).toBeLessThan(
+      t.indexOf('await disconnectProofChat();'),
+    );
+  });
+
+  it('logoutUser xoá kho khử-trùng cây', () => {
+    const src = doc('../store/userSlice.ts');
+    expect(src).toContain("import { clearTreeDedupCache } from '../services/treeDedupCache';");
+    expect(thunk()).toContain('await clearTreeDedupCache();');
+  });
+
+  it('logoutUser xoá mốc ẩn lời nhắc khoá thiết bị', () => {
+    const src = doc('../store/userSlice.ts');
+    expect(src).toContain("import { resetRiskSnooze } from '../services/deviceKeyRisk';");
+    expect(thunk()).toContain('await resetRiskSnooze();');
+  });
+
+  it('KHÔNG xoá hàng đợi video — clip chưa gửi là dữ liệu thật của người trước', () => {
+    // Ca âm tính có chủ ý: nó ghim một quyết định, không ghim một lời gọi. Ai
+    // thấy `clearVideoQueue` "0 nơi gọi" rồi nối nó vào đây sẽ đỏ ở đúng chỗ.
+    const t = thunk();
+    expect(t).not.toContain('clearVideoQueue(');
+    expect(t).toContain('setVideoQueueOwner(null)');
+  });
+});

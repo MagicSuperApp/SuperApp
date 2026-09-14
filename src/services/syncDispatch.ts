@@ -228,15 +228,49 @@ export function classifySyncItem(envelope: SyncEnvelope): DispatchClass {
 }
 
 /**
- * Phân loại lỗi HTTP → có nên retry không.
- * - 4xx (trừ 408/429): lỗi client, payload sai → KHÔNG retry (đánh dấu chết).
- * - 408/429/5xx/network/timeout: tạm thời → retry.
+ * Hạng lỗi của MỘT lượt gửi. Bốn hạng, vì "có retry được không" là câu hỏi SAI.
+ *
+ * ⛔ Lỗi đã đo, và nó là mất dữ liệu đồng ruộng:
+ *   Bản cũ chỉ có hai đáp án, nên mọi thứ không-retry-được rơi chung vào một rọ
+ *   mà `syncService` gọi là "lỗi vĩnh viễn" → `status:'error'`. Vòng quét chỉ lấy
+ *   `'pending' | 'sending'` (`syncService.processSyncQueue`), nên `'error'` là
+ *   CHẾT THẬT, kể cả sau khi mở lại app. Hai thứ rơi nhầm vào đó:
+ *     · 401 — phiên hết hạn. Token field-reid sống 12 giờ; hết buổi là mục nhật
+ *       ký chăm sóc chết ngay lần gửi ĐẦU, trong khi người dùng vừa đọc "Đã lưu
+ *       vào sổ — Sẽ gửi lên máy chủ khi có mạng".
+ *     · `http_status: 0` — KHÔNG có phản hồi HTTP nào, tức MẤT MẠNG. Đường ném ở
+ *       nhánh `activity` trên kia dựng `status: res.error?.http_status ?? 0`, mà
+ *       `timelineService` trả `http_status: 0` cho lỗi mạng. Bản cũ đọc 0 thành
+ *       "một 4xx lạ" ⇒ giết mục đúng lúc offline — chính lúc hàng đợi phải sống
+ *       nhất, và chính lúc câu hứa với người dùng vừa được in ra.
+ *
+ * Nay tách theo CÁCH GỠ, vì mỗi hạng gỡ bằng một việc khác nhau:
+ *   · `retryable` — tự khỏi khi mạng/máy chủ khá lên. Chờ rồi thử lại.
+ *   · `auth`      — phiên hết hạn. Gỡ bằng KÝ LẠI (`ensureOrilifeToken` force).
+ *   · `blocked`   — điều kiện phía máy chủ chưa thoả (thực thể chưa đăng ký; máy
+ *     chủ chưa bật dòng thời gian). Ký lại KHÔNG gỡ được, thử dồn cũng vô ích —
+ *     nhưng nó có thể thoả về sau, nên mục phải nằm chờ chứ không được chết.
+ *   · `permanent` — payload sai. Hạng DUY NHẤT được phép đánh dấu chết.
+ */
+export type SyncFailureClass = 'retryable' | 'auth' | 'blocked' | 'permanent';
+
+export function classifySyncFailure(err: any): SyncFailureClass {
+  const status: number | undefined = err?.response?.status;
+  // Không có `response`, hoặc có mà `status` = 0: cả hai đều nghĩa là KHÔNG nhận
+  // được phản hồi HTTP nào. Đó là lỗi mạng, không phải một mã lỗi lạ.
+  if (status == null || status === 0) return 'retryable';
+  if (status === 401) return 'auth';
+  if (status === 403 || status === 404) return 'blocked';
+  if (status === 408 || status === 429) return 'retryable';
+  if (status >= 500) return 'retryable';
+  return 'permanent';
+}
+
+/**
+ * @deprecated Giữ cho những nơi chỉ cần câu hỏi hai đáp án. Chỗ quyết định số
+ * phận của một mục hàng đợi phải dùng `classifySyncFailure` — hỏi câu hai đáp án
+ * ở đó chính là cách 401 bị xếp chung rọ với "payload sai".
  */
 export function isRetryableError(err: any): boolean {
-  // axios lỗi mạng/timeout: không có response.
-  const status: number | undefined = err?.response?.status;
-  if (status == null) return true; // network error / timeout → retry
-  if (status === 408 || status === 429) return true;
-  if (status >= 500) return true;
-  return false; // 4xx khác → không retry
+  return classifySyncFailure(err) === 'retryable';
 }

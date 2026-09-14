@@ -54,5 +54,5 @@ it('ghi đè KHÔNG được rò ngược vào bộ token nền', () => {
   setActiveThemeConfig(CHECKFARM_THEME_CONFIG);
   expect(APP_TOKENS.bg).toBe('#ffffff');
   expect(HEADER_TOKENS.bg).toBe('#264E7E');
-  expect(BRAND_TOKENS.trace.primary).toBe('#0F8A6A');
+  expect(BRAND_TOKENS.trace.primary).toBe('#166E43');
 });

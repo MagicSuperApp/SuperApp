@@ -35,6 +35,7 @@ import joinManifest from '../modules/join/module.manifest.json';
 import FarmListScreen from '../modules/trace/screens/FarmListScreen';
 import DashboardScreen from '../modules/trace/screens/DashboardScreen';
 import FarmDetailScreen from '../modules/trace/screens/FarmDetailScreen';
+import FarmMapScreen from '../modules/trace/screens/FarmMapScreen';
 import TreeDetailScreen from '../modules/trace/screens/TreeDetailScreen';
 import ActivityScreen from '../modules/trace/screens/ActivityScreen';
 
@@ -97,7 +98,7 @@ export const MODULE_REGISTRY: Record<ModuleId, RegistryEntry> = {
   trace: {
     manifest: traceManifest as ModuleManifest,
     screens: {
-      // manifest.routes: ["Farms","Dashboard","FarmList","FarmDetail","TreeDetail","Activity"]
+      // manifest.routes: ["Farms","Dashboard","FarmList","FarmDetail","FarmMap","TreeDetail","Activity"]
       // Tab Trace (route 'Farms' = entrypoint) hiện DASHBOARD (Tổng quan truy xuất)
       // → mở từ nút "Truy xuất"/tab Farm vẫn GIỮ navbar (là tab, không phủ Main).
       // Danh sách vườn tách ra route 'FarmList' = màn con (drill-down từ Dashboard).
@@ -105,6 +106,8 @@ export const MODULE_REGISTRY: Record<ModuleId, RegistryEntry> = {
       Dashboard: DashboardScreen, // giữ route cũ cho deep-link lamp://trace/Dashboard
       FarmList: FarmListScreen,
       FarmDetail: FarmDetailScreen,
+      // Bản đồ MỘT vườn — màn riêng, tách khỏi lớp phủ cũ trong FarmDetailScreen.
+      FarmMap: FarmMapScreen,
       TreeDetail: TreeDetailScreen,
       Activity: ActivityScreen,
     },

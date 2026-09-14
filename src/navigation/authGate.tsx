@@ -61,6 +61,16 @@ export const PUBLIC_ROUTES: readonly string[] = [
   'Onboarding',
   'Login',
   'Terms',
+  // Báo cáo thử thực địa. Mở ra ngoài cổng vì lớp lỗi dày nhất của một buổi đi vườn nằm
+  // TRƯỚC lúc đăng nhập xong — khoá sinh trắc bị hệ điều hành huỷ sau khi người dùng thêm
+  // một vân tay, danh tính chưa dùng được trên máy này, sinh trắc tạm khoá. Đóng màn này
+  // lại là làm cho đúng lớp lỗi cần báo nhất thành lớp không báo được, và thứ người thực
+  // địa làm thay vào đó là chụp ảnh màn hình gửi Zalo — mất commit, mất máy chủ, mất 39
+  // dòng trước đó.
+  //
+  // Màn KHÔNG đọc `state.user` một dòng nào (grep tệp đó: 0 kết quả) và không truy vấn gì;
+  // nó chỉ dựng lại những câu app đã hiện. Nên mở nó không mở thêm dữ liệu nào.
+  'DiagnosticReport',
   'WebPage', // chỉ `OnboardingScreen.tsx:86` mở, kèm URL cố định
   // Màn HỎI ở cửa vào — nó đứng TRƯỚC cả `SignUpBiometric` lẫn `RestoreIdentity`,
   // nên đóng nó lại là đóng luôn cả hai đường đã mở bên dưới. Màn không đọc
@@ -71,6 +81,17 @@ export const PUBLIC_ROUTES: readonly string[] = [
   'SignUpComplete',
   // 2 — đường lấy lại quyền
   'RestoreIdentity',
+  // Ghép máy (issue #233). Mở vì vai `mode: 'show'` CHẠY TRÊN MÁY CHƯA CÓ PHIÊN —
+  // đó là toàn bộ lý do màn tồn tại; đóng nó lại là đóng đúng luồng nó mở, y như
+  // `RestoreIdentity` ở dòng trên.
+  //
+  // Cái gì gác vai `mode: 'scan'` (vai ĐỘNG tới danh tính) nếu không phải cổng này:
+  // `authorizeDeviceKey` đòi `currentUserDid()` — không có thì ném ngay — rồi đòi
+  // `signRaw`, tức một lần mở khoá phần cứng bằng vân tay/khuôn mặt. Cổng điều
+  // hướng không thêm được gì vào hai lớp đó, còn đóng lại thì mất nửa kia.
+  // Màn không đọc `state.user` (grep tệp: 0 kết quả) và không hiện dữ liệu máy
+  // chủ nào — thứ nó hiện là khoá công khai của CHÍNH máy đang cầm.
+  'DevicePair',
   // 3 — đường người mua (không tài khoản)
   'TraceScan',
   'TraceResult',

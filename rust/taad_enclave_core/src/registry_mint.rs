@@ -34,6 +34,11 @@
 // PURE-ADA (như mint_lamp đã vá audit R2). KHÔNG log/persist secret ở tầng này.
 // ================================================================
 
+// Arity cua cac luoc do LAMP Genesis nam o MOT cho — xem `onchain_schema`.
+use crate::onchain_schema::{
+    check_lamp_arity, AUTHORITY_MULTISIG_FIELDS, AUTHORITY_SINGLE_PKH_FIELDS,
+    REGISTRY_DATUM_FIELDS, REGISTRY_ENTRY_FIELDS, SUPPLY_STATE_FIELDS,
+};
 use cardano_serialization_lib as csl;
 use cardano_serialization_lib::{
     Address, AssetName, BigNum, ConstrPlutusData, Int, MultiAsset, PlutusData, PlutusList,
@@ -371,9 +376,7 @@ pub(crate) fn decode_registry_datum(inline_datum_hex: &str) -> Result<DecodedReg
         return Err("RegistryDatum constructor index phải = 0".into());
     }
     let fields = constr.data();
-    if fields.len() != 2 {
-        return Err(format!("RegistryDatum phải có 2 field, nhận {}", fields.len()));
-    }
+    check_lamp_arity("RegistryDatum", fields.len(), REGISTRY_DATUM_FIELDS)?;
     let did_bytes = fields
         .get(0)
         .as_bytes()
@@ -395,9 +398,7 @@ pub(crate) fn decode_registry_datum(inline_datum_hex: &str) -> Result<DecodedReg
             return Err("RegistryEntry constructor index phải = 0".into());
         }
         let e_fields = e_constr.data();
-        if e_fields.len() != 2 {
-            return Err(format!("RegistryEntry phải có 2 field, nhận {}", e_fields.len()));
-        }
+        check_lamp_arity("RegistryEntry", e_fields.len(), REGISTRY_ENTRY_FIELDS)?;
         let token_tag = e_fields
             .get(0)
             .as_bytes()
@@ -409,9 +410,7 @@ pub(crate) fn decode_registry_datum(inline_datum_hex: &str) -> Result<DecodedReg
         let alt = auth_constr.alternative();
         let authority = if alt == BigNum::from(0u64) {
             let a_fields = auth_constr.data();
-            if a_fields.len() != 1 {
-                return Err("SinglePkh phải có đúng 1 field".into());
-            }
+            check_lamp_arity("Authority::SinglePkh", a_fields.len(), AUTHORITY_SINGLE_PKH_FIELDS)?;
             let pkh = a_fields
                 .get(0)
                 .as_bytes()
@@ -422,9 +421,7 @@ pub(crate) fn decode_registry_datum(inline_datum_hex: &str) -> Result<DecodedReg
             DecodedAuthority::SinglePkh(pkh)
         } else if alt == BigNum::from(1u64) {
             let a_fields = auth_constr.data();
-            if a_fields.len() != 2 {
-                return Err("MultiSig phải có đúng 2 field".into());
-            }
+            check_lamp_arity("Authority::MultiSig", a_fields.len(), AUTHORITY_MULTISIG_FIELDS)?;
             let pkh_list = a_fields
                 .get(0)
                 .as_list()
@@ -503,9 +500,7 @@ pub(crate) fn decode_supply_state_datum(inline_datum_hex: &str) -> Result<Decode
         return Err("SupplyState constructor index phải = 0".into());
     }
     let fields = constr.data();
-    if fields.len() != 4 {
-        return Err(format!("SupplyState phải có 4 field, nhận {}", fields.len()));
-    }
+    check_lamp_arity("SupplyState", fields.len(), SUPPLY_STATE_FIELDS)?;
     let get_u128 = |i: usize, name: &str| -> Result<u128, String> {
         let bi = fields
             .get(i)
@@ -1809,7 +1804,7 @@ mod tests {
         assert_eq!(threshold, 1);
         let constr = data.as_constr_plutus_data().expect("authorization is constr");
         assert_eq!(constr.alternative(), BigNum::from(0u64), "SinglePkh = constr 0");
-        assert_eq!(constr.data().len(), 1, "SinglePkh has exactly 1 field");
+        assert_eq!(constr.data().len(), AUTHORITY_SINGLE_PKH_FIELDS, "SinglePkh arity");
         let pkh_field = constr.data().get(0).as_bytes().expect("field 0 is bytes");
         assert_eq!(pkh_field, hex::decode(pkh_a()).unwrap(), "field 0 = the pkh bytes");
         assert_eq!(pkh_field.len(), 28);
@@ -1829,7 +1824,11 @@ mod tests {
         assert_eq!(threshold, 2);
         let constr = data.as_constr_plutus_data().expect("authorization is constr");
         assert_eq!(constr.alternative(), BigNum::from(1u64), "MultiSig = constr 1");
-        assert_eq!(constr.data().len(), 2, "MultiSig has 2 fields: [pkhs, threshold]");
+        assert_eq!(
+            constr.data().len(),
+            AUTHORITY_MULTISIG_FIELDS,
+            "MultiSig arity: [pkhs, threshold]"
+        );
         // Field 0: List of 3 byte arrays (28 bytes each).
         let list = constr.data().get(0).as_list().expect("field 0 is a list");
         assert_eq!(list.len(), 3);
@@ -1873,7 +1872,7 @@ mod tests {
         // Top: Constr 0, 2 fields.
         let constr = datum.as_constr_plutus_data().expect("datum is constr");
         assert_eq!(constr.alternative(), BigNum::from(0u64), "RegistryDatum = constr 0");
-        assert_eq!(constr.data().len(), 2, "RegistryDatum has 2 fields");
+        assert_eq!(constr.data().len(), REGISTRY_DATUM_FIELDS, "RegistryDatum arity");
 
         // Field 0: governing_did UTF-8 bytes.
         let did_bytes = constr.data().get(0).as_bytes().expect("field 0 is bytes");
@@ -1886,7 +1885,7 @@ mod tests {
         // Entry 0: Constr 0 [action_tag=BADGE, SinglePkh].
         let e0 = entry_list.get(0).as_constr_plutus_data().expect("entry is constr");
         assert_eq!(e0.alternative(), BigNum::from(0u64), "Entry = constr 0");
-        assert_eq!(e0.data().len(), 2, "Entry has 2 fields");
+        assert_eq!(e0.data().len(), REGISTRY_ENTRY_FIELDS, "RegistryEntry arity");
         assert_eq!(e0.data().get(0).as_bytes().unwrap(), b"BADGE".to_vec());
         let e0_authz = e0.data().get(1).as_constr_plutus_data().unwrap();
         assert_eq!(e0_authz.alternative(), BigNum::from(0u64), "entry 0 authorization = SinglePkh (constr 0)");
@@ -2287,7 +2286,11 @@ mod tests {
 
         let constr = data.as_constr_plutus_data().expect("datum is constr");
         assert_eq!(constr.alternative(), BigNum::from(0u64), "SupplyState = constr 0");
-        assert_eq!(constr.data().len(), 4, "4 fields: [dist_minted, reserve_minted, dist_cap, reserve_cap]");
+        assert_eq!(
+            constr.data().len(),
+            SUPPLY_STATE_FIELDS,
+            "SupplyState arity: [dist_minted, reserve_minted, dist_cap, reserve_cap]"
+        );
 
         assert_eq!(constr.data().get(0).as_integer().unwrap(), csl::BigInt::from_str("0").unwrap(), "dist_minted = 0 genesis");
         assert_eq!(constr.data().get(1).as_integer().unwrap(), csl::BigInt::from_str("0").unwrap(), "reserve_minted = 0 genesis");
@@ -2390,7 +2393,7 @@ mod tests {
             let pd = o.plutus_data().expect("inline datum present");
             let constr = pd.as_constr_plutus_data().expect("datum is constr");
             assert_eq!(constr.alternative(), BigNum::from(0u64));
-            assert_eq!(constr.data().len(), 4, "4-field SupplyState");
+            assert_eq!(constr.data().len(), SUPPLY_STATE_FIELDS, "SupplyState arity");
             assert_eq!(constr.data().get(0).as_integer().unwrap(), csl::BigInt::from_str("0").unwrap(), "dist_minted = 0");
             assert_eq!(constr.data().get(1).as_integer().unwrap(), csl::BigInt::from_str("0").unwrap(), "reserve_minted = 0");
             assert_eq!(constr.data().get(2).as_integer().unwrap(), csl::BigInt::from_str(&DIST_CAP.to_string()).unwrap(), "dist_cap baked");
@@ -2514,7 +2517,11 @@ mod tests {
             assert!(has_nft, "continuing SupplyState output must keep the thread NFT");
             let pd = o.plutus_data().expect("inline datum on continuing output");
             let constr = pd.as_constr_plutus_data().unwrap();
-            assert_eq!(constr.data().len(), 4, "continuing datum is 4-field SupplyState");
+            assert_eq!(
+                constr.data().len(),
+                SUPPLY_STATE_FIELDS,
+                "continuing datum is a full SupplyState"
+            );
             assert_eq!(
                 constr.data().get(0).as_integer().unwrap(),
                 csl::BigInt::from_str(&(old_dist + amount).to_string()).unwrap(),
@@ -2771,6 +2778,14 @@ mod tests {
         fields.add(&PlutusData::new_integer(&csl::BigInt::from_str("3").unwrap()));
         let bad = PlutusData::new_constr_plutus_data(&ConstrPlutusData::new(&BigNum::from(0u64), &fields));
         let err = decode_supply_state_datum(&hex::encode(bad.to_bytes())).unwrap_err();
-        assert!(err.contains("4 field"), "got: {err}");
+        // Đọc arity từ MỘT chỗ, không gõ lại số vào câu so. Chính ca này từng ghim
+        // chuỗi "4 field": đổi con số ở lược đồ mà quên chỗ này thì ca đỏ vì SAI
+        // CHỮ chứ không vì sai arity — một ca đỏ nói nhầm lý do còn tốn thời gian
+        // hơn một ca xanh oan.
+        assert!(
+            err.contains(&crate::onchain_schema::SUPPLY_STATE_FIELDS.to_string()),
+            "câu lỗi phải nói arity mong đợi: {err}"
+        );
+        assert!(err.contains("nhận 3"), "câu lỗi phải nói arity nhận được: {err}");
     }
 }

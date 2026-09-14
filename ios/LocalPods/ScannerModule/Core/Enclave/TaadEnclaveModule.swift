@@ -20,13 +20,27 @@ final class TaadEnclaveModule: NSObject {
     @objc static func moduleName() -> String! { "TaadEnclaveModule" }
     @objc static func requiresMainQueueSetup() -> Bool { false }
 
+    // MARK: - Câu lỗi của lõi (Issue #285)
+
+    /// Lý do THẬT của lần gọi FFI vừa trả NULL, hoặc `fallback` nếu lõi im lặng.
+    ///
+    /// Lõi giữ ô lỗi theo LUỒNG và `taad_last_error` đọc một lần rồi xoá, nên
+    /// chỉ được gọi NGAY sau khi thấy NULL, trên chính luồng đã gọi. Gọi lúc
+    /// khác thì giá trị đọc được không nói về lần gọi nào cả.
+    private func reason(or fallback: String) -> String {
+        guard let e = taad_last_error() else { return fallback }
+        defer { taad_free_string(e) }
+        let msg = String(cString: e)
+        return msg.isEmpty ? fallback : msg
+    }
+
     // MARK: - Master_KEK + BIP39
 
     @objc(generateMasterKek:rejecter:)
     func generateMasterKek(_ resolve: @escaping RCTPromiseResolveBlock,
                            rejecter reject: @escaping RCTPromiseRejectBlock) {
         guard let ptr = taad_generate_master_kek() else {
-            reject("E_KEK_GEN", "taad_generate_master_kek trả NULL", nil)
+            reject("E_KEK_GEN", reason(or: "taad_generate_master_kek trả NULL"), nil)
             return
         }
         defer { taad_free_string(ptr) }
@@ -41,7 +55,7 @@ final class TaadEnclaveModule: NSObject {
             taad_master_kek_to_mnemonic(cstr)
         }
         guard let ptr = out else {
-            reject("E_KEK_TO_MNEMONIC", "Master_KEK không hợp lệ (cần 64-hex)", nil)
+            reject("E_KEK_TO_MNEMONIC", reason(or: "Master_KEK không hợp lệ (cần 64-hex)"), nil)
             return
         }
         defer { taad_free_string(ptr) }
@@ -56,7 +70,7 @@ final class TaadEnclaveModule: NSObject {
             taad_mnemonic_to_master_kek(cstr)
         }
         guard let ptr = out else {
-            reject("E_MNEMONIC_INVALID", "Cụm từ khôi phục không hợp lệ", nil)
+            reject("E_MNEMONIC_INVALID", reason(or: "Cụm từ khôi phục không hợp lệ"), nil)
             return
         }
         defer { taad_free_string(ptr) }
@@ -70,7 +84,9 @@ final class TaadEnclaveModule: NSObject {
                             _ resolve: RCTPromiseResolveBlock,
                             _ reject: RCTPromiseRejectBlock,
                             _ code: String, _ msg: String) {
-        guard let ptr = ptr else { reject(code, msg, nil); return }
+        // Lõi có câu lỗi thì đưa ĐÚNG câu đó lên; `msg` chỉ là phương án chót
+        // khi lõi im lặng (Issue #285).
+        guard let ptr = ptr else { reject(code, reason(or: msg), nil); return }
         defer { taad_free_string(ptr) }
         resolve(String(cString: ptr))
     }

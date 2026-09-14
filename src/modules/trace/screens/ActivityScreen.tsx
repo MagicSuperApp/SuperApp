@@ -11,6 +11,9 @@ import {
   Platform,
   ScrollView,
   Modal,
+  TextInput,
+  Linking,
+  PermissionsAndroid,
 } from 'react-native';
 // Icon: bộ Font Awesome Solid tải qua Iconify (assets/icons → icons.generated).
 // Thêm icon mới: `node scripts/icons.js <tên-fa6-solid>`.
@@ -30,9 +33,10 @@ import {
 } from '../theme/depth';
 import { GroundBackdrop } from '../components/layered/Organic';
 import { useTk } from '../../../i18n/keys';
+import { cameraErrorBody } from '../../../utils/cameraError';
 import { RootState } from '../../../store';
 import { useAppDispatch } from '../../../store/hooks';
-import { showError, showSuccess } from '../../../utils/alert';
+import { showError, showSuccess, showWarning } from '../../../utils/alert';
 import { withPhotoSave } from '../../../services/mediaSavePermission';
 
 // image-picker nạp mềm (giống FruitVideo/CareScan) — máy chưa cài thì báo rõ, không crash.
@@ -79,6 +83,55 @@ const ACTIVITIES = [
     icon: 'basket-shopping', color: ORG_TONE.soil, bg: 'rgba(201,123,74,0.10)', credits: 3,
   },
 ];
+
+/**
+ * Hai việc mà lời mô tả trên thẻ đã HỨA là sẽ ghi vật tư.
+ *
+ * `fertilizingDesc` viết "Ghi loại phân và lượng bón", `pesticideDesc` viết tương
+ * tự cho thuốc — trong khi `handleSave` gửi `materials: []` cứng. Đường dây đã
+ * xong ở CẢ HAI ĐẦU từ trước: `syncDispatch.ts:209` gửi `materials` lên máy chủ,
+ * `timelineView.materialNames` đọc ngược ra để vẽ trên dòng thời gian. Thiếu đúng
+ * ô nhập. Nên đây không phải tính năng mới — là nối một sợi dây đứt ở giữa, và
+ * trong lúc nó đứt thì lời hứa trên thẻ là một câu không có gì đỡ.
+ *
+ * `watering`/`harvesting` KHÔNG hỏi: tưới nước và thu hoạch không có vật tư, bắt
+ * điền một ô rỗng chỉ dạy người ta gõ bừa cho nút sáng lên.
+ */
+const MATERIAL_ACTIVITIES = new Set(['fertilizing', 'pesticide']);
+
+/** Một dòng vật tư người dùng đang gõ. Ba ô đều là chuỗi — chưa chuẩn hoá gì. */
+interface MaterialRow { name: string; amount: string; unit: string }
+
+const EMPTY_MATERIAL_ROW: MaterialRow = { name: '', amount: '', unit: '' };
+
+/**
+ * Lọc các dòng gõ dở thành thứ gửi đi được.
+ *
+ * Quy tắc: **TÊN là bắt buộc, lượng và đơn vị thì không.** Một dòng chỉ có "NPK
+ * 16-16-8" vẫn là thông tin thật và người mua quả đọc được; một dòng chỉ có "5"
+ * mà không có tên thì không nói được gì, nên bỏ hẳn thay vì gửi lên một mẩu rác
+ * mà về sau không ai gỡ ra được.
+ *
+ * Trường rỗng bị BỎ khỏi object chứ không gửi chuỗi rỗng — `''` đi qua mạng rồi
+ * nằm trong sổ trông y hệt "người ta đã điền một giá trị", và ở lớp hiển thị thì
+ * nó không còn tự khai được là thiếu (Forall §Cái vỏ im lặng, gạch 3).
+ */
+export function cleanMaterialRows(rows: MaterialRow[]): Array<{ name: string; amount?: string; unit?: string }> {
+  const out: Array<{ name: string; amount?: string; unit?: string }> = [];
+  for (const r of rows) {
+    const name = r.name.trim();
+    if (!name) continue;
+    const amount = r.amount.trim();
+    const unit = r.unit.trim();
+    out.push({
+      name,
+      ...(amount ? { amount } : {}),
+      // Đơn vị không đi một mình: "kg" mà không có số thì không đọc được thành gì.
+      ...(amount && unit ? { unit } : {}),
+    });
+  }
+  return out;
+}
 
 // ── Step config for LampNet progress ─────────────────────────────────────────
 /**
@@ -251,12 +304,23 @@ const ActivityScreen = () => {
   const route = useRoute();
   const { farm: farmParam, tree } = (route.params ?? {}) as RouteParams;
   const farms = useSelector((state: RootState) => state.farm.farms);
-  // farm hiệu dụng: ưu tiên param farm; nếu chỉ có tree thì tra vườn theo tree.farmId
-  // (fallback object tối thiểu để vẫn ghi được farmId khi vườn chưa nạp vào store).
+  // farm hiệu dụng: ưu tiên param farm; nếu chỉ có tree thì tra vườn theo tree.farmId.
+  //
+  // ── KHÔNG dựng VƯỜN GIẢ từ tên CÂY ──────────────────────────────────────────
+  // Bản trước có thêm `?? { id: tree.farmId, name: tree.name ?? '—' }`. Object đó
+  // LUÔN truthy, nên nó vô hiệu hoá đúng cái cổng `contextReady` dựng ra để chặn ca
+  // thiếu `farm` (xem khối chú thích ở `contextReady` bên dưới) — cổng nhả 100%.
+  // Hai chỗ hỏng theo, cả hai im lặng:
+  //   · `name` lấy từ `tree.name` ⟹ tiêu đề màn và `farmName` gửi vào `addSyncItem`
+  //     mang TÊN CÂY chứ không phải tên vườn;
+  //   · `tree.farmId` có thể `undefined` (`RouteParams` khai cả hai là `any`, nên
+  //     `tsc` không đỏ) ⟹ nhật ký ghi dưới một mã vườn rỗng, không màn nào đọc lại.
+  // Ca vào: khởi động lạnh, mở cây bằng QR/deep-link trước khi danh sách vườn đồng bộ.
+  // Vườn chưa nạp là trạng thái của APP, và `contextReady` đã có câu nói đúng thế.
+  // Đối chứng cùng kho: `CareScanScreen.tsx:186` chặn tường minh `targetId === 'default'`
+  // với đúng lý lẽ này — ghi dưới mã không thuộc về ai thì ghi xong biến mất.
   const farm = farmParam
-    ?? (tree
-      ? farms.find((f: any) => f.id === tree.farmId) ?? { id: tree.farmId, name: tree.name ?? '—' }
-      : undefined);
+    ?? (tree ? farms.find((f: any) => f.id === tree.farmId) : undefined);
   const dispatch = useAppDispatch();
   const user = useSelector((state: RootState) => state.user.currentUser);
   // Chỉ tin số dư đến TỪ CHAIN (selector chung). null = chưa biết số dư thật → không chặn nhầm.
@@ -270,9 +334,53 @@ const ActivityScreen = () => {
   const [syncStep, setSyncStep] = useState(-1);
   const btnScale = useRef(new Animated.Value(1)).current;
 
+  const [materialRows, setMaterialRows] = useState<MaterialRow[]>([{ ...EMPTY_MATERIAL_ROW }]);
+
   const selectedActivity = ACTIVITIES.find(a => a.type === selected);
   const hasFiles = scannedFiles.length > 0;
-  const canSave = !!selected && !saving && hasFiles;
+
+  // Việc này có hỏi vật tư không, và đã đủ để gửi chưa.
+  const needsMaterials = !!selected && MATERIAL_ACTIVITIES.has(selected);
+  const cleanMaterials = cleanMaterialRows(materialRows);
+  const materialsReady = !needsMaterials || cleanMaterials.length > 0;
+
+  // ── NÚT PHẢI HỎI CÙNG MỘT CÂU MÀ `handleSave` HỎI ─────────────────────────
+  // `handleSave` thoát ngay ở dòng đầu nếu thiếu `farm` hoặc `user`, và thoát KHÔNG
+  // một câu nào. `canSave` cũ không hỏi hai thứ đó ⟹ nút sáng, bấm được, bấm xong
+  // không có gì xảy ra: không quay vòng, không lỗi, không màn mới. Người ghi việc
+  // ngoài vườn đọc đó là "đã lưu rồi" và đi sang cây kế tiếp.
+  //
+  // Hai thứ này KHÔNG phải thứ người dùng nhập sai — `farm` suy từ tham số điều
+  // hướng hoặc từ kho vườn, `user` là phiên đăng nhập. Nên chúng vắng mặt là trạng
+  // thái của APP, và câu nói ra phải nói đúng thế, đừng bắt người ta đoán.
+  const contextReady = !!farm && !!user;
+  // `materialsReady` nằm ở đây vì cùng một luật: nút chỉ được sáng khi `handleSave`
+  // thật sự làm được đủ việc mà thẻ đã hứa. Bón phân mà gửi `materials` rỗng thì
+  // lần ghi đó vẫn "thành công" và dòng thời gian im lặng thiếu mất phần người mua
+  // quả cần đọc — không ai biết cho tới lúc đi tra ngược, khi đó thì đã muộn.
+  const canSave = !!selected && !saving && hasFiles && contextReady && materialsReady;
+
+  /**
+   * Quyền máy ảnh đã bị TỪ CHỐI TỪ TRƯỚC — đường duy nhất gỡ được nằm ở Cài đặt.
+   *
+   * ⛔ Lỗi đội thực địa báo trên iOS: bấm một việc (Tưới nước / Bón phân / Phun
+   * thuốc…) thì máy ảnh "tự tắt ngay khi mở". Đó KHÔNG phải máy ảnh hỏng — iOS chỉ
+   * hỏi quyền ĐÚNG MỘT LẦN; từ lần từ chối đó trở đi `launchCamera` gọi lại callback
+   * ngay với `errorCode: 'permission'` mà không dựng khung hình nào, nên người dùng
+   * thấy màn máy ảnh loé lên rồi biến mất.
+   *
+   * Trước bản này màn không có đường nào ra: nhánh `errorCode` chỉ hiện câu "Kiểm
+   * tra lại quyền dùng máy ảnh" — một lời khuyên không kèm chỗ để làm. Mà `Cài đặt`
+   * của iOS chỉ hiện mục Máy ảnh của app SAU khi app đã xin ít nhất một lần, nên
+   * người dùng đi tìm cũng không chắc thấy. Nút này đưa thẳng tới đó.
+   */
+  const askOpenSettings = useCallback(() => {
+    showWarning(tk('trace.activity.camPermTitle'), tk('trace.activity.camPermBody'), {
+      confirmText: tk('trace.activity.openSettings'),
+      cancelText: tk('trace.activity.later'),
+      onConfirm: () => { Linking.openSettings().catch(() => {}); },
+    });
+  }, [tk]);
 
   // Mở CAMERA QUAY VIDEO ngay (OS camera) và nhận đường dẫn file trả về → set vào
   // scannedFiles để bật "Lưu onnet". Thay cho luồng cũ điều hướng sang TreeIdentity
@@ -282,16 +390,44 @@ const ActivityScreen = () => {
       showError(tk('trace.activity.noCamera'), tk('trace.activity.noCameraBody'));
       return;
     }
+
+    // Android: hộp quyền phải do APP bật TRƯỚC. `launchCamera` không tự xin — không
+    // xin thì picker trả lỗi và máy ảnh không mở, giống hệt ca iOS ở dưới. Hai màn
+    // chụp khác trong app (`FruitListScreen`, `TreeIdentityScreen`) đã làm đúng thế;
+    // riêng màn này bỏ sót, nên nó là màn duy nhất mở máy ảnh mà không hỏi gì.
+    if (Platform.OS === 'android') {
+      const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA, {
+        title: tk('trace.activity.camPermTitle'),
+        message: tk('trace.activity.camPermAsk'),
+        buttonPositive: tk('trace.activity.allow'),
+        buttonNegative: tk('trace.activity.deny'),
+      });
+      if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+        askOpenSettings();
+        return;
+      }
+    }
+
     imagePicker.launchCamera(await withPhotoSave(VIDEO_OPTIONS), (response: any) => {
       if (response.didCancel) return;
       if (response.errorCode) {
-        showError(tk('trace.activity.cameraErr'), response.errorMessage ?? tk('trace.activity.cameraErrBody'));
+        // Ca "cam tự tắt": quyền đã bị từ chối trước đó nên picker đóng ngay. Nó
+        // phải ra một câu KHÁC hẳn lỗi máy ảnh thường, kèm nút đi thẳng tới Cài đặt
+        // — một hộp chỉ kể lỗi thì người dùng không có chỗ nào để sửa.
+        if (response.errorCode === 'permission') {
+          askOpenSettings();
+          return;
+        }
+        // Hai mã còn lại (`camera_unavailable` và `others`) KHÔNG được nói về quyền:
+        // xem `utils/cameraError.ts`. Trước đây cả ba dùng chung một câu "kiểm tra
+        // lại quyền", nên máy không có máy ảnh cũng bị chỉ sang phần cài đặt.
+        showError(tk('trace.activity.cameraErr'), cameraErrorBody(response));
         return;
       }
       const asset = response.assets?.[0];
       if (asset?.uri) setScannedFiles([asset.uri]);
     });
-  }, []);
+  }, [askOpenSettings, tk]);
 
   const handleSave = async () => {
     if (!selected || !farm || !user || !selectedActivity) return;
@@ -314,7 +450,10 @@ const ActivityScreen = () => {
         // ra được (`TreeDetailScreen`). Thiếu trường này thì việc tưới/xịt vẫn ghi
         // thành công nhưng nằm ở dòng của vườn, và người ghi mở cây ra không thấy gì.
         treeId: tree?.id,
-        materials: [],
+        // Dùng bản ĐÃ LỌC, không dùng `materialRows` thô: dòng gõ dở (chỉ có lượng,
+        // chưa có tên) không được đi lên máy chủ. Việc không hỏi vật tư thì đây là
+        // mảng rỗng — đúng như cũ.
+        materials: needsMaterials ? cleanMaterials : [],
         thumbnailPath: scannedFiles[0] ?? '',
         timestamp: new Date().toISOString(),
         creditsUsed: selectedActivity.credits,
@@ -323,7 +462,21 @@ const ActivityScreen = () => {
       // activityData is the persistence/sync shape (string timestamp, materials,
       // thumbnailPath) which intentionally diverges from the in-memory Activity type.
       setSyncStep(0);
-      await dispatch(saveActivity(activityData as unknown as Activity));
+      // `.unwrap()` KHÔNG phải trang trí — thiếu nó thì `catch` dưới đây CHẾT.
+      //
+      // `saveActivity` là `createAsyncThunk`, và một thunk như thế KHÔNG BAO GIỜ ném:
+      // payload creator ném thì RTK bắt lấy, đổi thành action `…/rejected`, rồi cho
+      // promise **resolve**. Nên `await dispatch(...)` trần đi tiếp bình thường sau
+      // một lượt ghi đã hỏng: `addSyncItem` chạy, `showSuccess('Đã lưu')` hiện,
+      // `goBack()` đóng màn — không một bản ghi nào trên máy. Người ghi việc ngoài
+      // vườn đọc "đã lưu" rồi đi sang cây kế tiếp, và không có gì kêu lên.
+      //
+      // `farmSlice` cũng KHÔNG có `saveActivity.rejected`, nên kho cũng không giữ
+      // dấu vết. Thêm `catch` ở đây không sửa được gì — cái hụt là promise không
+      // bao giờ bị từ chối. `.unwrap()` là thứ ném lại lỗi gốc để `catch` chạm tới.
+      //
+      // Áp cho cả ba việc: tưới nước · bón phân · xịt thuốc.
+      await dispatch(saveActivity(activityData as unknown as Activity)).unwrap();
 
       // KHÔNG trừ MAGIC tại máy. Bản trước gọi
       //   dispatch(updateCredits({ magic: -selectedActivity.credits, ... }))
@@ -340,8 +493,18 @@ const ActivityScreen = () => {
 
       showSuccess(tk('trace.activity.savedTitle'), tk('trace.activity.savedBody'));
       navigation.goBack();
-    } catch (_) {
-      showError(tk('trace.activity.saveFail'), tk('trace.activity.saveFailBody'));
+    } catch (err: unknown) {
+      // Lỗi ở đây là lỗi HỆ THỐNG thô (SQLite đầy đĩa, kho chưa mở, đẩy tệp hỏng) —
+      // không phải câu dành cho người dùng, nên KHÔNG dán nguyên văn ra màn. Nhưng
+      // cũng không được bỏ trắng: bản trước `catch (_)` ném luôn nguyên nhân đi, và
+      // một ảnh chụp màn hình từ vườn không nói được gì để mà lần lại.
+      // Giữ tên lớp lỗi làm MÃ THAM CHIẾU (`SQLITE_FULL`, `TypeError`…) — tra ngược
+      // được trong nhật ký, và ngắn đủ để người ghi đọc lại qua điện thoại.
+      const ref = err instanceof Error ? (err.name || 'Error') : typeof err;
+      showError(
+        tk('trace.activity.saveFail'),
+        `${tk('trace.activity.saveFailBody')} (mã: ${ref})`,
+      );
     } finally {
       setSaving(false);
       setSyncStep(-1);
@@ -447,6 +610,74 @@ const ActivityScreen = () => {
               </TouchableOpacity>
             )}
 
+            {/* ── Phân/thuốc đã dùng ─────────────────────────────────────────
+                Chỉ hiện với hai việc CÓ vật tư. Đặt SAU khối quay clip vì clip là
+                bằng chứng, còn đây là lời khai đi kèm bằng chứng đó. */}
+            {needsMaterials && (
+              <>
+                <View style={[styles.sectionRow, { marginTop: 16 }]}>
+                  <View style={styles.dot} />
+                  <Text style={styles.sectionLabel}>{tk('trace.activity.materials')}</Text>
+                </View>
+                <Text style={styles.matHint}>
+                  {tk(selected === 'pesticide'
+                    ? 'trace.activity.materialsHintPest'
+                    : 'trace.activity.materialsHintFert')}
+                </Text>
+
+                {materialRows.map((row, i) => (
+                  <View key={i} style={styles.matCard}>
+                    <TextInput
+                      style={styles.matName}
+                      value={row.name}
+                      onChangeText={t => setMaterialRows(rows =>
+                        rows.map((r, j) => (j === i ? { ...r, name: t } : r)))}
+                      placeholder={tk('trace.activity.materialName')}
+                      placeholderTextColor={COLORS.textMuted}
+                    />
+                    <View style={styles.matRow}>
+                      <TextInput
+                        style={[styles.matSmall, { flex: 1.2 }]}
+                        value={row.amount}
+                        onChangeText={t => setMaterialRows(rows =>
+                          rows.map((r, j) => (j === i ? { ...r, amount: t } : r)))}
+                        placeholder={tk('trace.activity.materialAmount')}
+                        placeholderTextColor={COLORS.textMuted}
+                        keyboardType="numeric"
+                      />
+                      <TextInput
+                        style={[styles.matSmall, { flex: 1 }]}
+                        value={row.unit}
+                        onChangeText={t => setMaterialRows(rows =>
+                          rows.map((r, j) => (j === i ? { ...r, unit: t } : r)))}
+                        placeholder={tk('trace.activity.materialUnit')}
+                        placeholderTextColor={COLORS.textMuted}
+                      />
+                      {/* Nút bỏ dòng chỉ hiện khi CÓ dòng thứ hai — bỏ dòng cuối
+                          cùng thì màn trống trơn và không còn chỗ nào để gõ. */}
+                      {materialRows.length > 1 && (
+                        <TouchableOpacity
+                          style={styles.matDelBtn}
+                          onPress={() => setMaterialRows(rows => rows.filter((_, j) => j !== i))}
+                          accessibilityLabel={tk('trace.activity.removeMaterial')}
+                        >
+                          <Icon name="xmark" size={14} color={COLORS.textSub} />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </View>
+                ))}
+
+                <TouchableOpacity
+                  style={styles.matAddBtn}
+                  onPress={() => setMaterialRows(rows => [...rows, { ...EMPTY_MATERIAL_ROW }])}
+                >
+                  <Icon name="plus" size={13} color={ORG_TONE.primary} />
+                  <Text style={styles.matAddText}>{tk('trace.activity.addMaterial')}</Text>
+                </TouchableOpacity>
+              </>
+            )}
+
             <View style={styles.creditNote}>
               <Icon name="bolt" size={13} color={COLORS.accent} />
               <Text style={styles.creditNoteText}>
@@ -470,6 +701,22 @@ const ActivityScreen = () => {
             </View>
             {!hasFiles && (
               <Text style={styles.bottomHint}>{tk('trace.activity.needClip')}</Text>
+            )}
+            {/* Nói ra lý do thứ ba. Thiếu clip đã có dòng trên; thiếu tên vật tư thì
+                trước đây nút vẫn sáng (và gửi rỗng), nay nút tắt — nên phải có câu
+                nói vì sao, không thì nó thành một nút tắt không ai hiểu. */}
+            {hasFiles && !materialsReady && (
+              <Text style={styles.bottomHint}>{tk('trace.activity.needMaterial')}</Text>
+            )}
+            {/* Nói ra LÝ DO nút tắt khi lý do KHÔNG nằm ở tay người dùng. Thiếu clip
+                thì đã có dòng trên; thiếu vườn hoặc phiên đăng nhập thì trước đây
+                không dòng nào nói, mà đó lại là hai thứ người dùng không tự thấy. */}
+            {!contextReady && (
+              <Text style={styles.bottomHint}>
+                {!user
+                  ? tk('trace.activity.needLogin')
+                  : tk('trace.activity.needFarm')}
+              </Text>
             )}
           </View>
         )}
@@ -601,6 +848,42 @@ const styles = StyleSheet.create({
   },
   creditChipText: { fontSize: 12, fontWeight: '700', color: COLORS.accent },
   bottomHint: { fontSize: 11, color: COLORS.textMuted, marginLeft: 'auto' as any },
+  // ── Phân/thuốc đã dùng ─────────────────────────────────────────────────────
+  matHint: { fontSize: 13, color: ORG_NATURE.barkSoft, marginBottom: 10, lineHeight: 18 },
+  matCard: {
+    ...ORGANIC_TILE,
+    padding: 12,
+    marginBottom: 8,
+    gap: 8,
+  },
+  matName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: ORG_NATURE.bark,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    backgroundColor: ORG_SURFACE.sunken,
+  },
+  matRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  matSmall: {
+    fontSize: 14,
+    color: ORG_NATURE.bark,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    backgroundColor: ORG_SURFACE.sunken,
+  },
+  matDelBtn: {
+    width: 34, height: 34, borderRadius: 17,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: ORG_SURFACE.sunken,
+  },
+  matAddBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    alignSelf: 'flex-start', paddingVertical: 8, paddingHorizontal: 4,
+  },
+  matAddText: { fontSize: 14, fontWeight: '600', color: ORG_TONE.primary },
 
   saveBtn: {
     backgroundColor: ORG_TONE.primary,

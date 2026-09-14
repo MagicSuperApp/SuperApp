@@ -4,11 +4,15 @@
 //
 //   BƯỚC 1 — MINT VÀO KHO: chọn org → nhập số lượng → gọi mint-lamp (tạo intent
 //     LAMP_MINT) → chờ SSE "signed" (m-of-n gom đủ m chữ ký; single=1) → native
-//     dựng+ký CBOR (Thư) → submit-tx. Kết quả: LAMP nằm trong KHO Distribution,
+//     dựng+ký CBOR (Enclave native) → submit-tx. Kết quả: LAMP nằm trong KHO Distribution,
 //     CHƯA về ví. Hiển thị RÕ điều này — KHÔNG được nói "mint về ví".
 //
-//   BƯỚC 2 — CLAIM-RELEASE VỀ VÍ: đưa LAMP từ kho về ví user. Endpoint PhoenixKey
-//     CHƯA cấp → nút DISABLED + ghi "chờ endpoint release". KHÔNG bịa path.
+//   BƯỚC 2 — CLAIM-RELEASE VỀ VÍ: đưa LAMP từ kho về ví user. Nút DISABLED, nhưng
+//     KHÔNG phải vì "PhoenixKey chưa cấp endpoint" như chú thích cũ ghi: nhà Phoenix
+//     đo lại và trả lời rằng cửa đó sẽ không bao giờ có — bước 2 thuộc nhà MagicLamp
+//     (`dist_treasury`), và tín hiệu "xong" là đọc `GET /identity/org/{orgDid}/grants`
+//     tới khi Grant sang `CONSUMED`. Lý lẽ đầy đủ + chốt fail-closed còn treo ở
+//     `services/orgMintService.ts` ▸ `claimReleaseToWallet`. KHÔNG bịa path.
 //
 // Phần dựng+ký CBOR đã nối tới Enclave native (orgMintTxBuilder → Rust). Cái còn
 // thiếu là SỐ LIỆU chuỗi, khai ở config/orgMintChain.ts — thiếu thì buildAndSignTx
@@ -65,17 +69,17 @@ type MintPhase = 'idle' | 'requesting' | 'waiting_sign' | 'submitting' | 'done' 
 // Ba `resolve*` dưới đây cũng chưa có nguồn thật (app chưa có chỗ mở Master_KEK
 // ở tầng màn, chưa có endpoint trả slot tip). Chúng KHÔNG bao giờ chạy khi
 // ORG_MINT_CHAIN còn null, nên để chúng ném thẳng còn hơn trả số giả.
-const chuaCoNguon = (ten: string) => async (): Promise<never> => {
+const noSourceYet = (ten: string) => async (): Promise<never> => {
   throw new Error(`Chưa có nguồn dữ liệu: ${ten}`);
 };
 
 const buildAndSignTx: BuildAndSignMintTx = makeBuildAndSignMintTx({
   chain: ORG_MINT_CHAIN,
   network: ORG_MINT_NETWORK,
-  resolveAuthorityKeks: chuaCoNguon('Master_KEK của authority tổ chức'),
-  resolveWallet: chuaCoNguon('UTxO + seed ví trả phí'),
-  resolveTipSlot: chuaCoNguon('slot tip của chuỗi'),
-  resolveMint: chuaCoNguon('số LAMP + tên token'),
+  resolveAuthorityKeks: noSourceYet('Master_KEK của authority tổ chức'),
+  resolveWallet: noSourceYet('UTxO + seed ví trả phí'),
+  resolveTipSlot: noSourceYet('slot tip của chuỗi'),
+  resolveMint: noSourceYet('số LAMP + tên token'),
 });
 
 const OrgMintScreen: React.FC = () => {
@@ -141,7 +145,7 @@ const OrgMintScreen: React.FC = () => {
       signHandleRef.current = handle;
       await signed;
 
-      // 1c. Native dựng + ký CBOR (Thư) → submit-tx.
+      // 1c. Native dựng + ký CBOR → submit-tx.
       setPhase('submitting');
       const result = await submitMintTx({
         orgDid,

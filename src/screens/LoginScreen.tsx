@@ -30,6 +30,7 @@ import { useDispatch } from 'react-redux';
 import { useAnalytics } from '../services/analytics';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import ReactNativeBiometrics, { BiometryTypes } from 'react-native-biometrics';
+import { useBiometricSensor } from '../hooks/useBiometricSensor';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS } from '../constants';
 import { WORK_THEME } from '../theme';
@@ -44,7 +45,9 @@ import { showError } from '../utils/alert';
 import LoginSuccessOverlay from '../components/LoginSuccessOverlay';
 import LanguagePickerModal from '../components/LanguagePickerModal';
 import { LANGUAGES, t, tf, useLanguage } from '../i18n';
+import { tk } from '../i18n/keys';
 import { DEFAULT_INSTANCE } from '../config/instance.config';
+import { LinearWash, deepen, tint } from '../shared/components/SoftGradient';
 
 const PHOENIX_USERS_KEY = '@phoenixkey/users';
 const ACTIVE_USERNAME_KEY = '@phoenixkey/active_username';
@@ -68,6 +71,74 @@ const BLUE = {
   glow: 'rgba(168, 212, 176, 0.35)',
   glowSoft: 'rgba(232, 245, 235, 0.45)',
 };
+
+// ── Hai chặng chuyển sắc của khu HERO ───────────────────────────────────────
+//
+// Trước bản này khu hero là HAI MẢNG ĐẶC chồng nhau: `heroBase` màu `deep`, rồi
+// `heroOverlay` màu `primary` phủ lên ở độ đục 0,5. Kết quả là một màu phẳng —
+// đúng bằng trung bình của hai màu — nên cả khối đọc ra "một ô màu", không ra
+// "một bề mặt có ánh sáng". Nay là một chuyển sắc chéo, theo đúng luật "nhẹ"
+// của `trace/theme/depth.ts`: hai chặng CÙNG tông, lệch chưa tới một bậc sáng,
+// để chữ trắng đọc được ở MỌI vị trí trên nền chứ không chỉ ở chỗ tối.
+//
+// ── Vì sao TÍNH ra chứ không gõ cứng hai hex ────────────────────────────────
+// `BLUE.deep`/`BLUE.primary` đọc từ `WORK_THEME`, tức từ app đang chạy. Gõ một
+// hex xanh thứ ba vào đây là dựng lại đúng cái bẫy mà `trace/theme/depth.ts`
+// vừa gỡ: một bảng màu SONG SONG, đứng im ở màu của app đầu tiên trong khi phần
+// còn lại của màn đổi theo instance. `deepen` suy chặng cuối TỪ chặng đầu, nên
+// dù app nào chạy thì hai chặng cũng vẫn cùng tông với nhau.
+//
+// ── Vì sao không lấy thẳng cặp `primary → deep` ─────────────────────────────
+// Với bảng màu Aladin, `primary` và `deep` lệch nhau 1,80 lần — vượt ngưỡng 1,5
+// mà `trace/theme/gradient.test.ts` đặt cho cả bộ chuyển sắc. Nó sẽ thôi là
+// "chuyển sắc nhẹ" và thành một vệt sáng chạy ngang khu hero. `deepen` giữ tỉ lệ
+// ở ~1,30 cho MỌI màu đưa vào, nên luật ấy đứng với mọi instance chứ không chỉ
+// với bảng màu hiện tại.
+//
+// ── Vì sao chặng ĐẦU cũng đã tối đi một bậc ─────────────────────────────────
+// Chặng đầu KHÔNG phải `BLUE.primary` trần. Mảng phẳng hiện nay là trung bình
+// của `deep` và `primary` (do lớp phủ 0,5), tức đã tối hơn `primary` — nên lấy
+// thẳng `primary` làm chặng sáng nhất là làm NHẠT nền đi so với bản đang chạy,
+// và chữ trên đó tương phản kém hơn hôm nay. Nhãn `eyebrow` (10px, màu
+// `BLUE.pale`) là chỗ mỏng nhất: trên mảng phẳng hiện nay nó đo 4,9:1, còn trên
+// `primary` trần chỉ còn 3,9:1.
+//
+// `deepen(primary, 0,12)` cho `#266B32` — gần như trùng mảng phẳng hôm nay
+// (`#256B32`). Nhờ vậy lượt này KHÔNG làm chữ nào tệ đi: chặng sáng nhất bằng
+// nền cũ, mọi chỗ còn lại tối hơn, tức tương phản bằng hoặc hơn.
+//
+// Chặng cuối ĐÃ HẠ từ 0,24 xuống 0,18. Bản 0,24 rơi vào `#215D2B`: đo thì vẫn
+// "nhẹ" (hai chặng lệch 1,21 lần, dưới ngưỡng 1,5), nhưng nó dồn toàn bộ phần
+// tối vào MỘT GÓC dưới-phải, mà góc ấy lại là chỗ khu hero giáp tấm trắng — một
+// vùng sậm nằm cạnh một mép trắng thì đọc ra vết bẩn chứ không ra ánh sáng.
+// 0,18 giữ cùng hướng sáng mà hai chặng chỉ còn lệch 1,10 lần.
+//
+// Số đo với bảng màu Aladin, tính theo WCAG, ở chặng SÁNG NHẤT (chỗ tệ nhất):
+//   · chữ TRẮNG: 6,50:1 — qua AA cho cả cỡ chữ nhỏ. Mảng phẳng hôm nay đo
+//     6,51:1, tức lượt này đổi đúng 0,01 — nằm dưới mức phân biệt được.
+//   · `BLUE.pale` (nhãn `eyebrow`): 4,75:1 — BẰNG mảng phẳng hôm nay, qua AA.
+const HERO_FROM = deepen(BLUE.primary, 0.12);
+const HERO_TO = deepen(BLUE.primary, 0.18);
+
+// ── Nền tấm trắng ───────────────────────────────────────────────────────────
+//
+// Việc cần làm: chỗ nối giữa hero xanh và tấm trắng đừng là một đường cắt phẳng.
+//
+// Bản trước làm bằng HAI VỆT LOANG TRÒN ở hai góc trên (lối Mica của module Trò
+// chuyện). Nó cho ra đúng thứ vừa bị báo lỗi — *"mảng màu xanh bên phải, nhìn
+// như màn hình bị hỏng"*: một vệt tròn trên nền trắng, dù nhạt tới đâu, vẫn đọc
+// ra một VẾT Ố nằm ở một góc, vì mắt tìm ra mép của nó. Lối Mica chỉ đứng được
+// trên nền đã có màu, không đứng được trên nền trắng.
+//
+// Nay là một chuyển sắc THẲNG chạy dọc cả tấm: xanh rất nhạt ở mép trên (nơi
+// giáp hero) tan đều xuống trắng hẳn ở dưới (nơi có chữ và thẻ). Không mép, nên
+// không có gì để nhận ra thành một vết.
+//
+// `tint` pha ra hex ĐẶC thay vì phủ một lớp alpha — lý do ở chính `tint`.
+// 0,05 là mức để chặng trên đo 1,03 so với trắng: mắt thấy tấm "ấm lên" ở mép
+// giáp hero, nhưng không ai chỉ được ra đâu là chỗ màu bắt đầu.
+const SHEET_FROM = tint(COLORS.bg, BLUE.primary, 0.05);
+const SHEET_TO = COLORS.bg;
 const ACCENT_ORANGE = '#E08C3A';
 
 // ── Mock events / tin tức (sẽ đổi sang API thật sau) ────────────────────────
@@ -90,10 +161,13 @@ const LoginScreen = () => {
   const dispatch = useDispatch();
   const { trackPress, trackAction } = useAnalytics('LoginScreen');
 
-  const [biometryType, setBiometryType] = useState<string>('');
-  // `null` = CHƯA dò xong. Phân biệt với `false` (dò xong, máy không có cảm biến)
-  // để nút không loé sang trạng thái tắt trong mấy khung hình đầu.
-  const [sensorAvailable, setSensorAvailable] = useState<boolean | null>(null);
+  // `available === null` = CHƯA dò xong. Phân biệt với `false` (dò xong, máy
+  // không có cảm biến) để nút không loé sang trạng thái tắt trong mấy khung hình
+  // đầu. Hook đo LẠI mỗi lần app về tiền cảnh — cần thế vì nút "Mở Cài đặt"
+  // (:485 bên dưới) đẩy người dùng ra ngoài rồi họ quay về với cảm biến vừa bật.
+  const { available: sensorAvailable, biometryType } = useBiometricSensor(
+    (msg, e) => console.log(`[Login] ${msg}:`, e),
+  );
   const [busy, setBusy] = useState(false);
   // Overlay hiệu ứng logo chớp mắt khi đăng nhập thành công (trước khi vào Main).
   const [showSuccess, setShowSuccess] = useState(false);
@@ -168,20 +242,10 @@ const LoginScreen = () => {
     const loops = [float(blob1, 4500), float(blob2, 6000), float(blob3, 5200)];
     loops.forEach(l => l.start());
 
-    let alive = true;
-    (async () => {
-      try {
-        const rn = new ReactNativeBiometrics();
-        const { available, biometryType: type } = await rn.isSensorAvailable();
-        if (!alive) return; // màn đã rời — đừng đặt state vào cây đã tháo
-        setSensorAvailable(available);
-        setBiometryType(type || '');
-      } catch (e) {
-        console.log('[Login] Biometric sensor check failed:', e);
-      }
-    })();
-
-    return () => { alive = false; loops.forEach(l => l.stop()); };
+    // Phép đo cảm biến ĐÃ dời sang `useBiometricSensor` — nó cần nghe `AppState`,
+    // còn khối này chỉ chạy một lần nên không đo lại được sau khi người dùng ra
+    // Cài đặt bật Face ID rồi quay về.
+    return () => { loops.forEach(l => l.stop()); };
   }, [fadeAnim, slideAnim, blob1, blob2, blob3]);
 
   const hasFaceId = biometryType === BiometryTypes.FaceID;
@@ -286,15 +350,34 @@ const LoginScreen = () => {
 
       const user = await phoenixKeyAuth.unlockExistingIdentity();
       if (!user) {
-        // Có khoá nhưng không dựng lại được danh tính (DID hỏng/không hỗ trợ).
-        navigation.navigate('SignUpBiometric' as never);
+        // Máy CÓ khoá trong chip, CÓ một DID đã lưu, nhưng không dựng lại được
+        // danh tính từ chúng — `unlockExistingIdentity` trả `null` ở đúng một
+        // chỗ: DID đã lưu không thuộc dạng máy chủ hiểu và cũng không cứu được
+        // bằng `recoverLocalIdentityFromKey` (`services/phoenixKeyAuthService.ts`,
+        // nhánh `isSupportedBackendDid` sai).
+        //
+        // Chỗ này TỪNG đi thẳng sang `SignUpBiometric` — màn TẠO MỚI. Đó là đúng
+        // cái hỏng mà `IdentityEntryChoiceScreen` được lập ra để bịt, chỉ khác
+        // nhánh: người dùng có khoá thật, có danh tính thật, và app chọn hộ họ
+        // luồng "tôi là người mới". Kết quả là một DID THỨ HAI cho cùng một
+        // người; `farmService` lấy `owner_did` từ phiên nên danh sách vườn hiện
+        // RỖNG, mà rỗng thì trùng khớp với "tôi chưa ghi gì" — không ai nhận ra
+        // đã mất đường về, và bước kế tiếp rất dễ là nhập lại vườn dưới DID mới.
+        //
+        // Nay dẫn sang màn HỎI, để chính người dùng rẽ. Không chọn hộ: nhánh này
+        // không phân biệt được "DID cũ của tôi" với "DID rác còn sót trên máy
+        // mượn", và hai thứ đó cần hai lối khác nhau.
+        navigation.navigate('IdentityEntryChoice' as never);
         return;
       }
 
       trackAction('login_success', {
         metadata: { kind: bioKind, biometryType: biometryType || 'unknown' },
       });
-      await dispatch(loginUser(user as any) as any);
+      // `.unwrap()`: thiếu nó thì lỗi mở cơ sở dữ liệu của người dùng bị nuốt, màn vẫn
+      // chạy hiệu ứng thành công rồi `reset` vào `Main` với `currentUser: null`. Xem
+      // khối chú thích trên `loginUser` (`store/userSlice.ts`).
+      await (dispatch(loginUser(user as any) as any) as any).unwrap();
       // Hiện hiệu ứng logo chớp mắt; onDone của overlay sẽ reset về Main.
       setShowSuccess(true);
     } catch (e) {
@@ -330,13 +413,17 @@ const LoginScreen = () => {
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor={BLUE.deep} />
+      {/* Thanh trạng thái lấy ĐÚNG chặng đầu của hero, không lấy `BLUE.deep`:
+          chặng đầu là màu ở mép TRÊN-TRÁI (góc 145°), tức ngay dưới thanh. Để
+          `deep` ở đây là một đường nối sậm hơn chạy ngang đỉnh màn. */}
+      <StatusBar barStyle="light-content" backgroundColor={HERO_FROM} />
 
       {/* ── HERO ZONE ───────────────────────────────────── */}
       <View style={styles.hero}>
-        {/* Layered solid color base */}
-        <View style={styles.heroBase} />
-        <View style={styles.heroOverlay} />
+        {/* Nền hero: chuyển sắc chéo hai chặng cùng tông (xem HERO_FROM/HERO_TO).
+            Lớp này tự trải kín khu hero và không nhận cú chạm; mọi thứ bên dưới
+            trong cây — blob, sao, chữ — vẽ đè lên nó. */}
+        <LinearWash from={HERO_FROM} to={HERO_TO} angle={145} />
 
         {/* Decorative blob circles */}
         <Animated.View
@@ -386,7 +473,7 @@ const LoginScreen = () => {
           <View style={styles.logoRow}>
             <View style={styles.logoOuter}>
               <View style={styles.logoInner}>
-                <Image source={require('../../assets/images/logo.png')} style={{ width: 50, height: 50, borderRadius: 9 }} />
+                <Image source={DEFAULT_INSTANCE.logo} style={{ width: 50, height: 50, borderRadius: 9 }} />
               </View>
             </View>
 
@@ -414,7 +501,7 @@ const LoginScreen = () => {
             {/* `tf` giữ tên người ra NGOÀI khoá từ điển: nối chuỗi rồi mới dịch sẽ
                 không bao giờ khớp, còn khuôn '{name}' cho bản dịch tự đặt lại vị
                 trí (tiếng Nhật/Trung có trật tự từ khác tiếng Việt). */}
-            {activeUser ? tf('Wellcome @{name}', { name: activeUser.username }) : 'Wellcome'}
+            {activeUser ? tf('Chào mừng @{name}', { name: activeUser.username }) : t('Chào mừng')}
           </Text>
           <Text allowFontScaling={false} style={styles.subtitle}>
             {activeUser
@@ -442,6 +529,12 @@ const LoginScreen = () => {
       </View>
 
       {/* ── SHEET ─────────────────────────────────────── */}
+      {/* Bọc thêm MỘT lớp quanh ScrollView: nền phải ĐỨNG YÊN khi nội dung cuộn
+          (đặt nó trong `contentContainerStyle` thì nó trôi theo và biến mất ngay
+          dòng thứ hai). Lớp bọc giữ bo góc + `overflow: 'hidden'`, còn ScrollView
+          nay trong suốt để thấy được chuyển sắc phía sau. */}
+      <View style={styles.sheetWrap}>
+        <LinearWash from={SHEET_FROM} to={SHEET_TO} angle={180} />
       <ScrollView
         style={styles.sheet}
         contentContainerStyle={styles.sheetContent}
@@ -536,7 +629,11 @@ const LoginScreen = () => {
               Bạn đã từng dùng app nào cùng nhóm với app này chưa?
             </Text>
             <Text style={styles.signUpSub} allowFontScaling={false}>
-              Người mới, đổi điện thoại, hay máy này đang có app khác cùng nhóm — ba đường khác nhau, chọn ở đây
+              {/* KHÔNG ghi số lối ở đây. Câu cũ ghi "ba đường" và đã sai từ ngày lối thứ
+                  tư (nhờ app đang đăng nhập duyệt) chạy được — số gõ cứng không sinh từ
+                  danh sách nên nó chết im lặng, và không cổng nào kêu. Đo trên màn thật
+                  2026-09-13: câu nói ba, màn bày bốn. */}
+              Người mới, đổi điện thoại, hay máy này đang có app khác cùng nhóm — mỗi trường hợp một đường riêng, chọn ở đây
             </Text>
           </View>
           <Icon name="arrow-right" size={18} color={BLUE.primary} />
@@ -550,6 +647,29 @@ const LoginScreen = () => {
             ra gì. Không có API tin tức nào để nối vào, nên gỡ hẳn thay vì để chờ.
             Có API thật thì dựng lại từ `EventCard` (còn nguyên bên dưới). */}
 
+        {/* ── Lối gửi báo cáo, đặt NGOÀI cổng đăng nhập ─────────────────────────
+            Lớp lỗi dày nhất của một buổi đi vườn nằm TRƯỚC lúc đăng nhập xong, và cả
+            bốn ca đều kết thúc ở chính màn này: danh tính chưa dùng được trên máy
+            (:229), sinh trắc tạm khoá (:319), khoá bị hệ điều hành huỷ vì người dùng
+            vừa thêm/xoá một vân tay (:326), sinh trắc thất bại (:330).
+
+            Nếu cửa báo cáo chỉ nằm ở màn Tài khoản thì đúng lớp lỗi cần báo nhất lại là
+            lớp KHÔNG báo được — `AccountScreen` tự đẩy về `Login` khi chưa có phiên. Thứ
+            người thực địa làm thay vào đó là chụp ảnh màn hình gửi Zalo: ảnh đó không
+            mang commit, không mang máy chủ, không mang những dòng trước đó.
+
+            Một dòng chữ, không phải một thẻ: nó không được cạnh tranh với nút đăng nhập. */}
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => navigation.navigate('DiagnosticReport' as never)}
+          style={styles.reportLinkWrap}
+        >
+          <Icon name="message-alert-outline" size={13} color={COLORS.textMuted} />
+          <Text style={styles.reportLinkText} allowFontScaling={false}>
+            {tk('identity.report.loginLink')}
+          </Text>
+        </TouchableOpacity>
+
         {/* Footer */}
         <View style={styles.footer}>
           <Icon name="lock-check-outline" size={13} color={COLORS.textMuted} />
@@ -558,6 +678,7 @@ const LoginScreen = () => {
           </Text>
         </View>
       </ScrollView>
+      </View>
 
       {/* Hiệu ứng đăng nhập thành công — phủ toàn màn, chạy 1 nhịp chớp mắt rồi
           reset về Main. */}
@@ -650,9 +771,6 @@ const BioButton: React.FC<{
           />
         </TouchableOpacity>
       </Animated.View>
-      <Text style={styles.bioBtnLabel} allowFontScaling={false}>
-        LOGIN WITH BIOMETRIC
-      </Text>
     </>
   );
 };
@@ -732,17 +850,6 @@ const styles = StyleSheet.create({
     height: HERO_HEIGHT,
     overflow: 'hidden',
   },
-  heroBase: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: BLUE.deep,
-  },
-  heroOverlay: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: BLUE.primary,
-    opacity: 0.5,
-  },
-
   // Decorative blobs
   blob: {
     position: 'absolute',
@@ -839,12 +946,21 @@ const styles = StyleSheet.create({
   },
 
   // ── SHEET ────────────────────────────────────────────
-  sheet: {
+  // Lớp bọc: giữ hình dáng của tấm (bo góc trên, kéo lên đè mép hero) và CẮT
+  // TRÀN, để nền không lòi ra ngoài bốn góc.
+  sheetWrap: {
     flex: 1,
-    backgroundColor: COLORS.bg,
     marginTop: -24,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
+    overflow: 'hidden',
+    backgroundColor: COLORS.bg,
+  },
+  // ScrollView nay TRONG SUỐT: nền của tấm do <LinearWash> ở lớp bọc vẽ.
+  // Đặt lại một màu đặc ở đây là xoá mất hai vệt loang.
+  sheet: {
+    flex: 1,
+    backgroundColor: 'transparent',
   },
   sheetContent: {
     paddingHorizontal: 22,
@@ -869,6 +985,7 @@ const styles = StyleSheet.create({
     width: BIO_BTN_SIZE, height: BIO_BTN_SIZE,
     alignItems: 'center', justifyContent: 'center',
     display: 'flex',
+    marginBottom: 16,
   },
   bioBtn: {
     width: BIO_BTN_SIZE - 2, height: BIO_BTN_SIZE - 2,
@@ -1017,11 +1134,24 @@ const styles = StyleSheet.create({
   },
 
   // ── Footer ────────────────────────────────────────────
+  // Vùng chạm rộng hơn chữ (đệm dọc 10): người thực địa bấm bằng tay găng hoặc tay ướt,
+  // và một dòng chữ 12px không có đệm là một đích gần như không bấm trúng.
+  reportLinkWrap: {
+    flexDirection: 'row',
+    alignItems: 'center', justifyContent: 'center',
+    gap: 6,
+    marginTop: 20,
+    paddingVertical: 10,
+  },
+  reportLinkText: {
+    fontSize: 12, color: COLORS.textMuted, fontWeight: '600',
+    textDecorationLine: 'underline',
+  },
   footer: {
     flexDirection: 'row',
     alignItems: 'center', justifyContent: 'center',
     gap: 6,
-    marginTop: 24,
+    marginTop: 4,
     paddingTop: 14,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,

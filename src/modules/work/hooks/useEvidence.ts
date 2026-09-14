@@ -12,6 +12,7 @@ import {
   type WorkErrorKind,
   type EvidenceItem,
 } from '../services/workApi';
+import { mutationFailed, mutationOk, type MutationOutcome } from './mutationOutcome';
 
 export interface EvidenceState {
   items: EvidenceItem[];
@@ -50,24 +51,29 @@ export const useEvidence = (contractId: string) => {
 
   useEffect(() => { load(); }, [load]);
 
-  /** Đăng thêm bằng chứng. Trả true khi OK (rồi reload). */
+  /**
+   * Đăng thêm bằng chứng.
+   *
+   * Trả MÃ LỖI của chính lượt này thay vì để chỗ gọi đọc `errorCode` trong state
+   * — xem `mutationOutcome.ts`. `errorCode` vẫn còn trong state, nhưng chỉ để VẼ.
+   */
   const register = useCallback(
-    async (items: EvidenceItem[]): Promise<boolean> => {
+    async (items: EvidenceItem[]): Promise<MutationOutcome<null>> => {
       if (!isWorkBackendEnabled()) {
         setState(s => ({ ...s, errorCode: 'BACKEND_DISABLED' }));
-        return false;
+        return mutationFailed('BACKEND_DISABLED');
       }
       setState(s => ({ ...s, submitting: true, errorCode: null }));
       try {
         await registerEvidence(contractId, items, { idempotencyKey: newIdempotencyKey() });
         setState(s => ({ ...s, submitting: false }));
         await load();
-        return true;
+        return mutationOk(null);
       } catch (err) {
         const code = err instanceof WorkApiError ? err.code : 'UNKNOWN';
         console.warn('[Work] registerEvidence failed:', err);
         setState(s => ({ ...s, submitting: false, errorCode: code }));
-        return false;
+        return mutationFailed(code);
       }
     },
     [contractId, load],

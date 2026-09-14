@@ -25,21 +25,25 @@ const MatchScreen: React.FC = () => {
   const route = useRoute<RouteProp<RouteParams, 'WorkMatch'>>();
   const { jobId } = route.params;
   const { result, loading, errorKind, usingMock, reload } = useMatch(jobId);
-  const { create, creating, errorCode } = useCreateContract();
+  const { create, creating } = useCreateContract();
 
   // Thuê ứng viên → tạo hợp đồng {jobId, candidateDid} → mở ContractDetail (vào vòng
   // đời pledge). Mock/lỗi → báo nhẹ, KHÔNG tạo hợp đồng giả.
   const handleHire = async (candidateDid: string) => {
-    const contract = await create({ jobId, candidateDid });
-    if (contract) {
-      navigation.navigate('ContractDetail', { contractId: contract.id });
+    // Mã lỗi lấy từ CHÍNH lượt gọi này, không đọc `errorCode` trong state sau
+    // `await` (đó là bao đóng cũ) — xem `hooks/mutationOutcome.ts`. Ở màn này cái
+    // giá của lỗi đó thấy rõ nhất: nhánh `ALREADY` ("đã có hợp đồng với ứng viên
+    // này") chưa bao giờ chạy ở lần bấm đầu, đúng lần mà nó cần chạy.
+    const res = await create({ jobId, candidateDid });
+    if (res.ok && res.value) {
+      navigation.navigate('ContractDetail', { contractId: res.value.id });
     } else {
       showError('Chưa thuê được',
-        errorCode === 'BACKEND_DISABLED'
+        res.code === 'BACKEND_DISABLED'
           ? 'Cần máy chủ AladinWork để tạo hợp đồng. Thử lại khi dịch vụ sống.'
-          : errorCode === 'ALREADY'
+          : res.code === 'ALREADY'
           ? 'Đã có hợp đồng với ứng viên này cho tin việc.'
-          : `Không tạo được hợp đồng${errorCode ? ` (${errorCode})` : ''}. Thử lại sau.`);
+          : `Không tạo được hợp đồng${res.code ? ` (${res.code})` : ''}. Thử lại sau.`);
     }
   };
 

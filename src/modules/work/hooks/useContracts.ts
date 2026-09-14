@@ -21,6 +21,7 @@ import {
 } from '../services/workApi';
 import type { WorkContract } from '../services/types';
 import { MOCK_CONTRACTS, getMockContract } from '../data/workMockApi';
+import { mutationFailed, mutationOk, type MutationOutcome } from './mutationOutcome';
 
 export interface LoadState {
   loading: boolean;
@@ -154,27 +155,33 @@ export const useContractAction = () => {
 
 /**
  * Tạo hợp đồng (luồng THUÊ) — từ ứng viên khớp việc `{jobId, candidateDid}` hoặc từ
- * dịch vụ `{offeringId}`. Thành công → trả WorkContract (caller điều-hướng ContractDetail).
- * Mock/lỗi → false + errorCode (BACKEND_DISABLED khi chưa có host — không tạo hợp đồng giả).
+ * dịch vụ `{offeringId}`. Thành công → `value` là WorkContract (caller điều-hướng
+ * ContractDetail). Mock/lỗi → `ok:false` + `code` (BACKEND_DISABLED khi chưa có
+ * host — không tạo hợp đồng giả).
  * Idempotency-Key ổn-định theo lần bấm → mạng chập chờn không tạo 2 hợp đồng.
+ *
+ * Mã lỗi đi theo GIÁ TRỊ TRẢ VỀ, không qua state: chỗ gọi `await create(...)` rồi
+ * đọc `errorCode` sẽ đọc bao đóng của lần dựng hình trước — xem `mutationOutcome.ts`.
+ * `errorCode` vẫn trả ra nhưng chỉ để VẼ.
  */
 export const useCreateContract = () => {
   const [creating, setCreating] = useState(false);
   const [errorCode, setErrorCode] = useState<string | null>(null);
 
   const create = useCallback(
-    async (body: CreateContractBody): Promise<WorkContract | false> => {
+    async (body: CreateContractBody): Promise<MutationOutcome<WorkContract>> => {
       if (!isWorkBackendEnabled()) {
         setErrorCode('BACKEND_DISABLED');
-        return false;
+        return mutationFailed('BACKEND_DISABLED');
       }
       setCreating(true);
       setErrorCode(null);
       try {
-        return await createContract(body, { idempotencyKey: newIdempotencyKey() });
+        return mutationOk(await createContract(body, { idempotencyKey: newIdempotencyKey() }));
       } catch (err) {
-        setErrorCode(err instanceof WorkApiError ? err.code : 'UNKNOWN');
-        return false;
+        const code = err instanceof WorkApiError ? err.code : 'UNKNOWN';
+        setErrorCode(code);
+        return mutationFailed(code);
       } finally {
         setCreating(false);
       }

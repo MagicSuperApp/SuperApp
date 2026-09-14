@@ -271,11 +271,18 @@ const ChatScreen: React.FC = () => {
     return (
       <View style={styles.root}>
         <MicaBackdrop intensity={0.6} />
+        {/* ⛔ `status="empty"` KHÔNG có nhãn hành động mặc định (`StateView.tsx`
+            ▸ `DEFAULTS.empty` cố ý bỏ trống `action`), nên bản trước truyền
+            `onRetry` mà quên `actionLabel` và nút KHÔNG BAO GIỜ được vẽ — điều
+            kiện vẽ là `onPress && label`. Nhánh này lại dựng hình TRƯỚC thanh
+            tiêu đề, nên màn không còn một nút quay lại nào: người dùng kẹt hẳn,
+            chỉ thoát được bằng cử chỉ của hệ điều hành. */}
         <StateView
           status="empty"
           title="Không mở được cuộc trò chuyện"
           message="Quay lại danh sách rồi thử lần nữa."
-          onRetry={() => navigation.goBack()}
+          actionLabel="Quay lại danh sách"
+          onAction={() => navigation.goBack()}
         />
       </View>
     );

@@ -56,6 +56,17 @@ jest.mock('../sdk/taadEnclave', () => ({
     // vào `undefined` và ném ngay ở dòng đầu vòng lặp gắn máy — bài kiểm sẽ đỏ với
     // một lý do không dính gì tới thứ nó đo, và đỏ ở chỗ trông y hệt "cổng đã chặn".
     generateSalt: jest.fn(),
+    // Đường 24 từ: `deriveMasterKekFromMnemonic` gọi thẳng hàm này
+    // (`services/masterKekStore.ts:71`). Thiếu nó thì KEK về `undefined`, màn ném
+    // 'Master_KEK trả về không hợp lệ' và mọi bài đi đường 24 từ đỏ vì một lý do
+    // không dính gì tới thứ chúng đo.
+    mnemonicToMasterKek: jest.fn(),
+    // `doRestore` ghi KEK vào kho khoá TRƯỚC khi gắn máy khi máy chưa có ví
+    // (`RestoreIdentityScreen.tsx:513-515` → `masterKekStore.storeMasterKek`).
+    // Thiếu hàm này thì lời gọi ném `TypeError`, và khối `catch` của `doRestore`
+    // gói MỌI lỗi thành câu "Cụm từ không hợp lệ" — nên bài kiểm đỏ với một lý do
+    // hoàn toàn không liên quan, lại còn đỏ dưới một cái tên nghe rất hợp lý.
+    secureStore: jest.fn(async () => true),
   },
 }));
 
@@ -65,6 +76,9 @@ jest.mock('../sdk/phoenixKey', () => ({
   saveUserDid: jest.fn(),
   currentUserDid: jest.fn(async () => null),
   signRaw: jest.fn(async () => 'ff'.repeat(32)),
+  // Cửa hỏi "chip có khoá nào chưa" — màn dùng nó để quyết có đi hỏi máy chủ theo
+  // khoá hay không. Mặc định `false` để các bài cũ giữ nguyên hành vi.
+  isKeypairEnrolled: jest.fn(async () => false),
 }));
 
 jest.mock('../services/phoenixKey-api', () => ({
@@ -82,11 +96,20 @@ jest.mock('../services/phoenixKey-api', () => ({
   PhoenixKeyApiError: class extends Error {},
 }));
 
-jest.mock('../services/phoenixKeyAuthService', () => ({ phoenixKeyAuth: {} }));
+jest.mock('../services/phoenixKeyAuthService', () => ({
+  phoenixKeyAuth: {},
+  // Nguồn DID thứ tư của màn — hỏi máy chủ theo chính khoá trong chip. Phải có
+  // trong mock: để `undefined` thì lời gọi ném, và cái ném đó rơi vào đúng khối
+  // `catch` nuốt lỗi của màn, nên bài kiểm sẽ XANH ở cả hai cực.
+  lookupDidByDeviceKey: jest.fn(),
+}));
 jest.mock('../store/userSlice', () => ({ loginUser: jest.fn() }));
 
 import taadEnclave from '../sdk/taadEnclave';
-import { signRaw, ownerPublicKey, enrollKeypair } from '../sdk/phoenixKey';
+import {
+  signRaw, ownerPublicKey, enrollKeypair, isKeypairEnrolled, currentUserDid,
+} from '../sdk/phoenixKey';
+import { lookupDidByDeviceKey } from '../services/phoenixKeyAuthService';
 import { phoenixKeyApi, PhoenixKeyApiError } from '../services/phoenixKey-api';
 import RestoreIdentityScreen from './RestoreIdentityScreen';
 import { setLanguage, __resetLanguageForTest } from '../i18n/store';
@@ -447,5 +470,103 @@ describe('RestoreIdentityScreen — mã định danh: chưa từng có · đã t
     const cau = await chayVaLayCau();
     expect(cau).not.toMatch(/thu hồi|chưa từng được đăng ký|đang hoạt động/i);
     expect(cau).toMatch(/không ký được cho tài khoản vừa tra/i);
+  });
+});
+
+/**
+ * NGUỒN DID THỨ TƯ — hỏi máy chủ theo CHÍNH khoá trong chip.
+ *
+ * Ba nguồn cũ đều hỏi cái máy: DID gõ tay · `currentUserDid()` · sổ
+ * `@phoenixkey/users` · tên đăng nhập. Ba nguồn giữa nằm trong AsyncStorage hoặc
+ * trong trí nhớ người dùng, nên tồn tại đúng một ca mà cả ba cùng câm: cài lại app
+ * trên chính máy cũ, và không nhớ tên đăng nhập. Kho khoá thì vẫn giữ khoá qua lần
+ * gỡ app, và `POST /identity/lookup` đổi đúng khoá đó lấy DID.
+ *
+ * Ba bài dưới đây đo ba cực KHÁC NHAU, không phải ba cách nói một điều:
+ *   không nhớ gì + chip CÓ khoá   → PHẢI hỏi, và DID hỏi được phải đem đi gắn máy
+ *   không nhớ gì + chip KHÔNG khoá → KHÔNG hỏi (không có gì để hỏi)
+ *   CÒN nhớ DID                    → KHÔNG hỏi (đừng bắt trả một hộp sinh trắc thừa)
+ *
+ * Cực thứ ba là cực dễ bỏ nhất và là cực ghim cái cổng `uniqueDids.length === 0`:
+ * bỏ nó thì mọi lần khôi phục đều thêm một lần hỏi vân tay, mà một hộp sinh trắc
+ * thừa đúng là thứ đã sinh ra `duong1_chua_xac_thuc`.
+ */
+describe('RestoreIdentityScreen — không nhớ mã nào thì hỏi máy chủ theo khoá trong chip', () => {
+  const DID_FROM_KEY = 'did:phoenix:abcdefghijklm:' + 'e'.repeat(64);
+  const DID_STORED = 'did:phoenix:abcdefghijklm:' + 'f'.repeat(64);
+  const PHRASE = Array(24).fill('abandon').join(' ');
+
+  let warn: jest.SpyInstance;
+  let tree!: ReactTestRenderer;
+
+  const chayDuong24Tu = async () => {
+    const input = tree.root.findAllByType(TextInput)[0];
+    await act(async () => { input.props.onChangeText(PHRASE); });
+    const btn = tree.root
+      .findAll(n => typeof n.props?.onPress === 'function' && !n.props?.onLongPress)
+      .find(n => n.findAllByType(Text).some(l => String(l.props.children).includes('Khôi phục')));
+    if (!btn) throw new Error('không tìm thấy nút Khôi phục');
+    await act(async () => { btn.props.onPress(); });
+    const onConfirm = warn.mock.calls[0][2]?.onConfirm as () => void;
+    await act(async () => { onConfirm(); });
+  };
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    (taadEnclave.isAvailable as jest.Mock).mockReturnValue(true);
+    // Máy KHÔNG còn ví — đó là ca thật của người vừa cài lại rồi đi đường 24 từ.
+    (taadEnclave.secureLoad as jest.Mock).mockResolvedValue(null);
+    (taadEnclave.mnemonicToMasterKek as jest.Mock).mockResolvedValue('a'.repeat(64));
+    (taadEnclave.deriveTaadPubkey as jest.Mock).mockResolvedValue('b'.repeat(64));
+    (taadEnclave.signEd25519 as jest.Mock).mockResolvedValue('c'.repeat(64));
+    (taadEnclave.generateSalt as jest.Mock).mockResolvedValue('0123456789abcdef');
+    (ownerPublicKey as jest.Mock).mockResolvedValue('d'.repeat(64));
+    (phoenixKeyApi.identity.recoverDevice as jest.Mock).mockResolvedValue({});
+    warn = jest.spyOn(appAlert, 'showWarning').mockImplementation(() => {});
+    await act(async () => { tree = renderer.create(<RestoreIdentityScreen />); });
+  });
+
+  afterEach(() => { warn.mockRestore(); });
+
+  it('chip CÓ khoá ⟹ hỏi máy chủ, và gắn máy vào đúng mã hỏi được', async () => {
+    (isKeypairEnrolled as jest.Mock).mockResolvedValue(true);
+    (lookupDidByDeviceKey as jest.Mock).mockResolvedValue(DID_FROM_KEY);
+
+    await chayDuong24Tu();
+
+    expect(lookupDidByDeviceKey).toHaveBeenCalledTimes(1);
+    // Hỏi được mà không dùng thì bằng không hỏi — đây mới là phép đo có nghĩa.
+    expect(phoenixKeyApi.identity.recoverDevice).toHaveBeenCalledWith(
+      expect.objectContaining({ userDid: DID_FROM_KEY }),
+    );
+    // Và KHÔNG được rơi vào hộp thoại ngõ cụt.
+    const titles = warn.mock.calls.map(c => String(c[0]));
+    expect(titles).not.toContain('Chưa biết đây là tài khoản nào');
+  });
+
+  it('chip KHÔNG có khoá ⟹ không hỏi, và nói thẳng là chưa biết tài khoản nào', async () => {
+    (isKeypairEnrolled as jest.Mock).mockResolvedValue(false);
+    // `ownerPublicKey` cũng phải ném, nếu không mock vẽ ra một cái máy tự mâu thuẫn:
+    // không có khoá nào mà vẫn xuất được khoá công khai.
+    (ownerPublicKey as jest.Mock).mockRejectedValue(new Error('chưa có khoá'));
+
+    await chayDuong24Tu();
+
+    expect(lookupDidByDeviceKey).not.toHaveBeenCalled();
+    const titles = warn.mock.calls.map(c => String(c[0]));
+    expect(titles).toContain('Chưa biết đây là tài khoản nào');
+  });
+
+  it('máy CÒN nhớ mã định danh ⟹ KHÔNG hỏi thêm một lần sinh trắc nữa', async () => {
+    (currentUserDid as jest.Mock).mockResolvedValue(DID_STORED);
+    (isKeypairEnrolled as jest.Mock).mockResolvedValue(true);
+    (lookupDidByDeviceKey as jest.Mock).mockResolvedValue(DID_FROM_KEY);
+
+    await chayDuong24Tu();
+
+    expect(lookupDidByDeviceKey).not.toHaveBeenCalled();
+    expect(phoenixKeyApi.identity.recoverDevice).toHaveBeenCalledWith(
+      expect.objectContaining({ userDid: DID_STORED }),
+    );
   });
 });

@@ -38,6 +38,10 @@
 // Lối C vẫn dẫn sang màn 24 từ. Đường "app cũ ký phê duyệt" NAY ĐÃ CÓ, nhưng nó
 // là một lối RIÊNG (lối D) chứ không thay được lối C: lối D đòi máy/app kia đang
 // mở được trong tay, còn lối C phục vụ cả người không có điều kiện đó.
+//
+// Từ 2026-09-14 lối D được xếp TRƯỚC lối C. Lý do đầy đủ nằm ngay trên `CHOICES`;
+// gọn lại: điều kiện của D đã được chính tiêu đề của C bảo đảm, nên với nhóm người
+// mà C nhắm tới thì D luôn dùng được và luôn rẻ hơn.
 
 import React from 'react';
 import {
@@ -96,8 +100,24 @@ const TONE_GHEP_MAY: Tone = {
 };
 
 // Thứ tự CÓ Ý: lối "người mới" đứng đầu vì nó là lối duy nhất KHÔNG phá gì cả.
-// Hai lối dưới đều thu hồi phiên ở nơi khác, nên chúng đứng sau và mang theo
-// dòng `cost` của mình.
+// Các lối dưới đều đổi trạng thái ở nơi khác, nên chúng đứng sau và lối nào thu
+// hồi phiên thì mang theo dòng `cost` của mình.
+//
+// ⛔ ĐỔI THỨ TỰ 2026-09-14 — lối GHÉP MÁY (D) nay đứng TRƯỚC lối "app khác" (C).
+// Trước đó D đứng cuối, với lý do ghi tại chỗ: nó có một điều kiện ngoài tầm app
+// (máy kia phải đang trong tay và mở được), nên ai không có điều kiện đó mà đọc nó
+// đầu tiên thì mất thời gian.
+//
+// Lý do ấy ĐÚNG với lối B (đổi điện thoại — máy cũ thường không còn trong tay) và
+// SAI với lối C. Lối C tự định nghĩa mình là "máy này đang có một app khác cùng
+// nhóm": điều kiện của D — app kia ở trong tầm tay — đã được chính câu tiêu đề của
+// C bảo đảm. Nên với đúng nhóm người mà C nhắm tới, D luôn dùng được và luôn rẻ
+// hơn: `POST /keys/authorize` THÊM một khoá, trong khi C đi qua `recoverDevice` và
+// nâng `users.token_epoch`, đá mọi phiên của mọi máy.
+//
+// Xếp lối đắt trước lối rẻ ở đúng chỗ cả hai đều đi được là để người đọc lướt dừng
+// ở lối đắt. Chi phí của việc đọc thừa một thẻ nhỏ hơn hẳn chi phí của một lần thu
+// hồi phiên không cần thiết, nên hai cái sai này không cùng hạng.
 const CHOICES: Choice[] = [
   {
     testID: 'entry-choice-new',
@@ -120,23 +140,10 @@ const CHOICES: Choice[] = [
     costKey: 'identity.gate.sameApp.cost',
     target: 'RestoreIdentity',
   },
-  {
-    testID: 'entry-choice-other-app',
-    icon: 'apps',
-    tone: TONE_APP_KHAC,
-    titleKey: 'identity.gate.otherApp.title',
-    bodyKey: 'identity.gate.otherApp.body',
-    costKey: 'identity.gate.otherApp.cost',
-    noteKey: 'identity.gate.otherApp.temporary',
-    target: 'RestoreIdentity',
-  },
-  // Lối D — issue #233. Đứng CUỐI dù nó là lối rẻ nhất, vì nó có một điều kiện
-  // ngoài tầm app: máy kia phải đang trong tay và mở được. Ai không có điều kiện
-  // đó mà đọc nó đầu tiên thì mất thời gian rồi mới quay về ba lối trên.
-  //
-  // KHÔNG có `costKey`: `POST /keys/authorize` THÊM một khoá vào DID, không thu
-  // hồi khoá nào — khác hẳn B và C, vốn đi qua `recoverDevice` và nâng
-  // `users.token_epoch`. Bịa một cái giá ở đây là nói sai theo chiều ngược lại.
+  // Lối D — issue #233. KHÔNG có `costKey`: `POST /keys/authorize` THÊM một khoá
+  // vào DID, không thu hồi khoá nào — khác hẳn B và C, vốn đi qua `recoverDevice`
+  // và nâng `users.token_epoch`. Bịa một cái giá ở đây là nói sai theo chiều ngược
+  // lại. Điều kiện của nó (máy kia trong tầm tay) nằm ở `…pair.note`, không giấu.
   {
     testID: 'entry-choice-pair',
     icon: 'cellphone-link',
@@ -146,6 +153,19 @@ const CHOICES: Choice[] = [
     noteKey: 'identity.gate.pair.note',
     target: 'DevicePair',
     params: { mode: 'show' },
+  },
+  // Lối C đứng SAU lối D: nó phục vụ đúng người mà D đã phục vụ được, chỉ khác ở
+  // ca app kia không mở được nữa (quên mã mở máy, app kia đã bị gỡ). Nó vẫn phải
+  // còn, vì ca đó có thật — nhưng nó là lối LÙI, không phải lối đầu.
+  {
+    testID: 'entry-choice-other-app',
+    icon: 'apps',
+    tone: TONE_APP_KHAC,
+    titleKey: 'identity.gate.otherApp.title',
+    bodyKey: 'identity.gate.otherApp.body',
+    costKey: 'identity.gate.otherApp.cost',
+    noteKey: 'identity.gate.otherApp.temporary',
+    target: 'RestoreIdentity',
   },
 ];
 

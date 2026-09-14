@@ -42,8 +42,13 @@ import type { NewsItem } from '../services/agriNewsService';
 export const ANH_BANG: Record<'trace' | 'chat' | 'work', ImageSourcePropType> = {
   trace: require('../../assets/images/trace/backdrop-home.jpg'),
   // Tạm mượn hình minh hoạ của module. Xem `assets/images/banners/README.md`.
-  chat: require('../../assets/images/banners/chat-fi.png'),
-  work: require('../../assets/images/banners/job-fi.png'),
+  //
+  // ⚠️ Đuôi `.jpg` chứ không phải `.png`, và đó là phần bắt buộc: hai tệp này
+  // mang byte JPEG. Đặt tên `.png` cho một tệp JPEG thì bản debug vẫn dựng được
+  // (bản debug không nghiền ảnh) còn bản PHÁT HÀNH đỏ ở `aapt2` —
+  // `file failed to compile` — tức lỗi chỉ lộ ở đúng lượt dựng đắt nhất.
+  chat: require('../../assets/images/banners/chat-fi.jpg'),
+  work: require('../../assets/images/banners/job-fi.jpg'),
 };
 
 /** Một tấm băng đã dựng xong — chỗ vẽ chỉ việc đọc, không còn nhánh nào. */

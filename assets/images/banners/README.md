@@ -9,8 +9,13 @@ module ở nửa phải, chữ nằm trên phần đã đặc màu.
 | Tấm | Ảnh hiện tại | Ghi chú |
 |---|---|---|
 | Truy xuất | ảnh **của tin mới nhất** (RSS Dân Việt) | `assets/images/trace/backdrop-home.jpg` chỉ là đường lùi khi chưa có tin, hoặc tin không kèm ảnh |
-| Trò chuyện | `assets/images/modules/chat-fi.png` | **tạm mượn** hình minh hoạ của module |
-| Việc làm | `assets/images/modules/job-fi.png` | **tạm mượn** — chờ ảnh của bạn |
+| Trò chuyện | `assets/images/banners/chat-fi.jpg` | **tạm mượn** hình minh hoạ của module |
+| Việc làm | `assets/images/banners/job-fi.jpg` | **tạm mượn** — chờ ảnh của bạn |
+
+⚠️ Đuôi phải khớp BYTE trong tệp. Hai tấm trên vào kho lần đầu dưới tên `.png`
+trong khi chúng mang byte JPEG; bản debug dựng xanh vì nó không nghiền ảnh, còn
+bản phát hành đỏ ở `aapt2` với câu `file failed to compile`. Nay có bài canh:
+`src/config/assetExtensionMatchesBytes.test.ts`.
 
 Hai tấm dưới đang mượn hình minh hoạ nền trong suốt của module. Chúng ghép được
 (nền trong suốt để lộ đúng màu thẻ nằm dưới) nhưng chúng là hình vẽ vuông, không

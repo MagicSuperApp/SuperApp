@@ -60,25 +60,53 @@ const ContractDetailScreen: React.FC = () => {
   const actions = availableActions(contract);
 
   const onAction = (btn: PledgeActionBtn) => {
+    // ⛔ Đây là chỗ DUY NHẤT trong luồng việc làm mà bấm nhầm là mất tiền thật.
+    // Số cọc phải ĐỌC ĐƯỢC trước khi hỏi: thiếu trường thì câu hỏi thành
+    // "Khoá undefined MAGIC làm cọc?" — và người dùng vẫn có một nút "Đồng ý"
+    // bấm được dưới nó. Không đọc được số thì không hỏi, vì một câu hỏi không
+    // nói nổi cái giá thì lời đồng ý cho nó không có nghĩa gì.
+    if (btn.action === 'lockPledge') {
+      const ask = contract.parties[contract.myRole ?? 'aladin']?.pledgeAsk;
+      if (typeof ask !== 'number' || !Number.isFinite(ask)) {
+        showError(
+          t('Chưa đọc được số tiền cọc'),
+          t('Hợp đồng này chưa có số cọc đọc được, nên chưa khoá cọc được. Tải lại hợp đồng rồi thử lần nữa.'),
+        );
+        return;
+      }
+      showWarning(
+        t('Xác nhận khoá cọc'),
+        t(`Khoá ${ask.toLocaleString('en-US')} MAGIC làm cọc? Số CARP tương ứng sẽ bị giữ cho tới khi hai bên xác nhận hoàn thành.`),
+        { confirmText: t('Khoá cọc'), cancelText: t('Huỷ'), onConfirm: () => runAction(btn) },
+      );
+      return;
+    }
     const confirmMsg =
-      btn.action === 'dispute' ? 'Mở tranh chấp hợp đồng này?'
-      : btn.action === 'lockPledge' ? `Khoá ${contract.parties[contract.myRole ?? 'aladin']?.pledgeAsk} MAGIC làm cọc? Số CARP tương ứng sẽ bị giữ.`
-      : `Xác nhận: ${btn.label}?`;
+      btn.action === 'dispute' ? 'Mở tranh chấp hợp đồng này?' : `Xác nhận: ${btn.label}?`;
     showWarning('Xác nhận', confirmMsg, {
         confirmText: 'Đồng ý',
         cancelText: 'Huỷ',
-        onConfirm: async () => {
-          try {
-            // Truyền version đang cầm → header If-Version chặn double-apply (409).
-            const updated = await run(contract.id, btn.action, btn.body, contract.version);
-            if (updated) setContract(updated);
-            if (isWorkBackendEnabled()) reload();
-            else showInfo(t('Chế độ demo'), t('Cần backend AladinWork để thực thi bước này.'));
-          } catch (err) {
-            showError(t('Không thực hiện được'), pledgeErrorMessage(err));
-          }
-        },
+        onConfirm: () => runAction(btn),
     });
+  };
+
+  const runAction = async (btn: PledgeActionBtn) => {
+    // Cổng tắt ⇒ `run()` trả về một hợp đồng MOCK (`hooks/useContracts.ts`).
+    // Vẽ nó lên màn TRƯỚC rồi mới báo "chế độ demo" là dạy người dùng rằng thao
+    // tác đã chạy: họ thấy trạng thái hợp đồng đổi, rồi mới đọc chữ demo. Ở một
+    // màn nói về tiền cọc, thứ tự đó là thứ tự sai.
+    if (!isWorkBackendEnabled()) {
+      showInfo(t('Chế độ demo'), t('Cần backend AladinWork để thực thi bước này. Hợp đồng chưa thay đổi.'));
+      return;
+    }
+    try {
+      // Truyền version đang cầm → header If-Version chặn double-apply (409).
+      const updated = await run(contract.id, btn.action, btn.body, contract.version);
+      if (updated) setContract(updated);
+      reload();
+    } catch (err) {
+      showError(t('Không thực hiện được'), pledgeErrorMessage(err));
+    }
   };
 
   const onOpenChat = async () => {

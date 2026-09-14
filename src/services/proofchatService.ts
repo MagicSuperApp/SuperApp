@@ -430,6 +430,22 @@ export async function init(identityOverride?: string): Promise<InitResult> {
   if (!isProofChatBackendEnabled()) return { status: 'disabled' };
   if (!chatMls.isAvailable()) return { status: 'error', message: 'Native chat_mls chưa sẵn sàng' };
 
+  // ── Gọi lần hai phải là việc RẺ, không phải việc HẠI ───────────────────────
+  // Trước đây chỉ đúng một màn gọi `init()` (danh sách phòng), nên người vào
+  // phòng từ nơi khác — nút nhắn tin ở tin tuyển việc, ở hồ sơ thợ, hay một
+  // thông báo đẩy — gõ xong bấm gửi thì nhận "chưa init", một chuỗi nội bộ
+  // không ai đoán được nghĩa và không gợi ra lối thoát nào.
+  //
+  // Cho các màn kia cùng gọi `init()` thì phải chặn ở đây trước: `connect()`
+  // đã tự bỏ qua khi socket còn sống, nhưng `wireSocketHandlers()` thì KHÔNG —
+  // gọi lại là đăng ký thêm một tay nghe nữa trên cùng socket, và mỗi tin tới
+  // sẽ được xử hai lần. Người dùng thấy tin nhân đôi, còn mã thì không có chỗ
+  // nào sai rõ ràng để mà soi.
+  if (currentIdentity && chatSocket.isConnected()) {
+    const wanted = identityOverride ?? (await getDid());
+    if (wanted && wanted === currentIdentity) return { status: 'ready' };
+  }
+
   const identity = identityOverride ?? (await getDid());
   if (!identity) return { status: 'no-phoenix-session' };
 

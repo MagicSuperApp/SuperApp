@@ -21,7 +21,7 @@ import { formatVND } from '../data/mockData';
 import { useJobDetail } from '../hooks/useJobs';
 import StateView from '../../../components/state/StateView';
 import PosterAvatar from '../components/PosterAvatar';
-import { showError } from '../../../utils/alert';
+import { showError, showInfo } from '../../../utils/alert';
 import { ENABLED_MODULES } from '../../../config/instance.config';
 import { routeIsReachable } from '../../../navigation/moduleCatalog';
 
@@ -258,10 +258,24 @@ const JobDetailScreen: React.FC = () => {
 
       <View style={styles.bottomBar}>
         {/* Cùng luật với `WorkerProfileScreen`: app không khai `chat` thì route
-            `ChatRoom` không tồn tại, nút thành nút chết. Ẩn, đừng để bấm. */}
+            `ChatRoom` không tồn tại, nút thành nút chết. Ẩn, đừng để bấm.
+
+            Và KHÔNG điều hướng bằng `roomId: job-<id>` nữa. Chuỗi đó do màn này
+            tự bịa tại chỗ, không phải mã hội thoại máy chủ cấp — màn phòng tra
+            không thấy rồi hiện "Không mở được cuộc trò chuyện, quay lại danh
+            sách rồi thử lần nữa", trỏ người dùng về một danh sách họ chưa từng
+            mở. Cổng `routeIsReachable` ngay dưới trả lời "route có tồn tại
+            không", nó không trả lời "phòng có tồn tại không", nên nó xanh ở
+            đúng ca này. Đường mở phòng thật hôm nay đi qua hợp đồng
+            (`POST /contracts/{id}/conversation`, xem `ContractDetailScreen`). */}
         {routeIsReachable('ChatRoom', ENABLED_MODULES) && (
         <TouchableOpacity
-          onPress={() => navigation.navigate('ChatRoom', { roomId: `job-${job.id}` })}
+          onPress={() =>
+            showInfo(
+              'Chưa nhắn tin được ở đây',
+              'Phòng trò chuyện mở ra sau khi hai bên có hợp đồng. Đặt thợ trước, rồi nhắn tin ngay trong hợp đồng đó.',
+            )
+          }
           style={styles.chatBtn}
         >
           <Icon name="message-outline" size={20} color={WORK_THEME.primary} />

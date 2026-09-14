@@ -99,10 +99,13 @@ const WorkHomeScreen: React.FC = () => {
           <TouchableOpacity hitSlop={8} style={styles.iconBtnHeader} onPress={() => navigation.navigate('Contracts')}>
             <Icon name="file-document-outline" size={20} color="#fff" />
           </TouchableOpacity>
-          <TouchableOpacity hitSlop={8} style={styles.iconBtnHeader}>
-            <Icon name="bell-outline" size={20} color="#fff" />
-            <View style={styles.bellBadge} />
-          </TouchableOpacity>
+          {/*
+            Chuông thông báo đã GỠ. Nó không có `onPress`, không có màn nào đứng
+            sau, mà lại đeo một chấm đỏ — tức nó khẳng định "có tin mới" trong
+            khi app không có nguồn thông báo nào cho module này. Người lần đầu
+            bấm hai ba chỗ không phản hồi sẽ kết luận app hỏng trước khi tới
+            được nút thật. Dựng lại khi có màn thông báo.
+          */}
         </View>
 
         {/* Search */}
@@ -116,13 +119,10 @@ const WorkHomeScreen: React.FC = () => {
             onChangeText={setQuery}
             allowFontScaling={false}
           />
-          {!!query ? (
+          {/* Nút tim "lưu tìm kiếm" đã GỠ — không `onPress`, không chỗ lưu. */}
+          {!!query && (
             <TouchableOpacity onPress={() => setQuery('')} hitSlop={8}>
               <Icon name="close-circle" size={16} color={COLORS.textMuted} />
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity hitSlop={8}>
-              <Icon name="heart-outline" size={18} color={WORK_ACCENT} />
             </TouchableOpacity>
           )}
         </View>
@@ -151,8 +151,15 @@ const WorkHomeScreen: React.FC = () => {
             </View>
 
             <View style={styles.heroRow}>
-              {/* GUIDE TOUR card — xanh lá đậm */}
-              <TouchableOpacity activeOpacity={0.9} style={styles.guideCard}>
+              {/*
+                GUIDE TOUR — khối MINH HOẠ, không phải nút.
+                Trước đây nó là `TouchableOpacity` không có `onPress`: thứ to
+                nhất, đậm nhất trên màn, ghi "Hướng dẫn đăng việc", và bấm vào
+                không có gì xảy ra. Đổi sang `View` để nó thôi sáng lên dưới
+                ngón tay — hết hứa một hành động không tồn tại. Ngày có màn
+                hướng dẫn thật thì đổi lại thành nút và nối `onPress`.
+              */}
+              <View style={styles.guideCard}>
                 <View style={styles.guideTag}>
                   <Text style={styles.guideTagText}>GUIDE TOUR</Text>
                 </View>
@@ -169,7 +176,7 @@ const WorkHomeScreen: React.FC = () => {
                     </View>
                   </View>
                 </View>
-              </TouchableOpacity>
+              </View>
 
               {/* Tạo việc ngay card — trắng, viền cam đứt */}
               <TouchableOpacity
@@ -190,12 +197,10 @@ const WorkHomeScreen: React.FC = () => {
               </TouchableOpacity>
             </View>
 
-            {/* Pagination dots */}
-            <View style={styles.dotsRow}>
-              <View style={[styles.dot, styles.dotActive]} />
-              <View style={styles.dot} />
-              <View style={styles.dot} />
-            </View>
+            {/*
+              Ba chấm phân trang đã GỠ: hàng phía trên là `View`, không cuộn
+              ngang được, nên chúng nói có hai trang nữa mà không có trang nào.
+            */}
           </View>
 
           {/* ── Categories ─────────────────────────────── */}
@@ -488,12 +493,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.13)',
     position: 'relative',
   },
-  bellBadge: {
-    position: 'absolute', top: 8, right: 9,
-    width: 8, height: 8, borderRadius: 4,
-    backgroundColor: WORK_ACCENT,
-    borderWidth: 1.5, borderColor: WORK_THEME.primaryDeep,
-  },
 
   searchBox: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
@@ -609,18 +608,6 @@ const styles = StyleSheet.create({
     fontSize: 11, fontWeight: '800', color: '#fff', letterSpacing: 0.2,
   },
 
-  dotsRow: {
-    flexDirection: 'row', gap: 5,
-    alignSelf: 'center',
-    marginTop: 12, marginBottom: 4,
-  },
-  dot: {
-    width: 6, height: 6, borderRadius: 3,
-    backgroundColor: COLORS.border,
-  },
-  dotActive: {
-    width: 18, backgroundColor: WORK_THEME.primary,
-  },
 
   // ── Sections ────────────────────────────────────────
   section: { marginBottom: 4, marginTop: 16 },

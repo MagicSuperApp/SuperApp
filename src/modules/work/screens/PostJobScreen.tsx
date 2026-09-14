@@ -1,7 +1,23 @@
 // modules/work/screens/PostJobScreen.tsx
-// Form đăng tin tuyển thợ — mock submit.
+//
+// Form đăng tin tuyển thợ.
+//
+// ── Vì sao ô "loại việc" đọc từ máy chủ chứ không từ bảng trong mã ──────────
+// Bản trước cho chọn trong `CATEGORIES` — mười id NGÀNH NGHỀ gõ cứng
+// (`data/mockData.ts`) — rồi gửi thẳng id đó làm `templateKey`. Nhưng
+// `templateKey` là khoá MẪU VIỆC do máy chủ cấp, không phải id ngành: đo
+// `GET /templates` ngày 2026-09-14 trả 14 mẫu (`video_short`, `tutoring`,
+// `farm_tending`…), trùng với bảng trong mã đúng MỘT id (`housekeeping`).
+// Tức chín trên mười lần chọn sẽ bị máy chủ trả `404 NO_TEMPLATE`.
+//
+// Kiểu hỏng này tệ hơn hỏng hẳn: người dùng đăng được tin khi chọn "Giúp việc"
+// và không đăng được ở chín ngành còn lại, nên họ không rút ra được quy luật
+// nào — chỉ thấy app lúc chạy lúc không.
+//
+// Danh sách mẫu nay lấy từ chính máy chủ sẽ nhận tin, nên không có cách nào
+// chọn ra một khoá mà máy chủ không biết.
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -19,53 +35,88 @@ import { useNavigation } from '@react-navigation/native';
 import { COLORS } from '../../../constants';
 import { t } from '../../../i18n';
 import { WORK_THEME } from '../theme/colors';
-import { CATEGORIES } from '../data/mockData';
 import { usePostJob } from '../hooks/usePostJob';
+import { useTemplates } from '../hooks/useTemplates';
 import { showError, showInfo, showSuccess } from '../../../utils/alert';
+
+/**
+ * Mỗi nguyên nhân một câu, và mỗi câu chỉ ra MỘT việc phải làm.
+ *
+ * Bản trước gộp tất cả vào "Kiểm tra kết nối, đăng nhập và loại việc rồi thử
+ * lại" — một câu bảo người dùng kiểm ba thứ cùng lúc thì không bảo được gì, và
+ * nó che mất chính lỗi khoá mẫu việc ở khối chú thích đầu tệp.
+ */
+const POST_FAIL_MESSAGE: Record<string, string> = {
+  NO_TEMPLATE:
+    'Loại việc này không còn trên hệ thống. Chọn lại ở ô Loại việc rồi gửi lần nữa — phần bạn đã nhập vẫn giữ nguyên.',
+  UNAUTH:
+    'Phiên đăng nhập đã hết hạn. Mở khoá lại bằng vân tay hoặc khuôn mặt rồi gửi lần nữa — phần bạn đã nhập vẫn giữ nguyên.',
+  BAD_INPUT:
+    'Máy chủ chưa nhận được nội dung này. Soát lại tiêu đề, mô tả và ngân sách rồi gửi lần nữa.',
+  BACKEND_DISABLED:
+    'Máy chủ việc làm chưa sẵn sàng trong phiên bản này, nên tin chưa gửi đi được. Thử lại sau.',
+  NETWORK:
+    'Máy chưa kết nối được mạng, nên tin chưa gửi đi. Kiểm tra sóng hoặc wifi rồi gửi lần nữa.',
+};
+const POST_FAIL_FALLBACK =
+  'Máy chủ chưa nhận được tin. Tin chưa đăng, nội dung bạn nhập vẫn còn — gửi lại sau ít phút.';
 
 const PostJobScreen: React.FC = () => {
   const navigation = useNavigation<any>();
 
   const [title, setTitle] = useState('');
-  const [category, setCategory] = useState<string | null>(null);
+  const [templateKey, setTemplateKey] = useState<string | null>(null);
   const [description, setDescription] = useState('');
   const [budget, setBudget] = useState('');
   const [location, setLocation] = useState('');
-  const [urgent, setUrgent] = useState(false);
 
-  // Đăng tin: flag ON → POST /jobs thật; OFF → giả lập thành công.
+  // Mẫu việc lấy từ chính máy chủ sẽ nhận tin — xem khối chú thích đầu tệp.
+  const { templates, loading: loadingTemplates, errorKind: templateError, reload } = useTemplates();
   const { submitting, submit } = usePostJob();
 
-  const canSubmit = title.length >= 10 && !!category && description.length >= 20 && !!budget && !!location;
+  /**
+   * Khoá đang chọn phải còn trong danh sách máy chủ vừa trả. Danh sách tải lại
+   * mà mẫu cũ biến mất thì lựa chọn cũ hết hiệu lực — giữ nó lại là gửi đi một
+   * khoá đã chết.
+   */
+  const selected = useMemo(
+    () => templates.find(tpl => tpl.key === templateKey) ?? null,
+    [templates, templateKey],
+  );
+
+  const canSubmit =
+    title.length >= 10 && !!selected && description.length >= 20 && !!budget && !!location;
 
   const handleSubmit = async () => {
-    if (!canSubmit || !category) {
+    if (!canSubmit || !selected) {
       showInfo('Thiếu thông tin', 'Vui lòng điền đầy đủ các ô bắt buộc.');
       return;
     }
-    // Map form → body backend. LƯU Ý: form chưa có bước chọn JobType riêng →
-    // tạm dùng categoryId làm templateKey. Nếu backend trả 404 NO_TEMPLATE,
-    // báo user chọn đúng loại việc (JobType) khi bước chọn mẫu được bổ sung.
     const priceVND = Number(String(budget).replace(/[^\d]/g, '')) || undefined;
-    const ok = await submit({
-      templateKey: category,
-      title,
-      desc: description,
-      priceVND,
-    });
+    // Địa điểm đi kèm phần mô tả: `POST /jobs` chưa có trường địa điểm nào
+    // (`workApi.ts` ▸ `PostJobBody`). Ô này bắt buộc, nên bỏ trắng nó là vứt
+    // đúng thứ người dùng vừa gõ — thợ đọc tin sẽ không biết việc ở đâu.
+    const desc = `${description}\n\nĐịa điểm: ${location}`;
+    const outcome = await submit({ templateKey: selected.key, title, desc, priceVND });
 
-    if (ok) {
+    if (outcome.ok) {
       // `t()` TƯỜNG MINH: lớp bọc `<Text>` bỏ qua `t()` ở tiếng Việt
       // (`i18n/autoText.tsx`), nên `{brand}` viết trần sẽ ra màn nguyên dấu
       // ngoặc nhọn cho đúng nhóm người dùng đông nhất.
-      showSuccess('Đăng tin thành công', t('Tin của bạn đã được ký số và đăng lên {brand} Work.\n\nThợ phù hợp sẽ liên hệ qua {brand} Chat trong vài phút.'), {
+      //
+      // KHÔNG nói "đã ký số": luồng này chỉ gửi `POST /jobs`, không có lần ký
+      // nào. Cũng KHÔNG hứa "thợ liên hệ trong vài phút" — app chưa có cửa cho
+      // thợ ứng tuyển, nên đó là một lời hứa không ai giữ được.
+      showSuccess('Đã đăng tin', t('Tin của bạn đã đăng lên {brand} Work và thợ có thể xem được.'), {
           confirmText: 'OK',
           hideCancel: true,
           onConfirm: () => navigation.goBack(),
       });
     } else {
-      showError('Chưa đăng được tin',
-        'Không gửi được tin lúc này. Kiểm tra kết nối, đăng nhập và loại việc rồi thử lại.');
+      showError(
+        'Chưa đăng được tin',
+        (outcome.code && POST_FAIL_MESSAGE[outcome.code]) || POST_FAIL_FALLBACK,
+      );
     }
   };
 
@@ -107,29 +158,57 @@ const PostJobScreen: React.FC = () => {
         </View>
 
         <View style={styles.field}>
-          <Label text="Ngành nghề" required />
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.catList}
-          >
-            {CATEGORIES.map(c => (
-              <TouchableOpacity
-                key={c.id}
-                onPress={() => setCategory(c.id)}
-                style={[
-                  styles.catItem,
-                  category === c.id && { backgroundColor: c.color, borderColor: c.color },
-                ]}
-              >
-                <Icon name={c.icon} size={16} color={category === c.id ? '#fff' : c.color} />
-                <Text style={[
-                  styles.catItemText,
-                  category === c.id && { color: '#fff' },
-                ]}>{c.name}</Text>
+          <Label text="Loại việc" required />
+          {/*
+            Bốn trạng thái, không gộp. Danh sách rỗng vì chưa hỏi được máy chủ
+            KHÁC danh sách rỗng vì máy chủ chưa có mẫu nào — gộp hai cái lại là
+            nói với người dùng một điều mình chưa đo.
+          */}
+          {loadingTemplates ? (
+            <Text style={styles.stateText}>Đang lấy danh sách loại việc…</Text>
+          ) : templateError ? (
+            <View>
+              <Text style={styles.stateText}>
+                Chưa lấy được danh sách loại việc từ máy chủ, nên chưa đăng tin được.
+              </Text>
+              <TouchableOpacity onPress={reload} style={styles.retryBtn} activeOpacity={0.85}>
+                <Icon name="refresh" size={14} color={WORK_THEME.primary} />
+                <Text style={styles.retryText}>Thử lại</Text>
               </TouchableOpacity>
-            ))}
-          </ScrollView>
+            </View>
+          ) : templates.length === 0 ? (
+            <Text style={styles.stateText}>
+              Máy chủ chưa mở loại việc nào. Chưa đăng tin được lúc này.
+            </Text>
+          ) : (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.catList}
+            >
+              {templates.map(tpl => (
+                <TouchableOpacity
+                  key={tpl.key}
+                  onPress={() => setTemplateKey(tpl.key)}
+                  style={[
+                    styles.catItem,
+                    templateKey === tpl.key && {
+                      backgroundColor: WORK_THEME.primary,
+                      borderColor: WORK_THEME.primary,
+                    },
+                  ]}
+                >
+                  {/* `icon` của mẫu việc là EMOJI trên dây (vd "🎬"), không phải
+                      tên biểu tượng — đưa vào `<Icon name>` sẽ ra ô trống. */}
+                  <Text style={styles.catItemEmoji}>{tpl.icon}</Text>
+                  <Text style={[
+                    styles.catItemText,
+                    templateKey === tpl.key && { color: '#fff' },
+                  ]}>{tpl.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
         </View>
 
         <View style={styles.field}>
@@ -178,35 +257,27 @@ const PostJobScreen: React.FC = () => {
           </View>
         </View>
 
-        <TouchableOpacity
-          onPress={() => setUrgent(u => !u)}
-          activeOpacity={0.85}
-          style={[styles.urgentToggle, urgent && styles.urgentToggleActive]}
-        >
-          <View style={styles.urgentLeft}>
-            <View style={[
-              styles.urgentIconWrap,
-              urgent && { backgroundColor: '#C0533A' },
-            ]}>
-              <Icon name="lightning-bolt" size={14} color={urgent ? '#fff' : '#C0533A'} />
-            </View>
-            <View>
-              <Text style={styles.urgentTitle}>Đánh dấu Gấp</Text>
-              <Text style={styles.urgentSub}>Ưu tiên hiển thị · phí thêm 20.000đ</Text>
-            </View>
-          </View>
-          <View style={[styles.switch, urgent && styles.switchActive]}>
-            <View style={[styles.switchDot, urgent && styles.switchDotActive]} />
-          </View>
-        </TouchableOpacity>
+        {/*
+          Công tắc "Đánh dấu Gấp · phí thêm 20.000đ" đã GỠ. Nó hứa một dịch vụ
+          CÓ THU TIỀN, trong khi `PostJobBody` (`services/workApi.ts`) không có
+          trường nào chở nó đi — bật hay tắt thì cùng một thân yêu cầu rời máy.
+          Thu tiền cho một thứ không gửi đi là lời hứa nặng nhất trên màn này.
+          Ngày máy chủ có trường tương ứng thì dựng lại, không sớm hơn.
+        */}
 
         <View style={styles.contractBox}>
           <View style={styles.contractHeader}>
             <Icon name="file-sign" size={16} color={WORK_THEME.primary} />
             <Text style={styles.contractTitle}>Hợp đồng smart contract</Text>
           </View>
+          {/*
+            Bỏ câu "Bạn ký số bằng khoá trên máy ở bước cuối": bước đăng tin chỉ
+            gửi `POST /jobs`, không gọi lần ký nào. Ở một sản phẩm có tiền, chữ
+            "ký" là tín hiệu "tôi đang cam kết" — đặt nhầm chỗ thì người dùng vừa
+            sợ ở chỗ không có gì, vừa mất cảnh giác ở chỗ có thật (màn hợp đồng).
+          */}
           <Text style={styles.contractText}>
-            Khi bạn đăng tin, một hợp đồng sẽ được tạo. Tiền cọc định giá bằng MAGIC nhưng khoá và hoàn thật bằng CARP, chỉ giải ngân khi hai bên xác nhận hoàn thành. Bạn ký số bằng khoá trên máy ở bước cuối.
+            Đăng tin chưa phát sinh hợp đồng và chưa khoá tiền. Khi bạn chọn được thợ, hợp đồng mới được tạo ở màn Hợp đồng — tiền cọc định giá bằng MAGIC nhưng khoá và hoàn thật bằng CARP, chỉ giải ngân khi hai bên xác nhận hoàn thành.
           </Text>
         </View>
 
@@ -223,8 +294,8 @@ const PostJobScreen: React.FC = () => {
             <Text style={styles.submitBtnText}>Đang đăng…</Text>
           ) : (
             <>
-              <Icon name="shield-key" size={16} color="#fff" />
-              <Text style={styles.submitBtnText}>Ký & Đăng tin</Text>
+              <Icon name="send" size={16} color="#fff" />
+              <Text style={styles.submitBtnText}>Đăng tin</Text>
             </>
           )}
         </TouchableOpacity>
@@ -294,40 +365,18 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: COLORS.border,
   },
   catItemText: { fontSize: 12, fontWeight: '600', color: COLORS.text },
+  catItemEmoji: { fontSize: 14 },
 
-  urgentToggle: {
-    marginHorizontal: 16, marginTop: 12,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: COLORS.card,
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1, borderColor: COLORS.border,
+  stateText: { fontSize: 12, color: COLORS.textSub, lineHeight: 18 },
+  retryBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    alignSelf: 'flex-start', marginTop: 8,
+    paddingHorizontal: 12, paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1, borderColor: WORK_THEME.primaryLight,
+    backgroundColor: WORK_THEME.primaryGlow,
   },
-  urgentToggleActive: {
-    backgroundColor: '#FFF4F0',
-    borderColor: '#C0533A',
-  },
-  urgentLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
-  urgentIconWrap: {
-    width: 32, height: 32, borderRadius: 10,
-    backgroundColor: '#F8E4DD',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  urgentTitle: { fontSize: 13, fontWeight: '700', color: COLORS.text },
-  urgentSub: { fontSize: 10, color: COLORS.textMuted, marginTop: 2 },
-  switch: {
-    width: 40, height: 22,
-    backgroundColor: COLORS.divider,
-    borderRadius: 11,
-    padding: 2,
-    justifyContent: 'center',
-  },
-  switchActive: { backgroundColor: '#C0533A' },
-  switchDot: {
-    width: 18, height: 18, borderRadius: 9,
-    backgroundColor: '#fff',
-  },
-  switchDotActive: { transform: [{ translateX: 18 }] },
+  retryText: { fontSize: 12, fontWeight: '700', color: WORK_THEME.primary },
 
   contractBox: {
     marginHorizontal: 16, marginTop: 14, marginBottom: 16,

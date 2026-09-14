@@ -713,21 +713,31 @@ const RECOVER_FAIL_MESSAGE: Record<string, string> = {
     'Máy chủ từ chối mở lại danh tính cho khoá đã có trên máy này. Đây là lỗi phía máy chủ — chụp màn hình này gửi hỗ trợ.',
   did_sai_dinh_dang:
     'Máy chủ trả về một mã danh tính app chưa hiểu được. Đây là lỗi phía máy chủ — chụp màn hình này gửi hỗ trợ.',
-  // ⛔ Câu cũ đúng mà VẪN chặn người dùng, vì nó bỏ mất dữ kiện quyết định: danh
-  // tính "đã tạo trước đó" có thể được tạo ở MỘT ỨNG DỤNG KHÁC trên cùng cái điện
-  // thoại. Hai app dùng chung một khe khoá phần cứng, nên khoá lập trong Aladin
-  // hiện ra ở CheckFarm và ngược lại — trong khi với người dùng, hai app là hai
-  // sản phẩm khác nhau, không có lý do gì để nối hai việc đó lại.
+  // ⛔ ĐÍNH CHÍNH 2026-09-14. Câu trước ở đây dựng trên một TIỀN ĐỀ SAI, và tiền đề
+  // đó từng được viết thẳng vào khối chú thích này: "hai app dùng chung một khe khoá
+  // phần cứng, nên khoá lập trong Aladin hiện ra ở CheckFarm và ngược lại".
   //
-  // Ca thực địa 2026-09-12: một người không vào được CheckFarm vì trên máy đó đã
-  // từng lập tài khoản qua Aladin. Câu cũ bảo "nhập lại đúng tên đăng nhập của
-  // danh tính đó", và người đọc không biết "danh tính đó" là danh tính nào, vì họ
-  // đang đứng ở một app chưa từng lập gì.
+  // Đo lại trong kho này 14/09: KHÔNG có tệp `.entitlements` nào dưới `ios/`, không
+  // có `CODE_SIGN_ENTITLEMENTS` trong `SuperApp.xcodeproj/project.pbxproj`, không có
+  // `keychain-access-groups`, không có `kSecAttrAccessGroup` trong mã của ta, và
+  // Android không khai `sharedUserId`. Thiếu cả bốn thứ đó thì nhóm khoá mặc định
+  // của iOS là `$(AppIdentifierPrefix)<mã gói>` và Keystore của Android tách theo
+  // UID — tức mỗi app đứng trong kho khoá RIÊNG. Hai app KHÔNG thấy khoá của nhau.
   //
-  // Câu mới nói cả ba vế: vì sao gặp cảnh này · một danh tính dùng được cho mọi
-  // app (không phải hạn chế, là thiết kế) · không nhớ tên thì đi đâu.
+  // Hệ quả: mã `3005 KEY_ALREADY_REGISTERED` nói khoá của CHÍNH app này đã đăng ký,
+  // nên "có thể do một ứng dụng khác" không giải thích được gì; lời khuyên "chỉ cần
+  // nhập đúng tên đăng nhập đó" thì dẫn thẳng vào `ten_khong_khop_khoa` — tên bên
+  // Aladin trỏ về một danh tính mà khoá của app này không ký được cho.
+  //
+  // Nguồn thật của cảnh này là CHÍNH app này ở một lần cài trước: kho khoá sống qua
+  // lần gỡ app, AsyncStorage thì không. Nên câu mới nói ba vế: khoá là của app này ·
+  // đi đâu (màn khôi phục nay tự hỏi máy chủ theo khoá, không cần tên) · và đóng
+  // hẳn lối "mượn tên đăng nhập của app kia", vì đó là lối người dùng tự nghĩ ra.
+  //
+  // Người từng dùng app KHÁC của hệ trên cùng máy có lối riêng và nó KHÔNG phải lối
+  // này — xem `IdentityEntryChoiceScreen`, thẻ "Nhờ app đang đăng nhập duyệt".
   can_ten_dang_nhap:
-    'Máy này đã có khoá của một danh tính đã tạo trước đó — có thể do một ứng dụng khác trên cùng điện thoại này. Một danh tính dùng chung cho mọi ứng dụng, nên chỉ cần nhập đúng tên đăng nhập đó là vào được ngay. Không nhớ tên thì mở màn Khôi phục danh tính.',
+    'Máy này đã có khoá của một danh tính do CHÍNH ứng dụng này tạo ở lần cài trước — gỡ ứng dụng không xoá khoá đó đi. Hãy mở màn Khôi phục danh tính: máy sẽ tự hỏi máy chủ xem khoá này thuộc tài khoản nào, không cần bạn nhớ gì. Ứng dụng khác trên cùng điện thoại giữ khoá ở kho riêng, nên tên đăng nhập bên đó không mở được máy này.',
   // Ca này TRƯỚC ĐÂY đội lốt `can_ten_dang_nhap` và đó là chỗ đắt nhất: người dùng
   // được bảo đi sửa tên đăng nhập, trong khi thứ vừa hỏng là một hộp sinh trắc mà
   // họ còn không biết là có. Câu phải gọi đúng tên hộp đó, vì trên màn hình nó là

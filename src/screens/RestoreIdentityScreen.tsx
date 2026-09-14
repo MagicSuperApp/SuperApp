@@ -28,8 +28,10 @@ import {
   storeMasterKek,
 } from '../services/masterKekStore';
 import { phoenixKeyApi, PhoenixKeyApiError } from '../services/phoenixKey-api';
-import { enrollKeypair, ownerPublicKey, saveUserDid, currentUserDid, signRaw } from '../sdk/phoenixKey';
-import { phoenixKeyAuth } from '../services/phoenixKeyAuthService';
+import {
+  enrollKeypair, ownerPublicKey, saveUserDid, currentUserDid, signRaw, isKeypairEnrolled,
+} from '../sdk/phoenixKey';
+import { phoenixKeyAuth, lookupDidByDeviceKey } from '../services/phoenixKeyAuthService';
 import { loginUser } from '../store/userSlice';
 import { countMnemonicWords, normalizeMnemonic } from '../utils/mnemonic';
 import { describeDidState } from '../features/identity/didState';
@@ -194,6 +196,44 @@ const RestoreIdentityScreen = () => {
     }
 
     const uniqueDids = [...new Set(candidates.filter(d => DID_RE.test(d)))];
+
+    // ── NGUỒN DID THỨ TƯ: HỎI MÁY CHỦ THEO CHÍNH KHOÁ TRONG CHIP ──────────────
+    // Ba nguồn trên đều hỏi CÁI MÁY. Hai nguồn đầu đọc AsyncStorage — xoá app là
+    // mất sạch; nguồn thứ ba đòi người dùng nhớ một cái tên. Nên tồn tại đúng một
+    // ca mà cả ba cùng câm: cài lại app trên chính máy cũ, và không nhớ tên đăng
+    // nhập. Ở ca đó màn hình này trước nay trả lời bằng một hộp thoại bảo người
+    // dùng gõ thứ họ không có, tức một ngõ cụt.
+    //
+    // Nhưng MÁY CHỦ thì vẫn biết: khoá trong Secure Enclave / Keystore sống qua
+    // lần xoá app, và `POST /identity/lookup` đổi đúng khoá đó lấy DID. Cửa ấy đã
+    // có sẵn và đã chạy ở hai nơi khác (`recoverLocalIdentityFromKey` đường 1 và
+    // `devicePairService.claimAuthorizedIdentity`); màn này là nơi thứ ba cần nó
+    // và là nơi duy nhất chưa gọi.
+    //
+    // ⚠ HAI RÀNG BUỘC VỀ CHỖ ĐẶT, cả hai đều làm hỏng nếu đặt sai:
+    //  1. PHẢI chạy TRƯỚC `enrollKeypair()` ở dưới. Hàm đó XOÁ khoá cũ khỏi chip;
+    //     sau nó thì khoá trong tay là khoá máy chủ chưa từng thấy, và cửa tra chỉ
+    //     còn trả 404 mãi mãi.
+    //  2. Chỉ chạy khi ba nguồn rẻ đã rỗng. Nó tốn MỘT lần hỏi vân tay/khuôn mặt —
+    //     ở đường thường (máy còn nhớ DID) lần hỏi đó không đổi lấy gì cả, mà một
+    //     hộp sinh trắc thừa đúng là thứ đã sinh ra `duong1_chua_xac_thuc`.
+    //
+    // Lỗi thì NUỐT có chủ ý, và đây là ca đệm hợp lệ: 404 nghĩa là khoá này chưa
+    // thuộc danh tính nào, mà đó chính là ca đường `enrollKeypair` bên dưới cứu
+    // được. Dừng ở đây là cắt mất một lối ra vẫn còn tốt. Lý do thô vào `console`.
+    if (uniqueDids.length === 0) {
+      try {
+        if (await isKeypairEnrolled()) {
+          const didFromDeviceKey = await lookupDidByDeviceKey(
+            'Tìm lại danh tính',
+            'Xác thực để hỏi máy chủ khoá trên máy này thuộc tài khoản nào',
+          );
+          if (DID_RE.test(didFromDeviceKey)) uniqueDids.push(didFromDeviceKey);
+        }
+      } catch (err) {
+        console.log('[Restore] lookupDidByDeviceKey lỗi:', err);
+      }
+    }
 
     if (uniqueDids.length === 0) {
       showWarning(

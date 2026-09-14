@@ -19,7 +19,9 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { OSM_STREET_TILES } from '../space3d/mapTiles';
+import {
+  EMPTY_BASE_STYLE, ESRI_SATELLITE_TILES, OSM_STREET_TILES,
+} from '../space3d/mapTiles';
 import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import Icon from '../../components/Icon';
@@ -31,8 +33,7 @@ import { googleDirectionsUrl } from './reverseGeocode';
 // URL ở đây là dựng lại đúng chỗ đã làm bản vá tên miền chỉ tới được một trong
 // ba nơi.
 const OSM_TILES = OSM_STREET_TILES;
-const SAT_TILES =
-  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+const SAT_TILES = ESRI_SATELLITE_TILES;
 
 /** Cả hai nguồn chỉ có ảnh tới z19 — khai thiếu thì z20 ra ô trắng. */
 const TILE_MAX_ZOOM = 19;
@@ -121,6 +122,8 @@ const TreeLocationMap: React.FC<TreeLocationMapProps> = ({
     <View>
       <View style={styles.box}>
         <MapLib.MapView
+          // BẮT BUỘC — xem `space3d/mapTiles.ts` khối `EMPTY_BASE_STYLE`.
+          mapStyle={EMPTY_BASE_STYLE}
           style={StyleSheet.absoluteFillObject}
           logoEnabled={false}
           attributionEnabled={false}

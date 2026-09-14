@@ -41,7 +41,9 @@ import { GradientFill, GroundBackdrop } from '../components/layered/Organic';
 import { BentoRow, BentoTile } from '../components/layered/Surface';
 import FarmShape from '../components/layered/FarmShape';
 import RingProgress from '../components/layered/RingProgress';
-import { OSM_STREET_TILES } from '../../../features/space3d/mapTiles';
+import {
+  EMPTY_BASE_STYLE, ESRI_SATELLITE_TILES, OSM_STREET_TILES,
+} from '../../../features/space3d/mapTiles';
 import { useTk } from '../../../i18n/keys';
 // B2: tạo vườn QUA field-reid (server sinh farm_id uuid THẬT) — bỏ aladinAPI
 // (backend Lợi deprecated + client tự sinh `farm-<ts>` = gốc B2). INV-1 §3.2.
@@ -718,6 +720,8 @@ const AddFarmMode = ({
             {canRenderMap ? (
               <MapLib.MapView
                 ref={mapViewRef}
+                // BẮT BUỘC — xem `space3d/mapTiles.ts` khối `EMPTY_BASE_STYLE`.
+                mapStyle={EMPTY_BASE_STYLE}
                 style={StyleSheet.absoluteFillObject}
                 logoEnabled={false}
                 attributionEnabled={false}
@@ -761,7 +765,7 @@ const AddFarmMode = ({
 
                 <MapLib.RasterSource
                   id="sat-tiles"
-                  tileUrlTemplates={['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}']}
+                  tileUrlTemplates={[ESRI_SATELLITE_TILES]}
                   tileSize={256}
                   maxZoomLevel={19}
                 >

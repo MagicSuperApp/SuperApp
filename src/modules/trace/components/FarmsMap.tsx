@@ -47,10 +47,15 @@ import {
   farmAnchor, farmAreaM2, farmsBounds, formatFarmArea, pinFeatures, polygonFeatures,
   searchFarms,
 } from '../utils/farmMapGeo';
+import {
+  EMPTY_BASE_STYLE, ESRI_SATELLITE_TILES, OSM_STREET_TILES,
+} from '../../../features/space3d/mapTiles';
 
-const OSM_TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
-const SAT_TILES =
-  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+// Hai URL này trước 2026-09-14 là hai bản CHÉP TAY, dù hằng dùng chung đã tồn tại
+// và các màn bản đồ khác đã nhập nó. Tệp này là chỗ bản vá tên miền OSM lần trước
+// KHÔNG tới được.
+const OSM_TILES = OSM_STREET_TILES;
+const SAT_TILES = ESRI_SATELLITE_TILES;
 
 /** Cả hai nguồn chỉ có ảnh tới đây — xem chú thích đầu tệp. */
 const TILE_MAX_ZOOM = 19;
@@ -384,6 +389,8 @@ const MapBody: React.FC<MapBodyProps> = ({
   return (
     <View style={styles.fill}>
       <MapLib.MapView
+        // BẮT BUỘC — xem `space3d/mapTiles.ts` khối `EMPTY_BASE_STYLE`.
+        mapStyle={EMPTY_BASE_STYLE}
         style={StyleSheet.absoluteFillObject}
         logoEnabled={false}
         attributionEnabled={false}

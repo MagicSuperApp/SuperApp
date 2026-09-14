@@ -186,6 +186,24 @@ export interface InstanceConfig {
   tagline: Record<LangCode, string>;
 
   /**
+   * Khẩu hiệu NGẮN — hiện dưới tên app ở màn đăng nhập
+   * (`screens/LoginNetworkScreen.tsx`), ngay cạnh logo.
+   *
+   * Khác `tagline` ở ĐỘ DÀI, và độ dài ở đây là một ràng buộc bố cục chứ không
+   * phải sở thích: dòng này được kéo giãn khoảng cách chữ cho RỘNG ĐÚNG BẰNG tên
+   * app ở trên nó. Một câu dài thì bị thu nhỏ cỡ chữ để vừa bề ngang ấy, và tới
+   * một lúc nó nhỏ tới mức không đọc được. Giữ dưới khoảng 22 ký tự.
+   *
+   * `tagline` không dùng lại được: bản của Aladin là *"Một ứng dụng, bốn việc —
+   * và danh tính là của chính anh chị."*, một câu KỂ CHUYỆN dài gấp ba mức này.
+   * Hai câu phục vụ hai chỗ khác nhau nên chúng là hai trường.
+   *
+   * BẮT BUỘC, không `?`, cùng lý do với `tagline`: app thứ ba quên khai thì
+   * `tsc` đỏ, thay vì lặng lẽ mượn câu của app khác.
+   */
+  slogan: Record<LangCode, string>;
+
+  /**
    * Dấu thương hiệu hiện TRONG app — khác biểu tượng ngoài màn hình chính của
    * điện thoại (thứ đó do `instances/<mã>/ios|android/` lo, tầng native).
    *
@@ -278,6 +296,20 @@ export interface InstanceConfig {
   initialTabRoute: string;
 
   /**
+   * Ô TRÁI của thanh tab — app tự khai, KHÔNG kế thừa im lặng.
+   *
+   * Bắt buộc (không `?`) là chủ ý: một trường tuỳ chọn thì app mới sinh ra sẽ
+   * nhận mặc định của nền mà không ai gõ một chữ nào, và thanh của nó trùng
+   * thanh app khác — đúng hình dạng vừa phải đi sửa. Khai tường minh thì việc
+   * "trùng" là một lựa chọn có người ký tên, không phải một sự im lặng.
+   *
+   * Chỉ có ô TRÁI khai được. Ô giữa là nút cổng nằm trong khuyết tròn và ô phải
+   * là avatar người dùng — hai thứ đó là kết cấu của thanh, lý do đầy đủ ở
+   * `navigation/resolveVisibleTabs.ts` khối `NEO_*`.
+   */
+  anchorLeft: string;
+
+  /**
    * Thứ tự ưu tiên 3 ô dịch vụ {Farms, WorkHome, JoinHome} cho hai persona.
    *
    * ĐÂY là trục ĐƯỢC PHÉP khác nhau giữa hai app, và là trục quan trọng nhất.
@@ -352,6 +384,13 @@ export const ALADIN_INSTANCE: InstanceConfig = {
     zh: '一个应用，四件事 —— 身份始终属于你自己。',
     ja: '一つのアプリで四つの仕事 — 本人確認はあなたのものです。',
   },
+  // Bản NGẮN cho màn đăng nhập. Bốn chữ, không vế phụ, không dấu gạch ngang.
+  slogan: {
+    vi: 'Bảo mật, minh bạch, thân thiện',
+    en: 'Secure, transparent, user-friendly',
+    zh: '安全、透明、用户友好',
+    ja: '安全、透明、ユーザーフレンドリー',
+  },
   // NGUYÊN BYTE tệp `assets/images/logo.png` bốn màn vẫn đang dùng — đối chiếu
   // bằng `cmp` lúc chuyển. Aladin đã phát hành, nên đợt này không được đổi một
   // pixel nào của nó; cái đổi là CHỖ khai, không phải hình.
@@ -373,6 +412,10 @@ export const ALADIN_INSTANCE: InstanceConfig = {
     contact: 'aladincontract@gmail.com',
   },
   tabs: [
+    // Ví là NEO trái từ 13/09/2026 (`resolveVisibleTabs.NEO_LEFT`). Nó đứng
+    // trước `chat` ở đây vì mảng này là TẬP ĐẦY ĐỦ theo thứ tự khai, còn thứ tự
+    // VẼ do resolver quyết — giữ hai thứ đó tách nhau là chủ ý của SG9 §2.
+    { kind: 'host', route: 'PhoenixWallet' },
     { kind: 'module', moduleId: 'chat' },
     { kind: 'module', moduleId: 'trace' },
     { kind: 'host', route: 'Home' },
@@ -381,11 +424,18 @@ export const ALADIN_INSTANCE: InstanceConfig = {
     { kind: 'host', route: 'Account' },
   ],
   initialTabRoute: 'Home',
+  // Ô trái Aladin = VÍ. Aladin là app việc làm: người dùng nhận tiền công, nên
+  // ví là thứ họ mở nhiều nhất sau Trang chủ.
+  anchorLeft: 'PhoenixWallet',
   // Việc làm lên trước — kể cả với người chưa có dữ liệu nào. Người mở Aladin
   // đến vì việc, không đến vì vườn.
+  // `ChatHome` vào bảng từ 13/09/2026: chat thôi làm NEO (ô trái nay là Ví —
+  // xem `resolveVisibleTabs.NEO_LEFT`), nên nó phải tranh SLOT như mọi module.
+  // Aladin xếp nó sau Việc làm và trước Góp máy: người mở Aladin đến vì việc,
+  // nhưng nhắn tin là thứ họ dùng hằng ngày hơn góp máy.
   slotPriority: {
-    default: ['WorkHome', 'JoinHome', 'Farms'],
-    shipper: ['WorkHome', 'JoinHome', 'Farms'],
+    default: ['WorkHome', 'ChatHome', 'JoinHome', 'Farms'],
+    shipper: ['WorkHome', 'ChatHome', 'JoinHome', 'Farms'],
   },
   // `brandName` lấy từ chính `displayName` — trước đợt này theme mặc định trả
   // `'OriLife'`, tức app tên Aladin mà mọi chỗ hỏi tên thương hiệu đều nhận về
@@ -419,7 +469,13 @@ export const CHECKFARM_INSTANCE: InstanceConfig = {
     en: 'Trace the Source — Elevate the Produce',
     zh: '追溯源头，提升农产价值',
     ja: '源流をたどり、農産物の価値を高める',
+  },  slogan: {
+    vi: 'Truy xuất từ nguồn',
+    en: 'Trace the source',
+    zh: '追溯源头',
+    ja: '産地までたどる',
   },
+
   // ÂM BẢN chính thức của nhà CheckFarm — `Logo/bieu-tuong-app/icon-1024.png`,
   // thu về 256px. Không phải bản dựng ở kho này: màu nền đọc ra từ ảnh là
   // `#298A4A`, khớp đúng `iconBackground` họ khai trong `instance.json`.
@@ -474,37 +530,57 @@ export const CHECKFARM_INSTANCE: InstanceConfig = {
     },
   },
   tabs: [
+    // Ví là NEO trái từ 13/09/2026 (`resolveVisibleTabs.NEO_LEFT`). Mảng này là
+    // TẬP ĐẦY ĐỦ theo thứ tự khai, còn thứ tự VẼ do resolver quyết — giữ hai thứ
+    // đó tách nhau là chủ ý của SG9 §2.
+    { kind: 'host', route: 'PhoenixWallet' },
     { kind: 'module', moduleId: 'trace' },
     { kind: 'host', route: 'Home' },
     { kind: 'module', moduleId: 'join' },
     { kind: 'host', route: 'Account' },
   ],
   initialTabRoute: 'Home',
-  // Bảng RIÊNG, không dùng chung `SLOT_PRIORITY_DEFAULT` — bảng chung liệt
-  // `WorkHome`, mà `work` đã tắt ở app này. Để nguyên bảng chung thì cổng xoè
-  // vẫn vẽ mục Việc làm, người dùng bấm, và điều hướng tới một route chưa đăng
-  // ký: không màn nào hiện, không lỗi nào ném.
+  // ── Ô TRÁI = VƯỜN, và vì sao hai app phải lệch nhau ở đây ──────────────────
   //
-  // Hai ô, và phải là hai — dù nó làm nút giữa LỆCH KHỎI TÂM. Đánh đổi này viết
-  // ra vì chiều sai của nó im lặng, còn chiều đúng thì chỉ hơi xấu.
+  // Apple 4.3 ("Spam — bản sao chỉ khác biệt nhỏ") và Google Play ("nội dung
+  // trùng lặp") đều xét hai app CÙNG một nhà phát hành. Hai app này dùng chung
+  // một binary, chung bộ route, chung nhãn — nên thanh điều hướng là bề mặt mà
+  // người xét duyệt so sánh TRƯỚC TIÊN, vì nó nằm trên mọi ảnh chụp màn hình.
   //
-  // Thanh tab dựng theo khuôn `[neo trái, slot, Home, slot, neo phải]`
-  // (`resolveVisibleTabs.ts:150`), và neo trái là hằng `ChatHome` của nền, không
-  // phải thứ app khai. Tắt `chat` là neo ấy rụng, nên hàng còn BỐN ô và nút giữa
-  // rơi ở 37,5% chiều ngang thay vì 50%.
+  // Đo 2026-09-14: hai app ra thanh lệch đúng **1 ô trên 5** ở persona mặc định,
+  // và lệch **0 ô** ở persona `shipper` — hai bảng `slotPriority.shipper` khi ấy
+  // là hai mảng giống nhau từng phần tử. Bài kiểm `slotPriorityWiring.test.ts`
+  // vẫn xanh, vì nó chỉ hỏi `not.toEqual` ở ĐÚNG persona mặc định: một phép đo
+  // trả lời "có khác ít nhất một chỗ" cho một câu đang hỏi "khác đủ chưa".
   //
-  // Bản đầu của đợt này hạ xuống MỘT ô cho nút giữa về đúng tâm. Bộ kiểm bắt
-  // được, và nó bắt đúng: `resolveGateItems` dựng cung từ CHÍNH bảng này, nên bỏ
-  // `JoinHome` khỏi bảng là bỏ nó khỏi cả thanh tab LẪN cổng xoè — module `join`
-  // vẫn khai bật, màn vẫn đăng ký, mà không lối nào tới. Đúng lớp hỏng "hàm có,
-  // đường không có": không cổng kiểu nào bắt, không bài hàm thuần nào đỏ.
-  //
-  // Đường lấy được cả hai là cho app khai NEO của nó thay vì nhận hằng của nền.
-  // Đó là sửa mã dùng chung nhiều app, không phải sửa cấu hình một app, nên nó
-  // nằm ngoài đợt này.
+  // Nay: Vườn lên ô trái (CheckFarm là app nông — vườn là thứ mở đầu tiên), Ví
+  // xuống tranh slot.
+  anchorLeft: 'Farms',
+  // Bảng RIÊNG, không dùng hằng của nền — dùng hằng nền là lý do bảng `shipper`
+  // hai app từng giống nhau từng phần tử.
   slotPriority: {
-    default: ['Farms', 'JoinHome'],
-    shipper: ['Farms', 'JoinHome'],
+    // Vườn đã ở ô trái ⟹ nó tự bị loại khỏi vòng tranh slot (`seen`).
+    //
+    // `ChatHome` và `WorkHome` đều KHÔNG có trong hai bảng này, và đó không phải
+    // chuyện thẩm mỹ: kho có một cổng riêng đòi **mọi route trong `slotPriority`
+    // phải TỚI ĐƯỢC** (`src/config/` — bài "cấu hình điều hướng không trỏ vào
+    // module đã tắt"). Hai module ấy đã tắt ở `modules` bên dưới ⟹ để tên chúng
+    // ở đây là khai một đường không tồn tại. Trông cậy vào `isAvailable` lọc hộ
+    // lúc chạy là đúng hành vi nhưng SAI lời khai: bảng ưu tiên là thứ người đọc
+    // cấu hình dùng để biết app này có gì.
+    //
+    // Hệ quả hình thức phải nói ra: hàng còn BỐN ô nên nút giữa rơi ở 37,5%
+    // chiều ngang thay vì 50%. Giữ nguyên đánh đổi đó — bỏ bớt một mục cho nút
+    // về đúng tâm là bỏ nó khỏi cả thanh tab LẪN cổng xoè, vì `resolveGateItems`
+    // dựng cung từ CHÍNH bảng này. Khi ấy module vẫn khai bật, màn vẫn đăng ký,
+    // mà không lối nào tới: đúng lớp hỏng "hàm có, đường không có" mà không cổng
+    // kiểu nào bắt và không bài hàm thuần nào đỏ. Chiều sai thì im lặng, chiều
+    // đúng thì chỉ hơi xấu.
+    default: ['PhoenixWallet', 'JoinHome'],
+    // Người giao hàng ở CheckFarm mở mục Tham gia trước, Ví giữ ô còn lại — đảo
+    // thứ tự so với persona mặc định để hai bảng không lại thành hai mảng giống
+    // nhau từng phần tử, đúng cái vừa đo được ở trên.
+    shipper: ['JoinHome', 'PhoenixWallet'],
   },
   // Bảng màu do chính nhà CheckFarm chốt và gửi sang (không phải bản bịa ở đây
   // rồi thành mặc định không ai dám đổi). Giá trị + lý do từng ràng buộc nằm ở
@@ -512,26 +588,45 @@ export const CHECKFARM_INSTANCE: InstanceConfig = {
   // ngưỡng tương phản AA cho chữ cỡ thường, nên nó chỉ đi vào chỗ là hình.
   themeConfig: CHECKFARM_THEME_CONFIG,
   adaptive: DEFAULT_ADAPTIVE_CONFIG,
-  // App CHỌN LỌC, không phải app lõi — và lý do là một ràng buộc của cửa hàng,
-  // không phải một sở thích về sản phẩm.
+  // ── DANH SÁCH CHỌN, và `chat` lẫn `work` đều KHÔNG có trong đó ─────────────
   //
-  // `chat` (tin nhắn) và `work` (sàn việc làm) là NỘI DUNG DO NGƯỜI DÙNG TẠO.
-  // Apple guideline 1.2 và Google đều đòi app có thứ đó phải có đủ bốn cơ chế:
-  // lọc nội dung · nút báo cáo · chặn người dùng khác · liên hệ công khai. Đo
-  // trên toàn bộ `src/` ngày 10/09/2026, và đo lại 12/09: ba cơ chế đầu có
-  // **0 dòng** — không phải chưa đủ tốt, là chưa tồn tại. Thiếu là bị TỪ CHỐI
-  // duyệt, không phải bị nhắc nhở.
+  // Đây là **danh sách chọn**, không phải danh sách trừ — khai những module app
+  // này CÓ, chứ không khai những module nó bỏ. Hai cách viết ra cùng một tập hôm
+  // nay nhưng già đi ngược nhau: thêm một module mới vào nền thì danh sách chọn
+  // giữ nguyên hành vi (app không tự nhận thứ chưa ai xét), còn danh sách trừ tự
+  // bật nó lên cho mọi app mà không ai gõ một chữ nào.
   //
-  // Chủ sở hữu chốt 12/09/2026: bản đầu tắt hai module đó để nộp được, rồi dựng
-  // đủ bốn cơ chế và bật lại sau. Thứ tự đã bàn: chặn → báo cáo → lọc.
+  // Vì sao hai module này tắt cho đợt nộp — quyết định của chủ sở hữu, chốt
+  // 2026-09-12 và giữ nguyên tới 2026-09-14. Apple guideline 1.2 đòi ĐỦ BA cơ
+  // chế cho **nội dung do người dùng tạo**: chặn người, báo cáo nội dung, lọc
+  // nội dung. Cả `chat` (tin nhắn) lẫn `work` (tin tuyển việc, hồ sơ thợ) đều là
+  // nội dung do người dùng tạo — một sàn việc làm không kém một hộp thư ở điểm
+  // này, vì nó cũng cho người lạ đăng chữ và ảnh mà người khác đọc. Đo trong kho
+  // này cùng ngày:
+  //
+  //   grep -rln "blockUser|reportUser|moderation" src/   →  0 tệp
+  //
+  //   (đọc ở SỐ TỆP, không đọc ở số dòng: một tệp nhắc chữ "moderation" trong
+  //   chú thích vẫn là 0 cơ chế)
+  //
+  // Guideline 1.2 là cửa TỪ CHỐI thẳng, không nhắc nhở; và một lượt từ chối làm
+  // chậm CẢ HAI app cùng pháp nhân. Thứ tự dựng đã bàn: chặn → báo cáo → lọc.
+  //
+  // Đây là quyết định CHO ĐỢT NỘP, không phải bỏ hai module: mã của chúng còn
+  // nguyên trong kho và Aladin vẫn bật cả hai. Bật lại ở đây là thêm phần tử vào
+  // mảng này, thêm mục vào `tabs` và thêm route vào `slotPriority`, sau khi ba
+  // cơ chế đã có và đo được.
   //
   // Hai điều PHẢI biết kèm, vì cả hai đều dễ đọc nhầm theo chiều có lợi:
   //   · Tắt module KHÔNG làm gói nhẹ đi. `registry.ts` vẫn nhập tĩnh mọi màn;
   //     cái tắt là ĐƯỜNG TỚI (tab, mục cổng xoè, đăng ký route), không phải mã.
   //   · Ví KHÔNG tắt theo. Bốn màn ví khai thẳng ở tầng host, không mang
-  //     `moduleId` nào (`navigation/index.tsx:1768-1774`), nên phép lọc
-  //     `ENABLED_MODULES` không chạm tới chúng. Ô "Financial features" của
-  //     Google vẫn phải khai CÓ.
+  //     `moduleId` nào, nên phép lọc `ENABLED_MODULES` không chạm tới chúng. Ô
+  //     "Financial features" của Google vẫn phải khai CÓ.
+  //
+  // Và giữ nguyên điều đã ghi từ trước: việc chọn module nào là quyền của nhà
+  // CheckFarm ở kho của họ (chủ sở hữu bàn giao 2026-09-10). Dòng này là trạng
+  // thái hôm nay của bản dựng đang thử, không phải một phán quyết vĩnh viễn.
   modules: ['trace', 'join'],
 };
 

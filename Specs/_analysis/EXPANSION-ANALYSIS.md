@@ -86,7 +86,7 @@ Kênh 1+2 (instance ta sở hữu) → brand-strip về app chủ (giữ nguyên
 
 ## 5. Câu hỏi mở cần founder quyết
 
-1. **Pháp nhân vận hành magiclamp.network Registry là ai** — ai ký, ai chịu SLA takedown 24h (Decree 147), Treasury liên kết pháp lý tới đâu? Đây là câu hỏi sống còn TRƯỚC mọi thiết kế governance.
+1. **Pháp nhân vận hành magiclamp.eco Registry là ai** — ai ký, ai chịu SLA takedown 24h (Decree 147), Treasury liên kết pháp lý tới đâu? Đây là câu hỏi sống còn TRƯỚC mọi thiết kế governance.
 2. **Safety-multisig đặt quyền vào tay ai** — tập trung điểm cưỡng chế cần thiết về pháp lý nhưng mâu thuẫn tinh thần phi-tập-trung. Ranh giới ở đâu, cơ chế chống lạm dụng (kill nhầm/kiểm duyệt)?
 3. **Quan hệ với VNeID: federation hay cạnh tranh?** Nếu nhà nước bắt buộc danh tính gốc từ VNeID/CCCD, PhoenixKey DID sinh trắc độc lập đứng ở đâu — lớp phủ trên VNeID hay song song? Định đoạt toàn bộ nhánh B-VNeID.
 4. **Phase 1 nhúng host nào trước?** Cam kết "Zalo+Shopee+Facebook+VNeID cùng lúc" là bất khả với ngân sách hữu hạn. Ưu tiên host đối-tác-được (đàm phán notice-period/co-brand) trước host thù địch cấu trúc (Facebook/Shopee cạnh tranh lõi).

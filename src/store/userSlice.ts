@@ -7,12 +7,13 @@ import { databaseManager } from '../services/databaseManager';
 import {
   phoenixKeyApi,
   clearSessionToken,
+  clearSessionMintCooldown,
   summarizeWalletAll,
   type WalletEntry,
 } from '../services/phoenixKey-api';
 import { parseDidNetwork } from '../services/phoenixDid';
 import { clearWorkSession } from '../modules/work/services/session';
-import { clearOrilifeToken } from '../services/orilifeDidAuth';
+import { clearOrilifeToken, clearOrilifeLoginCooldown } from '../services/orilifeDidAuth';
 import { disconnectProofChat } from '../services/proofchatAuthBridge';
 import { clearMerkleSession } from '../services/proofchatIdentity';
 import { shutdown as shutdownProofChatEngine } from '../services/proofchatService';
@@ -201,6 +202,13 @@ export const logoutUser = createAsyncThunk(
       // ra MANG DANH người trước, im lặng, cho tới khi token hết hạn.
       // `clearOrilifeToken` xoá cả owner-ref, dấu chủ token, và đệm đầu đề ảnh.
       await clearOrilifeToken();
+      // Mở van chặn bão sinh trắc. Van đó đứng đúng chỗ khi cùng một danh tính bị
+      // máy chủ từ chối liên tục; nhưng đăng xuất là lúc danh tính ĐỔI, nên giữ
+      // nguyên đồng hồ nghỉ của người trước là bắt người sau chờ một phút không
+      // vì lý do gì. CỐ Ý gọi ở đây chứ không nhét vào `clearOrilifeToken`:
+      // `ensureOrilifeToken` cũng gọi hàm xoá đó trước mỗi lần ký, nên đặt lệnh
+      // mở van vào trong nó là vô hiệu hoá chính cái van, im lặng.
+      clearOrilifeLoginCooldown();
     } catch (error) {
       console.warn('[Redux] Logout: clearOrilifeToken lỗi (bỏ qua):', error);
     }
@@ -228,6 +236,17 @@ export const logoutUser = createAsyncThunk(
       // chủ thể do THẺ quyết định, tức máy của người sau hành động mang danh người
       // trước. Đó là ca mạo danh, không phải "vật liệu ở lại".
       await clearSessionToken();
+      // Van thứ HAI, đối xứng với `clearOrilifeLoginCooldown()` ở khối trên. Đường
+      // đúc thẻ PhoenixKey có đồng hồ nghỉ riêng (`MINT_COOLDOWN_MS`), và hàm mở
+      // van của nó được viết ra rồi KHÔNG nơi nào gọi — nên tới trước dòng này,
+      // người đăng xuất rồi đăng nhập bằng danh tính khác vẫn chịu nguyên một
+      // phút nghỉ do máy chủ từ chối NGƯỜI TRƯỚC.
+      //
+      // Vì sao nó ở trong cùng khối `try` với `clearSessionToken` chứ không đứng
+      // riêng: hai lệnh này là một việc. Xoá thẻ mà không mở van thì người sau
+      // vừa không có thẻ vừa không được đúc thẻ — trạng thái tệ hơn cả trước khi
+      // xoá. `clearSessionToken` ném thì van cũng không cần mở, vì thẻ cũ còn đó.
+      clearSessionMintCooldown();
     } catch (error) {
       console.warn('[Redux] Logout: clearSessionToken lỗi (bỏ qua):', error);
     }

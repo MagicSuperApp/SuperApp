@@ -30,6 +30,7 @@ import {
   remintSessionOnce,
 } from './phoenixKey-api';
 import { currentUserDid } from '../sdk/phoenixKey';
+import { GATE_PREFIX, requireUserPresence } from './sensitiveActionGate';
 
 const SESSION_TOKEN_KEY = 'phoenixkey_session_token';
 
@@ -262,6 +263,23 @@ export async function sendCardano(params: SendCardanoParams): Promise<{ txHash: 
   }
   const { utxosJson: utxosStr, protocolParamsJson: paramsStr } =
     await fetchWalletUtxosAndParams(did);
+
+  // ── CỔNG XÁC THỰC — đứng GIỮA việc chuẩn bị và việc TIÊU TIỀN ──────────────
+  //
+  // Vì sao cổng tồn tại + ranh giới của nó: `sensitiveActionGate.ts` đầu tệp.
+  //
+  // ⚠ Đặt SAU bước dựng dữ liệu và TRƯỚC bước ký CBOR, không đặt đầu hàm. Đầu
+  // hàm thì người dùng bị hỏi trước khi biết mình sắp duyệt cái gì, và một cổng
+  // hỏi trước khi có nội dung là cổng dạy người ta bấm qua cho xong.
+  //
+  // Cổng ném khi người dùng huỷ hoặc sinh trắc trượt — để nó ném thẳng ra ngoài.
+  // KHÔNG bắt rồi đi tiếp: nuốt lỗi ở đây là gỡ cổng mà vẫn giữ hình dạng cổng.
+  await requireUserPresence({
+    prefix: GATE_PREFIX.spend,
+    fields: [params.toAddress, String(params.amountLovelace), String(net)],
+    title: 'Xác nhận chuyển tiền',
+    subtitle: 'Quét khuôn mặt hoặc vân tay để ký lệnh chuyển này',
+  });
 
   // 3) Native dựng + ký CBOR (seed không rời native).
   const cbor = await taad.buildSignedTransfer({

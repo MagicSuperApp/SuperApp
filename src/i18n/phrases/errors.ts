@@ -173,10 +173,10 @@ export const ERRORS: PhraseMap = {
     zh: '本机的密钥已被吊销，很可能是此前在别处恢复过身份。重新安装应用无法找回。请打开“恢复身份”页面：如果钱包仍在本机，只需用户名即可，不需要 24 个助记词。',
     ja: 'この端末の鍵は失効しています。以前に別の場所で本人情報を復元したためと思われます。アプリを入れ直しても戻りません。「本人情報の復元」画面を開いてください。ウォレットがこの端末に残っていれば、ユーザー名だけで足り、24単語は不要です。',
   },
-  'Máy này đã có khoá của một danh tính đã tạo trước đó. Nhập lại đúng tên đăng nhập của danh tính đó để mở lại trên máy này.': {
-    en: 'This device already holds the key of an identity created earlier. Enter that identity\u2019s username again to reopen it on this device.',
-    zh: '本机已持有先前创建的某个身份的密钥。请重新输入该身份的用户名，以在本机重新打开它。',
-    ja: 'この端末には、以前作成された本人情報の鍵がすでにあります。その本人情報のユーザー名をもう一度入力して、この端末で開き直してください。',
+  'Máy này đã có khoá của một danh tính đã tạo trước đó — có thể do một ứng dụng khác trên cùng điện thoại này. Một danh tính dùng chung cho mọi ứng dụng, nên chỉ cần nhập đúng tên đăng nhập đó là vào được ngay. Không nhớ tên thì mở màn Khôi phục danh tính.': {
+    en: 'This device already holds the key of an identity created earlier — possibly by another app on this same phone. One identity works across all the apps, so entering that username is enough to get in. If you do not remember it, open the Restore identity screen.',
+    zh: '本机已持有先前创建的某个身份的密钥 — 可能是同一部手机上的另一个应用创建的。一个身份可用于所有应用，因此只要输入该用户名即可进入。若记不清用户名，请打开“恢复身份”页面。',
+    ja: 'この端末には、以前作成された本人情報の鍵がすでにあります — 同じ端末の別のアプリで作成された可能性があります。本人情報は一つですべてのアプリに使えるので、そのユーザー名を入力すれば入れます。思い出せない場合は「本人情報の復元」画面を開いてください。',
   },
   'Máy này đã có danh tính của bạn, nhưng bước xác thực để mở lại chưa xong. Bấm lại và làm hết CẢ HAI lần hỏi vân tay hoặc khuôn mặt — lần thứ hai có tên "Khôi phục danh tính".': {
     en: 'This device already holds your identity, but the check needed to reopen it did not finish. Tap again and complete BOTH fingerprint or face prompts — the second one is titled “Restore identity”.',
@@ -192,6 +192,20 @@ export const ERRORS: PhraseMap = {
     en: 'This device already has a key but the identity could not be reopened, and the reason is not yet clear. Try once more; if it repeats, send support a screenshot of this message.',
     zh: '本机已有密钥，但未能重新打开身份，原因尚不明确。请再试一次；若仍如此，请将此画面截图发给支持。',
     ja: 'この端末には鍵がありますが本人情報を開き直せず、原因はまだ不明です。もう一度お試しください。それでも同じ場合は、この画面のスクリーンショットをサポートにお送りください。',
+  },
+  // ── Dừng có chủ đích: chưa có khoá dự phòng thì KHÔNG tạo danh tính ────────
+  // Hai câu này không tả một lỗi, chúng tả một quyết định của ứng dụng. Bản dịch
+  // phải giữ được vế "vì sao dừng" — bỏ vế đó thì người đọc bản tiếng khác chỉ
+  // thấy một lời từ chối và sẽ đi tìm cách vòng qua.
+  'Máy chưa tạo được khoá dự phòng cho danh tính, nên ứng dụng dừng lại — tạo tài khoản lúc này sẽ ra một tài khoản không khôi phục lại được nếu bạn mất máy. Đây không phải lỗi sóng, cũng không phải lỗi vân tay. Đóng hẳn ứng dụng rồi mở lại và thử lần nữa; nếu vẫn vậy, khởi động lại điện thoại. Vẫn không được thì chụp màn hình này gửi hỗ trợ.': {
+    en: 'The device could not create a backup key for your identity, so the app stopped — creating an account now would give you one that cannot be recovered if you lose the phone. This is not a signal problem, and not a fingerprint problem. Close the app completely, reopen it and try again; if it repeats, restart the phone. If it still fails, send support a screenshot of this message.',
+    zh: '本机未能为身份创建备份密钥，因此应用已停止——此时创建的账号在手机丢失后将无法找回。这不是信号问题，也不是指纹问题。请彻底关闭应用后重新打开并再试一次；若仍如此，请重启手机。仍不行请将此画面截图发给支持。',
+    ja: 'この端末で本人情報の予備鍵を作成できなかったため、アプリは処理を中止しました。いま作成すると、端末を紛失した際に復元できないアカウントになります。これは電波の問題でも指紋の問題でもありません。アプリを完全に終了してから開き直し、もう一度お試しください。それでも同じ場合は端末を再起動してください。なお改善しない場合は、この画面のスクリーンショットをサポートにお送りください。',
+  },
+  'Bản ứng dụng trên máy này thiếu phần tạo khoá dự phòng, nên ứng dụng dừng lại — tạo tài khoản lúc này sẽ ra một tài khoản không khôi phục lại được nếu bạn mất máy. Thử lại sẽ không khác. Hãy cập nhật ứng dụng lên bản mới nhất rồi tạo lại.': {
+    en: 'The app version on this device is missing the part that creates a backup key, so the app stopped — creating an account now would give you one that cannot be recovered if you lose the phone. Trying again will not change this. Update the app to the latest version, then create the account.',
+    zh: '本机上的应用版本缺少创建备份密钥的部分，因此应用已停止——此时创建的账号在手机丢失后将无法找回。重试不会有变化。请将应用更新到最新版本后再创建。',
+    ja: 'この端末のアプリには予備鍵を作成する部分が入っていないため、処理を中止しました。いま作成すると、端末を紛失した際に復元できないアカウントになります。もう一度試しても結果は変わりません。アプリを最新版に更新してから作成してください。',
   },
   // ── TIÊU ĐỀ hộp thoại của màn tạo danh tính ────────────────────────────────
   // Năm câu dài phía trên là phần THÂN. Trước bản này chúng được truyền vào ô

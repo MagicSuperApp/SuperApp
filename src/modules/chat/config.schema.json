@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://magiclamp.network/schema/proofchat.config.json",
+  "$id": "https://magiclamp.eco/schema/proofchat.config.json",
   "title": "ProofChat Module Config",
   "description": "Tham số admin (non-dev) tuỳ biến trò chuyện, theo INTEGRATION-STANDARD §4.1. DECLARATIVE thuần (INV-SEC / QĐ-1): chỉ experience layer (INV-2), KHÔNG chạm data layer, KHÔNG biểu thức/template/ref-code. additionalProperties:false MỌI cấp. ProofChat MIỄN PHÍ (anh Aladin chốt) → billing.hooks rỗng; KHÔNG ngưỡng/phí trong config này.",
   "type": "object",

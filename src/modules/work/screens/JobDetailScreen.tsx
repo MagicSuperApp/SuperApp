@@ -22,6 +22,8 @@ import { useJobDetail } from '../hooks/useJobs';
 import StateView from '../../../components/state/StateView';
 import PosterAvatar from '../components/PosterAvatar';
 import { showError } from '../../../utils/alert';
+import { ENABLED_MODULES } from '../../../config/instance.config';
+import { routeIsReachable } from '../../../navigation/moduleCatalog';
 
 type RouteParams = { JobDetail: { jobId: string } };
 
@@ -255,12 +257,16 @@ const JobDetailScreen: React.FC = () => {
       </Animated.ScrollView>
 
       <View style={styles.bottomBar}>
+        {/* Cùng luật với `WorkerProfileScreen`: app không khai `chat` thì route
+            `ChatRoom` không tồn tại, nút thành nút chết. Ẩn, đừng để bấm. */}
+        {routeIsReachable('ChatRoom', ENABLED_MODULES) && (
         <TouchableOpacity
           onPress={() => navigation.navigate('ChatRoom', { roomId: `job-${job.id}` })}
           style={styles.chatBtn}
         >
           <Icon name="message-outline" size={20} color={WORK_THEME.primary} />
         </TouchableOpacity>
+        )}
         {/* Trạng thái "Đã ứng tuyển" đã bỏ cùng với `applied`: nó chỉ đổi màu nút chứ
             chưa bao giờ có hồ sơ nào được gửi đi. Ngày nối được cửa ứng tuyển thì dựng
             lại trạng thái từ CÂU TRẢ LỜI của máy chủ, đừng dựng lại từ biến trong màn. */}

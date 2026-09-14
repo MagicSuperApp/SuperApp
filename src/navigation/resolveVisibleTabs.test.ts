@@ -35,21 +35,25 @@ describe('resolvePersona', () => {
 });
 
 describe('resolveVisibleTabs', () => {
-  it('user mới (∅): Chat · Farm · Home · Work · Me (Join vào cổng)', () => {
+  // Bảng nền đổi 13/09/2026: `ChatHome` thôi làm NEO trái (ô đó nay là Ví) nên
+  // nó vào bảng ưu tiên và tranh SLOT như mọi module. Ba bài dưới đo đúng hệ
+  // quả đó — chúng đỏ khi chính sách đổi là ĐÚNG VIỆC của chúng, nên chỗ sửa
+  // là kỳ vọng, không phải nới lỏng phép so.
+  it('user mới (∅): Ví · Farm · Home · Chat · Me (Work/Join vào cổng)', () => {
     expect(resolveVisibleTabs(NO_FARM, {}, null)).toEqual([
-      NEO_LEFT, 'Farms', NEO_CENTER, 'WorkHome', NEO_RIGHT,
+      NEO_LEFT, 'Farms', NEO_CENTER, 'ChatHome', NEO_RIGHT,
     ]);
   });
 
   it('nông dân: giống chuẩn — Farm nổi cạnh Home', () => {
     expect(resolveVisibleTabs({ farms: 2, trees: 10, fruits: 0 }, {}, null)).toEqual([
-      NEO_LEFT, 'Farms', NEO_CENTER, 'WorkHome', NEO_RIGHT,
+      NEO_LEFT, 'Farms', NEO_CENTER, 'ChatHome', NEO_RIGHT,
     ]);
   });
 
-  it('shipper: Work + Join lên thanh, Farm lùi vào cổng', () => {
+  it('shipper: Work + Chat lên thanh, Farm/Join lùi vào cổng', () => {
     expect(resolveVisibleTabs(NO_FARM, { WorkHome: 9 }, null)).toEqual([
-      NEO_LEFT, 'WorkHome', NEO_CENTER, 'JoinHome', NEO_RIGHT,
+      NEO_LEFT, 'WorkHome', NEO_CENTER, 'ChatHome', NEO_RIGHT,
     ]);
   });
 
@@ -84,11 +88,23 @@ describe('resolveVisibleTabs', () => {
   });
 
   it('instance suy biến: slot chưa bật bị bỏ, thanh vẫn cân', () => {
-    // Chỉ trace(Farm)+proofchat(Chat) bật — không work/join.
+    // Chỉ trace(Farm) bật — không chat/work/join. Ví và Home/Me là màn HOST nên
+    // chúng có mặt ở mọi instance, không cờ module nào tắt được.
     const avail = (r: string) =>
-      ['ChatHome', 'Farms', 'Home', 'Account'].includes(r);
+      [NEO_LEFT, 'Farms', 'Home', 'Account'].includes(r);
     expect(resolveVisibleTabs(NO_FARM, {}, null, avail)).toEqual([
       NEO_LEFT, 'Farms', NEO_CENTER, NEO_RIGHT,
     ]);
+  });
+
+  it('ô trái vắng (giả định module) thì thanh vẫn cân, không có ô rỗng', () => {
+    // Ca đối xứng của bài trên. Nó đo đúng thứ CheckFarm đã sống suốt thời gian
+    // chat bị tắt: NEO trái không dựng được thì hàng còn bốn ô, KHÔNG phải năm ô
+    // với một chỗ trống. Giữ bài này để lần sau ai đó đặt một module vào NEO thì
+    // hệ quả lộ ra ở đây chứ không lộ ở màn hình người dùng.
+    const avail = (r: string) => ['Farms', 'Home', 'ChatHome', 'Account'].includes(r);
+    const tabs = resolveVisibleTabs(NO_FARM, {}, null, avail);
+    expect(tabs).toEqual(['Farms', NEO_CENTER, 'ChatHome', NEO_RIGHT]);
+    expect(tabs).not.toContain(undefined);
   });
 });

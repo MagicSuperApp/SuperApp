@@ -21,7 +21,7 @@ import {
   Image,
   ActivityIndicator,
   ScrollView,
-  Alert,
+  TextInput,
 } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -36,11 +36,15 @@ import { COLORS } from '../constants';
 import {
   matchCareLabel,
   logCare,
+  getCareProducts,
   getWithdrawalStatus,
   safeStateOf,
   type CareProduct,
   type CareLogResponse,
   type CareWithdrawalResponse,
+  // `careService` có kiểu `APIError` RIÊNG, khác kiểu cùng tên ở `treeReIDService`
+  // (tập nhãn khác nhau). Lấy đúng kiểu của service đang gọi, đừng mượn kiểu kia.
+  type APIError,
 } from '../services/careService';
 import { withPhotoSave } from '../services/mediaSavePermission';
 import { showError } from '../utils/alert';
@@ -79,6 +83,39 @@ const CareScanScreen: React.FC = () => {
   // `/api/care/withdrawal`. `null` = chưa hỏi xong hoặc hỏi hỏng; hai ca đó đều
   // KHÔNG được hiện "an toàn" (xem `renderLogged`).
   const [wd, setWd] = useState<CareWithdrawalResponse | null>(null);
+  /**
+   * Lỗi của lượt hỏi CÁCH LY — tách khỏi `wd === null` để không quy sai nguyên nhân.
+   *
+   * Bản trước gộp hai ca vào một `null`: (a) máy chủ trả lời nhưng không tra được
+   * thời gian cách ly của thuốc, (b) lời gọi chưa tới máy chủ (401, mất mạng, 500).
+   * Rồi câu in ra khẳng định ca (a) — *"hệ chưa tra được thời-gian cách-ly của thuốc
+   * đã dùng"* — cho cả ca (b). Đó là một câu về KHO THUỐC dùng cho một sự việc về
+   * ĐƯỜNG MẠNG: người đọc đi tra nhãn thuốc, trong khi việc phải làm là đăng nhập
+   * lại hoặc thử lại.
+   * Hướng fail-safe (không biết thì không nói an toàn) thì đúng và giữ nguyên; cái
+   * sửa ở đây là NÓI ĐÚNG vì sao chưa biết.
+   */
+  const [wdErr, setWdErr] = useState<APIError | null>(null);
+
+  // ── CHỌN TAY TRONG DANH MỤC ────────────────────────────────────────────────
+  //
+  // Đường chụp-nhãn hôm nay KHÔNG dẫn tới đâu: máy chủ chưa bật đọc chữ, nên mọi
+  // lượt chụp trả `reason: 'ocr_unavailable'` và màn chỉ nói được "chụp lại cũng
+  // không giúp được". Nói thật là đúng, nhưng nói thật rồi dừng thì người đứng
+  // giữa vườn vẫn không ghi được lần phun nào — mà nhật ký thuốc chính là thứ
+  // chặn thu hoạch sớm.
+  //
+  // Cả đường ghi tay đã có sẵn ở máy chủ và ở tầng service từ trước:
+  // `GET /api/care/products` (kho sản phẩm) và `recognition_method='manual'` của
+  // `POST /api/care/log`. Thiếu đúng một thứ: không màn nào gọi tới. Chú thích ở
+  // khối rỗng bên dưới từng ghi rằng hàm kho sản phẩm không có chỗ gọi nào, và
+  // lấy đó làm lý do đừng hứa "ghi tay" — đúng lúc đó, hết đúng kể từ đây.
+  const [manualOpen, setManualOpen] = useState(false);
+  const [products, setProducts] = useState<CareProduct[] | null>(null);
+  /** Lỗi của lượt hỏi kho. Tách khỏi `products === null` để KHÔNG gộp ba ca. */
+  const [productsErr, setProductsErr] = useState<APIError | null>(null);
+  const [loadingProducts, setLoadingProducts] = useState(false);
+  const [query, setQuery] = useState('');
 
   const handleCapture = useCallback(async () => {
     setCandidates(null);
@@ -109,19 +146,54 @@ const CareScanScreen: React.FC = () => {
     setMatchMessage(null);
     try {
       const res = await matchCareLabel(BASE_URL, imageUri);
-      if (res.ok && res.data) {
+      // `CareMatchResponse.ok` cũng là trường BẮT BUỘC (`careService.ts:84`) — cùng
+      // lý do như cửa ghi: máy chủ từ chối ở tầng nghiệp vụ mà vẫn trả HTTP 200.
+      // Bỏ qua nó thì một lượt bị từ chối hiện thành "không tìm thấy ứng viên", và
+      // người dùng đi chụp lại mãi một tấm nhãn mà máy chủ không hề từ chối vì ảnh.
+      if (res.ok && res.data && res.data.ok !== false) {
         setCandidates(res.data.candidates ?? []);
         setMatchReason(res.data.reason ?? null);
         setMatchMessage(res.data.ambiguous ? res.data.message ?? null : null);
       } else {
-        showError('Lỗi', res.error?.detail ?? 'Không nhận diện được nhãn. Thử chụp rõ hơn.');
+        showError('Chưa nhận diện được nhãn',
+          res.data?.error ?? res.error?.detail ?? 'Không nhận diện được nhãn. Thử chụp rõ hơn.');
       }
     } finally {
       setMatching(false);
     }
   }, [imageUri]);
 
-  const handleLog = useCallback(async (product: CareProduct) => {
+  const openManual = useCallback(async () => {
+    setManualOpen(true);
+    if (products || loadingProducts) return;
+    setLoadingProducts(true);
+    setProductsErr(null);
+    try {
+      const res = await getCareProducts(BASE_URL);
+      // `ok` ở cửa này là TUỲ CHỌN, nên phép hỏi đúng là `!== false` (vắng mặt vẫn
+      // tính là được), không phải `=== true`.
+      if (res.ok && res.data && res.data.ok !== false) {
+        setProducts(res.data.products ?? []);
+      } else {
+        // Lượt hỏi HỎNG và kho RỖNG là hai việc khác nhau, và chúng đòi hai hành
+        // động ngược nhau (thử lại / báo người quản lý kho). Gộp chúng vào một
+        // danh sách trống là dựng đúng cái vỏ im lặng mà màn này sinh ra để tránh.
+        setProducts(null);
+        setProductsErr(res.error ?? null);
+      }
+    } finally {
+      setLoadingProducts(false);
+    }
+  }, [products, loadingProducts]);
+
+  const handleLog = useCallback(async (
+    product: CareProduct,
+    // Máy chủ ghi `recognition_method` vào nhật ký và nó đi theo hồ sơ truy xuất.
+    // Khai "quét nhãn" cho một lần người dùng tự chọn trong danh mục là ghi sai
+    // nguồn gốc của con số cách ly — không lớn hôm nay, nhưng nó là thứ người
+    // kiểm tra sẽ đọc.
+    method: 'label_scan' | 'manual' = 'label_scan',
+  ) => {
     // `'default'` KHÔNG phải mã vườn — nó là chuỗi cổng xoè tự điền khi người dùng
     // vào thẳng "Quét nhãn thuốc" mà chưa qua một vườn nào
     // (`src/navigation/resolveGateItems.ts:68`). Bản trước chỉ chặn `targetId` RỖNG,
@@ -144,19 +216,40 @@ const CareScanScreen: React.FC = () => {
         targetId,
         productId: product.product_id,
         farmId,
-        recognitionMethod: 'label_scan',
+        recognitionMethod: method,
+        // Ghi tay thì ảnh (nếu có) là ảnh nhãn máy chủ ĐÃ không đọc được. Vẫn gửi:
+        // nó là bằng chứng hiện trường cho người kiểm tra sau này, và cửa `log`
+        // nhận nó ở cả hai lối.
         imagePath: imageUri ?? undefined,
       });
-      if (res.ok && res.data) {
+      // ── ĐỌC `data.ok`, KHÔNG CHỈ ĐỌC `res.ok` ────────────────────────────────
+      // `res.ok` là kết quả của tầng HTTP. Máy chủ từ chối ở tầng NGHIỆP VỤ bằng
+      // `200 {ok:false, error:"…"}` — `CareLogResponse.ok` là trường bắt buộc đúng
+      // vì thế. Bản trước chỉ hỏi `res.ok && res.data`, nên một lượt bị từ chối đi
+      // thẳng vào `setLogged()` và màn hiện dấu ✓ xanh *"Đã ghi nhật-ký"* kèm nút
+      // "Xong". Câu của máy chủ không hiện ở đâu, và lần xịt thuốc đó không vào sổ
+      // — mà sổ đó chính là thứ tính ngày cách ly để chặn thu hoạch.
+      // Đối chứng: `TreeEnrollScreen`, `TreeIdentityScreen`, `FruitCropperScreen`,
+      // `FruitScanScreen` và 6 service đều đọc `data.ok`; màn này đọc 0 lần.
+      if (res.ok && res.data && res.data.ok !== false) {
         setLogged(res.data);
         // Ghi xong mới hỏi được trạng thái cách ly, và phải hỏi ở cửa KHÁC: máy chủ
         // gộp MỌI lần ghi của đối tượng rồi lấy mốc xa nhất. `withdrawal_until` của
         // riêng lần ghi này không trả lời được câu "cây này bán được chưa" — một lần
         // ghi trước đó có thể còn xa hơn.
         const w = await getWithdrawalStatus(BASE_URL, targetType, targetId);
-        setWd(w.ok && w.data ? w.data : null);
+        const wOk = w.ok && w.data && w.data.ok !== false;
+        setWd(wOk ? w.data! : null);
+        setWdErr(wOk ? null : (w.error ?? null));
       } else {
-        showError('Lỗi', res.error?.detail ?? 'Ghi nhật-ký thất bại. Vui lòng thử lại.');
+        // Câu của máy chủ TRƯỚC câu của mình. Ở ca `200 {ok:false}` thì lý do nằm
+        // trong `data.error` (`res.error` lúc đó là `undefined`), nên phải đọc cả hai
+        // chỗ — máy chủ nói "Cây này đang bị khoá ghi — chờ kiểm tra viên duyệt" thì
+        // người dùng phải đọc đúng câu đó; "Ghi thất bại, thử lại" không nói được
+        // việc phải làm, và lời mời thử lại ở đây là lời mời thử lại vô ích.
+        showError('Chưa ghi được nhật-ký',
+          res.data?.error ?? res.error?.detail
+          ?? 'Ghi nhật-ký thất bại. Vui lòng thử lại.');
       }
     } finally {
       setLogging(false);
@@ -194,9 +287,18 @@ const CareScanScreen: React.FC = () => {
         ) : safeState === 'unknown' ? (
           <View style={styles.unknownBox}>
             <Icon name="help-circle" size={18} color={COLORS.warning} />
+            {/* HAI nguyên nhân khác hẳn nhau cho cùng một chữ "chưa biết" — và việc
+                phải làm ở hai ca cũng khác hẳn. Gộp chúng là đẩy người dùng đi tra
+                nhãn thuốc trong khi hỏng nằm ở phiên đăng nhập. */}
             <Text style={styles.unknownText}>
-              CHƯA khẳng-định được an-toàn — hệ chưa tra được thời-gian cách-ly của thuốc đã dùng.
-              Xin xem nhãn thuốc trước khi thu-hoạch/bán.
+              {wdErr
+                ? 'CHƯA khẳng-định được an-toàn — máy chưa hỏi được máy chủ về thời-gian '
+                  + `cách-ly (${wdErr.type === 'auth_error' ? 'phiên đăng nhập đã hết hạn'
+                    : wdErr.type === 'network_error' ? 'mất kết nối'
+                      : `máy chủ trả HTTP ${wdErr.http_status}`}). `
+                  + 'Lần ghi vừa rồi ĐÃ vào sổ; hãy mở lại cây này khi có mạng để xem hạn cách-ly.'
+                : 'CHƯA khẳng-định được an-toàn — hệ chưa tra được thời-gian cách-ly của thuốc đã dùng. '
+                  + 'Xin xem nhãn thuốc trước khi thu-hoạch/bán.'}
             </Text>
           </View>
         ) : (
@@ -217,6 +319,26 @@ const CareScanScreen: React.FC = () => {
             </Text>
           </View>
         )}
+        {/* ── CỜ AN TOÀN máy chủ gửi — trước đây có 0 nơi đọc ────────────────────
+            `flags` là danh sách cảnh báo ngoài phép tính cách ly: thuốc nằm trong
+            danh mục cấm ở thị trường xuất khẩu, hoặc dư lượng vượt ngưỡng. Máy chủ
+            gửi, màn không có ô nào cho nó ⟹ nông dân thấy khối xanh "An-toàn — không
+            trong thời-gian cách-ly" rồi bán cả lô. Cách ly hết hạn KHÔNG kéo theo lô
+            đó bán được: hai điều kiện khác nhau.
+            Mã lạ vẫn hiện NGUYÊN VĂN chứ không bỏ: một cờ không có trong bảng dịch
+            vẫn là một cờ máy chủ đã dựng lên để cảnh báo. */}
+        {!!wd?.flags?.length && wd.flags.map((f, i) => (
+          <View key={`flag-${i}`} style={styles.warnBox}>
+            <Icon name="alert-octagon" size={18} color={COLORS.error} />
+            <Text style={styles.warnText}>
+              {f === 'cam_EU'
+                ? 'Thuốc này nằm trong danh mục CẤM của thị trường EU — lô hàng có thể bị từ chối dù đã hết cách-ly.'
+                : f === 'du_luong_MRL'
+                  ? 'Dư lượng có thể VƯỢT NGƯỠNG cho phép (MRL) — cần kiểm nghiệm trước khi bán.'
+                  : `Cảnh báo an-toàn từ máy chủ: ${f}`}
+            </Text>
+          </View>
+        ))}
         {!!wd?.advice?.length && wd.advice.map((a, i) => (
           <Text key={`advice-${i}`} style={styles.unknownText}>{a}</Text>
         ))}
@@ -236,8 +358,11 @@ const CareScanScreen: React.FC = () => {
       // giữa vườn chụp lại, trong khi hai trong ba ca chụp lại là vô ích, và ca đang
       // xảy ra 100% hôm nay (máy chủ không có OCR) là ca vô ích nhất.
       //
-      // Không câu nào ở đây chỉ tới một nút không tồn tại: app chưa có đường nhập tay
-      // (`getCareProducts` có 0 chỗ gọi, màn không có ô nhập), nên đừng hứa "ghi tay".
+      // Không câu nào ở đây chỉ tới một nút không tồn tại. Điều kiện đó ĐÃ ĐỔI
+      // 2026-09-12: đường chọn tay trong danh mục nay có thật (`renderManual`,
+      // `getCareProducts`), nên ba câu dưới đây được phép dẫn sang nó — và nút
+      // "Chọn tay trong danh mục" hiện ngay bên dưới khối này. Ai gỡ đường chọn
+      // tay thì phải gỡ cả lời hứa ở đây, không thì màn lại chỉ vào chỗ trống.
       const empty: Record<string, string> = {
         ocr_unavailable:
           'Máy chủ hiện chưa đọc được chữ trên nhãn. Chụp lại cũng không giúp được — '
@@ -259,6 +384,19 @@ const CareScanScreen: React.FC = () => {
                 ? `Chưa nhận ra sản-phẩm. Máy chủ báo lý do "${matchReason}" mà bản app này chưa biết.`
                 : 'Chưa nhận ra sản-phẩm.')}
           </Text>
+          {/* Ba trong bốn ca trên đều KHÔNG sửa được bằng cách chụp lại. Không có
+              lối này thì màn nói thật rồi dừng, và lần phun vừa rồi không được ghi
+              — mà nhật ký thuốc chính là thứ chặn thu hoạch sớm. */}
+          {!manualOpen && (
+            <TouchableOpacity
+              style={[styles.btn, styles.btnPrimary, styles.btnFull]}
+              onPress={openManual}
+              activeOpacity={0.85}
+            >
+              <Icon name="format-list-bulleted" size={18} color={NEUTRAL.white} />
+              <Text style={styles.btnPrimaryText}>Chọn tay trong danh mục</Text>
+            </TouchableOpacity>
+          )}
         </View>
       );
     }
@@ -269,35 +407,109 @@ const CareScanScreen: React.FC = () => {
             mà số ngày cách ly giữa các ứng viên lại khác nhau. */}
         {matchMessage ? <Text style={styles.emptyText}>{matchMessage}</Text> : null}
         <Text style={styles.sectionTitle}>Chọn sản-phẩm đã dùng:</Text>
-        {candidates.map((p) => (
-          <TouchableOpacity
-            key={p.product_id}
-            style={styles.productRow}
-            onPress={() => handleLog(p)}
-            disabled={logging}
-            activeOpacity={0.8}
-          >
-            <Icon name="bottle-tonic" size={20} color={HEADER_BG} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.productName}>{p.trade_name ?? p.product_id}</Text>
-              {(p.category || p.active_ingredients) && (
-                <Text style={styles.productSub} numberOfLines={1}>
-                  {[p.category, p.active_ingredients].filter(Boolean).join(' · ')}
-                </Text>
-              )}
-              {p.withdrawal_period_days != null && (
-                <Text style={styles.productSub}>
-                  Cách ly: {p.withdrawal_period_days} ngày
-                  {/* Máy chủ tự khai độ tin của con số này. `low`/`medium` là ƯỚC
-                      TÍNH — in số trần mà giấu chữ "ước tính" là để nông dân tin
-                      chắc hơn mức hệ thật sự biết. (`care_router.py:181`) */}
-                  {(p.phi_confidence === 'low' || p.phi_confidence === 'medium') ? ' (ước tính)' : ''}
-                </Text>
-              )}
-            </View>
-            {logging ? <ActivityIndicator size="small" color={HEADER_BG} /> : <Icon name="chevron-right" size={20} color={NEUTRAL.textMuted} />}
-          </TouchableOpacity>
-        ))}
+        {candidates.map((p) => productRow(p, 'label_scan'))}
+      </View>
+    );
+  };
+
+  /** Một dòng sản phẩm — dùng chung cho danh sách ứng viên và danh mục chọn tay. */
+  const productRow = (p: CareProduct, method: 'label_scan' | 'manual') => (
+    <TouchableOpacity
+      key={p.product_id}
+      style={styles.productRow}
+      onPress={() => handleLog(p, method)}
+      disabled={logging}
+      activeOpacity={0.8}
+    >
+      <Icon name="bottle-tonic" size={20} color={HEADER_BG} />
+      <View style={{ flex: 1 }}>
+        <Text style={styles.productName}>{p.trade_name ?? p.product_id}</Text>
+        {(p.category || p.active_ingredients) && (
+          <Text style={styles.productSub} numberOfLines={1}>
+            {[p.category, p.active_ingredients].filter(Boolean).join(' · ')}
+          </Text>
+        )}
+        {p.withdrawal_period_days != null && (
+          <Text style={styles.productSub}>
+            Cách ly: {p.withdrawal_period_days} ngày
+            {/* Máy chủ tự khai độ tin của con số này. `low`/`medium` là ƯỚC TÍNH —
+                in số trần mà giấu chữ "ước tính" là để nông dân tin chắc hơn mức
+                hệ thật sự biết. (`care_router.py:181`) */}
+            {(p.phi_confidence === 'low' || p.phi_confidence === 'medium') ? ' (ước tính)' : ''}
+          </Text>
+        )}
+      </View>
+      {logging ? <ActivityIndicator size="small" color={HEADER_BG} /> : <Icon name="chevron-right" size={20} color={NEUTRAL.textMuted} />}
+    </TouchableOpacity>
+  );
+
+  const renderManual = () => {
+    if (!manualOpen || logged) return null;
+    const q = query.trim().toLowerCase();
+    const loc = products
+      ? products.filter((p) => !q
+        || (p.trade_name ?? '').toLowerCase().includes(q)
+        || (p.active_ingredients ?? '').toLowerCase().includes(q)
+        || p.product_id.toLowerCase().includes(q))
+      : [];
+    return (
+      <View style={styles.resultSection}>
+        <Text style={styles.sectionTitle}>Chọn thuốc/phân trong danh mục:</Text>
+
+        {loadingProducts ? (
+          <View style={styles.badgeRow}>
+            <ActivityIndicator size="small" color={HEADER_BG} />
+            <Text style={styles.productSub}>Đang lấy danh mục từ máy chủ...</Text>
+          </View>
+        ) : productsErr ? (
+          // Lượt hỏi HỎNG. Câu của máy chủ thắng câu chung chung của app.
+          <>
+            <Text style={styles.emptyText}>
+              {productsErr.detail?.trim()
+                ? `Chưa lấy được danh mục: ${productsErr.detail}`
+                : 'Chưa lấy được danh mục thuốc từ máy chủ.'}
+            </Text>
+            <TouchableOpacity
+              style={[styles.btn, styles.btnGhost, styles.btnFull]}
+              onPress={() => { setProducts(null); setProductsErr(null); setManualOpen(false); openManual(); }}
+              activeOpacity={0.85}
+            >
+              <Icon name="refresh" size={18} color={HEADER_BG} />
+              <Text style={styles.btnGhostText}>Thử lấy lại</Text>
+            </TouchableOpacity>
+          </>
+        ) : products && products.length === 0 ? (
+          // Kho RỖNG — khác hẳn ca trên, và thử lại bao nhiêu lần cũng thế.
+          <Text style={styles.emptyText}>
+            Danh mục thuốc trên máy chủ chưa có sản-phẩm nào, nên chưa chọn tay được.
+            Đây là việc ở máy chủ — thử lại cũng ra kết quả cũ.
+          </Text>
+        ) : (
+          <>
+            <TextInput
+              style={styles.searchInput}
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Gõ tên thuốc hoặc hoạt-chất..."
+              placeholderTextColor={NEUTRAL.textMuted}
+              autoCorrect={false}
+            />
+            {loc.length === 0 ? (
+              // Lọc không ra ≠ kho rỗng. Nói rõ để người dùng biết xoá chữ đi là thấy lại.
+              <Text style={styles.emptyText}>
+                Không có sản-phẩm nào khớp "{query.trim()}". Xoá bớt chữ để xem cả danh mục
+                ({products?.length ?? 0} sản-phẩm).
+              </Text>
+            ) : (
+              loc.slice(0, 40).map((p) => productRow(p, 'manual'))
+            )}
+            {loc.length > 40 && (
+              <Text style={styles.productSub}>
+                Còn {loc.length - 40} sản-phẩm nữa — gõ thêm chữ để thu hẹp.
+              </Text>
+            )}
+          </>
+        )}
       </View>
     );
   };
@@ -353,7 +565,22 @@ const CareScanScreen: React.FC = () => {
           </TouchableOpacity>
         )}
 
+        {/* Lối chọn tay KHÔNG bắt phải chụp trước. Hôm nay máy chủ chưa bật đọc
+            chữ, nên bắt chụp một tấm ảnh chắc chắn vô ích rồi mới cho chọn tay là
+            thêm một bước không dẫn tới đâu cho người đang đứng giữa vườn. */}
+        {!candidates && !logged && !manualOpen && (
+          <TouchableOpacity
+            style={[styles.btn, styles.btnGhost, styles.btnFull]}
+            onPress={openManual}
+            activeOpacity={0.85}
+          >
+            <Icon name="format-list-bulleted" size={18} color={HEADER_BG} />
+            <Text style={styles.btnGhostText}>Chọn tay trong danh mục</Text>
+          </TouchableOpacity>
+        )}
+
         {renderCandidates()}
+        {renderManual()}
         {renderLogged()}
       </ScrollView>
     </View>
@@ -411,8 +638,16 @@ const styles = StyleSheet.create({
   },
   okText: { flex: 1, fontSize: 13, color: '#1f5c45', lineHeight: 18 },
   emptyText: { fontSize: 14, color: NEUTRAL.textMuted, textAlign: 'center' },
+  searchInput: {
+    borderWidth: 1, borderColor: NEUTRAL.border, borderRadius: 10, paddingHorizontal: 12,
+    paddingVertical: 10, fontSize: 15, color: NEUTRAL.text, backgroundColor: NEUTRAL.bgSoft,
+  },
   btn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 18, paddingVertical: 13, borderRadius: 12 },
   btnFull: { width: '100%' },
+  // Nút phụ: viền màu đầu trang, nền trong — để nó KHÔNG tranh chỗ với nút chính
+  // trên cùng một màn, nhưng vẫn đọc được là bấm được.
+  btnGhost: { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: HEADER_BG },
+  btnGhostText: { color: HEADER_BG, fontSize: 15, fontWeight: '700' },
   btnDisabled: { opacity: 0.55 },
   btnPrimary: { backgroundColor: HEADER_BG },
   btnPrimaryText: { color: NEUTRAL.white, fontSize: 15, fontWeight: '600' },

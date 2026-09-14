@@ -12,6 +12,7 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { COLORS } from '../constants';
 import { phoenixKeyApi } from '../services/phoenixKey-api';
 import { getStoredMasterKek } from '../services/masterKekStore';
+import { GATE_PREFIX, requireUserPresence } from '../services/sensitiveActionGate';
 import taad from '../sdk/taadEnclave';
 import StateView from '../components/state/StateView';
 import { showError, showSuccess, showWarning } from '../utils/alert';
@@ -75,6 +76,24 @@ const SignRequestScreen: React.FC = () => {
       const kek = await getStoredMasterKek();
       if (!kek) { showError('Chưa sẵn sàng', 'Không tìm thấy khoá — hãy đăng nhập lại.'); return; }
       const canonical = canonicalJson(data.intent);
+
+      // ── CỔNG XÁC THỰC ────────────────────────────────────────────────────────
+      // Đây là đường ký MẠNH NHẤT trong app: nội dung do BÊN NGOÀI soạn, app chỉ
+      // hiện lại `displayText` rồi ký. `signEd25519` ký bằng Master_KEK, mà KEK
+      // đọc ra được chỉ cần máy đã mở khoá — nên trước bản này, ai cầm máy đang
+      // mở là duyệt được một yêu cầu ký bất kỳ. Vì sao cổng tồn tại + ranh giới
+      // của nó: `sensitiveActionGate.ts` đầu tệp.
+      //
+      // Ký chính chuỗi canonical của intent này, không ký một hằng số: một lần
+      // duyệt phải gắn với ĐÚNG yêu cầu đang mở, không dùng lại cho yêu cầu sau.
+      // Cổng ném khi người dùng huỷ — `catch` bên dưới hiện lỗi và KHÔNG gửi gì.
+      await requireUserPresence({
+        prefix: GATE_PREFIX.signRequest,
+        fields: [requestId, canonical],
+        title: 'Xác nhận ký giao dịch',
+        subtitle: 'Quét khuôn mặt hoặc vân tay để ký yêu cầu này',
+      });
+
       const taadPub = await taad.deriveTaadPubkey(kek);
       const signature = await taad.signEd25519(kek, canonical);
       await phoenixKeyApi.signRequest.approve(requestId, {

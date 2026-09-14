@@ -10,6 +10,7 @@
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ensureOrilifeToken } from './orilifeDidAuth';
+import { authSyncMessage } from './orilifeAuthMessage';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -233,8 +234,25 @@ export interface APIError {
    * Bốn nhãn này CỐ Ý tách rời: chúng dẫn tới bốn việc khác nhau mà người dùng phải
    * làm, và gộp lại thì câu hướng dẫn sai ở ba trong bốn ca — xem khối `catch`
    * cuối `_apiCall` và `attributeImageSendFailure`.
+   *
+   * `not_found`      — máy chủ trả lời rõ ràng là KHÔNG CÓ thứ đang hỏi. Tách khỏi
+   *                    `server_error` vì hai câu dẫn tới hai việc trái ngược: lỗi máy
+   *                    chủ thì thử lại có ích, còn không tồn tại thì thử lại vô ích
+   *                    mãi mãi. Trước đây mọi 4xx còn lại đều mang `server_error`.
+   *
+   * `forbidden`      — 403: đã xác thực ĐÚNG, nhưng danh tính này không có quyền với
+   *                    thứ đang hỏi. **Không được gộp vào `auth_error`.** Nhãn
+   *                    `auth_error` không chỉ là một câu chữ — ba màn đọc nó như một
+   *                    lệnh *làm mới phiên*: `TreeIdentityScreen.tsx:790`,
+   *                    `FarmDetailScreen.tsx:2321` và `:2607` gọi
+   *                    `ensureOrilifeToken(base, { force: true })`, tức XOÁ thẻ phiên
+   *                    đang dùng tốt và bật thêm một hộp Face ID. Gộp 403 vào đó thì
+   *                    người mở một cây không thuộc mình bị mất phiên đang dùng, quét
+   *                    mặt một lượt vô ích, nhận đúng con 403 ấy, rồi đọc câu "phiên
+   *                    hết hạn, hãy đăng nhập lại" trên màn không có nút đăng nhập.
+   *                    403 thì đăng nhập lại bao nhiêu lần cũng không đổi kết quả.
    */
-  type: 'network_error' | 'timeout' | 'bad_response' | 'missing_image' | 'auth_error' | 'validation_error' | 'duplicate' | 'rate_limited' | 'server_error';
+  type: 'network_error' | 'timeout' | 'bad_response' | 'missing_image' | 'auth_error' | 'forbidden' | 'validation_error' | 'duplicate' | 'rate_limited' | 'server_error' | 'not_found';
   detail: string;
   http_status: number;
   retry_after_seconds?: number;
@@ -344,9 +362,24 @@ export function fieldErrorMessage(err?: APIError): string {
       // những tấm ảnh đã mất — nên lần nào cũng hỏng y hệt.
       return 'Ảnh vừa chụp không còn trong máy nên chưa gửi đi được (máy đã tự dọn để lấy chỗ trống). Hãy chụp lại rồi gửi ngay, đừng để lâu giữa lúc chụp và lúc gửi.';
     case 'auth_error':
-      return 'Phiên đăng nhập hết hạn. Hãy đăng nhập lại.';
+      // Câu cũ — "Phiên đăng nhập hết hạn. Hãy đăng nhập lại." — đoán một nguyên
+      // nhân rồi ra một mệnh lệnh không có nút nào để làm. Nay lấy ô hỏng THẬT của
+      // lần đăng nhập DID gần nhất; `syncErrorMessage` là cửa duy nhất giữ phép
+      // ánh xạ đó, nên hai màn không nói hai câu khác nhau về cùng một sự việc.
+      return authSyncMessage();
+    case 'forbidden':
+      // KHÔNG mời đăng nhập lại, và KHÔNG mời thử lại. Đây là ca đã xác thực đúng mà
+      // vẫn bị từ chối, nên hai lời khuyên ấy đều dẫn người dùng đi làm một việc vô
+      // ích. Câu của máy chủ mới nói được ai mới có quyền — *"Bạn không phải chủ cây
+      // này"* chỉ ra việc phải làm, câu chung chung của app thì không.
+      return err.detail
+        || 'Tài khoản đang dùng không có quyền với thứ này. Nó thuộc một tài khoản khác — hãy hỏi người đã ghi danh nó, hoặc kiểm tra xem bạn đang đăng nhập bằng danh tính nào.';
     case 'rate_limited':
       return 'Thao tác quá nhanh. Chờ một chút rồi thử lại.';
+    case 'not_found':
+      // KHÔNG mời thử lại. Máy chủ đã trả lời dứt khoát, nên thử lại chỉ ra đúng
+      // câu này lần nữa — và người dùng thì đang đứng ngoài vườn.
+      return err.detail || 'Không tìm thấy thứ đang tra trên máy chủ. Có thể nó đã bị xoá, hoặc đang nằm ở tài khoản khác.';
     case 'server_error':
       return 'Máy chủ đang bận. Thử lại sau ít phút.';
     default:
@@ -476,7 +509,13 @@ async function _apiCall<T>(
       let reason: string | undefined;
       try {
         const body = await resp.json();
-        detail = body.detail ?? detail;
+        // Đọc CẢ `detail` VÀ `error` — y như nhánh 409 cách đây 26 dòng đã làm.
+        // Bất đối xứng ngay trong một hàm là chỗ dễ sót nhất: chính chú thích nhánh
+        // 409 ghi rằng máy chủ field-reid đặt câu cho người dùng ở `error`, nhưng
+        // nhánh này chỉ đọc `detail`. Hệ quả: máy chủ nói "Ảnh quá mờ — chụp lại khi
+        // đủ sáng" thì app hiện "Dữ liệu không hợp lệ", và người dùng không biết
+        // phải chụp lại cho sáng hơn.
+        detail = body.detail ?? body.error ?? detail;
         // Backend field-reid trả mã lỗi chất-lượng ảnh ở code/error_code + câu gợi ý ở reason.
         errorCode = body.code ?? body.error_code ?? undefined;
         reason = body.reason ?? undefined;
@@ -495,9 +534,39 @@ async function _apiCall<T>(
     }
 
     if (!resp.ok) {
+      // ── "KHÔNG CÓ QUYỀN" và "KHÔNG TỒN TẠI" KHÔNG PHẢI MỘT ───────────────────
+      // Bản trước gán `server_error` + `detail: "HTTP <mã>"` cho mọi 4xx còn lại, và
+      // `fieldErrorMessage` dịch `server_error` thành *"Máy chủ đang bận. Thử lại sau
+      // ít phút."* Nên 403 (*"Bạn không phải chủ cây này"*) và 404 (*"Cây không tồn
+      // tại"*) ra CÙNG một câu, và câu đó khai sai một nguyên nhân TẠM THỜI: người
+      // dùng được mời thử lại vô hạn cho hai ca mà thử lại không bao giờ giúp được.
+      // Thân phản hồi mang câu thật của máy chủ; đọc nó trước khi bỏ đi.
+      // Đối chứng cùng thư mục: `fruitVideoService.ts:156-160` và `careService.ts:212-229`
+      // đều đọc thân, khối chú thích ở careService ghi rõ *"ĐỌC THÂN PHẢN HỒI TRƯỚC
+      // KHI BỎ NÓ ĐI"*.
+      let detail = '';
+      try {
+        const body = await resp.json();
+        detail = body.detail ?? body.error ?? '';
+      } catch { /* thân không phải JSON — rơi về câu theo mã dưới đây */ }
+      // 403 KHÔNG phải `auth_error` — xem khối lý do ở định nghĩa `APIError['type']`.
+      // Ba màn đọc `auth_error` thành lệnh làm mới phiên; 403 đi vào đó thì người dùng
+      // mất thẻ phiên đang dùng tốt cộng một lượt quét mặt vô ích.
+      const type: APIError['type'] = resp.status === 401
+        ? 'auth_error'
+        : resp.status === 403 ? 'forbidden'
+          : resp.status === 404 ? 'not_found' : 'server_error';
       return {
         ok: false,
-        error: { type: 'server_error', detail: `HTTP ${resp.status}`, http_status: resp.status },
+        error: {
+          type,
+          detail: detail || (resp.status === 403
+            ? 'Tài khoản này không có quyền với cây đó.'
+            : resp.status === 404
+              ? 'Không tìm thấy cây đó trên máy chủ.'
+              : `HTTP ${resp.status}`),
+          http_status: resp.status,
+        },
       };
     }
 

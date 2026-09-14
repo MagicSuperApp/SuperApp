@@ -63,7 +63,7 @@ import {
   isMalformedPhoenixDid,
   isSupportedBackendDid,
 } from './phoenixDid';
-import taad from '../sdk/taadEnclave';
+import taad, { isCoreUnavailableError } from '../sdk/taadEnclave';
 import { getOrCreateMasterKek } from './masterKekStore';
 
 const DID_USERS_KEY = 'did_users';
@@ -74,29 +74,91 @@ const BIOMETRIC_DID_KEY = 'biometric_did_map';
 import { CARDANO_NETWORK as WALLET_NETWORK } from '../config/cardanoNetwork';
 
 /**
- * Trường ví Master_KEK gắn kèm register (ADDITIVE). Lấy/sinh KEK → derive
- * TAAD_Key (Ed25519) + địa chỉ Cardano account-0. NON-BLOCKING: nếu Rust core
- * chưa sẵn (build cũ) hoặc derive lỗi → trả {} → register DID như cũ (chỉ HW_Key),
- * did_auth không bị ảnh hưởng.
+ * Vì sao hai ca này KHÔNG gộp làm một, dù cùng dẫn tới "không đăng ký được":
+ * chúng đòi người dùng làm hai việc KHÁC HẲN nhau. `core_missing` là bản app
+ * thiếu lõi mã hoá — bấm lại một nghìn lần cũng y nguyên, phải cập nhật app.
+ * `derive_failed` là lõi có mặt nhưng lần này hỏng — thử lại là việc đúng.
+ * Gộp lại thì một trong hai nhóm người nhận lời khuyên vô dụng.
+ *
+ * (Tên trạng thái viết tiếng Anh theo quy ước định danh; các khoá lý do cũ trong
+ * `RECOVER_FAIL_MESSAGE` phía dưới có trước quy ước đó nên giữ nguyên.)
  */
-const deriveWalletRegisterFields = async (): Promise<{
-  taadPublicKeyHex?: string;
-  walletAddress?: string;
-  entityType?: 'PERSON';
+export type TaadKeyBlockReason = 'core_missing' | 'derive_failed';
+
+/**
+ * Không suy được khoá TAAD ⟹ KHÔNG đăng ký. Lỗi này là CỔNG, không phải cảnh báo.
+ *
+ * ── Vì sao chặn, dù chặn nghĩa là người dùng không tạo được tài khoản lúc này ──
+ * Khoá TAAD được ghi vào máy chủ ĐÚNG MỘT LẦN, trong chính giao dịch khai sinh của
+ * lượt đăng ký. Không có đường bổ sung về sau, và đường khôi phục bằng 24 từ đọc
+ * đúng bảng đó rồi từ chối khi không thấy. (Dữ kiện do nhà giữ máy chủ đo và gửi
+ * sang 2026-09-14; nhà này không có quyền đọc mã máy chủ để tự đo lại.)
+ *
+ * Nên một lượt đăng ký thiếu khoá TAAD không phải "tài khoản thiếu một tính năng"
+ * — nó là **một danh tính không khôi phục được, vĩnh viễn**, trao cho người dùng
+ * mà họ không biết, và chỉ lộ ra vào đúng ngày họ mất máy, tức lúc đã hết đường.
+ * Bản trước trả `{}` ở cả ba nhánh hỏng rồi đăng ký tiếp, im lặng.
+ *
+ * Đổi một lượt đăng ký trượt CÓ CÂU GIẢI THÍCH lấy một danh tính chết KHÔNG AI
+ * BÁO là đổi đúng chiều.
+ */
+export class TaadKeyUnavailableError extends Error {
+  readonly code = 'TAAD_KEY_UNAVAILABLE';
+  readonly reason: TaadKeyBlockReason;
+  constructor(reason: TaadKeyBlockReason, cause?: unknown) {
+    // Mượn ĐÚNG câu mà đường khôi phục dùng, thay vì viết câu thứ hai cho cùng một
+    // sự việc. Hai đường tới đây — đăng ký mới ném thẳng lỗi này lên màn hình, còn
+    // đường khôi phục tra `RECOVER_FAIL_MESSAGE[reason]` — nên hai câu rời nhau sẽ
+    // trôi ra khỏi nhau đúng lúc ai đó sửa một bên; và bản dịch thì chỉ có một bản.
+    super(RECOVER_FAIL_MESSAGE[reason]);
+    this.name = 'TaadKeyUnavailableError';
+    this.reason = reason;
+    if (cause !== undefined) (this as { cause?: unknown }).cause = cause;
+  }
+}
+
+/**
+ * Trường ví Master_KEK gắn kèm register. BẮT BUỘC: hỏng thì ném
+ * `TaadKeyUnavailableError`, KHÔNG trả về một bộ trường khuyết.
+ *
+ * Tên hàm đổi từ `derive…` sang `require…` là có chủ đích: chỗ gọi phải đọc ra
+ * được rằng đây là điều kiện, không phải phần thêm nếm.
+ */
+const requireWalletRegisterFields = async (): Promise<{
+  taadPublicKeyHex: string;
+  walletAddress: string;
+  entityType: 'PERSON';
 }> => {
-  if (!taad.isAvailable()) return {};
+  if (!taad.isAvailable()) {
+    rLog.error('register_taad_key_blocked', { giai_doan: 'khong_co_cau_native' });
+    throw new TaadKeyUnavailableError('core_missing');
+  }
+  let taadPublicKeyHex: string;
+  let walletAddress: string;
   try {
     const kek = await getOrCreateMasterKek();
-    const taadPublicKeyHex = await taad.deriveTaadPubkey(kek);
-    const walletAddress = await taad.deriveWalletAddress(kek, 0, WALLET_NETWORK);
-    if (!taadPublicKeyHex || !walletAddress) return {};
-    // Backend DidType enum là CHỮ HOA (PERSON/ORG/...). Gửi 'person' → 400 malformed
-    // (Cannot deserialize entity_type). PHẢI 'PERSON'.
-    return { taadPublicKeyHex, walletAddress, entityType: 'PERSON' };
+    taadPublicKeyHex = await taad.deriveTaadPubkey(kek);
+    walletAddress = await taad.deriveWalletAddress(kek, 0, WALLET_NETWORK);
   } catch (e) {
-    console.warn('[PhoenixKey] derive ví từ KEK lỗi (bỏ qua, register chỉ HW_Key):', e);
-    return {};
+    // `isAvailable()` đã cho qua mà lời gọi vẫn báo KHÔNG CÓ LÕI ⟹ máy này thiếu
+    // `.so` cho ABI của nó. Đó không phải một lần trượt, nên đừng mời thử lại.
+    const reason: TaadKeyBlockReason = isCoreUnavailableError(e) ? 'core_missing' : 'derive_failed';
+    // Đếm được số lượt bị chặn là điều kiện để biết bản vá này đang cứu người hay
+    // đang cấm cửa người. Không có dòng này thì ngày phát hành là một ngày mù.
+    // Chỉ gửi giai đoạn + mã tra ngược: câu thô có thể mang vật liệu khoá.
+    rLog.error('register_taad_key_blocked', { giai_doan: reason });
+    console.warn('[PhoenixKey] suy khoá TAAD từ KEK hỏng — KHÔNG đăng ký:', e);
+    throw new TaadKeyUnavailableError(reason, e);
   }
+  // Rỗng mà không ném là ca riêng: cầu native trả về chuỗi trống thay vì lỗi. Nó
+  // đi lọt mọi `catch`, nên phải có nhánh của chính nó.
+  if (!taadPublicKeyHex || !walletAddress) {
+    rLog.error('register_taad_key_blocked', { giai_doan: 'tra_ve_rong' });
+    throw new TaadKeyUnavailableError('derive_failed');
+  }
+  // Backend DidType enum là CHỮ HOA (PERSON/ORG/...). Gửi 'person' → 400 malformed
+  // (Cannot deserialize entity_type). PHẢI 'PERSON'.
+  return { taadPublicKeyHex, walletAddress, entityType: 'PERSON' };
 };
 
 interface GenesisResult {
@@ -162,18 +224,35 @@ export const registerIdentity = async (
     throw failure;
   }
 
+  // ⛔ ĐO TRƯỚC KHI ĐỘNG VÀO BẤT CỨ THỨ GÌ. Thứ tự ở đây là phần đắt nhất của bản
+  // vá, không phải bản thân phép chặn.
+  //
+  // Đặt sau `enrollKeypair()` thì sinh ra bốn hệ quả, cả bốn đều thật:
+  //   1. `enrollKeypair()` XOÁ khoá cũ trong chip rồi ghi khoá mới. Hỏng sau đó là
+  //      máy mất khoá cũ mà chưa có danh tính mới.
+  //   2. Lần bấm lại, `isKeypairEnrolled()` ở trên trả `true` nên với `new-person`
+  //      app hỏi "máy này đã có một danh tính" — về một danh tính chưa từng tồn tại.
+  //   3. Người dùng đã gõ xong tên đăng nhập và qua HAI hộp sinh trắc trước khi
+  //      nghe tin mình bị chặn. Chi phí trả trước, nhận về không.
+  //   4. `reRegisterIdentity` gọi `wipeIdentity()` NGAY TRƯỚC hàm này, nên ở luồng
+  //      đó khoá cũ đã mất trước cả khi phép đo chạy.
+  // Đặt trước thì cả bốn biến mất cùng lúc, và hàm này giữ được tính chất "hỏng thì
+  // máy không khác gì lúc chưa bấm".
+  //
+  // KEK có thể được sinh ở bước này (`getOrCreateMasterKek`) và ở lại máy khi lượt
+  // đăng ký bị chặn. Đó là chủ đích: lần thử sau dùng lại đúng KEK ấy nên 24 từ của
+  // người dùng không đổi giữa hai lần.
+  const walletFields = await requireWalletRegisterFields();
+
   const { publicKeyHex } = await enrollKeypair();
   const genesisMessage = `PHOENIXKEY_GENESIS:${publicKeyHex}`;
   const messageHex = utf8ToHex(genesisMessage);
 
   const signature = await signRaw(
     messageHex,
-    'Create a new identity',
-    'Sign to create a new PhoenixKey identity on this device',
+    tk('identity.bio.createTitle'),
+    tk('identity.bio.createBody'),
   );
-
-  // ADDITIVE: gắn ví Master_KEK (TAAD_Key + địa chỉ Cardano). Bỏ qua nếu lỗi.
-  const walletFields = await deriveWalletRegisterFields();
 
   let userDid: string;
   let txHash: string;
@@ -260,6 +339,14 @@ export const isIdentityRegisteredOnServer = async (): Promise<boolean | null> =>
 export const reRegisterIdentity = async (
   biometricKind: BiometricKind,
 ): Promise<GenesisResult> => {
+  // Đo TRƯỚC khi xoá. `wipeIdentity()` ở đây là bất khả hồi với khoá trong chip, nên
+  // thứ tự cũ (xoá → đăng ký → phát hiện thiếu khoá TAAD) để lại một máy vừa mất
+  // khoá cũ vừa không có khoá mới — và luồng gọi nó là màn nhận diện cây, tức người
+  // dùng đang đứng ngoài vườn giữa một việc khác hẳn.
+  //
+  // `registerIdentity` bên dưới đo lại lần nữa. Không gộp làm một: hàm đó phải tự
+  // đứng vững với mọi nơi gọi, chứ không dựa vào việc nơi gọi đã đo hộ.
+  await requireWalletRegisterFields();
   await wipeIdentity();
   return registerIdentity(biometricKind);
 };
@@ -460,7 +547,11 @@ const recoverLocalIdentityFromKey = async (
       'Xác thực để khôi phục danh tính trên thiết bị này',
     );
 
-    const walletFields = await deriveWalletRegisterFields();
+    // Ở ĐÂY KHÔNG CÓ `wipeIdentity()`, và đó là khác biệt cố ý với đường đăng ký
+    // mới. Khoá chủ trên máy này có TRƯỚC lượt gọi, nó là thứ đang cần giữ chứ
+    // không phải rác vừa sinh ra. Ném lên trên, `describeRecoverFailure` đọc ra
+    // đúng lý do và màn hình mời thử lại — khoá vẫn nguyên chỗ cho lần sau.
+    const walletFields = await requireWalletRegisterFields();
     const res = await phoenixKeyApi.identity.register({
       publicKeyHex,
       keyOrigin: 'SECURE_ENCLAVE',
@@ -572,6 +663,11 @@ const describeRecoverFailure = (err: unknown): string => {
   //
   // Dò theo mã số thì không phụ thuộc ngôn ngữ máy chủ trả về. Giữ phần dò chuỗi
   // làm lưới đỡ cho lỗi KHÔNG phải từ API (huỷ sinh trắc, lỗi mạng tầng dưới).
+  // ĐẶT TRƯỚC MỌI PHÉP DÒ CHUỖI. Câu của lỗi này có chữ "khoá", và lưới dò phía
+  // dưới bắt theo từ khoá nên một lần đổi câu là nó rơi nhầm nhánh mà không ai
+  // thấy. Dò theo KIỂU thì không phụ thuộc câu chữ.
+  if (err instanceof TaadKeyUnavailableError) return err.reason;
+
   const api = err instanceof PhoenixKeyApiError ? err : null;
   if (api) {
     // 3005 = KEY_ALREADY_REGISTERED. Từ khi đường 1 (tra theo khoá) chạy, khoá đã
@@ -617,8 +713,21 @@ const RECOVER_FAIL_MESSAGE: Record<string, string> = {
     'Máy chủ từ chối mở lại danh tính cho khoá đã có trên máy này. Đây là lỗi phía máy chủ — chụp màn hình này gửi hỗ trợ.',
   did_sai_dinh_dang:
     'Máy chủ trả về một mã danh tính app chưa hiểu được. Đây là lỗi phía máy chủ — chụp màn hình này gửi hỗ trợ.',
+  // ⛔ Câu cũ đúng mà VẪN chặn người dùng, vì nó bỏ mất dữ kiện quyết định: danh
+  // tính "đã tạo trước đó" có thể được tạo ở MỘT ỨNG DỤNG KHÁC trên cùng cái điện
+  // thoại. Hai app dùng chung một khe khoá phần cứng, nên khoá lập trong Aladin
+  // hiện ra ở CheckFarm và ngược lại — trong khi với người dùng, hai app là hai
+  // sản phẩm khác nhau, không có lý do gì để nối hai việc đó lại.
+  //
+  // Ca thực địa 2026-09-12: một người không vào được CheckFarm vì trên máy đó đã
+  // từng lập tài khoản qua Aladin. Câu cũ bảo "nhập lại đúng tên đăng nhập của
+  // danh tính đó", và người đọc không biết "danh tính đó" là danh tính nào, vì họ
+  // đang đứng ở một app chưa từng lập gì.
+  //
+  // Câu mới nói cả ba vế: vì sao gặp cảnh này · một danh tính dùng được cho mọi
+  // app (không phải hạn chế, là thiết kế) · không nhớ tên thì đi đâu.
   can_ten_dang_nhap:
-    'Máy này đã có khoá của một danh tính đã tạo trước đó. Nhập lại đúng tên đăng nhập của danh tính đó để mở lại trên máy này.',
+    'Máy này đã có khoá của một danh tính đã tạo trước đó — có thể do một ứng dụng khác trên cùng điện thoại này. Một danh tính dùng chung cho mọi ứng dụng, nên chỉ cần nhập đúng tên đăng nhập đó là vào được ngay. Không nhớ tên thì mở màn Khôi phục danh tính.',
   // Ca này TRƯỚC ĐÂY đội lốt `can_ten_dang_nhap` và đó là chỗ đắt nhất: người dùng
   // được bảo đi sửa tên đăng nhập, trong khi thứ vừa hỏng là một hộp sinh trắc mà
   // họ còn không biết là có. Câu phải gọi đúng tên hộp đó, vì trên màn hình nó là
@@ -645,6 +754,18 @@ const RECOVER_FAIL_MESSAGE: Record<string, string> = {
     'Tên đăng nhập này thuộc về một danh tính khác, không phải danh tính đang có khoá trên máy. Kiểm tra lại tên, hoặc dùng máy đã tạo danh tính đó.',
   khong_ro:
     'Máy này đã có khoá nhưng chưa mở lại được danh tính, chưa rõ vì sao. Thử lại một lần; nếu vẫn vậy, chụp màn hình này gửi hỗ trợ.',
+  // Hai câu dưới là ca DỪNG CÓ CHỦ ĐÍCH, không phải ca hỏng — xem khối lý do ở
+  // `TaadKeyUnavailableError`. Cả hai đều phải nói được VÌ SAO app tự dừng, nếu
+  // không người dùng sẽ đi tìm cách vòng qua nó, mà vòng qua chính là thứ sinh ra
+  // danh tính chết.
+  //
+  // Cả hai đều nói rõ "không phải lỗi sóng, không phải lỗi vân tay": đó là hai thứ
+  // duy nhất người dùng ngoài vườn biết tự sửa, nên không loại trừ thì họ sẽ đi
+  // kiểm tra sóng và quẹt lại vân tay hàng chục lần cho một việc không liên quan.
+  derive_failed:
+    'Máy chưa tạo được khoá dự phòng cho danh tính, nên ứng dụng dừng lại — tạo tài khoản lúc này sẽ ra một tài khoản không khôi phục lại được nếu bạn mất máy. Đây không phải lỗi sóng, cũng không phải lỗi vân tay. Đóng hẳn ứng dụng rồi mở lại và thử lần nữa; nếu vẫn vậy, khởi động lại điện thoại. Vẫn không được thì chụp màn hình này gửi hỗ trợ.',
+  core_missing:
+    'Bản ứng dụng trên máy này thiếu phần tạo khoá dự phòng, nên ứng dụng dừng lại — tạo tài khoản lúc này sẽ ra một tài khoản không khôi phục lại được nếu bạn mất máy. Thử lại sẽ không khác. Hãy cập nhật ứng dụng lên bản mới nhất rồi tạo lại.',
 };
 
 /**

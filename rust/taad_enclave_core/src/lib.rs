@@ -348,6 +348,29 @@ pub unsafe extern "C" fn taad_kek_witness_unsigned_tx(
     string_or_fail(result, "taad_kek_witness_unsigned_tx")
 }
 
+/// Witness (ký) tx CBOR ĐÃ DỰNG SẴN bằng khoá Ed25519 THÔ (TAAD_Key + DeviceKey).
+/// taad_master_kek_hex: Master_KEK (64-char hex) để suy ra TAAD_Key; "" = bỏ qua.
+/// device_secret_hex: DeviceKey seed (64-char hex) để suy ra device witness; "" = bỏ qua.
+/// Tham số rỗng = BỎ QUA khoá đó; cả hai rỗng = lỗi, trả null.
+/// Trả CBOR hex đã ký (caller free) hoặc null nếu lỗi.
+///
+/// # Safety
+/// The caller must ensure all pointer arguments (`unsigned_tx_cbor_hex`,
+/// `taad_master_kek_hex`, `device_secret_hex`) are valid null-terminated UTF-8 strings
+/// or null pointers. The returned string must be freed via `taad_free_string()`.
+#[no_mangle]
+pub unsafe extern "C" fn taad_witness_unsigned_tx_ed25519(
+    unsigned_tx_cbor_hex: *const c_char,
+    taad_master_kek_hex: *const c_char,
+    device_secret_hex: *const c_char,
+) -> *mut c_char {
+    let cbor = arg!(unsigned_tx_cbor_hex, "unsigned_tx_cbor_hex");
+    let kek = arg!(taad_master_kek_hex, "taad_master_kek_hex");
+    let device = arg!(device_secret_hex, "device_secret_hex");
+    let result = transfer::witness_unsigned_tx_ed25519(&cbor, &kek, &device);
+    string_or_fail(result, "taad_witness_unsigned_tx_ed25519")
+}
+
 // ─── HKDF ────────────────────────────────────────────────────────
 
 /// Derive keying material using HKDF-SHA256.

@@ -13,6 +13,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { canResendAfterNetworkError } from './resendPolicy';
+import { ensureOrilifeToken } from './orilifeDidAuth';
 
 /**
  * Cửa POST GỬI LẠI ĐƯỢC sau lỗi mạng. Luật + lý do đầy đủ ở `resendPolicy.ts`.
@@ -82,6 +83,12 @@ export type CareMatchReason =
 
 export interface CareMatchResponse {
   ok: boolean;
+  /**
+   * Lý do TỪ CHỐI khi máy chủ trả `200 {ok:false}` — câu soạn cho người dùng. Cùng
+   * khuôn với `CareLogResponse.error`: tầng HTTP coi lượt này là thành công, nên nếu
+   * màn không đọc `ok` thì lượt bị từ chối hiện thành "không có ứng viên nào".
+   */
+  error?: string;
   candidates?: CareProduct[];
   reason?: CareMatchReason;
   /** `true` khi đầu bảng sát nhau mà số ngày cách ly khác nhau. */
@@ -102,6 +109,14 @@ export interface CareMatchResponse {
  */
 export interface CareLogResponse {
   ok: boolean;
+  /**
+   * Lý do TỪ CHỐI khi máy chủ trả `200 {ok:false}` — câu soạn cho người dùng đọc
+   * (ví dụ *"Cây này đang bị khoá ghi — chờ kiểm tra viên duyệt"*). Nằm ở thân chứ
+   * không ở `APIError`, vì tầng HTTP coi lượt này là thành công. Màn phải hiện câu
+   * này; thay nó bằng câu chung chung của mình là bỏ đi thứ duy nhất nói được việc
+   * phải làm.
+   */
+  error?: string;
   care_event_id?: string;
   /** Mốc hết cách ly do CHÍNH lần ghi này sinh ra. Không tra được thuốc → null. */
   withdrawal_until?: string | null;
@@ -177,12 +192,28 @@ async function _getAuthHeader(): Promise<string | null> {
   }
 }
 
+/** Cắt phần gốc (https://host) khỏi URL đầy đủ để truyền cho ensureOrilifeToken. */
+function _baseOf(url: string): string {
+  const i = url.indexOf('/api/');
+  return i > 0 ? url.slice(0, i) : url;
+}
+
 async function _apiCall<T>(
   url: string,
   method: 'GET' | 'POST' | 'DELETE',
   body?: FormData,
   attempt = 0,
 ): Promise<{ ok: boolean; data?: T; error?: APIError }> {
+  // ── LÀM MỚI THẺ PHIÊN — tệp này bị bỏ sót trong đợt siết trước ───────────────
+  // 18 service anh em gọi `ensureOrilifeToken` (`treeReIDService:413,434`,
+  // `fruitReIDService`, `fruitVideoService`, `animalReIDService`…); `careService` và
+  // `fruitLookupService` thì không. Hệ quả: thẻ cũ ⟹ MỌI cửa của luồng nhãn thuốc
+  // (`match` · `log` · `products` · `withdrawal`) trả 401, không lần nào làm mới,
+  // không lần nào thử lại — và câu hiện ra là *"Token hết hạn hoặc không hợp lệ"*,
+  // một câu không kèm việc phải làm.
+  // Khoá đọc (`auth_token`) khớp mọi nơi, nên mọi phép so khoá đều cho xanh: chỗ
+  // hụt không phải ĐỌC ở đâu, mà là ai TẠO ra giá trị.
+  await ensureOrilifeToken(_baseOf(url));
   const authHeader = await _getAuthHeader();
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (authHeader) headers['Authorization'] = authHeader;
@@ -195,6 +226,11 @@ async function _apiCall<T>(
     clearTimeout(timeoutHandle);
 
     if (resp.status === 401) {
+      // Một lần làm mới CÓ CHỦ Ý rồi gọi lại — đúng mẫu `treeReIDService:434`. Thẻ có
+      // thể vừa hết hạn giữa lúc `ensureOrilifeToken` ở trên xem là còn dùng được.
+      if (attempt === 0 && (await ensureOrilifeToken(_baseOf(url), { force: true }))) {
+        return _apiCall<T>(url, method, body, 1);
+      }
       return { ok: false, error: { type: 'auth_error', detail: 'Token hết hạn hoặc không hợp lệ', http_status: 401 } };
     }
     if (resp.status === 429) {

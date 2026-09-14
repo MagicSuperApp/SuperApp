@@ -93,7 +93,11 @@ export const HOST_ROUTES = [
   // Khoá · ví · phần thưởng
   'SeedExport',
   'RestoreIdentity',
-  'PhoenixWallet',
+  // `PhoenixWallet` đã rời danh sách này 13/09/2026: nó nay là TAB
+  // (`HOST_TAB_SCREENS`), không còn là màn host stack. Danh sách này khai đúng
+  // tập `HOST_STACK_SCREENS` — để nó ở lại là khai một màn không còn ở đó.
+  'WalletSend',
+  'WalletReceive',
   'Wakeme',
   'Staking',
   // Không gian doanh nghiệp
@@ -112,3 +116,24 @@ export const HOST_ROUTES = [
 ] as const;
 
 export type HostRoute = (typeof HOST_ROUTES)[number];
+
+/**
+ * Màn host là TAB — khai riêng, vì chúng nằm ở `HOST_TAB_SCREENS` chứ không ở
+ * `HOST_STACK_SCREENS`, và hai nơi đó có hình dạng khác nhau trong mã
+ * (`{ name: 'X', component }` so với `X: Component`).
+ *
+ * ── Vì sao phải khai, chứ không để mỗi chỗ tự dò ────────────────────────────
+ * Hai cổng an toàn dựng tập "route CÓ THẬT" bằng cách quét `name: '…'` trong
+ * `navigation/index.tsx`: `authGate.test.tsx` (canh danh sách cấm không mục
+ * ruỗng) và `routeTargets.test.ts` (canh không nút nào trỏ vào route chết).
+ * Mẫu đó KHÔNG khớp một tab, nên tới 13/09/2026 cả hai cổng **mù với mọi màn
+ * là tab** — chúng chỉ xanh vì trước đó tab duy nhất nào đáng canh cũng chưa
+ * có. Đưa ví lên tab làm chỗ mù lộ ra; lỗ thì có sẵn từ trước.
+ *
+ * Đây là lời khai một lần, `hostRoutes.test.ts` canh nó khớp mã, hai cổng kia
+ * đọc từ đây. Tệp này cố ý không import `index.tsx` — nhập nó vào một bài kiểm
+ * là kéo theo cả cây màn hình.
+ */
+export const HOST_TAB_ROUTES = ['Home', 'Account', 'PhoenixWallet'] as const;
+
+export type HostTabRoute = (typeof HOST_TAB_ROUTES)[number];

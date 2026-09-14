@@ -591,7 +591,7 @@ PSP ──► founder (settlement B2C, platform không cầm tiền)
 
 | ID | Question | Owner | Deadline | Blocker for | Status |
 |---|---|---|---|---|---|
-| Q1 | Pháp nhân vận hành magiclamp.network Registry là ai (ký, chịu SLA takedown, liên kết Treasury)? | Founder | Trước thiết kế governance | SG governance, Phase 2 | **RESOLVED** |
+| Q1 | Pháp nhân vận hành magiclamp.eco Registry là ai (ký, chịu SLA takedown, liên kết Treasury)? | Founder | Trước thiết kế governance | SG governance, Phase 2 | **RESOLVED** |
 | Q2 | Safety-multisig đặt quyền vào tay ai; cơ chế chống lạm dụng? | Founder | Trước Registry live | SG governance | **RESOLVED** |
 | Q3 | Quan hệ VNeID: federation hay cạnh tranh; PhoenixKey đứng ở đâu? | Founder | Trước nhánh B-VNeID | F3.x, Phase 2 | Open |
 | Q4 | Phase 1 nhúng host nào trước (đối-tác-được, không host thù địch cấu trúc)? | Founder | Trước Phase 2 | Phase 2 channel | Open |

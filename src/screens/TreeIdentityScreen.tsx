@@ -78,7 +78,12 @@ import ReidConfirmDialog, { type ReidCandidate } from '../components/reid/ReidCo
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import type { RootState } from '../store';
 import { loadFarms } from '../modules/trace/store/farmSlice';
-import { ensureOrilifeToken, clearOrilifeToken } from '../services/orilifeDidAuth';
+import {
+  ensureOrilifeToken,
+  clearOrilifeToken,
+  clearOrilifeLoginCooldown,
+} from '../services/orilifeDidAuth';
+import { clearSessionMintCooldown } from '../services/phoenixKey-api';
 import { BiometricKind, biometricKindFromType, phoenixKeyAuth } from '../services/phoenixKeyAuthService';
 import { loginUser } from '../store/userSlice';
 import ReactNativeBiometrics from 'react-native-biometrics';
@@ -701,6 +706,14 @@ const TreeIdentityScreen: React.FC = () => {
       const prevName = currentUser?.name;
       const { user } = await phoenixKeyAuth.reRegisterIdentity(kind);
       await clearOrilifeToken(); // token cũ (nếu có) gắn DID cũ → bỏ để login lại bằng DID mới
+      // DID vừa ĐỔI, nên đồng hồ nghỉ sinh trắc của DID cũ không còn nói gì về DID
+      // mới. Không mở van ở đây thì người vừa lập lại danh tính phải chờ một phút
+      // mới vào được vườn, và không màn nào giải thích vì sao.
+      clearOrilifeLoginCooldown();
+      // Van thứ HAI. `reRegisterIdentity` đổi DID, nên đồng hồ nghỉ của đường đúc
+      // thẻ PhoenixKey cũng hết nghĩa — mở cả hai, không thì người vừa lập lại
+      // danh tính vào được vườn mà không dùng được ví trong một phút.
+      clearSessionMintCooldown();
       await dispatch(loginUser({ ...user, name: prevName } as any) as any);
       // Đăng-ký xong → thử nhận-diện lại luôn (ensureOrilifeToken sẽ ký bằng DID mới).
       await runIdentify(imagePaths);
@@ -1480,6 +1493,23 @@ const TreeIdentityScreen: React.FC = () => {
             </>
           )}
         </TouchableOpacity>
+
+        {/* Nút mờ phải NÓI VÌ SAO nó mờ.
+            Đo trên máy ảo iPhone 17 ngày 14/09/2026: bấm `Nhận diện (0 góc)` khi chưa
+            có góc nào — không có gì xảy ra, không một chữ nào. Người dùng không phân
+            biệt được "nút hỏng" với "mình chưa làm đủ", và cách duy nhất để biết là
+            đoán ra nghĩa của con số trong ngoặc.
+            Màn `ActivityScreen` ở cùng kho đã làm đúng: nút `Lưu vào sổ` mờ thì bên
+            cạnh có chữ "Cần quay trước đã". Dòng dưới đây mang cùng vai, và nói thêm
+            phần `ActivityScreen` không cần nói: CÒN THIẾU BAO NHIÊU. */}
+        {!isLoading && !isIdentifyingLocal && totalCaptures < MIN_ROUND1 && (
+          <Text style={styles.ctrlHintText}>
+            {tk('trace.identify.needMoreAngles', {
+              n: MIN_ROUND1 - totalCaptures,
+              min: MIN_ROUND1,
+            })}
+          </Text>
+        )}
       </View>
     );
   };
@@ -2462,6 +2492,15 @@ const styles = StyleSheet.create({
     borderColor: CAM,
   },
   ctrlBtnDisabled: { opacity: 0.4 },
+  // Cố ý KHÔNG mờ như chính cái nút: dòng này là thứ giải thích nút mờ, nên nó phải
+  // đọc được rõ hơn nút. Mờ cả hai thì lời giải thích biến mất cùng thứ nó giải thích.
+  ctrlHintText: {
+    color: NEUTRAL.white,
+    fontSize: 13,
+    textAlign: 'center',
+    marginTop: 8,
+    opacity: 0.9,
+  },
   ctrlBtnText: { color: '#000000', fontSize: 15, fontWeight: '700' },
   ctrlBtnSecText: { color: CAM, fontSize: 15, fontWeight: '700' },
 

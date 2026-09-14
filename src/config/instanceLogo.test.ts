@@ -47,6 +47,21 @@ const DECLARATION = path.join(SRC, 'config', 'instance.config.ts');
 const SHARED_ASSETS = [
   /assets\/images\/modules\//, // biểu tượng module
   /assets\/images\/trace\//, // ảnh nền màn Truy xuất
+  // Ảnh loài vật nuôi ở ô chọn loài. Con gà là con gà ở MỌI app — nó không mang
+  // nhãn hiệu của app nào, nên gọi thẳng từ bảng tra là đúng chỗ. Xem
+  // `modules/trace/components/animal/speciesPhoto.ts` và README của thư mục.
+  /assets\/images\/animals\//, // ảnh loài vật nuôi
+  // Ảnh băng trượt ở đầu Trang chủ (`screens/homeBanners.ts`, README cùng thư mục).
+  // Đã MỞ RA XEM cả hai tệp trước khi khai dòng này — đây là lời khai "dùng chung được",
+  // không phải một thao tác dọn cảnh báo:
+  //   · `chat-fi.png` — hình vẽ các bong bóng hội thoại nhiều màu bay lên từ một điện
+  //     thoại. Không chữ, không dấu hiệu nhận diện nào.
+  //   · `job-fi.png` — ảnh chụp một thợ sửa ống nước dưới bồn rửa. Ảnh tư liệu chung.
+  // Cả hai tả NGHIỆP VỤ của module (trò chuyện, việc làm) chứ không tả app nào, nên chúng
+  // giống nhau ở mọi app — cùng hạng với ảnh biểu tượng module ở dòng đầu bảng này.
+  // Ngày nào một tấm băng mang logo hay linh vật thì tấm đó KHÔNG thuộc thư mục này nữa:
+  // nó là tài sản nhận diện và phải đi qua lời khai instance.
+  /assets\/images\/banners\//, // ảnh băng trượt Trang chủ
   /modules\/[a-z]+\/module\.manifest\.json/, // lời khai module
 ];
 

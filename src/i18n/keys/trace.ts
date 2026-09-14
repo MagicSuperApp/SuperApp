@@ -197,6 +197,56 @@ export const TRACE_STRINGS = {
     zh: '登录已过期，请重新登录。',
     ja: 'ログインの有効期限が切れました。再度サインインしてください。',
   },
+  // ── Phiên OriLife hỏng: NĂM ô, năm việc phải làm khác nhau ────────────────
+  //
+  // `trace.sync.authError` ở trên là câu CUỐI CÙNG còn lại khi không biết gì hơn.
+  // Nó từng là câu DUY NHẤT, và đó là lỗi đo được trên bản 99 (ba đoạn quay người
+  // dùng gửi 2026-09-12): màn trang trại hiện "Phiên hết hạn. Hãy đăng nhập lại."
+  // kèm nút "Thử lại", trong khi (a) phiên chưa chắc hết hạn, và (b) màn đó KHÔNG
+  // có chỗ nào để đăng nhập lại — bấm "Thử lại" chỉ bật thêm một hộp Face ID nữa.
+  //
+  // Năm khoá dưới đây bám đúng `DidLoginFailKind` (`services/orilifeDidAuth.ts`).
+  // Thêm ô mới ở đó thì thêm khoá ở đây — `authKindMessage` rơi về câu cũ nếu
+  // thiếu, nên chỗ thiếu hiện ra bằng một câu mờ chứ không bằng một khoảng trống.
+  'trace.sync.auth.noIdentity': {
+    vi: 'Máy này chưa có danh tính nên chưa vào được vườn. Vào mục Tôi để lập danh tính, hoặc khôi phục danh tính cũ.',
+    en: 'This device has no identity yet, so it cannot open the farm. Go to Me to create one, or restore your existing identity.',
+    zh: '本机尚未建立身份，无法进入农场。请到"我"创建身份，或恢复原有身份。',
+    ja: 'この端末にはまだ識別情報がないため農園を開けません。「マイページ」で作成するか、既存の識別情報を復元してください。',
+  },
+  'trace.sync.auth.network': {
+    vi: 'Chưa nối được tới máy chủ danh tính. Kiểm tra sóng hoặc Wi-Fi rồi thử lại.',
+    en: 'Could not reach the identity server. Check your signal or Wi-Fi, then try again.',
+    zh: '无法连接身份服务器。请检查信号或 Wi-Fi 后重试。',
+    ja: '識別サーバーに接続できません。電波か Wi-Fi を確認してもう一度お試しください。',
+  },
+  'trace.sync.auth.sign': {
+    vi: 'Chưa ký được bằng vân tay/khuôn mặt. Hãy quay màn hình về phía mình rồi thử lại — nếu đang mở máy ảnh thì đóng máy ảnh trước.',
+    en: 'Could not sign with your fingerprint or face. Face the screen and try again — close the camera first if it is open.',
+    zh: '未能通过指纹或面容签名。请面向屏幕后重试 — 如果相机已打开，请先关闭。',
+    ja: '指紋・顔認証で署名できませんでした。画面を自分に向けてもう一度お試しください。カメラを開いている場合は先に閉じてください。',
+  },
+  'trace.sync.auth.refused': {
+    vi: 'Máy chủ chưa cho danh tính này vào vườn. Thử lại cũng ra kết quả cũ — đây là việc ở máy chủ, không phải do máy của bạn.',
+    en: 'The server is not letting this identity into the farm. Retrying gives the same result — this is on the server side, not your device.',
+    zh: '服务器暂不允许此身份进入农场。重试结果相同 — 这是服务器端的问题，与您的设备无关。',
+    ja: 'サーバーがこの識別情報の農園への入場を許可していません。再試行しても同じ結果です — 端末側ではなくサーバー側の問題です。',
+  },
+  'trace.sync.auth.server': {
+    vi: 'Máy chủ danh tính đang trục trặc. Chờ ít phút rồi mở lại — không phải do máy của bạn.',
+    en: 'The identity server is having trouble. Wait a few minutes and reopen — this is not your device.',
+    zh: '身份服务器出现故障。请过几分钟再打开 — 与您的设备无关。',
+    ja: '識別サーバーに不具合が出ています。数分待ってから開き直してください — 端末側の問題ではありません。',
+  },
+  // Đếm ngược của van chặn bão sinh trắc. Nối SAU câu ô hỏng ở trên, không thay nó:
+  // người dùng cần biết cả "vì sao" lẫn "bao giờ được thử lại".
+  'trace.sync.auth.wait': {
+    vi: ' Chờ khoảng {s} giây rồi thử lại.',
+    en: ' Wait about {s} seconds, then try again.',
+    zh: ' 请等待约 {s} 秒后重试。',
+    ja: ' 約 {s} 秒待ってからお試しください。',
+  },
+
   'trace.sync.rateLimited': {
     vi: 'Thao tác quá nhanh. Chờ một chút rồi thử lại.',
     en: 'Too many requests. Wait a moment, then try again.',
@@ -208,6 +258,16 @@ export const TRACE_STRINGS = {
     en: 'The server is busy. Try again in a few minutes.',
     zh: '服务器繁忙，请过几分钟再试。',
     ja: 'サーバーが混み合っています。数分後にお試しください。',
+  },
+  // 403 — đã xác thực ĐÚNG mà vẫn bị từ chối. Câu này cố ý KHÔNG mời đăng nhập lại
+  // và KHÔNG mời thử lại: cả hai đều là việc vô ích ở ca này. Nó chỉ dùng khi máy chủ
+  // không gửi câu nào; có câu của máy chủ thì hiện câu đó, vì chỉ nó nói được thứ này
+  // thuộc về ai.
+  'trace.sync.forbidden': {
+    vi: 'Tài khoản đang dùng không có quyền với thứ này — nó thuộc một tài khoản khác. Đăng nhập lại không đổi được điều đó.',
+    en: 'The account you are signed in with has no access to this — it belongs to another account. Signing in again will not change that.',
+    zh: '当前账号无权访问该内容——它属于其他账号。重新登录也无法改变。',
+    ja: 'ご利用中のアカウントにはこの項目への権限がありません（別のアカウントのものです）。再ログインしても変わりません。',
   },
   'trace.sync.unknown': {
     vi: 'Chưa hỏi được máy chủ. Thử lại nhé.',
@@ -382,12 +442,71 @@ export const TRACE_STRINGS = {
     ja: 'このビルドではカメラを開けません。アプリを更新して再度お試しください。',
   },
   'trace.activity.cameraErr': { vi: 'Máy ảnh gặp lỗi', en: 'Camera error', zh: '相机出错', ja: 'カメラのエラー' },
-  'trace.activity.cameraErrBody': {
-    vi: 'Không mở được máy ảnh. Kiểm tra lại quyền dùng máy ảnh.',
-    en: 'Could not open the camera. Check the camera permission.',
-    zh: '无法打开相机。请检查相机权限。',
-    ja: 'カメラを開けません。カメラの権限を確認してください。',
+  // Ba câu cho BA `errorCode` của `react-native-image-picker`
+  // (`node_modules/react-native-image-picker/lib/typescript/types.d.ts:48` khai đúng
+  // ba: `camera_unavailable` · `permission` · `others`).
+  //
+  // Trước đây cả ba dùng CHUNG một câu — câu dưới `…cameraErrBody`, vốn nói "kiểm
+  // tra lại quyền". Đo trên máy ảo iPhone 17 ngày 14/09/2026: vừa bấm **Allow** cho
+  // quyền máy ảnh xong, chọn "Tưới nước", màn hiện đúng câu ấy. Quyền đã có; thứ
+  // thiếu là cái máy ảnh. Người dùng được chỉ sang Cài đặt, mở ra thấy quyền đang
+  // BẬT, và hết đường.
+  //
+  // Đây không phải lỗi nuốt lỗi — app có kêu. Nó là lỗi ngược lại: **đoán một nguyên
+  // nhân rồi nói chắc nịch**, trong khi thư viện đã trả về đúng nguyên nhân ở
+  // `errorCode` và mã cũ vứt đi. Câu sai kiểu này đắt hơn câu chung chung, vì nó
+  // tiêu thời gian của người dùng vào đúng chỗ không có gì để sửa.
+  // Bản đầu của câu này nói "nếu đang chạy trên MÁY ẢO…" và dừng ở đó. Hai chỗ sai,
+  // cùng một gốc là viết cho người soạn hệ chứ không cho người đang cầm máy:
+  //   · "máy ảo" là khái niệm của lập trình viên. Người làm vườn đang cầm điện thoại
+  //     thật, đọc xong không biết câu đó có nói về mình hay không. Lập trình viên thử
+  //     trên máy ảo thì đã có `{code}` ở ca `others` để nhận ra.
+  //   · Không có BƯỚC KẾ nào — mà ở đây bước kế là bắt buộc: `ActivityScreen` đòi
+  //     `hasFiles` mới cho lưu (`canSave`), nên máy ảnh không mở được nghĩa là buổi
+  //     tưới/bón hôm nay KHÔNG vào được sổ. Câu cũ không nói một chữ về chuyện đó.
+  'trace.activity.cameraErrUnavailable': {
+    vi: 'Điện thoại này chưa mở được máy ảnh cho ứng dụng. Việc vừa chọn cần một đoạn clip mới lưu được, nên hiện chưa ghi vào sổ. Bạn thử tắt hẳn ứng dụng rồi mở lại; vẫn vậy thì mượn máy khác quay giúp, hoặc gọi người hướng dẫn.',
+    en: 'This phone cannot open the camera for the app. The activity you picked needs a clip before it can be saved, so nothing has been recorded yet. Try closing the app fully and reopening it; if it still fails, borrow another phone or call your field contact.',
+    zh: '本机无法为应用打开相机。所选作业需要一段视频才能保存，因此尚未记录。请先完全关闭应用再打开；若仍不行，请借用其他手机拍摄，或联系现场指导人员。',
+    ja: 'この端末ではアプリのカメラを開けません。選んだ作業は動画がないと保存できないため、まだ記録されていません。アプリを完全に終了して開き直してください。それでも直らない場合は別の端末で撮るか、現場担当者に連絡してください。',
   },
+  'trace.activity.cameraErrPermission': {
+    vi: 'App chưa được phép dùng máy ảnh. Mở Cài đặt → quyền máy ảnh rồi bật lên.',
+    en: 'The app is not allowed to use the camera. Open Settings and enable camera access.',
+    zh: '应用未获准使用相机。请打开设置并开启相机权限。',
+    ja: 'アプリにカメラの使用が許可されていません。設定でカメラへのアクセスを有効にしてください。',
+  },
+  // Ca `others`: nguyên nhân THÔ, không dịch được ra câu người dùng làm theo được.
+  // Nên đưa MÃ THAM CHIẾU thay vì đoán bừa một hướng dẫn — Forall §Cái vỏ im lặng
+  // mục 2: lỗi hệ thống thô thì hiện mã tra ngược được, không hiện câu bịa.
+  // Câu cũ nói "báo kèm mã" mà không nói BÁO CHO AI — trong app không có màn nhận báo
+  // lỗi nào mở được, nên đó là một chỉ dẫn tới chỗ trống. Câu mới nói rõ việc phải làm
+  // (chụp màn hình, gửi cho người hướng dẫn) và nói rõ người dùng KHÔNG cần hiểu mã,
+  // chỉ cần để nó có trong ảnh.
+  'trace.activity.cameraErrOther': {
+    vi: 'Không mở được máy ảnh. Bạn thử lại một lần nữa. Vẫn không được thì chụp lại màn hình này và gửi cho người hướng dẫn — chỉ cần dòng mã dưới đây có trong ảnh: {code}',
+    en: 'Could not open the camera. Please try once more. If it still fails, screenshot this message and send it to your field contact — the technical team only needs the code line below: {code}',
+    zh: '无法打开相机。请再试一次。若仍不行，请截图本提示并发给现场指导人员——技术人员只需要下面这行代码：{code}',
+    ja: 'カメラを開けません。もう一度お試しください。それでも直らない場合は、この画面を撮って現場担当者に送ってください。技術側に必要なのは下のコード行だけです: {code}',
+  },
+  'trace.activity.camPermTitle': { vi: 'Cần quyền máy ảnh', en: 'Camera permission needed', zh: '需要相机权限', ja: 'カメラの許可が必要です' },
+  'trace.activity.camPermBody': {
+    vi: 'Máy ảnh đang bị khoá nên clip chưa quay được. Mở Cài đặt, bật Máy ảnh (và Micro) cho ứng dụng rồi quay lại đây.',
+    en: 'The camera is blocked, so the clip cannot be recorded. Open Settings, enable Camera (and Microphone) for the app, then come back.',
+    zh: '相机被禁用，无法录制视频。请在设置中为本应用开启相机（及麦克风）后返回。',
+    ja: 'カメラがブロックされているため録画できません。設定でカメラ（およびマイク）を許可してから戻ってください。',
+  },
+  'trace.activity.camPermAsk': {
+    vi: 'Ứng dụng cần máy ảnh để quay clip làm bằng chứng cho việc vừa ghi.',
+    en: 'The app needs the camera to record a clip as evidence for this activity.',
+    zh: '应用需要使用相机录制本次作业的证据短片。',
+    ja: 'この作業の証拠となる動画を撮影するためにカメラが必要です。',
+  },
+  'trace.activity.openSettings': { vi: 'Mở Cài đặt', en: 'Open Settings', zh: '打开设置', ja: '設定を開く' },
+  'trace.activity.later': { vi: 'Để sau', en: 'Later', zh: '稍后', ja: '後で' },
+  'trace.activity.allow': { vi: 'Cho phép', en: 'Allow', zh: '允许', ja: '許可' },
+  'trace.activity.deny': { vi: 'Từ chối', en: 'Deny', zh: '拒绝', ja: '拒否' },
+
   'trace.activity.lowCredit': { vi: 'Không đủ tín dụng', en: 'Not enough credit', zh: '额度不足', ja: 'クレジット不足' },
   'trace.activity.lowCreditBody': { vi: 'Cần ít nhất {n} MAGIC', en: 'At least {n} MAGIC is needed', zh: '至少需要 {n} MAGIC', ja: '少なくとも {n} MAGIC が必要です' },
   'trace.activity.savedTitle': { vi: 'Đã lưu vào sổ', en: 'Saved to the log', zh: '已保存到记录', ja: '記録に保存しました' },
@@ -896,6 +1015,14 @@ export const TRACE_STRINGS = {
   },
   'trace.identify.doIdentifyShort': {
     vi: 'Nhận diện', en: 'Identify', zh: '识别', ja: '識別',
+  },
+  // Hiện NGAY DƯỚI nút nhận diện khi nút đang mờ. Nói cả mốc lẫn phần còn thiếu:
+  // biết "cần 4" mà không biết "còn 3" thì vẫn phải tự trừ trong đầu.
+  'trace.identify.needMoreAngles': {
+    vi: 'Cần ít nhất {min} góc — còn thiếu {n}. Đi vòng quanh cây và chụp thêm.',
+    en: 'At least {min} angles are needed — {n} to go. Walk around the tree and capture more.',
+    zh: '至少需要 {min} 个角度——还差 {n} 个。绕树走动并继续拍摄。',
+    ja: '少なくとも {min} アングルが必要です — あと {n} 枚。木の周りを回って撮影してください。',
   },
   'trace.enroll.picturesN': {
     vi: 'Ảnh đã chụp ({n} góc)', en: 'Pictures ({n} angles)',

@@ -106,3 +106,28 @@ export function moduleOwningRoute(route: string): ModuleId | null {
   }
   return null;
 }
+
+/**
+ * Route này có tới được trong app ĐANG DỰNG không?
+ *
+ * Route của host (Home, Account, Ví) không thuộc module nào nên luôn có. Route của
+ * một module chỉ có khi app khai module đó (`InstanceConfig.modules`).
+ *
+ * ── Vì sao hàm này phải ở ĐÂY, không nằm riêng trong `resolveGateItems` ──────────
+ * Phép hỏi này từng là hàm riêng tư của cổng xoè. Hệ quả đo được 2026-09-14: tắt
+ * `chat` ở CheckFarm thì thanh tab bỏ Chat (`navigation/index.tsx`), cổng xoè bỏ
+ * Chat (`resolveGateItems`), nhưng **khu "Dịch vụ" ở màn chính vẫn hiện thẻ
+ * "TRÒ CHUYỆN"** — vì `HomeScreen` dựng lưới từ `src/modules/index.ts`, một danh
+ * mục gõ cứng với `available: true` cho mọi module, không hỏi cấu hình lần nào.
+ *
+ * Đó là lối vào NGƯỜI DÙNG GẶP TRƯỚC TIÊN, và nó là lối vào duy nhất không lọc.
+ * Với Apple guideline 1.2, tắt module mà lối vào lớn nhất vẫn mở thì việc tắt
+ * không có tác dụng nào — người xét duyệt vẫn mở được nội dung do người dùng tạo.
+ *
+ * Nên phép hỏi thành CÔNG KHAI và ở một chỗ: thêm một lối vào mới thì gọi hàm này,
+ * đừng chép điều kiện. Một điều kiện chép ra bốn chỗ thì lần thứ năm sẽ quên.
+ */
+export function routeIsReachable(route: string, enabled: readonly ModuleId[]): boolean {
+  const owner = moduleOwningRoute(route);
+  return owner === null || enabled.includes(owner);
+}

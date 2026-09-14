@@ -20,6 +20,7 @@
  */
 import { tk } from '../../../i18n/keys';
 import { errRefCode, type APIError } from '../../../services/treeReIDService';
+import { authSyncMessage } from '../../../services/orilifeAuthMessage';
 
 /** Ba nhãn thuộc tầng KẾT NỐI — chúng là chỗ mã tham chiếu có giá trị. */
 const CONNECTION_LEVEL: ReadonlySet<APIError['type']> = new Set([
@@ -33,6 +34,7 @@ const KEY_BY_TYPE: Partial<Record<APIError['type'], string>> = {
   timeout: 'trace.sync.timeout',
   bad_response: 'trace.sync.badResponse',
   auth_error: 'trace.sync.authError',
+  forbidden: 'trace.sync.forbidden',
   rate_limited: 'trace.sync.rateLimited',
   server_error: 'trace.sync.serverError',
 };
@@ -40,6 +42,11 @@ const KEY_BY_TYPE: Partial<Record<APIError['type'], string>> = {
 export function syncErrorMessage(err?: APIError): string {
   if (!err) return tk('trace.sync.unknown');
   if (err.reason && err.reason.trim()) return err.reason;
+  if (err.type === 'auth_error') return authSyncMessage();
+  // 403: `detail` là câu máy chủ viết cho người đọc (*"Bạn không phải chủ cây này"*),
+  // và nó nằm ở `detail` chứ không ở `reason` — nhánh trên không bắt được. Đây đúng là
+  // luật 1 của tệp này: chỉ câu của máy chủ nói được thứ này thuộc về ai.
+  if (err.type === 'forbidden' && err.detail.trim()) return err.detail;
 
   const key = KEY_BY_TYPE[err.type];
   const cau = key ? tk(key) : tk('trace.sync.unknown');

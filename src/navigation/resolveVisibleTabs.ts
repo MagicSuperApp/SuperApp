@@ -17,15 +17,60 @@
 // phiên + toast" do hook useVisibleTabs (index.tsx) đảm nhiệm — hàm này thuần.
 
 // ── NEO (cố định) ────────────────────────────────────────────────────────────
-export const NEO_LEFT = 'ChatHome'; // Chat — đầu trái
-export const NEO_CENTER = 'Home';        // ô giữa (cổng)
-export const NEO_RIGHT = 'Account';      // Me — đầu phải (AVATAR user)
+//
+// ── Vì sao ô trái là VÍ chứ không còn là CHAT (đổi 13/09/2026) ───────────────
+// NEO nghĩa là "cố định mọi persona", nên thứ đặt vào đó phải là thứ KHÔNG phụ
+// thuộc app nào bật gì. Chat không thoả điều đó: nó là module, và nó đang TẮT ở
+// CheckFarm vì ba cơ chế Apple guideline 1.2 (chặn · báo cáo · lọc) chưa tồn
+// tại (`instance.config.ts` khối tabs CheckFarm). Một NEO có thể vắng mặt thì
+// nó không phải NEO — thực tế thanh CheckFarm chạy bốn ô suốt thời gian qua, ô
+// trái bỏ trống, mà không dòng nào kêu.
+//
+// Ví thì ngược lại: nó là màn HOST, có ở mọi app, không cờ nào tắt được. Đảo
+// hai thứ này làm bố cục khớp lại với chính định nghĩa của nó, và nó KHÔNG tự
+// hỏng khi chat bật lại — lúc đó chat vào tranh SLOT như mọi module khác.
+//
+// Đánh đổi phải nói ra: Aladin còn hai ô SLOT cho ba thứ {Work, Join, Chat}
+// (Farms vốn đã đứng cuối bảng của Aladin), nên một trong ba lùi vào cổng xoè.
+// "Lùi vào cổng xoè" KHÔNG phải "mất" — module vẫn nạp, vẫn tới được bằng cổng
+// và deep-link; đó là ranh giới `instance.config.ts` đã đặt sẵn.
+//
+// ── ĐÍNH CHÍNH 2026-09-14: hai câu ở trên đã hết đúng, và ô trái thôi làm NEO ──
+//
+// (1) Câu "chat đang TẮT ở CheckFarm" KHÔNG còn đúng. Khối `tabs` của CheckFarm
+//     hôm nay CÓ `{ kind: 'module', moduleId: 'chat' }`, và `ChatHome` đứng thứ
+//     hai trong CẢ HAI bảng `slotPriority`. Tức chat đang ở trên thanh CheckFarm.
+//     Ba cơ chế Apple guideline 1.2 (chặn · báo cáo · lọc) thì vẫn CHƯA có —
+//     `grep -rln 'blockUser|reportUser|moderation' src/` → 0 tệp. Nên rủi ro mà
+//     câu cũ nêu ra là thật, chỉ có điều nó nay KHÔNG còn được chặn bởi bất cứ
+//     gì. Chỗ đó không sửa được bằng thứ tự tab; nó cần ba cơ chế kia.
+//
+// (2) Ô trái KHÔNG còn là NEO. `NEO_LEFT` hạ xuống thành GIÁ TRỊ MẶC ĐỊNH của
+//     nền, còn app khai ô trái của mình ở `InstanceConfig.anchorLeft`.
+//
+//     Vì sao phải hạ: hai app phải ra hai thanh KHÁC nhau (quy định của cả Apple
+//     4.3 "Spam — bản sao có khác biệt nhỏ" và Google Play "nội dung trùng lặp").
+//     Nhưng bố cục 5 ô có 3 ô là hằng ở tầng module dùng chung, nên KHÔNG cấu
+//     hình nào làm hai thanh khác nhau quá 2 ô — đo 2026-09-14: hai app ra thanh
+//     lệch đúng 1 ô ở persona mặc định, và lệch 0 ô ở persona `shipper` (hai
+//     bảng `slotPriority.shipper` khi ấy là hai mảng GIỐNG NHAU từng phần tử).
+//     Cơ chế đáng lẽ để phân biệt hai app thì tự nó hàn cứng 3/5 vị trí.
+//
+//     Ô GIỮA và ô PHẢI thì Ở LẠI làm hằng, và đây là chủ ý chứ không phải làm
+//     nửa vời: ô giữa là NÚT CỔNG nằm trong khuyết tròn của `CurvedTabBar`
+//     (`index.tsx:506` tính chỉ số của nó để vẽ khuyết, `:942` vẽ riêng), ô phải
+//     là AVATAR người dùng (`index.tsx:952,962`). Hai thứ đó là KẾT CẤU của
+//     thanh, không phải một mục nội dung — cho phép khai chúng là mở đường cho
+//     một app khai ra cái thanh không vẽ được.
+export const NEO_LEFT = 'PhoenixWallet'; // ô trái — MẶC ĐỊNH của nền, app đè được
+export const NEO_CENTER = 'Home';        // ô giữa (cổng) — KẾT CẤU, không khai được
+export const NEO_RIGHT = 'Account';      // Me — đầu phải (AVATAR user), KẾT CẤU
 
 // ── SLOT ưu tiên theo persona ───────────────────────────────────────────────
-// Nông dân / user mới: Farm nổi cạnh Home, Work kề; Join lùi vào cổng.
-export const SLOT_PRIORITY_DEFAULT: string[] = ['Farms', 'WorkHome', 'JoinHome'];
-// Shipper / thợ: Work + Join lên thanh; Farm lùi vào cổng.
-export const SLOT_PRIORITY_SHIPPER: string[] = ['WorkHome', 'JoinHome', 'Farms'];
+// Nông dân / user mới: Farm nổi cạnh Home, rồi Chat; Work/Join lùi vào cổng.
+export const SLOT_PRIORITY_DEFAULT: string[] = ['Farms', 'ChatHome', 'WorkHome', 'JoinHome'];
+// Shipper / thợ: Work + Chat lên thanh; Join/Farm lùi vào cổng.
+export const SLOT_PRIORITY_SHIPPER: string[] = ['WorkHome', 'ChatHome', 'JoinHome', 'Farms'];
 
 /**
  * Bảng ưu tiên SLOT của MỘT app. `InstanceConfig.slotPriority` mang đúng hình này.
@@ -121,6 +166,14 @@ export function resolveVisibleTabs(
   isAvailable: (route: string) => boolean = () => true,
   /** Bảng của app đang chạy. Vắng = bảng nền dùng chung — xem `slotPriority`. */
   table: SlotPriorityTable = DEFAULT_SLOT_PRIORITY,
+  /**
+   * Ô TRÁI của app đang chạy (`InstanceConfig.anchorLeft`). Vắng = mặc định nền.
+   *
+   * Thêm làm tham số THỨ SÁU chứ không gộp vào `table`, vì hai thứ trả lời hai
+   * câu khác nhau: `table` nói "thứ tự tranh 2 ô SLOT", `anchorLeft` nói "ô trái
+   * là gì". Gộp chúng thì một app muốn đổi ô trái phải chép lại cả bảng ưu tiên.
+   */
+  anchorLeft: string = NEO_LEFT,
 ): string[] {
   // Chọn nguồn ưu tiên: ghim của user ĐÈ tất cả; nếu không, theo persona.
   let candidates: string[];
@@ -135,7 +188,7 @@ export function resolveVisibleTabs(
   }
 
   // Lọc theo route có mặt + KHÔNG trùng NEO + KHÔNG trùng lặp, lấy đúng SLOT_COUNT.
-  const seen = new Set<string>([NEO_LEFT, NEO_CENTER, NEO_RIGHT]);
+  const seen = new Set<string>([anchorLeft, NEO_CENTER, NEO_RIGHT]);
   const slots: string[] = [];
   for (const route of candidates) {
     if (slots.length >= SLOT_COUNT) break;
@@ -147,6 +200,6 @@ export function resolveVisibleTabs(
 
   // Dựng hàng: Chat · slot0 · (Home) · slot1 · Me. Nếu thiếu slot (instance suy
   // biến) thì bỏ ô trống tương ứng — thanh vẫn cân, chỉ ít ô hơn.
-  const row = [NEO_LEFT, slots[0], NEO_CENTER, slots[1], NEO_RIGHT];
+  const row = [anchorLeft, slots[0], NEO_CENTER, slots[1], NEO_RIGHT];
   return row.filter((r): r is string => !!r && isAvailable(r));
 }

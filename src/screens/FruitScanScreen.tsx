@@ -116,6 +116,21 @@ const FruitScanScreen: React.FC = () => {
   const [decision, setDecision] = useState<FruitDecision | undefined>(undefined);
   const [queryId, setQueryId] = useState<string | undefined>(undefined);
   const [serverMessage, setServerMessage] = useState<string | null>(null);
+  /**
+   * Lỗi của lượt soi — để nhánh `failed` nói ĐÚNG nguyên nhân.
+   *
+   * `outcome === 'failed'` gộp bốn nguyên nhân: mất sóng, thẻ phiên hết hạn (401),
+   * máy chủ hỏng (500), bị chặn tần suất (429). Câu cũ khẳng định nguyên nhân đầu
+   * — *"Anh thử lại khi có sóng"* — cho cả bốn, nên ở ba ca sau nó mâu thuẫn với
+   * thứ người dùng đang nhìn (máy đầy vạch), và nút "Soi lại" gọi lại đúng cái thẻ
+   * đã chết. Phần phân ca ở `fruitFind.ts:203` tách `failed` khỏi `nothing_found`
+   * là đúng; chỗ hụt là `failed` không giữ lý do.
+   */
+  // `detail` phải đi theo: ở ca 403 nó là câu MÁY CHỦ viết cho người đọc (*"Quả này
+  // không thuộc bạn"*), và đó là câu duy nhất nói được thứ này thuộc về ai. Bản trước
+  // chỉ giữ `type` + `http_status`, tức chặt bỏ câu đó ngay ở cửa vào màn — về sau
+  // không tầng nào lấy lại được nữa.
+  const [scanErr, setScanErr] = useState<{ type: string; http_status: number; detail?: string } | null>(null);
   const [picks, setPicks] = useState<ResolvedCandidate[]>([]);
   const [verdictSent, setVerdictSent] = useState<FruitVerdict | null>(null);
 
@@ -212,7 +227,9 @@ const FruitScanScreen: React.FC = () => {
       setDecision(data?.decision);
       setServerMessage(data?.message ?? null);
       setPicks(resolved);
-      setOutcome(outcomeOfScan(res.ok && data?.ok !== false, data?.decision, resolved.length));
+      const scanOk = res.ok && data?.ok !== false;
+      setScanErr(scanOk ? null : (res.error ? { type: res.error.type, http_status: res.error.http_status, detail: res.error.detail } : null));
+      setOutcome(outcomeOfScan(scanOk, data?.decision, resolved.length));
     } finally {
       setBusy(false);
       setBusyNote('');
@@ -490,9 +507,36 @@ const FruitScanScreen: React.FC = () => {
         {!busy && outcome === 'failed' ? (
           <View style={styles.results}>
             <Text style={styles.resultsTitle}>Chưa soi được</Text>
+            {/* Câu cảnh báo ở giữa là phần KHÔNG đổi theo nguyên nhân — nó đúng ở cả
+                bốn ca, và là phần quan trọng nhất. Chỉ phần nguyên nhân và việc phải
+                làm mới rẽ theo lỗi thật. */}
             <Text style={styles.resultsNote}>
-              Không gọi được máy chủ. Đây KHÔNG có nghĩa là quả mới — đăng ký lúc này dễ tạo hồ sơ
-              trùng cho một quả đã có. Anh thử lại khi có sóng.
+              {scanErr?.type === 'auth_error'
+                ? 'Phiên đăng nhập đã hết hạn nên máy chưa soi được. '
+                : scanErr?.type === 'forbidden'
+                  // 403 — đã xác thực đúng mà máy chủ vẫn từ chối. Không có nhánh này
+                  // thì nó rơi xuống câu cuối ("Wi-Fi đang chen một trang đăng nhập"),
+                  // tức app khai một nguyên nhân nó biết chắc là không phải.
+                  ? (scanErr.detail?.trim()
+                    ? scanErr.detail + ' '
+                    : 'Tài khoản đang dùng không có quyền soi quả này. ')
+                : scanErr?.type === 'rate_limited'
+                  ? 'Máy chủ đang hạn chế số lượt soi — chờ một chút. '
+                  : scanErr?.type === 'server_error'
+                    ? `Máy chủ đang lỗi (HTTP ${scanErr.http_status}). `
+                    : scanErr?.type === 'network_error' || scanErr == null
+                      ? 'Không gọi được máy chủ. '
+                      : 'Máy chủ có trả lời nhưng đọc không được (thường là Wi-Fi đang chen một trang đăng nhập). '}
+              Đây KHÔNG có nghĩa là quả mới — đăng ký lúc này dễ tạo hồ sơ trùng cho một quả đã có.
+              {scanErr?.type === 'auth_error'
+                ? ' Anh đăng nhập lại rồi soi lại; bấm "Soi lại" bây giờ sẽ hỏng y như vậy.'
+                : scanErr?.type === 'forbidden'
+                  // KHÔNG mời thử lại, cũng KHÔNG mời đăng nhập lại: 403 nghĩa là danh
+                  // tính này đúng nhưng không có quyền, nên cả hai việc đó đều vô ích.
+                  ? ' Quả này thuộc tài khoản khác — hỏi người đã ghi danh nó, hoặc kiểm tra xem anh đang đăng nhập bằng danh tính nào. Bấm "Soi lại" sẽ ra đúng câu này.'
+                : scanErr?.type === 'network_error' || scanErr == null
+                  ? ' Anh thử lại khi có sóng.'
+                  : ' Anh thử lại sau ít phút.'}
             </Text>
             <TouchableOpacity
               style={styles.cta}

@@ -7,7 +7,7 @@ jest.mock('./orilifeDidAuth', () => ({
 import {
   addTimelineEvent,
   anchorEvent, anchorState, fetchEventProof, fetchTimeline, safeExplorerUrl, sortNewestFirst,
-  KIND_VI, KIND_ICON, KIND_FALLBACK_ICON, type TimelineEvent,
+  kindLabel, ENTITY_NOUN_VI, KIND_ICON, KIND_FALLBACK_ICON, type TimelineEvent,
 } from './timelineService';
 
 const BASE = 'https://api.orilife.io';
@@ -154,10 +154,64 @@ describe('sortNewestFirst', () => {
   });
 });
 
-describe('KIND_VI', () => {
-  it('phủ đủ 9 loại mà máy chủ khai (timeline_store.py:55-58)', () => {
-    for (const k of ['enroll', 'care', 'flowering', 'fruiting', 'harvest', 'observe', 'note', 'media', 'transfer']) {
-      expect(KIND_VI[k]).toBeTruthy();
+// 9 loại máy chủ khai (timeline_store.py:55-58). Giữ ở một chỗ vì hai khối dưới
+// cùng đo theo nó.
+const CHIN_LOAI = ['enroll', 'care', 'flowering', 'fruiting', 'harvest', 'observe', 'note', 'media', 'transfer'];
+
+describe('nhãn hiển thị', () => {
+  // `enroll` RỜI khỏi `KIND_VI` ngày 14/09/2026: nó là loại duy nhất có nhãn phụ
+  // thuộc loại thực thể, nên để nó trong bảng phẳng là chỗ sinh ra lỗi "vườn mới
+  // lập mà dòng thời gian ghi Đăng ký cây". Phép phủ vì thế hỏi `kindLabel`, không
+  // hỏi bảng — bảng chỉ là một nửa lối ra.
+  it('mọi loại máy chủ khai đều có nhãn, ở CẢ ba loại thực thể có màn', () => {
+    for (const k of CHIN_LOAI) {
+      for (const e of ['farm', 'tree', 'fruit'] as const) {
+        expect(kindLabel(k, e)).toBeTruthy();
+      }
+    }
+  });
+
+  it('`enroll` nói đúng thứ vừa được lập — ba thực thể ra ba nhãn KHÁC nhau', () => {
+    // Vế bắt lỗi: bản trước trả 'Đăng ký cây' cho cả ba.
+    expect(kindLabel('enroll', 'farm')).toBe('Lập vườn');
+    expect(kindLabel('enroll', 'tree')).toBe('Đăng ký cây');
+    expect(kindLabel('enroll', 'fruit')).toBe('Đăng ký quả');
+    const ba = (['farm', 'tree', 'fruit'] as const).map(e => kindLabel('enroll', e));
+    expect(new Set(ba).size).toBe(3);
+  });
+
+  it('loại KHÔNG phụ thuộc thực thể thì ba thực thể ra CÙNG một nhãn', () => {
+    // Không có vế này thì bài trên đi quá tay cũng xanh.
+    for (const k of ['care', 'harvest', 'note']) {
+      const ba = (['farm', 'tree', 'fruit'] as const).map(e => kindLabel(k, e));
+      expect(new Set(ba).size).toBe(1);
+    }
+  });
+
+  it('loại LẠ giữ nguyên chuỗi máy chủ, nhưng KHÔNG để chuỗi đó làm cả tiêu đề', () => {
+    const s = kindLabel('pruning_v2', 'tree');
+    // Không nuốt: mã máy chủ phải còn, để người gỡ lỗi đối chiếu được.
+    expect(s).toContain('pruning_v2');
+    // Nhưng cũng không để người mua quả đọc thấy một dòng tên `pruning_v2` — phải có
+    // một từ tiếng người phía trước nói đây là việc app chưa biết tên.
+    expect(s).not.toBe('pruning_v2');
+    expect(s).toMatch(/Việc khác/);
+  });
+
+  it('loại thực thể LẠ khi ghi danh KHÔNG được gọi là "cây"', () => {
+    // Nhánh dự phòng cũ viết `?? KIND_VI_ENROLL.tree`, tức nó dựng lại đúng con bọ mà
+    // `kindLabel` sinh ra để diệt. `Record` đầy đủ chỉ chặn ở `tsc`; chuỗi máy chủ gửi
+    // lúc chạy không đi qua `tsc` chỗ nào — nên phải có bài ở đây.
+    const s = kindLabel('enroll', 'hive' as any);
+    expect(s).not.toMatch(/cây/);
+    expect(s).toBeTruthy();
+  });
+
+  it('mọi loại thực thể máy chủ cho phép đều có danh từ tiếng Việt', () => {
+    // `Record` đầy đủ đã ép ở tầng kiểu; bài này ghim thêm phần GIÁ TRỊ không rỗng,
+    // vì `Record` không chặn được chuỗi rỗng.
+    for (const e of ['tree', 'fruit', 'farm', 'animal', 'plot'] as const) {
+      expect(ENTITY_NOUN_VI[e]).toBeTruthy();
     }
   });
 });
@@ -174,7 +228,10 @@ describe('KIND_ICON', () => {
   });
 
   it('phủ đúng 9 loại máy chủ khai', () => {
-    expect(Object.keys(KIND_ICON).sort()).toEqual(Object.keys(KIND_VI).sort());
+    // Mốc so là DANH SÁCH của máy chủ, không phải `KIND_VI` — từ 14/09/2026 bảng đó
+    // cố ý thiếu `enroll` (nhãn của nó nằm ở `KIND_VI_ENROLL`), nên so hai bảng với
+    // nhau sẽ xanh ngay cả khi cả hai cùng sót một loại.
+    expect(Object.keys(KIND_ICON).sort()).toEqual([...CHIN_LOAI].sort());
   });
 });
 

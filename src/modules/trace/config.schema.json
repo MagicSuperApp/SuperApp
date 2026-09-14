@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://magiclamp.network/schema/trace.config.json",
+  "$id": "https://magiclamp.eco/schema/trace.config.json",
   "title": "Trace Module Config",
   "description": "Tham số admin (non-dev) tuỳ biến khi lắp app, theo INTEGRATION-STANDARD §4.1. DECLARATIVE thuần (INV-SEC / QĐ-1): chỉ tác động experience layer (INV-2), KHÔNG chạm data layer, KHÔNG biểu thức/template/ref-code. additionalProperties:false ở MỌI cấp; whitelist kiểu string/number/boolean/enum/array literal có min/max/maxLength/pattern. Logic mới = phải đặt MODULE mới qua Registry, KHÔNG lẻn vào config.",
   "type": "object",

@@ -143,12 +143,31 @@ function normNetwork(net: string | null): NetKind {
     return null;
 }
 
-// Suy mạng TỪ ĐỊA-CHỈ VÍ THẬT khi chưa resolve được. addr1 = Mainnet; addr_test KHÔNG phân biệt
-// được preprod/preview qua tiền tố → mặc định preprod (mạng test chuẩn của dự án, TESTNET-PLAN).
+// Suy mạng TỪ ĐỊA-CHỈ VÍ THẬT khi chưa resolve được.
+//
+// `addr1` nói được mainnet, vì byte mạng trong địa chỉ chỉ có hai giá trị và một trong
+// hai là mainnet. `addr_test` thì KHÔNG: nó nói "mạng thử", không nói **thử nào**.
+// Preprod và Preview dùng CÙNG byte mạng, nên tiền tố không phân biệt được hai cái.
+//
+// Bản trước trả `'preprod'` cho `addr_test`, lấy lý do "preprod là mạng thử chuẩn của
+// dự án". Đó là suy từ một KẾ HOẠCH, không phải đọc từ dữ liệu — và nó là đúng loại
+// lỗi mà một phép đo không được mắc: nó trả một giá trị hợp lệ đúng lúc nó không đo
+// được gì, nên màu xanh của nó vô nghĩa. Nó không nói "preprod", nó nói "tôi không
+// biết" bằng giọng của "preprod".
+//
+// Cái sai lộ ra ở chỗ đắt: nhãn mạng và **đường tới Explorer** dựng từ giá trị này
+// (`explorerSub`), mà một địa chỉ Preview tra trên `preprod.cardanoscan.io` thì KHÔNG
+// thấy gì — người dùng đọc đó là "ví trống", không đọc là "tra sai mạng". Chính khối
+// chú thích ngay trên `NetKind` đã ghi điều đó rồi.
+// Và có một dữ kiện làm chỗ này đắt thêm: độ dài epoch Preview và Preprod chênh NĂM
+// LẦN (1 ngày / 5 ngày), nên cùng một con số MAGIC thì hạn dùng khác hẳn nhau.
+//
+// `null` ⟹ `networkLabel` nói "Chưa kiểm được — kéo xuống để thử lại", tức nói thật
+// và có việc để làm. Mạng thật lấy từ `resolveNetwork` (theo DID), không lấy từ tiền tố.
 function netFromAddress(addr?: string | null): NetKind {
     if (!addr) return null;
-    if (addr.startsWith('addr_test') || addr.startsWith('stake_test')) return 'preprod';
     if (addr.startsWith('addr1') || addr.startsWith('stake1')) return 'mainnet';
+    if (addr.startsWith('addr_test') || addr.startsWith('stake_test')) return null;
     return null;
 }
 

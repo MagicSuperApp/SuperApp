@@ -7,8 +7,12 @@
 //     dựng+ký CBOR (Enclave native) → submit-tx. Kết quả: LAMP nằm trong KHO Distribution,
 //     CHƯA về ví. Hiển thị RÕ điều này — KHÔNG được nói "mint về ví".
 //
-//   BƯỚC 2 — CLAIM-RELEASE VỀ VÍ: đưa LAMP từ kho về ví user. Endpoint PhoenixKey
-//     CHƯA cấp → nút DISABLED + ghi "chờ endpoint release". KHÔNG bịa path.
+//   BƯỚC 2 — CLAIM-RELEASE VỀ VÍ: đưa LAMP từ kho về ví user. Nút DISABLED, nhưng
+//     KHÔNG phải vì "PhoenixKey chưa cấp endpoint" như chú thích cũ ghi: nhà Phoenix
+//     đo lại và trả lời rằng cửa đó sẽ không bao giờ có — bước 2 thuộc nhà MagicLamp
+//     (`dist_treasury`), và tín hiệu "xong" là đọc `GET /identity/org/{orgDid}/grants`
+//     tới khi Grant sang `CONSUMED`. Lý lẽ đầy đủ + chốt fail-closed còn treo ở
+//     `services/orgMintService.ts` ▸ `claimReleaseToWallet`. KHÔNG bịa path.
 //
 // Phần dựng+ký CBOR đã nối tới Enclave native (orgMintTxBuilder → Rust). Cái còn
 // thiếu là SỐ LIỆU chuỗi, khai ở config/orgMintChain.ts — thiếu thì buildAndSignTx

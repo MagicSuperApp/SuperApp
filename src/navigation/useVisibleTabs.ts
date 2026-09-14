@@ -94,10 +94,10 @@ export function useVisibleTabs(opts?: Options): string[] {
   // ĐÓNG BĂNG: chỉ tái tính khi ghim/nonce đổi — KHÔNG theo farm state giữa phiên.
   // (farm signal cố tình NẰM NGOÀI deps để thanh không xáo theo màn.)
   return React.useMemo(
-    // Bảng ưu tiên của APP ĐANG CHẠY — không phải hằng của nền dùng chung.
+    // Bảng ưu tiên VÀ ô trái của APP ĐANG CHẠY — không phải hằng của nền dùng chung.
     () => resolveVisibleTabs(
       { farms, trees, fruits }, usageRef.current, pinned, isAvailable,
-      DEFAULT_INSTANCE.slotPriority,
+      DEFAULT_INSTANCE.slotPriority, DEFAULT_INSTANCE.anchorLeft,
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [pinned, nonce],

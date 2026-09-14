@@ -13,6 +13,7 @@
  */
 
 import taad from '../sdk/taadEnclave';
+import { GATE_PREFIX, requireUserPresence } from './sensitiveActionGate';
 import {
   phoenixKeyApi,
   PhoenixKeyApiError,
@@ -129,6 +130,25 @@ export async function getLamp(args: {
   }
 
   const built = await phoenixKeyApi.wakeme.build({ walletAddress: args.walletAddress });
+
+  // ── CỔNG XÁC THỰC ──────────────────────────────────────────────────────────
+  // `witnessUnsignedTx` ký một CBOR do MÁY CHỦ dựng: app không đọc nội dung bên
+  // trong, nên cái được ký là cái máy chủ đưa. Đó là đường ra tiền, dù tên hàm
+  // nói chuyện NHẬN. Vì sao cổng tồn tại + ranh giới: `sensitiveActionGate.ts`.
+  //
+  // Gắn cổng NGAY BÂY GIỜ chứ không đợi ngày mở khoá đường ký: ngày đó là ngày
+  // đổi `WAKEME_SIGNING_READY` từ `false` sang `true` — một dòng — và không có
+  // gì nhắc người đổi rằng còn thiếu một cổng. Đúng cái bẫy mà chú thích của
+  // chính cờ này đã tả: thứ bị tắt thì không cổng nào kêu được.
+  //
+  // Ký chính CBOR sắp ký: một lần duyệt không dùng lại cho giao dịch khác.
+  await requireUserPresence({
+    prefix: GATE_PREFIX.spend,
+    fields: [built.unsignedTxCbor, String(args.network)],
+    title: 'Xác nhận nhận LAMP',
+    subtitle: 'Quét khuôn mặt hoặc vân tay để ký giao dịch này',
+  });
+
   const signed = await taad.witnessUnsignedTx(
     args.kekHex,
     args.account,

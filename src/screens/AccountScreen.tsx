@@ -16,6 +16,7 @@ import {
     Modal,
     Linking,
     RefreshControl,
+    Share,
 } from 'react-native';
 // RN 0.84 đã gỡ Clipboard khỏi core → dùng package cộng đồng (API setString giữ nguyên).
 import Clipboard from '@react-native-clipboard/clipboard';
@@ -45,6 +46,7 @@ import { getVersion, getBuildNumber } from 'react-native-device-info';
 // Debug host = backend field-reid THẬT app đang dùng (ORILIFE_BASE), không phải
 // aladin-api (backend Lợi deprecated) — để field soi đúng server (Lỗi field #5).
 import { ORILIFE_BASE } from '../services/orilifeBase';
+import { buildDiagnosticReport } from '../services/diagnosticReport';
 import { fmtLamp, fmtCarp, fmtLampWhole, lampWholeToOildrop } from '../utils/token';
 import { getVaultStatus, WAKEME_CLAIM_READY } from '../services/wakemeService';
 import type { VaultStatusResponse } from '../services/phoenixKey-api';
@@ -611,7 +613,45 @@ const AccountScreen = () => {
         }, 1500);
         if (versionTapCount.current >= 5) {
             versionTapCount.current = 0;
-            showInfo(DEFAULT_INSTANCE.displayName, APP_DEBUG_INFO);
+
+            // Dựng báo cáo TRƯỚC khi mở hộp thoại: chính hộp thoại này cũng đi qua
+            // `showAlert`, nên dựng sau thì dòng mới nhất của báo cáo là chính nó.
+            const report = buildDiagnosticReport({
+                'Bản': APP_VERSION_BASE,
+                'Commit': COMMIT_SHORT || '(bản dựng tay, CI không ghi)',
+                'Nhánh': (BUILD_BRANCH ?? '').trim(),
+                'Mã lượt dựng': (BUILD_ID ?? '').trim(),
+                'Máy chủ': ORILIFE_BASE,
+                'Nền': `${Platform.OS} ${Platform.Version}`,
+            });
+
+            showInfo(DEFAULT_INSTANCE.displayName, APP_DEBUG_INFO, {
+                actions: [
+                    {
+                        text: 'Gửi báo cáo',
+                        onPress: () => {
+                            // Khay chia sẻ của hệ điều hành: người thử tự chọn Zalo,
+                            // thư, hay ghi chú — và THẤY toàn văn trước khi gửi. Không
+                            // máy chủ, không khoá, không thêm nhà cung cấp nào vào
+                            // đường đi của dữ liệu người dùng.
+                            Share.share({ message: report }).catch(() => {
+                                // Khay không mở được thì vẫn còn đường bảng nháp —
+                                // im lặng ở đây là bỏ người thử giữa đường.
+                                Clipboard.setString(report);
+                                showInfo('Đã sao chép báo cáo', 'Khay chia sẻ không mở được. Báo cáo đã nằm ở bảng nháp — dán vào Zalo giúp.');
+                            });
+                        },
+                    },
+                    {
+                        text: 'Sao chép',
+                        onPress: () => {
+                            Clipboard.setString(report);
+                            showInfo('Đã sao chép báo cáo', 'Dán vào Zalo hoặc thư để gửi về.');
+                        },
+                    },
+                    { text: 'Đóng', style: 'cancel' },
+                ],
+            });
         }
     };
 

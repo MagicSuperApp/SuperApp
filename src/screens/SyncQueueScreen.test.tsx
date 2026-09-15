@@ -360,3 +360,104 @@ describe('chốt 4 · lượt gửi lại trượt thì NÓI RA', () => {
     expect(shown).not.toContain('Đã gửi xong cả hàng đợi');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Chốt 5 — ba chỗ đo được trên máy ảo 15/09/2026, sau khi màn đã lên bản dựng
+// ---------------------------------------------------------------------------
+describe('chốt 5 · ba chỗ lộ ra khi chạy thật', () => {
+  it('mục đã dừng phải cho XEM lại thứ người dùng đã ghi', async () => {
+    // Màn bảo "hãy ghi lại việc này". Không mở được nội dung ra thì đó là một
+    // lời khuyên không thực hiện được — đúng chỗ người dùng vừa mất một việc.
+    mockQueueRows = [
+      row('a', {
+        status: 'error',
+        error_code: 'Vườn không thuộc tài khoản này',
+        payload: JSON.stringify({ type: 'activity', note: 'Bón phân lô B2', farmId: 'vuon-doi' }),
+      }),
+    ];
+
+    const t = await openScreen();
+    // Đóng lúc mới mở: nội dung không được tự bày ra, nó là thứ người dùng CHỌN xem.
+    expect(hasNode(t, 'sync-queue-payload-a')).toBe(false);
+
+    await press(t, 'sync-queue-open-payload-a');
+    const shown = screenText(t);
+    expect(shown).toContain('Bón phân lô B2');
+    expect(shown).toContain('vuon-doi');
+    // `type` đã nằm ở nhãn loại phía trên thẻ — in lại là bắt người đọc tự lọc.
+    expect(shown).not.toContain('activity\n');
+  });
+
+  it('nội dung KHÔNG mở ra được phải khác hẳn nội dung KHÔNG có', async () => {
+    // Hai câu này nói hai chuyện: "bạn không ghi gì" và "bạn có ghi, ở đây mở
+    // không ra". Gộp chúng là báo mất trắng cho người vẫn còn dữ liệu.
+    mockQueueRows = [
+      row('a', { status: 'error', payload: 'KHÔNG-PHẢI-JSON' }),
+      row('b', { status: 'error', payload: null }),
+    ];
+
+    const t = await openScreen();
+    await press(t, 'sync-queue-open-payload-a');
+    await press(t, 'sync-queue-open-payload-b');
+
+    const shown = screenText(t);
+    expect(shown).toContain('KHÔNG-PHẢI-JSON');
+    expect(shown).toContain('nguyên văn thứ máy đang giữ');
+    expect(shown).toContain('Máy không giữ nội dung nào cho mục này.');
+  });
+
+  it('câu kết quả gửi lại phải mang PHẠM VI khi có dòng không đọc được', async () => {
+    // Đo thật: kho 6 dòng chờ, 1 dòng thiếu mã giao dịch ⇒ câu này in "còn 6 mục"
+    // ngay trên một danh sách cộng lại bằng 5. Hai số đếm hai tập, không gì nối.
+    mockQueueRows = [row('a'), row('b'), { ...row('c'), transaction_id: undefined }];
+    mockRetryAll.mockResolvedValue({ kind: 'done', before: 3, remaining: 3 } as any);
+
+    const t = await openScreen();
+    await press(t, 'sync-queue-retry-all');
+
+    const shown = screenText(t);
+    expect(shown).toContain('1 dòng không đọc được');
+    expect(shown).toContain('đếm theo dòng trong kho');
+  });
+
+  it('không có dòng hỏng thì KHÔNG gắn thêm câu phạm vi', async () => {
+    // Ca đối xứng: câu cảnh báo phải vắng mặt đúng lúc nó không đúng. Thiếu ca
+    // này thì một bản đột biến in câu đó vô điều kiện vẫn xanh.
+    mockQueueRows = [row('a'), row('b')];
+    mockRetryAll.mockResolvedValue({ kind: 'done', before: 2, remaining: 2 } as any);
+
+    const t = await openScreen();
+    await press(t, 'sync-queue-retry-all');
+
+    expect(screenText(t)).not.toContain('đếm theo dòng trong kho');
+  });
+
+  it('kéo xuống làm mới thì BỎ phán quyết của lượt gửi trước', async () => {
+    // Đo thật: dải "còn 6 mục" đứng nguyên trên một hàng đợi vừa đọc lại còn 2
+    // mục. Phán quyết cũ nói về một hàng đợi không còn tồn tại.
+    mockQueueRows = [row('a'), row('b')];
+    mockRetryAll.mockResolvedValue({ kind: 'done', before: 2, remaining: 2 } as any);
+
+    const t = await openScreen();
+    await press(t, 'sync-queue-retry-all');
+    expect(screenText(t)).toContain('Không mục nào gửi được trong lượt này');
+
+    const list = t.root.findAll((n) => typeof n.props?.onRefresh === 'function', { deep: true });
+    expect(list.length).toBeGreaterThan(0);
+    await act(async () => { await list[0].props.onRefresh(); });
+
+    expect(screenText(t)).not.toContain('Không mục nào gửi được trong lượt này');
+  });
+
+  it('lượt gửi lại MỘT mục thì phán quyết phải SỐNG qua lần đọc lại ngay sau đó', async () => {
+    // Ca đối xứng của bài trên: `load` chạy ngay sau mỗi lượt gửi. Xoá phán quyết
+    // trong `load` sẽ giết đúng câu trả lời mà người dùng vừa bấm nút để nghe.
+    mockQueueRows = [row('a')];
+    mockRetryItem.mockResolvedValue({ kind: 'cleared' } as any);
+
+    const t = await openScreen();
+    await press(t, 'sync-queue-retry-a');
+
+    expect(screenText(t)).toContain('Đã gửi xong');
+  });
+});

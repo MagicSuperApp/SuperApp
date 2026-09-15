@@ -37,6 +37,7 @@ import { syncService } from '../services/syncService';
 import {
   buildSyncQueueEntries,
   countByGroup,
+  describeRecordedPayload,
   describeRetryAllOutcome,
   describeRetryOutcome,
   SYNC_QUEUE_GROUP_TEXT,
@@ -74,6 +75,52 @@ const toneColor = (tone: 'bad' | 'warn' | 'calm'): string =>
 
 const formatMoment = (ms: number): string => new Date(ms).toLocaleString('vi-VN');
 
+/**
+ * Bày ra nội dung người dùng đã ghi cho một mục đã dừng hẳn.
+ *
+ * Ba nhánh, và nhánh KHÔNG ĐỌC ĐƯỢC phải nói to hơn nhánh KHÔNG CÓ GÌ: nhánh thứ
+ * hai nói "bạn không ghi gì", nhánh thứ ba nói "bạn có ghi, ở đây mở không ra".
+ * Gộp chúng lại là báo mất trắng cho một người vẫn còn dữ liệu.
+ */
+const RecordedContent: React.FC<{ transactionId: string; payloadRaw: string | null }> = ({
+  transactionId,
+  payloadRaw,
+}) => {
+  const recorded = describeRecordedPayload(payloadRaw);
+  if (recorded.kind === 'none') {
+    return (
+      <Text testID={`sync-queue-payload-none-${transactionId}`} style={styles.cardLine}>
+        Máy không giữ nội dung nào cho mục này.
+      </Text>
+    );
+  }
+  if (recorded.kind === 'unreadable') {
+    return (
+      <View testID={`sync-queue-payload-raw-${transactionId}`} style={styles.payloadBox}>
+        <Text style={styles.payloadWarn}>
+          Nội dung này không tách được thành từng dòng. Dưới đây là nguyên văn thứ máy đang giữ —
+          chép lại đúng như vậy khi cần.
+        </Text>
+        <Text selectable style={styles.payloadRaw}>
+          {recorded.raw}
+        </Text>
+      </View>
+    );
+  }
+  return (
+    <View testID={`sync-queue-payload-${transactionId}`} style={styles.payloadBox}>
+      {recorded.fields.map((f) => (
+        <View key={f.label} style={styles.payloadRow}>
+          <Text style={styles.payloadLabel}>{f.label}</Text>
+          <Text selectable style={styles.payloadValue}>
+            {f.value}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+};
+
 const SyncQueueScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const dispatch = useAppDispatch();
@@ -86,6 +133,8 @@ const SyncQueueScreen: React.FC = () => {
   const [note, setNote] = useState<SyncRetryNote | null>(null);
   /** Mã giao dịch đang có lượt gửi chạy; `'ALL'` = lượt gửi cả hàng đợi. */
   const [busy, setBusy] = useState<string | null>(null);
+  /** Các mục đang mở phần nội dung đã ghi. Mở nhiều mục cùng lúc được. */
+  const [opened, setOpened] = useState<Record<string, true>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -151,7 +200,29 @@ const SyncQueueScreen: React.FC = () => {
   const runRetryAll = useCallback(async () => {
     setBusy('ALL');
     try {
-      setNote(describeRetryAllOutcome(await syncService.retryAllNow()));
+      // ⚠️ Con số trong câu này ĐẾM DÒNG TRONG KHO, còn danh sách bên dưới đếm
+      // MỤC BÀY RA ĐƯỢC. Hai tập khác nhau, và chúng lệch đúng bằng số dòng không
+      // đọc được. Đo thật trên máy ảo 15/09/2026: kho 6 dòng chờ trong đó 1 dòng
+      // thiếu mã giao dịch ⇒ câu này in "còn 6 mục" ngay phía trên một danh sách
+      // cộng lại bằng 5, và không có gì trên màn nối hai số đó lại.
+      //
+      // KHÔNG sửa bằng cách trừ đi: dòng không đọc được chưa chắc còn gửi lại
+      // được (nó có thể đang mang trạng thái đã chết), nên phép trừ sẽ ra một số
+      // sai theo chiều khác. Cách đúng là để con số mang theo PHẠM VI của nó.
+      const outcome = describeRetryAllOutcome(await syncService.retryAllNow());
+      setNote(
+        unreadableRows > 0
+          ? {
+              ...outcome,
+              detail: [
+                outcome.detail,
+                `Số này đếm theo dòng trong kho, trong đó có ${unreadableRows} dòng không đọc được nên không hiện ở danh sách.`,
+              ]
+                .filter(Boolean)
+                .join(' '),
+            }
+          : outcome,
+      );
     } catch (e: any) {
       setNote({
         tone: 'bad',
@@ -162,6 +233,22 @@ const SyncQueueScreen: React.FC = () => {
       setBusy(null);
       await load();
     }
+  }, [load, unreadableRows]);
+
+  /**
+   * Kéo xuống làm mới thì BỎ phán quyết của lượt gửi trước.
+   *
+   * Phán quyết đó nói về hàng đợi tại một thời điểm; sau một lượt đọc lại, hàng
+   * đợi có thể đã khác hẳn và câu cũ thành sai mà vẫn nằm ở chỗ trang trọng nhất
+   * màn hình. Đo thật trên máy ảo 15/09/2026: dải "còn 6 mục" đứng nguyên phía
+   * trên một hàng đợi vừa đọc lại chỉ còn 2 mục.
+   *
+   * KHÔNG xoá trong chính `load`: `load` chạy ngay sau mỗi lượt gửi lại, nên xoá
+   * ở đó sẽ giết đúng câu trả lời mà người dùng vừa bấm nút để nghe.
+   */
+  const refresh = useCallback(async () => {
+    setNote(null);
+    await load();
   }, [load]);
 
   const header = (
@@ -297,7 +384,7 @@ const SyncQueueScreen: React.FC = () => {
         data={entries}
         keyExtractor={(it) => it.transactionId}
         contentContainerStyle={entries.length === 0 ? styles.emptyWrap : styles.list}
-        onRefresh={load}
+        onRefresh={refresh}
         // Phải là `loading` thật. Gõ cứng `false` thì vòng xoay không bao giờ hiện:
         // người dùng kéo xuống, không thấy gì động, và đọc ra là màn bị treo.
         refreshing={loading && entries.length > 0}
@@ -382,9 +469,45 @@ const SyncQueueScreen: React.FC = () => {
               )}
 
               {item.group === 'stopped' ? (
-                <Text testID={`sync-queue-stopped-${item.transactionId}`} style={styles.stoppedNote}>
-                  Mục này KHÔNG tự gửi lại nữa. Hãy ghi lại việc này, hoặc báo đội hỗ trợ kèm câu trả lời trên.
-                </Text>
+                <>
+                  <Text testID={`sync-queue-stopped-${item.transactionId}`} style={styles.stoppedNote}>
+                    Mục này KHÔNG tự gửi lại nữa. Hãy ghi lại việc này, hoặc báo đội hỗ trợ kèm câu trả lời trên.
+                  </Text>
+                  {/* Câu trên bảo người dùng CHÉP LẠI một việc. Không có nút này thì
+                      thứ phải chép nằm trong một cột của cơ sở dữ liệu mà không màn
+                      nào mở ra — tức một lời khuyên không thực hiện được, đặt đúng ở
+                      chỗ người dùng vừa mất một việc đã làm. */}
+                  <TouchableOpacity
+                    testID={`sync-queue-open-payload-${item.transactionId}`}
+                    style={styles.openPayload}
+                    activeOpacity={0.7}
+                    onPress={() =>
+                      setOpened((prev) => {
+                        const next = { ...prev };
+                        if (next[item.transactionId]) delete next[item.transactionId];
+                        else next[item.transactionId] = true;
+                        return next;
+                      })
+                    }
+                  >
+                    <Icon
+                      name={opened[item.transactionId] ? 'chevron-up' : 'chevron-down'}
+                      size={15}
+                      color={COLORS.accent}
+                    />
+                    <Text style={styles.openPayloadText}>
+                      {opened[item.transactionId]
+                        ? 'Ẩn nội dung bạn đã ghi'
+                        : 'Xem nội dung bạn đã ghi'}
+                    </Text>
+                  </TouchableOpacity>
+                  {opened[item.transactionId] && (
+                    <RecordedContent
+                      transactionId={item.transactionId}
+                      payloadRaw={item.payloadRaw}
+                    />
+                  )}
+                </>
               ) : (
                 <TouchableOpacity
                   testID={`sync-queue-retry-${item.transactionId}`}
@@ -513,6 +636,26 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     marginTop: 8,
   },
+  openPayload: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+    paddingVertical: 6,
+  },
+  openPayloadText: { fontSize: 13, fontWeight: '700', color: COLORS.accent },
+  payloadBox: {
+    backgroundColor: COLORS.inputBg,
+    borderRadius: 10,
+    padding: 10,
+    marginTop: 2,
+    gap: 6,
+  },
+  payloadRow: { gap: 2 },
+  payloadLabel: { fontSize: 11, fontWeight: '800', color: COLORS.textSub },
+  payloadValue: { fontSize: 13, color: COLORS.text, lineHeight: 18 },
+  payloadWarn: { fontSize: 12, color: COLORS.warning, lineHeight: 17 },
+  payloadRaw: { fontSize: 12, color: COLORS.text, lineHeight: 17 },
   retryItem: {
     flexDirection: 'row',
     alignItems: 'center',

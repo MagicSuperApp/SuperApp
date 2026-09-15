@@ -76,6 +76,7 @@ import NotificationScreen from '../screens/NotificationScreen';
 import SignRequestScreen from '../screens/SignRequestScreen';
 import GuardianScreen from '../screens/GuardianScreen';
 import ActivityLogScreen from '../screens/ActivityLogScreen';
+import SyncQueueScreen from '../screens/SyncQueueScreen';
 import MyDevicesScreen from '../screens/MyDevicesScreen';
 import DevicePairScreen from '../screens/DevicePairScreen';
 // Host-level capture/identity screens (dùng chung nhiều luồng, chưa thuộc module nào)
@@ -1733,6 +1734,10 @@ const HOST_STACK_SCREENS: Array<{
   { name: 'Guardian', component: GuardianScreen, options: { headerShown: false } },
   { name: 'ActivityLog', component: ActivityLogScreen, options: { headerShown: false } },
   { name: 'MyDevices', component: MyDevicesScreen, options: { headerShown: false } },
+  // Hàng đợi gửi lên máy chủ. Route của NỀN (không của module `trace`): hàng đợi
+  // `sync_queue` nhận mục từ mọi module, và người dùng phải xem được nó ngay cả
+  // khi app này không bật module truy xuất.
+  { name: 'SyncQueue', component: SyncQueueScreen, options: { headerShown: false } },
   // Ghép máy thứ hai vào một PhoenixKey đã có (issue #233). Route này NẰM TRONG
   // `PUBLIC_ROUTES`, có chủ ý: vai `mode: 'show'` chạy trên máy CHƯA có danh tính,
   // đóng nó lại là đóng đúng luồng nó mở. Màn không đọc `state.user` và không hiện

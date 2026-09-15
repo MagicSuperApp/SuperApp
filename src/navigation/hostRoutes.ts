@@ -63,6 +63,7 @@ export const HOST_ROUTES = [
   'Guardian',
   'ActivityLog',
   'MyDevices',
+  'SyncQueue',
   'DevicePair',
   'Main',
   'Notifications',

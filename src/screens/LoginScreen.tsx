@@ -35,6 +35,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS } from '../constants';
 import { WORK_THEME } from '../theme';
 import { biometricKindFromType, phoenixKeyAuth } from '../services/phoenixKeyAuthService';
+import { clearSessionToken, clearSessionMintCooldown } from '../services/phoenixKey-api';
 import {
   isAvailable as isPhoenixKeyAvailable,
   PhoenixKeyNativeError,
@@ -260,6 +261,22 @@ const LoginScreen = () => {
     const next = switchableUsers[(idx + 1) % switchableUsers.length];
     if (!next || next.did === activeUser.did) return;
     try {
+      // ── BỎ THẺ PHIÊN TRƯỚC KHI ĐỔI DID ──────────────────────────────────────
+      // Đăng XUẤT thì `logoutUser` bỏ thẻ; ĐỔI tài khoản thì không đi qua đó, nên
+      // tới trước bản này thẻ của người TRƯỚC còn nguyên sau khi đổi. Thẻ phiên
+      // PhoenixKey không mang dấu chủ, và có cửa suy chủ thể TỪ thẻ chứ không từ
+      // thân gửi (`/wallet/standard/register`) — nên thẻ cũ nghĩa là máy chủ làm
+      // việc dưới danh nghĩa người trước, và mã lỗi trả về (`403/1326`) trùng với
+      // một nguyên nhân khác hẳn.
+      //
+      // Bỏ TRƯỚC, không bỏ sau: khoảng giữa hai lượt ghi mà có lệnh mạng chen vào
+      // thì lệnh đó phải trượt vì THIẾU thẻ (401 — đọc ra được, hồi được bằng một
+      // lượt lập phiên), chứ không được chạy dưới danh nghĩa sai người.
+      //
+      // `clearSessionMintCooldown` bơm số hiệu thế: một lượt đúc thẻ đang bay sẽ
+      // KHÔNG trồng lại thẻ vừa bỏ.
+      await clearSessionToken();
+      clearSessionMintCooldown();
       // Thứ tự có nghĩa: DID trước (thứ mở khoá), nhãn sau (thứ hiển thị).
       await saveUserDid(next.did);
       await AsyncStorage.setItem(ACTIVE_USERNAME_KEY, next.username);

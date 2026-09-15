@@ -143,22 +143,51 @@ describe('chọn đường: đường tắt hay mô hình', () => {
     expect(says.join(' ')).toContain('thêm vườn');
   });
 
-  it('KHÔNG nối được ⇒ NÓI RA, không lặng lẽ trả lời bằng bảng tra', async () => {
-    // ⛔ Đây là lỗi người dùng báo, và nó là lỗi TỆ vì nó trông như đang chạy:
-    // bấm gửi → "đang xử lý" một lúc lâu → rồi nhận một câu y như chưa từng nối
-    // gì. Bản trước nuốt sạch lỗi (`catch { ses = null }`) rồi rơi thẳng về
-    // `handle()`, nên không ai phân biệt được "mô hình trả lời thế" với "mô hình
-    // không chạy".
+  it('mọi câu hỏi đều CÓ LỜI ĐÁP — không ca nào im lặng', async () => {
+    // ⚠ Bài này CỐ Ý không khẳng định đi nhánh nào.
     //
-    // Bản dựng test có `GENIE_URL` nhưng KHÔNG có `setGenieAuth` ⇒ chưa đăng
-    // nhập. Câu nói ra phải chỉ đúng việc phải làm.
+    // `ask()` rẽ theo `genieEnabled()`, tức theo `GENIE_URL` — mà
+    // `react-native-dotenv` NỘI SUY giá trị đó LÚC BIÊN DỊCH từ `.env`, và `.env`
+    // nằm trong `.gitignore`. Nên trên máy lập trình viên nó có giá trị, trên CI
+    // thì `undefined`, và không bài kiểm nào điều khiển được nó.
+    //
+    // Bản trước khẳng định nhánh "chưa đăng nhập" và XANH trên máy tôi, ĐỎ trên
+    // CI. Một bài kiểm chỉ xanh trên một loại máy là một bài kiểm sẽ bị ai đó nới
+    // ra cho đỡ phiền — và lúc đó nó không còn canh gì nữa.
+    //
+    // Phần LUẬT thì kiểm ở bài dưới, qua `cauKhiHong()` — hàm thuần, không dính
+    // môi trường.
     const { ask } = load();
     const says: string[] = [];
     await new Promise<void>((done) => {
       ask('hôm nay trời đẹp quá', { onSay: (s) => says.push(s), onDone: done });
     });
     expect(says.length).toBeGreaterThanOrEqual(1);
-    expect(says[0]).toMatch(/đăng nhập/i);
+    expect(says[0].trim().length).toBeGreaterThan(20);
+  });
+
+  it('ba ca hỏng ⇒ BA CÂU KHÁC NHAU, và mỗi câu chỉ đúng một việc phải làm', () => {
+    // Hàm THUẦN, kiểm thẳng — không đi vòng qua `ask()` nữa.
+    const { cauKhiHong } = load();
+
+    const chuaDangNhap = cauKhiHong({ kind: 'chua-dang-nhap' });
+    const khongNoi = cauKhiHong({ kind: 'khong-noi-duoc', why: 'hết giờ' });
+    const chuaCauHinh = cauKhiHong({ kind: 'chua-cau-hinh' });
+
+    // Chưa đăng nhập ⇒ chỉ đúng việc: đăng nhập lại.
+    expect(chuaDangNhap).toMatch(/đăng nhập/i);
+
+    // Không nối được ⇒ nói rõ là CHƯA NGHĨ ĐƯỢC, và nói cái VẪN làm được.
+    expect(khongNoi).toMatch(/máy chủ/i);
+    expect(khongNoi).toMatch(/vẫn/i);
+    expect(khongNoi).not.toMatch(/đăng nhập/i);
+
+    // Bản dựng cố ý không có mô hình ⇒ RỖNG, để `handle()` nói câu của nó.
+    // KHÔNG hứa "thử lại sau": thử lại bao nhiêu lần cũng thế.
+    expect(chuaCauHinh).toBe('');
+
+    // Và ba câu phải KHÁC nhau — gộp lại là bắt người dùng đoán.
+    expect(new Set([chuaDangNhap, khongNoi, chuaCauHinh]).size).toBe(3);
   });
 
   it('mỗi ca hỏng một CÂU KHÁC NHAU — gộp lại là bắt người dùng đoán', () => {

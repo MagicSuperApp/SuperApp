@@ -253,8 +253,13 @@ function moTaLoi(e: unknown): string {
  *
  * Gộp cả ba thành một câu chung là bắt người dùng đoán — và đoán sai thì họ gõ
  * lại đúng câu đó thêm mười lần.
+ *
+ * XUẤT RA để kiểm được TRỰC TIẾP. Không xuất thì bài kiểm phải đi vòng qua
+ * `ask()`, mà `ask()` rẽ nhánh theo `GENIE_URL` — một giá trị `react-native-dotenv`
+ * NỘI SUY LÚC BIÊN DỊCH từ `.env`. Tệp đó nằm trong `.gitignore`, nên bài kiểm đi
+ * vòng như thế XANH trên máy có `.env` và ĐỎ trên CI. Đã xảy ra thật.
  */
-function cauKhiHong(f: SessionFail): string {
+export function cauKhiHong(f: SessionFail): string {
   if (f.kind === 'chua-dang-nhap') {
     return 'Dạ bác đăng nhập lại giúp em rồi em làm tiếp ngay ạ.';
   }

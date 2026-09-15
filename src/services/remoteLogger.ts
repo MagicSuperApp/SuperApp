@@ -267,6 +267,17 @@ const rLog = {
     walletRegisterDone(ok: boolean): void {
       send('pk_wallet_register_done', { ok }, ok ? 'info' : 'error');
     },
+    /**
+     * Khuôn chuỗi ký mà cửa đăng ký ví vừa thử, và máy chủ có nhận hay không.
+     *
+     * Đây là phép đo trả lời một câu chưa ai khai được: cửa
+     * `POST /wallet/standard/register` dựng lại chuỗi ký theo khuôn nào. Gửi CẢ hai
+     * chiều — nhận và không nhận — vì chỉ một chiều thì không đọc ra được "khuôn kia
+     * đã bị thử và bị từ chối" hay "khuôn kia chưa từng được thử".
+     */
+    walletSigningFormat(format: string, accepted: boolean): void {
+      send('pk_wallet_signing_format', { format, accepted }, accepted ? 'info' : 'warn');
+    },
     walletError(step: string, code: number, httpStatus: number, message: string): void {
       send('pk_wallet_error', { step, code, httpStatus, message }, 'error');
     },

@@ -31,6 +31,16 @@ interface TaadEnclaveNativeBridge {
   deriveStakeAddress(kekHex: string, account: number, network: number): Promise<string>;
   // Ký proof-of-ownership /wallet/standard/register → JSON {"paymentPublicKeyHex","signature"}.
   signWalletRegister(kekHex: string, account: number, message: string): Promise<string>;
+  /**
+   * Như trên, nhưng `messageHex` mang BYTE cần ký dưới dạng hex.
+   *
+   * **`?` là cố ý, và nó là phần quan trọng nhất của hai dòng này.** Cửa này mới có
+   * từ bản dựng 2026-09-15; mọi bản đã cài trước đó KHÔNG có nó. Khai bắt buộc thì
+   * TypeScript im lặng và chỗ gọi sẽ nổ ở tay người dùng đang cầm bản cũ. Khai `?`
+   * thì trình kiểm kiểu BẮT chỗ gọi phải xử ba trạng thái: máy làm được · máy không
+   * làm được · máy chủ từ chối. Ba thứ đó dẫn tới ba việc khác nhau.
+   */
+  signWalletRegisterHex?(kekHex: string, account: number, messageHex: string): Promise<string>;
   // Dựng + ký tx Cardano (ADA/LAMP) → CBOR hex đã ký. amount* là chuỗi (u64 vượt bridge precision).
   buildSignedTransfer(
     kekHex: string, account: number, toAddress: string,
@@ -69,6 +79,8 @@ interface TaadEnclaveNativeBridge {
   aesGcmDecrypt(keyHex: string, encryptedJson: string): Promise<string>;
   // Ký Ed25519 bằng TAAD_Key (từ Master_KEK) — recover-device, on-chain challenge.
   signEd25519(masterKekHex: string, message: string): Promise<string>;
+  /** Ký một chuỗi BYTE tuỳ ý (truyền dạng hex). `?` — xem `signWalletRegisterHex`. */
+  signEd25519Hex?(masterKekHex: string, messageHex: string): Promise<string>;
   // Secure storage (Keychain iOS / Keystore-AES Android)
   secureStore(key: string, value: string): Promise<boolean>;
   secureLoad(key: string): Promise<string | null>;
@@ -92,6 +104,7 @@ const moduleNotAvailable = (): TaadEnclaveNativeBridge => {
     deriveWalletAddress: () => reject('deriveWalletAddress') as never,
     deriveStakeAddress: () => reject('deriveStakeAddress') as never,
     signWalletRegister: () => reject('signWalletRegister') as never,
+    signWalletRegisterHex: () => reject('signWalletRegisterHex') as never,
     buildSignedTransfer: () => reject('buildSignedTransfer') as never,
     buildStakeDelegation: () => reject('buildStakeDelegation') as never,
     witnessUnsignedTx: () => reject('witnessUnsignedTx') as never,
@@ -103,6 +116,7 @@ const moduleNotAvailable = (): TaadEnclaveNativeBridge => {
     aesGcmEncrypt: () => reject('aesGcmEncrypt') as never,
     aesGcmDecrypt: () => reject('aesGcmDecrypt') as never,
     signEd25519: () => reject('signEd25519') as never,
+    signEd25519Hex: () => reject('signEd25519Hex') as never,
     secureStore: () => reject('secureStore') as never,
     secureLoad: () => reject('secureLoad') as never,
     secureDelete: () => reject('secureDelete') as never,
@@ -231,12 +245,35 @@ export const signWalletRegister = async (
   message: string,
 ): Promise<WalletRegisterProof> => {
   const json = await callNative('signWalletRegister', () => bridge.signWalletRegister(kekHex, account, message));
+  return parseWalletRegisterProof(json, 'signWalletRegister');
+};
+
+/**
+ * Như trên, nhưng ký TRỌN chuỗi byte truyền vào dạng hex — dùng cho chuỗi ký đóng
+ * khung theo độ dài, thứ không đi qua cửa chuỗi được.
+ *
+ * Trả `null` khi **máy này không có cửa đó** (bản dựng cũ hơn 2026-09-15). `null`
+ * KHÔNG phải "ký hỏng": người gọi phải đọc nó thành *"máy này không dựng được khuôn
+ * đóng khung"* và đi đường khác, chứ không báo cho người dùng rằng chữ ký sai.
+ */
+export const signWalletRegisterHex = async (
+  kekHex: string,
+  account: number,
+  messageHex: string,
+): Promise<WalletRegisterProof | null> => {
+  const call = bridge.signWalletRegisterHex;
+  if (!call) return null;
+  const json = await callNative('signWalletRegisterHex', () => call.call(bridge, kekHex, account, messageHex));
+  return parseWalletRegisterProof(json, 'signWalletRegisterHex');
+};
+
+function parseWalletRegisterProof(json: string, method: string): WalletRegisterProof {
   const parsed = JSON.parse(json) as WalletRegisterProof;
   if (!parsed.paymentPublicKeyHex || !parsed.signature) {
-    throw new Error('signWalletRegister: native trả thiếu pubkey/signature');
+    throw new Error(`${method}: native trả thiếu pubkey/signature`);
   }
   return parsed;
-};
+}
 
 /**
  * Dựng + ký tx Cardano (ADA/LAMP) trong Enclave (Issue #74). Derive seed ví từ
@@ -496,6 +533,23 @@ export const aesGcmDecrypt = (keyHex: string, encryptedJson: string): Promise<st
 export const signEd25519 = (masterKekHex: string, message: string): Promise<string> =>
   callNative('signEd25519', () => bridge.signEd25519(masterKekHex, message));
 
+/**
+ * Như trên, nhưng ký TRỌN chuỗi byte truyền vào dạng **hex** — dùng cho chuỗi ký
+ * đóng khung theo độ dài, thứ không đi qua cửa chuỗi được (`0x00` trong 4 byte độ
+ * dài bị cắt trên iOS, bị đổi thành `0xC0 0x80` trên Android).
+ *
+ * Trả `null` khi máy này KHÔNG CÓ cửa đó (bản dựng cũ hơn 2026-09-15) — đó là
+ * "máy không làm được", KHÔNG phải "ký hỏng".
+ */
+export const signEd25519Hex = async (
+  masterKekHex: string,
+  messageHex: string,
+): Promise<string | null> => {
+  const call = bridge.signEd25519Hex;
+  if (!call) return null;
+  return callNative('signEd25519Hex', () => call.call(bridge, masterKekHex, messageHex));
+};
+
 // ── Secure storage (Keychain iOS / Keystore-AES Android) ──────────────────────
 
 /** Lưu chuỗi an toàn (hardware-backed, device-bound). Ghi đè nếu key đã có. */
@@ -520,6 +574,7 @@ export default {
   deriveWalletAddress,
   deriveStakeAddress,
   signWalletRegister,
+  signWalletRegisterHex,
   buildSignedTransfer,
   buildStakeDelegation,
   witnessUnsignedTx,
@@ -531,6 +586,7 @@ export default {
   aesGcmEncrypt,
   aesGcmDecrypt,
   signEd25519,
+  signEd25519Hex,
   secureStore,
   secureLoad,
   secureDelete,

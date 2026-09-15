@@ -144,15 +144,80 @@ pub fn derive_stake_address(master_kek_hex: String, account: u32, network: u8) -
 /// đều hex thuần nên nhúng thẳng vào JSON an-toàn (không cần escape). Rỗng nếu
 /// KEK/seed sai. KHÔNG lộ khoá — chỉ ra pubkey + chữ-ký.
 pub fn sign_wallet_register(master_kek_hex: String, account: u32, message: String) -> String {
+    sign_wallet_register_bytes(master_kek_hex, account, message.as_bytes())
+}
+
+/// Same as [`sign_wallet_register`], but the message is an ARBITRARY byte string
+/// passed in as hex.
+///
+/// Why the UTF-8 door cannot serve both: the C entry point takes
+/// `*const c_char`, so a length-framed payload (4-byte big-endian lengths,
+/// mostly `0x00`) is cut at the first `0x00`. The cut payload still produces a
+/// well-formed 128-hex signature, so the mistake surfaces only on the server as
+/// `WALLET_PAYMENT_SIGNATURE_INVALID`.
+pub fn sign_wallet_register_hex(
+    master_kek_hex: String,
+    account: u32,
+    message_hex: String,
+) -> String {
+    let message = match crate::utils::hex_to_bytes(&message_hex) {
+        Ok(b) => b,
+        Err(_) => return String::new(),
+    };
+    sign_wallet_register_bytes(master_kek_hex, account, &message)
+}
+
+fn sign_wallet_register_bytes(master_kek_hex: String, account: u32, message: &[u8]) -> String {
     let seed = derive_wallet_seed(master_kek_hex);
     if seed.is_empty() {
         return String::new();
     }
-    match crate::cardano::sign_payment_message(&seed, account, message.as_bytes()) {
+    match crate::cardano::sign_payment_message(&seed, account, message) {
         Some((pubkey_hex, signature_hex)) => format!(
             r#"{{"paymentPublicKeyHex":"{}","signature":"{}"}}"#,
             pubkey_hex, signature_hex
         ),
         None => String::new(),
+    }
+}
+
+// ─── Tests ────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const KEK: &str = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
+
+    /// Hai cửa phải cho ĐÚNG một kết quả khi nội dung là ASCII thuần — nếu không,
+    /// chuyển luồng đang chạy sang cửa mới sẽ làm hỏng chính nó.
+    #[test]
+    fn hex_door_matches_string_door_for_plain_ascii() {
+        let message = "PHOENIXKEY_WALLET_STANDARD_REGISTER:did:phoenix:abc:addr_test1:00ff";
+        let via_string = sign_wallet_register(KEK.to_string(), 0, message.to_string());
+        let via_hex =
+            sign_wallet_register_hex(KEK.to_string(), 0, hex::encode(message.as_bytes()));
+        assert!(via_string.contains("\"signature\":\""), "cửa chuỗi phải ký được: {via_string}");
+        assert_eq!(via_string, via_hex);
+    }
+
+    /// Chuỗi đóng khung ký qua cửa hex KHÁC chuỗi bị cắt ở `0x00` đầu tiên. Đây là
+    /// lý do cửa hex tồn tại: cầu `*const c_char` cắt ở byte đó mà vẫn trả về một
+    /// chữ ký đúng hình dạng, nên chỗ hỏng không lộ ở tầng này.
+    #[test]
+    fn framed_payload_differs_from_the_payload_cut_at_the_first_nul() {
+        let framed_hex = "503a000000026162"; // build("P:", "ab")
+        let framed = sign_wallet_register_hex(KEK.to_string(), 0, framed_hex.to_string());
+        let cut_at_nul = sign_wallet_register(KEK.to_string(), 0, "P:".to_string());
+        assert!(framed.contains("\"signature\":\""), "phải ký được: {framed}");
+        assert_ne!(framed, cut_at_nul);
+    }
+
+    /// Hex không hợp lệ → chuỗi RỖNG. Người gọi phải phân biệt được "không ký được"
+    /// với "đã ký", nên tuyệt đối không ký bừa trên byte rác.
+    #[test]
+    fn hex_door_refuses_a_payload_that_is_not_hex() {
+        assert_eq!(sign_wallet_register_hex(KEK.to_string(), 0, "abc".to_string()), "");
+        assert_eq!(sign_wallet_register_hex(KEK.to_string(), 0, "zz".to_string()), "");
     }
 }

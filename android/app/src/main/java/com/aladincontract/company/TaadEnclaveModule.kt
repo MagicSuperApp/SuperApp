@@ -41,6 +41,16 @@ class TaadEnclaveModule(reactContext: ReactApplicationContext) :
     /** Địa-chỉ STAKE (reward) — cùng CIP-1852 với ví, nhánh role 2 (m/1852'/1815'/acc'/2/0). */
     private external fun nativeDeriveStakeAddress(kekHex: String, account: Int, network: Int): String?
     private external fun nativeSignWalletRegister(kekHex: String, account: Int, message: String): String?
+    /**
+     * Như trên, nhưng `messageHex` mang BYTE cần ký dưới dạng hex.
+     *
+     * Vì sao phải có cửa riêng: `GetStringUTFChars` dùng UTF-8 **cải biên**, nó mã hoá
+     * `U+0000` thành hai byte `0xC0 0x80` thay vì một byte `0x00`. Chuỗi ký đóng khung
+     * theo độ dài mang `0x00` trong 4 byte độ dài của nó, nên đi qua cửa chuỗi thì
+     * byte BỊ ĐỔI (trên iOS thì bị CẮT) — hai kiểu hỏng khác nhau, cùng một hệ quả:
+     * máy chủ dựng lại một chuỗi khác và chữ ký không khớp.
+     */
+    private external fun nativeSignWalletRegisterHex(kekHex: String, account: Int, messageHex: String): String?
     /** Dựng + ký tx Cardano (ADA/LAMP). amount* là String (u64 vượt precision bridge). */
     private external fun nativeBuildSignedTransfer(
         kekHex: String, account: Int, toAddress: String,
@@ -62,6 +72,8 @@ class TaadEnclaveModule(reactContext: ReactApplicationContext) :
     private external fun nativeAesGcmEncrypt(keyHex: String, plaintextHex: String): String?
     private external fun nativeAesGcmDecrypt(keyHex: String, encryptedJson: String): String?
     private external fun nativeSignEd25519(masterKekHex: String, message: String): String?
+    /** Ký một chuỗi BYTE tuỳ ý (truyền dạng hex) — bắt buộc cho chuỗi ký đóng khung. */
+    private external fun nativeSignEd25519Hex(masterKekHex: String, messageHex: String): String?
     /** 2FA DeviceKey opt-in: sinh Ed25519 ngẫu nhiên + ký canonical → JSON. */
     private external fun nativeDeviceKeyOptin(userDid: String, nonce: String): String?
     /**
@@ -202,6 +214,12 @@ class TaadEnclaveModule(reactContext: ReactApplicationContext) :
             nativeSignWalletRegister(kekHex, account, message)
         }
 
+    @ReactMethod
+    fun signWalletRegisterHex(kekHex: String, account: Int, messageHex: String, promise: Promise) =
+        run(promise, "E_SIGN_WALLET_REG_HEX", "Không ký được proof-of-ownership ví Standard") {
+            nativeSignWalletRegisterHex(kekHex, account, messageHex)
+        }
+
     /** Dựng + ký tx Cardano (ADA/LAMP) — client build, backend relay (Issue #74). */
     @ReactMethod
     fun buildSignedTransfer(
@@ -331,6 +349,12 @@ class TaadEnclaveModule(reactContext: ReactApplicationContext) :
     fun signEd25519(masterKekHex: String, message: String, promise: Promise) =
         run(promise, "E_SIGN_ED25519", "Ký Ed25519 thất bại") {
             nativeSignEd25519(masterKekHex, message)
+        }
+
+    @ReactMethod
+    fun signEd25519Hex(masterKekHex: String, messageHex: String, promise: Promise) =
+        run(promise, "E_SIGN_ED25519_HEX", "Ký Ed25519 thất bại") {
+            nativeSignEd25519Hex(masterKekHex, messageHex)
         }
 
     // ── Secure storage (Keystore AES-GCM + SharedPreferences) ────────────────

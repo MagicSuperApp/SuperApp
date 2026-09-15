@@ -278,6 +278,25 @@ pub unsafe extern "C" fn taad_kek_sign_wallet_register(
     string_or_fail(result, "taad_kek_sign_wallet_register")
 }
 
+/// Same as [`taad_kek_sign_wallet_register`], but `message_hex` carries the bytes
+/// to sign as hex instead of as a NUL-terminated string.
+///
+/// A length-framed signing payload holds `0x00` inside its 4-byte length fields,
+/// so it cannot travel through `*const c_char` — it would be cut at the first
+/// `0x00` and still return a well-formed signature. Callers that build a framed
+/// payload MUST use this door.
+#[no_mangle]
+pub unsafe extern "C" fn taad_kek_sign_wallet_register_hex(
+    master_kek_hex: *const c_char,
+    account: u32,
+    message_hex: *const c_char,
+) -> *mut c_char {
+    let kek = arg!(master_kek_hex, "master_kek_hex");
+    let msg = arg!(message_hex, "message_hex");
+    let result = mobile_kek::sign_wallet_register_hex(kek, account, msg);
+    string_or_fail(result, "taad_kek_sign_wallet_register_hex")
+}
+
 /// Dựng + ký tx Cardano gửi ADA/LAMP (Issue #74 — client build, backend relay qua
 /// POST /wallet/tx/submit). `amount_lovelace`/`lamp_amount` là CHUỖI thập phân
 /// (u64 vượt double-precision của RN bridge → truyền dạng string, parse trong Rust).
@@ -619,6 +638,20 @@ pub unsafe extern "C" fn taad_sign_ed25519(
     let msg = arg!(message, "message");
     let sig = sign::sign_ed25519(kek, msg);
     string_or_fail(sig, "taad_sign_ed25519")
+}
+
+/// Same as [`taad_sign_ed25519`], but `message_hex` carries the bytes to sign as
+/// hex instead of as a NUL-terminated string. Required for length-framed signing
+/// payloads, whose 4-byte length fields contain `0x00`.
+#[no_mangle]
+pub unsafe extern "C" fn taad_sign_ed25519_hex(
+    master_kek_hex: *const c_char,
+    message_hex: *const c_char,
+) -> *mut c_char {
+    let kek = arg!(master_kek_hex, "master_kek_hex");
+    let msg = arg!(message_hex, "message_hex");
+    let sig = sign::sign_ed25519_hex(kek, msg);
+    string_or_fail(sig, "taad_sign_ed25519_hex")
 }
 
 /// 2FA DeviceKey opt-in (Issue #28): sinh Ed25519 NGẪU NHIÊN (per-device) + ký canonical

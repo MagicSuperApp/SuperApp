@@ -1108,7 +1108,20 @@ const AccountScreen = () => {
                             }
                         />
                         <MenuItem icon="school-outline" label="Chạy luồng hướng dẫn" sublabel="Xem lại hướng dẫn thao tác cơ bản" onPress={runTutorial} />
-                        <MenuItem icon="wifi-off" label="Chế độ offline" sublabel="Lưu cục bộ khi mất mạng" last />
+                        <MenuItem icon="wifi-off" label="Chế độ offline" sublabel="Lưu cục bộ khi mất mạng" />
+                        {/* LỐI VÀO hàng đợi đồng bộ. Đặt ngay dưới "Chế độ offline" có
+                            chủ ý: ô trên nói app LƯU CỤC BỘ khi mất mạng, và câu hỏi kế
+                            tiếp của người đọc đúng là *"vậy cái đã lưu giờ ở đâu, gửi
+                            chưa"*. Trước ô này câu đó không có chỗ trả lời — mục vẫn
+                            sống trong `sync_queue` nhưng không màn nào bày ra, nên một
+                            mục đang chờ và một mục đã mất đọc y như nhau. */}
+                        <MenuItem
+                            icon="cloud-upload-outline"
+                            label="Hàng đợi gửi lên máy chủ"
+                            sublabel="Xem mục chưa gửi được và gửi lại bằng tay"
+                            onPress={() => navigation.navigate('SyncQueue')}
+                            last
+                        />
                     </Section>
                 </Animated.View>
 

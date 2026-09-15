@@ -15,7 +15,7 @@
 import taad from '../sdk/taadEnclave';
 import { currentUserDid } from '../sdk/phoenixKey';
 import { getStoredMasterKek, getActiveAccountIndex } from './masterKekStore';
-import { phoenixKeyApi, PhoenixKeyApiError } from './phoenixKey-api';
+import { phoenixKeyApi, PhoenixKeyApiError, ensureSessionTokenBelongsTo } from './phoenixKey-api';
 import rLog from './remoteLogger';
 
 // 0 = preprod (testnet), khớp WALLET_NETWORK bên register + AccountScreen + PhoenixWalletScreen.
@@ -24,6 +24,68 @@ import { CARDANO_NETWORK as WALLET_NETWORK } from '../config/cardanoNetwork';
 // Prefix challenge proof-of-ownership — KHỚP backend WalletV2ServiceImpl.REGISTER_PREFIX.
 // Đổi ở đây mà không đổi backend → chữ ký fail (WALLET_PAYMENT_SIGNATURE_INVALID).
 const REGISTER_CHALLENGE_PREFIX = 'PHOENIXKEY_WALLET_STANDARD_REGISTER:';
+
+/**
+ * ══ LƯỢT ĐĂNG KÝ HỎNG PHẢI CÓ CHỖ ĐỂ Ở ══════════════════════════════════════
+ *
+ * Hàm dưới trả `false` khi hỏng và **không ai đọc giá trị đó**
+ * (`navigation/index.tsx` bỏ nó). Rồi màn chính hỏi `/wallet/{did}/all` — lượt đó
+ * THÀNH CÔNG, danh sách không có ví Standard nào, nên màn in số dư của ví custody
+ * ra như thể đó là số dư của người dùng. Con số ấy nghĩa là *"chưa bao giờ đăng ký
+ * được"* nhưng được vẽ bằng đúng hình dạng của *"ví rỗng"*.
+ *
+ * Đo trên máy ảo 2026-09-15, danh tính mới tạo:
+ *
+ *   [rLog:pk_wallet_error] { step: 'register', code: 1326, httpStatus: 403,
+ *     message: 'Signature does not verify against paymentPublicKeyHex' }
+ *
+ * trong khi màn chính vẫn hiện `0 MAGIC · 0 LAMP`.
+ *
+ * Nên giữ nguyên hợp đồng (vẫn không ném, vẫn trả `false`) và ghi thêm lý do ra
+ * một chỗ đọc được — cùng khuôn `getLastPhoenixSessionFailure` ở
+ * `phoenixSessionService.ts`. Màn nào đang phải vẽ một con số thì hỏi chỗ này
+ * trước, để biết con số đó có nói về ví của người dùng hay không.
+ */
+export interface StandardWalletFailure {
+  /** Bước chết: kek | derive | proof | session | register. */
+  step: string;
+  code: number;
+  httpStatus: number;
+  message: string;
+  /** Mốc thời gian (ms) — màn hình dùng để không khoe lại lỗi quá cũ. */
+  at: number;
+}
+
+let lastFailure: StandardWalletFailure | null = null;
+
+/** Lý do lần đăng ký ví gần nhất hỏng; `null` nếu chưa hỏng lần nào hoặc đã xong. */
+export const getLastStandardWalletFailure = (): StandardWalletFailure | null => lastFailure;
+
+function noteFailure(step: string, code: number, httpStatus: number, message: string): void {
+  lastFailure = { step, code, httpStatus, message, at: Date.now() };
+}
+
+/**
+ * Câu ngắn, người-đọc-được, cho lý do ví tự-kiểm-soát chưa lập được. `null` khi
+ * không có gì để nói.
+ *
+ * KHÔNG in mã lỗi kỹ thuật ra giao diện — mã đã nằm trong nhật ký từ xa. Nhưng câu
+ * trả về phải nói được NGƯỜI DÙNG đang mất gì: không phải "có lỗi xảy ra", mà là
+ * số trên màn không nói về ví của họ.
+ */
+export const describeStandardWalletFailure = (): string | null => {
+  if (!lastFailure) return null;
+  if (lastFailure.step === 'session') {
+    return 'Máy vừa bỏ một thẻ đăng nhập không thuộc tài khoản này. Mở lại màn để thử lập ví.';
+  }
+  if (lastFailure.httpStatus === 403 || lastFailure.httpStatus === 401) {
+    return 'Máy chủ chưa nhận ví tự kiểm soát của bạn, nên số dư dưới đây chưa phải của ví bạn giữ khoá.';
+  }
+  if (lastFailure.httpStatus === 0) {
+    return 'Chưa nối được tới máy chủ để lập ví tự kiểm soát của bạn.';
+  }
+  return 'Chưa lập được ví tự kiểm soát của bạn trên máy chủ.';
+};
 
 // Guard chống chạy TRÙNG (nhiều effect gọi gần đồng-thời) → tránh 2 lần register
 // (lần 2 dính 409) + 2 lần ký proof thừa. Gộp về 1 promise khi đang bay.
@@ -94,6 +156,27 @@ async function ensureStandardWalletRegisteredInner(): Promise<boolean> {
     const proof = await taad.signWalletRegister(kek, 0, challenge);
     rLog.phoenixWallet.walletProof(!!proof.paymentPublicKeyHex, !!proof.signature);
 
+    // ── THẺ PHIÊN PHẢI THUỘC ĐÚNG NGƯỜI NÀY ──────────────────────────────────
+    // Thân gửi dưới đây KHÔNG mang trường DID nào, nên máy chủ suy chủ thể từ thẻ
+    // Bearer. Thẻ còn sống của tài khoản trước ⟹ máy chủ dựng lại chuỗi ký bằng DID
+    // của chủ thẻ ⟹ Ed25519 trượt ⟹ `403 / 1326`, đúng cùng mã lỗi với ca "hai bên
+    // dựng hai chuỗi byte khác nhau". Kiểm ở đây là cách duy nhất phía máy tách
+    // được hai nguyên nhân đó ra.
+    step = 'session';
+    const tokenOwner = await ensureSessionTokenBelongsTo(userDid);
+    if (tokenOwner === 'foreign' || tokenOwner === 'unmarked') {
+      // Thẻ đã bị bỏ. KHÔNG tự lập phiên mới ở đây: việc đó tốn một lần hỏi sinh
+      // trắc, và lượt gọi này không phải chỗ người dùng đang chờ. Lượt sau sẽ lập.
+      noteFailure(
+        step, -1, 0,
+        tokenOwner === 'foreign'
+          ? 'Thẻ phiên trên máy thuộc một mã định danh khác — đã bỏ.'
+          : 'Thẻ phiên trên máy không mang dấu chủ nên không kiểm được — đã bỏ.',
+      );
+      rLog.phoenixWallet.walletError(step, -1, 0, `session token ${tokenOwner}`);
+      return false;
+    }
+
     step = 'register';
     await phoenixKeyApi.wallet.standardRegister({
       fixedAddress,
@@ -104,6 +187,7 @@ async function ensureStandardWalletRegisteredInner(): Promise<boolean> {
       nonce,
     });
     rLog.phoenixWallet.walletRegisterDone(true);
+    lastFailure = null;
     return true;
   } catch (err) {
     // Best-effort: chưa có session token / offline / backend chưa bật → thử lại lần sau.
@@ -113,11 +197,15 @@ async function ensureStandardWalletRegisteredInner(): Promise<boolean> {
       // 2 lời gọi chạy song song) → coi như THÀNH CÔNG, không phải lỗi.
       if (err.httpStatus === 409 || err.code === 3005) {
         rLog.phoenixWallet.walletRegisterDone(true);
+        lastFailure = null;
         return true;
       }
       rLog.phoenixWallet.walletError(step, err.code, err.httpStatus, err.message);
+      noteFailure(step, err.code, err.httpStatus, err.message);
     } else {
-      rLog.phoenixWallet.walletError(step, -1, 0, err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      rLog.phoenixWallet.walletError(step, -1, 0, msg);
+      noteFailure(step, -1, 0, msg);
     }
     return false;
   }

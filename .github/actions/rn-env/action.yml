@@ -156,6 +156,7 @@ runs:
         # Có endpoint phát hành thật thì điền vào đây, ĐỪNG điền lại ngrok.
         REMOTE_LOG_URL=
         ALADIN_CHAT_URL=
+        GENIE_URL=
 
         # Truy vết bản dựng — app in ba giá trị này ở màn "Phiên bản ứng dụng"
         # (`src/screens/AccountScreen.tsx`) để một ảnh chụp màn của người thử truy

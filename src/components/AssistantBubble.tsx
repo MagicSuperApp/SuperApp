@@ -1,29 +1,36 @@
 // components/AssistantBubble.tsx
 //
-// Bong bóng trợ lý nổi:
+// Bong bóng trợ lý nổi — CỬA VÀO, không phải giao diện trợ lý.
+//
 //  - Kéo thả tự do, snap về cạnh trái/phải khi thả tay.
 //  - Nút X nhỏ để tắt (bật lại trong Cài đặt → Trợ lý).
-//  - Tap mở panel chat (placeholder UI sẵn sàng nối với backend chatbot).
+//  - CHẠM → mở LỚP TRỢ LÝ (`components/genie/GenieLayer`).
+//  - GIỮ  → mở lớp với ý định nói (G3 sẽ bật mic ngay).
+//
+// ── Panel chat cũ đã GỠ, và vì sao ──────────────────────────────────────────
+// Trước đây chạm bong bóng mở một panel chat riêng ngay trong tệp này. Từ khi
+// Lớp Trợ lý ra đời, panel đó KHÔNG CÒN LỐI VÀO NÀO — chủ sở hữu chốt mặc định
+// chạm bong bóng là mở lớp, và thanh hỏi ở trang Tổng quan (`openAssistant()`)
+// cũng trỏ sang lớp.
+//
+// Giữ lại thì nó thành đúng thứ `navigation/actionRegistry.ts` đã phải dán cảnh
+// báo lên đầu tệp: mã trông như đang sống, khai đủ nút, mà ngoài đồng không lối
+// nào mở được — và đã có hai lượt rà kết luận nhầm vì nó. Nên gỡ.
+//
+// Phần streaming (`services/aladinChat.ts`) KHÔNG xoá: nó là đường nối cho chặng
+// G4, và lúc đó nó nối vào LỚP, không nối lại vào đây.
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { DeviceEventEmitter } from 'react-native';
 
 import { ASSISTANT_OPEN_EVENT } from './assistantBus';
 import {
-  View,
-  Text,
   StyleSheet,
   TouchableOpacity,
   Animated,
   PanResponder,
   useWindowDimensions,
-  Modal,
-  TextInput,
-  KeyboardAvoidingView,
   Platform,
-  ScrollView,
-  StatusBar,
-  Image,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useDispatch, useSelector } from 'react-redux';
@@ -34,34 +41,19 @@ import {
   setChatbotPosition,
 } from '../store/chatbotSlice';
 import { COLORS } from '../constants';
-import {
-  streamChat,
-  chatEnabled,
-  StreamChatHandle,
-  ChatHistoryEntry,
-} from '../services/aladinChat';
+import { chatEnabled } from '../services/aladinChat';
 import BlinkLogo from './BlinkLogo';
-// `t()` thay `{brand}` bằng tên app đang dựng (`i18n/translate.ts:64`) — nên hai
-// chỗ dưới đây không còn tự xưng tên một app cố định nữa.
-import { t } from '../i18n';
+// Sổ playbook nhúng sẵn trong gói: bong bóng hiện khi trợ lý CÓ VIỆC LÀM ĐƯỢC,
+// chứ không phải khi có endpoint hỏi-đáp. Đường tắt chạy trên máy, không mạng.
+import { GENIE_PLAYBOOK_COUNT, genieMayOpen, useGenieRoute } from '../services/genie';
+import { isPublicRoute } from '../navigation/authGate';
+import { openGenieLayer } from './genie/genieLayerBus';
+import { useGenie } from './genie/genieController';
 
 const BUBBLE_SIZE = 56;
 const EDGE_PADDING = 12;
 const TOP_SAFE = Platform.OS === 'ios' ? 80 : 60;
 const BOTTOM_SAFE = Platform.OS === 'ios' ? 100 : 90;
-
-interface ChatMessage {
-  id: string;
-  from: 'user' | 'bot';
-  text: string;
-  ts: number;
-}
-
-const SUGGESTIONS = [
-  'Cách quét cây',
-  'Truy xuất nguồn gốc quả',
-  'Nạp tín dụng MAGIC',
-];
 
 const AssistantBubble: React.FC = () => {
   const dispatch = useDispatch<any>();
@@ -69,6 +61,8 @@ const AssistantBubble: React.FC = () => {
     (s: RootState) => s.chatbot,
   );
   const isLoggedIn = useSelector((s: RootState) => !!s.user.currentUser);
+  const route = useGenieRoute();
+  const layerOpen = useGenie().open;
 
   // Kích thước màn LẤY THEO HOOK (luôn đúng + phản ứng khi xoay). KHÔNG dùng
   // Dimensions.get() ở tầng module vì trên Android có lúc trả 0 khi app chưa dựng
@@ -91,47 +85,28 @@ const AssistantBubble: React.FC = () => {
   // Vị trí lúc bắt đầu kéo + vị trí (đã kẹp trong màn) hiện tại của lượt kéo.
   const dragStart = useRef(defaultPos());
   const curPos = useRef(defaultPos());
-  const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: 'welcome',
-      from: 'bot',
-      text: t('Xin chào 👋 Mình là trợ lý {brand}. Bạn cần giúp gì hôm nay?'),
-      ts: Date.now(),
-    },
-  ]);
-  const [draft, setDraft] = useState('');
-
   /**
    * Mở trợ lý TỪ NƠI KHÁC trong app (thanh hỏi ở trang Tổng quan).
    *
-   * Dùng sự kiện chứ không dùng route: trợ lý là một BONG BÓNG NỔI trên mọi màn,
-   * không phải một trang — `navigate` tới nó là không có gì để tới. Cùng lối với
-   * sự kiện `openScreen` sẵn có trong app.
+   * Dùng sự kiện chứ không dùng route: trợ lý nổi trên mọi màn, không phải một
+   * trang — `navigate` tới nó là không có gì để tới. Cùng lối với sự kiện
+   * `openScreen` sẵn có trong app.
    *
-   * `text` có thì đặt sẵn vào ô nhập, để người dùng gõ tiếp chứ không phải gõ lại.
+   * Nay sự kiện này mở thẳng LỚP TRỢ LÝ. Một bề mặt trợ lý, không phải hai:
+   * hai bề mặt thì có cái sửa được mà cái kia không, và người dùng gặp cái nào
+   * là do họ vào bằng cửa nào — không ai chủ ý thiết kế như thế.
    */
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener(
       ASSISTANT_OPEN_EVENT,
       (payload?: { text?: string }) => {
-        if (payload?.text) setDraft(payload.text);
-        setOpen(true);
+        openGenieLayer(payload?.text ? { text: payload.text } : undefined);
       },
     );
     return () => sub.remove();
   }, []);
-  const [isStreaming, setIsStreaming] = useState(false);
-  const draggingRef = useRef(false);
-  const streamHandleRef = useRef<StreamChatHandle | null>(null);
 
-  // Abort stream khi unmount
-  useEffect(() => {
-    return () => {
-      streamHandleRef.current?.abort();
-      streamHandleRef.current = null;
-    };
-  }, []);
+  const draggingRef = useRef(false);
 
   // Hydrate from AsyncStorage on mount
   useEffect(() => {
@@ -199,7 +174,19 @@ const AssistantBubble: React.FC = () => {
 
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
+      // ⚠ PHẢI là `false`. Đây là chỗ đã làm bong bóng KHÔNG MỞ ĐƯỢC.
+      //
+      // Trả `true` ở đây nghĩa là View cha giành quyền xử lý chạm NGAY LÚC NGÓN
+      // TAY ĐẶT XUỐNG, trước khi có một chút di chuyển nào. Mà trong React Native
+      // chỉ một view được làm responder: cha giành rồi thì `TouchableOpacity` con
+      // không bao giờ nhận được cú chạm, nên `onPress={handleTap}` KHÔNG BAO GIỜ
+      // chạy. Bong bóng vẫn vẽ ra, vẫn kéo thả được, vẫn sáng lên khi chạm — chỉ
+      // là bấm vào thì không mở. Hỏng câm, và trông y như một cú bấm hụt.
+      //
+      // Phân biệt KÉO với BẤM đã có `onMoveShouldSetPanResponder` lo: chỉ khi
+      // ngón tay đi quá 4px thì cha mới giành responder. Chưa quá 4px thì cú chạm
+      // rơi xuống con — đúng định nghĩa của một cú bấm.
+      onStartShouldSetPanResponder: () => false,
       onMoveShouldSetPanResponder: (_, gesture) =>
         Math.abs(gesture.dx) > 4 || Math.abs(gesture.dy) > 4,
       // Không nhường responder giữa lúc kéo → tránh ScrollView/overlay cướp gesture
@@ -230,81 +217,71 @@ const AssistantBubble: React.FC = () => {
       draggingRef.current = false;
       return;
     }
-    setOpen(true);
+    openGenieLayer();
+  };
+
+  const handleLongPress = () => {
+    // Kéo thả cũng kích hoạt long-press nếu ngón tay dừng lại giữa chừng; cùng
+    // cái chốt `draggingRef` mà `handleTap` dùng, vì lý do y hệt.
+    if (draggingRef.current) {
+      draggingRef.current = false;
+      return;
+    }
+    // Giu lau = y dinh noi. G3 se bat mic ngay; G2 mo lop o che do go.
+    openGenieLayer({ voice: true });
   };
 
   const handleClose = () => {
     dispatch(setChatbotEnabled(false));
   };
 
-  const handleSend = () => {
-    const text = draft.trim();
-    if (!text || isStreaming) return;
 
-    const now = Date.now();
-    const userMsg: ChatMessage = {
-      id: `u_${now}`,
-      from: 'user',
-      text,
-      ts: now,
-    };
-    const botId = `b_${now}`;
-    const botMsg: ChatMessage = {
-      id: botId,
-      from: 'bot',
-      text: '',
-      ts: now,
-    };
-
-    // History gửi lên: tất cả lượt trước đó (bỏ lời chào welcome).
-    const history: ChatHistoryEntry[] = messages
-      .filter((m) => m.id !== 'welcome' && m.text.trim().length > 0)
-      .map((m) => [m.text, m.from === 'user' ? 'user' : 'assistant']);
-
-    setMessages((m) => [...m, userMsg, botMsg]);
-    setDraft('');
-    setIsStreaming(true);
-
-    streamHandleRef.current?.abort();
-    streamHandleRef.current = streamChat({
-      message: text,
-      history,
-      onChunk: (_delta, full) => {
-        setMessages((prev) =>
-          prev.map((m) => (m.id === botId ? { ...m, text: full } : m)),
-        );
-      },
-      onDone: () => {
-        setIsStreaming(false);
-        streamHandleRef.current = null;
-      },
-      onError: (err) => {
-        // Giữ lỗi gốc trong console để debug, KHÔNG hiện tiếng Anh kỹ thuật ra UI.
-        console.error('[AssistantBubble] streamChat error:', err);
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === botId
-              ? {
-                  ...m,
-                  text:
-                    m.text ||
-                    'Xin lỗi, mình chưa kết nối được tới trợ lý. Bạn thử lại sau nhé.',
-                }
-              : m,
-          ),
-        );
-        setIsStreaming(false);
-        streamHandleRef.current = null;
-      },
-    });
-  };
-
-  // Chỉ hiện bong bóng khi đã đăng nhập + đang bật + CÓ endpoint để gọi.
-  // `chatEnabled()` là điều kiện mới: bản phát hành không cấu hình `ALADIN_CHAT_URL`
-  // thì trợ lý không có nơi nào để hỏi. Trước đây địa chỉ viết cứng là một tunnel tạm
-  // (xem `services/aladinChat.ts`) — bong bóng vẫn hiện, người dùng vẫn gõ câu hỏi, và
-  // hoặc là câu hỏi bay tới máy lạ, hoặc là quay tròn rồi báo lỗi. Cả hai đều tệ hơn ẩn.
-  const visible = isLoggedIn && enabled && chatEnabled();
+  // Chỉ hiện bong bóng khi đã đăng nhập + đang bật + CÓ VIỆC GÌ ĐÓ LÀM ĐƯỢC.
+  //
+  // ── Vì sao điều kiện này vừa đổi ────────────────────────────────────────────
+  // Bản trước là `isLoggedIn && enabled && chatEnabled()`, và lập luận lúc đó
+  // ĐÚNG: không cấu hình `ALADIN_CHAT_URL` thì trợ lý không có nơi nào để hỏi;
+  // trước nữa địa chỉ còn viết cứng là một tunnel tạm (xem `services/aladinChat.ts`)
+  // nên câu hỏi của người dùng thật bay tới máy lạ. Ẩn đi là đúng.
+  //
+  // Nhưng lập luận đó nay LẠC HẬU, và nó lạc hậu theo hướng đắt: `.env` hiện để
+  // `ALADIN_CHAT_URL=` rỗng, nên bong bóng KHÔNG DỰNG RA lấy một lần — trong khi
+  // đường tắt Genie chạy hoàn toàn trên máy và KHÔNG CẦN endpoint nào. Gõ "thêm
+  // vườn" là mở đúng màn, 0 token, không một gói tin nào ra mạng.
+  //
+  // Nên điều kiện đúng là "có việc gì đó làm được", và hôm nay có hai nguồn việc:
+  // sổ playbook nhúng sẵn trong gói, hoặc endpoint hỏi-đáp nếu có cấu hình.
+  //
+  // ── Và KHÔNG hiện ở các màn CỬA VÀO ────────────────────────────────────────
+  // `isLoggedIn` một mình chưa đủ: màn đăng nhập, khôi phục danh tính, chọn ngôn
+  // ngữ, điều khoản… vẫn dựng trong lúc phiên cũ còn trong store, nên bong bóng
+  // nổi lên ngay trên màn đăng nhập.
+  //
+  // Không chỉ xấu: `SeedExport`/`RestoreIdentity` là những màn mà một bong bóng
+  // che mất một dòng có thể làm người dùng chép sai 24 từ khôi phục.
+  //
+  // Dùng thẳng `PUBLIC_ROUTES` (`navigation/authGate.tsx`) chứ không khai một
+  // danh sách thứ hai: thêm một màn cửa-vào mới là tự động được che, không ai
+  // phải nhớ. Chưa biết route (chưa `onStateChange` lần nào) thì ẨN — mặc định
+  // an toàn, và nó chỉ kéo dài tới cú điều hướng đầu tiên.
+  //
+  // ── Và KHÔNG hiện khi LỚP TRỢ LÝ đang mở ───────────────────────────────────
+  // Bong bóng là CỬA VÀO lớp. Lớp mở rồi mà cửa vào vẫn nổi lên trên là hai thứ
+  // cùng nói một việc: người dùng bấm vào nó thì không có gì xảy ra (lớp đã mở),
+  // và nó còn che mất một góc chính cái lớp mà nó vừa mở ra.
+  // Hai tập, và phải soi CẢ HAI.
+  //
+  //   `PUBLIC_ROUTES`      — màn mở được khi CHƯA có phiên (đăng nhập, điều khoản…)
+  //   `GENIE_ROUTE_DENY`   — màn trợ lý KHÔNG được tự mở (24 từ, ví, chat riêng…)
+  //
+  // Gác chỉ bằng tập thứ nhất là để lọt `Activation` và mấy màn danh tính khác:
+  // chúng KHÔNG công khai (phải có phiên mới tới), nhưng cũng KHÔNG phải chỗ cho
+  // một bong bóng nổi lên che chữ. Quy tắc gọn: **trợ lý không xuất hiện ở màn mà
+  // chính nó không được phép mở.**
+  const inPublic = route == null || isPublicRoute(route) || !genieMayOpen(route);
+  const visible =
+    isLoggedIn && enabled && !inPublic && !layerOpen
+    && (GENIE_PLAYBOOK_COUNT > 0 || chatEnabled());
 
   return (
     <>
@@ -331,6 +308,11 @@ const AssistantBubble: React.FC = () => {
         <TouchableOpacity
           activeOpacity={0.85}
           onPress={handleTap}
+          // GIỮ bong bóng → mở LỚP TRỢ LÝ (lớp phủ toàn màn), CHẠM → panel gõ.
+          // Hai cửa vào cho hai kiểu dùng, cùng một nút — người tay bẩn ngoài
+          // vườn đỡ được một cú bấm.
+          onLongPress={handleLongPress}
+          delayLongPress={350}
           style={styles.bubble}
         >
           <BlinkLogo size={BUBBLE_SIZE} autoPlay loop />
@@ -347,118 +329,6 @@ const AssistantBubble: React.FC = () => {
       </Animated.View>
       )}
 
-      <Modal
-        visible={open}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setOpen(false)}
-        statusBarTranslucent
-      >
-        <View style={styles.modalRoot}>
-          <StatusBar barStyle="dark-content" />
-          <TouchableOpacity
-            activeOpacity={1}
-            style={styles.backdrop}
-            onPress={() => setOpen(false)}
-          />
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            style={styles.sheet}
-          >
-            <View style={styles.sheetHandle} />
-            <View style={styles.sheetHeader}>
-              <View style={styles.sheetIconWrap}>
-                <Icon name="question" size={20} color={COLORS.accent} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.sheetTitle}>{t('Trợ lý {brand}')}</Text>
-                <Text style={styles.sheetSub}>Đang trực tuyến</Text>
-              </View>
-              <TouchableOpacity
-                style={styles.sheetCloseBtn}
-                onPress={() => setOpen(false)}
-              >
-                <Icon name="close" size={18} color={COLORS.textSub} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView
-              style={styles.messagesScroll}
-              contentContainerStyle={styles.messagesContent}
-              keyboardShouldPersistTaps="handled"
-            >
-              {messages.map((m) => {
-                const isEmptyStreaming =
-                  m.from === 'bot' && !m.text && isStreaming;
-                return (
-                  <View
-                    key={m.id}
-                    style={[
-                      styles.bubbleMsg,
-                      m.from === 'user' ? styles.bubbleUser : styles.bubbleBot,
-                    ]}
-                  >
-                    {isEmptyStreaming ? (
-                      <Text style={styles.typingText}>Đang trả lời…</Text>
-                    ) : (
-                      <Text
-                        style={[
-                          styles.bubbleMsgText,
-                          m.from === 'user' && { color: COLORS.white },
-                        ]}
-                      >
-                        {m.text}
-                      </Text>
-                    )}
-                  </View>
-                );
-              })}
-
-              {messages.length <= 2 && (
-                <View style={styles.suggestionsWrap}>
-                  {SUGGESTIONS.map((s) => (
-                    <TouchableOpacity
-                      key={s}
-                      style={styles.suggestionChip}
-                      onPress={() => {
-                        setDraft(s);
-                      }}
-                    >
-                      <Text style={styles.suggestionText}>{s}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
-            </ScrollView>
-
-            <View style={styles.inputBar}>
-              <TextInput
-                style={styles.input}
-                value={draft}
-                onChangeText={setDraft}
-                placeholder="Hỏi trợ lý..."
-                placeholderTextColor={COLORS.textMuted}
-                multiline
-                onSubmitEditing={handleSend}
-              />
-              <TouchableOpacity
-                onPress={handleSend}
-                disabled={!draft.trim() || isStreaming}
-                style={[
-                  styles.sendBtn,
-                  (!draft.trim() || isStreaming) && styles.sendBtnDisabled,
-                ]}
-              >
-                <Icon
-                  name={isStreaming ? 'dots-horizontal' : 'send'}
-                  size={18}
-                  color={COLORS.white}
-                />
-              </TouchableOpacity>
-            </View>
-          </KeyboardAvoidingView>
-        </View>
-      </Modal>
     </>
   );
 };

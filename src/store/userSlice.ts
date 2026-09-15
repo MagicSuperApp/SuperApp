@@ -14,6 +14,7 @@ import {
 import { parseDidNetwork } from '../services/phoenixDid';
 import { clearWorkSession } from '../modules/work/services/session';
 import { clearOrilifeToken, clearOrilifeLoginCooldown } from '../services/orilifeDidAuth';
+import { clearGenieAuth } from '../services/genie/genieAuth';
 import { disconnectProofChat } from '../services/proofchatAuthBridge';
 import { clearMerkleSession } from '../services/proofchatIdentity';
 import { shutdown as shutdownProofChatEngine } from '../services/proofchatService';
@@ -209,6 +210,11 @@ export const logoutUser = createAsyncThunk(
       // `ensureOrilifeToken` cũng gọi hàm xoá đó trước mỗi lần ký, nên đặt lệnh
       // mở van vào trong nó là vô hiệu hoá chính cái van, im lặng.
       clearOrilifeLoginCooldown();
+      // CÙNG LỚP, và cùng lý do: phiên trợ lý Genie đang giữ CHÍNH thẻ vừa bị xoá
+      // ở trên, trong bộ nhớ của tiến trình. Không quên thì câu hỏi của người sau
+      // đi ra máy chủ mang danh người trước — đúng ca 28/08 mà dòng trên chữa,
+      // chỉ khác là thẻ nằm trong RAM chứ không trên đĩa.
+      clearGenieAuth();
     } catch (error) {
       console.warn('[Redux] Logout: clearOrilifeToken lỗi (bỏ qua):', error);
     }

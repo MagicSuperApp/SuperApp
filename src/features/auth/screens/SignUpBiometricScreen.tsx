@@ -260,6 +260,26 @@ const SignUpBiometricScreen: React.FC = () => {
         return;
       }
 
+      // `wallet_bound_to_other_did` — máy KHÔNG có khoá (vừa bị xoá ở `catch` của
+      // `registerIdentity`), nhưng còn giữ VÍ của một danh tính cũ, và máy chủ
+      // không cho gắn ví đó vào một danh tính mới. Cùng hình dạng với hai nhánh
+      // trên: có lối ra thì phải đưa nút.
+      //
+      // ⚠ Nút này dẫn tới màn Khôi phục để dùng CỤM 24 TỪ, không phải để dùng lối
+      // tắt "ví trên máy". Lối tắt đó đòi một chữ ký của khoá trong chip mà ca này
+      // không còn — xem khối lý do ở `registerIdentity`. Nhãn nút vì thế nói ĐÍCH
+      // ("Mở màn khôi phục"), còn phương tiện thì câu trong thân đã nói rõ là 24 từ;
+      // hứa sai phương tiện ở đây là đẩy người dùng vào một cánh cửa khoá.
+      if (e?.reason === 'wallet_bound_to_other_did') {
+        setStage('idle');
+        showWarning(t('Máy này còn ví của một danh tính cũ'), t(e?.message ?? ''), {
+          confirmText: t('Mở màn khôi phục'),
+          cancelText: t('Để sau'),
+          onConfirm: () => navigation.navigate('RestoreIdentity'),
+        });
+        return;
+      }
+
       // Cùng luật với `khoa_bi_thu_hoi` ngay trên: biết được LỐI RA thì phải đưa
       // nút, đừng chỉ hiện chữ. Ở ca này lối ra là làm lại và làm HẾT hộp sinh
       // trắc thứ hai — một việc người dùng làm được ngay tại chỗ, nên bắt họ đóng

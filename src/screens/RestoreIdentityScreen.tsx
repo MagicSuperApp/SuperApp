@@ -63,13 +63,42 @@ const RestoreIdentityScreen = () => {
   // ở đúng lần mở màn đầu tiên, tức đúng lần người dùng cần nó nhất.
   const [kekOnDevice, setKekOnDevice] = useState<string | null | undefined>(undefined);
 
+  // ── CÒN KHOÁ TRONG CHIP KHÔNG — phép đo THỨ HAI, và nó không suy được từ phép
+  // đo trên. Ví (KEK) và khoá phần cứng nằm ở hai chỗ khác nhau và mất theo hai
+  // đường khác nhau; có ca máy còn ví mà KHÔNG còn khoá.
+  //
+  // Ca đó có thật và tới đây bằng một đường thẳng: đăng ký mới bị máy chủ chặn vì
+  // ví trên máy đã thuộc một DID khác (`wallet_bound_to_other_did`), và `catch`
+  // của `registerIdentity` xoá khoá vừa lập. Người dùng bấm nút trong hộp thoại
+  // rồi rơi thẳng vào màn này.
+  //
+  // Vì sao phải đo: `doRestoreSameDevice` mở đầu bằng `signRaw` làm phép chứng
+  // minh có mặt. Không còn khoá thì nó ném, và câu báo lỗi ở đó nói về việc "vừa
+  // thêm hoặc xoá vân tay" — SAI nguyên nhân, cho đúng nhóm người đang kẹt nhất.
+  // Thẻ lối tắt trước bản này chỉ nhìn KEK, nên nó hiện ra và hứa một lối đã khoá.
+  const [hasChipKey, setHasChipKey] = useState<boolean | undefined>(undefined);
+
   useEffect(() => {
     let alive = true;
     getStoredMasterKek()
       .then(k => { if (alive) setKekOnDevice(k); })
       .catch(() => { if (alive) setKekOnDevice(null); });
+    isKeypairEnrolled()
+      .then(v => { if (alive) setHasChipKey(v); })
+      .catch(() => { if (alive) setHasChipKey(false); });
     return () => { alive = false; };
   }, []);
+
+  /**
+   * Lối tắt "ví trên máy" DÙNG ĐƯỢC hay không — cần CẢ HAI phép đo.
+   *
+   * `undefined` khi còn chỗ chưa đo xong, và lúc đó thẻ không hiện: hiện rồi rút
+   * lại là hứa một lối rồi lấy đi.
+   */
+  const shortcutUsable =
+    kekOnDevice === undefined || hasChipKey === undefined
+      ? undefined
+      : Boolean(kekOnDevice) && hasChipKey;
 
   // Cụm từ đã CHUẨN HOÁ — dùng cho cả phép đếm lẫn phép khôi phục. Xem
   // `utils/mnemonic.ts`: chép cụm từ kèm số thứ tự / dấu phẩy làm phép đếm cũ ra
@@ -540,9 +569,11 @@ const RestoreIdentityScreen = () => {
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        {/* LỐI TẮT — chỉ hiện khi ĐÃ ĐO XONG và máy thật sự còn ví. `undefined`
-            (chưa đo) KHÔNG hiện: hiện rồi rút lại là hứa một lối rồi lấy đi. */}
-        {kekOnDevice ? (
+        {/* LỐI TẮT — chỉ hiện khi ĐÃ ĐO XONG cả hai thứ và cả hai đều còn: ví
+            (KEK) VÀ khoá trong chip. `undefined` (chưa đo) KHÔNG hiện: hiện rồi
+            rút lại là hứa một lối rồi lấy đi. Còn ví mà mất khoá thì thẻ này im
+            và khối ngay dưới nói thẳng vì sao — xem `shortcutUsable`. */}
+        {shortcutUsable ? (
           <View style={styles.shortcutCard} testID="restore-shortcut-same-device">
             <View style={styles.shortcutHead}>
               <Icon name="cellphone-key" size={20} color={COLORS.success} />
@@ -592,6 +623,23 @@ const RestoreIdentityScreen = () => {
           </View>
         ) : null}
 
+        {/* CÒN VÍ MÀ MẤT KHOÁ — nói thẳng, đừng để màn hình im.
+            Người tới đây phần lớn vừa bị chặn ở màn tạo danh tính: máy chủ không
+            cho gắn ví cũ vào một danh tính mới, và khoá vừa lập đã bị xoá. Không
+            có khối này thì họ thấy một màn chỉ đòi 24 từ, không có chữ nào nối
+            với câu vừa đọc — tức tự suy ra rằng mình bấm nhầm nút. */}
+        {shortcutUsable === false && kekOnDevice ? (
+          <View style={styles.infoCard} testID="restore-wallet-without-key">
+            <Icon name="key-remove" size={22} color={COLORS.accent} />
+            <Text style={styles.infoText}>
+              Ví của danh tính cũ <Text style={styles.bold}>vẫn còn</Text> trên máy, nhưng
+              khoá bảo vệ nó thì không còn, nên máy chưa tự chứng minh được bạn là chủ.
+              Lối ngắn "khôi phục bằng ví trên máy" vì thế chưa mở được —
+              hãy nhập <Text style={styles.bold}>24 từ</Text> của danh tính cũ ở ngay dưới.
+            </Text>
+          </View>
+        ) : null}
+
         <View style={styles.infoCard}>
           <Icon name="backup-restore" size={22} color={COLORS.accent} />
           <Text style={styles.infoText}>
@@ -630,7 +678,7 @@ const RestoreIdentityScreen = () => {
         {/* Tên đăng nhập — chỗ này chỉ hiện khi thẻ lối tắt KHÔNG hiện, để màn không
             có hai ô cùng nghĩa. Nó vẫn cần cho đường 24 từ: trên máy mới thì tên
             đăng nhập là cách rẻ nhất để ra DID, rẻ hơn nhiều so với gõ tay 80 ký tự. */}
-        {!kekOnDevice ? (
+        {!shortcutUsable ? (
           <>
             <Text style={styles.didLabel}>Tên đăng nhập (nếu bạn còn nhớ)</Text>
             <View style={styles.didWrap}>

@@ -6,6 +6,7 @@ import { database } from '../utils/database';
 import { classifySyncItem, classifySyncFailure } from './syncDispatch';
 import {
   NEEDS_ATTENTION_PREFIX,
+  countRetriable,
   type SyncAttemptClass,
   type SyncQueueDiagnostic,
   type SyncRetryOutcome,
@@ -371,7 +372,19 @@ class SyncService {
     if (failure === 'permanent') {
       // Payload sai — gửi lại bao nhiêu lần cũng hỏng. Hạng DUY NHẤT được chết.
       console.error(`Sync gave up for ${txId} (retry=${count}):`, errorCode);
-      this.retryState.delete(txId);
+      // GIỮ chẩn đoán, đừng `delete`. Hai lý do, lý do thứ hai mới là lý do chính:
+      //   1. Nhãn `'permanent'` là thứ DUY NHẤT nói được "mục này chết vì dữ liệu
+      //      sai", và `delete` xoá đúng nó.
+      //   2. `delete` chạy TRƯỚC lệnh ghi `'error'` ngay dưới. Lệnh ghi đó trượt được
+      //      (nó đi qua store, không phải lời gọi CSDL trực tiếp) — và khi nó trượt,
+      //      mục mất sạch chẩn đoán nên màn hàng đợi xếp nó vào nhóm êm ái nhất
+      //      ("Đang chờ gửi — chưa có lượt gửi nào hỏng trong phiên này") kèm một nút
+      //      gửi lại bấm được, cho một mục sẽ không bao giờ gửi được.
+      this.retryState.set(txId, {
+        count,
+        nextAttemptAt: Number.MAX_SAFE_INTEGER,
+        lastFailure: 'permanent',
+      });
       store.dispatch(updateSyncStatus({
         transactionId: txId,
         status: 'error',
@@ -461,8 +474,15 @@ class SyncService {
   async drainNow(): Promise<void> {
     if (!this.isRunning) return;
     // Mạng vừa lên lại → xoá cửa sổ backoff để thử ngay tất cả item.
+    //
+    // Trải `...rs`, ĐỪNG liệt kê tay từng trường: liệt kê tay thì mỗi lần thêm một
+    // trường vào `RetryState` là một lần trường đó bị xoá ở đây mà không gì báo.
+    // Đã xảy ra đúng thế với `lastFailure` — hàm này xoá hạng hỏng của MỌI mục ngay
+    // lúc mạng phục hồi, rồi nếu một vòng quét đang chạy thì `processSyncQueue`
+    // thoát ngay và không nhánh nào ghi lại. Màn hàng đợi mất câu "cần đăng nhập
+    // lại" và tụt xuống câu "chưa có lượt gửi nào hỏng trong phiên này".
     for (const [txId, rs] of this.retryState) {
-      this.retryState.set(txId, { count: rs.count, nextAttemptAt: 0 });
+      this.retryState.set(txId, { ...rs, nextAttemptAt: 0 });
     }
     await this.processSyncQueue();
   }
@@ -534,13 +554,35 @@ class SyncService {
     if (this.isProcessing) {
       return { kind: 'notAttempted', reason: 'another-pass-running' };
     }
-    const before = (await database.getSyncQueue()).length;
+    const rowsBefore = await database.getSyncQueue();
+    const before = countRetriable(rowsBefore);
+    const stoppedBefore = rowsBefore.length - before;
+    // Cổng `isProcessing` ở trên được kiểm TRƯỚC `await` đầu tiên. Trong khe await đó
+    // hẹn giờ 30 giây hoặc NetInfo khởi được một vòng quét — lúc ấy `processSyncQueue`
+    // dưới đây thoát ngay ở cổng của nó, và nếu cứ đo tiếp thì hàm này phát một phán
+    // quyết ("không mục nào gửi được") về một lượt nó KHÔNG chạy. Kiểm lại ở đây.
+    if (this.isProcessing) {
+      return { kind: 'notAttempted', reason: 'another-pass-running' };
+    }
     for (const [txId, rs] of this.retryState) {
       this.retryState.set(txId, { ...rs, nextAttemptAt: 0 });
     }
     await this.processSyncQueue();
-    const remaining = (await database.getSyncQueue()).length;
-    return { kind: 'done', before, remaining };
+    const after = await database.getSyncQueue();
+    // `remaining` đếm mục CÒN GỬI ĐƯỢC, không đếm số dòng. Hai đại lượng khác nhau:
+    // mục chết chỉ đổi `status` thành `'error'`, dòng vẫn nằm trong bảng — đếm theo
+    // dòng thì một mục vừa chết trong đúng lượt này được báo là "còn chờ", và với
+    // hàng đợi chỉ còn mục chết thì nút báo "không mục nào gửi được" mãi mãi cho thứ
+    // nó chưa từng thử.
+    const remaining = countRetriable(after);
+    return {
+      kind: 'done',
+      before,
+      remaining,
+      // Số mục CHUYỂN sang chết trong đúng lượt này. Tách khỏi số mục chết sẵn từ
+      // trước, vì chỉ số này là hệ quả của lần bấm vừa rồi.
+      newlyStopped: Math.max(0, after.length - remaining - stoppedBefore),
+    };
   }
 
   // Public method to add items to sync queue

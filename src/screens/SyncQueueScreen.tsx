@@ -41,7 +41,6 @@ import {
   describeRetryOutcome,
   SYNC_QUEUE_GROUP_TEXT,
   type SyncQueueDiagnostic,
-  type SyncQueueEntry,
   type SyncQueueGroup,
   type SyncRetryNote,
 } from '../services/syncQueueStatus';
@@ -111,21 +110,22 @@ const SyncQueueScreen: React.FC = () => {
   /**
    * Dựng danh sách hiển thị.
    *
-   * `buildSyncQueueEntries` NÉM khi gặp một dòng không có mã giao dịch — dòng như
-   * thế không gửi lại được nên bày nó ra là nói dối. Bắt ở đây và đổi thành
-   * trạng thái "không đọc được kho": hàng đợi HỎNG không phải hàng đợi RỖNG.
+   * `buildSyncQueueEntries` CÔ LẬP từng dòng: dòng không có mã giao dịch thì không
+   * gửi lại được nên không bày ra như một mục, nhưng nó cũng KHÔNG được phép xoá
+   * những dòng lành khỏi màn — làm thế là lấy mất đường gửi tay duy nhất vì một
+   * dòng rác. Số dòng bị loại hiện thành một băng riêng ngay dưới.
    */
-  const built = useMemo((): { ok: true; entries: SyncQueueEntry[] } | { ok: false; reason: string } => {
-    try {
-      return { ok: true, entries: buildSyncQueueEntries(rows as any[], diagnostics) };
-    } catch (e: any) {
-      return { ok: false, reason: e?.message ? String(e.message) : String(e) };
-    }
-  }, [rows, diagnostics]);
+  const built = useMemo(
+    () => buildSyncQueueEntries(rows as any[], diagnostics),
+    [rows, diagnostics],
+  );
 
-  const entries = built.ok ? built.entries : [];
-  const failure = readFailure ?? (built.ok ? null : built.reason);
+  const entries = built.entries;
+  const unreadableRows = built.unreadableRows;
+  const failure = readFailure;
   const groups = countByGroup(entries);
+  /** Số mục màn hình còn bấm "gửi lại" được. Nhóm `stopped` KHÔNG tính. */
+  const retriableCount = entries.filter((e) => e.group !== 'stopped').length;
 
   const runRetryItem = useCallback(
     async (transactionId: string) => {
@@ -218,10 +218,21 @@ const SyncQueueScreen: React.FC = () => {
     </View>
   ) : null;
 
+  const unreadableBanner = unreadableRows > 0 ? (
+    <View testID="sync-queue-unreadable-banner" style={styles.staleBanner}>
+      <Icon name="alert-outline" size={16} color={COLORS.warning} />
+      <Text style={styles.staleText}>
+        {`Có ${unreadableRows} dòng trong kho không đọc được nên không hiện ở đây. Dữ liệu chưa mất — báo đội hỗ trợ.`}
+      </Text>
+    </View>
+  ) : null;
+
   const summary = (
     <View style={styles.summary}>
       <View style={styles.summaryTop}>
-        <Text style={styles.summaryTitle}>Đang chờ gửi</Text>
+        {/* KHÔNG đặt tên "Đang chờ gửi" ở đây: đó là nhãn của MỘT nhóm bên dưới,
+            và con số tổng gồm cả mục đã dừng hẳn — hai thứ trùng tên mà khác tập. */}
+        <Text style={styles.summaryTitle}>Việc chưa lên máy chủ</Text>
         <Text testID="sync-queue-total" style={styles.summaryCount}>
           {String(entries.length)}
         </Text>
@@ -240,11 +251,14 @@ const SyncQueueScreen: React.FC = () => {
           </Text>
         </View>
       ))}
+      {/* Không còn mục nào gửi được thì nút này chỉ bấm ra một câu báo hỏng cho
+          việc nó chưa từng thử. Vô hiệu nó, và nói rõ vì sao — im lặng vô hiệu là
+          một nút trông như đang hỏng. */}
       <TouchableOpacity
         testID="sync-queue-retry-all"
-        style={styles.retryAll}
+        style={[styles.retryAll, retriableCount === 0 && styles.retryAllOff]}
         activeOpacity={0.85}
-        disabled={busy != null}
+        disabled={busy != null || retriableCount === 0}
         onPress={runRetryAll}
       >
         {busy === 'ALL' ? (
@@ -254,6 +268,11 @@ const SyncQueueScreen: React.FC = () => {
         )}
         <Text style={styles.retryAllText}>Gửi lại tất cả ngay</Text>
       </TouchableOpacity>
+      {retriableCount === 0 && entries.length > 0 && (
+        <Text testID="sync-queue-nothing-retriable" style={styles.groupDetail}>
+          Không mục nào còn tự gửi lại được. Xem từng mục bên dưới.
+        </Text>
+      )}
       {/* Lần đọc hỏng NHƯNG vẫn còn danh sách của lần trước: giữ danh sách và
           nói rõ nó có thể đã cũ. Im lặng ở đây là trình dữ liệu cũ như dữ liệu mới. */}
       {failure != null && (
@@ -279,18 +298,27 @@ const SyncQueueScreen: React.FC = () => {
         keyExtractor={(it) => it.transactionId}
         contentContainerStyle={entries.length === 0 ? styles.emptyWrap : styles.list}
         onRefresh={load}
-        refreshing={false}
+        // Phải là `loading` thật. Gõ cứng `false` thì vòng xoay không bao giờ hiện:
+        // người dùng kéo xuống, không thấy gì động, và đọc ra là màn bị treo.
+        refreshing={loading && entries.length > 0}
         ListHeaderComponent={
-          entries.length === 0 ? (
-            noteBanner
-          ) : (
-            <View>
-              {noteBanner}
-              {summary}
-            </View>
-          )
+          <View>
+            {noteBanner}
+            {unreadableBanner}
+            {entries.length > 0 && summary}
+          </View>
         }
         ListEmptyComponent={
+          unreadableRows > 0 ? (
+            <View testID="sync-queue-only-unreadable" style={{ flex: 1 }}>
+              <StateView
+                status="error"
+                title="Không đọc được mục nào trong kho"
+                message="Kho còn dữ liệu chưa gửi, nhưng không dòng nào đọc được thành một mục. Đây KHÔNG phải là hàng đợi rỗng."
+                onRetry={load}
+              />
+            </View>
+          ) : (
           <View testID="sync-queue-empty" style={{ flex: 1 }}>
             <StateView
               status="empty"
@@ -298,6 +326,7 @@ const SyncQueueScreen: React.FC = () => {
               message="Mọi thứ bạn ghi đã lên máy chủ. Mục mới sẽ hiện ở đây khi chưa gửi được."
             />
           </View>
+          )
         }
         renderItem={({ item }) => {
           const tone = GROUP_TONE[item.group];
@@ -323,16 +352,20 @@ const SyncQueueScreen: React.FC = () => {
                 <Text style={styles.cardLine}>Không rõ thời điểm ghi</Text>
               )}
 
-              {/* Số lần thử: chỉ có trong bộ nhớ của phiên đang chạy. Không có số
-                  thì nói là không có — KHÔNG hiện số 0. */}
+              {/* Số lần thử: chỉ có trong bộ nhớ của phiên đang chạy, và nó CHỈ đếm
+                  hạng `retryable` — mất sóng, phiên hết hạn, máy chủ chưa nhận đều
+                  không tăng nó (xem trần thử lại trong `syncService`). Nên câu này
+                  phải nói đúng đại lượng: gọi nó là "số lần thử" thì một mục đã gọi
+                  mạng 20 lượt vẫn đọc ra "đã thử 0 lần". Số 0 là tin thật ở đây,
+                  không phải chỗ trống — nó nói mục chưa tiến về phía trần nào. */}
               {item.attempts != null ? (
-                <Text style={styles.cardLine}>{`Đã thử ${item.attempts} lần trong phiên này`}</Text>
+                <Text style={styles.cardLine}>{`Đã tính ${item.attempts} lượt vào trần thử lại`}</Text>
               ) : (
-                <Text style={styles.cardLine}>Chưa có số lần thử trong phiên này</Text>
+                <Text style={styles.cardLine}>Chưa có số liệu thử lại trong phiên này</Text>
               )}
 
-              {item.nextAttemptAt != null && item.nextAttemptAt > Date.now() && (
-                <Text style={styles.cardLine}>{`Tự thử lại sau ${formatMoment(item.nextAttemptAt)}`}</Text>
+              {item.group !== 'stopped' && item.nextAttemptAt != null && item.nextAttemptAt > Date.now() && (
+                <Text style={styles.cardLine}>{`Tự thử lại vào khoảng ${formatMoment(item.nextAttemptAt)}`}</Text>
               )}
 
               {/* Câu NGUYÊN VĂN của máy chủ. Không có thì nói là không có, đừng
@@ -430,6 +463,7 @@ const styles = StyleSheet.create({
   groupLabel: { fontSize: 13, fontWeight: '800' },
   groupDetail: { fontSize: 12, color: COLORS.textSub, marginTop: 2, lineHeight: 17 },
   groupCount: { fontSize: 15, fontWeight: '800', color: COLORS.text },
+  retryAllOff: { opacity: 0.45 },
   retryAll: {
     flexDirection: 'row',
     alignItems: 'center',

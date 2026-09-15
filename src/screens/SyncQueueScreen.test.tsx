@@ -164,7 +164,11 @@ describe('chốt 1 · ba nhóm trạng thái tách ra bằng chữ', () => {
     const shown = screenText(t);
     expect(shown).toContain('Nhật ký đồng áng');
     expect(shown).toContain('Ghi lúc');
-    expect(shown).toContain('Đã thử 3 lần trong phiên này');
+    // Câu này phải nói đúng ĐẠI LƯỢNG: bộ đếm chỉ tăng ở hạng `retryable`, nên gọi
+    // nó là "số lần thử" thì một mục đã gọi mạng 20 lượt vì mất sóng vẫn đọc ra
+    // "đã thử 0 lần".
+    expect(shown).toContain('Đã tính 3 lượt vào trần thử lại');
+    expect(shown).not.toContain('Đã thử 3 lần');
     // Nguyên văn, không thay bằng "có lỗi xảy ra".
     expect(shown).toContain('uy tín 46,3 dưới ngưỡng 50,0');
   });
@@ -174,8 +178,8 @@ describe('chốt 1 · ba nhóm trạng thái tách ra bằng chữ', () => {
     mockDiagnostics.mockReturnValue({});
     const t = await openScreen();
     const shown = screenText(t);
-    expect(shown).toContain('Chưa có số lần thử trong phiên này');
-    expect(shown).not.toContain('Đã thử 0 lần');
+    expect(shown).toContain('Chưa có số liệu thử lại trong phiên này');
+    expect(shown).not.toContain('Đã tính 0 lượt');
   });
 });
 
@@ -214,8 +218,43 @@ describe('chốt 2 · một lần đọc hỏng KHÔNG ra màn rỗng', () => {
   it('một dòng hàng đợi hỏng (thiếu mã giao dịch) cũng KHÔNG ra màn rỗng', async () => {
     mockQueueRows = [{ id: 1, status: 'pending', payload: '{}' }];
     const t = await openScreen();
-    expect(hasNode(t, 'sync-queue-read-failed')).toBe(true);
+    expect(hasNode(t, 'sync-queue-unreadable-banner')).toBe(true);
+    // Và TUYỆT ĐỐI không được ra màn "mọi thứ đã lên máy chủ": kho đang giữ dữ liệu
+    // chưa gửi mà không dòng nào đọc được thành một mục.
     expect(hasNode(t, 'sync-queue-empty')).toBe(false);
+    expect(hasNode(t, 'sync-queue-only-unreadable')).toBe(true);
+    const shown = screenText(t);
+    expect(shown).toContain('1 dòng trong kho không đọc được');
+    expect(shown).not.toContain('Mọi thứ bạn ghi đã lên máy chủ');
+  });
+
+  /**
+   * Chiều khó hơn, và là chiều lỗi đã đo: một dòng rác KHÔNG được xoá những dòng
+   * lành khỏi màn. Xoá chúng là lấy mất đường gửi tay duy nhất mà người dùng có —
+   * vì cả nút "gửi lại tất cả" lẫn nút của từng mục đều nằm trong phần chỉ vẽ khi
+   * còn mục.
+   */
+  it('dòng hỏng KHÔNG được xoá những dòng LÀNH khỏi màn', async () => {
+    mockQueueRows = [
+      row('a'),
+      { id: 2, status: 'pending', payload: '{}' },
+      row('b'),
+    ];
+    const t = await openScreen();
+    expect(hasNode(t, 'sync-queue-item-a')).toBe(true);
+    expect(hasNode(t, 'sync-queue-item-b')).toBe(true);
+    // Và đường gửi tay còn nguyên.
+    expect(hasNode(t, 'sync-queue-retry-all')).toBe(true);
+    expect(hasNode(t, 'sync-queue-retry-a')).toBe(true);
+    // Bỏ qua thì phải ĐẾM, không được im: băng phải nói đúng MỘT dòng bị loại.
+    expect(screenText(t)).toContain('1 dòng trong kho không đọc được');
+  });
+
+  it('hàng đợi chỉ còn mục đã dừng hẳn ⇒ nút "gửi lại tất cả" phải vô hiệu và nói vì sao', async () => {
+    mockQueueRows = [row('a', { status: 'error', error_code: 'payload sai' })];
+    const t = await openScreen();
+    expect(hasNode(t, 'sync-queue-nothing-retriable')).toBe(true);
+    expect(screenText(t)).toContain('Không mục nào còn tự gửi lại được');
   });
 });
 

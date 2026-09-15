@@ -17,6 +17,8 @@ import {
   buildSyncQueueEntry,
   buildSyncQueueEntries,
   countByGroup,
+  countRetriable,
+  isRetriableRow,
   describeRetryAllOutcome,
   describeRetryOutcome,
   normalizeQueueRow,
@@ -89,8 +91,51 @@ describe('ba tình trạng cùng mang status pending phải TÁCH ra', () => {
     expect(e.group).toBe('stopped');
   });
 
+  /**
+   * Ca này đi vào nhánh `case 'permanent'` của `switch`, KHÔNG đi qua nhánh
+   * `status === 'error'` ở trên. Bài kiểm ngay trên đặt CẢ HAI dấu, nên nó thoát ở
+   * nhánh đầu và không bao giờ chạm `switch` — gỡ `case 'permanent'` đi mà nó vẫn
+   * xanh. Đây là bài phân biệt được hai bên của phép gỡ đó.
+   *
+   * Và nó là ca có thật kể từ khi `handleSyncFailure` thôi `delete` chẩn đoán ở
+   * nhánh `permanent`: lệnh ghi `status='error'` đi qua store nên nó trượt được, và
+   * khi nó trượt thì dòng còn `'pending'` trong khi hạng hỏng đã là `'permanent'`.
+   * Không có nhánh này thì mục ấy rơi vào nhóm "đang chờ gửi" kèm một nút bấm được.
+   */
+  it('hạng permanent mà lệnh ghi trạng thái đã trượt → vẫn là "đã dừng", KHÔNG phải "đang chờ"', () => {
+    const e = buildSyncQueueEntry(row({ status: 'pending' }), diag({ lastFailure: 'permanent' }));
+    expect(e.group).toBe('stopped');
+    expect(e.group).not.toBe('queued');
+  });
+
+  it('trạng thái rỗng KHÔNG được đệm thành chuỗi rỗng rồi lọt xuống nhóm êm nhất', () => {
+    const e = buildSyncQueueEntry(row({ status: '' }), undefined);
+    expect(e.status).toBeNull();
+  });
+
+  it('bộ đếm "còn gửi được" đếm theo trạng thái, không đếm theo số dòng', () => {
+    const rows = [
+      row({ transaction_id: 'a', status: 'pending' }),
+      row({ transaction_id: 'b', status: 'sending' }),
+      row({ transaction_id: 'c', status: 'error' }),
+    ];
+    expect(rows.length).toBe(3);
+    expect(countRetriable(rows)).toBe(2);
+    expect(isRetriableRow(rows[2])).toBe(false);
+  });
+
+  it('một dòng thiếu mã giao dịch KHÔNG được xoá những dòng lành khỏi màn', () => {
+    const built = buildSyncQueueEntries(
+      [row({ transaction_id: 'a' }), { status: 'pending' }, row({ transaction_id: 'b' })],
+      {},
+    );
+    expect(built.entries.map((e) => e.transactionId)).toEqual(['a', 'b']);
+    // Bỏ qua thì phải ĐẾM, không chỉ khai là có bỏ.
+    expect(built.unreadableRows).toBe(1);
+  });
+
   it('đếm theo nhóm chỉ kê nhóm CÓ mục — nhóm rỗng không phải một tin', () => {
-    const entries = buildSyncQueueEntries(
+    const { entries } = buildSyncQueueEntries(
       [row({ transaction_id: 'a' }), row({ transaction_id: 'b' }), row({ transaction_id: 'c', status: 'error' })],
       {
         a: diag({ lastFailure: 'offline' }),
@@ -216,13 +261,32 @@ describe('câu báo sau một lượt gửi lại', () => {
   });
 
   it('gửi cả hàng đợi: sạch · một phần · không mục nào đều ra ba câu khác nhau', () => {
-    const sach = describeRetryAllOutcome({ kind: 'done', before: 3, remaining: 0 });
-    const motPhan = describeRetryAllOutcome({ kind: 'done', before: 3, remaining: 1 });
-    const khong = describeRetryAllOutcome({ kind: 'done', before: 3, remaining: 3 });
+    const sach = describeRetryAllOutcome({ kind: 'done', before: 3, remaining: 0, newlyStopped: 0 });
+    const motPhan = describeRetryAllOutcome({ kind: 'done', before: 3, remaining: 1, newlyStopped: 0 });
+    const khong = describeRetryAllOutcome({ kind: 'done', before: 3, remaining: 3, newlyStopped: 0 });
     expect(sach.tone).toBe('ok');
     expect(motPhan.tone).toBe('bad');
     expect(khong.tone).toBe('bad');
     expect(new Set([sach.text, motPhan.text, khong.text]).size).toBe(3);
     expect(motPhan.detail).toContain('2 mục đã gửi');
+  });
+
+  it('lượt gửi làm CHẾT một mục thì phải nói ra, kể cả khi cùng lượt có mục gửi được', () => {
+    const note = describeRetryAllOutcome({ kind: 'done', before: 3, remaining: 1, newlyStopped: 1 });
+    expect(note.tone).toBe('bad');
+    expect(note.detail).toContain('1 mục đã gửi');
+    expect(note.detail).toContain('1 mục đã dừng hẳn');
+    // Và câu này phải KHÁC câu của một lượt chỉ gửi được một phần.
+    expect(note.text).not.toBe(
+      describeRetryAllOutcome({ kind: 'done', before: 3, remaining: 1, newlyStopped: 0 }).text,
+    );
+  });
+
+  it('hàng đợi chỉ còn mục đã dừng hẳn KHÔNG được báo là "đã gửi xong"', () => {
+    const note = describeRetryAllOutcome({ kind: 'done', before: 0, remaining: 0, newlyStopped: 0 });
+    expect(note.tone).toBe('bad');
+    expect(note.text).not.toBe(
+      describeRetryAllOutcome({ kind: 'done', before: 3, remaining: 0, newlyStopped: 0 }).text,
+    );
   });
 });

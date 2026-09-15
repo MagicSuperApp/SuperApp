@@ -22,6 +22,24 @@ import type { SyncFailureClass } from './syncDispatch';
 export const NEEDS_ATTENTION_PREFIX = '[cần xem lại] ';
 
 /**
+ * Trạng thái mà vòng quét còn nhặt lên gửi. Mọi trạng thái khác — `'error'` là ca
+ * duy nhất sinh ra được hôm nay — là dòng CHẾT: nó còn nằm trong bảng nhưng không
+ * lượt gửi nào chạm tới nó nữa.
+ *
+ * Định nghĩa ở đây, MỘT chỗ, vì hai bên đọc nó theo hai mục đích ngược nhau và
+ * lệch nhau là hỏng im: vòng quét dùng nó để CHỌN việc, còn nút "gửi lại tất cả"
+ * dùng nó để ĐẾM kết quả. Đếm theo số dòng thay vì theo tập này thì một mục vừa
+ * chết được báo là "còn chờ".
+ */
+const RETRIABLE_STATUSES: readonly string[] = ['pending', 'sending'];
+
+export const isRetriableRow = (row: any): boolean =>
+  RETRIABLE_STATUSES.includes(row?.status);
+
+export const countRetriable = (rows: readonly any[]): number =>
+  rows.filter(isRetriableRow).length;
+
+/**
  * Hạng của lượt gửi hỏng GẦN NHẤT của một mục.
  *
  * `'unsupported'` không phải một hạng lỗi mạng: nó là "app chưa có đường gọi cho
@@ -153,13 +171,18 @@ export interface SyncQueueEntry {
    * `null` = kho không giữ câu nào — KHÔNG bịa một câu chung chung để lấp.
    */
   serverMessage: string | null;
-  /** Trạng thái thô trong CSDL, để dev đối chiếu. */
-  status: string;
+  /**
+   * Trạng thái thô trong CSDL. `null` = cột rỗng hoặc không phải chuỗi.
+   *
+   * KHÔNG đệm `''`: chuỗi rỗng không lọt nhánh nào của `classifyQueueEntry` nên nó
+   * rơi xuống nhóm êm ái nhất, và ở đó nó không còn tự khai được là thiếu.
+   */
+  status: string | null;
 }
 
 interface NormalizedRow {
   transactionId: string;
-  status: string;
+  status: string | null;
   errorCode: string | null;
   createdAtRaw: string | null;
   payload: string | null;
@@ -186,7 +209,7 @@ export function normalizeQueueRow(row: any): NormalizedRow {
   const payload = row?.payload;
   return {
     transactionId,
-    status: typeof row?.status === 'string' ? row.status : '',
+    status: typeof row?.status === 'string' && row.status !== '' ? row.status : null,
     errorCode: typeof errorCode === 'string' && errorCode !== '' ? errorCode : null,
     createdAtRaw: typeof createdAtRaw === 'string' && createdAtRaw !== '' ? createdAtRaw : null,
     payload: typeof payload === 'string' ? payload : null,
@@ -302,14 +325,35 @@ export function buildSyncQueueEntry(row: any, diagnostic?: SyncQueueDiagnostic):
   };
 }
 
+export interface SyncQueueBuildResult {
+  entries: SyncQueueEntry[];
+  /**
+   * Số dòng KHÔNG dựng được thành một mục (thiếu `transaction_id`).
+   *
+   * Trả về một con số thay vì ném cả lượt: ném thì một dòng rác xoá sạch mọi mục
+   * lành khỏi màn, và xoá luôn đường gửi tay duy nhất mà người dùng có. Nhưng bỏ
+   * qua im lặng cũng không được — cổng gác đòi ĐẾM phần bị loại, không chỉ khai
+   * rằng có loại. Cùng tệp này đã xử `payload` không mở được theo đúng lối đó
+   * (giữ dòng, gắn nhãn thật); chỗ này nay theo cùng lối.
+   */
+  unreadableRows: number;
+}
+
 export function buildSyncQueueEntries(
   rows: any[],
   diagnostics: Record<string, SyncQueueDiagnostic>,
-): SyncQueueEntry[] {
-  return rows.map((row) => {
+): SyncQueueBuildResult {
+  const entries: SyncQueueEntry[] = [];
+  let unreadableRows = 0;
+  for (const row of rows) {
     const id = row?.transaction_id ?? row?.transactionId;
-    return buildSyncQueueEntry(row, typeof id === 'string' ? diagnostics[id] : undefined);
-  });
+    try {
+      entries.push(buildSyncQueueEntry(row, typeof id === 'string' ? diagnostics[id] : undefined));
+    } catch {
+      unreadableRows += 1;
+    }
+  }
+  return { entries, unreadableRows };
 }
 
 // ── Kết quả một lượt gửi lại do NGƯỜI DÙNG bấm ──────────────────────────────
@@ -319,11 +363,19 @@ export function buildSyncQueueEntries(
 
 export type SyncRetryOutcome =
   | { kind: 'cleared' }
-  | { kind: 'stillQueued'; status: string; message: string | null }
+  | { kind: 'stillQueued'; status: string | null; message: string | null }
   | { kind: 'notAttempted'; reason: 'database-not-ready' | 'another-pass-running' };
 
 export type SyncRetryAllOutcome =
-  | { kind: 'done'; before: number; remaining: number }
+  | {
+      kind: 'done';
+      /** Số mục CÒN GỬI ĐƯỢC trước lượt này — không phải số dòng trong bảng. */
+      before: number;
+      /** Số mục còn gửi được sau lượt này. */
+      remaining: number;
+      /** Số mục CHUYỂN sang không-gửi-lại-nữa trong đúng lượt này. */
+      newlyStopped: number;
+    }
   | { kind: 'notAttempted'; reason: 'database-not-ready' | 'another-pass-running' };
 
 /**
@@ -366,7 +418,32 @@ export function describeRetryAllOutcome(outcome: SyncRetryAllOutcome): SyncRetry
   if (outcome.kind === 'notAttempted') {
     return { tone: 'bad', text: NOT_ATTEMPTED_TEXT[outcome.reason], detail: null };
   }
-  const { before, remaining } = outcome;
+  const { before, remaining, newlyStopped } = outcome;
+  const sent = Math.max(0, before - remaining - newlyStopped);
+
+  // Mục vừa CHẾT phải được nói ra trước mọi thứ khác, kể cả khi cùng lượt đó có mục
+  // gửi được. Đây là hệ quả không lấy lại được của đúng lần bấm vừa rồi, và nó là
+  // thứ duy nhất trong ba con số đòi người dùng làm một việc khác (ghi lại).
+  if (newlyStopped > 0) {
+    return {
+      tone: 'bad',
+      text: 'Có mục không gửi được nữa — cần xem lại từng mục.',
+      detail: sent > 0
+        ? `${sent} mục đã gửi · ${newlyStopped} mục đã dừng hẳn · còn ${remaining} mục chờ`
+        : `${newlyStopped} mục đã dừng hẳn · còn ${remaining} mục chờ`,
+    };
+  }
+
+  // `before === 0` ⇒ không có mục nào gửi được để mà thử. KHÔNG được đọc thành "đã
+  // gửi xong": hàng đợi chỉ còn mục đã dừng hẳn cũng cho `remaining === 0`, và câu
+  // "đã gửi xong" ở đó là câu trấn an cho một việc chưa xảy ra.
+  if (before === 0) {
+    return {
+      tone: 'bad',
+      text: 'Không có mục nào đang chờ để gửi.',
+      detail: null,
+    };
+  }
   if (remaining === 0) {
     return { tone: 'ok', text: 'Đã gửi xong cả hàng đợi.', detail: null };
   }
@@ -374,7 +451,7 @@ export function describeRetryAllOutcome(outcome: SyncRetryAllOutcome): SyncRetry
     return {
       tone: 'bad',
       text: 'Gửi được một phần, vẫn còn mục chưa gửi được.',
-      detail: `${before - remaining} mục đã gửi · còn ${remaining} mục`,
+      detail: `${sent} mục đã gửi · còn ${remaining} mục`,
     };
   }
   return {

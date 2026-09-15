@@ -34,6 +34,7 @@ import { useAppDispatch } from '../store/hooks';
 import { loadFarms, loadTrees } from '../modules/trace/store/farmSlice';
 import { tf } from '../i18n';
 import { selectChainWallet } from '../store/userSlice';
+import { describeStandardWalletFailure } from '../services/standardWalletService';
 import { NEUTRAL, withAlpha } from '../shared/theme';
 import { WORK_THEME } from '../theme';
 import { MODULES, type ModuleEntry } from '../modules';
@@ -451,6 +452,8 @@ const QuickStatRow = ({
   color,
   onPress,
   index,
+  note,
+  testID,
 }: {
   icon: string;
   label: string;
@@ -458,6 +461,13 @@ const QuickStatRow = ({
   color: string;
   onPress: () => void;
   index: number;
+  /**
+   * Câu nói rõ con số ở trên đang nói về CÁI GÌ, khi nó không nói về thứ người
+   * dùng tưởng. Chỉ truyền khi có thật — một dòng phụ luôn hiện thì nó thành
+   * trang trí, và đến lượt có chuyện thật thì không ai đọc nữa.
+   */
+  note?: string;
+  testID?: string;
 }) => {
   const fade = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -478,6 +488,11 @@ const QuickStatRow = ({
         <View style={{ flex: 1 }}>
           <Text style={styles.statLabel}>{label}</Text>
           <Text style={[styles.statValue, { color }]}>{value}</Text>
+          {note ? (
+            <Text testID={testID ? `${testID}-note` : undefined} style={styles.statNote}>
+              {note}
+            </Text>
+          ) : null}
         </View>
         <Icon name="chevron-right" size={18} color={NEUTRAL.textMuted} />
       </TouchableOpacity>
@@ -918,11 +933,25 @@ const HomeScreen: React.FC = () => {
               index={0}
               icon="wallet-outline"
               label="Ví của tôi"
+              testID="home-wallet-stat"
               value={
                 chainWallet
                   ? `${formatToken(chainWallet.magicBalance)} MAGIC · ${fmtLamp(chainWallet.lampBalance)} LAMP`
                   : 'Chưa đồng bộ'
               }
+              /*
+                Con số trên KHÔNG nói về ví mà 24 từ của người dùng mở được, nếu
+                lượt đăng ký ví tự-kiểm-soát chưa bao giờ thành công: khi đó
+                `/wallet/{did}/all` vẫn trả về danh sách (ví custody), nên số hiện
+                ra là số của một ví khác. Đọc ra ở đây chứ không đệm một số 0.
+
+                Đọc ĐỒNG BỘ chứ không qua state, và không cần nhịp làm mới: thứ tự
+                ở `navigation/index.tsx` là lập phiên → đăng ký ví → `refreshWallet`,
+                nên lúc `chainWallet` có giá trị thì lần đăng ký đã xong hoặc đã
+                hỏng. Ô này được vẽ lại theo `chainWallet`, tức vẽ lại đúng lúc
+                câu trả lời đã chốt.
+              */
+              note={chainWallet ? describeStandardWalletFailure() ?? undefined : undefined}
               color={COLORS.accent}
               onPress={() => (navigation as any).navigate('PhoenixWallet')}
             />
@@ -1331,6 +1360,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginTop: 2,
     letterSpacing: -0.2,
+  },
+  statNote: {
+    fontSize: 11,
+    lineHeight: 15,
+    marginTop: 3,
+    color: COLORS.warning,
   },
   statDivider: {
     height: 1,

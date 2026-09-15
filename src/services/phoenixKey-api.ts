@@ -529,14 +529,76 @@ async function unwrapVoid(
   }
 }
 
-export const setSessionToken = (token: string): Promise<void> =>
-  AsyncStorage.setItem(SESSION_TOKEN_KEY, token);
+/**
+ * DẤU CHỦ của thẻ phiên — mã định danh mà thẻ đang lưu được đúc CHO.
+ *
+ * Vì sao phải có: thẻ phiên PhoenixKey **không mang dấu chủ** (nêu ở khối
+ * `sessionMintGeneration` bên trên), và thân gửi của `/wallet/standard/register`
+ * KHÔNG có trường DID nào — máy chủ suy chủ thể từ thẻ Bearer. Nên một thẻ còn
+ * sống của tài khoản TRƯỚC làm máy chủ dựng lại chuỗi ký bằng DID của chủ thẻ,
+ * Ed25519 trượt, và lỗi trả về là `403 / 1326` — đúng cùng một mã với ca "hai bên
+ * dựng hai chuỗi byte khác nhau". Hai nguyên nhân khác hẳn nhau cho ra một mã lỗi;
+ * đó là lý do nó sống lâu được.
+ *
+ * Dấu này là của MÁY, không phải của máy chủ: nó chỉ trả lời được câu "thẻ trong
+ * kho có phải của người đang đăng nhập không". Nó KHÔNG chứng minh thẻ còn hiệu
+ * lực — việc đó chỉ máy chủ nói được.
+ */
+const SESSION_TOKEN_OWNER_KEY = 'phoenixkey_session_token_did';
 
-export const clearSessionToken = (): Promise<void> =>
-  AsyncStorage.removeItem(SESSION_TOKEN_KEY);
+/**
+ * Ghi thẻ phiên kèm dấu chủ. `ownerDid` là tham số BẮT BUỘC, cố ý: chỗ đúc thẻ
+ * luôn biết mình đang đúc cho ai, còn một giá trị tuỳ chọn sẽ bị bỏ trống ở đúng
+ * lần gọi mà dấu chủ cần nhất.
+ */
+export const setSessionToken = async (token: string, ownerDid: string): Promise<void> => {
+  await AsyncStorage.setItem(SESSION_TOKEN_KEY, token);
+  await AsyncStorage.setItem(SESSION_TOKEN_OWNER_KEY, ownerDid);
+};
+
+export const clearSessionToken = async (): Promise<void> => {
+  await AsyncStorage.removeItem(SESSION_TOKEN_KEY);
+  await AsyncStorage.removeItem(SESSION_TOKEN_OWNER_KEY);
+};
 
 export const getSessionToken = (): Promise<string | null> =>
   AsyncStorage.getItem(SESSION_TOKEN_KEY);
+
+/** Thẻ đang lưu được đúc cho ai; `null` = không có thẻ, hoặc thẻ không mang dấu. */
+export const getSessionTokenOwnerDid = (): Promise<string | null> =>
+  AsyncStorage.getItem(SESSION_TOKEN_OWNER_KEY);
+
+/**
+ * Bốn trạng thái, không phải hai — và hai trạng thái cuối đều dẫn tới BỎ thẻ:
+ *
+ * | trả về      | nghĩa                                   | thẻ sau lượt gọi |
+ * |-------------|-----------------------------------------|------------------|
+ * | `none`      | không có thẻ nào trong kho              | vẫn không có     |
+ * | `ok`        | thẻ mang dấu, và dấu đúng người này     | giữ nguyên       |
+ * | `foreign`   | thẻ mang dấu của NGƯỜI KHÁC             | đã bỏ            |
+ * | `unmarked`  | có thẻ mà KHÔNG mang dấu — không đo được| đã bỏ            |
+ *
+ * `unmarked` phải tách khỏi `foreign` chứ không gộp: nó là trạng thái MÙ, và một
+ * phép đo trả giá trị hợp lệ đúng lúc nó không đo được gì thì màu xanh của nó vô
+ * nghĩa. Ca thật của `unmarked` là thẻ do bản app CŨ ghi (trước khi có dấu chủ) —
+ * xảy ra đúng một lần cho mỗi máy sau khi cập nhật.
+ *
+ * Cả hai ca mù/lệch đều BỎ thẻ chứ không chặn: bỏ thẻ là khả hồi — lượt gọi sau tự
+ * lập phiên mới — còn giữ một thẻ không chứng minh được chủ là để ngỏ đúng đường
+ * mạo danh mà `clearSessionToken` sinh ra để chặn.
+ */
+export async function ensureSessionTokenBelongsTo(
+  userDid: string,
+): Promise<'none' | 'ok' | 'foreign' | 'unmarked'> {
+  const token = await getSessionToken();
+  if (!token) return 'none';
+  const owner = await getSessionTokenOwnerDid();
+  if (owner === userDid) return 'ok';
+  await clearSessionToken();
+  // Thế mới: một lượt đúc đang bay KHÔNG được trồng lại thẻ vừa bỏ.
+  clearSessionMintCooldown();
+  return owner ? 'foreign' : 'unmarked';
+}
 
 /**
  * `GET /identity/health` — sức khoẻ danh tính CỦA NGƯỜI ĐANG ĐĂNG NHẬP.
@@ -1350,5 +1412,7 @@ export const phoenixKeyApi = {
   setSessionToken,
   clearSessionToken,
   getSessionToken,
+  getSessionTokenOwnerDid,
+  ensureSessionTokenBelongsTo,
   baseURL,
 };

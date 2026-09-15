@@ -178,6 +178,16 @@ export interface SyncQueueEntry {
    * rơi xuống nhóm êm ái nhất, và ở đó nó không còn tự khai được là thiếu.
    */
   status: string | null;
+  /**
+   * Nội dung NGƯỜI DÙNG đã ghi, nguyên văn như kho đang giữ. `null` = kho không
+   * giữ gì.
+   *
+   * Có mặt ở đây vì màn bảo người dùng *"hãy ghi lại việc này"* cho một mục đã
+   * dừng hẳn — mà bảo người ta chép lại một thứ không cho họ nhìn thì đó là một
+   * lời khuyên không thực hiện được. Trường này là thứ duy nhất trên máy còn giữ
+   * việc họ đã làm.
+   */
+  payloadRaw: string | null;
 }
 
 interface NormalizedRow {
@@ -322,7 +332,64 @@ export function buildSyncQueueEntry(row: any, diagnostic?: SyncQueueDiagnostic):
     nextAttemptAt: diagnostic ? diagnostic.nextAttemptAt : null,
     serverMessage: serverMessage === '' ? null : serverMessage,
     status: normalized.status,
+    payloadRaw: normalized.payload,
   };
+}
+
+/** Một dòng nội dung đã ghi, đã tách thành nhãn và giá trị để bày ra màn. */
+export interface RecordedField {
+  label: string;
+  value: string;
+}
+
+/**
+ * Kết quả đọc nội dung đã ghi. BA trạng thái, không phải hai — trạng thái thứ ba
+ * (`unreadable`) phải kêu to hơn trạng thái thứ hai (`none`), vì nó là trạng thái
+ * MÙ: kho có giữ một thứ gì đó, chỉ là ở đây không mở ra được. Gộp nó vào `none`
+ * là nói "bạn không ghi gì" cho một người đã ghi.
+ */
+export type RecordedPayload =
+  | { kind: 'none' }
+  | { kind: 'unreadable'; raw: string }
+  | { kind: 'fields'; fields: RecordedField[] };
+
+/**
+ * Đọc nội dung đã ghi thành các dòng bày được ra màn.
+ *
+ * KHÔNG dịch tên trường sang tiếng Việt và KHÔNG bỏ trường lạ: hàm này phục vụ
+ * đúng một việc — cho người dùng chép lại thứ họ đã ghi. Một bảng dịch sẽ im lặng
+ * nuốt mọi trường chưa có trong bảng, và trường bị nuốt đúng là trường mới thêm,
+ * tức thứ chưa ai biết là quan trọng hay không.
+ *
+ * Bỏ đúng một khoá: `type`. Nó đã được bày ra ở nhãn loại phía trên thẻ.
+ */
+export function describeRecordedPayload(payloadRaw: string | null): RecordedPayload {
+  if (payloadRaw == null || payloadRaw === '') return { kind: 'none' };
+  let parsed: any;
+  try {
+    parsed = JSON.parse(payloadRaw);
+  } catch {
+    return { kind: 'unreadable', raw: payloadRaw };
+  }
+  // Mở ra được nhưng không phải một khối có trường (số, chuỗi, mảng, `null`):
+  // vẫn là thứ không bày thành dòng được, nên đi đường thô — đừng ép nó thành
+  // một trường tên `value` mà người đọc không tra ngược được về đâu.
+  if (parsed == null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { kind: 'unreadable', raw: payloadRaw };
+  }
+  const fields: RecordedField[] = [];
+  for (const [label, value] of Object.entries(parsed)) {
+    if (label === 'type') continue;
+    if (value == null) continue;
+    fields.push({
+      label,
+      value: typeof value === 'object' ? JSON.stringify(value) : String(value),
+    });
+  }
+  // Khối rỗng (hoặc chỉ có mỗi `type`) là một dữ kiện thật: mục này không mang
+  // nội dung nào. Đó KHÁC với `none` — ở đây kho có giữ, và giữ một khối rỗng.
+  if (fields.length === 0) return { kind: 'unreadable', raw: payloadRaw };
+  return { kind: 'fields', fields };
 }
 
 export interface SyncQueueBuildResult {

@@ -19,6 +19,7 @@ import {
   countByGroup,
   countRetriable,
   isRetriableRow,
+  describeRecordedPayload,
   describeRetryAllOutcome,
   describeRetryOutcome,
   normalizeQueueRow,
@@ -288,5 +289,79 @@ describe('câu báo sau một lượt gửi lại', () => {
     expect(note.text).not.toBe(
       describeRetryAllOutcome({ kind: 'done', before: 3, remaining: 0, newlyStopped: 0 }).text,
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// describeRecordedPayload — BA trạng thái, không phải hai
+// ---------------------------------------------------------------------------
+describe('describeRecordedPayload', () => {
+  it('tách khối JSON thành từng dòng, bỏ đúng khoá `type`', () => {
+    const got = describeRecordedPayload(
+      JSON.stringify({ type: 'activity', note: 'Bón phân lô B2', farmId: 'vuon-doi' }),
+    );
+    expect(got.kind).toBe('fields');
+    if (got.kind !== 'fields') throw new Error('nhánh sai');
+    expect(got.fields).toEqual([
+      { label: 'note', value: 'Bón phân lô B2' },
+      { label: 'farmId', value: 'vuon-doi' },
+    ]);
+  });
+
+  it('giữ NGUYÊN trường lạ thay vì lọc theo một bảng dịch', () => {
+    // Bảng dịch im lặng nuốt mọi trường chưa có trong bảng, và trường bị nuốt
+    // đúng là trường mới thêm — thứ chưa ai biết là quan trọng hay không.
+    const got = describeRecordedPayload(JSON.stringify({ type: 'x', truong_moi_toanh: 'giá trị' }));
+    if (got.kind !== 'fields') throw new Error('nhánh sai');
+    expect(got.fields).toEqual([{ label: 'truong_moi_toanh', value: 'giá trị' }]);
+  });
+
+  it('khối con thì giữ nguyên văn, không làm phẳng mất chữ', () => {
+    const got = describeRecordedPayload(JSON.stringify({ data: { activity: { type: 'watering' } } }));
+    if (got.kind !== 'fields') throw new Error('nhánh sai');
+    expect(got.fields[0].value).toContain('watering');
+  });
+
+  it('KHÔNG mở ra được thì phải khác hẳn KHÔNG có gì', () => {
+    // Nhánh mù phải kêu to hơn nhánh rỗng: nó nói "có ghi, ở đây mở không ra",
+    // còn nhánh rỗng nói "không ghi gì". Gộp là báo mất trắng cho người còn dữ liệu.
+    expect(describeRecordedPayload('KHÔNG-PHẢI-JSON')).toEqual({
+      kind: 'unreadable',
+      raw: 'KHÔNG-PHẢI-JSON',
+    });
+    expect(describeRecordedPayload(null)).toEqual({ kind: 'none' });
+    expect(describeRecordedPayload('')).toEqual({ kind: 'none' });
+  });
+
+  it('JSON hợp lệ nhưng không phải khối có trường thì đi đường thô', () => {
+    // `"abc"`, `42`, `[1,2]` đều mở ra được mà không bày thành dòng được. Ép
+    // chúng thành một trường tên `value` là dựng một nhãn người đọc không tra
+    // ngược về đâu được.
+    expect(describeRecordedPayload('42').kind).toBe('unreadable');
+    expect(describeRecordedPayload('[1,2]').kind).toBe('unreadable');
+    expect(describeRecordedPayload('null').kind).toBe('unreadable');
+  });
+
+  it('khối chỉ có mỗi `type` KHÔNG được đọc thành "không có gì"', () => {
+    // Kho CÓ giữ, và giữ một khối rỗng — đó là một dữ kiện, không phải chỗ trống.
+    expect(describeRecordedPayload(JSON.stringify({ type: 'activity' })).kind).toBe('unreadable');
+  });
+});
+
+describe('buildSyncQueueEntry · nội dung đã ghi đi kèm mục', () => {
+  it('mang theo nguyên văn nội dung, không tự diễn giải', () => {
+    const payload = JSON.stringify({ type: 'activity', note: 'x' });
+    const entry = buildSyncQueueEntry({
+      transaction_id: 'a',
+      payload,
+      status: 'error',
+      created_at: '2026-09-14 03:20:00',
+    });
+    expect(entry.payloadRaw).toBe(payload);
+  });
+
+  it('kho không giữ nội dung thì là `null`, KHÔNG đệm chuỗi rỗng', () => {
+    const entry = buildSyncQueueEntry({ transaction_id: 'a', payload: null, status: 'error' });
+    expect(entry.payloadRaw).toBeNull();
   });
 });

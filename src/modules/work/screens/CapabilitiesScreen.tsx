@@ -22,7 +22,7 @@ const TIER_COLOR: Record<string, string> = { A: '#2E7D46', B: '#3B6EA8', C: '#C7
 const CapabilitiesScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const { templates, loading, usingMock, errorKind, reload } = useTemplates();
-  const { create, verify, submitting, errorCode } = useCapabilities();
+  const { create, verify, submitting } = useCapabilities();
 
   const [templateKey, setTemplateKey] = React.useState('');
   const [metric, setMetric] = React.useState<Record<string, string>>({});
@@ -39,31 +39,34 @@ const CapabilitiesScreen: React.FC = () => {
       const raw = metric[mt.key];
       if (raw != null && raw !== '' && !Number.isNaN(Number(raw))) num[mt.key] = Number(raw);
     }
+    // Mã lỗi lấy từ CHÍNH lượt gọi này, không đọc `errorCode` trong state sau
+    // `await` (đó là bao đóng cũ) — xem `hooks/mutationOutcome.ts`.
     const res = await create(templateKey, num);
-    if (res) {
-      setCredential(res);
-    } else if (errorCode === 'BACKEND_DISABLED') {
+    if (res.ok && res.value) {
+      setCredential(res.value);
+    } else if (res.code === 'BACKEND_DISABLED') {
       showError('Chưa kết nối máy chủ', 'Cần máy chủ AladinWork để khai năng lực.');
     } else {
-      showError('Không tạo được', errorCode === 'BAD_INPUT'
+      showError('Không tạo được', res.code === 'BAD_INPUT'
         ? 'Chỉ số chưa hợp lệ theo mẫu — kiểm tra lại.'
-        : `Lỗi máy chủ${errorCode ? ` (${errorCode})` : ''}.`);
+        : `Lỗi máy chủ${res.code ? ` (${res.code})` : ''}.`);
     }
   };
 
   const onVerify = async () => {
     if (!credential) return;
     const res = await verify(credential.id, templateKey);
-    if (res) {
-      setCredential(res.credential);
-      showInfo(res.verified ? 'Đã xác minh' : 'Chưa đạt',
-        res.verified
-          ? `Chứng chỉ được duyệt — hạng ${res.credential.quality_tier ?? '?'}.`
+    if (res.ok && res.value) {
+      const v = res.value;
+      setCredential(v.credential);
+      showInfo(v.verified ? 'Đã xác minh' : 'Chưa đạt',
+        v.verified
+          ? `Chứng chỉ được duyệt — hạng ${v.credential.quality_tier ?? '?'}.`
           : 'Chứng chỉ này chưa được duyệt. Xem lại chỉ số và bằng chứng.');
-    } else if (errorCode === 'BACKEND_DISABLED') {
+    } else if (res.code === 'BACKEND_DISABLED') {
       showError('Chưa kết nối máy chủ', 'Cần máy chủ để xác minh.');
     } else {
-      showError('Không xác minh được', `Lỗi${errorCode ? ` (${errorCode})` : ''}. Thử lại sau.`);
+      showError('Không xác minh được', `Lỗi${res.code ? ` (${res.code})` : ''}. Thử lại sau.`);
     }
   };
 

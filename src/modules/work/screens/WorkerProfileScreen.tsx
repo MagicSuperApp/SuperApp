@@ -33,6 +33,7 @@ import { WORK_THEME } from '../theme/colors';
 import { useTaskers } from '../hooks/useTaskers';
 import { ENABLED_MODULES } from '../../../config/instance.config';
 import { routeIsReachable } from '../../../navigation/moduleCatalog';
+import { showInfo } from '../../../utils/alert';
 
 type RouteParams = { WorkerProfile: { workerId: string } };
 
@@ -244,10 +245,20 @@ const WorkerProfileScreen: React.FC = () => {
           được đăng ký vào cây điều hướng, nên nút này là NÚT CHẾT — bấm không đổi màn,
           không một chữ nào. Người dùng đọc ra là "app hỏng", và không có cách nào biết
           đây là tính năng bản này không có.
+
+          Và cùng lý do với `JobDetailScreen`: `worker-<did>` là chuỗi màn này tự
+          bịa, không phải mã hội thoại máy chủ cấp, nên màn phòng tra không thấy
+          và báo một câu chỉ người viết mã hiểu. Đường mở phòng thật hôm nay đi
+          qua hợp đồng (`POST /contracts/{id}/conversation`).
         */}
         {routeIsReachable('ChatRoom', ENABLED_MODULES) && (
         <TouchableOpacity
-          onPress={() => navigation.navigate('ChatRoom', { roomId: `worker-${worker.did}` })}
+          onPress={() =>
+            showInfo(
+              'Chưa nhắn tin được ở đây',
+              'Phòng trò chuyện mở ra sau khi hai bên có hợp đồng. Bấm "Đặt thợ ngay" trước, rồi nhắn tin ngay trong hợp đồng đó.',
+            )
+          }
           style={styles.chatBtn}
         >
           <Icon name="message-outline" size={20} color={WORK_THEME.primary} />

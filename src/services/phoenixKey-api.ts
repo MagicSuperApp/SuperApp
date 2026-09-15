@@ -1062,12 +1062,32 @@ export const keys = {
    * ⚠ `keyRole: 'owner'` bị chặn thẳng: luật V36 cho tối đa MỘT owner-key active
    * mỗi DID (`OWNER_KEY_ALREADY_ACTIVE`). Đổi owner đi qua `/keys/rotate`.
    *
-   * ⚠ Vai `manager` HÔM NAY không hạn chế gì ngoài vòng đời khoá. Phiếu phiên
-   * không mang claim vai (`mintSessionToken` chỉ có `userDid` + loại + hạn +
-   * `tokenEpoch`), và không cửa nghiệp vụ nào đọc `keyRole` — nên tầng dưới không
-   * phân biệt được vai kể cả khi muốn. Giao diện ĐỪNG hứa với người dùng rằng máy
-   * này "quyền hạn chế"; hôm nay nói vậy là nói sai. Ngoại lệ duy nhất đã đo:
-   * `/keys/devices/**` là `OWNER_ONLY`, phiên `manager` gọi vào nhận 403.
+   * ⚠ ĐÍNH CHÍNH 15/09/2026 — đoạn này TRƯỚC ĐÂY viết ngược. Bản cũ khẳng định
+   * "phiếu phiên không mang claim vai" và "không cửa nghiệp vụ nào đọc `keyRole`",
+   * rồi rút ra rằng giao diện ĐỪNG hứa máy `manager` có quyền hạn chế. Cả hai vế
+   * đều bị mã máy chủ bác, và vế thứ ba (lời khuyên cho giao diện) vì thế cũng
+   * ngược. Ai đọc bản cũ rồi kết luận "cổng vai không cưỡng chế được gì" sẽ dựng
+   * một màn hứa sai với người dùng theo đúng chiều nguy hiểm.
+   *
+   * Đo lại, nguyên văn:
+   *   - `SessionServiceImpl.java:429-431` đúc phiếu phiên KÈM vai của đúng khoá
+   *     vừa ký duyệt: `mintSessionToken(userDid, ttl, tokenEpoch, keyIdClaim,
+   *     approvingRole.dbValue())`.
+   *   - `AuthRequiredInterceptor.java:346-353` cưỡng chế thật:
+   *     `if (!actual.atLeast(required)) → KEY_ROLE_FORBIDDEN`.
+   *   - Nhóm chỉ-chủ ở `EndpointRolePolicy.java` nay gồm cả `/seed/export-request`
+   *     (`:110`), không riêng `/keys/devices/**`.
+   *   - Còn một cổng thứ hai đi theo INTENT chứ không theo đường dẫn:
+   *     `SignRequestServiceImpl.java:275-287` chặn `SEED_EXPORT` ngay cả khi tới
+   *     bằng đường chung `/sign/request` — nên không vòng qua bằng đường khác được.
+   *
+   * Ba kết cục có mã rõ, đừng gộp chúng làm một: phiên `owner` → qua; phiên
+   * `manager` → **403 / 1306** `KEY_ROLE_FORBIDDEN`; phiếu cũ THIẾU claim vai →
+   * **401 / 1308**, cố ý 401 để client đi lập phiên lại chứ không phải để báo
+   * người dùng thiếu quyền. Giao diện phân biệt 1306 với 1308: cái đầu là "máy
+   * này không được phép", cái sau là "phiếu hết đời, đăng nhập lại".
+   *
+   * ⇒ Nói với người dùng rằng máy ghép cặp có quyền hạn chế HÔM NAY là nói ĐÚNG.
    *
    * Mã lỗi: 403 chữ ký sai · 404 DID chưa có owner-key active · 409
    * `OP_SEQ_REPLAY` mốc lùi/bằng · 400 `KEY_FORMAT_INVALID` / `ENUM_INVALID_VALUE`.

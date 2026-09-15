@@ -40,8 +40,10 @@
  */
 
 import { orilifeAuthHeaderValue } from './orilifeAuthHeader';
+import { ensureOrilifeToken } from './orilifeDidAuth';
 import type { APIError } from './treeReIDService';
 import type { TreeMetadata } from '../modules/trace/types';
+import { serverRejectionOf } from './serverRejection';
 
 const REQUEST_TIMEOUT_MS = 45_000;
 
@@ -112,12 +114,28 @@ export function buildTreeProfileBody(
   return body;
 }
 
+/**
+ * Một lượt gọi JSON.
+ *
+ * ⛔ Bản trước gặp 401 là trả thẳng `auth_error`, trong khi bản gốc
+ * `treeReIDService:449` đã biết ký lại phiên rồi thử lại một lần. Hai đường
+ * tách nhau nên bản vá ở bản gốc không tới được đây, và người dùng gõ xong hồ sơ
+ * cây giữa vườn thì mất lượt lưu lên máy chủ chỉ vì thẻ vừa hết hạn.
+ *
+ * `baseUrl` đi riêng chứ không cắt ra từ `url`: gốc máy chủ là thứ
+ * `ensureOrilifeToken` cần, và hai cửa gọi hàm này đều đang cầm sẵn nó.
+ *
+ * `orilifeAuthHeaderValue(force)` ép đọc lại kho ở lượt thử THỨ HAI — đệm giữ
+ * đầu đề tới 30 giây, dùng lại đệm là gửi lại đúng cái thẻ vừa bị từ chối.
+ */
 async function requestJson(
   url: string,
   method: 'GET' | 'POST',
+  baseUrl: string,
   body?: Record<string, unknown>,
+  attempt = 0,
 ): Promise<{ ok: boolean; data?: any; error?: APIError }> {
-  const auth = await orilifeAuthHeaderValue();
+  const auth = await orilifeAuthHeaderValue(attempt > 0);
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (auth) headers.Authorization = auth;
   if (body) headers['Content-Type'] = 'application/json';
@@ -149,6 +167,10 @@ async function requestJson(
           : undefined;
 
     if (resp.status === 401) {
+      // Ký lại phiên MỘT lần rồi thử lại — dùng chung đường của `treeReIDService`.
+      if (attempt === 0 && (await ensureOrilifeToken(baseUrl, { force: true }))) {
+        return requestJson(url, method, baseUrl, body, 1);
+      }
       return {
         ok: false,
         error: {
@@ -202,6 +224,11 @@ async function requestJson(
         },
       };
     }
+    // `200 {"ok": false}` là lời TỪ CHỐI. Để nó lọt thì `saveTreeProfile` trả
+    // `{ok:true, profile: undefined}` — màn đóng lại như đã lưu, còn trên máy chủ
+    // không có gì thay đổi.
+    const rejection = serverRejectionOf(parsed, resp.status);
+    if (rejection) return { ok: false, error: rejection };
     return { ok: true, data: parsed };
   } catch (e: any) {
     clearTimeout(timeoutHandle);
@@ -228,6 +255,7 @@ export async function saveTreeProfile(
   const res = await requestJson(
     `${baseUrl}/api/tree/${encodeURIComponent(treeId)}/profile`,
     'POST',
+    baseUrl,
     body,
   );
   if (!res.ok) return { ok: false, error: res.error };
@@ -246,6 +274,7 @@ export async function getTreeProfile(
   const res = await requestJson(
     `${baseUrl}/api/tree/${encodeURIComponent(treeId)}/profile`,
     'GET',
+    baseUrl,
   );
   if (!res.ok) return { ok: false, error: res.error };
   return { ok: true, profile: res.data?.profile };

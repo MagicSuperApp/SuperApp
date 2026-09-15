@@ -39,12 +39,13 @@ import {
   isAvailable as isPhoenixKeyAvailable,
   PhoenixKeyNativeError,
 } from '../services/phoenixKey-native';
-import { currentUserDid, isKeypairEnrolled, signRaw } from '../sdk/phoenixKey';
+import { currentUserDid, isKeypairEnrolled, saveUserDid, signRaw } from '../sdk/phoenixKey';
 import { loginUser } from '../store/userSlice';
 import { showError } from '../utils/alert';
 import LoginSuccessOverlay from '../components/LoginSuccessOverlay';
 import LanguagePickerModal from '../components/LanguagePickerModal';
 import { LANGUAGES, t, tf, useLanguage } from '../i18n';
+import { tk } from '../i18n/keys';
 import { DEFAULT_INSTANCE } from '../config/instance.config';
 import { LinearWash, deepen, tint } from '../shared/components/SoftGradient';
 
@@ -179,22 +180,46 @@ const LoginScreen = () => {
   const langMeta = LANGUAGES.find(l => l.code === lang) ?? LANGUAGES[0];
 
   // Load PhoenixUser đã đăng ký trên thiết bị mỗi khi màn này focus.
+  //
+  // ⛔ ĐÍNH CHÍNH 15/09/2026 — LỜI CHÀO TỪNG GỌI TÊN MỘT TÀI KHOẢN KHÁC.
+  //
+  // Bản cũ tra người đang hoạt động bằng `ACTIVE_USERNAME_KEY` — một cái NHÃN —
+  // rồi rơi về `users[users.length - 1]` khi nhãn rỗng. Nhưng thứ QUYẾT ĐỊNH lúc
+  // mở khoá không phải nhãn: `phoenixKeyAuth.unlockExistingIdentity()` đọc
+  // `currentUserDid()` (`services/phoenixKeyAuthService.ts:286`). Hai nguồn đó
+  // trôi khỏi nhau ở một đường có thật: `attachThisDevice`
+  // (`screens/RestoreIdentityScreen.tsx:355`) ghi DID mới bằng `saveUserDid` và
+  // KHÔNG đụng tới sổ `@phoenixkey/users` lẫn nhãn. Sau một lần khôi phục, màn
+  // này chào đúng cái tên cũ trong khi khoá sắp mở là của DID mới.
+  //
+  // Nay tra theo DID TRƯỚC, vì DID là thứ sẽ được mở. Không có mục nào trong sổ
+  // khớp DID đang lưu ⇒ KHÔNG chào tên nào cả (`null`) — máy vẫn mở khoá được,
+  // chỉ là app không biết tên của danh tính đó, và bịa ra một cái tên từ sổ là
+  // đúng lỗi vừa gỡ. Không có DID nào đang lưu ⇒ cũng `null`: chưa có danh tính
+  // để mở thì không có ai để chào.
   useFocusEffect(
     React.useCallback(() => {
       let cancelled = false;
       (async () => {
         try {
-          const [usersRaw, activeName] = await Promise.all([
+          const [usersRaw, activeName, storedDid] = await Promise.all([
             AsyncStorage.getItem(PHOENIX_USERS_KEY),
             AsyncStorage.getItem(ACTIVE_USERNAME_KEY),
+            currentUserDid(),
           ]);
           if (cancelled) return;
           const users: PhoenixUserEntry[] = usersRaw ? JSON.parse(usersRaw) : [];
           setAllUsers(users);
-          const active = activeName
-            ? users.find(u => u.username === activeName)
-            : users[users.length - 1];
-          setActiveUser(active || null);
+          if (!storedDid) {
+            setActiveUser(null);
+            return;
+          }
+          // Nhãn chỉ dùng để chọn GIỮA các mục cùng trỏ về DID đang lưu (một
+          // người có thể đăng ký hai tên trên cùng một danh tính). Nó không bao
+          // giờ được kéo lời chào sang một DID khác.
+          const sameDid = users.filter(u => u.did === storedDid);
+          const active = sameDid.find(u => u.username === activeName) ?? sameDid[0];
+          setActiveUser(active ?? null);
         } catch (e) {
           console.log('[Login] Load PhoenixUsers failed:', e);
         }
@@ -202,6 +227,51 @@ const LoginScreen = () => {
       return () => { cancelled = true; };
     }, []),
   );
+
+  // ── ĐỔI TÀI KHOẢN — phải đổi thứ SẼ ĐƯỢC MỞ, không chỉ đổi cái nhãn ─────────
+  //
+  // ⛔ ĐÍNH CHÍNH 15/09/2026. Nút này trước nay ghi mỗi `ACTIVE_USERNAME_KEY` rồi
+  // `setActiveUser(next)`. Cả hai thứ đó là NHÃN. Đường mở khoá thì đọc
+  // `currentUserDid()` (`sdk/phoenixKey.ts:240` → khoá `phoenixkey_user_did`), và
+  // không dòng nào trong tay nút này chạm tới nó. Hệ quả đo được trên chính mã
+  // cũ: bấm "Đổi tài khoản", màn chào "@B", quét vân tay — và phiên mở ra là của
+  // A. `farmService` lấy `owner_did` từ phiên, nên mọi thứ ghi tiếp đi vào tài
+  // khoản A dưới cái tên B; người dùng không có một dấu hiệu nào để nhận ra.
+  //
+  // Nay nút ghi `saveUserDid(next.did)` TRƯỚC, và chỉ đổi nhãn khi lượt ghi đó
+  // xong. `saveUserDid` ném với DID sai định dạng (`assertSupportedBackendDid`) —
+  // ném thì KHÔNG được nuốt rồi đổi nhãn suông: đúng chỗ đó là chỗ nhãn và khoá
+  // tách nhau ra lần nữa. Hỏng thì nói ra và giữ nguyên tài khoản đang hoạt động.
+  //
+  // Danh sách vòng qua là danh sách theo DID, không theo tên: hai tên cùng trỏ
+  // một danh tính thì "đổi" giữa chúng không đổi gì cả, mà con số trên nút lại
+  // hứa có hai tài khoản mở được. `Map` giữ mục ĐẦU tiên của mỗi DID.
+  const switchableUsers = React.useMemo(() => {
+    const byDid = new Map<string, PhoenixUserEntry>();
+    for (const u of allUsers) {
+      if (u?.did && !byDid.has(u.did)) byDid.set(u.did, u);
+    }
+    return [...byDid.values()];
+  }, [allUsers]);
+
+  const switchAccount = React.useCallback(async () => {
+    if (!activeUser) return;
+    const idx = switchableUsers.findIndex(u => u.did === activeUser.did);
+    const next = switchableUsers[(idx + 1) % switchableUsers.length];
+    if (!next || next.did === activeUser.did) return;
+    try {
+      // Thứ tự có nghĩa: DID trước (thứ mở khoá), nhãn sau (thứ hiển thị).
+      await saveUserDid(next.did);
+      await AsyncStorage.setItem(ACTIVE_USERNAME_KEY, next.username);
+      setActiveUser(next);
+    } catch (e) {
+      console.log('[Login] switchAccount failed:', e);
+      showError(
+        'Chưa đổi được tài khoản',
+        'Mã định danh của tài khoản kia lưu trên máy không dùng được, nên app giữ nguyên tài khoản đang mở. Hãy khôi phục tài khoản đó bằng cụm 24 từ.',
+      );
+    }
+  }, [activeUser, switchableUsers]);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(20)).current;
@@ -373,7 +443,10 @@ const LoginScreen = () => {
       trackAction('login_success', {
         metadata: { kind: bioKind, biometryType: biometryType || 'unknown' },
       });
-      await dispatch(loginUser(user as any) as any);
+      // `.unwrap()`: thiếu nó thì lỗi mở cơ sở dữ liệu của người dùng bị nuốt, màn vẫn
+      // chạy hiệu ứng thành công rồi `reset` vào `Main` với `currentUser: null`. Xem
+      // khối chú thích trên `loginUser` (`store/userSlice.ts`).
+      await (dispatch(loginUser(user as any) as any) as any).unwrap();
       // Hiện hiệu ứng logo chớp mắt; onDone của overlay sẽ reset về Main.
       setShowSuccess(true);
     } catch (e) {
@@ -504,20 +577,15 @@ const LoginScreen = () => {
               ? 'Quét khuôn mặt hoặc vân tay để mở khoá. Bảo mật tự chủ, không mật khẩu, không OTP.'
               : 'Quét khuôn mặt hoặc vân tay để mở khoá danh tính của bạn.\nBảo mật tự chủ — không mật khẩu, không OTP.'}
           </Text>
-          {allUsers.length > 1 && activeUser && (
+          {switchableUsers.length > 1 && activeUser && (
             <TouchableOpacity
-              onPress={async () => {
-                // Cycle qua usernames (tester có nhiều account demo).
-                const idx = allUsers.findIndex(u => u.username === activeUser.username);
-                const next = allUsers[(idx + 1) % allUsers.length];
-                await AsyncStorage.setItem(ACTIVE_USERNAME_KEY, next.username);
-                setActiveUser(next);
-              }}
+              testID="login-switch-account"
+              onPress={() => { void switchAccount(); }}
               style={styles.switchUserPill}
             >
               <Icon name="account-switch-outline" size={12} color={BLUE.white} />
               <Text style={styles.switchUserText}>
-                {tf('Đổi tài khoản ({n})', { n: allUsers.length })}
+                {tf('Đổi tài khoản ({n})', { n: switchableUsers.length })}
               </Text>
             </TouchableOpacity>
           )}
@@ -642,6 +710,29 @@ const LoginScreen = () => {
             hứa MAGIC và airdrop không có thật, còn nút "Xem tất cả" thì bấm không
             ra gì. Không có API tin tức nào để nối vào, nên gỡ hẳn thay vì để chờ.
             Có API thật thì dựng lại từ `EventCard` (còn nguyên bên dưới). */}
+
+        {/* ── Lối gửi báo cáo, đặt NGOÀI cổng đăng nhập ─────────────────────────
+            Lớp lỗi dày nhất của một buổi đi vườn nằm TRƯỚC lúc đăng nhập xong, và cả
+            bốn ca đều kết thúc ở chính màn này: danh tính chưa dùng được trên máy
+            (:229), sinh trắc tạm khoá (:319), khoá bị hệ điều hành huỷ vì người dùng
+            vừa thêm/xoá một vân tay (:326), sinh trắc thất bại (:330).
+
+            Nếu cửa báo cáo chỉ nằm ở màn Tài khoản thì đúng lớp lỗi cần báo nhất lại là
+            lớp KHÔNG báo được — `AccountScreen` tự đẩy về `Login` khi chưa có phiên. Thứ
+            người thực địa làm thay vào đó là chụp ảnh màn hình gửi Zalo: ảnh đó không
+            mang commit, không mang máy chủ, không mang những dòng trước đó.
+
+            Một dòng chữ, không phải một thẻ: nó không được cạnh tranh với nút đăng nhập. */}
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => navigation.navigate('DiagnosticReport' as never)}
+          style={styles.reportLinkWrap}
+        >
+          <Icon name="message-alert-outline" size={13} color={COLORS.textMuted} />
+          <Text style={styles.reportLinkText} allowFontScaling={false}>
+            {tk('identity.report.loginLink')}
+          </Text>
+        </TouchableOpacity>
 
         {/* Footer */}
         <View style={styles.footer}>
@@ -1107,11 +1198,24 @@ const styles = StyleSheet.create({
   },
 
   // ── Footer ────────────────────────────────────────────
+  // Vùng chạm rộng hơn chữ (đệm dọc 10): người thực địa bấm bằng tay găng hoặc tay ướt,
+  // và một dòng chữ 12px không có đệm là một đích gần như không bấm trúng.
+  reportLinkWrap: {
+    flexDirection: 'row',
+    alignItems: 'center', justifyContent: 'center',
+    gap: 6,
+    marginTop: 20,
+    paddingVertical: 10,
+  },
+  reportLinkText: {
+    fontSize: 12, color: COLORS.textMuted, fontWeight: '600',
+    textDecorationLine: 'underline',
+  },
   footer: {
     flexDirection: 'row',
     alignItems: 'center', justifyContent: 'center',
     gap: 6,
-    marginTop: 24,
+    marginTop: 4,
     paddingTop: 14,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,

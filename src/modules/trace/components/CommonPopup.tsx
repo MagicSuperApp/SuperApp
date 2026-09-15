@@ -72,11 +72,18 @@ const CommonPopup: React.FC<CommonPopupProps> = ({
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.overlay}
       >
+        {/* ⛔ Ô hộp thoại phải nằm NGOÀI vùng chạm-để-đóng.
+            Bản trước đặt `modalContent` BÊN TRONG `TouchableOpacity onPress={handleClose}`,
+            nên chạm vào tiêu đề, vào khoảng đệm, vào mép ô — tức phần lớn diện
+            tích của chính hộp thoại — đều đóng hộp và vứt chữ đã gõ. Người dùng
+            gõ xong, chạm hụt nút "Xác nhận" vài điểm, và mất trắng. */}
         <TouchableOpacity
-          style={styles.overlayTouchable}
+          style={StyleSheet.absoluteFill}
           activeOpacity={1}
           onPress={handleClose}
-        >
+          accessibilityLabel="Đóng"
+        />
+        <View style={styles.centerWrap} pointerEvents="box-none">
           <View style={styles.modalContent}>
             {/* Header */}
             <View style={styles.header}>
@@ -118,7 +125,7 @@ const CommonPopup: React.FC<CommonPopupProps> = ({
               </TouchableOpacity>
             </View>
           </View>
-        </TouchableOpacity>
+        </View>
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -131,7 +138,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  overlayTouchable: {
+  /**
+   * Khung canh giữa cho ô hộp thoại. `pointerEvents="box-none"` để phần TRỐNG
+   * của nó cho cú chạm rơi xuống tấm đóng phía dưới, còn ô hộp thoại thì nuốt.
+   */
+  centerWrap: {
+    // TRONG LUỒNG chứ không tuyệt đối: `behavior="padding"` của
+    // `KeyboardAvoidingView` đặt `paddingBottom` lên chính bọc đó, mà Yoga định
+    // vị con TUYỆT ĐỐI theo `measuredDimension − border` — không trừ padding
+    // (`ReactCommon/yoga/yoga/algorithm/AbsoluteLayout.cpp:203-210`). Đặt tuyệt
+    // đối ở đây thì ô hộp thoại đứng im dưới bàn phím.
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',

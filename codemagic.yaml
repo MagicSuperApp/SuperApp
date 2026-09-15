@@ -178,22 +178,29 @@ workflows:
           # rơi về rỗng DÙ máy chủ sống (đo 05/08: api.aladin.work/api/v1/health = 200).
           WORK_API_URL=${WORK_API_URL:-https://api.aladin.work/api/v1}
 
-          # ProofChat. Cờ mặc định `off` = MỌI bản phát hành chạy dữ liệu giả, dù máy
-          # chủ sống. Bật là quyết định của người phát hành, không phải hệ quả phụ của
-          # việc máy chủ hồi sinh.
+          # ProofChat.
           #
-          # ĐÍNH CHÍNH 2026-08-18: lý do cũ ghi ở đây ("token production còn nằm trần
-          # trong AsyncStorage") ĐÃ HẾT HIỆU LỰC — commit 48efb57 chuyển token phiên
-          # sang Keychain/Keystore qua `taad.secureStore` (`proofchat-api.ts`).
-          # Còn lại một chặn THẬT, đo 2026-08-18 và nằm ở phía ProofChat chứ không
-          # phải ở app: `GET https://api.proofchat.me/api/v1/users/search` → 404
-          # ("Cannot GET"), tức cửa TÌM NGƯỜI để mở hội thoại vẫn đóng
-          # (`proofchat-api.ts:465` đã ghi: khối `@Get('search')` bị bình luận ở BE).
-          # Bật cờ lúc này chỉ đổi "chat giả" thành "chat thật nhưng không tìm được ai".
+          # ĐO LẠI 2026-09-14 — cả hai lý do từng giữ cờ này ở `off` nay đều hết hiệu
+          # lực, và không có gì báo lúc chúng hết:
+          #   · `GET https://api.proofchat.me/api/v1/health` → 200
+          #   · `GET .../users/search` → **401 Unauthorized** (trước là 404
+          #     "Cannot GET"). Mã đổi từ 404 sang 401 nghĩa là cửa TÌM NGƯỜI đã mở
+          #     thật, chỉ còn đòi phiên đăng nhập — đúng thứ app vẫn gửi.
+          # (Lý do cũ hơn nữa, "token production nằm trần trong AsyncStorage", đã hết
+          # từ commit 48efb57: token phiên chuyển sang Keychain/Keystore.)
+          #
+          # Nên mặc định nay là `on`, và đó KHÔNG phải "bật chat vô điều kiện": cổng
+          # thật vẫn là phép thăm dò lúc chạy (`isCapabilityLive('proofchat')`,
+          # `config/runtimeGate.ts`) — máy chủ chết thì app tự tắt module trong vài
+          # giây. Cái vừa gỡ là lớp chặn CỨNG nướng vào bản dựng, thứ không phép đo
+          # nào lật lại được: bản dựng mang cờ `off` vẫn mời người dùng "chờ kết nối
+          # lại" cho một kết nối không bao giờ được thử.
+          # Muốn tắt cho một bản cụ thể thì đặt `PROOFCHAT_BACKEND_ENABLED=off` ở nhóm
+          # biến của bản đó — tắt vẫn là một lựa chọn, chỉ thôi là mặc định im lặng.
           PROOFCHAT_API_URL=${PROOFCHAT_API_URL:-https://api.proofchat.me/api/v1}
           PROOFCHAT_WS_URL=${PROOFCHAT_WS_URL:-https://api.proofchat.me}
           PROOFCHAT_WS_PATH=${PROOFCHAT_WS_PATH:-/socket.io}
-          PROOFCHAT_BACKEND_ENABLED=${PROOFCHAT_BACKEND_ENABLED:-off}
+          PROOFCHAT_BACKEND_ENABLED=${PROOFCHAT_BACKEND_ENABLED:-on}
 
           # ⚠ analytics.orilife.io KHÔNG phân giải được (DNS NXDOMAIN, đo 05/08) — để
           # trống thay vì nướng một host không tồn tại vào mọi bản build. Để trống CHỈ
@@ -1088,22 +1095,29 @@ workflows:
           # rơi về rỗng DÙ máy chủ sống (đo 05/08: api.aladin.work/api/v1/health = 200).
           WORK_API_URL=${WORK_API_URL:-https://api.aladin.work/api/v1}
 
-          # ProofChat. Cờ mặc định `off` = MỌI bản phát hành chạy dữ liệu giả, dù máy
-          # chủ sống. Bật là quyết định của người phát hành, không phải hệ quả phụ của
-          # việc máy chủ hồi sinh.
+          # ProofChat.
           #
-          # ĐÍNH CHÍNH 2026-08-18: lý do cũ ghi ở đây ("token production còn nằm trần
-          # trong AsyncStorage") ĐÃ HẾT HIỆU LỰC — commit 48efb57 chuyển token phiên
-          # sang Keychain/Keystore qua `taad.secureStore` (`proofchat-api.ts`).
-          # Còn lại một chặn THẬT, đo 2026-08-18 và nằm ở phía ProofChat chứ không
-          # phải ở app: `GET https://api.proofchat.me/api/v1/users/search` → 404
-          # ("Cannot GET"), tức cửa TÌM NGƯỜI để mở hội thoại vẫn đóng
-          # (`proofchat-api.ts:465` đã ghi: khối `@Get('search')` bị bình luận ở BE).
-          # Bật cờ lúc này chỉ đổi "chat giả" thành "chat thật nhưng không tìm được ai".
+          # ĐO LẠI 2026-09-14 — cả hai lý do từng giữ cờ này ở `off` nay đều hết hiệu
+          # lực, và không có gì báo lúc chúng hết:
+          #   · `GET https://api.proofchat.me/api/v1/health` → 200
+          #   · `GET .../users/search` → **401 Unauthorized** (trước là 404
+          #     "Cannot GET"). Mã đổi từ 404 sang 401 nghĩa là cửa TÌM NGƯỜI đã mở
+          #     thật, chỉ còn đòi phiên đăng nhập — đúng thứ app vẫn gửi.
+          # (Lý do cũ hơn nữa, "token production nằm trần trong AsyncStorage", đã hết
+          # từ commit 48efb57: token phiên chuyển sang Keychain/Keystore.)
+          #
+          # Nên mặc định nay là `on`, và đó KHÔNG phải "bật chat vô điều kiện": cổng
+          # thật vẫn là phép thăm dò lúc chạy (`isCapabilityLive('proofchat')`,
+          # `config/runtimeGate.ts`) — máy chủ chết thì app tự tắt module trong vài
+          # giây. Cái vừa gỡ là lớp chặn CỨNG nướng vào bản dựng, thứ không phép đo
+          # nào lật lại được: bản dựng mang cờ `off` vẫn mời người dùng "chờ kết nối
+          # lại" cho một kết nối không bao giờ được thử.
+          # Muốn tắt cho một bản cụ thể thì đặt `PROOFCHAT_BACKEND_ENABLED=off` ở nhóm
+          # biến của bản đó — tắt vẫn là một lựa chọn, chỉ thôi là mặc định im lặng.
           PROOFCHAT_API_URL=${PROOFCHAT_API_URL:-https://api.proofchat.me/api/v1}
           PROOFCHAT_WS_URL=${PROOFCHAT_WS_URL:-https://api.proofchat.me}
           PROOFCHAT_WS_PATH=${PROOFCHAT_WS_PATH:-/socket.io}
-          PROOFCHAT_BACKEND_ENABLED=${PROOFCHAT_BACKEND_ENABLED:-off}
+          PROOFCHAT_BACKEND_ENABLED=${PROOFCHAT_BACKEND_ENABLED:-on}
 
           # ⚠ analytics.orilife.io KHÔNG phân giải được (DNS NXDOMAIN, đo 05/08) — để
           # trống thay vì nướng một host không tồn tại vào mọi bản build. Để trống CHỈ
@@ -1694,22 +1708,29 @@ workflows:
           # rơi về rỗng DÙ máy chủ sống (đo 05/08: api.aladin.work/api/v1/health = 200).
           WORK_API_URL=${WORK_API_URL:-https://api.aladin.work/api/v1}
 
-          # ProofChat. Cờ mặc định `off` = MỌI bản phát hành chạy dữ liệu giả, dù máy
-          # chủ sống. Bật là quyết định của người phát hành, không phải hệ quả phụ của
-          # việc máy chủ hồi sinh.
+          # ProofChat.
           #
-          # ĐÍNH CHÍNH 2026-08-18: lý do cũ ghi ở đây ("token production còn nằm trần
-          # trong AsyncStorage") ĐÃ HẾT HIỆU LỰC — commit 48efb57 chuyển token phiên
-          # sang Keychain/Keystore qua `taad.secureStore` (`proofchat-api.ts`).
-          # Còn lại một chặn THẬT, đo 2026-08-18 và nằm ở phía ProofChat chứ không
-          # phải ở app: `GET https://api.proofchat.me/api/v1/users/search` → 404
-          # ("Cannot GET"), tức cửa TÌM NGƯỜI để mở hội thoại vẫn đóng
-          # (`proofchat-api.ts:465` đã ghi: khối `@Get('search')` bị bình luận ở BE).
-          # Bật cờ lúc này chỉ đổi "chat giả" thành "chat thật nhưng không tìm được ai".
+          # ĐO LẠI 2026-09-14 — cả hai lý do từng giữ cờ này ở `off` nay đều hết hiệu
+          # lực, và không có gì báo lúc chúng hết:
+          #   · `GET https://api.proofchat.me/api/v1/health` → 200
+          #   · `GET .../users/search` → **401 Unauthorized** (trước là 404
+          #     "Cannot GET"). Mã đổi từ 404 sang 401 nghĩa là cửa TÌM NGƯỜI đã mở
+          #     thật, chỉ còn đòi phiên đăng nhập — đúng thứ app vẫn gửi.
+          # (Lý do cũ hơn nữa, "token production nằm trần trong AsyncStorage", đã hết
+          # từ commit 48efb57: token phiên chuyển sang Keychain/Keystore.)
+          #
+          # Nên mặc định nay là `on`, và đó KHÔNG phải "bật chat vô điều kiện": cổng
+          # thật vẫn là phép thăm dò lúc chạy (`isCapabilityLive('proofchat')`,
+          # `config/runtimeGate.ts`) — máy chủ chết thì app tự tắt module trong vài
+          # giây. Cái vừa gỡ là lớp chặn CỨNG nướng vào bản dựng, thứ không phép đo
+          # nào lật lại được: bản dựng mang cờ `off` vẫn mời người dùng "chờ kết nối
+          # lại" cho một kết nối không bao giờ được thử.
+          # Muốn tắt cho một bản cụ thể thì đặt `PROOFCHAT_BACKEND_ENABLED=off` ở nhóm
+          # biến của bản đó — tắt vẫn là một lựa chọn, chỉ thôi là mặc định im lặng.
           PROOFCHAT_API_URL=${PROOFCHAT_API_URL:-https://api.proofchat.me/api/v1}
           PROOFCHAT_WS_URL=${PROOFCHAT_WS_URL:-https://api.proofchat.me}
           PROOFCHAT_WS_PATH=${PROOFCHAT_WS_PATH:-/socket.io}
-          PROOFCHAT_BACKEND_ENABLED=${PROOFCHAT_BACKEND_ENABLED:-off}
+          PROOFCHAT_BACKEND_ENABLED=${PROOFCHAT_BACKEND_ENABLED:-on}
 
           # ⚠ analytics.orilife.io KHÔNG phân giải được (DNS NXDOMAIN, đo 05/08) — để
           # trống thay vì nướng một host không tồn tại vào mọi bản build. Để trống CHỈ
@@ -2056,22 +2077,29 @@ workflows:
           # rơi về rỗng DÙ máy chủ sống (đo 05/08: api.aladin.work/api/v1/health = 200).
           WORK_API_URL=${WORK_API_URL:-https://api.aladin.work/api/v1}
 
-          # ProofChat. Cờ mặc định `off` = MỌI bản phát hành chạy dữ liệu giả, dù máy
-          # chủ sống. Bật là quyết định của người phát hành, không phải hệ quả phụ của
-          # việc máy chủ hồi sinh.
+          # ProofChat.
           #
-          # ĐÍNH CHÍNH 2026-08-18: lý do cũ ghi ở đây ("token production còn nằm trần
-          # trong AsyncStorage") ĐÃ HẾT HIỆU LỰC — commit 48efb57 chuyển token phiên
-          # sang Keychain/Keystore qua `taad.secureStore` (`proofchat-api.ts`).
-          # Còn lại một chặn THẬT, đo 2026-08-18 và nằm ở phía ProofChat chứ không
-          # phải ở app: `GET https://api.proofchat.me/api/v1/users/search` → 404
-          # ("Cannot GET"), tức cửa TÌM NGƯỜI để mở hội thoại vẫn đóng
-          # (`proofchat-api.ts:465` đã ghi: khối `@Get('search')` bị bình luận ở BE).
-          # Bật cờ lúc này chỉ đổi "chat giả" thành "chat thật nhưng không tìm được ai".
+          # ĐO LẠI 2026-09-14 — cả hai lý do từng giữ cờ này ở `off` nay đều hết hiệu
+          # lực, và không có gì báo lúc chúng hết:
+          #   · `GET https://api.proofchat.me/api/v1/health` → 200
+          #   · `GET .../users/search` → **401 Unauthorized** (trước là 404
+          #     "Cannot GET"). Mã đổi từ 404 sang 401 nghĩa là cửa TÌM NGƯỜI đã mở
+          #     thật, chỉ còn đòi phiên đăng nhập — đúng thứ app vẫn gửi.
+          # (Lý do cũ hơn nữa, "token production nằm trần trong AsyncStorage", đã hết
+          # từ commit 48efb57: token phiên chuyển sang Keychain/Keystore.)
+          #
+          # Nên mặc định nay là `on`, và đó KHÔNG phải "bật chat vô điều kiện": cổng
+          # thật vẫn là phép thăm dò lúc chạy (`isCapabilityLive('proofchat')`,
+          # `config/runtimeGate.ts`) — máy chủ chết thì app tự tắt module trong vài
+          # giây. Cái vừa gỡ là lớp chặn CỨNG nướng vào bản dựng, thứ không phép đo
+          # nào lật lại được: bản dựng mang cờ `off` vẫn mời người dùng "chờ kết nối
+          # lại" cho một kết nối không bao giờ được thử.
+          # Muốn tắt cho một bản cụ thể thì đặt `PROOFCHAT_BACKEND_ENABLED=off` ở nhóm
+          # biến của bản đó — tắt vẫn là một lựa chọn, chỉ thôi là mặc định im lặng.
           PROOFCHAT_API_URL=${PROOFCHAT_API_URL:-https://api.proofchat.me/api/v1}
           PROOFCHAT_WS_URL=${PROOFCHAT_WS_URL:-https://api.proofchat.me}
           PROOFCHAT_WS_PATH=${PROOFCHAT_WS_PATH:-/socket.io}
-          PROOFCHAT_BACKEND_ENABLED=${PROOFCHAT_BACKEND_ENABLED:-off}
+          PROOFCHAT_BACKEND_ENABLED=${PROOFCHAT_BACKEND_ENABLED:-on}
 
           # ⚠ analytics.orilife.io KHÔNG phân giải được (DNS NXDOMAIN, đo 05/08) — để
           # trống thay vì nướng một host không tồn tại vào mọi bản build. Để trống CHỈ

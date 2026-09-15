@@ -70,7 +70,15 @@ function regionCode(): string {
  *   - 'fruit_identification'→ [CẦN XÁC NHẬN CONTRACT] không có POST /fruits
  *   - 'activity'/'activity_log' → [CẦN XÁC NHẬN CONTRACT] chưa có endpoint
  */
-export function classifySyncItem(envelope: SyncEnvelope): DispatchClass {
+export function classifySyncItem(
+  envelope: SyncEnvelope,
+  /**
+   * `transaction_id` của mục hàng đợi. Dùng làm khoá khử-trùng gửi lên máy chủ ở
+   * những cửa GHI không có khoá tự nhiên. Xem `client_event_id` ở nhánh
+   * `activity`. Để tuỳ chọn vì bài kiểm gọi hàm này trực tiếp không có hàng đợi.
+   */
+  transactionId?: string,
+): DispatchClass {
   const data = envelope?.data ?? {};
 
   switch (envelope.type) {
@@ -191,14 +199,37 @@ export function classifySyncItem(envelope: SyncEnvelope): DispatchClass {
           reason: 'activity thiếu farmId — sự việc đồng áng ghi ở dòng thời gian VƯỜN',
         };
       }
+      // ── Khoá khử-trùng ───────────────────────────────────────────────────────
+      // `POST /{entity}/{id}/event` KHÔNG có khoá tự nhiên: gọi hai lần cùng thân
+      // tạo HAI sự kiện. Mà hàng đợi CỐ Ý nhặt lại cả mục kẹt `'sending'` từ phiên
+      // trước (`syncService.processSyncQueue`) — tức đường gửi-lại-một-mục-đã-tới-
+      // máy-chủ là đường có thật, không phải giả định: phản hồi rớt giữa đường là
+      // đủ. Hậu quả ngoài đồng là hai dòng "phun thuốc" cho một lần phun.
+      //
+      // Dùng THẲNG `transaction_id` làm khoá: app sinh nó một lần lúc ghi vào sổ
+      // (`syncService.addSyncItem`), nó KHÔNG đổi qua mọi lần thử lại, và nó duy
+      // nhất theo mục. Băm nó lại chỉ thêm một hàm phải nuôi mà không đổi tính chất
+      // nào — khác `videoUploadQueue.computeClientEventId`, nơi phải BĂM vì khoá
+      // được suy từ thuộc tính của clip chứ không có sẵn một id ổn định.
+      //
+      // Máy chủ dedup hay không là việc của máy chủ (chưa đo được ở đây, đừng
+      // khẳng định). Phía app chỉ bảo đảm đúng một điều: id gửi lên KHÔNG đổi.
+      // `farm_update`/`tree_identification` không cần khoá này — chúng đã mang
+      // `farm_id`/`id` do app chọn, tức có khoá tự nhiên để máy chủ nhận ra bản cũ.
+      const clientEventId = transactionId;
       return {
         kind: 'api',
         run: async () => {
           const res = await addTimelineEvent(ORILIFE_BASE, entityType, entityId, {
             kind: ACTIVITY_TO_TIMELINE_KIND[act.type] ?? 'observe',
             ts: act.timestamp,
+            client_event_id: clientEventId,
             payload: {
               activity_type: act.type,
+              // Lặp lại trong `payload` CÓ CHỦ Ý: `payload` là phần máy chủ chắc
+              // chắn lưu lại, nên kể cả khi cửa này chưa dedup thì về sau vẫn soi
+              // ngược ra được hai bản ghi nào sinh từ một lần ghi sổ.
+              client_event_id: clientEventId,
               // Luôn kèm, kể cả khi sự kiện đã nằm trên dòng của cây — màn vườn
               // và máy chủ cần biết cây này thuộc vườn nào mà không phải tra thêm.
               farm_id: farmId ? String(farmId) : undefined,
@@ -245,20 +276,32 @@ export function classifySyncItem(envelope: SyncEnvelope): DispatchClass {
  *       nhất, và chính lúc câu hứa với người dùng vừa được in ra.
  *
  * Nay tách theo CÁCH GỠ, vì mỗi hạng gỡ bằng một việc khác nhau:
- *   · `retryable` — tự khỏi khi mạng/máy chủ khá lên. Chờ rồi thử lại.
+ *   · `offline`   — KHÔNG có phản hồi HTTP nào, tức máy không nối được tới máy chủ.
+ *     Gỡ bằng việc CÓ SÓNG TRỞ LẠI, một việc nằm ngoài tầm cả app lẫn máy chủ.
+ *   · `retryable` — máy chủ CÓ trả lời, nhưng trả lời "lát nữa" (408/429/5xx). Chờ
+ *     rồi thử lại.
  *   · `auth`      — phiên hết hạn. Gỡ bằng KÝ LẠI (`ensureOrilifeToken` force).
  *   · `blocked`   — điều kiện phía máy chủ chưa thoả (thực thể chưa đăng ký; máy
  *     chủ chưa bật dòng thời gian). Ký lại KHÔNG gỡ được, thử dồn cũng vô ích —
  *     nhưng nó có thể thoả về sau, nên mục phải nằm chờ chứ không được chết.
  *   · `permanent` — payload sai. Hạng DUY NHẤT được phép đánh dấu chết.
  */
-export type SyncFailureClass = 'retryable' | 'auth' | 'blocked' | 'permanent';
+export type SyncFailureClass = 'offline' | 'retryable' | 'auth' | 'blocked' | 'permanent';
 
 export function classifySyncFailure(err: any): SyncFailureClass {
   const status: number | undefined = err?.response?.status;
   // Không có `response`, hoặc có mà `status` = 0: cả hai đều nghĩa là KHÔNG nhận
-  // được phản hồi HTTP nào. Đó là lỗi mạng, không phải một mã lỗi lạ.
-  if (status == null || status === 0) return 'retryable';
+  // được phản hồi HTTP nào. Đó là MẤT MẠNG, không phải một mã lỗi lạ.
+  //
+  // ⛔ Vì sao nó phải là hạng RIÊNG, không gộp vào `retryable`:
+  //   `retryable` là hạng đếm lượt (`MAX_RETRY_COUNT`). Gộp mất mạng vào đó thì
+  //   hẹn giờ 30 giây tự tiêu hết 5 lượt trong vài phút đầu mất sóng, rồi mục
+  //   chuyển `'error'` — mà vòng quét không nhặt `'error'`, nên nó chết vĩnh viễn.
+  //   Nông dân đi sâu vào vườn ba phút là mất mục nhật ký vừa ghi, và KHÔNG có
+  //   hộp thoại nào hiện lên. Đối chứng trong cùng thư mục:
+  //   `videoUploadQueue.flushVideoUploadQueue` gặp offline thì bỏ qua và KHÔNG
+  //   tăng `attempts`. Hai hàng đợi phải trả lời câu hỏi này giống nhau.
+  if (status == null || status === 0) return 'offline';
   if (status === 401) return 'auth';
   if (status === 403 || status === 404) return 'blocked';
   if (status === 408 || status === 429) return 'retryable';
@@ -272,5 +315,8 @@ export function classifySyncFailure(err: any): SyncFailureClass {
  * ở đó chính là cách 401 bị xếp chung rọ với "payload sai".
  */
 export function isRetryableError(err: any): boolean {
-  return classifySyncFailure(err) === 'retryable';
+  const cls = classifySyncFailure(err);
+  // Mất mạng vẫn là "thử lại được" theo câu hỏi hai đáp án — nó chỉ cần một hạng
+  // riêng ở chỗ QUYẾT SỐ PHẬN của mục (không đếm lượt), không phải ở đây.
+  return cls === 'retryable' || cls === 'offline';
 }

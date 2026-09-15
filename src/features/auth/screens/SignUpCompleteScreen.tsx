@@ -35,6 +35,7 @@ import { useDispatch } from 'react-redux';
 import { AUTH_BLUE } from '../theme';
 import StepIndicator from '../components/StepIndicator';
 import { loginUser } from '../../../store/userSlice';
+import { showError } from '../../../utils/alert';
 import { useBottomActionPadding } from '../../../hooks/useBottomActionPadding';
 import { useTk } from '../../../i18n/keys';
 import {
@@ -80,6 +81,9 @@ const SignUpCompleteScreen: React.FC = () => {
   const dispatch = useDispatch();
   const tk = useTk();
   const recoveryLinked: boolean = route.params?.recoveryLinked ?? false;
+  // Tên đăng nhập do `SignUpBiometricScreen` truyền sang. Đây là mảnh thứ hai của
+  // bộ khôi phục — xem khối chú thích ở chỗ hiện nó trong thanh hành động.
+  const username: string = route.params?.username ?? '';
 
   const [statuses, setStatuses] = useState<StepStatus[]>(
     STEPS.map(() => 'pending'),
@@ -131,10 +135,26 @@ const SignUpCompleteScreen: React.FC = () => {
     ]).start();
   }, [allDone]);
 
-  const enterApp = () => {
+  const enterApp = async () => {
     const user = route.params?.user;
     if (user) {
-      dispatch(loginUser(user as any) as any);
+      try {
+        // Lượt này là lượt THỨ HAI — `SignUpBiometricScreen` đã dispatch trước khi điều
+        // hướng sang đây. Nhưng nó vẫn phải `.unwrap()`: bản trước không `await` và
+        // cũng không đọc kết quả, nên một lần mở cơ sở dữ liệu hỏng đi qua đây im lặng
+        // rồi `reset` vào `Main` với `currentUser: null` — app rỗng, ngay sau ba màn
+        // báo "xong". Lý do đầy đủ ở `store/userSlice.ts`.
+        await (dispatch(loginUser(user as any) as any) as any).unwrap();
+      } catch (e: any) {
+        // KHÔNG vào `Main`. Vào được mà không có phiên thì người dùng đứng trong một app
+        // trắng, và đường dễ nhất trước mặt họ là đăng ký lại từ đầu.
+        showError(
+          'Chưa mở được tài khoản trên máy này',
+          (e?.message ? e.message + ' ' : '')
+            + 'Danh tính đã tạo xong và vẫn còn trên máy — chỉ bước mở dữ liệu cục bộ là chưa chạy. Hãy đóng app rồi mở lại và đăng nhập; đừng đăng ký lại.',
+        );
+        return;
+      }
     }
     navigation.reset({ index: 0, routes: [{ name: 'Main' as never }] });
   };
@@ -164,7 +184,7 @@ const SignUpCompleteScreen: React.FC = () => {
     // Ghi mốc rồi vào app. `void` có chủ ý: người dùng không phải chờ một lượt
     // ghi đĩa để bấm được nút, và lần ghi hỏng KHÔNG được chặn đường vào app.
     void markSeedBackupDeferred();
-    enterApp();
+    void enterApp();
   };
 
   const checkRotateDeg = checkRotate.interpolate({
@@ -271,6 +291,31 @@ const SignUpCompleteScreen: React.FC = () => {
           <>
             <Text style={styles.backupTitle}>{tk('identity.backup.title')}</Text>
             <Text style={styles.backupBody}>{tk('identity.backup.body')}</Text>
+            {/* ── TÊN ĐĂNG NHẬP, ĐẶT ĐÚNG CHỖ NGƯỜI DÙNG ĐANG CẦM BÚT ─────────
+                Thêm 15/09/2026. 24 từ một mình KHÔNG mở lại được tài khoản trên
+                máy mới: `attachThisDevice` cần biết 24 từ thuộc DID nào, và ở ca
+                "máy mới" thì nguồn duy nhất còn sống là hỏi máy chủ bằng TÊN ĐĂNG
+                NHẬP (ba nguồn kia — DID gõ tay, DID trong AsyncStorage, sổ
+                `@phoenixkey/users` — đều rỗng, còn cửa tra theo khoá trong chip
+                đòi `isKeypairEnrolled()` mà máy mới trả `false`).
+                Trước bản này tên đăng nhập chỉ hiện ở lời chào của màn ĐĂNG NHẬP,
+                tức chỉ đọc được trên chính cái máy vừa mất. Người mất máy không có
+                đường nào biết tên mình ⇒ có đủ 24 từ vẫn là ngõ cụt.
+                Đặt ở ĐÂY vì đây là lúc duy nhất người dùng đang được bảo đi ghi
+                một thứ ra giấy. `selectable` để chép được ngay trên máy. */}
+            {!!username && (
+              <View style={styles.usernameBox} testID="signup-username-note">
+                <Icon name="at" size={16} color={AUTH_BLUE.primary} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.usernameLabel} selectable>
+                    {tk('identity.backup.usernameLabel', { name: username })}
+                  </Text>
+                  <Text style={styles.usernameWhy}>
+                    {tk('identity.backup.usernameWhy')}
+                  </Text>
+                </View>
+              </View>
+            )}
             <TouchableOpacity
               testID="signup-backup-now"
               activeOpacity={0.85}
@@ -516,6 +561,17 @@ const styles = StyleSheet.create({
     fontSize: 12, color: AUTH_BLUE.textSub,
     lineHeight: 18, marginBottom: 14,
   },
+  usernameBox: {
+    flexDirection: 'row', gap: 10, alignItems: 'flex-start',
+    backgroundColor: AUTH_BLUE.white,
+    borderRadius: 12, padding: 12, marginBottom: 14,
+    borderWidth: 1, borderColor: AUTH_BLUE.pale,
+  },
+  usernameLabel: {
+    fontSize: 14, fontWeight: '800',
+    color: AUTH_BLUE.text, marginBottom: 4,
+  },
+  usernameWhy: { fontSize: 11, color: AUTH_BLUE.textSub, lineHeight: 16 },
   // Nút thứ hai KHÔNG bị làm mờ đi: "để sau" là một lựa chọn hợp lệ, không phải
   // một lựa chọn kém. Làm nó nhạt hơn là ép bằng thị giác thứ mà màn này cố ý
   // không ép bằng luật.

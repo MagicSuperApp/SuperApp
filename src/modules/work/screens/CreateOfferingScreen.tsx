@@ -28,7 +28,7 @@ const MODES: Array<{ key: 'online' | 'offline' | 'ca-hai'; label: string }> = [
 const CreateOfferingScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const { templates, loading, usingMock, errorKind, reload } = useTemplates();
-  const { create, submitting, errorCode } = useOfferingMutations();
+  const { create, submitting } = useOfferingMutations();
 
   const [templateKey, setTemplateKey] = React.useState<string>('');
   const [name, setName] = React.useState('');
@@ -58,19 +58,21 @@ const CreateOfferingScreen: React.FC = () => {
       desc: desc.trim() || undefined,
       fields: Object.keys(fields).length ? fields : undefined,
     };
+    // Mã lỗi lấy từ CHÍNH lượt gọi này, không đọc `errorCode` trong state sau
+    // `await` (đó là bao đóng cũ) — xem `hooks/mutationOutcome.ts`.
     const res = await create(body);
-    if (res) {
+    if (res.ok) {
       showSuccess('Đã chào dịch vụ', 'Dịch vụ của bạn đã lên chợ.', {
           confirmText: 'OK',
           hideCancel: true,
           onConfirm: () => navigation.goBack(),
       });
-    } else if (errorCode === 'BACKEND_DISABLED') {
+    } else if (res.code === 'BACKEND_DISABLED') {
       showError('Chưa kết nối máy chủ', 'Cần máy chủ AladinWork để chào dịch vụ. Thử lại khi dịch vụ sống.');
     } else {
-      showError('Không tạo được', errorCode === 'BAD_INPUT'
+      showError('Không tạo được', res.code === 'BAD_INPUT'
         ? 'Dữ liệu chưa hợp lệ — kiểm tra lại giá / các trường theo mẫu.'
-        : `Lỗi máy chủ${errorCode ? ` (${errorCode})` : ''}. Thử lại sau.`);
+        : `Lỗi máy chủ${res.code ? ` (${res.code})` : ''}. Thử lại sau.`);
     }
   };
 

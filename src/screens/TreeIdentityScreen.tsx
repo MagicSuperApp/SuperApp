@@ -714,7 +714,8 @@ const TreeIdentityScreen: React.FC = () => {
       // thẻ PhoenixKey cũng hết nghĩa — mở cả hai, không thì người vừa lập lại
       // danh tính vào được vườn mà không dùng được ví trong một phút.
       clearSessionMintCooldown();
-      await dispatch(loginUser({ ...user, name: prevName } as any) as any);
+      // `.unwrap()` để lần đăng nhập trượt rơi vào `catch` dưới — xem `store/userSlice.ts`.
+      await (dispatch(loginUser({ ...user, name: prevName } as any) as any) as any).unwrap();
       // Đăng-ký xong → thử nhận-diện lại luôn (ensureOrilifeToken sẽ ký bằng DID mới).
       await runIdentify(imagePaths);
     } catch (e: any) {

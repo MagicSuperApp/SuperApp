@@ -41,26 +41,30 @@ import StateView from '../components/state/StateView';
 import { showInfo, showWarning } from '../utils/alert';
 import { checkDeviceKeyRisk, isRiskSnoozed, snoozeRisk } from '../services/deviceKeyRisk';
 import { useNavigation } from '@react-navigation/native';
-import { getVersion, getBuildNumber } from 'react-native-device-info';
 // Debug host = backend field-reid THẬT app đang dùng (ORILIFE_BASE), không phải
 // aladin-api (backend Lợi deprecated) — để field soi đúng server (Lỗi field #5).
 import { ORILIFE_BASE } from '../services/orilifeBase';
+// Hai dữ kiện bản dựng lấy từ `fieldReportHead` — KHÔNG dựng lại ở đây. Màn này và màn
+// xem trước báo cáo phải in ra cùng một phần đầu; hai bản chép tay là một bản sao sẽ chết
+// im lặng (thêm một dòng ở một chỗ thì báo cáo gửi từ chỗ kia thiếu đúng dòng đó).
+import { appVersionBase, commitShort } from '../services/fieldReportHead';
 import { fmtLamp, fmtCarp, fmtLampWhole, lampWholeToOildrop } from '../utils/token';
 import { getVaultStatus, WAKEME_CLAIM_READY } from '../services/wakemeService';
 import type { VaultStatusResponse } from '../services/phoenixKey-api';
+import { vaultRowText, vaultStateFromError, type VaultRowState } from './wakemeVaultRow';
 import taad from '../sdk/taadEnclave';
 import { getStoredMasterKek } from '../services/masterKekStore';
 import { ownerPublicKey } from '../sdk/phoenixKey';
 import LanguagePickerModal from '../components/LanguagePickerModal';
 import { LANGUAGES, useLanguage } from '../i18n';
-import { BUILD_COMMIT, BUILD_BRANCH, BUILD_ID } from '@env';
+import { BUILD_BRANCH, BUILD_ID } from '@env';
 
 // 0 = preprod (testnet), khớp WALLET_NETWORK bên register + PhoenixWalletScreen.
 import { CARDANO_NETWORK as WALLET_NETWORK } from '../config/cardanoNetwork';
 
 // Version THẬT đọc từ bundle (CFBundleShortVersionString / versionName + build number).
 // Thay chuỗi hard-code "Aladin v1.0.0" (Lỗi field #4) — để field biết đúng build đang chạy.
-const APP_VERSION_BASE = `${DEFAULT_INSTANCE.displayName} v${getVersion()} (${getBuildNumber()})`;
+const APP_VERSION_BASE = appVersionBase();
 
 // Mã commit đã dựng ra bản này. VÌ SAO cần: số build ("86") do App Store Connect cấp
 // và tăng dần theo mỗi lần nộp, KHÔNG chỉ về commit nào; hơn nữa `main` và `develop`
@@ -68,7 +72,7 @@ const APP_VERSION_BASE = `${DEFAULT_INSTANCE.displayName} v${getVersion()} (${ge
 // quả: người thử báo lỗi kèm "2.0 (86)" mà không ai truy được bản đó gồm những vá nào.
 // CI ghi BUILD_COMMIT vào bundle (codemagic.yaml, .github/actions/rn-env). Build tay ở
 // máy lập trình viên thì biến trống → giấu hẳn, KHÔNG in "()" rỗng hay chữ "unknown".
-const COMMIT_SHORT = (BUILD_COMMIT ?? '').trim().slice(0, 7);
+const COMMIT_SHORT = commitShort();
 const APP_VERSION_LABEL = COMMIT_SHORT
     ? `${APP_VERSION_BASE} · ${COMMIT_SHORT}`
     : APP_VERSION_BASE;
@@ -537,7 +541,7 @@ const AccountScreen = () => {
     // được ngay, số trong vault thì chưa.
     const [lampOpen, setLampOpen] = useState(false);
     const [vault, setVault] = useState<VaultStatusResponse | null>(null);
-    const [vaultState, setVaultState] = useState<'idle' | 'loading' | 'ok' | 'closed'>('idle');
+    const [vaultState, setVaultState] = useState<VaultRowState>('idle');
 
     // Chỉ hỏi máy chủ khi người dùng MỞ popup — không nạp trước ở màn Tài khoản.
     // Cửa `/wakeme/vault/{did}` hiện ném 501 vô điều kiện trên preprod
@@ -549,7 +553,10 @@ const AccountScreen = () => {
         setVaultState('loading');
         getVaultStatus(did)
             .then((v) => { setVault(v); setVaultState('ok'); })
-            .catch(() => { setVault(null); setVaultState('closed'); });
+            // Lượt hỏi trượt KHÔNG phải bằng chứng người này không có két — xem
+            // `wakemeVaultRow.ts`. Hôm nay cửa ném 501 cho tất cả mọi người, nên
+            // nhánh này là nhánh duy nhất chạy thật.
+            .catch((e) => { setVault(null); setVaultState(vaultStateFromError(e)); });
     }, [did, vaultState]);
 
     // KHÔNG in 0 khi chưa biết. "0 LAMP" và "chưa hỏi được máy chủ" là hai việc
@@ -630,6 +637,20 @@ const AccountScreen = () => {
         }, 1500);
         if (versionTapCount.current >= 5) {
             versionTapCount.current = 0;
+
+            // ── ĐÍNH CHÍNH: nút gửi ĐÃ RỜI khỏi hộp thoại này ───────────────────────
+            // Bản trước gắn "Gửi báo cáo" vào đây và chú thích tại chỗ khẳng định người
+            // dùng "THẤY toàn văn trước khi gửi". Khẳng định đó SAI: hộp thoại hiện
+            // `APP_DEBUG_INFO` (chỉ phần đầu), còn đoạn báo cáo đi thẳng vào
+            // `Share.share`. Và `components/AlertPopup.tsx` render thân bằng một `<Text>`
+            // trần, không vùng cuộn — nên 40 dòng không thể nằm ở đây kể cả khi muốn.
+            //
+            // Báo cáo chở những câu app đã hiện, trong đó có câu nội suy tên người bảo hộ,
+            // `@username`, tên cây, tên cá thể; còn `telemetryGate.FORBIDDEN_SHAPES`
+            // không có mẫu nào chặn TÊN NGƯỜI. Mở khay chia sẻ là gửi ra ngoài — bất khả
+            // hồi. Nên việc gửi chuyển sang màn `DiagnosticReport`, nơi đọc được toàn văn.
+            //
+            // 5-chạm GIỮ NGUYÊN vai cũ của nó: xem nhanh dữ kiện bản dựng.
             showInfo(DEFAULT_INSTANCE.displayName, APP_DEBUG_INFO);
         }
     };
@@ -797,7 +818,19 @@ const AccountScreen = () => {
                             value={fmtLamp(chainWallet?.lampBalance)}
                             unit="LAMP"
                             color={COLORS.accent}
-                            desc="Sinh MAGIC mỗi 5 ngày"
+                            // ⛔ KHÔNG viết lại "Sinh MAGIC mỗi 5 ngày" ở đây.
+                            //
+                            // Câu đó đứng ở ô này tới 15/09/2026, dịch sẵn ra bốn thứ
+                            // tiếng, và KHÔNG có một dòng mã nào đứng sau: quét cả
+                            // `src/` lẫn `rust/` cho mọi tên gọi của việc sinh MAGIC
+                            // (`schedulegen`, `generateMagic`, `mintMagic`) đều ra rỗng.
+                            // Người dùng đọc nó rồi chờ một khoản không bao giờ tới.
+                            //
+                            // Câu dưới đây nói một tính chất ĐANG đúng của LAMP (tổng
+                            // cung cố định, không đốt) chứ không hứa một hành vi. Ngày
+                            // nào cửa sinh MAGIC có mã thật thì đổi lại — cùng lúc với
+                            // mã, không trước.
+                            desc="Token nền, tổng cung cố định"
                             onPress={openLamp}
                         />
                         {/* CARP — token hệ sinh thái thứ 3. TODO brand: icon/màu tạm; số dư chờ API Phoenix. */}
@@ -859,11 +892,11 @@ const AccountScreen = () => {
                                         <View style={{ flex: 1 }}>
                                             <Text style={styles.lampRowName}>Wakeme</Text>
                                             <Text style={styles.lampRowSub}>
-                                                {vaultState === 'loading' ? 'Đang hỏi máy chủ…' : 'Chưa nhận'}
+                                                {vaultRowText(vaultState).sub}
                                             </Text>
                                         </View>
                                         <Text style={styles.lampRowVal}>
-                                            {vaultState === 'loading' ? '…' : '—'}
+                                            {vaultRowText(vaultState).value}
                                         </Text>
                                     </View>
                                 ) : (<>
@@ -1075,7 +1108,20 @@ const AccountScreen = () => {
                             }
                         />
                         <MenuItem icon="school-outline" label="Chạy luồng hướng dẫn" sublabel="Xem lại hướng dẫn thao tác cơ bản" onPress={runTutorial} />
-                        <MenuItem icon="wifi-off" label="Chế độ offline" sublabel="Lưu cục bộ khi mất mạng" last />
+                        <MenuItem icon="wifi-off" label="Chế độ offline" sublabel="Lưu cục bộ khi mất mạng" />
+                        {/* LỐI VÀO hàng đợi đồng bộ. Đặt ngay dưới "Chế độ offline" có
+                            chủ ý: ô trên nói app LƯU CỤC BỘ khi mất mạng, và câu hỏi kế
+                            tiếp của người đọc đúng là *"vậy cái đã lưu giờ ở đâu, gửi
+                            chưa"*. Trước ô này câu đó không có chỗ trả lời — mục vẫn
+                            sống trong `sync_queue` nhưng không màn nào bày ra, nên một
+                            mục đang chờ và một mục đã mất đọc y như nhau. */}
+                        <MenuItem
+                            icon="cloud-upload-outline"
+                            label="Hàng đợi gửi lên máy chủ"
+                            sublabel="Xem mục chưa gửi được và gửi lại bằng tay"
+                            onPress={() => navigation.navigate('SyncQueue')}
+                            last
+                        />
                     </Section>
                 </Animated.View>
 
@@ -1148,26 +1194,51 @@ const AccountScreen = () => {
                 {/* ── Bảo mật ── */}
                 <Animated.View style={{ opacity: fadeAnim }}>
                     <Section title="BẢO MẬT & KHÔI PHỤC">
-                        {/* Câu này nói ĐÚNG VIỆC, không doạ và không hứa: nêu tình
-                            trạng, nêu hệ quả cụ thể (mất máy), nêu một việc làm được
-                            ngay. Không dùng chữ "lỗi" — người dùng không làm gì sai. */}
+                        {/* ⛔ ĐÍNH CHÍNH 15/09/2026 — ô này TỪNG DẪN NGƯỜI DÙNG TỚI CHỖ MẤT KHOÁ.
+                            Câu cũ: "Chọn một người thân tin cậy là xong." Nó mời người bảo hộ
+                            như MỘT VIỆC LÀM XONG là hết lo, và nút chính đưa thẳng sang màn
+                            `Guardian`. Nhưng đường khôi phục bằng người bảo hộ CHƯA chạy tới
+                            cuối — chính `screens/GuardianScreen.tsx` tự khai câu đó ở đầu màn,
+                            và `services/guardianService.ts` chỉ có `addGuardian`/gỡ tên, không
+                            có một hàm khôi phục nào (bài `guardianKhongHuaKhoiPhuc.test.ts` vế 1
+                            đo đúng điều này).
+                            Hệ quả của câu cũ: người dùng ghi danh người bảo hộ, tin là đã an
+                            toàn, KHÔNG bao giờ lưu 24 từ — rồi mất máy là mất cả danh tính lẫn
+                            ví. Họ chỉ biết mình chọn sai vào đúng ngày không sửa được nữa.
+                            Nay ô này nói đúng trạng thái đo được: 24 từ là đường khôi phục DUY
+                            NHẤT đang chạy được, và nút CHÍNH dẫn tới đó. Người bảo hộ lùi xuống
+                            lối phụ, kèm câu rào — ghi danh trước vẫn có ích, nhưng nó chưa thay
+                            được 24 từ.
+                            ⛔ ĐỪNG nâng người bảo hộ lại làm nút chính chừng nào vế 1 của bài
+                            kiểm trên còn đỏ khi có hàm khôi phục thật. */}
                         {showGuardianNudge && (
                             <View style={styles.nudgeBox}>
-                                <Text style={styles.nudgeTitle}>Chưa có ai khôi phục hộ bạn</Text>
+                                <Text style={styles.nudgeTitle}>Chưa có đường lấy lại danh tính</Text>
                                 <Text style={styles.nudgeBody}>
-                                    Máy này đã bật bảo mật 2 lớp nhưng chưa chọn người khôi phục.
-                                    Nếu mất máy, hiện chưa có cách nào lấy lại danh tính. Chọn một
-                                    người thân tin cậy là xong.
+                                    Nếu mất máy này, chỉ cụm 24 từ lấy lại được danh tính và ví của
+                                    bạn — hôm nay đó là đường khôi phục duy nhất chạy được. Ghi danh
+                                    người bảo hộ vẫn nên làm, nhưng đường khôi phục bằng người bảo hộ
+                                    chưa chạy tới cuối nên nó chưa thay được cụm 24 từ.
                                 </Text>
                                 <View style={styles.nudgeRow}>
                                     <TouchableOpacity
+                                        testID="account-nudge-seed"
                                         style={styles.nudgePrimary}
                                         activeOpacity={0.85}
-                                        onPress={() => navigation.navigate('Guardian')}
+                                        onPress={() => navigation.navigate('SeedExport')}
                                     >
-                                        <Text style={styles.nudgePrimaryText}>Chọn người khôi phục</Text>
+                                        <Text style={styles.nudgePrimaryText}>Xem và cất giữ 24 từ</Text>
                                     </TouchableOpacity>
                                     <TouchableOpacity
+                                        testID="account-nudge-guardian"
+                                        style={styles.nudgeGhost}
+                                        activeOpacity={0.7}
+                                        onPress={() => navigation.navigate('Guardian')}
+                                    >
+                                        <Text style={styles.nudgeGhostText}>Ghi danh người bảo hộ</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        testID="account-nudge-later"
                                         style={styles.nudgeGhost}
                                         activeOpacity={0.7}
                                         onPress={() => { void snoozeRisk(); setShowGuardianNudge(false); }}
@@ -1229,6 +1300,24 @@ const AccountScreen = () => {
                             được cả khi mất mạng, vì Google Play đòi phần tiết lộ dữ liệu
                             phải mở được NGAY TRONG ứng dụng — mà người dùng ngoài vườn
                             thường không có mạng đủ khoẻ để tải một trang web. */}
+                        {/* Hàng ĐẦU của mục Hỗ trợ, và nó là hàng CÓ ĐÍCH THẬT.
+                            Trước bản này mục Hỗ trợ mở đầu bằng "Trung tâm hỗ trợ" —
+                            một hàng chưa có đích, nên `MenuItem` vẽ nó ở trạng thái tắt.
+                            Người đi tìm chỗ báo lỗi mở mục này ra và gặp đúng một hàng
+                            bấm không được, một hàng điều khoản, một hàng ghi số phiên bản:
+                            không hàng nào nói "báo lỗi ở đây".
+                            Đường gửi báo cáo trước đó chỉ nằm sau cử chỉ ẩn chạm 5 lần vào
+                            số phiên bản — tri thức truyền miệng, sống trong người đi dặn
+                            chứ không sống trong app, nên mất ngay khi đội đổi người.
+                            Dòng phụ nói RÕ gửi cái gì: bấm xong là ra khỏi máy, không thu
+                            về được. Và cố ý KHÔNG hứa "gửi cho đội hỗ trợ" — app không
+                            gửi cho ai, nó mở khay chia sẻ để người dùng tự chọn. */}
+                        <MenuItem
+                            icon="message-alert-outline"
+                            label="Gửi báo cáo lỗi"
+                            sublabel="Gồm các thông báo gần nhất, số phiên bản và máy chủ. Bạn xem trước khi gửi."
+                            onPress={() => navigation.navigate('DiagnosticReport')}
+                        />
                         <MenuItem icon="help-circle-outline" label="Trung tâm hỗ trợ" />
                         <MenuItem
                             icon="file-document-outline"

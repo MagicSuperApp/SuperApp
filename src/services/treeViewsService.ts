@@ -23,6 +23,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { APIError } from './treeReIDService';
+import { serverRejectionOf } from './serverRejection';
 
 const AUTH_TOKEN_KEY = 'auth_token';
 const REQUEST_TIMEOUT_MS = 45_000;
@@ -102,6 +103,12 @@ export async function fetchTreeViews(
     }
 
     const body = await resp.json().catch(() => ({} as any));
+    // `200 {"ok": false}` là một lời TỪ CHỐI, không phải "cây này chưa có ảnh".
+    // Bỏ qua nó thì màn hiện dải ảnh RỖNG y như cây mới đăng ký — và câu máy chủ
+    // vừa nói (vd "Tài khoản của bạn đang bị tạm khoá quyền xem vườn.") biến mất.
+    const rejection = serverRejectionOf(body, resp.status);
+    if (rejection) return { ok: false, error: rejection };
+
     const views: TreeView[] = Array.isArray(body?.views) ? body.views : [];
     return {
       ok: true,

@@ -530,13 +530,12 @@ export const CHECKFARM_INSTANCE: InstanceConfig = {
     },
   },
   tabs: [
-    // Ví là NEO trái từ 13/09/2026 (`resolveVisibleTabs.NEO_LEFT`). Nó đứng
-    // trước `chat` ở đây vì mảng này là TẬP ĐẦY ĐỦ theo thứ tự khai, còn thứ tự
-    // VẼ do resolver quyết — giữ hai thứ đó tách nhau là chủ ý của SG9 §2.
+    // Ví là NEO trái từ 13/09/2026 (`resolveVisibleTabs.NEO_LEFT`). Mảng này là
+    // TẬP ĐẦY ĐỦ theo thứ tự khai, còn thứ tự VẼ do resolver quyết — giữ hai thứ
+    // đó tách nhau là chủ ý của SG9 §2.
     { kind: 'host', route: 'PhoenixWallet' },
     { kind: 'module', moduleId: 'trace' },
     { kind: 'host', route: 'Home' },
-    { kind: 'module', moduleId: 'work' },
     { kind: 'module', moduleId: 'join' },
     { kind: 'host', route: 'Account' },
   ],
@@ -548,31 +547,40 @@ export const CHECKFARM_INSTANCE: InstanceConfig = {
   // một binary, chung bộ route, chung nhãn — nên thanh điều hướng là bề mặt mà
   // người xét duyệt so sánh TRƯỚC TIÊN, vì nó nằm trên mọi ảnh chụp màn hình.
   //
-  // Đo 2026-09-14 trước bản này: hai app ra thanh lệch đúng **1 ô trên 5** ở
-  // persona mặc định (ô duy nhất lệch là ô slot đầu: Việc làm vs Vườn), và lệch
-  // **0 ô** ở persona `shipper` — hai bảng `slotPriority.shipper` khi ấy là hai
-  // mảng giống nhau từng phần tử. Bài kiểm `slotPriorityWiring.test.ts` vẫn xanh,
-  // vì nó chỉ hỏi `not.toEqual` ở ĐÚNG persona mặc định: một phép đo trả lời
-  // "có khác ít nhất một chỗ" cho một câu đang hỏi "khác đủ chưa".
+  // Đo 2026-09-14: hai app ra thanh lệch đúng **1 ô trên 5** ở persona mặc định,
+  // và lệch **0 ô** ở persona `shipper` — hai bảng `slotPriority.shipper` khi ấy
+  // là hai mảng giống nhau từng phần tử. Bài kiểm `slotPriorityWiring.test.ts`
+  // vẫn xanh, vì nó chỉ hỏi `not.toEqual` ở ĐÚNG persona mặc định: một phép đo
+  // trả lời "có khác ít nhất một chỗ" cho một câu đang hỏi "khác đủ chưa".
   //
   // Nay: Vườn lên ô trái (CheckFarm là app nông — vườn là thứ mở đầu tiên), Ví
-  // xuống tranh slot. KHÔNG module nào bị bỏ: Chat/Việc làm không lên thanh vẫn
-  // nạp đủ route, vẫn tới được qua cổng xoè và deep-link.
+  // xuống tranh slot.
   anchorLeft: 'Farms',
-  // Bảng RIÊNG, không dùng hằng của nền nữa — dùng hằng nền là lý do bảng
-  // `shipper` hai app từng giống nhau từng phần tử.
+  // Bảng RIÊNG, không dùng hằng của nền — dùng hằng nền là lý do bảng `shipper`
+  // hai app từng giống nhau từng phần tử.
   slotPriority: {
     // Vườn đã ở ô trái ⟹ nó tự bị loại khỏi vòng tranh slot (`seen`).
     //
-    // `ChatHome` KHÔNG có trong hai bảng này, và đó không phải chuyện thẩm mỹ: kho
-    // có một cổng riêng đòi **mọi route trong `slotPriority` phải TỚI ĐƯỢC**
-    // (`src/config/` — bài "cấu hình điều hướng không trỏ vào module đã tắt"). Chat
-    // đã tắt ở `modules` bên dưới ⟹ để tên nó ở đây là khai một đường không tồn tại.
-    // Trông cậy vào `isAvailable` lọc hộ lúc chạy là đúng hành vi nhưng SAI lời khai:
-    // bảng ưu tiên là thứ người đọc cấu hình dùng để biết app này có gì.
-    default: ['PhoenixWallet', 'JoinHome', 'WorkHome'],
-    // Người giao hàng / thợ ở CheckFarm: Việc làm lên thanh, Ví giữ ô còn lại.
-    shipper: ['WorkHome', 'PhoenixWallet', 'JoinHome'],
+    // `ChatHome` và `WorkHome` đều KHÔNG có trong hai bảng này, và đó không phải
+    // chuyện thẩm mỹ: kho có một cổng riêng đòi **mọi route trong `slotPriority`
+    // phải TỚI ĐƯỢC** (`src/config/` — bài "cấu hình điều hướng không trỏ vào
+    // module đã tắt"). Hai module ấy đã tắt ở `modules` bên dưới ⟹ để tên chúng
+    // ở đây là khai một đường không tồn tại. Trông cậy vào `isAvailable` lọc hộ
+    // lúc chạy là đúng hành vi nhưng SAI lời khai: bảng ưu tiên là thứ người đọc
+    // cấu hình dùng để biết app này có gì.
+    //
+    // Hệ quả hình thức phải nói ra: hàng còn BỐN ô nên nút giữa rơi ở 37,5%
+    // chiều ngang thay vì 50%. Giữ nguyên đánh đổi đó — bỏ bớt một mục cho nút
+    // về đúng tâm là bỏ nó khỏi cả thanh tab LẪN cổng xoè, vì `resolveGateItems`
+    // dựng cung từ CHÍNH bảng này. Khi ấy module vẫn khai bật, màn vẫn đăng ký,
+    // mà không lối nào tới: đúng lớp hỏng "hàm có, đường không có" mà không cổng
+    // kiểu nào bắt và không bài hàm thuần nào đỏ. Chiều sai thì im lặng, chiều
+    // đúng thì chỉ hơi xấu.
+    default: ['PhoenixWallet', 'JoinHome'],
+    // Người giao hàng ở CheckFarm mở mục Tham gia trước, Ví giữ ô còn lại — đảo
+    // thứ tự so với persona mặc định để hai bảng không lại thành hai mảng giống
+    // nhau từng phần tử, đúng cái vừa đo được ở trên.
+    shipper: ['JoinHome', 'PhoenixWallet'],
   },
   // Bảng màu do chính nhà CheckFarm chốt và gửi sang (không phải bản bịa ở đây
   // rồi thành mặc định không ai dám đổi). Giá trị + lý do từng ràng buộc nằm ở
@@ -580,7 +588,7 @@ export const CHECKFARM_INSTANCE: InstanceConfig = {
   // ngưỡng tương phản AA cho chữ cỡ thường, nên nó chỉ đi vào chỗ là hình.
   themeConfig: CHECKFARM_THEME_CONFIG,
   adaptive: DEFAULT_ADAPTIVE_CONFIG,
-  // ── DANH SÁCH CHỌN, và `chat` KHÔNG có trong đó ────────────────────────────
+  // ── DANH SÁCH CHỌN, và `chat` lẫn `work` đều KHÔNG có trong đó ─────────────
   //
   // Đây là **danh sách chọn**, không phải danh sách trừ — khai những module app
   // này CÓ, chứ không khai những module nó bỏ. Hai cách viết ra cùng một tập hôm
@@ -588,28 +596,38 @@ export const CHECKFARM_INSTANCE: InstanceConfig = {
   // giữ nguyên hành vi (app không tự nhận thứ chưa ai xét), còn danh sách trừ tự
   // bật nó lên cho mọi app mà không ai gõ một chữ nào.
   //
-  // Vì sao `chat` bị tắt cho đợt nộp này — quyết định của chủ nhân 2026-09-14:
-  // Apple guideline 1.2 đòi ĐỦ BA cơ chế cho nội dung do người dùng tạo — chặn
-  // người, báo cáo nội dung, lọc nội dung. Đo trong kho này cùng ngày:
+  // Vì sao hai module này tắt cho đợt nộp — quyết định của chủ sở hữu, chốt
+  // 2026-09-12 và giữ nguyên tới 2026-09-14. Apple guideline 1.2 đòi ĐỦ BA cơ
+  // chế cho **nội dung do người dùng tạo**: chặn người, báo cáo nội dung, lọc
+  // nội dung. Cả `chat` (tin nhắn) lẫn `work` (tin tuyển việc, hồ sơ thợ) đều là
+  // nội dung do người dùng tạo — một sàn việc làm không kém một hộp thư ở điểm
+  // này, vì nó cũng cho người lạ đăng chữ và ảnh mà người khác đọc. Đo trong kho
+  // này cùng ngày:
   //
   //   grep -rln "blockUser|reportUser|moderation" src/   →  0 tệp
   //
   //   (đọc ở SỐ TỆP, không đọc ở số dòng: một tệp nhắc chữ "moderation" trong
   //   chú thích vẫn là 0 cơ chế)
   //
-  // Trong khi đó CheckFarm khai `modules: 'all'` và `ChatHome` đứng thứ hai ở mọi
-  // bảng `slotPriority` — tức chat là thứ người xét duyệt gặp ngay trên thanh, ở
-  // mọi ảnh chụp màn hình. Guideline 1.2 là cửa TỪ CHỐI thẳng, không nhắc nhở; và
-  // một lượt từ chối làm chậm CẢ HAI app cùng pháp nhân.
+  // Guideline 1.2 là cửa TỪ CHỐI thẳng, không nhắc nhở; và một lượt từ chối làm
+  // chậm CẢ HAI app cùng pháp nhân. Thứ tự dựng đã bàn: chặn → báo cáo → lọc.
   //
-  // Đây là quyết định CHO ĐỢT NỘP, không phải bỏ chat: mã module `chat` còn nguyên
-  // trong kho, Aladin vẫn bật. Bật lại ở đây là thêm đúng một phần tử vào mảng
-  // này và một mục vào `tabs`, sau khi ba cơ chế đã có và đo được.
+  // Đây là quyết định CHO ĐỢT NỘP, không phải bỏ hai module: mã của chúng còn
+  // nguyên trong kho và Aladin vẫn bật cả hai. Bật lại ở đây là thêm phần tử vào
+  // mảng này, thêm mục vào `tabs` và thêm route vào `slotPriority`, sau khi ba
+  // cơ chế đã có và đo được.
+  //
+  // Hai điều PHẢI biết kèm, vì cả hai đều dễ đọc nhầm theo chiều có lợi:
+  //   · Tắt module KHÔNG làm gói nhẹ đi. `registry.ts` vẫn nhập tĩnh mọi màn;
+  //     cái tắt là ĐƯỜNG TỚI (tab, mục cổng xoè, đăng ký route), không phải mã.
+  //   · Ví KHÔNG tắt theo. Bốn màn ví khai thẳng ở tầng host, không mang
+  //     `moduleId` nào, nên phép lọc `ENABLED_MODULES` không chạm tới chúng. Ô
+  //     "Financial features" của Google vẫn phải khai CÓ.
   //
   // Và giữ nguyên điều đã ghi từ trước: việc chọn module nào là quyền của nhà
   // CheckFarm ở kho của họ (chủ sở hữu bàn giao 2026-09-10). Dòng này là trạng
   // thái hôm nay của bản dựng đang thử, không phải một phán quyết vĩnh viễn.
-  modules: ['trace', 'work', 'join'],
+  modules: ['trace', 'join'],
 };
 
 // ---------------------------------------------------------------------------

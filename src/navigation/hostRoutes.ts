@@ -56,10 +56,14 @@ export const HOST_ROUTES = [
   'BiometricSettings',
   'DeleteAccount',
   'Terms',
+  // Màn xem trước báo cáo thử thực địa. Route của NỀN, không của module `trace`: đội thực
+  // địa gặp lỗi ở bất cứ đâu trong app cũng phải gửi được, kể cả ở luồng danh tính.
+  'DiagnosticReport',
   'SignRequest',
   'Guardian',
   'ActivityLog',
   'MyDevices',
+  'SyncQueue',
   'DevicePair',
   'Main',
   'Notifications',

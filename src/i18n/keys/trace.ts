@@ -154,6 +154,7 @@ export const TRACE_STRINGS = {
     zh: '需要网络。下拉可重试。',
     ja: '通信が必要です。下に引いて再試行してください。',
   },
+  'trace.news.retry': { vi: 'Thử lại', en: 'Try again', zh: '重试', ja: '再試行' },
   'trace.news.end': { vi: 'Hết tin mới rồi', en: 'That is all for now', zh: '暂时就这些', ja: 'ここまでです' },
 
   // ── Màn DANH SÁCH TRẠI ────────────────────────────────────────────────────
@@ -333,7 +334,20 @@ export const TRACE_STRINGS = {
   'trace.activity.fertilizing': { vi: 'Bón phân', en: 'Fertilising', zh: '施肥', ja: '施肥' },
   'trace.activity.fertilizingDesc': { vi: 'Ghi loại phân và lượng bón', en: 'Record the type and amount', zh: '记录肥料种类与用量', ja: '肥料の種類と量を記録' },
   'trace.activity.pesticide': { vi: 'Phun thuốc', en: 'Spraying', zh: '喷药', ja: '散布' },
-  'trace.activity.pesticideDesc': { vi: 'Lia máy vào nhãn thuốc để ghi', en: 'Point the camera at the label', zh: '对准药物标签拍摄', ja: 'ラベルにカメラを向けます' },
+  // ⛔ Câu cũ: "Lia máy vào nhãn thuốc để ghi" (và các bản dịch tương ứng: "Point
+  // the camera at the label"…). Nó hứa một thao tác QUÉT NHÃN mà luồng này không
+  // có: `ActivityScreen` quay một đoạn phim rồi cho gõ tay tên thuốc vào ba ô chữ
+  // tự do, không nhận dạng gì, không đối chiếu kho sản phẩm nào.
+  //
+  // Máy quét nhãn thật có tồn tại, nhưng ở màn KHÁC (`CareScanScreen`, vào từ
+  // trang chi tiết MỘT CÂY) và nó mới là chỗ gọi `POST /api/care/match`. Người
+  // dùng đọc câu cũ ở đây rồi ngồi đợi một thông báo "đã nhận ra thuốc gì" không
+  // bao giờ tới — báo từ thực địa 14/09.
+  //
+  // Nay nói đúng việc nó làm, đối xứng với `fertilizingDesc` ngay trên. Ngày nào
+  // nối được máy quét vào luồng này thì đổi câu lại — nhưng đổi SAU khi nối, không
+  // phải trước.
+  'trace.activity.pesticideDesc': { vi: 'Ghi tên thuốc và lượng phun', en: 'Record the product name and amount sprayed', zh: '记录药物名称与喷施量', ja: '薬剤名と散布量を記録' },
   'trace.activity.harvesting': { vi: 'Thu hoạch', en: 'Harvesting', zh: '采收', ja: '収穫' },
   'trace.activity.harvestingDesc': { vi: 'Ghi số quả đã hái', en: 'Record the fruit picked', zh: '记录采收的果实', ja: '収穫した果実を記録' },
   'trace.activity.cost': { vi: 'Việc này tốn {n} MAGIC', en: 'This costs {n} MAGIC', zh: '此项消耗 {n} MAGIC', ja: 'この記録に {n} MAGIC' },
@@ -408,6 +422,15 @@ export const TRACE_STRINGS = {
   // chủ. Câu "Đã lưu" trần khiến người dùng tin dữ liệu đã ra khỏi máy, và họ chỉ
   // biết là không khi đổi máy — lúc đó đã mất.
   'trace.meta.saved': { vi: 'Đã lưu lên máy chủ', en: 'Saved to the server', zh: '已保存到服务器', ja: 'サーバーに保存しました' },
+  // Nhãn THỨ BA, và nó là nhãn không được thiếu. Hai nhãn trên chia đôi thế giới
+  // thành "chưa bấm" ⟂ "đã lên máy chủ", nên lượt gửi TRƯỢT không có chỗ đứng và
+  // rơi vào nhãn "Đã lưu lên máy chủ" — đúng câu sai nhất trong ba câu.
+  'trace.meta.savePending': {
+    vi: 'Chưa gửi lên máy chủ — bấm để thử lại',
+    en: 'Not sent to the server — tap to retry',
+    zh: '尚未发送到服务器 — 点击重试',
+    ja: 'サーバー未送信 — タップして再試行',
+  },
   'trace.health.healthy': { vi: 'Khoẻ mạnh', en: 'Healthy', zh: '健康', ja: '健全' },
   'trace.health.flowering': { vi: 'Đang ra hoa', en: 'Flowering', zh: '开花中', ja: '開花中' },
   'trace.health.fruiting': { vi: 'Đang có quả', en: 'Fruiting', zh: '结果中', ja: '結実中' },

@@ -35,6 +35,8 @@ interface Props {
 const TreePublicCard: React.FC<Props> = ({ treeId }) => {
   const [loading, setLoading] = useState(true);
   const [isPublic, setIsPublic] = useState(false);
+  /** KHÔNG ĐỌC ĐƯỢC — trạng thái thứ ba, phải kêu to hơn "chưa công khai". */
+  const [readError, setReadError] = useState(false);
   const [code, setCode] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const alive = useRef(true);
@@ -50,8 +52,20 @@ const TreePublicCard: React.FC<Props> = ({ treeId }) => {
     if (!alive.current) return;
     // `not_public` là CÂU TRẢ LỜI, `error` mới là hỏng — đừng gộp, nếu không mất
     // mạng cũng hiện thành "chưa công khai".
-    setIsPublic(r.kind === 'ok');
-    setCode(r.kind === 'ok' ? (r.provenance.code ?? null) : null);
+    //
+    // ⛔ Bản trước viết đúng câu chú thích này rồi ngay dòng dưới làm ngược lại:
+    // `setIsPublic(r.kind === 'ok')` gộp `not_public` với `error` vào cùng một
+    // chữ "Chưa công khai". Sóng yếu ⟹ thẻ nói cây chưa công khai ⟹ nông dân bấm
+    // vào để bật ⟹ hạ mức thật của một cây đang bán được.
+    if (r.kind === 'error') {
+      setReadError(true);
+      setIsPublic(false);
+      setCode(null);
+    } else {
+      setReadError(false);
+      setIsPublic(r.kind === 'ok');
+      setCode(r.kind === 'ok' ? (r.provenance.code ?? null) : null);
+    }
     setLoading(false);
   }, [treeId]);
 
@@ -73,6 +87,18 @@ const TreePublicCard: React.FC<Props> = ({ treeId }) => {
           <Text style={s.title}>Công khai &amp; mã truy xuất</Text>
           {loading ? (
             <ActivityIndicator style={s.spin} size="small" color={TONE.primary} />
+          ) : readError ? (
+            <View style={s.errRow}>
+              <Text style={s.errTxt} numberOfLines={2}>Chưa đọc được trạng thái — cần mạng</Text>
+              <Pressable
+                onPress={refresh}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel="Thử lại đọc trạng thái công khai"
+              >
+                <Text style={s.retryTxt}>Thử lại</Text>
+              </Pressable>
+            </View>
           ) : (
             <Text style={s.sub} numberOfLines={1}>
               {isPublic ? 'Đang công khai' : 'Chưa công khai'}
@@ -114,4 +140,7 @@ const s = StyleSheet.create({
   title: { ...TYPE.cardTitle, fontSize: 15.5 },
   sub: { ...TYPE.caption, fontSize: 13, marginTop: 1 },
   spin: { alignSelf: 'flex-start', marginTop: 3 },
+  errRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, marginTop: 1, flexWrap: 'wrap' },
+  errTxt: { ...TYPE.caption, fontSize: 13, color: TONE.danger, flexShrink: 1 },
+  retryTxt: { ...TYPE.caption, fontSize: 13, color: TONE.primaryDeep, fontWeight: '700' },
 });

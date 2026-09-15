@@ -21,7 +21,7 @@ import { formatVND } from '../data/mockData';
 import { useJobDetail } from '../hooks/useJobs';
 import StateView from '../../../components/state/StateView';
 import PosterAvatar from '../components/PosterAvatar';
-import { showError } from '../../../utils/alert';
+import { showError, showInfo } from '../../../utils/alert';
 import { ENABLED_MODULES } from '../../../config/instance.config';
 import { routeIsReachable } from '../../../navigation/moduleCatalog';
 
@@ -49,10 +49,19 @@ const JobDetailScreen: React.FC = () => {
     );
   }
 
-  if (errorKind === 'network') {
+  if (errorKind === 'network' || errorKind === 'backend-off') {
+    // `backend-off` = cổng runtime chưa sống (chưa có host / máy chủ 502 / mạng
+    // rớt — `runtimeGate.ts` gộp cả ba). Chưa hỏi được thì KHÔNG được rơi xuống
+    // nhánh `!job` phía dưới, vì câu ở đó ("tin này có thể đã bị gỡ") là một
+    // khẳng định về tin, mà app chưa đo được gì về nó.
     return (
       <View style={styles.root}>
-        <StateView status="offline" onRetry={reload} />
+        <StateView
+          status="offline"
+          title="Chưa xem được tin này"
+          message="Chưa nối được máy chủ việc làm. Kiểm tra mạng rồi thử lại."
+          onRetry={reload}
+        />
       </View>
     );
   }
@@ -154,7 +163,18 @@ const JobDetailScreen: React.FC = () => {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Thông tin chung</Text>
           <View style={styles.infoGrid}>
-            <InfoItem icon="map-marker-outline" label="Địa điểm" value={`${job.district}, ${job.location}`} />
+            {/* Ô "Địa điểm" chỉ hiện khi dây CÓ trả địa điểm. Trước đây nó luôn
+                hiện, và giá trị là một hằng số ghép với TÊN MẪU VIỆC — tức màn
+                trình một loại việc dưới nhãn nơi chốn, kèm biểu tượng ghim bản đồ.
+                Dây không có trường địa điểm, và đó là chủ ý của máy chủ chứ không
+                phải thiếu sót — xem khối chú thích ở `data/adapters.ts`. */}
+            {!!(job.district || job.location) && (
+              <InfoItem
+                icon="map-marker-outline"
+                label="Địa điểm"
+                value={[job.district, job.location].filter(Boolean).join(', ')}
+              />
+            )}
             {/* Dây không có trường thời gian đăng, cũng không có số người ứng
                 tuyển ⇒ rỗng/0 nghĩa là CHƯA BIẾT. Hiện "—" chứ không bịa. */}
             <InfoItem icon="clock-outline" label="Đăng" value={job.postedAt || '—'} />
@@ -235,10 +255,25 @@ const JobDetailScreen: React.FC = () => {
             <Icon name="shield-check" size={16} color={WORK_THEME.primary} />
             <Text style={styles.trustHeaderTitle}>{t('Bảo vệ {brand}')}</Text>
           </View>
+          {/* ⛔ Câu cũ ở đây: "Mọi thoả thuận được ký số ngay trên máy bạn, có giá
+              trị pháp lý". Hai vế, cả hai đều sai theo cách nặng:
+
+                · "mọi thoả thuận được ký số" — xem tấm tường thuật ở `handleApply`
+                  ngay trên: màn này KHÔNG có cửa ứng tuyển, và `workApi` không có
+                  lần ký nào ở đường xem tin. Ký thật chỉ xảy ra ở phiên đăng nhập
+                  (`services/signWorkChallenge.ts`), không ở thoả thuận nào cả.
+                · "có giá trị pháp lý" — một khẳng định PHÁP LÝ, thứ app không có
+                  thẩm quyền phát, và đây lại là màn có tiền.
+
+              Đúng chỗ này đã bị gỡ hai lần ở `PostJobScreen.tsx` (:107 bỏ "đã ký
+              số" khỏi câu báo đăng tin xong; :274 bỏ "Bạn ký số bằng khoá trên
+              máy ở bước cuối" khỏi ô hợp đồng), với cùng lý lẽ: ở sản phẩm có
+              tiền, chữ "ký" đặt nhầm chỗ làm người dùng vừa sợ ở chỗ không có gì,
+              vừa mất cảnh giác ở chỗ có thật. Câu dưới đây chỉ nói cái đang chạy. */}
           <View style={styles.trustItem}>
             <Icon name="lock-outline" size={12} color={COLORS.textSub} />
             <Text style={styles.trustItemText}>
-              Mọi thoả thuận được ký số ngay trên máy bạn, có giá trị pháp lý
+              Xem tin chưa phát sinh hợp đồng và chưa khoá tiền. Hợp đồng chỉ được tạo ở màn Hợp đồng, sau khi hai bên chốt.
             </Text>
           </View>
           <View style={styles.trustItem}>
@@ -258,10 +293,24 @@ const JobDetailScreen: React.FC = () => {
 
       <View style={styles.bottomBar}>
         {/* Cùng luật với `WorkerProfileScreen`: app không khai `chat` thì route
-            `ChatRoom` không tồn tại, nút thành nút chết. Ẩn, đừng để bấm. */}
+            `ChatRoom` không tồn tại, nút thành nút chết. Ẩn, đừng để bấm.
+
+            Và KHÔNG điều hướng bằng `roomId: job-<id>` nữa. Chuỗi đó do màn này
+            tự bịa tại chỗ, không phải mã hội thoại máy chủ cấp — màn phòng tra
+            không thấy rồi hiện "Không mở được cuộc trò chuyện, quay lại danh
+            sách rồi thử lần nữa", trỏ người dùng về một danh sách họ chưa từng
+            mở. Cổng `routeIsReachable` ngay dưới trả lời "route có tồn tại
+            không", nó không trả lời "phòng có tồn tại không", nên nó xanh ở
+            đúng ca này. Đường mở phòng thật hôm nay đi qua hợp đồng
+            (`POST /contracts/{id}/conversation`, xem `ContractDetailScreen`). */}
         {routeIsReachable('ChatRoom', ENABLED_MODULES) && (
         <TouchableOpacity
-          onPress={() => navigation.navigate('ChatRoom', { roomId: `job-${job.id}` })}
+          onPress={() =>
+            showInfo(
+              'Chưa nhắn tin được ở đây',
+              'Phòng trò chuyện mở ra sau khi hai bên có hợp đồng. Đặt thợ trước, rồi nhắn tin ngay trong hợp đồng đó.',
+            )
+          }
           style={styles.chatBtn}
         >
           <Icon name="message-outline" size={20} color={WORK_THEME.primary} />

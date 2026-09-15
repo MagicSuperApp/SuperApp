@@ -219,20 +219,54 @@ function pruneQueue(now: number): boolean {
   return pendingEpochs.length !== before;
 }
 
+/**
+ * "KHO RỖNG" và "KHÔNG ĐỌC ĐƯỢC KHO" là HAI trạng thái, và bản trước gộp chúng.
+ *
+ * `loadLocalState` bắt lỗi `taad.secureLoad` rồi gán `pendingEpochs = []`, đánh
+ * dấu đã nạp, và lượt `saveLocalState` kế tiếp ghi `[]` ĐÈ lên kho. Một lần đọc
+ * hỏng — kho khoá phần cứng bận, người dùng vừa đổi khoá màn hình, tiến trình bị
+ * treo giữa chừng — là mất sạch hàng chờ Welcome/Commit, không một dòng nào báo.
+ * Với nhóm chat thì hậu quả không lùi lại được: thành viên không bao giờ nhận
+ * được Welcome, và không API nào phát lại.
+ *
+ * Nay đọc hỏng ⟹ (a) KHÔNG đụng mảng đang giữ trong bộ nhớ, (b) KHÔNG đánh dấu
+ * đã nạp nên lượt sau còn thử lại, (c) khoá đường GHI cho tới khi đọc được.
+ * Không ghi thì hàng chờ mới chỉ sống trong bộ nhớ — mất khi tắt app; nhưng mất
+ * cái CHƯA kịp lưu rẻ hơn hẳn xoá cái ĐÃ lưu, và đây là chiều duy nhất hồi được.
+ */
+let localStateReadFailed = false;
+
+/** Đọc kho hàng chờ có đang hỏng không — cho UI nói ra, đừng đoán từ số 0. */
+export function isEpochQueueStorageReadable(): boolean {
+  return !localStateReadFailed;
+}
+
 async function loadLocalState(): Promise<void> {
   if (stateLoaded) return;
-  stateLoaded = true;
   const now = Date.now();
+  let readFailed = false;
   try {
     const raw = await taad.secureLoad(PENDING_EPOCH_KEY);
     const arr = raw ? JSON.parse(raw) : [];
     if (Array.isArray(arr)) {
-      pendingEpochs = arr
+      const loaded = arr
         .map((x: any) => normalizePending(x, now))
         .filter((x): x is PendingEpoch => x !== null);
+      // GỘP chứ không đè: một lượt đọc trước có thể đã hỏng, và trong lúc đó
+      // `publishEpoch` vẫn xếp bản mới vào mảng trong bộ nhớ. Đè là vứt đúng
+      // những bản vừa xếp. Bản trong bộ nhớ THẮNG khi trùng — nó mang số lần
+      // thử mới hơn.
+      const merged = [...loaded];
+      for (const live of pendingEpochs) {
+        const i = merged.findIndex((p) => sameEpoch(p, live));
+        if (i >= 0) merged[i] = live;
+        else merged.push(live);
+      }
+      pendingEpochs = merged;
     }
-  } catch {
-    pendingEpochs = [];
+  } catch (err) {
+    readFailed = true;
+    console.warn('[proofchat] KHÔNG đọc được hàng chờ epoch — giữ nguyên, KHÔNG xoá', err);
   }
   try {
     const raw = await taad.secureLoad(DROPPED_EPOCH_KEY);
@@ -242,19 +276,30 @@ async function loadLocalState(): Promise<void> {
         .map((x: any) => normalizeDropped(x))
         .filter((x): x is DroppedEpoch => x !== null);
     }
-  } catch {
-    droppedEpochs = [];
+  } catch (err) {
+    readFailed = true;
+    console.warn('[proofchat] KHÔNG đọc được sổ bản hỏng — giữ nguyên, KHÔNG xoá', err);
   }
   try {
     const raw = await taad.secureLoad(JOINED_KEY);
     const arr = raw ? JSON.parse(raw) : [];
     if (Array.isArray(arr)) joinedGroups = new Set(arr.filter((x: any) => typeof x === 'string'));
-  } catch {
-    joinedGroups = new Set();
+  } catch (err) {
+    readFailed = true;
+    console.warn('[proofchat] KHÔNG đọc được danh sách nhóm đã vào — giữ nguyên', err);
   }
+  localStateReadFailed = readFailed;
+  // Đọc hỏng ⟹ CHƯA nạp xong ⟹ lượt sau thử lại. Đánh dấu đã nạp ở đây là biến
+  // một sự cố tạm thời thành một trạng thái vĩnh viễn của phiên.
+  stateLoaded = !readFailed;
 }
 
 async function saveLocalState(): Promise<void> {
+  if (localStateReadFailed) {
+    // Chưa biết kho đang giữ gì thì GHI là XOÁ. Dừng, và nói ra.
+    console.warn('[proofchat] bỏ qua lượt ghi hàng chờ: lần đọc kho gần nhất hỏng');
+    return;
+  }
   try {
     await taad.secureStore(PENDING_EPOCH_KEY, JSON.stringify(pendingEpochs));
     await taad.secureStore(DROPPED_EPOCH_KEY, JSON.stringify(droppedEpochs));
@@ -374,6 +419,7 @@ export function _resetForTest(): void {
   droppedEpochs = [];
   joinedGroups = new Set();
   stateLoaded = false;
+  localStateReadFailed = false;
 }
 
 /** Đăng ký nơi nhận tin đã giải mã (Redux/Screen gọi trước init). */
@@ -429,6 +475,22 @@ async function ensureIdentity(stakeAddress: string): Promise<void> {
 export async function init(identityOverride?: string): Promise<InitResult> {
   if (!isProofChatBackendEnabled()) return { status: 'disabled' };
   if (!chatMls.isAvailable()) return { status: 'error', message: 'Native chat_mls chưa sẵn sàng' };
+
+  // ── Gọi lần hai phải là việc RẺ, không phải việc HẠI ───────────────────────
+  // Trước đây chỉ đúng một màn gọi `init()` (danh sách phòng), nên người vào
+  // phòng từ nơi khác — nút nhắn tin ở tin tuyển việc, ở hồ sơ thợ, hay một
+  // thông báo đẩy — gõ xong bấm gửi thì nhận "chưa init", một chuỗi nội bộ
+  // không ai đoán được nghĩa và không gợi ra lối thoát nào.
+  //
+  // Cho các màn kia cùng gọi `init()` thì phải chặn ở đây trước: `connect()`
+  // đã tự bỏ qua khi socket còn sống, nhưng `wireSocketHandlers()` thì KHÔNG —
+  // gọi lại là đăng ký thêm một tay nghe nữa trên cùng socket, và mỗi tin tới
+  // sẽ được xử hai lần. Người dùng thấy tin nhân đôi, còn mã thì không có chỗ
+  // nào sai rõ ràng để mà soi.
+  if (currentIdentity && chatSocket.isConnected()) {
+    const wanted = identityOverride ?? (await getDid());
+    if (wanted && wanted === currentIdentity) return { status: 'ready' };
+  }
 
   const identity = identityOverride ?? (await getDid());
   if (!identity) return { status: 'no-phoenix-session' };
@@ -693,4 +755,5 @@ export default {
   getPendingEpochCount,
   getEpochQueueStats,
   acknowledgeDroppedEpochs,
+  isEpochQueueStorageReadable,
 };

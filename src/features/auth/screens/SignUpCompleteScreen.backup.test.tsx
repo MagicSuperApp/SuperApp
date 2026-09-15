@@ -26,7 +26,14 @@ jest.mock('@react-navigation/native', () => ({
   useRoute: () => mockRoute,
 }));
 
-jest.mock('react-redux', () => ({ useDispatch: () => jest.fn() }));
+// `dispatch(thunk)` THẬT trả về một promise có `.unwrap()`. Bộ giả cũ trả `undefined`,
+// tức LỎNG HƠN nguồn — và từ lúc màn này bắt đầu gọi `.unwrap()` thì bộ giả lỏng đó biến
+// một lần đăng nhập THÀNH CÔNG thành một lần ném `TypeError`. Bài kiểm đỏ vì bộ giả, chứ
+// không vì mã. Mock phải khớp hình dạng thật, không thì nó đo một hợp đồng không tồn tại.
+const mockUnwrap = jest.fn(async () => ({}));
+jest.mock('react-redux', () => ({
+  useDispatch: () => (_action: unknown) => ({ unwrap: () => mockUnwrap() }),
+}));
 
 // `useBottomActionPadding` đọc vùng an toàn của máy; ngoài `SafeAreaProvider`
 // thì nó ném. Bọc provider thật chỉ để lấy một con số đệm là kéo cả cây context
@@ -106,11 +113,30 @@ describe('bước sao lưu', () => {
 
   it('"Nhắc tôi sau" ghi mốc RỒI vào app — không phải ngõ cụt', async () => {
     const tree = await mountDone();
-    act(() => { tree.root.findByProps({ testID: 'signup-backup-later' }).props.onPress(); });
+    // `await act(async …)`: đường vào app giờ ĐI QUA một lượt `await` — màn chờ phiên
+    // mở xong rồi mới `reset`. Kiểm đồng bộ thì đọc trạng thái ở giữa chừng và kết luận
+    // "nút không dẫn đi đâu", trong khi nó chỉ chưa tới nơi.
+    await act(async () => {
+      tree.root.findByProps({ testID: 'signup-backup-later' }).props.onPress();
+    });
     expect(mockMarkDeferred).toHaveBeenCalled();
     expect(mockNav.reset).toHaveBeenCalledWith(
       expect.objectContaining({ routes: [{ name: 'Main' }] }),
     );
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('đăng nhập TRƯỢT thì KHÔNG vào app — app rỗng tệ hơn một câu báo lỗi', async () => {
+    // Chốt mới của màn này. Bản trước không `await` và không đọc kết quả `loginUser`,
+    // nên một lần mở cơ sở dữ liệu hỏng vẫn `reset` vào `Main` với `currentUser: null`:
+    // người dùng đứng trong một app trắng ngay sau ba màn báo "xong", và đường dễ nhất
+    // trước mặt họ là đăng ký lại từ đầu — tức lập một danh tính thứ hai.
+    mockUnwrap.mockRejectedValueOnce(new Error('không mở được cơ sở dữ liệu'));
+    const tree = await mountDone();
+    await act(async () => {
+      tree.root.findByProps({ testID: 'signup-backup-later' }).props.onPress();
+    });
+    expect(mockNav.reset).not.toHaveBeenCalled();
     await act(async () => { tree.unmount(); });
   });
 

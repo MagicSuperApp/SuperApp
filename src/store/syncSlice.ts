@@ -109,6 +109,21 @@ const syncSlice = createSlice({
       // Remove from sync queue
       .addCase(removeFromSyncQueue.fulfilled, (state, action) => {
         state.queue = state.queue.filter(q => q.transactionId !== action.payload);
+      })
+      // ── Ba cửa GHI hỏng thì phải kêu ────────────────────────────────────────
+      // `createAsyncThunk` KHÔNG ném khi thân hỏng — nó phát một hành động
+      // `…/rejected`. Không có `addCase` nào bắt nó thì lời từ chối bị nuốt trọn:
+      // lệnh xoá một mục ĐÃ gửi lên máy chủ hỏng mà `state` vẫn y nguyên, và vòng
+      // quét sau gửi mục đó lần thứ hai. Ghi vào `state.error` để chỗ nào đó nhìn
+      // thấy được; đây là lý do duy nhất ba nhánh dưới tồn tại.
+      .addCase(addToSyncQueue.rejected, (state, action) => {
+        state.error = action.error.message || 'Không xếp được vào hàng đợi đồng bộ';
+      })
+      .addCase(updateSyncStatus.rejected, (state, action) => {
+        state.error = action.error.message || 'Không cập nhật được trạng thái đồng bộ';
+      })
+      .addCase(removeFromSyncQueue.rejected, (state, action) => {
+        state.error = action.error.message || 'Không xoá được mục khỏi hàng đợi đồng bộ';
       });
   },
 });

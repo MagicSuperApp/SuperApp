@@ -66,6 +66,7 @@ import { getDid } from '../../../../../services/proofchatIdentity';
 import { resetProofChatSessionBackoff } from '../../../../../services/proofchatAuthBridge';
 import chatSocket from '../../../../../services/chatSocket';
 import { useCapabilityLive } from '../../../../../config/useCapabilityLive';
+import { isCapabilityLive, probeAllCapabilities } from '../../../../../config/runtimeGate';
 
 type FilterKey = 'all' | 'unread' | 'groups';
 
@@ -183,14 +184,38 @@ const ChatHomeScreen: React.FC = () => {
   }, [backendReady, identityResolved, dispatch]);
 
   const handleRefresh = useCallback(async () => {
-    if (!backendReady) return;
     setRefreshing(true);
-    // Kéo-xuống / bấm "Thử lại" là ý muốn RÕ RÀNG của người dùng, nên được phép
-    // dựng lại phiên ngay (kể cả khi lần trước hỏng và cầu nối đang nghỉ) — hộp
-    // vân tay bật lên lúc này là do người dùng vừa yêu cầu, không phải tự nhiên.
-    resetProofChatSessionBackoff();
-    await Promise.all([dispatch(loadConversations()), dispatch(loadInvitations())]);
-    setRefreshing(false);
+    try {
+      // ⛔ Trước đây dòng đầu hàm này là `if (!backendReady) return;` — và CHÍNH
+      // hàm này được truyền làm `onRetry` cho tấm "Chưa kết nối được", tấm chỉ
+      // hiện khi `!backendReady`. Tức nút "Thử lại" bấm được, vẽ ra, và không làm
+      // gì, cũng không nói gì: đúng một nút chết ở đúng chỗ người dùng đang kẹt.
+      //
+      // Thứ chặn ở đó là CỔNG RUNTIME, nên "thử lại" phải thăm lại chính nó.
+      if (!backendReady) {
+        await probeAllCapabilities();
+        // Đọc cổng SAU lượt thăm, không đọc `backendReady` của bao đóng cũ: giá
+        // trị đó là của lần dựng hình TRƯỚC lúc thăm, nên nó luôn còn là `false`.
+        if (!isCapabilityLive('proofchat') || !isProofChatBackendEnabled()) {
+          Toast.show({
+            type: 'error',
+            text1: 'Vẫn chưa kết nối được',
+            text2: 'Máy chủ trò chuyện chưa trả lời. Kiểm tra mạng rồi thử lại.',
+          });
+          return;
+        }
+        // Cổng vừa lật sang sống: `useCapabilityLive` sẽ dựng hình lại và hai
+        // `useEffect` ở trên tự nạp danh sách. Vẫn nạp ngay tại đây để người vừa
+        // bấm thấy kết quả trong cùng một nhịp.
+      }
+      // Kéo-xuống / bấm "Thử lại" là ý muốn RÕ RÀNG của người dùng, nên được phép
+      // dựng lại phiên ngay (kể cả khi lần trước hỏng và cầu nối đang nghỉ) — hộp
+      // vân tay bật lên lúc này là do người dùng vừa yêu cầu, không phải tự nhiên.
+      resetProofChatSessionBackoff();
+      await Promise.all([dispatch(loadConversations()), dispatch(loadInvitations())]);
+    } finally {
+      setRefreshing(false);
+    }
   }, [backendReady, dispatch]);
 
   // ── Tạo phòng ────────────────────────────────────────────────────────────

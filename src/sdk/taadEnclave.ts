@@ -135,9 +135,30 @@ const callNative = async <T>(method: string, run: () => Promise<T>): Promise<T> 
     if (failure.referenceCode) {
       console.error(`[taadEnclave] ${method} ${failure.referenceCode}`, failure.raw);
     }
-    throw new Error(`${method}: ${failure.message}`);
+    const out = new Error(`${method}: ${failure.message}`) as Error & { coreUnavailable?: boolean };
+    // Giữ lại MỘT bit mà bản trước đánh rơi ở đúng dòng này: cầu native reject
+    // kèm mã `E_NATIVE_UNAVAILABLE` khi `.so` không nạp được cho ABI của máy, còn
+    // lỗi mới dựng ở đây thì không mang mã nào. Bit đó phân biệt hai ca mà người
+    // dùng phải làm hai việc trái ngược — "thử lại" với một lần trượt, "cập nhật
+    // app hoặc đổi máy" với một máy không bao giờ chạy được.
+    if ((err as { code?: unknown } | null)?.code === 'E_NATIVE_UNAVAILABLE') {
+      out.coreUnavailable = true;
+    }
+    throw out;
   }
 };
+
+/**
+ * Lần gọi này hỏng vì máy KHÔNG CÓ lõi, chứ không phải vì lõi trượt một lần.
+ *
+ * ⚠ `isAvailable()` KHÔNG trả lời được câu này, và đó là chỗ dễ nhầm nhất trong
+ * tệp: nó đo `!!NativeModules.TaadEnclaveModule`, mà cầu Android vẫn ĐĂNG KÝ
+ * module khi `System.loadLibrary` ném (`TaadEnclaveModule.kt:410-418` giữ
+ * `libLoaded=false` rồi để từng phương thức reject). Nên trên đúng lớp máy thiếu
+ * `.so` cho ABI của nó, `isAvailable()` trả `true` còn mọi lời gọi đều hỏng.
+ */
+export const isCoreUnavailableError = (err: unknown): boolean =>
+  !!(err as { coreUnavailable?: boolean } | null)?.coreUnavailable;
 
 /**
  * Native RESOLVE một chuỗi rỗng — tức nó không coi đây là lỗi nên ô lỗi của lõi

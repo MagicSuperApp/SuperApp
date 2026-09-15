@@ -100,9 +100,30 @@ jest.mock('./remoteLogger', () => ({
   default: { info: jest.fn(), error: jest.fn(), warn: jest.fn() },
 }));
 
+/**
+ * Máy THẬT có lõi mã hoá. Bản trước khai `isAvailable: () => false` cho gọn, và
+ * lời khai đó đã hết đúng: từ khi khoá TAAD thành ĐIỀU KIỆN của lượt đăng ký,
+ * `false` không còn nghĩa "bỏ qua mấy trường ví" mà nghĩa "chặn hẳn" — nên một
+ * máy giả lập thiếu lõi làm mọi bài dưới đây dừng trước cả cửa nó định đo.
+ *
+ * Hai biến dưới đây để bài nào cần ca hỏng thì tự bật, thay vì cả tệp chịu chung
+ * một máy hỏng.
+ */
+let mockTaadAvailable = true;
+let mockDeriveTaad: () => Promise<string> = async () => 'ab'.repeat(32);
+
 jest.mock('../sdk/taadEnclave', () => ({
   __esModule: true,
-  default: { isAvailable: () => false },
+  default: {
+    isAvailable: () => mockTaadAvailable,
+    deriveTaadPubkey: jest.fn(async () => mockDeriveTaad()),
+    deriveWalletAddress: jest.fn(async () => 'addr_test1qmock'),
+  },
+}));
+
+jest.mock('./masterKekStore', () => ({
+  __esModule: true,
+  getOrCreateMasterKek: jest.fn(async () => 'cd'.repeat(32)),
 }));
 
 /** Hex UTF-8 → chuỗi, để đọc lại đúng thứ đã đưa cho `signRaw`. */
@@ -121,6 +142,8 @@ beforeEach(() => {
   mockKeyAuthCalls.length = 0;
   mockKeyAuthImpl = async () => ({ authorized: true });
   mockResolveImpl = async () => { throw new Error('không dùng ở bài này'); };
+  mockTaadAvailable = true;
+  mockDeriveTaad = async () => 'ab'.repeat(32);
 });
 
 describe('miền ký của lookup', () => {

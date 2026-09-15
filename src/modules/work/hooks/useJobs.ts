@@ -13,15 +13,37 @@ import { toUiJob } from '../data/adapters';
 import { isWorkBackendEnabled } from '../services/config';
 import { getJobs, getJob, WorkApiError, type WorkErrorKind } from '../services/workApi';
 
+/**
+ * Loại lỗi màn hình phải phân biệt được.
+ *
+ * `'backend-off'` là loại RIÊNG của hook này, không phải của `workApi`: cổng
+ * `isWorkBackendEnabled()` gộp BA nguyên nhân khác hẳn nhau vào một `false` —
+ * chưa cấu hình host · máy chủ trả 404/502 · mạng rớt hoặc quá hạn
+ * (`config/runtimeGate.ts` khai đúng hạn chế này trong khối `HEALTH_PATH`). Hai
+ * nguyên nhân sau là LẦN GỌI HỎNG, và chúng là ca thường gặp nhất ngoài thực địa.
+ */
+export type JobsErrorKind = WorkErrorKind | 'backend-off';
+
 export interface LoadState {
   loading: boolean;
   /** null = chưa lỗi. Ngược lại phân loại để StateView chọn offline/error/auth. */
-  errorKind: WorkErrorKind | null;
+  errorKind: JobsErrorKind | null;
   /** Giữ để tương thích chữ ký cũ; nay LUÔN false (đã gỡ mock). */
   usingMock: boolean;
 }
 
 const initState: LoadState = { loading: true, errorKind: null, usingMock: false };
+
+/**
+ * Trạng thái khi cổng tắt.
+ *
+ * ⛔ Trước đây chỗ này đặt `errorKind: null`, và `null` là thứ mọi màn đọc thành
+ * "không có lỗi" ⇒ danh sách rỗng ⇒ câu "Chưa có tin việc nào đang mở". Nhưng
+ * cổng tắt KHÔNG chứng minh chợ rỗng: app chưa hề hỏi chợ câu nào. Một lần mất
+ * mạng và một cái chợ thật sự trống ra CÙNG MỘT MÀN HÌNH, và người đọc màn đó
+ * không có cách nào phân biệt — đúng nghĩa cái vỏ im lặng.
+ */
+const gateOffState: LoadState = { loading: false, errorKind: 'backend-off', usingMock: false };
 
 /** Danh sách tin. openOnly=true → chỉ tin đang mở. */
 export const useJobs = (openOnly = false) => {
@@ -30,10 +52,10 @@ export const useJobs = (openOnly = false) => {
 
   const load = useCallback(async () => {
     if (!isWorkBackendEnabled()) {
-      // Cổng tắt (chưa cấu hình host / backend chưa sống) → RỖNG + empty-state thật,
-      // không dựng dữ liệu mẫu. Không chạm mạng để tránh gọi localhost vô nghĩa.
+      // Cổng tắt → KHÔNG chạm mạng (tránh gọi localhost vô nghĩa) và KHÔNG dựng
+      // dữ liệu mẫu. Nhưng cũng KHÔNG được báo là danh sách rỗng — xem `gateOffState`.
       setJobs([]);
-      setState({ loading: false, errorKind: null, usingMock: false });
+      setState(gateOffState);
       return;
     }
     setState({ loading: true, errorKind: null, usingMock: false });
@@ -62,10 +84,10 @@ export const useJobDetail = (jobId: string) => {
 
   const load = useCallback(async () => {
     if (!isWorkBackendEnabled()) {
-      // Cổng tắt → không có chi tiết thật để hiện; trả null (UI báo không tìm thấy),
-      // không rơi về dữ liệu mẫu.
+      // Cổng tắt → chưa hỏi máy chủ câu nào, nên KHÔNG được nói "không tìm thấy
+      // tin" (câu đó khẳng định tin đã bị gỡ). Xem `gateOffState`.
       setJob(null);
-      setState({ loading: false, errorKind: null, usingMock: false });
+      setState(gateOffState);
       return;
     }
     setState({ loading: true, errorKind: null, usingMock: false });

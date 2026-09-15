@@ -81,7 +81,12 @@ describe('resolveGateItems', () => {
     // trong khi cung chẳng có ô nào. Bảng trùng mục thì cung vẽ hai nút giống
     // hệt nhau mà không phép so mảng nào kêu.
     for (const table of [DEFAULT_INSTANCE.slotPriority.default, DEFAULT_INSTANCE.slotPriority.shipper]) {
-      expect(table.length).toBeGreaterThanOrEqual(3);
+      // Ngưỡng là SỐ SLOT của thanh (`resolveVisibleTabs.SLOT_COUNT` = 2), không
+      // phải một con số tròn chọn cho đẹp. Bảng ngắn hơn số slot thì cung thiếu ô
+      // và không phép so mảng nào kêu. Một app tắt bớt module hợp lệ vẫn phải qua
+      // được bài này — nó canh "bảng có lấp đủ chỗ không", không canh "app có đủ
+      // nhiều module không".
+      expect(table.length).toBeGreaterThanOrEqual(2);
       expect(table.every((r) => typeof r === 'string' && r.length > 0)).toBe(true);
       expect(new Set(table).size).toBe(table.length);
     }
@@ -156,7 +161,19 @@ describe('resolveGateItems', () => {
       expect(byRoute.ChatHome).toBeUndefined();
     }
 
-    expect(byRoute.WorkHome.subActions).toBeUndefined();
+    // Cùng luật với chat ngay trên: rẽ theo LỜI KHAI, và mỗi nhánh vẫn khẳng
+    // định một điều. Viết `byRoute.WorkHome?.subActions` rồi so với `undefined`
+    // là bài xanh ở cả hai cực — có mà hỏng cũng xanh, không có cũng xanh.
+    const workDeclared = DEFAULT_INSTANCE.modules === 'all'
+      || DEFAULT_INSTANCE.modules.includes('work');
+    if (workDeclared) {
+      expect(byRoute.WorkHome.subActions).toBeUndefined();
+    } else {
+      // App không khai việc làm ⟹ cổng xoè không được còn lối vào nó. Vế này
+      // quan trọng ngang vế của chat: sàn việc làm cũng là nội dung do người
+      // dùng tạo, nên một lối vào sót lại làm việc tắt module thành vô nghĩa.
+      expect(byRoute.WorkHome).toBeUndefined();
+    }
     expect(byRoute.JoinHome.subActions).toBeUndefined();
   });
 

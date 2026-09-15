@@ -72,15 +72,16 @@ inputs:
     default: '0'
   proofchat-backend-enabled:
     description: >
-      Mặc định `off` CỐ Ý. Máy chủ ProofChat sống (api.proofchat.me/api/v1/health → 200,
-      đo lại 2026-08-18), nên để trống thì cổng runtime tự bật module. Bật là quyết định
-      của người phát hành, không phải hệ quả phụ của việc máy chủ hồi sinh.
-      ĐÍNH CHÍNH 2026-08-18: lý do cũ ("token còn ở AsyncStorage chưa mã hoá") đã hết
-      hiệu lực — commit 48efb57 chuyển token phiên sang Keychain/Keystore. Chặn còn lại
-      nằm ở phía ProofChat: GET /api/v1/users/search → 404, cửa tìm người để mở hội
-      thoại vẫn đóng (proofchat-api.ts:465).
+      Mặc định `on` từ 2026-09-14. Hai lý do từng giữ nó ở `off` đều đã hết hiệu lực,
+      và không có gì báo lúc chúng hết: token phiên đã sang Keychain/Keystore từ commit
+      48efb57, còn cửa tìm người `GET /api/v1/users/search` nay trả 401 Unauthorized
+      thay vì 404 "Cannot GET" — route đã mở, chỉ đòi phiên đăng nhập.
+      Đây KHÔNG phải bật chat vô điều kiện: cổng thật vẫn là phép thăm dò lúc chạy
+      (isCapabilityLive('proofchat'), config/runtimeGate.ts), máy chủ chết thì app tự
+      tắt module. Cái gỡ đi là lớp chặn cứng nướng vào bản dựng — thứ không phép đo nào
+      lật lại được. Đặt 'off' cho một bản cụ thể vẫn là lựa chọn hợp lệ.
     required: false
-    default: 'off'
+    default: 'on'
 
 runs:
   using: composite

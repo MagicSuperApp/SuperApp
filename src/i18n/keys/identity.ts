@@ -110,11 +110,15 @@ export const IDENTITY_STRINGS = {
   // Đường "app cũ ký phê duyệt" NAY ĐÃ CÓ (`DevicePairScreen` + `authorizeDeviceKey`).
   // Câu cũ ở đây nói nó "chưa làm xong"; giữ lại là để một lời khai đã chết đứng
   // giữa hai lối rẽ và đẩy người dùng sang lối đắt hơn.
+  // ⛔ 2026-09-14: lối ghép máy nay đứng TRƯỚC thẻ này, nên "dòng ngay bên dưới" đã
+  // thành một con trỏ trỏ sai chỗ. Con trỏ theo VỊ TRÍ là thứ chết im lặng mỗi lần
+  // ai đó xếp lại thẻ — nên câu mới gọi thẻ kia bằng TÊN của nó, không bằng chỗ nó
+  // đứng. Xem khối `CHOICES` ở `IdentityEntryChoiceScreen.tsx` để biết vì sao đổi.
   'identity.gate.otherApp.temporary': {
-    vi: 'Dòng này vẫn dẫn tới màn 24 từ. Nếu app kia trên máy này còn đang đăng nhập, dòng ngay bên dưới nhẹ hơn: nhờ nó duyệt, không cần 24 từ.',
-    en: 'This one still leads to the 24-word screen. If the other app on this phone is still signed in, the line just below is lighter: let it approve this app, no 24 words needed.',
-    zh: '这一条仍会进入 24 助记词页面。如果本机上的另一个应用仍在登录状态，下面那一条更轻松：让它来批准，无需 24 个助记词。',
-    ja: 'この選択は今も 24 語の画面に進みます。同じ端末の別アプリがまだサインイン中なら、すぐ下の行のほうが軽く済みます。承認してもらえば 24 語は不要です。',
+    vi: 'Dòng này vẫn dẫn tới màn 24 từ. Nếu app kia trên máy này còn mở được, hãy dùng dòng “Nhờ app đang đăng nhập duyệt cho máy này” — nhẹ hơn, và không app nào bị thoát ra.',
+    en: 'This one still leads to the 24-word screen. If the other app on this phone can still be opened, use the line “Ask the app that is already signed in to approve this one” instead — lighter, and neither app gets signed out.',
+    zh: '这一条仍会进入 24 助记词页面。如果本机上的另一个应用还打得开，请改用“让已登录的应用来批准这一台”那一条 —— 更轻松，而且两个应用都不会被登出。',
+    ja: 'この選択は今も 24 語の画面に進みます。同じ端末の別アプリがまだ開けるなら、「すでにサインイン済みのアプリに承認してもらう」の行をお使いください。そのほうが軽く、どちらのアプリもサインアウトされません。',
   },
 
   // ── Lối D — nhờ máy/app đang đăng nhập duyệt khoá của máy này (issue #233) ──
@@ -385,6 +389,17 @@ export const IDENTITY_STRINGS = {
     ja: 'サインイン画面に戻る',
   },
 
+  // ── Lối gửi báo cáo, đặt ở màn đăng nhập ──────────────────────────────────
+  // Câu hỏi đứng trước lời mời: người đang kẹt ngoài cổng đọc "Không vào được?"
+  // là nhận ra tình cảnh của mình, rồi mới đọc tới việc phải làm. Đảo lại thì nó
+  // thành một mục thực đơn, và người đang vội sẽ lướt qua.
+  'identity.report.loginLink': {
+    vi: 'Không vào được? Gửi báo cáo lỗi',
+    en: 'Cannot get in? Send an error report',
+    zh: '进不去？发送错误报告',
+    ja: '入れませんか？ エラー報告を送る',
+  },
+
   // ── Bước sao lưu sau khi đăng ký ──────────────────────────────────────────
   'identity.backup.title': {
     vi: 'Nếu mất điện thoại, chỉ một thứ lấy lại được vườn của bạn',
@@ -397,6 +412,32 @@ export const IDENTITY_STRINGS = {
     en: 'It is your own 24-word phrase. No server keeps a copy, and nobody can issue a new one. View and store it now, or later — your call.',
     zh: '那就是你自己的 24 个助记词。没有服务器代为保管，也没有人能补发。现在查看并保存，或者以后再说 —— 由你决定。',
     ja: 'それはあなた自身の 24 語のフレーズです。控えを預かるサーバーはなく、再発行できる人もいません。今すぐ確認して保管しても、後回しにしても構いません。',
+  },
+  // ── TÊN ĐĂNG NHẬP PHẢI ĐI KÈM 24 TỪ ───────────────────────────────────────
+  // Thêm 15/09/2026. Trên MÁY MỚI, `attachThisDevice`
+  // (`screens/RestoreIdentityScreen.tsx`) có bốn nguồn để biết 24 từ thuộc danh
+  // tính nào, và ba nguồn đầu đều câm ở đúng ca đó:
+  //   1. DID người dùng tự gõ        — app chưa bao giờ đưa chuỗi đó cho họ;
+  //   2. DID lưu trong AsyncStorage  — máy mới thì rỗng;
+  //   3. sổ `@phoenixkey/users`      — máy mới thì rỗng;
+  //   4. hỏi máy chủ bằng khoá trong chip — cần `isKeypairEnrolled()`, mà máy mới
+  //      trả `false`.
+  // Còn lại đúng MỘT nguồn chạy được: `resolveUsername(tên đăng nhập)`. Tức thiếu
+  // tên đăng nhập thì 24 từ không mở được gì cả — và tên đó trước nay chỉ hiện ở
+  // màn đăng nhập của MÁY CŨ, tức đúng cái máy vừa mất.
+  // Nên nó phải nằm NGAY chỗ người dùng được bảo lưu 24 từ, không phải ở một màn
+  // khác mà họ phải nhớ ghé qua.
+  'identity.backup.usernameLabel': {
+    vi: 'Tên đăng nhập của bạn: @{name}',
+    en: 'Your username: @{name}',
+    zh: '你的用户名：@{name}',
+    ja: 'あなたのユーザー名: @{name}',
+  },
+  'identity.backup.usernameWhy': {
+    vi: 'Ghi tên này ra giấy CÙNG cụm 24 từ. Trên một máy mới, app phải hỏi máy chủ bằng tên đăng nhập mới biết 24 từ thuộc danh tính nào — thiếu tên thì riêng 24 từ chưa đủ để lấy lại tài khoản.',
+    en: 'Write this name down TOGETHER with the 24 words. On a new phone the app has to ask the server by username to learn which identity the 24 words belong to — without the name, the 24 words alone are not enough to get your account back.',
+    zh: '请把这个名字和 24 个助记词写在一起。在新手机上，应用必须用用户名向服务器查询，才知道这 24 个词属于哪个身份 —— 没有名字，光有 24 个词还找不回账户。',
+    ja: 'この名前は 24 語のフレーズと一緒に書き留めてください。新しい端末では、アプリはユーザー名でサーバーに問い合わせて初めて、その 24 語がどの本人情報のものか分かります。名前がなければ、24 語だけではアカウントを取り戻せません。',
   },
   'identity.backup.now': {
     vi: 'Xem 24 từ và cất giữ ngay',

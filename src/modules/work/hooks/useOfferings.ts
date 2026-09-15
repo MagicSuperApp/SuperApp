@@ -21,6 +21,7 @@ import {
   type UpdateOfferingBody,
 } from '../services/workApi';
 import type { Offering } from '../services/types';
+import { mutationFailed, mutationOk, type MutationOutcome } from './mutationOutcome';
 
 export interface OfferingsListState {
   offerings: Offering[];
@@ -60,7 +61,13 @@ export const useOfferingsList = (ownerDid?: string) => {
   return { ...state, load };
 };
 
-/** Tạo / sửa / đóng dịch vụ. Trả Offering (thành công) hoặc false (mock/lỗi). */
+/**
+ * Tạo / sửa / đóng dịch vụ.
+ *
+ * Mỗi lượt trả về `{ ok, value, code }` — MÃ LỖI đi kèm lượt gọi, không để chỗ
+ * gọi đọc `errorCode` trong state (đó là bao đóng của lần dựng hình trước; xem
+ * `mutationOutcome.ts`). `errorCode` trong state chỉ còn để VẼ.
+ */
 export const useOfferingMutations = () => {
   const [state, setState] = useState<OfferingMutState>({
     submitting: false, errorKind: null, errorCode: null,
@@ -68,22 +75,22 @@ export const useOfferingMutations = () => {
 
   // Chạy 1 mutation ghi — idempotency ổn-định theo LẦN gọi (retry mạng không tạo 2).
   const runMut = useCallback(
-    async <T>(op: (key: string) => Promise<T>): Promise<T | false> => {
+    async <T>(op: (key: string) => Promise<T>): Promise<MutationOutcome<T>> => {
       if (!isWorkBackendEnabled()) {
         setState({ submitting: false, errorKind: null, errorCode: 'BACKEND_DISABLED' });
-        return false;
+        return mutationFailed('BACKEND_DISABLED');
       }
       setState({ submitting: true, errorKind: null, errorCode: null });
       try {
         const res = await op(newIdempotencyKey());
         setState({ submitting: false, errorKind: null, errorCode: null });
-        return res;
+        return mutationOk(res);
       } catch (err) {
         const kind = err instanceof WorkApiError ? err.kind : 'server';
         const code = err instanceof WorkApiError ? err.code : 'UNKNOWN';
         console.warn('[Work] offering mutation failed:', err);
         setState({ submitting: false, errorKind: kind, errorCode: code });
-        return false;
+        return mutationFailed(code);
       }
     },
     [],

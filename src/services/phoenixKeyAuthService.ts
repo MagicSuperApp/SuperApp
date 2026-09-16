@@ -268,6 +268,39 @@ export const registerIdentity = async (
     txHash = res.txHash;
   } catch (err) {
     await wipeIdentity();
+
+    // ── 3005 Ở ĐÂY KHÔNG CÙNG NGHĨA VỚI 3005 Ở ĐƯỜNG KHÔI PHỤC ───────────────
+    // Đường khôi phục nhận 3005 về một khoá phần cứng đã có trong kho máy chủ.
+    // Đường này thì không thể: `enrollKeypair()` ngay trên vừa sinh một khoá MỚI,
+    // máy chủ chưa từng thấy nó. Thứ duy nhất trong lượt gọi này đã đăng ký được
+    // là khoá TAAD suy từ Master_KEK, đi kèm trong `walletFields`.
+    //
+    // Đo được 15/09 trên máy ảo: `wipeIdentity()` rồi đăng ký lại → 3005/409, câu
+    // máy chủ nói "TAAD public key đã được bind vào một DID khác"; đổi sang
+    // `wipeLocalIdentity()` (thêm `clearMasterKek()`) thì hết. Biến duy nhất khác
+    // nhau giữa hai lượt là Master_KEK, nên nó là nguyên nhân.
+    //
+    // Trước bản này ca đó rơi vào `default` của `friendlyRegisterError` và người
+    // dùng đọc "Tạo danh tính thất bại. Thử lại." — lời mời làm một việc KHÔNG
+    // BAO GIỜ khác đi, vì trở ngại là chiếc ví nằm sẵn trên máy chứ không phải
+    // lần bấm này.
+    //
+    // ⚠ CÂU NÀY CỐ Ý KHÔNG CHỈ TỚI LỐI TẮT "khôi phục bằng ví trên máy", dù ví
+    // đúng là còn trên máy. `doRestoreSameDevice` mở đầu bằng một phép chứng minh
+    // có mặt (`signRaw`) cần khoá trong chip — mà `wipeIdentity()` vài dòng trên
+    // vừa xoá. Chỉ tới lối đó là chỉ tới một cánh cửa đã khoá, đúng cái bẫy mà
+    // khối `khoa_bi_thu_hoi` dựng ra để tránh. Không bỏ phép chứng minh ấy đi
+    // được: Master_KEK hiện đọc được không cần sinh trắc, nên nó là thứ duy nhất
+    // chặn người mượn được máy cộng biết tên đăng nhập.
+    if (err instanceof PhoenixKeyApiError && err.code === 3005) {
+      const stuck = new Error(WALLET_BOUND_ELSEWHERE_MESSAGE) as Error & {
+        reason?: string;
+      };
+      stuck.reason = 'wallet_bound_to_other_did';
+      console.warn('[PhoenixKey register] ví trên máy đã thuộc một DID khác:', err);
+      throw stuck;
+    }
+
     throw new Error(friendlyRegisterError(err));
   }
 
@@ -777,6 +810,23 @@ const RECOVER_FAIL_MESSAGE: Record<string, string> = {
   core_missing:
     'Bản ứng dụng trên máy này thiếu phần tạo khoá dự phòng, nên ứng dụng dừng lại — tạo tài khoản lúc này sẽ ra một tài khoản không khôi phục lại được nếu bạn mất máy. Thử lại sẽ không khác. Hãy cập nhật ứng dụng lên bản mới nhất rồi tạo lại.',
 };
+
+/**
+ * Câu cho ca ĐĂNG KÝ MỚI bị chặn vì ví trên máy đã thuộc một danh tính khác
+ * (`3005` kèm `walletFields`). Xem khối lý do ở `catch` của `registerIdentity`.
+ *
+ * Để RIÊNG, không nhét thêm một khoá vào `RECOVER_FAIL_MESSAGE`: map đó là bảng
+ * của đường KHÔI PHỤC, và `chonLyDoKhoiPhuc` chọn khoá trong đó theo một phép suy
+ * luận không hề biết tới đường đăng ký. Một khoá lạ nằm trong bảng ấy là một khoá
+ * mà phép suy luận kia có thể trỏ vào nhầm về sau, mà không gì đỏ lên.
+ *
+ * Ba vế bắt buộc, vì thiếu vế nào là người dùng đi sai một hướng:
+ *  · trở ngại là CHIẾC VÍ còn trên máy — không phải sóng, không phải vân tay;
+ *  · thử lại KHÔNG khác (câu cũ "Thử lại." mời họ bấm mãi);
+ *  · lối ra là 24 từ ở màn Khôi phục — nói thẳng, không hứa lối tắt.
+ */
+export const WALLET_BOUND_ELSEWHERE_MESSAGE =
+  'Máy này còn giữ ví của một danh tính đã tạo trước đó, và máy chủ không cho gắn ví đó vào một danh tính mới. Đây không phải lỗi sóng hay lỗi vân tay, nên bấm tạo lại sẽ ra đúng kết quả này. Hãy mở màn Khôi phục danh tính và dùng cụm 24 từ của danh tính cũ để lấy lại nó.';
 
 /**
  * Mã lỗi lúc ĐĂNG KÝ → câu người đọc được.

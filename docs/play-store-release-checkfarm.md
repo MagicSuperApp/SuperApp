@@ -78,16 +78,34 @@ phải câu hỏi đo được từ mã:
    ghi rõ backend **chưa** có cửa xoá theo DID, cờ `REMOTE_DELETE_ENABLED = false`.
    Khai "có" ở ô này là khai sai.
 
-### A.4 Bốn thứ Play đòi mà kho này CHƯA có
+### A.4 Ba thứ Play đòi mà chưa có
 
 Đây là phần thật sự chặn nộp, không phải phần tô điểm:
 
 | Thứ | Trạng thái đo được | Ai gỡ |
 |---|---|---|
-| **URL chính sách quyền riêng tư công khai** | Chính sách chỉ có TRONG app (`src/legal/policyContent.ts`). Quét kho không ra một URL http nào cho nó. Play đòi một địa chỉ web mở được từ ngoài. | chủ sở hữu — cần một trang web |
 | **Account deletion URL** | Cùng gốc với mục A.3 §3: chưa có cửa xoá phía máy chủ thì cũng chưa có trang để khai | chủ sở hữu + backend |
 | **Khai đối tượng người dùng / nội dung** | bảng câu hỏi trong Console, không có dữ kiện nào trong kho trả lời hộ | chủ sở hữu |
 | **Bản mô tả đầy đủ** | §A.2 | chủ sở hữu |
+
+**Chính sách quyền riêng tư thì ĐÃ CÓ — dán `https://checkfarm.com/privacy.html`.**
+
+Chỗ này đáng kể lại, vì nó là một cách đo sai dễ lặp. Bản đầu của tài liệu xếp nó vào
+hàng chặn, với lý do *"quét kho không ra một URL http nào"*. Câu ấy đúng — nhưng nó là
+phát biểu về **kho mã**, không phải về sản phẩm. Trang web nằm ở một kho khác của cùng tổ
+chức, và tên miền đã trỏ về nó từ 25/08/2026.
+
+Đo lại 2026-09-16:
+
+```
+$ curl -s -o /dev/null -w '%{http_code} %{size_download}\n' https://checkfarm.com/privacy.html
+200 30975
+$ curl -s -o /dev/null -w '%{http_code}\n' https://www.checkfarm.com/privacy.html
+200
+```
+
+⟹ Trước khi khai một thứ là "chưa có", hỏi *tổ chức này có mấy kho?* — không chỉ *kho này
+có gì?*
 
 ### A.5 Ảnh sau đăng nhập — vì sao chưa có, và điều kiện để có
 

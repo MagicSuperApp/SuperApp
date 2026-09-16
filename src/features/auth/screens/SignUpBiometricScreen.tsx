@@ -347,18 +347,26 @@ const SignUpBiometricScreen: React.FC = () => {
    *  3. người khác, chưa có gì  → nói thật là BẢN NÀY chưa giữ được hai danh tính.
    * Không có nhánh nào âm thầm gộp hai người thành một tài khoản.
    *
-   * ĐÍNH CHÍNH 2026-08-12 theo nhà Phoenix: giới hạn "một máy một danh tính" KHÔNG
-   * phải giới hạn của thiết kế. Backend không có `UNIQUE(device_id)`, validator không
-   * ràng buộc thiết bị on-chain, `device_pkh` là quan hệ một-nhiều thật. Chặn nằm
-   * TOÀN BỘ ở phía app: một khe lưu trữ duy nhất, nhãn khoá phần cứng là hằng số, và
-   * sinh khoá thì XOÁ KHOÁ CŨ TRƯỚC (iOS `SecItemDelete` trong `generateKeyPair`,
-   * Android `deleteKeyIfExists()` ở dòng đầu `generateKey`).
+   * Giới hạn "một máy một danh tính" là giới hạn của KHO NÀY, không phải luật của hệ
+   * thống: backend không có `UNIQUE(device_id)` và `device_pkh` là quan hệ một-nhiều.
+   * Chỗ chặn nằm ở hai điều kiện kỹ thuật, cả hai đọc được trong chính kho này:
    *
-   * `PhoenixKey-Core` PR #56 vá cả ba, 56/56 test xanh — nhưng CHƯA GỘP. Nên vẫn phải
-   * chặn: mở lối "tạo danh tính mới" trước khi PR đó về là để người thứ hai xoá vĩnh
-   * viễn khoá phần cứng của người thứ nhất. Cái sửa được ngay hôm nay là CÂU CHỮ —
-   * nói đúng rằng đây là giới hạn của bản ứng dụng này, không phải luật của hệ thống.
-   * Khi PR #56 về: đổi nhánh 3 thành nút "Tạo danh tính mới trên máy này".
+   *  (a) App chỉ có MỘT khe cho khoá chủ. Mọi thao tác owner-key đọc nhãn qua
+   *      `getOwnerAlias()` (`src/sdk/phoenixKey.ts`), và con trỏ ấy giữ đúng một giá
+   *      trị tại một thời điểm — xoay khoá đổi nó, chứ không thêm khe thứ hai.
+   *  (b) Sinh khoá KHÔNG đè khoá cũ: cả hai cầu native đều TỪ CHỐI khi nhãn đã có —
+   *      `E_KEY_EXISTS` ở `ios/LocalPods/ScannerModule/UI/PhoenixKeyModule.swift`
+   *      (`generateKeypair`, nhánh `hasKeySync`) và ở
+   *      `android/app/src/main/java/com/aladincontract/company/PhoenixKeyModule.kt`
+   *      (`generateKeypair`, nhánh `keyStore.containsAlias`).
+   *
+   * Vì (b), nhánh 3 KHÔNG phải nhánh "người thứ hai xoá khoá của người thứ nhất" —
+   * đường đó không đi được, `enrollKeypair()` sẽ đỏ trước khi chạm tới khoá cũ. Cái
+   * nhánh 3 thật sự nói là: danh tính thứ hai KHÔNG CÓ CHỖ ĐỂ Ở trên máy này, vì (a).
+   *
+   * Điều kiện gỡ nhánh 3 thành nút "Tạo danh tính mới trên máy này" cũng là điều kiện
+   * kiểm được, không phải một mốc lịch: khi (a) không còn đúng — tức khi app giữ được
+   * nhiều khe khoá chủ song song và người dùng chọn được khe nào đang dùng.
    */
   const askWhoIsHoldingThePhone = () => {
     showWarning(

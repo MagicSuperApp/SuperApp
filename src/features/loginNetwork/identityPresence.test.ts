@@ -20,7 +20,7 @@
 // `unknown` bên dưới là phần dễ bị gỡ nhất khi ai đó "đơn giản hoá" thành nhị
 // phân có/không — nên chúng được viết tách, không gộp.
 
-import { primaryCta, readIdentityPresence } from './identityPresence';
+import { primaryCta, readIdentityPresence, routeForPresence } from './identityPresence';
 import { currentUserDid, isKeypairEnrolled } from '../../sdk/phoenixKey';
 
 jest.mock('../../sdk/phoenixKey', () => ({
@@ -44,20 +44,41 @@ describe('readIdentityPresence — ĐỦ CẢ HAI mới là có danh tính', () 
     await expect(readIdentityPresence()).resolves.toBe('yes');
   });
 
-  // Hai ca dưới là hai nửa của cùng một điều kiện, và chúng KHÁC nhau trên máy
-  // thật: khoá còn trong chip mà DID đã mất là ca "xoá tài khoản rồi cài lại";
-  // DID còn mà khoá mất là ca "gỡ app rồi cài lại" (kho khoá sống qua lần gỡ,
-  // AsyncStorage thì không). Gộp hai ca thành một là bỏ mất một nửa.
-  it('có khoá nhưng KHÔNG có DID ⟹ no', async () => {
+  // ⛔ 2026-09-16 — HAI CA DƯỚI TRƯỚC ĐÂY CÙNG TRẢ `'no'`, VÀ ĐÓ LÀ CHỖ HỎNG.
+  //
+  // Bản cũ nén bốn tổ hợp của hai phép đo xuống hai chữ, nên ba tổ hợp khác hẳn
+  // nhau cùng ra `'no'` và app mời cả ba đi "đăng ký". Chú thích ở đây khi ấy đã
+  // ghi đúng rằng hai nửa "KHÁC nhau trên máy thật" — nhưng mã thì vẫn gộp, nên
+  // câu đó tả một phân biệt không tồn tại trong mã.
+  //
+  // Ca `!did && hasKey` là ca CÀI LẠI APP TRÊN CHÍNH MÁY CŨ: kho khoá sống qua
+  // lần gỡ, AsyncStorage thì không. Máy chủ trả lời được khoá ấy của ai
+  // (`POST /identity/lookup`), nên không được hỏi người dùng.
+  it('có khoá nhưng KHÔNG có DID ⟹ key-without-did, KHÔNG phải no', async () => {
     didMock.mockResolvedValue(null);
     keyMock.mockResolvedValue(true);
-    await expect(readIdentityPresence()).resolves.toBe('no');
+    await expect(readIdentityPresence()).resolves.toBe('key-without-did');
   });
 
-  it('có DID nhưng KHÔNG có khoá trong chip ⟹ no', async () => {
+  // Ca ngược lại thì app THẬT SỰ không biết: khoá có thể bị hệ điều hành huỷ
+  // (vừa thêm/xoá vân tay), mà cũng có thể đây là máy khác. Không phép đo nào
+  // trên máy tách được hai ca đó — nên đây là ca còn được phép hỏi.
+  it('có DID nhưng KHÔNG có khoá trong chip ⟹ did-without-key', async () => {
     didMock.mockResolvedValue(DID);
     keyMock.mockResolvedValue(false);
-    await expect(readIdentityPresence()).resolves.toBe('no');
+    await expect(readIdentityPresence()).resolves.toBe('did-without-key');
+  });
+
+  // Ghim rằng bốn tổ hợp ra BỐN trạng thái. Bài này đỏ ngay khi ai đó nén lại về
+  // nhị phân — thứ trông như dọn dẹp mà thực ra xoá đúng phần app đo được.
+  it('bốn tổ hợp ⟹ bốn trạng thái đôi một khác nhau', async () => {
+    const ra: string[] = [];
+    for (const [did, key] of [[DID, true], [null, true], [DID, false], [null, false]] as const) {
+      didMock.mockResolvedValue(did);
+      keyMock.mockResolvedValue(key);
+      ra.push(await readIdentityPresence());
+    }
+    expect(new Set(ra).size).toBe(4);
   });
 
   it('không có gì cả ⟹ no', async () => {
@@ -87,19 +108,39 @@ describe('primaryCta — ba trạng thái, ba cái nút khác nhau', () => {
     });
   });
 
-  it('máy CHƯA có danh tính ⟹ mời ĐĂNG KÝ, và đích là màn HỎI', () => {
+  // ⛔ 2026-09-16 — ba bài dưới thay bài cũ "máy CHƯA có danh tính ⟹ mời ĐĂNG KÝ,
+  // và đích là màn HỎI". Bài cũ ghim đúng một hành vi, và hành vi ấy đã bị chủ
+  // nhân bác: nó bắt MỌI người đi qua một câu hỏi để phục vụ một nhóm, kể cả
+  // người đang có khoá nằm sẵn trong chip.
+  it('máy còn khoá mà app không biết của ai ⟹ KHÔNG hỏi, đi thẳng màn Khôi phục', () => {
+    const cta = primaryCta('key-without-did');
+    expect(cta.action).toBe('restoreByDeviceKey');
+    expect(routeForPresence('key-without-did')).toBe('RestoreIdentity');
+  });
+
+  it('máy trống trơn ⟹ lối chính là TẠO MỚI, không phải màn hỏi', () => {
     const cta = primaryCta('no');
-    expect(cta.labelKey).toBe('Đăng ký danh tính');
     expect(cta.disabled).toBe(false);
-    // `openEntryChoice`, KHÔNG phải đi thẳng màn tạo mới: "đăng ký" ở đây gộp
-    // ba luồng khác hẳn nhau và hai trong ba lần chọn hộ là chọn sai.
-    expect(cta.action).toBe('openEntryChoice');
+    expect(cta.action).toBe('signUpNew');
+    expect(routeForPresence('no')).toBe('SignUpBiometric');
+  });
+
+  // Ca duy nhất còn đi qua màn hỏi — và nó phải CÒN, không được "dọn" nốt: ở đây
+  // app không phân biệt được "hệ điều hành vừa huỷ khoá" với "đây là máy khác".
+  it('có DID mà mất khoá ⟹ VẪN hỏi', () => {
+    expect(primaryCta('did-without-key').action).toBe('openEntryChoice');
+    expect(routeForPresence('did-without-key')).toBe('IdentityEntryChoice');
+  });
+
+  // `null`, không phải một đích trông hợp lệ: hai trạng thái này không có đích.
+  it('đã mở khoá được hoặc chưa đo xong ⟹ KHÔNG có đích điều hướng', () => {
+    expect(routeForPresence('yes')).toBeNull();
+    expect(routeForPresence('unknown')).toBeNull();
   });
 
   it('CHƯA BIẾT ⟹ nhãn riêng, KHÔNG mượn nhãn của hai ca kia', () => {
     const cta = primaryCta('unknown');
     expect(cta.labelKey).toBe('Đang kiểm tra máy này…');
-    expect(cta.labelKey).not.toBe('Đăng ký danh tính');
     expect(cta.labelKey).not.toBe('Đăng nhập');
   });
 
@@ -115,8 +156,10 @@ describe('primaryCta — ba trạng thái, ba cái nút khác nhau', () => {
   // Ba nhãn phải là BA chuỗi phân biệt được. Bài này đỏ nếu ai đó rút gọn hai
   // trong ba về cùng một câu — thứ trông như dọn dẹp mà thực ra xoá đúng phần
   // thông tin người dùng cần.
-  it('ba nhãn đôi một khác nhau', () => {
-    const labels = (['yes', 'no', 'unknown'] as const).map(p => primaryCta(p).labelKey);
-    expect(new Set(labels).size).toBe(3);
+  it('năm nhãn đôi một khác nhau', () => {
+    const labels = (
+      ['yes', 'key-without-did', 'did-without-key', 'no', 'unknown'] as const
+    ).map(p => primaryCta(p).labelKey);
+    expect(new Set(labels).size).toBe(5);
   });
 });

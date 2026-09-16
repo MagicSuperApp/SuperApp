@@ -219,13 +219,29 @@ export const ACCOUNT: PhraseMap = {
   'Nạp tín dụng MAGIC': { en: 'Top up MAGIC credit', zh: '充值 MAGIC 额度', ja: 'MAGIC クレジットをチャージ' },
   'Quẹt mã · Chuyển token LAMP': { en: 'Scan a code · Transfer LAMP tokens', zh: '扫码 · 转账 LAMP 代币', ja: 'コードを読み取る · LAMP トークンを送る' },
   'Đăng xuất': { en: 'Sign out', zh: '退出登录', ja: 'ログアウト' },
-  // Ba nhãn của MỘT nút — nút dưới đáy màn đăng nhập (`LoginNetworkScreen`).
-  // Nhãn thứ ba là trạng thái CHƯA ĐO XONG; nó phải có chữ riêng, vì mượn chữ
-  // của một trong hai nhãn kia là khẳng định một điều chưa biết.
-  'Đăng ký danh tính': {
-    en: 'Create an identity',
-    zh: '创建身份',
-    ja: '本人情報を作成',
+  // NĂM nhãn của MỘT nút — nút dưới đáy màn đăng nhập (`LoginNetworkScreen`),
+  // dựng từ `features/loginNetwork/identityPresence.ts#primaryCta`.
+  //
+  // Nhãn "Đang kiểm tra máy này…" là trạng thái CHƯA ĐO XONG; nó phải có chữ
+  // riêng, vì mượn chữ của một nhãn khác là khẳng định một điều chưa biết.
+  //
+  // ⛔ 2026-09-16 — nhãn cũ "Đăng ký danh tính" ĐÃ GỠ khỏi kiểu `PrimaryCta`.
+  // Nó đứng cho ba trạng thái máy khác hẳn nhau, trong đó có trạng thái người
+  // dùng ĐANG CÓ khoá trong chip. Bốn nhãn dưới nói đúng một trạng thái mỗi cái.
+  'Đăng nhập bằng khoá đã có trên máy': {
+    en: 'Sign in with the key already on this device',
+    zh: '用本机已有的密钥登录',
+    ja: 'この端末にある鍵でサインイン',
+  },
+  'Khôi phục danh tính trên máy này': {
+    en: 'Restore your identity on this device',
+    zh: '在本机恢复身份',
+    ja: 'この端末で本人情報を復元',
+  },
+  'Tạo danh tính mới trên máy này': {
+    en: 'Create a new identity on this device',
+    zh: '在本机创建新身份',
+    ja: 'この端末で新しい本人情報を作成',
   },
   'Đang kiểm tra máy này…': {
     en: 'Checking this device…',

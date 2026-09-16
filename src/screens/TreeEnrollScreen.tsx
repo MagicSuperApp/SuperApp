@@ -35,6 +35,10 @@ import {
   Image,
   Modal,
   Dimensions,
+  Keyboard,
+  KeyboardAvoidingView,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
@@ -67,6 +71,7 @@ import {
 } from '../services/speciesSuggest';
 import { getSpeciesCatalog, setTreeSpecies } from '../services/fruitReIDService';
 import { suggestTreeName } from '../utils/suggestTreeName';
+import { scrollOffsetToRevealInput, KEYBOARD_INPUT_GAP } from '../utils/keyboardScroll';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import type { RootState } from '../store';
 import { loadFarms } from '../modules/trace/store/farmSlice';
@@ -198,6 +203,84 @@ const TreeEnrollScreen: React.FC = () => {
   }, []);
   const [isEnrolling, setIsEnrolling] = useState(false);
   const [enrollResult, setEnrollResult] = useState<EnrollResponse | null>(null);
+
+  // ── ⌨️ Bàn phím không được che ô "Tên cây" ─────────────────────────────────
+  //
+  // Ô tên nằm trong vùng cuộn, thanh nút "Huỷ / Đăng ký" nằm ngoài nó, và không
+  // có gì co lại khi bàn phím lên — người đứng ở vườn gõ mù. Nếp vá đã chốt có
+  // BA chân, thiếu một chân thì vẫn che; lý lẽ đầy đủ (số đo Yoga, và vì sao mốc
+  // là đáy khung nhìn vùng cuộn chứ không phải đỉnh bàn phím) ở
+  // `utils/keyboardScroll.ts` và ở `modules/trace/screens/ActivityScreen.tsx`.
+  //
+  //   1. bọc tránh bàn phím ôm CẢ vùng cuộn LẪN thanh nút;
+  //   2. thanh nút nằm TRONG LUỒNG, là anh em ngay sau vùng cuộn;
+  //   3. mọi ô nhập gọi `scrollInputIntoView` khi được chạm.
+  const scrollRef = useRef<ScrollView>(null);
+  /** Khối nút cuối màn — ĐỈNH của nó là đáy khung nhìn thật của vùng cuộn. */
+  const bottomBarRef = useRef<View>(null);
+  // Chiều cao bàn phím, KHÔNG phải cờ bật/tắt: trợ năng cross-fade báo
+  // `screenY === 0` và bàn phím phần cứng chỉ có thanh phím tắt — hai ca "mở" mà
+  // không chiếm chỗ thật, một cờ sẽ thu đệm đáy ở cả hai.
+  const [kbHeight, setKbHeight] = useState(0);
+  const keyboardOpen = kbHeight > 0;
+  const kbHeightRef = useRef(0);
+  kbHeightRef.current = kbHeight;
+  /** Thời lượng hoạt ảnh bàn phím do CHÍNH hệ điều hành khai trong sự kiện. */
+  const kbDurationRef = useRef(0);
+  useEffect(() => {
+    // iOS chỉ bắn `Will*`, Android chỉ bắn `Did*`.
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const hien = Keyboard.addListener(showEvent, e => {
+      const { height = 0, screenY = 1 } = e.endCoordinates ?? {};
+      kbDurationRef.current = typeof e.duration === 'number' ? e.duration : 0;
+      setKbHeight(screenY === 0 || height <= 80 ? 0 : height);
+    });
+    const an = Keyboard.addListener(hideEvent, () => setKbHeight(0));
+    return () => { hien.remove(); an.remove(); };
+  }, []);
+
+  /** Vị trí cuộn ĐANG đúng — phép cuộn dưới đây cộng dồn vào nó. */
+  const scrollOffsetRef = useRef(0);
+  const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
+  }, []);
+
+  /**
+   * Đưa ô ĐANG GÕ vào tầm nhìn. KHÔNG dùng `scrollToEnd`: ô tên nằm ở đầu trang,
+   * dưới nó còn cả lưới ảnh, nên cuộn-tới-cuối đẩy chính nó ra khỏi mép trên.
+   * Mốc là ĐỈNH khối nút (= đáy khung nhìn vùng cuộn), không phải đỉnh bàn phím.
+   */
+  const scrollInputIntoView = useCallback(() => {
+    setTimeout(() => {
+      const kb = kbHeightRef.current;
+      const scroll = scrollRef.current;
+      const input = TextInput.State.currentlyFocusedInput();
+      if (kb <= 0 || !scroll || !input) return;
+      const bar = bottomBarRef.current;
+      if (!bar) return;
+      bar.measureInWindow((_sx, barTop, _sw, barHeight) => {
+        input.measureInWindow((_x, y, _w, h) => {
+          // Số đo RỖNG `0,0,0,0` (nút đã rời cây) không được đọc thành số đo thật.
+          if (h <= 0 || barHeight <= 0) return;
+          const target = scrollOffsetToRevealInput({
+            inputTop: y,
+            inputHeight: h,
+            visibleBottom: barTop,
+            currentOffset: scrollOffsetRef.current,
+            gap: KEYBOARD_INPUT_GAP,
+          });
+          if (target !== null) scroll.scrollTo({ y: target, animated: true });
+        });
+      });
+    }, kbDurationRef.current);
+  }, []);
+
+  // Lần chạm ĐẦU TIÊN: `onFocus` bắn TRƯỚC `keyboardWillShow`, nên lượt trên
+  // thoát ở cổng `kb <= 0`. Bàn phím hiện xong thì chạy lại.
+  useEffect(() => {
+    if (kbHeight > 0) scrollInputIntoView();
+  }, [kbHeight, scrollInputIntoView]);
 
   // ── Xác nhận loài cây sau khi đăng ký ────────────────────────────────────
   // Máy chủ tự đoán loài ngay ở lượt đăng ký (`species_suggest`). Đây là màn
@@ -1023,11 +1106,18 @@ const TreeEnrollScreen: React.FC = () => {
         <View style={styles.headerRight} />
       </View>
 
+      <KeyboardAvoidingView
+        style={styles.kav}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
       <ScrollView
+        ref={scrollRef}
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
       >
         {/* GPS info */}
         {gps ? (
@@ -1106,6 +1196,7 @@ const TreeEnrollScreen: React.FC = () => {
             returnKeyType="done"
             maxLength={80}
             editable={!isEnrolling && !enrollResult}
+            onFocus={scrollInputIntoView}
           />
           <Text style={styles.charCount}>{name.length}/80</Text>
         </View>
@@ -1254,14 +1345,18 @@ const TreeEnrollScreen: React.FC = () => {
         )}
       </ScrollView>
 
-      {/* Action buttons */}
+      {/* Khối nút — anh em thứ hai TRONG bọc tránh bàn phím, nằm TRONG LUỒNG.
+          Dải "còn thiếu gì" và thanh nút gộp vào MỘT khối để đo được bằng một
+          lần `measureInWindow`: đỉnh của khối này chính là đáy khung nhìn của
+          vùng cuộn, mà dải kia nằm trên thanh nút nên nó mới là mép thật. */}
+      <View ref={bottomBarRef}>
       {missingHint ? (
         <View style={styles.missingBar}>
           <Icon name="information-outline" size={15} color={NEUTRAL.textSub} />
           <Text style={styles.missingText}>{missingHint}</Text>
         </View>
       ) : null}
-      <View style={[styles.footer, { paddingBottom: bottomPad }]}>
+      <View style={[styles.footer, { paddingBottom: keyboardOpen ? 12 : bottomPad }]}>
         <TouchableOpacity
           style={[styles.footerBtn, styles.footerBtnCancel]}
           onPress={() => navigation.goBack()}
@@ -1291,6 +1386,8 @@ const TreeEnrollScreen: React.FC = () => {
           )}
         </TouchableOpacity>
       </View>
+      </View>
+      </KeyboardAvoidingView>
 
       {/* Modal xem chi tiết ảnh */}
       <Modal
@@ -1466,6 +1563,7 @@ const styles = StyleSheet.create({
   headerTitle: { color: NEUTRAL.white, fontSize: 17, fontWeight: '700' },
   headerRight: { width: 38 },
 
+  kav: { flex: 1 },
   scroll: { flex: 1 },
   scrollContent: { padding: 16, gap: 16, paddingBottom: 32 },
 

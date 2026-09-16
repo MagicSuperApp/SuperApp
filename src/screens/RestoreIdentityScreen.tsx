@@ -28,8 +28,10 @@ import {
   storeMasterKek,
 } from '../services/masterKekStore';
 import { phoenixKeyApi, PhoenixKeyApiError } from '../services/phoenixKey-api';
-import { enrollKeypair, ownerPublicKey, saveUserDid, currentUserDid, signRaw } from '../sdk/phoenixKey';
-import { phoenixKeyAuth } from '../services/phoenixKeyAuthService';
+import {
+  enrollKeypair, ownerPublicKey, saveUserDid, currentUserDid, signRaw, isKeypairEnrolled,
+} from '../sdk/phoenixKey';
+import { phoenixKeyAuth, lookupDidByDeviceKey } from '../services/phoenixKeyAuthService';
 import { loginUser } from '../store/userSlice';
 import { countMnemonicWords, normalizeMnemonic } from '../utils/mnemonic';
 import { describeDidState } from '../features/identity/didState';
@@ -61,13 +63,42 @@ const RestoreIdentityScreen = () => {
   // ở đúng lần mở màn đầu tiên, tức đúng lần người dùng cần nó nhất.
   const [kekOnDevice, setKekOnDevice] = useState<string | null | undefined>(undefined);
 
+  // ── CÒN KHOÁ TRONG CHIP KHÔNG — phép đo THỨ HAI, và nó không suy được từ phép
+  // đo trên. Ví (KEK) và khoá phần cứng nằm ở hai chỗ khác nhau và mất theo hai
+  // đường khác nhau; có ca máy còn ví mà KHÔNG còn khoá.
+  //
+  // Ca đó có thật và tới đây bằng một đường thẳng: đăng ký mới bị máy chủ chặn vì
+  // ví trên máy đã thuộc một DID khác (`wallet_bound_to_other_did`), và `catch`
+  // của `registerIdentity` xoá khoá vừa lập. Người dùng bấm nút trong hộp thoại
+  // rồi rơi thẳng vào màn này.
+  //
+  // Vì sao phải đo: `doRestoreSameDevice` mở đầu bằng `signRaw` làm phép chứng
+  // minh có mặt. Không còn khoá thì nó ném, và câu báo lỗi ở đó nói về việc "vừa
+  // thêm hoặc xoá vân tay" — SAI nguyên nhân, cho đúng nhóm người đang kẹt nhất.
+  // Thẻ lối tắt trước bản này chỉ nhìn KEK, nên nó hiện ra và hứa một lối đã khoá.
+  const [hasChipKey, setHasChipKey] = useState<boolean | undefined>(undefined);
+
   useEffect(() => {
     let alive = true;
     getStoredMasterKek()
       .then(k => { if (alive) setKekOnDevice(k); })
       .catch(() => { if (alive) setKekOnDevice(null); });
+    isKeypairEnrolled()
+      .then(v => { if (alive) setHasChipKey(v); })
+      .catch(() => { if (alive) setHasChipKey(false); });
     return () => { alive = false; };
   }, []);
+
+  /**
+   * Lối tắt "ví trên máy" DÙNG ĐƯỢC hay không — cần CẢ HAI phép đo.
+   *
+   * `undefined` khi còn chỗ chưa đo xong, và lúc đó thẻ không hiện: hiện rồi rút
+   * lại là hứa một lối rồi lấy đi.
+   */
+  const shortcutUsable =
+    kekOnDevice === undefined || hasChipKey === undefined
+      ? undefined
+      : Boolean(kekOnDevice) && hasChipKey;
 
   // Cụm từ đã CHUẨN HOÁ — dùng cho cả phép đếm lẫn phép khôi phục. Xem
   // `utils/mnemonic.ts`: chép cụm từ kèm số thứ tự / dấu phẩy làm phép đếm cũ ra
@@ -194,6 +225,44 @@ const RestoreIdentityScreen = () => {
     }
 
     const uniqueDids = [...new Set(candidates.filter(d => DID_RE.test(d)))];
+
+    // ── NGUỒN DID THỨ TƯ: HỎI MÁY CHỦ THEO CHÍNH KHOÁ TRONG CHIP ──────────────
+    // Ba nguồn trên đều hỏi CÁI MÁY. Hai nguồn đầu đọc AsyncStorage — xoá app là
+    // mất sạch; nguồn thứ ba đòi người dùng nhớ một cái tên. Nên tồn tại đúng một
+    // ca mà cả ba cùng câm: cài lại app trên chính máy cũ, và không nhớ tên đăng
+    // nhập. Ở ca đó màn hình này trước nay trả lời bằng một hộp thoại bảo người
+    // dùng gõ thứ họ không có, tức một ngõ cụt.
+    //
+    // Nhưng MÁY CHỦ thì vẫn biết: khoá trong Secure Enclave / Keystore sống qua
+    // lần xoá app, và `POST /identity/lookup` đổi đúng khoá đó lấy DID. Cửa ấy đã
+    // có sẵn và đã chạy ở hai nơi khác (`recoverLocalIdentityFromKey` đường 1 và
+    // `devicePairService.claimAuthorizedIdentity`); màn này là nơi thứ ba cần nó
+    // và là nơi duy nhất chưa gọi.
+    //
+    // ⚠ HAI RÀNG BUỘC VỀ CHỖ ĐẶT, cả hai đều làm hỏng nếu đặt sai:
+    //  1. PHẢI chạy TRƯỚC `enrollKeypair()` ở dưới. Hàm đó XOÁ khoá cũ khỏi chip;
+    //     sau nó thì khoá trong tay là khoá máy chủ chưa từng thấy, và cửa tra chỉ
+    //     còn trả 404 mãi mãi.
+    //  2. Chỉ chạy khi ba nguồn rẻ đã rỗng. Nó tốn MỘT lần hỏi vân tay/khuôn mặt —
+    //     ở đường thường (máy còn nhớ DID) lần hỏi đó không đổi lấy gì cả, mà một
+    //     hộp sinh trắc thừa đúng là thứ đã sinh ra `duong1_chua_xac_thuc`.
+    //
+    // Lỗi thì NUỐT có chủ ý, và đây là ca đệm hợp lệ: 404 nghĩa là khoá này chưa
+    // thuộc danh tính nào, mà đó chính là ca đường `enrollKeypair` bên dưới cứu
+    // được. Dừng ở đây là cắt mất một lối ra vẫn còn tốt. Lý do thô vào `console`.
+    if (uniqueDids.length === 0) {
+      try {
+        if (await isKeypairEnrolled()) {
+          const didFromDeviceKey = await lookupDidByDeviceKey(
+            'Tìm lại danh tính',
+            'Xác thực để hỏi máy chủ khoá trên máy này thuộc tài khoản nào',
+          );
+          if (DID_RE.test(didFromDeviceKey)) uniqueDids.push(didFromDeviceKey);
+        }
+      } catch (err) {
+        console.log('[Restore] lookupDidByDeviceKey lỗi:', err);
+      }
+    }
 
     if (uniqueDids.length === 0) {
       showWarning(
@@ -500,9 +569,11 @@ const RestoreIdentityScreen = () => {
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        {/* LỐI TẮT — chỉ hiện khi ĐÃ ĐO XONG và máy thật sự còn ví. `undefined`
-            (chưa đo) KHÔNG hiện: hiện rồi rút lại là hứa một lối rồi lấy đi. */}
-        {kekOnDevice ? (
+        {/* LỐI TẮT — chỉ hiện khi ĐÃ ĐO XONG cả hai thứ và cả hai đều còn: ví
+            (KEK) VÀ khoá trong chip. `undefined` (chưa đo) KHÔNG hiện: hiện rồi
+            rút lại là hứa một lối rồi lấy đi. Còn ví mà mất khoá thì thẻ này im
+            và khối ngay dưới nói thẳng vì sao — xem `shortcutUsable`. */}
+        {shortcutUsable ? (
           <View style={styles.shortcutCard} testID="restore-shortcut-same-device">
             <View style={styles.shortcutHead}>
               <Icon name="cellphone-key" size={20} color={COLORS.success} />
@@ -552,6 +623,23 @@ const RestoreIdentityScreen = () => {
           </View>
         ) : null}
 
+        {/* CÒN VÍ MÀ MẤT KHOÁ — nói thẳng, đừng để màn hình im.
+            Người tới đây phần lớn vừa bị chặn ở màn tạo danh tính: máy chủ không
+            cho gắn ví cũ vào một danh tính mới, và khoá vừa lập đã bị xoá. Không
+            có khối này thì họ thấy một màn chỉ đòi 24 từ, không có chữ nào nối
+            với câu vừa đọc — tức tự suy ra rằng mình bấm nhầm nút. */}
+        {shortcutUsable === false && kekOnDevice ? (
+          <View style={styles.infoCard} testID="restore-wallet-without-key">
+            <Icon name="key-remove" size={22} color={COLORS.accent} />
+            <Text style={styles.infoText}>
+              Ví của danh tính cũ <Text style={styles.bold}>vẫn còn</Text> trên máy, nhưng
+              khoá bảo vệ nó thì không còn, nên máy chưa tự chứng minh được bạn là chủ.
+              Lối ngắn "khôi phục bằng ví trên máy" vì thế chưa mở được —
+              hãy nhập <Text style={styles.bold}>24 từ</Text> của danh tính cũ ở ngay dưới.
+            </Text>
+          </View>
+        ) : null}
+
         <View style={styles.infoCard}>
           <Icon name="backup-restore" size={22} color={COLORS.accent} />
           <Text style={styles.infoText}>
@@ -590,7 +678,7 @@ const RestoreIdentityScreen = () => {
         {/* Tên đăng nhập — chỗ này chỉ hiện khi thẻ lối tắt KHÔNG hiện, để màn không
             có hai ô cùng nghĩa. Nó vẫn cần cho đường 24 từ: trên máy mới thì tên
             đăng nhập là cách rẻ nhất để ra DID, rẻ hơn nhiều so với gõ tay 80 ký tự. */}
-        {!kekOnDevice ? (
+        {!shortcutUsable ? (
           <>
             <Text style={styles.didLabel}>Tên đăng nhập (nếu bạn còn nhớ)</Text>
             <View style={styles.didWrap}>

@@ -163,11 +163,73 @@ export const loginUser = createAsyncThunk(
 );
 
 /**
+ * THU HỒI GIẤY UỶ NHIỆM ≠ DỌN TÀI NGUYÊN — hai việc, hai mức chịu lỗi.
+ *
+ * Mọi bước dọn trong `logoutUser` đều bọc `try/catch` riêng và nuốt lỗi bằng một
+ * dòng `console.warn`. Với bước DỌN thì đúng: nháp chụp cây không xoá được là
+ * phiền, không phải nguy.
+ *
+ * Với bước THU HỒI thì sai, và chú thích liền kề đã tự gọi tên nó là *"⛔ Đường
+ * RÒ LỚN NHẤT"*: 17 chỗ trong app đọc thẳng `auth_token`. `AsyncStorage`
+ * `multiRemove` hỏng (đĩa đầy, kho khoá bận) ⟹ `console.warn` ⟹
+ * `logoutUser.fulfilled` ⟹ màn về Login ⟹ **người sau đăng nhập trên cùng máy,
+ * mọi lời gọi vẫn đi ra mang danh người trước tới 12 giờ.** Không ai thấy gì.
+ *
+ * Nên bước thu hồi được thử lại, và lần cuối trượt thì nó KHÔNG im: tên giấy uỷ
+ * nhiệm còn sót đi ra `logoutUser.fulfilled` và thành câu cảnh báo trong
+ * `state.error`.
+ *
+ * Vì sao vẫn `fulfilled` chứ không `rejected`: ba slice khác
+ * (`farmSlice`, `treeReIDSlice`, `syncSlice`) dọn dữ liệu người vừa đăng xuất ở
+ * `logoutUser.fulfilled`. Chuyển sang `rejected` là giữ nguyên vườn, cây và hàng
+ * chờ của người trước trong bộ nhớ — vá một đường rò bằng cách mở một đường rò
+ * to hơn.
+ */
+const CREDENTIAL_REVOKE_ATTEMPTS = 3;
+
+/**
+ * Thử thu hồi một giấy uỷ nhiệm tới cùng. Trả `null` khi xong, hoặc `label` khi
+ * vẫn trượt sau `CREDENTIAL_REVOKE_ATTEMPTS` lượt.
+ *
+ * `label` là chữ hiện ra cho người dùng, nên nó nói tên thứ còn sót bằng tiếng
+ * Việt chứ không phải tên khoá kỹ thuật.
+ */
+async function revokeCredential(
+  label: string,
+  revoke: () => Promise<void>,
+): Promise<string | null> {
+  for (let attempt = 1; attempt <= CREDENTIAL_REVOKE_ATTEMPTS; attempt += 1) {
+    try {
+      await revoke();
+      return null;
+    } catch (error) {
+      if (attempt === CREDENTIAL_REVOKE_ATTEMPTS) {
+        console.error(`[Redux] Logout: KHÔNG thu hồi được ${label} sau ${attempt} lượt:`, error);
+        return label;
+      }
+    }
+  }
+  return label;
+}
+
+/** Câu hiện cho người dùng khi máy VẪN còn giấy uỷ nhiệm của người vừa đăng xuất. */
+export function logoutRevokeWarning(failures: string[]): string | null {
+  if (failures.length === 0) return null;
+  return (
+    `Đã đăng xuất nhưng máy này CHƯA xoá được ${failures.join(' và ')}. ` +
+    'Người dùng tiếp theo trên máy có thể vẫn gửi yêu cầu mang danh bạn. ' +
+    'Hãy đăng xuất lại, hoặc gỡ và cài lại ứng dụng trước khi đưa máy cho người khác.'
+  );
+}
+
+/**
  * Logout user and close database
  */
 export const logoutUser = createAsyncThunk(
   'user/logoutUser',
   async () => {
+    /** Tên những giấy uỷ nhiệm KHÔNG thu hồi được — rỗng là đăng xuất sạch. */
+    const revokeFailures: string[] = [];
     // Xoá phiên XUYÊN MODULE trước khi đóng DB — nếu không, token Work (sống ~12h) +
     // kết nối ProofChat sống sót qua đăng xuất → rò dữ liệu user A→B trên máy dùng chung.
     // Best-effort: lỗi 1 nhánh KHÔNG được chặn đăng xuất (vẫn phải đóng DB per-user).
@@ -212,25 +274,32 @@ export const logoutUser = createAsyncThunk(
     } catch (error) {
       console.warn('[Redux] Logout: clearMerkleSession lỗi (bỏ qua):', error);
     }
-    try {
-      // ⛔ Đường RÒ LỚN NHẤT, và là đường duy nhất trong khối này bị bỏ sót tới
-      // 2026-08-28: `auth_token` OriLife sống qua đăng xuất. 17 chỗ trong app đọc
-      // thẳng khoá đó — vườn, cây, con, chăm sóc, dòng thời gian, truy xuất, video,
-      // trôi mẫu, ảnh. Người sau đăng nhập trên cùng máy thì mọi lời gọi đó vẫn đi
-      // ra MANG DANH người trước, im lặng, cho tới khi token hết hạn.
-      // `clearOrilifeToken` xoá cả owner-ref, dấu chủ token, và đệm đầu đề ảnh.
+    // ⛔ Đường RÒ LỚN NHẤT, và là đường duy nhất trong khối này bị bỏ sót tới
+    // 2026-08-28: `auth_token` OriLife sống qua đăng xuất. 17 chỗ trong app đọc
+    // thẳng khoá đó — vườn, cây, con, chăm sóc, dòng thời gian, truy xuất, video,
+    // trôi mẫu, ảnh. Người sau đăng nhập trên cùng máy thì mọi lời gọi đó vẫn đi
+    // ra MANG DANH người trước, im lặng, cho tới khi token hết hạn.
+    // `clearOrilifeToken` xoá cả owner-ref, dấu chủ token, và đệm đầu đề ảnh.
+    //
+    // KHÔNG còn nằm trong nhóm best-effort: xem khối `revokeCredential` ở trên.
+    const orilifeLeft = await revokeCredential('thẻ đăng nhập OriLife', async () => {
       await clearOrilifeToken();
-      // Mở van chặn bão sinh trắc. Van đó đứng đúng chỗ khi cùng một danh tính bị
-      // máy chủ từ chối liên tục; nhưng đăng xuất là lúc danh tính ĐỔI, nên giữ
-      // nguyên đồng hồ nghỉ của người trước là bắt người sau chờ một phút không
-      // vì lý do gì. CỐ Ý gọi ở đây chứ không nhét vào `clearOrilifeToken`:
-      // `ensureOrilifeToken` cũng gọi hàm xoá đó trước mỗi lần ký, nên đặt lệnh
-      // mở van vào trong nó là vô hiệu hoá chính cái van, im lặng.
-      clearOrilifeLoginCooldown();
-    } catch (error) {
-      console.warn('[Redux] Logout: clearOrilifeToken lỗi (bỏ qua):', error);
-    }
-    try {
+    });
+    if (orilifeLeft) revokeFailures.push(orilifeLeft);
+    // Mở van chặn bão sinh trắc. Van đó đứng đúng chỗ khi cùng một danh tính bị
+    // máy chủ từ chối liên tục; nhưng đăng xuất là lúc danh tính ĐỔI, nên giữ
+    // nguyên đồng hồ nghỉ của người trước là bắt người sau chờ một phút không
+    // vì lý do gì. CỐ Ý gọi ở đây chứ không nhét vào `clearOrilifeToken`:
+    // `ensureOrilifeToken` cũng gọi hàm xoá đó trước mỗi lần ký, nên đặt lệnh
+    // mở van vào trong nó là vô hiệu hoá chính cái van, im lặng.
+    //
+    // Và CỐ Ý đứng NGOÀI mọi nhánh lỗi của bước trên. Bản trước hai lệnh chung
+    // một `try`: dòng đầu ném là dòng này KHÔNG chạy, nên đúng lúc thu hồi thẻ
+    // hỏng thì người sau vừa gánh thẻ người trước vừa phải ngồi chờ hết đồng hồ
+    // nghỉ của người trước. Mở van không phụ thuộc thẻ có xoá được hay không —
+    // nó chỉ là một biến đếm trong bộ nhớ, và mở nó luôn đúng khi danh tính đổi.
+    clearOrilifeLoginCooldown();
+    const phoenixSessionLeft = await revokeCredential('thẻ phiên PhoenixKey', async () => {
       // ⛔ CÙNG LỚP với dòng ngay trên, phát hiện muộn hơn: `phoenixkey_session_token`
       // cũng sống qua đăng xuất. `clearSessionToken` được viết sẵn rồi đặt vào ĐÚNG
       // MỘT đường — `wipeIdentity()` (`sdk/phoenixKey.ts`), tức đường XOÁ DANH TÍNH
@@ -260,14 +329,15 @@ export const logoutUser = createAsyncThunk(
       // người đăng xuất rồi đăng nhập bằng danh tính khác vẫn chịu nguyên một
       // phút nghỉ do máy chủ từ chối NGƯỜI TRƯỚC.
       //
-      // Vì sao nó ở trong cùng khối `try` với `clearSessionToken` chứ không đứng
-      // riêng: hai lệnh này là một việc. Xoá thẻ mà không mở van thì người sau
-      // vừa không có thẻ vừa không được đúc thẻ — trạng thái tệ hơn cả trước khi
+      // Vì sao nó ở cùng nhánh với `clearSessionToken` chứ không đứng riêng:
+      // hai lệnh này là một việc. Xoá thẻ mà không mở van thì người sau vừa
+      // không có thẻ vừa không được đúc thẻ — trạng thái tệ hơn cả trước khi
       // xoá. `clearSessionToken` ném thì van cũng không cần mở, vì thẻ cũ còn đó.
+      // (Khác hẳn van OriLife ở trên: van đó mở được kể cả khi thẻ còn, vì nó
+      // không khoá đường cấp thẻ mới.)
       clearSessionMintCooldown();
-    } catch (error) {
-      console.warn('[Redux] Logout: clearSessionToken lỗi (bỏ qua):', error);
-    }
+    });
+    if (phoenixSessionLeft) revokeFailures.push(phoenixSessionLeft);
     try {
       // Issue #288 — quét anh em. Kho khử-trùng cây (`@aladin/treeDedupCache/v2`)
       // KHÔNG gắn tên chủ: nó là một khoá phẳng cho cả máy. Người sau quét một
@@ -306,6 +376,9 @@ export const logoutUser = createAsyncThunk(
     } catch (error) {
       console.error('[Redux] Logout error:', error);
     }
+    // Đi ra `logoutUser.fulfilled`. Rỗng = đăng xuất SẠCH; có tên = máy này còn
+    // giấy uỷ nhiệm của người vừa rời, và màn phải nói ra.
+    return { revokeFailures };
   }
 );
 
@@ -493,14 +566,17 @@ const userSlice = createSlice({
       .addCase(logoutUser.pending, (state) => {
         state.isLoading = true;
       })
-      .addCase(logoutUser.fulfilled, (state) => {
+      .addCase(logoutUser.fulfilled, (state, action) => {
         state.currentUser = null;
         state.wallet = null;
         state.phoenixKey = null;
         state.network = null;
         state.controllerPkh = null;   // audit #3: tránh rò khoá quản-trị sang tài-khoản kế
         state.isLoading = false;
-        state.error = null;
+        // Đăng xuất SẠCH thì `null` như cũ. Còn giấy uỷ nhiệm chưa thu hồi được
+        // thì đây là chỗ DUY NHẤT người dùng có cơ hội biết — trước bản này nó
+        // chỉ là một dòng `console.warn` không ai đọc.
+        state.error = logoutRevokeWarning(action.payload?.revokeFailures ?? []);
       })
       .addCase(logoutUser.rejected, (state) => {
         state.isLoading = false;

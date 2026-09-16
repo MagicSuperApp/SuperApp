@@ -21,8 +21,9 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Clipboard, FlatList, Image, Pressable, ScrollView,
-  StatusBar, StyleSheet, Text, TextInput, View,
+  ActivityIndicator, Clipboard, FlatList, Image, Keyboard, KeyboardAvoidingView,
+  Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, View,
+  type NativeScrollEvent, type NativeSyntheticEvent,
 } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -31,6 +32,7 @@ import Geolocation from 'react-native-geolocation-service';
 import Icon from '../components/Icon';
 import { useTk } from '../i18n/keys';
 import { cameraErrorBody } from '../utils/cameraError';
+import { scrollOffsetToRevealInput, KEYBOARD_INPUT_GAP } from '../utils/keyboardScroll';
 import { useAppSelector } from '../store/hooks';
 import type { RootState } from '../store';
 import { ORILIFE_BASE } from '../services/orilifeBase';
@@ -163,6 +165,89 @@ const FruitVideoScreen: React.FC = () => {
   // Ref soi videoUri MỚI NHẤT để chống đua khôi-phục-vs-phiên-mới (hộp thoại mở lâu).
   const videoUriRef = useRef<string | null>(null);
   videoUriRef.current = videoUri;
+
+  // ── ⌨️ Bàn phím không được che ô đang gõ ───────────────────────────────────
+  //
+  // Ba ô nhập của màn này (tên quả · tìm cây · ghi thêm) đều nằm ở nửa dưới vùng
+  // cuộn, nên bàn phím phủ kín chúng. Nếp vá đã chốt có BA chân, thiếu một chân
+  // thì vẫn che — lý lẽ đầy đủ (kèm số đo Yoga và vì sao mốc không phải đỉnh bàn
+  // phím) nằm ở `utils/keyboardScroll.ts` và ở khối chú thích trước bọc tránh bàn
+  // phím trong `modules/trace/screens/ActivityScreen.tsx`. Ở đây chỉ ghi phần
+  // RIÊNG của màn này.
+  //
+  //   1. bọc tránh bàn phím ôm CẢ vùng cuộn LẪN thanh nút gửi;
+  //   2. thanh nút nằm TRONG LUỒNG, là anh em ngay sau vùng cuộn;
+  //   3. mọi ô nhập gọi `scrollInputIntoView` khi được chạm.
+  const scrollRef = useRef<ScrollView>(null);
+  /** Thanh nút gửi — ĐỈNH của nó là đáy khung nhìn thật của vùng cuộn. */
+  const bottomBarRef = useRef<View>(null);
+  // Chiều cao bàn phím, KHÔNG phải một cờ bật/tắt: có hai ca bàn phím "mở" mà
+  // không chiếm chỗ thật (trợ năng cross-fade báo `screenY === 0`, bàn phím phần
+  // cứng chỉ có thanh phím tắt), và một cờ sẽ thu đệm đáy ở cả hai ca đó.
+  const [kbHeight, setKbHeight] = useState(0);
+  const keyboardOpen = kbHeight > 0;
+  const kbHeightRef = useRef(0);
+  kbHeightRef.current = kbHeight;
+  /** Bàn phím trượt lên mất bao lâu — hệ điều hành tự khai trong chính sự kiện. */
+  const kbDurationRef = useRef(0);
+  useEffect(() => {
+    // Nghe theo ĐÚNG nền tảng: iOS chỉ bắn `Will*`, Android chỉ bắn `Did*`.
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const hien = Keyboard.addListener(showEvent, e => {
+      const { height = 0, screenY = 1 } = e.endCoordinates ?? {};
+      kbDurationRef.current = typeof e.duration === 'number' ? e.duration : 0;
+      setKbHeight(screenY === 0 || height <= 80 ? 0 : height);
+    });
+    const an = Keyboard.addListener(hideEvent, () => setKbHeight(0));
+    return () => { hien.remove(); an.remove(); };
+  }, []);
+
+  /** Vị trí cuộn ĐANG đúng — phép cuộn dưới đây cộng dồn vào nó. */
+  const scrollOffsetRef = useRef(0);
+  const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
+  }, []);
+
+  /**
+   * Đưa ô ĐANG GÕ vào tầm nhìn.
+   *
+   * KHÔNG dùng `scrollToEnd`: nó cuộn tới cuối NỘI DUNG chứ không tới ô đang gõ,
+   * và ở màn này ô "tên quả" nằm giữa trang — cuộn tới cuối sẽ đẩy chính nó ra
+   * khỏi mép trên. Mốc so sánh là ĐỈNH THANH NÚT (= đáy khung nhìn của vùng
+   * cuộn), không phải đỉnh bàn phím; công thức ở `scrollOffsetToRevealInput`.
+   */
+  const scrollInputIntoView = useCallback(() => {
+    setTimeout(() => {
+      const kb = kbHeightRef.current;
+      const scroll = scrollRef.current;
+      const input = TextInput.State.currentlyFocusedInput();
+      if (kb <= 0 || !scroll || !input) return;
+      const bar = bottomBarRef.current;
+      if (!bar) return;
+      bar.measureInWindow((_sx, barTop, _sw, barHeight) => {
+        input.measureInWindow((_x, y, _w, h) => {
+          // Nút đã rời khỏi cây trả số đo RỖNG `0,0,0,0`. Cuộn theo số đó là cuộn
+          // theo số bịa — thà không cuộn.
+          if (h <= 0 || barHeight <= 0) return;
+          const target = scrollOffsetToRevealInput({
+            inputTop: y,
+            inputHeight: h,
+            visibleBottom: barTop,
+            currentOffset: scrollOffsetRef.current,
+            gap: KEYBOARD_INPUT_GAP,
+          });
+          if (target !== null) scroll.scrollTo({ y: target, animated: true });
+        });
+      });
+    }, kbDurationRef.current);
+  }, []);
+
+  // Lần chạm ĐẦU TIÊN: `onFocus` bắn TRƯỚC `keyboardWillShow`, nên lượt gọi trên
+  // thoát ngay ở cổng `kb <= 0`. Bàn phím hiện xong thì chạy lại.
+  useEffect(() => {
+    if (kbHeight > 0) scrollInputIntoView();
+  }, [kbHeight, scrollInputIntoView]);
 
   // Số clip đang chờ gửi trong hàng đợi bền — hiện để đội thực địa biết còn tồn.
   const refreshQueueCount = useCallback(() => {
@@ -663,7 +748,17 @@ const FruitVideoScreen: React.FC = () => {
         ]}
       />
 
-      <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+      <KeyboardAvoidingView
+        style={styles.kav}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={styles.body}
+        keyboardShouldPersistTaps="handled"
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+      >
         {/* ── Chặng 1 — quay ── */}
         {!videoUri ? (
           <Pressable
@@ -727,6 +822,7 @@ const FruitVideoScreen: React.FC = () => {
           value={fruitName}
           onChangeText={setFruitName}
           maxLength={60}
+          onFocus={scrollInputIntoView}
         />
 
         {/* ── Chặng 4 — cây nào ── */}
@@ -756,6 +852,7 @@ const FruitVideoScreen: React.FC = () => {
                   placeholderTextColor={NATURE.barkSoft}
                   value={treeQuery}
                   onChangeText={setTreeQuery}
+                  onFocus={scrollInputIntoView}
                 />
                 {treeQuery.length > 0 && (
                   <Pressable onPress={() => setTreeQuery('')} hitSlop={10}>
@@ -804,11 +901,21 @@ const FruitVideoScreen: React.FC = () => {
           value={note}
           onChangeText={setNote}
           maxLength={120}
+          onFocus={scrollInputIntoView}
         />
       </ScrollView>
 
-      {/* ── Chặng 3 — gửi ── */}
-      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) + 8 }]}>
+      {/* ── Chặng 3 — gửi ──
+          Anh em thứ hai TRONG bọc tránh bàn phím, nằm trong luồng: `behavior=
+          "padding"` KHÔNG nâng nổi một con `position:'absolute'`, và đỉnh thanh
+          này chính là đáy khung nhìn của vùng cuộn (xem `bottomBarRef`). */}
+      <View
+        ref={bottomBarRef}
+        style={[
+          styles.footer,
+          { paddingBottom: keyboardOpen ? 12 : Math.max(insets.bottom, 12) + 8 },
+        ]}
+      >
         {/* BA trạng thái, không phải hai. `null` = kho trên máy đọc không ra, nên
             app KHÔNG biết còn clip nào chờ. Gộp nó vào nhánh "ẩn dải" là nói với
             người quay rằng chẳng còn gì phải chờ — đúng lúc điều đó không ai biết. */}
@@ -854,6 +961,7 @@ const FruitVideoScreen: React.FC = () => {
           )}
         </Pressable>
       </View>
+      </KeyboardAvoidingView>
     </View>
   );
 };
@@ -932,6 +1040,7 @@ const styles = StyleSheet.create({
   spineLine: { flex: 1, height: 2, backgroundColor: SURFACE.sunken, marginBottom: 20 },
   spineLineDone: { backgroundColor: TONE.primary },
 
+  kav: { flex: 1 },
   body: { paddingHorizontal: SPACE.page, paddingBottom: SPACE.xxl },
 
   card: {

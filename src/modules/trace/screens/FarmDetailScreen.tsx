@@ -31,6 +31,7 @@ import { RootState } from '../../../store';
 import { addFarm, setTrees, addTree, saveFarm, loadTrees, saveTree, loadFarm, syncTreesFromBackend } from '../store/farmSlice';
 import { database } from '../../../utils/database';
 import Geolocation from 'react-native-geolocation-service';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS } from '../../../constants';
 // Nen huu co dung chung cua module (tong dat/la) - xem theme/depth.ts
 import {
@@ -477,6 +478,44 @@ const DraggableVertex = ({
 const DEFAULT_CENTER: [number, number] = [106.660172, 10.762622];
 
 /** Ranh này lấy bằng cách nào, và sai số bao nhiêu mét. */
+// ── Nháp vườn đang vẽ dở ─────────────────────────────────────────────────────
+//
+// ⛔ Vì sao phải có: `coordinates` chỉ nằm trong `useState`. Khi "Lưu vườn" trượt
+// vì mất mạng, app hứa rằng các điểm GPS đã ghi vẫn còn — mà lời hứa đó chỉ đúng
+// CHỪNG NÀO MÀN CÒN SỐNG. Người dùng yên tâm thoát app, hệ điều hành thu hồi
+// tiến trình, và hai mươi phút đi vòng biến mất. Lời hứa cần một cái giữ thật.
+//
+// Nháp nằm ở AsyncStorage (cùng kho mà `farmSlice` dùng), MỘT bản — người ta vẽ
+// một vườn một lúc, và một hàng đợi nháp thì phải có giao diện quản lý nháp.
+const FARM_DRAFT_KEY = 'trace.farmDraft.v1';
+
+interface FarmDraft {
+  coordinates: { lat: number; lng: number }[];
+  farmName: string;
+  savedAt: number;
+}
+
+/** Xoá nháp — gọi khi vườn đã lưu được, hoặc người dùng chủ ý bỏ bản dở. */
+async function clearFarmDraft(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(FARM_DRAFT_KEY);
+  } catch (e: any) {
+    console.warn('[FarmDraft] không xoá được nháp:', e?.message ?? e);
+  }
+}
+
+/**
+ * Quá bao lâu KHÔNG có một lần định vị nào thì dừng ghi và nói ra.
+ *
+ * Van an toàn 5 phút đã có (`GPS_BAD_HARD_TIMEOUT_MS` trong `decideWalkAway`)
+ * KHÔNG cứu được ca này: `decideWalkAway` chỉ chạy bên trong hàm THÀNH CÔNG của
+ * `watchPosition`. Mất tín hiệu nghĩa là hàm thành công thôi chạy, nên van đặt
+ * bên trong nó cũng thôi chạy — đồng hồ này phải ĐỘC LẬP với callback.
+ */
+const GPS_NO_FIX_STOP_MS = 90_000;
+/** Nhịp soát của đồng hồ trên. Rẻ, và không cần chính xác tới giây. */
+const GPS_WATCHDOG_TICK_MS = 5_000;
+
 interface BoundaryMeta {
   /** `BOUNDARY_METHOD.gpsWalk` khi đi vòng quanh vườn, `.mapDraw` khi chấm tay. */
   method: string;
@@ -545,6 +584,17 @@ const AddFarmMode = ({
   const [drawMode, setDrawMode] = useState<'auto' | 'manual'>('auto');
   const [isAutoRecording, setIsAutoRecording] = useState(false);
   const [lastAccuracy, setLastAccuracy] = useState<number | null>(null);
+  /**
+   * Đang MẤT TÍN HIỆU — hàm lỗi của `watchPosition` vừa bắn, hoặc đồng hồ soát
+   * thấy quá lâu không có lần định vị nào.
+   *
+   * ⛔ Bản trước hàm lỗi chỉ có `console.log`: màn vẫn đập nhịp đỏ và vẫn ghi
+   * "Đang ghi… đi vòng quanh vườn" trong khi không điểm nào vào nữa. Đi hết vườn
+   * hai mươi phút, quay lại được một điểm.
+   */
+  const [gpsLost, setGpsLost] = useState(false);
+  /** Lần định vị THẬT gần nhất (đã loại fix cache cũ). Mốc của đồng hồ soát. */
+  const lastFixAtRef = useRef<number>(Date.now());
   /**
    * Sai số GPS TỆ NHẤT gặp trong lúc đi vòng — con số đại diện cho cả vòng ranh.
    *
@@ -646,6 +696,11 @@ const AddFarmMode = ({
           // Bỏ fix CACHE cũ (>15s): OS hay trả vị trí "tỉnh từng ở" tức thì trước khi
           // GPS thật khoá → hiện sai tỉnh (field 13/07). Fix live luôn có timestamp mới.
           if (pos.timestamp && Date.now() - pos.timestamp > 15000) return;
+          // Một lần định vị THẬT — mốc của đồng hồ soát, và là thứ duy nhất gỡ
+          // được cờ mất tín hiệu. Đặt SAU cổng loại fix cache: một fix cũ mười
+          // phút không chứng minh máy đang bắt được vệ tinh.
+          lastFixAtRef.current = Date.now();
+          setGpsLost(false);
           const { latitude, longitude, accuracy } = pos.coords;
           setCurrentLocation({ lat: latitude, lng: longitude });
           setLastAccuracy(accuracy ?? null);
@@ -658,7 +713,14 @@ const AddFarmMode = ({
             onPointCandidateRef.current(latitude, longitude, accuracy ?? null);
           }
         },
-        (err) => console.log('[AddFarmMode] watchPosition error:', err),
+        (err) => {
+          // ⛔ KHÔNG chỉ `console.log` ở đây. Một dòng nhật ký không đổi được chữ
+          // trên màn, nên app tiếp tục khẳng định "Đang ghi" trong lúc không ghi
+          // được gì — đúng thứ người dùng không có cách nào tự thấy.
+          console.log('[AddFarmMode] watchPosition error:', err);
+          if (cancelled) return;
+          setGpsLost(true);
+        },
         // distanceFilter=3 đồng bộ với native LocationHelper (Build 51).
         // forceRequestLocation + showLocationDialog (Android): nhắc bật định-vị nếu tắt.
         {
@@ -679,6 +741,31 @@ const AddFarmMode = ({
       if (watchId !== null) Geolocation.clearWatch(watchId);
     };
   }, []);
+
+  /**
+   * Đồng hồ soát tín hiệu — ĐỘC LẬP với callback của `watchPosition`.
+   *
+   * Đây là phần không thay bằng cách vá hàm lỗi được: có ca máy không bắn lỗi
+   * nào cả, nó chỉ đơn giản thôi trả về fix (vào dưới tán dày, vào nhà kho). Lúc
+   * đó cả hàm thành công lẫn hàm lỗi đều im, và mọi van đặt bên trong chúng đều
+   * im theo. Chỉ một đồng hồ chạy bên ngoài mới đếm được sự im lặng đó.
+   */
+  useEffect(() => {
+    if (!isAutoRecording) return;
+    // Bắt đầu đếm từ lúc bấm ghi, không từ lần fix cũ nào trước đó.
+    lastFixAtRef.current = Date.now();
+    const id = setInterval(() => {
+      if (Date.now() - lastFixAtRef.current < GPS_NO_FIX_STOP_MS) return;
+      setIsAutoRecording(false);
+      setEditMode('edit-ready');
+      setGpsLost(true);
+      showWarning(
+        t('Mất tín hiệu GPS — đã dừng ghi'),
+        t('Quá 90 giây không nhận được điểm nào. Các điểm đã ghi vẫn còn trên màn hình. Ra chỗ thoáng rồi bấm "Tiếp tục đi vòng".'),
+      );
+    }, GPS_WATCHDOG_TICK_MS);
+    return () => clearInterval(id);
+  }, [isAutoRecording, setEditMode]);
 
   const loadMap = async () => {
     try {
@@ -747,7 +834,11 @@ const AddFarmMode = ({
   const perim = perimeterMeters(renderCoords);
   const canSave = coordinates.length >= MIN_POINTS_TO_DEFINE && areaSquareMeters(coordinates) >= MIN_FARM_AREA_SQM;
 
-  const hintText = lastRejectReason
+  // Mất tín hiệu đứng TRƯỚC lý do từ chối điểm: một lý do từ chối là bằng chứng
+  // rằng vẫn CÓ fix về, nên khi không còn fix nào thì câu đó đã cũ.
+  const hintText = (isAutoRecording && gpsLost)
+    ? 'Mất tín hiệu GPS — chưa ghi thêm điểm nào'
+    : lastRejectReason
     ? `⚠ ${lastRejectReason}`
     : drawMode === 'manual'
       ? (coordinates.length < MIN_POINTS_TO_DEFINE
@@ -968,8 +1059,14 @@ const AddFarmMode = ({
         <View style={[styles.bottomCard, { paddingBottom: Math.max(insets.bottom, 12) + 6 }]}>
           {/* Dòng gợi ý trạng thái */}
           <View style={styles.hintLine}>
-            {isAutoRecording && drawMode === 'auto' ? <RecordingPulse /> : (
-              <View style={[styles.pulseDot, { backgroundColor: lastRejectReason ? '#E67E22' : COLORS.textMuted }]} />
+            {/* Nhịp đỏ là câu "đang ghi được". Mất tín hiệu thì nó phải đổi màu,
+                không thì hình và chữ nói hai điều khác nhau. */}
+            {isAutoRecording && drawMode === 'auto' && !gpsLost ? <RecordingPulse /> : (
+              <View style={[styles.pulseDot, {
+                backgroundColor: (isAutoRecording && gpsLost) || lastRejectReason
+                  ? '#E67E22'
+                  : COLORS.textMuted,
+              }]} />
             )}
             <Text style={styles.hintText} numberOfLines={2}>{hintText}</Text>
           </View>
@@ -2234,6 +2331,75 @@ const FarmDetailScreen = () => {
   const [farmNameInput, setFarmNameInput] = useState<string>('');
   const farmNameInputRef = useRef<string>('');
   useEffect(() => { farmNameInputRef.current = farmNameInput; }, [farmNameInput]);
+
+  // ── Nháp: GHI sau mỗi điểm ────────────────────────────────────────────────
+  // Chạy theo `coordinates` nên mỗi điểm mới là một lượt ghi. Chỉ ghi khi màn
+  // đang ở bản vẽ MỚI (`farm_id` rỗng) — mở một vườn đã có thì không có gì dở.
+  useEffect(() => {
+    if (farm_id) return;
+    if (coordinates.length === 0) return;
+    const draft: FarmDraft = {
+      coordinates,
+      farmName: farmNameInput,
+      savedAt: Date.now(),
+    };
+    AsyncStorage.setItem(FARM_DRAFT_KEY, JSON.stringify(draft)).catch((e: any) => {
+      console.warn('[FarmDraft] ghi nháp hỏng:', e?.message ?? e);
+    });
+  }, [coordinates, farmNameInput, farm_id]);
+
+  /** Đã hỏi chuyện khôi phục nháp chưa — hỏi đúng MỘT lần mỗi lần mở màn. */
+  const draftAskedRef = useRef(false);
+
+  // ── Nháp: HỎI lúc mở màn ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (draftAskedRef.current) return;
+    draftAskedRef.current = true;
+    if (farm_id) return;
+    let alive = true;
+    (async () => {
+      let raw: string | null = null;
+      try {
+        raw = await AsyncStorage.getItem(FARM_DRAFT_KEY);
+      } catch (e: any) {
+        console.warn('[FarmDraft] không đọc được nháp:', e?.message ?? e);
+        return;
+      }
+      if (!raw || !alive) return;
+      let draft: FarmDraft | null = null;
+      try {
+        draft = JSON.parse(raw) as FarmDraft;
+      } catch {
+        // Nháp hỏng định dạng thì bỏ, đừng để nó chặn lượt vẽ mới mãi mãi.
+        await clearFarmDraft();
+        return;
+      }
+      const pts = Array.isArray(draft?.coordinates) ? draft.coordinates : [];
+      if (pts.length === 0) { await clearFarmDraft(); return; }
+      if (!alive) return;
+      showWarning(
+        'Còn một vườn đang vẽ dở',
+        `Lần trước bạn đã ghi ${pts.length} điểm${draft?.farmName ? ` cho "${draft.farmName}"` : ''} mà chưa lưu được. Đi tiếp?`,
+        {
+          actions: [
+            {
+              text: 'Bỏ bản dở',
+              style: 'destructive',
+              onPress: () => { void clearFarmDraft(); },
+            },
+            {
+              text: 'Đi tiếp',
+              onPress: () => {
+                setCoordinates(pts);
+                setFarmNameInput(draft?.farmName ?? '');
+              },
+            },
+          ],
+        },
+      );
+    })();
+    return () => { alive = false; };
+  }, [farm_id]);
   // B2: cờ đang gọi backend tạo vườn — khoá nút Lưu + hiện loading (§7.3), chống bấm kép.
   const [isSavingFarm, setIsSavingFarm] = useState<boolean>(false);
 
@@ -2345,8 +2511,11 @@ const FarmDetailScreen = () => {
         // Phân biệt mạng ⟂ auth ⟂ server (§7.3). KHÔNG tạo bản ghi cục-bộ id-giả →
         // tránh cây mồ-côi. Giữ nguyên màn + điểm GPS để người dùng thử lại.
         if (err?.type === 'network_error') {
+          // Câu "vẫn được giữ" nay CÓ một cái giữ thật: nháp ở AsyncStorage (xem
+          // `FARM_DRAFT_KEY`). Trước bản này nó chỉ đúng chừng nào màn còn sống,
+          // mà người đọc câu đó lại hiểu là thoát app cũng không sao.
           showInfo('Cần kết nối mạng',
-            'Tạo vườn cần mạng để máy chủ cấp mã vườn. Việc thêm cây (chụp ảnh) cũng cần mạng — hãy kết nối rồi thử lại. Các điểm GPS bạn đã ghi vẫn được giữ.');
+            'Tạo vườn cần mạng để máy chủ cấp mã vườn. Việc thêm cây (chụp ảnh) cũng cần mạng — hãy kết nối rồi thử lại. Các điểm GPS bạn đã ghi đã được lưu nháp trong máy: mở lại màn này sẽ hỏi có đi tiếp không.');
         } else if (err?.type === 'auth_error') {
           // App đã TỰ ký DID lấy token + thử lại 1 lần ở trên → vẫn auth_error nghĩa là
           // danh-tính chưa đăng-ký trên máy chủ (DID mồ côi) hoặc máy chủ đang trục-trặc.
@@ -2376,7 +2545,9 @@ const FarmDetailScreen = () => {
         visibilityTime: 2500,
       });
 
-      // 5. Reset state + navigate
+      // 5. Reset state + navigate. Vườn đã lên máy chủ ⟹ nháp hết vai, xoá đi —
+      //    giữ lại thì lần mở màn sau app mời đi tiếp một vườn đã tạo xong.
+      await clearFarmDraft();
       walkAwayStateRef.current = initWalkAwayState();
       lastPointTimestampRef.current = null;
       setEditMode('recording');
@@ -2712,7 +2883,9 @@ const FarmDetailScreen = () => {
         onPointCandidate={handleAutoPoint}
         onCaptureNow={handleCaptureNow}
         onFinish={handleAddFarm}
-        onBack={() => navigation.goBack()}
+        // Thoát CÓ CHỦ Ý (đã qua hộp xác nhận "Bạn sẽ mất các điểm GPS") ⟹ bỏ
+        // nháp luôn. Giữ lại thì lần sau app mời đi tiếp đúng thứ vừa vứt đi.
+        onBack={() => { void clearFarmDraft(); navigation.goBack(); }}
         rejectReason={autoPointRejectReason}
         farmName={farmNameInput}
         onFarmNameChange={setFarmNameInput}

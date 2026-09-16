@@ -97,7 +97,7 @@ describe('đăng xuất giữa lúc đang đúc thẻ', () => {
     mockStatusGate = gate.promise;
 
     // Người trước đang có thẻ; màn Ví gặp 401 nên ép đúc mới.
-    await setSessionToken('the-cu');
+    await setSessionToken('the-cu', 'did:phoenix:nguoi-truoc');
     const inFlight = ensurePhoenixSession({ force: true });
     await settle();
 

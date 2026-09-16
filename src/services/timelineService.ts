@@ -221,7 +221,20 @@ export async function addTimelineEvent(
   baseUrl: string,
   entityType: TimelineEntityType,
   entityId: string,
-  body: { kind: TimelineKind; ts?: string; payload?: Record<string, unknown>; media?: unknown[] },
+  body: {
+    kind: TimelineKind;
+    ts?: string;
+    payload?: Record<string, unknown>;
+    media?: unknown[];
+    /**
+     * Khoá khử-trùng phía client, ỔN ĐỊNH qua mọi lần gửi lại cùng một sự việc.
+     * Cửa này không có khoá tự nhiên, nên gửi lại một sự việc đã tới máy chủ (phản
+     * hồi rớt giữa đường) sẽ tạo sự kiện thứ hai. Nơi gọi chịu trách nhiệm bảo đảm
+     * id KHÔNG đổi giữa các lần thử; máy chủ dedup hay không là việc của máy chủ —
+     * chưa đo được, nên đừng viết ở đâu rằng cửa này đã chống trùng.
+     */
+    client_event_id?: string;
+  },
   /** @internal Lượt gọi thứ mấy. Chỉ `_shouldRetryAfterRelogin` đặt giá trị này. */
   attempt = 0,
 ): Promise<{ ok: boolean; event_id?: string; error?: APIError }> {

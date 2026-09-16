@@ -818,7 +818,19 @@ const AccountScreen = () => {
                             value={fmtLamp(chainWallet?.lampBalance)}
                             unit="LAMP"
                             color={COLORS.accent}
-                            desc="Sinh MAGIC mỗi 5 ngày"
+                            // ⛔ KHÔNG viết lại "Sinh MAGIC mỗi 5 ngày" ở đây.
+                            //
+                            // Câu đó đứng ở ô này tới 15/09/2026, dịch sẵn ra bốn thứ
+                            // tiếng, và KHÔNG có một dòng mã nào đứng sau: quét cả
+                            // `src/` lẫn `rust/` cho mọi tên gọi của việc sinh MAGIC
+                            // (`schedulegen`, `generateMagic`, `mintMagic`) đều ra rỗng.
+                            // Người dùng đọc nó rồi chờ một khoản không bao giờ tới.
+                            //
+                            // Câu dưới đây nói một tính chất ĐANG đúng của LAMP (tổng
+                            // cung cố định, không đốt) chứ không hứa một hành vi. Ngày
+                            // nào cửa sinh MAGIC có mã thật thì đổi lại — cùng lúc với
+                            // mã, không trước.
+                            desc="Token nền, tổng cung cố định"
                             onPress={openLamp}
                         />
                         {/* CARP — token hệ sinh thái thứ 3. TODO brand: icon/màu tạm; số dư chờ API Phoenix. */}
@@ -1096,7 +1108,20 @@ const AccountScreen = () => {
                             }
                         />
                         <MenuItem icon="school-outline" label="Chạy luồng hướng dẫn" sublabel="Xem lại hướng dẫn thao tác cơ bản" onPress={runTutorial} />
-                        <MenuItem icon="wifi-off" label="Chế độ offline" sublabel="Lưu cục bộ khi mất mạng" last />
+                        <MenuItem icon="wifi-off" label="Chế độ offline" sublabel="Lưu cục bộ khi mất mạng" />
+                        {/* LỐI VÀO hàng đợi đồng bộ. Đặt ngay dưới "Chế độ offline" có
+                            chủ ý: ô trên nói app LƯU CỤC BỘ khi mất mạng, và câu hỏi kế
+                            tiếp của người đọc đúng là *"vậy cái đã lưu giờ ở đâu, gửi
+                            chưa"*. Trước ô này câu đó không có chỗ trả lời — mục vẫn
+                            sống trong `sync_queue` nhưng không màn nào bày ra, nên một
+                            mục đang chờ và một mục đã mất đọc y như nhau. */}
+                        <MenuItem
+                            icon="cloud-upload-outline"
+                            label="Hàng đợi gửi lên máy chủ"
+                            sublabel="Xem mục chưa gửi được và gửi lại bằng tay"
+                            onPress={() => navigation.navigate('SyncQueue')}
+                            last
+                        />
                     </Section>
                 </Animated.View>
 
@@ -1169,26 +1194,51 @@ const AccountScreen = () => {
                 {/* ── Bảo mật ── */}
                 <Animated.View style={{ opacity: fadeAnim }}>
                     <Section title="BẢO MẬT & KHÔI PHỤC">
-                        {/* Câu này nói ĐÚNG VIỆC, không doạ và không hứa: nêu tình
-                            trạng, nêu hệ quả cụ thể (mất máy), nêu một việc làm được
-                            ngay. Không dùng chữ "lỗi" — người dùng không làm gì sai. */}
+                        {/* ⛔ ĐÍNH CHÍNH 15/09/2026 — ô này TỪNG DẪN NGƯỜI DÙNG TỚI CHỖ MẤT KHOÁ.
+                            Câu cũ: "Chọn một người thân tin cậy là xong." Nó mời người bảo hộ
+                            như MỘT VIỆC LÀM XONG là hết lo, và nút chính đưa thẳng sang màn
+                            `Guardian`. Nhưng đường khôi phục bằng người bảo hộ CHƯA chạy tới
+                            cuối — chính `screens/GuardianScreen.tsx` tự khai câu đó ở đầu màn,
+                            và `services/guardianService.ts` chỉ có `addGuardian`/gỡ tên, không
+                            có một hàm khôi phục nào (bài `guardianKhongHuaKhoiPhuc.test.ts` vế 1
+                            đo đúng điều này).
+                            Hệ quả của câu cũ: người dùng ghi danh người bảo hộ, tin là đã an
+                            toàn, KHÔNG bao giờ lưu 24 từ — rồi mất máy là mất cả danh tính lẫn
+                            ví. Họ chỉ biết mình chọn sai vào đúng ngày không sửa được nữa.
+                            Nay ô này nói đúng trạng thái đo được: 24 từ là đường khôi phục DUY
+                            NHẤT đang chạy được, và nút CHÍNH dẫn tới đó. Người bảo hộ lùi xuống
+                            lối phụ, kèm câu rào — ghi danh trước vẫn có ích, nhưng nó chưa thay
+                            được 24 từ.
+                            ⛔ ĐỪNG nâng người bảo hộ lại làm nút chính chừng nào vế 1 của bài
+                            kiểm trên còn đỏ khi có hàm khôi phục thật. */}
                         {showGuardianNudge && (
                             <View style={styles.nudgeBox}>
-                                <Text style={styles.nudgeTitle}>Chưa có ai khôi phục hộ bạn</Text>
+                                <Text style={styles.nudgeTitle}>Chưa có đường lấy lại danh tính</Text>
                                 <Text style={styles.nudgeBody}>
-                                    Máy này đã bật bảo mật 2 lớp nhưng chưa chọn người khôi phục.
-                                    Nếu mất máy, hiện chưa có cách nào lấy lại danh tính. Chọn một
-                                    người thân tin cậy là xong.
+                                    Nếu mất máy này, chỉ cụm 24 từ lấy lại được danh tính và ví của
+                                    bạn — hôm nay đó là đường khôi phục duy nhất chạy được. Ghi danh
+                                    người bảo hộ vẫn nên làm, nhưng đường khôi phục bằng người bảo hộ
+                                    chưa chạy tới cuối nên nó chưa thay được cụm 24 từ.
                                 </Text>
                                 <View style={styles.nudgeRow}>
                                     <TouchableOpacity
+                                        testID="account-nudge-seed"
                                         style={styles.nudgePrimary}
                                         activeOpacity={0.85}
-                                        onPress={() => navigation.navigate('Guardian')}
+                                        onPress={() => navigation.navigate('SeedExport')}
                                     >
-                                        <Text style={styles.nudgePrimaryText}>Chọn người khôi phục</Text>
+                                        <Text style={styles.nudgePrimaryText}>Xem và cất giữ 24 từ</Text>
                                     </TouchableOpacity>
                                     <TouchableOpacity
+                                        testID="account-nudge-guardian"
+                                        style={styles.nudgeGhost}
+                                        activeOpacity={0.7}
+                                        onPress={() => navigation.navigate('Guardian')}
+                                    >
+                                        <Text style={styles.nudgeGhostText}>Ghi danh người bảo hộ</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        testID="account-nudge-later"
                                         style={styles.nudgeGhost}
                                         activeOpacity={0.7}
                                         onPress={() => { void snoozeRisk(); setShowGuardianNudge(false); }}

@@ -219,7 +219,11 @@ async function ensurePhoenixSessionInner(opts: { force?: boolean }): Promise<str
         rLog.phoenixWallet.sessionDone(false);
         return status.sessionToken;
       }
-      await setSessionToken(status.sessionToken);
+      // `did` là chủ của lượt đúc này — đóng luôn dấu chủ vào thẻ. Chốt thế ở
+      // trên chỉ canh được ca danh tính đổi GIỮA lượt đúc; dấu chủ canh được ca
+      // thẻ nằm lại từ một lượt TRƯỚC, mà đường đổi tài khoản không đi qua
+      // `logoutUser` nên nó không chạm chốt thế nào cả.
+      await setSessionToken(status.sessionToken, did);
       rLog.phoenixWallet.sessionDone(true);
       lastFailure = null;
       return status.sessionToken;

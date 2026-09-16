@@ -22,7 +22,7 @@ const EvidenceScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<RouteParams, 'WorkEvidence'>>();
   const { contractId } = route.params;
-  const { items, status, loading, errorKind, usingMock, submitting, errorCode, reload, register } =
+  const { items, status, loading, errorKind, usingMock, submitting, reload, register } =
     useEvidence(contractId);
 
   const [type, setType] = React.useState<'note' | 'link'>('note');
@@ -39,16 +39,19 @@ const EvidenceScreen: React.FC = () => {
 
   const onSubmit = async () => {
     if (drafts.length === 0) { showError('Chưa có mục', 'Thêm ít nhất 1 mục bằng chứng.'); return; }
-    const ok = await register(drafts);
-    if (ok) {
+    // Mã lỗi lấy từ CHÍNH lượt gọi này. Đọc `errorCode` trong state sau `await`
+    // là đọc bao đóng của lần dựng hình trước, nên cú chạm ĐẦU TIÊN luôn rơi vào
+    // câu chung chung — xem `hooks/mutationOutcome.ts`.
+    const res = await register(drafts);
+    if (res.ok) {
       setDrafts([]);
       showSuccess('Đã đăng', 'Bằng chứng đã lưu. Bạn có thể quay lại giao việc.');
-    } else if (errorCode === 'BACKEND_DISABLED') {
+    } else if (res.code === 'BACKEND_DISABLED') {
       showError('Chưa kết nối máy chủ', 'Cần máy chủ AladinWork để đăng bằng chứng.');
     } else {
-      showError('Không đăng được', errorCode === 'EVIDENCE_SHORT'
+      showError('Không đăng được', res.code === 'EVIDENCE_SHORT'
         ? 'Bằng chứng chưa đủ — thêm mô tả/liên kết cụ thể hơn.'
-        : `Lỗi${errorCode ? ` (${errorCode})` : ''}. Thử lại sau.`);
+        : `Lỗi${res.code ? ` (${res.code})` : ''}. Thử lại sau.`);
     }
   };
 

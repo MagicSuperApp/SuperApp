@@ -226,37 +226,50 @@ const FarmAnimalsTab = ({
     if (lamMoi) setDangLamMoi(true); else setDangTai(true);
     setLoi(null);
 
-    const gom: AnimalInfo[] = [];
-    let tongMayChu: number | null = null;
-    let offset = 0;
-    let batLoi: string | null = null;
+    // ⛔ `try/finally` là phần KHÔNG được bỏ. Bản trước đặt cờ `true` ở đầu và
+    // `false` ở dòng cuối, không có `finally`: MỘT lượt ném ở giữa (JSON hỏng,
+    // `listAnimals` ném chứ không trả `{ok:false}`) là cờ kẹt `true` VĨNH VIỄN —
+    // mọi lượt gọi sau thoát ngay ở cổng đầu hàm, và tab đứng ở "Đang đọc sổ
+    // đàn…" cho tới khi tắt hẳn ứng dụng.
+    try {
+      const gom: AnimalInfo[] = [];
+      let tongMayChu: number | null = null;
+      let offset = 0;
+      let batLoi: string | null = null;
 
-    // Gom hết các trang: lọc tại máy chỉ đúng khi danh sách tại máy là đủ.
-    for (;;) {
-      const kq = await listAnimals(ORILIFE_BASE, farmId, undefined, TRANG_MAY_CHU, offset);
-      if (!kq.ok) {
-        batLoi = kq.error?.detail || 'Không tải được danh sách vật nuôi.';
-        break;
+      // Gom hết các trang: lọc tại máy chỉ đúng khi danh sách tại máy là đủ.
+      for (;;) {
+        const kq = await listAnimals(ORILIFE_BASE, farmId, undefined, TRANG_MAY_CHU, offset);
+        if (!kq.ok) {
+          batLoi = kq.error?.detail || 'Không tải được danh sách vật nuôi.';
+          break;
+        }
+        const lo = kq.animals ?? [];
+        gom.push(...lo);
+        if (typeof kq.total === 'number') tongMayChu = kq.total;
+        offset += lo.length;
+        if (lo.length < TRANG_MAY_CHU || gom.length >= TRAN_TAI) break;
       }
-      const lo = kq.animals ?? [];
-      gom.push(...lo);
-      if (typeof kq.total === 'number') tongMayChu = kq.total;
-      offset += lo.length;
-      if (lo.length < TRANG_MAY_CHU || gom.length >= TRAN_TAI) break;
-    }
 
-    // Lượt hỏi hỏng ở TRANG ĐẦU là không có dữ liệu; hỏng ở trang sau thì phần
-    // đã gom vẫn dùng được — nhưng nó KHÔNG đủ, nên vẫn phải báo.
-    if (batLoi && gom.length === 0) {
-      setLoi(batLoi);
-    } else {
-      setDan(gom);
-      setTong(tongMayChu);
-      if (batLoi) setLoi(batLoi);
+      // Lượt hỏi hỏng ở TRANG ĐẦU là không có dữ liệu; hỏng ở trang sau thì phần
+      // đã gom vẫn dùng được — nhưng nó KHÔNG đủ, nên vẫn phải báo.
+      if (batLoi && gom.length === 0) {
+        setLoi(batLoi);
+      } else {
+        setDan(gom);
+        setTong(tongMayChu);
+        if (batLoi) setLoi(batLoi);
+      }
+    } catch (e: any) {
+      // Ném ở đây là lỗi HỆ THỐNG thô. Nói ra, đừng để tab đứng im không lý do.
+      setLoi(e?.message
+        ? `Không đọc được sổ đàn. (mã: ${e?.name ?? 'Error'})`
+        : 'Không đọc được sổ đàn.');
+    } finally {
+      setDangTai(false);
+      setDangLamMoi(false);
+      dangChay.current = false;
     }
-    setDangTai(false);
-    setDangLamMoi(false);
-    dangChay.current = false;
   }, [farmId]);
 
   // Nạp lại bảng ảnh cùng nhịp với sổ đàn: vừa đăng ký xong một con là bảng có

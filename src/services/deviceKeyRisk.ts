@@ -2,16 +2,45 @@
 //
 // AI ĐANG ĐỨNG TRÊN ĐƯỜNG KHÔNG CÓ LỐI VỀ — và nói với đúng người đó.
 //
-// ══ Diện phải nhận ra ═════════════════════════════════════════════════════════
-// `hasDeviceKey === true && guardianCount === 0`: người đã bật "Bảo mật 2 lớp"
-// (khoá thiết bị) mà chưa có ai khôi phục hộ. Mất máy lúc này thì hôm nay còn gỡ
-// được — nhưng đường gỡ đó chính là lỗ tự-ký ở `IdentityServiceImpl:441-443`, và
-// ngày lỗ được bịt thì đường gỡ mất theo (nhà Phoenix đo và chốt thứ tự 26/08).
+// ══ Đại lượng được đo: ĐÃ LƯU 24 TỪ HAY CHƯA ═════════════════════════════════
+// Rủi ro ở đây là "mất máy thì mất luôn danh tính và ví". Thứ duy nhất gỡ được
+// người dùng khỏi rủi ro đó là **cụm 24 từ đã nằm ngoài máy** — đó là đường
+// khôi phục DUY NHẤT đang chạy được đầu-tới-cuối trong app này.
 //
-// Nút bật đã đóng từ PR #216, nên KHÔNG ai mới vào diện này nữa. Nhưng người đã
-// bật TRƯỚC đó vẫn đang ở trong đó **và họ không biết**. Lập người khôi phục là
-// thứ gỡ họ ra, và nó không phụ thuộc lỗ tự-ký, không phụ thuộc validator, không
-// phụ thuộc quyết định nào đang treo.
+// ── ⛔ Vì sao KHÔNG còn đo bằng số người bảo hộ (sửa 15/09/2026) ─────────────
+// Bản trước đo `hasDeviceKey && guardianCount === 0`, tức **ghi danh một người
+// bảo hộ là tắt lời nhắc**. Đó là phép đo SAI ĐẠI LƯỢNG, vì đường khôi phục
+// bằng người bảo hộ CHƯA chạy được đầu-tới-cuối — chính màn ghi danh tự khai
+// điều đó với người dùng (`screens/GuardianScreen.tsx:181`, nguyên văn):
+//
+//     "Đường dùng người bảo hộ để khôi phục chưa chạy tới cuối — cụm 24 từ vẫn
+//      là bản dự phòng duy nhất."
+//
+// Hệ quả của phép đo cũ: người vừa ghi danh một người bảo hộ thì lời nhắc TẮT,
+// kể cả khi họ chưa bao giờ nhìn thấy 24 từ của mình. Tức nó tắt cảnh báo cho
+// đúng nhóm đang ở chỗ nguy hiểm nhất — họ tin mình đã an toàn vì app vừa im.
+//
+// Người bảo hộ vẫn là việc nên làm, nhưng **một mình nó KHÔNG hạ được mức rủi
+// ro**. Ngày nào đường khôi phục bằng người bảo hộ chạy được đầu-tới-cuối thì
+// sửa ở ĐÂY, và sửa kèm một phép đo, đừng sửa vì nó nghe hợp lý.
+//
+// ── ⚠ Giới hạn của phép đo hôm nay — đọc trước khi dựa vào nó ────────────────
+// `seedExported` do MÁY CHỦ giữ (`users.seed_exported_at`), và máy chủ chỉ ghi
+// nó khi đi qua cửa `/seed/export-request`. Đo 15/09/2026 trong kho này:
+// `seed.exportRequest` (`services/phoenixKey-api.ts:815`) có định nghĩa mà
+// **0 nơi gọi** — `SeedExportScreen.tsx` sinh 24 từ hoàn toàn trên máy
+// (`getOrCreateMasterKek` → `masterKekToMnemonic`), không báo gì cho máy chủ.
+//
+// ⇒ Với người CHỈ dùng app này, `seedExported` hôm nay luôn `false`, nên trạng
+//   thái trả về luôn là `at-risk`. Đó là hướng ĐÚNG (chưa chứng minh được là đã
+//   lưu ⟹ coi như chưa lưu), không phải một lỗi cần "chữa" bằng cách nới điều
+//   kiện. Nhánh `safe` KHÔNG chết: cùng một tài khoản đi qua app PhoenixKey Core
+//   thì máy chủ có ghi vết, và `/identity/health` trả `true` cho app này.
+//
+// Việc phải làm để lời nhắc tắt được từ chính app này: nối `SeedExportScreen`
+// vào `seed.exportRequest` (hoặc một dấu cục bộ tương đương) sau khi người dùng
+// đã thật sự xem 24 từ. Việc đó nằm NGOÀI tệp này — nói ra ở đây để không ai
+// đọc tệp này rồi tưởng vòng đo đã khép.
 //
 // ══ Vì sao có tệp này thay vì gọi thẳng API ở màn ═════════════════════════════
 // Ba trạng thái, không phải hai. "Chưa hỏi được" KHÔNG phải "an toàn", và cũng
@@ -28,9 +57,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { identity, PhoenixKeyApiError } from './phoenixKey-api';
 
 export type DeviceKeyRisk =
-  /** Đã bật khoá thiết bị mà chưa có ai khôi phục hộ. */
-  | { state: 'at-risk' }
-  /** Hỏi được, và không ở trong diện đó. */
+  /**
+   * Chưa chứng minh được là đã lưu 24 từ ⟹ mất máy là mất danh tính.
+   *
+   * `why` mang theo ĐẠI LƯỢNG đã đo. Nó có mặt để nơi gọi không phải đoán —
+   * bản trước `at-risk` nghĩa là "chưa có người bảo hộ", và một nơi gọi đọc
+   * nhãn cũ theo nghĩa cũ sẽ chỉ người dùng đi sai cửa.
+   */
+  | { state: 'at-risk'; why: 'seed-not-saved' }
+  /** Hỏi được, và máy chủ có ghi vết đã xuất 24 từ. */
   | { state: 'safe' }
   /** CHƯA HỎI ĐƯỢC. Không hiện cảnh báo, cũng KHÔNG hiện lời trấn an. */
   | { state: 'unknown'; why: 'no-session' | 'server' };
@@ -42,23 +77,30 @@ const SNOOZE_KEY = 'device_key_risk_snoozed_until';
 const SNOOZE_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
- * Người này có đang ở diện "đã bật khoá thiết bị, chưa có người khôi phục" không.
+ * Người này đã có 24 từ nằm ngoài máy chưa.
  *
  * KHÔNG ném trong mọi trường hợp — một dải nhắc không được làm sập màn tài khoản.
  */
 export async function checkDeviceKeyRisk(): Promise<DeviceKeyRisk> {
   try {
     const h = await identity.getHealth();
-    // So sánh NGHIÊM NGẶT. `guardianCount` là `long` phía máy chủ nên nó là số,
-    // không bao giờ null (nhà Phoenix xác nhận 26/08 cho cùng lớp trường ở
-    // `VaultStatusResponse`). Nhưng một bản máy chủ cũ có thể vắng trường —
-    // vắng thì là "chưa hỏi được", không phải "bằng không".
-    if (typeof h?.hasDeviceKey !== 'boolean' || typeof h?.guardianCount !== 'number') {
+    // Kiểm ĐÚNG trường được đọc, không kiểm rộng hơn. Một bản máy chủ cũ vắng
+    // `seedExported` thì đây là "chưa hỏi được" — vắng KHÔNG được đọc thành
+    // `false`, vì `false` ở đây là một khẳng định về người dùng chứ không phải
+    // một giá trị mặc định.
+    //
+    // Cố ý KHÔNG đòi `hasDeviceKey`/`guardianCount` có mặt nữa: chúng không còn
+    // đi vào quyết định, nên bắt chúng có mặt là biến một trường không dùng
+    // thành cái cớ trả 'unknown' — im lặng ở đúng ca cần nói.
+    if (typeof h?.seedExported !== 'boolean') {
       return { state: 'unknown', why: 'server' };
     }
-    return h.hasDeviceKey && h.guardianCount === 0
-      ? { state: 'at-risk' }
-      : { state: 'safe' };
+    // Một điều kiện, một đại lượng. `guardianCount` KHÔNG có mặt ở đây, và đó
+    // là chỗ sửa: người bảo hộ không thay được cụm 24 từ chừng nào đường khôi
+    // phục bằng người bảo hộ chưa chạy tới cuối (lý do đầy đủ ở đầu tệp).
+    return h.seedExported
+      ? { state: 'safe' }
+      : { state: 'at-risk', why: 'seed-not-saved' };
   } catch (e: unknown) {
     // 401/403 = chưa có phiên. Đó không phải lỗi cần kêu — người chưa đăng nhập
     // thì cũng chưa có khoá thiết bị nào để mà lo.

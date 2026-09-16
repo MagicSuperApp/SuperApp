@@ -529,14 +529,76 @@ async function unwrapVoid(
   }
 }
 
-export const setSessionToken = (token: string): Promise<void> =>
-  AsyncStorage.setItem(SESSION_TOKEN_KEY, token);
+/**
+ * DẤU CHỦ của thẻ phiên — mã định danh mà thẻ đang lưu được đúc CHO.
+ *
+ * Vì sao phải có: thẻ phiên PhoenixKey **không mang dấu chủ** (nêu ở khối
+ * `sessionMintGeneration` bên trên), và thân gửi của `/wallet/standard/register`
+ * KHÔNG có trường DID nào — máy chủ suy chủ thể từ thẻ Bearer. Nên một thẻ còn
+ * sống của tài khoản TRƯỚC làm máy chủ dựng lại chuỗi ký bằng DID của chủ thẻ,
+ * Ed25519 trượt, và lỗi trả về là `403 / 1326` — đúng cùng một mã với ca "hai bên
+ * dựng hai chuỗi byte khác nhau". Hai nguyên nhân khác hẳn nhau cho ra một mã lỗi;
+ * đó là lý do nó sống lâu được.
+ *
+ * Dấu này là của MÁY, không phải của máy chủ: nó chỉ trả lời được câu "thẻ trong
+ * kho có phải của người đang đăng nhập không". Nó KHÔNG chứng minh thẻ còn hiệu
+ * lực — việc đó chỉ máy chủ nói được.
+ */
+const SESSION_TOKEN_OWNER_KEY = 'phoenixkey_session_token_did';
 
-export const clearSessionToken = (): Promise<void> =>
-  AsyncStorage.removeItem(SESSION_TOKEN_KEY);
+/**
+ * Ghi thẻ phiên kèm dấu chủ. `ownerDid` là tham số BẮT BUỘC, cố ý: chỗ đúc thẻ
+ * luôn biết mình đang đúc cho ai, còn một giá trị tuỳ chọn sẽ bị bỏ trống ở đúng
+ * lần gọi mà dấu chủ cần nhất.
+ */
+export const setSessionToken = async (token: string, ownerDid: string): Promise<void> => {
+  await AsyncStorage.setItem(SESSION_TOKEN_KEY, token);
+  await AsyncStorage.setItem(SESSION_TOKEN_OWNER_KEY, ownerDid);
+};
+
+export const clearSessionToken = async (): Promise<void> => {
+  await AsyncStorage.removeItem(SESSION_TOKEN_KEY);
+  await AsyncStorage.removeItem(SESSION_TOKEN_OWNER_KEY);
+};
 
 export const getSessionToken = (): Promise<string | null> =>
   AsyncStorage.getItem(SESSION_TOKEN_KEY);
+
+/** Thẻ đang lưu được đúc cho ai; `null` = không có thẻ, hoặc thẻ không mang dấu. */
+export const getSessionTokenOwnerDid = (): Promise<string | null> =>
+  AsyncStorage.getItem(SESSION_TOKEN_OWNER_KEY);
+
+/**
+ * Bốn trạng thái, không phải hai — và hai trạng thái cuối đều dẫn tới BỎ thẻ:
+ *
+ * | trả về      | nghĩa                                   | thẻ sau lượt gọi |
+ * |-------------|-----------------------------------------|------------------|
+ * | `none`      | không có thẻ nào trong kho              | vẫn không có     |
+ * | `ok`        | thẻ mang dấu, và dấu đúng người này     | giữ nguyên       |
+ * | `foreign`   | thẻ mang dấu của NGƯỜI KHÁC             | đã bỏ            |
+ * | `unmarked`  | có thẻ mà KHÔNG mang dấu — không đo được| đã bỏ            |
+ *
+ * `unmarked` phải tách khỏi `foreign` chứ không gộp: nó là trạng thái MÙ, và một
+ * phép đo trả giá trị hợp lệ đúng lúc nó không đo được gì thì màu xanh của nó vô
+ * nghĩa. Ca thật của `unmarked` là thẻ do bản app CŨ ghi (trước khi có dấu chủ) —
+ * xảy ra đúng một lần cho mỗi máy sau khi cập nhật.
+ *
+ * Cả hai ca mù/lệch đều BỎ thẻ chứ không chặn: bỏ thẻ là khả hồi — lượt gọi sau tự
+ * lập phiên mới — còn giữ một thẻ không chứng minh được chủ là để ngỏ đúng đường
+ * mạo danh mà `clearSessionToken` sinh ra để chặn.
+ */
+export async function ensureSessionTokenBelongsTo(
+  userDid: string,
+): Promise<'none' | 'ok' | 'foreign' | 'unmarked'> {
+  const token = await getSessionToken();
+  if (!token) return 'none';
+  const owner = await getSessionTokenOwnerDid();
+  if (owner === userDid) return 'ok';
+  await clearSessionToken();
+  // Thế mới: một lượt đúc đang bay KHÔNG được trồng lại thẻ vừa bỏ.
+  clearSessionMintCooldown();
+  return owner ? 'foreign' : 'unmarked';
+}
 
 /**
  * `GET /identity/health` — sức khoẻ danh tính CỦA NGƯỜI ĐANG ĐĂNG NHẬP.
@@ -1054,20 +1116,62 @@ export const keys = {
    *         request.userDid(), request.publicKeyHex(), "active");
    * ```
    *
-   * ⚠ Cửa này PUBLIC ở tầng Spring (không Bearer). Zero-Trust nằm ở tầng service:
-   * `KeyServiceImpl.authorize()` bắt buộc DID phải sẵn có một owner-key ACTIVE
-   * (`findOwnerByUserDid`, thiếu là 404) và verify `addedBySignature` bằng chính
-   * khoá đó TRƯỚC khi ghi. App B không tự thêm mình vào được — app A phải ký.
+   * ⛔ ĐÍNH CHÍNH 15/09/2026 — đoạn này TRƯỚC ĐÂY khẳng định *"cửa này PUBLIC ở
+   * tầng Spring (không Bearer)"*. Máy chủ bác. Đo thẳng, không token:
+   *
+   * ```
+   * POST https://api.phoenixkey.me/api/v1/keys/authorize   (thân `{}`)
+   *   → HTTP 401  {"code":1304,"message":"Unauthorized — Missing Bearer token"}
+   * ```
+   *
+   * (đối chứng cùng lượt: `GET /identity/{did}/op-seq` trả **404** `2002` cho một
+   * DID lạ, tức cửa ĐÓ công khai thật — nên 401 ở trên không phải cổng chung.)
+   *
+   * Giá của câu sai ấy không nằm ở chú thích: lượt gọi bên dưới đọc nó rồi CỐ Ý
+   * không khai `needsAuth`, nên bộ chặn yêu cầu (`:249-257`) không gắn
+   * Authorization, mà đường tự đúc lại phiếu (`:345`) cũng không chạy — nó chỉ
+   * chạy khi `needsAuth` bật. 401 đi thẳng ra giao diện dưới dạng chuỗi thô của
+   * máy chủ. Tức **đường "một PhoenixKey dùng ở mọi app" chưa từng chạy được**;
+   * người dùng thực địa gặp đúng câu đó khi bấm "Ký duyệt bằng khoá của tôi".
+   *
+   * Zero-Trust ở tầng service vẫn đúng và vẫn cần: `KeyServiceImpl.authorize()`
+   * bắt buộc DID phải sẵn có một owner-key ACTIVE (`findOwnerByUserDid`, thiếu là
+   * 404) và verify `addedBySignature` bằng chính khoá đó TRƯỚC khi ghi. App B
+   * không tự thêm mình vào được — app A phải ký. Cái sai là ở mệnh đề "không
+   * Bearer", không ở mệnh đề về chữ ký.
+   *
+   * ⚠ CHƯA KIỂM: phiếu phiên **vai nào** gọi được cửa này (`owner` bắt buộc, hay
+   * `manager` cũng được). Không truy được từ phía app — đã hỏi nhà PhoenixKey.
    *
    * ⚠ `keyRole: 'owner'` bị chặn thẳng: luật V36 cho tối đa MỘT owner-key active
    * mỗi DID (`OWNER_KEY_ALREADY_ACTIVE`). Đổi owner đi qua `/keys/rotate`.
    *
-   * ⚠ Vai `manager` HÔM NAY không hạn chế gì ngoài vòng đời khoá. Phiếu phiên
-   * không mang claim vai (`mintSessionToken` chỉ có `userDid` + loại + hạn +
-   * `tokenEpoch`), và không cửa nghiệp vụ nào đọc `keyRole` — nên tầng dưới không
-   * phân biệt được vai kể cả khi muốn. Giao diện ĐỪNG hứa với người dùng rằng máy
-   * này "quyền hạn chế"; hôm nay nói vậy là nói sai. Ngoại lệ duy nhất đã đo:
-   * `/keys/devices/**` là `OWNER_ONLY`, phiên `manager` gọi vào nhận 403.
+   * ⚠ ĐÍNH CHÍNH 15/09/2026 — đoạn này TRƯỚC ĐÂY viết ngược. Bản cũ khẳng định
+   * "phiếu phiên không mang claim vai" và "không cửa nghiệp vụ nào đọc `keyRole`",
+   * rồi rút ra rằng giao diện ĐỪNG hứa máy `manager` có quyền hạn chế. Cả hai vế
+   * đều bị mã máy chủ bác, và vế thứ ba (lời khuyên cho giao diện) vì thế cũng
+   * ngược. Ai đọc bản cũ rồi kết luận "cổng vai không cưỡng chế được gì" sẽ dựng
+   * một màn hứa sai với người dùng theo đúng chiều nguy hiểm.
+   *
+   * Đo lại, nguyên văn:
+   *   - `SessionServiceImpl.java:429-431` đúc phiếu phiên KÈM vai của đúng khoá
+   *     vừa ký duyệt: `mintSessionToken(userDid, ttl, tokenEpoch, keyIdClaim,
+   *     approvingRole.dbValue())`.
+   *   - `AuthRequiredInterceptor.java:346-353` cưỡng chế thật:
+   *     `if (!actual.atLeast(required)) → KEY_ROLE_FORBIDDEN`.
+   *   - Nhóm chỉ-chủ ở `EndpointRolePolicy.java` nay gồm cả `/seed/export-request`
+   *     (`:110`), không riêng `/keys/devices/**`.
+   *   - Còn một cổng thứ hai đi theo INTENT chứ không theo đường dẫn:
+   *     `SignRequestServiceImpl.java:275-287` chặn `SEED_EXPORT` ngay cả khi tới
+   *     bằng đường chung `/sign/request` — nên không vòng qua bằng đường khác được.
+   *
+   * Ba kết cục có mã rõ, đừng gộp chúng làm một: phiên `owner` → qua; phiên
+   * `manager` → **403 / 1306** `KEY_ROLE_FORBIDDEN`; phiếu cũ THIẾU claim vai →
+   * **401 / 1308**, cố ý 401 để client đi lập phiên lại chứ không phải để báo
+   * người dùng thiếu quyền. Giao diện phân biệt 1306 với 1308: cái đầu là "máy
+   * này không được phép", cái sau là "phiếu hết đời, đăng nhập lại".
+   *
+   * ⇒ Nói với người dùng rằng máy ghép cặp có quyền hạn chế HÔM NAY là nói ĐÚNG.
    *
    * Mã lỗi: 403 chữ ký sai · 404 DID chưa có owner-key active · 409
    * `OP_SEQ_REPLAY` mốc lùi/bằng · 400 `KEY_FORMAT_INVALID` / `ENUM_INVALID_VALUE`.
@@ -1076,7 +1180,9 @@ export const keys = {
    * canonical dễ dựng sai, và dựng sai thì chỉ hiện ra bằng một con 403.
    */
   authorize: (body: KeyAuthorizeRequest) =>
-    unwrapVoid(client.post('/keys/authorize', body)),
+    unwrapVoid(
+      client.post('/keys/authorize', body, { needsAuth: true } as AxiosRequestConfig),
+    ),
 
   rotate: (body: KeyRotateRequest) =>
     unwrap<KeyRotationResponse>(client.post('/keys/rotate', body)),
@@ -1330,5 +1436,7 @@ export const phoenixKeyApi = {
   setSessionToken,
   clearSessionToken,
   getSessionToken,
+  getSessionTokenOwnerDid,
+  ensureSessionTokenBelongsTo,
   baseURL,
 };

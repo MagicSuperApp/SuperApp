@@ -268,6 +268,39 @@ export const registerIdentity = async (
     txHash = res.txHash;
   } catch (err) {
     await wipeIdentity();
+
+    // ── 3005 Ở ĐÂY KHÔNG CÙNG NGHĨA VỚI 3005 Ở ĐƯỜNG KHÔI PHỤC ───────────────
+    // Đường khôi phục nhận 3005 về một khoá phần cứng đã có trong kho máy chủ.
+    // Đường này thì không thể: `enrollKeypair()` ngay trên vừa sinh một khoá MỚI,
+    // máy chủ chưa từng thấy nó. Thứ duy nhất trong lượt gọi này đã đăng ký được
+    // là khoá TAAD suy từ Master_KEK, đi kèm trong `walletFields`.
+    //
+    // Đo được 15/09 trên máy ảo: `wipeIdentity()` rồi đăng ký lại → 3005/409, câu
+    // máy chủ nói "TAAD public key đã được bind vào một DID khác"; đổi sang
+    // `wipeLocalIdentity()` (thêm `clearMasterKek()`) thì hết. Biến duy nhất khác
+    // nhau giữa hai lượt là Master_KEK, nên nó là nguyên nhân.
+    //
+    // Trước bản này ca đó rơi vào `default` của `friendlyRegisterError` và người
+    // dùng đọc "Tạo danh tính thất bại. Thử lại." — lời mời làm một việc KHÔNG
+    // BAO GIỜ khác đi, vì trở ngại là chiếc ví nằm sẵn trên máy chứ không phải
+    // lần bấm này.
+    //
+    // ⚠ CÂU NÀY CỐ Ý KHÔNG CHỈ TỚI LỐI TẮT "khôi phục bằng ví trên máy", dù ví
+    // đúng là còn trên máy. `doRestoreSameDevice` mở đầu bằng một phép chứng minh
+    // có mặt (`signRaw`) cần khoá trong chip — mà `wipeIdentity()` vài dòng trên
+    // vừa xoá. Chỉ tới lối đó là chỉ tới một cánh cửa đã khoá, đúng cái bẫy mà
+    // khối `khoa_bi_thu_hoi` dựng ra để tránh. Không bỏ phép chứng minh ấy đi
+    // được: Master_KEK hiện đọc được không cần sinh trắc, nên nó là thứ duy nhất
+    // chặn người mượn được máy cộng biết tên đăng nhập.
+    if (err instanceof PhoenixKeyApiError && err.code === 3005) {
+      const stuck = new Error(WALLET_BOUND_ELSEWHERE_MESSAGE) as Error & {
+        reason?: string;
+      };
+      stuck.reason = 'wallet_bound_to_other_did';
+      console.warn('[PhoenixKey register] ví trên máy đã thuộc một DID khác:', err);
+      throw stuck;
+    }
+
     throw new Error(friendlyRegisterError(err));
   }
 
@@ -713,21 +746,31 @@ const RECOVER_FAIL_MESSAGE: Record<string, string> = {
     'Máy chủ từ chối mở lại danh tính cho khoá đã có trên máy này. Đây là lỗi phía máy chủ — chụp màn hình này gửi hỗ trợ.',
   did_sai_dinh_dang:
     'Máy chủ trả về một mã danh tính app chưa hiểu được. Đây là lỗi phía máy chủ — chụp màn hình này gửi hỗ trợ.',
-  // ⛔ Câu cũ đúng mà VẪN chặn người dùng, vì nó bỏ mất dữ kiện quyết định: danh
-  // tính "đã tạo trước đó" có thể được tạo ở MỘT ỨNG DỤNG KHÁC trên cùng cái điện
-  // thoại. Hai app dùng chung một khe khoá phần cứng, nên khoá lập trong Aladin
-  // hiện ra ở CheckFarm và ngược lại — trong khi với người dùng, hai app là hai
-  // sản phẩm khác nhau, không có lý do gì để nối hai việc đó lại.
+  // ⛔ ĐÍNH CHÍNH 2026-09-14. Câu trước ở đây dựng trên một TIỀN ĐỀ SAI, và tiền đề
+  // đó từng được viết thẳng vào khối chú thích này: "hai app dùng chung một khe khoá
+  // phần cứng, nên khoá lập trong Aladin hiện ra ở CheckFarm và ngược lại".
   //
-  // Ca thực địa 2026-09-12: một người không vào được CheckFarm vì trên máy đó đã
-  // từng lập tài khoản qua Aladin. Câu cũ bảo "nhập lại đúng tên đăng nhập của
-  // danh tính đó", và người đọc không biết "danh tính đó" là danh tính nào, vì họ
-  // đang đứng ở một app chưa từng lập gì.
+  // Đo lại trong kho này 14/09: KHÔNG có tệp `.entitlements` nào dưới `ios/`, không
+  // có `CODE_SIGN_ENTITLEMENTS` trong `SuperApp.xcodeproj/project.pbxproj`, không có
+  // `keychain-access-groups`, không có `kSecAttrAccessGroup` trong mã của ta, và
+  // Android không khai `sharedUserId`. Thiếu cả bốn thứ đó thì nhóm khoá mặc định
+  // của iOS là `$(AppIdentifierPrefix)<mã gói>` và Keystore của Android tách theo
+  // UID — tức mỗi app đứng trong kho khoá RIÊNG. Hai app KHÔNG thấy khoá của nhau.
   //
-  // Câu mới nói cả ba vế: vì sao gặp cảnh này · một danh tính dùng được cho mọi
-  // app (không phải hạn chế, là thiết kế) · không nhớ tên thì đi đâu.
+  // Hệ quả: mã `3005 KEY_ALREADY_REGISTERED` nói khoá của CHÍNH app này đã đăng ký,
+  // nên "có thể do một ứng dụng khác" không giải thích được gì; lời khuyên "chỉ cần
+  // nhập đúng tên đăng nhập đó" thì dẫn thẳng vào `ten_khong_khop_khoa` — tên bên
+  // Aladin trỏ về một danh tính mà khoá của app này không ký được cho.
+  //
+  // Nguồn thật của cảnh này là CHÍNH app này ở một lần cài trước: kho khoá sống qua
+  // lần gỡ app, AsyncStorage thì không. Nên câu mới nói ba vế: khoá là của app này ·
+  // đi đâu (màn khôi phục nay tự hỏi máy chủ theo khoá, không cần tên) · và đóng
+  // hẳn lối "mượn tên đăng nhập của app kia", vì đó là lối người dùng tự nghĩ ra.
+  //
+  // Người từng dùng app KHÁC của hệ trên cùng máy có lối riêng và nó KHÔNG phải lối
+  // này — xem `IdentityEntryChoiceScreen`, thẻ "Nhờ app đang đăng nhập duyệt".
   can_ten_dang_nhap:
-    'Máy này đã có khoá của một danh tính đã tạo trước đó — có thể do một ứng dụng khác trên cùng điện thoại này. Một danh tính dùng chung cho mọi ứng dụng, nên chỉ cần nhập đúng tên đăng nhập đó là vào được ngay. Không nhớ tên thì mở màn Khôi phục danh tính.',
+    'Máy này đã có khoá của một danh tính do CHÍNH ứng dụng này tạo ở lần cài trước — gỡ ứng dụng không xoá khoá đó đi. Hãy mở màn Khôi phục danh tính: máy sẽ tự hỏi máy chủ xem khoá này thuộc tài khoản nào, không cần bạn nhớ gì. Ứng dụng khác trên cùng điện thoại giữ khoá ở kho riêng, nên tên đăng nhập bên đó không mở được máy này.',
   // Ca này TRƯỚC ĐÂY đội lốt `can_ten_dang_nhap` và đó là chỗ đắt nhất: người dùng
   // được bảo đi sửa tên đăng nhập, trong khi thứ vừa hỏng là một hộp sinh trắc mà
   // họ còn không biết là có. Câu phải gọi đúng tên hộp đó, vì trên màn hình nó là
@@ -767,6 +810,23 @@ const RECOVER_FAIL_MESSAGE: Record<string, string> = {
   core_missing:
     'Bản ứng dụng trên máy này thiếu phần tạo khoá dự phòng, nên ứng dụng dừng lại — tạo tài khoản lúc này sẽ ra một tài khoản không khôi phục lại được nếu bạn mất máy. Thử lại sẽ không khác. Hãy cập nhật ứng dụng lên bản mới nhất rồi tạo lại.',
 };
+
+/**
+ * Câu cho ca ĐĂNG KÝ MỚI bị chặn vì ví trên máy đã thuộc một danh tính khác
+ * (`3005` kèm `walletFields`). Xem khối lý do ở `catch` của `registerIdentity`.
+ *
+ * Để RIÊNG, không nhét thêm một khoá vào `RECOVER_FAIL_MESSAGE`: map đó là bảng
+ * của đường KHÔI PHỤC, và `chonLyDoKhoiPhuc` chọn khoá trong đó theo một phép suy
+ * luận không hề biết tới đường đăng ký. Một khoá lạ nằm trong bảng ấy là một khoá
+ * mà phép suy luận kia có thể trỏ vào nhầm về sau, mà không gì đỏ lên.
+ *
+ * Ba vế bắt buộc, vì thiếu vế nào là người dùng đi sai một hướng:
+ *  · trở ngại là CHIẾC VÍ còn trên máy — không phải sóng, không phải vân tay;
+ *  · thử lại KHÔNG khác (câu cũ "Thử lại." mời họ bấm mãi);
+ *  · lối ra là 24 từ ở màn Khôi phục — nói thẳng, không hứa lối tắt.
+ */
+export const WALLET_BOUND_ELSEWHERE_MESSAGE =
+  'Máy này còn giữ ví của một danh tính đã tạo trước đó, và máy chủ không cho gắn ví đó vào một danh tính mới. Đây không phải lỗi sóng hay lỗi vân tay, nên bấm tạo lại sẽ ra đúng kết quả này. Hãy mở màn Khôi phục danh tính và dùng cụm 24 từ của danh tính cũ để lấy lại nó.';
 
 /**
  * Mã lỗi lúc ĐĂNG KÝ → câu người đọc được.

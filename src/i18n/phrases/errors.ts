@@ -173,10 +173,14 @@ export const ERRORS: PhraseMap = {
     zh: '本机的密钥已被吊销，很可能是此前在别处恢复过身份。重新安装应用无法找回。请打开“恢复身份”页面：如果钱包仍在本机，只需用户名即可，不需要 24 个助记词。',
     ja: 'この端末の鍵は失効しています。以前に別の場所で本人情報を復元したためと思われます。アプリを入れ直しても戻りません。「本人情報の復元」画面を開いてください。ウォレットがこの端末に残っていれば、ユーザー名だけで足り、24単語は不要です。',
   },
-  'Máy này đã có khoá của một danh tính đã tạo trước đó — có thể do một ứng dụng khác trên cùng điện thoại này. Một danh tính dùng chung cho mọi ứng dụng, nên chỉ cần nhập đúng tên đăng nhập đó là vào được ngay. Không nhớ tên thì mở màn Khôi phục danh tính.': {
-    en: 'This device already holds the key of an identity created earlier — possibly by another app on this same phone. One identity works across all the apps, so entering that username is enough to get in. If you do not remember it, open the Restore identity screen.',
-    zh: '本机已持有先前创建的某个身份的密钥 — 可能是同一部手机上的另一个应用创建的。一个身份可用于所有应用，因此只要输入该用户名即可进入。若记不清用户名，请打开“恢复身份”页面。',
-    ja: 'この端末には、以前作成された本人情報の鍵がすでにあります — 同じ端末の別のアプリで作成された可能性があります。本人情報は一つですべてのアプリに使えるので、そのユーザー名を入力すれば入れます。思い出せない場合は「本人情報の復元」画面を開いてください。',
+  // ⛔ Câu cũ ở đây hứa "một danh tính dùng chung cho mọi ứng dụng" và mời người dùng
+  // gõ tên đăng nhập của app kia. Kho khoá tách theo mã gói (không `.entitlements`,
+  // không `keychain-access-groups`, không `sharedUserId`) nên lời mời đó dẫn vào một
+  // đường chết — lý do đo được ghi ở `phoenixKeyAuthService.ts` ▸ `can_ten_dang_nhap`.
+  'Máy này đã có khoá của một danh tính do CHÍNH ứng dụng này tạo ở lần cài trước — gỡ ứng dụng không xoá khoá đó đi. Hãy mở màn Khôi phục danh tính: máy sẽ tự hỏi máy chủ xem khoá này thuộc tài khoản nào, không cần bạn nhớ gì. Ứng dụng khác trên cùng điện thoại giữ khoá ở kho riêng, nên tên đăng nhập bên đó không mở được máy này.': {
+    en: 'This device already holds the key of an identity created by THIS app on an earlier install — uninstalling does not erase that key. Open the Restore identity screen: the app will ask the server which account this key belongs to, with nothing for you to remember. Another app on the same phone keeps its keys in a separate store, so its username will not open this one.',
+    zh: '本机已持有本应用在上一次安装时创建的某个身份的密钥 —— 卸载应用并不会删除该密钥。请打开“恢复身份”页面：应用会向服务器查询这个密钥属于哪个账户，你无需记住任何内容。同一部手机上的其他应用把密钥存在各自独立的位置，因此那边的用户名打不开这一个。',
+    ja: 'この端末には、前回のインストール時に「このアプリ」が作成した本人情報の鍵が残っています — アプリを削除しても鍵は消えません。「本人情報の復元」画面を開いてください。この鍵がどのアカウントのものかはアプリがサーバーに問い合わせるので、覚えておくものはありません。同じ端末の別のアプリは鍵を別の保管場所に持つため、そちらのユーザー名ではこのアプリを開けません。',
   },
   'Máy này đã có danh tính của bạn, nhưng bước xác thực để mở lại chưa xong. Bấm lại và làm hết CẢ HAI lần hỏi vân tay hoặc khuôn mặt — lần thứ hai có tên "Khôi phục danh tính".': {
     en: 'This device already holds your identity, but the check needed to reopen it did not finish. Tap again and complete BOTH fingerprint or face prompts — the second one is titled “Restore identity”.',
@@ -207,6 +211,15 @@ export const ERRORS: PhraseMap = {
     zh: '本机上的应用版本缺少创建备份密钥的部分，因此应用已停止——此时创建的账号在手机丢失后将无法找回。重试不会有变化。请将应用更新到最新版本后再创建。',
     ja: 'この端末のアプリには予備鍵を作成する部分が入っていないため、処理を中止しました。いま作成すると、端末を紛失した際に復元できないアカウントになります。もう一度試しても結果は変わりません。アプリを最新版に更新してから作成してください。',
   },
+  // Ca ĐĂNG KÝ MỚI bị chặn vì ví trên máy đã thuộc một danh tính khác. Bản dịch
+  // phải giữ đủ ba vế của bản gốc — trở ngại là chiếc ví, thử lại không khác, lối
+  // ra là 24 từ — và KHÔNG được dịch thành lời mời dùng lối tắt "ví trên máy":
+  // lối đó đòi một khoá trong chip mà ca này không còn.
+  'Máy này còn giữ ví của một danh tính đã tạo trước đó, và máy chủ không cho gắn ví đó vào một danh tính mới. Đây không phải lỗi sóng hay lỗi vân tay, nên bấm tạo lại sẽ ra đúng kết quả này. Hãy mở màn Khôi phục danh tính và dùng cụm 24 từ của danh tính cũ để lấy lại nó.': {
+    en: 'This device still holds the wallet of an identity created earlier, and the server will not attach that wallet to a new identity. This is not a signal problem or a fingerprint problem, so tapping create again will give the same result. Open the Restore identity screen and use that older identity’s 24-word phrase to get it back.',
+    zh: '本机仍保存着此前创建的某个身份的钱包，服务器不允许把该钱包挂到一个新身份上。这不是信号问题，也不是指纹问题，因此再次点击创建也会得到同样的结果。请打开“恢复身份”页面，用那个旧身份的 24 个助记词把它找回来。',
+    ja: 'この端末には以前作成した本人情報のウォレットが残っており、そのウォレットを新しい本人情報に結び付けることはサーバーが許可しません。電波の問題でも指紋の問題でもないため、もう一度作成を押しても同じ結果になります。「本人情報の復元」画面を開き、その古い本人情報の24単語で取り戻してください。',
+  },
   // ── TIÊU ĐỀ hộp thoại của màn tạo danh tính ────────────────────────────────
   // Năm câu dài phía trên là phần THÂN. Trước bản này chúng được truyền vào ô
   // TIÊU ĐỀ (`showError(x)` một tham số), nên phần thân rơi về chuỗi độn
@@ -219,6 +232,7 @@ export const ERRORS: PhraseMap = {
   'Tên đăng nhập chưa dùng được': { en: 'That username cannot be used yet', zh: '该用户名暂时无法使用', ja: 'そのユーザー名はまだ使えません' },
   'Máy chưa bật sinh trắc học': { en: 'Biometrics is not set up on this device', zh: '本机尚未启用生物识别', ja: 'この端末で生体認証が設定されていません' },
   'Khoá trên máy này đã bị thu hồi': { en: 'The key on this device has been revoked', zh: '本机的密钥已被吊销', ja: 'この端末の鍵は失効しています' },
+  'Máy này còn ví của một danh tính cũ': { en: 'This device still holds an older identity’s wallet', zh: '本机仍保存着一个旧身份的钱包', ja: 'この端末には古い本人情報のウォレットが残っています' },
   'Một máy chỉ giữ được một danh tính': { en: 'One device holds only one identity', zh: '一台设备只能保存一个身份', ja: '1台の端末には本人情報を1つしか保持できません' },
   'Chưa mở lại được danh tính': { en: 'Could not reopen the identity', zh: '未能重新打开身份', ja: '本人情報を開き直せませんでした' },
   // Nhãn nút. `confirmText`/`cancelText` cũng đi thẳng vào `AlertPopup` không qua `t`.

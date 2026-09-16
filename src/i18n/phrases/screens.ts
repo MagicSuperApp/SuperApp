@@ -125,11 +125,10 @@ export const SCREENS: PhraseMap = {
   'Đang xử lý giao dịch blockchain...': { en: 'Processing the blockchain transaction...', zh: '正在处理区块链交易...', ja: 'ブロックチェーンの取引を処理中...' },
   'Bạn sẽ nhận được': { en: 'You will receive', zh: '你将收到', ja: '受け取れるもの' },
   'Kích hoạt thành công!': { en: 'Activated successfully!', zh: '激活成功！', ja: '有効化が完了しました！' },
-  'LAMP sẽ tự động sinh MAGIC mỗi 5 ngày theo tỷ lệ giao thức': {
-    en: 'LAMP automatically generates MAGIC every 5 days at the protocol rate',
-    zh: 'LAMP 会按协议比例每 5 天自动产出 MAGIC',
-    ja: 'LAMP はプロトコルの比率にしたがって 5 日ごとに自動で MAGIC を生み出します',
-  },
+  // 'LAMP sẽ tự động sinh MAGIC mỗi 5 ngày theo tỷ lệ giao thức' đã gỡ 15/09/2026.
+  // Hai lý do, mỗi lý do tự nó đã đủ: không có mã sinh MAGIC ở đâu trong `src/` hay
+  // `rust/`, và mục từ này không có một nơi dùng nào trong `src/` — nó là chữ đã
+  // chết, chỉ còn chờ ai đó dán lại vào một màn hình.
   'Quét mã QR': { en: 'Scan QR code', zh: '扫描二维码', ja: 'QR コードを読み取る' },
   'Bỏ qua': { en: 'Skip', zh: '跳过', ja: 'スキップ' },
   'Đang chờ xác nhận từ người hỗ trợ...': { en: 'Waiting for the helper to confirm...', zh: '等待协助人员确认...', ja: 'サポート担当者の確認を待っています...' },
@@ -1078,6 +1077,15 @@ export const SCREENS: PhraseMap = {
     zh: '尚无钱包 — 请先到“导出 24 个助记词”创建钱包根。',
     ja: 'ウォレットがありません — まず「24語のフレーズを書き出す」でウォレットのルートを作成してください。',
   },
+  // Câu trên chỉ được nói khi máy THẬT SỰ chưa có gốc ví. Trước 15/09/2026 mọi lần
+  // derive hỏng cũng rơi vào đúng câu đó (`catch {}` rỗng ở
+  // `screens/ExportIdentityScreen.tsx`) — tức mời người đang CÓ ví đi khởi tạo lại
+  // gốc ví. Câu dưới là ca còn lại, và nó phải nói rõ ĐỪNG khởi tạo lại.
+  'Máy này CÓ ví nhưng chưa đọc được địa chỉ. Đừng khởi tạo lại gốc ví — ví của bạn vẫn còn. Hãy đóng app rồi mở lại; còn lỗi thì gửi báo cáo.': {
+    en: 'This device DOES have a wallet but could not read the address. Do not create a new wallet root — your wallet is still there. Close the app and open it again; if it still fails, send an error report.',
+    zh: '本机确实有钱包，只是没能读出地址。请不要重新创建钱包根 —— 你的钱包还在。请关闭应用后重新打开；若仍出错，请发送错误报告。',
+    ja: 'この端末にウォレットはありますが、アドレスを読み取れませんでした。ウォレットのルートを作り直さないでください。ウォレットは残っています。アプリを一度閉じて開き直し、それでも失敗する場合はエラー報告をお送りください。',
+  },
   'Hãy chắc chắn bạn đã ghi lại đủ 24 từ đúng thứ tự. Mất cụm từ = mất khả năng khôi phục nếu hỏng/mất máy.': {
     en: 'Make sure you have written down all 24 words in the right order. Losing the phrase means losing any way to recover if the device breaks or goes missing.',
     zh: '请确认你已按正确顺序记下全部 24 个词。丢失助记词就等于在设备损坏或丢失时无法恢复。',
@@ -1176,4 +1184,169 @@ export const SCREENS: PhraseMap = {
     ja: '新しい端末の場合は、下の欄にご自身の識別コードを入力してください。',
   },
   'Đổi tài khoản ({n})': { en: 'Switch account ({n})', zh: '切换账户 ({n})', ja: 'アカウントを切り替え ({n})' },
+
+  // ── Hàng đợi gửi lên máy chủ (`screens/SyncQueueScreen.tsx`) ───────────────
+  // Nhãn NHÓM là chỗ người dùng đọc để biết phải làm gì: đi tìm sóng, chờ, hay
+  // xem lại. Nên mỗi nhóm phải khác nhau bằng CHỮ ở cả bốn thứ tiếng — dịch gộp
+  // hai nhóm thành một câu là xoá đúng thông tin duy nhất mà màn này mang.
+  // `'Đang gửi'` không có ở đây: nó đã nằm ở `common.ts` (một khoá, một bản dịch).
+  'Hàng đợi gửi lên máy chủ': {
+    en: 'Upload queue',
+    zh: '待上传队列',
+    ja: 'サーバー送信待ちの一覧',
+  },
+  'Xem mục chưa gửi được và gửi lại bằng tay': {
+    en: 'See items that have not been sent and resend them by hand',
+    zh: '查看尚未上传的记录并手动重新发送',
+    ja: '未送信の項目を確認し、手動で再送します',
+  },
+  'Gửi lại tất cả ngay': { en: 'Resend everything now', zh: '立即重新发送全部', ja: 'すべて今すぐ再送' },
+  'Gửi lại mục này ngay': { en: 'Resend this item now', zh: '立即重新发送此项', ja: 'この項目を今すぐ再送' },
+  'Không đọc được hàng đợi': {
+    en: 'Could not read the queue',
+    zh: '无法读取队列',
+    ja: '送信待ちの一覧を読み取れませんでした',
+  },
+  'Chưa đọc được danh sách mục đang chờ gửi trên máy này. Đây KHÔNG phải là hàng đợi rỗng — chưa biết trong đó có gì.': {
+    en: 'The list of items waiting to be sent on this device could not be read. This is NOT an empty queue — what is inside it is still unknown.',
+    zh: '无法读取本机上待发送的记录清单。这并不表示队列为空 —— 里面有什么目前尚不清楚。',
+    ja: 'この端末で送信待ちになっている項目の一覧を読み取れませんでした。これは「空」ではありません — 中身はまだ分かっていません。',
+  },
+  'Không có mục nào đang chờ': {
+    en: 'Nothing is waiting to be sent',
+    zh: '没有待发送的记录',
+    ja: '送信待ちの項目はありません',
+  },
+  'Mọi thứ bạn ghi đã lên máy chủ. Mục mới sẽ hiện ở đây khi chưa gửi được.': {
+    en: 'Everything you recorded has reached the server. New items appear here whenever they cannot be sent.',
+    zh: '您记录的内容都已上传到服务器。若有记录发送不出去，会显示在这里。',
+    ja: '記録したものはすべてサーバーに届いています。送信できなかった項目はここに表示されます。',
+  },
+  'Lần đọc gần nhất hỏng — danh sách dưới đây là của lần đọc trước, có thể đã cũ.': {
+    en: 'The latest read failed — the list below is from the previous read and may be out of date.',
+    zh: '最近一次读取失败 —— 下面的清单来自上一次读取，可能已经过时。',
+    ja: '直近の読み取りが失敗しました — 以下は前回読み取った内容で、古い可能性があります。',
+  },
+  'Máy chủ trả lời': { en: 'The server replied', zh: '服务器回复', ja: 'サーバーからの返答' },
+  'Chưa có câu trả lời nào từ máy chủ': {
+    en: 'No reply from the server yet',
+    zh: '服务器尚未给出任何回复',
+    ja: 'サーバーからの返答はまだありません',
+  },
+  'Không rõ thời điểm ghi': { en: 'Time of recording unknown', zh: '记录时间不明', ja: '記録した時刻は不明です' },
+  'Chưa có số lần thử trong phiên này': {
+    en: 'No attempt count for this session',
+    zh: '本次运行没有重试次数记录',
+    ja: '今回の起動中の再試行回数は記録がありません',
+  },
+  'Mục này KHÔNG tự gửi lại nữa. Hãy ghi lại việc này, hoặc báo đội hỗ trợ kèm câu trả lời trên.': {
+    en: 'This item will NOT be resent automatically. Record the work again, or report it to support together with the reply above.',
+    zh: '此记录不会再自动重新发送。请重新记录，或将上面的回复一并反馈给支持人员。',
+    ja: 'この項目はもう自動で再送されません。作業を記録し直すか、上の返答を添えてサポートに連絡してください。',
+  },
+  'Không chạy được lượt gửi lại.': {
+    en: 'The resend could not be run.',
+    zh: '无法执行这次重新发送。',
+    ja: '再送を実行できませんでした。',
+  },
+  // Nhãn nhóm — tám nhóm, tám câu.
+  'Đã dừng': { en: 'Stopped', zh: '已停止', ja: '停止' },
+  'Máy chủ từ chối nội dung mục này. Mục KHÔNG tự gửi lại nữa.': {
+    en: 'The server rejected the content of this item. It will NOT be resent automatically.',
+    zh: '服务器拒收此记录的内容。该记录不会再自动重新发送。',
+    ja: 'サーバーがこの項目の内容を拒否しました。もう自動で再送されません。',
+  },
+  'Cần người xử': { en: 'Needs a person', zh: '需要人工处理', ja: '人の対応が必要' },
+  'Đã quá số lần thử cho phép. Mục vẫn tự thử lại ở nhịp chậm nhất, nhưng nên xem vì sao.': {
+    en: 'The allowed number of attempts has been passed. The item still retries at the slowest pace, but it is worth looking into why.',
+    zh: '已超过允许的重试次数。该记录仍会以最慢的节奏继续重试，但建议查看原因。',
+    ja: '許容された再試行回数を超えました。最も遅い間隔で再試行は続きますが、原因を確認してください。',
+  },
+  'Phiên đăng nhập hết hạn': { en: 'Session expired', zh: '登录会话已过期', ja: 'ログインの有効期限切れ' },
+  'Cần đăng nhập lại rồi gửi tiếp. Dữ liệu còn nguyên trong máy.': {
+    en: 'Sign in again to continue sending. The data is still on this device.',
+    zh: '请重新登录后继续发送。数据仍完整保存在本机。',
+    ja: '再度ログインすると送信を続けられます。データは端末内にそのまま残っています。',
+  },
+  'Đang chờ sóng': { en: 'Waiting for a connection', zh: '等待网络', ja: '電波待ち' },
+  'Máy chưa nối được tới máy chủ. Lần hỏng này KHÔNG tính là một lần thử.': {
+    en: 'This device cannot reach the server. This failure does NOT count as an attempt.',
+    zh: '本机无法连接到服务器。这次失败不计入重试次数。',
+    ja: '端末がサーバーに接続できません。この失敗は再試行回数に数えません。',
+  },
+  'Máy chủ đang bận': { en: 'The server is busy', zh: '服务器繁忙', ja: 'サーバーが混み合っています' },
+  'Máy chủ có trả lời nhưng bảo chờ. Mục sẽ tự gửi lại.': {
+    en: 'The server answered but asked us to wait. The item will resend itself.',
+    zh: '服务器有回应，但要求稍后再试。该记录会自动重新发送。',
+    ja: 'サーバーは応答しましたが、待つよう指示しています。項目は自動で再送されます。',
+  },
+  'Máy chủ chưa nhận': { en: 'The server has not accepted it', zh: '服务器尚未接收', ja: 'サーバーが受け付けていません' },
+  'Điều kiện phía máy chủ chưa đủ cho mục này. Mục nằm chờ, không mất.': {
+    en: 'A condition on the server side is not met yet for this item. It waits in the queue and is not lost.',
+    zh: '服务器端的条件对这条记录还不满足。记录会留在队列中，不会丢失。',
+    ja: 'この項目についてサーバー側の条件がまだ満たされていません。項目は待機したままで、失われません。',
+  },
+  'Mục đang trên đường lên máy chủ.': {
+    en: 'The item is on its way to the server.',
+    zh: '该记录正在上传到服务器。',
+    ja: '項目をサーバーへ送信中です。',
+  },
+  'Đang chờ gửi': { en: 'Waiting to be sent', zh: '等待发送', ja: '送信待ち' },
+  'Chưa có lượt gửi nào hỏng trong phiên này.': {
+    en: 'No send attempt has failed during this session.',
+    zh: '本次运行中还没有失败的发送。',
+    ja: '今回の起動中に失敗した送信はありません。',
+  },
+  // Loại việc trong hàng đợi.
+  'Nhật ký đồng áng': { en: 'Farm work log', zh: '农事记录', ja: '農作業の記録' },
+  'Cây mới ghi nhận': { en: 'Newly recorded tree', zh: '新登记的树', ja: '新しく記録した樹木' },
+  'Quả đã chụp': { en: 'Photographed fruit', zh: '已拍摄的果实', ja: '撮影した果実' },
+  'Thông tin vườn': { en: 'Farm details', zh: '农场信息', ja: '農場の情報' },
+  'Mục chưa rõ loại': { en: 'Item of unknown kind', zh: '类型不明的记录', ja: '種類が不明な項目' },
+  'Không đọc được nội dung mục': {
+    en: 'The content of this item could not be read',
+    zh: '无法读取此记录的内容',
+    ja: 'この項目の内容を読み取れませんでした',
+  },
+  // Câu báo sau một lượt gửi lại — ba tình huống, ba câu, KHÔNG gộp.
+  'Đã gửi xong — mục đã rời hàng đợi.': {
+    en: 'Sent — the item has left the queue.',
+    zh: '已发送成功 —— 该记录已离开队列。',
+    ja: '送信できました — 項目は一覧から外れました。',
+  },
+  'Chưa gửi được. Mục vẫn nằm trong hàng đợi.': {
+    en: 'Not sent. The item is still in the queue.',
+    zh: '未能发送。该记录仍在队列中。',
+    ja: '送信できませんでした。項目は一覧に残っています。',
+  },
+  'Chưa gửi được. Mục vẫn nằm trong hàng đợi và máy chủ không để lại câu nào.': {
+    en: 'Not sent. The item is still in the queue and the server left no message.',
+    zh: '未能发送。该记录仍在队列中，服务器也没有留下任何说明。',
+    ja: '送信できませんでした。項目は一覧に残っており、サーバーからの説明もありません。',
+  },
+  'Chưa thử gửi được: kho dữ liệu trên máy chưa mở.': {
+    en: 'No attempt was made: the local data store is not open.',
+    zh: '尚未尝试发送：本机的数据存储还没有打开。',
+    ja: '送信を試せていません: 端末のデータ保管庫が開いていません。',
+  },
+  'Chưa thử gửi được: một lượt đồng bộ khác đang chạy. Chờ vài giây rồi bấm lại.': {
+    en: 'No attempt was made: another sync pass is running. Wait a few seconds and press again.',
+    zh: '尚未尝试发送：另一次同步正在进行。请等几秒后再按一次。',
+    ja: '送信を試せていません: 別の同期処理が実行中です。数秒待ってからもう一度押してください。',
+  },
+  'Đã gửi xong cả hàng đợi.': {
+    en: 'The whole queue has been sent.',
+    zh: '整个队列都已发送完成。',
+    ja: '一覧のすべてを送信しました。',
+  },
+  'Gửi được một phần, vẫn còn mục chưa gửi được.': {
+    en: 'Part of the queue was sent; some items still could not be sent.',
+    zh: '已发送一部分，仍有记录未能发送。',
+    ja: '一部は送信できましたが、まだ送信できない項目があります。',
+  },
+  'Không mục nào gửi được trong lượt này.': {
+    en: 'No item could be sent in this round.',
+    zh: '这一轮没有任何记录发送成功。',
+    ja: '今回はどの項目も送信できませんでした。',
+  },
 };

@@ -51,4 +51,41 @@ describe('adapters — không rò DID, không bịa dữ liệu', () => {
     expect(ui.postedAt).toBe(''); // `WorkJob` không có trường thời gian nào
     expect(ui.applicantCount).toBe(0); // dây không cấp số ứng tuyển
   });
+
+  // ── ĐỊA ĐIỂM: dây KHÔNG có trường nào, và đó là chủ ý của máy chủ ────────────
+  // Bảng việc là cửa công khai không đòi đăng nhập, nên một trường địa chỉ ở đó là
+  // địa chỉ nhà người thuê ra cửa ẩn danh. Ba bài dưới canh ba cách hỏng KHÁC nhau,
+  // không phải ba cách viết của cùng một bài.
+
+  it('không bịa địa điểm — `location` rỗng, không phải một hằng số', () => {
+    const ui = toUiJob(baseJob);
+    expect(ui.location).toBe('');
+    // Nói thẳng tên giá trị đã từng nằm đây. Một bài chỉ kiểm `toBe('')` vẫn xanh
+    // khi ai đó thay bằng 'Toàn quốc' rồi tự thấy hợp lý; dòng này bắt đúng lối đó.
+    expect(ui.location).not.toMatch(/Việt Nam|Toàn quốc|Đang cập nhật/);
+  });
+
+  it('KHÔNG đặt tên mẫu việc vào ô quận/huyện', () => {
+    // Đây là bài quan trọng nhất trong ba bài: lỗi cũ không phải "thiếu dữ liệu"
+    // mà là dữ liệu ĐÚNG nằm SAI ô — tên loại việc hiện dưới nhãn "Địa điểm" kèm
+    // biểu tượng ghim bản đồ. Cho `template.label` và `skill` hai giá trị KHÁC nhau
+    // và khác rỗng, để `district` không thể tình cờ đúng.
+    const ui = toUiJob({
+      ...baseJob,
+      template: { key: 'video', label: 'Quay video giới thiệu' },
+      skill: 'Dọn dẹp nhà cửa',
+    } as WorkJob);
+    expect(ui.district).toBe('');
+    expect(ui.district).not.toBe('Quay video giới thiệu');
+    expect(ui.district).not.toBe('Dọn dẹp nhà cửa');
+    // Và giá trị đó vẫn phải tới được ô ĐÚNG của nó, không thì bài này qua được
+    // bằng cách xoá luôn cả `category`.
+    expect(ui.category).toBe('Quay video giới thiệu');
+  });
+
+  it('hồ sơ người làm cũng không bịa địa điểm', () => {
+    const ui = toUiWorker(baseAcc);
+    expect(ui.location).toBe('');
+    expect(ui.location).not.toMatch(/Việt Nam/);
+  });
 });

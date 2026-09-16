@@ -256,8 +256,18 @@ const WorkHomeScreen: React.FC = () => {
 
             {loading ? (
               <StateView status="loading" loadingLines={3} />
-            ) : errorKind === 'network' ? (
-              <StateView status="offline" onRetry={reload} />
+            ) : errorKind === 'network' || errorKind === 'backend-off' ? (
+              /* `backend-off` = cổng runtime chưa sống, và cổng đó gộp "chưa cấu
+                 hình host" với "máy chủ 502" và "mạng rớt" (`runtimeGate.ts`).
+                 Cả ba đều là CHƯA HỎI ĐƯỢC, nên phải ra màn ngoại tuyến có nút
+                 thử lại — KHÔNG ra câu "chưa có tin việc nào", câu đó khẳng định
+                 một điều app chưa đo. */
+              <StateView
+                status="offline"
+                title="Chưa xem được tin việc"
+                message="Chưa nối được máy chủ việc làm, nên màn này chưa biết chợ đang có tin nào. Kiểm tra mạng rồi thử lại."
+                onRetry={reload}
+              />
             ) : errorKind === 'auth' ? (
               <StateView
                 status="error"
@@ -412,10 +422,17 @@ const JobCard: React.FC<{
         <Text style={styles.jobTitle} numberOfLines={3}>{job.title}</Text>
 
         <View style={styles.jobMetaRow}>
-          <View style={styles.jobMetaItem}>
-            <Icon name="map-marker-outline" size={12} color={COLORS.textMuted} />
-            <Text style={styles.jobMetaText}>{job.district}, {job.location}</Text>
-          </View>
+          {/* Ẩn HẲN dòng địa điểm khi dây không trả — cùng nếp với `postedAt` ngay
+              dưới. Dây AladinWork không có trường địa điểm nào, và đó là chủ ý
+              (xem `data/adapters.ts`), nên đây không phải ô chờ dữ liệu về. */}
+          {!!(job.district || job.location) && (
+            <View style={styles.jobMetaItem}>
+              <Icon name="map-marker-outline" size={12} color={COLORS.textMuted} />
+              <Text style={styles.jobMetaText}>
+                {[job.district, job.location].filter(Boolean).join(', ')}
+              </Text>
+            </View>
+          )}
           {!!job.postedAt && (
             <View style={styles.jobMetaItem}>
               <Icon name="clock-outline" size={12} color={COLORS.textMuted} />

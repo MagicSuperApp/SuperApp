@@ -11,11 +11,26 @@
  * khoá của app B. Hai khoá cùng sống, không khoá nào bị thu hồi.
  *
  * ══ Vì sao đường này an toàn ═════════════════════════════════════════════════
- * Cửa `/keys/authorize` PUBLIC ở tầng Spring — không Bearer, ai gọi cũng được.
- * Điều đó nghe như một lỗ, và nó không phải, vì Zero-Trust nằm ở tầng service:
- * `KeyServiceImpl.authorize()` đòi DID phải sẵn có một owner-key ACTIVE rồi verify
- * `addedBySignature` bằng CHÍNH khoá đó trước khi ghi. Không ký được bằng khoá
- * owner thì không gắn được gì — máy B không tự thêm mình vào được.
+ * Zero-Trust nằm ở tầng service: `KeyServiceImpl.authorize()` đòi DID phải sẵn có
+ * một owner-key ACTIVE rồi verify `addedBySignature` bằng CHÍNH khoá đó trước khi
+ * ghi. Không ký được bằng khoá owner thì không gắn được gì — máy B không tự thêm
+ * mình vào được.
+ *
+ * ⛔ ĐÍNH CHÍNH 15/09/2026 — chỗ này TRƯỚC ĐÂY còn một câu nữa, khẳng định cửa
+ * `/keys/authorize` mở cho mọi lượt gọi không cần thẻ phiên. Đo trên máy chủ
+ * thật thì cửa đó trả `401 / 1304 Unauthorized — Missing Bearer token`. Lượt gọi
+ * vì thế nay khai `needsAuth` (`phoenixKey-api.ts` ▸ `keys.authorize`), và số đo
+ * đầy đủ nằm ở khối chú thích tại đó.
+ *
+ * Bài học, viết ra vì nó tái dùng được: hai mệnh đề *"không đòi thẻ phiên"* và
+ * *"xác thực bằng chữ ký chứ không bằng phiếu"* nghe như một, và mệnh đề thứ
+ * hai ĐÚNG. Cái hỏng là suy mệnh đề thứ nhất ra từ mệnh đề thứ hai mà không ai
+ * gọi thử cửa ấy lấy một lần.
+ *
+ * (Câu sai KHÔNG được chép lại nguyên văn ở đây, kể cả để trích dẫn: cổng canh
+ * nó là một phép khớp chuỗi — `keysAuthorizeNeedsAuth.test.ts` — và một phép
+ * khớp chuỗi không phân biệt được câu đang được khẳng định với câu đang bị rút
+ * lại.)
  *
  * ══ Ba chỗ dựng sai thì chỉ hiện ra bằng một con 403 ═════════════════════════
  * Chữ ký hỏng không nói được nó hỏng ở đâu. Ba chỗ dưới đây là ba chỗ dễ sai
@@ -162,8 +177,26 @@ export function describeAuthorizeFailure(e: unknown): string {
       return 'Danh tính này đã có một khoá chủ. Máy thêm vào chỉ nhận vai phụ, không nhận vai chủ.';
     case 3007: // KEY_FORMAT_INVALID
       return 'Mã khoá của máy kia không đúng định dạng. Hãy quét lại mã trên máy đó.';
+    // 1306 = KEY_ROLE_FORBIDDEN (kèm 403) — phiếu HỢP LỆ nhưng vai không đủ.
+    // Phải nằm TRƯỚC nhánh `http === 403` bên dưới, cùng lý do như 1405: rơi
+    // xuống đó là người dùng đọc "chữ ký không được chấp nhận" rồi đi kiểm tra
+    // khoá, trong khi khoá của họ không có vấn đề gì.
+    case 1306:
+      return 'Máy này chỉ là máy phụ của danh tính, nên không thêm máy khác được. Hãy làm việc này trên máy chính.';
     default:
       break;
+  }
+  // ⛔ THÊM 15/09/2026. Hai mã 401 dưới đây TRƯỚC ĐÂY rơi vào `default` ở cuối
+  // hàm, và `default` trả `e.message` — tức người dùng đọc nguyên chuỗi tiếng
+  // Anh của máy chủ: "Unauthorized — Missing Bearer token". Đó là câu một người
+  // dùng thực địa đã nhận khi bấm "Ký duyệt bằng khoá của tôi".
+  //
+  // Hai mã, MỘT việc phải làm (lập lại phiên), nhưng khác nguyên nhân nên tách:
+  //   1304 máy chưa có phiếu nào · 1308 phiếu cũ thiếu claim vai.
+  // Máy chủ cố ý trả 401 cho 1308 để client đi lập phiên lại, KHÔNG phải để báo
+  // người dùng thiếu quyền — cái đó là 1306 ở trên.
+  if (http === 401 || code === 1304 || code === 1308) {
+    return 'Máy này chưa mở được phiên với máy chủ danh tính. Hãy thoát ra rồi mở lại app, sau đó thử thêm máy một lần nữa.';
   }
   if (http === 404) {
     return 'Danh tính này chưa có khoá chủ nào đang hoạt động, nên chưa uỷ quyền cho máy khác được.';

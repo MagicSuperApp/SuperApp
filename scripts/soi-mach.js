@@ -105,7 +105,15 @@ const objc = bat(boChuThich(doc(P.objc)), /RCT_EXTERN_METHOD\(\s*([A-Za-z0-9_]+)
 const tsSrc = boChuThich(doc(P.ts));
 const tsKhop = tsSrc.match(/interface TaadEnclaveNativeBridge \{([\s\S]*?)\n\}/);
 const tsBlock = tsKhop ? tsKhop[1] : '';
-const ts = bat(tsBlock, /^\s{2}([A-Za-z0-9_]+)\s*\(/gm);
+// `\??` là phần BẮT BUỘC, không phải một chỗ nới lỏng: một phương thức khai tuỳ chọn
+// (`ten?(...)`) VẪN là một khai báo ở phía TS — dấu `?` nói về lúc CHẠY (bản dựng native
+// cũ có thể thiếu hàm, nên nơi gọi phải tự canh), không nói về việc cầu có được khai hay
+// không. Thiếu `\??` thì cổng đọc MỌI phương thức tuỳ chọn thành KHÔNG CÓ rồi báo ĐỨT
+// NGANG cho một mạch liền: nó đo sai đại lượng, và vì nó đỏ ở đúng dòng mang tên thật nên
+// trông y hệt một phát hiện. Đo 2026-09-16 trên `src/sdk/taadEnclave.ts`: regex cũ thấy 22
+// tên, regex này thấy 24; hai tên chênh ra — `signWalletRegisterHex`, `signEd25519Hex` —
+// đều khai bằng `?(`.
+const ts = bat(tsBlock, /^\s{2}([A-Za-z0-9_]+)\??\s*\(/gm);
 
 // ---- gom phía Rust -------------------------------------------------------
 const jniSrc = boChuThich(doc(P.jni));

@@ -167,6 +167,25 @@ pub extern "system" fn Java_com_aladincontract_company_TaadEnclaveModule_nativeS
     ret(&env, crate::sign::sign_ed25519(kek, msg), "nativeSignEd25519")
 }
 
+/// Ký một chuỗi BYTE tuỳ ý (truyền dạng hex) bằng Ed25519 TAAD_Key. Kotlin:
+/// nativeSignEd25519Hex(masterKekHex, messageHex): String?
+///
+/// Vì sao cần cửa riêng ở CẢ Android: `GetStringUTFChars` dùng UTF-8 CẢI BIÊN, nó
+/// mã hoá `U+0000` thành hai byte `0xC0 0x80` thay vì một byte `0x00`. Nên chuỗi
+/// đóng khung theo độ dài đi qua cửa chuỗi KHÔNG bị cắt như trên iOS mà bị ĐỔI
+/// BYTE — hỏng theo một kiểu khác, cùng một hệ quả: máy chủ dựng lại chuỗi khác.
+#[no_mangle]
+pub extern "system" fn Java_com_aladincontract_company_TaadEnclaveModule_nativeSignEd25519Hex<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    master_kek_hex: JString<'local>,
+    message_hex: JString<'local>,
+) -> jstring {
+    let kek = jarg!(env, master_kek_hex, "master_kek_hex");
+    let msg = jarg!(env, message_hex, "message_hex");
+    ret(&env, crate::sign::sign_ed25519_hex(kek, msg), "nativeSignEd25519Hex")
+}
+
 /// 2FA DeviceKey opt-in. Kotlin: nativeDeviceKeyOptin(userDid, nonce): String? (JSON).
 #[no_mangle]
 pub extern "system" fn Java_com_aladincontract_company_TaadEnclaveModule_nativeDeviceKeyOptin<'local>(
@@ -230,6 +249,25 @@ pub extern "system" fn Java_com_aladincontract_company_TaadEnclaveModule_nativeS
     let kek = jarg!(env, kek_hex, "kek_hex");
     let msg = jarg!(env, message, "message");
     ret(&env, crate::mobile_kek::sign_wallet_register(kek, account as u32, msg), "nativeSignWalletRegister")
+}
+
+/// Như trên, nhưng `messageHex` mang BYTE cần ký dưới dạng hex. Kotlin:
+/// nativeSignWalletRegisterHex(kekHex: String, account: Int, messageHex: String): String?
+#[no_mangle]
+pub extern "system" fn Java_com_aladincontract_company_TaadEnclaveModule_nativeSignWalletRegisterHex<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    kek_hex: JString<'local>,
+    account: jint,
+    message_hex: JString<'local>,
+) -> jstring {
+    let kek = jarg!(env, kek_hex, "kek_hex");
+    let msg = jarg!(env, message_hex, "message_hex");
+    ret(
+        &env,
+        crate::mobile_kek::sign_wallet_register_hex(kek, account as u32, msg),
+        "nativeSignWalletRegisterHex",
+    )
 }
 
 /// Dựng + ký tx Cardano gửi ADA/LAMP (Issue #74). Kotlin:

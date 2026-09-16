@@ -44,6 +44,13 @@ jest.mock('../sdk/taadEnclave', () => ({
       paymentPublicKeyHex: '11'.repeat(32),
       signature: '22'.repeat(64),
     })),
+    // Cửa ký hex phải có mặt trong bản giả, KHÁC giá trị của cửa chuỗi. Bản giả
+    // lỏng hơn hàng thật thì lượt dò khuôn thứ hai nổ `TypeError` ở đây thay vì
+    // chạy — và bài kiểm sẽ xanh vì một lý do không có thật.
+    signWalletRegisterHex: jest.fn(async () => ({
+      paymentPublicKeyHex: '11'.repeat(32),
+      signature: '44'.repeat(64),
+    })),
   },
 }));
 

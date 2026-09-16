@@ -149,6 +149,27 @@ final class TaadEnclaveModule: NSObject {
         resolvePtr(out, resolve, reject, "E_SIGN_WALLET_REG", "Không ký được proof-of-ownership ví Standard")
     }
 
+    /// Như trên, nhưng `messageHex` mang BYTE cần ký dưới dạng hex.
+    ///
+    /// Vì sao phải có cửa riêng: `withCString` dựng một chuỗi C KẾT THÚC BẰNG `0x00`,
+    /// nên chuỗi ký đóng khung theo độ dài — 4 byte độ dài của nó gần như toàn `0x00`
+    /// — bị CẮT ở byte đầu tiên. Cắt xong vẫn ký được và vẫn trả về 128 ký tự hex
+    /// đúng hình dạng, nên chỗ hỏng KHÔNG lộ ở đây; nó lộ ở máy chủ dưới cái tên
+    /// "chữ ký không khớp". Luồng nào dựng chuỗi đóng khung thì phải đi cửa này.
+    @objc(signWalletRegisterHex:account:messageHex:resolver:rejecter:)
+    func signWalletRegisterHex(_ kekHex: String,
+                               account: Int,
+                               messageHex: String,
+                               resolver resolve: @escaping RCTPromiseResolveBlock,
+                               rejecter reject: @escaping RCTPromiseRejectBlock) {
+        let out = kekHex.withCString { k in
+            messageHex.withCString { m in
+                taad_kek_sign_wallet_register_hex(k, UInt32(account), m)
+            }
+        }
+        resolvePtr(out, resolve, reject, "E_SIGN_WALLET_REG_HEX", "Không ký được proof-of-ownership ví Standard")
+    }
+
     /// Dựng + ký tx Cardano (ADA/LAMP) — client build, backend relay (Issue #74).
     /// amount* là String (u64 vượt precision). Trả CBOR hex đã ký.
     @objc(buildSignedTransfer:account:toAddress:amountLovelace:lampAmount:lampPolicyHex:lampAssetNameHex:utxosJson:protocolParamsJson:network:resolver:rejecter:)
@@ -269,6 +290,17 @@ final class TaadEnclaveModule: NSObject {
                      rejecter reject: @escaping RCTPromiseRejectBlock) {
         let out = masterKekHex.withCString { k in message.withCString { m in taad_sign_ed25519(k, m) } }
         resolvePtr(out, resolve, reject, "E_SIGN_ED25519", "Ký Ed25519 thất bại")
+    }
+
+    /// Ký một chuỗi BYTE tuỳ ý (truyền dạng hex) bằng Ed25519 TAAD_Key. Bắt buộc cho
+    /// chuỗi ký đóng khung theo độ dài — cửa chuỗi ở trên cắt ở `0x00` đầu tiên.
+    @objc(signEd25519Hex:messageHex:resolver:rejecter:)
+    func signEd25519Hex(_ masterKekHex: String,
+                        messageHex: String,
+                        resolver resolve: @escaping RCTPromiseResolveBlock,
+                        rejecter reject: @escaping RCTPromiseRejectBlock) {
+        let out = masterKekHex.withCString { k in messageHex.withCString { m in taad_sign_ed25519_hex(k, m) } }
+        resolvePtr(out, resolve, reject, "E_SIGN_ED25519_HEX", "Ký Ed25519 thất bại")
     }
 
     // MARK: - Secure storage (Keychain, WhenUnlockedThisDeviceOnly)

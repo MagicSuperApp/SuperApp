@@ -450,6 +450,11 @@ export const ERRORS: PhraseMap = {
     zh: 'signWalletRegister：原生层未返回 pubkey/signature',
     ja: 'signWalletRegister：ネイティブ層が pubkey/signature を返しませんでした',
   },
+  'signWalletRegisterHex: native trả thiếu pubkey/signature': {
+    en: 'signWalletRegisterHex: the native layer returned no pubkey/signature',
+    zh: 'signWalletRegisterHex：原生层未返回 pubkey/signature',
+    ja: 'signWalletRegisterHex：ネイティブ層が pubkey/signature を返しませんでした',
+  },
   'buildSignedTransfer: native trả rỗng (KEK/seed sai, UTXO trống, hoặc build lỗi)': {
     en: 'buildSignedTransfer: the native layer returned nothing (wrong KEK/seed, no UTXO, or a build error)',
     zh: 'buildSignedTransfer：原生层返回为空（KEK/seed 有误、无 UTXO，或构建出错）',

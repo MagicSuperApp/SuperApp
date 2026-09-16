@@ -32,7 +32,10 @@
 
 ### A.1 Tài sản đã có sẵn, không phải làm lại
 
-Tất cả nằm ở `~/Downloads/CheckFarm-AAB-2026-09-16/`:
+Gói nộp và ảnh chụp màn hình nằm ở `~/Downloads/CheckFarm-AAB-2026-09-16/` — đó là
+thư mục của MỘT máy, không phải một nơi giữ. Hai tệp ảnh cửa hàng thì có nơi giữ
+thật: kho nhận diện `CheckFarm/Docs` ▸ `Logo/play-store/`, nằm cạnh bộ sinh ra
+chúng, nên mất thì dựng lại được chứ không phải vẽ lại.
 
 | Ô trong Console | Tệp | Kích thước đã kiểm |
 |---|---|---|
@@ -55,7 +58,13 @@ mục sẽ không cho người xem thấy phần nông trại thật. Xem §A.5.
 - **Mô tả ngắn (80 ký tự):** câu khẩu hiệu đang hiện trong app là
   *"Truy xuất từ nguồn"* — `src/config/instance.config.ts` ▸ `slogan.vi` của
   instance `checkfarm`. Câu dài hơn dùng cho ảnh bìa là *"Truy xuất nguồn gốc -
-  Nâng tầm nông sản"* (chủ nhân chốt 2026-09-16).
+  Nâng tầm nông sản"* (chủ sở hữu chốt 2026-09-16).
+  ⚠ **Ba câu, một sản phẩm — và câu thứ ba KHÔNG có trong mã.** `instance.config.ts`
+  ▸ `CHECKFARM_INSTANCE.tagline.vi` là *"Truy xuất từ nguồn — Nâng tầm nông sản"*,
+  còn câu trên ảnh bìa là *"Truy xuất nguồn gốc - Nâng tầm nông sản"*: khác ở
+  *từ nguồn* ↔ *nguồn gốc*, và gạch ngang ↔ gạch nối. Mục này có tiêu đề "nguồn có
+  sẵn trong mã", nên chỗ lệch phải nói ra: câu ảnh bìa đang sống ngoài nguồn. Chọn
+  một câu rồi sửa bên còn lại — đừng để cửa hàng và app nói hai câu.
 - **Mô tả đầy đủ (4000 ký tự):** **CHƯA ĐO ĐƯỢC** — trong kho không có bản mô tả
   cửa hàng nào. Phải viết mới; đây là nội dung đối ngoại nên chủ sở hữu duyệt câu
   chữ trước khi đăng.
@@ -72,10 +81,18 @@ phải câu hỏi đo được từ mã:
 
 1. OriLife / ProofChat / AladinWork / PhoenixKey / LampNet có tính là **bên thứ ba**
    theo định nghĩa của Google, hay là hạ tầng của chính nhà phát triển.
-2. Firebase Analytics là bên thứ ba **xác nhận được** (`android/app/build.gradle:216-217`)
-   — ô "chia sẻ dữ liệu" phải khai.
-3. Play hỏi "người dùng yêu cầu xoá dữ liệu được không". `src/services/accountDeletionService.ts:9-13,28-29`
-   ghi rõ backend **chưa** có cửa xoá theo DID, cờ `REMOTE_DELETE_ENABLED = false`.
+2. Firebase Analytics — **CHƯA ĐO ĐƯỢC cho bản CheckFarm**, đừng khai vội theo
+   hướng nào. Thư viện có mặt (`android/app/build.gradle` ▸ khối `dependencies`,
+   `firebase-bom` + `firebase-analytics-ktx`), nhưng bước gắn cấu hình bị **tắt**
+   cho flavor nào không có tệp `google-services.json` của chính nó — xem nhánh in
+   `[firebase] ${flavor}: không có google-services.json → tắt ${taskName}` trong
+   cùng tệp. Liệt kê đóng: `ls android/app/src/*/google-services.json` trả về
+   **đúng một** tệp, của `aladin`. Tức bản CheckFarm có thư viện mà không có cấu
+   hình để khởi. Khai "có chia sẻ" lẫn khai "không chia sẻ" đều là đoán cho tới
+   khi chạy phép đo: dựng `bundleCheckfarmRelease` rồi tìm `google_app_id` trong
+   gói, hoặc mở bản CheckFarm và đọc `adb logcat | grep -i firebase`.
+3. Play hỏi "người dùng yêu cầu xoá dữ liệu được không". `src/services/accountDeletionService.ts`
+   ▸ hằng `REMOTE_DELETE_ENABLED` đang là `false`, backend **chưa** có cửa xoá theo DID.
    Khai "có" ở ô này là khai sai.
 
 ### A.4 Ba thứ Play đòi mà chưa có
@@ -171,10 +188,15 @@ coi đó là MỘT app, bản sau đè bản trước).
 bash scripts/soi-aab.sh <đường dẫn>/checkfarm-release.aab
 ```
 
-`FAIL=0` mới được nộp. **Đây là cổng duy nhất soi gói ĐẦU RA.** Đường dựng
-Codemagic (`codemagic.yaml`) chỉ soi `jniLibs` — tức đầu VÀO của Gradle — và cũng
-chỉ soi lát `arm64-v8a`; cổng soi gói ra nằm ở `.github/workflows/android-aab.yml`,
-mà đường GitHub Actions đang chết vì sự cố thanh toán (issue #157).
+`FAIL=0` mới được nộp. Cổng soi gói ĐẦU RA nằm ở `.github/workflows/android-aab.yml`,
+và nó **đang chạy** — kho đã công khai từ 2026-09-10 nên Actions không còn phụ thuộc
+thanh toán; đo bằng `gh pr checks <số PR>`, đọc ở cột trạng thái của `Verify (tsc +
+jest)`, ngày 2026-09-17 ra `pass` trên cả ba PR đang mở. Danh sách flavor của lượt
+dựng có cả `checkfarm` (`grep -n checkfarm .github/workflows/android-aab.yml`).
+
+Đường dựng Codemagic (`codemagic.yaml`) soi `jniLibs` — tức đầu VÀO của Gradle, không
+phải gói ra — nhưng soi **cả ba** lát kiến trúc: `grep -n 'for ABI in' codemagic.yaml`
+ra bốn vòng lặp, đều `arm64-v8a armeabi-v7a x86_64`.
 
 Chuyện đã xảy ra một lần: bản `versionCode 87` có chữ ký đúng, 25 tệp `.so`, cài
 chạy bình thường — nhưng **thiếu** `libtaad_enclave_core.so` và `libchat_mls.so` ở
@@ -212,7 +234,8 @@ ra 1080×2400 (1:2,22) và Play từ chối ảnh chụp ở tỉ lệ đó.
 
 ## C. Việc còn treo, đọc trước khi hứa ngày phát hành
 
-- Bốn ô ở **§A.4** là điều kiện nộp, không phải việc dev — chưa có URL chính sách
-  công khai thì không nộp được, dù gói đã sẵn sàng.
+- Ba ô ở **§A.4** là điều kiện nộp, không phải việc dev — gói sẵn sàng không thay
+  được một ô Console còn trống. (URL chính sách quyền riêng tư KHÔNG còn nằm trong
+  ba ô đó: `https://checkfarm.com/privacy.html` đã sống, xem §A.4.)
 - Ảnh sau đăng nhập (**§A.5**) bổ sung được sau, không chặn lần nộp đầu.
 - `versionCode 101` chưa đối chiếu được với những gì mục đã nhận (**§B.5**).

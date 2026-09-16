@@ -91,19 +91,40 @@ phải câu hỏi đo được từ mã:
    hình để khởi. Khai "có chia sẻ" lẫn khai "không chia sẻ" đều là đoán cho tới
    khi chạy phép đo: dựng `bundleCheckfarmRelease` rồi tìm `google_app_id` trong
    gói, hoặc mở bản CheckFarm và đọc `adb logcat | grep -i firebase`.
-3. Play hỏi "người dùng yêu cầu xoá dữ liệu được không". `src/services/accountDeletionService.ts`
-   ▸ hằng `REMOTE_DELETE_ENABLED` đang là `false`, backend **chưa** có cửa xoá theo DID.
-   Khai "có" ở ô này là khai sai.
+3. Play hỏi "người dùng yêu cầu xoá dữ liệu được không" — câu trả lời là **CÓ**, và
+   đường đi có thật ở cả hai phía. Trong app: `src/screens/DeleteAccountScreen.tsx`,
+   nối từ `AccountScreen` qua `navigation/index.tsx`; nó xoá sạch khoá + DID + token
+   trên máy NGAY (`wipeLocalIdentity`). Phía máy chủ thì hằng `REMOTE_DELETE_ENABLED`
+   trong `src/services/accountDeletionService.ts` đang là `false`, nên yêu cầu được
+   GHI lại cho người trực xử lý tay và hàm trả `'pending'` — nó không bịa `'done'`.
+   Play đòi một ĐƯỜNG yêu cầu xoá, không đòi đường ấy phải tự động; cái phải giữ là
+   đừng khai rằng cửa tự động đã mở.
 
-### A.4 Ba thứ Play đòi mà chưa có
+### A.4 Hai thứ Play đòi mà chưa có
 
 Đây là phần thật sự chặn nộp, không phải phần tô điểm:
 
 | Thứ | Trạng thái đo được | Ai gỡ |
 |---|---|---|
-| **Account deletion URL** | Cùng gốc với mục A.3 §3: chưa có cửa xoá phía máy chủ thì cũng chưa có trang để khai | chủ sở hữu + backend |
 | **Khai đối tượng người dùng / nội dung** | bảng câu hỏi trong Console, không có dữ kiện nào trong kho trả lời hộ | chủ sở hữu |
 | **Bản mô tả đầy đủ** | §A.2 | chủ sở hữu |
+
+**URL xoá tài khoản thì ĐÃ CÓ — dán `https://checkfarm.com/privacy.html#xoa-du-lieu`.**
+
+Cùng một cách đo sai với dòng dưới, nên nói rõ một lần nữa: bản đầu xếp ô này vào hàng
+chặn *vì `REMOTE_DELETE_ENABLED = false`*. Cờ ấy đúng là `false`, và kết luận vẫn sai —
+nó trả lời câu "cửa xoá TỰ ĐỘNG mở chưa", còn Play hỏi "người dùng yêu cầu xoá được
+không". Trang đã sống và đã nói thẳng chỗ chưa làm được:
+
+```
+$ curl -s https://checkfarm.com/privacy.html | grep -c 'id="xoa-du-lieu"'
+1
+```
+
+Mục 6 của trang ấy ghi nguyên văn rằng cửa xoá tự động phía máy chủ **chưa mở** và yêu
+cầu do người trực xử lý tay, kèm ba thứ không xoá được và lý do. Bản tiếng Anh có neo
+riêng `#delete-data`, và trang tự đổi ngôn ngữ theo neo — người duyệt của Play mở bằng
+trình duyệt tiếng Anh vẫn thấy đúng mục, chứ không thấy một trang trống.
 
 **Chính sách quyền riêng tư thì ĐÃ CÓ — dán `https://checkfarm.com/privacy.html`.**
 
@@ -234,8 +255,9 @@ ra 1080×2400 (1:2,22) và Play từ chối ảnh chụp ở tỉ lệ đó.
 
 ## C. Việc còn treo, đọc trước khi hứa ngày phát hành
 
-- Ba ô ở **§A.4** là điều kiện nộp, không phải việc dev — gói sẵn sàng không thay
-  được một ô Console còn trống. (URL chính sách quyền riêng tư KHÔNG còn nằm trong
-  ba ô đó: `https://checkfarm.com/privacy.html` đã sống, xem §A.4.)
+- Hai ô ở **§A.4** là điều kiện nộp, không phải việc dev — gói sẵn sàng không thay
+  được một ô Console còn trống. (Hai ô từng nằm trong danh sách này đã rời ra, cả hai
+  vì cùng một lý do: thứ cần đã có sẵn trên `checkfarm.com`, chỉ chưa ai mở ra xem.
+  Chính sách quyền riêng tư và URL xoá tài khoản — xem §A.4.)
 - Ảnh sau đăng nhập (**§A.5**) bổ sung được sau, không chặn lần nộp đầu.
 - `versionCode 101` chưa đối chiếu được với những gì mục đã nhận (**§B.5**).

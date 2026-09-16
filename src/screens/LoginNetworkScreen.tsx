@@ -46,7 +46,12 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { getBuildNumber, getVersion } from 'react-native-device-info';
 import { Canvas, useFrame, useThree } from '@react-three/fiber/native';
 import * as THREE from 'three';
-import { useNavigation, useIsFocused } from '@react-navigation/native';
+import { useNavigation, useIsFocused, useFocusEffect } from '@react-navigation/native';
+import {
+  primaryCta,
+  readIdentityPresence,
+  type IdentityPresence,
+} from '../features/loginNetwork/identityPresence';
 import { useDispatch } from 'react-redux';
 
 import GLErrorBoundary from '../components/GLErrorBoundary';
@@ -362,6 +367,40 @@ const LoginNetworkScreen: React.FC = () => {
     (msg, e) => console.log(`[LoginNetwork] ${msg}:`, e),
   );
   const [busy, setBusy] = useState(false);
+
+  /**
+   * Đọc LẠI mỗi lần màn này được nhìn thấy, không chỉ lúc gắn.
+   *
+   * Người dùng rời màn này sang `IdentityEntryChoice` → tạo hoặc khôi phục danh
+   * tính → quay về. Đọc một lần lúc gắn thì lúc quay về nút vẫn mời họ "đăng ký"
+   * một lần nữa, và lối đó dẫn tới một DID THỨ HAI.
+   */
+  const [identityPresence, setIdentityPresence] = useState<IdentityPresence>('unknown');
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      (async () => {
+        try {
+          const presence = await readIdentityPresence();
+          if (!cancelled) setIdentityPresence(presence);
+        } catch (e) {
+          // Đọc HỎNG không được đọc thành "máy chưa có danh tính". Hai thứ đó
+          // khác nhau, và đoán sai theo chiều ấy đẩy người ĐÃ có tài khoản vào
+          // màn lập tài khoản thứ hai — chỗ mà cái sai không kêu lên, vì danh
+          // sách vườn rỗng trùng khớp với "tôi chưa ghi gì".
+          if (!cancelled) setIdentityPresence('unknown');
+          console.warn('[LoginNetwork] không đọc được trạng thái danh tính:', e);
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, []),
+  );
+
+  /** Nhãn + đích + trạng thái bấm được của nút dưới đáy. Một nguồn, ba thứ. */
+  const cta = primaryCta(identityPresence);
+
   const insets = useSafeAreaInsets();
   const lang = useLanguage();
   // Đổi ngôn ngữ NGAY tại màn đăng nhập, không phải đăng nhập vào mới đổi được —
@@ -673,16 +712,39 @@ const LoginNetworkScreen: React.FC = () => {
         pointerEvents="box-none"
         style={[styles.day, { paddingBottom: insets.bottom + 14 }]}
       >
+        {/* NÚT DƯỚI ĐÁY — nhãn theo trạng thái THẬT của máy, không phải một chuỗi
+            cố định.
+
+            Trước bản này nút luôn đọc "Đăng ký danh tính", kể cả trên máy đã có
+            danh tính. Hai cái hỏng, không phải một:
+
+              · CHỮ sai — người đã có tài khoản được mời đăng ký, và lối đó dẫn
+                sang `IdentityEntryChoice` rồi rất dễ sang màn tạo mới. Một DID
+                thứ hai cho cùng một người, danh sách vườn hiện rỗng, mà rỗng
+                thì trùng khớp với "tôi chưa ghi gì" — cái sai không kêu lên.
+              · ĐÍCH sai — `IdentityEntryChoice` tự khai ngay dòng đầu rằng nó là
+                "cửa vào khi máy CHƯA có danh tính nào". Đưa máy đã có danh tính
+                vào đó là hỏi một câu đã có đáp án.
+
+            Vòng tròn sinh trắc ở giữa màn thì vẫn kiểm đúng (`runBiometric`) —
+            nên trước bản này hai lối vào cùng một màn trả lời khác nhau về cùng
+            một câu hỏi. Nay cả hai đọc chung `readIdentityPresence`. */}
         <Pressable
+          testID="login-primary-cta"
           accessibilityRole="button"
-          accessibilityLabel={t('Đăng ký danh tính')}
-          onPress={moDangKy}
-          style={({ pressed }) => [styles.nutDangKy, pressed && styles.nutDangKyNhan]}
+          accessibilityState={{ disabled: cta.disabled }}
+          accessibilityLabel={t(cta.labelKey)}
+          disabled={cta.disabled}
+          onPress={cta.action === 'unlock' ? runBiometric : moDangKy}
+          style={({ pressed }) => [
+            styles.nutDangKy,
+            (pressed || cta.disabled) && styles.nutDangKyNhan,
+          ]}
         >
           <Text style={styles.chuDangKy} allowFontScaling={false}>
-            {t('Đăng ký danh tính')}
+            {t(cta.labelKey)}
           </Text>
-          <Icon name="arrow-right" size={16} color={NEUTRAL.white} />
+          {cta.icon ? <Icon name={cta.icon} size={16} color={NEUTRAL.white} /> : null}
         </Pressable>
 
         <Text style={styles.phienBan} allowFontScaling={false}>

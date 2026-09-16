@@ -667,6 +667,27 @@ export const ACCOUNT: PhraseMap = {
   },
   'LAMP của Wakeme': { en: 'Wakeme LAMP', zh: 'Wakeme 的 LAMP', ja: 'Wakeme の LAMP' },
   'Đang hỏi máy chủ…': { en: 'Asking the server…', zh: '正在询问服务器…', ja: 'サーバーに問い合わせ中…' },
+  // ⛔ HAI CHUỖI DƯỚI ĐÂY CHỈ ĐƯỢC TẢ NHỊP MỞ KHOÁ — KHÔNG ĐƯỢC HỨA AI KHÔNG CAN THIỆP ĐƯỢC.
+  //
+  // Nhịp mở khoá do trường datum `start_epoch` quyết, và trường đó do **chính bên dựng
+  // giao dịch đặt**, không phải giá trị đọc từ đồng hồ hệ thống. Đo trên mã validator
+  // (`MagicLampEco/LAMP/Distribution/onchain`, 2026-09-16): toàn kho chỉ có hai mệnh đề
+  // ràng buộc trường đó — `validators/claim_account.ak:94` và `:153` — và cả hai chỉ đòi
+  // giá trị RA bằng giá trị VÀO, tức nó bất biến SAU KHI tài khoản đã tồn tại. Đường TẠO
+  // tài khoản không có mệnh đề nào chạm nó (`ClaimAccountRedeemer` chỉ có `Claim` và
+  // `Redeem`, `lib/magiclamp/lampdist/types.ak:16-21` — không có nhánh tạo), và chú thích
+  // khai báo trường viết thẳng rằng đặt lùi là thiết kế: `start_epoch: Int,  // t0 (đặt lùi
+  // = "cliff")`.
+  //
+  // ⟹ Thêm một câu kiểu "kể cả chúng tôi cũng không rút nhanh được" là SAI VỚI MÃ, và nó
+  // sai theo hướng người dùng thiệt: họ tin vào một ràng buộc không tồn tại.
+  //
+  // Hai chuỗi này hôm nay an toàn vì chúng chỉ tả nhịp — đó là MAY, không phải thiết kế:
+  // chúng được viết để nói "app không tự điền số", không phải để tránh lời hứa này.
+  //
+  // Rào của chính chú thích này: nó là CHÚ THÍCH, không phải cổng. Không gì đỏ nếu ai đó
+  // vẫn thêm câu ấy. Phạm vi đo là mã validator đọc-được, chưa phải một lượt dựng giao
+  // dịch thật đặt `start_epoch` lùi rồi xem chuỗi có nhận không.
   'Trong vault, mở khoá dần theo ngày': {
     en: 'In the vault, unlocking day by day',
     zh: '在金库中，按日逐步解锁',

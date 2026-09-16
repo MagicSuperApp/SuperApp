@@ -67,6 +67,17 @@ jobs:
           node-version: '22.11.0'
           cache: 'npm'
 
+      # Cổng này soi thứ mọi cổng khác trong tệp không nhìn tới: NỘI DUNG tệp ảnh có
+      # khớp ĐUÔI của nó không. `tsc`/`jest` không chạm tới ảnh, bản debug thì bỏ qua
+      # chỗ lệch — nên một tấm JPEG mang đuôi `.png` đi qua sạch mọi cổng rồi chết ở
+      # bước MUỘN NHẤT: lúc AAPT biên dịch tài nguyên để ký bản phát hành. Đã xảy ra
+      # thật 16/09/2026: `assets_images_banners_chatfi.png` làm đỏ cả lượt dựng AAB
+      # cho Play Store, và bản vá nằm sẵn ở `develop` mà nhánh được ký thì chưa có.
+      # Đặt TRƯỚC `npm install` để đỏ sớm, khỏi tốn 3 phút cài. Chạy vài giây, không
+      # cần cài gì — chỉ đọc 16 byte đầu mỗi tệp.
+      - name: Soi đuôi ảnh so với định dạng thật
+        run: node scripts/soi-duoi-anh.js
+
       - name: Install npm dependencies
         run: npm install --legacy-peer-deps
 

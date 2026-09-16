@@ -20,6 +20,14 @@
  *
  * Dùng `react-test-renderer` theo tiền lệ `MyDevicesScreen.test.tsx`
  * (`@testing-library/react-native` không có trong kho này).
+ *
+ * ⚠ MÀN NÀY KHÔNG CÒN NẰM TRÊN TUYẾN. `navigation/index.tsx` khai
+ * `import LoginScreen from '../screens/LoginNetworkScreen'`, nên tuyến `Login`
+ * dựng màn KIA, và mọi khẳng định ở tệp này nói về một màn người dùng không tới
+ * được. Nó vẫn xanh, vẫn đúng tên, và vẫn chứng minh KHÔNG ĐIỀU GÌ về sản phẩm
+ * đang chạy — đúng cái bẫy "test xanh trên đường không ai đi được".
+ * Bài kiểm của màn đang chạy ở `LoginNetworkScreen.entry.test.tsx`; tệp này giữ
+ * lại vì màn cũ còn trong kho, và nó chết cùng ngày màn cũ bị gỡ.
  */
 
 import React from 'react';

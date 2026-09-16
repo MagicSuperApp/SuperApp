@@ -507,8 +507,22 @@ const LoginNetworkScreen: React.FC = () => {
    * `signUpNew` đi THẲNG `SignUpBiometric` và KHÔNG phải là lối duy nhất của
    * trạng thái đó: dòng chữ phụ ngay dưới nút vẫn mở màn hỏi, cho người đổi
    * điện thoại — máy mới của họ cũng đo ra "không có gì".
+   *
+   * ⚠ KHÔNG bọc hàm này bằng `useCallback`. Nó gọi `runBiometric`, mà `runBiometric`
+   * là hàm thường của thân component: mỗi lượt vẽ lại sinh một bản mới, đóng bao
+   * quanh giá trị `busy` của ĐÚNG lượt vẽ ấy. Bọc `useCallback` thì bản `runBiometric`
+   * bị chụp cứng ở lượt vẽ cuối cùng mà danh sách phụ thuộc đổi — và `busy` trong bản
+   * chụp đó mãi mãi là `false`. Hậu quả không hiện ra ở đây mà ở `runBiometric`: chốt
+   * `if (busy || noSensor) return` đọc một biến đã đóng băng, nên chạm lần thứ hai
+   * trong lúc hộp sinh trắc đang mở vẫn chạy trọn một lượt đăng nhập thứ hai chồng lên
+   * lượt đầu. Nút dưới đáy KHÔNG tự chặn hộ: `cta.disabled` chỉ đo trạng thái máy.
+   *
+   * Đây là hồi quy đã xảy ra thật một lần, ở đúng chỗ này, và không phép kiểm nào bắt
+   * được vì không tệp kiểm nào nạp màn này. Muốn memo hoá thì phải dời khai báo
+   * `runBiometric` lên trên và đưa nó vào danh sách phụ thuộc — đừng tắt luật
+   * `exhaustive-deps` để giữ nguyên thứ tự.
    */
-  const theoCta = useCallback(() => {
+  const theoCta = () => {
     switch (cta.action) {
       case 'unlock':
         return runBiometric();
@@ -523,10 +537,7 @@ const LoginNetworkScreen: React.FC = () => {
       default:
         return undefined;
     }
-    // `runBiometric` khai sau khối này trong tệp; nó là hàm bình thường của thân
-    // component nên không đưa vào danh sách phụ thuộc được mà không dời khai báo.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cta.action, navigation, moDangKy, trackPress]);
+  };
 
   const vaoMain = useCallback(() => {
     navigation.reset({ index: 0, routes: [{ name: 'Main' as never }] });
@@ -770,16 +781,22 @@ const LoginNetworkScreen: React.FC = () => {
             Vòng tròn sinh trắc ở giữa màn thì vẫn kiểm đúng (`runBiometric`) —
             nên trước bản này hai lối vào cùng một màn trả lời khác nhau về cùng
             một câu hỏi. Nay cả hai đọc chung `readIdentityPresence`. */}
+        {/* `busy` phải nằm trong `disabled` chứ không chỉ trong `runBiometric`.
+            `cta.disabled` đo TRẠNG THÁI MÁY, nó không biết gì về việc một lượt
+            đăng nhập đang chạy — nên nếu chỉ dựa vào nó thì trong lúc hộp sinh
+            trắc của hệ điều hành đang mở, nút này vẫn sáng và vẫn bấm được.
+            Vòng tròn sinh trắc ở giữa màn đã mờ đi đúng lúc ấy (`busy={busy}`);
+            hai lối vào cùng một hành động thì phải khoá cùng nhau. */}
         <Pressable
           testID="login-primary-cta"
           accessibilityRole="button"
-          accessibilityState={{ disabled: cta.disabled }}
+          accessibilityState={{ disabled: cta.disabled || busy }}
           accessibilityLabel={t(cta.labelKey)}
-          disabled={cta.disabled}
+          disabled={cta.disabled || busy}
           onPress={theoCta}
           style={({ pressed }) => [
             styles.nutDangKy,
-            (pressed || cta.disabled) && styles.nutDangKyNhan,
+            (pressed || cta.disabled || busy) && styles.nutDangKyNhan,
           ]}
         >
           <Text style={styles.chuDangKy} allowFontScaling={false}>

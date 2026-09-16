@@ -31,6 +31,7 @@ const code = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/
 
 const BUBBLE = code(raw('AssistantBubble.tsx'));
 const LAYER = code(raw('genie/GenieLayer.tsx'));
+const PANEL = code(raw('genie/GenieSectionsPanel.tsx'));
 
 describe('bong bóng — cổng chống "bấm không mở"', () => {
   it('PanResponder KHÔNG được giành responder ngay lúc đặt ngón tay', () => {
@@ -106,6 +107,11 @@ describe('Lớp Trợ lý — theo docs/AI_ASSISTANT_UI-UX.md', () => {
   it('§3 — có LỚP KÍNH TỐI, và KHÔNG đen 100%', () => {
     // Spec §3: `rgba(0,10,8, 0.55~0.70)`. Bản trước cố ý để trong suốt hoàn toàn
     // và nó sai với §3/§17 — sự chú ý phải chuyển hẳn sang Trợ lý.
+    //
+    // Chủ sở hữu chốt 15/09 tối hơn nữa (0.78), tức VƯỢT khoảng của spec. Bài này
+    // canh khoảng RỘNG hơn spec, cố ý: cái nó giữ không phải con số mà là hai đầu
+    // mút — đủ tối để màn cũ lùi hẳn ra sau, và chưa đục tới mức lớp phủ thành
+    // một trang riêng (lúc ấy §16 "tự tắt sau khi mở màn" mất chỗ dựa).
     const m = LAYER.match(/const GLASS = 'rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)'/);
     expect(m).not.toBeNull();
     const alpha = Number(m![4]);
@@ -153,6 +159,19 @@ describe('Lớp Trợ lý — theo docs/AI_ASSISTANT_UI-UX.md', () => {
     expect(user).toMatch(/maxWidth/);
     expect(agent).toMatch(/alignSelf: 'flex-start'/);
     expect(user).toMatch(/alignSelf: 'flex-end'/);
+  });
+
+  it('góc VUÔNG quay về phía người nói — đuôi của bong bóng', () => {
+    // Ba góc bo và một góc vuông nói ai là người nói bằng HÌNH DẠNG. So lề trái
+    // với lề phải chỉ phân biệt được khi hai câu liền nhau cùng nằm trên màn —
+    // một câu đứng một mình thì không có gì để so.
+    const agent = LAYER.match(/bubbleAgent:\s*\{[^}]*\}/)![0];
+    const user = LAYER.match(/bubbleUser:\s*\{[^}]*\}/)![0];
+    expect(agent).toMatch(/borderTopLeftRadius: 0/);
+    expect(user).toMatch(/borderTopRightRadius: 0/);
+    // Và chỉ MỘT góc mỗi bên — vuông cả hai thì hết là bong bóng.
+    expect(agent).not.toMatch(/borderTopRightRadius: 0/);
+    expect(user).not.toMatch(/borderTopLeftRadius: 0/);
   });
 
   it('§11 — sự hiện diện của Trợ lý là CỤM SÓNG, không phải vòng tròn', () => {
@@ -266,28 +285,71 @@ describe('Lớp Trợ lý — theo docs/AI_ASSISTANT_UI-UX.md', () => {
     expect(LAYER).toMatch(/RichText/);
   });
 
-  it('KHÔNG có hàng nút gợi ý — một câu hướng dẫn thay cho nó', () => {
+  it('KHÔNG có hàng nút gợi ý — màn chào thay cho nó', () => {
     // Đây là một super app: mấy chục tính năng, và bốn cái nút chọn sẵn thì vừa
     // không đại diện cho cái gì, vừa khiến người dùng tưởng trợ lý CHỈ làm được
     // bốn việc đó.
     expect(LAYER).not.toMatch(/SUGGEST_IDS/);
     expect(LAYER).not.toMatch(/chipText/);
-    expect(LAYER).toMatch(/const HINT = /);
     expect(LAYER).toMatch(/\{chuaHoi && /);
   });
 
-  it('câu hướng dẫn viết như NGƯỜI NÓI, không cộc lốc', () => {
-    // Người dùng ở đây là bác nông dân đang cầm điện thoại giữa vườn — câu chữ
-    // cộc lốc đọc ra thành một cái máy, và người ta không nói chuyện với máy.
-    const m = LAYER.match(/const HINT = ([\s\S]*?);\n/);
+  it('màn chào nói rõ TRỢ LÝ LÀ AI: tên, vai trò, rồi lời chào', () => {
+    // Câu dạy cách dùng đã bỏ. Người vừa mở lớp phủ lần đầu chưa biết mình đang
+    // nói chuyện với ai, nên thứ cần trước hết là một cái tên và một vai trò.
+    expect(LAYER).toMatch(/const GENIE_NAME = 'GENIE';/);
+    expect(LAYER).toMatch(/const GENIE_TAGLINE = 'Trợ lý thông minh';/);
+    expect(LAYER).toMatch(/const cauChao = \(\) =>/);
+    // Tên phải ĐỌC RA LÀ MỘT CÁI TÊN, không lẫn vào chữ thường quanh nó.
+    const brand = LAYER.match(/\bbrand: \{[^}]*\}/s)![0];
+    expect(Number(brand.match(/fontSize: (\d+)/)![1])).toBeGreaterThanOrEqual(28);
+    expect(brand).toMatch(/letterSpacing: [1-9]/);
+  });
+
+  it('màn chào nằm GIỮA màn, cả hai chiều — chỉ bong bóng nép trái', () => {
+    // Cột giữa dồn mọi thứ xuống đáy để câu mới nhất sát cụm nút, nên khối này
+    // phải ra khỏi dòng mới căn giữa theo chiều dọc được. Ra khỏi dòng cũng là
+    // để lúc màn chào tắt đi, bố cục không nhảy một nhịp nào.
+    const intro = LAYER.match(/\bintro: \{[^}]*\}/s)![0];
+    expect(intro).toMatch(/position: 'absolute'/);
+    expect(intro).toMatch(/alignItems: 'center'/);
+    expect(intro).toMatch(/justifyContent: 'center'/);
+    const bubble = LAYER.match(/\bintroBubble: \{[^}]*\}/s)![0];
+    expect(bubble).toMatch(/alignSelf: 'flex-start'/);
+  });
+
+  it('màn chào KHÔNG được nuốt cú chạm của hộp tin bên dưới', () => {
+    expect(LAYER).toMatch(/style=\{styles\.intro\} pointerEvents="none"/);
+  });
+
+  it('lời chào nằm trong ĐÚNG bong bóng mà trợ lý vẫn dùng', () => {
+    // Nó phải đọc ra là lời của trợ lý, không phải chữ trang trí của app.
+    expect(LAYER).toMatch(/styles\.bubbleAgent, styles\.introBubble/);
+  });
+
+  it('lời chào KHÔNG vào kho tin — panel danh sách không được đầy cuộc rỗng', () => {
+    // Cho nó qua `pushMessage` thì nó được ghi xuống máy, và mỗi lần mở lớp rồi
+    // đổi ý để lại một "cuộc" chỉ có mỗi lời chào.
+    expect(LAYER).not.toMatch(/pushMessage\('agent', GENIE_GREETING/);
+    expect(LAYER).not.toMatch(/pushMessage\([^)]*GREETING/);
+  });
+
+  it('lời chào dùng {brand}, KHÔNG viết cứng tên một app', () => {
+    // `i18n/translate.ts` thay chỗ này bằng tên app đang chạy. Viết cứng thì bản
+    // CheckFarm chào người dùng bằng tên một app khác — đúng lỗi 15 chuỗi xin
+    // quyền đã mắc, và là lý do chỗ thay này tồn tại.
+    const m = LAYER.match(/const cauChao = \(\) =>([\s\S]*?);\n/);
     expect(m).not.toBeNull();
     const cau = m![1];
-    // Đủ dài để thành một câu, đủ ngắn để không thành một đoạn.
-    expect(cau.replace(/[^\p{L}\s]/gu, '').trim().length).toBeGreaterThan(60);
-    expect(cau.replace(/[^\p{L}\s]/gu, '').trim().length).toBeLessThan(220);
-    // Và KHÔNG liệt kê tính năng — liệt kê bốn cái thì thành ra nói rằng chỉ làm
-    // được bốn cái đó.
-    expect(cau).not.toMatch(/thêm vườn|quét cây|ghi lịch sử/);
+    expect(cau).toMatch(/\{brand\}/);
+    expect(cau).not.toMatch(/Aladin|CheckFarm/);
+    // Lời gọi `t()` phải nằm TRÊN CHÍNH DÒNG có `{brand}` — xem
+    // `i18n/brandSlot.test.ts`: `autoText.tsx` bỏ qua `t()` ở tiếng Việt, nên một
+    // chuỗi `{brand}` không đi qua `t()` hiện nguyên dấu ngoặc nhọn lên màn.
+    const dong = cau.split('\n').find((l) => l.includes('{brand}'))!;
+    expect(dong).toMatch(/\bt\(/);
+    // Và gọi lúc VẼ, không phải lúc nạp module — đổi ngôn ngữ thì câu phải đổi.
+    expect(LAYER).toMatch(/\{cauChao\(\)\}/);
   });
 });
 
@@ -324,5 +386,40 @@ describe('hộp tin cao lên — sóng được phép đè lên chữ', () => {
     expect(iWave).toBeGreaterThan(0);
     expect(iStream).toBeGreaterThan(0);
     expect(iWave).toBeLessThan(iStream);
+  });
+});
+
+describe('nút menu + panel danh sách cuộc', () => {
+  it('hàng trên cùng có HAI đầu, menu bên TRÁI', () => {
+    // Trước bản này hàng đó chỉ có nút đóng nên nó dồn hết sang phải
+    // (`alignItems: 'flex-end'`). Để nguyên thì nút menu chồng lên nút đóng.
+    expect(LAYER).toMatch(/\btop: \{[^}]*justifyContent: 'space-between'/s);
+    const iMenu = LAYER.indexOf('name="menu"');
+    const iClose = LAYER.indexOf('name="close"');
+    expect(iMenu).toBeGreaterThan(0);
+    expect(iMenu).toBeLessThan(iClose);
+  });
+
+  it('panel dựng SAU cụm nút — nút Mic không được thò lên trên nó', () => {
+    const iCtrl = LAYER.indexOf('</KeyboardAvoidingView>');
+    const iPanel = LAYER.indexOf('<GenieSectionsPanel');
+    expect(iPanel).toBeGreaterThan(0);
+    expect(iPanel).toBeGreaterThan(iCtrl);
+  });
+
+  it('nền panel ĐẶC — không kênh alpha', () => {
+    // Chủ sở hữu chốt: *"panel này không có opacity ở nền"*. Và nó có lý do đo
+    // được: đây là chỗ đọc một danh sách chữ nhỏ, với ba dải sóng vẫn chạy phía
+    // sau — nền nhìn xuyên được thì không cỡ chữ nào cứu nổi.
+    const style = PANEL.match(/\bpanel: \{[^}]*\}/s)![0];
+    expect(style).toMatch(/backgroundColor: SURFACE/);
+    expect(style).not.toMatch(/rgba|opacity/);
+    // `SURFACE` phải là mã màu 6 chữ số — 8 chữ số là đã có alpha.
+    expect(PANEL).toMatch(/const SURFACE = '#[0-9A-Fa-f]{6}';/);
+  });
+
+  it('xoá một cuộc phải HỎI LẠI — không có hoàn tác', () => {
+    expect(PANEL).toMatch(/showWarning\(/);
+    expect(PANEL).toMatch(/deleteSection\(/);
   });
 });

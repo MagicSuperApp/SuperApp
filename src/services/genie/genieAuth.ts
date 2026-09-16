@@ -29,6 +29,8 @@
 // chừng đó thứ mới chạy được là một bài kiểm sẽ bị tắt đi.
 
 import { setGenieAuth, resetGenieSession, warmGenie } from './genieAgent';
+import { clearSections } from '../../components/genie/genieController';
+import { clearGenieHistory } from '../../components/genie/genieHistory';
 import { ORILIFE_BASE } from '../orilifeBase';
 
 /** Khoá kho giữ thẻ OriLife. Cùng một khoá với 5 service ReID — không đẻ khoá thứ hai. */
@@ -120,4 +122,13 @@ export function installGenieAuth(): void {
  */
 export function clearGenieAuth(): void {
   resetGenieSession();
+  // Và LỊCH SỬ TRÒ CHUYỆN đi cùng, cả trong bộ nhớ lẫn trên máy.
+  //
+  // Cùng một luật, cùng một lý do: ngoài đồng chiếc máy dùng chung cho cả tổ.
+  // Thẻ của người cũ mà ở lại thì Genie đi ra máy chủ mang danh họ; câu hỏi của
+  // người cũ mà ở lại thì người sau mở panel ra đọc được vườn nhà ai, hỏi gì về
+  // bệnh gì. Cái thứ hai không làm sai một lời ghi nào, nhưng nó là chuyện riêng
+  // của người ta.
+  clearSections();
+  clearGenieHistory();
 }

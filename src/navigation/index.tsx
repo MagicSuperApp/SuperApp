@@ -146,6 +146,7 @@ import AssistantBubble from '../components/AssistantBubble';
 import GenieLayer from '../components/genie/GenieLayer';
 import { setGenieNavigator, setGenieRoute } from '../services/genie';
 import { installGenieAuth } from '../services/genie/genieAuth';
+import { startGenieHistory } from '../components/genie/genieHistory';
 import { CoachMarkProvider, useCoachMarkTarget } from '../onboarding/CoachMarkContext';
 import CoachMarkOverlay from '../onboarding/CoachMarkOverlay';
 
@@ -2040,6 +2041,10 @@ const AppNavigator = () => {
           // và trợ lý lui về đường tắt trên máy. Đó là hành vi ĐÚNG: không có
           // danh tính thì không có gì để hỏi hộ ai cả.
           installGenieAuth();
+          // Nạp lại các cuộc trò chuyện của lần mở app trước, rồi ghi tiếp từ đó.
+          // Cùng chỗ với `installGenieAuth` vì cùng một điều kiện: navigation đã
+          // sẵn sàng, và cả hai đều chạy nền chứ không chặn `onReady`.
+          startGenieHistory();
           setPushNavigator((screen, params) => {
             if (!navigationRef.isReady()) return;
             // `navigate` của container KHÔNG kiểu hoá (`ParamListBase` rỗng) nên hai

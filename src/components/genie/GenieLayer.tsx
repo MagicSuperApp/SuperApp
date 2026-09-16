@@ -60,6 +60,8 @@ import { Envelope, styleFor } from './edgeWaveMath';
 import {
   closeAssistant, pushMessage, setAgentState, setAudioLevel, setTypingMode, useGenie,
 } from './genieController';
+import GenieSectionsPanel from './GenieSectionsPanel';
+import { useAutoOpenOnLogin } from './autoOpenOnLogin';
 import {
   GENIE_PLAYBOOK_COUNT,
   useGenieRoute,
@@ -94,23 +96,69 @@ const CLOSE_AFTER_OPEN_MS = 2200;
 
 
 /**
- * Câu hướng dẫn hiện khi người dùng chưa hỏi gì.
+ * Màn CHÀO — hiện khi người dùng chưa hỏi gì.
  *
- * Viết như người nói với người: một câu, có nhịp, không phải một dòng lệnh. Người
- * dùng ở đây là bác nông dân đang cầm điện thoại giữa vườn — câu chữ cộc lốc đọc
- * ra thành một cái máy, và người ta không nói chuyện với máy.
+ * ── Vì sao đổi từ một câu hướng dẫn sang một lời tự giới thiệu ──────────────
+ * Bản trước đặt ở đây một câu dạy cách dùng ("bác cứ nói bình thường…"). Chủ sở
+ * hữu chốt bỏ, và bỏ là đúng: người vừa mở lớp phủ lần đầu chưa biết mình đang
+ * nói chuyện với AI hay với một cái máy tra cứu, nên thứ họ cần trước hết là
+ * BIẾT MÌNH ĐANG NÓI VỚI AI — một cái tên, một vai trò, rồi một lời chào.
  *
- * Cố ý KHÔNG liệt kê tính năng: đây là một super app, liệt kê bốn cái thì thành
- * ra nói rằng chỉ làm được bốn cái đó.
+ * Câu chào để trong một BONG BÓNG y hệt mọi câu sau của trợ lý, cố ý: nó nói cho
+ * mắt biết đây là lời của trợ lý, không phải chữ trang trí của app. Nhưng nó
+ * KHÔNG phải một tin thật trong kho — xem chỗ dựng bên dưới.
  */
-const HINT = 'Bác cứ nói với em như nói chuyện bình thường thôi ạ — muốn mở cái gì, '
-  + 'hay muốn ghi lại việc gì ngoài vườn, bác nói một câu là em làm giúp.';
+/** Tên trợ lý. KHÔNG dịch và KHÔNG đổi theo instance — nó là một cái tên riêng. */
+const GENIE_NAME = 'GENIE';
+const GENIE_TAGLINE = 'Trợ lý thông minh';
+/**
+ * Lời chào. `{brand}` chứ không phải tên app viết cứng.
+ *
+ * `i18n/translate.ts` thay chỗ này bằng tên của chính app đang chạy. Viết cứng
+ * một cái tên thì bản CheckFarm chào người dùng bằng tên một app khác — đúng lỗi
+ * đã đo được ngày 29/08 ở 15 chuỗi xin quyền, và là lý do chỗ thay này tồn tại.
+ *
+ * ── Vì sao là HÀM, không phải hằng chuỗi ───────────────────────────────────
+ * Hai lý do, và cả hai đều bắt buộc:
+ *
+ *   · Gọi `t()` lúc NẠP MODULE là đóng băng bản dịch theo ngôn ngữ lúc app khởi
+ *     động; người dùng đổi ngôn ngữ xong thì câu này đứng nguyên tiếng cũ.
+ *   · `i18n/brandSlot.test.ts` soi TỪNG DÒNG: một dòng có `{brand}` mà không có
+ *     lời gọi dịch nào trên chính dòng ấy là đỏ. Cổng đó thô, nhưng nó thô có lý
+ *     do — `autoText.tsx` bỏ qua `t()` ở tiếng Việt, nên một chuỗi `{brand}`
+ *     không đi qua `t()` sẽ hiện nguyên dấu ngoặc nhọn cho phần đông người dùng.
+ *     Để lời gọi và chỗ thay trên cùng một dòng là chứng minh được bằng mắt.
+ */
+const cauChao = () =>
+  t('Xin chào, mình là trợ lý của bạn trên {brand}. Mình có thể giúp gì cho bạn?');
 
-/** §18 — nền kính tối. KHÔNG đen 100%: màn bên dưới phải còn nhìn thấy. */
-const GLASS = 'rgba(0, 10, 8, 0.62)';
-/** Nền các khối chữ: kính tối hơn một bậc để chữ đọc được trên mọi màn. */
-const CHIP_AGENT = 'rgba(3, 18, 13, 0.72)';
-const CHIP_USER = 'rgba(10, 40, 26, 0.68)';
+/**
+ * §18 — nền kính tối. KHÔNG đen 100%: màn bên dưới phải còn nhìn thấy.
+ *
+ * 0.78 chứ không phải 0.62 như bản trước: chủ sở hữu chốt tối hơn nữa. Con số
+ * này vượt khoảng §3 của spec (0.55–0.70) — ghi ra đây để lần sau không ai "sửa
+ * lại cho đúng spec" mà không biết nó đã bị đảo có chủ ý.
+ *
+ * Và nó DỪNG ở đây, không đi tiếp: §3 gọi lớp này là KÍNH TỐI, không phải màn
+ * đen. Màn bên dưới còn nhìn thấy là phần ngữ cảnh của câu đang hỏi — trợ lý vừa
+ * mở một màn thì người dùng phải thấy được nó ngay sau lớp phủ. Đục hẳn là lớp
+ * phủ thành một trang riêng, và lúc ấy §16 (tự tắt sau khi mở màn) mất chỗ dựa.
+ */
+const GLASS = 'rgba(0, 10, 8, 0.78)';
+/**
+ * Nền các khối chữ.
+ *
+ * Trước đây là "kính tối hơn một bậc so với nền" — đúng khi `GLASS` còn ở 0.62.
+ * Nền vừa xuống 0.78, và lúc đó một bong bóng tối hơn nữa thì nó TAN VÀO nền:
+ * không còn đường viền nào cho mắt bám, và cả dòng tin đọc ra thành chữ trôi
+ * lơ lửng chứ không phải mấy câu nói xếp chồng.
+ *
+ * Nên hai mã này đi NGƯỢC chiều với `GLASS`: nền càng tối thì bong bóng càng
+ * phải sáng lên, vì thứ cần giữ không phải độ tối của từng cái mà là KHOẢNG CÁCH
+ * giữa chúng.
+ */
+const CHIP_AGENT = 'rgba(19, 137, 68, 0.88)';
+const CHIP_USER = 'rgba(0, 165, 82, 0.86)';
 const CHIP_CTRL = 'rgba(4, 20, 14, 0.62)';
 
 /**
@@ -142,7 +190,25 @@ const GenieLayer: React.FC = () => {
   const g = useGenie();
 
   const [draft, setDraft] = useState('');
+  /** Panel danh sách cuộc (sau nút menu góc trên trái). */
+  const [menu, setMenu] = useState(false);
   const fade = useRef(new Animated.Value(0)).current;
+
+  // Ẩn ở màn CỬA VÀO: người dùng mở lớp rồi đăng xuất thì lớp phải biến mất theo
+  // chứ không phủ lên màn đăng nhập. Một lớp che mất một dòng trên `SeedExport`
+  // có thể làm người ta chép sai 24 từ khôi phục.
+  //
+  // Tính ở ĐÂY chứ không ngay trước chỗ `return null`: cửa gác tự-mở bên dưới cần
+  // đúng con số này, và nó là một hook — hook không được nằm sau một lối thoát.
+  const inPublic = route == null || isPublicRoute(route) || !genieMayOpen(route);
+
+  // Tự mở MỘT LẦN sau khi đăng nhập. Mọi luật nằm ở `autoOpenOnLogin.ts`.
+  useAutoOpenOnLogin({
+    loggedIn: isLoggedIn,
+    enabled: enabledPref && GENIE_PLAYBOOK_COUNT > 0,
+    routeOk: !inPublic,
+    layerOpen: g.open,
+  });
 
   // ── Chỗ đặt CỤM SÓNG giữa màn ─────────────────────────────────────────────
   //
@@ -337,8 +403,30 @@ const GenieLayer: React.FC = () => {
   // Cắt lượt đang chạy khi lớp đóng hoặc component tháo. Không cắt thì một câu
   // trả lời về muộn sẽ rơi vào một hộp tin đã đóng — và hiện ra ở lần mở sau.
   useEffect(() => {
-    if (!g.open) inflight.current?.abort();
+    if (!g.open) {
+      inflight.current?.abort();
+      setMenu(false);
+    }
   }, [g.open]);
+
+  // Người dùng ĐỔI SANG CUỘC KHÁC trong panel ⇒ cắt lượt đang chạy và im tiếng.
+  // Không cắt thì câu trả lời của cuộc cũ về muộn và rơi vào cuộc vừa mở — hai
+  // mạch chuyện lồng vào nhau trong một hộp tin, không ai đọc ra nổi câu nào trả
+  // lời câu nào.
+  //
+  // So với LẦN TRƯỚC chứ không chạy theo mỗi lượt vẽ, và phải soi cả `open`: mở
+  // lớp cũng sinh ra một cuộc mới, và nhịp `activated` của §15 vừa đặt xong sẽ bị
+  // chính chỗ này gạt về `idle` — lớp hiện ra mà không có gì báo là nó đang sống.
+  const truoc = useRef({ id: g.activeId, open: g.open });
+  useEffect(() => {
+    const p = truoc.current;
+    truoc.current = { id: g.activeId, open: g.open };
+    if (!g.open || !p.open || p.id === g.activeId) return;
+    inflight.current?.abort();
+    dungNoi.current?.();
+    dungNoi.current = null;
+    setAgentState('idle');
+  }, [g.activeId, g.open]);
   useEffect(() => () => inflight.current?.abort(), []);
 
   // ── G3 — NGHE và NÓI ─────────────────────────────────────────────────────
@@ -527,10 +615,6 @@ const GenieLayer: React.FC = () => {
     return () => clearTimeout(id);
   }, [g.state]);
 
-  // Ẩn ở màn cửa-vào: người dùng mở lớp rồi đăng xuất thì lớp phải biến mất theo
-  // chứ không phủ lên màn đăng nhập. Một lớp che mất một dòng trên `SeedExport`
-  // có thể làm người ta chép sai 24 từ khôi phục.
-  const inPublic = route == null || isPublicRoute(route) || !genieMayOpen(route);
   if (!g.open || !isLoggedIn || !enabledPref || inPublic || GENIE_PLAYBOOK_COUNT === 0) {
     return null;
   }
@@ -589,9 +673,30 @@ const GenieLayer: React.FC = () => {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={[styles.top, { paddingTop: insets.top + 8 }]}>
+          {/* ── NÚT MENU (góc trên TRÁI) ───────────────────────────────────
+              Mở danh sách các cuộc trò chuyện. Đặt ở trái, đối diện nút đóng:
+              một bên là "xem lại", một bên là "xong rồi" — hai việc trái ngược
+              thì không nên nằm cạnh nhau, vì ngón tay trượt một li là bấm nhầm
+              cái kia, và cái kia làm mất màn hình đang đọc. */}
+          <TouchableOpacity
+            onPress={() => {
+              // Bàn phím phải TẮT trước: panel trượt ra chiếm gần hết bề ngang,
+              // và một bàn phím còn đứng đó che mất nửa dưới của chính danh sách
+              // vừa mở.
+              Keyboard.dismiss();
+              setMenu(true);
+            }}
+            style={styles.topBtn}
+            hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
+            accessibilityRole="button"
+            accessibilityLabel={t('Danh sách cuộc trò chuyện')}
+          >
+            <Icon name="menu" size={21} color={MINT} />
+          </TouchableOpacity>
+
           <TouchableOpacity
             onPress={closeAssistant}
-            style={styles.closeBtn}
+            style={styles.topBtn}
             hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
             accessibilityRole="button"
             accessibilityLabel={t('Đóng trợ lý')}
@@ -687,12 +792,29 @@ const GenieLayer: React.FC = () => {
             ))}
           </ScrollView>
 
-          {/* Một CÂU hướng dẫn, không phải một hàng nút gợi ý.
-              Đây là một super app: mấy chục tính năng, và bốn cái nút chọn sẵn thì
-              vừa không đại diện cho cái gì, vừa khiến người dùng tưởng trợ lý CHỈ
-              làm được bốn việc đó. Một câu nói rõ "cứ nói bình thường" mở rộng hơn
-              hẳn, và ngắn hơn. */}
-          {chuaHoi && !confirm && <Text style={styles.hint}>{t(HINT)}</Text>}
+          {/* ── MÀN CHÀO ─────────────────────────────────────────────────────
+              Tên trợ lý, vai trò, rồi một câu chào trong đúng bong bóng mà mọi
+              câu sau của trợ lý sẽ dùng.
+
+              Câu chào KHÔNG đi qua `pushMessage`, cố ý. Nó không phải một lượt
+              nói: cho nó vào kho thì nó được ghi xuống máy, và mỗi lần mở lớp
+              rồi đổi ý sẽ để lại một "cuộc" chỉ có mỗi lời chào — panel danh
+              sách đầy những dòng như thế thì nó không còn là danh sách nữa.
+
+              Và KHÔNG có hàng nút gợi ý: đây là một super app: mấy chục tính
+              năng, bốn cái nút chọn sẵn vừa không đại diện cho cái gì, vừa khiến
+              người dùng tưởng trợ lý CHỈ làm được bốn việc đó. */}
+          {chuaHoi && !confirm && (
+            // `pointerEvents="none"`: khối này phủ lên hộp tin, nên để nó ăn cú
+            // chạm là khoá luôn thao tác cuộn ở ngay dưới nó.
+            <View style={styles.intro} pointerEvents="none">
+              <Text style={styles.brand}>{GENIE_NAME}</Text>
+              <Text style={styles.brandSub}>{t(GENIE_TAGLINE)}</Text>
+              <View style={[styles.bubble, styles.bubbleAgent, styles.introBubble]}>
+                <Text style={styles.textAgent}>{cauChao()}</Text>
+              </View>
+            </View>
+          )}
 
           {/* ── G5 — CỬA GẬT ────────────────────────────────────────────────
               Hai nút, không nút nào được bấm sẵn, và không có hết-giờ. Chữ hiện
@@ -824,6 +946,11 @@ const GenieLayer: React.FC = () => {
           </View>
         </View>
       </KeyboardAvoidingView>
+
+      {/* Panel dựng CUỐI CÂY, nên nó nằm trên cả cụm nút lẫn ba dải sóng. Dựng
+          sớm hơn thì nút Mic — cái hình to nhất màn — thò lên trên một panel có
+          nền đặc, và đó là thứ đọc ra thành lỗi vẽ. */}
+      {menu && <GenieSectionsPanel onClose={() => setMenu(false)} />}
     </Animated.View>
   );
 };
@@ -833,8 +960,15 @@ const styles = StyleSheet.create({
   glass: { backgroundColor: GLASS },
   fill: { flex: 1 },
 
-  top: { paddingHorizontal: 16, alignItems: 'flex-end' },
-  closeBtn: {
+  // Hai đầu: menu bên trái, đóng bên phải. Trước đây hàng này chỉ có nút đóng
+  // nên nó dồn hết sang phải.
+  top: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+  },
+  topBtn: {
     width: 38,
     height: 38,
     borderRadius: 19,
@@ -908,10 +1042,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     maxWidth: '92%',
   },
+  // ── Góc VUÔNG ở phía người nói ───────────────────────────────────────────
+  // Bong bóng của trợ lý vuông góc TRÊN-TRÁI, của người dùng vuông góc TRÊN-PHẢI.
+  // Ba góc bo tròn và một góc vuông là cái đuôi chỉ về phía người nói: ai nói câu
+  // nào đọc ra được từ HÌNH DẠNG, không phải từ việc so lề trái với lề phải —
+  // thứ chỉ phân biệt được khi hai câu liền nhau cùng nằm trên màn.
   bubbleAgent: {
     backgroundColor: CHIP_AGENT,
     borderColor: 'rgba(91,233,166,0.18)',
     alignSelf: 'flex-start',
+    borderTopLeftRadius: 0,
   },
   // §10 — câu của người dùng NHỎ HƠN câu của trợ lý.
   bubbleUser: {
@@ -920,20 +1060,56 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-end',
     maxWidth: '78%',
     paddingVertical: 9,
+    borderTopRightRadius: 0,
   },
   textAgent: { color: COLORS.white, fontSize: 16, lineHeight: 23 },
   textUser: { color: MINT, fontSize: 14, lineHeight: 20 },
   // Tên nút: đậm + màu ánh sáng, để mắt tìm ra nó trên màn hình thật nhanh hơn.
   textBold: { fontWeight: '800', color: NEON },
 
-  hint: {
+  // ── Màn chào ─────────────────────────────────────────────────────────────
+  //
+  // GIỮA MÀN, cả hai chiều. Dựng RA KHỎI DÒNG (`absoluteFill`) chứ không nằm
+  // trong cột: cột giữa dồn mọi thứ xuống đáy (`justifyContent: 'flex-end'`) để
+  // câu mới nhất luôn sát cụm nút, nên một khối nằm trong dòng thì không tài nào
+  // căn giữa theo chiều dọc được mà không phá đúng cái nết ấy.
+  //
+  // Và vì nó ra khỏi dòng nên nó KHÔNG đẩy hộp tin đi đâu cả — lúc màn chào tắt
+  // đi (người dùng hỏi câu đầu tiên) bố cục không nhảy một nhịp nào.
+  intro: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  brand: {
+    color: MINT,
+    fontSize: 38,
+    fontWeight: '800',
+    // Giãn chữ cho cái tên đứng ra khỏi mọi chữ khác trên lớp phủ — đây là thứ
+    // duy nhất ở đây KHÔNG phải câu nói, nên nó phải đọc ra là một cái TÊN.
+    letterSpacing: 7,
+    // React Native cộng khoảng giãn vào SAU cả ký tự cuối, nên chữ căn giữa bị
+    // lệch sang trái đúng một nhịp giãn. Đẩy lại bằng chừng ấy.
+    marginLeft: 7,
+  },
+  brandSub: {
     color: MINT,
     opacity: 0.62,
-    fontSize: 14,
-    lineHeight: 21,
-    textAlign: 'center',
-    paddingHorizontal: 8,
+    fontSize: 13,
+    letterSpacing: 1.6,
+    marginTop: -2,
   },
+  // Lời chào nép về TRÁI như mọi câu sau của trợ lý. Căn giữa nó thì nó đọc ra
+  // thành khẩu hiệu của app, không phải lời của người đang nói chuyện với mình.
+  // Nhích sang phải một chút, không sát lề như mấy câu sau: ở màn chào nó đứng
+  // dưới một khối chữ căn giữa, nên dán nó vào đúng mép trái làm cả cụm trông
+  // như bị lệch. Vào cuộc rồi thì các câu mới về đúng lề của dòng tin.
+  introBubble: { alignSelf: 'flex-start', marginTop: 8, marginLeft: 14 },
 
   // ── G5 — cửa gật ─────────────────────────────────────────────────────────
   // Nền ĐẶC hơn hộp tin thường và có viền sáng: đây là chỗ duy nhất trên lớp phủ

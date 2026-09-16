@@ -8,11 +8,18 @@
 
 import {
   MAX_MESSAGES,
+  MAX_SECTIONS,
+  SECTION_NEW_TITLE,
   __resetGenie,
+  clearSections,
   closeAssistant,
+  deleteSection,
   getGenieSnapshot,
+  newSection,
   openAssistant,
   pushMessage,
+  sectionTitle,
+  selectSection,
   setAgentState,
   setAudioLevel,
   setTypingMode,
@@ -29,6 +36,30 @@ describe('mở / đóng', () => {
     closeAssistant();
     openAssistant();
     expect(getGenieSnapshot().messages).toHaveLength(0);
+  });
+
+  it('...nhưng câu cũ KHÔNG bị xoá, nó lui vào danh sách', () => {
+    // Màn hình sạch như trước; thứ đổi là cái biến khỏi màn hình thôi biến khỏi
+    // máy. Trước bản này `openAssistant` đặt thẳng `messages: []` — mỗi lần mở là
+    // một lần xoá không hỏi ai.
+    openAssistant();
+    pushMessage('user', 'thêm vườn');
+    const cu = getGenieSnapshot().activeId;
+    closeAssistant();
+    openAssistant();
+    const s = getGenieSnapshot();
+    expect(s.activeId).not.toBe(cu);
+    expect(s.sections.find((x) => x.id === cu)?.messages).toHaveLength(1);
+  });
+
+  it('mở-đóng-mở khi chưa hỏi gì thì KHÔNG đẻ ra cuộc trống', () => {
+    // Ba cuộc trống là một cột rác che mất mấy cuộc thật.
+    openAssistant();
+    closeAssistant();
+    openAssistant();
+    closeAssistant();
+    openAssistant();
+    expect(getGenieSnapshot().sections).toHaveLength(1);
   });
 
   it('§15 — mở bằng chạm vào `activated`, mở bằng giọng vào thẳng `listening`', () => {
@@ -174,5 +205,148 @@ describe('dòng tin giữ đủ để CUỘN LẠI', () => {
     // Và cắt ở ĐẦU: câu mới nhất phải còn.
     const cuoi = getGenieSnapshot().messages.at(-1);
     expect(cuoi?.text).toBe(`câu ${MAX_MESSAGES + 24}`);
+  });
+});
+
+describe('các CUỘC trò chuyện', () => {
+  it('luôn có sẵn một cuộc, kể cả lúc chưa ai hỏi gì', () => {
+    // Để `sections` rỗng thì mọi lệnh ghi tin phải tự lo ca "chưa có cuộc nào",
+    // và chỉ cần một chỗ quên là câu của người dùng rơi vào hư vô.
+    const s = getGenieSnapshot();
+    expect(s.sections).toHaveLength(1);
+    expect(s.activeId).toBe(s.sections[0].id);
+  });
+
+  it('`messages` là tin của cuộc ĐANG MỞ, không phải một bản sao thứ hai', () => {
+    openAssistant();
+    pushMessage('user', 'a');
+    const s = getGenieSnapshot();
+    expect(s.messages).toBe(s.sections.find((x) => x.id === s.activeId)!.messages);
+  });
+
+  it('tên cuộc lấy từ câu hỏi ĐẦU TIÊN, và chỉ một lần', () => {
+    openAssistant();
+    pushMessage('user', 'sâu ăn lá cam');
+    pushMessage('agent', 'Dạ bác chụp giúp em tấm ảnh');
+    pushMessage('user', 'đây ạ');
+    const s = getGenieSnapshot();
+    // Tên chạy theo câu mới nhất thì danh sách không nhớ được.
+    expect(s.sections.find((x) => x.id === s.activeId)?.title).toBe('sâu ăn lá cam');
+  });
+
+  it('câu của TRỢ LÝ không đặt tên cuộc', () => {
+    openAssistant();
+    pushMessage('agent', 'Em chào bác ạ');
+    const s = getGenieSnapshot();
+    expect(s.sections.find((x) => x.id === s.activeId)?.title).toBe(SECTION_NEW_TITLE);
+  });
+
+  it('tên dài bị cắt THEO TỪ, không cắt giữa chữ', () => {
+    const dai = 'bác cho em hỏi cái cây cam nhà em bị vàng lá từ tuần trước thì làm sao ạ';
+    const ten = sectionTitle(dai);
+    expect(ten.length).toBeLessThanOrEqual(44);
+    expect(ten.endsWith('\u2026')).toBe(true);
+    // Cắt giữa một chữ cho ra một âm tiết cụt không đọc được.
+    expect(dai.startsWith(ten.slice(0, -1))).toBe(true);
+    expect(ten).not.toMatch(/ \u2026$/);
+  });
+
+  it('câu rỗng thì tên mặc định, không phải một dòng trắng', () => {
+    expect(sectionTitle('   ')).toBe(SECTION_NEW_TITLE);
+    expect(sectionTitle(undefined as never)).toBe(SECTION_NEW_TITLE);
+  });
+
+  it('chuyển cuộc thì dòng tin đổi theo', () => {
+    openAssistant();
+    pushMessage('user', 'cuộc một');
+    const mot = getGenieSnapshot().activeId;
+    const hai = newSection();
+    pushMessage('user', 'cuộc hai');
+    expect(getGenieSnapshot().messages.map((m) => m.text)).toEqual(['cuộc hai']);
+    selectSection(mot);
+    expect(getGenieSnapshot().messages.map((m) => m.text)).toEqual(['cuộc một']);
+    selectSection(hai);
+    expect(getGenieSnapshot().messages.map((m) => m.text)).toEqual(['cuộc hai']);
+  });
+
+  it('id lạ thì KHÔNG chuyển — không tự đẻ cuộc ma', () => {
+    openAssistant();
+    const cu = getGenieSnapshot().activeId;
+    selectSection('khong-co-that');
+    expect(getGenieSnapshot().activeId).toBe(cu);
+    expect(getGenieSnapshot().sections).toHaveLength(1);
+  });
+
+  it('cuộc MỚI NHẤT đứng đầu danh sách', () => {
+    openAssistant();
+    pushMessage('user', 'cũ');
+    const moi = newSection();
+    expect(getGenieSnapshot().sections[0].id).toBe(moi);
+  });
+
+  it('xoá cuộc KHÁC thì cuộc đang mở không xê dịch', () => {
+    openAssistant();
+    pushMessage('user', 'cũ');
+    const cu = getGenieSnapshot().activeId;
+    newSection();
+    pushMessage('user', 'mới');
+    deleteSection(cu);
+    expect(getGenieSnapshot().messages.map((m) => m.text)).toEqual(['mới']);
+  });
+
+  it('xoá đúng cuộc ĐANG MỞ thì có cuộc khác thế chỗ ngay', () => {
+    // Để `activeId` trỏ vào hư vô là để lệnh ghi tin kế tiếp lặng lẽ đẻ ra một
+    // cuộc thứ hai mà người dùng không hiểu ở đâu ra.
+    openAssistant();
+    pushMessage('user', 'cũ');
+    const cu = getGenieSnapshot().activeId;
+    newSection();
+    pushMessage('user', 'mới');
+    deleteSection(getGenieSnapshot().activeId);
+    const s = getGenieSnapshot();
+    expect(s.activeId).toBe(cu);
+    expect(s.sections.some((x) => x.id === s.activeId)).toBe(true);
+  });
+
+  it('xoá cuộc CUỐI CÙNG vẫn còn một cuộc trắng để hỏi tiếp', () => {
+    openAssistant();
+    pushMessage('user', 'một mình');
+    deleteSection(getGenieSnapshot().activeId);
+    const s = getGenieSnapshot();
+    expect(s.sections).toHaveLength(1);
+    expect(s.messages).toHaveLength(0);
+    expect(s.activeId).toBe(s.sections[0].id);
+  });
+
+  it('đăng xuất thì SẠCH — máy ngoài đồng dùng chung cho cả tổ', () => {
+    openAssistant();
+    pushMessage('user', 'vườn nhà bác A');
+    newSection();
+    pushMessage('user', 'câu nữa');
+    clearSections();
+    const s = getGenieSnapshot();
+    expect(s.sections).toHaveLength(1);
+    expect(s.messages).toHaveLength(0);
+  });
+
+  it('danh sách CÓ TRẦN — cuộc cũ nhất rụng', () => {
+    openAssistant();
+    for (let i = 0; i < MAX_SECTIONS + 6; i += 1) {
+      newSection();
+      pushMessage('user', `cuộc ${i}`);
+    }
+    const s = getGenieSnapshot();
+    expect(s.sections).toHaveLength(MAX_SECTIONS);
+    expect(s.sections[0].messages[0].text).toBe(`cuộc ${MAX_SECTIONS + 5}`);
+  });
+
+  it('id cuộc không bao giờ trùng id câu — danh sách không vẽ nhầm hàng', () => {
+    openAssistant();
+    const ids = new Set<string>();
+    for (let i = 0; i < 8; i += 1) {
+      ids.add(newSection());
+      ids.add(pushMessage('user', `x${i}`).id);
+    }
+    expect(ids.size).toBe(16);
   });
 });

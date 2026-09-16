@@ -14,6 +14,7 @@ import {
 import { parseDidNetwork } from '../services/phoenixDid';
 import { clearWorkSession } from '../modules/work/services/session';
 import { clearOrilifeToken, clearOrilifeLoginCooldown } from '../services/orilifeDidAuth';
+import { clearGenieAuth } from '../services/genie/genieAuth';
 import { disconnectProofChat } from '../services/proofchatAuthBridge';
 import { clearMerkleSession } from '../services/proofchatIdentity';
 import { shutdown as shutdownProofChatEngine } from '../services/proofchatService';
@@ -299,6 +300,14 @@ export const logoutUser = createAsyncThunk(
     // nghỉ của người trước. Mở van không phụ thuộc thẻ có xoá được hay không —
     // nó chỉ là một biến đếm trong bộ nhớ, và mở nó luôn đúng khi danh tính đổi.
     clearOrilifeLoginCooldown();
+    // CÙNG LỚP, và cùng lập luận đứng-ngoài-nhánh-lỗi: phiên trợ lý Genie đang
+    // giữ CHÍNH thẻ vừa thu hồi, trong bộ nhớ của tiến trình. Không quên thì câu
+    // hỏi của người sau đi ra máy chủ mang danh người trước — đúng ca 28/08 mà
+    // khối trên chữa, chỉ khác là thẻ nằm trong RAM chứ không trên đĩa.
+    //
+    // Và nó càng phải chạy KHI THU HỒI HỎNG: lúc đó thẻ cũ vẫn còn, nên để phiên
+    // Genie ôm nó tiếp là giữ nguyên đúng cái đường rò vừa không bịt được.
+    clearGenieAuth();
     const phoenixSessionLeft = await revokeCredential('thẻ phiên PhoenixKey', async () => {
       // ⛔ CÙNG LỚP với dòng ngay trên, phát hiện muộn hơn: `phoenixkey_session_token`
       // cũng sống qua đăng xuất. `clearSessionToken` được viết sẵn rồi đặt vào ĐÚNG

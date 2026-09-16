@@ -211,6 +211,15 @@ export const ERRORS: PhraseMap = {
     zh: '本机上的应用版本缺少创建备份密钥的部分，因此应用已停止——此时创建的账号在手机丢失后将无法找回。重试不会有变化。请将应用更新到最新版本后再创建。',
     ja: 'この端末のアプリには予備鍵を作成する部分が入っていないため、処理を中止しました。いま作成すると、端末を紛失した際に復元できないアカウントになります。もう一度試しても結果は変わりません。アプリを最新版に更新してから作成してください。',
   },
+  // Ca ĐĂNG KÝ MỚI bị chặn vì ví trên máy đã thuộc một danh tính khác. Bản dịch
+  // phải giữ đủ ba vế của bản gốc — trở ngại là chiếc ví, thử lại không khác, lối
+  // ra là 24 từ — và KHÔNG được dịch thành lời mời dùng lối tắt "ví trên máy":
+  // lối đó đòi một khoá trong chip mà ca này không còn.
+  'Máy này còn giữ ví của một danh tính đã tạo trước đó, và máy chủ không cho gắn ví đó vào một danh tính mới. Đây không phải lỗi sóng hay lỗi vân tay, nên bấm tạo lại sẽ ra đúng kết quả này. Hãy mở màn Khôi phục danh tính và dùng cụm 24 từ của danh tính cũ để lấy lại nó.': {
+    en: 'This device still holds the wallet of an identity created earlier, and the server will not attach that wallet to a new identity. This is not a signal problem or a fingerprint problem, so tapping create again will give the same result. Open the Restore identity screen and use that older identity’s 24-word phrase to get it back.',
+    zh: '本机仍保存着此前创建的某个身份的钱包，服务器不允许把该钱包挂到一个新身份上。这不是信号问题，也不是指纹问题，因此再次点击创建也会得到同样的结果。请打开“恢复身份”页面，用那个旧身份的 24 个助记词把它找回来。',
+    ja: 'この端末には以前作成した本人情報のウォレットが残っており、そのウォレットを新しい本人情報に結び付けることはサーバーが許可しません。電波の問題でも指紋の問題でもないため、もう一度作成を押しても同じ結果になります。「本人情報の復元」画面を開き、その古い本人情報の24単語で取り戻してください。',
+  },
   // ── TIÊU ĐỀ hộp thoại của màn tạo danh tính ────────────────────────────────
   // Năm câu dài phía trên là phần THÂN. Trước bản này chúng được truyền vào ô
   // TIÊU ĐỀ (`showError(x)` một tham số), nên phần thân rơi về chuỗi độn
@@ -223,6 +232,7 @@ export const ERRORS: PhraseMap = {
   'Tên đăng nhập chưa dùng được': { en: 'That username cannot be used yet', zh: '该用户名暂时无法使用', ja: 'そのユーザー名はまだ使えません' },
   'Máy chưa bật sinh trắc học': { en: 'Biometrics is not set up on this device', zh: '本机尚未启用生物识别', ja: 'この端末で生体認証が設定されていません' },
   'Khoá trên máy này đã bị thu hồi': { en: 'The key on this device has been revoked', zh: '本机的密钥已被吊销', ja: 'この端末の鍵は失効しています' },
+  'Máy này còn ví của một danh tính cũ': { en: 'This device still holds an older identity’s wallet', zh: '本机仍保存着一个旧身份的钱包', ja: 'この端末には古い本人情報のウォレットが残っています' },
   'Một máy chỉ giữ được một danh tính': { en: 'One device holds only one identity', zh: '一台设备只能保存一个身份', ja: '1台の端末には本人情報を1つしか保持できません' },
   'Chưa mở lại được danh tính': { en: 'Could not reopen the identity', zh: '未能重新打开身份', ja: '本人情報を開き直せませんでした' },
   // Nhãn nút. `confirmText`/`cancelText` cũng đi thẳng vào `AlertPopup` không qua `t`.

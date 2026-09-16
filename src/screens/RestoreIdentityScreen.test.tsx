@@ -203,7 +203,19 @@ describe('RestoreIdentityScreen — lối tắt khi máy còn ví', () => {
   const countHostByTestId = (tree: ReactTestRenderer, id: string) =>
     tree.root.findAll(n => n.props?.testID === id && typeof n.type === 'string').length;
 
-  beforeEach(() => { jest.clearAllMocks(); });
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // KHOÁ TRONG CHIP CÒN — phần thứ hai của tiền đề "máy còn ví", và nó không
+    // suy được từ phần thứ nhất. Thẻ lối tắt cần CẢ HAI: ví (KEK) để có gì mà
+    // khôi phục, và khoá trong chip để `doRestoreSameDevice` chứng minh được
+    // người đang cầm máy là chủ.
+    //
+    // Ngoài đời hai thứ này đi cùng nhau ở đúng ca thẻ này phục vụ — xoá app rồi
+    // cài lại: kho khoá sống qua lần xoá, AsyncStorage thì không. Ca chúng RỜI
+    // nhau (còn ví, mất khoá) có đường tới riêng và một khối chữ riêng trên màn;
+    // bài canh nó nằm ở cuối tệp.
+    (isKeypairEnrolled as jest.Mock).mockResolvedValue(true);
+  });
 
   it('máy CÒN ví → hiện thẻ lối tắt + ô tên đăng nhập, không đòi 24 từ', async () => {
     (taadEnclave.isAvailable as jest.Mock).mockReturnValue(true);
@@ -278,6 +290,10 @@ describe('RestoreIdentityScreen — lối tắt phải qua cửa xác nhận VÀ
     // không có bản sao. Để mock trả `undefined` là dựng một cái máy không có khoá
     // nào — đúng ca mà bản vá này tránh, và không phải ca đang muốn đo.
     (ownerPublicKey as jest.Mock).mockResolvedValue('d'.repeat(64));
+    // Thẻ lối tắt chỉ hiện khi CÒN khoá trong chip — xem khối lý do ở describe đầu
+    // tệp. Không đặt dòng này thì thẻ không dựng và mọi bài dưới đây đỏ vì không
+    // tìm thấy cái nút, chứ không phải vì thứ chúng định đo.
+    (isKeypairEnrolled as jest.Mock).mockResolvedValue(true);
     // Đặt LẠI ở đây chứ không chỉ ở nhà máy mock: cấu hình jest của kho này đặt lại
     // mock giữa các bài, nên phần thân hàm khai trong `jest.mock(...)` không sống
     // qua `beforeEach`. Thiếu hai dòng này thì `resolveUsername` trả `undefined`,
@@ -410,6 +426,8 @@ describe('RestoreIdentityScreen — mã định danh: chưa từng có · đã t
     (taadEnclave.generateSalt as jest.Mock).mockResolvedValue('0123456789abcdef');
     (signRaw as jest.Mock).mockResolvedValue('ff'.repeat(32));
     (ownerPublicKey as jest.Mock).mockResolvedValue('d'.repeat(64));
+    // Cùng lý do với hai describe trên: thẻ lối tắt cần khoá trong chip mới dựng.
+    (isKeypairEnrolled as jest.Mock).mockResolvedValue(true);
     // Khoá cũ bị từ chối ⟹ màn sinh khoá MỚI rồi thử lại. Mock phải trả đúng
     // hình dạng `{ publicKeyHex }`; trả `undefined` thì luồng chết ở dòng đó và
     // bài kiểm đo một thông báo lỗi không liên quan gì tới thứ nó canh.
@@ -568,5 +586,80 @@ describe('RestoreIdentityScreen — không nhớ mã nào thì hỏi máy chủ 
     expect(phoenixKeyApi.identity.recoverDevice).toHaveBeenCalledWith(
       expect.objectContaining({ userDid: DID_STORED }),
     );
+  });
+});
+
+/**
+ * CÒN VÍ MÀ MẤT KHOÁ — trạng thái thứ ba, và nó có một đường tới rất thẳng.
+ *
+ * Người dùng bấm tạo danh tính, máy chủ từ chối vì ví trên máy đã thuộc một DID
+ * khác (`wallet_bound_to_other_did`, mã 3005), và `catch` của `registerIdentity`
+ * xoá khoá vừa lập. Hộp thoại đưa họ một cái nút sang đúng màn này.
+ *
+ * Trước bản này thẻ lối tắt chỉ nhìn KEK, nên nó HIỆN RA và hứa "không cần 24 từ"
+ * cho một lối đã khoá: `doRestoreSameDevice` mở đầu bằng `signRaw`, không còn khoá
+ * thì ném, và câu báo ở đó nói về việc "vừa thêm hoặc xoá vân tay" — sai nguyên
+ * nhân, cho đúng nhóm đang kẹt nhất.
+ *
+ * KHÔNG bỏ phép chứng minh có mặt ấy đi được: Master_KEK hiện đọc được mà không
+ * cần sinh trắc, nên nó là thứ duy nhất chặn người mượn được máy cộng biết tên
+ * đăng nhập. Chừng nào chốt chip cho khoá ví chưa có, lối tắt PHẢI đóng ở ca này.
+ */
+describe('RestoreIdentityScreen — còn ví mà mất khoá thì KHÔNG hứa lối tắt', () => {
+  const countHostByTestId = (tree: ReactTestRenderer, id: string) =>
+    tree.root.findAll(n => n.props?.testID === id && typeof n.type === 'string').length;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    __resetLanguageForTest();
+    setLanguage('vi');
+    (taadEnclave.isAvailable as jest.Mock).mockReturnValue(true);
+    (taadEnclave.secureLoad as jest.Mock).mockResolvedValue('a'.repeat(64));
+  });
+
+  it('ví CÒN, khoá MẤT ⟹ thẻ lối tắt KHÔNG dựng', async () => {
+    (isKeypairEnrolled as jest.Mock).mockResolvedValue(false);
+
+    let tree!: ReactTestRenderer;
+    await act(async () => { tree = renderer.create(<RestoreIdentityScreen />); });
+
+    expect(countHostByTestId(tree, 'restore-shortcut-same-device')).toBe(0);
+  });
+
+  it('ví CÒN, khoá MẤT ⟹ nói THẲNG vì sao, không để màn hình im', async () => {
+    (isKeypairEnrolled as jest.Mock).mockResolvedValue(false);
+
+    let tree!: ReactTestRenderer;
+    await act(async () => { tree = renderer.create(<RestoreIdentityScreen />); });
+
+    // Đo SỰ CÓ MẶT của khối, không đo câu chữ: câu sửa được mà không ai hỏng, còn
+    // khối biến mất là người dùng thấy một màn chỉ đòi 24 từ, không có chữ nào nối
+    // với câu họ vừa đọc ở màn trước — rồi tự suy ra rằng mình bấm nhầm nút.
+    expect(countHostByTestId(tree, 'restore-wallet-without-key')).toBe(1);
+  });
+
+  it('ví CÒN, khoá CÒN ⟹ thẻ lối tắt dựng, và khối giải thích KHÔNG hiện', async () => {
+    (isKeypairEnrolled as jest.Mock).mockResolvedValue(true);
+
+    let tree!: ReactTestRenderer;
+    await act(async () => { tree = renderer.create(<RestoreIdentityScreen />); });
+
+    // Ca đối xứng. Thiếu nó thì hai bài trên xanh cả khi ai đó ẩn thẻ lối tắt VĨNH
+    // VIỄN — tức bài kiểm không phân biệt được hai cực và nó không canh gì.
+    expect(countHostByTestId(tree, 'restore-shortcut-same-device')).toBe(1);
+    expect(countHostByTestId(tree, 'restore-wallet-without-key')).toBe(0);
+  });
+
+  it('KHÔNG ví ⟹ không thẻ lối tắt, và cũng KHÔNG khối giải thích', async () => {
+    (taadEnclave.secureLoad as jest.Mock).mockResolvedValue(null);
+    (isKeypairEnrolled as jest.Mock).mockResolvedValue(false);
+
+    let tree!: ReactTestRenderer;
+    await act(async () => { tree = renderer.create(<RestoreIdentityScreen />); });
+
+    // Máy mới thì không có gì để giải thích. Khối kia mà hiện ở đây là nói với
+    // người dùng rằng máy họ còn một cái ví không tồn tại.
+    expect(countHostByTestId(tree, 'restore-shortcut-same-device')).toBe(0);
+    expect(countHostByTestId(tree, 'restore-wallet-without-key')).toBe(0);
   });
 });

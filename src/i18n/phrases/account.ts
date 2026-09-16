@@ -219,6 +219,19 @@ export const ACCOUNT: PhraseMap = {
   'Nạp tín dụng MAGIC': { en: 'Top up MAGIC credit', zh: '充值 MAGIC 额度', ja: 'MAGIC クレジットをチャージ' },
   'Quẹt mã · Chuyển token LAMP': { en: 'Scan a code · Transfer LAMP tokens', zh: '扫码 · 转账 LAMP 代币', ja: 'コードを読み取る · LAMP トークンを送る' },
   'Đăng xuất': { en: 'Sign out', zh: '退出登录', ja: 'ログアウト' },
+  // Ba nhãn của MỘT nút — nút dưới đáy màn đăng nhập (`LoginNetworkScreen`).
+  // Nhãn thứ ba là trạng thái CHƯA ĐO XONG; nó phải có chữ riêng, vì mượn chữ
+  // của một trong hai nhãn kia là khẳng định một điều chưa biết.
+  'Đăng ký danh tính': {
+    en: 'Create an identity',
+    zh: '创建身份',
+    ja: '本人情報を作成',
+  },
+  'Đang kiểm tra máy này…': {
+    en: 'Checking this device…',
+    zh: '正在检查本机…',
+    ja: 'この端末を確認しています…',
+  },
   'Bạn có chắc muốn đăng xuất khỏi tài khoản?': {
     en: 'Are you sure you want to sign out?',
     zh: '确定要退出登录吗？',

@@ -1116,10 +1116,32 @@ export const keys = {
    *         request.userDid(), request.publicKeyHex(), "active");
    * ```
    *
-   * ⚠ Cửa này PUBLIC ở tầng Spring (không Bearer). Zero-Trust nằm ở tầng service:
-   * `KeyServiceImpl.authorize()` bắt buộc DID phải sẵn có một owner-key ACTIVE
-   * (`findOwnerByUserDid`, thiếu là 404) và verify `addedBySignature` bằng chính
-   * khoá đó TRƯỚC khi ghi. App B không tự thêm mình vào được — app A phải ký.
+   * ⛔ ĐÍNH CHÍNH 15/09/2026 — đoạn này TRƯỚC ĐÂY khẳng định *"cửa này PUBLIC ở
+   * tầng Spring (không Bearer)"*. Máy chủ bác. Đo thẳng, không token:
+   *
+   * ```
+   * POST https://api.phoenixkey.me/api/v1/keys/authorize   (thân `{}`)
+   *   → HTTP 401  {"code":1304,"message":"Unauthorized — Missing Bearer token"}
+   * ```
+   *
+   * (đối chứng cùng lượt: `GET /identity/{did}/op-seq` trả **404** `2002` cho một
+   * DID lạ, tức cửa ĐÓ công khai thật — nên 401 ở trên không phải cổng chung.)
+   *
+   * Giá của câu sai ấy không nằm ở chú thích: lượt gọi bên dưới đọc nó rồi CỐ Ý
+   * không khai `needsAuth`, nên bộ chặn yêu cầu (`:249-257`) không gắn
+   * Authorization, mà đường tự đúc lại phiếu (`:345`) cũng không chạy — nó chỉ
+   * chạy khi `needsAuth` bật. 401 đi thẳng ra giao diện dưới dạng chuỗi thô của
+   * máy chủ. Tức **đường "một PhoenixKey dùng ở mọi app" chưa từng chạy được**;
+   * người dùng thực địa gặp đúng câu đó khi bấm "Ký duyệt bằng khoá của tôi".
+   *
+   * Zero-Trust ở tầng service vẫn đúng và vẫn cần: `KeyServiceImpl.authorize()`
+   * bắt buộc DID phải sẵn có một owner-key ACTIVE (`findOwnerByUserDid`, thiếu là
+   * 404) và verify `addedBySignature` bằng chính khoá đó TRƯỚC khi ghi. App B
+   * không tự thêm mình vào được — app A phải ký. Cái sai là ở mệnh đề "không
+   * Bearer", không ở mệnh đề về chữ ký.
+   *
+   * ⚠ CHƯA KIỂM: phiếu phiên **vai nào** gọi được cửa này (`owner` bắt buộc, hay
+   * `manager` cũng được). Không truy được từ phía app — đã hỏi nhà PhoenixKey.
    *
    * ⚠ `keyRole: 'owner'` bị chặn thẳng: luật V36 cho tối đa MỘT owner-key active
    * mỗi DID (`OWNER_KEY_ALREADY_ACTIVE`). Đổi owner đi qua `/keys/rotate`.
@@ -1158,7 +1180,9 @@ export const keys = {
    * canonical dễ dựng sai, và dựng sai thì chỉ hiện ra bằng một con 403.
    */
   authorize: (body: KeyAuthorizeRequest) =>
-    unwrapVoid(client.post('/keys/authorize', body)),
+    unwrapVoid(
+      client.post('/keys/authorize', body, { needsAuth: true } as AxiosRequestConfig),
+    ),
 
   rotate: (body: KeyRotateRequest) =>
     unwrap<KeyRotationResponse>(client.post('/keys/rotate', body)),

@@ -42,6 +42,12 @@ RCT_EXTERN_METHOD(signWalletRegister:(NSString *)kekHex
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(signWalletRegisterHex:(NSString *)kekHex
+                  account:(NSInteger)account
+                  messageHex:(NSString *)messageHex
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
 RCT_EXTERN_METHOD(buildSignedTransfer:(NSString *)kekHex
                   account:(NSInteger)account
                   toAddress:(NSString *)toAddress
@@ -96,6 +102,11 @@ RCT_EXTERN_METHOD(aesGcmDecrypt:(NSString *)keyHex
 
 RCT_EXTERN_METHOD(signEd25519:(NSString *)masterKekHex
                   message:(NSString *)message
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(signEd25519Hex:(NSString *)masterKekHex
+                  messageHex:(NSString *)messageHex
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 

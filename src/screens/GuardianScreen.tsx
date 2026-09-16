@@ -33,6 +33,7 @@ import { addGuardian, removeGuardian } from '../services/guardianService';
 import { phoenixKeyApi, PhoenixKeyApiError } from '../services/phoenixKey-api';
 import { currentUserDid } from '../sdk/phoenixKey';
 import { showError, showInfo, showSuccess, showWarning } from '../utils/alert';
+import { describeGuardianSafety } from '../features/identity/guardianSafety';
 import { t } from '../i18n';
 import { tk } from '../i18n/keys';
 
@@ -211,6 +212,35 @@ const GuardianScreen: React.FC = () => {
           </View>
         )}
 
+        {/*
+          ── MỨC AN TOÀN ─────────────────────────────────────────────────────────
+          Chỉ hiện ở trạng thái `xong`, KHÔNG hiện lúc đang tải hay lúc hỏng. Lý do
+          là bất biến của màn này: danh sách hỏng thì số người bảo hộ CHƯA BIẾT, mà
+          một khung "chưa ai khôi phục hộ bạn được" vẽ trên một con số chưa biết là
+          đúng dạng cái-vỏ-im-lặng — người đọc sẽ đi ghi danh lại một người đã có.
+        */}
+        {state.kind === 'xong' && (() => {
+          const safety = describeGuardianSafety(rows.length);
+          const urgent = safety.level !== 'spread';
+          return (
+            <View
+              testID="guardian-safety"
+              style={[styles.safetyBox, urgent ? styles.safetyUrgent : styles.safetyCalm]}
+            >
+              <Text style={styles.safetyHeadline}>{t(safety.headline)}</Text>
+              <Text style={styles.safetyBody}>{t(safety.body)}</Text>
+              {/*
+                Dòng "app chưa đo được" in ở MỌI mức, kể cả mức cao nhất — mức cao
+                nhất mới là mức cần nó nhất, vì đó là lúc con số dễ bị đọc thành
+                một lời bảo đảm.
+              */}
+              <Text style={styles.safetyUnmeasured} testID="guardian-safety-unmeasured">
+                {t(safety.unmeasured)}
+              </Text>
+            </View>
+          );
+        })()}
+
         {state.kind === 'xong' && rows.length === 0 && (
           <View style={styles.stateBox} testID="guardian-empty">
             <Icon name="account-off-outline" size={20} color={COLORS.textMuted} />
@@ -262,6 +292,14 @@ const GuardianScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
+  // Khung mức an toàn. Mức chưa đủ người thì viền cảnh báo; mức cao nhất thì viền
+  // TRUNG TÍNH, cố ý KHÔNG dùng màu xanh "xong việc" — app chưa đo được điều đó.
+  safetyBox: { borderRadius: 12, borderWidth: 1, padding: 12, marginBottom: 12 },
+  safetyUrgent: { borderColor: COLORS.warning, backgroundColor: 'rgba(224,154,58,0.08)' },
+  safetyCalm: { borderColor: COLORS.border, backgroundColor: COLORS.card },
+  safetyHeadline: { fontSize: 14, fontWeight: '700', color: COLORS.text },
+  safetyBody: { fontSize: 12, lineHeight: 18, marginTop: 4, color: COLORS.text },
+  safetyUnmeasured: { fontSize: 12, lineHeight: 18, marginTop: 8, color: COLORS.textMuted },
   root: { flex: 1, backgroundColor: COLORS.bg },
   header: {
     flexDirection: 'row', alignItems: 'center', gap: 12,

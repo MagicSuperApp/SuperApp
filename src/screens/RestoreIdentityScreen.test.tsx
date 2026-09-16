@@ -52,6 +52,12 @@ jest.mock('../sdk/taadEnclave', () => ({
     secureLoad: jest.fn(async () => null),
     deriveTaadPubkey: jest.fn(),
     signEd25519: jest.fn(),
+    // Cửa ký HEX — vòng dò khuôn chuỗi ký gọi nó ở lượt thứ hai. Thiếu nó thì màn
+    // ném `signEd25519Hex is not a function` và mọi bài ở đây đỏ với một lý do
+    // không dính gì tới thứ chúng đo — đúng cái bẫy "bản giả lỏng hơn hàng thật".
+    // Trả một chữ ký KHÁC cửa chuỗi, để bài nào cần phân biệt hai lượt thì phân
+    // biệt được.
+    signEd25519Hex: jest.fn(async () => 'd'.repeat(128)),
     // Nguồn ngẫu nhiên cho chuỗi thử chống phát-lại. Thiếu nó thì `genNonce()` gọi
     // vào `undefined` và ném ngay ở dòng đầu vòng lặp gắn máy — bài kiểm sẽ đỏ với
     // một lý do không dính gì tới thứ nó đo, và đỏ ở chỗ trông y hệt "cổng đã chặn".

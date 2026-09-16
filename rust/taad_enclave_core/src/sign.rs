@@ -52,6 +52,29 @@ pub(crate) fn derive_taad_seed(master_kek: &[u8]) -> Option<Zeroizing<[u8; 32]>>
 /// Sign a UTF-8 message with the Ed25519 TAAD_Key derived from Master_KEK.
 /// Returns 64-byte raw signature (r || s) hex-encoded, or empty string on error.
 pub fn sign_ed25519(master_kek_hex: String, message: String) -> String {
+    sign_ed25519_bytes(master_kek_hex, message.as_bytes())
+}
+
+/// Sign an ARBITRARY byte string (passed in as hex) with the Ed25519 TAAD_Key.
+///
+/// Why this door exists, and why the UTF-8 one cannot replace it: the C entry
+/// point `taad_sign_ed25519` takes `*const c_char`, so a length-framed signing
+/// payload (4-byte big-endian lengths, most of whose bytes are `0x00`) is cut
+/// at the first `0x00`. The cut payload still signs and still returns 128 hex
+/// characters, so nothing fails here — it fails on the server as "signature
+/// does not verify", one layer away from the cause.
+///
+/// Returns 64-byte raw signature (r || s) hex-encoded, or empty string when the
+/// Master_KEK or the message is not valid hex.
+pub fn sign_ed25519_hex(master_kek_hex: String, message_hex: String) -> String {
+    let message = match utils::hex_to_bytes(&message_hex) {
+        Ok(b) => b,
+        Err(_) => return String::new(),
+    };
+    sign_ed25519_bytes(master_kek_hex, &message)
+}
+
+fn sign_ed25519_bytes(master_kek_hex: String, message: &[u8]) -> String {
     let master_kek = match utils::hex_to_bytes(&master_kek_hex) {
         Ok(b) => Zeroizing::new(b),
         Err(_) => return String::new(),
@@ -61,7 +84,7 @@ pub fn sign_ed25519(master_kek_hex: String, message: String) -> String {
         None => return String::new(),
     };
     let signing_key = SigningKey::from_bytes(&seed);
-    let signature = signing_key.sign(message.as_bytes());
+    let signature = signing_key.sign(message);
     hex::encode(signature.to_bytes())
 }
 
@@ -145,6 +168,59 @@ mod tests {
 
         verifying_key.verify(message.as_bytes(), &signature)
             .expect("Signature must verify with the derived public key");
+    }
+
+    const KEK: &str = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
+
+    /// Cửa hex và cửa chuỗi phải cho ĐÚNG một chữ ký khi nội dung là ASCII thuần.
+    /// Nếu hai cửa lệch ở đây thì mọi luồng đang chạy sẽ hỏng lúc chuyển sang cửa mới.
+    #[test]
+    fn hex_door_matches_string_door_for_plain_ascii() {
+        let message = "PHOENIXKEY_RECOVER:did:phoenix:abc:cafe:0011";
+        let via_string = sign_ed25519(KEK.to_string(), message.to_string());
+        let via_hex = sign_ed25519_hex(KEK.to_string(), hex::encode(message.as_bytes()));
+        assert_eq!(via_string.len(), 128);
+        assert_eq!(via_string, via_hex);
+    }
+
+    /// Chuỗi ký ĐÓNG KHUNG THEO ĐỘ DÀI đi qua cửa hex thì được ký trên TRỌN byte —
+    /// và chữ ký đó KHÁC chữ ký của phần bị cắt ở `0x00` đầu tiên.
+    ///
+    /// Đây là phép đo nói vì sao cửa hex phải tồn tại: một cầu `*const c_char` đọc
+    /// `50 3a 00 00 00 02 61 62` thành `"P:"` rồi dừng, ký xong vẫn trả về 128 ký tự
+    /// hex hợp lệ. Không có gì hỏng ở tầng này — nó hỏng ở máy chủ, dưới cái tên
+    /// "chữ ký không khớp", cách nguyên nhân một tầng.
+    #[test]
+    fn framed_payload_signs_over_all_bytes_not_up_to_the_first_nul() {
+        // Vector ghim của nhà PhoenixKey: build("P:", "ab").
+        let framed_hex = "503a000000026162";
+        let sig_full = sign_ed25519_hex(KEK.to_string(), framed_hex.to_string());
+        let sig_cut_at_nul = sign_ed25519(KEK.to_string(), "P:".to_string());
+
+        assert_eq!(sig_full.len(), 128);
+        assert_ne!(
+            sig_full, sig_cut_at_nul,
+            "chữ ký trên trọn khung phải khác chữ ký trên phần trước 0x00, \
+             không thì cửa hex chẳng đóng được lỗ nào",
+        );
+
+        // Và chữ ký trọn vẹn phải verify được trên ĐỦ tám byte đó.
+        let pub_bytes = hex::decode(derive_taad_public_key(KEK.to_string())).unwrap();
+        let verifying_key = VerifyingKey::from_bytes(&pub_bytes.try_into().unwrap()).unwrap();
+        let sig: [u8; 64] = hex::decode(&sig_full).unwrap().try_into().unwrap();
+        verifying_key
+            .verify(&hex::decode(framed_hex).unwrap(), &ed25519_dalek::Signature::from_bytes(&sig))
+            .expect("chữ ký phải verify trên trọn chuỗi đóng khung");
+    }
+
+    /// Hex lẻ hoặc có ký tự ngoài bảng hex → chuỗi RỖNG, không phải một chữ ký của
+    /// byte rác. Người gọi phải phân biệt được "không ký được" với "đã ký".
+    #[test]
+    fn hex_door_refuses_a_payload_that_is_not_hex() {
+        assert_eq!(sign_ed25519_hex(KEK.to_string(), "abc".to_string()), "");
+        assert_eq!(sign_ed25519_hex(KEK.to_string(), "zz".to_string()), "");
+        // Khung rỗng vẫn là một chuỗi hợp lệ (0 byte) — ký được.
+        assert_eq!(sign_ed25519_hex(KEK.to_string(), String::new()).len(), 128);
     }
 
     /// Cross-check the seed Dart bridge would produce:

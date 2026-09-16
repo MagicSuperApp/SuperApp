@@ -24,6 +24,8 @@
       "sourceTreeDiffersByFormatting": "a09abebe1851104e8bb2847496870e5a5a7e71ee",
       "sourceComparedAt": "2026-09-09",
       "//sourceTreeDiffersByFormatting": "CỐ Ý không ghim đẳng thức liên kho ở cây này. Hai băm khác nhau vì khác ĐỊNH DẠNG — `cargo fmt` cộng một dòng `//!` trống trong `merkle.rs` — chứ không khác HÀNH VI. Băm cây không phân biệt được hai loại đó, nên ghim đẳng thức ở đây làm cổng đỏ ngay lần chạy đầu, và một cổng đỏ vô cớ là một cổng sắp bị tắt. Muốn so liên kho ở cây này thì phải đưa cả hai phía qua cùng một `rustfmt` rồi mới so — đó là một BƯỚC nữa, không phải một băm.",
+      "//formattingConfirmedAt": "2026-09-15 — bên giữ nguồn chạy đúng phép đo trên và xác nhận: đưa CẢ HAI phía qua cùng `rustfmt --edition 2021` thì 6/7 tệp trùng khít TỪNG BYTE, riêng `merkle.rs` lệch ĐÚNG một dòng `//!` trống (236 dòng phía nguồn / 235 phía này), không dòng mã nào. Bên đó đồng thời RÚT LẠI con số cũ 'lệch 502 dòng' — số đó đo trên hai cây chưa cùng định dạng, tức là phán đoán của người đọc diff chứ không phải một phép đo. Đừng dùng lại nó để ước lượng công gộp hai cây.",
+      "//formattingWhichSideToRun": "Cây phía nguồn đã sạch `rustfmt` (băm sau khi chạy KHÔNG đổi); cây ở kho này thì CHƯA (băm đổi). Nên chiều rẻ khi gộp là chạy `fmt` ở PHÍA NÀY cộng thêm dòng `//!` trống kia. Nhưng đừng chạy nó bây giờ: `fmt` đổi băm của chính kho này ⟹ cổng đỏ. Chỉ làm cùng lượt với việc gộp, và cập nhật `tree` ở trên TRONG CÙNG một commit.",
       "pinnedAt": "2026-09-08"
     }
   ],

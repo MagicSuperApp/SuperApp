@@ -35,7 +35,20 @@ import { phoenixKeyAuth, lookupDidByDeviceKey } from '../services/phoenixKeyAuth
 import { loginUser } from '../store/userSlice';
 import { countMnemonicWords, normalizeMnemonic } from '../utils/mnemonic';
 import { describeDidState } from '../features/identity/didState';
+import { buildCanonicalHex } from '../services/canonicalMessage';
+import {
+  getAcceptedFormat,
+  rememberAcceptedFormat,
+  formatsToTry,
+  type SigningFormat,
+} from '../services/signingFormatProbe';
 import { t, tf } from '../i18n';
+
+/**
+ * Tiền tố chuỗi thách đố gắn lại máy. Tách thành hằng vì hai khuôn ký dùng CHUNG
+ * nó — viết hai lần là mở đúng khe cho hai chỗ trôi khỏi nhau mà không gì báo.
+ */
+const RECOVER_PREFIX = 'PHOENIXKEY_RECOVER:';
 
 const DID_RE = /^did:phoenix:[a-z2-7]{13}:[0-9a-f]{64}$/;
 // Registry {username, did} app lưu lúc đăng ký (SignUpBiometricScreen) — dùng để
@@ -281,12 +294,49 @@ const RestoreIdentityScreen = () => {
 
     const taadPub = await taadEnclave.deriveTaadPubkey(kek);
 
-    /** Thử gắn máy vào từng mã định danh ứng viên, bằng MỘT khoá phần cứng cho trước. */
+    /**
+     * Thử gắn máy vào từng mã định danh ứng viên, bằng MỘT khoá phần cứng cho trước.
+     *
+     * ══ VÌ SAO CÓ VÒNG NGOÀI THEO KHUÔN CHUỖI KÝ ═════════════════════════════
+     * Máy chủ PhoenixKey đã đổi một số cửa sang khuôn đóng khung theo độ dài, và
+     * chưa khai cửa này thuộc nhóm nào (`signingFormatProbe.ts`). `403` ở đây vốn
+     * đã GỘP hai nghĩa — *"mã này không phải của bạn"* và *"chữ ký không khớp"* —
+     * nên không có mã lỗi nào tách ra được khuôn sai. Chỉ còn một cách trả lời:
+     * chạy trọn danh sách ứng viên bằng khuôn đang dùng, hết mới đổi khuôn.
+     *
+     * Đây là đường KHÔI PHỤC bằng cụm 24 từ — đường người dùng đi khi đã mất máy.
+     * Thà tốn thêm vài lượt gọi mạng còn hơn để nó đứng vì một khuôn đoán sai.
+     */
     const tryAttachWith = async (hwPub: string): Promise<string | null> => {
+      const remembered = await getAcceptedFormat('identityRecover');
+      for (const format of formatsToTry(remembered)) {
+        const did = await tryAttachWithFormat(hwPub, format);
+        if (did) {
+          await rememberAcceptedFormat('identityRecover', format);
+          return did;
+        }
+      }
+      return null;
+    };
+
+    /** Một lượt quét trọn danh sách ứng viên, bằng đúng MỘT khuôn chuỗi ký. */
+    const tryAttachWithFormat = async (
+      hwPub: string,
+      format: SigningFormat,
+    ): Promise<string | null> => {
       for (const cand of uniqueDids) {
         const nonce = await genNonce();
-        const challenge = `PHOENIXKEY_RECOVER:${cand}:${hwPub}:${nonce}`;
-        const signature = await taadEnclave.signEd25519(kek, challenge);
+        const signature =
+          format === 'length-framed'
+            ? await taadEnclave.signEd25519Hex(
+                kek,
+                buildCanonicalHex(RECOVER_PREFIX, cand, hwPub, nonce),
+              )
+            : await taadEnclave.signEd25519(kek, `${RECOVER_PREFIX}${cand}:${hwPub}:${nonce}`);
+        // `null` từ `signEd25519Hex` = máy này KHÔNG CÓ cửa ký hex (bản dựng cũ),
+        // nên khuôn đóng khung không dựng được ở đây. Bỏ hẳn khuôn này, đừng thử
+        // từng ứng viên để nhận cùng một câu `null`.
+        if (signature === null) return null;
         if (!signature) continue;
         try {
           await phoenixKeyApi.identity.recoverDevice({

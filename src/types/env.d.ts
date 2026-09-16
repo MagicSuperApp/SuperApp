@@ -27,6 +27,15 @@ declare module '@env' {
   // trống = tính năng tắt hẳn, KHÔNG phải lui về một địa chỉ mặc định nào.
   export const REMOTE_LOG_URL: string;
   export const ALADIN_CHAT_URL: string;
+  /**
+   * Địa chỉ service Genie (§11). Cùng khuôn hai biến trên: **trống = không gọi
+   * mô hình**, không phải lui về một địa chỉ mặc định.
+   *
+   * Trống thì trợ lý vẫn chạy được — đường tắt playbook nằm hẳn trên máy — nhưng
+   * nó là một BẢNG TRA, không phải một trí tuệ. `src/services/genie/genieClient.ts`
+   * nói thẳng điều đó ra thay vì giả vờ.
+   */
+  export const GENIE_URL: string;
   // Chuỗi Cardano app nói chuyện. '1'/'mainnet' = tiền thật; mọi giá trị khác
   // (kể cả rỗng) = chuỗi thử. Nguồn duy nhất: `src/config/cardanoNetwork.ts`.
   export const CARDANO_NETWORK: string;

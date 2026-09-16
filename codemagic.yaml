@@ -228,6 +228,7 @@ workflows:
           # Trống = TẮT hẳn. ĐỪNG điền tunnel ngrok — xem remoteLogger.ts, aladinChat.ts.
           REMOTE_LOG_URL=${REMOTE_LOG_URL:-}
           ALADIN_CHAT_URL=${ALADIN_CHAT_URL:-}
+          GENIE_URL=${GENIE_URL:-}
           # ── Truy vết bản dựng ────────────────────────────────────────────────
           # Báo cáo thực địa trước nay chỉ có "2.0 (86)". Số đó KHÔNG chỉ về commit
           # nào: `main` và `develop` cùng đẩy lên MỘT luồng TestFlight, và số build
@@ -1144,6 +1145,7 @@ workflows:
           # Trống = TẮT hẳn. ĐỪNG điền tunnel ngrok — xem remoteLogger.ts, aladinChat.ts.
           REMOTE_LOG_URL=${REMOTE_LOG_URL:-}
           ALADIN_CHAT_URL=${ALADIN_CHAT_URL:-}
+          GENIE_URL=${GENIE_URL:-}
           # Truy vết bản dựng — xem lời dẫn dài ở khối `ios-adhoc-ipa` phía trên.
           BUILD_COMMIT=${CM_COMMIT:0:12}
           BUILD_BRANCH=${CM_BRANCH:-}
@@ -1756,6 +1758,7 @@ workflows:
           # Trống = TẮT hẳn. ĐỪNG điền tunnel ngrok — xem remoteLogger.ts, aladinChat.ts.
           REMOTE_LOG_URL=${REMOTE_LOG_URL:-}
           ALADIN_CHAT_URL=${ALADIN_CHAT_URL:-}
+          GENIE_URL=${GENIE_URL:-}
           # Truy vết bản dựng — xem lời dẫn dài ở khối `ios-adhoc-ipa` phía trên.
           BUILD_COMMIT=${CM_COMMIT:0:12}
           BUILD_BRANCH=${CM_BRANCH:-}
@@ -2124,6 +2127,7 @@ workflows:
           # Trống = TẮT hẳn. ĐỪNG điền tunnel ngrok — xem remoteLogger.ts, aladinChat.ts.
           REMOTE_LOG_URL=${REMOTE_LOG_URL:-}
           ALADIN_CHAT_URL=${ALADIN_CHAT_URL:-}
+          GENIE_URL=${GENIE_URL:-}
           # Truy vết bản dựng — xem lời dẫn dài ở khối `ios-adhoc-ipa` phía trên.
           BUILD_COMMIT=${CM_COMMIT:0:12}
           BUILD_BRANCH=${CM_BRANCH:-}

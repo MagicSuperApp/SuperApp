@@ -48,7 +48,7 @@ import { ORILIFE_BASE } from '../services/orilifeBase';
 // xem trước báo cáo phải in ra cùng một phần đầu; hai bản chép tay là một bản sao sẽ chết
 // im lặng (thêm một dòng ở một chỗ thì báo cáo gửi từ chỗ kia thiếu đúng dòng đó).
 import { appVersionBase, commitShort } from '../services/fieldReportHead';
-import { fmtLamp, fmtCarp, fmtLampWhole, lampWholeToOildrop } from '../utils/token';
+import { fmtLamp, fmtCarp } from '../utils/token';
 import { getVaultStatus, WAKEME_CLAIM_READY } from '../services/wakemeService';
 import type { VaultStatusResponse } from '../services/phoenixKey-api';
 import { vaultRowText, vaultStateFromError, type VaultRowState } from './wakemeVaultRow';
@@ -579,7 +579,14 @@ const AccountScreen = () => {
     //      độ lệch lớn dần mỗi đêm, và luôn lệch về phía có lợi cho con số.
     //   Vì (1) làm số nhỏ đi một triệu lần nên (2) không ai nhìn ra.
     const vaultOk = vaultState === 'ok' && vault ? vault : null;
-    const vestedOildrop = lampWholeToOildrop(vaultOk?.vestedUnlocked);
+    // ĐÍNH CHÍNH 2026-09-16 (thư Phoenix phoenix0916n): `vestedUnlocked` đã LÀ
+    // oildrop (không phải LAMP nguyên) — KHÔNG nhân thêm 10⁶ qua
+    // `lampWholeToOildrop` nữa. Trường này cũng đã bị gỡ khỏi phản hồi backend
+    // (Issue #256) nên đọc ra luôn `undefined`; giữ nhánh này cho tới khi màn
+    // dưới được dọn theo.
+    const vestedOildrop = vaultOk?.vestedUnlocked != null
+        ? BigInt(Math.trunc(vaultOk.vestedUnlocked))
+        : null;
     /** Tài sản THẬT: ví + phần Wakeme đã mở khoá. Không gồm phần đang mượn. */
     const lampOwnedText = (() => {
         const own = chainWallet?.lampBalance;
@@ -906,7 +913,7 @@ const AccountScreen = () => {
                                             <Text style={styles.lampRowName}>Wakeme đã mở khoá</Text>
                                             <Text style={styles.lampRowSub}>Đã thành sở hữu của bạn</Text>
                                         </View>
-                                        <Text style={styles.lampRowVal}>{fmtLampWhole(vaultOk.vestedUnlocked)}</Text>
+                                        <Text style={styles.lampRowVal}>{fmtLamp(vaultOk.vestedUnlocked)}</Text>
                                     </View>
 
                                     <View style={styles.lampRow}>
@@ -917,7 +924,7 @@ const AccountScreen = () => {
                                                 Tiêu dịch vụ được, KHÔNG bán được. Ngày nào không dùng thì bị thu 1 LAMP về pot.
                                             </Text>
                                         </View>
-                                        <Text style={styles.lampRowVal}>{fmtLampWhole(vaultOk.conditionalLamp)}</Text>
+                                        <Text style={styles.lampRowVal}>{fmtLamp(vaultOk.conditionalLamp)}</Text>
                                     </View>
 
                                     {/* Chỉ hiện khi ĐÃ có phần bị thu — đây là dòng giải thích
@@ -930,7 +937,7 @@ const AccountScreen = () => {
                                                 <Text style={styles.lampRowName}>Đã thu về pot</Text>
                                                 <Text style={styles.lampRowSub}>Phần bỏ không dùng, đã trả lại pot</Text>
                                             </View>
-                                            <Text style={styles.lampRowVal}>{fmtLampWhole(vaultOk.reclaimedToPotLamp)}</Text>
+                                            <Text style={styles.lampRowVal}>{fmtLamp(vaultOk.reclaimedToPotLamp)}</Text>
                                         </View>
                                     )}
                                 </>)}

@@ -228,8 +228,10 @@ export const registerIdentity = async (
   // vá, không phải bản thân phép chặn.
   //
   // Đặt sau `enrollKeypair()` thì sinh ra bốn hệ quả, cả bốn đều thật:
-  //   1. `enrollKeypair()` XOÁ khoá cũ trong chip rồi ghi khoá mới. Hỏng sau đó là
-  //      máy mất khoá cũ mà chưa có danh tính mới.
+  //   1. `enrollKeypair()` ĐỎ ngay khi máy còn khoá cũ: hai cầu native từ chối sinh
+  //      đè bằng `E_KEY_EXISTS` (`PhoenixKeyModule.swift` nhánh `hasKeySync`,
+  //      `PhoenixKeyModule.kt` nhánh `keyStore.containsAlias`). Người dùng nhận một
+  //      mã lỗi native thay vì câu nói đúng ca của mình.
   //   2. Lần bấm lại, `isKeypairEnrolled()` ở trên trả `true` nên với `new-person`
   //      app hỏi "máy này đã có một danh tính" — về một danh tính chưa từng tồn tại.
   //   3. Người dùng đã gõ xong tên đăng nhập và qua HAI hộp sinh trắc trước khi

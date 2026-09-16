@@ -162,17 +162,31 @@ export function hasAnyLamp(raw: bigint | number | string | null | undefined): bo
 }
 
 /**
+ * ── ĐÍNH CHÍNH 2026-09-16 (thư Phoenix `phoenix0916n`) ───────────────────────
+ *
+ * Khối chú thích dưới đây (bản trước) khai `conditionalLamp` ·
+ * `reclaimedToPotLamp` · `vestedUnlocked` là LAMP NGUYÊN — SAI. Đối chiếu
+ * `PhoenixKey-Database@1c04982` (`ActivationVaultDtos.java:168,180`,
+ * `GetLampPreflight.java:99-100`) và datum on-chain
+ * (`PhoenixKey-Validator/lib/phoenixkey/wakeme_logic.ak:132-150`): cả bốn ô
+ * `*_lamp` cùng `d_unit` đều là **oildrop**, giống `chainWallet.lampBalance`.
+ * Hậu tố `_lamp` trong tên trường nói sai đơn vị — đó là nguồn gốc chỗ lệch.
+ * Dùng thẳng `fmtLamp`/cộng thẳng BigInt cho các trường này, ĐỪNG qua
+ * `lampWholeToOildrop`/`fmtLampWhole` — hai hàm đó chỉ dành cho LAMP nguyên
+ * thật (không còn trường nào ở cửa `/wakeme/vault/{did}` là loại đó).
+ *
+ * `vestedUnlocked` còn lỗi thời thêm một lớp: trường này đã bị gỡ khỏi
+ * `VaultStatusResponse` cùng `idleEpochsP2` (Issue #256) — cửa
+ * `/wakeme/vault/{did}` không còn trả nó, nên đọc ra luôn là `undefined`.
+ *
  * ── Hai đơn vị LAMP cùng sống trong app, và chúng KHÔNG hoán đổi được ────────
  *
- * Cửa `/wakeme/vault/{did}` trả `initialDlamp` · `conditionalLamp` ·
- * `reclaimedToPotLamp` · `vestedUnlocked` ở **LAMP NGUYÊN** (trần 1001/DID).
- * Còn `chainWallet.lampBalance` là **oildrop** (`store/userSlice.ts:20`).
- * 1 LAMP = 10⁶ oildrop.
- *
- * Đưa một số LAMP nguyên qua `fmtLamp` là chia nó cho 10⁶ — 1001 LAMP hiện ra
- * `0.001001`. Sai kiểu này không ném lỗi, không đỏ test kiểu, và con số nhỏ đi
- * đúng một triệu lần thì trông vẫn như một con số. Hai hàm dưới đây có mặt để
- * chỗ gọi phải CHỌN đơn vị, thay vì mặc định rơi vào `fmtLamp`.
+ * `chainWallet.lampBalance` là **oildrop** (`store/userSlice.ts:20`).
+ * 1 LAMP = 10⁶ oildrop. Chỉ dùng `lampWholeToOildrop`/`fmtLampWhole` cho một
+ * số LAMP NGUYÊN thật sự nhập từ nơi khác (hiện không còn chỗ gọi nào) — đưa
+ * một số LAMP nguyên qua `fmtLamp` thẳng là chia nó cho 10⁶ — 1001 LAMP hiện
+ * ra `0.001001`. Sai kiểu này không ném lỗi, không đỏ test kiểu, và con số
+ * nhỏ đi đúng một triệu lần thì trông vẫn như một con số.
  */
 
 /** LAMP nguyên → oildrop, để cộng được với số dư ví. `null` vào thì `null` ra. */

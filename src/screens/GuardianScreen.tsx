@@ -47,13 +47,13 @@ interface GuardianRow { did: string; name: string | null; createdAt: string | nu
 /**
  * Ba trạng thái của danh sách, KHÔNG gộp.
  *
- * `dang_tai` tách khỏi `hong` vì lần mở màn đầu tiên chưa biết gì cả; `hong` tách
- * khỏi `xong` + mảng rỗng vì đó là hai câu trả lời khác nhau cho người dùng.
+ * `loading` tách khỏi `failed` vì lần mở màn đầu tiên chưa biết gì cả; `failed` tách
+ * khỏi `loaded` + mảng rỗng vì đó là hai câu trả lời khác nhau cho người dùng.
  */
 type LoadState =
-  | { kind: 'dang_tai' }
-  | { kind: 'xong'; rows: GuardianRow[] }
-  | { kind: 'hong'; needSignIn: boolean };
+  | { kind: 'loading' }
+  | { kind: 'loaded'; rows: GuardianRow[] }
+  | { kind: 'failed'; needSignIn: boolean };
 
 /** Mã định danh rút gọn — dùng khi máy này không có tên cho người đó. */
 const shortDid = (did: string): string =>
@@ -64,6 +64,26 @@ const fmtDate = (v: string | null): string => {
   const n = Date.parse(v);
   return Number.isNaN(n) ? '' : new Date(n).toLocaleDateString('vi-VN');
 };
+
+/**
+ * Tối thiểu người bảo hộ mà anchor on-chain đòi (PhoenixKey chốt 2026-09-17:
+ * `UpdateGuardians` chỉ chạy khi tập còn lại ≥ 2). Gỡ xuống dưới ngưỡng này thì
+ * giao dịch chết ở validator — cổng dưới đây chặn TRƯỚC, ngay tại app.
+ */
+const MIN_GUARDIANS = 2;
+
+/**
+ * Cổng gỡ một người bảo hộ.
+ *
+ * `count == null` là "chưa tải xong / tải hỏng", KHÔNG phải "0 người" — đọc nhầm
+ * thành 0 (kiểu `?? []` rồi lấy `.length`) sẽ khoá nút của người đang có đủ 5
+ * người bảo hộ khỏi chính dữ liệu của họ. Đây là cổng chặn thao tác người dùng
+ * ⟹ hỏng (chưa biết) thì FAIL-OPEN — không khoá.
+ */
+export function canRemoveGuardian(count: number | null | undefined): boolean {
+  if (count == null) return true;
+  return count > MIN_GUARDIANS;
+}
 
 const readLocalNames = async (): Promise<Record<string, string>> => {
   const raw = await AsyncStorage.getItem(LOCAL_NAMES_KEY);
@@ -81,19 +101,19 @@ const readLocalNames = async (): Promise<Record<string, string>> => {
 
 const GuardianScreen: React.FC = () => {
   const navigation = useNavigation<any>();
-  const [state, setState] = useState<LoadState>({ kind: 'dang_tai' });
+  const [state, setState] = useState<LoadState>({ kind: 'loading' });
   const [gDid, setGDid] = useState('');
   const [gName, setGName] = useState('');
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    setState({ kind: 'dang_tai' });
+    setState({ kind: 'loading' });
     try {
       const did = await currentUserDid();
       // Máy chủ chặn tra DID khác (`GuardianController` so với DID trong phiên),
       // nên không có DID trên máy thì cửa này KHÔNG gọi được — nói thẳng, đừng
       // gọi rồi hiện một con 401 thô.
-      if (!did) { setState({ kind: 'hong', needSignIn: true }); return; }
+      if (!did) { setState({ kind: 'failed', needSignIn: true }); return; }
 
       const res = await phoenixKeyApi.guardians.list(did);
       // Hình dạng lạ thì NÉM, không `?? []`: một phản hồi thiếu trường `guardians`
@@ -106,7 +126,7 @@ const GuardianScreen: React.FC = () => {
       try { names = await readLocalNames(); } catch { names = {}; }
 
       setState({
-        kind: 'xong',
+        kind: 'loaded',
         rows: res.guardians.map(g => ({
           did: g.guardianDid,
           name: names[g.guardianDid] ?? null,
@@ -115,7 +135,7 @@ const GuardianScreen: React.FC = () => {
       });
     } catch (e) {
       const needSignIn = e instanceof PhoenixKeyApiError && (e.httpStatus === 401 || e.httpStatus === 403);
-      setState({ kind: 'hong', needSignIn });
+      setState({ kind: 'failed', needSignIn });
     }
   }, []);
 
@@ -130,7 +150,15 @@ const GuardianScreen: React.FC = () => {
     } catch { /* tên hiển thị mất thì vẫn còn mã định danh — không chặn luồng */ }
   };
 
-  const rows = state.kind === 'xong' ? state.rows : [];
+  const rows = state.kind === 'loaded' ? state.rows : [];
+  /**
+   * Số người bảo hộ HIỆN TẠI, dùng riêng cho `canRemoveGuardian` — TÁCH khỏi
+   * `rows.length` vì dòng trên đã ép `rows` về mảng rỗng ở cả hai trạng thái
+   * `loading`/`failed`, nên `rows.length === 0` không phân biệt được "rỗng thật"
+   * với "chưa biết". Cổng gỡ cần phân biệt được hai ca đó.
+   */
+  const guardianCount: number | null = state.kind === 'loaded' ? state.rows.length : null;
+  const removable = canRemoveGuardian(guardianCount);
 
   const onAdd = async () => {
     const did = gDid.trim();
@@ -183,14 +211,14 @@ const GuardianScreen: React.FC = () => {
         </Text>
 
         {/* ── Danh sách: ba trạng thái, ba khối khác nhau ───────────────── */}
-        {state.kind === 'dang_tai' && (
+        {state.kind === 'loading' && (
           <View style={styles.stateBox} testID="guardian-loading">
             <ActivityIndicator size="small" color={PRIMARY} />
             <Text style={styles.stateText}>{tk('identity.guardian.loading')}</Text>
           </View>
         )}
 
-        {state.kind === 'hong' && (
+        {state.kind === 'failed' && (
           <View style={[styles.stateBox, styles.stateBoxFail]} testID="guardian-load-fail">
             <Icon name="alert-circle-outline" size={20} color="#C0533A" />
             <Text style={styles.stateTitleFail}>{tk('identity.guardian.loadFailTitle')}</Text>
@@ -214,12 +242,12 @@ const GuardianScreen: React.FC = () => {
 
         {/*
           ── MỨC AN TOÀN ─────────────────────────────────────────────────────────
-          Chỉ hiện ở trạng thái `xong`, KHÔNG hiện lúc đang tải hay lúc hỏng. Lý do
+          Chỉ hiện ở trạng thái `loaded`, KHÔNG hiện lúc đang tải hay lúc hỏng. Lý do
           là bất biến của màn này: danh sách hỏng thì số người bảo hộ CHƯA BIẾT, mà
           một khung "chưa ai khôi phục hộ bạn được" vẽ trên một con số chưa biết là
           đúng dạng cái-vỏ-im-lặng — người đọc sẽ đi ghi danh lại một người đã có.
         */}
-        {state.kind === 'xong' && (() => {
+        {state.kind === 'loaded' && (() => {
           const safety = describeGuardianSafety(rows.length);
           const urgent = safety.level !== 'spread';
           return (
@@ -241,14 +269,14 @@ const GuardianScreen: React.FC = () => {
           );
         })()}
 
-        {state.kind === 'xong' && rows.length === 0 && (
+        {state.kind === 'loaded' && rows.length === 0 && (
           <View style={styles.stateBox} testID="guardian-empty">
             <Icon name="account-off-outline" size={20} color={COLORS.textMuted} />
             <Text style={styles.stateText}>{tk('identity.guardian.empty')}</Text>
           </View>
         )}
 
-        {state.kind === 'xong' && rows.length > 0 && (
+        {state.kind === 'loaded' && rows.length > 0 && (
           <>
             <Text style={styles.countText}>{tk('identity.guardian.count', { n: rows.length })}</Text>
             <View style={styles.card} testID="guardian-list">
@@ -262,12 +290,35 @@ const GuardianScreen: React.FC = () => {
                       <Text style={styles.gDid}>Ghi danh: {fmtDate(g.createdAt)}</Text>
                     )}
                   </View>
-                  <TouchableOpacity onPress={() => onRemove(g)} hitSlop={8}>
-                    <Icon name="close-circle-outline" size={20} color="#C0533A" />
+                  <TouchableOpacity
+                    testID={`guardian-remove-${g.did}`}
+                    accessibilityRole="button"
+                    accessibilityState={{ disabled: !removable }}
+                    onPress={() => onRemove(g)}
+                    disabled={!removable}
+                    hitSlop={8}
+                  >
+                    <Icon
+                      name="close-circle-outline"
+                      size={20}
+                      color={removable ? '#C0533A' : COLORS.textMuted}
+                    />
                   </TouchableOpacity>
                 </View>
               ))}
             </View>
+            {/*
+              Cổng là thuộc tính của CẢ TẬP, không của riêng một dòng — mọi nút gỡ
+              cùng khoá hay cùng mở một lúc, nên câu giải thích đứng NGOÀI vòng
+              lặp, một lần. `guardianCount != null` chặn ca fail-open: chưa biết số
+              thì không khoá (xem `canRemoveGuardian`), nên cũng không có gì để
+              giải thích ở đây.
+            */}
+            {!removable && guardianCount != null && (
+              <Text style={styles.removeLockedNote} testID="guardian-remove-locked-note">
+                {tk('identity.guardian.removeLocked')}
+              </Text>
+            )}
           </>
         )}
 
@@ -326,6 +377,10 @@ const styles = StyleSheet.create({
   },
 
   card: { backgroundColor: COLORS.card, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, marginBottom: 20 },
+  removeLockedNote: {
+    fontSize: 12, color: COLORS.textMuted, lineHeight: 18,
+    marginTop: -12, marginBottom: 20,
+  },
   gRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 },
   gRowBorder: { borderTopWidth: 1, borderTopColor: COLORS.border },
   avatar: {

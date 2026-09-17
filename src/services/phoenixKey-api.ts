@@ -105,9 +105,87 @@ export interface WalletEntry {
   addresses: { fixed?: string; active?: string; stake?: string };
   balances: { lovelace: number; lamp: number; carp: number };
 }
+/**
+ * ⚠ BA TRẠNG THÁI của số MAGIC, phải đi được hết đường tới màn hình.
+ *
+ * Nhà PhoenixKey báo 17/09/2026: `magic.available` nay trả **`null`** khi máy chủ
+ * không xác định được sổ vault — lượt gọi vẫn `200`, `wallets[]` vẫn đủ. Trước
+ * đó nó luôn là số, nên cả đường dây khai `number` và ở cuối đường có một
+ * `?? 0` biến `null` thành `0`. `0` là câu TRẢ LỜI ("không có"), còn `null` là
+ * câu KHÔNG TRẢ LỜI ("không biết") — gộp hai thứ đó lại thì một cổng chặn phí
+ * đọc "không biết" thành "không đủ tiền" và khoá người dùng ra khỏi việc của họ.
+ *
+ *   `null`  — chưa biết (máy chủ không nói, hoặc lượt gọi hỏng)
+ *   `0`     — máy chủ nói rõ là KHÔNG CÓ
+ *   `> 0`   — có
+ *
+ * Dùng `== null` (hai dấu bằng) ở mọi chỗ đọc, vì JSON gửi `null` còn trường
+ * vắng mặt cho ra `undefined` — hai hình dạng, cùng một nghĩa "chưa biết".
+ */
 export interface WalletAllResponse {
   wallets: WalletEntry[];
-  magic: { source: string; available: number; accrued: number };
+  magic: {
+    source: string;
+    available: number | null;
+    // `accrued` đến từ CÙNG một lượt đọc sổ vault với `available`. Khai hẹp hơn
+    // thứ máy chủ gửi được chính là lỗi đang vá, nên khai rộng cho cả hai.
+    accrued: number | null;
+    /**
+     * Câu máy chủ giải thích vì sao không có số. Trường trên dây là
+     * `magic_absent_reason`; interceptor phản hồi đổi snake_case → camelCase đệ
+     * quy cho mọi tầng của thân bài (`transformKeys` + `toCamelCase`, đăng ký ở
+     * `client.interceptors.response.use` bên dưới trong tệp này), nên tới tay
+     * app nó mang tên này.
+     */
+    magicAbsentReason?: string | null;
+  };
+}
+
+/**
+ * Lọc câu máy chủ nói về việc thiếu số MAGIC trước khi đưa lên màn hình.
+ *
+ * Máy chủ có câu thì hiện câu của máy chủ — nó nói được người dùng phải làm gì,
+ * còn "có lỗi xảy ra" thì không. Nhưng cùng một trường cũng có thể chở một lỗi
+ * hệ thống THÔ, và đó là đường rò: traceback mang theo đường dẫn nội bộ, tên
+ * bảng, đôi khi cả tham số của lời gọi. Ba dấu hiệu dưới đây phân biệt được hai
+ * loại mà không cần biết trước máy chủ viết gì: một câu cho người dùng thì ngắn,
+ * một dòng, và không mang cú pháp của máy.
+ *
+ * Trả `null` = không có câu nào hiện được. Nơi gọi vẫn phải nói cho người dùng
+ * biết là CHƯA ĐỌC ĐƯỢC — `null` ở đây không có nghĩa là im lặng.
+ */
+export function userFacingMagicAbsentReason(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const text = raw.trim();
+  if (!text) return null;
+  // Nhiều dòng ⟹ gần như chắc chắn là vết gọi hàm, không phải câu nói với người.
+  if (/[\r\n]/.test(text)) return null;
+  // Một câu thông báo cho nông dân không dài tới đây; một dòng lỗi máy thì có.
+  if (text.length > 200) return null;
+  // Cú pháp của máy: nhãn traceback, tên tệp mã kèm số dòng, đường dẫn tuyệt đối,
+  // tên lớp ngoại lệ theo kiểu gói chấm-chấm.
+  if (/traceback|\b\w+(?:\.\w+)+(?:Error|Exception)\b|\.(?:java|kt|py|rb|ts|js):\d|(?:^|\s)\/(?:usr|var|opt|home|srv|etc|app)\//i.test(text)) {
+    return null;
+  }
+  return text;
+}
+
+/**
+ * Cổng phí MAGIC: có được phép CHẶN thao tác này không.
+ *
+ * Chiều hỏng phải đúng, và đây là chỗ quyết định nó. Cổng này chặn việc của
+ * nông dân ngoài đồng; hỏng-mà-chặn thì họ không ghi được việc và không có gì
+ * nói cho họ biết vì sao. Nên **chưa biết số dư ⟹ KHÔNG chặn**: máy chủ vẫn là
+ * nơi đối soát phí cuối cùng, còn app thì không được lấy sự thiếu hiểu biết của
+ * chính nó làm căn cứ từ chối.
+ *
+ * Đặt ở tệp này chứ không ở màn hình vì luật đọc ba trạng thái thuộc về bên
+ * ĐỊNH NGHĨA ba trạng thái đó; mỗi màn tự diễn giải lấy là cách chúng trôi khỏi
+ * nhau.
+ */
+export function shouldBlockMagicSpend(available: number | null | undefined, cost: number): boolean {
+  if (available == null) return false;
+  return available < cost;
 }
 
 /**
@@ -132,14 +210,18 @@ export interface StandardWalletRegisterRequest {
  * Rút gọn WalletAllResponse về địa-chỉ + số dư để HIỂN THỊ. Một nguồn chuẩn cho mọi
  * màn (Account, PhoenixWallet, SDK) — ưu tiên ví Standard (user tự kiểm-soát), fallback
  * Phoenix custody. Ví rỗng → address null + số dư 0 (KHÔNG bịa).
+ *
+ * MAGIC đi qua đây KHÔNG được đệm: xem khối ba-trạng-thái ở `WalletAllResponse`.
+ * `null` ra khỏi hàm này đúng bằng `null` vào nó.
  */
 export function summarizeWalletAll(all: WalletAllResponse): {
   address: string | null;
   lovelace: number;
   lamp: number;
   carp: number;
-  magicAvailable: number;
-  magicAccrued: number;
+  magicAvailable: number | null;
+  magicAccrued: number | null;
+  magicAbsentReason: string | null;
 } {
   const standard = all.wallets.find(w => w.kind === 'standard');
   const phoenix = all.wallets.find(w => w.kind === 'phoenix');
@@ -152,8 +234,12 @@ export function summarizeWalletAll(all: WalletAllResponse): {
     lovelace: b.lovelace,
     lamp: b.lamp,
     carp: b.carp,
-    magicAvailable: all.magic.available,
-    magicAccrued: all.magic.accrued,
+    // `== null` gom `null` (máy chủ gửi) và `undefined` (trường vắng) về MỘT
+    // hình dạng "chưa biết". Đó là gộp hai cách nói cùng một điều, khác hẳn với
+    // gộp "chưa biết" vào "không có" — cái sau mới là chỗ mất tin.
+    magicAvailable: all.magic.available == null ? null : all.magic.available,
+    magicAccrued: all.magic.accrued == null ? null : all.magic.accrued,
+    magicAbsentReason: userFacingMagicAbsentReason(all.magic.magicAbsentReason),
   };
 }
 

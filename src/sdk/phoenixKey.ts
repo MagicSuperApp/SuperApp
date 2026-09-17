@@ -119,7 +119,9 @@ class RealPhoenixKey implements PhoenixKeySDK {
     if (!did) {
       return {
         isActivated: false,
-        magicCredits: 0,
+        // Không có DID ⟹ chưa hỏi máy chủ lần nào ⟹ CHƯA BIẾT, không phải "bằng
+        // không". Trả `0` ở đây là tự trả lời thay cho một bên chưa được hỏi.
+        magicCredits: null,
         lampTokens: 0,
         adaBalance: 0,
         address: '',

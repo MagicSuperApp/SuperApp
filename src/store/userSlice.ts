@@ -40,8 +40,17 @@ import { setVideoQueueOwner, flushVideoUploadQueue } from '../services/videoUplo
 interface Wallet {
   id: string;
   userId: string;
-  /** Sổ vault MAGIC — đơn vị chưa chốt. */
-  magicBalance: number;
+  /**
+   * Sổ vault MAGIC — đơn vị chưa chốt, và `null` = CHƯA BIẾT.
+   *
+   * `null` không phải một giá trị thiếu sót cần lấp: từ 17/09/2026 máy chủ trả
+   * `magic.available = null` khi nó không xác định được sổ vault (xem
+   * `WalletAllResponse` ở `services/phoenixKey-api.ts`). Mọi nơi đọc trường này
+   * phải hỏi `== null` TRƯỚC khi so sánh — một phép so sánh với `null` trong
+   * JavaScript không đỏ, nó ép kiểu thành `0` và trả về một câu trả lời sai mà
+   * trông bình thường.
+   */
+  magicBalance: number | null;
   /** **oildrop** (thô). Hiện ra màn hình PHẢI qua `fmtLamp()`. */
   lampBalance: number;
   // CARP — token hệ sinh thái thứ 3. Backend PhoenixKey CHƯA trả số dư → optional, hiện '—'
@@ -54,7 +63,7 @@ interface Wallet {
   pendingCredits: number;
   // Ví THẬT từ chuỗi (PhoenixKey backend) — chỉ có khi refreshWallet() chạy xong.
   address?: string | null;
-  magicAccrued?: number;
+  magicAccrued?: number | null;
   magicRatePerSlot?: string;
   fromChain?: boolean;
 }
@@ -546,7 +555,13 @@ const userSlice = createSlice({
         state.currentUser.adaTokens += action.payload.ada;
       }
       if (state.wallet) {
-        state.wallet.magicBalance += action.payload.magic;
+        // Chưa biết số dư thì cộng thêm vào VẪN CHƯA BIẾT. Lấy `0` làm gốc rồi
+        // cộng là bịa ra một con số nhỏ — đúng cái sai đang vá, chỉ đi vào từ
+        // cửa khác: ở đây nó còn tệ hơn vì con số bịa được GHI LẠI vào store và
+        // từ đó không còn tự khai được là thiếu.
+        if (state.wallet.magicBalance != null) {
+          state.wallet.magicBalance += action.payload.magic;
+        }
         state.wallet.lampBalance += action.payload.lamp;
         state.wallet.adaBalance += action.payload.ada;
       }

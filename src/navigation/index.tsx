@@ -1902,7 +1902,26 @@ const buildLinking = () => ({
 // optional trên null: KHÔNG làm gì, KHÔNG ném, KHÔNG log. Bấm thông báo xong màn
 // hình đứng yên. `initPush()` vẫn chạy (dòng ~1566) nên token vẫn đăng ký — hỏng
 // đúng một nửa, và đó là nửa không ai nhìn thấy ở máy dựng.
-const navigationRef = createNavigationContainerRef();
+/**
+ * Kiểu route của tham chiếu này.
+ *
+ * `createStackNavigator()` ở dòng 164 gọi KHÔNG có tham số kiểu, nên navigator
+ * không khai danh sách route nào. Trước bản này tham chiếu cũng để trống kiểu, và
+ * `@react-navigation/core` đời cũ rơi về một kiểu dễ dãi nên mọi thứ xanh.
+ *
+ * Từ `core@7.17.3` nó suy ra danh sách route RỖNG, tức `getCurrentRoute()` trả
+ * `never` và `.name` không tồn tại. Hệ quả không nằm ở kiểu: bản 7.22.1 là bản duy
+ * nhất bỏ `query-string`, tức đường duy nhất đóng cảnh báo `decode-uri-component`
+ * — nên một tham chiếu để trống kiểu đang GHIM CỨNG một lỗ hổng ở nhánh chính.
+ *
+ * Khai đúng điều đang đúng: tên route là chuỗi, tham số là một đối tượng tuỳ chọn.
+ * Đây KHÔNG phải bản khai đầy đủ — bản đầy đủ là liệt kê từng màn cùng tham số của
+ * nó, và việc đó phải làm cùng lúc cho `createStackNavigator` chứ không riêng chỗ
+ * này. Ghi ra để đừng ai đọc dòng dưới thành "điều hướng đã có kiểu".
+ */
+type RootParamList = Record<string, object | undefined>;
+
+const navigationRef = createNavigationContainerRef<RootParamList>();
 
 const AppNavigator = () => {
   // Build 52 (2026-05-17) — first-launch onboarding gate.
@@ -2032,7 +2051,7 @@ const AppNavigator = () => {
 
           setGenieNavigator((route, params) => {
             if (!navigationRef.isReady()) return;
-            (navigationRef.navigate as (s: string, p?: Record<string, unknown>) => void)(
+            navigationRef.navigate(
               route,
               params,
             );
@@ -2058,7 +2077,7 @@ const AppNavigator = () => {
             // `screen as never, params as never` biên dịch được nhưng vẫn là `never`
             // và tsc bắt đúng chỗ đó. Tên route do máy chủ đẩy xuống nên không có
             // kiểu tĩnh nào ở đây là thật — cửa kiểm thật nằm ở chính navigator.
-            (navigationRef.navigate as (s: string, p?: Record<string, unknown>) => void)(
+            navigationRef.navigate(
               screen,
               params,
             );

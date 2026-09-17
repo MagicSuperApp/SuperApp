@@ -29,7 +29,7 @@
     "@react-navigation/stack": "^7.8.5",
     "@react-three/fiber": "^9.6.1",
     "@reduxjs/toolkit": "^2.11.2",
-    "axios": "^1.16.0",
+    "axios": "^1.18.0",
     "base64-js": "^1.5.1",
     "expo": "^56.0.17",
     "expo-asset": "~56.0.21",
@@ -62,7 +62,7 @@
     "three": "^0.185.1"
   },
   "devDependencies": {
-    "@babel/core": "^7.25.2",
+    "@babel/core": "^7.29.7",
     "@babel/plugin-transform-class-static-block": "^7.29.7",
     "@babel/preset-env": "^7.25.3",
     "@babel/runtime": "^7.25.0",

@@ -51,5 +51,25 @@ declare module '@env' {
    * `src/` với các biến vừa ghi, nên thiếu biến này là bản dựng ĐỎ.
    */
   export const APP_INSTANCE: string;
+  /**
+   * Gốc `VaultReadAPI` (nhà MAGIC) — mặt tiền ĐỌC-THÔI số dư MAGIC theo `owner_pkh`.
+   * Trống = màn số dư MAGIC hiện "chưa cấu hình", KHÔNG lui về `0` — không có một
+   * địa chỉ Preprod mặc định nào an toàn để lui về (khác `ORILIFE_API_BASE_URL`, nơi
+   * có một prod thật). Xem `src/config/magicVault.ts`.
+   */
+  export const MAGIC_VAULT_API_URL: string;
+  /**
+   * `owner_pkh` (56 hex thường) của vault đang đọc. Trống = chưa cấu hình. Nhà MAGIC
+   * hứa gửi giá trị này "kèm tx trong thư sau" (`_Agents/inbox/_done/MAGIC-dang-mo-
+   * InstantGen-tren-Preprod-dung-man-hinh-ngay-2026-09-17.md`) — CHƯA có lúc viết dòng
+   * này, nên KHÔNG hardcode một PKH thử nghiệm nào ở đây.
+   */
+  export const MAGIC_VAULT_OWNER_PKH: string;
+  /**
+   * Thẻ `Authorization: Bearer …` cho VaultReadAPI. Trống = không gửi header — chỉ hợp
+   * lệ khi mặt tiền bind loopback (`VaultReadAPI/README.md §5`); bind ra ngoài mà trống
+   * thì máy chủ tự trả 401, và màn hình phải hiện đúng lỗi đó chứ không tự bịa số dư.
+   */
+  export const MAGIC_VAULT_API_TOKEN: string;
 }
 

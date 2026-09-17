@@ -78,7 +78,7 @@ Obj/Arr     bản ghi / mảng hữu hạn, không-đệ-quy-tự-tham-chiếu
 | Com | Pedersen / hash-commitment | [Pedersen 1991](https://link.springer.com/chapter/10.1007/3-540-46766-1_9) | computationally binding, perfectly/comp. hiding | platform-novel use |
 | Enc | AES-256-GCM | [NIST SP 800-38D](https://csrc.nist.gov/publications/detail/sp/800-38d/final) | IND-CCA2 | off-chain PII vault |
 | KDF | HKDF-SHA256 | [RFC 5869](https://datatracker.ietf.org/doc/html/rfc5869) | PRF | DEK derivation |
-| Token | JWT/JWS audience-bound (issuer EdDSA/JWKS) | [RFC 7519](https://datatracker.ietf.org/doc/html/rfc7519) + [RFC 7515](https://datatracker.ietf.org/doc/html/rfc7515) | EUF-CMA on `aud` claim | INHERIT PhoenixKey (issuer-side, Long) |
+| Token | JWT/JWS audience-bound (issuer EdDSA/JWKS) | [RFC 7519](https://datatracker.ietf.org/doc/html/rfc7519) + [RFC 7515](https://datatracker.ietf.org/doc/html/rfc7515) | EUF-CMA on `aud` claim | INHERIT PhoenixKey (issuer-side, backend PhoenixKey) |
 
 ### 3.2 Hardness Assumptions
 
@@ -92,7 +92,7 @@ Obj/Arr     bản ghi / mảng hữu hạn, không-đệ-quy-tự-tham-chiếu
 
 Platform mix ECDSA-P256 (hardware) + Ed25519 (TAAD) — **đã được PhoenixKey Math phân tích** (composition qua TAAD tiered recovery; curve assignment ở method.md **§3** DID Document: `hw-key`=EcdsaSecp256r1, taad-key=Ed25519; security analysis ở **§5** Security Considerations). Tài liệu này dùng cả hai như black-box EUF-CMA, không re-derive. AEAD (GCM) + HKDF: chuẩn KDF-then-Enc, không có cross-interference (HKDF output dùng làm khoá độc lập cho GCM). [Sửa H-03 cite-path: trước đây ghi nhầm §6; §6 là Privacy, không liên quan curve/composition.]
 
-> **Dependency (H-05, báo Long — phụ-thuộc-ngoài, KHÔNG phải lỗi Math)**: method.md §3 ghi `hw-key` curve = EcdsaSecp256r1 (P-256), pubkey nén ~33 byte / không nén ~65 byte. NHƯNG PhoenixKey TESTNET-PLAN §A.1 ghi `hw_key_pubkey: 32-byte Ed25519 từ Secure Enclave wrap` — **mâu thuẫn TRONG nguồn PhoenixKey** (P-256 pubkey ≠ 32-byte Ed25519). Math-Spec cite §3 (đúng phía nguồn chuẩn). Assumption §3.3: hw-key curve = P-256 per method.md §3; field naming TESTNET §A.1 (32B Ed25519) cần PhoenixKey reconcile. Loại = phụ-thuộc-ngoài (Long).
+> **Dependency (H-05, báo backend PhoenixKey — phụ-thuộc-ngoài, KHÔNG phải lỗi Math)**: method.md §3 ghi `hw-key` curve = EcdsaSecp256r1 (P-256), pubkey nén ~33 byte / không nén ~65 byte. NHƯNG PhoenixKey TESTNET-PLAN §A.1 ghi `hw_key_pubkey: 32-byte Ed25519 từ Secure Enclave wrap` — **mâu thuẫn TRONG nguồn PhoenixKey** (P-256 pubkey ≠ 32-byte Ed25519). Math-Spec cite §3 (đúng phía nguồn chuẩn). Assumption §3.3: hw-key curve = P-256 per method.md §3; field naming TESTNET §A.1 (32B Ed25519) cần PhoenixKey reconcile. Loại = phụ-thuộc-ngoài (backend PhoenixKey).
 
 ### 3.4 Config operator set ℰ (định nghĩa cho INV-SEC)
 
@@ -482,7 +482,7 @@ Lưu ý chống over-claim (pitfall #8): KHÔNG được phát biểu "Thm 7.3 �
 
 **Proof**: Verifier ở H₂ kiểm `aud == H₂`. Để τ qua, A phải tạo `τ' = Sign_issuer(... aud=H₂ ...)` — tức forge chữ ký issuer trên message mới. Theo EUF-CMA của Ed25519 (§3.2), `Pr[forge] ≤ negl(λ)`. Reuse τ nguyên gốc thất bại vì `aud=H₁ ≠ H₂`. `nonce`+`exp` chống replay trong cửa sổ. Credential/biometric/DID gốc KHÔNG vào WebView host (Non-goal + F3.5) ⟹ H₂ không trích được khoá để tự ký. ∎
 
-**Boundary**: issuer-side EdDSA/JWKS = PhoenixKey (Long) — INHERIT (AS3). Phase 2. Nếu issuer dùng HS256 (khoá đối xứng chia sẻ) thay vì JWKS bất đối xứng thì audience-binding yếu (host biết khoá → tự ký) — đây là lý do Feat yêu cầu chuyển JWKS (KNOWLEDGE §A). Ghi assumption AS3.
+**Boundary**: issuer-side EdDSA/JWKS = PhoenixKey — INHERIT (AS3). Phase 2. Nếu issuer dùng HS256 (khoá đối xứng chia sẻ) thay vì JWKS bất đối xứng thì audience-binding yếu (host biết khoá → tự ký) — đây là lý do Feat yêu cầu chuyển JWKS (KNOWLEDGE §A). Ghi assumption AS3.
 
 ### Theorem 9.3 (No-RCE under registry adversary — composition 7.2 + 9.1)
 
@@ -589,7 +589,7 @@ INHERIT PhoenixKey method.md **§5 Security Considerations** (mục "Replay prev
 ### 13.1 Trust Boundary
 
 **Math GIẢ ĐỊNH (đúng, không re-prove)**:
-- PhoenixKey chữ ký EUF-CMA hold; DID one-person-one (I2); sequence-monotonic (I3 — INHERIT method.md **§5** Security Considerations); recovery state machine (`TAADStatus = Active | Recovering | Migrated | Revoked`, guardian 2/3 + 50 ADA + timelock 7d) đúng đặc tả — INHERIT PhoenixKey. **[INHERIT-with-known-gap — H-04, dependency báo Long, KHÔNG phải lỗi Math]**: TESTNET-PLAN §A.1 khai 4 state trong enum nhưng chỉ đặc tả 4 transition Rotate/InitRecovery/Cancel/Finalize — KHÔNG có cạnh nào dẫn tới/ra `Migrated` hay `Revoked`. Math-Spec INHERIT enum đúng nhưng KHÔNG tự định nghĩa transition thiếu (ngoài lane, §13/PhoenixKey backend Claude không sửa); báo Long bổ sung đặc tả cạnh cho `Migrated/Revoked` trước khi gate-out phụ thuộc state đó.
+- PhoenixKey chữ ký EUF-CMA hold; DID one-person-one (I2); sequence-monotonic (I3 — INHERIT method.md **§5** Security Considerations); recovery state machine (`TAADStatus = Active | Recovering | Migrated | Revoked`, guardian 2/3 + 50 ADA + timelock 7d) đúng đặc tả — INHERIT PhoenixKey. **[INHERIT-with-known-gap — H-04, dependency báo backend PhoenixKey, KHÔNG phải lỗi Math]**: TESTNET-PLAN §A.1 khai 4 state trong enum nhưng chỉ đặc tả 4 transition Rotate/InitRecovery/Cancel/Finalize — KHÔNG có cạnh nào dẫn tới/ra `Migrated` hay `Revoked`. Math-Spec INHERIT enum đúng nhưng KHÔNG tự định nghĩa transition thiếu (ngoài lane, §13/PhoenixKey backend Claude không sửa); báo backend PhoenixKey bổ sung đặc tả cạnh cho `Migrated/Revoked` trước khi gate-out phụ thuộc state đó.
 - LAMP conservation contract (Treasury §5) đúng — INHERIT.
 - VotingPower geometric + BFT clamp đúng — INHERIT.
 - Capability broker complete-mediation (OA2); store version-vector engine đúng (OA1).
@@ -644,7 +644,7 @@ INHERIT PhoenixKey method.md **§5 Security Considerations** (mục "Replay prev
 | OA3 | Chain finality (k xác nhận); mạng eventually-deliver | Cardano stats | liveness Thm 7.5 chậm | on-chain monitor |
 | OA4 | `destroy(DEK)` huỷ MỌI bản sao DEK (gồm backup/cache/shard) | key-shred protocol | erasure không hoàn chỉnh (Thm 7.7 vỡ) | shred audit + LampNet dep |
 | AS-LN | LampNet bổ sung Data Sovereignty (placement + proof-of-residence) | móng region-tag, CHƯA enforce | INV-3 residency mềm | LampNet spec (đã yêu cầu) |
-| AS3 | Issuer PhoenixKey EdDSA/JWKS bất đối xứng sẵn; device-revocation-list bổ sung | recovery core đã có; GAP revocation-list | Thm 9.2 yếu; F3.9 thiếu | PhoenixKey (Long), Phase 2 |
+| AS3 | Issuer PhoenixKey EdDSA/JWKS bất đối xứng sẵn; device-revocation-list bổ sung | recovery core đã có; GAP revocation-list | Thm 9.2 yếu; F3.9 thiếu | PhoenixKey, Phase 2 |
 
 ---
 
@@ -711,10 +711,10 @@ INHERIT PhoenixKey method.md **§5 Security Considerations** (mục "Replay prev
      https://inria.hal.science/inria-00609399/document
 [12] NIST SP 800-57 Part 1 Rev.5 — Key Management.
      https://csrc.nist.gov/publications/detail/sp/800-57-part-1/rev-5/final
-[INHERIT-1] PhoenixKey did:phoenix method spec. /Users/ductiger/Projects/PhoenixKeyDID/PhoenixKey-SDK/method.md
-[INHERIT-2] PhoenixKey TESTNET-PLAN §A (recovery state machine). /Users/ductiger/Projects/PhoenixKeyDID/TESTNET-PLAN.md
-[INHERIT-3] LAMP VotingPower CONTRACT. /Users/ductiger/Projects/LAMP/Governance/VotingPower/CONTRACT.md
-[INHERIT-4] LAMP Treasury CONTRACT. /Users/ductiger/Projects/LAMP/Treasury/CONTRACT.md
+[INHERIT-1] PhoenixKey did:phoenix method spec. `PhoenixKeyDID/PhoenixKey-SDK/method.md`@e1e2a88
+[INHERIT-2] PhoenixKey TESTNET-PLAN §A (recovery state machine). `PhoenixKeyDID/TESTNET-PLAN.md`
+[INHERIT-3] LAMP VotingPower CONTRACT. `LAMP/Governance/VotingPower/CONTRACT.md`@59da199
+[INHERIT-4] LAMP Treasury CONTRACT. `LAMP/Treasury/CONTRACT.md`@59da199
 ```
 
 > Hard Rule 1: [1]–[12] là RFC/NIST/paper standard URL (cần WebFetch 200 OK verify trước LOCK — chưa verify trong DRAFT này, đánh dấu để format-checker chạy). [INHERIT-*] = đường dẫn nội bộ repo.
@@ -725,7 +725,7 @@ INHERIT PhoenixKey method.md **§5 Security Considerations** (mục "Replay prev
 
 | Version | Date | Author | Changes | Reviewer |
 |---|---|---|---|---|
-| v0.2 | 2026-06-17 | Manto | **Vá Round-1 Hamen (3 HIGH + 2 MEDIUM).** **H-01**: thêm §3.4.2 ngữ nghĩa hình thức đầy đủ `theme_resolve` (bảng tĩnh Θ, DAG token `G_θ` acyclic depth≤D_max, KHÔNG re-parse chuỗi thành AST) + `lookup_finite` (bảng tĩnh literal, index clamp `[0,|tbl|−1]`, KHÔNG self-reference); §3.4.3 **Bổ đề no-re-entry** (mọi f∈ℰ KHÔNG gọi lại `⟦·⟧`); sửa Proof Thm 7.1 (μ-giảm-trên-AST-tĩnh nay đứng trên Bổ đề 3.4.3) + Thm 7.2(i) (cover 2 toán tử resolve-động). Chặn vector AT-1 (theme_resolve re-parse) + AT-2 (lookup trỏ vòng) TẠI ĐỊNH NGHĨA. **H-02**: thêm §3.4.1 Axiom **A-PURE** (liệt kê tường minh ℰ pure/total/first-order/no-re-enter); tách Thm 7.2(ii) thành (ii-a) no-side-effect←A-PURE và (ii-b) non-Turing←expressiveness — KHÔNG suy purity từ non-Turing. **H-03**: sửa cite I3 + §3.3 + §14.3 + §13.1: replay/sequence-monotonic INHERIT method.md **§5 Security Considerations** (không §6 Privacy). **H-08**: Thm 7.4 thêm giả thiết tường minh **H-SHARD** (`S_{j*}` toàn phần+đơn trị) + Giới hạn đa-tài-phán-per-DID + Q-SHARD (chọn primary+read-replica cho v0.2). **H-09**: Thm 7.3 Statement tách (7.3-SEC đúng mọi policy) vs (7.3-NoLoss chỉ CRDT join-thuần, KHÔNG lww); chống over-claim "không mất ghi". **H-13**: I5 reference A-PURE. Ghi dependency: **H-04** (Migrated/Revoked thiếu transition — báo Long), **H-05** (hw-key P-256 vs TESTNET 32B Ed25519 — báo Long), **H-12** (N_max [PARAM] — chờ Gate-A/Q9 founder). | (chờ Hamen R2) |
+| v0.2 | 2026-06-17 | Manto | **Vá Round-1 Hamen (3 HIGH + 2 MEDIUM).** **H-01**: thêm §3.4.2 ngữ nghĩa hình thức đầy đủ `theme_resolve` (bảng tĩnh Θ, DAG token `G_θ` acyclic depth≤D_max, KHÔNG re-parse chuỗi thành AST) + `lookup_finite` (bảng tĩnh literal, index clamp `[0,|tbl|−1]`, KHÔNG self-reference); §3.4.3 **Bổ đề no-re-entry** (mọi f∈ℰ KHÔNG gọi lại `⟦·⟧`); sửa Proof Thm 7.1 (μ-giảm-trên-AST-tĩnh nay đứng trên Bổ đề 3.4.3) + Thm 7.2(i) (cover 2 toán tử resolve-động). Chặn vector AT-1 (theme_resolve re-parse) + AT-2 (lookup trỏ vòng) TẠI ĐỊNH NGHĨA. **H-02**: thêm §3.4.1 Axiom **A-PURE** (liệt kê tường minh ℰ pure/total/first-order/no-re-enter); tách Thm 7.2(ii) thành (ii-a) no-side-effect←A-PURE và (ii-b) non-Turing←expressiveness — KHÔNG suy purity từ non-Turing. **H-03**: sửa cite I3 + §3.3 + §14.3 + §13.1: replay/sequence-monotonic INHERIT method.md **§5 Security Considerations** (không §6 Privacy). **H-08**: Thm 7.4 thêm giả thiết tường minh **H-SHARD** (`S_{j*}` toàn phần+đơn trị) + Giới hạn đa-tài-phán-per-DID + Q-SHARD (chọn primary+read-replica cho v0.2). **H-09**: Thm 7.3 Statement tách (7.3-SEC đúng mọi policy) vs (7.3-NoLoss chỉ CRDT join-thuần, KHÔNG lww); chống over-claim "không mất ghi". **H-13**: I5 reference A-PURE. Ghi dependency: **H-04** (Migrated/Revoked thiếu transition — báo backend PhoenixKey), **H-05** (hw-key P-256 vs TESTNET 32B Ed25519 — báo backend PhoenixKey), **H-12** (N_max [PARAM] — chờ Gate-A/Q9 founder). | (chờ Hamen R2) |
 | v0.1 | 2026-06-17 | Manto | Khởi tạo Math-Spec L1. Ưu tiên 3 bất biến tử huyệt: INV-SEC (Thm 7.1 Termination + 7.2 No-RCE/closed-form billing, config-as-DSL non-Turing-complete + ℰ first-order total); INV-1 (Thm 7.3 CRDT SEC + 7.4 sovereign-shard + 7.5 durable-outbox no-loss); INV-3 (Thm 7.6 on-chain hiding + 7.7 crypto-shred erasure). Attack model §8 (registry độc hại, confused-deputy, Sybil, griefing). Security theorems §9 (9.1 capability default-deny, 9.2 token audience-bind, 9.3 no-RCE composition; 9.4 Sybil INHERIT VP). Conservation §12 (I1 LAMP 36 tỷ no-burn INHERIT Treasury; I2-I5). Demand-sink incentive-soundness §10 mức invariant. Params [PARAM] (N_max/D_max chờ Gate-A). | (chờ Hamen R1 + format-checker + bias-checker) |
 
 ---
@@ -810,8 +810,8 @@ KHÔNG production: lambda, apply, eval, import, while, recursion, self-reference
 | H-01 | HIGH | **ĐÓNG** | §3.4.2 (ngữ nghĩa đầy đủ theme_resolve/lookup_finite: miền/đối/giá trị) + §3.4.3 (Bổ đề no-re-entry) + sửa Proof Thm 7.1/7.2(i). AT-1 (re-parse) đóng vì Θ trả literal trơ, không `parse`; AT-2 (trỏ vòng) đóng vì bảng tĩnh literal + index clamp + TV-θ1 DAG acyclic. Tiền-đề "2 toán tử total+first-order+non-re-entrant" giờ là ĐỊNH LÝ, không còn giả định ngầm. |
 | H-02 | HIGH | **ĐÓNG** | §3.4.1 Axiom A-PURE liệt kê tường minh purity; Thm 7.2(ii) tách (ii-a) no-side-effect←A-PURE và (ii-b) non-Turing←expressiveness. Bỏ bước nhảy "non-Turing ⟹ no-side-effect". |
 | H-03 | HIGH | **ĐÓNG** | Sửa I3 + §3.3 + §14.3 + §13.1: cite method.md **§5 Security Considerations** (đã đối chiếu byte-level dòng 167-170: "Replay prevention… monotonic sequence number… `seq ≤ on-chain seq` rejected"). §6 là Privacy. |
-| H-04 | MED | **để lại — phụ-thuộc-ngoài** | Migrated/Revoked khai enum nhưng thiếu transition trong TESTNET §A.1 = mâu thuẫn/gap TRONG nguồn PhoenixKey. Ghi INHERIT-with-known-gap ở §13.1, báo Long. Claude KHÔNG sửa PhoenixKey backend (ranh giới). |
-| H-05 | MED | **để lại — phụ-thuộc-ngoài** | hw-key P-256 (method.md §3) vs TESTNET §A.1 "32B Ed25519" = mâu thuẫn TRONG nguồn PhoenixKey. Ghi dependency-note §3.3, báo Long. KHÔNG phải lỗi Math (cite §3 đúng phía nguồn chuẩn). |
+| H-04 | MED | **để lại — phụ-thuộc-ngoài** | Migrated/Revoked khai enum nhưng thiếu transition trong TESTNET §A.1 = mâu thuẫn/gap TRONG nguồn PhoenixKey. Ghi INHERIT-with-known-gap ở §13.1, báo backend PhoenixKey. Claude KHÔNG sửa PhoenixKey backend (ranh giới). |
+| H-05 | MED | **để lại — phụ-thuộc-ngoài** | hw-key P-256 (method.md §3) vs TESTNET §A.1 "32B Ed25519" = mâu thuẫn TRONG nguồn PhoenixKey. Ghi dependency-note §3.3, báo backend PhoenixKey. KHÔNG phải lỗi Math (cite §3 đúng phía nguồn chuẩn). |
 | H-06 | MED | **để lại — author, chưa vá vòng này** | seq_D-persistence chưa tách OA1b riêng. Ngoài phạm vi 3 HIGH + 2 MEDIUM brief giao; đề xuất đóng ở R2 (tách OA1b hoặc đổi op_id derivation bền). |
 | H-07 | MED | **để lại — author, chưa vá vòng này** | conflict-state semilattice embedding chưa chứng minh inflation/idempotent. Brief không liệt; đề xuất R2 (định nghĩa powerset-lattice + embedding) hoặc hạ "claim, mech pending". |
 | H-08 | MED | **ĐÓNG** | Thm 7.4 thêm giả thiết tường minh H-SHARD (S_{j*} toàn phần+đơn trị) + Giới hạn đa-tài-phán + Q-SHARD: v0.2 chọn primary-jurisdiction+read-replica (giữ đơn-trị ⟹ proof nguyên trạng); multi-primary merge = mở rộng sau, blocked-by residency founder. |
@@ -821,7 +821,7 @@ KHÔNG production: lambda, apply, eval, import, while, recursion, self-reference
 | H-12 | gate | **để lại — chờ founder** | N_max/D_max/L_max/T_max [PARAM] chờ Gate-A/Q9 (đo instance Aladin+TonFarm thật). Hard Rule 3 (không bịa). Chặn-gate do dependency, không hạ verdict. |
 | H-13 | LOW | **ĐÓNG** | I5 reference Axiom A-PURE (§3.4.1) thay tiền-đề purity ngầm. Mắt xích phụ thuộc H-02 nay vững. |
 
-**Tóm tắt**: đóng **3/3 HIGH** (H-01/02/03) + **2 MEDIUM theo brief** (H-08/09) + H-13 (đi kèm H-02). Để lại: H-04/H-05/H-12 (phụ-thuộc-ngoài, báo Long/founder); H-06/H-07/H-11 (author, MEDIUM/LOW ngoài brief, đề xuất R2); H-10 (format-checker). Theo lộ trình Hamen: vá 3 HIGH ⟹ trần verdict R2 = **CONDITIONALLY_APPROVED** (MEDIUM còn lại + founder-gate không hạ thêm).
+**Tóm tắt**: đóng **3/3 HIGH** (H-01/02/03) + **2 MEDIUM theo brief** (H-08/09) + H-13 (đi kèm H-02). Để lại: H-04/H-05/H-12 (phụ-thuộc-ngoài, báo backend PhoenixKey/founder); H-06/H-07/H-11 (author, MEDIUM/LOW ngoài brief, đề xuất R2); H-10 (format-checker). Theo lộ trình Hamen: vá 3 HIGH ⟹ trần verdict R2 = **CONDITIONALLY_APPROVED** (MEDIUM còn lại + founder-gate không hạ thêm).
 
 ---
 
@@ -853,7 +853,7 @@ KHÔNG production: lambda, apply, eval, import, while, recursion, self-reference
 - Ngữ nghĩa đầy đủ `theme_resolve`/`fee_tiered` (Tech).
 - URL verify [1]–[12] (format-checker WebFetch — chưa chạy trong DRAFT).
 
-**Phụ thuộc Tech/Long/LampNet:**
+**Phụ thuộc Tech/PhoenixKey backend/LampNet:**
 - **Tech**: implement validate-time AST walk đúng (khoảng cách spec↔code là rủi ro #1 — điểm 1); fsync outbox + seq_D bền (điểm 4); complete-mediation sandbox (OA2); crypto-shred mọi bản DEK (OA4); theme_resolve không-cycle (điểm 2).
-- **Long (PhoenixKey)**: EUF-CMA issuer JWKS bất đối xứng cho Thm 9.2 (AS3); device-revocation-list cho I3/F3.9 (DEP-2).
+- **backend PhoenixKey**: EUF-CMA issuer JWKS bất đối xứng cho Thm 9.2 (AS3); device-revocation-list cho I3/F3.9 (DEP-2).
 - **LampNet**: proof-of-residence + placement cho Thm 7.4/INV-3 residency (AS-LN/DEP-1 — CHƯA CÓ).

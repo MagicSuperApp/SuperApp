@@ -113,6 +113,8 @@ import WalletSendScreen from '../screens/WalletSendScreen';
 import WalletReceiveScreen from '../screens/WalletReceiveScreen';
 import WakemeScreen from '../screens/WakemeScreen';
 import StakingScreen from '../screens/StakingScreen';
+// Số dư MAGIC (ĐỌC-THÔI, qua VaultReadAPI nhà MAGIC) — xem đầu tệp màn về phạm vi v1.
+import MagicVaultBalanceScreen from '../screens/MagicVaultBalanceScreen';
 import OrgDidScreen from '../screens/OrgDidScreen';
 import OrgAuthorityScreen from '../screens/OrgAuthorityScreen';
 import OrgMintScreen from '../screens/OrgMintScreen';
@@ -1820,6 +1822,10 @@ const HOST_STACK_SCREENS: Array<{
   // màn này chuyển LAMP thật, không nên mở được bằng một đường dẫn từ bên ngoài.
   { name: 'Wakeme', component: WakemeScreen, options: { headerShown: false } },
   { name: 'Staking', component: StakingScreen, options: { headerShown: false } },
+  // Số dư MAGIC — route HOST, chưa có nút nào trỏ tới (chờ agent đang sửa
+  // PhoenixWalletScreen.tsx gắn lối vào; xem báo cáo bàn giao). Mở tay bằng
+  // `navigation.navigate('MagicVaultBalance')` để thử trong lúc chờ.
+  { name: 'MagicVaultBalance', component: MagicVaultBalanceScreen, options: { headerShown: false } },
   // Ví tổ chức — tạo OrgDID + mint LAMP bằng OrgDID (2 bước: mint kho → claim-release).
   { name: 'OrgDid', component: OrgDidScreen, options: { headerShown: false } },
   { name: 'OrgAuthority', component: OrgAuthorityScreen, options: { headerShown: false } },

@@ -1971,7 +1971,7 @@ Luật đã chốt (giao diện không gọi tên module nội bộ, không dùn
 |---|---|
 | `Daemon LampNet đang bận…` | `Máy chủ đang bận. Thử lại sau ít phút.` |
 | `Phát tán lưu trữ trên mạng phân tán LampNet...` | `Đang lưu bản sao an toàn…` |
-| `Chưa ráp Enclave native ký giao dịch (Thư)…` | `Tính năng ký giao dịch sẽ mở ở bản sau.` |
+| `Chưa ráp Enclave native ký giao dịch…` | `Tính năng ký giao dịch sẽ mở ở bản sau.` |
 | `Máy này chưa có DID.` | `Máy này chưa có danh tính.` |
 | `Chưa có danh tính PhoenixKey` | `Chưa có danh tính` |
 | `Cần cài react-native-image-picker.\nnpm install…` | `Bản app này chưa mở được máy ảnh. Vui lòng cập nhật app rồi thử lại.` |

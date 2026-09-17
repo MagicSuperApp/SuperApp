@@ -37,6 +37,7 @@ import { WORK_THEME } from '../theme';
 import { useTk } from '../i18n/keys';
 import { useLanguage } from '../i18n/useLanguage';
 import { DEFAULT_INSTANCE } from '../config/instance.config';
+import { BRAND_LOCKUP_ASPECT } from '../config/brandLockup';
 import { markOnboardingSeen } from '../utils/onboardingFlag';
 
 // Xanh lá KHỞI ĐỘNG — cùng bảng với màn Chọn ngôn ngữ và HERO màn Đăng nhập, để ba
@@ -111,7 +112,12 @@ const OnboardingScreen: React.FC = () => {
           {DEFAULT_INSTANCE.brandLockupOnDark ? (
             <Image
               source={DEFAULT_INSTANCE.brandLockupOnDark}
-              style={styles.lockup}
+              style={[styles.lockup, { aspectRatio: BRAND_LOCKUP_ASPECT }]}
+              // `accessible` KHÔNG bỏ được: `<Text>` mặc định là phần tử trợ năng
+              // trên iOS, `<Image>` thì không, và `accessibilityRole` không bật hộ.
+              // Thiếu dòng này là xoá tên app khỏi VoiceOver — xem chú thích dài ở
+              // `LoginNetworkScreen`.
+              accessible
               accessibilityRole="image"
               accessibilityLabel={DEFAULT_INSTANCE.displayName}
             />
@@ -211,7 +217,10 @@ const styles = StyleSheet.create({
   },
   logoImg: { width: 52, height: 52, resizeMode: 'contain' },
   // Cụm nhận diện: đặt theo BỀ RỘNG, chiều cao theo đúng tỉ lệ tệp (856×136).
-  lockup: { width: 248, height: 248 * 136 / 856, resizeMode: 'contain', marginBottom: 10 },
+  // Bề rộng CO ĐƯỢC: `flexShrink` mặc định của RN là 0, nên một con rộng cố định
+  // tràn ra ngoài lề và VẼ ĐÈ (`overflow` mặc định của `View` là `visible`).
+  // Chiều cao do `aspectRatio` sinh từ chính tệp ảnh (`config/brandLockup.ts`).
+  lockup: { width: '100%', maxWidth: 248, resizeMode: 'contain', marginBottom: 10 },
   title: {
     marginTop: 14,
     fontSize: 26,

@@ -2,6 +2,30 @@
 # Codemagic CI/CD — OriLife iOS & Android Build
 # ============================================================
 #
+# ⛔ DỊCH VỤ NÀY ĐÃ BỎ TỪ 12/09/2026. Tệp KHÔNG còn chạy ở đâu.
+#
+# Đường đang dùng:
+#   Android — .github/workflows/android-aab.yml
+#   iOS     — dựng cục bộ trên máy chủ dự án (KHÔNG có workflow iOS trong kho)
+#
+# Vì sao tệp vẫn nằm đây thay vì bị xoá: đây là bản viết DUY NHẤT của công thức
+# dựng iOS. Đo 2026-09-17 — `grep -rl 'xcodebuild\|xcarchive\|exportArchive'`
+# trên toàn kho (trừ vendor/Pods/node_modules) chỉ ra 2 tệp, và cả hai là
+# Android. Sáu bước dưới đây không tồn tại ở bất cứ chỗ nào khác, mỗi bước ứng
+# với một sự cố đã xảy ra thật: vá xung đột chữ ký MapLibre (:1299), giữ bản
+# khai quyền riêng tư sau `pod install` (:1230), đặt số bản dựng theo TestFlight
+# (:1335), tắt ký cho Pods (:1265), tắt NSAllowsArbitraryLoads (:1158), và hai
+# lệnh `xcodebuild` archive + export (:1365, :1411).
+#
+# ⚠ Nên ĐỌC tệp này như TÀI LIỆU, đừng đọc như cấu hình đang sống. Nó mang một
+#   cái tên nói dối về vai của chính nó — đó là lý do khối chú thích này tồn tại.
+#
+# 🔒 Ba định danh App Store Connect từng nằm ở đây dưới dạng giá trị thật, tại 4
+#    chỗ / 8 dòng, trong một kho ĐÃ CÔNG KHAI. Nay chúng đọc từ biến môi trường.
+#    Gỡ khỏi HEAD KHÔNG gỡ khỏi lịch sử git — thứ thật sự đổi rủi ro là thu hồi
+#    khoá ASC và thu hồi thẻ bài Codemagic, không phải viết lại lịch sử.
+#    Ai thêm định danh mới vào đây: đừng. Tệp này không còn nơi nào để nạp nó.
+#
 # Stack:
 #   - React Native 0.84.1 (Metro bundle)
 #   - Swift 5.9 (ScannerModule: AVFoundation, YOLO TFLite, SQLite)
@@ -1337,8 +1361,8 @@ workflows:
           set -e
           # Tự tăng CFBundleVersion = build mới nhất trên TestFlight + 1 (mỗi lần
           # build sign → +1). Dùng App Store Connect API key (group app_store_connect).
-          export APP_STORE_CONNECT_KEY_IDENTIFIER=5JA4K7A7JD
-          export APP_STORE_CONNECT_ISSUER_ID=e56d98f1-e6f0-4e46-9ca8-29b30c2a9a7b
+          export APP_STORE_CONNECT_KEY_IDENTIFIER=${APP_STORE_CONNECT_KEY_IDENTIFIER}
+          export APP_STORE_CONNECT_ISSUER_ID=${APP_STORE_CONNECT_ISSUER_ID}
           export APP_STORE_CONNECT_PRIVATE_KEY="$APP_STORE_CONNECT_PRIVATE_KEY"
           # APP_STORE_APPLE_ID = Apple ID (số) của app — App Store Connect → App → App Information.
           LATEST=$(app-store-connect get-latest-testflight-build-number "$APP_STORE_APPLE_ID" 2>/dev/null || echo "")
@@ -1437,8 +1461,8 @@ workflows:
     publishing:
       app_store_connect:
         api_key: $APP_STORE_CONNECT_PRIVATE_KEY
-        key_id: 5JA4K7A7JD
-        issuer_id: e56d98f1-e6f0-4e46-9ca8-29b30c2a9a7b
+        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
         # submit_to_testflight: gán build vào nhóm tester TestFlight NGAY sau upload —
         # nếu không, build lên App Store Connect nhưng không ai nhận được (issue #144 mục 2.1).
         # ⚠ `beta_groups` PHẢI khớp TÊN NHÓM THẬT trong App Store Connect, sai thì bước
@@ -1480,8 +1504,8 @@ workflows:
     publishing:
       app_store_connect:
         api_key: $APP_STORE_CONNECT_PRIVATE_KEY
-        key_id: 5JA4K7A7JD
-        issuer_id: e56d98f1-e6f0-4e46-9ca8-29b30c2a9a7b
+        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
         # Vẫn phát TestFlight: bản sắp lên store phải có người bấm thử trước, và nếu
         # Apple từ chối thì bản đó vẫn còn đường tới người thử.
         submit_to_testflight: true
@@ -1578,8 +1602,8 @@ workflows:
         # CÙNG khoá API với hai luồng Aladin — một khoá cấp cho cả đội
         # `3666KPJX5R`, không phải một khoá cho mỗi ứng dụng.
         api_key: $APP_STORE_CONNECT_PRIVATE_KEY
-        key_id: 5JA4K7A7JD
-        issuer_id: e56d98f1-e6f0-4e46-9ca8-29b30c2a9a7b
+        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
         submit_to_testflight: true
         # ⚠ Nhóm thử thuộc về TỪNG ứng dụng, không thuộc về đội. `OriLife Testing`
         # là nhóm của `vn.aladinapp` và KHÔNG tồn tại dưới ứng dụng này — khai tên

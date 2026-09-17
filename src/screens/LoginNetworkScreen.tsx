@@ -70,6 +70,7 @@ import { showError } from '../utils/alert';
 import { LANGUAGES, t, useLanguage } from '../i18n';
 import { AUTH_COLORS, NEUTRAL, WORK_THEME } from '../theme';
 import { DEFAULT_INSTANCE } from '../config/instance.config';
+import { BRAND_LOCKUP_ASPECT } from '../config/brandLockup';
 import {
   batLanTruyen,
   buoc,
@@ -740,12 +741,28 @@ const LoginNetworkScreen: React.FC = () => {
             thứ nằm trên đổi mà phép đo vẫn đo cái cũ thì khẩu hiệu căn theo một bề
             ngang không còn ai có. Ở đây `onLayout` của chính ảnh cấp lại số đo ấy.
 
+            Và phép đo đó chỉ có nghĩa vì bề rộng cụm KHÔNG còn là hằng: `width` là
+            `'100%'` chặn trên bằng `maxWidth`, nên ở máy hẹp nó thật sự nhỏ hơn.
+            Bản đầu để `width: 244` cố định — lúc ấy `onLayout` mang HÌNH DẠNG một
+            phép đo nhưng luôn trả lại đúng con số viết trong `StyleSheet` cùng
+            tệp, tức một hằng số đi đường vòng. Đừng đặt lại bề rộng cứng ở đây.
+
             Khẩu hiệu vẫn là CHỮ và vẫn dịch theo ngôn ngữ đang chọn — ảnh cố ý
             không chứa nó. */}
         {DEFAULT_INSTANCE.brandLockupOnDark ? (
           <Image
             source={DEFAULT_INSTANCE.brandLockupOnDark}
-            style={styles.lockup}
+            style={[styles.lockup, { aspectRatio: BRAND_LOCKUP_ASPECT }]}
+            // `accessible` là phần KHÔNG bỏ được, và nó phản trực giác. `<Text>`
+            // mặc định LÀ phần tử trợ năng trên iOS (`Libraries/Text/Text.js` —
+            // `ios: accessible !== false`), còn `<Image>` thì KHÔNG
+            // (`Image.ios.js` chỉ bật khi có `alt` hoặc `accessible`), và
+            // `accessibilityRole` không bật hộ. Nên thay hai dòng chữ bằng một
+            // ảnh mà quên dòng này là XOÁ tên app khỏi VoiceOver: người mù mở app
+            // lần đầu không nghe được mình đang ở app nào, ở đúng ba màn
+            // trước-đăng-nhập. Bộ kiểm không bắt được — preset jest của RN thay
+            // hẳn cả `Image` lẫn `Text` bằng mock, nên phép tính đó không chạy.
+            accessible
             accessibilityRole="image"
             accessibilityLabel={DEFAULT_INSTANCE.displayName}
             onLayout={(e) => setRongTen(e.nativeEvent.layout.width)}
@@ -926,12 +943,32 @@ const styles = StyleSheet.create({
     paddingHorizontal: 76,
   },
   logo: { width: 52, height: 52, borderRadius: 13, marginRight: 12 },
-  // Xếp dọc cho nhánh có cụm nhận diện. `paddingHorizontal` nhỏ hơn nhánh hàng
-  // ngang vì cụm rộng hơn một ô vuông 52px, mà nó vẫn phải nằm dưới nút đổi ngôn
-  // ngữ ở góc phải chứ không chạm vào.
-  dinhXepDoc: { flexDirection: 'column', paddingHorizontal: 40 },
-  // Cụm nhận diện: đặt theo BỀ RỘNG, chiều cao theo đúng tỉ lệ tệp (856×136).
-  lockup: { width: 244, height: 244 * 136 / 856, resizeMode: 'contain', marginBottom: 6 },
+  /**
+   * Xếp dọc cho nhánh có cụm nhận diện — và GIỮ NGUYÊN `paddingHorizontal: 76`
+   * của `dinh`, không nới.
+   *
+   * Bản đầu nới xuống `40` với lý do "cụm rộng hơn một ô vuông 52px". Lý do đó
+   * đọc ngược: `76` không phải chỗ cho ô vuông, nó là khoảng chừa để cụm KHÔNG
+   * chui dưới nút đổi ngôn ngữ ở góc phải (nút bắt đầu ở `W − 71`). Nới lề là
+   * bỏ đúng cái hàng rào duy nhất, và vì con mới không co được nên nó tràn
+   * thẳng vào nút. Đây là chỗ hồi quy đã đo được, không phải phòng xa.
+   */
+  dinhXepDoc: { flexDirection: 'column' },
+  /**
+   * Cụm nhận diện: đặt theo BỀ RỘNG, chiều cao do `aspectRatio` sinh từ chính tệp
+   * ảnh (`config/brandLockup.ts`), KHÔNG gõ tỉ lệ ở đây.
+   *
+   * `width: '100%'` + `maxWidth`, không phải `width: 244`. Lý do đã đo được chứ
+   * không phải phòng xa: `flexShrink` mặc định của RN là **0**, nên một con có bề
+   * rộng CỐ ĐỊNH không co theo lề — nó tràn ra ngoài `paddingHorizontal` và, vì
+   * `overflow` mặc định của `View` là `visible`, nó VẼ ĐÈ thay vì bị cắt. Ở máy
+   * 360dp (Pixel và phần lớn Samsung) cụm chạy từ x=58 tới x=302 trong khi nút đổi
+   * ngôn ngữ bắt đầu ở x=289, và nút vẽ sau nên nó phủ lên hai chữ cuối của chữ
+   * hiệu. Ở 320dp cụm còn tràn 2pt ra ngoài mỗi lề. Hàng rào cũ giam được cặp
+   * [dấu hiệu | chữ] chỉ vì `<Text>` CO ĐƯỢC — hàng rào không đổi, con mới thì
+   * không co, và đó là chỗ hồi quy chui vào.
+   */
+  lockup: { width: '100%', maxWidth: 244, resizeMode: 'contain', marginBottom: 6 },
   cotChu: { alignItems: 'flex-start' },
   ten: {
     fontSize: 26,

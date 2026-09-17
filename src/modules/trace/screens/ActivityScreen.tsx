@@ -26,6 +26,7 @@ import { useSelector } from 'react-redux';
 import { saveActivity } from '../store/farmSlice';
 import { Activity } from '../types';
 import { selectChainWallet } from '../../../store/userSlice';
+import { shouldBlockMagicSpend } from '../../../services/phoenixKey-api';
 import { syncService } from '../../../services/syncService';
 import { COLORS } from '../../../constants';
 // Nen huu co dung chung cua module (tong dat/la) - xem theme/depth.ts
@@ -329,8 +330,13 @@ const ActivityScreen = () => {
   const user = useSelector((state: RootState) => state.user.currentUser);
   // Chỉ tin số dư đến TỪ CHAIN (selector chung). null = chưa biết số dư thật → không chặn nhầm.
   const wallet = useSelector(selectChainWallet);
-  const balanceKnown = !!wallet;
-  const magicBalance = wallet?.magicBalance ?? 0;
+  // Ví CÓ MẶT không có nghĩa là biết số MAGIC. Từ 17/09/2026 máy chủ trả
+  // `magic.available = null` khi nó không xác định được sổ vault, và lượt gọi đó
+  // vẫn thành công — nên `!!wallet` đo sai đại lượng: nó đo "đã gọi được", còn
+  // câu cần hỏi là "có con số không". Phép đo đúng là chính con số.
+  const magicBalance: number | null =
+    wallet == null || wallet.magicBalance == null ? null : wallet.magicBalance;
+  const balanceKnown = magicBalance != null;
 
   const [selected, setSelected] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -563,10 +569,29 @@ const ActivityScreen = () => {
 
   const handleSave = async () => {
     if (!selected || !farm || !user || !selectedActivity) return;
-    // CHỈ chặn khi ĐÃ BIẾT số dư thật (từ chain) và thực sự không đủ. Ví chưa nạp
-    // xong (balanceKnown=false) → KHÔNG chặn nhầm, để nông dân vẫn ghi việc đồng
-    // (offline-first); backend là nơi đối soát phí cuối cùng.
-    if (balanceKnown && magicBalance < selectedActivity.credits) {
+    // CHỈ chặn khi ĐÃ BIẾT số dư thật (từ chain) và thực sự không đủ. Chưa biết
+    // số dư → KHÔNG chặn nhầm, để nông dân vẫn ghi việc đồng (offline-first);
+    // backend là nơi đối soát phí cuối cùng. Luật đó nằm ở
+    // `shouldBlockMagicSpend` chứ không viết lại ở đây: trước bản này ý định
+    // đúng như câu trên, nhưng một `?? 0` ở chỗ đọc số dư đã ép "chưa biết"
+    // thành "0" trước khi tới dòng so sánh, nên cổng chặn đúng những người mà
+    // câu trên hứa là không chặn.
+    //
+    // ── Vì sao KHÔNG còn cờ tắt cổng ở đây ──────────────────────────────────
+    // Bản trước có `SKIP_MAGIC_GATE_FOR_FIELD_TEST_20260917 = true` bọc ngoài
+    // câu `if` này, dựng cho buổi thực địa 17/09 vì lúc đó mọi tài khoản thử
+    // đều ra số dư 0 và bị chặn sạch. Cờ ấy chữa đúng triệu chứng và sai chỗ:
+    // nó tắt cổng cho CẢ người thật sự hết MAGIC, nên buổi test đi qua được
+    // luồng mà không chứng minh cổng còn phân biệt nổi hai cực nào.
+    //
+    // Nguyên nhân thật nằm một tầng dưới — `?? 0` ở chỗ đọc số dư ép "chưa
+    // biết" thành "0". Nay `shouldBlockMagicSpend` nhận `null` và trả `false`,
+    // nên người chưa đo được số dư đi tiếp, còn người có số dư 0 thật thì vẫn
+    // bị chặn. Đó là điều cái cờ định làm, làm đúng chỗ.
+    //
+    // ⛔ ĐỪNG dựng lại một cờ như thế. Một cổng bị tắt trông y hệt một cổng
+    // đang cho qua, và nó không tự kêu khi buổi test đã xong từ lâu.
+    if (shouldBlockMagicSpend(magicBalance, selectedActivity.credits)) {
       showError(tk('trace.activity.lowCredit'), tk('trace.activity.lowCreditBody', { n: selectedActivity.credits }));
       return;
     }

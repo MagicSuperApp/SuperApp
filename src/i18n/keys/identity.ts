@@ -381,6 +381,16 @@ export const IDENTITY_STRINGS = {
     zh: '读取名单需要已登录的会话。请重新登录后再打开本页。',
     ja: '一覧の読み取りにはサインイン済みのセッションが必要です。サインインし直してからこの画面を開いてください。',
   },
+  // Cổng gỡ: anchor on-chain đòi tối thiểu 2 người bảo hộ (PhoenixKey chốt
+  // 2026-09-17, `UpdateGuardians` chỉ chạy khi tập còn lại ≥ 2). Câu này phải nói
+  // được VIỆC CẦN LÀM TIẾP, không chỉ nói cấm — đây là bước duy nhất trong luồng
+  // mà người dùng bị chặn bởi một luật họ không đặt ra.
+  'identity.guardian.removeLocked': {
+    vi: 'Cần ít nhất 2 người bảo hộ để lấy lại tài khoản nếu bạn mất máy. Thêm người mới trước, rồi hãy gỡ người này.',
+    en: 'You need at least 2 guardians to recover your account if you lose this device. Add a new one first, then remove this guardian.',
+    zh: '如果您丢失设备，至少需要 2 位监护人才能找回账户。请先添加新的监护人，再移除这一位。',
+    ja: '端末を紛失した際にアカウントを復旧するには、少なくとも 2 名のガーディアンが必要です。先に新しいガーディアンを追加してから、この方を外してください。',
+  },
 
   'identity.gate.back': {
     vi: 'Quay lại màn đăng nhập',

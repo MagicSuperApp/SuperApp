@@ -854,8 +854,10 @@ const FruitCropperScreen: React.FC = () => {
    * dùng đã chọn "Đít quả", hoặc `/api/capture/plan` đã bảo chụp mặt khác.
    *
    * Lỗi đó chỉ nổ THEO THỨ TỰ THAO TÁC: chọn mặt rồi bấm ngay là sai; chọn mặt
-   * rồi kéo/phóng ảnh (đổi `regionToOrig`) rồi mới bấm thì lại đúng. Nên có test
-   * khoá lại ở `FruitCropperScreen.viewType.test.tsx` — đừng gỡ dep này ra.
+   * rồi kéo/phóng ảnh (đổi `regionToOrig`) rồi mới bấm thì lại đúng. Nên đừng gỡ
+   * dep này ra. Ca canh nằm ở `FruitCropperScreen.test.tsx`, trỏ theo TÊN ca chứ
+   * không theo số dòng: *"chọn 'Đít quả' rồi bấm NGAY — không chạm gì khác — vẫn
+   * gửi lên view_type=\"bottom\""*.
    */
   const useRegion = useCallback(async () => {
     const reg = regionToOrig();

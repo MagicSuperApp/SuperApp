@@ -20,8 +20,8 @@ Theo UI-UX-STANDARD §2 (Frontend/UIUX ⟂ Backend) + Master §4 boundary:
 | Lớp | Sở hữu | Nội dung |
 |---|---|---|
 | **Daemon LampNet + SDK Rust** (BE/fabric) | Team LampNet | Nghiệp vụ Join/lease/report/verify/settlement; recompute-verify chống tự khai; tier; reward epoch; `join_and_contribute`. **SuperApp KHÔNG re-implement.** |
-| **App-side compute** (native binding/FFI) | SuperApp — **Thư** (mobile) | Gọi FFI/uniffi SDK Rust từ mobile; lưu `seed_hex` trong Keystore/Keychain; vòng đời node; build app. |
-| **App-side UI** (Frontend/UIUX) | SuperApp — **Tùng** (frontend) | Màn "Tham gia LampNet" + "Đang đóng góp"; tiêu thụ endpoint REST; design token; 4 trạng thái màn. |
+| **App-side compute** (native binding/FFI) | SuperApp — **native** (mobile) | Gọi FFI/uniffi SDK Rust từ mobile; lưu `seed_hex` trong Keystore/Keychain; vòng đời node; build app. |
+| **App-side UI** (Frontend/UIUX) | SuperApp — **frontend** | Màn "Tham gia LampNet" + "Đang đóng góp"; tiêu thụ endpoint REST; design token; 4 trạng thái màn. |
 
 **Ranh giới dữ liệu:** màu/bo-góc/font/spacing = Frontend (UI-UX-STANDARD §3 token). Endpoint/format dữ liệu (snake_case wire) + DID + error code = hợp đồng FE⟂BE (INTEGRATION §3/§7). SuperApp KHÔNG tự định nghĩa nghiệp vụ Join, chỉ *tiêu thụ*.
 

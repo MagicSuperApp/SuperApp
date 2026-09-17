@@ -104,6 +104,9 @@ export const HOST_ROUTES = [
   'WalletReceive',
   'Wakeme',
   'Staking',
+  // Số dư MAGIC (ĐỌC-THÔI, VaultReadAPI nhà MAGIC) — chưa có nút nào trỏ tới,
+  // xem `screens/MagicVaultBalanceScreen.tsx`.
+  'MagicVaultBalance',
   // Không gian doanh nghiệp
   'OrgDid',
   'OrgAuthority',

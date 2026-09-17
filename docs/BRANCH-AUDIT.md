@@ -10,11 +10,11 @@
 | [`Spec/work-integration`](https://github.com/AladinContract/SuperApp/tree/Spec/work-integration) | anh | ancestor của develop |
 | [`chore/sync-camera-fix`](https://github.com/AladinContract/SuperApp/tree/chore/sync-camera-fix) | anh | ancestor của develop |
 | [`claude/camera-fullscreen-overlay`](https://github.com/AladinContract/SuperApp/tree/claude/camera-fullscreen-overlay) | Claude | ancestor của develop |
-| [`feat/farm-add-screen-update`](https://github.com/AladinContract/SuperApp/tree/feat/farm-add-screen-update) | **Tùng** | merged [#41](https://github.com/AladinContract/SuperApp/pull/41) |
-| [`feat/fix-ui`](https://github.com/AladinContract/SuperApp/tree/feat/fix-ui) | **Tùng** | merged [#33](https://github.com/AladinContract/SuperApp/pull/33) |
-| [`feat/tree-scan-ui-update`](https://github.com/AladinContract/SuperApp/tree/feat/tree-scan-ui-update) | **Tùng** | ancestor của develop |
-| [`feat/foundation`](https://github.com/AladinContract/SuperApp/tree/feat/foundation) | **Thư** | merged [#2](https://github.com/AladinContract/SuperApp/pull/2) (cả main) |
-| [`feat/orilife-phoenixkey-work`](https://github.com/AladinContract/SuperApp/tree/feat/orilife-phoenixkey-work) | **Thư** | merged [#42](https://github.com/AladinContract/SuperApp/pull/42) — ví Standard + YOLO iOS + field A+B |
+| [`feat/farm-add-screen-update`](https://github.com/AladinContract/SuperApp/tree/feat/farm-add-screen-update) | **frontend** | merged [#41](https://github.com/AladinContract/SuperApp/pull/41) |
+| [`feat/fix-ui`](https://github.com/AladinContract/SuperApp/tree/feat/fix-ui) | **frontend** | merged [#33](https://github.com/AladinContract/SuperApp/pull/33) |
+| [`feat/tree-scan-ui-update`](https://github.com/AladinContract/SuperApp/tree/feat/tree-scan-ui-update) | **frontend** | ancestor của develop |
+| [`feat/foundation`](https://github.com/AladinContract/SuperApp/tree/feat/foundation) | **native** | merged [#2](https://github.com/AladinContract/SuperApp/pull/2) (cả main) |
+| [`feat/orilife-phoenixkey-work`](https://github.com/AladinContract/SuperApp/tree/feat/orilife-phoenixkey-work) | **native** | merged [#42](https://github.com/AladinContract/SuperApp/pull/42) — ví Standard + YOLO iOS + field A+B |
 | [`claude/proofchat-wire`](https://github.com/AladinContract/SuperApp/tree/claude/proofchat-wire) | Claude | merged [#39](https://github.com/AladinContract/SuperApp/pull/39) |
 
 ## B. CHƯA merge, cũ, của Claude (DucTiger) — lỗi thời
@@ -35,12 +35,12 @@
 | [`develop`](https://github.com/AladinContract/SuperApp/tree/develop) · [`main`](https://github.com/AladinContract/SuperApp/tree/main) | nhánh chính |
 | `claude/orilife-field-fixes` | việc app đang làm (B2 reconcile, allow_enroll_new) — chưa push, sẽ PR vào develop |
 
-> Không còn nhánh feature nào của Thư/Tùng đang mở trên origin — tất cả đã merge.
+> Không còn nhánh feature nào của native/frontend đang mở trên origin — tất cả đã merge.
 
 ## D. Phân vai việc dọn + follow-up
 
-**→ Thư (mobile / PR):** xoá nhánh đã merge của mình (`feat/foundation`, `feat/orilife-phoenixkey-work`). Follow-up: B3 Android EXIF/blur, mint FFI (worktree `_wt-superapp-mint`).
+**→ native (mobile / PR):** xoá nhánh đã merge của mình (`feat/foundation`, `feat/orilife-phoenixkey-work`). Follow-up: B3 Android EXIF/blur, mint FFI (worktree `_wt-superapp-mint`).
 
-**→ Tùng (frontend / UIUX):** xoá 3 nhánh đã merge (`feat/farm-add-screen-update`, `feat/fix-ui`, `feat/tree-scan-ui-update`). Follow-up: Home config-driven (bỏ quick-actions 100% Trace), mở Domain menu ra work/chat/join, ẩn/Việt-hoá thuật ngữ.
+**→ frontend (UIUX):** xoá 3 nhánh đã merge (`feat/farm-add-screen-update`, `feat/fix-ui`, `feat/tree-scan-ui-update`). Follow-up: Home config-driven (bỏ quick-actions 100% Trace), mở Domain menu ra work/chat/join, ẩn/Việt-hoá thuật ngữ.
 
-**→ Claude (frontend + API):** xoá 4 nhánh claude cũ (mục B) sau khi anh xác nhận. App: B2 farm reconcile, allow_enroll_new wire (ví Standard đã do Thư làm ở [#42](https://github.com/AladinContract/SuperApp/pull/42)).
+**→ Claude (frontend + API):** xoá 4 nhánh claude cũ (mục B) sau khi anh xác nhận. App: B2 farm reconcile, allow_enroll_new wire (ví Standard đã do native làm ở [#42](https://github.com/AladinContract/SuperApp/pull/42)).

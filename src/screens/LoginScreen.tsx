@@ -40,7 +40,12 @@ import {
   isAvailable as isPhoenixKeyAvailable,
   PhoenixKeyNativeError,
 } from '../services/phoenixKey-native';
-import { currentUserDid, isKeypairEnrolled, saveUserDid, signRaw } from '../sdk/phoenixKey';
+import { currentUserDid, saveUserDid, signRaw } from '../sdk/phoenixKey';
+import {
+  readIdentityPresence,
+  routeForPresence,
+  type IdentityPresence,
+} from '../features/loginNetwork/identityPresence';
 import { loginUser } from '../store/userSlice';
 import { showError } from '../utils/alert';
 import LoginSuccessOverlay from '../components/LoginSuccessOverlay';
@@ -198,6 +203,30 @@ const LoginScreen = () => {
   // chỉ là app không biết tên của danh tính đó, và bịa ra một cái tên từ sổ là
   // đúng lỗi vừa gỡ. Không có DID nào đang lưu ⇒ cũng `null`: chưa có danh tính
   // để mở thì không có ai để chào.
+  // Trạng thái danh tính trên MÁY — đọc lại mỗi lần màn này được nhìn thấy, vì
+  // người dùng rời sang màn tạo mới / khôi phục rồi quay về. `'unknown'` là một
+  // trạng thái thật, không phải giá trị khởi tạo cho có: thẻ cửa vào bên dưới
+  // KHÔNG được nói gì về máy trong quãng chưa đo xong.
+  const [presence, setPresence] = useState<IdentityPresence>('unknown');
+
+  useFocusEffect(
+    React.useCallback(() => {
+      let cancelled = false;
+      (async () => {
+        try {
+          const p = await readIdentityPresence();
+          if (!cancelled) setPresence(p);
+        } catch (e) {
+          // Đọc HỎNG ≠ "máy chưa có danh tính". Giữ `'unknown'`: thẻ cửa vào ở
+          // trạng thái đó không mời ai đi đâu cả.
+          if (!cancelled) setPresence('unknown');
+          console.warn('[Login] không đọc được trạng thái danh tính:', e);
+        }
+      })();
+      return () => { cancelled = true; };
+    }, []),
+  );
+
   useFocusEffect(
     React.useCallback(() => {
       let cancelled = false;
@@ -397,10 +426,31 @@ const LoginScreen = () => {
       // cái sai không kêu lên: danh sách vườn hiện RỖNG dưới một DID thứ hai,
       // trùng khớp với "tôi chưa ghi gì".
       //
-      // Nay nút dẫn tới màn HỎI (`IdentityEntryChoice`), và chính người dùng rẽ.
-      const [did, hasKey] = await Promise.all([currentUserDid(), isKeypairEnrolled()]);
-      if (!did || !hasKey) {
-        navigation.navigate('IdentityEntryChoice' as never);
+      // ⛔ ĐÍNH CHÍNH 2026-09-16 — chỉ HỎI ở chỗ app thật sự không biết.
+      //
+      // Khối trên đúng ở chỗ nó nói: "đăng ký" gộp ba luồng, và chọn hộ là sai.
+      // Chỗ nó hụt là nó coi CẢ BA luồng đều không đo được. Hai trong ba thì đo
+      // được ngay trên máy này:
+      //
+      //   · còn khoá trong chip, mất DID  ⟹ người cài lại app trên CHÍNH máy cũ.
+      //     Kho khoá sống qua lần gỡ app, AsyncStorage thì không. Máy chủ trả lời
+      //     được khoá ấy của ai (`POST /identity/lookup`), nên hỏi người dùng ở
+      //     đây là hỏi một câu chính họ cũng không trả lời nổi. Và lối "tôi là
+      //     người mới" của họ kết thúc ở `KEY_ALREADY_REGISTERED`.
+      //   · không khoá, không DID         ⟹ lối chính là tạo mới, đi thẳng.
+      //
+      // Ca còn lại (có DID, mất khoá) vẫn về màn HỎI: ở đó app thật sự không
+      // phân biệt được "hệ điều hành vừa huỷ khoá" với "đây là máy khác".
+      //
+      // Bảng rẽ nằm ở `features/loginNetwork/identityPresence.ts` — CHUNG với
+      // nút dưới đáy `LoginNetworkScreen`, không dựng lại ở đây.
+      // Đo LẠI tại đây thay vì đọc `presence` của thân component: giữa lúc màn
+      // được nhìn thấy và lúc ngón tay chạm nút, người dùng có thể vừa quay về
+      // từ màn khôi phục. Một số đo cũ vài giây ở đúng chỗ này là rẽ sai đường.
+      const measured = await readIdentityPresence();
+      if (measured !== 'yes') {
+        const dich = routeForPresence(measured);
+        if (dich) navigation.navigate(dich as never);
         return;
       }
 
@@ -694,31 +744,93 @@ const LoginScreen = () => {
             đặt cạnh nhau và mỗi lựa chọn nói cái giá của nó. Ở đây chỉ còn một
             cửa dẫn vào màn đó — cùng đích với nút sinh trắc khi máy chưa có danh
             tính, nhưng có CHỮ, cho người đọc chữ trước khi bấm. */}
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={() => {
-            trackPress('identity_entry_cta', { action: 'open_entry_choice' });
-            navigation.navigate('IdentityEntryChoice' as never);
-          }}
-          style={styles.signUpCard}
-        >
-          <View style={styles.signUpIcon}>
-            <Icon name="help-circle-outline" size={20} color={BLUE.primary} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.signUpTitle} allowFontScaling={false}>
-              Bạn đã từng dùng app nào cùng nhóm với app này chưa?
+        {/* ⛔ 2026-09-16 — THẺ NÀY THÔI HỎI Ở CHỖ MÁY ĐÃ TRẢ LỜI ĐƯỢC.
+
+            Trước bản này thẻ đứng vô điều kiện, nên nó hỏi "bạn đã từng dùng app
+            nào cùng nhóm chưa?" cả với người ĐANG đăng nhập được, và cả với người
+            có khoá nằm sẵn trong chip. Ở ca thứ hai câu hỏi ấy còn không trả lời
+            nổi: người dùng không biết app đã từng được cài trên máy này chưa —
+            nhưng CHIP thì biết, và máy chủ đổi được khoá đó lấy DID.
+
+            Nay bốn trạng thái, bốn thẻ. Thứ được giữ nguyên là lối HỎI: nó không
+            mất, chỉ thôi làm cửa bắt buộc cho mọi người. Bảng rẽ dùng chung với
+            nút dưới đáy `LoginNetworkScreen` — `identityPresence.ts`. */}
+        {presence !== 'yes' && (
+          <TouchableOpacity
+            testID="login-entry-card"
+            activeOpacity={0.85}
+            disabled={presence === 'unknown'}
+            onPress={() => {
+              const dich = routeForPresence(presence);
+              if (!dich) return;
+              trackPress('identity_entry_cta', { action: `open_${dich}` });
+              navigation.navigate(dich as never);
+            }}
+            style={[styles.signUpCard, presence === 'unknown' && styles.signUpCardMo]}
+          >
+            <View style={styles.signUpIcon}>
+              <Icon
+                name={
+                  presence === 'key-without-did' ? 'key-variant'
+                    : presence === 'no' ? 'account-plus-outline'
+                      : 'help-circle-outline'
+                }
+                size={20}
+                color={BLUE.primary}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.signUpTitle} allowFontScaling={false}>
+                {presence === 'key-without-did'
+                  ? 'Máy này đã có khoá của bạn — đăng nhập bằng chính khoá đó'
+                  : presence === 'no'
+                    ? 'Tạo danh tính mới trên điện thoại này'
+                    : presence === 'did-without-key'
+                      ? 'Khôi phục danh tính trên máy này'
+                      : 'Đang kiểm tra máy này…'}
+              </Text>
+              <Text style={styles.signUpSub} allowFontScaling={false}>
+                {/* KHÔNG ghi số lối ở đây. Câu cũ ghi "ba đường" và đã sai từ ngày lối thứ
+                    tư (nhờ app đang đăng nhập duyệt) chạy được — số gõ cứng không sinh từ
+                    danh sách nên nó chết im lặng, và không cổng nào kêu. Đo trên màn thật
+                    2026-09-13: câu nói ba, màn bày bốn. */}
+                {presence === 'key-without-did'
+                  ? 'Gỡ ứng dụng không xoá khoá đi. Máy sẽ tự hỏi máy chủ xem khoá này thuộc tài khoản nào — bạn không cần nhớ tên đăng nhập, cũng không cần 24 từ.'
+                  : presence === 'no'
+                    ? 'Khoá riêng được sinh ngay trong chip bảo mật của máy, không gửi đi đâu.'
+                    : presence === 'did-without-key'
+                      ? 'Máy này nhớ tài khoản của bạn nhưng khoá trong chip không còn dùng được — chọn đúng trường hợp của bạn ở màn sau.'
+                      : 'Chưa đọc xong kho khoá của máy, chờ một nhịp.'}
+              </Text>
+            </View>
+            {presence !== 'unknown' && (
+              <Icon name="arrow-right" size={18} color={BLUE.primary} />
+            )}
+          </TouchableOpacity>
+        )}
+
+        {/* LỐI LÙI — chỉ ở đúng trạng thái "máy trống trơn".
+
+            Phép đo ấy KHÔNG phân biệt được người mới với người vừa đổi điện thoại:
+            máy mới của họ cũng trống trơn. Bỏ hẳn lối hỏi là đẩy nhóm thứ hai vào
+            lối sinh một DID THỨ HAI, và cái sai đó không kêu lên — danh sách vườn
+            hiện rỗng, mà rỗng thì trùng khớp với "tôi chưa ghi gì". */}
+        {presence === 'no' && (
+          <TouchableOpacity
+            testID="login-entry-fallback"
+            activeOpacity={0.7}
+            onPress={() => {
+              trackPress('identity_entry_cta', { action: 'open_entry_choice' });
+              navigation.navigate('IdentityEntryChoice' as never);
+            }}
+            style={styles.entryFallback}
+            hitSlop={8}
+          >
+            <Text style={styles.entryFallbackText} allowFontScaling={false}>
+              Tôi đã có tài khoản ở máy khác
             </Text>
-            <Text style={styles.signUpSub} allowFontScaling={false}>
-              {/* KHÔNG ghi số lối ở đây. Câu cũ ghi "ba đường" và đã sai từ ngày lối thứ
-                  tư (nhờ app đang đăng nhập duyệt) chạy được — số gõ cứng không sinh từ
-                  danh sách nên nó chết im lặng, và không cổng nào kêu. Đo trên màn thật
-                  2026-09-13: câu nói ba, màn bày bốn. */}
-              Người mới, đổi điện thoại, hay máy này đang có app khác cùng nhóm — mỗi trường hợp một đường riêng, chọn ở đây
-            </Text>
-          </View>
-          <Icon name="arrow-right" size={18} color={BLUE.primary} />
-        </TouchableOpacity>
+          </TouchableOpacity>
+        )}
 
         {/* Khu "TIN MỚI · SỰ KIỆN" ĐÃ GỠ (2026-08-15).
             Ba thẻ ở đây là dữ liệu viết cứng, và tới lúc phát hành thì hai thẻ đã
@@ -1127,6 +1239,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14, paddingVertical: 12,
     borderWidth: 1.5, borderColor: BLUE.pale,
     marginBottom: 22,
+  },
+  /** Quãng CHƯA đo xong: thẻ mờ và không bấm được — nó chưa nói gì về máy cả. */
+  signUpCardMo: { opacity: 0.55 },
+  /** Lối lùi dưới thẻ chính. Chữ, không phải thẻ: nó là lối THỨ HAI. */
+  entryFallback: {
+    alignSelf: 'center',
+    marginTop: -12, marginBottom: 22,
+    paddingVertical: 6,
+  },
+  entryFallbackText: {
+    fontSize: 12, fontWeight: '700',
+    color: BLUE.primary, textAlign: 'center',
+    textDecorationLine: 'underline',
   },
   signUpIcon: {
     width: 38, height: 38, borderRadius: 12,

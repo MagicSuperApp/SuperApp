@@ -50,6 +50,7 @@ import { useNavigation, useIsFocused, useFocusEffect } from '@react-navigation/n
 import {
   primaryCta,
   readIdentityPresence,
+  routeForPresence,
   type IdentityPresence,
 } from '../features/loginNetwork/identityPresence';
 import { useDispatch } from 'react-redux';
@@ -63,7 +64,7 @@ import {
   isAvailable as isPhoenixKeyAvailable,
   PhoenixKeyNativeError,
 } from '../services/phoenixKey-native';
-import { currentUserDid, isKeypairEnrolled, signRaw } from '../sdk/phoenixKey';
+import { signRaw } from '../sdk/phoenixKey';
 import { loginUser } from '../store/userSlice';
 import { showError } from '../utils/alert';
 import { LANGUAGES, t, useLanguage } from '../i18n';
@@ -494,6 +495,50 @@ const LoginNetworkScreen: React.FC = () => {
     navigation.navigate('IdentityEntryChoice' as never);
   }, [navigation, trackPress]);
 
+  /**
+   * Đưa nút dưới đáy tới ĐÚNG đích của trạng thái máy — chủ nhân chốt 2026-09-16.
+   *
+   * Khối chú thích ngay trên (`moDangKy`) nói vì sao "đăng ký" phải qua màn HỎI,
+   * và lý do đó VẪN ĐÚNG với những gì nó tả: ba luồng gộp vào một chữ. Chỗ nó
+   * hụt là nó coi ba luồng ấy đều không đo được, trong khi hai trong ba thì đo
+   * được ngay trên máy — xem `identityPresence.ts`. Câu hỏi chỉ còn được đặt ở
+   * trạng thái app thật sự không biết.
+   *
+   * `signUpNew` đi THẲNG `SignUpBiometric` và KHÔNG phải là lối duy nhất của
+   * trạng thái đó: dòng chữ phụ ngay dưới nút vẫn mở màn hỏi, cho người đổi
+   * điện thoại — máy mới của họ cũng đo ra "không có gì".
+   *
+   * ⚠ KHÔNG bọc hàm này bằng `useCallback`. Nó gọi `runBiometric`, mà `runBiometric`
+   * là hàm thường của thân component: mỗi lượt vẽ lại sinh một bản mới, đóng bao
+   * quanh giá trị `busy` của ĐÚNG lượt vẽ ấy. Bọc `useCallback` thì bản `runBiometric`
+   * bị chụp cứng ở lượt vẽ cuối cùng mà danh sách phụ thuộc đổi — và `busy` trong bản
+   * chụp đó mãi mãi là `false`. Hậu quả không hiện ra ở đây mà ở `runBiometric`: chốt
+   * `if (busy || noSensor) return` đọc một biến đã đóng băng, nên chạm lần thứ hai
+   * trong lúc hộp sinh trắc đang mở vẫn chạy trọn một lượt đăng nhập thứ hai chồng lên
+   * lượt đầu. Nút dưới đáy KHÔNG tự chặn hộ: `cta.disabled` chỉ đo trạng thái máy.
+   *
+   * Đây là hồi quy đã xảy ra thật một lần, ở đúng chỗ này, và không phép kiểm nào bắt
+   * được vì không tệp kiểm nào nạp màn này. Muốn memo hoá thì phải dời khai báo
+   * `runBiometric` lên trên và đưa nó vào danh sách phụ thuộc — đừng tắt luật
+   * `exhaustive-deps` để giữ nguyên thứ tự.
+   */
+  const theoCta = () => {
+    switch (cta.action) {
+      case 'unlock':
+        return runBiometric();
+      case 'restoreByDeviceKey':
+        trackPress('identity_entry_cta', { action: 'restore_by_device_key' });
+        return navigation.navigate('RestoreIdentity' as never);
+      case 'signUpNew':
+        trackPress('identity_entry_cta', { action: 'sign_up_new' });
+        return navigation.navigate('SignUpBiometric' as never);
+      case 'openEntryChoice':
+        return moDangKy();
+      default:
+        return undefined;
+    }
+  };
+
   const vaoMain = useCallback(() => {
     navigation.reset({ index: 0, routes: [{ name: 'Main' as never }] });
   }, [navigation]);
@@ -565,13 +610,20 @@ const LoginNetworkScreen: React.FC = () => {
         return;
       }
 
-      // Máy CHƯA có danh tính thì không hỏi sinh trắc — hỏi trước là bắt người
-      // dùng xác thực cho một cái khoá không tồn tại. Và không đi thẳng sang màn
-      // tạo mới: nút này không có chữ nào, đưa thẳng nó vào màn tạo mới là để nó
-      // chọn hộ người dùng một trong ba luồng khác hẳn nhau. Dẫn sang màn HỎI.
-      const [did, hasKey] = await Promise.all([currentUserDid(), isKeypairEnrolled()]);
-      if (!did || !hasKey) {
-        navigation.navigate('IdentityEntryChoice' as never);
+      // Máy CHƯA mở khoá được thì không hỏi sinh trắc — hỏi trước là bắt người
+      // dùng xác thực cho một cái khoá không tồn tại.
+      //
+      // Đích thì ĐỌC TỪ TRẠNG THÁI MÁY, không còn gom hết về màn hỏi: máy còn
+      // khoá trong chip mà app không biết khoá của ai thì đường đúng là màn
+      // Khôi phục (nó đổi chính khoá ấy lấy DID, không hỏi người dùng gì cả);
+      // máy trống trơn thì đường đúng là màn tạo mới. Xem `identityPresence.ts`.
+      const presence = await readIdentityPresence();
+      if (presence !== 'yes') {
+        const dich = routeForPresence(presence);
+        // `null` chỉ xảy ra ở `'unknown'`, mà `readIdentityPresence` không trả
+        // `'unknown'` — nó NÉM. Giữ nhánh này để nếu ngày nào nó trả thì đứng
+        // im một nhịp, đừng đoán một đích.
+        if (dich) navigation.navigate(dich as never);
         return;
       }
 
@@ -729,16 +781,22 @@ const LoginNetworkScreen: React.FC = () => {
             Vòng tròn sinh trắc ở giữa màn thì vẫn kiểm đúng (`runBiometric`) —
             nên trước bản này hai lối vào cùng một màn trả lời khác nhau về cùng
             một câu hỏi. Nay cả hai đọc chung `readIdentityPresence`. */}
+        {/* `busy` phải nằm trong `disabled` chứ không chỉ trong `runBiometric`.
+            `cta.disabled` đo TRẠNG THÁI MÁY, nó không biết gì về việc một lượt
+            đăng nhập đang chạy — nên nếu chỉ dựa vào nó thì trong lúc hộp sinh
+            trắc của hệ điều hành đang mở, nút này vẫn sáng và vẫn bấm được.
+            Vòng tròn sinh trắc ở giữa màn đã mờ đi đúng lúc ấy (`busy={busy}`);
+            hai lối vào cùng một hành động thì phải khoá cùng nhau. */}
         <Pressable
           testID="login-primary-cta"
           accessibilityRole="button"
-          accessibilityState={{ disabled: cta.disabled }}
+          accessibilityState={{ disabled: cta.disabled || busy }}
           accessibilityLabel={t(cta.labelKey)}
-          disabled={cta.disabled}
-          onPress={cta.action === 'unlock' ? runBiometric : moDangKy}
+          disabled={cta.disabled || busy}
+          onPress={theoCta}
           style={({ pressed }) => [
             styles.nutDangKy,
-            (pressed || cta.disabled) && styles.nutDangKyNhan,
+            (pressed || cta.disabled || busy) && styles.nutDangKyNhan,
           ]}
         >
           <Text style={styles.chuDangKy} allowFontScaling={false}>
@@ -746,6 +804,32 @@ const LoginNetworkScreen: React.FC = () => {
           </Text>
           {cta.icon ? <Icon name={cta.icon} size={16} color={NEUTRAL.white} /> : null}
         </Pressable>
+
+        {/* LỐI LÙI — chỉ hiện ở đúng trạng thái "máy trống trơn".
+
+            Nút chính ở trạng thái đó đi THẲNG sang màn tạo mới, và với đa số
+            người bấm nó thì đó là đích đúng. Nhưng phép đo "máy trống trơn"
+            KHÔNG phân biệt được người mới với người vừa đổi điện thoại — máy
+            mới của họ cũng trống trơn — nên nếu chỉ còn một lối thì nhóm thứ
+            hai bị đẩy vào lối sinh một DID THỨ HAI, và cái sai đó không kêu
+            lên: danh sách vườn hiện rỗng, mà rỗng thì trùng khớp với "tôi chưa
+            ghi gì".
+
+            Nên lối hỏi vẫn còn, chỉ thôi làm lối BẮT BUỘC. Một dòng chữ, không
+            phải một nút: nó không được tranh chỗ với lối đúng của đa số. */}
+        {cta.action === 'signUpNew' ? (
+          <Pressable
+            testID="login-secondary-entry-choice"
+            accessibilityRole="button"
+            accessibilityLabel={t('Tôi đã có tài khoản ở máy khác')}
+            hitSlop={10}
+            onPress={moDangKy}
+          >
+            <Text style={styles.chuLoiLui} allowFontScaling={false}>
+              {t('Tôi đã có tài khoản ở máy khác')}
+            </Text>
+          </Pressable>
+        ) : null}
 
         <Text style={styles.phienBan} allowFontScaling={false}>
           {DONG_PHIEN_BAN}
@@ -891,6 +975,17 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.2,
     color: NEUTRAL.white,
+  },
+
+  /** Lối lùi dưới nút chính — mờ hơn hẳn, để nó là lối THỨ HAI cả khi nhìn lướt. */
+  chuLoiLui: {
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+    color: NEUTRAL.white,
+    opacity: 0.78,
+    textDecorationLine: 'underline',
+    marginBottom: 16,
   },
 
   phienBan: {

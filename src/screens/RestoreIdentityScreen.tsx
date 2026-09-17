@@ -31,7 +31,13 @@ import { phoenixKeyApi, PhoenixKeyApiError } from '../services/phoenixKey-api';
 import {
   enrollKeypair, ownerPublicKey, saveUserDid, currentUserDid, signRaw, isKeypairEnrolled,
 } from '../sdk/phoenixKey';
-import { phoenixKeyAuth, lookupDidByDeviceKey } from '../services/phoenixKeyAuthService';
+import {
+  phoenixKeyAuth,
+  lookupDidByDeviceKey,
+  classifyDeviceKeyLookupFailure,
+  DEVICE_KEY_LOOKUP_MESSAGE,
+  type DeviceKeyLookupFailure,
+} from '../services/phoenixKeyAuthService';
 import { loginUser } from '../store/userSlice';
 import { countMnemonicWords, normalizeMnemonic } from '../utils/mnemonic';
 import { describeDidState } from '../features/identity/didState';
@@ -49,6 +55,22 @@ import { t, tf } from '../i18n';
  * nó — viết hai lần là mở đúng khe cho hai chỗ trôi khỏi nhau mà không gì báo.
  */
 const RECOVER_PREFIX = 'PHOENIXKEY_RECOVER:';
+
+/**
+ * Tiêu đề hộp thoại cho ba ca hỏng của lối "tìm lại danh tính bằng khoá trong chip".
+ *
+ * Thân câu nằm ở `DEVICE_KEY_LOOKUP_MESSAGE` (`phoenixKeyAuthService`) cùng chỗ với
+ * phép phân loại sinh ra nó — một nguồn. Tiêu đề thì thuộc về tầng màn hình, vì nó
+ * là chuyện trình bày; nhưng nó phải KHÁC nhau theo ca, nếu không ba câu thân khác
+ * nhau lại chui xuống dưới cùng một dòng chữ to và người đọc lướt sẽ thấy ba lần
+ * cùng một lỗi.
+ */
+const DEVICE_KEY_LANE_TITLE: Record<DeviceKeyLookupFailure, string> = {
+  biometric_not_done: 'Chưa xác thực xong',
+  key_not_linked: 'Khoá trên máy này chưa thuộc tài khoản nào',
+  network_down: 'Chưa liên lạc được máy chủ',
+  unknown: 'Chưa tìm lại được danh tính',
+};
 
 const DID_RE = /^did:phoenix:[a-z2-7]{13}:[0-9a-f]{64}$/;
 // Registry {username, did} app lưu lúc đăng ký (SignUpBiometricScreen) — dùng để
@@ -112,6 +134,29 @@ const RestoreIdentityScreen = () => {
     kekOnDevice === undefined || hasChipKey === undefined
       ? undefined
       : Boolean(kekOnDevice) && hasChipKey;
+
+  /**
+   * ── LỐI "TÌM LẠI DANH TÍNH BẰNG KHOÁ TRONG CHIP" — điều kiện MỘT phép đo ─────
+   *
+   * Đây KHÔNG phải một phiên bản lỏng hơn của `shortcutUsable`, và đừng gộp hai
+   * cái: hai lối nói về hai thứ khác nhau và cần hai thứ khác nhau.
+   *   · thẻ lối tắt nói về VÍ — nó gắn máy vào danh tính qua `recoverDevice`, ký
+   *     bằng Master_KEK, nên KEK là điều kiện KHÔNG bỏ được;
+   *   · lối này nói về DANH TÍNH — nó chỉ đổi khoá trong chip lấy DID
+   *     (`POST /identity/lookup`), không đụng tới ví, không ghi gì lên chuỗi.
+   * Nên hạ điều kiện của thẻ kia xuống bằng điều kiện này là mở một lỗ; còn mở
+   * lối này thì không, vì chính chữ ký của chip là điều kiện của nó.
+   *
+   * Ngõ cụt nó gỡ, và là ca thật ngoài vườn: cài lại app thì kho khoá GIỮ khoá
+   * còn AsyncStorage mất sạch, nên máy rơi vào `key-without-did`
+   * (`features/loginNetwork/identityPresence.ts`) và được đưa thẳng sang màn này.
+   * Ở đây trước bản này họ thấy một ô 24 từ và một ô tên đăng nhập — hai thứ đúng
+   * nhóm đó không có. Thẻ lối tắt cũng câm vì nó đòi CẢ Master_KEK.
+   *
+   * `=== true` chứ không `!== false`: `undefined` là CHƯA ĐO XONG, và hiện một
+   * lối rồi rút lại là hứa một lối rồi lấy đi.
+   */
+  const deviceKeyLaneUsable = hasChipKey === true;
 
   // Cụm từ đã CHUẨN HOÁ — dùng cho cả phép đếm lẫn phép khôi phục. Xem
   // `utils/mnemonic.ts`: chép cụm từ kèm số thứ tự / dấu phẩy làm phép đếm cũ ra
@@ -253,9 +298,10 @@ const RestoreIdentityScreen = () => {
     // và là nơi duy nhất chưa gọi.
     //
     // ⚠ HAI RÀNG BUỘC VỀ CHỖ ĐẶT, cả hai đều làm hỏng nếu đặt sai:
-    //  1. PHẢI chạy TRƯỚC `enrollKeypair()` ở dưới. Hàm đó XOÁ khoá cũ khỏi chip;
-    //     sau nó thì khoá trong tay là khoá máy chủ chưa từng thấy, và cửa tra chỉ
-    //     còn trả 404 mãi mãi.
+    //  1. PHẢI chạy TRƯỚC `enrollKeypair()` ở dưới. Không phải vì hàm đó xoá khoá
+    //     cũ — cả hai cầu native TỪ CHỐI sinh đè và trả `E_KEY_EXISTS`. Lý do là
+    //     `enrollKeypair()` chỉ chạy được khi chip TRỐNG, nên sau nó thì khoá trong
+    //     tay chắc chắn là khoá máy chủ chưa từng thấy, và cửa tra chỉ còn trả 404.
     //  2. Chỉ chạy khi ba nguồn rẻ đã rỗng. Nó tốn MỘT lần hỏi vân tay/khuôn mặt —
     //     ở đường thường (máy còn nhớ DID) lần hỏi đó không đổi lấy gì cả, mà một
     //     hộp sinh trắc thừa đúng là thứ đã sinh ra `duong1_chua_xac_thuc`.
@@ -362,11 +408,20 @@ const RestoreIdentityScreen = () => {
     };
 
     // ── THỬ KHOÁ PHẦN CỨNG ĐANG CÓ TRƯỚC, SINH KHOÁ MỚI SAU ───────────────────
-    // `enrollKeypair()` KHÔNG phải một thao tác thêm: `nativeGenerateKeypair` XOÁ
-    // khoá cũ trong Secure Enclave / Keystore trước khi ghi khoá mới, và khoá đó
-    // không có bản sao ở đâu cả. Gọi nó ở dòng đầu — như bản trước — nghĩa là mọi
-    // lần bấm Khôi phục đều phá khoá cũ TRƯỚC khi biết có gắn được không; mất sóng
-    // giữa vòng lặp là máy còn lại một khoá mới chưa mã định danh nào công nhận.
+    // ⛔ ĐÍNH CHÍNH 2026-09-17. Câu cũ ở đây nói `nativeGenerateKeypair` XOÁ khoá cũ
+    // trước khi ghi khoá mới. Mã nói NGƯỢC LẠI: cả hai cầu native từ chối sinh đè
+    // khi nhãn đã có khoá và trả `E_KEY_EXISTS` (`PhoenixKeyModule.kt` nhánh
+    // `keyStore.containsAlias`, `PhoenixKeyModule.swift` nhánh `hasKeySync`).
+    //
+    // Thứ tự "thử trước, sinh sau" vẫn ĐÚNG, chỉ là vì một lý do khác và nhẹ hơn:
+    // trên máy còn khoá, `enrollKeypair()` NÉM chứ không phá gì, nên gọi nó ở dòng
+    // đầu là biến mọi lần bấm Khôi phục thành một lỗi native câm — kể cả những lần
+    // mà khoá đang có thừa sức gắn máy. Máy KHÔNG mất khoá ở ca đó; nó chỉ không
+    // đi tiếp được.
+    //
+    // ⚠ Hệ quả CÒN LẠI của hành vi thật, chưa vá ở bản này: khi khoá đang có KHÔNG
+    // được nhận, dòng `enrollKeypair()` dưới đây ném `E_KEY_EXISTS` thay vì sinh
+    // khoá mới, và câu người dùng đọc là câu gộp của `catch` ngoài cùng.
     //
     // Với đường "ví còn trên máy" thì khoá cũ thường VẪN ĐÚNG là khoá đang đăng ký
     // (chỉ AsyncStorage mất, kho khoá thì không) — thử nó trước là máy chủ trả 409
@@ -565,6 +620,63 @@ const RestoreIdentityScreen = () => {
     );
   };
 
+  /**
+   * TÌM LẠI DANH TÍNH CHỈ BẰNG KHOÁ TRONG CHIP — không 24 từ, không tên đăng nhập.
+   *
+   * ── Vì sao lối này KHÔNG có cửa xác nhận, trong khi hai lối kia có ──────────
+   * Hai lối kia gọi `identity.recoverDevice`: máy chủ tăng `users.token_epoch` rồi
+   * bác MỌI phiên mang epoch cũ, trên MỌI máy. Cái giá đó người dùng không suy ra
+   * được từ màn hình, nên phải nói trước khi làm.
+   * Lối này gọi `POST /identity/lookup` — một cửa CHỈ ĐỌC: đổi khoá lấy DID, không
+   * gắn khoá mới, không thu hồi gì, không ghi lên chuỗi. Không có cái giá nào để
+   * cảnh báo, và dựng một cửa xác nhận cho một việc vô hại là dạy người dùng bấm
+   * "Vẫn tiếp tục" mà không đọc — đúng thứ làm hỏng cửa xác nhận thật ở hai lối kia.
+   *
+   * Sinh trắc vẫn có, và nó nằm bên trong `lookupDidByDeviceKey`: muốn ký được
+   * chuỗi thách đố thì chip phải đối chiếu xong khuôn mặt / vân tay. Đó cũng là
+   * lý do lối này không cần bí mật nào khác.
+   */
+  const doFindIdentityByDeviceKey = async () => {
+    // Đo lại ngay tại chỗ bấm. Nút chỉ dựng khi `hasChipKey === true`, nhưng một
+    // cái chốt chỉ nằm ở tầng vẽ là chốt biến mất ngay lần ai đó đổi cách dựng thẻ.
+    if (hasChipKey !== true) return;
+    try {
+      setLoading(true);
+      const foundDid = await lookupDidByDeviceKey(
+        t('Tìm lại danh tính'),
+        t('Xác thực để tìm lại danh tính của bạn trên máy này'),
+      );
+      await saveUserDid(foundDid);
+
+      // Mở danh tính rồi ĐĂNG NHẬP THẬT — cùng hai bước với cuối `attachThisDevice`.
+      // `.unwrap()` là phần không được bỏ: thiếu nó thì một lần đăng nhập trượt vẫn
+      // đi qua đây êm và người dùng đọc chữ "thành công" rồi vào một app rỗng.
+      const user = await phoenixKeyAuth.unlockExistingIdentity();
+      if (!user) {
+        showWarning(
+          t('Chưa mở được danh tính vừa tìm thấy'),
+          t('Máy chủ đã nhận ra khoá trên máy này, nhưng máy chưa mở được danh tính đó. Thử lại một lần; nếu vẫn vậy, dùng cụm 24 từ ở phần dưới màn hình.'),
+        );
+        return;
+      }
+      await (dispatch(loginUser(user as any) as any) as any).unwrap();
+      showSuccess(
+        t('Đã tìm lại danh tính và đăng nhập'),
+        t('Máy chủ nhận ra khoá đang nằm trong máy này, nên bạn vào lại được mà không cần 24 từ.'),
+        { onConfirm: () => navigation.reset({ index: 0, routes: [{ name: 'Main' }] }) },
+      );
+    } catch (e) {
+      // BA CA BA CÂU. Người huỷ hộp sinh trắc làm lại là xong; mất sóng thì đợi
+      // sóng; còn khoá chưa thuộc danh tính nào thì bấm mãi cũng thế, phải đổi
+      // sang 24 từ. Một câu "có lỗi xảy ra" cho cả ba là đẩy hai nhóm đi sai
+      // đường — và đẩy đúng nhóm đang kẹt nhất vào vòng bấm lại vô tận.
+      const failure = classifyDeviceKeyLookupFailure(e);
+      showWarning(t(DEVICE_KEY_LANE_TITLE[failure]), t(DEVICE_KEY_LOOKUP_MESSAGE[failure]));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const doRestore = async () => {
     if (!taadEnclave.isAvailable()) {
       showWarning(
@@ -619,6 +731,48 @@ const RestoreIdentityScreen = () => {
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+        {/* LỐI "KHOÁ TRONG CHIP" — đứng TRƯỚC mọi thứ khác vì nó đòi ít nhất: không
+            24 từ, không tên đăng nhập, không ví. Điều kiện là MỘT phép đo
+            (`hasChipKey === true`), xem khối lý do ở `deviceKeyLaneUsable`.
+            Đây là lối duy nhất đi được ở ca `key-without-did` — máy còn khoá trong
+            chip mà mất sạch AsyncStorage (cài lại app). */}
+        {deviceKeyLaneUsable ? (
+          <View style={styles.shortcutCard} testID="restore-device-key-lane">
+            <View style={styles.shortcutHead}>
+              <Icon name="fingerprint" size={20} color={COLORS.success} />
+              <Text style={styles.shortcutTitle}>
+                Khoá của bạn vẫn nằm trong máy này — thử tìm lại danh tính ngay
+              </Text>
+            </View>
+            <Text style={styles.shortcutBody}>
+              Gỡ ứng dụng không xoá khoá bảo mật trong chip. Máy sẽ hỏi máy chủ xem
+              khoá này thuộc tài khoản nào — bạn chỉ cần
+              <Text style={styles.bold}> vân tay hoặc khuôn mặt</Text>, không cần 24 từ,
+              cũng không cần nhớ tên đăng nhập.
+            </Text>
+
+            <TouchableOpacity
+              testID="restore-device-key-btn"
+              style={[styles.shortcutBtn, loading && { opacity: 0.5 }]}
+              onPress={() => { void doFindIdentityByDeviceKey(); }}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <>
+                  <Icon name="account-search-outline" size={18} color="#fff" />
+                  <Text style={styles.primaryBtnText}>Tìm lại danh tính bằng khoá trên máy</Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            <Text style={styles.shortcutOr}>
+              Không tìm ra? Vẫn còn hai lối bên dưới.
+            </Text>
+          </View>
+        ) : null}
+
         {/* LỐI TẮT — chỉ hiện khi ĐÃ ĐO XONG cả hai thứ và cả hai đều còn: ví
             (KEK) VÀ khoá trong chip. `undefined` (chưa đo) KHÔNG hiện: hiện rồi
             rút lại là hứa một lối rồi lấy đi. Còn ví mà mất khoá thì thẻ này im

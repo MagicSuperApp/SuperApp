@@ -514,4 +514,67 @@ export const ERRORS: PhraseMap = {
   'expo-asset không trả về uri': { en: 'expo-asset returned no uri', zh: 'expo-asset 未返回 uri', ja: 'expo-asset が uri を返しませんでした' },
   'resolveAssetSource không trả về uri': { en: 'resolveAssetSource returned no uri', zh: 'resolveAssetSource 未返回 uri', ja: 'resolveAssetSource が uri を返しませんでした' },
   // (Hai câu về ví tổ chức / đưa LAMP về ví đã khai ở đầu file này.)
+
+  // ── Lối "tìm lại danh tính bằng khoá trong chip" (màn Khôi phục) ───────────
+  // Ba ca hỏng KHÔNG gộp được: việc người dùng phải làm tiếp trái ngược nhau —
+  // xem `DeviceKeyLookupFailure` ở `services/phoenixKeyAuthService.ts`.
+  'Chưa xác thực xong': { en: 'Authentication not completed', zh: '验证未完成', ja: '認証が完了していません' },
+  'Khoá trên máy này chưa thuộc tài khoản nào': {
+    en: 'The key on this device is not linked to any account',
+    zh: '本机上的密钥尚未归属任何账户',
+    ja: 'この端末の鍵はどのアカウントにも紐づいていません',
+  },
+  'Chưa liên lạc được máy chủ': { en: 'Could not reach the server', zh: '无法连接服务器', ja: 'サーバーに接続できませんでした' },
+  'Chưa tìm lại được danh tính': { en: 'Could not recover your identity', zh: '未能找回身份', ja: '本人確認情報を復元できませんでした' },
+  'Chưa xác thực xong vân tay hoặc khuôn mặt nên máy chưa hỏi được máy chủ. Bấm lại và giữ tới khi máy báo xong — khoá trên máy vẫn còn nguyên.': {
+    en: 'Fingerprint or face authentication was not completed, so the device could not ask the server. Tap again and hold until the device confirms — the key on your device is untouched.',
+    zh: '指纹或人脸验证未完成，本机还没能询问服务器。请再点一次并保持到提示完成——本机上的密钥没有任何改动。',
+    ja: '指紋または顔の認証が完了しなかったため、サーバーへ問い合わせできませんでした。もう一度タップし、完了の表示が出るまで維持してください。端末の鍵はそのまま残っています。',
+  },
+  'Máy chủ chưa thấy khoá trên máy này thuộc về tài khoản nào: khoá có thể chưa đăng ký xong lần trước, hoặc đã bị thu hồi sau một lần khôi phục ở nơi khác. Bấm lại cũng ra đúng kết quả này — hãy dùng cụm 24 từ ở phần dưới màn hình.': {
+    en: 'The server does not see this device key as belonging to any account: it may never have finished registering, or it was revoked after a recovery elsewhere. Tapping again gives the same result — use the 24-word phrase below instead.',
+    zh: '服务器未发现本机密钥归属于任何账户：它可能上次没有注册完成，或在别处恢复后已被吊销。再点一次也是同样结果——请改用下方的 24 个助记词。',
+    ja: 'サーバーはこの端末の鍵がどのアカウントに属するか把握していません。前回の登録が完了しなかったか、別の端末での復元により失効した可能性があります。もう一度押しても結果は同じです。下の 24 単語をお使いください。',
+  },
+  'Chưa liên lạc được với máy chủ danh tính. Kiểm tra sóng rồi bấm lại — khoá trên máy vẫn còn nguyên, không mất gì.': {
+    en: 'Could not reach the identity server. Check your connection and tap again — the key on your device is untouched, nothing is lost.',
+    zh: '无法连接身份服务器。请检查网络后再点一次——本机上的密钥没有任何改动，不会丢失。',
+    ja: '本人確認サーバーに接続できませんでした。通信状態を確認してからもう一度押してください。端末の鍵はそのまま残っており、失われるものはありません。',
+  },
+  'Chưa tìm lại được danh tính từ khoá trên máy, chưa rõ vì sao. Thử lại một lần; nếu vẫn vậy, dùng cụm 24 từ ở phần dưới hoặc chụp màn hình này gửi hỗ trợ.': {
+    en: 'Could not recover your identity from the device key, and the reason is unclear. Try once more; if it still fails, use the 24-word phrase below or send a screenshot of this to support.',
+    zh: '未能通过本机密钥找回身份，原因不明。请再试一次；若仍不行，请改用下方的 24 个助记词，或截图发给客服。',
+    ja: '端末の鍵から本人確認情報を復元できませんでした。原因は不明です。もう一度お試しください。それでも失敗する場合は下の 24 単語を使うか、この画面のスクリーンショットをサポートへお送りください。',
+  },
+  'Tìm lại danh tính': { en: 'Recover identity', zh: '找回身份', ja: '本人確認情報を復元' },
+  'Xác thực để tìm lại danh tính của bạn trên máy này': {
+    en: 'Authenticate to recover your identity on this device',
+    zh: '请验证身份，以便在本机找回您的身份',
+    ja: 'この端末で本人確認情報を復元するために認証してください',
+  },
+  'Đã tìm lại danh tính và đăng nhập': { en: 'Identity recovered and signed in', zh: '已找回身份并登录', ja: '本人確認情報を復元してログインしました' },
+  'Máy chủ nhận ra khoá đang nằm trong máy này, nên bạn vào lại được mà không cần 24 từ.': {
+    en: 'The server recognised the key already stored on this device, so you are back in without needing the 24 words.',
+    zh: '服务器识别出本机中已有的密钥，因此您无需 24 个助记词即可重新登录。',
+    ja: 'サーバーがこの端末にある鍵を認識したため、24 単語なしで再度ログインできました。',
+  },
+  'Chưa mở được danh tính vừa tìm thấy': { en: 'Could not open the identity just found', zh: '未能打开刚找到的身份', ja: '見つかった本人確認情報を開けませんでした' },
+  'Máy chủ đã nhận ra khoá trên máy này, nhưng máy chưa mở được danh tính đó. Thử lại một lần; nếu vẫn vậy, dùng cụm 24 từ ở phần dưới màn hình.': {
+    en: 'The server recognised this device key, but the device could not open that identity. Try once more; if it still fails, use the 24-word phrase below.',
+    zh: '服务器识别了本机密钥，但本机未能打开该身份。请再试一次；若仍不行，请改用下方的 24 个助记词。',
+    ja: 'サーバーはこの端末の鍵を認識しましたが、端末側でその本人確認情報を開けませんでした。もう一度お試しください。それでも失敗する場合は下の 24 単語をお使いください。',
+  },
+
+  // ── Chip còn khoá của lần cài trước (`E_KEY_EXISTS`) ──────────────────────
+  'Máy này vẫn còn khoá của lần cài trước': {
+    en: 'This device still holds a key from a previous install',
+    zh: '本机仍保留上次安装留下的密钥',
+    ja: 'この端末には前回インストール時の鍵が残っています',
+  },
+  'Tìm lại danh tính đó': { en: 'Recover that identity', zh: '找回该身份', ja: 'その本人確認情報を復元' },
+  'Máy này vẫn còn một khoá bảo mật từ lần cài trước nằm trong chip, và ứng dụng không được phép ghi đè lên nó — khoá đó có thể đang thuộc một tài khoản còn dùng được. Đây không phải lỗi sóng hay lỗi vân tay, nên bấm tạo lại sẽ ra đúng kết quả này. Hãy mở màn Khôi phục danh tính: máy sẽ tự hỏi máy chủ xem khoá này thuộc tài khoản nào, không cần 24 từ và không cần tên đăng nhập.': {
+    en: 'This device still has a security key from a previous install inside its chip, and the app is not allowed to overwrite it — that key may belong to an account that still works. This is not a connection or fingerprint problem, so tapping create again gives the same result. Open the Recover identity screen: the device will ask the server which account this key belongs to, with no 24 words and no username needed.',
+    zh: '本机芯片中仍存有上次安装留下的安全密钥，应用不允许覆盖它——该密钥可能仍属于一个可用账户。这不是网络或指纹问题，再次点击创建也是同样结果。请打开“找回身份”页面：本机会向服务器询问该密钥属于哪个账户，无需 24 个助记词，也无需用户名。',
+    ja: 'この端末のチップには前回インストール時のセキュリティ鍵が残っており、アプリはそれを上書きできません。その鍵はまだ有効なアカウントのものである可能性があります。通信や指紋の問題ではないため、もう一度作成を押しても結果は同じです。「本人確認情報の復元」画面を開いてください。端末がサーバーにこの鍵の所属アカウントを問い合わせます。24 単語もユーザー名も不要です。',
+  },
 };

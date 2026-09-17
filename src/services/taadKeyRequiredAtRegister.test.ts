@@ -145,10 +145,13 @@ describe('khoá dự phòng là ĐIỀU KIỆN của lượt đăng ký', () => 
     expect(err.reason).toBe('derive_failed');
     // Chốt đắt nhất của tệp: không lượt đăng ký nào được đi ra ngoài.
     expect(mockRegisterBodies).toHaveLength(0);
-    // Và chốt về THỨ TỰ: `enrollKeypair` xoá khoá cũ trong chip rồi ghi khoá mới.
-    // Chạy nó trước phép đo là để lại một máy mất khoá cũ mà chưa có danh tính mới,
-    // và lần bấm sau app hỏi "máy này đã có một danh tính" về một danh tính chưa
-    // từng tồn tại.
+    // Và chốt về THỨ TỰ. Lý do KHÔNG phải "enrollKeypair xoá khoá cũ" — câu đó sai:
+    // hai cầu native từ chối sinh đè và trả `E_KEY_EXISTS` (`PhoenixKeyModule.kt`
+    // nhánh `keyStore.containsAlias`, `PhoenixKeyModule.swift` nhánh `hasKeySync`).
+    // Lý do đúng là ở máy CHƯA có khoá: chạy `enrollKeypair` trước phép đo thì máy
+    // giữ lại một khoá mới mà lượt đăng ký không bao giờ dùng tới, và lần bấm sau
+    // `isKeypairEnrolled()` trả `true` nên app hỏi "máy này đã có một danh tính" về
+    // một danh tính chưa từng tồn tại.
     expect(mockEnrollCalls).toHaveLength(0);
   });
 

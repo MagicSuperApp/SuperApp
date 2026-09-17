@@ -77,11 +77,22 @@ export function parsePairPayload(raw: string): string | null {
 /**
  * Khoá công khai của MÁY NÀY, sinh mới nếu máy chưa có khoá nào.
  *
- * ⚠ `enrollKeypair()` XOÁ khoá cũ trong Secure Enclave / Keystore trước khi ghi
- * khoá mới, và khoá cũ không có bản sao ở đâu. Nên nó chỉ được gọi khi
- * `isKeypairEnrolled()` trả `false` — hỏi trước, sinh sau. Gọi thẳng `enrollKeypair`
- * ở đây sẽ phá danh tính của một máy đã đăng nhập, mà màn hình thì không có cách
- * nào biết điều đó đã xảy ra.
+ * ⚠ GIỮ `isKeypairEnrolled()` Ở ĐÂY — nhưng KHÔNG phải vì lý do khối này từng ghi.
+ *
+ * Câu cũ ở đây nói `enrollKeypair()` XOÁ khoá cũ trước khi ghi khoá mới. Mã nói
+ * ngược: cả hai cầu native TỪ CHỐI khi nhãn đã có khoá và trả `E_KEY_EXISTS`
+ * (`android/.../PhoenixKeyModule.kt` nhánh `keyStore.containsAlias`,
+ * `ios/LocalPods/ScannerModule/UI/PhoenixKeyModule.swift` nhánh `hasKeySync`).
+ * Hành vi thật AN TOÀN HƠN mô tả — không có ca mất-danh-tính ở đây.
+ *
+ * Lý do đúng để giữ phép hỏi, và nó vẫn đủ để giữ: bỏ đi thì hàm này NÉM
+ * `E_KEY_EXISTS` cho đúng cái máy đã đăng nhập — tức lối ghép máy chết ở bước đầu
+ * với một mã lỗi native, trong khi việc phải làm chỉ là dùng lại khoá đang có.
+ * Hỏi trước, sinh sau, thì máy đã có khoá đi thẳng vào nhánh `ownerPublicKey()`.
+ *
+ * Nói cách khác: phép hỏi này đổi từ một CỔNG CHỐNG MẤT DỮ LIỆU (nó chưa bao giờ
+ * là thế) thành một cổng chống một câu lỗi câm. Vẫn phải giữ, chỉ là đừng ai đọc
+ * khối này rồi tin rằng chip cho ghi đè.
  */
 export async function thisDevicePublicKey(): Promise<string> {
   if (await isKeypairEnrolled()) return (await ownerPublicKey()).toLowerCase();

@@ -1147,7 +1147,39 @@ const AccountScreen = () => {
                           nhưng nếu ĐÓ là lối duy nhất thì người chưa lập ví không bao giờ
                           nhìn thấy tính năng tồn tại. Lối này để họ THẤY, rồi màn Wakeme
                           tự dẫn sang thiết lập ví nếu chưa có.
+
+                          ⛔ Khối chú thích này đã MỒ CÔI cho tới 18/09/2026: nó tả một
+                          `MenuItem` Wakeme mà `MenuItem` đó chưa từng được thêm — ngay
+                          dưới nó là "Xuất danh tính". Nên lối duy nhất tới Wakeme là nút
+                          nằm CHÔN trong hộp thoại LAMP (`:949` và `:962`), tức phải bấm
+                          vào dòng LAMP mới thấy. Chú thích nói "lối này để họ THẤY" trong
+                          khi không có lối nào — một chú thích tự nó không mở được nút, và
+                          nó đọc y như thể việc đã làm xong.
                         */}
+                        <MenuItem
+                            icon="gift-outline"
+                            label="Nhận LAMP (Wakeme)"
+                            sublabel="Mỗi người một lần — xem trạng thái và điều kiện"
+                            onPress={() => navigation.navigate('Wakeme')}
+                        />
+                        {/*
+                          Điểm MAGIC — màn `MagicVaultBalanceScreen` đã dựng xong và nằm
+                          trong navigator (`navigation/index.tsx:1828`), nhưng **0 lời gọi
+                          `navigate`** nào trỏ tới. Chính chú thích ở `index.tsx:1827` tự
+                          khai nó chỉ mở được bằng cách sửa mã để thử. Đúng lớp màn mồ côi
+                          kho này đã dính nhiều lần.
+
+                          Gắn lối vào ở đây KHÔNG hứa hão: màn tự phân biệt ba trạng thái
+                          và nói "chưa cấu hình" khi chưa có cửa đọc, thay vì hiện 0. Nên
+                          người dùng thấy tính năng tồn tại và đọc được trạng thái THẬT của
+                          nó — khác hẳn việc vẽ một số dư bịa.
+                        */}
+                        <MenuItem
+                            icon="diamond-stone"
+                            label="Điểm MAGIC"
+                            sublabel="Số dư theo lô và hạn dùng — sinh từ LAMP đang giữ"
+                            onPress={() => navigation.navigate('MagicVaultBalance')}
+                        />
                         <MenuItem
                             icon="card-account-details-outline"
                             label="Xuất danh tính"

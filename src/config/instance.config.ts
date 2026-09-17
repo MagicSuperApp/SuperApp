@@ -240,8 +240,15 @@ export interface InstanceConfig {
    *
    * VÌ SAO CHỈ CÓ BẢN CHO NỀN TỐI: cả ba chỗ dùng đều là nền lục sẫm. Một bản mực
    * lục cho nền sáng có tồn tại trong bộ nhận diện, nhưng KHÔNG kèm vào đây khi
-   * chưa màn nào đặt nó — một tệp ảnh không ai dùng vẫn đi vào gói cài, và vẫn
-   * phải bảo trì như thể nó đang chạy.
+   * chưa màn nào đặt nó — một tài sản không có nơi đọc là tài sản không ai bảo
+   * trì, và lần sau ai nhìn vào cũng phải đi đo xem nó còn đúng không.
+   *
+   * ⚠ Lý do CŨ ở dòng này ("một tệp ảnh không ai dùng vẫn đi vào gói cài") đã bị
+   * chính tệp này bác: hai lời khai app nằm chung một mô-đun với `require()` tĩnh
+   * ở tầng mô-đun và Metro không cắt cây, nên gói cài của Aladin ĐÃ chứa sẵn
+   * `lockup-on-dark.png`, `logo.png`, `qr-backdrop.png` của CheckFarm. Kết luận
+   * không đổi, nhưng lý do thì phải đúng — một lý do sai sẽ được trích lại cho
+   * quyết định sau.
    *
    * ⚠ Cụm này KHÔNG có câu giới thiệu trong ảnh, và đó là ràng buộc chứ không
    * phải lựa chọn thẩm mỹ: app chạy bốn thứ tiếng và đã có `tagline`/`slogan`
@@ -514,8 +521,9 @@ export const CHECKFARM_INSTANCE: InstanceConfig = {
   // nào để lần ra.
   logo: require('../../instances/checkfarm/brand/logo.png'),
   // Cụm nhận diện cho nền tối, mực TRẮNG trên nền trong suốt, cắt sát hộp mực.
-  // Sinh từ cùng bộ sinh dựng ảnh cửa hàng của nhà CheckFarm
-  // (`Logo/play-store/build-feature-graphic.py --variant ink-on-dark --no-tagline`),
+  // Sinh từ cùng bộ sinh dựng ảnh cửa hàng, nằm ở kho `CheckFarm/Docs`
+  // (`Logo/play-store/build-feature-graphic.py --variant ink-on-dark --no-tagline`
+  // — kho KHÁC kho này, nên đừng đi tìm đường dẫn đó ở đây),
   // nên nó không thể trôi khỏi ảnh cửa hàng: cùng dấu hiệu, cùng phông, cùng cỡ
   // chữ đã giải ra từ bốn ràng buộc bố cục. Đối chiếu bằng `md5` lúc chép sang:
   // `ba0b2c2b8b6ae38fa8f232c83b90ec26`.

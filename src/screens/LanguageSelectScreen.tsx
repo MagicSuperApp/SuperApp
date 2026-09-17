@@ -31,6 +31,7 @@ import { COLORS } from '../constants';
 import { WORK_THEME } from '../theme';
 import { LANGUAGES, getLanguage, setLanguage, type LangCode } from '../i18n';
 import { DEFAULT_INSTANCE } from '../config/instance.config';
+import { BRAND_LOCKUP_ASPECT } from '../config/brandLockup';
 
 // Xanh lá thương hiệu — khớp HERO của màn Đăng nhập để hai màn liền mạch.
 const BRAND = {
@@ -104,7 +105,12 @@ const LanguageSelectScreen = () => {
         {DEFAULT_INSTANCE.brandLockupOnDark ? (
           <Image
             source={DEFAULT_INSTANCE.brandLockupOnDark}
-            style={styles.lockup}
+            style={[styles.lockup, { aspectRatio: BRAND_LOCKUP_ASPECT }]}
+            // `accessible` KHÔNG bỏ được: `<Text>` mặc định là phần tử trợ năng
+            // trên iOS, `<Image>` thì không, và `accessibilityRole` không bật hộ.
+            // Thiếu dòng này là xoá tên app khỏi VoiceOver — xem chú thích dài ở
+            // `LoginNetworkScreen`.
+            accessible
             accessibilityRole="image"
             accessibilityLabel={DEFAULT_INSTANCE.displayName}
           />
@@ -198,7 +204,10 @@ const styles = StyleSheet.create({
   logoImg: { width: 50, height: 50, borderRadius: 9 },
   // Cụm nhận diện: đặt theo BỀ RỘNG, chiều cao theo đúng tỉ lệ tệp (856×136).
   // `resizeMode: 'contain'` để một lần đổi tỉ lệ ảnh không kéo méo chữ hiệu.
-  lockup: { width: 236, height: 236 * 136 / 856, resizeMode: 'contain', marginBottom: 14 },
+  // Bề rộng CO ĐƯỢC: `flexShrink` mặc định của RN là 0, nên một con rộng cố định
+  // tràn ra ngoài lề và VẼ ĐÈ (`overflow` mặc định của `View` là `visible`).
+  // Chiều cao do `aspectRatio` sinh từ chính tệp ảnh (`config/brandLockup.ts`).
+  lockup: { width: '100%', maxWidth: 236, resizeMode: 'contain', marginBottom: 14 },
   eyebrow: { fontSize: 10, fontWeight: '800', color: BRAND.pale, letterSpacing: 3, marginBottom: 8 },
   title: { fontSize: 28, fontWeight: '800', color: BRAND.white, letterSpacing: -0.6 },
   titleAlt: { fontSize: 13, color: 'rgba(255,255,255,0.82)', marginTop: 6, lineHeight: 19 },

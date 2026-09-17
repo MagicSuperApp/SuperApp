@@ -53,11 +53,18 @@ const SeedExportScreen = () => {
    *       (masterKekStore.ts, chú thích "khởi tạo ví lần đầu").
    *   (3) LỘ bí mật — `masterKekToMnemonic()` biến KEK thành 24 từ đọc được.
    *
-   * Hai lối vào khác dẫn người dùng tới đây để làm việc (1), không phải việc (3):
-   * màn Nhận LAMP và màn Ví đều gọi màn này bằng nhãn "Thiết lập ví". Đặt cổng
-   * trước CẢ hàm thì ai không qua được cổng sẽ KHÔNG CÓ VÍ và không nhận được
-   * LAMP — tức cổng bảo mật biến thành cổng chặn người dùng khỏi tài sản của họ.
-   * Nên bước (1) chạy trước, không cổng; cổng chỉ chắn bước (3).
+   * Còn một lối vào dẫn người dùng tới đây để làm việc (1), không phải việc (3):
+   * màn Ví gọi màn này bằng nhãn "Thiết lập ví". Đặt cổng trước CẢ hàm thì ai
+   * không qua được cổng sẽ KHÔNG CÓ VÍ — tức cổng bảo mật biến thành cổng chặn
+   * người dùng khỏi tài sản của họ. Nên bước (1) chạy trước, không cổng; cổng
+   * chỉ chắn bước (3).
+   *
+   * ⚠️ Màn Nhận LAMP TỪNG là lối vào thứ hai và nay KHÔNG còn: nó gọi thẳng
+   * `getOrCreateMasterKek()` (xem khối `createWallet` ở `screens/WakemeScreen.tsx`).
+   * Lý do là chiều của việc bày bí mật: người vào đó chỉ muốn nhận LAMP, không
+   * hỏi tới cụm 24 từ, nên bắt họ đi ngang qua bước (3) là tự tạo ra đúng nguy
+   * cơ mà cả màn này được viết ra để tránh. Ai dựng thêm lối vào mới cho việc
+   * (1) thì làm như màn đó, đừng dẫn về đây.
    *
    * ── Vì sao là `signRaw`, KHÔNG phải `simplePrompt` ──────────────────────────
    * `simplePrompt()` bật hộp thoại từ JS và trả về một `boolean` ở tầng JS: ai

@@ -37,12 +37,10 @@ use cardano_serialization_lib::{
     Value, Vkeywitnesses,
 };
 use data_encoding::BASE32_NOPAD;
-use hkdf::Hkdf;
 use rand::RngCore;
 use serde::Deserialize;
 use serde_json::Value as JsonValue;
 use zeroize::Zeroizing;
-use sha2::Sha256;
 
 /// BLAKE2b-256 = BLAKE2b with 32-byte output (per RFC 7693, used by Cardano too).
 pub(crate) type Blake2b256 = Blake2b<U32>;
@@ -1043,25 +1041,10 @@ pub fn generate_controller_keypair() -> ControllerKeypair {
     }
 }
 
-/// Derive the old TAAD_Key signing seed from a Master_KEK. Mirrors
-/// `sign::derive_taad_seed` (`salt = SHA-256("genesis")`, `info =
-/// "taad-controller-v1"`). Kept local to avoid widening the `sign` module's
-/// public API; if this drifts from `sign.rs`, the round-trip test
-/// `sign::tests::seed_matches_dart_bridge_derivation` no longer protects this
-/// path — see TODO note below.
-///
-/// TODO: once the v2 derivation (salt = H(DID)) lands per spec §3.2, replace
-/// this with the shared derivation helper exposed from `sign.rs`.
-fn derive_taad_seed_from_kek(master_kek: &[u8; 32]) -> Zeroizing<[u8; 32]> {
-    let mut salt_hasher = Sha256::new();
-    salt_hasher.update(b"genesis");
-    let salt: [u8; 32] = salt_hasher.finalize().into();
-    let hk = Hkdf::<Sha256>::new(Some(&salt), master_kek);
-    let mut seed = Zeroizing::new([0u8; 32]);
-    hk.expand(b"taad-controller-v1", &mut *seed)
-        .expect("HKDF expand of 32 bytes from SHA-256 cannot fail");
-    seed
-}
+// Bản chép thứ hai của công thức dẫn xuất (`derive_taad_seed_from_kek`) đã BỊ XOÁ
+// tại đây. Đường rotate/lifecycle nay gọi thẳng `sign::derive_taad_controller_key`
+// — nguồn duy nhất. Bản chép cũ phải nuôi một bài kiểm riêng chỉ để canh hai bản
+// khỏi trôi khỏi nhau; bài kiểm đó cũng đi cùng nó.
 
 // ─── 4. CREATE TAAD UTxO TX ────────────────────────────────────────
 //
@@ -1085,7 +1068,7 @@ fn derive_taad_seed_from_kek(master_kek: &[u8; 32]) -> Zeroizing<[u8; 32]> {
 //   - that output carries a FRESH inline TAADDatum (seq==0, Active, revoked None);
 //   - the new controller signs: `controller_pkh = blake2b_224(taad_pubkey)` is in
 //     `extra_signatories` — so we derive the TAAD Ed25519 key from `master_kek_hex`
-//     (same HKDF as `sign.rs::derive_taad_public_key`) and add its vkey witness +
+//     (`sign::derive_taad_controller_key` — nguồn duy nhất) and add its vkey witness +
 //     `add_required_signer(controller_pkh)`.
 //
 // SCOPE LIMIT: only Person genesis (entity_type 0 / GenesisPerson) is wired here.
@@ -1109,8 +1092,9 @@ fn derive_taad_seed_from_kek(master_kek: &[u8; 32]) -> Zeroizing<[u8; 32]> {
 ///   the caller must pre-hash to 32 bytes.
 /// * `taad_pub_hex`         — TAAD_Key Ed25519 pubkey hex (32 bytes / 64 hex)
 /// * `master_kek_hex`       — Master_KEK (32 bytes). The TAAD Ed25519 signing
-///   key is derived from it via `sign::derive_taad_seed` (HKDF, same as
-///   `derive_taad_public_key`), and its vkey witness satisfies the validator's
+///   key is derived from it via `sign::derive_taad_controller_key` (HKDF →
+///   entropy BIP-39 → CIP-1852, same as `derive_taad_public_key`), and its vkey
+///   witness satisfies the validator's
 ///   `must_be_signed_by(controller_pkh)` self-genesis proof. The derived
 ///   pubkey's `blake2b_224` MUST equal the `controller_pkh` computed from
 ///   `taad_pub_hex` (checked at runtime).
@@ -1249,15 +1233,13 @@ pub fn build_create_taad_utxo_tx(
     nft_ma.set_asset(&script_hash, &asset_name, &BigNum::from(1u64));
 
     // ─── 4. Derive TAAD signing key (controller) from Master_KEK ───
-    // Same HKDF as sign.rs::derive_taad_public_key — single source of truth.
+    // Cùng `sign::derive_taad_controller_key` với mọi đường khác — nguồn duy nhất.
     // The derived pubkey's blake2b_224 MUST equal `controller_pkh` (which was
     // computed from `taad_pub_hex`); otherwise the caller passed a KEK that
     // does not match the pubkey baked into the datum, and the validator's
     // `must_be_signed_by(controller_pkh)` would fail on submit.
-    let taad_seed = crate::sign::derive_taad_seed(&kek_bytes)
-        .ok_or_else(|| "derive_taad_seed: Master_KEK must be 32 bytes".to_string())?;
-    let taad_priv = csl::PrivateKey::from_normal_bytes(&*taad_seed)
-        .map_err(|_| "derived TAAD seed is not a valid Ed25519 private key".to_string())?;
+    let taad_priv = crate::sign::derive_taad_controller_key(&kek_bytes)
+        .ok_or_else(|| "derive_taad_controller_key: Master_KEK must be 32 bytes".to_string())?;
     let derived_taad_pub = taad_priv.to_public();
     if derived_taad_pub.hash().to_bytes() != controller_pkh.to_vec() {
         return Err(
@@ -1501,7 +1483,7 @@ struct OwnerUtxoRef {
 ///   the genesis (validator requires only the owner sig), so no child KEK is
 ///   needed here.
 /// * `owner_master_kek_hex` — the OWNER's Master_KEK (32 bytes). The owner TAAD
-///   signing key is derived from it (`sign::derive_taad_seed`); its vkey witness
+///   signing key is derived from it (`sign::derive_taad_controller_key`); its vkey witness
 ///   + `add_required_signer(owner_controller_pkh)` satisfy validator G-1. We
 ///   assert the derived pkh equals the `controller_pkh` parsed from the owner
 ///   datum — mismatch ⇒ hard error (the tx would be unsignable / rejected).
@@ -1651,10 +1633,10 @@ pub fn build_create_child_taad_utxo_tx(
     }
 
     // ─── 4. Derive OWNER TAAD signing key; assert it matches owner pkh ─
-    let owner_taad_seed = crate::sign::derive_taad_seed(&owner_kek[..])
-        .ok_or_else(|| "derive_taad_seed: owner Master_KEK must be 32 bytes".to_string())?;
-    let owner_taad_priv = csl::PrivateKey::from_normal_bytes(&*owner_taad_seed)
-        .map_err(|_| "derived owner TAAD seed is not a valid Ed25519 private key".to_string())?;
+    let owner_taad_priv = crate::sign::derive_taad_controller_key(&owner_kek[..])
+        .ok_or_else(|| {
+            "derive_taad_controller_key: owner Master_KEK must be 32 bytes".to_string()
+        })?;
     let owner_taad_pub = owner_taad_priv.to_public();
     let owner_controller_keyhash = owner_taad_pub.hash();
     if owner_controller_keyhash.to_bytes() != owner_decoded.controller_pkh {
@@ -2182,9 +2164,8 @@ pub fn build_rotate_taad_tx(
     // Master_KEK that controls the on-chain TAAD, and produces the vkey
     // witness the validator's `must_be_signed_by(old controller_pkh)`
     // requires. (Zeroizing — scrubbed on scope exit.)
-    let old_taad_seed = derive_taad_seed_from_kek(&old_kek);
-    let old_taad_priv = csl::PrivateKey::from_normal_bytes(&*old_taad_seed)
-        .map_err(|_| "old TAAD seed is not a valid Ed25519 private key".to_string())?;
+    let old_taad_priv = crate::sign::derive_taad_controller_key(&old_kek[..])
+        .ok_or_else(|| "derive_taad_controller_key: old Master_KEK must be 32 bytes".to_string())?;
     let old_taad_pub = old_taad_priv.to_public();
     let old_controller_keyhash = old_taad_pub.hash();
 
@@ -2748,9 +2729,11 @@ fn continuing_value_with_extra(
     })
 }
 
-/// Derive an Ed25519 signing key (priv + pkh) from a 32-byte hex seed.
-/// Used both for the current/new controller (via TAAD seed) and for
-/// guardian co-signing keys in InitRecovery.
+/// Derive an Ed25519 THƯỜNG signing key (priv + pkh) from a 32-byte hex seed.
+///
+/// CHỈ dùng cho khoá đồng-ký của guardian trong InitRecovery — caller đưa vào hạt
+/// giống Ed25519 thô. KHÔNG dùng cho khoá điều khiển TAAD: khoá đó là Ed25519 MỞ
+/// RỘNG và chỉ được dựng bằng `sign::derive_taad_controller_key`.
 fn ed25519_from_seed_hex(seed_hex: &str, label: &str) -> Result<(csl::PrivateKey, csl::Ed25519KeyHash), String> {
     let bytes = hex::decode(seed_hex)
         .map(Zeroizing::new)
@@ -2935,9 +2918,8 @@ pub fn build_deactivate_taad_tx(
     let d = decode_taad_datum_full(&li.inline_datum_hex)?;
 
     let kek = decode_kek32(master_kek_hex, "master_kek_hex")?;
-    let taad_seed = derive_taad_seed_from_kek(&kek);
-    let ctrl_priv = csl::PrivateKey::from_normal_bytes(&*taad_seed)
-        .map_err(|_| "controller TAAD seed is not a valid Ed25519 private key".to_string())?;
+    let ctrl_priv = crate::sign::derive_taad_controller_key(&kek[..])
+        .ok_or_else(|| "derive_taad_controller_key: master_kek_hex must be 32 bytes".to_string())?;
     let ctrl_pkh = ctrl_priv.to_public().hash();
 
     // revoked_slot = Some(current_slot); validity lower bound must equal it.
@@ -3024,9 +3006,8 @@ pub fn build_update_guardians_tx(
     }
 
     let kek = decode_kek32(master_kek_hex, "master_kek_hex")?;
-    let taad_seed = derive_taad_seed_from_kek(&kek);
-    let ctrl_priv = csl::PrivateKey::from_normal_bytes(&*taad_seed)
-        .map_err(|_| "controller TAAD seed is not a valid Ed25519 private key".to_string())?;
+    let ctrl_priv = crate::sign::derive_taad_controller_key(&kek[..])
+        .ok_or_else(|| "derive_taad_controller_key: master_kek_hex must be 32 bytes".to_string())?;
     let ctrl_pkh = ctrl_priv.to_public().hash();
 
     let new_datum = assemble_taad_datum(
@@ -3272,9 +3253,8 @@ pub fn build_cancel_recovery_tx(
     }
 
     let kek = decode_kek32(master_kek_hex, "master_kek_hex")?;
-    let taad_seed = derive_taad_seed_from_kek(&kek);
-    let ctrl_priv = csl::PrivateKey::from_normal_bytes(&*taad_seed)
-        .map_err(|_| "controller TAAD seed is not a valid Ed25519 private key".to_string())?;
+    let ctrl_priv = crate::sign::derive_taad_controller_key(&kek[..])
+        .ok_or_else(|| "derive_taad_controller_key: master_kek_hex must be 32 bytes".to_string())?;
     let ctrl_pkh = ctrl_priv.to_public().hash();
 
     let new_datum = assemble_taad_datum(
@@ -3336,9 +3316,9 @@ pub fn build_finalize_recovery_tx(
     }
 
     let kek = decode_kek32(new_master_kek_hex, "new_master_kek_hex")?;
-    let taad_seed = derive_taad_seed_from_kek(&kek);
-    let new_priv = csl::PrivateKey::from_normal_bytes(&*taad_seed)
-        .map_err(|_| "new controller TAAD seed is not a valid Ed25519 private key".to_string())?;
+    let new_priv = crate::sign::derive_taad_controller_key(&kek[..]).ok_or_else(|| {
+        "derive_taad_controller_key: new_master_kek_hex must be 32 bytes".to_string()
+    })?;
     let new_pkh = new_priv.to_public().hash();
     // Defensive: the signing key must match the committed pending controller.
     if new_pkh.to_bytes() != pending_ctrl {
@@ -4521,22 +4501,34 @@ mod tests {
         );
     }
 
-    /// CRITICAL invariant: genesis (create) derives the TAAD controller key via
-    /// `sign::derive_taad_seed`, while rotate uses the local
-    /// `derive_taad_seed_from_kek`. They MUST be byte-identical — otherwise a
-    /// DID created at genesis would be unrotatable (the rotate path would derive
-    /// a different controller key than the one baked into the genesis datum).
-    /// This test locks the two derivations together (the older
-    /// `sign::tests::seed_matches_dart_bridge_derivation` no longer covers it).
+    /// BẤT BIẾN: genesis (create) và rotate phải dựng CÙNG một khoá điều khiển từ
+    /// cùng một Master_KEK — lệch một byte là DID tạo ở genesis không xoay được.
+    ///
+    /// Bản trước của bài này so hai HÀM dẫn xuất khác nhau (`sign::derive_taad_seed`
+    /// vs `taad_did::derive_taad_seed_from_kek`). Bản chép thứ hai đã bị xoá, nên
+    /// bài đó không còn đo được gì. Bài dưới đây đo ở mức cao hơn và vẫn có nghĩa
+    /// sau khi xoá: cùng KEK ⟹ cùng `controller_pkh` mà validator đòi, và
+    /// `controller_pkh` đó phải khớp thứ `sign::derive_taad_public_key` công bố ra
+    /// ngoài (băm Blake2b-224) — hai đường mà nếu trôi khỏi nhau thì genesis dựng
+    /// được nhưng rotate ký hỏng.
     #[test]
-    fn create_and_rotate_derive_identical_taad_seed() {
+    fn signing_key_and_published_pubkey_agree_on_controller_pkh() {
         let kek = [7u8; 32];
-        let from_sign = crate::sign::derive_taad_seed(&kek)
-            .expect("sign::derive_taad_seed on 32-byte kek");
-        let from_rotate = derive_taad_seed_from_kek(&kek);
+
+        let pkh_from_signing_key = crate::sign::derive_taad_controller_key(&kek)
+            .expect("derive_taad_controller_key trên KEK 32 byte")
+            .to_public()
+            .hash()
+            .to_bytes();
+
+        let published_pubkey = hex::decode(crate::sign::derive_taad_public_key(hex::encode(kek)))
+            .expect("derive_taad_public_key phải trả hex hợp lệ");
+        let pkh_from_published_pubkey = blake2b_224(&published_pubkey);
+
         assert_eq!(
-            &*from_sign, &*from_rotate,
-            "create (sign::derive_taad_seed) and rotate (derive_taad_seed_from_kek) diverged"
+            pkh_from_signing_key,
+            pkh_from_published_pubkey.to_vec(),
+            "khoá ký và pubkey công bố phải băm ra cùng một controller_pkh",
         );
     }
 

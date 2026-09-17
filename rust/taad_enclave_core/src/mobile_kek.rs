@@ -1,31 +1,37 @@
 // mobile_kek.rs — Hàm DERIVE bậc cao cho mobile (SuperApp RN).
 //
-// Gói gọn chuỗi derive của Enclave (enclave_bridge.dart deriveTaadPublicKey /
-// deriveWalletSeed / deriveCardanoAddressAccount) thành 1 lời gọi để 3 nền-tảng
-// (iOS C-ABI, Android JNI, JS) chỉ truyền chuỗi — KHÔNG lặp lại hằng-số derive ở
-// mỗi nơi (tránh lệch → khoá/địa-chỉ khác Enclave). Hằng-số LẤY ĐÚNG từ Dart:
-//   - TAAD_Key (Ed25519): ed25519( HKDF(KEK, "taad-controller-v1", SHA256("genesis"), 32) )
-//   - wallet seed:        HKDF(KEK, "wallet-v1", 00*32, 32)
-//   - địa chỉ:            derive_address_account(wallet_seed, account, network)
+// Gói gọn chuỗi derive thành 1 lời gọi để 3 nền-tảng (iOS C-ABI, Android JNI, JS)
+// chỉ truyền chuỗi — KHÔNG lặp lại hằng-số derive ở mỗi nơi (tránh lệch → khoá/
+// địa-chỉ khác nhau giữa các nền tảng).
 //
-// Tái-dùng crate::crypto + crate::cardano (KHÔNG tự cài lại crypto).
+//   - khoá điều khiển TAAD: `sign::derive_taad_public_key` — công thức ở khối chú
+//     thích đầu `sign.rs`, theo đặc tả PhoenixKey-Anchorme-Tech bước 2→5. Tệp này
+//     KHÔNG giữ bản chép nào của công thức đó.
+//   - wallet seed (ví CHI TIÊU của người dùng): HKDF(KEK, "wallet-v1", 00*32, 32)
+//   - địa chỉ:              derive_address_account(wallet_seed, account, network)
+//
+// ⚠ HAI THỨ CÙNG TÊN "wallet seed", KHÁC CÔNG THỨC, đừng gộp:
+//   · `mobile_kek::derive_wallet_seed` (ngay dưới) — entropy cho ví CHI TIÊU của
+//     người dùng, `info = "wallet-v1"`, `salt = 00 × 32`. Đổi nó là đổi địa chỉ
+//     của mọi người dùng đang có.
+//   · `sign::derive_taad_wallet_seed` — entropy cho khoá ĐIỀU KHIỂN TAAD,
+//     `info = "wallet-seed-v1"`, `salt = SHA-256("genesis")`. Chỉ dùng trong
+//     đường danh tính/validator.
+//   Hai giá trị KHÁC nhau ⟹ khoá điều khiển KHÔNG phải khoá thanh toán account 0
+//   của ví người dùng, dù cả hai đều đi qua CIP-1852 `m/1852'/1815'/0'/0/0`.
+//
+// Tái-dùng crate::sign + crate::crypto + crate::cardano (KHÔNG tự cài lại crypto).
 
-/// TAAD_Key (Ed25519) public key hex từ Master_KEK (64-hex). '' nếu KEK sai.
+/// Khoá công khai của khoá điều khiển TAAD (64-hex) từ Master_KEK (64-hex).
+/// '' nếu KEK sai. Đây là cửa FFI mà iOS/Android dùng — nó CHỈ chuyển tiếp sang
+/// nguồn duy nhất trong `sign.rs`, không tự dẫn xuất.
 pub fn derive_taad_pubkey(master_kek_hex: String) -> String {
-    let salt = crate::crypto::sha256_hex("genesis".to_string());
-    let seed = crate::crypto::hkdf_derive(
-        master_kek_hex,
-        "taad-controller-v1".to_string(),
-        salt,
-        32,
-    );
-    if seed.is_empty() {
-        return String::new();
-    }
-    crate::crypto::derive_ed25519_public_key(seed)
+    crate::sign::derive_taad_public_key(master_kek_hex)
 }
 
-/// Wallet seed (32-byte hex) từ Master_KEK = HKDF(KEK, "wallet-v1", 00*32, 32).
+/// Wallet seed của ví CHI TIÊU (32-byte hex) từ Master_KEK
+/// = HKDF(KEK, "wallet-v1", 00*32, 32). KHÔNG phải `sign::derive_taad_wallet_seed`
+/// — xem khối cảnh báo đầu tệp.
 pub fn derive_wallet_seed(master_kek_hex: String) -> String {
     crate::crypto::hkdf_derive(
         master_kek_hex,

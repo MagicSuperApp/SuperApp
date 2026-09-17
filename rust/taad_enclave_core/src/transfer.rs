@@ -338,12 +338,15 @@ fn witness_unsigned_tx_inner(
 ///
 /// VÌ SAO CẦN HÀM RIÊNG: `witness_unsigned_tx` ở trên ký bằng khoá thanh toán
 /// (xprv mở rộng, dẫn xuất CIP-1852). Hai khoá dưới đây KHÁC hẳn:
-///   · TAAD_Key  — Ed25519 32-byte seed, HKDF từ Master_KEK (`sign::derive_taad_seed`),
-///                 băm blake2b-224 của pubkey chính là `controller_pkh` trong datum.
+///   · TAAD_Key  — khoá ĐIỀU KHIỂN, dẫn xuất từ Master_KEK qua
+///                 `sign::derive_taad_controller_key` (HKDF → entropy BIP-39 →
+///                 CIP-1852 `m/1852'/1815'/0'/0/0`). Băm blake2b-224 của pubkey
+///                 chính là `controller_pkh` trong datum. Đây là Ed25519 MỞ RỘNG.
 ///   · DeviceKey — Ed25519 32-byte seed NGẪU NHIÊN mỗi máy (`sign::device_key_optin`),
 ///                 caller giữ trong secureStore; băm pubkey là `device_pkh`.
-/// Cả hai đều là Ed25519 THƯỜNG (không mở rộng) nên phải đi qua
-/// `PrivateKey::from_normal_bytes`, không qua `Bip32PrivateKey::to_raw_key`.
+///                 Đây là Ed25519 THƯỜNG nên đi qua `PrivateKey::from_normal_bytes`.
+/// Hai khoá KHÁC LOẠI — đừng dựng khoá này bằng đường của khoá kia; chữ ký vẫn ra
+/// 64 byte hợp lệ và chỉ hỏng ở chuỗi.
 ///
 /// GỘP, KHÔNG GHI ĐÈ: witness được thêm vào witness-set CÓ SẴN, nên gọi được nối
 /// tiếp sau `witness_unsigned_tx` (khoá thanh toán) khi một tx đòi cả ba chữ ký.
@@ -398,10 +401,8 @@ fn witness_unsigned_tx_ed25519_inner(
 
     if !kek_hex.is_empty() {
         let kek = hex::decode(kek_hex).map_err(|_| "taad_master_kek_hex is not valid hex")?;
-        let seed = crate::sign::derive_taad_seed(&kek)
+        let priv_key = crate::sign::derive_taad_controller_key(&kek)
             .ok_or("taad_master_kek_hex must decode to exactly 32 bytes")?;
-        let priv_key = csl::PrivateKey::from_normal_bytes(&*seed)
-            .map_err(|_| "derived TAAD seed is not a valid Ed25519 private key")?;
         vkeys.add(&csl::make_vkey_witness(&tx_hash, &priv_key));
     }
 
@@ -858,8 +859,7 @@ mod tests {
         assert_eq!(vkeys.len(), 2, "chỉ thêm ĐÚNG một witness khi bỏ trống device");
 
         // Khoá thêm vào phải băm ra đúng controller_pkh mà validator đòi.
-        let seed = crate::sign::derive_taad_seed(&hex::decode(KEK).unwrap()).unwrap();
-        let want = csl::PrivateKey::from_normal_bytes(&*seed)
+        let want = crate::sign::derive_taad_controller_key(&hex::decode(KEK).unwrap())
             .unwrap()
             .to_public()
             .hash()

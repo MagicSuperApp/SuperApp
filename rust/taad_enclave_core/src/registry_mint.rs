@@ -542,10 +542,9 @@ pub(crate) fn derive_controller(
     if kek_bytes.len() != 32 {
         return Err("controller_kek must decode to 32 bytes (Master_KEK)".into());
     }
-    let seed = crate::sign::derive_taad_seed(&kek_bytes)
-        .ok_or_else(|| "derive_taad_seed: controller Master_KEK must be 32 bytes".to_string())?;
-    let priv_key = csl::PrivateKey::from_normal_bytes(&*seed)
-        .map_err(|_| "derived controller seed is not a valid Ed25519 private key".to_string())?;
+    let priv_key = crate::sign::derive_taad_controller_key(&kek_bytes).ok_or_else(|| {
+        "derive_taad_controller_key: controller Master_KEK must be 32 bytes".to_string()
+    })?;
     let keyhash = priv_key.to_public().hash();
     Ok((priv_key, keyhash))
 }
@@ -681,7 +680,8 @@ pub(crate) fn rebuild_value(amount_lovelace: u64, assets: &[UtxoAsset]) -> Resul
 ///
 /// # Inputs
 /// * `controller_kek`        — 32-byte Master_KEK (64 hex) of governing_did's
-///   controller; the Ed25519 signing key is derived via `sign::derive_taad_seed`.
+///   controller; the Ed25519 signing key is derived via
+///   `sign::derive_taad_controller_key`.
 /// * `governing_did`         — the DID this registry is governed by (UTF-8). Baked
 ///   into the datum field 0 AND drives the Registry-NFT name (blake2b_256(did)).
 /// * `genesis_utxo_json`     — JSON [`GenesisUtxo`]: the outpoint the one-shot
@@ -1357,7 +1357,7 @@ pub fn build_genesis_supply_state(
 /// # Inputs
 /// * `authority_keks_json`   — JSON array of 32-byte Master_KEK hex strings, one
 ///   per signing authority key (1 for SinglePkh; M..=N for MultiSig). Each derives
-///   an Ed25519 controller key via `sign::derive_taad_seed`; its keyhash is added
+///   an Ed25519 controller key via `sign::derive_taad_controller_key`; its keyhash is added
 ///   as a required signer AND it signs the tx.
 /// * `registry_utxo_json`    — JSON [`RefUtxo`]: the registry UTxO (reference input).
 /// * `token_policy_cbor`     — compiled Plutus V3 token mint policy (CBOR hex). Its

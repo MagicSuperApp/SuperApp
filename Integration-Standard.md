@@ -345,6 +345,7 @@ Một platform/module chỉ được coi là READY khi TẤT CẢ mục dưới 
 | ProofChat | Trò-chuyện (E2EE) | `ProofChat/INTEGRATION.md` — v2026-08-08, thay bản 2026-07-04 | backend ProofChat |
 | AladinWork | Việc-làm | ⚠ [`Integration/AladinWork.md`](Integration/AladinWork.md) — **tạm**, upstream chưa publish | Work team |
 | LampNet | Kết đèn | ⚠ [`Integration/LampNet.md`](Integration/LampNet.md) — **tạm**, upstream chưa publish | LampNet team |
+| ProofChat | Authymess (xác thực có hạn · đăng nhập đa thiết bị) | ⚠ `ProofChat/Authymess/Authymess-Integration.md` — v0.1 · 2026-09-17. **Kho RIÊNG TƯ và tệp chưa nằm trên `main`** (đang ở PR #5 của kho đó) ⟹ con trỏ này hôm nay KHÔNG mở được, kể cả với người có quyền. Đổi ⚠ thành con trỏ thật khi PR ấy gộp; dev cần quyền đọc thì gửi tên tài khoản GitHub sang chủ module. | Authymess agent |
 
 > ⚠ **`Integration/PhoenixKey.md` vẫn còn trong repo** nhưng KHÔNG phải nguồn chuẩn — nó trùng lặp
 > với canonical ở trên và có chỗ lệch (canonical nói `grantee_did` để trống = Grant thành **bearer**,

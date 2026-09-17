@@ -14,6 +14,7 @@
  */
 
 import taad from '../sdk/taadEnclave';
+import { assertSigningNetworkAllowed } from '../config/cardanoNetwork';
 import { fetchWalletUtxosAndParams } from './cardanoTxService';
 import { currentUserDid } from '../sdk/phoenixKey';
 import { GATE_PREFIX, requireUserPresence } from './sensitiveActionGate';
@@ -70,7 +71,11 @@ export async function delegateToPool(args: {
   poolBech32: string;
   network: number;
 }): Promise<{ txHash: string }> {
-  const net = args.network === 1 ? 1 : 0;
+  // Cổng mạng fail-closed — lý do đầy đủ ở `config/cardanoNetwork.ts`
+  // (`MAINNET_SIGNING_ALLOWED`). Uỷ thác vẫn là đường ra tiền: cert
+  // StakeRegistration đặt cọc lấy từ chính ví.
+  assertSigningNetworkAllowed(args.network);
+  const net = args.network;
 
   // Địa chỉ ví nguồn (để hỏi UTXO chi phí + deposit stake key).
   const senderAddress = await taad.deriveWalletAddress(args.kekHex, args.account, net);

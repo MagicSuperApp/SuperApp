@@ -178,11 +178,22 @@ const SignUpBiometricScreen: React.FC = () => {
       // tra DID (`resolveUsername` → `getPubkey` → so khoá trong chip). Đăng ký lại
       // bằng chính khoá cũ thì máy chủ chặn cứng (`KEY_ALREADY_REGISTERED`), nên
       // không có tên đăng nhập là không còn đường nào.
-      const { user } = await phoenixKeyAuth.registerIdentity(
+      const { user, usernameSet, usernameError } = await phoenixKeyAuth.registerIdentity(
         biometricKindFromType(biometryType),
         intent,
         usernameTrim,
       );
+      // Danh tính đã lập xong dù tên có đăng ký được hay không — nên chỗ này CẢNH
+      // BÁO chứ không chặn. Nhưng phải nói ra: người dùng vừa đọc dòng "không thể
+      // trùng trong toàn hệ sinh thái" ngay dưới ô nhập, và nếu tên không lên được
+      // máy chủ thì câu đó chưa đúng với họ — lần cài lại app sau, tra bằng tên này
+      // sẽ không ra gì.
+      if (usernameSet === false) {
+        showWarning(
+          'Tài khoản đã tạo, nhưng chưa giữ được tên',
+          `${usernameError ?? 'Máy chủ chưa nhận tên này.'}\n\nTài khoản của bạn vẫn dùng được bình thường. Vào Tài khoản ▸ Tên đăng nhập để đặt lại tên khác.`,
+        );
+      }
       const newEntry = { username: usernameTrim, did: user.did, createdAt: Date.now() };
       const raw = await AsyncStorage.getItem(PHOENIX_USERS_KEY);
       const list = raw ? JSON.parse(raw) : [];
@@ -461,11 +472,23 @@ const SignUpBiometricScreen: React.FC = () => {
         <StepIndicator current={1} total={3} />
       </View>
 
-      <Animated.View
+      {/* PHẢI là vùng cuộn, không phải `View`. Trước bản này đây là `Animated.View`
+          mang `flex: 1`: trên máy 360×640dp (Pixel 1080×1920) nội dung tự nhiên cao
+          hơn phần chỗ còn lại khoảng 80dp, mà `View` của React Native mặc định
+          `overflow: 'visible'` — nên phần thừa KHÔNG bị cắt, nó tràn ra ngoài đáy hộp,
+          rồi `actionBar` đứng sau trong cây nên vẽ ĐÈ lên khối chữ "Bước này bắt buộc".
+          Không lỗi nào ném, không bài kiểm nào đỏ, và chữ bị che là đúng câu giải thích
+          vì sao không có đường vòng qua sinh trắc học.
+          Cùng lớp lỗi sẽ quay lại với cỡ chữ hệ thống phóng to, nên chữa bằng vùng cuộn
+          chứ không chữa bằng cách bớt một khối chữ. */}
+      <Animated.ScrollView
         style={[
           styles.content,
           { opacity: fade, transform: [{ translateY: slide }] },
         ]}
+        contentContainerStyle={styles.contentInner}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
         <Text style={styles.eyebrow}>TẠO DANH TÍNH</Text>
         {/* Tách '+ ' thành node RIÊNG: lớp autoText tra từ điển theo TỪNG child là
@@ -571,7 +594,7 @@ const SignUpBiometricScreen: React.FC = () => {
             <Text style={styles.doneText}>Đã sinh khóa thành công.</Text>
           </View>
         )}
-      </Animated.View>
+      </Animated.ScrollView>
 
       {/* Action bar */}
       <View style={[styles.actionBar, { paddingBottom: bottomPad }]}>
@@ -639,7 +662,10 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
 
-  content: { flex: 1, paddingHorizontal: 22, paddingTop: 12 },
+  // `content` là vùng cuộn; lề trong phải nằm ở `contentInner` chứ không ở đây —
+  // đệm đặt thẳng lên ScrollView sẽ cắt mất phần cuộn được ở hai đầu.
+  content: { flex: 1 },
+  contentInner: { paddingHorizontal: 22, paddingTop: 12, paddingBottom: 8 },
 
   eyebrow: {
     fontSize: 10, fontWeight: '800',

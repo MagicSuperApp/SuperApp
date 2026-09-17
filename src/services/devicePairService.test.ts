@@ -7,9 +7,12 @@
  *      bản app khác nhau. Lệch một ký tự thì máy quét coi như "QR lạ" và cứ quét
  *      tiếp — không lỗi, không màn đỏ, chỉ là một cái khung không bao giờ bắt được.
  *   2. **`thisDevicePublicKey` gọi `enrollKeypair` khi máy ĐÃ có khoá.**
- *      `enrollKeypair` XOÁ khoá cũ trong chip và khoá đó không có bản sao. Đây là
- *      ca mất-danh-tính, và trên máy dev nó không bao giờ lộ ra vì máy dev hay ở
- *      trạng thái chưa có khoá.
+ *      Hai cầu native TỪ CHỐI sinh đè khi nhãn đã có khoá, và trả `E_KEY_EXISTS`
+ *      (`PhoenixKeyModule.kt` nhánh `keyStore.containsAlias`, `PhoenixKeyModule.swift`
+ *      nhánh `hasKeySync`) — nên khoá cũ KHÔNG bị xoá, khác với điều khối này từng
+ *      ghi. Cái hỏng còn lại vẫn thật: luồng ghép máy chết ngay bước đầu với một mã
+ *      lỗi native, cho đúng cái máy đang đăng nhập bình thường. Trên máy dev nó
+ *      không lộ ra vì máy dev hay ở trạng thái chưa có khoá.
  *   3. **404 bị dịch nhầm.** "Máy kia chưa duyệt xong" là chuyện bình thường của
  *      một luồng hai máy; gộp nó vào lỗi chung là bắt người dùng quét lại từ đầu
  *      vì họ bấm sớm một nhịp.

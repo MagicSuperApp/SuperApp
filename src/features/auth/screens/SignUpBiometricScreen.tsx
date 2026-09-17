@@ -280,6 +280,30 @@ const SignUpBiometricScreen: React.FC = () => {
         return;
       }
 
+      // `chip_key_exists` — chip TỪ CHỐI sinh khoá đè vì nhãn này đã có khoá
+      // (`E_KEY_EXISTS` từ cả hai cầu native). Mã đó khai ở `phoenixKey-native.ts`
+      // kèm chú thích "switch on these in UI" mà tới 2026-09-17 không chỗ nào bắt,
+      // nên người dùng nhận đúng chuỗi `E_KEY_EXISTS` lên màn hình — một câu không
+      // nói được gì họ làm khác đi.
+      //
+      // Lối ra là màn Khôi phục, và ở đó nay có một thẻ đi được bằng ĐÚNG cái khoá
+      // vừa chặn họ: `lookupDidByDeviceKey` đổi khoá lấy DID, không cần 24 từ,
+      // không cần tên đăng nhập. Nhãn nút vì thế hứa được đích mà không hứa sai
+      // phương tiện — khác hẳn nhánh `wallet_bound_to_other_did` ngay trên, nơi
+      // khoá đã bị xoá nên chỉ còn đường 24 từ.
+      //
+      // KHÔNG có nhánh nào xoá khoá cũ để đi tiếp: khoá đó có thể là khoá owner
+      // của một danh tính đang sống, và xoá khoá trong chip là bất khả hồi.
+      if (e?.reason === 'chip_key_exists') {
+        setStage('idle');
+        showWarning(t('Máy này vẫn còn khoá của lần cài trước'), t(e?.message ?? ''), {
+          confirmText: t('Tìm lại danh tính đó'),
+          cancelText: t('Để sau'),
+          onConfirm: () => navigation.navigate('RestoreIdentity'),
+        });
+        return;
+      }
+
       // Cùng luật với `khoa_bi_thu_hoi` ngay trên: biết được LỐI RA thì phải đưa
       // nút, đừng chỉ hiện chữ. Ở ca này lối ra là làm lại và làm HẾT hộp sinh
       // trắc thứ hai — một việc người dùng làm được ngay tại chỗ, nên bắt họ đóng

@@ -24,8 +24,8 @@ Theo UI-UX-STANDARD §2 (Frontend/UIUX ⟂ Backend) + Master §4 boundary:
 | Lớp | Sở hữu | Nội dung |
 |---|---|---|
 | **Backend AladinWork** (`aladin-backend`, Express, ngữ cảnh `/api/v1`) | Team AladinWork | Toàn bộ nghiệp vụ: 34 endpoint, auth challenge/verify, JobType/template, matching Jem-Math, state machine Pledge + escrow, Stamp verify + cấp Jem, Treasury phí 4-ngả, adapter ProofChat/VeData/Cardano. **SuperApp KHÔNG re-implement.** |
-| **App-side mobile** (native binding + auth) | SuperApp — **Thư** (mobile) | Nối SDK/relay PhoenixKey thật (QR → ký **P-256 / secp256r1**, khóa Secure Enclave/StrongBox — KHÔNG secp256k1); lưu `session` Bearer + accessToken ProofChat trong Keychain/Keystore; `deviceId` UUID/thiết bị persistent; nhúng WebView ProofChat + cầu `postMessage` origin-checked; vòng đời phiên; build app. |
-| **App-side UI** (Frontend/UIUX) | SuperApp — **Tùng** (frontend) | 14 màn (gom cụm §3) + 4 trạng thái mỗi màn; tiêu thụ endpoint REST theo hợp đồng §4 upstream; design token; brand-strip. |
+| **App-side mobile** (native binding + auth) | SuperApp — **native** (mobile) | Nối SDK/relay PhoenixKey thật (QR → ký **P-256 / secp256r1**, khóa Secure Enclave/StrongBox — KHÔNG secp256k1); lưu `session` Bearer + accessToken ProofChat trong Keychain/Keystore; `deviceId` UUID/thiết bị persistent; nhúng WebView ProofChat + cầu `postMessage` origin-checked; vòng đời phiên; build app. |
+| **App-side UI** (Frontend/UIUX) | SuperApp — **frontend** | 14 màn (gom cụm §3) + 4 trạng thái mỗi màn; tiêu thụ endpoint REST theo hợp đồng §4 upstream; design token; brand-strip. |
 
 **Ranh giới dữ liệu:** màu/bo-góc/font/spacing = Frontend (UI-UX-STANDARD §3 token). Endpoint/format wire (JSON thô, KHÔNG envelope) + DID + error code + đơn vị thời gian = hợp đồng FE⟂BE (INTEGRATION §3/§7). SuperApp KHÔNG tự định nghĩa nghiệp vụ Work, chỉ *tiêu thụ*.
 
@@ -58,7 +58,7 @@ Nguyên lý (first-principles): chứng minh "tôi là chủ DID" = ký một **
 
 **DID người dùng = `did:phoenix`** (regex `^did:phoenix:[a-z2-7]{13}:[0-9a-f]{64}$`). App-side nên validate DID theo regex TRƯỚC khi gọi `/auth/challenge` (chặn sớm, tránh 1 vòng mạng thừa) — helper `isValidPhoenixDid` trong `services/types.ts`.
 
-**Luồng 3 bước (mobile — Thư):**
+**Luồng 3 bước (mobile — native):**
 
 | Bước | Gọi | Ghi chú tích hợp app |
 |---|---|---|
@@ -83,7 +83,7 @@ Nguyên lý (first-principles): chứng minh "tôi là chủ DID" = ký một **
 
 **Đơn vị thời gian (nguồn lỗi hay gặp — nêu rõ):** `timestamp` ký challenge = **GIÂY** epoch; `expiresAt` phiên + `availableFrom/availableUntil` = **MILI-GIÂY** epoch. Nhầm đơn vị → `TIMESTAMP_SKEW` hoặc availability sai cửa sổ.
 
-**Ranh giới token (mobile — Thư):** `session` lưu Keychain/Keystore, **KHÔNG localStorage**. KHÔNG log, KHÔNG nhét token vào URL/query.
+**Ranh giới token (mobile — native):** `session` lưu Keychain/Keystore, **KHÔNG localStorage**. KHÔNG log, KHÔNG nhét token vào URL/query.
 
 ---
 
@@ -109,7 +109,7 @@ Mọi màn (trừ Đăng nhập) yêu cầu phiên hợp lệ; chưa đăng nh�
 
 Chat trong việc (màn upstream 3.10) = ProofChat E2EE, loại `JOB_NEGOTIATION`, participants = 2 DID hợp đồng. AladinWork chỉ **mở/tham chiếu** conversation (`POST/GET /contracts/:id/conversation` → `conversationId`); SuperApp là bên trực tiếp render chat.
 
-**Thứ tự khởi động (mobile — Thư):**
+**Thứ tự khởi động (mobile — native):**
 1. PhoenixKey login → `sessionToken`.
 2. `POST https://api.proofchat.app/api/v1/auth/phoenixkey/login` `{ sessionToken }` → `{ accessToken, refreshToken, userDid }` (accessToken 15 phút, tự refresh; refreshToken 7 ngày, rotate).
 3. `POST /contracts/:id/conversation` (backend AladinWork) → `conversationId`.
@@ -179,4 +179,4 @@ Luồng Work end-to-end trên dev backend: đăng nhập PhoenixKey (ký **P-256
 
 ## 9. Change Log
 - **v0.2.0 (2026-07-02): Đồng bộ upstream 05-SuperApp-spec v0.2.0 — 3 thay đổi cốt lõi.** (1) **DID người dùng = `did:phoenix`** (regex `^did:phoenix:[a-z2-7]{13}:[0-9a-f]{64}$`) — nợ `did:cardano`→PhoenixKey **ĐÃ GIẢI** (backend chốt did:phoenix); did:cardano chỉ cho tài sản VeData, KHÔNG rò vào UI. (2) **Chữ ký challenge = P-256 (secp256r1)** ECDSA/sha256/DER hex — thay mọi `secp256k1` (HW_Key Secure Enclave/StrongBox chỉ đẻ P-256; verifier `@noble/curves/p256`, skew ±60s, không lowS). (3) **Mô hình 3 token** (đảo mô hình "MAGIC là đồng-hợp-đồng duy nhất"): MAGIC = định giá/kế toán (phi-chuyển-nhượng), CARP = thanh toán thật (Pledge khóa/hoàn/forfeit + phí nền tảng), LAMP = backing ẩn; quy tắc vàng "định giá MAGIC · giữ/chuyển CARP"; `/me` trả 3 ví; `402 NO_FUNDS`=thiếu CARP; Treasury 4-ngả thu CARP. Cập nhật §1.1 (mới), §2 (P-256+regex), cụm D/E §3, §5, §6, §7, §8. Code: `types.ts` (walletCARP + DID regex + P-256 comment), `adapters.ts` (`toUiWallet`/`pledgeLabel`), `useWorkAuth.ts`/`workApi.ts`/`session.ts` (P-256 + validate did:phoenix), 3 screen nhãn tiền. Chờ anh duyệt.
-- v0.1 (2026-07-01): Khởi tạo spec tích hợp Work app-side (SG8 · F8.1) từ message AladinWork `05-SuperApp-spec.md`. Khoá ranh giới BE AladinWork ⟂ mobile Thư ⟂ UI Tùng; auth PhoenixKey challenge/verify (giây vs ms, 401 reason ⟂ 503); gom 14 màn thành 7 cụm (trỏ §4 upstream, KHÔNG chép 34 endpoint); state machine Pledge; ProofChat token-safety (ràng buộc cứng — KHÔNG token trong URL, Keychain, E2EE ciphertext, postMessage origin-checked); nợ `did:cardano`→PhoenixKey (cô lập adapter, INV-2), off-chain→on-chain schema giữ nguyên. Chờ anh duyệt.
+- v0.1 (2026-07-01): Khởi tạo spec tích hợp Work app-side (SG8 · F8.1) từ message AladinWork `05-SuperApp-spec.md`. Khoá ranh giới BE AladinWork ⟂ mobile native ⟂ UI frontend; auth PhoenixKey challenge/verify (giây vs ms, 401 reason ⟂ 503); gom 14 màn thành 7 cụm (trỏ §4 upstream, KHÔNG chép 34 endpoint); state machine Pledge; ProofChat token-safety (ràng buộc cứng — KHÔNG token trong URL, Keychain, E2EE ciphertext, postMessage origin-checked); nợ `did:cardano`→PhoenixKey (cô lập adapter, INV-2), off-chain→on-chain schema giữ nguyên. Chờ anh duyệt.

@@ -37,6 +37,7 @@ import { WORK_THEME } from '../theme';
 import { useTk } from '../i18n/keys';
 import { useLanguage } from '../i18n/useLanguage';
 import { DEFAULT_INSTANCE } from '../config/instance.config';
+import { BRAND_LOCKUP_ASPECT } from '../config/brandLockup';
 import { markOnboardingSeen } from '../utils/onboardingFlag';
 
 // Xanh lá KHỞI ĐỘNG — cùng bảng với màn Chọn ngôn ngữ và HERO màn Đăng nhập, để ba
@@ -105,12 +106,31 @@ const OnboardingScreen: React.FC = () => {
       >
         {/* ── Đầu màn ───────────────────────────────────────────────────────── */}
         <View style={[styles.hero, { paddingTop: insets.top + (Platform.OS === 'ios' ? 28 : 24) }]}>
-          <View style={styles.logoOuter}>
-            <View style={styles.logoInner}>
-              <Image source={DEFAULT_INSTANCE.logo} style={styles.logoImg} />
-            </View>
-          </View>
-          <Text allowFontScaling={false} style={styles.title}>{DEFAULT_INSTANCE.displayName}</Text>
+          {/* CỤM NHẬN DIỆN thay cho cặp [ô vuông dấu hiệu] + [chữ tên app]. Câu
+              giới thiệu bên dưới vẫn là CHỮ và vẫn dịch theo ngôn ngữ đang chọn —
+              ảnh cố ý không chứa nó. App chưa khai cụm thì rơi về cặp cũ. */}
+          {DEFAULT_INSTANCE.brandLockupOnDark ? (
+            <Image
+              source={DEFAULT_INSTANCE.brandLockupOnDark}
+              style={[styles.lockup, { aspectRatio: BRAND_LOCKUP_ASPECT }]}
+              // `accessible` KHÔNG bỏ được: `<Text>` mặc định là phần tử trợ năng
+              // trên iOS, `<Image>` thì không, và `accessibilityRole` không bật hộ.
+              // Thiếu dòng này là xoá tên app khỏi VoiceOver — xem chú thích dài ở
+              // `LoginNetworkScreen`.
+              accessible
+              accessibilityRole="image"
+              accessibilityLabel={DEFAULT_INSTANCE.displayName}
+            />
+          ) : (
+            <>
+              <View style={styles.logoOuter}>
+                <View style={styles.logoInner}>
+                  <Image source={DEFAULT_INSTANCE.logo} style={styles.logoImg} />
+                </View>
+              </View>
+              <Text allowFontScaling={false} style={styles.title}>{DEFAULT_INSTANCE.displayName}</Text>
+            </>
+          )}
           <Text style={styles.tagline}>{DEFAULT_INSTANCE.tagline[lang]}</Text>
         </View>
 
@@ -196,6 +216,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   logoImg: { width: 52, height: 52, resizeMode: 'contain' },
+  // Cụm nhận diện: đặt theo BỀ RỘNG, chiều cao theo đúng tỉ lệ tệp (856×136).
+  // Bề rộng CO ĐƯỢC: `flexShrink` mặc định của RN là 0, nên một con rộng cố định
+  // tràn ra ngoài lề và VẼ ĐÈ (`overflow` mặc định của `View` là `visible`).
+  // Chiều cao do `aspectRatio` sinh từ chính tệp ảnh (`config/brandLockup.ts`).
+  lockup: { width: '100%', maxWidth: 248, resizeMode: 'contain', marginBottom: 10 },
   title: {
     marginTop: 14,
     fontSize: 26,

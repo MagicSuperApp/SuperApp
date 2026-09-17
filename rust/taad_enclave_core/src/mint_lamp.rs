@@ -200,8 +200,8 @@ fn pick_fee_utxo<'a>(
 /// * `authority_keks_json`      — JSON array of 32-byte Master_KEK hex, one per
 ///   signing authority key: exactly 1 for a `SinglePkh` registry entry, ≥ the
 ///   entry's `threshold` for `MultiSig` (each KEK derives an Ed25519 key via
-///   `sign::derive_taad_seed`, the SAME single-source-of-truth genesis/rotate/mint
-///   use). The builder VALIDATES every derived pkh against the entry decoded from
+///   `sign::derive_taad_controller_key`, the SAME single-source-of-truth
+///   genesis/rotate/mint use). The builder VALIDATES every derived pkh against the entry decoded from
 ///   `registry_utxo_json` BEFORE building the tx (fail-fast — never emits a tx the
 ///   on-chain `registry.validate_mint` would reject for a signer mismatch).
 /// * `registry_utxo_json`       — JSON [`RegistryRefUtxo`] (the Registry UTxO,

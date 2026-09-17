@@ -48,7 +48,7 @@ import { ORILIFE_BASE } from '../services/orilifeBase';
 // xem trước báo cáo phải in ra cùng một phần đầu; hai bản chép tay là một bản sao sẽ chết
 // im lặng (thêm một dòng ở một chỗ thì báo cáo gửi từ chỗ kia thiếu đúng dòng đó).
 import { appVersionBase, commitShort } from '../services/fieldReportHead';
-import { fmtLamp, fmtCarp, fmtLampWhole, lampWholeToOildrop } from '../utils/token';
+import { fmtLamp, fmtCarp } from '../utils/token';
 import { getVaultStatus, WAKEME_CLAIM_READY } from '../services/wakemeService';
 import type { VaultStatusResponse } from '../services/phoenixKey-api';
 import { vaultRowText, vaultStateFromError, type VaultRowState } from './wakemeVaultRow';
@@ -579,7 +579,14 @@ const AccountScreen = () => {
     //      độ lệch lớn dần mỗi đêm, và luôn lệch về phía có lợi cho con số.
     //   Vì (1) làm số nhỏ đi một triệu lần nên (2) không ai nhìn ra.
     const vaultOk = vaultState === 'ok' && vault ? vault : null;
-    const vestedOildrop = lampWholeToOildrop(vaultOk?.vestedUnlocked);
+    // ĐÍNH CHÍNH 2026-09-16 (thư Phoenix phoenix0916n): `vestedUnlocked` đã LÀ
+    // oildrop (không phải LAMP nguyên) — KHÔNG nhân thêm 10⁶ qua
+    // `lampWholeToOildrop` nữa. Trường này cũng đã bị gỡ khỏi phản hồi backend
+    // (Issue #256) nên đọc ra luôn `undefined`; giữ nhánh này cho tới khi màn
+    // dưới được dọn theo.
+    const vestedOildrop = vaultOk?.vestedUnlocked != null
+        ? BigInt(Math.trunc(vaultOk.vestedUnlocked))
+        : null;
     /** Tài sản THẬT: ví + phần Wakeme đã mở khoá. Không gồm phần đang mượn. */
     const lampOwnedText = (() => {
         const own = chainWallet?.lampBalance;
@@ -906,7 +913,7 @@ const AccountScreen = () => {
                                             <Text style={styles.lampRowName}>Wakeme đã mở khoá</Text>
                                             <Text style={styles.lampRowSub}>Đã thành sở hữu của bạn</Text>
                                         </View>
-                                        <Text style={styles.lampRowVal}>{fmtLampWhole(vaultOk.vestedUnlocked)}</Text>
+                                        <Text style={styles.lampRowVal}>{fmtLamp(vaultOk.vestedUnlocked)}</Text>
                                     </View>
 
                                     <View style={styles.lampRow}>
@@ -917,7 +924,7 @@ const AccountScreen = () => {
                                                 Tiêu dịch vụ được, KHÔNG bán được. Ngày nào không dùng thì bị thu 1 LAMP về pot.
                                             </Text>
                                         </View>
-                                        <Text style={styles.lampRowVal}>{fmtLampWhole(vaultOk.conditionalLamp)}</Text>
+                                        <Text style={styles.lampRowVal}>{fmtLamp(vaultOk.conditionalLamp)}</Text>
                                     </View>
 
                                     {/* Chỉ hiện khi ĐÃ có phần bị thu — đây là dòng giải thích
@@ -930,7 +937,7 @@ const AccountScreen = () => {
                                                 <Text style={styles.lampRowName}>Đã thu về pot</Text>
                                                 <Text style={styles.lampRowSub}>Phần bỏ không dùng, đã trả lại pot</Text>
                                             </View>
-                                            <Text style={styles.lampRowVal}>{fmtLampWhole(vaultOk.reclaimedToPotLamp)}</Text>
+                                            <Text style={styles.lampRowVal}>{fmtLamp(vaultOk.reclaimedToPotLamp)}</Text>
                                         </View>
                                     )}
                                 </>)}
@@ -1140,7 +1147,39 @@ const AccountScreen = () => {
                           nhưng nếu ĐÓ là lối duy nhất thì người chưa lập ví không bao giờ
                           nhìn thấy tính năng tồn tại. Lối này để họ THẤY, rồi màn Wakeme
                           tự dẫn sang thiết lập ví nếu chưa có.
+
+                          ⛔ Khối chú thích này đã MỒ CÔI cho tới 18/09/2026: nó tả một
+                          `MenuItem` Wakeme mà `MenuItem` đó chưa từng được thêm — ngay
+                          dưới nó là "Xuất danh tính". Nên lối duy nhất tới Wakeme là nút
+                          nằm CHÔN trong hộp thoại LAMP (`:949` và `:962`), tức phải bấm
+                          vào dòng LAMP mới thấy. Chú thích nói "lối này để họ THẤY" trong
+                          khi không có lối nào — một chú thích tự nó không mở được nút, và
+                          nó đọc y như thể việc đã làm xong.
                         */}
+                        <MenuItem
+                            icon="gift-outline"
+                            label="Nhận LAMP (Wakeme)"
+                            sublabel="Mỗi người một lần — xem trạng thái và điều kiện"
+                            onPress={() => navigation.navigate('Wakeme')}
+                        />
+                        {/*
+                          Điểm MAGIC — màn `MagicVaultBalanceScreen` đã dựng xong và nằm
+                          trong navigator (`navigation/index.tsx:1828`), nhưng **0 lời gọi
+                          `navigate`** nào trỏ tới. Chính chú thích ở `index.tsx:1827` tự
+                          khai nó chỉ mở được bằng cách sửa mã để thử. Đúng lớp màn mồ côi
+                          kho này đã dính nhiều lần.
+
+                          Gắn lối vào ở đây KHÔNG hứa hão: màn tự phân biệt ba trạng thái
+                          và nói "chưa cấu hình" khi chưa có cửa đọc, thay vì hiện 0. Nên
+                          người dùng thấy tính năng tồn tại và đọc được trạng thái THẬT của
+                          nó — khác hẳn việc vẽ một số dư bịa.
+                        */}
+                        <MenuItem
+                            icon="diamond-stone"
+                            label="Điểm MAGIC"
+                            sublabel="Số dư theo lô và hạn dùng — sinh từ LAMP đang giữ"
+                            onPress={() => navigation.navigate('MagicVaultBalance')}
+                        />
                         <MenuItem
                             icon="card-account-details-outline"
                             label="Xuất danh tính"

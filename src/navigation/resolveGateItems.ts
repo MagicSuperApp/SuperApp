@@ -84,6 +84,18 @@ const SUB_ACTIONS: Record<string, Omit<GateSubItem, 'key'>[]> = {
     // thu hoạch và chặn bán, nên ghi hụt ở đây đắt hơn hẳn chỗ khác.
     // Bỏ params đi thì `targetId` về rỗng và cổng chặn của màn quét bắt đúng ca này.
     { icon: 'syringe', label: 'Quét nhãn thuốc', route: 'CareScan' },
+    // Sơ đồ vườn — ĐÚNG lớp lỗi H-13 ở trên, lần thứ hai và nặng hơn một bậc:
+    // `FarmMap2D` khai trong navigator mà 0 lời gọi `navigate`, còn `TreeMap2D`
+    // CHỈ được gọi từ bên trong `FarmMap2DScreen` (`:66`) nên chết theo — tức cả
+    // CỤM bản đồ vườn, hai màn, không có một lối vào nào. Bài kiểm im lặng vì
+    // `hostRoutes.ts` chỉ kiểm kê tên route có khai hay không, không kiểm có ai
+    // đi tới được hay không: một màn mồ côi trông y hệt một màn lành.
+    // Màn ĐANG chạy được — đo 2026-09-17: `GET api.orilife.io/api/farm/layout`
+    // trả `401 {"error":"Cần đăng nhập."}` (đường có thật, đòi phiên), và
+    // `fruitReIDService._apiCall` gắn thẻ qua `ensureOrilifeToken` trước mỗi lượt.
+    // KHÔNG kèm params — cùng lý do đã ghi ở khối trên: cổng không biết mã vườn,
+    // và chính màn này bỏ qua `farmId` (máy chủ trả toàn vườn, `FarmMap2DScreen:11`).
+    { icon: 'map-marker-radius', label: 'Sơ đồ vườn', route: 'FarmMap2D' },
     { icon: 'warehouse', label: 'Thêm vườn', route: 'FarmDetail' },
   ],
   // Chat (proofchat): thông báo.

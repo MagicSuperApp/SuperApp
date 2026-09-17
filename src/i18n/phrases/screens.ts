@@ -52,6 +52,50 @@ export const SCREENS: PhraseMap = {
     zh: '新用户、换手机，或本机上已有本系统的其他应用 —— 每种情况都有各自的路径，在这里选择',
     ja: 'はじめての方、機種変更の方、この端末にシステム内の別アプリがある方 — それぞれに別の道があります。ここで選んでください',
   },
+  // ── 2026-09-16 · thẻ cửa vào nói đúng TRẠNG THÁI MÁY, thôi hỏi ở chỗ đã đo được ──
+  // Bốn cặp dưới đây là bốn trạng thái của `readIdentityPresence`. Hai câu hỏi ở
+  // trên vẫn còn dùng, nhưng nay chỉ ở trạng thái app THẬT SỰ không biết.
+  'Máy này đã có khoá của bạn — đăng nhập bằng chính khoá đó': {
+    en: 'This device already holds your key — sign in with that key',
+    zh: '本机已持有你的密钥 —— 就用这个密钥登录',
+    ja: 'この端末にはあなたの鍵があります — その鍵でサインインします',
+  },
+  'Gỡ ứng dụng không xoá khoá đi. Máy sẽ tự hỏi máy chủ xem khoá này thuộc tài khoản nào — bạn không cần nhớ tên đăng nhập, cũng không cần 24 từ.': {
+    en: 'Uninstalling does not erase the key. The app asks the server which account this key belongs to — no username to remember, no 24-word phrase.',
+    zh: '卸载应用并不会删除密钥。应用会向服务器查询这个密钥属于哪个账户 —— 你无需记住用户名，也不需要 24 个助记词。',
+    ja: 'アプリを削除しても鍵は消えません。この鍵がどのアカウントのものかはアプリがサーバーに問い合わせます — ユーザー名を覚える必要も、24 語のフレーズも不要です。',
+  },
+  'Tạo danh tính mới trên điện thoại này': {
+    en: 'Create a new identity on this phone',
+    zh: '在这部手机上创建新身份',
+    ja: 'この端末で新しい本人情報を作成',
+  },
+  'Khoá riêng được sinh ngay trong chip bảo mật của máy, không gửi đi đâu.': {
+    en: 'The private key is generated inside the device security chip and never leaves it.',
+    zh: '私钥在设备的安全芯片内生成，不会离开本机。',
+    ja: '秘密鍵は端末のセキュリティチップ内で生成され、外部には出ません。',
+  },
+  // Tiêu đề thẻ ở trạng thái "có DID, mất khoá" dùng CHUNG chuỗi với nhãn nút
+  // dưới đáy `LoginNetworkScreen` — nó đã nằm ở `account.ts`, khai lại ở đây là
+  // dựng một bản dịch thứ hai sẽ trôi khỏi bản kia mà không gì báo.
+  'Máy này nhớ tài khoản của bạn nhưng khoá trong chip không còn dùng được — chọn đúng trường hợp của bạn ở màn sau.': {
+    en: 'This device remembers your account but the key in the chip is no longer usable — pick the case that matches you on the next screen.',
+    zh: '本机记得你的账户，但芯片中的密钥已无法使用 —— 请在下一屏选择符合你情况的一项。',
+    ja: 'この端末はアカウントを覚えていますが、チップ内の鍵が使えなくなっています — 次の画面でご自身に当てはまるものを選んでください。',
+  },
+  // "Đang kiểm tra máy này…" cũng đã ở `account.ts` — dùng chung, không khai lại.
+  'Chưa đọc xong kho khoá của máy, chờ một nhịp.': {
+    en: 'Still reading the device keystore, one moment.',
+    zh: '仍在读取设备密钥库，请稍候。',
+    ja: '端末のキーストアを読み取り中です。少々お待ちください。',
+  },
+  // Lối LÙI ở trạng thái "máy trống trơn" — phép đo đó không phân biệt được
+  // người mới với người vừa đổi điện thoại, nên lối hỏi phải còn đường vào.
+  'Tôi đã có tài khoản ở máy khác': {
+    en: 'I already have an account on another device',
+    zh: '我在其他设备上已有账户',
+    ja: '別の端末に既にアカウントがあります',
+  },
   'Tạo một danh tính MỚI — khác với danh tính bạn dùng ở app kia': {
     en: 'Create a NEW identity — different from the one you use in the other app',
     zh: '创建一个全新身份 — 与你在另一个应用中使用的身份不同',

@@ -219,13 +219,29 @@ export const ACCOUNT: PhraseMap = {
   'Nạp tín dụng MAGIC': { en: 'Top up MAGIC credit', zh: '充值 MAGIC 额度', ja: 'MAGIC クレジットをチャージ' },
   'Quẹt mã · Chuyển token LAMP': { en: 'Scan a code · Transfer LAMP tokens', zh: '扫码 · 转账 LAMP 代币', ja: 'コードを読み取る · LAMP トークンを送る' },
   'Đăng xuất': { en: 'Sign out', zh: '退出登录', ja: 'ログアウト' },
-  // Ba nhãn của MỘT nút — nút dưới đáy màn đăng nhập (`LoginNetworkScreen`).
-  // Nhãn thứ ba là trạng thái CHƯA ĐO XONG; nó phải có chữ riêng, vì mượn chữ
-  // của một trong hai nhãn kia là khẳng định một điều chưa biết.
-  'Đăng ký danh tính': {
-    en: 'Create an identity',
-    zh: '创建身份',
-    ja: '本人情報を作成',
+  // NĂM nhãn của MỘT nút — nút dưới đáy màn đăng nhập (`LoginNetworkScreen`),
+  // dựng từ `features/loginNetwork/identityPresence.ts#primaryCta`.
+  //
+  // Nhãn "Đang kiểm tra máy này…" là trạng thái CHƯA ĐO XONG; nó phải có chữ
+  // riêng, vì mượn chữ của một nhãn khác là khẳng định một điều chưa biết.
+  //
+  // ⛔ 2026-09-16 — nhãn cũ "Đăng ký danh tính" ĐÃ GỠ khỏi kiểu `PrimaryCta`.
+  // Nó đứng cho ba trạng thái máy khác hẳn nhau, trong đó có trạng thái người
+  // dùng ĐANG CÓ khoá trong chip. Bốn nhãn dưới nói đúng một trạng thái mỗi cái.
+  'Đăng nhập bằng khoá đã có trên máy': {
+    en: 'Sign in with the key already on this device',
+    zh: '用本机已有的密钥登录',
+    ja: 'この端末にある鍵でサインイン',
+  },
+  'Khôi phục danh tính trên máy này': {
+    en: 'Restore your identity on this device',
+    zh: '在本机恢复身份',
+    ja: 'この端末で本人情報を復元',
+  },
+  'Tạo danh tính mới trên máy này': {
+    en: 'Create a new identity on this device',
+    zh: '在本机创建新身份',
+    ja: 'この端末で新しい本人情報を作成',
   },
   'Đang kiểm tra máy này…': {
     en: 'Checking this device…',
@@ -667,6 +683,27 @@ export const ACCOUNT: PhraseMap = {
   },
   'LAMP của Wakeme': { en: 'Wakeme LAMP', zh: 'Wakeme 的 LAMP', ja: 'Wakeme の LAMP' },
   'Đang hỏi máy chủ…': { en: 'Asking the server…', zh: '正在询问服务器…', ja: 'サーバーに問い合わせ中…' },
+  // ⛔ HAI CHUỖI DƯỚI ĐÂY CHỈ ĐƯỢC TẢ NHỊP MỞ KHOÁ — KHÔNG ĐƯỢC HỨA AI KHÔNG CAN THIỆP ĐƯỢC.
+  //
+  // Nhịp mở khoá do trường datum `start_epoch` quyết, và trường đó do **chính bên dựng
+  // giao dịch đặt**, không phải giá trị đọc từ đồng hồ hệ thống. Đo trên mã validator
+  // (`MagicLampEco/LAMP/Distribution/onchain`, 2026-09-16): toàn kho chỉ có hai mệnh đề
+  // ràng buộc trường đó — `validators/claim_account.ak:94` và `:153` — và cả hai chỉ đòi
+  // giá trị RA bằng giá trị VÀO, tức nó bất biến SAU KHI tài khoản đã tồn tại. Đường TẠO
+  // tài khoản không có mệnh đề nào chạm nó (`ClaimAccountRedeemer` chỉ có `Claim` và
+  // `Redeem`, `lib/magiclamp/lampdist/types.ak:16-21` — không có nhánh tạo), và chú thích
+  // khai báo trường viết thẳng rằng đặt lùi là thiết kế: `start_epoch: Int,  // t0 (đặt lùi
+  // = "cliff")`.
+  //
+  // ⟹ Thêm một câu kiểu "kể cả chúng tôi cũng không rút nhanh được" là SAI VỚI MÃ, và nó
+  // sai theo hướng người dùng thiệt: họ tin vào một ràng buộc không tồn tại.
+  //
+  // Hai chuỗi này hôm nay an toàn vì chúng chỉ tả nhịp — đó là MAY, không phải thiết kế:
+  // chúng được viết để nói "app không tự điền số", không phải để tránh lời hứa này.
+  //
+  // Rào của chính chú thích này: nó là CHÚ THÍCH, không phải cổng. Không gì đỏ nếu ai đó
+  // vẫn thêm câu ấy. Phạm vi đo là mã validator đọc-được, chưa phải một lượt dựng giao
+  // dịch thật đặt `start_epoch` lùi rồi xem chuỗi có nhận không.
   'Trong vault, mở khoá dần theo ngày': {
     en: 'In the vault, unlocking day by day',
     zh: '在金库中，按日逐步解锁',

@@ -106,6 +106,48 @@ describe('danh sách lấy từ MÁY CHỦ, không từ máy', () => {
   });
 });
 
+describe('khung mức an toàn — và nó KHÔNG được vẽ trên một con số chưa biết', () => {
+  it('danh sách lấy được ⟹ có khung, kèm dòng app tự khai chưa kiểm được gì', async () => {
+    mockList.mockResolvedValue({ guardians: [], count: 0 });
+    const t = await moMan();
+    expect(coKhoi(t, 'guardian-safety')).toBe(true);
+    expect(coKhoi(t, 'guardian-safety-unmeasured')).toBe(true);
+    expect(texts(t)).toMatch(/chưa kiểm được/i);
+  });
+
+  it('gọi HỎNG ⟹ KHÔNG có khung mức an toàn', async () => {
+    // Danh sách hỏng thì số người bảo hộ CHƯA BIẾT. Vẽ "chưa ai khôi phục hộ bạn
+    // được" lên một con số chưa biết là dạng cái-vỏ-im-lặng đắt nhất ở màn này:
+    // người đọc sẽ đi ghi danh lại một người đã có, tốn một lần ký khoá phần cứng.
+    mockList.mockRejectedValue(new Error('mất sóng'));
+    const t = await moMan();
+    expect(coKhoi(t, 'guardian-safety')).toBe(false);
+  });
+
+  it('chưa có DID trên máy ⟹ cũng KHÔNG có khung mức an toàn', async () => {
+    mockCurrentUserDid.mockResolvedValue(null);
+    const t = await moMan();
+    expect(coKhoi(t, 'guardian-safety')).toBe(false);
+  });
+
+  it('ba người ⟹ nêu con số, và TUYỆT ĐỐI không nói "an toàn"', async () => {
+    mockList.mockResolvedValue({
+      guardians: [1, 2, 3].map(i => ({
+        guardianDid: `did:phoenix:bbbbbbbhl4nn6:aaa1feb${i}`,
+        status: 'active',
+        createdAt: '2026-09-01T00:00:00Z',
+      })),
+      count: 3,
+    });
+    const t = await moMan();
+    const chu = texts(t);
+    expect(chu).toMatch(/Đã ghi danh 3 người/);
+    expect(chu).not.toMatch(/an toàn|yên tâm|đã đủ/i);
+    // Dòng tự khai giới hạn vẫn phải ở đây — đây đúng là mức cần nó nhất.
+    expect(chu).toMatch(/chưa kiểm được/i);
+  });
+});
+
 describe('RỖNG và HỎNG là hai màn khác nhau', () => {
   it('rỗng ⟹ khối `guardian-empty`, KHÔNG có khối lỗi, KHÔNG có nút thử lại', async () => {
     mockList.mockResolvedValue({ guardians: [], count: 0 });

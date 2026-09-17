@@ -1,6 +1,6 @@
 # SG9 — Nav Frame + Shell UX (song ngữ · persona-adaptive · cổng thống nhất)
 
-> **Scope**: L3 (Host Shell/Navigation) · DRAFT v0.1 (2026-07-12) · chờ anh Aladin duyệt, giao Tùng thi công (Tùng phụ trách UI/frontend).
+> **Scope**: L3 (Host Shell/Navigation) · DRAFT v0.1 (2026-07-12) · chờ anh Aladin duyệt, giao frontend thi công (frontend phụ trách UI/frontend).
 > **Thuộc**: thanh tab dưới (CurvedTabBar) + nút giữa (kế thừa SG4) + vỏ điều hướng khi vào app con.
 > **Tuân**: PLATFORM-MASTER INV-2 (data ⟂ experience), INTEGRATION §7.1 (nhãn nav = experience layer, KHÔNG nhét manifest). Phạm vi = CHỈ UI/UX SuperApp; KHÔNG đụng logic module; Wakeme = Wakeme agent.
 > **Nguồn hình**: [`_mockups/nav-shell-ux.html`](_mockups/nav-shell-ux.html) — mô phỏng tương tác (persona · ánh sáng · SubHome · nút xoè).
@@ -39,7 +39,7 @@ rồi khai route trong `instance.config.tabs` như các tab khác. KHÔNG sửa 
 
 **Nhãn đã sửa lệch**: `ProofChatHome` "Tin nhắn"→**Chat/Trò chuyện**; `Farms` giữ **Farm/Trang trại** (thêm EN); `WorkHome` **Work/Việc làm**; `JoinHome` **Join/Kết đèn**; `Home` **Home/Trang chủ**; `Account` "Tài khoản"→**Me/Tôi**.
 
-**Tab "Me/Tôi" = AVATAR user** (anh chốt): thay icon đơn điệu bằng ảnh đại diện tròn. `NavItemFrame` nhận `avatarUri` (ảnh) hoặc `initials` (chữ viết tắt tên, fallback khi chưa có ảnh — app hiện dùng initials từ `user.name`, xem `AccountScreen`); không có nốt thì về icon mặc định. Viền avatar sáng khi focus. → Tùng nối `avatarUri` từ hồ sơ user khi có ảnh; trước mắt dùng `initials`.
+**Tab "Me/Tôi" = AVATAR user** (anh chốt): thay icon đơn điệu bằng ảnh đại diện tròn. `NavItemFrame` nhận `avatarUri` (ảnh) hoặc `initials` (chữ viết tắt tên, fallback khi chưa có ảnh — app hiện dùng initials từ `user.name`, xem `AccountScreen`); không có nốt thì về icon mặc định. Viền avatar sáng khi focus. → frontend nối `avatarUri` từ hồ sơ user khi có ảnh; trước mắt dùng `initials`.
 
 **Đa ngôn ngữ — ĐÃ DỰNG (2026-08-05, anh Aladin chốt: vi · zh · ja)**. Seam nay ở `src/i18n/languages.ts`, không còn nằm trong `navLabels.ts`. Xem §5.4.
 
@@ -68,7 +68,7 @@ rồi khai route trong `instance.config.tabs` như các tab khác. KHÔNG sửa 
 
 **Màn chọn**: `src/screens/LanguageScreen.tsx`, route `Language`, deep-link `lamp://language`, lối vào ở màn Tôi. Mỗi dòng ghi tên ngôn ngữ **bằng chính ngôn ngữ đó** — người mở màn này thường là người không đọc được giao diện đang hiện.
 
-### 5.4 CÒN NỢ — giao Tùng
+### 5.4 CÒN NỢ — giao frontend
 
 Bản này dựng **hạ tầng**, không phải bản dịch đầy đủ. Còn lại:
 
@@ -87,7 +87,7 @@ Anh Aladin chốt: tab-bar **động theo persona** (nông dân thấy Farm nổ
 Bố cục: `Chat · [slot] · (Home) · [slot] · Me`.
 - **NEO (cố định mọi persona)**: `Home` (ô giữa · cổng) · `Chat` (đầu trái — ai cũng nhắn tin) · **`Me`** (đầu phải — **AVATAR** user, anh chốt; thay ô "Tài khoản ẩn" cũ thành neo HIỂN THỊ). → luôn có mặt, luôn cùng vị trí.
 - **SLOT thích ứng** (2 ô trong): hoán vị/đổi trong tập module đã bật `{Farm, Work, Join}` theo persona; module dôi ra (thứ 3) nằm trong **cổng xoè** (§4), KHÔNG biến mất.
-> Ghi chú thi công cho Tùng: hiện code giữ `Account` là tab ẩn-nút (notch `cx` tính theo số ô hiển thị). Đưa `Me` thành ô hiển thị = bỏ `Account` khỏi danh sách ẩn + tính lại `cx` cho 5 ô (2 trái + giữa + 2 phải). Frame + avatar đã sẵn (`NavItemFrame` nhận `initials`/`avatarUri`).
+> Ghi chú thi công cho frontend: hiện code giữ `Account` là tab ẩn-nút (notch `cx` tính theo số ô hiển thị). Đưa `Me` thành ô hiển thị = bỏ `Account` khỏi danh sách ẩn + tính lại `cx` cho 5 ô (2 trái + giữa + 2 phải). Frame + avatar đã sẵn (`NavItemFrame` nhận `initials`/`avatarUri`).
 
 ### 2.2 Persona = `domain(user)` — TÁI DÙNG SG4 (không thêm cơ chế mới)
 Dùng đúng hàm suy miền của SG4 (`domain(user)` từ `state.farm` + loài đã đăng ký), CỘNG "nhu cầu khai báo" ở onboarding (§ dưới) làm mặc định KHI CHƯA CÓ dữ liệu:
@@ -130,10 +130,10 @@ Anh chốt: Trace là **hành động quét tức thời** (soi nguồn gốc B�
 
 ---
 
-## 4. Cổng điều hướng THỐNG NHẤT — tái dùng nút xoè của Tùng (KHÔNG dựng hệ thứ hai)
+## 4. Cổng điều hướng THỐNG NHẤT — tái dùng nút xoè của frontend (KHÔNG dựng hệ thứ hai)
 Đề xuất ban đầu (Home nổi + thanh Services riêng + tab kiểu trình duyệt) **trùng** với hệ đã có → hội đồng chốt gộp về MỘT cổng.
 - **Cổng = nút tròn giữa đã có** (SG4): **chạm = về Trang chủ** · **kéo = xoè** (persona-adaptive: Trang chủ · các service Chat/Farm/Work/Join · Me · Trace-quét).
-- **TÁI DÙNG nút xoè arc của Tùng** (SG4 `HomeRadialOverlay` — cung tròn lấy nút giữa làm tâm, đường nối trắng, giữ-1s để ghim; anh Aladin khen đẹp). ĐÚNG cái Tùng đã làm để phóng hành động quét/định danh — nay dùng chung cho ĐỔI-SERVICE. Không vẽ menu mới; chỉ nạp thêm mục service vào cùng cung.
+- **TÁI DÙNG nút xoè arc của frontend** (SG4 `HomeRadialOverlay` — cung tròn lấy nút giữa làm tâm, đường nối trắng, giữ-1s để ghim; anh Aladin khen đẹp). ĐÚNG cái frontend đã làm để phóng hành động quét/định danh — nay dùng chung cho ĐỔI-SERVICE. Không vẽ menu mới; chỉ nạp thêm mục service vào cùng cung.
 - BỎ "nút Home nổi" + "thanh Services" riêng — đó chính là nút giữa.
 - **Nâng overlay xoè lên tầng Stack GỐC** để nổi trên cả màn immersive (hiện overlay vẽ ở gốc app qua Context — xem SG4 §"vì sao không Modal"; cần đảm bảo z-order trên route full-bleed).
 - Vào app con = trải nghiệm thuần: màn full-bleed, tab dưới có thể ẩn (như JoinHome đã ẩn), quay ra chỉ qua cổng.
@@ -148,7 +148,7 @@ Anh chốt: Trace là **hành động quét tức thời** (soi nguồn gốc B�
 - Nguồn: `resolveGateItems.ts` (thứ tự + prominent + subApp) + `index.tsx` (gesture 2 tầng + overlay bent-connector/sub-arc). Tầng-2 CHỈ áp dụng cử chỉ KÉO (chế độ dính giữ 1 tầng). ⏳ Cần **test trên máy thật** (cử chỉ/hình học) + wire `subTab` vào màn app con khi §5 lên.
 
 **Chốt thi công (Q&A với anh Aladin)**:
-- **Cung = SERVICE THUẦN** (thay hẳn menu hành động SG4). Nguồn: `navigation/resolveGateItems.ts` — persona-adaptive: `Home · Chat · [Farm/Work/Join theo persona]` (+ Trace giữa). Màu mục = brand token mỗi service (không hardcode hex). Wire vào `CurvedTabBar` (thay `resolveActions`); overlay/cử chỉ/ghim-mặc-định của Tùng GIỮ NGUYÊN, chỉ đổi nguồn mục + thêm tầng-2.
+- **Cung = SERVICE THUẦN** (thay hẳn menu hành động SG4). Nguồn: `navigation/resolveGateItems.ts` — persona-adaptive: `Home · Chat · [Farm/Work/Join theo persona]` (+ Trace giữa). Màu mục = brand token mỗi service (không hardcode hex). Wire vào `CurvedTabBar` (thay `resolveActions`); overlay/cử chỉ/ghim-mặc-định của frontend GIỮ NGUYÊN, chỉ đổi nguồn mục + thêm tầng-2.
 - **Trace-quét**: `TRACE_SCAN_ROUTE = null` (màn quét tiêu dùng thuộc §3, chưa dựng) → item tự ẩn; khi §3 có route, gán 1 dòng là item hiện trong cổng.
 - **JoinHome giữ ẩn navbar** (immersive): KHÔNG đổi — Join có nút back riêng ở header (`navigation.goBack()`) nên không thành ngõ cụt.
 - **z-order**: overlay đã vẽ ở ROOT (`AppNavigator`, sibling sau `Stack.Navigator`, zIndex/elevation 9999) → đã nổi trên full-bleed; là verify-item, không cần đổi code.
@@ -203,7 +203,7 @@ Cung xoè (§4) nâng cấp thành **vòng quay** (radial carousel / mặt số 
 - **Chỉ một CỬA SỔ cố định** (đề xuất 5–7 mục) hiện trong cung tại một thời điểm → không bao giờ ngộp, dù danh sách đầy đủ có hàng trăm.
 - **Xoay THEO chiều kim đồng hồ** (kéo tiếp tuyến CW) → cuộn tới → lộ dần các dịch vụ ÍT dùng ("hàng trăm bên dưới"). **Xoay NGƯỢC** → quay về nhóm **thường dùng** (trạng thái nghỉ).
 - **Trạng thái nghỉ = mục thường dùng + ghim** (xếp theo `usage`), để cơ-bắp nhớ vị trí; đuôi dài nằm sâu trong vòng, xoay mới thấy. Hai đầu cung **mờ dần** (mục vào/ra êm).
-- **Chọn** = kéo RA XA rồi thả trúng mục (giữ đúng cử chỉ Tùng đã có). **Về Home ngay** = **chạm nút TÂM** bất cứ lúc nào.
+- **Chọn** = kéo RA XA rồi thả trúng mục (giữ đúng cử chỉ frontend đã có). **Về Home ngay** = **chạm nút TÂM** bất cứ lúc nào.
 
 ### 5B.2 Phân tầng — vòng lồng vòng (nav tầng-2 CŨNG THẾ)
 Cùng một tương tác cho mọi tầng; nút tâm = về Home (chạm) / lùi 1 tầng (giữ):
@@ -234,11 +234,11 @@ Anh liệt kê SPO: Wallet · Pool · Fund · Voting — đây đúng 4 nhóm ch
 ### 5B.5 Khả thi + rủi ro (thật)
 - **Khả thi RN**: `HomeRadialOverlay` đã có geometry cung + PanResponder. Thêm: kéo **tiếp tuyến** → góc xoay danh sách; kéo **hướng tâm-ra** → chọn (đã có). Cần ngưỡng phân biệt 2 cử chỉ (trục nào trội).
 - **Rủi ro & giảm thiểu**: (a) *lẫn cử chỉ* xoay↔chọn → ngưỡng góc/bán kính + snap-to-mục; (b) *khó phát hiện đuôi dài* → chấm/khía quanh vòng báo "còn nữa" + quán tính vẩy; (c) *độ chính xác màn nhỏ* → giới hạn cửa sổ + hit-target to; (d) *tiếp cận* → fallback danh sách phẳng cho screen-reader; (e) *hiệu năng* → ảo hoá, chỉ render cửa sổ + lân cận.
-- **Trạng thái**: THIẾT KẾ (spec) — giao Tùng dựng khi §4 cổng đã ổn trên máy thật. Không chặn merge PR hiện tại.
+- **Trạng thái**: THIẾT KẾ (spec) — giao frontend dựng khi §4 cổng đã ổn trên máy thật. Không chặn merge PR hiện tại.
 
 ---
 
-## 6. Home tối giản — LÀM NGAY (PR follow-up, Tùng chủ trì)
+## 6. Home tối giản — LÀM NGAY (PR follow-up, frontend chủ trì)
 Anh chốt: Home luôn **gọn nhẹ, ít nút**, không làm ngộp. **KHÔNG hoãn tới khi có Quick-Access hoàn chỉnh** — rà lại thấy phần lớn Home-trim KHÔNG bị chặn (cổng xoè §4 đã gánh gần hết hành động).
 
 **Đã làm ✅:** bỏ số giả — xoá stat "Việc làm phù hợp" (`workMatches` cứng); ProofChat nối tin-chưa-đọc THẬT; hàng "Ví của tôi" số dư THẬT (`selectChainWallet` → "Chưa đồng bộ" nếu chưa có).
@@ -248,18 +248,18 @@ Anh chốt: Home luôn **gọn nhẹ, ít nút**, không làm ngộp. **KHÔNG h
 2. **Gỡ hàng quick-action Tree/Fruit/Animal/Farm** (`:798–877`) — 3/4 hành động ĐÃ nằm trong cổng tier-2 (`resolveGateItems.ts:66–69`: Quét cây·con vật·nhãn thuốc·Thêm vườn). **Chỉ cần thêm 1 dòng "Quét quả → Fruit" vào `SUB_ACTIONS.Farms`** để không mất chức năng, rồi gỡ hàng khỏi Home.
 3. **Home còn lại (mục tiêu):** chào + trạng thái ví (thật) + hoạt động gần đây (thật) + tối đa 1 lối vào nhẹ. Hết ngộp.
 
-> Vì các nút gọi handler module (Trace/Farm) nên **Tùng chủ trì** thi công; SG9 lo phần cổng (thêm "Quả"). Quick-Access per-service (bản thích ứng+ghim đầy đủ) vẫn là đợt sau — nhưng Home-gọn KHÔNG chờ nó.
+> Vì các nút gọi handler module (Trace/Farm) nên **frontend chủ trì** thi công; SG9 lo phần cổng (thêm "Quả"). Quick-Access per-service (bản thích ứng+ghim đầy đủ) vẫn là đợt sau — nhưng Home-gọn KHÔNG chờ nó.
 
 ---
 
-## 7. Hiệu năng — bật react-native-screens (chờ Tùng, cần test thiết bị)
+## 7. Hiệu năng — bật react-native-screens (chờ frontend, cần test thiết bị)
 `react-native-screens` CÓ trong package nhưng CHƯA bật → mọi màn giữ trong cây, tốn RAM máy yếu.
 - `enableScreens(true)` + `enableFreeze(true)` ở entry (`index.js`/`App.tsx`).
 - `freezeOnBlur: true` cho Tab + Stack (màn không focus ngừng render).
 - **Trần tab-sống** máy yếu (LRU): giữ ≤3 tab mounted, đẩy tab cũ (gate theo `adaptive.ts` lowEnd).
 - `unmountOnBlur` cho form một-lần (đăng ký cây, PostJob…).
 - Gate video/nặng (Feed) theo `adaptive.ts` tier thấp.
-> Là đổi HÀNH VI runtime → Tùng bật rồi test trên máy yếu thật trước khi merge.
+> Là đổi HÀNH VI runtime → frontend bật rồi test trên máy yếu thật trước khi merge.
 
 ---
 
@@ -282,14 +282,14 @@ Thêm trục `luminance: 'day' | 'dim' | 'night'` cạnh `adaptive.ts` (đang lo
 ## 9. Trạng thái thi công
 | Hạng mục | Trạng thái | Ai |
 |---|---|---|
-| §1 Frame song ngữ + sửa nhãn lệch (gồm Me/Tôi + avatar) | **ĐÃ CODE** (PR này, tsc sạch) | Claude → Tùng review |
-| §2 Tab-bar persona-adaptive | **KHUNG ĐÃ CODE** (tsc sạch · 12 unit-test xanh) · ⚠ thích ứng runtime hiện **NO-OP** — `usage` chưa nối nguồn Work → mọi user thấy thanh TĨNH `Chat·Farm·Home·Work·Me` (`'farmer'`=`'new'` layout); ràng buộc "1 đổi/phiên + toast" là **seam ngủ** tới khi có slice usage | Tùng |
-| §3 Trace nút-quét | **ĐÃ CODE** (màn quét + nút Home header + mục cổng §4 + deep-link · tsc sạch · 7 unit-test xanh) · chờ test camera máy thật | Tùng |
-| §4 Cổng thống nhất (tái nút xoè Tùng, nâng z-order) | **ĐÃ CODE** cung = service thuần + **arc con 2 tầng (hành động nhanh)** + Trace nổi bật giữa · z-order ở root (tsc sạch · 8 unit-test xanh) · chờ test cử chỉ máy | Tùng |
+| §1 Frame song ngữ + sửa nhãn lệch (gồm Me/Tôi + avatar) | **ĐÃ CODE** (PR này, tsc sạch) | Claude → frontend review |
+| §2 Tab-bar persona-adaptive | **KHUNG ĐÃ CODE** (tsc sạch · 12 unit-test xanh) · ⚠ thích ứng runtime hiện **NO-OP** — `usage` chưa nối nguồn Work → mọi user thấy thanh TĨNH `Chat·Farm·Home·Work·Me` (`'farmer'`=`'new'` layout); ràng buộc "1 đổi/phiên + toast" là **seam ngủ** tới khi có slice usage | frontend |
+| §3 Trace nút-quét | **ĐÃ CODE** (màn quét + nút Home header + mục cổng §4 + deep-link · tsc sạch · 7 unit-test xanh) · chờ test camera máy thật | frontend |
+| §4 Cổng thống nhất (tái nút xoè frontend, nâng z-order) | **ĐÃ CODE** cung = service thuần + **arc con 2 tầng (hành động nhanh)** + Trace nổi bật giữa · z-order ở root (tsc sạch · 8 unit-test xanh) · chờ test cử chỉ máy | frontend |
 | §5 SubHome thu gọn + SubHomeFrame | ⛔ **ĐÃ GỠ 31/08/2026** (`f07b4a5`) — khung từng dựng xong nhưng không nơi nào gọi, nên gỡ cùng ba tệp chết khác. **Không còn việc phải làm ở mục này.** Dựng lại thì bắt đầu từ §5.2. | — |
-| §6 Home tối giản | **BỎ số bịa xong** + ví/ProofChat THẬT · **LÀM NGAY PR kế** (không hoãn): gỡ carousel + lưới + hàng quick-action (cổng đã gánh; thêm "Quả" vào cổng) | Tùng chủ trì |
-| §7 react-native-screens | Spec xong · cần test máy | Tùng |
-| §8 Màu tươi + luminance | Spec xong · code chờ | Tùng |
+| §6 Home tối giản | **BỎ số bịa xong** + ví/ProofChat THẬT · **LÀM NGAY PR kế** (không hoãn): gỡ carousel + lưới + hàng quick-action (cổng đã gánh; thêm "Quả" vào cổng) | frontend chủ trì |
+| §7 react-native-screens | Spec xong · cần test máy | frontend |
+| §8 Màu tươi + luminance | Spec xong · code chờ | frontend |
 | Mô phỏng HTML (`_mockups/nav-shell-ux.html`) | **ĐÃ CÓ** | Claude |
 
 **KHÔNG thuộc spec này**: logic Wakeme (Wakeme agent), logic xử lý module, mint.
@@ -304,7 +304,7 @@ Mục này chốt CÁCH thi công (đã code) sao cho vừa bám spec vừa gi�
 4. **Ổn định > "thông minh"**: thanh persona **đóng băng theo phiên**, tối đa 1 đổi/phiên + toast (khử "rối/lạc khi đổi vai", §2.3). User **ghim đè** tất cả.
 5. **Cân đối hình học**: nút Home luôn rơi đúng khuyết-tròn (`cx` tính theo số ô resolver trả). Frame cố định kích thước (`NAV_FRAME_DIMS`) để mọi ô cân nhau; `allowFontScaling=false` cho nhãn 2 dòng khỏi vỡ.
 6. **Immersive & một cổng ra**: vào app con = full-bleed; đổi-app chỉ qua MỘT cổng (nút giữa). Overlay xoè vẽ ở **Stack GỐC** (z-order trên mọi màn). Màn "dùng-rồi-thoát" (quét) `replace` để back về thẳng nơi khởi động.
-7. **Tái dùng, KHÔNG dựng hệ thứ hai**: cổng = nút xoè SG4 của Tùng, chỉ đổi NGUỒN mục; màn quét tái dùng camera `WebLoginScan`; kết quả quét tái dùng màn chi tiết sẵn có.
+7. **Tái dùng, KHÔNG dựng hệ thứ hai**: cổng = nút xoè SG4 của frontend, chỉ đổi NGUỒN mục; màn quét tái dùng camera `WebLoginScan`; kết quả quét tái dùng màn chi tiết sẵn có.
 8. **Accessibility + suy biến mượt**: `accessibilityLabel`/`accessibilityRole` cho nút quét/tab con; instance bật ít module hơn thì resolver tự bỏ ô thiếu (thanh vẫn cân); nguồn dữ liệu chưa có (usage, provenance ngoài Aladin) → suy biến an toàn, KHÔNG bịa.
 
 ### 10.2 Cổng nút giữa — cử chỉ 2 tầng (đã tinh chỉnh theo anh Aladin)

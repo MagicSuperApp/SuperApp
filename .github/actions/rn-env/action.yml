@@ -133,6 +133,14 @@ runs:
         LAMPNET_UPLOAD_URL=https://lampnet.cloud/mirage/put?mode=symmetric
         CAPTURES_3D_URL=https://api.orilife.io/captures/3d
 
+        # MAGIC — VaultReadAPI (ĐỌC-THÔI số dư MAGIC theo owner_pkh). Nhà MAGIC chưa gửi
+        # địa chỉ/owner_pkh thật (hứa "kèm tx trong thư sau") — trống ở CI là ĐÚNG hiện
+        # trạng, KHÔNG phải thiếu sót: magicVaultService.ts fail-closed sang "chưa cấu
+        # hình" khi trống, không lui về 0. Điền khi có thư.
+        MAGIC_VAULT_API_URL=
+        MAGIC_VAULT_OWNER_PKH=
+        MAGIC_VAULT_API_TOKEN=
+
         # AladinWork (Việc làm)
         WORK_API_URL=https://api.aladin.work/api/v1
         # Kill-switch THỦ CÔNG. Trống = để cổng runtime quyết theo /health
@@ -157,6 +165,7 @@ runs:
         # Có endpoint phát hành thật thì điền vào đây, ĐỪNG điền lại ngrok.
         REMOTE_LOG_URL=
         ALADIN_CHAT_URL=
+        GENIE_URL=
 
         # Truy vết bản dựng — app in ba giá trị này ở màn "Phiên bản ứng dụng"
         # (`src/screens/AccountScreen.tsx`) để một ảnh chụp màn của người thử truy

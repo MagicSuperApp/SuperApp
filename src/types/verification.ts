@@ -91,7 +91,12 @@ export interface VerificationResult {
 // ===== PhoenixKey SDK Types =====
 export interface WalletStatus {
   isActivated: boolean;
-  magicCredits: number;
+  /**
+   * `null` = CHƯA BIẾT số dư MAGIC (máy chủ không xác định được, hoặc chưa hỏi).
+   * Khác hẳn `0` = máy chủ nói rõ là không có. Xem `WalletAllResponse` ở
+   * `services/phoenixKey-api.ts` cho cả ba trạng thái và lý do không được gộp.
+   */
+  magicCredits: number | null;
   lampTokens: number;
   adaBalance: number;
   address: string;

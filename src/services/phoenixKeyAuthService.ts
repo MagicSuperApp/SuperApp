@@ -55,6 +55,7 @@ import phoenixKeySDK, {
   wipeIdentity,
 } from '../sdk/phoenixKey';
 import { phoenixKeyApi, PhoenixKeyApiError } from './phoenixKey-api';
+import { PhoenixKeyNativeError } from './phoenixKey-native';
 // Chuỗi hiển thị theo KHOÁ, không viết thẳng tiếng Việt vào mã dịch vụ — bốn thứ
 // tiếng đi cùng nhau ở `i18n/keys/identity.ts`.
 import { tk } from '../i18n/keys';
@@ -164,6 +165,16 @@ const requireWalletRegisterFields = async (): Promise<{
 interface GenesisResult {
   user: AuthUser;
   txHash: string;
+  /**
+   * Tên đăng nhập đã ĐẶT ĐƯỢC LÊN MÁY CHỦ chưa.
+   *
+   * `undefined` = người dùng không gõ tên nào. `false` = có gõ nhưng máy chủ không
+   * nhận, và lúc đó `usernameError` mang câu nói vì sao. Ba trạng thái, không gộp:
+   * gộp "không gõ" với "gõ mà hỏng" là đúng cái vỏ im lặng khiến lỗi này sống được
+   * tới hôm nay.
+   */
+  usernameSet?: boolean;
+  usernameError?: string;
 }
 
 /**
@@ -228,8 +239,10 @@ export const registerIdentity = async (
   // vá, không phải bản thân phép chặn.
   //
   // Đặt sau `enrollKeypair()` thì sinh ra bốn hệ quả, cả bốn đều thật:
-  //   1. `enrollKeypair()` XOÁ khoá cũ trong chip rồi ghi khoá mới. Hỏng sau đó là
-  //      máy mất khoá cũ mà chưa có danh tính mới.
+  //   1. `enrollKeypair()` ĐỎ ngay khi máy còn khoá cũ: hai cầu native từ chối sinh
+  //      đè bằng `E_KEY_EXISTS` (`PhoenixKeyModule.swift` nhánh `hasKeySync`,
+  //      `PhoenixKeyModule.kt` nhánh `keyStore.containsAlias`). Người dùng nhận một
+  //      mã lỗi native thay vì câu nói đúng ca của mình.
   //   2. Lần bấm lại, `isKeypairEnrolled()` ở trên trả `true` nên với `new-person`
   //      app hỏi "máy này đã có một danh tính" — về một danh tính chưa từng tồn tại.
   //   3. Người dùng đã gõ xong tên đăng nhập và qua HAI hộp sinh trắc trước khi
@@ -244,7 +257,36 @@ export const registerIdentity = async (
   // người dùng không đổi giữa hai lần.
   const walletFields = await requireWalletRegisterFields();
 
-  const { publicKeyHex } = await enrollKeypair();
+  // ── CHIP TỪ CHỐI GHI ĐÈ ⟹ DỊCH MÃ NATIVE RA MỘT CÂU NÓI ĐƯỢC VIỆC PHẢI LÀM ──
+  // Hai cầu native từ chối sinh khoá khi nhãn đã có khoá, và trả `E_KEY_EXISTS`
+  // (`PhoenixKeyModule.kt` nhánh `keyStore.containsAlias`, `PhoenixKeyModule.swift`
+  // nhánh `hasKeySync`). Hằng mã lỗi đã khai từ lâu ở `phoenixKey-native.ts` kèm
+  // chú thích "switch on these in UI" — và tới 2026-09-17, grep cả kho ra 0 chỗ
+  // bắt nó. Tức người dùng nhận đúng chuỗi `E_KEY_EXISTS` lên màn hình.
+  //
+  // Tới được đây là một mâu thuẫn CÓ THẬT chứ không phải lỗi lập trình: phép đo ở
+  // đầu hàm (`isKeypairEnrolled()`) đọc nhãn qua con trỏ trong AsyncStorage
+  // (`sdk/phoenixKey.ts` ▸ `getOwnerAlias`), nên mất AsyncStorage là con trỏ rơi
+  // về nhãn mặc định và phép đo trả `false` cho một máy vẫn còn khoá dưới nhãn ấy.
+  // App đo ra "máy trống trơn", mời người dùng tạo mới, rồi chip từ chối.
+  //
+  // KHÔNG xoá khoá cũ để đi tiếp: khoá đó có thể đang là khoá owner của một danh
+  // tính còn sống, và xoá nó là bất khả hồi. Lối đúng là màn Khôi phục — ở đó
+  // `lookupDidByDeviceKey` đổi CHÍNH khoá ấy lấy DID, không cần 24 từ, không cần
+  // tên đăng nhập.
+  let publicKeyHex: string;
+  try {
+    ({ publicKeyHex } = await enrollKeypair());
+  } catch (err) {
+    if ((err as { code?: string })?.code === PhoenixKeyNativeError.KEY_EXISTS) {
+      const stuck = new Error(CHIP_KEY_EXISTS_MESSAGE) as Error & { reason?: string };
+      stuck.reason = 'chip_key_exists';
+      rLog.error('register_blocked_chip_key_exists', {});
+      console.warn('[PhoenixKey register] chip còn khoá cũ dưới nhãn đang dùng:', err);
+      throw stuck;
+    }
+    throw err;
+  }
   const genesisMessage = `PHOENIXKEY_GENESIS:${publicKeyHex}`;
   const messageHex = utf8ToHex(genesisMessage);
 
@@ -312,7 +354,41 @@ export const registerIdentity = async (
     updatedAt: Date.now(),
   };
   await persistLegacyStores(user, biometricKind);
-  return { user, txHash };
+
+  // ── TÊN ĐĂNG NHẬP PHẢI ĐI LÊN MÁY CHỦ NGAY TẠI ĐÂY ──────────────────────────
+  // Trước bản này nó KHÔNG đi đâu cả. Màn Bước 1/3 hỏi tên, hứa với người dùng rằng
+  // nó "không thể trùng trong toàn hệ sinh thái", rồi cất vào `AsyncStorage` của
+  // chính máy đó. Thân `POST /identity/register` không có trường nào mang tên
+  // (`phoenixKey-api.ts` ▸ `RegisterRequest`), và lối duy nhất đẩy tên lên là
+  // `PUT /identity/username` — chỉ được gọi từ `UsernameScreen`, một màn nằm trong
+  // Tài khoản, tức PHẢI đăng nhập xong mới tới được.
+  //
+  // Vòng tròn khép lại ở chỗ đắt nhất: người dùng mới cài lại app rồi gõ đúng tên
+  // mình đã chọn, `RestoreIdentityScreen` hỏi `GET /identity/by-username/<tên>`,
+  // máy chủ trả 404 vì tên chưa từng được đăng ký — và lượt 404 ấy bị nuốt bằng
+  // `console.log`, thứ không ai đọc được trên bản đã phát hành.
+  //
+  // KHÔNG để lượt gọi này làm hỏng cả lần đăng ký: danh tính đã ghi lên chuỗi xong
+  // rồi, ném ở đây là vứt một danh tính thật vì một cái tên. Nhưng cũng KHÔNG nuốt
+  // — trả trạng thái ra cho màn hình nói cho người dùng biết.
+  let usernameSet: boolean | undefined;
+  let usernameError: string | undefined;
+  const tenSach = username?.trim().toLowerCase();
+  if (tenSach) {
+    try {
+      await phoenixKeyApi.identity.setUsername(tenSach);
+      usernameSet = true;
+    } catch (err) {
+      usernameSet = false;
+      usernameError =
+        err instanceof PhoenixKeyApiError && err.message.trim()
+          ? err.message
+          : 'Chưa đăng ký được tên này lên máy chủ.';
+      console.warn('[PhoenixKey register] đặt tên đăng nhập hỏng:', err);
+    }
+  }
+
+  return { user, txHash, usernameSet, usernameError };
 };
 
 export const unlockExistingIdentity = async (): Promise<AuthUser | null> => {
@@ -827,6 +903,87 @@ const RECOVER_FAIL_MESSAGE: Record<string, string> = {
  */
 export const WALLET_BOUND_ELSEWHERE_MESSAGE =
   'Máy này còn giữ ví của một danh tính đã tạo trước đó, và máy chủ không cho gắn ví đó vào một danh tính mới. Đây không phải lỗi sóng hay lỗi vân tay, nên bấm tạo lại sẽ ra đúng kết quả này. Hãy mở màn Khôi phục danh tính và dùng cụm 24 từ của danh tính cũ để lấy lại nó.';
+
+/**
+ * Câu cho ca CHIP CÒN KHOÁ CŨ dưới đúng nhãn app đang dùng (`E_KEY_EXISTS`).
+ *
+ * Ba vế bắt buộc, vì thiếu vế nào là người dùng đi sai một hướng:
+ *  · trở ngại là KHOÁ CŨ trong chip — không phải sóng, không phải vân tay;
+ *  · thử lại KHÔNG khác, và app cố ý KHÔNG xoá khoá đó hộ (nó có thể là khoá của
+ *    một danh tính còn dùng được, và xoá là bất khả hồi);
+ *  · lối ra là màn Khôi phục, nơi máy tự hỏi máy chủ theo chính khoá ấy — nói rõ
+ *    "không cần 24 từ, không cần tên đăng nhập", vì đúng nhóm kẹt ở đây là nhóm
+ *    không có hai thứ đó (`SeedExportScreen` nằm SAU lớp đăng nhập).
+ */
+export const CHIP_KEY_EXISTS_MESSAGE =
+  'Máy này vẫn còn một khoá bảo mật từ lần cài trước nằm trong chip, và ứng dụng không được phép ghi đè lên nó — khoá đó có thể đang thuộc một tài khoản còn dùng được. Đây không phải lỗi sóng hay lỗi vân tay, nên bấm tạo lại sẽ ra đúng kết quả này. Hãy mở màn Khôi phục danh tính: máy sẽ tự hỏi máy chủ xem khoá này thuộc tài khoản nào, không cần 24 từ và không cần tên đăng nhập.';
+
+/**
+ * Vì sao lượt TRA DID THEO KHOÁ TRONG CHIP hỏng — ba ca, ba lối đi khác nhau.
+ *
+ * Tách khỏi `describeRecoverFailure`: hàm đó phục vụ chuỗi BA ĐƯỜNG của
+ * `recoverLocalIdentityFromKey` và kết luận của nó được `chonLyDoKhoiPhuc` đọc
+ * lại, nên một khoá lạ nhét vào đó là một khoá phép suy luận kia có thể trỏ nhầm
+ * vào. Ở đây chỉ có ĐÚNG MỘT lời gọi (`lookupDidByDeviceKey`) nên lỗi của nó đọc
+ * thẳng được, không phải đối chiếu với ai.
+ *
+ * Ba ca KHÔNG được gộp, vì việc người dùng phải làm tiếp trái ngược nhau:
+ *  · `biometric_not_done` — làm lại ngay tại chỗ là xong;
+ *  · `network_down`       — đợi sóng rồi bấm lại, máy không mất gì;
+ *  · `key_not_linked`     — bấm lại bao nhiêu lần cũng thế, phải đổi sang 24 từ.
+ * Một câu "có lỗi xảy ra" cho cả ba là đẩy hai nhóm đi sai đường.
+ */
+export type DeviceKeyLookupFailure =
+  | 'biometric_not_done'
+  | 'key_not_linked'
+  | 'network_down'
+  | 'unknown';
+
+/**
+ * Hàm THUẦN — không gọi mạng, không đọc chip. Tách ra để bài kiểm ghim được từng
+ * ca mà không phải dựng cả màn hình, đúng lý do `chonLyDoKhoiPhuc` được tách.
+ *
+ * THỨ TỰ DÒ là phần đáng đọc kỹ: mã native (`E_USER_CANCELED`) đi TRƯỚC mọi phép
+ * dò chuỗi, vì câu của nó do hệ điều hành đặt và đổi theo ngôn ngữ máy. Rồi tới
+ * `PhoenixKeyApiError` theo MÃ SỐ, rồi mới tới lưới dò chuỗi cho lỗi tầng dưới.
+ */
+export const classifyDeviceKeyLookupFailure = (err: unknown): DeviceKeyLookupFailure => {
+  const code = (err as { code?: unknown })?.code;
+  if (code === 'USER_CANCELED' || code === PhoenixKeyNativeError.USER_CANCELED) {
+    return 'biometric_not_done';
+  }
+  if (code === PhoenixKeyNativeError.BIOMETRIC_LOCKOUT || code === 'BIOMETRIC_LOCKOUT') {
+    return 'biometric_not_done';
+  }
+
+  if (err instanceof PhoenixKeyApiError) {
+    // `httpStatus === 0` = lời gọi không tới được máy chủ — cùng quy ước với
+    // `describeRecoverFailure`. Kiểm TRƯỚC 404: một lời gọi chết không mang 404.
+    if (err.httpStatus === 0) return 'network_down';
+    // 404 ở cửa này gộp ba ca có chủ đích ở máy chủ (chữ ký sai · khoá chưa đăng
+    // ký · khoá đã thu hồi). KHÔNG dịch nó thành một nguyên nhân cụ thể — câu đưa
+    // ra chỉ nói đúng thứ đo được: máy chủ chưa thấy khoá này thuộc tài khoản nào.
+    if (err.httpStatus === 404) return 'key_not_linked';
+    return 'unknown';
+  }
+
+  const m = String((err as { message?: string })?.message ?? err ?? '');
+  if (/cancel|user_cancel|huỷ|huy/i.test(m)) return 'biometric_not_done';
+  if (/network|timeout|ECONN|Network Error/i.test(m)) return 'network_down';
+  return 'unknown';
+};
+
+/** Mỗi ca → MỘT câu hoàn chỉnh (từ điển tra theo NGUYÊN chuỗi — `i18n/translate.ts`). */
+export const DEVICE_KEY_LOOKUP_MESSAGE: Record<DeviceKeyLookupFailure, string> = {
+  biometric_not_done:
+    'Chưa xác thực xong vân tay hoặc khuôn mặt nên máy chưa hỏi được máy chủ. Bấm lại và giữ tới khi máy báo xong — khoá trên máy vẫn còn nguyên.',
+  key_not_linked:
+    'Máy chủ chưa thấy khoá trên máy này thuộc về tài khoản nào: khoá có thể chưa đăng ký xong lần trước, hoặc đã bị thu hồi sau một lần khôi phục ở nơi khác. Bấm lại cũng ra đúng kết quả này — hãy dùng cụm 24 từ ở phần dưới màn hình.',
+  network_down:
+    'Chưa liên lạc được với máy chủ danh tính. Kiểm tra sóng rồi bấm lại — khoá trên máy vẫn còn nguyên, không mất gì.',
+  unknown:
+    'Chưa tìm lại được danh tính từ khoá trên máy, chưa rõ vì sao. Thử lại một lần; nếu vẫn vậy, dùng cụm 24 từ ở phần dưới hoặc chụp màn hình này gửi hỗ trợ.',
+};
 
 /**
  * Mã lỗi lúc ĐĂNG KÝ → câu người đọc được.

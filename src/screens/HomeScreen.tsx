@@ -936,7 +936,10 @@ const HomeScreen: React.FC = () => {
               testID="home-wallet-stat"
               value={
                 chainWallet
-                  ? `${formatToken(chainWallet.magicBalance)} MAGIC · ${fmtLamp(chainWallet.lampBalance)} LAMP`
+                  // MAGIC có thể CHƯA BIẾT trong khi LAMP vẫn đọc được — hai số
+                  // đến từ hai nguồn khác nhau trong cùng một lượt gọi. "—" nói
+                  // đúng điều đó; in `0` thì nói một điều máy chủ chưa hề nói.
+                  ? `${chainWallet.magicBalance == null ? '—' : formatToken(chainWallet.magicBalance)} MAGIC · ${fmtLamp(chainWallet.lampBalance)} LAMP`
                   : 'Chưa đồng bộ'
               }
               /*

@@ -232,6 +232,23 @@ async function request<T>(
  * Lý do né `/v1/peer_id` (trả plain text) **đã hết hiệu lực** từ PR #57 (`2e294b3`):
  * `/v1/peer_id?format=json` nay trả JSON thật. Cả hai đường đều sống, nên giữ
  * `network_info` không sai — ghi lại để người sau khỏi tưởng đây là ràng buộc còn đúng.
+ *
+ * ── HAI RÀNG BUỘC CHO NGÀY MÀN NÀY HIỆN SỐ NÚT (nhà LampNet khai 2026-09-05) ──
+ * Cùng thân trả về còn `peers` · `peer_names` · `peer_ids` · `peer_pubkeys`, hôm nay
+ * cùng dài 3. Bên này CHƯA đọc trường nào trong số đó, nên hai ràng buộc dưới đây chưa
+ * có mã để ghim; chúng ở đây vì chỗ chọn nhầm sẽ là chính hàm này:
+ *
+ * 1. Đếm `peer_ids.length`, KHÔNG đếm `peers.length`. `peers` là **địa chỉ mạng**,
+ *    `peer_ids` là **định danh nút** — một nút đổi địa chỉ vẫn là một nút. Hai mảng
+ *    đang bằng nhau nên chọn nhầm vẫn ra đúng số, cho tới ngày chúng khác nhau. Cùng
+ *    lớp bẫy với `verifier_did` / `bootstrap_peer_id` ngay dưới đây.
+ * 2. Con số ấy là **cấu hình tĩnh** — danh sách nút mà node trả lời được KHAI BÁO là
+ *    biết; nó không đo nút nào còn sống. Nên câu hiển thị phải giữ chữ "công bố"
+ *    (*"Mạng hiện công bố 3 điểm"*). Rút thành *"Mạng có 3 điểm"* là đổi từ mô tả một
+ *    bản khai sang khẳng định một trạng thái, mà bản khai đó đang lạc quan hơn thực
+ *    tế (đo 2026-08-31: hình sao qua một nút trung tâm, thiếu cạnh giữa hai nút kia).
+ *    Chữ "công bố" khó hiểu với người dùng phổ thông thì BỎ HẲN dòng đó — thà thiếu
+ *    một dòng còn hơn có một dòng hứa nhiều hơn mạng giữ được.
  */
 export const getPeerId = async (): Promise<PeerIdResult> => {
   const info = await request<{ bootstrap_peer_id?: string }>('/v1/network_info', { method: 'GET' });

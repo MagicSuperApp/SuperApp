@@ -6,7 +6,10 @@
 //
 // Spec v3.0 Key Hierarchy:
 //   Master_KEK  ←_R {0,1}^256  (random, root of trust)
-//   TAAD_Key    = Ed25519.FromSeed(HKDF(Master_KEK, "taad-controller-v1", H(DID)))
+//   TAAD_Key    — khoá ĐIỀU KHIỂN. Công thức nằm ở `sign.rs` (nguồn duy nhất):
+//                 HKDF → entropy BIP-39 → CIP-1852 m/1852'/1815'/0'/0/0.
+//                 Tệp này chỉ cấp NGUYÊN LIỆU (HKDF, Ed25519 thô) cho nơi khác,
+//                 nó KHÔNG định nghĩa công thức TAAD.
 //   HW_Key      = SecureEnclave.Generate() → non-exportable P-256
 //   Device_KEK  = HKDF(PIN_derived ∥ HW_UID, "device-kek-v1", H(DID))
 //   Wrapped_KEK = AES-256-GCM(Device_KEK, Master_KEK)
@@ -119,7 +122,7 @@ pub fn mnemonic_to_master_kek(words: String) -> String {
 ///
 /// # Arguments
 /// * `ikm_hex`  - Input key material (hex encoded)
-/// * `info`     - Domain separation label (e.g. "taad-controller-v1")
+/// * `info`     - Domain separation label (e.g. "device-kek-v1")
 /// * `salt_hex` - Salt (hex encoded, empty string = 32 zero bytes)
 /// * `length`   - Output length in bytes (max 255 × 32 = 8160)
 ///
@@ -150,8 +153,9 @@ pub fn hkdf_derive(ikm_hex: String, info: String, salt_hex: String, length: usiz
 }
 
 // ─────────────────────────────────────────────────────────────────
-// ED25519 — TAAD_Key
-// spec §3.2: TAAD_Key = Ed25519.FromSeed(HKDF(Master_KEK, "taad-controller-v1", H(DID)))
+// ED25519 — nguyên liệu chung (Ed25519 THƯỜNG, hạt giống 32 byte)
+// KHÔNG phải đường dẫn xuất khoá điều khiển TAAD: khoá đó là Ed25519 MỞ RỘNG,
+// dựng ở `sign::derive_taad_controller_key`.
 // ─────────────────────────────────────────────────────────────────
 
 /// Derive Ed25519 public key from a 32-byte seed (hex encoded).
@@ -382,8 +386,8 @@ mod tests {
     #[test]
     fn test_hkdf_derive_deterministic() {
         let kek = "0".repeat(64); // 32 zero bytes
-        let out1 = hkdf_derive(kek.clone(), "taad-controller-v1".to_string(), String::new(), 32);
-        let out2 = hkdf_derive(kek, "taad-controller-v1".to_string(), String::new(), 32);
+        let out1 = hkdf_derive(kek.clone(), "device-kek-v1".to_string(), String::new(), 32);
+        let out2 = hkdf_derive(kek, "device-kek-v1".to_string(), String::new(), 32);
         assert_eq!(out1, out2); // Same input → same output
         assert_eq!(out1.len(), 64);
     }
@@ -391,7 +395,7 @@ mod tests {
     #[test]
     fn test_hkdf_domain_separation() {
         let kek = "0".repeat(64);
-        let out1 = hkdf_derive(kek.clone(), "taad-controller-v1".to_string(), String::new(), 32);
+        let out1 = hkdf_derive(kek.clone(), "device-kek-v1".to_string(), String::new(), 32);
         let out2 = hkdf_derive(kek, "wallet-v1".to_string(), String::new(), 32);
         assert_ne!(out1, out2); // Different info → different output (MT7)
     }
@@ -399,7 +403,7 @@ mod tests {
     #[test]
     fn test_ed25519_public_key_length() {
         let kek = generate_master_kek();
-        let seed = hkdf_derive(kek, "taad-controller-v1".to_string(), String::new(), 32);
+        let seed = hkdf_derive(kek, "device-kek-v1".to_string(), String::new(), 32);
         let pub_key = derive_ed25519_public_key(seed);
         assert_eq!(pub_key.len(), 64); // 32 bytes = 64 hex chars
     }
@@ -549,19 +553,21 @@ abandon abandon abandon abandon abandon abandon art"
 
     #[test]
     fn test_mnemonic_recovers_taad_key_identically() {
-        // PROOF controller_pkh is stable after restore: TAAD_Key is a pure
-        // function of Master_KEK, so recovering the exact KEK recovers the exact
-        // Ed25519 controller pubkey. (Mirrors deriveTaadPublicKey in Dart.)
+        // PROOF controller_pkh is stable after restore: khoá điều khiển là hàm
+        // THUẦN của Master_KEK, nên khôi phục đúng KEK là khôi phục đúng khoá.
+        //
+        // Bài này gọi thẳng `sign::derive_taad_public_key` — NGUỒN DUY NHẤT. Bản
+        // trước dựng lại công thức tại chỗ bằng `hkdf_derive` + `derive_ed25519_
+        // public_key`; nó vẫn xanh sau khi công thức thật đổi, vì nó chỉ đối chiếu
+        // hai lần gọi của CHÍNH nó.
         let kek = generate_master_kek();
-        let salt = sha256_hex("genesis".to_string());
-        let seed1 = hkdf_derive(kek.clone(), "taad-controller-v1".to_string(), salt.clone(), 32);
-        let taad1 = derive_ed25519_public_key(seed1);
+        let taad1 = crate::sign::derive_taad_public_key(kek.clone());
+        assert_eq!(taad1.len(), 64, "phải ra pubkey 32 byte");
 
         // Round-trip the KEK through the 24-word phrase, as a restore would.
         let phrase = master_kek_to_mnemonic(kek);
         let recovered_kek = mnemonic_to_master_kek(phrase);
-        let seed2 = hkdf_derive(recovered_kek, "taad-controller-v1".to_string(), salt, 32);
-        let taad2 = derive_ed25519_public_key(seed2);
+        let taad2 = crate::sign::derive_taad_public_key(recovered_kek);
 
         assert_eq!(taad1, taad2, "TAAD_Key (controller) MUST be identical after restore");
     }

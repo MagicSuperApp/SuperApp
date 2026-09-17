@@ -20,6 +20,14 @@
  *
  * Dùng `react-test-renderer` theo tiền lệ `MyDevicesScreen.test.tsx`
  * (`@testing-library/react-native` không có trong kho này).
+ *
+ * ⚠ MÀN NÀY KHÔNG CÒN NẰM TRÊN TUYẾN. `navigation/index.tsx` khai
+ * `import LoginScreen from '../screens/LoginNetworkScreen'`, nên tuyến `Login`
+ * dựng màn KIA, và mọi khẳng định ở tệp này nói về một màn người dùng không tới
+ * được. Nó vẫn xanh, vẫn đúng tên, và vẫn chứng minh KHÔNG ĐIỀU GÌ về sản phẩm
+ * đang chạy — đúng cái bẫy "test xanh trên đường không ai đi được".
+ * Bài kiểm của màn đang chạy ở `LoginNetworkScreen.entry.test.tsx`; tệp này giữ
+ * lại vì màn cũ còn trong kho, và nó chết cùng ngày màn cũ bị gỡ.
  */
 
 import React from 'react';
@@ -112,17 +120,25 @@ beforeEach(() => {
   mockIsPhoenixKeyAvailable.mockReturnValue(true);
 });
 
-describe('máy CHƯA có danh tính', () => {
-  it('bấm nút sinh trắc ⇒ đi tới màn HỎI, KHÔNG đi thẳng sang tạo mới', async () => {
+describe('máy TRỐNG TRƠN — không khoá, không DID', () => {
+  // ⛔ 2026-09-16 — HÀNH VI Ở CA NÀY ĐÃ ĐỔI THEO CHỦ NHÂN, và bài kiểm đổi theo.
+  //
+  // Bài cũ ghim "đi tới màn HỎI, KHÔNG đi thẳng sang tạo mới". Nó ghim đúng cái
+  // nó tả, nhưng cái nó tả là bắt MỌI người trả lời một câu hỏi để phục vụ một
+  // nhóm — kể cả người mà máy đã trả lời hộ được. Nay chỉ trạng thái app thật sự
+  // không biết mới đi qua màn hỏi.
+  //
+  // Lối hỏi KHÔNG mất ở trạng thái này: nó còn ở dòng chữ phụ dưới thẻ
+  // (`login-entry-fallback`), cho người đổi điện thoại — máy mới của họ cũng đo
+  // ra trống trơn. Bài dưới cùng ghim rằng dòng đó còn.
+  it('bấm nút sinh trắc ⇒ đi THẲNG màn tạo mới, thôi hỏi', async () => {
     mockCurrentUserDid.mockResolvedValue(null);
     mockIsKeypairEnrolled.mockResolvedValue(false);
 
     const tree = await mountAndPress();
 
-    expect(mockNav.navigate).toHaveBeenCalledWith('IdentityEntryChoice');
-    // Đi thẳng sang màn tạo mới chính là hành vi đang bị bỏ: nút không có chữ
-    // nào mà lại chọn hộ người dùng một trong ba luồng.
-    expect(mockNav.navigate).not.toHaveBeenCalledWith('SignUpBiometric');
+    expect(mockNav.navigate).toHaveBeenCalledWith('SignUpBiometric');
+    expect(mockNav.navigate).not.toHaveBeenCalledWith('IdentityEntryChoice');
     await act(async () => { tree.unmount(); });
   });
 
@@ -136,6 +152,63 @@ describe('máy CHƯA có danh tính', () => {
     // tồn tại — nhánh này phải rẽ TRƯỚC mọi lời gọi tới chip.
     expect(mockSignRaw).not.toHaveBeenCalled();
     expect(mockUnlockExistingIdentity).not.toHaveBeenCalled();
+    await act(async () => { tree.unmount(); });
+  });
+
+  it('LỐI LÙI vẫn còn: dòng chữ phụ mở màn hỏi cho người đổi điện thoại', async () => {
+    mockCurrentUserDid.mockResolvedValue(null);
+    mockIsKeypairEnrolled.mockResolvedValue(false);
+
+    let tree!: renderer.ReactTestRenderer;
+    await act(async () => { tree = renderer.create(<LoginScreen />); });
+    await act(async () => {
+      tree.root.findByProps({ testID: 'login-entry-fallback' }).props.onPress();
+    });
+
+    expect(mockNav.navigate).toHaveBeenCalledWith('IdentityEntryChoice');
+    await act(async () => { tree.unmount(); });
+  });
+});
+
+describe('máy CÒN KHOÁ trong chip nhưng app không biết khoá của ai', () => {
+  // Ca CÀI LẠI APP TRÊN CHÍNH MÁY CŨ: kho khoá sống qua lần gỡ app, AsyncStorage
+  // thì không. Người dùng không biết máy này đã từng cài app chưa — nhưng chip
+  // thì biết, và máy chủ đổi được khoá đó lấy DID (`POST /identity/lookup`).
+  //
+  // Trước 2026-09-16 ca này rơi vào cùng nhánh với "người mới": app hỏi họ một
+  // câu họ không trả lời nổi, và lối "tôi là người mới" của họ kết thúc ở
+  // `KEY_ALREADY_REGISTERED` — máy chủ từ chối vì khoá ấy ĐÃ đăng ký.
+  const khoaConDidMat = () => {
+    mockCurrentUserDid.mockResolvedValue(null);
+    mockIsKeypairEnrolled.mockResolvedValue(true);
+  };
+
+  it('đi tới màn KHÔI PHỤC, không hỏi và không tạo mới', async () => {
+    khoaConDidMat();
+
+    const tree = await mountAndPress();
+
+    expect(mockNav.navigate).toHaveBeenCalledWith('RestoreIdentity');
+    // Hai đích SAI của ca này, ghim cả hai: tạo mới thì máy chủ chặn cứng,
+    // còn màn hỏi thì hỏi một câu chính người dùng cũng không biết đáp án.
+    expect(mockNav.navigate).not.toHaveBeenCalledWith('SignUpBiometric');
+    expect(mockNav.navigate).not.toHaveBeenCalledWith('IdentityEntryChoice');
+    await act(async () => { tree.unmount(); });
+  });
+});
+
+describe('máy NHỚ một DID nhưng khoá trong chip đã mất', () => {
+  // Ca duy nhất còn đi qua màn hỏi, và nó phải CÒN: khoá mất có thể vì hệ điều
+  // hành huỷ khoá (vừa thêm/xoá vân tay) hoặc vì đây là máy khác. Không phép đo
+  // nào trên máy tách được hai ca đó.
+  it('VẪN dẫn về màn HỎI', async () => {
+    mockCurrentUserDid.mockResolvedValue('did:phoenix:mainnet:abc');
+    mockIsKeypairEnrolled.mockResolvedValue(false);
+
+    const tree = await mountAndPress();
+
+    expect(mockNav.navigate).toHaveBeenCalledWith('IdentityEntryChoice');
+    expect(mockNav.navigate).not.toHaveBeenCalledWith('SignUpBiometric');
     await act(async () => { tree.unmount(); });
   });
 });

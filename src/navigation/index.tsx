@@ -113,6 +113,8 @@ import WalletSendScreen from '../screens/WalletSendScreen';
 import WalletReceiveScreen from '../screens/WalletReceiveScreen';
 import WakemeScreen from '../screens/WakemeScreen';
 import StakingScreen from '../screens/StakingScreen';
+// Số dư MAGIC (ĐỌC-THÔI, qua VaultReadAPI nhà MAGIC) — xem đầu tệp màn về phạm vi v1.
+import MagicVaultBalanceScreen from '../screens/MagicVaultBalanceScreen';
 import OrgDidScreen from '../screens/OrgDidScreen';
 import OrgAuthorityScreen from '../screens/OrgAuthorityScreen';
 import OrgMintScreen from '../screens/OrgMintScreen';
@@ -143,6 +145,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import AssistantBubble from '../components/AssistantBubble';
+import GenieLayer from '../components/genie/GenieLayer';
+import { setGenieNavigator, setGenieRoute } from '../services/genie';
+import { installGenieAuth } from '../services/genie/genieAuth';
+import { startGenieHistory } from '../components/genie/genieHistory';
 import { CoachMarkProvider, useCoachMarkTarget } from '../onboarding/CoachMarkContext';
 import CoachMarkOverlay from '../onboarding/CoachMarkOverlay';
 
@@ -1816,6 +1822,10 @@ const HOST_STACK_SCREENS: Array<{
   // màn này chuyển LAMP thật, không nên mở được bằng một đường dẫn từ bên ngoài.
   { name: 'Wakeme', component: WakemeScreen, options: { headerShown: false } },
   { name: 'Staking', component: StakingScreen, options: { headerShown: false } },
+  // Số dư MAGIC — route HOST, chưa có nút nào trỏ tới (chờ agent đang sửa
+  // PhoenixWalletScreen.tsx gắn lối vào; xem báo cáo bàn giao). Mở tay bằng
+  // `navigation.navigate('MagicVaultBalance')` để thử trong lúc chờ.
+  { name: 'MagicVaultBalance', component: MagicVaultBalanceScreen, options: { headerShown: false } },
   // Ví tổ chức — tạo OrgDID + mint LAMP bằng OrgDID (2 bước: mint kho → claim-release).
   { name: 'OrgDid', component: OrgDidScreen, options: { headerShown: false } },
   { name: 'OrgAuthority', component: OrgAuthorityScreen, options: { headerShown: false } },
@@ -1997,11 +2007,50 @@ const AppNavigator = () => {
       <NavigationContainer
         ref={navigationRef}
         linking={buildLinking()}
-        onStateChange={handleNavigationStateChange}
+        onStateChange={(state) => {
+          handleNavigationStateChange(state);
+          // Trợ lý phải biết đang ở màn nào để TỰ ẨN ở các màn cửa-vào
+          // (`PUBLIC_ROUTES`). Nó dựng ngoài `Stack.Navigator` nên không có
+          // `useRoute()` — đây là đường duy nhất để nó biết.
+          setGenieRoute(navigationRef.isReady() ? navigationRef.getCurrentRoute()?.name ?? null : null);
+        }}
         // ⚠ Đặt ở `onReady`, KHÔNG sớm hơn. Trao một hàm điều hướng trước lúc
         // container sẵn sàng là trao một tham chiếu chưa dùng được — hỏng lặng lẽ
         // đúng như khi chưa trao gì, chỉ khác là lần này trông như đã nối dây.
         onReady={() => {
+          // Trợ lý Genie mở màn hộ người dùng qua đúng lối này — nó là bong bóng
+          // nổi, ANH EM của `Stack.Navigator` chứ không nằm trong, nên nó không
+          // có `useNavigation` để dùng. Đăng ký tại `onReady` vì cùng lý do với
+          // `setPushNavigator` ngay dưới. Genie KHÔNG mở thêm route nào và không
+          // đụng deep-link: nó điều hướng bên trong app đã qua `AuthGate`.
+          // Báo route NGAY lúc container sẵn sàng.
+          //
+          // `onStateChange` chỉ chạy khi trạng thái ĐỔI — nó KHÔNG chạy cho màn
+          // đầu tiên. Thiếu dòng này thì suốt từ lúc mở app tới cú điều hướng đầu
+          // tiên, trợ lý không biết mình đang ở màn nào.
+          setGenieRoute(navigationRef.isReady() ? navigationRef.getCurrentRoute()?.name ?? null : null);
+
+          setGenieNavigator((route, params) => {
+            if (!navigationRef.isReady()) return;
+            (navigationRef.navigate as (s: string, p?: Record<string, unknown>) => void)(
+              route,
+              params,
+            );
+          });
+
+          // Genie gọi service ở §11 bằng ĐÚNG thẻ phiên PhoenixKey mà cả app
+          // dùng — không có thẻ riêng, không có khoá thứ hai. Tiêm qua cổng chứ
+          // không cho `genieAgent` nhập thẳng `phoenixKey-api`: nhập thẳng thì
+          // bài kiểm của trợ lý phải dựng cả cây danh tính lên mới chạy được.
+          //
+          // Chưa đăng nhập ⇒ `getSessionToken()` trả `null` ⇒ không mở phiên,
+          // và trợ lý lui về đường tắt trên máy. Đó là hành vi ĐÚNG: không có
+          // danh tính thì không có gì để hỏi hộ ai cả.
+          installGenieAuth();
+          // Nạp lại các cuộc trò chuyện của lần mở app trước, rồi ghi tiếp từ đó.
+          // Cùng chỗ với `installGenieAuth` vì cùng một điều kiện: navigation đã
+          // sẵn sàng, và cả hai đều chạy nền chứ không chặn `onReady`.
+          startGenieHistory();
           setPushNavigator((screen, params) => {
             if (!navigationRef.isReady()) return;
             // `navigate` của container KHÔNG kiểu hoá (`ParamListBase` rỗng) nên hai
@@ -2044,6 +2093,10 @@ const AppNavigator = () => {
           ))}
         </Stack.Navigator>
         <AssistantBubble />
+        {/* Lớp Trợ lý Genie — lớp phủ TRONG SUỐT, viền sáng gợn sóng.
+            Đặt TRÊN bong bóng và DƯỚI coach-mark, cố ý: khi trợ lý chiếu đèn vào
+            một nút thì lớp này phải nhường chỗ chứ không che nó. */}
+        <GenieLayer />
         {/* Overlay toolbox cung tròn — render TRÊN CÙNG (sau bubble), full-screen. */}
         <HomeRadialOverlay />
         {/* Luồng hướng dẫn (coach-mark) — trên tất cả, chặn thao tác khi chạy. */}

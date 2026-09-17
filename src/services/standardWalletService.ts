@@ -17,6 +17,15 @@ import { currentUserDid } from '../sdk/phoenixKey';
 import { getStoredMasterKek, getActiveAccountIndex } from './masterKekStore';
 import { phoenixKeyApi, PhoenixKeyApiError, ensureSessionTokenBelongsTo } from './phoenixKey-api';
 import rLog from './remoteLogger';
+import { buildCanonicalHex } from './canonicalMessage';
+import {
+  getAcceptedFormat,
+  rememberAcceptedFormat,
+  formatsToTry,
+  isSignatureRejection,
+  type SigningFormat,
+} from './signingFormatProbe';
+import type { WalletRegisterProof } from '../sdk/taadEnclave';
 
 // 0 = preprod (testnet), khớp WALLET_NETWORK bên register + AccountScreen + PhoenixWalletScreen.
 import { CARDANO_NETWORK as WALLET_NETWORK } from '../config/cardanoNetwork';
@@ -87,6 +96,35 @@ export const describeStandardWalletFailure = (): string | null => {
   return 'Chưa lập được ví tự kiểm soát của bạn trên máy chủ.';
 };
 
+/**
+ * Ký chuỗi thách đố đăng ký ví theo MỘT khuôn.
+ *
+ * Trả `null` khi khuôn đó không dựng được TRÊN MÁY NÀY — hôm nay chỉ có một ca:
+ * khuôn đóng khung cần cửa ký nhận **hex**, mà bản dựng trước 2026-09-15 không có
+ * cửa đó. `null` là "máy không làm được", KHÁC hẳn "máy chủ từ chối"; gộp hai thứ
+ * này lại là đúng chỗ một phép đo hoá thành lời khai sai.
+ */
+async function signRegisterProof(
+  kek: string,
+  userDid: string,
+  fixedAddress: string,
+  nonce: string,
+  format: SigningFormat,
+): Promise<WalletRegisterProof | null> {
+  if (format === 'length-framed') {
+    return taad.signWalletRegisterHex(
+      kek,
+      0,
+      buildCanonicalHex(REGISTER_CHALLENGE_PREFIX, userDid, fixedAddress, nonce),
+    );
+  }
+  return taad.signWalletRegister(
+    kek,
+    0,
+    `${REGISTER_CHALLENGE_PREFIX}${userDid}:${fixedAddress}:${nonce}`,
+  );
+}
+
 // Guard chống chạy TRÙNG (nhiều effect gọi gần đồng-thời) → tránh 2 lần register
 // (lần 2 dính 409) + 2 lần ký proof thừa. Gộp về 1 promise khi đang bay.
 let inflightRegister: Promise<boolean> | null = null;
@@ -150,11 +188,6 @@ async function ensureStandardWalletRegisteredInner(): Promise<boolean> {
       rLog.phoenixWallet.walletProof(false, false);
       return false;
     }
-    const nonce = await taad.generateSalt();
-    const challenge = `${REGISTER_CHALLENGE_PREFIX}${userDid}:${fixedAddress}:${nonce}`;
-    // fixedAddress = account 0 → ký bằng payment key account 0.
-    const proof = await taad.signWalletRegister(kek, 0, challenge);
-    rLog.phoenixWallet.walletProof(!!proof.paymentPublicKeyHex, !!proof.signature);
 
     // ── THẺ PHIÊN PHẢI THUỘC ĐÚNG NGƯỜI NÀY ──────────────────────────────────
     // Thân gửi dưới đây KHÔNG mang trường DID nào, nên máy chủ suy chủ thể từ thẻ
@@ -177,18 +210,81 @@ async function ensureStandardWalletRegisteredInner(): Promise<boolean> {
       return false;
     }
 
+    // ── KHUÔN CHUỖI KÝ: ĐO, ĐỪNG ĐOÁN ────────────────────────────────────────
+    // Máy chủ chưa khai cửa này dựng lại chuỗi ký theo khuôn nào (xem
+    // `signingFormatProbe.ts`). Thử khuôn đang chạy trước, khuôn đóng khung sau, và
+    // NHỚ cái máy chủ nhận. Không lật khuôn theo phỏng đoán trên đường người dùng.
     step = 'register';
-    await phoenixKeyApi.wallet.standardRegister({
-      fixedAddress,
-      ...(activeAddress ? { activeAddress } : {}),
-      ...(stakeAddress ? { stakeAddress } : {}),
-      paymentPublicKeyHex: proof.paymentPublicKeyHex,
-      signature: proof.signature,
-      nonce,
-    });
-    rLog.phoenixWallet.walletRegisterDone(true);
-    lastFailure = null;
-    return true;
+    const remembered = await getAcceptedFormat('walletStandardRegister');
+    let lastRejection: PhoenixKeyApiError | null = null;
+
+    for (const format of formatsToTry(remembered)) {
+      // Nonce MỚI cho từng lượt. Nonce là thứ dùng-một-lần; gửi lại cái vừa bị từ
+      // chối thì lượt sau có thể chết vì trùng nonce, và ta sẽ đọc nó thành "khuôn
+      // này cũng sai" — một kết luận sai về đúng câu đang đo.
+      const nonce = await taad.generateSalt();
+      // fixedAddress = account 0 → ký bằng payment key account 0.
+      const proof = await signRegisterProof(kek, userDid, fixedAddress, nonce, format);
+      if (!proof) {
+        // Máy này KHÔNG CÓ cửa ký hex nên không dựng nổi khuôn đóng khung. Đây không
+        // phải "chữ ký sai" — nên không ghi gì vào dòng nhớ, và không tính là một
+        // lượt bị từ chối.
+        rLog.phoenixWallet.walletSigningFormat(`${format}:native-thieu-cua-hex`, false);
+        continue;
+      }
+      rLog.phoenixWallet.walletProof(!!proof.paymentPublicKeyHex, !!proof.signature);
+
+      try {
+        await phoenixKeyApi.wallet.standardRegister({
+          fixedAddress,
+          ...(activeAddress ? { activeAddress } : {}),
+          ...(stakeAddress ? { stakeAddress } : {}),
+          paymentPublicKeyHex: proof.paymentPublicKeyHex,
+          signature: proof.signature,
+          nonce,
+        });
+        rLog.phoenixWallet.walletSigningFormat(format, true);
+        await rememberAcceptedFormat('walletStandardRegister', format);
+        rLog.phoenixWallet.walletRegisterDone(true);
+        lastFailure = null;
+        return true;
+      } catch (err) {
+        if (err instanceof PhoenixKeyApiError) {
+          // 409 / 3005 = ví ĐÃ đăng ký (idempotent, hoặc hai lượt chạy song song) →
+          // coi là THÀNH CÔNG. Nhưng KHÔNG ghi khuôn này vào dòng nhớ: máy chủ có
+          // thể báo trùng TRƯỚC khi verify chữ ký, nên lượt này không chứng minh
+          // khuôn đúng. Nhớ theo một lượt như thế là tự dựng một lời khai sai.
+          if (err.httpStatus === 409 || err.code === 3005) {
+            rLog.phoenixWallet.walletRegisterDone(true);
+            lastFailure = null;
+            return true;
+          }
+          if (isSignatureRejection(err.httpStatus, err.code)) {
+            rLog.phoenixWallet.walletSigningFormat(format, false);
+            lastRejection = err;
+            continue; // thử khuôn còn lại
+          }
+        }
+        // Lý do khác (401 thiếu thẻ phiên, 5xx, mất mạng): thử khuôn thứ hai chỉ tốn
+        // thêm một lượt gọi mà không trả lời được câu nào. Để nhánh catch ngoài ghi.
+        throw err;
+      }
+    }
+
+    if (lastRejection) {
+      rLog.phoenixWallet.walletError(
+        step, lastRejection.code, lastRejection.httpStatus,
+        `cả hai khuôn chuỗi ký đều bị từ chối: ${lastRejection.message}`,
+      );
+      noteFailure(step, lastRejection.code, lastRejection.httpStatus, lastRejection.message);
+      return false;
+    }
+
+    // Không lượt nào gửi đi được — máy này không dựng nổi khuôn nào. Phải nói ra,
+    // không thì nó trông giống một lượt chưa bao giờ chạy.
+    rLog.phoenixWallet.walletError(step, -1, 0, 'không dựng được khuôn chuỗi ký nào');
+    noteFailure(step, -1, 0, 'Máy này chưa dựng được khuôn chữ ký mà máy chủ nhận.');
+    return false;
   } catch (err) {
     // Best-effort: chưa có session token / offline / backend chưa bật → thử lại lần sau.
     // Log lỗi THẬT để biết bước nào hỏng (thường là register → 401 thiếu session token).

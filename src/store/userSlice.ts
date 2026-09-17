@@ -14,6 +14,7 @@ import {
 import { parseDidNetwork } from '../services/phoenixDid';
 import { clearWorkSession } from '../modules/work/services/session';
 import { clearOrilifeToken, clearOrilifeLoginCooldown } from '../services/orilifeDidAuth';
+import { clearGenieAuth } from '../services/genie/genieAuth';
 import { disconnectProofChat } from '../services/proofchatAuthBridge';
 import { clearMerkleSession } from '../services/proofchatIdentity';
 import { shutdown as shutdownProofChatEngine } from '../services/proofchatService';
@@ -39,8 +40,17 @@ import { setVideoQueueOwner, flushVideoUploadQueue } from '../services/videoUplo
 interface Wallet {
   id: string;
   userId: string;
-  /** Sổ vault MAGIC — đơn vị chưa chốt. */
-  magicBalance: number;
+  /**
+   * Sổ vault MAGIC — đơn vị chưa chốt, và `null` = CHƯA BIẾT.
+   *
+   * `null` không phải một giá trị thiếu sót cần lấp: từ 17/09/2026 máy chủ trả
+   * `magic.available = null` khi nó không xác định được sổ vault (xem
+   * `WalletAllResponse` ở `services/phoenixKey-api.ts`). Mọi nơi đọc trường này
+   * phải hỏi `== null` TRƯỚC khi so sánh — một phép so sánh với `null` trong
+   * JavaScript không đỏ, nó ép kiểu thành `0` và trả về một câu trả lời sai mà
+   * trông bình thường.
+   */
+  magicBalance: number | null;
   /** **oildrop** (thô). Hiện ra màn hình PHẢI qua `fmtLamp()`. */
   lampBalance: number;
   // CARP — token hệ sinh thái thứ 3. Backend PhoenixKey CHƯA trả số dư → optional, hiện '—'
@@ -53,7 +63,7 @@ interface Wallet {
   pendingCredits: number;
   // Ví THẬT từ chuỗi (PhoenixKey backend) — chỉ có khi refreshWallet() chạy xong.
   address?: string | null;
-  magicAccrued?: number;
+  magicAccrued?: number | null;
   magicRatePerSlot?: string;
   fromChain?: boolean;
 }
@@ -299,6 +309,14 @@ export const logoutUser = createAsyncThunk(
     // nghỉ của người trước. Mở van không phụ thuộc thẻ có xoá được hay không —
     // nó chỉ là một biến đếm trong bộ nhớ, và mở nó luôn đúng khi danh tính đổi.
     clearOrilifeLoginCooldown();
+    // CÙNG LỚP, và cùng lập luận đứng-ngoài-nhánh-lỗi: phiên trợ lý Genie đang
+    // giữ CHÍNH thẻ vừa thu hồi, trong bộ nhớ của tiến trình. Không quên thì câu
+    // hỏi của người sau đi ra máy chủ mang danh người trước — đúng ca 28/08 mà
+    // khối trên chữa, chỉ khác là thẻ nằm trong RAM chứ không trên đĩa.
+    //
+    // Và nó càng phải chạy KHI THU HỒI HỎNG: lúc đó thẻ cũ vẫn còn, nên để phiên
+    // Genie ôm nó tiếp là giữ nguyên đúng cái đường rò vừa không bịt được.
+    clearGenieAuth();
     const phoenixSessionLeft = await revokeCredential('thẻ phiên PhoenixKey', async () => {
       // ⛔ CÙNG LỚP với dòng ngay trên, phát hiện muộn hơn: `phoenixkey_session_token`
       // cũng sống qua đăng xuất. `clearSessionToken` được viết sẵn rồi đặt vào ĐÚNG
@@ -537,7 +555,13 @@ const userSlice = createSlice({
         state.currentUser.adaTokens += action.payload.ada;
       }
       if (state.wallet) {
-        state.wallet.magicBalance += action.payload.magic;
+        // Chưa biết số dư thì cộng thêm vào VẪN CHƯA BIẾT. Lấy `0` làm gốc rồi
+        // cộng là bịa ra một con số nhỏ — đúng cái sai đang vá, chỉ đi vào từ
+        // cửa khác: ở đây nó còn tệ hơn vì con số bịa được GHI LẠI vào store và
+        // từ đó không còn tự khai được là thiếu.
+        if (state.wallet.magicBalance != null) {
+          state.wallet.magicBalance += action.payload.magic;
+        }
         state.wallet.lampBalance += action.payload.lamp;
         state.wallet.adaBalance += action.payload.ada;
       }

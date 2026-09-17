@@ -15,6 +15,12 @@ secrets.plist
 android/app/secrets.properties
 ios/**/APISecrets.swift
 
+# Bản chụp OpenAPI của backend OriLife (146 đường) — kho này KHÔNG sở hữu API đó,
+# chỉ tiêu thụ một phần nhỏ. Ghép "danh sách đường" với "địa chỉ máy chủ" (xuất hiện
+# nhiều lần trong tài liệu đã theo dõi) không tốn gì; giữ bản chụp này lại repo là
+# nhân bản một mặt tấn công không cần thiết.
+oa.json
+
 # === OSX ===
 .DS_Store
 

@@ -111,7 +111,7 @@ Mỗi module khai báo bằng MỘT file `module.manifest.json`, validate bằng
 
 ### 3.1 PhoenixKey DID là root
 
-- Danh tính = PhoenixKey DID (pseudonymous). Module KHÔNG redefine identity, chỉ tiêu thụ qua service API của PhoenixKey (silent module). Ký secp256k1/Ed25519; issuer-side đang chuyển HS256→JWKS bất đối xứng (EdDSA) — thuộc Long, **Claude KHÔNG sửa PhoenixKey backend**.
+- Danh tính = PhoenixKey DID (pseudonymous). Module KHÔNG redefine identity, chỉ tiêu thụ qua service API của PhoenixKey (silent module). Ký secp256k1/Ed25519; issuer-side đang chuyển HS256→JWKS bất đối xứng (EdDSA) — thuộc backend PhoenixKey, **Claude KHÔNG sửa PhoenixKey backend**.
 - Phân hạng **LoA (Level of Assurance)** (QĐ-5): chỉ DID sinh trắc gốc mới có quyền governance + thu phí; DID liên kết host ngoài (LoA thấp) chỉ được dùng tính năng.
 
 ### 3.2 INV-1 — Nhất quán dữ liệu xuyên host (invariant của STORE, QĐ-2)
@@ -177,7 +177,7 @@ Ví dụ `config.schema.json`:
   - **sender-constrained**: DPoP.
   - **không auto-bind bằng phone host** — bind DID qua bước "claim" một lần bằng kênh mạnh.
 - Kiểm `caller-id` BẤT BIẾN ở mọi ranh giới (chống confused-deputy / identity-confusion xuyên host).
-- **Chặn cứng (blocker cho B)**: cần issuer-side PhoenixKey mint EdDSA + `/api/v1/.well-known/jwks.json` (backend có context-path `/api/v1`; đường không tiền tố trả **404**) — thuộc Long, Claude KHÔNG sửa. Consumer-side (ProofChat) đã verify EdDSA qua JWKS.
+- **Chặn cứng (blocker cho B)**: cần issuer-side PhoenixKey mint EdDSA + `/api/v1/.well-known/jwks.json` (backend có context-path `/api/v1`; đường không tiền tố trả **404**) — thuộc backend PhoenixKey, Claude KHÔNG sửa. Consumer-side (ProofChat) đã verify EdDSA qua JWKS.
 
 ### 5.2 Bề mặt API (surface)
 
@@ -287,7 +287,7 @@ Một platform/module chỉ được coi là READY khi TẤT CẢ mục dưới 
   (đều chốt 2026-07-11, dạy sai so với canonical) vào `Legacy/`. Cất cây `MobileCore/` v0.2 (repo chủ
   đã lên v0.3, 0 importer trong `src/`) vào `Legacy/`. Sửa đường JWKS `/.well-known/jwks.json` →
   `/api/v1/.well-known/jwks.json` ở §5.1 (đường cũ trả 404 — đo 2026-08-05).
-- v0.2.1 (2026-07-12): Rà soát nhất quán — sửa Status header (v0.1→v0.2), path "Nguồn chốt" trỏ `Specs/`, gỡ ghi chú lỗi thời §7.1 (nav ĐÃ config-driven qua YC-3), cập nhật vị trí git token (§10.2, chuẩn mới `Agents/.env`), làm rõ CARP thanh toán = tầng mạng nội bộ (§10.4 nhất quán §4.2), thống nhất mô tả upstream (§10.1↔§11).
+- v0.2.1 (2026-07-12): Rà soát nhất quán — sửa Status header (v0.1→v0.2), path "Nguồn chốt" trỏ `Specs/`, gỡ ghi chú lỗi thời §7.1 (nav ĐÃ config-driven qua YC-3), cập nhật cách lấy git token (§10.2), làm rõ CARP thanh toán = tầng mạng nội bộ (§10.4 nhất quán §4.2), thống nhất mô tả upstream (§10.1↔§11).
 - v0.2 (2026-07-12): Gộp về MỘT file duy nhất tại ROOT (`Integration-Standard.md`) — dời khỏi `Specs/` (references dùng tên "INTEGRATION-STANDARD §X" không đổi). Thêm §10 (vận hành: env/cờ/token UI) + §11 (danh mục platform) + thư mục `Integration/` chứa snapshot 5 nền tảng. Đây là nơi mọi agent/dev tham chiếu chuẩn tích hợp.
 - v0.1 (2026-06-17): Khởi tạo Integration Standard. Tổng hợp QĐ-1..QĐ-8 từ EXPANSION-ANALYSIS + INV-1/INV-2/INV-3. 8 mục: Manifest, Design token/brand, Identity/data, Config/billing, Embed-SDK, Registry/governance, Frontend consistency, Checklist.
 
@@ -315,7 +315,7 @@ Một platform/module chỉ được coi là READY khi TẤT CẢ mục dưới 
   thời vẫn là nguồn duy nhất — đánh dấu ⚠ ở §11. Khi họ publish xong → cất nốt bản ở đây.
 
 ### 10.2 Vị trí key / creds
-- **Git token (push/PR):** `.env` ở workspace cha NGOÀI repo (2026-07-12: chuẩn mới `Agents/.env`, cũ `Projects/.env`), biến `GH_TOKEN_<ACCOUNT>`. KHÔNG commit, KHÔNG dán giá trị, KHÔNG nhúng trong URL remote.
+- **Git token (push/PR):** người vận hành cấp credential qua biến môi trường — cách lấy xem sổ tay nội bộ. KHÔNG commit, KHÔNG dán giá trị, KHÔNG nhúng trong URL remote.
 - **API host/key platform:** `.env` của SuperApp (gitignored; mẫu [`.env.example`](.env.example)). Quy ước biến: `<PLATFORM>_API_URL` · `<PLATFORM>_WS_URL`+`_WS_PATH` · `<PLATFORM>_API_KEY` · `<PLATFORM>_BACKEND_ENABLED`.
 - Platform dùng DID/session (OriLife/AladinWork/ProofChat) → KHÔNG static token; auth = PhoenixKey login → Bearer TTL (§3.1, §5.1).
 - **Token nhúng trong URL remote git = rò rỉ** — xoay vòng ngay, sửa `git remote set-url`.
@@ -331,8 +331,8 @@ Một platform/module chỉ được coi là READY khi TẤT CẢ mục dưới 
 - Doc "CARP gộp MAGIC" DEPRECATED (2026-07-03) — KHÔNG dùng.
 
 ### 10.5 Vai + ranh giới sửa code
-- **Thư** = mobile (native camera/EXIF, Enclave ký, wiring API backend-facing). **Tùng** = frontend/UIUX. **Claude/SuperApp** = frontend + gọi API (KHÔNG sửa backend platform).
-- Backend mỗi platform do team đó sở hữu: PhoenixKey=Long · ProofChat=Lợi · AladinWork=Work team · OriLife=OriLife agent · LampNet=LampNet team.
+- **native** = mobile (native camera/EXIF, Enclave ký, wiring API backend-facing). **frontend** = frontend/UIUX. **Claude/SuperApp** = frontend + gọi API (KHÔNG sửa backend platform).
+- Backend mỗi platform do team đó sở hữu: PhoenixKey=backend PhoenixKey · ProofChat=backend ProofChat · AladinWork=Work team · OriLife=OriLife agent · LampNet=LampNet team.
 
 ## 11. Danh mục platform — INDEX trỏ tới nguồn chuẩn (§10.1)
 
@@ -341,10 +341,11 @@ Một platform/module chỉ được coi là READY khi TẤT CẢ mục dưới 
 | Platform | Module | Nguồn chuẩn (đọc THẲNG file này) | Chủ |
 |---|---|---|---|
 | OriLife | Truy-xuất | `OriLifeTrace/OriLife-Integration.md` — v0.2.2 · 2026-08-06, ở root repo OriLife | OriLife agent |
-| PhoenixKey | DID · ví · mint | `PhoenixKeyDID/PhoenixKey-SDK/INTEGRATION.md` — canonical từ 2026-07-21 (bản `PhoenixKeyDID/PhoenixKey-Integration.md` chỉ là con trỏ) | Phoenix agent · Long |
-| ProofChat | Trò-chuyện (E2EE) | `ProofChat/INTEGRATION.md` — v2026-08-08, thay bản 2026-07-04 | Lợi |
+| PhoenixKey | DID · ví · mint | `PhoenixKeyDID/PhoenixKey-SDK/INTEGRATION.md` — canonical từ 2026-07-21 (bản `PhoenixKeyDID/PhoenixKey-Integration.md` chỉ là con trỏ) | Phoenix agent · backend PhoenixKey |
+| ProofChat | Trò-chuyện (E2EE) | `ProofChat/INTEGRATION.md` — v2026-08-08, thay bản 2026-07-04 | backend ProofChat |
 | AladinWork | Việc-làm | ⚠ [`Integration/AladinWork.md`](Integration/AladinWork.md) — **tạm**, upstream chưa publish | Work team |
 | LampNet | Kết đèn | ⚠ [`Integration/LampNet.md`](Integration/LampNet.md) — **tạm**, upstream chưa publish | LampNet team |
+| ProofChat | Authymess (xác thực có hạn · đăng nhập đa thiết bị) | ⚠ `ProofChat/Authymess/Authymess-Integration.md` — v0.1 · 2026-09-17. **Kho RIÊNG TƯ và tệp chưa nằm trên `main`** (đang ở PR #5 của kho đó) ⟹ con trỏ này hôm nay KHÔNG mở được, kể cả với người có quyền. Đổi ⚠ thành con trỏ thật khi PR ấy gộp; dev cần quyền đọc thì gửi tên tài khoản GitHub sang chủ module. | Authymess agent |
 
 > ⚠ **`Integration/PhoenixKey.md` vẫn còn trong repo** nhưng KHÔNG phải nguồn chuẩn — nó trùng lặp
 > với canonical ở trên và có chỗ lệch (canonical nói `grantee_did` để trống = Grant thành **bearer**,
@@ -367,7 +368,7 @@ Một platform/module chỉ được coi là READY khi TẤT CẢ mục dưới 
 
 > **Vấn đề:** trước nay SuperApp phải đi HỎI từng module "backend xong chưa, shape gì" (pull).
 > Chậm + dễ sót. **Đảo chiều (push):** module/nền tảng nào hoàn thành một năng lực có phần
-> UI/wire cần dựng ở SuperApp thì TỰ GHI vào sổ bàn giao — dev SuperApp (Thư/Tùng) đọc 1 chỗ.
+> UI/wire cần dựng ở SuperApp thì TỰ GHI vào sổ bàn giao — dev SuperApp (native/frontend) đọc 1 chỗ.
 
 ### 12.1 File sổ
 - MỘT file sống: [`Integration/Module-Handoff.md`](Integration/Module-Handoff.md) trong repo SuperApp.
@@ -383,7 +384,7 @@ Khi hoàn thành một năng lực backend/nền tảng mà SuperApp cần dựn
 3. Khi backend đổi shape/endpoint đã bàn giao → cập nhật lại dòng ledger + snapshot (kèm ngày).
 
 ### 12.3 Format 1 dòng (8 cột)
-`ID | Module (agent) | Loại | Việc cụ thể ở SuperApp | Ref shape | BE | Ai (Thư/Tùng) | Ngày đẩy`
+`ID | Module (agent) | Loại | Việc cụ thể ở SuperApp | Ref shape | BE | Ai (native/frontend) | Ngày đẩy`
 - **Loại** ∈ {Screen, Wire, Shape, Fix}. **BE** ∈ {🟢 live · 🟡 code chưa deploy · 🔴 chưa build · ⚫ OPS/secret}.
 - **Ref shape** trỏ file canonical của platform (§11) hoặc endpoint cụ thể — KHÔNG chép shape vào ledger.
 - **Định nghĩa Done:** dev dựng xong + verify (tsc/test + đối chiếu shape thật) + merge develop → chuyển dòng xuống "Đã xong".

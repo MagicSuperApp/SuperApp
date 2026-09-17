@@ -11,8 +11,8 @@
 - **Đo 2026-08-03 (SuperApp tự curl): `api.aladin.work/api/v1/health` → 502.** Máy chủ gốc
   không phản hồi. AladinWork agent đo cùng ngày ra **530** (Cloudflare 1033) — khác mã, cùng
   một việc: đường tới máy gốc đứt. Việc vận hành, không phải lỗi mã.
-- Chạy cục bộ trong lúc chờ: repo `AladinWork/Core`, `docker compose up -d` theo `DEPLOY.md`,
-  rồi `WORK_API_URL=http://localhost:7040/api/v1`. Toàn bộ luồng dưới đây chạy thật, không cần khoá.
+- Chạy cục bộ trong lúc chờ: repo `AladinWork/Core`, `docker compose up -d` theo `DEPLOY.md` —
+  cổng + biến `WORK_API_URL` trỏ vào đó xem trong `DEPLOY.md`.
 
 ## Đăng nhập — PhoenixKey ký, AladinWork cấp phiên (không có khoá tĩnh)
 1. `POST /auth/challenge {did}` → `{challenge, domain, expiresAt, messageTemplate}`

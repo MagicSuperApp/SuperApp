@@ -119,6 +119,11 @@ const PhoenixWalletScreen = () => {
   // số nào đổi là ca hỏng đắt nhất trong cả màn này.
   const [carp, setCarp] = useState<number | null>(null);
   const [magicAccrued, setMagicAccrued] = useState<number | null>(null);
+  // Câu CỦA MÁY CHỦ giải thích vì sao ô MAGIC không có số — khác `balanceIssue`
+  // ở chỗ lượt gọi đã THÀNH CÔNG và ba ô còn lại đều đúng. Đã lọc bỏ lỗi hệ
+  // thống thô ở `userFacingMagicAbsentReason`; `null` nghĩa là máy chủ không nói
+  // gì, không phải "không có gì để báo".
+  const [magicAbsentReason, setMagicAbsentReason] = useState<string | null>(null);
   // Vì sao ba ô số dư đang là "—". `null` = không có gì để nói (đọc được, hoặc
   // chưa thử). Trước bản này số dư hỏng và số dư bằng 0 vẽ ra y hệt nhau.
   const [balanceIssue, setBalanceIssue] = useState<string | null>(null);
@@ -148,9 +153,14 @@ const PhoenixWalletScreen = () => {
           const s = summarizeWalletAll(await phoenixKeyApi.wallet.getAll(did));
           setAda(s.lovelace ?? 0);
           setLamp(s.lamp ?? 0);
-          setMagic(s.magicAvailable ?? 0);
+          // MAGIC KHÔNG đi qua `?? 0`. Máy chủ trả `null` khi nó không xác định
+          // được sổ vault (17/09/2026) — đệm thành `0` ở đây là đổi câu "tôi
+          // không biết" thành câu "anh không có", và con số đó còn chảy tiếp vào
+          // cổng chặn phí ở màn ghi việc đồng.
+          setMagic(s.magicAvailable);
           setCarp(s.carp ?? 0);
-          setMagicAccrued(s.magicAccrued ?? 0);
+          setMagicAccrued(s.magicAccrued);
+          setMagicAbsentReason(s.magicAbsentReason);
           setBalanceIssue(null);
         } catch {
           // Số dư chưa lấy được → giữ null (hiện "—"), NHƯNG phải nói vì sao.
@@ -293,6 +303,22 @@ const PhoenixWalletScreen = () => {
               không dùng lại `fmtLamp`. */}
           <BalanceCard icon="water-outline" label="CARP" value={fmtCarp(carp)} color="#1E88A8" />
         </View>
+
+        {/* Ô MAGIC trống trong khi ba ô kia có số ⟹ lượt gọi ĐÃ chạy được, chỉ sổ
+            vault là không đọc ra. Không nói gì ở đây thì người dùng thấy một dấu
+            "—" không có lời giải và tự suy ra điều tệ nhất. Chỉ hiện khi
+            `balanceIssue` im — lúc đó cả lượt gọi hỏng và câu bên dưới đã bao. */}
+        {magic == null && !balanceIssue && (
+          <View style={styles.noticeCard}>
+            <Icon name="information-outline" size={17} color={COLORS.accent} />
+            <Text style={styles.noticeText}>
+              {magicAbsentReason
+                ? `${magicAbsentReason} `
+                : 'Máy chủ chưa xác định được số MAGIC và không nói rõ lý do. '}
+              Các số còn lại vẫn đúng. Kéo xuống để thử lại.
+            </Text>
+          </View>
+        )}
 
         {!!balanceIssue && (
           <View style={styles.noticeCard}>

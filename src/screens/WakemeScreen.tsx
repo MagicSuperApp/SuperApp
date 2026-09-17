@@ -29,7 +29,8 @@ import { useNavigation } from '@react-navigation/native';
 import { COLORS } from '../constants';
 import { fmtLamp } from '../utils/token';
 import { useCapabilityLive } from '../config/useCapabilityLive';
-import { getStoredMasterKek } from '../services/masterKekStore';
+import { getStoredMasterKek, getOrCreateMasterKek } from '../services/masterKekStore';
+import { showError } from '../utils/alert';
 import { isFeatureOpen, WAKEME_NOT_CONFIGURED, type FeatureProbe } from '../services/wakemeService';
 import { tk } from '../i18n/keys';
 
@@ -45,15 +46,28 @@ type Phase = 'checking' | 'offline' | 'no_wallet' | 'not_open' | 'ready' | 'pot_
  */
 export function explain(code: number, raw: string): { title: string; body: string } {
   switch (code) {
+    // Câu này do nhà PhoenixKey đưa (thư `phoenix0917av`, 17/09) và bên này lấy
+    // gần nguyên văn, vì họ là nhà biết 9501 đang chờ cái gì. 9501 là
+    // `NOT_YET_IMPLEMENTED` fail-closed, thôi khi đủ BA thứ theo thứ tự:
+    // validator bản mới lên Preprod (hash đổi nên phải trước) · backend có đủ 5
+    // biến cấu hình bộ dẫn xuất két · tắt mock-mode rồi deploy.
+    //
+    // Câu cũ là "Máy chủ chưa bật phần nhận LAMP" — đúng chữ và sai mức: nó đọc
+    // như một công tắc ai đó quên gạt, trong khi thứ còn thiếu là một két chưa
+    // tồn tại trên chuỗi. Người đọc câu cũ sẽ quay lại mỗi ngày để thử.
     case WAKEME_NOT_CONFIGURED:
       return {
-        title: 'Tính năng chưa mở',
-        body: 'Máy chủ chưa bật phần nhận LAMP. Chưa cần làm gì — quay lại sau.',
+        title: 'Chưa có két thật',
+        body: 'Phần nhận LAMP đang được triển khai trên mạng thử. Chưa cần làm gì — '
+          + 'khi mở, app sẽ tự hiện, không phải cài lại.',
       };
     case 1351:
       return {
         title: 'Danh tính chưa có khoá trên chuỗi',
-        body: 'Bạn cần thiết lập ví (cụm 24 từ) trước, để danh tính có khoá neo trên chuỗi.',
+        // KHÔNG nhắc "cụm 24 từ" ở đây. Câu cũ đọc như một điều kiện bắt buộc
+        // — người dùng hiểu là phải xuất cụm từ ra thì mới nhận được LAMP, mà
+        // việc cần làm chỉ là lập ví. Xem khối `createWallet` dưới.
+        body: 'Bạn cần lập ví trước, để danh tính có khoá neo trên chuỗi.',
       };
     case 1403:
       return { title: 'Danh tính đang bị khoá', body: 'Liên hệ hỗ trợ để mở lại.' };
@@ -87,6 +101,7 @@ const WakemeScreen = () => {
   const [phase, setPhase] = useState<Phase>('checking');
   const [probe, setProbe] = useState<FeatureProbe | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [creating, setCreating] = useState(false);
 
   const load = useCallback(async () => {
     // Tầng 1 hỏng thì KHÔNG gọi mạng — đỡ một vòng chờ vô ích ngoài vườn sóng yếu.
@@ -109,6 +124,44 @@ const WakemeScreen = () => {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try { await load(); } finally { setRefreshing(false); }
+  }, [load]);
+
+  /**
+   * ── LẬP VÍ Ở ĐÂY, KHÔNG ĐẨY SANG MÀN 24 TỪ ───────────────────────────────
+   * Trước bản này nhánh `no_wallet` có đúng MỘT nút, và nút đó đi sang
+   * `SeedExport`. Nhưng `SeedExportScreen.handleGenerate` làm hai việc khác
+   * hẳn nhau trong một lần bấm: bước 1 TẠO ví (`getOrCreateMasterKek`), bước 3
+   * LỘ cụm 24 từ. Người vào đây chỉ cần việc thứ nhất — họ muốn nhận LAMP —
+   * nên đường duy nhất tới ví lại bắt họ đi ngang qua việc thứ hai.
+   *
+   * Đó là chiều sai của một màn hình bảo mật: cụm 24 từ là bản sao KHÔNG THU
+   * HỒI ĐƯỢC của toàn bộ ví (lý do đầy đủ ở đầu `screens/SeedExportScreen.tsx`),
+   * và người ngoài vườn hay chụp lại màn hình, đọc to cho người bên cạnh chép
+   * hộ, hoặc để máy mở trên bàn. Bày nó ra cho người không hỏi tới nó là tự
+   * tạo ra đúng nguy cơ mà màn kia được viết ra để tránh.
+   *
+   * Nay màn này gọi thẳng `getOrCreateMasterKek()` — cùng một hàm bước 1 của
+   * màn kia, nên ví sinh ra y hệt. Xuất 24 từ vẫn còn nguyên, nhưng là việc
+   * người dùng TỰ tìm đến ở màn Tài khoản, không phải trạm bắt buộc trên
+   * đường nhận LAMP.
+   *
+   * KHÔNG nuốt lỗi: sinh ví hỏng thì nói ra và giữ nguyên nhánh `no_wallet`.
+   * Chuyển sang `checking` rồi im lặng quay lại sẽ đọc như một lần bấm hụt.
+   */
+  const createWallet = useCallback(async () => {
+    setCreating(true);
+    try {
+      await getOrCreateMasterKek();
+      setPhase('checking');
+      await load();
+    } catch (e: any) {
+      showError(
+        'Chưa lập được ví',
+        (e?.message ? e.message + ' ' : '') + 'Ví chưa được tạo. Thử lại, hoặc quay lại sau.',
+      );
+    } finally {
+      setCreating(false);
+    }
   }, [load]);
 
   const Header = (
@@ -139,11 +192,18 @@ const WakemeScreen = () => {
         <Icon name="wallet-outline" size={48} color={COLORS.accentLight} />
         <Text style={styles.emptyTitle}>Chưa có ví</Text>
         <Text style={styles.emptyText}>
-          LAMP được nhận vào ví của bạn, nên phải có ví trước. Thiết lập bằng cụm 24 từ.
+          LAMP được nhận vào ví của bạn, nên phải có ví trước. Bấm một lần là xong,
+          không phải ghi chép gì.
         </Text>
-        <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.navigate('SeedExport')}>
-          <Icon name="key-outline" size={18} color="#fff" />
-          <Text style={styles.primaryBtnText}>Thiết lập ví (cụm 24 từ)</Text>
+        <TouchableOpacity
+          style={[styles.primaryBtn, creating && styles.btnDisabled]}
+          disabled={creating}
+          onPress={() => { void createWallet(); }}
+        >
+          {creating
+            ? <ActivityIndicator color="#fff" size="small" />
+            : <Icon name="wallet-plus-outline" size={18} color="#fff" />}
+          <Text style={styles.primaryBtnText}>{creating ? 'Đang lập ví…' : 'Lập ví'}</Text>
         </TouchableOpacity>
       </View>,
     );

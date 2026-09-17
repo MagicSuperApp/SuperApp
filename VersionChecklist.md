@@ -7,7 +7,7 @@
 > Cập nhật: 2026-08-30. Đây là tài liệu SỐNG — mỗi PR/quyết định cập nhật vào đây.
 
 **Ký hiệu:** ✅ xong (đã verify) · 🟡 đang làm/một phần · ⬜ chưa làm · ⛔ chặn (chờ blocker) · 🔮 tương lai (chưa cần cho v1) · ⚠ cần xác nhận
-**Chủ:** UI = Claude (thiết kế) + Tùng (frontend) · BE-OriLife = Thư/OriLife · PhoenixKey = Long/PhoenixKey · Wakeme = Wakeme agent
+**Chủ:** UI = Claude (thiết kế) + frontend · BE-OriLife = native/OriLife · PhoenixKey = backend PhoenixKey · Wakeme = Wakeme agent
 
 ---
 
@@ -15,36 +15,36 @@
 | # | Hạng mục | TT | Chủ | Ghi chú |
 |---|---|---|---|---|
 | 1.1 | Frame nav song ngữ (EN chuẩn trên · quốc gia dưới) | ✅ | Claude | `navLabels.ts`+`NavItemFrame.tsx`; tsc/jest thật xanh |
-| 1.2 | Tab Me/Tôi + avatar (initials; ảnh khi có hồ sơ) | ✅/🟡 | Tùng | avatar initials xong; `avatarUri` chờ ảnh hồ sơ |
-| 1.3 | Persona-adaptive tab (neo+slot) — KHUNG | ✅ | Tùng | code+test xong |
-| 1.4 | Persona-adaptive — HÀNH VI thật | ⬜ | Tùng | ⚠ hiện NO-OP: `usage` chưa nối nguồn Work → thanh tĩnh; ràng buộc 1-đổi/phiên là seam ngủ |
-| 1.5 | Trace = nút quét nhanh (full-bleed, deep-link, back-safe) | ✅ | Tùng | whitelist đã thu về `*Detail`; ⬜ test camera máy thật |
-| 1.6 | Cổng thống nhất (tái nút xoè SG4, 2 tầng) | ✅ | Tùng | ⬜ test cử chỉ máy thật |
+| 1.2 | Tab Me/Tôi + avatar (initials; ảnh khi có hồ sơ) | ✅/🟡 | frontend | avatar initials xong; `avatarUri` chờ ảnh hồ sơ |
+| 1.3 | Persona-adaptive tab (neo+slot) — KHUNG | ✅ | frontend | code+test xong |
+| 1.4 | Persona-adaptive — HÀNH VI thật | ⬜ | frontend | ⚠ hiện NO-OP: `usage` chưa nối nguồn Work → thanh tĩnh; ràng buộc 1-đổi/phiên là seam ngủ |
+| 1.5 | Trace = nút quét nhanh (full-bleed, deep-link, back-safe) | ✅ | frontend | whitelist đã thu về `*Detail`; ⬜ test camera máy thật |
+| 1.6 | Cổng thống nhất (tái nút xoè SG4, 2 tầng) | ✅ | frontend | ⬜ test cử chỉ máy thật |
 | 1.7 | SubHome thu gọn (3 tab + ⌄) + `SubHomeFrame` | ⛔ | — | ĐÃ GỠ 31/08/2026 (`f07b4a5`): khung dựng xong nhưng không nơi nào gọi. Không còn việc phải làm. Thiết kế giữ ở `Specs/SG9-Nav-Frame-and-Shell-UX.md` §5.2 nếu có ngày dựng lại. |
-| 1.8 | Vòng dịch vụ QUAY được (rotary ring) + tầng lồng | ⬜ | Tùng | thiết kế SG9 §5B; dựng khi cổng ổn trên máy |
-| 1.9 | Bật `react-native-screens` (enableScreens/freeze) | ⬜ | Tùng | SG9 §7; cần test máy yếu |
-| 1.10 | Màu tươi + thích ứng ánh sáng (day/dim/night, bảo vệ mắt) | ⬜ | Tùng | SG9 §8; token luminance chưa có |
+| 1.8 | Vòng dịch vụ QUAY được (rotary ring) + tầng lồng | ⬜ | frontend | thiết kế SG9 §5B; dựng khi cổng ổn trên máy |
+| 1.9 | Bật `react-native-screens` (enableScreens/freeze) | ⬜ | frontend | SG9 §7; cần test máy yếu |
+| 1.10 | Màu tươi + thích ứng ánh sáng (day/dim/night, bảo vệ mắt) | ⬜ | frontend | SG9 §8; token luminance chưa có |
 
 ## 2. Home & Onboarding
 | # | Hạng mục | TT | Chủ | Ghi chú |
 |---|---|---|---|---|
-| 2.1 | Bỏ số liệu bịa trên Home (workMatches…) | ✅ | Tùng | nối ví/ProofChat số thật |
-| 2.2 | **Home tối giản** — gỡ Quick Actions (Tree/Fruit/Animal/Farm) + lưới Dịch vụ dày + carousel | 🟡 | Tùng | ƯU TIÊN #1; **PR kế — KHÔNG hoãn** (cổng xoè đã gánh hành động; chỉ thêm "Quả" vào cổng). Xem SG9 §6 |
-| 2.3 | Quick-Access per-service (chuẩn + thích ứng + ghim) | ⬜ | Tùng | nơi TIẾP NHẬN các quick-action dời khỏi Home |
-| 2.4 | Onboarding hỏi "nhu cầu" → set persona mặc định | ⬜ | Tùng | SG9 §2.2; hiện thiếu màn Needs |
+| 2.1 | Bỏ số liệu bịa trên Home (workMatches…) | ✅ | frontend | nối ví/ProofChat số thật |
+| 2.2 | **Home tối giản** — gỡ Quick Actions (Tree/Fruit/Animal/Farm) + lưới Dịch vụ dày + carousel | 🟡 | frontend | ƯU TIÊN #1; **PR kế — KHÔNG hoãn** (cổng xoè đã gánh hành động; chỉ thêm "Quả" vào cổng). Xem SG9 §6 |
+| 2.3 | Quick-Access per-service (chuẩn + thích ứng + ghim) | ⬜ | frontend | nơi TIẾP NHẬN các quick-action dời khỏi Home |
+| 2.4 | Onboarding hỏi "nhu cầu" → set persona mặc định | ⬜ | frontend | SG9 §2.2; hiện thiếu màn Needs |
 
 ## 3. Camera / Vision / Capture (kiến trúc)
 | # | Hạng mục | TT | Chủ | Ghi chú |
 |---|---|---|---|---|
-| 3.1 | Lens 0.5x + flash cho tree re-ID (PR #46) | 🟡 | Thư | code sạch; CI đỏ do **quota artifact org** (không phải lỗi code); ⬜ verify FOV re-ID + test máy |
+| 3.1 | Lens 0.5x + flash cho tree re-ID (PR #46) | 🟡 | native | code sạch; CI đỏ do **quota artifact org** (không phải lỗi code); ⬜ verify FOV re-ID + test máy |
 | 3.2 | Tách **Camera Device Core** (ống kính chung) khỏi namespace app | 🔮 | anh + platform | quyết định hệ sinh thái; iOS `Core/Camera` đã tách sẵn nửa đường |
-| 3.3 | OriLife Mobile SDK (client re-ID) tách khỏi SuperApp | 🔮 | Thư/OriLife | để app ngoài (Zalo/VNeID) dùng được qua SDK, không chỉ api |
+| 3.3 | OriLife Mobile SDK (client re-ID) tách khỏi SuperApp | 🔮 | native/OriLife | để app ngoài (Zalo/VNeID) dùng được qua SDK, không chỉ api |
 | 3.4 | Detector-plugin: OriLife(YOLO)/Eye/Knowme cắm chung Camera Core | 🔮 | platform | xem tài liệu ranh giới camera-vision |
 
 ## 4. Module (tích hợp UI ↔ dịch vụ)
 | # | Module | TT | Chủ | Ghi chú |
 |---|---|---|---|---|
-| 4.1 | Trace/Farm (định danh nông sản, quản lý vườn) | ✅ | Thư | api.orilife.io; live |
+| 4.1 | Trace/Farm (định danh nông sản, quản lý vườn) | ✅ | native | api.orilife.io; live |
 | 4.2 | ProofChat (chat text) | ✅ | — | `api.proofchat.me`; live |
 | 4.3 | ProofChat video call | 🔮 | — | CHƯA có (manifest chỉ text); thuộc họ Realtime Media |
 | 4.4 | Work (Việc làm) | 🟡 | AladinWork | server-authoritative; ⚠ escrow/dòng tiền module SG5 sau |
@@ -56,8 +56,8 @@
 | 5.1 | OrgDID (danh tính tổ chức) | ✅ | PhoenixKey | live |
 | 5.2 | Mint LAMP vào kho Distribution (bản B) | ⛔ | PhoenixKey | NO-GO ship, chờ 4 blocker (xem plan mint) |
 | 5.3 | Ví Standard (CARP) | 🟡 | PhoenixKey | ⚠ chờ Database#41 |
-| 5.4 | Ví trong UI: **Phoenix · Standard** (tab con Send/Receive/Staking/Voting) | ⬜ | PhoenixKey + Tùng | dùng vòng-quay §5B; PhoenixKey đang build |
-| 5.5 | Tab **SPO** (cntools: Wallet/Pool/Fund/Voting + …) | ⬜ | PhoenixKey + Tùng | vỏ = vòng-quay §5B.4; nội dung = PhoenixKey |
+| 5.4 | Ví trong UI: **Phoenix · Standard** (tab con Send/Receive/Staking/Voting) | ⬜ | PhoenixKey + frontend | dùng vòng-quay §5B; PhoenixKey đang build |
+| 5.5 | Tab **SPO** (cntools: Wallet/Pool/Fund/Voting + …) | ⬜ | PhoenixKey + frontend | vỏ = vòng-quay §5B.4; nội dung = PhoenixKey |
 | 5.6 | Đăng nhập sinh trắc (biometric) | ✅ | — | react-native-biometrics |
 
 ## 6. Token & Kinh tế (bề mặt UI)
@@ -88,7 +88,7 @@
 ## 9. Bảo mật & Riêng tư
 | # | Hạng mục | TT | Ghi chú |
 |---|---|---|---|
-| 9.1 | Không hardcode secret/PAT trong repo | ✅ | đã gỡ PAT DucTiger khỏi remote Pinmez; secret ở `/Agents/.env` |
+| 9.1 | Không hardcode secret/PAT trong repo | ✅ | secret cấp qua biến môi trường — cách lấy xem sổ tay nội bộ |
 | 9.2 | `.gitignore` chặn `node_modules`/`.env`/`*.key` | ✅ | có |
 | 9.3 | Whitelist deep-link (traceScan) hẹp, chống điều hướng bừa | ✅ | thu về `*Detail` |
 | 9.4 | Seed/khoá ở Keystore native (không merge, INV-3) | ✅ | theo manifest |

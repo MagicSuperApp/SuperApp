@@ -178,11 +178,22 @@ const SignUpBiometricScreen: React.FC = () => {
       // tra DID (`resolveUsername` → `getPubkey` → so khoá trong chip). Đăng ký lại
       // bằng chính khoá cũ thì máy chủ chặn cứng (`KEY_ALREADY_REGISTERED`), nên
       // không có tên đăng nhập là không còn đường nào.
-      const { user } = await phoenixKeyAuth.registerIdentity(
+      const { user, usernameSet, usernameError } = await phoenixKeyAuth.registerIdentity(
         biometricKindFromType(biometryType),
         intent,
         usernameTrim,
       );
+      // Danh tính đã lập xong dù tên có đăng ký được hay không — nên chỗ này CẢNH
+      // BÁO chứ không chặn. Nhưng phải nói ra: người dùng vừa đọc dòng "không thể
+      // trùng trong toàn hệ sinh thái" ngay dưới ô nhập, và nếu tên không lên được
+      // máy chủ thì câu đó chưa đúng với họ — lần cài lại app sau, tra bằng tên này
+      // sẽ không ra gì.
+      if (usernameSet === false) {
+        showWarning(
+          'Tài khoản đã tạo, nhưng chưa giữ được tên',
+          `${usernameError ?? 'Máy chủ chưa nhận tên này.'}\n\nTài khoản của bạn vẫn dùng được bình thường. Vào Tài khoản ▸ Tên đăng nhập để đặt lại tên khác.`,
+        );
+      }
       const newEntry = { username: usernameTrim, did: user.did, createdAt: Date.now() };
       const raw = await AsyncStorage.getItem(PHOENIX_USERS_KEY);
       const list = raw ? JSON.parse(raw) : [];
@@ -280,6 +291,30 @@ const SignUpBiometricScreen: React.FC = () => {
         return;
       }
 
+      // `chip_key_exists` — chip TỪ CHỐI sinh khoá đè vì nhãn này đã có khoá
+      // (`E_KEY_EXISTS` từ cả hai cầu native). Mã đó khai ở `phoenixKey-native.ts`
+      // kèm chú thích "switch on these in UI" mà tới 2026-09-17 không chỗ nào bắt,
+      // nên người dùng nhận đúng chuỗi `E_KEY_EXISTS` lên màn hình — một câu không
+      // nói được gì họ làm khác đi.
+      //
+      // Lối ra là màn Khôi phục, và ở đó nay có một thẻ đi được bằng ĐÚNG cái khoá
+      // vừa chặn họ: `lookupDidByDeviceKey` đổi khoá lấy DID, không cần 24 từ,
+      // không cần tên đăng nhập. Nhãn nút vì thế hứa được đích mà không hứa sai
+      // phương tiện — khác hẳn nhánh `wallet_bound_to_other_did` ngay trên, nơi
+      // khoá đã bị xoá nên chỉ còn đường 24 từ.
+      //
+      // KHÔNG có nhánh nào xoá khoá cũ để đi tiếp: khoá đó có thể là khoá owner
+      // của một danh tính đang sống, và xoá khoá trong chip là bất khả hồi.
+      if (e?.reason === 'chip_key_exists') {
+        setStage('idle');
+        showWarning(t('Máy này vẫn còn khoá của lần cài trước'), t(e?.message ?? ''), {
+          confirmText: t('Tìm lại danh tính đó'),
+          cancelText: t('Để sau'),
+          onConfirm: () => navigation.navigate('RestoreIdentity'),
+        });
+        return;
+      }
+
       // Cùng luật với `khoa_bi_thu_hoi` ngay trên: biết được LỐI RA thì phải đưa
       // nút, đừng chỉ hiện chữ. Ở ca này lối ra là làm lại và làm HẾT hộp sinh
       // trắc thứ hai — một việc người dùng làm được ngay tại chỗ, nên bắt họ đóng
@@ -347,18 +382,26 @@ const SignUpBiometricScreen: React.FC = () => {
    *  3. người khác, chưa có gì  → nói thật là BẢN NÀY chưa giữ được hai danh tính.
    * Không có nhánh nào âm thầm gộp hai người thành một tài khoản.
    *
-   * ĐÍNH CHÍNH 2026-08-12 theo nhà Phoenix: giới hạn "một máy một danh tính" KHÔNG
-   * phải giới hạn của thiết kế. Backend không có `UNIQUE(device_id)`, validator không
-   * ràng buộc thiết bị on-chain, `device_pkh` là quan hệ một-nhiều thật. Chặn nằm
-   * TOÀN BỘ ở phía app: một khe lưu trữ duy nhất, nhãn khoá phần cứng là hằng số, và
-   * sinh khoá thì XOÁ KHOÁ CŨ TRƯỚC (iOS `SecItemDelete` trong `generateKeyPair`,
-   * Android `deleteKeyIfExists()` ở dòng đầu `generateKey`).
+   * Giới hạn "một máy một danh tính" là giới hạn của KHO NÀY, không phải luật của hệ
+   * thống: backend không có `UNIQUE(device_id)` và `device_pkh` là quan hệ một-nhiều.
+   * Chỗ chặn nằm ở hai điều kiện kỹ thuật, cả hai đọc được trong chính kho này:
    *
-   * `PhoenixKey-Core` PR #56 vá cả ba, 56/56 test xanh — nhưng CHƯA GỘP. Nên vẫn phải
-   * chặn: mở lối "tạo danh tính mới" trước khi PR đó về là để người thứ hai xoá vĩnh
-   * viễn khoá phần cứng của người thứ nhất. Cái sửa được ngay hôm nay là CÂU CHỮ —
-   * nói đúng rằng đây là giới hạn của bản ứng dụng này, không phải luật của hệ thống.
-   * Khi PR #56 về: đổi nhánh 3 thành nút "Tạo danh tính mới trên máy này".
+   *  (a) App chỉ có MỘT khe cho khoá chủ. Mọi thao tác owner-key đọc nhãn qua
+   *      `getOwnerAlias()` (`src/sdk/phoenixKey.ts`), và con trỏ ấy giữ đúng một giá
+   *      trị tại một thời điểm — xoay khoá đổi nó, chứ không thêm khe thứ hai.
+   *  (b) Sinh khoá KHÔNG đè khoá cũ: cả hai cầu native đều TỪ CHỐI khi nhãn đã có —
+   *      `E_KEY_EXISTS` ở `ios/LocalPods/ScannerModule/UI/PhoenixKeyModule.swift`
+   *      (`generateKeypair`, nhánh `hasKeySync`) và ở
+   *      `android/app/src/main/java/com/aladincontract/company/PhoenixKeyModule.kt`
+   *      (`generateKeypair`, nhánh `keyStore.containsAlias`).
+   *
+   * Vì (b), nhánh 3 KHÔNG phải nhánh "người thứ hai xoá khoá của người thứ nhất" —
+   * đường đó không đi được, `enrollKeypair()` sẽ đỏ trước khi chạm tới khoá cũ. Cái
+   * nhánh 3 thật sự nói là: danh tính thứ hai KHÔNG CÓ CHỖ ĐỂ Ở trên máy này, vì (a).
+   *
+   * Điều kiện gỡ nhánh 3 thành nút "Tạo danh tính mới trên máy này" cũng là điều kiện
+   * kiểm được, không phải một mốc lịch: khi (a) không còn đúng — tức khi app giữ được
+   * nhiều khe khoá chủ song song và người dùng chọn được khe nào đang dùng.
    */
   const askWhoIsHoldingThePhone = () => {
     showWarning(
@@ -429,11 +472,23 @@ const SignUpBiometricScreen: React.FC = () => {
         <StepIndicator current={1} total={3} />
       </View>
 
-      <Animated.View
+      {/* PHẢI là vùng cuộn, không phải `View`. Trước bản này đây là `Animated.View`
+          mang `flex: 1`: trên máy 360×640dp (Pixel 1080×1920) nội dung tự nhiên cao
+          hơn phần chỗ còn lại khoảng 80dp, mà `View` của React Native mặc định
+          `overflow: 'visible'` — nên phần thừa KHÔNG bị cắt, nó tràn ra ngoài đáy hộp,
+          rồi `actionBar` đứng sau trong cây nên vẽ ĐÈ lên khối chữ "Bước này bắt buộc".
+          Không lỗi nào ném, không bài kiểm nào đỏ, và chữ bị che là đúng câu giải thích
+          vì sao không có đường vòng qua sinh trắc học.
+          Cùng lớp lỗi sẽ quay lại với cỡ chữ hệ thống phóng to, nên chữa bằng vùng cuộn
+          chứ không chữa bằng cách bớt một khối chữ. */}
+      <Animated.ScrollView
         style={[
           styles.content,
           { opacity: fade, transform: [{ translateY: slide }] },
         ]}
+        contentContainerStyle={styles.contentInner}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
         <Text style={styles.eyebrow}>TẠO DANH TÍNH</Text>
         {/* Tách '+ ' thành node RIÊNG: lớp autoText tra từ điển theo TỪNG child là
@@ -539,7 +594,7 @@ const SignUpBiometricScreen: React.FC = () => {
             <Text style={styles.doneText}>Đã sinh khóa thành công.</Text>
           </View>
         )}
-      </Animated.View>
+      </Animated.ScrollView>
 
       {/* Action bar */}
       <View style={[styles.actionBar, { paddingBottom: bottomPad }]}>
@@ -607,7 +662,10 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
 
-  content: { flex: 1, paddingHorizontal: 22, paddingTop: 12 },
+  // `content` là vùng cuộn; lề trong phải nằm ở `contentInner` chứ không ở đây —
+  // đệm đặt thẳng lên ScrollView sẽ cắt mất phần cuộn được ở hai đầu.
+  content: { flex: 1 },
+  contentInner: { paddingHorizontal: 22, paddingTop: 12, paddingBottom: 8 },
 
   eyebrow: {
     fontSize: 10, fontWeight: '800',

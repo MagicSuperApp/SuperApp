@@ -1,6 +1,6 @@
 # Platform-Feat-Spec — Review Ledger (Faza)
 
-> **Đối tượng**: `/Users/ductiger/Projects/SuperApp/Specs/Platform-Feat-Spec.md` v0.1
+> **Đối tượng**: `SuperApp/Specs/Platform-Feat-Spec.md` v0.1
 > **Reviewer**: Faza (Feat-Spec adversary) · **Vai**: adversarial reader, không co-author, không approver cuối
 > **Chuẩn đối chiếu**: Feat-Spec.standard.md v1.5 · HARD-RULES.md v1.0 (11 rules) · reviewer-protocol 13 axes + 6 F-extensions
 > **Bối cảnh**: PLATFORM-MASTER v0.2 · EXPANSION-ANALYSIS (GO-có-điều-kiện)
@@ -52,7 +52,7 @@
 | FQ-D | competitive/legal | Q3 quan hệ VNeID; E6 Quyết định 940 chưa có URL primary | Có — §14 Q3 + [NEEDS-URL] E6 + self-review #8. |
 | FQ-E | legal/fintech | Q10 vị trí giấy phép PSP; NĐ 52/2024 chưa có URL primary | Có — §9 + [NEEDS-URL] E9 + Q10 + self-review #9. |
 | FQ-F | tokenomics | Q8 demand-sink LAMP (mục tiêu cuối: LAMP có giá trị) | Có — §8 + Q8 + self-review #5. AS7 confidence L. |
-| FQ-G | vendor | AS3 issuer EdDSA/JWKS (Long, Claude KHÔNG sửa) chặn Phase 2 | Có — AS3 + §13 + Q (ngoài tầm). |
+| FQ-G | vendor | AS3 issuer EdDSA/JWKS (backend PhoenixKey, Claude KHÔNG sửa) chặn Phase 2 | Có — AS3 + §13 + Q (ngoài tầm). |
 | FQ-H | market | AS5 PULL chưa kiểm chứng (rủi ro chiến lược #1) | Có — AS5 confidence L, top-3 risk + self-review #4. |
 
 ---
@@ -143,8 +143,8 @@ Self-review Banzi **adequate**: 10 điểm, có CRITICAL-class (config-RCE đã 
 ### E. FZ-02 recovery (F3.7/F3.9) — INHERIT PhoenixKey?
 
 - Note FG3 (dòng 232) + Non-goal (dòng 333) + AC F3.7/F3.9 (dòng 240,249) đều ghi **INHERIT cơ chế PhoenixKey ĐÃ CÓ** (guardian ≥2/3 + 50 ADA + timelock 7 ngày + sequence-monotonic; states Active/Recovering/Migrated/Revoked), "KHÔNG tự định nghĩa mới (Hard Rule 4)". **KHỚP CHÍNH XÁC** KNOWLEDGE §H dòng 118-123. Số 50 ADA/7 ngày/2/3 = inherit upstream, hợp lệ.
-- **GAP device-revocation-list** ghi trung thực ở 4 chỗ: note FG3 (dòng 232), AC F3.9 GAP (dòng 251), AS3 (dòng 618), self-review #12 (dòng 714). "Revoke per-khoá qua sequence có; danh sách thiết bị thu hồi tường minh = thiếu → báo Long". Khớp §H dòng 120. **Trung thực, không tự vá.**
-- **Đánh giá**: INHERIT đúng (không tái phát minh chữ ký), GAP ghi trung thực. DEP-2 = ngoài-tầm-sửa (Long/PhoenixKey).
+- **GAP device-revocation-list** ghi trung thực ở 4 chỗ: note FG3 (dòng 232), AC F3.9 GAP (dòng 251), AS3 (dòng 618), self-review #12 (dòng 714). "Revoke per-khoá qua sequence có; danh sách thiết bị thu hồi tường minh = thiếu → báo backend PhoenixKey". Khớp §H dòng 120. **Trung thực, không tự vá.**
+- **Đánh giá**: INHERIT đúng (không tái phát minh chữ ký), GAP ghi trung thực. DEP-2 = ngoài-tầm-sửa (PhoenixKey backend).
 
 ### F. Regression check (axis 2 — nhất quán nội-spec §2/§4/§6/§11)
 
@@ -183,12 +183,12 @@ Self-review Banzi **adequate**: 10 điểm, có CRITICAL-class (config-RCE đã 
 
 **Trần verdict**: theo protocol, vì còn 2 finding author-fixable mở (dù LOW) + **chưa thể Gate-out** (scale trống FQ-A/B, 5 URL [NEEDS-URL], §9 chờ luật sư) → giữ ở **CONDITIONALLY_APPROVED**. Về **chất lượng tác giả lane Feat**: spec đã đạt mức APPROVED — mọi lỗ hổng còn lại là **founder-data / luật-sư / dependency ngoài-tầm**, KHÔNG phải lỗi Banzi.
 
-**Đủ sạch để trình founder review chưa?** **CÓ.** Spec đã sạch ở lane Feat: 4 tử huyệt khoá thành invariant, Q1/Q2/Q8 giải đúng nguồn, recovery/sovereignty INHERIT đúng ranh giới, dependency-risk ghi minh bạch. Các câu còn mở đều là **câu-chờ-founder** (Q3-Q10) + **dependency ngoài-tầm** (DEP-1 LampNet, DEP-2 PhoenixKey/Long) — chính xác là loại quyết định cần founder. Trình founder để: (a) cấp baseline scale (Q9) + duyệt §8/§14.1 RESOLVED; (b) chốt Q3-Q10; (c) xác nhận hướng dependency LampNet/PhoenixKey.
+**Đủ sạch để trình founder review chưa?** **CÓ.** Spec đã sạch ở lane Feat: 4 tử huyệt khoá thành invariant, Q1/Q2/Q8 giải đúng nguồn, recovery/sovereignty INHERIT đúng ranh giới, dependency-risk ghi minh bạch. Các câu còn mở đều là **câu-chờ-founder** (Q3-Q10) + **dependency ngoài-tầm** (DEP-1 LampNet, DEP-2 PhoenixKey) — chính xác là loại quyết định cần founder. Trình founder để: (a) cấp baseline scale (Q9) + duyệt §8/§14.1 RESOLVED; (b) chốt Q3-Q10; (c) xác nhận hướng dependency LampNet/PhoenixKey.
 
 **Phân loại 3 nhóm lỗ hổng còn lại** (cho orchestrator):
 - **Lỗi-author-sửa**: FZ-12, FZ-13 (đều LOW, cosmetic — sửa rẻ, không chặn trình founder).
 - **Câu-chờ-founder**: Q3, Q4, Q5, Q6, Q7, Q9, Q10 + §9 luật-sư (FZ-10) + scale §3/§5.
-- **Dependency-ngoài-tầm**: DEP-1 (LampNet Data Sovereignty chưa có), DEP-2 (PhoenixKey device-revocation-list), AS3 (issuer EdDSA/JWKS — Long).
+- **Dependency-ngoài-tầm**: DEP-1 (LampNet Data Sovereignty chưa có), DEP-2 (PhoenixKey device-revocation-list), AS3 (issuer EdDSA/JWKS — backend PhoenixKey).
 
 ### Recurrence ledger update
 - FZ-01..FZ-09: `open → closed` (Round 2 verified).

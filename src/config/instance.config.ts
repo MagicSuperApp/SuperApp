@@ -230,6 +230,37 @@ export interface InstanceConfig {
   logo: ImageSourcePropType;
 
   /**
+   * CỤM NHẬN DIỆN đặt trên nền TỐI — dấu hiệu và chữ hiệu nằm trong một ảnh, vẽ
+   * bằng đúng bộ sinh dựng ảnh cửa hàng. Ba màn trước-đăng-nhập dùng nó thay cho
+   * cặp [ô vuông dấu hiệu] + [chữ `displayName`].
+   *
+   * BẮT BUỘC KHAI, và `null` là một lời khai hợp lệ — cùng luật với `mascot`. App
+   * nào chưa có cụm thì khai `null` và ba màn kia tự rơi về cặp cũ. Để `?` thì một
+   * app mới quên khai sẽ lặng lẽ chạy đường rơi mà không ai biết là đang thiếu.
+   *
+   * VÌ SAO CHỈ CÓ BẢN CHO NỀN TỐI: cả ba chỗ dùng đều là nền lục sẫm. Một bản mực
+   * lục cho nền sáng có tồn tại trong bộ nhận diện, nhưng KHÔNG kèm vào đây khi
+   * chưa màn nào đặt nó — một tài sản không có nơi đọc là tài sản không ai bảo
+   * trì, và lần sau ai nhìn vào cũng phải đi đo xem nó còn đúng không.
+   *
+   * ⚠ Lý do CŨ ở dòng này ("một tệp ảnh không ai dùng vẫn đi vào gói cài") đã bị
+   * chính tệp này bác: hai lời khai app nằm chung một mô-đun với `require()` tĩnh
+   * ở tầng mô-đun và Metro không cắt cây, nên gói cài của Aladin ĐÃ chứa sẵn
+   * `lockup-on-dark.png`, `logo.png`, `qr-backdrop.png` của CheckFarm. Kết luận
+   * không đổi, nhưng lý do thì phải đúng — một lý do sai sẽ được trích lại cho
+   * quyết định sau.
+   *
+   * ⚠ Cụm này KHÔNG có câu giới thiệu trong ảnh, và đó là ràng buộc chứ không
+   * phải lựa chọn thẩm mỹ: app chạy bốn thứ tiếng và đã có `tagline`/`slogan`
+   * dịch theo ngôn ngữ người dùng chọn. Nướng một câu tiếng Việt vào ảnh là thay
+   * một dòng dịch được bằng một dòng không dịch được, và người đọc tiếng Nhật sẽ
+   * gặp nó. Ảnh nộp cửa hàng thì ngược lại — một trang một ngôn ngữ — nên ở đó
+   * câu ấy phải nằm trong ảnh. Bộ sinh cưỡng chế đúng ranh giới này: nó TỪ CHỐI
+   * cờ bỏ-câu-giới-thiệu cho hai ảnh nộp Play.
+   */
+  brandLockupOnDark: ImageSourcePropType | null;
+
+  /**
    * Ảnh nền của TEM MÃ QR dán lên nông sản (`features/treeQr/TreeQrCode.tsx`).
    *
    * Tách khỏi `logo` vì hai thứ này rơi khác nhau khi sai, và một trong hai
@@ -395,6 +426,10 @@ export const ALADIN_INSTANCE: InstanceConfig = {
   // bằng `cmp` lúc chuyển. Aladin đã phát hành, nên đợt này không được đổi một
   // pixel nào của nó; cái đổi là CHỖ khai, không phải hình.
   logo: require('../../instances/aladin/brand/logo.png'),
+  // CHƯA CÓ cụm nhận diện. `null` chứ không mượn cụm của CheckFarm — ba màn
+  // trước-đăng-nhập tự rơi về cặp [ô vuông dấu hiệu] + [chữ tên app] như trước,
+  // không đổi một pixel nào của Aladin trong đợt này.
+  brandLockupOnDark: null,
   // NGUYÊN BYTE `assets/images/QR_BG.png` đang in trên tem — `cmp` xác nhận lúc
   // chuyển. Tem đã dán ngoài đời không sửa được, nên đợt này không đổi hình.
   qrBackdrop: require('../../instances/aladin/brand/qr-backdrop.png'),
@@ -485,6 +520,14 @@ export const CHECKFARM_INSTANCE: InstanceConfig = {
   // TRONG SUỐT. Đặt lên nền sáng của app thì không thấy gì, mà cũng chẳng có lỗi
   // nào để lần ra.
   logo: require('../../instances/checkfarm/brand/logo.png'),
+  // Cụm nhận diện cho nền tối, mực TRẮNG trên nền trong suốt, cắt sát hộp mực.
+  // Sinh từ cùng bộ sinh dựng ảnh cửa hàng, nằm ở kho `CheckFarm/Docs`
+  // (`Logo/play-store/build-feature-graphic.py --variant ink-on-dark --no-tagline`
+  // — kho KHÁC kho này, nên đừng đi tìm đường dẫn đó ở đây),
+  // nên nó không thể trôi khỏi ảnh cửa hàng: cùng dấu hiệu, cùng phông, cùng cỡ
+  // chữ đã giải ra từ bốn ràng buộc bố cục. Đối chiếu bằng `md5` lúc chép sang:
+  // `ba0b2c2b8b6ae38fa8f232c83b90ec26`.
+  brandLockupOnDark: require('../../instances/checkfarm/brand/lockup-on-dark.png'),
   // Dùng chính dấu của họ làm nền tem. Trước đợt này tem QR mọi app đều mang mặt
   // cười Aladin, mà tem thì IN RA rồi dán lên nông sản — sai ở đây không thu về được.
   qrBackdrop: require('../../instances/checkfarm/brand/qr-backdrop.png'),

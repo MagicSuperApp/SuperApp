@@ -779,10 +779,13 @@ async function tryOne(
 
   // Gửi xong VÀ byte đã lên LampNet.
   //
-  // ⚠ `stored` là cờ QUYẾT ĐỊNH, và nó có thể VẮNG. `fruitVideoService` đọc
-  // `body?.stored ?? true`, nên máy chủ nào không trả trường này sẽ được coi là "đã
-  // lưu" — rồi khối dưới xoá bản sao. Đó là đường mất bằng chứng im lặng nhất trong
-  // dây: không lỗi, không cảnh báo, chỉ là một clip biến mất.
+  // ⚠ `stored` là cờ QUYẾT ĐỊNH, và nó có thể VẮNG. Khối dưới đọc cờ này để XOÁ bản
+  // sao clip, nên coi "máy chủ không nói gì" thành "đã lưu" là đường mất bằng chứng
+  // im lặng nhất trong dây: không lỗi, không cảnh báo, chỉ là một clip biến mất.
+  //
+  // `fruitVideoService` giữ nguyên `stored: body?.stored` — CỐ Ý không `?? true`, lý
+  // do viết ngay tại chỗ đó. Nên trường vắng tới đây vẫn là `undefined`, và phải giữ
+  // nguyên ba trạng thái: đã lưu · chưa lưu · máy chủ không cho biết.
   //
   // Nay đã đỡ hai lớp: (1) mọi màn quay đặt `saveToPhotos: true` nên bản gốc còn nằm
   // trong cuộn ảnh máy; (2) OriLife (PR OriLife-Core #274) kèm `store_reason` ở MỌI

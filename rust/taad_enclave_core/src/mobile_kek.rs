@@ -1,31 +1,37 @@
 // mobile_kek.rs — Hàm DERIVE bậc cao cho mobile (SuperApp RN).
 //
-// Gói gọn chuỗi derive của Enclave (enclave_bridge.dart deriveTaadPublicKey /
-// deriveWalletSeed / deriveCardanoAddressAccount) thành 1 lời gọi để 3 nền-tảng
-// (iOS C-ABI, Android JNI, JS) chỉ truyền chuỗi — KHÔNG lặp lại hằng-số derive ở
-// mỗi nơi (tránh lệch → khoá/địa-chỉ khác Enclave). Hằng-số LẤY ĐÚNG từ Dart:
-//   - TAAD_Key (Ed25519): ed25519( HKDF(KEK, "taad-controller-v1", SHA256("genesis"), 32) )
-//   - wallet seed:        HKDF(KEK, "wallet-v1", 00*32, 32)
-//   - địa chỉ:            derive_address_account(wallet_seed, account, network)
+// Gói gọn chuỗi derive thành 1 lời gọi để 3 nền-tảng (iOS C-ABI, Android JNI, JS)
+// chỉ truyền chuỗi — KHÔNG lặp lại hằng-số derive ở mỗi nơi (tránh lệch → khoá/
+// địa-chỉ khác nhau giữa các nền tảng).
 //
-// Tái-dùng crate::crypto + crate::cardano (KHÔNG tự cài lại crypto).
+//   - khoá điều khiển TAAD: `sign::derive_taad_public_key` — công thức ở khối chú
+//     thích đầu `sign.rs`, theo đặc tả PhoenixKey-Anchorme-Tech bước 2→5. Tệp này
+//     KHÔNG giữ bản chép nào của công thức đó.
+//   - wallet seed (ví CHI TIÊU của người dùng): HKDF(KEK, "wallet-v1", 00*32, 32)
+//   - địa chỉ:              derive_address_account(wallet_seed, account, network)
+//
+// ⚠ HAI THỨ CÙNG TÊN "wallet seed", KHÁC CÔNG THỨC, đừng gộp:
+//   · `mobile_kek::derive_wallet_seed` (ngay dưới) — entropy cho ví CHI TIÊU của
+//     người dùng, `info = "wallet-v1"`, `salt = 00 × 32`. Đổi nó là đổi địa chỉ
+//     của mọi người dùng đang có.
+//   · `sign::derive_taad_wallet_seed` — entropy cho khoá ĐIỀU KHIỂN TAAD,
+//     `info = "wallet-seed-v1"`, `salt = SHA-256("genesis")`. Chỉ dùng trong
+//     đường danh tính/validator.
+//   Hai giá trị KHÁC nhau ⟹ khoá điều khiển KHÔNG phải khoá thanh toán account 0
+//   của ví người dùng, dù cả hai đều đi qua CIP-1852 `m/1852'/1815'/0'/0/0`.
+//
+// Tái-dùng crate::sign + crate::crypto + crate::cardano (KHÔNG tự cài lại crypto).
 
-/// TAAD_Key (Ed25519) public key hex từ Master_KEK (64-hex). '' nếu KEK sai.
+/// Khoá công khai của khoá điều khiển TAAD (64-hex) từ Master_KEK (64-hex).
+/// '' nếu KEK sai. Đây là cửa FFI mà iOS/Android dùng — nó CHỈ chuyển tiếp sang
+/// nguồn duy nhất trong `sign.rs`, không tự dẫn xuất.
 pub fn derive_taad_pubkey(master_kek_hex: String) -> String {
-    let salt = crate::crypto::sha256_hex("genesis".to_string());
-    let seed = crate::crypto::hkdf_derive(
-        master_kek_hex,
-        "taad-controller-v1".to_string(),
-        salt,
-        32,
-    );
-    if seed.is_empty() {
-        return String::new();
-    }
-    crate::crypto::derive_ed25519_public_key(seed)
+    crate::sign::derive_taad_public_key(master_kek_hex)
 }
 
-/// Wallet seed (32-byte hex) từ Master_KEK = HKDF(KEK, "wallet-v1", 00*32, 32).
+/// Wallet seed của ví CHI TIÊU (32-byte hex) từ Master_KEK
+/// = HKDF(KEK, "wallet-v1", 00*32, 32). KHÔNG phải `sign::derive_taad_wallet_seed`
+/// — xem khối cảnh báo đầu tệp.
 pub fn derive_wallet_seed(master_kek_hex: String) -> String {
     crate::crypto::hkdf_derive(
         master_kek_hex,
@@ -144,15 +150,80 @@ pub fn derive_stake_address(master_kek_hex: String, account: u32, network: u8) -
 /// đều hex thuần nên nhúng thẳng vào JSON an-toàn (không cần escape). Rỗng nếu
 /// KEK/seed sai. KHÔNG lộ khoá — chỉ ra pubkey + chữ-ký.
 pub fn sign_wallet_register(master_kek_hex: String, account: u32, message: String) -> String {
+    sign_wallet_register_bytes(master_kek_hex, account, message.as_bytes())
+}
+
+/// Same as [`sign_wallet_register`], but the message is an ARBITRARY byte string
+/// passed in as hex.
+///
+/// Why the UTF-8 door cannot serve both: the C entry point takes
+/// `*const c_char`, so a length-framed payload (4-byte big-endian lengths,
+/// mostly `0x00`) is cut at the first `0x00`. The cut payload still produces a
+/// well-formed 128-hex signature, so the mistake surfaces only on the server as
+/// `WALLET_PAYMENT_SIGNATURE_INVALID`.
+pub fn sign_wallet_register_hex(
+    master_kek_hex: String,
+    account: u32,
+    message_hex: String,
+) -> String {
+    let message = match crate::utils::hex_to_bytes(&message_hex) {
+        Ok(b) => b,
+        Err(_) => return String::new(),
+    };
+    sign_wallet_register_bytes(master_kek_hex, account, &message)
+}
+
+fn sign_wallet_register_bytes(master_kek_hex: String, account: u32, message: &[u8]) -> String {
     let seed = derive_wallet_seed(master_kek_hex);
     if seed.is_empty() {
         return String::new();
     }
-    match crate::cardano::sign_payment_message(&seed, account, message.as_bytes()) {
+    match crate::cardano::sign_payment_message(&seed, account, message) {
         Some((pubkey_hex, signature_hex)) => format!(
             r#"{{"paymentPublicKeyHex":"{}","signature":"{}"}}"#,
             pubkey_hex, signature_hex
         ),
         None => String::new(),
+    }
+}
+
+// ─── Tests ────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const KEK: &str = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
+
+    /// Hai cửa phải cho ĐÚNG một kết quả khi nội dung là ASCII thuần — nếu không,
+    /// chuyển luồng đang chạy sang cửa mới sẽ làm hỏng chính nó.
+    #[test]
+    fn hex_door_matches_string_door_for_plain_ascii() {
+        let message = "PHOENIXKEY_WALLET_STANDARD_REGISTER:did:phoenix:abc:addr_test1:00ff";
+        let via_string = sign_wallet_register(KEK.to_string(), 0, message.to_string());
+        let via_hex =
+            sign_wallet_register_hex(KEK.to_string(), 0, hex::encode(message.as_bytes()));
+        assert!(via_string.contains("\"signature\":\""), "cửa chuỗi phải ký được: {via_string}");
+        assert_eq!(via_string, via_hex);
+    }
+
+    /// Chuỗi đóng khung ký qua cửa hex KHÁC chuỗi bị cắt ở `0x00` đầu tiên. Đây là
+    /// lý do cửa hex tồn tại: cầu `*const c_char` cắt ở byte đó mà vẫn trả về một
+    /// chữ ký đúng hình dạng, nên chỗ hỏng không lộ ở tầng này.
+    #[test]
+    fn framed_payload_differs_from_the_payload_cut_at_the_first_nul() {
+        let framed_hex = "503a000000026162"; // build("P:", "ab")
+        let framed = sign_wallet_register_hex(KEK.to_string(), 0, framed_hex.to_string());
+        let cut_at_nul = sign_wallet_register(KEK.to_string(), 0, "P:".to_string());
+        assert!(framed.contains("\"signature\":\""), "phải ký được: {framed}");
+        assert_ne!(framed, cut_at_nul);
+    }
+
+    /// Hex không hợp lệ → chuỗi RỖNG. Người gọi phải phân biệt được "không ký được"
+    /// với "đã ký", nên tuyệt đối không ký bừa trên byte rác.
+    #[test]
+    fn hex_door_refuses_a_payload_that_is_not_hex() {
+        assert_eq!(sign_wallet_register_hex(KEK.to_string(), 0, "abc".to_string()), "");
+        assert_eq!(sign_wallet_register_hex(KEK.to_string(), 0, "zz".to_string()), "");
     }
 }

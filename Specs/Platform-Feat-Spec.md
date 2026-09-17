@@ -15,7 +15,7 @@
 
 **WHY NOW** — Module nghiệp vụ đã chạy thật trên Preview (escrow Work, TreeReID/FruitID Trace LIVE, Chat E2EE MLS). Apple Guideline 4.2.6 + 4.7 (bản cập nhật 11/2025) cho phép tường minh mô hình one-binary aggregated/picker + registry mini-app [E1][E2]. Hành lang dữ liệu VN vừa đóng băng (PDPL 91/2025 + NĐ 356/2025 hiệu lực 01/01/2026) — buộc thiết kế jurisdiction-aware ngay từ đầu thay vì vá sau [E3][E4]. Nền RN 0.84.1 đa-module sẵn sàng. Cửa sổ để dựng lớp federation trung lập TRƯỚC khi một host walled-garden tự dựng đang mở.
 
-**CURRENT STATUS** — DRAFT v0.3 (fold lời giải thật từ code/spec hệ sinh thái — KNOWLEDGE §H). Đây là tài liệu nền (Feat-Spec) trong chuỗi 4-spec; đã qua Round 1 review (CONDITIONALLY_APPROVED), vá v0.2 (FZ-01..FZ-04 HIGH). Lane Feat: chỉ WHY/WHO/WHAT. 4 bất biến (INV-1/2/3/SEC) là ràng buộc tham chiếu — chứng minh thuộc Math-Spec. **v0.3 giải 3 Open Question**: Q1 (pháp nhân = MagicLamp Foundation, phát hành GreenSun+Aladin pháp nhân VN, ra mắt 2026-09-27), Q2 (safety-multisig = Treasury multi-sig council + time-lock), Q8 (demand-sink LAMP = PlatformKit `collectToTreasury` + C4 Holding lock + C2 lock forward). Phụ thuộc cứng còn lại: issuer-side PhoenixKey EdDSA/JWKS (Long, ngoài tầm sửa của ta — Phase 2); **cưỡng chế residency = năng lực LampNet** (LampNet hiện CHƯA có Sovereignty Controller → dependency risk, đã yêu cầu team). Recovery DID INHERIT cơ chế PhoenixKey (guardian 2/3 + 50 ADA + timelock 7 ngày). Embedding host ngoài (kênh 3) = Phase 2; Phase 1 ưu tiên app-factory kênh 1+2.
+**CURRENT STATUS** — DRAFT v0.3 (fold lời giải thật từ code/spec hệ sinh thái — KNOWLEDGE §H). Đây là tài liệu nền (Feat-Spec) trong chuỗi 4-spec; đã qua Round 1 review (CONDITIONALLY_APPROVED), vá v0.2 (FZ-01..FZ-04 HIGH). Lane Feat: chỉ WHY/WHO/WHAT. 4 bất biến (INV-1/2/3/SEC) là ràng buộc tham chiếu — chứng minh thuộc Math-Spec. **v0.3 giải 3 Open Question**: Q1 (pháp nhân = MagicLamp Foundation, phát hành GreenSun+Aladin pháp nhân VN, ra mắt 2026-09-27), Q2 (safety-multisig = Treasury multi-sig council + time-lock), Q8 (demand-sink LAMP = PlatformKit `collectToTreasury` + C4 Holding lock + C2 lock forward). Phụ thuộc cứng còn lại: issuer-side PhoenixKey EdDSA/JWKS (backend PhoenixKey, ngoài tầm sửa của ta — Phase 2); **cưỡng chế residency = năng lực LampNet** (LampNet hiện CHƯA có Sovereignty Controller → dependency risk, đã yêu cầu team). Recovery DID INHERIT cơ chế PhoenixKey (guardian 2/3 + 50 ADA + timelock 7 ngày). Embedding host ngoài (kênh 3) = Phase 2; Phase 1 ưu tiên app-factory kênh 1+2.
 
 ---
 
@@ -169,7 +169,7 @@ Moat **không** ở app-factory (lợi thế tốc độ, không phải hào) v�
 | Phase | Countries | Languages | Local hosting | Trigger to advance |
 |---|---|---|---|---|
 | Phase 1 | VN | vi (en optional) | Store/PII tại VN (data localization) [E3][E4] | App-factory kênh 1+2 ổn định + ≥2 instance live |
-| Phase 2 | VN (mở rộng theo chủ quyền adopt) | per chủ quyền | per chủ quyền (jurisdiction-aware) | Issuer-side EdDSA/JWKS sẵn (Long) + ≥1 host đối tác đồng ý notice-period |
+| Phase 2 | VN (mở rộng theo chủ quyền adopt) | per chủ quyền | per chủ quyền (jurisdiction-aware) | Issuer-side EdDSA/JWKS sẵn (backend PhoenixKey) + ≥1 host đối tác đồng ý notice-period |
 
 > Mở rộng quốc gia = theo chủ quyền adopt (PULL), KHÔNG cam kết roadmap quốc gia cứng. [NEEDS-EVIDENCE: vị trí pháp lý store/validator — luật sư VN xác nhận]
 
@@ -223,13 +223,13 @@ Hai cực ngang nhau, adaptive từ đầu (INV-2/experience): cực yếu = And
 | F3.2 | Store DID = single source of truth; host = thin client ghi qua API versioned | Dữ liệu không phân mảnh/mâu thuẫn; host kill runtime không vỡ | NEW | Must | F3.1, durable outbox |
 | F3.3 | Đồng bộ offline-first + durable outbox | P1 (nông dân) ghi được khi mất sóng, không mất dữ liệu | ADAPTED from orilife-mobile-app | Must | F3.2 |
 | F3.4 | Hai tầng dữ liệu pháp lý (on-chain hash/commitment; PII off-chain erasable) | User: PII xoá được thật; tuân INV-3 | NEW | Must | INV-3 |
-| F3.5 | Federation token audience-bound (host ngoài) | Credential/biometric/DID gốc KHÔNG vào WebView host | NEW | Should (Phase 2) | F3.1, issuer EdDSA/JWKS (Long) |
+| F3.5 | Federation token audience-bound (host ngoài) | Credential/biometric/DID gốc KHÔNG vào WebView host | NEW | Should (Phase 2) | F3.1, issuer EdDSA/JWKS (backend PhoenixKey) |
 | F3.6 | LoA (Level of Assurance) phân hạng | Chỉ DID sinh trắc gốc có quyền governance/thu phí | NEW | Should | F3.1 |
 | F3.7 | Khôi phục DID qua sinh trắc gốc (device-loss recovery) | P1 (nông dân hay mất/đổi máy) lấy lại danh tính + dữ liệu trên máy mới, không mất lịch sử | NEW | **Must** (điều kiện sống INV-1 multi-device — FZ-02) | F3.1, PhoenixKey (issuer) |
 | F3.8 | Multi-device đồng thời: cùng 1 DID ghi offline từ ≥2 thiết bị → outbox merge theo `mergePolicy` | User dùng nhiều máy không tạo nhánh dữ liệu mâu thuẫn; store hội tụ một view nhất quán | NEW | **Must** (INV-1 nhất-quán-logic — FZ-02) | F3.2, F1.5 |
 | F3.9 | DID rotation / revocation khi lộ khoá thiết bị | Lộ khoá một máy không lộ toàn bộ danh tính; thu hồi + cấp lại không mất dữ liệu store | NEW | **Must** (an toàn danh tính — FZ-02) | F3.1, PhoenixKey (issuer) |
 
-> **Lưu ý lane + INHERIT (FZ-02, fold KNOWLEDGE §H)**: recovery/rotation về **cơ chế chữ ký** (key derivation, social/biometric recovery) là issuer-side PhoenixKey (Long, ngoài tầm sửa của ta) — Feat chỉ đặc tả WHAT (phải khôi phục được, phải hội tụ, phải thu hồi được) + ràng buộc INV-1; cách hiện thực ở Tech §13 + upstream PhoenixKey. F3.7/F3.9 phụ thuộc issuer EdDSA/JWKS (AS3) như F3.5. **F3.7/F3.9 INHERIT cơ chế recovery PhoenixKey ĐÃ CÓ (Hard Rule 4 — KHÔNG tự định nghĩa mới)**: guardian ≥2/3 ký + 50 ADA collateral + timelock 7 ngày (preprod 1h); states Active/Recovering/Migrated/Revoked; rotate khoá; **sequence-monotonic** chống hacker dùng khoá cũ; multi-device qua `linked_device_token` cache 30 ngày, mất máy → recovery flow. DID = `did:phoenix:<slot>:<hash>`, on-chain chỉ hash/pubkey, biometric chỉ hash off-chain. Nguồn: `PhoenixKeyDID/TESTNET-PLAN.md §A`, `PhoenixKey-SDK/method.md §5` (Security: sequence-monotonic/replay) + `§6` (Privacy: biometric hash). **GAP đã biết**: PhoenixKey CHƯA có device-revocation-list chi tiết → F3.9 phụ thuộc PhoenixKey bổ sung (báo Long, không tự định nghĩa).
+> **Lưu ý lane + INHERIT (FZ-02, fold KNOWLEDGE §H)**: recovery/rotation về **cơ chế chữ ký** (key derivation, social/biometric recovery) là issuer-side PhoenixKey (ngoài tầm sửa của ta) — Feat chỉ đặc tả WHAT (phải khôi phục được, phải hội tụ, phải thu hồi được) + ràng buộc INV-1; cách hiện thực ở Tech §13 + upstream PhoenixKey. F3.7/F3.9 phụ thuộc issuer EdDSA/JWKS (AS3) như F3.5. **F3.7/F3.9 INHERIT cơ chế recovery PhoenixKey ĐÃ CÓ (Hard Rule 4 — KHÔNG tự định nghĩa mới)**: guardian ≥2/3 ký + 50 ADA collateral + timelock 7 ngày (preprod 1h); states Active/Recovering/Migrated/Revoked; rotate khoá; **sequence-monotonic** chống hacker dùng khoá cũ; multi-device qua `linked_device_token` cache 30 ngày, mất máy → recovery flow. DID = `did:phoenix:<slot>:<hash>`, on-chain chỉ hash/pubkey, biometric chỉ hash off-chain. Nguồn: `PhoenixKeyDID/TESTNET-PLAN.md §A`, `PhoenixKey-SDK/method.md §5` (Security: sequence-monotonic/replay) + `§6` (Privacy: biometric hash). **GAP đã biết**: PhoenixKey CHƯA có device-revocation-list chi tiết → F3.9 phụ thuộc PhoenixKey bổ sung (báo backend PhoenixKey, không tự định nghĩa).
 
 **Acceptance (F3.1, Must)**:
 - **Given** một user với một PhoenixKey DID dùng ≥2 instance/host; **When** ghi dữ liệu ở instance A rồi đọc ở instance B; **Then** dữ liệu nhất quán (store là nguồn-sự-thật-duy-nhất), không phụ thuộc host nào ghi trước.
@@ -248,7 +248,7 @@ Hai cực ngang nhau, adaptive từ đầu (INV-2/experience): cực yếu = And
 
 **Acceptance (F3.9 rotation, Must — INHERIT cơ chế PhoenixKey)**:
 - **Given** khoá một thiết bị bị lộ; **When** user (qua sinh trắc gốc / guardian) yêu cầu thu hồi + xoay khoá (rotate PhoenixKey, sequence-monotonic); **Then** khoá thiết bị cũ bị revoke (mất quyền ghi store qua sequence cũ), DID gốc giữ nguyên, dữ liệu store không mất; thiết bị bị thu hồi không ghi được nữa kể từ thời điểm revoke.
-- **GAP (ghi trung thực)**: PhoenixKey hiện CHƯA có device-revocation-list chi tiết (KNOWLEDGE §H). Revoke per-khoá qua sequence-monotonic có; danh sách thiết bị bị thu hồi tường minh = cần PhoenixKey bổ sung (báo Long). F3.9 phụ thuộc năng lực này.
+- **GAP (ghi trung thực)**: PhoenixKey hiện CHƯA có device-revocation-list chi tiết (KNOWLEDGE §H). Revoke per-khoá qua sequence-monotonic có; danh sách thiết bị bị thu hồi tường minh = cần PhoenixKey bổ sung (báo backend PhoenixKey). F3.9 phụ thuộc năng lực này.
 
 ### FG4 — Host Shell, Navigation & Design System (↔ SG4)
 | ID | Feature | User benefit | Origin | Priority | Dependency |
@@ -330,7 +330,7 @@ Hai cực ngang nhau, adaptive từ đầu (INV-2/experience): cực yếu = And
 | "Logic riêng" qua config/theme/billing | Vĩnh viễn | Vi phạm INV-SEC (config Turing-complete = RCE xuyên instance) | Logic riêng = MODULE qua Registry (chịu gate) |
 | Tự định nghĩa danh tính | Vĩnh viễn | Inherit PhoenixKey; không redefine | Tiêu thụ qua service API PhoenixKey |
 | Tự cưỡng chế data residency / proof-of-residence | Vĩnh viễn | Cưỡng chế placement = năng lực **LampNet** (Mirage placement + Splash dispatch + governance residency); SuperApp KHÔNG tự spec controller residency | SuperApp chỉ *cấu hình policy* + *tiêu thụ*; LampNet *thực thi + chứng minh* (dependency, §13) |
-| Tự định nghĩa cơ chế recovery/rotation chữ ký | Vĩnh viễn | Inherit PhoenixKey (guardian 2/3 + 50 ADA + timelock 7 ngày, sequence-monotonic); không tái phát minh | Feat đặc tả WHAT; cơ chế chữ ký = issuer-side PhoenixKey (Long) |
+| Tự định nghĩa cơ chế recovery/rotation chữ ký | Vĩnh viễn | Inherit PhoenixKey (guardian 2/3 + 50 ADA + timelock 7 ngày, sequence-monotonic); không tái phát minh | Feat đặc tả WHAT; cơ chế chữ ký = issuer-side PhoenixKey |
 | Re-spec nghiệp vụ feature (Work/Trace/Join) | Vĩnh viễn | Inherit upstream (Hard Rule 4); SG8 chỉ đặc tả tích hợp | Tham chiếu spec upstream |
 | Platform tự cầm/chia tiền B2C | Vĩnh viễn | Né khung trung gian thanh toán [E9] | Dòng tiền qua PSP; platform chỉ phí nền tảng |
 | Embedding host ngoài (kênh 3) đầy đủ | Out-of-scope release Phase 1 | Ưu tiên app-factory kênh 1+2 trước | Phase 2, sau khi issuer EdDSA/JWKS sẵn |
@@ -484,7 +484,7 @@ Cân nhắc công bố lớp federation (INV-1 + thin-client/outbox pattern) là
 | Admin instance (P3) | Lắp/vận hành | Instance live | Bảng cấu hình không-code | Trung bình (experience only) |
 | Dev cộng đồng (P4) | Cung module | Module mới, mở rộng | SDK + tiếp cận user xuyên instance | Trung bình (qua DAO) |
 | Chủ quyền/tổ chức (P5) | Host adopt | Phân phối + tính pháp lý | Substrate tuân thủ | Cao trong jurisdiction họ — **là controller identity-core của cư dân mình** (sovereign-shard, INV-1/3); không xung đột với Magiclamp vì Magiclamp = processor/protocol operator, KHÔNG controller toàn cục |
-| PhoenixKey/Long (backend) | Cung identity issuer | EdDSA/JWKS, DID | Consumer integration | Cao (blocker Phase 2) |
+| PhoenixKey (backend) | Cung identity issuer | EdDSA/JWKS, DID | Consumer integration | Cao (blocker Phase 2) |
 | DAO + safety-multisig | Governance | Hậu kiểm + takedown | Kill-switch, trust-tier | 2 tầng (kỹ thuật ⟂ giá trị) |
 | PSP | Xử lý dòng tiền B2C | Tuân khung thanh toán | Volume giao dịch | Trung bình |
 
@@ -515,7 +515,7 @@ PSP ──► founder (settlement B2C, platform không cầm tiền)
 | Phase | Name | Goal | Feature subset | Exit criteria (trigger) | Status |
 |---|---|---|---|---|---|
 | P1 | App-factory (kênh 1+2) | Sản xuất instance ta sở hữu | FG1-FG4, FG5(F5.1-5.3), FG7, FG8(F8.1-8.3) | ≥2 instance live (Aladin+TonFarm); INV-1/SEC pass Math; CI thiết bị thấp/3G + accessibility xanh; **F8.3 cần ProofChat spec sẵn (outbound dependency — §6/§13/AS8)** | not_started |
-| P2 | Embedding host (kênh 3) | Acquisition qua host ngoài | F3.5, F3.6, Embed-SDK, F8 trên ≥3 kênh | issuer EdDSA/JWKS sẵn (Long); ≥1 host đối tác notice-period; safety-multisig + pháp nhân rõ | blocked-by-issuer-EdDSA + blocked-by-legal-entity |
+| P2 | Embedding host (kênh 3) | Acquisition qua host ngoài | F3.5, F3.6, Embed-SDK, F8 trên ≥3 kênh | issuer EdDSA/JWKS sẵn (backend PhoenixKey); ≥1 host đối tác notice-period; safety-multisig + pháp nhân rõ | blocked-by-issuer-EdDSA + blocked-by-legal-entity |
 
 > Hard Rule 2: KHÔNG Q-dates. Phase advance qua trigger.
 
@@ -542,7 +542,7 @@ PSP ──► founder (settlement B2C, platform không cầm tiền)
 | Config cần Turing-complete để dùng được | Gate A fail | Pivot: dịch logic sang module | Có |
 | Host đối tác từ chối co-brand/notice-period | Không host nào đồng ý | Scope-cut: hoãn kênh 3, dồn app-factory | Có |
 | Luật sư VN xác định cross-border transfer kích hoạt rủi ro cao | Vị trí store/validator | Pivot-tech: localize hạ tầng VN | Có |
-| Issuer EdDSA/JWKS không sẵn (Long) | Blocker Phase 2 | Block P2, tiếp tục P1 | Có (khi sẵn) |
+| Issuer EdDSA/JWKS không sẵn (backend PhoenixKey) | Blocker Phase 2 | Block P2, tiếp tục P1 | Có (khi sẵn) |
 
 ---
 
@@ -582,7 +582,7 @@ PSP ──► founder (settlement B2C, platform không cầm tiền)
 
 ### Feat → Exec (delivery)
 - Priority MoSCoW (§6); Phase plan dependency-driven (§12).
-- External hard constraints (evidence-based): PDPL/NĐ 356 hiệu lực 01/01/2026 [E3][E4]; Apple 4.2.6/4.7/2.5.2 [E1][E2]; blocker issuer EdDSA (Long).
+- External hard constraints (evidence-based): PDPL/NĐ 356 hiệu lực 01/01/2026 [E3][E4]; Apple 4.2.6/4.7/2.5.2 [E1][E2]; blocker issuer EdDSA (backend PhoenixKey).
 - Parallel: 8 SG fan-out song song; Math SG3(INV-1)+SG1 trước.
 
 ---
@@ -616,7 +616,7 @@ PSP ──► founder (settlement B2C, platform không cầm tiền)
 |---|---|---|---|---|
 | AS1 | Apple 4.2.6/4.7 cho phép one-binary aggregated/picker + registry mini-app với config declarative | H — verified guidelines 2026 [E1][E2] | App bị reject; sập kênh phân phối | Trước submit |
 | AS2 | Config declarative đủ biểu đạt instance thật mà không cần Turing-complete | M — SDUI có tiền lệ nhưng instance ta phức tạp hơn | Phải dịch nhiều thành module; chậm app-factory | Gate A |
-| AS3 | Issuer-side PhoenixKey EdDSA/JWKS sẽ sẵn (Long); PhoenixKey bổ sung device-revocation-list chi tiết cho F3.9 | M — ngoài tầm sửa của ta; recovery core (guardian 2/3 + 50 ADA + timelock 7 ngày + sequence-monotonic) ĐÃ CÓ, GAP = device-revocation-list | Block Phase 2 federation host ngoài; F3.9 thiếu danh sách thu hồi tường minh | Trước Phase 2 |
+| AS3 | Issuer-side PhoenixKey EdDSA/JWKS sẽ sẵn (backend PhoenixKey); PhoenixKey bổ sung device-revocation-list chi tiết cho F3.9 | M — ngoài tầm sửa của ta; recovery core (guardian 2/3 + 50 ADA + timelock 7 ngày + sequence-monotonic) ĐÃ CÓ, GAP = device-revocation-list | Block Phase 2 federation host ngoài; F3.9 thiếu danh sách thu hồi tường minh | Trước Phase 2 |
 | AS4 | PII/sinh trắc off-chain tại VN + on-chain chỉ hash là đủ tuân PDPL | M — cần luật sư xác nhận data localization sinh trắc cụ thể | Vi phạm xử lý sinh trắc/PII: tới VND 3 tỷ; nếu PII rời VN (cross-border) → trần tới 5% doanh thu năm trước (§9.1) [E3] | Q5 + luật sư VN |
 | AS5 | Host walled-garden sẽ tự adopt vì lợi ích gia tăng (PULL) | L — chưa kiểm chứng thị trường | Kênh 3 không có host nào adopt | Phase 2 pilot |
 | AS6 | Phí B2C qua PSP né được khung trung gian thanh toán | M — cần luật sư fintech | Vướng pháp lý dòng tiền | Gate C, Q10 |
@@ -700,7 +700,7 @@ PSP ──► founder (settlement B2C, platform không cầm tiền)
 
 5. **AS7 (demand-sink LAMP) — ĐÃ GIẢI CƠ CHẾ (v0.3).** Mục tiêu hệ sinh thái = làm LAMP có giá trị. Q8 RESOLVED: cơ chế demand-sink ĐÃ TỒN TẠI trong hợp đồng LAMP — PlatformKit `collectToTreasury` (mỗi instance/module = 1 caller cắt phí vào Treasury), C4 Holding lock, C2 lock forward (§8.2, fold KNOWLEDGE §H). App-factory + Registry của SuperApp trực tiếp sinh cầu LAMP tỷ lệ thuận tăng trưởng. Rủi ro CÒN LẠI = định lượng (`protocol_cut_bps`, cap C4 đủ hay không) — thuộc Math, không còn là "chưa thiết kế".
 
-6. **Phụ thuộc ngoài tầm kiểm soát (AS3, issuer EdDSA/JWKS — Long).** Phase 2 federation host bị block bởi backend PhoenixKey mà Claude KHÔNG được sửa. Lịch trình Phase 2 không nằm trong tay đội platform.
+6. **Phụ thuộc ngoài tầm kiểm soát (AS3, issuer EdDSA/JWKS — backend PhoenixKey).** Phase 2 federation host bị block bởi backend PhoenixKey mà Claude KHÔNG được sửa. Lịch trình Phase 2 không nằm trong tay đội platform.
 
 7. **Q1/Q2 (pháp nhân Registry + safety-multisig) — ĐÃ GIẢI (v0.3).** Tử huyệt #2 trong analysis được tháo: pháp nhân = **MagicLamp Foundation** (3 hội đồng, bầu cộng đồng); phát hành **GreenSun + Aladin pháp nhân VN**; ra mắt + DAO **2026-09-27**; safety-multisig = **Treasury multi-sig council + time-lock** tách khỏi DAO chính sách; quyết trọng yếu ≥21 DID, Byzantine clamp ΣVP/21 (§14.1, fold KNOWLEDGE §H). Governance Phase 2 không còn treo ở tầng pháp nhân. Chi tiết governance/phí ở `/LAMP` + `/MAGIC`.
 
@@ -712,7 +712,7 @@ PSP ──► founder (settlement B2C, platform không cầm tiền)
 
 11. **Dependency LampNet Data Sovereignty CHƯA CÓ (v0.3, AS9 = top-3 risk mới).** Cưỡng chế residency (placement shard theo vùng + proof-of-residence) là năng lực **LampNet**, KHÔNG phải SuperApp tự spec — đã phân lớp đúng (§7 Non-goals, §13 dependency, INV-3 Master). NHƯNG LampNet hiện mới có **móng** (region tag, `preferred_region` hint không enforce), CHƯA có policy engine/enforcement/governance residency. → Nếu LampNet không bổ sung module này, INV-3 residency chỉ còn cấu hình mềm, không cưỡng chế ở tầng fabric. Đã yêu cầu team LampNet (draft `LampNetCloud-DataSovereignty.md` — gửi qua kênh thư nội bộ giữa các đội, ngoài repo). Rủi ro thật, ngoài tầm sửa của SuperApp.
 
-12. **GAP device-revocation-list trong PhoenixKey (v0.3).** F3.9 rotation/revocation INHERIT recovery PhoenixKey (guardian 2/3 + 50 ADA + timelock 7 ngày + sequence-monotonic — đã có). Nhưng PhoenixKey CHƯA có **device-revocation-list chi tiết** → revoke per-khoá qua sequence có, danh sách thiết bị thu hồi tường minh = thiếu. Báo Long, không tự định nghĩa (Hard Rule 4). AS3 đã ghi.
+12. **GAP device-revocation-list trong PhoenixKey (v0.3).** F3.9 rotation/revocation INHERIT recovery PhoenixKey (guardian 2/3 + 50 ADA + timelock 7 ngày + sequence-monotonic — đã có). Nhưng PhoenixKey CHƯA có **device-revocation-list chi tiết** → revoke per-khoá qua sequence có, danh sách thiết bị thu hồi tường minh = thiếu. Báo backend PhoenixKey, không tự định nghĩa (Hard Rule 4). AS3 đã ghi.
 
 ### Danh sách [NEEDS-EVIDENCE] / [NEEDS-URL] tổng hợp
 
@@ -723,7 +723,7 @@ PSP ──► founder (settlement B2C, platform không cầm tiền)
 - §8: CAC/LTV/gross margin/payback/break-even; TCO app-factory; export format data portability.
 - §9: data localization sinh trắc cụ thể (luật sư VN); vị trí giấy phép PSP.
 - §10: license PhoenixKey/LAMP/MAGIC/Aiken; kênh defensive publication; audit whitepaper token.
-- §13: version compat issuer EdDSA/JWKS; LampNet "Data Sovereignty" module (placement + proof-of-residence) — CHƯA CÓ, đã yêu cầu team (DEP-1/AS9); PhoenixKey device-revocation-list chi tiết cho F3.9 — CHƯA CÓ, báo Long (DEP-2).
+- §13: version compat issuer EdDSA/JWKS; LampNet "Data Sovereignty" module (placement + proof-of-residence) — CHƯA CÓ, đã yêu cầu team (DEP-1/AS9); PhoenixKey device-revocation-list chi tiết cho F3.9 — CHƯA CÓ, báo backend PhoenixKey (DEP-2).
 
 > **Đã giải v0.3 (không còn [NEEDS-EVIDENCE])**: §8 demand-sink LAMP (Q8 — cơ chế PlatformKit `collectToTreasury` + C4 + C2, KNOWLEDGE §H); §14 pháp nhân + safety-multisig (Q1/Q2 — MagicLamp Foundation + Treasury multi-sig + time-lock). Số định lượng (`protocol_cut_bps`, cap C4) chuyển sang Math, KHÔNG phải evidence-gap Feat.
 
@@ -755,6 +755,6 @@ PSP ──► founder (settlement B2C, platform không cầm tiền)
 
 **MỞ MỚI (v0.3, dependency-risk — ngoài tầm sửa SuperApp)**:
 - **DEP-1** (= AS9) — LampNet Data Sovereignty CHƯA CÓ. Cưỡng chế residency thuộc LampNet (đã phân lớp đúng); LampNet mới có móng. Đã yêu cầu team. Treo tới khi LampNet spec module.
-- **DEP-2** (= AS3 GAP) — PhoenixKey CHƯA có device-revocation-list chi tiết cho F3.9. Recovery core đã có (INHERIT). Báo Long.
+- **DEP-2** (= AS3 GAP) — PhoenixKey CHƯA có device-revocation-list chi tiết cho F3.9. Recovery core đã có (INHERIT). Báo backend PhoenixKey.
 
 > Các founder-question FQ-A..FQ-H giữ nguyên ở §14 — Faza xác nhận đã đánh dấu đúng [NEEDS-EVIDENCE]/[NEEDS-DECISION], KHÔNG phải lỗi tác giả, không sửa.

@@ -179,13 +179,13 @@ Nếu **bất kỳ câu nào "Không"** → feature CHƯA đủ điều kiện s
 
 | # | Item | Owner | Estimate |
 |---|---|---|---|
-| 1 | Auto-create farm default "Vườn của tôi" lần đầu mở app (user không phải tạo farm) | Tùng (FE) | 2h |
-| 2 | Implicit "Cây tạm" khi chụp quả không có cây active | Tùng + Long | 4h |
-| 3 | Đổi Trace tab default screen từ "Danh sách farm" → "Chụp ngay" (1-tap-to-capture) | Tùng | 3h |
-| 4 | Guest mode: bỏ login wall, app vào thẳng capture | Tùng + Lợi (BE link device_id→user_id sau) | 6h |
-| 5 | Offline queue: mọi capture lưu SQLite trước, sync background với retry | Long + Lợi | 8h |
-| 6 | Permission denied → degrade graceful (GPS/Camera/Mic riêng biệt, không cascade) | Tùng | 4h |
-| 7 | Loại bỏ tất cả modal "Bạn cần X trước" trong codebase | Tùng (audit) | 2h |
+| 1 | Auto-create farm default "Vườn của tôi" lần đầu mở app (user không phải tạo farm) | frontend | 2h |
+| 2 | Implicit "Cây tạm" khi chụp quả không có cây active | frontend + backend PhoenixKey | 4h |
+| 3 | Đổi Trace tab default screen từ "Danh sách farm" → "Chụp ngay" (1-tap-to-capture) | frontend | 3h |
+| 4 | Guest mode: bỏ login wall, app vào thẳng capture | frontend + backend ProofChat (BE link device_id→user_id sau) | 6h |
+| 5 | Offline queue: mọi capture lưu SQLite trước, sync background với retry | backend PhoenixKey + backend ProofChat | 8h |
+| 6 | Permission denied → degrade graceful (GPS/Camera/Mic riêng biệt, không cascade) | frontend | 4h |
+| 7 | Loại bỏ tất cả modal "Bạn cần X trước" trong codebase | frontend (audit) | 2h |
 | 8 | Test acceptance 5 câu hỏi cho từng module trước khi cut Build 54 | Lành (PM) | 1h |
 
 ---

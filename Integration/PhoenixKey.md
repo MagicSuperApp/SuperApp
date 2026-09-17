@@ -35,7 +35,7 @@
 **Deprecated (đừng dùng):** `/wallet/register`, `/wallet/{did}/balance` (V1 — giờ vừa deprecated vừa đòi Bearer 🔒).
 
 ## `POST /identity/org/{orgDid}/mint-lamp` — là GRANT UỶ QUYỀN, không phải lệnh đúc
-> Cập nhật 2026-08-03 (Phoenix agent). Database **PR #119**, chờ Long merge → BE 🟡.
+> Cập nhật 2026-08-03 (Phoenix agent). Database **PR #119**, chờ backend PhoenixKey merge → BE 🟡.
 > Đính chính bản cũ ghi "grep 0 hit / sẽ không có": endpoint CÓ, nhưng **nghĩa khác hẳn**
 > cái client `src/services/orgMint-api.ts` đang giả định.
 
@@ -111,7 +111,7 @@ trúc màn. Kết hợp với đoạn trên: bền **và** trong Enclave, không
 - **Mint LAMP: 🟡 đổi thế.** Nghĩa đã chốt: OrgDID **xin uỷ quyền**, MagicLamp mới đúc. Endpoint
   Grant có ở PR #119 (chờ merge) nên app dựng được luồng ký NGAY, cắm bên tiêu Grant sau —
   không phải làm lại. Phần dưới là hiện trạng nhánh mint CŨ (đúc thẳng), giữ để đối chiếu:
-- **Mint LAMP (đường cũ, đúc thẳng): 🔴 NO-GO.** Nguồn mint tiến xa nhất = worktree **`/Projects/_wt-superapp-mint`** (branch `claude/superapp-orgdid-mint`, HEAD `a0c11593` 07-11): build tx Rust FFI on-device → submit THẲNG Blockfrost (bỏ qua backend), bản B. cargo 150/150, tsc 0. **Chặn:** 3 deps on-chain chưa deploy Preview (TAAD anchor Active, Reserve `meter_nft`, policy FINAL) → "NO-GO có cơ sở". Long backend (mint-lamp endpoint) + threshold `@Min(2)` (nhánh `fix/47-low-cleanup`) chưa merge.
+- **Mint LAMP (đường cũ, đúc thẳng): 🔴 NO-GO.** Nguồn mint tiến xa nhất = worktree **`/Projects/_wt-superapp-mint`** (branch `claude/superapp-orgdid-mint`, HEAD `a0c11593` 07-11): build tx Rust FFI on-device → submit THẲNG Blockfrost (bỏ qua backend), bản B. cargo 150/150, tsc 0. **Chặn:** 3 deps on-chain chưa deploy Preview (TAAD anchor Active, Reserve `meter_nft`, policy FINAL) → "NO-GO có cơ sở". backend PhoenixKey (mint-lamp endpoint) + threshold `@Min(2)` (nhánh `fix/47-low-cleanup`) chưa merge.
 
 ## Changelog
 - 2026-08-05: đo lại host — `api.phoenixkey.me/api/v1/actuator/health` trả **200 `{"status":"UP"}`**

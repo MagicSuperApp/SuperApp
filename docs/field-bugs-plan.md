@@ -29,7 +29,7 @@ Cần 2 dev chốt hướng capture:
 
 → **Chốt A hay B rồi mới làm #2.** Khuyến nghị: A (đúng định hướng dài hạn).
 
-**Branch/trunk (Tùng chốt):** hiện PR #14 để `feat/foundation → main`, còn quy-tắc build là
+**Branch/trunk (frontend chốt):** hiện PR #14 để `feat/foundation → main`, còn quy-tắc build là
 dồn vào `develop`. Cần thống nhất 1 nhánh trunk để mọi người build cùng chỗ (tránh mỗi người
 build một nhánh). Không phải việc code — nhưng chặn việc "build đúng nhánh".
 
@@ -132,7 +132,7 @@ log server + hiện baseURL ở màn debug (tap version 5 lần) để field t�
 
 ## Thứ tự đề xuất
 1. **Đợt 1 (#3 + #4)** — ship ngay, 1 PR RN, ~nửa ngày. Field biết build + biết cách xử lỗi.
-2. **Chốt A/B + branch trunk** (2 dev + Tùng).
+2. **Chốt A/B + branch trunk** (2 dev + frontend).
 3. **Đợt 2 (#2)** — core fix theo A/B.
 4. **Đợt 3 (#5)** — sau khi có logcat máy Nhi.
 5. **#6** — chờ spec anh.

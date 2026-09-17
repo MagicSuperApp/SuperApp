@@ -11,7 +11,11 @@
 // algorithm unstable at sub-5m scale.
 //
 // Reference: docs/PRINCIPLES/01-INDEPENDENT-FEATURE-OPERATION.md
-// Reference: /Users/ductiger/Products/Agents/BuildApp/field-test-build53/B54-DESIGN-V4-CODE.md
+//
+// Con trỏ thứ hai ở đây từng là một đường tuyệt đối dưới nhà agent của một máy
+// cụ thể — không ai khác đi theo được, và nó lộ sơ đồ thư mục ra một kho công
+// khai. Nội dung nó trỏ tới là bản thiết kế build 54; thứ còn sống của bản đó
+// là ngưỡng 5m ngay phía trên, đã viết ra ở đây nên không cần con trỏ nữa.
 
 export interface Coord {
   lat: number;

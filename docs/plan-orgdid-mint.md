@@ -39,19 +39,19 @@
 |---|---|---|---|
 | S1 | Sync rust core → bản B | Copy `mint_lamp.rs`+`registry_mint.rs` từ Core `2c63ad7`, splice FFI vào `lib.rs`. **Schema byte-perfect** với validator `registry.ak` (constr-index/field-order khớp — lệch = decode sai = gate sai). Giải xung đột rust core develop. | — (làm được ngay) |
 | S2 | Bridge FFI | Thêm 2 method vào `TaadEnclaveModule` (Swift + Kotlin): `buildMintLampViaDid` (13 param), `buildCreateChildTaad` (OrgDID). Không đụng 14 method sẵn. | — (làm được ngay) |
-| S3 | Chain-data + submit **qua fabric API** | Fetch UTxO/protocol-params/registry/kho/SupplyState + submit tx **qua backend relay**, KHÔNG Blockfrost thẳng (§5.3, INV-1 §3.2, `capabilities.network=fabric.api`). Wire vào `orgMintService`. | Backend relay (Long) |
+| S3 | Chain-data + submit **qua fabric API** | Fetch UTxO/protocol-params/registry/kho/SupplyState + submit tx **qua backend relay**, KHÔNG Blockfrost thẳng (§5.3, INV-1 §3.2, `capabilities.network=fabric.api`). Wire vào `orgMintService`. | Backend relay (backend PhoenixKey) |
 | S4 | Compliance module feature | `module.manifest.json` (`integrationKind:feature`, §1.1) + design token zero-hardcode-màu (§2.1, lint CI) + 4 trạng thái (§7.3) + nav config-driven (§7.1). Wire màn OrgMint sẵn có. | — (làm được ngay) |
 | S5 | Vault Master_KEK | Vault secure-enclave thật thay stopgap nhập 24 từ mỗi phiên (§5.1, QĐ-5). | Thiết kế vault |
 | S6 | Env FINAL | 11 biến (`TAAD_POLICY_ID_HEX`...`LAMP_TOKEN_NAME_HEX`) vào `.env`. | Deploy Preview go |
 | S7 | Verify (§8) | RN analyze+test CI xanh · manifest pass JSON-Schema · capability static-scan khớp · evidence output thật. | Sau S1–S6 |
 
 ## 3. Contract PhoenixKey giữ (không tự sửa)
-FFI signature + datum schema (RegistryDatum/SupplyState/TAADDatum) + interface validator. Cần đổi → báo PhoenixKey. Backend relay `/identity/org/{orgDid}/mint-lamp` thuộc Long.
+FFI signature + datum schema (RegistryDatum/SupplyState/TAADDatum) + interface validator. Cần đổi → báo PhoenixKey. Backend relay `/identity/org/{orgDid}/mint-lamp` thuộc backend PhoenixKey.
 
 ## 4. Blocker (NO-GO tới khi mở hết)
 1. Deploy Preview bản B = NO-GO (3 dep on-chain: TAAD anchor Active, Reserve meter_nft, khoá ví).
 2. Env FINAL chưa cấp (có sau deploy go).
-3. Backend relay (Long) — mới nháp issue, chờ duyệt.
+3. Backend relay (backend PhoenixKey) — mới nháp issue, chờ duyệt.
 4. Chưa có vault Master_KEK bảo vệ trong SuperApp.
 
 ## 5. Việc CÓ THỂ làm song song ngay (không chờ blocker)

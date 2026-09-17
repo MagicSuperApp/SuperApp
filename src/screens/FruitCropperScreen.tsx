@@ -512,11 +512,28 @@ const FruitCropperScreen: React.FC = () => {
       // quét" mà không có đường ra là hỏng nặng hơn hẳn việc không tìm ra quả.
       const r = await detectFruit(BASE_URL, imageUri, treeId).catch(() => null);
       if (!alive) return;
-      const dets = r?.ok && r.data?.ok ? (r.data.detections ?? []) : [];
+      // Lượt gọi HỎNG và ảnh KHÔNG CÓ QUẢ NÀO là hai việc khác nhau, và trước bản
+      // này chúng gộp vào cùng một mảng rỗng rồi ra cùng một câu "Chưa nhận ra quả".
+      // Câu đó bảo người dùng tự kéo khung — lời khuyên đúng cho ca thứ hai và vô
+      // nghĩa cho ca thứ nhất: máy chủ chết thì kéo kiểu gì cũng không nhận ra gì,
+      // và người dùng đứng ngoài vườn sẽ kéo đi kéo lại tưởng tay mình vụng.
+      // Cả hai ca đều KHÔNG chặn: khoanh tay vẫn là đường chính thức, nên chỉ đổi
+      // câu chữ chứ không đổi luồng.
+      // `null` = lượt gọi hỏng; `[]` = máy chủ trả lời và không thấy quả nào. Giữ
+      // hai thứ ở hai giá trị khác nhau ngay tại chỗ sinh ra chúng, đừng hợp nhất
+      // rồi đoán lại sau.
+      const detsRaw = r?.ok && r.data?.ok ? (r.data.detections ?? []) : null;
+      const goiHong = detsRaw === null;
+      const dets = detsRaw ?? [];
       setScanning(false);
       if (!dets.length) {
         if (!scanSkipped.current) {
-          setScanNote({ ok: false, text: 'Chưa nhận ra quả — kéo và phóng để đưa quả vào vòng' });
+          setScanNote({
+            ok: false,
+            text: goiHong
+              ? 'Chưa hỏi được máy chủ — bạn vẫn tự khoanh quả bằng tay được'
+              : 'Chưa nhận ra quả — kéo và phóng để đưa quả vào vòng',
+          });
         }
         return;
       }

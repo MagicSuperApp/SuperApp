@@ -165,6 +165,16 @@ const requireWalletRegisterFields = async (): Promise<{
 interface GenesisResult {
   user: AuthUser;
   txHash: string;
+  /**
+   * Tên đăng nhập đã ĐẶT ĐƯỢC LÊN MÁY CHỦ chưa.
+   *
+   * `undefined` = người dùng không gõ tên nào. `false` = có gõ nhưng máy chủ không
+   * nhận, và lúc đó `usernameError` mang câu nói vì sao. Ba trạng thái, không gộp:
+   * gộp "không gõ" với "gõ mà hỏng" là đúng cái vỏ im lặng khiến lỗi này sống được
+   * tới hôm nay.
+   */
+  usernameSet?: boolean;
+  usernameError?: string;
 }
 
 /**
@@ -344,7 +354,41 @@ export const registerIdentity = async (
     updatedAt: Date.now(),
   };
   await persistLegacyStores(user, biometricKind);
-  return { user, txHash };
+
+  // ── TÊN ĐĂNG NHẬP PHẢI ĐI LÊN MÁY CHỦ NGAY TẠI ĐÂY ──────────────────────────
+  // Trước bản này nó KHÔNG đi đâu cả. Màn Bước 1/3 hỏi tên, hứa với người dùng rằng
+  // nó "không thể trùng trong toàn hệ sinh thái", rồi cất vào `AsyncStorage` của
+  // chính máy đó. Thân `POST /identity/register` không có trường nào mang tên
+  // (`phoenixKey-api.ts` ▸ `RegisterRequest`), và lối duy nhất đẩy tên lên là
+  // `PUT /identity/username` — chỉ được gọi từ `UsernameScreen`, một màn nằm trong
+  // Tài khoản, tức PHẢI đăng nhập xong mới tới được.
+  //
+  // Vòng tròn khép lại ở chỗ đắt nhất: người dùng mới cài lại app rồi gõ đúng tên
+  // mình đã chọn, `RestoreIdentityScreen` hỏi `GET /identity/by-username/<tên>`,
+  // máy chủ trả 404 vì tên chưa từng được đăng ký — và lượt 404 ấy bị nuốt bằng
+  // `console.log`, thứ không ai đọc được trên bản đã phát hành.
+  //
+  // KHÔNG để lượt gọi này làm hỏng cả lần đăng ký: danh tính đã ghi lên chuỗi xong
+  // rồi, ném ở đây là vứt một danh tính thật vì một cái tên. Nhưng cũng KHÔNG nuốt
+  // — trả trạng thái ra cho màn hình nói cho người dùng biết.
+  let usernameSet: boolean | undefined;
+  let usernameError: string | undefined;
+  const tenSach = username?.trim().toLowerCase();
+  if (tenSach) {
+    try {
+      await phoenixKeyApi.identity.setUsername(tenSach);
+      usernameSet = true;
+    } catch (err) {
+      usernameSet = false;
+      usernameError =
+        err instanceof PhoenixKeyApiError && err.message.trim()
+          ? err.message
+          : 'Chưa đăng ký được tên này lên máy chủ.';
+      console.warn('[PhoenixKey register] đặt tên đăng nhập hỏng:', err);
+    }
+  }
+
+  return { user, txHash, usernameSet, usernameError };
 };
 
 export const unlockExistingIdentity = async (): Promise<AuthUser | null> => {

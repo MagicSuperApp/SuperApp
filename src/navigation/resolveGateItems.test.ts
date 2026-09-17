@@ -123,8 +123,13 @@ describe('resolveGateItems', () => {
     // 'AnimalIdentity' (màn CÓ máy ảnh) đứng trước 'AnimalManagement' (sổ danh sách):
     // trước đây "Quét con vật" trỏ thẳng sổ, nên cả nhánh đăng ký vật nuôi không có
     // lối vào nào — `AnimalIdentity` nằm trong navigator mà 0 lời gọi `navigate`.
+    // 'FarmMap2D' thêm 2026-09-17, cùng lớp lỗi với dòng trên và nặng hơn một bậc:
+    // `FarmMap2D` nằm trong navigator mà 0 lời gọi `navigate`, còn `TreeMap2D` CHỈ
+    // được gọi từ bên trong `FarmMap2DScreen` — nên cả CỤM bản đồ vườn, hai màn,
+    // không có một lối vào nào. Đo được bằng một lượt quét: 60 màn khai trong
+    // navigator, 8 màn không có đích điều hướng nào trỏ tới.
     expect(farm.map((a) => a.route)).toEqual([
-      'TreeIdentity', 'AnimalIdentity', 'AnimalManagement', 'CareScan', 'FarmDetail',
+      'TreeIdentity', 'AnimalIdentity', 'AnimalManagement', 'CareScan', 'FarmMap2D', 'FarmDetail',
     ]);
     // Không mục nào được mang mã BỊA. `'default'` từng lọt qua cổng chặn của màn quét
     // nhãn thuốc và ghi rác lên máy chủ; test này giữ nó khỏi quay lại.

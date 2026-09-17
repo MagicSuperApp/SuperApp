@@ -725,19 +725,46 @@ const LoginNetworkScreen: React.FC = () => {
           vì ở đó có một nút thật cần nhận cú chạm.) */}
       <View
         pointerEvents="none"
-        style={[styles.dinh, { paddingTop: insets.top + 18 }]}
+        style={[
+          styles.dinh,
+          { paddingTop: insets.top + 18 },
+          // Cụm nhận diện đã gộp dấu hiệu và chữ hiệu vào MỘT ảnh, nên hàng ngang
+          // [dấu hiệu | chữ] không còn nghĩa: xếp dọc, khẩu hiệu nằm DƯỚI cụm.
+          DEFAULT_INSTANCE.brandLockupOnDark ? styles.dinhXepDoc : null,
+        ]}
       >
-        <Image source={DEFAULT_INSTANCE.logo} style={styles.logo} />
+        {/* CỤM NHẬN DIỆN thay cho cặp [dấu hiệu] + [chữ tên app] khi app có khai.
+
+            Phép đo `rongTen` KHÔNG mất đi ở nhánh này, và đó là chỗ dễ hỏng nhất:
+            khẩu hiệu bên dưới được giãn chữ để rộng ĐÚNG BẰNG thứ nằm trên nó, nên
+            thứ nằm trên đổi mà phép đo vẫn đo cái cũ thì khẩu hiệu căn theo một bề
+            ngang không còn ai có. Ở đây `onLayout` của chính ảnh cấp lại số đo ấy.
+
+            Khẩu hiệu vẫn là CHỮ và vẫn dịch theo ngôn ngữ đang chọn — ảnh cố ý
+            không chứa nó. */}
+        {DEFAULT_INSTANCE.brandLockupOnDark ? (
+          <Image
+            source={DEFAULT_INSTANCE.brandLockupOnDark}
+            style={styles.lockup}
+            accessibilityRole="image"
+            accessibilityLabel={DEFAULT_INSTANCE.displayName}
+            onLayout={(e) => setRongTen(e.nativeEvent.layout.width)}
+          />
+        ) : (
+          <Image source={DEFAULT_INSTANCE.logo} style={styles.logo} />
+        )}
 
         <View style={styles.cotChu}>
-          <Text
-            style={styles.ten}
-            allowFontScaling={false}
-            numberOfLines={1}
-            onLayout={(e) => setRongTen(e.nativeEvent.layout.width)}
-          >
-            {DEFAULT_INSTANCE.displayName.toUpperCase()}
-          </Text>
+          {DEFAULT_INSTANCE.brandLockupOnDark ? null : (
+            <Text
+              style={styles.ten}
+              allowFontScaling={false}
+              numberOfLines={1}
+              onLayout={(e) => setRongTen(e.nativeEvent.layout.width)}
+            >
+              {DEFAULT_INSTANCE.displayName.toUpperCase()}
+            </Text>
+          )}
 
           {/* Bề ngang ghim bằng tên ở trên — nhưng chỉ SAU khi đã đo xong. Ghim
               sớm hơn thì số đo lấy được là bề ngang bị ghim, không phải bề ngang
@@ -899,6 +926,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 76,
   },
   logo: { width: 52, height: 52, borderRadius: 13, marginRight: 12 },
+  // Xếp dọc cho nhánh có cụm nhận diện. `paddingHorizontal` nhỏ hơn nhánh hàng
+  // ngang vì cụm rộng hơn một ô vuông 52px, mà nó vẫn phải nằm dưới nút đổi ngôn
+  // ngữ ở góc phải chứ không chạm vào.
+  dinhXepDoc: { flexDirection: 'column', paddingHorizontal: 40 },
+  // Cụm nhận diện: đặt theo BỀ RỘNG, chiều cao theo đúng tỉ lệ tệp (856×136).
+  lockup: { width: 244, height: 244 * 136 / 856, resizeMode: 'contain', marginBottom: 6 },
   cotChu: { alignItems: 'flex-start' },
   ten: {
     fontSize: 26,

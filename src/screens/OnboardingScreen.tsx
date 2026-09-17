@@ -105,12 +105,26 @@ const OnboardingScreen: React.FC = () => {
       >
         {/* ── Đầu màn ───────────────────────────────────────────────────────── */}
         <View style={[styles.hero, { paddingTop: insets.top + (Platform.OS === 'ios' ? 28 : 24) }]}>
-          <View style={styles.logoOuter}>
-            <View style={styles.logoInner}>
-              <Image source={DEFAULT_INSTANCE.logo} style={styles.logoImg} />
-            </View>
-          </View>
-          <Text allowFontScaling={false} style={styles.title}>{DEFAULT_INSTANCE.displayName}</Text>
+          {/* CỤM NHẬN DIỆN thay cho cặp [ô vuông dấu hiệu] + [chữ tên app]. Câu
+              giới thiệu bên dưới vẫn là CHỮ và vẫn dịch theo ngôn ngữ đang chọn —
+              ảnh cố ý không chứa nó. App chưa khai cụm thì rơi về cặp cũ. */}
+          {DEFAULT_INSTANCE.brandLockupOnDark ? (
+            <Image
+              source={DEFAULT_INSTANCE.brandLockupOnDark}
+              style={styles.lockup}
+              accessibilityRole="image"
+              accessibilityLabel={DEFAULT_INSTANCE.displayName}
+            />
+          ) : (
+            <>
+              <View style={styles.logoOuter}>
+                <View style={styles.logoInner}>
+                  <Image source={DEFAULT_INSTANCE.logo} style={styles.logoImg} />
+                </View>
+              </View>
+              <Text allowFontScaling={false} style={styles.title}>{DEFAULT_INSTANCE.displayName}</Text>
+            </>
+          )}
           <Text style={styles.tagline}>{DEFAULT_INSTANCE.tagline[lang]}</Text>
         </View>
 
@@ -196,6 +210,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   logoImg: { width: 52, height: 52, resizeMode: 'contain' },
+  // Cụm nhận diện: đặt theo BỀ RỘNG, chiều cao theo đúng tỉ lệ tệp (856×136).
+  lockup: { width: 248, height: 248 * 136 / 856, resizeMode: 'contain', marginBottom: 10 },
   title: {
     marginTop: 14,
     fontSize: 26,

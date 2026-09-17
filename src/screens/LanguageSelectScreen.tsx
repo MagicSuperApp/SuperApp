@@ -92,22 +92,42 @@ const LanguageSelectScreen = () => {
 
       {/* ── Đầu màn: logo + tiêu đề ba thứ tiếng ───────────────────────────── */}
       <View style={[styles.hero, { paddingTop: insets.top + (Platform.OS === 'ios' ? 28 : 24) }]}>
-        <View style={styles.logoOuter}>
-          <View style={styles.logoInner}>
-            <Image
-              source={DEFAULT_INSTANCE.logo}
-              style={styles.logoImg}
-            />
-          </View>
-        </View>
-        {/* Tên app lấy từ instance đang dựng, KHÔNG ghi cứng. Trước 2026-09-10 dòng
-            này ghi thẳng `ALADINN`, nên người tải CheckFarm về thấy tên một công ty
-            khác ngay MÀN ĐẦU TIÊN — trước cả màn chào, trước cả đăng nhập. Cùng lỗi
-            đã vá ở `LoginScreen.tsx` ngày 2026-08-29; chỗ này bị bỏ sót vì lần đó
-            soát theo chuỗi `ALADIN`, mà chuỗi ở đây viết hai chữ N. */}
-        <Text allowFontScaling={false} style={styles.eyebrow}>
-          {DEFAULT_INSTANCE.displayName.toUpperCase()}
-        </Text>
+        {/* CỤM NHẬN DIỆN thay cho cặp [ô vuông dấu hiệu] + [chữ tên app] — một ảnh
+            vẽ sẵn bởi bộ sinh của nhà CheckFarm, nên dấu hiệu và chữ hiệu ở đây
+            khớp đúng ảnh trên trang cửa hàng thay vì được xếp lại bằng CSS.
+
+            App chưa khai cụm thì `brandLockupOnDark` là `null` và màn rơi về cặp
+            cũ — KHÔNG mượn cụm của app khác. Câu giới thiệu vẫn là CHỮ (dòng
+            `TITLE[picked]` bên dưới), không nằm trong ảnh: màn này là màn CHỌN
+            NGÔN NGỮ, nơi người dùng chưa chọn tiếng nào, nên một dòng tiếng Việt
+            nướng sẵn vào ảnh sẽ chào người đọc tiếng Nhật bằng tiếng Việt. */}
+        {DEFAULT_INSTANCE.brandLockupOnDark ? (
+          <Image
+            source={DEFAULT_INSTANCE.brandLockupOnDark}
+            style={styles.lockup}
+            accessibilityRole="image"
+            accessibilityLabel={DEFAULT_INSTANCE.displayName}
+          />
+        ) : (
+          <>
+            <View style={styles.logoOuter}>
+              <View style={styles.logoInner}>
+                <Image
+                  source={DEFAULT_INSTANCE.logo}
+                  style={styles.logoImg}
+                />
+              </View>
+            </View>
+            {/* Tên app lấy từ instance đang dựng, KHÔNG ghi cứng. Trước 2026-09-10 dòng
+                này ghi thẳng `ALADINN`, nên người tải CheckFarm về thấy tên một công ty
+                khác ngay MÀN ĐẦU TIÊN — trước cả màn chào, trước cả đăng nhập. Cùng lỗi
+                đã vá ở `LoginScreen.tsx` ngày 2026-08-29; chỗ này bị bỏ sót vì lần đó
+                soát theo chuỗi `ALADIN`, mà chuỗi ở đây viết hai chữ N. */}
+            <Text allowFontScaling={false} style={styles.eyebrow}>
+              {DEFAULT_INSTANCE.displayName.toUpperCase()}
+            </Text>
+          </>
+        )}
         {/* Tra bảng thay vì chuỗi ternary: thêm ngôn ngữ mới mà quên nhánh thì
             `tsc` báo ngay, chứ ternary sẽ lặng lẽ hiện tiếng Trung cho tiếng Nhật. */}
         <Text allowFontScaling={false} style={styles.title}>{TITLE[picked]}</Text>
@@ -176,6 +196,9 @@ const styles = StyleSheet.create({
     padding: 3,
   },
   logoImg: { width: 50, height: 50, borderRadius: 9 },
+  // Cụm nhận diện: đặt theo BỀ RỘNG, chiều cao theo đúng tỉ lệ tệp (856×136).
+  // `resizeMode: 'contain'` để một lần đổi tỉ lệ ảnh không kéo méo chữ hiệu.
+  lockup: { width: 236, height: 236 * 136 / 856, resizeMode: 'contain', marginBottom: 14 },
   eyebrow: { fontSize: 10, fontWeight: '800', color: BRAND.pale, letterSpacing: 3, marginBottom: 8 },
   title: { fontSize: 28, fontWeight: '800', color: BRAND.white, letterSpacing: -0.6 },
   titleAlt: { fontSize: 13, color: 'rgba(255,255,255,0.82)', marginTop: 6, lineHeight: 19 },

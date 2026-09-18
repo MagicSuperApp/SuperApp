@@ -62,6 +62,16 @@ export const SCAN_STRINGS = {
     zh: '此版本无法压缩照片。请更新应用，或从相册中选择照片。',
     ja: 'このビルドは写真を縮小できません。アプリを更新するか、ライブラリから選んでください。',
   },
+  // Máy chủ nhìn được ảnh nhưng KHÔNG thấy quả nào trong đó. Khác
+  // `scan.state.imageUnusable` (ảnh mờ/hỏng, máy chủ không nhúng nổi) và khác
+  // `scan.state.noMatch` (kho chưa có vườn nào mở công khai). Ba nguyên nhân, ba
+  // việc phải làm khác nhau — nên ba câu, không dùng lại câu của nhau.
+  'scan.state.noFruitInPhoto': {
+    vi: 'Chưa thấy quả nào trong ảnh — chụp lại cho quả nằm gọn trong khung nhé',
+    en: 'No fruit found in the photo — frame the fruit and shoot again',
+    zh: '照片中没有找到水果 — 请把水果放进取景框重拍',
+    ja: '写真に果物が見つかりません — 果物を枠に収めて撮り直してください',
+  },
   'scan.state.imageUnusable': {
     vi: 'Ảnh chưa dùng được — lại gần hơn, đủ sáng, chụp lại giúp',
     en: 'Photo unusable — get closer, more light, shoot again',

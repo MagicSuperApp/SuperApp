@@ -115,7 +115,28 @@ export async function getVaultStatus(did: string): Promise<VaultStatusResponse> 
  * chỗ. Nay trạng thái tắt mang một cái TÊN tra được, và ngày mở khoá là đổi một
  * dòng chứ không phải gỡ một dòng bịt miệng.
  */
-const WAKEME_SIGNING_READY: boolean = false;
+export const WAKEME_SIGNING_READY: boolean = false;
+
+/**
+ * Đã có màn DUYỆT NỘI DUNG giao dịch trên đường Wakeme chưa.
+ *
+ * `false`, và đây là chốt thứ TƯ — không nằm sau ba chốt kia, nó nằm song song,
+ * và nó là chốt duy nhất mà bỏ qua thì hệ vẫn chạy: chạy thẳng vào một đường rút
+ * ví. Lý do nằm trong chính mã ký: `wakeme_sign` (nhà Core) **cố ý không diễn
+ * giải nội dung giao dịch**, và uỷ thác việc đó cho một màn duyệt. Màn đó chưa
+ * tồn tại trên đường này.
+ *
+ * Nối đường ký khi chưa có nó thì máy chủ — hoặc bất cứ ai chen được vào giữa —
+ * gửi về một CBOR tiêu sạch ví, app ký đủ hai chữ ký và trả `ok:true`. Phép đối
+ * chiếu duy nhất đang có là so tập khoá **do chính máy chủ khai** với tập khoá
+ * vừa ký, nên nó không cản gì. Cổng 2-of-2 cũng không cản: hai yếu tố nằm trên
+ * cùng một máy và được áp cùng một lúc — hai chữ ký không phải hai người.
+ *
+ * Cờ này đứng cạnh hai cờ kia và đi vào cùng một biểu thức ở
+ * `config/featureVisibility.ts` để người mở khoá hai cờ kia không mở được lối
+ * vào mà bỏ sót cái này.
+ */
+export const WAKEME_TX_REVIEW_READY: boolean = false;
 export async function getLamp(args: {
   kekHex: string;
   account: number;

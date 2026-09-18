@@ -49,7 +49,8 @@ import { ORILIFE_BASE } from '../services/orilifeBase';
 // im lặng (thêm một dòng ở một chỗ thì báo cáo gửi từ chỗ kia thiếu đúng dòng đó).
 import { appVersionBase, commitShort } from '../services/fieldReportHead';
 import { fmtLamp, fmtCarp } from '../utils/token';
-import { getVaultStatus, WAKEME_CLAIM_READY } from '../services/wakemeService';
+import { getVaultStatus } from '../services/wakemeService';
+import { WAKEME_VISIBLE, magicVisible } from '../config/featureVisibility';
 import type { VaultStatusResponse } from '../services/phoenixKey-api';
 import { vaultRowText, vaultStateFromError, type VaultRowState } from './wakemeVaultRow';
 import taad from '../sdk/taadEnclave';
@@ -942,7 +943,21 @@ const AccountScreen = () => {
                                     )}
                                 </>)}
 
-                                {vaultState !== 'ok' && (WAKEME_CLAIM_READY ? (
+                                {/* Trước 18/09/2026 chỗ này có HAI nhánh: nút sáng khi luồng nhận
+                                    đã ký được, và một ô thông báo "tính năng chưa mở" khi chưa.
+                                    Nhánh thứ hai là nhánh chạy thật suốt thời gian đó, và nó vẫn
+                                    bấm được — dẫn sang một màn nói lại đúng câu đó.
+
+                                    Nay ẩn hẳn cả hai. Lý do không phải mỹ quan: một lối vào bấm
+                                    được rồi nói "chưa mở" là hình dạng mà người soát của Apple và
+                                    Google đọc thành "app chưa hoàn chỉnh", và đó là lý do từ chối
+                                    phổ biến nhất ở vòng soát đầu. Người dùng cũng không mất gì —
+                                    họ không thể dùng tính năng này dù bấm hay không.
+
+                                    Cờ SUY RA từ ba chốt của luồng, không gõ tay: xem
+                                    `config/featureVisibility.ts`. Ngày ba chốt xong thì nút tự
+                                    hiện lại, không ai phải nhớ quay lại đây. */}
+                                {WAKEME_VISIBLE && vaultState !== 'ok' && (
                                     <TouchableOpacity
                                         style={styles.lampClaimBtn}
                                         activeOpacity={0.88}
@@ -951,23 +966,7 @@ const AccountScreen = () => {
                                         <Text style={styles.lampClaimTxt}>Nhận LAMP (Wakeme)</Text>
                                         <Text style={styles.lampClaimSub}>Mỗi người chỉ nhận một lần</Text>
                                     </TouchableOpacity>
-                                ) : (
-                                    /* Luồng nhận chưa ký được tới cuối. Vẽ một nút sáng mời bấm
-                                       là hứa một việc app chưa làm được: người dùng bấm, ký, rồi
-                                       chuỗi từ chối ở bước cuối — hỏng SAU khi đã hứa. Nói trước
-                                       thì họ mất 2 giây; hứa hão thì họ mất niềm tin. */
-                                    <TouchableOpacity
-                                        style={styles.lampNoticeBtn}
-                                        activeOpacity={0.88}
-                                        onPress={() => { setLampOpen(false); navigation.navigate('Wakeme'); }}
-                                    >
-                                        <Icon name="information-outline" size={16} color={COLORS.textMuted} />
-                                        <View style={{ flex: 1 }}>
-                                            <Text style={styles.lampNoticeTxt}>Nhận LAMP (Wakeme): tính năng chưa mở</Text>
-                                            <Text style={styles.lampNoticeSub}>Xem chi tiết ›</Text>
-                                        </View>
-                                    </TouchableOpacity>
-                                ))}
+                                )}
 
                                 <Text style={styles.lampNote}>
                                     LAMP trong vault Wakeme mở khoá dần theo ngày. Con số chưa hiện nghĩa là máy chủ chưa cho biết — app không tự điền.
@@ -1156,12 +1155,14 @@ const AccountScreen = () => {
                           khi không có lối nào — một chú thích tự nó không mở được nút, và
                           nó đọc y như thể việc đã làm xong.
                         */}
-                        <MenuItem
-                            icon="gift-outline"
-                            label="Nhận LAMP (Wakeme)"
-                            sublabel="Mỗi người một lần — xem trạng thái và điều kiện"
-                            onPress={() => navigation.navigate('Wakeme')}
-                        />
+                        {WAKEME_VISIBLE && (
+                            <MenuItem
+                                icon="gift-outline"
+                                label="Nhận LAMP (Wakeme)"
+                                sublabel="Mỗi người một lần — xem trạng thái và điều kiện"
+                                onPress={() => navigation.navigate('Wakeme')}
+                            />
+                        )}
                         {/*
                           Điểm MAGIC — màn `MagicVaultBalanceScreen` đã dựng xong và nằm
                           trong navigator (`navigation/index.tsx:1828`), nhưng **0 lời gọi
@@ -1174,12 +1175,18 @@ const AccountScreen = () => {
                           người dùng thấy tính năng tồn tại và đọc được trạng thái THẬT của
                           nó — khác hẳn việc vẽ một số dư bịa.
                         */}
-                        <MenuItem
-                            icon="diamond-stone"
-                            label="Điểm MAGIC"
-                            sublabel="Số dư theo lô và hạn dùng — sinh từ LAMP đang giữ"
-                            onPress={() => navigation.navigate('MagicVaultBalance')}
-                        />
+                        {/* Lối vào này chờ DỮ LIỆU, không chờ mã: ba biến môi trường
+                            `MAGIC_VAULT_*` còn trống nên cửa đọc chưa tồn tại. Ngày chúng
+                            được điền thì `magicVisible()` tự trả `true` ở lần dựng kế tiếp —
+                            không có dòng nào để quên đổi. Xem `config/featureVisibility.ts`. */}
+                        {magicVisible() && (
+                            <MenuItem
+                                icon="diamond-stone"
+                                label="Điểm MAGIC"
+                                sublabel="Số dư theo lô và hạn dùng — sinh từ LAMP đang giữ"
+                                onPress={() => navigation.navigate('MagicVaultBalance')}
+                            />
+                        )}
                         <MenuItem
                             icon="card-account-details-outline"
                             label="Xuất danh tính"

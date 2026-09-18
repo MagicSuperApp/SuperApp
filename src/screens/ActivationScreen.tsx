@@ -34,6 +34,7 @@ import { View, Text, StyleSheet, StatusBar, TouchableOpacity } from 'react-nativ
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import { COLORS } from '../constants';
+import { WAKEME_VISIBLE } from '../config/featureVisibility';
 
 const ActivationScreen: React.FC = () => {
   const navigation = useNavigation<any>();
@@ -49,14 +50,19 @@ const ActivationScreen: React.FC = () => {
           <Text style={styles.strong}>Nhận LAMP</Text> trong màn Tôi.
         </Text>
 
-        <TouchableOpacity
-          style={styles.btn}
-          onPress={() => navigation.navigate('Wakeme')}
-          accessibilityRole="button"
-          accessibilityLabel="Mở màn Nhận LAMP"
-        >
-          <Text style={styles.btnText}>Mở màn Nhận LAMP</Text>
-        </TouchableOpacity>
+        {/* Ẩn cùng lúc với bốn lối vào Wakeme khác — xem `config/featureVisibility.ts`.
+            Không ẩn riêng chỗ này: một lối vào sót lại thì việc ẩn chỉ làm tính năng
+            KHÓ TÌM chứ không làm nó biến mất, và người soát vẫn gặp đúng màn "chưa mở". */}
+        {WAKEME_VISIBLE && (
+          <TouchableOpacity
+            style={styles.btn}
+            onPress={() => navigation.navigate('Wakeme')}
+            accessibilityRole="button"
+            accessibilityLabel="Mở màn Nhận LAMP"
+          >
+            <Text style={styles.btnText}>Mở màn Nhận LAMP</Text>
+          </TouchableOpacity>
+        )}
 
         <TouchableOpacity onPress={() => navigation.navigate('Main')} hitSlop={8}>
           <Text style={styles.skip}>Để sau</Text>

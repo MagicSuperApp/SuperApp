@@ -36,7 +36,8 @@ import { COLORS } from '../theme';
 import { WORK_THEME } from '../theme';
 import { useTk } from '../i18n/keys';
 import { useLanguage } from '../i18n/useLanguage';
-import { DEFAULT_INSTANCE } from '../config/instance.config';
+import { DEFAULT_INSTANCE, ENABLED_MODULES } from '../config/instance.config';
+import type { ModuleId } from '../navigation/moduleIds';
 import { BRAND_LOCKUP_ASPECT } from '../config/brandLockup';
 import { markOnboardingSeen } from '../utils/onboardingFlag';
 
@@ -61,13 +62,27 @@ const BRAND = {
   card: COLORS.card,
 };
 
-// Bốn khe module — ĐÚNG bốn khe đang có trong khung điều hướng (trace/chat/work/join).
-const SLOTS: ReadonlyArray<{ icon: string; title: string; body: string }> = [
-  { icon: 'sprout-outline', title: 'onboarding.trace.title', body: 'onboarding.trace.body' },
-  { icon: 'message-lock-outline', title: 'onboarding.chat.title', body: 'onboarding.chat.body' },
-  { icon: 'briefcase-check-outline', title: 'onboarding.work.title', body: 'onboarding.work.body' },
-  { icon: 'lightbulb-on-outline', title: 'onboarding.join.title', body: 'onboarding.join.body' },
-];
+// Khe module — khoá theo `ModuleId` rồi LỌC qua `ENABLED_MODULES`, KHÔNG kê tay.
+//
+// Vì sao phải lọc: màn này là lời hứa ĐẦU TIÊN app nói với người dùng. Bản trước
+// kê thẳng bốn khe, nên CheckFarm — app chỉ bật `trace` + `join`
+// (`config/instance.config.ts`, `modules` của instance `checkfarm`) — mở ra hứa cả
+// "Trò chuyện" lẫn "Việc làm", hai thứ KHÔNG có lối vào nào trong chính app đó.
+// Người dùng đi tìm, không thấy, và thứ họ học được ở màn đầu tiên là app này
+// nói không thật. Chủ nhân bắt được đúng chỗ này khi đi giả lập 18/09/2026.
+//
+// Dùng `Record<ModuleId, …>` chứ không phải mảng: thêm một module vào
+// `navigation/moduleIds.ts` mà quên khai khe ở đây thì `tsc` ĐỎ ngay. Mảng thì
+// im lặng, và cái im lặng đó chính là cách bản trước sống sót qua nhiều lượt soát.
+const SLOT_BY_MODULE: Record<ModuleId, { icon: string; title: string; body: string }> = {
+  trace: { icon: 'sprout-outline', title: 'onboarding.trace.title', body: 'onboarding.trace.body' },
+  chat: { icon: 'message-lock-outline', title: 'onboarding.chat.title', body: 'onboarding.chat.body' },
+  work: { icon: 'briefcase-check-outline', title: 'onboarding.work.title', body: 'onboarding.work.body' },
+  join: { icon: 'lightbulb-on-outline', title: 'onboarding.join.title', body: 'onboarding.join.body' },
+};
+
+const SLOTS: ReadonlyArray<{ icon: string; title: string; body: string }> =
+  ENABLED_MODULES.map((m) => SLOT_BY_MODULE[m]);
 
 const OnboardingScreen: React.FC = () => {
   const navigation = useNavigation<any>();
@@ -162,7 +177,7 @@ const OnboardingScreen: React.FC = () => {
           {site && (
             <TouchableOpacity onPress={openWeb} style={styles.webLink} activeOpacity={0.7}>
               <Icon name="open-in-new" size={16} color={BRAND.primary} />
-              <Text style={styles.webLinkText}>{tk('onboarding.web')}</Text>
+              <Text style={styles.webLinkText}>{tk('onboarding.web', { host: site.hosts[0] })}</Text>
             </TouchableOpacity>
           )}
         </View>

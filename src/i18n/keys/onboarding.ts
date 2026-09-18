@@ -108,11 +108,17 @@ export const ONBOARDING_STRINGS = {
     zh: '跳过',
     ja: 'スキップ',
   },
+  // `{host}` LẤY TỪ `DEFAULT_INSTANCE.website.hosts[0]` — cùng nguồn với địa chỉ
+  // mà nút này thật sự mở. Bản trước gõ thẳng `aladin.work` vào cả bốn thứ tiếng,
+  // nên CheckFarm (trang `checkfarm.com`, khai 18/09/2026) mời người dùng sang
+  // trang của app khác. Nút đã được vá cho ẩn khi app chưa khai trang web, nhưng
+  // vá đó không chạm câu chữ — và khi CheckFarm CÓ trang web thì nút hiện ra và
+  // nói sai. Một nửa bản vá trông y hệt một bản vá đủ.
   'onboarding.web': {
-    vi: 'Tìm hiểu thêm tại aladin.work',
-    en: 'Learn more at aladin.work',
-    zh: '前往 aladin.work 了解更多',
-    ja: 'aladin.work で詳しく見る',
+    vi: 'Tìm hiểu thêm tại {host}',
+    en: 'Learn more at {host}',
+    zh: '前往 {host} 了解更多',
+    ja: '{host} で詳しく見る',
   },
 
   // ── Màn mở trang web trong app ────────────────────────────────────────────

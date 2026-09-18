@@ -22,6 +22,7 @@ import { moduleOwningRoute, routeIsReachable } from './moduleCatalog';
 import { MODULES } from '../modules';
 import { INSTANCES, ENABLED_MODULES } from '../config/instance.config';
 import { resolveGateItems } from './resolveGateItems';
+import { tk, allKeys, ONBOARDING_STRINGS } from '../i18n/keys';
 
 describe('routeIsReachable — phép hỏi dùng chung, và nó phân biệt được hai cực', () => {
   it('route của module ĐÃ khai thì tới được; route của module KHÔNG khai thì không', () => {
@@ -100,5 +101,64 @@ describe('mỗi instance khai `modules` đều lọc được lưới — không
         expect(ownersConLai).toContain(m);
       }
     }
+  });
+});
+
+// ── Bề mặt THỨ TƯ: màn onboarding ────────────────────────────────────────────
+//
+// Ba bề mặt trên là LỐI VÀO — bấm được thì đi tới được. Màn onboarding không mở
+// gì cả, nó chỉ HỨA. Nên nó lọt qua mọi bài đếm lối vào ở trên, và nó đã lọt
+// thật: chủ nhân đi giả lập CheckFarm 18/09/2026 và thấy màn mở đầu giới thiệu
+// "Trò chuyện" với "Việc làm" — hai module app đó không bật.
+//
+// Một lời hứa sai không sập app, nên không cổng nào kêu. Nó chỉ dạy người dùng
+// ở đúng màn đầu tiên rằng app này nói không thật.
+describe('màn onboarding hứa ĐÚNG những module app đang dựng có', () => {
+  const KHOA_CO_THAT = allKeys();
+  const nguon = fs.readFileSync(
+    path.join(__dirname, '..', 'screens', 'OnboardingScreen.tsx'),
+    'utf8',
+  );
+
+  it('khe được DẪN XUẤT từ ENABLED_MODULES, không kê tay', () => {
+    expect(nguon).toMatch(/ENABLED_MODULES\.map\(/);
+    // Vế bắt lỗi: bản cũ là một mảng `SLOTS` kê thẳng bốn phần tử. Cấm nó quay lại.
+    expect(nguon).not.toMatch(/const SLOTS[^=]*=\s*\[/);
+  });
+
+  it('bảng khe phủ ĐỦ mọi ModuleId — thiếu một cái là `tsc` đỏ, bài này canh cùng chiều', () => {
+    for (const m of MODULE_IDS) {
+      expect(nguon).toMatch(new RegExp(`\\n\\s*${m}:\\s*\\{\\s*icon:`));
+    }
+  });
+
+  it('mỗi module ĐÃ khai đều có khoá chuỗi để hiện, không ra khoá trần', () => {
+    for (const m of ENABLED_MODULES) {
+      expect(KHOA_CO_THAT).toContain(`onboarding.${m}.title`);
+      expect(KHOA_CO_THAT).toContain(`onboarding.${m}.body`);
+    }
+  });
+});
+
+// ── Câu mời sang trang web phải mang HOST CỦA CHÍNH APP ĐANG DỰNG ────────────
+//
+// Nút này đã được vá một lần: ẩn đi khi app chưa khai `website`. Vá đó đúng và
+// chưa đủ — nó chạm chỗ HIỆN, không chạm chỗ NÓI. Ngày CheckFarm được cấp trang
+// web (18/09/2026) thì nút hiện ra, và nó mời người dùng CheckFarm sang
+// `aladin.work`. Một nửa bản vá trông y hệt một bản vá đủ.
+describe('câu onboarding.web lấy host từ cấu hình, không gõ tay', () => {
+  it('bốn thứ tiếng đều mang chỗ thay {host}, không mang tên miền nào', () => {
+    const entry = ONBOARDING_STRINGS['onboarding.web'];
+    for (const lang of ['vi', 'en', 'zh', 'ja'] as const) {
+      const s = entry[lang] as string;
+      expect(s).toContain('{host}');
+      // Vế bắt lỗi — đầu vào phân biệt được hai cực: bản cũ có chuỗi này, bản mới không.
+      expect(s).not.toMatch(/aladin\.work|checkfarm\.com/);
+    }
+  });
+
+  it('thay xong thì ra đúng host được truyền vào', () => {
+    expect(tk('onboarding.web', { host: 'vi-du.test' })).toContain('vi-du.test');
+    expect(tk('onboarding.web', { host: 'vi-du.test' })).not.toContain('{host}');
   });
 });

@@ -540,10 +540,19 @@ export const CHECKFARM_INSTANCE: InstanceConfig = {
   // trợ lý nổi trên MỌI màn, nên mượn là đặt dấu nhà khác vào chỗ dễ thấy nhất.
   // Nơi dùng rơi về `logo` tĩnh (`components/BlinkLogo.tsx`).
   mascot: null,
-  // CHƯA CÓ, và để trống là cố ý — nhà CheckFarm chưa cấp địa chỉ trang web nào.
-  // Điền tạm `aladin.work` vào đây là dựng lại đúng lỗi vừa gỡ, chỉ đổi chỗ viết.
-  // Ngày họ có trang, thêm cả `url` lẫn `hosts` ở ĐÂY, không sửa `utils/webLink.ts`.
-  website: null,
+  // Trang của CheckFarm, nhà CheckFarm cấp 18/09/2026. Bản trước để `null` kèm câu
+  // *"nhà CheckFarm chưa cấp địa chỉ trang web nào"* — câu đó đúng lúc viết và đã
+  // hết đúng: trang chạy từ 25/08/2026, tức `null` sống thêm 24 ngày sau khi hết
+  // đúng. Không có gì đỏ ở đó, và sẽ không có: `null` là một giá trị HỢP LỆ của
+  // trường này, nên không phép kiểm nào phân biệt được "chưa có trang" với "có
+  // trang mà chưa ai khai".
+  //
+  // Hai tên, không phải một — đo bằng `curl -o /dev/null -w '%{http_code}'`
+  // 18/09/2026: `https://checkfarm.com` → 200 và `https://www.checkfarm.com` → 200,
+  // cùng một gốc tệp. Nên `hosts` phải kê CẢ HAI: `ALLOWED_HOSTS`
+  // (`utils/webLink.ts:38`) so tên máy chủ ĐÚNG BẰNG chuỗi, không so theo phần
+  // đuôi, nên thiếu `www.` là mọi liên kết mang tiền tố đó bị chặn im.
+  website: { url: 'https://checkfarm.com', hosts: ['checkfarm.com', 'www.checkfarm.com'] },
   // ⛔ PHÁP NHÂN VẬN HÀNH — đọc hết trước khi sửa, chỗ này đã đảo chiều một lần.
   //
   // Bản trước ghi CheckFarm là pháp nhân ĐỘC LẬP, kèm câu cấm "KHÔNG điền tạm

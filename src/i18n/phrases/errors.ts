@@ -526,6 +526,11 @@ export const ERRORS: PhraseMap = {
   },
   'Chưa liên lạc được máy chủ': { en: 'Could not reach the server', zh: '无法连接服务器', ja: 'サーバーに接続できませんでした' },
   'Chưa tìm lại được danh tính': { en: 'Could not recover your identity', zh: '未能找回身份', ja: '本人確認情報を復元できませんでした' },
+  'Máy chủ không nhận chuỗi kiểm tra': {
+    en: 'The server would not accept the check string',
+    zh: '服务器不接受校验串',
+    ja: 'サーバーが確認文字列を受け付けませんでした',
+  },
   'Chưa xác thực xong vân tay hoặc khuôn mặt nên máy chưa hỏi được máy chủ. Bấm lại và giữ tới khi máy báo xong — khoá trên máy vẫn còn nguyên.': {
     en: 'Fingerprint or face authentication was not completed, so the device could not ask the server. Tap again and hold until the device confirms — the key on your device is untouched.',
     zh: '指纹或人脸验证未完成，本机还没能询问服务器。请再点一次并保持到提示完成——本机上的密钥没有任何改动。',
@@ -545,6 +550,20 @@ export const ERRORS: PhraseMap = {
     en: 'Could not recover your identity from the device key, and the reason is unclear. Try once more; if it still fails, use the 24-word phrase below or send a screenshot of this to support.',
     zh: '未能通过本机密钥找回身份，原因不明。请再试一次；若仍不行，请改用下方的 24 个助记词，或截图发给客服。',
     ja: '端末の鍵から本人確認情報を復元できませんでした。原因は不明です。もう一度お試しください。それでも失敗する場合は下の 24 単語を使うか、この画面のスクリーンショットをサポートへお送りください。',
+  },
+  // ── Chuỗi kiểm tra bị máy chủ từ chối (409 · 3006), CẢ ở lượt thử lại ──────────
+  // Tách khỏi câu `unknown` ngay trên vì câu đó bảo "thử lại một lần", mà ở làn này
+  // máy ĐÃ tự thử lại giúp — mời họ thử nữa là mời làm một việc vừa chứng minh là vô ích.
+  'Máy chủ từ chối chuỗi kiểm tra mà máy này gửi lên, cả ở lần thử thứ hai — máy đã tự thử lại giúp bạn nên bấm thêm cũng ra đúng kết quả này. Khoá trên máy vẫn còn nguyên và tài khoản của bạn không mất gì; đây là trục trặc ở phía máy chủ, không phải bạn làm sai. Nếu bạn CÓ giữ cụm 24 từ thì dùng nó ở phần dưới màn hình để vào ngay. Nếu KHÔNG giữ thì chụp màn hình này, gồm cả dòng mã bên dưới, rồi gửi hỗ trợ — dòng đó đủ để bên kỹ thuật tra đúng lượt gọi này.':
+    {
+      en: 'The server rejected the one-time check string this device sent, on the second attempt too — the app already retried for you, so tapping again gives the same result. The key on your device is untouched and your account has lost nothing; this is a problem on the server side, not something you did wrong. If you DO have your 24-word phrase, use it below to get in right away. If you do NOT, take a screenshot of this screen including the code line below and send it to support — that line is enough for the technical team to find this exact request.',
+      zh: '服务器拒绝了本机发送的一次性校验串，第二次重试同样被拒——应用已自动为您重试，再点也是同样结果。本机密钥完好无损，您的账户没有任何损失；这是服务器端的问题，不是您操作有误。如果您保存了 24 个助记词，请用下方的助记词立即登录。如果没有，请截图本页面（含下方代码行）发给客服——该行足以让技术人员定位到这次请求。',
+      ja: 'この端末が送った使い捨ての確認文字列がサーバーに拒否されました。二度目の再試行でも同じです。アプリが自動で再試行済みのため、もう一度押しても結果は変わりません。端末の鍵はそのまま残っており、アカウントから失われたものはありません。これはサーバー側の不具合で、お客様の操作ミスではありません。24 単語をお持ちであれば、下の入力欄からすぐにログインできます。お持ちでない場合は、下のコード行を含めてこの画面のスクリーンショットをサポートへお送りください。その行だけで技術担当がこのリクエストを特定できます。',
+    },
+  'Máy chủ báo chuỗi kiểm tra vừa rồi đã dùng rồi. Xác thực thêm một lần để máy gửi chuỗi mới.': {
+    en: 'The server says the last check string was already used. Authenticate once more so the app can send a new one.',
+    zh: '服务器提示刚才的校验串已被使用。请再验证一次，以便应用发送新的校验串。',
+    ja: '直前の確認文字列は使用済みだとサーバーが応答しました。新しい文字列を送るため、もう一度認証してください。',
   },
   'Tìm lại danh tính': { en: 'Recover identity', zh: '找回身份', ja: '本人確認情報を復元' },
   'Xác thực để tìm lại danh tính của bạn trên máy này': {

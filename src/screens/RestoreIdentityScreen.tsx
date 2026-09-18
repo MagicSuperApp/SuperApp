@@ -36,6 +36,7 @@ import {
   lookupDidByDeviceKey,
   classifyDeviceKeyLookupFailure,
   describeDeviceKeyLookupError,
+  DEVICE_KEY_LANE_SHOWS_REFERENCE,
   DEVICE_KEY_LOOKUP_MESSAGE,
   type DeviceKeyLookupFailure,
 } from '../services/phoenixKeyAuthService';
@@ -72,20 +73,22 @@ const DEVICE_KEY_LANE_TITLE: Record<DeviceKeyLookupFailure, string> = {
   key_not_linked: 'Khoá trên máy này chưa thuộc tài khoản nào',
   key_unusable: 'Khoá trên máy này không dùng được nữa',
   network_down: 'Chưa liên lạc được máy chủ',
+  nonce_conflict: 'Máy chủ không nhận chuỗi kiểm tra',
   unknown: 'Chưa tìm lại được danh tính',
 };
 
 /**
  * Làn nào cần ĐÍNH SỐ ĐO vào câu — danh sách ĐÓNG, và cố ý ngắn.
  *
- * Ba làn còn lại đã nói đúng việc người dùng phải làm tiếp, nên một dòng mã dán thêm vào đó
+ * Các làn còn lại đã nói đúng việc người dùng phải làm tiếp, nên một dòng mã dán thêm vào đó
  * chỉ làm loãng câu và dạy người đọc bỏ qua dòng ấy — đến lượt nó thật sự cần đọc thì nó đã
- * nằm giữa những dòng đã được học cách lướt qua. Chỉ hai làn này là hai làn mà chính ứng
- * dụng KHÔNG biết chuyện gì xảy ra, và cũng đúng hai làn mời người dùng gửi ảnh về.
+ * nằm giữa những dòng đã được học cách lướt qua.
+ *
+ * Danh sách nằm ở `phoenixKeyAuthService` cạnh chính câu chữ, vì nó là thuộc tính của CÂU
+ * (câu có hứa "gồm cả dòng mã bên dưới" hay không), không phải của màn hình. Ở đây chỉ trỏ.
  */
-const LANES_NEEDING_REFERENCE: ReadonlySet<DeviceKeyLookupFailure> = new Set<DeviceKeyLookupFailure>(
-  ['unknown', 'key_unusable'],
-);
+const laneShowsReference = (lane: DeviceKeyLookupFailure): boolean =>
+  DEVICE_KEY_LANE_SHOWS_REFERENCE[lane];
 
 /**
  * Khuôn DID dùng để LỌC ứng viên. Trước bản này chỗ này ghim
@@ -374,7 +377,7 @@ const RestoreIdentityScreen = () => {
         showWarning(
           t(DEVICE_KEY_LANE_TITLE[lookupLane]),
           t(DEVICE_KEY_LOOKUP_MESSAGE[lookupLane]) +
-            (LANES_NEEDING_REFERENCE.has(lookupLane) ? '\n\n' + lookupRef : ''),
+            (laneShowsReference(lookupLane) ? '\n\n' + lookupRef : ''),
         );
         return;
       }
@@ -731,7 +734,7 @@ const RestoreIdentityScreen = () => {
           // Hai làn này là hai làn ứng dụng KHÔNG biết chuyện gì xảy ra, và cũng đúng hai
           // làn mời người dùng gửi ảnh màn hình về. Câu mời đó là một hợp đồng đo: ảnh
           // phải mang theo thứ đọc ngược được, không thì nó chỉ là một vòng lặp lịch sự.
-          (LANES_NEEDING_REFERENCE.has(failure) ? '\n\n' + describeDeviceKeyLookupError(e) : ''),
+          (laneShowsReference(failure) ? '\n\n' + describeDeviceKeyLookupError(e) : ''),
       );
     } finally {
       setLoading(false);

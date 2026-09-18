@@ -112,10 +112,15 @@ jest.mock('react-native-biometrics', () => ({
 const mockCurrentUserDid = jest.fn();
 const mockIsKeypairEnrolled = jest.fn();
 const mockSignRaw = jest.fn();
+// `wipeIdentity` có ở đây dù bốn ca dưới không đi qua nó: màn `import` nó cho lối
+// bỏ danh tính ở nhánh khoá-chết, và một bản giả thiếu khoá đó là bản giả LỎNG HƠN
+// mã thật — nó cho ra `undefined` thay vì một hàm, và chỗ hỏng chỉ lộ ra ở bài kiểm
+// khác. Lối đó được ghim ở `LoginNetworkScreen.deadKeyExit.test.tsx`.
 jest.mock('../sdk/phoenixKey', () => ({
   currentUserDid: (...a: unknown[]) => mockCurrentUserDid(...a),
   isKeypairEnrolled: (...a: unknown[]) => mockIsKeypairEnrolled(...a),
   signRaw: (...a: unknown[]) => mockSignRaw(...a),
+  wipeIdentity: jest.fn(),
 }));
 
 const mockUnlockExistingIdentity = jest.fn();

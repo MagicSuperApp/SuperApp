@@ -914,9 +914,16 @@ export const WALLET_BOUND_ELSEWHERE_MESSAGE =
  *  · lối ra là màn Khôi phục, nơi máy tự hỏi máy chủ theo chính khoá ấy — nói rõ
  *    "không cần 24 từ, không cần tên đăng nhập", vì đúng nhóm kẹt ở đây là nhóm
  *    không có hai thứ đó (`SeedExportScreen` nằm SAU lớp đăng nhập).
+ *
+ * Vế thứ TƯ thêm 2026-09-18, và nó tồn tại vì ba vế trên có một ca chúng dẫn vào
+ * ngõ cụt: người mà khoá cũ đã CHẾT HẲN. Với họ, màn Khôi phục cũng dừng — đường
+ * tra theo khoá cần một chữ ký từ chính khoá đang chết. Ba vế trên vẫn ĐÚNG cho ca
+ * thường (khoá còn sống, cài lại app trên chính máy cũ) nên không được gỡ; cái
+ * thiếu là một câu chỉ đường cho ca kia. Vá một đầu mà để câu chữ trỏ đầu kia thì
+ * lối ra mới không ai tới được.
  */
 export const CHIP_KEY_EXISTS_MESSAGE =
-  'Máy này vẫn còn một khoá bảo mật từ lần cài trước nằm trong chip, và ứng dụng không được phép ghi đè lên nó — khoá đó có thể đang thuộc một tài khoản còn dùng được. Đây không phải lỗi sóng hay lỗi vân tay, nên bấm tạo lại sẽ ra đúng kết quả này. Hãy mở màn Khôi phục danh tính: máy sẽ tự hỏi máy chủ xem khoá này thuộc tài khoản nào, không cần 24 từ và không cần tên đăng nhập.';
+  'Máy này vẫn còn một khoá bảo mật từ lần cài trước nằm trong chip, và ứng dụng không được phép ghi đè lên nó — khoá đó có thể đang thuộc một tài khoản còn dùng được. Đây không phải lỗi sóng hay lỗi vân tay, nên bấm tạo lại sẽ ra đúng kết quả này. Hãy mở màn Khôi phục danh tính: máy sẽ tự hỏi máy chủ xem khoá này thuộc tài khoản nào, không cần 24 từ và không cần tên đăng nhập. Nếu màn đó cũng dừng lại vì khoá cũ đã chết hẳn, hãy quay ra màn đăng nhập và bấm nút sinh trắc một lần: máy sẽ thử ký để biết chắc khoá đã chết, rồi mới mở lối bỏ tài khoản cũ.';
 
 /**
  * Vì sao lượt TRA DID THEO KHOÁ TRONG CHIP hỏng — ba ca, ba lối đi khác nhau.

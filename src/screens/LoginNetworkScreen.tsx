@@ -64,7 +64,7 @@ import {
   isAvailable as isPhoenixKeyAvailable,
   PhoenixKeyNativeError,
 } from '../services/phoenixKey-native';
-import { signRaw } from '../sdk/phoenixKey';
+import { signRaw, wipeIdentity } from '../sdk/phoenixKey';
 import { loginUser } from '../store/userSlice';
 import { showError } from '../utils/alert';
 import { LANGUAGES, t, useLanguage } from '../i18n';
@@ -595,6 +595,51 @@ const LoginNetworkScreen: React.FC = () => {
     [],
   );
 
+  /**
+   * Cửa xác nhận cuối cho lối BỎ HẲN một danh tính mà khoá đã chết.
+   *
+   * Nó nói MẤT GÌ bằng lời người dùng đọc được, không nói "xoá khoá". Người ở đây
+   * không quan tâm cái gì nằm trong chip; họ cần biết chuyện gì xảy ra với vườn
+   * của họ. Ba vế bắt buộc, không vế nào được bỏ cho câu ngắn hơn:
+   *   1. tài khoản này bỏ hẳn — bạn thành một người hoàn toàn mới;
+   *   2. dữ liệu gắn tài khoản cũ KHÔNG đi theo;
+   *   3. còn 24 từ thì vẫn lấy lại được, không có thì hết đường.
+   *
+   * Vì sao phải HAI cửa chứ không một: cửa trước là một hộp thoại ba nút, và người
+   * đọc nó đang bực vì vừa không đăng nhập được. Một lần chạm nhầm ở đó không được
+   * phép là một danh tính mất hẳn.
+   */
+  const confirmAbandonDeadIdentity = () => {
+    showError(
+      t('Bỏ hẳn tài khoản này?'),
+      t('Tài khoản cũ sẽ bỏ hẳn và bạn bắt đầu lại như một người hoàn toàn mới. Vườn, cây và mọi thứ đã ghi dưới tài khoản cũ KHÔNG đi theo sang tài khoản mới. Nếu sau này bạn tìm lại được 24 từ thì vẫn lấy lại được tài khoản cũ, nhưng không có 24 từ thì không còn đường nào khác.'),
+      {
+        confirmText: t('Bỏ hẳn, tôi hiểu'),
+        cancelText: t('Giữ lại'),
+        onConfirm: async () => {
+          try {
+            // `wipeIdentity()` xoá khoá dưới nhãn đang dùng rồi trả con trỏ nhãn về
+            // mặc định, nên nhãn hết "có chủ" và `enrollKeypair()` chạy được ở bước
+            // sau. Không viết lại bước này: hàm đã có và đã được ba nơi khác dùng.
+            await wipeIdentity();
+            // Về màn HỎI, không đi thẳng sang màn tạo mới. Người vừa bấm "tôi không
+            // có 24 từ" có thể tìm ra chúng ở bước sau, và từ màn hỏi thì cả hai lối
+            // còn mở; đi thẳng sang tạo mới là chọn hộ họ lần thứ hai trong một phút.
+            navigation.navigate('IdentityEntryChoice' as never);
+          } catch (e) {
+            // KHÔNG nuốt: xoá không xong thì nhãn vẫn có chủ, và bước tạo mới phía
+            // sau sẽ chết bằng `E_KEY_EXISTS` ở một màn khác — xa chỗ hỏng thật.
+            console.log('[LoginNetwork] wipeIdentity failed:', e);
+            showError(
+              t('Chưa bỏ được tài khoản cũ trên máy này'),
+              t('Máy chưa xoá được khoá cũ nên tài khoản cũ vẫn còn. Hãy thử lại; nếu vẫn vậy, khởi động lại máy rồi thử một lần nữa.'),
+            );
+          }
+        },
+      },
+    );
+  };
+
   const runBiometric = async () => {
     if (busy || noSensor) return;
     // Hộp thoại sinh trắc do HỆ ĐIỀU HÀNH vẽ → không đi qua `<Text>` nên lớp tự
@@ -678,7 +723,57 @@ const LoginNetworkScreen: React.FC = () => {
         showError('Sai sinh trắc học nhiều lần nên máy đang tạm khoá. Chờ khoảng 30 giây rồi thử lại, hoặc mở khoá máy bằng mã PIN trước.');
         return;
       }
+      if (code === PhoenixKeyNativeError.KEY_INVALIDATED) {
+        // ── LỐI RA CHO KHOÁ ĐÃ CHẾT HẲN ──────────────────────────────────────
+        // Tới được dòng này nghĩa là `signRaw` ở trên vừa CHẠY THẬT và chip trả
+        // lời khoá chết vĩnh viễn (`PhoenixKeyModule.swift:210` ném mã này;
+        // `PhoenixKeyModule.kt:143` bắt `KeyPermanentlyInvalidatedException` rồi
+        // ném cùng mã). Đó là điều kiện duy nhất mở lối bỏ danh tính, và nó được
+        // thoả BẰNG CÁCH DỰNG chứ không bằng một phép hỏi thêm:
+        //
+        //   · `hasKey()` KHÔNG mở được lối này, và đừng thêm nó vào đây. Nó trả
+        //     lời "khe có khoá không", không trả lời "khoá còn ký được không" —
+        //     lấy một tham chiếu khoá thì không cần xác thực, xác thực xảy ra lúc
+        //     KÝ. Gộp hai câu đó là mời người ta xoá một khoá đang dùng tốt.
+        //   · Ba trạng thái, không hai: còn ký được (đã đi tiếp ở nhánh thành công
+        //     phía trên) · chết chắc (đây) · KHÔNG ĐO ĐƯỢC. Trạng thái thứ ba —
+        //     người dùng bấm huỷ, sinh trắc tạm khoá, chưa mở khoá máy lần nào —
+        //     rẽ ở các nhánh TRƯỚC dòng này, và không nhánh nào trong chúng mở lối
+        //     bỏ danh tính. Một phép đo trả giá trị hợp lệ đúng lúc nó không đo
+        //     được gì thì nó nói "tôi không biết" bằng giọng của "chết rồi".
+        //
+        // Thứ tự hai lựa chọn KHÔNG đổi được: 24 từ đứng TRƯỚC. Lấy lại thì giữ
+        // được tài khoản; bỏ đi thì mất hẳn. Trên Android còn một lý do nặng hơn:
+        // khoá bọc Master_KEK nằm dưới nhãn riêng của app (`TaadEnclaveModule.kt`,
+        // `secureAesKey()`), nên gỡ app là mất luôn 24 từ. Ai chưa có 24 từ thì
+        // đường đúng duy nhất là đi lấy chúng TRƯỚC, không phải bỏ tài khoản trước.
+        showError(
+          t('Khoá trên máy này đã chết hẳn'),
+          t('Hệ điều hành đã huỷ khoá bảo mật của bạn, thường là ngay lúc bạn thêm hoặc đăng ký lại vân tay / khuôn mặt trong Cài đặt. Khoá vẫn nằm trong máy nhưng không ký được nữa, nên thử lại bao nhiêu lần cũng ra đúng kết quả này. Có hai đường đi tiếp, và chúng khác nhau rất nhiều.'),
+          {
+            hideCancel: true,
+            actions: [
+              {
+                text: t('Lấy lại tài khoản bằng 24 từ'),
+                onPress: () => navigation.navigate('RestoreIdentity' as never),
+              },
+              {
+                text: t('Tôi không có 24 từ — bắt đầu lại'),
+                style: 'destructive',
+                onPress: () => confirmAbandonDeadIdentity(),
+              },
+              { text: t('Để sau'), style: 'cancel' },
+            ],
+          },
+        );
+        return;
+      }
       if (code === PhoenixKeyNativeError.NO_KEY || code === PhoenixKeyNativeError.SIGN_INIT) {
+        // KHÔNG gộp `KEY_INVALIDATED` vào đây. Hai ca dẫn người dùng đi hai hướng:
+        // ở đây khoá có thể còn cứu được nên câu chữ mời đi khôi phục; ở nhánh trên
+        // khoá chết hẳn nên đường khôi phục theo khoá cũng dừng, và người dùng cần
+        // một lối thứ hai. Gộp lại là để đúng nhóm không có lối ra ở trong một vòng
+        // lặp mà không gì nói ra.
         showError('Khoá trên máy không còn dùng được (thường do vừa thêm hoặc xoá vân tay/khuôn mặt trong Cài đặt). Hãy khôi phục danh tính để dùng tiếp.');
         return;
       }

@@ -572,9 +572,58 @@ export const ERRORS: PhraseMap = {
     ja: 'この端末には前回インストール時の鍵が残っています',
   },
   'Tìm lại danh tính đó': { en: 'Recover that identity', zh: '找回该身份', ja: 'その本人確認情報を復元' },
-  'Máy này vẫn còn một khoá bảo mật từ lần cài trước nằm trong chip, và ứng dụng không được phép ghi đè lên nó — khoá đó có thể đang thuộc một tài khoản còn dùng được. Đây không phải lỗi sóng hay lỗi vân tay, nên bấm tạo lại sẽ ra đúng kết quả này. Hãy mở màn Khôi phục danh tính: máy sẽ tự hỏi máy chủ xem khoá này thuộc tài khoản nào, không cần 24 từ và không cần tên đăng nhập.': {
-    en: 'This device still has a security key from a previous install inside its chip, and the app is not allowed to overwrite it — that key may belong to an account that still works. This is not a connection or fingerprint problem, so tapping create again gives the same result. Open the Recover identity screen: the device will ask the server which account this key belongs to, with no 24 words and no username needed.',
-    zh: '本机芯片中仍存有上次安装留下的安全密钥，应用不允许覆盖它——该密钥可能仍属于一个可用账户。这不是网络或指纹问题，再次点击创建也是同样结果。请打开“找回身份”页面：本机会向服务器询问该密钥属于哪个账户，无需 24 个助记词，也无需用户名。',
-    ja: 'この端末のチップには前回インストール時のセキュリティ鍵が残っており、アプリはそれを上書きできません。その鍵はまだ有効なアカウントのものである可能性があります。通信や指紋の問題ではないため、もう一度作成を押しても結果は同じです。「本人確認情報の復元」画面を開いてください。端末がサーバーにこの鍵の所属アカウントを問い合わせます。24 単語もユーザー名も不要です。',
+  'Máy này vẫn còn một khoá bảo mật từ lần cài trước nằm trong chip, và ứng dụng không được phép ghi đè lên nó — khoá đó có thể đang thuộc một tài khoản còn dùng được. Đây không phải lỗi sóng hay lỗi vân tay, nên bấm tạo lại sẽ ra đúng kết quả này. Hãy mở màn Khôi phục danh tính: máy sẽ tự hỏi máy chủ xem khoá này thuộc tài khoản nào, không cần 24 từ và không cần tên đăng nhập. Nếu màn đó cũng dừng lại vì khoá cũ đã chết hẳn, hãy quay ra màn đăng nhập và bấm nút sinh trắc một lần: máy sẽ thử ký để biết chắc khoá đã chết, rồi mới mở lối bỏ tài khoản cũ.': {
+    en: 'This device still has a security key from a previous install inside its chip, and the app is not allowed to overwrite it — that key may belong to an account that still works. This is not a connection or fingerprint problem, so tapping create again gives the same result. Open the Recover identity screen: the device will ask the server which account this key belongs to, with no 24 words and no username needed. If that screen also stops because the old key is permanently dead, go back to the login screen and tap the biometric button once: the device will attempt a signature to confirm the key is dead, and only then offer the way to give up the old account.',
+    zh: '本机芯片中仍存有上次安装留下的安全密钥，应用不允许覆盖它——该密钥可能仍属于一个可用账户。这不是网络或指纹问题，再次点击创建也是同样结果。请打开“找回身份”页面：本机会向服务器询问该密钥属于哪个账户，无需 24 个助记词，也无需用户名。若该页面也无法继续，因为旧密钥已永久失效，请返回登录页面并点击一次生物识别按钮：本机会尝试签名以确认密钥确实失效，然后才会提供放弃旧账户的入口。',
+    ja: 'この端末のチップには前回インストール時のセキュリティ鍵が残っており、アプリはそれを上書きできません。その鍵はまだ有効なアカウントのものである可能性があります。通信や指紋の問題ではないため、もう一度作成を押しても結果は同じです。「本人確認情報の復元」画面を開いてください。端末がサーバーにこの鍵の所属アカウントを問い合わせます。24 単語もユーザー名も不要です。旧鍵が完全に失効しているためその画面でも進めない場合は、ログイン画面に戻って生体認証ボタンを一度押してください。端末が署名を試して鍵の失効を確認し、そのうえで旧アカウントを手放す道を案内します。',
+  },
+
+  // ── Khoá đã CHẾT HẲN, và lối ra khỏi ngõ cụt (`E_KEY_INVALIDATED`) ─────────
+  // Câu ở đây chỉ hiện sau khi `signRaw` đã CHẠY THẬT và chip trả mã khoá-chết.
+  // Xem khối vì-sao ở nhánh `KEY_INVALIDATED` trong `screens/LoginScreen.tsx`.
+  'Khoá trên máy này đã chết hẳn': {
+    en: 'The key on this device is permanently dead',
+    zh: '本机上的密钥已永久失效',
+    ja: 'この端末の鍵は完全に失効しました',
+  },
+  'Hệ điều hành đã huỷ khoá bảo mật của bạn, thường là ngay lúc bạn thêm hoặc đăng ký lại vân tay / khuôn mặt trong Cài đặt. Khoá vẫn nằm trong máy nhưng không ký được nữa, nên thử lại bao nhiêu lần cũng ra đúng kết quả này. Có hai đường đi tiếp, và chúng khác nhau rất nhiều.': {
+    en: 'The operating system destroyed your security key, usually at the moment you added or re-enrolled a fingerprint / face in Settings. The key is still on the device but can no longer sign, so retrying gives the same result every time. There are two ways forward, and they differ a great deal.',
+    zh: '操作系统已销毁您的安全密钥，通常发生在您于“设置”中添加或重新录入指纹／面容的那一刻。密钥仍在本机，但已无法签名，因此重试多少次结果都一样。接下来有两条路，差别很大。',
+    ja: 'OS があなたのセキュリティ鍵を破棄しました。多くは「設定」で指紋・顔を追加または再登録した時点です。鍵は端末に残っていますが署名はできないため、何度試しても同じ結果になります。ここから先の道は二つあり、内容は大きく異なります。',
+  },
+  'Lấy lại tài khoản bằng 24 từ': {
+    en: 'Recover the account with the 24 words',
+    zh: '用 24 个助记词找回账户',
+    ja: '24 単語でアカウントを復元',
+  },
+  'Tôi không có 24 từ — bắt đầu lại': {
+    en: 'I do not have the 24 words — start over',
+    zh: '我没有 24 个助记词——重新开始',
+    ja: '24 単語がない — 最初からやり直す',
+  },
+  // `'Để sau'` KHÔNG khai ở đây: nó đã có trong `screens.ts`, và một bản thứ hai
+  // với bản dịch khác là đúng thứ `phrases.test.ts` canh ("không chuỗi nào có HAI
+  // bản dịch khác nhau ở hai tệp"). Cổng đó đã bắt đúng một lần trong lượt này.
+  'Bỏ hẳn tài khoản này?': {
+    en: 'Give up this account for good?',
+    zh: '彻底放弃此账户？',
+    ja: 'このアカウントを完全に手放しますか？',
+  },
+  'Tài khoản cũ sẽ bỏ hẳn và bạn bắt đầu lại như một người hoàn toàn mới. Vườn, cây và mọi thứ đã ghi dưới tài khoản cũ KHÔNG đi theo sang tài khoản mới. Nếu sau này bạn tìm lại được 24 từ thì vẫn lấy lại được tài khoản cũ, nhưng không có 24 từ thì không còn đường nào khác.': {
+    en: 'The old account will be given up for good and you will start over as a completely new person. Farms, trees and everything recorded under the old account will NOT come across to the new one. If you find the 24 words later you can still recover the old account, but without the 24 words there is no other way back.',
+    zh: '旧账户将被彻底放弃，您将作为一个全新的用户重新开始。旧账户下记录的农场、树木及所有内容都不会转移到新账户。若日后找到 24 个助记词，仍可找回旧账户；但没有助记词就再无其他办法。',
+    ja: '旧アカウントは完全に手放され、まったく新しい利用者としてやり直します。旧アカウントに記録した農園・樹木その他一切は新しいアカウントには移りません。後で 24 単語が見つかれば旧アカウントは復元できますが、24 単語がなければ他に戻る道はありません。',
+  },
+  'Bỏ hẳn, tôi hiểu': { en: 'Give it up, I understand', zh: '彻底放弃，我已了解', ja: '手放します（理解しました）' },
+  'Giữ lại': { en: 'Keep it', zh: '保留', ja: '保持する' },
+  'Chưa bỏ được tài khoản cũ trên máy này': {
+    en: 'Could not give up the old account on this device',
+    zh: '未能在本机放弃旧账户',
+    ja: 'この端末で旧アカウントを手放せませんでした',
+  },
+  'Máy chưa xoá được khoá cũ nên tài khoản cũ vẫn còn. Hãy thử lại; nếu vẫn vậy, khởi động lại máy rồi thử một lần nữa.': {
+    en: 'The device could not remove the old key, so the old account is still there. Try again; if it still fails, restart the device and try once more.',
+    zh: '本机未能删除旧密钥，因此旧账户仍然存在。请重试；若仍失败，请重启设备后再试一次。',
+    ja: '端末が古い鍵を削除できなかったため、旧アカウントはまだ残っています。もう一度お試しください。それでも失敗する場合は端末を再起動してから再度お試しください。',
   },
 };

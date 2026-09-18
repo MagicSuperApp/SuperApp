@@ -511,17 +511,66 @@ export const lookupDidByDeviceKey = async (
   promptSubtitle: string,
 ): Promise<string> => {
   const publicKeyHex = (await ownerPublicKey()).toLowerCase();
-  const nonce = await freshLookupNonce();
-  // ⚠ MIỀN KÝ RIÊNG — sai tiền tố thì máy chủ trả 404 và không có gì nói vì sao.
-  const messageHex = utf8ToHex(`${LOOKUP_PREFIX}${publicKeyHex}:${nonce}`);
-  const signatureHex = await signRaw(messageHex, promptTitle, promptSubtitle);
 
-  const { userDid } = await phoenixKeyApi.identity.lookupByKey({
-    publicKeyHex,
-    nonce,
-    signatureHex: signatureHex.toLowerCase(),
-  });
-  return assertSupportedBackendDid(userDid, 'PhoenixKey lookup-by-key userDid');
+  /** Một lượt trọn vẹn: nonce mới → ký → hỏi. Nonce nằm TRONG chuỗi được ký, nên
+   *  đổi nonce bắt buộc phải ký lại — không có đường dùng lại chữ ký cũ. */
+  const thuMotLuot = async (subtitle: string): Promise<string> => {
+    const nonce = await freshLookupNonce();
+    // ⚠ MIỀN KÝ RIÊNG — sai tiền tố thì máy chủ trả 404 và không có gì nói vì sao.
+    const messageHex = utf8ToHex(`${LOOKUP_PREFIX}${publicKeyHex}:${nonce}`);
+    const signatureHex = await signRaw(messageHex, promptTitle, subtitle);
+    const { userDid } = await phoenixKeyApi.identity.lookupByKey({
+      publicKeyHex,
+      nonce,
+      signatureHex: signatureHex.toLowerCase(),
+    });
+    return assertSupportedBackendDid(userDid, 'PhoenixKey lookup-by-key userDid');
+  };
+
+  try {
+    return await thuMotLuot(promptSubtitle);
+  } catch (err) {
+    /**
+     * ══ 409 `NONCE_ALREADY_USED` — thử LẠI ĐÚNG MỘT LẦN với chuỗi mới ═══════════
+     *
+     * Đo được ngoài thực địa (2026-09-18, bản 70): hai người dùng kẹt vĩnh viễn ở
+     * cửa này, màn hình hiện `HTTP 409 · mã 3006 · Nonce already used`. Bấm lại bao
+     * nhiêu lần cũng ra đúng thế, nên với họ mọi lối của màn khôi phục đều đóng.
+     *
+     * ══ ĐÃ ĐO — bốn nguyên nhân phía app, cả bốn bị LOẠI ═══════════════════════
+     *  1. Nonce không ngẫu nhiên? Không: `generate_salt` dùng `rand::thread_rng()`
+     *     (`rust/taad_enclave_core/src/crypto.rs:292-296`), 16 byte → 128 bit.
+     *  2. Lớp thử-lại của client phát lại y nguyên thân yêu cầu? Không với cửa này:
+     *     `attachSessionRefresh` chỉ chạy khi `config.needsAuth` (`phoenixKey-api.ts:431`),
+     *     và `lookupByKey` KHÔNG truyền cờ đó (`phoenixKey-api.ts:853-854`).
+     *  3. Nonce bị lưu lại rồi dùng lần hai? Không: `grep` nonce kèm
+     *     `setItem|AsyncStorage|secureStore|cache` trên `src/` trả rỗng.
+     *  4. Dùng chung nonce cho nhiều ứng viên DID? Không: vòng lặp ở
+     *     `RestoreIdentityScreen.tsx:427-428` sinh nonce MỚI mỗi ứng viên.
+     *
+     * ══ CHƯA ĐO — và nói thẳng là chưa ═════════════════════════════════════════
+     * Sau khi loại bốn đường trên thì cơ chế còn lại nằm ở phía máy chủ, nhưng bên
+     * này KHÔNG đọc được bảng nonce của họ nên KHÔNG tuyên bố đó là lỗi của họ. Đã
+     * gửi số đo sang nhà Phoenix để chính họ đọc.
+     *
+     * ══ Vì sao bản vá KHÔNG dựa vào việc chọn đúng cơ chế ══════════════════════
+     * Một lượt thử thứ hai mang chuỗi MỚI, sinh từ cùng CSPRNG 128 bit. Bất kể thứ
+     * gì đã tiêu chuỗi thứ nhất — gửi trùng, ghi sớm, hay một phép so sai bên kia —
+     * xác suất chuỗi thứ hai cũng đã bị tiêu là bất khả. Nên nó biến một ngõ cụt
+     * VĨNH VIỄN thành một lần thử thêm.
+     *
+     * ĐÚNG MỘT lần, không vòng lặp: hỏng lần hai thì lỗi được NÉM NGUYÊN ra ngoài
+     * kèm mã, để người dùng thấy số đo thật chứ không thấy một vòng quay im lặng.
+     * Đây là chỗ dễ trượt thành "cái vỏ im lặng" nhất trong tệp này.
+     */
+    if (err instanceof PhoenixKeyApiError && err.httpStatus === 409) {
+      console.log('[PhoenixKeyAuth] lookup 409 nonce — thử lại MỘT lần với chuỗi mới');
+      return await thuMotLuot(
+        'Máy chủ báo chuỗi kiểm tra vừa rồi đã dùng rồi. Xác thực thêm một lần để máy gửi chuỗi mới.',
+      );
+    }
+    throw err;
+  }
 };
 
 const recoverLocalIdentityFromKey = async (
@@ -949,6 +998,16 @@ export type DeviceKeyLookupFailure =
   | 'key_not_linked'
   | 'key_unusable'
   | 'network_down'
+  /**
+   * Máy chủ nói chuỗi kiểm tra đã dùng rồi (409 · 3006), và lượt thử LẠI với chuỗi
+   * mới cũng thế — `lookupDidByDeviceKey` đã tự thử một lần trước khi ném ra đây.
+   *
+   * Tách khỏi `unknown` vì hai làn dẫn người dùng đi hai hướng khác nhau: câu của
+   * `unknown` bảo *"thử lại một lần"*, mà ở làn này máy ĐÃ thử lại giúp rồi — nên
+   * câu đó mời người dùng làm một việc vừa được chứng minh là vô ích, và họ sẽ bấm
+   * tới khi tự kết luận là mình làm sai.
+   */
+  | 'nonce_conflict'
   | 'unknown';
 
 /**
@@ -995,6 +1054,10 @@ export const classifyDeviceKeyLookupFailure = (err: unknown): DeviceKeyLookupFai
     // ký · khoá đã thu hồi). KHÔNG dịch nó thành một nguyên nhân cụ thể — câu đưa
     // ra chỉ nói đúng thứ đo được: máy chủ chưa thấy khoá này thuộc tài khoản nào.
     if (err.httpStatus === 404) return 'key_not_linked';
+    // 409 = chuỗi kiểm tra đã dùng. Tới được đây nghĩa là `lookupDidByDeviceKey`
+    // ĐÃ tự thử lại một lần với chuỗi mới và vẫn 409 — nên câu đưa ra KHÔNG được
+    // bảo người dùng thử lại nữa.
+    if (err.httpStatus === 409) return 'nonce_conflict';
     return 'unknown';
   }
 
@@ -1019,8 +1082,31 @@ export const DEVICE_KEY_LOOKUP_MESSAGE: Record<DeviceKeyLookupFailure, string> =
   // kẹt nhất đi vào một cửa họ không mở được, rồi để họ tự kết luận là mình làm sai.
   key_unusable:
     'Khoá vẫn nằm trong máy nhưng chip từ chối dùng nó — hay gặp nhất là khi bạn đã thêm hoặc đăng ký lại vân tay / khuôn mặt sau ngày tạo tài khoản: khoá cũ bị khoá vĩnh viễn ngay lúc đó, để người khác thêm sinh trắc của họ vào máy bạn cũng không mở được. Bấm lại bao nhiêu lần cũng ra đúng kết quả này. Nếu bạn CÓ giữ cụm 24 từ thì dùng nó ở phần dưới màn hình. Nếu KHÔNG giữ thì trên máy này chưa có lối nào khác — chụp màn hình này, gồm cả dòng mã bên dưới, rồi gửi hỗ trợ; dòng đó nói được chính xác chip đang từ chối vì lý do gì.',
+  nonce_conflict:
+    'Máy chủ từ chối chuỗi kiểm tra mà máy này gửi lên, cả ở lần thử thứ hai — máy đã tự thử lại giúp bạn nên bấm thêm cũng ra đúng kết quả này. Khoá trên máy vẫn còn nguyên và tài khoản của bạn không mất gì; đây là trục trặc ở phía máy chủ, không phải bạn làm sai. Nếu bạn CÓ giữ cụm 24 từ thì dùng nó ở phần dưới màn hình để vào ngay. Nếu KHÔNG giữ thì chụp màn hình này, gồm cả dòng mã bên dưới, rồi gửi hỗ trợ — dòng đó đủ để bên kỹ thuật tra đúng lượt gọi này.',
   unknown:
     'Chưa tìm lại được danh tính từ khoá trên máy, chưa rõ vì sao. Thử lại một lần; nếu vẫn vậy, dùng cụm 24 từ ở phần dưới hoặc chụp màn hình này gửi hỗ trợ.',
+};
+
+/**
+ * Làn nào MỜI người dùng gửi ảnh màn hình về ⟹ làn đó BẮT BUỘC hiện dòng số đo bên dưới.
+ *
+ * Đây là `Record` chứ không phải `Set`, và đó là toàn bộ lý do nó nằm ở đây thay vì ở màn
+ * hình: một `Set` cho phép thêm một làn mới mà quên khai, và không gì đỏ — câu chữ hứa
+ * *"gồm cả dòng mã bên dưới"* trong khi màn hình không vẽ dòng nào, người dùng làm đúng y
+ * lời rồi gửi về một bức ảnh không tra được gì. `Record<DeviceKeyLookupFailure, boolean>`
+ * thì trình biên dịch đỏ ngay lúc thêm làn, buộc người thêm phải TRẢ LỜI câu hỏi đó.
+ *
+ * Nó ở cạnh `DEVICE_KEY_LOOKUP_MESSAGE` vì nó là thuộc tính của CÂU, không phải của màn:
+ * đọc một dòng `true` ở đây thì phải đọc được ngay câu ngay trên nó có hứa gì hay không.
+ */
+export const DEVICE_KEY_LANE_SHOWS_REFERENCE: Record<DeviceKeyLookupFailure, boolean> = {
+  biometric_not_done: false,
+  key_not_linked: false,
+  network_down: false,
+  key_unusable: true,
+  nonce_conflict: true,
+  unknown: true,
 };
 
 /**

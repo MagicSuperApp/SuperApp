@@ -115,6 +115,13 @@ jest.mock('../services/phoenixKeyAuthService', () => {
   // trong tệp kiểm, còn bản chạy thật gộp ba ca làm một mà không gì đỏ.
   const actual = jest.requireActual('../services/phoenixKeyAuthService');
   return {
+    // ⚠ TRẢI bản thật TRƯỚC, rồi mới đè đúng hai thứ phải giả. Bản trước liệt kê tay
+    // từng export, và cái giá của nó đã trả HAI lần: mỗi lần mô-đun thật mọc thêm một
+    // hằng thì mock nghèo hơn bản chạy, lời gọi đọc `undefined`, cái ném rơi vào đúng
+    // khối `catch` đang đo, và bài đỏ ở một chỗ chẳng liên quan gì tới thứ nó đo. Trải
+    // thì mock không bao giờ nghèo hơn thật, và người thêm export sau không phải biết
+    // tệp này tồn tại.
+    ...actual,
     phoenixKeyAuth: {
       // Bước ĐĂNG NHẬP THẬT sau khi tra được mã định danh. Để `undefined` thì lời
       // gọi ném và cái ném đó rơi vào khối `catch` đang đo — xanh/đỏ vì một lý do
@@ -125,13 +132,6 @@ jest.mock('../services/phoenixKeyAuthService', () => {
     // trong mock: để `undefined` thì lời gọi ném, và cái ném đó rơi vào đúng khối
     // `catch` nuốt lỗi của màn, nên bài kiểm sẽ XANH ở cả hai cực.
     lookupDidByDeviceKey: jest.fn(),
-    classifyDeviceKeyLookupFailure: actual.classifyDeviceKeyLookupFailure,
-    // Cùng lý do với hai dòng trên, và nó vừa cắn thật một lần: thiếu dòng này thì lời
-    // gọi trong khối `catch` của màn ném `undefined is not a function`, cái ném đó bị
-    // chính khối `catch` đó nuốt, `showWarning` KHÔNG chạy, và bài kiểm đỏ ở một chỗ
-    // chẳng liên quan gì tới thứ nó đang đo.
-    describeDeviceKeyLookupError: actual.describeDeviceKeyLookupError,
-    DEVICE_KEY_LOOKUP_MESSAGE: actual.DEVICE_KEY_LOOKUP_MESSAGE,
   };
 });
 jest.mock('../store/userSlice', () => ({ loginUser: jest.fn() }));

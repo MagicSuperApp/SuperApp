@@ -108,8 +108,24 @@ const CLOSE_AFTER_OPEN_MS = 2200;
  * mắt biết đây là lời của trợ lý, không phải chữ trang trí của app. Nhưng nó
  * KHÔNG phải một tin thật trong kho — xem chỗ dựng bên dưới.
  */
-/** Tên trợ lý. KHÔNG dịch và KHÔNG đổi theo instance — nó là một cái tên riêng. */
-const GENIE_NAME = 'GENIE';
+/**
+ * Tên hiện trên lớp phủ. KHÔNG dịch và KHÔNG đổi theo instance.
+ *
+ * Viết `Genie`, KHÔNG viết `GENIE` (chủ nhân chốt 18/09/2026). Viết hoa cả cụm thì
+ * đọc ra là một nhãn hệ thống, không phải một ai đó để nói chuyện — mà cả lớp phủ
+ * này dựng quanh việc người dùng nói chuyện với nó.
+ *
+ * ⚠ `Genie` KHÔNG phải tên riêng của một sản phẩm, dù chỗ này dùng nó như một cái
+ * tên. Chủ nhân định nghĩa (18/09/2026): Genie là **LỚP thực thể thực thi** một
+ * yêu cầu — agent, bot, VÀ người thật trên AladinWork. Thứ người dùng đang nói
+ * chuyện ở màn này là **một** Genie, loại agent.
+ *
+ * Vì sao chú thích này đáng nằm đây: bản trước ghi *"nó là một cái tên riêng"* —
+ * sai một bậc, và đây là dòng đầu tiên người sửa tiếp theo đọc. Đọc sai ở đây thì
+ * màn sau dựng ra sẽ nói "Genie" như một sản phẩm, trong khi ngày có Genie loại
+ * NGƯỜI THẬT nhận việc thì câu chữ ấy phải sửa ở mọi nơi đã trót viết.
+ */
+const GENIE_NAME = 'Genie';
 const GENIE_TAGLINE = 'Trợ lý thông minh';
 /**
  * Lời chào. `{brand}` chứ không phải tên app viết cứng.
@@ -1092,10 +1108,15 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     // Giãn chữ cho cái tên đứng ra khỏi mọi chữ khác trên lớp phủ — đây là thứ
     // duy nhất ở đây KHÔNG phải câu nói, nên nó phải đọc ra là một cái TÊN.
-    letterSpacing: 7,
+    //
+    // Hạ từ 7 xuống 2 cùng lượt đổi `GENIE` → `Genie`: khoảng giãn rộng là cách
+    // bù cho chữ hoa toàn cụm, nơi mọi ký tự cao bằng nhau nên khối chữ dính lại.
+    // Chữ có hoa-thường đã tự có nhịp lên xuống; giữ 7 thì các ký tự rời ra thành
+    // từng chữ cái đứng lẻ, đọc còn xa một cái tên hơn cả bản viết hoa.
+    letterSpacing: 2,
     // React Native cộng khoảng giãn vào SAU cả ký tự cuối, nên chữ căn giữa bị
     // lệch sang trái đúng một nhịp giãn. Đẩy lại bằng chừng ấy.
-    marginLeft: 7,
+    marginLeft: 2,
   },
   brandSub: {
     color: MINT,

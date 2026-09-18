@@ -1822,9 +1822,15 @@ const HOST_STACK_SCREENS: Array<{
   // màn này chuyển LAMP thật, không nên mở được bằng một đường dẫn từ bên ngoài.
   { name: 'Wakeme', component: WakemeScreen, options: { headerShown: false } },
   { name: 'Staking', component: StakingScreen, options: { headerShown: false } },
-  // Số dư MAGIC — route HOST, chưa có nút nào trỏ tới (chờ agent đang sửa
-  // PhoenixWalletScreen.tsx gắn lối vào; xem báo cáo bàn giao). Mở tay bằng
-  // `navigation.navigate('MagicVaultBalance')` để thử trong lúc chờ.
+  // Số dư MAGIC — route HOST.
+  //
+  // Chú thích cũ ở đây ghi "chưa có nút nào trỏ tới … mở tay để thử trong lúc chờ",
+  // và nó đã SAI từ lúc `AccountScreen` mọc mục "Điểm MAGIC". Giữ nguyên thì người
+  // đọc sau tưởng màn này còn mồ côi và đi gắn lối vào thứ hai.
+  //
+  // Trạng thái thật: có ĐÚNG MỘT lối vào, ở `screens/AccountScreen.tsx`, và nó
+  // đang ẩn vì ba biến `MAGIC_VAULT_*` còn trống — `config/featureVisibility.ts`
+  // ▸ `magicVisible()`. Điền ba biến là lối vào tự hiện, không phải sửa mã.
   { name: 'MagicVaultBalance', component: MagicVaultBalanceScreen, options: { headerShown: false } },
   // Ví tổ chức — tạo OrgDID + mint LAMP bằng OrgDID (2 bước: mint kho → claim-release).
   { name: 'OrgDid', component: OrgDidScreen, options: { headerShown: false } },

@@ -32,6 +32,29 @@
          giọng nói. Là quyền THƯỜNG (không hỏi lúc chạy), nhưng thiếu khai ở đây
          thì `Vibration.vibrate` ném SecurityException và làm sập màn. -->
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- KHÔNG xin quyền ID quảng cáo. Play Console ▸ Publishing ▸ Advertising ID không
+         cho hoàn tất khai báo khi quyền này có trong gói, và câu trả lời của app là KHÔNG.
+
+         Quyền vào gói do MERGE, không do app khai: cả ba quyền họ quảng cáo đến từ
+         `com.google.android.gms:play-services-measurement-api`, thư viện đo lường đi kèm
+         Firebase (xem `manifest-merger-blame-*-release-report.txt`). Manifest khai TAY ở
+         trên không có quyền nào thuộc họ này.
+
+         ⚠ Nhưng gỡ quyền KHÔNG PHẢI vì app không đụng tới đo lường — app CÓ:
+         `build.gradle` khai `firebase-analytics-ktx` và `MainActivity.kt` khởi tạo
+         `Firebase.analytics` thật lúc chạy. Mà Firebase Analytics MẶC ĐỊNH thu ID quảng
+         cáo khi quyền có mặt. Nên nếu chỉ gỡ dòng này thì câu trả lời "KHÔNG" đúng, song
+         nó đúng vì một sự vắng mặt — không có gì trong kho nói ra ý định, và lần sau ai
+         nâng Firebase hay thêm một thư viện kéo quyền về thì việc thu ID lặng lẽ bật lại.
+         Vì vậy cờ `google_analytics_adid_collection_enabled` ở dưới KHAI Ý ĐỊNH, còn dòng
+         này CƯỠNG CHẾ nó. Giữ cả hai; bỏ một cái là để lại đúng chỗ hỏng không tự kêu.
+
+         Hai quyền `ACCESS_ADSERVICES_*` cùng thư viện thì KHÔNG đụng: màn hình Play chỉ
+         hỏi về `AD_ID`, và gỡ thêm thứ không ai đòi là mở rộng một đợt vá bằng suy đoán.
+
+         Kiểm sau khi dựng — rỗng là đạt, còn ra dòng nào là `tools:node` chưa ăn:
+           unzip -p <gói>.aab base/manifest/AndroidManifest.xml | strings | grep -i ad_id -->
+    <uses-permission android:name="com.google.android.gms.permission.AD_ID" tools:node="remove" />
     <uses-feature android:name="android.hardware.location.gps" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <uses-feature android:name="android.hardware.camera" android:required="true" />
@@ -50,6 +73,15 @@
       <property
         android:name="android.app.16kb_page_size"
         android:value="true" />
+
+      <!-- Firebase Analytics: KHÔNG thu ID quảng cáo. Đây là vế KHAI Ý ĐỊNH của cặp đôi
+           mô tả ở khối quyền `AD_ID` bên trên — vế cưỡng chế là `tools:node="remove"`.
+           Cờ này một mình không đủ (một thư viện khác vẫn merge quyền vào gói và Play
+           vẫn chặn); dòng gỡ quyền một mình cũng không đủ (nó không nói vì sao, nên
+           người sau gỡ nó ra mà không biết mình vừa bật lại một thứ đã khai là KHÔNG). -->
+      <meta-data
+        android:name="google_analytics_adid_collection_enabled"
+        android:value="false" />
 
       <activity
         android:name=".MainActivity"

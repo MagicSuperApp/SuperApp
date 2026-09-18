@@ -497,15 +497,20 @@ export const CHECKFARM_INSTANCE: InstanceConfig = {
   instanceId: 'checkfarm',
   displayName: 'CheckFarm',
   // Bốn chuỗi do nhà CheckFarm cấp (khoá `khau_hieu` bên kho cấu hình của họ,
-  // 07/09/2026). Cùng luật với địa chỉ pháp nhân bên dưới: câu chữ là của
-  // CheckFarm, KHÔNG suy ra từ kho này và không sửa hộ.
+  // 07/09/2026; bản tiếng Việt đổi 18/09/2026 theo chốt của chủ dự án CheckFarm).
+  // Cùng luật với địa chỉ pháp nhân bên dưới: câu chữ là của CheckFarm, KHÔNG suy
+  // ra từ kho này và không sửa hộ.
+  //
+  // Chỉ bản `vi` đổi. Ba bản kia giữ nguyên vì chúng vốn dịch theo nghĩa "truy
+  // nguồn" và không mang nét phân biệt giữa hai cách nói tiếng Việt.
   tagline: {
-    vi: 'Truy xuất từ nguồn — Nâng tầm nông sản',
+    vi: 'Truy xuất nguồn gốc — Nâng tầm nông sản',
     en: 'Trace the Source — Elevate the Produce',
     zh: '追溯源头，提升农产价值',
     ja: '源流をたどり、農産物の価値を高める',
-  },  slogan: {
-    vi: 'Truy xuất từ nguồn',
+  },
+  slogan: {
+    vi: 'Truy xuất nguồn gốc',
     en: 'Trace the source',
     zh: '追溯源头',
     ja: '産地までたどる',

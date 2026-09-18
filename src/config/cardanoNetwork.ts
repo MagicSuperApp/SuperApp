@@ -49,3 +49,58 @@ export const IS_MAINNET: boolean = CARDANO_NETWORK === 1;
 export const NETWORK_LABEL_KEY = IS_MAINNET
   ? 'wallet.network.mainnet'
   : 'wallet.network.testnet';
+
+/**
+ * ── Mainnet có được KÝ giao dịch tiêu tiền hay không ──────────────────────────
+ *
+ * NGUỒN DUY NHẤT của câu đó. Trước bản này, câu trả lời nằm ở
+ * `ALLOWED_SIGN_NETWORKS` trong `services/phoenixWallet.ts`, và **chỉ đường
+ * `did_payment` hỏi nó**. Đường gửi ADA thô (`cardanoTxService.sendCardano`) và
+ * đường uỷ thác stake (`stakingService.delegateToPool`) đều nhận số mạng rồi ký
+ * luôn, không hỏi ai.
+ *
+ * Nên trước bản này, đặt `CARDANO_NETWORK=1` sẽ: chặn đúng `did_payment` như
+ * tài liệu hứa, **và mở đường gửi tiền thật** ở hai đường kia. Không phép kiểm
+ * nào đỏ, vì không có gì để đỏ. Tức rủi ro do một BIẾN DỰNG giữ, không do một
+ * CỔNG giữ — và hai thứ đó không cùng giá.
+ *
+ * Ghi ở tệp này chứ không ở tệp ví, vì tệp này là chỗ đã tự nhận là nguồn duy
+ * nhất cho câu "app đang nói chuyện với chuỗi nào", và nó không phụ thuộc gì
+ * ngoài `@env` — mọi tầng đều nhập được mà không sinh vòng.
+ *
+ * Mở mainnet = đổi hằng này thành `true` **có chủ ý**, không phải đổi biến môi
+ * trường. Đổi nó thì đọc lại đoạn trên trước.
+ */
+export const MAINNET_SIGNING_ALLOWED = false;
+
+export class NetworkNotAllowedError extends Error {
+  constructor(public readonly network: string) {
+    super(
+      network === 'mainnet'
+        ? 'Ký giao dịch trên Cardano Mainnet đang bị khoá trong giai đoạn thử nghiệm.'
+        : `Mạng "${network}" không được phép ký từ ứng dụng.`,
+    );
+    this.name = 'NetworkNotAllowedError';
+  }
+}
+
+/**
+ * Cổng fail-closed cho MỌI đường ký giao dịch nhận số mạng. Gọi TRƯỚC bước dựng
+ * và bước ký.
+ *
+ * Hai điều bị từ chối, không chỉ một:
+ *   - mạng 1 khi `MAINNET_SIGNING_ALLOWED = false`;
+ *   - mọi giá trị KHÔNG phải 0 hay 1. Hai đường gọi đang ép `=== 1 ? 1 : 0`,
+ *     nghĩa là một số rác lặng lẽ thành "chuỗi thử" — nó không sai chiều, nhưng
+ *     nó biến một giá trị vô nghĩa thành một giá trị hợp lệ mà không ai biết.
+ */
+export function assertSigningNetworkAllowed(
+  network: number,
+): asserts network is CardanoNetworkId {
+  if (network !== 0 && network !== 1) {
+    throw new NetworkNotAllowedError(String(network));
+  }
+  if (network === 1 && !MAINNET_SIGNING_ALLOWED) {
+    throw new NetworkNotAllowedError('mainnet');
+  }
+}

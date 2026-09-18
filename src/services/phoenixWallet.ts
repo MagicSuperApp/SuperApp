@@ -32,14 +32,25 @@ import {
 import { phoenixWalletApi, type BuildTxResult } from './phoenixWallet-api';
 import { parseDidNetwork, type CardanoNetwork } from './phoenixDid';
 import { isPhoenixWalletEnabled } from '../config/phoenixWallet';
+import {
+  MAINNET_SIGNING_ALLOWED,
+  NetworkNotAllowedError,
+} from '../config/cardanoNetwork';
 
 export type { CardanoNetwork } from './phoenixDid';
 
-/** Mạng được phép ký từ app. Mainnet bị CHẶN tới khi Phase 2 ổn định + bật cờ. */
-export const ALLOWED_SIGN_NETWORKS: ReadonlySet<CardanoNetwork> = new Set<CardanoNetwork>([
-  'preprod',
-  'preview',
-]);
+/**
+ * Mạng được phép ký từ app, theo TÊN mạng (đường `did_payment` chỉ biết tên, suy
+ * từ DID). Danh sách này KHÔNG tự quyết chuyện mainnet — nó dẫn từ
+ * `MAINNET_SIGNING_ALLOWED` ở `config/cardanoNetwork.ts`, cùng nguồn với cổng
+ * theo SỐ mạng mà hai đường tiêu tiền còn lại hỏi. Hai không gian khoá (tên và
+ * số 0/1) là thật, nhưng chỉ có MỘT sự thật đứng sau cả hai.
+ */
+export const ALLOWED_SIGN_NETWORKS: ReadonlySet<CardanoNetwork> = new Set<CardanoNetwork>(
+  MAINNET_SIGNING_ALLOWED
+    ? (['preprod', 'preview', 'mainnet'] as const)
+    : (['preprod', 'preview'] as const),
+);
 
 /** Loại tác-vụ ví hỗ-trợ. Mở rộng khi backend chốt thêm intent. */
 export type WalletActionType =
@@ -86,16 +97,12 @@ export class PhoenixWalletDisabledError extends Error {
   }
 }
 
-export class NetworkNotAllowedError extends Error {
-  constructor(public readonly network: string) {
-    super(
-      network === 'mainnet'
-        ? 'Ký giao dịch trên Cardano Mainnet đang bị khoá trong giai đoạn thử nghiệm.'
-        : `Mạng "${network}" không được phép ký từ ứng dụng.`,
-    );
-    this.name = 'NetworkNotAllowedError';
-  }
-}
+/**
+ * Lớp lỗi nay ở `config/cardanoNetwork.ts` cùng chỗ với cổng theo số mạng — một
+ * lớp, một câu thông báo. Xuất lại ở đây để mọi nơi đang nhập từ tệp này
+ * (`store/phoenixWalletSlice.ts`) không phải đổi.
+ */
+export { NetworkNotAllowedError };
 
 export class KeypairNotEnrolledError extends Error {
   constructor() {

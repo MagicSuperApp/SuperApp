@@ -23,6 +23,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import taad from '../sdk/taadEnclave';
+import { assertSigningNetworkAllowed } from '../config/cardanoNetwork';
 import {
   phoenixKeyApi,
   baseURL,
@@ -247,7 +248,12 @@ export interface SendCardanoParams {
  * bước nào lỗi (thiếu UTXO, build lỗi, submit từ chối…).
  */
 export async function sendCardano(params: SendCardanoParams): Promise<{ txHash: string }> {
-  const net = params.network === 1 ? 1 : 0;
+  // ── CỔNG MẠNG — trước MỌI thứ khác, kể cả derive địa chỉ ──────────────────
+  // Đặt ở đầu hàm (khác cổng sinh trắc bên dưới, cố ý đặt giữa): đây không phải
+  // câu hỏi cho người dùng, mà là câu "đường này có được phép tồn tại không".
+  // Hỏi nó sau khi đã dựng dữ liệu thì không được gì mà mất một lượt gọi mạng.
+  assertSigningNetworkAllowed(params.network);
+  const net = params.network;
 
   // 1) Địa chỉ người gửi (để hỏi UTXO). Derive từ chính KEK trong native.
   const senderAddress = await taad.deriveWalletAddress(params.kekHex, params.account, net);

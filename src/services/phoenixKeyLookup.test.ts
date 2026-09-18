@@ -112,12 +112,33 @@ jest.mock('./remoteLogger', () => ({
 let mockTaadAvailable = true;
 let mockDeriveTaad: () => Promise<string> = async () => 'ab'.repeat(32);
 
+/**
+ * Bộ sinh salt giả — ĐẾM, không ngẫu nhiên.
+ *
+ * Cửa tra DID nay lấy nonce từ CSPRNG bên Rust (`generateSalt`) chứ không từ `Math.random`;
+ * nguồn thật không chạy trong jest, nên chỗ này phải giả. Giả bằng một hằng thì bài
+ * *"hai lượt liền nhau KHÔNG trùng nonce"* đỏ ngay — nên nó đếm, và cùng lúc đổi điều bài
+ * đó ĐO được: trước, nó đo `Math.random` có ra hai giá trị khác nhau hay không (một tính
+ * chất của thư viện, không phải của mã này); giờ nó đo **mã có lấy chuỗi MỚI cho mỗi lượt
+ * gọi hay không** — tức nó bắt được đúng đường hỏng "sinh một lần rồi dùng lại", đường đã
+ * làm một người dùng thực địa nhận `HTTP 409 · Nonce already used` và không đi tiếp được.
+ *
+ * Hình dạng giữ đúng thứ `generate_salt` sinh ra: 16 byte hex thường
+ * (`rust/taad_enclave_core/src/crypto.rs:292-296`), nên bài kiểm khuôn DTO vẫn đo thật.
+ */
+let mockSaltDem = 0;
+const mockGenerateSalt = jest.fn(async () => {
+  mockSaltDem += 1;
+  return mockSaltDem.toString(16).padStart(32, '0');
+});
+
 jest.mock('../sdk/taadEnclave', () => ({
   __esModule: true,
   default: {
     isAvailable: () => mockTaadAvailable,
     deriveTaadPubkey: jest.fn(async () => mockDeriveTaad()),
     deriveWalletAddress: jest.fn(async () => 'addr_test1qmock'),
+    generateSalt: (...a: unknown[]) => mockGenerateSalt(...(a as [])),
   },
 }));
 

@@ -511,7 +511,7 @@ export const lookupDidByDeviceKey = async (
   promptSubtitle: string,
 ): Promise<string> => {
   const publicKeyHex = (await ownerPublicKey()).toLowerCase();
-  const nonce = randomHexNonce();
+  const nonce = await freshLookupNonce();
   // ⚠ MIỀN KÝ RIÊNG — sai tiền tố thì máy chủ trả 404 và không có gì nói vì sao.
   const messageHex = utf8ToHex(`${LOOKUP_PREFIX}${publicKeyHex}:${nonce}`);
   const signatureHex = await signRaw(messageHex, promptTitle, promptSubtitle);
@@ -1102,20 +1102,45 @@ export const friendlyRegisterError = (err: unknown): string => {
 };
 
 /**
- * Nonce hex ngẫu nhiên cho challenge lookup.
+ * Chuỗi dùng-một-lần cho cửa tra DID — lấy từ CSPRNG bên Rust, KHÔNG từ `Math.random`.
  *
- * Máy chủ ép `^[0-9a-f]{16,128}$` (`IdentityLookupDtos.java`). Dùng 32 ký tự = 128 bit:
- * đủ để hai máy không đụng nonce, mà vẫn gọn. Nonce chỉ chống phát lại trong phạm vi
- * MỘT khoá công khai nên không cần nguồn ngẫu nhiên cấp mật mã — nhưng cũng đừng dùng
- * thời gian trần, vì hai lượt bấm liền nhau trong cùng mili-giây sẽ ra trùng.
+ * Khuôn máy chủ không đổi: `^[0-9a-f]{16,128}$` (`IdentityLookupDtos.java`).
+ * `generate_salt` sinh 16 byte rồi `hex::encode` ⇒ 32 ký tự hex THƯỜNG
+ * (`rust/taad_enclave_core/src/crypto.rs:292-296`), đúng độ dài bản cũ đã gửi.
+ *
+ * ══ ĐÃ ĐO: một người dùng thực địa kẹt ở đúng cửa này ═══════════════════════════════
+ * Bản trước ghép chuỗi từ bốn lượt `Math.floor(Math.random() * 0x100000000)`. Bản 69
+ * mang dòng mã tham chiếu ra màn hình, và máy người dùng trả về:
+ *     `Mã tham chiếu: HTTP 409 · mã 3006 · Nonce already used`
+ * Nghĩa là chuỗi hàm này sinh ra đã **được tiêu trước đó** cho cùng khoá công khai.
+ *
+ * ══ CHƯA ĐO: vì sao nó trùng ═══════════════════════════════════════════════════════
+ * Cơ chế làm trùng thì chưa dựng lại được ở đây: máy này không có VM Hermes để chạy
+ * (`ios/Pods/hermes-engine/destroot/bin/` chỉ có `hermesc`, và nó trả thẳng
+ * *"hermesc does not support -exec"*). Nghi vấn đứng đầu là `Math.random` của Hermes
+ * cho lại cùng dãy đầu sau mỗi lần mở app — nhưng đó là **nghi vấn**, không phải số đo,
+ * nên đừng trích dòng này như một dữ kiện về Hermes.
+ *
+ * Bản vá KHÔNG dựa vào việc chọn đúng cơ chế, và đó là chỗ đáng đọc nhất ở đây: 32 ký
+ * tự hex từ CSPRNG là 128 bit, nên *"đã dùng rồi"* trở thành bất khả với MỌI đường làm
+ * trùng — gieo lại theo runtime, chu kỳ ngắn, hay nhiều máy đụng nhau. Đường duy nhất
+ * còn lại là gửi **y nguyên một thân yêu cầu hai lần**, và đường đó đã đo là không có:
+ * client không có lớp thử-lại nào, chỉ một hạn chờ 90 giây (`phoenixKey-api.ts:308`);
+ * `grep -n "retry\|attempt"` trên tệp đó trả rỗng.
+ *
+ * ══ Vì sao nó sống được lâu ════════════════════════════════════════════════════════
+ * Đây là bản LỎNG duy nhất còn lại. Tám nơi khác trong kho đã dùng `taad.generateSalt()`:
+ * `RestoreIdentityScreen.tsx:109` · `OrgAuthorityScreen.tsx:78` · `orgMintService.ts:155`
+ * · `standardWalletService.ts:225` · `keyRotateService.ts:47` · `guardianService.ts:71`
+ * · `deviceKeyService.ts:33` · `keyAuthorizeService.ts:120`. Chú thích ở
+ * `RestoreIdentityScreen.tsx:104-108` còn viết ra nguyên văn lý do phải dùng CSPRNG, rồi
+ * đợt vá đó lấy phạm vi bằng phạm vi của tệp nó đang sửa; hàm này ở tệp bên cạnh nên
+ * không ai chạm. Chú thích cũ tại chỗ này còn tự cấp cho mình một lý do để nhẹ hơn —
+ * *"nonce chỉ chống phát lại trong phạm vi MỘT khoá công khai nên không cần nguồn ngẫu
+ * nhiên cấp mật mã"*. Câu đó đúng về **phạm vi** và vẫn dẫn tới hỏng, vì cái hỏng không
+ * phải kẻ tấn công đoán được nonce: là chính người dùng sinh lại nonce cũ của mình.
  */
-const randomHexNonce = (): string => {
-  let out = '';
-  while (out.length < 32) {
-    out += Math.floor(Math.random() * 0x100000000).toString(16).padStart(8, '0');
-  }
-  return out.slice(0, 32);
-};
+const freshLookupNonce = (): Promise<string> => taad.generateSalt();
 
 const utf8ToHex = (s: string): string => {
   let out = '';

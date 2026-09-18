@@ -370,7 +370,19 @@ if (trungDid) {
         //
         // Build 101 (2026-09-11): tăng CHỦ ĐỘNG trước một lượt dựng tay, không kèm
         // tính năng nào.
-        versionCode 103
+        //
+        // Build 104 (2026-09-18): 103 ĐÃ TIÊU — chủ nhân đã tải gói CheckFarm 103 lên
+        // Play Console, nên đây KHÔNG phải suy đoán như mấy lượt trên. Bản này mang
+        // hai thay đổi: vá lỗi không đăng nhập lại được (PR #405) và gỡ quyền
+        // `AD_ID` (PR #406).
+        //
+        // ⚠ Con số này DÙNG CHUNG cho cả hai app (`aladin` và `checkfarm`) vì nó nằm
+        // ở `defaultConfig`, không ở từng flavor. Play đòi số TĂNG DẦN trong phạm vi
+        // MỘT mã gói, nên dùng chung không sai — nhưng nó làm chuỗi số của app này
+        // nhảy cóc theo lượt phát hành của app kia. Ngày nào hai app lệch nhịp phát
+        // hành tới mức chuỗi số khó đọc thì tách xuống từng flavor; hôm nay chưa cần,
+        // và tách sớm là thêm một chỗ phải nhớ đồng bộ mà không ai được lợi.
+        versionCode 104
         versionName "2.0"
 
         // ✅ Support 16KB page size (required by Google Play Store 2024)

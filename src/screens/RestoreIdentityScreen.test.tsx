@@ -126,6 +126,11 @@ jest.mock('../services/phoenixKeyAuthService', () => {
     // `catch` nuốt lỗi của màn, nên bài kiểm sẽ XANH ở cả hai cực.
     lookupDidByDeviceKey: jest.fn(),
     classifyDeviceKeyLookupFailure: actual.classifyDeviceKeyLookupFailure,
+    // Cùng lý do với hai dòng trên, và nó vừa cắn thật một lần: thiếu dòng này thì lời
+    // gọi trong khối `catch` của màn ném `undefined is not a function`, cái ném đó bị
+    // chính khối `catch` đó nuốt, `showWarning` KHÔNG chạy, và bài kiểm đỏ ở một chỗ
+    // chẳng liên quan gì tới thứ nó đang đo.
+    describeDeviceKeyLookupError: actual.describeDeviceKeyLookupError,
     DEVICE_KEY_LOOKUP_MESSAGE: actual.DEVICE_KEY_LOOKUP_MESSAGE,
   };
 });
@@ -836,6 +841,44 @@ describe('RestoreIdentityScreen — lối tìm lại danh tính bằng khoá tro
     expect(notLinked).toMatch(/cũng ra đúng kết quả này/i);
     expect(cancelled).toMatch(/bấm lại|thử lại/i);
     expect(offline).toMatch(/bấm lại|thử lại/i);
+  });
+
+  it('khoá bị chip từ chối ⟹ câu RIÊNG, và mang theo dòng số đo', async () => {
+    // Ca của người dùng thực địa: `hasKey` trả CÓ nên thẻ này dựng, rồi chip từ chối ký.
+    // Trước bản này nó rơi vào làn `unknown` và màn hình bảo "thử lại một lần" — lời
+    // khuyên sai với đúng nhóm này, vì khoá đã chết vĩnh viễn từ lần họ đăng ký lại
+    // khuôn mặt. Bấm lại là vòng lặp, và đó đúng là cái vòng đã quay ngoài vườn.
+    warn.mockClear();
+    (lookupDidByDeviceKey as jest.Mock).mockRejectedValue(
+      Object.assign(new Error('Key exists but refused to sign (code=-25293)'), {
+        code: 'E_KEY_INVALIDATED',
+      }),
+    );
+    const tree = await renderScreen();
+    await pressLane(tree);
+
+    const [title, body] = warn.mock.calls[warn.mock.calls.length - 1];
+    expect(String(title)).toMatch(/không dùng được nữa/i);
+    expect(String(body)).toMatch(/bấm lại bao nhiêu lần cũng/i);
+    expect(String(body)).toMatch(/24 từ/);
+    // Dòng số đo — thứ biến ảnh chụp màn hình thành một phép đo. Không có nó thì câu
+    // "chụp màn hình gửi hỗ trợ" là một hợp đồng đo mà màn hình không giữ phần mình.
+    expect(String(body)).toContain('Mã tham chiếu');
+    expect(String(body)).toContain('E_KEY_INVALIDATED');
+    expect(String(body)).toContain('-25293');
+  });
+
+  it('ĐỐI CHỨNG: ba làn cũ KHÔNG bị dán thêm dòng số đo', async () => {
+    // Dán mã vào mọi câu là dạy người đọc lướt qua dòng đó — đến lượt nó thật sự cần
+    // đọc thì nó đã nằm giữa những dòng đã được học cách bỏ qua.
+    warn.mockClear();
+    (lookupDidByDeviceKey as jest.Mock).mockRejectedValue(
+      Object.assign(new Error('user cancelled'), { code: 'E_USER_CANCELED' }),
+    );
+    const tree = await renderScreen();
+    await pressLane(tree);
+
+    expect(String(warn.mock.calls[warn.mock.calls.length - 1][1])).not.toContain('Mã tham chiếu');
   });
 
   it('hỏng thì KHÔNG báo thành công, và KHÔNG lưu mã nào', async () => {

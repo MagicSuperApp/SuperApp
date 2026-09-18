@@ -32,13 +32,21 @@ import { COLORS } from '../constants';
 import { addGuardian, removeGuardian } from '../services/guardianService';
 import { phoenixKeyApi, PhoenixKeyApiError } from '../services/phoenixKey-api';
 import { currentUserDid } from '../sdk/phoenixKey';
+import { PHOENIX_DID_RE } from '../services/phoenixDid';
 import { showError, showInfo, showSuccess, showWarning } from '../utils/alert';
 import { describeGuardianSafety } from '../features/identity/guardianSafety';
 import { t } from '../i18n';
 import { tk } from '../i18n/keys';
 
 const PRIMARY = '#4A55C7';
-const DID_RE = /^did:phoenix:[a-z2-7]{13}:[0-9a-f]{64}$/;
+/**
+ * Khuôn DID lấy từ `services/phoenixDid.ts` — MỘT nguồn. Chỗ này từng chép tay
+ * `/^did:phoenix:[a-z2-7]{13}:[0-9a-f]{64}$/`, đúng khuôn mà tệp kia đã gỡ và dặn không
+ * ghim lại ở đâu nữa: bộ sinh sắp cho ra chữ số `0,1,8,9` ở đoạn giữa, và ngày đó
+ * `[a-z2-7]` từ chối một DID hoàn toàn hợp lệ. Ở màn này hậu quả là không thêm được người
+ * giám hộ, với một câu đổ lỗi cho người dùng gõ sai.
+ */
+const DID_RE = PHOENIX_DID_RE;
 const LOCAL_NAMES_KEY = 'phoenixkey_guardians_local';
 
 /** Một dòng trên màn: `did` + `createdAt` từ máy chủ, `name` từ máy (có thể thiếu). */

@@ -5,9 +5,10 @@
 // dùng schema mock riêng (data/mockData.ts) — chuyển đổi qua data/adapters.ts.
 //
 // ── DID người dùng: did:phoenix ──────────────────────────────────────
-//   Danh tính người dùng LUÔN là `did:phoenix:<slot 13 base32>:<hash 64 hex>`
-//   (regex `^did:phoenix:[a-z2-7]{13}:[0-9a-f]{64}$`). KHÔNG dùng did:cardano
-//   cho danh tính người (did:cardano chỉ định danh TÀI SẢN của VeData — khác nhóm).
+//   Danh tính người dùng LUÔN là `did:phoenix:<đoạn>:<đoạn>`. Bảng chữ cái và độ dài của
+//   từng đoạn KHÔNG được ghim ở đây — chúng thuộc về nhà cấp DID và đang đổi; khuôn duy
+//   nhất là `PHOENIX_DID_RE` ở `services/phoenixDid.ts`. KHÔNG dùng did:cardano cho danh
+//   tính người (did:cardano chỉ định danh TÀI SẢN của VeData — khác nhóm).
 //
 // ── Mô hình 3 token (SPEC §1 v0.2.0) ─────────────────────────────────
 //   - MAGIC = đơn vị KẾ TOÁN / ĐỊNH GIÁ (phi-chuyển-nhượng, decay). Giá/Pledge/
@@ -18,9 +19,17 @@
 //   Quy tắc vàng: giá/phí TÍNH bằng MAGIC nhưng GIỮ/CHUYỂN bằng CARP.
 //   Số dư khả dụng để trả (Pledge/phí) = walletCARP; `402 NO_FUNDS` = thiếu CARP.
 
-/** Regex chuẩn DID người dùng (did:phoenix). Dùng để validate trước khi ký. */
-export const DID_PHOENIX_RE = /^did:phoenix:[a-z2-7]{13}:[0-9a-f]{64}$/;
-export const isValidPhoenixDid = (did: string): boolean => DID_PHOENIX_RE.test(did);
+/**
+ * Khuôn DID người dùng — TRỎ về `services/phoenixDid.ts`, không chép lại.
+ *
+ * Chỗ này từng ghim `/^did:phoenix:[a-z2-7]{13}:[0-9a-f]{64}$/`. Khuôn đó đã bị gỡ khỏi nơi
+ * định nghĩa (nhà PhoenixKey báo 2026-08-26: bản khớp byte với cổng mint on-chain render
+ * đoạn giữa bằng THẬP PHÂN, nên `0,1,8,9` sẽ xuất hiện), nhưng bản chép ở đây sống sót vì
+ * nó tự khai một hằng riêng — không có gì lệch để mà đỏ. Phần chú thích §DID ở đầu tệp
+ * cũng đã sửa theo, vì nó đang tả khuôn cũ.
+ */
+export { PHOENIX_DID_RE as DID_PHOENIX_RE } from '../../../services/phoenixDid';
+export { isCanonicalPhoenixDid as isValidPhoenixDid } from '../../../services/phoenixDid';
 
 // ── Account (khóa = DID) ─────────────────────────────────────────────
 export interface WorkAccount {

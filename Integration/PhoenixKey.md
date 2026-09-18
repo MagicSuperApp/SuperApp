@@ -13,7 +13,53 @@
 > Module SuperApp: **DID login · Ví (Standard/Phoenix) · OrgDID/Mint LAMP**.
 
 ## HEAD
-- `PhoenixKey-Database` main = `b4c4ce2` (2026-08-04). PR #116 merged 2026-07-31: 3 endpoint đọc ví chuyển sang bắt buộc Bearer. Việc mint LAMP nằm ở **worktree local CHƯA merge** (xem Readiness).
+- `PhoenixKey-Database` main = `41cbfa8` (2026-09-18). Dòng cũ ghi `b4c4ce2` (2026-08-04) và đã trôi xa; PR #116 merged 2026-07-31: 3 endpoint đọc ví chuyển sang bắt buộc Bearer. Việc mint LAMP nằm ở **worktree local CHƯA merge** (xem Readiness).
+- ⚠ **Nhánh chính của họ CHƯA lên máy chủ** (đo 2026-09-18, nhà PhoenixKey báo): CI đỏ ở mọi lượt vì job chết sau 2 giây với `steps=0` — không bước nào từng chạy — nên tầng CD cũng `skipped`. Gọi API thật lúc này là đo **bản cũ**. Đó là hành vi đúng của hệ hôm nay, KHÔNG phải một hồi quy; đừng đọc chênh lệch giữa mã và máy chủ thành lỗi của bên nào.
+
+## Đăng nhập bằng eID quốc gia — 🟡 CHỜ MERGE
+
+`GET /identity/access/methods` · `POST /identity/access/eid/begin` · `POST /identity/access/eid/complete`
+
+Hợp đồng đầy đủ ở canonical `PhoenixKey-SDK/INTEGRATION.md` §"Đăng nhập bằng eID quốc gia".
+Mã: Database PR #335. Chưa lên prod — gọi thử lúc này ra 404, và 404 đó không chứng minh gọi sai.
+
+⚠ Ràng buộc lên app: màn gõ khoá tra **KHÔNG gọi máy chủ**. Không có endpoint cho bước đó, và
+KHÔNG được thay bằng `GET /identity/by-username/{username}`. Lý do là số căn cước 12 chữ số **có
+cấu trúc** (mã tỉnh · thế kỷ kèm giới · năm sinh), nên một cửa trả lời có/không biến khoảng `10⁶`
+ứng viên thành một câu trả lời. Băm KHÔNG cứu được chỗ này: ở cửa tra thì chính máy chủ băm hộ
+người gọi, nên khoá băm chỉ chặn liệt kê ngoại tuyến khi CSDL rò, vô hiệu ở đúng cửa này.
+⚠ `ticket` KHÔNG phải `session_token` — không gửi trong header `Authorization`, nó không mở được
+endpoint nào. Nó là **vé yếu tố**. Vé hôm nay **chưa có bên tiêu**: chưa đường nào đổi vé lấy
+phiên. Hợp đồng bốn bước không đổi khi bên tiêu xuất hiện, nên dựng đủ bốn bước ngay được.
+⚠ Danh mục phương thức là danh sách của **HỆ**, giống nhau cho mọi khoá tra — dựng màn **theo
+danh sách trả về**, đừng gõ cứng. Hôm nay trả **3** dòng: sinh trắc trên máy · người bảo hộ ·
+cụm 24 từ — nhưng đọc `available` của TỪNG dòng, đừng đọc số dòng: `guardian` nay về `false`
+(xem khối 📌 dưới). `eid:vneid` mặc định **không hiện**.
+⚠ Hệ quả phải chấp nhận, đừng "sửa": người dùng thấy cả phương thức mà tài khoản họ chưa đặt, và
+chọn nhầm thì trượt ở bước xác thực. Lọc danh sách theo khoá tra chính là làm lộ lại cái bit vừa
+giấu.
+
+📌 **Khe giữa danh mục và app, đo 2026-09-18 — ĐÃ ĐÓNG ở phía máy chủ cùng ngày:** danh mục từng
+bày `guardian` với `available = true`, còn SuperApp **không có lối vào nào** cho nó. `grep -rn -i
+guardian` trên `RestoreIdentityScreen`, `phoenixKeyAuthService`, `IdentityEntryChoiceScreen` ra
+đúng một dòng, và nó là chú thích về nguồn ngẫu nhiên chứ không phải lời gọi. `GuardianScreen` nằm
+**sau** lớp đăng nhập nên nó là màn cấu hình, không phải lối khôi phục.
+
+Đo lại bên máy chủ (nhà PhoenixKey báo cùng ngày, trên mã sản xuất chứ không trên tài liệu): **cửa
+để một người mất máy khởi động lượt khôi phục có người bảo hộ ký thì KHÔNG tồn tại.** Bốn cửa
+`GuardianController` đều là ghi danh hoặc tra danh sách; `POST /identity/recover-device` đòi chữ ký
+suy từ cụm 24 từ và không nhận chữ ký người bảo hộ; `GuardianRepository` trong toàn bộ mã sản xuất
+chỉ dùng để ĐẾM cho một trường trạng thái sức khoẻ.
+
+Hệ quả cho app, và đây là phần đổi thứ phải dựng:
+- Dòng `guardian` **ở lại** trong danh mục, chỉ mang `available = false` (cờ triển khai
+  `phoenixkey.access.guardian-recovery-enabled`, mặc định `false`). Nó không bị bỏ khỏi danh sách,
+  vì số dòng đổi theo cấu hình thì chính số dòng thành một kênh rò.
+- Nên app **vẫn dựng theo danh sách trả về**, và phải hiện dòng `available = false` ở dạng **mờ
+  kèm lý do đọc được**, không ẩn nó. Một dòng biến mất không nói được gì với người dùng; một dòng
+  mờ có chú thích thì nói được.
+- Ngày cửa có thật, bên đó bật cờ ở tầng triển khai — **app không phải phát hành lại** miễn là nó
+  đọc `available` thay vì gõ cứng ba dòng.
 
 ## Base URL / JWKS
 - REST: `http://localhost:8080/api/v1` (dev); prod dự kiến `https://api.phoenixkey.me/api/v1` (⚠️ domain chưa thấy trong CORS list — [NEEDS-EVIDENCE]).

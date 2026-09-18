@@ -63,6 +63,20 @@ export const PhoenixKeyNativeError = {
   USER_CANCELED: 'E_USER_CANCELED',
   BIOMETRIC_LOCKOUT: 'E_BIOMETRIC_LOCKOUT',
   NO_ACTIVITY: 'E_NO_ACTIVITY',
+  /**
+   * Khoá CÒN trong kho nhưng không dùng được nữa — thường vì người dùng thêm hoặc đăng ký
+   * lại vân tay / khuôn mặt, và khoá sinh ra dưới `.biometryCurrentSet` (iOS) hay
+   * `setInvalidatedByBiometricEnrollment(true)` (Android) thì chết vĩnh viễn ngay lúc đó.
+   *
+   * Phải TÁCH khỏi `NO_KEY`, vì hai ca dẫn người dùng đi hai hướng ngược nhau — và vì
+   * `hasKey` vẫn trả `true` cho khoá này, nên gộp hai ca là để màn hình mời người dùng
+   * bấm mãi vào một lối đã chết mà không gì nói ra.
+   */
+  KEY_INVALIDATED: 'E_KEY_INVALIDATED',
+  /** Kho khoá chưa mở (máy vừa khởi động, chưa mở khoá màn hình lần nào). Thử lại được. */
+  KEY_LOCKED: 'E_KEY_LOCKED',
+  /** Kho khoá từ chối vì một mã trạng thái chưa có tên ở đây — câu kèm theo mang số đo. */
+  KEYSTORE: 'E_KEYSTORE',
 } as const;
 
 export type PhoenixKeyNativeErrorCode =

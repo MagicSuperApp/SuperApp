@@ -103,8 +103,11 @@ final class PhoenixKeyModule: NSObject {
     func getPublicKeyHex(_ alias: String,
                          resolver resolve: @escaping RCTPromiseResolveBlock,
                          rejecter reject: @escaping RCTPromiseRejectBlock) {
-        guard let privateKey = loadPrivateKey(alias: alias) else {
-            reject("E_NO_KEY", "No key under alias '\(alias)'", nil)
+        let loaded = loadPrivateKey(alias: alias)
+        guard case let .ok(privateKey) = loaded else {
+            guard case let .failed(status) = loaded else { return }
+            let (code, message) = describeKeyLoadFailure(status, alias: alias)
+            reject(code, message, nil)
             return
         }
         guard let publicKey = SecKeyCopyPublicKey(privateKey),
@@ -161,17 +164,21 @@ final class PhoenixKeyModule: NSObject {
             return promptTitle
         }()
 
-        guard let privateKey = loadPrivateKey(alias: alias, context: context, prompt: prompt) else {
-            let laCode = context.evaluatedPolicyDomainState == nil ? contextErrorCode(context) : nil
-            if laCode == LAError.userCancel.rawValue || laCode == LAError.appCancel.rawValue || laCode == LAError.systemCancel.rawValue || laCode == LAError.userFallback.rawValue {
-                reject("E_USER_CANCELED", "Biometric authentication cancelled", nil)
-                return
-            }
-            if laCode == LAError.biometryLockout.rawValue {
-                reject("E_BIOMETRIC_LOCKOUT", "Biometric is locked out", nil)
-                return
-            }
-            reject("E_NO_KEY", "No private key under alias '\(alias)'", nil)
+        let loaded = loadPrivateKey(alias: alias, context: context, prompt: prompt)
+        guard case let .ok(privateKey) = loaded else {
+            guard case let .failed(status) = loaded else { return }
+
+            // BỎ HẲN nhánh hỏi `contextErrorCode`. Hàm đó trả `nil` vô điều kiện — chú
+            // thích của chính nó khai thế — nên ba nhánh phân loại dựng trên nó CHƯA TỪNG
+            // chạy một lần nào, và mọi lần hỏng đều rơi xuống dòng cuối để nhận nhãn
+            // "không có khoá riêng". Ba nhánh chết mang tên đúng của thứ chúng định bắt là
+            // dạng hỏng tệ nhất: đọc mã thì thấy ca đã được xử, chạy mã thì không.
+            //
+            // OSStatus thì là phép đo có thật, và nó PHÂN BIỆT ĐƯỢC đúng những ca kia:
+            // `errSecUserCanceled` (-128) là người dùng huỷ, `errSecAuthFailed` (-25293)
+            // là sinh trắc trượt hoặc khoá đã bị vô hiệu hoá. Đọc thứ tồn tại.
+            let (code, message) = describeKeyLoadFailure(status, alias: alias)
+            reject(code, message, nil)
             return
         }
 
@@ -182,8 +189,31 @@ final class PhoenixKeyModule: NSObject {
             messageData as CFData,
             &signError
         ) as Data? else {
-            let message = (signError?.takeRetainedValue() as Error?)?.localizedDescription ?? "Sign failed"
-            reject("E_SIGN_AFTER_AUTH", message, nil)
+            // ĐÂY mới là chỗ hộp sinh trắc thật sự bật lên với khoá Secure Enclave: lấy
+            // tham chiếu khoá ở trên KHÔNG đòi xác thực, chỉ lúc ký mới đòi. Nên ca "người
+            // dùng thấy hộp Face ID rồi vẫn hỏng" rơi đúng vào đây, không rơi vào nhánh
+            // nạp khoá — và bản trước gộp cả nhánh này vào một câu không mang số nào.
+            let signNsError = signError?.takeRetainedValue() as Error? as NSError?
+            // `code` của NSError là `Int`, còn `errSec…` là `OSStatus` (`Int32`) — Swift
+            // không so hai kiểu đó, và cũng không so thẳng `Int?` với `Int`. Mở bọc một
+            // lần rồi ép kiểu một lần, ở đây, thay vì rải `Int(...)` xuống từng dòng.
+            let signCode: Int = signNsError?.code ?? 0
+            if signCode == Int(errSecUserCanceled) || signCode == LAError.userCancel.rawValue {
+                reject("E_USER_CANCELED", "Biometric authentication cancelled (code=\(signCode))", nil)
+                return
+            }
+            if signCode == LAError.biometryLockout.rawValue {
+                reject("E_BIOMETRIC_LOCKOUT", "Biometric is locked out (code=\(signCode))", nil)
+                return
+            }
+            if signCode == Int(errSecAuthFailed) {
+                reject("E_KEY_INVALIDATED",
+                       "Key exists but refused to sign — invalidated by biometric enrollment change, or authentication failed (code=\(signCode))",
+                       nil)
+                return
+            }
+            let detail = signNsError?.localizedDescription ?? "Sign failed"
+            reject("E_SIGN_AFTER_AUTH", "\(detail) (code=\(signCode))", nil)
             return
         }
 
@@ -226,9 +256,21 @@ final class PhoenixKeyModule: NSObject {
         return status == errSecSuccess
     }
 
+    /// Kết quả nạp khoá — GIỮ mã trạng thái của hệ điều hành khi hỏng.
+    ///
+    /// Bản trước trả `SecKey?` và viết `guard status == errSecSuccess else { return nil }`:
+    /// bốn nguyên nhân rất khác nhau rời khỏi hàm dưới CÙNG một hình dạng `nil`, rồi nơi gọi
+    /// phải đoán, và nó đoán bằng cách gán cho tất cả nhãn "không có khoá riêng". Nhãn đó
+    /// mâu thuẫn với phép đo ngay cạnh: màn hình chỉ dựng nút gọi hàm này khi `hasKey` đã
+    /// trả CÓ. Người dùng đọc "máy không có khoá" trên đúng cái máy vừa được báo là còn khoá.
+    private enum LoadKeyResult {
+        case ok(SecKey)
+        case failed(OSStatus)
+    }
+
     private func loadPrivateKey(alias: String,
                                 context: LAContext? = nil,
-                                prompt: String? = nil) -> SecKey? {
+                                prompt: String? = nil) -> LoadKeyResult {
         var query = baseQuery(alias: alias)
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         if let context {
@@ -240,8 +282,8 @@ final class PhoenixKeyModule: NSObject {
 
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
-        guard status == errSecSuccess else { return nil }
-        return (item as! SecKey)
+        guard status == errSecSuccess, let item else { return .failed(status) }
+        return .ok(item as! SecKey)
     }
 
     private func exportUncompressedPublicKeyHex(_ publicKey: SecKey) -> String? {
@@ -297,9 +339,31 @@ final class PhoenixKeyModule: NSObject {
         data.map { String(format: "%02x", $0) }.joined()
     }
 
-    private func contextErrorCode(_ context: LAContext) -> Int? {
-        // LAContext does not expose last NSError directly after keychain auth failures.
-        // Keep nil fallback; caller maps generic error.
-        return nil
+    /// OSStatus của kho khoá → (mã lỗi cho JS, câu mang theo SỐ ĐO).
+    ///
+    /// Mỗi câu trả về ĐỀU kèm `status=<số>`. Đó là phần không được bỏ: tầng JS chỉ phân loại
+    /// được các ca nó đã biết tên, còn ca chưa biết thì người dùng là đường duy nhất mang số
+    /// đo về — và họ chỉ mang về được thứ hiện ra trên màn hình.
+    ///
+    /// `errSecAuthFailed` ở ĐÂY gần như luôn là khoá đã bị vô hiệu hoá, không phải quẹt sai:
+    /// khoá sinh ra với `.biometryCurrentSet` (xem `makeAccessControl`) nên nó chết vĩnh viễn
+    /// ngay khi người dùng thêm/đăng ký lại vân tay hoặc khuôn mặt. Khoá vẫn NẰM trong kho —
+    /// `hasKeySync` vẫn trả `true`, vì lấy tham chiếu không cần xác thực — nên màn hình vẫn
+    /// mời người dùng bấm vào một lối đã chết. Phân biệt được ca này là phân biệt được
+    /// "thử lại đi" với "thử bao nhiêu lần cũng thế, phải dùng 24 từ".
+    private func describeKeyLoadFailure(_ status: OSStatus, alias: String) -> (String, String) {
+        switch status {
+        case errSecUserCanceled:
+            return ("E_USER_CANCELED", "Biometric authentication cancelled (status=\(status))")
+        case errSecAuthFailed:
+            return ("E_KEY_INVALIDATED",
+                    "Key exists but cannot be used — invalidated by biometric enrollment change, or authentication failed (status=\(status))")
+        case errSecItemNotFound:
+            return ("E_NO_KEY", "No key under alias '\(alias)' (status=\(status))")
+        case errSecInteractionNotAllowed:
+            return ("E_KEY_LOCKED", "Keychain not unlocked or interaction not allowed (status=\(status))")
+        default:
+            return ("E_KEYSTORE", "Keychain refused the key for alias '\(alias)' (status=\(status))")
+        }
     }
 }

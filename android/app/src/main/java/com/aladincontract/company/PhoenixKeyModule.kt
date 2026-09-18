@@ -2,6 +2,7 @@ package com.aladincontract.company
 
 import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.security.keystore.KeyProperties
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
@@ -130,6 +131,21 @@ class PhoenixKeyModule(private val reactContext: ReactApplicationContext) :
                 ?: throw IllegalStateException("No private key under alias '$alias'")
             signature = Signature.getInstance(SIGN_ALGORITHM).apply { initSign(privateKey) }
             data = hexToBytes(dataHex)
+        } catch (e: KeyPermanentlyInvalidatedException) {
+            // Khoá sinh ra dưới `setInvalidatedByBiometricEnrollment(true)` nên nó CHẾT VĨNH
+            // VIỄN ngay lúc người dùng thêm hoặc đăng ký lại vân tay / khuôn mặt. Khoá vẫn
+            // NẰM trong Keystore — `hasKey` vẫn trả `true`, nên màn hình vẫn dựng thẻ
+            // "Khoá của bạn vẫn nằm trong máy này" và vẫn mời bấm.
+            //
+            // Trước bản này ca đó rơi chung vào `E_SIGN_INIT` với mọi lỗi khởi tạo khác, rồi
+            // tầng JS xếp cả cụm vào làn "chưa rõ vì sao" — làn bảo người dùng THỬ LẠI. Với
+            // đúng nhóm này thử lại là vô ích, và họ ở trong một vòng lặp không lối ra.
+            promise.reject(
+                "E_KEY_INVALIDATED",
+                e.message ?: "Key invalidated by biometric enrollment change",
+                e,
+            )
+            return
         } catch (e: Exception) {
             promise.reject("E_SIGN_INIT", e.message ?: "Failed to init signing", e)
             return

@@ -35,9 +35,11 @@ import {
   phoenixKeyAuth,
   lookupDidByDeviceKey,
   classifyDeviceKeyLookupFailure,
+  describeDeviceKeyLookupError,
   DEVICE_KEY_LOOKUP_MESSAGE,
   type DeviceKeyLookupFailure,
 } from '../services/phoenixKeyAuthService';
+import { isCanonicalPhoenixDid } from '../services/phoenixDid';
 import { loginUser } from '../store/userSlice';
 import { countMnemonicWords, normalizeMnemonic } from '../utils/mnemonic';
 import { describeDidState } from '../features/identity/didState';
@@ -68,11 +70,35 @@ const RECOVER_PREFIX = 'PHOENIXKEY_RECOVER:';
 const DEVICE_KEY_LANE_TITLE: Record<DeviceKeyLookupFailure, string> = {
   biometric_not_done: 'Chưa xác thực xong',
   key_not_linked: 'Khoá trên máy này chưa thuộc tài khoản nào',
+  key_unusable: 'Khoá trên máy này không dùng được nữa',
   network_down: 'Chưa liên lạc được máy chủ',
   unknown: 'Chưa tìm lại được danh tính',
 };
 
-const DID_RE = /^did:phoenix:[a-z2-7]{13}:[0-9a-f]{64}$/;
+/**
+ * Làn nào cần ĐÍNH SỐ ĐO vào câu — danh sách ĐÓNG, và cố ý ngắn.
+ *
+ * Ba làn còn lại đã nói đúng việc người dùng phải làm tiếp, nên một dòng mã dán thêm vào đó
+ * chỉ làm loãng câu và dạy người đọc bỏ qua dòng ấy — đến lượt nó thật sự cần đọc thì nó đã
+ * nằm giữa những dòng đã được học cách lướt qua. Chỉ hai làn này là hai làn mà chính ứng
+ * dụng KHÔNG biết chuyện gì xảy ra, và cũng đúng hai làn mời người dùng gửi ảnh về.
+ */
+const LANES_NEEDING_REFERENCE: ReadonlySet<DeviceKeyLookupFailure> = new Set<DeviceKeyLookupFailure>(
+  ['unknown', 'key_unusable'],
+);
+
+/**
+ * Khuôn DID dùng để LỌC ứng viên. Trước bản này chỗ này ghim
+ * `/^did:phoenix:[a-z2-7]{13}:[0-9a-f]{64}$/` — đúng cái khuôn mà `services/phoenixDid.ts`
+ * đã gỡ và dặn thẳng "ĐỪNG ghim lại ở bất kỳ đâu trong kho này, kể cả cho chắc".
+ *
+ * Bản vá hôm đó gỡ khuôn khỏi nơi ĐỊNH NGHĨA nó rồi dừng lại; ba tệp chép tay vẫn giữ
+ * nguyên, và không có gì đỏ vì mỗi tệp tự khai một hằng riêng. Ở riêng màn này cái giá là
+ * cụ thể: dòng lọc bên dưới **bỏ im lặng** một DID máy chủ vừa trả về hợp lệ, rồi màn hình
+ * kết luận "máy không còn nhớ tài khoản nào" và bảo người dùng gõ tên đăng nhập — tức hỏi
+ * lại đúng thứ máy chủ vừa trả lời xong.
+ */
+const isUsableDid = (did: string): boolean => isCanonicalPhoenixDid(did);
 // Registry {username, did} app lưu lúc đăng ký (SignUpBiometricScreen) — dùng để
 // TỰ tìm lại DID trên CÙNG máy, khôi phục chỉ bằng 24 từ (không cần gõ DID).
 const PHOENIX_USERS_KEY = '@phoenixkey/users';
@@ -282,7 +308,7 @@ const RestoreIdentityScreen = () => {
       }
     }
 
-    const uniqueDids = [...new Set(candidates.filter(d => DID_RE.test(d)))];
+    const uniqueDids = [...new Set(candidates.filter(isUsableDid))];
 
     // ── NGUỒN DID THỨ TƯ: HỎI MÁY CHỦ THEO CHÍNH KHOÁ TRONG CHIP ──────────────
     // Ba nguồn trên đều hỏi CÁI MÁY. Hai nguồn đầu đọc AsyncStorage — xoá app là
@@ -309,6 +335,11 @@ const RestoreIdentityScreen = () => {
     // Lỗi thì NUỐT có chủ ý, và đây là ca đệm hợp lệ: 404 nghĩa là khoá này chưa
     // thuộc danh tính nào, mà đó chính là ca đường `enrollKeypair` bên dưới cứu
     // được. Dừng ở đây là cắt mất một lối ra vẫn còn tốt. Lý do thô vào `console`.
+    // Lượt tra theo khoá có HỎNG không, và hỏng kiểu gì. `null` = chưa từng chạy (ba nguồn
+    // rẻ đã có DID, hoặc chip trống) — khác hẳn "chạy rồi mà không ra".
+    let lookupLane: DeviceKeyLookupFailure | null = null;
+    let lookupRef = '';
+
     if (uniqueDids.length === 0) {
       try {
         if (await isKeypairEnrolled()) {
@@ -316,14 +347,37 @@ const RestoreIdentityScreen = () => {
             'Tìm lại danh tính',
             'Xác thực để hỏi máy chủ khoá trên máy này thuộc tài khoản nào',
           );
-          if (DID_RE.test(didFromDeviceKey)) uniqueDids.push(didFromDeviceKey);
+          if (isUsableDid(didFromDeviceKey)) {
+            uniqueDids.push(didFromDeviceKey);
+          } else {
+            // KHÔNG bỏ im lặng. Máy chủ vừa trả một DID mà bộ lọc của app không nhận —
+            // đó là lệch khuôn giữa hai nhà, không phải "máy không nhớ tài khoản nào", và
+            // hai thứ đó dẫn người dùng đi hai hướng khác hẳn.
+            lookupLane = 'unknown';
+            lookupRef = describeDeviceKeyLookupError(
+              new Error(`DID máy chủ trả về không qua được bộ lọc của ứng dụng: ${didFromDeviceKey}`),
+            );
+          }
         }
       } catch (err) {
         console.log('[Restore] lookupDidByDeviceKey lỗi:', err);
+        lookupLane = classifyDeviceKeyLookupFailure(err);
+        lookupRef = describeDeviceKeyLookupError(err);
       }
     }
 
     if (uniqueDids.length === 0) {
+      // Lượt tra hỏng vì một lý do KHÔNG phải "khoá chưa thuộc ai" thì câu dưới đây nói sai
+      // chuyện: nó bảo người dùng gõ tên đăng nhập, trong khi thứ vừa hỏng không liên quan
+      // gì tới tên. Ca đó đưa sang đúng câu của làn nó thuộc về.
+      if (lookupLane && lookupLane !== 'key_not_linked') {
+        showWarning(
+          t(DEVICE_KEY_LANE_TITLE[lookupLane]),
+          t(DEVICE_KEY_LOOKUP_MESSAGE[lookupLane]) +
+            (LANES_NEEDING_REFERENCE.has(lookupLane) ? '\n\n' + lookupRef : ''),
+        );
+        return;
+      }
       showWarning(
         t('Chưa biết đây là tài khoản nào'),
         (bangCumTu
@@ -671,7 +725,14 @@ const RestoreIdentityScreen = () => {
       // sang 24 từ. Một câu "có lỗi xảy ra" cho cả ba là đẩy hai nhóm đi sai
       // đường — và đẩy đúng nhóm đang kẹt nhất vào vòng bấm lại vô tận.
       const failure = classifyDeviceKeyLookupFailure(e);
-      showWarning(t(DEVICE_KEY_LANE_TITLE[failure]), t(DEVICE_KEY_LOOKUP_MESSAGE[failure]));
+      showWarning(
+        t(DEVICE_KEY_LANE_TITLE[failure]),
+        t(DEVICE_KEY_LOOKUP_MESSAGE[failure]) +
+          // Hai làn này là hai làn ứng dụng KHÔNG biết chuyện gì xảy ra, và cũng đúng hai
+          // làn mời người dùng gửi ảnh màn hình về. Câu mời đó là một hợp đồng đo: ảnh
+          // phải mang theo thứ đọc ngược được, không thì nó chỉ là một vòng lặp lịch sự.
+          (LANES_NEEDING_REFERENCE.has(failure) ? '\n\n' + describeDeviceKeyLookupError(e) : ''),
+      );
     } finally {
       setLoading(false);
     }

@@ -927,15 +927,20 @@ export const CHIP_KEY_EXISTS_MESSAGE =
  * vào. Ở đây chỉ có ĐÚNG MỘT lời gọi (`lookupDidByDeviceKey`) nên lỗi của nó đọc
  * thẳng được, không phải đối chiếu với ai.
  *
- * Ba ca KHÔNG được gộp, vì việc người dùng phải làm tiếp trái ngược nhau:
+ * Các ca KHÔNG được gộp, vì việc người dùng phải làm tiếp trái ngược nhau:
  *  · `biometric_not_done` — làm lại ngay tại chỗ là xong;
  *  · `network_down`       — đợi sóng rồi bấm lại, máy không mất gì;
- *  · `key_not_linked`     — bấm lại bao nhiêu lần cũng thế, phải đổi sang 24 từ.
- * Một câu "có lỗi xảy ra" cho cả ba là đẩy hai nhóm đi sai đường.
+ *  · `key_not_linked`     — bấm lại bao nhiêu lần cũng thế, phải đổi sang 24 từ;
+ *  · `key_unusable`       — khoá CÒN trên máy nhưng chip từ chối dùng nó; cũng phải đổi
+ *                           sang 24 từ, nhưng vì lý do khác hẳn và câu phải nói đúng lý do
+ *                           đó, không thì người dùng đi kiểm tra tài khoản thay vì đi lấy
+ *                           cụm từ. Xem khối vì-sao ở `E_KEY_INVALIDATED`.
+ * Một câu "có lỗi xảy ra" cho cả bốn là đẩy ba nhóm đi sai đường.
  */
 export type DeviceKeyLookupFailure =
   | 'biometric_not_done'
   | 'key_not_linked'
+  | 'key_unusable'
   | 'network_down'
   | 'unknown';
 
@@ -953,6 +958,25 @@ export const classifyDeviceKeyLookupFailure = (err: unknown): DeviceKeyLookupFai
     return 'biometric_not_done';
   }
   if (code === PhoenixKeyNativeError.BIOMETRIC_LOCKOUT || code === 'BIOMETRIC_LOCKOUT') {
+    return 'biometric_not_done';
+  }
+
+  // Chip nhận ra khoá nhưng TỪ CHỐI dùng nó. Bốn mã, một lối ra.
+  //
+  // Trước bản này cả bốn rơi xuống `unknown`, và `unknown` bảo người dùng "thử lại một
+  // lần" — lời khuyên sai với đúng nhóm này: khoá đã bị vô hiệu hoá thì bấm bao nhiêu lần
+  // cũng thế. Nhóm đó cũng chính là nhóm màn hình mời bấm nhiều nhất, vì `hasKey` trả
+  // `true` nên thẻ "Khoá của bạn vẫn nằm trong máy này" vẫn dựng.
+  if (
+    code === PhoenixKeyNativeError.KEY_INVALIDATED ||
+    code === PhoenixKeyNativeError.SIGN_AFTER_AUTH ||
+    code === PhoenixKeyNativeError.NO_KEY ||
+    code === PhoenixKeyNativeError.KEYSTORE
+  ) {
+    return 'key_unusable';
+  }
+  // Kho khoá chưa mở là ca DUY NHẤT trong họ này mà thử lại có ích — đừng gộp lên trên.
+  if (code === PhoenixKeyNativeError.KEY_LOCKED) {
     return 'biometric_not_done';
   }
 
@@ -981,8 +1005,61 @@ export const DEVICE_KEY_LOOKUP_MESSAGE: Record<DeviceKeyLookupFailure, string> =
     'Máy chủ chưa thấy khoá trên máy này thuộc về tài khoản nào: khoá có thể chưa đăng ký xong lần trước, hoặc đã bị thu hồi sau một lần khôi phục ở nơi khác. Bấm lại cũng ra đúng kết quả này — hãy dùng cụm 24 từ ở phần dưới màn hình.',
   network_down:
     'Chưa liên lạc được với máy chủ danh tính. Kiểm tra sóng rồi bấm lại — khoá trên máy vẫn còn nguyên, không mất gì.',
+  // Câu này KHÔNG được dừng ở "dùng 24 từ đi". Nhóm rơi vào đây gồm cả người KHÔNG
+  // giữ 24 từ, và với họ cả bốn cửa của màn đều đóng: hai lối ký bằng khoá trên máy
+  // đều chết cùng một lý do, còn tạo tài khoản mới thì `enrollKeypair` ném
+  // `E_KEY_EXISTS` vì khoá chết vẫn chiếm chỗ. Chỉ nói lối 24 từ là mời đúng nhóm
+  // kẹt nhất đi vào một cửa họ không mở được, rồi để họ tự kết luận là mình làm sai.
+  key_unusable:
+    'Khoá vẫn nằm trong máy nhưng chip từ chối dùng nó — hay gặp nhất là khi bạn đã thêm hoặc đăng ký lại vân tay / khuôn mặt sau ngày tạo tài khoản: khoá cũ bị khoá vĩnh viễn ngay lúc đó, để người khác thêm sinh trắc của họ vào máy bạn cũng không mở được. Bấm lại bao nhiêu lần cũng ra đúng kết quả này. Nếu bạn CÓ giữ cụm 24 từ thì dùng nó ở phần dưới màn hình. Nếu KHÔNG giữ thì trên máy này chưa có lối nào khác — chụp màn hình này, gồm cả dòng mã bên dưới, rồi gửi hỗ trợ; dòng đó nói được chính xác chip đang từ chối vì lý do gì.',
   unknown:
     'Chưa tìm lại được danh tính từ khoá trên máy, chưa rõ vì sao. Thử lại một lần; nếu vẫn vậy, dùng cụm 24 từ ở phần dưới hoặc chụp màn hình này gửi hỗ trợ.',
+};
+
+/**
+ * Dòng SỐ ĐO đính kèm câu báo lỗi — thứ biến một ảnh chụp màn hình thành một phép đo.
+ *
+ * ══ Vì sao hàm này tồn tại ════════════════════════════════════════════════════════
+ * Câu của làn `unknown` bảo người dùng *"chụp màn hình này gửi hỗ trợ"*. Trước bản này màn
+ * hình đó **không mang một dữ kiện nào**: cùng một bức ảnh cho một lần mất sóng lạ, một mã
+ * HTTP 500, một khoá bị chip từ chối và một DID sai khuôn. Người dùng làm đúng y lời, gửi
+ * ảnh về, và phía nhận vẫn không kết luận được gì — cả hai phía đều tin là đã đo.
+ *
+ * Một câu "gửi ảnh màn hình" là một HỢP ĐỒNG ĐO. Viết nó ra thì màn hình phải mang theo thứ
+ * đọc ngược được, nếu không nó chỉ là một vòng lặp có chữ lịch sự.
+ *
+ * ══ Vì sao KHÔNG dán nguyên lỗi vào ═══════════════════════════════════════════════
+ * Lỗi thô mang theo đường dẫn nội bộ, tên bảng, và — ở đúng luồng này — khoá công khai cùng
+ * chữ ký. Một lần rò khoá ra ngoài theo traceback của thư viện ngoài đã xảy ra thật trong hệ.
+ * Nên chỉ ba trường được đi ra, và phần chữ tự do bị CẮT ngắn rồi lọc:
+ *   · mã lỗi native (`E_…`) hoặc `HTTP <mã>` — chuỗi đóng, do chính kho này đặt;
+ *   · mã nghiệp vụ của máy chủ (số);
+ *   · 90 ký tự đầu của câu, đã bỏ mọi chuỗi hex dài ≥16 và mọi thứ trông như đường dẫn.
+ *
+ * Hàm THUẦN, không đọc chip, không gọi mạng — bài kiểm ghim được từng ca.
+ */
+export const describeDeviceKeyLookupError = (err: unknown): string => {
+  const parts: string[] = [];
+
+  if (err instanceof PhoenixKeyApiError) {
+    parts.push(err.httpStatus === 0 ? 'HTTP none' : `HTTP ${err.httpStatus}`);
+    if (Number.isFinite(err.code)) parts.push(`mã ${err.code}`);
+  } else {
+    const code = (err as { code?: unknown })?.code;
+    parts.push(typeof code === 'string' && code ? code : 'không có mã');
+  }
+
+  const raw = String((err as { message?: string })?.message ?? '');
+  const scrubbed = raw
+    // Hex dài = khoá công khai, chữ ký, nonce, DID. Không có ca nào cần chúng để phân loại.
+    .replace(/\b[0-9a-fA-F]{16,}\b/g, '…')
+    // Đường dẫn tệp — cả POSIX lẫn lược đồ. Lộ bố cục máy, không giúp gì người đọc.
+    .replace(/(?:[a-z]+:)?\/\/?\S+/gi, '…')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (scrubbed) parts.push(scrubbed.slice(0, 90));
+
+  return `Mã tham chiếu: ${parts.join(' · ')}`;
 };
 
 /**

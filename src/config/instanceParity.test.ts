@@ -123,8 +123,10 @@ describe('bất biến: app KHÔNG được lặng lẽ mất module nó đã kh
         expect(routes).toEqual(full);
       } else {
         // Vế 3 — mảng thì phải là tập con THẬT, và mọi id phải có thật trong registry.
-        // ⚠ Hôm nay KHÔNG app nào đi vào nhánh này (cả hai khai `'all'`), nên nhánh
-        // này chưa phân biệt được hai bên đột biến. Ghi ra thay vì tính nó là đã ghim.
+        // ⚠ Chú thích cũ ở đây ghi "hôm nay KHÔNG app nào đi vào nhánh này (cả hai
+        // khai `'all'`)". Từ 19/09/2026 điều đó ngược lại: CẢ HAI app khai mảng
+        // (Aladin `['chat','work','join']`, CheckFarm `['trace','join']`), nên nhánh
+        // này nay là nhánh chạy, còn nhánh `'all'` ở trên mới là nhánh không ai đi.
         for (const m of taken) expect(MODULE_IDS).toContain(m);
         expect(taken.length).toBeLessThanOrEqual(MODULE_IDS.length);
         for (const r of routes) expect(full).toContain(r);
@@ -137,7 +139,24 @@ describe('bất biến: app KHÔNG được lặng lẽ mất module nó đã kh
   // thành danh sách âm — từ lần đó module thứ năm không vào, và không ai khai gì.
   it("`'all'` phải Ở LẠI dạng `'all'` — không được nở thành mảng tường minh", () => {
     const declared = ids.map(id => INSTANCES[id].modules);
-    expect(declared).toContain('all');
+    const soAppKhaiAll = declared.filter(m => m === 'all').length;
+
+    // ⚠️ Bản cũ mở đầu bằng `expect(declared).toContain('all')`. Câu đó là một
+    // TIỀN ĐỀ, không phải điều đang canh — và từ 19/09/2026 nó hết đúng, nên bài
+    // đỏ vì tiền đề chứ không vì bất biến bị phá.
+    //
+    // KHÔNG hạ nó xuống rồi để bài lặng lẽ xanh trên tập rỗng: một phép đo chạy
+    // qua 0 mục và in màu xanh là phép đo nói "tôi không biết" bằng giọng "ổn"
+    // (`Forall §Cổng gác`). Nên bài KHAI phạm vi của chính nó:
+    //   · còn app khai `'all'` ⟹ canh như cũ, cả ở TS lẫn ở JSON
+    //   · không app nào khai ⟹ nói thẳng ra là đang canh 0 mục
+    if (soAppKhaiAll === 0) {
+      // Không có gì để canh hôm nay. Ghi lại để lần đọc sau không tưởng bất biến
+      // này đang được ghim: ngày ai đó khai lại `'all'`, nhánh trên tự sống lại.
+      expect(declared.every(m => Array.isArray(m))).toBe(true);
+      return;
+    }
+
     for (const id of ids) {
       const raw = INSTANCES[id].modules;
       if (Array.isArray(raw)) continue;

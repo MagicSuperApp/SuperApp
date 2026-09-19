@@ -213,12 +213,34 @@ export ANDROID_SDK_ROOT="$SDK"
 export PATH="$JAVA_HOME/bin:$PATH"
 
 case "$MUC_TIEU" in
-  aladin-aab)     LENH="bundleAladinRelease";   RA="android/app/build/outputs/bundle/aladinRelease/app-aladin-release.aab" ;;
-  aladin-apk)     LENH="assembleAladinDebug";   RA="android/app/build/outputs/apk/aladin/debug/app-aladin-debug.apk" ;;
-  checkfarm-aab)  LENH="bundleCheckfarmRelease";RA="android/app/build/outputs/bundle/checkfarmRelease/app-checkfarm-release.aab" ;;
-  checkfarm-apk)  LENH="assembleCheckfarmDebug";RA="android/app/build/outputs/apk/checkfarm/debug/app-checkfarm-debug.apk" ;;
+  aladin-aab)     APP="aladin";    LENH="bundleAladinRelease";   RA="android/app/build/outputs/bundle/aladinRelease/app-aladin-release.aab" ;;
+  aladin-apk)     APP="aladin";    LENH="assembleAladinDebug";   RA="android/app/build/outputs/apk/aladin/debug/app-aladin-debug.apk" ;;
+  checkfarm-aab)  APP="checkfarm"; LENH="bundleCheckfarmRelease";RA="android/app/build/outputs/bundle/checkfarmRelease/app-checkfarm-release.aab" ;;
+  checkfarm-apk)  APP="checkfarm"; LENH="assembleCheckfarmDebug";RA="android/app/build/outputs/apk/checkfarm/debug/app-checkfarm-debug.apk" ;;
   *) echo "⛔ --dung cần một trong: aladin-aab · aladin-apk · checkfarm-aab · checkfarm-apk"; exit 1 ;;
 esac
+
+# ── APP_INSTANCE — tầng JS, và nó KHÔNG đi theo flavor gradle ────────────────
+#
+# Flavor chỉ đặt `applicationId` + `app_name` (`build.gradle` mục "HAI APP TỪ MỘT
+# NỀN MÃ"). Tập module, thứ tự ô, chủ đề màu thì do `APP_INSTANCE` quyết ở tầng
+# JS, và babel nội suy biến đó lúc đóng gói.
+#
+# Trước dòng này script KHÔNG đặt nó, nên `bundleCheckfarmRelease` và
+# `bundleAladinRelease` cho ra **cùng một bundle JS** — đo 19/09/2026, hai tệp
+# `index.android.bundle` trùng `md5` `bdd7534ac4d4445f468f3fa7f22ac0cf`. Hai
+# instance khai tập module khác nhau mà bundle giống hệt ⟹ ít nhất một trong hai
+# app đang mang tập module của app kia. Gói vẫn dựng xanh, vẫn đúng mã gói, vẫn
+# đúng tên dưới biểu tượng — không có triệu chứng nào cho tới khi mở app ra.
+#
+# `process.env` THẮNG tệp biến môi trường ở bộ nội suy (`react-native-dotenv`
+# `index.js:96-97` — `dotenvTemporary` gán sau cùng, và `options.safe` không bật
+# ở `babel.config.js`). Nên `export` ở đây là đủ, không cần sinh hay sửa tệp nào.
+#
+# Đường CI không dính lỗi này: `.github/actions/rn-env/action.yml:97,121` nhận
+# `app-instance` làm đầu vào. Đây là đường dựng TAY lệch khỏi bản NGHIÊM đã có.
+export APP_INSTANCE="$APP"
+echo "══ APP_INSTANCE=$APP_INSTANCE (tầng JS — flavor gradle KHÔNG đặt hộ) ══"
 
 # Luôn gọi flavor tường minh. `assembleDebug` trần dựng CẢ HAI app (README:89).
 echo "══ ./gradlew $LENH ══"

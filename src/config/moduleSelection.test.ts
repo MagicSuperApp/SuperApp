@@ -53,15 +53,30 @@ describe('lời khai `modules` của từng app', () => {
 // 2. `'all'` phải THẬT SỰ là cả sổ — đây là bài canh ca "quên khai"
 // ---------------------------------------------------------------------------
 describe('`all` nghĩa là cả sổ, kể cả module thêm sau', () => {
-  it('app khai `all` nhận đúng `ALL_MODULES`, không phải một ảnh chụp', () => {
+  /**
+   * ⚠️ Bài này TỪNG đi qua các app đang có và đòi ít nhất một app khai `'all'`.
+   * Từ 19/09/2026 **không app nào khai `'all'`** nữa (Aladin tạm bỏ `trace`
+   * theo chốt của chủ dự án), nên bản cũ đỏ vì **tiền đề** của nó hết đúng, chứ
+   * không phải vì `resolveModules` hỏng.
+   *
+   * Sửa theo hướng bỏ chỗ dựa vào các app đang có, không theo hướng hạ ngưỡng:
+   * điều cần canh là **hành vi của `resolveModules`**, và nó phải canh được kể
+   * cả trong quãng không app nào dùng `'all'`. Buộc bài vào danh sách app đang
+   * có là buộc một bất biến vào một ảnh chụp — đúng thứ chính bài này ra đời để
+   * chặn.
+   */
+  it('`\'all\'` nở ra ĐÚNG `ALL_MODULES`, không phải một ảnh chụp', () => {
     // Nếu ai đó "tối ưu" `resolveModules` thành một mảng viết cứng, bài này đỏ
-    // ngay lần thêm module thứ năm. Đó chính là ca mà lệnh cấm đời v1 sinh ra
-    // để chặn, và nay nó được chặn bằng phép đo thay vì bằng lệnh cấm.
-    const allApps = ids.filter((id) => INSTANCES[id].modules === 'all');
-    expect(allApps.length).toBeGreaterThan(0);
-    allApps.forEach((id) => {
-      expect(resolveModules(INSTANCES[id]).sort()).toEqual([...ALL_MODULES].sort());
-    });
+    // ngay lần thêm module thứ năm.
+    const mau = { ...INSTANCES[ids[0]], modules: 'all' as const };
+    expect(resolveModules(mau).sort()).toEqual([...ALL_MODULES].sort());
+  });
+
+  it('ca đối chứng — một app khai DANH SÁCH thì nhận đúng danh sách đó', () => {
+    // Không có ca này thì bài trên xanh y hệt khi `resolveModules` trả
+    // `ALL_MODULES` cho MỌI đầu vào, tức bỏ qua `modules` hoàn toàn.
+    const mau = { ...INSTANCES[ids[0]], modules: ['join'] as const };
+    expect(resolveModules(mau as never)).toEqual(['join']);
   });
 
   it('`resolveModules` trả BẢN SAO — sửa kết quả không sửa được sổ gốc', () => {

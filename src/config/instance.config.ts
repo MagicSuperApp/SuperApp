@@ -509,7 +509,9 @@ export const ALADIN_INSTANCE: InstanceConfig = {
     // VẼ do resolver quyết — giữ hai thứ đó tách nhau là chủ ý của SG9 §2.
     { kind: 'host', route: 'PhoenixWallet' },
     { kind: 'module', moduleId: 'chat' },
-    { kind: 'module', moduleId: 'trace' },
+    // `trace` gỡ khỏi đây 19/09/2026 cùng lượt gỡ khỏi `modules`. Để lại một ô
+    // trỏ vào module đã tắt thì `instanceParity` đỏ — và nó đỏ ĐÚNG: ô ấy vẫn
+    // chiếm chỗ trong phép xếp thứ tự mà không bao giờ vẽ được.
     { kind: 'host', route: 'Home' },
     { kind: 'module', moduleId: 'work' },
     { kind: 'module', moduleId: 'join' },
@@ -526,17 +528,32 @@ export const ALADIN_INSTANCE: InstanceConfig = {
   // Aladin xếp nó sau Việc làm và trước Góp máy: người mở Aladin đến vì việc,
   // nhưng nhắn tin là thứ họ dùng hằng ngày hơn góp máy.
   slotPriority: {
-    default: ['WorkHome', 'ChatHome', 'JoinHome', 'Farms'],
-    shipper: ['WorkHome', 'ChatHome', 'JoinHome', 'Farms'],
+    default: ['WorkHome', 'ChatHome', 'JoinHome'],
+    shipper: ['WorkHome', 'ChatHome', 'JoinHome'],
   },
   // `brandName` lấy từ chính `displayName` — trước đợt này theme mặc định trả
   // `'OriLife'`, tức app tên Aladin mà mọi chỗ hỏi tên thương hiệu đều nhận về
   // tên một NỀN TẢNG khác. OriLife là nền nhận diện, không phải tên app.
   themeConfig: { ...DEFAULT_THEME_CONFIG, brandName: 'Aladin' },
   adaptive: DEFAULT_ADAPTIVE_CONFIG,
-  // App lõi: mọi module, kể cả module thêm sau. Đây là app do bên vận hành nền
-  // tảng phát hành, nên nó phải là chỗ module mới chạy thật đầu tiên.
-  modules: 'all',
+  // ── TẠM THỜI bỏ `trace` — chủ dự án chốt 19/09/2026 ───────────────────────
+  //
+  // Aladin còn Việc làm · Trò chuyện · Góp máy, cộng ô Ví ở `anchorLeft` (Ví
+  // KHÔNG phải một module, nên nó không chịu phép lọc này).
+  //
+  // Vì sao viết ra danh sách thay vì `'all'`: `'all'` là một lời khai về CHÍNH
+  // SÁCH ("app lõi chạy mọi module"), còn bây giờ chính sách đã khác. Giữ `'all'`
+  // rồi chặn `trace` ở chỗ khác sẽ để lại hai nguồn cho cùng một sự thật, và
+  // nguồn thứ hai sẽ trôi.
+  //
+  // ⚠️ `'all'` có một tính chất mà danh sách KHÔNG có, và mất nó là cái giá phải
+  // trả có chủ ý: module thêm sau này **tự động** vào `'all'`, còn danh sách thì
+  // không — thêm một module mới mà quên tên nó ở đây thì Aladin lặng lẽ không có
+  // nó. Ngày `trace` quay lại, đổi dòng này về `'all'` là đủ.
+  //
+  // Chữ "TẠM THỜI" là nguyên văn của chủ dự án, giữ lại để lần đọc sau biết đây
+  // là một lượt tắt chứ không phải một quyết định về phạm vi sản phẩm.
+  modules: ['chat', 'work', 'join'],
 };
 
 // ===========================================================================

@@ -27,6 +27,8 @@ import type { ImageSourcePropType } from 'react-native';
 
 import { TRACE_THEME, CHAT_THEME, WORK_THEME } from '../theme';
 import type { NewsItem } from '../services/agriNewsService';
+import type { ModuleId } from '../navigation/moduleIds';
+import { ENABLED_MODULES } from '../config/instance.config';
 
 /**
  * Ảnh của từng tấm.
@@ -56,6 +58,16 @@ export interface TamBang {
   id: string;
   /** Tên module, in nhỏ phía trên tiêu đề: "Truy xuất" · "Trò chuyện" · … */
   module: string;
+  /**
+   * Module SỞ HỮU tấm này — khoá để lọc theo lời khai `modules` của app.
+   *
+   * Khai riêng chứ KHÔNG suy từ `route`, và đó là phần bắt buộc: tấm Truy xuất
+   * khi có tin thì bỏ `route` và đi bằng `link` ra báo ngoài. Lọc theo `route`
+   * thì đúng tấm ấy không có khoá để lọc, và một phép lọc trả kết quả hợp lệ
+   * cho đúng thứ nó không đo được thì nó nói "đạt" bằng giọng của "tôi không
+   * biết".
+   */
+  moduleId: ModuleId;
   title: string;
   sub: string;
 /** Dòng chữ nhỏ dưới cùng — tên báo, ở tấm tin. */
@@ -106,10 +118,22 @@ const TRUY_XUAT_TINH = {
  * tuổi tin thì không phải luồn một đồng hồ qua ba tầng lần nữa.
  */
 export function dungBang(tin: NewsItem | null, _now = Date.now()): TamBang[] {
+  return allBanners(tin).filter(b => ENABLED_MODULES.includes(b.moduleId));
+}
+
+/**
+ * Ba tấm ĐẦY ĐỦ, chưa lọc theo app đang dựng.
+ *
+ * Tách ra để bài kiểm so được HAI CỰC: tập đầy đủ, và tập sau lọc. Một bài chỉ
+ * đọc `dungBang()` thì không phân biệt được "đã lọc đúng" với "vốn chỉ có ngần
+ * ấy tấm" — nó xanh ở cả hai cực, tức nó không kiểm gì.
+ */
+export function allBanners(tin: NewsItem | null): TamBang[] {
   return [
     {
       id: 'b1',
       module: TRACE_THEME.name,
+      moduleId: 'trace',
       title: tin ? tin.title : TRUY_XUAT_TINH.title,
       /**
        * CÓ TIN thì tấm này KHÔNG mang dòng tóm tắt.
@@ -144,6 +168,7 @@ export function dungBang(tin: NewsItem | null, _now = Date.now()): TamBang[] {
     {
       id: 'b2',
       module: CHAT_THEME.name,
+      moduleId: 'chat',
       title: 'Tính năng Trò chuyện sắp ra mắt',
       // Chữ giữ NGUYÊN văn bản của băng cũ. Tấm này đổi bố cục, không đổi điều
       // nó hứa: mọi câu ở đây đều phải là thứ tính năng đang làm được thật.
@@ -159,6 +184,7 @@ export function dungBang(tin: NewsItem | null, _now = Date.now()): TamBang[] {
     {
       id: 'b3',
       module: WORK_THEME.name,
+      moduleId: 'work',
       title: 'Tìm việc · Đặt thợ mọi lĩnh vực',
       sub: 'Hợp đồng số · Ký quỹ blockchain',
       color: WORK_THEME.primary,

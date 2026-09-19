@@ -285,13 +285,36 @@ describe('Lớp Trợ lý — theo docs/AI_ASSISTANT_UI-UX.md', () => {
     expect(LAYER).toMatch(/RichText/);
   });
 
-  it('KHÔNG có hàng nút gợi ý — màn chào thay cho nó', () => {
-    // Đây là một super app: mấy chục tính năng, và bốn cái nút chọn sẵn thì vừa
-    // không đại diện cho cái gì, vừa khiến người dùng tưởng trợ lý CHỈ làm được
-    // bốn việc đó.
-    expect(LAYER).not.toMatch(/SUGGEST_IDS/);
-    expect(LAYER).not.toMatch(/chipText/);
+  /**
+   * ⚠️ ĐÃ ĐẢO 2026-09-19. Bài cũ đòi KHÔNG có hàng nút gợi ý, lý lẽ: *"bốn cái
+   * nút chọn sẵn vừa không đại diện cho cái gì, vừa khiến người dùng tưởng trợ
+   * lý CHỈ làm được bốn việc đó."* Chủ sở hữu bác, bằng một phép thử cụ thể hơn:
+   * *"Một bà cụ 70t mới dùng app sao biết được app có giúp được gì cho họ?"*
+   *
+   * Và bài cũ có một lỗ đáng ghi lại, vì nó là lỗ của cả một HỌ bài kiểm: nó cấm
+   * đúng HAI CÁI TÊN (`SUGGEST_IDS`, `chipText`). Hàng nút mới đặt tên
+   * `inviteChip`/`inviteText` đi qua nó mà không một dòng nào đỏ — bài tự khai
+   * là canh một khái niệm, thật ra chỉ canh một chuỗi ký tự. Bản mới dưới đây
+   * neo vào thứ đổi tên không thoát được: lời gọi `buildOpeningLine` và việc
+   * duyệt chính `opening.invitations`.
+   */
+  it('CÓ hàng việc mời làm, và nó KHÔNG phải một bảng cố định', () => {
+    expect(LAYER).toMatch(/buildOpeningLine\(/);
+    expect(LAYER).toMatch(/opening\.invitations\.map\(/);
+    // Vẫn chỉ hiện khi chưa hỏi gì — hỏi rồi mà còn thì nó chắn câu trả lời.
     expect(LAYER).toMatch(/\{chuaHoi && /);
+    // Phần ĐÚNG của lý lẽ cũ được giữ: bộ nút phải xoay, không đóng băng bốn
+    // việc. `seed` là thứ làm nó xoay; mất `seed` là quay về đúng cái đã bị bác.
+    expect(LAYER).toMatch(/seed:/);
+  });
+
+  it('nút mời phải BẤM ĐƯỢC — không nằm trong khối trong suốt với cú chạm', () => {
+    // Khối chào cũ đặt `pointerEvents="none"` cho CẢ cụm. Giữ nguyên thế mà thêm
+    // nút vào trong thì nút vẽ ra nhưng không ăn cú chạm nào — một hàng nút chết,
+    // đúng thứ tệ nhất có thể đặt ở câu chào đầu tiên.
+    const row = LAYER.match(/opening\.invitations\.map\([\s\S]{0,600}?\)\)\}/)![0];
+    expect(row).toMatch(/onPress=\{\(\) => ask\(/);
+    expect(row).not.toMatch(/pointerEvents="none"/);
   });
 
   it('màn chào nói rõ TRỢ LÝ LÀ AI: tên, vai trò, rồi lời chào', () => {
@@ -302,7 +325,7 @@ describe('Lớp Trợ lý — theo docs/AI_ASSISTANT_UI-UX.md', () => {
     // viết, tức nó thôi ghim đúng cái vừa được quyết.
     expect(LAYER).toMatch(/const GENIE_NAME = 'Genie';/);
     expect(LAYER).toMatch(/const GENIE_TAGLINE = 'Trợ lý thông minh';/);
-    expect(LAYER).toMatch(/const cauChao = \(\) =>/);
+    expect(LAYER).toMatch(/\{opening\.greeting\}/);
     // Tên phải ĐỌC RA LÀ MỘT CÁI TÊN, không lẫn vào chữ thường quanh nó.
     const brand = LAYER.match(/\bbrand: \{[^}]*\}/s)![0];
     expect(Number(brand.match(/fontSize: (\d+)/)![1])).toBeGreaterThanOrEqual(28);
@@ -322,7 +345,15 @@ describe('Lớp Trợ lý — theo docs/AI_ASSISTANT_UI-UX.md', () => {
   });
 
   it('màn chào KHÔNG được nuốt cú chạm của hộp tin bên dưới', () => {
-    expect(LAYER).toMatch(/style=\{styles\.intro\} pointerEvents="none"/);
+    // ⚠️ Đổi hình dạng 2026-09-19, KHÔNG đổi ràng buộc. Trước đây cả khối `intro`
+    // mang `pointerEvents="none"`; nay hàng nút mời nằm trong khối ấy và phải ăn
+    // được cú chạm, nên chỉ phần CHỮ mới trong suốt.
+    //
+    // Ràng buộc gốc vẫn nguyên: khối chào phủ lên hộp tin, nên phần không phải
+    // nút thì không được chặn thao tác cuộn ở ngay dưới.
+    expect(LAYER).toMatch(/<View pointerEvents="none">\s*\n\s*<Text style=\{styles\.brand\}>/);
+    // Và cụm ngoài KHÔNG còn được để `none` — để thế là hàng nút chết trở lại.
+    expect(LAYER).not.toMatch(/style=\{styles\.intro\} pointerEvents="none"/);
   });
 
   it('lời chào nằm trong ĐÚNG bong bóng mà trợ lý vẫn dùng', () => {
@@ -337,22 +368,47 @@ describe('Lớp Trợ lý — theo docs/AI_ASSISTANT_UI-UX.md', () => {
     expect(LAYER).not.toMatch(/pushMessage\([^)]*GREETING/);
   });
 
-  it('lời chào dùng {brand}, KHÔNG viết cứng tên một app', () => {
+  it('màn chào dùng {brand}, KHÔNG viết cứng tên một app', () => {
     // `i18n/translate.ts` thay chỗ này bằng tên app đang chạy. Viết cứng thì bản
     // CheckFarm chào người dùng bằng tên một app khác — đúng lỗi 15 chuỗi xin
     // quyền đã mắc, và là lý do chỗ thay này tồn tại.
-    const m = LAYER.match(/const cauChao = \(\) =>([\s\S]*?);\n/);
-    expect(m).not.toBeNull();
-    const cau = m![1];
-    expect(cau).toMatch(/\{brand\}/);
-    expect(cau).not.toMatch(/Aladin|CheckFarm/);
-    // Lời gọi `t()` phải nằm TRÊN CHÍNH DÒNG có `{brand}` — xem
-    // `i18n/brandSlot.test.ts`: `autoText.tsx` bỏ qua `t()` ở tiếng Việt, nên một
-    // chuỗi `{brand}` không đi qua `t()` hiện nguyên dấu ngoặc nhọn lên màn.
-    const dong = cau.split('\n').find((l) => l.includes('{brand}'))!;
-    expect(dong).toMatch(/\bt\(/);
-    // Và gọi lúc VẼ, không phải lúc nạp module — đổi ngôn ngữ thì câu phải đổi.
-    expect(LAYER).toMatch(/\{cauChao\(\)\}/);
+    //
+    // ⚠️ Chỗ mang `{brand}` đã DỜI 2026-09-19: câu chào cũ mang tên app ở giữa
+    // câu; câu mới do `buildOpeningLine` lắp, mà hàm đó là hàm THUẦN và không
+    // được gọi `t()`. Nên tên app nay là một dòng riêng, chỉ hiện với người mới.
+    // Ràng buộc không đổi một li: app này không được chào bằng tên app khác.
+    const dong = LAYER.split('\n').filter((l) => l.includes('{brand}'));
+    expect(dong.length).toBeGreaterThan(0);
+    for (const l of dong) {
+      // Lời gọi `t()` phải nằm TRÊN CHÍNH DÒNG có `{brand}` — xem
+      // `i18n/brandSlot.test.ts`: `autoText.tsx` bỏ qua `t()` ở tiếng Việt, nên
+      // chuỗi `{brand}` không đi qua `t()` hiện nguyên dấu ngoặc nhọn lên màn.
+      expect(l).toMatch(/\bt\(/);
+    }
+    expect(LAYER).not.toMatch(/'[^']*\b(Aladin|CheckFarm)\b[^']*'/);
+    // Và câu mở phải gọi lúc VẼ, không đóng băng lúc nạp module.
+    expect(LAYER).toMatch(/\{opening\.greeting\}/);
+  });
+
+  it('hàm lắp câu mở KHÔNG được biết tên app nào — nó là hàm thuần', () => {
+    // Nếu `openingLine.ts` tự nhắc tên app thì nó vừa vòng qua cơ chế `{brand}`,
+    // vừa làm bài trên xanh trong khi bản CheckFarm vẫn chào bằng tên Aladin.
+    const OPENING = fs.readFileSync(
+      path.join(__dirname, 'genie', 'openingLine.ts'),
+      'utf8',
+    );
+    // Đo trên CHUỖI, không đo trên cả tệp: chú thích ở đó nhắc tên hai app là
+    // đúng việc của nó (nó giải thích vì sao phép lọc module đủ để phân biệt hai
+    // bản). Bản đầu của bài này cấm cả chú thích, và nó đỏ ngay — cấm rộng hơn
+    // điều cần cấm thì bài sẽ bị NỚI ở lượt sửa sau, và lúc đó mất luôn phần đúng.
+    // Bóc chú thích TRƯỚC khi gom chuỗi. Không bóc thì dấu nháy ngược của
+    // markdown trong chú thích (`{brand}` viết trong một câu giải thích) bị đọc
+    // thành một chuỗi mã — bài đỏ vì đúng cái câu đang giải thích luật, chứ
+    // không vì mã vi phạm luật.
+    const ma = OPENING.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    const chuoi = ma.match(/'[^'\n]*'|`[^`]*`/g) ?? [];
+    expect(chuoi.length).toBeGreaterThan(0);
+    for (const s of chuoi) expect(s).not.toMatch(/Aladin|CheckFarm|\{brand\}/);
   });
 });
 

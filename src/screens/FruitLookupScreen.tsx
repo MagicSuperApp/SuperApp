@@ -209,6 +209,24 @@ const FruitLookupScreen: React.FC = () => {
               {(res?.kind === 'no_fruit_in_photo' && res.message) ||
                 'Chụp lại sao cho quả nằm gọn trong khung và đủ sáng nhé.'}
             </Text>
+            {/* ⚠️ Dòng dưới là THÊM, không phải THAY. Câu của máy chủ vẫn hiện
+                nguyên (`Forall §Cái vỏ im lặng` mục 2) — nhưng ở kho ảnh thật thì
+                câu ấy chỉ sai đường cho nguyên nhân hay gặp nhất, nên để nó đứng
+                một mình là dẫn người dùng vào một vòng không lối ra.
+
+                Số đo 2026-09-19 trên 49 ảnh chụp gần `Downloads/RealDurianFruitGift`
+                (một quả nằm trên cân, không có cây trong khung): 13 ảnh trả
+                `NO_FRUIT_IN_PHOTO` kèm câu "chụp lại GẦN HƠN". Thu nhỏ đúng 13 ảnh
+                đó còn 60% khung — CÙNG số điểm ảnh, chỉ khác khoảng cách — thì 12/13
+                nhận ra được (10 `CHOICES`, 2 `NEED_REGION`). Tức máy cần thấy TRỌN
+                viền quả; quả tràn khung là quả không có viền để mà thấy.
+
+                Chỗ vá tận gốc nằm ở máy chủ OriLife (câu khuyên do nó soạn), đã gửi
+                thư sang nhà OriLifeTrace. Dòng này là phần nhà mình vá được ngay. */}
+            <Text style={s.muted}>
+              Nếu quả đã chiếm kín cả khung ảnh thì lùi ra xa một chút rồi chụp lại:
+              máy cần nhìn thấy trọn viền quả mới nhận ra được.
+            </Text>
           </View>
         )}
 

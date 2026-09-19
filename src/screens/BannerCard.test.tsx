@@ -19,13 +19,13 @@ import { Image, Text } from 'react-native';
 
 import { BannerCard, boCucBang } from './BannerCard';
 import { ScrimWash } from '../shared/components/SoftGradient';
-import { dungBang } from './homeBanners';
+import { allBanners } from './homeBanners';
 
 /** Thẻ trên màn 390 px: 390 − 2×20 lề Trang chủ. */
 const RONG = 350;
 const CAO = 140;
 
-const [TRACE, CHAT, WORK] = dungBang(null, 1_700_000_000_000);
+const [TRACE, CHAT, WORK] = allBanners(null);
 
 const dung = (tam = TRACE) => {
   let cay!: renderer.ReactTestRenderer;
@@ -214,7 +214,7 @@ describe('chữ trên tấm', () => {
   };
 
   it('có tin: tiêu đề + tên báo, KHÔNG tóm tắt', () => {
-    const [tam] = dungBang(tinMau, 1_700_000_000_000);
+    const [tam] = allBanners(tinMau);
     expect(tam.title).toBe(tinMau.title);
     expect(tam.sub).toBe('');
     expect(tam.meta).toBe(tinMau.source);
@@ -228,7 +228,7 @@ describe('chữ trên tấm', () => {
    * không đọc ra một sự nhấn mạnh.
    */
   it('ba tấm dùng CÙNG một cỡ chữ tiêu đề', () => {
-    const [tinTam] = dungBang(tinMau, 1_700_000_000_000);
+    const [tinTam] = allBanners(tinMau);
     const coChu = (tam: typeof tinTam) => {
       const cay = dung(tam);
       const el = cay.root.findAllByType(Text).find(t => t.props.children === tam.title)!;
@@ -249,7 +249,7 @@ describe('chữ trên tấm', () => {
    * dòng hở gần nửa dòng trống. Cả hai đều đã xảy ra.
    */
   it('tiêu đề dùng cỡ chữ cố định, khoảng dòng ở mức BÌNH THƯỜNG', () => {
-    const [tinTam] = dungBang(tinMau, 1_700_000_000_000);
+    const [tinTam] = allBanners(tinMau);
     for (const tam of [tinTam, CHAT]) {
       const cay = dung(tam);
       const el = cay.root.findAllByType(Text).find(t => t.props.children === tam.title)!;
@@ -266,7 +266,7 @@ describe('chữ trên tấm', () => {
   });
 
   it('tấm tin: nhãn module, tiêu đề, rồi TÊN BÁO — không dòng rỗng nào', () => {
-    const [tinTam] = dungBang(tinMau, 1_700_000_000_000);
+    const [tinTam] = allBanners(tinMau);
     const cay = dung(tinTam);
     const chu = cay.root.findAllByType(Text).map(t => t.props.children);
     expect(chu).toEqual([tinTam.module, tinTam.title, tinMau.source]);

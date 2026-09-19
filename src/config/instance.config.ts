@@ -587,11 +587,24 @@ export const CHECKFARM_INSTANCE: InstanceConfig = {
   // ⚠ Ba bản kia là bản DỊCH DỰNG Ở KHO NÀY, không phải chuỗi nhà CheckFarm cấp —
   // khác hẳn `tagline`/`slogan` ở trên. Đã gửi thư sang nhà CheckFarm xin bản
   // chính thức; nhận được thì thay, đừng coi ba dòng này là câu chữ đã chốt.
+  // ── Đổi 2026-09-19: bỏ "Chính xác", thay bằng "Trực quan" ──────────────────
+  //
+  // Chủ dự án chốt, và lý do đáng ghi lại vì nó là một quyết định về thứ app DÁM
+  // HỨA: độ chính xác đang là thứ phải cố hoàn thiện, chưa phải thứ đã đạt. Ba
+  // số đo cùng ngày đứng sau: `NO_FRUIT_IN_PHOTO` trả câu khuyên ngược chiều với
+  // nguyên nhân (13/49 ảnh hỏng, 12/13 hồi phục khi thu nhỏ khung); 0/185 cây
+  // từng mang mức lộ vị-trí người dùng chọn; và việc chia thân/gốc hiện còn dựa
+  // trên một tín hiệu gián tiếp (`treeCaptureParts.ts`).
+  //
+  // Một khẩu hiệu là một khẳng định người khác dùng để quyết định có tin hay
+  // không — nên nó chịu đúng luật `Forall §Kỷ luật phát ngôn`: nhãn chắc phải có
+  // bằng chứng, chưa có thì hạ xuống. "Minh bạch" và "Tiện lợi" thì app làm được
+  // và chứng minh được ngay hôm nay; "Chính xác" thì chưa.
   virtues: {
-    vi: 'Minh bạch - Chính xác - Tiện lợi',
-    en: 'Transparent - Accurate - Convenient',
-    zh: '透明 · 精准 · 便捷',
-    ja: '透明・正確・手軽',
+    vi: 'Minh bạch - Tiện lợi - Trực quan',
+    en: 'Transparent - Convenient - Intuitive',
+    zh: '透明 · 便捷 · 直观',
+    ja: '透明・手軽・直感的',
   },
 
   // ÂM BẢN chính thức của nhà CheckFarm — `Logo/bieu-tuong-app/icon-1024.png`,

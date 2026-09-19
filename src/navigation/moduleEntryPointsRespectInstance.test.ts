@@ -23,6 +23,7 @@ import { MODULES } from '../modules';
 import { INSTANCES, ENABLED_MODULES } from '../config/instance.config';
 import { resolveGateItems } from './resolveGateItems';
 import { tk, allKeys, ONBOARDING_STRINGS } from '../i18n/keys';
+import { dungBang, allBanners } from '../screens/homeBanners';
 
 describe('routeIsReachable — phép hỏi dùng chung, và nó phân biệt được hai cực', () => {
   it('route của module ĐÃ khai thì tới được; route của module KHÔNG khai thì không', () => {
@@ -137,6 +138,70 @@ describe('màn onboarding hứa ĐÚNG những module app đang dựng có', () 
       expect(KHOA_CO_THAT).toContain(`onboarding.${m}.title`);
       expect(KHOA_CO_THAT).toContain(`onboarding.${m}.body`);
     }
+  });
+});
+
+// ── Bề mặt THỨ NĂM: BĂNG TRƯỢT ở đầu màn chính ───────────────────────────────
+//
+// Đo trên máy ảo 19/09/2026, app CheckFarm (khai `['trace','join']`): băng trượt
+// quảng cáo "Tính năng Trò chuyện sắp ra mắt" và "Tìm việc · Đặt thợ mọi lĩnh
+// vực", hai module app đó KHÔNG bật — và bấm vào thì `moBang` gọi thẳng
+// `navigate(tam.route)` không hỏi câu nào.
+//
+// Nó lọt qua cả bốn bài trên vì mỗi bài đếm một DANH MỤC đã biết (`MODULES`,
+// `resolveGateItems`, `ENABLED_MODULES.map`), còn băng thì dựng từ một mảng viết
+// thẳng trong `homeBanners.ts`. Đúng điều dòng đầu tệp này cảnh báo — "ba lối
+// vào, ba tệp, cùng một điều kiện chép tay" — nay là năm.
+//
+// Và nó là bề mặt LỚN NHẤT: nó chiếm trọn bề ngang ngay dưới thanh trên, tự
+// trượt, nên nó là thứ người dùng nhìn trước mọi thứ khác trên màn chính.
+describe('BĂNG TRƯỢT màn chính chỉ mời module app đang dựng có khai', () => {
+  const daKhai = [...ENABLED_MODULES];
+
+  it('mọi tấm còn lại đều thuộc module đã khai', () => {
+    for (const b of dungBang(null)) {
+      expect(daKhai).toContain(b.moduleId);
+    }
+  });
+
+  it('và mọi route của tấm còn lại đều tới được', () => {
+    for (const b of dungBang(null)) {
+      if (b.route) expect(routeIsReachable(b.route, daKhai)).toBe(true);
+    }
+  });
+
+  // VẾ BẮT LỖI. Không có vế này thì hai bài trên xanh cả khi `dungBang` trả về
+  // mảng rỗng, và xanh cả khi app đang dựng bật hết module — tức chúng xanh ở cả
+  // hai cực của chính thứ chúng định đo.
+  it('tập ĐẦY ĐỦ có tấm của module app đang dựng KHÔNG khai, và phép lọc bỏ đúng nó', () => {
+    const tatCa = allBanners(null);
+    const conLai = dungBang(null);
+    const biBo = tatCa.filter(b => !conLai.some(c => c.id === b.id));
+
+    const khongKhai = MODULE_IDS.filter(m => !daKhai.includes(m));
+    for (const m of khongKhai) {
+      // Module không khai mà tập đầy đủ CÓ tấm cho nó ⟹ tấm ấy phải nằm trong
+      // phần bị bỏ, không được sót lại.
+      if (tatCa.some(b => b.moduleId === m)) {
+        expect(biBo.map(b => b.moduleId)).toContain(m);
+      }
+    }
+    // Và không lọc quá tay: mọi tấm của module ĐÃ khai phải còn.
+    for (const b of tatCa) {
+      if (daKhai.includes(b.moduleId)) expect(conLai.map(x => x.id)).toContain(b.id);
+    }
+  });
+
+  it('tấm tin — đi bằng `link` chứ không `route` — vẫn có khoá để lọc', () => {
+    // Ca này là lý do `moduleId` được khai riêng thay vì suy từ `route`: khi có
+    // tin thì tấm Truy xuất bỏ `route`, nên một phép lọc theo `route` sẽ để nó
+    // qua BẤT KỂ app có khai `trace` hay không.
+    const tinGia = {
+      title: 'tin thử', link: 'https://vi-du.test/bai', source: 'Nguồn thử',
+    } as never;
+    const tam = allBanners(tinGia).find(b => b.id === 'b1')!;
+    expect(tam.route).toBeUndefined();
+    expect(tam.moduleId).toBe('trace');
   });
 });
 

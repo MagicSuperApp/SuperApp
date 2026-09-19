@@ -180,7 +180,14 @@ const BannerCarousel = ({
   // đủ cho ba câu viết cứng của băng cũ, không đủ cho một tiêu đề tin thật cộng
   // hai dòng tóm tắt cộng dòng nguồn. Tấm trượt đi giữa câu thì người đọc bỏ
   // luôn, và một băng không ai đọc hết thì nối tin vào cũng vô nghĩa.
+  //
+  // ⚠️ MỘT tấm thì đứng yên, KHÔNG tấm nào thì không có nhịp nào cả. Từ lượt
+  // `dungBang` lọc theo lời khai `modules`, số tấm không còn là hằng 3: app chỉ
+  // khai `join` thì khu này rỗng, và `% 0` ra `NaN` — `scrollToIndex` ném, rồi
+  // `active` thành `NaN` nên KHÔNG chấm nào sáng. Cái hỏng ở đây không sập app,
+  // nó chỉ làm khu băng đứng im, tức nó trông y hệt một băng chưa tải xong.
   useEffect(() => {
+    if (bang.length < 2) return;
     const id = setInterval(() => {
       setActive((prev) => {
         const next = (prev + 1) % bang.length;
@@ -221,14 +228,19 @@ const BannerCarousel = ({
           />
         )}
       />
-      <View style={styles.dots}>
-        {bang.map((_, i) => (
-          <View
-            key={i}
-            style={[styles.dot, i === active && styles.dotActive]}
-          />
-        ))}
-      </View>
+      {/* Một tấm thì KHÔNG vẽ hàng chấm: một chấm đơn độc không chỉ ra được
+          điều gì — nó không nói "còn tấm nữa" mà cũng không nói "hết rồi", nó
+          chỉ thêm một vệt dưới khu băng. */}
+      {bang.length > 1 && (
+        <View style={styles.dots}>
+          {bang.map((_, i) => (
+            <View
+              key={i}
+              style={[styles.dot, i === active && styles.dotActive]}
+            />
+          ))}
+        </View>
+      )}
     </Animated.View>
   );
 };

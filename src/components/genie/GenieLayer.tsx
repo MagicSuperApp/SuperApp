@@ -83,6 +83,8 @@ const imagePicker = (() => {
   }
 })();
 import { isPublicRoute } from '../../navigation/authGate';
+import { ENABLED_MODULES } from '../../config/instance.config';
+import { buildOpeningLine } from './openingLine';
 
 /**
  * Sau khi Agent mở xong một màn thì bao lâu nữa lớp tự tắt (§16).
@@ -128,25 +130,19 @@ const CLOSE_AFTER_OPEN_MS = 2200;
 const GENIE_NAME = 'Genie';
 const GENIE_TAGLINE = 'Trợ lý thông minh';
 /**
- * Lời chào. `{brand}` chứ không phải tên app viết cứng.
+ * ⚠️ ĐÃ GỠ 2026-09-19 — `cauChao()`, câu *"Xin chào, mình là trợ lý của bạn trên
+ * {brand}. Mình có thể giúp gì cho bạn?"*. Chủ sở hữu bác vì nó chung chung.
+ * Thay bằng `buildOpeningLine()` (`openingLine.ts`), thứ nêu thẳng ra việc.
  *
- * `i18n/translate.ts` thay chỗ này bằng tên của chính app đang chạy. Viết cứng
- * một cái tên thì bản CheckFarm chào người dùng bằng tên một app khác — đúng lỗi
- * đã đo được ngày 29/08 ở 15 chuỗi xin quyền, và là lý do chỗ thay này tồn tại.
+ * Giữ lại MỘT điều từ chỗ cũ, vì nó là ràng buộc của hệ chứ không phải của câu
+ * ấy: chuỗi nào có chỗ thay `{brand}` thì lời gọi `t()` phải nằm CÙNG DÒNG với
+ * nó — `i18n/brandSlot.test.ts` soi từng dòng, và cổng đó thô có lý do:
+ * `autoText.tsx` bỏ qua `t()` ở tiếng Việt, nên một chuỗi `{brand}` không đi qua
+ * `t()` sẽ hiện nguyên dấu ngoặc nhọn cho phần đông người dùng.
  *
- * ── Vì sao là HÀM, không phải hằng chuỗi ───────────────────────────────────
- * Hai lý do, và cả hai đều bắt buộc:
- *
- *   · Gọi `t()` lúc NẠP MODULE là đóng băng bản dịch theo ngôn ngữ lúc app khởi
- *     động; người dùng đổi ngôn ngữ xong thì câu này đứng nguyên tiếng cũ.
- *   · `i18n/brandSlot.test.ts` soi TỪNG DÒNG: một dòng có `{brand}` mà không có
- *     lời gọi dịch nào trên chính dòng ấy là đỏ. Cổng đó thô, nhưng nó thô có lý
- *     do — `autoText.tsx` bỏ qua `t()` ở tiếng Việt, nên một chuỗi `{brand}`
- *     không đi qua `t()` sẽ hiện nguyên dấu ngoặc nhọn cho phần đông người dùng.
- *     Để lời gọi và chỗ thay trên cùng một dòng là chứng minh được bằng mắt.
+ * `buildOpeningLine` vì thế KHÔNG nhắc tên app: chỗ ghép tên app là tầng hiển
+ * thị, không phải hàm thuần.
  */
-const cauChao = () =>
-  t('Xin chào, mình là trợ lý của bạn trên {brand}. Mình có thể giúp gì cho bạn?');
 
 /**
  * §18 — nền kính tối. KHÔNG đen 100%: màn bên dưới phải còn nhìn thấy.
@@ -201,6 +197,7 @@ const ACT = 'rgba(255,255,255,0.42)';
 const GenieLayer: React.FC = () => {
   const insets = useSafeAreaInsets();
   const isLoggedIn = useSelector((s: RootState) => !!s.user.currentUser);
+  const userName = useSelector((s: RootState) => s.user.currentUser?.name ?? null);
   const enabledPref = useSelector((s: RootState) => s.chatbot.enabled);
   const route = useGenieRoute();
   const g = useGenie();
@@ -641,6 +638,31 @@ const GenieLayer: React.FC = () => {
   // chắn mất chính câu trả lời vừa nhận.
   const chuaHoi = !g.messages.some((m) => m.from === 'user');
 
+  /**
+   * Câu mở + hàng việc mời làm. Luật ở `openingLine.ts`.
+   *
+   * `returning` đếm những cuộc NGƯỜI DÙNG ĐÃ NÓI, không đếm `sections.length`.
+   *
+   * ⚠️ Hai phép đếm này KHÁC nhau, và chỗ khác nhau nuốt trọn tính năng:
+   * `genieController.ts:160-163` luôn dựng sẵn một cuộc rỗng *"kể cả lúc chưa ai
+   * hỏi gì"*. Nên `sections.length > 0` đúng với MỌI người dùng kể từ giây đầu
+   * tiên — nhánh "người mới" sẽ không bao giờ chạy, và không có gì đỏ để báo:
+   * câu chào vẫn hiện, vẫn đúng ngữ pháp, chỉ là không ai còn là người mới nữa.
+   *
+   * `seed` lấy luôn con số đó: nó tăng theo mức người dùng đã dùng trợ lý, nên bộ
+   * nút đổi giữa các lần mở mà vẫn TẤT ĐỊNH trong một lần mở — không dùng
+   * `Date.now()`, thứ làm bộ nút nhảy giữa hai lượt vẽ lại của cùng một màn.
+   */
+  const soCuocDaNoi = (g.sections ?? []).filter(s =>
+    s.messages.some(m => m.from === 'user'),
+  ).length;
+  const opening = buildOpeningLine({
+    name: userName,
+    returning: soCuocDaNoi > 0,
+    modules: ENABLED_MODULES,
+    seed: soCuocDaNoi,
+  });
+
   // §9 — dòng tin TỐI GIẢN. Kho giữ nhiều hơn (để Agent sửa được câu cuối), nhưng
   // trên màn chỉ vẽ vài câu gần nhất: vẽ hết thì khu giữa cao dần lên và đẩy cụm
   // nút xuống, rồi hai thứ đè nhau.
@@ -817,18 +839,62 @@ const GenieLayer: React.FC = () => {
               rồi đổi ý sẽ để lại một "cuộc" chỉ có mỗi lời chào — panel danh
               sách đầy những dòng như thế thì nó không còn là danh sách nữa.
 
-              Và KHÔNG có hàng nút gợi ý: đây là một super app: mấy chục tính
-              năng, bốn cái nút chọn sẵn vừa không đại diện cho cái gì, vừa khiến
-              người dùng tưởng trợ lý CHỈ làm được bốn việc đó. */}
+              ⚠️ ĐÃ LẬT 2026-09-19, và đoạn dưới đây là lý lẽ CŨ, giữ lại nguyên
+              văn để lần sau không ai "sửa lại cho đúng" mà không biết nó đã bị
+              đảo có chủ ý:
+
+                "Và KHÔNG có hàng nút gợi ý: đây là một super app: mấy chục tính
+                 năng, bốn cái nút chọn sẵn vừa không đại diện cho cái gì, vừa
+                 khiến người dùng tưởng trợ lý CHỈ làm được bốn việc đó."
+
+              Chủ sở hữu bác lập luận đó bằng một phép thử cụ thể hơn: *"Một bà
+              cụ 70t mới dùng app sao biết được app có giúp được gì cho họ?"* Hai
+              bên cùng lo một chuyện — người dùng hiểu sai phạm vi trợ lý — nhưng
+              chúng cân hai rủi ro NGƯỢC nhau, và chỉ một trong hai đã đo được:
+              người không biết gõ gì thì KHÔNG gõ gì cả, còn người tưởng trợ lý
+              chỉ làm bốn việc thì vẫn đang dùng app. Rủi ro thứ hai đắt hơn
+              nhưng chỉ chạm người đã vào được cửa; rủi ro thứ nhất chặn ngay ở
+              cửa.
+
+              Phần lý lẽ cũ được GIỮ: nút gợi ý không được là một bảng cố định.
+              `buildOpeningLine` xoay vòng theo `seed`, nên bộ nút đổi mỗi lần mở
+              — người dùng thấy dần cả sổ việc thay vì đúng bốn cái. */}
           {chuaHoi && !confirm && (
-            // `pointerEvents="none"`: khối này phủ lên hộp tin, nên để nó ăn cú
-            // chạm là khoá luôn thao tác cuộn ở ngay dưới nó.
-            <View style={styles.intro} pointerEvents="none">
-              <Text style={styles.brand}>{GENIE_NAME}</Text>
-              <Text style={styles.brandSub}>{t(GENIE_TAGLINE)}</Text>
-              <View style={[styles.bubble, styles.bubbleAgent, styles.introBubble]}>
-                <Text style={styles.textAgent}>{cauChao()}</Text>
+            // KHÔNG còn `pointerEvents="none"` cho cả khối: hàng nút bên dưới
+            // phải ăn được cú chạm. Chỉ phần CHỮ mới để trong suốt với cú chạm,
+            // để thao tác cuộn ở hộp tin ngay dưới không bị khoá.
+            <View style={styles.intro}>
+              <View pointerEvents="none">
+                <Text style={styles.brand}>{GENIE_NAME}</Text>
+                <Text style={styles.brandSub}>{t(GENIE_TAGLINE)}</Text>
+                {/* Tên app CHỈ hiện với người mới. Câu chào cũ mang tên app ở
+                    giữa câu; câu mới không, vì `buildOpeningLine` là hàm thuần
+                    và không được gọi `t()`. Nhưng phần bảo vệ của câu cũ vẫn
+                    phải còn: bản CheckFarm KHÔNG được chào bằng tên một app
+                    khác — đúng lỗi 15 chuỗi xin quyền đã mắc ngày 29/08.
+                    Người đã dùng rồi thì không cần đọc lại mình đang ở app nào. */}
+                {!opening.returning && (
+                  <Text style={styles.brandSub}>{t('Trợ lý của bạn trên {brand}')}</Text>
+                )}
+                <View style={[styles.bubble, styles.bubbleAgent, styles.introBubble]}>
+                  <Text style={styles.textAgent}>{opening.greeting}</Text>
+                </View>
               </View>
+              {opening.invitations.length > 0 && (
+                <View style={styles.inviteRow}>
+                  {opening.invitations.map(inv => (
+                    <TouchableOpacity
+                      key={inv.key}
+                      style={styles.inviteChip}
+                      onPress={() => ask(inv.utterance)}
+                      accessibilityRole="button"
+                      accessibilityLabel={inv.label}
+                    >
+                      <Text style={styles.inviteText}>{inv.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
             </View>
           )}
 
@@ -1131,6 +1197,30 @@ const styles = StyleSheet.create({
   // dưới một khối chữ căn giữa, nên dán nó vào đúng mép trái làm cả cụm trông
   // như bị lệch. Vào cuộc rồi thì các câu mới về đúng lề của dòng tin.
   introBubble: { alignSelf: 'flex-start', marginTop: 8, marginLeft: 14 },
+
+  // ── Hàng việc mời làm ────────────────────────────────────────────────────
+  // `flexWrap`: nhãn tiếng Việt dài hơn tiếng Anh, và máy hẹp 402 điểm thì ba
+  // nhãn không nằm lọt một hàng. Không bọc thì nút thứ ba bị cắt mất chữ — một
+  // nút mời mà đọc không ra chữ thì đúng bằng không có nút.
+  inviteRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 12,
+    marginLeft: 14,
+    gap: 8,
+  },
+  // Viền sáng chứ không nền đặc: đây là LỜI MỜI, không phải nút xác nhận. Nút
+  // gật ở cửa ghi (`confirmBox`) phải là thứ nổi bật nhất trên lớp phủ, và mấy
+  // nút này đứng cùng màn với nó.
+  inviteChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(207, 247, 228, 0.45)',
+    backgroundColor: 'rgba(19, 137, 68, 0.35)',
+  },
+  inviteText: { color: MINT, fontSize: 14, fontWeight: '600' },
 
   // ── G5 — cửa gật ─────────────────────────────────────────────────────────
   // Nền ĐẶC hơn hộp tin thường và có viền sáng: đây là chỗ duy nhất trên lớp phủ

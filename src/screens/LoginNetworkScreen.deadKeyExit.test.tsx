@@ -155,8 +155,17 @@ function ctaNode(tree: renderer.ReactTestRenderer) {
   const found = tree.root
     .findAllByProps({ testID: 'login-primary-cta' })
     .filter((n) => typeof n.props.onPress === 'function');
-  if (found.length === 0) throw new Error('không tìm thấy nút `login-primary-cta`');
-  return found[0];
+  if (found.length > 0) return found[0];
+  // Từ 2026-09-19 nút chữ `login-primary-cta` chỉ hiện trên máy KHÔNG có cảm biến
+  // sinh trắc; bộ kiểm này chạy ở cấu hình CÓ cảm biến, nên lối vào là vòng tròn.
+  // Không phải một phép thay tương đương lỏng lẻo: nhánh `unlock` của `theoCta`
+  // gọi thẳng `runBiometric()` — đúng thứ vòng tròn gọi — nên hai nút vốn đã chạy
+  // cùng một đường cho hành động này.
+  const vong = tree.root
+    .findAllByProps({ testID: 'login-biometric-button' })
+    .filter((n) => typeof n.props.onPress === 'function');
+  if (vong.length === 0) throw new Error('màn không còn lối vào đăng nhập nào');
+  return vong[0];
 }
 
 /** Máy CÓ khoá và CÓ DID — điều kiện duy nhất để màn đi tới bước ký thử. */

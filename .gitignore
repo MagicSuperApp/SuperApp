@@ -160,3 +160,8 @@ android/app/src/main/jniLibs/
 # cổng nào kêu, và nó tự già đi trong im lặng trong khi bản thật đổi. Chặn ở đây để
 # tệp thứ hai không vào được bằng cùng một đường.
 *.bak
+
+# Dấu mã nguồn sinh lúc dựng (scripts/stamp-build.js). KHÔNG commit: một bản
+# đã commit sẽ CŨ ở mọi lượt chưa chạy lại script, và một mã commit cũ trông y hệt
+# một mã đúng. Thiếu tệp ⟹ dựng ĐỎ ngay, đó là chiều hỏng đúng cho thứ này.
+src/generated/buildStamp.ts

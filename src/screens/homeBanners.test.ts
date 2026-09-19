@@ -14,9 +14,19 @@
  *
  * Không bài nào ở đây dựng một thành phần React: thứ đang kiểm là CHỌN cái gì,
  * và chọn sai thì vẽ đúng cũng vô nghĩa.
+ *
+ * ── Vì sao đọc `allBanners` chứ không `dungBang` ────────────────────────────
+ * Từ 19/09/2026 `dungBang` LỌC bỏ tấm của module mà app đang dựng không khai,
+ * nên số tấm nó trả về đổi theo app nào đang dựng lúc chạy bài. Bài này đo HÌNH
+ * DẠNG ba tấm (màu, loại ảnh, chữ lấy từ đâu) — một đại lượng không dính gì tới
+ * phép lọc. Đọc bản đã lọc thì bài đỏ hay xanh tuỳ biến môi trường, và đó đúng
+ * là kiểu đỏ khiến người ta đi NỚI bài kiểm thay vì sửa mã.
+ *
+ * Phép lọc được ghim ở nơi đếm mọi lối vào khác:
+ * `navigation/moduleEntryPointsRespectInstance.test.ts` §BĂNG TRƯỢT.
  */
 
-import { dungBang, ANH_BANG } from './homeBanners';
+import { allBanners, ANH_BANG } from './homeBanners';
 import type { NewsItem } from '../services/agriNewsService';
 import { TRACE_THEME, CHAT_THEME, WORK_THEME } from '../theme';
 
@@ -35,7 +45,7 @@ const tin = (p: Partial<NewsItem> = {}): NewsItem => ({
 
 describe('ba tấm, ba module', () => {
   it('luôn đủ ba tấm, mỗi tấm mang TÊN module của nó', () => {
-    for (const bang of [dungBang(null, NOW), dungBang(tin(), NOW)]) {
+    for (const bang of [allBanners(null), allBanners(tin())]) {
       expect(bang.map(b => b.module)).toEqual([
         TRACE_THEME.name,
         CHAT_THEME.name,
@@ -45,13 +55,13 @@ describe('ba tấm, ba module', () => {
   });
 
   it('mỗi tấm một màu module riêng — băng không ra ba tấm cùng màu', () => {
-    const mau = dungBang(tin(), NOW).map(b => b.color);
+    const mau = allBanners(tin()).map(b => b.color);
     expect(new Set(mau).size).toBe(3);
     expect(mau[0]).toBe(TRACE_THEME.primary);
   });
 
   it('tấm nào cũng có ảnh — không tấm nào rơi vào bố cục thiếu chặng đầu', () => {
-    for (const b of dungBang(null, NOW)) expect(b.image).toBeTruthy();
+    for (const b of allBanners(null)) expect(b.image).toBeTruthy();
   });
 
   /**
@@ -61,10 +71,10 @@ describe('ba tấm, ba module', () => {
    * nó co lại giữa khung và để hở hai mảng màu hai bên.
    */
   it('mỗi tấm khai đúng loại ảnh của nó', () => {
-    const kieu = dungBang(null, NOW).map(b => b.kieu);
+    const kieu = allBanners(null).map(b => b.kieu);
     // Truy xuất: ảnh chụp ở CẢ HAI nhánh — ảnh bài báo, và tấm nền vườn.
     expect(kieu[0]).toBe('anh');
-    expect(dungBang(tin(), NOW)[0].kieu).toBe('anh');
+    expect(allBanners(tin())[0].kieu).toBe('anh');
     // Hai tấm còn lại còn đang mượn hình minh hoạ vuông của module.
     expect(kieu.slice(1)).toEqual(['hinh', 'hinh']);
   });
@@ -75,15 +85,15 @@ describe('ba tấm, ba module', () => {
    * chữ của Trò chuyện đột nhiên nói về giá sầu riêng.
    */
   it('tin về KHÔNG đụng tới tấm Trò chuyện và Việc làm', () => {
-    const khong = dungBang(null, NOW);
-    const co = dungBang(tin(), NOW);
+    const khong = allBanners(null);
+    const co = allBanners(tin());
     expect(co.slice(1)).toEqual(khong.slice(1));
   });
 });
 
 describe('tấm Truy xuất — khi CÓ tin', () => {
   it('lấy tiêu đề và ảnh của tin', () => {
-    const [a] = dungBang(tin(), NOW);
+    const [a] = allBanners(tin());
     expect(a.title).toBe('Giá sầu riêng tăng trở lại sau đợt mưa');
     expect(a.image).toEqual({ uri: 'https://t.ex-cdn.com/danviet.vn/480w/files/sau-rieng.jpg' });
   });
@@ -97,7 +107,7 @@ describe('tấm Truy xuất — khi CÓ tin', () => {
    * nhắc lại điều vừa nói, và ép tiêu đề xuống cỡ chữ của một dòng phụ.
    */
   it('KHÔNG mang tóm tắt — nó chỉ nói lại ý của tiêu đề', () => {
-    expect(dungBang(tin(), NOW)[0].sub).toBe('');
+    expect(allBanners(tin())[0].sub).toBe('');
   });
 
   /**
@@ -106,22 +116,22 @@ describe('tấm Truy xuất — khi CÓ tin', () => {
    * biết ai viết nó trước khi bấm vào.
    */
   it('mang TÊN BÁO ở dòng cuối', () => {
-    expect(dungBang(tin(), NOW)[0].meta).toBe('Dân Việt · Nhà nông');
+    expect(allBanners(tin())[0].meta).toBe('Dân Việt · Nhà nông');
   });
 
   it('hai tấm kia không có dòng cuối — chữ của chúng là lời của app', () => {
-    const [, chat, work] = dungBang(tin(), NOW);
+    const [, chat, work] = allBanners(tin());
     expect(chat.meta).toBeUndefined();
     expect(work.meta).toBeUndefined();
   });
 
   it('tin KHÔNG có ảnh → dùng ảnh nền của module', () => {
-    const [a] = dungBang(tin({ imageUrl: null }), NOW);
+    const [a] = allBanners(tin({ imageUrl: null }));
     expect(a.image).toBe(ANH_BANG.trace);
   });
 
   it('bấm vào thì mở ĐÚNG bài báo', () => {
-    const [a] = dungBang(tin(), NOW);
+    const [a] = allBanners(tin());
     expect(a.link).toBe('https://danviet.vn/gia-sau-rieng-d1.html');
   });
 });
@@ -133,14 +143,14 @@ describe('tấm Truy xuất — khi CHƯA có tin', () => {
    * lại tiêu đề như tóm tắt RSS.
    */
   it('rơi về chữ tĩnh của module, không phải một tấm trống hay "đang tải"', () => {
-    const [a] = dungBang(null, NOW);
+    const [a] = allBanners(null);
     expect(a.title).toBe('Truy xuất sầu riêng tới từng trái');
     expect(a.sub).toBe('Định danh blockchain Cardano');
     expect(a.meta).toBeUndefined();
   });
 
   it('không có bài để mở thì đưa về mục tin trong app', () => {
-    const [a] = dungBang(null, NOW);
+    const [a] = allBanners(null);
     expect(a.link).toBeUndefined();
     expect(a.route).toBe('TraceNews');
   });

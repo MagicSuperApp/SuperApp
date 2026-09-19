@@ -89,7 +89,26 @@ export const useContract = (id: string) => {
 /** Thông điệp thân thiện cho lỗi nghiệp vụ Pledge (đọc `code` backend). */
 export const pledgeErrorMessage = (err: unknown): string => {
   const code = err instanceof WorkApiError ? err.code : '';
+
+  // Rẽ theo MÃ HTTP trước, vì lượt bị chặn vì gọi quá dày KHÔNG mang mã nghiệp vụ
+  // nào — nó rơi thẳng vào `default` và người dùng đọc phải câu của tầng dưới.
+  // Máy chủ đặt trần 840 lượt/giờ/DID lên TOÀN BỘ vòng đời hợp đồng từ
+  // `AladinWork/Core@17bcb01` (2026-09-06), gồm cả `lockPledge`/`deliver`/
+  // `confirmPayment`. Câu dưới nói rõ hai điều người dùng cần biết: chờ, và hợp
+  // đồng không mất gì — vì ca hay gặp nhất là bấm lại nhiều lần khi mạng chậm,
+  // và lúc đó họ đang sợ mình vừa làm hỏng một hợp đồng có tiền trong đó.
+  if (err instanceof WorkApiError && err.httpStatus === 429) {
+    return 'Thao tác quá nhanh. Đợi một lát rồi thử lại — hợp đồng vẫn giữ nguyên.';
+  }
+
   switch (code) {
+    case 'NOT_QUALIFIED':
+      // Cổng năng lực ở nhánh đặt dịch vụ (`POST /contracts` với `offeringId`),
+      // có từ `AladinWork/Core@17bcb01`. Trước đó nhánh này không có cổng nào,
+      // nên mã này là mã MỚI — chỗ gọi cũ để nó rơi vào `default` và in ra
+      // "Không tạo được hợp đồng (NOT_QUALIFIED)", một câu không ai hành động được.
+      return 'Người này chưa đủ điều kiện nhận việc loại đó. Chọn thợ khác, hoặc đăng việc để nhận báo giá.';
+
     case 'ESCROW_RULE':
       return 'Chưa tới bước này trong quy trình ký quỹ — tải lại rồi thử lại.';
     case 'NO_FUNDS':

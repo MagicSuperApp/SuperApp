@@ -23,11 +23,20 @@ export const SCAN_STRINGS = {
     zh: '将产品上的二维码对准取景框',
     ja: '商品の QR コードを枠に合わせてください',
   },
+  // ⚠️ "TRỌN quả" và "chừa viền" là phần phải giữ khi dịch lại câu này, không phải
+  // lời văn cho đẹp. Máy chủ dò quả bằng đường viền khép kín; quả tràn khung thì
+  // không có viền để dò, và nó trả `NO_FRUIT_IN_PHOTO`.
+  //
+  // Số đo 2026-09-19 trên 49 ảnh chụp gần `Downloads/RealDurianFruitGift` (một quả
+  // trên cân, không có cây trong khung): 13 ảnh trả `NO_FRUIT_IN_PHOTO`. Thu nhỏ
+  // đúng 13 ảnh đó còn 60% khung — cùng số điểm ảnh, chỉ khác khoảng cách — thì
+  // 12/13 nhận ra được. Câu cũ ("vào giữa khung") không nói gì về cỡ, nên nó không
+  // chặn được ảnh tràn khung, mà tràn khung mới là kiểu trượt hay gặp nhất.
   'scan.hint.fruit': {
-    vi: 'Đưa quả vào giữa khung rồi bấm nút chụp',
-    en: 'Centre the fruit in the frame, then tap the shutter',
-    zh: '把水果放在取景框中间，然后点击快门',
-    ja: '果実を枠の中央に入れてシャッターを押してください',
+    vi: 'Đưa TRỌN quả vào giữa khung, chừa chút viền quanh quả, rồi bấm nút chụp',
+    en: 'Fit the WHOLE fruit in the frame with a little margin around it, then tap the shutter',
+    zh: '把整个水果放进取景框中间，四周留一点空隙，然后点击快门',
+    ja: '果実全体を枠の中央に入れ、周囲に少し余白を残してシャッターを押してください',
   },
 
   // ── Trạng thái một lượt tra ───────────────────────────────────────────────

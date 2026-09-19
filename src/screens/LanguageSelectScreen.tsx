@@ -23,6 +23,7 @@ import {
   StatusBar,
   Platform,
   ScrollView,
+  useWindowDimensions,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
@@ -31,7 +32,7 @@ import { COLORS } from '../constants';
 import { WORK_THEME } from '../theme';
 import { LANGUAGES, getLanguage, setLanguage, type LangCode } from '../i18n';
 import { DEFAULT_INSTANCE } from '../config/instance.config';
-import { BRAND_LOCKUP_ASPECT } from '../config/brandLockup';
+import { BrandLockup, CO_CUM_NHAN_DIEN } from '../components/BrandLockup';
 
 // Xanh lá thương hiệu — khớp HERO của màn Đăng nhập để hai màn liền mạch.
 const BRAND = {
@@ -72,6 +73,9 @@ const LanguageSelectScreen = () => {
   // ngôn ngữ đang chạy — máy vừa cài thì đó là TIẾNG ANH (i18n/types.DEFAULT_LANG),
   // không phải ngôn ngữ của điện thoại.
   const [picked, setPicked] = useState<LangCode>(getLanguage());
+  // `styles.hero` chừa 26 mỗi bên. Tính thẳng thay vì `onLayout`: khung đầu tiên
+  // của một phép đo trả 0, và cụm sẽ nhấp nháy một nhịp ở màn mở app.
+  const { width: rongMan } = useWindowDimensions();
 
   const confirm = () => {
     // force: bấm Tiếp tục mà không đổi gì vẫn phải ghi nhận "đã chọn", nếu không
@@ -102,17 +106,15 @@ const LanguageSelectScreen = () => {
             `TITLE[picked]` bên dưới), không nằm trong ảnh: màn này là màn CHỌN
             NGÔN NGỮ, nơi người dùng chưa chọn tiếng nào, nên một dòng tiếng Việt
             nướng sẵn vào ảnh sẽ chào người đọc tiếng Nhật bằng tiếng Việt. */}
-        {DEFAULT_INSTANCE.brandLockupOnDark ? (
-          <Image
-            source={DEFAULT_INSTANCE.brandLockupOnDark}
-            style={[styles.lockup, { aspectRatio: BRAND_LOCKUP_ASPECT }]}
-            // `accessible` KHÔNG bỏ được: `<Text>` mặc định là phần tử trợ năng
-            // trên iOS, `<Image>` thì không, và `accessibilityRole` không bật hộ.
-            // Thiếu dòng này là xoá tên app khỏi VoiceOver — xem chú thích dài ở
-            // `LoginNetworkScreen`.
-            accessible
-            accessibilityRole="image"
-            accessibilityLabel={DEFAULT_INSTANCE.displayName}
+        {CO_CUM_NHAN_DIEN ? (
+          // KHÔNG kèm khẩu hiệu ở màn này: người dùng CHƯA chọn tiếng nào, nên
+          // một câu tiếng Việt ở đây sẽ chào người đọc tiếng Nhật bằng tiếng
+          // Việt. Dòng `TITLE[picked]` bên dưới mới là chỗ đổi theo lựa chọn.
+          <BrandLockup
+            direction="row"
+            maxWidth={Math.max(0, Math.min(236, rongMan - 52))}
+            lang={picked}
+            style={styles.cum}
           />
         ) : (
           <>
@@ -207,7 +209,9 @@ const styles = StyleSheet.create({
   // Bề rộng CO ĐƯỢC: `flexShrink` mặc định của RN là 0, nên một con rộng cố định
   // tràn ra ngoài lề và VẼ ĐÈ (`overflow` mặc định của `View` là `visible`).
   // Chiều cao do `aspectRatio` sinh từ chính tệp ảnh (`config/brandLockup.ts`).
-  lockup: { width: '100%', maxWidth: 236, resizeMode: 'contain', marginBottom: 14 },
+  // Bề ngang cụm nay do `maxWidth` truyền vào `BrandLockup` quyết (tính từ bề
+  // ngang màn trừ lề của `hero`), nên ở đây chỉ còn khoảng cách xuống dòng dưới.
+  cum: { marginBottom: 14 },
   eyebrow: { fontSize: 10, fontWeight: '800', color: BRAND.pale, letterSpacing: 3, marginBottom: 8 },
   title: { fontSize: 28, fontWeight: '800', color: BRAND.white, letterSpacing: -0.6 },
   titleAlt: { fontSize: 13, color: 'rgba(255,255,255,0.82)', marginTop: 6, lineHeight: 19 },

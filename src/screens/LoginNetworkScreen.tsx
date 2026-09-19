@@ -33,12 +33,12 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Animated,
   Easing,
-  Image,
   PanResponder,
   Pressable,
   StatusBar,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -70,7 +70,7 @@ import { showError } from '../utils/alert';
 import { LANGUAGES, t, useLanguage } from '../i18n';
 import { AUTH_COLORS, NEUTRAL, WORK_THEME } from '../theme';
 import { DEFAULT_INSTANCE } from '../config/instance.config';
-import { BRAND_LOCKUP_ASPECT } from '../config/brandLockup';
+import { BrandLockup } from '../components/BrandLockup';
 import {
   batLanTruyen,
   buoc,
@@ -411,54 +411,20 @@ const LoginNetworkScreen: React.FC = () => {
   const ngonNgu = LANGUAGES.find((l) => l.code === lang) ?? LANGUAGES[0];
 
   /**
-   * Khẩu hiệu ngắn được KÉO GIÃN cho rộng đúng bằng tên app ở trên nó.
+   * Bề ngang CỤM NHẬN DIỆN — tính thẳng từ bề ngang màn, KHÔNG đo bằng `onLayout`.
    *
-   * Không thể chọn sẵn một câu "vừa đủ dài": tên app đổi theo instance
-   * (ALADIN / CHECKFARM), câu khẩu hiệu đổi theo cả instance LẪN ngôn ngữ, và
-   * bề ngang chữ còn đổi theo phông của từng máy. Bốn thứ ấy nhân với nhau thì
-   * không có câu nào vừa ở mọi tổ hợp — nên phải ĐO rồi mới căn.
+   * `styles.dinh` chừa 76 mỗi bên, nên bề ngang dùng được là `W − 152`, chặn trên
+   * bằng 244. Đo bằng `onLayout` thì khung đầu tiên nhận số 0 và cả cụm nhấp nháy
+   * một nhịp ở đúng màn người dùng nhìn lâu nhất — trước đây không thấy vì con số
+   * ấy chỉ dùng để căn chữ, nay nó quyết cả kích thước hai ảnh.
    *
-   * Cách căn: đo bề ngang thật của cả hai dòng, rồi rải phần chênh ra các khe
-   * giữa chữ (`letterSpacing`). Nếu khẩu hiệu vốn đã RỘNG HƠN tên thì không ép
-   * âm — `adjustsFontSizeToFit` thu nhỏ cỡ chữ cho vừa đúng bề ngang ấy. Hai
-   * nhánh phủ cả hai chiều, nên câu nào cũng căn được.
+   * Phép căn khẩu hiệu dưới chữ hiệu ĐÃ CHUYỂN vào `components/BrandLockup`: nó là
+   * việc của cụm, không phải việc của màn này, và ba màn đều cần nó. Cái còn lại ở
+   * đây là dòng BA ĐỨC TÍNH — căn theo bề ngang CẢ CỤM, không theo chữ hiệu.
    */
-  const [rongTen, setRongTen] = useState(0);
-  const [rongMoc, setRongMoc] = useState(0);
-  const [gianChu, setGianChu] = useState(0);
-  // Chốt sau lần tính đầu: đặt `letterSpacing` làm dòng khẩu hiệu rộng ra, nó
-  // `onLayout` lại, và nếu tính lại từ số đo MỚI thì hai thứ đuổi nhau mãi.
-  const daCan = useRef(false);
-  const slogan = DEFAULT_INSTANCE.slogan[lang];
-
-  /**
-   * ĐỔI NGÔN NGỮ thì phải căn lại từ đầu — và phải căn lại ĐÚNG CÁCH.
-   *
-   * Nút đổi ngôn ngữ ở góc trên mang vào một chỗ hỏng mà bản trước không có: câu
-   * khẩu hiệu đổi, nhưng `daCan` đã chốt nên `letterSpacing` giữ nguyên giá trị
-   * tính cho câu CŨ — câu tiếng Nhật nhận khoảng giãn của câu tiếng Việt.
-   *
-   * Không đủ nếu chỉ mở chốt: số đo bề ngang lúc đó vẫn đang mang `letterSpacing`
-   * cũ, nên nó không phải bề ngang TỰ NHIÊN của câu mới, và phép căn lại lệch
-   * theo một hướng khác. Phải trả `gianChu` về 0 VÀ xoá số đo cũ, để dòng khẩu
-   * hiệu được đo lại từ trạng thái chưa giãn.
-   */
-  useEffect(() => {
-    daCan.current = false;
-    setGianChu(0);
-    setRongMoc(0);
-  }, [slogan]);
-
-  useEffect(() => {
-    if (daCan.current || rongTen <= 0 || rongMoc <= 0) return;
-    daCan.current = true;
-    // Chia cho SỐ KHE (`độ dài - 1`), không phải số ký tự: khoảng cách nằm GIỮA
-    // các chữ. Android còn cộng thêm một khe sau chữ cuối, nên bề ngang thật có
-    // thể dôi ra đúng một khe — sai số đó nhỏ hơn một ký tự, chấp nhận được.
-    const soKhe = Math.max(1, slogan.length - 1);
-    setGianChu(Math.max(0, (rongTen - rongMoc) / soKhe));
-  }, [rongTen, rongMoc, slogan]);
-
+  const { width: rongMan } = useWindowDimensions();
+  const rongCum = Math.max(0, Math.min(244, rongMan - 152));
+  const virtues = DEFAULT_INSTANCE.virtues?.[lang] ?? null;
 
   const mangRef = useRef<MangLuoi | null>(null);
   const tamRef = useRef({ x: 0, y: 0 });
@@ -821,79 +787,26 @@ const LoginNetworkScreen: React.FC = () => {
           vì ở đó có một nút thật cần nhận cú chạm.) */}
       <View
         pointerEvents="none"
-        style={[
-          styles.dinh,
-          { paddingTop: insets.top + 18 },
-          // Cụm nhận diện đã gộp dấu hiệu và chữ hiệu vào MỘT ảnh, nên hàng ngang
-          // [dấu hiệu | chữ] không còn nghĩa: xếp dọc, khẩu hiệu nằm DƯỚI cụm.
-          DEFAULT_INSTANCE.brandLockupOnDark ? styles.dinhXepDoc : null,
-        ]}
+        // Cụm nay là BA MẢNH RỜI và tự xếp ngang bên trong, nên khối ngoài này chỉ
+        // còn việc xếp DỌC hai khối con: [cụm nhận diện] rồi [dòng ba đức tính].
+        // `+ 44` chứ không `+ 18`: vùng an toàn chỉ chừa cho thanh trạng thái, nó
+        // KHÔNG chừa cho khoảng thở. Với `18` thì mực của cụm bắt đầu ở y≈85 trên
+        // một màn cao 874 — sát mép, và ở máy không có tai thỏ (`insets.top` nhỏ
+        // hơn nhiều) thì nó còn sát hơn nữa. Chủ dự án bác bố cục đó 19/09/2026.
+        style={[styles.dinh, styles.dinhXepDoc, { paddingTop: insets.top + 44 }]}
       >
-        {/* CỤM NHẬN DIỆN thay cho cặp [dấu hiệu] + [chữ tên app] khi app có khai.
+        {/* CỤM NHẬN DIỆN — ba mảnh rời, xếp NGANG: [dấu hiệu] [chữ hiệu/khẩu hiệu].
 
-            Phép đo `rongTen` KHÔNG mất đi ở nhánh này, và đó là chỗ dễ hỏng nhất:
-            khẩu hiệu bên dưới được giãn chữ để rộng ĐÚNG BẰNG thứ nằm trên nó, nên
-            thứ nằm trên đổi mà phép đo vẫn đo cái cũ thì khẩu hiệu căn theo một bề
-            ngang không còn ai có. Ở đây `onLayout` của chính ảnh cấp lại số đo ấy.
+            Bố cục này mang một ràng buộc hình học chủ dự án chốt 19/09/2026:
+            `cao(chữ hiệu) + khe + cao(khẩu hiệu)` bằng đúng `cao(dấu hiệu)`, còn
+            khẩu hiệu rộng đúng bằng CHỮ HIỆU (không phải bằng cả cụm). Ràng buộc
+            ấy KHÔNG giải được khi dấu hiệu và chữ hiệu còn hàn trong một ảnh —
+            hệ vô nghiệm, và nghiệm của nó nằm ở `config/brandLockup.ts`.
 
-            Và phép đo đó chỉ có nghĩa vì bề rộng cụm KHÔNG còn là hằng: `width` là
-            `'100%'` chặn trên bằng `maxWidth`, nên ở máy hẹp nó thật sự nhỏ hơn.
-            Bản đầu để `width: 244` cố định — lúc ấy `onLayout` mang HÌNH DẠNG một
-            phép đo nhưng luôn trả lại đúng con số viết trong `StyleSheet` cùng
-            tệp, tức một hằng số đi đường vòng. Đừng đặt lại bề rộng cứng ở đây.
+            Mọi phép đo và mọi tỉ lệ đã chuyển vào `components/BrandLockup`. Màn
+            này chỉ còn cấp bề ngang. */}
+        <BrandLockup direction="row" maxWidth={rongCum} lang={lang} withSlogan />
 
-            Khẩu hiệu vẫn là CHỮ và vẫn dịch theo ngôn ngữ đang chọn — ảnh cố ý
-            không chứa nó. */}
-        {DEFAULT_INSTANCE.brandLockupOnDark ? (
-          <Image
-            source={DEFAULT_INSTANCE.brandLockupOnDark}
-            style={[styles.lockup, { aspectRatio: BRAND_LOCKUP_ASPECT }]}
-            // `accessible` là phần KHÔNG bỏ được, và nó phản trực giác. `<Text>`
-            // mặc định LÀ phần tử trợ năng trên iOS (`Libraries/Text/Text.js` —
-            // `ios: accessible !== false`), còn `<Image>` thì KHÔNG
-            // (`Image.ios.js` chỉ bật khi có `alt` hoặc `accessible`), và
-            // `accessibilityRole` không bật hộ. Nên thay hai dòng chữ bằng một
-            // ảnh mà quên dòng này là XOÁ tên app khỏi VoiceOver: người mù mở app
-            // lần đầu không nghe được mình đang ở app nào, ở đúng ba màn
-            // trước-đăng-nhập. Bộ kiểm không bắt được — preset jest của RN thay
-            // hẳn cả `Image` lẫn `Text` bằng mock, nên phép tính đó không chạy.
-            accessible
-            accessibilityRole="image"
-            accessibilityLabel={DEFAULT_INSTANCE.displayName}
-            onLayout={(e) => setRongTen(e.nativeEvent.layout.width)}
-          />
-        ) : (
-          <Image source={DEFAULT_INSTANCE.logo} style={styles.logo} />
-        )}
-
-        <View style={styles.cotChu}>
-          {DEFAULT_INSTANCE.brandLockupOnDark ? null : (
-            <Text
-              style={styles.ten}
-              allowFontScaling={false}
-              numberOfLines={1}
-              onLayout={(e) => setRongTen(e.nativeEvent.layout.width)}
-            >
-              {DEFAULT_INSTANCE.displayName.toUpperCase()}
-            </Text>
-          )}
-
-          {/* Bề ngang ghim bằng tên ở trên — nhưng chỉ SAU khi đã đo xong. Ghim
-              sớm hơn thì số đo lấy được là bề ngang bị ghim, không phải bề ngang
-              tự nhiên, và phép căn mất điểm tựa. */}
-          <View style={rongTen > 0 ? { width: rongTen } : undefined}>
-            <Text
-              style={[styles.khauHieu, { letterSpacing: gianChu }]}
-              allowFontScaling={false}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.7}
-              onLayout={(e) => setRongMoc(e.nativeEvent.layout.width)}
-            >
-              {slogan}
-            </Text>
-          </View>
-        </View>
       </View>
 
       {/* `box-none`: khối bọc KHÔNG nhận cú chạm (để phần trống của nó vẫn kéo
@@ -903,6 +816,23 @@ const LoginNetworkScreen: React.FC = () => {
         pointerEvents="box-none"
         style={[styles.day, { paddingBottom: insets.bottom + 14 }]}
       >
+        {/* BA ĐỨC TÍNH — nằm NGAY TRÊN nút đăng nhập, canh giữa.
+
+            Không đặt dưới cụm nhận diện ở đầu màn: ở đó nó thành dòng chữ thứ ba
+            liền nhau, và ba dòng chồng nhau thì không dòng nào được đọc. Dưới
+            đáy nó đứng một mình, ngay trước thứ người dùng sắp bấm.
+
+            Vẫn giãn chữ cho rộng bằng cụm nhận diện ở trên — cùng một bề ngang
+            thì hai đầu màn đọc ra một khối, dù cách nhau cả chiều cao màn hình.
+
+            App không khai `virtues` thì KHÔNG có dòng nào — không mượn lại
+            `slogan` để lấp, vì như thế là in cùng một câu hai lần trên một màn. */}
+        {virtues ? (
+          <Text style={styles.baDucTinh} numberOfLines={1} adjustsFontSizeToFit>
+            {virtues}
+          </Text>
+        ) : null}
+
         {/* NÚT DƯỚI ĐÁY — nhãn theo trạng thái THẬT của máy, không phải một chuỗi
             cố định.
 
@@ -1037,41 +967,41 @@ const styles = StyleSheet.create({
     // không bao giờ chui xuống dưới nút.
     paddingHorizontal: 76,
   },
-  logo: { width: 52, height: 52, borderRadius: 13, marginRight: 12 },
   /**
-   * Xếp dọc cho nhánh có cụm nhận diện — và GIỮ NGUYÊN `paddingHorizontal: 76`
-   * của `dinh`, không nới.
+   * Xếp dọc — và GIỮ NGUYÊN `paddingHorizontal: 76` của `dinh`, không nới.
    *
    * Bản đầu nới xuống `40` với lý do "cụm rộng hơn một ô vuông 52px". Lý do đó
    * đọc ngược: `76` không phải chỗ cho ô vuông, nó là khoảng chừa để cụm KHÔNG
    * chui dưới nút đổi ngôn ngữ ở góc phải (nút bắt đầu ở `W − 71`). Nới lề là
-   * bỏ đúng cái hàng rào duy nhất, và vì con mới không co được nên nó tràn
-   * thẳng vào nút. Đây là chỗ hồi quy đã đo được, không phải phòng xa.
+   * bỏ đúng cái hàng rào duy nhất.
+   *
+   * Khoảng chừa ấy nay còn là NGUỒN của một con số: `rongCum = W − 2×76`, chặn
+   * trên 244. Đổi số này là đổi cỡ cả cụm nhận diện, không chỉ đổi lề.
    */
   dinhXepDoc: { flexDirection: 'column' },
   /**
-   * Cụm nhận diện: đặt theo BỀ RỘNG, chiều cao do `aspectRatio` sinh từ chính tệp
-   * ảnh (`config/brandLockup.ts`), KHÔNG gõ tỉ lệ ở đây.
+   * BA ĐỨC TÍNH, ngay trên nút đăng nhập.
    *
-   * `width: '100%'` + `maxWidth`, không phải `width: 244`. Lý do đã đo được chứ
-   * không phải phòng xa: `flexShrink` mặc định của RN là **0**, nên một con có bề
-   * rộng CỐ ĐỊNH không co theo lề — nó tràn ra ngoài `paddingHorizontal` và, vì
-   * `overflow` mặc định của `View` là `visible`, nó VẼ ĐÈ thay vì bị cắt. Ở máy
-   * 360dp (Pixel và phần lớn Samsung) cụm chạy từ x=58 tới x=302 trong khi nút đổi
-   * ngôn ngữ bắt đầu ở x=289, và nút vẽ sau nên nó phủ lên hai chữ cuối của chữ
-   * hiệu. Ở 320dp cụm còn tràn 2pt ra ngoài mỗi lề. Hàng rào cũ giam được cặp
-   * [dấu hiệu | chữ] chỉ vì `<Text>` CO ĐƯỢC — hàng rào không đổi, con mới thì
-   * không co, và đó là chỗ hồi quy chui vào.
+   * ⚠ KHÔNG giãn chữ cho rộng bằng cụm nhận diện, dù cụm trên đầu màn làm thế.
+   * Bản trước có giãn và chủ dự án bác ngay: kéo một câu 32 ký tự cho đủ 244pt
+   * đẩy khoảng cách giữa các chữ lên ~2,4pt, và ở cỡ 11pt thì mắt phải ghép lại
+   * từng chữ cái. Phép giãn ấy ĐÚNG ở cụm nhận diện — nơi nó phục vụ một ràng
+   * buộc hình học và người đọc nhìn cả khối như một dấu hiệu — nhưng ở đây thì
+   * dòng này là một câu để ĐỌC, và hai vai đó đòi hai cách đặt chữ khác nhau.
+   *
+   * `allowFontScaling` để MẶC ĐỊNH (bật), khác các dòng khác trong màn: đây là
+   * dòng duy nhất ở đây người dùng lớn tuổi cần đọc được, nên nó phải nở theo cỡ
+   * chữ hệ thống họ đã chọn. `adjustsFontSizeToFit` chỉ co lại khi bản dịch dài
+   * hơn bề ngang màn.
    */
-  lockup: { width: '100%', maxWidth: 244, resizeMode: 'contain', marginBottom: 6 },
-  cotChu: { alignItems: 'flex-start' },
-  ten: {
-    fontSize: 26,
-    fontWeight: '800',
-    // Giãn nhẹ: chữ IN HOA đứng sát nhau đọc ra một khối đặc, giãn ra thì nó đọc
-    // ra một dấu hiệu nhận diện.
-    letterSpacing: 1.5,
+  baDucTinh: {
+    fontSize: 15,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+    textAlign: 'center',
     color: NEUTRAL.white,
+    marginBottom: 16,
+    paddingHorizontal: 24,
   },
   khauHieu: {
     marginTop: 3,

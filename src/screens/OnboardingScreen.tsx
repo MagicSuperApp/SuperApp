@@ -28,6 +28,7 @@ import {
   TouchableOpacity,
   StatusBar,
   Platform,
+  useWindowDimensions,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
@@ -38,7 +39,7 @@ import { useTk } from '../i18n/keys';
 import { useLanguage } from '../i18n/useLanguage';
 import { DEFAULT_INSTANCE, ENABLED_MODULES } from '../config/instance.config';
 import type { ModuleId } from '../navigation/moduleIds';
-import { BRAND_LOCKUP_ASPECT } from '../config/brandLockup';
+import { BrandLockup, CO_CUM_NHAN_DIEN } from '../components/BrandLockup';
 import { markOnboardingSeen } from '../utils/onboardingFlag';
 
 // Xanh lá KHỞI ĐỘNG — cùng bảng với màn Chọn ngôn ngữ và HERO màn Đăng nhập, để ba
@@ -91,6 +92,9 @@ const OnboardingScreen: React.FC = () => {
   // Khẩu hiệu không đi qua `tk` (nó là danh tính instance, không phải chuỗi dùng
   // chung) nên phải tự đăng ký ngôn ngữ, không thì đổi ngôn ngữ xong câu vẫn cũ.
   const lang = useLanguage();
+  // `styles.hero` chừa 28 mỗi bên. Tính thẳng thay vì `onLayout`: khung đầu tiên
+  // của một phép đo trả 0, và cụm sẽ nhấp nháy một nhịp lúc mở màn.
+  const { width: rongMan } = useWindowDimensions();
   // Chặn bấm hai lần trong lúc đang ghi cờ — bấm đúp sẽ replace hai lần.
   const [leaving, setLeaving] = useState(false);
 
@@ -124,17 +128,14 @@ const OnboardingScreen: React.FC = () => {
           {/* CỤM NHẬN DIỆN thay cho cặp [ô vuông dấu hiệu] + [chữ tên app]. Câu
               giới thiệu bên dưới vẫn là CHỮ và vẫn dịch theo ngôn ngữ đang chọn —
               ảnh cố ý không chứa nó. App chưa khai cụm thì rơi về cặp cũ. */}
-          {DEFAULT_INSTANCE.brandLockupOnDark ? (
-            <Image
-              source={DEFAULT_INSTANCE.brandLockupOnDark}
-              style={[styles.lockup, { aspectRatio: BRAND_LOCKUP_ASPECT }]}
-              // `accessible` KHÔNG bỏ được: `<Text>` mặc định là phần tử trợ năng
-              // trên iOS, `<Image>` thì không, và `accessibilityRole` không bật hộ.
-              // Thiếu dòng này là xoá tên app khỏi VoiceOver — xem chú thích dài ở
-              // `LoginNetworkScreen`.
-              accessible
-              accessibilityRole="image"
-              accessibilityLabel={DEFAULT_INSTANCE.displayName}
+          {CO_CUM_NHAN_DIEN ? (
+            // KHÔNG kèm khẩu hiệu: màn này đã có `tagline` ngay bên dưới, và hai
+            // câu thương hiệu chồng nhau thì không câu nào được đọc.
+            <BrandLockup
+              direction="row"
+              maxWidth={Math.max(0, Math.min(248, rongMan - 56))}
+              lang={lang}
+              style={styles.cum}
             />
           ) : (
             <>
@@ -231,11 +232,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   logoImg: { width: 52, height: 52, resizeMode: 'contain' },
-  // Cụm nhận diện: đặt theo BỀ RỘNG, chiều cao theo đúng tỉ lệ tệp (856×136).
-  // Bề rộng CO ĐƯỢC: `flexShrink` mặc định của RN là 0, nên một con rộng cố định
-  // tràn ra ngoài lề và VẼ ĐÈ (`overflow` mặc định của `View` là `visible`).
-  // Chiều cao do `aspectRatio` sinh từ chính tệp ảnh (`config/brandLockup.ts`).
-  lockup: { width: '100%', maxWidth: 248, resizeMode: 'contain', marginBottom: 10 },
+  // Bề ngang cụm nay do `maxWidth` truyền vào `BrandLockup` quyết (tính từ bề
+  // ngang màn trừ lề của `hero`), nên ở đây chỉ còn khoảng cách xuống dòng dưới.
+  cum: { marginBottom: 10 },
   title: {
     marginTop: 14,
     fontSize: 26,

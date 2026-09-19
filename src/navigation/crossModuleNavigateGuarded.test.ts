@@ -152,7 +152,43 @@ describe('lối vào chéo module', () => {
   // hướng — ví dụ tắt cụm truy xuất ở một app để nộp cửa hàng. Không có bài này thì
   // ngày đó ba tệp kia thành ba nút chết mà không cổng nào kêu, và danh sách miễn trừ
   // vẫn nằm im trông như một quyết định còn đúng.
-  it('mọi app còn bật `trace` — tiền đề của danh sách miễn trừ', () => {
+  /**
+   * ⚠️ Chuông này ĐÃ KÊU 19/09/2026, và nó kêu đúng: Aladin tạm bỏ `trace`, nên
+   * ba tệp miễn trừ thành ba màn còn đăng ký mà mọi nút bên trong dẫn tới route
+   * không tồn tại.
+   *
+   * Đã xử theo đường (1) mà chính thông điệp dưới đây gợi: ba màn ấy nay chỉ vào
+   * cây điều hướng khi app có `trace` (`navigation/index.tsx` ▸
+   * `TRACE_ROUTED_HOST_SCREENS`). Nên tiền đề của danh sách miễn trừ đổi hình:
+   * không còn là *"mọi app đều bật `trace`"* mà là *"ở app không bật `trace`, ba
+   * màn ấy không tồn tại"*.
+   *
+   * Bài nay canh tiền đề MỚI. Không hạ ngưỡng: nó vẫn đỏ nếu ai đó gỡ cổng kia
+   * ra, và nó đỏ vì đúng lý do — ba tệp miễn trừ trở lại thành nút chết.
+   */
+  it('ở app không bật `trace`, ba màn miễn trừ KHÔNG vào cây điều hướng', () => {
+    const nguon = fs.readFileSync(path.join(SRC, 'navigation', 'index.tsx'), 'utf8');
+
+    // Cổng phải tồn tại, và phải đọc chính tập module đang bật — không phải một
+    // hằng viết cứng tên app, thứ sẽ trôi ngay app thứ ba.
+    expect(nguon).toContain('TRACE_ROUTED_HOST_SCREENS');
+    expect(nguon).toMatch(/TRACE_ROUTED_HOST_SCREENS\.has\(s\.name\)[^\n]*ENABLED_MODULES\.includes\('trace'\)/);
+
+    // Và tập cổng chặn phải PHỦ đúng danh sách miễn trừ. Hai danh sách trôi khỏi
+    // nhau là chỗ hỏng im lặng: thêm một tệp vào miễn trừ mà quên thêm màn vào
+    // cổng thì bài trên vẫn xanh.
+    for (const tep of MIEN_TRU_CUM_TRUY_XUAT) {
+      const ten = path.basename(tep).replace(/Screen\.tsx$/, '');
+      expect(nguon).toMatch(new RegExp(`TRACE_ROUTED_HOST_SCREENS[\\s\\S]{0,200}'${ten}'`));
+    }
+  });
+
+  it('ca đối chứng — danh sách miễn trừ không rỗng', () => {
+    // Bài trên xanh vô nghĩa nếu vòng lặp chạy qua 0 mục.
+    expect(MIEN_TRU_CUM_TRUY_XUAT.size).toBeGreaterThan(0);
+  });
+
+  it.skip('mọi app còn bật `trace` — tiền đề CŨ, thay bằng bài ngay trên', () => {
     const thieu = Object.entries(INSTANCES)
       .filter(([, cfg]) => cfg.modules !== 'all' && !cfg.modules.includes('trace'))
       .map(([id]) => id);

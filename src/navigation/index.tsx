@@ -1703,6 +1703,31 @@ const Expo3DUnavailable: React.FC<{ onBack: () => void }> = ({ onBack }) => (
 const Space3DScreen = _make3D(_LazySpace3D, 'space3d_lazy');
 const FruitPlace3DScreen = _make3D(_LazyFruitPlace3D, 'fruitplace3d_lazy');
 
+/**
+ * Ba màn vỏ đi thẳng vào route của module `trace` (`TreeDetail` / `FarmDetail`).
+ *
+ * Chúng nằm ở `src/screens/`, tức tầng VỎ, nên trước đây chúng đăng ký vô điều
+ * kiện — đúng và vô hại chừng nào mọi app còn bật `trace`. Từ 19/09/2026 Aladin
+ * tạm bỏ `trace`, và ở đó chúng thành ba màn còn đăng ký mà mọi nút bên trong
+ * đều dẫn tới route không tồn tại.
+ *
+ * `crossModuleNavigateGuarded.test.ts` miễn trừ đúng ba tệp này, và lời miễn trừ
+ * đó dựa trên tiền đề "mọi app đều bật `trace`". Cổng dưới đây giữ tiền đề ấy
+ * đúng theo cách mạnh hơn một lời hứa: ở app không có `trace`, ba màn KHÔNG vào
+ * cây điều hướng, nên không có nút chết nào để mà dẫn đi đâu.
+ *
+ * Phạm vi của cổng này bằng ĐÚNG phạm vi danh sách miễn trừ — không rộng hơn.
+ * Cụm truy xuất ở tầng vỏ còn những màn khác (`Space3D`, `TreeMap2D`,
+ * `Wayfind`…); chúng chưa được soi có dẫn sang route `trace` hay không, nên
+ * chúng KHÔNG nằm đây. Nói ra để lần đọc sau đừng hiểu cổng này là "đã dọn sạch
+ * cụm truy xuất khỏi app không có trace".
+ */
+const TRACE_ROUTED_HOST_SCREENS: ReadonlySet<string> = new Set([
+  'TreeIdentity',
+  'TreeEnroll',
+  'TreeManagement',
+]);
+
 const HOST_STACK_SCREENS: Array<{
   name: string;
   component: React.ComponentType<any>;
@@ -2098,8 +2123,12 @@ const AppNavigator = () => {
             headerTitleStyle: { color: COLORS.text, fontWeight: '700' },
           }}
         >
-          {/* Host shell screens (vỏ giữ tĩnh) */}
-          {HOST_STACK_SCREENS.map((s) => (
+          {/* Host shell screens (vỏ giữ tĩnh). Ba màn đi thẳng vào route của
+              `trace` chỉ đăng ký khi app có `trace` — xem
+              `TRACE_ROUTED_HOST_SCREENS`. */}
+          {HOST_STACK_SCREENS.filter(
+            (s) => !TRACE_ROUTED_HOST_SCREENS.has(s.name) || ENABLED_MODULES.includes('trace'),
+          ).map((s) => (
             <Stack.Screen
               key={s.name}
               name={s.name}

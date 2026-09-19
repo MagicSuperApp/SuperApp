@@ -382,7 +382,7 @@ if (trungDid) {
         // nhảy cóc theo lượt phát hành của app kia. Ngày nào hai app lệch nhịp phát
         // hành tới mức chuỗi số khó đọc thì tách xuống từng flavor; hôm nay chưa cần,
         // và tách sớm là thêm một chỗ phải nhớ đồng bộ mà không ai được lợi.
-        versionCode 104
+        versionCode 105
         versionName "2.0"
 
         // ✅ Support 16KB page size (required by Google Play Store 2024)

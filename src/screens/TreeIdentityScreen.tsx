@@ -54,6 +54,15 @@ import {
   type RoundComplete,
   type CapturedImage,
 } from '../services/treeReIDNativeBridge';
+import {
+  partitionCaptures,
+  missingParts,
+  MIN_TRUNK,
+  MIN_BASE,
+  type CaptureAngle,
+  type TreePart,
+} from './treeCaptureParts';
+import TreePartReviewStrip from './TreePartReviewStrip';
 import { autoTreeRegions } from '../services/treeRegionAuto';
 import { getCapturePlan, captureHint } from '../services/capturePlanService';
 import {
@@ -155,15 +164,31 @@ const NativeCameraPreview = boNho[KHOA_VIEW] as React.ComponentType<CameraPrevie
 // Constants
 // ---------------------------------------------------------------------------
 
-const MIN_ROUND1 = 4;
-const MIN_ROUND2 = 2;
+/**
+ * Ngưỡng lấy từ `treeCaptureParts` — MỘT nguồn, không gõ lại.
+ *
+ * Trước đây màn này giữ bản riêng (`MIN_ROUND1`/`MIN_ROUND2`). Hai bản cùng một
+ * con số nằm ở hai tệp là thứ trôi khỏi nhau mà không gì báo (`Forall §Một nguồn`).
+ */
+const MIN_ROUND1 = MIN_TRUNK;
+const MIN_ROUND2 = MIN_BASE;
 
+/**
+ * Câu dẫn — KHÔNG còn nhắc "lượt" nào.
+ *
+ * Chủ sở hữu bác lối hai lượt 2026-09-19: *"Đừng bắt nông dân phải dừng lại
+ * chuyển nút bấm giữa chừng."* Câu `sufficient` cũ (*"Bấm Lượt 2: Cận gốc để
+ * tăng độ chính xác"*) là câu dẫn người ta tới đúng cái nút vừa bị bỏ, nên nó đi
+ * theo cái nút. Nay câu dẫn nói THIẾU GÌ và CHĨA MÁY ĐI ĐÂU — người dùng không
+ * cần biết trong máy có khái niệm "lượt" nào cả.
+ */
 const GUIDANCE = {
-  round1: 'Đi vòng quanh cây, lia chậm để lấy đủ góc.',
-  round2: 'Đứng SÁT GỐC, chĩa ống kính LÊN — lấy rõ vỏ gốc, sẹo, chạc cây.',
+  start: 'Đi vòng quanh cây, lia chậm để lấy đủ góc.',
   needMore: 'Xoay thêm một chút nữa để lấy góc mới.',
   captured: 'Đã lấy một góc — tiếp tục lia.',
-  sufficient: 'Đủ để nhận rồi. Bấm "Lượt 2: Cận gốc" để tăng độ chính xác.',
+  needBase: 'Còn thiếu góc gốc — chĩa ống kính xuống phía gốc cây rồi giữ yên một nhịp.',
+  needTrunk: 'Còn thiếu góc thân — ngẩng ống kính lên ngang thân rồi lia tiếp.',
+  sufficient: 'Đủ rồi. Lia thêm vài góc nữa thì càng chắc.',
   android: 'Bấm "Chụp ảnh" để thêm góc nhìn (tối thiểu 4 ảnh).',
 } as const;
 
@@ -380,8 +405,35 @@ const TreeIdentityScreen: React.FC = () => {
 
   // iOS: đếm capture từ native event (capturesRedux chỉ được điền SAU stop).
   const [iosCaptureCount, setIosCaptureCount] = useState(0);
+
+  /**
+   * Góc chụp của TỪNG ảnh, gom ngay lúc chụp.
+   *
+   * Vì sao phải giữ riêng thay vì đọc `capturesRedux`: redux chỉ được điền SAU
+   * khi dừng phiên, nên trong suốt lúc người dùng đang lia máy, màn hình không có
+   * pitch của ảnh nào cả — chỉ có mỗi TỔNG SỐ. Mà thanh tiến độ phải nói được
+   * "còn thiếu góc gốc" NGAY LÚC ĐÓ, chứ nói sau khi đã chụp xong thì vô dụng.
+   * Sự kiện `CaptureTriggered` chở sẵn `{captureId, heading, pitch}`, nên chỉ cần
+   * nhặt lại — không phải sửa gì bên native.
+   */
+  const [captureAngles, setCaptureAngles] = useState<CaptureAngle[]>([]);
+
+  /**
+   * Nhãn người dùng tự đặt lại cho một ảnh. Rỗng là chuyện bình thường, không
+   * phải trạng thái thiếu: mặc định KHÔNG ai phải chạm gì.
+   */
+  const [manualParts, setManualParts] = useState<Record<string, TreePart>>({});
+
+  /**
+   * Loạt ảnh đang chờ người dùng liếc qua, sau khi đã dừng chụp.
+   *
+   * `null` = chưa dừng chụp (hoặc đã nhận diện xong) ⟹ không hiện dải xem lại.
+   * Phải giữ nguyên `CapturedImage` chứ không rút gọn: lượt nhận diện còn cần
+   * `heading`/`roll` (`toCaptureOrientations`) và khung máy đã khoanh
+   * (`autoTreeRegions`), hai thứ không nằm trong thứ dải ảnh vẽ ra.
+   */
+  const [reviewCaptures, setReviewCaptures] = useState<CapturedImage[] | null>(null);
   // Snapshot tổng-số-capture tại thời điểm advance sang lượt 2 → tính per-round.
-  const [iosRound1Snapshot, setIosRound1Snapshot] = useState(0);
 
   const geoWatchRef = useRef<number | null>(null);
 
@@ -478,6 +530,18 @@ const TreeIdentityScreen: React.FC = () => {
     });
 
     const unsubCapture = subscribeCaptureTriggered((e: CaptureTriggered) => {
+      // Nhặt góc chụp của ảnh này để chia thân/gốc ngay trong lúc còn đang lia.
+      // LỌC TRÙNG theo `captureId`: native bắn sự kiện HAI LẦN cho cùng một ảnh
+      // (trước và sau khi ghi tệp) — chính lý do dòng dưới phải lấy `max`. Không
+      // lọc thì mỗi ảnh vào bảng hai lần, và bảng chia sẽ đếm gấp đôi trong khi
+      // con số "N ảnh" bên cạnh nó vẫn đúng — hai con số lệch nhau ngay trên cùng
+      // một màn, không có gì báo cái nào sai.
+      setCaptureAngles(prev =>
+        prev.some(a => a.id === e.captureId)
+          ? prev
+          : [...prev, { id: e.captureId, pitch: typeof e.pitch === 'number' ? e.pitch : null }],
+      );
+
       // Native gửi 2 lần: lần đầu (trước save) totalCaptures=N-1, lần sau (sau save) totalCaptures=N.
       // Lấy max để counter chỉ tăng, không lùi.
       if (e.totalCaptures > 0) {
@@ -521,31 +585,62 @@ const TreeIdentityScreen: React.FC = () => {
     };
   }, []);
 
-  // ── Derive local capture counts ───────────────────────────────────────────
-  // iOS: capturesRedux chỉ điền SAU stop session → dùng iosCaptureCount real-time.
-  //   round1Count  = iosCaptureCount khi đang lượt 1; khi sang lượt 2 = snapshot lúc advance.
-  //   round2Count  = iosCaptureCount - iosRound1Snapshot khi đang lượt 2.
-  // Native (iOS + Android): dùng counter real-time iosCaptureCount; fallback picker dùng redux/URIs.
-  const round1Count = TreeReIDBridge.isAvailable() && isCaptureActive
-    ? (currentRoundLocal === 1 ? iosCaptureCount : iosRound1Snapshot)
-    : capturesRedux.filter(c => c.round === 1).length;
-  const round2Count = TreeReIDBridge.isAvailable() && isCaptureActive
-    ? (currentRoundLocal === 2 ? iosCaptureCount - iosRound1Snapshot : 0)
-    : capturesRedux.filter(c => c.round === 2).length;
+  // ── Chia thân/gốc bằng SỐ ĐO, không bằng nút bấm ──────────────────────────
+  //
+  // Lý do đầy đủ + ba số đo đứng sau ở đầu tệp `treeCaptureParts.ts`. Tóm tắt:
+  // nhãn "lượt" chưa bao giờ được gửi lên máy chủ, và tầng native vốn đã tự chụp
+  // ảnh gốc khi người dùng chĩa máy xuống — cái nút chỉ dán nhãn.
+  //
+  // Hết phiên thì `capturesRedux` mới có, còn trong lúc đang lia thì chỉ có
+  // `captureAngles` gom từ sự kiện. Ưu tiên nguồn nào ĐANG có số thật.
+  //
+  // Đã dừng chụp ⟹ `reviewCaptures` là nguồn ĐÚNG NHẤT và phải thắng: nó là
+  // chính loạt ảnh sắp được gửi đi, còn `captureAngles` chỉ là những gì sự kiện
+  // native kịp bắn. Hai con số lệch nhau thì dải ảnh vẽ một đằng, thanh tiến độ
+  // đếm một nẻo — và người dùng không có cách nào biết bên nào đúng.
+  const angles: CaptureAngle[] = reviewCaptures
+    ? reviewCaptures.map(c => ({
+      id: c.id,
+      pitch: typeof c.pitch === 'number' ? c.pitch : null,
+    }))
+    : captureAngles.length > 0
+      ? captureAngles
+      : capturesRedux.map(c => ({
+        id: c.id,
+        pitch: typeof c.pitch === 'number' ? c.pitch : null,
+      }));
+  const partition = partitionCaptures(angles, manualParts);
+  const missing = missingParts(partition);
+
   const totalCaptures =
     TreeReIDBridge.isAvailable() ? iosCaptureCount : androidImageUris.length;
+
+  /**
+   * Đủ để bấm Nhận diện chưa.
+   *
+   * Máy KHÔNG trả pitch (Android chưa có native) ⟹ không chia được, và lúc đó
+   * luật phải LÙI VỀ đếm tổng số ảnh như cũ. Nếu để nguyên luật thân/gốc thì
+   * `missing.enough` vĩnh viễn `false` và nút Nhận diện không bao giờ sáng trên
+   * máy đó — một cổng luôn đóng, không ai biết vì sao.
+   */
+  const doChiaDuoc = partition.trunk + partition.base > 0;
+  const readyToIdentify = doChiaDuoc
+    ? missing.enough
+    : totalCaptures >= MIN_ROUND1;
 
   // ── Guidance text ─────────────────────────────────────────────────────────
   const getGuidance = (): string => {
     if (identResult) return '';
-    // Android KHÔNG có native → guidance chụp tay; có native thì dùng guidance theo round như iOS.
+    // Android KHÔNG có native → guidance chụp tay.
     if (Platform.OS === 'android' && !TreeReIDBridge.isAvailable()) return GUIDANCE.android;
     if (!isCaptureActive) return tk('trace.identify.idleHint');
-    if (totalCaptures === 0)
-      return currentRoundLocal === 2 ? GUIDANCE.round2 : GUIDANCE.round1;
+    if (totalCaptures === 0) return GUIDANCE.start;
+    // Nói THIẾU GÌ trước khi nói gì khác — đó là thứ duy nhất người đang cầm máy
+    // hành động được. Thiếu cả hai thì nhắc phần khó nhớ hơn (gốc).
+    if (doChiaDuoc && missing.base > 0) return GUIDANCE.needBase;
+    if (doChiaDuoc && missing.trunk > 0) return GUIDANCE.needTrunk;
     if (shouldCapture) return GUIDANCE.needMore;
-    if (currentRoundLocal === 1 && round1Count >= MIN_ROUND1)
-      return GUIDANCE.sufficient;
+    if (readyToIdentify) return GUIDANCE.sufficient;
     return GUIDANCE.captured;
   };
 
@@ -566,7 +661,8 @@ const TreeIdentityScreen: React.FC = () => {
       rLog.treeIdentity.startCapture();
       dispatch(clearAll());
       setIosCaptureCount(0);
-      setIosRound1Snapshot(0);
+      setCaptureAngles([]);
+      setManualParts({});
       const result = await TreeReIDBridge.startCaptureSession();
       setIsCaptureActive(true);
       setCurrentRoundLocal(result.round as 1 | 2);
@@ -623,19 +719,11 @@ const TreeIdentityScreen: React.FC = () => {
     }
   };
 
-  // ── iOS: Advance to round 2 ───────────────────────────────────────────────
-  const handleAdvanceToRound2 = async () => {
-    try {
-      rLog.treeIdentity.advanceRound2(iosCaptureCount);
-      setIosRound1Snapshot(iosCaptureCount);  // snapshot round1 count trước khi advance
-      const result = await TreeReIDBridge.advanceToRound2();
-      const nextRound = (result.round as 1 | 2) ?? 2;
-      setCurrentRoundLocal(nextRound);
-      dispatch(setCurrentRound(nextRound));
-    } catch (e: any) {
-      rLog.nativeBridge.bridgeError('advanceToRound2', e?.message ?? String(e));
-    }
-  };
+  // ⚠ ĐÃ GỠ 2026-09-19 — `handleAdvanceToRound2` và `iosRound1Snapshot`.
+  // Chúng chỉ phục vụ nút "Lượt 2: Cận gốc" đã bỏ. Cửa native `advanceToRound2()`
+  // vẫn còn bên `TreeReIDBridge` và KHÔNG gỡ ở đợt này — màn đăng ký
+  // (`TreeEnrollScreen`) còn gửi `round` lên máy chủ, nên đường đó phải bàn với
+  // nhà OriLife trước. Ở màn NHẬN DIỆN thì không nơi nào gọi nữa.
 
   // ── iOS: Stop capture + identify ─────────────────────────────────────────
   const handleStopAndIdentify = async () => {
@@ -660,19 +748,38 @@ const TreeIdentityScreen: React.FC = () => {
         dispatch(addCapture(cap));
       }
 
-      // Hướng máy đi CÙNG ảnh. `stopResult.captures` là nguồn tươi nhất — đọc
-      // `capturesRedux` ở đây sẽ lấy giá trị cũ vì dispatch chưa kịp vào selector.
-      await runIdentify(
-        stopResult.captures.map(c => `file://${c.fileURL}`),
-        toCaptureOrientations(stopResult.captures),
-        autoTreeRegions(stopResult.captures).regions,
-      );
+      // Dừng ở đây, KHÔNG nhận diện ngay. Ảnh chỉ có đường về tầng JS sau lượt
+      // `stopCaptureSession()` này (`CaptureTriggered` lúc đang chụp không mang
+      // `fileURL`), nên đây là khoảnh khắc DUY NHẤT trình được dải xem lại trước
+      // khi gửi đi. Người không muốn xem thì bấm thẳng nút Nhận diện bên dưới —
+      // dải này không chặn ai, theo đúng chốt *"cho sửa lại được nhưng k bắt buộc"*.
+      setReviewCaptures(stopResult.captures);
     } catch (e: any) {
       rLog.nativeBridge.bridgeError('stopCaptureSession', e?.message ?? String(e));
       showError('Lỗi', 'Không thể dừng chụp. Vui lòng thử lại.');
     } finally {
       setIsLoading(false);
     }
+  };
+
+  /**
+   * Gửi loạt ảnh đã xem lại đi nhận diện.
+   *
+   * Tách khỏi `handleStopAndIdentify` vì hai lượt này nay là hai việc rời nhau:
+   * dừng chụp thì luôn xảy ra, còn gửi đi thì người dùng quyết — và giữa hai lượt
+   * họ có thể đã sửa vài nhãn. Nhãn sửa KHÔNG đi lên máy chủ (`identifyTree`
+   * không có trường nào chở nó); nó chỉ quyết định màn hình có báo "đủ góc" hay
+   * không. Đừng viết chú thích nói nó được gửi lên — nó không được gửi.
+   */
+  const handleConfirmIdentify = async () => {
+    const caps = reviewCaptures;
+    if (!caps || caps.length === 0) return;
+    setReviewCaptures(null);
+    await runIdentify(
+      caps.map(c => `file://${c.fileURL}`),
+      toCaptureOrientations(caps),
+      autoTreeRegions(caps).regions,
+    );
   };
 
   // ── Android: Thêm ảnh từ camera (react-native-image-picker) ───────────────
@@ -1002,7 +1109,10 @@ const TreeIdentityScreen: React.FC = () => {
     setShowFactors(false);
     setAndroidImageUris([]);
     setIosCaptureCount(0);
-    setIosRound1Snapshot(0);
+    // Cả góc chụp lẫn nhãn đặt tay phải sạch theo — giữ lại nhãn của loạt trước
+    // thì cây sau thừa hưởng một quyết định của cây trước, và không gì báo.
+    setCaptureAngles([]);
+    setManualParts({});
     setCurrentRoundLocal(1);
     setIsCaptureActive(false);
     setQueryId(null);
@@ -1483,26 +1593,39 @@ const TreeIdentityScreen: React.FC = () => {
 
     return (
       <View style={styles.controls}>
-        {currentRoundLocal === 1 && round1Count >= MIN_ROUND1 && (
-          <TouchableOpacity
-            style={[styles.ctrlBtn, styles.ctrlBtnSecondary]}
-            onPress={handleAdvanceToRound2}
-            activeOpacity={0.8}
-          >
-            <Icon name="arrow-right-bold" size={22} color={CAM} />
-            <Text style={styles.ctrlBtnSecText}>Lượt 2: Cận gốc</Text>
-          </TouchableOpacity>
+        {/* ⚠ ĐÃ GỠ 2026-09-19 — nút "Lượt 2: Cận gốc".
+            Chủ sở hữu bác lối hai lượt: *"Đừng bắt nông dân phải dừng lại chuyển
+            nút bấm giữa chừng."* Gỡ được mà không mất gì, vì ba số đo ở đầu
+            `treeCaptureParts.ts`: nhãn lượt không bao giờ được gửi lên máy chủ,
+            tầng native vốn đã tự chụp khi máy chúc xuống (`|Δpitch| ≥ 18°`), và
+            trần 12 ảnh mỗi lượt là mã chết.
+            ĐỪNG dựng lại nút này. Thứ nó từng làm — cho máy biết đâu là ảnh gốc —
+            nay do `partitionCaptures` làm, và làm cho CẢ những ảnh chụp trước lúc
+            người dùng kịp bấm. */}
+
+        {/* Dải xem lại chỉ có mặt SAU khi dừng chụp — trước đó tầng JS chưa có
+            đường dẫn ảnh nào để vẽ. Nó không chặn nút bên dưới. */}
+        {reviewCaptures && reviewCaptures.length > 0 && (
+          <TreePartReviewStrip
+            shots={reviewCaptures.map(c => ({
+              id: c.id,
+              uri: c.fileURL.startsWith('file://') ? c.fileURL : `file://${c.fileURL}`,
+              pitch: typeof c.pitch === 'number' ? c.pitch : null,
+            }))}
+            manualParts={manualParts}
+            onChangeManualParts={setManualParts}
+          />
         )}
 
         <TouchableOpacity
           style={[
             styles.ctrlBtn,
             styles.ctrlBtnPrimary,
-            (isLoading || isIdentifyingLocal || totalCaptures < MIN_ROUND1) &&
+            (isLoading || isIdentifyingLocal || !readyToIdentify) &&
             styles.ctrlBtnDisabled,
           ]}
-          onPress={handleStopAndIdentify}
-          disabled={isLoading || isIdentifyingLocal || totalCaptures < MIN_ROUND1}
+          onPress={reviewCaptures ? handleConfirmIdentify : handleStopAndIdentify}
+          disabled={isLoading || isIdentifyingLocal || !readyToIdentify}
           activeOpacity={0.8}
         >
           {isLoading || isIdentifyingLocal ? (
@@ -1525,12 +1648,14 @@ const TreeIdentityScreen: React.FC = () => {
             Màn `ActivityScreen` ở cùng kho đã làm đúng: nút `Lưu vào sổ` mờ thì bên
             cạnh có chữ "Cần quay trước đã". Dòng dưới đây mang cùng vai, và nói thêm
             phần `ActivityScreen` không cần nói: CÒN THIẾU BAO NHIÊU. */}
-        {!isLoading && !isIdentifyingLocal && totalCaptures < MIN_ROUND1 && (
+        {!isLoading && !isIdentifyingLocal && !readyToIdentify && (
           <Text style={styles.ctrlHintText}>
-            {tk('trace.identify.needMoreAngles', {
-              n: MIN_ROUND1 - totalCaptures,
-              min: MIN_ROUND1,
-            })}
+            {doChiaDuoc
+              ? getGuidance()
+              : tk('trace.identify.needMoreAngles', {
+                n: Math.max(0, MIN_ROUND1 - totalCaptures),
+                min: MIN_ROUND1,
+              })}
           </Text>
         )}
       </View>
@@ -1640,51 +1765,55 @@ const TreeIdentityScreen: React.FC = () => {
           <View style={styles.bottomZone}>
             {nativeHudActive && (
               <View style={styles.bottomRow}>
+                {/* Hai ô này nay là THANH TIẾN ĐỘ, không phải hai chế độ.
+                    Không còn ô nào "đang bật" — người dùng không ở trong lượt
+                    nào cả, họ chỉ đang lia máy. Ô nào ĐỦ thì sáng lên; đó là
+                    thông tin duy nhất họ cần đọc từ đây. */}
                 <View style={styles.roundGroup}>
                   <View
                     style={[
                       styles.roundChip,
-                      currentRoundLocal === 1 && styles.roundChipActive,
+                      missing.trunk === 0 && styles.roundChipActive,
                     ]}
                   >
                     <Text
                       style={[
                         styles.roundChipText,
-                        currentRoundLocal === 1 && styles.roundChipTextActive,
+                        missing.trunk === 0 && styles.roundChipTextActive,
                       ]}
                     >
-                      Lượt 1: Thân
+                      Thân
                     </Text>
                     <Text
                       style={[
                         styles.roundChipCount,
-                        currentRoundLocal === 1 && styles.roundChipCountActive,
+                        missing.trunk === 0 && styles.roundChipCountActive,
                       ]}
                     >
-                      {round1Count}/{MIN_ROUND1}
+                      {partition.trunk}/{MIN_ROUND1}
                     </Text>
                   </View>
                   <View
                     style={[
                       styles.roundChip,
-                      currentRoundLocal === 2 && styles.roundChipActive,
+                      missing.base === 0 && styles.roundChipActive,
                     ]}
                   >
                     <Text
                       style={[
                         styles.roundChipText,
-                        currentRoundLocal === 2 && styles.roundChipTextActive,
+                        missing.base === 0 && styles.roundChipTextActive,
                       ]}
                     >
-                      Lượt 2: Gốc
+                      Gốc
                     </Text>
                     <Text
                       style={[
                         styles.roundChipCount,
-                        currentRoundLocal === 2 && styles.roundChipCountActive,
+                        missing.base === 0 && styles.roundChipCountActive,
                       ]}
                     >
-                      {round2Count}/{MIN_ROUND2}
+                      {partition.base}/{MIN_ROUND2}
                     </Text>
                   </View>
                 </View>

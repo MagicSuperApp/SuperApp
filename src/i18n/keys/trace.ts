@@ -828,11 +828,14 @@ export const TRACE_STRINGS = {
   'trace.fruitVideo.stepCover': { vi: 'Ảnh quả', en: 'Fruit photo', zh: '果实照片', ja: '果実の写真' },
   'trace.fruitVideo.stepName': { vi: 'Đặt tên', en: 'Name it', zh: '命名', ja: '名前' },
   'trace.fruitVideo.coverTitle': { vi: 'Chụp một tấm ảnh quả', en: 'Take one photo of the fruit', zh: '拍一张果实照片', ja: '果実の写真を 1 枚' },
+  // Cùng lý do với `scan.hint.fruit` ở `i18n/keys/scan.ts`: quả tràn khung thì máy
+  // chủ không dò ra viền quả và trả `NO_FRUIT_IN_PHOTO`. Ở đây còn đắt hơn — tấm
+  // này là ảnh NHẬN DẠNG của quả, chụp hỏng thì cả hồ sơ quả sau này tra không ra.
   'trace.fruitVideo.coverHint': {
-    vi: 'Đưa quả vào giữa khung. Tấm này là ảnh nhận dạng của quả — clip video chỉ dùng để đếm.',
-    en: 'Put the fruit in the middle of the frame. This photo identifies the fruit — the clip only counts them.',
-    zh: '把果实放在画面中央。这张照片用于识别果实——视频只用于清点。',
-    ja: '果実を画面の中央に。この写真が果実の識別に使われます（動画は数を数えるだけです）。',
+    vi: 'Đưa TRỌN quả vào giữa khung, chừa chút viền quanh quả. Tấm này là ảnh nhận dạng của quả — clip video chỉ dùng để đếm.',
+    en: 'Fit the whole fruit in the middle of the frame with a little margin around it. This photo identifies the fruit — the clip only counts them.',
+    zh: '把整个果实放在画面中央，四周留一点空隙。这张照片用于识别果实——视频只用于清点。',
+    ja: '果実全体を画面の中央に入れ、周囲に少し余白を残してください。この写真が果実の識別に使われます（動画は数を数えるだけです）。',
   },
   'trace.fruitVideo.coverDone': { vi: 'Đã có ảnh quả', en: 'Photo taken', zh: '照片已拍好', ja: '写真あり' },
   'trace.fruitVideo.needCover': { vi: 'Chụp ảnh quả trước đã', en: 'Take the fruit photo first', zh: '请先拍果实照片', ja: '先に果実の写真を' },

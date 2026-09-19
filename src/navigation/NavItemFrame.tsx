@@ -10,7 +10,7 @@
 import * as React from 'react';
 import { View, Text, Image, StyleSheet } from 'react-native';
 import { Icon } from '../components/Icon';
-import { navEn, navNational, navIcon } from './navLabels';
+import { navLines, navIcon } from './navLabels';
 import { useLanguage } from '../i18n';
 
 export const NAV_FRAME_DIMS = {
@@ -48,11 +48,9 @@ const NavItemFrame: React.FC<Props> = ({ route, focused, tint, dimTint, avatarUr
   const lang = useLanguage();
   const color = focused ? tint : dimTint;
   const isAvatarTab = !!avatarUri || !!initials;
-  // Dòng dưới chỉ vẽ khi KHÁC dòng EN ở trên — app đang đặt tiếng Anh (hoặc route
-  // chưa khai nhãn quốc gia) sẽ trùng chữ, in hai lần trông như lỗi.
-  const en = navEn(route);
-  const national = navNational(route, lang);
-  const showNational = national !== en;
+  // Dòng trên (đậm) là dòng viết bằng ngôn ngữ app đang đặt — phép chọn ở
+  // `navLines()`, tệp này chỉ vẽ. Xem lý do ở đầu `navLabels.ts`.
+  const { primary, secondary } = navLines(route, lang);
   return (
     <View style={styles.frame}>
       {isAvatarTab ? (
@@ -69,15 +67,15 @@ const NavItemFrame: React.FC<Props> = ({ route, focused, tint, dimTint, avatarUr
         <Icon name={navIcon(route, focused)} size={NAV_FRAME_DIMS.iconSize} color={color} />
       )}
       <Text
-        style={[styles.en, { color, fontWeight: focused ? '700' : '600' }]}
+        style={[styles.primary, { color, fontWeight: focused ? '700' : '600' }]}
         numberOfLines={1}
         maxFontSizeMultiplier={NAV_FONT_SCALE_MAX}
       >
-        {en}
+        {primary}
       </Text>
-      {showNational && (
-        <Text style={[styles.national, { color }]} numberOfLines={1} maxFontSizeMultiplier={NAV_FONT_SCALE_MAX}>
-          {national}
+      {secondary !== null && (
+        <Text style={[styles.secondary, { color }]} numberOfLines={1} maxFontSizeMultiplier={NAV_FONT_SCALE_MAX}>
+          {secondary}
         </Text>
       )}
     </View>
@@ -91,12 +89,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 1,
   },
-  en: {
+  // Hai kiểu chữ này là hai VỊ TRÍ (trên/dưới), không phải hai NGÔN NGỮ — tên cũ
+  // `en`/`national` nói sai điều đó kể từ lúc dòng trên đổi theo ngôn ngữ app.
+  primary: {
     fontSize: NAV_FRAME_DIMS.enSize,
     lineHeight: NAV_FRAME_DIMS.enSize + 3,
     letterSpacing: 0.1,
   },
-  national: {
+  secondary: {
     fontSize: NAV_FRAME_DIMS.nationalSize,
     lineHeight: NAV_FRAME_DIMS.nationalSize + 2,
     letterSpacing: -0.1,

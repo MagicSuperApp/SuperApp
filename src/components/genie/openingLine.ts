@@ -181,6 +181,27 @@ function pick(pool: Invitation[], seed: number): Invitation[] {
 }
 
 /**
+ * Cách xưng hô — chủ sở hữu chốt 2026-09-19, và lý do đáng giữ vì nó quyết luôn
+ * các câu về sau.
+ *
+ * Genie gọi người dùng là **"chủ nhân"** và tự xưng **"em"**. Bản trước dùng
+ * "bà con" / "mình".
+ *
+ * Vì sao đổi: "bà con" đúng với một app nông nghiệp và SAI ngay khi cùng bộ mã
+ * dựng ra một app khác — một chủ doanh nghiệp gọi xe không phải "bà con". Còn
+ * "chủ nhân" / "em" thì đứng được ở mọi app, mọi lứa tuổi, mọi tầng lớp, vì nó
+ * không đoán người dùng là ai; nó chỉ đặt người dùng cao hơn một bậc. Đó cũng là
+ * chỗ khác biệt với các trợ lý khác, vốn xưng hô ngang hàng.
+ *
+ * Ràng buộc kéo theo: **có tên thì gọi tên**, chỉ dùng hằng này khi chưa biết
+ * tên. Gọi một người là "chủ nhân" trong khi đã biết họ tên gì thì nghe như máy.
+ *
+ * Đây là chữ NGƯỜI DÙNG ĐỌC, thuộc mục 3 của `Forall §Đặt tên` (giao diện tiếng
+ * Việt) — không phải một định danh.
+ */
+const OWNER_TERM = 'chủ nhân';
+
+/**
  * Lắp câu mở.
  *
  * KHÔNG nhắc tên app ở đây. Tên app đi qua chỗ thay `{brand}` của `i18n`, và
@@ -198,7 +219,7 @@ export function buildOpeningLine(ctx: OpeningContext): OpeningLine {
   // vừa bị bác.
   if (invitations.length === 0) {
     return {
-      greeting: name ? `${name} ơi, mình nghe đây.` : 'Mình nghe đây.',
+      greeting: name ? `${name} ơi, em nghe đây.` : `Em nghe đây, ${OWNER_TERM}.`,
       invitations,
       returning: ctx.returning,
     };
@@ -210,11 +231,11 @@ export function buildOpeningLine(ctx: OpeningContext): OpeningLine {
 
   const greeting = ctx.returning
     ? name
-      ? `${name} ơi, hôm nay mình ${two}?`
-      : `Hôm nay mình ${two}?`
+      ? `${name} ơi, hôm nay ${two} ạ?`
+      : `Hôm nay ${OWNER_TERM} ${two} ạ?`
     : name
-      ? `Chào ${name}. Mình giúp được ngay: ${two}? Bấm một việc bên dưới là mình dẫn đi.`
-      : `Chào bà con. Mình giúp được ngay: ${two}? Bấm một việc bên dưới là mình dẫn đi.`;
+      ? `Chào ${name}. Em giúp được ngay: ${two}? Bấm một việc bên dưới là em dẫn đi.`
+      : `Chào ${OWNER_TERM}. Em giúp được ngay: ${two}? Bấm một việc bên dưới là em dẫn đi.`;
 
   return { greeting, invitations, returning: ctx.returning };
 }

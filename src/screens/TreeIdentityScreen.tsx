@@ -20,7 +20,11 @@
 
 import { t } from '../i18n';
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { launchCamera } from 'react-native-image-picker';
+import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
+import {
+  LIBRARY_PICK_OPTIONS,
+  readLibraryPick,
+} from './treeIdentifyFromLibrary';
 import {
   View,
   Text,
@@ -397,6 +401,27 @@ const TreeIdentityScreen: React.FC = () => {
 
   // Android: captures tự quản lý cục bộ bằng mảng uri ảnh
   const [androidImageUris, setAndroidImageUris] = useState<string[]>([]);
+
+  /**
+   * Ảnh mà lượt nhận diện VỪA RỒI thật sự đã gửi đi.
+   *
+   * Vì sao cần: mọi việc làm TIẾP sau một lượt nhận diện (cập nhật vị trí, xác
+   * nhận một cây ứng viên) phải gửi ĐÚNG những tấm ảnh máy chủ vừa đối chiếu.
+   * Trước đợt này các chỗ đó tự dựng lại danh sách bằng
+   * `TreeReIDBridge.isAvailable() ? capturesRedux : androidImageUris` — tức suy
+   * lại từ TRẠNG THÁI MÁY thay vì đọc cái đã xảy ra. Hai vế trùng nhau chừng nào
+   * còn đúng hai lối vào; thêm lối thứ ba (ảnh thư viện) là chúng tách ra, và
+   * chúng tách ra **im lặng**: máy chủ vẫn nhận một mảng ảnh hợp lệ, vẫn trả 200,
+   * chỉ là nó đối chiếu nhầm bộ ảnh.
+   *
+   * `regions`/`captures` đi kèm trong cùng một ô vì chúng khớp với mảng ảnh
+   * THEO CHỈ SỐ. Tách chúng ra hai chỗ là mở đúng cái cửa lệch chỉ số đó.
+   */
+  const lastIdentifyInput = useRef<{
+    images: string[];
+    orientations?: CaptureOrientation[];
+    regions?: Array<TreeRegion | null>;
+  } | null>(null);
 
   // ── Cam controls: flash (mặc-định TẮT) + lens 0.5x ────────────────────────
   const [camCaps, setCamCaps] = useState({ hasTorch: false, supportsUltraWide: false });
@@ -809,6 +834,45 @@ const TreeIdentityScreen: React.FC = () => {
     }
   };
 
+  /**
+   * Chọn ảnh CÓ SẴN trong thư viện rồi nhận diện luôn.
+   *
+   * Lối này có mặt trên MỌI máy, kể cả máy có tầng chụp native — vì việc nó phục
+   * vụ không phải "máy không chụp được" mà là "cây không còn ở trước mặt": ảnh
+   * chụp hôm qua, ảnh người khác gửi, ảnh của mảnh vườn cách đó vài cây số.
+   *
+   * KHÔNG gửi `regions`/`captures`. Ảnh thư viện không có hai thứ đó, và gửi một
+   * mảng dựng từ phiên chụp hiện tại là lệch chỉ số — xem chú thích ở
+   * `lastIdentifyInput`.
+   *
+   * Quyền riêng tư: `LIBRARY_PICK_OPTIONS` giữ `quality < 1` + `maxWidth/Height`,
+   * và đó là điều kiện DUY NHẤT làm bộ chọn dựng lại tệp và đánh rơi EXIF. Lý do
+   * đo được nằm ở đầu `treeIdentifyFromLibrary.ts`; đừng nới hai số đó để "ảnh
+   * nét hơn cho máy đối chiếu" mà không đọc chỗ ấy trước.
+   */
+  // Hàm thường, KHÔNG `useCallback`: `runIdentify` khai bằng `const` ở dưới, nên
+  // một mảng phụ thuộc `[runIdentify]` chạy lúc dựng màn sẽ chạm vào nó khi nó
+  // còn trong vùng chết và ném ReferenceError. `handleAndroidIdentify` ngay dưới
+  // cũng là hàm thường vì đúng lý do này.
+  const handlePickFromLibrary = async () => {
+    const res = await launchImageLibrary(LIBRARY_PICK_OPTIONS);
+    const picked = readLibraryPick(res as any, MIN_ROUND1);
+
+    // Huỷ là hành động bình thường — không chữ đỏ nào.
+    if (picked.blocked === 'cancelled') return;
+    if (picked.blocked === 'failed') {
+      showError('Không mở được thư viện ảnh',
+        (res as any)?.errorMessage || 'Kiểm tra quyền truy cập ảnh của ứng dụng.');
+      return;
+    }
+    if (picked.blocked === 'too-few') {
+      showError('Chưa đủ ảnh',
+        `Cần ít nhất ${MIN_ROUND1} ảnh của cùng một cây. Đã chọn ${picked.images.length} — còn thiếu ${picked.missing}.`);
+      return;
+    }
+    await runIdentify(picked.images);
+  };
+
   // ── Android: Identify với ảnh picker ──────────────────────────────────────
   const handleAndroidIdentify = async () => {
     if (androidImageUris.length < MIN_ROUND1) {
@@ -861,6 +925,7 @@ const TreeIdentityScreen: React.FC = () => {
     // Bỏ trống ⟹ không gửi trường nào, máy chủ embed cả khung như trước.
     regions?: Array<TreeRegion | null>,
   ) => {
+    lastIdentifyInput.current = { images: imagePaths, orientations, regions };
     setIsIdentifyingLocal(true);
     // Mỗi lần identify mới → xoá phán-quyết cũ.
     setQueryId(null);
@@ -980,11 +1045,15 @@ const TreeIdentityScreen: React.FC = () => {
     }
     try {
       setIsLoading(true);
-      // Gọi verify_add với ảnh hiện tại — server tự cập nhật GPS mới
+      // Gọi verify_add với ĐÚNG bộ ảnh lượt nhận diện vừa gửi — không suy lại từ
+      // trạng thái máy (xem `lastIdentifyInput`). Chưa có lượt nào thì nút này
+      // không tới được, nhưng vế lùi vẫn giữ để không dựng một đường cụt.
+      const sent = lastIdentifyInput.current;
       const imgs =
-        TreeReIDBridge.isAvailable()
+        sent?.images ??
+        (TreeReIDBridge.isAvailable()
           ? capturesRedux.map(c => `file://${c.fileURL}`)
-          : androidImageUris;
+          : androidImageUris);
 
       // `farm_id` BẮT BUỘC. Thiếu nó máy chủ gán null và cây rơi khỏi bộ lọc
       // `/api/trees?farm_id=X` (`treeReIDService.ts:795-797`) — bổ sung ảnh xong
@@ -996,8 +1065,16 @@ const TreeIdentityScreen: React.FC = () => {
         imagePaths: imgs,
         farm: farmContext,
         gps: gpsRedux,
-        regions: TreeReIDBridge.isAvailable() ? autoTreeRegions(capturesRedux).regions : undefined,
-        captures: TreeReIDBridge.isAvailable() ? toCaptureOrientations(capturesRedux) : undefined,
+        // Hai trường này khớp `imagePaths` THEO CHỈ SỐ. Lượt ảnh thư viện không
+        // có chúng, và `undefined` là câu trả lời đúng — hợp đồng đã ghi "bỏ
+        // trống ⟹ không gửi trường nào". Dựng chúng từ `capturesRedux` cho một
+        // mảng ảnh KHÁC là lệch chỉ số, và máy chủ vẫn trả 200.
+        regions: sent
+          ? sent.regions
+          : TreeReIDBridge.isAvailable() ? autoTreeRegions(capturesRedux).regions : undefined,
+        captures: sent
+          ? sent.orientations
+          : TreeReIDBridge.isAvailable() ? toCaptureOrientations(capturesRedux) : undefined,
         headingRef: platformHeadingRef(),
       });
 
@@ -1037,10 +1114,14 @@ const TreeIdentityScreen: React.FC = () => {
     // Xác nhận candidate → thêm góc nhìn vào cây đó
     try {
       setIsLoading(true);
+      // Cùng lý do như ở `handleUpdateLocation`: đọc bộ ảnh lượt nhận diện ĐÃ
+      // gửi, đừng suy lại từ trạng thái máy.
+      const sent = lastIdentifyInput.current;
       const imgs =
-        TreeReIDBridge.isAvailable()
+        sent?.images ??
+        (TreeReIDBridge.isAvailable()
           ? capturesRedux.map(c => `file://${c.fileURL}`)
-          : androidImageUris;
+          : androidImageUris);
 
       const res = await addViewsToTree({
         baseUrl: BASE_URL,
@@ -1048,8 +1129,12 @@ const TreeIdentityScreen: React.FC = () => {
         imagePaths: imgs,
         farm: farmContext,
         gps: gpsRedux,
-        regions: TreeReIDBridge.isAvailable() ? autoTreeRegions(capturesRedux).regions : undefined,
-        captures: TreeReIDBridge.isAvailable() ? toCaptureOrientations(capturesRedux) : undefined,
+        regions: sent
+          ? sent.regions
+          : TreeReIDBridge.isAvailable() ? autoTreeRegions(capturesRedux).regions : undefined,
+        captures: sent
+          ? sent.orientations
+          : TreeReIDBridge.isAvailable() ? toCaptureOrientations(capturesRedux) : undefined,
         headingRef: platformHeadingRef(),
       });
 
@@ -1545,6 +1630,17 @@ const TreeIdentityScreen: React.FC = () => {
           </TouchableOpacity>
 
           <TouchableOpacity
+            testID="tree-identify-from-library"
+            style={[styles.ctrlBtn, styles.ctrlBtnSecondary]}
+            onPress={handlePickFromLibrary}
+            disabled={isIdentifyingLocal}
+            activeOpacity={0.8}
+          >
+            <Icon name="image-multiple" size={22} color={CAM} />
+            <Text style={styles.ctrlBtnSecText}>Chọn ảnh có sẵn</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
             style={[
               styles.ctrlBtn,
               styles.ctrlBtnPrimary,
@@ -1586,6 +1682,22 @@ const TreeIdentityScreen: React.FC = () => {
                 <Text style={styles.ctrlBtnText}>Bắt đầu</Text>
               </>
             )}
+          </TouchableOpacity>
+
+          {/* Lối ảnh có sẵn — đứng cạnh lối chụp, KHÔNG thay nó.
+              Nó phục vụ ca "cây không còn ở trước mặt", không phải ca "máy không
+              chụp được": ảnh chụp hôm qua, ảnh người khác gửi. Nút phụ chứ không
+              phải nút chính, vì lối chụp dẫn vẫn cho kết quả tốt hơn — nó gửi kèm
+              vùng cây và hướng máy, còn ảnh thư viện thì không có gì cả. */}
+          <TouchableOpacity
+            testID="tree-identify-from-library"
+            style={[styles.ctrlBtn, styles.ctrlBtnSecondary]}
+            onPress={handlePickFromLibrary}
+            disabled={isLoading || isIdentifyingLocal}
+            activeOpacity={0.8}
+          >
+            <Icon name="image-multiple" size={22} color={CAM} />
+            <Text style={styles.ctrlBtnSecText}>Chọn ảnh có sẵn</Text>
           </TouchableOpacity>
         </View>
       );
@@ -1704,6 +1816,16 @@ const TreeIdentityScreen: React.FC = () => {
             {TreeReIDBridge.isAvailable() && isCaptureActive && NativeCameraPreview ? (
               <NativeCameraPreview style={StyleSheet.absoluteFill} />
             ) : (
+              /* Lời mời chụp ẩn đi trong lúc đang nhận diện.
+                 Đo trên máy ảo iPhone 17 ngày 19/09/2026: nhận diện bằng ảnh có
+                 sẵn không mở camera, nên khung xem trước vẫn ở trạng thái trống
+                 và dòng "Bấm Bắt đầu để mở camera" vẫn vẽ — lớp phủ "Đang nhận
+                 diện cây..." đè lên đúng chỗ đó, hai dòng chữ chồng nhau thành
+                 một vệt không đọc được.
+                 Không phải lỗi thẩm mỹ: hai câu ĐỐI NGHỊCH nhau (một câu bảo
+                 chưa bắt đầu, một câu bảo đang chạy) và người dùng đọc được vệt
+                 nào là tuỳ chữ nào đè lên chữ nào. */
+              !isIdentifyingLocal && (
               <View style={styles.previewPlaceholder}>
                 <Icon
                   name={
@@ -1720,6 +1842,7 @@ const TreeIdentityScreen: React.FC = () => {
                     : 'Bấm "Bắt đầu" để mở camera'}
                 </Text>
               </View>
+              )
             )}
             {/* Nháy "chụp" dịu — chỉ trong khung camera */}
             {nativeHudActive && <CaptureFlash count={totalCaptures} />}

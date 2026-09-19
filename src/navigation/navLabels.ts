@@ -2,9 +2,19 @@
 //
 // NAV FRAME — nguồn DUY NHẤT cho nhãn + icon thanh điều hướng (experience layer).
 //
-// Quy ước song ngữ (anh Aladin chốt): tiếng ANH là CHUẨN, hiển thị ở MỌI ngôn
-// ngữ (dòng TRÊN); ngôn ngữ QUỐC GIA hiển thị bên DƯỚI, chỉ khi app đặt ngôn ngữ
-// đó. Ví dụ: "Chat" luôn ở trên; "Trò chuyện" hiện dưới nếu app = tiếng Việt.
+// Quy ước song ngữ. Tiếng ANH là nhãn CHUẨN của khuôn — mọi route bắt buộc có,
+// và nó là thứ mã nguồn tham chiếu. Nhưng THỨ TỰ HIỂN THỊ thì theo ngôn ngữ app
+// đang đặt (anh Aladin chốt 19/09/2026, đảo lại bản trước):
+//
+//   dòng TRÊN (đậm)  = nhãn viết bằng ngôn ngữ app đang đặt
+//   dòng DƯỚI (nhỏ)  = nhãn tiếng Anh, chỉ vẽ khi nó khác dòng trên
+//
+// App tiếng Việt: "Trò chuyện" đậm ở trên, "Chat" nhỏ ở dưới. App tiếng Anh: chỉ
+// một dòng "Chat". Phép chọn nằm ở `navLines()` dưới đây, `NavItemFrame` chỉ vẽ.
+//
+// Vì sao rẽ theo ngôn ngữ chứ không đảo cứng: khuôn này dùng chung cho MỌI app
+// instance, kể cả app nhắm người đọc tiếng Anh. Đảo cứng là áp gu của một vỏ lên
+// mọi vỏ.
 //
 // FRAME CHUẨN — thêm một dịch vụ = CLONE 1 DÒNG trong NAV_FRAME (đặt en +
 // national + icon). KHÔNG sửa navigator, KHÔNG sửa NavItemFrame. Ví dụ thêm Học
@@ -82,14 +92,39 @@ export function navEn(route: string): string {
  *
  * LUÔN trả nhãn THẬT, kể cả khi app đang là tiếng Anh — hàm này còn được dùng
  * làm nhãn DUY NHẤT ở nơi khác (vd `resolveGateItems`, tiêu đề tab). Việc bỏ
- * dòng thứ hai khi nó trùng dòng EN là quyết định TRÌNH BÀY của `NavItemFrame`,
- * không phải của hàm tra nhãn.
+ * dòng thứ hai khi nó trùng nhãn chuẩn là quyết định TRÌNH BÀY, và nó ở
+ * `navLines()` chứ không ở hàm tra nhãn này.
  */
 export function navNational(route: string, lang: LangCode = getNationalLanguage()): string {
   const f = NAV_FRAME[route];
   if (!f) return route;
   // lang === 'en' không có trong `national` → rơi về chính nhãn chuẩn.
   return (f.national as Partial<Record<LangCode, string>>)[lang] ?? f.en;
+}
+
+/** Hai dòng chữ của một ô nav, đã xếp đúng thứ tự vẽ. */
+export interface NavLines {
+  /** Dòng TRÊN, đậm — ngôn ngữ app đang đặt. */
+  primary: string;
+  /**
+   * Dòng DƯỚI, nhỏ — nhãn tiếng Anh. `null` khi nó trùng dòng trên (app đang đặt
+   * tiếng Anh, hoặc route chưa khai nhãn quốc gia): in hai dòng trùng chữ trông
+   * như lỗi.
+   */
+  secondary: string | null;
+}
+
+/**
+ * Xếp hai dòng chữ cho một ô nav.
+ *
+ * Tách khỏi `NavItemFrame` để phép chọn này kiểm được mà không phải dựng cây
+ * React — và để chỗ quyết định nằm cùng tệp với khuôn nhãn, không nằm trong tầng
+ * vẽ.
+ */
+export function navLines(route: string, lang: LangCode = getNationalLanguage()): NavLines {
+  const primary = navNational(route, lang);
+  const en = navEn(route);
+  return { primary, secondary: en === primary ? null : en };
 }
 
 /** Icon cho một route (active = filled, ngược lại outline). */

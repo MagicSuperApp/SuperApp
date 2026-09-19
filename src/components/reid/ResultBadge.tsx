@@ -35,19 +35,19 @@ export const DECISION_COLORS: Record<string, string> = {
 // TreeDecision: MATCH | UNCERTAIN | NO_MATCH | EMPTY_BUCKET | MOVED
 export const TREE_LABELS: Record<string, string> = {
   MATCH:        'MÁY ĐOÁN: CÂY NÀY',
-  UNCERTAIN:    '? CHƯA CHẮC',
-  NO_MATCH:     '✗ CHƯA NHẬN RA',
-  EMPTY_BUCKET: '• CHƯA CÓ CÂY GẦN ĐÂY',
-  MOVED:        '➜ CÂY ĐÃ DỜI?',
+  UNCERTAIN:    'CHƯA CHẮC',
+  NO_MATCH:     'CHƯA NHẬN RA',
+  EMPTY_BUCKET: 'CHƯA CÓ CÂY GẦN ĐÂY',
+  MOVED:        'CÂY ĐÃ DỜI?',
 };
 
 // AnimalDecision: MATCH | UNCERTAIN | NO_MATCH | EMPTY_FARM | MOVED
 export const ANIMAL_LABELS: Record<string, string> = {
   MATCH:        'MÁY ĐOÁN: CON NÀY',
-  UNCERTAIN:    '? CHƯA CHẮC',
-  NO_MATCH:     '✗ CHƯA NHẬN RA',
-  EMPTY_FARM:   '• TRẠI CHƯA CÓ CÁ THỂ',
-  MOVED:        '➜ ĐÃ DI CHUYỂN?',
+  UNCERTAIN:    'CHƯA CHẮC',
+  NO_MATCH:     'CHƯA NHẬN RA',
+  EMPTY_FARM:   'TRẠI CHƯA CÓ CÁ THỂ',
+  MOVED:        'ĐÃ DI CHUYỂN?',
 };
 
 // ─── Icon theo decision ───────────────────────────────────────────────────────

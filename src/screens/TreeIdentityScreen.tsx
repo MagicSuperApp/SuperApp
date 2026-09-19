@@ -1816,6 +1816,16 @@ const TreeIdentityScreen: React.FC = () => {
             {TreeReIDBridge.isAvailable() && isCaptureActive && NativeCameraPreview ? (
               <NativeCameraPreview style={StyleSheet.absoluteFill} />
             ) : (
+              /* Lời mời chụp ẩn đi trong lúc đang nhận diện.
+                 Đo trên máy ảo iPhone 17 ngày 19/09/2026: nhận diện bằng ảnh có
+                 sẵn không mở camera, nên khung xem trước vẫn ở trạng thái trống
+                 và dòng "Bấm Bắt đầu để mở camera" vẫn vẽ — lớp phủ "Đang nhận
+                 diện cây..." đè lên đúng chỗ đó, hai dòng chữ chồng nhau thành
+                 một vệt không đọc được.
+                 Không phải lỗi thẩm mỹ: hai câu ĐỐI NGHỊCH nhau (một câu bảo
+                 chưa bắt đầu, một câu bảo đang chạy) và người dùng đọc được vệt
+                 nào là tuỳ chữ nào đè lên chữ nào. */
+              !isIdentifyingLocal && (
               <View style={styles.previewPlaceholder}>
                 <Icon
                   name={
@@ -1832,6 +1842,7 @@ const TreeIdentityScreen: React.FC = () => {
                     : 'Bấm "Bắt đầu" để mở camera'}
                 </Text>
               </View>
+              )
             )}
             {/* Nháy "chụp" dịu — chỉ trong khung camera */}
             {nativeHudActive && <CaptureFlash count={totalCaptures} />}

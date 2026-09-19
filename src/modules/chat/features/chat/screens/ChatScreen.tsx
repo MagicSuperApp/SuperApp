@@ -24,6 +24,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Clipboard from '@react-native-clipboard/clipboard';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSelector, useDispatch } from 'react-redux';
+import { topPinned } from '../topPinned';
 import Toast from 'react-native-toast-message';
 import type { RootState, AppDispatch } from '../../../../../store';
 import { NEUTRAL, withAlpha } from '../../../../../shared/theme';
@@ -267,6 +268,19 @@ const ChatScreen: React.FC = () => {
     [messages],
   );
 
+  /**
+   * Tin hiện trên thanh ghim — theo thứ tự MÁY CHỦ trả về, không theo thời gian.
+   * Lý do đầy đủ + ca kiểm ở `topPinned.ts`. Thứ tự nằm sẵn trong kho state
+   * (`chatSlice.ts:801`), chỉ là màn này trước đây không đọc tới.
+   */
+  const thuTuGhim = useSelector(
+    (s: RootState) => s.chat.pinnedByConversation[conversationId],
+  );
+  const ghimTren = useMemo(
+    () => topPinned(pinned, thuTuGhim),
+    [pinned, thuTuGhim],
+  );
+
   if (!conversation) {
     return (
       <View style={styles.root}>
@@ -301,14 +315,14 @@ const ChatScreen: React.FC = () => {
         onPressInfo={() => setInfoOpen(true)}
       />
 
-      {pinned.length > 0 && (
+      {pinned.length > 0 && ghimTren && (
         <Pressable
           style={styles.pinnedBar}
-          onPress={() => setActionTarget(pinned[pinned.length - 1])}
+          onPress={() => setActionTarget(ghimTren)}
         >
           <Icon name="pin" size={14} color={CHAT_THEME.primary} />
           <Text style={styles.pinnedText} numberOfLines={1}>
-            {pinned[pinned.length - 1].text ?? 'Một tin đã được ghim'}
+            {ghimTren.text ?? 'Một tin đã được ghim'}
           </Text>
           {pinned.length > 1 && (
             <Text style={styles.pinnedCount}>+{pinned.length - 1}</Text>

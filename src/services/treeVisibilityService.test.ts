@@ -16,6 +16,8 @@
  *     trị đang có. Gửi kèm một mặc định mà người dùng không chọn là âm thầm đổi
  *     hộ họ mức lộ vị trí — đúng thứ không được phép làm sau lưng chủ vườn.
  */
+import fs from 'fs';
+import path from 'path';
 import { setTreeVisibility, isPublicVisibility, VISIBILITY_VALUES } from './treeVisibilityService';
 
 jest.mock('./orilifeDidAuth', () => ({
@@ -178,5 +180,78 @@ describe('isPublicVisibility', () => {
 
   it('enum khớp đúng ba mức máy chủ nhận', () => {
     expect([...VISIBILITY_VALUES]).toEqual(['private', 'public_readonly', 'public_contributable']);
+  });
+});
+
+/**
+ * Cổng soi MỌI nơi gọi.
+ *
+ * Vì sao phải là cổng soi mã nguồn chứ không phải một bài gọi hàm: chỗ hỏng đã
+ * xảy ra không nằm trong hàm — hàm nhận `exposeLocation` đúng và gửi đúng. Chỗ
+ * hỏng nằm ở NƠI GỌI bỏ trống tham số thứ tư, và một tham số tuỳ chọn bỏ trống
+ * thì trình biên dịch im, bài kiểm của hàm vẫn xanh, và máy chủ nhận một lượt
+ * ghi hợp lệ không mang mức lộ nào.
+ *
+ * Số đo của nhà OriLife trên kho sản xuất 2026-09-19: **0 / 185 cây** từng mang
+ * một mức lộ vị-trí do người dùng chọn — trong khi app đã có sẵn màn để chọn.
+ * Không một phép kiểm nào của nhà này đỏ suốt quãng đó.
+ *
+ * Cái phải canh là một THÓI QUEN gọi hàm, nên phép đo đúng cũng phải đứng ở tầng
+ * đó.
+ */
+describe('mọi nơi gọi `setTreeVisibility` đều PHẢI khai mức lộ vị-trí', () => {
+  const GOC = path.join(__dirname, '..');
+
+  /** Mọi tệp `.ts`/`.tsx` dưới `src/`, trừ chính tệp dịch vụ và các tệp kiểm. */
+  function quetTep(dir: string, ra: string[] = []): string[] {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) { quetTep(p, ra); continue; }
+      if (!/\.tsx?$/.test(e.name)) continue;
+      if (/\.test\.tsx?$/.test(e.name)) continue;
+      if (e.name === 'treeVisibilityService.ts') continue;
+      ra.push(p);
+    }
+    return ra;
+  }
+
+  const TEP = quetTep(GOC);
+
+  it('ca đối chứng — phép quét có thật sự mở được cây mã', () => {
+    // Không có ca này thì bài dưới xanh y hệt khi `quetTep` trả rỗng vì một lần
+    // đổi đường dẫn — đúng ca `Forall §Cổng gác`: phép đo không đo được gì mà
+    // vẫn in màu xanh.
+    expect(TEP.length).toBeGreaterThan(100);
+    expect(TEP.some((p) => p.endsWith('TreePublicSheet.tsx'))).toBe(true);
+  });
+
+  it('🔴 CHỐT — không nơi gọi nào được bỏ trống `exposeLocation`', () => {
+    const thieu: string[] = [];
+    for (const p of TEP) {
+      const src = fs.readFileSync(p, 'utf8');
+      if (!src.includes('setTreeVisibility(')) continue;
+      // Lấy trọn lời gọi: từ tên hàm tới dấu đóng ngoặc của lời gọi đó.
+      for (const m of src.matchAll(/setTreeVisibility\(([\s\S]{0,400}?)\);/g)) {
+        if (!m[1].includes('exposeLocation')) {
+          thieu.push(`${path.relative(GOC, p)} :: ${m[1].split('\n')[0].trim()}`);
+        }
+      }
+    }
+    expect(thieu).toEqual([]);
+  });
+
+  it('riêng-tư thì vị-trí KHÔNG đi kèm, và không nơi nào chọn `exact`', () => {
+    for (const p of TEP) {
+      const src = fs.readFileSync(p, 'utf8');
+      if (!src.includes('setTreeVisibility(')) continue;
+      for (const m of src.matchAll(/setTreeVisibility\(([\s\S]{0,400}?)\);/g)) {
+        // Fail-closed: nhánh riêng-tư phải nói 'none'.
+        expect(m[1]).toMatch(/'none'/);
+        // `exact` là toạ-độ chính xác của mảnh đất người ta — màn hình không được
+        // có đường nào tới nó. Cửa dịch vụ vẫn nhận, nhưng phải do chỗ khác gọi
+        // và phải có lý do viết ra.
+        expect(m[1]).not.toMatch(/'exact'/);
+      }
+    }
   });
 });

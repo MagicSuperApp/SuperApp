@@ -129,7 +129,26 @@ const TreePublicSheet: React.FC<TreePublicSheetProps> = ({ visible, onClose, tre
 
   const apply = useCallback(async (v: TreeVisibility) => {
     setSaving(true);
-    const r = await setTreeVisibility(ORILIFE_BASE, treeId, v);
+    // ⚠️ `exposeLocation` phải gửi THEO, không được để trống.
+    //
+    // Bản trước gọi `setTreeVisibility(ORILIFE_BASE, treeId, v)` — thiếu tham số
+    // thứ tư, nên trường `expose_location` KHÔNG bao giờ rời máy. Nhà OriLife đo
+    // trên kho sản xuất 2026-09-19: **0 / 185 cây** từng mang một mức lộ vị-trí
+    // do người dùng chọn. Không phải vì ai cũng chọn công khai — vì chưa lượt nào
+    // chọn gì cả.
+    //
+    // Và "không nói gì" KHÔNG được máy chủ đọc thành "riêng tư": hồ sơ cây vẫn
+    // rời máy chủ lên kho phân tán ở dạng tải được không cần khoá, kèm một con
+    // trỏ neo VĨNH VIỄN lên chuỗi công khai mang ô lưới ~153m của chính mảnh đất
+    // đó. Hai thứ ấy không gỡ lại được sau khi đã phát — kho định địa chỉ theo
+    // nội dung, còn chuỗi là chuỗi.
+    //
+    // Nên chỗ này khai THẲNG, và khai fail-closed: chọn riêng-tư thì vị-trí KHÔNG
+    // đi kèm; chọn công khai thì chỉ ô lưới thô, không bao giờ là toạ-độ chính
+    // xác. Mức `exact` cố ý không có đường nào tới được từ màn này.
+    const r = await setTreeVisibility(ORILIFE_BASE, treeId, v, {
+      exposeLocation: v === 'private' ? 'none' : 'geohash_coarse',
+    });
     if (!alive.current) return;
     setSaving(false);
     if (!r.ok) {

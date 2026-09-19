@@ -119,6 +119,37 @@ describe('câu mở', () => {
     }
   });
 
+  /**
+   * Cách xưng hô là thứ chủ sở hữu chốt, nên nó phải có bài canh — không thì nó
+   * trôi về bản cũ trong một lượt sửa chữ nào đó và không gì đỏ.
+   *
+   * Bài ghim CẢ HAI VẾ, vì mỗi vế hỏng theo một kiểu: gọi người dùng bằng một từ
+   * đoán sai họ là ai ("bà con"), và trợ lý tự xưng ngang hàng ("mình").
+   */
+  it('🔴 CHỐT — chưa biết tên thì gọi "chủ nhân", và Genie tự xưng "em"', () => {
+    for (const returning of [true, false]) {
+      const r = buildOpeningLine({ name: null, returning, modules: CHECKFARM });
+      expect(r.greeting).toContain('chủ nhân');
+      // Bản cũ, phải chết hẳn chứ không sống song song.
+      expect(r.greeting).not.toContain('bà con');
+      expect(r.greeting).not.toMatch(/\bmình\b/);
+    }
+    // Ca đối chứng: câu KHÔNG mời được việc nào cũng đi qua cùng luật.
+    const rong = buildOpeningLine({ name: null, returning: false, modules: [] });
+    expect(rong.greeting).toContain('chủ nhân');
+    expect(rong.greeting).not.toMatch(/\bmình\b/);
+  });
+
+  it('BIẾT tên thì gọi tên, KHÔNG gọi "chủ nhân" nữa', () => {
+    // Vế này phân biệt được hai bên đột biến: một bản dán "chủ nhân" vào mọi câu
+    // sẽ xanh ở bài trên và đỏ ở đây.
+    for (const returning of [true, false]) {
+      const r = buildOpeningLine({ name: 'Cường', returning, modules: CHECKFARM });
+      expect(r.greeting).toContain('Cường');
+      expect(r.greeting).not.toContain('chủ nhân');
+    }
+  });
+
   it('người MỚI và người CŨ nhận hai câu khác nhau', () => {
     const moi = buildOpeningLine({ name: 'Cường', returning: false, modules: ALADIN });
     const cu = buildOpeningLine({ name: 'Cường', returning: true, modules: ALADIN });

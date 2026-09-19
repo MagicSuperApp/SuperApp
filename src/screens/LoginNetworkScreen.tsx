@@ -33,6 +33,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Animated,
   Easing,
+  Linking,
   PanResponder,
   Pressable,
   StatusBar,
@@ -44,6 +45,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { getBuildNumber, getVersion } from 'react-native-device-info';
+import { BUILD_STAMP } from '../generated/buildStamp';
 import { Canvas, useFrame, useThree } from '@react-three/fiber/native';
 import * as THREE from 'three';
 import { useNavigation, useIsFocused, useFocusEffect } from '@react-navigation/native';
@@ -142,8 +144,21 @@ const BANG_MAU: BangMau = {
  * gõ cứng. Màn đăng nhập cũ ghi thẳng `v2.0.0` vào chuỗi chân trang — đó đúng là
  * lỗi mà `AccountScreen` đã phải gỡ một lần: người thử báo lỗi kèm một số hiệu
  * không chỉ về bản dựng nào cả.
+ *
+ * ⚠ ĐỌC TỪ BUNDLE VẪN CHƯA ĐỦ, và chỗ này từng tưởng là đủ. Số build trong bundle
+ * là `CURRENT_PROJECT_VERSION` gõ cứng trong `project.pbxproj` — đo 2026-09-19:
+ * `62`, ở cả hai cấu hình. Nhưng bản trên TestFlight mang 70/71, vì bước
+ * `-exportArchive` của CI mới là chỗ đặt số thật ("cao nhất trên ASC + 1"). Nên
+ * con số ấy không nói bản dựng nào trên cửa hàng, VÀ không nói mã nào đang chạy —
+ * nó là một số hiệu không chỉ về đâu cả, đúng thứ đoạn trên tưởng đã gỡ xong.
+ *
+ * `BUILD_STAMP` vá đúng phần còn thiếu: mã commit ngắn, dán lúc dựng
+ * (`scripts/stamp-build.js`), kèm `+` khi cây làm việc bẩn. Chưa dán thì nó tự
+ * khai là "chưa dán" chứ không mượn một mã cũ — xem lý do ở tệp sinh ra nó.
  */
-const DONG_PHIEN_BAN = `v${getVersion()} (${getBuildNumber()})`;
+const DONG_PHIEN_BAN =
+  `v${getVersion()} (${getBuildNumber()})` +
+  (BUILD_STAMP ? ` · ${BUILD_STAMP}` : '');
 
 // ── Cảnh GL ─────────────────────────────────────────────────────────────────
 
@@ -606,8 +621,67 @@ const LoginNetworkScreen: React.FC = () => {
     );
   };
 
+  /**
+   * Máy KHÔNG có sinh trắc dùng được — nói ra, và mở đúng chỗ bật nó.
+   *
+   * ── Vì sao đây là lỗi nặng chứ không phải một ca hiếm ──────────────────────
+   * Bản trước là `if (busy || noSensor) return;` — thoát IM LẶNG. Nút dưới đáy
+   * vẫn sáng (`cta.disabled` chỉ đo trạng thái danh tính, nó không biết gì về
+   * cảm biến), vòng tròn giữa màn vẫn bấm được, và cả hai lối đều dẫn tới đúng
+   * dòng `return` này. Người dùng bấm, không gì xảy ra, bấm lại, vẫn không gì
+   * xảy ra — và không có một chữ nào trên màn hình giải thích. Đo lại trên máy
+   * ảo 19/09/2026: ba lần bấm, không một phản hồi nào.
+   *
+   * Đây đúng ca `Forall §Cái vỏ im lặng`: không phải app hiện SAI, mà là app
+   * KHÔNG hiện gì cho một trạng thái nó đã biết rõ.
+   *
+   * ── Và nó không hiếm ──────────────────────────────────────────────────────
+   * `noSensor` gộp hai ca, và ca thứ hai mới là ca đông: máy CÓ cảm biến nhưng
+   * người dùng CHƯA ghi vân tay/khuôn mặt nào. `useBiometricSensor` trả
+   * `available: false` cho CẢ HAI — nó không tách được chúng, và không cần tách:
+   * cả hai đều dẫn tới cùng một việc người dùng phải làm.
+   *
+   * (Cố ý KHÔNG gõ tên hàm dò của thư viện ở đây. `useBiometricSensor.test.ts`
+   * giữ một BẢN KHAI các tệp được phép nhắc tên đó, để không màn nào tự đi dò
+   * cảm biến sau lưng hook dùng chung. Một chú thích cũng đủ làm bài ấy đỏ —
+   * và đường đúng là đổi chú thích, không phải thêm tệp này vào bản khai, vì
+   * thêm vào là mở sẵn cửa cho một lời gọi THẬT ở lượt sửa sau.)
+   *
+   * Số công bố: ~81% máy có sinh trắc đang bật (Cisco Duo 2022), và
+   * một khảo sát 1.220 người đo ~34% không dùng sinh trắc nào — tức quãng 1/5
+   * tới 1/3 người mở app rơi vào đây, với người lớn tuổi thì cao hơn.
+   *
+   * Hộp thoại này KHÔNG được là một lời xin lỗi cụt: nó phải chở người dùng đi
+   * một bước. `openSettings()` mở thẳng trang cài đặt của app — chỗ gần nhất
+   * tới mục vân tay/khuôn mặt mà app có quyền mở.
+   */
+  const reportNoBiometricSensor = () => {
+    trackPress('biometric_unavailable', { action: 'show_enable_guide' });
+    showError(
+      t('Máy này chưa bật vân tay hoặc khuôn mặt'),
+      t('Ứng dụng mở khoá tài khoản bằng chính vân tay hoặc khuôn mặt đã ghi trong máy, nên chưa ghi cái nào thì chưa đăng nhập được. Vào Cài đặt của máy, ghi một vân tay hoặc khuôn mặt, rồi quay lại đây.'),
+      {
+        hideCancel: true,
+        actions: [
+          {
+            text: t('Mở Cài đặt'),
+            onPress: () => {
+              // Không nuốt: máy không mở nổi trang cài đặt thì nói ra, đừng để
+              // người dùng bấm một nút không làm gì — đó đúng là cái vừa sửa.
+              Linking.openSettings().catch(() =>
+                showError(t('Không mở được Cài đặt. Anh/chị mở tay giúp: Cài đặt → Vân tay & khuôn mặt.')),
+              );
+            },
+          },
+          { text: t('Để sau'), style: 'cancel' },
+        ],
+      },
+    );
+  };
+
   const runBiometric = async () => {
-    if (busy || noSensor) return;
+    if (busy) return;
+    if (noSensor) return reportNoBiometricSensor();
     // Hộp thoại sinh trắc do HỆ ĐIỀU HÀNH vẽ → không đi qua `<Text>` nên lớp tự
     // dịch không với tới; phải gọi `t()` tay.
     const prompt = t('Xác thực sinh trắc học');
@@ -856,6 +930,30 @@ const LoginNetworkScreen: React.FC = () => {
             trắc của hệ điều hành đang mở, nút này vẫn sáng và vẫn bấm được.
             Vòng tròn sinh trắc ở giữa màn đã mờ đi đúng lúc ấy (`busy={busy}`);
             hai lối vào cùng một hành động thì phải khoá cùng nhau. */}
+        {/* ⚠ CHỈ hiện khi máy KHÔNG CÓ cảm biến sinh trắc. Chủ sở hữu chốt
+            2026-09-19, nguyên văn: *"Bạn để 2 nút đó sẽ gây thêm sự bối rối cho
+            người mới, họ sẽ bấm ngay nút Đăng nhập vì cái tên nút nó bảo thế,
+            thay vì bấm nút sinh trắc đang nổi bật."*
+
+            Đó là một phép đo về HÀNH VI, và nó đúng: hai lối vào cùng dẫn tới một
+            hành động, nhưng một lối mang đúng cái tên người ta đang đi tìm còn
+            lối kia thì không — nên cái tên thắng, bất kể cái nào được vẽ nổi hơn.
+            Người mới bấm nút chữ, và vì nút chữ là lối phụ nên họ đi vào đường
+            dài hơn mà không biết có đường ngắn.
+
+            Bỏ được mà không mất ai, vì vòng tròn sinh trắc là lối vào ĐỦ cho mọi
+            trạng thái danh tính: `runBiometric` đọc `readIdentityPresence()` rồi
+            tự đưa sang màn Khôi phục hay màn tạo mới (xem nhánh `presence !== 'yes'`
+            trong chính hàm đó). Nó không phải "nút đăng nhập cho người đã có tài
+            khoản" như tên gọi gợi ra.
+
+            Điều kiện là `=== false`, KHÔNG phải `!== true`: `useBiometricSensor`
+            trả `null` trong lúc đang dò và LUÔN chốt về `true`/`false` sau đó —
+            kể cả khi phép dò ném, nó đặt `false` (`useBiometricSensor.ts:68`).
+            Nên không có đường nào máy không cảm biến bị kẹt không thấy nút. Nếu
+            ngày nào cái hook đó thôi chốt, chỗ này thành đường cụt — nên nó phải
+            được kiểm ở `LoginNetworkScreen.noSensor.test.tsx`, đừng gỡ bài đó. */}
+        {noSensor && (
         <Pressable
           testID="login-primary-cta"
           accessibilityRole="button"
@@ -873,6 +971,7 @@ const LoginNetworkScreen: React.FC = () => {
           </Text>
           {cta.icon ? <Icon name={cta.icon} size={16} color={NEUTRAL.white} /> : null}
         </Pressable>
+        )}
 
         {/* LỐI LÙI — chỉ hiện ở đúng trạng thái "máy trống trơn".
 

@@ -217,6 +217,20 @@ async function ensureStandardWalletRegisteredInner(): Promise<boolean> {
     step = 'register';
     const remembered = await getAcceptedFormat('walletStandardRegister');
     let lastRejection: PhoenixKeyApiError | null = null;
+    /**
+     * Đếm số khuôn THẬT SỰ gửi được lên máy chủ — không phải số khuôn định thử.
+     *
+     * Vòng lặp có một lối bỏ qua không ghi gì vào `lastRejection`: máy thiếu cửa ký
+     * hex thì `signRegisterProof` trả `null` và `continue`. Nên một lượt chỉ gửi đi
+     * ĐÚNG MỘT khuôn vẫn rơi vào nhánh `lastRejection` bên dưới, và câu nhật ký ở đó
+     * khai "cả hai khuôn đều bị từ chối" — nói rộng hơn thứ nó đo.
+     *
+     * Đắt ở chỗ nó gửi người đọc đi sai hướng: "cả hai đều bị từ chối" đọc thành
+     * *"máy chủ đã đổi sang một khuôn thứ ba"*, trong khi sự thật có thể là
+     * *"máy này chưa bao giờ gửi được khuôn đóng khung"* — hai nguyên nhân, hai việc
+     * phải làm, và một trong hai nằm ở nhà khác.
+     */
+    let formatsSent = 0;
 
     for (const format of formatsToTry(remembered)) {
       // Nonce MỚI cho từng lượt. Nonce là thứ dùng-một-lần; gửi lại cái vừa bị từ
@@ -233,6 +247,7 @@ async function ensureStandardWalletRegisteredInner(): Promise<boolean> {
         continue;
       }
       rLog.phoenixWallet.walletProof(!!proof.paymentPublicKeyHex, !!proof.signature);
+      formatsSent += 1;
 
       try {
         await phoenixKeyApi.wallet.standardRegister({
@@ -272,9 +287,16 @@ async function ensureStandardWalletRegisteredInner(): Promise<boolean> {
     }
 
     if (lastRejection) {
+      // Câu mang đúng PHẠM VI của phép đo: bao nhiêu khuôn đi được tới máy chủ, chứ
+      // không phải bao nhiêu khuôn tồn tại.
+      const phamVi =
+        formatsSent >= 2
+          ? 'cả hai khuôn chuỗi ký đều bị từ chối'
+          : `máy chủ từ chối khuôn duy nhất máy này gửi được (${formatsSent}/2 khuôn `
+            + 'dựng được trên máy này)';
       rLog.phoenixWallet.walletError(
         step, lastRejection.code, lastRejection.httpStatus,
-        `cả hai khuôn chuỗi ký đều bị từ chối: ${lastRejection.message}`,
+        `${phamVi}: ${lastRejection.message}`,
       );
       noteFailure(step, lastRejection.code, lastRejection.httpStatus, lastRejection.message);
       return false;

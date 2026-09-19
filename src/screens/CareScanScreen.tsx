@@ -39,6 +39,8 @@ import {
   getCareProducts,
   getWithdrawalStatus,
   safeStateOf,
+  bannedCheckRan,
+  type CareBannedHit,
   type CareProduct,
   type CareLogResponse,
   type CareWithdrawalResponse,
@@ -76,8 +78,18 @@ const CareScanScreen: React.FC = () => {
   const [candidates, setCandidates] = useState<CareProduct[] | null>(null);
   /** Lý do máy chủ đưa khi không có ứng viên. `null` = chưa hỏi. */
   const [matchReason, setMatchReason] = useState<string | null>(null);
-  /** Câu soạn sẵn của máy chủ cho ca khớp nhập nhằng. */
+  /** Câu hoàn chỉnh của máy chủ — ghép mọi tình huống đang đúng, KHÔNG riêng ca nhập nhằng. */
   const [matchMessage, setMatchMessage] = useState<string | null>(null);
+  /** Hoạt chất cấm dò được trên nhãn. Khác rỗng ⟹ băng đỏ, bất kể có ứng viên hay không. */
+  const [banned, setBanned] = useState<CareBannedHit[] | null>(null);
+  /**
+   * Máy chủ đã tra được danh mục chất cấm chưa. `null` = chưa hỏi lượt nào.
+   *
+   * Giữ nguyên chuỗi máy chủ trả chứ không quy về boolean tại chỗ nhận: phép quy đổi
+   * nằm ở `bannedCheckRan`, một chỗ duy nhất. Quy sớm ở đây thì mã lý do biến mất
+   * khỏi màn và không ai truy được vì sao băng vàng hiện lên.
+   */
+  const [bannedCheck, setBannedCheck] = useState<string | null>(null);
   const [logged, setLogged] = useState<CareLogResponse | null>(null);
   // Cờ an toàn KHÔNG nằm trong thân của `/api/care/log` — phải hỏi riêng
   // `/api/care/withdrawal`. `null` = chưa hỏi xong hoặc hỏi hỏng; hai ca đó đều
@@ -121,6 +133,8 @@ const CareScanScreen: React.FC = () => {
     setCandidates(null);
     setMatchReason(null);
     setMatchMessage(null);
+    setBanned(null);
+    setBannedCheck(null);
     setLogged(null);
     setWd(null);
     if (!imagePicker?.launchCamera) {
@@ -144,6 +158,8 @@ const CareScanScreen: React.FC = () => {
     setCandidates(null);
     setMatchReason(null);
     setMatchMessage(null);
+    setBanned(null);
+    setBannedCheck(null);
     try {
       const res = await matchCareLabel(BASE_URL, imageUri);
       // `CareMatchResponse.ok` cũng là trường BẮT BUỘC (`careService.ts:84`) — cùng
@@ -153,7 +169,16 @@ const CareScanScreen: React.FC = () => {
       if (res.ok && res.data && res.data.ok !== false) {
         setCandidates(res.data.candidates ?? []);
         setMatchReason(res.data.reason ?? null);
-        setMatchMessage(res.data.ambiguous ? res.data.message ?? null : null);
+        // ⚠ Dòng này trước đây là `res.data.ambiguous ? res.data.message : null`.
+        // `message` KHÔNG thuộc riêng ca nhập nhằng — máy chủ ghép vào đó cả câu
+        // chất cấm lẫn câu "chưa tra được danh mục", xếp nguy hiểm giảm dần. Lọc
+        // theo `ambiguous` nên vứt đúng hai câu nguy hiểm và giữ lại câu nhẹ nhất.
+        setMatchMessage(res.data.message ?? null);
+        setBanned(res.data.banned ?? []);
+        // Trường vắng mặt KHÔNG quy về `'ok'`: máy chủ đời cũ không mang nó, và
+        // mặc định "chắc là đã tra" là đúng chiều hỏng phải chặn. `''` khác `'ok'`
+        // nên `bannedCheckRan` trả `false` — băng vàng hiện, đúng fail-closed.
+        setBannedCheck(res.data.banned_check ?? '');
       } else {
         showError('Chưa nhận diện được nhãn',
           res.data?.error ?? res.error?.detail ?? 'Không nhận diện được nhãn. Thử chụp rõ hơn.');
@@ -350,6 +375,79 @@ const CareScanScreen: React.FC = () => {
     );
   };
 
+  /**
+   * Hai băng cảnh báo + câu của máy chủ, đứng TRÊN mọi thẻ sản phẩm.
+   *
+   * ── Vì sao khối này tách khỏi `renderCandidates` ────────────────────────────
+   * `renderCandidates` tắt ở hai điều kiện — danh sách rỗng, và đã ghi xong. Cả hai
+   * đều là lúc cảnh báo chất cấm CẦN hiện nhất:
+   *  · rỗng: `reason` thành `banned_not_in_catalog`, tức kho không có nhãn này VÌ
+   *    kho chỉ chứa thuốc được phép. Nhánh rỗng cũ không hiện `message` và không
+   *    biết mã lý do này, nên nó in "Chưa nhận ra sản-phẩm" — một câu trấn an, cho
+   *    đúng chai thuốc cấm.
+   *  · đã ghi: nông dân vừa ghi nhật ký một lần phun chất cấm. Giấu cảnh báo đi
+   *    đúng lúc đó là bỏ người ta lại một mình với hệ quả.
+   *
+   * Nên nó chỉ tắt khi CHƯA hỏi máy chủ lượt nào (`bannedCheck === null`).
+   */
+  const renderMatchNotices = () => {
+    if (bannedCheck === null) return null;
+    const coChatCam = !!banned?.length;
+    const chuaTraDuoc = !bannedCheckRan({ banned_check: bannedCheck });
+    if (!coChatCam && !chuaTraDuoc && !matchMessage) return null;
+    // Hai mã đã biết dẫn người dùng đi HAI ĐƯỜNG NGƯỢC NHAU: một bên là việc của
+    // máy chủ, một bên là việc của chính người đang cầm máy. Gộp lại thì có người
+    // ngồi chờ một sự cố không tồn tại trong khi việc phải làm là chụp lại.
+    //
+    // ⚠ Bảng này CHỈ thêm chữ. Việc băng vàng có hiện hay không do `bannedCheckRan`
+    // quyết, và nó so BẰNG với `'ok'` — mã đời sau chưa có trong bảng vẫn ra băng,
+    // chỉ là không có dòng hướng dẫn riêng. Đảo chiều (liệt kê ở đây rồi lấy bảng
+    // làm điều kiện hiện băng) thì mỗi mã mới là một lượt im lặng.
+    const huongDan: Record<string, string> = {
+      unavailable: 'Danh mục ở máy chủ đang hỏng — chụp lại cũng không đổi kết quả.',
+      not_run: 'Chưa đọc được chữ nào trên bao để đem đi tra — chụp lại gần và rõ phần tên.',
+    };
+    return (
+      <View style={styles.resultSection}>
+        {coChatCam && (
+          <View style={styles.warnBox} testID="care-banned-warning">
+            <Icon name="alert-octagon" size={18} color={COLORS.error} />
+            <View style={styles.warnBody}>
+              <Text style={styles.warnText}>
+                Nhãn này có hoạt chất nằm trong danh mục cấm hoặc hạn chế
+              </Text>
+              {banned!.map((h) => (
+                // Kèm `matched` — CHÍNH chữ làm nó khớp — để người đọc kiểm được vì
+                // sao hệ báo, thay vì phải tin. Phép dò chạy trên chữ OCR, nên nó
+                // khớp nhầm được, và một cảnh báo không tra ngược được thì lần thứ
+                // hai người ta bỏ qua nó.
+                <Text key={`${h.id}-${h.matched}`} style={styles.bannedItem}>
+                  {h.name} — khớp chữ “{h.matched}” trên bao
+                  {h.note ? ` (${h.note})` : ''}
+                </Text>
+              ))}
+            </View>
+          </View>
+        )}
+        {chuaTraDuoc && (
+          <View style={styles.unknownBox} testID="care-banned-unchecked">
+            <Icon name="help-circle" size={18} color={COLORS.warning} />
+            <Text style={styles.unknownText}>
+              Chưa kiểm được chất cấm cho lượt này — chưa được coi là an toàn.
+              {bannedCheck && huongDan[bannedCheck] ? ` ${huongDan[bannedCheck]}` : ''}
+            </Text>
+          </View>
+        )}
+        {/* Câu của máy chủ, NGUYÊN VĂN. Nó ghép sẵn mọi tình huống đang đúng cùng
+            lúc và xếp theo nguy hiểm giảm dần — dựng lại câu từ mã lý do thì không
+            nói được ba việc một lần. */}
+        {matchMessage ? (
+          <Text style={styles.noticeText} testID="care-match-message">{matchMessage}</Text>
+        ) : null}
+      </View>
+    );
+  };
+
   const renderCandidates = () => {
     if (!candidates || logged) return null;
     if (candidates.length === 0) {
@@ -373,6 +471,12 @@ const CareScanScreen: React.FC = () => {
           'Đọc được chữ trên nhãn nhưng kho thuốc chưa có sản-phẩm này. Chụp lại cũng '
           + 'không đổi kết quả.',
         no_input: 'Chưa có ảnh hoặc chữ nào để tra.',
+        // Kho thuốc dựng từ danh mục ĐƯỢC PHÉP, nên chất cấm theo định nghĩa không
+        // có trong đó. "Không tìm thấy" ở đây là bằng chứng bất lợi, không phải
+        // một lượt tra hụt — nói đúng thế, và băng đỏ ở trên nói phần còn lại.
+        banned_not_in_catalog:
+          'Kho thuốc không có nhãn này, vì kho chỉ chứa thuốc được phép dùng. '
+          + 'Đọc kỹ băng cảnh báo phía trên trước khi làm gì tiếp.',
       };
       return (
         <View style={styles.resultSection}>
@@ -405,7 +509,9 @@ const CareScanScreen: React.FC = () => {
         {/* Khớp nhập nhằng: máy chủ nói thẳng rằng thứ tự KHÔNG phải câu trả lời
             (`care_router.py:385-392`). Không hiện câu đó thì màn bày hạng 1 như đã chắc,
             mà số ngày cách ly giữa các ứng viên lại khác nhau. */}
-        {matchMessage ? <Text style={styles.emptyText}>{matchMessage}</Text> : null}
+        {/* `matchMessage` đã lên `renderMatchNotices` — nó đứng TRÊN các thẻ sản
+            phẩm và hiện ở cả nhánh rỗng. Để lại một bản thứ hai ở đây thì câu của
+            máy chủ in hai lần đúng lượt có chất cấm. */}
         <Text style={styles.sectionTitle}>Chọn sản-phẩm đã dùng:</Text>
         {candidates.map((p) => productRow(p, 'label_scan'))}
       </View>
@@ -537,7 +643,7 @@ const CareScanScreen: React.FC = () => {
             </View>
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity style={styles.capturePlaceholder} onPress={handleCapture} activeOpacity={0.8}>
+          <TouchableOpacity style={styles.capturePlaceholder} onPress={handleCapture} activeOpacity={0.8} testID="care-capture">
             <Icon name="camera-plus" size={56} color={NEUTRAL.textMuted} />
             <Text style={styles.capturePlaceholderText}>Chụp nhãn bao-bì thuốc/phân</Text>
             <Text style={styles.capturePlaceholderSub}>Lấy rõ tên + hoạt-chất trên bao bì</Text>
@@ -550,6 +656,7 @@ const CareScanScreen: React.FC = () => {
             onPress={handleMatch}
             disabled={matching}
             activeOpacity={0.85}
+            testID="care-match"
           >
             {matching ? (
               <>
@@ -579,6 +686,7 @@ const CareScanScreen: React.FC = () => {
           </TouchableOpacity>
         )}
 
+        {renderMatchNotices()}
         {renderCandidates()}
         {renderManual()}
         {renderLogged()}
@@ -627,6 +735,11 @@ const styles = StyleSheet.create({
     padding: 10, borderRadius: 10, borderLeftWidth: 3, borderLeftColor: COLORS.error,
   },
   warnText: { flex: 1, fontSize: 13, color: '#8a2c1c', lineHeight: 18, fontWeight: '600' },
+  // `flex: 1` để cột chữ co được bên trong băng: thiếu nó thì dòng tên hoạt chất
+  // dài hơn băng sẽ đẩy tràn ra ngoài thay vì xuống dòng.
+  warnBody: { flex: 1, gap: 4 },
+  bannedItem: { fontSize: 13, color: '#8a2c1c', lineHeight: 18 },
+  noticeText: { fontSize: 14, color: NEUTRAL.text, lineHeight: 20 },
   unknownBox: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: '#fdf5e6',
     padding: 10, borderRadius: 10, borderLeftWidth: 3, borderLeftColor: COLORS.warning,

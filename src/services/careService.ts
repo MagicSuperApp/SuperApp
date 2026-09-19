@@ -79,7 +79,53 @@ export type CareMatchReason =
   | 'no_input'
   | 'no_match'
   | 'ambiguous'
+  /**
+   * Đọc ra chữ, kho thuốc không có nhãn này, VÀ chữ đó mang hoạt chất cấm. Máy chủ
+   * đổi `no_match` sang giá trị này chứ không giữ nguyên (`care_router.py:511`) —
+   * vì `no_match` một mình đọc như "không có gì đáng nói", và bày đúng câu trấn an
+   * ấy cho đúng chai thuốc cấm là chiều hỏng nguy hiểm nhất của cửa này.
+   */
+  | 'banned_not_in_catalog'
   | string;
+
+/**
+ * Một hoạt chất cấm/hạn chế dò được TỪ CHỮ trên nhãn — `care_banned.check_text`.
+ *
+ * Phép dò đi thẳng từ chữ, KHÔNG qua kho sản phẩm: kho dựng từ danh mục thuốc ĐƯỢC
+ * PHÉP, nên chất cấm theo định nghĩa không nằm trong đó. Hệ quả cho màn hình: danh
+ * sách này khác rỗng là NGUY HIỂM, bất kể `reason` mang gì và bất kể `candidates` có
+ * bao nhiêu thẻ — lượt nguy hiểm nhất chính là lượt vẫn khớp được sản phẩm.
+ */
+export interface CareBannedHit {
+  id: string;
+  name: string;
+  /** CHÍNH chữ đã làm nó khớp — để người đọc kiểm được vì sao hệ báo, thay vì phải tin. */
+  matched: string;
+  /**
+   * Để mở CỐ Ý, và màn hình KHÔNG rẽ nhánh theo nó. Mọi phần tử trong danh sách này
+   * đều đã là cảnh báo; phân mức chỉ là chữ đọc thêm.
+   */
+  severity?: string;
+  note?: string | null;
+}
+
+/** Máy chủ đã tra xong danh mục chất cấm chưa — chỉ giá trị này mới là "đã tra". */
+export const BANNED_CHECK_OK = 'ok';
+
+/**
+ * Phép đo DUY NHẤT cho câu "lượt này đã tra chất cấm chưa".
+ *
+ * So BẰNG với `'ok'`, không liệt kê các giá trị còn lại. Máy chủ hôm nay trả ba giá
+ * trị (`ok` · `unavailable` · `not_run`) và nói thẳng rằng danh sách ấy sẽ còn dài ra.
+ * Viết theo kiểu liệt kê — bắt `unavailable`, để `else` rơi vào "sạch" — thì mỗi lần
+ * máy chủ mọc thêm một trạng thái là một lần bản app đang chạy nói sai theo chiều
+ * nguy hiểm, và không có gì đỏ ở đâu cả.
+ *
+ * Trường vắng mặt cũng đọc thành CHƯA TRA: một máy chủ đời cũ không mang trường này,
+ * và mặc định tự nhiên khi thiếu ("chắc là ok") đúng là chiều hỏng phải chặn.
+ */
+export const bannedCheckRan = (r: Pick<CareMatchResponse, 'banned_check'>): boolean =>
+  r.banned_check === BANNED_CHECK_OK;
 
 export interface CareMatchResponse {
   ok: boolean;
@@ -93,8 +139,32 @@ export interface CareMatchResponse {
   reason?: CareMatchReason;
   /** `true` khi đầu bảng sát nhau mà số ngày cách ly khác nhau. */
   ambiguous?: boolean;
-  /** Câu máy chủ soạn sẵn cho ca `ambiguous`. Hiện NGUYÊN VĂN, không diễn đạt lại. */
+  /**
+   * Câu hoàn chỉnh của máy chủ cho người dùng. Hiện NGUYÊN VĂN, không diễn đạt lại.
+   *
+   * ⚠ ĐÍNH CHÍNH 2026-09-19: chú thích cũ ở đây ghi *"câu soạn sẵn cho ca
+   * `ambiguous`"*, và màn hình đọc theo đúng chữ ấy — `CareScanScreen` chỉ nhận
+   * `message` khi `ambiguous === true` và vứt nó đi ở mọi lượt khác. Trường này
+   * GHÉP từ mọi tình huống đang đúng cùng lúc (chất cấm · thứ tự không đáng tin ·
+   * danh mục chưa tra được), xếp theo nguy hiểm giảm dần, và có mặt bất cứ khi nào
+   * có điều đáng nói kể cả lượt khớp đẹp (`care_router.py:517-519,528-546`). Ba
+   * tình huống đó ĐỘC LẬP, không cái nào là bản dự phòng của cái nào — nên lọc theo
+   * một trong ba là vứt hai cái kia, và cái bị vứt nhiều nhất là cái nguy hiểm nhất.
+   */
   message?: string;
+  /**
+   * Hoạt chất cấm/hạn chế dò được. Khác rỗng ⟹ NGUY HIỂM, không phụ thuộc `reason`.
+   *
+   * Vắng mặt KHÔNG có nghĩa là sạch: nó có nghĩa là "không có mục nào để kể", mà ba
+   * trạng thái *tra rồi và sạch* · *kho hỏng nên chưa tra* · *không có chữ nào để
+   * tra* đều cho ra đúng cái vắng mặt ấy. Tách chúng bằng `banned_check`.
+   */
+  banned?: CareBannedHit[];
+  /**
+   * Phần chất cấm có chạy được không — `ok` · `unavailable` · `not_run`, và danh
+   * sách còn dài ra. Đọc qua `bannedCheckRan`, đừng so tay với từng giá trị.
+   */
+  banned_check?: string;
 }
 
 /**

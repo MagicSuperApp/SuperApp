@@ -204,6 +204,28 @@ export interface InstanceConfig {
   slogan: Record<LangCode, string>;
 
   /**
+   * BA ĐỨC TÍNH — dòng nằm DƯỚI cả cụm nhận diện ở màn đăng nhập, giãn chữ cho
+   * rộng đúng bằng cụm.
+   *
+   * Ba trường chữ, ba chỗ đứng, đừng gộp:
+   *  · `tagline` — câu KỂ, dài, ở màn chào (`OnboardingScreen`).
+   *  · `slogan`  — câu ngắn nằm SÁT DƯỚI CHỮ HIỆU, rộng đúng bằng chữ hiệu.
+   *  · `virtues` — dòng này, nằm dưới CẢ CỤM, rộng đúng bằng cả cụm.
+   *
+   * Vì sao nó phải là trường riêng chứ không phải nửa sau của `tagline`: hai dòng
+   * hiện CÙNG LÚC trên cùng một màn, nên dùng lại một chuỗi là in nó hai lần.
+   *
+   * Giữ ngắn — ba từ, cùng luật bố cục với `slogan`: dòng bị kéo giãn cho vừa bề
+   * ngang cụm, câu càng dài thì cỡ chữ càng bị thu cho tới lúc không đọc được.
+   *
+   * BẮT BUỘC KHAI, và `null` là một lời khai hợp lệ — cùng luật với `mascot`. App
+   * nào đã gói ba đức tính vào chính `slogan` thì khai `null`, đừng chẻ ra thành
+   * hai dòng nói cùng một điều. Để `?` thì app mới quên khai sẽ lặng lẽ không hiện
+   * dòng nào mà không ai biết là đang thiếu.
+   */
+  virtues: Record<LangCode, string> | null;
+
+  /**
    * Dấu thương hiệu hiện TRONG app — khác biểu tượng ngoài màn hình chính của
    * điện thoại (thứ đó do `instances/<mã>/ios|android/` lo, tầng native).
    *
@@ -230,18 +252,31 @@ export interface InstanceConfig {
   logo: ImageSourcePropType;
 
   /**
-   * CỤM NHẬN DIỆN đặt trên nền TỐI — dấu hiệu và chữ hiệu nằm trong một ảnh, vẽ
-   * bằng đúng bộ sinh dựng ảnh cửa hàng. Ba màn trước-đăng-nhập dùng nó thay cho
-   * cặp [ô vuông dấu hiệu] + [chữ `displayName`].
+   * CỤM NHẬN DIỆN đặt trên nền TỐI — HAI MẢNH RỜI, vẽ bằng đúng bộ sinh dựng ảnh
+   * cửa hàng. Ba màn trước-đăng-nhập ghép chúng lại qua `components/BrandLockup`,
+   * thay cho cặp [ô vuông dấu hiệu] + [chữ `displayName`].
+   *
+   * ⚠ TRƯỚC 19/09/2026 đây là MỘT trường, một ảnh gộp (`lockup-on-dark.png`).
+   * Tách ra vì hai chuyện mà ảnh gộp không làm được, và cả hai đều không kêu:
+   *
+   *  1. **Xếp lại bố cục.** Có màn cần [dấu hiệu | chữ hiệu + khẩu hiệu] nằm
+   *     ngang, có màn cần chồng dọc. Ảnh gộp chỉ biết một cách xếp, nên đổi bố
+   *     cục hoá ra là vẽ lại ảnh — và ảnh mới thì không đối chiếu được với ảnh cũ.
+   *  2. **Căn theo CHỮ HIỆU.** Ràng buộc "khẩu hiệu rộng đúng bằng chữ hiệu" cần
+   *     biết chữ hiệu bắt đầu và kết thúc ở đâu. Trong ảnh gộp nó chỉ là các điểm
+   *     ảnh; số đo duy nhất lấy được là bề ngang CẢ CỤM, và căn theo nó thì khẩu
+   *     hiệu thò ra dưới cả dấu hiệu.
    *
    * BẮT BUỘC KHAI, và `null` là một lời khai hợp lệ — cùng luật với `mascot`. App
    * nào chưa có cụm thì khai `null` và ba màn kia tự rơi về cặp cũ. Để `?` thì một
    * app mới quên khai sẽ lặng lẽ chạy đường rơi mà không ai biết là đang thiếu.
    *
-   * VÌ SAO CHỈ CÓ BẢN CHO NỀN TỐI: cả ba chỗ dùng đều là nền lục sẫm. Một bản mực
-   * lục cho nền sáng có tồn tại trong bộ nhận diện, nhưng KHÔNG kèm vào đây khi
-   * chưa màn nào đặt nó — một tài sản không có nơi đọc là tài sản không ai bảo
-   * trì, và lần sau ai nhìn vào cũng phải đi đo xem nó còn đúng không.
+   * VÌ SAO CHỈ CÓ BẢN CHO NỀN TỐI (ÂM BẢN): cả ba chỗ dùng đều là nền lục sẫm, và
+   * mực của hai mảnh này là TRẮNG. `logo` KHÔNG thay được — đo ra mực lục
+   * (CheckFarm ≈ `(60,148,90)`, Aladin ≈ `(74,116,70)`), tức lục trên lục: nó
+   * không biến mất hẳn nên không có gì kêu, nó chỉ mờ đi. Một bản mực lục cho nền
+   * sáng có tồn tại trong bộ nhận diện, nhưng KHÔNG kèm vào đây khi chưa màn nào
+   * đặt nó — một tài sản không có nơi đọc là tài sản không ai bảo trì.
    *
    * ⚠ Lý do CŨ ở dòng này ("một tệp ảnh không ai dùng vẫn đi vào gói cài") đã bị
    * chính tệp này bác: hai lời khai app nằm chung một mô-đun với `require()` tĩnh
@@ -250,15 +285,27 @@ export interface InstanceConfig {
    * không đổi, nhưng lý do thì phải đúng — một lý do sai sẽ được trích lại cho
    * quyết định sau.
    *
-   * ⚠ Cụm này KHÔNG có câu giới thiệu trong ảnh, và đó là ràng buộc chứ không
-   * phải lựa chọn thẩm mỹ: app chạy bốn thứ tiếng và đã có `tagline`/`slogan`
-   * dịch theo ngôn ngữ người dùng chọn. Nướng một câu tiếng Việt vào ảnh là thay
-   * một dòng dịch được bằng một dòng không dịch được, và người đọc tiếng Nhật sẽ
-   * gặp nó. Ảnh nộp cửa hàng thì ngược lại — một trang một ngôn ngữ — nên ở đó
-   * câu ấy phải nằm trong ảnh. Bộ sinh cưỡng chế đúng ranh giới này: nó TỪ CHỐI
-   * cờ bỏ-câu-giới-thiệu cho hai ảnh nộp Play.
+   * ⚠ Hai mảnh KHÔNG chứa câu chữ nào, và đó là ràng buộc chứ không phải lựa chọn
+   * thẩm mỹ: app chạy bốn thứ tiếng và đã có `tagline`/`slogan`/`virtues` dịch
+   * theo ngôn ngữ người dùng chọn. Nướng một câu tiếng Việt vào ảnh là thay một
+   * dòng dịch được bằng một dòng không dịch được, và người đọc tiếng Nhật sẽ gặp
+   * nó. Ảnh nộp cửa hàng thì ngược lại — một trang một ngôn ngữ — nên ở đó câu ấy
+   * phải nằm trong ảnh. Bộ sinh cưỡng chế đúng ranh giới này: nó TỪ CHỐI cờ
+   * bỏ-câu-giới-thiệu cho hai ảnh nộp Play.
    */
-  brandLockupOnDark: ImageSourcePropType | null;
+  brandMarkOnDark: ImageSourcePropType | null;
+
+  /**
+   * CHỮ HIỆU trên nền tối — tên app vẽ sẵn, đi đôi với `brandMarkOnDark`.
+   *
+   * Hai trường chứ không phải một mảng hai phần tử: mỗi mảnh có một VAI khác nhau
+   * ở tầng trợ năng (chữ hiệu MANG tên app và nhận `accessibilityLabel`, dấu hiệu
+   * là hình trang trí), và một mảng thì không nói được điều đó.
+   *
+   * Khai một mảnh mà bỏ mảnh kia là trạng thái vô nghĩa — `BrandLockup` đòi đủ
+   * cả hai mới ghép, thiếu một là rơi về cặp cũ.
+   */
+  brandWordmarkOnDark: ImageSourcePropType | null;
 
   /**
    * Ảnh nền của TEM MÃ QR dán lên nông sản (`features/treeQr/TreeQrCode.tsx`).
@@ -422,6 +469,9 @@ export const ALADIN_INSTANCE: InstanceConfig = {
     zh: '安全、透明、用户友好',
     ja: '安全、透明、ユーザーフレンドリー',
   },
+  // `slogan` của Aladin ĐÃ LÀ ba đức tính, nên không chẻ thành hai dòng nói cùng
+  // một điều. `null` chứ không chép lại câu ấy xuống đây.
+  virtues: null,
   // NGUYÊN BYTE tệp `assets/images/logo.png` bốn màn vẫn đang dùng — đối chiếu
   // bằng `cmp` lúc chuyển. Aladin đã phát hành, nên đợt này không được đổi một
   // pixel nào của nó; cái đổi là CHỖ khai, không phải hình.
@@ -429,7 +479,14 @@ export const ALADIN_INSTANCE: InstanceConfig = {
   // CHƯA CÓ cụm nhận diện. `null` chứ không mượn cụm của CheckFarm — ba màn
   // trước-đăng-nhập tự rơi về cặp [ô vuông dấu hiệu] + [chữ tên app] như trước,
   // không đổi một pixel nào của Aladin trong đợt này.
-  brandLockupOnDark: null,
+  //
+  // ⚠ Việc còn nợ, đã đo chứ không phỏng đoán: đường rơi ấy vẽ `logo.png` (mực
+  // lục ≈ `(74,116,70)`) lên nền lục sẫm của ba màn — lục trên lục. Không có lỗi
+  // nào để lần ra vì dấu hiệu vẫn hiện, chỉ mờ. Sửa được bằng đúng một thứ: một
+  // bản ÂM của dấu Aladin. Bản đó chưa có trong kho, và dựng hộ một dấu thương
+  // hiệu thì sai thẩm quyền — nên để nguyên và ghi ra đây.
+  brandMarkOnDark: null,
+  brandWordmarkOnDark: null,
   // NGUYÊN BYTE `assets/images/QR_BG.png` đang in trên tem — `cmp` xác nhận lúc
   // chuyển. Tem đã dán ngoài đời không sửa được, nên đợt này không đổi hình.
   qrBackdrop: require('../../instances/aladin/brand/qr-backdrop.png'),
@@ -509,11 +566,32 @@ export const CHECKFARM_INSTANCE: InstanceConfig = {
     zh: '追溯源头，提升农产价值',
     ja: '源流をたどり、農産物の価値を高める',
   },
+  // ĐỦ HAI VẾ, và bản `vi` là chuỗi CHUẨN của bộ sinh nhận diện — hằng `TAG` ở
+  // `Logo/play-store/build-feature-graphic.py` kho CheckFarm, gạch nối THƯỜNG
+  // (`-`), không phải gạch dài. Chính chuỗi này là ràng buộc số 1 trong bốn ràng
+  // buộc bố cục, và cỡ chữ lẫn cỡ dấu hiệu đều là nghiệm giải ra TỪ nó.
+  //
+  // ⚠ Bản trước ở đây chỉ có nửa đầu ("Truy xuất nguồn gốc"), rồi một bản sửa
+  // giữa chừng đổi thành nửa sau ("Nâng tầm nông sản"). Cả hai đều sai cùng một
+  // kiểu: cắt câu thì hai ràng buộc bố cục vẫn giải được, cụm vẫn dựng ra cân
+  // đối, và không có gì kêu — chỉ là nó không còn là cụm của thương hiệu này.
+  // Đừng cắt câu để cho vừa; cần hẹp hơn thì hạ cỡ, đó là việc của bố cục.
   slogan: {
-    vi: 'Truy xuất nguồn gốc',
-    en: 'Trace the source',
-    zh: '追溯源头',
-    ja: '産地までたどる',
+    vi: 'Truy xuất nguồn gốc - Nâng tầm nông sản',
+    en: 'Trace the Source - Elevate the Produce',
+    zh: '追溯源头 - 提升农产价值',
+    ja: '源流をたどり、農産物の価値を高める',
+  },
+  // Dòng dưới CẢ CỤM ở màn đăng nhập. Bản `vi` do chủ dự án chốt 19/09/2026.
+  //
+  // ⚠ Ba bản kia là bản DỊCH DỰNG Ở KHO NÀY, không phải chuỗi nhà CheckFarm cấp —
+  // khác hẳn `tagline`/`slogan` ở trên. Đã gửi thư sang nhà CheckFarm xin bản
+  // chính thức; nhận được thì thay, đừng coi ba dòng này là câu chữ đã chốt.
+  virtues: {
+    vi: 'Minh bạch - Chính xác - Tiện lợi',
+    en: 'Transparent - Accurate - Convenient',
+    zh: '透明 · 精准 · 便捷',
+    ja: '透明・正確・手軽',
   },
 
   // ÂM BẢN chính thức của nhà CheckFarm — `Logo/bieu-tuong-app/icon-1024.png`,
@@ -525,14 +603,22 @@ export const CHECKFARM_INSTANCE: InstanceConfig = {
   // TRONG SUỐT. Đặt lên nền sáng của app thì không thấy gì, mà cũng chẳng có lỗi
   // nào để lần ra.
   logo: require('../../instances/checkfarm/brand/logo.png'),
-  // Cụm nhận diện cho nền tối, mực TRẮNG trên nền trong suốt, cắt sát hộp mực.
-  // Sinh từ cùng bộ sinh dựng ảnh cửa hàng, nằm ở kho `CheckFarm/Docs`
+  // Hai mảnh ÂM BẢN, mực TRẮNG trên nền trong suốt, cắt sát hộp mực.
+  //
+  // CẢ HAI ĐỀU SINH RA TỪ `lockup-on-dark.png` — tệp ấy vẫn nằm cạnh đây và vẫn
+  // là nguồn, hai mảnh này là bản CẮT có nhãn. Ảnh gộp đến từ bộ sinh dựng ảnh
+  // cửa hàng ở kho `CheckFarm/Docs`
   // (`Logo/play-store/build-feature-graphic.py --variant ink-on-dark --no-tagline`
-  // — kho KHÁC kho này, nên đừng đi tìm đường dẫn đó ở đây),
-  // nên nó không thể trôi khỏi ảnh cửa hàng: cùng dấu hiệu, cùng phông, cùng cỡ
-  // chữ đã giải ra từ bốn ràng buộc bố cục. Đối chiếu bằng `md5` lúc chép sang:
-  // `ba0b2c2b8b6ae38fa8f232c83b90ec26`.
-  brandLockupOnDark: require('../../instances/checkfarm/brand/lockup-on-dark.png'),
+  // — kho KHÁC kho này, nên đừng đi tìm đường dẫn đó ở đây), nên hai mảnh không
+  // thể trôi khỏi ảnh cửa hàng: cùng dấu hiệu, cùng phông, cùng cỡ chữ đã giải ra
+  // từ bốn ràng buộc bố cục. `md5` ảnh gộp lúc chép sang: `ba0b2c2b8b6ae38fa8f232c83b90ec26`.
+  //
+  // Phép cắt, đo bằng kênh alpha của chính ảnh gộp 856×136 (19/09/2026) — dựng
+  // lại được bằng đúng hai hộp này, không phải cắt bằng mắt:
+  //     mark-on-dark.png      ← (0, 0, 157, 136)     157×136
+  //     wordmark-on-dark.png  ← (207, 18, 856, 117)  649×99
+  brandMarkOnDark: require('../../instances/checkfarm/brand/mark-on-dark.png'),
+  brandWordmarkOnDark: require('../../instances/checkfarm/brand/wordmark-on-dark.png'),
   // Dùng chính dấu của họ làm nền tem. Trước đợt này tem QR mọi app đều mang mặt
   // cười Aladin, mà tem thì IN RA rồi dán lên nông sản — sai ở đây không thu về được.
   qrBackdrop: require('../../instances/checkfarm/brand/qr-backdrop.png'),

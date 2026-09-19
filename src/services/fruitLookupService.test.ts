@@ -185,6 +185,28 @@ describe('parseLookupBody — đọc đúng tên trường máy chủ dùng', ()
     expect(r.kind).toBe('need_region');
   });
 
+  it('NO_FRUIT_IN_PHOTO KHÔNG được gộp vào empty_scope — hai ca, hai việc phải làm', () => {
+    // Máy chủ OriLife tách hai trạng thái này có chủ ý: `EMPTY_SCOPE` nói về KHO
+    // (chưa vườn nào mở công khai ⟹ hỏi người bán mã truy xuất), còn
+    // `NO_FRUIT_IN_PHOTO` nói về ẢNH (⟹ chụp lại). Bản trước của mã gộp cả hai.
+    const r = parseLookupBody(
+      { verdict: 'NO_FRUIT_IN_PHOTO', ok: true, candidates: [], fruit: null, message: 'Chụp lại giúp em nhé' },
+      BASE,
+    );
+    expect(r.kind).toBe('no_fruit_in_photo');
+    // Câu của máy chủ phải đi tới màn hình, không bị thay bằng câu chung của app.
+    expect(r.kind === 'no_fruit_in_photo' && r.message).toBe('Chụp lại giúp em nhé');
+  });
+
+  it('đầu vào phân biệt được HAI CỰC — cùng danh sách rỗng, khác verdict, khác nhánh', () => {
+    // Không có ca này thì bài trên xanh cả khi mã gộp mọi thứ về một nhánh.
+    const khoRong = parseLookupBody({ verdict: 'EMPTY_SCOPE', candidates: [] }, BASE);
+    const anhKhongQua = parseLookupBody({ verdict: 'NO_FRUIT_IN_PHOTO', candidates: [] }, BASE);
+    expect(khoRong.kind).toBe('empty_scope');
+    expect(anhKhongQua.kind).toBe('no_fruit_in_photo');
+    expect(khoRong.kind).not.toBe(anhKhongQua.kind);
+  });
+
   it('EMPTY_SCOPE / danh sách rỗng → empty_scope, một câu trả lời chứ không phải lỗi', () => {
     expect(parseLookupBody({ verdict: 'EMPTY_SCOPE', candidates: [] }, BASE).kind).toBe('empty_scope');
     expect(parseLookupBody({ ok: true, candidates: [] }, BASE).kind).toBe('empty_scope');

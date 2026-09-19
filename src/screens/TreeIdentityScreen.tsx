@@ -121,13 +121,35 @@ const BASE_URL: string =
 // NativeCameraPreview tồn tại trên cả iOS lẫn Android (ViewManager cùng tên
 // "TreeReIDCameraPreview"). Máy Android chưa cập nhật (thiếu view) sẽ không render
 // — nhưng guard isCaptureActive + isAvailable() ở dưới đảm bảo chỉ dùng khi có native.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const NativeCameraPreview =
-  Platform.OS === 'ios' || Platform.OS === 'android'
-    ? (requireNativeComponent('TreeReIDCameraPreview') as React.ComponentType<{
-      style?: object;
-    }>)
-    : null;
+//
+// ⛔ `requireNativeComponent` ĐĂNG KÝ tên view, nó không phải một phép tra cứu.
+// Gọi lần thứ hai với cùng một tên là `Invariant Violation: Tried to register two
+// views with the same name` — lỗi FATAL, hộp đỏ, và bấm Dismiss thì app dựng lại
+// từ màn đầu.
+//
+// Lần gọi thứ hai đến từ đâu, vì chỗ này đã ở tầm mô-đun: **Fast Refresh**. Tệp
+// này nhập `tk` từ `i18n/keys` (dòng 112), nên sửa BẤT KỲ tệp nào trong chuỗi phụ
+// thuộc đó là mô-đun này được nạp lại, và dòng này chạy lại. Đo 19/09/2026 trên
+// máy ảo: sửa `i18n/keys/onboarding.ts` ⟹ hai lượt `js_global_error` `isFatal:true`
+// cách nhau 13 giây, không đụng gì tới tệp này.
+//
+// Vì sao nó sống lâu mà không ai thấy: bản PHÁT HÀNH nạp mô-đun đúng một lần, nên
+// lỗi này KHÔNG có trong bản đóng gói. Nó chỉ đánh vào người đang sửa mã — tức
+// đúng nhóm người sẽ cho rằng "máy mình lỗi" chứ không mở issue.
+//
+// Nhớ qua các lần nạp lại bằng `globalThis`: nó sống theo TIẾN TRÌNH, còn phạm vi
+// mô-đun chỉ sống tới lần nạp lại kế tiếp. Dùng `in` chứ không kiểm giá trị, vì
+// `null` (nền không có view) là một kết quả hợp lệ đã ghi nhớ, không phải "chưa hỏi".
+type CameraPreviewProps = { style?: object };
+const KHOA_VIEW = '__superapp_treeReIDCameraPreview';
+const boNho = globalThis as Record<string, unknown>;
+if (!(KHOA_VIEW in boNho)) {
+  boNho[KHOA_VIEW] =
+    Platform.OS === 'ios' || Platform.OS === 'android'
+      ? (requireNativeComponent('TreeReIDCameraPreview') as React.ComponentType<CameraPreviewProps>)
+      : null;
+}
+const NativeCameraPreview = boNho[KHOA_VIEW] as React.ComponentType<CameraPreviewProps> | null;
 
 // ---------------------------------------------------------------------------
 // Constants

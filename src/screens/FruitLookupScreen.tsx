@@ -119,6 +119,7 @@ const FruitLookupScreen: React.FC = () => {
   const regions: LookupRegion[] = res?.kind === 'need_region' ? res.regions : [];
   const needRegion = res?.kind === 'need_region';
   const emptyScope = res?.kind === 'empty_scope';
+  const noFruit = res?.kind === 'no_fruit_in_photo';
 
   return (
     <View style={[s.root, { paddingTop: insets.top }]}>
@@ -193,6 +194,20 @@ const FruitLookupScreen: React.FC = () => {
             <Text style={s.muted}>
               Tra cứu chỉ tìm trong những cây mà nhà vườn đã tự bật công khai. Hiện chưa
               có cây nào trong tầm — không phải quả của bạn không có nguồn gốc.
+            </Text>
+          </View>
+        )}
+
+        {/* Ảnh không có quả nào — KHÁC "chưa vườn nào mở tra cứu". Ca kia nói về
+            kho và dẫn người mua đi hỏi người bán; ca này nói về ảnh và người mua
+            tự sửa được ngay. Ưu tiên câu của máy chủ: nó soạn sẵn cho người dùng
+            đọc, còn câu dự phòng dưới chỉ dùng khi máy chủ không gửi câu nào. */}
+        {noFruit && !busy && (
+          <View style={s.block}>
+            <Text style={s.blockTitle}>Chưa thấy quả nào trong ảnh</Text>
+            <Text style={s.muted}>
+              {(res?.kind === 'no_fruit_in_photo' && res.message) ||
+                'Chụp lại sao cho quả nằm gọn trong khung và đủ sáng nhé.'}
             </Text>
           </View>
         )}

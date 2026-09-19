@@ -297,7 +297,10 @@ describe('Lớp Trợ lý — theo docs/AI_ASSISTANT_UI-UX.md', () => {
   it('màn chào nói rõ TRỢ LÝ LÀ AI: tên, vai trò, rồi lời chào', () => {
     // Câu dạy cách dùng đã bỏ. Người vừa mở lớp phủ lần đầu chưa biết mình đang
     // nói chuyện với ai, nên thứ cần trước hết là một cái tên và một vai trò.
-    expect(LAYER).toMatch(/const GENIE_NAME = 'GENIE';/);
+    // Chủ nhân chốt 18/09/2026: `Genie`, KHÔNG phải `GENIE`. Ghim đúng chuỗi mới
+    // chứ không nới thành `/Genie/i` — nới ra thì bài này xanh cho CẢ HAI cách
+    // viết, tức nó thôi ghim đúng cái vừa được quyết.
+    expect(LAYER).toMatch(/const GENIE_NAME = 'Genie';/);
     expect(LAYER).toMatch(/const GENIE_TAGLINE = 'Trợ lý thông minh';/);
     expect(LAYER).toMatch(/const cauChao = \(\) =>/);
     // Tên phải ĐỌC RA LÀ MỘT CÁI TÊN, không lẫn vào chữ thường quanh nó.

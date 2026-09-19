@@ -186,7 +186,12 @@ export interface LookupRegion {
 }
 
 /** Máy chủ tự đặt tên cho kết quả. Để `| string` vì bản sau có thể thêm. */
-export type LookupVerdict = 'CHOICES' | 'SOLO' | 'EMPTY_SCOPE' | string;
+export type LookupVerdict =
+  | 'CHOICES'
+  | 'SOLO'
+  | 'EMPTY_SCOPE'
+  | 'NO_FRUIT_IN_PHOTO'
+  | string;
 
 /**
  * Kết quả một lượt tra. BẢY nhánh, và chỉ nhánh cuối là hỏng hóc không rõ.
@@ -214,6 +219,13 @@ export type FruitLookupResult =
   | { kind: 'need_region'; regions: LookupRegion[]; message?: string }
   /** Không có quả CÔNG KHAI nào giống. Một câu trả lời, không phải lỗi. */
   | { kind: 'empty_scope'; message?: string }
+  /**
+   * `NO_FRUIT_IN_PHOTO` — máy chủ KHÔNG thấy quả nào trong ảnh. Khác hẳn
+   * `empty_scope`, và phải khác: `empty_scope` nói về KHO (chưa vườn nào mở
+   * công khai) nên việc tiếp theo là hỏi người bán mã truy xuất; cái này nói về
+   * ẢNH nên việc tiếp theo là chụp lại. Chỉ một đường đúng cho mỗi ca.
+   */
+  | { kind: 'no_fruit_in_photo'; message?: string }
   /** 400 — ảnh mờ/hỏng, máy chủ không nhúng được. Chụp lại là xong. */
   | { kind: 'image_unusable'; message?: string }
   /** Ảnh vượt trần 2MB. */
@@ -441,8 +453,24 @@ export function parseLookupBody(body: unknown, baseUrl: string): FruitLookupResu
   if (cards.length === 0 && solo) cards.push(solo);
 
   if (cards.length === 0) {
-    // Bao gồm cả `EMPTY_SCOPE` lẫn ca máy chủ trả danh sách rỗng không nói gì —
-    // với người mua thì hai ca đó là cùng một câu trả lời.
+    // ⛔ ĐỪNG gộp lại. Máy chủ OriLife tách `NO_FRUIT_IN_PHOTO` khỏi `EMPTY_SCOPE`
+    // có chủ ý, và ghi lý do vào chính commit tách chúng ra: hai trạng thái đó
+    // "nói về hai thứ khác nhau (kho vs ảnh) và dẫn người mua tới hai việc khác
+    // nhau… Gộp hai cái vào một màn hình là chỉ sai đường."
+    //
+    // Bản trước của chỗ này gộp thật, kèm một câu tự biện hộ — "với người mua thì
+    // hai ca đó là cùng một câu trả lời" — viết ra trước khi máy chủ có trạng thái
+    // thứ hai. Câu ấy đúng lúc được viết rồi hết đúng mà không ai báo, đúng ca
+    // `Forall §Tài liệu là CHỈ DẪN, mã mới là DỮ KIỆN`.
+    //
+    // Hậu quả đo được nếu gộp: người mua chụp một tấm không có quả nào, app bảo
+    // "Chưa có vườn nào mở tra cứu" và mời họ đi hỏi người bán mã truy xuất — một
+    // việc vô ích, cho một nguyên nhân họ tự sửa được trong ba giây.
+    if (verdict === 'NO_FRUIT_IN_PHOTO') {
+      // `message` là câu hoàn chỉnh máy chủ soạn cho người dùng — hiện thẳng,
+      // đừng thay bằng câu chung chung của mình (`Forall §Cái vỏ im lặng` mục 2).
+      return { kind: 'no_fruit_in_photo', message };
+    }
     return { kind: 'empty_scope', message };
   }
 

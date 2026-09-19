@@ -304,6 +304,15 @@ const TraceScanScreen: React.FC = () => {
       setOutcome({ s: 'message', key: 'scan.state.noMatch', text: r.message, retry: true });
       return;
     }
+    if (r.kind === 'no_fruit_in_photo') {
+      clearBoxes();
+      // KHÔNG dùng chung `scan.state.noMatch` với `empty_scope`: câu đó nói "chưa
+      // có vườn nào mở tra cứu" và dẫn người mua đi hỏi người bán — vô ích khi
+      // nguyên nhân thật là trong ảnh không có quả nào. `text` là câu máy chủ soạn
+      // sẵn cho người dùng đọc; nó đứng trước khoá chuỗi của mình.
+      setOutcome({ s: 'message', key: 'scan.state.noFruitInPhoto', text: r.message, retry: true });
+      return;
+    }
     if (r.kind === 'image_unusable') {
       clearBoxes();
       setOutcome({ s: 'message', key: 'scan.state.imageUnusable', text: r.message, retry: true });

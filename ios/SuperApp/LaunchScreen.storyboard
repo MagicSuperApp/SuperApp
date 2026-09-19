@@ -1,18 +1,25 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- ⚠ Tệp này KHÔNG có bước dựng nào ghi đè theo instance — mọi app dựng từ nền mã
-     này (kể cả CheckFarm) đều thấy đúng chữ "Aladin" + khẩu hiệu tiếng Anh của
-     Aladin ở màn chào, vì đây là ảnh TĨNH biên dịch sẵn lúc build, không đọc được
-     biến môi trường như `Info.plist` ($(APP_DISPLAY_NAME) chỉ có tác dụng trong
-     Info.plist — Xcode KHÔNG làm phép thay đó cho .storyboard).
-     Nguồn riêng từng app đã có: `instances/aladin/ios/LaunchScreen.storyboard`
-     (y hệt tệp này) và `instances/checkfarm/ios/LaunchScreen.storyboard` (tên +
-     khẩu hiệu + màu nền của CheckFarm). Còn THIẾU một bước dựng — cùng dạng với
-     bước "Soát danh tính app iOS khớp instances/" đang copy
-     `instances/${APP_INSTANCE}/ios/AppIcon.appiconset` đè lên
-     `ios/SuperApp/Images.xcassets/AppIcon.appiconset` — copy
-     `instances/${APP_INSTANCE}/ios/LaunchScreen.storyboard` đè lên CHÍNH tệp này
-     trước bước archive. Ràng buộc tạm đang có hiệu lực: KHÔNG app nào khác Aladin
-     được build ký thật cho tới khi bước copy đó được nối dây trong `codemagic.yaml`. -->
+<!-- Tệp này là chỗ Xcode ĐỌC, không phải tài sản của app nào. Nội dung dưới đây là
+     bản của Aladin; mỗi lượt dựng, bước "Soát danh tính app iOS khớp instances/"
+     chép `instances/${APP_INSTANCE}/ios/LaunchScreen.storyboard` đè lên nó
+     (`codemagic.yaml`, cả hai luồng — tìm `DICH_MAN_CHAO`). Cùng luật với
+     `AppIcon.appiconset` ngay cạnh trong bước đó.
+
+     Vì sao phải CHÉP chứ không thay biến: đây là ảnh TĨNH biên dịch sẵn lúc dựng.
+     Xcode chỉ làm phép thay `$(BIẾN)` bên trong `Info.plist`, KHÔNG làm cho
+     `.storyboard`. Nên `$(APP_DISPLAY_NAME)` đặt vào đây sẽ hiện ra nguyên văn.
+
+     ⚠ ĐỪNG viết lại vào đây câu "chưa có bước dựng nào ghi đè theo instance".
+     Câu đó từng nằm ở chỗ này kèm một ràng buộc tạm ("không app nào khác Aladin
+     được build ký thật"). Nó ĐÚNG lúc được viết, rồi bước dựng có thật, và câu
+     ấy ở lại. Giá đã trả, đo 18/09/2026: một lượt soát đọc chú thích này rồi báo
+     lên chủ nhân rằng MỌI bản CheckFarm đang xuất xưởng mang màn chào Aladin.
+     Đo thẳng vào gói đã dựng thì ngược lại —
+       `ipa-checkfarm-62/SuperApp.ipa` → chuỗi "Aladin" 1, "CheckFarm" 0
+       `ipa-checkfarm/SuperApp.ipa` (bản 63) → "Aladin" 0, "CheckFarm" 1
+     tức đã vá từ bản 63. Đúng ca `Forall §Tài liệu là CHỈ DẪN, mã mới là DỮ KIỆN`:
+     một chú thích tự khai thiếu sót trông y hệt một bằng chứng, và nó không kêu
+     khi hết đúng. Muốn biết app nào mang màn chào nào thì ĐỌC GÓI, đừng đọc đây. -->
 <document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="15702" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" launchScreen="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES" initialViewController="01J-lp-oVM">
     <device id="retina4_7" orientation="portrait" appearance="light"/>
     <dependencies>
